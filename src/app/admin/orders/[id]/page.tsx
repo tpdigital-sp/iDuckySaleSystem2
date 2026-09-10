@@ -9,10 +9,20 @@ import FlowAccountSync from "@/components/admin/FlowAccountSync";
 /** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
 const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
 import { useParams, useRouter } from "next/navigation";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, productPath, type Product } from "@/lib/products";
+import {
+  applyReplaceMarker,
+  cartSelectionsOf,
+  isShopLine,
+  orderItemQtyChange,
+  qtyLockedByArea,
+  readReplaceMarker,
+  writeReplaceMarker,
+} from "@/lib/order-item-qty";
+import { cartItemKey } from "@/lib/cart-context";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { PROOF_AUTO_NOTIFY_MINUTES, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
-import { fetchProductNamesLite } from "@/lib/product-repo";
+import { fetchProductNamesLite, fetchProductsByIds } from "@/lib/product-repo";
 import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
 import {
   allSelfDesignedApproved,
@@ -920,6 +930,17 @@ export default function AdminOrderDetailPage() {
   // 💬 ตีราคา — งานสั่งทำ (กำหนดขนาดเอง/ช่องกรอก) เข้ามาที่ราคา ฿0 แอดมินใส่ราคาต่อหน่วยที่นี่
   const [editPrice, setEditPrice] = useState<number | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
+  /**
+   * 🔢 แก้จำนวนในออเดอร์ได้เหมือนตะกร้า (เจ้าของร้านสั่ง 10 ก.ย. 69) — ต้องรู้จักตัวสินค้าจริงถึงจะคิด
+   * ราคาขั้นบันได/สลับเรทให้ถูก → โหลดสินค้าของทุกรายการในออเดอร์ทีเดียว (เฉพาะคนที่แก้ออเดอร์ได้)
+   * ที่ถามไปแล้วไม่ได้กลับมา (สินค้าถูกลบ) จำไว้ ไม่ถามซ้ำทุกรอบ
+   */
+  const [shopProducts, setShopProducts] = useState<Map<string, Product>>(() => new Map());
+  const askedProductIds = useRef<Set<string>>(new Set());
+  /** ข้อความในช่องจำนวนระหว่างพิมพ์ (บันทึกตอนออกจากช่อง/Enter) */
+  const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
+  /** กันแทนที่รายการซ้ำระหว่างรอผลบันทึกของรอบก่อน */
+  const replaceBusy = useRef(false);
   function saveSelections(itemIndex: number, text: string) {
     if (!order) return;
     const cur = order.items[itemIndex];
@@ -1230,6 +1251,65 @@ export default function AdminOrderDetailPage() {
   }, [orderId, uploadingIdx]);
 
   usePolling(refresh, { enabled: !demo && !!order });
+
+  // 🔢 โหลดตัวสินค้าของรายการที่หยิบจากหน้าร้าน — ไว้คิดราคาใหม่ตอนแก้จำนวน (รอให้หน้าวาดเสร็จก่อนค่อยถาม)
+  const itemProductIds = (order?.items ?? [])
+    .map((it) => it.productId)
+    .filter((id) => id && !id.includes("#") && id !== "special-item")
+    .join("|");
+  useEffect(() => {
+    if (!mayEdit || demo || !itemProductIds) return;
+    const want = itemProductIds.split("|").filter((id) => !shopProducts.has(id) && !askedProductIds.current.has(id));
+    if (!want.length) return;
+    want.forEach((id) => askedProductIds.current.add(id));
+    let alive = true;
+    const t = setTimeout(() => {
+      void fetchProductsByIds(want)
+        .then((ps) => {
+          if (!alive || !ps.length) return;
+          setShopProducts((cur) => {
+            const next = new Map(cur);
+            ps.forEach((p) => next.set(p.id, p));
+            return next;
+          });
+        })
+        .catch(() => {
+          // โหลดไม่ได้ = แก้จำนวนได้แต่คงราคาเดิม (ให้ลองใหม่รอบหน้า)
+          want.forEach((id) => askedProductIds.current.delete(id));
+        });
+    }, 1200);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mayEdit, demo, itemProductIds]);
+
+  /**
+   * 🛠 แอดมินกด "แก้ตัวเลือก" → ไปแก้ที่หน้าร้าน → ของใหม่ถูกเพิ่มท้ายออเดอร์ (ทางเดียวกับ "สั่งเพิ่มในออเดอร์นี้")
+   * พอรอบดึงข้อมูลเห็นของใหม่เข้ามา = หิ้วแบบงาน/หมายเหตุ/ติ๊กจากรายการเดิมไปให้ แล้วถอดรายการเดิมออก
+   * (เหมือนตะกร้าที่ลบบรรทัดเดิมทิ้งตอนบันทึกแก้ไข) · ลงประวัติทุกครั้ง
+   */
+  useEffect(() => {
+    if (!order || demo || !mayEdit || replaceBusy.current) return;
+    const m = readReplaceMarker();
+    if (!m || m.orderId !== order.id) return;
+    const r = applyReplaceMarker(order.items, m);
+    if (!r) return;
+    replaceBusy.current = true;
+    writeReplaceMarker(null);
+    const next = withLog(
+      { ...order, items: r.items },
+      actor,
+      "แก้ตัวเลือกจากหน้าร้าน",
+      `${r.old.name} ×${r.old.qty} @${formatPrice(r.old.unitPrice)} → ${r.fresh.name} ×${r.fresh.qty} @${formatPrice(r.fresh.unitPrice)} (แทนที่รายการเดิม)`
+    );
+    applyOrder(next);
+    setTimeout(() => {
+      replaceBusy.current = false;
+    }, 3000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, order?.items.length, demo, mayEdit]);
 
   // วิธีจัดส่งจากตั้งค่าร้าน — ให้แอดมินเลือกแล้วเติมค่าส่งอัตโนมัติ (ใช้ในออเดอร์งานพิเศษ/สั่งแทน)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]);
@@ -2250,6 +2330,87 @@ export default function AdminOrderDetailPage() {
     );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
+  }
+
+  /**
+   * 🔢 รายการนี้แก้จำนวนได้ไหม — กติกาเดียวกับแก้ราคา: ลูกค้าโอนเข้ามาแล้วห้ามขยับยอด (กันบิลไม่ตรงสลิป)
+   * งานเคลม (ฟรี) และรายการที่ยังไม่ตีราคา (฿0) แก้ได้เสมอ เพราะไม่กระทบยอดที่โอนมาแล้ว
+   */
+  function mayChangeQty(it: OrderItem): boolean {
+    if (!mayEdit || !order) return false;
+    if (order.claimOf || it.unitPrice <= 0) return true;
+    const moneyIn = (order.paidTotal ?? 0) > 0 || !!order.slipUrl || !!order.slipPath || !!order.deposit?.firstPaidAt;
+    return !moneyIn;
+  }
+  const productOfItem = (id: string) => shopProducts.get(id);
+
+  /**
+   * 🔢 แก้จำนวนของรายการ — คิดราคา/สลับเรท/หดโควตาลายให้เหมือนตะกร้า (ดู lib/order-item-qty) แล้วลงประวัติ
+   * ทำอะไรให้บ้างบอกไว้ในประวัติหมด (ราคา/หน่วยเปลี่ยน · เรทเปลี่ยน · ลายถูกหด) แอดมินจะได้ไม่งงว่ายอดขยับเพราะอะไร
+   */
+  function changeItemQty(itemIndex: number, nextQty: number) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    if (!it || !mayChangeQty(it)) return;
+    const r = orderItemQtyChange(order.items, itemIndex, nextQty, productOfItem);
+    if (!r) return;
+    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, ...r.patch } : x));
+    const newQty = r.patch.qty ?? it.qty;
+    const unit = r.unitPrice ?? it.unitPrice;
+    const notes = [
+      `${it.qty.toLocaleString("th-TH")} → ${newQty.toLocaleString("th-TH")}`,
+      r.unitPrice !== undefined ? `ราคา/หน่วย ${formatPrice(it.unitPrice)} → ${formatPrice(r.unitPrice)}` : "",
+      r.rateChanged ? `เรท ${r.rateChanged.from} → ${r.rateChanged.to}` : "",
+      r.designCapped ? `โควตาลายเหลือ ${r.designCapped} ลาย` : "",
+      unit > 0 ? `= ${formatPrice(unit * newQty)}` : "",
+    ].filter(Boolean);
+    applyOrder(withLog({ ...order, items }, actor, "แก้จำนวน", `${it.name}: ${notes.join(" · ")}`));
+  }
+
+  /**
+   * 🛠 แก้ตัวเลือกของรายการที่หยิบจากหน้าร้าน — เปิดหน้าสินค้าโหมดแก้ไข (?edit=) แบบเดียวกับปุ่ม ✏️ ในตะกร้า
+   * ใส่บรรทัดนี้ลงตะกร้าในเครื่องแอดมินก่อน (สเปค/จำนวน/ลายเดิมครบ) + ตั้ง "โหมดสั่งเพิ่มในออเดอร์นี้"
+   * พอแอดมินกดบันทึกที่หน้าร้าน → ตะกร้า → ยืนยัน → ของใหม่เข้าออเดอร์ · หน้านี้เห็นแล้วถอดรายการเดิมให้เอง
+   */
+  function editItemOptionsInShop(itemIndex: number) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    const p = it ? productOfItem(it.productId) : undefined;
+    if (!it || !p || !mayChangeQty(it)) return;
+    const selections = cartSelectionsOf(it);
+    const key = cartItemKey(it.productId, selections);
+    try {
+      const raw = localStorage.getItem("iducky-cart-v1");
+      const cart = (() => {
+        try {
+          const v = JSON.parse(raw ?? "[]");
+          return Array.isArray(v) ? (v as { key: string }[]) : [];
+        } catch {
+          return [];
+        }
+      })();
+      const line = { key, productId: it.productId, selections, qty: it.qty, unitPrice: it.unitPrice };
+      localStorage.setItem("iducky-cart-v1", JSON.stringify([...cart.filter((c) => c?.key !== key), line]));
+      localStorage.setItem(
+        "iducky-append-order-v1",
+        JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer })
+      );
+      localStorage.removeItem("iducky-append-picks-v1");
+      writeReplaceMarker({
+        orderId: order.id,
+        index: itemIndex,
+        productId: it.productId,
+        name: it.name,
+        qty: it.qty,
+        unitPrice: it.unitPrice,
+        itemCount: order.items.length,
+        at: Date.now(),
+      });
+    } catch {
+      setErr("⚠️ เปิดโหมดแก้ตัวเลือกไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
+      return;
+    }
+    window.open(`${productPath(p)}?edit=${encodeURIComponent(key)}`, "_blank", "noopener");
   }
 
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
@@ -3470,7 +3631,7 @@ export default function AdminOrderDetailPage() {
             <span className="w-6 shrink-0 text-center">#</span>
             <span className="w-20 shrink-0 text-center">รูป</span>
             <span className="min-w-0 flex-1">ชื่อสินค้า / รายละเอียด</span>
-            <span className="w-12 shrink-0 text-center">จำนวน</span>
+            <span className="w-24 shrink-0 text-center">จำนวน</span>
             {seesMoney && <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>}
             {seesMoney && <span className="w-24 shrink-0 text-right">ยอดรวม</span>}
           </div>
@@ -3635,10 +3796,21 @@ export default function AdminOrderDetailPage() {
                                 setEditSel(i);
                                 setItemOpen((cur) => ({ ...cur, [i]: true }));
                               }}
-                              title="แก้รายละเอียดของรายการนี้ (ชื่อ/จำนวน/ราคาแก้ไม่ได้)"
+                              title="แก้รายละเอียดของรายการนี้ (ชื่อแก้ไม่ได้ · จำนวนแก้ที่ช่องจำนวน · ราคาแก้ที่ช่องราคา)"
                               className="mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
                             >
                               ✏️ แก้รายละเอียด
+                            </button>
+                          )}
+                          {/* 🛠 สินค้าที่หยิบจากหน้าร้าน — แก้ตัวเลือก/ขนาด/เรทที่หน้าสินค้าเหมือนปุ่ม ✏️ ในตะกร้า แล้วระบบแทนที่รายการนี้ให้ */}
+                          {mayEdit && isShopLine(productOfItem(it.productId), it) && mayChangeQty(it) && (
+                            <button
+                              type="button"
+                              onClick={() => editItemOptionsInShop(i)}
+                              title="เปิดหน้าสินค้าพร้อมตัวเลือกเดิม แก้แล้วกดสั่ง → ระบบเพิ่มของใหม่เข้าออเดอร์นี้และถอดรายการเดิมออกให้ (แบบงาน/หมายเหตุย้ายตามไป)"
+                              className="ml-1 mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-sky-600 transition hover:bg-sky-50"
+                            >
+                              🛠 แก้ตัวเลือก (หน้าร้าน)
                             </button>
                           )}
                         </div>
@@ -3670,7 +3842,90 @@ export default function AdminOrderDetailPage() {
                     </div>
                     {/* จำนวน · ราคา/หน่วย · ยอดรวม — มัดไว้ด้วยกัน จะพับลงบรรทัดใหม่ทั้งชุด ไม่แตกกลางทาง */}
                     <span className="ml-auto flex shrink-0 items-start gap-3">
-                    <span className="w-12 shrink-0 text-center text-sm font-semibold text-slate-700">{it.qty}</span>
+                    {/* 🔢 จำนวน — แก้ได้เหมือนตะกร้า: [−] ช่องพิมพ์ [+] · ราคาขั้นบันได/เรทคิดใหม่ให้เอง (ดู changeItemQty) */}
+                    {(() => {
+                      const prod = productOfItem(it.productId);
+                      const areaLocked = qtyLockedByArea(prod, it);
+                      const editable = mayChangeQty(it) && !areaLocked;
+                      if (!editable) {
+                        return (
+                          <span
+                            className="w-24 shrink-0 text-center text-sm font-semibold text-slate-700"
+                            title={
+                              areaLocked
+                                ? "สินค้าคิดตามพื้นที่ — จำนวนล็อกตามขนาดที่กรอกไว้ตอนสั่ง (แก้ขนาดผ่าน “แก้ตัวเลือก” แทน)"
+                                : mayEdit && it.unitPrice > 0
+                                  ? "ลูกค้าโอนเงินเข้ามาแล้ว — แก้จำนวนไม่ได้ กันยอดในบิลไม่ตรงกับสลิป (ถ้าต้องแก้จริง ลบรายการแล้วเพิ่มใหม่)"
+                                  : undefined
+                            }
+                          >
+                            {it.qty.toLocaleString("th-TH")}
+                          </span>
+                        );
+                      }
+                      const draft = qtyDraft[i];
+                      const commit = () => {
+                        if (draft === undefined) return;
+                        setQtyDraft((cur) => {
+                          const n = { ...cur };
+                          delete n[i];
+                          return n;
+                        });
+                        const v = Math.floor(Number(draft));
+                        if (Number.isFinite(v) && v >= 1 && v !== it.qty) changeItemQty(i, v);
+                      };
+                      const shopLine = isShopLine(prod, it);
+                      return (
+                        <span
+                          className="flex w-24 shrink-0 items-center justify-center gap-0.5"
+                          title={
+                            shopLine
+                              ? "แก้จำนวนแล้วระบบคิดราคาขั้นบันได/เรทให้ใหม่เหมือนตะกร้า (ลงประวัติทุกครั้ง)"
+                              : it.quoteNote
+                                ? "แก้จำนวน — คงราคา/หน่วยที่ตีไว้ (ลงประวัติทุกครั้ง)"
+                                : "แก้จำนวน — คงราคา/หน่วยเดิม (ลงประวัติทุกครั้ง)"
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => changeItemQty(i, it.qty - 1)}
+                            disabled={it.qty <= 1}
+                            aria-label="ลดจำนวน"
+                            className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-sm font-bold leading-none text-slate-600 transition enabled:hover:border-amber-300 enabled:hover:bg-amber-50 enabled:hover:text-amber-700 disabled:opacity-40"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            inputMode="numeric"
+                            value={draft ?? String(it.qty)}
+                            onChange={(e) => setQtyDraft((cur) => ({ ...cur, [i]: e.target.value }))}
+                            onBlur={commit}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                              if (e.key === "Escape")
+                                setQtyDraft((cur) => {
+                                  const n = { ...cur };
+                                  delete n[i];
+                                  return n;
+                                });
+                            }}
+                            aria-label={`จำนวนของ ${it.name}`}
+                            className="h-6 w-11 rounded-md border border-slate-200 bg-white px-1 text-center text-sm font-semibold text-slate-800 [appearance:textfield] focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-200 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => changeItemQty(i, it.qty + 1)}
+                            aria-label="เพิ่มจำนวน"
+                            className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-sm font-bold leading-none text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
+                          >
+                            +
+                          </button>
+                        </span>
+                      );
+                    })()}
                     <span className={`w-28 shrink-0 text-right text-sm font-bold text-slate-900 ${seesMoney ? "" : "hidden"}`}>
                       {/* ราคา/หน่วย — กดที่ตัวเลข (หรือป้าย "รอตีราคา") เพื่อตีราคา · Enter บันทึก · Esc ยกเลิก */}
                       {editPrice === i ? (
