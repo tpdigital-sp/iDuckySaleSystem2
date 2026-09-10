@@ -10,13 +10,14 @@ import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/ca
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import HomeChat from "@/components/HomeChat";
+import { useAltImage } from "@/components/CardAltImage";
 import CardSkeleton from "@/components/CardSkeleton";
 import { CAT_ICON, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
 import { SOCIAL_LINKS } from "@/components/SocialLinks";
 import { LINE_URL } from "@/components/LineButton";
 
 /**
- * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบของทีม Content (ล่าสุด "LADNDING PAGE.html" 9 ก.ย. 69)
+ * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบของทีม Content (ล่าสุด "LANDING PAGE_02.html" 10 ก.ย. 69)
  * สไตล์ทั้งหมดอยู่ใน (shop)/landing.css (ครอบด้วยคลาส .dl) · รูปประกอบอยู่ /public/landing
  * เนื้อหาที่เป็น "ของจริง" ดึงจากฐานข้อมูล: หมวดสินค้า · รายการสินค้าในแต่ละหมวด · สินค้าขายดี
  */
@@ -675,22 +676,14 @@ function FreshCard({ p, catLabel }: { p: Product; catLabel: string }) {
   );
 }
 
-/** การ์ดสินค้าขายดี — เอียงตามเมาส์เล็กน้อยเหมือนไฟล์ต้นแบบ */
+/**
+ * การ์ดสินค้าขายดี — ยกตัวขึ้นตอนชี้ (CSS) + ครอสเฟดไปรูปที่สองถ้าสินค้ามีรูปแกลเลอรี
+ * (ต้นแบบ 10 ก.ย. 69 ถอดการเอียงตามเมาส์แบบ 3 มิติออกแล้ว)
+ */
 function BestCard({ p, catLabel, rank }: { p: Product; catLabel: string; rank: number }) {
-  const ref = useRef<HTMLAnchorElement>(null);
-  function onMove(e: React.MouseEvent<HTMLAnchorElement>) {
-    const el = ref.current;
-    if (!el || !window.matchMedia("(hover:hover)").matches) return;
-    const r = el.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width - 0.5;
-    const y = (e.clientY - r.top) / r.height - 0.5;
-    el.style.transform = `translateY(-9px) rotateY(${(x * 7).toFixed(2)}deg) rotateX(${(-y * 7).toFixed(2)}deg)`;
-  }
-  function onLeave() {
-    if (ref.current) ref.current.style.transform = "";
-  }
+  const alt = useAltImage(p.altSrc);
   return (
-    <Link ref={ref} className="card" href={productPath(p)} onMouseMove={onMove} onMouseLeave={onLeave}>
+    <Link className="card" href={productPath(p)} {...alt.hoverProps}>
       <div className="thumb">
         {rank < 3 && p.sold > 0 && (
           <span className="tag tag-hot">
@@ -707,6 +700,7 @@ function BestCard({ p, catLabel, rank }: { p: Product; catLabel: string; rank: n
         ) : (
           <span className={`grid h-full w-full place-items-center bg-gradient-to-br text-6xl ${p.gradient}`}>{p.emoji}</span>
         )}
+        {alt.nodes}
       </div>
       <div className="card-body">
         <span className="cat-l">{catLabel}</span>

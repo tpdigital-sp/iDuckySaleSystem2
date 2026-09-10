@@ -322,7 +322,7 @@ export default function Navbar() {
 
       {/* เมนูหมวดหมู่เต็มจอ + ค้นหาเต็มจอ (มือถือ/แท็บเล็ต) */}
       <MobileNav open={mnavOpen} onClose={() => setMnavOpen(false)} logo={logo} />
-      <MobileSearch open={msearchOpen} onClose={() => setMsearchOpen(false)} />
+      <MobileSearch open={msearchOpen} onClose={() => setMsearchOpen(false)} logo={logo} />
 
       {/* แถบเมนูล่างสไตล์แอป (มือถือ) */}
       <BottomNav itemCount={itemCount} />

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Portal from "@/components/Portal";
 import { AiModeButton, Marked } from "@/components/NavSearchBar";
+import { fallbackToOriginal, imgProps } from "@/lib/img";
 import { useShopCatalog } from "@/lib/use-shop-catalog";
 import {
   clearRecentSearches,
@@ -26,7 +27,7 @@ import {
  */
 const MAX = 20;
 
-export default function MobileSearch({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function MobileSearch({ open, onClose, logo }: { open: boolean; onClose: () => void; logo?: string }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [tick, setTick] = useState(0);
@@ -62,9 +63,10 @@ export default function MobileSearch({ open, onClose }: { open: boolean; onClose
   };
   const recent = tick >= 0 ? recentSearches() : [];
 
-  const Row = ({ h }: { h: SearchHit }) => (
+  const Row = ({ h, option }: { h: SearchHit; option?: boolean }) => (
     <Link
       href={h.href}
+      role={option ? "option" : undefined}
       style={h.accent ? ({ "--accent": h.accent } as React.CSSProperties) : undefined}
       onClick={(e) => {
         e.preventDefault();
@@ -92,9 +94,18 @@ export default function MobileSearch({ open, onClose }: { open: boolean; onClose
           }}
         >
           <div className="mnav-panel">
-            <button type="button" className="mnav-close" aria-label="ปิดค้นหา" onClick={onClose}>
-              ✕
-            </button>
+            <div className="mnav-top">
+              <Link className="mnav-logo" href="/" aria-label="iDucky Prints Studio" onClick={onClose}>
+                {logo ? (
+                  <img {...imgProps(logo, "160px", 384)} onError={fallbackToOriginal(logo)} alt="iDucky Prints Studio" />
+                ) : (
+                  <img src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
+                )}
+              </Link>
+              <button type="button" className="mnav-close" aria-label="ปิดค้นหา" onClick={onClose}>
+                ✕
+              </button>
+            </div>
             <form
               className="msearch-bar"
               onSubmit={(e) => {
@@ -115,6 +126,11 @@ export default function MobileSearch({ open, onClose }: { open: boolean; onClose
                 placeholder="ค้นหาสินค้า เช่น พวงกุญแจ, สติกเกอร์..."
                 autoComplete="off"
                 aria-label="ค้นหาสินค้า"
+                role="combobox"
+                aria-controls="msearchResults"
+                aria-expanded={term ? "true" : "false"}
+                aria-autocomplete="list"
+                aria-haspopup="listbox"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
@@ -175,9 +191,9 @@ export default function MobileSearch({ open, onClose }: { open: boolean; onClose
             ) : results.length > 0 ? (
               <>
                 <div className="msearch-label">ผลการค้นหา ({results.length})</div>
-                <nav className="mnav-list" aria-label="ผลการค้นหา">
+                <div className="mnav-list" id="msearchResults" role="listbox" aria-label="ผลการค้นหา">
                   {results.slice(0, MAX).map((h) => (
-                    <Row key={h.kind + h.href + h.name} h={h} />
+                    <Row key={h.kind + h.href + h.name} h={h} option />
                   ))}
                   {results.length > MAX && (
                     <Link
@@ -191,11 +207,15 @@ export default function MobileSearch({ open, onClose }: { open: boolean; onClose
                       ดูผลทั้งหมด {results.length} รายการ →
                     </Link>
                   )}
-                </nav>
+                </div>
               </>
             ) : (
               <p className="msearch-empty show">ไม่พบสินค้าที่ตรงกับคำค้นหา ลองคำอื่นดูนะ</p>
             )}
+            {/* ประกาศจำนวนผลลัพธ์ให้โปรแกรมอ่านหน้าจอทุกครั้งที่พิมพ์ (ตาไม่เห็น) */}
+            <p className="sr-only" role="status" aria-live="polite">
+              {term ? (results.length ? `พบ ${results.length} รายการ` : "ไม่พบสินค้าที่ตรงกับคำค้นหา") : ""}
+            </p>
           </div>
         </div>
       </div>

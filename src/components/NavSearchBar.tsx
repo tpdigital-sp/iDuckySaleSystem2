@@ -49,7 +49,9 @@ export function AiModeButton(props: React.ButtonHTMLAttributes<HTMLButtonElement
         <line x1="15" y1="15" x2="19.5" y2="19.5" />
         <path d="M17.4 3.2l.75 1.85 1.85.75-1.85.75-.75 1.85-.75-1.85L14.8 5.8l1.85-.75z" fill="currentColor" stroke="none" />
       </svg>
-      AI Mode
+      {/* มือถือย่อเหลือ "AI" (CSS .tsb-btn-short) ไม่ให้พิลล์กินที่ช่องพิมพ์ */}
+      <span className="tsb-btn-label">AI Mode</span>
+      <span className="tsb-btn-short">AI</span>
     </button>
   );
 }
@@ -214,6 +216,12 @@ export default function NavSearchBar({ onOpenMobile }: { onOpenMobile: () => voi
           autoComplete="off"
           placeholder="ค้นหาสินค้า เช่น สแตนดี้ พวงกุญแจ สติกเกอร์..."
           aria-label="ค้นหาสินค้า"
+          role="combobox"
+          aria-controls="tsbDrop"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-activedescendant={open && active >= 0 ? `tsb-opt-${active}` : undefined}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -234,7 +242,9 @@ export default function NavSearchBar({ onOpenMobile }: { onOpenMobile: () => voi
         <div
           ref={dropRef}
           className={`tsb-drop${open ? " open" : ""}${hasMore ? " has-more" : ""}`}
+          id="tsbDrop"
           role="listbox"
+          aria-label="ผลการค้นหา"
           onScroll={updateHint}
           onMouseLeave={hideTip}
         >
@@ -293,6 +303,9 @@ export default function NavSearchBar({ onOpenMobile }: { onOpenMobile: () => voi
               {hits.map((h, i) => (
                 <Link
                   key={h.kind + h.href + h.name}
+                  id={`tsb-opt-${i}`}
+                  role="option"
+                  aria-selected={active === i}
                   href={h.href}
                   className={active === i ? "is-active" : undefined}
                   style={h.accent ? ({ "--accent": h.accent } as React.CSSProperties) : undefined}
@@ -312,6 +325,9 @@ export default function NavSearchBar({ onOpenMobile }: { onOpenMobile: () => voi
               ))}
               {all.length > MAX && (
                 <Link
+                  id={`tsb-opt-${hits.length}`}
+                  role="option"
+                  aria-selected={active === hits.length}
                   href={searchHref(term)}
                   className={`tsb-drop-more${active === hits.length ? " is-active" : ""}`}
                   onClick={(e) => {
@@ -337,6 +353,10 @@ export default function NavSearchBar({ onOpenMobile }: { onOpenMobile: () => voi
             </>
           )}
         </div>
+        {/* ประกาศจำนวนผลลัพธ์ให้โปรแกรมอ่านหน้าจอทุกครั้งที่พิมพ์ (ตาไม่เห็น) */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {open && term ? (hits.length ? `พบ ${all.length} รายการ` : "ไม่พบสินค้าที่ตรงกับคำค้นหา") : ""}
+        </p>
       </div>
       <PreviewTip tip={tip} />
     </>

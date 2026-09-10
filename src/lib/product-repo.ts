@@ -285,7 +285,7 @@ async function loadProductsLite(): Promise<Product[]> {
       "id,name,category,price,sold,featured,badge,sort,slug:data->>slug,hidden:data->hidden,savedAt:data->>savedAt," +
         "emoji:data->>emoji,gradient:data->>gradient,imageSrc:data->>imageSrc," +
         "rating:data->rating,oldPrice:data->oldPrice,priceMin:data->priceMin,priceMax:data->priceMax," +
-        "quoteOption:data->quoteOption"
+        "quoteOption:data->quoteOption,altSrc:data->images->1->>src"
     )
     .order("sort", { ascending: true });
   if (error || !data) return mergedProducts();
@@ -311,6 +311,11 @@ async function loadProductsLite(): Promise<Product[]> {
           savedAt: (r.savedAt as string | null) ?? undefined,
           imageSrc: (r.imageSrc as string | null) ?? undefined,
         }).imageSrc,
+        // รูปพรีวิวที่สองของการ์ด (แกลเลอรีช่องที่ 2) — ซ้ำกับรูปปกก็ไม่เอา จะได้ไม่ครอสเฟดไปรูปเดิม
+        altSrc:
+          r.altSrc && r.altSrc !== r.imageSrc
+            ? withImageVersion({ savedAt: (r.savedAt as string | null) ?? undefined, imageSrc: r.altSrc as string }).imageSrc
+            : undefined,
         rating: r.rating ?? 5,
         oldPrice: (r.oldPrice as number | null) ?? undefined,
         priceMin: (r.priceMin as number | null) ?? undefined,

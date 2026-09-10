@@ -1,8 +1,26 @@
+import { LINE_URL } from "@/components/LineButton";
+
 /**
  * ช่องทางโซเชียลของร้าน (ไอคอน SVG ชุดเดียวกับไฟล์ต้นแบบ) — ใช้ร่วมกัน 3 ที่:
  * ท้ายเว็บ (Footer) · ตุ่มลอยมุมซ้ายล่างหน้าแรก (social-dock) · เมนูสามขีดบนมือถือ (MobileNav)
+ * key ใช้เป็นชื่อคลาส sd-<key> (social-dock) และ data-net (เมนูมือถือ → สีแบรนด์ตอนชี้/กด)
  */
-export const SOCIAL_LINKS: { key: string; name: string; label: string; href: string; icon: React.ReactNode }[] = [
+export type SocialLink = { key: string; name: string; label: string; href: string; icon: React.ReactNode };
+
+/** LINE — ต้นแบบใส่ไว้เฉพาะแถวโซเชียลในเมนูสามขีด (ท้ายเว็บ/ตุ่มลอยมีปุ่ม LINE ของตัวเองอยู่แล้ว) */
+export const LINE_SOCIAL: SocialLink = {
+  key: "line",
+  name: "LINE",
+  label: "LINE",
+  href: LINE_URL,
+  icon: (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 3C6.9 3 2.8 6.4 2.8 10.6c0 3.8 3.3 7 7.7 7.6.3.06.7.2.8.46.1.24.07.6.03.85l-.13.8c-.4.24-.19.93.81.5s5.4-3.2 7.37-5.47c1.36-1.5 2.01-3 2.01-4.74C21.2 6.4 17.1 3 12 3zM8.3 13.1H6.6a.5.5 0 01-.5-.5V9.3a.5.5 0 011 0v2.8h1.2a.5.5 0 010 1zm2-.5a.5.5 0 01-1 0V9.3a.5.5 0 011 0v3.3zm4.2 0a.5.5 0 01-.35.48.5.5 0 01-.55-.18l-1.7-2.3v2a.5.5 0 01-1 0V9.3a.5.5 0 01.9-.3l1.7 2.32V9.3a.5.5 0 011 0v3.3zm3-2.15a.5.5 0 010 1h-1.2v.75h1.2a.5.5 0 010 1h-1.7a.5.5 0 01-.5-.5V9.3a.5.5 0 01.5-.5h1.7a.5.5 0 010 1h-1.2v.65h1.2z" />
+    </svg>
+  ),
+};
+
+export const SOCIAL_LINKS: SocialLink[] = [
   {
     key: "fb",
     name: "Facebook",

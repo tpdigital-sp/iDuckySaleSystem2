@@ -50,8 +50,11 @@ export default function PreviewTip({ tip }: { tip: TipState | null }) {
               <em className="tip-emoji">{tip?.emoji || "🦆"}</em>
             )}
           </div>
-          <b className="tip-name">{tip?.name}</b>
-          <span className="tip-price">{tip?.price ?? ""}</span>
+          {/* บล็อกข้อความซ้อนขึ้นไปทับขอบล่างของรูปแล้วไล่จากใสเป็นขาว (.tip-text) */}
+          <div className="tip-text">
+            <b className="tip-name">{tip?.name}</b>
+            <span className="tip-price">{tip?.price ?? ""}</span>
+          </div>
         </div>
       </div>
     </Portal>

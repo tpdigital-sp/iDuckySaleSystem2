@@ -10,29 +10,17 @@
  */
 
 import Link from "next/link";
-import { useRef } from "react";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import { formatPriceLabel, getCategory, productPath, type Product } from "@/lib/products";
+import { useAltImage } from "@/components/CardAltImage";
 
 export default function ShopProductCard({ product: p }: { product: Product }) {
-  const ref = useRef<HTMLAnchorElement>(null);
   const cat = getCategory(p.category);
-
-  /** เอียงตามเมาส์เล็กน้อย — เหมือนการ์ดขายดีหน้าแรก (เมาส์จริงเท่านั้น) */
-  function onMove(e: React.MouseEvent<HTMLAnchorElement>) {
-    const el = ref.current;
-    if (!el || !window.matchMedia("(hover:hover)").matches) return;
-    const r = el.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width - 0.5;
-    const y = (e.clientY - r.top) / r.height - 0.5;
-    el.style.transform = `translateY(-9px) rotateY(${(x * 7).toFixed(2)}deg) rotateX(${(-y * 7).toFixed(2)}deg)`;
-  }
-  function onLeave() {
-    if (ref.current) ref.current.style.transform = "";
-  }
+  /** รูปที่สองครอสเฟดตอนชี้ — เหมือนการ์ดขายดีหน้าแรก (ต้นแบบถอดการเอียง 3 มิติตามเมาส์ออกแล้ว) */
+  const alt = useAltImage(p.altSrc, "(max-width: 760px) 45vw, 280px");
 
   return (
-    <Link ref={ref} className="card" href={productPath(p)} onMouseMove={onMove} onMouseLeave={onLeave}>
+    <Link className="card" href={productPath(p)} {...alt.hoverProps}>
       <div className="thumb">
         {p.badge === "ขายดี" && (
           <span className="tag tag-hot">
@@ -61,6 +49,7 @@ export default function ShopProductCard({ product: p }: { product: Product }) {
         ) : (
           <span className={`grid h-full w-full place-items-center bg-gradient-to-br text-6xl ${p.gradient}`}>{p.emoji}</span>
         )}
+        {alt.nodes}
       </div>
       <div className="card-body">
         <span className="cat-l">

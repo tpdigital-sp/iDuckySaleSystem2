@@ -10,14 +10,19 @@ import { formatPrice } from "@/lib/products";
  * ใช้ตรรกะชุดเดียวกับ FreeShipNote ในหน้าวิธีสั่งซื้อ
  */
 export default function FooterFreeShip() {
-  const [min, setMin] = useState<number | null>(null);
-  useEffect(() => {
-    void fetchShopPayment().then((p) => setMin(freeShippingMinOf(p)));
-  }, []);
-
+  const min = useFreeShipMin();
   // ยังโหลดไม่เสร็จ — เลี่ยงโชว์ตัวเลขผิดชั่วขณะ
   if (min === null) return <>ส่งฟรีเมื่อครบยอดที่กำหนด ทั่วไทย · </>;
   // ร้านปิดโปรส่งฟรี
   if (min <= 0) return null;
   return <>ส่งฟรีเมื่อครบ {formatPrice(min)} ทั่วไทย · </>;
+}
+
+/** ยอดส่งฟรีที่ร้านตั้งไว้ — null = ยังโหลดไม่เสร็จ · 0 = ปิดโปร (ใช้ร่วมกับบรรทัดเวลาทำการในเมนูสามขีด) */
+export function useFreeShipMin(): number | null {
+  const [min, setMin] = useState<number | null>(null);
+  useEffect(() => {
+    void fetchShopPayment().then((p) => setMin(freeShippingMinOf(p)));
+  }, []);
+  return min;
 }

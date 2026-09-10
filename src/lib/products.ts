@@ -2654,6 +2654,11 @@ export interface Product {
   gradient: string;
   /** รูปหลักจริง (data URL) สำหรับการ์ดสินค้า — ถ้ามีจะแสดงแทนอีโมจิ+สีพื้น */
   imageSrc?: string;
+  /**
+   * รูปพรีวิวที่สองของการ์ด (= รูปแกลเลอรีช่องที่ 2) — การ์ดครอสเฟดไปรูปนี้ตอนชี้ (ต้นแบบ data-alt)
+   * มีเฉพาะชุด lite (fetchProductsLite) · ไม่มี = การ์ดไม่มีเอฟเฟกต์เปลี่ยนรูป
+   */
+  altSrc?: string;
   rating: number;
   sold: number;
   badge?: "ขายดี" | "ใหม่" | "ลดราคา";

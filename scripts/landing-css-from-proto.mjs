@@ -1,6 +1,6 @@
 /**
  * สร้าง landing.css ใหม่จากไฟล์ต้นแบบ LADNDING PAGE.html
- *  1) CSS ในต้นแบบ (บรรทัด 12-2114) → ครอบทุก selector ด้วย .dl
+ *  1) CSS ในต้นแบบ (บล็อก <style> แรก) → ครอบทุก selector ด้วย .dl
  *  2) รูป base64 ใน CSS → ชี้ไฟล์ใน /public/landing (จับคู่ด้วย md5)
  *  3) ตัด widget ทดสอบขนาดจอ (#devSim*) + selector ค้างที่หน้าไม่ได้ใช้ (.cta .ws-bg .promise …)
  *  4) ต่อท้ายด้วยสไตล์เฉพาะเว็บจริง (ดึงจาก landing.css เดิม)
@@ -12,12 +12,16 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // ไฟล์ต้นแบบ: ส่งพาธมาเป็นอาร์กิวเมนต์แรก (ค่าเริ่มต้น = ไฟล์ล่าสุดบน Desktop) · อาร์กิวเมนต์ที่ 2 = ไฟล์ปลายทาง
-const PROTO = process.argv[2] || "/Users/iduckshop/Desktop/LADNDING PAGE.html";
+const PROTO = process.argv[2] || "/Users/iduckshop/Desktop/LANDING PAGE_02.html";
 const CUR = path.join(ROOT, "src/app/(shop)/landing.css");
 const OUT = process.argv[3] || path.join(ROOT, "src/app/(shop)/landing.css");
 
 const html = fs.readFileSync(PROTO, "utf8").split("\n");
-let css = html.slice(11, 2114).join("\n"); // บรรทัด 12..2114 (1-based)
+// บล็อก <style> แรกของต้นแบบ: บรรทัดถัดจาก "<style>" จนถึงก่อน "</style>" (หาเองทุกรอบ — ต้นแบบแต่ละรอบยาวไม่เท่ากัน)
+const styleOpen = html.findIndex((l) => l.trim() === "<style>");
+const styleClose = html.findIndex((l, i) => i > styleOpen && l.trim() === "</style>");
+if (styleOpen < 0 || styleClose < 0) throw new Error("ไม่พบบล็อก <style> … </style> ในต้นแบบ");
+let css = html.slice(styleOpen + 1, styleClose).join("\n");
 const cur = fs.readFileSync(CUR, "utf8").split("\n");
 const curLine = (a, b) => cur.slice(a - 1, b).join("\n"); // 1-based inclusive
 
@@ -110,7 +114,7 @@ let rootEnd = rootStart;
 while (!cur[rootEnd - 1].trim().endsWith("}")) rootEnd++;
 const header = `/*
  * ดีไซน์หน้าแรก + หัว/ท้ายเว็บ (โทนฟ้า-เหลืองเป็ด) — พอร์ตจากไฟล์ต้นแบบของทีม Content
- * "LADNDING PAGE.html" (9 ก.ย. 69) — สร้างด้วยสคริปต์ scripts/landing-css-from-proto.mjs
+ * "LANDING PAGE_02.html" (10 ก.ย. 69) — สร้างด้วยสคริปต์ scripts/landing-css-from-proto.mjs
  * ทุก selector ถูกครอบด้วย .dl เพื่อไม่ให้ชนกับ Tailwind ของหน้าอื่น
  * ใช้คู่กับ: <div className="dl dl-contents"> ครอบ Navbar/Footer/overlay และ <div className="dl dl-page"> ครอบหน้าแรก
  * รูปประกอบทั้งหมดอยู่ที่ /public/landing (แตกจาก base64 ในไฟล์ต้นแบบ)
