@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withArtQtyMap } from "@/lib/edit-selections";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
@@ -189,6 +190,9 @@ function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: strin
       samplePacked: inc.samplePacked,
       reuseArt: inc.reuseArt, // ♻️ กราฟฟิกติ๊ก/ยกเลิก "ใช้ไฟล์เก่า" + เลขใบเดิมได้เอง
       unitYield: inc.unitYield ?? it.unitYield,
+      // 🔢 จำนวนต่อลาย (ช่องใต้รูปในแผงลายจากลูกค้า 10 ก.ย. 69) — รับแผนที่ url→จำนวน แล้วสร้างข้อความ sel/selections เองจากฐาน
+      // ไม่รับ sel/selections ทั้งก้อนจากกราฟฟิก (แก้ตัวเลือก/ราคาทางอ้อมไม่ได้) · แผนที่เท่าเดิม = ไม่แตะ
+      ...(JSON.stringify(inc.artworkQty ?? null) !== JSON.stringify(it.artworkQty ?? null) ? withArtQtyMap(it, inc.artworkQty) : {}),
     };
     // ⚠️ หน้าจอกราฟฟิกที่ค้าง (เปิด 2 หน้าต่าง/เคอร์เซอร์ค้างในช่องกรอก) ส่ง graphicAck ว่าง = ติ๊กของอีกคนหาย → reconcileItem กันไว้
     return reconcileItem(it, draft, clientSavedAt, now);

@@ -11,7 +11,7 @@
  * หลายบรรทัดไม่มีหัวข้อจะยุบรวมกันถ้าจับเป็นหัวข้อ→ค่า
  */
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
-import { ART_BACK_QTY_LABEL, ART_QTY_LABEL, ART_SIZE_LABEL, artQtyFromSel, artSizeByUrl } from "@/lib/products";
+import { ART_BACK_QTY_LABEL, ART_QTY_LABEL, ART_SIZE_LABEL, artQtyFromSel, artSizeByUrl, formatArtQty } from "@/lib/products";
 
 /** หัวข้อที่ระบบดูแลเอง — ไม่ให้แก้ในช่องนี้ และคงค่าเดิมไว้ตอนบันทึก */
 export const EDIT_SEL_KEEP = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก", PLACEMENT_SPEC_LABEL];
@@ -106,4 +106,62 @@ export function applySelectionsDraft(item: SelItem, text: string): Partial<SelIt
 /** แก้แล้วต่างจากเดิมไหม (เทียบกับข้อความตั้งต้นของช่องเดียวกัน) */
 export function selectionsDraftChanged(item: SelItem, text: string): boolean {
   return text.trim() !== selectionsDraft(item).trim();
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * 🔢 แก้จำนวนต่อลายทีละรูปบนหน้าออเดอร์ (เจ้าของร้านสั่ง 10 ก.ย. 69 "แก้ไขจำนวนต่อลายได้")
+ * ลูกค้าระบุมาผิด/ไม่ระบุ → กราฟฟิกกรอกตรงใต้รูปได้เลย ไม่ต้องเปิดช่อง "แก้รายละเอียด" แล้วพิมพ์ "ลายที่ 3 × 5 ชิ้น" เอง
+ * เขียนกลับ 3 ที่ให้ตรงกันเสมอ (ดู [[iducky-edit-selections-sel-first]]):
+ *   · artworkQty (key = url) — ป้าย ×N / ใบแปะกล่อง / "ใช้ลายนี้เป็นแบบ" อ่านตัวนี้ก่อน
+ *   · sel["จำนวนแต่ละลาย"] + sel["จำนวนแต่ละลาย (ด้านหลัง)"] — ข้อความอ่านออก ลำดับ "ลายที่ N" = ลำดับ url (ด้านหลังนับใหม่จาก 1)
+ *   · selections — ข้อความรวมที่ใบงาน/โหมดแพ็คของใบเก่าอ่าน
+ * ────────────────────────────────────────────────────────────── */
+
+/** หน่วยนับที่ลูกค้าใช้ตอนสั่ง ("ใบ"/"ชิ้น") — อ่านจากข้อความเดิม ไม่มีก็ "ชิ้น" */
+export function artQtyUnitOf(item: SelItem, fallback = "ชิ้น"): string {
+  const src = [item.sel?.[ART_QTY_LABEL], item.sel?.[ART_BACK_QTY_LABEL], item.selections].filter(Boolean).join(" ");
+  const m = src.match(/ลายที่\s*\d+\s*[×x]\s*\d+\s*([^\s·:]+)/);
+  return m?.[1] ?? fallback;
+}
+
+/** ข้อความ "จำนวนแต่ละลาย: …" ในข้อความล้วน (ค่ามีแต่ "ลายที่ N × Q หน่วย" คั่น " · " — จับได้ปลอดภัยไม่กินหัวข้อถัดไป) */
+const ART_QTY_TEXT_RE = /(?:^|\s·\s)จำนวนแต่ละลาย(?: \(ด้านหลัง\))?:\s*ลายที่\s*\d+\s*[×x]\s*\d+\s*[^\s·]+(?:\s·\sลายที่\s*\d+\s*[×x]\s*\d+\s*[^\s·]+)*/g;
+
+/**
+ * ตั้งแผนที่จำนวนต่อลายทั้งชุด (url → จำนวน · 0/ไม่มี = ไม่ระบุ) แล้วคืนฟิลด์ที่ต้องทับลงรายการ
+ * ใช้ทั้งหน้าออเดอร์ (แก้ทีละรูป: ส่ง {...artworkQty, [url]: n}) และฝั่งเซิร์ฟเวอร์ (กราฟฟิกส่ง artworkQty ใหม่มา → สร้างข้อความให้ตรง)
+ *   มี sel → เขียนคีย์หน้า/หลังใน sel (ว่าง = ลบคีย์) + สร้าง selections ใหม่แบบเดียวกับ applySelectionsDraft
+ *   ไม่มี sel (ใบเก่า/ItemAdder) → แทนที่/ต่อท้ายท่อน "จำนวนแต่ละลาย: …" ในข้อความล้วน
+ */
+export function withArtQtyMap(item: SelItem, map: Record<string, number> | undefined): Partial<SelItem> {
+  const clean: Record<string, number> = {};
+  for (const [u, q] of Object.entries(map ?? {})) if (Number.isFinite(q) && q > 0) clean[u] = Math.round(q);
+  const urls = item.artworkUrls ?? [];
+  const back = (item.artworkBackUrls ?? []).filter((u) => urls.includes(u));
+  const front = urls.filter((u) => !back.includes(u));
+  const unit = artQtyUnitOf(item);
+  const frontText = formatArtQty(front.map((u) => clean[u]), unit);
+  const backText = formatArtQty(back.map((u) => clean[u]), unit);
+  const out: Partial<SelItem> = { artworkQty: Object.keys(clean).length ? clean : undefined };
+
+  if (hasStructuredSel(item)) {
+    const sel: Record<string, string> = { ...(item.sel ?? {}) };
+    if (frontText) sel[ART_QTY_LABEL] = frontText;
+    else delete sel[ART_QTY_LABEL];
+    if (backText) sel[ART_BACK_QTY_LABEL] = backText;
+    else delete sel[ART_BACK_QTY_LABEL];
+    out.sel = sel;
+    out.selections = selEntries(sel)
+      .filter(([k]) => k !== PLACEMENT_SPEC_LABEL)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(" · ");
+    return out;
+  }
+
+  // ข้อความล้วน: ตัดท่อนเดิมออกก่อน แล้วต่อท่อนใหม่ท้ายข้อความ
+  let text = (item.selections ?? "").replace(ART_QTY_TEXT_RE, "").replace(/^\s*·\s*/, "").trim();
+  const parts = [text, frontText ? `${ART_QTY_LABEL}: ${frontText}` : "", backText ? `${ART_BACK_QTY_LABEL}: ${backText}` : ""].filter(Boolean);
+  text = parts.join(" · ");
+  out.selections = text;
+  return out;
 }

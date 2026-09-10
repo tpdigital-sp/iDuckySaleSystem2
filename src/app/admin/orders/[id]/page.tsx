@@ -56,6 +56,7 @@ import {
   type OrderStatus,
   type Proof,
   proofQtyCheck,
+  orderedPieces,
   type ProofStatus,
   type NoteColor,
   type NoteSize,
@@ -85,7 +86,7 @@ import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specValueLines } from "@/components/SpecLines";
-import { applySelectionsDraft, selectionsDraft, selectionsDraftChanged } from "@/lib/edit-selections";
+import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
 import { SHIP_WINDOW_RULE, shipWindowForUseBy, shipWindowWarnings } from "@/lib/ship-date";
@@ -147,6 +148,117 @@ function packOptedOut(orderId: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * 🔢 ช่องแก้จำนวนต่อลายใต้รูป (เจ้าของร้านสั่ง 10 ก.ย. 69 "แก้ไขจำนวนต่อลายได้")
+ * พิมพ์แล้วบันทึกตอน blur/Enter เฉพาะเมื่อค่าเปลี่ยน · ว่าง/0 = ไม่ระบุ (ลบออก) · Esc = คืนค่าเดิม
+ * ถือค่าในช่องเอง ไม่ผูกกับ state ออเดอร์โดยตรง — โพลลิง 15 วิ จะไม่ทับตัวเลขที่กำลังพิมพ์
+ */
+function ArtQtyInput({
+  value,
+  unit,
+  label,
+  disabled,
+  onCommit,
+}: {
+  value: number | undefined;
+  unit: string;
+  label: string;
+  disabled?: boolean;
+  onCommit: (qty: number | undefined) => void;
+}) {
+  const [text, setText] = useState(value ? String(value) : "");
+  const seen = useRef(value);
+  // ค่าจริงเปลี่ยนจากทางอื่น (คนอื่นแก้/โพล) → ซิงก์เข้าช่อง เฉพาะตอนไม่ได้พิมพ์อยู่
+  useEffect(() => {
+    if (seen.current !== value) {
+      seen.current = value;
+      setText(value ? String(value) : "");
+    }
+  }, [value]);
+  const commit = () => {
+    const n = parseInt(text, 10);
+    const next = Number.isFinite(n) && n > 0 ? n : undefined;
+    if (next === value) {
+      setText(value ? String(value) : "");
+      return;
+    }
+    seen.current = next;
+    onCommit(next);
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md bg-white px-1.5 py-0.5 text-[11px] ring-1 ${
+        value ? "ring-sky-300 text-sky-900" : "ring-slate-200 text-slate-500"
+      }`}
+      title={`${label} — กี่${unit} (ว่าง = ไม่ระบุ)`}
+    >
+      <span className="font-bold">×</span>
+      <input
+        type="number"
+        min={0}
+        step={1}
+        inputMode="numeric"
+        value={text}
+        disabled={disabled}
+        placeholder="—"
+        aria-label={`${label} จำนวน (${unit})`}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            setText(value ? String(value) : "");
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onFocus={(e) => e.target.select()}
+        className="w-12 bg-transparent text-right font-bold tabular-nums outline-none placeholder:text-slate-300 disabled:opacity-50"
+      />
+      <span className="font-semibold">{unit}</span>
+    </span>
+  );
+}
+
+/**
+ * 🔢 สรุปยอดจำนวนต่อลายเทียบกับที่สั่ง (ชิ้นจริง) — เฉพาะที่แนบ ≥ 2 รูปหรือมีการระบุแล้ว
+ * งาน 2 ด้าน: ด้านหลังนับแยก ยอดต้องเท่าที่สั่งเหมือนด้านหน้า (ไม่ใช่บวกกัน)
+ */
+function ArtQtySummary({ it }: { it: OrderItem }) {
+  const urls = it.artworkUrls ?? [];
+  const back = (it.artworkBackUrls ?? []).filter((u) => urls.includes(u));
+  const front = urls.filter((u) => !back.includes(u));
+  const sum = (list: string[]) => list.reduce((s, u) => s + (artQtyOf(it, u, urls.indexOf(u)) ?? 0), 0);
+  const filled = (list: string[]) => list.filter((u) => artQtyOf(it, u, urls.indexOf(u))).length;
+  const f = sum(front);
+  const b = sum(back);
+  if (urls.length < 2 && !f && !b) return null;
+  const ord = orderedPieces(it);
+  const target = ord.pieces;
+  const unit = artQtyUnitOf(it, ord.piece);
+  const line = (name: string, total: number, list: string[]) => {
+    if (!list.length) return null;
+    const done = filled(list);
+    const cls =
+      !done ? "text-slate-500" : total === target ? "text-emerald-700" : done < list.length ? "text-sky-700" : "text-amber-700";
+    const hint =
+      !done ? "ยังไม่ระบุ" : total === target ? "✓ ครบ" : total < target ? `ขาด ${(target - total).toLocaleString("th-TH")}` : `เกิน ${(total - target).toLocaleString("th-TH")}`;
+    return (
+      <span className={`font-semibold tabular-nums ${cls}`}>
+        {[name, done < list.length && done > 0 ? `ระบุ ${done}/${list.length} ลาย ·` : "", `รวม ${total.toLocaleString("th-TH")}/${target.toLocaleString("th-TH")} ${unit} (${hint})`]
+          .filter(Boolean)
+          .join(" ")}
+      </span>
+    );
+  };
+  return (
+    <p className="mt-1.5 text-[11px] text-slate-500">
+      🔢 จำนวนต่อลาย: {line(back.length ? "หน้า" : "", f, front)}
+      {back.length ? <> · {line("หลัง", b, back)}</> : null}
+      {ord.math ? <span className="ml-1 text-slate-400">· {ord.math}</span> : null}
+    </p>
+  );
 }
 
 /**
@@ -2301,6 +2413,41 @@ export default function AdminOrderDetailPage() {
   }
 
   /**
+   * 🔢 แก้จำนวนต่อลายทีละรูป (ช่องใต้รูปในแผง "ลายจากลูกค้า") — เจ้าของร้านสั่ง 10 ก.ย. 69
+   * ลูกค้าระบุมาไม่ตรง/ไม่ระบุ → กราฟฟิกกรอกเองได้ ไม่ต้องเปิดช่อง "แก้รายละเอียด" พิมพ์ "ลายที่ 3 × 5 ชิ้น"
+   * withArtQtyMap เขียน artworkQty + sel + selections ให้ตรงกันทั้ง 3 ที่ (ใบงาน/แพ็ค/ใบแปะกล่องเห็นเลขเดียวกัน)
+   * ฝั่งเซิร์ฟเวอร์ทางสิทธิ์กราฟฟิก (mergeProofFields) รับ artworkQty แล้วสร้างข้อความเองซ้ำอีกที
+   */
+  function setArtQty(itemIndex: number, url: string, qty: number | undefined) {
+    if (!order) return;
+    setOrder((cur) => {
+      if (!cur) return cur;
+      const it = cur.items[itemIndex];
+      if (!it) return cur;
+      const no = (it.artworkUrls ?? []).indexOf(url) + 1;
+      const before = artQtyOf(it, url, no - 1);
+      const map: Record<string, number> = { ...(it.artworkQty ?? {}) };
+      // รายการที่ยังไม่มี artworkQty (ใบเก่าแกะจากข้อความ) — เก็บเลขของลายอื่นที่ยังอ่านได้ไว้ด้วย ไม่งั้นหายตอนสร้างข้อความใหม่
+      for (const u of it.artworkUrls ?? []) {
+        const q = artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u));
+        if (q && !map[u]) map[u] = q;
+      }
+      if (qty && qty > 0) map[url] = qty;
+      else delete map[url];
+      const items = cur.items.map((x, i) => (i === itemIndex ? { ...x, ...withArtQtyMap(x, map) } : x));
+      const unit = artQtyUnitOf(it);
+      const next = withLog(
+        { ...cur, items },
+        actor,
+        "แก้จำนวนต่อลาย",
+        `${it.name} — ลายที่ ${no || "?"}: ${before ? `${before} ${unit}` : "ไม่ระบุ"} → ${qty ? `${qty} ${unit}` : "ไม่ระบุ"}`
+      );
+      if (!demo) void saveOrWarn(next);
+      return next;
+    });
+  }
+
+  /**
    * 🔁 เปลี่ยนรูปลายใบเดิมเป็นรูปอื่น "ในตำแหน่งเดิม" — เจ้าของร้านขอ 9 ก.ย. 69
    * (ลูกค้าส่งไฟล์แก้มาทางไลน์ เดิมต้องกด ✕ ลบแล้วแนบใหม่ รูปไปต่อท้าย ลำดับเปลี่ยน
    *  จำนวน/ขนาดต่อลายที่ผูกกับ url เดิมหาย)
@@ -3946,6 +4093,9 @@ export default function AdminOrderDetailPage() {
                               </p>
                             )}
 
+                            {/* 🔢 ยอดรวมจำนวนต่อลายเทียบกับที่สั่ง — เห็นทันทีว่าลูกค้าระบุครบ/ขาด/เกิน */}
+                            <ArtQtySummary it={it} />
+
                             {/* ── ไฟล์พร้อมพิมพ์ — แสดงเป็นรายการพร้อมชื่อไฟล์ ── */}
                             {ready.length > 0 && (
                               <div>
@@ -3975,7 +4125,18 @@ export default function AdminOrderDetailPage() {
                                           <span className="flex items-baseline justify-between gap-2">
                                             <span className="text-xs font-semibold text-slate-700">
                                               ลายที่ {r.no}
-                                              {artQtyOf(it, r.u, r.no - 1) ? (
+                                              {/* 🔢 จำนวนของลายนี้ — กราฟฟิก/แอดมินแก้ได้ตรงนี้ (10 ก.ย. 69) */}
+                                              {mayEdit || mayProof ? (
+                                                <span className="ml-1.5 inline-block align-middle">
+                                                  <ArtQtyInput
+                                                    value={artQtyOf(it, r.u, r.no - 1)}
+                                                    unit={artQtyUnitOf(it, orderedPieces(it).piece)}
+                                                    label={`ลายที่ ${r.no}`}
+                                                    disabled={demo}
+                                                    onCommit={(q) => setArtQty(i, r.u, q)}
+                                                  />
+                                                </span>
+                                              ) : artQtyOf(it, r.u, r.no - 1) ? (
                                                 <span className="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800">
                                                   × {artQtyOf(it, r.u, r.no - 1)!.toLocaleString("th-TH")} ชิ้น
                                                 </span>
@@ -4166,6 +4327,18 @@ export default function AdminOrderDetailPage() {
                                             }}
                                           />
                                         </label>
+                                      )}
+                                      {/* 🔢 จำนวนของลายนี้ — แก้ได้ใต้รูป (10 ก.ย. 69) */}
+                                      {(mayEdit || mayProof) && (
+                                        <span className="mt-1 block">
+                                          <ArtQtyInput
+                                            value={artQtyOf(it, u, (it.artworkUrls ?? []).indexOf(u))}
+                                            unit={artQtyUnitOf(it, orderedPieces(it).piece)}
+                                            label={`ต้นฉบับ ${k + 1}`}
+                                            disabled={demo}
+                                            onCommit={(q) => setArtQty(i, u, q)}
+                                          />
+                                        </span>
                                       )}
                                       {isOwner && (
                                         <button
