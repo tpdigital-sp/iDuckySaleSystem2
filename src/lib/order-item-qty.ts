@@ -208,15 +208,16 @@ export function applyReplaceMarker(
   const old = items[m.index];
   if (!old || old.productId !== m.productId || old.name !== m.name || old.qty !== m.qty || old.unitPrice !== m.unitPrice)
     return null;
-  // ของที่เพิ่งเข้ามา = บรรทัดสินค้าตัวเดียวกันที่อยู่ท้ายสุด (บรรทัด Add on/ของแถมอาจตามหลังมา)
+  // ของที่เพิ่งเข้ามา = บรรทัดสินค้าแรกที่ต่อท้ายจากตอนกดแก้ (ข้ามบรรทัด Add on/ค่าธรรมเนียมที่ id ลงท้าย #…)
+  // ไม่บังคับให้เป็นสินค้าตัวเดิม — งานพิเศษที่พิมพ์เอง (special-item) แก้แล้วกลายเป็นสินค้าจริงจากหน้าร้าน
   let freshIdx = -1;
-  for (let i = items.length - 1; i > m.index; i--) {
-    if (items[i].productId === m.productId) {
+  for (let i = m.itemCount; i < items.length; i++) {
+    if (i !== m.index && !items[i].productId.includes("#")) {
       freshIdx = i;
       break;
     }
   }
-  if (freshIdx < 0 || freshIdx < m.itemCount) return null;
+  if (freshIdx < 0) return null;
   const cur = items[freshIdx];
   const hasArt = (cur.artworkUrls?.length ?? 0) > 0;
   const fresh: OrderItem = {

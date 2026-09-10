@@ -2368,18 +2368,20 @@ export default function AdminOrderDetailPage() {
   }
 
   /**
-   * 🛠 แก้ตัวเลือกของรายการที่หยิบจากหน้าร้าน — เปิดหน้าสินค้าโหมดแก้ไข (?edit=) แบบเดียวกับปุ่ม ✏️ ในตะกร้า
-   * ใส่บรรทัดนี้ลงตะกร้าในเครื่องแอดมินก่อน (สเปค/จำนวน/ลายเดิมครบ) + ตั้ง "โหมดสั่งเพิ่มในออเดอร์นี้"
-   * พอแอดมินกดบันทึกที่หน้าร้าน → ตะกร้า → ยืนยัน → ของใหม่เข้าออเดอร์ · หน้านี้เห็นแล้วถอดรายการเดิมให้เอง
+   * ✏️ แก้ไขรายการที่หยิบจากหน้าร้าน = ไปหน้าสินค้าเสมอ (เจ้าของร้านสั่ง 10 ก.ย. 69 — ข้อความรายละเอียดมีปุ่ม "แก้รายละเอียด" อยู่แล้ว
+   * และรายการที่กรอกชื่อ/ราคาเองไม่มีปุ่มนี้) · เปิดหน้าสินค้าโหมดแก้ไข (?edit=) แบบเดียวกับปุ่ม ✏️ ในตะกร้า:
+   * ใส่บรรทัดนี้ลงตะกร้าในเครื่องแอดมินก่อน (สเปค/จำนวน/ลายเดิมครบ) ให้หน้าสินค้าติ๊กคืนให้ + ตั้ง "โหมดสั่งเพิ่มในออเดอร์นี้"
+   * + ตัวบอกว่าให้แทนที่รายการไหน → พอของใหม่เข้าออเดอร์ หน้านี้ถอดรายการเดิมให้เอง
    */
   function editItemOptionsInShop(itemIndex: number) {
     if (!order) return;
     const it = order.items[itemIndex];
-    const p = it ? productOfItem(it.productId) : undefined;
-    if (!it || !p || !mayChangeQty(it)) return;
-    const selections = cartSelectionsOf(it);
-    const key = cartItemKey(it.productId, selections);
+    if (!it || !mayChangeQty(it)) return;
+    const p = productOfItem(it.productId);
+    if (!isShopLine(p, it)) return;
     try {
+      const selections = cartSelectionsOf(it);
+      const key = cartItemKey(it.productId, selections);
       const raw = localStorage.getItem("iducky-cart-v1");
       const cart = (() => {
         try {
@@ -2407,10 +2409,10 @@ export default function AdminOrderDetailPage() {
         at: Date.now(),
       });
     } catch {
-      setErr("⚠️ เปิดโหมดแก้ตัวเลือกไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
+      setErr("⚠️ เปิดโหมดแก้ไขไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
       return;
     }
-    window.open(`${productPath(p)}?edit=${encodeURIComponent(key)}`, "_blank", "noopener");
+    window.open(`${productPath(p)}?edit=${encodeURIComponent(cartItemKey(it.productId, cartSelectionsOf(it)))}`, "_blank", "noopener");
   }
 
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
@@ -3665,6 +3667,19 @@ export default function AdminOrderDetailPage() {
                     </span>
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
+                      {/* ✏️ แก้ไข — วางคู่กับปุ่มลบเหมือนหัวบรรทัดในตะกร้า: เปิดหน้าสินค้าพร้อมตัวเลือก/จำนวน/ลายเดิม
+                          แก้แล้วกดสั่ง ระบบเพิ่มของใหม่เข้าออเดอร์นี้และถอดรายการเดิมออกให้ (เฉพาะรายการที่หยิบจากหน้าร้าน) */}
+                      {/* เฉพาะรายการที่ "หยิบจากหน้าร้าน" (มีสินค้าจริง + ตัวเลือกแบบหัวข้อ) — รายการที่กรอกชื่อ/ราคาเองไม่มีปุ่มนี้ (เจ้าของร้านสั่ง 10 ก.ย. 69) */}
+                      {mayEdit && isShopLine(productOfItem(it.productId), it) && mayChangeQty(it) && (
+                        <button
+                          type="button"
+                          title="เปิดหน้าสินค้าพร้อมตัวเลือก/จำนวน/ลายเดิม (เหมือนปุ่มแก้ไขในตะกร้า) — แก้แล้วกดสั่ง ระบบจะแทนที่รายการนี้ให้ แบบงาน/หมายเหตุย้ายตามไป"
+                          onClick={() => editItemOptionsInShop(i)}
+                          className="shrink-0 rounded-lg border border-sky-200 bg-white px-2 py-0.5 text-xs font-bold text-sky-700 transition hover:bg-sky-50"
+                        >
+                          ✏️ แก้ไข
+                        </button>
+                      )}
                       {mayEdit && (
                         <button
                           type="button"
@@ -3800,17 +3815,6 @@ export default function AdminOrderDetailPage() {
                               className="mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
                             >
                               ✏️ แก้รายละเอียด
-                            </button>
-                          )}
-                          {/* 🛠 สินค้าที่หยิบจากหน้าร้าน — แก้ตัวเลือก/ขนาด/เรทที่หน้าสินค้าเหมือนปุ่ม ✏️ ในตะกร้า แล้วระบบแทนที่รายการนี้ให้ */}
-                          {mayEdit && isShopLine(productOfItem(it.productId), it) && mayChangeQty(it) && (
-                            <button
-                              type="button"
-                              onClick={() => editItemOptionsInShop(i)}
-                              title="เปิดหน้าสินค้าพร้อมตัวเลือกเดิม แก้แล้วกดสั่ง → ระบบเพิ่มของใหม่เข้าออเดอร์นี้และถอดรายการเดิมออกให้ (แบบงาน/หมายเหตุย้ายตามไป)"
-                              className="ml-1 mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-sky-600 transition hover:bg-sky-50"
-                            >
-                              🛠 แก้ตัวเลือก (หน้าร้าน)
                             </button>
                           )}
                         </div>
