@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -877,12 +877,15 @@ export default function CustomerOrderPage() {
             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
               {orderStatusLabel(order)}
             </span>
-            <Link
-              href={`/order/${encodeURIComponent(orderId)}/receipt${orderKey ? `?key=${encodeURIComponent(orderKey)}` : ""}`}
-              className="ord-btn ghost sm"
-            >
-              🧾 ใบเสร็จ
-            </Link>
+            {/* 🧾 ปุ่มใบเสร็จโชว์เมื่อชำระครบ 100% แล้วเท่านั้น (กติกาเดียวกับหน้าใบเสร็จที่ล็อกไว้ + /account/receipts) — เจ้าของร้านสั่ง 10 ก.ย. 69 */}
+            {orderFullyPaid(order) && (
+              <Link
+                href={`/order/${encodeURIComponent(orderId)}/receipt${orderKey ? `?key=${encodeURIComponent(orderKey)}` : ""}`}
+                className="ord-btn ghost sm"
+              >
+                🧾 ใบเสร็จ
+              </Link>
+            )}
           </div>
         </div>
 
