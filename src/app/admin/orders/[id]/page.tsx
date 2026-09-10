@@ -5141,7 +5141,7 @@ export default function AdminOrderDetailPage() {
                   <span className="shrink-0 text-xs font-bold text-emerald-600">ฟรี</span>
                 </div>
                 {/* 🎨 ลาย + 🖼 แบบงานของแถม — โครงเดียวกับการ์ดสินค้า (ซ้ายลายจากลูกค้า · ขวาแบบที่ส่งให้ตรวจ) */}
-                {(giftArtLabel(g) || mayEdit) && (
+                {(giftArtLabel(g) || mayEdit || mayProof) && (
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-emerald-100 px-4 py-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
                     <div
                       className={`rounded-xl border p-3 transition ${
@@ -5274,7 +5274,7 @@ export default function AdminOrderDetailPage() {
                                   {p.review === "อนุมัติ" ? "✓ อนุมัติ" : "✏ ขอแก้"}
                                 </span>
                               )}
-                              {mayEdit && (
+                              {(mayEdit || mayProof) && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -5291,7 +5291,9 @@ export default function AdminOrderDetailPage() {
                           ))}
                         </div>
                       )}
-                      {mayEdit && (
+                      {/* กราฟฟิก (proof.manage ไม่มี orders.edit) ต้องอัป/ลบแบบของแถมได้เหมือนแบบสินค้า — เดิมล็อกที่ mayEdit อย่างเดียว
+                          กราฟฟิกเลยไม่เห็นปุ่มอัปแบบ (10 ก.ย. 69) · ฝั่ง API mergeProofFields รับ gifts[].proofs อยู่แล้ว */}
+                      {(mayEdit || mayProof) && (
                         <label
                           className="mt-2 inline-grid h-16 w-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-violet-300 bg-white text-center text-[10px] font-bold leading-tight text-violet-600 transition hover:bg-violet-50"
                           title="อัปแบบของแถมให้ลูกค้าตรวจ"
