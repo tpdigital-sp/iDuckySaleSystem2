@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, reuseArtText, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, reuseArtText, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -526,6 +526,15 @@ function OrderDocs({
                   <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
                 </div>
                 <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
+                {/* 🧾 บิล FlowAccount/บิล VAT ต้องมีใบกำกับตัวจริงในกล่อง — ตราบนส่วนที่ติดกล่อง คนแพ็คเห็นโดยไม่ต้องเปิดจอ (10 ก.ย. 69) */}
+                {orderNeedsTaxInvoiceInBox(order) && (
+                  <p
+                    className="keep mt-1.5 inline-block rounded border-[2.5px] border-red-600 bg-white px-2.5 py-1 text-sm font-extrabold leading-none"
+                    style={{ color: "#dc2626", transform: "rotate(-1.5deg)" }}
+                  >
+                    🧾 แนบใบกำกับภาษี
+                  </p>
+                )}
               </div>
             </div>
 
@@ -574,6 +583,18 @@ function OrderDocs({
                     🎁 ออเดอร์นี้มีงานตัวอย่าง {order.items.filter((it) => it.sampleRequired).length} รายการ — ต้องแนบไปด้วย!
                   </p>
                 )}
+                {/* 🧾 ใบกำกับภาษีต้องใส่กล่อง — บอกเลขเอกสารให้ไปพิมพ์จาก FlowAccount ได้ทันที */}
+                {orderNeedsTaxInvoiceInBox(order) &&
+                  (() => {
+                    const doc = taxInvoiceDocOf(order);
+                    return (
+                      <p className="mt-1.5 block w-fit rounded border-2 border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
+                        🧾 ต้องใส่ใบกำกับภาษีลงกล่อง{doc.docNo ? ` — อ้างอิง ${doc.label} ${doc.docNo}` : ""}
+                        {order.flowAccount || doc.url ? " (พิมพ์จาก FlowAccount)" : ""}
+                        {doc.company ? ` · ${doc.company}` : ""}
+                      </p>
+                    );
+                  })()}
               </div>
               {/* ใบงานใช้ QR อย่างเดียว — บาร์โค้ดสำหรับเครื่องยิงอยู่บนใบปะหน้า ไม่ต้องมีซ้ำตรงนี้ */}
               {orderUrl && (

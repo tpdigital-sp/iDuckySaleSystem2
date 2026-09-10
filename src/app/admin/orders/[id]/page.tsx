@@ -48,6 +48,9 @@ import {
   orderWhtAmount,
   orderVatAmount,
   packGate,
+  orderHasTaxInvoice,
+  orderNeedsTaxInvoiceInBox,
+  taxInvoiceDocOf,
   applyArrival,
   arrivalOverdue,
   PROOF_STYLES,
@@ -1874,6 +1877,7 @@ export default function AdminOrderDetailPage() {
         g.missing.length ? `ของยังไม่มา/ไม่ครบ ${g.missing.length} รายการ (${g.missing.map((m) => m.item).join(", ")})` : "",
         g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
         g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
+        g.taxInvoiceUnpacked ? "ยังไม่ยืนยันใส่ใบกำกับภาษีลงกล่อง" : "",
         g.unpaidBalance ? (order?.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ") : "",
       ].filter(Boolean);
       if (!mayEdit) {
@@ -2275,6 +2279,33 @@ export default function AdminOrderDetailPage() {
       actor,
       acked ? "ยกเลิกยืนยันใส่งานตัวอย่าง" : "ยืนยันใส่งานตัวอย่างลงกล่องแล้ว",
       item?.name
+    );
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** 🧾 พนักงานแพ็คยืนยันว่าใส่ใบกำกับภาษีลงกล่องแล้ว · กดซ้ำ = ยกเลิก (บิล FlowAccount/บิล VAT มักลืมพิมพ์ใบกำกับ) */
+  function toggleTaxInvoicePacked() {
+    if (!order) return;
+    const acked = !!order.taxInvoicePacked;
+    const doc = taxInvoiceDocOf(order);
+    const next = withLog(
+      { ...order, taxInvoicePacked: acked ? undefined : { by: actor, at: new Date().toISOString() } },
+      actor,
+      acked ? "ยกเลิกยืนยันใส่ใบกำกับภาษี" : "ยืนยันใส่ใบกำกับภาษีลงกล่องแล้ว",
+      doc.docNo ? `${doc.label} ${doc.docNo}` : undefined
+    );
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** 🧾 ใบกำกับส่งทางไหน — "email" = ส่งไฟล์ให้ลูกค้าแล้ว ไม่ต้องแนบกล่อง (ปลดด่านยิงเลข) · "box" = ต้องใส่กล่อง */
+  function setTaxInvoiceDelivery(v: "box" | "email") {
+    if (!order || (order.taxInvoiceDelivery ?? "box") === v) return;
+    const next = withLog(
+      { ...order, taxInvoiceDelivery: v },
+      actor,
+      v === "email" ? "ใบกำกับภาษี: ส่งทางอีเมล ไม่ต้องแนบกล่อง" : "ใบกำกับภาษี: ต้องใส่ลงกล่อง"
     );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -2901,6 +2932,8 @@ export default function AdminOrderDetailPage() {
           onCheck={setPackCheck}
           onAck={toggleNoteAck}
           onSampleAck={toggleSamplePacked}
+          onTaxInvoiceAck={toggleTaxInvoicePacked}
+          onTaxInvoiceDelivery={setTaxInvoiceDelivery}
           onArrival={setArrival}
           onTrackingChange={(v) => setOrder((cur) => (cur ? { ...cur, tracking: v } : cur))}
           onTrackingSave={saveTracking}
@@ -3445,6 +3478,42 @@ export default function AdminOrderDetailPage() {
               )}
               {(order.flowAccount || order.taxInvoice) && (
                 <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2 text-[12px] leading-relaxed text-slate-700">
+                  {/* 🧾 ใส่ใบกำกับลงกล่องหรือยัง — เจ้าของร้านแจ้ง 10 ก.ย. 69 ว่าพนักงานมักลืมพิมพ์ใบกำกับไปกับใบปะหน้า */}
+                  <p
+                    className={`mb-1 flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 font-bold ${
+                      order.taxInvoiceDelivery === "email"
+                        ? "bg-slate-100 text-slate-600"
+                        : order.taxInvoicePacked
+                          ? "bg-green-50 text-green-700"
+                          : "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+                    }`}
+                  >
+                    {order.taxInvoiceDelivery === "email"
+                      ? "📧 ใบกำกับส่งทางอีเมล — ไม่ต้องแนบกล่อง"
+                      : order.taxInvoicePacked
+                        ? `✅ ใส่ใบกำกับลงกล่องแล้ว · ${order.taxInvoicePacked.by} · ${shortTime(order.taxInvoicePacked.at)}`
+                        : "🧾 ต้องใส่ใบกำกับภาษีลงกล่อง — ยังไม่ยืนยัน (กันยิงเลขพัสดุ)"}
+                    {mayEdit && (
+                      <span className="ml-auto flex gap-1">
+                        {order.taxInvoiceDelivery !== "email" && (
+                          <button
+                            type="button"
+                            onClick={toggleTaxInvoicePacked}
+                            className="rounded-md border border-current px-2 py-0.5 text-[11px] font-bold"
+                          >
+                            {order.taxInvoicePacked ? "ยกเลิกยืนยัน" : "ใส่กล่องแล้ว"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setTaxInvoiceDelivery(order.taxInvoiceDelivery === "email" ? "box" : "email")}
+                          className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-bold text-slate-500"
+                        >
+                          {order.taxInvoiceDelivery === "email" ? "ต้องแนบกล่อง" : "ส่งอีเมล ไม่แนบ"}
+                        </button>
+                      </span>
+                    )}
+                  </p>
                   {order.flowAccount && (
                     <p className="font-bold text-sky-800">
                       📄 {order.flowAccount.docTypeLabel} FlowAccount {order.flowAccount.docNo}
@@ -6821,6 +6890,7 @@ function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: str
   gate.unread.forEach((n) => out.push({ icon: "📄", text: `ยืนยันอ่านรายละเอียด: ${n}` }));
   gate.unsampled.forEach((n) => out.push({ icon: "🎁", text: `ใส่งานตัวอย่างลงกล่อง: ${n}` }));
   if (gate.noPhoto) out.push({ icon: "📸", text: "ถ่ายภาพของในกล่อง ก่อนปิดกล่อง" });
+  if (gate.taxInvoiceUnpacked) out.push({ icon: "🧾", text: "ใส่ใบกำกับภาษีลงกล่อง (พิมพ์จาก FlowAccount)" });
   if (gate.unpaidBalance)
     out.push({ icon: "💳", text: order.deposit ? "เก็บยอดคงเหลือ (มัดจำ) ให้ครบ" : "เก็บส่วนต่างที่ค้างให้ครบ" });
   return out;
@@ -6832,6 +6902,8 @@ function PackView({
   onCheck,
   onAck,
   onSampleAck,
+  onTaxInvoiceAck,
+  onTaxInvoiceDelivery,
   onArrival,
   onTrackingChange,
   onTrackingSave,
@@ -6844,6 +6916,8 @@ function PackView({
   onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
   onAck: (i: number) => void;
   onSampleAck: (i: number) => void;
+  onTaxInvoiceAck: () => void;
+  onTaxInvoiceDelivery: (v: "box" | "email") => void;
   onArrival: (i: number, patch: ArrivalPatch) => void;
   onTrackingChange: (v: string) => void;
   onTrackingSave: () => void;
@@ -7063,6 +7137,79 @@ function PackView({
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 🧾 ใบกำกับภาษี — บิล FlowAccount/บิล VAT ต้องพิมพ์ใบกำกับใส่กล่องไปด้วย · บังคับยืนยันก่อนยิงเลขพัสดุ */}
+      {orderHasTaxInvoice(order) && (
+        <div className="px-3 pt-1">
+          {(() => {
+            const doc = taxInvoiceDocOf(order);
+            const byEmail = order.taxInvoiceDelivery === "email";
+            const packed = !!order.taxInvoicePacked;
+            // เอกสารต้นทางมักเป็นใบเสนอราคา FlowAccount — บอกว่า "อ้างอิง" กันเข้าใจผิดว่าใบนั้นคือใบกำกับ
+            const docLine = doc.docNo ? `อ้างอิง ${doc.label} ${doc.docNo}` : "ใบกำกับภาษี";
+            if (byEmail)
+              return (
+                <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-3 shadow-sm ring-1 ring-slate-200">
+                  <span className="text-lg">📧</span>
+                  <span className="min-w-0 flex-1 text-xs">
+                    <span className="block font-extrabold text-slate-700">ใบกำกับภาษีส่งทางอีเมลแล้ว — ไม่ต้องแนบกล่อง</span>
+                    <span className="text-slate-500">{docLine}{doc.company ? ` · ${doc.company}` : ""}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onTaxInvoiceDelivery("box")}
+                    className="shrink-0 rounded-xl border border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-600"
+                  >
+                    ต้องแนบกล่อง
+                  </button>
+                </div>
+              );
+            return (
+              <div className={`rounded-2xl bg-white p-3 shadow-sm ${packed ? "ring-1 ring-green-200" : "ring-2 ring-rose-300"}`}>
+                <button
+                  type="button"
+                  onClick={onTaxInvoiceAck}
+                  className={`flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${packed ? "bg-green-50" : "bg-rose-50"}`}
+                >
+                  <span className="text-lg">{packed ? "✅" : "🧾"}</span>
+                  <span className="min-w-0 flex-1 text-xs">
+                    <span className={`block font-extrabold ${packed ? "text-slate-700" : "text-rose-700"}`}>
+                      อย่าลืม! ใส่ใบกำกับภาษีลงกล่อง
+                    </span>
+                    <span className={packed ? "text-green-700" : "font-bold text-rose-600"}>
+                      {packed
+                        ? `ใส่แล้ว · ยืนยันโดย ${order.taxInvoicePacked!.by}`
+                        : "พิมพ์ใบกำกับจาก FlowAccount ใส่กล่องแล้วค่อยแตะยืนยันตรงนี้"}
+                    </span>
+                  </span>
+                </button>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                  <span className="min-w-0 truncate">
+                    {doc.url ? (
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="font-bold text-sky-700 underline">
+                        {docLine} ↗
+                      </a>
+                    ) : (
+                      docLine
+                    )}
+                    {doc.company ? ` · ${doc.company}` : ""}
+                  </span>
+                  {!packed && (
+                    <button
+                      type="button"
+                      onClick={() => onTaxInvoiceDelivery("email")}
+                      className="shrink-0 rounded-lg border border-slate-300 px-2 py-1 font-bold text-slate-500"
+                      title="ลูกค้ารับใบกำกับทางอีเมลแล้ว ไม่ต้องใส่ตัวจริงลงกล่อง"
+                    >
+                      ส่งอีเมลแล้ว ไม่ต้องแนบ
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

@@ -39,6 +39,7 @@ import {
   MOCK_ORDERS,
   applyArrival,
   arrivalOverdue,
+  orderNeedsTaxInvoiceInBox,
   orderStatusLabel,
   packGate,
   packMissingOf,
@@ -58,6 +59,20 @@ type Tab = "print" | "wait" | "scan" | "done";
 
 /** สถานะที่อยู่ในสายงานแพ็ค–ส่ง (แบบผ่านแล้ว ยังไม่ส่ง) */
 const FULFILL: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
+
+/** 🧾 ป้ายใบกำกับภาษีบนแถวออเดอร์ — แดง = ยังไม่ใส่กล่อง · เขียว = ใส่แล้ว (ใครติ๊ก) · ใบธรรมดา/ส่งอีเมลไม่ขึ้นป้าย */
+function TaxTag({ o }: { o: Order }) {
+  if (!orderNeedsTaxInvoiceInBox(o)) return null;
+  return o.taxInvoicePacked ? (
+    <Tag tone="mint" title={`ยืนยันโดย ${o.taxInvoicePacked.by}`}>
+      🧾 ใบกำกับใส่แล้ว · {o.taxInvoicePacked.by}
+    </Tag>
+  ) : (
+    <Tag tone="solid" title="บิล FlowAccount/บิล VAT — พิมพ์ใบกำกับจาก FlowAccount ใส่กล่อง แล้วกดยืนยันในหน้าออเดอร์ (โหมดแพ็ค)">
+      🧾 ใบกำกับ ยังไม่ใส่กล่อง
+    </Tag>
+  );
+}
 
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 
@@ -126,6 +141,7 @@ export default function ScanTrackingPage() {
   const [savingArrival, setSavingArrival] = useState(false);
   const actor = useActor(); // ชื่อคนที่ล็อกอิน (ลงประวัติว่าใครปักของยังไม่มา)
   const [q, setQ] = useState(""); // ค้นหาในแท็บ "ยิงแล้ว"
+  const [taxOnly, setTaxOnly] = useState(false); // 🧾 กรองเฉพาะใบที่ต้องใส่ใบกำกับภาษีลงกล่อง (บิล FlowAccount/บิล VAT)
   const [copied, setCopied] = useState<string | null>(null); // ออเดอร์ที่เพิ่งคัดลอกเลขพัสดุ
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -186,7 +202,7 @@ export default function ScanTrackingPage() {
 
   // ── แยกออเดอร์เป็น 3 กอง ตามผลตรวจแพ็ค ──
   const { toScan, toPrint, toWait, waitOverdue } = useMemo(() => {
-    const active = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking);
+    const active = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking && (!taxOnly || orderNeedsTaxInvoiceInBox(o)));
     const wait = active.filter((o) => packMissingOf(o).length > 0); // 📦 ของยังไม่มา/ไม่ครบ → รอของ
     // เลยวันที่คาดว่าจะมาก่อน · แล้วใบที่รอมานานสุดก่อน
     wait.sort((a, b) => {
@@ -206,6 +222,12 @@ export default function ScanTrackingPage() {
       toWait: wait,
       waitOverdue: wait.filter((o) => packMissingOf(o).some((m) => arrivalOverdue(m.expectedAt))).length,
     };
+  }, [orders, taxOnly]);
+
+  /** 🧾 ใบที่ยังไม่ยิงเลขและต้องใส่ใบกำกับลงกล่อง — ไว้ขึ้นชิปกรอง (นับจากทั้งหมด ไม่ขึ้นกับตัวกรอง) */
+  const taxStats = useMemo(() => {
+    const need = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking && orderNeedsTaxInvoiceInBox(o));
+    return { n: need.length, pending: need.filter((o) => !o.taxInvoicePacked).length };
   }, [orders]);
 
   /** ออเดอร์ที่โมดัลปักของเปิดอยู่ — อ่านสดจาก orders จะได้เห็นผลทันทีหลังบันทึก */
@@ -461,6 +483,30 @@ export default function ScanTrackingPage() {
           </button>
         ))}
       </div>
+      {/* 🧾 ชิปกรองใบที่ต้องแนบใบกำกับ — ขึ้นเมื่อมีจริง หัวหน้าแพ็คกวาดตาก่อนรถขนส่งมา */}
+      {(taxStats.n > 0 || taxOnly) && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
+          <button
+            type="button"
+            onClick={() => setTaxOnly((v) => !v)}
+            aria-pressed={taxOnly}
+            className="min-h-[36px] rounded-full border-[1.5px] px-3 text-[12.5px] font-semibold"
+            style={
+              taxOnly
+                ? { background: "var(--dk-navy)", borderColor: "var(--dk-navy)", color: "#fff" }
+                : { background: "#fff", borderColor: "var(--dk-coral-deep)", color: "var(--dk-coral-ink)" }
+            }
+          >
+            🧾 มีใบกำกับ {taxStats.n}
+            {taxStats.pending > 0 ? ` · ยังไม่ใส่กล่อง ${taxStats.pending}` : " · ใส่กล่องครบแล้ว"}
+          </button>
+          {taxOnly && (
+            <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+              กำลังกรองเฉพาะใบที่ต้องแนบใบกำกับ — แตะอีกครั้งเพื่อดูทั้งหมด
+            </span>
+          )}
+        </div>
+      )}
 
       {!loaded ? (
         <div className="mt-5 grid gap-2">
@@ -480,7 +526,12 @@ export default function ScanTrackingPage() {
                   <RowMain
                     name={o.customer || "ยังไม่ระบุชื่อ"}
                     href={`/admin/orders/${encodeURIComponent(o.id)}`}
-                    tags={<Tag tone="mint">พร้อมยิง</Tag>}
+                    tags={
+                      <>
+                        <Tag tone="mint">พร้อมยิง</Tag>
+                        <TaxTag o={o} />
+                      </>
+                    }
                     meta={
                       <>
                         <span className="id">{o.id}</span>
@@ -536,6 +587,7 @@ export default function ScanTrackingPage() {
                           <Tag tone="quiet">
                             รอมา {longest} วัน
                           </Tag>
+                          <TaxTag o={o} />
                         </>
                       }
                       meta={
@@ -630,6 +682,7 @@ export default function ScanTrackingPage() {
                   g.uncounted.length ? `ตรวจนับ ${g.uncounted.length} รูป` : "",
                   g.unread.length ? `อ่านรายละเอียด ${g.unread.length} รายการ` : "",
                   g.unsampled.length ? `ใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+                  g.taxInvoiceUnpacked ? "ใส่ใบกำกับภาษี" : "",
                 ]
                   .filter(Boolean)
                   .join(" · ");
@@ -638,7 +691,12 @@ export default function ScanTrackingPage() {
                     <RowMain
                       name={o.customer || "ยังไม่ระบุชื่อ"}
                       href={`/admin/orders/${encodeURIComponent(o.id)}`}
-                      tags={<Tag tone="coral">ยังยิงไม่ได้</Tag>}
+                      tags={
+                        <>
+                          <Tag tone="coral">ยังยิงไม่ได้</Tag>
+                          <TaxTag o={o} />
+                        </>
+                      }
                       meta={
                         <>
                           <span className="id">{o.id}</span>

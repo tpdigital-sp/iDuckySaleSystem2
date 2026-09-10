@@ -705,6 +705,36 @@ export interface Order {
    * ออเดอร์ปกติจากหน้าเว็บไม่มีฟิลด์นี้ (ราคาหน้าร้านรวมทุกอย่างแล้ว)
    */
   vat?: { rate: number; amount: number };
+  /**
+   * 🧾 ใบกำกับภาษีส่งให้ลูกค้าทางไหน — เฉพาะใบที่มีใบกำกับ (flowAccount / taxInvoice / vat)
+   * ไม่ระบุ = "box" ต้องใส่ใบกำกับลงกล่องไปกับของ → ขึ้นตราบนใบปะหน้า/ใบงาน + เป็นด่านก่อนยิงเลขพัสดุ
+   * "email" = ส่งไฟล์ให้ลูกค้าแล้ว/ลูกค้าไม่ต้องการตัวจริง → ไม่ต้องแนบ ไม่ขึ้นป้าย ไม่กันยิงเลข
+   */
+  taxInvoiceDelivery?: "box" | "email";
+  /**
+   * 🧾 พนักงานแพ็คยืนยันว่าใส่ใบกำกับภาษีลงกล่องแล้ว — ต้องมีก่อนยิงเลขพัสดุ (เมื่อ orderNeedsTaxInvoiceInBox)
+   * เจ้าของร้านแจ้ง 10 ก.ย. 69: บิล FlowAccount/บิล VAT พนักงานมักลืมพิมพ์ใบกำกับไปพร้อมใบปะหน้า
+   */
+  taxInvoicePacked?: { by: string; at: string };
+}
+
+/** 🧾 ใบนี้มีใบกำกับภาษี (สร้างจาก FlowAccount / แอดมินใส่ข้อมูลใบกำกับ / มี VAT ตามบิล) */
+export function orderHasTaxInvoice(o: Order): boolean {
+  return !!(o.flowAccount || o.taxInvoice || orderVatAmount(o) > 0);
+}
+
+/** 🧾 ต้องใส่ใบกำกับภาษีตัวจริงลงกล่อง (มีใบกำกับ และไม่ได้เลือกส่งทางอีเมล) */
+export function orderNeedsTaxInvoiceInBox(o: Order): boolean {
+  return orderHasTaxInvoice(o) && o.taxInvoiceDelivery !== "email";
+}
+
+/** 🧾 เลขที่ + ลิงก์เอกสารใบกำกับ — เอาจากข้อมูลใบกำกับก่อน (แอดมินวางลิงก์) ไม่มีค่อยใช้เอกสารต้นทาง FlowAccount */
+export function taxInvoiceDocOf(o: Order): { docNo?: string; url?: string; label: string; company?: string } {
+  const t = o.taxInvoice;
+  const f = o.flowAccount;
+  if (t?.docNo) return { docNo: t.docNo, url: t.docUrl, label: t.docTypeLabel ?? "เอกสาร", company: t.company };
+  if (f) return { docNo: f.docNo, url: f.url, label: f.docTypeLabel, company: t?.company };
+  return { label: "ใบกำกับภาษี", company: t?.company };
 }
 
 /** ราคาสินค้ารวม (ก่อนค่าส่ง/ส่วนลด) */
@@ -1133,6 +1163,8 @@ export interface PackGate {
   noPhoto: boolean;
   /** ยังเก็บเงินไม่ครบ (ยอดคงเหลือมัดจำ หรือส่วนต่างที่โตขึ้นหลังโอน) — ห้ามยิงเลขพัสดุ */
   unpaidBalance: boolean;
+  /** 🧾 ใบนี้ต้องใส่ใบกำกับภาษีลงกล่อง แต่ยังไม่ได้กดยืนยัน — กันลืมใบกำกับ (บิล FlowAccount / บิล VAT) */
+  taxInvoiceUnpacked: boolean;
   /** 📦 รายการที่ฝ่ายแพ็คปักว่า "ของยังไม่มา / มาไม่ครบ" — ห้ามส่งจนกว่าจะกดมาครบ */
   missing: PackMissing[];
 }
@@ -1277,10 +1309,18 @@ export function packGate(order: Order): PackGate {
   const noPhoto = !(order.packPhotos && order.packPhotos.length > 0);
   const unpaidBalance = hasUnpaidBalance(order);
   const missing = packMissingOf(order);
+  const taxInvoiceUnpacked = orderNeedsTaxInvoiceInBox(order) && !order.taxInvoicePacked;
 
   return {
     ready:
-      !uncounted.length && !unread.length && !short.length && !unsampled.length && !noPhoto && !unpaidBalance && !missing.length,
+      !uncounted.length &&
+      !unread.length &&
+      !short.length &&
+      !unsampled.length &&
+      !noPhoto &&
+      !unpaidBalance &&
+      !missing.length &&
+      !taxInvoiceUnpacked,
     uncounted,
     unread,
     short,
@@ -1288,6 +1328,7 @@ export function packGate(order: Order): PackGate {
     noPhoto,
     unpaidBalance,
     missing,
+    taxInvoiceUnpacked,
   };
 }
 

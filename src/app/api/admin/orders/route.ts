@@ -126,7 +126,7 @@ function mergeLogs(...lists: (LogEntry[] | undefined)[]): LogEntry[] {
 /**
  * ฝ่ายแพ็คบันทึกได้เฉพาะงานแพ็ค — เอาออเดอร์เดิมจาก DB เป็นฐาน แล้วทับเฉพาะ:
  *   ผลตรวจนับ (proofs[].pack) · ยืนยันอ่าน (items[].noteAck) · ยืนยันใส่งานตัวอย่าง (items[].samplePacked)
- *   · ของยังไม่มา/ไม่ครบ (items[].arrival) · เลขพัสดุ + สถานะจัดส่ง · log
+ *   · ของยังไม่มา/ไม่ครบ (items[].arrival) · ยืนยันใส่ใบกำกับภาษี (taxInvoicePacked/taxInvoiceDelivery) · เลขพัสดุ + สถานะจัดส่ง · log
  * ฟิลด์อื่น (ราคา ที่อยู่ รายการ) ใช้ของเดิมทั้งหมด — กันแก้ทางอ้อม
  */
 function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Order {
@@ -147,6 +147,9 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
   });
 
   const merged: Order = { ...existing, items };
+  // 🧾 ยืนยันใส่ใบกำกับภาษีลงกล่อง + ทางส่งใบกำกับ (แนบกล่อง/อีเมล) — งานของโต๊ะแพ็ค
+  if ("taxInvoicePacked" in incoming) merged.taxInvoicePacked = incoming.taxInvoicePacked;
+  if ("taxInvoiceDelivery" in incoming) merged.taxInvoiceDelivery = incoming.taxInvoiceDelivery;
 
   // เลขพัสดุ + เปลี่ยนสถานะเป็น "จัดส่งแล้ว" ทำได้เฉพาะคนที่มีสิทธิ์ยิงเลขพัสดุ
   if (mayShip && typeof incoming.tracking === "string") {
