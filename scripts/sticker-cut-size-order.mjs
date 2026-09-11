@@ -8,7 +8,7 @@
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
 const IDS = ["sticker-pp", "sticker-uv", "sticker-solvent", "sticker-rainbow-film", "neon", "reflective-sticker", "sticker-gold-silver-rosegold", "sticker-hologram", "washi-sticker"];
-const ORDER = ["A3", "A4", "ครึ่ง A4 แนวตั้ง", "A5", "ครึ่ง A5 แนวตั้ง", "A6", "ครึ่ง A6 แนวตั้ง", "A7", "4 × 6 นิ้ว", "📐 กำหนดขนาดเอง (ระบุ ก.×ส.)"];
+const ORDER = ["A3", "A4", "ครึ่ง A4 แนวตั้ง", "A5", "ครึ่ง A5 แนวตั้ง", "A6", "ครึ่ง A6 แนวตั้ง", "A7", "4 × 6 นิ้ว", "📐 กำหนดขนาดเอง (ระบุ ก.×ส.)", "📄 ขนาดตามไฟล์ (กราฟฟิกแจ้งจำนวนตอนทำแบบ)"]; // ตามไฟล์ ต่อท้ายกำหนดเอง (11 ก.ย. 69)
 const WRITE = process.argv.includes("--write");
 const env = fs.readFileSync(".env.local", "utf8").split("\n").reduce((a, l) => { const m = l.match(/^([A-Z_]+)=(.*)$/); if (m) a[m[1]] = m[2].replace(/^["']|["']$/g, ""); return a; }, {});
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });

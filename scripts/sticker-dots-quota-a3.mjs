@@ -28,6 +28,9 @@ import fs from "fs";
 const IDS = ["sticker-pp", "sticker-uv", "sticker-solvent", "sticker-rainbow-film", "neon", "reflective-sticker", "sticker-gold-silver-rosegold", "sticker-hologram", "washi-sticker"];
 const DOT = "จำนวนจุดไดคัท";
 const CUSTOM = "📐 กำหนดขนาดเอง (ระบุ ก.×ส.)";
+/** 📄 ขนาดตามไฟล์ (11 ก.ย. 69 · scripts/cut-size-by-file-choice.mjs) — ไม่มีชั้นของตัวเอง โควตาตั้งแยกไว้ใน rates เดิม ต้องคงข้อนั้นไว้ */
+const BY_FILE = "📄 ขนาดตามไฟล์ (กราฟฟิกแจ้งจำนวนตอนทำแบบ)";
+const NO_TIER = new Set([CUSTOM, BY_FILE]);
 /** ขั้นบันไดตามด้านยาวสุด (ซม.) — ข้อสุดท้ายไม่มี upTo = รับทุกขนาดที่ใหญ่กว่านั้น (จนถึงเพดานช่องกรอก 42) */
 const TIERS = [
   { upTo: 7, free: 5, max: 10 },
@@ -122,16 +125,19 @@ for (const id of IDS) {
 
     /* 2. rates ใหม่ทั้งชุดตามชื่อในกลุ่ม */
     const tierOf = (name) => FIXED[name] ?? FIXED[ALIAS[name]];
-    const unknown = size.choices.filter((c) => c.name !== CUSTOM && !tierOf(c.name)).map((c) => c.name);
+    const unknown = size.choices.filter((c) => !NO_TIER.has(c.name) && !tierOf(c.name)).map((c) => c.name);
     if (unknown.length) throw new Error(`${id}: ขนาด ${unknown.join(", ")} ไม่รู้ว่าอยู่ชั้นไหน`);
     const keyOf = (name) => (FIXED[name] ? name : ALIAS[name]);
+    const prevRates = cfg.rates ?? [];
     cfg.rates = Object.keys(FIXED)
       .map((key) => ({
-        when: { label: sizeLabel, choices: size.choices.filter((c) => c.name !== CUSTOM && keyOf(c.name) === key).map((c) => c.name) },
+        when: { label: sizeLabel, choices: size.choices.filter((c) => !NO_TIER.has(c.name) && keyOf(c.name) === key).map((c) => c.name) },
         free: FIXED[key].free,
         max: FIXED[key].max,
       }))
-      .filter((r) => r.when.choices.length);
+      .filter((r) => r.when.choices.length)
+      // คงโควตาของ "ขนาดตามไฟล์" ที่ตั้งแยกไว้ (cut-size-by-file-choice.mjs) — ไม่งั้นรันสคริปต์นี้ซ้ำแล้วหาย
+      .concat(prevRates.filter((r) => r.when?.label === sizeLabel && (r.when.choices ?? []).includes(BY_FILE)));
 
     /* 3. ขนาดกำหนดเอง */
     if (!cfg.freeBySize) throw new Error(`${id}: ${dot.label} ไม่มี freeBySize`);

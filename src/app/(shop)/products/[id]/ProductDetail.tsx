@@ -4454,6 +4454,7 @@ export default function ProductDetail({
                       const open = openDd === opt.label;
                       const curImg = cur ? choiceImage(cur, effective) : undefined;
                       return (
+                        <>
                         <div className="flex items-center gap-2">
                           {curImg && (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -4510,9 +4511,18 @@ export default function ProductDetail({
                             )}
                           </div>
                         </div>
+                        {/* 💬 ข้อความกำกับของตัวที่เลือกอยู่ (selectedNote) — เมนูเลื่อนใส่ข้อความในรายการไม่ได้ จึงโชว์ใต้เมนูแทน
+                            (ใช้ครั้งแรกกับ "📄 ขนาดตามไฟล์" ในกลุ่มขนาดตัด 11 ก.ย. 69) */}
+                        {cur?.selectedNote && (
+                          <p className="mt-1 rounded-lg bg-amber-100/70 px-2 py-1 text-[11px] font-normal leading-snug text-amber-900 ring-1 ring-amber-200">
+                            {noteEmphasis(cur.selectedNote)}
+                          </p>
+                        )}
+                        </>
                       );
                     })()
                   ) : opt.display === "dropdown" ? (
+                    <>
                     <div className="flex items-center gap-2">
                       {/* ภาพประจำตัวเลือกที่เลือกอยู่ — เมนูเลื่อนใส่รูปในตัวเลือกไม่ได้ จึงโชว์ไว้ข้าง ๆ
                           (สินค้าอย่างเคสมือถือ 20+ รุ่น ใช้เมนูเลื่อนดีกว่าปุ่ม แต่ยังต้องเห็นหน้าตาแบบที่เลือก) */}
@@ -4555,6 +4565,16 @@ export default function ProductDetail({
                         ))}
                     </select>
                     </div>
+                    {/* 💬 ข้อความกำกับของตัวที่เลือกอยู่ (selectedNote) — <option> ใส่ข้อความอธิบายไม่ได้ จึงโชว์ใต้เมนูแทน */}
+                    {(() => {
+                      const note = opt.choices.find((c) => c.name === effective[opt.label])?.selectedNote;
+                      return note ? (
+                        <p className="mt-1 rounded-lg bg-amber-100/70 px-2 py-1 text-[11px] font-normal leading-snug text-amber-900 ring-1 ring-amber-200">
+                          {noteEmphasis(note)}
+                        </p>
+                      ) : null;
+                    })()}
+                    </>
                   ) : opt.display === "cards" ? (
                     /* การ์ดแนวตั้งหน้าตาเดียวกับแผงเลือกเรทราคา — รูปใหญ่ + วิทยุ + ชื่อ + คำอธิบาย
                        รูป 80px (เดิม 48px — ผู้ใช้ทัก 4 ก.ย. 69 ว่าเล็กจนดูไม่ออกว่าเป็นรูปอะไร)

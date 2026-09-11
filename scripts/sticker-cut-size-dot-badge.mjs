@@ -49,6 +49,8 @@ for (const id of IDS) {
     const tierOf = (name) => cfg.rates.find((r) => r.free != null && r.when.choices.includes(name));
 
     for (const c of size.choices || []) {
+      // ตัวเลือกที่ไม่มีจำนวนชิ้น/แผ่น (📐 กำหนดขนาดเอง · 📄 ขนาดตามไฟล์) ไม่ติดป้าย — ชื่อยาวอยู่แล้ว และไม่มีท่อนแรกให้ต่อ
+      if (!c.piecesPerUnit) continue;
       const t = tierOf(c.name);
       // ล้างส่วนท้ายเดิมก่อน (รันซ้ำ) แล้วต่อใหม่ — ป้ายชิ้น/แผ่นเดิมอยู่ท่อนแรกเสมอ
       const head = (c.badge || "").split(" · ")[0];
