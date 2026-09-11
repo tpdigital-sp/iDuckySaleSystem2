@@ -789,8 +789,10 @@ export function earlyPayState(o: Order, now: number = Date.now()): EarlyPayState
   const e = o.earlyPay;
   if (!e || !(e.amount > 0)) return "none";
   // ⚡ ไม่ใช้ร่วมกับส่วนลดอื่น (เจ้าของร้านสั่ง 10 ก.ย. 69 "มีส่วนลดอื่นแล้วไม่ต้องลดโอนไวอีก") — คิดสด
-  // แอดมินใส่ส่วนลดทั้งบิล/รายรายการทีหลังก็ตัดให้เอง (ล็อกไว้แล้วก็ตัด — ส่วนลดอื่นมาแทน)
-  if (orderOtherDiscounts(o) > 0) return "superseded";
+  // ⚠️ เฉพาะใบที่ยังไม่มีเงินเข้า — รับเงินแล้วห้ามเปลี่ยนส่วนลดย้อนหลัง (11 ก.ย. 69 OD-260909-5711: ลูกค้าโอน 3,177 ครบตามที่
+  // ระบบบอกตอนนั้น (ลด 2% + โอนไว 10) แล้วกติกาใหม่ไปตัด 10 ทีหลัง → โชว์ค้าง ฿10 ทั้งที่จ่ายครบ) · แอดมินใส่ส่วนลดหลังรับเงิน
+  // = ตั้งใจลดเพิ่ม (ยอดเกินโชว์เป็นชำระเกิน ให้แอดมินคืน/ปรับเอง) ไม่ใช่มาแทนโอนไว
+  if (orderOtherDiscounts(o) > 0 && paidSoFar(o) <= 0) return "superseded";
   if (e.lockedAt || !e.expiresAt) return "locked";
   const t = Date.parse(e.expiresAt);
   if (!Number.isFinite(t)) return "locked";

@@ -5511,7 +5511,7 @@ export default function AdminOrderDetailPage() {
                 </div>
               )}
               {earlyPayState(order) === "superseded" ? (
-                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="มีส่วนลดอื่นแล้ว (ระดับสมาชิก/คูปอง/ส่วนลดจากแอดมิน) — ส่วนลดโอนไวไม่ใช้ร่วมกัน">
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="มีส่วนลดอื่นแล้ว (ระดับสมาชิก/คูปอง/ส่วนลดจากแอดมิน) — ส่วนลดโอนไวไม่ใช้ร่วมกัน · ตัดเฉพาะใบที่ยังไม่มีเงินเข้า รับเงินแล้วส่วนลดที่ลูกค้าจ่ายมาคงเดิม">
                   <span className="min-w-0">{order.earlyPay!.label} · ไม่ใช้ร่วมกับส่วนลดอื่น</span>
                   <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>
                 </div>
