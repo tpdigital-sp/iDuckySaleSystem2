@@ -147,6 +147,8 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
   });
 
   const merged: Order = { ...existing, items };
+  // 🏭 ติ๊ก "ส่งเข้าผลิตแล้ว" (คิวปริ้นแยกกอง) — ฝ่ายแพ็ค/น้องพิมพ์ติ๊กเองได้สำหรับใบที่ไม่ผ่านบอร์ดกราฟฟิก
+  if ("productionSent" in incoming) merged.productionSent = incoming.productionSent;
   // 🧾 ยืนยันใส่ใบกำกับภาษีลงกล่อง + ทางส่งใบกำกับ (แนบกล่อง/อีเมล) — งานของโต๊ะแพ็ค
   if ("taxInvoicePacked" in incoming) merged.taxInvoicePacked = incoming.taxInvoicePacked;
   if ("taxInvoiceDelivery" in incoming) merged.taxInvoiceDelivery = incoming.taxInvoiceDelivery;
@@ -214,7 +216,13 @@ function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: strin
     };
   });
 
-  return { ...existing, items, ...(gifts ? { gifts } : {}) }; // log รวมกลางที่ PATCH (mergeLogs)
+  return {
+    ...existing,
+    items,
+    ...(gifts ? { gifts } : {}),
+    // 🏭 กราฟฟิกติ๊ก/ยกเลิก "ส่งเข้าผลิตแล้ว" เองได้ (ใบที่ไม่ผ่านบอร์ด TP)
+    ...("productionSent" in incoming ? { productionSent: incoming.productionSent } : {}),
+  }; // log รวมกลางที่ PATCH (mergeLogs)
 }
 
 /**

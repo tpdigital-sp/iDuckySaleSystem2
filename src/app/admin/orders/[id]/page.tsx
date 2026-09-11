@@ -106,6 +106,7 @@ import { foldSizeExtra, specEntries, specValueLines } from "@/components/SpecLin
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
+import { thaiDateTime } from "@/lib/bangkok-time";
 import { SHIP_WINDOW_RULE, shipWindowForUseBy, shipWindowWarnings } from "@/lib/ship-date";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 
@@ -6325,6 +6326,40 @@ export default function AdminOrderDetailPage() {
                     </div>
                   );
                 })()}
+
+                {/* 🏭 ส่งเข้าผลิตแล้ว — ติ๊กเองสำหรับใบที่ไม่ผ่านบอร์ดกราฟฟิก TP (ปกติคิวปริ้นอ่านจากการ์ดกราฟฟิกให้เอง) */}
+                {(can("orders.edit") || mayProof || can("pack.ship")) && (
+                  <div className={`rounded-xl border p-2.5 transition ${order.productionSent ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50/70"}`}>
+                    <p className={`mb-1.5 text-xs font-bold ${order.productionSent ? "text-emerald-700" : "text-slate-600"}`}>🏭 ส่งเข้าผลิต (คิวปริ้น)</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        title={
+                          order.productionSent
+                            ? "กดอีกครั้งเพื่อยกเลิก — ใบจะกลับไปกอง \"ยังไม่ส่งผลิต\" (ถ้าการ์ดกราฟฟิก TP อนุมัติแล้ว ยังนับว่าส่งแล้วอยู่)"
+                            : "ใบที่ไม่ได้เดินผ่านบอร์ดกราฟฟิก TP (สั่งโรงงานตรง/งานพิเศษ) ติ๊กตรงนี้ให้ขึ้นกอง \"ส่งผลิตแล้ว รอปริ้น\" ในคิวปริ้น"
+                        }
+                        onClick={() =>
+                          applyOrder(
+                            order.productionSent
+                              ? withLog({ ...order, productionSent: undefined }, actor, "ยกเลิกติ๊กส่งเข้าผลิต")
+                              : withLog({ ...order, productionSent: { by: actor, at: new Date().toISOString() } }, actor, "🏭 ติ๊กส่งเข้าผลิตแล้ว", "ใบขึ้นกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น")
+                          )
+                        }
+                        className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          order.productionSent ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700" : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                        }`}
+                      >
+                        {order.productionSent ? "🏭 ส่งเข้าผลิตแล้ว (กดเพื่อยกเลิก)" : "🏭 ติ๊กว่าส่งเข้าผลิตแล้ว"}
+                      </button>
+                      <span className="text-[11px] text-slate-500">
+                        {order.productionSent
+                          ? `ติ๊กโดย ${order.productionSent.by} · ${thaiDateTime(new Date(order.productionSent.at))}`
+                          : "ปกติไม่ต้องกด — คิวปริ้นอ่านจากการ์ดกราฟฟิกบอร์ด TP (✅ อนุมัติ) ให้เอง · กดเฉพาะใบที่ไม่ผ่านบอร์ด"}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* หมายเหตุท้ายบิล */}
                 <div>

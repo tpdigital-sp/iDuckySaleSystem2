@@ -292,3 +292,65 @@ export async function syncRushToTP(order: Order): Promise<void> {
     }
   }
 }
+
+/* ===== 🏭 การ์ดกราฟฟิกของออเดอร์เว็บ (wip_graphic_folders "iducky-<OD>") — คิวปริ้นใช้แยกกอง "ส่งผลิตแล้ว/ยังไม่ส่ง" ===== */
+export const TP_GRAPHIC_COLLECTION = "wip_graphic_folders";
+
+/** ขั้นงานบนบอร์ดกราฟฟิก TP (DSTATUS ใน tp-wip/graphic-app.js) — ไม่มี dStatus = สร้างการ์ดแล้วยังไม่เริ่ม */
+export type TPGraphicStage = "todo" | "doing" | "awaiting" | "approved";
+
+export interface TPGraphicCard {
+  orderId: string;
+  /** ขั้นปัจจุบัน · undefined = การ์ดมีแต่ยังไม่เข้าขั้นออกแบบ (รอสร้าง/รอโยนโฟลเดอร์) */
+  stage?: TPGraphicStage;
+  folderName?: string;
+  assignee?: string;
+  /** กราฟฟิกกดส่งรออนุมัติ (ไฟล์เซ็ตเสร็จ) */
+  submittedAt?: string;
+  /** ✅ หัวหน้าอนุมัติ = ไฟล์ส่งเข้าฝั่งผลิตแล้ว */
+  approvedAt?: string;
+  approvedBy?: string;
+  /** 🧹 เคลียร์การ์ดออกจากบอร์ด (งานจบฝั่งกราฟฟิก) — นับเป็นส่งผลิตแล้วเช่นกัน */
+  cleared?: boolean;
+  clearedAt?: string;
+  clearedBy?: string;
+}
+
+/**
+ * อ่านการ์ดกราฟฟิกของออเดอร์ที่ระบุ (getAll ทีละ ≤ 100 ใบ) — ใบที่ไม่มีการ์ดจะไม่อยู่ในผลลัพธ์
+ * ไม่ตั้งค่า Firebase / อ่านพลาด → คืน null ให้หน้าจอรู้ว่า "ไม่ทราบ" (ต่างจาก {} = อ่านได้แต่ไม่มีการ์ด)
+ */
+export async function fetchGraphicCardsFromTP(orderIds: string[]): Promise<Record<string, TPGraphicCard> | null> {
+  const db = getFirestoreAdmin();
+  if (!db) return null;
+  const ids = [...new Set(orderIds.map((x) => x.trim().toUpperCase()).filter((x) => /^OD-\d{6}-\d{3,}$/.test(x)))];
+  const out: Record<string, TPGraphicCard> = {};
+  try {
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      const snaps = await db.getAll(...chunk.map((id) => db.collection(TP_GRAPHIC_COLLECTION).doc(`iducky-${id}`)));
+      snaps.forEach((d, j) => {
+        if (!d.exists) return;
+        const x = d.data() as Record<string, unknown>;
+        const str = (k: string) => (typeof x[k] === "string" && x[k] ? (x[k] as string) : undefined);
+        const stage = str("dStatus");
+        out[chunk[j]] = {
+          orderId: chunk[j],
+          stage: stage === "todo" || stage === "doing" || stage === "awaiting" || stage === "approved" ? stage : undefined,
+          folderName: str("folderName"),
+          assignee: str("dAssignee"),
+          submittedAt: str("dSubmittedAt"),
+          approvedAt: str("dApprovedAt"),
+          approvedBy: str("dApprovedBy"),
+          cleared: x.cleared === true,
+          clearedAt: str("clearedAt"),
+          clearedBy: str("clearedBy"),
+        };
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error("[tp-report] อ่านการ์ดกราฟฟิกจาก TP ไม่สำเร็จ:", (e as Error)?.message);
+    return null;
+  }
+}
