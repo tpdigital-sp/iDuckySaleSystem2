@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { syncCustomerToTP } from "@/lib/server/tp-report";
 
 export const runtime = "nodejs";
 
@@ -53,14 +54,21 @@ export async function POST(req: Request) {
       { status: 409 }
     );
 
+  // 👤 จดชื่อ/เบอร์เดิมไว้ในประวัติ — แอดมินเปิดใบแล้วรู้ว่าทำไมชื่อไม่ตรงการ์ด WIP/โฟลเดอร์กราฟฟิกที่ตั้งไว้ก่อน
+  const changes: string[] = [];
+  if ((order.customer || "").trim() !== customer) changes.push(`ชื่อผู้รับ: ${order.customer || "—"} → ${customer}`);
+  if ((order.phone || "").trim() !== phone) changes.push(`เบอร์: ${order.phone || "—"} → ${phone}`);
   const updated = withLog(
     { ...order, customer, phone, address },
     "ลูกค้า",
-    "แก้ไขที่อยู่จัดส่ง"
+    "แก้ไขที่อยู่จัดส่ง",
+    changes.length ? changes.join(" · ") : undefined
   );
 
   const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
+  // ชื่อ/เบอร์เปลี่ยนหลังชำระ → อัปเดตการ์ดบอร์ด WIP กราฟฟิก (ใบยังไม่ชำระไม่มีเรคอร์ด ข้ามเงียบ)
+  void syncCustomerToTP(order, updated);
 
   const { key: _secret, ...safe } = updated;
   void _secret;

@@ -278,6 +278,37 @@ function tpShipDate(order: Order): { from: string; to: string } | null {
   return from || to ? { from, to } : null;
 }
 
+/**
+ * 👤 ชื่อผู้รับ/เบอร์เปลี่ยนหลังชำระแล้ว (ลูกค้าแก้ที่อยู่เอง หรือแอดมินแก้) → อัปเดตการ์ดบอร์ด WIP ให้ตรงหน้าออเดอร์
+ * — การ์ดถูก .create() ครั้งเดียวตอนชำระ ไม่งั้นชื่อบนการ์ด/โฟลเดอร์กราฟฟิกค้างเป็นชื่อเก่า (OD-260910-5703 ลูกค้าเปลี่ยนจากชื่อ LINE เป็นชื่อจริง 11 ก.ย. 69)
+ * — เก็บชื่อเก่าไว้ใน customerNameWas[] ให้บอร์ดยังจับคู่โฟลเดอร์ที่ตั้งด้วยชื่อเดิมได้ + โชว์ "ชื่อเดิม" บนการ์ด
+ * ใบที่ยังไม่มีเรคอร์ด (ยังไม่ชำระ) → not-found ข้ามเงียบ
+ */
+export async function syncCustomerToTP(before: Order, after: Order): Promise<void> {
+  const oldName = (before.customer || "").trim();
+  const newName = (after.customer || "").trim();
+  const oldPhone = (before.phone || "").trim();
+  const newPhone = (after.phone || "").trim();
+  if (oldName === newName && oldPhone === newPhone) return;
+  const db = getFirestoreAdmin();
+  if (!db) return;
+  const patch: Record<string, unknown> = {
+    customerName: newName,
+    phone: newPhone,
+    customerUpdatedAt: new Date().toISOString(),
+  };
+  if (oldName && oldName !== newName) patch.customerNameWas = FieldValue.arrayUnion(oldName);
+  for (const suffix of ["", "-final"]) {
+    try {
+      await db.collection(TP_PAID_COLLECTION).doc(`${after.id}${suffix}`).update(patch);
+    } catch (e) {
+      const code = (e as { code?: number | string })?.code;
+      if (code !== 5 && code !== "not-found")
+        console.error("[tp-report] อัปเดตชื่อลูกค้าไป WIP ไม่สำเร็จ:", (e as Error)?.message);
+    }
+  }
+}
+
 export async function syncRushToTP(order: Order): Promise<void> {
   const db = getFirestoreAdmin();
   if (!db) return;
