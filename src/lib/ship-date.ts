@@ -146,21 +146,27 @@ export function shortThaiDay(ymd: string): string {
 }
 
 /**
- * ตรวจช่วงวันส่งที่กรอกอยู่เทียบกับกติกา → รายการคำเตือน (ว่าง = โอเค)
+ * ตรวจวันส่งที่กรอกอยู่เทียบกับกติกา → รายการคำเตือน (ว่าง = โอเค)
  * ไม่ล็อกอะไร แค่บอก — แอดมินตั้งใจส่งวันไหนก็ได้
+ * หน้าออเดอร์เก็บวันเดียว (from = to, 11 ก.ย. 69) → ตรวจครั้งเดียวใช้ป้าย "วันที่จัดส่ง" · ใบเก่าที่ยังเป็นช่วงตรวจแยกจาก/ถึงเหมือนเดิม
  */
 export function shipWindowWarnings(ship: { from?: string; to?: string } | undefined, useByDate?: string): string[] {
   const out: string[] = [];
-  for (const [k, label] of [["from", "วันเริ่มส่ง"], ["to", "วันส่งถึง"]] as const) {
+  const single = !!ship?.from && (!ship?.to || ship.to === ship.from);
+  const checks: readonly (readonly ["from" | "to", string])[] = single
+    ? [["from", "วันที่จัดส่ง"]]
+    : [["from", "วันเริ่มส่ง"], ["to", "วันส่งถึง"]];
+  for (const [k, label] of checks) {
     const v = ship?.[k];
     if (!v || toUtc(v) == null) continue;
     const r = nonWorkingReason(v);
     if (r) out.push(`${label} ${shortThaiDay(v)} เป็น${r} บริษัทไม่ส่งของ`);
   }
-  if (ship?.from && ship?.to && toUtc(ship.from) != null && toUtc(ship.to) != null && ship.from > ship.to)
+  if (!single && ship?.from && ship?.to && toUtc(ship.from) != null && toUtc(ship.to) != null && ship.from > ship.to)
     out.push("วันเริ่มส่งอยู่หลังวันส่งถึง");
-  if (useByDate && ship?.to && toUtc(ship.to) != null && toUtc(useByDate) != null && ship.to >= useByDate)
-    out.push(`วันส่งถึง ${shortThaiDay(ship.to)} ไม่ก่อนวันใช้งาน ${shortThaiDay(useByDate)} — ของอาจถึงไม่ทัน`);
+  const last = ship?.to || ship?.from;
+  if (useByDate && last && toUtc(last) != null && toUtc(useByDate) != null && last >= useByDate)
+    out.push(`${single ? "วันที่จัดส่ง" : "วันส่งถึง"} ${shortThaiDay(last)} ไม่ก่อนวันใช้งาน ${shortThaiDay(useByDate)} — ของอาจถึงไม่ทัน`);
   return out;
 }
 
@@ -171,11 +177,12 @@ export function todayBkkYmd(): string {
 }
 
 /**
- * ตอนสร้างออเดอร์: ลูกค้า/แอดมินระบุวันใช้งาน → ช่วงวันส่งอัตโนมัติ (ฟิลด์ shipDate พร้อม spread ลง Order)
+ * ตอนสร้างออเดอร์: ลูกค้า/แอดมินระบุวันใช้งาน → วันส่งอัตโนมัติ (ฟิลด์ shipDate พร้อม spread ลง Order)
+ * เก็บวันเดียว from = to (= วันแรกของช่วงที่ควรส่ง ให้มีเวลาเผื่อ) ตามหน้าออเดอร์ที่เหลือช่องเดียว 11 ก.ย. 69
  * แอดมินแก้ทับได้ทีหลังที่หน้าออเดอร์
  */
 export function autoShipDate(useByDate: string | undefined): { shipDate?: { from: string; to: string } } {
   if (!useByDate) return {};
   const w = shipWindowForUseBy(useByDate, todayBkkYmd());
-  return w ? { shipDate: { from: w.from, to: w.to } } : {};
+  return w ? { shipDate: { from: w.from, to: w.from } } : {};
 }

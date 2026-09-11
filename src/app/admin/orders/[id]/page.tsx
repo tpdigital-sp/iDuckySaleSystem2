@@ -1821,7 +1821,7 @@ export default function AdminOrderDetailPage() {
   }
 
   /**
-   * 📅 ใบที่มีวันใช้งานแต่ช่องวันส่งยังว่าง (ใบเก่าก่อนมีระบบ / ลูกค้าระบุตอนสั่ง) → เติมช่วงวันส่งให้เองแล้วบันทึก
+   * 📅 ใบที่มีวันใช้งานแต่ช่องวันส่งยังว่าง (ใบเก่าก่อนมีระบบ / ลูกค้าระบุตอนสั่ง) → เติมวันส่งให้เอง (วันเดียว from=to) แล้วบันทึก
    * ทำครั้งเดียวต่อใบ · เฉพาะคนที่มีสิทธิ์แก้ออเดอร์ (ฝ่ายแพ็ค/กราฟฟิกเซิร์ฟเวอร์ไม่รับฟิลด์นี้อยู่แล้ว ไม่ต้องยิงให้เด้ง error)
    */
   const shipAutoRef = useRef<string>("");
@@ -1832,7 +1832,7 @@ export default function AdminOrderDetailPage() {
     const win = shipWindowForUseBy(order.useByDate, todayYmd());
     if (!win) return;
     shipAutoRef.current = order.id;
-    applyOrder({ ...order, shipDate: { from: win.from, to: win.to } });
+    applyOrder({ ...order, shipDate: { from: win.from, to: win.from } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, order?.useByDate, order?.shipDate?.from, order?.shipDate?.to, demo, permsReady]);
 
@@ -6246,27 +6246,20 @@ export default function AdminOrderDetailPage() {
                   </div>
                 )}
 
-                {/* วันที่จัดส่ง — เติมให้เองจากวันใช้งาน (ส่งถึงก่อน 1–2 วันทำการ เว้นเสาร์-อาทิตย์/วันหยุด ดู autoFillShipDate) · แอดมินแก้ทับได้ */}
+                {/* วันที่จัดส่ง — ช่องเดียว (เจ้าของร้านสั่ง 11 ก.ย. 69 ตัดช่อง "ถึง" ออก) · เติมให้เองจากวันใช้งาน (ดู shipWindowForUseBy) · แอดมินแก้ทับได้
+                    เก็บลง shipDate.from และ .to เป็นวันเดียวกัน ให้ใบปริ้น/บอร์ด WIP/หน้าลูกค้าที่อ่านทั้งคู่โชว์วันเดียว · ใบเก่าที่ตั้งเป็นช่วงไว้ยังอ่าน from ได้ */}
                 {(() => {
                   const warns = shipWindowWarnings(order.shipDate, order.useByDate);
+                  const shipOne = order.shipDate?.from || order.shipDate?.to || "";
                   return (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600" title={SHIP_WINDOW_RULE}>📅 วันที่จัดส่ง (จาก–ถึง)</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={order.shipDate?.from ?? ""}
-                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, from: e.target.value } })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
-                    />
-                    <span className="shrink-0 text-slate-400">–</span>
-                    <input
-                      type="date"
-                      value={order.shipDate?.to ?? ""}
-                      onChange={(e) => applyOrder({ ...order, shipDate: { ...order.shipDate, to: e.target.value } })}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
-                    />
-                  </div>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600" title={SHIP_WINDOW_RULE}>📅 วันที่จัดส่ง</p>
+                  <input
+                    type="date"
+                    value={shipOne}
+                    onChange={(e) => applyOrder({ ...order, shipDate: { from: e.target.value, to: e.target.value } })}
+                    className="w-full min-w-0 rounded-lg border border-slate-200 px-2 py-1 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
+                  />
                   {warns.length > 0 && (
                     <ul className="mt-1 space-y-0.5 text-[11px] font-bold text-rose-600">
                       {warns.map((w) => (
@@ -6302,10 +6295,10 @@ export default function AdminOrderDetailPage() {
                           type="date"
                           value={order.useByDate ?? ""}
                           onChange={(e) => {
-                            // ระบุวันใช้งาน → เติมช่วงวันส่งให้ทันที (ส่งถึงก่อน 1–2 วันทำการ เว้นเสาร์-อาทิตย์/วันหยุด)
+                            // ระบุวันใช้งาน → เติมวันส่งให้ทันที (วันเดียว = วันแรกของช่วงที่ควรส่ง · ก่อนใช้งาน 2 วันทำการ เว้นเสาร์-อาทิตย์/วันหยุด)
                             const v = e.target.value || undefined;
                             const win = v ? shipWindowForUseBy(v, todayYmd()) : null;
-                            applyOrder({ ...order, useByDate: v, ...(win ? { shipDate: { from: win.from, to: win.to } } : {}) });
+                            applyOrder({ ...order, useByDate: v, ...(win ? { shipDate: { from: win.from, to: win.from } } : {}) });
                           }}
                           className={`min-w-fit flex-1 rounded-lg border bg-white px-2 py-1 text-[13px] tabular-nums focus:outline-none ${
                             order.rush || late ? "border-rose-300 font-bold text-rose-700" : soon ? "border-orange-300 font-bold text-orange-700" : "border-slate-200 text-slate-800 focus:border-amber-300"
