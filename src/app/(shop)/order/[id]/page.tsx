@@ -152,6 +152,8 @@ export default function CustomerOrderPage() {
   const [giftLbEdit, setGiftLbEdit] = useState(false);
   const [giftLbNote, setGiftLbNote] = useState("");
   const [giftLbConfirm, setGiftLbConfirm] = useState(false);
+  /* ขยายดูภาพของในกล่องก่อนปิด — เก็บตำแหน่งรูป (ไม่ใช่ src) ให้ปุ่มเลื่อนรูปใช้รายการล่าสุดเสมอ */
+  const [packLightbox, setPackLightbox] = useState<number | null>(null);
   const [actionErr, setActionErr] = useState("");
   // อ้างอิงด้วย index (ไม่เก็บ src ตรง ๆ) — ให้ปุ่มอนุมัติ/เลื่อนรูปใน lightbox ใช้ข้อมูลล่าสุดเสมอ
   const [lightbox, setLightbox] = useState<{ itemIdx: number; proofIdx: number } | null>(null);
@@ -1924,14 +1926,20 @@ export default function CustomerOrderPage() {
               <p className="mt-1.5 text-xs t-soft">ทีมแพ็คถ่ายไว้ก่อนปิดกล่อง — ของตามภาพนี้ถูกจัดส่งไปกับพัสดุของคุณ</p>
               <div className="mt-2.5 grid grid-cols-3 gap-2">
                 {(order.packPhotos ?? []).map((ph, i) => (
-                  <a key={`${ph.url}-${i}`} href={ph.url} target="_blank" rel="noreferrer" className="group">
+                  <button
+                    key={`${ph.url}-${i}`}
+                    type="button"
+                    onClick={() => setPackLightbox(i)}
+                    aria-label={`ขยายดูภาพก่อนปิดกล่อง ${i + 1}`}
+                    className="group block w-full cursor-zoom-in"
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={ph.url}
                       alt={`ภาพก่อนปิดกล่อง ${i + 1}`}
                       className="h-24 w-full rounded-2xl object-cover ring-2 ring-white transition group-hover:ring-[#57B6E8]"
                     />
-                  </a>
+                  </button>
                 ))}
               </div>
             </div>
@@ -2228,6 +2236,27 @@ export default function CustomerOrderPage() {
           </div>
         </div>
       )}
+
+      {/* ขยายดูภาพของในกล่องก่อนปิด — ซูม/ปัดเลื่อนรูปในหน้าเดิม ไม่เปิดแท็บใหม่ */}
+      {packLightbox != null &&
+        (() => {
+          const photos = order.packPhotos ?? [];
+          const ph = photos[packLightbox];
+          if (!ph) return null;
+          const many = photos.length > 1;
+          const go = (d: number) => setPackLightbox((packLightbox + d + photos.length) % photos.length);
+          return (
+            <ImageLightbox
+              src={ph.url}
+              alt={`ภาพก่อนปิดกล่อง ${packLightbox + 1}`}
+              caption="📸 ภาพของในกล่องก่อนปิด — ทีมแพ็คถ่ายไว้ก่อนปิดกล่อง ของตามภาพนี้ถูกจัดส่งไปกับพัสดุของคุณ"
+              counter={many ? `${packLightbox + 1} / ${photos.length}` : undefined}
+              onPrev={many ? () => go(-1) : undefined}
+              onNext={many ? () => go(1) : undefined}
+              onClose={() => setPackLightbox(null)}
+            />
+          );
+        })()}
 
       {/* ขยายดูรูปของแถม — footer มีปุ่มอนุมัติ/ขอแก้เหมือน lightbox ของสินค้า (ตัดสินทั้งชุดของแถม) */}
       {giftLightbox &&
