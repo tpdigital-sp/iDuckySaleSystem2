@@ -8,7 +8,7 @@
  * โครงหน้า (บน → ล่าง):
  *  1. กล่องยิง — อยู่บนสุด "ตลอดเวลา" ไม่ผูกกับแท็บ ยิงได้ไม่ว่ากำลังดูรายการไหน
  *     ข้างในมีขั้นตอน ① เลขออเดอร์ → ② เลขพัสดุ และข้อมูลออเดอร์ที่กำลังรอเลข
- *  2. แถบไปป์ไลน์ 4 ขั้นตามงานจริง: รอปริ้น/แพ็ค → รอของ → พร้อมยิง → ยิงแล้ว
+ *  2. แถบไปป์ไลน์ 4 ขั้นตามงานจริง: รอแพ็ค (ปริ้นใบงานแล้ว · ใบยังไม่ปริ้นซ่อนไว้ ติ๊กดูได้) → รอของ → พร้อมยิง → ยิงแล้ว
  *     ตัวเลขใหญ่อ่านจากระยะแขน กดเพื่อสลับรายการข้างล่าง
  *  3. รายการของขั้นที่เลือก — แถวที่ยิงไม่ได้บอกเหตุผลตรง ๆ ในแถว ไม่ใช่แค่ปุ่มเทา
  *
@@ -17,15 +17,17 @@
  *    บอกรายตัวว่ารออะไร มาแล้วกี่ชิ้น รอมากี่วัน คาดว่ามาวันไหน (เลยกำหนด = แดง) · กด "มาครบแล้ว" ทีเดียวจากแถว
  *
  * 📱 บนมือถือ (จอสัมผัส) หน้านี้เป็น "คิวแพ็ค" ไม่ใช่สถานีเครื่องยิง:
- *  - ช่องยิงไม่โฟกัสเอง (คีย์บอร์ดจะเด้งบังจอ) · แตะแถวในขั้น รอปริ้น/แพ็ค หรือ พร้อมยิง = เปิดโหมดแพ็คใบนั้น
+ *  - ช่องยิงไม่โฟกัสเอง (คีย์บอร์ดจะเด้งบังจอ) · แตะแถวในขั้น รอแพ็ค หรือ พร้อมยิง = เปิดโหมดแพ็คใบนั้น
  *    พร้อมจำทั้งรายการเป็นคิว (lib/pack-queue) → ยิงเลขพัสดุเสร็จ โหมดแพ็คเด้งไปใบถัดไปเอง ไม่ต้องสแกนกระดาษทีละใบ
- *  - แถบล่าง "▶ เริ่มแพ็ค N ใบ" ไล่ตามลำดับความเร่งด่วน · "📷 สแกนกองใบงาน" ยิง QR ต่อกันรวดเดียว
+ *  - แถบล่าง "▶ เริ่มแพ็ค N ใบ" ไล่ตามลำดับความเร่งด่วน (เฉพาะใบที่ปริ้นใบงานแล้ว) · "📷 สแกนกองใบงาน" ยิง QR ต่อกันรวดเดียว
  *    เก็บเป็นชุดงานตามลำดับที่สแกน แล้วไล่ทำจากชุดนั้น
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
+import { publicOrigin } from "@/lib/shop-info";
 import StatusChip, { STATUS_TONE } from "@/components/admin/StatusChip";
 import CameraScanner from "@/components/admin/CameraScanner";
 import { extractOrderId, looksLikeOrderId } from "@/lib/scan-code";
@@ -112,6 +114,9 @@ function PartialTag({ o }: { o: Order }) {
 
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 
+/** ใบงานถูกปริ้นแล้ว = ของถึงมือฝ่ายแพ็คแล้ว (ใบที่ยังไม่ปริ้นอยู่ที่คิวปริ้น ไม่ใช่โต๊ะแพ็ค) */
+const printedOf = (o: Order) => (o.printCount ?? (o.printedAt ? 1 : 0)) > 0;
+
 /** ลิงก์เปิดโหมดแพ็คของใบนี้ (มือถือ) */
 const packHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}?${PACK_SCAN_PARAM}=1`;
 
@@ -194,6 +199,10 @@ export default function ScanTrackingPage() {
   const batchRef = useRef<string[]>([]);
   batchRef.current = batch;
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
+  // 📱 ลิงก์หน้านี้สำหรับมือถือ (ทำเป็น QR บนจอคอม) — ใช้โดเมนจริงเสมอ (เจ้าของร้านสั่ง 11 ก.ย. 69)
+  // เปิดผ่าน localhost/IP ในวง ก็ให้ QR ชี้ https://iduckystore.com ไปเลย มือถือฝ่ายแพ็คใช้เว็บจริง ไม่ใช้ dev
+  const [mobileUrl, setMobileUrl] = useState("");
+  useEffect(() => setMobileUrl(`${publicOrigin()}/admin/orders/scan`), []);
   // คิวที่ค้างอยู่ในเครื่องนี้ (เริ่มไว้แล้วยังไม่ครบ) — โชว์ปุ่ม "ทำต่อ"
   const [pending, setPending] = useState<{ left: number; next: string } | null>(null);
   useEffect(() => {
@@ -216,6 +225,7 @@ export default function ScanTrackingPage() {
   const actor = useActor(); // ชื่อคนที่ล็อกอิน (ลงประวัติว่าใครปักของยังไม่มา)
   const [q, setQ] = useState(""); // ค้นหาในแท็บ "ยิงแล้ว"
   const [taxOnly, setTaxOnly] = useState(false); // 🧾 กรองเฉพาะใบที่ต้องใส่ใบกำกับภาษีลงกล่อง (บิล FlowAccount/บิล VAT)
+  const [showUnprinted, setShowUnprinted] = useState(false); // ขั้น "รอแพ็ค" โชว์เฉพาะใบที่ปริ้นใบงานแล้ว (เจ้าของร้านสั่ง 11 ก.ย. 69) — ติ๊กนี้เพื่อดูใบที่ยังไม่ปริ้นด้วย
   const [copied, setCopied] = useState<string | null>(null); // ออเดอร์ที่เพิ่งคัดลอกเลขพัสดุ
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -278,7 +288,7 @@ export default function ScanTrackingPage() {
   }, [focusInput, target]);
 
   // ── แยกออเดอร์เป็น 3 กอง ตามผลตรวจแพ็ค ──
-  const { toScan, toPrint, toWait, waitOverdue } = useMemo(() => {
+  const { toScan, toPrint, unprinted, toWait, waitOverdue } = useMemo(() => {
     const active = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking && (!taxOnly || orderNeedsTaxInvoiceInBox(o)));
     const wait = active.filter((o) => packMissingOf(o).length > 0); // 📦 ของยังไม่มา/ไม่ครบ → รอของ
     // เลยวันที่คาดว่าจะมาก่อน · แล้วใบที่รอมานานสุดก่อน
@@ -293,9 +303,11 @@ export default function ScanTrackingPage() {
       return sa.localeCompare(sb);
     });
     const rest = active.filter((o) => packMissingOf(o).length === 0);
+    const notReady = rest.filter((o) => !packGate(o).ready).sort(byUrgency); // ยังตรวจไม่ครบ
     return {
       toScan: rest.filter((o) => packGate(o).ready).sort(byUrgency), // ตรวจครบ → พร้อมยิง
-      toPrint: rest.filter((o) => !packGate(o).ready).sort(byUrgency), // ยังไม่ครบ → รอปริ้น/แพ็ค
+      toPrint: notReady.filter(printedOf), // ปริ้นใบงานแล้ว → ของอยู่โต๊ะแพ็ค รอตรวจ
+      unprinted: notReady.filter((o) => !printedOf(o)), // ยังไม่ปริ้น → ยังอยู่คิวปริ้น ไม่ขึ้นรายการแพ็คจนกว่าจะติ๊กดู
       toWait: wait,
       waitOverdue: wait.filter((o) => packMissingOf(o).some((m) => arrivalOverdue(m.expectedAt))).length,
     };
@@ -396,7 +408,7 @@ export default function ScanTrackingPage() {
     [router]
   );
 
-  /** รายการของแท็บที่เปิดอยู่ซึ่งไล่แพ็คต่อกันได้ (รอปริ้น/แพ็ค · พร้อมยิง) — ลำดับเดียวกับที่เห็นบนจอ */
+  /** รายการของแท็บที่เปิดอยู่ซึ่งไล่แพ็คต่อกันได้ (รอแพ็ค · พร้อมยิง) — ลำดับเดียวกับที่เห็นบนจอ */
   const tabQueue = tab === "print" ? toPrint : tab === "scan" ? toScan : [];
 
   /** 📷 ผลสแกนตอนเก็บกองใบงาน — กล้องไม่ปิด สะสมเป็นชุด · ใบซ้ำ/ใบที่ยิงแล้ว/ไม่พบ บอกแล้วข้าม */
@@ -500,7 +512,13 @@ export default function ScanTrackingPage() {
   const waiting = !target;
 
   const PIPE: { key: Tab; label: string; n: number; hint: string; tone: string }[] = [
-    { key: "print", label: "รอปริ้น/แพ็ค", n: toPrint.length, hint: "ตรวจแพ็คยังไม่ครบ", tone: "var(--dk-coral-deep)" },
+    {
+      key: "print",
+      label: "รอแพ็ค",
+      n: toPrint.length,
+      hint: unprinted.length ? `ปริ้นแล้ว รอตรวจ · ยังไม่ปริ้น ${unprinted.length}` : "ปริ้นแล้ว รอตรวจ",
+      tone: "var(--dk-coral-deep)",
+    },
     {
       key: "wait",
       label: "รอของ",
@@ -588,6 +606,22 @@ export default function ScanTrackingPage() {
         </div>
       </form>
 
+      {/* 📱 QR เปิดคิวแพ็คบนมือถือ — เฉพาะจอคอม (บนมือถือคือหน้านี้เองอยู่แล้ว) · คนแพ็คสแกนทีเดียว ไม่ต้องพิมพ์ลิงก์ */}
+      {!coarse && mobileUrl && (
+        <div className="dkb-g mt-3 flex items-center gap-4 px-4 py-3">
+          <div className="shrink-0 rounded-lg bg-white p-1.5">
+            <QRCodeSVG value={mobileUrl} size={76} level="M" marginSize={0} />
+          </div>
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold" style={{ color: "var(--dk-navy)" }}>📱 เปิดคิวแพ็คบนมือถือ — สแกน QR นี้</p>
+            <p className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+              เปิดด้วยแอปกล้องมือถือแล้วล็อกอิน · แตะใบในรายการเพื่อไล่แพ็คต่อกัน หรือสแกนกองใบงานทีเดียว
+            </p>
+            <p className="dkb-code mt-0.5 truncate" style={{ color: "var(--dk-faint)" }}>{mobileUrl}</p>
+          </div>
+        </div>
+      )}
+
       {msg && (
         <div className="mt-3">
           {msg.kind === "err" ? (
@@ -666,7 +700,7 @@ export default function ScanTrackingPage() {
         <>
           <ListHead title="ตรวจแพ็คครบแล้ว พร้อมยิงเลข" note={`${toScan.length} ใบ`} />
           {toScan.length === 0 ? (
-            <Empty title="ยังไม่มีออเดอร์พร้อมยิง" body="ไปที่ขั้น “รอปริ้น/แพ็ค” แล้วตรวจนับของให้ครบก่อน" />
+            <Empty title="ยังไม่มีออเดอร์พร้อมยิง" body="ไปที่ขั้น “รอแพ็ค” แล้วตรวจนับของให้ครบก่อน" />
           ) : (
             <Rows>
               {toScan.map((o) => (
@@ -715,7 +749,7 @@ export default function ScanTrackingPage() {
           {toWait.length === 0 ? (
             <Empty
               title="ไม่มีออเดอร์ที่รอของ"
-              body="ของรายการไหนยังไม่ถึงโต๊ะแพ็ค กด “ของยังไม่มา” ในแถวที่ขั้น “รอปริ้น/แพ็ค” หรือปักจากโหมดแพ็คในหน้าออเดอร์"
+              body="ของรายการไหนยังไม่ถึงโต๊ะแพ็ค กด “ของยังไม่มา” ในแถวที่ขั้น “รอแพ็ค” หรือปักจากโหมดแพ็คในหน้าออเดอร์"
             />
           ) : (
             <Rows>
@@ -826,13 +860,38 @@ export default function ScanTrackingPage() {
         </>
       ) : tab === "print" ? (
         <>
-          <ListHead title="แบบผ่านแล้ว รอปริ้นใบงาน + แพ็ค" note={`${toPrint.length} ใบ`} />
-          {toPrint.length === 0 ? (
-            <Empty title="ไม่มีออเดอร์รอปริ้น" body="ใบใหม่จะขึ้นตรงนี้เมื่อลูกค้ากดอนุมัติแบบ" />
+          <ListHead
+            title="ปริ้นใบงานแล้ว รอแพ็ค + ตรวจ"
+            note={showUnprinted ? `${toPrint.length + unprinted.length} ใบ (รวมยังไม่ปริ้น ${unprinted.length})` : `${toPrint.length} ใบ`}
+          />
+          {/* ใบที่ยังไม่ปริ้นยังไม่ถึงโต๊ะแพ็ค — ซ่อนไว้ก่อน ติ๊กดูได้ (ปุ่มปริ้นอยู่ในแถว) */}
+          {unprinted.length > 0 && (
+            <div className="mb-2.5 px-1">
+              <button
+                type="button"
+                onClick={() => setShowUnprinted((v) => !v)}
+                aria-pressed={showUnprinted}
+                className="min-h-[36px] rounded-full border-[1.5px] px-3 text-[12.5px] font-semibold"
+                style={
+                  showUnprinted
+                    ? { background: "var(--dk-navy)", borderColor: "var(--dk-navy)", color: "#fff" }
+                    : { background: "#fff", borderColor: "var(--dk-quiet)", color: "var(--dk-navy-soft)" }
+                }
+              >
+                🖨 ยังไม่ปริ้นใบงาน {unprinted.length} ใบ · {showUnprinted ? "ซ่อน" : "แสดงด้วย"}
+              </button>
+            </div>
+          )}
+          {toPrint.length === 0 && !(showUnprinted && unprinted.length) ? (
+            <Empty
+              title="ไม่มีใบที่ปริ้นแล้วรอแพ็ค"
+              body={unprinted.length ? `มี ${unprinted.length} ใบยังไม่ได้ปริ้นใบงาน — ปริ้นจากคิวปริ้น หรือติ๊ก “แสดงด้วย” ข้างบน` : "ใบใหม่จะขึ้นตรงนี้เมื่อปริ้นใบงานแล้ว"}
+            />
           ) : (
             <Rows>
-              {toPrint.map((o) => {
+              {(showUnprinted ? [...toPrint, ...unprinted] : toPrint).map((o) => {
                 const g = packGate(o);
+                const printed = printedOf(o);
                 const need = [
                   g.uncounted.length ? `ตรวจนับ ${g.uncounted.length} รูป` : "",
                   g.unread.length ? `อ่านรายละเอียด ${g.unread.length} รายการ` : "",
@@ -848,7 +907,7 @@ export default function ScanTrackingPage() {
                       href={coarse ? packHref(o.id) : `/admin/orders/${encodeURIComponent(o.id)}`}
                       tags={
                         <>
-                          <Tag tone="coral">ยังยิงไม่ได้</Tag>
+                          {printed ? <Tag tone="coral">ยังยิงไม่ได้</Tag> : <Tag tone="quiet">🖨 ยังไม่ปริ้นใบงาน</Tag>}
                           <PartialTag o={o} />
                           <TaxTag o={o} />
                         </>
@@ -1023,11 +1082,11 @@ export default function ScanTrackingPage() {
                   style={{ background: "var(--dk-yolk)", color: "#3a2b00" }}
                 >
                   ▶ เริ่มแพ็ค {tabQueue.length} ใบ
-                  <span className="block text-[10.5px] font-normal">{tab === "print" ? "รอปริ้น/แพ็ค" : "พร้อมยิง"} · เรียงตามวันใช้งาน · ใบแรก {tabQueue[0].id}</span>
+                  <span className="block text-[10.5px] font-normal">{tab === "print" ? "ปริ้นแล้ว รอแพ็ค" : "พร้อมยิง"} · เรียงตามวันใช้งาน · ใบแรก {tabQueue[0].id}</span>
                 </button>
               ) : (
                 <div className="grid flex-1 place-items-center rounded-2xl bg-slate-100 text-xs font-bold text-slate-500">
-                  {tab === "print" || tab === "scan" ? "ไม่มีใบในขั้นนี้" : "เลือกขั้น รอปริ้น/แพ็ค หรือ พร้อมยิง เพื่อเริ่มคิว"}
+                  {tab === "print" || tab === "scan" ? "ไม่มีใบในขั้นนี้" : "เลือกขั้น รอแพ็ค หรือ พร้อมยิง เพื่อเริ่มคิว"}
                 </div>
               )}
             </div>
