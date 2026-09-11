@@ -6939,9 +6939,13 @@ export default function AdminOrderDetailPage() {
                     <button
                       type="button"
                       onClick={confirmPackedPickup}
-                      className="w-full rounded-lg bg-green-600 px-3 py-2 text-[13px] font-extrabold text-white hover:bg-green-700"
+                      // ปุ่มแอ็กชันสีเหลืองขอบหนา — ให้รู้ว่ากดได้ ไม่ใช่ป้ายสถานะ (เหมือนปุ่มในโหมดแพ็ค)
+                      className="flex w-full items-center justify-between gap-2 rounded-xl border-b-4 border-amber-600 bg-amber-400 px-3 py-2.5 text-left text-sm font-extrabold text-amber-950 shadow-md ring-2 ring-amber-500 transition hover:bg-amber-300 active:translate-y-0.5 active:border-b-2"
                     >
-                      🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ
+                      <span>🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ</span>
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-950 text-sm text-amber-300" aria-hidden>
+                        ✓
+                      </span>
                     </button>
                     <p className={`mt-1.5 text-[11px] ${faint}`}>
                       ใบนี้ลูกค้ามารับเอง ไม่ต้องยิงเลขพัสดุ · กดแล้วสถานะเป็น “แพ็คเสร็จ รอมารับ” และแจ้งลูกค้าทางไลน์ · ลูกค้ารับของแล้วค่อยปิดงานเป็นเสร็จสิ้น
@@ -7934,13 +7938,18 @@ function PackView({
             <button
               type="button"
               onClick={onPickupPacked}
-              className="flex w-full items-center justify-between gap-2 rounded-xl bg-green-600 px-4 py-3 text-left text-white shadow-sm active:scale-[.99]"
+              // ต้องดูเป็น "ปุ่มให้กด" ชัด ๆ — สีเหลืองแอ็กชันเดียวกับปุ่มส่งบางส่วน ขอบหนา เงา ปุ่มใหญ่พอกดด้วยนิ้ว
+              // (เดิมแถบเขียวเรียบ ๆ คนแพ็คคิดว่าเป็นป้ายสถานะ ไม่รู้ว่ากดได้ — เจ้าของร้าน 11 ก.ย. 69)
+              className="group flex w-full items-center justify-between gap-3 rounded-2xl border-b-4 border-amber-600 bg-amber-400 px-4 py-4 text-left text-amber-950 shadow-lg shadow-amber-500/30 ring-2 ring-amber-500 transition hover:bg-amber-300 active:translate-y-0.5 active:border-b-2 active:shadow-md"
             >
-              <span>
-                <span className="block text-base font-extrabold">🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ</span>
-                <span className="block text-[11px] font-semibold text-white/80">ใบนี้ลูกค้ามารับเอง ไม่ต้องยิงเลขพัสดุ · กดแล้วระบบแจ้งลูกค้าทางไลน์ให้มารับ</span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-extrabold uppercase tracking-wide text-amber-800/80">ขั้นสุดท้าย · กดปุ่มนี้เมื่อแพ็คเสร็จ</span>
+                <span className="mt-0.5 block text-lg font-extrabold leading-tight">🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ</span>
+                <span className="mt-1 block text-[11px] font-semibold text-amber-900/70">ใบนี้ลูกค้ามารับเอง ไม่ต้องยิงเลขพัสดุ · กดแล้วระบบแจ้งลูกค้าทางไลน์ให้มารับ</span>
               </span>
-              <span className="shrink-0 text-lg">✓</span>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-amber-950 text-xl font-black text-amber-300 transition group-hover:scale-105" aria-hidden>
+                ✓
+              </span>
             </button>
           ) : (
             <div className="rounded-xl bg-slate-100 px-3 py-3 ring-1 ring-slate-200">
