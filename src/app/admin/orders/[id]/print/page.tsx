@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, artworkSide, MOCK_ORDERS, nextPlannedRound, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, reuseArtText, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, MOCK_ORDERS, nextPlannedRound, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -25,6 +25,7 @@ import { useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
 import { SpecLines } from "@/components/SpecLines";
+import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginate";
 
 /**
  * ข้อความสั้นบนป้ายแปะกล่อง — เอาเฉพาะตัวเลือกสินค้า (ขนาด/สี/รุ่น)
@@ -63,10 +64,6 @@ function designLines(it: Order["items"][number]): string[] {
     [opts, `ลายที่ ${i + 1}${p.qty ? ` × ${p.qty} ${proofUnit(p)}` : ""}`].filter(Boolean).join(" · "),
   );
 }
-
-/** คำบรรยายใต้รูปแบบงาน — ตัดหางที่บอกที่มาของแบบออก ใบงานเอาแค่ "ลายที่ N" */
-const shortProofNote = (note?: string) =>
-  (note ?? "").replace(/\s*—\s*ลูกค้าจัดวางเองบนเทมเพลต.*$/, "").trim();
 
 /** work = ใบงาน+ใบปะหน้าพัสดุ (ใบเดียวจบ) · receipt = ใบเสร็จให้ลูกค้า · box = ใบแปะหน้ากล่อง */
 type DocKey = "work" | "receipt" | "box";
@@ -330,32 +327,157 @@ function OrderDocs({
     };
   }, [order.tracking]);
 
-  // วัดว่าเนื้อหาชีทงานล้นเกิน A4 ไหม (วัดที่ความกว้าง A4 = 794px) → ใช้ตัดสินใจโชว์โน้ต "ดูต่อผ่านมือถือ"
+  // ── 📄 ใบงานไม่เกิน 3 หน้า (เจ้าของร้านสั่ง 11 ก.ย. 69) ──
+  // เดิมตัดแถวที่ 12 (มีรูป = 4) แล้วบอก "ดูมือถือ" → ออเดอร์ใหญ่ทุกใบต้องสแกนทีละใบ
+  // ตอนนี้: วัดความสูงจริงของทุกแถวที่ความกว้าง A4 แล้วแบ่งลงหน้า 1–3 ไม่ตัดกลางแถว
+  // หน้า 2–3 มีหัวใบซ้ำ + QR ตัวเล็ก + เลขหน้า · เกิน 3 หน้า = พิมพ์เท่าที่พอดี แล้วขึ้นกรอบเตือนบนหน้า 1 และท้ายหน้าสุดท้าย
+  // ท้ายบิล (หมายเหตุ/ของแถม/ภาพก่อนปิดกล่อง) ตรึงอยู่หน้า 1 เสมอ ฝ่ายแพ็คเห็นตั้งแต่แผ่นแรก
+  const PAGE_PX = 1047; // A4 หัก margin 10mm ที่ 96dpi (ตรงกับ .sheet height 277mm)
+  const MAX_WORK_PAGES = 3;
+  const CUT_TOP_PX = 92; // กรอบเตือนใต้หัวใบงานหน้า 1
+  const CUT_END_PX = 110; // กรอบเตือนท้ายหน้าสุดท้าย + บรรทัดรวม
   const workRef = useRef<HTMLElement>(null);
-  const [overflows, setOverflows] = useState(false);
+  /** ช่วงแถวต่อหน้า · null = โหมดวัด (วาดทุกแถวในแผ่นเดียวก่อน แล้ววัด) */
+  const [pages, setPages] = useState<PageRange[] | null>(null);
   useEffect(() => {
+    setPages(null); // ข้อมูล/ตัวเลือกพิมพ์เปลี่ยน → วัดใหม่
+  }, [order, withProofs, docs.work, labelOnly]);
+  useEffect(() => {
+    if (pages !== null || labelOnly || !docs.work) return;
     const el = workRef.current;
     if (!el) return;
+    let cancelled = false;
     const measure = () => {
-      const prev = el.style.width;
-      el.style.width = "794px"; // ความกว้าง A4
-      const h = el.scrollHeight; // สูงเนื้อหาจริง (รวม padding p-8 = 64px ที่ตอนพิมพ์ไม่มี)
-      el.style.width = prev;
-      setOverflows(h - 64 > 1047); // 1047px = A4 หัก margin · เกิน = ล้น
+      if (cancelled) return;
+      const prevW = el.style.width;
+      el.style.width = "794px"; // ความกว้าง A4 — บนจอชีทกว้างตามหน้าต่าง ต้องวัดที่ความกว้างจริงตอนพิมพ์
+      const table = el.querySelector<HTMLElement>("[data-ptable]");
+      const thead = el.querySelector<HTMLElement>("[data-pthead]");
+      const tfoot = el.querySelector<HTMLElement>("[data-ptfoot]");
+      const cont = el.querySelector<HTMLElement>("[data-pconthead]");
+      const rows = Array.from(el.querySelectorAll<HTMLElement>("[data-prow]"));
+      if (!table) {
+        el.style.width = prevW;
+        return;
+      }
+      const sec = el.getBoundingClientRect();
+      const t = table.getBoundingClientRect();
+      const pad = 32; // p-8 บนจอ (ตอนพิมพ์ padding 0)
+      const headH = t.top - (sec.top + pad) + (thead?.offsetHeight ?? 0); // ใบปะหน้า+หัวใบงาน+หัวตาราง
+      const tfootH = tfoot?.offsetHeight ?? 0;
+      const tailH = sec.bottom - pad - t.bottom; // ท้ายบิลทั้งหมดหลังตาราง (อยู่หน้า 1)
+      // หน้าต่อ: หัวใบซ้ำ + ระยะห่างตาราง (mt-4) + หัวตาราง + บรรทัดรวม + บรรทัด "หน้า n/N" (mt-2 + 15px)
+      const contH = (cont?.offsetHeight ?? 64) + 16 + (thead?.offsetHeight ?? 0) + tfootH + 24;
+      const heights = rows.map((r) => r.offsetHeight);
+      el.style.width = prevW;
+      setPages(
+        paginateRows(heights, {
+          cap1: PAGE_PX - headH - tfootH - tailH,
+          capN: PAGE_PX - contH,
+          maxPages: MAX_WORK_PAGES,
+          cutTopPx: CUT_TOP_PX,
+          cutEndPx: CUT_END_PX,
+        })
+      );
     };
-    measure();
-    const t = setTimeout(measure, 500); // เผื่อ layout/รูปเสถียร
-    return () => clearTimeout(t);
-  }, [order, withProofs, docs]);
+    // รอฟอนต์โหลดก่อน (ความสูงบรรทัดเปลี่ยนตามฟอนต์) · รูปมีขนาดตายตัวอยู่แล้ว
+    const fonts = (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready ?? Promise.resolve();
+    Promise.all([fonts, new Promise((r) => setTimeout(r, 400))]).then(measure);
+    return () => {
+      cancelled = true;
+    };
+  }, [pages, order, withProofs, docs.work, labelOnly]);
 
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const totalQty = order.items.reduce((s, i) => s + i.qty, 0);
-  // จำกัดจำนวนแถวให้พอดี A4 1 หน้า — ถ้าเกินให้ดูต่อผ่านมือถือ (มีรูปแบบงาน = แถวสูง เลยได้น้อยกว่า)
-  const PRINT_ROW_LIMIT = withProofs ? 4 : 12;
-  const shownItems = order.items.slice(0, PRINT_ROW_LIMIT);
-  const overflowCount = order.items.length - shownItems.length;
+  const workPages: PageRange[] = pages ?? [{ start: 0, end: order.items.length }];
+  const printedRows = printedRowsOf(workPages);
+  const cutRows = order.items.slice(printedRows); // แถวที่กระดาษ 3 หน้าไม่พอ → ดูมือถือ
+  const cutQty = cutRows.reduce((s, i) => s + i.qty, 0);
+  const rowsOf = (pg: PageRange) => order.items.slice(pg.start, pg.end).map((it, k) => [it, pg.start + k] as const);
   const totalProofs = order.items.reduce((s, it) => s + proofsOf(it).length, 0); // แบบงานทั้งหมดกี่รูป
-  const contentOverflows = overflows || overflowCount > 0; // เนื้อหาล้น A4 → โชว์โน้ตดูมือถือ
+
+  /** แถวรายการหนึ่งแถว — ใช้ทั้งหน้า 1 และหน้าต่อ · i = ลำดับจริงในออเดอร์ (เลขหน้าตารางต้องต่อเนื่องข้ามหน้า) */
+  const renderRow = (it: Order["items"][number], i: number) => {
+                  const proofs = proofsOf(it);
+                  return (
+                    <tr key={`${it.productId}-${i}`} data-prow className="border-b border-slate-200 align-top">
+                      <td className="py-3 pl-2 tabular-nums">{i + 1}</td>
+                      <td className="py-3 pr-4">
+                        {!withProofs ? (
+                          <span className="text-xs text-slate-400">—</span>
+                        ) : proofs.length > 0 ? (
+                          /* โชว์รูปแบบงานครบทุกรูป — เรียงต่อกัน (ขึ้นบรรทัดใหม่อัตโนมัติ) */
+                          <div className="flex flex-wrap gap-1.5">
+                            {proofs.map((p, j) => (
+                              <div key={`${p.url}-${j}`} className="w-20">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={p.url}
+                                  alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`}
+                                  className="h-20 w-20 rounded border border-slate-300 object-contain"
+                                />
+                                {/* ใต้รูปเขียนแค่จำนวน (เจ้าของร้านสั่ง 11 ก.ย. 69) — ชื่อไฟล์/หมายเหตุแบบยาวรกกระดาษ คนแพ็คนับจากตัวเลขอย่างเดียว */}
+                                {p.qty ? (
+                                  <p className="mt-0.5 text-[10px] font-bold leading-tight text-slate-700">
+                                    {p.qty} {proofUnit(p)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : it.noProof ? (
+                          <p className="text-xs font-semibold text-slate-500">— ไม่ต้องทำแบบ (ยอดเพิ่ม/ค่าบริการ)</p>
+                        ) : (
+                          <p className="text-xs font-semibold text-rose-600">⚠️ ยังไม่มีแบบงาน</p>
+                        )}
+                      </td>
+                      <td className="py-3">
+                        <p className="font-bold">{it.name}</p>
+                        {/* ♻️ ป้ายใช้ไฟล์เก่า และ 🎨 ภาพลายจากลูกค้า ไม่ขึ้นใบงานแล้ว (เจ้าของร้านสั่ง 11 ก.ย. 69) —
+                            รูปแบบงานคอลัมน์ซ้ายคือของที่ต้องเช็ค · บรรทัด "ใช้ไฟล์เก่า:" ยังอยู่ในสเปคตามเดิม */}
+                        {it.sampleRequired && (
+                          <p className="mt-1 inline-block rounded border-2 border-red-600 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#dc2626" }}>
+                            🎁 มีงานตัวอย่าง — แนบใส่กล่องให้ลูกค้าด้วย
+                          </p>
+                        )}
+                        {designLines(it).length > 0 ? (
+                          <div className="mt-0.5 text-xs leading-relaxed text-slate-600">
+                            {designLines(it).map((line, k) => (
+                              <p key={k}>{line}</p>
+                            ))}
+                            {/* งานรวมแผ่น (เช่น สติกเกอร์ 4 ดวง/แผ่น) — บอกทีมผลิตไปเลยว่าต้องพิมพ์กี่แผ่น */}
+                            {(() => {
+                              const per = parsePrintFrame(it.sel?.[PLACEMENT_SPEC_LABEL])?.perSheet;
+                              const sheets = sheetsFor(it.qty, per);
+                              return sheets ? (
+                                <p className="mt-1 inline-block rounded border border-slate-300 px-2 py-0.5 font-bold text-slate-900">
+                                  📄 รวม {it.qty} ชิ้น = {sheets} แผ่น ({per} ชิ้น/แผ่น)
+                                </p>
+                              ) : null;
+                            })()}
+                          </div>
+                        ) : (
+                          <SpecLines
+                            sel={it.sel}
+                            text={cleanSelections(it.selections)}
+                            hide={PRINT_SKIP}
+                            stripLinks
+                            labelClassName="text-slate-900"
+                            className="mt-0.5 text-xs leading-relaxed text-slate-600"
+                          />
+                        )}
+                        {noteHasText(it.adminNote) && (
+                          <p
+                            className="mt-1 leading-snug text-slate-900"
+                            dangerouslySetInnerHTML={{ __html: `📝 ${it.adminNote}` }}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+  };
+
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
   const fullyPaid = orderFullyPaid(order);
@@ -498,7 +620,14 @@ function OrderDocs({
 
         {/* ═══════════ ใบงาน + ใบปะหน้าพัสดุ (ใบเดียวจบ) ═══════════ */}
         {docs.work && (
-          <section ref={workRef} className="sheet rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+          <section ref={workRef} className="sheet relative rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+            {workPages.length > 1 && <WorkPageNo n={1} total={workPages.length} />}
+            {/* หัวใบซ้ำของหน้าต่อ — วาดซ่อนไว้ตรงนี้เพื่อวัดความสูงตอนแบ่งหน้า (absolute ไม่กินที่) */}
+            {!labelOnly && pages === null && (
+              <div data-pconthead aria-hidden className="pointer-events-none absolute left-8 right-8 top-0 invisible">
+                <WorkContHead order={order} n={2} total={2} orderUrl={orderUrl} />
+              </div>
+            )}
             {/* 🔒 ยังไม่จ่ายครบ → พิมพ์ได้เฉพาะส่วนใบงาน · ใบปะหน้า (ที่อยู่จัดส่ง) ถูกกันไว้ */}
             {!fullyPaid && (
               <div className="keep mb-4 rounded-lg border-2 border-dashed border-rose-300 bg-rose-50 p-4 text-center">
@@ -644,10 +773,15 @@ function OrderDocs({
               )}
             </div>
 
-            {/* ตารางงาน — โซนที่ตัดได้ถ้าเกิน A4 (หัว/ท้ายอยู่นอกโซนนี้ ไม่โดนตัด) */}
+            {/* ⚠️ กระดาษ 3 หน้าไม่พอ — บอกตั้งแต่แผ่นแรก จะได้ไม่คิดว่ารายการมีแค่นี้ */}
+            {cutRows.length > 0 && (
+              <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQty={cutQty} totalProofs={totalProofs} top />
+            )}
+
+            {/* ตารางงาน — หน้า 1 ได้เฉพาะแถวที่วัดแล้วว่าพอ (โหมดวัด = ทุกแถว) · ส่วนเกินตัดด้วย overflow กันหลุดหน้า */}
             <div className="sheet-body">
-            <table className="mt-5 w-full border-collapse text-sm">
-              <thead>
+            <table data-ptable className="mt-5 w-full border-collapse text-sm">
+              <thead data-pthead>
                 <tr className="border-y border-slate-300 bg-slate-50 text-left">
                   <th className="w-8 py-2 pl-2">#</th>
                   <th className="w-96 py-2">แบบงาน</th>
@@ -655,138 +789,22 @@ function OrderDocs({
                 </tr>
               </thead>
               <tbody>
-                {shownItems.map((it, i) => {
-                  const proofs = proofsOf(it);
-                  return (
-                    <tr key={`${it.productId}-${i}`} className="border-b border-slate-200 align-top">
-                      <td className="py-3 pl-2 tabular-nums">{i + 1}</td>
-                      <td className="py-3 pr-4">
-                        {!withProofs ? (
-                          <span className="text-xs text-slate-400">—</span>
-                        ) : proofs.length > 0 ? (
-                          /* โชว์รูปแบบงานครบทุกรูป — เรียงต่อกัน (ขึ้นบรรทัดใหม่อัตโนมัติ) */
-                          <div className="flex flex-wrap gap-1.5">
-                            {proofs.map((p, j) => (
-                              <div key={`${p.url}-${j}`} className="w-20">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={p.url}
-                                  alt={`แบบงาน ${it.name} รูปที่ ${j + 1}`}
-                                  className="h-20 w-20 rounded border border-slate-300 object-contain"
-                                />
-                                <p className="mt-0.5 text-[9px] leading-tight text-slate-600">
-                                  {p.qty ? (
-                                    <strong>
-                                      {p.qty} {proofUnit(p)}
-                                    </strong>
-                                  ) : null}
-                                  {p.qty && shortProofNote(p.note) ? " · " : null}
-                                  {shortProofNote(p.note)}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        ) : it.noProof ? (
-                          <p className="text-xs font-semibold text-slate-500">— ไม่ต้องทำแบบ (ยอดเพิ่ม/ค่าบริการ)</p>
-                        ) : (
-                          <p className="text-xs font-semibold text-rose-600">⚠️ ยังไม่มีแบบงาน</p>
-                        )}
-                      </td>
-                      <td className="py-3">
-                        <p className="font-bold">{it.name}</p>
-                        {it.reuseArt && (
-                          <p className="mt-1 inline-block rounded border-2 border-amber-500 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#b45309" }}>
-                            ♻️ {reuseArtText(it.reuseArt)}
-                          </p>
-                        )}
-                        {it.sampleRequired && (
-                          <p className="mt-1 inline-block rounded border-2 border-red-600 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#dc2626" }}>
-                            🎁 มีงานตัวอย่าง — แนบใส่กล่องให้ลูกค้าด้วย
-                          </p>
-                        )}
-                        {designLines(it).length > 0 ? (
-                          <div className="mt-0.5 text-xs leading-relaxed text-slate-600">
-                            {designLines(it).map((line, k) => (
-                              <p key={k}>{line}</p>
-                            ))}
-                            {/* งานรวมแผ่น (เช่น สติกเกอร์ 4 ดวง/แผ่น) — บอกทีมผลิตไปเลยว่าต้องพิมพ์กี่แผ่น */}
-                            {(() => {
-                              const per = parsePrintFrame(it.sel?.[PLACEMENT_SPEC_LABEL])?.perSheet;
-                              const sheets = sheetsFor(it.qty, per);
-                              return sheets ? (
-                                <p className="mt-1 inline-block rounded border border-slate-300 px-2 py-0.5 font-bold text-slate-900">
-                                  📄 รวม {it.qty} ชิ้น = {sheets} แผ่น ({per} ชิ้น/แผ่น)
-                                </p>
-                              ) : null;
-                            })()}
-                          </div>
-                        ) : (
-                          <SpecLines
-                            sel={it.sel}
-                            text={cleanSelections(it.selections)}
-                            hide={PRINT_SKIP}
-                            stripLinks
-                            labelClassName="text-slate-900"
-                            className="mt-0.5 text-xs leading-relaxed text-slate-600"
-                          />
-                        )}
-                        {(it.artworkUrls?.length ?? 0) > 0 && (
-                          <div className="mt-1.5">
-                            <p className="text-[10px] font-bold text-slate-500">🎨 ภาพลายจากลูกค้า (แนวทางทำแบบ)</p>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
-                                <span key={u} className="relative block h-14 w-14">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={u} alt={`ภาพลาย ${k + 1}`} className="h-14 w-14 rounded border border-slate-300 object-cover" />
-                                  {/* 🔢 จำนวนต่อลายที่ลูกค้าระบุ — เลขบนรูปให้ฝ่ายผลิต/แพ็คเห็นทันที */}
-                                  {artQtyOf(it, u, k) ? (
-                                    <span className="absolute bottom-0 left-0 right-0 rounded-b bg-slate-900/80 text-center text-[9px] font-bold leading-tight text-white">
-                                      {k + 1} ×{artQtyOf(it, u, k)!.toLocaleString("th-TH")}
-                                    </span>
-                                  ) : null}
-                                  {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังบนใบงาน (ป้ายบน) กราฟฟิกจะได้ไม่วางสลับด้าน */}
-                                  {artworkSide(it, u) && (
-                                    <span className="absolute left-0 right-0 top-0 bg-slate-800/85 text-center text-[8px] font-bold leading-tight text-white">
-                                      {artworkSide(it, u)}
-                                    </span>
-                                  )}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {noteHasText(it.adminNote) && (
-                          <p
-                            className="mt-1 leading-snug text-slate-900"
-                            dangerouslySetInnerHTML={{ __html: `📝 ${it.adminNote}` }}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {rowsOf(workPages[0]).map(([it, i]) => renderRow(it, i))}
               </tbody>
-              <tfoot>
+              <tfoot data-ptfoot>
                 <tr className="border-t border-slate-300">
                   <td colSpan={3} className="py-2 pl-2 text-xs text-slate-500">
-                    รวม {order.items.length} รายการ · {totalQty} ชิ้น · สถานะ: {order.status}
+                    {workPages.length > 1
+                      ? workPages[0].end === 0
+                        ? `รายการทั้งหมด ${printedRows} รายการอยู่หน้าถัดไป (หน้านี้มีแต่ใบปะหน้า/หัวใบงาน/ท้ายบิล) · รวมทั้งใบ ${order.items.length} รายการ ${totalQty} ชิ้น`
+                        : `รายการที่ ${workPages[0].end + 1}–${printedRows} อยู่หน้าถัดไป · รวมทั้งใบ ${order.items.length} รายการ ${totalQty} ชิ้น`
+                      : `รวม ${order.items.length} รายการ · ${totalQty} ชิ้น · สถานะ: ${order.status}`}
                   </td>
                 </tr>
               </tfoot>
             </table>
             </div>
             {/* /sheet-body */}
-
-            {/* ท้ายบิล — โชว์เฉพาะออเดอร์ที่เนื้อหาล้น A4 (อยู่นอกโซนตัด แสดงเสมอ) */}
-            {contentOverflows && (
-              <div className="keep mt-3 rounded-lg border-2 border-slate-900 bg-slate-50 p-3 text-center">
-                <p className="font-extrabold" style={{ color: "#dc2626", fontSize: 20 }}>
-                  ทั้งหมด {order.items.length} รายการ · แบบงาน {totalProofs} รูป
-                </p>
-                <p className="mt-1 text-base font-bold text-slate-800">📱 ตรวจรายการ/แบบงานครบทุกชิ้นบนมือถือ</p>
-                <p className="mt-0.5 text-xs font-semibold text-slate-600">สแกน QR ด้านบนเพื่อเปิดหน้าออเดอร์</p>
-              </div>
-            )}
 
             {/* 📮 สถานะพัสดุไปรษณีย์ไทย — snapshot ณ เวลาพิมพ์ */}
             {thpEvents && (
@@ -874,6 +892,47 @@ function OrderDocs({
             </>)}
           </section>
         )}
+
+        {/* ── 📄 ใบงานหน้า 2–3: หัวใบซ้ำ + QR ตัวเล็ก + แถวที่เหลือ · หน้าสุดท้ายมีบรรทัดรวม และกรอบเตือนถ้าพิมพ์ไม่ครบ ── */}
+        {docs.work &&
+          !labelOnly &&
+          workPages.slice(1).map((pg, k) => {
+            const n = k + 2;
+            const last = n === workPages.length;
+            return (
+              <section key={`work-p${n}`} className="sheet relative rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+                <WorkPageNo n={n} total={workPages.length} />
+                <WorkContHead order={order} n={n} total={workPages.length} orderUrl={orderUrl} />
+                <div className="sheet-body">
+                  <table className="mt-4 w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-y border-slate-300 bg-slate-50 text-left">
+                        <th className="w-8 py-2 pl-2">#</th>
+                        <th className="w-96 py-2">แบบงาน</th>
+                        <th className="py-2">รายการ / ตัวเลือก</th>
+                      </tr>
+                    </thead>
+                    <tbody>{rowsOf(pg).map(([it, i]) => renderRow(it, i))}</tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-300">
+                        <td colSpan={3} className="py-2 pl-2 text-xs text-slate-500">
+                          {last
+                            ? `รวมทั้งใบ ${order.items.length} รายการ · ${totalQty} ชิ้น · สถานะ: ${order.status}`
+                            : `รายการที่ ${pg.end + 1}–${printedRows} อยู่หน้าถัดไป`}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {last && cutRows.length > 0 && (
+                  <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQty={cutQty} totalProofs={totalProofs} />
+                )}
+                <p className="mt-2 text-right text-[10px] text-slate-400">
+                  {order.id} · หน้า {n}/{workPages.length} · พิมพ์เมื่อ {printedAt}
+                </p>
+              </section>
+            );
+          })}
 
         {/* ═══════════ ใบเสร็จ ═══════════ */}
         {/*
@@ -1093,6 +1152,68 @@ function OrderDocs({
             <p className="mt-4 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
           </section>
         )}
+    </div>
+  );
+}
+
+/** เลขหน้าใบงานมุมขวาบน — ขึ้นเฉพาะใบที่มีหลายหน้า กันกระดาษพลัดกัน */
+function WorkPageNo({ n, total }: { n: number; total: number }) {
+  return (
+    <span className="absolute right-3 top-2 text-[10px] font-bold tracking-wide text-slate-400 print:right-0 print:top-0">
+      ใบงาน {n}/{total}
+    </span>
+  );
+}
+
+/** หัวใบซ้ำบนหน้า 2–3 — เลขออเดอร์ ชื่อลูกค้า วันส่ง + QR ตัวเล็ก (แผ่นหลุดจากกันยังสแกนเปิดได้) */
+function WorkContHead({ order, n, total, orderUrl }: { order: Order; n: number; total: number; orderUrl: string }) {
+  return (
+    <div className="keep flex items-center justify-between gap-4 border-b-2 border-slate-900 pb-2 pt-3">
+      <div className="min-w-0">
+        <p className="font-mono text-xl font-extrabold tracking-tight">{order.id}</p>
+        <p className="text-xs text-slate-600">
+          {order.customer} · ใบงานต่อจากหน้า {n - 1} (หน้า {n}/{total})
+          {order.useByDate ? ` · 🔥 ใช้งาน ${fmtThaiDate(order.useByDate)}` : ""}
+          {order.shipDate?.from ? ` · 📅 ส่ง ${fmtThaiDate(order.shipDate.from)}` : ""}
+        </p>
+      </div>
+      {orderUrl && (
+        <div className="shrink-0 text-center">
+          <QRCodeSVG value={orderUrl} size={56} level="M" marginSize={0} />
+          <p className="mt-0.5 text-[8px] leading-tight text-slate-500">📱 โหมดแพ็ค</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** ⚠️ กระดาษ 3 หน้าไม่พอ — บอกว่าพิมพ์ถึงรายการไหน ที่เหลือกี่รายการกี่ชิ้น ให้ไปตรวจต่อบนมือถือ (โหมดแพ็คบังคับติ๊กครบก่อนยิงเลขพัสดุ) */
+function WorkCutNote({
+  order,
+  printedRows,
+  cutRows,
+  cutQty,
+  totalProofs,
+  top,
+}: {
+  order: Order;
+  printedRows: number;
+  cutRows: number;
+  cutQty: number;
+  totalProofs: number;
+  /** วางใต้หัวใบงานหน้า 1 (ตัวเตี้ยกว่า) */
+  top?: boolean;
+}) {
+  const from = printedRows + 1;
+  const to = order.items.length;
+  return (
+    <div className={`keep rounded-lg border-2 border-red-600 bg-red-50 px-3 ${top ? "mt-3 py-2" : "mt-3 py-3"}`}>
+      <p className="font-extrabold leading-tight" style={{ color: "#dc2626", fontSize: top ? 15 : 18 }}>
+        ⚠️ กระดาษพิมพ์ได้ถึงรายการที่ {printedRows} จาก {to} — รายการที่ {from}–{to} (อีก {cutRows} รายการ {cutQty.toLocaleString("th-TH")} ชิ้น) ไม่ได้พิมพ์
+      </p>
+      <p className="mt-0.5 text-xs font-bold text-slate-800">
+        📱 สแกน QR แล้วตรวจครบทุกรายการบนมือถือ · แบบงานทั้งใบ {totalProofs} รูป · ระบบบังคับติ๊กครบก่อนยิงเลขพัสดุ
+      </p>
     </div>
   );
 }
