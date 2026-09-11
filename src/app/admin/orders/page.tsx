@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
   amountDueNow,
+  depositInstallments,
   daysToUseBy,
   hasUnpaidBalance,
   orderBalance,
@@ -93,6 +94,19 @@ const openProofs = (o: Order) => o.items.filter((i) => proofMissing(i) || i.proo
 const isDue = (o: Order) => hasUnpaidBalance(o);
 /** ยอดที่ยังต้องตามเก็บของใบนี้ — ใบมัดจำใช้ยอดงวดนี้ · ใบธรรมดาใช้ส่วนต่างที่ยังขาด */
 const dueOf = (o: Order) => (o.deposit ? amountDueNow(o) : orderBalance(o));
+/**
+ * ➗ ยอดที่ต้องตามเก็บ "โอนจริง" — ออเดอร์มัดจำที่ลูกค้าหัก ณ ที่จ่าย และยังค้างทั้งงวด ให้โชว์เงินที่จะเข้าบัญชีจริงของงวดนั้น
+ * (ตรงกับ "ยอดชำระ" ในใบ FlowAccount — เจ้าของร้านสั่ง 11 ก.ย. 69 OD-260911-8026 การ์ดในรายการต้องเป็น 10,665.46 ไม่ใช่ 10,973.12)
+ * โอนมาบางส่วนแล้ว / ไม่หัก ณ ที่จ่าย / ใบธรรมดา → ยอดค้างตามเดิม
+ */
+const dueNetOf = (o: Order) => {
+  const due = dueOf(o);
+  const inst = o.deposit ? depositInstallments(o) : null;
+  if (!inst || inst.wht <= 0) return due;
+  if (!o.deposit!.firstPaidAt && Math.abs(due - inst.first) < 0.01) return inst.firstNet;
+  if (o.deposit!.firstPaidAt && Math.abs(due - inst.second) < 0.01) return inst.secondNet;
+  return due;
+};
 /** งานที่ต้องให้ทีมงานลงมือตอนนี้ (ไม่ใช่รอลูกค้า) */
 const NEEDS_US: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "แก้ไขแบบ", "อนุมัติแบบ"];
 /** สถานะที่ถือว่าจบแล้ว — แถวต้องเงียบกว่าใบที่ยังค้าง */
@@ -246,7 +260,8 @@ export default function AdminOrdersPage() {
       todaySales: active.filter((o) => dayOf(o.date) === today).reduce((s, o) => s + orderTotal(o), 0),
       // ออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม) + ยอดที่ยังต้องตามเก็บรวม
       dueCount: active.filter(isDue).length,
-      dueAmount: active.filter(isDue).reduce((s, o) => s + dueOf(o), 0),
+      // ยอดที่จะเข้าบัญชีจริง — ใบมัดจำที่หัก ณ ที่จ่ายนับโอนจริงของงวด (dueNetOf) ให้ตรงกับการ์ดในรายการ
+      dueAmount: active.filter(isDue).reduce((s, o) => s + dueNetOf(o), 0),
     };
   }, [orders]);
 
@@ -908,7 +923,8 @@ function OrderRow({
               ใบมัดจำ = ยอดงวดนี้ · ใบธรรมดา = ส่วนต่างที่โตขึ้นหลังลูกค้าโอนแล้ว (ตีราคาเพิ่ม/สั่งเพิ่ม) */}
           {seesMoney && isDue(o) && (
             <small style={{ color: o.deposit && !o.deposit.firstPaidAt ? "var(--dk-lilac-ink)" : "var(--dk-coral-ink)" }}>
-              {o.deposit && !o.deposit.firstPaidAt ? "มัดจำ" : "ค้าง"} {formatPrice(dueOf(o))}
+              {o.deposit && !o.deposit.firstPaidAt ? "มัดจำ" : "ค้าง"} {formatPrice(dueNetOf(o))}
+              {dueNetOf(o) !== dueOf(o) ? " โอนจริง" : ""}
             </small>
           )}
         </span>
