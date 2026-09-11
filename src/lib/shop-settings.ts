@@ -11,6 +11,9 @@ import { getSupabase } from "./supabase";
 import { DEFAULT_TIERS, type Tier } from "./tiers";
 import { SHOP } from "./shop-info";
 import { SETTINGS_ID as SETTINGS_ID_SHARED, type SeoConfig } from "./settings-shared";
+// วิธีส่ง + คูปองต้อนรับ ย้ายไป settings-shared.ts (ไฟล์นี้เป็น "use client" — API เซิร์ฟเวอร์เรียกฟังก์ชันจากที่นี่ไม่ได้) · re-export ชื่อเดิมให้หน้าเว็บใช้ต่อ
+import { type ShippingMethod, type WelcomeCouponConfig } from "./settings-shared";
+export { DEFAULT_SHIPPING, shippingOf, DEFAULT_WELCOME_COUPON, welcomeCouponOf, type ShippingMethod, type WelcomeCouponConfig } from "./settings-shared";
 export { seoOf, type SeoConfig } from "./settings-shared";
 export {
   activeGiftPromos,
@@ -48,16 +51,6 @@ export interface BankAccount {
 }
 
 /** รูปแบบการจัดส่งที่ให้ลูกค้าเลือกตอนสั่งซื้อ */
-export interface ShippingMethod {
-  id: string;
-  name: string;   // เช่น "ส่งธรรมดา (3-5 วัน)"
-  price: number;  // ค่าส่ง (บาท)
-  /** สั่งตั้งแต่กี่ชิ้นขึ้นไป ให้ระบบเด้งมาใช้วิธีนี้เอง (ไม่ตั้ง = ไม่เด้ง) */
-  minQty?: number;
-  /** ยอดสั่งซื้อถึงเท่าไหร่ ให้ระบบเด้งมาใช้วิธีนี้เอง (ไม่ตั้ง = ไม่เด้ง) */
-  minSubtotal?: number;
-}
-
 /**
  * ตั้งค่าร้านทั้งหมด (เก็บรวมในเรคอร์ดเดียว id = __shop_payment__)
  * ชื่อ interface ยังเป็น ShopPayment เพื่อไม่ให้โค้ดเดิมพัง แต่ตอนนี้เก็บ "ทุกการตั้งค่า"
@@ -127,46 +120,11 @@ export function shopInfoOf(s: ShopPayment | null | undefined): ShopInfo {
   };
 }
 
-/** ตั้งค่าคูปองต้อนรับ — คิด/ออกฝั่งเซิร์ฟเวอร์ตอนสมาชิกใหม่ล็อกอินครั้งแรก */
-export interface WelcomeCouponConfig {
-  enabled: boolean;
-  type: "percent" | "fixed";
-  value: number;
-  minSpend?: number;
-  maxDiscount?: number; // เพดาน (เฉพาะ percent)
-  expiryDays?: number; // อายุคูปองนับจากวันออก — 0/ไม่ตั้ง = ไม่หมดอายุ
-}
-
-export const DEFAULT_WELCOME_COUPON: WelcomeCouponConfig = {
-  enabled: false, // ปิดไว้ก่อน — แอดมินเปิดเองที่ /admin/settings
-  type: "percent",
-  value: 10,
-  minSpend: 0,
-  maxDiscount: 200,
-  expiryDays: 30,
-};
-
-/** ตั้งค่าคูปองต้อนรับที่ใช้จริง (ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง) */
-export function welcomeCouponOf(s: ShopPayment | null | undefined): WelcomeCouponConfig {
-  return { ...DEFAULT_WELCOME_COUPON, ...(s?.welcomeCoupon ?? {}) };
-}
-
 export const SETTINGS_ID = SETTINGS_ID_SHARED;
 const LOCAL_KEY = "iducky-payment-v1";
 export const EMPTY_PAYMENT: ShopPayment = { banks: [] };
 
-/** ค่าเริ่มต้นถ้าแอดมินยังไม่ได้ตั้งค่าจัดส่ง */
-export const DEFAULT_SHIPPING: ShippingMethod[] = [
-  { id: "standard", name: "ส่งธรรมดา (3-5 วัน)", price: 50 },
-  { id: "express", name: "ส่งด่วน (1-2 วัน)", price: 90 },
-];
 export const DEFAULT_FREE_SHIPPING_MIN = 999;
-
-/** รูปแบบจัดส่งที่ใช้จริง (ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง/ตั้งไว้ว่าง) */
-export function shippingOf(s: ShopPayment | null | undefined): ShippingMethod[] {
-  const list = (s?.shipping ?? []).filter((m) => m.name?.trim());
-  return list.length ? list : DEFAULT_SHIPPING;
-}
 
 /** โปรของแถมที่ตั้งไว้ (ยังไม่กรองเรื่องเวลา — ใช้ activeGiftPromos ต่อ) */
 export function giftPromosOf(s: ShopPayment | null | undefined): GiftPromo[] {

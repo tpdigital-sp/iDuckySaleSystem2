@@ -151,14 +151,23 @@ function QuoteDetailInner() {
       "ลูกค้าตกลงใบนี้ — ระบบจะสร้างออเดอร์จริงให้\n\nกด OK เพื่อปิดใบเสนอราคาใบอื่นของลูกค้ารายนี้เป็น “ไม่รับ” ด้วย (แนะนำ)\nกด Cancel ถ้าอยากเก็บใบอื่นไว้"
     );
     setBusy(true);
-    const res = await fetch("/api/admin/quotes/accept", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: quote.id, closeOthers: others }),
-    });
-    const j = await res.json();
-    setBusy(false);
-    if (!res.ok) return setErr(j.error ?? "แปลงเป็นออเดอร์ไม่สำเร็จ");
+    // เซิร์ฟเวอร์ตอบ 500 ตัวเปล่า/เน็ตหลุด → เดิม res.json() โยน error แล้ว busy ไม่ถูกปลด ปุ่มค้าง "กำลังสร้างออเดอร์…" ตลอด (11 ก.ย. 69)
+    let j: { orderId?: string; error?: string } = {};
+    let ok = false;
+    try {
+      const res = await fetch("/api/admin/quotes/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: quote.id, closeOthers: others }),
+      });
+      ok = res.ok;
+      j = (await res.json().catch(() => ({ error: `เซิร์ฟเวอร์ตอบผิดปกติ (HTTP ${res.status})` }))) as typeof j;
+    } catch (e) {
+      j = { error: `ติดต่อเซิร์ฟเวอร์ไม่ได้: ${e instanceof Error ? e.message : String(e)}` };
+    } finally {
+      setBusy(false);
+    }
+    if (!ok || !j.orderId) return setErr(j.error ?? "แปลงเป็นออเดอร์ไม่สำเร็จ");
     router.push(`/admin/orders/${encodeURIComponent(j.orderId)}`);
   }
 

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { randomCode, type Coupon } from "@/lib/coupons";
-import { welcomeCouponOf, SETTINGS_ID, type ShopPayment } from "@/lib/shop-settings";
+import type { ShopPayment } from "@/lib/shop-settings";
+import { welcomeCouponOf, SETTINGS_ID } from "@/lib/settings-shared"; // ฟังก์ชันต้องมาจากไฟล์ที่ไม่ใช่ "use client"
 
 export const runtime = "nodejs";
 

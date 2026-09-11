@@ -7,7 +7,8 @@ import { withLog, type Order } from "@/lib/admin-data";
 import { quoteMemberDiscount, quoteMemberLabel, quoteTotal, withQuoteLog, type Quote } from "@/lib/quotes";
 import { syncQuoteMemberTier } from "@/lib/server/quote-member-tier";
 import { withUnitYield } from "@/lib/products-server";
-import { shippingOf, type ShopPayment } from "@/lib/shop-settings";
+import type { ShopPayment } from "@/lib/shop-settings";
+import { shippingOf } from "@/lib/settings-shared"; // ⚠️ ห้ามเรียก shippingOf จาก shop-settings ("use client") ในเซิร์ฟเวอร์ — เคยพัง 500 ตัวเปล่า
 import { normalizeShipLabel } from "@/lib/ship-label";
 
 export const runtime = "nodejs";
@@ -19,6 +20,17 @@ export const runtime = "nodejs";
  * นี่คือหัวใจที่แก้ปัญหากราฟฟิกสับสน — เหลือใบเดียวที่ยัง "มีชีวิต" เสมอ
  */
 export async function POST(req: Request) {
+  try {
+    return await acceptQuote(req);
+  } catch (e) {
+    // ห้ามหลุดเป็น 500 ตัวเปล่า — หน้าใบเสนอราคาเคยค้าง "กำลังสร้างออเดอร์…" ไม่จบ เพราะอ่าน JSON จากคำตอบว่างไม่ได้ (11 ก.ย. 69)
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[quotes/accept] ล้มเหลว:", e);
+    return NextResponse.json({ error: `สร้างออเดอร์ไม่สำเร็จ: ${msg}` }, { status: 500 });
+  }
+}
+
+async function acceptQuote(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
