@@ -11,7 +11,7 @@ import { reportPaidToTP } from "@/lib/server/tp-report";
 import { bumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder } from "@/lib/server/contact-points";
-import { orderTotal, withLog, type Order, type OrderItem } from "@/lib/admin-data";
+import { orderTotal, textToNoteHtml, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { normalizeShipLabel } from "@/lib/ship-label";
 import type { Contact } from "@/lib/contacts";
 
@@ -147,7 +147,10 @@ interface CreateBody {
    */
   deposit?: { amount: number } | null;
   status?: "รอชำระเงิน" | "ชำระแล้ว";
+  /** หมายเหตุลูกค้า (Order.note — ติดไปทุกจอรวมหน้าลูกค้า) */
   note?: string;
+  /** 📄 หมายเหตุท้ายบิล (Order.billNote — ขึ้นบนใบงานตอนปริ้น) ส่งมาเป็น text ธรรมดา เซิร์ฟเวอร์แปลงเป็น HTML ให้ · กล่องสร้างเติมจาก "หมายเหตุ" ในเอกสาร FlowAccount (เจ้าของร้านขอ 11 ก.ย. 69) */
+  billNote?: string;
   useByDate?: string;
 }
 
@@ -221,6 +224,7 @@ export async function PUT(req: Request) {
     ...(discountAmt > 0 ? { adminDiscount: { label: `ส่วนลดตามใบ ${doc.docNo}`, amount: discountAmt } } : {}),
     ...(vatAmt > 0 ? { vat: { rate: Number(body.vatRate) || doc.vatRate || 7, amount: vatAmt } } : {}),
     ...(body.note?.trim() ? { note: body.note.trim() } : {}),
+    ...(body.billNote?.trim() ? { billNote: textToNoteHtml(body.billNote.trim()) } : {}),
     ...(useByDate ? { useByDate, ...autoShipDate(useByDate) } : {}),
     taxInvoice: {
       company: doc.customer.name,

@@ -98,6 +98,8 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
   const [vatRate, setVatRate] = useState(7);
   const [status, setStatus] = useState<"รอชำระเงิน" | "ชำระแล้ว">("รอชำระเงิน");
   const [note, setNote] = useState("");
+  // 📄 หมายเหตุท้ายบิล — เติมจาก "หมายเหตุ" ในเอกสาร (ข้อกำหนดงาน เช่น งานผ้ามีจุดดำ/ผ้าหด) ให้ขึ้นบนใบงานตอนปริ้น (เจ้าของร้านขอ 11 ก.ย. 69)
+  const [billNote, setBillNote] = useState("");
   const [useByDate, setUseByDate] = useState("");
   // ➗ ใบมัดจำ: ลิงก์ใบที่มีรายการ (ใบเสนอราคา/ใบยอดคงเหลือ) + เปิดโหมดมัดจำ/ยอดงวดแรก (แก้ได้)
   const [itemsUrl, setItemsUrl] = useState("");
@@ -172,7 +174,9 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
       setDepositOn(!!d.deposit);
       setDepositAmt(d.deposit?.amount ?? 0);
       setStatus("รอชำระเงิน");
-      setNote(d.note ?? "");
+      // หมายเหตุในเอกสารเป็นข้อกำหนดของร้าน → ลง "หมายเหตุท้ายบิล" (ใบงาน) · ช่องหมายเหตุลูกค้าเว้นว่างไว้ ไม่งั้นใบงานขึ้นซ้ำ 2 ที่
+      setBillNote(d.note ?? "");
+      setNote("");
       setUseByDate("");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "อ่านเอกสารไม่สำเร็จ");
@@ -222,6 +226,7 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
           deposit: depositActive ? { amount: depositAmt } : null,
           status,
           note: note.trim() || undefined,
+          billNote: billNote.trim() || undefined,
           useByDate: useByDate || undefined,
         }),
       });
@@ -701,7 +706,18 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
               )}
 
               <div>
-                <p className={MINI}>หมายเหตุ (จากเอกสาร — ติดไปทุกจอ)</p>
+                <p className={MINI}>📄 หมายเหตุท้ายบิล (จากเอกสาร — ขึ้นบนใบงานตอนปริ้น · แก้สี/ขนาดต่อได้ในหน้าออเดอร์)</p>
+                <textarea
+                  value={billNote}
+                  onChange={(e) => setBillNote(e.target.value)}
+                  rows={Math.min(8, Math.max(2, billNote.split("\n").length))}
+                  placeholder="เช่น ลูกค้ามารับเอง / งานผ้าอาจมีจุดดำจากฝุ่นเล็กน้อย"
+                  className={`${INP} resize-y`}
+                />
+              </div>
+
+              <div>
+                <p className={MINI}>หมายเหตุลูกค้า (ติดไปทุกจอ รวมหน้าลูกค้า)</p>
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={1} className={`${INP} resize-y`} />
               </div>
 

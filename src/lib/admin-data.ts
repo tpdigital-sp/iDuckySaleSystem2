@@ -347,6 +347,20 @@ export function noteHasText(html?: string): boolean {
 }
 
 /**
+ * ข้อความธรรมดาหลายบรรทัด → HTML สำหรับ billNote/adminNote (RichNoteEditor เก็บเป็น HTML)
+ * escape ทุกตัวอักษรพิเศษ + ขึ้นบรรทัดใหม่เป็น <br> — ใช้ตอนสร้างออเดอร์จากเอกสารภายนอก (FlowAccount) ที่ส่ง "หมายเหตุ" มาเป็น text
+ */
+export function textToNoteHtml(text: string): string {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((l) => esc(l.trimEnd()))
+    .join("<br>")
+    .replace(/^(<br>)+|(<br>)+$/g, "");
+}
+
+/**
  * ♻️ รายการนี้ "ใช้ไฟล์เก่า" — ลูกค้าเคยสั่งลายนี้กับร้านแล้ว ไม่แนบใหม่ ให้กราฟฟิกหยิบไฟล์จากออเดอร์ก่อน
  * ทางเข้า: หน้าสินค้า/ตะกร้า (selections["ใช้ไฟล์เก่า"] → แกะตอน checkout) · ItemAdder · ปุ่มติ๊กในหน้าออเดอร์ · สั่งซ้ำ/เคลม (redo)
  * fromOrderId = เลขออเดอร์เดิมถ้าระบุมา (ลูกค้าพิมพ์เอง ระบบไม่ได้ตรวจว่าเป็นของคนเดียวกัน — แอดมินดูเอง)
