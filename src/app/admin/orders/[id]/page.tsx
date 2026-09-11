@@ -47,6 +47,7 @@ import {
   orderTotal,
   orderWhtAmount,
   orderVatAmount,
+  depositInstallments,
   packGate,
   orderHasTaxInvoice,
   orderNeedsTaxInvoiceInBox,
@@ -1989,13 +1990,17 @@ export default function AdminOrderDetailPage() {
     if (!order?.deposit || order.deposit.firstPaidAt) return;
     // ทางนี้ก็ดันสถานะเป็น "ชำระแล้ว" เหมือนกัน — ไม่มีสลิปต้องเตือนให้เห็นก่อน
     const noSlip = !order.slipPath && !order.slipUrl;
+    // ➗ ลูกค้าหัก ณ ที่จ่าย → เงินเข้าจริงงวดแรกน้อยกว่ายอดมัดจำ (ส่วนต่างตามใบ 50 ทวิ) บอกไว้ในกล่องยืนยันจะได้เทียบเงินเข้าถูก
+    const inst = depositInstallments(order);
+    const whtLine = inst && inst.wht > 0 ? `\nลูกค้าหัก ณ ที่จ่าย ${order.wht?.rate ?? ""}% → เงินเข้าจริง ${formatPrice(inst.firstNet)} (ส่วนต่าง ${formatPrice(inst.firstWht)} ตามใบ 50 ทวิ)` : "";
     if (
       !(await askConfirm({
         icon: "💰",
         title: `ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว?`,
-        detail: noSlip
-          ? '⚠️ ออเดอร์นี้ยังไม่มีสลิปแนบ — ถ้ามีสลิป ให้กดยกเลิกแล้วแนบที่ช่อง "🧾 หลักฐานการโอน" ก่อน\nยืนยันเลยก็ได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป'
-          : "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย",
+        detail:
+          (noSlip
+            ? '⚠️ ออเดอร์นี้ยังไม่มีสลิปแนบ — ถ้ามีสลิป ให้กดยกเลิกแล้วแนบที่ช่อง "🧾 หลักฐานการโอน" ก่อน\nยืนยันเลยก็ได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป'
+            : "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย") + whtLine,
         confirmLabel: "ยืนยันรับมัดจำ",
         danger: noSlip,
       }))
@@ -2012,7 +2017,7 @@ export default function AdminOrderDetailPage() {
         },
         actor,
         "ยืนยันรับมัดจำ 50%",
-        `ยอด ${order.deposit.amount} บาท${noSlip ? " · ไม่มีสลิปแนบ" : ""}`
+        `ยอด ${order.deposit.amount} บาท${inst && inst.wht > 0 ? ` (โอนจริง ${inst.firstNet} หลังหัก ณ ที่จ่าย)` : ""}${noSlip ? " · ไม่มีสลิปแนบ" : ""}`
       )
     );
   }
@@ -2993,10 +2998,16 @@ export default function AdminOrderDetailPage() {
   if (openEditReq && order.status !== "ยกเลิก")
     blockers.push(`ลูกค้าขอแก้ไขออเดอร์ — “${openEditReq.text}”`);
   if (order.deposit && !order.deposit.settledAt && order.status !== "ยกเลิก") {
+    // ➗ หัก ณ ที่จ่าย: บอกยอดที่จะเข้าบัญชีจริงของงวดนั้นด้วย — ไม่งั้นแอดมินเทียบเงินเข้ากับยอดมัดจำเต็มแล้วคิดว่าโอนขาด
+    const inst = depositInstallments(order);
+    const due = amountDueNow(order);
+    // ค้างทั้งงวด + หัก ณ ที่จ่าย → เลขหลักคือโอนจริง (ยอดงวดในวงเล็บ) · โอนมาบางส่วนแล้ว → ยอดค้างตามจริง
+    const dueText = (gross: number, net: number) =>
+      inst && inst.wht > 0 && Math.abs(due - gross) < 0.01 ? `${formatPrice(net)} (โอนจริงหลังหัก ณ ที่จ่าย · ยอดงวด ${formatPrice(gross)})` : formatPrice(due);
     blockers.push(
       order.deposit.firstPaidAt
-        ? `ยังเก็บครึ่งหลังไม่ครบ ${formatPrice(amountDueNow(order))} — พิมพ์ใบงาน/ยิงเลขพัสดุไม่ได้จนเก็บครบ`
-        : `รอลูกค้าโอนมัดจำงวดแรก ${formatPrice(amountDueNow(order))} — ยังไม่เริ่มงาน`
+        ? `ยังเก็บครึ่งหลังไม่ครบ ${inst ? dueText(inst.second, inst.secondNet) : formatPrice(due)} — พิมพ์ใบงาน/ยิงเลขพัสดุไม่ได้จนเก็บครบ`
+        : `รอลูกค้าโอนมัดจำงวดแรก ${inst ? dueText(inst.first, inst.firstNet) : formatPrice(due)} — ยังไม่เริ่มงาน`
     );
   }
   const nextStep = NEXT_STATUS[order.status]?.to;
@@ -3107,6 +3118,10 @@ export default function AdminOrderDetailPage() {
               (() => {
                 const total = orderTotal(order);
                 const dep = order.deposit;
+                const inst = depositInstallments(order);
+                // ➗ ลูกค้าหัก ณ ที่จ่าย: เลขใหญ่ = เงินที่จะเข้าบัญชีจริง (โอนจริง) · ยอดงวดรวม VAT ไปอยู่บรรทัดรอง — เทียบเงินเข้าได้ทันที
+                const hasWht = !!inst && inst.wht > 0;
+                const grossNote = (gross: number) => (hasWht ? `ยอดงวด ${formatPrice(gross)} ก่อนหัก ณ ที่จ่าย · ` : "");
                 const canceled = order.status === "ยกเลิก";
                 const paidUp = orderFullyPaid(order);
                 const m = canceled
@@ -3114,9 +3129,23 @@ export default function AdminOrderDetailPage() {
                   : paidUp
                     ? { label: "ยอดรวม", num: total, hot: false, sub: "✓ รับเงินครบแล้ว", subTone: "text-emerald-600" }
                     : dep && !dep.firstPaidAt
-                      ? { label: "รอมัดจำงวดแรก", num: Math.min(total, dep.amount), hot: true, sub: `ยอดรวมทั้งบิล ${formatPrice(total)}` }
+                      ? {
+                          label: hasWht ? "รอมัดจำงวดแรก · โอนจริง" : "รอมัดจำงวดแรก",
+                          num: hasWht ? inst!.firstNet : Math.min(total, dep.amount),
+                          hot: true,
+                          sub: `${grossNote(inst!.first)}ยอดรวมทั้งบิล ${formatPrice(total)}`,
+                        }
                       : dep && !dep.settledAt
-                        ? { label: "ค้างงวดที่ 2", num: amountDueNow(order), hot: true, sub: `ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(dep.amount)}` }
+                        ? (() => {
+                            const due = amountDueNow(order);
+                            const whole = Math.abs(due - inst!.second) < 0.01; // ค้างทั้งงวด → ใช้ตัวเลขโอนจริงของงวดได้
+                            return {
+                              label: hasWht && whole ? "ค้างงวดที่ 2 · โอนจริง" : "ค้างงวดที่ 2",
+                              num: hasWht && whole ? inst!.secondNet : due,
+                              hot: true,
+                              sub: `${whole ? grossNote(inst!.second) : ""}ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(dep.amount)}`,
+                            };
+                          })()
                         : order.paidTotal != null && total - order.paidTotal > 0
                           ? { label: "ค้างส่วนต่าง", num: total - order.paidTotal, hot: true, sub: `ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(order.paidTotal)}` }
                           : {
@@ -3250,6 +3279,11 @@ export default function AdminOrderDetailPage() {
           const settled = !!order.deposit!.settledAt;
           const paid = order.paidTotal ?? order.deposit!.amount;
           const bal = Math.max(0, orderTotal(order) - (order.paidTotal ?? 0));
+          // ➗ หัก ณ ที่จ่าย: แถบนี้เป็นที่แรกที่ทุกแผนกเห็น — บอกเงินเข้าจริงของงวดคู่กับยอดงวด
+          const inst = depositInstallments(order)!;
+          const whtRate = order.wht?.rate ? ` ${order.wht.rate}%` : "";
+          const hasWht = inst.wht > 0;
+          const balWhole = hasWht && Math.abs(bal - inst.second) < 0.01;
           const tone = settled
             ? "border-emerald-200 bg-emerald-50 text-emerald-800"
             : waitFirst
@@ -3270,12 +3304,23 @@ export default function AdminOrderDetailPage() {
               ) : waitFirst ? (
                 <span>
                   รอลูกค้าโอน<b>งวดแรก</b>
-                  {seesMoney && ` ${formatPrice(order.deposit!.amount)} (จากยอดเต็ม ${formatPrice(orderTotal(order))})`} —
-                  เริ่มงานได้หลังมัดจำเข้า
+                  {seesMoney &&
+                    (hasWht ? (
+                      <>
+                        {" "}
+                        <b>{formatPrice(inst.firstNet)}</b> (โอนจริงหลังหัก ณ ที่จ่าย{whtRate} · ยอดงวด {formatPrice(order.deposit!.amount)} · ยอดเต็ม{" "}
+                        {formatPrice(orderTotal(order))})
+                      </>
+                    ) : (
+                      ` ${formatPrice(order.deposit!.amount)} (จากยอดเต็ม ${formatPrice(orderTotal(order))})`
+                    ))}{" "}
+                  — เริ่มงานได้หลังมัดจำเข้า
                 </span>
               ) : (
                 <span>
-                  รับมัดจำแล้ว{seesMoney && ` ${formatPrice(paid)}`} · <b>ค้างยอดคงเหลือ{seesMoney && ` ${formatPrice(bal)}`}</b> — ⛔
+                  รับมัดจำแล้ว{seesMoney && ` ${formatPrice(paid)}`} ·{" "}
+                  <b>ค้างยอดคงเหลือ{seesMoney && ` ${formatPrice(balWhole ? inst.secondNet : bal)}`}</b>
+                  {seesMoney && balWhole && ` (โอนจริงหลังหัก ณ ที่จ่าย${whtRate} · ยอดงวด ${formatPrice(bal)})`} — ⛔
                   ห้ามส่งของ ยิงเลขพัสดุ/พิมพ์ใบปะหน้า-ใบเสร็จไม่ได้จนกว่าจะเก็บครบ
                 </span>
               )}
@@ -5946,6 +5991,20 @@ export default function AdminOrderDetailPage() {
                   const dep = order.deposit;
                   const balance = Math.max(0, orderTotal(order) - dep.amount);
                   const phase: "first" | "balance" | "done" = !dep.firstPaidAt ? "first" : !dep.settledAt ? "balance" : "done";
+                  // ➗ ลูกค้าหัก ณ ที่จ่าย: เลขใหญ่ของงวด = "โอนจริง" (เลขที่ต้องเทียบเงินเข้าบัญชี ตรงกับ "ยอดชำระ" ในใบของ FlowAccount)
+                  // ยอดงวดรวม VAT + ยอดหักเป็นบรรทัดรอง — เจ้าของร้านสั่ง 11 ก.ย. 69 "โอนจริงมันควรเด่นชัด"
+                  const inst = depositInstallments(order)!;
+                  const hasWht = inst.wht > 0;
+                  const amountBlock = (gross: number, net: number, wht: number, hot: boolean, hotCls: string) => (
+                    <div className="flex shrink-0 flex-col items-end">
+                      <span className={hot ? hotCls : "text-xs font-bold tabular-nums text-slate-400"}>{formatPrice(hasWht ? net : gross)}</span>
+                      {hasWht && (
+                        <p className={`text-[10px] font-semibold tabular-nums ${hot ? "text-slate-500" : "text-slate-400"}`}>
+                          {hot ? "โอนจริงหลังหัก ณ ที่จ่าย · " : ""}ยอดงวด {formatPrice(gross)} · หัก −{formatPrice(wht)}
+                        </p>
+                      )}
+                    </div>
+                  );
                   const thDT = (iso: string) =>
                     new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
                   const rowQuiet = "text-xs font-semibold text-slate-400";
@@ -5980,15 +6039,13 @@ export default function AdminOrderDetailPage() {
                             dep.firstPaidAt && <p className="text-[10px] text-slate-400">{thDT(dep.firstPaidAt)}</p>
                           )}
                         </div>
-                        <span
-                          className={
-                            phase === "first"
-                              ? "text-xl font-extrabold tabular-nums tracking-tight text-slate-900"
-                              : "text-xs font-bold tabular-nums text-slate-400"
-                          }
-                        >
-                          {formatPrice(dep.amount)}
-                        </span>
+                        {amountBlock(
+                          dep.amount,
+                          inst.firstNet,
+                          inst.firstWht,
+                          phase === "first",
+                          `text-xl font-extrabold tabular-nums tracking-tight ${hasWht ? "text-emerald-700" : "text-slate-900"}`
+                        )}
                       </div>
                       <div className="mx-3 border-t border-dashed border-slate-200" />
 
@@ -6006,15 +6063,7 @@ export default function AdminOrderDetailPage() {
                             <p className="text-[10px] text-slate-400">เก็บก่อนจัดส่ง</p>
                           )}
                         </div>
-                        <span
-                          className={
-                            phase === "balance"
-                              ? "text-2xl font-extrabold tabular-nums tracking-tight text-rose-600"
-                              : "text-xs font-bold tabular-nums text-slate-400"
-                          }
-                        >
-                          {formatPrice(balance)}
-                        </span>
+                        {amountBlock(balance, inst.secondNet, inst.secondWht, phase === "balance", "text-2xl font-extrabold tabular-nums tracking-tight text-rose-600")}
                       </div>
 
                       {/* ช่องสลิปงวดที่ 2 — เกาะใต้แถวงวดที่มันเป็นหลักฐาน (ไม่ไปแข่งพื้นที่กับปุ่มยืนยัน) */}
@@ -6111,7 +6160,8 @@ export default function AdminOrderDetailPage() {
                                     onClick={confirmDepositFirst}
                                     className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700 active:scale-[.98]"
                                   >
-                                    ยืนยันรับมัดจำ <span className="tabular-nums">{formatPrice(dep.amount)}</span>
+                                    ยืนยันรับมัดจำ <span className="tabular-nums">{formatPrice(hasWht ? inst.firstNet : dep.amount)}</span>
+                                    {hasWht && <span className="ml-1 font-semibold opacity-80">(ยอดงวด {formatPrice(dep.amount)})</span>}
                                   </button>
                                 )}
                               </div>
@@ -6122,7 +6172,8 @@ export default function AdminOrderDetailPage() {
                                 onClick={confirmDepositSettled}
                                 className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[.98]"
                               >
-                                ยืนยันรับงวดที่ 2 ครบ <span className="tabular-nums">{formatPrice(balance)}</span>
+                                ยืนยันรับงวดที่ 2 ครบ <span className="tabular-nums">{formatPrice(hasWht ? inst.secondNet : balance)}</span>
+                                {hasWht && <span className="ml-1 font-semibold opacity-80">(ยอดงวด {formatPrice(balance)})</span>}
                               </button>
                             )}
                           </div>

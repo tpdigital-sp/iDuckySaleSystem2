@@ -869,6 +869,27 @@ export function orderNetTransfer(o: Order): number {
   return Math.max(0, orderTotal(o) - orderWhtAmount(o));
 }
 
+/**
+ * ➗ ออเดอร์มัดจำ 50% ที่ลูกค้าหัก ณ ที่จ่าย — แบ่งยอดหักตามสัดส่วนของแต่ละงวด ให้ "โอนจริง" ต่องวดตรงกับใบของ FlowAccount
+ * (11 ก.ย. 69 OD-260911-8026: ระบบโชว์งวดละ 10,973.12 แต่ใบยอดคงเหลือ BL002059 บอกยอดชำระ 10,665.46
+ *  เพราะหัก 3% ของงวดนั้น 307.66 — ก่อนหน้านี้หน้าออเดอร์โชว์แต่ยอดหักทั้งใบ 615.32 กับยอดเต็ม เจ้าของร้านเลยเห็นว่าไม่ตรง)
+ * first/second = ยอดงวด (รวม VAT) · firstWht/secondWht = หัก ณ ที่จ่ายของงวดนั้น · firstNet/secondNet = เงินที่ลูกค้าโอนจริง
+ * ไม่มีหัก ณ ที่จ่าย → wht 0 และ net = ยอดงวด · ไม่ใช่ออเดอร์มัดจำ → null
+ */
+export function depositInstallments(
+  o: Order
+): { first: number; second: number; wht: number; firstWht: number; secondWht: number; firstNet: number; secondNet: number } | null {
+  if (!o.deposit) return null;
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const total = orderTotal(o);
+  const first = r2(Math.min(total, Math.max(0, o.deposit.amount)));
+  const second = r2(Math.max(0, total - first));
+  const wht = orderWhtAmount(o);
+  const firstWht = wht > 0 && total > 0 ? r2((wht * first) / total) : 0;
+  const secondWht = r2(Math.max(0, wht - firstWht));
+  return { first, second, wht, firstWht, secondWht, firstNet: r2(first - firstWht), secondNet: r2(second - secondWht) };
+}
+
 /** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */
 export function orderBalance(o: Order): number {
   return Math.max(0, orderTotal(o) - (o.paidTotal ?? 0));

@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -541,6 +541,12 @@ export default function CustomerOrderPage() {
     order.claimOf || order.claimReason ? [] : order.items.filter((it) => it.qty > 0 && it.unitPrice <= 0);
   const step = STEP_OF[order.status];
   const balance = orderBalance(order);
+  // ➗ ออเดอร์มัดจำที่หัก ณ ที่จ่าย: ยอดงวด (รวม VAT) กับเงินที่ต้องโอนจริงต่างกัน — โชว์คู่กันทุกจุดที่บอกยอดงวด
+  const inst = depositInstallments(order);
+  const whtRateTxt = order.wht?.rate ? ` ${order.wht.rate}%` : "";
+  /** " (โอนจริง X หลังหัก ณ ที่จ่าย)" เมื่อยอดที่พูดถึงคือทั้งงวด — โอนมาบางส่วนแล้วไม่ใส่ (สัดส่วนหักจะไม่ตรง) */
+  const netNote = (gross: number, net: number, actual: number = gross) =>
+    inst && inst.wht > 0 && Math.abs(actual - gross) < 0.01 ? ` (โอนจริง ${formatPrice(net)} หลังหัก ณ ที่จ่าย${whtRateTxt})` : "";
   // สั่งเพิ่มได้เฉพาะออเดอร์ที่ยังไม่เข้าสายการผลิต
   const canAppend = (["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] as OrderStatus[]).includes(
     order.status
@@ -688,9 +694,10 @@ export default function CustomerOrderPage() {
             {order.deposit && !order.deposit.firstPaidAt ? (
               // ➗ ใบมัดจำ 50% ของ FlowAccount: งวดแรกตามใบแจ้งหนี้มัดจำ · ยอดคงเหลือเก็บก่อนจัดส่ง
               <>
-                ออเดอร์นี้ตกลงมัดจำก่อนเริ่มงาน — โอนมัดจำ {formatPrice(Math.min(orderTotal(order), order.deposit.amount))} ตามเอกสาร
-                {order.flowAccount.deposit?.net != null ? ` (โอนจริง ${formatPrice(order.flowAccount.deposit.net)} หลังหัก ณ ที่จ่าย)` : ""} แล้วแจ้งทางร้านได้เลย
-                ไม่ต้องแนบสลิปในหน้านี้ · ยอดคงเหลือ {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))} ชำระก่อนจัดส่ง
+                ออเดอร์นี้ตกลงมัดจำก่อนเริ่มงาน — โอนมัดจำ {formatPrice(inst!.first)} ตามเอกสาร
+                {netNote(inst!.first, inst!.firstNet)} แล้วแจ้งทางร้านได้เลย
+                ไม่ต้องแนบสลิปในหน้านี้ · ยอดคงเหลือ {formatPrice(inst!.second)}
+                {netNote(inst!.second, inst!.secondNet)} ชำระก่อนจัดส่ง
               </>
             ) : (
               <>
@@ -710,6 +717,7 @@ export default function CustomerOrderPage() {
         <div className="ord-note mt-4 p-4">
           <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
             📄 ยอดคงเหลืองวดหลัง {formatPrice(Math.max(0, orderTotal(order) - paidSoFar(order)))}
+            {inst ? netNote(inst.second, inst.secondNet, Math.max(0, orderTotal(order) - paidSoFar(order))) : ""}
           </p>
           <p className="mt-1 text-xs leading-relaxed">
             รับมัดจำงวดแรกแล้ว ✓ — ยอดคงเหลือชำระตามเอกสารของร้าน (ใบแจ้งหนี้ยอดคงเหลือ) ก่อนจัดส่ง แล้วแจ้งทางร้านได้เลย ไม่ต้องแนบสลิปในหน้านี้
@@ -750,9 +758,9 @@ export default function CustomerOrderPage() {
             {order.deposit && !order.deposit.firstPaidAt
               ? paidSoFar(order) > 0
                 ? `รับมาแล้ว ${formatPrice(paidSoFar(order))} จากมัดจำ ${formatPrice(Math.min(orderTotal(order), order.deposit.amount))} — โอนส่วนที่ขาดแล้วแนบสลิปเพิ่ม ทางร้านจะเริ่มงานทันทีที่ครบ`
-                : `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(dueNow)} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
+                : `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(dueNow)}${inst ? netNote(inst.first, inst.firstNet, dueNow) : ""} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
               : order.deposit && !order.deposit.settledAt
-                ? `รับแล้ว ${formatPrice(paidSoFar(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} — โอนส่วนที่เหลือแล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ`
+                ? `รับแล้ว ${formatPrice(paidSoFar(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} — โอนส่วนที่เหลือ ${formatPrice(dueNow)}${inst ? netNote(inst.second, inst.secondNet, dueNow) : ""} แล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ`
                 : paidSoFar(order) > 0
                   ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(paidSoFar(order))} จาก ${formatPrice(orderTotal(order))})`
                   : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
@@ -1126,6 +1134,7 @@ export default function CustomerOrderPage() {
                   <p className="mt-1 text-xs t-soft">
                     ออเดอร์ {order.id} · {depositFirst ? "มัดจำที่ต้องโอน" : "ยอดที่ต้องโอน"}{" "}
                     <strong className="t-ink">{formatPrice(amountDueNow(order))}</strong>
+                    {depositFirst && inst ? netNote(inst.first, inst.firstNet, amountDueNow(order)) : ""}
                   </p>
                 </div>
                 <div className="px-6 pb-6 pt-2">
@@ -1142,7 +1151,8 @@ export default function CustomerOrderPage() {
                     </p>
                     {depositFirst && (
                       <p className="mt-1.5">
-                        ออเดอร์นี้ตกลงมัดจำ 50% — โอน {formatPrice(amountDueNow(order))} จากยอดทั้งหมด {formatPrice(orderTotal(order))}{" "}
+                        ออเดอร์นี้ตกลงมัดจำ 50% — โอน {formatPrice(amountDueNow(order))}
+                        {inst ? netNote(inst.first, inst.firstNet, amountDueNow(order)) : ""} จากยอดทั้งหมด {formatPrice(orderTotal(order))}{" "}
                         ส่วนที่เหลือชำระก่อนจัดส่ง
                       </p>
                     )}
@@ -1848,12 +1858,25 @@ export default function CustomerOrderPage() {
                   <span className="t-soft">มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
                   <span className={order.deposit.firstPaidAt ? "t-ok" : "t-danger"}>{formatPrice(order.deposit.amount)}</span>
                 </div>
+                {/* ➗ หัก ณ ที่จ่าย: เงินโอนจริงของงวด (ตรงกับ "ยอดชำระ" ในใบของร้าน) */}
+                {inst && inst.wht > 0 && (
+                  <div className="flex justify-between">
+                    <span className="t-soft">↳ โอนจริงหลังหัก ณ ที่จ่าย{whtRateTxt}</span>
+                    <span className="t-soft">{formatPrice(inst.firstNet)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-semibold">
                   <span className="t-soft">ยอดคงเหลือ {order.deposit.settledAt ? "· ครบแล้ว ✓" : "· ชำระก่อนจัดส่ง"}</span>
                   <span className={order.deposit.settledAt ? "t-ok" : "t-danger"}>
                     {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))}
                   </span>
                 </div>
+                {inst && inst.wht > 0 && (
+                  <div className="flex justify-between">
+                    <span className="t-soft">↳ โอนจริงหลังหัก ณ ที่จ่าย{whtRateTxt}</span>
+                    <span className="t-soft">{formatPrice(inst.secondNet)}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
