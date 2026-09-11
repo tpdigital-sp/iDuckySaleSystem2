@@ -43,6 +43,20 @@ export async function POST(req: Request) {
   const result: FolderMatchResult = matchFoldersToOrders(paths, fresh, cards);
   const already = matchFoldersToOrders(paths, all.filter((o) => o.productionSent), cards).matched;
 
+  // โฟลเดอร์ที่มีไฟล์ OD แต่ใบไม่อยู่ในกองรอผลิต → บอกสถานะจริงของใบนั้น (ส่งไปแล้ว/ยกเลิก/ยังไม่ชำระ) แทนคำว่า "ไม่อยู่ในคิว"
+  const NOT_IN_QUEUE = /\((OD-\d{6}-\d{3,}) ไม่อยู่ในคิวรอผลิต\)$/;
+  const missingIds = [...new Set(result.skippedNames.map((n) => n.match(NOT_IN_QUEUE)?.[1]).filter((x): x is string => !!x))];
+  if (missingIds.length) {
+    const { data: miss } = await sb.from("orders").select("id,status:data->>status").in("id", missingIds);
+    const statusOf = new Map((miss ?? []).map((r) => [r.id as string, String(r.status ?? "")]));
+    result.skippedNames = result.skippedNames.map((n) => {
+      const id = n.match(NOT_IN_QUEUE)?.[1];
+      if (!id) return n;
+      const st = statusOf.get(id);
+      return n.replace(NOT_IN_QUEUE, st ? `(${id} สถานะ ${st} — ไม่ต้องทำอะไร)` : `(${id} ไม่พบออเดอร์นี้ในระบบ)`);
+    });
+  }
+
   const picks = (body.pick ?? []).filter((p) => p && typeof p.orderId === "string" && typeof p.folder === "string");
   let applied = 0;
   if (body.apply) {

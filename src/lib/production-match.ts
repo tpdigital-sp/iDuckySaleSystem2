@@ -8,6 +8,8 @@ import type { TPGraphicCard } from "@/lib/server/tp-report"; // type-only (ไ�
  *   · คำนำหน้าในวงเล็บเปลี่ยนได้ตลอด ((เร่งขึ้นตย)/(ขึ้นตยแล้ว)/(ids)/(Detail)) · ขีดนำหน้า · เลขลำดับ "7."
  *   · "(ids)" = งานจากเว็บ iDucky Store (บอร์ดกราฟฟิกใส่ให้) แต่ไม่มีเลข OD ในชื่อ
  * ลำดับการจับคู่ (ตรวจข้อมูลจริง 11 ก.ย. 69: โฟลเดอร์ (ids) 28 ใบ จับได้ 27):
+ *   0. 🎯 ในโฟลเดอร์งานของเว็บมีไฟล์ "OD-260909-1588.html" (ลิงก์เปิดออเดอร์ที่ระบบสร้างให้กราฟฟิก) — เลข OD ในชื่อไฟล์ = ชัวร์ที่สุด ไม่ต้องเดา
+ *      หน้าเว็บส่งพาธไฟล์นั้นมาด้วย (ProductionFolderDrop เก็บเฉพาะไฟล์ที่ชื่อมีเลข OD) → โฟลเดอร์แม่ของไฟล์ = โฟลเดอร์ของใบนั้น
  *   1. ชื่อโฟลเดอร์ (ตัดวงเล็บ/ขีด/เลขลำดับ/ช่องว่าง) ตรงกับ folderName ของการ์ดกราฟฟิก iducky-<OD> → ชัวร์
  *   2. ส่วนชื่อลูกค้า (ก่อน " - ") ตรงกับชื่อลูกค้าในออเดอร์แบบเป๊ะ → ชัวร์ถ้ามีออเดอร์เดียวที่ยังไม่เข้าผลิต · หลายใบ = คลุมเครือ ให้คนเลือก
  *   3. ชื่อลูกค้าซ้อนกัน (ลูกค้าเปลี่ยนชื่อ/ชื่อยาว) เฉพาะโฟลเดอร์ที่มี (ids) → คลุมเครือเสมอ
@@ -18,7 +20,7 @@ export interface FolderMatch {
   folder: string;
   orderId: string;
   customer: string;
-  how: "card" | "name";
+  how: "file" | "card" | "name";
 }
 export interface FolderAmbiguous {
   folder: string;
@@ -65,6 +67,8 @@ export function leafName(path: string): string {
   return parts[parts.length - 1] ?? "";
 }
 
+const OD_RE = /OD-\d{6}-\d{3,}/i;
+
 export function matchFoldersToOrders(
   folderPaths: string[],
   orders: Order[],
@@ -86,10 +90,40 @@ export function matchFoldersToOrders(
   const taken = new Set<string>();
   const seenFolder = new Set<string>();
 
+  // 0) ไฟล์ OD-xxx.html ในโฟลเดอร์งาน → เลข OD ของโฟลเดอร์แม่ (พาธที่ชี้ไฟล์ = ชั้นในสุดชื่อมีเลข OD และมีนามสกุล)
+  const odByFolder = new Map<string, string>();
+  const folderPathsOnly: string[] = [];
   for (const raw of folderPaths) {
+    const parts = String(raw || "").split("/").filter(Boolean);
+    const leaf = parts[parts.length - 1] ?? "";
+    const m = leaf.match(OD_RE);
+    if (m && /\.[a-z0-9]{2,5}$/i.test(leaf) && parts.length >= 2) {
+      odByFolder.set(parts[parts.length - 2], m[0].toUpperCase());
+      continue;
+    }
+    folderPathsOnly.push(raw);
+  }
+
+  for (const raw of folderPathsOnly) {
     const name = leafName(raw);
     if (!name || seenFolder.has(name)) continue;
     seenFolder.add(name);
+
+    // 0) มีไฟล์ OD ในโฟลเดอร์ → ใช้เลขนั้นเลย (ใบไม่อยู่ในกองผู้ท้าชิง = ส่งไปแล้ว/ยังไม่ชำระ → ข้ามเงียบ ไม่เดาชื่อต่อ)
+    const odFile = odByFolder.get(name);
+    if (odFile) {
+      res.scanned++;
+      const o = orderById.get(odFile);
+      if (o && !taken.has(odFile)) {
+        taken.add(odFile);
+        res.matched.push({ folder: name, orderId: odFile, customer: o.customer, how: "file" });
+      } else if (!o) {
+        res.skipped++;
+        if (res.skippedNames.length < 60) res.skippedNames.push(`${name} (${odFile} ไม่อยู่ในคิวรอผลิต)`);
+      }
+      continue;
+    }
+
     const n = normFolder(name);
     // โฟลเดอร์งานตั้งชื่อ "ลูกค้า - สินค้า" เสมอ — ชั้นหมวด (UV/SUB/งานกระดาษ/- เพิ่มเร่ง) และโฟลเดอร์ย่อยในงาน (file/รองหลัง) ไม่มีขีดคั่น → ข้ามเงียบ ไม่นับ
     if (!n || !/\s-|-\s/.test(name.replace(/^[-+\s]+/, ""))) continue;

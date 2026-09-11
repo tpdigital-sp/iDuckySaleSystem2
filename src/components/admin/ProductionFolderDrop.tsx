@@ -29,8 +29,10 @@ interface MatchResp {
 }
 
 const MAX_DEPTH = 4;
+/** ไฟล์ในโฟลเดอร์งานที่ชื่อมีเลขออเดอร์ ("OD-260909-1588.html" ที่ระบบสร้างให้กราฟฟิก) — ส่งพาธไปด้วย เซิร์ฟเวอร์ใช้เลขนี้จับคู่แบบชัวร์ ไม่ต้องเดาจากชื่อโฟลเดอร์ */
+const OD_FILE_RE = /OD-\d{6}-\d{3,}/i;
 
-/** เดินโฟลเดอร์ที่ลากมา → พาธของทุกโฟลเดอร์ย่อย (ไม่อ่านไฟล์) */
+/** เดินโฟลเดอร์ที่ลากมา → พาธของทุกโฟลเดอร์ย่อย + ไฟล์ที่ชื่อมีเลข OD (อ่านแค่ชื่อ ไม่อ่านเนื้อไฟล์) */
 async function walkEntry(entry: FileSystemEntry, prefix: string, depth: number, out: string[]): Promise<void> {
   if (!entry.isDirectory) return;
   const path = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -44,7 +46,11 @@ async function walkEntry(entry: FileSystemEntry, prefix: string, depth: number, 
     if (!batch.length) break;
     kids.push(...batch);
   }
-  for (const k of kids) if (k.isDirectory && !k.name.startsWith(".")) await walkEntry(k, path, depth + 1, out);
+  for (const k of kids) {
+    if (k.name.startsWith(".")) continue;
+    if (k.isDirectory) await walkEntry(k, path, depth + 1, out);
+    else if (OD_FILE_RE.test(k.name)) out.push(`${path}/${k.name}`);
+  }
 }
 
 export default function ProductionFolderDrop({ onApplied }: { onApplied: () => void }) {
@@ -105,8 +111,9 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       Array.from(files ?? []).forEach((f) => {
         const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || "";
         const parts = rel.split("/").filter(Boolean);
-        parts.pop(); // ตัดชื่อไฟล์ เหลือโฟลเดอร์
+        const fileName = parts.pop() ?? ""; // ตัดชื่อไฟล์ เหลือโฟลเดอร์
         for (let i = 1; i <= Math.min(parts.length, MAX_DEPTH); i++) out.add(parts.slice(0, i).join("/"));
+        if (OD_FILE_RE.test(fileName) && parts.length) out.add([...parts, fileName].join("/"));
       });
       await scan([...out]);
     },
@@ -201,7 +208,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                     <span className="dkb-num font-bold">{m.orderId}</span>
                     <span>{m.customer}</span>
                     <span style={{ color: "var(--dk-faint)" }}>
-                      ← {m.folder} {m.how === "name" ? "(จับด้วยชื่อลูกค้า)" : ""}
+                      ← {m.folder} {m.how === "file" ? "(จากไฟล์ OD ในโฟลเดอร์)" : m.how === "name" ? "(จับด้วยชื่อลูกค้า)" : ""}
                     </span>
                   </li>
                 ))}
