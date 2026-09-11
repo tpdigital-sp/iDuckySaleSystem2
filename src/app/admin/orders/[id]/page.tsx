@@ -2572,7 +2572,7 @@ export default function AdminOrderDetailPage() {
       order.editRequest.text
     );
     setOrder(next);
-    if (!demo) void saveOrWarn(next);
+    if (!demo) void saveOrWarn(next).then(() => window.dispatchEvent(new Event("iducky:edit-requests-changed")));
   }
 
   /**

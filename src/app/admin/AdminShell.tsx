@@ -15,6 +15,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   // 📦 งานขายรายวัน
   { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view", group: "งานขาย" },
+  { href: "/admin/edit-requests", label: "คำขอแก้ไขออเดอร์", emoji: "✏️", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },
@@ -70,6 +71,8 @@ const MENU_GROUPS: {
 let ratingsBadgeCache: { at: number; rows: { id: string }[] } | null = null;
 /** แคชป้าย "ใบเสนอราคาที่ลูกค้าตกลงแล้ว รอเปิดงาน" — งานค้างจริง แคชสั้นกว่าเรตติ้ง (1 นาที) */
 let quotesBadgeCache: { at: number; n: number } | null = null;
+/** แคชป้าย "ลูกค้าขอแก้ไขออเดอร์" — เหตุผลเดียวกับใบเสนอราคา: เมนูอยู่ทุกหน้า ไม่ต้องถามฐานทุกคลิก */
+let editReqBadgeCache: { at: number; n: number } | null = null;
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -108,6 +111,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // badge แจ้งใบเสนอราคาที่ "ลูกค้ากดตกลงแล้ว แต่ยังไม่มีใครกดสร้างออเดอร์"
   // ไม่ใช่ป้าย "ยังไม่ได้เปิดดู" แบบเรตติ้ง — เป็นงานค้างจริง ตัวเลขจะหายเองเมื่อกดสร้างออเดอร์ครบ
   const [waitingQuotes, setWaitingQuotes] = useState(0);
+  // badge แจ้ง "ลูกค้าขอแก้ไขออเดอร์" ที่ยังไม่มีใครกดจัดการ — งานค้างจริง หายเองเมื่อกด "จัดการแล้ว" ครบ
+  const [openEditRequests, setOpenEditRequests] = useState(0);
 
   // ── โลโก้หลังบ้าน — กดที่โลโก้มุมซ้ายบนเพื่อเปลี่ยนรูปได้เลย (เก็บในแถวเมนู __site_nav__) ──
   const [adminLogo, setAdminLogo] = useState<string | undefined>(undefined);
@@ -260,6 +265,42 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // (usePolling หยุดถามเองตอนสลับแท็บไป แล้วถามทันทีตอนกลับมา)
   usePolling(refreshQuoteBadge, { intervalMs: 90_000, enabled: quoteBadgeReady });
 
+  /**
+   * ป้ายเตือน "ลูกค้าขอแก้ไขออเดอร์" ข้างเมนูคำขอแก้ไข — ลูกค้าพิมพ์คำขอจากหน้าออเดอร์ของตัวเองตอนไหนก็ได้
+   * เดิมต้องไล่ดูป้ายเล็ก ๆ ในลิสต์คำสั่งซื้อเอง (เจ้าของร้านสั่ง 11 ก.ย. 69)
+   */
+  const editReqBadgeReady = pathname !== "/admin/login" && perms.includes("orders.view");
+  const refreshEditReqBadge = useCallback(async () => {
+    if (!editReqBadgeReady) return;
+    try {
+      const r = await fetch("/api/admin/orders/edit-requests", { cache: "no-store" });
+      const j = r.ok ? await r.json() : { n: 0 };
+      const n = Number(j?.n) || 0;
+      editReqBadgeCache = { at: Date.now(), n };
+      setOpenEditRequests(n);
+    } catch {
+      /* เน็ตสะดุด → คงเลขเดิมไว้ */
+    }
+  }, [editReqBadgeReady]);
+  useEffect(() => {
+    if (!editReqBadgeReady) return;
+    // อยู่หน้าคำขอ/หน้าออเดอร์ = ดึงสด (เพิ่งกดจัดการแล้ว ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาที
+    const fresh = pathname.startsWith("/admin/edit-requests") || pathname.startsWith("/admin/orders/");
+    const cached = editReqBadgeCache && Date.now() - editReqBadgeCache.at < 60_000 ? editReqBadgeCache.n : null;
+    if (cached !== null && !fresh) {
+      setOpenEditRequests(cached);
+      return;
+    }
+    void refreshEditReqBadge();
+  }, [editReqBadgeReady, pathname, refreshEditReqBadge]);
+  usePolling(refreshEditReqBadge, { intervalMs: 90_000, enabled: editReqBadgeReady });
+  // หน้าคำขอแก้ไข / หน้าออเดอร์กด "จัดการแล้ว" → ยิงอีเวนต์ให้ป้ายนับใหม่ทันที
+  useEffect(() => {
+    const on = () => void refreshEditReqBadge();
+    window.addEventListener("iducky:edit-requests-changed", on);
+    return () => window.removeEventListener("iducky:edit-requests-changed", on);
+  }, [refreshEditReqBadge]);
+
   const isLoginPage = pathname === "/admin/login";
 
   useEffect(() => {
@@ -337,7 +378,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
    * ป้ายจำนวนของเมนูแต่ละอัน (0 = ไม่ต้องขึ้นป้าย)
    * ประเมินใหม่ที่ยังไม่ได้เปิดดู · ใบเสนอราคาที่ลูกค้าตกลงแล้วแต่ยังไม่ได้เปิดงาน
    */
-  const badgeOf = (href: string) => (href === "/admin/ratings" ? newRatings : href === "/admin/quotes" ? waitingQuotes : 0);
+  const badgeOf = (href: string) =>
+    href === "/admin/ratings" ? newRatings : href === "/admin/quotes" ? waitingQuotes : href === "/admin/edit-requests" ? openEditRequests : 0;
   /** ป้ายทั้งแถบรวมกัน — ใช้บนปุ่ม ☰ ของมือถือ ตอนเมนูปิดอยู่จะได้ยังเห็นว่ามีงานค้าง */
   const badgeAll = menu.reduce((n, m) => n + badgeOf(m.href), 0);
 
@@ -392,7 +434,15 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           setQuery("");
         }}
         aria-current={active ? "page" : undefined}
-        title={rail ? (hasBadge && m.href === "/admin/quotes" ? `${m.label} — ลูกค้าตกลงแล้ว ${badgeN} ใบ รอสร้างออเดอร์` : m.label) : undefined}
+        title={
+          rail
+            ? hasBadge && m.href === "/admin/quotes"
+              ? `${m.label} — ลูกค้าตกลงแล้ว ${badgeN} ใบ รอสร้างออเดอร์`
+              : hasBadge && m.href === "/admin/edit-requests"
+                ? `${m.label} — ลูกค้าขอแก้ไข ${badgeN} ใบ ยังไม่ได้จัดการ`
+                : m.label
+            : undefined
+        }
         className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${
           rail ? "justify-center px-0" : "gap-2.5 px-2.5"
         } ${
