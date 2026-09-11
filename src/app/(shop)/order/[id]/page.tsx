@@ -989,8 +989,11 @@ export default function CustomerOrderPage() {
             {STEPS.map((label, i) => {
               const done = i < step;
               const now = i === step;
+              // 🚚 ยิงเลขพัสดุแล้ว = ของออกจากร้านแล้ว ขั้น "จัดส่ง" ถือว่าไปถึงแล้ว (เส้นเต็ม + จุดสว่าง)
+              // ไม่ใช่ "กำลังรอทำ" เหมือนขั้นอื่น — เดิมเส้นก่อนถึงจัดส่งยังจาง ลูกค้าเห็นเป็นค้างอยู่ที่ผลิต
+              const reached = now && order.status === "จัดส่งแล้ว";
               return (
-                <li key={label} className={`ord-step${done ? " done" : now ? " now" : ""}`}>
+                <li key={label} className={`ord-step${done ? " done" : now ? `${reached ? " done" : ""} now` : ""}`}>
                   <span className="sline" />
                   <span className="sdot">{STEP_ART[i] ? <img src={STEP_ART[i]!} alt="" /> : "✓"}</span>
                   <span className="slabel">{label}</span>
