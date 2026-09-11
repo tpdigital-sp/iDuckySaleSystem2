@@ -945,6 +945,8 @@ export default function AdminOrderDetailPage() {
   // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวนไม่แตะ)
   const [editSel, setEditSel] = useState<number | null>(null);
   const [selDraft, setSelDraft] = useState("");
+  /** ✏️ ชื่อรายการระหว่างแก้ (ช่องเดียวกับแก้รายละเอียด — เจ้าของร้านสั่ง 11 ก.ย. 69 ให้แก้หัวข้อรายการได้) */
+  const [nameDraft, setNameDraft] = useState("");
   // 💬 ตีราคา — งานสั่งทำ (กำหนดขนาดเอง/ช่องกรอก) เข้ามาที่ราคา ฿0 แอดมินใส่ราคาต่อหน่วยที่นี่
   const [editPrice, setEditPrice] = useState<number | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
@@ -959,17 +961,35 @@ export default function AdminOrderDetailPage() {
   const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
   /** กันแทนที่รายการซ้ำระหว่างรอผลบันทึกของรอบก่อน */
   const replaceBusy = useRef(false);
-  function saveSelections(itemIndex: number, text: string) {
+  /**
+   * บันทึกชื่อ + รายละเอียดของรายการจากช่องแก้ (ช่องเดียวกัน)
+   * ชื่อ: ว่าง = คงชื่อเดิม · เปลี่ยนชื่อต้องแนบ nameWas (ชื่อเดิม) ไปด้วย — เซิร์ฟเวอร์จับคู่รายการตามลำดับ+ชื่อ
+   * ไม่แนบ = ถูกมองเป็นรายการใหม่ ติ๊กกราฟฟิก/แบบงานที่คนอื่นเพิ่งทำระหว่างหน้านี้เปิดค้างจะหาย (reconcileFullEdit)
+   */
+  function saveSelections(itemIndex: number, text: string, name?: string) {
     if (!order) return;
     const cur = order.items[itemIndex];
     setEditSel(null);
-    if (!cur || !selectionsDraftChanged(cur, text)) return;
+    if (!cur) return;
+    const newName = (name ?? cur.name).trim() || cur.name;
+    const nameChanged = newName !== cur.name;
+    const selChanged = selectionsDraftChanged(cur, text);
+    if (!nameChanged && !selChanged) return;
     // ⚠️ ทุกจออ่านตัวเลือกแบบหัวข้อ (sel) ก่อนข้อความ — ต้องเขียนกลับทั้ง sel และ selections ไม่งั้นแก้แล้วไม่เปลี่ยน (ดู lib/edit-selections)
-    const patch = applySelectionsDraft(cur, text);
+    const patch: Partial<OrderItem> = selChanged ? applySelectionsDraft(cur, text) : {};
+    if (nameChanged) {
+      patch.name = newName;
+      patch.nameWas = cur.name; // ชื่อที่ฐานถืออยู่ (บันทึกสำเร็จแล้วถอด nameWas ออก → แก้ซ้ำรอบต่อไปยังจับคู่ถูก)
+    }
     const items = order.items.map((it, i) => (i === itemIndex ? { ...it, ...patch } : it));
-    const next = withLog({ ...order, items }, actor, "แก้รายละเอียดรายการ", `${order.items[itemIndex]?.name}`);
+    const what = nameChanged && selChanged ? "แก้ชื่อ+รายละเอียดรายการ" : nameChanged ? "แก้ชื่อรายการ" : "แก้รายละเอียดรายการ";
+    const next = withLog({ ...order, items }, actor, what, nameChanged ? `${cur.name} → ${newName}` : cur.name);
     setOrder(next);
-    if (!demo) void saveOrWarn(next);
+    if (demo) return;
+    void saveOrWarn(next).then((ok) => {
+      if (!ok || !nameChanged) return;
+      setOrder((o) => (o ? { ...o, items: o.items.map((it) => (it.nameWas ? { ...it, nameWas: undefined } : it)) } : o));
+    });
   }
 
   /*
@@ -4050,22 +4070,43 @@ export default function AdminOrderDetailPage() {
                         </span>
                       )}
                       {editSel === i ? (
-                        <div className="mt-1">
-                          <textarea
+                        // ✏️ ช่องแก้ชื่อ + รายละเอียด (เจ้าของร้านสั่ง 11 ก.ย. 69 ให้แก้หัวข้อรายการได้ — OD-260911-5586)
+                        //    บันทึกเมื่อโฟกัสออกจากทั้งกล่อง (สลับระหว่างช่องชื่อ↔รายละเอียดยังไม่บันทึก) · Cmd/Ctrl+Enter = บันทึก · Esc = ยกเลิก
+                        <div
+                          className="mt-1 space-y-1"
+                          onBlur={(e) => {
+                            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                            saveSelections(i, selDraft, nameDraft);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setEditSel(null);
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveSelections(i, selDraft, nameDraft);
+                          }}
+                        >
+                          <input
                             autoFocus
+                            type="text"
+                            value={nameDraft}
+                            onChange={(e) => setNameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !(e.metaKey || e.ctrlKey)) {
+                                e.preventDefault();
+                                saveSelections(i, selDraft, nameDraft);
+                              }
+                            }}
+                            placeholder={it.name}
+                            aria-label="ชื่อรายการ"
+                            className="w-full rounded-lg border border-amber-300 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          />
+                          <textarea
                             value={selDraft}
                             onChange={(e) => setSelDraft(e.target.value)}
-                            onBlur={() => saveSelections(i, selDraft)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Escape") setEditSel(null);
-                              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveSelections(i, selDraft);
-                            }}
                             rows={4}
                             placeholder="รายละเอียดงาน เช่น ขนาด · สี · ตำแหน่งลาย"
                             className="w-full resize-y rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-200"
                           />
                           <p className="mt-0.5 text-[10px] text-slate-400">
-                            บรรทัดละหัวข้อ “หัวข้อ: ค่า” · คลิกนอกช่องเพื่อบันทึก · Esc = ยกเลิก · ระบบลงประวัติว่าใครแก้
+                            ช่องบน = ชื่อรายการ (ว่าง = คงชื่อเดิม) · รายละเอียดบรรทัดละหัวข้อ “หัวข้อ: ค่า” · คลิกนอกช่องเพื่อบันทึก · Esc = ยกเลิก · ระบบลงประวัติว่าใครแก้
                           </p>
                         </div>
                       ) : (
@@ -4076,13 +4117,14 @@ export default function AdminOrderDetailPage() {
                               type="button"
                               onClick={() => {
                                 setSelDraft(selectionsDraft(it));
+                                setNameDraft(it.name);
                                 setEditSel(i);
                                 setItemOpen((cur) => ({ ...cur, [i]: true }));
                               }}
-                              title="แก้รายละเอียดของรายการนี้ (ชื่อแก้ไม่ได้ · จำนวนแก้ที่ช่องจำนวน · ราคาแก้ที่ช่องราคา)"
+                              title="แก้ชื่อ/รายละเอียดของรายการนี้ (จำนวนแก้ที่ช่องจำนวน · ราคาแก้ที่ช่องราคา)"
                               className="mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
                             >
-                              ✏️ แก้รายละเอียด
+                              ✏️ แก้ชื่อ/รายละเอียด
                             </button>
                           )}
                           {/* 🛠 แก้ตัวเลือก — เจ้าของร้านเลือกให้อยู่ตรงนี้ข้าง "แก้รายละเอียด" (10 ก.ย. 69) · เฉพาะรายการที่หยิบจากหน้าร้าน

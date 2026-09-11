@@ -119,11 +119,21 @@ function reconcileItem(cur: OrderItem | undefined, inc: OrderItem, clientSavedAt
   return out;
 }
 
-/** แอดมินสิทธิ์เต็ม: ก้อนที่ส่งมาคือของจริงทั้งใบ ยกเว้นติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (จับคู่รายการตามลำดับ+ชื่อ) */
+/**
+ * รายการที่ส่งมาคือรายการเดิมในฐานไหม (จับคู่ตามลำดับ+ชื่อ) — แอดมินแก้ชื่อรายการในหน้าออเดอร์ได้ (11 ก.ย. 69)
+ * หน้าจอส่งชื่อเดิมมาใน nameWas → ยังนับเป็นรายการเดิม ไม่งั้นติ๊ก/แบบงานที่คนอื่นเพิ่งทำจะหายเพราะถูกมองเป็นรายการใหม่
+ */
+function sameLine(cur: OrderItem | undefined, inc: OrderItem | undefined): cur is OrderItem {
+  return !!cur && !!inc && (cur.name === inc.name || (typeof inc.nameWas === "string" && cur.name === inc.nameWas));
+}
+
+/** แอดมินสิทธิ์เต็ม: ก้อนที่ส่งมาคือของจริงทั้งใบ ยกเว้นติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (จับคู่รายการตามลำดับ+ชื่อ/ชื่อเดิม) */
 function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: string, now: string): Order {
   const items = (incoming.items ?? []).map((inc, i) => {
     const cur = existing.items?.[i];
-    return cur && cur.name === inc.name ? reconcileItem(cur, inc, clientSavedAt, now) : inc;
+    const clean: OrderItem = { ...inc };
+    delete clean.nameWas; // ชื่อเดิมใช้จับคู่ในคำขอนี้เท่านั้น — ไม่เก็บลงฐาน
+    return sameLine(cur, inc) ? reconcileItem(cur, clean, clientSavedAt, now) : clean;
   });
   // ฟิลด์ที่เซิร์ฟเวอร์เป็นเจ้าของ — หน้าจอแอดมินไม่รู้จัก ส่งก้อนกลับมาโดยไม่มี = ห้ามหาย
   return { ...incoming, items, balanceNotified: existing.balanceNotified };
@@ -735,7 +745,7 @@ export async function PATCH(req: Request) {
 
   // 📦 แอดมินเพิ่งยืนยันสต๊อก/คิวผลิตของรายการที่สั่งจำนวนมาก → แจ้งลูกค้าทางไลน์ทันที
   const stockJustConfirmed = existing.items.filter(
-    (old, i) => old.needStockCheck && !toSave.items[i]?.needStockCheck && old.name === toSave.items[i]?.name
+    (old, i) => old.needStockCheck && !toSave.items[i]?.needStockCheck && sameLine(old, order.items?.[i])
   );
   if (stockJustConfirmed.length) {
     const origin = new URL(req.url).origin;
@@ -758,8 +768,8 @@ export async function PATCH(req: Request) {
     const total = orderTotal(toSave);
     const bal = Math.max(0, total - (toSave.paidTotal ?? 0));
     const quoted = existing.items
-      .map((old, i) => ({ old, now: toSave.items[i] }))
-      .filter((p) => p.old.unitPrice <= 0 && p.now && p.now.name === p.old.name)
+      .map((old, i) => ({ old, now: toSave.items[i], inc: order.items?.[i] }))
+      .filter((p) => p.old.unitPrice <= 0 && p.now && sameLine(p.old, p.inc))
       .map((p) => {
         const line = `• ${p.now!.name} ×${p.now!.qty.toLocaleString("th-TH")} = ${(p.now!.qty * p.now!.unitPrice).toLocaleString("th-TH")} บาท`;
         // ที่มาของราคาที่แอดมินพิมพ์ไว้ (เช่น "230 + 10 + 50 = 290") — ลูกค้าจะได้ไม่ต้องทักถาม
