@@ -228,16 +228,33 @@ export default function PrintOrderPage() {
             // (ครั้งแรกที่พิมพ์ใบปะหน้าจริง = ล็อกที่อยู่ฝั่งลูกค้าด้วย)
             if (chosen.length > 0) {
               const now = new Date().toISOString();
+              // บันทึกไม่สำเร็จต้องบอกคนปริ้น — เดิมกลืนเงียบ สถานะฝั่งเซิร์ฟเวอร์ไม่เลื่อนแต่หน้าจอโชว์ว่าเลื่อนแล้ว
+              const fails: string[] = [];
+              const jobs: Promise<void>[] = [];
               for (const o of orders) {
                 // ใบที่ยังไม่จ่ายครบไม่ออกใบเสร็จ — ประวัติต้องไม่บันทึกเกินจริง
                 const docsFor = chosen.filter((k) => k !== "receipt" || orderFullyPaid(o));
                 if (docsFor.length === 0) continue;
-                fetch("/api/admin/orders/printed", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ orderId: o.id, docs: docsFor }),
-                }).catch(() => {});
+                jobs.push(
+                  fetch("/api/admin/orders/printed", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ orderId: o.id, docs: docsFor }),
+                  })
+                    .then(async (r) => {
+                      if (r.ok) return;
+                      const j = (await r.json().catch(() => ({}))) as { error?: string };
+                      fails.push(`${o.id}: ${j.error ?? `HTTP ${r.status}`}`);
+                    })
+                    .catch(() => {
+                      fails.push(`${o.id}: เชื่อมต่อเซิร์ฟเวอร์ไม่ได้`);
+                    })
+                );
               }
+              void Promise.all(jobs).then(() => {
+                if (fails.length)
+                  window.alert(`⚠️ บันทึก "ปริ้นแล้ว" ไม่สำเร็จ — สถานะออเดอร์ยังไม่เลื่อนเป็นกำลังผลิต\n${fails.join("\n")}`);
+              });
               setOrders((list) =>
                 list.map((o) => {
                   // ปริ้นใบงาน/ใบปะหน้า (เก็บเงินครบแล้ว) = งานเข้าไลน์ผลิต → เลื่อนสถานะให้ตรงกับฝั่งเซิร์ฟเวอร์

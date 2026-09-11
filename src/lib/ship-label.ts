@@ -38,6 +38,22 @@ export function normalizeShipLabel(label: string | null | undefined, cost: numbe
   return shippingMethodByPrice(methods, cost)?.name ?? s;
 }
 
+/** ออเดอร์นี้ลูกค้ามารับเองที่ร้าน (ไม่มีพัสดุ) — ดูจากป้ายวิธีส่งที่เก็บไว้ · ค่าส่ง 0 อย่างเดียวตัดสินไม่ได้ (ส่งฟรีก็ 0) */
+export function isPickupOrder(o: { shipping?: string; shippingLabel?: string | null }): boolean {
+  return PICKUP_RE.test(o.shippingLabel ?? "") || PICKUP_RE.test(o.shipping ?? "");
+}
+
+/**
+ * ชื่อวิธีส่งแบบไม่มีราคาติดท้าย ("EMS (50)" → "EMS") — ไว้โชว์เป็นป้ายใหญ่ ราคาอยู่ในตารางยอดเงินอยู่แล้ว
+ * (สูตรเดียวกับป้ายบนใบปะหน้า)
+ */
+export function stripShipPrice(label: string): string {
+  return label
+    .replace(/[\s(\[]*(?:฿|บาท)?\s*\d[\d,.]*\s*(?:฿|บาท|.-)?\s*[)\]]*\s*$/u, "")
+    .replace(/[\s·—–-]+$/u, "")
+    .trim();
+}
+
 /** ชื่อวิธีส่งสำหรับแสดงผล — ป้ายจริง → จับคู่ราคา → ค่าเก่า order.shipping */
 export function resolveShipLabel(
   o: { shipping?: string; shippingLabel?: string | null; shippingCost?: number },

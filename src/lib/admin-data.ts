@@ -1,4 +1,5 @@
 import type { OrderGift } from "./gifts";
+import { isPickupOrder } from "./ship-label";
 
 export type OrderStatus =
   | "รอชำระเงิน"
@@ -45,6 +46,12 @@ export const STATUS_STYLES: Record<OrderStatus, string> = {
 
 /** ขั้นตอนของออเดอร์ที่ลูกค้า/ทีมงานเข้าใจง่าย (ไม่ใช่สถานะดิบ) */
 export const ORDER_STEPS = ["สั่งซื้อ", "ชำระเงิน", "แบบงาน", "ผลิต", "จัดส่ง"] as const;
+/** ป้ายขั้นสุดท้ายของออเดอร์ที่ลูกค้ามารับเอง — ไม่มีพัสดุ ป้าย "จัดส่ง" ทำลูกค้าและทีมแพ็คงง (เจ้าของร้านสั่ง 11 ก.ย. 69) */
+export const PICKUP_STEP_LABEL = "มารับเอง";
+/** ขั้นตอน 5 ขั้นของออเดอร์ใบนี้ — มารับเอง = ขั้นสุดท้ายเป็น "มารับเอง" แทน "จัดส่ง" */
+export function orderStepsOf(o: { shipping?: string; shippingLabel?: string | null }): readonly string[] {
+  return isPickupOrder(o) ? [...ORDER_STEPS.slice(0, -1), PICKUP_STEP_LABEL] : ORDER_STEPS;
+}
 
 /**
  * สถานะ → กำลังอยู่ขั้นไหนของ ORDER_STEPS (index เริ่ม 0 · ขั้นก่อนหน้า = ผ่านแล้ว) · 5 = จบครบ · -1 = ยกเลิก
@@ -542,6 +549,11 @@ export interface Order {
   deposit?: OrderDeposit;
   /** ภาพของในกล่องก่อนปิด (ฝ่ายแพ็คถ่าย) — packGate บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */
   packPhotos?: PackPhoto[];
+  /**
+   * 🏪 มารับเอง: ฝ่ายแพ็คกด "แพ็คเสร็จ" แทนยิงเลขพัสดุ (ไม่มีพัสดุให้ยิง) — ใครกด เมื่อไหร่
+   * ตั้งแล้วสถานะเป็น "จัดส่งแล้ว" ซึ่งสำหรับใบมารับเองแปลว่า "พร้อมให้ลูกค้ามารับ" · ลูกค้ารับไปแล้วค่อยปิดเป็นเสร็จสิ้น
+   */
+  packedAt?: { at: string; by: string };
   note?: string;
   items: OrderItem[];
   /** เชื่อมกับสมาชิก (ถ้าล็อกอินตอนสั่ง) — ไม่มี = สั่งแบบ guest */
@@ -1205,6 +1217,8 @@ export function orderFullyPaid(o: Order): boolean {
  * ต้องเห็นชัดว่าเงินเข้าแค่ครึ่ง ไม่ใช่ "ชำระแล้ว" เฉย ๆ (ค่า status จริงในฐานไม่เปลี่ยน)
  */
 export function orderStatusLabel(o: Order): string {
+  // 🏪 มารับเอง: "จัดส่งแล้ว" = แพ็คเสร็จ รอลูกค้ามารับ — ป้ายต้องบอกอย่างนั้น ไม่ใช่ส่งของออกไปแล้ว
+  if (o.status === "จัดส่งแล้ว" && isPickupOrder(o)) return "แพ็คเสร็จ รอมารับ";
   if (o.status === "ชำระแล้ว" && o.deposit?.firstPaidAt) {
     // งวดแรกเข้า = เงินยังครึ่งเดียว · งวดหลังเข้า = ครบ 100% แล้ว (บอกให้รู้ว่าเป็นใบมัดจำที่เก็บจบ)
     return o.deposit.settledAt ? "ชำระแล้ว 50% หลัง" : "ชำระแล้ว 50% แรก";

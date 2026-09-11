@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
+import { isPickupOrder } from "@/lib/ship-label";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
@@ -191,6 +192,11 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
   }
   // 🚚 แบ่งส่ง: รอบใหม่ต่อท้ายได้ (สิทธิ์ยิงเลขเดียวกัน) · รอบเดิมแตะไม่ได้ · สถานะใบไม่เปลี่ยน (ยังไม่ปิดจนกว่าจะยิงรอบสุดท้าย)
   if (mayShip && Array.isArray(incoming.shipments)) merged.shipments = appendShipments(existing, incoming);
+  // 🏪 มารับเอง: กด "แพ็คเสร็จ" แทนยิงเลขพัสดุ → จดคน/เวลา + สถานะจัดส่งแล้ว (= พร้อมรับ) · สิทธิ์เดียวกับยิงเลข
+  if (mayShip && incoming.packedAt && !existing.packedAt && isPickupOrder(existing)) {
+    merged.packedAt = incoming.packedAt;
+    if (incoming.status === "จัดส่งแล้ว" && existing.status !== "เสร็จสิ้น") merged.status = "จัดส่งแล้ว" as OrderStatus;
+  }
 
   return merged; // log รวมกลางที่ PATCH (mergeLogs)
 }
@@ -457,16 +463,18 @@ export async function PATCH(req: Request) {
   // มีการ "ยิงเลขพัสดุใหม่" ในคำขอนี้ไหม (ใช้ตัดสินเรื่องด่านตรวจ)
   const wantsTracking =
     typeof order.tracking === "string" && order.tracking.trim() !== "" && order.tracking.trim() !== (existing.tracking ?? "");
+  // 🏪 มารับเอง: กด "แพ็คเสร็จ" ในคำขอนี้ — ต้องผ่านด่านตรวจเหมือนยิงเลขพัสดุ (ของยังไม่ครบก็ปิดกล่องไม่ได้)
+  const wantsPickupDone = isPickupOrder(existing) && !!order.packedAt && !existing.packedAt;
 
   let toSave: Order;
   if (mayEditFull) {
     // ก้อนจากหน้าจอแอดมินเป็นหลัก แต่ติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (คนอื่นเพิ่งทำ) ต้องไม่หาย
     toSave = reconcileFullEdit(existing, order, clientSavedAt, now);
     // แอดมินยิงเลขทั้งที่ด่านตรวจยังไม่ครบ = อนุญาต (ตัดสินใจเอง) แต่บันทึก log ฝั่งเซิร์ฟเวอร์เสมอ — ตรวจย้อนหลังได้ว่าใครข้าม
-    if (wantsTracking) {
+    if (wantsTracking || wantsPickupDone) {
       const g = packGate(existing);
       if (!g.ready) {
-        toSave = withLog(toSave, actor.name || actor.username, "⚠️ ข้ามด่านตรวจ — ยิงเลขพัสดุ", gateReasons(g));
+        toSave = withLog(toSave, actor.name || actor.username, wantsPickupDone ? "⚠️ ข้ามด่านตรวจ — แพ็คเสร็จ (มารับเอง)" : "⚠️ ข้ามด่านตรวจ — ยิงเลขพัสดุ", gateReasons(g));
       }
     }
     // 🚚 แอดมินยิงรอบแบ่งส่งทั้งที่รูปที่เลือกยังตรวจไม่ครบ = อนุญาต แต่ลง log เหมือนข้ามด่านปกติ
@@ -480,9 +488,9 @@ export async function PATCH(req: Request) {
     if (mayPack) {
       // ฝ่ายแพ็ค: ห้ามข้ามเด็ดขาด — เช็คด่านจากข้อมูลล่าสุด (รวมผลตรวจที่เพิ่งส่งมาในคำขอนี้)
       const mergedNoShip = mergePackFields(existing, order, false);
-      if (wantsTracking && !packGate(mergedNoShip).ready) {
+      if ((wantsTracking || wantsPickupDone) && !packGate(mergedNoShip).ready) {
         return NextResponse.json(
-          { error: `ยังยิงเลขพัสดุไม่ได้ — ${gateReasons(packGate(mergedNoShip))}` },
+          { error: `${wantsPickupDone ? "ยังยืนยันแพ็คเสร็จไม่ได้" : "ยังยิงเลขพัสดุไม่ได้"} — ${gateReasons(packGate(mergedNoShip))}` },
           { status: 409 }
         );
       }

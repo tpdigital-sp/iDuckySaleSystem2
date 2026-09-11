@@ -4004,6 +4004,8 @@ to{opacity:1;transform:none}}
 .shopp .ord-step.done .sdot{background:linear-gradient(135deg,var(--blue),var(--blue-deep));color:#fff;
   box-shadow:0 6px 14px rgba(44,129,196,.32)}
 .shopp .ord-step.done .sline{background:linear-gradient(90deg,var(--blue),var(--blue-deep))}
+/* เส้นก่อนถึงขั้นที่กำลังทำ = ขั้นก่อนหน้าผ่านแล้ว ต้องทึบเท่าเส้น done (เดิมจางเหมือนยังมาไม่ถึง — 11 ก.ย. 69) */
+.shopp .ord-step.now .sline{background:linear-gradient(90deg,var(--blue),var(--blue-deep))}
 .shopp .ord-step.done .slabel{color:var(--navy)}
 .shopp .ord-step.now .sdot{background:var(--yolk);color:var(--navy);
   box-shadow:0 0 0 6px rgba(255,182,39,.25),0 6px 14px rgba(255,182,39,.35);animation:ordPulse 1.9s ease-in-out infinite}

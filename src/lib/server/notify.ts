@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { isPickupOrder } from "@/lib/ship-label";
 
 /**
  * แจ้งเตือนลูกค้าผ่าน LINE (push message)
@@ -228,6 +229,8 @@ export function statusMessage(order: Order, link: string): string | null {
     case "กำลังผลิต":
       return `🛠️ ออเดอร์ ${id} เข้าไลน์ผลิตแล้วครับ${owe}\n${link}`;
     case "จัดส่งแล้ว":
+      // 🏪 มารับเอง — ไม่มีพัสดุ/เลขพัสดุ ข้อความต้องไม่พูดถึงการจัดส่ง
+      if (isPickupOrder(order)) return `🏪 ออเดอร์ ${id} แพ็คเสร็จแล้วครับ มารับที่ร้านได้เลย แจ้งเลขออเดอร์ตอนมารับนะครับ\n${link}`;
       // 🚚 เคยแบ่งส่งมาก่อน → บอกว่านี่คือรอบสุดท้าย (เลขรอบก่อนแจ้งไปแล้วตอนส่งรอบนั้น)
       return order.shipments?.length
         ? `🚚 ออเดอร์ ${id} จัดส่งรอบสุดท้ายแล้วครับ ครบทุกรายการ${order.tracking ? `\nเลขพัสดุรอบนี้: ${order.tracking}` : ""}\n${link}`
@@ -306,7 +309,7 @@ export function statusFlex(
   const rows: unknown[] = [flexRow("รายการ", items)];
   rows.push(flexRow("ยอดรวม", `฿${total.toLocaleString()}`, "#0F172A", true));
   if (owe) rows.push(flexRow("ยอดค้าง", `฿${bal.toLocaleString()}`, "#E11D48", true));
-  if (order.status === "จัดส่งแล้ว" && order.tracking)
+  if (order.status === "จัดส่งแล้ว" && order.tracking && !isPickupOrder(order))
     rows.push(flexRow(order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ", order.tracking, "#0F172A", true));
 
   return [
@@ -331,7 +334,14 @@ export function statusFlex(
           spacing: "md",
           paddingAll: "16px",
           contents: [
-            { type: "text", text: opts?.headline ?? STATUS_HEADLINE[status] ?? "", size: "sm", color: "#334155", wrap: true },
+            {
+              type: "text",
+              // 🏪 มารับเอง: "จัดส่งแล้ว" = แพ็คเสร็จ รอมารับ — หัวการ์ดต้องไม่บอกว่าส่งของออกไปแล้ว
+              text: opts?.headline ?? (status === "จัดส่งแล้ว" && isPickupOrder(order) ? "แพ็คเสร็จแล้ว — มารับที่ร้านได้เลย" : STATUS_HEADLINE[status]) ?? "",
+              size: "sm",
+              color: "#334155",
+              wrap: true,
+            },
             { type: "text", text: order.id, size: "lg", weight: "bold", color: "#0F172A" },
             { type: "separator", color: "#E2E8F0" },
             { type: "box", layout: "vertical", spacing: "sm", contents: rows },

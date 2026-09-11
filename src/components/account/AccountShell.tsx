@@ -12,6 +12,7 @@ import { useState, type ReactNode } from "react";
 import { signOut } from "@/lib/customer-auth";
 import { clearMyOrders } from "@/lib/my-orders";
 import { ORDER_STEPS, STEP_OF, orderBalance, type Order } from "@/lib/admin-data";
+import { isPickupOrder } from "@/lib/ship-label";
 import { formatPrice } from "@/lib/products";
 
 /* ───────── ไอคอนเมนู (ไฟล์ภาพจริงที่ public/account/menu) ───────── */
@@ -219,6 +220,8 @@ export function stepLabel(i: number, o: Order): string {
           ? "รอคุณตรวจแบบ"
           : "ทำแบบงาน";
   if (i === 3) return cur > 3 ? "ผลิตเสร็จ" : "กำลังผลิต";
+  // 🏪 มารับเอง — ไม่มีพัสดุ ขั้นสุดท้ายคือรับของที่ร้าน
+  if (isPickupOrder(o)) return o.status === "เสร็จสิ้น" ? "รับของแล้ว" : o.status === "จัดส่งแล้ว" ? "พร้อมรับที่ร้าน" : "มารับเอง";
   return o.status === "เสร็จสิ้น" ? "จัดส่งสำเร็จ" : o.status === "จัดส่งแล้ว" ? "จัดส่งแล้ว" : "จัดส่ง";
 }
 
@@ -226,7 +229,7 @@ export function stepTime(i: number, o: Order): string {
   const cur = STEP_OF[o.status];
   if (i === 0) return o.date;
   if (i === 1 && cur === 1) return orderBalance(o) > 0 ? `ค้างชำระ ${formatPrice(orderBalance(o))}` : "รอตรวจสอบ";
-  if (i === 4 && o.tracking) return `พัสดุ ${o.tracking}`;
+  if (i === 4 && o.tracking && !isPickupOrder(o)) return `พัสดุ ${o.tracking}`;
   // แบบผ่านแล้วแต่ยังไม่เข้าผลิต — ขั้นแบบงานถือว่าเรียบร้อยทั้งที่ยังยืนอยู่ขั้นนี้
   if (i === 2 && o.status === "อนุมัติแบบ") return "เรียบร้อย";
   if (i < cur) return "เรียบร้อย";
@@ -240,11 +243,15 @@ export function OrderTracker({ order, compact = false }: { order: Order; compact
     <div className={`acd-tracker${compact ? " compact" : ""}`}>
       {ORDER_STEPS.map((_, i) => {
         const cls = i < cur ? " done" : i === cur ? " current" : "";
+        // 🏪 มารับเอง: ขั้นสุดท้ายใช้ไอคอนร้านแทนรถส่งของ
+        const pickupStep = i === ORDER_STEPS.length - 1 && isPickupOrder(order);
         return (
           <div key={i} className={`acd-tstep${cls}`}>
             <span className="tline" />
             <div className="tdot">
-              {STEP_ART[i] ? (
+              {pickupStep ? (
+                "🏪"
+              ) : STEP_ART[i] ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={STEP_ART[i]!} alt="" loading="lazy" />
               ) : (

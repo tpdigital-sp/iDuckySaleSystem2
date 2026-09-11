@@ -22,7 +22,7 @@ import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
 import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
-import { resolveShipLabel } from "@/lib/ship-label";
+import { isPickupOrder, resolveShipLabel, stripShipPrice } from "@/lib/ship-label";
 
 /*
  * ── สไตล์ปุ่ม/ช่องกรอกใน lightbox ──
@@ -95,8 +95,14 @@ function PayAccounts({ payment }: { payment: ShopPayment | null }) {
   );
 }
 
-/** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF */
+/** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF · มารับเอง = ขั้นสุดท้ายเป็น "มารับเอง" ไม่ใช่ "จัดส่ง" */
 const STEPS = ["สั่งซื้อ", "ชำระเงิน", "ตรวจแบบงาน", "ผลิต", "จัดส่ง"];
+const stepsOf = (o: Order) => (isPickupOrder(o) ? [...STEPS.slice(0, -1), "มารับเอง"] : STEPS);
+/** วันที่ yyyy-mm-dd → "14 ก.ย." (ช่วงวันส่งที่แอดมินระบุ) */
+const thaiShortDay = (ymd: string) => {
+  const d = new Date(`${ymd}T00:00:00+07:00`);
+  return isFinite(d.getTime()) ? d.toLocaleDateString("th-TH", { day: "numeric", month: "short" }) : ymd;
+};
 /** ไอคอนภาพจริงของแต่ละขั้น — ชุดเดียวกับแถบขั้นตอนในหน้าบัญชีของฉัน (null = ใช้เครื่องหมายถูก) */
 const STEP_ART: (string | null)[] = [
   null,
@@ -554,6 +560,9 @@ export default function CustomerOrderPage() {
     order.status
   );
   const cancelled = order.status === "ยกเลิก";
+  /** 🏪 ลูกค้ามารับเองที่ร้าน — ไม่มีพัสดุ ป้าย/ข้อความเรื่อง "จัดส่ง" ต้องเปลี่ยนคำทั้งหน้า */
+  const pickup = isPickupOrder(order);
+  const shipLabel = stripShipPrice(resolveShipLabel(order, shippingOf(payment)));
   /**
    * ยกเลิกเองได้ไหม — เงื่อนไขเดียวกับด่านฝั่งเซิร์ฟเวอร์ (/api/orders/cancel)
    * "ยังไม่มีเงินเข้าเลย + ร้านยังไม่เริ่มงาน" เท่านั้น · นอกนั้นให้ทักร้าน
@@ -909,6 +918,28 @@ export default function CustomerOrderPage() {
               </p>
             )}
           </div>
+          {/* 🚚 รูปแบบการจัดส่ง — เจ้าของร้านขอ 11 ก.ย. 69: เห็นตั้งแต่หัวใบว่าส่งพัสดุหรือมารับเอง ไม่ต้องเลื่อนไปดูท้ายใบ */}
+          {!cancelled && (
+            <div className="ord-sub order-last w-full px-4 py-3 sm:order-none sm:w-auto sm:min-w-[220px]">
+              <p className="ord-eyebrow">รูปแบบการจัดส่ง</p>
+              <p className="ord-title mt-1 text-[1.02rem]">{pickup ? "🏪 มารับเองที่ร้าน" : `🚚 ${shipLabel || "ส่งพัสดุ"}`}</p>
+              <p className="mt-0.5 text-xs t-soft">
+                {pickup
+                  ? order.status === "เสร็จสิ้น"
+                    ? "รับของเรียบร้อยแล้ว"
+                    : order.status === "จัดส่งแล้ว"
+                      ? "แพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ"
+                      : "ไม่มีพัสดุ · ของพร้อมแล้วทางร้านจะแจ้งให้มารับครับ"
+                  : order.tracking
+                    ? `เลขพัสดุ ${order.tracking}`
+                    : order.shipDate?.from || order.shipDate?.to
+                      ? `กำหนดส่ง ${thaiShortDay(order.shipDate.from || order.shipDate.to!)}${order.shipDate.to && order.shipDate.from && order.shipDate.to !== order.shipDate.from ? ` – ${thaiShortDay(order.shipDate.to)}` : ""}`
+                      : order.shippingCost === 0
+                        ? "ส่งฟรี"
+                        : `ค่าส่ง ${formatPrice(order.shippingCost)}`}
+              </p>
+            </div>
+          )}
           <div className="flex flex-col items-end gap-2">
             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
               {orderStatusLabel(order)}
@@ -986,18 +1017,22 @@ export default function CustomerOrderPage() {
           </p>
         ) : (
           <ol className="ord-steps mt-5">
-            {STEPS.map((label, i) => {
+            {stepsOf(order).map((label, i) => {
               const done = i < step;
               const now = i === step;
+              // 🏪 มารับเอง: ขั้นสุดท้ายไม่ใช่รถส่งของ — ใช้ไอคอนร้าน และคำใต้ขั้นเป็น "รับของแล้ว"
+              const pickupStep = pickup && i === STEPS.length - 1;
+              const art = pickupStep ? null : STEP_ART[i];
+              const hint = pickupStep && order.status === "จัดส่งแล้ว" ? "พร้อมรับที่ร้าน" : STEP_HINT[order.status];
               // 🚚 ยิงเลขพัสดุแล้ว = ของออกจากร้านแล้ว ขั้น "จัดส่ง" ถือว่าไปถึงแล้ว (เส้นเต็ม + จุดสว่าง)
               // ไม่ใช่ "กำลังรอทำ" เหมือนขั้นอื่น — เดิมเส้นก่อนถึงจัดส่งยังจาง ลูกค้าเห็นเป็นค้างอยู่ที่ผลิต
               const reached = now && order.status === "จัดส่งแล้ว";
               return (
                 <li key={label} className={`ord-step${done ? " done" : now ? `${reached ? " done" : ""} now` : ""}`}>
                   <span className="sline" />
-                  <span className="sdot">{STEP_ART[i] ? <img src={STEP_ART[i]!} alt="" /> : "✓"}</span>
+                  <span className="sdot">{art ? <img src={art} alt="" /> : pickupStep ? "🏪" : "✓"}</span>
                   <span className="slabel">{label}</span>
-                  <span className="stime">{now ? (STEP_HINT[order.status] ?? "กำลังทำ") : done ? "เรียบร้อย" : "—"}</span>
+                  <span className="stime">{now ? (hint ?? "กำลังทำ") : done ? "เรียบร้อย" : "—"}</span>
                 </li>
               );
             })}
@@ -1197,7 +1232,8 @@ export default function CustomerOrderPage() {
       })()}
 
       {/* ── แบบประเมินความพึงพอใจ (นิรนาม) — โชว์เมื่อได้รับสินค้าแล้ว ── */}
-      {(order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น") &&
+      {/* มารับเอง: "จัดส่งแล้ว" = แค่แพ็คเสร็จ ยังไม่ได้ของ — ถามความเห็นเมื่อปิดงานแล้วเท่านั้น */}
+      {((order.status === "จัดส่งแล้ว" && !pickup) || order.status === "เสร็จสิ้น") &&
         (order.rated || rateDone ? (
           rateDone && (
             <div className="ord-note ok mt-4 p-4 text-center text-sm font-semibold">
@@ -1910,11 +1946,21 @@ export default function CustomerOrderPage() {
               </div>
             ))}
 
+          {/* 🏪 มารับเอง: ฝ่ายแพ็คกดแพ็คเสร็จแล้ว — บอกลูกค้าว่ามารับได้เลย */}
+          {pickup && order.packedAt && (
+            <div className="ord-note info p-4 sm:p-5">
+              <p className="ord-eyebrow">{order.status === "เสร็จสิ้น" ? "🏪 รับของที่ร้านแล้ว" : "🏪 แพ็คเสร็จแล้ว — มารับที่ร้านได้เลย"}</p>
+              <p className="mt-1 text-sm t-ink">
+                {order.status === "เสร็จสิ้น" ? "ขอบคุณที่มารับของที่ร้านครับ 🦆" : "ของแพ็คเรียบร้อยรออยู่ที่ร้านแล้วครับ แจ้งเลขออเดอร์ตอนมารับได้เลย"}
+              </p>
+              <p className="mt-1 text-xs t-soft">แพ็คเสร็จ {new Date(order.packedAt.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+            </div>
+          )}
           {order.tracking && (
             <div className="ord-note info p-4 sm:p-5">
-              <p className="ord-eyebrow">{order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ"}</p>
+              <p className="ord-eyebrow">{pickup ? "🏪 รับของที่ร้านแล้ว" : order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ"}</p>
               <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{order.tracking}</p>
-              {/^[A-Z]{2}\d{9}TH$/i.test(order.tracking.trim()) ? (
+              {pickup ? null : /^[A-Z]{2}\d{9}TH$/i.test(order.tracking.trim()) ? (
                 <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={order.tracking.trim()} />
               ) : (
                 <p className="mt-1 text-xs t-soft">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
@@ -1953,7 +1999,7 @@ export default function CustomerOrderPage() {
             return (
               <div className="ord-card p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="ord-eyebrow">จัดส่งถึง</p>
+                  <p className="ord-eyebrow">{pickup ? "ที่อยู่ลูกค้า · มารับเองที่ร้าน" : "จัดส่งถึง"}</p>
                   {!editAddr &&
                     (addrLocked ? (
                       <span className="text-[11px] font-semibold t-faint">🔒 ล็อกแล้ว</span>

@@ -36,7 +36,12 @@ const BEFORE_PRODUCTION: OrderStatus[] = [
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const gate = await requirePerm("pack.ship");
+  /**
+   * ใครปริ้นใบงานได้ต้องบันทึกได้ — เดิมล็อกแค่ pack.ship ทั้งที่หน้าปริ้นเปิดให้ทุกคนที่ดูออเดอร์ได้
+   * กราฟฟิก/หัวหน้า (ไม่มี pack.ship) ปริ้นแล้วโดน 403 เงียบ ๆ → printedAt ไม่ตั้ง สถานะไม่เลื่อนเป็นกำลังผลิต
+   * ทั้งที่หน้าจอคนปริ้นโชว์ว่าเลื่อนแล้ว (11 ก.ย. 69)
+   */
+  const gate = await requirePerm(["pack.ship", "orders.edit", "proof.manage", "pack.check"]);
   if (gate.res) return gate.res;
 
   let body: { orderId?: string; docs?: string[] };

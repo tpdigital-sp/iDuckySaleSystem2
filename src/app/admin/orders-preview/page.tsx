@@ -38,6 +38,7 @@ import {
   MOCK_ORDERS,
   ORDER_STATUSES,
   ORDER_STEPS,
+  orderStepsOf,
   orderBalance,
   orderTotal,
   proofsOf,
@@ -977,7 +978,7 @@ function Row({
         <span className="opv-step">
           {step < 0
             ? "ยกเลิกแล้ว"
-            : `${step >= ORDER_STEPS.length ? "จบงานแล้ว" : ORDER_STEPS[step]} · ${Math.min(step + 1, ORDER_STEPS.length)}/${ORDER_STEPS.length}`}
+            : `${step >= ORDER_STEPS.length ? "จบงานแล้ว" : orderStepsOf(o)[step]} · ${Math.min(step + 1, ORDER_STEPS.length)}/${ORDER_STEPS.length}`}
         </span>
       </td>
 

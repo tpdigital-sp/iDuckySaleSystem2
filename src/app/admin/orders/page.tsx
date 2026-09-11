@@ -25,6 +25,7 @@ import {
   MOCK_ORDERS,
   ORDER_STATUSES,
   ORDER_STEPS,
+  orderStepsOf,
   orderStatusLabel,
   orderTotal,
   proofMissing,
@@ -891,7 +892,7 @@ function OrderRow({
         ) : (
           <>
             <span className="lb">
-              {step >= ORDER_STEPS.length ? "จบงานแล้ว" : ORDER_STEPS[step]} ·{" "}
+              {step >= ORDER_STEPS.length ? "จบงานแล้ว" : orderStepsOf(o)[step]} ·{" "}
               {Math.min(step + 1, ORDER_STEPS.length)}/{ORDER_STEPS.length}
             </span>
             <span className="bars" aria-hidden>

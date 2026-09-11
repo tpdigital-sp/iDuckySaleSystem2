@@ -110,7 +110,7 @@ import { useActor, useCan, useIsAdministrator, usePermsReady, useRoleLabel } fro
 import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
-import { resolveShipLabel } from "@/lib/ship-label";
+import { isPickupOrder, resolveShipLabel } from "@/lib/ship-label";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
@@ -1214,6 +1214,7 @@ export default function AdminOrderDetailPage() {
   const [os, setOs] = useState<"mac" | "win" | "">(""); // เครื่องที่เปิดหน้านี้ (รู้หลัง mount) — ใช้เรียงตัวเลือกทางลัดแบบเนทีฟ
   useEffect(() => setOs(shortcutOs()), []);
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
+  const pickupPendingRef = useRef(false); // 🏪 โมดัลข้ามด่านที่เปิดอยู่มาจากปุ่ม "แพ็คเสร็จ" (มารับเอง) ไม่ใช่ช่องเลขพัสดุ
 
   const rolCan = useCan();
   const permsReady = usePermsReady(); // สิทธิ์จริงมาถึงหรือยัง — ก่อนหน้านั้นห้ามสรุปว่าเป็นฝ่ายแพ็ค
@@ -1954,9 +1955,61 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next);
   }
 
+  /** เหตุผลที่ด่านแพ็คยังไม่ผ่าน — ใช้ทั้งช่องเลขพัสดุและปุ่มแพ็คเสร็จ (มารับเอง) */
+  function gateReasonsOf(o: Order): string[] {
+    const g = packGate(o);
+    return [
+      g.uncounted.length ? `ตรวจนับแบบงานอีก ${g.uncounted.length} รูป` : "",
+      g.unread.length ? `ยืนยันอ่านรายละเอียดอีก ${g.unread.length} รายการ` : "",
+      g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
+      g.missing.length ? `ของยังไม่มา/ไม่ครบ ${g.missing.length} รายการ (${g.missing.map((m) => m.item).join(", ")})` : "",
+      g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+      g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
+      g.taxInvoiceUnpacked ? "ยังไม่ยืนยันใส่ใบกำกับภาษีลงกล่อง" : "",
+      g.unpaidBalance ? (o.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ") : "",
+    ].filter(Boolean);
+  }
+
+  /**
+   * 🏪 มารับเอง: ฝ่ายแพ็คกด "แพ็คเสร็จ" แทนยิงเลขพัสดุ (เจ้าของร้านขอ 11 ก.ย. 69)
+   * ด่านตรวจเดียวกับยิงเลข — ฝ่ายแพ็คข้ามไม่ได้ · แอดมินยืนยันข้ามได้ (เซิร์ฟเวอร์ลง log)
+   */
+  function confirmPackedPickup() {
+    if (!order || order.packedAt) return;
+    if (!packGate(order).ready) {
+      const reasons = gateReasonsOf(order);
+      if (!mayEdit) {
+        setErr(`ยังยืนยันแพ็คเสร็จไม่ได้ — ต้องผ่านด่านตรวจก่อน: ${reasons.join(" · ")}`);
+        return;
+      }
+      pickupPendingRef.current = true;
+      setSkipGate(reasons);
+      return;
+    }
+    commitPackedPickup();
+  }
+
+  /** บันทึก "แพ็คเสร็จ รอลูกค้ามารับ" จริง — สถานะเป็นจัดส่งแล้ว (สำหรับใบมารับเอง = พร้อมรับ) */
+  function commitPackedPickup() {
+    if (!order) return;
+    const next = withLog(
+      { ...order, packedAt: { at: new Date().toISOString(), by: actor }, status: order.status === "เสร็จสิ้น" ? order.status : "จัดส่งแล้ว" },
+      actor,
+      "📦 แพ็คเสร็จ — รอลูกค้ามารับ",
+      "มารับเองที่ร้าน · ระบบแจ้งลูกค้าทางไลน์ให้มารับ"
+    );
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
   /** แอดมินยืนยัน "ข้ามด่านตรวจ" จากโมดัล — เซิร์ฟเวอร์จะลง log ชื่อคนข้ามเสมอ */
   function confirmSkipGate() {
     setSkipGate(null);
+    if (pickupPendingRef.current) {
+      pickupPendingRef.current = false;
+      commitPackedPickup();
+      return;
+    }
     const t = (order?.tracking ?? "").trim();
     if (t) commitTracking(t);
   }
@@ -1964,6 +2017,7 @@ export default function AdminOrderDetailPage() {
   /** ยกเลิกข้ามด่าน → คืนช่องเลขพัสดุเป็นค่าเดิม */
   function cancelSkipGate() {
     setSkipGate(null);
+    pickupPendingRef.current = false;
     setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
   }
 
@@ -3109,6 +3163,8 @@ export default function AdminOrderDetailPage() {
           onTrackingSave={saveTracking}
           onTrackingScanned={saveTrackingValue}
           trackingSaved={!!(order.tracking ?? "").trim() && (order.tracking ?? "").trim() === trackingRef.current}
+          pickup={isPickupOrder(order)}
+          onPickupPacked={confirmPackedPickup}
           onNextOrder={(id) => router.push(`/admin/orders/${encodeURIComponent(id)}?${PACK_SCAN_PARAM}=1`)}
           onZoom={showProof}
         />
@@ -6871,19 +6927,44 @@ export default function AdminOrderDetailPage() {
                   )}
                 </div>
               )}
-              <input
-                value={order.tracking ?? ""}
-                onChange={(e) => setOrder((cur) => (cur ? { ...cur, tracking: e.target.value } : cur))}
-                onBlur={saveTracking}
-                placeholder={order.shipments?.length ? "เลขพัสดุรอบสุดท้าย — ยิง QR หรือพิมพ์" : "ยิง QR หรือพิมพ์เลขพัสดุ"}
-                className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[13px] text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
-              />
-              <p className={`mt-1.5 text-[11px] ${faint}`}>
-                กรอกแล้วสถานะจะเปลี่ยนเป็น “จัดส่งแล้ว” · ลูกค้าจะเห็นเลขนี้ในหน้าเช็คออเดอร์
-              </p>
-              <Link href="/admin/orders/scan" className="mt-1.5 inline-block text-[11px] font-bold text-amber-600 hover:underline">
-                📮 ใช้เครื่องยิง QR แทน →
-              </Link>
+              {isPickupOrder(order) ? (
+                // 🏪 มารับเอง: ไม่มีเลขพัสดุ — ปุ่มแพ็คเสร็จแทน (ด่านตรวจเดียวกับยิงเลข)
+                order.packedAt ? (
+                  <p className="rounded-lg bg-emerald-50 px-2.5 py-2 text-[12px] font-bold text-emerald-800 ring-1 ring-emerald-200">
+                    ✅ แพ็คเสร็จแล้ว รอลูกค้ามารับ · {order.packedAt.by} · {shortTime(order.packedAt.at)}
+                    {order.status === "เสร็จสิ้น" ? " · ลูกค้ารับแล้ว" : ""}
+                  </p>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={confirmPackedPickup}
+                      className="w-full rounded-lg bg-green-600 px-3 py-2 text-[13px] font-extrabold text-white hover:bg-green-700"
+                    >
+                      🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ
+                    </button>
+                    <p className={`mt-1.5 text-[11px] ${faint}`}>
+                      ใบนี้ลูกค้ามารับเอง ไม่ต้องยิงเลขพัสดุ · กดแล้วสถานะเป็น “แพ็คเสร็จ รอมารับ” และแจ้งลูกค้าทางไลน์ · ลูกค้ารับของแล้วค่อยปิดงานเป็นเสร็จสิ้น
+                    </p>
+                  </>
+                )
+              ) : (
+                <>
+                  <input
+                    value={order.tracking ?? ""}
+                    onChange={(e) => setOrder((cur) => (cur ? { ...cur, tracking: e.target.value } : cur))}
+                    onBlur={saveTracking}
+                    placeholder={order.shipments?.length ? "เลขพัสดุรอบสุดท้าย — ยิง QR หรือพิมพ์" : "ยิง QR หรือพิมพ์เลขพัสดุ"}
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[13px] text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
+                  />
+                  <p className={`mt-1.5 text-[11px] ${faint}`}>
+                    กรอกแล้วสถานะจะเปลี่ยนเป็น “จัดส่งแล้ว” · ลูกค้าจะเห็นเลขนี้ในหน้าเช็คออเดอร์
+                  </p>
+                  <Link href="/admin/orders/scan" className="mt-1.5 inline-block text-[11px] font-bold text-amber-600 hover:underline">
+                    📮 ใช้เครื่องยิง QR แทน →
+                  </Link>
+                </>
+              )}
             </div>
             {(order.tracking ?? "").trim() && <ThaiPostStatus number={order.tracking!.trim()} />}
           </div>
@@ -7337,6 +7418,8 @@ function PackView({
   onTrackingSave,
   onTrackingScanned,
   trackingSaved,
+  pickup,
+  onPickupPacked,
   onNextOrder,
   onZoom,
   onPhotoAdd,
@@ -7344,6 +7427,10 @@ function PackView({
 }: {
   order: Order;
   gate: ReturnType<typeof packGate>;
+  /** 🏪 ใบมารับเอง — ไม่มีพัสดุ ใช้ปุ่ม "แพ็คเสร็จ" แทนช่องเลขพัสดุ */
+  pickup: boolean;
+  /** กดยืนยันแพ็คเสร็จ (มารับเอง) — ด่านตรวจเดียวกับยิงเลขพัสดุ */
+  onPickupPacked: () => void;
   /** 🚚 แบ่งส่ง: รูปที่จะไปกับรอบนี้ (คีย์ "item:proof") — ตามแผนแอดมิน หรือที่แอดมินติ๊กเองในโหมดแพ็ค */
   shipSel: Set<string>;
   /** แอดมินเลือกรูปเองได้ (ไม่มีแผน) · ไม่ส่งมา = ล็อกตามแผน/ไม่มีปุ่มเลือก (ฝ่ายแพ็ค) */
@@ -7822,7 +7909,54 @@ function PackView({
             <span className="shrink-0 text-lg">→</span>
           </button>
         )}
-        {gate.ready ? (
+        {pickup ? (
+          // 🏪 มารับเอง: ไม่มีเลขพัสดุให้ยิง — ปุ่มเดียว "แพ็คเสร็จ" แล้วระบบแจ้งลูกค้าให้มารับ
+          order.packedAt ? (
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2 ring-1 ring-emerald-200">
+              <p className="min-w-0 text-sm font-bold text-emerald-800">
+                ✅ แพ็คเสร็จแล้ว — รอลูกค้ามารับ
+                <span className="block text-[11px] font-semibold text-emerald-700/80">
+                  {order.packedAt.by} · {new Date(order.packedAt.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · แจ้งลูกค้าทางไลน์แล้ว
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCamErr(null);
+                  setCam("next");
+                }}
+                className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white"
+              >
+                📷 ใบถัดไป
+              </button>
+            </div>
+          ) : gate.ready ? (
+            <button
+              type="button"
+              onClick={onPickupPacked}
+              className="flex w-full items-center justify-between gap-2 rounded-xl bg-green-600 px-4 py-3 text-left text-white shadow-sm active:scale-[.99]"
+            >
+              <span>
+                <span className="block text-base font-extrabold">🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ</span>
+                <span className="block text-[11px] font-semibold text-white/80">ใบนี้ลูกค้ามารับเอง ไม่ต้องยิงเลขพัสดุ · กดแล้วระบบแจ้งลูกค้าทางไลน์ให้มารับ</span>
+              </span>
+              <span className="shrink-0 text-lg">✓</span>
+            </button>
+          ) : (
+            <div className="rounded-xl bg-slate-100 px-3 py-3 ring-1 ring-slate-200">
+              <p className="flex items-center gap-2 text-sm font-bold text-slate-500">
+                <span className="grayscale">🔒</span> ตรวจให้ครบก่อน ถึงกดแพ็คเสร็จได้ (มารับเอง)
+              </p>
+              <p className="mt-0.5 pl-6 text-[11px] leading-tight text-slate-400">
+                {todos
+                  .slice(0, 2)
+                  .map((t) => `${t.icon} ${t.text}`)
+                  .join(" · ")}
+                {todos.length > 2 ? ` · + อีก ${todos.length - 2} จุด` : ""}
+              </p>
+            </div>
+          )
+        ) : gate.ready ? (
           <div className="space-y-2">
             {trackingSaved && (
               <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2 ring-1 ring-emerald-200">
@@ -7877,7 +8011,8 @@ function PackView({
       </div>
 
       {/* ยิงเลขพัสดุเสร็จ → เด้งไปใบถัดไปในคิวเอง (ไม่มีคิว = เงียบ) */}
-      <PackNextToast currentId={order.id} trackingSaved={trackingSaved} onGo={onNextOrder} />
+      {/* มารับเอง: กดแพ็คเสร็จ = จบใบนี้เหมือนยิงเลขพัสดุ → เด้งใบถัดไปเช่นกัน */}
+      <PackNextToast currentId={order.id} trackingSaved={pickup ? !!order.packedAt : trackingSaved} onGo={onNextOrder} />
 
       {/* 📷 กล้องมือถือของพนักงานเอง */}
       <CameraScanner
