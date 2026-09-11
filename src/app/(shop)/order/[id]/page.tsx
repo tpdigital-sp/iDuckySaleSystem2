@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -1881,9 +1881,33 @@ export default function CustomerOrderPage() {
             )}
           </div>
 
+          {/* 🚚 แบ่งส่ง: รอบที่ส่งไปแล้วก่อนรอบสุดท้าย — แต่ละรอบมีเลขพัสดุของตัวเอง เช็คสถานะ ปณ. ได้ทุกเลข */}
+          {(order.shipments?.length ?? 0) > 0 &&
+            order.shipments!.map((sh, n) => (
+              <div key={`${sh.tracking}-${n}`} className="ord-note info p-4 sm:p-5">
+                <p className="ord-eyebrow">
+                  🚚 จัดส่งบางส่วน รอบที่ {n + 1}
+                  {shipmentQty(sh) ? ` · ${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น` : ""}
+                </p>
+                <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{sh.tracking}</p>
+                <p className="mt-1 text-xs t-soft">
+                  รอบนี้: {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` × ${p.qty}` : ""}`).join(" · ")}
+                  {sh.note ? ` · ${sh.note}` : ""}
+                </p>
+                {/^[A-Z]{2}\d{9}TH$/i.test(sh.tracking.trim()) ? (
+                  <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={sh.tracking.trim()} />
+                ) : (
+                  <p className="mt-1 text-xs t-soft">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
+                )}
+                {!order.tracking && n === order.shipments!.length - 1 && (
+                  <p className="mt-2 text-xs font-bold t-soft">ส่วนที่เหลือกำลังผลิต จะจัดส่งในรอบถัดไปและแจ้งเลขพัสดุอีกครั้งครับ</p>
+                )}
+              </div>
+            ))}
+
           {order.tracking && (
             <div className="ord-note info p-4 sm:p-5">
-              <p className="ord-eyebrow">เลขพัสดุ</p>
+              <p className="ord-eyebrow">{order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ"}</p>
               <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{order.tracking}</p>
               {/^[A-Z]{2}\d{9}TH$/i.test(order.tracking.trim()) ? (
                 <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={order.tracking.trim()} />

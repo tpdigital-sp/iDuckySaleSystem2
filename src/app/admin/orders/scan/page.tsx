@@ -15,11 +15,22 @@
  * 📦 "รอของ" = ฝ่ายแพ็คปักว่าของรายการไหน "ยังไม่มา / มาไม่ครบ" (items[].arrival)
  *    ปักได้จากปุ่มในแถว (โมดัล) หรือจากโหมดแพ็คในหน้าออเดอร์ · ใบที่ติดของโผล่ที่ขั้นนี้แทนขั้นรอปริ้น
  *    บอกรายตัวว่ารออะไร มาแล้วกี่ชิ้น รอมากี่วัน คาดว่ามาวันไหน (เลยกำหนด = แดง) · กด "มาครบแล้ว" ทีเดียวจากแถว
+ *
+ * 📱 บนมือถือ (จอสัมผัส) หน้านี้เป็น "คิวแพ็ค" ไม่ใช่สถานีเครื่องยิง:
+ *  - ช่องยิงไม่โฟกัสเอง (คีย์บอร์ดจะเด้งบังจอ) · แตะแถวในขั้น รอปริ้น/แพ็ค หรือ พร้อมยิง = เปิดโหมดแพ็คใบนั้น
+ *    พร้อมจำทั้งรายการเป็นคิว (lib/pack-queue) → ยิงเลขพัสดุเสร็จ โหมดแพ็คเด้งไปใบถัดไปเอง ไม่ต้องสแกนกระดาษทีละใบ
+ *  - แถบล่าง "▶ เริ่มแพ็ค N ใบ" ไล่ตามลำดับความเร่งด่วน · "📷 สแกนกองใบงาน" ยิง QR ต่อกันรวดเดียว
+ *    เก็บเป็นชุดงานตามลำดับที่สแกน แล้วไล่ทำจากชุดนั้น
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import StatusChip, { STATUS_TONE } from "@/components/admin/StatusChip";
+import CameraScanner from "@/components/admin/CameraScanner";
+import { extractOrderId, looksLikeOrderId } from "@/lib/scan-code";
+import { PACK_QUEUE_EVENT, loadPackQueue, packQueueLeft, packQueueNext, shortOrderId, startPackQueue, type PackQueueSource } from "@/lib/pack-queue";
+import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import {
   Banner,
   Btn,
@@ -42,7 +53,11 @@ import {
   orderNeedsTaxInvoiceInBox,
   orderStatusLabel,
   packGate,
+  nextPlannedRound,
   packMissingOf,
+  partialShipSummary,
+  proofsOf,
+  shipmentQty,
   withLog,
   type Order,
   type OrderStatus,
@@ -74,21 +89,43 @@ function TaxTag({ o }: { o: Order }) {
   );
 }
 
+/** 🚚 ใบที่แบ่งส่งไปแล้วบางรอบ (ยังไม่ปิด) — บอกคนแพ็คว่ารูปไหนออกไปแล้ว ไม่ต้องหาของซ้ำ */
+function PartialTag({ o }: { o: Order }) {
+  if ((o.tracking ?? "").trim()) return null;
+  const p = partialShipSummary(o);
+  const plan = nextPlannedRound(o);
+  return (
+    <>
+      {plan && (
+        <Tag tone="yolk" title={`แอดมินสั่งแบ่งส่ง รอบที่ ${plan.index + 1}: ${plan.round.proofs.map((x) => `${x.itemName ?? ""} รูปที่ ${x.proof + 1}`).join(", ")}${plan.round.dueDate ? ` · ส่งภายใน ${plan.round.dueDate}` : ""}`}>
+          📋 แบ่งส่ง รอบ {plan.index + 1} รอแพ็ค{plan.round.dueDate ? ` · ${plan.round.dueDate}` : ""}
+        </Tag>
+      )}
+      {p && (
+        <Tag tone="sky" title="ส่งบางส่วนไปแล้ว — รูปที่เหลือแพ็คต่อในโหมดแพ็ค แล้วยิงเลขรอบสุดท้ายที่ช่องเลขพัสดุ">
+          🚚 ส่งแล้ว {p.rounds} รอบ · {p.proofsShipped}/{p.proofsTotal} รูป
+        </Tag>
+      )}
+    </>
+  );
+}
+
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 
+/** ลิงก์เปิดโหมดแพ็คของใบนี้ (มือถือ) */
+const packHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}?${PACK_SCAN_PARAM}=1`;
+
 /**
- * ดึงเลขออเดอร์ออกจากสิ่งที่ยิงเข้ามา
- * รองรับทั้งโค้ดล้วน (OD-260722-8143) และลิงก์เต็ม (กรณียิงโดน QR ของมือถือ)
+ * เรียงตามความเร่งด่วน: มีวันใช้งานของลูกค้าขึ้นก่อน (ใกล้สุดก่อน) · ไม่มีวัน = ใบเก่าก่อน (เลข OD มีวันที่ในตัว)
+ * ใช้ทั้งรายการบนจอและลำดับคิวแพ็ค จะได้เห็นตรงกัน
  */
-function extractOrderId(raw: string): string {
-  const v = raw.trim();
-  const m = v.match(/OD-\d{6}-\d{4}/i);
-  if (m) return m[0].toUpperCase();
-  if (/^https?:\/\//i.test(v)) {
-    const tail = v.split(/[?#]/)[0].split("/").filter(Boolean).pop();
-    if (tail) return decodeURIComponent(tail);
-  }
-  return v;
+function byUrgency(a: Order, b: Order): number {
+  const da = a.useByDate ?? "";
+  const db = b.useByDate ?? "";
+  if (da && db && da !== db) return da.localeCompare(db);
+  if (da && !db) return -1;
+  if (!da && db) return 1;
+  return a.id.localeCompare(b.id);
 }
 
 /** เวลาที่ยิงเลขพัสดุออเดอร์นี้ (ISO) — อ่านจากบรรทัด log ล่าสุดของการบันทึกเลข */
@@ -136,6 +173,43 @@ export default function ScanTrackingPage() {
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   const [blocked, setBlocked] = useState<{ order: Order; gate: PackGate } | null>(null);
+  // 📷 กล้องมือถือแทนเครื่องยิง — "order" = รอเลขออเดอร์ · "tracking" = รอเลขพัสดุของ target
+  const [cam, setCam] = useState<null | "order" | "tracking" | "batch">(null);
+  const router = useRouter();
+  // 📱 จอสัมผัส (มือถือ/แท็บเล็ต) หรือจอแคบระดับมือถือ — รู้หลัง mount · ref ไว้ให้ focusInput อ่านได้โดยไม่ต้องรอ render
+  const [coarse, setCoarse] = useState(false);
+  const coarseRef = useRef(false);
+  useEffect(() => {
+    const m = window.matchMedia("(pointer: coarse), (max-width: 640px)");
+    const on = () => {
+      coarseRef.current = m.matches;
+      setCoarse(m.matches);
+    };
+    on();
+    m.addEventListener?.("change", on);
+    return () => m.removeEventListener?.("change", on);
+  }, []);
+  // 📷 สแกนกองใบงาน — ชุดใบที่สแกนสะสม (เรียงตามลำดับที่สแกน) · ปิดกล้องแล้วชุดยังอยู่ กดสแกนต่อได้
+  const [batch, setBatch] = useState<string[]>([]);
+  const batchRef = useRef<string[]>([]);
+  batchRef.current = batch;
+  const [batchMsg, setBatchMsg] = useState<string | null>(null);
+  // คิวที่ค้างอยู่ในเครื่องนี้ (เริ่มไว้แล้วยังไม่ครบ) — โชว์ปุ่ม "ทำต่อ"
+  const [pending, setPending] = useState<{ left: number; next: string } | null>(null);
+  useEffect(() => {
+    const read = () => {
+      const q = loadPackQueue();
+      const next = q ? packQueueNext(q, "") : null;
+      setPending(q && next ? { left: packQueueLeft(q), next } : null);
+    };
+    read();
+    window.addEventListener(PACK_QUEUE_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(PACK_QUEUE_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
   const [tpReplies, setTpReplies] = useState<Record<string, TPReply>>({}); // 🏭 คำตอบจาก TP ต่อรายการที่รอของ
   const [arrivalFor, setArrivalFor] = useState<string | null>(null); // โมดัลปักของยังไม่มา — เก็บ id ไว้ อ่านออเดอร์สดจาก orders ทุกครั้ง
   const [savingArrival, setSavingArrival] = useState(false);
@@ -193,7 +267,10 @@ export default function ScanTrackingPage() {
 
   // ช่องยิงโฟกัสตลอด ไม่ว่าดูแท็บไหน — เครื่องยิงทำงานได้เสมอ
   // preventScroll: การคืนโฟกัสห้ามดึงจอเด้งขึ้นบน ระหว่างที่คนกำลังไล่ดูรายการข้างล่าง
-  const focusInput = useCallback(() => inputRef.current?.focus({ preventScroll: true }), []);
+  const focusInput = useCallback(() => {
+    if (coarseRef.current) return; // มือถือ: โฟกัส = คีย์บอร์ดเด้งบังจอ — ให้แตะช่องเองเมื่ออยากพิมพ์
+    inputRef.current?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     focusInput();
     window.addEventListener("focus", focusInput);
@@ -217,8 +294,8 @@ export default function ScanTrackingPage() {
     });
     const rest = active.filter((o) => packMissingOf(o).length === 0);
     return {
-      toScan: rest.filter((o) => packGate(o).ready), // ตรวจครบ → พร้อมยิง
-      toPrint: rest.filter((o) => !packGate(o).ready), // ยังไม่ครบ → รอปริ้น/แพ็ค
+      toScan: rest.filter((o) => packGate(o).ready).sort(byUrgency), // ตรวจครบ → พร้อมยิง
+      toPrint: rest.filter((o) => !packGate(o).ready).sort(byUrgency), // ยังไม่ครบ → รอปริ้น/แพ็ค
       toWait: wait,
       waitOverdue: wait.filter((o) => packMissingOf(o).some((m) => arrivalOverdue(m.expectedAt))).length,
     };
@@ -259,14 +336,15 @@ export default function ScanTrackingPage() {
   );
 
   // ── ออเดอร์ที่มีเลขพัสดุในระบบแล้ว — ล่าสุดขึ้นก่อน (เรียงจากเวลาที่ยิงใน log) ──
-  const scanned = useMemo(
-    () =>
-      orders
-        .filter((o) => !!o.tracking)
-        .map((o) => ({ o, at: trackedAt(o) }))
-        .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? "")),
-    [orders]
-  );
+  // 🚚 รอบแบ่งส่งขึ้นเป็นแถวของตัวเอง (เลขพัสดุคนละเลข) — ใบเดียวมีหลายแถวได้
+  const scanned = useMemo(() => {
+    const rows: { o: Order; at?: string; tracking: string; round?: number; key: string }[] = [];
+    orders.forEach((o) => {
+      (o.shipments ?? []).forEach((sh, n) => rows.push({ o, at: sh.at, tracking: sh.tracking, round: n + 1, key: `${o.id}#${n}` }));
+      if (o.tracking) rows.push({ o, at: trackedAt(o), tracking: o.tracking, key: o.id });
+    });
+    return rows.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+  }, [orders]);
   const scannedToday = useMemo(() => scanned.filter((s) => isToday(s.at)).length, [scanned]);
 
   // ── แท็บ "ยิงแล้ว": กรองตามคำค้น แล้วจัดกลุ่มตามวัน (เรียงล่าสุดอยู่แล้ว → กลุ่มติดกัน) ──
@@ -275,10 +353,8 @@ export default function ScanTrackingPage() {
     const filtered = !s
       ? scanned
       : scanned.filter(
-          ({ o }) =>
-            o.id.toLowerCase().includes(s) ||
-            (o.tracking ?? "").toLowerCase().includes(s) ||
-            (o.customer ?? "").toLowerCase().includes(s)
+          ({ o, tracking }) =>
+            o.id.toLowerCase().includes(s) || tracking.toLowerCase().includes(s) || (o.customer ?? "").toLowerCase().includes(s)
         );
     const groups: { key: string; label: string; rows: typeof filtered }[] = [];
     for (const row of filtered) {
@@ -310,6 +386,43 @@ export default function ScanTrackingPage() {
     done();
   }, []);
 
+  /** เริ่มไล่แพ็คตามลำดับ — จำคิวไว้ในเครื่องนี้ แล้วเปิดโหมดแพ็คใบแรก (หรือใบที่แตะ) */
+  const beginQueue = useCallback(
+    (ids: string[], source: PackQueueSource, firstId?: string) => {
+      if (!ids.length) return;
+      startPackQueue(ids, source);
+      router.push(packHref(firstId ?? ids[0]));
+    },
+    [router]
+  );
+
+  /** รายการของแท็บที่เปิดอยู่ซึ่งไล่แพ็คต่อกันได้ (รอปริ้น/แพ็ค · พร้อมยิง) — ลำดับเดียวกับที่เห็นบนจอ */
+  const tabQueue = tab === "print" ? toPrint : tab === "scan" ? toScan : [];
+
+  /** 📷 ผลสแกนตอนเก็บกองใบงาน — กล้องไม่ปิด สะสมเป็นชุด · ใบซ้ำ/ใบที่ยิงแล้ว/ไม่พบ บอกแล้วข้าม */
+  function onBatchScan(text: string) {
+    if (!looksLikeOrderId(text)) {
+      setBatchMsg(`ไม่ใช่เลขออเดอร์ (${text.length > 24 ? `${text.slice(0, 24)}…` : text}) — จ่อ QR ใบงานหรือบาร์โค้ดใบปะหน้า`);
+      return;
+    }
+    const id = extractOrderId(text);
+    const found = orders.find((o) => o.id.toUpperCase() === id);
+    if (!found) {
+      setBatchMsg(`ไม่พบ ${id} ในระบบ — ตรวจว่าเป็นใบงานของร้านนี้`);
+      return;
+    }
+    if (found.tracking) {
+      setBatchMsg(`${id} ยิงเลขพัสดุไปแล้ว (${found.tracking}) — ข้าม`);
+      return;
+    }
+    if (batchRef.current.includes(id)) {
+      setBatchMsg(`${id} สแกนไปแล้ว ไม่นับซ้ำ`);
+      return;
+    }
+    setBatchMsg(null);
+    setBatch([...batchRef.current, id]);
+  }
+
   function reset(message?: Msg) {
     setTarget(null);
     setValue("");
@@ -318,7 +431,7 @@ export default function ScanTrackingPage() {
   }
 
   /** เลือกออเดอร์มารอยิงเลขพัสดุ (จาก QR หรือกดปุ่มในแถว) — เช็คด่านตรวจแพ็คก่อนเสมอ */
-  function pickTarget(o: Order) {
+  function pickTarget(o: Order, viaCamera = false) {
     const gate = packGate(o);
     if (!gate.ready) {
       setBlocked({ order: o, gate });
@@ -330,12 +443,24 @@ export default function ScanTrackingPage() {
       kind: "info",
       text: o.tracking ? `ออเดอร์นี้มีเลขพัสดุแล้ว (${o.tracking}) — ยิงใหม่เพื่อแทนที่` : "ยิงเลขพัสดุต่อได้เลย",
     });
-    setTimeout(focusInput, 50);
+    // มาจากกล้องมือถือ → เปิดกล้องต่อทันทีเพื่อสแกนเลขพัสดุ (ไม่ต้องกดปุ่มซ้ำ ไม่ให้คีย์บอร์ดเด้ง)
+    if (viaCamera) setCam("tracking");
+    else setTimeout(focusInput, 50);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const v = value.trim();
+    await handleValue(value);
+  }
+
+  /** ผลจากกล้องมือถือ — ใช้ทางเดินเดียวกับเครื่องยิง (ขั้น 1 เลขออเดอร์ / ขั้น 2 เลขพัสดุ) */
+  function onCameraResult(text: string) {
+    setCam(null);
+    void handleValue(text, true);
+  }
+
+  async function handleValue(raw: string, viaCamera = false) {
+    const v = raw.trim();
     if (!v || busy) return;
     setValue("");
 
@@ -345,10 +470,10 @@ export default function ScanTrackingPage() {
       const found = orders.find((o) => o.id.toLowerCase() === code.toLowerCase());
       if (!found) {
         setMsg({ kind: "err", text: `ไม่พบออเดอร์ “${code}” — ยิง QR บนใบงานอีกครั้ง` });
-        setTimeout(focusInput, 50);
+        if (!viaCamera) setTimeout(focusInput, 50);
         return;
       }
-      pickTarget(found);
+      pickTarget(found, viaCamera);
       return;
     }
 
@@ -416,23 +541,37 @@ export default function ScanTrackingPage() {
             {waiting ? "รอยิง QR เลขออเดอร์" : `รอเลขพัสดุของ ${target.id}`}
           </label>
           <span className="cap">
-            {waiting ? "เอาเครื่องยิงจ่อที่ใบงาน หรือพิมพ์เลขเองก็ได้" : "ยิงเลขพัสดุ แล้วกด Enter"}
+            {waiting ? "กด 📷 สแกนด้วยกล้องมือถือ · เครื่องยิงจ่อที่ใบงาน · หรือพิมพ์เลขเอง" : "กด 📷 สแกนเลขพัสดุ · หรือยิง/พิมพ์ แล้วกด Enter"}
           </span>
-          <div className="dkb-scanline">
+          <div className="dkb-scanline flex items-stretch gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                inputRef.current?.blur();
+                setCam(waiting ? "order" : "tracking");
+              }}
+              title="ใช้กล้องมือถือสแกนแทนเครื่องยิง"
+              className="-ml-2 my-1.5 shrink-0 rounded-full px-3 text-xl"
+              style={{ background: "var(--dk-navy)", color: "#fff" }}
+              aria-label={waiting ? "สแกนเลขออเดอร์ด้วยกล้อง" : "สแกนเลขพัสดุด้วยกล้อง"}
+            >
+              📷
+            </button>
             <input
               id="scan"
               ref={inputRef}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onBlur={() => {
-                if (!blocked) setTimeout(focusInput, 120);
+                if (!blocked && !cam) setTimeout(focusInput, 120);
               }}
               autoComplete="off"
-              autoFocus
               placeholder={waiting ? "ยิง QR หรือพิมพ์เลขออเดอร์" : "ยิงเลขพัสดุ"}
             />
           </div>
-          <span className="cap mt-2 block">{busy ? "กำลังบันทึก…" : "ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย"}</span>
+          <span className="cap mt-2 block">
+            {busy ? "กำลังบันทึก…" : coarse ? "บนมือถือ: แตะแถวข้างล่างเพื่อเปิดโหมดแพ็ค · แตะช่องนี้เมื่ออยากพิมพ์เอง" : "ช่องนี้โฟกัสอยู่ตลอด — ยิงได้เลย"}
+          </span>
 
           {/* ออเดอร์ที่กำลังรอเลขพัสดุ — อยู่ในกล่องเดียวกัน จะได้เห็นว่ากำลังยิงให้ใคร */}
           {target && (
@@ -508,6 +647,15 @@ export default function ScanTrackingPage() {
         </div>
       )}
 
+      {/* 📱 แตะลิงก์ในรายการบนมือถือ = จำรายการทั้งแท็บเป็นคิวก่อนเปิดโหมดแพ็ค (ปุ่มอื่นในแถวไม่เกี่ยว) */}
+      <div
+        className={coarse ? "pb-28" : undefined}
+        onClickCapture={(e) => {
+          if (!coarse || !tabQueue.length) return;
+          const a = (e.target as HTMLElement).closest?.("a");
+          if (a && a.getAttribute("href")?.includes(`${PACK_SCAN_PARAM}=1`)) startPackQueue(tabQueue.map((o) => o.id), "queue");
+        }}
+      >
       {!loaded ? (
         <div className="mt-5 grid gap-2">
           <div className="dkb-skel h-[64px]" />
@@ -525,10 +673,11 @@ export default function ScanTrackingPage() {
                 <Row key={o.id} tone="var(--dk-mint)">
                   <RowMain
                     name={o.customer || "ยังไม่ระบุชื่อ"}
-                    href={`/admin/orders/${encodeURIComponent(o.id)}`}
+                    href={coarse ? packHref(o.id) : `/admin/orders/${encodeURIComponent(o.id)}`}
                     tags={
                       <>
                         <Tag tone="mint">พร้อมยิง</Tag>
+                        <PartialTag o={o} />
                         <TaxTag o={o} />
                       </>
                     }
@@ -541,9 +690,15 @@ export default function ScanTrackingPage() {
                     }
                   />
                   <RowSide>
-                    <Btn tone="navy" small onClick={() => pickTarget(o)}>
-                      ยิงเลขใบนี้
-                    </Btn>
+                    {coarse ? (
+                      <Btn tone="navy" small onClick={() => beginQueue(toScan.map((x) => x.id), "queue", o.id)}>
+                        📦 แพ็ค–ยิงใบนี้
+                      </Btn>
+                    ) : (
+                      <Btn tone="navy" small onClick={() => pickTarget(o)}>
+                        ยิงเลขใบนี้
+                      </Btn>
+                    )}
                   </RowSide>
                 </Row>
               ))}
@@ -690,10 +845,11 @@ export default function ScanTrackingPage() {
                   <Row key={o.id} tone={STATUS_TONE[o.status]}>
                     <RowMain
                       name={o.customer || "ยังไม่ระบุชื่อ"}
-                      href={`/admin/orders/${encodeURIComponent(o.id)}`}
+                      href={coarse ? packHref(o.id) : `/admin/orders/${encodeURIComponent(o.id)}`}
                       tags={
                         <>
                           <Tag tone="coral">ยังยิงไม่ได้</Tag>
+                          <PartialTag o={o} />
                           <TaxTag o={o} />
                         </>
                       }
@@ -706,9 +862,15 @@ export default function ScanTrackingPage() {
                       }
                     />
                     <RowSide>
-                      <Btn tone="navy" small href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=work`}>
-                        ปริ้นใบงาน
-                      </Btn>
+                      {coarse ? (
+                        <Btn tone="navy" small onClick={() => beginQueue(toPrint.map((x) => x.id), "queue", o.id)}>
+                          📦 แพ็คใบนี้
+                        </Btn>
+                      ) : (
+                        <Btn tone="navy" small href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=work`}>
+                          ปริ้นใบงาน
+                        </Btn>
+                      )}
                       <Btn small onClick={() => setArrivalFor(o.id)} title="ของรายการไหนยังไม่ถึงโต๊ะแพ็ค ปักไว้ให้ใบนี้ไปรอที่ขั้น “รอของ”">
                         📦 ของยังไม่มา
                       </Btn>
@@ -748,10 +910,11 @@ export default function ScanTrackingPage() {
                       <div className="dkb-shipday">
                         {g.label} <small>{g.rows.length} ใบ</small>
                       </div>
-                      {g.rows.map(({ o, at }, i) => {
-                        const odd = o.status !== "จัดส่งแล้ว" && o.status !== "เสร็จสิ้น";
+                      {g.rows.map(({ o, at, tracking, round, key }, i) => {
+                        const odd = !round && o.status !== "จัดส่งแล้ว" && o.status !== "เสร็จสิ้น";
+                        const sh = round ? o.shipments?.[round - 1] : undefined;
                         return (
-                          <div key={o.id} className="dkb-shiprow" data-odd={odd ? "1" : undefined}>
+                          <div key={key} className="dkb-shiprow" data-odd={odd ? "1" : undefined}>
                             <span className="dkb-shipidx">{i + 1}</span>
                             <Link
                               href={`/admin/orders/${encodeURIComponent(o.id)}`}
@@ -764,13 +927,13 @@ export default function ScanTrackingPage() {
                             <button
                               type="button"
                               className="dkb-shiptrk"
-                              data-copied={copied === o.id ? "1" : undefined}
-                              onClick={() => copyTracking(o.id, o.tracking!)}
+                              data-copied={copied === key ? "1" : undefined}
+                              onClick={() => copyTracking(key, tracking)}
                               title="กดเพื่อคัดลอกเลขพัสดุ"
-                              aria-label={`คัดลอกเลขพัสดุ ${o.tracking}`}
+                              aria-label={`คัดลอกเลขพัสดุ ${tracking}`}
                             >
-                              {o.tracking}
-                              {copied === o.id ? (
+                              {tracking}
+                              {copied === key ? (
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" aria-hidden>
                                   <path d="m4.5 12.5 5 5 10-11" />
                                 </svg>
@@ -781,10 +944,16 @@ export default function ScanTrackingPage() {
                                 </svg>
                               )}
                             </button>
-                            <span className="dkb-shipqty">{qtyOf(o)} ชิ้น</span>
+                            <span className="dkb-shipqty">{sh ? `${shipmentQty(sh) || "?"} ชิ้น` : `${qtyOf(o)} ชิ้น`}</span>
                             <span className="dkb-shiptime">{fmtTime(at)}</span>
                             <span className="dkb-shipst">
-                              <StatusChip s={o.status} label={orderStatusLabel(o)} />
+                              {round ? (
+                                <Tag tone="sky" title={`แบ่งส่ง รอบที่ ${round} · ${sh?.proofs.length ?? 0} รูป${sh?.note ? ` · ${sh.note}` : ""}`}>
+                                  🚚 ส่งบางส่วน รอบ {round}
+                                </Tag>
+                              ) : (
+                                <StatusChip s={o.status} label={orderStatusLabel(o)} />
+                              )}
                             </span>
                           </div>
                         );
@@ -798,7 +967,157 @@ export default function ScanTrackingPage() {
         </>
       )}
 
+      </div>
+
+      {/* 📱 แถบล่างมือถือ — เริ่มแพ็คตามคิว / สแกนกองใบงาน / ทำคิวที่ค้างต่อ */}
+      {coarse && loaded && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-2.5 shadow-[0_-6px_18px_rgba(23,58,107,0.12)] backdrop-blur">
+          {batch.length > 0 ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCam("batch")}
+                className="min-h-[52px] shrink-0 rounded-2xl border-[1.5px] px-3 text-sm font-bold"
+                style={{ borderColor: "var(--dk-navy)", color: "var(--dk-navy)" }}
+              >
+                📷 สแกนต่อ
+              </button>
+              <button
+                type="button"
+                onClick={() => beginQueue(batch, "batch")}
+                className="min-h-[52px] flex-1 rounded-2xl text-sm font-extrabold"
+                style={{ background: "var(--dk-yolk)", color: "#3a2b00" }}
+              >
+                ▶ แพ็คชุดที่สแกน {batch.length} ใบ
+                <span className="block text-[10.5px] font-normal">เรียงตามลำดับที่สแกน · {batch.map(shortOrderId).join(" · ")}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBatchMsg(null);
+                  setCam("batch");
+                }}
+                className="min-h-[52px] shrink-0 rounded-2xl border-[1.5px] px-3 text-sm font-bold"
+                style={{ borderColor: "var(--dk-navy)", color: "var(--dk-navy)" }}
+                title="ยิง QR ใบงานต่อกันหลายใบ แล้วไล่แพ็คจากชุดนั้น"
+              >
+                📷 สแกนกองใบงาน
+              </button>
+              {pending ? (
+                <Link
+                  href={packHref(pending.next)}
+                  className="grid min-h-[52px] flex-1 place-items-center rounded-2xl text-center text-sm font-extrabold text-white"
+                  style={{ background: "var(--dk-navy)" }}
+                >
+                  ▶ ทำคิวต่อ · เหลือ {pending.left} ใบ
+                  <span className="block text-[10.5px] font-normal text-slate-200">ใบถัดไป {pending.next}</span>
+                </Link>
+              ) : tabQueue.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => beginQueue(tabQueue.map((o) => o.id), "queue")}
+                  className="min-h-[52px] flex-1 rounded-2xl text-sm font-extrabold"
+                  style={{ background: "var(--dk-yolk)", color: "#3a2b00" }}
+                >
+                  ▶ เริ่มแพ็ค {tabQueue.length} ใบ
+                  <span className="block text-[10.5px] font-normal">{tab === "print" ? "รอปริ้น/แพ็ค" : "พร้อมยิง"} · เรียงตามวันใช้งาน · ใบแรก {tabQueue[0].id}</span>
+                </button>
+              ) : (
+                <div className="grid flex-1 place-items-center rounded-2xl bg-slate-100 text-xs font-bold text-slate-500">
+                  {tab === "print" || tab === "scan" ? "ไม่มีใบในขั้นนี้" : "เลือกขั้น รอปริ้น/แพ็ค หรือ พร้อมยิง เพื่อเริ่มคิว"}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── ด่านกันพลาด: ตรวจแพ็คไม่ครบ ยิงไม่ได้ ── */}
+      {/* 📷 กล้องมือถือแทนเครื่องยิง — ผลลัพธ์วิ่งเข้าทางเดียวกับช่องยิง · โหมด batch เก็บกองใบงาน กล้องไม่ปิด */}
+      <CameraScanner
+        open={cam !== null}
+        title={
+          cam === "batch"
+            ? `สแกนกองใบงาน${batch.length ? ` · ${batch.length} ใบ` : ""}`
+            : cam === "tracking" && target
+              ? `สแกนเลขพัสดุของ ${target.id}`
+              : "สแกนบาร์โค้ด/QR เลขออเดอร์"
+        }
+        hint={
+          cam === "batch"
+            ? "จ่อ QR ใบงานหรือบาร์โค้ดใบปะหน้าทีละใบ ไม่ต้องกดอะไร อ่านได้แล้วสั่น 1 ที"
+            : cam === "tracking"
+              ? "จ่อบาร์โค้ดเลขพัสดุบนใบส่งของ ปณ./ขนส่ง อ่านได้แล้วบันทึกทันที"
+              : "จ่อบาร์โค้ดบนใบปะหน้า หรือ QR บนใบงาน"
+        }
+        onResult={(text) => (cam === "batch" ? onBatchScan(text) : onCameraResult(text))}
+        onClose={() => {
+          setCam(null);
+          setTimeout(focusInput, 50);
+        }}
+        footer={
+          cam === "batch" ? (
+            <div className="bg-slate-950 px-3 pt-3 text-white">
+              <div className="flex items-baseline justify-between text-xs text-slate-300">
+                <span>
+                  ชุดงาน <b className="text-white">{batch.length} ใบ</b>
+                  {batch.length > 0 && (
+                    <>
+                      {" · "}
+                      {batch.reduce((n, id) => {
+                        const o = orders.find((x) => x.id === id);
+                        return n + (o ? qtyOf(o) : 0);
+                      }, 0)}{" "}
+                      ชิ้น
+                    </>
+                  )}
+                </span>
+                {batch.length > 0 && (
+                  <button type="button" onClick={() => setBatch([])} className="text-xs text-slate-400 underline underline-offset-2">
+                    ล้างชุด
+                  </button>
+                )}
+              </div>
+              {batchMsg && <p className="mt-1 text-xs font-bold text-rose-300">{batchMsg}</p>}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {batch.length === 0 ? (
+                  <span className="text-xs text-slate-500">ใบที่สแกนจะเรียงต่อกันตรงนี้ · ใบซ้ำไม่นับเพิ่ม</span>
+                ) : (
+                  batch.map((id, i) => (
+                    <span
+                      key={id}
+                      title={id}
+                      className={`rounded-lg px-2 py-1 font-mono text-[11px] font-bold ${
+                        i === batch.length - 1 ? "bg-emerald-400 text-emerald-950" : "bg-white/10 text-slate-200"
+                      }`}
+                    >
+                      {i === batch.length - 1 ? "✓ " : ""}
+                      {shortOrderId(id)}
+                    </span>
+                  ))
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={batch.length === 0}
+                onClick={() => {
+                  setCam(null);
+                  beginQueue(batch, "batch");
+                }}
+                className="mt-3 w-full rounded-xl py-3 text-sm font-extrabold disabled:opacity-40"
+                style={{ background: "var(--dk-yolk)", color: "#3a2b00" }}
+              >
+                ▶ เริ่มแพ็ค {batch.length} ใบ
+                <span className="block text-[10.5px] font-normal">เรียงตามลำดับที่สแกน · ยังสแกนเพิ่มได้เรื่อย ๆ</span>
+              </button>
+            </div>
+          ) : undefined
+        }
+      />
+
       {blocked && (
         <div
           role="dialog"
@@ -844,9 +1163,17 @@ export default function ScanTrackingPage() {
               </ul>
             </div>
 
+            {/* 🚚 ลูกค้าขอส่งบางลายก่อน? ไม่ต้องสร้างใบใหม่ — ติ๊กรูปในโหมดแพ็คแล้วยิงเลขรอบนั้น */}
+            {blocked.order.items.reduce((n, it) => n + proofsOf(it).length, 0) > 1 && (
+              <p className="mt-2 rounded-[14px] px-3 py-2 text-[12.5px] leading-relaxed" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
+                🚚 ต้องส่งบางลายก่อน (แบ่งส่ง)? ให้แอดมินระบุแผนที่หน้าออเดอร์ (ช่องเลขพัสดุ → “ระบุรูปที่ส่งก่อน”) แล้วโหมดแพ็คจะมีปุ่มเหลือง “ส่งบางส่วน” ยิงเลขรอบนั้นได้เลย
+                ใบยังค้างที่นี่จนกว่าจะยิงเลขรอบสุดท้าย
+              </p>
+            )}
+
             <div className="mt-4 flex flex-wrap gap-2">
-              <Btn tone="navy" href={`/admin/orders/${encodeURIComponent(blocked.order.id)}`}>
-                เปิดหน้าออเดอร์เพื่อตรวจ
+              <Btn tone="navy" href={`/admin/orders/${encodeURIComponent(blocked.order.id)}?${PACK_SCAN_PARAM}=1`}>
+                📦 เปิดโหมดแพ็คเพื่อตรวจ
               </Btn>
               <Btn
                 onClick={() => {

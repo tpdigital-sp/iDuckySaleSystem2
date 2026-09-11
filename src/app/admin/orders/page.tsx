@@ -879,6 +879,7 @@ function OrderRow({
           {o.items.some((i) => i.needStockCheck) && <span className="warn">รอเช็คสต๊อก</span>}
           {dup && <span className="warn">ออเดอร์ซ้ำเบอร์เดียวกัน</span>}
           {o.tracking && <span className="id">{o.tracking}</span>}
+          {!o.tracking && (o.shipments?.length ?? 0) > 0 && <span className="warn">🚚 ส่งบางส่วนแล้ว {o.shipments!.length} รอบ</span>}
         </span>
       </span>
 

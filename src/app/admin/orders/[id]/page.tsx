@@ -9,6 +9,9 @@ import FlowAccountSync from "@/components/admin/FlowAccountSync";
 /** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
 const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
 import { useParams, useRouter } from "next/navigation";
+import CameraScanner from "@/components/admin/CameraScanner";
+import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
+import { extractOrderId } from "@/lib/scan-code";
 import { artQtyOf, artSizeOf, artSizeText, formatPrice, productPath, type Product } from "@/lib/products";
 import {
   applyReplaceMarker,
@@ -49,6 +52,13 @@ import {
   orderVatAmount,
   depositInstallments,
   packGate,
+  nextPlannedRound,
+  partialGate,
+  partialShipSummary,
+  plannedProofRounds,
+  proofKey,
+  shipmentQty,
+  shippedProofRounds,
   orderHasTaxInvoice,
   orderNeedsTaxInvoiceInBox,
   taxInvoiceDocOf,
@@ -70,6 +80,8 @@ import {
   type OrderItem,
   type OrderPayment,
   type OrderStatus,
+  type Shipment,
+  type ShipPlanRound,
   type Proof,
   proofQtyCheck,
   orderedPieces,
@@ -1174,6 +1186,11 @@ export default function AdminOrderDetailPage() {
   }, [orderId]);
 
   const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
+  // 🚚 แบ่งส่ง: รูปที่ติ๊ก "ส่งรอบนี้" ในโหมดแพ็ค (คีย์ "item:proof") + โมดัลยิงเลขรอบนี้
+  const [shipSel, setShipSel] = useState<Set<string>>(() => new Set());
+  const [partialOpen, setPartialOpen] = useState(false);
+  // 📋 โมดัลแอดมินระบุแผนแบ่งส่ง (รูปไหนส่งก่อน)
+  const [planOpen, setPlanOpen] = useState(false);
   const [os, setOs] = useState<"mac" | "win" | "">(""); // เครื่องที่เปิดหน้านี้ (รู้หลัง mount) — ใช้เรียงตัวเลือกทางลัดแบบเนทีฟ
   useEffect(() => setOs(shortcutOs()), []);
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
@@ -1220,6 +1237,8 @@ export default function AdminOrderDetailPage() {
     const one = await fetchOrderAdmin(orderId); // ของสดจากเซิร์ฟเวอร์ (มี loginLine ที่ SSR ไม่ได้ดึงมา)
     if (one.order) {
       setOrder(one.order);
+      // เลขพัสดุที่มีอยู่แล้ว = บันทึกแล้ว → ป้าย ✅ ในโหมดแพ็คขึ้นถูก และ blur ช่องเดิมไม่บันทึกซ้ำ
+      trackingRef.current = (one.order.tracking ?? "").trim();
       setDemo(false);
       setLoading(false); // วาดหน้าได้แล้ว — ที่เหลือทยอยมา
     }
@@ -1867,8 +1886,16 @@ export default function AdminOrderDetailPage() {
    *  ด่านตรวจยังไม่ครบ → แอดมินยืนยันข้ามได้ (เซิร์ฟเวอร์ลง log "ข้ามด่านตรวจ") · ฝ่ายแพ็คโดนเซิร์ฟเวอร์ปฏิเสธ */
   function saveTracking() {
     if (!order) return;
-    const t = (order.tracking ?? "").trim();
+    saveTrackingValue((order.tracking ?? "").trim());
+  }
+
+  /** บันทึกเลขพัสดุจากค่าที่ส่งมาตรง ๆ (กล้องมือถือสแกนได้) — ไม่ต้องรอ state ช่องกรอกอัปเดตก่อน */
+  function saveTrackingValue(raw: string) {
+    if (!order) return;
+    const t = raw.trim();
     if (!t || t === trackingRef.current) return; // ไม่เปลี่ยน → ไม่ต้องบันทึกซ้ำ
+    // ให้ช่องกรอก/โมดัลข้ามด่านเห็นเลขเดียวกับที่สแกนมา
+    if (t !== (order.tracking ?? "").trim()) setOrder((cur) => (cur ? { ...cur, tracking: t } : cur));
 
     const g = packGate(order);
     if (!g.ready) {
@@ -1918,6 +1945,110 @@ export default function AdminOrderDetailPage() {
   function cancelSkipGate() {
     setSkipGate(null);
     setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
+  }
+
+  /** 🚚 ติ๊ก/ยกเลิกรูปที่จะไปกับรอบแบ่งส่งรอบนี้ (ยังไม่บันทึก — บันทึกตอนยืนยันในโมดัล) */
+  function toggleShipSel(itemIndex: number, proofIndex: number) {
+    const k = proofKey(itemIndex, proofIndex);
+    setShipSel((cur) => {
+      const next = new Set(cur);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  }
+
+  /**
+   * 🚚 ยิงเลขพัสดุ "รอบแบ่งส่ง" — บันทึกลง Order.shipments (ใบยังไม่ปิด สถานะเดิม) + log
+   * ด่านตรวจเฉพาะรูปที่เลือก (partialGate) ตัดสินในโมดัลแล้ว: ฝ่ายแพ็คผ่านถึงกดได้ · แอดมินข้ามได้ (เซิร์ฟเวอร์ลง log)
+   * เซิร์ฟเวอร์แจ้งลูกค้าทางไลน์เองเมื่อเห็นรอบใหม่ (newShipmentsOf ใน route)
+   */
+  function commitPartialShipment(tracking: string, note: string, keys: string[]) {
+    if (!order) return;
+    const t = tracking.trim();
+    if (!t) return;
+    const proofs: Shipment["proofs"] = [];
+    keys.forEach((k) => {
+      const [i, j] = k.split(":").map(Number);
+      const it = order.items[i];
+      const p = it ? proofsOf(it)[j] : undefined;
+      if (!it || !p) return;
+      proofs.push({ item: i, proof: j, url: p.url, ...(p.qty ? { qty: p.qty } : {}), ...(p.unit ? { unit: p.unit } : {}), itemName: it.name });
+    });
+    if (!proofs.length) return;
+    const sh: Shipment = { tracking: t, at: new Date().toISOString(), by: actor, proofs, ...(note.trim() ? { note: note.trim() } : {}) };
+    const round = (order.shipments?.length ?? 0) + 1;
+    const qty = shipmentQty(sh);
+    const next = withLog(
+      { ...order, shipments: [...(order.shipments ?? []), sh] },
+      actor,
+      "🚚 ส่งบางส่วน",
+      `รอบที่ ${round} · ${t} · ${proofs.length} รูป${qty ? ` · ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}`
+    );
+    setShipSel(new Set());
+    setPartialOpen(false);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** 🚚 แอดมินถอดรอบแบ่งส่งที่ยิงผิด (ฝ่ายแพ็คทำไม่ได้ — เซิร์ฟเวอร์รับแค่ต่อท้าย) */
+  async function removeShipment(n: number) {
+    if (!order || !mayEdit) return;
+    const sh = order.shipments?.[n];
+    if (!sh) return;
+    if (
+      !(await askConfirm({
+        icon: "🚚",
+        title: `ลบรอบแบ่งส่งที่ ${n + 1}?`,
+        detail: `เลขพัสดุ ${sh.tracking} จะถูกถอดออกจากใบนี้ — ลูกค้าได้รับแจ้งเลขนี้ทางไลน์ไปแล้ว ต้องแจ้งลูกค้าเองว่ายกเลิก`,
+        confirmLabel: "ลบรอบนี้",
+        danger: true,
+      }))
+    )
+      return;
+    applyOrder(withLog({ ...order, shipments: order.shipments!.filter((_, i) => i !== n) }, actor, "ลบรอบแบ่งส่ง", `รอบที่ ${n + 1} · ${sh.tracking}`));
+  }
+
+  /**
+   * 🚚 รูปที่จะไปกับรอบแบ่งส่งรอบถัดไป — มีแผนจากแอดมิน = ล็อกตามแผน (ฝ่ายแพ็คไม่ต้องรู้เอง)
+   * ไม่มีแผน = แอดมิน (orders.edit) เลือกเองในโหมดแพ็คได้ · ฝ่ายแพ็คไม่มีปุ่มให้เลือก
+   */
+  const planNext = order ? nextPlannedRound(order) : null;
+  const adHocSplit = !!order && mayEdit && !(order.shipPlan?.length ?? 0);
+  const activeShipSel: Set<string> = planNext ? new Set(planNext.keys) : adHocSplit ? shipSel : new Set();
+
+  /** 📋 แอดมินเพิ่มรอบในแผนแบ่งส่ง (จากโมดัลเลือกรูป) + log · ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" ทันที */
+  function addPlanRound(keys: string[], note: string, dueDate: string) {
+    if (!order || !mayEdit || !keys.length) return;
+    const proofs: ShipPlanRound["proofs"] = [];
+    keys.forEach((k) => {
+      const [i, j] = k.split(":").map(Number);
+      const it = order.items[i];
+      const p = it ? proofsOf(it)[j] : undefined;
+      if (!it || !p) return;
+      proofs.push({ item: i, proof: j, url: p.url, ...(p.qty ? { qty: p.qty } : {}), ...(p.unit ? { unit: p.unit } : {}), itemName: it.name });
+    });
+    if (!proofs.length) return;
+    const round: ShipPlanRound = { proofs, by: actor, at: new Date().toISOString(), ...(note.trim() ? { note: note.trim() } : {}), ...(dueDate ? { dueDate } : {}) };
+    const n = (order.shipPlan?.length ?? 0) + 1;
+    const qty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+    setPlanOpen(false);
+    applyOrder(
+      withLog(
+        { ...order, shipPlan: [...(order.shipPlan ?? []), round] },
+        actor,
+        "📋 ระบุแผนแบ่งส่ง",
+        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}`).join(", ")}${qty ? ` · ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.note ? ` · ${round.note}` : ""}`
+      )
+    );
+  }
+
+  /** 📋 แอดมินถอดรอบออกจากแผน (เฉพาะรอบที่ยังไม่ได้ส่ง) */
+  function removePlanRound(n: number) {
+    if (!order || !mayEdit) return;
+    const r = order.shipPlan?.[n];
+    if (!r || order.shipments?.[n]) return;
+    applyOrder(withLog({ ...order, shipPlan: order.shipPlan!.filter((_, i) => i !== n) }, actor, "ลบรอบในแผนแบ่งส่ง", `รอบที่ ${n + 1}`));
   }
 
   /** เปิดดูรูปแบบงานเต็มจอ (รู้ตำแหน่ง item/proof เพื่อเลื่อนรูปในรายการเดียวกันได้) */
@@ -2930,8 +3061,21 @@ export default function AdminOrderDetailPage() {
           </div>
         )}
         {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
+        {partialOpen && (
+          <PartialShipModal
+            order={order}
+            keys={[...activeShipSel]}
+            mayEdit={mayEdit}
+            defaultNote={planNext?.round.note ?? ""}
+            onCancel={() => setPartialOpen(false)}
+            onConfirm={(t, note) => commitPartialShipment(t, note, [...activeShipSel])}
+          />
+        )}
         <PackView
           order={order}
+          shipSel={activeShipSel}
+          onToggleShip={adHocSplit ? toggleShipSel : undefined}
+          onPartialShip={() => setPartialOpen(true)}
           onPhotoAdd={addPackPhotos}
           onPhotoDelete={deletePackPhoto}
           gate={gate}
@@ -2943,6 +3087,9 @@ export default function AdminOrderDetailPage() {
           onArrival={setArrival}
           onTrackingChange={(v) => setOrder((cur) => (cur ? { ...cur, tracking: v } : cur))}
           onTrackingSave={saveTracking}
+          onTrackingScanned={saveTrackingValue}
+          trackingSaved={!!(order.tracking ?? "").trim() && (order.tracking ?? "").trim() === trackingRef.current}
+          onNextOrder={(id) => router.push(`/admin/orders/${encodeURIComponent(id)}?${PACK_SCAN_PARAM}=1`)}
           onZoom={showProof}
         />
         {confirmDialog}
@@ -6604,11 +6751,89 @@ export default function AdminOrderDetailPage() {
           <div>
             <GH t="orange">📮 เลขพัสดุ</GH>
             <div className={`mt-2 ${soft("orange")}`}>
+              {/* 📋 แผนแบ่งส่ง — แอดมินระบุว่ารูปไหนต้องส่งก่อน ฝ่ายแพ็คทำตาม (ไม่มีแผน = ฝ่ายแพ็คไม่มีปุ่มแบ่งส่ง) */}
+              {(mayEdit || (order.shipPlan?.length ?? 0) > 0) && !(order.tracking ?? "").trim() && (
+                <div className="mb-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold text-amber-800">📋 แผนแบ่งส่ง {order.shipPlan?.length ? `· ${order.shipPlan.length} รอบก่อนรอบสุดท้าย` : "— ยังไม่ระบุ (ส่งครบทีเดียว)"}</p>
+                    {mayEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setPlanOpen(true)}
+                        className="rounded-lg bg-amber-400 px-2.5 py-1 text-[11px] font-extrabold text-amber-950 hover:bg-amber-300"
+                      >
+                        ＋ ระบุรูปที่ส่งก่อน
+                      </button>
+                    )}
+                  </div>
+                  {(order.shipPlan ?? []).map((r, n) => {
+                    const done = order.shipments?.[n];
+                    const qty = r.proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+                    return (
+                      <div key={`plan-${n}`} className="mt-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] ring-1 ring-amber-100">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-800">
+                            รอบที่ {n + 1}: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")}
+                            {qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                          </span>
+                          {done ? (
+                            <span className="shrink-0 font-bold text-green-700">✅ ส่งแล้ว {done.tracking}</span>
+                          ) : mayEdit ? (
+                            <button type="button" onClick={() => removePlanRound(n)} className="shrink-0 font-bold text-rose-500 hover:underline">
+                              ลบ
+                            </button>
+                          ) : (
+                            <span className="shrink-0 font-bold text-amber-700">รอแพ็ค</span>
+                          )}
+                        </div>
+                        <p className={faint}>
+                          {r.dueDate ? `ส่งภายใน ${r.dueDate} · ` : ""}
+                          {r.note ? `📝 ${r.note} · ` : ""}
+                          {r.by} · {shortTime(r.at)}
+                        </p>
+                      </div>
+                    );
+                  })}
+                  {(order.shipPlan?.length ?? 0) > 0 && <p className="mt-1 text-[11px] text-amber-700">รูปที่เหลือ = รอบสุดท้าย ยิงที่ช่องเลขพัสดุด้านล่างตามปกติ</p>}
+                </div>
+              )}
+              {/* 🚚 รอบแบ่งส่งที่ยิงไปแล้ว — เลขรอบสุดท้ายอยู่ช่องด้านล่างเหมือนเดิม */}
+              {(order.shipments?.length ?? 0) > 0 && (
+                <div className="mb-2 space-y-2">
+                  {order.shipments!.map((sh, n) => (
+                    <div key={`${sh.tracking}-${n}`} className="rounded-xl bg-sky-50 px-3 py-2 ring-1 ring-sky-100">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-bold text-sky-700">
+                          🚚 แบ่งส่ง รอบที่ {n + 1} · {sh.proofs.length} รูป{shipmentQty(sh) ? ` · ${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น` : ""}
+                        </p>
+                        {mayEdit && (
+                          <button type="button" onClick={() => void removeShipment(n)} className="text-[11px] font-bold text-rose-500 hover:underline">
+                            ลบรอบนี้
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[13px] font-bold text-slate-800">
+                        {sh.tracking} <CopyChip label="คัดลอก" text={() => sh.tracking} />
+                      </p>
+                      <p className={`mt-0.5 text-[11px] ${faint}`}>
+                        {sh.by} · {shortTime(sh.at)} · {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")}
+                        {sh.note ? ` · 📝 ${sh.note}` : ""}
+                      </p>
+                      <ThaiPostStatus number={sh.tracking.trim()} />
+                    </div>
+                  ))}
+                  {!(order.tracking ?? "").trim() && (
+                    <p className="text-[11px] font-bold text-amber-700">
+                      ใบยังไม่ปิด — ช่องด้านล่างคือเลขพัสดุ “รอบสุดท้าย” ยิงแล้วสถานะเป็นจัดส่งแล้ว
+                    </p>
+                  )}
+                </div>
+              )}
               <input
                 value={order.tracking ?? ""}
                 onChange={(e) => setOrder((cur) => (cur ? { ...cur, tracking: e.target.value } : cur))}
                 onBlur={saveTracking}
-                placeholder="ยิง QR หรือพิมพ์เลขพัสดุ"
+                placeholder={order.shipments?.length ? "เลขพัสดุรอบสุดท้าย — ยิง QR หรือพิมพ์" : "ยิง QR หรือพิมพ์เลขพัสดุ"}
                 className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[13px] text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
               />
               <p className={`mt-1.5 text-[11px] ${faint}`}>
@@ -6662,6 +6887,17 @@ export default function AdminOrderDetailPage() {
       </div>
 
       {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
+      {partialOpen && (
+        <PartialShipModal
+          order={order}
+          keys={[...activeShipSel]}
+          mayEdit={mayEdit}
+          defaultNote={planNext?.round.note ?? ""}
+          onCancel={() => setPartialOpen(false)}
+          onConfirm={(t, note) => commitPartialShipment(t, note, [...activeShipSel])}
+        />
+      )}
+      {planOpen && <ShipPlanModal order={order} onCancel={() => setPlanOpen(false)} onSave={addPlanRound} />}
 
       {/* หน้าตรวจสอบออเดอร์: ขยายรูปดูอย่างเดียว (ไม่มีปุ่มตรวจนับ — งานแพ็คอยู่ในโหมดแพ็ค) */}
       {redoOpen && (
@@ -6830,12 +7066,26 @@ function ProofCarousel({
   proofs,
   onCheck,
   onZoom,
+  shipRound,
+  planRound,
+  planActive,
+  shipSelected,
+  onToggleShip,
 }: {
   itemIndex: number;
   itemName: string;
   proofs: Proof[];
   onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
   onZoom: (i: number, j: number) => void;
+  /** 🚚 รูปนี้ส่งไปแล้วในรอบแบ่งส่งที่เท่าไร (undefined = ยังไม่ส่ง) */
+  shipRound?: (j: number) => number | undefined;
+  /** 📋 รูปนี้อยู่ในแผนแบ่งส่งรอบที่เท่าไร (แอดมินระบุ) */
+  planRound?: (j: number) => number | undefined;
+  /** 📋 รูปนี้อยู่ในรอบถัดไปที่กำลังจะส่ง (ป้ายเข้ม "ส่งก่อน — รอบนี้") */
+  planActive?: (j: number) => boolean;
+  /** 🚚 รูปนี้ถูกติ๊กว่าจะไปกับรอบแบ่งส่งรอบนี้ — ไม่ส่งมา = ใบนี้แบ่งส่งไม่ได้ (รูปเดียว/ปิดแล้ว) */
+  shipSelected?: (j: number) => boolean;
+  onToggleShip?: (j: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [current, setCurrent] = useState(0);
@@ -6940,6 +7190,42 @@ function ProofCarousel({
                 {p.pack?.status === "ไม่ครบ" ? `⚠️ ได้ ${p.pack.got ?? 0}` : "✕ ไม่ครบ"}
               </button>
             </div>
+            {/* 🚚 แบ่งส่ง — รูปที่ออกไปแล้วบอกรอบ · รูปที่นับครบแล้วติ๊กเลือกไปรอบนี้ได้ (ลูกค้าขอส่งบางลายก่อน) */}
+            {(() => {
+              const r = shipRound?.(j);
+              if (r) return <div className="bg-sky-600 py-2 text-center text-xs font-extrabold text-white">🚚 ส่งไปแล้ว — รอบที่ {r}</div>;
+              // 📋 แอดมินระบุไว้ว่ารูปนี้ส่งก่อน — ฝ่ายแพ็คเห็นป้ายเฉย ๆ ไม่ต้องเลือกเอง
+              const pr = planRound?.(j);
+              if (pr) {
+                const active = planActive?.(j);
+                return (
+                  <div className={`py-2 text-center text-xs font-extrabold ${active ? "bg-amber-400 text-amber-950" : "bg-amber-50 text-amber-700"}`}>
+                    📋 แอดมินสั่งส่งก่อน — รอบที่ {pr}
+                    {active ? (p.pack?.status === "ครบ" ? " · นับครบแล้ว พร้อมยิง" : " · นับรูปนี้แล้วกด ✓ ครบ") : ""}
+                  </div>
+                );
+              }
+              if (!shipSelected || !onToggleShip || p.pack?.status !== "ครบ") return null;
+              const on = shipSelected(j);
+              return (
+                <button
+                  type="button"
+                  onClick={() => onToggleShip(j)}
+                  className={`flex w-full items-center justify-center gap-2 py-2 text-xs font-extrabold ${
+                    on ? "bg-amber-400 text-amber-950" : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <span
+                    className={`grid h-4 w-4 place-items-center rounded border-2 text-[10px] leading-none ${
+                      on ? "border-amber-900 bg-amber-900 text-white" : "border-amber-500 bg-white text-transparent"
+                    }`}
+                  >
+                    ✓
+                  </span>
+                  {on ? "ส่งรอบนี้ (แบ่งส่ง)" : "แบ่งส่ง: เลือกรูปนี้ไปรอบนี้"}
+                </button>
+              );
+            })()}
           </div>
         ))}
       </div>
@@ -6996,6 +7282,9 @@ function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: str
 function PackView({
   order,
   gate,
+  shipSel,
+  onToggleShip,
+  onPartialShip,
   onCheck,
   onAck,
   onSampleAck,
@@ -7004,12 +7293,27 @@ function PackView({
   onArrival,
   onTrackingChange,
   onTrackingSave,
+  onTrackingScanned,
+  trackingSaved,
+  onNextOrder,
   onZoom,
   onPhotoAdd,
   onPhotoDelete,
 }: {
   order: Order;
   gate: ReturnType<typeof packGate>;
+  /** 🚚 แบ่งส่ง: รูปที่จะไปกับรอบนี้ (คีย์ "item:proof") — ตามแผนแอดมิน หรือที่แอดมินติ๊กเองในโหมดแพ็ค */
+  shipSel: Set<string>;
+  /** แอดมินเลือกรูปเองได้ (ไม่มีแผน) · ไม่ส่งมา = ล็อกตามแผน/ไม่มีปุ่มเลือก (ฝ่ายแพ็ค) */
+  onToggleShip?: (i: number, j: number) => void;
+  /** เปิดโมดัลยิงเลขพัสดุรอบแบ่งส่ง */
+  onPartialShip: () => void;
+  /** 📷 เลขพัสดุที่สแกนจากกล้องมือถือ — บันทึกทันทีด้วยค่านี้ */
+  onTrackingScanned: (v: string) => void;
+  /** เลขพัสดุในช่องถูกบันทึกลง DB แล้ว → โชว์ ✅ + ปุ่มสแกนใบถัดไป */
+  trackingSaved: boolean;
+  /** 📷 สแกนใบปะหน้า/QR ใบงานของออเดอร์ถัดไป → เปิดโหมดแพ็คใบนั้น */
+  onNextOrder: (id: string) => void;
   onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
   onAck: (i: number) => void;
   onSampleAck: (i: number) => void;
@@ -7024,8 +7328,25 @@ function PackView({
 }) {
   const totalQty = order.items.reduce((s, it) => s + it.qty, 0);
   const todos = packTodos(order, gate);
+  // 🚚 แบ่งส่ง: รูปที่ส่งไปแล้ว (รอบ) · แบ่งได้เฉพาะใบที่มีรูปแบบงานมากกว่า 1 รูป · จำนวนชิ้นของรูปที่ติ๊กไว้
+  const shipRounds = shippedProofRounds(order);
+  const planRounds = plannedProofRounds(order);
+  const planNext = nextPlannedRound(order);
+  const partial = partialShipSummary(order);
+  const proofCount = order.items.reduce((n, it) => n + proofsOf(it).length, 0);
+  const canSplit = !!onToggleShip && proofCount > 1 && !(order.tracking ?? "").trim();
+  const selQty = [...shipSel].reduce((n, k) => {
+    const [i, j] = k.split(":").map(Number);
+    const it = order.items[i];
+    return n + (it ? proofsOf(it)[j]?.qty ?? 0 : 0);
+  }, 0);
+  // 📷 กล้องมือถือของพนักงานเอง — "tracking" = สแกนเลขพัสดุใบนี้ · "next" = สแกนใบถัดไป
+  const [cam, setCam] = useState<null | "tracking" | "next">(null);
+  const [camErr, setCamErr] = useState<string | null>(null);
   return (
     <div className="mx-auto min-h-screen max-w-[480px] bg-slate-50 pb-28">
+      {/* 📦 คิวแพ็ค/ชุดงานจากสถานี — มีเฉพาะตอนไล่ทำตามคิว · เปิดจาก QR ตรง ๆ ไม่ขึ้น */}
+      <PackQueueStrip currentId={order.id} onGo={onNextOrder} />
       {/* หัวเข้ม + ความคืบหน้า */}
       <div className="bg-slate-900 px-4 py-4 text-white">
         <Link href="/admin/orders" className="text-xs text-slate-400">
@@ -7035,6 +7356,46 @@ function PackView({
         <p className="text-xs text-slate-300">
           {order.customer || "ยังไม่ระบุชื่อ"} · รวม {totalQty} ชิ้น
         </p>
+        {/* 📋 แผนแบ่งส่งจากแอดมิน — บอกคนแพ็คตั้งแต่หัวจอว่ารอบนี้เอารูปไหนไป ไม่ต้องเดา */}
+        {(order.shipPlan?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && (
+          <div className="mt-2 rounded-xl bg-amber-400/15 px-3 py-2 ring-1 ring-amber-400/50">
+            <p className="text-sm font-extrabold text-amber-300">📋 แอดมินสั่งแบ่งส่ง</p>
+            <ul className="mt-1 space-y-1">
+              {order.shipPlan!.map((r, n) => {
+                const done = order.shipments?.[n];
+                const qty = r.proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+                return (
+                  <li key={`hp-${n}`} className={`text-xs font-bold leading-tight ${done ? "text-emerald-300" : "text-amber-50"}`}>
+                    {done ? "✅" : n === planNext?.index ? "▶" : "•"} รอบที่ {n + 1}: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")}
+                    {qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                    {r.dueDate ? ` · ส่งภายใน ${r.dueDate}` : ""}
+                    {done ? ` · ${done.tracking}` : ""}
+                    {r.note ? <span className="block font-normal text-amber-100/80">📝 {r.note}</span> : null}
+                  </li>
+                );
+              })}
+              <li className="text-[11px] text-amber-100/70">รูปที่เหลือ = รอบสุดท้าย ยิงที่ช่องเลขพัสดุด้านล่างหลังตรวจครบทั้งใบ</li>
+            </ul>
+          </div>
+        )}
+        {partial && (
+          <p className="mt-0.5 text-xs font-bold text-sky-300">
+            🚚 แบ่งส่งไปแล้ว {partial.rounds} รอบ · {partial.proofsShipped}/{partial.proofsTotal} รูป
+            {partial.total ? ` · ${partial.shipped.toLocaleString("th-TH")}/${partial.total.toLocaleString("th-TH")} ชิ้น` : ""} — ที่เหลือยิงเลขรอบสุดท้ายเมื่อครบ
+          </p>
+        )}
+        {/* 📷 ใบถัดไปจากจอนี้เลย — ไม่ต้องกลับไปสถานีหรือเปิดแอปกล้องแยก */}
+        <button
+          type="button"
+          onClick={() => {
+            setCamErr(null);
+            setCam("next");
+          }}
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold ring-1 ring-white/20"
+        >
+          📷 สแกนใบถัดไป <span className="text-xs font-normal text-slate-300">บาร์โค้ดใบปะหน้า / QR ใบงาน</span>
+        </button>
+        {camErr && <p className="mt-1 text-xs font-bold text-rose-300">{camErr}</p>}
         {/* เหลือกี่จุด + จุดไหนบ้าง — เดิมบอกแค่จำนวน คนแพ็คต้องเลื่อนหาเองว่าค้างตรงไหน */}
         {gate.ready ? (
           <p className="mt-1 text-sm font-bold text-green-400">✅ ตรวจครบแล้ว — ยิงเลขพัสดุได้</p>
@@ -7146,7 +7507,18 @@ function PackView({
 
               {/* รูปแบบงาน — ปัดดูทีละรูป กด "ครบ" แล้วเลื่อนไปรูปถัดไปที่ยังไม่ตรวจ */}
               {proofs.length > 0 ? (
-                <ProofCarousel itemIndex={i} itemName={it.name} proofs={proofs} onCheck={onCheck} onZoom={onZoom} />
+                <ProofCarousel
+                  itemIndex={i}
+                  itemName={it.name}
+                  proofs={proofs}
+                  onCheck={onCheck}
+                  onZoom={onZoom}
+                  shipRound={(j) => shipRounds.get(proofKey(i, j))}
+                  planRound={(j) => planRounds.get(proofKey(i, j))}
+                  planActive={(j) => shipSel.has(proofKey(i, j))}
+                  shipSelected={canSplit ? (j) => shipSel.has(proofKey(i, j)) : undefined}
+                  onToggleShip={canSplit ? (j) => onToggleShip!(i, j) : undefined}
+                />
               ) : (
                 <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs text-slate-400 ring-1 ring-slate-200">
                   ยังไม่มีรูปแบบงาน
@@ -7310,6 +7682,34 @@ function PackView({
         </div>
       )}
 
+      {/* 🚚 รอบแบ่งส่งที่ยิงไปแล้ว — ให้คนแพ็ครู้ว่ารูปไหนออกไปแล้ว ไม่แพ็คซ้ำ */}
+      {(order.shipments?.length ?? 0) > 0 && (
+        <div className="px-3 pt-1">
+          <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-sky-200">
+            <p className="text-sm font-extrabold text-slate-900">🚚 แบ่งส่งไปแล้ว {order.shipments!.length} รอบ</p>
+            <ul className="mt-1.5 space-y-1.5">
+              {order.shipments!.map((sh, n) => (
+                <li key={`${sh.tracking}-${n}`} className="rounded-xl bg-sky-50 px-3 py-2 text-xs ring-1 ring-sky-100">
+                  <p className="font-bold text-sky-800">
+                    รอบที่ {n + 1} · <span className="font-mono">{sh.tracking}</span>
+                    {shipmentQty(sh) ? ` · ${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น` : ""}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")} · {sh.by} · {shortTime(sh.at)}
+                    {sh.note ? ` · 📝 ${sh.note}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            {!(order.tracking ?? "").trim() && (
+              <p className="mt-1.5 text-[11px] font-bold text-amber-700">
+                {planNext ? `รอบถัดไปตามแผน: รูปที่ติดป้าย “ส่งก่อน” · ส่งครบทุกรูป = ยิงเลขที่ช่องด้านล่างให้ใบปิด` : "รูปที่เหลือทั้งหมด = รอบสุดท้าย ยิงเลขที่ช่องด้านล่างให้ใบปิด"}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 📸 ภาพก่อนปิดกล่อง — บังคับอย่างน้อย 1 รูปก่อนยิงเลขพัสดุ */}
       <div className="px-3 pt-1">
         <div className={`rounded-2xl bg-white p-3 shadow-sm ring-1 ${gate.noPhoto ? "ring-2 ring-rose-300" : "ring-slate-200"}`}>
@@ -7364,16 +7764,59 @@ function PackView({
 
       {/* แถบยิงเลขพัสดุ ติดล่างจอ */}
       <div className="fixed inset-x-0 bottom-0 mx-auto max-w-[480px] border-t border-slate-200 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        {/* 🚚 ติ๊กรูปไว้ = ยิงเลขรอบแบ่งส่งได้จากตรงนี้ (ไม่ต้องผ่านด่านทั้งใบ — ตรวจเฉพาะรูปที่เลือกในโมดัล) */}
+        {shipSel.size > 0 && (
+          <button
+            type="button"
+            onClick={onPartialShip}
+            className="mb-2 flex w-full items-center justify-between gap-2 rounded-xl bg-amber-400 px-3 py-3 text-left text-sm font-extrabold text-amber-950 ring-2 ring-amber-500"
+          >
+            <span>
+              🚚 ส่งบางส่วน รอบที่ {(order.shipments?.length ?? 0) + 1}{planNext ? " (ตามแผนแอดมิน)" : ""}
+              <span className="block text-[11px] font-bold text-amber-800">
+                {shipSel.size} รูป{selQty ? ` · ${selQty.toLocaleString("th-TH")} ชิ้น` : ""} — แตะเพื่อยิงเลขพัสดุรอบนี้
+              </span>
+            </span>
+            <span className="shrink-0 text-lg">→</span>
+          </button>
+        )}
         {gate.ready ? (
-          <div className="flex items-center gap-2 rounded-xl bg-green-600 px-3 py-3 text-white">
-            <span className="text-lg">📮</span>
-            <input
-              value={order.tracking ?? ""}
-              onChange={(e) => onTrackingChange(e.target.value)}
-              onBlur={onTrackingSave}
-              placeholder="ยิง/พิมพ์เลขพัสดุ แล้ว Enter"
-              className="w-full bg-transparent font-mono text-sm font-bold placeholder:font-sans placeholder:font-normal placeholder:text-white/70 focus:outline-none"
-            />
+          <div className="space-y-2">
+            {trackingSaved && (
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2 ring-1 ring-emerald-200">
+                <p className="min-w-0 truncate text-sm font-bold text-emerald-800">
+                  ✅ บันทึกแล้ว <span className="font-mono">{order.tracking}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCamErr(null);
+                    setCam("next");
+                  }}
+                  className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white"
+                >
+                  📷 ใบถัดไป
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2 rounded-xl bg-green-600 px-2 py-2 text-white">
+              <button
+                type="button"
+                onClick={() => setCam("tracking")}
+                className="shrink-0 rounded-lg bg-white/20 px-3 py-1.5 text-xl"
+                aria-label="สแกนเลขพัสดุด้วยกล้องมือถือ"
+                title="สแกนเลขพัสดุด้วยกล้องมือถือ"
+              >
+                📷
+              </button>
+              <input
+                value={order.tracking ?? ""}
+                onChange={(e) => onTrackingChange(e.target.value)}
+                onBlur={onTrackingSave}
+                placeholder="สแกน 📷 หรือพิมพ์เลขพัสดุ"
+                className="w-full bg-transparent font-mono text-sm font-bold placeholder:font-sans placeholder:font-normal placeholder:text-white/70 focus:outline-none"
+              />
+            </div>
           </div>
         ) : (
           <div className="rounded-xl bg-slate-100 px-3 py-3 ring-1 ring-slate-200">
@@ -7390,6 +7833,35 @@ function PackView({
           </div>
         )}
       </div>
+
+      {/* ยิงเลขพัสดุเสร็จ → เด้งไปใบถัดไปในคิวเอง (ไม่มีคิว = เงียบ) */}
+      <PackNextToast currentId={order.id} trackingSaved={trackingSaved} onGo={onNextOrder} />
+
+      {/* 📷 กล้องมือถือของพนักงานเอง */}
+      <CameraScanner
+        open={cam !== null}
+        title={cam === "next" ? "สแกนใบถัดไป" : `สแกนเลขพัสดุของ ${order.id}`}
+        hint={cam === "next" ? "จ่อบาร์โค้ดบนใบปะหน้า หรือ QR บนใบงานของออเดอร์ถัดไป" : "จ่อบาร์โค้ดเลขพัสดุบนใบส่งของ ปณ./ขนส่ง อ่านได้แล้วบันทึกทันที"}
+        onResult={(text) => {
+          const mode = cam;
+          setCam(null);
+          if (mode === "next") {
+            const id = extractOrderId(text);
+            if (!/^OD-\d{6}-\d{4}$/i.test(id)) {
+              setCamErr(`ที่สแกนไม่ใช่เลขออเดอร์ (${text.length > 30 ? `${text.slice(0, 30)}…` : text}) — จ่อบาร์โค้ดบนใบปะหน้าหรือ QR ใบงาน`);
+              return;
+            }
+            if (id.toUpperCase() === order.id.toUpperCase()) {
+              setCamErr("นี่คือใบที่เปิดอยู่แล้ว — สแกนใบถัดไป");
+              return;
+            }
+            onNextOrder(id.toUpperCase());
+          } else {
+            onTrackingScanned(text);
+          }
+        }}
+        onClose={() => setCam(null)}
+      />
     </div>
   );
 }
@@ -7472,6 +7944,266 @@ async function downloadImage(url: string, filename: string) {
 }
 
 /** กล่องยืนยันทั่วไปของหลังบ้าน — แทน confirm() ของเบราว์เซอร์ */
+
+/**
+ * 📋 โมดัลแอดมินระบุแผนแบ่งส่ง — เลือกรูปแบบงานที่ต้องส่งก่อน (รอบถัดไปของแผน) + วันส่งภายใน + หมายเหตุ
+ * รูปที่ส่งแล้ว/อยู่ในแผนแล้วเลือกซ้ำไม่ได้ · เลือกรูปที่เหลือครบทุกรูป = ไม่ใช่แผนแบ่งส่ง (นั่นคือรอบสุดท้ายอยู่แล้ว)
+ */
+function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: () => void; onSave: (keys: string[], note: string, dueDate: string) => void }) {
+  const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const [note, setNote] = useState("");
+  const [due, setDue] = useState("");
+  const shipped = shippedProofRounds(order);
+  const planned = plannedProofRounds(order);
+  const n = (order.shipPlan?.length ?? 0) + 1;
+  const rows: { key: string; item: string; index: number; qty?: number; unit: string; url: string; taken?: string }[] = [];
+  order.items.forEach((it, i) =>
+    proofsOf(it).forEach((p, j) => {
+      const k = proofKey(i, j);
+      rows.push({
+        key: k,
+        item: it.name,
+        index: j + 1,
+        qty: p.qty,
+        unit: proofUnit(p),
+        url: p.url,
+        taken: shipped.has(k) ? `ส่งแล้ว รอบ ${shipped.get(k)}` : planned.has(k) ? `ในแผน รอบ ${planned.get(k)}` : undefined,
+      });
+    })
+  );
+  const free = rows.filter((r) => !r.taken);
+  const all = free.length > 0 && sel.size >= free.length;
+  const qty = rows.filter((r) => sel.has(r.key)).reduce((s, r) => s + (r.qty ?? 0), 0);
+  const toggle = (k: string) =>
+    setSel((cur) => {
+      const next = new Set(cur);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onCancel}>
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="bg-amber-50 px-5 pb-3 pt-4 ring-1 ring-inset ring-amber-100">
+          <p className="text-lg font-extrabold text-slate-900">📋 ระบุรูปที่ต้องส่งก่อน — รอบที่ {n}</p>
+          <p className="mt-0.5 text-xs text-slate-500">ฝ่ายแพ็คจะเห็นป้าย “แอดมินสั่งส่งก่อน” ใต้รูปพวกนี้ และยิงเลขพัสดุรอบนี้ได้โดยไม่ต้องรอทั้งใบ · รูปที่เหลือคือรอบสุดท้าย</p>
+        </div>
+        {rows.length < 2 ? (
+          <p className="px-5 py-4 text-sm text-slate-500">ใบนี้มีรูปแบบงานไม่ถึง 2 รูป แบ่งส่งไม่ได้ — รอกราฟฟิกอัปแบบให้ครบก่อน</p>
+        ) : (
+          <ul className="grid grid-cols-2 gap-2 px-5 pt-3 sm:grid-cols-3">
+            {rows.map((r) => {
+              const on = sel.has(r.key);
+              return (
+                <li key={r.key}>
+                  <button
+                    type="button"
+                    disabled={!!r.taken}
+                    onClick={() => toggle(r.key)}
+                    className={`flex w-full items-center gap-2 rounded-xl p-1.5 text-left ring-2 transition disabled:opacity-40 ${on ? "bg-amber-50 ring-amber-400" : "bg-slate-50 ring-slate-200 hover:ring-amber-300"}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={r.url} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
+                    <span className="min-w-0 text-[11px] leading-tight">
+                      <span className="block truncate font-bold text-slate-800">{r.item}</span>
+                      <span className="text-slate-500">
+                        รูปที่ {r.index}
+                        {r.qty ? ` · ${r.qty} ${r.unit}` : ""}
+                      </span>
+                      {r.taken ? <span className="block font-bold text-sky-700">{r.taken}</span> : on ? <span className="block font-bold text-amber-700">✓ ส่งก่อน</span> : null}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {all && <p className="px-5 pt-3 text-xs font-bold text-rose-600">เลือกครบทุกรูปที่เหลือ = ส่งทีเดียวทั้งใบ ไม่ต้องตั้งแผน — เว้นรูปที่จะส่งรอบสุดท้ายไว้</p>}
+        <div className="space-y-2 px-5 pt-3">
+          <label className="block text-xs font-bold text-slate-600">
+            ส่งภายในวันที่ (ไม่บังคับ)
+            <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none" />
+          </label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="หมายเหตุถึงฝ่ายแพ็ค เช่น ลูกค้าขอ 22 ใบก่อนงานอีเวนต์ 12 ก.ย."
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-col gap-2 p-5">
+          <button
+            type="button"
+            disabled={sel.size === 0 || all}
+            onClick={() => onSave([...sel], note, due)}
+            className="w-full rounded-xl bg-amber-400 py-3 text-sm font-extrabold text-amber-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            บันทึกแผน รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+          </button>
+          <button type="button" onClick={onCancel} className="w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
+            ยกเลิก
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 🚚 โมดัลยิงเลขพัสดุ "รอบแบ่งส่ง" — สรุปรูปที่เลือก + ด่านตรวจเฉพาะรูปพวกนั้น + ช่องเลข (สแกนกล้องได้) + หมายเหตุรอบ
+ * ฝ่ายแพ็ค: ด่านไม่ผ่านกดไม่ได้ · แอดมิน (orders.edit): ข้ามได้ เซิร์ฟเวอร์ลง log ชื่อ
+ * รอบที่เอารูปที่เหลือไปทั้งหมด = รอบสุดท้าย → ปิดปุ่มทุกคน ให้ไปยิงช่องเลขพัสดุปกติ (ใบจะได้ปิด)
+ */
+function PartialShipModal({
+  order,
+  keys,
+  mayEdit,
+  defaultNote = "",
+  onCancel,
+  onConfirm,
+}: {
+  order: Order;
+  keys: string[];
+  mayEdit: boolean;
+  /** หมายเหตุจากแผนแอดมิน — เติมให้ก่อน แก้ได้ */
+  defaultNote?: string;
+  onCancel: () => void;
+  onConfirm: (tracking: string, note: string) => void;
+}) {
+  const gate = partialGate(order, keys);
+  const [tracking, setTracking] = useState("");
+  const [note, setNote] = useState(defaultNote);
+  const [cam, setCam] = useState(false);
+  const round = (order.shipments?.length ?? 0) + 1;
+  const rows = keys
+    .map((k) => {
+      const [i, j] = k.split(":").map(Number);
+      const it = order.items[i];
+      const p = it ? proofsOf(it)[j] : undefined;
+      return it && p ? { key: k, item: it.name, index: j + 1, qty: p.qty, unit: proofUnit(p), url: p.url } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+  const qty = rows.reduce((n, r) => n + (r.qty ?? 0), 0);
+  const t = tracking.trim();
+  const dupe = !!t && ((order.shipments ?? []).some((s) => s.tracking.trim() === t) || (order.tracking ?? "").trim() === t);
+  const blockedAll = gate.isLastRound || rows.length === 0;
+  const needSkip = !gate.ready && !blockedAll;
+  const canGo = !!t && !dupe && !blockedAll && (gate.ready || mayEdit);
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onCancel}>
+      <div
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="bg-amber-50 px-5 pb-3 pt-4 ring-1 ring-inset ring-amber-100">
+          <p className="text-lg font-extrabold text-slate-900">🚚 ส่งบางส่วน — รอบที่ {round}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {order.id} · {rows.length} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""} · ใบยังไม่ปิด ที่เหลือส่งรอบถัดไป
+          </p>
+        </div>
+
+        {/* รูปที่จะไปรอบนี้ */}
+        <ul className="grid grid-cols-2 gap-2 px-5 pt-3">
+          {rows.map((r) => (
+            <li key={r.key} className="flex items-center gap-2 rounded-xl bg-slate-50 p-1.5 ring-1 ring-slate-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={r.url} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
+              <span className="min-w-0 text-[11px] leading-tight">
+                <span className="block truncate font-bold text-slate-800">{r.item}</span>
+                <span className="text-slate-500">
+                  รูปที่ {r.index}
+                  {r.qty ? ` · ${r.qty} ${r.unit}` : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {/* ด่านตรวจเฉพาะรูปที่เลือก */}
+        {gate.reasons.length > 0 && (
+          <ul className="space-y-1.5 px-5 pt-3">
+            {gate.reasons.map((r, i) => (
+              <li
+                key={i}
+                className={`flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-bold ring-1 ${
+                  blockedAll ? "bg-sky-50 text-sky-800 ring-sky-100" : "bg-rose-50 text-rose-700 ring-rose-100"
+                }`}
+              >
+                <span className="mt-0.5">{blockedAll ? "ℹ️" : "✗"}</span>
+                <span>{r}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!blockedAll && (
+          <div className="space-y-2 px-5 pt-3">
+            <div className="flex items-center gap-2 rounded-xl bg-slate-900 px-2 py-2 text-white">
+              <button type="button" onClick={() => setCam(true)} className="shrink-0 rounded-lg bg-white/20 px-3 py-1.5 text-xl" aria-label="สแกนเลขพัสดุ">
+                📷
+              </button>
+              <input
+                value={tracking}
+                onChange={(e) => setTracking(e.target.value)}
+                placeholder="สแกน 📷 หรือพิมพ์เลขพัสดุรอบนี้"
+                autoFocus
+                className="w-full bg-transparent font-mono text-sm font-bold placeholder:font-sans placeholder:font-normal placeholder:text-white/60 focus:outline-none"
+              />
+            </div>
+            {dupe && <p className="text-xs font-bold text-rose-600">เลขนี้อยู่ในใบนี้แล้ว — ตรวจเลขบนใบส่งของอีกครั้ง</p>}
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="หมายเหตุรอบนี้ (ไม่บังคับ) เช่น ลูกค้าขอ 22 ใบก่อนงานอีเวนต์"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none"
+            />
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              บันทึกแล้วระบบแจ้งลูกค้าทางไลน์ทันทีว่าส่งบางส่วน พร้อมเลขพัสดุรอบนี้ · สถานะออเดอร์ยังเป็นเดิมจนกว่าจะยิงเลขรอบสุดท้าย
+              {needSkip && mayEdit && (
+                <>
+                  {" "}
+                  · ยืนยันทั้งที่ด่านไม่ครบ = <strong className="text-amber-600">บันทึกในประวัติพร้อมชื่อคุณ</strong>
+                </>
+              )}
+              {needSkip && !mayEdit && <> · ด่านยังไม่ครบ — กลับไปตรวจรูปที่เลือกให้ครบก่อน หรือให้แอดมินยิง</>}
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 p-5">
+          {!blockedAll && (
+            <button
+              type="button"
+              disabled={!canGo}
+              onClick={() => onConfirm(tracking, note)}
+              className={`w-full rounded-xl py-3 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                needSkip ? "border-2 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "bg-green-600 text-white hover:bg-green-700"
+              }`}
+            >
+              {needSkip ? "⚠️ ยืนยันข้ามด่าน — ส่งรอบนี้เลย" : `✅ บันทึกเลขพัสดุรอบที่ ${round}`}
+            </button>
+          )}
+          <button type="button" onClick={onCancel} className="w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
+            {blockedAll ? "ปิด" : "ยกเลิก"}
+          </button>
+        </div>
+
+        <CameraScanner
+          open={cam}
+          title={`สแกนเลขพัสดุ รอบที่ ${round}`}
+          hint="จ่อบาร์โค้ดเลขพัสดุบนใบส่งของ ปณ./ขนส่ง"
+          onResult={(text) => {
+            setCam(false);
+            setTracking(text.trim());
+          }}
+          onClose={() => setCam(false)}
+        />
+      </div>
+    </div>
+  );
+}
 
 /** โมดัลยืนยัน "ข้ามด่านตรวจแพ็ค" — แทน confirm() เดิม เน้นให้เห็นชัดว่าขาดอะไรและมีผลอะไร */
 function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; onCancel: () => void; onConfirm: () => void }) {

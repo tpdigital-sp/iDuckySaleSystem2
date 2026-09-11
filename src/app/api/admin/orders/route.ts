@@ -7,7 +7,7 @@ import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
-import { reportPaidToTP, syncArrivalToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { reportPaidToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
@@ -20,7 +20,9 @@ import {
   orderVatAmount,
   lockEarlyPay,
   packGate,
+  partialGate,
   proofsOf,
+  shipmentQty,
   withLog,
   type LogEntry,
   type Order,
@@ -28,6 +30,7 @@ import {
   type OrderStatus,
   type PackGate,
   type Proof,
+  type Shipment,
 } from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
@@ -43,6 +46,20 @@ function gateReasons(g: PackGate): string {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** 🚚 รอบแบ่งส่งที่เพิ่งยิงมาในคำขอนี้ (เลขพัสดุที่ยังไม่มีในใบเดิม) — ไว้เช็คด่าน/แจ้งลูกค้า */
+function newShipmentsOf(existing: Order, incoming: Order): Shipment[] {
+  const inc = Array.isArray(incoming.shipments) ? incoming.shipments : [];
+  const had = new Set((existing.shipments ?? []).map((s) => s.tracking.trim()));
+  return inc.filter((s) => s && typeof s.tracking === "string" && s.tracking.trim() && !had.has(s.tracking.trim()) && Array.isArray(s.proofs));
+}
+
+/** รวมรอบแบ่งส่ง: ของเดิมคงไว้ทั้งหมด + รอบใหม่ต่อท้าย (ฝ่ายแพ็คลบ/แก้รอบเก่าไม่ได้) */
+function appendShipments(existing: Order, incoming: Order): Shipment[] | undefined {
+  const add = newShipmentsOf(existing, incoming);
+  if (!add.length) return existing.shipments;
+  return [...(existing.shipments ?? []), ...add];
 }
 
 export const runtime = "nodejs";
@@ -162,6 +179,8 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
       merged.status = "จัดส่งแล้ว" as OrderStatus;
     }
   }
+  // 🚚 แบ่งส่ง: รอบใหม่ต่อท้ายได้ (สิทธิ์ยิงเลขเดียวกัน) · รอบเดิมแตะไม่ได้ · สถานะใบไม่เปลี่ยน (ยังไม่ปิดจนกว่าจะยิงรอบสุดท้าย)
+  if (mayShip && Array.isArray(incoming.shipments)) merged.shipments = appendShipments(existing, incoming);
 
   return merged; // log รวมกลางที่ PATCH (mergeLogs)
 }
@@ -440,6 +459,12 @@ export async function PATCH(req: Request) {
         toSave = withLog(toSave, actor.name || actor.username, "⚠️ ข้ามด่านตรวจ — ยิงเลขพัสดุ", gateReasons(g));
       }
     }
+    // 🚚 แอดมินยิงรอบแบ่งส่งทั้งที่รูปที่เลือกยังตรวจไม่ครบ = อนุญาต แต่ลง log เหมือนข้ามด่านปกติ
+    for (const sh of newShipmentsOf(existing, order)) {
+      const pg = partialGate(existing, sh.proofs.map((p) => `${p.item}:${p.proof}`));
+      if (!pg.ready)
+        toSave = withLog(toSave, actor.name || actor.username, "⚠️ ข้ามด่านตรวจ — ส่งบางส่วน", `${sh.tracking} · ${pg.reasons.join(" · ")}`);
+    }
   } else {
     toSave = existing;
     if (mayPack) {
@@ -450,6 +475,11 @@ export async function PATCH(req: Request) {
           { error: `ยังยิงเลขพัสดุไม่ได้ — ${gateReasons(packGate(mergedNoShip))}` },
           { status: 409 }
         );
+      }
+      // 🚚 รอบแบ่งส่ง: ตรวจเฉพาะรูปที่เลือกไปรอบนี้ — ฝ่ายแพ็คข้ามไม่ได้เช่นกัน
+      for (const sh of newShipmentsOf(existing, order)) {
+        const pg = partialGate(mergedNoShip, sh.proofs.map((p) => `${p.item}:${p.proof}`));
+        if (!pg.ready) return NextResponse.json({ error: `ยังส่งบางส่วนไม่ได้ — ${pg.reasons.join(" · ")}` }, { status: 409 });
       }
       toSave = mergePackFields(existing, order, canPack(actor, "pack.ship", rolePerms, scanned));
     }
@@ -532,6 +562,23 @@ export async function PATCH(req: Request) {
 
   // 🕒 ประวัติรวม 2 ฝั่ง + ประทับเวลาบันทึก (หน้าจอรับกลับไปถือ = รอบหน้าเซิร์ฟเวอร์รู้ว่าหน้านั้นเห็นถึงตอนนี้แล้ว)
   // (ฐาน + ที่หน้าจอส่งมา + ที่เซิร์ฟเวอร์เพิ่งต่อท้ายในคำขอนี้ — ทางแพ็ค/กราฟฟิก toSave ตั้งต้นจากฐาน log ของหน้าจอจึงต้องรวมตรงนี้)
+  // 👤 จดชื่อ/เบอร์เดิมลงประวัติเมื่อแอดมินแก้ — หน้าจอไม่ได้ log ให้ ถ้าไม่จด จะไม่รู้ว่าโฟลเดอร์กราฟฟิก/การ์ด WIP ชื่อเก่ามาจากไหน
+  if (mayEditFull) {
+    const nameChanged = (toSave.customer || "").trim() !== (existing.customer || "").trim();
+    const phoneChanged = (toSave.phone || "").trim() !== (existing.phone || "").trim();
+    if (nameChanged || phoneChanged)
+      toSave = withLog(
+        toSave,
+        actor.name?.trim() || actor.username,
+        "แก้ไขชื่อผู้รับ/เบอร์",
+        [
+          nameChanged ? `ชื่อผู้รับ: ${existing.customer || "—"} → ${toSave.customer || "—"}` : "",
+          phoneChanged ? `เบอร์: ${existing.phone || "—"} → ${toSave.phone || "—"}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      );
+  }
   /**
    * 🧾 ยอดค้างโตในคำขอนี้ (เปิด VAT ทีหลังเพราะลูกค้าขอใบกำกับภาษี · แก้ค่าส่ง · เพิ่มรายการ)
    * → บอกลูกค้าว่าเพราะอะไร ค้างเท่าไร แนบสลิปที่ลิงก์เดิม (แทนข้อความสถานะ "รอชำระเงิน" ทั่วไปที่ไม่มียอด)
@@ -612,6 +659,8 @@ export async function PATCH(req: Request) {
   const shipKey = (o: Order) => `${o.shipDate?.from || ""}|${o.shipDate?.to || ""}`;
   if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "") || shipKey(toSave) !== shipKey(existing)))
     void syncRushToTP(toSave);
+  // 👤 แอดมินแก้ชื่อผู้รับ/เบอร์ → อัปเดตการ์ดบอร์ด WIP ให้ตรงหน้าออเดอร์ (เก็บชื่อเก่าไว้ให้จับคู่โฟลเดอร์เดิมได้)
+  if (mayEditFull) void syncCustomerToTP(existing, toSave);
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
   void syncArrivalToTP(existing, toSave);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
@@ -660,6 +709,28 @@ export async function PATCH(req: Request) {
       toSave = { ...toSave, deposit: { ...toSave.deposit, balanceRemindedAt: new Date().toISOString() } };
       void sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
     }
+  }
+
+  // 🚚 แบ่งส่ง: รอบใหม่ในคำขอนี้ → แจ้งลูกค้าเลขพัสดุของรอบนั้นทันที (ใบยังไม่ปิด ที่เหลือส่งรอบถัดไป)
+  const shippedNow = newShipmentsOf(existing, toSave);
+  if (shippedNow.length) {
+    const origin = new URL(req.url).origin;
+    const link = orderLink(origin, toSave);
+    const base = (existing.shipments ?? []).length;
+    shippedNow.forEach((sh, n) => {
+      const round = base + n + 1;
+      const qty = shipmentQty(sh);
+      const lines = sh.proofs
+        .map((p) => `• ${p.itemName ?? toSave.items[p.item]?.name ?? "รายการ"} รูปที่ ${p.proof + 1}${p.qty ? ` × ${p.qty.toLocaleString("th-TH")} ${p.unit || "ชิ้น"}` : ""}`)
+        .join("\n");
+      void notifyCustomerLogged(
+        sb,
+        toSave,
+        `🚚 ออเดอร์ ${toSave.id} จัดส่งบางส่วนแล้วครับ (รอบที่ ${round})\nเลขพัสดุ: ${sh.tracking}${qty ? `\nรอบนี้ ${qty.toLocaleString("th-TH")} ชิ้น` : ""}\n${lines}${sh.note ? `\n📝 ${sh.note}` : ""}\nส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
+        `แจ้งส่งบางส่วน รอบที่ ${round} · ${sh.tracking}`,
+        "key"
+      );
+    });
   }
 
   // 📦 แอดมินเพิ่งยืนยันสต๊อก/คิวผลิตของรายการที่สั่งจำนวนมาก → แจ้งลูกค้าทางไลน์ทันที

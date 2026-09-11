@@ -564,8 +564,26 @@ function OrderDocs({
                   {order.customer} · {totalQty} ชิ้น · {order.items.length} รายการ
                 </p>
                 {(order.tracking ?? "").trim() && (
-                  <p className="mt-0.5 font-mono text-sm font-bold text-slate-800">📮 เลขพัสดุ: {order.tracking}</p>
+                  <p className="mt-0.5 font-mono text-sm font-bold text-slate-800">📮 เลขพัสดุ{order.shipments?.length ? " (รอบสุดท้าย)" : ""}: {order.tracking}</p>
                 )}
+                {/* 📋 แผนแบ่งส่งจากแอดมิน — บอกคนแพ็คตั้งแต่ใบงานว่ารูปไหนต้องออกก่อน */}
+                {!(order.tracking ?? "").trim() &&
+                  (order.shipPlan ?? []).map((r, n) =>
+                    order.shipments?.[n] ? null : (
+                      <p key={`plan-${n}`} className="mt-0.5 text-[11px] font-bold text-amber-800">
+                        📋 แบ่งส่ง รอบที่ {n + 1} ส่งก่อน: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}` : ""}`).join(", ")}
+                        {r.dueDate ? ` — ส่งภายใน ${r.dueDate}` : ""}
+                        {r.note ? ` · ${r.note}` : ""}
+                      </p>
+                    )
+                  )}
+                {/* 🚚 รอบแบ่งส่งที่ออกไปแล้ว — คนหยิบของจะได้รู้ว่ารูปไหนไม่ต้องแพ็คซ้ำ */}
+                {(order.shipments ?? []).map((sh, n) => (
+                  <p key={`${sh.tracking}-${n}`} className="mt-0.5 text-[11px] font-bold text-sky-800">
+                    🚚 แบ่งส่งแล้ว รอบที่ {n + 1}: <span className="font-mono">{sh.tracking}</span> —{" "}
+                    {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}` : ""}`).join(", ")}
+                  </p>
+                ))}
                 {order.useByDate && (
                   <p className="mt-1.5 block w-fit rounded border-2 border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
                     🔥 ต้องใช้งาน: {fmtThaiDate(order.useByDate)}
@@ -600,8 +618,10 @@ function OrderDocs({
               {orderUrl && (
                 <div className="shrink-0 text-center">
                   <QRCodeSVG value={orderUrl} size={82} level="M" marginSize={0} />
-                  <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">📱 มือถือ</p>
-                  <p className="text-[9px] leading-tight text-slate-500">สแกนแล้วแพ็คได้เลย</p>
+                  <p className="mt-1 text-[9px] font-bold leading-tight text-slate-600">📱 สแกนแล้วแพ็คได้เลย</p>
+                  {/* บอกทางไปคิวแพ็คบนกระดาษ — สแกนใบเดียวแล้วไล่ใบอื่นต่อจากมือถือ ไม่ต้องสแกนทุกใบ */}
+                  <p className="text-[8.5px] leading-tight text-slate-500">กด “📋 คิวแพ็ค” ในจอ</p>
+                  <p className="text-[8.5px] leading-tight text-slate-500">ไล่ใบถัดไปไม่ต้องสแกนซ้ำ</p>
                 </div>
               )}
             </div>

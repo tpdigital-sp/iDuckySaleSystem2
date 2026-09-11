@@ -228,7 +228,10 @@ export function statusMessage(order: Order, link: string): string | null {
     case "กำลังผลิต":
       return `🛠️ ออเดอร์ ${id} เข้าไลน์ผลิตแล้วครับ${owe}\n${link}`;
     case "จัดส่งแล้ว":
-      return `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${order.tracking ? `\nเลขพัสดุ: ${order.tracking}` : ""}\n${link}`;
+      // 🚚 เคยแบ่งส่งมาก่อน → บอกว่านี่คือรอบสุดท้าย (เลขรอบก่อนแจ้งไปแล้วตอนส่งรอบนั้น)
+      return order.shipments?.length
+        ? `🚚 ออเดอร์ ${id} จัดส่งรอบสุดท้ายแล้วครับ ครบทุกรายการ${order.tracking ? `\nเลขพัสดุรอบนี้: ${order.tracking}` : ""}\n${link}`
+        : `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${order.tracking ? `\nเลขพัสดุ: ${order.tracking}` : ""}\n${link}`;
     case "เสร็จสิ้น":
       return `🎉 ปิดงานออเดอร์ ${id} เรียบร้อย ขอบคุณที่ใช้บริการครับ 🦆\n${link}`;
     case "ยกเลิก":
@@ -303,7 +306,8 @@ export function statusFlex(
   const rows: unknown[] = [flexRow("รายการ", items)];
   rows.push(flexRow("ยอดรวม", `฿${total.toLocaleString()}`, "#0F172A", true));
   if (owe) rows.push(flexRow("ยอดค้าง", `฿${bal.toLocaleString()}`, "#E11D48", true));
-  if (order.status === "จัดส่งแล้ว" && order.tracking) rows.push(flexRow("เลขพัสดุ", order.tracking, "#0F172A", true));
+  if (order.status === "จัดส่งแล้ว" && order.tracking)
+    rows.push(flexRow(order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ", order.tracking, "#0F172A", true));
 
   return [
     {
