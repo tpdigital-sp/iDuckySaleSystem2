@@ -13,6 +13,7 @@ import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
 import {
+  adminDiscountAmount,
   hasUnpaidBalance,
   orderBalance,
   orderTotal,
@@ -107,7 +108,8 @@ function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: stri
     const cur = existing.items?.[i];
     return cur && cur.name === inc.name ? reconcileItem(cur, inc, clientSavedAt, now) : inc;
   });
-  return { ...incoming, items };
+  // ฟิลด์ที่เซิร์ฟเวอร์เป็นเจ้าของ — หน้าจอแอดมินไม่รู้จัก ส่งก้อนกลับมาโดยไม่มี = ห้ามหาย
+  return { ...incoming, items, balanceNotified: existing.balanceNotified };
 }
 
 /** รวมประวัติ 2 ฝั่งแบบไม่ซ้ำ เรียงตามเวลา — หน้าจอค้างส่ง log สั้นกว่าก็ไม่ทับรายการที่คนอื่น/เซิร์ฟเวอร์เพิ่งลง */
@@ -530,22 +532,6 @@ export async function PATCH(req: Request) {
 
   // 🕒 ประวัติรวม 2 ฝั่ง + ประทับเวลาบันทึก (หน้าจอรับกลับไปถือ = รอบหน้าเซิร์ฟเวอร์รู้ว่าหน้านั้นเห็นถึงตอนนี้แล้ว)
   // (ฐาน + ที่หน้าจอส่งมา + ที่เซิร์ฟเวอร์เพิ่งต่อท้ายในคำขอนี้ — ทางแพ็ค/กราฟฟิก toSave ตั้งต้นจากฐาน log ของหน้าจอจึงต้องรวมตรงนี้)
-  toSave = { ...toSave, log: mergeLogs(existing.log, order.log, toSave.log), savedAt: now };
-
-  const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const adminName = `แอดมิน ${actor.name?.trim() || actor.username}`;
-
-  // 🔥 ติ๊ก/ยกเลิกงานเร่ง หรือแก้วันที่ลูกค้าต้องใช้งาน/ช่วงวันจัดส่ง → ส่งต่อให้บอร์ด WIP กราฟฟิก (เฉพาะใบที่ชำระแล้วมีเรคอร์ดอยู่ · ใบอื่น not-found ข้ามเงียบ)
-  const shipKey = (o: Order) => `${o.shipDate?.from || ""}|${o.shipDate?.to || ""}`;
-  if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "") || shipKey(toSave) !== shipKey(existing)))
-    void syncRushToTP(toSave);
-  // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
-  void syncArrivalToTP(existing, toSave);
-  // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
-  const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
-
   /**
    * 🧾 ยอดค้างโตในคำขอนี้ (เปิด VAT ทีหลังเพราะลูกค้าขอใบกำกับภาษี · แก้ค่าส่ง · เพิ่มรายการ)
    * → บอกลูกค้าว่าเพราะอะไร ค้างเท่าไร แนบสลิปที่ลิงก์เดิม (แทนข้อความสถานะ "รอชำระเงิน" ทั่วไปที่ไม่มียอด)
@@ -555,10 +541,41 @@ export async function PATCH(req: Request) {
   // ใบเดิมไม่มี paidTotal (เพิ่งตั้งให้ด้านบน) = ก่อนหน้านี้ถือว่าไม่ค้าง → เทียบกับ 0 ไม่ใช่ยอดเต็ม
   const balBefore = existing.paidTotal == null && paidStageBefore ? 0 : orderBalance(existing);
   const balanceGrew = mayEditFull && !quoteJustPriced && hasUnpaidBalance(toSave) && orderBalance(toSave) > balBefore + 0.5;
+  /**
+   * 💳 ยอดค้าง "ลดลง" ในคำขอนี้ทั้งที่เคยบอกลูกค้าไปแล้วว่าต้องโอนเพิ่มเท่าไร (ยังไม่มีเงินเข้าเพิ่ม)
+   * → ต้องบอกยอดใหม่ ไม่งั้นลูกค้าถือยอดเก่าจากไลน์ไปโอน (11 ก.ย. 69 OD-260910-5763: แอดมินเพิ่ม Arm patch ×10 → ไลน์บอก 730
+   *   แล้วค่อยใส่ส่วนลดทั้งบิล "มัดจำตีลาย" −50 ในการบันทึกถัดไป → เว็บค้าง 680 ไลน์ยังค้าง 730 เจ้าของร้านสั่งให้ตรงกัน)
+   * เฉพาะ: แอดมินสิทธิ์เต็ม · เคยแจ้งยอดค้าง (balanceNotified) · paidTotal ไม่ขยับในคำขอนี้ (เงินเข้าใช้ทาง slip-apply ไม่ใช่ทางนี้)
+   * · ยอดค้างลดจากรอบก่อนและต่างจากที่เคยแจ้ง · ไม่ใช่ใบมัดจำ/เคลม
+   */
+  const balNow = orderBalance(toSave);
+  const notified = existing.balanceNotified;
+  const balanceShrank =
+    mayEditFull &&
+    !balanceGrew &&
+    !quoteJustPriced &&
+    !toSave.deposit &&
+    !toSave.claimOf &&
+    toSave.status !== "ยกเลิก" &&
+    !!notified &&
+    existing.paidTotal != null &&
+    (toSave.paidTotal ?? 0) === (existing.paidTotal ?? 0) &&
+    balNow < balBefore - 0.5 &&
+    Math.abs(balNow - notified.balance) > 0.5;
+  // จำยอดที่กำลังบอกลูกค้า (ทั้งขึ้นและลง) — รอบหน้าจะได้รู้ว่าลูกค้าถือเลขไหนอยู่ · ลดจนเหลือ 0 ไม่เปลี่ยนสถานะให้ (แอดมินตั้งเอง กันซ้ำ side effect ของ "ชำระแล้ว")
+  if (balanceGrew || balanceShrank) toSave = { ...toSave, balanceNotified: { at: now, balance: balNow } };
+
+  toSave = { ...toSave, log: mergeLogs(existing.log, order.log, toSave.log), savedAt: now };
+
+  const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const adminName = `แอดมิน ${actor.name?.trim() || actor.username}`;
+
   if (balanceGrew) {
     const origin = new URL(req.url).origin;
     const total = orderTotal(toSave);
-    const bal = orderBalance(toSave);
+    const bal = balNow;
     const why = vatJustAdded
       ? `ภาษีมูลค่าเพิ่ม ${toSave.vat!.rate}% ${orderVatAmount(toSave).toLocaleString("th-TH")} บาท (ออกใบกำกับภาษีตามที่ขอ)`
       : `ยอดรวมเปลี่ยนเป็น ${total.toLocaleString("th-TH")} บาท`;
@@ -569,7 +586,36 @@ export async function PATCH(req: Request) {
       `แจ้งยอดค้างเพิ่ม ${bal.toLocaleString("th-TH")} บาท${vatJustAdded ? " (เปิด VAT)" : ""}`,
       "key"
     );
+  } else if (balanceShrank) {
+    const origin = new URL(req.url).origin;
+    const total = orderTotal(toSave);
+    const thb = (n: number) => n.toLocaleString("th-TH");
+    // บอกว่าลดเพราะอะไร — ส่วนลดทั้งบิลที่เพิ่งใส่/เพิ่ม (กรณีที่เจอจริง) · นอกนั้นบอกยอดรวมใหม่
+    const discDiff = Math.round((adminDiscountAmount(toSave) - adminDiscountAmount(existing)) * 100) / 100;
+    const why =
+      discDiff > 0
+        ? `ส่วนลด${toSave.adminDiscount?.label?.trim() ? ` ${toSave.adminDiscount.label.trim()}` : ""} −${thb(discDiff)} บาท`
+        : `ยอดรวมเปลี่ยนเป็น ${thb(total)} บาท`;
+    const prev = thb(notified!.balance);
+    void notifyCustomerLogged(
+      sb,
+      toSave,
+      balNow > 0
+        ? `🧾 ออเดอร์ ${toSave.id} ปรับยอดใหม่: ${why}\n💰 ยอดรวมทั้งบิล ${thb(total)} บาท · รับแล้ว ${thb(toSave.paidTotal ?? 0)} บาท\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(balNow)} บาท (แทนยอด ${prev} บาทที่แจ้งไว้ก่อนหน้า)\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${orderLink(origin, toSave)}`
+        : `🧾 ออเดอร์ ${toSave.id} ปรับยอดใหม่: ${why}\n💰 ยอดรวมทั้งบิล ${thb(total)} บาท · รับแล้ว ${thb(toSave.paidTotal ?? 0)} บาท\n✅ ไม่ต้องโอนเพิ่มแล้วครับ (ยกเลิกยอด ${prev} บาทที่แจ้งไว้ก่อนหน้า)\n${orderLink(origin, toSave)}`,
+      balNow > 0 ? `แจ้งยอดค้างใหม่ ${thb(balNow)} บาท (เดิมแจ้ง ${prev})` : `แจ้งว่าไม่ต้องโอนเพิ่มแล้ว (เดิมแจ้ง ${prev} บาท)`,
+      "key"
+    );
   }
+
+  // 🔥 ติ๊ก/ยกเลิกงานเร่ง หรือแก้วันที่ลูกค้าต้องใช้งาน/ช่วงวันจัดส่ง → ส่งต่อให้บอร์ด WIP กราฟฟิก (เฉพาะใบที่ชำระแล้วมีเรคอร์ดอยู่ · ใบอื่น not-found ข้ามเงียบ)
+  const shipKey = (o: Order) => `${o.shipDate?.from || ""}|${o.shipDate?.to || ""}`;
+  if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "") || shipKey(toSave) !== shipKey(existing)))
+    void syncRushToTP(toSave);
+  // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
+  void syncArrivalToTP(existing, toSave);
+  // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
+  const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
   // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE) — กลับไปรอชำระเงินเพราะยอดโต แจ้งด้วยข้อความยอดค้างด้านบนแล้ว
   if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && balanceGrew)) {

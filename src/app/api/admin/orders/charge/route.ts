@@ -62,6 +62,8 @@ export async function POST(req: Request) {
     `เก็บเพิ่ม: ${label} ${thb(amount)} บาท`,
     `ยอดรวม ${thb(totalBefore)} → ${thb(total)} บาท${updated.paidTotal != null ? ` · ค้าง ${thb(bal)} บาท` : ""}${note ? ` · ${note}` : ""}${reopen ? " · กลับไปรอชำระเงิน" : ""}`
   );
+  // จำยอดค้างที่กำลังบอกลูกค้า — แอดมินลดยอดทีหลังก่อนลูกค้าโอน จะได้แจ้งยอดใหม่ให้ (ดู balanceShrank ใน /api/admin/orders)
+  if (updated.paidTotal != null) updated = { ...updated, balanceNotified: { at: now, balance: bal } };
   const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
