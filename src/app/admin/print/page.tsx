@@ -15,6 +15,8 @@
  *      กับ "ยังอยู่ที่กราฟฟิก" (จะทำ/กำลังทำ/รออนุมัติ/ยังไม่มีการ์ด/อ่านบอร์ดไม่ได้)
  *    - ในกองส่งผลิตแล้ว แยกอีกชั้น "ถึงคิวแล้ว" กับ "ยังไม่ถึงคิว" ตามวันที่จัดส่ง (เกิน 2 วัน = ยังไม่ถึงคิว)
  *    - สถานะ "กำลังผลิต" ยังตั้งตอนปริ้นใบงานเหมือนเดิม — ไม่เกี่ยวกับกองนี้
+ * 🚚 กอง "รอปริ้นใบปะหน้ารอบถัดไป" (เจ้าของร้านขอ 11 ก.ย. 69): ใบที่แบ่งส่งไปแล้วบางรอบ (Order.shipments) แต่ยังไม่ปิด
+ *    ปริ้นชุดแรกไปแล้วเลยอยู่กอง "ปริ้นแล้ว" ไม่มีใครเตือน — กองนี้บอกว่ากล่องรอบถัดไปต้องมีใบปะหน้าใหม่ ปุ่มเปิด doc=box อย่างเดียว
  *
  * คนที่ใช้: ฝ่ายผลิตยืนหน้าเครื่อง มือไม่ว่าง — ปุ่มปริ้นจึงอยู่ในแถวเลย ไม่ต้องเปิดเข้าใบก่อน
  */
@@ -22,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
-import { daysToUseBy, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, isPartiallyShipped, nextPlannedRound, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { useActor } from "@/lib/perm-context";
 import { shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
@@ -49,7 +51,7 @@ import {
   Tag,
 } from "@/components/admin/ui";
 
-type TabKey = "sent" | "waitFolder" | "graphic" | "done" | "all";
+type TabKey = "sent" | "waitFolder" | "graphic" | "nextRound" | "done" | "all";
 
 /** สถานะที่ใบงานเข้าคิวปริ้นได้ — "กำลังผลิต" ต้องอยู่ด้วย เพราะบางใบถูกดันเข้าไลน์ผลิตตั้งแต่ยังไม่ปริ้น */
 const PRINT_QUEUE_STATUSES: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
@@ -58,6 +60,12 @@ const DUE_SOON_DAYS = 2;
 
 const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const printCountOf = (o: Order) => o.printCount ?? (o.printedAt ? 1 : 0);
+/**
+ * 🚚 ใบแบ่งส่งที่ยังมีรอบเหลือ → เลขรอบถัดไปที่ต้องปริ้นใบปะหน้ากล่อง (null = ไม่ใช่ใบแบ่งส่ง/ปิดแล้ว)
+ * lastRound = รอบถัดไปคือรอบสุดท้าย (ไม่มีแผนรอบต่อไปค้าง) — ป้ายบอกให้รู้ว่ายิงเลขที่ช่องปกติ
+ */
+const nextRoundOf = (o: Order): { round: number; lastRound: boolean } | null =>
+  isPartiallyShipped(o) ? { round: (o.shipments?.length ?? 0) + 1, lastRound: !nextPlannedRound(o) } : null;
 const isSent = (o: Order) => !!o.productionSent;
 /** ผลิตอยู่แล้วแต่ยังไม่มีใบงาน — ของร้อนที่สุดในคิว ต้องปริ้นตามให้ทัน */
 const inProdUnprinted = (o: Order) => o.status === "กำลังผลิต" && printCountOf(o) === 0;
@@ -162,6 +170,7 @@ function PrintQueueInner() {
       sentLater: sent.filter((o) => !isDue(o, today)).length,
       waitFolder: unprinted.filter((o) => !isSent(o) && graphicDone(cards[o.id])).length,
       graphic: unprinted.filter((o) => !isSent(o) && !graphicDone(cards[o.id])).length,
+      nextRound: ready.filter((o) => nextRoundOf(o) !== null).length,
       done: ready.filter((o) => printCountOf(o) > 0).length,
       all: ready.length,
       pieces: ready.reduce((s, o) => s + qtyOf(o), 0),
@@ -192,7 +201,9 @@ function PrintQueueInner() {
               ? printCountOf(o) === 0 && !isSent(o) && graphicDone(cards[o.id])
               : tab === "graphic"
                 ? printCountOf(o) === 0 && !isSent(o) && !graphicDone(cards[o.id])
-                : tab === "done"
+                : tab === "nextRound"
+                  ? nextRoundOf(o) !== null
+                  : tab === "done"
                 ? printCountOf(o) > 0
                 : true
         )
@@ -285,6 +296,14 @@ function PrintQueueInner() {
         <Stat label="ยังไม่ถึงคิว" value={counts.sentLater} hint={`ส่งผลิตแล้ว แต่ส่งเกิน ${DUE_SOON_DAYS} วัน`} onClick={() => setTab("sent")} active={tab === "sent"} />
         <Stat label="รอโยนโฟลเดอร์" value={counts.waitFolder} hint="กราฟฟิกจบแล้ว โยนโฟลเดอร์มาจับคู่" tone={counts.waitFolder ? "due" : undefined} onClick={() => setTab("waitFolder")} active={tab === "waitFolder"} />
         <Stat label="ยังอยู่ที่กราฟฟิก" value={counts.graphic} hint="รออนุมัติ/กำลังทำ" onClick={() => setTab("graphic")} active={tab === "graphic"} />
+        <Stat
+          label="ใบปะหน้ารอบถัดไป"
+          value={counts.nextRound}
+          hint="แบ่งส่งไปแล้วบางรอบ กล่องถัดไปต้องมีใบปะหน้าใหม่"
+          tone={counts.nextRound ? "due" : undefined}
+          onClick={() => setTab("nextRound")}
+          active={tab === "nextRound"}
+        />
       </Stats>
 
       <FilterCard>
@@ -292,6 +311,7 @@ function PrintQueueInner() {
           <Tab on={tab === "sent"} onClick={() => setTab("sent")} label="🏭 ส่งผลิตแล้ว รอปริ้น" count={counts.sent} />
           <Tab on={tab === "waitFolder"} onClick={() => setTab("waitFolder")} label="📂 รอโยนโฟลเดอร์" count={counts.waitFolder} />
           <Tab on={tab === "graphic"} onClick={() => setTab("graphic")} label="🎨 ยังอยู่ที่กราฟฟิก" count={counts.graphic} />
+          <Tab on={tab === "nextRound"} onClick={() => setTab("nextRound")} label="🚚 รอปริ้นใบปะหน้ารอบถัดไป" count={counts.nextRound} />
           <Tab on={tab === "done"} onClick={() => setTab("done")} label="ปริ้นแล้ว" count={counts.done} />
           <Tab on={tab === "all"} onClick={() => setTab("all")} label="ทั้งหมด" count={counts.all} />
         </TabRow>
@@ -311,6 +331,8 @@ function PrintQueueInner() {
               ? "กราฟฟิกจบงานแล้ว — ไฟล์น่าจะอยู่ในโฟลเดอร์ผลิต รอโยนมาจับคู่"
               : tab === "graphic"
                 ? "แบบผ่านแล้ว แต่กราฟฟิกยังทำไฟล์ไม่จบ"
+                : tab === "nextRound"
+                  ? "แบ่งส่งไปแล้วบางรอบ — กล่องรอบถัดไปต้องมีใบปะหน้าใหม่"
                 : "คิวงาน"
         }
         note={
@@ -320,11 +342,13 @@ function PrintQueueInner() {
               ? "โยนโฟลเดอร์ของวันด้านบน ใบพวกนี้จะย้ายไปกองรอปริ้นเอง — ถ้าไม่มีโฟลเดอร์ กด “ส่งผลิตแล้ว” ในแถว"
               : tab === "graphic"
                 ? "ยังไม่ต้องปริ้น — รอกราฟฟิกเซ็ตไฟล์/หัวหน้าอนุมัติบนบอร์ด TP ก่อน"
+                : tab === "nextRound"
+                  ? "ใบงานเดิมใช้ต่อได้ — ปุ่มในแถวเปิด “ใบปะหน้าพัสดุ” (ที่อยู่ผู้รับ) อย่างเดียว · ใบหายจากกองนี้เองเมื่อยิงเลขรอบสุดท้าย"
                 : "งานเร่งขึ้นก่อน แล้วตามด้วยงานที่ใกล้วันส่งที่สุด"
         }
       />
 
-      {!loading && shownDue.length > 0 && tab !== "waitFolder" && tab !== "graphic" && (
+      {!loading && shownDue.length > 0 && tab !== "waitFolder" && tab !== "graphic" && tab !== "nextRound" && (
         <label className="flex w-fit cursor-pointer items-center gap-2 px-2 pb-2 text-[13px] font-semibold" style={{ color: "var(--dk-quiet)" }}>
           <input
             type="checkbox"
@@ -357,6 +381,8 @@ function PrintQueueInner() {
                   ? "ไม่มีใบรอโยนโฟลเดอร์"
                   : tab === "graphic"
                     ? "ไม่มีใบค้างที่กราฟฟิก"
+                    : tab === "nextRound"
+                      ? "ไม่มีใบแบ่งส่งที่รอปริ้นใบปะหน้า"
                     : "ไม่มีออเดอร์ในหมวดนี้"
           }
           body={
@@ -366,6 +392,8 @@ function PrintQueueInner() {
                 ? "โยนโฟลเดอร์งานที่เข้าผลิตด้านบน ใบที่จับคู่ได้จะมาต่อคิวตรงนี้"
                 : tab === "waitFolder"
                   ? "ใบจะมาอยู่ตรงนี้เมื่อหัวหน้ากราฟฟิกกดอนุมัติบนบอร์ด TP"
+                  : tab === "nextRound"
+                    ? "ใบจะมาอยู่ตรงนี้เมื่อฝ่ายแพ็คยิงเลขพัสดุรอบแบ่งส่ง (ส่งบางส่วน) แล้วยังมีรอบเหลือ"
                   : "คิวนี้จะขึ้นเมื่อลูกค้ากดอนุมัติแบบเรียบร้อย"
           }
         />
@@ -449,6 +477,7 @@ function PrintRow({
   const noProof = o.items.some(proofMissing);
   const sent = isSent(o);
   const stage = !sent && printed === 0 ? graphicStage(card, cardsOk) : null;
+  const nextRound = nextRoundOf(o); // 🚚 แบ่งส่งแล้วบางรอบ รอใบปะหน้ากล่องรอบถัดไป
   /** ยังไม่ปริ้น = งานค้าง (คอรัล) · ยังไม่ส่งผลิต = รอ (เหลือง) · ปริ้นแล้ว = เดินต่อได้ (เงียบ) */
   const tone =
     printed > 0
@@ -476,6 +505,14 @@ function PrintRow({
               <Tag tone="coral" title="ใบนี้ถูกดันเข้าไลน์ผลิตแล้วทั้งที่ยังไม่ได้ปริ้นใบงาน">ผลิตอยู่ ยังไม่ปริ้น</Tag>
             )}
             {o.status === "กำลังผลิต" && printed > 0 && <Tag tone="quiet">กำลังผลิต</Tag>}
+            {nextRound && (
+              <Tag
+                tone="yolk"
+                title={`ส่งไปแล้ว ${o.shipments!.length} รอบ (${o.shipments!.map((s) => s.tracking).join(", ")}) — กล่องรอบที่ ${nextRound.round} ต้องมีใบปะหน้าใหม่${nextRound.lastRound ? " · รอบนี้คือรอบสุดท้าย ยิงเลขที่ช่องเลขพัสดุปกติ" : ""}`}
+              >
+                🚚 ส่งแล้ว {o.shipments!.length} รอบ · รอใบปะหน้ารอบที่ {nextRound.round}{nextRound.lastRound ? " (สุดท้าย)" : ""}
+              </Tag>
+            )}
             {sent && printed === 0 && (
               <Tag
                 tone={later ? "quiet" : "mint"}
@@ -524,6 +561,11 @@ function PrintRow({
             {marking ? "กำลังบันทึก…" : "🏭 ส่งผลิตแล้ว"}
           </Btn>
         ) : null}
+        {nextRound && (
+          <Btn tone="navy" small href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=label`} title="เปิดเฉพาะใบปะหน้าพัสดุ (ที่อยู่ผู้รับ + บาร์โค้ด) สำหรับกล่องรอบถัดไป — ไม่พิมพ์ใบงานซ้ำ">
+            📮 ใบปะหน้ารอบที่ {nextRound.round}
+          </Btn>
+        )}
         <Btn tone={printed > 0 ? "ghost" : sent ? "navy" : "ghost"} small href={`/admin/orders/${encodeURIComponent(o.id)}/print`}>
           {printed > 0 ? "ปริ้นซ้ำ" : "ปริ้นใบงาน"}
         </Btn>

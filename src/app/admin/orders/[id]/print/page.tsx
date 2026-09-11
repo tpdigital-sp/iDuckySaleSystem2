@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, artworkSide, MOCK_ORDERS, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, reuseArtText, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, artworkSide, MOCK_ORDERS, nextPlannedRound, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, reuseArtText, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -88,6 +88,8 @@ export default function PrintOrderPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<Record<DocKey, boolean>>({ work: true, receipt: false, box: false });
+  /** 🚚 ?doc=label — พิมพ์เฉพาะส่วน "ใบปะหน้าพัสดุ" (ผู้ส่ง/ผู้รับ/บาร์โค้ด) ไม่เอาใบงานด้านล่าง · ใช้กับกล่องรอบถัดไปของใบแบ่งส่ง */
+  const [labelOnly, setLabelOnly] = useState(false);
   const [withProofs, setWithProofs] = useState(true);
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
@@ -110,6 +112,7 @@ export default function PrintOrderPage() {
     if (only === "receipt") setDocs({ work: false, receipt: true, box: false });
     else if (only === "box") setDocs({ work: false, receipt: false, box: true });
     else if (only) setDocs({ work: true, receipt: false, box: false });
+    setLabelOnly(only === "label");
     void fetchShopPayment().then((p) => {
       setShop(shopInfoOf(p));
       setShipMethods(shippingOf(p));
@@ -273,7 +276,7 @@ export default function PrintOrderPage() {
         )}
 
         {orders.map((o) => (
-          <OrderDocs key={o.id} order={o} docs={docs} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} />
+          <OrderDocs key={o.id} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} />
         ))}
       </div>
     </>
@@ -287,6 +290,7 @@ export default function PrintOrderPage() {
 function OrderDocs({
   order,
   docs,
+  labelOnly = false,
   withProofs,
   shop,
   shipMethods,
@@ -295,6 +299,8 @@ function OrderDocs({
 }: {
   order: Order;
   docs: Record<DocKey, boolean>;
+  /** 🚚 พิมพ์เฉพาะใบปะหน้าพัสดุ (ไม่เอาใบงาน) — กล่องรอบถัดไปของใบแบ่งส่ง */
+  labelOnly?: boolean;
   withProofs: boolean;
   shop: ShopInfo;
   shipMethods: ShippingMethod[];
@@ -540,6 +546,14 @@ function OrderDocs({
 
             {/* ผู้รับ — ส่วนนี้ขึ้นไปคือ "ป้ายติดกล่อง" ตัดตามเส้นประด้านล่าง */}
             <div className="keep mt-4 rounded border border-slate-300 p-5">
+              {/* 🚚 กล่องรอบถัดไปของใบแบ่งส่ง — ตราให้คนแพ็ค/ขนส่งรู้ว่านี่กล่องที่เท่าไร */}
+              {(order.shipments?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && (
+                <p className="mb-2 inline-block rounded border-2 border-slate-900 px-2 py-0.5 text-sm font-extrabold">
+                  🚚 แบ่งส่ง — กล่องรอบที่ {(order.shipments?.length ?? 0) + 1}
+                  {order.shipPlan?.length && nextPlannedRound(order) ? "" : " (รอบสุดท้าย)"}
+                  <span className="ml-2 font-normal text-slate-500">ส่งไปแล้ว {order.shipments!.length} รอบ: {order.shipments!.map((x) => x.tracking).join(", ")}</span>
+                </p>
+              )}
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
               <p className="mt-1 text-2xl font-extrabold leading-tight">{order.customer}</p>
               <p className="mt-1 whitespace-pre-line text-lg leading-snug">{order.address}</p>
@@ -547,14 +561,18 @@ function OrderDocs({
             </div>
 
             {/* เส้นประสำหรับตัด — ส่วนบนเอาไปติดหน้ากล่อง ส่วนล่างเก็บไว้เป็นใบงาน */}
+            {!labelOnly && (
             <div className="relative my-6" aria-hidden>
               <div className="border-t-2 border-dashed border-slate-400" />
               <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-3 text-[10px] font-bold tracking-wide text-slate-400">
                 ✂ ตัดตามเส้นนี้ — ส่วนบนติดหน้ากล่อง · ส่วนล่างเก็บเป็นใบงาน
               </span>
             </div>
+            )}
             </>)}
 
+            {/* ?doc=label = เอาแค่ใบปะหน้า ใบงานด้านล่างไม่พิมพ์ (ใบงานเดิมยังใช้ต่อได้) */}
+            {!labelOnly && (<>
             {/* หัวใบงาน + QR มือถือ — พนักงานแพ็คสแกนเพื่อเปิดหน้าออเดอร์ เช็คของตามภาพจริง */}
             <div className="keep flex items-center justify-between gap-4 rounded border border-slate-300 bg-slate-50 px-4 py-3">
               <div>
@@ -853,6 +871,7 @@ function OrderDocs({
             )}
 
             <p className="mt-4 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
+            </>)}
           </section>
         )}
 
