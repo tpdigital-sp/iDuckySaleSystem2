@@ -27,6 +27,7 @@ import { cartItemKey } from "@/lib/cart-context";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { PROOF_AUTO_NOTIFY_MINUTES, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
 import { fetchProductNamesLite, fetchProductsByIds } from "@/lib/product-repo";
+import { itemPiecesLine } from "@/lib/item-yield";
 import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
 import {
   allSelfDesignedApproved,
@@ -760,7 +761,14 @@ function ProofDropCheck({
 
   /* งานเซ็ตที่ยังไม่ได้ตั้งตัวคูณ — ให้ตั้งตรงนี้ได้เลย ตั้งแล้วทั้งใบงาน/โหมดแพ็คใช้เลขเดียวกันหมด */
   const perUnitRow = qc.needPerUnit && onSetPerUnit && (
-    <PerUnitSetter unit={qc.saleUnit} qty={item.qty} suggest={qc.suggestPer} onSet={onSetPerUnit} />
+    <PerUnitSetter
+      unit={qc.saleUnit}
+      qty={item.qty}
+      suggest={qc.suggestPer}
+      current={qc.per}
+      piece={qc.piece}
+      onSet={onSetPerUnit}
+    />
   );
 
   if (!list.length)
@@ -802,7 +810,23 @@ function ProofDropCheck({
  * ตั้งแล้วใช้ต่อทุกที่: แถบเทียบจำนวน · แถบตรวจชื่อไฟล์ · โหมดแพ็ค (หัวรายการขึ้น "12 เซ็ต = 240 ชิ้น")
  * ระบบเดาให้ได้เมื่อป้ายบนแบบรวมแล้วหารจำนวนที่สั่งลงตัว — กดปุ่มยืนยันทีเดียวจบ
  */
-function PerUnitSetter({ unit, qty, suggest, onSet }: { unit: string; qty: number; suggest: number; onSet: (per: number) => void }) {
+function PerUnitSetter({
+  unit,
+  qty,
+  suggest,
+  current,
+  piece,
+  onSet,
+}: {
+  unit: string;
+  qty: number;
+  suggest: number;
+  /** ตัวคูณที่รายการนี้ถืออยู่ตอนนี้ (1 = ยังไม่เคยตั้ง) */
+  current: number;
+  /** คำเรียกชิ้นย่อย เช่น "ใบ" */
+  piece: string;
+  onSet: (per: number) => void;
+}) {
   const [draft, setDraft] = useState("");
   const save = (v: number) => {
     if (v >= 1 && v <= 99999) onSet(Math.floor(v));
@@ -811,7 +835,10 @@ function PerUnitSetter({ unit, qty, suggest, onSet }: { unit: string; qty: numbe
   return (
     <div className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-900 ring-1 ring-sky-300">
       <p className="font-extrabold">
-        📦 งานนี้ขายเป็น “{unit}” — สั่ง {qty} {unit} · ยังไม่ได้ตั้งว่า 1 {unit} เท่ากับกี่ชิ้น
+        📦 งานนี้ขายเป็น “{unit}” — สั่ง {qty} {unit} ·{" "}
+        {current > 1
+          ? `ตอนนี้นับไว้ 1 ${unit} = ${current} ${piece} (เลขวันที่สั่ง) แต่แบบที่ทำมาไม่ตรงกับเลขนี้`
+          : `ยังไม่ได้ตั้งว่า 1 ${unit} เท่ากับกี่${piece}`}
       </p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
         {suggest > 0 && (
@@ -820,7 +847,7 @@ function PerUnitSetter({ unit, qty, suggest, onSet }: { unit: string; qty: numbe
             onClick={() => save(suggest)}
             className="rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-sky-700"
           >
-            ✔ ตั้งเป็น 1 {unit} = {suggest} ชิ้น (ตรงกับป้ายบนแบบพอดี)
+            ✔ {current > 1 ? "แก้เป็น" : "ตั้งเป็น"} 1 {unit} = {suggest} {piece} (ตรงกับป้ายบนแบบพอดี)
           </button>
         )}
         <span className="text-sky-700">หรือพิมพ์เอง 1 {unit} =</span>
@@ -836,7 +863,7 @@ function PerUnitSetter({ unit, qty, suggest, onSet }: { unit: string; qty: numbe
           aria-label={`1 ${unit} เท่ากับกี่ชิ้น`}
           className="w-16 rounded-md border border-sky-300 px-1.5 py-0.5 text-center focus:border-sky-500 focus:outline-none"
         />
-        <span className="text-sky-700">ชิ้น</span>
+        <span className="text-sky-700">{piece}</span>
       </div>
     </div>
   );
@@ -4243,6 +4270,21 @@ export default function AdminOrderDetailPage() {
                           )}
                         </div>
                       )}
+                      {/* 📐 จำนวนชิ้นรวมของรายการนี้ — งานที่ขายเป็นแผ่น/เซ็ต จำนวนที่สั่งไม่ใช่จำนวนชิ้น
+                          กราฟฟิกขอให้บอกยอดรวมมาให้เลย จะได้ไม่ต้องคูณเอง (เจ้าของร้านแจ้ง 14 ก.ย. 69)
+                          อยู่นอกกล่องสเปคที่ line-clamp เพื่อให้เห็นทั้งตอนยุบและตอนกาง */}
+                      {(() => {
+                        const line = itemPiecesLine(it, productOfItem(it.productId));
+                        if (!line) return null;
+                        return (
+                          <p
+                            title="จำนวนชิ้นรวมที่ต้องทำ — คูณจากจำนวนที่ลูกค้าสั่ง · ไม่ตรงกับที่จัดวางได้จริง แก้ตัวเลขต่อหน่วยได้ที่กล่องแบบงานด้านล่าง"
+                            className="mt-1 inline-block rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-bold tabular-nums text-indigo-800 ring-1 ring-indigo-200"
+                          >
+                            {line}
+                          </p>
+                        );
+                      })()}
                       {/* 📝 ที่มาของราคาที่แอดมินตีไว้ (ลูกค้าเห็นด้วย) — กดเพื่อเปิดแผงตีราคาไปแก้ */}
                       {it.quoteNote && seesMoney && (
                         <button
@@ -5181,7 +5223,7 @@ export default function AdminOrderDetailPage() {
                         proofs={proofs}
                         item={it}
                         catalog={nameIndex}
-                        onSetPerUnit={mayProof ? (per) => setItemPerUnit(i, per) : undefined}
+                        onSetPerUnit={mayProof || mayEdit ? (per) => setItemPerUnit(i, per) : undefined}
                       />
                       {proofs.length === 0 ? (
                         <p
