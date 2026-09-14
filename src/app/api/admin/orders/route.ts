@@ -22,6 +22,7 @@ import {
   orderNetTransfer,
   orderWhtAmount,
   paidSoFar,
+  uncreditedReceived,
   lockEarlyPay,
   packGate,
   partialGate,
@@ -522,6 +523,53 @@ export async function PATCH(req: Request) {
    * 💰 ยอดบิลโตในคำขอนี้ (เปิด VAT ทีหลัง · แก้ค่าส่ง · เพิ่มรายการ) บนใบที่แอดมินเคยยืนยันเงินเองโดยไม่มี paidTotal
    * → ถือว่ารับครบเท่าบิลเดิม ไม่งั้นระบบไม่รู้ว่าค้าง (hasUnpaidBalance ต้องมี paidTotal) · ใบมัดจำ/เคลมไม่เกี่ยว
    */
+  /**
+   * ☑️ ติ๊ก "ลูกค้าไม่รับส่วนลดโอนไว (คิดยอดเต็ม)" บนใบที่ลูกค้าโอนเต็มจำนวนมาแล้ว → นับเงินส่วนที่โอนเกินเข้ายอดชำระ
+   *
+   * ทำไมต้องมี (OD-260908-3989 · 14 ก.ย. 69): บิล 3,750 ลดโอนไว ฿10 → ลูกค้าโอนเต็ม 3,750 · SlipOK ผ่าน
+   * แต่ระบบนับเข้า paidTotal แค่ "ยอดค้างตอนนั้น" 3,740 ส่วนเกิน ฿10 ค้างอยู่นอกบัญชี (over)
+   * พอแอดมินติ๊กไม่รับส่วนลด ยอดรวมกลับเป็น 3,750 → โชว์ "ค้างชำระ ฿10" ทั้งที่เงินเข้าครบแล้ว
+   * → ดึงเงินส่วนที่โอนเกินมานับเป็นยอดชำระ (ไม่เกินส่วนลดที่เอาออก) · ติ๊กออก = ถอยคืนเท่าที่เติมไว้ (waiveCredit)
+   * เงินไม่ได้โอนเกินมาจริง = ไม่เติมให้ (ค้าง ฿5/฿10 ตามจริง ให้ตามเก็บ/ใส่ส่วนลดเอง)
+   */
+  const waivedBefore = !!existing.earlyPay?.waivedAt;
+  const waivedNow = !!toSave.earlyPay?.waivedAt;
+  if (mayEditFull && toSave.earlyPay && waivedNow !== waivedBefore && toSave.paidTotal != null) {
+    const who = `แอดมิน ${actor.name?.trim() || actor.username}`;
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    if (waivedNow) {
+      const credit = Math.min(Math.max(0, toSave.earlyPay.amount), uncreditedReceived(existing));
+      if (credit > 0) {
+        toSave = {
+          ...toSave,
+          paidTotal: round2((toSave.paidTotal ?? 0) + credit),
+          earlyPay: { ...toSave.earlyPay, waiveCredit: credit },
+        };
+        toSave = withLog(
+          toSave,
+          who,
+          "นับเงินที่โอนเกินเข้ายอดชำระ (ไม่รับส่วนลดโอนไว)",
+          `ลูกค้าโอนเกินยอดที่เรียกเก็บตอนนั้น ${credit.toLocaleString("th-TH")} บาท — นับเข้ายอดชำระแล้ว` +
+            ` รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท`
+        );
+      }
+    } else {
+      const credit = existing.earlyPay?.waiveCredit ?? 0;
+      toSave = {
+        ...toSave,
+        ...(credit > 0 ? { paidTotal: Math.max(0, round2((toSave.paidTotal ?? 0) - credit)) } : {}),
+        earlyPay: { ...toSave.earlyPay, waiveCredit: undefined },
+      };
+      if (credit > 0)
+        toSave = withLog(
+          toSave,
+          who,
+          "ถอยเงินที่โอนเกินออกจากยอดชำระ (คืนส่วนลดโอนไว)",
+          `ถอย ${credit.toLocaleString("th-TH")} บาทที่เติมไว้ตอนติ๊กไม่รับส่วนลด — รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท`
+        );
+    }
+  }
+
   const paidStageBefore = !(["รอชำระเงิน", "รอตรวจสอบ", "ยกเลิก"] as OrderStatus[]).includes(existing.status);
   if (mayEditFull && !toSave.deposit && !toSave.claimOf && toSave.paidTotal == null && paidStageBefore && orderTotal(toSave) > orderTotal(existing) + 0.5)
     toSave = { ...toSave, paidTotal: orderTotal(existing) };

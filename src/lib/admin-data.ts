@@ -734,7 +734,20 @@ export interface Order {
    * 🚫 waivedAt = แอดมินติ๊ก "ลูกค้าไม่รับส่วนลดนี้" (ลูกค้าโอนเต็มจำนวนมาแล้ว/ไม่อยากรับ) → ยอดกลับเป็นราคาเต็มทุกหน้าจอ
    *    ชนะทุกสถานะ (ล็อกแล้วก็ยกเลิกได้) · ติ๊กออกได้ = ส่วนลดกลับมาตามสถานะเดิม (ดู setEarlyPayWaived)
    */
-  earlyPay?: { label: string; amount: number; expiresAt?: string; lockedAt?: string; lockedBy?: string; waivedAt?: string; waivedBy?: string };
+  earlyPay?: {
+    label: string;
+    amount: number;
+    expiresAt?: string;
+    lockedAt?: string;
+    lockedBy?: string;
+    waivedAt?: string;
+    waivedBy?: string;
+    /**
+     * 💵 ยอดที่เซิร์ฟเวอร์ "เติมเข้า paidTotal" ตอนติ๊กไม่รับส่วนลด (บาท) — เงินที่ลูกค้าโอนเกินมาแล้วแต่ยังไม่ถูกนับ
+     * เก็บไว้เพื่อถอยคืนให้เป๊ะเมื่อติ๊กออก (ดูจุดคิดใน PATCH /api/admin/orders)
+     */
+    waiveCredit?: number;
+  };
   /**
    * หัก ณ ที่จ่าย (ลูกค้านิติบุคคล) — แอดมินเลือกอัตรา 1%/3% ระบบเติมจำนวนเงินจากยอดรวมให้
    * แล้วแก้ตัวเลขเองได้ตามใบ 50 ทวิของลูกค้า (บัญชีลูกค้าบางเจ้าคิดจากฐานก่อน VAT)
@@ -1362,6 +1375,25 @@ export function paidTotalIsReportedOnly(o: Order): boolean {
 /** ยอดที่ "รับแล้วจริง" ตามที่ระบบยืนยันได้ (บาท) — ตัดค่าที่ตั้งล่วงหน้าตอนแจ้งโอนของระบบเก่าออก */
 export function paidSoFar(o: Order): number {
   return paidTotalIsReportedOnly(o) ? 0 : Math.max(0, o.paidTotal ?? 0);
+}
+
+/**
+ * 💵 เงินที่สลิปยืนยันแล้วว่าเข้าบัญชีร้านจริง แต่ยังไม่ถูกนับเข้า paidTotal (บาท) — 0 = ไม่มีส่วนเกิน
+ *
+ * สลิปที่ผ่านถูกนับเข้า paidTotal เป็น "ยอดค้างตอนนั้น" ไม่ใช่ยอดบนหน้าสลิป (ดู credit ใน slip-apply)
+ * ลูกค้าที่โอนเกิน (เช่น ไม่เอาส่วนลดโอนไว โอนเต็มมาเลย) จึงมีเงินส่วนหนึ่งลอยอยู่นอกบัญชียอดชำระ
+ * นับเฉพาะใบที่ "นับยอดแล้ว" (ผ่าน SlipOK / รับบางส่วน / แอดมินรับยอดเอง) — ใบที่ยังรอตรวจไม่ใช่เงินเข้า
+ */
+export function uncreditedReceived(o: Order): number {
+  let slips = 0;
+  const add = (v: Order["slipVerify"] | undefined, counted: boolean) => {
+    if (counted && (v?.amount ?? 0) > 0) slips += v!.amount!;
+  };
+  add(o.slipVerify, o.slipVerify?.status === "pass" || (o.slipVerify?.credited ?? 0) > 0);
+  const b = o.deposit?.balanceVerify;
+  add(b, b?.status === "pass" || (b?.credited ?? 0) > 0);
+  for (const p of o.payments ?? []) add(p.verify, (p.credited ?? 0) > 0);
+  return Math.max(0, Math.round((slips - paidSoFar(o)) * 100) / 100);
 }
 
 export interface PackGate {
