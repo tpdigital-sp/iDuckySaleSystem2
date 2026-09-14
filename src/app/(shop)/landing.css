@@ -4575,3 +4575,39 @@ to{opacity:1;transform:none}}
   .pgal-thumb{width:58px;height:58px;border-radius:15px}
   .pgal-nav{width:36px;height:36px;font-size:1.3rem}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   .ord-ship-* — แถบ "วันที่จัดส่ง" บนหัวใบออเดอร์ลูกค้า (/order/[id])
+   เจ้าของร้านสั่ง 14 ก.ย. 69: เดิมวันส่งเป็นบรรทัดเล็กสีจางในกล่องรูปแบบการจัดส่ง
+   ลูกค้าเปิดหน้ามาแล้วหาไม่เจอ → แถบเต็มความกว้าง ตัวเลขวันใหญ่สุดในการ์ด
+   ครึ่งซ้าย = วันที่ + ป้ายนับถอยหลัง · ครึ่งขวา = ส่งพัสดุ/มารับเอง + เลขพัสดุ
+   ═══════════════════════════════════════════════════════════════════════════ */
+.shopp .ord-ship{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px;
+  padding:15px 20px;border-radius:var(--r-m);
+  background:linear-gradient(104deg,var(--sky-100) 0%,rgba(255,255,255,.8) 76%);
+  border:1.5px solid var(--sky-200);border-left:7px solid var(--blue-deep);
+  box-shadow:0 8px 20px -14px rgba(44,129,196,.6)}
+/* เลยวันที่นัดไว้ = ต้องสะดุดตากว่าใบที่ยังอยู่ในกำหนด */
+.shopp .ord-ship.late{background:linear-gradient(104deg,var(--yolk-soft) 0%,rgba(255,255,255,.82) 76%);
+  border-color:rgba(255,182,39,.5);border-left-color:var(--yolk-deep)}
+/* ของออกจากร้านแล้ว = จบงาน ถอยความเด่นลงเป็นเขียวเรียบ */
+.shopp .ord-ship.done{background:linear-gradient(104deg,#DEF5EC 0%,rgba(255,255,255,.82) 76%);
+  border-color:rgba(18,135,106,.28);border-left-color:#12876A}
+.shopp .ord-ship-when{flex:1 1 260px;min-width:0}
+.shopp .ord-ship-how{flex:0 1 auto;min-width:0;padding-left:22px;border-left:1px solid var(--sky-200)}
+.shopp .ord-ship-date{font-family:var(--display);font-weight:600;color:var(--navy);
+  font-size:clamp(1.15rem,5.4vw,1.72rem);line-height:1.22;margin-top:3px;
+  font-variant-numeric:tabular-nums;letter-spacing:.005em}
+.shopp .ord-ship-date .wd{color:var(--blue-deep)}
+.shopp .ord-ship.late .ord-ship-date .wd{color:#8A5B00}
+.shopp .ord-ship.done .ord-ship-date .wd{color:#0E6B52}
+/* ยังไม่มีวันส่ง — ข้อความแทน ไม่ต้องตัวใหญ่ */
+.shopp .ord-ship-date.soft{font-family:var(--body);font-size:.92rem;font-weight:400;color:var(--navy-soft);line-height:1.6}
+.shopp .ord-ship .ord-chip{font-size:.78rem;padding:6px 14px}
+.shopp .ord-ship-via{font-family:var(--display);font-weight:500;color:var(--navy);
+  font-size:1.02rem;line-height:1.35;margin-top:3px}
+.shopp .ord-ship-note{font-size:.78rem;color:var(--navy-soft);line-height:1.55;margin-top:2px}
+@media(max-width:640px){
+  .shopp .ord-ship{gap:10px;padding:14px 16px;border-left-width:6px}
+  .shopp .ord-ship-how{flex:1 1 100%;padding-left:0;padding-top:10px;border-left:0;border-top:1px solid var(--sky-200)}
+}

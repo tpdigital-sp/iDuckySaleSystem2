@@ -23,6 +23,7 @@ import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
 import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
 import { isPickupOrder, resolveShipLabel, stripShipPrice } from "@/lib/ship-label";
+import { todayBkkYmd } from "@/lib/ship-date";
 
 /*
  * ── สไตล์ปุ่ม/ช่องกรอกใน lightbox ──
@@ -98,10 +99,21 @@ function PayAccounts({ payment }: { payment: ShopPayment | null }) {
 /** ป้ายขั้นตอนฝั่งลูกค้า (คำอ่านง่ายกว่าฝั่งหลังบ้าน) — ลำดับตรงกับ STEP_OF · มารับเอง = ขั้นสุดท้ายเป็น "มารับเอง" ไม่ใช่ "จัดส่ง" */
 const STEPS = ["สั่งซื้อ", "ชำระเงิน", "ตรวจแบบงาน", "ผลิต", "จัดส่ง"];
 const stepsOf = (o: Order) => (isPickupOrder(o) ? [...STEPS.slice(0, -1), "มารับเอง"] : STEPS);
-/** วันที่ yyyy-mm-dd → "14 ก.ย." (ช่วงวันส่งที่แอดมินระบุ) */
-const thaiShortDay = (ymd: string) => {
+/**
+ * วันที่ yyyy-mm-dd → { wd:"วันจันทร์", date:"14 ก.ย. 2569" } — วันจัดส่งตัวใหญ่บนหัวใบ
+ * แยกชื่อวันออกมาเพราะตัวเลขวันต้องเด่นกว่า (เจ้าของร้านสั่ง 14 ก.ย. 69) · ปี พ.ศ. ตามที่ทีมใช้คุยกัน
+ */
+const thaiBigDay = (ymd: string): { wd: string; date: string } => {
   const d = new Date(`${ymd}T00:00:00+07:00`);
-  return isFinite(d.getTime()) ? d.toLocaleDateString("th-TH", { day: "numeric", month: "short" }) : ymd;
+  if (!isFinite(d.getTime())) return { wd: "", date: ymd };
+  const f = (o: Intl.DateTimeFormatOptions) => d.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", ...o });
+  return { wd: f({ weekday: "long" }), date: f({ day: "numeric", month: "short", year: "numeric" }) };
+};
+/** วันส่ง − วันนี้ (หน่วยวัน · ลบ = เลยวันที่นัดไว้) · null = ไม่มีวันส่ง */
+const daysUntil = (ymd: string): number | null => {
+  const a = Date.parse(`${ymd}T00:00:00Z`);
+  const b = Date.parse(`${todayBkkYmd()}T00:00:00Z`);
+  return isFinite(a) && isFinite(b) ? Math.round((a - b) / 86400000) : null;
 };
 /** ไอคอนภาพจริงของแต่ละขั้น — ชุดเดียวกับแถบขั้นตอนในหน้าบัญชีของฉัน (null = ใช้เครื่องหมายถูก) */
 const STEP_ART: (string | null)[] = [
@@ -563,6 +575,44 @@ export default function CustomerOrderPage() {
   /** 🏪 ลูกค้ามารับเองที่ร้าน — ไม่มีพัสดุ ป้าย/ข้อความเรื่อง "จัดส่ง" ต้องเปลี่ยนคำทั้งหน้า */
   const pickup = isPickupOrder(order);
   const shipLabel = stripShipPrice(resolveShipLabel(order, shippingOf(payment)));
+  /*
+   * 📅 วันที่จัดส่ง — เจ้าของร้านสั่ง 14 ก.ย. 69: เดิมเป็นบรรทัดเล็กสีจางใต้ "รูปแบบการจัดส่ง" ลูกค้าเปิดหน้ามาแล้วหาไม่เจอ
+   * ใบใหม่เก็บวันเดียว (from = to) · ใบเก่าที่ยังเป็นช่วงจาก–ถึงโชว์ทั้งช่วง
+   */
+  const shipFrom = order.shipDate?.from || order.shipDate?.to || "";
+  const shipTo = order.shipDate?.to || order.shipDate?.from || "";
+  const shipRange = !!shipTo && shipTo !== shipFrom;
+  const bigFrom = shipFrom ? thaiBigDay(shipFrom) : null;
+  const bigTo = shipRange ? thaiBigDay(shipTo) : null;
+  const shipDone = !!order.tracking || order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น";
+  const shipLeft = shipFrom && !shipDone ? daysUntil(shipFrom) : null;
+  const shipLate = shipLeft != null && shipLeft < 0;
+  /** ป้ายข้างวันที่ — ของออกจากร้านแล้วบอกว่าส่งแล้ว · ยังไม่ออกก็นับถอยหลังให้ */
+  const shipChip: { txt: string; tone: string } | null = shipDone
+    ? order.status === "เสร็จสิ้น"
+      ? { txt: pickup ? "รับของแล้ว ✓" : "ส่งถึงแล้ว ✓", tone: "ok" }
+      : { txt: pickup ? "พร้อมให้มารับแล้ว" : "ส่งแล้ว ✓", tone: "ok" }
+    : shipLeft == null
+      ? null
+      : shipLeft < 0
+        ? { txt: `เลยวันที่นัดไว้ ${-shipLeft} วัน`, tone: "yolk" }
+        : shipLeft === 0
+          ? { txt: pickup ? "รับได้วันนี้" : "ส่งวันนี้", tone: "yolk" }
+          : shipLeft === 1
+            ? { txt: "พรุ่งนี้", tone: "" }
+            : { txt: `อีก ${shipLeft.toLocaleString("th-TH")} วัน`, tone: "" };
+  /** บรรทัดใต้รูปแบบการจัดส่ง — มีเลขพัสดุแล้วบอกเลข ไม่งั้นบอกค่าส่ง/วิธีรับของ */
+  const shipNote = pickup
+    ? order.status === "เสร็จสิ้น"
+      ? "รับของเรียบร้อยแล้ว"
+      : order.status === "จัดส่งแล้ว"
+        ? "แพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ"
+        : "ไม่มีพัสดุ · ของพร้อมแล้วทางร้านจะแจ้งให้มารับครับ"
+    : order.tracking
+      ? `เลขพัสดุ ${order.tracking}`
+      : order.shippingCost === 0
+        ? "ส่งฟรี"
+        : `ค่าส่ง ${formatPrice(order.shippingCost)}`;
   /**
    * ยกเลิกเองได้ไหม — เงื่อนไขเดียวกับด่านฝั่งเซิร์ฟเวอร์ (/api/orders/cancel)
    * "ยังไม่มีเงินเข้าเลย + ร้านยังไม่เริ่มงาน" เท่านั้น · นอกนั้นให้ทักร้าน
@@ -918,28 +968,6 @@ export default function CustomerOrderPage() {
               </p>
             )}
           </div>
-          {/* 🚚 รูปแบบการจัดส่ง — เจ้าของร้านขอ 11 ก.ย. 69: เห็นตั้งแต่หัวใบว่าส่งพัสดุหรือมารับเอง ไม่ต้องเลื่อนไปดูท้ายใบ */}
-          {!cancelled && (
-            <div className="ord-sub order-last w-full px-4 py-3 sm:order-none sm:w-auto sm:min-w-[220px]">
-              <p className="ord-eyebrow">รูปแบบการจัดส่ง</p>
-              <p className="ord-title mt-1 text-[1.02rem]">{pickup ? "🏪 มารับเองที่ร้าน" : `🚚 ${shipLabel || "ส่งพัสดุ"}`}</p>
-              <p className="mt-0.5 text-xs t-soft">
-                {pickup
-                  ? order.status === "เสร็จสิ้น"
-                    ? "รับของเรียบร้อยแล้ว"
-                    : order.status === "จัดส่งแล้ว"
-                      ? "แพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ"
-                      : "ไม่มีพัสดุ · ของพร้อมแล้วทางร้านจะแจ้งให้มารับครับ"
-                  : order.tracking
-                    ? `เลขพัสดุ ${order.tracking}`
-                    : order.shipDate?.from || order.shipDate?.to
-                      ? `กำหนดส่ง ${thaiShortDay(order.shipDate.from || order.shipDate.to!)}${order.shipDate.to && order.shipDate.from && order.shipDate.to !== order.shipDate.from ? ` – ${thaiShortDay(order.shipDate.to)}` : ""}`
-                      : order.shippingCost === 0
-                        ? "ส่งฟรี"
-                        : `ค่าส่ง ${formatPrice(order.shippingCost)}`}
-              </p>
-            </div>
-          )}
           <div className="flex flex-col items-end gap-2">
             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
               {orderStatusLabel(order)}
@@ -955,6 +983,44 @@ export default function CustomerOrderPage() {
             )}
           </div>
         </div>
+
+        {/*
+          📅 วันที่จัดส่ง + รูปแบบการจัดส่ง — เจ้าของร้านสั่ง 14 ก.ย. 69: "ปรับวันที่จัดส่งให้เด่นกว่านี้"
+          เดิมวันส่งเป็นบรรทัดเล็กสีจางในกล่องรูปแบบการจัดส่งมุมขวา (11 ก.ย. 69) ลูกค้าต้องเพ่งหา
+          → ยกมาเป็นแถบเต็มความกว้างใต้เลขออเดอร์ ตัวเลขวันใหญ่ที่สุดในการ์ด + ป้ายนับถอยหลัง
+          รูปแบบการจัดส่ง (ส่งพัสดุ/มารับเอง) ยังอยู่หัวใบเหมือนเดิม แค่ย้ายมาอยู่ครึ่งขวาของแถบเดียวกัน
+        */}
+        {!cancelled && (
+          <div className={`ord-ship mt-4${shipDone ? " done" : shipLate ? " late" : ""}`}>
+            <div className="ord-ship-when">
+              <p className="ord-eyebrow">📅 {pickup ? "วันที่ของพร้อมให้มารับ" : "วันที่จัดส่ง"}</p>
+              {shipFrom ? (
+                <>
+                  <p className="ord-ship-date">
+                    <span className="wd">{bigFrom!.wd}</span> {bigFrom!.date}
+                    {bigTo && (
+                      <>
+                        {" – "}
+                        <span className="wd">{bigTo.wd}</span> {bigTo.date}
+                      </>
+                    )}
+                  </p>
+                  <p className="mt-1.5 flex flex-wrap items-center gap-2">
+                    {shipChip && <span className={`ord-chip ${shipChip.tone}`}>{shipChip.txt}</span>}
+                    {order.status === "รอชำระเงิน" && <span className="text-[11px] t-soft">เริ่มนับหลังยืนยันการชำระเงิน</span>}
+                  </p>
+                </>
+              ) : (
+                <p className="ord-ship-date soft">ทางร้านจะแจ้งวันจัดส่งให้ทราบทางไลน์ครับ</p>
+              )}
+            </div>
+            <div className="ord-ship-how">
+              <p className="ord-eyebrow">รูปแบบการจัดส่ง</p>
+              <p className="ord-ship-via">{pickup ? "🏪 มารับเองที่ร้าน" : `🚚 ${shipLabel || "ส่งพัสดุ"}`}</p>
+              <p className="ord-ship-note">{order.tracking ? <span className="select-all">{shipNote}</span> : shipNote}</p>
+            </div>
+          </div>
+        )}
 
         {/* ── ลูกค้าเลือกเองว่าอยากให้เราอัปเดตแค่ไหน (ส่งทาง LINE) ── */}
         {!cancelled && (
