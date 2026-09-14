@@ -10,7 +10,8 @@ import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
-import { reportPaidToTP, syncArrivalToTP, syncCustomerToTP, syncReceivedToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { amountsForRecord } from "@/lib/tp-amounts";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { isPickupOrder } from "@/lib/ship-label";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
@@ -795,8 +796,11 @@ export async function PATCH(req: Request) {
     void syncRushToTP(toSave);
   // 👤 แอดมินแก้ชื่อผู้รับ/เบอร์ → อัปเดตการ์ดบอร์ด WIP ให้ตรงหน้าออเดอร์ (เก็บชื่อเก่าไว้ให้จับคู่โฟลเดอร์เดิมได้)
   if (mayEditFull) void syncCustomerToTP(existing, toSave);
-  // 💵 แก้ "เงินเข้าบัญชีจริง" (ธนาคารหักค่าธรรมเนียม) หลังส่งเรคอร์ดไปแล้ว → อัปเดตยอดใน msVerify ให้ตรงแถวโอน
-  if (mayEditFull && (existing.cashReceived ?? 0) !== (toSave.cashReceived ?? 0)) void syncReceivedToTP(toSave);
+  // ยอดของเรคอร์ดสะพานทั้งสองใบ (งวดแรก + งวดหลัง) — ต่างกันเมื่อไหร่แปลว่าต้องยิงอัปเดตไป msVerify
+  const tpMoneyKey = (o: Order) => JSON.stringify([amountsForRecord(o, false), amountsForRecord(o, true)]);
+  // 💵 ยอดที่ msVerify ต้องกระทบกับแถวโอนของธนาคารเปลี่ยนหลังส่งเรคอร์ดไปแล้ว → อัปเดตให้ตรง
+  //    ("เงินเข้าบัญชีจริง"/ค่าธรรมเนียม · ยอดบิล/หัก ณ ที่จ่าย · เปิดโหมดมัดจำ 50% ทีหลัง — เรคอร์ดค้างยอดทั้งบิล)
+  if (mayEditFull && tpMoneyKey(existing) !== tpMoneyKey(toSave)) void syncAmountsToTP(toSave);
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
   void syncArrivalToTP(existing, toSave);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify

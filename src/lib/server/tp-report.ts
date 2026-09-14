@@ -2,7 +2,8 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { depositInstallments, orderCashReceived, orderEarlyPayAmount, orderTotal, orderWhtAmount, proofsOf, type Order } from "@/lib/admin-data";
+import { orderEarlyPayAmount, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { amountsForRecord, tpAmountsFix } from "@/lib/tp-amounts";
 import { SITE_URL } from "@/lib/shop-info";
 
 /**
@@ -39,15 +40,6 @@ async function slipLinkFor(order: Order, isFinal: boolean, override?: string): P
 }
 
 /**
- * ยอดที่เข้าบัญชีจริงตามที่ SlipOK อ่านจากสลิป — ลูกค้าบางคนโอน "ยอดเต็ม" ไม่หักส่วนลดโอนไว ฿5/฿10
- * (เช่น OD-260908-3989 ออเดอร์ 3,740 แต่โอน 3,750) ถ้าส่งยอดออเดอร์ไป msVerify จะจับคู่กับธนาคารไม่เจอ
- */
-function slipVerifiedAmount(order: Order, isFinal: boolean): number | undefined {
-  const v = isFinal ? order.deposit?.balanceVerify : order.slipVerify;
-  return v?.status === "pass" && typeof v.amount === "number" && v.amount > 0 ? v.amount : undefined;
-}
-
-/**
  * 🎯 เลขอ้างอิงธุรกรรมที่ SlipOK อ่านได้ของ "สลิปใบที่รายงานนี้พูดถึง" — msVerify ใช้แยกสลิปคนละธุรกรรมที่ยอดเท่ากัน
  * (11 ก.ย. 69: สลิป Gift ฿300 11:53 ถูกบล็อกเพราะชนเรคอร์ด Kaew ฿300 ที่ SlipOK ผ่าน 11:51 — เรคอร์ดไม่มีเลขอ้างอิงให้เทียบ)
  * ใบเพิ่ม (slipPath) → payments[].verify · งวดหลังมัดจำ → deposit.balanceVerify · ใบหลัก → slipVerify
@@ -61,45 +53,8 @@ function slipRefNoFor(order: Order, isFinal: boolean, slipPath?: string): string
   return v?.transRef?.trim() ?? "";
 }
 
-/**
- * 💰 ยอดสามตัวของเรคอร์ดสะพาน 1 ใบ — ต้องเป็นชุดเดียวกันเสมอ ไม่งั้น msVerify กระทบยอดกับธนาคารไม่ลง
- *   bill     = ยอดบิล "ของงวดนี้" ก่อนหัก ณ ที่จ่าย (ทั้งใบ · งวดมัดจำ · งวดคงเหลือ · สลิปใบเพิ่ม = ยอดใบนั้น)
- *   wht      = หัก ณ ที่จ่ายที่ลูกค้านิติบุคคลหักไว้ "ของงวดนี้" (แบ่งตามสัดส่วนงวดด้วย depositInstallments)
- *   received = เงินที่เข้าบัญชีจริง · fee = ค่าธรรมเนียมที่ธนาคารหักจากยอดโอน (bill − wht − received)
- *
- * ⚠️ 14 ก.ย. 69 เจ้าของร้านทัก "ยอดที่ดึงไปต้องตรงกับยอดที่ฉันได้รับ" — ของเดิมส่งยอดบิลไปเป็นยอดสลิป
- * เคสที่เพี้ยน: ลูกค้าหัก ณ ที่จ่ายแล้วแอดมินกดยืนยันเองโดยไม่มี SlipOK (OD-260910-1945 บิล 1,294.70 เข้าจริง 1,258.40)
- * งวดแรกของออเดอร์มัดจำที่เคยส่ง "ยอดทั้งบิล" เป็น orderTotal (OD-260911-6656 บิล 34,347 แต่งวดนี้ 17,173.50)
- * และธนาคารหักค่าธรรมเนียมจากยอดที่เข้า (OD-260914-9922 โอน 5,304 เข้าจริง 5,296 — SMART TTB หัก ฿8)
- */
-export function amountsForRecord(
-  order: Order,
-  isFinal: boolean,
-  opts?: { received?: number; extra?: boolean; partial?: boolean }
-): { bill: number; wht: number; received: number; fee: number } {
-  const r2 = (n: number) => Math.round(n * 100) / 100;
-  const dep = depositInstallments(order);
-  // สลิปใบเพิ่ม/รับบางส่วน = เงินก้อนที่โอนมาจริง ไม่มีบิลของตัวเอง และไม่มีการหัก ณ ที่จ่ายซ้อน
-  const loose = !!opts?.extra || !!opts?.partial;
-  const wht = loose ? 0 : isFinal ? dep?.secondWht ?? 0 : dep ? dep.firstWht : orderWhtAmount(order);
-  const bill = loose
-    ? r2(opts?.received ?? 0)
-    : isFinal
-      ? r2(dep?.second ?? opts?.received ?? 0)
-      : dep
-        ? dep.first
-        : orderTotal(order);
-  // 💵 เงินเข้าจริง: แอดมินกรอกจากรายการเดินบัญชี > ผู้เรียกบอกมา (SlipOK) > ยอดที่ SlipOK อ่านไว้ในออเดอร์ > บิลของงวดนี้หักภาษี
-  //    cashReceived ชนะทุกตัวเพราะสลิปบอก "ยอดที่ลูกค้าโอน" ส่วนธนาคารหักค่าธรรมเนียมก่อนเข้าบัญชี
-  //    ใช้กับใบเดียวจบเท่านั้น — งวดมัดจำ/ใบเพิ่มมียอดของตัวเอง
-  const manual = loose || isFinal || dep ? 0 : orderCashReceived(order);
-  // ใบเดียวจบที่แอดมินยืนยันเอง ใช้ paidTotal เป็นฐาน (ออเดอร์ที่รับมาไม่ครบบิลจะได้ไม่รายงานเกิน)
-  const base = loose || isFinal || dep ? bill : order.paidTotal ?? bill;
-  const received = r2(manual || (opts?.received ?? slipVerifiedAmount(order, isFinal) ?? Math.max(0, base - wht)));
-  // 💸 ค่าธรรมเนียมธนาคารของงวดนี้ — msVerify เอาไปบอกว่า "ยอดตรง" แทนที่จะขึ้น "⚠ ต่าง"
-  const fee = r2(Math.max(0, bill - wht - received));
-  return { bill, wht: r2(wht), received, fee };
-}
+/** สูตรยอดของเรคอร์ด (bill / wht / received / fee) ย้ายไป @/lib/tp-amounts — ส่งออกต่อให้ที่เดิมยังเรียกได้ */
+export { amountsForRecord } from "@/lib/tp-amounts";
 
 export async function reportPaidToTP(
   order: Order,
@@ -375,25 +330,45 @@ export async function syncCustomerToTP(before: Order, after: Order): Promise<voi
 }
 
 /**
- * 💵 แอดมินแก้ "เงินเข้าบัญชีจริง" หลังเรคอร์ดถูกสร้างไปแล้ว → อัปเดตยอดในเรคอร์ดสะพานให้ตรงแถวโอนของธนาคาร
+ * 💵 ยอดของเรคอร์ดสะพานเปลี่ยนหลังถูกสร้างไปแล้ว → อัปเดตให้ตรงแถวโอนของธนาคาร
  * (เรคอร์ดสร้างด้วย .create() ครั้งเดียว ยิงซ้ำไม่ทับ — ต้อง update ตรง ๆ แบบเดียวกับ syncRushToTP)
- * ใบเดียวจบเท่านั้น (ใบมัดจำ/ใบเพิ่มมียอดของตัวเอง) · ยังไม่ชำระ = ยังไม่มีเรคอร์ด → not-found ข้ามเงียบ
+ *
+ * เหตุที่ยอดเปลี่ยนได้: แอดมินกรอก "เงินเข้าบัญชีจริง" (ค่าธรรมเนียมธนาคาร) · แก้ยอดบิล/หัก ณ ที่จ่าย
+ * · **เปิดโหมดมัดจำ 50% ทีหลัง** — เรคอร์ดค้างยอดทั้งบิลทั้งที่ลูกค้าโอนมาแค่งวดแรก
+ *   (OD-260911-8026 บิล 21,946.24 · เรคอร์ดส่ง 21,330.92 · โอนจริงงวดแรก 10,665.46 → msDaily จับคู่ไม่เจอ 14 ก.ย. 69)
+ *
+ * ยิงทั้งใบหลักและ -final · ใบที่ยังไม่มี (ยังไม่ชำระ) = not-found ข้ามเงียบ
+ * ไม่แตะเรคอร์ดสลิปใบเพิ่ม/รับบางส่วน และไม่ทับยอดเข้าจริงที่ SlipOK อ่านไว้เมื่อบิลของงวดไม่เปลี่ยน (ดู tpAmountsFix)
  */
-export async function syncReceivedToTP(order: Order): Promise<void> {
+export async function syncAmountsToTP(order: Order): Promise<void> {
   const db = getFirestoreAdmin();
-  if (!db || order.deposit) return;
-  const money = amountsForRecord(order, false);
-  try {
-    await db.collection(TP_PAID_COLLECTION).doc(order.id).update({
-      slipAmount: money.received,
-      orderTotal: money.bill,
-      wht: money.wht,
-      fee: money.fee,
-      receivedUpdatedAt: new Date().toISOString(),
-    });
-  } catch (e) {
-    const code = (e as { code?: number | string })?.code;
-    if (code !== 5 && code !== "not-found") console.error("[tp-report] อัปเดตเงินเข้าจริงไป msVerify ไม่สำเร็จ:", (e as Error)?.message);
+  if (!db) return;
+  for (const suffix of ["", "-final"]) {
+    const isFinal = suffix === "-final";
+    const ref = db.collection(TP_PAID_COLLECTION).doc(`${order.id}${suffix}`);
+    try {
+      const snap = await ref.get();
+      if (!snap.exists) continue;
+      const money = tpAmountsFix(order, isFinal, snap.data() ?? {});
+      if (!money) continue;
+      const patch: Record<string, unknown> = {
+        slipAmount: money.received,
+        orderTotal: money.bill,
+        wht: money.wht,
+        fee: money.fee,
+        receivedUpdatedAt: new Date().toISOString(),
+      };
+      // เปิดโหมดมัดจำทีหลัง → เรคอร์ดใบหลักยังไม่มีหมายเหตุว่าเป็นงวดแรก (msVerify โชว์คอลัมน์นี้)
+      if (!isFinal && order.deposit && !snap.get("noteText")) {
+        const noteSuffix = "มัดจำ 50% งวดแรก";
+        patch.noteText = noteSuffix;
+        patch.note = `${noteSuffix} · ${snap.get("note") ?? ""}`.slice(0, 120);
+      }
+      await ref.update(patch);
+    } catch (e) {
+      const code = (e as { code?: number | string })?.code;
+      if (code !== 5 && code !== "not-found") console.error("[tp-report] อัปเดตยอดเรคอร์ดไป msVerify ไม่สำเร็จ:", (e as Error)?.message);
+    }
   }
 }
 
