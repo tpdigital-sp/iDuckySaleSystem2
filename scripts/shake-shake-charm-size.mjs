@@ -41,7 +41,7 @@ const RETAIL_FROM_QTY = 11; // 1-10 ชุด = เรทปลีก · 11+ = �
 const OLD_NOTE_TAILS = [
   " · อยากได้ตัวน้อยใหญ่กว่ามาตรฐาน ติ๊ก **เพิ่มขนาดตัวน้อย** แล้วระบุจำนวน ซม. ที่เพิ่มจาก 2.5 ซม. (**ซม. ละ 10 บาท** คิดต่อ 1 ชุด) เช่น อยากได้ตัวน้อย 4 ซม. = เพิ่ม 1.5 ซม. ปัดเป็น 2 ซม.",
 ];
-const NOTE_TAIL = ` · อยากได้ตัวน้อยใหญ่กว่านี้ เปิดสวิตช์ **${SIZE_GROUP}** ด้านล่าง (เลือกได้หลายขนาด แยกจำนวนของใครของมัน)`;
+OLD_NOTE_TAILS.push(` · อยากได้ตัวน้อยใหญ่กว่านี้ เปิดสวิตช์ **${SIZE_GROUP}** ด้านล่าง (เลือกได้หลายขนาด แยกจำนวนของใครของมัน)`);
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
@@ -84,12 +84,16 @@ const overCm = (cm) => Math.ceil(cm - STD_CM); // ซม. ที่เกิน�
 const SIZE_OPTION = {
   label: SIZE_GROUP,
   display: "multi",
+  // ⚠️ ต้องอยู่ "ชุดตัวเลือก" เดียวกับกลุ่มตัวน้อย ไม่งั้นชุดถูกผ่าเป็นสองกรอบ หัวชุดขึ้นซ้ำ
+  //    (รอบก่อนสคริปต์นี้ไม่ได้ใส่ section — อัปทับทีไรกรอบชุดแตกทุกที · ดู [[iducky-option-group-loss-guard]])
+  ...(charm.section ? { section: charm.section } : {}),
   collapsible: true, // 🔘 สวิตช์อยู่ที่กลุ่มนี้ = อยู่ที่แถวขนาดพิเศษพอดี (ผู้ใช้สั่งรอบ 2)
   extraFromQty: RETAIL_FROM_QTY,
+  // 📝 จัดเป็นบรรทัด (บรรทัดขึ้นต้น "• " = หัวข้อย่อย) — ย่อหน้าเดียวยาว ๆ อ่านยาก (เจ้าของร้านทัก 14 ก.ย. 69)
   note:
-    `ตัวน้อยที่ใหญ่กว่ามาตรฐาน 2-2.5 ซม. — **ติ๊กได้หลายขนาดพร้อมกัน แต่ละขนาดระบุจำนวนตัวของตัวเอง** ` +
-    `เช่น 4 ซม. 2 ตัว + 6 ซม. 1 ตัว · **ราคาที่เห็นคือราคาต่อตัวเต็ม ๆ แล้ว** (ค่าตัวน้อย + ค่าเพิ่มขนาด ซม. ละ ${PER_CM} บาท) ` +
-    `จึง **ไม่ต้องนับซ้ำในแถว 2-2.5 ซม.** · ราคาสลับเรทปลีก/ส่งตามจำนวนชุดเหมือนตัวน้อยมาตรฐาน`,
+    `ตัวน้อยที่ใหญ่กว่ามาตรฐาน 2-2.5 ซม. — ราคาที่เห็นคือ **ราคาต่อตัวเต็ม ๆ แล้ว** (ค่าตัวน้อย + ค่าขนาด ซม. ละ ${PER_CM} บาท)\n` +
+    `• ติ๊กได้หลายขนาดพร้อมกัน แต่ละขนาดระบุจำนวนตัวของตัวเอง เช่น 4 ซม. 2 ตัว + 6 ซม. 1 ตัว\n` +
+    `• **ไม่ต้องนับซ้ำในแถว 2-2.5 ซม.** · ราคาสลับเรทปลีก/ส่งตามจำนวนชุดเหมือนตัวน้อยมาตรฐาน`,
   choices: SIZES.map((cm) => ({
     name: `ตัวน้อย ${cm} ซม.`,
     qty: true,
@@ -105,13 +109,17 @@ const log = [];
 /* 1) กลุ่มตัวน้อยเขย่า — ไม่มีสวิตช์ · ไม่มีตัวเลือกเพิ่มขนาดปนอยู่ · note ชี้ทางไปกลุ่มใหม่ */
 if (charm.collapsible) { delete charm.collapsible; log.push(`ถอด collapsible ออกจากกลุ่ม "${CHARM_GROUP}"`); }
 const had = charm.choices.length;
-charm.choices = charm.choices.filter((c) => c.name === CHARM_STD);
+// ⚠️ เก็บแถว "กำหนดขนาดเอง" (ตัวที่มี sizeFee) ไว้ด้วย — ของ scripts/shake-shake-charm-custom-size.mjs
+//    (เดิมกรองเหลือแถวมาตรฐานแถวเดียว รันสคริปต์นี้ทีไรแถวกำหนดขนาดเองหายเงียบ ๆ)
+charm.choices = charm.choices.filter((c) => c.name === CHARM_STD || c.sizeFee);
 if (charm.choices.length !== had) log.push(`ถอดตัวเลือกเพิ่มขนาดแบบเก่าออกจากกลุ่ม "${CHARM_GROUP}" (${had} → ${charm.choices.length} แถว)`);
+// 📝 note ของกลุ่มตัวน้อยเขย่า ย้ายไปอยู่กับ scripts/shake-shake-charm-custom-size.mjs แล้ว (14 ก.ย. 69)
+//    — สคริปต์นี้แค่ถอดประโยคท้ายของรอบเก่าที่อาจค้างอยู่ ไม่เขียนข้อความใหม่ทับ
 const noteWas = charm.note ?? "";
 let note = noteWas;
-for (const t of [...OLD_NOTE_TAILS, NOTE_TAIL]) note = note.split(t).join("");
-charm.note = note + NOTE_TAIL;
-if (charm.note !== noteWas) log.push(`อัปข้อความ note ของกลุ่ม "${CHARM_GROUP}" ให้ชี้ไปกลุ่มขนาดพิเศษ`);
+for (const t of OLD_NOTE_TAILS) note = note.split(t).join("");
+charm.note = note;
+if (charm.note !== noteWas) log.push(`ถอดประโยคท้ายรุ่นเก่าออกจาก note ของกลุ่ม "${CHARM_GROUP}"`);
 
 /* 2) กลุ่มขนาดพิเศษ — สร้าง/อัปทับ วางต่อจากกลุ่มตัวน้อยเขย่าทันที */
 const at = opts.findIndex((o) => o.label === SIZE_GROUP);

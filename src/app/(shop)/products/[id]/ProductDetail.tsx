@@ -363,9 +363,9 @@ const CARDS_DENSE_FROM = 6;
  * note ของกลุ่มตัวเลือกที่มีคำเน้น `**คำ**` — โชว์คำนั้นหนา+สีชมพูบนพื้นไฮไลต์ให้ลูกค้าสะดุดตา
  * (เช่น งานฟอยล์ต้องมีการ**เคลือบด้าน**) · ไม่มีเครื่องหมายก็แสดงเป็นข้อความธรรมดาตามเดิม
  */
-function noteEmphasis(note: string) {
-  const parts = note.split(/\*\*(.+?)\*\*/g);
-  if (parts.length === 1) return note;
+function noteChips(line: string) {
+  const parts = line.split(/\*\*(.+?)\*\*/g);
+  if (parts.length === 1) return line;
   return parts.map((part, i) =>
     i % 2 === 1 ? (
       <strong key={i} className="mx-0.5 rounded bg-rose-50 px-1 py-px font-bold text-rose-600 ring-1 ring-rose-200">
@@ -374,6 +374,31 @@ function noteEmphasis(note: string) {
     ) : (
       part
     )
+  );
+}
+
+/**
+ * 📝 ข้อความกำกับของกลุ่ม/ตัวเลือก — **คำเน้น** เป็นชิปสีชมพู
+ * ขึ้นบรรทัดใหม่ได้ (\n) และบรรทัดที่ขึ้นต้นด้วย "• " จัดเป็นหัวข้อย่อยพร้อมจุดนำ
+ * (ข้อความยาว ๆ ย่อหน้าเดียวที่มีชิปแทรกกลางอ่านยาก — เจ้าของร้านทัก 14 ก.ย. 69)
+ * ข้อความบรรทัดเดียวแบบเดิมได้ผลลัพธ์เหมือนเดิมทุกอย่าง
+ */
+function noteEmphasis(note: string) {
+  const lines = note.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length <= 1 && !lines[0]?.startsWith("• ")) return noteChips(lines[0] ?? note);
+  return (
+    <span className="flex flex-col gap-1">
+      {lines.map((line, i) =>
+        line.startsWith("• ") ? (
+          <span key={i} className="flex gap-1.5">
+            <span aria-hidden className="text-stone-300">•</span>
+            <span className="flex-1">{noteChips(line.slice(2))}</span>
+          </span>
+        ) : (
+          <span key={i}>{noteChips(line)}</span>
+        )
+      )}
+    </span>
   );
 }
 
@@ -4078,13 +4103,20 @@ export default function ProductDetail({
                              * ต้องรวมทุกตัวที่เลือกอยู่ ไม่ใช่หยิบตัวแรก ไม่งั้นยอดที่โชว์ต่ำกว่าที่จ่ายจริง
                              */
                             const owners = (product.options ?? [])
-                              .flatMap((o) => (o.choices ?? []).map((c) => ({ o, c })))
+                              .flatMap((o) =>
+                                (o.choices ?? []).map((c) => ({
+                                  o,
+                                  c,
+                                  // จำนวนที่ลูกค้าระบุของตัวเลือกนี้ (กลุ่มติ๊กหลายอย่าง+ระบุจำนวน เช่น ตัวน้อยเขย่า ×3)
+                                  // — ค่าบริการตามขนาดคิดต่อตัว จึงต้องคูณจำนวนเหมือนที่ groupExtraAtQty คิดจริง
+                                  n: selectedPicks(o, effective).find((p) => p.name === c.name)?.qty ?? 0,
+                                }))
+                              )
                               .filter(
-                                ({ o, c }) =>
+                                ({ c, n }) =>
                                   // 💬 กางใต้ "ทั้งสองช่อง" ของคู่กว้าง×สูง — ลูกค้าพิมพ์ช่องบนเสร็จแล้วสายตาอยู่ตรงนั้น
                                   // ถ้าโชว์แต่ช่องล่างช่องเดียว คนที่กรอกช่องบนก่อนจะไม่เห็นราคาเลย
-                                  (c.sizeFee?.heightLabel === opt.label || c.sizeFee?.widthLabel === opt.label) &&
-                                  effective[o.label] === c.name
+                                  (c.sizeFee?.heightLabel === opt.label || c.sizeFee?.widthLabel === opt.label) && n > 0
                               );
                             if (!owners.length) return null;
                             const cf = owners[0].c.sizeFee!;
@@ -4106,14 +4138,15 @@ export default function ProductDetail({
                               const one = w ?? h;
                               const guess = owners.every(({ c }) => !c.sizeFee!.perPiece)
                                 ? owners
-                                    .map(({ c }) =>
+                                    .map(({ c, n }) =>
                                       one == null
                                         ? 0
-                                        : sizeFeeBreakdownOf(c.sizeFee!, {
+                                        : ((sizeFeeBreakdownOf(c.sizeFee!, {
                                             ...effective,
                                             [c.sizeFee!.widthLabel]: String(one),
                                             [c.sizeFee!.heightLabel]: String(one),
-                                          })?.fee ?? 0
+                                          })?.fee ?? 0) *
+                                          n)
                                     )
                                     .reduce((s, f) => s + f, 0)
                                 : 0;
@@ -4139,33 +4172,53 @@ export default function ProductDetail({
                             }
                             const longest = Math.max(w, h);
                             const parts = owners
-                              .map(({ c }) => ({ name: c.name, bd: sizeFeeBreakdownOf(c.sizeFee!, effective) }))
-                              .filter((p): p is { name: string; bd: NonNullable<typeof p.bd> } => p.bd != null);
-                            const total = parts.reduce((s, p) => s + p.bd.fee, 0);
+                              .map(({ o, c, n }) => ({
+                                name: c.name,
+                                n,
+                                qtyUnit: choiceQtyUnit(o, c.name) || "ชิ้น",
+                                bd: sizeFeeBreakdownOf(c.sizeFee!, effective),
+                              }))
+                              .filter(
+                                (p): p is { name: string; n: number; qtyUnit: string; bd: NonNullable<typeof p.bd> } =>
+                                  p.bd != null
+                              );
+                            const total = parts.reduce((s, p) => s + p.bd.fee * p.n, 0);
                             if (!total)
                               return (
                                 <p className="mt-1 text-[11px] font-bold text-emerald-600">
                                   ✓ ด้านยาวสุด {longest} {cfg?.unit ?? ""} — รวมในราคาแล้ว ไม่คิดเพิ่ม
                                 </p>
                               );
-                            const solo = parts.length === 1 ? parts[0].bd : null;
+                            const solo = parts.length === 1 ? parts[0] : null;
                             return (
                               <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
                                 💰 ด้านยาวสุด {longest} {cfg?.unit ?? ""} ={" "}
                                 <span className="font-extrabold text-teal-900">+{formatPrice(total)}</span> ต่อ
                                 {matrix?.unit ?? "ชิ้น"}
-                                {solo && solo.pieces > 1 && (
+                                {solo && solo.bd.pieces > 1 && (
                                   // ที่มาของยอด: ชิ้นละ × จำนวนชิ้นต่อหน่วยขาย (เช่น โพ้งขอบ ฿10 × 8 ชิ้น)
                                   <span className="font-normal text-stone-500">
                                     {" "}
-                                    ({formatPrice(solo.perPiece)} × {solo.pieces} ชิ้น)
+                                    ({formatPrice(solo.bd.perPiece)} × {solo.bd.pieces} ชิ้น)
+                                  </span>
+                                )}
+                                {solo && solo.bd.pieces === 1 && solo.n > 1 && (
+                                  // ระบุจำนวนได้ (ตัวน้อยเขย่า ×3) — ค่าขนาดคิดต่อตัว บอกที่มาให้ชัด
+                                  <span className="font-normal text-stone-500">
+                                    {" "}
+                                    ({formatPrice(solo.bd.fee)} × {solo.n} {solo.qtyUnit})
                                   </span>
                                 )}
                                 {parts.length > 1 && (
                                   // เกาะหลายตัว = กางว่ามาจากตัวเลือกไหนบ้าง ไม่งั้นลูกค้าไล่ที่มาไม่ถูก
                                   <span className="font-normal text-stone-500">
                                     {" "}
-                                    ({parts.map((p) => `${p.name} ${formatPrice(p.bd.fee)}`).join(" · ")})
+                                    ({parts
+                                      .map(
+                                        (p) =>
+                                          `${p.name} ${formatPrice(p.bd.fee * p.n)}${p.n > 1 ? ` (×${p.n})` : ""}`
+                                      )
+                                      .join(" · ")})
                                   </span>
                                 )}
                               </p>
@@ -4966,15 +5019,21 @@ export default function ProductDetail({
                       );
                       const now = cur ? choiceExtraAtQty(opt, effective, cur.name, feeQtyOf(opt)) : 0;
                       if (!cur || now <= 0) return null;
+                      // กลุ่มที่มีเรทปลีก/ส่งอยู่แล้ว (extraFromQty + extraBelow) บอกราคาไปแล้วในบรรทัดด้านบน
+                      // — ไม่ขึ้นซ้อนกันสองบรรทัด (ตัวน้อยเขย่า: แถวมาตรฐานใช้ extraBelow · แถวกำหนดขนาดเองใช้ตาราง)
+                      if ((opt.extraFromQty ?? 0) > 0 && opt.choices.some((c) => c.extraBelow)) return null;
                       const unit = matrix?.unit ?? "ชิ้น";
                       // ขั้นของตารางเทียบกับ feeQty ตรง ๆ — หารด้วยจำนวนลายเฉพาะสินค้าที่คิดเรทต่อลายเท่านั้น
                       const unitTxt = tierUnitWord(tierByDesign, opt);
                       const best = extraTierBest(cur);
+                      // ⚠️ ราคาขั้นถูกสุดต้องคิดผ่านฟังก์ชันจริง ไม่ใช่เลขดิบในตาราง — ตัวเลือกที่มี
+                      // ค่าบริการตามขนาด (sizeFee) จะได้ไม่บอกราคาขาดไปเท่าค่าขนาด
+                      const bestNow = best ? choiceExtraAtQty(opt, effective, cur.name, best.fromQty) : 0;
                       return (
                         <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
                           💡 {opt.label}ถูกลงตามจำนวนที่สั่ง · จำนวนนี้คิด +{formatPrice(now)}/{unit}
-                          {best && best.extra < now
-                            ? ` · สั่งครบ ${best.fromQty.toLocaleString("th-TH")} ${unitTxt}ขึ้นไป เหลือ +${formatPrice(best.extra)}/${unit}`
+                          {best && bestNow < now
+                            ? ` · สั่งครบ ${best.fromQty.toLocaleString("th-TH")} ${unitTxt}ขึ้นไป เหลือ +${formatPrice(bestNow)}/${unit}`
                             : ""}
                         </p>
                       );
