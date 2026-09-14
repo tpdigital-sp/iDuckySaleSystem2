@@ -2611,7 +2611,7 @@ export function unitAddOnBreakdown(product: Product, selections: Record<string, 
     // (ยังกรอกไม่ครบ = ยังไม่มีขนาดจริงให้บอก ใช้ชื่อแถวเริ่มต้นตามปกติ)
     const pl = sized.plans.find((x) => x.label === opt.label && x.filled);
     const label = pl
-      ? `${opt.label} ${pl.width}×${pl.height}${pl.unit ? ` ${pl.unit}` : ""} (คิดเท่า ${picked})`
+      ? `${opt.label} ${sizeInputText(pl)} (คิดเท่า ${picked})`
       : picked && (isInputOption(opt) || isBareSizeName(picked))
         ? `${opt.label} ${picked}`
         : picked || opt.label;
@@ -3342,7 +3342,15 @@ export interface SizeInputSpec {
   choice: string;
   /** ชื่อกลุ่มช่องกรอกด้านกว้าง / ด้านสูง (display "input" + standardInput หน่วยเดียวกับชื่อแถว) */
   widthLabel: string;
-  heightLabel: string;
+  /**
+   * 📏 ไม่ตั้ง (หรือตั้งให้ชี้ช่องเดียวกับ widthLabel) = สินค้านี้ **กรอกด้านที่ยาวที่สุดช่องเดียว**
+   * ใช้กับของที่ร้านวัดขนาดจากด้านยาวสุดอยู่แล้วและไดคัทตามทรงลาย (กริ๊บต๊อก)
+   * — ถามกว้าง×สูงไปก็ไม่ได้ใช้คิดเงิน ลูกค้าต้องเดาอีกด้านเปล่า ๆ
+   * 💡 สคริปต์ตั้งค่าให้ชี้ช่องเดียวกันได้ เพื่อให้โค้ดรุ่นก่อนหน้า (ที่ยังบังคับสองด้าน)
+   *    ยังคิดราคาถูกต้องระหว่างรอ deploy — รุ่นนี้อ่านว่า "ด้านเดียว" เหมือนไม่ตั้ง
+   * ⚠️ โหมด `match: "both"` ต้องมีช่องนี้จริง ๆ เสมอ (ต้องรู้สองด้านถึงเทียบแถวได้)
+   */
+  heightLabel?: string;
   /** ด้านยาวสุดเกินกี่หน่วย = เกินที่ตารางครอบ ให้แอดมินตีราคาแทน (ไม่ตั้ง = ดูจากแถวใหญ่สุดที่เลือกได้) */
   askOver?: number;
   /**
@@ -3419,6 +3427,15 @@ export function sizeInputPlans(p: Product, selections: Record<string, string>): 
 }
 
 /**
+ * 📐 ขนาดที่ลูกค้ากรอก เป็นข้อความเดียวกันทุกจอ — "6.5×4.2 ซม." หรือ "ยาวสุด 6.5 ซม."
+ * เมื่อสินค้านั้นกรอกด้านเดียว (sizeInput ไม่มี heightLabel) จะได้ไม่โผล่ "6.5×0"
+ */
+export function sizeInputText(pl: SizeInputPlan): string {
+  const u = pl.unit ? ` ${pl.unit}` : "";
+  return pl.height > 0 ? `${pl.width}×${pl.height}${u}` : `ยาวสุด ${pl.width}${u}`;
+}
+
+/**
  * แผนของกลุ่มเดียว — ระบุ `label` เมื่อสินค้ามีหลายกลุ่มกำหนดขนาดเอง (พวงหลายชิ้น: ขนาดชิ้นที่ 1-10)
  * ไม่ระบุ = กลุ่มแรกที่เจอ (สินค้าที่มีกลุ่มเดียวใช้แบบเดิมได้)
  */
@@ -3456,11 +3473,33 @@ function sizeInputPlanOf(
 ): SizeInputPlan {
   const unit = cfg.unit ?? "";
   const w = inputNumberOf(selections, cfg.widthLabel);
-  const h = inputNumberOf(selections, cfg.heightLabel);
+  // 📏 สินค้าที่กรอกด้านยาวสุดช่องเดียว (ไม่มี heightLabel หรือชี้ช่องเดียวกัน) — height เป็น 0 ตลอด
+  // ข้อความสรุปจึงเป็น "ยาวสุด 6.5 ซม." ไม่ใช่ "6.5×0" หรือ "6.5×6.5" (ดู sizeInputText)
+  const oneSide = !cfg.heightLabel || cfg.heightLabel === cfg.widthLabel;
+  const h = oneSide ? 0 : inputNumberOf(selections, cfg.heightLabel!);
+  const filledIn = oneSide ? w > 0 : w > 0 && h > 0;
   const base = { label: opt.label, width: w, height: h, unit };
   const allowed = new Set(allowedChoices(p, selections, opt.label));
+  /**
+   * 💰 แถวที่เอามาเกาะต้อง **มีราคาจริงในเรทที่ลูกค้าเลือกอยู่** ด้วย
+   * (เมนูขนาดหน้าร้านก็ตัดแถวที่ไม่มีช่องราคาในเรทนั้นทิ้งอยู่แล้ว — กติกาเดียวกัน)
+   * ไม่งั้นขนาดที่กรอกจะไปเกาะแถวที่เรทนี้ไม่ได้ขาย แล้ว unitPriceFor หาช่องไม่เจอ
+   * → ราคาหล่นไปที่ราคาตั้งต้นของสินค้าเงียบ ๆ (ดู [[iducky-price-driver-trap]])
+   * เช่น สแตนดี้: เรทที่ 1 มีราคาถึง 20cm · เรทที่ 2 (50 ชิ้น+) ถึง 30cm
+   * — ลูกค้าปลีกกรอก 25 ซม. ต้อง "รอแอดมินตีราคา" ไม่ใช่ ฿140 ของราคาตั้งต้น
+   * ⚠️ ไม่เหลือแถวที่มีราคาเลย = คงชุดเดิมไว้ (สินค้าที่ชื่อแถวไม่ตรงกับคีย์ตาราง จะได้ไม่พังทั้งกลุ่ม)
+   */
+  const matrix = activeMatrix(p, selections);
+  const pricedRows = (names: string[]) => {
+    if (!matrix) return names;
+    const priced = names.filter((n) => matrixChoiceAvailable(matrix, opt.label, n));
+    return priced.length ? priced : names;
+  };
+  const pickable = new Set(
+    pricedRows(opt.choices.filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name)).map((ch) => ch.name))
+  );
   const rows = opt.choices
-    .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
+    .filter((ch) => pickable.has(ch.name))
     .map((ch) => ({ name: ch.name, cm: choiceSizeCm(ch.name) }))
     .filter((r): r is { name: string; cm: number } => r.cm != null)
     .sort((a, b) => a.cm - b.cm);
@@ -3479,7 +3518,7 @@ function sizeInputPlanOf(
    */
   if (cfg.match === "both") {
     const boxes = opt.choices
-      .filter((ch) => ch.name !== cfg.choice && allowed.has(ch.name))
+      .filter((ch) => pickable.has(ch.name))
       .map((ch) => ({ name: ch.name, box: choiceSizeBox(ch.name) }))
       .filter((r): r is { name: string; box: { short: number; long: number } } => r.box != null);
     if (!(w > 0 && h > 0)) {
@@ -3494,7 +3533,7 @@ function sizeInputPlanOf(
     return { ...flat, longest: long, choice: row.name, filled: true, quote: false };
   }
   // ยังกรอกไม่ครบ = เกาะแถวเล็กสุดไว้ก่อน (ราคาเริ่มต้น) — ปุ่มสั่งยังล็อกอยู่เพราะช่องกรอกยังว่าง
-  if (!(w > 0 && h > 0)) {
+  if (!filledIn) {
     return { ...flat, longest: 0, choice: rows[0]?.name ?? null, filled: false, quote: false };
   }
   const longest = slackOf(Math.max(w, h));

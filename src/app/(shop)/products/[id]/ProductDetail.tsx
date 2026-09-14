@@ -14,6 +14,7 @@ import {
   isInputOption,
   sheetYieldCount,
   sizeInputPlan,
+  sizeInputText,
   applySizeInputPlans,
   unitYieldOf,
   isMadeToOrderOption,
@@ -4026,7 +4027,10 @@ export default function ProductDetail({
                           })()}
                           {/* 📐 กำหนดขนาดเองในกลุ่มแกนราคา — บอกว่าราคาไปเกาะแถวไหน / ต้องรอแอดมินตีราคา */}
                           {(() => {
-                            const owner = product.options.find((o) => o.sizeInput?.heightLabel === opt.label);
+                            // บรรทัดสรุปอยู่ใต้ช่องสุดท้ายของคู่ — สินค้าที่กรอกด้านเดียวก็คือช่องด้านยาวสุดเอง
+                            const owner = product.options.find(
+                              (o) => o.sizeInput && (o.sizeInput.heightLabel ?? o.sizeInput.widthLabel) === opt.label
+                            );
                             if (!owner) return null;
                             // ระบุกลุ่มเจ้าของ — สินค้าที่มีหลายกลุ่มกำหนดขนาดเอง (พวงหลายชิ้น) ต้องได้แผนของชิ้นตัวเอง
                             const plan = sizeInputPlan(product, effective, owner.label);
@@ -4034,13 +4038,11 @@ export default function ProductDetail({
                             const u = plan.unit ? ` ${plan.unit}` : "";
                             return plan.quote ? (
                               <p className="mt-1 text-[11px] font-bold text-sky-700">
-                                💬 {plan.width}×{plan.height}
-                                {u} ใหญ่กว่าตารางราคา — กดสั่งไว้ได้เลย แล้วแอดมินตีราคาให้ทีหลัง
+                                💬 {sizeInputText(plan)} ใหญ่กว่าตารางราคา — กดสั่งไว้ได้เลย แล้วแอดมินตีราคาให้ทีหลัง
                               </p>
                             ) : (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 {plan.width}×{plan.height}
-                                {u} →{" "}
+                                📐 {sizeInputText(plan)} →{" "}
                                 {owner.sizeInput?.match === "both"
                                   ? "คิดราคาเท่าขนาดมาตรฐานที่ครอบได้ คือ"
                                   : "คิดราคาตามด้านที่ยาวที่สุด เกาะแถว"}{" "}
