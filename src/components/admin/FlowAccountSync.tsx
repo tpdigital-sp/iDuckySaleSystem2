@@ -12,10 +12,10 @@
 
 import { useState } from "react";
 import { formatPrice } from "@/lib/products";
-import { orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { flowAccountBillTotal, flowAccountGap, orderTotal, withLog, type Order } from "@/lib/admin-data";
 import type { FADoc } from "./FlowAccountOrderDialog";
 import type { ShippingMethod } from "@/lib/shop-settings";
-import { normalizeShipLabel } from "@/lib/ship-label";
+import { isPickupOrder, normalizeShipLabel } from "@/lib/ship-label";
 
 const SHIP_RE = /ค่าจัดส่ง|ค่าส่ง|ค่าขนส่ง|shipping|delivery/i;
 const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -68,7 +68,11 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
       ...order,
       items,
       // ค่าส่งเอาตามบรรทัด "ค่าส่ง" ในเอกสาร (ถ้ามี) — ไม่มีก็คงของเดิม
-      ...(diff.docShipLabel ? { shippingCost: diff.docShip, shippingLabel: diff.docShipLabel } : {}),
+      // ⚠️ ใบที่ลูกค้ามารับเอง: เอาแต่ "ตัวเลข" ตามใบ ป้ายวิธีส่งคงเป็น "มารับเอง" ไว้
+      //    (ไม่งั้นซิงก์ยอดแล้วใบกลายเป็น EMS ฝ่ายแพ็ครอยิงเลขพัสดุทั้งที่ลูกค้ามารับที่ร้าน)
+      ...(diff.docShipLabel
+        ? { shippingCost: diff.docShip, ...(isPickupOrder(order) ? {} : { shippingLabel: diff.docShipLabel }) }
+        : {}),
       flowAccount: {
         ...fa!,
         ...(d.date ? { date: d.date } : {}),
@@ -91,8 +95,17 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
     setDiff(null);
   }
 
+  const gap = flowAccountGap(order);
+
   return (
     <div className="mt-1.5">
+      {/* ⚠️ เตือนตั้งแต่ยังไม่กดเทียบ — ยอดที่เก็บไว้ตอนอ่านเอกสารกับยอดที่คิดได้ตอนนี้ต่างกันแล้ว
+          (มักเกิดจากไปแก้ค่าส่ง/ส่วนลด/VAT ในโซนยอดเงินทีหลัง) ปล่อยไว้ = ตรวจสลิปเพี้ยน + ใบเสร็จไม่ตรงบิล */}
+      {!!gap && (
+        <p className="mb-1.5 rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-bold leading-relaxed text-rose-700">
+          ⚠️ ยอดในระบบ {formatPrice(orderTotal(order))} ไม่ตรงกับใบนี้ {formatPrice(flowAccountBillTotal(order) ?? 0)} (ต่าง {formatPrice(Math.abs(gap))}) — ลูกค้าโอนตามใบ ต้องแก้ให้ตรงก่อน
+        </p>
+      )}
       <button
         type="button"
         onClick={() => void compare()}

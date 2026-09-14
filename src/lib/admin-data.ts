@@ -938,6 +938,51 @@ export function orderNetTransfer(o: Order): number {
 }
 
 /**
+ * 📄 ยอด "รวมทั้งสิ้น" ตามใบ FlowAccount ของออเดอร์นี้ — null = ไม่ได้ผูกกับเอกสาร FlowAccount
+ * ใบมัดจำเก็บ "มูลค่างานเต็ม" ไว้ในช่องนี้อยู่แล้ว (ดู api/admin/orders/flowaccount) จึงเทียบกับ orderTotal ได้ตรง ๆ
+ */
+export function flowAccountBillTotal(o: Order): number | null {
+  const g = o.flowAccount?.grandTotal;
+  return typeof g === "number" && g > 0 ? Math.round(g * 100) / 100 : null;
+}
+
+/**
+ * ⚠️ ยอดในระบบเพี้ยนจากใบ FlowAccount ไปกี่บาท — บวก = ใบมากกว่าระบบ · 0 = ตรงกัน · null = ไม่ใช่ใบ FlowAccount
+ *
+ * ทำไมต้องมี (OD-260911-5435 · 11 ก.ย. 69): ออเดอร์สร้างจากลิงก์มาตรงบิล 4,823.56 แล้วแอดมินเปลี่ยนวิธีส่ง
+ * เป็น "มารับเอง" → ค่าส่ง ฿100 ที่อยู่ในใบหายไปเงียบ ๆ (แล้วไล่แก้ส่วนลด/VAT/หัก ณ ที่จ่ายตามยอดใหม่)
+ * ยอดในระบบเหลือ 4,718.70 แต่บิลจริงที่ลูกค้าถือยัง 4,823.56 · ลูกค้าโอนสุทธิตามใบ 4,688.32
+ * SlipOK เทียบกับยอดในระบบเลยหาว่า "โอนขาด ฿30.38" แล้วส่งไลน์ทวงลูกค้าที่จ่ายครบแล้ว
+ *
+ * บิลจริงออกที่ FlowAccount — ยอดในระบบนี้ต้องตามใบทุกบาท ต่างเมื่อไหร่ = ข้อมูลฝั่งเราผิด ต้องเตือนให้แก้
+ */
+export function flowAccountGap(o: Order): number | null {
+  const bill = flowAccountBillTotal(o);
+  if (bill == null) return null;
+  const gap = Math.round((bill - orderTotal(o)) * 100) / 100;
+  return Math.abs(gap) < 0.01 ? 0 : gap;
+}
+
+/**
+ * ยอดที่ถือว่า "ลูกค้าโอนตรงตามใบ FlowAccount" ได้ — รวมทั้งสิ้น · สุทธิหลังหัก ณ ที่จ่าย · งวดมัดจำ (และสุทธิของงวดมัดจำ)
+ * ใช้ตอนตรวจสลิป: สลิปที่ตรงกับใบแต่ไม่ตรงกับยอดในระบบ = ยอดในระบบผิด ไม่ใช่ลูกค้าโอนขาด
+ */
+export function flowAccountBillAmounts(o: Order): number[] {
+  const fa = o.flowAccount;
+  if (!fa) return [];
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return [fa.grandTotal, fa.net, fa.deposit?.amount, fa.deposit?.net]
+    .filter((n): n is number => typeof n === "number" && n > 0)
+    .map(r2);
+}
+
+/** สลิปยอดนี้ตรงกับใบ FlowAccount ไหม (เผื่อเศษปัด ±1 บาท) — ใช้คู่กับ flowAccountGap */
+export function slipMatchesFlowAccountBill(o: Order, slipAmount: number): boolean {
+  if (!(slipAmount > 0)) return false;
+  return flowAccountBillAmounts(o).some((n) => Math.abs(n - slipAmount) <= 1);
+}
+
+/**
  * ➗ ออเดอร์มัดจำ 50% ที่ลูกค้าหัก ณ ที่จ่าย — แบ่งยอดหักตามสัดส่วนของแต่ละงวด ให้ "โอนจริง" ต่องวดตรงกับใบของ FlowAccount
  * (11 ก.ย. 69 OD-260911-8026: ระบบโชว์งวดละ 10,973.12 แต่ใบยอดคงเหลือ BL002059 บอกยอดชำระ 10,665.46
  *  เพราะหัก 3% ของงวดนั้น 307.66 — ก่อนหน้านี้หน้าออเดอร์โชว์แต่ยอดหักทั้งใบ 615.32 กับยอดเต็ม เจ้าของร้านเลยเห็นว่าไม่ตรง)

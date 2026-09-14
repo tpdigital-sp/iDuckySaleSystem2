@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { earlyPayState, lockEarlyPay, orderOtherDiscounts, orderTotal, paidSoFar, paidStatusFor, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTotal, paidSoFar, paidStatusFor, slipMatchesFlowAccountBill, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer } from "@/lib/products-server";
@@ -140,7 +140,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       // อ่านตั้งค่าไม่ได้ = ไม่ยอมรับส่วนต่าง ตกไปตรวจมือตามเดิม (fail-safe)
     }
   }
-  const verify = await verifySlipWithSlipOK(bytes, contentType, expected, orderTotal(order), order.wht, earlyPayAllowed);
+  let verify = await verifySlipWithSlipOK(bytes, contentType, expected, orderTotal(order), order.wht, earlyPayAllowed);
 
   // ── กันสลิปซ้ำชั้นที่ 2: เลขอ้างอิงธุรกรรมจาก QR ซ้ำกับออเดอร์อื่น/ใบอื่น แม้ไฟล์จะต่างกัน ──
   // (แคปหน้าจอใหม่/ครอป/บีบรูป ลายนิ้วมือไฟล์ไม่เหมือนเดิม แต่ธุรกรรมเดียวกัน) → ลบไฟล์ที่เพิ่งอัปทิ้ง แล้วโยน 409
@@ -161,8 +161,29 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
    * เงินเข้าบัญชีร้านจริงแล้ว → นับยอดนั้นไว้ แล้วให้ลูกค้าโอนส่วนที่เหลือ (ไม่ต้องรอแอดมินเทียบยอด)
    * ไม่รวมกรณีอ่านยอดไม่ได้ (amount ว่าง) หรือ SlipOK บอกว่าสลิปซ้ำ
    */
-  const partial =
+  const partialRaw =
     eligible && !pass && verify.status === "fail" && verify.genuine === true && !verify.duplicate && (verify.amount ?? 0) > 0 && (verify.amount ?? 0) < expected;
+  /**
+   * 📄 ลูกค้าโอน "ตรงตามใบ FlowAccount" แต่ยอดในระบบไม่ตรงใบ = ข้อมูลฝั่งเราเพี้ยน ไม่ใช่ลูกค้าโอนขาด
+   * (OD-260911-5435 · 11 ก.ย. 69: ค่าส่ง ฿100 ในใบหายตอนเปลี่ยนวิธีส่งเป็น "มารับเอง" ยอดในระบบเลยต่ำกว่าบิล
+   *  ลูกค้าโอนสุทธิตามใบ 4,688.32 ครบแล้ว แต่ระบบนับเป็นรับบางส่วนแล้วส่งไลน์ทวงอีก ฿30.38)
+   * → ห้ามนับยอด ห้ามส่งไลน์ทวงส่วนต่าง · พักเป็น "รอตรวจสอบ" ให้แอดมินแก้ยอดให้ตรงใบ แล้วกดยืนยันเงินเข้าเอง
+   * (SlipOK ยืนยันแล้วว่าสลิปแท้ + ยอดตรงใบ · อย่าบอกให้กด "ตรวจสลิปอีกครั้ง" — SlipOK จำสลิปที่ตรวจไปแล้ว
+   *  รอบสองมักตอบ 1012 "สลิปซ้ำ" เสียเปล่า · ยืนยันเงินเข้าจะตั้ง paidTotal = ยอดเต็มตามบิลให้เอง ไม่เหลือค้างผี)
+   */
+  const billGap = flowAccountGap(order) ?? 0;
+  const paidPerBill = partialRaw && billGap !== 0 && slipMatchesFlowAccountBill(order, verify.amount!);
+  const partial = partialRaw && !paidPerBill;
+  if (paidPerBill)
+    verify = {
+      ...verify,
+      detail:
+        `⚠️ ยอดในระบบไม่ตรงกับใบ FlowAccount ${order.flowAccount?.docNo ?? ""} — ลูกค้าโอน ${thb(verify.amount!)} บาท ` +
+        `ตรงตามใบ (ใบ ${thb(order.flowAccount?.grandTotal ?? 0)} บาท${order.flowAccount?.net ? ` · สุทธิ ${thb(order.flowAccount.net)} บาท` : ""}) ` +
+        `แต่ยอดในระบบเป็น ${thb(orderTotal(order))} บาท (ต่าง ${thb(Math.abs(billGap))} บาท) — ` +
+        `แก้ยอดในระบบให้ตรงใบก่อน (ปุ่ม “🔄 เทียบกับเอกสารล่าสุด”) แล้วกดยืนยันเงินเข้าได้เลย — สลิปแท้และยอดตรงใบแล้ว ` +
+        `(อย่ากด “ตรวจสลิปอีกครั้ง” SlipOK จำสลิปใบนี้ได้ รอบสองจะตอบว่าสลิปซ้ำ) · ยังไม่นับยอดและยังไม่แจ้งลูกค้า`,
+    };
   // ยอดที่นับเข้า paidTotal จากใบนี้ — ผ่าน = ยอดค้างทั้งก้อน (ส่วนต่างที่ยอมรับถือว่าจ่ายครบ) · บางส่วน = ยอดที่เข้าจริง
   const credit = pass ? expected : partial ? round2(verify.amount!) : 0;
   const over = pass && (verify.amount ?? 0) > expected + 0.5 ? round2(verify.amount! - expected) : 0;
@@ -284,7 +305,9 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
   } else {
     // ตรวจไม่ผ่านและนับยอดไม่ได้ (อ่านยอดไม่ได้ / ระบบล่ม / ซ้ำ) → รอแอดมินตรวจเอง
     if (phase === "first") updated = { ...updated, status: "รอตรวจสอบ" };
-    if (verify.status === "fail")
+    if (paidPerBill)
+      updated = withLog(updated, "SlipOK", `${rc}⚠️ ยอดในระบบไม่ตรงใบ FlowAccount — ลูกค้าโอนตรงตามใบแล้ว รอแอดมินแก้ยอดให้ตรงก่อน`, verify.detail ?? "");
+    else if (verify.status === "fail")
       updated = withLog(updated, "SlipOK", `${rc}สลิป${phase === "balance" ? "ยอดคงเหลือ" : phase === "extra" ? "ใบเพิ่ม" : ""}ตรวจไม่ผ่าน — รอแอดมินตรวจเอง`, verify.detail ?? "");
     else if (phase !== "first") updated = withLog(updated, by, `แนบสลิป${phase === "balance" ? "ยอดคงเหลือ" : "เพิ่ม"} — รอแอดมินตรวจ`, verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
   }

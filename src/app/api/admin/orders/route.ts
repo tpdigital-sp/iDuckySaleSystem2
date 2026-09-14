@@ -19,6 +19,9 @@ import {
   orderBalance,
   orderTotal,
   orderVatAmount,
+  orderNetTransfer,
+  orderWhtAmount,
+  paidSoFar,
   lockEarlyPay,
   packGate,
   partialGate,
@@ -577,6 +580,37 @@ export async function PATCH(req: Request) {
     toSave = lockEarlyPay(toSave, now, `แอดมิน ${actor.name?.trim() || actor.username}`);
   if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && toSave.paidTotal == null && !toSave.deposit)
     toSave = { ...toSave, paidTotal: orderTotal(toSave) };
+
+  /**
+   * 💳 ลูกค้าโอนถึง "ยอดโอนจริงหลังหัก ณ ที่จ่าย" แล้ว = จ่ายครบเท่าที่ต้องจ่าย ส่วนที่เหลือมาเป็นใบ 50 ทวิ ไม่ใช่เงินโอน
+   * → นับ paidTotal เป็นยอดเต็มตามบิล (แพตเทิร์นเดียวกับตอน SlipOK ตรวจผ่านแล้วเจอหัก ณ ที่จ่าย: credit = ยอดที่ต้องชำระเต็ม)
+   *
+   * ทำไมต้องมี (OD-260911-5435 · 14 ก.ย. 69): ใบที่ paidTotal ถูกบันทึกเป็น "เงินที่เข้าจริง" (มาจากทางรับบางส่วน/ใบเก่า)
+   * พอแก้ยอดให้ตรงบิล เช่น เอาค่าส่งที่หายไปกลับมา จะเกิด "ยอดค้างผี" เท่ากับภาษีที่ลูกค้าหักไว้ แล้วระบบ
+   *   1) ส่งไลน์ "ยอดที่ต้องโอนเพิ่ม" ไปทวงลูกค้าที่จ่ายครบแล้ว   2) ล็อกใบไว้ไม่ให้ยิงเลขพัสดุ (orderFullyPaid ไม่ผ่าน)
+   * ทั้งที่เงินเข้าครบเท่าที่ลูกค้าต้องโอน · เงื่อนไขนี้ไม่กลบการโอนขาดจริง — โอนไม่ถึงยอดสุทธิยังค้าง/ยังทวงตามเดิม
+   */
+  if (
+    mayEditFull &&
+    orderWhtAmount(toSave) > 0 &&
+    !toSave.deposit &&
+    !toSave.claimOf &&
+    toSave.status !== "ยกเลิก" &&
+    toSave.paidTotal != null &&
+    paidSoFar(toSave) > 0 &&
+    paidSoFar(toSave) + 0.5 >= orderNetTransfer(toSave) &&
+    (toSave.paidTotal ?? 0) + 0.5 < orderTotal(toSave)
+  ) {
+    const cash = toSave.paidTotal ?? 0;
+    toSave = { ...toSave, paidTotal: orderTotal(toSave) };
+    toSave = withLog(
+      toSave,
+      `แอดมิน ${actor.name?.trim() || actor.username}`,
+      "นับว่าชำระครบ (หัก ณ ที่จ่าย)",
+      `เงินเข้าจริง ${cash.toLocaleString("th-TH")} บาท = ยอดโอนจริงหลังหัก ณ ที่จ่าย ${orderWhtAmount(toSave).toLocaleString("th-TH")} บาท` +
+        ` → นับยอดชำระเป็น ${orderTotal(toSave).toLocaleString("th-TH")} บาทตามบิล (ส่วนต่างรอใบ 50 ทวิ ไม่ต้องให้ลูกค้าโอนเพิ่ม)`
+    );
+  }
 
   // 🕒 ประวัติรวม 2 ฝั่ง + ประทับเวลาบันทึก (หน้าจอรับกลับไปถือ = รอบหน้าเซิร์ฟเวอร์รู้ว่าหน้านั้นเห็นถึงตอนนี้แล้ว)
   // (ฐาน + ที่หน้าจอส่งมา + ที่เซิร์ฟเวอร์เพิ่งต่อท้ายในคำขอนี้ — ทางแพ็ค/กราฟฟิก toSave ตั้งต้นจากฐาน log ของหน้าจอจึงต้องรวมตรงนี้)

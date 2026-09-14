@@ -47,6 +47,8 @@ import {
   orderItemDiscounts,
   orderFullyPaid,
   orderNetTransfer,
+  flowAccountBillTotal,
+  flowAccountGap,
   orderTotal,
   orderWhtAmount,
   orderVatAmount,
@@ -3207,6 +3209,11 @@ export default function AdminOrderDetailPage() {
   const autoOpen = (_it: OrderItem) => true;
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const qty = order.items.reduce((s, i) => s + i.qty, 0);
+  /**
+   * 📄 ยอดในระบบเพี้ยนจากใบ FlowAccount กี่บาท (0/null = ตรง) — บิลจริงออกที่ FlowAccount ลูกค้าโอนตามใบนั้น
+   * ต่างเมื่อไหร่ = ตรวจสลิปเพี้ยน + ใบเสร็จ/ใบงานไม่ตรงบิล ต้องเตือนตรงที่แอดมินแก้ตัวเลข (โซนยอดเงิน)
+   */
+  const faGap = flowAccountGap(order);
   // ลิงก์ฝั่งลูกค้า (ต้องมี key ถึงเปิดได้) — origin ตั้งใน useEffect กัน SSR mismatch
   const customerUrl = origin
     ? `${origin}/order/${encodeURIComponent(order.id)}${order.key ? `?key=${encodeURIComponent(order.key)}` : ""}`
@@ -5745,12 +5752,22 @@ export default function AdminOrderDetailPage() {
                         onChange={(e) => {
                           const m = shipMethods.find((x) => x.id === e.target.value);
                           if (!m) return;
-                          applyOrder({
-                            ...order,
-                            shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
-                            shippingLabel: m.name,
-                            shippingCost: Math.max(0, m.price),
-                          });
+                          // 🚚 ลง log ด้วย — เปลี่ยนวิธีส่งคือ "แก้ยอดเงิน" (ค่าส่งเปลี่ยนตามทันที)
+                          // เดิมเงียบสนิท: OD-260911-5435 เปลี่ยนเป็น "มารับเอง" แล้วค่าส่ง ฿100 ตามใบ FlowAccount หายไปโดยไม่มีร่องรอย
+                          const shipBefore = `${resolveShipLabel(order, shipMethods) || "—"} ${formatPrice(order.shippingCost)}`;
+                          applyOrder(
+                            withLog(
+                              {
+                                ...order,
+                                shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+                                shippingLabel: m.name,
+                                shippingCost: Math.max(0, m.price),
+                              },
+                              actor,
+                              "เปลี่ยนวิธีส่ง",
+                              `${shipBefore} → ${m.name} ${formatPrice(Math.max(0, m.price))}`
+                            )
+                          );
                         }}
                         className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
                       >
@@ -5769,7 +5786,13 @@ export default function AdminOrderDetailPage() {
                       min={0}
                       value={order.shippingCost}
                       onChange={(e) => setOrder((cur) => (cur ? { ...cur, shippingCost: Math.max(0, Number(e.target.value) || 0) } : cur))}
-                      onBlur={persist}
+                      onFocus={(e) => (e.currentTarget.dataset.orig = String(order.shippingCost))}
+                      onBlur={(e) => {
+                        // แก้ตัวเลขค่าส่งเองก็คือแก้ยอดบิล — ต้องมีร่องรอยว่าใครเปลี่ยนจากเท่าไรเป็นเท่าไร
+                        const orig = Number(e.currentTarget.dataset.orig || 0);
+                        if (orig === order.shippingCost) return persist();
+                        applyOrder(withLog(order, actor, "แก้ค่าจัดส่ง", `${formatPrice(orig)} → ${formatPrice(order.shippingCost)}`));
+                      }}
                       className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
                   </>
@@ -6050,6 +6073,21 @@ export default function AdminOrderDetailPage() {
                     ＋ เก็บเพิ่ม (ค่าตัดภาพ · ค่าส่งเพิ่ม · ค่าเร่งงาน …)
                   </button>
                 ))}
+              {/* 📄 ยอดในระบบต้องเท่าใบ FlowAccount ทุกบาท — เพี้ยนง่ายมากเวลาไปแก้ค่าส่ง/ส่วนลด/VAT ทีหลัง
+                  (OD-260911-5435: เปลี่ยนวิธีส่งเป็น "มารับเอง" ค่าส่ง ฿100 ในใบหายเงียบ ๆ → SlipOK หาว่าลูกค้าโอนขาด) */}
+              {!!faGap && (
+                <div className="mt-2.5 rounded-xl border-2 border-rose-300 bg-rose-50 px-3 py-2 text-[12px] leading-relaxed text-rose-800">
+                  <p className="font-extrabold">⚠️ ยอดในระบบไม่ตรงกับใบ FlowAccount {order.flowAccount?.docNo ?? ""}</p>
+                  <p className="mt-0.5 tabular-nums">
+                    ตามใบ <b>{formatPrice(flowAccountBillTotal(order) ?? 0)}</b> · ในระบบ <b>{formatPrice(orderTotal(order))}</b> · ต่าง{" "}
+                    <b>{formatPrice(Math.abs(faGap))}</b> ({faGap > 0 ? "ระบบน้อยกว่าใบ" : "ระบบมากกว่าใบ"})
+                  </p>
+                  <p className="mt-0.5">
+                    ลูกค้าโอนตามใบ — ปล่อยไว้ระบบจะตรวจสลิปผิด (หาว่าโอนขาด/โอนเกิน) และใบเสร็จไม่ตรงบิล ·
+                    แก้ค่าส่ง/ส่วนลด/VAT ให้ตรงใบ หรือกด “🔄 เทียบกับเอกสารล่าสุด” ในกล่องฟ้าด้านบนสุด
+                  </p>
+                </div>
+              )}
               {/* ── แถบสรุป: ยอดรวมบิล → หัก ณ ที่จ่าย → ยอดโอนจริง จบในก้อนเดียว ──
                   ไม่หักภาษี = ยอดรวมคือเลขใหญ่ · หักภาษี = ยอดโอนจริงคือเลขใหญ่ (เลขที่ต้องเทียบเงินเข้าบัญชี) */}
               <div className="mt-2.5 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
