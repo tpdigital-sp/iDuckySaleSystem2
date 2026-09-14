@@ -176,6 +176,11 @@ export interface AlertCard {
   title: string;
   /** ประโยคบอกว่าต้องทำอะไรต่อ */
   headline?: string;
+  /**
+   * ป้ายเล็กเหนือตัวเลขใหญ่ — บอกว่าตัวเลขนั้นคือยอดอะไร
+   * ⚠️ ตัวเลขใหญ่ลอย ๆ ไม่มีป้าย คนอ่านเดาไม่ออกว่าเป็นยอดรวมหรือยอดค้าง (เจ้าของร้านทักเอง 14 ก.ย. 69)
+   */
+  heroLabel?: string;
   /** เลขที่/ชื่อหลักที่ต้องเด่นสุดในการ์ด */
   hero?: string;
   rows?: AlertRow[];
@@ -217,7 +222,18 @@ function bubbleOf(c: AlertCard): unknown {
   const hidden = (c.bullets ?? []).length - shown.length;
   const body: unknown[] = [];
   if (c.headline) body.push({ type: "text", text: c.headline, size: "sm", color: "#334155", wrap: true });
-  if (c.hero) body.push({ type: "text", text: c.hero, size: "lg", weight: "bold", color: "#0F172A", wrap: true });
+  if (c.hero)
+    body.push({
+      type: "box",
+      layout: "vertical",
+      spacing: "none",
+      contents: [
+        ...(c.heroLabel
+          ? [{ type: "text", text: c.heroLabel, size: "xs", color: "#94A3B8", wrap: true }]
+          : []),
+        { type: "text", text: c.hero, size: "lg", weight: "bold", color: "#0F172A", wrap: true },
+      ],
+    });
   if (c.rows?.length) {
     body.push({ type: "separator", color: "#E2E8F0" });
     body.push({ type: "box", layout: "vertical", spacing: "sm", contents: c.rows.map(row) });

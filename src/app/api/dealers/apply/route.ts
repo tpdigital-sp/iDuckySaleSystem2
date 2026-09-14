@@ -53,6 +53,7 @@ export async function POST(req: Request) {
       tone: "#0D9488",
       title: "🤝 ใบสมัครตัวแทนใหม่",
       headline: "กดอนุมัติหรือปฏิเสธได้ที่หลังบ้าน",
+      heroLabel: "ชื่อร้านผู้สมัคร",
       hero: shopName,
       rows: [
         { label: "ผู้สมัคร", value: who || "-" },

@@ -104,6 +104,7 @@ export async function POST(req: Request) {
         tone: "#0F766E",
         title: "🔔 ทดสอบการแจ้งเตือน",
         headline: "เห็นการ์ดนี้ในกลุ่ม = ตั้งค่าถูกแล้ว ข้อความจริงจะหน้าตาแบบนี้",
+        heroLabel: "ห้องปลายทางที่ทดสอบ",
         hero: which,
         rows: [{ label: "ส่งโดย", value: who }],
         button: { label: "เปิดหน้าตั้งค่า", uri: "https://iduckystore.com/admin/line-groups" },

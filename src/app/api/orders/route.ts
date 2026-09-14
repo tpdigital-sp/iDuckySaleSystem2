@@ -316,6 +316,7 @@ export async function POST(req: Request) {
       tone: "#D97706",
       title: "📦 ออเดอร์สั่งจำนวนมาก",
       headline: "เช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน",
+      heroLabel: "เลขออเดอร์",
       hero: id,
       rows: [
         { label: "ลูกค้า", value: order.customer },

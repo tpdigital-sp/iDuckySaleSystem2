@@ -42,6 +42,7 @@ export async function GET(req: Request) {
         tone: "#B45309",
         title: "🛒 ถึงจุดต้องสั่งของ",
         headline: "วัสดุใกล้หมด สั่งเข้ามาก่อนงานสะดุด",
+        heroLabel: "วัสดุที่ต้องสั่งเพิ่ม",
         hero: `${need.length.toLocaleString("th-TH")} รายการ`,
         bullets: need.map(
           (n) =>

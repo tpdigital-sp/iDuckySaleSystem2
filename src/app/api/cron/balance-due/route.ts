@@ -86,6 +86,7 @@ export async function GET(req: Request) {
           tone: "#2472AE",
           title: "💳 ยอดค้างเก็บ (มัดจำ 50%)",
           headline: "ออเดอร์ที่รับมัดจำแล้วแต่ยังเก็บไม่ครบ",
+          heroLabel: "ยอดค้างรวมทั้งหมด",
           hero: `฿${total.toLocaleString()}`,
           rows: [{ label: "จำนวนออเดอร์", value: `${due.length.toLocaleString("th-TH")} ใบ`, bold: true }],
           bullets: due.map(

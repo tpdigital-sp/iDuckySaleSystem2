@@ -111,6 +111,7 @@ export async function POST(req: Request) {
       tone: "#E11D48",
       title: "🧰 เคลมใหม่",
       headline: "ลูกค้าแจ้งปัญหาเข้ามา รีบดูก่อนเรื่องบานปลาย",
+      heroLabel: "เลขเคลม",
       hero: claim.id,
       rows: [
         { label: "ออเดอร์", value: orderId },
