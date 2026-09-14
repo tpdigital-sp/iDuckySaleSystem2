@@ -64,3 +64,10 @@ body {
 .tiptap img.ProseMirror-selectednode{outline:3px solid #7dd3fc;outline-offset:2px}
 .tiptap [data-youtube-video]{margin:12px 0}
 .tiptap [data-youtube-video] iframe{width:100%;aspect-ratio:16/9;height:auto;border:0;border-radius:16px}
+
+/* ── พิมพ์กระดาษ (ใบเสร็จ/ใบงาน) — ซ่อนเปลือกเว็บทั้งหมด เหลือแต่เนื้อเอกสาร ──
+   ทุกอย่างที่ไม่ควรติดกระดาษให้ใส่คลาส .no-print (หัวเว็บ/ท้ายเว็บ/แถบเมนูล่าง/ปุ่มลอย/แชท) */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+}

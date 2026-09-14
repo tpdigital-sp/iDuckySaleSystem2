@@ -14,20 +14,24 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
     <CustomerProvider>
       <CartProvider>
         <NavProgress />
-        <div className="dl dl-contents">
+        <div className="dl dl-contents no-print">
           <Navbar />
         </div>
         <main>{children}</main>
-        <div className="dl dl-contents">
+        <div className="dl dl-contents no-print">
           <Footer />
         </div>
         {/* ปุ่มลอยมุมขวาล่าง: LINE = แอดมินตัวจริง · ChatWidget = ผู้ช่วย AI ตอบทันที */}
-        <div className="dl dl-contents">
+        <div className="dl dl-contents no-print">
           <LineFloat />
         </div>
-        <ChatWidget />
+        <div className="no-print">
+          <ChatWidget />
+        </div>
         {/* ปุ่มลัดเข้าหลังบ้าน — เห็นเฉพาะทีมงาน · เสียบที่ layout ให้ขึ้นครบทุกหน้าร้าน */}
-        <AdminEditFabAuto />
+        <div className="no-print">
+          <AdminEditFabAuto />
+        </div>
       </CartProvider>
     </CustomerProvider>
   );
