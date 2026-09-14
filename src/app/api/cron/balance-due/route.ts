@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { amountDueNow, withLog, type Order } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 import { SITE_URL } from "@/lib/shop-info";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -71,7 +72,7 @@ export async function GET(req: Request) {
         "ทวงยอดคงเหลืออัตโนมัติ",
         `คงเหลือ ${d.balance} บาท`
       );
-      await sb.from("orders").update({ data: next }).eq("id", d.id);
+      await updateOrder(sb, next);
       reminded += 1;
     }
   }

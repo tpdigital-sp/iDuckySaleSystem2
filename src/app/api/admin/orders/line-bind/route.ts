@@ -5,6 +5,7 @@ import { fetchLineProfile, lineUserIdFrom } from "@/lib/server/notify";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { withLog, type Order } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
           ? "ยกเลิกการผูก LINE + ลบลิงก์ห้องแชท"
           : "ยกเลิกการผูก LINE ของลูกค้า"
     );
-    const { error } = await sb.from("orders").update({ data: cleared }).eq("id", orderId);
+    const { error } = await updateOrder(sb, cleared);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, cleared: true, order: cleared });
   }
@@ -93,7 +94,7 @@ export async function POST(req: Request) {
     // 2) ยังไม่เคยจับคู่ → เก็บลิงก์ไว้ก่อน + เสนอ "คนที่คุยล่าสุด" ให้พนักงานยืนยัน 1 คลิก
     //    (พนักงานเพิ่งเปิดห้องแชทคนนั้นมาก๊อปลิงก์ = เขาอยู่บนสุดของรายการเกือบทุกครั้ง)
     const saved = withLog({ ...order, lineChatUrl: input }, who, "บันทึกลิงก์ห้องแชท LINE");
-    await sb.from("orders").update({ data: saved }).eq("id", orderId);
+    await updateOrder(sb, saved);
     type Sug = { userId: string; name: string; picture?: string; lastSeen?: string };
     const suggestions: Sug[] = [];
     if (db) {
@@ -172,7 +173,7 @@ export async function POST(req: Request) {
     "ผูก LINE ของลูกค้า",
     `${profile.name} · ${userId.slice(0, 8)}…`
   );
-  const { error } = await sb.from("orders").update({ data: next }).eq("id", orderId);
+  const { error } = await updateOrder(sb, next);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // พนักงานยืนยันว่า "ลิงก์ห้องแชทนี้ = คนนี้" → จำไว้ ครั้งหน้าวางลิงก์เดิมผูกอัตโนมัติ (AdminBuddy ใช้ตารางเดียวกัน)

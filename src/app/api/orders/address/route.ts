@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { syncCustomerToTP } from "@/lib/server/tp-report";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
     changes.length ? changes.join(" · ") : undefined
   );
 
-  const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
   // ชื่อ/เบอร์เปลี่ยนหลังชำระ → อัปเดตการ์ดบอร์ด WIP กราฟฟิก (ใบยังไม่ชำระไม่มีเรคอร์ด ข้ามเงียบ)
   void syncCustomerToTP(order, updated);

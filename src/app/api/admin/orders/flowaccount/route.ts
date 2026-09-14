@@ -14,6 +14,7 @@ import { awardPointsForOrder } from "@/lib/server/contact-points";
 import { orderTotal, textToNoteHtml, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { normalizeShipLabel } from "@/lib/ship-label";
 import type { Contact } from "@/lib/contacts";
+import { insertOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -281,7 +282,7 @@ export async function PUT(req: Request) {
       ? withLog(order, by, "ยืนยันรับมัดจำ 50% (FlowAccount)", `ยอด ${depositAmt.toLocaleString("th-TH")} บาท ตามเอกสาร FlowAccount ${doc.docNo} — ไม่มีสลิปในระบบนี้`)
       : withLog(order, by, "ยืนยันเงินเข้า (FlowAccount)", "รับชำระตามเอกสาร FlowAccount — ไม่มีสลิปในระบบนี้");
 
-  const { error } = await sb.from("orders").insert({ id, data: order });
+  const { error } = await insertOrder(sb, order);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // ชำระแล้วตั้งแต่สร้าง = ผลข้างเคียงชุดเดียวกับตอนแอดมินกดเปลี่ยนสถานะ (msVerify · ตัดสต๊อก · ยอดขาย · แต้ม)

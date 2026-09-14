@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchGraphicCardsFromTP } from "@/lib/server/tp-report";
 import { matchFoldersToOrders, type FolderMatchResult } from "@/lib/production-match";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
         "🏭 ส่งเข้าผลิตแล้ว (โยนโฟลเดอร์)",
         `โฟลเดอร์ “${t.folder}” — ใบขึ้นกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น`
       );
-      const { error: e } = await sb.from("orders").update({ data: next }).eq("id", o.id);
+      const { error: e } = await updateOrder(sb, next);
       if (!e) applied++;
     }
   }

@@ -5,6 +5,7 @@ import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type PackPhoto } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
   const photos = [...(order.packPhotos ?? []), photo];
   const updated = withLog({ ...order, packPhotos: photos }, by, "📸 แนบภาพก่อนปิดกล่อง", `รูปที่ ${photos.length}`);
 
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, order: updated });
 }
@@ -111,7 +112,7 @@ export async function DELETE(req: Request) {
     "ลบภาพก่อนปิดกล่อง",
     `เหลือ ${photos.length} รูป`
   );
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, order: updated });
 }

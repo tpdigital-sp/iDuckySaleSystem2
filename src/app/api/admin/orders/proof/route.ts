@@ -4,6 +4,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order } from "@/lib/admin-data";
 import { notifyCustomer, orderLink } from "@/lib/server/notify";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -147,7 +148,7 @@ export async function POST(req: Request) {
       : `${order.items[itemIndex].name}${proofQty ? ` · ${proofQty} ${proofUnitIn || "ชิ้น"}` : ""}${proofNote ? ` · ${proofNote}` : ""}`
   );
 
-  const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
   // แจ้งเตือนลูกค้าว่ามีแบบงานให้ตรวจ (เงียบถ้ายังไม่ตั้งค่า LINE) — ข้ามเมื่อหน้าจอขอรวมแจ้งทีเดียว

@@ -9,11 +9,11 @@ import { orderTotal, type Order } from "@/lib/admin-data";
 import { tierDiscountAmount, tiersOf, lockedTier, seedTierStatus, type Tier, type TierStatus } from "@/lib/tiers";
 import { couponLabel, couponMaxUses, couponUses, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
-import { earlyPayAmount, earlyPayBase, earlyPayExpiresAt, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
+import { insertOrder } from "@/lib/server/order-write";
 import { dealerRateOf, lotShortfalls, type Product } from "@/lib/products";
 import { isDealerUid } from "@/lib/server/dealers";
 
@@ -260,28 +260,8 @@ export async function POST(req: Request) {
     // คิดของแถมไม่ได้ = ไม่ควรทำให้สั่งซื้อไม่สำเร็จ — แอดมินเติมให้ทีหลังได้
   }
 
-  // ── 4) ⚡ ส่วนลดโอนไว — ได้ทุกออเดอร์ที่สั่งผ่านเว็บ (ลูกค้าโอนก่อนร้านเริ่มผลิตเสมอ) ──
-  // คิดจาก "ยอดสินค้าก่อนค่าส่ง" ตามกติกาที่เจ้าของร้านกำหนด · ใช้พร้อมส่วนลดระดับ/คูปองได้
-  // เฉพาะออเดอร์ราคาปลีกล้วน — มีบรรทัดเรทขายส่งแม้บรรทัดเดียว = ไม่ลดทั้งใบ (รวมล็อตใหม่ด้วยกติกาตะกร้า ให้ 6+6 = เรทส่ง 12)
-  // ⚠️ ออเดอร์ที่ยังรอตีราคา (unitPrice 0) จะได้ส่วนลดจากยอดเท่าที่กรอกมา — แอดมินแก้ยอดทีหลังได้ที่หน้าออเดอร์
-  let earlyPay: Order["earlyPay"];
-  try {
-    const { data: settRow } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
-    const cfg = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined);
-    const goods = earlyPayBase(
-      input.items.map((i) => ({ productId: i.productId, selections: i.sel, qty: i.qty, amount: i.qty * i.unitPrice })),
-      (id) => prods.get(id),
-      { mergeLots: true }
-    );
-    const amount = earlyPayAmount(goods, cfg);
-    // ตัวแทนจำหน่ายไม่ได้ส่วนลดโอนไว (ได้ราคาเรทตัวแทนอย่างเดียว — ตรงกับพรีวิวหน้า checkout)
-    // ⏳ ต้องแจ้งโอนภายในเวลา (ค่าเริ่มต้น 1 ชั่วโมง) — แช่เวลาหมดอายุไว้ในใบ ทุกหน้าจอคิดยอดจากตรงนี้เอง
-    const expiresAt = earlyPayExpiresAt(cfg, now);
-    // ไม่ใช้ร่วมกับส่วนลดระดับสมาชิก/คูปอง (มีส่วนลดอื่นแล้วไม่ลดโอนไวอีก — ตรงกับพรีวิวหน้า checkout)
-    if (amount > 0 && !dealer && !discount) earlyPay = { label: EARLY_PAY_LABEL, amount, ...(expiresAt ? { expiresAt } : {}) };
-  } catch {
-    // อ่านตั้งค่าไม่ได้ = ไม่ลด ดีกว่าสั่งซื้อไม่สำเร็จ (แอดมินใส่ส่วนลดเองได้ที่หน้าออเดอร์)
-  }
+  // ── 4) ⚡ ส่วนลดโอนไว — คิดที่ประตูเขียนออเดอร์ (insertOrder → syncOrderEarlyPay) ที่เดียวทั้งระบบ ──
+  // เดิมคิดตรงนี้ ทำให้ทางเข้าอื่น (แอดมินเพิ่มรายการ/ตีราคาทีหลัง) ไม่ได้ส่วนลด — ดู server/order-early-pay.ts
 
   // 📐 แช่ "สั่ง 1 หน่วย ได้กี่ชิ้น" ลงรายการ (ตัวเดียวกับที่ใช้ตอนสั่งเพิ่ม/ใบเสนอราคา — ดู withUnitYield)
   const itemsWithYield = await withUnitYield(input.items);
@@ -305,13 +285,12 @@ export async function POST(req: Request) {
     ...(cid ? { customerId: cid } : {}),
     ...(input.email?.trim() ? { email: input.email.trim() } : {}),
     ...(discount ? { discount } : {}),
-    ...(earlyPay ? { earlyPay } : {}),
     ...(gifts.length ? { gifts } : {}),
     ...(placedBy ? { placedBy } : {}),
     ...(dealer ? { dealer: true } : {}),
   };
 
-  const { error } = await sb.from("orders").insert({ id, data: order });
+  const { order: saved, error } = await insertOrder(sb, order, "ระบบ");
   if (error) {
     // สร้างออเดอร์พัง → คืนสิทธิ์คูปองที่เพิ่งตัด (best-effort) กันสิทธิ์หายฟรี
     // คืนเป็นสภาพก่อนตัดทั้งก้อน และเฉพาะใบที่ยังเป็นครั้งของออเดอร์นี้ — คนที่ใช้ต่อทีหลังจะไม่โดนย้อน
@@ -323,7 +302,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   // 📦 มีรายการสั่งจำนวนมาก → แจ้งร้านทาง LINE ให้รีบเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้า
-  const bulk = order.items.filter((i) => i.needStockCheck);
+  const bulk = saved.items.filter((i) => i.needStockCheck);
   if (bulk.length) {
     /*
      * ⚠️ ต้อง await ห้ามยิงทิ้ง (void) — Netlify แช่ฟังก์ชันทันทีที่ตอบกลับ งานค้างอาจไม่ได้ทำ
@@ -337,12 +316,12 @@ export async function POST(req: Request) {
       heroLabel: "เลขออเดอร์",
       hero: id,
       rows: [
-        { label: "ลูกค้า", value: order.customer },
-        { label: "เบอร์", value: order.phone },
+        { label: "ลูกค้า", value: saved.customer },
+        { label: "เบอร์", value: saved.phone },
       ],
       bullets: bulk.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`),
       button: { label: "เปิดออเดอร์", uri: `${SITE_URL}/admin/orders/${encodeURIComponent(id)}` },
-      alt: `📦 ออเดอร์สั่งจำนวนมาก ${id} · ${order.customer}`,
+      alt: `📦 ออเดอร์สั่งจำนวนมาก ${id} · ${saved.customer}`,
     });
   }
 

@@ -9,9 +9,11 @@
     "lint": "next lint",
     "seed": "tsx scripts/seed-supabase.ts",
     "dev:webpack": "next dev",
-    "prebuild": "node scripts/copy-pdf-worker.mjs",
+    "prebuild": "node scripts/copy-pdf-worker.mjs && node scripts/check-order-writes.mjs",
     "backup": "node scripts/backup-db.mjs",
-    "backup:files": "node scripts/backup-db.mjs --files"
+    "backup:files": "node scripts/backup-db.mjs --files",
+    "check:orders": "node scripts/check-order-writes.mjs",
+    "check:early-pay": "tsx scripts/early-pay-check.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

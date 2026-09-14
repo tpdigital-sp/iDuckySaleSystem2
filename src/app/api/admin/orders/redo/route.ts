@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order, type OrderItem } from "@/lib/admin-data";
+import { insertOrder, updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
     `จาก ${fromId} · ${items.length} รายการ${mode === "claim" ? ` · เหตุผล: ${reason}` : ""}`
   );
 
-  const { error: insErr } = await sb.from("orders").insert({ id, data: order });
+  const { error: insErr } = await insertOrder(sb, order, by);
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
 
   // จดไว้ที่ออเดอร์ต้นทางด้วย — เปิดดูงานที่ทำใหม่ได้จากทั้งสองฝั่ง
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
     mode === "claim" ? "เปิดงานเคลมจากออเดอร์นี้" : "สั่งซ้ำจากออเดอร์นี้",
     `${id}${reason ? ` · ${reason}` : ""} · ${items.length} รายการ`
   );
-  await sb.from("orders").update({ data: srcNext }).eq("id", fromId);
+  await updateOrder(sb, srcNext);
 
   // สำหรับงานเคลมมี proofs ของเดิมไหม (ไว้บอกใน UI ว่าต้องทำแบบใหม่)
   const hadProofs = src.items.some((it) => proofsOf(it).length > 0);

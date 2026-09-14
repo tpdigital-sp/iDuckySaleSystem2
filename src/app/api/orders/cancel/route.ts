@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
     reason ? `เหตุผล: ${reason}` : "ยังไม่ได้แจ้งโอน — ยกเลิกจากหน้าออเดอร์"
   );
 
-  const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
   return NextResponse.json({ ok: true, order: strip(updated) });

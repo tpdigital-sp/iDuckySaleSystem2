@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { proofsOf, withLog, type Order } from "@/lib/admin-data";
 import { notifyCustomer, orderLink, statusFlex, type NotifyResult } from "@/lib/server/notify";
 import { pendingProofs, type PendingProofs } from "@/lib/proof-notify";
+import { updateOrder } from "@/lib/server/order-write";
 
 /**
  * ยิงไลน์ "ข้อความเดียว" สรุปแบบงานที่ค้างแจ้งทั้งใบ แล้วปักเวลา proofNotifiedAt + ลงประวัติ
@@ -62,6 +63,6 @@ export async function sendProofNotify(
     r.ok ? "แจ้งลูกค้าทางไลน์แล้ว" : "แจ้งลูกค้าทางไลน์ไม่สำเร็จ",
     what
   );
-  await sb.from("orders").update({ data: next }).eq("id", order.id);
+  await updateOrder(sb, next);
   return { pending, sent: r.ok, reason: r.ok ? undefined : r.reason, order: next };
 }

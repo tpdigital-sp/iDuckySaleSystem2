@@ -6,6 +6,8 @@ import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write";
+import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncArrivalToTP, syncCustomerToTP, syncReceivedToTP, syncRushToTP } from "@/lib/server/tp-report";
@@ -419,7 +421,7 @@ export async function POST(req: Request) {
   };
   order = withLog(order, by, "สร้างออเดอร์จากหลังบ้าน", "งานพิเศษ/สั่งแทนลูกค้า");
 
-  const { error } = await sb.from("orders").insert({ id, data: order });
+  const { error } = await insertOrder(sb, order, by);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, id });
 }
@@ -526,6 +528,14 @@ export async function PATCH(req: Request) {
         : withLog(toSave, who, "เอาส่วนลดระดับสมาชิกออก", beforeTier ? `${beforeTier.label} −${beforeTier.amount.toLocaleString("th-TH")} บาท` : "ไม่ได้ผูกผู้ติดต่อแล้ว");
     }
   }
+
+  /**
+   * ⚡ ส่วนลดโอนไว — รายการ/ราคาเปลี่ยนในคำขอนี้ (เพิ่มรายการพิเศษ · ตีราคา · แก้จำนวน) ให้กฎกลางคิดใหม่
+   * ⚠️ ต้องคิด "ก่อน" บล็อกแจ้งยอดค้างทางไลน์ด้านล่าง ไม่งั้นไลน์บอกยอดเก่าที่ยังไม่หักส่วนลด (ยอดไลน์ต้องตรงเว็บเสมอ)
+   * ประตูเขียนออเดอร์ (updateOrder) เรียกซ้ำอีกชั้นอยู่แล้ว — ได้ผลเท่าเดิม ไม่เขียน log ซ้ำ
+   */
+  if (mayEditFull && itemsChanged(existing, toSave))
+    toSave = await syncOrderEarlyPay(sb, toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
 
   /**
    * 💬 ตีราคา/แก้ราคาบนใบที่ลูกค้าโอนมาแล้ว → ยอดโตขึ้น ต้องตามเก็บส่วนต่าง
@@ -732,8 +742,14 @@ export async function PATCH(req: Request) {
 
   toSave = { ...toSave, log: mergeLogs(existing.log, order.log, toSave.log), savedAt: now };
 
-  const { error } = await sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  /**
+   * ⚡ บันทึกผ่าน "ประตูเดียว" — รายการ/ราคาที่เปลี่ยนในคำขอนี้ (เพิ่มรายการพิเศษ · ตีราคา · แก้จำนวน)
+   * จะถูกคิดส่วนลดโอนไวให้เองที่นั่น กติกาเดียวกับที่ลูกค้าสั่งจากเว็บ (ดู server/order-early-pay.ts)
+   * เดิมทางนี้ไม่เคยคิดให้ → ใบที่พนักงานเปิดให้ทางไลน์ไม่ได้ส่วนลด (OD-260914-4051 · เจ้าของร้านทัก 14 ก.ย. 69)
+   */
+  const written = await updateOrder(sb, toSave, { prev: existing, by: `แอดมิน ${actor.name?.trim() || actor.username}` });
+  if (written.error) return NextResponse.json({ error: written.error.message }, { status: 500 });
+  toSave = written.order;
 
   const adminName = `แอดมิน ${actor.name?.trim() || actor.username}`;
 
@@ -828,7 +844,7 @@ export async function PATCH(req: Request) {
         "ทวงยอดคงเหลือ (เข้าไลน์ผลิต)"
       );
       toSave = { ...toSave, deposit: { ...toSave.deposit, balanceRemindedAt: new Date().toISOString() } };
-      void sb.from("orders").update({ data: toSave }).eq("id", toSave.id);
+      void updateOrder(sb, toSave, { prev: toSave });
     }
   }
 

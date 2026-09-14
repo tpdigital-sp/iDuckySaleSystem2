@@ -10,6 +10,7 @@ import { withUnitYield } from "@/lib/products-server";
 import type { ShopPayment } from "@/lib/shop-settings";
 import { shippingOf } from "@/lib/settings-shared"; // ⚠️ ห้ามเรียก shippingOf จาก shop-settings ("use client") ในเซิร์ฟเวอร์ — เคยพัง 500 ตัวเปล่า
 import { normalizeShipLabel } from "@/lib/ship-label";
+import { insertOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -91,7 +92,7 @@ async function acceptQuote(req: Request) {
   };
   order = withLog(order, by, "สร้างจากใบเสนอราคา", `${quote.id} · ยอด ${quoteTotal(quote)} บาท`);
 
-  const { error: insErr } = await sb.from("orders").insert({ id: orderId, data: order });
+  const { error: insErr } = await insertOrder(sb, order);
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
 
   // ปิดใบนี้เป็น "สร้างออเดอร์แล้ว" + ผูกเลขออเดอร์

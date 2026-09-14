@@ -1,6 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
+import { updateOrder } from "./order-write";
 
 /**
  * 🔥 ยอด "ขายแล้ว" อัตโนมัติ — บวกเมื่อออเดอร์ชำระเงินแล้ว
@@ -39,10 +40,9 @@ async function shift(orderId: string, dir: 1 | -1): Promise<void> {
       await sb.from("products").update({ sold, data: { ...d, sold } }).eq("id", pid);
     }
 
-    await sb
-      .from("orders")
-      .update({ data: { ...order, soldCounted: dir === 1 } })
-      .eq("id", orderId);
+    // ธงกันบวกซ้ำเก็บอยู่ในก้อน data ของออเดอร์ (ไม่ได้อยู่ใน type Order — ดู OrderRow ข้างบน)
+    const next: Order & { soldCounted?: boolean } = { ...order, soldCounted: dir === 1 };
+    await updateOrder(sb, next, { prev: order });
   } catch {
     // ยอดขายเป็นตัวเลขโชว์หน้าเว็บ ไม่ใช่บัญชี — พลาดแล้วข้าม ไม่ให้ล้มการยืนยันชำระเงิน
   }

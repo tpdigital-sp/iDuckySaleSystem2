@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
       action === "approve" ? "อนุมัติแบบของแถม" : "ขอแก้ไขแบบของแถม",
       action === "approve" ? `🎁 ${gift.name}` : `🎁 ${gift.name} — ${note}`
     );
-    const { error: saveGiftErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+    const { error: saveGiftErr } = await updateOrder(sb, updated);
     if (saveGiftErr) return NextResponse.json({ error: saveGiftErr.message }, { status: 500 });
     const { key: _s, ...safeGift } = updated;
     void _s;
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
     action === "approve" ? where : `${where} — ${note}`
   );
 
-  const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
   const { key: _secret, ...safe } = updated;

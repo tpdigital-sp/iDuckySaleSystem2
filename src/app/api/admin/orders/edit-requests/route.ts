@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
     "ปิดคำขอแก้ไขของลูกค้า",
     order.editRequest.text
   );
-  const { error: saveErr } = await sb.from("orders").update({ data: next }).eq("id", id);
+  const { error: saveErr } = await updateOrder(sb, next);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
   return NextResponse.json({ ok: true, request: toRow(next) });
 }

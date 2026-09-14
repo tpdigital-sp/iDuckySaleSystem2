@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderOtherDiscounts, orderTotal, paidSoFar, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
-import { dealerRateOf, type Product } from "@/lib/products";
-import { earlyPayAmount, earlyPayBase, earlyPayExpiresAt, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
+import { orderTotal, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { dealerRateOf } from "@/lib/products";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
+import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -75,52 +76,28 @@ export async function POST(req: Request) {
   const priced = await syncOrderMemberTier(sb, { ...order, items: merged });
 
   /**
-   * ⚡ ส่วนลดโอนไว — ใบที่ "ยังไม่มี" ส่วนลดนี้และยังไม่มีเงินเข้า (สร้างจากหลังบ้านเป็นใบเปล่า → ลูกค้าใส่ของเองทางลิงก์
-   * = ทางสั่งปกติของลูกค้าไลน์ เคส OD-260910-7269 ที่พนักงานทัก 10 ก.ย. 69) คิดให้ตอนนี้จากรายการทั้งใบ กติกาเดียวกับ /api/orders
-   * ใบที่มีส่วนลดอยู่แล้ว = ไม่คิดซ้ำ (เหมือนส่วนลดระดับ) · ตัวแทนไม่ได้ · เวลาหมดอายุนับจากตอนสั่งเพิ่มครั้งนี้
+   * ⚡ ส่วนลดโอนไว — คิดที่ประตูเขียนออเดอร์ (updateOrder → syncOrderEarlyPay) ที่เดียวทั้งระบบ
+   * (เดิมคิดตรงนี้เอง ทางเข้าอื่นที่แตะรายการได้จึงไม่ได้ส่วนลด — ดู server/order-early-pay.ts)
+   * ยอดที่แจ้งลูกค้าจึงต้องอ่านจากก้อนที่บันทึกจริง (saved) ไม่ใช่ก้อนที่ส่งเข้าไป
    */
-  let earlyPay = priced.earlyPay;
-  if (!earlyPay && !priced.dealer && paidSoFar(priced) <= 0 && orderOtherDiscounts(priced) <= 0) {
-    try {
-      const prods = new Map<string, Product>();
-      for (const pid of [...new Set(merged.map((i) => i.productId).filter(Boolean))]) {
-        const p = await getProductServer(pid);
-        if (p) prods.set(pid, p);
-      }
-      const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
-      const cfg = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined);
-      const goods = earlyPayBase(
-        merged.map((i) => ({ productId: i.productId, selections: i.sel, qty: i.qty, amount: i.qty * i.unitPrice })),
-        (id) => prods.get(id),
-        { mergeLots: true }
-      );
-      const amount = earlyPayAmount(goods, cfg);
-      const expiresAt = earlyPayExpiresAt(cfg);
-      if (amount > 0) earlyPay = { label: EARLY_PAY_LABEL, amount, ...(expiresAt ? { expiresAt } : {}) };
-    } catch {
-      // อ่านตั้งค่า/สินค้าไม่ได้ = ไม่ลด ดีกว่าสั่งเพิ่มไม่สำเร็จ
-    }
-  }
+  const owedBefore = orderTotal(priced) - (order.paidTotal ?? 0);
 
-  const newTotal = orderTotal({ ...priced, earlyPay });
+  const updated = {
+    ...priced,
+    // มียอดค้าง → กลับไปรอชำระ · ไม่มียอดค้าง (เช่นยังไม่เคยจ่าย) → คงสถานะเดิม
+    status: owedBefore > 0 ? ("รอชำระเงิน" as OrderStatus) : order.status,
+  };
+
+  // เรียกกฎกลางก่อนเพื่อให้ log บอกยอดที่ลูกค้าเห็นจริง — updateOrder จะเรียกซ้ำเองอีกชั้น (ได้ผลเท่าเดิม ไม่เขียนซ้ำ)
+  const synced = await syncOrderEarlyPay(sb, updated, "ลูกค้า");
+  const newTotal = orderTotal(synced);
   const owed = newTotal - (order.paidTotal ?? 0);
+  const logged = withLog(synced, "ลูกค้า", "สั่งเพิ่มในออเดอร์เดิม", `${items.length} รายการ · ยอดรวมใหม่ ฿${newTotal.toLocaleString()}`);
 
-  const updated = withLog(
-    {
-      ...priced,
-      ...(earlyPay ? { earlyPay } : {}),
-      // มียอดค้าง → กลับไปรอชำระ · ไม่มียอดค้าง (เช่นยังไม่เคยจ่าย) → คงสถานะเดิม
-      status: owed > 0 ? "รอชำระเงิน" : order.status,
-    },
-    "ลูกค้า",
-    "สั่งเพิ่มในออเดอร์เดิม",
-    `${items.length} รายการ · ยอดรวมใหม่ ฿${newTotal.toLocaleString()}`
-  );
-
-  const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { order: saved, error: saveErr } = await updateOrder(sb, logged, { prev: order, by: "ลูกค้า" });
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
-  const { key: _secret, ...safe } = updated;
+  const { key: _secret, ...safe } = saved;
   void _secret;
   return NextResponse.json({ ok: true, order: safe, owed: Math.max(0, owed) });
 }

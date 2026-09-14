@@ -12,6 +12,7 @@ import { reportPaidToTP, syncPaidCompleteToTP } from "@/lib/server/tp-report";
 import { cutStockForOrder } from "@/lib/server/stock";
 import { bumpSoldForOrder } from "@/lib/server/sold";
 import { awardPointsForOrder } from "@/lib/server/contact-points";
+import { updateOrder } from "@/lib/server/order-write";
 
 /**
  * ตรวจสลิปกับ SlipOK แล้ว "ลงผล" ให้ออเดอร์ — ใช้ร่วมกันทั้งทางลูกค้าแนบเอง (/api/orders/slip)
@@ -314,7 +315,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     else if (phase !== "first") updated = withLog(updated, by, `แนบสลิป${phase === "balance" ? "ยอดคงเหลือ" : "เพิ่ม"} — รอแอดมินตรวจ`, verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
   }
 
-  const { error: saveErr } = await sb.from("orders").update({ data: updated }).eq("id", order.id);
+  const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) throw new Error(saveErr.message);
 
   // ── 3) ผลข้างเคียงหลังบันทึก ──
@@ -427,7 +428,7 @@ export async function acceptPaymentManually(a: {
     updated = withLog(updated, who, "รับยอดสลิปใบเพิ่มเอง — รับเงินครบแล้ว", amountNote);
   } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — ยังค้างอีก ${thb(remain)} บาท`, amountNote);
 
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", order.id);
+  const { error } = await updateOrder(sb, updated);
   if (error) throw new Error(error.message);
 
   const link = orderLink(origin, updated);

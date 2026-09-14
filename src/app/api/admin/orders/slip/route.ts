@@ -9,6 +9,7 @@ import { acceptPaymentManually, applySlipVerification } from "@/lib/server/slip-
 import { acquireSlipLock, assertSlipNotDuplicate, SlipDuplicateError, slipHashOf, type SlipOwner } from "@/lib/server/slip-dedupe";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -224,7 +225,7 @@ export async function DELETE(req: Request) {
         ? `⚠️ ใบนี้นับยอดไว้ ${credited.toLocaleString("th-TH")} บาท — ถอยออกแล้ว รับแล้วเหลือ ${(paidAfter ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(order).toLocaleString("th-TH")} (สถานะไม่เปลี่ยน ตรวจยอดค้างเอง)`
         : "ใบนี้ยังไม่ได้นับยอด — ไม่กระทบยอดที่รับแล้ว"
     );
-    const { error: e3 } = await sb.from("orders").update({ data: cleaned }).eq("id", orderId);
+    const { error: e3 } = await updateOrder(sb, cleaned);
     if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
     return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, cleaned) });
   }
@@ -250,7 +251,7 @@ export async function DELETE(req: Request) {
           ? `ใบนี้นับยอดบางส่วนไว้ ${credited.toLocaleString("th-TH")} บาท — ถอยออกแล้ว · ให้ลูกค้า/แอดมินแนบใหม่ได้`
           : "ให้ลูกค้า/แอดมินแนบใหม่ได้"
     );
-    const { error: e2 } = await sb.from("orders").update({ data: cleaned }).eq("id", orderId);
+    const { error: e2 } = await updateOrder(sb, cleaned);
     if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
     return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, cleaned) });
   }
@@ -282,7 +283,7 @@ export async function DELETE(req: Request) {
       ? `ออเดอร์กลับเป็น รอชำระเงิน — ยังนับยอดจากสลิปใบเพิ่มไว้ ${extrasCredited.toLocaleString("th-TH")} บาท`
       : "ออเดอร์กลับเป็น รอชำระเงิน — ลูกค้าแนบสลิปใหม่ได้"
   );
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated) });
 }

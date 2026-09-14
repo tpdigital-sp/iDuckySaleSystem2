@@ -7,7 +7,10 @@
 # เมื่อมี plugin ประกาศชัด plugin จะจัดการ .next ให้ถูก (ไม่เสิร์ฟดิบจน 404)
 
 [build]
-  command = "next build"
+  # npm run build (ไม่ใช่ next build ตรง ๆ) เพื่อให้ prebuild ทำงานด้วย:
+  #   copy-pdf-worker  = ก๊อป worker ของ pdf.js เข้า public/
+  #   check-order-writes = ด่านห้ามเขียนตาราง orders ตรง ๆ (กติกาตอนบันทึกต้องผ่าน lib/server/order-write.ts)
+  command = "npm run build"
   publish = ".next"
   # ═══ push แล้ว "ไม่ต้อง" ขึ้นเว็บจริงอัตโนมัติ — สั่งเองเมื่อพร้อมเท่านั้น ═══
   #

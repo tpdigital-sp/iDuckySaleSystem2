@@ -3,6 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderFullyPaid, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
       `${order.status} → กำลังผลิต`
     );
 
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   /**

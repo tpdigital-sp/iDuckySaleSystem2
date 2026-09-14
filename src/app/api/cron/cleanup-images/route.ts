@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { CLEANUP_CLOSED_STATUSES, imageCleanupOf, type ImageCleanupConfig } from "@/lib/image-cleanup";
 import { proofsOf, withLog, type Order } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -122,7 +123,7 @@ export async function GET(req: Request) {
       imagesPurgedAt: new Date().toISOString(),
     };
     next = withLog(next, "ระบบ", "ล้างรูปตามนโยบาย", `อายุเกิน ${days} วัน · ลบ ${p.files} ไฟล์`) as typeof next;
-    await sb.from("orders").update({ data: next }).eq("id", p.id);
+    await updateOrder(sb, next);
   }
 
   // จดผลการรันล่าสุดไว้ให้หน้าตั้งค่าแสดง

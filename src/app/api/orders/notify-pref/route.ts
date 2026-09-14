@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
     "ตั้งค่าการแจ้งเตือน",
     label
   );
-  const { error } = await sb.from("orders").update({ data: next }).eq("id", orderId);
+  const { error } = await updateOrder(sb, next);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, level });
 }

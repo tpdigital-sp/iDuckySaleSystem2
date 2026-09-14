@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -60,7 +61,7 @@ export async function GET(req: Request) {
       "ปิดงานอัตโนมัติ",
       `จัดส่งแล้วเกิน ${days} วัน — จัดส่งแล้ว → เสร็จสิ้น`,
     );
-    await sb.from("orders").update({ data: updated }).eq("id", order.id);
+    await updateOrder(sb, updated);
   }
 
   return NextResponse.json({ ok: true, dry, days, closed: closed.length, orders: closed.slice(0, 50) });

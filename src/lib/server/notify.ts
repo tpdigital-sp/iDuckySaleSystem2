@@ -12,6 +12,7 @@ import {
 } from "@/lib/admin-data";
 import { formatPrice } from "@/lib/products";
 import { isPickupOrder } from "@/lib/ship-label";
+import { updateOrder } from "@/lib/server/order-write";
 
 /**
  * แจ้งเตือนลูกค้าผ่าน LINE (push message)
@@ -203,7 +204,7 @@ export async function notifyCustomerLogged(
       r.ok ? "แจ้งลูกค้าทางไลน์แล้ว" : "แจ้งลูกค้าทางไลน์ไม่สำเร็จ",
       `${what}${via ? ` · ${via}` : ""}${r.reason ? ` · ${r.reason}` : ""}`
     );
-    await sb.from("orders").update({ data: next }).eq("id", order.id);
+    await updateOrder(sb, next);
   } catch {
     /* บันทึกไม่ได้ก็ไม่ควรทำให้งานหลักพัง */
   }

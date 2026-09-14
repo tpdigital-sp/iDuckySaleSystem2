@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
 import { currentMonth, RATING_TAGS } from "@/lib/ratings";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
   }
 
   // 2) ติ๊กว่าออเดอร์นี้ประเมินแล้ว (ไม่ลง log — log มี timestamp จะย้อนเทียบเวลาได้)
-  const { error: saveErr } = await sb.from("orders").update({ data: { ...order, rated: true } }).eq("id", orderId);
+  const { error: saveErr } = await updateOrder(sb, { ...order, rated: true });
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });

@@ -6,6 +6,7 @@ import { loadRolePerms } from "@/lib/server/role-perms";
 import { orderBalance, orderTotal, withLog, type Order, type OrderCharge, type OrderStatus } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
   );
   // จำยอดค้างที่กำลังบอกลูกค้า — แอดมินลดยอดทีหลังก่อนลูกค้าโอน จะได้แจ้งยอดใหม่ให้ (ดู balanceShrank ใน /api/admin/orders)
   if (updated.paidTotal != null) updated = { ...updated, balanceNotified: { at: now, balance: bal } };
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // แจ้งลูกค้าทันที — บอกว่าเก็บอะไร เท่าไร และยอดที่ต้องโอนเพิ่ม (ลิงก์เดิม แนบสลิปได้เลย)
@@ -108,7 +109,7 @@ export async function DELETE(req: Request) {
     `ถอดรายการเก็บเพิ่ม: ${c.label} ${thb(c.amount)} บาท`,
     `ยอดรวม ${thb(orderTotal(order))} → ${thb(orderTotal({ ...order, charges: (order.charges ?? []).filter((x) => x.id !== chargeId) }))} บาท`
   );
-  const { error } = await sb.from("orders").update({ data: updated }).eq("id", orderId);
+  const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated) });
 }
