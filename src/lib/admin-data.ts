@@ -104,8 +104,12 @@ export interface Shipment {
   at: string;
   /** ใครยิง */
   by: string;
-  /** รูปแบบงานที่ไปกับรอบนี้ — item = ตำแหน่งใน order.items · proof = ตำแหน่งใน proofsOf(item) · url ไว้จับคู่ถ้าลำดับรูปเปลี่ยน */
-  proofs: { item: number; proof: number; url?: string; qty?: number; unit?: string; itemName?: string }[];
+  /**
+   * รูปแบบงานที่ไปกับรอบนี้ — item = ตำแหน่งใน order.items · proof = ตำแหน่งใน proofsOf(item) · url ไว้จับคู่ถ้าลำดับรูปเปลี่ยน
+   * qty = จำนวนที่ไปกับ "รอบนี้" (แบ่งจำนวนได้ เช่น ลายนี้ส่งก่อน 1 ชิ้นจาก 10) · ofQty = จำนวนเต็มบนรูปตอนนั้น ไว้โชว์ "1/10"
+   * ⚠️ รอบเก่าก่อน 14 ก.ย. 69 เก็บ qty = จำนวนเต็มของรูป (ออกไปทั้งรูป) — proofShipStates อ่านเข้ากันได้
+   */
+  proofs: { item: number; proof: number; url?: string; qty?: number; unit?: string; itemName?: string; ofQty?: number }[];
   /** หมายเหตุรอบนี้ เช่น "ลูกค้าขอ 22 ใบก่อนงานอีเวนต์" */
   note?: string;
 }
@@ -1508,22 +1512,83 @@ export function proofKey(item: number, proof: number): string {
   return `${item}:${proof}`;
 }
 
+/** ตำแหน่งรูปจริงของรายการในรอบส่ง/แผน — จับคู่ด้วย url ก่อน (กราฟฟิกลบ/สลับรูปทีหลังตำแหน่งเปลี่ยน) ไม่มี url ค่อยใช้ตำแหน่ง */
+function resolveProofKey(order: Order, sp: Shipment["proofs"][number]): string | null {
+  const it = order.items[sp.item];
+  if (!it) return null;
+  const proofs = proofsOf(it);
+  let j = sp.url ? proofs.findIndex((p) => p.url === sp.url) : -1;
+  if (j < 0) j = sp.proof;
+  if (j < 0 || j >= proofs.length) return null;
+  return proofKey(sp.item, j);
+}
+
+/** จำนวนชิ้นของรูปแบบงาน 1 รูป สำหรับคิดแบ่งส่ง — รูปที่ไม่มีป้ายจำนวน นับเป็น 1 หน่วย "ทั้งรูป" (แบ่งจำนวนไม่ได้) */
+export function proofSplitTotal(p: Proof): number {
+  const n = Math.floor(p.qty ?? 0);
+  return n > 0 ? n : 1;
+}
+
 /**
- * 🚚 รูปแบบงานที่ส่งออกไปแล้วในรอบแบ่งส่ง → คีย์ "item:proof" → เลขรอบ (1-based)
- * จับคู่ด้วย url ก่อน (กราฟฟิกลบ/สลับรูปทีหลังตำแหน่งเปลี่ยน) ไม่มี url ค่อยใช้ตำแหน่ง
+ * 🚚 สถานะแบ่งส่งของรูปแบบงาน 1 รูป — ส่งไปแล้วกี่ชิ้น เหลือกี่ชิ้น
+ * (พนักงานขอ 14 ก.ย. 69: "ลายนี้แบ่งส่งไปก่อน 1 ชิ้น" — เดิมแบ่งได้ทีละทั้งรูป)
+ */
+export interface ProofShipState {
+  /** จำนวนทั้งหมดของรูปนี้ (รูปไม่มีป้ายจำนวน = 1 หน่วย) */
+  total: number;
+  /** รูปนี้มีป้ายจำนวนจริง = ระบุจำนวนที่ส่งก่อนได้ */
+  labeled: boolean;
+  shipped: number;
+  remaining: number;
+  /** รอบแบ่งส่งที่รูปนี้เคยออกไป (1-based) */
+  rounds: number[];
+}
+
+export function proofShipStates(order: Order): Map<string, ProofShipState> {
+  const out = new Map<string, ProofShipState>();
+  order.items.forEach((it, i) =>
+    proofsOf(it).forEach((p, j) => {
+      const total = proofSplitTotal(p);
+      out.set(proofKey(i, j), { total, labeled: (p.qty ?? 0) > 0, shipped: 0, remaining: total, rounds: [] });
+    })
+  );
+  (order.shipments ?? []).forEach((s, n) => {
+    s.proofs.forEach((sp) => {
+      const k = resolveProofKey(order, sp);
+      const st = k ? out.get(k) : undefined;
+      if (!st) return;
+      // รอบเก่าเก็บจำนวนเต็มของรูปไว้ = ออกไปทั้งรูป · รอบใหม่เก็บเฉพาะจำนวนที่ไปรอบนั้น
+      const q = sp.qty && sp.qty > 0 ? Math.min(Math.floor(sp.qty), st.total) : st.total;
+      st.shipped = Math.min(st.total, st.shipped + q);
+      st.remaining = Math.max(0, st.total - st.shipped);
+      if (!st.rounds.includes(n + 1)) st.rounds.push(n + 1);
+    });
+  });
+  return out;
+}
+
+/** คีย์รูป → จำนวนชิ้นที่ไปกับรอบส่ง/แผน 1 รอบ (ไม่ระบุจำนวน = ทั้งรูป) */
+export function roundSel(order: Order, proofs: Shipment["proofs"]): Map<string, number> {
+  const states = proofShipStates(order);
+  const out = new Map<string, number>();
+  proofs.forEach((sp) => {
+    const k = resolveProofKey(order, sp);
+    if (!k) return;
+    const total = states.get(k)?.total ?? 1;
+    const q = sp.qty && sp.qty > 0 ? Math.min(Math.floor(sp.qty), total) : total;
+    out.set(k, (out.get(k) ?? 0) + q);
+  });
+  return out;
+}
+
+/**
+ * 🚚 รูปแบบงานที่ส่งออกไปแล้ว → คีย์ "item:proof" → รอบล่าสุดที่ออกไป (1-based)
+ * ⚠️ รูปที่ออกไปแค่บางส่วนก็อยู่ในนี้ — ดู proofShipStates ต่อว่าเหลืออีกกี่ชิ้น
  */
 export function shippedProofRounds(order: Order): Map<string, number> {
   const out = new Map<string, number>();
-  (order.shipments ?? []).forEach((s, n) => {
-    s.proofs.forEach((sp) => {
-      const it = order.items[sp.item];
-      if (!it) return;
-      const proofs = proofsOf(it);
-      let j = sp.url ? proofs.findIndex((p) => p.url === sp.url) : -1;
-      if (j < 0) j = sp.proof;
-      if (j < 0 || j >= proofs.length) return;
-      out.set(proofKey(sp.item, j), n + 1);
-    });
+  proofShipStates(order).forEach((st, k) => {
+    if (st.rounds.length) out.set(k, st.rounds[st.rounds.length - 1]);
   });
   return out;
 }
@@ -1533,30 +1598,38 @@ export function plannedProofRounds(order: Order): Map<string, number> {
   const out = new Map<string, number>();
   (order.shipPlan ?? []).forEach((r, n) => {
     r.proofs.forEach((sp) => {
-      const it = order.items[sp.item];
-      if (!it) return;
-      const proofs = proofsOf(it);
-      let j = sp.url ? proofs.findIndex((p) => p.url === sp.url) : -1;
-      if (j < 0) j = sp.proof;
-      if (j < 0 || j >= proofs.length) return;
-      out.set(proofKey(sp.item, j), n + 1);
+      const k = resolveProofKey(order, sp);
+      if (k) out.set(k, n + 1);
     });
   });
   return out;
 }
 
+/** 📋 จำนวนชิ้นที่แผนสั่งให้ส่งในรอบหนึ่ง → คีย์รูป → จำนวน (ไว้โชว์ป้าย "ส่งก่อน 1/10 ชิ้น") */
+export function plannedRoundQty(order: Order, index: number): Map<string, number> {
+  const r = (order.shipPlan ?? [])[index];
+  return r ? roundSel(order, r.proofs) : new Map();
+}
+
 /**
- * 📋 รอบถัดไปตามแผนที่ยังไม่ได้ส่ง (คีย์รูปที่ยังไม่ออก) — null = ไม่มีแผน หรือส่งตามแผนครบแล้ว (เหลือแค่รอบสุดท้าย)
- * ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" และปุ่มส่งบางส่วนล็อกไว้ที่รูปชุดนี้ ไม่ต้องเลือกเอง
+ * 📋 รอบถัดไปตามแผนที่ยังส่งไม่ครบ (คีย์รูป + จำนวนที่ยังต้องส่งรอบนี้) — null = ไม่มีแผน หรือส่งตามแผนครบแล้ว (เหลือแค่รอบสุดท้าย)
+ * ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" พร้อมจำนวน และปุ่มส่งบางส่วนล็อกไว้ที่ชุดนี้ ไม่ต้องเลือกเอง
  */
-export function nextPlannedRound(order: Order): { index: number; round: ShipPlanRound; keys: string[] } | null {
-  const shipped = shippedProofRounds(order);
-  const planned = plannedProofRounds(order);
+export function nextPlannedRound(order: Order): { index: number; round: ShipPlanRound; keys: string[]; qty: Map<string, number> } | null {
   const rounds = order.shipPlan ?? [];
+  if (!rounds.length) return null;
+  const states = proofShipStates(order);
+  const want = new Map<string, number>(); // จำนวนสะสมที่แผนสั่งให้ส่งถึงรอบนี้
   for (let n = 0; n < rounds.length; n++) {
-    const keys = [...planned.entries()].filter(([, r]) => r === n + 1).map(([k]) => k);
-    const pending = keys.filter((k) => !shipped.has(k));
-    if (pending.length) return { index: n, round: rounds[n], keys: pending };
+    roundSel(order, rounds[n].proofs).forEach((q, k) => want.set(k, (want.get(k) ?? 0) + q));
+    const pending = new Map<string, number>();
+    want.forEach((q, k) => {
+      const st = states.get(k);
+      if (!st) return;
+      const left = Math.min(q, st.total) - st.shipped;
+      if (left > 0) pending.set(k, Math.min(left, st.remaining));
+    });
+    if (pending.size) return { index: n, round: rounds[n], keys: [...pending.keys()], qty: pending };
   }
   return null;
 }
@@ -1570,7 +1643,7 @@ export function shipmentQty(s: Shipment): number {
 export function partialShipSummary(order: Order): { rounds: number; shipped: number; total: number; proofsShipped: number; proofsTotal: number } | null {
   const ships = order.shipments ?? [];
   if (!ships.length) return null;
-  const rounds = shippedProofRounds(order);
+  const states = proofShipStates(order);
   let total = 0;
   let proofsTotal = 0;
   order.items.forEach((it) => proofsOf(it).forEach((p) => {
@@ -1581,7 +1654,8 @@ export function partialShipSummary(order: Order): { rounds: number; shipped: num
     rounds: ships.length,
     shipped: ships.reduce((n, s) => n + shipmentQty(s), 0),
     total,
-    proofsShipped: rounds.size,
+    // นับเฉพาะรูปที่ออกไปครบแล้ว — รูปที่แบ่งส่งไปบางส่วนยังค้างรอบถัดไป
+    proofsShipped: [...states.values()].filter((st) => st.rounds.length > 0 && st.remaining <= 0).length,
     proofsTotal,
   };
 }
@@ -1596,40 +1670,72 @@ export interface PartialGate {
   ready: boolean;
   /** เหตุผลที่ยังส่งรอบนี้ไม่ได้ (ไว้โชว์/ลง log) */
   reasons: string[];
-  /** เป็นรอบที่เอารูปที่เหลือไปทั้งหมด = ต้องยิงเป็นรอบสุดท้ายแทน */
+  /** เป็นรอบที่เอาของที่เหลือไปทั้งหมด = ต้องยิงเป็นรอบสุดท้ายแทน */
   isLastRound: boolean;
 }
 
-export function partialGate(order: Order, keys: Iterable<string>): PartialGate {
-  const sel = new Set(keys);
-  const shipped = shippedProofRounds(order);
+/** สิ่งที่เลือกไปรอบนี้: คีย์รูปเฉย ๆ = ทั้งที่เหลือของรูปนั้น · คู่ [คีย์, จำนวน] = แบ่งเฉพาะจำนวนนั้น */
+export type PartialSel = Map<string, number> | Iterable<string> | Iterable<readonly [string, number]>;
+
+/** แปลงสิ่งที่เลือก → คีย์รูป → จำนวนชิ้นที่จะส่งรอบนี้ */
+export function partialSelMap(order: Order, sel: PartialSel): Map<string, number> {
+  const states = proofShipStates(order);
+  const out = new Map<string, number>();
+  const add = (k: string, q?: number) => {
+    const st = states.get(k);
+    const want = q && q > 0 ? Math.floor(q) : st?.remaining ?? 0;
+    if (want > 0) out.set(k, (out.get(k) ?? 0) + want);
+  };
+  if (sel instanceof Map) sel.forEach((q, k) => add(k, q));
+  else
+    for (const e of sel as Iterable<string | readonly [string, number]>) {
+      if (typeof e === "string") add(e);
+      else add(e[0], e[1]);
+    }
+  return out;
+}
+
+export function partialGate(order: Order, sel: PartialSel): PartialGate {
+  const want = partialSelMap(order, sel);
+  const states = proofShipStates(order);
   const reasons: string[] = [];
-  if (!sel.size) reasons.push("ยังไม่ได้เลือกรูปที่จะส่งรอบนี้");
+  if (!want.size) reasons.push("ยังไม่ได้เลือกรูปที่จะส่งรอบนี้");
   const uncounted: string[] = [];
   const short: string[] = [];
-  const dup: string[] = [];
+  const over: string[] = [];
+  const sentOut: string[] = [];
   const unread = new Set<string>();
   let remaining = 0;
+  let selQty = 0;
   order.items.forEach((it, i) => {
     proofsOf(it).forEach((p, j) => {
       const k = proofKey(i, j);
-      if (!shipped.has(k)) remaining += 1;
-      if (!sel.has(k)) return;
-      if (shipped.has(k)) dup.push(`${it.name} รูปที่ ${j + 1}`);
-      if (!p.pack) uncounted.push(`${it.name} รูปที่ ${j + 1}`);
-      else if (p.pack.status === "ไม่ครบ") short.push(`${it.name} รูปที่ ${j + 1} (นับได้ ${p.pack.got ?? 0}/${p.qty ?? "?"})`);
+      const st = states.get(k) ?? { total: proofSplitTotal(p), labeled: false, shipped: 0, remaining: proofSplitTotal(p), rounds: [] };
+      remaining += st.remaining;
+      const q = want.get(k) ?? 0;
+      if (!q) return;
+      const go = Math.min(q, st.remaining);
+      selQty += go;
+      const label = `${it.name} รูปที่ ${j + 1}`;
+      if (st.remaining <= 0) sentOut.push(label);
+      else if (q > st.remaining) over.push(`${label} (เลือก ${q} เหลือ ${st.remaining})`);
+      if (!p.pack) uncounted.push(label);
+      // นับได้ไม่ครบทั้งรูปยังส่งรอบนี้ได้ ถ้าของที่นับได้พอกับจำนวนที่จะส่งรอบนี้ (ที่เหลือรอรอบถัดไป)
+      else if (p.pack.status === "ไม่ครบ" && (p.pack.got ?? 0) < go)
+        short.push(`${label} (นับได้ ${p.pack.got ?? 0} · รอบนี้ส่ง ${go})`);
       if (!it.noteAck) unread.add(it.name);
     });
   });
-  if (dup.length) reasons.push(`รูปนี้ส่งไปแล้วในรอบก่อน: ${dup.join(", ")}`);
+  if (sentOut.length) reasons.push(`รูปนี้ส่งครบไปแล้วในรอบก่อน: ${sentOut.join(", ")}`);
+  if (over.length) reasons.push(`เลือกเกินจำนวนที่เหลือ: ${over.join(", ")}`);
   if (uncounted.length) reasons.push(`ตรวจนับรูปที่จะส่งก่อน: ${uncounted.join(", ")}`);
-  if (short.length) reasons.push(`ของไม่ครบ: ${short.join(", ")}`);
+  if (short.length) reasons.push(`ของไม่พอกับจำนวนที่จะส่งรอบนี้: ${short.join(", ")}`);
   if (unread.size) reasons.push(`ยืนยันอ่านรายละเอียด: ${[...unread].join(", ")}`);
   if (!(order.packPhotos && order.packPhotos.length > 0)) reasons.push("ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง");
   if (hasUnpaidBalance(order)) reasons.push(order.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ");
-  // เลือกครบทุกรูปที่เหลือ = รอบสุดท้าย ต้องยิงช่องเลขพัสดุปกติให้ใบปิด (สถานะจัดส่งแล้ว + ด่านเต็ม)
-  const isLastRound = sel.size > 0 && remaining > 0 && [...sel].filter((k) => !shipped.has(k)).length >= remaining;
-  if (isLastRound) reasons.push("รอบนี้เอารูปที่เหลือไปทั้งหมด = รอบสุดท้าย ให้ยิงที่ช่องเลขพัสดุด้านล่างแทน (ใบจะปิดเป็นจัดส่งแล้ว)");
+  // เลือกครบทุกชิ้นที่เหลือ = รอบสุดท้าย ต้องยิงช่องเลขพัสดุปกติให้ใบปิด (สถานะจัดส่งแล้ว + ด่านเต็ม)
+  const isLastRound = selQty > 0 && remaining > 0 && selQty >= remaining;
+  if (isLastRound) reasons.push("รอบนี้เอาของที่เหลือไปทั้งหมด = รอบสุดท้าย ให้ยิงที่ช่องเลขพัสดุด้านล่างแทน (ใบจะปิดเป็นจัดส่งแล้ว)");
   return { ready: reasons.length === 0, reasons, isLastRound };
 }
 

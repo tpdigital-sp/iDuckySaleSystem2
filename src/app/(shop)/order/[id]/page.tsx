@@ -2006,7 +2006,7 @@ export default function CustomerOrderPage() {
                 </p>
                 <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{sh.tracking}</p>
                 <p className="mt-1 text-xs t-soft">
-                  รอบนี้: {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` × ${p.qty}` : ""}`).join(" · ")}
+                  รอบนี้: {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` × ${p.qty.toLocaleString("th-TH")}${p.ofQty && p.ofQty > p.qty ? ` จาก ${p.ofQty.toLocaleString("th-TH")}` : ""} ${p.unit || "ชิ้น"}` : ""}`).join(" · ")}
                   {sh.note ? ` · ${sh.note}` : ""}
                 </p>
                 {/^[A-Z]{2}\d{9}TH$/i.test(sh.tracking.trim()) ? (

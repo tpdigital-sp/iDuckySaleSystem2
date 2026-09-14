@@ -99,7 +99,7 @@ function PartialTag({ o }: { o: Order }) {
   return (
     <>
       {plan && (
-        <Tag tone="yolk" title={`แอดมินสั่งแบ่งส่ง รอบที่ ${plan.index + 1}: ${plan.round.proofs.map((x) => `${x.itemName ?? ""} รูปที่ ${x.proof + 1}`).join(", ")}${plan.round.dueDate ? ` · ส่งภายใน ${plan.round.dueDate}` : ""}`}>
+        <Tag tone="yolk" title={`แอดมินสั่งแบ่งส่ง รอบที่ ${plan.index + 1}: ${plan.round.proofs.map((x) => `${x.itemName ?? ""} รูปที่ ${x.proof + 1}${x.qty ? ` ${x.qty}${x.ofQty && x.ofQty > x.qty ? `/${x.ofQty}` : ""} ${x.unit || "ชิ้น"}` : ""}`).join(", ")}${plan.round.dueDate ? ` · ส่งภายใน ${plan.round.dueDate}` : ""}`}>
           📋 แบ่งส่ง รอบ {plan.index + 1} รอแพ็ค{plan.round.dueDate ? ` · ${plan.round.dueDate}` : ""}
         </Tag>
       )}
@@ -1225,7 +1225,7 @@ export default function ScanTrackingPage() {
             {/* 🚚 ลูกค้าขอส่งบางลายก่อน? ไม่ต้องสร้างใบใหม่ — ติ๊กรูปในโหมดแพ็คแล้วยิงเลขรอบนั้น */}
             {blocked.order.items.reduce((n, it) => n + proofsOf(it).length, 0) > 1 && (
               <p className="mt-2 rounded-[14px] px-3 py-2 text-[12.5px] leading-relaxed" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
-                🚚 ต้องส่งบางลายก่อน (แบ่งส่ง)? ให้แอดมินระบุแผนที่หน้าออเดอร์ (ช่องเลขพัสดุ → “ระบุรูปที่ส่งก่อน”) แล้วโหมดแพ็คจะมีปุ่มเหลือง “ส่งบางส่วน” ยิงเลขรอบนั้นได้เลย
+                🚚 ต้องส่งบางลาย/บางจำนวนก่อน (แบ่งส่ง)? ให้แอดมินระบุแผนที่หน้าออเดอร์ (ช่องเลขพัสดุ → “ระบุของที่ส่งก่อน” เลือกรูปแล้วใส่จำนวน เช่น ลายนี้ 1 ชิ้น) แล้วโหมดแพ็คจะมีปุ่มเหลือง “ส่งบางส่วน” ยิงเลขรอบนั้นได้เลย
                 ใบยังค้างที่นี่จนกว่าจะยิงเลขรอบสุดท้าย
               </p>
             )}

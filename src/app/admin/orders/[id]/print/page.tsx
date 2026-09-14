@@ -735,7 +735,7 @@ function OrderDocs({
                   (order.shipPlan ?? []).map((r, n) =>
                     order.shipments?.[n] ? null : (
                       <p key={`plan-${n}`} className="mt-0.5 text-[11px] font-bold text-amber-800">
-                        📋 แบ่งส่ง รอบที่ {n + 1} ส่งก่อน: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}` : ""}`).join(", ")}
+                        📋 แบ่งส่ง รอบที่ {n + 1} ส่งก่อน: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""}` : ""}`).join(", ")}
                         {r.dueDate ? ` — ส่งภายใน ${r.dueDate}` : ""}
                         {r.note ? ` · ${r.note}` : ""}
                       </p>
@@ -745,7 +745,7 @@ function OrderDocs({
                 {(order.shipments ?? []).map((sh, n) => (
                   <p key={`${sh.tracking}-${n}`} className="mt-0.5 text-[11px] font-bold text-sky-800">
                     🚚 แบ่งส่งแล้ว รอบที่ {n + 1}: <span className="font-mono">{sh.tracking}</span> —{" "}
-                    {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}` : ""}`).join(", ")}
+                    {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""}` : ""}`).join(", ")}
                   </p>
                 ))}
                 {order.useByDate && (

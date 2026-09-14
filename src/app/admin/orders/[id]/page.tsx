@@ -63,8 +63,10 @@ import {
   partialShipSummary,
   plannedProofRounds,
   proofKey,
+  proofShipStates,
+  roundSel,
+  type ProofShipState,
   shipmentQty,
-  shippedProofRounds,
   orderHasTaxInvoice,
   orderNeedsTaxInvoiceInBox,
   taxInvoiceDocOf,
@@ -1212,8 +1214,8 @@ export default function AdminOrderDetailPage() {
   }, [orderId]);
 
   const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
-  // 🚚 แบ่งส่ง: รูปที่ติ๊ก "ส่งรอบนี้" ในโหมดแพ็ค (คีย์ "item:proof") + โมดัลยิงเลขรอบนี้
-  const [shipSel, setShipSel] = useState<Set<string>>(() => new Set());
+  // 🚚 แบ่งส่ง: รูปที่ติ๊ก "ส่งรอบนี้" ในโหมดแพ็ค (คีย์ "item:proof" → จำนวนชิ้นที่จะส่งรอบนี้) + โมดัลยิงเลขรอบนี้
+  const [shipSel, setShipSel] = useState<Map<string, number>>(() => new Map());
   const [partialOpen, setPartialOpen] = useState(false);
   // 📋 โมดัลแอดมินระบุแผนแบ่งส่ง (รูปไหนส่งก่อน)
   const [planOpen, setPlanOpen] = useState(false);
@@ -2027,13 +2029,14 @@ export default function AdminOrderDetailPage() {
     setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
   }
 
-  /** 🚚 ติ๊ก/ยกเลิกรูปที่จะไปกับรอบแบ่งส่งรอบนี้ (ยังไม่บันทึก — บันทึกตอนยืนยันในโมดัล) */
+  /** 🚚 ติ๊ก/ยกเลิกรูปที่จะไปกับรอบแบ่งส่งรอบนี้ — ติ๊กครั้งแรกได้ "ที่เหลือทั้งหมด" ของรูปนั้น แก้จำนวนต่อในโมดัลได้ */
   function toggleShipSel(itemIndex: number, proofIndex: number) {
     const k = proofKey(itemIndex, proofIndex);
+    const left = order ? proofShipStates(order).get(k)?.remaining ?? 0 : 0;
     setShipSel((cur) => {
-      const next = new Set(cur);
+      const next = new Map(cur);
       if (next.has(k)) next.delete(k);
-      else next.add(k);
+      else if (left > 0) next.set(k, left);
       return next;
     });
   }
@@ -2043,17 +2046,28 @@ export default function AdminOrderDetailPage() {
    * ด่านตรวจเฉพาะรูปที่เลือก (partialGate) ตัดสินในโมดัลแล้ว: ฝ่ายแพ็คผ่านถึงกดได้ · แอดมินข้ามได้ (เซิร์ฟเวอร์ลง log)
    * เซิร์ฟเวอร์แจ้งลูกค้าทางไลน์เองเมื่อเห็นรอบใหม่ (newShipmentsOf ใน route)
    */
-  function commitPartialShipment(tracking: string, note: string, keys: string[]) {
+  function commitPartialShipment(tracking: string, note: string, sel: Map<string, number>) {
     if (!order) return;
     const t = tracking.trim();
     if (!t) return;
+    const states = proofShipStates(order);
     const proofs: Shipment["proofs"] = [];
-    keys.forEach((k) => {
+    sel.forEach((qty, k) => {
       const [i, j] = k.split(":").map(Number);
       const it = order.items[i];
       const p = it ? proofsOf(it)[j] : undefined;
       if (!it || !p) return;
-      proofs.push({ item: i, proof: j, url: p.url, ...(p.qty ? { qty: p.qty } : {}), ...(p.unit ? { unit: p.unit } : {}), itemName: it.name });
+      // qty = จำนวนที่ไปกับรอบนี้ (อาจน้อยกว่าป้ายบนรูป) · ofQty = จำนวนเต็มบนรูป ไว้โชว์ "1/10"
+      const go = Math.max(0, Math.min(Math.floor(qty) || 0, states.get(k)?.remaining ?? 0));
+      if (!go) return;
+      proofs.push({
+        item: i,
+        proof: j,
+        url: p.url,
+        ...(p.qty ? { qty: go, ofQty: p.qty } : {}),
+        ...(p.unit ? { unit: p.unit } : {}),
+        itemName: it.name,
+      });
     });
     if (!proofs.length) return;
     const sh: Shipment = { tracking: t, at: new Date().toISOString(), by: actor, proofs, ...(note.trim() ? { note: note.trim() } : {}) };
@@ -2063,9 +2077,9 @@ export default function AdminOrderDetailPage() {
       { ...order, shipments: [...(order.shipments ?? []), sh] },
       actor,
       "🚚 ส่งบางส่วน",
-      `รอบที่ ${round} · ${t} · ${proofs.length} รูป${qty ? ` · ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}`
+      `รอบที่ ${round} · ${t} · ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}`
     );
-    setShipSel(new Set());
+    setShipSel(new Map());
     setPartialOpen(false);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -2095,18 +2109,28 @@ export default function AdminOrderDetailPage() {
    */
   const planNext = order ? nextPlannedRound(order) : null;
   const adHocSplit = !!order && mayEdit && !(order.shipPlan?.length ?? 0);
-  const activeShipSel: Set<string> = planNext ? new Set(planNext.keys) : adHocSplit ? shipSel : new Set();
+  const activeShipSel: Map<string, number> = planNext ? planNext.qty : adHocSplit ? shipSel : new Map();
 
   /** 📋 แอดมินเพิ่มรอบในแผนแบ่งส่ง (จากโมดัลเลือกรูป) + log · ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" ทันที */
-  function addPlanRound(keys: string[], note: string, dueDate: string) {
-    if (!order || !mayEdit || !keys.length) return;
+  function addPlanRound(sel: Map<string, number>, note: string, dueDate: string) {
+    if (!order || !mayEdit || !sel.size) return;
+    const states = proofShipStates(order);
     const proofs: ShipPlanRound["proofs"] = [];
-    keys.forEach((k) => {
+    sel.forEach((qty, k) => {
       const [i, j] = k.split(":").map(Number);
       const it = order.items[i];
       const p = it ? proofsOf(it)[j] : undefined;
       if (!it || !p) return;
-      proofs.push({ item: i, proof: j, url: p.url, ...(p.qty ? { qty: p.qty } : {}), ...(p.unit ? { unit: p.unit } : {}), itemName: it.name });
+      const go = Math.max(0, Math.min(Math.floor(qty) || 0, states.get(k)?.remaining ?? 0));
+      if (!go) return;
+      proofs.push({
+        item: i,
+        proof: j,
+        url: p.url,
+        ...(p.qty ? { qty: go, ofQty: p.qty } : {}),
+        ...(p.unit ? { unit: p.unit } : {}),
+        itemName: it.name,
+      });
     });
     if (!proofs.length) return;
     const round: ShipPlanRound = { proofs, by: actor, at: new Date().toISOString(), ...(note.trim() ? { note: note.trim() } : {}), ...(dueDate ? { dueDate } : {}) };
@@ -2118,7 +2142,7 @@ export default function AdminOrderDetailPage() {
         { ...order, shipPlan: [...(order.shipPlan ?? []), round] },
         actor,
         "📋 ระบุแผนแบ่งส่ง",
-        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}`).join(", ")}${qty ? ` · ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.note ? ` · ${round.note}` : ""}`
+        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.note ? ` · ${round.note}` : ""}`
       )
     );
   }
@@ -3145,11 +3169,12 @@ export default function AdminOrderDetailPage() {
         {partialOpen && (
           <PartialShipModal
             order={order}
-            keys={[...activeShipSel]}
+            sel={activeShipSel}
             mayEdit={mayEdit}
+            editableQty={adHocSplit}
             defaultNote={planNext?.round.note ?? ""}
             onCancel={() => setPartialOpen(false)}
-            onConfirm={(t, note) => commitPartialShipment(t, note, [...activeShipSel])}
+            onConfirm={(t, note, sel) => commitPartialShipment(t, note, sel)}
           />
         )}
         <PackView
@@ -6988,7 +7013,7 @@ export default function AdminOrderDetailPage() {
                         onClick={() => setPlanOpen(true)}
                         className="rounded-lg bg-amber-400 px-2.5 py-1 text-[11px] font-extrabold text-amber-950 hover:bg-amber-300"
                       >
-                        ＋ ระบุรูปที่ส่งก่อน
+                        ＋ ระบุของที่ส่งก่อน
                       </button>
                     )}
                   </div>
@@ -6999,8 +7024,8 @@ export default function AdminOrderDetailPage() {
                       <div key={`plan-${n}`} className="mt-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] ring-1 ring-amber-100">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-bold text-slate-800">
-                            รอบที่ {n + 1}: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")}
-                            {qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                            รอบที่ {n + 1}: {roundProofsText(order, r.proofs)}
+                            {r.proofs.length > 1 && qty ? ` · รวม ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
                           </span>
                           {done ? (
                             <span className="shrink-0 font-bold text-green-700">✅ ส่งแล้ว {done.tracking}</span>
@@ -7042,7 +7067,7 @@ export default function AdminOrderDetailPage() {
                         {sh.tracking} <CopyChip label="คัดลอก" text={() => sh.tracking} />
                       </p>
                       <p className={`mt-0.5 text-[11px] ${faint}`}>
-                        {sh.by} · {shortTime(sh.at)} · {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")}
+                        {sh.by} · {shortTime(sh.at)} · {roundProofsText(order, sh.proofs)}
                         {sh.note ? ` · 📝 ${sh.note}` : ""}
                       </p>
                       <ThaiPostStatus number={sh.tracking.trim()} />
@@ -7145,11 +7170,12 @@ export default function AdminOrderDetailPage() {
       {partialOpen && (
         <PartialShipModal
           order={order}
-          keys={[...activeShipSel]}
+          sel={activeShipSel}
           mayEdit={mayEdit}
+          editableQty={adHocSplit}
           defaultNote={planNext?.round.note ?? ""}
           onCancel={() => setPartialOpen(false)}
-          onConfirm={(t, note) => commitPartialShipment(t, note, [...activeShipSel])}
+          onConfirm={(t, note, sel) => commitPartialShipment(t, note, sel)}
         />
       )}
       {planOpen && <ShipPlanModal order={order} onCancel={() => setPlanOpen(false)} onSave={addPlanRound} />}
@@ -7321,10 +7347,12 @@ function ProofCarousel({
   proofs,
   onCheck,
   onZoom,
-  shipRound,
+  shipState,
   planRound,
   planActive,
+  planQty,
   shipSelected,
+  shipSelQty,
   onToggleShip,
 }: {
   itemIndex: number;
@@ -7332,14 +7360,18 @@ function ProofCarousel({
   proofs: Proof[];
   onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
   onZoom: (i: number, j: number) => void;
-  /** 🚚 รูปนี้ส่งไปแล้วในรอบแบ่งส่งที่เท่าไร (undefined = ยังไม่ส่ง) */
-  shipRound?: (j: number) => number | undefined;
+  /** 🚚 สถานะแบ่งส่งของรูปนี้ — ส่งไปแล้วกี่ชิ้น เหลือกี่ชิ้น รอบไหนบ้าง */
+  shipState?: (j: number) => ProofShipState | undefined;
   /** 📋 รูปนี้อยู่ในแผนแบ่งส่งรอบที่เท่าไร (แอดมินระบุ) */
   planRound?: (j: number) => number | undefined;
   /** 📋 รูปนี้อยู่ในรอบถัดไปที่กำลังจะส่ง (ป้ายเข้ม "ส่งก่อน — รอบนี้") */
   planActive?: (j: number) => boolean;
+  /** 📋 จำนวนชิ้นที่รอบนี้ต้องส่ง (แบ่งจำนวนได้) */
+  planQty?: (j: number) => number | undefined;
   /** 🚚 รูปนี้ถูกติ๊กว่าจะไปกับรอบแบ่งส่งรอบนี้ — ไม่ส่งมา = ใบนี้แบ่งส่งไม่ได้ (รูปเดียว/ปิดแล้ว) */
   shipSelected?: (j: number) => boolean;
+  /** 🚚 จำนวนชิ้นที่ติ๊กไว้ให้ไปรอบนี้ */
+  shipSelQty?: (j: number) => number | undefined;
   onToggleShip?: (j: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -7447,21 +7479,35 @@ function ProofCarousel({
             </div>
             {/* 🚚 แบ่งส่ง — รูปที่ออกไปแล้วบอกรอบ · รูปที่นับครบแล้วติ๊กเลือกไปรอบนี้ได้ (ลูกค้าขอส่งบางลายก่อน) */}
             {(() => {
-              const r = shipRound?.(j);
-              if (r) return <div className="bg-sky-600 py-2 text-center text-xs font-extrabold text-white">🚚 ส่งไปแล้ว — รอบที่ {r}</div>;
+              const st = shipState?.(j);
+              const unit = proofUnit(p);
+              // ออกไปครบแล้ว = ไม่ต้องแพ็คซ้ำ · ออกไปบางส่วน = ยังเหลือของรอบถัดไป
+              if (st && st.rounds.length > 0 && st.remaining <= 0)
+                return <div className="bg-sky-600 py-2 text-center text-xs font-extrabold text-white">🚚 ส่งไปแล้ว — รอบที่ {st.rounds.join(", ")}</div>;
+              const sentSome = st && st.shipped > 0;
               // 📋 แอดมินระบุไว้ว่ารูปนี้ส่งก่อน — ฝ่ายแพ็คเห็นป้ายเฉย ๆ ไม่ต้องเลือกเอง
               const pr = planRound?.(j);
               if (pr) {
                 const active = planActive?.(j);
+                const pq = planQty?.(j);
                 return (
                   <div className={`py-2 text-center text-xs font-extrabold ${active ? "bg-amber-400 text-amber-950" : "bg-amber-50 text-amber-700"}`}>
                     📋 แอดมินสั่งส่งก่อน — รอบที่ {pr}
+                    {active && pq && st?.labeled ? ` · รอบนี้ ${pq.toLocaleString("th-TH")}/${st.total.toLocaleString("th-TH")} ${unit}` : ""}
+                    {sentSome ? ` · ส่งไปแล้ว ${st!.shipped.toLocaleString("th-TH")} เหลือ ${st!.remaining.toLocaleString("th-TH")}` : ""}
                     {active ? (p.pack?.status === "ครบ" ? " · นับครบแล้ว พร้อมยิง" : " · นับรูปนี้แล้วกด ✓ ครบ") : ""}
                   </div>
                 );
               }
+              if (sentSome)
+                return (
+                  <div className="bg-sky-50 py-2 text-center text-xs font-extrabold text-sky-700">
+                    🚚 ส่งไปแล้ว {st!.shipped.toLocaleString("th-TH")}/{st!.total.toLocaleString("th-TH")} {unit} (รอบที่ {st!.rounds.join(", ")}) · เหลือรอบถัดไป {st!.remaining.toLocaleString("th-TH")}
+                  </div>
+                );
               if (!shipSelected || !onToggleShip || p.pack?.status !== "ครบ") return null;
               const on = shipSelected(j);
+              const sq = shipSelQty?.(j);
               return (
                 <button
                   type="button"
@@ -7477,7 +7523,7 @@ function ProofCarousel({
                   >
                     ✓
                   </span>
-                  {on ? "ส่งรอบนี้ (แบ่งส่ง)" : "แบ่งส่ง: เลือกรูปนี้ไปรอบนี้"}
+                  {on ? `ส่งรอบนี้${sq && st?.labeled ? ` ${sq.toLocaleString("th-TH")}/${st.total.toLocaleString("th-TH")} ${unit} (แก้จำนวนในหน้ายิงเลข)` : " (แบ่งส่ง)"}` : "แบ่งส่ง: เลือกรูปนี้ไปรอบนี้"}
                 </button>
               );
             })()}
@@ -7564,7 +7610,8 @@ function PackView({
   /** กดยืนยันแพ็คเสร็จ (มารับเอง) — ด่านตรวจเดียวกับยิงเลขพัสดุ */
   onPickupPacked: () => void;
   /** 🚚 แบ่งส่ง: รูปที่จะไปกับรอบนี้ (คีย์ "item:proof") — ตามแผนแอดมิน หรือที่แอดมินติ๊กเองในโหมดแพ็ค */
-  shipSel: Set<string>;
+  /** คีย์รูป → จำนวนชิ้นที่จะไปกับรอบแบ่งส่งรอบนี้ */
+  shipSel: Map<string, number>;
   /** แอดมินเลือกรูปเองได้ (ไม่มีแผน) · ไม่ส่งมา = ล็อกตามแผน/ไม่มีปุ่มเลือก (ฝ่ายแพ็ค) */
   onToggleShip?: (i: number, j: number) => void;
   /** เปิดโมดัลยิงเลขพัสดุรอบแบ่งส่ง */
@@ -7589,18 +7636,15 @@ function PackView({
 }) {
   const totalQty = order.items.reduce((s, it) => s + it.qty, 0);
   const todos = packTodos(order, gate);
-  // 🚚 แบ่งส่ง: รูปที่ส่งไปแล้ว (รอบ) · แบ่งได้เฉพาะใบที่มีรูปแบบงานมากกว่า 1 รูป · จำนวนชิ้นของรูปที่ติ๊กไว้
-  const shipRounds = shippedProofRounds(order);
+  // 🚚 แบ่งส่ง: สถานะรูปแต่ละรูป (ส่งไปแล้ว/เหลือกี่ชิ้น) · แบ่งได้เมื่อมีหลายรูป หรือรูปเดียวแต่หลายชิ้น · จำนวนชิ้นที่ติ๊กไว้
+  const shipStates = proofShipStates(order);
   const planRounds = plannedProofRounds(order);
   const planNext = nextPlannedRound(order);
   const partial = partialShipSummary(order);
   const proofCount = order.items.reduce((n, it) => n + proofsOf(it).length, 0);
-  const canSplit = !!onToggleShip && proofCount > 1 && !(order.tracking ?? "").trim();
-  const selQty = [...shipSel].reduce((n, k) => {
-    const [i, j] = k.split(":").map(Number);
-    const it = order.items[i];
-    return n + (it ? proofsOf(it)[j]?.qty ?? 0 : 0);
-  }, 0);
+  const splittable = proofCount > 1 || [...shipStates.values()].some((st) => st.total > 1);
+  const canSplit = !!onToggleShip && splittable && !(order.tracking ?? "").trim();
+  const selQty = [...shipSel.values()].reduce((n, q) => n + q, 0);
   // 📷 กล้องมือถือของพนักงานเอง — "tracking" = สแกนเลขพัสดุใบนี้ · "next" = สแกนใบถัดไป
   const [cam, setCam] = useState<null | "tracking" | "next">(null);
   const [camErr, setCamErr] = useState<string | null>(null);
@@ -7627,8 +7671,8 @@ function PackView({
                 const qty = r.proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
                 return (
                   <li key={`hp-${n}`} className={`text-xs font-bold leading-tight ${done ? "text-emerald-300" : "text-amber-50"}`}>
-                    {done ? "✅" : n === planNext?.index ? "▶" : "•"} รอบที่ {n + 1}: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")}
-                    {qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                    {done ? "✅" : n === planNext?.index ? "▶" : "•"} รอบที่ {n + 1}: {roundProofsText(order, r.proofs)}
+                    {r.proofs.length > 1 && qty ? ` · รวม ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
                     {r.dueDate ? ` · ส่งภายใน ${r.dueDate}` : ""}
                     {done ? ` · ${done.tracking}` : ""}
                     {r.note ? <span className="block font-normal text-amber-100/80">📝 {r.note}</span> : null}
@@ -7774,10 +7818,12 @@ function PackView({
                   proofs={proofs}
                   onCheck={onCheck}
                   onZoom={onZoom}
-                  shipRound={(j) => shipRounds.get(proofKey(i, j))}
+                  shipState={(j) => shipStates.get(proofKey(i, j))}
                   planRound={(j) => planRounds.get(proofKey(i, j))}
                   planActive={(j) => shipSel.has(proofKey(i, j))}
+                  planQty={(j) => shipSel.get(proofKey(i, j))}
                   shipSelected={canSplit ? (j) => shipSel.has(proofKey(i, j)) : undefined}
+                  shipSelQty={(j) => shipSel.get(proofKey(i, j))}
                   onToggleShip={canSplit ? (j) => onToggleShip!(i, j) : undefined}
                 />
               ) : (
@@ -7956,7 +8002,7 @@ function PackView({
                     {shipmentQty(sh) ? ` · ${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น` : ""}
                   </p>
                   <p className="mt-0.5 text-[11px] text-slate-500">
-                    {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}`).join(", ")} · {sh.by} · {shortTime(sh.at)}
+                    {roundProofsText(order, sh.proofs)} · {sh.by} · {shortTime(sh.at)}
                     {sh.note ? ` · 📝 ${sh.note}` : ""}
                   </p>
                 </li>
@@ -8263,17 +8309,37 @@ async function downloadImage(url: string, filename: string) {
  * 📋 โมดัลแอดมินระบุแผนแบ่งส่ง — เลือกรูปแบบงานที่ต้องส่งก่อน (รอบถัดไปของแผน) + วันส่งภายใน + หมายเหตุ
  * รูปที่ส่งแล้ว/อยู่ในแผนแล้วเลือกซ้ำไม่ได้ · เลือกรูปที่เหลือครบทุกรูป = ไม่ใช่แผนแบ่งส่ง (นั่นคือรอบสุดท้ายอยู่แล้ว)
  */
-function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: () => void; onSave: (keys: string[], note: string, dueDate: string) => void }) {
-  const [sel, setSel] = useState<Set<string>>(() => new Set());
+/** 📋 ข้อความสรุปของในแผน/รอบแบ่งส่ง 1 รอบ — บอกจำนวนที่แบ่งไปด้วย (เช่น "รูปที่ 1 · 1/10 ชิ้น") */
+function roundProofsText(order: Order, proofs: Shipment["proofs"]): string {
+  return proofs
+    .map((p) => {
+      const name = p.itemName ?? order.items[p.item]?.name ?? "";
+      if (!p.qty) return `${name} รูปที่ ${p.proof + 1}`;
+      const of = p.ofQty && p.ofQty > p.qty ? `/${p.ofQty.toLocaleString("th-TH")}` : "";
+      return `${name} รูปที่ ${p.proof + 1} · ${p.qty.toLocaleString("th-TH")}${of} ${p.unit || "ชิ้น"}`;
+    })
+    .join(", ");
+}
+
+function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: () => void; onSave: (sel: Map<string, number>, note: string, dueDate: string) => void }) {
+  // คีย์รูป → จำนวนชิ้นที่จะส่งรอบนี้ (ติ๊กครั้งแรก = ที่เหลือทั้งหมด แล้วลดจำนวนได้ เช่น "ลายนี้ส่งก่อน 1 ชิ้น")
+  const [sel, setSel] = useState<Map<string, number>>(() => new Map());
   const [note, setNote] = useState("");
   const [due, setDue] = useState("");
-  const shipped = shippedProofRounds(order);
+  const states = proofShipStates(order);
   const planned = plannedProofRounds(order);
   const n = (order.shipPlan?.length ?? 0) + 1;
-  const rows: { key: string; item: string; index: number; qty?: number; unit: string; url: string; taken?: string }[] = [];
+  // จำนวนที่รอบก่อน ๆ ในแผน (ที่ยังไม่ได้ส่ง) จองไว้แล้ว — รอบนี้เลือกได้แค่ส่วนที่เหลือจริง
+  const booked = new Map<string, number>();
+  (order.shipPlan ?? []).forEach((r) => roundSel(order, r.proofs).forEach((q, k) => booked.set(k, (booked.get(k) ?? 0) + q)));
+  const rows: { key: string; item: string; index: number; qty?: number; unit: string; url: string; left: number; labeled: boolean; taken?: string }[] = [];
   order.items.forEach((it, i) =>
     proofsOf(it).forEach((p, j) => {
       const k = proofKey(i, j);
+      const st = states.get(k);
+      const shipped = st?.shipped ?? 0;
+      const total = st?.total ?? 1;
+      const left = Math.max(0, total - Math.max(shipped, booked.get(k) ?? 0));
       rows.push({
         key: k,
         item: it.name,
@@ -8281,58 +8347,98 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
         qty: p.qty,
         unit: proofUnit(p),
         url: p.url,
-        taken: shipped.has(k) ? `ส่งแล้ว รอบ ${shipped.get(k)}` : planned.has(k) ? `ในแผน รอบ ${planned.get(k)}` : undefined,
+        left,
+        labeled: !!st?.labeled,
+        taken: left > 0 ? undefined : shipped >= total ? `ส่งแล้ว รอบ ${st?.rounds.at(-1)}` : planned.has(k) ? `ในแผน รอบ ${planned.get(k)}` : undefined,
       });
     })
   );
-  const free = rows.filter((r) => !r.taken);
-  const all = free.length > 0 && sel.size >= free.length;
-  const qty = rows.filter((r) => sel.has(r.key)).reduce((s, r) => s + (r.qty ?? 0), 0);
-  const toggle = (k: string) =>
+  const totalLeft = rows.reduce((s2, r) => s2 + r.left, 0);
+  const qty = [...sel.entries()].reduce((s2, [, q]) => s2 + q, 0);
+  const all = totalLeft > 0 && qty >= totalLeft;
+  const toggle = (r: (typeof rows)[number]) =>
     setSel((cur) => {
-      const next = new Set(cur);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
+      const next = new Map(cur);
+      if (next.has(r.key)) next.delete(r.key);
+      else if (r.left > 0) next.set(r.key, r.left);
+      return next;
+    });
+  const setQty = (r: (typeof rows)[number], v: number) =>
+    setSel((cur) => {
+      const next = new Map(cur);
+      const q = Math.max(0, Math.min(Math.floor(v) || 0, r.left));
+      if (q > 0) next.set(r.key, q);
+      else next.delete(r.key);
+      return next;
+    });
+  /** −/＋ ต้องอ่านค่าล่าสุดจาก state เอง ไม่งั้นกดรัว ๆ ในจังหวะเดียวกันจะนับแค่ครั้งเดียว */
+  const bumpQty = (r: (typeof rows)[number], d: number) =>
+    setSel((cur) => {
+      const next = new Map(cur);
+      const q = Math.max(0, Math.min((next.get(r.key) ?? 0) + d, r.left));
+      if (q > 0) next.set(r.key, q);
+      else next.delete(r.key);
       return next;
     });
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onCancel}>
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="bg-amber-50 px-5 pb-3 pt-4 ring-1 ring-inset ring-amber-100">
-          <p className="text-lg font-extrabold text-slate-900">📋 ระบุรูปที่ต้องส่งก่อน — รอบที่ {n}</p>
-          <p className="mt-0.5 text-xs text-slate-500">ฝ่ายแพ็คจะเห็นป้าย “แอดมินสั่งส่งก่อน” ใต้รูปพวกนี้ และยิงเลขพัสดุรอบนี้ได้โดยไม่ต้องรอทั้งใบ · รูปที่เหลือคือรอบสุดท้าย</p>
+          <p className="text-lg font-extrabold text-slate-900">📋 ระบุของที่ต้องส่งก่อน — รอบที่ {n}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            ติ๊กรูปแล้วใส่จำนวนที่จะส่งก่อนได้ (เช่น ลายนี้ส่งก่อน 1 ชิ้น ที่เหลือไปรอบหน้า) · ฝ่ายแพ็คจะเห็นป้าย “แอดมินสั่งส่งก่อน” พร้อมจำนวน และยิงเลขพัสดุรอบนี้ได้โดยไม่ต้องรอทั้งใบ
+          </p>
         </div>
-        {rows.length < 2 ? (
-          <p className="px-5 py-4 text-sm text-slate-500">ใบนี้มีรูปแบบงานไม่ถึง 2 รูป แบ่งส่งไม่ได้ — รอกราฟฟิกอัปแบบให้ครบก่อน</p>
+        {rows.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-slate-500">ใบนี้ยังไม่มีรูปแบบงาน แบ่งส่งไม่ได้ — รอกราฟฟิกอัปแบบก่อน</p>
         ) : (
-          <ul className="grid grid-cols-2 gap-2 px-5 pt-3 sm:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-2 px-5 pt-3 sm:grid-cols-2">
             {rows.map((r) => {
               const on = sel.has(r.key);
+              const q = sel.get(r.key) ?? 0;
               return (
-                <li key={r.key}>
-                  <button
-                    type="button"
-                    disabled={!!r.taken}
-                    onClick={() => toggle(r.key)}
-                    className={`flex w-full items-center gap-2 rounded-xl p-1.5 text-left ring-2 transition disabled:opacity-40 ${on ? "bg-amber-50 ring-amber-400" : "bg-slate-50 ring-slate-200 hover:ring-amber-300"}`}
-                  >
+                <li key={r.key} className={`rounded-xl p-1.5 ring-2 transition ${on ? "bg-amber-50 ring-amber-400" : r.taken ? "bg-slate-50 opacity-50 ring-slate-200" : "bg-slate-50 ring-slate-200"}`}>
+                  <button type="button" disabled={!!r.taken || r.left <= 0} onClick={() => toggle(r)} className="flex w-full items-center gap-2 text-left disabled:cursor-not-allowed">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={r.url} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
                     <span className="min-w-0 text-[11px] leading-tight">
                       <span className="block truncate font-bold text-slate-800">{r.item}</span>
                       <span className="text-slate-500">
                         รูปที่ {r.index}
-                        {r.qty ? ` · ${r.qty} ${r.unit}` : ""}
+                        {r.qty ? ` · ทั้งหมด ${r.qty} ${r.unit}` : ""}
+                        {r.qty && r.left !== r.qty ? ` · เหลือ ${r.left}` : ""}
                       </span>
-                      {r.taken ? <span className="block font-bold text-sky-700">{r.taken}</span> : on ? <span className="block font-bold text-amber-700">✓ ส่งก่อน</span> : null}
+                      {r.taken ? <span className="block font-bold text-sky-700">{r.taken}</span> : on ? <span className="block font-bold text-amber-700">✓ ส่งก่อน {r.labeled ? `${q} ${r.unit}` : "ทั้งรูป"}</span> : null}
                     </span>
                   </button>
+                  {/* จำนวนที่จะส่งก่อน — มีเฉพาะรูปที่มีป้ายจำนวน (รูปไม่มีจำนวน = ส่งทั้งรูป) */}
+                  {on && r.labeled && (
+                    <div className="mt-1.5 flex items-center gap-1.5 rounded-lg bg-white px-2 py-1 ring-1 ring-amber-200">
+                      <span className="text-[11px] font-bold text-amber-800">ส่งก่อน</span>
+                      <button type="button" onClick={() => bumpQty(r, -1)} className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-100 text-sm font-extrabold text-amber-900">
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={r.left}
+                        value={q}
+                        onChange={(e) => setQty(r, Number(e.target.value))}
+                        className="w-14 rounded-lg border border-amber-200 px-2 py-1 text-center text-sm font-extrabold tabular-nums text-slate-800 focus:border-amber-400 focus:outline-none"
+                      />
+                      <button type="button" onClick={() => bumpQty(r, 1)} className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-100 text-sm font-extrabold text-amber-900">
+                        ＋
+                      </button>
+                      <span className="text-[11px] text-slate-500">/ {r.left} {r.unit}</span>
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
-        {all && <p className="px-5 pt-3 text-xs font-bold text-rose-600">เลือกครบทุกรูปที่เหลือ = ส่งทีเดียวทั้งใบ ไม่ต้องตั้งแผน — เว้นรูปที่จะส่งรอบสุดท้ายไว้</p>}
+        {all && <p className="px-5 pt-3 text-xs font-bold text-rose-600">เลือกครบทุกชิ้นที่เหลือ = ส่งทีเดียวทั้งใบ ไม่ต้องตั้งแผน — เว้นของที่จะส่งรอบสุดท้ายไว้</p>}
         <div className="space-y-2 px-5 pt-3">
           <label className="block text-xs font-bold text-slate-600">
             ส่งภายในวันที่ (ไม่บังคับ)
@@ -8341,7 +8447,7 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="หมายเหตุถึงฝ่ายแพ็ค เช่น ลูกค้าขอ 22 ใบก่อนงานอีเวนต์ 12 ก.ย."
+            placeholder="หมายเหตุถึงฝ่ายแพ็ค เช่น ลูกค้าขอ 1 ชิ้นก่อนไปเช็คงาน"
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none"
           />
         </div>
@@ -8349,7 +8455,7 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
           <button
             type="button"
             disabled={sel.size === 0 || all}
-            onClick={() => onSave([...sel], note, due)}
+            onClick={() => onSave(sel, note, due)}
             className="w-full rounded-xl bg-amber-400 py-3 text-sm font-extrabold text-amber-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             บันทึกแผน รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
@@ -8370,34 +8476,60 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
  */
 function PartialShipModal({
   order,
-  keys,
+  sel,
   mayEdit,
+  editableQty = false,
   defaultNote = "",
   onCancel,
   onConfirm,
 }: {
   order: Order;
-  keys: string[];
+  /** คีย์รูป → จำนวนชิ้นที่จะไปกับรอบนี้ (ตามแผนแอดมิน หรือที่ติ๊กเอง) */
+  sel: Map<string, number>;
   mayEdit: boolean;
+  /** แก้จำนวนในโมดัลได้ไหม — ตามแผนแอดมิน = ล็อกตามแผน · ติ๊กเอง (แอดมิน) = แก้ได้ */
+  editableQty?: boolean;
   /** หมายเหตุจากแผนแอดมิน — เติมให้ก่อน แก้ได้ */
   defaultNote?: string;
   onCancel: () => void;
-  onConfirm: (tracking: string, note: string) => void;
+  onConfirm: (tracking: string, note: string, sel: Map<string, number>) => void;
 }) {
-  const gate = partialGate(order, keys);
+  const [qtyMap, setQtyMap] = useState<Map<string, number>>(() => new Map(sel));
+  const gate = partialGate(order, qtyMap);
   const [tracking, setTracking] = useState("");
   const [note, setNote] = useState(defaultNote);
   const [cam, setCam] = useState(false);
+  const states = proofShipStates(order);
   const round = (order.shipments?.length ?? 0) + 1;
-  const rows = keys
-    .map((k) => {
+  const rows = [...qtyMap.entries()]
+    .map(([k, q]) => {
       const [i, j] = k.split(":").map(Number);
       const it = order.items[i];
       const p = it ? proofsOf(it)[j] : undefined;
-      return it && p ? { key: k, item: it.name, index: j + 1, qty: p.qty, unit: proofUnit(p), url: p.url } : null;
+      const st = states.get(k);
+      return it && p
+        ? { key: k, item: it.name, index: j + 1, qty: q, total: p.qty, left: st?.remaining ?? 0, labeled: !!st?.labeled, unit: proofUnit(p), url: p.url }
+        : null;
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
-  const qty = rows.reduce((n, r) => n + (r.qty ?? 0), 0);
+  const qty = rows.reduce((n, r) => n + (r.labeled ? r.qty : r.total ?? 0), 0);
+  const setQty = (k: string, left: number, v: number) =>
+    setQtyMap((cur) => {
+      const next = new Map(cur);
+      const q = Math.max(0, Math.min(Math.floor(v) || 0, left));
+      if (q > 0) next.set(k, q);
+      else next.delete(k);
+      return next;
+    });
+  /** −/＋ อ่านค่าล่าสุดจาก state เอง (กดรัว ๆ ไม่ตกหล่น) */
+  const bumpQty = (k: string, left: number, d: number) =>
+    setQtyMap((cur) => {
+      const next = new Map(cur);
+      const q = Math.max(0, Math.min((next.get(k) ?? 0) + d, left));
+      if (q > 0) next.set(k, q);
+      else next.delete(k);
+      return next;
+    });
   const t = tracking.trim();
   const dupe = !!t && ((order.shipments ?? []).some((s) => s.tracking.trim() === t) || (order.tracking ?? "").trim() === t);
   const blockedAll = gate.isLastRound || rows.length === 0;
@@ -8418,19 +8550,43 @@ function PartialShipModal({
           </p>
         </div>
 
-        {/* รูปที่จะไปรอบนี้ */}
-        <ul className="grid grid-cols-2 gap-2 px-5 pt-3">
+        {/* ของที่จะไปรอบนี้ — แบ่งจำนวนได้ (ลายนี้ส่งก่อน 1 ชิ้น ที่เหลือรอบหน้า) */}
+        <ul className="grid grid-cols-1 gap-2 px-5 pt-3 sm:grid-cols-2">
           {rows.map((r) => (
-            <li key={r.key} className="flex items-center gap-2 rounded-xl bg-slate-50 p-1.5 ring-1 ring-slate-200">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={r.url} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
-              <span className="min-w-0 text-[11px] leading-tight">
-                <span className="block truncate font-bold text-slate-800">{r.item}</span>
-                <span className="text-slate-500">
-                  รูปที่ {r.index}
-                  {r.qty ? ` · ${r.qty} ${r.unit}` : ""}
+            <li key={r.key} className="rounded-xl bg-slate-50 p-1.5 ring-1 ring-slate-200">
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={r.url} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
+                <span className="min-w-0 text-[11px] leading-tight">
+                  <span className="block truncate font-bold text-slate-800">{r.item}</span>
+                  <span className="text-slate-500">
+                    รูปที่ {r.index}
+                    {r.labeled ? ` · รอบนี้ ${r.qty.toLocaleString("th-TH")}/${(r.total ?? 0).toLocaleString("th-TH")} ${r.unit}` : ""}
+                  </span>
+                  {r.labeled && r.qty < r.left ? <span className="block font-bold text-amber-700">เหลือไว้รอบหน้าอีก {(r.left - r.qty).toLocaleString("th-TH")} {r.unit}</span> : null}
                 </span>
-              </span>
+              </div>
+              {editableQty && r.labeled && (
+                <div className="mt-1.5 flex items-center gap-1.5 rounded-lg bg-white px-2 py-1 ring-1 ring-amber-200">
+                  <span className="text-[11px] font-bold text-amber-800">ส่งรอบนี้</span>
+                  <button type="button" onClick={() => bumpQty(r.key, r.left, -1)} className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-100 text-sm font-extrabold text-amber-900">
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={r.left}
+                    value={r.qty}
+                    onChange={(e) => setQty(r.key, r.left, Number(e.target.value))}
+                    className="w-14 rounded-lg border border-amber-200 px-2 py-1 text-center text-sm font-extrabold tabular-nums text-slate-800 focus:border-amber-400 focus:outline-none"
+                  />
+                  <button type="button" onClick={() => bumpQty(r.key, r.left, 1)} className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-100 text-sm font-extrabold text-amber-900">
+                    ＋
+                  </button>
+                  <span className="text-[11px] text-slate-500">/ {r.left.toLocaleString("th-TH")} {r.unit}</span>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -8491,7 +8647,7 @@ function PartialShipModal({
             <button
               type="button"
               disabled={!canGo}
-              onClick={() => onConfirm(tracking, note)}
+              onClick={() => onConfirm(tracking, note, qtyMap)}
               className={`w-full rounded-xl py-3 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 needSkip ? "border-2 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "bg-green-600 text-white hover:bg-green-700"
               }`}

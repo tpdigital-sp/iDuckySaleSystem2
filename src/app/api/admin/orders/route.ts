@@ -25,6 +25,7 @@ import {
   lockEarlyPay,
   packGate,
   partialGate,
+  roundSel,
   proofsOf,
   shipmentQty,
   withLog,
@@ -482,7 +483,7 @@ export async function PATCH(req: Request) {
     }
     // 🚚 แอดมินยิงรอบแบ่งส่งทั้งที่รูปที่เลือกยังตรวจไม่ครบ = อนุญาต แต่ลง log เหมือนข้ามด่านปกติ
     for (const sh of newShipmentsOf(existing, order)) {
-      const pg = partialGate(existing, sh.proofs.map((p) => `${p.item}:${p.proof}`));
+      const pg = partialGate(existing, roundSel(existing, sh.proofs));
       if (!pg.ready)
         toSave = withLog(toSave, actor.name || actor.username, "⚠️ ข้ามด่านตรวจ — ส่งบางส่วน", `${sh.tracking} · ${pg.reasons.join(" · ")}`);
     }
@@ -499,7 +500,7 @@ export async function PATCH(req: Request) {
       }
       // 🚚 รอบแบ่งส่ง: ตรวจเฉพาะรูปที่เลือกไปรอบนี้ — ฝ่ายแพ็คข้ามไม่ได้เช่นกัน
       for (const sh of newShipmentsOf(existing, order)) {
-        const pg = partialGate(mergedNoShip, sh.proofs.map((p) => `${p.item}:${p.proof}`));
+        const pg = partialGate(mergedNoShip, roundSel(mergedNoShip, sh.proofs));
         if (!pg.ready) return NextResponse.json({ error: `ยังส่งบางส่วนไม่ได้ — ${pg.reasons.join(" · ")}` }, { status: 409 });
       }
       toSave = mergePackFields(existing, order, canPack(actor, "pack.ship", rolePerms, scanned));
@@ -776,7 +777,12 @@ export async function PATCH(req: Request) {
       const round = base + n + 1;
       const qty = shipmentQty(sh);
       const lines = sh.proofs
-        .map((p) => `• ${p.itemName ?? toSave.items[p.item]?.name ?? "รายการ"} รูปที่ ${p.proof + 1}${p.qty ? ` × ${p.qty.toLocaleString("th-TH")} ${p.unit || "ชิ้น"}` : ""}`)
+        .map(
+          (p) =>
+            `• ${p.itemName ?? toSave.items[p.item]?.name ?? "รายการ"} รูปที่ ${p.proof + 1}${
+              p.qty ? ` × ${p.qty.toLocaleString("th-TH")}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty.toLocaleString("th-TH")}` : ""} ${p.unit || "ชิ้น"}` : ""
+            }`
+        )
         .join("\n");
       void notifyCustomerLogged(
         sb,
