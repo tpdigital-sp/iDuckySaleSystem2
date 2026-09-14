@@ -15,7 +15,7 @@
  * ⚠️ กลุ่มนี้ของสินค้าเกือบทุกตัว **ลิงก์คลังตัวเลือกกลาง `preset-4`** และ resolveOptions
  *    เอา `preset.choices` ทับ choices ของสินค้าเสมอ → **รูปต้องเขียนลงคลัง** ไม่งั้นหน้าร้านไม่เห็น
  *    (เขียน snapshot ในสินค้าด้วย เผื่อคลังถูกลบ) · display/note/noteImageSrc อยู่ที่ตัวสินค้า
- * ⚠️ เขียนคลังต้องคง `stockItemId` ของทุกสี (ผูกสต๊อกไหมไว้)
+ * ⚠️ เขียนคลังต้องคง `stockItemId` เดิมของทุกสี (ผูกสต๊อกไหม) — สีไหนไม่เคยผูกก็ปล่อยว่างไว้เหมือนเดิม
  * ⚠️ ไม่แตะราคา/ชื่อกลุ่ม/ชื่อตัวเลือก — ชื่อกลุ่มเป็นคีย์ selections และเป็นเป้า showWhen (collar-animal)
  */
 import { readFileSync } from "node:fs";
@@ -85,6 +85,8 @@ if (prErr) die(`อ่านคลังตัวเลือกไม่ได�
 if (!presetRow) die(`ไม่เจอแถวคลังตัวเลือก ${PRESET_ROW}`);
 
 const presetData = structuredClone(presetRow.data);
+/** stockItemId เดิมก่อนเขียน — เทียบตอนอ่านกลับ ห้ามหาย/ห้ามเปลี่ยน (สีที่ไม่เคยผูกสต๊อกก็ต้องยังไม่ผูก) */
+const stockBefore = new Map((presetRow.data.choices || []).map((c) => [c.name, c.stockItemId]));
 if ((presetData.choices || []).length !== CODES.length)
   die(`คลัง ${PRESET_ROW} มี ${presetData.choices?.length} ตัวเลือก (คาด ${CODES.length}) — โครงคลังเปลี่ยน`);
 let presetNeedsWrite = false;
@@ -106,9 +108,9 @@ if (WRITE && presetNeedsWrite) {
   if (!back?.length) die("เขียนคลังโดน 0 แถว");
   for (const c of back[0].data.choices) {
     if (c.imageSrc !== imgOf(codeOf(c.name))) die(`คลัง: imageSrc ของ "${c.name}" ไม่ลง`);
-    if (!c.stockItemId) die(`คลัง: stockItemId ของ "${c.name}" หาย`);
+    if (c.stockItemId !== stockBefore.get(c.name)) die(`คลัง: stockItemId ของ "${c.name}" เพี้ยน`);
   }
-  console.log("   ✓ คลังอ่านกลับตรง (stockItemId ครบ)");
+  console.log("   ✓ คลังอ่านกลับตรง (stockItemId คงเดิม)");
 }
 
 /* ── 3) สินค้าเป้าหมาย ── */
