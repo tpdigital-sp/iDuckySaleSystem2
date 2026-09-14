@@ -20,6 +20,7 @@ import {
   activeMatrix,
   activeRate,
   artQtyOf,
+  choiceExtraOf,
   formatPrice,
   isInputOption,
   priceMatrixKey,
@@ -92,8 +93,12 @@ export default function QuotePanel({
   const typed = Object.entries(sel).filter(([k]) => inputLabels.has(k));
 
   // ตัวเลือกเสริมที่มีราคาบวกต่อหน่วย — ไว้บวกเองตอนตีราคา (เช่น สกรีนฐาน +15 · เพิ่มขนาดเซนละ +10)
+  // คิดผ่าน choiceExtraOf ไม่ใช่ c.extra ตรง ๆ — ค่าเสริมบางตัวขึ้นกับตัวเลือกอื่นของรายการนี้
+  // (สกรีน 2 ด้านของ Carabiner Acrylic คิดตามขนาด: 5 ซม. ฿10 · 8 ซม. ฿25) จะได้โชว์เลขที่คิดจริง
   const addOns = (product?.options ?? []).flatMap((o) =>
-    o.choices.filter((c) => (c.extra ?? 0) > 0).map((c) => ({ group: o.label, name: c.name, extra: c.extra! }))
+    o.choices
+      .map((c) => ({ group: o.label, name: c.name, extra: choiceExtraOf(o, { ...sel, [o.label]: c.name }, c.name) }))
+      .filter((a) => a.extra > 0)
   );
 
   return (
