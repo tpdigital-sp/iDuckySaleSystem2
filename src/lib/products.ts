@@ -3532,6 +3532,34 @@ export function needsStockCheck(p: Product, qty: number): boolean {
   return qty >= limit;
 }
 
+/** บรรทัดในตะกร้า/ใบสั่งซื้อที่สั่งถึงเกณฑ์ต้องเช็คสต๊อก (ชื่อ · จำนวน · หน่วย) */
+export interface StockCheckRow {
+  name: string;
+  qty: number;
+  unit: string;
+}
+
+/**
+ * 📦 รายการที่ต้องเช็คสต๊อกกับร้านก่อน — คิดสดจาก "จำนวนล่าสุด" ของแต่ละบรรทัด
+ *
+ * ⚠️ ห้ามอ่านจากธง selections["รอเช็คสต๊อก"] อย่างเดียว — ธงนั้นแช่ไว้ตอนกดเพิ่มลงตะกร้า
+ *    แต่ลูกค้าเพิ่ม/ลดจำนวนในตะกร้าได้ทีหลัง (changeQty ไม่ได้แก้ธง) จะได้คำตอบผิดทั้งสองทาง:
+ *    เพิ่มจาก 50 เป็น 300 = ไม่ติดธง (ร้านไม่รู้ว่าต้องเช็คของ) · ลดจาก 100 เหลือ 10 = ติดธงค้าง
+ *    สินค้าที่โหลดไม่เจอ (ถูกลบจากร้าน) คืนธงเดิมไป ให้ผู้เรียกตัดสินใจต่อ
+ */
+export function stockCheckRows(
+  items: { productId: string; qty: number; selections: Record<string, string> }[],
+  productOf: (id: string) => Product | undefined,
+): StockCheckRow[] {
+  const rows: StockCheckRow[] = [];
+  for (const it of items) {
+    const p = productOf(it.productId);
+    if (!p || !needsStockCheck(p, it.qty)) continue;
+    rows.push({ name: p.name, qty: it.qty, unit: activeMatrix(p, it.selections)?.unit ?? "ชิ้น" });
+  }
+  return rows;
+}
+
 /**
  * ข้อมูลหมวดจากชุดในโค้ด — ใช้กับป้าย/สีพื้นเวลาไม่ได้โหลดหมวดจากฐาน
  * แอดมินเพิ่มหมวดใหม่เองได้ (id นอกชุดนี้) → คืนค่ากลาง ๆ แทน undefined กันหน้าพัง

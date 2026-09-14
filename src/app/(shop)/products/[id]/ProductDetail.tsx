@@ -128,6 +128,7 @@ import {
   type ProductTab,
 } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
+import StockCheckNote from "@/components/StockCheckNote";
 import { useCustomer } from "@/lib/customer-context";
 import { foldSizeExtra, specEntries } from "@/components/SpecLines";
 import {
@@ -839,6 +840,13 @@ export default function ProductDetail({
   // แถบซื้อลอยล่างจอ (มือถือ) — โผล่เมื่อกล่องสั่งซื้อหลักเลื่อนพ้นจอ
   const orderBoxRef = useRef<HTMLDivElement>(null);
   const [showBuyBar, setShowBuyBar] = useState(false);
+  /**
+   * 📦 กล่องเตือน "สั่งจำนวนมาก — เช็คสต๊อกก่อน" (มีเฉพาะตอนถึงเกณฑ์)
+   * เป็นจุดจอดของลิงก์ราคา: ปุ่ม "สั่งตามสเปคนี้" จะไม่หย่อนของลงตะกร้าเงียบ ๆ เมื่อจำนวนถึงเกณฑ์นี้
+   */
+  const bulkBoxRef = useRef<HTMLDivElement>(null);
+  /** มาจากใบราคาแล้วถูกจอดไว้ที่กล่องเตือน (ยังไม่ได้ใส่ตะกร้าให้) — บอกลูกค้าว่าต้องกดเอง */
+  const [bulkStop, setBulkStop] = useState(false);
 
   // โหลดเวอร์ชันล่าสุด (Supabase หรือ localStorage) — ถ้ามีให้ใช้แทนข้อมูลตั้งต้น
   useEffect(() => {
@@ -1281,10 +1289,16 @@ export default function ProductDetail({
   // ใบรวมที่ค้างไว้จากหน้าสินค้าก่อนหน้า (อ่านใน effect — localStorage ไม่มีตอนเรนเดอร์ฝั่งเซิร์ฟเวอร์)
   useEffect(() => setBundleCodes(readPriceLinkBasket()), []);
 
-  /** มาจากลิงก์ราคา = พาไปที่กล่องสั่งซื้อเลย (ลูกค้าเปิดมาเพื่อดูราคา ไม่ใช่มาอ่านหน้าสินค้าใหม่) */
+  /**
+   * มาจากลิงก์ราคา = พาไปที่กล่องสั่งซื้อเลย (ลูกค้าเปิดมาเพื่อดูราคา ไม่ใช่มาอ่านหน้าสินค้าใหม่)
+   * ถึงเกณฑ์สั่งจำนวนมาก = จอดที่กล่องเตือนเช็คสต๊อกแทน (อยู่เหนือกล่องสั่งซื้อ เห็นปุ่มสั่งพร้อมกัน)
+   */
   useEffect(() => {
     if (!fromPriceLink) return;
-    const t = setTimeout(() => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
+    const t = setTimeout(
+      () => (bulkBoxRef.current ?? orderBoxRef.current)?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      350,
+    );
     return () => clearTimeout(t);
   }, [fromPriceLink]);
 
@@ -1313,6 +1327,18 @@ export default function ProductDetail({
   useEffect(() => {
     if (!autoAdding) return;
     const t = setTimeout(() => {
+      /*
+       * 📦 จำนวนถึงเกณฑ์ต้องเช็คสต๊อก → ห้ามหย่อนลงตะกร้าเงียบ ๆ
+       * ม่านบังหน้าอยู่ราวครึ่งวินาทีแล้วเด้งไปตะกร้าเลย ลูกค้าไม่มีทางเห็นกล่องเตือนที่หน้านี้
+       * (พนักงานแจ้ง 14 ก.ย. 69: สั่งจากใบราคา /p/CODE เกินเกณฑ์แล้วไม่มีอะไรเตือนเลย)
+       * → เปิดม่านออก จอดที่กล่องเตือน ให้ลูกค้าอ่านแล้วกด "เพิ่มลงตะกร้า" เองอีกครั้ง
+       */
+      if (bulkAskRef.current) {
+        setAutoAdding(false);
+        setBulkStop(true);
+        bulkBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
       const ok = currentReadyRef.current && handleAddRef.current(true);
       if (ok) goAfterAdd();
       else setAutoAdding(false);
@@ -2848,6 +2874,9 @@ export default function ProductDetail({
 
   // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
   const bulkAsk = needsStockCheck(product, qty);
+  /** ตัวล่าสุดของ bulkAsk — effect "สั่งตามสเปคนี้" อ่านผ่านตัวนี้ จะได้ไม่ติด closure ก่อนติ๊กสเปคจากลิงก์ */
+  const bulkAskRef = useRef(bulkAsk);
+  bulkAskRef.current = bulkAsk;
 
   // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก ฯลฯ) — ตั้งสวิตช์ + เงื่อนไขไว้ในหลังบ้าน
   // (effective มี "เรทราคา" อยู่แล้ว เงื่อนไขจึงอ้างเรทหรือกลุ่มตัวเลือกไหนก็ได้)
@@ -3316,6 +3345,8 @@ export default function ProductDetail({
     clearLineExtras();
     // 🧼 สั่งเสร็จแล้ว — สเปคที่เพิ่งสั่งต้องไม่ค้างอยู่ในฟอร์ม กลับเป็นค่าเริ่มต้นทั้งหมด
     resetSpecForm();
+    // ใส่ตะกร้าแล้ว — ป้าย "ยังไม่ได้ใส่ตะกร้าให้" ของทางเข้าใบราคาต้องหายไป
+    setBulkStop(false);
     setAdded(true);
     if (!auto && hasPriceLinkBundle()) goAfterAdd();
     // โชว์ "✓ เพิ่มลงตะกร้าแล้ว!" ~5 วิ — พอให้ลูกค้าเห็นชัดว่าสั่งสำเร็จ
@@ -6394,22 +6425,21 @@ export default function ProductDetail({
 
           {/* ═══ สั่งจำนวนมาก → ชวนเช็คสต๊อกก่อน (ไม่บล็อกการสั่ง) ═══ */}
           {bulkAsk && (
-            <div className="mt-5 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
-              <p className="text-sm font-extrabold text-amber-900">
-                📦 สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-amber-800">
-                จำนวนนี้อาจต้องสั่งวัสดุเพิ่มหรือจองคิวผลิต — ทักไลน์เช็คของกับรอบผลิตก่อนได้เลย
-                หรือ<strong>กดสั่งไว้ก่อนก็ได้</strong> ทางร้านจะรีบยืนยันจำนวน/วันส่งให้ทางแชท (ยังไม่ต้องโอนจนกว่าจะยืนยัน)
-              </p>
-              <a
-                href={LINE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
-              >
-                💬 ทักไลน์เช็คสต๊อก
-              </a>
+            <div ref={bulkBoxRef}>
+              <StockCheckNote
+                className="mt-5"
+                highlight={bulkStop}
+                title={`📦 สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ`}
+                /* 🧾 มาจากใบราคาแล้วระบบจอดไว้ตรงนี้ — ต้องบอกให้ชัดว่ายังไม่ได้ใส่ตะกร้าให้ */
+                note={
+                  bulkStop ? (
+                    <p className="mb-2 rounded-xl bg-white px-3 py-2 text-xs font-bold leading-relaxed text-yellow-900 ring-1 ring-yellow-400">
+                      ⏸️ ยังไม่ได้ใส่ตะกร้าให้ เพราะจำนวนนี้ต้องเช็คสต๊อกก่อน — อ่านด้านล่างแล้วกด
+                      &quot;เพิ่มลงตะกร้า&quot; เองอีกครั้งได้เลยครับ
+                    </p>
+                  ) : null
+                }
+              />
             </div>
           )}
 

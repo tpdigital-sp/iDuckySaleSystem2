@@ -32,6 +32,7 @@ import {
   parseArtQty,
   unitYieldOf,
   splitArtUrls,
+  stockCheckRows,
 } from "@/lib/products";
 import { orderIdIn, parseReuseArt } from "@/lib/admin-data";
 import { clearPriceLinkBundle } from "@/lib/price-link";
@@ -69,6 +70,7 @@ import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import BoxFeeTag from "@/components/BoxFeeTag";
 import ProductVisual from "@/components/ProductVisual";
 import { SPEC_HIDE, SpecLines } from "@/components/SpecLines";
+import StockCheckNote from "@/components/StockCheckNote";
 import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
@@ -173,6 +175,9 @@ export default function CartPage() {
   const selectableItems = items.filter((i) => !productGone(i.productId));
   const pickedItems = selectableItems.filter((i) => isPicked(i.key));
   const allPicked = pickedItems.length === selectableItems.length;
+  /* 📦 รายการที่สั่งถึงเกณฑ์ต้องเช็คสต๊อก — คิดสดจากจำนวนล่าสุด (ปรับจำนวนตรงนี้แล้วป้ายต้องเปลี่ยนตาม)
+     หน้าสินค้ามีกล่องเตือนอยู่แล้ว แต่คนที่มาจากใบราคา /p/CODE ไม่ได้ผ่านหน้านั้น จึงต้องเตือนซ้ำที่นี่ */
+  const stockRows = stockCheckRows(pickedItems, productOf);
   /** ค่ากล่องของ "ออเดอร์รอบนี้" (เฉพาะที่ติ๊ก) — ป้ายราคาแขวนกับรายการแรกที่เข้าเงื่อนไข */
   const boxFeeRows = orderBoxFees(
     pickedItems.map((i) => ({
@@ -1325,6 +1330,8 @@ export default function CartPage() {
                 </Link>
               </div>
             ))}
+            {/* 📦 สั่งจำนวนมาก → เตือนให้เช็คสต๊อกก่อนกดยืนยัน (ไม่บล็อกการสั่ง) */}
+            <StockCheckNote rows={stockRows} className="mt-4" />
             <button
               type="button"
               onClick={() => router.push("/checkout")}

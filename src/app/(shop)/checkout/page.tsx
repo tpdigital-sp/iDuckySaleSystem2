@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, splitArtUrls } from "@/lib/products";
+import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
@@ -37,6 +37,7 @@ import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/app
 import { publicOrigin } from "@/lib/shop-info";
 import { cartQtyShipFee, shipProfileOf } from "@/lib/shipping-auto";
 import { LINE_URL } from "@/components/LineButton";
+import StockCheckNote from "@/components/StockCheckNote";
 
 interface Placed {
   id: string;
@@ -87,6 +88,8 @@ export default function CheckoutPage() {
   // สินค้าที่ยืนยันแล้วว่าถูกลบจากร้าน = ห้ามหลุดเข้าออเดอร์ (หน้าตะกร้าโชว์ป้ายบอกให้ลบอยู่แล้ว)
   const items = allItems.filter((i) => !unpicked.includes(i.key) && !productGone(i.productId));
   const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
+  /* 📦 รายการที่สั่งถึงเกณฑ์ต้องเช็คสต๊อก — ชุดเดียวกับที่ตะกร้าโชว์ และตรงกับธงที่ส่งไปหลังบ้าน */
+  const stockRows = stockCheckRows(items, productOf);
   // 🤝 ตัวแทนจำหน่าย: ได้ราคาเรทตัวแทนอย่างเดียว — ไม่คิดส่วนลดสมาชิก/คูปอง/โอนไว/ของแถม (ตรงกับเซิร์ฟเวอร์)
   const { customer, isDealer } = useCustomer();
   const [payment, setPayment] = useState<ShopPayment>(EMPTY_PAYMENT);
@@ -400,9 +403,17 @@ export default function CheckoutPage() {
       const artworkSize = artSizeByUrl(restSel[ART_SIZE_LABEL], artworkUrls);
       // ♻️ ลูกค้าติ๊ก "ใช้ไฟล์เก่า" (หน้าสินค้า/ตะกร้า) → ฟิลด์โครงสร้างให้หลังบ้านติดป้าย (ข้อความยังอยู่ใน sel)
       const reuseArt = parseReuseArt(restSel[REUSE_ART_LABEL], "ลูกค้า");
+      /*
+       * 📦 ธง "รอเช็คสต๊อก" ที่ไปถึงหลังบ้าน/ไลน์แจ้งร้าน — คิดสดจากจำนวนล่าสุด ไม่ใช้ธงที่แช่มาจากหน้าสินค้า
+       * ธงเดิมติดตอนกดเพิ่มลงตะกร้า แต่ลูกค้าปรับจำนวนในตะกร้าได้ทีหลัง (ธงไม่ขยับตาม)
+       * → เพิ่มจำนวนทีหลังเคยเข้ามาแบบไม่ติดธง ร้านไม่รู้ว่าต้องเช็คของก่อน
+       * สินค้าที่โหลดไม่เจอค่อยถอยไปใช้ธงเดิม
+       */
+      const prod = productOf(it.productId);
+      const needStock = prod ? needsStockCheck(prod, it.qty) : !!bulkFlag;
       return {
         productId: it.productId,
-        name: productOf(it.productId)?.name ?? it.productId,
+        name: prod?.name ?? it.productId,
         // ข้อความที่ลูกค้าเห็น: ตัดบรรทัดพิกัด/ลิงก์ของทีมผลิตออก (ยาวและรกมาก)
         // — ตัวเลขยังอยู่ครบใน sel ด้านล่าง หลังบ้านใช้ออกไฟล์ .ai ได้เหมือนเดิม
         selections: Object.entries(restSel)
@@ -424,7 +435,7 @@ export default function CheckoutPage() {
         ...(artworkSize ? { artworkSize } : {}),
         ...(artworkBackUrls.length ? { artworkBackUrls } : {}),
         ...(reuseArt ? { reuseArt } : {}),
-        ...(bulkFlag ? { needStockCheck: true } : {}),
+        ...(needStock ? { needStockCheck: true } : {}),
       };
     });
     // ค่า Add on (ค่าเคลือบต่อแผ่น · ค่าสีต่อลาย · ค่าคละลายเกินโควตา) → แยกเป็นบรรทัดของตัวเอง
@@ -1087,6 +1098,9 @@ export default function CheckoutPage() {
         </div>
         <div className="mt-2 flex justify-between border-t border-amber-100 pt-2 text-base font-extrabold text-amber-950"><span>{appendTo ? "ยอดที่ต้องโอนเพิ่ม" : "ยอดชำระ"}</span><span className="text-amber-600">{formatPrice(total)}</span></div>
       </div>
+
+      {/* 📦 สั่งจำนวนมาก → เตือนก่อนกดยืนยัน ว่าต้องรอร้านเช็คสต๊อก/คิวผลิตแล้วยืนยันกลับ */}
+      <StockCheckNote rows={stockRows} className="mt-4" />
 
       {err && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{err}</p>}
 
