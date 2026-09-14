@@ -800,7 +800,9 @@ export async function PATCH(req: Request) {
   const tpMoneyKey = (o: Order) => JSON.stringify([amountsForRecord(o, false), amountsForRecord(o, true)]);
   // 💵 ยอดที่ msVerify ต้องกระทบกับแถวโอนของธนาคารเปลี่ยนหลังส่งเรคอร์ดไปแล้ว → อัปเดตให้ตรง
   //    ("เงินเข้าบัญชีจริง"/ค่าธรรมเนียม · ยอดบิล/หัก ณ ที่จ่าย · เปิดโหมดมัดจำ 50% ทีหลัง — เรคอร์ดค้างยอดทั้งบิล)
-  if (mayEditFull && tpMoneyKey(existing) !== tpMoneyKey(toSave)) void syncAmountsToTP(toSave);
+  // ⏳ รอให้เสร็จก่อนตอบ — Netlify แช่แข็งเครื่องทันทีที่ตอบ response งานเบื้องหลังตายกลางทางได้
+  //    (พนักงานแจ้ง 14 ก.ย. 69: ออเดอร์ชำระแล้วไม่ขึ้นแท็บ 🛒 iDucky Store · ดู lib/server/tp-bridge-audit.ts)
+  if (mayEditFull && tpMoneyKey(existing) !== tpMoneyKey(toSave)) await syncAmountsToTP(toSave);
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
   void syncArrivalToTP(existing, toSave);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
@@ -821,8 +823,9 @@ export async function PATCH(req: Request) {
         KEY_STATUSES.includes(toSave.status) ? "key" : "extra"
       );
     // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
+    // ⏳ เรคอร์ด msVerify = ของที่ฝ่ายบัญชีต้องเห็น — รอให้เขียนเสร็จก่อนตอบ (ห้าม fire-and-forget)
     if (toSave.status === "ชำระแล้ว")
-      void reportPaidToTP(
+      await reportPaidToTP(
         toSave,
         adminName,
         // ยอดเงินเข้าจริงของงวดคิดใน amountsForRecord (งวด − หัก ณ ที่จ่ายของงวด) — ที่นี่บอกแค่ว่าเป็นงวดไหน
@@ -928,7 +931,7 @@ export async function PATCH(req: Request) {
   if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
     const origin = new URL(req.url).origin;
     void notifyCustomerLogged(sb, toSave, `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`, "ยืนยันรับยอดคงเหลือครบ");
-    void reportPaidToTP(toSave, adminName, { docSuffix: "-final", noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
+    await reportPaidToTP(toSave, adminName, { docSuffix: "-final", noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
     // 🦆 ออเดอร์มัดจำเพิ่งชำระครบ → บวกแต้มสะสม (idempotent)
     void awardPointsForOrder(toSave);
   }

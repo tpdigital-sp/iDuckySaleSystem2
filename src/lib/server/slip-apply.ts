@@ -92,6 +92,23 @@ function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"
   };
 }
 
+/**
+ * ⏳ เพดานเวลารอเรคอร์ด msVerify ก่อนตอบคำขอ — Firestore อืดต้องไม่ทำให้ "แนบสลิป" ของลูกค้าพัง
+ * (Netlify function มีเพดานเวลาของมันเอง · เกินแล้วคำขอตอบ error ทั้งที่ยอดเงินบันทึกไปแล้ว)
+ * เกินเพดาน = ปล่อยให้เขียนต่อเบื้องหลัง แล้วให้ cron/tp-bridge-audit เก็บตกใบที่ไม่ลงจริงภายใน 3 ชม.
+ */
+const TP_WAIT_MS = 6000;
+
+async function settleTP(jobs: Promise<unknown>[]): Promise<void> {
+  if (!jobs.length) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([Promise.allSettled(jobs), new Promise((done) => { timer = setTimeout(done, TP_WAIT_MS); })]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function applySlipVerification(input: ApplySlipInput): Promise<ApplySlipResult> {
   const { sb, path, bytes, contentType, phase, origin } = input;
   const by = input.by?.trim() || "ลูกค้า";
@@ -324,14 +341,23 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
   const received = verify.amount ?? credit;
   // ขอใบ 50 ทวิจากลูกค้าไปในข้อความยืนยันเลย — เคสหัก ณ ที่จ่าย
   const whtAsk = verify.deduction?.kind === "wht" ? `\nรับยอดหลัง${verify.deduction.label} — รบกวนส่งหนังสือรับรองหักภาษี ณ ที่จ่าย (50 ทวิ) ให้ทางร้านด้วยนะครับ` : "";
+  /**
+   * 🧷 เรคอร์ด msVerify ต้องเขียนให้เสร็จ "ก่อนตอบคำขอ" — ห้าม fire-and-forget
+   * Netlify เป็น serverless: ตอบ response เสร็จมันแช่แข็งเครื่องทันที งานที่ยังค้างอยู่เบื้องหลังตายกลางทางได้
+   * (พนักงานแจ้ง 14 ก.ย. 69: OD-260910-4381 + OD-260911-2116 ชำระแล้วแต่ไม่ขึ้นแท็บ 🛒 iDucky Store เลย)
+   * reportPaidToTP กลืน error ในตัวเองอยู่แล้ว → รอได้ ไม่ทำให้การยืนยันเงินล้ม · ตาข่ายชั้นสอง = cron/tp-bridge-audit
+   */
+  const pendingTP: Promise<unknown>[] = [];
   // เรคอร์ด msVerify แยกใบ: ช่องแรก = doc id หลัก · งวดหลัง = -final · ใบเพิ่ม = -<paymentId> (กันชนกัน)
   const tp = (note: string) =>
-    void reportPaidToTP(updated, "SlipOK อัตโนมัติ", {
-      received,
-      noteSuffix: `${note}${dedNote}`,
-      partial,
-      ...(phase === "extra" ? { docSuffix: `-${paymentId}`, slipPath: path, extra: true } : phase === "balance" ? { docSuffix: "-final" } : {}),
-    });
+    void pendingTP.push(
+      reportPaidToTP(updated, "SlipOK อัตโนมัติ", {
+        received,
+        noteSuffix: `${note}${dedNote}`,
+        partial,
+        ...(phase === "extra" ? { docSuffix: `-${paymentId}`, slipPath: path, extra: true } : phase === "balance" ? { docSuffix: "-final" } : {}),
+      })
+    );
   // ครบงวดด้วยสลิปใบเพิ่ม → เรคอร์ดหลักที่เคยติดธง "รับบางส่วน" ต้องปลดธง (บอร์ด WIP ถึงจะขึ้นการ์ด)
   const completeViaExtra = phase === "extra" && (confirmedDeposit || confirmedFull) && paidSoFar(order) > 0;
 
@@ -372,7 +398,10 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
   }
 
   // partial = ยังค้างอยู่หลังนับใบนี้ (ถ้ารับบางส่วนแล้วครบงวดพอดี ถือว่ายืนยัน ไม่ใช่บางส่วน)
-  if (completeViaExtra) void syncPaidCompleteToTP(updated, "SlipOK อัตโนมัติ");
+  if (completeViaExtra) pendingTP.push(syncPaidCompleteToTP(updated, "SlipOK อัตโนมัติ"));
+
+  // ⏳ รอเรคอร์ด msVerify ให้ลงจริงก่อนตอบ (ดูเหตุผลที่ pendingTP) — ที่เหลือ (ไลน์/สต๊อก/แต้ม) ยังเป็นงานเบื้องหลังตามเดิม
+  await settleTP(pendingTP);
 
   return { updated, verify, confirmed: confirmedDeposit || confirmedFull, partial: partial && !confirmedDeposit && !confirmedFull, paymentId };
 }
@@ -433,9 +462,13 @@ export async function acceptPaymentManually(a: {
 
   const link = orderLink(origin, updated);
   const adminName = `แอดมิน ${who}`;
+  // 🧷 เรคอร์ด msVerify รอให้เสร็จก่อนตอบ (เหตุผลเดียวกับ pendingTP ใน applySlipVerification)
+  const pendingTP: Promise<unknown>[] = [];
   const tp = (note: string) =>
-    void reportPaidToTP(updated, adminName, { received: amount, noteSuffix: note, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull });
-  if ((confirmedDeposit || confirmedFull) && paidSoFar(order) > 0) void syncPaidCompleteToTP(updated, adminName);
+    void pendingTP.push(
+      reportPaidToTP(updated, adminName, { received: amount, noteSuffix: note, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull })
+    );
+  if ((confirmedDeposit || confirmedFull) && paidSoFar(order) > 0) pendingTP.push(syncPaidCompleteToTP(updated, adminName));
   if (confirmedDeposit) {
     const rem = orderTotal(updated) - (updated.paidTotal ?? 0);
     void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(rem)} บาท ชำระก่อนจัดส่ง\n${link}`, "ยืนยันรับมัดจำ");
@@ -454,5 +487,6 @@ export async function acceptPaymentManually(a: {
     void notifyCustomerLogged(sb, updated, `💳 รับยอด ${thb(amount)} บาท ของออเดอร์ ${updated.id} แล้วครับ\nยังขาดอีก ${thb(remain)} บาท — โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลย\n${link}`, `รับเงินบางส่วน ${thb(amount)} บาท`);
     tp(`รับบางส่วน ${thb(amount)} บาท · ค้าง ${thb(remain)} บาท`);
   }
+  await settleTP(pendingTP);
   return updated;
 }

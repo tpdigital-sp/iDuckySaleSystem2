@@ -79,12 +79,19 @@ export async function reportPaidToTP(
     extra?: boolean;
     /** 💸 สลิปแท้แต่โอนขาด — นับยอดบางส่วน ยังไม่ครบงวด (บอร์ด WIP ยังไม่ขึ้นการ์ดจนกว่าจะครบ → syncPaidCompleteToTP) */
     partial?: boolean;
+    /**
+     * ⏱️ เวลารับเงินจริงของงวดนี้ (ISO) — ไม่ระบุ = เดี๋ยวนี้
+     * ใช้ตอน "เติมเรคอร์ดที่หายย้อนหลัง" (tp-bridge-audit) เท่านั้น: msDaily จับคู่กับแถวโอนของธนาคาร "รายวัน"
+     * ถ้าเติมวันนี้แล้วประทับวันนี้ เรคอร์ดจะไปโผล่ผิดวันจนจับคู่ไม่ได้
+     */
+    at?: string;
   }
 ): Promise<void> {
   try {
     const db = getFirestoreAdmin();
     if (!db) return; // ยังไม่ตั้งค่า Firebase — ข้ามเงียบ
-    const now = new Date();
+    const healed = opts?.at ? new Date(opts.at) : null;
+    const now = healed && !Number.isNaN(healed.getTime()) ? healed : new Date();
     // วันเวลาแบบไทย (Asia/Bangkok) ให้ตรงรูปแบบที่ msVerify ใช้ (date=YYYY-MM-DD, time=HH:MM)
     const th = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok",
@@ -137,7 +144,8 @@ export async function reportPaidToTP(
         // สลิปโอน — msVerify เอาไปโชว์เป็นรูปย่อในตาราง (ลิงก์เซ็นอายุ 1 ปี · เก็บ path ไว้เซ็นใหม่ได้)
         slipUrl: slip.slipUrl,
         slipPath: slip.slipPath,
-        slipSignedAt: now.toISOString(),
+        // เวลาที่เซ็นลิงก์สลิป = "ตอนนี้จริง ๆ" เสมอ (อายุ 1 ปีนับจากตรงนี้) — ไม่ใช่เวลารับเงินของเรคอร์ดที่เติมย้อนหลัง
+        slipSignedAt: new Date().toISOString(),
         // 🎯 เลขอ้างอิงธุรกรรม (SlipOK transRef) — msVerify เอาไปเทียบตอนตรวจสลิปซ้ำ ("" = ไม่มี เช่น แอดมินยืนยันเอง)
         slipRefNo: slipRefNoFor(order, isFinal, opts?.slipPath),
         verifiedBy,
@@ -149,6 +157,8 @@ export async function reportPaidToTP(
         paymentStatus: "ชำระแล้ว",
         origin: "iducky",
         createdAt: now.toISOString(),
+        // 🩹 เรคอร์ดที่เติมย้อนหลัง (ตอนยิงสดหลุดไป) — วัน/เวลาข้างบนคือเวลารับเงินจริง ไม่ใช่เวลาที่เติม
+        ...(healed ? { healedAt: new Date().toISOString() } : {}),
       });
   } catch (e) {
     // already-exists (ยิงซ้ำ) = ปกติ · อย่างอื่น log ไว้ดู
