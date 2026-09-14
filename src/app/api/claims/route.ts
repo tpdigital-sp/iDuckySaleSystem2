@@ -105,7 +105,8 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // 🔔 แจ้งทีมงานทาง LINE ทันที (fire-and-forget — แจ้งไม่ได้ก็ไม่ขวางการยื่น)
-  void pushShopAlert(
+  // ⚠️ await ไม่ใช่ void — Netlify แช่ฟังก์ชันตอนตอบกลับ งานค้างอาจไม่ได้ทำ (ตัวส่ง timeout 10 วิ ไม่ throw)
+  await pushShopAlert(
     {
       tone: "#E11D48",
       title: "🧰 เคลมใหม่",

@@ -48,7 +48,8 @@ export async function POST(req: Request) {
   // 🔔 แจ้งร้านทาง LINE เฉพาะใบใหม่ (แก้ใบเดิมไม่แจ้งซ้ำ) — ล้มก็ไม่เป็นไร ใบสมัครอยู่ในหลังบ้านแล้ว
   if (firstTime) {
     const who = u.user.user_metadata?.name || u.user.email || "";
-    void pushShopAlert({
+    // ⚠️ await ไม่ใช่ void — Netlify แช่ฟังก์ชันตอนตอบกลับ งานค้างอาจไม่ได้ทำ (ตัวส่ง timeout 10 วิ ไม่ throw)
+    await pushShopAlert({
       tone: "#0D9488",
       title: "🤝 ใบสมัครตัวแทนใหม่",
       headline: "กดอนุมัติหรือปฏิเสธได้ที่หลังบ้าน",
