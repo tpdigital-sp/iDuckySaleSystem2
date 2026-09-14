@@ -567,6 +567,22 @@ export default function CustomerOrderPage() {
   /** " (โอนจริง X หลังหัก ณ ที่จ่าย)" เมื่อยอดที่พูดถึงคือทั้งงวด — โอนมาบางส่วนแล้วไม่ใส่ (สัดส่วนหักจะไม่ตรง) */
   const netNote = (gross: number, net: number, actual: number = gross) =>
     inst && inst.wht > 0 && Math.abs(actual - gross) < 0.01 ? ` (โอนจริง ${formatPrice(net)} หลังหัก ณ ที่จ่าย${whtRateTxt})` : "";
+  /**
+   * 💸 แถบ "ยอดที่ต้องโอนจริง" — เจ้าของร้านสั่ง 14 ก.ย. 69: ยอดนี้คือเงินที่ลูกค้าโอนเข้าบัญชีจริง
+   * ต้องเด่นกว่ายอดงวด (เดิมเป็นวงเล็บเล็ก ๆ ต่อท้ายประโยค ลูกค้ามองข้าม แล้วโอนตามยอดงวดเกินมา)
+   * ไม่ขึ้นเมื่อยอดที่พูดถึงไม่ใช่ทั้งงวด (โอนมาบางส่วนแล้ว สัดส่วนหักไม่ตรง) — กติกาเดียวกับ netNote
+   */
+  const netBar = (gross: number, net: number, actual: number = gross, tone: "due" | "strong" = "due") =>
+    inst && inst.wht > 0 && Math.abs(actual - gross) < 0.01 ? (
+      <div className={`ord-net ${tone}`}>
+        <span>
+          💸 ยอดที่ต้องโอนจริง
+          {/* ยอดงวดอยู่บรรทัดเหนือแถบนี้อยู่แล้วทุกจุดที่เรียกใช้ — ไม่ต้องบอกซ้ำให้แถบยาว */}
+          <span className="ord-net-tag">หลังหักภาษี ณ ที่จ่าย{whtRateTxt}</span>
+        </span>
+        <b>{formatPrice(net)}</b>
+      </div>
+    ) : null;
   // สั่งเพิ่มได้เฉพาะออเดอร์ที่ยังไม่เข้าสายการผลิต
   const canAppend = (["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"] as OrderStatus[]).includes(
     order.status
@@ -778,8 +794,8 @@ export default function CustomerOrderPage() {
         <div className="ord-note mt-4 p-4">
           <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
             📄 ยอดคงเหลืองวดหลัง {formatPrice(Math.max(0, orderTotal(order) - paidSoFar(order)))}
-            {inst ? netNote(inst.second, inst.secondNet, Math.max(0, orderTotal(order) - paidSoFar(order))) : ""}
           </p>
+          {netBar(inst?.second ?? 0, inst?.secondNet ?? 0, Math.max(0, orderTotal(order) - paidSoFar(order)))}
           <p className="mt-1 text-xs leading-relaxed">
             รับมัดจำงวดแรกแล้ว ✓ — ยอดคงเหลือชำระตามเอกสารของร้าน (ใบแจ้งหนี้ยอดคงเหลือ) ก่อนจัดส่ง แล้วแจ้งทางร้านได้เลย ไม่ต้องแนบสลิปในหน้านี้
           </p>
@@ -815,13 +831,18 @@ export default function CustomerOrderPage() {
                   ? `มียอดค้างชำระ ${formatPrice(dueNow)}`
                   : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
           </p>
+          {order.deposit && !order.deposit.firstPaidAt
+            ? netBar(inst?.first ?? 0, inst?.firstNet ?? 0, dueNow, "strong")
+            : order.deposit && !order.deposit.settledAt
+              ? netBar(inst?.second ?? 0, inst?.secondNet ?? 0, dueNow, "strong")
+              : null}
           <p className="mt-1 text-xs leading-relaxed">
             {order.deposit && !order.deposit.firstPaidAt
               ? paidSoFar(order) > 0
                 ? `รับมาแล้ว ${formatPrice(paidSoFar(order))} จากมัดจำ ${formatPrice(Math.min(orderTotal(order), order.deposit.amount))} — โอนส่วนที่ขาดแล้วแนบสลิปเพิ่ม ทางร้านจะเริ่มงานทันทีที่ครบ`
-                : `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(dueNow)}${inst ? netNote(inst.first, inst.firstNet, dueNow) : ""} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
+                : `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(dueNow)} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
               : order.deposit && !order.deposit.settledAt
-                ? `รับแล้ว ${formatPrice(paidSoFar(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} — โอนส่วนที่เหลือ ${formatPrice(dueNow)}${inst ? netNote(inst.second, inst.secondNet, dueNow) : ""} แล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ`
+                ? `รับแล้ว ${formatPrice(paidSoFar(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} — โอนส่วนที่เหลือ ${formatPrice(dueNow)} แล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ`
                 : paidSoFar(order) > 0
                   ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(paidSoFar(order))} จาก ${formatPrice(orderTotal(order))})`
                   : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
@@ -1973,11 +1994,17 @@ export default function CustomerOrderPage() {
                   <span className="t-soft">มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
                   <span className={order.deposit.firstPaidAt ? "t-ok" : "t-danger"}>{formatPrice(order.deposit.amount)}</span>
                 </div>
-                {/* ➗ หัก ณ ที่จ่าย: เงินโอนจริงของงวด (ตรงกับ "ยอดชำระ" ในใบของร้าน) */}
+                {/*
+                  ➗ หัก ณ ที่จ่าย: เงินโอนจริงของงวด (ตรงกับ "ยอดชำระ" ในใบของร้าน)
+                  เจ้าของร้านสั่ง 14 ก.ย. 69 — นี่คือ "ยอดที่ลูกค้าโอนจริง" ต้องเด่นกว่ายอดงวด ไม่ใช่บรรทัดจางใต้ตาราง
+                */}
                 {inst && inst.wht > 0 && (
-                  <div className="flex justify-between">
-                    <span className="t-soft">↳ โอนจริงหลังหัก ณ ที่จ่าย{whtRateTxt}</span>
-                    <span className="t-soft">{formatPrice(inst.firstNet)}</span>
+                  <div className={`ord-net ${order.deposit.firstPaidAt ? "paid" : "due"}`}>
+                    <span>
+                      {order.deposit.firstPaidAt ? "โอนจริงงวดนี้ ✓" : "💸 ยอดที่ต้องโอนจริง"}
+                      <span className="ord-net-tag">หลังหักภาษี ณ ที่จ่าย{whtRateTxt}</span>
+                    </span>
+                    <b>{formatPrice(inst.firstNet)}</b>
                   </div>
                 )}
                 <div className="flex justify-between font-semibold">
@@ -1987,9 +2014,12 @@ export default function CustomerOrderPage() {
                   </span>
                 </div>
                 {inst && inst.wht > 0 && (
-                  <div className="flex justify-between">
-                    <span className="t-soft">↳ โอนจริงหลังหัก ณ ที่จ่าย{whtRateTxt}</span>
-                    <span className="t-soft">{formatPrice(inst.secondNet)}</span>
+                  <div className={`ord-net ${order.deposit.settledAt ? "paid" : "due"}`}>
+                    <span>
+                      {order.deposit.settledAt ? "โอนจริงงวดนี้ ✓" : "💸 ยอดที่ต้องโอนจริง"}
+                      <span className="ord-net-tag">หลังหักภาษี ณ ที่จ่าย{whtRateTxt}</span>
+                    </span>
+                    <b>{formatPrice(inst.secondNet)}</b>
                   </div>
                 )}
               </div>

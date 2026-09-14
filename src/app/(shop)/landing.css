@@ -3928,6 +3928,24 @@ to{opacity:1;transform:none}}
 .shopp .ord-card.tint{background:linear-gradient(180deg,rgba(226,243,254,.86) 0%,rgba(242,250,255,.72) 100%);
   border-color:rgba(255,255,255,.9)}
 .shopp .ord-sub{background:rgba(255,255,255,.66);border:1px solid var(--sky-200);border-radius:var(--r-m)}
+/* --- แถบ "ยอดที่ต้องโอนจริง" (หัก ณ ที่จ่าย) ---
+   ลูกค้านิติบุคคลโอนตามยอดนี้ ไม่ใช่ยอดงวด — เดิมเป็นบรรทัดเล็กสีจาง เจ้าของร้านบอกลูกค้ามองไม่เห็น (14 ก.ย. 69)
+   ยอดที่ยังต้องโอน (.due) เด่นกว่ายอดที่โอนไปแล้ว (.paid) เสมอ */
+:is(.shopp,.shopp-modal) .ord-net{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-top:6px;padding:9px 12px;border-radius:var(--r-s);border:1.5px solid;
+  font-size:.78rem;line-height:1.35}
+:is(.shopp,.shopp-modal) .ord-net b{font-family:var(--display);font-weight:600;font-size:1.12rem;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+:is(.shopp,.shopp-modal) .ord-net .ord-net-tag{display:block;font-size:.68rem;opacity:.85}
+:is(.shopp,.shopp-modal) .ord-net.due{background:#FFE9EE;border-color:rgba(242,69,107,.42);color:#A81F45;
+  box-shadow:0 3px 12px rgba(242,69,107,.14)}
+/* .strong = วางในกล่องชมพู (.ord-note.danger) — พื้นขาวถึงจะเด้งออกจากพื้นหลัง */
+:is(.shopp,.shopp-modal) .ord-net.strong{background:#fff;border-color:#F2456B;border-width:2px;color:#A81F45;
+  box-shadow:0 4px 14px rgba(242,69,107,.2)}
+:is(.shopp,.shopp-modal) .ord-net.strong b{font-size:1.3rem}
+/* งวดที่โอนไปแล้ว = ข้อมูลอ้างอิง เบากว่ายอดที่ยังต้องโอนเสมอ */
+:is(.shopp,.shopp-modal) .ord-net.paid{background:rgba(222,245,236,.7);border-color:rgba(18,135,106,.22);color:#0E6B52}
+:is(.shopp,.shopp-modal) .ord-net.paid b{font-size:1rem;font-weight:500}
 
 /* --- กล่องข้อความบอกสถานะ --- */
 :is(.shopp,.shopp-modal) .ord-note{border-radius:var(--r-m);border:1.5px solid;line-height:1.7}
