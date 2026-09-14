@@ -4,6 +4,7 @@ import { orderOtherDiscounts, orderTotal, paidSoFar, withLog, type Order, type O
 import { dealerRateOf, type Product } from "@/lib/products";
 import { earlyPayAmount, earlyPayBase, earlyPayExpiresAt, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
+import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 
 export const runtime = "nodejs";
 
@@ -68,12 +69,18 @@ export async function POST(req: Request) {
   const merged = [...order.items, ...(await withUnitYield(items))];
 
   /**
+   * 🏅 ส่วนลดระดับสมาชิก — ใบที่ผูกผู้ติดต่อไว้ (พนักงานเปิดใบให้ทางไลน์) ต้องได้ % ของระดับตัวเองเหมือนสั่งเองจากเว็บ
+   * คิดใหม่จากยอดสินค้าหลังเพิ่มรายการ · ใบที่แจ้งโอนแล้ว/มีส่วนลดที่ตกลงกันไว้ = ไม่แตะ (ดู lib/server/order-member-tier.ts)
+   */
+  const priced = await syncOrderMemberTier(sb, { ...order, items: merged });
+
+  /**
    * ⚡ ส่วนลดโอนไว — ใบที่ "ยังไม่มี" ส่วนลดนี้และยังไม่มีเงินเข้า (สร้างจากหลังบ้านเป็นใบเปล่า → ลูกค้าใส่ของเองทางลิงก์
    * = ทางสั่งปกติของลูกค้าไลน์ เคส OD-260910-7269 ที่พนักงานทัก 10 ก.ย. 69) คิดให้ตอนนี้จากรายการทั้งใบ กติกาเดียวกับ /api/orders
    * ใบที่มีส่วนลดอยู่แล้ว = ไม่คิดซ้ำ (เหมือนส่วนลดระดับ) · ตัวแทนไม่ได้ · เวลาหมดอายุนับจากตอนสั่งเพิ่มครั้งนี้
    */
-  let earlyPay = order.earlyPay;
-  if (!earlyPay && !order.dealer && paidSoFar(order) <= 0 && orderOtherDiscounts(order) <= 0) {
+  let earlyPay = priced.earlyPay;
+  if (!earlyPay && !priced.dealer && paidSoFar(priced) <= 0 && orderOtherDiscounts(priced) <= 0) {
     try {
       const prods = new Map<string, Product>();
       for (const pid of [...new Set(merged.map((i) => i.productId).filter(Boolean))]) {
@@ -95,13 +102,12 @@ export async function POST(req: Request) {
     }
   }
 
-  const newTotal = orderTotal({ ...order, items: merged, earlyPay }); // หักส่วนลด (ส่วนลดคิดจาก subtotal เดิม ไม่คิดซ้ำของที่สั่งเพิ่ม)
+  const newTotal = orderTotal({ ...priced, earlyPay });
   const owed = newTotal - (order.paidTotal ?? 0);
 
   const updated = withLog(
     {
-      ...order,
-      items: merged,
+      ...priced,
       ...(earlyPay ? { earlyPay } : {}),
       // มียอดค้าง → กลับไปรอชำระ · ไม่มียอดค้าง (เช่นยังไม่เคยจ่าย) → คงสถานะเดิม
       status: owed > 0 ? "รอชำระเงิน" : order.status,

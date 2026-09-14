@@ -6,6 +6,7 @@ import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncArrivalToTP, syncCustomerToTP, syncReceivedToTP, syncRushToTP } from "@/lib/server/tp-report";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
@@ -508,6 +509,22 @@ export async function PATCH(req: Request) {
     }
     // กราฟฟิก (มีหรือไม่มีสิทธิ์แพ็คร่วมด้วยก็ได้) → ทับฟิลด์งานแบบต่อจากผลแพ็ค
     if (mayProof) toSave = mergeProofFields(toSave, order, clientSavedAt, now);
+  }
+
+  /**
+   * 🏅 ส่วนลดระดับสมาชิกจากผู้ติดต่อที่ผูกไว้ — เซิร์ฟเวอร์เป็นเจ้าของ คิดใหม่ทุกครั้งที่แอดมินบันทึก
+   * (ผูก/ยกเลิกผูกผู้ติดต่อ · เพิ่ม-ลบรายการ · แก้ราคา → ส่วนลดตามทันเสมอ กติกาเดียวกับใบเสนอราคา)
+   * หน้าจอไม่มีช่องนี้ให้แก้ จึงไม่ต้องกลัวทับของที่แอดมินตั้งใจ — ส่วนลดที่ไม่มีธง tierId ตัวช่วยไม่แตะอยู่แล้ว
+   */
+  if (mayEditFull) {
+    const beforeTier = toSave.discount;
+    toSave = await syncOrderMemberTier(sb, toSave);
+    if ((beforeTier?.tierId ?? "") !== (toSave.discount?.tierId ?? "") || (beforeTier?.amount ?? 0) !== (toSave.discount?.amount ?? 0)) {
+      const who = actor.name?.trim() || actor.username;
+      toSave = toSave.discount?.tierId
+        ? withLog(toSave, who, "คิดส่วนลดระดับสมาชิก", `${toSave.discount.label} −${toSave.discount.amount.toLocaleString("th-TH")} บาท`)
+        : withLog(toSave, who, "เอาส่วนลดระดับสมาชิกออก", beforeTier ? `${beforeTier.label} −${beforeTier.amount.toLocaleString("th-TH")} บาท` : "ไม่ได้ผูกผู้ติดต่อแล้ว");
+    }
   }
 
   /**

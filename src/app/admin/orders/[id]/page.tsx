@@ -1880,14 +1880,15 @@ export default function AdminOrderDetailPage() {
      * (ไม่ถือ = ถูกมองว่าเป็นหน้าจอค้าง ยกเลิกติ๊กที่เพิ่งกดเอง/ลบรูปที่เพิ่งอัปไม่ได้)
      * ถ้ายังไม่มีใครแก้ต่อจากก้อนที่เพิ่งส่ง (state ยังเป็นก้อนเดิม) รับติ๊ก/แบบงานที่เซิร์ฟเวอร์ประทับเวลาให้แล้วมาด้วย ให้ตรงฐาน
      * แก้ต่อไปแล้ว → รับแค่ savedAt ห้ามทับสิ่งที่เพิ่งทำ (คำขอถัดไปกำลังตามมา)
+     * 🏅 ส่วนลดระดับสมาชิก เซิร์ฟเวอร์เป็นเจ้าของ (คิดจากผู้ติดต่อที่ผูก) — รับกลับมาเสมอ ไม่งั้นผูกผู้ติดต่อแล้วยอดบนจอยังเป็นราคาเต็ม
      */
     const saved = r.order;
     if (saved)
       setOrder((cur) => {
         if (!cur || cur.id !== saved.id) return cur;
         if (cur === next && cur.items.length === saved.items.length)
-          return { ...cur, savedAt: saved.savedAt, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
-        return { ...cur, savedAt: saved.savedAt };
+          return { ...cur, savedAt: saved.savedAt, discount: saved.discount, log: saved.log, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
+        return { ...cur, savedAt: saved.savedAt, discount: saved.discount };
       });
     return true;
   }
