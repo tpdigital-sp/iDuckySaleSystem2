@@ -9120,6 +9120,8 @@ function LineChatBox({
   const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [hitTotal, setHitTotal] = useState(0); // เจอทั้งหมดกี่คน (โชว์แค่บางส่วน)
+  // ชื่อตรงพอดีกี่คน — ชื่อสั้น ๆ ("S") มีคนซ้ำเป็นสิบ ต้องบอกให้เทียบรูปโปรไฟล์เอา
+  const [hitExact, setHitExact] = useState(0);
   // ค้นแล้วไม่เจอสักคน — เดิมกล่องผลค้นหาไม่ขึ้นอะไรเลย พนักงานไม่รู้ว่าพลาดตรงไหน (แจ้ง 14 ก.ย. 69)
   const [noHit, setNoHit] = useState<{ q: string; refreshed: boolean } | null>(null);
   const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
@@ -9159,9 +9161,10 @@ function LineChatBox({
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}`);
-        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number; refreshed?: boolean; error?: string };
+        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number; exact?: number; refreshed?: boolean; error?: string };
         setHits(j.customers ?? []);
         setHitTotal(j.total ?? (j.customers?.length ?? 0));
+        setHitExact(j.exact ?? 0);
         // ไม่เจอ (หรือคลังแชทอ่านไม่ได้) → บอกให้รู้ พร้อมทางไปต่อ แทนที่จะเงียบ
         setNoHit((j.customers?.length ?? 0) === 0 && q.length >= 2 ? { q, refreshed: Boolean(j.refreshed) } : null);
       } catch {
@@ -9783,13 +9786,15 @@ function LineChatBox({
           {hits.length > 0 && (
             <div className="flex items-center border-b border-slate-100 bg-slate-50 px-2.5 py-1">
               <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-500">
-                {draft.trim().length >= 2
+                {draft.trim().length >= 1
                   ? pendingManagerId
                     ? "ผลค้นหา — เลือกแล้วจะจำว่าลิงก์ห้องแชทนี้ = คนนี้"
-                    : `ผลค้นหาจากคลังแชท${hitTotal > hits.length ? ` — เจอ ${hitTotal} คน แสดง ${hits.length} (พิมพ์เพิ่มให้แคบลง)` : ""}`
+                    : hitExact > 1
+                      ? `ชื่อนี้ตรงพอดี ${hitExact} คน — ดูรูปโปรไฟล์เทียบกับห้องแชท แล้วแตะเลือก`
+                      : `ผลค้นหาจากคลังแชท${hitTotal > hits.length ? ` — เจอ ${hitTotal} คน แสดง ${hits.length} (พิมพ์เพิ่มให้แคบลง)` : ""}`
                   : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
               </p>
-              {draft.trim().length < 2 && (
+              {draft.trim().length < 1 && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
@@ -9814,9 +9819,9 @@ function LineChatBox({
             >
               {h.picture ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={h.picture} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+                <img src={h.picture} alt="" className={`${hitExact > 1 ? "h-9 w-9" : "h-6 w-6"} shrink-0 rounded-full object-cover`} />
               ) : (
-                <span className="h-6 w-6 shrink-0 rounded-full bg-slate-100" />
+                <span className={`${hitExact > 1 ? "h-9 w-9" : "h-6 w-6"} shrink-0 rounded-full bg-slate-100`} />
               )}
               <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
               {h.lastSeen && (

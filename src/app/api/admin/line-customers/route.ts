@@ -12,6 +12,8 @@ export const runtime = "nodejs";
  * ไม่พิมพ์อะไร = โชว์คนที่คุยกับร้านล่าสุด · พิมพ์ userId (U…) = ดึงคนนั้นตรง ๆ
  */
 const LIMIT = 12;
+/** ค้นหาชื่อสั้น ๆ (เช่น "S") มีคนชื่อเดียวกันหลายสิบ — โชว์ได้มากขึ้นเพื่อเทียบรูปโปรไฟล์ */
+const SEARCH_LIMIT = 24;
 /** อายุแคชรายชื่อในหน่วยความจำ — กันอ่าน Firestore ทั้งคอลเลกชันทุกครั้งที่พิมพ์ */
 const CACHE_MS = 5 * 60 * 1000;
 
@@ -39,6 +41,14 @@ function norm(s: string): string {
     .toLowerCase()
     .replace(/[︎️]/g, "")
     .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "");
+}
+
+/**
+ * กุญแจ "ชื่อเดียวกัน" — ตัดตัวประดับที่คนชอบต่อท้ายชื่อสั้น ๆ ออก (จุด/ช่องว่าง/ขีด)
+ * "S" · "S." · "s" ถือว่าเป็นชื่อเดียวกัน ตอนจัดอันดับผลค้นหา
+ */
+function core(s: string): string {
+  return norm(s).replace(/[\s._\-·]/g, "");
 }
 
 /** อ่านรายชื่อทั้งคลังแชทมาทำดัชนีในหน่วยความจำ (มีแคช) */
@@ -79,9 +89,17 @@ export async function GET(req: Request) {
     }
 
     const needle = norm(q);
+    const needleCore = core(q);
     const rows = await loadIndex(db, fresh);
-    // ไม่พิมพ์อะไร → คนที่คุยล่าสุด · พิมพ์แล้ว → หาจากทุกตำแหน่งของชื่อ
-    let hits = q.length < 1 ? rows : rows.filter((r) => r.key.includes(needle));
+    /**
+     * จัดอันดับผลค้นหา: ชื่อตรงพอดี → ขึ้นต้นด้วยคำที่พิมพ์ → มีคำนี้อยู่ตรงไหนก็ได้
+     * (ในแต่ละชั้นยังเรียงคนคุยล่าสุดไว้บน เพราะดัชนีเรียงมาแล้วและ sort ของ JS เสถียร)
+     *
+     * ⚠️ ไม่จัดอันดับ = ชื่อสั้นอย่าง "S" หาไม่เจอ: มีชื่อที่ "มีตัว s" 1,469 คน
+     *    คนชื่อ S จริงจมอยู่ท้ายแถว แล้วโชว์แค่ 12 คนแรก (พนักงานแจ้ง 14 ก.ย. 69 · OD-260910-9595)
+     */
+    const rank = (name: string): number => (core(name) === needleCore ? 0 : norm(name).startsWith(needle) ? 1 : 2);
+    let hits = q.length < 1 ? rows : rows.filter((r) => r.key.includes(needle)).sort((a, b) => rank(a.name) - rank(b.name));
     let refreshed = fresh;
 
     /**
@@ -91,13 +109,14 @@ export async function GET(req: Request) {
      */
     if (!hits.length && q.length >= 2 && !refreshed && Date.now() - lastAutoFreshAt > AUTO_FRESH_GAP_MS) {
       lastAutoFreshAt = Date.now();
-      hits = (await loadIndex(db, true)).filter((r) => r.key.includes(needle));
+      hits = (await loadIndex(db, true)).filter((r) => r.key.includes(needle)).sort((a, b) => rank(a.name) - rank(b.name));
       refreshed = true;
     }
 
     return NextResponse.json({
-      customers: hits.slice(0, LIMIT).map(({ key: _k, ...rest }) => rest),
+      customers: hits.slice(0, q.length < 1 ? LIMIT : SEARCH_LIMIT).map(({ key: _k, ...rest }) => rest),
       total: hits.length, // เจอทั้งหมดกี่คน (โชว์แค่ LIMIT) — หน้าเว็บเอาไปบอกให้พิมพ์แคบลง
+      exact: q.length < 1 ? 0 : hits.filter((r) => core(r.name) === needleCore).length, // ชื่อตรงพอดีกี่คน — หน้าเว็บบอกให้ดูรูปโปรไฟล์เทียบ
       recent: q.length < 1,
       refreshed, // ดึงรายชื่อสดมาแล้วรอบนี้ — หน้าเว็บเอาไปบอกว่า "ดึงใหม่แล้วก็ยังไม่เจอ"
       indexed: rows.length, // มีห้องแชทในคลังกี่ห้อง (ไว้ดูว่าคลังแชทว่างหรือเปล่า)
