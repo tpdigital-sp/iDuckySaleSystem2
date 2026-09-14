@@ -611,6 +611,16 @@ export interface SheetYield {
    * ช่องขนาดใต้รูปแต่ละลาย (ART_SIZE_LABEL) รับเลขเดี่ยวได้ด้วย → ArtSize.longest
    */
   longestOnly?: boolean;
+  /**
+   * 🎯 "ให้ตรงกับ Print-Fit เป๊ะ" — นับเฉพาะผังที่ Print-Fit หาเจอ (MaxRects BSSF/BAF ล้วน)
+   * ไม่เอาเพดานผังกริดแนวเดียว (gridBest) มาช่วย แม้ผังกริดนั้นจะวางได้จริงก็ตาม
+   *
+   * ทำไมต้องมีสวิตช์แทนที่จะตัด gridBest ทิ้งทั้งระบบ: gridBest กันการนับ "ต่ำกว่าจริง" ของ MaxRects
+   * ที่โลภแล้วพลาดผังง่าย ๆ ไว้อยู่ (ป้ายไวนิลอาร์ตการ์ด 9×10 บนแผ่น 64×29 กริดได้ 18 แต่ MaxRects ได้ 12)
+   * เปิดสวิตช์นี้เฉพาะกลุ่มที่ร้าน "จัดวางจริงด้วย Print-Fit" เท่านั้น — เจ้าของร้านสั่ง 14 ก.ย. 69
+   * ให้เลขหน้าเว็บตรงกับโปรแกรมที่ใช้หน้างานเป๊ะ ๆ ยอมเสียกำลังผลิตส่วนที่ Print-Fit หาผังไม่เจอ
+   */
+  printFitOnly?: boolean;
 }
 
 /** ข้อความห้อยท้ายจำนวนชิ้นของงานที่กรอกแค่ด้านยาวสุด (เจ้าของร้านสั่งให้ระบุทุกจอ 10 ก.ย. 69) */
@@ -647,7 +657,14 @@ function gridBest(itemW: number, itemH: number, binW: number, binH: number, gap:
  * (MaxRects: ชิ้นถูกบวกระยะห่างรอบตัว กล่องขยายด้วยระยะห่างหนึ่งข้าง จึงคิดช่องไฟเฉพาะระหว่างชิ้น
  *  หมุนได้รายชิ้น · ให้คะแนนช่องว่างแบบ Best Short Side Fit / Best Area Fit แล้วเอาค่าที่ดีกว่า)
  */
-function packSingleSize(itemW: number, itemH: number, binW: number, binH: number, gap: number): number {
+function packSingleSize(
+  itemW: number,
+  itemH: number,
+  binW: number,
+  binH: number,
+  gap: number,
+  printFitOnly = false
+): number {
   const w = itemW + gap;
   const h = itemH + gap;
   let best = 0;
@@ -690,6 +707,8 @@ function packSingleSize(itemW: number, itemH: number, binW: number, binH: number
     }
     if (count > best) best = count;
   }
+  // 🎯 ต้องตรงกับ Print-Fit เป๊ะ = หยุดแค่ผังที่ Print-Fit หาเจอ (ดู SheetYield.printFitOnly)
+  if (printFitOnly) return best;
   // MaxRects โลภ พลาดกริดที่ดีกว่าได้ (ดู gridBest) — เทียบกับผังกริดแนวเดียวที่การันตีว่าวางได้เสมอ
   return Math.max(best, gridBest(itemW, itemH, binW, binH, gap));
 }
@@ -708,7 +727,7 @@ export function sheetFitCount(cfg: SheetYield, w: number, h: number, bound?: She
   for (const t of cfg.perSheetTiers ?? []) {
     if ((t.upTo == null || Math.max(w, itemH) <= t.upTo) && t.per > 0) return t.per;
   }
-  const n = packSingleSize(w, itemH, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0);
+  const n = packSingleSize(w, itemH, cfg.sheetW, cfg.sheetH, cfg.gap ?? 0, cfg.printFitOnly);
   /*
    * ⚠️ ชิ้นเดียวเต็มแผ่น: พื้นที่วาง (sheetW×sheetH) หักขอบเผื่อรอบด้านออกแล้ว (ไดคัท 43.76×28.89)
    * จึงเล็กกว่าแผ่น A3 จริง (29.7×42) — ลูกค้ากรอก 29.7×42 ซึ่งเท่ากับเพดานที่ช่องกรอกรับ

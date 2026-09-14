@@ -205,6 +205,8 @@ type DraftOption = {
     perSheetTiers?: { upTo?: number; per: number }[];
     /** 📏 กรอกด้านยาวสุดด้านเดียวพอ (ไดคัท 100%) — ช่องสูงไม่บังคับ */
     longestOnly?: boolean;
+    /** 🎯 นับเฉพาะผังที่ Print-Fit หาเจอ (กลุ่ม "ขนาดตัด" ที่ร้านจัดวางจริงด้วย Print-Fit) */
+    printFitOnly?: boolean;
   };
 };
 /**
