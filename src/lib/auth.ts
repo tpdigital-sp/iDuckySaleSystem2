@@ -45,9 +45,15 @@ interface SessionInfo {
   perms?: Perm[];
   /** เป็นผู้ดูแลระบบไหม — ใช้ซ่อนของที่อ่อนไหว (บัญชีร้าน · บทบาท · เชื่อม Google) */
   isAdministrator?: boolean;
+  /**
+   * ถาม /api/admin/session ไม่ได้เลย (เน็ตหลุด · เซิร์ฟเวอร์ 5xx) — ไม่ใช่ "ยังไม่ตั้งค่า"
+   * AdminShell ต้องขึ้นป้ายต่อไม่ได้ + ปุ่มลองใหม่ ไม่ใช่ปล่อยเข้าเป็นโหมดตัวอย่าง (14 ก.ย. 69)
+   */
+  unreachable?: boolean;
 }
 
 const EMPTY: SessionInfo = { configured: false, loggedIn: false, name: null, role: "", perms: [], isAdministrator: false };
+const UNREACHABLE: SessionInfo = { ...EMPTY, unreachable: true };
 
 /**
  * แคชผลตรวจ session ไว้ 60 วิ — AdminShell เรียกทุกครั้งที่เปลี่ยนหน้า
@@ -69,13 +75,13 @@ export async function getAdminSession(): Promise<SessionInfo> {
   inFlight = (async () => {
     try {
       const res = await fetch("/api/admin/session", { cache: "no-store" });
-      if (!res.ok) return EMPTY;
+      if (!res.ok) return UNREACHABLE;
       const value = (await res.json()) as SessionInfo;
       // แคชเฉพาะผลที่ล็อกอินแล้ว/โหมดเดโม — สถานะ "ไม่ผ่าน" ไม่แคช (ล็อกอินเสร็จจะได้เข้าได้ทันที)
       if (!value.configured || value.loggedIn) sessionCache = { at: Date.now(), value };
       return value;
     } catch {
-      return EMPTY;
+      return UNREACHABLE;
     } finally {
       inFlight = null;
     }

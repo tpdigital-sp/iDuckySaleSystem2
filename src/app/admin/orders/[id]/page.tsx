@@ -1,5 +1,6 @@
 "use client";
 
+import { shrinkImageFile } from "@/lib/shrink-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
@@ -2289,7 +2290,8 @@ export default function AdminOrderDetailPage() {
     for (const f of Array.from(files)) {
       const fd = new FormData();
       fd.append("orderId", order.id);
-      fd.append("file", f);
+      // 🗜️ รูปจากกล้องมือถือ 3-5 MB → ย่อก่อนส่ง (ลูกค้าแค่เปิดดูว่าของในกล่องครบ)
+      fd.append("file", await shrinkImageFile(f));
       const res = await fetch("/api/admin/orders/pack-photo", { method: "POST", body: fd, headers: packScanHeaders() });
       const j = (await res.json().catch(() => null)) as { order?: Order; error?: string } | null;
       if (!res.ok || !j?.order) {

@@ -181,6 +181,12 @@ export default function AdminOrdersPage() {
   const [from, setFrom] = useState(""); // yyyy-mm-dd จาก <input type="date">
   const [to, setTo] = useState("");
   const [demo, setDemo] = useState(false);
+  /**
+   * ดึงออเดอร์ไม่ได้ (API ตอบ error / เน็ตหลุด / ฐานข้อมูลถูกระงับ) — ต้องบอกตรง ๆ ไม่ใช่ตกไปโหมดตัวอย่าง
+   * 14 ก.ย. 69 Supabase ระงับโปรเจกต์เพราะเกินโควตา หน้านี้ขึ้น "0 ใบ + ตัวอย่าง" จนเจ้าของร้านคิดว่าออเดอร์หายหมด
+   * โพลยังเดินต่อ (demo=false) → ฐานข้อมูลกลับมาเมื่อไรรายการขึ้นเองไม่ต้องรีเฟรช
+   */
+  const [loadErr, setLoadErr] = useState("");
   /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
   const [page, setPage] = useState(0);
   // เปลี่ยนตัวกรองอะไรก็ตาม = กลับหน้าแรก ไม่งั้นค้างอยู่หน้า 3 ที่ชุดใหม่ไม่มี
@@ -202,6 +208,8 @@ export default function AdminOrdersPage() {
     if (wanted && ORDER_STATUSES.includes(wanted)) setFilter(wanted);
 
     fetchOrdersAdmin().then((r) => {
+      if (!r.ok) return setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
+      setLoadErr("");
       if (r.orders.length > 0) setOrders(visibleTo(r.orders, seesAll));
       else {
         setOrders(visibleTo(MOCK_ORDERS, seesAll));
@@ -212,6 +220,8 @@ export default function AdminOrdersPage() {
 
   const refresh = useCallback(async () => {
     const r = await fetchOrdersAdmin();
+    if (!r.ok) return setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
+    setLoadErr("");
     if (r.orders.length === 0) return;
     const next = visibleTo(r.orders, seesAll);
     setOrders((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
@@ -358,6 +368,26 @@ export default function AdminOrdersPage() {
   return (
     <div className="dkb -mx-4 -my-6 min-h-[calc(100vh-1px)] px-4 py-6 md:-mx-8 md:-my-8 md:px-8 md:py-8">
       <div className="mx-auto max-w-[1180px]">
+        {loadErr && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[20px] px-4 py-3 text-[13px]"
+            style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+          >
+            <span className="font-semibold">⚠️ ดึงออเดอร์จากฐานข้อมูลไม่ได้</span>
+            <span className="min-w-0 flex-1 break-words">
+              {loadErr} — ออเดอร์ไม่ได้หาย ระบบจะลองใหม่ให้เองทุก 30 วิ · ถ้าขึ้นว่าเกินโควตา (quota) ให้ดูหน้า Billing ของ Supabase
+            </span>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="rounded-full px-3 py-1 text-[12px] font-semibold"
+              style={{ background: "var(--dk-coral-deep)", color: "#fff" }}
+            >
+              ลองใหม่
+            </button>
+          </div>
+        )}
         {/* ── หัวหน้า + แถบเครื่องมือ ── */}
         <div className="flex flex-wrap items-end justify-between gap-4 px-1">
           <div>
@@ -371,7 +401,12 @@ export default function AdminOrdersPage() {
               </span>
             </h1>
             <p className="mt-0.5 text-[13px]">
-              {demo ? (
+              {loadErr ? (
+                <span className="inline-flex items-center gap-1.5" style={{ color: "var(--dk-coral-ink)" }}>
+                  <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: "var(--dk-coral-deep)" }} />
+                  เชื่อมต่อฐานข้อมูลไม่ได้
+                </span>
+              ) : demo ? (
                 <span style={{ color: "var(--dk-faint)" }}>ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน</span>
               ) : (
                 <span className="inline-flex items-center gap-1.5" style={{ color: "var(--dk-mint-ink)" }}>

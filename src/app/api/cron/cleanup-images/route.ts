@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { imageCleanupOf, type ImageCleanupConfig } from "@/lib/image-cleanup";
+import { CLEANUP_CLOSED_STATUSES, imageCleanupOf, type ImageCleanupConfig } from "@/lib/image-cleanup";
 import { proofsOf, withLog, type Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
   const { data: rows, error } = await sb.from("orders").select("id,data,created_at");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const CLOSED = new Set(["เสร็จสิ้น", "ยกเลิก"]);
+  const CLOSED = new Set<string>(CLEANUP_CLOSED_STATUSES);
   const plan: { id: string; status: string; files: number; buckets: Record<string, string[]> }[] = [];
 
   for (const row of rows ?? []) {

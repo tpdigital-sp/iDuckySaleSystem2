@@ -1,6 +1,7 @@
 "use client";
 
 /** ชั้นเข้าถึงออเดอร์จริง (Supabase ตาราง orders ผ่าน API ฝั่งเซิร์ฟเวอร์) */
+import { shrinkImageFile } from "@/lib/shrink-image";
 import type { Order } from "./admin-data";
 import { getAccessToken } from "./customer-auth";
 import { PACK_SCAN_HEADER } from "./permissions";
@@ -275,7 +276,8 @@ export async function uploadProof(
     const fd = new FormData();
     fd.append("orderId", orderId);
     fd.append("itemIndex", String(itemIndex));
-    fd.append("file", file);
+    // 🗜️ รูปแบบงานเอาไว้ให้ลูกค้าดูบนจอ ไม่ใช่ไฟล์พิมพ์ → ย่อในเบราว์เซอร์ก่อนส่ง (4-5 MB → หลักร้อย KB)
+    fd.append("file", await shrinkImageFile(file));
     // silent = ไม่ให้เซิร์ฟเวอร์ยิงไลน์ต่อไฟล์ — ผู้เรียกรวมแล้วยิง notifyProofReady ครั้งเดียว
     if (meta?.silent) fd.append("silent", "1");
     if (meta?.qty) fd.append("qty", String(meta.qty));
@@ -321,16 +323,19 @@ export async function notifyProofReady(
 export async function fetchOrdersAdmin(opts?: {
   /** เอาเฉพาะฟิลด์ที่ใช้หาออเดอร์อื่นของลูกค้าคนเดียวกัน/ห้องแชท LINE (หน้ารายละเอียดใช้แค่นี้ — ก้อนเล็กลงมาก) */
   lite?: boolean;
-}): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean }> {
+}): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean; error?: string }> {
   try {
     const res = await fetch(`/api/admin/orders${opts?.lite ? "?lite=1" : ""}`, {
       cache: "no-store",
       headers: packScanHeaders(),
     });
     const data = await res.json().catch(() => ({}));
-    return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok };
+    // ok=false พร้อมข้อความจากเซิร์ฟเวอร์ — หน้าเว็บต้องบอกว่า "ดึงไม่ได้" ไม่ใช่ตกไปโหมดตัวอย่างเงียบ ๆ
+    // (14 ก.ย. 69 Supabase ระงับโปรเจกต์เพราะเกินโควตา → ทุกหน้าโชว์ "0 ใบ/ตัวอย่าง" จนคิดว่าออเดอร์หาย)
+    const error = res.ok ? undefined : String(data.error ?? `เซิร์ฟเวอร์ตอบ ${res.status}`);
+    return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok, error };
   } catch {
-    return { orders: [], needsSetup: false, ok: false };
+    return { orders: [], needsSetup: false, ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }
 }
 

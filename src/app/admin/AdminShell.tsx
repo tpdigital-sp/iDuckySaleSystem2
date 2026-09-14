@@ -100,6 +100,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [allowed, setAllowed] = useState<boolean | null>(null);
   // ตั้งค่า Firebase auth แล้วหรือยัง (โหมดจริง vs เดโม)
   const [configured, setConfigured] = useState(false);
+  // ถามเซิร์ฟเวอร์ไม่ได้เลย → ขึ้นหน้า "ต่อไม่ได้ + ลองใหม่" แทนที่จะปล่อยเข้าเป็นโหมดตัวอย่าง
+  const [serverDown, setServerDown] = useState(false);
+  const [sessionTry, setSessionTry] = useState(0); // นับครั้งกดลองใหม่ → ยิง getAdminSession ซ้ำ
   // สิทธิ์ + ตำแหน่งของผู้ใช้ที่ล็อกอินอยู่ (ส่งต่อให้ทุกหน้าใต้ /admin)
   const [perms, setPerms] = useState<Perm[]>([]);
   const [permsReady, setPermsReady] = useState(false); // getAdminSession ตอบกลับแล้ว (สำเร็จหรือไม่ก็ตาม)
@@ -308,6 +311,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     let active = true;
     getAdminSession().then((s) => {
       if (!active) return;
+      if (s.unreachable) {
+        setServerDown(true);
+        return;
+      }
+      setServerDown(false);
       setConfigured(s.configured);
       setPerms(s.perms ?? []);
       setRoleName(s.role ?? "");
@@ -322,7 +330,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     return () => {
       active = false;
     };
-  }, [isLoginPage, pathname, router]);
+  }, [isLoginPage, pathname, router, sessionTry]);
 
   async function handleSignOut() {
     await signOut();
@@ -331,6 +339,28 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   // หน้าล็อกอิน: แสดงเต็มจอไม่มี sidebar/guard
   if (isLoginPage) return <>{children}</>;
+
+  // ต่อเซิร์ฟเวอร์ไม่ได้ (เน็ตหลุด / เซิร์ฟเวอร์ล่ม / ฐานข้อมูลถูกระงับ) → บอกตรง ๆ + ปุ่มลองใหม่
+  if (serverDown) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-6">
+        <div role="alert" className="max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-800">
+          <p className="text-2xl">⚠️</p>
+          <p className="mt-2 text-base font-semibold">ต่อเซิร์ฟเวอร์หลังบ้านไม่ได้</p>
+          <p className="mt-1 text-rose-700/80">
+            ข้อมูลไม่ได้หาย — เช็คอินเทอร์เน็ตแล้วลองใหม่ ถ้ายังไม่ได้ให้ดูสถานะ Netlify และหน้า Billing ของ Supabase (เกินโควตา = ระบบถูกระงับชั่วคราว)
+          </p>
+          <button
+            type="button"
+            onClick={() => setSessionTry((n) => n + 1)}
+            className="mt-4 rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+          >
+            ลองใหม่
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // กำลังตรวจสิทธิ์ (เฉพาะโหมด Supabase) หรือไม่มีสิทธิ์ → กันเนื้อหาไว้ก่อน
   if (allowed === null && configured) {

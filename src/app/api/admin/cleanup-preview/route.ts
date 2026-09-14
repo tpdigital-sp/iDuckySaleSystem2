@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, type Order } from "@/lib/admin-data";
+import { CLEANUP_CLOSED_STATUSES } from "@/lib/image-cleanup";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
   const { data: rows, error } = await sb.from("orders").select("id,data,created_at");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const CLOSED = new Set(["เสร็จสิ้น", "ยกเลิก"]);
+  const CLOSED = new Set<string>(CLEANUP_CLOSED_STATUSES);
   const list: { id: string; status: string; files: number }[] = [];
 
   for (const row of rows ?? []) {

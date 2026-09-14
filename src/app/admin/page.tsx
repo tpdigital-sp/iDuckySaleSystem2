@@ -21,20 +21,21 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
   const [stale, setStale] = useState(false);
+  const [staleErr, setStaleErr] = useState(""); // ข้อความจากเซิร์ฟเวอร์ตอนดึงไม่ได้ (เช่น เกินโควตา Supabase)
   const [updatedAt, setUpdatedAt] = useState<Date | undefined>();
 
   const load = useCallback(
     async (first: boolean) => {
       const r = await fetchOrdersAdmin();
       if (!r.ok) {
-        // เน็ตหลุด — คงตัวเลขเดิมไว้แล้วบอกว่าที่เห็นเป็นของเก่า ดีกว่าโชว์ 0
+        // เน็ตหลุด/ฐานข้อมูลไม่ตอบ — คงตัวเลขเดิมไว้แล้วบอกว่าที่เห็นเป็นของเก่า ดีกว่าโชว์ 0
+        // ⚠️ ไม่ตกไปโหมดตัวอย่าง (เดิมโหลดครั้งแรกไม่ได้ = โชว์ MOCK + ป้าย "ยังไม่ได้ต่อฐานข้อมูล" ชวนเข้าใจผิดว่าของหาย)
+        //    demo คงเป็น false ให้โพลเดินต่อ → เซิร์ฟเวอร์กลับมาเมื่อไรตัวเลขจริงขึ้นเอง
         setStale(true);
-        if (first) {
-          setOrders(visibleTo(MOCK_ORDERS, seesAll));
-          setDemo(true);
-        }
+        setStaleErr(r.error ?? "");
         return;
       }
+      setStaleErr("");
       setStale(false);
       if (r.orders.length > 0) {
         setOrders(visibleTo(r.orders, seesAll));
@@ -55,5 +56,7 @@ export default function AdminDashboardPage() {
 
   usePolling(() => load(false), { enabled: !demo, intervalMs: 30000 });
 
-  return <Dashboard orders={orders} loading={loading} demo={demo} stale={stale} updatedAt={updatedAt} seesMoney={seesMoney} />;
+  return (
+    <Dashboard orders={orders} loading={loading} demo={demo} stale={stale} staleErr={staleErr} updatedAt={updatedAt} seesMoney={seesMoney} />
+  );
 }

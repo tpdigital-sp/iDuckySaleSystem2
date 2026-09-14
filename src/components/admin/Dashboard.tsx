@@ -50,6 +50,8 @@ export interface DashboardProps {
   demo: boolean;
   /** ดึงข้อมูลล่าสุดไม่สำเร็จ (เน็ตหลุด) — ที่เห็นคือของเก่า */
   stale?: boolean;
+  /** ข้อความจากเซิร์ฟเวอร์ตอนดึงไม่ได้ — โชว์ต่อท้ายป้าย stale ให้รู้สาเหตุ (เช่น เกินโควตา Supabase) */
+  staleErr?: string;
   /** เวลาที่ดึงข้อมูลสำเร็จครั้งล่าสุด */
   updatedAt?: Date;
   /** เห็นตัวเลขเงินไหม (ฝ่ายแพ็คไม่เห็น) */
@@ -58,7 +60,7 @@ export interface DashboardProps {
 
 const SHELL = "dkb -mx-4 -my-6 min-h-[calc(100vh-1px)] px-4 py-6 md:-mx-8 md:-my-8 md:px-8 md:py-8";
 
-export default function Dashboard({ orders, loading, demo, stale, updatedAt, seesMoney }: DashboardProps) {
+export default function Dashboard({ orders, loading, demo, stale, staleErr, updatedAt, seesMoney }: DashboardProps) {
   const now = useMemo(() => new Date(), []);
   const m = useMemo(() => computeDash(orders, now), [orders, now]);
 
@@ -146,7 +148,9 @@ export default function Dashboard({ orders, loading, demo, stale, updatedAt, see
             }}
           >
             {stale
-              ? "ต่อเซิร์ฟเวอร์ไม่ได้ — ตัวเลขที่เห็นเป็นข้อมูลที่โหลดไว้ล่าสุด ลองใหม่อีกครั้งเมื่อเน็ตกลับมา"
+              ? `ดึงออเดอร์จากฐานข้อมูลไม่ได้${staleErr ? ` (${staleErr})` : ""} — ออเดอร์ไม่ได้หาย ${
+                  orders.length ? "ตัวเลขที่เห็นเป็นข้อมูลที่โหลดไว้ล่าสุด" : "ตัวเลขจึงยังเป็น 0"
+                } ระบบจะลองใหม่ให้เองทุก 30 วิ`
               : "ยังไม่ได้ต่อฐานข้อมูล — ตัวเลขทั้งหน้าเป็นออเดอร์ตัวอย่าง ไม่ใช่ยอดจริง"}
           </p>
         )}
