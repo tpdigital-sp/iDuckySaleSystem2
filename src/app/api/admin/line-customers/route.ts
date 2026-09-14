@@ -15,8 +15,15 @@ const LIMIT = 12;
 /** อายุแคชรายชื่อในหน่วยความจำ — กันอ่าน Firestore ทั้งคอลเลกชันทุกครั้งที่พิมพ์ */
 const CACHE_MS = 5 * 60 * 1000;
 
+/**
+ * ห่างจากการดึงสดครั้งก่อนอย่างน้อยเท่านี้ ถึงจะยอมดึงสดให้อัตโนมัติตอนค้นไม่เจอ
+ * (ไม่จำกัด = พิมพ์ชื่อที่ไม่มีจริงทีละตัวอักษร จะอ่านทั้งคลังแชทรอบใหม่ทุกตัวอักษร)
+ */
+const AUTO_FRESH_GAP_MS = 20 * 1000;
+
 type Row = { userId: string; name: string; picture?: string; lastSeen?: string };
 let cache: { at: number; rows: (Row & { key: string })[] } | null = null;
+let lastAutoFreshAt = 0;
 
 /**
  * ทำข้อความให้เทียบกันได้จริง ก่อนเอาไปหา
@@ -71,13 +78,29 @@ export async function GET(req: Request) {
       return NextResponse.json({ customers, total: customers.length });
     }
 
+    const needle = norm(q);
     const rows = await loadIndex(db, fresh);
     // ไม่พิมพ์อะไร → คนที่คุยล่าสุด · พิมพ์แล้ว → หาจากทุกตำแหน่งของชื่อ
-    const hits = q.length < 1 ? rows : rows.filter((r) => r.key.includes(norm(q)));
+    let hits = q.length < 1 ? rows : rows.filter((r) => r.key.includes(needle));
+    let refreshed = fresh;
+
+    /**
+     * ค้นไม่เจอสักคน = ลูกค้ามัก "เพิ่งทักเข้ามาครั้งแรก" — ห้องแชทเพิ่งเกิด ยังไม่อยู่ในดัชนีที่แคชไว้
+     * (พนักงานแจ้ง 14 ก.ย. 69: ลูกค้าทักแล้วแต่พิมพ์ชื่อหาไม่เจอ → ผูกไม่ได้)
+     * → ดึงสดให้เองรอบหนึ่งแล้วค้นซ้ำ จะได้ไม่ต้องรอแคชหมดอายุ 5 นาที
+     */
+    if (!hits.length && q.length >= 2 && !refreshed && Date.now() - lastAutoFreshAt > AUTO_FRESH_GAP_MS) {
+      lastAutoFreshAt = Date.now();
+      hits = (await loadIndex(db, true)).filter((r) => r.key.includes(needle));
+      refreshed = true;
+    }
+
     return NextResponse.json({
       customers: hits.slice(0, LIMIT).map(({ key: _k, ...rest }) => rest),
       total: hits.length, // เจอทั้งหมดกี่คน (โชว์แค่ LIMIT) — หน้าเว็บเอาไปบอกให้พิมพ์แคบลง
       recent: q.length < 1,
+      refreshed, // ดึงรายชื่อสดมาแล้วรอบนี้ — หน้าเว็บเอาไปบอกว่า "ดึงใหม่แล้วก็ยังไม่เจอ"
+      indexed: rows.length, // มีห้องแชทในคลังกี่ห้อง (ไว้ดูว่าคลังแชทว่างหรือเปล่า)
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

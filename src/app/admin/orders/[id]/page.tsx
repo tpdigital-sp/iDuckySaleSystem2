@@ -8542,6 +8542,8 @@ function LineChatBox({
   const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [hitTotal, setHitTotal] = useState(0); // เจอทั้งหมดกี่คน (โชว์แค่บางส่วน)
+  // ค้นแล้วไม่เจอสักคน — เดิมกล่องผลค้นหาไม่ขึ้นอะไรเลย พนักงานไม่รู้ว่าพลาดตรงไหน (แจ้ง 14 ก.ย. 69)
+  const [noHit, setNoHit] = useState<{ q: string; refreshed: boolean } | null>(null);
   const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
   const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
   // คนที่เลือกไว้ รอกดยืนยัน — กันแตะพลาดแล้วผูกผิดคน (ผูกผิด = ข้อมูลออเดอร์ไปโผล่แชทคนอื่น)
@@ -8568,6 +8570,7 @@ function LineChatBox({
   useEffect(() => {
     const q = draft.trim();
     setPicked(null);
+    setNoHit(null);
     // วางลิงก์/URL/userId มา = ตั้งใจใช้ปุ่มบันทึก ไม่ต้องเด้งรายชื่อให้เลือก
     if (demo || !picking || /^https?:\/\//i.test(q) || /^U[0-9a-f]{32}$/i.test(q)) {
       setHits([]);
@@ -8578,9 +8581,11 @@ function LineChatBox({
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}`);
-        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number };
+        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number; refreshed?: boolean; error?: string };
         setHits(j.customers ?? []);
         setHitTotal(j.total ?? (j.customers?.length ?? 0));
+        // ไม่เจอ (หรือคลังแชทอ่านไม่ได้) → บอกให้รู้ พร้อมทางไปต่อ แทนที่จะเงียบ
+        setNoHit((j.customers?.length ?? 0) === 0 && q.length >= 2 ? { q, refreshed: Boolean(j.refreshed) } : null);
       } catch {
         setHits([]);
       } finally {
@@ -8722,6 +8727,7 @@ function LineChatBox({
   async function refreshRecent() {
     setSearching(true);
     setPicking(true);
+    setNoHit(null);
     try {
       // fresh=1 = ไม่เอาแคช (เพิ่งไปทักลูกค้าในแชทมา ต้องเห็นคิวใหม่ทันที)
       const res = await fetch(`/api/admin/line-customers?q=&fresh=1`);
@@ -9242,6 +9248,40 @@ function LineChatBox({
               )}
             </button>
           ))}
+        </div>
+      )}
+      {/* ค้นแล้วไม่เจอ — เดิมไม่ขึ้นอะไรเลย (เงียบ = พนักงานคิดว่าระบบเสีย) บอกสาเหตุที่เจอบ่อยและทางไปต่อ */}
+      {picking && !picked && !searching && noHit && (
+        <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2">
+          <p className="text-[11px] font-bold text-amber-800">
+            ไม่เจอ “{noHit.q}” ในคลังแชท{noHit.refreshed ? " (ดึงรายชื่อใหม่แล้วก็ยังไม่เจอ)" : ""}
+          </p>
+          <p className="mt-0.5 text-[10px] leading-snug text-amber-700/90">
+            ต้องพิมพ์ <b>ชื่อ LINE ที่เห็นบนหัวห้องแชท</b> — ไม่ใช่ชื่อผู้รับในออเดอร์ (ส่วนใหญ่คนละชื่อกัน) · ลูกค้าที่เพิ่งทักมา ให้กดดูรายชื่อคุยล่าสุดแล้วแตะเลือกได้เลย
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setDraft("");
+                void refreshRecent();
+              }}
+              className="rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-slate-700"
+            >
+              🔄 ดูคนที่คุยกับร้านล่าสุด
+            </button>
+            {chat && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void openChatWithPing(chat.url)}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:bg-slate-100"
+              >
+                💬 เปิดแชทดูชื่อ LINE
+              </button>
+            )}
+          </div>
         </div>
       )}
       <p className="mt-1 text-[10px] leading-snug text-slate-500">
