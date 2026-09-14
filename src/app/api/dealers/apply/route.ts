@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { pushShopAlert } from "@/lib/server/line-alert";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { loadDealersDoc, saveDealersDoc } from "@/lib/server/dealers";
 
@@ -45,24 +46,11 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: "บันทึกใบสมัครไม่สำเร็จ ลองใหม่อีกครั้ง" }, { status: 500 });
 
   // 🔔 แจ้งร้านทาง LINE เฉพาะใบใหม่ (แก้ใบเดิมไม่แจ้งซ้ำ) — ล้มก็ไม่เป็นไร ใบสมัครอยู่ในหลังบ้านแล้ว
-  const to = process.env.LINE_STOCK_ALERT_TO;
-  const line = process.env.LINE_MESSAGING_ACCESS_TOKEN;
-  if (firstTime && to && line) {
+  if (firstTime) {
     const who = u.user.user_metadata?.name || u.user.email || "";
-    void fetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${line}` },
-      body: JSON.stringify({
-        to,
-        messages: [
-          {
-            type: "text",
-            text: `🤝 ใบสมัครตัวแทนจำหน่ายใหม่\n${who}\nร้าน: ${shopName}\nช่องทาง: ${channel}${detail ? `\n${detail}` : ""}\n\nกดอนุมัติ/ปฏิเสธได้ที่หลังบ้าน → ตัวแทนจำหน่าย`,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(10_000),
-    }).catch(() => {});
+    void pushShopAlert(
+      `🤝 ใบสมัครตัวแทนจำหน่ายใหม่\n${who}\nร้าน: ${shopName}\nช่องทาง: ${channel}${detail ? `\n${detail}` : ""}\n\nกดอนุมัติ/ปฏิเสธได้ที่หลังบ้าน → ตัวแทนจำหน่าย`,
+    );
   }
 
   return NextResponse.json({ ok: true });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { pushShopAlert } from "@/lib/server/line-alert";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { amountDueNow, withLog, type Order } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
@@ -77,35 +78,20 @@ export async function GET(req: Request) {
 
   // ── สรุปให้ร้านรู้ว่ามีเงินค้างอยู่เท่าไร (ส่งครั้งเดียวต่อวัน) ──
   const total = due.reduce((s, d) => s + d.balance, 0);
-  const to = process.env.LINE_ADMIN_ALERT_TO || process.env.LINE_STOCK_ALERT_TO;
-  const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
   let notifiedShop = false;
-  if (!dry && due.length > 0 && to && token) {
+  if (!dry && due.length > 0) {
     const lines = due
       .slice(0, 15)
       .map((d) => `• ${d.id} · ${d.customer} — ค้าง ${d.balance.toLocaleString()} บาท${d.hasSlip ? " (มีสลิปรอตรวจ)" : ""}`)
       .join("\n");
-    try {
-      await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          to,
-          messages: [
-            {
-              type: "text",
-              text: `💳 ยอดค้างเก็บ (มัดจำ 50%) ${due.length} ออเดอร์ รวม ${total.toLocaleString()} บาท\n${lines}${
-                due.length > 15 ? `\n…และอีก ${due.length - 15} ออเดอร์` : ""
-              }\n\nดูทั้งหมด: ${SITE_URL}/admin/orders`,
-            },
-          ],
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      notifiedShop = true;
-    } catch {
-      /* แจ้งไม่ได้ก็ไม่พัง — เช้าถัดไปแจ้งใหม่ */
-    }
+    notifiedShop = (
+      await pushShopAlert(
+        `💳 ยอดค้างเก็บ (มัดจำ 50%) ${due.length} ออเดอร์ รวม ${total.toLocaleString()} บาท\n${lines}${
+          due.length > 15 ? `\n…และอีก ${due.length - 15} ออเดอร์` : ""
+        }\n\nดูทั้งหมด: ${SITE_URL}/admin/orders`,
+        { money: true },
+      )
+    ).ok;
   }
 
   return NextResponse.json({

@@ -1,28 +1,133 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { clearLineSources, loadLineSources } from "@/lib/server/line-sources";
+import {
+  loadLineAlert,
+  openToken,
+  pushShopAlert,
+  saveLineAlert,
+  sealToken,
+  statusOf,
+  type LineAlertStatus,
+} from "@/lib/server/line-alert";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** เลขห้องแชท LINE ที่ /api/line/webhook จดไว้ — หน้า /admin/line-groups เรียกใช้ */
+/** ป้ายชื่อบัญชี LINE 1 ตัว — ไว้บอกว่าเลขห้องแถวไหนเป็นของบัญชีไหน */
+export interface LineAccount {
+  /** "alert" = บัญชีแจ้งเตือนที่ตั้งไว้ · "shop" = บัญชีร้านที่คุยกับลูกค้า */
+  kind: "alert" | "shop";
+  userId: string;
+  name: string;
+  basicId: string;
+}
+
+/** ถามชื่อบัญชีจาก token (ใช้จับคู่กับ destination ของ webhook) */
+async function accountOf(token: string, kind: LineAccount["kind"]): Promise<LineAccount | null> {
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/info", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return null;
+    const d = (await res.json()) as { userId?: string; displayName?: string; basicId?: string };
+    if (!d.userId) return null;
+    return { kind, userId: d.userId, name: d.displayName ?? "", basicId: d.basicId ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+async function accounts(): Promise<LineAccount[]> {
+  const doc = await loadLineAlert();
+  const out: LineAccount[] = [];
+  const alert = openToken(doc.enc);
+  if (alert) {
+    const a = await accountOf(alert, "alert");
+    if (a) out.push(a);
+  }
+  const shop = process.env.LINE_MESSAGING_ACCESS_TOKEN;
+  if (shop) {
+    const s = await accountOf(shop, "shop");
+    if (s) out.push(s);
+  }
+  return out;
+}
+
+export interface LineSourcesResponse {
+  sources: Awaited<ReturnType<typeof loadLineSources>>;
+  alert: LineAlertStatus;
+  accounts: LineAccount[];
+  /** ปลายทางเดิมที่ตั้งไว้ใน env (ใช้เมื่อยังไม่ได้ตั้งบัญชีแจ้งเตือน) */
+  envTo: string;
+}
+
+/** เลขห้องแชทที่ /api/line/webhook จดไว้ + สถานะบัญชีแจ้งเตือน */
 export async function GET() {
   const gate = await requirePerm("settings.manage");
   if (gate.res) return gate.res;
-  return NextResponse.json({
+  const doc = await loadLineAlert();
+  const body: LineSourcesResponse = {
     sources: await loadLineSources(),
-    /** ตั้ง env ครบหรือยัง (ไม่ส่งค่าจริงออกไป แค่บอกว่าตั้งแล้ว/ยัง) */
-    env: {
-      channelSecret: !!process.env.LINE_MESSAGING_CHANNEL_SECRET,
-      accessToken: !!process.env.LINE_MESSAGING_ACCESS_TOKEN,
-      /** ส่งต่อให้บอท n8n ทำงานเสมอ (ค่าตั้งต้นฝังในโค้ด) — env มีไว้ทับตอนย้าย workflow */
-      forward: true,
-      alertTo: (process.env.LINE_STOCK_ALERT_TO ?? "").slice(0, 1) || "",
-    },
-  });
+    alert: statusOf(doc),
+    accounts: await accounts(),
+    // โชว์แค่ตัวอักษรแรกพอให้รู้ว่าเป็นกลุ่มหรือแชทเดี่ยว ไม่ต้องเปิดเลขเต็ม
+    envTo: (process.env.LINE_STOCK_ALERT_TO ?? "").slice(0, 1),
+  };
+  return NextResponse.json(body);
 }
 
-/** คัดลอกเลขไปใส่ Netlify แล้ว — ล้างทิ้งได้ */
+/**
+ * บันทึกบัญชีแจ้งเตือน / ทดสอบส่ง
+ *   { action: "save", token?, to?, adminTo? }  — token ว่าง = ไม่แตะของเดิม
+ *   { action: "test" }                          — ยิงข้อความทดสอบไปปลายทางที่ตั้งไว้
+ */
+export async function POST(req: Request) {
+  const gate = await requirePerm("settings.manage");
+  if (gate.res) return gate.res;
+
+  const body = (await req.json().catch(() => ({}))) as {
+    action?: string;
+    token?: string;
+    to?: string;
+    adminTo?: string;
+  };
+
+  if (body.action === "test") {
+    const who = gate.actor?.name || gate.actor?.username || "แอดมิน";
+    const r = await pushShopAlert(
+      `🔔 ทดสอบการแจ้งเตือนจากระบบร้าน iDucky\nส่งโดย ${who}\nถ้าเห็นข้อความนี้ในกลุ่ม แปลว่าตั้งค่าถูกแล้วครับ`,
+    );
+    return NextResponse.json(r, { status: r.ok ? 200 : 400 });
+  }
+
+  if (body.action !== "save") return NextResponse.json({ error: "คำสั่งไม่ถูกต้อง" }, { status: 400 });
+
+  const patch: Parameters<typeof saveLineAlert>[0] = {
+    savedAt: new Date().toISOString(),
+    savedBy: gate.actor?.name || gate.actor?.username || "แอดมิน",
+  };
+  if (typeof body.to === "string") patch.to = body.to.trim();
+  if (typeof body.adminTo === "string") patch.adminTo = body.adminTo.trim();
+  if (typeof body.token === "string" && body.token.trim()) {
+    const sealed = sealToken(body.token.trim());
+    if (!sealed)
+      return NextResponse.json(
+        { error: "เข้ารหัส token ไม่ได้ — เซิร์ฟเวอร์ยังไม่ได้ตั้ง ADMIN_SESSION_SECRET" },
+        { status: 500 },
+      );
+    patch.enc = sealed;
+  }
+  // ล้าง token ทิ้ง = กลับไปใช้บัญชีร้านตามเดิม
+  if (body.token === "") patch.enc = undefined;
+
+  await saveLineAlert(patch);
+  const doc = await loadLineAlert();
+  return NextResponse.json({ ok: true, alert: statusOf(doc), accounts: await accounts() });
+}
+
+/** คัดลอกเลขไปใช้แล้ว — ล้างรายการทิ้งได้ */
 export async function DELETE() {
   const gate = await requirePerm("settings.manage");
   if (gate.res) return gate.res;

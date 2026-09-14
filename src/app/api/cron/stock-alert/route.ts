@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { pushShopAlert } from "@/lib/server/line-alert";
 import { listStock } from "@/lib/server/stock";
 
 export const runtime = "nodejs";
@@ -35,26 +36,15 @@ export async function GET(req: Request) {
     .filter(Boolean) as { name: string; balance: number; unit: string; point: number; daysLeft: number | null }[];
 
   let notified = false;
-  const to = process.env.LINE_STOCK_ALERT_TO;
-  const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
-  if (need.length > 0 && to && token) {
+  if (need.length > 0) {
     const lines = need
       .map((n) => `• ${n.name} เหลือ ${n.balance.toLocaleString()} ${n.unit} (จุดสั่ง ≤${n.point.toLocaleString()}${n.daysLeft != null ? ` · ~${n.daysLeft} วันหมด` : ""})`)
       .join("\n");
-    try {
-      await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          to,
-          messages: [{ type: "text", text: `🛒 สต๊อกถึงจุดต้องสั่งของ ${need.length} รายการ\n${lines}\n\nดูรายละเอียด: https://iduckystore.com/admin/stock` }],
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      notified = true;
-    } catch {
-      /* แจ้งไม่ได้ก็ไม่พัง — เช้าถัดไปแจ้งใหม่ */
-    }
+    notified = (
+      await pushShopAlert(
+        `🛒 สต๊อกถึงจุดต้องสั่งของ ${need.length} รายการ\n${lines}\n\nดูรายละเอียด: https://iduckystore.com/admin/stock`,
+      )
+    ).ok;
   }
   return NextResponse.json({ ok: true, needOrder: need, notified });
 }

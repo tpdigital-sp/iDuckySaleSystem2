@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { rememberLineSources, type LineSource } from "@/lib/server/line-sources";
+import { alertToken } from "@/lib/server/line-alert";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,20 +33,26 @@ function signatureOk(raw: string, signature: string | null): boolean {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-/** ชื่อกลุ่มจาก LINE (มีเฉพาะ type group) — ไม่ได้ก็ไม่เป็นไร เลขห้องสำคัญกว่า */
-async function groupName(groupId: string): Promise<string | undefined> {
-  const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
-  if (!token) return undefined;
-  try {
-    const res = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!res.ok) return undefined;
-    return ((await res.json()) as { groupName?: string }).groupName;
-  } catch {
-    return undefined;
+/**
+ * ชื่อกลุ่มจาก LINE (มีเฉพาะ type group) — ไม่ได้ก็ไม่เป็นไร เลขห้องสำคัญกว่า
+ * ⚠️ ถามได้เฉพาะบัญชีที่ "อยู่ในกลุ่มนั้น" — จึงลองทั้งบัญชีแจ้งเตือนและบัญชีร้าน
+ *    ได้ชื่อมา = ยืนยันว่าบัญชีนั้นอยู่ในกลุ่มจริง ส่งข้อความเข้ากลุ่มได้แน่
+ */
+async function groupName(groupId: string, tokens: string[]): Promise<string | undefined> {
+  for (const token of tokens) {
+    try {
+      const res = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) continue;
+      const name = ((await res.json()) as { groupName?: string }).groupName;
+      if (name) return name;
+    } catch {
+      /* บัญชีนี้ถามไม่ได้ ลองบัญชีถัดไป */
+    }
   }
+  return undefined;
 }
 
 interface LineEvent {
@@ -76,7 +83,8 @@ async function forward(raw: string, signature: string | null): Promise<void> {
 
 /** แกะเลขห้องจาก event แล้วจดลงคลัง (ถามชื่อกลุ่มจาก LINE ก่อนถ้าเป็นกลุ่ม) */
 async function capture(raw: string, verified: boolean): Promise<void> {
-  const events = (JSON.parse(raw) as { events?: LineEvent[] }).events ?? [];
+  const body = JSON.parse(raw) as { events?: LineEvent[]; destination?: string };
+  const events = body.events ?? [];
   const at = new Date().toISOString();
   const seen = new Map<string, LineSource>();
   for (const ev of events) {
@@ -85,13 +93,16 @@ async function capture(raw: string, verified: boolean): Promise<void> {
     const id = s.groupId ?? s.roomId ?? s.userId;
     const type = s.groupId ? "group" : s.roomId ? "room" : s.userId ? "user" : null;
     if (!id || !type) continue;
-    seen.set(id, { type, id, at, verified });
+    seen.set(id, { type, id, at, verified, dest: body.destination });
   }
   const rows = [...seen.values()];
   if (rows.length === 0) return;
+  const tokens = [await alertToken(), process.env.LINE_MESSAGING_ACCESS_TOKEN].filter(
+    (t): t is string => !!t,
+  );
   await Promise.all(
     rows.filter((r) => r.type === "group").map(async (r) => {
-      r.name = await groupName(r.id);
+      r.name = await groupName(r.id, tokens);
     }),
   );
   await rememberLineSources(rows);

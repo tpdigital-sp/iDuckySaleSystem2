@@ -29,6 +29,11 @@ export interface LineSource {
   at: string;
   /** ลายเซ็น x-line-signature ตรงไหม — ไม่ตรง/ไม่ได้ตั้ง channel secret = อย่าเพิ่งเชื่อ */
   verified: boolean;
+  /**
+   * userId ของ "บัญชีที่ได้ยิน" (field destination ใน webhook) — มี 2 บัญชีชี้มาที่เส้นนี้ได้
+   * ⚠️ เลขห้องผูกกับบัญชี ใช้ข้ามกันไม่ได้ ต้องหยิบเลขของบัญชีที่จะใช้ส่งเท่านั้น
+   */
+  dest?: string;
 }
 
 export async function loadLineSources(): Promise<LineSource[]> {

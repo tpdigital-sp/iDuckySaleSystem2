@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { pushShopAlert } from "@/lib/server/line-alert";
 import { bkkYmd } from "@/lib/bangkok-time";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { bearerUser, CLAIM_TABLE, isMissingTable } from "@/lib/server/claims-db";
@@ -104,24 +105,10 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // 🔔 แจ้งทีมงานทาง LINE ทันที (fire-and-forget — แจ้งไม่ได้ก็ไม่ขวางการยื่น)
-  const to = process.env.LINE_ADMIN_ALERT_TO || process.env.LINE_STOCK_ALERT_TO;
-  const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
-  if (to && token) {
-    void fetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        to,
-        messages: [
-          {
-            type: "text",
-            text: `🧰 เคลมใหม่ ${claim.id}\nออเดอร์ ${orderId} · ${order.customer} · ${order.phone}\nประเภท: ${type}\n${claim.detail.slice(0, 300)}\n\nเปิดดู: /admin/claims`,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(10_000),
-    }).catch(() => {});
-  }
+  void pushShopAlert(
+    `🧰 เคลมใหม่ ${claim.id}\nออเดอร์ ${orderId} · ${order.customer} · ${order.phone}\nประเภท: ${type}\n${claim.detail.slice(0, 300)}\n\nเปิดดู: /admin/claims`,
+    { money: true },
+  );
 
   return NextResponse.json({ ok: true, claim });
 }
