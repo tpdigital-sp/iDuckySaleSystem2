@@ -119,7 +119,7 @@ import { useActor, useCan, useIsAdministrator, usePermsReady, useRoleLabel } fro
 import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
-import { isPickupOrder, resolveShipLabel } from "@/lib/ship-label";
+import { isPickupOrder, normalizeShipLabel, resolveShipLabel } from "@/lib/ship-label";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
@@ -130,6 +130,9 @@ import { formatPhone } from "@/lib/contacts";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { SHIP_WINDOW_RULE, shipWindowForUseBy, shipWindowWarnings } from "@/lib/ship-date";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
+
+/** บรรทัดในเอกสาร FlowAccount ที่เป็น "ค่าส่ง" ไม่ใช่งานผลิต (ชุดเดียวกับกล่องสร้างออเดอร์จากลิงก์) */
+const DOC_SHIP_RE = /ค่าจัดส่ง|ค่าส่ง|ค่าขนส่ง|shipping|delivery/i;
 
 /**
  * 📱 เปิดหน้าออเดอร์นี้ "มาจากนอกเว็บ" หรือเปล่า — ใช้เดาว่าเป็นการสแกน QR จากใบงาน
@@ -1184,7 +1187,10 @@ export default function AdminOrderDetailPage() {
   const [acceptBusy, setAcceptBusy] = useState<string | null>(null);
   /** 💰 กล่อง "รับยอดเอง" ที่เปิดอยู่ — สลิปใบเพิ่มที่แอดมินกำลังใส่ยอด (null = ปิด) */
   const [acceptForm, setAcceptForm] = useState<PaymentEntry | null>(null);
-  /** 🧾 ฟอร์มข้อมูลใบกำกับภาษี (null = ปิด) · docUrl = ลิงก์แชร์ FlowAccount ที่วางไว้ · docVat = VAT ตามเอกสาร (เสนอให้เปิด VAT ตามนั้น) */
+  /**
+   * 🧾 ฟอร์มข้อมูลใบกำกับภาษี (null = ปิด) · docUrl = ลิงก์แชร์ FlowAccount ที่วางไว้ · docVat = VAT ตามเอกสาร (เสนอให้เปิด VAT ตามนั้น)
+   * docItems/docShip/docDiscount = รายการ+ค่าส่ง+ส่วนลดตามเอกสาร (เสนอให้ดึงรายการมาใส่ในใบงานพร้อมกัน)
+   */
   const [taxForm, setTaxForm] = useState<{
     company: string;
     taxId: string;
@@ -1196,6 +1202,12 @@ export default function AdminOrderDetailPage() {
     docVat?: number;
     docVatRate?: number;
     applyDocVat?: boolean;
+    docItems?: { name: string; selections: string; qty: number; unitPrice: number }[];
+    docShip?: number;
+    docShipLabel?: string;
+    docDiscount?: number;
+    docGrandTotal?: number;
+    applyDocItems?: boolean;
   } | null>(null);
   const [taxFetching, setTaxFetching] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
@@ -1789,6 +1801,8 @@ export default function AdminOrderDetailPage() {
   /**
    * 🧾 วางลิงก์แชร์ FlowAccount → ดึงชื่อผู้ซื้อ/เลขผู้เสียภาษี/สาขา/ที่อยู่ มาเติมฟอร์มให้ (ใช้ POST /api/admin/orders/flowaccount ตัวเดิม — อ่านอย่างเดียว ไม่สร้างออเดอร์)
    * เอกสารมี VAT → เสนอเปิด VAT ตามยอดในเอกสาร (แม่นกว่าคิด 7% เอง)
+   * เอกสารมีรายการ → เสนอดึง "รายการ + ค่าส่ง + ส่วนลด" มาใส่ในใบงานพร้อมกัน
+   * (14 ก.ย. 69 พนักงานแจ้ง "ดึงข้อมูลใบเสนอราคาแล้วมาแค่ยอด" — ใบงานว่างเปล่าแต่มี VAT กราฟฟิกไม่รู้ว่าต้องทำอะไร)
    */
   async function fetchTaxFromFlowAccount() {
     if (!taxForm) return;
@@ -1803,7 +1817,17 @@ export default function AdminOrderDetailPage() {
       const res = await fetch("/api/admin/orders/flowaccount", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
       const j = (await res.json().catch(() => ({}))) as {
         error?: string;
-        doc?: { docNo?: string; docTypeLabel?: string; vat?: number; vatRate?: number; customer?: { name?: string; taxId?: string; branch?: string; address?: string } };
+        doc?: {
+          docNo?: string;
+          docTypeLabel?: string;
+          vat?: number;
+          vatRate?: number;
+          discount?: number;
+          grandTotal?: number;
+          items?: { name: string; detail: string; qty: number; unitPrice: number; amount: number }[];
+          customer?: { name?: string; taxId?: string; branch?: string; address?: string };
+        };
+        shipping?: ShippingMethod[];
       };
       if (!res.ok || !j.doc) {
         setErr(j.error ?? "อ่านเอกสาร FlowAccount ไม่สำเร็จ");
@@ -1811,6 +1835,12 @@ export default function AdminOrderDetailPage() {
       }
       const c = j.doc.customer ?? {};
       const docVat = Number(j.doc.vat) || 0;
+      // บรรทัด "ค่าส่ง" ในเอกสารไม่ใช่งานผลิต — แยกไปเป็นค่าจัดส่งของออเดอร์ (ท่าเดียวกับกล่องสร้างออเดอร์จากลิงก์)
+      const docLines = j.doc.items ?? [];
+      const shipLines = docLines.filter((it) => DOC_SHIP_RE.test(it.name));
+      const workLines = docLines.filter((it) => !DOC_SHIP_RE.test(it.name));
+      const docShip = shipLines.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+      const methods = j.shipping?.length ? j.shipping : shipMethods;
       setTaxForm((cur) =>
         cur
           ? {
@@ -1824,6 +1854,18 @@ export default function AdminOrderDetailPage() {
               docVat: docVat > 0 ? docVat : undefined,
               docVatRate: Number(j.doc!.vatRate) || 7,
               applyDocVat: docVat > 0 && !order?.vat,
+              docItems: workLines.map((it) => ({
+                name: it.name,
+                selections: it.detail ?? "",
+                qty: Math.max(1, Math.round(Number(it.qty) || 0)),
+                unitPrice: Math.max(0, Number(it.unitPrice) || 0),
+              })),
+              docShip: shipLines.length ? docShip : undefined,
+              docShipLabel: shipLines.length ? normalizeShipLabel(shipLines.map((it) => it.name).join(" · "), docShip, methods) : undefined,
+              docDiscount: Number(j.doc!.discount) > 0 ? Number(j.doc!.discount) : undefined,
+              docGrandTotal: Number(j.doc!.grandTotal) || undefined,
+              // ใบงานยังไม่มีรายการ = ตั้งใจจะดึงมาอยู่แล้ว · มีรายการอยู่แล้วไม่ติ๊กให้ (ทับของเดิมต้องตั้งใจกด)
+              applyDocItems: workLines.length > 0 && !order?.items.length,
             }
           : cur
       );
@@ -1849,19 +1891,62 @@ export default function AdminOrderDetailPage() {
       ...(taxForm.docNo ? { docNo: taxForm.docNo, docUrl: docUrl || undefined, docTypeLabel: taxForm.docTypeLabel } : {}),
     };
     const withVat = !!taxForm.applyDocVat && (taxForm.docVat ?? 0) > 0 && !order.vat;
+    // 📋 ดึงรายการตามเอกสารมาใส่ใบงานด้วย (ค่าส่ง/ส่วนลดตามใบไปพร้อมกัน — ยอดจะได้เท่าบิล FlowAccount)
+    const docItems = taxForm.applyDocItems ? (taxForm.docItems ?? []) : [];
+    const withItems = docItems.length > 0;
+    if (withItems && order.items.length) {
+      const ok = await askConfirm({
+        icon: "📋",
+        title: `แทนที่รายการเดิม ${order.items.length} รายการ?`,
+        detail: `ใบงานจะเหลือ ${docItems.length} รายการตาม${taxForm.docTypeLabel ?? "เอกสาร"} ${taxForm.docNo ?? ""} — แบบงาน/ติ๊กของกราฟฟิกในรายการเดิมจะหายไปด้วย`,
+        confirmLabel: "แทนที่ตามเอกสาร",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    const items: OrderItem[] = docItems.map((it) => ({ productId: "special-item", name: it.name, selections: it.selections, qty: it.qty, unitPrice: it.unitPrice }));
+    const shipPatch =
+      withItems && taxForm.docShip != null
+        ? { shippingCost: taxForm.docShip, ...(isPickupOrder(order) || !taxForm.docShipLabel ? {} : { shippingLabel: taxForm.docShipLabel }) }
+        : {};
+    const discountPatch =
+      withItems && (taxForm.docDiscount ?? 0) > 0 && !order.adminDiscount
+        ? { adminDiscount: { label: `ส่วนลดตามใบ ${taxForm.docNo ?? ""}`.trim(), amount: taxForm.docDiscount! } }
+        : {};
     const base = withLog(
-      { ...order, taxInvoice, ...(withVat ? { vat: { rate: taxForm.docVatRate || 7, amount: taxForm.docVat! } } : {}) },
+      {
+        ...order,
+        taxInvoice,
+        ...(withItems ? { items, ...shipPatch, ...discountPatch } : {}),
+        ...(withVat ? { vat: { rate: taxForm.docVatRate || 7, amount: taxForm.docVat! } } : {}),
+      },
       actor,
       order.taxInvoice ? "แก้ข้อมูลใบกำกับภาษี" : "ใส่ข้อมูลใบกำกับภาษี",
       `${company}${taxInvoice.taxId ? ` · ${taxInvoice.taxId}` : ""}${taxInvoice.docNo ? ` · ${taxInvoice.docTypeLabel ?? "เอกสาร"} ${taxInvoice.docNo}` : ""}`
     );
-    const next = withVat
-      ? withLog(base, actor, "เปิด VAT ตามเอกสาร FlowAccount", `VAT ${formatPrice(taxForm.docVat!)} → ยอดรวม ${formatPrice(orderTotal(base))}`)
+    const withItemsLog = withItems
+      ? withLog(
+          base,
+          actor,
+          "ดึงรายการตามเอกสาร FlowAccount",
+          `${docItems.length} รายการจาก ${taxForm.docTypeLabel ?? "เอกสาร"} ${taxForm.docNo ?? ""}${
+            taxForm.docShip != null ? ` · ค่าส่ง ${formatPrice(taxForm.docShip)}` : ""
+          }${discountPatch.adminDiscount ? ` · ส่วนลด ${formatPrice(taxForm.docDiscount!)}` : ""}`
+        )
       : base;
+    const next = withVat
+      ? withLog(withItemsLog, actor, "เปิด VAT ตามเอกสาร FlowAccount", `VAT ${formatPrice(taxForm.docVat!)} → ยอดรวม ${formatPrice(orderTotal(withItemsLog))}`)
+      : withItemsLog;
+    // ยอดตามใบไม่ตรงกับที่คิดได้จากรายการ = แอดมินต้องรู้ก่อนแจ้งลูกค้า (ลิงก์แชร์อาจเป็นฉบับเก่า)
+    const gap = taxForm.docGrandTotal != null && withItems ? Math.round((orderTotal(next) - taxForm.docGrandTotal) * 100) / 100 : 0;
     setTaxForm(null);
-    // เปิด VAT ด้วย = ยอดโต → รับก้อนจากเซิร์ฟเวอร์ (สถานะเด้งกลับรอชำระเงิน/paidTotal/แจ้งไลน์) · แค่ข้อมูลผู้ซื้อ = บันทึกธรรมดา
-    if (withVat) await applyOrderFromServer(next);
+    // ยอดโต (เปิด VAT/ดึงรายการ) → รับก้อนจากเซิร์ฟเวอร์ (สถานะเด้งกลับรอชำระเงิน/paidTotal/แจ้งไลน์) · แค่ข้อมูลผู้ซื้อ = บันทึกธรรมดา
+    if (withVat || withItems) await applyOrderFromServer(next);
     else applyOrder(next);
+    if (Math.abs(gap) >= 0.01)
+      setErr(
+        `⚠️ ยอดในระบบ ${formatPrice(orderTotal(next))} ไม่ตรงกับยอดตาม${taxForm.docTypeLabel ?? "เอกสาร"} ${formatPrice(taxForm.docGrandTotal!)} (ต่าง ${formatPrice(Math.abs(gap))}) — ตรวจรายการ/ค่าส่ง/ส่วนลดก่อนแจ้งลูกค้า`
+      );
   }
 
   /** บันทึกออเดอร์ปัจจุบันลงฐานข้อมูล (เรียกตอน blur ช่องกรอก) */
@@ -3973,6 +4058,42 @@ export default function AdminOrderDetailPage() {
                   {taxForm.docNo && (
                     <p className="mt-1 text-[11px] font-semibold text-sky-700">
                       ✓ อ่านจาก {taxForm.docTypeLabel ?? "เอกสาร"} {taxForm.docNo} แล้ว — ตรวจข้อมูลด้านล่างก่อนบันทึก
+                    </p>
+                  )}
+                  {/* 📋 รายการในเอกสาร — ใบงานว่างเปล่ากราฟฟิกทำงานต่อไม่ได้ ต้องดึงมาพร้อมข้อมูลผู้ซื้อ */}
+                  {!!taxForm.docItems?.length && (
+                    <div className="mt-1.5 rounded-lg bg-white px-2.5 py-2 ring-1 ring-sky-200">
+                      <label className="flex items-start gap-2 text-[11px] font-bold text-sky-900">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 shrink-0"
+                          checked={!!taxForm.applyDocItems}
+                          onChange={(e) => setTaxForm({ ...taxForm, applyDocItems: e.target.checked })}
+                        />
+                        <span>
+                          ดึงรายการในเอกสารมาใส่ใบงานด้วย ({taxForm.docItems.length} รายการ
+                          {taxForm.docShip != null ? ` · ค่าส่ง ${formatPrice(taxForm.docShip)}` : ""}
+                          {(taxForm.docDiscount ?? 0) > 0 ? ` · ส่วนลด ${formatPrice(taxForm.docDiscount!)}` : ""})
+                          {order.items.length > 0 && (
+                            <span className="font-extrabold text-rose-700"> — ทับรายการเดิม {order.items.length} รายการ</span>
+                          )}
+                        </span>
+                      </label>
+                      <ul className="mt-1 space-y-0.5 pl-6 text-[11px] text-slate-600">
+                        {taxForm.docItems.map((it, i) => (
+                          <li key={i} className="truncate">
+                            {it.name} <span className="tabular-nums text-slate-500">×{it.qty} @ {formatPrice(it.unitPrice)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {taxForm.docGrandTotal != null && (
+                        <p className="mt-1 pl-6 text-[11px] font-semibold tabular-nums text-slate-500">ยอดตามเอกสาร {formatPrice(taxForm.docGrandTotal)}</p>
+                      )}
+                    </div>
+                  )}
+                  {taxForm.docNo && !taxForm.docItems?.length && (
+                    <p className="mt-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+                      เอกสารนี้ไม่มีรายการสินค้า (ใบมัดจำ/ใบวางบิลมักเป็นแบบนี้) — ใส่รายการในใบงานเองด้านล่าง
                     </p>
                   )}
                   {taxForm.docVat != null && taxForm.docVat > 0 && !order.vat && (
