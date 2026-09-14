@@ -121,16 +121,16 @@ function LineGroupsInner() {
             <b>3.</b> เชิญ OA ร้านเข้ากลุ่มพนักงาน แล้ว<b>พิมพ์อะไรก็ได้ในกลุ่มนั้น 1 ครั้ง</b> — เลขจะโผล่ข้างล่างเอง
           </li>
           <li>
-            <b>4.</b> คัดลอกเลข → Netlify → Project configuration → Environment variables → ใส่ใน{" "}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11.5px]">LINE_STOCK_ALERT_TO</code> →{" "}
-            <b>deploy ใหม่ 1 รอบ</b>
+            <b>4.</b> คัดลอกเลข → Netlify → Project configuration → Environment variables → แก้ค่าของ{" "}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11.5px]">LINE_STOCK_ALERT_TO</code>{" "}
+            (แก้ค่าเดิม ไม่ต้องเพิ่มตัวใหม่) → <b>deploy ใหม่ 1 รอบ</b>
           </li>
         </ol>
         <p className="mt-2.5 text-[12px] leading-relaxed text-slate-500">
-          ⚠️ บอทตอบแชทลูกค้าทำงานที่ n8n — ถ้าเปลี่ยน Webhook URL มาที่เว็บนี้ ต้องตั้ง env{" "}
+          ✅ บอทตอบแชทลูกค้าไม่ดับ — ทุกข้อความที่เข้ามาถูกส่งต่อให้ workflow เดิมใน n8n โดยอัตโนมัติ
+          (ปลายทางฝังไว้ในโค้ดแล้ว ไม่ต้องตั้งค่าเพิ่ม) ย้าย workflow เมื่อไหร่ค่อยตั้ง env{" "}
           <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11.5px]">LINE_FORWARD_WEBHOOK_URL</code>{" "}
-          เป็น URL เดิมของ n8n ด้วย ระบบจะส่งต่อให้ทุกข้อความ บอทจึงตอบเหมือนเดิม
-          {env && (env.forward ? " — ตอนนี้ตั้งไว้แล้ว" : " — ตอนนี้ยังไม่ได้ตั้ง")}
+          ทับ
         </p>
       </div>
 

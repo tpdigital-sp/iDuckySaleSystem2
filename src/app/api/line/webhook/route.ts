@@ -12,10 +12,11 @@ export const dynamic = "force-dynamic";
  * LINE ไม่มี API ให้ถามว่ากลุ่มไหนมีเลขอะไร ต้องให้ LINE ยิง event มาบอกเองเท่านั้น
  * ได้เลขแล้วเอาไปใส่ env LINE_STOCK_ALERT_TO บน Netlify (ดู [[iducky-stock-check-alert]])
  *
- * ⚠️ ไม่ได้ตอบแชทลูกค้า — บอทตอบแชทอยู่ที่ n8n เหมือนเดิม
- *    ตั้ง LINE_FORWARD_WEBHOOK_URL = URL webhook ของ n8n ตัวเดิม แล้วเส้นนี้จะส่งต่อให้ทุก event
+ * ⚠️ ไม่ได้ตอบแชทลูกค้า — บอทตอบแชทอยู่ที่ n8n เหมือนเดิม เส้นนี้ส่ง event ดิบต่อให้ n8n ทุกครั้ง
  *    (ส่งทั้งตัวดิบ + หัว x-line-signature เดิม n8n จึงตรวจลายเซ็นต่อได้) บอทจึงทำงานเหมือนเดิม
- *    ไม่ได้ตั้ง = จดเลขห้องอย่างเดียว ไม่ส่งต่อใคร
+ *    ปลายทางฝังค่าเริ่มต้นไว้ในโค้ด ไม่ต้องตั้ง env — วิธีเดียวกับ CHAT_WEBHOOK_URL ใน api/chat/route.ts
+ *    ⚠️ ที่ไม่ใช้ env เพราะ env รวมของไซต์ชน 4KB ของ Lambda อยู่แล้ว (ดู [[iducky-deploy]])
+ *    ย้าย workflow เมื่อไหร่ค่อยตั้ง LINE_FORWARD_WEBHOOK_URL ทับ หรือแก้ค่าตั้งต้นบรรทัดล่าง
  *
  * ⚠️ ต้องตอบ 200 เร็ว ๆ เสมอ ไม่งั้น LINE จะมองว่า endpoint เสียแล้วปิด webhook ให้เอง
  *    งานจด/ส่งต่อจึงทำแบบไม่รอผล (void) และห่อ try ไว้ทั้งก้อน
@@ -51,9 +52,12 @@ interface LineEvent {
   source?: { type?: string; groupId?: string; roomId?: string; userId?: string };
 }
 
+/** webhook ของบอทตอบแชทลูกค้าใน n8n — ปลายทางที่ต้องส่ง event ต่อให้ทุกครั้ง */
+const FORWARD_DEFAULT = "https://n8n.iduckybot.com/webhook/line-webhook-chatbot";
+
 /** ส่ง event ดิบต่อให้ n8n (บอทตอบแชทตัวเดิม) — ล้มเหลวก็เงียบ ห้ามทำให้ webhook พัง */
 async function forward(raw: string, signature: string | null): Promise<void> {
-  const url = process.env.LINE_FORWARD_WEBHOOK_URL;
+  const url = process.env.LINE_FORWARD_WEBHOOK_URL || FORWARD_DEFAULT;
   if (!url) return;
   try {
     await fetch(url, {

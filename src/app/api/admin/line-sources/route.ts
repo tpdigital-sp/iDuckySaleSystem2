@@ -15,7 +15,8 @@ export async function GET() {
     env: {
       channelSecret: !!process.env.LINE_MESSAGING_CHANNEL_SECRET,
       accessToken: !!process.env.LINE_MESSAGING_ACCESS_TOKEN,
-      forward: !!process.env.LINE_FORWARD_WEBHOOK_URL,
+      /** ส่งต่อให้บอท n8n ทำงานเสมอ (ค่าตั้งต้นฝังในโค้ด) — env มีไว้ทับตอนย้าย workflow */
+      forward: true,
       alertTo: (process.env.LINE_STOCK_ALERT_TO ?? "").slice(0, 1) || "",
     },
   });
