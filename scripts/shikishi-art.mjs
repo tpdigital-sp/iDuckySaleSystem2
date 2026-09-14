@@ -28,28 +28,28 @@ import sharp from "sharp";
 const OUT = ((process.argv.find((a) => a.startsWith("--out=")) || "").split("=")[1] || ".cache/shikishi/upload").replace(/\/$/, "");
 mkdirSync(OUT, { recursive: true });
 
-const W = 900;
-const H = 900;
-const TH = "Thonburi, 'Noto Sans Thai', 'Sukhumvit Set', sans-serif";
-const INK = "#0f172a";
-const SUB = "#64748b";
+export const W = 900;
+export const H = 900;
+export const TH = "Thonburi, 'Noto Sans Thai', 'Sukhumvit Set', sans-serif";
+export const INK = "#0f172a";
+export const SUB = "#64748b";
 const CYAN = "#0891b2";
 const PAPER = "#f8fafc";
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const frame = (body, defs = "") => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+export const frame = (body, defs = "") => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>${DEFS}${defs}</defs>
   <rect width="${W}" height="${H}" fill="${PAPER}"/>
   <rect x="18" y="18" width="${W - 36}" height="${H - 36}" rx="28" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
   ${body}
 </svg>`;
 
-const title = (t, sub) => `
+export const title = (t, sub) => `
   <text x="${W / 2}" y="86" font-family="${TH}" font-size="40" font-weight="700" text-anchor="middle" fill="${INK}">${esc(t)}</text>
   ${sub ? `<text x="${W / 2}" y="128" font-family="${TH}" font-size="24" text-anchor="middle" fill="${SUB}">${esc(sub)}</text>` : ""}`;
 
-const foot = (lines) =>
+export const foot = (lines) =>
   lines
     .map((l, i) => `<text x="${W / 2}" y="${812 + i * 34}" font-family="${TH}" font-size="22" text-anchor="middle" fill="${SUB}">${esc(l)}</text>`)
     .join("");
@@ -146,7 +146,7 @@ function scene(x, y, w, h, id) {
  * ชิกิชิ 1 ใบ — ขอบโลหะรอบนอก + หน้ากระดาษพิมพ์ลายด้านใน
  * bw = ความหนาขอบเป็นสัดส่วนของด้านสั้น (งานจริงขอบราว 4-5 มม.)
  */
-function board(x, y, w, h, borderKey, { id = borderKey, art = true, bw = 0.045 } = {}) {
+export function board(x, y, w, h, borderKey, { id = borderKey, art = true, bw = 0.045 } = {}) {
   const b = Math.max(6, Math.min(w, h) * bw);
   return `<g>
     <rect x="${x + 5}" y="${y + 7}" width="${w}" height="${h}" rx="4" fill="#0f172a" opacity="0.1"/>
