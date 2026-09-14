@@ -69,14 +69,20 @@ function LineGroupsInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; reason?: string; via?: string };
+      const j = (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        reason?: string;
+        via?: string;
+        saved?: string;
+      };
       if (r.ok) {
         setMsg({
           tone: "ok",
           text:
             body.action === "test"
               ? `ส่งข้อความทดสอบแล้ว (จาก${j.via === "alert" ? "บัญชีแจ้งเตือน" : "บัญชีร้าน"}) — ไปดูในกลุ่มได้เลย`
-              : "บันทึกแล้ว",
+              : j.saved || "บันทึกแล้ว",
         });
         setToken("");
       } else {
@@ -138,8 +144,23 @@ function LineGroupsInner() {
           <b className="text-slate-700">
             {sender ? `${sender.name || "(ไม่ทราบชื่อ)"} ${sender.basicId}` : "ยังไม่มีบัญชีที่ใช้ได้"}
           </b>
-          {!alert.ready && " — ยังเป็นบัญชีร้านที่ลูกค้าทักอยู่ ถ้าอยากแยกให้วาง token ด้านล่าง"}
         </p>
+        {/* สถานะ token แยกจากบรรทัดบน — token เข้าแล้วแต่ยังไม่เลือกห้อง ระบบยังส่งจากบัญชีร้านอยู่
+            เดิมบรรทัดเดียวกันเลยดูเหมือน token ไม่เข้า ทั้งที่เข้าแล้ว */}
+        {alertAcc ? (
+          <p className="mt-1 text-[12.5px] font-semibold leading-relaxed" style={{ color: "var(--dk-mint-ink)" }}>
+            ✅ ผูกบัญชีแจ้งเตือนไว้แล้ว: {alertAcc.name || "(ไม่ทราบชื่อ)"} {alertAcc.basicId}
+            {!alert.to && " — เหลือแค่เลือกห้องปลายทางในข้อ 3 ระบบถึงจะเริ่มใช้บัญชีนี้"}
+          </p>
+        ) : alert.hasToken ? (
+          <p className="mt-1 text-[12.5px] font-semibold leading-relaxed" style={{ color: "var(--dk-coral-ink)" }}>
+            ⚠️ มี token เก็บไว้แต่ LINE ไม่รับ — กด Issue ใหม่แล้ววางอีกครั้ง
+          </p>
+        ) : (
+          <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">
+            ยังไม่ได้ผูกบัญชีแจ้งเตือน — ตอนนี้ใช้บัญชีร้านที่ลูกค้าทักอยู่ ถ้าอยากแยกให้วาง token ด้านล่าง
+          </p>
+        )}
 
         <label className="mt-3 block text-[12px] font-bold text-slate-600" htmlFor="alert-token">
           Channel access token ของบัญชีแจ้งเตือน
@@ -158,7 +179,15 @@ function LineGroupsInner() {
             {busy === "token" ? "กำลังบันทึก…" : "บันทึก token"}
           </Btn>
           {alert.hasToken && (
-            <Btn small disabled={!!busy} onClick={() => void post({ action: "save", token: "" }, "untoken")} title="กลับไปใช้บัญชีร้านตามเดิม">
+            <Btn
+              small
+              disabled={!!busy}
+              onClick={() => {
+                if (window.confirm("ล้าง token ของบัญชีแจ้งเตือน? ระบบจะกลับไปส่งจากบัญชีร้าน"))
+                  void post({ action: "save", token: "" }, "untoken");
+              }}
+              title="กลับไปใช้บัญชีร้านตามเดิม"
+            >
               ล้าง token
             </Btn>
           )}
@@ -198,24 +227,61 @@ function LineGroupsInner() {
         </p>
       </div>
 
-      {/* ── ปลายทางที่ใช้อยู่ ── */}
+      {/* ── ปลายทางที่ใช้อยู่ (2 กลุ่ม แยกตามเรื่อง) ── */}
       <div className="mt-3 rounded-xl border border-slate-200/70 bg-white p-4">
         <p className="text-[13px] font-bold text-slate-700">3 · ห้องปลายทาง</p>
-        {alert.to ? (
-          <p className="mt-1 font-mono text-[12.5px] break-all text-slate-700">
-            {alert.to}
-            <span className="ml-2 font-sans text-[12px] text-slate-500">{alert.to.startsWith("C") ? "(ไลน์กลุ่ม)" : "(แชทเดี่ยว)"}</span>
-          </p>
-        ) : (
-          <p className="mt-1 text-[12.5px] text-slate-500">
-            ยังไม่ได้เลือก — กดปุ่ม &ldquo;ใช้ห้องนี้&rdquo; ที่รายการข้างล่าง
-            {data.envTo && ` (ตอนนี้ยังส่งไปปลายทางเดิมที่ตั้งไว้ใน Netlify ซึ่งขึ้นต้นด้วย ${data.envTo})`}
-          </p>
-        )}
-        <div className="mt-2.5 flex flex-wrap gap-2">
-          <Btn tone="navy" small disabled={!!busy} onClick={() => void post({ action: "test" }, "test")}>
-            {busy === "test" ? "กำลังส่ง…" : "🔔 ส่งข้อความทดสอบ"}
-          </Btn>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">
+          ตั้งได้ 2 กลุ่ม แยกตามเรื่อง · ไม่ตั้งกลุ่มเรื่องเงิน = เรื่องเงินไปเข้ากลุ่มทั่วไปด้วย
+        </p>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {([
+            {
+              money: false,
+              title: "กลุ่มทั่วไป",
+              what: "ออเดอร์สั่งจำนวนมาก · ของใกล้หมด · ใบสมัครตัวแทน",
+              value: alert.to,
+            },
+            {
+              money: true,
+              title: "กลุ่มเรื่องเงิน",
+              what: "เคลม · ยอดค้างเก็บงวด 2",
+              value: alert.adminTo,
+            },
+          ] as const).map((slot) => (
+            <div key={slot.title} className="rounded-lg border border-slate-200/70 bg-slate-50/60 p-3">
+              <p className="text-[12.5px] font-bold text-slate-700">{slot.title}</p>
+              <p className="mt-0.5 text-[11.5px] leading-relaxed text-slate-500">{slot.what}</p>
+              {slot.value ? (
+                <p className="mt-1.5 break-all font-mono text-[11.5px] text-slate-700">{slot.value}</p>
+              ) : (
+                <p className="mt-1.5 text-[12px] text-slate-400">
+                  {slot.money ? "ยังไม่ตั้ง — ใช้กลุ่มทั่วไป" : "ยังไม่ได้เลือก"}
+                </p>
+              )}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Btn
+                  small
+                  disabled={!!busy}
+                  onClick={() => void post({ action: "test", money: slot.money }, `test-${slot.title}`)}
+                  title="ยิงข้อความทดสอบเข้าห้องนี้"
+                >
+                  {busy === `test-${slot.title}` ? "กำลังส่ง…" : "🔔 ทดสอบ"}
+                </Btn>
+                {slot.value && (
+                  <Btn
+                    small
+                    disabled={!!busy}
+                    onClick={() =>
+                      void post(slot.money ? { action: "save", adminTo: "" } : { action: "save", to: "" }, `clear-${slot.title}`)
+                    }
+                  >
+                    ล้าง
+                  </Btn>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -232,7 +298,9 @@ function LineGroupsInner() {
             const heard = r.dest ? accById.get(r.dest) : undefined;
             // ส่งเข้าห้องนี้ได้จริงก็ต่อเมื่อ "บัญชีที่ได้ยิน" คือบัญชีเดียวกับที่จะใช้ส่ง
             const usable = !r.dest || !sender || r.dest === sender.userId;
-            const picked = alert.to === r.id;
+            const asMain = alert.to === r.id;
+            const asMoney = alert.adminTo === r.id;
+            const picked = asMain || asMoney;
             return (
               <Row key={r.id} tone={picked ? "var(--dk-mint)" : r.type === "group" ? "var(--dk-sky-300)" : "var(--dk-quiet)"} done={!usable}>
                 <RowMain
@@ -240,7 +308,8 @@ function LineGroupsInner() {
                   tags={
                     <>
                       <Tag tone={r.type === "group" ? "mint" : "quiet"}>{TYPE_LABEL[r.type]}</Tag>
-                      {picked && <Tag tone="solid">ใช้อยู่</Tag>}
+                      {asMain && <Tag tone="solid">กลุ่มทั่วไป</Tag>}
+                      {asMoney && <Tag tone="solid">กลุ่มเรื่องเงิน</Tag>}
                       {heard && <Tag tone="quiet">{heard.kind === "alert" ? "บัญชีแจ้งเตือนได้ยิน" : "บัญชีร้านได้ยิน"}</Tag>}
                       {!usable && <Tag tone="quiet">คนละบัญชีกับที่ใช้ส่ง</Tag>}
                       {!r.verified && <Tag tone="quiet">ยังไม่ยืนยันลายเซ็น</Tag>}
@@ -255,15 +324,25 @@ function LineGroupsInner() {
                 />
                 <RowSide>
                   <CopyChip label="คัดลอกเลขห้อง" text={() => r.id} />
-                  {!picked && (
+                  {alert.to !== r.id && (
                     <Btn
                       tone="navy"
                       small
                       disabled={!!busy}
                       onClick={() => void post({ action: "save", to: r.id }, `pick-${r.id}`)}
-                      title="ตั้งห้องนี้เป็นปลายทางของข้อความแจ้งเตือน"
+                      title="ออเดอร์สั่งจำนวนมาก · ของใกล้หมด · ใบสมัครตัวแทน"
                     >
-                      {busy === `pick-${r.id}` ? "กำลังตั้ง…" : "ใช้ห้องนี้"}
+                      {busy === `pick-${r.id}` ? "กำลังตั้ง…" : "ตั้งเป็นกลุ่มทั่วไป"}
+                    </Btn>
+                  )}
+                  {alert.adminTo !== r.id && (
+                    <Btn
+                      small
+                      disabled={!!busy}
+                      onClick={() => void post({ action: "save", adminTo: r.id }, `pickm-${r.id}`)}
+                      title="เคลม · ยอดค้างเก็บงวด 2"
+                    >
+                      {busy === `pickm-${r.id}` ? "กำลังตั้ง…" : "ตั้งเป็นกลุ่มเรื่องเงิน"}
                     </Btn>
                   )}
                 </RowSide>

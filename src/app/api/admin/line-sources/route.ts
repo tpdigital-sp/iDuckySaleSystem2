@@ -92,12 +92,16 @@ export async function POST(req: Request) {
     token?: string;
     to?: string;
     adminTo?: string;
+    /** ทดสอบ/ตั้งค่าฝั่งกลุ่มเรื่องเงิน (เคลม · ยอดค้างงวด 2) */
+    money?: boolean;
   };
 
   if (body.action === "test") {
     const who = gate.actor?.name || gate.actor?.username || "แอดมิน";
+    const which = body.money ? "กลุ่มเรื่องเงิน" : "กลุ่มทั่วไป";
     const r = await pushShopAlert(
-      `🔔 ทดสอบการแจ้งเตือนจากระบบร้าน iDucky\nส่งโดย ${who}\nถ้าเห็นข้อความนี้ในกลุ่ม แปลว่าตั้งค่าถูกแล้วครับ`,
+      `🔔 ทดสอบการแจ้งเตือนจากระบบร้าน iDucky (${which})\nส่งโดย ${who}\nถ้าเห็นข้อความนี้ในกลุ่ม แปลว่าตั้งค่าถูกแล้วครับ`,
+      { money: !!body.money },
     );
     return NextResponse.json(r, { status: r.ok ? 200 : 400 });
   }
@@ -110,21 +114,41 @@ export async function POST(req: Request) {
   };
   if (typeof body.to === "string") patch.to = body.to.trim();
   if (typeof body.adminTo === "string") patch.adminTo = body.adminTo.trim();
+
+  /** บอกหน้าจอว่าเพิ่งทำอะไรสำเร็จ — เดิมขึ้นแค่ "บันทึกแล้ว" แยกไม่ออกว่า token เข้าหรือเปล่า */
+  let saved = "";
+
   if (typeof body.token === "string" && body.token.trim()) {
-    const sealed = sealToken(body.token.trim());
+    const raw = body.token.trim();
+    /*
+     * ⚠️ ต้องถาม LINE ก่อนว่า token ใช้ได้จริงไหม แล้วค่อยบันทึก
+     * เดิมบันทึกดิบ ๆ แล้วตอบ "บันทึกแล้ว" ทุกกรณี — วางผิด/วางไม่ครบก็ขึ้นว่าสำเร็จ
+     * กว่าจะรู้ว่าใช้ไม่ได้คือตอนกดส่งทดสอบ (เจอจริง 14 ก.ย. 69)
+     */
+    const acc = await accountOf(raw, "alert");
+    if (!acc)
+      return NextResponse.json(
+        { error: "token นี้ใช้ไม่ได้ — LINE ไม่รับ ลองกด Issue ใหม่แล้วคัดลอกทั้งบรรทัด (อย่าให้มีช่องว่างติดมา)" },
+        { status: 400 },
+      );
+    const sealed = sealToken(raw);
     if (!sealed)
       return NextResponse.json(
         { error: "เข้ารหัส token ไม่ได้ — เซิร์ฟเวอร์ยังไม่ได้ตั้ง ADMIN_SESSION_SECRET" },
         { status: 500 },
       );
     patch.enc = sealed;
+    saved = `ผูกบัญชี ${acc.name || acc.basicId} แล้ว`;
   }
   // ล้าง token ทิ้ง = กลับไปใช้บัญชีร้านตามเดิม
-  if (body.token === "") patch.enc = undefined;
+  if (body.token === "") {
+    patch.enc = undefined;
+    saved = "ล้าง token แล้ว — กลับไปส่งจากบัญชีร้าน";
+  }
 
   await saveLineAlert(patch);
   const doc = await loadLineAlert();
-  return NextResponse.json({ ok: true, alert: statusOf(doc), accounts: await accounts() });
+  return NextResponse.json({ ok: true, saved, alert: statusOf(doc), accounts: await accounts() });
 }
 
 /** คัดลอกเลขไปใช้แล้ว — ล้างรายการทิ้งได้ */
