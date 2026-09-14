@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { couponLabel, type Coupon } from "@/lib/coupons";
+import { couponLabel, couponMaxUses, couponUsesLeft, type Coupon } from "@/lib/coupons";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
   const c = data?.data as Coupon | undefined;
   if (!c) return NextResponse.json({ found: false });
 
-  const usable = c.status === "active" && (!c.expiresAt || new Date(c.expiresAt).getTime() >= Date.now());
+  const usesLeft = couponUsesLeft(c);
+  const usable = c.status === "active" && usesLeft > 0 && (!c.expiresAt || new Date(c.expiresAt).getTime() >= Date.now());
   return NextResponse.json({
     found: true,
     code: c.code,
@@ -28,5 +29,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
     minSpend: c.minSpend ?? null,
     expiresAt: c.expiresAt ?? null,
     restricted: !!c.assignedTo, // เจาะจงบัญชี — ต้องล็อกอินบัญชีที่ถูกต้อง
+    maxUses: couponMaxUses(c),
+    usesLeft, // เหลือกี่สิทธิ์ — ใบแจกหลายคนจะได้รู้ว่ายังทันไหม
+    oncePerCustomer: !!c.oncePerCustomer,
   });
 }

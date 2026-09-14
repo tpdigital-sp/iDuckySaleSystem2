@@ -3,7 +3,7 @@
 /**
  * คูปองส่วนลด /admin/coupons  (ดีไซน์ "รางเบนโตะกระจก")
  *
- * สร้างโค้ด/ลิงก์แจกลูกค้า · ใช้ได้ครั้งเดียวต่อใบ · ระบบตัดใช้ฝั่งเซิร์ฟเวอร์กันใช้ซ้ำ
+ * สร้างโค้ด/ลิงก์แจกลูกค้า · กำหนดได้ว่าใบหนึ่งใช้ได้กี่ครั้ง · ระบบตัดสิทธิ์ฝั่งเซิร์ฟเวอร์กันใช้เกิน
  *
  * ของที่เพิ่มจากเดิม: นับใบที่ "ใกล้หมดอายุใน 7 วัน" — คูปองที่แจกไปแล้ว
  * แต่หมดอายุก่อนลูกค้าได้ใช้ คือส่วนลดที่เสียเปล่าทั้งงบและความรู้สึกลูกค้า
@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { publicOrigin } from "@/lib/shop-info";
-import { couponLabel, type Coupon } from "@/lib/coupons";
+import { couponLabel, couponMaxUses, couponUses, couponUsesLeft, type Coupon } from "@/lib/coupons";
 import { fetchProductsLite } from "@/lib/product-repo";
 import {
   Banner,
@@ -38,9 +38,13 @@ type Form = {
   expiresAt: string;
   note: string;
   assignedTo: string;
+  maxUses: string;
+  oncePerCustomer: boolean;
   count: string;
   codePrefix: string;
 };
+
+type Member = { memberId: string; name: string; phone: string; email: string; channel: "line" | "email" | null; orders: number };
 
 const EMPTY: Form = {
   type: "percent",
@@ -50,6 +54,8 @@ const EMPTY: Form = {
   expiresAt: "",
   note: "",
   assignedTo: "",
+  maxUses: "1",
+  oncePerCustomer: true,
   count: "1",
   codePrefix: "",
 };
@@ -87,6 +93,11 @@ export default function AdminCouponsPage() {
   const [exclude, setExclude] = useState<string[]>([]);
   const [exSearch, setExSearch] = useState("");
   const [exOpen, setExOpen] = useState(false);
+  // เจาะจงลูกค้า — ค้นจากรายชื่อสมาชิกเว็บ (ระบบเก็บ uuid ให้เอง แอดมินไม่ต้องรู้จัก uuid)
+  const [memberSearch, setMemberSearch] = useState("");
+  const [members, setMembers] = useState<Member[]>([]);
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [picked, setPicked] = useState<Member | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,6 +117,27 @@ export default function AdminCouponsPage() {
       .then((ps) => setProducts(ps.map((p) => ({ id: p.id, name: p.name }))))
       .catch(() => {});
   }, [load]);
+
+  // พิมพ์แล้วค้นให้เอง (หน่วง 250ms กันยิงทุกตัวอักษร)
+  useEffect(() => {
+    const q = memberSearch.trim();
+    if (picked || !q) {
+      setMembers([]);
+      return;
+    }
+    setMemberBusy(true);
+    const t = window.setTimeout(() => {
+      fetch(`/api/admin/coupons/customers?q=${encodeURIComponent(q)}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j) => setMembers(j.members ?? []))
+        .catch(() => setMembers([]))
+        .finally(() => setMemberBusy(false));
+    }, 250);
+    return () => {
+      window.clearTimeout(t);
+      setMemberBusy(false);
+    };
+  }, [memberSearch, picked]);
 
   async function copy(text: string, tag: string) {
     try {
@@ -137,6 +169,8 @@ export default function AdminCouponsPage() {
           expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
           note: form.note.trim() || undefined,
           assignedTo: form.assignedTo.trim() || undefined,
+          maxUses: Math.max(1, Number(form.maxUses) || 1),
+          oncePerCustomer: form.oncePerCustomer,
           excludeProducts: exclude.length ? exclude : undefined,
           count: Number(form.count) || 1,
           codePrefix: form.codePrefix.trim() || undefined,
@@ -146,6 +180,8 @@ export default function AdminCouponsPage() {
       if (!res.ok) return setErr(j.error ?? "สร้างคูปองไม่สำเร็จ");
       setJustMade(j.codes ?? []);
       setForm((f) => ({ ...EMPTY, type: f.type })); // คงชนิดไว้ เผื่อสร้างต่อ
+      setPicked(null);
+      setMemberSearch("");
       setExclude([]);
       setExSearch("");
       setExOpen(false);
@@ -163,6 +199,8 @@ export default function AdminCouponsPage() {
     await load();
   }
 
+  const maxUsesNum = Math.max(1, Math.floor(Number(form.maxUses) || 1));
+
   const active = coupons.filter((c) => c.status === "active").length;
   const redeemed = coupons.filter((c) => c.status === "redeemed").length;
 
@@ -178,7 +216,7 @@ export default function AdminCouponsPage() {
         group="ลูกค้า"
         title="คูปองส่วนลด"
         count={`${coupons.length} ใบ`}
-        sub="สร้างโค้ด/ลิงก์แจกลูกค้า · ใช้ได้ครั้งเดียวต่อใบ · ระบบตัดใช้ฝั่งเซิร์ฟเวอร์กันใช้ซ้ำ"
+        sub="สร้างโค้ด/ลิงก์แจกลูกค้า · กำหนดได้ว่าใบหนึ่งใช้ได้กี่ครั้ง · ระบบตัดสิทธิ์ฝั่งเซิร์ฟเวอร์กันใช้เกิน"
       />
 
       {needsSetup && (
@@ -270,14 +308,73 @@ export default function AdminCouponsPage() {
             />
           </Field>
 
-          <Field label="เจาะจงลูกค้า (customer ID) — ไม่บังคับ">
-            <input
-              value={form.assignedTo}
-              onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
-              className={inputCls}
-              placeholder="ล็อกให้ใช้ได้เฉพาะบัญชีนี้"
-            />
-          </Field>
+          {/* เจาะจงลูกค้า — พิมพ์ชื่อแล้วเลือก ระบบผูก uuid ของบัญชีให้เอง */}
+          {picked ? (
+            <div className="dkb-g dkb-field mb-2.5 flex items-center gap-2">
+              <span className="min-w-0 flex-1">
+                <span className="lb">ใช้ได้เฉพาะบัญชีนี้</span>
+                <span className="block truncate text-[0.94rem] font-semibold">{picked.name}</span>
+                <span className="block truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                  {[picked.phone, picked.email].filter(Boolean).join(" · ") || "ไม่มีเบอร์/อีเมล"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPicked(null);
+                  setForm((f) => ({ ...f, assignedTo: "" }));
+                }}
+                className="shrink-0 text-[12px] font-semibold hover:underline"
+                style={{ color: "var(--dk-coral-ink)" }}
+              >
+                เอาออก
+              </button>
+            </div>
+          ) : (
+            <div className="mb-2.5">
+              <Field label="เจาะจงลูกค้า — ไม่บังคับ">
+                <input
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  className={inputCls}
+                  placeholder="พิมพ์ชื่อ / เบอร์ / อีเมล ของสมาชิก"
+                />
+              </Field>
+              {memberSearch.trim() && (
+                <div className="dkb-g p-2">
+                  {memberBusy && members.length === 0 ? (
+                    <p className="px-1.5 py-2 text-[12px]" style={{ color: "var(--dk-faint)" }}>กำลังค้น…</p>
+                  ) : members.length === 0 ? (
+                    <p className="px-1.5 py-2 text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
+                      ไม่พบสมาชิกชื่อนี้ — เจาะจงได้เฉพาะคนที่สมัคร/ล็อกอินบนเว็บแล้วเท่านั้น
+                      <br />
+                      <span style={{ color: "var(--dk-faint)" }}>ลูกค้าที่ทักมาทางไลน์เฉย ๆ ให้เว้นช่องนี้ว่าง แล้วส่งลิงก์คูปองให้ในแชทแทน</span>
+                    </p>
+                  ) : (
+                    <div className="max-h-44 space-y-1 overflow-y-auto">
+                      {members.map((m) => (
+                        <button
+                          key={m.memberId}
+                          type="button"
+                          onClick={() => {
+                            setPicked(m);
+                            setForm((f) => ({ ...f, assignedTo: m.memberId }));
+                            setMemberSearch("");
+                          }}
+                          className="dkb-row !min-h-0 w-full cursor-pointer gap-2 px-2 py-1.5 text-left text-[12px]"
+                        >
+                          <span className="min-w-0 flex-1 truncate font-semibold">{m.name}</span>
+                          <span className="shrink-0 truncate text-[11px]" style={{ color: "var(--dk-faint)" }}>
+                            {m.phone || m.email || (m.channel === "line" ? "LINE" : "")}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* สินค้าไม่ร่วมรายการ — ส่วนลด/ยอดขั้นต่ำจะคิดเฉพาะสินค้าที่ร่วม */}
           <div className="mb-3">
@@ -329,6 +426,35 @@ export default function AdminCouponsPage() {
               </div>
             )}
           </div>
+
+          <Field label="ใช้ได้กี่ครั้ง (ต่อ 1 ใบ)">
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={form.maxUses}
+              onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))}
+              className={inputCls}
+              placeholder="1 = ใช้ครั้งเดียวแล้วหมด"
+            />
+          </Field>
+
+          {maxUsesNum > 1 && (
+            <label className="dkb-g mb-2.5 flex cursor-pointer items-center gap-2 px-3 py-2.5 text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
+              <input
+                type="checkbox"
+                checked={form.oncePerCustomer}
+                onChange={(e) => setForm((f) => ({ ...f, oncePerCustomer: e.target.checked }))}
+                style={{ accentColor: "var(--dk-coral-deep)" }}
+              />
+              <span>
+                1 บัญชีใช้ได้ครั้งเดียว
+                <span className="ml-1" style={{ color: "var(--dk-faint)" }}>
+                  — ไม่ติ๊ก = ลูกค้าคนเดียวใช้รวดเดียวครบ {maxUsesNum} ครั้งได้
+                </span>
+              </span>
+            </label>
+          )}
 
           <div className="grid grid-cols-2 gap-2">
             <Field label="จำนวนใบ">
@@ -407,6 +533,8 @@ export default function AdminCouponsPage() {
               {coupons.map((c) => {
                 const left = daysLeft(c.expiresAt);
                 const soon = c.status === "active" && left !== null && left >= 0 && left <= 7;
+                const max = couponMaxUses(c);
+                const usesLeft = couponUsesLeft(c);
                 return (
                   <Row key={c.code} tone={soon ? "var(--dk-coral-deep)" : STATUS[c.status].bar} done={c.status !== "active"}>
                     <RowMain
@@ -416,6 +544,7 @@ export default function AdminCouponsPage() {
                           <Tag tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Tag>
                           {soon && <Tag tone="solid">{left === 0 ? "หมดอายุวันนี้" : `หมดอายุอีก ${left} วัน`}</Tag>}
                           {c.assignedTo && <Tag tone="lilac">เจาะจงบัญชี</Tag>}
+                          {max > 1 && c.status === "active" && <Tag tone="sky">เหลือ {usesLeft} ครั้ง</Tag>}
                         </>
                       }
                       meta={
@@ -429,8 +558,9 @@ export default function AdminCouponsPage() {
                             </span>
                           ) : null}
                           {!soon && c.expiresAt ? <span>หมดอายุ {new Date(c.expiresAt).toLocaleDateString("th-TH")}</span> : null}
+                          {max > 1 ? <span>ใช้ไป {couponUses(c)}/{max} ครั้ง{c.oncePerCustomer ? " · 1 บัญชี 1 ครั้ง" : ""}</span> : null}
                           {c.note ? <span>“{c.note}”</span> : null}
-                          {c.status === "redeemed" && c.redeemedOrderId ? <span className="id">{c.redeemedOrderId}</span> : null}
+                          {c.redeemedOrderId ? <span className="id">{max > 1 ? `ล่าสุด ${c.redeemedOrderId}` : c.redeemedOrderId}</span> : null}
                         </>
                       }
                     />

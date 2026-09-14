@@ -39,6 +39,8 @@ export async function POST(req: Request) {
     assignedTo?: string;
     excludeProducts?: string[];
     note?: string;
+    maxUses?: number;
+    oncePerCustomer?: boolean;
     count?: number;
     codePrefix?: string;
   };
@@ -53,6 +55,8 @@ export async function POST(req: Request) {
   if (value <= 0) return NextResponse.json({ error: "ใส่มูลค่าส่วนลดให้มากกว่า 0" }, { status: 400 });
   if (type === "percent" && value > 100) return NextResponse.json({ error: "ส่วนลด % ต้องไม่เกิน 100" }, { status: 400 });
   const count = Math.min(500, Math.max(1, Math.floor(Number(body.count) || 1)));
+  // ใช้ได้กี่ครั้งต่อใบ — 1 = ใบสิทธิ์เดียวแบบเดิม
+  const maxUses = Math.min(1000, Math.max(1, Math.floor(Number(body.maxUses) || 1)));
   const prefix = (body.codePrefix ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
   // สินค้าไม่ร่วมรายการ (product id) — จำกัดจำนวนกัน payload บวม
   const excludeProducts = (Array.isArray(body.excludeProducts) ? body.excludeProducts : [])
@@ -73,6 +77,9 @@ export async function POST(req: Request) {
       ...(body.assignedTo?.trim() ? { assignedTo: body.assignedTo.trim() } : {}),
       ...(excludeProducts.length ? { excludeProducts } : {}),
       ...(body.note?.trim() ? { note: body.note.trim() } : {}),
+      ...(maxUses > 1 ? { maxUses } : {}),
+      ...(maxUses > 1 && body.oncePerCustomer ? { oncePerCustomer: true } : {}),
+      uses: 0,
       status: "active",
       createdAt: now,
     };
@@ -101,7 +108,7 @@ export async function DELETE(req: Request) {
   const { data: row } = await sb.from("coupons").select("data").eq("code", code).maybeSingle();
   if (!row) return NextResponse.json({ error: "ไม่พบคูปอง" }, { status: 404 });
   const c = row.data as Coupon;
-  if (c.status === "redeemed") return NextResponse.json({ error: "คูปองถูกใช้ไปแล้ว ยกเลิกไม่ได้" }, { status: 409 });
+  if (c.status === "redeemed") return NextResponse.json({ error: "คูปองถูกใช้ครบสิทธิ์แล้ว ยกเลิกไม่ได้" }, { status: 409 });
 
   const { error } = await sb.from("coupons").update({ data: { ...c, status: "void" } }).eq("code", code);
   return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true });

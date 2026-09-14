@@ -15,6 +15,9 @@ type Info = {
   minSpend?: number | null;
   expiresAt?: string | null;
   restricted?: boolean;
+  maxUses?: number;
+  usesLeft?: number;
+  oncePerCustomer?: boolean;
 };
 
 export default function CouponLinkPage() {
@@ -71,7 +74,11 @@ export default function CouponLinkPage() {
                 {info.minSpend ? <li>• ยอดสั่งซื้อขั้นต่ำ {formatPrice(info.minSpend)}</li> : null}
                 {info.expiresAt ? <li>• ใช้ได้ถึง {new Date(info.expiresAt).toLocaleDateString("th-TH")}</li> : null}
                 {info.restricted ? <li>• สงวนสำหรับบัญชีที่ได้รับสิทธิ์</li> : null}
-                <li>• ใช้ได้ครั้งเดียว</li>
+                <li>
+                  {(info.maxUses ?? 1) > 1
+                    ? `• เหลืออีก ${info.usesLeft ?? 0} สิทธิ์${info.oncePerCustomer ? " · 1 บัญชีใช้ได้ครั้งเดียว" : ""}`
+                    : "• ใช้ได้ครั้งเดียว"}
+                </li>
               </ul>
 
               {saved && (
@@ -96,7 +103,15 @@ export default function CouponLinkPage() {
           ) : (
             <>
               <p className="text-lg font-extrabold text-stone-700">
-                {bad ? "คูปองนี้ใช้ไม่ได้" : used ? "คูปองนี้ถูกใช้ไปแล้ว" : expired ? "คูปองหมดอายุแล้ว" : "คูปองนี้ใช้ไม่ได้"}
+                {bad
+                  ? "คูปองนี้ใช้ไม่ได้"
+                  : used
+                    ? (info.maxUses ?? 1) > 1
+                      ? "คูปองนี้ถูกใช้ครบสิทธิ์แล้ว"
+                      : "คูปองนี้ถูกใช้ไปแล้ว"
+                    : expired
+                      ? "คูปองหมดอายุแล้ว"
+                      : "คูปองนี้ใช้ไม่ได้"}
               </p>
               <p className="mt-2 text-sm text-stone-500">
                 {bad ? "ไม่พบคูปองนี้ หรือถูกยกเลิกไปแล้ว" : "ลองติดต่อร้านเพื่อขอคูปองใหม่ได้เลยนะครับ 🦆"}

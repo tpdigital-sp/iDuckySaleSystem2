@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order } from "@/lib/admin-data";
 import { tierDiscountAmount, tiersOf, lockedTier, seedTierStatus, type Tier, type TierStatus } from "@/lib/tiers";
-import { couponLabel, validateCoupon, type Coupon } from "@/lib/coupons";
+import { couponLabel, couponMaxUses, couponUses, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
 import { earlyPayAmount, earlyPayBase, earlyPayExpiresAt, earlyPayOf, EARLY_PAY_LABEL, type EarlyPayDiscount } from "@/lib/early-pay";
 import { currentActor } from "@/lib/server/require-perm";
@@ -173,9 +173,10 @@ export async function POST(req: Request) {
     if (tierAmount > 0) tierLabel = `สมาชิก ${tier.name} (${tier.discountPct}%)`;
   }
 
-  // ── 2) คูปอง (ต้องล็อกอิน) — เอาอันที่ดีกว่าระดับ · ใช้ครั้งเดียวแบบ atomic ──
+  // ── 2) คูปอง (ต้องล็อกอิน) — เอาอันที่ดีกว่าระดับ · ตัดสิทธิ์แบบ atomic ──
   let discount: Order["discount"] | undefined;
   let redeemedCode: string | null = null; // เก็บไว้ rollback ถ้า insert พัง
+  let couponBefore: Coupon | null = null; // สภาพคูปองก่อนตัดสิทธิ์ — ไว้คืนตอน rollback
   let coupon: { applied: boolean; reason?: string } = { applied: false };
   // ตัวแทนจำหน่ายใช้คูปองไม่ได้ — และไม่เผาคูปองที่เผลอส่งมา
   const couponCode = dealer ? "" : (input.couponCode ?? "").trim().toUpperCase();
@@ -193,15 +194,33 @@ export async function POST(req: Request) {
     if (!v.ok) {
       coupon = { applied: false, reason: v.reason };
     } else if (c && v.discount > tierAmount) {
-      // ดีกว่าระดับ → ตัดใช้แบบ atomic (update เฉพาะที่ status ยัง active — ยิงพร้อมกันได้แค่คนเดียว)
-      const redeemed: Coupon = { ...c, status: "redeemed", redeemedBy: cid, redeemedOrderId: id, redeemedAt: now.toISOString() };
-      const { data: upd } = await sb.from("coupons").update({ data: redeemed }).eq("code", couponCode).eq("data->>status", "active").select("code");
+      /**
+       * ดีกว่าระดับ → ตัดสิทธิ์ 1 ครั้งแบบ atomic
+       *
+       * ใบหลายสิทธิ์: เงื่อนไข update ต้องล็อกที่ "ตัวนับต้องเป็นค่าเดิมที่เพิ่งอ่านมา" ไม่งั้นสองคน
+       * ที่กดพร้อมกันจะเขียนทับกันแล้วนับไปแค่ครั้งเดียว · ใบเก่าที่ไม่มีตัวนับ = ใบสิทธิ์เดียว
+       * ล็อกที่ status active ก็พอ (เหมือนเดิมทุกประการ)
+       */
+      const at = now.toISOString();
+      const nextUses = couponUses(c) + 1;
+      const redeemed: Coupon = {
+        ...c,
+        uses: nextUses,
+        status: nextUses >= couponMaxUses(c) ? "redeemed" : "active",
+        redeemedBy: cid,
+        redeemedOrderId: id,
+        redeemedAt: at,
+        redemptions: [...(c.redemptions ?? []), { orderId: id, customerId: cid, at }].slice(-200),
+      };
+      const q = sb.from("coupons").update({ data: redeemed }).eq("code", couponCode).eq("data->>status", "active");
+      const { data: upd } = await (typeof c.uses === "number" ? q.eq("data->>uses", String(c.uses)) : q).select("code");
       if (upd && upd.length) {
         discount = { label: couponLabel(c), amount: v.discount, couponCode };
         redeemedCode = couponCode;
+        couponBefore = c;
         coupon = { applied: true };
       } else {
-        coupon = { applied: false, reason: "used" }; // ถูกใช้ไปก่อนแล้ว (ชิงพร้อมกัน)
+        coupon = { applied: false, reason: "used" }; // สิทธิ์ถูกตัดไปก่อนแล้ว (ชิงพร้อมกัน)
       }
     } else {
       coupon = { applied: false, reason: "worse" }; // คูปองใช้ได้ แต่ส่วนลดระดับดีกว่า → ไม่เผาคูปอง
@@ -294,11 +313,10 @@ export async function POST(req: Request) {
 
   const { error } = await sb.from("orders").insert({ id, data: order });
   if (error) {
-    // สร้างออเดอร์พัง → คืนคูปองที่เพิ่งตัดใช้ (best-effort) กันคูปองหายฟรี
-    if (redeemedCode) {
-      const { data: cRow } = await sb.from("coupons").select("data").eq("code", redeemedCode).maybeSingle();
-      const c = cRow?.data as Coupon | undefined;
-      if (c) await sb.from("coupons").update({ data: { ...c, status: "active", redeemedBy: undefined, redeemedOrderId: undefined, redeemedAt: undefined } }).eq("code", redeemedCode);
+    // สร้างออเดอร์พัง → คืนสิทธิ์คูปองที่เพิ่งตัด (best-effort) กันสิทธิ์หายฟรี
+    // คืนเป็นสภาพก่อนตัดทั้งก้อน และเฉพาะใบที่ยังเป็นครั้งของออเดอร์นี้ — คนที่ใช้ต่อทีหลังจะไม่โดนย้อน
+    if (redeemedCode && couponBefore) {
+      await sb.from("coupons").update({ data: couponBefore }).eq("code", redeemedCode).eq("data->>redeemedOrderId", id);
     }
     if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|find the table|relation .*does not exist/i.test(error.message))
       return NextResponse.json({ error: "ระบบยังไม่พร้อม — ผู้ดูแลต้องสร้างตาราง orders ก่อน (รัน supabase/orders.sql)" }, { status: 503 });

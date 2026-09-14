@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { couponLabel, type Coupon } from "@/lib/coupons";
+import { couponLabel, couponUsedBy, couponUsesLeft, type Coupon } from "@/lib/coupons";
 
 export const runtime = "nodejs";
 
@@ -28,7 +28,9 @@ export async function GET(req: Request) {
   const coupons = (data ?? [])
     .map((r) => r.data as Coupon)
     .map((c) => {
-      const usable = c.status === "active" && (!c.expiresAt || new Date(c.expiresAt).getTime() >= nowMs);
+      const mineUsedUp = !!c.oncePerCustomer && couponUsedBy(c, u.user.id);
+      const usable =
+        c.status === "active" && couponUsesLeft(c) > 0 && !mineUsedUp && (!c.expiresAt || new Date(c.expiresAt).getTime() >= nowMs);
       // คืนเฉพาะฟิลด์ที่ต้องโชว์ (ไม่เปิดเผยข้อมูลภายใน เช่น redeemedBy)
       return {
         code: c.code,
@@ -40,6 +42,7 @@ export async function GET(req: Request) {
         expiresAt: c.expiresAt ?? null,
         status: c.status,
         usable,
+        usesLeft: couponUsesLeft(c),
         note: c.note ?? null,
       };
     })
