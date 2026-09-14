@@ -106,7 +106,20 @@ export async function POST(req: Request) {
 
   // 🔔 แจ้งทีมงานทาง LINE ทันที (fire-and-forget — แจ้งไม่ได้ก็ไม่ขวางการยื่น)
   void pushShopAlert(
-    `🧰 เคลมใหม่ ${claim.id}\nออเดอร์ ${orderId} · ${order.customer} · ${order.phone}\nประเภท: ${type}\n${claim.detail.slice(0, 300)}\n\nเปิดดู: /admin/claims`,
+    {
+      tone: "#E11D48",
+      title: "🧰 เคลมใหม่",
+      headline: "ลูกค้าแจ้งปัญหาเข้ามา รีบดูก่อนเรื่องบานปลาย",
+      hero: claim.id,
+      rows: [
+        { label: "ออเดอร์", value: orderId },
+        { label: "ลูกค้า", value: `${order.customer} · ${order.phone}` },
+        { label: "ประเภท", value: type, bold: true, color: "#BE123C" },
+      ],
+      note: claim.detail.slice(0, 300),
+      button: { label: "เปิดหน้าเคลม", uri: "https://iduckystore.com/admin/claims" },
+      alt: `🧰 เคลมใหม่ ${claim.id} · ${order.customer}`,
+    },
     { money: true },
   );
 

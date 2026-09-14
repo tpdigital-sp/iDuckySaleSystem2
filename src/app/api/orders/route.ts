@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { pushShopAlert } from "@/lib/server/line-alert";
+import { SITE_URL } from "@/lib/shop-info";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { autoShipDate } from "@/lib/ship-date";
 import { randomBytes } from "node:crypto";
@@ -306,10 +307,19 @@ export async function POST(req: Request) {
   // 📦 มีรายการสั่งจำนวนมาก → แจ้งร้านทาง LINE ให้รีบเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้า
   const bulk = order.items.filter((i) => i.needStockCheck);
   if (bulk.length) {
-    const lines = bulk.map((i) => `• ${i.name} ×${i.qty.toLocaleString("th-TH")}`).join("\n");
-    void pushShopAlert(
-      `📦 ออเดอร์สั่งจำนวนมาก ${id}\n${order.customer} · ${order.phone}\n${lines}\n\nเช็คสต๊อก/คิวผลิตแล้วยืนยันกับลูกค้าด้วยครับ`,
-    );
+    void pushShopAlert({
+      tone: "#D97706",
+      title: "📦 ออเดอร์สั่งจำนวนมาก",
+      headline: "เช็คสต๊อก/คิวผลิตแล้วยืนยันจำนวนกับลูกค้าก่อนเริ่มงาน",
+      hero: id,
+      rows: [
+        { label: "ลูกค้า", value: order.customer },
+        { label: "เบอร์", value: order.phone },
+      ],
+      bullets: bulk.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`),
+      button: { label: "เปิดออเดอร์", uri: `${SITE_URL}/admin/orders/${encodeURIComponent(id)}` },
+      alt: `📦 ออเดอร์สั่งจำนวนมาก ${id} · ${order.customer}`,
+    });
   }
 
   return NextResponse.json({ ok: true, id, key, coupon });

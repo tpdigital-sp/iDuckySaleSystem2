@@ -80,15 +80,20 @@ export async function GET(req: Request) {
   const total = due.reduce((s, d) => s + d.balance, 0);
   let notifiedShop = false;
   if (!dry && due.length > 0) {
-    const lines = due
-      .slice(0, 15)
-      .map((d) => `• ${d.id} · ${d.customer} — ค้าง ${d.balance.toLocaleString()} บาท${d.hasSlip ? " (มีสลิปรอตรวจ)" : ""}`)
-      .join("\n");
     notifiedShop = (
       await pushShopAlert(
-        `💳 ยอดค้างเก็บ (มัดจำ 50%) ${due.length} ออเดอร์ รวม ${total.toLocaleString()} บาท\n${lines}${
-          due.length > 15 ? `\n…และอีก ${due.length - 15} ออเดอร์` : ""
-        }\n\nดูทั้งหมด: ${SITE_URL}/admin/orders`,
+        {
+          tone: "#2472AE",
+          title: "💳 ยอดค้างเก็บ (มัดจำ 50%)",
+          headline: "ออเดอร์ที่รับมัดจำแล้วแต่ยังเก็บไม่ครบ",
+          hero: `฿${total.toLocaleString()}`,
+          rows: [{ label: "จำนวนออเดอร์", value: `${due.length.toLocaleString("th-TH")} ใบ`, bold: true }],
+          bullets: due.map(
+            (d) => `${d.id} · ${d.customer} — ค้าง ${d.balance.toLocaleString()} บาท${d.hasSlip ? " (มีสลิปรอตรวจ)" : ""}`,
+          ),
+          button: { label: "เปิดรายการออเดอร์", uri: `${SITE_URL}/admin/orders` },
+          alt: `💳 ยอดค้างเก็บ ${due.length} ออเดอร์ รวม ${total.toLocaleString()} บาท`,
+        },
         { money: true },
       )
     ).ok;

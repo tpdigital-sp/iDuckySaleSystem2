@@ -157,15 +157,142 @@ export interface AlertResult {
   reason?: string;
 }
 
+/** แถว ป้าย-ค่า ในการ์ด (ชุดเดียวกับการ์ดที่ส่งหาลูกค้าใน notify.ts) */
+export interface AlertRow {
+  label: string;
+  value: string;
+  bold?: boolean;
+  color?: string;
+}
+
 /**
- * 📤 ส่งข้อความแจ้งร้าน 1 ข้อความ
+ * 🎴 การ์ดแจ้งเตือนร้าน — อ่านง่ายกว่าข้อความล้วนเยอะ โดยเฉพาะบนมือถือ
+ * ทุกเรื่องใช้โครงเดียวกัน ต่างแค่สีหัวการ์ดกับปุ่มท้ายการ์ด
+ */
+export interface AlertCard {
+  /** สีแถบหัวการ์ด — บอกความเร่งด่วนด้วยสี ไม่ต้องอ่านก็รู้ว่าเรื่องอะไร */
+  tone: string;
+  /** หัวข้อใหญ่บนแถบสี */
+  title: string;
+  /** ประโยคบอกว่าต้องทำอะไรต่อ */
+  headline?: string;
+  /** เลขที่/ชื่อหลักที่ต้องเด่นสุดในการ์ด */
+  hero?: string;
+  rows?: AlertRow[];
+  /** รายการย่อย เช่นรายชื่อสินค้า/ออเดอร์ (ตัดที่ 15 บรรทัด กันการ์ดยาวเกิน) */
+  bullets?: string[];
+  /** กล่องข้อความเน้น (สีตามหัวการ์ด) */
+  note?: string;
+  button?: { label: string; uri: string };
+  /** ข้อความในแถบแจ้งเตือน + เครื่องที่แสดง Flex ไม่ได้ */
+  alt: string;
+}
+
+const MAX_BULLETS = 15;
+
+function row(r: AlertRow) {
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    contents: [
+      { type: "text", text: r.label, size: "sm", color: "#94A3B8", flex: 2 },
+      {
+        type: "text",
+        text: r.value,
+        size: "sm",
+        color: r.color ?? "#334155",
+        weight: r.bold ? "bold" : "regular",
+        flex: 3,
+        align: "end",
+        wrap: true,
+      },
+    ],
+  };
+}
+
+/** การ์ด → ข้อความ Flex 1 ใบ */
+function bubbleOf(c: AlertCard): unknown {
+  const shown = (c.bullets ?? []).slice(0, MAX_BULLETS);
+  const hidden = (c.bullets ?? []).length - shown.length;
+  const body: unknown[] = [];
+  if (c.headline) body.push({ type: "text", text: c.headline, size: "sm", color: "#334155", wrap: true });
+  if (c.hero) body.push({ type: "text", text: c.hero, size: "lg", weight: "bold", color: "#0F172A", wrap: true });
+  if (c.rows?.length) {
+    body.push({ type: "separator", color: "#E2E8F0" });
+    body.push({ type: "box", layout: "vertical", spacing: "sm", contents: c.rows.map(row) });
+  }
+  if (shown.length) {
+    body.push({ type: "separator", color: "#E2E8F0" });
+    body.push({
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      contents: [
+        ...shown.map((t) => ({ type: "text", text: `• ${t}`, size: "sm", color: "#334155", wrap: true })),
+        ...(hidden > 0
+          ? [{ type: "text", text: `…และอีก ${hidden.toLocaleString("th-TH")} รายการ`, size: "xs", color: "#94A3B8" }]
+          : []),
+      ],
+    });
+  }
+  if (c.note) {
+    body.push({
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#F8FAFC",
+      cornerRadius: "8px",
+      paddingAll: "10px",
+      contents: [{ type: "text", text: c.note, size: "xs", color: "#475569", wrap: true }],
+    });
+  }
+
+  return {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: c.tone,
+      paddingAll: "14px",
+      contents: [
+        { type: "text", text: "แจ้งเตือนร้าน iDucky", size: "xs", color: "#FFFFFFCC" },
+        { type: "text", text: c.title, size: "xl", weight: "bold", color: "#FFFFFF", wrap: true },
+      ],
+    },
+    body: { type: "box", layout: "vertical", spacing: "md", paddingAll: "16px", contents: body },
+    ...(c.button
+      ? {
+          footer: {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "12px",
+            contents: [
+              {
+                type: "button",
+                style: "primary",
+                height: "sm",
+                color: c.tone,
+                action: { type: "uri", label: c.button.label, uri: c.button.uri },
+              },
+            ],
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * 📤 ส่งข้อความแจ้งร้าน — รับได้ทั้งการ์ด Flex และข้อความล้วน
  *
  * เลือกชุดที่ใช้แบบ "ทั้งคู่ต้องมาจากที่เดียวกัน":
  *   1. ตั้งบัญชีแจ้งเตือนไว้ครบ (token + ปลายทาง) → ใช้ชุดนั้น
  *   2. ไม่ครบ → ถอยไปใช้บัญชีร้าน + env เหมือนเดิมทุกประการ
  * money = เรื่องเงิน (เคลม · ยอดค้างงวด 2) ซึ่งเดิมมี LINE_ADMIN_ALERT_TO แยกอยู่แล้ว
  */
-export async function pushShopAlert(text: string, opts?: { money?: boolean }): Promise<AlertResult> {
+export async function pushShopAlert(
+  msg: string | AlertCard,
+  opts?: { money?: boolean },
+): Promise<AlertResult> {
   const doc = await loadLineAlert();
   const tok = openToken(doc.enc);
   const mine = opts?.money ? doc.adminTo || doc.to : doc.to;
@@ -186,11 +313,17 @@ export async function pushShopAlert(text: string, opts?: { money?: boolean }): P
   }
   if (!token || !to) return { ok: false, via: "none", reason: "ยังไม่ได้ตั้งบัญชีหรือปลายทางสำหรับแจ้งเตือน" };
 
+  const messages =
+    typeof msg === "string"
+      ? [{ type: "text", text: msg }]
+      : // altText ยาวเกิน 400 ตัวอักษร LINE ปฏิเสธทั้งข้อความ — ตัดไว้ก่อน
+        [{ type: "flex", altText: msg.alt.slice(0, 380), contents: bubbleOf(msg) }];
+
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ to, messages: [{ type: "text", text }] }),
+      body: JSON.stringify({ to, messages }),
       signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) return { ok: true, via };

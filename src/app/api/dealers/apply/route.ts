@@ -48,9 +48,19 @@ export async function POST(req: Request) {
   // 🔔 แจ้งร้านทาง LINE เฉพาะใบใหม่ (แก้ใบเดิมไม่แจ้งซ้ำ) — ล้มก็ไม่เป็นไร ใบสมัครอยู่ในหลังบ้านแล้ว
   if (firstTime) {
     const who = u.user.user_metadata?.name || u.user.email || "";
-    void pushShopAlert(
-      `🤝 ใบสมัครตัวแทนจำหน่ายใหม่\n${who}\nร้าน: ${shopName}\nช่องทาง: ${channel}${detail ? `\n${detail}` : ""}\n\nกดอนุมัติ/ปฏิเสธได้ที่หลังบ้าน → ตัวแทนจำหน่าย`,
-    );
+    void pushShopAlert({
+      tone: "#0D9488",
+      title: "🤝 ใบสมัครตัวแทนใหม่",
+      headline: "กดอนุมัติหรือปฏิเสธได้ที่หลังบ้าน",
+      hero: shopName,
+      rows: [
+        { label: "ผู้สมัคร", value: who || "-" },
+        { label: "ช่องทางขาย", value: channel || "-" },
+      ],
+      note: detail || undefined,
+      button: { label: "เปิดหน้าตัวแทนจำหน่าย", uri: "https://iduckystore.com/admin/dealers" },
+      alt: `🤝 ใบสมัครตัวแทนใหม่ — ${shopName}`,
+    });
   }
 
   return NextResponse.json({ ok: true });

@@ -37,13 +37,19 @@ export async function GET(req: Request) {
 
   let notified = false;
   if (need.length > 0) {
-    const lines = need
-      .map((n) => `• ${n.name} เหลือ ${n.balance.toLocaleString()} ${n.unit} (จุดสั่ง ≤${n.point.toLocaleString()}${n.daysLeft != null ? ` · ~${n.daysLeft} วันหมด` : ""})`)
-      .join("\n");
     notified = (
-      await pushShopAlert(
-        `🛒 สต๊อกถึงจุดต้องสั่งของ ${need.length} รายการ\n${lines}\n\nดูรายละเอียด: https://iduckystore.com/admin/stock`,
-      )
+      await pushShopAlert({
+        tone: "#B45309",
+        title: "🛒 ถึงจุดต้องสั่งของ",
+        headline: "วัสดุใกล้หมด สั่งเข้ามาก่อนงานสะดุด",
+        hero: `${need.length.toLocaleString("th-TH")} รายการ`,
+        bullets: need.map(
+          (n) =>
+            `${n.name} เหลือ ${n.balance.toLocaleString()} ${n.unit} (จุดสั่ง ≤${n.point.toLocaleString()}${n.daysLeft != null ? ` · ~${n.daysLeft} วันหมด` : ""})`,
+        ),
+        button: { label: "เปิดคลังวัสดุ", uri: "https://iduckystore.com/admin/stock" },
+        alt: `🛒 สต๊อกถึงจุดต้องสั่งของ ${need.length} รายการ`,
+      })
     ).ok;
   }
   return NextResponse.json({ ok: true, needOrder: need, notified });

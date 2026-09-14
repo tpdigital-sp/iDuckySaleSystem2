@@ -100,7 +100,15 @@ export async function POST(req: Request) {
     const who = gate.actor?.name || gate.actor?.username || "แอดมิน";
     const which = body.money ? "กลุ่มเรื่องเงิน" : "กลุ่มทั่วไป";
     const r = await pushShopAlert(
-      `🔔 ทดสอบการแจ้งเตือนจากระบบร้าน iDucky (${which})\nส่งโดย ${who}\nถ้าเห็นข้อความนี้ในกลุ่ม แปลว่าตั้งค่าถูกแล้วครับ`,
+      {
+        tone: "#0F766E",
+        title: "🔔 ทดสอบการแจ้งเตือน",
+        headline: "เห็นการ์ดนี้ในกลุ่ม = ตั้งค่าถูกแล้ว ข้อความจริงจะหน้าตาแบบนี้",
+        hero: which,
+        rows: [{ label: "ส่งโดย", value: who }],
+        button: { label: "เปิดหน้าตั้งค่า", uri: "https://iduckystore.com/admin/line-groups" },
+        alt: `🔔 ทดสอบการแจ้งเตือน (${which})`,
+      },
       { money: !!body.money },
     );
     return NextResponse.json(r, { status: r.ok ? 200 : 400 });
