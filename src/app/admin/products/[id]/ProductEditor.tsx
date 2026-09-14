@@ -176,6 +176,8 @@ type DraftOption = {
   chartSrc?: string;
   /** 📝 ข้อความกำกับใต้ชื่อกลุ่มบนหน้าสินค้า (สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้) */
   note?: string;
+  /** 🖼 ภาพตัวอย่างประจำกลุ่ม — โชว์เป็นภาพย่อข้างชื่อกลุ่ม/ในแถวสวิตช์ของเสริมบนหน้าร้าน */
+  imageSrc?: string;
   /** 👀 รูปตัวอย่างประกอบ note (ปุ่มกดเปิดดูเต็มจอท้าย note) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   noteImageSrc?: string;
   /** 💰 +฿ ของกลุ่มนี้คิดต่อลาย ไม่คูณจำนวนชิ้น */
@@ -567,6 +569,7 @@ function toDraft(p: Product): Draft {
       ...(o.sampleGrid ? { sampleGrid: true } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.note ? { note: o.note } : {}),
+      ...(o.imageSrc ? { imageSrc: o.imageSrc } : {}),
       ...(o.noteImageSrc ? { noteImageSrc: o.noteImageSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
@@ -865,6 +868,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.sampleGrid ? { sampleGrid: true as const } : {}),
       ...(o.chartSrc ? { chartSrc: o.chartSrc } : {}),
       ...(o.note?.trim() ? { note: o.note.trim() } : {}),
+      ...(o.imageSrc ? { imageSrc: o.imageSrc } : {}),
       ...(o.noteImageSrc ? { noteImageSrc: o.noteImageSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
@@ -2703,6 +2707,49 @@ export default function ProductEditor({ product }: { product: Product }) {
                   className={`flex-1 font-bold ${inputCls}`}
                   aria-label={`ชื่อกลุ่มตัวเลือกที่ ${gi + 1}`}
                 />
+                {/* 🖼 ภาพตัวอย่างประจำกลุ่ม — หน้าร้านโชว์ข้างชื่อกลุ่ม (กลุ่มของเสริมโชว์ในแถวสวิตช์ตอนยังไม่กาง) */}
+                <label
+                  className="shrink-0 cursor-pointer"
+                  title="ภาพตัวอย่างของกลุ่มนี้ — หน้าร้านโชว์เป็นภาพย่อข้างชื่อกลุ่ม ให้ลูกค้าเห็นว่ากลุ่มนี้คืออะไรก่อนกดเปิด"
+                >
+                  {opt.imageSrc ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={opt.imageSrc}
+                      alt={`ภาพตัวอย่างของกลุ่ม ${opt.label || gi + 1}`}
+                      className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-amber-300"
+                    />
+                  ) : (
+                    <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-50 text-[13px] text-slate-300 ring-1 ring-slate-200 hover:text-amber-500 hover:ring-amber-300">
+                      🖼
+                    </span>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    aria-label={`อัปโหลดภาพตัวอย่างของกลุ่มที่ ${gi + 1}`}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      const src = await uploadChoiceImage(f);
+                      if (src) patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, imageSrc: src } : o)) });
+                    }}
+                  />
+                </label>
+                {opt.imageSrc && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patch({ options: draft.options.map((o, i) => (i === gi ? { ...o, imageSrc: undefined } : o)) })
+                    }
+                    title="เอาภาพตัวอย่างของกลุ่มนี้ออก"
+                    className="shrink-0 rounded-full px-1 text-[11px] font-bold text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                  >
+                    ✕
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => toggleOptFold(gi)}
