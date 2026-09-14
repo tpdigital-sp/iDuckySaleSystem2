@@ -108,6 +108,44 @@ const dueNetOf = (o: Order) => {
   if (o.deposit!.firstPaidAt && Math.abs(due - inst.second) < 0.01) return inst.secondNet;
   return due;
 };
+/* ── ออเดอร์มัดจำ 50% ────────────────────────────────────────────
+   เจ้าของร้าน/แอดมินถามบ่อยว่า "ใครโอนมัดจำเข้ามาแล้วบ้าง" — งวดแรกเข้า = เริ่มทำแบบ/ผลิตได้
+   แต่ยังห้ามส่งของจนกว่าจะเก็บครบ (ดู deposit.settledAt) จึงต้องแยกออกจากใบมัดจำที่ยังไม่โอน
+   ใบยกเลิกไม่นับ — ไม่มีใครต้องตามงานใบที่ยกเลิกไปแล้ว */
+type DepKey = "all" | "wait" | "paid" | "settled";
+/** ใบนี้อยู่ขั้นไหนของมัดจำ — null = ไม่ใช่ออเดอร์มัดจำ (หรือยกเลิกไปแล้ว) */
+const depStageOf = (o: Order): Exclude<DepKey, "all"> | null => {
+  if (!o.deposit || o.status === "ยกเลิก") return null;
+  if (!o.deposit.firstPaidAt) return "wait";
+  return o.deposit.settledAt ? "settled" : "paid";
+};
+/** ชิปกรองมัดจำ — เรียงตามลำดับเงินเข้า · สีตรงกับป้ายในแถว (รอ=ม่วง · โอนแล้ว=ปะการัง · ครบ=มินต์) */
+const DEP_CHIPS: { key: Exclude<DepKey, "all">; label: string; tint: { background: string; color: string }; title: string }[] = [
+  {
+    key: "wait",
+    label: "รอมัดจำครึ่งแรก",
+    tint: { background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" },
+    title: "ใบมัดจำที่ลูกค้ายังไม่โอนงวดแรก — ยังเริ่มงานไม่ได้",
+  },
+  {
+    key: "paid",
+    label: "โอนมัดจำแล้ว",
+    tint: { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" },
+    title: "รับมัดจำงวดแรกแล้ว เริ่มงานได้ แต่ยังค้างครึ่งหลัง — ห้ามส่งของจนเก็บครบ",
+  },
+  {
+    key: "settled",
+    label: "เก็บครบแล้ว",
+    tint: { background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" },
+    title: "ใบมัดจำที่เก็บครบทั้งสองงวดแล้ว — ส่งของได้",
+  },
+];
+const DEP_LABEL: Record<Exclude<DepKey, "all">, string> = {
+  wait: "รอมัดจำครึ่งแรก",
+  paid: "โอนมัดจำแล้ว",
+  settled: "มัดจำเก็บครบแล้ว",
+};
+
 /** งานที่ต้องให้ทีมงานลงมือตอนนี้ (ไม่ใช่รอลูกค้า) */
 const NEEDS_US: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "แก้ไขแบบ", "อนุมัติแบบ"];
 /** สถานะที่ถือว่าจบแล้ว — แถวต้องเงียบกว่าใบที่ยังค้าง */
@@ -175,6 +213,7 @@ export default function AdminOrdersPage() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
   const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม)
+  const [dep, setDep] = useState<DepKey>("all"); // ขั้นของออเดอร์มัดจำ 50% — "โอนมัดจำแล้ว" คือใบที่เริ่มงานได้แต่ยังค้างครึ่งหลัง
   /** ใครสร้างใบ: "all" · "customer" (ลูกค้ากดเอง) · "admin" (พนักงานทำให้ทุกคน) · "by:<ชื่อ>" (พนักงานคนนั้นคนเดียว) */
   const [by, setBy] = useState<"all" | "customer" | "admin" | `by:${string}`>("all");
   const [dateKey, setDateKey] = useState<DateKey>("7d"); // ช่วงวันที่สั่ง — เริ่มที่ 7 วัน (เจ้าของร้านขอ 9 ก.ย. 69) ไม่ให้เปิดมาเจอทุกใบ
@@ -190,7 +229,7 @@ export default function AdminOrdersPage() {
   /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
   const [page, setPage] = useState(0);
   // เปลี่ยนตัวกรองอะไรก็ตาม = กลับหน้าแรก ไม่งั้นค้างอยู่หน้า 3 ที่ชุดใหม่ไม่มี
-  useEffect(() => setPage(0), [dept, filter, q, onlyDue, by, dateKey, from, to]);
+  useEffect(() => setPage(0), [dept, filter, q, onlyDue, dep, by, dateKey, from, to]);
 
   const can = useCan();
   const seesAll = can("orders.viewAll"); // ฝ่ายแพ็คเห็นเฉพาะคิวของตัวเอง
@@ -292,6 +331,18 @@ export default function AdminOrdersPage() {
     return m;
   }, [orders]);
 
+  // นับใบมัดจำแต่ละขั้น (ในช่วงวันที่ที่เลือก) — total = 0 คือช่วงนี้ไม่มีใบมัดจำเลย ซ่อนแถวชิปไปเลย ไม่ให้รกจอ
+  const depCounts = useMemo(() => {
+    const c = { wait: 0, paid: 0, settled: 0, total: 0 };
+    for (const o of dated) {
+      const k = depStageOf(o);
+      if (!k) continue;
+      c[k]++;
+      c.total++;
+    }
+    return c;
+  }, [dated]);
+
   // นับใบตามคนสร้าง (ในช่วงวันที่ที่เลือก) — ชื่อพนักงานเรียงตามจำนวนใบมาก→น้อย
   const byCounts = useMemo(() => {
     const staff: Record<string, number> = {};
@@ -321,8 +372,9 @@ export default function AdminOrdersPage() {
   const digits = kw.replace(/\D/g, "");
   const shown = dated
     .filter(byMatch)
+    .filter((o) => (dep === "all" ? true : depStageOf(o) === dep))
     .filter((o) => (onlyDue ? isDue(o) : true))
-    .filter((o) => (onlyDue ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
+    .filter((o) => (onlyDue || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
     .filter((o) => (filter === "all" ? true : o.status === filter))
     .filter((o) => {
       if (!kw) return true;
@@ -560,6 +612,36 @@ export default function AdminOrdersPage() {
             )}
           </div>
 
+          {/* ── ออเดอร์มัดจำ 50% — "ใครโอนมัดจำมาแล้ว" คือใบที่เริ่มงานได้ แต่ยังห้ามส่งของ ── */}
+          {seesMoney && depCounts.total > 0 && (
+            <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+              <span className="dkb-flab">มัดจำ 50%</span>
+              <button type="button" onClick={() => setDep("all")} aria-pressed={dep === "all"} className="dkb-fchip">
+                <i />
+                ไม่กรอง <b>{dated.length}</b>
+              </button>
+              {DEP_CHIPS.map((c) => {
+                const n = depCounts[c.key];
+                const on = dep === c.key;
+                return (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => setDep(on ? "all" : c.key)}
+                    aria-pressed={on}
+                    data-zero={n === 0 ? "1" : undefined}
+                    className="dkb-fchip"
+                    style={on || n === 0 ? undefined : c.tint}
+                    title={c.title}
+                  >
+                    <i />
+                    {c.label} <b>{n}</b>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* ── ช่วงวันที่สั่ง — "วันนี้เข้ามากี่ใบ" คือคำถามแรกของทุกเช้า ── */}
           <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
             <span className="dkb-flab">วันที่สั่ง</span>
@@ -668,6 +750,7 @@ export default function AdminOrdersPage() {
             เรียงใหม่ → เก่า · แสดง {shown.length} จาก {orders.length} ใบ
             {shown.length > PAGE_SIZE ? ` · หน้า ${curPage + 1}/${pageCount} (ใบที่ ${pageFrom}–${pageTo})` : ""}
             {dateOn && rangeText ? ` · ${rangeText}` : ""}
+            {dep !== "all" ? ` · ${DEP_LABEL[dep]}` : ""}
           </span>
         </div>
 
@@ -676,7 +759,9 @@ export default function AdminOrdersPage() {
             <p className="dkb-h2 text-[16px]">
               {kw
                 ? `ไม่พบออเดอร์ที่ตรงกับ “${q}”`
-                : by !== "all"
+                : dep !== "all"
+                  ? `ไม่มีใบ “${DEP_LABEL[dep]}”${dateOn && rangeText ? ` · ${rangeText}` : ""}`
+                  : by !== "all"
                   ? `ไม่มีใบที่ “${byLabel}”${filter === "all" ? "" : ` สถานะ “${filter}”`}${dateOn && rangeText ? ` · ${rangeText}` : ""}`
                   : dateOn
                   ? `${emptyRange}${filter === "all" ? "" : ` สถานะ “${filter}”`}`
@@ -687,7 +772,9 @@ export default function AdminOrdersPage() {
             <p className="mt-1.5 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
               {kw
                 ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือเบอร์โทรแทน"
-                : by !== "all"
+                : dep !== "all"
+                  ? "กด “ไม่กรอง” ในแถวมัดจำ 50% หรือขยายช่วงวันที่ เพื่อดูใบอื่น"
+                  : by !== "all"
                   ? "กด “ทั้งหมด” ในแถวใครสร้าง เพื่อดูทุกใบ"
                   : dateOn
                   ? "ลองขยายช่วงวันที่ หรือกด “ทุกวัน” เพื่อดูทั้งหมด"
