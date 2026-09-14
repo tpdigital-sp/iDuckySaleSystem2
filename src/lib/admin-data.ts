@@ -727,8 +727,10 @@ export interface Order {
    * ⏳ expiresAt = หมดเวลาแจ้งโอน (ISO) — ไม่มี = ไม่จำกัดเวลา (ใบก่อน 10 ก.ย. 69) · เลยเวลาโดยยังไม่ล็อก = ส่วนลดหาย
    *    ยอดทุกหน้าจอคิดผ่าน orderEarlyPayAmount() จึงกลับเป็นยอดเต็มเองโดยไม่ต้องมี cron
    * 🔒 lockedAt = แจ้งโอน/ยืนยันเงินเข้าทันเวลา → ล็อกส่วนลดไว้ถาวร (ดู lockEarlyPay)
+   * 🚫 waivedAt = แอดมินติ๊ก "ลูกค้าไม่รับส่วนลดนี้" (ลูกค้าโอนเต็มจำนวนมาแล้ว/ไม่อยากรับ) → ยอดกลับเป็นราคาเต็มทุกหน้าจอ
+   *    ชนะทุกสถานะ (ล็อกแล้วก็ยกเลิกได้) · ติ๊กออกได้ = ส่วนลดกลับมาตามสถานะเดิม (ดู setEarlyPayWaived)
    */
-  earlyPay?: { label: string; amount: number; expiresAt?: string; lockedAt?: string; lockedBy?: string };
+  earlyPay?: { label: string; amount: number; expiresAt?: string; lockedAt?: string; lockedBy?: string; waivedAt?: string; waivedBy?: string };
   /**
    * หัก ณ ที่จ่าย (ลูกค้านิติบุคคล) — แอดมินเลือกอัตรา 1%/3% ระบบเติมจำนวนเงินจากยอดรวมให้
    * แล้วแก้ตัวเลขเองได้ตามใบ 50 ทวิของลูกค้า (บัญชีลูกค้าบางเจ้าคิดจากฐานก่อน VAT)
@@ -859,8 +861,9 @@ export function adminDiscountAmount(o: Order): number {
 /**
  * สถานะส่วนลดโอนไวของออเดอร์ ณ เวลา now
  * none = ไม่มีส่วนลด · active = ยังอยู่ในเวลา (นับถอยหลัง) · locked = ได้แน่แล้ว (แจ้งโอนทัน / ใบเก่าไม่จำกัดเวลา) · expired = เลยเวลาโดยไม่แจ้งโอน
+ * waived = แอดมินติ๊กเอาออกให้ (ลูกค้าไม่รับส่วนลด — โอนเต็มจำนวนมาแล้ว)
  */
-export type EarlyPayState = "none" | "active" | "locked" | "expired" | "superseded";
+export type EarlyPayState = "none" | "active" | "locked" | "expired" | "superseded" | "waived";
 
 /** ส่วนลดอื่นของออเดอร์ (ระดับสมาชิก/คูปอง + ส่วนลดทั้งบิลจากแอดมิน + ส่วนลดรายรายการ) — ไม่รวมส่วนลดโอนไว */
 export function orderOtherDiscounts(o: Order): number {
@@ -870,6 +873,8 @@ export function orderOtherDiscounts(o: Order): number {
 export function earlyPayState(o: Order, now: number = Date.now()): EarlyPayState {
   const e = o.earlyPay;
   if (!e || !(e.amount > 0)) return "none";
+  // 🚫 ลูกค้าไม่รับส่วนลด (แอดมินติ๊กเอาออก) — ชนะทุกสถานะ รวมถึงใบที่ล็อก/จ่ายแล้ว เพราะเป็นการตกลงกับลูกค้าตรง ๆ
+  if (e.waivedAt) return "waived";
   // ⚡ ไม่ใช้ร่วมกับส่วนลดอื่น (เจ้าของร้านสั่ง 10 ก.ย. 69 "มีส่วนลดอื่นแล้วไม่ต้องลดโอนไวอีก") — คิดสด
   // ⚠️ เฉพาะใบที่ยังไม่มีเงินเข้า — รับเงินแล้วห้ามเปลี่ยนส่วนลดย้อนหลัง (11 ก.ย. 69 OD-260909-5711: ลูกค้าโอน 3,177 ครบตามที่
   // ระบบบอกตอนนั้น (ลด 2% + โอนไว 10) แล้วกติกาใหม่ไปตัด 10 ทีหลัง → โชว์ค้าง ฿10 ทั้งที่จ่ายครบ) · แอดมินใส่ส่วนลดหลังรับเงิน
@@ -894,6 +899,24 @@ export function earlyPayMsLeft(o: Order, now: number = Date.now()): number {
 export function lockEarlyPay(o: Order, at: string, by: string): Order {
   if (earlyPayState(o, Date.parse(at) || Date.now()) !== "active") return o;
   return { ...o, earlyPay: { ...o.earlyPay!, lockedAt: at, lockedBy: by } };
+}
+
+/**
+ * 🚫/↩️ ติ๊ก "ลูกค้าไม่รับส่วนลดโอนไว" (หรือติ๊กออกเพื่อคืนให้)
+ * ลูกค้าบางคนโอนเต็มจำนวนมาเลย ไม่เอาส่วนลด — ยอดในเว็บที่ลดไว้จะกลายเป็น "ชำระเกิน ฿5/฿10" ค้างอยู่
+ * ติ๊กเอาออก = ยอดรวม/ยอดค้าง/QR/ใบเสร็จ กลับเป็นราคาเต็มทุกหน้าจอเอง (ไม่ลบตัวเลขเดิมทิ้ง เผื่อคืนส่วนลด)
+ */
+export function setEarlyPayWaived(o: Order, waived: boolean, at: string, by: string): Order {
+  if (!o.earlyPay) return o;
+  const e = { ...o.earlyPay };
+  if (waived) {
+    e.waivedAt = at;
+    e.waivedBy = by;
+  } else {
+    delete e.waivedAt;
+    delete e.waivedBy;
+  }
+  return { ...o, earlyPay: e };
 }
 
 /** ส่วนลดโอนไวของออเดอร์นี้เป็นบาท (0 = ไม่ได้ลด หรือเลยเวลาแจ้งโอนแล้ว) */

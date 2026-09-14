@@ -45,6 +45,7 @@ import {
   earlyPayMsLeft,
   earlyPayState,
   orderEarlyPayAmount,
+  setEarlyPayWaived,
   orderItemDiscounts,
   orderFullyPaid,
   orderNetTransfer,
@@ -5826,7 +5827,15 @@ export default function AdminOrderDetailPage() {
                   <span className="shrink-0 tabular-nums">−{formatPrice(order.discount.amount)}</span>
                 </div>
               )}
-              {earlyPayState(order) === "superseded" ? (
+              {earlyPayState(order) === "waived" ? (
+                <div
+                  className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400"
+                  title={`ลูกค้าไม่รับส่วนลดนี้ — ${order.earlyPay!.waivedBy ?? "แอดมิน"} ติ๊กเอาออก ยอดกลับเป็นราคาเต็ม`}
+                >
+                  <span className="min-w-0">{order.earlyPay!.label} · ลูกค้าไม่รับส่วนลด</span>
+                  <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>
+                </div>
+              ) : earlyPayState(order) === "superseded" ? (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="มีส่วนลดอื่นแล้ว (ระดับสมาชิก/คูปอง/ส่วนลดจากแอดมิน) — ส่วนลดโอนไวไม่ใช้ร่วมกัน · ตัดเฉพาะใบที่ยังไม่มีเงินเข้า รับเงินแล้วส่วนลดที่ลูกค้าจ่ายมาคงเดิม">
                   <span className="min-w-0">{order.earlyPay!.label} · ไม่ใช้ร่วมกับส่วนลดอื่น</span>
                   <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>
@@ -5852,6 +5861,29 @@ export default function AdminOrderDetailPage() {
                   <span className="shrink-0 tabular-nums">−{formatPrice(orderEarlyPayAmount(order))}</span>
                 </div>
               ) : null}
+              {/* ☑️ ลูกค้าบางคนขอโอนเต็มจำนวน ไม่เอาส่วนลดโอนไว (โอนมาแล้วจะค้างเป็น "ชำระเกิน ฿5/฿10") — ติ๊กเอาออกแล้วยอดกลับเป็นราคาเต็มทุกหน้าจอ · ติ๊กออกได้ถ้าเข้าใจผิด */}
+              {mayEdit && ["active", "locked", "waived"].includes(earlyPayState(order)) && (
+                <label className="mt-1 flex w-fit cursor-pointer select-none items-center gap-2 py-1.5 text-[11px] text-slate-500 hover:text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={earlyPayState(order) === "waived"}
+                    onChange={(e) => {
+                      const off = e.target.checked;
+                      const next = setEarlyPayWaived(order, off, new Date().toISOString(), actor);
+                      applyOrder(
+                        withLog(
+                          next,
+                          actor,
+                          off ? "ยกเลิกส่วนลดโอนไว" : "คืนส่วนลดโอนไว",
+                          `${order.earlyPay!.label} ${formatPrice(order.earlyPay!.amount)} — ${off ? "ลูกค้าไม่รับส่วนลด คิดยอดเต็ม" : "กลับมาคิดส่วนลดตามเดิม"}`
+                        )
+                      );
+                    }}
+                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400"
+                  />
+                  ลูกค้าไม่รับส่วนลดนี้ (คิดยอดเต็ม)
+                </label>
+              )}
               {orderItemDiscounts(order) > 0 && (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-rose-500">
                   <span>ส่วนลดรายรายการ</span>

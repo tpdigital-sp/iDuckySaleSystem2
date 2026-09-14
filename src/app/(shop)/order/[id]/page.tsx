@@ -1887,7 +1887,15 @@ export default function CustomerOrderPage() {
                 <span>−{formatPrice(order.discount.amount)}</span>
               </div>
             )}
-            {earlyPayState(order, nowTick) === "expired" ? (
+            {earlyPayState(order, nowTick) === "waived" ? (
+              /* 🚫 ลูกค้าแจ้งว่าไม่รับส่วนลดนี้ (แอดมินติ๊กเอาออกให้) — โชว์ขีดฆ่าไว้ ไม่ให้ยอดเปลี่ยนเงียบ ๆ */
+              <div className="mt-1.5 flex justify-between text-sm t-soft">
+                <span>
+                  {order.earlyPay!.label} <span className="text-xs">(ไม่ใช้ส่วนลดนี้ตามที่แจ้ง)</span>
+                </span>
+                <span className="line-through">−{formatPrice(order.earlyPay!.amount)}</span>
+              </div>
+            ) : earlyPayState(order, nowTick) === "expired" ? (
               <div className="mt-1.5 flex justify-between text-sm t-soft">
                 <span>
                   {order.earlyPay!.label} <span className="text-xs">(หมดเวลาแจ้งโอนแล้ว)</span>
