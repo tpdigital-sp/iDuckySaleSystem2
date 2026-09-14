@@ -652,6 +652,8 @@ export default function ProductDetail({
     // เรทตัวแทนจำหน่ายไม่โผล่ในแกลเลอรีของลูกค้าทั่วไป (label ภาพหลุดชื่อเรทได้)
     for (const r of isDealer ? (product.priceRates ?? []) : publicRates(product)) add(r.imageSrc, r.label);
     for (const opt of product.options ?? []) {
+      // 🖼 ภาพตัวอย่างประจำกลุ่ม — ต้องอยู่ในแกลเลอรีด้วย ไม่งั้นกดที่กลุ่มแล้วภาพใหญ่ไม่สลับไปตาม
+      add(opt.imageSrc, opt.label);
       // กลุ่มสวอตช์สี/แถบตัวอย่าง: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ
       // (แถมทะลัก 80 รูปจากสีไหม / 26 แถบจากฟอนต์) · ดูรูปเต็มได้จาก chartSrc ในกลุ่มนั้นแทน
       if (opt.swatchGrid || opt.sampleGrid) continue;
@@ -3684,13 +3686,15 @@ export default function ProductDetail({
               const addOn = !!opt.collapsible && !isInput;
               const addOnOpen = !!openAddOns[opt.label];
               const addOnFirst = opt.choices[0]?.name ?? "";
-              const toggleAddOn = () =>
-                setOpenAddOns((s) => {
-                  const next = !s[opt.label];
-                  // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก/ล้างที่ติ๊ก กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
-                  if (!next) setSelections((sel) => ({ ...sel, [opt.label]: multi ? "" : addOnFirst }));
-                  return { ...s, [opt.label]: next };
-                });
+              const toggleAddOn = () => {
+                const next = !addOnOpen;
+                // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก/ล้างที่ติ๊ก กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
+                if (!next) setSelections((sel) => ({ ...sel, [opt.label]: multi ? "" : addOnFirst }));
+                // เปิดสวิตช์ = สลับภาพใหญ่ไปที่ภาพตัวอย่างของกลุ่ม
+                // (แถวสวิตช์กดได้ทั้งแถว จะซ้อนปุ่มกดรูปแยกอีกปุ่มในปุ่มเดียวกันไม่ได้)
+                else jumpToImage(opt.imageSrc);
+                setOpenAddOns((s) => ({ ...s, [opt.label]: next }));
+              };
               return (
                 <div
                   key={opt.label}
@@ -3727,6 +3731,17 @@ export default function ProductDetail({
                           className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${addOnOpen ? "left-[22px]" : "left-0.5"}`}
                         />
                       </span>
+                      {/* 🖼 ภาพตัวอย่างของกลุ่ม — ปิดอยู่เห็นแค่บรรทัดเดียว ภาพช่วยให้รู้ว่าของเสริมนี้หน้าตายังไง */}
+                      {opt.imageSrc && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={opt.imageSrc}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-stone-200"
+                        />
+                      )}
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13px] font-bold text-stone-700">
                           {heading}
@@ -3767,6 +3782,24 @@ export default function ProductDetail({
                     </button>
                   ) : (
                   <span className="mb-1 block text-[13px] font-bold text-stone-700">
+                    {/* 🖼 ภาพตัวอย่างของกลุ่ม — กดดูเต็มจอ (ชื่อกลุ่มอย่างเดียวบางทีนึกภาพไม่ออก) */}
+                    {opt.imageSrc && (
+                      <button
+                        type="button"
+                        onClick={() => jumpToImage(opt.imageSrc)}
+                        aria-label={`ดูภาพตัวอย่างของ ${opt.label} ในภาพใหญ่`}
+                        className="mr-2 inline-block align-middle"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={opt.imageSrc}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-11 w-11 rounded-xl object-cover ring-1 ring-stone-200 transition hover:ring-amber-300"
+                        />
+                      </button>
+                    )}
                     {heading}:{" "}
                     <span
                       className={
