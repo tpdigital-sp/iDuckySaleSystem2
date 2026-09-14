@@ -4594,94 +4594,127 @@ export default function ProductDetail({
                     (() => {
                       const list = opt.choices.filter((c) => allowed.includes(c.name));
                       const cur = opt.choices.find((c) => c.name === effective[opt.label]);
-                      const labelOf = (c: ProductOptionChoice) => {
+                      /* ป้ายยาว ๆ (badge) ไม่เอาต่อท้ายชื่อบรรทัดเดียว — ขนาดตัดของสติ๊กเกอร์
+                         "A3 (ได้ 1 ชิ้น / แผ่น A3 · ไดคัทฟรี 200 จุด (สูงสุด 500))" ยาวจนโดนตัดหายทั้งท่อน
+                         → ชื่อ + ค่าบริการอยู่บรรทัดแรก · badge ลงบรรทัดที่ 2 ตัวเล็กสีจาง (14 ก.ย. 69) */
+                      const feeOf = (c: ProductOptionChoice) => {
                         const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
-                        return `${c.name}${c.popular ? " (นิยม)" : ""}${c.badge ? ` (${c.badge})` : ""}${add > 0 ? ` +${formatPrice(add)}` : ""}`;
+                        return add > 0 ? `+${formatPrice(add)}` : "";
                       };
+                      const subOf = (c: ProductOptionChoice) =>
+                        [c.popular ? "นิยม" : "", c.badge ?? ""].filter(Boolean).join(" · ");
+                      const labelOf = (c: ProductOptionChoice) =>
+                        [c.name, subOf(c) && `(${subOf(c)})`, feeOf(c)].filter(Boolean).join(" ");
                       const open = openDd === opt.label;
                       const curImg = cur ? choiceImage(cur, effective) : undefined;
                       return (
                         <>
-                        <div className="flex items-center gap-2">
-                          {curImg && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={curImg} alt={cur?.name} className="h-11 w-11 shrink-0 rounded-xl bg-white object-cover ring-1 ring-amber-200" />
-                          )}
-                          <div
-                            className="relative w-full"
-                            onBlur={(e) => {
-                              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpenDd((o) => (o === opt.label ? null : o));
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Escape") setOpenDd(null);
-                            }}
+                        {/* รูปอยู่ "ในกรอบเดียวกัน" กับชื่อ — เดิมลอยอยู่นอกกล่องเหมือนของคนละชิ้น (14 ก.ย. 69) */}
+                        <div
+                          className="relative w-full"
+                          onBlur={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpenDd((o) => (o === opt.label ? null : o));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setOpenDd(null);
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-haspopup="listbox"
+                            aria-expanded={open}
+                            aria-label={opt.label}
+                            onClick={() => setOpenDd((o) => (o === opt.label ? null : opt.label))}
+                            className={`flex w-full items-center gap-2 rounded-xl bg-white text-left text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 transition hover:ring-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                              curImg ? "p-1.5 pr-3" : "px-3 py-2"
+                            }`}
+                            style={cur?.color ? { color: cur.color } : undefined}
                           >
-                            <button
-                              type="button"
-                              aria-haspopup="listbox"
-                              aria-expanded={open}
-                              aria-label={opt.label}
-                              onClick={() => setOpenDd((o) => (o === opt.label ? null : opt.label))}
-                              className="flex w-full items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-left text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                              style={cur?.color ? { color: cur.color } : undefined}
-                            >
-                              <span className="truncate">{cur ? labelOf(cur) : "— เลือก —"}</span>
-                              <span className="shrink-0 text-[10px] text-stone-400">{open ? "▲" : "▼"}</span>
-                            </button>
-                            {open && (
-                              <ul
-                                role="listbox"
-                                aria-label={opt.label}
-                                className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[32rem] overflow-auto rounded-xl bg-white py-1 text-[13px] shadow-lg ring-1 ring-stone-200"
-                              >
-                                {list.map((c) => {
-                                  const on = c.name === effective[opt.label];
-                                  return (
-                                    <li key={c.name} role="option" aria-selected={on}>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                                          jumpToImage(choiceImage(c, effective));
-                                          setOpenDd(null);
-                                        }}
-                                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-amber-50 ${on ? "bg-amber-50 font-bold" : "font-medium"}`}
-                                        style={c.color ? { color: c.color } : undefined}
-                                      >
-                                        <span className="w-3 shrink-0 text-[11px]">{on ? "✓" : ""}</span>
-                                        <span>{labelOf(c)}</span>
-                                      </button>
-                                    </li>
-                                  );
-                                })}
-                              </ul>
+                            {curImg && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={curImg} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-white object-cover ring-1 ring-stone-200" />
                             )}
-                          </div>
+                            {/* ปุ่มที่ปิดอยู่ = บรรทัดเดียว: ชื่อ · ป้ายตัวเล็ก · ลูกศร (ผู้ใช้สั่ง 14 ก.ย. 69)
+                                ชื่อไม่ตัด (สั้นอยู่แล้ว) · ป้ายยาวเกินค่อยตัดท้าย */}
+                            <span className="shrink-0">{cur ? cur.name : "— เลือก —"}</span>
+                            {cur && feeOf(cur) && (
+                              <span className="shrink-0 text-[12px] font-bold text-amber-700">{feeOf(cur)}</span>
+                            )}
+                            {cur && subOf(cur) && (
+                              <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-stone-500">{subOf(cur)}</span>
+                            )}
+                            <span className="ml-auto shrink-0 pl-1 text-[10px] text-stone-400">{open ? "▲" : "▼"}</span>
+                          </button>
+                          {open && (
+                            <ul
+                              role="listbox"
+                              aria-label={opt.label}
+                              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[32rem] overflow-auto rounded-xl bg-white p-1 text-[13px] shadow-lg ring-1 ring-stone-200"
+                            >
+                              {list.map((c) => {
+                                const on = c.name === effective[opt.label];
+                                const img = choiceImage(c, effective);
+                                return (
+                                  <li key={c.name} role="option" aria-selected={on}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                                        jumpToImage(img);
+                                        setOpenDd(null);
+                                      }}
+                                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-amber-50 ${on ? "bg-amber-50 font-bold" : "font-medium"}`}
+                                      style={c.color ? { color: c.color } : undefined}
+                                      title={labelOf(c)}
+                                    >
+                                      {/* รูปในรายการด้วย — ภาพผังแบ่งแผ่นบอกความต่างได้ไวกว่าอ่านตัวเลข */}
+                                      {img && (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={img} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-md bg-white object-cover ring-1 ring-stone-200" />
+                                      )}
+                                      <span className="min-w-0 flex-1">
+                                        <span className="flex items-baseline gap-1.5">
+                                          <span>{c.name}</span>
+                                          {feeOf(c) && <span className="text-[12px] font-bold text-amber-700">{feeOf(c)}</span>}
+                                        </span>
+                                        {subOf(c) && (
+                                          <span className="mt-0.5 block text-[11px] font-normal leading-snug text-stone-500">{subOf(c)}</span>
+                                        )}
+                                      </span>
+                                      <span className="w-3 shrink-0 text-[11px] text-teal-600">{on ? "✓" : ""}</span>
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
                         </div>
-                        {/* 💬 ข้อความกำกับของตัวที่เลือกอยู่ (selectedNote) — เมนูเลื่อนใส่ข้อความในรายการไม่ได้ จึงโชว์ใต้เมนูแทน
-                            (ใช้ครั้งแรกกับ "📄 ขนาดตามไฟล์" ในกลุ่มขนาดตัด 11 ก.ย. 69) */}
-                        {cur?.selectedNote && (
-                          <p className="mt-1 rounded-lg bg-amber-100/70 px-2 py-1 text-[11px] font-normal leading-snug text-amber-900 ring-1 ring-amber-200">
-                            {noteEmphasis(cur.selectedNote)}
-                          </p>
-                        )}
+                        {/* selectedNote ไม่ต้องวาดตรงนี้ — กล่องรวมท้ายกลุ่มวาดให้แล้ว (เคยขึ้นซ้ำ 2 กล่อง 14 ก.ย. 69) */}
                         </>
                       );
                     })()
                   ) : opt.display === "dropdown" ? (
                     <>
-                    <div className="flex items-center gap-2">
-                      {/* ภาพประจำตัวเลือกที่เลือกอยู่ — เมนูเลื่อนใส่รูปในตัวเลือกไม่ได้ จึงโชว์ไว้ข้าง ๆ
-                          (สินค้าอย่างเคสมือถือ 20+ รุ่น ใช้เมนูเลื่อนดีกว่าปุ่ม แต่ยังต้องเห็นหน้าตาแบบที่เลือก) */}
-                      {(() => {
+                    {/* ภาพประจำตัวเลือกที่เลือกอยู่ — <select> ใส่รูปในรายการไม่ได้ จึงวางไว้ "ในกรอบเดียวกัน" ข้าง ๆ
+                        (สินค้าอย่างเคสมือถือ 20+ รุ่น ใช้เมนูเลื่อนดีกว่าปุ่ม แต่ยังต้องเห็นหน้าตาแบบที่เลือก)
+                        กรอบครอบทั้งรูป+เมนู ให้เป็นของชิ้นเดียว — เดิมรูปลอยอยู่นอกกล่อง (14 ก.ย. 69) */}
+                    {(() => {
+                      const selImg = (() => {
                         const selC = opt.choices.find((c) => c.name === effective[opt.label]);
                         return selC ? choiceImage(selC, effective) : undefined;
-                      })() && (
+                      })();
+                      return (
+                    <div
+                      className={`flex items-center rounded-xl bg-white ring-1 ring-amber-200 focus-within:ring-2 focus-within:ring-amber-300 ${
+                        selImg ? "gap-2.5 p-1.5" : ""
+                      }`}
+                    >
+                      {selImg && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={choiceImage(opt.choices.find((c) => c.name === effective[opt.label])!, effective)}
-                          alt={effective[opt.label]}
-                          className="h-11 w-11 shrink-0 rounded-xl bg-white object-cover ring-1 ring-amber-200"
+                          src={selImg}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-lg bg-white object-cover ring-1 ring-stone-200"
                         />
                       )}
                     <select
@@ -4693,7 +4726,9 @@ export default function ProductDetail({
                           jumpToImage(picked ? choiceImage(picked, effective) : undefined);
                         }
                       }}
-                      className="w-full rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      className={`w-full min-w-0 rounded-xl bg-transparent py-2 text-[13px] font-semibold text-stone-700 focus:outline-none ${
+                        selImg ? "pl-0.5 pr-2" : "px-3"
+                      }`}
                       // 🎨 ตัวเลือกที่ตั้งสีไว้ (ครึ่ง A4/A5/A6 สีเขียว) — ตอนถูกเลือกให้ตัวเมนูเป็นสีนั้นด้วย จะได้เห็นตั้งแต่ยังไม่กาง
                       style={(() => { const col = opt.choices.find((c) => c.name === effective[opt.label])?.color; return col ? { color: col } : undefined; })()}
                       aria-label={opt.label}
@@ -4712,15 +4747,9 @@ export default function ProductDetail({
                         ))}
                     </select>
                     </div>
-                    {/* 💬 ข้อความกำกับของตัวที่เลือกอยู่ (selectedNote) — <option> ใส่ข้อความอธิบายไม่ได้ จึงโชว์ใต้เมนูแทน */}
-                    {(() => {
-                      const note = opt.choices.find((c) => c.name === effective[opt.label])?.selectedNote;
-                      return note ? (
-                        <p className="mt-1 rounded-lg bg-amber-100/70 px-2 py-1 text-[11px] font-normal leading-snug text-amber-900 ring-1 ring-amber-200">
-                          {noteEmphasis(note)}
-                        </p>
-                      ) : null;
+                      );
                     })()}
+                    {/* selectedNote ไม่ต้องวาดตรงนี้ — กล่องรวมท้ายกลุ่มวาดให้แล้ว (เคยขึ้นซ้ำ 2 กล่อง 14 ก.ย. 69) */}
                     </>
                   ) : opt.display === "cards" ? (
                     /* การ์ดแนวตั้งหน้าตาเดียวกับแผงเลือกเรทราคา — รูปใหญ่ + วิทยุ + ชื่อ + คำอธิบาย
@@ -4924,7 +4953,12 @@ export default function ProductDetail({
                     * 📐 งานแบ่งแผ่น — เลือกขนาดตัดแล้วสรุปว่าจำนวนที่สั่งอยู่ตอนนี้ได้งานกี่ชิ้น
                     * (ป้ายบนปุ่มบอกแค่ "ต่อ 1 หน่วย" ลูกค้าต้องคูณเอง — คูณให้เลยตรงนี้)
                     */}
-                  {unitYield && !unitYield.approx && unitYield.optLabel === opt.label && yieldTotal != null && (
+                  {unitYield && !unitYield.approx && unitYield.optLabel === opt.label && yieldTotal != null &&
+                    /* สั่ง 1 หน่วย + ป้ายใต้ชื่อบอกจำนวนเท่ากันอยู่แล้ว = พูดซ้ำคำต่อคำ ("ได้ 1 ชิ้น / แผ่น A3"
+                       กับ "ขนาดตัด A3 = ได้ 1 ชิ้น") — ข้ามไป · สั่งหลายหน่วยยังต้องขึ้น เพราะคูณให้ดู */
+                    !(qty === 1 &&
+                      new RegExp(`ได้\\s*${yieldTotal.toLocaleString("th-TH")}\\s*ชิ้น`)
+                        .test(String(opt.choices.find((c) => c.name === effective[opt.label])?.badge ?? ""))) && (
                     <p className="mt-1.5 rounded-xl bg-teal-50 px-3 py-2 text-[11px] leading-relaxed text-teal-800 ring-1 ring-teal-100">
                       {/* สั่ง 1 หน่วย: "ได้ 2 ชิ้น ต่อ 1 แผ่น A3 · สั่ง 1 แผ่น A3 = ได้ 2 ชิ้น" คือประโยคเดียวกันสองรอบ
                           เหลือท่อนเดียวพอ · สั่งหลายหน่วยค่อยกางให้เห็นที่มาของยอดรวม */}
