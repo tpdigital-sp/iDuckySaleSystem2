@@ -1155,6 +1155,8 @@ export default function AdminOrderDetailPage() {
   const [chargeBusy, setChargeBusy] = useState(false);
   /** สลิปใบเพิ่มที่กำลังกด "รับยอดเอง" อยู่ (paymentId) */
   const [acceptBusy, setAcceptBusy] = useState<string | null>(null);
+  /** 💰 กล่อง "รับยอดเอง" ที่เปิดอยู่ — สลิปใบเพิ่มที่แอดมินกำลังใส่ยอด (null = ปิด) */
+  const [acceptForm, setAcceptForm] = useState<PaymentEntry | null>(null);
   /** 🧾 ฟอร์มข้อมูลใบกำกับภาษี (null = ปิด) · docUrl = ลิงก์แชร์ FlowAccount ที่วางไว้ · docVat = VAT ตามเอกสาร (เสนอให้เปิด VAT ตามนั้น) */
   const [taxForm, setTaxForm] = useState<{
     company: string;
@@ -1610,20 +1612,18 @@ export default function AdminOrderDetailPage() {
    * 💰 รับยอดของสลิปใบเพิ่มเอง — SlipOK ตรวจไม่ได้/ตรวจตก แต่แอดมินเทียบยอดกับธนาคารแล้ว
    * ต้องมีสิทธิ์ยืนยันเงินเข้า (เซิร์ฟเวอร์บังคับซ้ำ) · เซิร์ฟเวอร์นับยอด + ครบแล้วยืนยันงวด/แจ้งลูกค้า/msVerify เอง
    */
-  async function acceptPayment(e: PaymentEntry) {
+  function acceptPayment(e: PaymentEntry) {
     if (!order || !e.paymentId) return;
     if (!mayMarkPaid) {
       setErr("บัญชีนี้ยืนยันเงินเข้าไม่ได้ — ให้เจ้าของร้าน หรือคนที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้ เป็นคนกด");
       return;
     }
-    const suggest = e.verify?.amount ?? orderBalance(order);
-    const raw = window.prompt(`ยอดในสลิปใบที่ ${e.n} ที่เทียบกับธนาคารแล้ว (บาท)\nยอดค้างตอนนี้ ${formatPrice(orderBalance(order))}`, suggest ? String(suggest) : "");
-    if (raw == null) return;
-    const amount = Number(raw.replace(/[^\d.]/g, ""));
-    if (!(amount > 0)) {
-      setErr("ยอดต้องมากกว่า 0");
-      return;
-    }
+    setAcceptForm(e); // ใส่ยอดในกล่องของเว็บ (เดิมเป็น prompt() ของเบราว์เซอร์ — โชว์ยอดทศนิยมลอย ๆ อย่าง 46.89999999999998)
+  }
+
+  /** ยืนยันยอดจากกล่อง "รับยอดเอง" — เซิร์ฟเวอร์นับยอด + ครบแล้วยืนยันงวด/แจ้งลูกค้า/msVerify เอง */
+  async function confirmAccept(e: PaymentEntry, amount: number) {
+    if (!order || !e.paymentId || !(amount > 0)) return;
     setAcceptBusy(e.paymentId);
     setErr("");
     try {
@@ -1638,6 +1638,7 @@ export default function AdminOrderDetailPage() {
         return;
       }
       setOrder(j.order);
+      setAcceptForm(null);
     } finally {
       setAcceptBusy(null);
     }
@@ -6979,7 +6980,11 @@ export default function AdminOrderDetailPage() {
                               </button>
                             </div>
                           )}
-                          <div className={`mt-2 flex items-center gap-3 ${soft("green")}`}>
+                          {/*
+                            แถวสลิป — รูป + ชื่อใบ อยู่บรรทัดบน · ปุ่มทั้งชุดรวมกันอยู่ขวา แล้ว "ตกลงมาทั้งชุด" เมื่อการ์ดแคบ
+                            (เดิมปุ่มเป็น shrink-0 เรียงต่อท้ายในแถวเดียว พอคอลัมน์แคบชื่อใบถูกบีบจนเหลือบรรทัดละตัวอักษร)
+                          */}
+                          <div className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 ${soft("green")}`}>
                             {e.url ? (
                               <button
                                 type="button"
@@ -6993,46 +6998,54 @@ export default function AdminOrderDetailPage() {
                             ) : (
                               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-xl">🧾</span>
                             )}
-                            <div className="min-w-0 flex-1">
+                            <div className="min-w-0 flex-1 basis-40">
                               <p className="text-sm font-bold text-slate-800">
                                 {entries.length > 1 ? `ใบที่ ${e.n} · ` : ""}
                                 {e.label}
-                                {isSuperAdmin && (
-                                  <button
-                                    type="button"
-                                    onClick={() => (e.phase === "first" ? deleteSlip() : e.phase === "balance" ? deleteBalanceSlip() : deletePayment(e))}
-                                    className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
-                                  >
-                                    🗑 ลบ
-                                  </button>
-                                )}
                               </p>
-                              <p className={`text-xs ${faint}`}>
-                                {e.at ? new Date(e.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
-                                {e.by && e.by !== "ลูกค้า" ? ` · แนบโดย ${e.by}` : ""}
-                                {e.credited ? ` · นับยอด ${formatPrice(e.credited)}` : ""}
+                              <p className={`mt-0.5 text-xs ${faint}`}>
+                                {[
+                                  e.at ? new Date(e.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "",
+                                  e.by && e.by !== "ลูกค้า" ? `แนบโดย ${e.by}` : "",
+                                  e.credited ? `นับยอด ${formatPrice(e.credited)}` : "",
+                                  e.expected != null ? `ตอนแนบค้าง ${formatPrice(e.expected)}` : "",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
                               </p>
                             </div>
-                            {e.phase === "extra" && (e.state === "fail" || e.state === "pending") && mayMarkPaid && (
-                              <button
-                                type="button"
-                                onClick={() => acceptPayment(e)}
-                                disabled={acceptBusy === e.paymentId}
-                                title="SlipOK ตรวจไม่ได้ — เทียบยอดกับธนาคารแล้วรับยอดใบนี้เอง"
-                                className="shrink-0 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-                              >
-                                {acceptBusy === e.paymentId ? "…" : "💰 รับยอดเอง"}
-                              </button>
-                            )}
-                            {e.url && (
-                              <button
-                                type="button"
-                                onClick={() => setLightbox({ src: e.url!, alt: `สลิปใบที่ ${e.n}`, caption: captionOf(e) })}
-                                className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                              >
-                                ดูเต็ม
-                              </button>
-                            )}
+                            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                              {e.phase === "extra" && (e.state === "fail" || e.state === "pending") && mayMarkPaid && (
+                                <button
+                                  type="button"
+                                  onClick={() => acceptPayment(e)}
+                                  disabled={acceptBusy === e.paymentId}
+                                  title="SlipOK ตรวจไม่ได้ — เทียบยอดกับธนาคารแล้วรับยอดใบนี้เอง"
+                                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+                                >
+                                  {acceptBusy === e.paymentId ? "…" : "💰 รับยอดเอง"}
+                                </button>
+                              )}
+                              {e.url && (
+                                <button
+                                  type="button"
+                                  onClick={() => setLightbox({ src: e.url!, alt: `สลิปใบที่ ${e.n}`, caption: captionOf(e) })}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                                >
+                                  ดูเต็ม
+                                </button>
+                              )}
+                              {isSuperAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => (e.phase === "first" ? deleteSlip() : e.phase === "balance" ? deleteBalanceSlip() : deletePayment(e))}
+                                  title="ลบสลิปใบนี้"
+                                  className="rounded-xl px-2.5 py-2 text-xs font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                                >
+                                  🗑
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -7245,6 +7258,17 @@ export default function AdminOrderDetailPage() {
         />
       )}
       {planOpen && <ShipPlanModal order={order} onCancel={() => setPlanOpen(false)} onSave={addPlanRound} />}
+
+      {/* 💰 รับยอดสลิปใบเพิ่มเอง — แทน prompt() ของเบราว์เซอร์ */}
+      {acceptForm && (
+        <AcceptPaymentModal
+          entry={acceptForm}
+          order={order}
+          busy={acceptBusy === acceptForm.paymentId}
+          onCancel={() => setAcceptForm(null)}
+          onConfirm={(amount) => confirmAccept(acceptForm, amount)}
+        />
+      )}
 
       {/* หน้าตรวจสอบออเดอร์: ขยายรูปดูอย่างเดียว (ไม่มีปุ่มตรวจนับ — งานแพ็คอยู่ในโหมดแพ็ค) */}
       {redoOpen && (
@@ -8736,6 +8760,167 @@ function PartialShipModal({
           }}
           onClose={() => setCam(false)}
         />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 💰 กล่อง "รับยอดเอง" ของสลิปใบเพิ่ม — แทน window.prompt เดิม
+ *
+ * prompt() ของเบราว์เซอร์โชว์ยอดดิบ (46.89999999999998) และไม่บอกว่ากดแล้วออเดอร์จะเหลือค้างเท่าไร
+ * กล่องนี้ปัดสตางค์ให้ตั้งแต่ค่าเริ่มต้น มีปุ่มยอดที่ใช้บ่อย และบอกผลลัพธ์สดก่อนกดยืนยัน
+ */
+function AcceptPaymentModal({
+  entry,
+  order,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  entry: PaymentEntry;
+  order: Order;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (amount: number) => void;
+}) {
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const asText = (n: number) => (n % 1 ? n.toFixed(2) : String(n)); // ช่องกรอกโชว์ 46.90 ไม่ใช่ 46.89999999999998
+  const due = round2(Math.max(0, orderBalance(order)));
+  const read = entry.verify?.amount != null ? round2(entry.verify.amount) : null; // ยอดที่ SlipOK อ่านได้ (ถ้าอ่านได้)
+  const [raw, setRaw] = useState(asText(read ?? due));
+
+  const amount = round2(Number((raw || "").replace(/[^\d.]/g, "")) || 0);
+  const ok = amount > 0;
+  const left = round2(due - amount);
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onCancel}>
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        onClick={(ev) => ev.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* หัวกล่อง — บอกว่ากำลังรับยอดใบไหน */}
+        <div className="flex items-center gap-3 border-b border-slate-100 bg-emerald-50 px-4 py-3">
+          {entry.url ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={entry.url} alt={`สลิปใบที่ ${entry.n}`} className="h-12 w-12 shrink-0 rounded-lg border border-emerald-200 bg-white object-cover" />
+          ) : (
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-white text-xl">🧾</span>
+          )}
+          <div className="min-w-0">
+            <p className="text-base font-extrabold text-slate-900">💰 รับยอดเอง · ใบที่ {entry.n}</p>
+            <p className="mt-0.5 text-[11px] leading-snug text-emerald-800">
+              SlipOK ตรวจให้ไม่ได้ — เทียบยอดกับธนาคารแล้วค่อยกด
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3 p-4">
+          {/* ที่มาของยอด — ตัวเลขต้องมีตัวเทียบเสมอ */}
+          <div className="grid grid-cols-3 divide-x divide-slate-100 rounded-xl bg-slate-50 py-2 text-center ring-1 ring-slate-200/70">
+            {[
+              { k: "ยอดบิล", v: orderTotal(order), c: "text-slate-700" },
+              { k: "รับแล้ว", v: paidSoFar(order), c: "text-slate-700" },
+              { k: "ค้างตอนนี้", v: due, c: "text-rose-600" },
+            ].map((x) => (
+              <div key={x.k}>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{x.k}</p>
+                <p className={`text-sm font-extrabold tabular-nums ${x.c}`}>{formatPrice(x.v)}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* ช่องยอด — จุดที่กล้าจุดเดียวของกล่องนี้ */}
+          <div>
+            <label htmlFor="accept-amount" className="text-xs font-bold text-slate-600">
+              ยอดที่เข้าบัญชีจริงจากสลิปใบนี้
+            </label>
+            <div className="mt-1 flex items-center gap-2 rounded-xl border-2 border-emerald-300 bg-white px-3 py-2 focus-within:border-emerald-500">
+              <span className="text-xl font-extrabold text-emerald-600">฿</span>
+              <input
+                id="accept-amount"
+                autoFocus
+                inputMode="decimal"
+                value={raw}
+                onChange={(ev) => setRaw(ev.target.value)}
+                onFocus={(ev) => ev.currentTarget.select()}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" && ok && !busy) onConfirm(amount);
+                }}
+                className="w-full bg-transparent text-2xl font-extrabold tabular-nums text-slate-900 outline-none"
+              />
+            </div>
+            {/* ยอดที่ใช้บ่อย — กดทีเดียวไม่ต้องพิมพ์ */}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {read != null && read !== due && (
+                <button
+                  type="button"
+                  onClick={() => setRaw(asText(read))}
+                  className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                >
+                  ยอดที่อ่านจากสลิป {formatPrice(read)}
+                </button>
+              )}
+              {due > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setRaw(asText(due))}
+                  className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                >
+                  ค้างทั้งหมด {formatPrice(due)}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ผลลัพธ์สดก่อนกด — กดแล้วออเดอร์จะเป็นยังไง */}
+          <div
+            className={`rounded-xl px-3 py-2 text-xs font-bold ring-1 ${
+              !ok
+                ? "bg-slate-50 text-slate-400 ring-slate-200"
+                : left > 0
+                  ? "bg-rose-50 text-rose-700 ring-rose-200"
+                  : left < 0
+                    ? "bg-sky-50 text-sky-700 ring-sky-200"
+                    : "bg-emerald-50 text-emerald-700 ring-emerald-200"
+            }`}
+          >
+            {!ok
+              ? "ใส่ยอดมากกว่า 0 ก่อน"
+              : left > 0
+                ? `รับแล้วจะยังค้างอีก ${formatPrice(left)} — ออเดอร์ยังไม่ครบ`
+                : left < 0
+                  ? `✓ ครบ แถมโอนเกิน ${formatPrice(-left)} — คืน/แปลงเป็นแต้มทีหลัง`
+                  : "✓ ครบพอดี — ระบบจะยืนยันเงินเข้าและแจ้งลูกค้าให้เลย"}
+          </div>
+
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            ยอดนี้จะถูกบันทึกในประวัติออเดอร์พร้อมชื่อคุณว่าเป็นคนรับยอดเอง
+          </p>
+        </div>
+
+        {/* ปุ่มอยู่ครึ่งล่างของจอ กดด้วยนิ้วโป้งได้ */}
+        <div className="flex gap-2 border-t border-slate-100 p-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(amount)}
+            disabled={!ok || busy}
+            className="flex-1 rounded-xl bg-emerald-600 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-40"
+          >
+            {busy ? "กำลังบันทึก…" : `💰 รับยอด ${formatPrice(amount)}`}
+          </button>
+        </div>
       </div>
     </div>
   );

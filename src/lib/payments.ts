@@ -70,6 +70,8 @@ export interface PaymentEntry {
   verify?: Order["slipVerify"];
   /** ยอดที่นับเข้า paidTotal แล้วจากใบนี้ (บาท) — undefined = ยังไม่กระทบยอด */
   credited?: number;
+  /** ยอดค้างของออเดอร์ ณ ตอนที่แนบใบนี้ (บาท · เฉพาะใบเพิ่ม) — ไว้โชว์เป็นบรรทัดรอง ไม่ยัดลงชื่อใบ */
+  expected?: number;
   accepted?: { by: string; at: string };
   state: PaymentState;
 }
@@ -126,7 +128,9 @@ export function paymentEntries(o: Order): PaymentEntry[] {
       key: p.id,
       phase: "extra",
       paymentId: p.id,
-      label: p.expected != null ? `โอนเพิ่ม (ค้าง ${p.expected.toLocaleString("th-TH")} บาทตอนแนบ)` : "โอนเพิ่ม",
+      // ชื่อใบสั้นบรรทัดเดียว — ยอดค้างตอนแนบไปอยู่บรรทัดรอง (ชื่อยาวทำให้แถวในหน้าออเดอร์บีบจนอ่านไม่ออก)
+      label: "โอนเพิ่ม",
+      expected: p.expected ?? undefined,
       url: p.url,
       path: p.path,
       at: p.at,
