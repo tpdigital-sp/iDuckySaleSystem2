@@ -7,7 +7,7 @@ import { getProductServer } from "@/lib/products-server";
 import type { Product } from "@/lib/products";
 import { verifySlipWithSlipOK, type SlipVerifyResult } from "@/lib/server/slipok";
 import { assertSlipNotDuplicate } from "@/lib/server/slip-dedupe";
-import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { balanceNetTransfer, notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP, syncPaidCompleteToTP } from "@/lib/server/tp-report";
 import { cutStockForOrder } from "@/lib/server/stock";
 import { bumpSoldForOrder } from "@/lib/server/sold";
@@ -73,7 +73,9 @@ export interface ApplySlipResult {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const thb = (n: number) => n.toLocaleString("th-TH");
+// มีสตางค์ = โชว์สองตำแหน่ง (ยอดมัดจำ 50% ลงท้าย .50 บ่อย — "17,173.5 บาท" อ่านเหมือนพิมพ์ไม่จบ)
+const thb = (n: number) =>
+  n.toLocaleString("th-TH", n % 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined);
 
 /** ผลตรวจที่จะเก็บลงออเดอร์ (ตัด skip ทิ้ง — ไม่มีอะไรให้จำ) */
 function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"] {
@@ -334,7 +336,10 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
 
   if (confirmedDeposit) {
     const remain = orderTotal(updated) - (updated.paidTotal ?? 0);
-    void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(remain)} บาท ชำระก่อนจัดส่ง${whtAsk}\n${link}`, "ยืนยันรับมัดจำ");
+    // ➗ ลูกค้าหัก ณ ที่จ่าย: บอกเงินที่ต้องโอนจริงคู่ไปด้วย ไม่งั้นโอนตามยอดงวดแล้วเกิน (ตรงกับหน้าออเดอร์)
+    const remainNet = balanceNetTransfer(updated, remain);
+    const remainNote = remainNet ? ` (โอนจริง ${thb(remainNet.net)} บาท หลังหัก ณ ที่จ่าย${remainNet.rateTxt})` : "";
+    void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(remain)} บาท ชำระก่อนจัดส่ง${remainNote}${whtAsk}\n${link}`, "ยืนยันรับมัดจำ");
     tp("มัดจำ 50% งวดแรก");
     void cutStockForOrder(updated); // มัดจำ = เริ่มงานแล้วก็ตัดสต๊อกเลย
     void bumpSoldForOrder(updated.id);

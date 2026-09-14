@@ -1,6 +1,16 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import {
+  depositInstallments,
+  orderBalance,
+  orderNetTransfer,
+  orderTotal,
+  orderWhtAmount,
+  withLog,
+  type Order,
+  type OrderStatus,
+} from "@/lib/admin-data";
+import { formatPrice } from "@/lib/products";
 import { isPickupOrder } from "@/lib/ship-label";
 
 /**
@@ -206,13 +216,41 @@ export function orderLink(origin: string, order: Order): string {
 }
 
 /**
+ * ➗ ยอดที่ลูกค้า "โอนจริง" สำหรับยอดค้างก้อนนี้ — ลูกค้านิติบุคคลหัก ณ ที่จ่ายแล้วโอนน้อยกว่ายอดงวด
+ * (OD-260911-6656 · 14 ก.ย. 69: การ์ดไลน์บอกยอดค้าง ฿17,173.50 แต่หน้าออเดอร์บอกโอนจริง ฿16,692 — ลูกค้าเห็นสองยอดไม่ตรงกัน)
+ * คืน null เมื่อบอกไม่ได้: ไม่มีหัก ณ ที่จ่าย หรือยอดค้างไม่ใช่ "ทั้งงวด" (โอนมาบางส่วนแล้ว สัดส่วนหักจะไม่ตรง)
+ * กติกาเดียวกับหน้าออเดอร์ลูกค้า (netNote ใน app/(shop)/order/[id]/page.tsx)
+ */
+export function balanceNetTransfer(o: Order, bal: number): { net: number; rateTxt: string } | null {
+  const wht = orderWhtAmount(o);
+  if (!(wht > 0) || !(bal > 0)) return null;
+  const rateTxt = o.wht?.rate ? ` ${o.wht.rate}%` : "";
+  const same = (a: number, b: number) => Math.abs(a - b) < 0.01;
+  const inst = depositInstallments(o);
+  if (inst) {
+    // ค้างงวดหลัง (ปกติที่สุด) · ค้างงวดแรก · ค้างทั้งใบ (ยังไม่โอนเลย)
+    if (same(bal, inst.second)) return { net: inst.secondNet, rateTxt };
+    if (same(bal, inst.first)) return { net: inst.firstNet, rateTxt };
+    if (same(bal, inst.first + inst.second)) return { net: orderNetTransfer(o), rateTxt };
+    return null;
+  }
+  return same(bal, orderTotal(o)) ? { net: orderNetTransfer(o), rateTxt } : null;
+}
+
+/**
  * ข้อความแจ้งลูกค้าเมื่อ "สถานะออเดอร์เปลี่ยน" — ครบทุกสถานะ ลูกค้าจะได้รู้ความคืบหน้าตลอดทาง
  * เขียนแบบลูกค้าอ่านรู้เรื่อง ไม่ใช่ศัพท์หลังบ้าน · คืน null = สถานะนั้นไม่ต้องแจ้ง
  */
 export function statusMessage(order: Order, link: string): string | null {
   const id = order.id;
-  const bal = Math.max(0, orderTotal(order) - (order.paidTotal ?? 0));
-  const owe = order.deposit && !order.deposit.settledAt && bal > 0 ? `\n💳 ยอดค้าง ${bal.toLocaleString()} บาท (ชำระก่อนจัดส่ง)` : "";
+  // ยอดค้างต้องคิดเหมือนหน้าออเดอร์ทุกบาททุกสตางค์ (orderBalance + formatPrice) ไม่งั้นลูกค้าเทียบกับเว็บแล้วไม่ตรง
+  const bal = orderBalance(order);
+  const net = balanceNetTransfer(order, bal);
+  const owe =
+    order.deposit && !order.deposit.settledAt && bal > 0
+      ? `\n💳 ยอดค้าง ${formatPrice(bal)} (ชำระก่อนจัดส่ง)` +
+        (net ? `\n↳ โอนจริงหลังหัก ณ ที่จ่าย${net.rateTxt} ${formatPrice(net.net)}` : "")
+      : "";
   switch (order.status) {
     case "รอชำระเงิน":
       return `🧾 ออเดอร์ ${id} รอชำระเงินครับ\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลย\n${link}`;
@@ -300,15 +338,19 @@ export function statusFlex(
   const alt = opts?.alt ?? statusMessage(order, link) ?? `ออเดอร์ ${order.id}`;
   const tone = STATUS_HEX[status] ?? "#475569";
   const total = orderTotal(order);
-  const bal = Math.max(0, total - (order.paidTotal ?? 0));
+  // ยอดค้าง + เงินที่ต้องโอนจริง — ตัวเดียวกับหน้าออเดอร์ ลูกค้าเทียบสองจอแล้วต้องตรงกัน
+  const bal = orderBalance(order);
   const owe = !!order.deposit && !order.deposit.settledAt && bal > 0;
+  const oweNet = owe ? balanceNetTransfer(order, bal) : null;
   const first = order.items[0];
   const more = order.items.length - 1;
   const items = first ? `${first.name}${first.qty > 1 ? ` ×${first.qty.toLocaleString()}` : ""}${more > 0 ? ` และอีก ${more} รายการ` : ""}` : "-";
 
   const rows: unknown[] = [flexRow("รายการ", items)];
-  rows.push(flexRow("ยอดรวม", `฿${total.toLocaleString()}`, "#0F172A", true));
-  if (owe) rows.push(flexRow("ยอดค้าง", `฿${bal.toLocaleString()}`, "#E11D48", true));
+  rows.push(flexRow("ยอดรวม", formatPrice(total), "#0F172A", true));
+  if (owe) rows.push(flexRow("ยอดค้าง", formatPrice(bal), "#E11D48", true));
+  // ➗ หัก ณ ที่จ่าย: ยอดงวดกับเงินที่โอนจริงคนละตัว — โชว์คู่กันเหมือนหน้าออเดอร์ ไม่งั้นลูกค้าโอนเกิน
+  if (oweNet) rows.push(flexRow(`↳ โอนจริงหลังหัก ณ ที่จ่าย${oweNet.rateTxt}`, formatPrice(oweNet.net), "#0F172A", true));
   if (order.status === "จัดส่งแล้ว" && order.tracking && !isPickupOrder(order))
     rows.push(flexRow(order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ", order.tracking, "#0F172A", true));
 
@@ -354,7 +396,15 @@ export function statusFlex(
                     cornerRadius: "8px",
                     paddingAll: "10px",
                     contents: [
-                      { type: "text", text: "💳 โอนยอดคงเหลือแล้วแนบสลิปในหน้าออเดอร์ได้เลย (จัดส่งได้หลังชำระครบ)", size: "xs", color: "#BE123C", wrap: true },
+                      {
+                        type: "text",
+                        text: oweNet
+                          ? `💳 โอน ${formatPrice(oweNet.net)} (หลังหัก ณ ที่จ่าย${oweNet.rateTxt}) แล้วแนบสลิปในหน้าออเดอร์ได้เลย (จัดส่งได้หลังชำระครบ)`
+                          : "💳 โอนยอดคงเหลือแล้วแนบสลิปในหน้าออเดอร์ได้เลย (จัดส่งได้หลังชำระครบ)",
+                        size: "xs",
+                        color: "#BE123C",
+                        wrap: true,
+                      },
                     ],
                   },
                 ]
