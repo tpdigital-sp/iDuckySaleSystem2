@@ -324,7 +324,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
   // เรคอร์ด msVerify แยกใบ: ช่องแรก = doc id หลัก · งวดหลัง = -final · ใบเพิ่ม = -<paymentId> (กันชนกัน)
   const tp = (note: string) =>
     void reportPaidToTP(updated, "SlipOK อัตโนมัติ", {
-      amount: received,
+      received,
       noteSuffix: `${note}${dedNote}`,
       partial,
       ...(phase === "extra" ? { docSuffix: `-${paymentId}`, slipPath: path, extra: true } : phase === "balance" ? { docSuffix: "-final" } : {}),
@@ -428,7 +428,7 @@ export async function acceptPaymentManually(a: {
   const link = orderLink(origin, updated);
   const adminName = `แอดมิน ${who}`;
   const tp = (note: string) =>
-    void reportPaidToTP(updated, adminName, { amount, noteSuffix: note, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull });
+    void reportPaidToTP(updated, adminName, { received: amount, noteSuffix: note, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull });
   if ((confirmedDeposit || confirmedFull) && paidSoFar(order) > 0) void syncPaidCompleteToTP(updated, adminName);
   if (confirmedDeposit) {
     const rem = orderTotal(updated) - (updated.paidTotal ?? 0);

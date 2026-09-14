@@ -7,7 +7,7 @@ import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
-import { reportPaidToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { reportPaidToTP, syncArrivalToTP, syncCustomerToTP, syncReceivedToTP, syncRushToTP } from "@/lib/server/tp-report";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { isPickupOrder } from "@/lib/ship-label";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
@@ -713,6 +713,8 @@ export async function PATCH(req: Request) {
     void syncRushToTP(toSave);
   // 👤 แอดมินแก้ชื่อผู้รับ/เบอร์ → อัปเดตการ์ดบอร์ด WIP ให้ตรงหน้าออเดอร์ (เก็บชื่อเก่าไว้ให้จับคู่โฟลเดอร์เดิมได้)
   if (mayEditFull) void syncCustomerToTP(existing, toSave);
+  // 💵 แก้ "เงินเข้าบัญชีจริง" (ธนาคารหักค่าธรรมเนียม) หลังส่งเรคอร์ดไปแล้ว → อัปเดตยอดใน msVerify ให้ตรงแถวโอน
+  if (mayEditFull && (existing.cashReceived ?? 0) !== (toSave.cashReceived ?? 0)) void syncReceivedToTP(toSave);
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
   void syncArrivalToTP(existing, toSave);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
@@ -737,7 +739,8 @@ export async function PATCH(req: Request) {
       void reportPaidToTP(
         toSave,
         adminName,
-        depositFirstNow ? { amount: toSave.deposit!.amount, noteSuffix: "มัดจำ 50% งวดแรก" } : undefined
+        // ยอดเงินเข้าจริงของงวดคิดใน amountsForRecord (งวด − หัก ณ ที่จ่ายของงวด) — ที่นี่บอกแค่ว่าเป็นงวดไหน
+        depositFirstNow ? { noteSuffix: "มัดจำ 50% งวดแรก" } : undefined
       );
     // ตัดสต๊อกวัสดุอัตโนมัติ (idempotent ต่อออเดอร์) · ยกเลิก → คืนของที่เคยตัด
     if (toSave.status === "ชำระแล้ว") void cutStockForOrder(toSave);
@@ -833,9 +836,8 @@ export async function PATCH(req: Request) {
   // มัดจำ: แอดมินยืนยันรับยอดคงเหลือครบในคำขอนี้ → แจ้งลูกค้า + ส่งเรคอร์ดงวดหลังเข้า msVerify
   if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
     const origin = new URL(req.url).origin;
-    const bal = Math.max(0, orderTotal(toSave) - (existing.paidTotal ?? toSave.deposit.amount));
     void notifyCustomerLogged(sb, toSave, `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`, "ยืนยันรับยอดคงเหลือครบ");
-    void reportPaidToTP(toSave, adminName, { docSuffix: "-final", amount: bal, noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
+    void reportPaidToTP(toSave, adminName, { docSuffix: "-final", noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
     // 🦆 ออเดอร์มัดจำเพิ่งชำระครบ → บวกแต้มสะสม (idempotent)
     void awardPointsForOrder(toSave);
   }

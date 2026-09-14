@@ -287,7 +287,8 @@ export async function PUT(req: Request) {
   // ชำระแล้วตั้งแต่สร้าง = ผลข้างเคียงชุดเดียวกับตอนแอดมินกดเปลี่ยนสถานะ (msVerify · ตัดสต๊อก · ยอดขาย · แต้ม)
   if (wantPaid) {
     // ใบมัดจำ: รายงาน msVerify เป็นงวดแรก (ยอดมัดจำ) · แต้มรอให้ครบ 100% (เหมือน PATCH ปกติที่ข้าม awardPoints เมื่อมี deposit)
-    void reportPaidToTP(order, by, depositAmt > 0 ? { amount: depositAmt, noteSuffix: `มัดจำ 50% งวดแรก · FlowAccount ${doc.docNo}` } : { noteSuffix: `FlowAccount ${doc.docNo}` });
+    // ยอดเงินเข้าจริงของงวดคิดใน amountsForRecord (งวด − หัก ณ ที่จ่ายของงวด) — ที่นี่บอกแค่ว่าเป็นงวดไหน
+    void reportPaidToTP(order, by, { noteSuffix: depositAmt > 0 ? `มัดจำ 50% งวดแรก · FlowAccount ${doc.docNo}` : `FlowAccount ${doc.docNo}` });
     void cutStockForOrder(order);
     void bumpSoldForOrder(order.id);
     if (depositAmt <= 0) void awardPointsForOrder(order);

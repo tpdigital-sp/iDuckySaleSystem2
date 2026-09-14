@@ -49,6 +49,8 @@ import {
   orderItemDiscounts,
   orderFullyPaid,
   orderNetTransfer,
+  orderCashReceived,
+  orderBankFee,
   flowAccountBillTotal,
   flowAccountGap,
   orderTotal,
@@ -6208,6 +6210,60 @@ export default function AdminOrderDetailPage() {
                       ลูกค้าหักภาษี {order.wht.rate}% แล้วโอนยอดนี้ — ตามหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) มาแทนส่วนต่าง
                     </p>
                   </>
+                )}
+
+                {/* 💵 เงินเข้าบัญชีจริง — ธนาคารหักค่าธรรมเนียมจากยอดที่เข้า (SMART/ข้ามธนาคาร) เข้าน้อยกว่ายอดโอนไม่กี่บาท
+                    กรอกเลขจากรายการเดินบัญชี → ส่งไปหน้าตรวจสลิป (msVerify) แทนยอดบิล กระทบยอดกับธนาคารได้พอดี
+                    ⚠️ ไม่ใช่ยอดชำระ — ไม่ลดยอดบิล ไม่สร้างยอดค้าง (ค่าธรรมเนียมเป็นต้นทุนของร้าน ไม่ใช่ลูกค้าโอนขาด) */}
+                {seesMoney && !order.deposit && (mayEdit || orderCashReceived(order) > 0) && (
+                  <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className={muted}>เงินเข้าบัญชีจริง</span>
+                      {mayEdit ? (
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          inputMode="decimal"
+                          value={order.cashReceived ?? ""}
+                          placeholder={String(orderNetTransfer(order))}
+                          onChange={(e) =>
+                            setOrder((cur) => {
+                              if (!cur) return cur;
+                              const v = e.target.value.trim();
+                              return { ...cur, cashReceived: v === "" ? undefined : Math.max(0, Number(v) || 0) };
+                            })
+                          }
+                          onFocus={(e) => (e.currentTarget.dataset.orig = String(order.cashReceived ?? ""))}
+                          onBlur={(e) => {
+                            const orig = e.currentTarget.dataset.orig ?? "";
+                            const now = order.cashReceived != null ? String(order.cashReceived) : "";
+                            if (orig === now) return persist();
+                            const got = orderCashReceived(order);
+                            const fee = orderBankFee(order);
+                            applyOrder(
+                              withLog(
+                                order,
+                                actor,
+                                "เงินเข้าบัญชีจริง",
+                                got > 0
+                                  ? `เข้าจริง ${formatPrice(got)} (ยอดโอน ${formatPrice(orderNetTransfer(order))}${fee > 0 ? ` · ธนาคารหักค่าธรรมเนียม ${formatPrice(fee)}` : ""}) — ส่งยอดนี้ไปหน้าตรวจสลิป`
+                                  : "ล้างยอดเงินเข้าจริง — กลับไปใช้ยอดโอนตามบิล"
+                              )
+                            );
+                          }}
+                          className="h-9 w-28 rounded-md border border-slate-200 bg-white px-2 py-1 text-right text-xs font-bold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
+                        />
+                      ) : (
+                        <span className="font-bold tabular-nums text-slate-700">{formatPrice(orderCashReceived(order))}</span>
+                      )}
+                    </div>
+                    <p className={`mt-0.5 text-[10px] leading-snug ${orderBankFee(order) > 0 ? "font-semibold text-amber-700" : "text-slate-400"}`}>
+                      {orderBankFee(order) > 0
+                        ? `💸 ธนาคารหักค่าธรรมเนียม ${formatPrice(orderBankFee(order))} — ร้านรับเอง ไม่ใช่ลูกค้าโอนขาด · หน้าตรวจสลิปได้ยอด ${formatPrice(orderCashReceived(order))} ตรงกับรายการเดินบัญชี`
+                        : "ว่างไว้ = เข้าเท่ายอดโอน · กรอกเมื่อธนาคารหักค่าธรรมเนียม (เลขจากรายการเดินบัญชี)"}
+                    </p>
+                  </div>
                 )}
               </div>
 

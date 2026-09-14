@@ -738,6 +738,15 @@ export interface Order {
    */
   wht?: { rate: number; amount: number };
   /**
+   * 💵 เงินที่ "เข้าบัญชีร้านจริง" ของใบนี้ (บาท) — แอดมินกรอกเองตอนเทียบกับรายการเดินบัญชี
+   * ต่างจากยอดโอนจริง (orderNetTransfer) เมื่อธนาคารหักค่าธรรมเนียมโอนจากยอดที่เข้า
+   * (OD-260914-9922 · 14 ก.ย. 69: บิล 5,457 − หัก ณ ที่จ่าย 153 = โอน 5,304 แต่ SMART TTB เข้าจริง 5,296)
+   *
+   * ⚠️ ไม่ใช่ยอดชำระ — ไม่แตะ paidTotal / ยอดค้าง / สถานะ (ค่าธรรมเนียมเป็นต้นทุนธนาคารของร้าน ไม่ใช่ลูกค้าโอนขาด)
+   * มีไว้ให้ยอดที่ส่งไป msVerify (slipAmount) ตรงกับแถวโอนของธนาคารพอดี — ดู amountsForRecord ใน server/tp-report.ts
+   */
+  cashReceived?: number;
+  /**
    * ลูกค้าประเมินความพึงพอใจแล้ว (กันประเมินซ้ำ) — ตั้งใจเก็บแค่ boolean
    * ห้ามเก็บคะแนน/เวลา/รายละเอียดใด ๆ ที่นี่ เพื่อให้คะแนนในตาราง ratings นิรนามจริง
    */
@@ -958,6 +967,25 @@ export function orderWhtAmount(o: Order): number {
 /** ยอดโอนจริงหลังหัก ณ ที่จ่าย — ลูกค้านิติบุคคลโอนเท่านี้ ส่วนต่างตามใบ 50 ทวิ */
 export function orderNetTransfer(o: Order): number {
   return Math.max(0, orderTotal(o) - orderWhtAmount(o));
+}
+
+/**
+ * 💵 เงินที่เข้าบัญชีจริงของใบนี้ที่แอดมินกรอกไว้ (0 = ยังไม่ได้กรอก → ถือว่าเข้าเท่ายอดโอนจริงตามบิล)
+ * ใบเดียวจบเท่านั้น — ใบมัดจำโอนคนละงวด ยอดเข้าจริงของแต่ละงวดอ่านจากสลิปของงวดนั้น
+ */
+export function orderCashReceived(o: Order): number {
+  const v = Number(o.cashReceived);
+  return Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : 0;
+}
+
+/**
+ * 💸 ค่าธรรมเนียมที่ธนาคารหักจากยอดโอน = ยอดโอนจริงตามบิล − เงินที่เข้าบัญชีจริง
+ * 0 = ยังไม่ได้กรอกเงินเข้าจริง หรือเข้าครบ/เกิน (โอนเกินไม่ใช่ค่าธรรมเนียม)
+ */
+export function orderBankFee(o: Order): number {
+  const got = orderCashReceived(o);
+  if (got <= 0) return 0;
+  return Math.max(0, Math.round((orderNetTransfer(o) - got) * 100) / 100);
 }
 
 /**
