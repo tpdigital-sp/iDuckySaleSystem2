@@ -528,7 +528,7 @@ function PrintRow({
             )}
             {o.rush && <Tag tone="solid">งานเร่ง</Tag>}
             {ship !== null && (
-              <Tag tone={ship < 0 ? "coral" : ship <= DUE_SOON_DAYS ? "yolk" : "quiet"} title={`วันที่จัดส่ง ${o.shipDate?.from}`}>
+              <Tag tone={ship < 0 ? "coral" : ship <= DUE_SOON_DAYS ? "yolk" : "quiet"} title={`วันที่จัดส่ง ${o.shipDate?.from}${o.shipDate?.to && o.shipDate.to !== o.shipDate.from ? ` – ${o.shipDate.to}` : ""}`}>
                 {ship < 0 ? `เลยวันส่ง ${-ship} วัน` : ship === 0 ? "ส่งวันนี้" : ship === 1 ? "ส่งพรุ่งนี้" : `ส่ง ${shortThaiDay(o.shipDate!.from || o.shipDate!.to!)} (อีก ${ship} วัน)`}
               </Tag>
             )}

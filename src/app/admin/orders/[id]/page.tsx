@@ -1874,6 +1874,13 @@ export default function AdminOrderDetailPage() {
    * ทำครั้งเดียวต่อใบ · เฉพาะคนที่มีสิทธิ์แก้ออเดอร์ (ฝ่ายแพ็ค/กราฟฟิกเซิร์ฟเวอร์ไม่รับฟิลด์นี้อยู่แล้ว ไม่ต้องยิงให้เด้ง error)
    */
   const shipAutoRef = useRef<string>("");
+
+  /**
+   * 📅 เปิดช่อง "ถึง" ให้ใบไหน — เจ้าของร้านสั่ง 14 ก.ย. 69: "ระบุ 1 วันก็ได้ ระบุจาก–ถึงก็ได้"
+   * ค่าเริ่มต้นปิด (ใบส่วนใหญ่นัดวันเดียว ตามที่สั่งไว้ 11 ก.ย. 69) · ใบที่เก็บเป็นช่วงไว้แล้วเปิดให้เอง
+   * เก็บเป็น id ของใบ ไม่ใช่ true/false — สลับไปดูใบอื่นในจอเดียวกันจะได้ไม่ค้างเปิด
+   */
+  const [shipRangeFor, setShipRangeFor] = useState("");
   useEffect(() => {
     if (!order || demo || !permsReady || !rolCan("orders.edit")) return;
     if (!order.useByDate || order.shipDate?.from || order.shipDate?.to) return;
@@ -6645,20 +6652,73 @@ export default function AdminOrderDetailPage() {
                   </div>
                 )}
 
-                {/* วันที่จัดส่ง — ช่องเดียว (เจ้าของร้านสั่ง 11 ก.ย. 69 ตัดช่อง "ถึง" ออก) · เติมให้เองจากวันใช้งาน (ดู shipWindowForUseBy) · แอดมินแก้ทับได้
-                    เก็บลง shipDate.from และ .to เป็นวันเดียวกัน ให้ใบปริ้น/บอร์ด WIP/หน้าลูกค้าที่อ่านทั้งคู่โชว์วันเดียว · ใบเก่าที่ตั้งเป็นช่วงไว้ยังอ่าน from ได้ */}
+                {/* วันที่จัดส่ง — ปกติช่องเดียว (เจ้าของร้านสั่ง 11 ก.ย. 69) · กด "+ ถึงวันที่" เมื่ออยากนัดเป็นช่วง (สั่ง 14 ก.ย. 69 "ระบุ 1 วันก็ได้ ระบุจาก–ถึงก็ได้")
+                    เติมให้เองจากวันใช้งาน (ดู shipWindowForUseBy) · แอดมินแก้ทับได้
+                    วันเดียว = เก็บ shipDate.from และ .to เป็นวันเดียวกัน · เป็นช่วง = to มากกว่า from (ใบปริ้น/บอร์ด WIP/หน้าลูกค้าอ่านทั้งคู่และโชว์ช่วงอยู่แล้ว) */}
                 {(() => {
                   const warns = shipWindowWarnings(order.shipDate, order.useByDate);
-                  const shipOne = order.shipDate?.from || order.shipDate?.to || "";
+                  const shipFrom = order.shipDate?.from || order.shipDate?.to || "";
+                  const shipTo = order.shipDate?.to || order.shipDate?.from || "";
+                  const isRange = !!shipTo && shipTo !== shipFrom;
+                  const rangeOn = isRange || shipRangeFor === order.id;
+                  /** กด "+ ถึงวันที่" — มีวันใช้งานอยู่แล้วเติมวันปลายช่วงตามกติกาให้เลย (ก่อนใช้งาน 1 วันทำการ) */
+                  const openRange = () => {
+                    setShipRangeFor(order.id);
+                    const win = order.useByDate ? shipWindowForUseBy(order.useByDate, todayYmd()) : null;
+                    if (shipFrom && win && win.to > shipFrom) applyOrder({ ...order, shipDate: { from: shipFrom, to: win.to } });
+                  };
                   return (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-600" title={SHIP_WINDOW_RULE}>📅 วันที่จัดส่ง</p>
-                  <input
-                    type="date"
-                    value={shipOne}
-                    onChange={(e) => applyOrder({ ...order, shipDate: { from: e.target.value, to: e.target.value } })}
-                    className="w-full min-w-0 rounded-lg border border-slate-200 px-2 py-1 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
-                  />
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600" title={SHIP_WINDOW_RULE}>
+                    📅 วันที่จัดส่ง{rangeOn ? " (ช่วงวันที่)" : ""}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={shipFrom}
+                      onChange={(e) => {
+                        // ช่วงที่ตั้งไว้ยังอยู่ถ้าวันปลายยังอยู่หลังวันเริ่ม · ไม่งั้นยุบเหลือวันเดียว
+                        const v = e.target.value;
+                        const to = rangeOn && shipTo && v && shipTo > v ? shipTo : v;
+                        applyOrder({ ...order, shipDate: { from: v, to } });
+                      }}
+                      className="min-w-[9.5rem] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[13px] tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
+                    />
+                    {rangeOn ? (
+                      <>
+                        {/* "ถึง" ติดกับช่องปลายช่วงเสมอ — คอลัมน์นี้แคบ ถ้าปล่อยให้ตัดบรรทัดแยกกันจะอ่านเป็น "วันที่ ... ถึง" ห้อยท้ายบรรทัด */}
+                        <div className="flex min-w-[9.5rem] flex-1 items-center gap-1.5">
+                          <span className="shrink-0 text-xs font-bold text-slate-400">ถึง</span>
+                          <input
+                            type="date"
+                            value={shipTo}
+                            onChange={(e) => applyOrder({ ...order, shipDate: { from: shipFrom, to: e.target.value || shipFrom } })}
+                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[13px] tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          title="เอาช่วงออก — นัดส่งวันเดียว"
+                          onClick={() => {
+                            setShipRangeFor("");
+                            if (isRange) applyOrder({ ...order, shipDate: { from: shipFrom, to: shipFrom } });
+                          }}
+                          className="min-h-[2.25rem] shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                        >
+                          ✕ วันเดียว
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        title="นัดส่งเป็นช่วงวันที่ เช่น ส่ง 10–11 ก.ย."
+                        onClick={openRange}
+                        className="min-h-[2.25rem] shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                      >
+                        + ถึงวันที่
+                      </button>
+                    )}
+                  </div>
                   {warns.length > 0 && (
                     <ul className="mt-1 space-y-0.5 text-[11px] font-bold text-rose-600">
                       {warns.map((w) => (
@@ -6697,7 +6757,13 @@ export default function AdminOrderDetailPage() {
                             // ระบุวันใช้งาน → เติมวันส่งให้ทันที (วันเดียว = วันแรกของช่วงที่ควรส่ง · ก่อนใช้งาน 2 วันทำการ เว้นเสาร์-อาทิตย์/วันหยุด)
                             const v = e.target.value || undefined;
                             const win = v ? shipWindowForUseBy(v, todayYmd()) : null;
-                            applyOrder({ ...order, useByDate: v, ...(win ? { shipDate: { from: win.from, to: win.from } } : {}) });
+                            // ใบที่แอดมินเปิดโหมดช่วงไว้ เติมให้ทั้งช่วง (จาก–ถึง) · ใบปกติเติมวันเดียว
+                            const wide = shipRangeFor === order.id || (!!order.shipDate?.to && order.shipDate.to !== order.shipDate.from);
+                            applyOrder({
+                              ...order,
+                              useByDate: v,
+                              ...(win ? { shipDate: { from: win.from, to: wide ? win.to : win.from } } : {}),
+                            });
                           }}
                           className={`min-w-fit flex-1 rounded-lg border bg-white px-2 py-1 text-[13px] tabular-nums focus:outline-none ${
                             order.rush || late ? "border-rose-300 font-bold text-rose-700" : soon ? "border-orange-300 font-bold text-orange-700" : "border-slate-200 text-slate-800 focus:border-amber-300"

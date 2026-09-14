@@ -1191,7 +1191,11 @@ function WorkContHead({ order, n, total, orderUrl }: { order: Order; n: number; 
         <p className="text-xs text-slate-600">
           {order.customer} · ใบงานต่อจากหน้า {n - 1} (หน้า {n}/{total})
           {order.useByDate ? ` · 🔥 ใช้งาน ${fmtThaiDate(order.useByDate)}` : ""}
-          {order.shipDate?.from ? ` · 📅 ส่ง ${fmtThaiDate(order.shipDate.from)}` : ""}
+          {order.shipDate?.from
+            ? ` · 📅 ส่ง ${fmtThaiDate(order.shipDate.from)}${
+                order.shipDate.to && order.shipDate.to !== order.shipDate.from ? ` – ${fmtThaiDate(order.shipDate.to)}` : ""
+              }`
+            : ""}
         </p>
       </div>
       {orderUrl && (
