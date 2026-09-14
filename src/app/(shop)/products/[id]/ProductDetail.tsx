@@ -1,7 +1,7 @@
 "use client";
 
 import { productAutoSeo } from "@/lib/auto-seo";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -368,7 +368,14 @@ function noteChips(line: string) {
   if (parts.length === 1) return line;
   return parts.map((part, i) =>
     i % 2 === 1 ? (
-      <strong key={i} className="mx-0.5 rounded bg-rose-50 px-1 py-px font-bold text-rose-600 ring-1 ring-rose-200">
+      // box-decoration-clone: คำเน้นยาว ๆ ที่ตกบรรทัด กรอบชมพูจะปิดสวยครบทุกบรรทัด ไม่ขาดกลาง
+      // คำสั้น ๆ ห้ามตัดบรรทัด — ไม่งั้นเหลือหางคำโดด ๆ อยู่บรรทัดถัดไป (เช่น "หนารวม ~3 / มม.")
+      <strong
+        key={i}
+        className={`mx-0.5 box-decoration-clone rounded bg-rose-50 px-1 py-px font-bold text-rose-600 ring-1 ring-rose-200 ${
+          part.length <= 18 ? "whitespace-nowrap" : ""
+        }`}
+      >
         {part}
       </strong>
     ) : (
@@ -381,23 +388,42 @@ function noteChips(line: string) {
  * 📝 ข้อความกำกับของกลุ่ม/ตัวเลือก — **คำเน้น** เป็นชิปสีชมพู
  * ขึ้นบรรทัดใหม่ได้ (\n) และบรรทัดที่ขึ้นต้นด้วย "• " จัดเป็นหัวข้อย่อยพร้อมจุดนำ
  * (ข้อความยาว ๆ ย่อหน้าเดียวที่มีชิปแทรกกลางอ่านยาก — เจ้าของร้านทัก 14 ก.ย. 69)
+ * หลายบรรทัดจะขึ้นเป็นกล่องเทาอ่อน บรรทัดแรกเป็นประโยคนำ ที่เหลือเป็นหัวข้อย่อยจุดฟ้า
  * ข้อความบรรทัดเดียวแบบเดิมได้ผลลัพธ์เหมือนเดิมทุกอย่าง
+ *
+ * `trailing` = ปุ่มท้ายข้อความ (เช่น 👀 กดดูรูปตัวอย่าง) — แบบกล่องจะวางเป็นบรรทัดของตัวเองในกล่อง
+ * ไม่ห้อยต่อท้ายประโยคจนดูหลุด (เจ้าของร้านทัก 14 ก.ย. 69) · แบบบรรทัดเดียวยังต่อท้ายในบรรทัดเหมือนเดิม
  */
-function noteEmphasis(note: string) {
+function noteEmphasis(note: string, trailing?: ReactNode) {
   const lines = note.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length <= 1 && !lines[0]?.startsWith("• ")) return noteChips(lines[0] ?? note);
+  if (lines.length <= 1 && !lines[0]?.startsWith("• ")) {
+    const body = noteChips(lines[0] ?? note);
+    return trailing ? (
+      <>
+        {body}
+        <span className="ml-1.5">{trailing}</span>
+      </>
+    ) : (
+      body
+    );
+  }
+  // บรรทัดแรกที่ไม่ใช่หัวข้อย่อย = ประโยคนำ เข้มกว่าหัวข้อย่อยนิดหน่อยให้กวาดตาเจอก่อน
+  const lead = lines[0]?.startsWith("• ") ? null : lines[0];
+  const bullets = lead ? lines.slice(1) : lines;
   return (
-    <span className="flex flex-col gap-1">
-      {lines.map((line, i) =>
+    <span className="mt-1 flex flex-col gap-1.5 rounded-xl bg-stone-50 px-3 py-2.5 leading-relaxed ring-1 ring-stone-200/70">
+      {lead && <span className="font-semibold text-stone-600">{noteChips(lead)}</span>}
+      {bullets.map((line, i) =>
         line.startsWith("• ") ? (
           <span key={i} className="flex gap-1.5">
-            <span aria-hidden className="text-stone-300">•</span>
+            <span aria-hidden className="mt-px text-sky-400">•</span>
             <span className="flex-1">{noteChips(line.slice(2))}</span>
           </span>
         ) : (
           <span key={i}>{noteChips(line)}</span>
         )
       )}
+      {trailing && <span className="flex flex-wrap gap-1.5 pt-0.5">{trailing}</span>}
     </span>
   );
 }
@@ -626,8 +652,6 @@ export default function ProductDetail({
     // เรทตัวแทนจำหน่ายไม่โผล่ในแกลเลอรีของลูกค้าทั่วไป (label ภาพหลุดชื่อเรทได้)
     for (const r of isDealer ? (product.priceRates ?? []) : publicRates(product)) add(r.imageSrc, r.label);
     for (const opt of product.options ?? []) {
-      // 🖼 ภาพตัวอย่างประจำกลุ่ม — ต้องอยู่ในแกลเลอรีด้วย ไม่งั้นกดที่กลุ่มแล้วภาพใหญ่ไม่สลับไปตาม
-      add(opt.imageSrc, opt.label);
       // กลุ่มสวอตช์สี/แถบตัวอย่าง: รูปเป็นชิปเล็กไว้โชว์บนปุ่มเท่านั้น — เข้าแกลเลอรีแล้วขยายเบลอ
       // (แถมทะลัก 80 รูปจากสีไหม / 26 แถบจากฟอนต์) · ดูรูปเต็มได้จาก chartSrc ในกลุ่มนั้นแทน
       if (opt.swatchGrid || opt.sampleGrid) continue;
@@ -3660,15 +3684,13 @@ export default function ProductDetail({
               const addOn = !!opt.collapsible && !isInput;
               const addOnOpen = !!openAddOns[opt.label];
               const addOnFirst = opt.choices[0]?.name ?? "";
-              const toggleAddOn = () => {
-                const next = !addOnOpen;
-                // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก/ล้างที่ติ๊ก กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
-                if (!next) setSelections((sel) => ({ ...sel, [opt.label]: multi ? "" : addOnFirst }));
-                // เปิดสวิตช์ = สลับภาพใหญ่ไปที่ภาพตัวอย่างของกลุ่ม
-                // (แถวสวิตช์กดได้ทั้งแถว จะซ้อนปุ่มกดรูปแยกอีกปุ่มในปุ่มเดียวกันไม่ได้)
-                else jumpToImage(opt.imageSrc);
-                setOpenAddOns((s) => ({ ...s, [opt.label]: next }));
-              };
+              const toggleAddOn = () =>
+                setOpenAddOns((s) => {
+                  const next = !s[opt.label];
+                  // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก/ล้างที่ติ๊ก กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
+                  if (!next) setSelections((sel) => ({ ...sel, [opt.label]: multi ? "" : addOnFirst }));
+                  return { ...s, [opt.label]: next };
+                });
               return (
                 <div
                   key={opt.label}
@@ -3705,17 +3727,6 @@ export default function ProductDetail({
                           className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${addOnOpen ? "left-[22px]" : "left-0.5"}`}
                         />
                       </span>
-                      {/* 🖼 ภาพตัวอย่างของกลุ่ม — ปิดอยู่เห็นแค่บรรทัดเดียว ภาพช่วยให้รู้ว่าของเสริมนี้หน้าตายังไง */}
-                      {opt.imageSrc && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={opt.imageSrc}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-stone-200"
-                        />
-                      )}
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13px] font-bold text-stone-700">
                           {heading}
@@ -3756,24 +3767,6 @@ export default function ProductDetail({
                     </button>
                   ) : (
                   <span className="mb-1 block text-[13px] font-bold text-stone-700">
-                    {/* 🖼 ภาพตัวอย่างของกลุ่ม — กดดูเต็มจอ (ชื่อกลุ่มอย่างเดียวบางทีนึกภาพไม่ออก) */}
-                    {opt.imageSrc && (
-                      <button
-                        type="button"
-                        onClick={() => jumpToImage(opt.imageSrc)}
-                        aria-label={`ดูภาพตัวอย่างของ ${opt.label} ในภาพใหญ่`}
-                        className="mr-2 inline-block align-middle"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={opt.imageSrc}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="h-11 w-11 rounded-xl object-cover ring-1 ring-stone-200 transition hover:ring-amber-300"
-                        />
-                      </button>
-                    )}
                     {heading}:{" "}
                     <span
                       className={
@@ -3826,17 +3819,19 @@ export default function ProductDetail({
                   {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
                   {opt.note && (
                     <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">
-                      {noteEmphasis(opt.note)}
-                      {/* 👀 รูปตัวอย่างประกอบ note — กดเปิดดูเต็มจอทันที ไม่ต้องไล่หาในแท็บ
-                          (กลุ่มช่องกรอกย้ายปุ่มไปไว้ที่ hint ใต้ช่อง — ไม่ขึ้นซ้ำสองที่) */}
-                      {opt.noteImageSrc && !isInput && (
-                        <button
-                          type="button"
-                          onClick={() => setZoomSrc(opt.noteImageSrc!)}
-                          className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                        >
-                          👀 กดดูรูปตัวอย่าง
-                        </button>
+                      {noteEmphasis(
+                        opt.note,
+                        /* 👀 รูปตัวอย่างประกอบ note — กดเปิดดูเต็มจอทันที ไม่ต้องไล่หาในแท็บ
+                           (กลุ่มช่องกรอกย้ายปุ่มไปไว้ที่ hint ใต้ช่อง — ไม่ขึ้นซ้ำสองที่) */
+                        opt.noteImageSrc && !isInput ? (
+                          <button
+                            type="button"
+                            onClick={() => setZoomSrc(opt.noteImageSrc!)}
+                            className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                          >
+                            👀 กดดูรูปตัวอย่าง
+                          </button>
+                        ) : null
                       )}
                     </span>
                   )}
