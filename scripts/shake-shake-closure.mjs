@@ -5,8 +5,9 @@
  *   ทั้งสองแบบ **ไม่คิดเพิ่ม** (0 บาท) — ผู้ใช้ยืนยัน 26 ส.ค. 69
  *
  * วางไว้ต่อจากกลุ่ม "ขนาดกรอบเขย่า" (เรื่องตัวกรอบอยู่ด้วยกัน) ก่อนกลุ่มตะขอ
- * เป็นกลุ่มเลือกอย่างเดียว (pill) — คำอธิบายทั้งสองแบบใส่ใน note ของกลุ่ม
- * เพราะแถบ pill ไม่เรนเดอร์ desc รายตัวเลือก (ดู ProductDetail.tsx ~2429)
+ * 14 ก.ย. 69 เปลี่ยนเป็นการ์ด (display "cards") พร้อมภาพประกอบ — ภาพ/desc เป็นของ
+ * scripts/shake-shake-option-art.mjs · สคริปต์นี้จึง **คงค่าเดิมของแต่ละตัวเลือกไว้**
+ * เวลาอัปทับกลุ่ม (จับคู่ด้วยชื่อ) ไม่งั้นรันซ้ำทีไรภาพหายทุกที
  *
  *   node scripts/shake-shake-closure.mjs            # ดูสิ่งที่จะแก้ (ไม่เขียนจริง)
  *   node scripts/shake-shake-closure.mjs --write    # เขียนลง Supabase
@@ -59,7 +60,13 @@ if (drivers.has(LABEL)) throw new Error(`❌ "${LABEL}" ชนกับแกน
 
 const at = opts.findIndex((o) => o.label === LABEL);
 if (at >= 0) {
-  opts[at] = { ...opts[at], ...GROUP };
+  // คงภาพ/คำอธิบายที่สคริปต์ภาพเติมไว้ (จับคู่ด้วยชื่อตัวเลือก) — ทับเฉพาะสิ่งที่สคริปต์นี้เป็นเจ้าของ
+  const was = opts[at].choices ?? [];
+  const choices = GROUP.choices.map((c) => {
+    const old = was.find((o) => o.name === c.name);
+    return old ? { ...old, ...c } : c;
+  });
+  opts[at] = { ...opts[at], ...GROUP, choices };
   console.log(`อัปทับกลุ่ม "${LABEL}" (ตำแหน่งเดิม #${at + 1})`);
 } else {
   const after = opts.findIndex((o) => o.label === AFTER);

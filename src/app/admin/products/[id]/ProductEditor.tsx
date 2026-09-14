@@ -999,15 +999,23 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
     .filter((o) => o.label && (o.choices.length > 0 || o.display === "input"));
 }
 
-/** ซิงก์กลุ่มที่ลิงก์คลังในดราฟต์ให้ตรงกับคลังปัจจุบัน (label+choices เป็นค่าล่าสุด) */
+/**
+ * ซิงก์กลุ่มที่ลิงก์คลังในดราฟต์ให้ตรงกับคลังปัจจุบัน (label+choices เป็นค่าล่าสุด)
+ *
+ * ⚠️ ยกเว้นชื่อกลุ่มเมื่อ "ชื่อคลังไปชนกับกลุ่มที่สินค้าเป็นเจ้าของ" — กติกาเดียวกับ resolveOptions
+ * (option-presets.ts) ที่หน้าร้านใช้ ถ้าไม่ยกเว้น หน้าแก้ไขจะดันชื่อคลังกลับทุกครั้งที่เซฟ
+ * กลายเป็นกลุ่มชื่อซ้ำ 2 กลุ่ม = ใช้ selections ช่องเดียวกัน เมนูว่างเปล่าและ showWhen ที่อ้างชื่อเดิมตาย
+ * (พวงกุญแจเขย่า 14 ก.ย. 69: ประตู "ตะขอ" + อะไหล่ "แบบตะขอ" ที่ลิงก์คลังชื่อ "ตะขอ")
+ */
 function syncLinkedDraft(options: DraftOption[], presets: OptionPreset[]): DraftOption[] {
+  const ownNames = new Set(options.filter((o) => !o.presetId).map((o) => o.label));
   return options.map((o) => {
     if (!o.presetId) return o;
     const preset = presets.find((p) => p.id === o.presetId);
     if (!preset) return o; // คลังหาย → คงสำเนาสำรองไว้
     return {
       ...o,
-      label: preset.label,
+      label: ownNames.has(preset.label) ? o.label : preset.label,
       choices: preset.choices.map((c) => ({ name: c.name, extra: c.extra ? String(c.extra) : "" })),
     };
   });

@@ -41,6 +41,10 @@ import { hasQuoteOption, priceRange, type PriceMatrix, type Product, type Produc
  *   และช่วงปลีก 1-10 ชุด เลือกตะขออื่นคิดเหมา 10 บาท/ชุด (smallQtyFee ชุดเดียวกับพวงกุญแจ)
  * — รูปแผ่นอะไหล่ + ชาร์ตสีตะขอ (G/H/I/S/T/U) ก็อปจาก products/keyring-clear-stopper (ฉบับ v3)
  *   ไปไว้ในแท็บ "ตะขอ / ห่วง" — ไม่ใส่รูปที่ตัวเลือก กันชาร์ตทะลักเข้าแกลเลอรี (บทเรียน keyring-stopper)
+ * ⚠️ กลุ่ม "รับตะขอไหม" + "ตะขอ" ก็อปมาจากพวงกุญแจทั้งดุ้น — ทับทั้งชื่อกลุ่มที่เปลี่ยนไว้
+ *   และภาพ/คำอธิบาย/การ์ดที่เติมเอง · รันสคริปต์นี้เมื่อไหร่ ให้รันตามทุกครั้ง (ตามลำดับนี้):
+ *     node scripts/shake-shake-hook-label.mjs --write    (รับตะขอไหม → ตะขอ · ตะขอ → แบบตะขอ)
+ *     node scripts/shake-shake-option-art.mjs --write    (ภาพ + คำอธิบาย 5 ใบ)
  */
 const KEYRING_ID = "keyring-copy-copy"; // สินค้าพวงกุญแจหลัก (ลิงก์หน้าร้าน /products/keyring)
 const HOOK_GATE = "รับตะขอไหม";

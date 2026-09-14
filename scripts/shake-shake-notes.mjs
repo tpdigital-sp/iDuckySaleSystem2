@@ -17,7 +17,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const ID = "new-mt2rp5i3-9488";
 const FRAME = "ขนาดกรอบเขย่า";
-const HOOK_GATE = "รับตะขอไหม";
+const HOOK_GATE = "ตะขอ"; // เดิม "รับตะขอไหม" — เจ้าของร้านสั่งเปลี่ยนชื่อ 14 ก.ย. 69 (shake-shake-hook-label.mjs)
 const BASE_CM = 6;
 const WRITE = process.argv.includes("--write");
 const die = (m) => { console.error("✗ " + m); process.exit(1); };
