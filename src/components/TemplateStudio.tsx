@@ -214,13 +214,31 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     setErr("");
   }, []);
 
-  // ปุ่ม Delete / Backspace = ลบลายที่เลือกอยู่ (ไม่ทำงานตอนโฟกัสอยู่ในช่องกรอก)
+  /**
+   * คีย์ลัดตอนเลือกลายอยู่ (ไม่ทำงานตอนโฟกัสอยู่ในช่องกรอก)
+   * · Delete / Backspace = ลบลาย
+   * · ลูกศร = ขยับทีละ 1 มม. (กด Shift = 10 มม.) — เหมือนกด nudge ใน Photoshop
+   *   ลากเมาส์มือสั่นเสมอ ตำแหน่งระดับมิลต้องพึ่งลูกศรเท่านั้น
+   */
   useEffect(() => {
     if (!open || !src || !sel) return;
+    const NUDGE: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      const d = NUDGE[e.key];
+      if (d) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        setPl((p) => (p ? { ...p, cxMm: p.cxMm + d[0] * step, cyMm: p.cyMm + d[1] * step } : p));
+        return;
+      }
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
       e.preventDefault();
       clearArt();
     };
@@ -328,10 +346,17 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     const k = mmPerPx();
     const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
     const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+    let dx = cx - g.cx;
+    let dy = cy - g.cy;
+    // ⇧ Shift = ล็อกแนว ลากได้แกนเดียว (แนวนอนหรือแนวตั้ง) เหมือนลากวัตถุใน Photoshop
+    if (pts.length === 1 && e.shiftKey) {
+      if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+      else dx = 0;
+    }
     let next: Placement = {
       ...g.pl,
-      cxMm: g.pl.cxMm + (cx - g.cx) * k,
-      cyMm: g.pl.cyMm + (cy - g.cy) * k,
+      cxMm: g.pl.cxMm + dx * k,
+      cyMm: g.pl.cyMm + dy * k,
     };
     if (pts.length > 1 && g.dist > 0) {
       const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
@@ -453,10 +478,24 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     return () => el.removeEventListener("wheel", onWheel);
   }, [open, src, zoomBy, toMm]);
 
-  /** ลากมุมกรอบเพื่อขยาย — เก็บระยะจากกึ่งกลางตอนเริ่มลากไว้เทียบสัดส่วน */
-  const resizing = useRef<{ dist: number; w: number; h: number } | null>(null);
+  /** หมุนเวกเตอร์ตามองศา — ใช้สลับไปมาระหว่างแกนของกรอบงานกับแกนของลายที่เอียงอยู่ */
+  const rotVec = (x: number, y: number, deg: number) => {
+    const r = (deg * Math.PI) / 180;
+    const c = Math.cos(r);
+    const sn = Math.sin(r);
+    return { x: x * c - y * sn, y: x * sn + y * c };
+  };
 
-  function onHandleDown(e: React.PointerEvent) {
+  /**
+   * ลากจุดจับย่อ-ขยาย — ทำตัวเหมือน Free Transform ใน Photoshop
+   * · จุดยึดคือ "ด้านตรงข้ามจุดที่จับ" (ลากมุมขวาล่าง มุมซ้ายบนอยู่กับที่) ไม่ใช่ขยายจากกลางลาย
+   * · มุม = คงสัดส่วน (กด Shift = ยืดอิสระ) · กลางขอบ = ยืดด้านเดียว (กด Shift = คงสัดส่วน)
+   * · Alt/Option = ย่อ-ขยายจากจุดกึ่งกลาง (ทั้งสองด้านขยายเท่ากัน)
+   * คิดในแกนของลาย (หมุนพิกัดกลับก่อน) ลายที่เอียงอยู่เลยยืดตามด้านของตัวเองถูกต้อง
+   */
+  const resizing = useRef<{ sx: number; sy: number; p0: Placement; grab: { x: number; y: number } } | null>(null);
+
+  function onHandleDown(e: React.PointerEvent, sx: number, sy: number) {
     if (!pl) return;
     e.stopPropagation();
     try {
@@ -465,24 +504,60 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
       /* บางเบราว์เซอร์/ตัวชี้จับไม่ได้ — ลากต่อได้ตามปกติ */
     }
     const m = toMm(e.clientX, e.clientY);
-    if (!m) return;
+    /**
+     * จำระยะที่จับเยื้องจากมุมจริงไว้ — ลายที่ใหญ่เกินเวที จุดจับจะถูกหนีบเข้ามาอยู่ในจอ
+     * ไม่ได้ทับมุมจริง ถ้าไม่หักระยะนี้ออก พอเริ่มลายจะ "กระโดด" ไปให้มุมมาอยู่ใต้เคอร์เซอร์ทันที
+     */
+    const c = rotVec((sx * pl.wMm) / 2, (sy * pl.hMm) / 2, pl.rotDeg);
     resizing.current = {
-      dist: Math.max(1, Math.hypot(m.x - pl.cxMm, m.y - pl.cyMm)),
-      w: pl.wMm,
-      h: pl.hMm,
+      sx,
+      sy,
+      p0: pl,
+      grab: m ? { x: m.x - (pl.cxMm + c.x), y: m.y - (pl.cyMm + c.y) } : { x: 0, y: 0 },
     };
   }
 
   function onHandleMove(e: React.PointerEvent) {
     const r = resizing.current;
-    if (!r || !pl) return;
+    if (!r) return;
     e.stopPropagation();
-    const m = toMm(e.clientX, e.clientY);
-    if (!m) return;
-    const k = Math.hypot(m.x - pl.cxMm, m.y - pl.cyMm) / r.dist;
+    const raw = toMm(e.clientX, e.clientY);
+    if (!raw) return;
+    const m = { x: raw.x - r.grab.x, y: raw.y - r.grab.y };
+    const p0 = r.p0;
+    const corner = r.sx !== 0 && r.sy !== 0;
+    const fromCenter = e.altKey;
+    const keepRatio = corner ? !e.shiftKey : e.shiftKey;
+    /** ยึดกึ่งกลาง = ลากไป 1 ได้ขนาดเพิ่ม 2 (โตทั้งสองด้าน) */
+    const grow = fromCenter ? 2 : 1;
+    // จุดยึด: กึ่งกลาง (Alt) หรือด้านตรงข้ามจุดที่จับ
+    const aLocal = fromCenter ? { x: 0, y: 0 } : { x: (-r.sx * p0.wMm) / 2, y: (-r.sy * p0.hMm) / 2 };
+    const aw = rotVec(aLocal.x, aLocal.y, p0.rotDeg);
+    const anchor = { x: p0.cxMm + aw.x, y: p0.cyMm + aw.y };
+    /** ระยะจากจุดยึดถึงเคอร์เซอร์ วัดในแกนของลาย */
+    const v = rotVec(m.x - anchor.x, m.y - anchor.y, -p0.rotDeg);
     const { min, max } = sizeLimits();
-    const nw = clamp(r.w * k, min, max);
-    setPl({ ...pl, wMm: nw, hMm: (r.h / r.w) * nw });
+    let nw = p0.wMm;
+    let nh = p0.hMm;
+    if (keepRatio) {
+      // ฉายการลากลงบนแนวเดิมของจุดจับ — ลากเฉียงออกนอกแนวแค่ไหนสัดส่วนก็ไม่เพี้ยน
+      const d = { x: (r.sx * p0.wMm) / grow, y: (r.sy * p0.hMm) / grow };
+      const dd = d.x * d.x + d.y * d.y;
+      const k = clamp(
+        dd > 0 ? (v.x * d.x + v.y * d.y) / dd : 1,
+        Math.max(min / p0.wMm, min / p0.hMm),
+        Math.min(max / p0.wMm, max / p0.hMm),
+      );
+      nw = p0.wMm * k;
+      nh = p0.hMm * k;
+    } else {
+      // ลากผ่านจุดยึดไปอีกฝั่ง = หนีบไว้ที่ขนาดเล็กสุด (ไม่กลับด้านภาพ — งานพิมพ์กลับด้านคือของเสีย)
+      if (r.sx) nw = clamp(r.sx * v.x * grow, min, max);
+      if (r.sy) nh = clamp(r.sy * v.y * grow, min, max);
+    }
+    // จุดยึดต้องอยู่ที่เดิมเป๊ะ → เลื่อนกึ่งกลางตามขนาดใหม่
+    const off = fromCenter ? { x: 0, y: 0 } : rotVec((r.sx * nw) / 2, (r.sy * nh) / 2, p0.rotDeg);
+    setPl({ ...p0, wMm: nw, hMm: nh, cxMm: anchor.x + off.x, cyMm: anchor.y + off.y });
   }
 
   function onHandleUp(e: React.PointerEvent) {
@@ -491,34 +566,50 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
     setPl((p) => (p ? snapToCover(p) : p));
   }
 
-  /** ลากหูหมุน — มุมจากกึ่งกลางลายไปหาเคอร์เซอร์ (หูอยู่เหนือกรอบ เลยชดเชย 90°) */
-  const rotating = useRef(false);
+  /** เคอร์เซอร์ของจุดจับ — หมุนตามลายด้วย (ลายเอียง 90° จุดจับขอบบนต้องเป็นลูกศรซ้าย-ขวา) */
+  const cursorFor = (sx: number, sy: number, rotDeg: number) => {
+    const a = (((((Math.atan2(sy, sx) * 180) / Math.PI + rotDeg) % 180) + 180) % 180);
+    return (["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"] as const)[Math.round(a / 45) % 4];
+  };
+
+  /**
+   * ลากหูหมุน — จำมุมตอนเริ่มจับไว้ แล้วหมุนตามส่วนต่าง ลายเลยไม่กระโดดตอนแตะโดนหู
+   * Shift = ล็อกทีละ 15° เหมือน Photoshop · ปกติดูดเข้าแนวตรง (0/90/180/270) เฉพาะตอนใกล้มาก
+   */
+  const rotating = useRef<{ p0: Placement; from: number } | null>(null);
+
+  const angleAt = (m: { x: number; y: number }, p: Placement) =>
+    (Math.atan2(m.y - p.cyMm, m.x - p.cxMm) * 180) / Math.PI;
 
   function onRotateDown(e: React.PointerEvent) {
+    if (!pl) return;
     e.stopPropagation();
     try {
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } catch {
       /* ไม่จับก็ลากได้ */
     }
-    rotating.current = true;
+    const m = toMm(e.clientX, e.clientY);
+    if (!m) return;
+    rotating.current = { p0: pl, from: angleAt(m, pl) };
   }
 
   function onRotateMove(e: React.PointerEvent) {
-    if (!rotating.current || !pl) return;
+    const r = rotating.current;
+    if (!r) return;
     e.stopPropagation();
     const m = toMm(e.clientX, e.clientY);
     if (!m) return;
-    const deg = (Math.atan2(m.y - pl.cyMm, m.x - pl.cxMm) * 180) / Math.PI + 90;
-    // ใกล้มุมกลม ๆ (ทุก 15°) ให้ดูดเข้าหา — จัดตรงง่ายกว่าเล็งเอง
-    const snapped = Math.round(deg / 15) * 15;
-    const use = Math.abs(deg - snapped) <= 4 ? snapped : deg;
-    setPl({ ...pl, rotDeg: ((use % 360) + 360) % 360 });
+    const raw = r.p0.rotDeg + (angleAt(m, r.p0) - r.from);
+    const step = e.shiftKey ? 15 : 90;
+    const snapped = Math.round(raw / step) * step;
+    const use = Math.abs(raw - snapped) <= (e.shiftKey ? 7.5 : 1.5) ? snapped : raw;
+    setPl({ ...r.p0, rotDeg: ((use % 360) + 360) % 360 });
   }
 
   function onRotateUp(e: React.PointerEvent) {
     e.stopPropagation();
-    rotating.current = false;
+    rotating.current = null;
   }
 
   function rotate(deg: number) {
@@ -527,6 +618,14 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
 
   /** ความละเอียดของลาย ณ ขนาดที่วางอยู่ */
   const dpi = src && pl ? Math.round(src.w / (pl.wMm / 25.4)) : 0;
+  /**
+   * ลายถูกยืดจนสัดส่วนเพี้ยนจากไฟล์ต้นฉบับแค่ไหน — ลากจุดกลางขอบด้านเดียวแล้วภาพจะแบน/ผอม
+   * Photoshop ปล่อยให้ทำได้ ระบบนี้ก็ให้ทำ แต่ต้อง "รู้ตัว" เพราะแก้ทีหลังไม่ได้ตอนพิมพ์ออกมาแล้ว
+   */
+  const skew = src && pl ? Math.abs((pl.wMm / pl.hMm) / (src.w / src.h) - 1) : 0;
+  const distorted = skew > 0.01;
+  /** ดึงสัดส่วนกลับให้ตรงไฟล์ต้นฉบับ (ยึดความกว้างที่วางอยู่) */
+  const unskew = () => setPl((p) => (p && src ? { ...p, hMm: (p.wMm * src.h) / src.w } : p));
   /** ขนาดที่ "คลุมเต็มกรอบพอดี" = 100% ของแถบเลื่อน */
   const fillW = src ? src.w * Math.max(bleedW / src.w, bleedH / src.h) : 1;
   const zoomPct = pl ? clamp((pl.wMm / fillW) * 100, 5, 400) : 100;
@@ -834,51 +933,103 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             {/* ── กรอบ transform — โผล่เมื่อคลิกเลือกลาย (คลิกที่ว่างเพื่อเอาออก) ── */}
             {src && pl && sel && (
               <>
-                {/* เส้นขอบของลาย (ส่วนที่เลยเวทีจะโดนตัด — แค่บอกขอบเขต ไม่ต้องจับ) */}
-                <div
-                  className="pointer-events-none absolute origin-center border border-sky-500"
-                  style={{
-                    left: pctW(pl.cxMm - pl.wMm / 2),
-                    top: pctH(pl.cyMm - pl.hMm / 2),
-                    width: lenW(pl.wMm),
-                    height: lenH(pl.hMm),
-                    transform: `rotate(${pl.rotDeg}deg)`,
-                  }}
-                />
+                {/*
+                  เส้นขอบของลาย — วาดเป็นเส้นตรงระหว่าง "มุมที่หนีบไว้ในเวที" ชุดเดียวกับจุดจับ
+                  เดิมวาดที่ขอบจริงของลาย พอลายใหญ่กว่าเวทีเส้นโดนตัดหายไปเลย เหลือจุดจับลอย ๆ
+                  มองไม่ออกว่ากรอบอยู่ตรงไหน · ตอนนี้เส้นวิ่งมาชนขอบเวทีเสมอ ต่อถึงจุดจับครบทุกตัว
+                  เส้นประ = ขอบจริงอยู่นอกจอ (ลายยังต่อออกไปอีก) · เส้นทึบ = ขอบจริงของลายอยู่ตรงนั้น
+                */}
+                {(() => {
+                  const box = (
+                    [
+                      [-1, -1],
+                      [1, -1],
+                      [1, 1],
+                      [-1, 1],
+                    ] as const
+                  ).map(([sx, sy]) => {
+                    const pt = boxPoint((sx * pl.wMm) / 2, (sy * pl.hMm) / 2);
+                    const x = clampX(pt.x);
+                    const y = clampY(pt.y);
+                    return { x, y, off: x !== pt.x || y !== pt.y };
+                  });
+                  return (
+                    <svg
+                      className="pointer-events-none absolute inset-0 h-full w-full"
+                      viewBox={`0 0 ${fullW} ${fullH}`}
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                    >
+                      {box.map((a, i) => {
+                        const b = box[(i + 1) % 4];
+                        const cut = a.off || b.off;
+                        return (
+                          <line
+                            key={i}
+                            x1={a.x + padX}
+                            y1={a.y + padY}
+                            x2={b.x + padX}
+                            y2={b.y + padY}
+                            stroke="rgb(14 165 233)"
+                            strokeWidth={1}
+                            strokeDasharray={cut ? "5 4" : undefined}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        );
+                      })}
+                    </svg>
+                  );
+                })()}
 
-                {/* มุมสี่มุม = ย่อ-ขยาย (คงอัตราส่วน) — หนีบไว้ในเวทีเสมอ ลายใหญ่แค่ไหนก็ยังจับได้ */}
+                {/*
+                  จุดจับ 8 ตัวเหมือนกรอบ Free Transform — มุม 4 (คงสัดส่วน) + กลางขอบ 4 (ยืดด้านเดียว)
+                  หนีบไว้ในเวทีเสมอ ลายใหญ่แค่ไหนก็ยังจับกลับมาย่อได้
+                  มือถือโชว์แค่ 4 มุม — จอเล็กจุดจับชิดกัน กดพลาดทีลายยืดผิดสัดส่วนไปทั้งงาน
+                */}
                 {(
                   [
-                    [-1, -1, "nwse-resize"],
-                    [1, -1, "nesw-resize"],
-                    [-1, 1, "nesw-resize"],
-                    [1, 1, "nwse-resize"],
+                    [-1, -1],
+                    [0, -1],
+                    [1, -1],
+                    [-1, 0],
+                    [1, 0],
+                    [-1, 1],
+                    [0, 1],
+                    [1, 1],
                   ] as const
-                ).map(([sx, sy, cursor]) => {
+                ).map(([sx, sy]) => {
                   const pt = boxPoint((sx * pl.wMm) / 2, (sy * pl.hMm) / 2);
                   const cx = clampX(pt.x);
                   const cy = clampY(pt.y);
                   const off = cx !== pt.x || cy !== pt.y; // มุมจริงอยู่นอกจอ → จุดจับนี้คือตัวแทน
+                  const edge = sx === 0 || sy === 0;
                   return (
                     <span
                       key={`${sx}${sy}`}
-                      onPointerDown={onHandleDown}
+                      onPointerDown={(e) => onHandleDown(e, sx, sy)}
                       onPointerMove={onHandleMove}
                       onPointerUp={onHandleUp}
                       onPointerCancel={onHandleUp}
-                      style={{ cursor, touchAction: "none", left: pctW(cx), top: pctH(cy) }}
-                      className={`pointer-events-auto absolute z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-sky-500 shadow ${
-                        off ? "bg-sky-100" : "bg-white"
-                      }`}
-                      aria-label="ลากเพื่อย่อ-ขยายลาย"
-                      title={off ? "มุมลายอยู่นอกจอ — ลากจุดนี้เข้าเพื่อย่อลง" : "ลากเพื่อย่อ-ขยายลาย"}
+                      style={{ cursor: cursorFor(sx, sy, pl.rotDeg), touchAction: "none", left: pctW(cx), top: pctH(cy) }}
+                      /* after: = ขยายพื้นที่นิ้วรอบจุดจับให้กดติดง่าย โดยจุดที่เห็นยังเล็กไม่บังงาน */
+                      className={`pointer-events-auto absolute z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-sky-500 shadow after:absolute after:-inset-2.5 after:content-[''] ${
+                        edge ? "hidden h-3.5 w-3.5 rounded-[3px] sm:block" : "h-4 w-4 rounded-full"
+                      } ${off ? "bg-sky-100" : "bg-white"}`}
+                      aria-label={edge ? "ลากเพื่อยืดด้านนี้" : "ลากเพื่อย่อ-ขยายลาย"}
+                      title={
+                        off
+                          ? "มุมลายอยู่นอกจอ — ลากจุดนี้เข้าเพื่อย่อลง"
+                          : edge
+                            ? "ลากยืดด้านนี้ด้านเดียว (กด Shift = คงสัดส่วน · Alt = ยืดสองด้านพร้อมกัน)"
+                            : "ลากย่อ-ขยายคงสัดส่วน (Shift = ยืดอิสระ · Alt = ขยายจากกึ่งกลาง)"
+                      }
                     />
                   );
                 })}
 
                 {/* หูหมุน — ยื่นออกเหนือกรอบ ลากเพื่อหมุนอิสระ (ดูดเข้าทุก 15°) */}
                 {(() => {
-                  const pt = boxPoint(0, -pl.hMm / 2 - fullH * 0.05);
+                  const pt = boxPoint(0, -pl.hMm / 2 - fullH * 0.085);
                   return (
                     <span
                       onPointerDown={onRotateDown}
@@ -904,6 +1055,7 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                     >
                       {Math.round(pl.wMm) / 10}×{Math.round(pl.hMm) / 10} ซม.
                       {pl.rotDeg ? ` · ${Math.round(pl.rotDeg)}°` : ""}
+                      {distorted ? " · ⚠️ ยืด" : ""}
                     </span>
                   );
                 })()}
@@ -941,8 +1093,12 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
               <strong>แตะที่ลายเพื่อปรับ</strong> · ลากเลื่อน · ลากมุมย่อ-ขยาย · สองนิ้วซูม
             </span>
             <span className="hidden sm:inline">
-              <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุมย่อ-ขยาย · ลากหู ↻ หมุน ·
-              ล้อเมาส์/สองนิ้วซูม · กด <strong>Delete</strong> ลบลาย · คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
+              <strong>คลิกที่ลายเพื่อปรับ</strong> แล้วลากเลื่อน · ลากมุม = ย่อ-ขยายคงสัดส่วน · ลากจุดกลางขอบ = ยืดด้านเดียว ·
+              ลากหู ↻ หมุน · ล้อเมาส์ซูม
+              <br />
+              <strong>Shift</strong> สลับคงสัดส่วน/ล็อกแนวลาก/หมุนทีละ 15° · <strong>Alt</strong> ย่อ-ขยายจากกึ่งกลาง ·{" "}
+              <strong>ลูกศร</strong> ขยับทีละ 1 มม. (Shift = 10 มม.) · <strong>Delete</strong> ลบลาย ·
+              คลิกพื้นที่ว่างเพื่อดูงานแบบไม่มีเส้นกรอบ
             </span>
           </p>
 
@@ -977,6 +1133,14 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
                 }`}
               >
                 {dpi >= DPI_WARN ? "✓ ความคมชัดดี" : dpi >= DPI_BAD ? "⚠️ ค่อนข้างเบลอ" : "⚠️ เบลอแน่นอน"} · {dpi} DPI
+              </span>
+              {/* ยืดด้านเดียวแล้วภาพแบน/ผอม — ตาอาจไม่ทันเห็นบนจอเล็ก แต่พิมพ์ออกมาเห็นชัด */}
+              <span
+                className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                  distorted ? "bg-amber-100 text-amber-900" : "bg-stone-100 text-stone-500"
+                }`}
+              >
+                {distorted ? `⚠️ ลายถูกยืดผิดสัดส่วน ${Math.round(skew * 100)}%` : "✓ สัดส่วนตรงไฟล์ต้นฉบับ"}
               </span>
             </div>
           )}
@@ -1043,6 +1207,15 @@ export default function TemplateStudio({ open, onClose, title, frame, guideUrl, 
             </button>
             <button type="button" onClick={() => rotate(90)} disabled={!src} className={toolBtn}>
               ↻ หมุน
+            </button>
+            <button
+              type="button"
+              onClick={unskew}
+              disabled={!distorted}
+              className={`${toolBtn} ${distorted ? "bg-amber-100 text-amber-900 hover:bg-amber-200" : ""}`}
+              title="ปรับความสูงให้กลับตรงสัดส่วนไฟล์ต้นฉบับ (ยึดความกว้างที่วางอยู่)"
+            >
+              ⤢ คืนสัดส่วนเดิม
             </button>
             <button type="button" onClick={() => setSwapped((v) => !v)} className={toolBtn}>
               ⇄ สลับแนว
