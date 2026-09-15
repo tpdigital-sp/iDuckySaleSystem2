@@ -19,7 +19,32 @@ export interface ProductNameRow {
   slug?: string;
 }
 
-const nos = (idx: number[]) => idx.map((j) => `รูปที่ ${j + 1}`).join(" · ");
+/**
+ * "รูปที่ 1–14" · "รูปที่ 1–3 · 7" — ย่อเลขรูปที่ติดกันเป็นช่วง
+ * งาน 14 ลายที่ผิดเหมือนกันทุกรูป เคยได้ข้อความยาวครึ่งจนดันรูปแบบงานตกจอ (14 ก.ย. 69)
+ */
+const nos = (idx: number[]) => {
+  const ns = [...new Set(idx)].sort((a, b) => a - b).map((j) => j + 1);
+  const parts: string[] = [];
+  for (let i = 0; i < ns.length; ) {
+    let k = i;
+    while (k + 1 < ns.length && ns[k + 1] === ns[k]! + 1) k++;
+    parts.push(k > i ? `${ns[i]}–${ns[k]}` : `${ns[i]}`);
+    i = k + 1;
+  }
+  return `รูปที่ ${parts.join(" · ")}`;
+};
+
+/** รวมรูปที่ผิดเรื่องเดียวกันเป็นบรรทัดเดียว — คีย์เดียวกัน = ข้อความเดียวกัน ต่างแค่เลขรูป */
+function groupBy<T>(rows: { key: string; index: number; data: T }[]): { idx: number[]; data: T }[] {
+  const g = new Map<string, { idx: number[]; data: T }>();
+  for (const r of rows) {
+    const cur = g.get(r.key);
+    if (cur) cur.idx.push(r.index);
+    else g.set(r.key, { idx: [r.index], data: r.data });
+  }
+  return [...g.values()];
+}
 const norm = (s: string) => s.toLowerCase().replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
 
 /** คลังคำสินค้า: คำ → สินค้าที่เป็นเจ้าของคำนั้น (ไม่เกิน 3 ตัว ไม่งั้นถือว่าเป็นคำกลาง) */
@@ -147,34 +172,41 @@ export function proofIssues(item: OrderItem, proofs: Proof[], catalog?: ProductW
   const specText = norm(specTexts(item).join(" "));
   const specCompact = compact(`${item.name} ${specTexts(item).join(" ")}`);
   if (catalog?.size) {
+    const hits: { key: string; index: number; data: { word: string; owner: string } }[] = [];
     for (const [j, p] of proofs.entries()) {
       const note = compact(p.note ?? "");
       if (!note) continue;
       for (const [word, owner] of catalog) {
         if (owner.ids.includes(item.productId) || !note.includes(word) || specCompact.includes(word)) continue;
-        list.push({
-          level: "warn",
-          text: `รูปที่ ${j + 1} ชื่อไฟล์มีคำว่า “${word}” ซึ่งเป็นของสินค้าคนละตัว (${owner.name}) ไม่ใช่ “${item.name}” — เช็กว่าลากไฟล์ข้ามงานมารึเปล่า`,
-        });
+        hits.push({ key: `${word}|${owner.name}`, index: j, data: { word, owner: owner.name } });
         break;
       }
     }
+    groupBy(hits).forEach(({ idx, data }) =>
+      list.push({
+        level: "warn",
+        text: `${nos(idx)} ชื่อไฟล์มีคำว่า “${data.word}” ของสินค้าคนละตัว (${data.owner}) — เช็กว่าลากไฟล์ข้ามงานมารึเปล่า`,
+      })
+    );
   }
 
   // ── 3.1) คำสเปคในชื่อไฟล์ที่รายการนี้ไม่มีเลย (ผ้าแขวนผนังไม่มีทั้งแกรม ฟอยล์ จำนวนด้าน) ──
+  const oddRows: { key: string; index: number; data: string[] }[] = [];
   for (const [j, p] of proofs.entries()) {
     const note = norm(p.note ?? "");
     if (!note) continue;
     const odd = SPEC_WORDS.filter((w) => note.includes(w) && !specText.includes(w));
     if (/(\d{2,3})\s*(g|gsm|แกรม)/.test(note) && !/(\d{2,3})\s*(g|gsm|แกรม)/.test(specText)) odd.push("แกรมกระดาษ");
     if (/\d\s*ด้าน/.test(note) && !/\d\s*ด้าน/.test(specText)) odd.push("จำนวนด้าน");
-    if (!odd.length) continue;
+    if (odd.length) oddRows.push({ key: odd.join("|"), index: j, data: odd });
+  }
+  groupBy(oddRows).forEach(({ idx, data }) =>
     list.push({
       // พูดถึงของที่รายการนี้ไม่มีตั้ง 3 อย่างขึ้นไป = แทบแน่ใจว่าไฟล์ผิดงาน ไม่ใช่แค่ตั้งชื่อหลวม ๆ
-      level: odd.length >= 3 ? "warn" : "hint",
-      text: `รูปที่ ${j + 1} ชื่อไฟล์พูดถึง “${odd.join(" · ")}” แต่สเปคของ “${item.name}” ไม่มีเรื่องพวกนี้เลย`,
-    });
-  }
+      level: data.length >= 3 ? "warn" : "hint",
+      text: `${nos(idx)} ชื่อไฟล์พูดถึง “${data.join(" · ")}” แต่สเปคของ “${item.name}” ไม่มีเรื่องพวกนี้เลย`,
+    })
+  );
 
   // ── 4) จำนวนลายในสเปค เทียบกับจำนวนรูปที่ส่ง ──
   const spec = specCounts(item);
@@ -196,13 +228,17 @@ export function proofIssues(item: OrderItem, proofs: Proof[], catalog?: ProductW
     const sameUnit = normalizeUnitWord(spec.perDesignUnit) === normalizeUnitWord(qc.saleUnit);
     const perProof = spec.perDesignUnit && sameUnit ? spec.perDesign * qc.per : spec.perDesign;
     const off = proofs.map((p, j) => (p.qty && p.qty !== perProof ? j : -1)).filter((j) => j >= 0);
-    if (off.length && proofs.some((p) => p.qty))
+    if (off.length && proofs.some((p) => p.qty)) {
+      // กรอกเลขเดียวกันทุกรูป = บอกเลขเดียวพอ (14 ลาย × "160" เคยยาวเป็นย่อหน้า)
+      const vals = [...new Set(off.map((j) => proofs[j]?.qty))];
+      const got = vals.length === 1 ? `${vals[0]}` : vals.length <= 6 ? off.map((j) => proofs[j]?.qty).join(" · ") : `${vals.slice(0, 6).join(" · ")} …`;
       list.push({
         level: "warn",
         text:
           `สเปคบอก “ลายละ ${spec.perDesign} ${spec.perDesignUnit || "ชิ้น"}” = รูปละ ${perProof} ${qc.unit} ` +
-          `แต่ ${nos(off)} กรอกไว้ ${off.map((j) => proofs[j]?.qty).join(" · ")}`,
+          `แต่ ${nos(off)} กรอกไว้ ${got}`,
       });
+    }
   }
 
   // ── 6) ยังไม่ระบุจำนวน = เทียบยอดกับที่ลูกค้าสั่งไม่ได้ ฝ่ายแพ็คก็ไม่รู้ว่าต้องนับกี่ชิ้น ──
@@ -241,17 +277,22 @@ export function proofIssues(item: OrderItem, proofs: Proof[], catalog?: ProductW
     });
 
   // ── 9) โทเคนขนาด/ด้าน ในชื่อไฟล์ที่ขัดกับสเปค (เตือนเบา ๆ ชื่อไฟล์เขียนอิสระ) ──
+  const sizeRows: { key: string; index: number; data: string }[] = [];
+  const backRows: { key: string; index: number; data: null }[] = [];
   for (const [j, p] of proofs.entries()) {
     const n = norm(p.note ?? "");
     if (!n) continue;
     const size = n.match(/\ba([3-7])\b/);
     if (size && !new RegExp(`\\ba${size[1]}\\b`).test(specText)) {
-      list.push({ level: "hint", text: `รูปที่ ${j + 1} ชื่อไฟล์บอกขนาด “A${size[1]}” แต่สเปคของรายการนี้ไม่มี A${size[1]} — เช็กขนาดก่อน` });
+      sizeRows.push({ key: size[1]!, index: j, data: size[1]! });
       continue;
     }
-    if (spec.sides === 1 && /หลัง|back/.test(n))
-      list.push({ level: "hint", text: `รูปที่ ${j + 1} ชื่อไฟล์บอก “ด้านหลัง” แต่สเปคสั่งพิมพ์ด้านเดียว` });
+    if (spec.sides === 1 && /หลัง|back/.test(n)) backRows.push({ key: "back", index: j, data: null });
   }
+  groupBy(sizeRows).forEach(({ idx, data }) =>
+    list.push({ level: "hint", text: `${nos(idx)} ชื่อไฟล์บอกขนาด “A${data}” แต่สเปคของรายการนี้ไม่มี A${data} — เช็กขนาดก่อน` })
+  );
+  groupBy(backRows).forEach(({ idx }) => list.push({ level: "hint", text: `${nos(idx)} ชื่อไฟล์บอก “ด้านหลัง” แต่สเปคสั่งพิมพ์ด้านเดียว` }));
 
   return list;
 }

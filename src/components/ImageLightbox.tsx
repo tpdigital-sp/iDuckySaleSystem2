@@ -29,6 +29,7 @@ export default function ImageLightbox({
   onPrev,
   onNext,
   onClose,
+  z = 100,
 }: {
   src: string;
   alt: string;
@@ -42,6 +43,8 @@ export default function ImageLightbox({
   /** ไปรูปถัดไป */
   onNext?: () => void;
   onClose: () => void;
+  /** ชั้นซ้อน — ค่าปกติ 100 · เปิดจากในโมดัล (z-[110]) ต้องส่งค่าสูงกว่า ไม่งั้นรูปไปอยู่ใต้โมดัล */
+  z?: number;
 }) {
   /**
    * เก็บ element เป็น state ไม่ใช่ ref ล้วน — เพราะ <Portal> เรนเดอร์ลูกหลัง useEffect รอบแรก
@@ -129,7 +132,11 @@ export default function ImageLightbox({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // กำลังพิมพ์ในช่องกรอกใต้รูป (จำนวนแบ่งส่ง / ตรวจนับ) — "0" "-" ลูกศร ต้องไปที่ช่อง ไม่ใช่สั่งซูม/เลื่อนรูป
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
       if (e.key === "Escape") onClose();
+      else if (typing) return;
       else if (e.key === "ArrowLeft") onPrev?.();
       else if (e.key === "ArrowRight") onNext?.();
       else if (e.key === "+" || e.key === "=") zoomTo((z) => z + STEP);
@@ -233,7 +240,8 @@ export default function ImageLightbox({
       aria-modal="true"
       aria-label={alt}
       onClick={onClose}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 p-3 backdrop-blur-sm sm:p-6"
+      style={{ zIndex: z }}
+      className="fixed inset-0 flex items-center justify-center bg-slate-900/80 p-3 backdrop-blur-sm sm:p-6"
     >
       {/*
         การ์ดกลางจอ — สูง clamp(420px, 88dvh, 1100px)

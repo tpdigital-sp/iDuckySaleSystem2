@@ -109,6 +109,7 @@ import { usePolling } from "@/lib/use-polling";
 import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
 import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
 import ImageLightbox from "@/components/ImageLightbox";
+import Portal from "@/components/Portal";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
@@ -642,6 +643,9 @@ function ProofNoteInput({
   );
 }
 
+/** กี่บรรทัดถึงจะพับ — เหลือพื้นที่ให้รูปแบบงานที่อยู่ถัดลงไป */
+const MAX_PROOF_ISSUES = 4;
+
 /**
  * ตรวจชุดแบบก่อนส่งให้ลูกค้า — จับพลาดตอนลากไฟล์เข้ามา: ลากไฟล์เดิมซ้ำ · ชื่อลายซ้ำ · ยังไม่ระบุจำนวน · ยอดรวมไม่ตรงกับที่สั่ง
  * ทำไมต้องมี: กราฟฟิกลากไฟล์ทีละหลายสิบรูป ไฟล์เดิมหลุดมาซ้ำหรือตกลายไปหนึ่งตัวมองด้วยตาไม่ทัน
@@ -660,6 +664,8 @@ function ProofDropCheck({
   /** แอดมินตั้ง "1 เซ็ต = กี่ชิ้น" ให้รายการนี้ (undefined = ไม่มีสิทธิ์แก้) */
   onSetPerUnit?: (per: number) => void;
 }) {
+  /** กล่องเตือนยาวเกิน 4 บรรทัดให้ย่อไว้ก่อน — ไม่งั้นดันรูปแบบงานตกจอ ต้องเลื่อนหาทุกที */
+  const [allIssues, setAllIssues] = useState(false);
   const qc = proofQtyCheck(item, proofs);
   const list = proofIssues(item, proofs, catalog);
   if (proofs.length === 0) return null;
@@ -696,15 +702,23 @@ function ProofDropCheck({
           bad ? "bg-rose-50 text-rose-800 ring-rose-300" : "bg-amber-50 text-amber-900 ring-amber-300"
         }`}
       >
-        <p className="font-extrabold">{bad ? "⚠️ ตรวจแล้ว — มีจุดที่ต้องแก้ก่อนส่งให้ลูกค้า" : "💡 ตรวจแล้ว — มีจุดที่ควรเช็ก"}</p>
+        <p className="font-extrabold">
+          {bad ? "⚠️ ตรวจแล้ว — มีจุดที่ต้องแก้ก่อนส่งให้ลูกค้า" : "💡 ตรวจแล้ว — มีจุดที่ควรเช็ก"}
+          {list.length > 1 ? ` (${list.length} ข้อ)` : ""}
+        </p>
         <ul className="mt-1 space-y-0.5">
-          {list.map((x, k) => (
+          {(allIssues ? list : list.slice(0, MAX_PROOF_ISSUES)).map((x, k) => (
             <li key={k} className={x.level === "warn" ? "font-bold" : "font-normal opacity-90"}>
               {x.level === "warn" ? "⚠️ " : "· "}
               {x.text}
             </li>
           ))}
         </ul>
+        {list.length > MAX_PROOF_ISSUES && (
+          <button type="button" onClick={() => setAllIssues((v) => !v)} className="mt-1 font-extrabold underline underline-offset-2">
+            {allIssues ? "ย่อลง ▴" : `+ อีก ${list.length - MAX_PROOF_ISSUES} ข้อ ▾`}
+          </button>
+        )}
       </div>
     </>
   );
@@ -8517,6 +8531,8 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
   const [sel, setSel] = useState<Map<string, number>>(() => new Map());
   const [note, setNote] = useState("");
   const [due, setDue] = useState("");
+  /** รูปที่กำลังขยายดู (ตำแหน่งใน rows) — แอดมินต้องเห็นลายชัด ๆ ก่อนตัดสินใจว่ารูปไหนส่งก่อน */
+  const [zoom, setZoom] = useState<number | null>(null);
   const states = proofShipStates(order);
   const planned = plannedProofRounds(order);
   const n = (order.shipPlan?.length ?? 0) + 1;
@@ -8571,9 +8587,21 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
       else next.delete(r.key);
       return next;
     });
+  /** รูปที่เปิดขยายอยู่ — ใต้รูปมีปุ่มเลือก/ช่องจำนวน จะได้กรอกจากจอใหญ่ได้เลย ไม่ต้องปิดกลับมาหาการ์ดเล็ก */
+  const zr = zoom !== null ? rows[zoom] : undefined;
   return (
-    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onCancel}>
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    /* 🎯 กึ่งกลางจอเสมอ + แขวนที่ body: อยู่ในหน้า ถ้ามีกล่องแม่ที่ใช้ filter/transform (การ์ด .dkb-g ใช้ backdrop-filter)
+       position:fixed จะยึดกับกล่องนั้นแทนจอ โมดัลเลยไปโผล่ท้ายหน้าแทนที่จะลอยกลางจอ */
+    <Portal>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm sm:p-4" onClick={onCancel}>
+      <div
+        className="w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        /* px ขั้นต่ำเสมอ — เผื่อเบราว์เซอร์/พรีวิวรายงานความสูงจอเพี้ยน (ดูโน้ต browser pane) */
+        style={{ maxHeight: "clamp(360px, 92dvh, 1000px)" }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="bg-amber-50 px-5 pb-3 pt-4 ring-1 ring-inset ring-amber-100">
           <p className="text-lg font-extrabold text-slate-900">📋 ระบุของที่ต้องส่งก่อน — รอบที่ {n}</p>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -8584,24 +8612,32 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
           <p className="px-5 py-4 text-sm text-slate-500">ใบนี้ยังไม่มีรูปแบบงาน แบ่งส่งไม่ได้ — รอกราฟฟิกอัปแบบก่อน</p>
         ) : (
           <ul className="grid grid-cols-1 gap-2 px-5 pt-3 sm:grid-cols-2">
-            {rows.map((r) => {
+            {rows.map((r, ri) => {
               const on = sel.has(r.key);
               const q = sel.get(r.key) ?? 0;
               return (
                 <li key={r.key} className={`rounded-xl p-1.5 ring-2 transition ${on ? "bg-amber-50 ring-amber-400" : r.taken ? "bg-slate-50 opacity-50 ring-slate-200" : "bg-slate-50 ring-slate-200"}`}>
-                  <button type="button" disabled={!!r.taken || r.left <= 0} onClick={() => toggle(r)} className="flex w-full items-center gap-2 text-left disabled:cursor-not-allowed">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={r.url} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
-                    <span className="min-w-0 text-[11px] leading-tight">
-                      <span className="block truncate font-bold text-slate-800">{r.item}</span>
-                      <span className="text-slate-500">
-                        รูปที่ {r.index}
-                        {r.qty ? ` · ทั้งหมด ${r.qty} ${r.unit}` : ""}
-                        {r.qty && r.left !== r.qty ? ` · เหลือ ${r.left}` : ""}
+                  <div className="flex w-full items-center gap-2">
+                    {/* รูปแยกปุ่มของตัวเอง = กดแล้วขยายเต็มจอ (ไม่ใช่ติ๊กเลือก) — ติ๊กเลือกกดที่ชื่อ/รายละเอียดข้าง ๆ */}
+                    <button type="button" onClick={() => setZoom(ri)} className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-white ring-1 ring-slate-200" aria-label={`ขยายดู ${r.item} รูปที่ ${r.index}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={r.url} alt="" className="h-full w-full object-contain" />
+                      <span className="absolute inset-x-0 bottom-0 bg-slate-900/55 text-center text-[9px] font-bold leading-4 text-white transition group-hover:bg-slate-900/80" aria-hidden>
+                        🔍
                       </span>
-                      {r.taken ? <span className="block font-bold text-sky-700">{r.taken}</span> : on ? <span className="block font-bold text-amber-700">✓ ส่งก่อน {r.labeled ? `${q} ${r.unit}` : "ทั้งรูป"}</span> : null}
-                    </span>
-                  </button>
+                    </button>
+                    <button type="button" disabled={!!r.taken || r.left <= 0} onClick={() => toggle(r)} className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-not-allowed">
+                      <span className="min-w-0 text-[11px] leading-tight">
+                        <span className="block truncate font-bold text-slate-800">{r.item}</span>
+                        <span className="text-slate-500">
+                          รูปที่ {r.index}
+                          {r.qty ? ` · ทั้งหมด ${r.qty} ${r.unit}` : ""}
+                          {r.qty && r.left !== r.qty ? ` · เหลือ ${r.left}` : ""}
+                        </span>
+                        {r.taken ? <span className="block font-bold text-sky-700">{r.taken}</span> : on ? <span className="block font-bold text-amber-700">✓ ส่งก่อน {r.labeled ? `${q} ${r.unit}` : "ทั้งรูป"}</span> : null}
+                      </span>
+                    </button>
+                  </div>
                   {/* จำนวนที่จะส่งก่อน — มีเฉพาะรูปที่มีป้ายจำนวน (รูปไม่มีจำนวน = ส่งทั้งรูป) */}
                   {on && r.labeled && (
                     <div className="mt-1.5 flex items-center gap-1.5 rounded-lg bg-white px-2 py-1 ring-1 ring-amber-200">
@@ -8655,8 +8691,67 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
             ยกเลิก
           </button>
         </div>
+      {/* ขยายรูปเต็มจอ — ซ้อนเหนือโมดัล (z สูงกว่า 110) และเลื่อนดูรูปอื่นในลิสต์ได้
+          ต้องอยู่ใน <div> ที่ stopPropagation: Portal ส่ง event ตามต้นไม้ React ไม่ใช่ DOM คลิกในรูปจะเด้งไปปิดโมดัล */}
+      {zr && (
+        <ImageLightbox
+          z={130}
+          src={zr.url}
+          alt={`${zr.item} รูปที่ ${zr.index}`}
+          caption={`${zr.item} · รูปที่ ${zr.index}${zr.qty ? ` · ทั้งหมด ${zr.qty} ${zr.unit}` : ""}`}
+          counter={`${zoom! + 1} / ${rows.length}`}
+          onPrev={zoom! > 0 ? () => setZoom(zoom! - 1) : undefined}
+          onNext={zoom! < rows.length - 1 ? () => setZoom(zoom! + 1) : undefined}
+          /* ติ๊กเลือก + กรอกจำนวนได้จากจอขยายเลย (ดูลายชัด ๆ แล้วเคาะจำนวนตรงนั้น) */
+          footer={
+            <div className="rounded-2xl bg-white p-3 shadow-2xl">
+              {zr.taken ? (
+                <p className="text-center text-sm font-extrabold text-sky-700">{zr.taken}</p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={zr.left <= 0}
+                    onClick={() => toggle(zr)}
+                    className={`w-full rounded-xl px-4 py-2.5 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      sel.has(zr.key) ? "bg-amber-400 text-amber-950 hover:bg-amber-300" : "border-2 border-amber-300 bg-white text-amber-700 hover:bg-amber-50"
+                    }`}
+                  >
+                    {sel.has(zr.key) ? `✓ เลือกส่งก่อนแล้ว${zr.labeled ? "" : " (ทั้งรูป)"} — กดอีกครั้งเพื่อเอาออก` : "＋ เลือกรูปนี้ส่งก่อน"}
+                  </button>
+                  {sel.has(zr.key) && zr.labeled && (
+                    <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                      <span className="text-xs font-extrabold text-amber-800">ส่งก่อน</span>
+                      <button type="button" onClick={() => bumpQty(zr, -1)} className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-xl font-extrabold text-amber-900">
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={zr.left}
+                        value={sel.get(zr.key) ?? 0}
+                        onChange={(e) => setQty(zr, Number(e.target.value))}
+                        className="w-20 rounded-xl border-2 border-amber-200 px-2 py-1.5 text-center text-lg font-extrabold tabular-nums text-slate-800 focus:border-amber-400 focus:outline-none"
+                      />
+                      <button type="button" onClick={() => bumpQty(zr, 1)} className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-xl font-extrabold text-amber-900">
+                        ＋
+                      </button>
+                      <span className="text-xs font-bold text-slate-500">
+                        / {zr.left.toLocaleString("th-TH")} {zr.unit}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          }
+          onClose={() => setZoom(null)}
+        />
+      )}
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -8686,6 +8781,8 @@ function PartialShipModal({
   onConfirm: (tracking: string, note: string, sel: Map<string, number>) => void;
 }) {
   const [qtyMap, setQtyMap] = useState<Map<string, number>>(() => new Map(sel));
+  /** รูปที่กำลังขยายดู (ตำแหน่งใน rows) — ก่อนยิงเลข คนแพ็คควรเปิดดูลายชัด ๆ เทียบกับของในกล่องได้ */
+  const [zoom, setZoom] = useState<number | null>(null);
   const gate = partialGate(order, qtyMap);
   /** ติ๊กยืนยันว่าตั้งใจแบ่งส่งจริง — บังคับเมื่อของที่เหลือพร้อมส่งอยู่แล้ว (กันกดผิดทางเหมือน 15 ก.ย. 69) */
   const [sureSplit, setSureSplit] = useState(false);
@@ -8731,10 +8828,16 @@ function PartialShipModal({
   const otherReasons = gate.reasons.filter((r) => !r.startsWith(SPLIT_WHOLE_HINT));
   const needSkip = !gate.ready && !blockedAll;
   const canGo = !!t && !dupe && !blockedAll && (gate.ready || mayEdit) && (!gate.looksWhole || sureSplit);
+  /** รูปที่เปิดขยายอยู่ — ใต้รูปมีช่องจำนวน จะได้เคาะจำนวนจากจอใหญ่ได้เลย */
+  const zr = zoom !== null ? rows[zoom] : undefined;
   return (
-    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onCancel}>
+    /* 🎯 กึ่งกลางจอเสมอ + แขวนที่ body: อยู่ในหน้า ถ้ามีกล่องแม่ที่ใช้ filter/transform (การ์ด .dkb-g ใช้ backdrop-filter)
+       position:fixed จะยึดกับกล่องนั้นแทนจอ โมดัลเลยไปโผล่ท้ายหน้าแทนที่จะลอยกลางจอ */
+    <Portal>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm sm:p-4" onClick={onCancel}>
       <div
-        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        className="w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        style={{ maxHeight: "clamp(360px, 92dvh, 1000px)" }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -8748,11 +8851,17 @@ function PartialShipModal({
 
         {/* ของที่จะไปรอบนี้ — แบ่งจำนวนได้ (ลายนี้ส่งก่อน 1 ชิ้น ที่เหลือรอบหน้า) */}
         <ul className="grid grid-cols-1 gap-2 px-5 pt-3 sm:grid-cols-2">
-          {rows.map((r) => (
+          {rows.map((r, ri) => (
             <li key={r.key} className="rounded-xl bg-slate-50 p-1.5 ring-1 ring-slate-200">
               <div className="flex items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={r.url} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
+                {/* กดรูป = ขยายเต็มจอ (เทียบลายกับของในกล่องก่อนยิงเลข) */}
+                <button type="button" onClick={() => setZoom(ri)} className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-white ring-1 ring-slate-200" aria-label={`ขยายดู ${r.item} รูปที่ ${r.index}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={r.url} alt="" className="h-full w-full object-contain" />
+                  <span className="absolute inset-x-0 bottom-0 bg-slate-900/55 text-center text-[9px] font-bold leading-4 text-white transition group-hover:bg-slate-900/80" aria-hidden>
+                    🔍
+                  </span>
+                </button>
                 <span className="min-w-0 text-[11px] leading-tight">
                   <span className="block truncate font-bold text-slate-800">{r.item}</span>
                   <span className="text-slate-500">
@@ -8899,8 +9008,54 @@ function PartialShipModal({
           }}
           onClose={() => setCam(false)}
         />
+
+        {/* ขยายรูปเต็มจอ — ต้องอยู่ในกล่องที่ stopPropagation (Portal ส่ง event ตามต้นไม้ React) ไม่งั้นคลิกในรูปเด้งไปปิดโมดัล */}
+        {zr && (
+          <ImageLightbox
+            z={130}
+            src={zr.url}
+            alt={`${zr.item} รูปที่ ${zr.index}`}
+            caption={`${zr.item} · รูปที่ ${zr.index}${zr.labeled ? ` · รอบนี้ ${zr.qty.toLocaleString("th-TH")}/${(zr.total ?? 0).toLocaleString("th-TH")} ${zr.unit}` : ""}`}
+            counter={`${zoom! + 1} / ${rows.length}`}
+            onPrev={zoom! > 0 ? () => setZoom(zoom! - 1) : undefined}
+            onNext={zoom! < rows.length - 1 ? () => setZoom(zoom! + 1) : undefined}
+            /* แก้จำนวนที่จะไปกับรอบนี้ได้จากจอขยาย (เฉพาะโหมดติ๊กเอง — ตามแผนแอดมิน = ล็อกตามแผน) */
+            footer={
+              editableQty && zr.labeled ? (
+                <div className="rounded-2xl bg-white p-3 shadow-2xl">
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <span className="text-xs font-extrabold text-amber-800">ส่งรอบนี้</span>
+                    <button type="button" onClick={() => bumpQty(zr.key, zr.left, -1)} className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-xl font-extrabold text-amber-900">
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={zr.left}
+                      value={zr.qty}
+                      onChange={(e) => setQty(zr.key, zr.left, Number(e.target.value))}
+                      className="w-20 rounded-xl border-2 border-amber-200 px-2 py-1.5 text-center text-lg font-extrabold tabular-nums text-slate-800 focus:border-amber-400 focus:outline-none"
+                    />
+                    <button type="button" onClick={() => bumpQty(zr.key, zr.left, 1)} className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-xl font-extrabold text-amber-900">
+                      ＋
+                    </button>
+                    <span className="text-xs font-bold text-slate-500">
+                      / {zr.left.toLocaleString("th-TH")} {zr.unit}
+                    </span>
+                  </div>
+                  {zr.qty < zr.left && (
+                    <p className="mt-1.5 text-center text-[11px] font-bold text-amber-700">เหลือไว้รอบหน้าอีก {(zr.left - zr.qty).toLocaleString("th-TH")} {zr.unit}</p>
+                  )}
+                </div>
+              ) : undefined
+            }
+            onClose={() => setZoom(null)}
+          />
+        )}
       </div>
     </div>
+    </Portal>
   );
 }
 
