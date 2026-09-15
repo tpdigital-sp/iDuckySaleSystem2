@@ -1636,6 +1636,14 @@ export default function CustomerOrderPage() {
                   </>
                 )}
 
+                {/* 📌 ข้อความที่ทีมกราฟฟิกฝากเตือนไว้ตอนส่งแบบ — อ่านก่อนกดอนุมัติ (ขึ้นในหน้าภาพขยายด้วย) */}
+                {it.proofMemo?.trim() && (
+                  <p className="ord-note warn mt-3 whitespace-pre-line px-3 py-2 text-xs leading-relaxed">
+                    <span className="mr-1 font-bold">📌 หมายเหตุจากทีมกราฟฟิก:</span>
+                    {it.proofMemo.trim()}
+                  </p>
+                )}
+
                 {it.proofStatus === "ขอแก้ไข" && it.proofNote && (
                   <p className="ord-note danger mt-3 px-3 py-2 text-xs">
                     ✏️ คุณขอแก้ไข: “{it.proofNote}” — ทีมกราฟฟิกกำลังแก้ให้ครับ
@@ -2576,7 +2584,14 @@ export default function CustomerOrderPage() {
               onNext={many ? () => go(1) : undefined}
               onClose={() => setLightbox(null)}
               footer={
-                p.review === "อนุมัติ" ? (
+                <>
+                {/* 📌 หมายเหตุที่กราฟฟิกฝากเตือน — ต้องเห็นตรงนี้ด้วย เพราะลูกค้ากดอนุมัติจากหน้าภาพขยายได้เลย */}
+                {it.proofMemo?.trim() && (
+                  <p className="mb-2 whitespace-pre-line rounded-2xl bg-amber-400/15 px-3 py-2 text-center text-xs leading-relaxed text-amber-200">
+                    <span className="font-bold">📌 หมายเหตุจากทีมกราฟฟิก:</span> {it.proofMemo.trim()}
+                  </p>
+                )}
+                {p.review === "อนุมัติ" ? (
                   <p className="text-center text-sm font-bold text-teal-300">✅ ภาพนี้อนุมัติแล้ว</p>
                 ) : p.review === "ขอแก้ไข" ? (
                   <p className="text-center text-sm font-bold text-rose-300">
@@ -2680,7 +2695,8 @@ export default function CustomerOrderPage() {
                       ✏️ ขอแก้ไขภาพนี้
                     </button>
                   </div>
-                )
+                )}
+                </>
               }
             />
           );

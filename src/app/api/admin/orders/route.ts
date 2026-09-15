@@ -212,7 +212,7 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
 
 /**
  * ฝ่ายกราฟฟิก (proof.manage แต่ไม่มี orders.edit) บันทึกได้เฉพาะงานแบบ — เอาออเดอร์เดิมเป็นฐาน แล้วทับเฉพาะ:
- *   แบบงาน (items[].proofs ทั้งชุด — ลบ/แก้จำนวน/หน่วย/รายละเอียด/ใช้ลายเป็นแบบ) · สถานะแบบ (proofStatus/proofNote/proofUpdatedAt)
+ *   แบบงาน (items[].proofs ทั้งชุด — ลบ/แก้จำนวน/หน่วย/รายละเอียด/ใช้ลายเป็นแบบ) · สถานะแบบ (proofStatus/proofNote/proofMemo/proofUpdatedAt)
  *   · ติ๊กของกราฟฟิก (graphicAck · noProof · sampleRequired · samplePacked) · จำนวนต่อหน่วย (unitYield) · แบบของแถม (gifts[].proofs…) · log
  * ผลตรวจนับของฝ่ายแพ็ค (proofs[].pack) คงของเดิมไว้ตาม url — กราฟฟิกแตะไม่ได้
  * ฟิลด์อื่น (ราคา ที่อยู่ สถานะออเดอร์ เลขพัสดุ) ใช้ของเดิมทั้งหมด
@@ -235,6 +235,7 @@ function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: strin
       proofs,
       proofStatus: inc.proofStatus,
       proofNote: inc.proofNote,
+      proofMemo: inc.proofMemo, // 📌 หมายเหตุถึงลูกค้า (โชว์ตอนลูกค้าเช็คแบบ) — กราฟฟิกพิมพ์เอง
       proofUpdatedAt: inc.proofUpdatedAt ?? it.proofUpdatedAt,
       graphicAck: inc.graphicAck,
       noProof: inc.noProof,

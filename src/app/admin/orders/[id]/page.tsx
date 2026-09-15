@@ -1948,6 +1948,19 @@ export default function AdminOrderDetailPage() {
     });
   }
 
+  /**
+   * 📌 หมายเหตุถึง "ลูกค้า" ของรายการนี้ — โชว์ในหน้าเช็คแบบ (เตือนก่อนลูกค้ากดอนุมัติ)
+   * พิมพ์ในจอก่อน บันทึกตอนออกจากช่อง (persist) เหมือนช่องรายละเอียดของรูปแบบ
+   * ⚠️ คนละช่องกับหมายเหตุใบงาน (adminNote) ที่ฝ่ายแพ็คเห็น — ช่องนี้ฝ่ายแพ็คไม่เห็น
+   */
+  function setProofMemo(itemIndex: number, v: string) {
+    setOrder((cur) =>
+      cur
+        ? { ...cur, items: cur.items.map((it, i) => (i === itemIndex ? { ...it, proofMemo: v.trim() ? v : undefined } : it)) }
+        : cur
+    );
+  }
+
   /** บันทึกเลขพัสดุ + เปลี่ยนสถานะเป็น "จัดส่งแล้ว" + ลง log
    *  ด่านตรวจยังไม่ครบ → แอดมินยืนยันข้ามได้ (เซิร์ฟเวอร์ลง log "ข้ามด่านตรวจ") · ฝ่ายแพ็คโดนเซิร์ฟเวอร์ปฏิเสธ */
   function saveTracking() {
@@ -5560,6 +5573,27 @@ export default function AdminOrderDetailPage() {
                           <span className="font-bold">ลายหลัง 5 ชิ้น.png</span> แล้วระบบเทียบยอดรวมกับจำนวนที่สั่งให้
                         </p>
                       )}
+                      {/* 📌 หมายเหตุถึงลูกค้า — กราฟฟิกฝากเตือนตอนส่งแบบ ลูกค้าเห็นในหน้าเช็คแบบก่อนกดอนุมัติ
+                          (กราฟฟิกขอไว้ 15 ก.ย. 69) · ฝ่ายแพ็คไม่เห็นช่องนี้ และไม่ขึ้นใบงาน */}
+                      {(mayProof || mayEdit) && (
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-2">
+                          <label htmlFor={`proof-memo-${i}`} className="block text-[11px] font-bold text-amber-800">
+                            📌 หมายเหตุถึงลูกค้า <span className="font-normal text-amber-700">— ลูกค้าเห็นตอนเข้ามาเช็คแบบ</span>
+                          </label>
+                          <textarea
+                            id={`proof-memo-${i}`}
+                            rows={2}
+                            value={it.proofMemo ?? ""}
+                            onChange={(e) => setProofMemo(i, e.target.value)}
+                            onBlur={persist}
+                            placeholder="เช่น สีจริงอาจเพี้ยนจากจอเล็กน้อย · ตรวจตัวสะกดชื่อให้ด้วยนะคะ"
+                            className="mt-1 w-full resize-y rounded-md border border-amber-200 bg-white px-2 py-1 text-[11px] leading-snug text-slate-700 focus:border-amber-400 focus:outline-none"
+                          />
+                          <p className="mt-1 text-[10px] leading-snug text-amber-700">
+                            ข้อความนี้ขึ้นในหน้าตรวจแบบของลูกค้า (ทั้งการ์ดรายการและตอนกดขยายรูป) — ฝ่ายแพ็คไม่เห็น ไม่ขึ้นใบงาน
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   )}
@@ -5989,7 +6023,8 @@ export default function AdminOrderDetailPage() {
                     onChange={(e) => {
                       const off = e.target.checked;
                       const next = setEarlyPayWaived(order, off, new Date().toISOString(), actor);
-                      applyOrder(
+                      // รับก้อนจากเซิร์ฟเวอร์กลับมา — เซิร์ฟเวอร์นับเงินที่ลูกค้าโอนเกินเข้ายอดชำระให้ตอนติ๊ก (ยอดค้างต้องอัปเดตทันที)
+                      void applyOrderFromServer(
                         withLog(
                           next,
                           actor,
