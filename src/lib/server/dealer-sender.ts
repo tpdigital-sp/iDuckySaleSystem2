@@ -44,7 +44,9 @@ export async function saveDealerSender(sb: SB, uid: string, sender: OrderSender 
  *
  * ทำไมไม่ดู customerId อย่างเดียว (เจอจริง 15 ก.ย. 69 · OD-260915-3447):
  * ตัวแทนลืมล็อกอินแล้วสั่ง → ใบไม่มี customerId เลย แอดมินมากดปุ่ม 🤝 คิดราคาตัวแทนทีหลัง
- * ตัวตนที่ยังเหลืออยู่บนใบคือ LINE ที่พนักงานผูกไว้ / อีเมล / เบอร์ → ไล่จับตามลำดับความแน่นอน
+ * ตัวตนที่ยังเหลืออยู่บนใบคือ LINE ที่พนักงานผูกไว้ / อีเมลผู้สั่ง → ไล่จับตามลำดับความแน่นอน
+ * ⚠️ ห้ามจับด้วย order.phone — ใบตัวแทนส่งถึง "ลูกค้าปลายทางของตัวแทน" เบอร์ในใบจึงเป็นของผู้รับ ไม่ใช่คนสั่ง
+ *    (เบอร์ผู้รับบังเอิญตรงกับเบอร์ตัวแทนอีกคน = ชื่อร้านคนอื่นไปโผล่บนกล่อง)
  */
 export async function resolveDealerUid(sb: SB, order: Pick<Order, "customerId" | "lineUserId" | "email" | "phone">): Promise<string> {
   const users = await loadDealers();
@@ -54,17 +56,15 @@ export async function resolveDealerUid(sb: SB, order: Pick<Order, "customerId" |
 
   const line = (order.lineUserId ?? "").trim();
   const email = (order.email ?? "").trim().toLowerCase();
-  const phone = (order.phone ?? "").replace(/\D/g, "");
-  if (!line && !email && phone.length < 9) return "";
+  if (!line && !email) return ""; // ไม่รู้ว่าใครสั่ง = ไม่เดา (แอดมินกรอกผู้ส่งเองในหน้าออเดอร์)
 
   for (const uid of uids) {
     const { data } = await sb.auth.admin.getUserById(uid);
     const u = data?.user;
     if (!u) continue;
-    const meta = (u.user_metadata ?? {}) as { line_user_id?: string; phone?: string };
+    const meta = (u.user_metadata ?? {}) as { line_user_id?: string };
     if (line && meta.line_user_id === line) return uid;
     if (email && (u.email ?? "").toLowerCase() === email) return uid;
-    if (phone.length >= 9 && (meta.phone ?? "").replace(/\D/g, "") === phone) return uid;
   }
   return "";
 }

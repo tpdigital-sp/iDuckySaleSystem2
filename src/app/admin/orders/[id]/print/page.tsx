@@ -779,6 +779,12 @@ function OrderDocs({
                     📮 ใบฝากส่ง — ผู้ส่งบนกล่องคือ &ldquo;{sender.name}&rdquo; ห้ามใส่เอกสาร/สื่อที่มีชื่อร้านลงกล่อง
                   </p>
                 )}
+                {/* 🤝 ใบตัวแทนที่ยังไม่ได้ตั้งผู้ส่ง — กล่องจะขึ้นชื่อร้านเรา คนปริ้นต้องรู้ก่อนแปะ */}
+                {order.dealer && !sender.custom && (
+                  <p className="mt-1.5 block w-fit rounded border-2 border-amber-500 bg-white px-2 py-1 text-base font-extrabold text-amber-700">
+                    🤝 ใบตัวแทน — ยังไม่ได้ตั้งผู้ส่ง ใบปะหน้านี้ขึ้นชื่อร้านเรา (ถามแอดมินก่อนแปะกล่อง)
+                  </p>
+                )}
                 {/* 📋 แผนแบ่งส่งจากแอดมิน — บอกคนแพ็คตั้งแต่ใบงานว่ารูปไหนต้องออกก่อน */}
                 {!(order.tracking ?? "").trim() &&
                   (order.shipPlan ?? []).map((r, n) =>

@@ -114,6 +114,13 @@ export default function SenderPicker({
         </div>
       )}
 
+      {/* 🤝 ใบตัวแทนที่ยังไม่มีผู้ส่ง = กล่องจะขึ้นชื่อร้านเรา — ต้องเห็นก่อนปริ้น ไม่ใช่ปุ่มเงียบ ๆ */}
+      {!has && !open && dealer && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold leading-relaxed text-amber-800">
+          🤝 ใบตัวแทน — ยังไม่ได้ตั้งผู้ส่ง กล่องนี้จะขึ้นชื่อร้านเรา
+          {suggest ? " · กดปุ่มด้านล่างใช้ชื่อร้านของตัวแทนได้เลย" : " · ถามตัวแทนว่าให้ขึ้นชื่อร้านอะไร แล้วกรอกที่ปุ่มด้านล่าง"}
+        </p>
+      )}
       {!has && !open && (
         <div className="flex flex-wrap items-center gap-1.5">
           <button
