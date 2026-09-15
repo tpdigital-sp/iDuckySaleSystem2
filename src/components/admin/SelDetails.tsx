@@ -7,7 +7,7 @@
  * รายการแบบเดียวกันเป๊ะ (พนักงานสลับสองหน้านี้ทั้งวัน — 15 ก.ย. 69 ขอให้การ์ดรายการในใบเสนอราคา
  * "เหมือนหน้าคำสั่งซื้อ") จึงย้ายมาไว้ตรงกลาง ใช้ร่วมกันทั้งสองหน้า อย่าก๊อปโค้ดไปวางซ้ำ
  */
-import { foldSizeExtra, specEntries, specValueLines, withWorkSize } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries, specValueLines, tidySpec, withWorkSize } from "@/components/SpecLines";
 
 /**
  * ข้อความรายละเอียดของรายการ — URL ยาวเหยียด (ลิงก์ไฟล์ต้นฉบับ) ทำให้อ่านไม่รู้เรื่อง
@@ -65,7 +65,7 @@ export function SelDetails({
 }) {
   // ออเดอร์เก่าไม่มีตัวเลือกแบบหัวข้อ/ค่า — กางจากข้อความรวมให้เป็นบรรทัดละหัวข้อเหมือนกัน
   // บวก "เพิ่มขนาด" เข้าบรรทัดขนาดให้เหมือนหน้าร้าน/ใบงาน — ทีมผลิตอ่านขนาดจริงได้เลย
-  const entries = withWorkSize(foldSizeExtra(specEntries(sel, text, SEL_HIDE)), workSize);
+  const entries = withWorkSize(foldSizeExtra(tidySpec(specEntries(sel, text, SEL_HIDE))), workSize);
   if (!entries.length) {
     return <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>;
   }

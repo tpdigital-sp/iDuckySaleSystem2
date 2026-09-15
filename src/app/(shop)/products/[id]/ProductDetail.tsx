@@ -132,7 +132,7 @@ import {
 import { LINE_URL } from "@/components/LineButton";
 import StockCheckNote from "@/components/StockCheckNote";
 import { useCustomer } from "@/lib/customer-context";
-import { foldSizeExtra, specEntries } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries, tidySpec } from "@/components/SpecLines";
 import {
   addToPriceLinkBasket,
   clearPriceLinkBasket,
@@ -1944,7 +1944,7 @@ export default function ProductDetail({
       product.options.filter((o) => !optionActive(o, effective) && !drivers.includes(o.label)).map((o) => o.label)
     );
     // บรรทัดโชว์บนลิงก์ราคา — บวก "เพิ่มขนาด" เข้าบรรทัดขนาดเหมือนตะกร้า/ออเดอร์ (ค่าจริงอยู่ใน spec.s)
-    const lines = foldSizeExtra(specEntries(pricingSelections).filter(([k]) => !hiddenLabels.has(k)) as [string, string][]);
+    const lines = foldSizeExtra(tidySpec(specEntries(pricingSelections).filter(([k]) => !hiddenLabels.has(k)) as [string, string][]));
     // งานที่แอดมินต้องตีราคาเอง — อย่าโชว์ตัวเลข ฿0 ที่ไหนทั้งนั้น ลูกค้าอ่านว่าฟรี
     const askPrice = askQuote || (useCustom && customAsk);
     /*

@@ -123,7 +123,7 @@ import { isPickupOrder, normalizeShipLabel, resolveShipLabel } from "@/lib/ship-
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
-import { foldSizeExtra, specEntries } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries, tidySpec } from "@/components/SpecLines";
 import { SelDetails, SelText } from "@/components/admin/SelDetails";
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
@@ -8012,8 +8012,8 @@ function PackView({
                   <span className="min-w-0 flex-1 text-xs">
                     {/* บรรทัดละหัวข้อเหมือนที่อื่น — คนแพ็คอ่านทีละบรรทัดไม่ตกหล่น (อยู่ในปุ่ม จึงใช้ span ล้วน) */}
                     <span className="block font-bold text-slate-700">
-                      {foldSizeExtra(specEntries(it.sel, it.selections)).length
-                        ? foldSizeExtra(specEntries(it.sel, it.selections)).map(([k, v], n) => (
+                      {foldSizeExtra(tidySpec(specEntries(it.sel, it.selections))).length
+                        ? foldSizeExtra(tidySpec(specEntries(it.sel, it.selections))).map(([k, v], n) => (
                             <span key={`${k}-${n}`} className="block">
                               {k && <span className="text-slate-500">{k}: </span>}
                               <SelText text={v} plain />
