@@ -64,6 +64,8 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const [pick, setPick] = useState<Record<string, string>>({});
   /** ใบที่จับคู่ได้แต่คนติ๊กออก (แค่ทำตัวอย่างให้ลูกค้าดู ยังไม่ส่งผลิต): orderId → true */
   const [skip, setSkip] = useState<Record<string, boolean>>({});
+  /** ใบที่เจอหลายโฟลเดอร์ (ขึ้นตัวอย่าง + งานจริง) คนเลือกว่าอันไหนคืองานจริง: orderId → ชื่อโฟลเดอร์ */
+  const [folderFor, setFolderFor] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const scan = useCallback(async (list: string[]) => {
@@ -72,6 +74,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
     setRes(null);
     setPick({});
     setSkip({});
+    setFolderFor({});
     setErr("");
     if (!uniq.length) {
       setErr("ไม่เจอโฟลเดอร์ในสิ่งที่โยนมา — โยนโฟลเดอร์ของวัน (เช่น Donut 10-09-69) หรือโฟลเดอร์งานทีละใบ");
@@ -138,7 +141,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       const r = await fetch("/api/admin/orders/production-folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths, apply: true, pick: picks, skip: skipIds }),
+        body: JSON.stringify({ paths, apply: true, pick: picks, skip: skipIds, folderFor }),
       });
       const j = (await r.json().catch(() => ({}))) as MatchResp;
       if (!r.ok) {
@@ -153,7 +156,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
     } finally {
       setBusy(null);
     }
-  }, [res, pick, skip, paths, onApplied]);
+  }, [res, pick, skip, folderFor, paths, onApplied]);
 
   const pickedCount = Object.values(pick).filter(Boolean).length;
   const matchedList = res?.matched ?? [];
@@ -254,6 +257,29 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                         </span>
                         {!on && <b style={{ color: "var(--dk-faint)" }}>— ไม่ส่งผลิตรอบนี้</b>}
                       </label>
+                      {/* ใบเดียวเจอหลายโฟลเดอร์ (ขึ้นตัวอย่าง + งานจริง) — เดิมอันที่ 2 หายเงียบ คนโยนไม่รู้ว่างานจริงเข้ามาด้วยหรือยัง */}
+                      {(m.alsoFolders?.length ?? 0) > 0 && (
+                        <div className="ml-7 mb-1.5 rounded-lg px-2 py-1.5" style={{ background: "var(--dk-yolk-wash)" }}>
+                          <p className="text-[12px] font-bold" style={{ color: "var(--dk-yolk-ink)" }}>
+                            ใบนี้เจอ {1 + (m.alsoFolders?.length ?? 0)} โฟลเดอร์ — เลือกอันที่เป็นงานจริงที่จะส่งผลิต
+                          </p>
+                          {[m.folder, ...(m.alsoFolders ?? [])].map((f) => (
+                            <label key={f} className="flex min-h-[32px] cursor-pointer items-center gap-2 text-[12.5px]">
+                              <input
+                                type="radio"
+                                name={`folder-${m.orderId}`}
+                                className="h-4 w-4 shrink-0"
+                                checked={(folderFor[m.orderId] ?? m.folder) === f}
+                                onChange={() => setFolderFor((v) => ({ ...v, [m.orderId]: f }))}
+                                disabled={!on}
+                              />
+                              <span className="min-w-0 truncate" title={f}>
+                                📁 {f}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </li>
                   );
                 })}

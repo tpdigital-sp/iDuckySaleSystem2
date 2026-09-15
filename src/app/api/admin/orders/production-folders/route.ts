@@ -18,6 +18,7 @@ const CANDIDATE_STATUSES: OrderStatus[] = ["รอตรวจสอบ", "ช�
  *   · apply=false (ค่าเริ่มต้น) = ลองจับคู่ให้ดูก่อน ไม่แตะ DB · apply=true = ติ๊ก productionSent ให้ใบที่จับคู่ได้
  *   · pick = ใบที่คนเลือกเองจากรายการคลุมเครือ (ติ๊กให้ตอน apply)
  *   · skip = orderId ที่คนติ๊กออกจากรายการจับคู่ได้ (โฟลเดอร์แค่ทำตัวอย่างให้ลูกค้าดู ยังไม่ส่งผลิต) — ไม่ติ๊กให้
+ *   · folderFor = ใบที่มีหลายโฟลเดอร์ (ขึ้นตัวอย่าง + งานจริง) คนเลือกว่าอันไหนคือโฟลเดอร์งานจริง → จดชื่อนั้น
  * ตอบ { ...FolderMatchResult, alreadySent: [...] (จับคู่ได้แต่ติ๊กไว้แล้ว ไม่ทับ), applied: n }
  */
 export async function POST(req: Request) {
@@ -26,7 +27,13 @@ export async function POST(req: Request) {
   const gate = await requirePerm(["pack.ship", "proof.manage", "orders.edit"]);
   if (gate.res) return gate.res;
 
-  let body: { paths?: string[]; apply?: boolean; pick?: { folder: string; orderId: string }[]; skip?: string[] };
+  let body: {
+    paths?: string[];
+    apply?: boolean;
+    pick?: { folder: string; orderId: string }[];
+    skip?: string[];
+    folderFor?: Record<string, string>;
+  };
   try {
     body = await req.json();
   } catch {
@@ -70,8 +77,14 @@ export async function POST(req: Request) {
   if (body.apply) {
     const by = gate.actor.name || gate.actor.username;
     const at = new Date().toISOString();
+    // ใบที่มีหลายโฟลเดอร์: จดชื่อที่คนเลือก (ต้องเป็นโฟลเดอร์ของใบนั้นจริง) ไม่เลือก = อันที่ระบบจับได้
+    const folderFor = body.folderFor ?? {};
+    const folderOf = (m: (typeof result.matched)[number]) => {
+      const want = folderFor[m.orderId];
+      return want && [m.folder, ...(m.alsoFolders ?? [])].includes(want) ? want : m.folder;
+    };
     const todo = [
-      ...result.matched.filter((m) => !skipIds.has(m.orderId)).map((m) => ({ orderId: m.orderId, folder: m.folder })),
+      ...result.matched.filter((m) => !skipIds.has(m.orderId)).map((m) => ({ orderId: m.orderId, folder: folderOf(m) })),
       ...picks.filter((p) => !skipIds.has(p.orderId)),
     ];
     for (const t of todo) {

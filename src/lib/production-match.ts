@@ -21,6 +21,11 @@ export interface FolderMatch {
   orderId: string;
   customer: string;
   how: "file" | "card" | "name";
+  /**
+   * โฟลเดอร์อื่นในกองเดียวกันที่เป็นของใบนี้เหมือนกัน (ลูกค้าคนเดียวมีทั้งโฟลเดอร์ขึ้นตัวอย่างและงานจริง)
+   * ⚠️ เดิมกลืนเงียบ — แอดมินเลยไม่รู้ว่าโฟลเดอร์งานจริงเข้ามาด้วยหรือยัง (15 ก.ย. 69 OD-260909-6151)
+   */
+  alsoFolders?: string[];
 }
 export interface FolderAmbiguous {
   folder: string;
@@ -89,6 +94,13 @@ export function matchFoldersToOrders(
   }
   const taken = new Set<string>();
   const seenFolder = new Set<string>();
+  /** โฟลเดอร์นี้เป็นของใบที่จับไปแล้วในรอบนี้ → ต่อท้ายแถวเดิมให้คนเห็น (คืน true ถ้าเก็บได้) */
+  const addAlso = (orderId: string, folder: string): boolean => {
+    const row = res.matched.find((m) => m.orderId === orderId);
+    if (!row) return false;
+    row.alsoFolders = [...(row.alsoFolders ?? []), folder];
+    return true;
+  };
 
   // 0) ไฟล์ OD-xxx.html ในโฟลเดอร์งาน → เลข OD ของโฟลเดอร์แม่ (พาธที่ชี้ไฟล์ = ชั้นในสุดชื่อมีเลข OD และมีนามสกุล)
   const odByFolder = new Map<string, string>();
@@ -117,6 +129,8 @@ export function matchFoldersToOrders(
       if (o && !taken.has(odFile)) {
         taken.add(odFile);
         res.matched.push({ folder: name, orderId: odFile, customer: o.customer, how: "file" });
+      } else if (o) {
+        addAlso(odFile, name);
       } else if (!o) {
         res.skipped++;
         if (res.skippedNames.length < 60) res.skippedNames.push(`${name} (${odFile} ไม่อยู่ในคิวรอผลิต)`);
@@ -146,8 +160,15 @@ export function matchFoldersToOrders(
         res.matched.push({ folder: name, orderId: viaCard[0], customer: orderById.get(viaCard[0])!.customer, how: "card" });
         continue;
       }
-      // ลูกค้าคนเดียวมีหลายโฟลเดอร์ (แยกตามวัสดุ/จำนวน) แต่ออเดอร์เดียว → ใบนั้นจับคู่ไปแล้วในรอบนี้ ถือว่าโฟลเดอร์นี้เป็นของใบเดิม ไม่ใช่หาไม่เจอ
-      if (res.matched.some((m) => taken.has(m.orderId) && (normFolder(m.customer) === cust || folderCustomer(cards[m.orderId]?.folderName ?? "") === cust))) continue;
+      // ลูกค้าคนเดียวมีหลายโฟลเดอร์ (ขึ้นตัวอย่าง/งานจริง/แยกวัสดุ) แต่ออเดอร์เดียว → ใบนั้นจับคู่ไปแล้วในรอบนี้
+      // ไม่ใช่ "หาไม่เจอ" แต่ก็ห้ามกลืนเงียบ — ต่อท้ายแถวเดิมให้แอดมินเห็นและเลือกได้ว่าอันไหนคืองานจริง
+      const sameOrder = res.matched.find(
+        (m) => taken.has(m.orderId) && (normFolder(m.customer) === cust || folderCustomer(cards[m.orderId]?.folderName ?? "") === cust)
+      );
+      if (sameOrder) {
+        addAlso(sameOrder.orderId, name);
+        continue;
+      }
       const exact = orders.filter((o) => !taken.has(o.id) && normFolder(o.customer) === cust);
       if (exact.length === 1) {
         taken.add(exact[0].id);
