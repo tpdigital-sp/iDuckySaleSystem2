@@ -13,7 +13,7 @@ import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
-import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress } from "@/lib/order-repo";
+import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
@@ -21,6 +21,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
+import SenderForm from "@/components/SenderForm";
 import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
 import { isPickupOrder, resolveShipLabel, stripShipPrice } from "@/lib/ship-label";
 import { todayBkkYmd } from "@/lib/ship-date";
@@ -359,6 +360,28 @@ export default function CustomerOrderPage() {
     }
     if (res.order) setOrder(res.order);
     setEditAddr(false);
+  }
+
+  /* 📮 ชื่อผู้ส่งบนกล่อง (เฉพาะออเดอร์ตัวแทน) — ตั้งเองได้จนกว่าร้านจะปริ้นใบงาน */
+  const [editSender, setEditSender] = useState(false);
+  const [senderBusy, setSenderBusy] = useState(false);
+  const [senderErr, setSenderErr] = useState("");
+  const [senderSaved, setSenderSaved] = useState(false);
+
+  async function saveSender(next: { name?: string; phone?: string; address?: string }, remember: boolean) {
+    if (!order) return;
+    setSenderBusy(true);
+    setSenderErr("");
+    const res = await updateOrderSender(orderId, orderKey, next, remember);
+    setSenderBusy(false);
+    if (!res.ok) {
+      setSenderErr(res.error ?? "บันทึกไม่สำเร็จ");
+      if (res.locked) void load(orderKey); // ร้านเพิ่งปริ้น → รีเฟรชให้เห็นสถานะล็อก
+      return;
+    }
+    setOrder((cur) => (cur ? { ...cur, sender: res.sender } : cur));
+    setEditSender(false);
+    setSenderSaved(true);
   }
 
   /* ✏️ ขอแก้ไขออเดอร์ — ลูกค้าพิมพ์บอกว่าอยากแก้อะไร แล้วแอดมินแก้ให้ (ไม่ให้แก้ยอดเอง กันบิลเพี้ยนจากสลิป) */
@@ -2181,6 +2204,55 @@ export default function CustomerOrderPage() {
                       {addrLocked
                         ? "🔒 ทางร้านเริ่มทำใบงานแล้ว แก้ไขที่อยู่ไม่ได้ — หากต้องแก้ ติดต่อร้านทางไลน์"
                         : "แก้ไขที่อยู่ได้จนกว่าทางร้านจะปริ้นใบงาน"}
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* 📮 ชื่อผู้ส่งบนกล่อง — เฉพาะออเดอร์ตัวแทน (ฝากเราส่งถึงลูกค้าปลายทางของเขา) */}
+          {order.dealer && (() => {
+            const locked = !!order.printedAt || ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"].includes(order.status);
+            const sd = order.sender;
+            const set = !!(sd?.name || sd?.phone || sd?.address);
+            return (
+              <div className="ord-card p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="ord-eyebrow">📮 ผู้ส่งบนกล่อง</p>
+                  {!editSender &&
+                    (locked ? (
+                      <span className="text-[11px] font-semibold t-faint">🔒 ล็อกแล้ว</span>
+                    ) : (
+                      <button type="button" onClick={() => { setSenderErr(""); setEditSender(true); }} className="ord-btn ghost sm">
+                        {set ? "✏️ แก้ไข" : "📮 ตั้งชื่อผู้ส่ง"}
+                      </button>
+                    ))}
+                </div>
+
+                {editSender ? (
+                  <div className="mt-3">
+                    <SenderForm
+                      variant="order"
+                      initial={sd}
+                      busy={senderBusy}
+                      error={senderErr}
+                      showRemember
+                      onSave={saveSender}
+                      onCancel={() => setEditSender(false)}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <p className="ord-title mt-2 text-sm">{sd?.name || "ร้าน iDucky (ชื่อร้านเรา)"}</p>
+                    {sd?.phone && <p className="text-sm t-soft">{sd.phone}</p>}
+                    {sd?.address && <p className="whitespace-pre-line text-sm leading-snug t-soft">{sd.address}</p>}
+                    <p className="mt-2 text-[11px] leading-relaxed t-faint">
+                      {locked
+                        ? "🔒 ทางร้านปริ้นใบงานแล้ว ชื่อผู้ส่งถูกล็อก — หากต้องแก้ ติดต่อร้านทางไลน์"
+                        : set
+                          ? `ลูกค้าปลายทางจะเห็นชื่อนี้เป็นผู้ส่งบนกล่อง · แก้ได้จนกว่าทางร้านจะปริ้นใบงาน${senderSaved ? " · ✅ บันทึกแล้ว" : ""}`
+                          : "ยังไม่ได้ตั้ง — กล่องจะขึ้นชื่อร้าน iDucky · ตั้งชื่อร้านคุณได้ ลูกค้าปลายทางจะไม่เห็นชื่อเรา"}
                     </p>
                   </>
                 )}

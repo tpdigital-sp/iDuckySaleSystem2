@@ -23,6 +23,7 @@ import { itemQtyText, itemUnitYield, orderQtyText } from "@/lib/item-yield";
 import type { Product } from "@/lib/products";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
+import { senderOf } from "@/lib/order-sender";
 import { resolveShipLabel } from "@/lib/ship-label";
 import { useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
@@ -537,6 +538,8 @@ function OrderDocs({
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
   const fullyPaid = orderFullyPaid(order);
+  // 📮 ผู้ส่งบนกล่อง — ใบฝากส่งของตัวแทนตั้งชื่อร้านตัวเองไว้ (order.sender) ที่เหลือใช้ข้อมูลร้าน
+  const sender = senderOf(order, shop);
   // ชื่อวิธีจัดส่งที่ลูกค้าเลือกจริง (เช่น "EMS (50)") — order.shipping เก็บได้แค่ 2 ค่าเก่า ธรรมดา/ด่วน จึงเพี้ยนเวลาร้านตั้งวิธีส่งเอง
   // ป้ายกลาง ๆ "ค่าส่ง" (ใบจาก FlowAccount) หรือป้ายว่าง (ใบเสนอราคาที่กรอกตัวเลขเอง) → จับคู่ราคากับวิธีส่งของร้าน (10 ก.ย. 69)
   const shipName = resolveShipLabel(order, shipMethods)
@@ -701,9 +704,10 @@ function OrderDocs({
             <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้ส่ง / From</p>
-                <p className="mt-0.5 text-sm font-bold">{shop.legalName}</p>
-                <p className="text-xs leading-snug text-slate-600">{shop.address.replace(/\n+/g, " ")}</p>
-                <p className="text-xs tabular-nums text-slate-600">โทร. {shop.phone}</p>
+                {/* 📮 ใบฝากส่งของตัวแทนใช้ชื่อร้านตัวแทน (order.sender) — ช่องที่ไม่ได้ตั้งตกไปใช้ข้อมูลร้าน */}
+                <p className="mt-0.5 text-sm font-bold">{sender.name}</p>
+                <p className="text-xs leading-snug text-slate-600">{sender.address.replace(/\n+/g, " ")}</p>
+                <p className="text-xs tabular-nums text-slate-600">โทร. {sender.phone}</p>
               </div>
               {/* วิธีจัดส่งตัวใหญ่เหนือบาร์โค้ด (สไตล์ป้ายขนส่ง) · บาร์โค้ด = เลขออเดอร์ล้วน สำหรับเครื่องยิงที่คอม */}
               <div className="flex shrink-0 flex-col items-end">
@@ -768,6 +772,12 @@ function OrderDocs({
                 </p>
                 {(order.tracking ?? "").trim() && (
                   <p className="mt-0.5 font-mono text-sm font-bold text-slate-800">📮 เลขพัสดุ{order.shipments?.length ? " (รอบสุดท้าย)" : ""}: {order.tracking}</p>
+                )}
+                {/* 📮 ใบฝากส่งของตัวแทน — ป้ายนี้อยู่ฝั่ง "ใบงาน" (ใต้เส้นตัด) ลูกค้าปลายทางไม่เห็น */}
+                {sender.custom && (
+                  <p className="mt-1.5 block w-fit rounded border-2 border-teal-600 bg-white px-2 py-1 text-base font-extrabold text-teal-700">
+                    📮 ใบฝากส่ง — ผู้ส่งบนกล่องคือ &ldquo;{sender.name}&rdquo; ห้ามใส่เอกสาร/สื่อที่มีชื่อร้านลงกล่อง
+                  </p>
                 )}
                 {/* 📋 แผนแบ่งส่งจากแอดมิน — บอกคนแพ็คตั้งแต่ใบงานว่ารูปไหนต้องออกก่อน */}
                 {!(order.tracking ?? "").trim() &&

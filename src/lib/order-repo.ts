@@ -178,6 +178,33 @@ export async function updateOrderAddress(
 }
 
 /**
+ * 📮 ตัวแทนตั้ง "ชื่อผู้ส่งบนกล่อง" ของออเดอร์ตัวเอง (ใบปะหน้าจะขึ้นชื่อร้านเขาแทนชื่อร้านเรา)
+ * เปิดเฉพาะใบตัวแทน + ได้จนกว่าร้านจะปริ้นใบงาน (เซิร์ฟเวอร์เช็กทั้งคู่)
+ * remember = เก็บเป็นผู้ส่งประจำของบัญชีด้วย (ต้องล็อกอินอยู่ — แนบ token ไปให้)
+ */
+export async function updateOrderSender(
+  orderId: string,
+  key: string,
+  sender: { name?: string; phone?: string; address?: string },
+  remember?: boolean
+): Promise<{ ok: boolean; sender?: { name?: string; phone?: string; address?: string }; remembered?: boolean; locked?: boolean; error?: string }> {
+  try {
+    const token = remember ? await getAccessToken() : null;
+    const res = await fetch("/api/orders/sender", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ orderId, key, ...sender, ...(remember ? { remember: true } : {}) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok
+      ? { ok: true, sender: data.sender, remembered: !!data.remembered }
+      : { ok: false, locked: !!data.locked, error: data.error ?? "บันทึกชื่อผู้ส่งไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
+/**
  * ลูกค้ายกเลิกออเดอร์เอง — เซิร์ฟเวอร์เปิดให้เฉพาะใบที่ยังไม่มีเงินเข้าเลย (สถานะ "รอชำระเงิน" + ไม่มีสลิป)
  * locked = เงื่อนไขไม่ผ่าน (เพิ่งแจ้งโอน/ร้านเริ่มงานแล้ว) → ให้หน้าเว็บรีเฟรชแล้วบอกให้ทักร้าน
  */

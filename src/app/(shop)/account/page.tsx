@@ -8,7 +8,10 @@ import { graphicWaitingItems, orderBalance, STEP_OF, type Order } from "@/lib/ad
 import { fetchShopPayment, readStoredShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { BASE_TIER_ID, lockedTier, nextTier, paidSpend, tierForSpend, tierRenewalInfo, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
-import { signOut, updateProfile } from "@/lib/customer-auth";
+import { getAccessToken, signOut, updateProfile } from "@/lib/customer-auth";
+import type { OrderSender } from "@/lib/admin-data";
+import SenderForm from "@/components/SenderForm";
+import { hasCustomSender } from "@/lib/order-sender";
 import { clearMyOrders, fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
 import { uploadAvatar } from "@/lib/avatar-upload";
 import MyCoupons from "@/components/MyCoupons";
@@ -114,7 +117,7 @@ const thMonth = (iso: string) => {
 
 export default function AccountPage() {
   const router = useRouter();
-  const { customer, loading, refresh } = useCustomer();
+  const { customer, loading, refresh, isDealer, dealerReady } = useCustomer();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [tierStatus, setTierStatus] = useState<TierStatus | null>(null);
   const [tierList, setTierList] = useState<Tier[] | null>(null);
@@ -128,6 +131,61 @@ export default function AccountPage() {
   const [nameDraft, setNameDraft] = useState("");
   const [addrDraft, setAddrDraft] = useState("");
   const [saving, setSaving] = useState(false);
+
+  /**
+   * 📮 ผู้ส่งบนกล่อง (เฉพาะบัญชีตัวแทนจำหน่าย) — ชื่อร้านของตัวแทนที่จะขึ้นบนพัสดุแทนชื่อร้านเรา
+   * ตั้งที่นี่ครั้งเดียว ออเดอร์ใหม่ที่ล็อกอินสั่งจะติดไปเอง (แก้รายใบได้ในหน้าออเดอร์)
+   */
+  const [sender, setSender] = useState<OrderSender | undefined>(undefined);
+  const [senderOpen, setSenderOpen] = useState(false);
+  const [senderBusy, setSenderBusy] = useState(false);
+  const [senderErr, setSenderErr] = useState("");
+  const [senderSaved, setSenderSaved] = useState(false);
+
+  useEffect(() => {
+    if (!isDealer) return;
+    let alive = true;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const res = await fetch("/api/dealers/sender", { headers: { Authorization: `Bearer ${token}` } });
+        const j = (await res.json()) as { sender?: OrderSender };
+        if (alive) setSender(j.sender);
+      } catch {
+        /* ไม่เป็นไร — กดตั้งเองได้ */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isDealer]);
+
+  async function saveSender(next: OrderSender) {
+    setSenderBusy(true);
+    setSenderErr("");
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/dealers/sender", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(next),
+      });
+      const j = (await res.json()) as { sender?: OrderSender; error?: string };
+      if (!res.ok) {
+        setSenderErr(j.error ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+        return;
+      }
+      setSender(j.sender);
+      setSenderOpen(false);
+      setSenderSaved(true);
+      showToast("บันทึกชื่อผู้ส่งแล้ว");
+    } catch {
+      setSenderErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง");
+    } finally {
+      setSenderBusy(false);
+    }
+  }
   const [uploading, setUploading] = useState(false);
   const [notifBusy, setNotifBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -782,6 +840,60 @@ export default function AccountPage() {
                   </div>
                   <div className={`acd-switch${notifOn && latest ? " on" : ""}`} />
                 </div>
+
+                {/* 🤝 ตัวแทนจำหน่าย — ชื่อผู้ส่งบนกล่องงานฝากส่ง (โผล่เฉพาะบัญชีที่อนุมัติเป็นตัวแทนแล้ว) */}
+                {dealerReady && isDealer && (
+                  <>
+                    <div className="acd-menu-head">ตัวแทนจำหน่าย</div>
+                    <div
+                      className="acd-menu-item"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setSenderErr("");
+                        setSenderOpen((v) => !v);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSenderErr("");
+                          setSenderOpen((v) => !v);
+                        }
+                      }}
+                    >
+                      <div className="acd-menu-ico ico-mint">
+                        <MenuIco name="address" />
+                      </div>
+                      <div className="acd-menu-col">
+                        <div className="acd-menu-label">ผู้ส่งบนกล่อง (งานฝากส่ง)</div>
+                        <div className="acd-menu-sub">
+                          {hasCustomSender({ sender })
+                            ? `${sender?.name || "ร้าน iDucky"}${sender?.phone ? ` · ${sender.phone}` : ""}${senderSaved ? " · บันทึกแล้ว ✓" : ""}`
+                            : "ยังไม่ได้ตั้ง — กล่องจะขึ้นชื่อร้าน iDucky เป็นผู้ส่ง"}
+                        </div>
+                      </div>
+                      <span className="acd-menu-meta">{senderOpen ? "ปิด" : hasCustomSender({ sender }) ? "แก้ไข" : "ตั้งค่า"}</span>
+                    </div>
+                    {senderOpen && (
+                      <div style={{ padding: "0 14px 14px" }}>
+                        <SenderForm
+                          variant="account"
+                          initial={sender}
+                          busy={senderBusy}
+                          error={senderErr}
+                          onSave={(next) => saveSender(next)}
+                          onCancel={() => {
+                            setSenderOpen(false);
+                            setSenderErr("");
+                          }}
+                        />
+                        <p className="acd-field-hint">
+                          ออเดอร์ใหม่ที่คุณล็อกอินสั่งจะใช้ผู้ส่งนี้ให้เอง · แก้เฉพาะบางใบได้ที่หน้าออเดอร์ใบนั้น
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <div className="acd-menu-head">ช่วยเหลือ</div>
                 <MenuItem href="/how-to-order" ico="howto" tone="coral" label="วิธีสั่งซื้อ" />

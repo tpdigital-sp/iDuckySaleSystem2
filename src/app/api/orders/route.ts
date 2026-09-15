@@ -5,7 +5,7 @@ import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { autoShipDate } from "@/lib/ship-date";
 import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, type Order } from "@/lib/admin-data";
+import { orderTotal, type Order, type OrderSender } from "@/lib/admin-data";
 import { tierDiscountAmount, tiersOf, lockedTier, seedTierStatus, type Tier, type TierStatus } from "@/lib/tiers";
 import { couponLabel, couponMaxUses, couponUses, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
@@ -16,6 +16,7 @@ import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { insertOrder } from "@/lib/server/order-write";
 import { dealerRateOf, lotShortfalls, type Product } from "@/lib/products";
 import { isDealerUid } from "@/lib/server/dealers";
+import { loadDealerSender } from "@/lib/server/dealer-sender";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -79,6 +80,8 @@ export async function POST(req: Request) {
    */
   let dealer = false;
   let dealerUid = "";
+  /** 📮 ผู้ส่งประจำที่ตัวแทนตั้งไว้เอง (หน้า /dealer) — ติดไปกับใบนี้ให้เลย ใบปะหน้าจะขึ้นชื่อร้านเขา */
+  let dealerSender: OrderSender | undefined;
   try {
     const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (token && !input.staffOrder) {
@@ -86,6 +89,7 @@ export async function POST(req: Request) {
       if (u.user && (await isDealerUid(u.user.id))) {
         dealer = true;
         dealerUid = u.user.id;
+        dealerSender = await loadDealerSender(sb, dealerUid);
       }
     }
   } catch {
@@ -288,6 +292,7 @@ export async function POST(req: Request) {
     ...(gifts.length ? { gifts } : {}),
     ...(placedBy ? { placedBy } : {}),
     ...(dealer ? { dealer: true } : {}),
+    ...(dealer && dealerSender ? { sender: dealerSender } : {}),
   };
 
   const { order: saved, error } = await insertOrder(sb, order, "ระบบ");

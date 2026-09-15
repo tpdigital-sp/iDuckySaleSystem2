@@ -122,6 +122,7 @@ import { useActor, useCan, useIsAdministrator, usePermsReady, useRoleLabel } fro
 import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
+import SenderPicker from "@/components/admin/SenderPicker";
 import { isPickupOrder, normalizeShipLabel, resolveShipLabel } from "@/lib/ship-label";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
@@ -3842,6 +3843,24 @@ export default function AdminOrderDetailPage() {
                       className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] text-slate-700 focus:border-amber-300 focus:outline-none"
                     />
                   </div>
+                  {/* 📮 ผู้ส่งบนใบปะหน้า — ใบฝากส่งของตัวแทนต้องขึ้นชื่อร้านตัวแทน ไม่ใช่ชื่อเรา (15 ก.ย. 69) */}
+                  <SenderPicker
+                    orderId={order.id}
+                    sender={order.sender}
+                    dealer={order.dealer}
+                    mayEdit
+                    demo={demo}
+                    onChange={(next) =>
+                      applyOrder(
+                        withLog(
+                          { ...order, sender: next },
+                          actor,
+                          next ? "ตั้งผู้ส่งบนใบปะหน้า" : "ใช้ชื่อร้านเป็นผู้ส่ง",
+                          next ? [next.name, next.phone, next.address].filter(Boolean).join(" · ") : undefined
+                        )
+                      )
+                    }
+                  />
                   {/* แถวลงมือทำต่อ — คัดลอกไปตอบ LINE/จ่าหน้า · โทรหาลูกค้า · สถานะการผูกผู้ติดต่อ */}
                   <div className="flex flex-wrap items-center gap-1.5">
                     {order.contactId ? (
@@ -3882,6 +3901,10 @@ export default function AdminOrderDetailPage() {
                     <span className={muted}>· {order.phone}</span>
                   </p>
                   <p className={`text-sm ${muted}`}>{order.address}</p>
+                  {/* 📮 ใบฝากส่ง — คนแพ็คต้องรู้ว่ากล่องนี้ใช้ชื่อผู้ส่งของตัวแทน (แก้ไม่ได้ตรงนี้) */}
+                  <div className="mt-1.5">
+                    <SenderPicker orderId={order.id} sender={order.sender} dealer={order.dealer} mayEdit={false} onChange={() => {}} />
+                  </div>
                   <p className={`mt-2 text-xs ${faint}`}>
                     {order.payment} · {resolveShipLabel(order, shipMethods)}
                   </p>

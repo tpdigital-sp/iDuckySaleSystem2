@@ -33,6 +33,7 @@ import CameraScanner from "@/components/admin/CameraScanner";
 import { extractOrderId, looksLikeOrderId } from "@/lib/scan-code";
 import { PACK_QUEUE_EVENT, loadPackQueue, packQueueLeft, packQueueNext, shortOrderId, startPackQueue, type PackQueueSource } from "@/lib/pack-queue";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
+import { hasCustomSender } from "@/lib/order-sender";
 import {
   Banner,
   Btn,
@@ -606,6 +607,12 @@ export default function ScanTrackingPage() {
               <span className="who">{target.customer || "ยังไม่ระบุชื่อ"}</span>
               {target.phone && <span className="sub">{target.phone}</span>}
               {target.address && <span className="sub w-full">{target.address}</span>}
+              {/* 📮 ใบฝากส่งของตัวแทน — กล่องนี้ใช้ชื่อผู้ส่งของตัวแทน ห้ามใส่เอกสาร/สื่อที่มีชื่อร้าน */}
+              {hasCustomSender(target) && (
+                <span className="sub w-full font-bold" style={{ color: "#0f766e" }}>
+                  📮 ใบฝากส่ง — ผู้ส่งบนกล่อง: {target.sender?.name || "(ชื่อร้านเรา)"} · ห้ามใส่เอกสารที่มีชื่อร้านลงกล่อง
+                </span>
+              )}
               <StatusChip s={target.status} label={orderStatusLabel(target)} />
               <Btn small onClick={() => reset({ kind: "info", text: "ยกเลิกแล้ว — ยิง QR ออเดอร์ใหม่ได้เลย" })}>
                 ยกเลิก / เปลี่ยนออเดอร์

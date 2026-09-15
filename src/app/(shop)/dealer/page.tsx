@@ -12,6 +12,8 @@ import Link from "next/link";
 import { useCustomer } from "@/lib/customer-context";
 import { getAccessToken } from "@/lib/customer-auth";
 import { LINE_URL } from "@/components/LineButton";
+import { hasCustomSender } from "@/lib/order-sender";
+import type { OrderSender } from "@/lib/admin-data";
 
 type Me = { dealer: boolean; applied: boolean; application?: { shopName: string; channel: string; detail?: string } };
 
@@ -29,6 +31,10 @@ export default function DealerApplyPage() {
   const [editing, setEditing] = useState(false);
   const [err, setErr] = useState("");
 
+  /* 📮 ผู้ส่งประจำ — ชื่อร้านของตัวแทนที่จะขึ้นบนกล่องแทนชื่อร้านเรา (ออเดอร์ใหม่ติดไปเอง) */
+  const [sender, setSender] = useState<OrderSender | undefined>(undefined);
+
+
   // สถานะของบัญชีนี้ (เป็นตัวแทนแล้ว / ส่งใบสมัครแล้ว) + เติมฟอร์มจากใบเดิม
   useEffect(() => {
     if (!customer) {
@@ -44,6 +50,16 @@ export default function DealerApplyPage() {
         const j = (await res.json()) as Me;
         if (!alive) return;
         setMe(j);
+        // เป็นตัวแทนแล้ว → ดึงผู้ส่งประจำที่เคยตั้งไว้มาโชว์
+        if (j.dealer) {
+          try {
+            const r2 = await fetch("/api/dealers/sender", { headers: { Authorization: `Bearer ${token}` } });
+            const s2 = (await r2.json()) as { sender?: OrderSender };
+            if (alive) setSender(s2.sender);
+          } catch {
+            /* ไม่เป็นไร — กดตั้งเองได้ */
+          }
+        }
         if (j.application) {
           setShopName((v) => v || j.application!.shopName);
           setChannel((v) => v || j.application!.channel);
@@ -144,6 +160,21 @@ export default function DealerApplyPage() {
                 >
                   🛍️ ดูสินค้าราคาตัวแทน
                 </Link>
+
+                {/* 📮 ฝากส่งให้ลูกค้าปลายทาง — ช่องตั้งค่าอยู่ที่ "บัญชีของฉัน" ที่เดียว (กันมีสองที่แก้) */}
+                <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-left ring-1 ring-emerald-200">
+                  <p className="text-xs font-extrabold text-stone-700">📮 ฝากส่งถึงลูกค้าของคุณ?</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
+                    ตั้ง<b>ชื่อร้านคุณเป็นผู้ส่งบนกล่อง</b>ได้ — ลูกค้าปลายทางจะไม่เห็นชื่อร้านเรา
+                    {hasCustomSender({ sender }) ? ` · ตอนนี้ตั้งไว้ว่า “${sender?.name || "ร้าน iDucky"}”` : " · ตอนนี้กล่องขึ้นชื่อร้าน iDucky"}
+                  </p>
+                  <Link
+                    href="/account"
+                    className="mt-2 inline-block rounded-full bg-white px-4 py-2 text-xs font-bold text-stone-600 ring-1 ring-stone-200 transition hover:ring-teal-300"
+                  >
+                    📮 ตั้งชื่อผู้ส่งที่ บัญชีของฉัน
+                  </Link>
+                </div>
               </div>
             ) : showForm ? (
               <form
