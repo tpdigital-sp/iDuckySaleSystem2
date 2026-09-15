@@ -66,11 +66,10 @@ check(
 );
 
 
-/* ── ค่าฐานสแตนดี้ — 2 ขั้น (ผู้ใช้สั่งรอบสอง 2 ก.ย. 69) ──
- * ปลีก 1-10 อัน: ไม่เกิน 6 ซม. ฟรี · 7 ซม.ขึ้นไปเพิ่ม ซม.ละ 5 (7=+5 · 8=+10)
- * ตั้งแต่ 11 อัน: ตารางร้าน /pricestandy 3-5=10 · 6-7=15 · 8=20 */
+/* ── ค่าฐานสแตนดี้ — ราคาเดียวทั้งปลีกและส่ง (เจ้าของร้านสั่ง 15 ก.ย. 69) ──
+ * "งานสแตนดี้ ปลีกหรือส่งก็บวกค่าฐานเหมือนกันตามตารางค่าฐานสแตนดี้เลย"
+ * ตารางร้าน /pricestandy: 3-5=10 · 6-7=15 · 8=20 — คิดทุกจำนวน ไม่มีช่วงปลีกฟรีแล้ว */
 const BASE_FEE: Record<string, number> = { "3cm": 10, "4cm": 10, "5cm": 10, "6cm": 15, "7cm": 15, "8cm": 20 };
-const BASE_RETAIL: Record<string, number> = { "3cm": 0, "4cm": 0, "5cm": 0, "6cm": 0, "7cm": 5, "8cm": 10 };
 const BASE_PRINT = 10;
 const selStandee = (mat: string, cm: number, screen: string, baseSize: string, basePrint: boolean) => ({
   แบบ: "สแตนดี้",
@@ -81,7 +80,7 @@ const selStandee = (mat: string, cm: number, screen: string, baseSize: string, b
   ฐาน: basePrint ? "สกรีนลาย" : "แบบใส",
 });
 for (const qty of [1, 10, 11, 200]) {
-  const fee = qty <= 10 ? BASE_RETAIL : BASE_FEE; // 1-10 อัน = เรทปลีก · 11 ขึ้นไป = ตารางร้าน
+  const fee = BASE_FEE; // ค่าฐานเท่ากันทุกจำนวน
   const clear = CLEAR[qty] ?? CLEAR[1];
   for (const bs of Object.keys(BASE_FEE))
     for (const print of [false, true])
