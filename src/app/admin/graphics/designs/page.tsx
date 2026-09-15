@@ -24,7 +24,17 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { isSelfDesigned, orderStatusLabel, proofBy, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
+import {
+  isSelfDesigned,
+  orderStatusLabel,
+  proofBy,
+  proofsOf,
+  proofUnit,
+  type Order,
+  type OrderItem,
+  type OrderStatus,
+  type Proof,
+} from "@/lib/admin-data";
 import { dayOf, orderMatches, staffTally, useGraphicStaff, useGraphicsOrders, useWorkSizes } from "../data";
 import { itemQtyText } from "@/lib/item-yield";
 import UseBy from "../UseBy";
@@ -35,6 +45,10 @@ import UseBy from "../UseBy";
  * ไม่ใช่หน้าทำงาน แต่เป็นหน้ารายงานให้กวาดตาดูรวดเดียวว่าใบไหนลูกค้าขอแก้
  * ใบไหนส่งไปแล้วลูกค้ายังไม่กดยืนยัน และใบไหนจบแล้ว — 1 บรรทัด = 1 ลาย
  * (หน้าทำงานจริงอยู่ที่ "ออเดอร์กราฟฟิก")
+ *
+ * 🗄️ ใบที่ลูกค้ายืนยันแบบครบทุกลาย "และส่งของออกไปแล้ว" ย้ายไปกอง "จัดเก็บแล้ว"
+ * ลูกค้าเจ้าประจำที่สั่งซ้ำบ่อยจะได้ไม่ต้องเลื่อนผ่านงานเก่าเพื่อหาใบใหม่
+ * (เจ้าของร้านสั่ง 15 ก.ย. 69) — ของเก่ายังเปิดดูได้จากชิป "จัดเก็บแล้ว"
  */
 
 /** ผลยืนยันแบบของลูกค้า ต่อ 1 ลาย */
@@ -54,6 +68,9 @@ const STATE_TAG: Record<State, "coral" | "lilac" | "mint"> = {
   ยังไม่ยืนยัน: "lilac",
   อนุมัติแล้ว: "mint",
 };
+
+/** ของออกจากร้านไปแล้ว — ไม่มีอะไรให้กราฟฟิกทำต่อกับใบนี้ */
+const SHIPPED_OUT: OrderStatus[] = ["จัดส่งแล้ว", "เสร็จสิ้น"];
 
 /** ความละเอียดที่พิมพ์แล้วคม — ต่ำกว่านี้ควรทักลูกค้าก่อนพิมพ์ */
 const DPI_WARN = 150;
@@ -75,6 +92,8 @@ interface Row {
   /** คอมเมนต์นี้เป็นของทั้งรายการ ไม่ใช่ของลายนี้ลายเดียว */
   noteWhole: boolean;
   dpi: number | null;
+  /** ทั้งใบยืนยันแบบครบ + ส่งของไปแล้ว = เก็บเข้ากรุ ไม่ปนกับงานที่ยังเดินอยู่ */
+  archived: boolean;
 }
 
 /** อ่านค่า DPI ที่จอวางลายคำนวณไว้ให้ จากบรรทัดพิกัดของทีมผลิต */
@@ -89,6 +108,8 @@ function buildRows(orders: Order[]): Row[] {
   const rows: Row[] = [];
   for (const order of orders) {
     if (order.status === "ยกเลิก") continue;
+    /** ลายของใบนี้ — ต้องรู้ครบทั้งใบก่อน ถึงจะตัดสินได้ว่าใบนี้ปิดกองได้หรือยัง */
+    const mine: Row[] = [];
     for (const item of order.items) {
       const self = isSelfDesigned(item);
       proofsOf(item).forEach((proof, i) => {
@@ -99,7 +120,7 @@ function buildRows(orders: Order[]): Row[] {
               ? "ขอแก้ไข"
               : "ยังไม่ยืนยัน";
         const note = proof.reviewNote || (state === "ขอแก้ไข" ? (item.proofNote ?? "") : "");
-        rows.push({
+        mine.push({
           order,
           item,
           proof,
@@ -110,16 +131,21 @@ function buildRows(orders: Order[]): Row[] {
           note,
           noteWhole: !proof.reviewNote && !!note,
           dpi: self ? dpiOf(item, i + 1) : null,
+          archived: false,
         });
       });
     }
+    // ยืนยันครบทุกลาย + ของออกไปแล้ว → ทั้งใบเข้ากอง "จัดเก็บแล้ว" (ไม่แยกครึ่งใบ)
+    const filed = SHIPPED_OUT.includes(order.status) && mine.length > 0 && mine.every((r) => r.state === "อนุมัติแล้ว");
+    for (const r of mine) r.archived = filed;
+    rows.push(...mine);
   }
   // ที่ค้างอยู่ที่เราขึ้นก่อน · ในกลุ่มเดียวกันเอาใบใหม่สุดขึ้นก่อน
   return rows.reverse().sort((a, b) => ORDER_OF[a.state] - ORDER_OF[b.state]);
 }
 
 /** "open" = ยังไม่จบเรื่อง (ขอแก้ไข + ยังไม่ยืนยัน) */
-type Filter = State | "all" | "open" | "self" | "lowdpi";
+type Filter = State | "all" | "open" | "self" | "lowdpi" | "archived";
 
 /** ลายที่ยังไม่จบเรื่อง — ลูกค้ายังไม่กดอนุมัติ */
 const isOpen = (r: Row) => r.state !== "อนุมัติแล้ว";
@@ -129,40 +155,47 @@ export default function DesignReportPage() {
   const workSizes = useWorkSizes();
   /** รายชื่อพนักงานแผนกกราฟฟิกใน employees2 — เป็นตัวตั้งของชิป "คนทำแบบ" */
   const roster = useGraphicStaff();
-  const [filter, setFilter] = useState<Filter>("all");
+  /** เปิดหน้ามาเจอ "ยังไม่จบเรื่อง" ก่อน — งานที่ต้องตามอยู่ตรงหน้าทันที (เจ้าของร้านสั่ง 15 ก.ย. 69) */
+  const [filter, setFilter] = useState<Filter>("open");
   /** กรองตามกราฟฟิกที่ทำแบบ — "all" = ทุกคน · "" = แบบเก่าที่ไม่ได้บันทึกชื่อคนทำ */
   const [staff, setStaff] = useState<string | "all">("all");
   const [q, setQ] = useState("");
 
   const rows = useMemo(() => buildRows(orders), [orders]);
+  /** กองที่ยังเดินอยู่ = ทุกตัวเลขบนหน้านี้ · กองที่ปิดแล้วเก็บไว้ดูย้อนหลังอย่างเดียว */
+  const live = useMemo(() => rows.filter((r) => !r.archived), [rows]);
+  const filed = useMemo(() => rows.filter((r) => r.archived), [rows]);
 
   const counts = useMemo(() => {
     const c: Record<Filter, number> = {
-      all: rows.length,
+      all: live.length,
       open: 0,
       ขอแก้ไข: 0,
       ยังไม่ยืนยัน: 0,
       อนุมัติแล้ว: 0,
       self: 0,
       lowdpi: 0,
+      archived: filed.length,
     };
-    for (const r of rows) {
+    for (const r of live) {
       c[r.state]++;
       if (isOpen(r)) c.open++;
       if (r.self) c.self++;
       if (r.dpi !== null && r.dpi < DPI_WARN) c.lowdpi++;
     }
     return c;
-  }, [rows]);
+  }, [live, filed]);
 
+  /** กองที่กำลังเปิดดู — ชิป "จัดเก็บแล้ว" สลับไปดูของเก่าทั้งกอง */
+  const pool = filter === "archived" ? filed : live;
 
   /** รายชื่อกราฟฟิกในชิปกรอง — เฉพาะลายที่เราทำเอง (ลายที่ลูกค้าจัดวางเองไม่มีคนทำ) */
-  const staffList = useMemo(() => staffTally(rows.filter((r) => !r.self).map((r) => r.by), roster), [rows, roster]);
+  const staffList = useMemo(() => staffTally(pool.filter((r) => !r.self).map((r) => r.by), roster), [pool, roster]);
 
-  const shown = rows
+  const shown = pool
     .filter((r) => (staff === "all" ? true : !r.self && r.by === staff))
     .filter((r) =>
-      filter === "all"
+      filter === "all" || filter === "archived"
         ? true
         : filter === "open"
           ? isOpen(r)
@@ -173,6 +206,9 @@ export default function DesignReportPage() {
               : r.state === filter
     )
     .filter((r) => orderMatches(r.order, q));
+
+  /** ค้นแล้วไม่เจอในกองที่เดินอยู่ — บอกว่าของเก่าที่ตรงคำค้นไปอยู่ในกรุแล้วกี่ลาย */
+  const filedHits = q.trim() ? filed.filter((r) => orderMatches(r.order, q)).length : 0;
 
   /** จับกลุ่มตามออเดอร์ — ลายของใบเดียวกันอยู่ติดกัน ไม่ต้องอ่านเลขออเดอร์ซ้ำทุกบรรทัด */
   const groups = useMemo(() => {
@@ -192,7 +228,7 @@ export default function DesignReportPage() {
         group="กราฟฟิก"
         title="รายงานแบบงาน"
         count={`${counts.all} ลาย`}
-        sub="สรุปว่าแบบของออเดอร์ไหนค้างอยู่ตรงไหน — ลูกค้าขอแก้ · ส่งไปแล้วยังไม่ยืนยัน · อนุมัติแล้ว"
+        sub="สรุปว่าแบบของออเดอร์ไหนค้างอยู่ตรงไหน — ลูกค้าขอแก้ · ส่งไปแล้วยังไม่ยืนยัน · อนุมัติแล้ว (ใบที่ส่งของไปแล้วย้ายเข้ากอง “จัดเก็บแล้ว”)"
         live={demo ? { ok: false, text: "ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน" } : { ok: true, text: "ออเดอร์จริง" }}
         tools={
           <>
@@ -213,12 +249,19 @@ export default function DesignReportPage() {
           onClick={() => setFilter(filter === "open" ? "all" : "open")}
           active={filter === "open"}
         />
-        <Stat label="อนุมัติแล้ว" value={counts["อนุมัติแล้ว"]} hint="จบเรื่องแล้ว" />
+        <Stat label="อนุมัติแล้ว" value={counts["อนุมัติแล้ว"]} hint="จบเรื่องแล้ว · ยังไม่ได้ส่งของ" />
         <Stat
           label="ความละเอียดต่ำ"
           value={counts.lowdpi}
           hint={counts.lowdpi ? `ต่ำกว่า ${DPI_WARN} DPI — ควรทักลูกค้า` : `เกิน ${DPI_WARN} DPI ทุกลาย`}
           tone={counts.lowdpi ? "due" : undefined}
+        />
+        <Stat
+          label="จัดเก็บแล้ว"
+          value={counts.archived}
+          hint="ยืนยันแบบครบ + ส่งของแล้ว"
+          onClick={() => setFilter(filter === "archived" ? "all" : "archived")}
+          active={filter === "archived"}
         />
       </Stats>
 
@@ -249,6 +292,12 @@ export default function DesignReportPage() {
           <FChip on={filter === "อนุมัติแล้ว"} onClick={() => setFilter("อนุมัติแล้ว")} label="อนุมัติแล้ว" count={counts["อนุมัติแล้ว"]} />
         </TabRow>
         <TabRow divider>
+          <FChip
+            on={filter === "archived"}
+            onClick={() => setFilter(filter === "archived" ? "all" : "archived")}
+            label="จัดเก็บแล้ว"
+            count={counts.archived}
+          />
           <FChip on={filter === "self"} onClick={() => setFilter("self")} label="ลูกค้าจัดวางเอง" count={counts.self} />
           <FChip
             on={filter === "lowdpi"}
@@ -264,7 +313,7 @@ export default function DesignReportPage() {
             <span className="flex-none self-center pr-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
               คนทำแบบ
             </span>
-            <FChip on={staff === "all"} onClick={() => setStaff("all")} label="ทุกคน" count={counts.all} />
+            <FChip on={staff === "all"} onClick={() => setStaff("all")} label="ทุกคน" count={pool.length} />
             {staffList.map((p) => (
               <FChip
                 key={p.name || "unknown"}
@@ -278,12 +327,29 @@ export default function DesignReportPage() {
         )}
       </FilterCard>
 
-      <ListHead title="ลาย" note="จัดกลุ่มตามออเดอร์ · ที่ค้างอยู่ที่เราขึ้นก่อน" />
+      <ListHead
+        title="ลาย"
+        note={filter === "archived" ? "ใบเก่าที่ปิดกองแล้ว · ใบใหม่สุดขึ้นก่อน" : "จัดกลุ่มตามออเดอร์ · ที่ค้างอยู่ที่เราขึ้นก่อน"}
+      />
 
       {groups.length === 0 ? (
         <Empty
-          title={q.trim() ? `ไม่พบแบบที่ตรงกับ “${q.trim()}”` : "ไม่มีข้อมูลในกลุ่มนี้"}
-          body={q.trim() ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือชื่อสินค้าแทน" : "ลองดูกลุ่มอื่นจากปุ่มด้านบน"}
+          title={
+            q.trim()
+              ? `ไม่พบแบบที่ตรงกับ “${q.trim()}”`
+              : filter === "archived"
+                ? "ยังไม่มีงานที่จัดเก็บ"
+                : "ไม่มีข้อมูลในกลุ่มนี้"
+          }
+          body={
+            q.trim()
+              ? filedHits > 0
+                ? `เจออีก ${filedHits} ลายในกอง “จัดเก็บแล้ว” — กดปุ่มจัดเก็บแล้วด้านบนเพื่อดูงานเก่า`
+                : "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือชื่อสินค้าแทน"
+              : filter === "archived"
+                ? "ใบที่ลูกค้ายืนยันแบบครบทุกลายและส่งของไปแล้ว จะย้ายมากองนี้เอง"
+                : "ลองดูกลุ่มอื่นจากปุ่มด้านบน"
+          }
         />
       ) : (
         <div className="grid gap-4">
