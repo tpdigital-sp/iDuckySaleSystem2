@@ -125,7 +125,7 @@ import { isPickupOrder, normalizeShipLabel, resolveShipLabel } from "@/lib/ship-
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
-import { foldSizeExtra, specEntries, tidySpec } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
 import { SelDetails, SelText } from "@/components/admin/SelDetails";
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
@@ -8047,7 +8047,7 @@ function PackView({
                       {foldSizeExtra(tidySpec(specEntries(it.sel, it.selections))).length
                         ? foldSizeExtra(tidySpec(specEntries(it.sel, it.selections))).map(([k, v], n) => (
                             <span key={`${k}-${n}`} className="block">
-                              {k && <span className="text-slate-500">{k}: </span>}
+                              {k && <span className="text-slate-500">{specLabel(k)}: </span>}
                               <SelText text={v} plain />
                             </span>
                           ))

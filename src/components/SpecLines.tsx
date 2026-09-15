@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { parseSpecText } from "@/lib/spec-text";
+import { parseSpecText, specLabel } from "@/lib/spec-text";
 
 /**
  * รายละเอียดตัวเลือกของรายการ — "บรรทัดละหัวข้อ · หัวข้อหนาและเข้มกว่าค่าที่เลือก"
@@ -12,8 +12,8 @@ import { parseSpecText } from "@/lib/spec-text";
 /** หัวข้อที่ไม่ต้องโชว์ (มีที่แสดงของตัวเองอยู่แล้ว หรือเป็นข้อมูลของทีมผลิต) */
 export const SPEC_HIDE = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก", "ตำแหน่งลาย (ทีมผลิต)"];
 
-/** ตัวกางข้อความสเปคย้ายไป lib/spec-text.ts (ให้ฝั่งเซิร์ฟเวอร์/สคริปต์ใช้ร่วม) — re-export ไว้ให้ที่เรียกเดิมไม่พัง */
-export { parseSpecText };
+/** ตัวกางข้อความสเปค + ชื่อหัวข้อที่โชว์ ย้ายไป lib/spec-text.ts (ให้ฝั่งเซิร์ฟเวอร์/สคริปต์ใช้ร่วม) — re-export ไว้ให้ที่เรียกเดิมไม่พัง */
+export { parseSpecText, specLabel };
 
 /** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย */
 export function specValueLines(v: string): string[] {
@@ -495,7 +495,7 @@ export function SpecLines({
         const parts = specValueLines(v);
         return (
           <p key={`${k}-${i}`} className="break-words leading-snug">
-            {k && <span className={`font-semibold ${labelClassName}`}>{k}:</span>}
+            {k && <span className={`font-semibold ${labelClassName}`}>{specLabel(k)}:</span>}
             {k && " "}
             {parts.length > 1 ? (
               <span className="mt-0.5 block space-y-0.5">

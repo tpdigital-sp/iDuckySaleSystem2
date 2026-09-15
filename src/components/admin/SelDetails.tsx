@@ -7,7 +7,7 @@
  * รายการแบบเดียวกันเป๊ะ (พนักงานสลับสองหน้านี้ทั้งวัน — 15 ก.ย. 69 ขอให้การ์ดรายการในใบเสนอราคา
  * "เหมือนหน้าคำสั่งซื้อ") จึงย้ายมาไว้ตรงกลาง ใช้ร่วมกันทั้งสองหน้า อย่าก๊อปโค้ดไปวางซ้ำ
  */
-import { foldSizeExtra, specEntries, specValueLines, tidySpec, withWorkSize } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries, specLabel, specValueLines, tidySpec, withWorkSize } from "@/components/SpecLines";
 
 /**
  * ข้อความรายละเอียดของรายการ — URL ยาวเหยียด (ลิงก์ไฟล์ต้นฉบับ) ทำให้อ่านไม่รู้เรื่อง
@@ -73,7 +73,7 @@ export function SelDetails({
     <div className="space-y-0.5 break-words">
       {entries.map(([k, v], i) => {
         const lines = selLines(v);
-        const label = k ? <span className="font-semibold text-slate-700">{k}:</span> : null;
+        const label = k ? <span className="font-semibold text-slate-700">{specLabel(k)}:</span> : null;
         if (k === SEL_SPEC) {
           return (
             <details key={k} className="group">

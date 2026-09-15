@@ -28,6 +28,7 @@ import { useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
 import { SpecLines } from "@/components/SpecLines";
+import { specLabel } from "@/lib/spec-text";
 import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginate";
 
 /**
@@ -53,7 +54,7 @@ const PRINT_SKIP = ["ภาพลายที่แนบ", "ภาพลาย�
 function optionText(it: Order["items"][number]): string {
   return Object.entries(it.sel ?? {})
     .filter(([k, v]) => v && !PRINT_SKIP.includes(k))
-    .map(([k, v]) => `${k}: ${v}`)
+    .map(([k, v]) => `${specLabel(k)}: ${v}`)
     .join(" · ");
 }
 

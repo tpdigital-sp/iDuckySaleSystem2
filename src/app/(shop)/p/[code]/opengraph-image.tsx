@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { formatPrice } from "@/lib/products";
 import { priceLinkItems, priceLinkPiecesText, priceLinkTitle, priceLinkTotal, thaiDay } from "@/lib/price-links";
 import { getPriceLink } from "@/lib/server/price-links-db";
+import { specLabel } from "@/lib/spec-text";
 import { SITE_URL } from "@/lib/shop-info";
 
 /**
@@ -137,7 +138,7 @@ export default async function Image({ params }: { params: Promise<{ code: string
           <div style={{ display: "flex", flexDirection: "column", marginTop: 20, gap: 8 }}>
             {lines.map(([k, v], i) => (
               <div key={i} style={{ display: "flex", fontSize: 24, color: MUTED }}>
-                <span style={{ fontWeight: 600, color: "#57534E" }}>{k}:&nbsp;</span>
+                <span style={{ fontWeight: 600, color: "#57534E" }}>{specLabel(k)}:&nbsp;</span>
                 <span>{v.length > 42 ? `${v.slice(0, 42)}…` : v}</span>
               </div>
             ))}

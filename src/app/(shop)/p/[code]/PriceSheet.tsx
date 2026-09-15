@@ -9,6 +9,7 @@ import {
   startPriceLinkBundle,
 } from "@/lib/price-link";
 import { priceLinkPiecesText, type PriceLinkItem } from "@/lib/price-links";
+import { specLabel } from "@/lib/spec-text";
 import { LINE_URL } from "@/components/LineButton";
 import ArtDrop, { type Art } from "./ArtDrop";
 
@@ -115,7 +116,7 @@ export default function PriceSheet({
                     <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[12.5px] leading-relaxed">
                       {it.lines.map(([k, v], j) => (
                         <div key={j} className="contents">
-                          <dt className="t-soft whitespace-nowrap">{k}</dt>
+                          <dt className="t-soft whitespace-nowrap">{specLabel(k)}</dt>
                           <dd className="t-ink min-w-0 break-words">{v}</dd>
                         </div>
                       ))}
