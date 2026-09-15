@@ -13,7 +13,8 @@
     "backup": "node scripts/backup-db.mjs",
     "backup:files": "node scripts/backup-db.mjs --files",
     "check:orders": "node scripts/check-order-writes.mjs",
-    "check:early-pay": "tsx scripts/early-pay-check.mts"
+    "check:early-pay": "tsx scripts/early-pay-check.mts",
+    "check:yield": "tsx scripts/sheet-yield-audit.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
