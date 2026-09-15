@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type CategoryId, type Product } from "@/lib/products";
-import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
+import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import ShopProductCard from "@/components/ShopProductCard";
 import CardSkeleton from "@/components/CardSkeleton";
@@ -333,7 +333,7 @@ export default function ProductListing() {
                   onClick={() => pickCategory(c.id)}
                   className={`plist-cat${(grouped ? activeCat === c.id : category === c.id) ? " on" : ""}`}
                 >
-                  <em>{c.emoji}</em> {catShort(c.name)}
+                  <em>{c.emoji}</em> {catShortName(c.name)}
                   <i className="plist-n">{(countByCat.get(c.id) ?? 0).toLocaleString("th-TH")}</i>
                 </button>
               ))}
@@ -374,7 +374,7 @@ export default function ProductListing() {
                     </div>
                     <div className="plist-grid">
                       {g.items.map((p) => (
-                        <ShopProductCard key={p.id} product={p} />
+                        <ShopProductCard key={p.id} product={p} category={cats.find((c) => c.id === p.category)} />
                       ))}
                     </div>
                     {g.id && (
@@ -389,7 +389,7 @@ export default function ProductListing() {
               ) : (
                 <div className="plist-grid">
                   {visible.map((p) => (
-                    <ShopProductCard key={p.id} product={p} />
+                    <ShopProductCard key={p.id} product={p} category={cats.find((c) => c.id === p.category)} />
                   ))}
                 </div>
               )}
@@ -425,8 +425,3 @@ function catTitle(name: string) {
   );
 }
 
-/** ชื่อหมวดแบบสั้นสำหรับชิป — เอาเฉพาะครึ่งไทยหลังขีด ชิปจะได้ไม่ยาวจนล้นแถว */
-function catShort(name: string) {
-  const i = name.indexOf("—");
-  return i < 0 ? name : name.slice(i + 1).trim() || name;
-}

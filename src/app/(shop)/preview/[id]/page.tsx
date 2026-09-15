@@ -4,6 +4,7 @@ import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib
 import { currentActor } from "@/lib/server/require-perm";
 import { withImageVersion } from "@/lib/img";
 import { fetchProductReviewStats } from "@/lib/server/reviews-db";
+import { getCategoryServer } from "@/lib/server/categories-server";
 import ProductDetail from "../../products/[id]/ProductDetail";
 import ProductReviews from "@/components/ProductReviews";
 
@@ -39,6 +40,7 @@ export default async function ProductPreviewPage({
   const templates = await getProductTemplates(product.templateIds ?? []);
   const reviewStats = await fetchProductReviewStats(product.id);
   const related = await getRelatedProducts(product.category, product.id);
+  const category = await getCategoryServer(product.category);
   return (
     <>
       <ProductDetail
@@ -48,6 +50,7 @@ export default async function ProductPreviewPage({
         preview={!!product.hidden}
         reviewStats={reviewStats}
         related={related}
+        category={category}
       />
       <ProductReviews productId={product.id} />
     </>

@@ -8,6 +8,7 @@ import {
   productPath,
   type Product,
 } from "@/lib/products";
+import { catShortName, type ShopCategory } from "@/lib/categories";
 import ProductVisual from "./ProductVisual";
 
 const BADGE_STYLES: Record<string, string> = {
@@ -16,8 +17,9 @@ const BADGE_STYLES: Record<string, string> = {
   ลดราคา: "bg-amber-400 text-amber-950",
 };
 
-export default function ProductCard({ product }: { product: Product }) {
-  const category = getCategory(product.category);
+/** category: หมวดจริงจากฐาน (แอดมินจัดเอง) — ไม่ส่งมาค่อยถอยไปชุด CATEGORIES ในโค้ดซึ่งเป็นของเก่า */
+export default function ProductCard({ product, category: fromDb }: { product: Product; category?: ShopCategory }) {
+  const category = fromDb?.id === product.category ? fromDb : getCategory(product.category);
   const range = priceRange(product);
   // ป้ายราคายาว (ช่วงราคา หรือ "เริ่มต้น ฿X") ใช้ตัวเล็กลง ไม่ให้ล้นการ์ด
   const isRange = range.max > range.min || isQuoteProduct(product);
@@ -44,7 +46,7 @@ export default function ProductCard({ product }: { product: Product }) {
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-4">
         <span className="text-[11px] font-semibold text-amber-500">
-          {category.emoji} {category.name}
+          {category.emoji} {catShortName(category.name)}
         </span>
         <h3 className="line-clamp-2 text-sm font-bold text-stone-800">{product.name}</h3>
         <div className="mt-auto flex flex-col gap-1 pt-2 sm:flex-row sm:items-center sm:justify-between">

@@ -172,6 +172,7 @@ import { canAccessAdmin } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
+import { catShortName, type ShopCategory } from "@/lib/categories";
 import ImageLightbox from "@/components/ImageLightbox";
 import { uploadArtworkFile, checkArtworkFile } from "@/lib/artwork-upload";
 import { termLines } from "@/lib/term-lines";
@@ -576,15 +577,28 @@ export default function ProductDetail({
   reviewStats = null,
   /** 🧩 สินค้าอื่นในหมวดเดียวกัน (ของจริงจากฐานข้อมูล — มีรูปสินค้า) */
   related: relatedFromServer,
+  /** 🗂️ หมวดของสินค้าตามที่แอดมินจัดไว้ในฐาน (ชื่อ/อีโมจิจริง) — ไม่ส่งมาค่อยถอยไปชุดในโค้ด */
+  category: categoryFromServer,
 }: {
   product: Product;
   templates?: DesignTemplate[];
   preview?: boolean;
   reviewStats?: { avg: number; count: number } | null;
   related?: Product[];
+  category?: ShopCategory;
 }) {
   const [product, setProduct] = useState<Product>(initialProduct);
-  const category = getCategory(product.category);
+  /**
+   * ชื่อหมวดบน breadcrumb/ป้ายหัวสินค้าต้องตรงกับหมวดจริงในหลังบ้าน
+   * ชุด CATEGORIES ในโค้ดเป็นของออกแบบเก่า (fabric = "ผ้า / หมอน / ผ้าห่ม") ใช้เป็นตัวสำรองเท่านั้น
+   * — เว็บจริงส่งหมวดจากฐานมาทางพร็อพ · ตกไปตัวสำรองเมื่อสินค้าถูกย้ายหมวดฝั่งเบราว์เซอร์/ฐานล่ม
+   */
+  const category =
+    categoryFromServer && categoryFromServer.id === product.category
+      ? categoryFromServer
+      : getCategory(product.category);
+  /** ชื่อที่ลูกค้าเห็น = ครึ่งไทยของชื่อหมวด (ชุดเดียวกับชิปหมวดในหน้ารายการสินค้า) */
+  const catName = catShortName(category.name);
   const { addItem, removeItem, items: cartItems, productOf } = useCart();
   /**
    * 🤝 บัญชีตัวแทนจำหน่าย — สินค้าที่มีเรท dealerOnly จะโชว์เฉพาะเรทตัวแทน (ราคาตัวแทน)
@@ -3467,7 +3481,7 @@ export default function ProductDetail({
         name: product.name,
         description: product.seo?.description || product.description,
         ...(product.imageSrc ? { image: [product.imageSrc] } : {}),
-        category: getCategory(product.category).name,
+        category: category.name,
         // ดาวจากรีวิวลูกค้าจริงมาก่อน — ไม่มีค่อยถอยไปใช้ rating ที่แอดมินตั้งมือ
         ...(reviewStats
           ? {
@@ -3506,7 +3520,7 @@ export default function ProductDetail({
       });
     }
     return graph;
-  }, [product, faqs, reviewStats]);
+  }, [product, faqs, reviewStats, category.name]);
 
   /**
    * บล็อก "รายละเอียดสินค้า" — แอดมินเลือกโซนได้ต่อท่อน (ดู BodySection.slot)
@@ -5533,7 +5547,7 @@ export default function ProductDetail({
         <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
         <span className="shrink-0">›</span>
         <Link href={`/products?category=${category.id}`} className="shrink-0 hover:text-amber-600">
-          {category.name}
+          {catName}
         </Link>
         <span className="shrink-0">›</span>
         <span className="truncate text-stone-600">{product.name}</span>
@@ -5656,7 +5670,7 @@ export default function ProductDetail({
         {/* min-w-0: เป็น grid item ที่ min-width:auto ถ้าไม่ปลด เนื้อหายาว ๆ จะดันคอลัมน์กว้างเกินจอมือถือ */}
         <div className="min-w-0">
           <span className="text-xs font-semibold text-amber-500">
-            {category.emoji} {category.name}
+            {category.emoji} {catName}
           </span>
           <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">
             {product.name}
@@ -8027,8 +8041,9 @@ export default function ProductDetail({
       {/* สินค้าใกล้เคียง — แถบเลื่อนซ้าย-ขวา ดูได้มากกว่าที่จอแสดงพอดี */}
       {related.length > 0 && (
         <RelatedCarousel
-          title={`${category.emoji} สินค้าอื่นในหมวด${category.name}`}
+          title={`${category.emoji} สินค้าอื่นในหมวด ${catName}`}
           products={related}
+          category={categoryFromServer}
         />
       )}
 
@@ -8423,7 +8438,8 @@ export default function ProductDetail({
  * สินค้าอื่นในหมวดเดียวกัน — แถบเลื่อนซ้าย-ขวา (มือถือปัดนิ้ว · จอใหญ่มีปุ่มลูกศร)
  * การ์ดกว้างคงที่ให้ตัวถัดไปโผล่ครึ่งใบ ลูกค้ารู้เองว่าเลื่อนต่อได้
  */
-function RelatedCarousel({ title, products }: { title: string; products: Product[] }) {
+/** category: หมวดจริงของสินค้าชุดนี้ (ทุกใบหมวดเดียวกัน) — ส่งต่อให้การ์ดเขียนชื่อหมวดตรงกับฐาน */
+function RelatedCarousel({ title, products, category }: { title: string; products: Product[]; category?: ShopCategory }) {
   const railRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
@@ -8466,7 +8482,7 @@ function RelatedCarousel({ title, products }: { title: string; products: Product
         >
           {products.map((p) => (
             <div key={p.id} className="w-[45vw] max-w-[224px] shrink-0 snap-start sm:w-52 md:w-56 [&>a]:h-full">
-              <ProductCard product={p} />
+              <ProductCard product={p} category={category} />
             </div>
           ))}
         </div>

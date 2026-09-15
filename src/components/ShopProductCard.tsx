@@ -13,9 +13,11 @@ import Link from "next/link";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import { formatPriceLabel, getCategory, productPath, type Product } from "@/lib/products";
 import { useAltImage } from "@/components/CardAltImage";
+import { catShortName, type ShopCategory } from "@/lib/categories";
 
-export default function ShopProductCard({ product: p }: { product: Product }) {
-  const cat = getCategory(p.category);
+/** category: หมวดจริงจากฐาน (แอดมินจัดเอง) — ไม่ส่งมาค่อยถอยไปชุด CATEGORIES ในโค้ดซึ่งเป็นของเก่า */
+export default function ShopProductCard({ product: p, category }: { product: Product; category?: ShopCategory }) {
+  const cat = category?.id === p.category ? category : getCategory(p.category);
   /** รูปที่สองครอสเฟดตอนชี้ — เหมือนการ์ดขายดีหน้าแรก (ต้นแบบถอดการเอียง 3 มิติตามเมาส์ออกแล้ว) */
   const alt = useAltImage(p.altSrc, "(max-width: 760px) 45vw, 280px");
 
@@ -53,7 +55,7 @@ export default function ShopProductCard({ product: p }: { product: Product }) {
       </div>
       <div className="card-body">
         <span className="cat-l">
-          {cat.emoji} {cat.name}
+          {cat.emoji} {catShortName(cat.name)}
         </span>
         <h3>{p.name}</h3>
         <div className="meta">

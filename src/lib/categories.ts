@@ -48,6 +48,16 @@ export const DEFAULT_CATEGORIES: ShopCategory[] = [
   { id: "cat-mssj6ytb", name: "อื่นๆ", nameEn: "", emoji: "✨", gradient: "from-amber-100 to-amber-200", description: "" },
 ];
 
+/**
+ * ชื่อหมวดแบบสั้น — หมวดในฐานตั้งชื่อเป็น "English — ไทย" (เช่น "Home & Living — เครื่องนอน / ของตกแต่งงานผ้า")
+ * ที่ลูกค้าเห็น (ชิปหมวด · breadcrumb · ป้ายบนการ์ด/หน้าสินค้า) ใช้เฉพาะครึ่งไทย ไม่งั้นยาวจนล้นแถว
+ * ไม่มีขีดคั่น = ใช้ชื่อเต็มตามเดิม
+ */
+export function catShortName(name: string): string {
+  const i = name.indexOf("—");
+  return i < 0 ? name : name.slice(i + 1).trim() || name;
+}
+
 /** ค่าที่ใช้จริง — ไม่มีในฐาน/ว่าง = ค่าเริ่มต้นจากโค้ด */
 export function categoriesOf(rows: ShopCategory[] | null | undefined): ShopCategory[] {
   if (!rows || rows.length === 0) return DEFAULT_CATEGORIES;

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice, formatPriceLabel, PRODUCTS, productPath, type Product } from "@/lib/products";
 import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
-import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
+import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import HomeChat from "@/components/HomeChat";
@@ -170,7 +170,8 @@ export default function HomePage() {
     return () => clearInterval(id);
   }, [freshHover, loading, fresh.length]);
 
-  const catName = (id: string) => cats.find((c) => c.id === id)?.name ?? id;
+  // ป้ายหมวดบนการ์ดสินค้าใช้ครึ่งไทยของชื่อหมวด (ชุดเดียวกับชิปหมวด/หน้าสินค้า)
+  const catName = (id: string) => catShortName(cats.find((c) => c.id === id)?.name ?? id);
 
   /** ข้อความในแถบวิ่ง (ชุดตามไฟล์ต้นแบบ) — ยอดส่งฟรีใช้ค่าจริง ตั้ง 0 = ปิดโปร ท่อนนั้นหายไปเลย */
   const tickerItems = useMemo(() => {

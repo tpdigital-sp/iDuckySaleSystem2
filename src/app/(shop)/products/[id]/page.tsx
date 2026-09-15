@@ -5,6 +5,7 @@ import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib
 import { productAutoSeo } from "@/lib/auto-seo";
 import { withImageVersion } from "@/lib/img";
 import { fetchProductReviewStats } from "@/lib/server/reviews-db";
+import { getCategoryServer } from "@/lib/server/categories-server";
 import ProductDetail from "./ProductDetail";
 import ProductReviews from "@/components/ProductReviews";
 
@@ -63,6 +64,8 @@ export default async function ProductPage({
   const reviewStats = await fetchProductReviewStats(product.id);
   // 🧩 "สินค้าอื่นในหมวด…" — ดึงของจริงจากฐานข้อมูล (การ์ดจะได้ขึ้นรูปสินค้า ไม่ใช่อีโมจิของชุดตัวอย่าง)
   const related = await getRelatedProducts(product.category, product.id);
+  // 🗂️ ชื่อ/อีโมจิหมวดต้องเป็นชุดที่แอดมินจัดไว้ในฐาน ไม่ใช่ CATEGORIES ชุดเก่าในโค้ด
+  const category = await getCategoryServer(product.category);
   return (
     <>
       <ProductDetail
@@ -72,6 +75,7 @@ export default async function ProductPage({
         preview={false}
         reviewStats={reviewStats}
         related={related}
+        category={category}
       />
       <ProductReviews productId={product.id} />
     </>
