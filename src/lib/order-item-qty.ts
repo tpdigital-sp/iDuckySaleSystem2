@@ -154,10 +154,16 @@ export function cartSelectionsOf(item: OrderItem): Record<string, string> {
   return sel;
 }
 
-/** ตัวบอกว่า "รายการที่ i ของออเดอร์นี้ถูกส่งไปแก้ตัวเลือกที่หน้าร้าน" — เก็บในเครื่องแอดมิน */
+/** ตัวบอกว่า "รายการที่ i ของออเดอร์/ใบเสนอราคานี้ถูกส่งไปแก้ตัวเลือกที่หน้าร้าน" — เก็บในเครื่องแอดมิน */
 export const ORDER_REPLACE_KEY = "iducky-order-replace-v1";
 
 export interface OrderReplaceMarker {
+  /**
+   * ปลายทางที่รอของใหม่ — ออเดอร์ (ค่าเดิม ไม่มีฟิลด์นี้ = ออเดอร์) หรือใบเสนอราคา
+   * ⚠️ ทั้งสองหน้าอ่านคีย์เดียวกัน ต้องเช็ค kind ก่อนเสมอ ไม่งั้นหน้าที่ไม่เกี่ยวจะไปแทนที่รายการผิดใบ
+   */
+  kind?: "order" | "quote";
+  /** เลขใบปลายทาง (ออเดอร์ OD-… หรือใบเสนอราคา QT-…) */
   orderId: string;
   index: number;
   productId: string;

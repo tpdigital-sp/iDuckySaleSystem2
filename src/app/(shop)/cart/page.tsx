@@ -74,6 +74,7 @@ import StockCheckNote from "@/components/StockCheckNote";
 import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
+import { readReplaceMarker } from "@/lib/order-item-qty";
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/lib/shipping-auto";
 import { termLines } from "@/lib/term-lines";
 
@@ -105,12 +106,17 @@ export default function CartPage() {
   const [unpicked, setUnpicked] = useState<string[]>([]);
   // 📄 โหมดหยิบใส่ใบเสนอราคา (แอดมินกดมาจากหน้าใบเสนอราคา) — ของที่หยิบจะเข้าใบนั้น ไม่สร้างออเดอร์
   const [quoteTo, setQuoteTo] = useState<QuoteTarget | null>(null);
+  /** 🛠 มาจากปุ่ม "แก้ตัวเลือก" ของใบเสนอราคา — ชื่อรายการเดิมที่รออยู่ (โยนเข้าใบแล้วหน้าใบจะถอดบรรทัดเดิมให้เอง) */
+  const [quoteReplacing, setQuoteReplacing] = useState("");
   const [quoteBusy, setQuoteBusy] = useState(false);
   const [quoteErr, setQuoteErr] = useState("");
   useEffect(() => {
     setAppendTo(getAppendTarget());
     setUnpicked(getUnpicked());
-    setQuoteTo(getQuoteTarget());
+    const t = getQuoteTarget();
+    setQuoteTo(t);
+    const m = readReplaceMarker();
+    if (t && m?.kind === "quote" && m.orderId === t.id) setQuoteReplacing(m.name);
     /**
      * มาถึงตะกร้า = จบคิวของใบราคาหลายรายการแล้ว (ปกติคิวหมดเองอยู่แล้ว)
      * ล้างทิ้งเผื่อลูกค้าเลิกกลางทางแล้วเดินมาตะกร้าเอง — ไม่งั้นการกดสั่งครั้งถัดไปจะโดนพาไปหน้าที่ไม่ได้ตั้งใจ
@@ -524,6 +530,11 @@ export default function CartPage() {
                 <p className="mt-0.5 text-xs leading-relaxed">
                   ลูกค้า: {quoteTo.customer} · หยิบสินค้าให้ครบก่อน แล้วกดปุ่มขวาเพื่อโยนเข้าใบทีเดียว (ยังไม่สร้างออเดอร์)
                 </p>
+                {quoteReplacing && (
+                  <p className="mt-0.5 text-xs font-bold leading-relaxed">
+                    🛠 กำลังแก้ตัวเลือกของ “{quoteReplacing}” — กดใส่ในใบเสนอราคาแล้วระบบจะแทนที่บรรทัดเดิมให้เอง
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={() => void sendToQuote()} disabled={quoteBusy} className="ord-btn ok">

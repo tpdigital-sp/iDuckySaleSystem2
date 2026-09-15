@@ -123,7 +123,8 @@ import { isPickupOrder, normalizeShipLabel, resolveShipLabel } from "@/lib/ship-
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
-import { foldSizeExtra, specEntries, specValueLines } from "@/components/SpecLines";
+import { foldSizeExtra, specEntries } from "@/components/SpecLines";
+import { SelDetails, SelText } from "@/components/admin/SelDetails";
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
@@ -540,106 +541,6 @@ function RichNoteEditor({
   );
 }
 
-
-/**
- * ข้อความรายละเอียดของรายการ — URL ยาวเหยียด (ลิงก์ไฟล์ต้นฉบับ) ทำให้อ่านไม่รู้เรื่อง
- * แทนด้วยไอคอน 🔗 กดเปิดไฟล์ได้ · ใช้ในที่ที่ห้ามมี <a> (เช่นในปุ่ม) ให้ส่ง plain
- */
-function SelText({ text, plain = false }: { text: string; plain?: boolean }) {
-  const parts = text.split(/(https?:\/\/\S+)/g);
-  return (
-    <>
-      {parts.map((part, i) =>
-        !/^https?:\/\//.test(part) ? (
-          <span key={i}>{part}</span>
-        ) : plain ? (
-          <span key={i} className="text-sky-600">
-            🔗
-          </span>
-        ) : (
-          <a
-            key={i}
-            href={part}
-            target="_blank"
-            rel="noreferrer"
-            title={part}
-            onClick={(e) => e.stopPropagation()}
-            className="mx-0.5 inline-flex items-center rounded bg-sky-50 px-1 align-middle text-sky-600 ring-1 ring-sky-200 transition hover:bg-sky-100"
-          >
-            🔗
-          </a>
-        ),
-      )}
-    </>
-  );
-}
-
-
-/** ชื่อหัวข้อที่ไม่ต้องโชว์ในรายละเอียด (มีที่แสดงของตัวเองอยู่แล้ว) */
-const SEL_HIDE = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก"];
-const SEL_SPEC = "ตำแหน่งลาย (ทีมผลิต)";
-
-/** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย (ใช้กติกาเดียวกับหน้าร้าน) */
-const selLines = specValueLines;
-
-/**
- * รายละเอียดของรายการ — บรรทัดละหัวข้อ · หลายลายแยกบรรทัดของใครของมัน
- * พิกัดของทีมผลิตยุบไว้ (กดกางเมื่อจะทำไฟล์เอง) เพราะยาวและไม่ได้ใช้ทุกครั้ง
- */
-function SelDetails({ sel, text }: { sel?: Record<string, string>; text?: string }) {
-  // ออเดอร์เก่าไม่มีตัวเลือกแบบหัวข้อ/ค่า — กางจากข้อความรวมให้เป็นบรรทัดละหัวข้อเหมือนกัน
-  // บวก "เพิ่มขนาด" เข้าบรรทัดขนาดให้เหมือนหน้าร้าน/ใบงาน — ทีมผลิตอ่านขนาดจริงได้เลย
-  const entries = foldSizeExtra(specEntries(sel, text, SEL_HIDE));
-  if (!entries.length) {
-    return <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>;
-  }
-  return (
-    <div className="space-y-0.5 break-words">
-      {entries.map(([k, v], i) => {
-        const lines = selLines(v);
-        const label = k ? <span className="font-semibold text-slate-700">{k}:</span> : null;
-        if (k === SEL_SPEC) {
-          return (
-            <details key={k} className="group">
-              <summary className="cursor-pointer list-none text-slate-400 transition hover:text-slate-600">
-                ▸ พิกัดสำหรับทำไฟล์เอง{lines.length > 1 ? ` (${lines.length} ลาย)` : ""}
-              </summary>
-              <div className="mt-0.5 space-y-0.5 border-l-2 border-slate-100 pl-2">
-                {lines.map((x, n) => (
-                  <p key={n}>
-                    <SelText text={x} />
-                  </p>
-                ))}
-              </div>
-            </details>
-          );
-        }
-        return (
-          <div key={`${k}-${i}`}>
-            {lines.length > 1 ? (
-              <>
-                <p>{label}</p>
-                <div className="space-y-0.5 pl-3">
-                  {lines.map((x, n) => (
-                    <p key={n}>
-                      <SelText text={x} />
-                    </p>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p>
-                {label}
-                {label && " "}
-                <SelText text={lines[0] ?? v} />
-              </p>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /**
  * เดา "จำนวน + หน่วย + รายละเอียด" จากชื่อไฟล์แบบงาน — กราฟฟิกตั้งชื่อไฟล์บอกไว้อยู่แล้ว ไม่ต้องมาพิมพ์ซ้ำ
@@ -1388,7 +1289,7 @@ export default function AdminOrderDetailPage() {
   useEffect(() => {
     if (!order || demo || !mayEdit || replaceBusy.current) return;
     const m = readReplaceMarker();
-    if (!m || m.orderId !== order.id) return;
+    if (!m || (m.kind ?? "order") !== "order" || m.orderId !== order.id) return;
     const r = applyReplaceMarker(order.items, m);
     if (!r) return;
     replaceBusy.current = true;
@@ -2794,6 +2695,7 @@ export default function AdminOrderDetailPage() {
       );
       localStorage.removeItem("iducky-append-picks-v1");
       writeReplaceMarker({
+        kind: "order",
         orderId: order.id,
         index: itemIndex,
         productId: it.productId,

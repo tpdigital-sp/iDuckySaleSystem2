@@ -10,13 +10,25 @@
  *   หัวข้อกลุ่มขีดสี + การ์ดขอบซ้ายสีเดียวกัน (GH/soft) ชุดเดียวกับหน้าออเดอร์
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, productPath, type Product } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
-import { itemPiecesLine } from "@/lib/item-yield";
+import { itemPiecesLine, itemUnitYield } from "@/lib/item-yield";
+import { SelDetails } from "@/components/admin/SelDetails";
+import { applySelectionsDraft, selectionsDraft, selectionsDraftChanged } from "@/lib/edit-selections";
+import {
+  applyReplaceMarker,
+  cartSelectionsOf,
+  isShopLine,
+  orderItemQtyChange,
+  qtyLockedByArea,
+  readReplaceMarker,
+  writeReplaceMarker,
+} from "@/lib/order-item-qty";
+import { cartItemKey } from "@/lib/cart-context";
 import {
   QUOTE_STYLES,
   awaitingOrder,
@@ -125,8 +137,170 @@ function QuoteDetailInner() {
     setBackfilled(quote.id);
     void persist(quote);
   }, [quote, backfilled, persist]);
-  const patchItem = (i: number, p: Partial<OrderItem>) =>
-    quote && void persist({ ...quote, items: quote.items.map((it, k) => (k === i ? { ...it, ...p } : it)) });
+  /* ─────────────────────────────────────────────────────────────────────────
+   * 🧾 การ์ดรายการ "ชุดเดียวกับหน้าออเดอร์" — พนักงานแจ้ง 15 ก.ย. 69 ว่าแก้อะไรในใบเสนอราคาไม่ได้เท่าหน้าคำสั่งซื้อ
+   * (QT-260914-8743) · คนทำงานสองหน้านี้คือคนเดียวกัน ปุ่มต้องอยู่ที่เดิมและทำงานเหมือนกันเป๊ะ:
+   *   ✏️ แก้ชื่อ/รายละเอียด (ทีละหัวข้อ ผ่าน lib/edit-selections — เขียนกลับทั้ง sel และ selections)
+   *   🛠 แก้ตัวเลือก (หน้าร้าน) — ไปเลือกใหม่ที่หน้าสินค้า ได้ราคา/ตัวเลือกจริง แล้วแทนที่รายการเดิม
+   *   🔢 จำนวน [−][+] คิดราคาขั้นบันได/สลับเรทใหม่ให้เหมือนตะกร้า · 💬 ราคา/หน่วยกดแก้ได้
+   *   📐 บรรทัด "สั่ง N แผ่น ได้ X ชิ้น" ตั้งตัวคูณเองได้
+   * ───────────────────────────────────────────────────────────────────────── */
+  /** กาง/ยุบการ์ดรายการ (ยุบ = รายละเอียดตัดเหลือ 2 บรรทัดเหมือนหน้าออเดอร์) */
+  const [itemOpen, setItemOpen] = useState<Record<number, boolean>>({});
+  const [editSel, setEditSel] = useState<number | null>(null);
+  const [selDraft, setSelDraft] = useState("");
+  /** ชื่อรายการระหว่างแก้ (คนละตัวกับ nameDraft ที่เป็นชื่อลูกค้า) */
+  const [itemNameDraft, setItemNameDraft] = useState("");
+  const [editPrice, setEditPrice] = useState<number | null>(null);
+  const [priceDraft, setPriceDraft] = useState("");
+  /** ข้อความในช่องจำนวนระหว่างพิมพ์ (บันทึกตอนออกจากช่อง/Enter) */
+  const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
+  /** ตั้ง "1 หน่วย = กี่ชิ้น" ของรายการไหนอยู่ */
+  const [editPer, setEditPer] = useState<number | null>(null);
+  const [perDraft, setPerDraft] = useState("");
+  /** กันแทนที่รายการซ้ำระหว่างรอผลบันทึกของรอบก่อน */
+  const replaceBusy = useRef(false);
+  const actor = meName || "แอดมิน";
+  const productOfItem = (id: string): Product | undefined => prodById[id];
+
+  /** บันทึกพร้อมลงประวัติ (ใบเสนอราคาไม่มีปุ่ม Save แยก — บันทึกทุกครั้งที่แก้เสร็จเหมือนเดิม) */
+  const persistLog = (next: Quote, what: string, detail?: string) => void persist(withQuoteLog(next, actor, what, detail));
+
+  /**
+   * ✏️ บันทึกชื่อ + รายละเอียดจากช่องแก้ (ช่องเดียวกัน เหมือนหน้าออเดอร์)
+   * ⚠️ ทุกจออ่านตัวเลือกแบบหัวข้อ (sel) ก่อนข้อความ — ต้องเขียนกลับทั้ง sel และ selections
+   *    ไม่งั้น "แก้แล้วไม่เปลี่ยน" (ดู lib/edit-selections)
+   */
+  function saveItemSelections(itemIndex: number, text: string, name?: string) {
+    if (!quote) return;
+    const cur = quote.items[itemIndex];
+    setEditSel(null);
+    if (!cur) return;
+    const newName = (name ?? cur.name).trim() || cur.name;
+    const nameChanged = newName !== cur.name;
+    const selChanged = selectionsDraftChanged(cur, text);
+    if (!nameChanged && !selChanged) return;
+    const p: Partial<OrderItem> = selChanged ? applySelectionsDraft(cur, text) : {};
+    if (nameChanged) p.name = newName;
+    const items = quote.items.map((it, k) => (k === itemIndex ? { ...it, ...p } : it));
+    const what = nameChanged && selChanged ? "แก้ชื่อ+รายละเอียดรายการ" : nameChanged ? "แก้ชื่อรายการ" : "แก้รายละเอียดรายการ";
+    persistLog({ ...quote, items }, what, nameChanged ? `${cur.name} → ${newName}` : cur.name);
+  }
+
+  /** 🔢 แก้จำนวน — สินค้าจากหน้าร้านคิดราคาขั้นบันได/สลับเรทให้ใหม่เหมือนตะกร้า (ตัวเดียวกับหน้าออเดอร์) */
+  function changeItemQty(itemIndex: number, nextQty: number) {
+    if (!quote) return;
+    const it = quote.items[itemIndex];
+    if (!it) return;
+    const r = orderItemQtyChange(quote.items, itemIndex, nextQty, productOfItem);
+    if (!r) return;
+    const items = quote.items.map((x, k) => (k === itemIndex ? { ...x, ...r.patch } : x));
+    const newQty = r.patch.qty ?? it.qty;
+    const unit = r.unitPrice ?? it.unitPrice;
+    const notes = [
+      `${it.qty.toLocaleString("th-TH")} → ${newQty.toLocaleString("th-TH")}`,
+      r.unitPrice !== undefined ? `ราคา/หน่วย ${formatPrice(it.unitPrice)} → ${formatPrice(r.unitPrice)}` : "",
+      r.rateChanged ? `เรท ${r.rateChanged.from} → ${r.rateChanged.to}` : "",
+      r.designCapped ? `โควตาลายเหลือ ${r.designCapped} ลาย` : "",
+      unit > 0 ? `= ${formatPrice(unit * newQty)}` : "",
+    ].filter(Boolean);
+    persistLog({ ...quote, items }, "แก้จำนวน", `${it.name}: ${notes.join(" · ")}`);
+  }
+
+  /** 💬 บันทึกราคา/หน่วยที่ตีไว้ */
+  function saveItemPrice(itemIndex: number, text: string) {
+    setEditPrice(null);
+    if (!quote) return;
+    const it = quote.items[itemIndex];
+    if (!it) return;
+    const v = Math.max(0, Math.round(Number(text) || 0));
+    if (v === it.unitPrice) return;
+    const items = quote.items.map((x, k) => (k === itemIndex ? { ...x, unitPrice: v } : x));
+    persistLog({ ...quote, items }, "แก้ราคา/หน่วย", `${it.name}: ${formatPrice(it.unitPrice)} → ${formatPrice(v)} (= ${formatPrice(v * it.qty)})`);
+  }
+
+  /** 📐 ตั้ง "1 เซ็ต/แผ่น = กี่ชิ้น" ให้รายการนี้ (แช่ลงใบ ไม่ไปแก้สินค้า — ตกลงแล้วติดไปกับออเดอร์ด้วย) */
+  function saveItemPerUnit(itemIndex: number, per: number) {
+    setEditPer(null);
+    setPerDraft("");
+    if (!quote) return;
+    const it = quote.items[itemIndex];
+    if (!it || !(per >= 1) || per > 99999) return;
+    const y = itemUnitYield(it, prodById[it.productId]);
+    const unit = it.unitYield?.unit || y?.unit || "หน่วย";
+    const piece = it.unitYield?.piece || y?.piece || "ชิ้น";
+    const next = Math.floor(per);
+    if (next === (it.unitYield?.per ?? 0)) return;
+    const items = quote.items.map((x, k) => (k === itemIndex ? { ...x, unitYield: { per: next, piece, unit } } : x));
+    persistLog({ ...quote, items }, "ตั้งจำนวนต่อหน่วย", `${it.name} — 1 ${unit} = ${next} ${piece}`);
+  }
+
+  /**
+   * 🛠 แก้ตัวเลือกของรายการที่หยิบจากหน้าร้าน — ทางเดียวกับหน้าออเดอร์ทุกขั้น:
+   * ใส่บรรทัดนี้ลงตะกร้าในเครื่องแอดมินก่อน (สเปค/จำนวน/ลายเดิมครบ) → เปิดหน้าสินค้าโหมดแก้ไข (?edit=)
+   * → ตั้ง "โหมดหยิบใส่ใบเสนอราคา" + ตัวบอกว่าให้แทนที่รายการไหน
+   * พอของใหม่เข้าใบจากหน้าตะกร้า หน้านี้ถอดรายการเดิมออกให้เอง (ดู useEffect ด้านล่าง)
+   */
+  function editItemOptionsInShop(itemIndex: number) {
+    if (!quote) return;
+    const it = quote.items[itemIndex];
+    if (!it) return;
+    const p = productOfItem(it.productId);
+    if (!isShopLine(p, it)) return;
+    try {
+      const selections = cartSelectionsOf(it);
+      const key = cartItemKey(it.productId, selections);
+      const raw = localStorage.getItem("iducky-cart-v1");
+      const cart = (() => {
+        try {
+          const v = JSON.parse(raw ?? "[]");
+          return Array.isArray(v) ? (v as { key: string }[]) : [];
+        } catch {
+          return [];
+        }
+      })();
+      const line = { key, productId: it.productId, selections, qty: it.qty, unitPrice: it.unitPrice };
+      localStorage.setItem("iducky-cart-v1", JSON.stringify([...cart.filter((c) => c?.key !== key), line]));
+      setQuoteTarget({ id: quote.id, customer: quote.customer });
+      writeReplaceMarker({
+        kind: "quote",
+        orderId: quote.id,
+        index: itemIndex,
+        productId: it.productId,
+        name: it.name,
+        qty: it.qty,
+        unitPrice: it.unitPrice,
+        itemCount: quote.items.length,
+        at: Date.now(),
+      });
+    } catch {
+      setErr("⚠️ เปิดโหมดแก้ไขไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
+      return;
+    }
+    window.open(`${productPath(p)}?edit=${encodeURIComponent(cartItemKey(it.productId, cartSelectionsOf(it)))}`, "_blank", "noopener");
+  }
+
+  /* ของใหม่จากหน้าร้านเข้าใบแล้ว → หิ้วภาพลาย/หมายเหตุจากรายการเดิมไปให้ แล้วถอดรายการเดิมออก (เหมือนตะกร้าตอนบันทึกแก้ไข) */
+  useEffect(() => {
+    if (!quote || quote.orderId || replaceBusy.current) return;
+    const m = readReplaceMarker();
+    if (!m || m.kind !== "quote" || m.orderId !== quote.id) return;
+    const r = applyReplaceMarker(quote.items, m);
+    if (!r) return;
+    replaceBusy.current = true;
+    writeReplaceMarker(null);
+    void persist(
+      withQuoteLog(
+        { ...quote, items: r.items },
+        meName || "แอดมิน",
+        "แก้ตัวเลือกจากหน้าร้าน",
+        `${r.old.name} ×${r.old.qty} @${formatPrice(r.old.unitPrice)} → ${r.fresh.name} ×${r.fresh.qty} @${formatPrice(r.fresh.unitPrice)} (แทนที่รายการเดิม)`
+      )
+    );
+    setTimeout(() => {
+      replaceBusy.current = false;
+    }, 3000);
+  }, [quote, persist, meName]);
 
   /** เอาภาพลายออกจากรายการ (ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับใบนี้) — ล้าง artworkQty/artworkBackUrls ของรูปนั้นตามไปด้วย + ลงประวัติ */
   function removeArtwork(itemIndex: number, url: string) {
@@ -442,140 +616,418 @@ function QuoteDetailInner() {
               </div>
             </div>
 
-            {/* 🎨 รายการที่เสนอ */}
+            {/* 🎨 รายการที่เสนอ — การ์ด/ปุ่มชุดเดียวกับหน้าออเดอร์ (พนักงานขอ 15 ก.ย. 69 "ให้เหมือนกับหน้าคำสั่งซื้อ") */}
             <div className="mb-5">
               <GH t="indigo">🎨 รายการที่เสนอ · {nItems}</GH>
 
-              <div className="mt-2 space-y-3">
-                {quote.items.map((it, i) => (
-                  <div
-                    key={i}
-                    className={`overflow-hidden rounded-2xl border-2 shadow-[0_2px_10px_rgba(15,23,42,0.05)] ${
-                      i % 2 === 0 ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/40"
-                    }`}
-                  >
-                    {/* แถบหัวรายการ — สลับสีคู่/คี่ ให้ไล่สายตาแยกรายการได้ง่ายเวลามีหลายรายการ */}
+              {/* หัวตาราง (จอกว้างพอจะเรียงคอลัมน์เดียวกันได้) — อ่านรายการแบบใบสั่งงาน เหมือนหน้าออเดอร์ */}
+              <div className="mt-3 hidden items-center gap-3 px-4 text-[11px] font-bold uppercase tracking-wide text-slate-400 xl:flex">
+                <span className="w-6 shrink-0 text-center">#</span>
+                <span className="w-20 shrink-0 text-center">รูป</span>
+                <span className="min-w-0 flex-1">ชื่อสินค้า / รายละเอียด</span>
+                <span className="w-24 shrink-0 text-center">จำนวน</span>
+                <span className="w-28 shrink-0 text-right">ราคา/หน่วย</span>
+                <span className="w-24 shrink-0 text-right">ยอดรวม</span>
+              </div>
+
+              <div className="mt-1.5 space-y-4">
+                {quote.items.map((it, i) => {
+                  const prod = prodById[it.productId];
+                  const shopLine = isShopLine(prod, it);
+                  const areaLocked = qtyLockedByArea(prod, it);
+                  /* ใบเสนอราคามีไม่กี่รายการและสเปคคือเนื้อหาหลักของใบ — กางไว้ก่อน (หน้าออเดอร์มีของอย่างอื่นเยอะกว่าจึงยุบ) */
+                  const open = itemOpen[i] ?? true;
+                  const arts = it.artworkUrls ?? [];
+                  const piecesLine = itemPiecesLine(it, prod);
+                  const y = itemUnitYield(it, prod);
+                  const perUnit = it.unitYield?.unit || y?.unit || "หน่วย";
+                  const perPiece = it.unitYield?.piece || y?.piece || "ชิ้น";
+                  const toggle = () => setItemOpen((cur) => ({ ...cur, [i]: !open }));
+                  return (
                     <div
-                      className={`flex items-center justify-between gap-2 border-b-2 px-4 py-2 ${
-                        i % 2 === 0 ? "border-slate-100 bg-slate-50" : "border-sky-100 bg-sky-100/60"
+                      key={`${it.productId}-${i}`}
+                      className={`overflow-hidden rounded-2xl border-2 shadow-[0_2px_10px_rgba(15,23,42,0.05)] ${
+                        i % 2 === 0 ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/40"
                       }`}
                     >
-                      <span className={`shrink-0 text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}>
-                        รายการที่ {i + 1}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className="dkb-num text-[15px]">{formatPrice(it.qty * it.unitPrice)}</span>
-                        {!locked && (
+                      {/* แถบหัวรายการ — สลับสีคู่/คี่ ให้ไล่สายตาแยกรายการได้ง่ายเวลามีหลายรายการ */}
+                      <div
+                        className={`flex items-center justify-between gap-2 border-b-2 px-4 py-2 ${
+                          open
+                            ? "border-indigo-100 bg-indigo-50/70"
+                            : i % 2 === 0
+                              ? "border-slate-100 bg-slate-50"
+                              : "border-sky-100 bg-sky-100/60"
+                        }`}
+                      >
+                        <span className={`shrink-0 whitespace-nowrap text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}>
+                          รายการที่ {i + 1} / {quote.items.length}
+                        </span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
+                          <span className="dkb-num shrink-0 text-[15px]">{formatPrice(it.qty * it.unitPrice)}</span>
+                          {!locked && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`ลบ “${it.name}” ออกจากใบเสนอราคา?\n\n⚠️ ยอดที่เสนอจะลดลง ${formatPrice(it.qty * it.unitPrice)}`))
+                                  persistLog({ ...quote, items: quote.items.filter((_, k) => k !== i) }, "ลบรายการ", `${it.name} ×${it.qty}`);
+                              }}
+                              title="ลบรายการนี้ออกจากใบเสนอราคา (ระบบลงประวัติทุกครั้ง)"
+                              className="shrink-0 rounded-lg px-1.5 py-0.5 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                            >
+                              🗑 ลบรายการ
+                            </button>
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="p-4">
+                        {/* แถวรายการ — # · รูป · รายละเอียด · จำนวน · ราคา/หน่วย · ยอดรวม (พับทั้งชุดเมื่อจอแคบ) */}
+                        <div className="flex flex-wrap items-start gap-3">
                           <button
                             type="button"
-                            onClick={() => patch({ items: quote.items.filter((_, k) => k !== i) })}
-                            title="ลบรายการนี้"
-                            className="rounded-lg px-2 py-1 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
+                            onClick={toggle}
+                            title={open ? "ยุบรายการนี้" : "กางรายการนี้"}
+                            className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[11px] font-bold text-indigo-700 ring-1 ring-indigo-200 transition hover:bg-indigo-100"
                           >
-                            ✕
+                            {i + 1}
                           </button>
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 p-3 sm:grid-cols-[5rem_minmax(0,1fr)]">
-                      {/* ภาพลายที่แนบมาจากตอนหยิบของ (ถ้ามี) */}
-                      <div className="flex flex-wrap gap-1">
-                        {(it.artworkUrls ?? []).slice(0, 4).map((u, k) => (
-                          <span key={k} className="relative block">
-                            <a href={u} target="_blank" rel="noreferrer" className="relative block" title={[artworkSide(it, u), artQtyOf(it, u, k) ? `ลายที่ ${k + 1} × ${artQtyOf(it, u, k)} ชิ้น` : `ลายที่ ${k + 1}`, artSizeOf(it, u, k) ? `📐 ${artSizeText(artSizeOf(it, u, k)!)}` : ""].filter(Boolean).join(" · ")}>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={u} alt={artworkSide(it, u) ?? ""} className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
-                              {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังด้านบน · 🔢 จำนวนต่อลายด้านล่าง */}
-                              {artworkSide(it, u) && (
-                                <span className="absolute left-0 right-0 top-0 rounded-t-md bg-slate-800/85 text-center text-[7px] font-bold leading-tight text-white">
-                                  {artworkSide(it, u) === "ด้านหลัง" ? "หลัง" : "หน้า"}
-                                </span>
-                              )}
-                              {artQtyOf(it, u, k) ? (
-                                <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-slate-900/75 text-center text-[8px] font-bold leading-tight text-white">
-                                  ×{artQtyOf(it, u, k)}
-                                </span>
-                              ) : null}
-                            </a>
-                            {/* ✕ เอารูปออกจากใบ (ใบที่กลายเป็นออเดอร์แล้วล็อกทั้งรายการ ไม่มีปุ่ม) */}
-                            {!locked && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (confirm(`เอารูปลายที่ ${k + 1} ออกจากรายการนี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับใบเสนอราคา)`)) removeArtwork(i, u);
-                                }}
-                                title="เอารูปนี้ออกจากใบเสนอราคา"
-                                aria-label="เอารูปลายนี้ออก"
-                                className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow transition hover:bg-rose-600"
-                              >
-                                ✕
-                              </button>
+                          {/* รูปตัวอย่างในแถว — กดเพื่อกาง แล้วจัดการลายทั้งหมดด้านล่าง */}
+                          <button type="button" onClick={toggle} className="w-20 shrink-0 text-left" title={open ? "ยุบรายการนี้" : "กางเพื่อจัดการภาพลาย"}>
+                            {arts[0] ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={arts[0]} alt={it.name} className="h-20 w-20 rounded-lg object-cover ring-1 ring-slate-200" />
+                            ) : (
+                              <span className="grid h-20 w-20 place-items-center rounded-lg bg-slate-50 text-xl text-slate-300 ring-1 ring-slate-200">🖼️</span>
                             )}
-                          </span>
-                        ))}
-                        {!it.artworkUrls?.length && (
-                          <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-sm text-slate-300">🖼️</span>
-                        )}
-                      </div>
+                            <span className="mt-0.5 block text-[10px] leading-tight text-slate-400">
+                              {arts.length ? `🎨 ลาย ${arts.length}` : "ยังไม่มีลาย"}
+                            </span>
+                          </button>
 
-                      <div className="min-w-0 space-y-2">
-                        <div>
-                          <p className={MINI}>ชื่องาน</p>
-                          <input
-                            value={it.name}
-                            disabled={locked}
-                            onChange={(e) => patchItem(i, { name: e.target.value })}
-                            placeholder="ชื่องาน"
-                            className={`${INP} font-bold`}
-                          />
-                        </div>
-                        <div>
-                          <p className={MINI}>สเปคที่เสนอ</p>
-                          <textarea
-                            value={it.selections ?? ""}
-                            disabled={locked}
-                            onChange={(e) => patchItem(i, { selections: e.target.value })}
-                            rows={2}
-                            placeholder="ขนาด · วัสดุ · จำนวนสี · รายละเอียดที่ตกลงกับลูกค้า"
-                            className={`${INP} resize-y`}
-                          />
-                        </div>
-                        <div className="flex flex-wrap items-end gap-2">
-                          <label className="block w-24">
-                            <span className={`block ${MINI}`}>จำนวน</span>
-                            <input
-                              type="number"
-                              min={1}
-                              value={it.qty}
-                              disabled={locked}
-                              onChange={(e) => patchItem(i, { qty: Math.max(1, Number(e.target.value) || 1) })}
-                              className={`${INP} text-center font-bold tabular-nums`}
-                            />
-                          </label>
-                          <label className="block w-32">
-                            <span className={`block ${MINI}`}>ราคา/หน่วย</span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={it.unitPrice}
-                              disabled={locked}
-                              onChange={(e) => patchItem(i, { unitPrice: Math.max(0, Number(e.target.value) || 0) })}
-                              className={`${INP} text-right font-bold tabular-nums`}
-                            />
-                          </label>
-                          <span className={`pb-1.5 text-[11px] ${faint}`}>
-                            {it.qty} × {formatPrice(it.unitPrice)} = <b className="text-slate-700">{formatPrice(it.qty * it.unitPrice)}</b>
+                          <div className="min-w-0 flex-1 basis-64">
+                            <button type="button" onClick={toggle} className="text-left text-sm font-bold text-slate-800 hover:text-indigo-700">
+                              {it.name} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
+                            </button>
+                            {editSel === i ? (
+                              // ✏️ ช่องแก้ชื่อ + รายละเอียด ชุดเดียวกับหน้าออเดอร์ — บันทึกเมื่อโฟกัสออกจากทั้งกล่อง · Cmd/Ctrl+Enter = บันทึก · Esc = ยกเลิก
+                              <div
+                                className="mt-1 space-y-1"
+                                onBlur={(e) => {
+                                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                                  saveItemSelections(i, selDraft, itemNameDraft);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") setEditSel(null);
+                                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveItemSelections(i, selDraft, itemNameDraft);
+                                }}
+                              >
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={itemNameDraft}
+                                  onChange={(e) => setItemNameDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !(e.metaKey || e.ctrlKey)) {
+                                      e.preventDefault();
+                                      saveItemSelections(i, selDraft, itemNameDraft);
+                                    }
+                                  }}
+                                  placeholder={it.name}
+                                  aria-label="ชื่อรายการ"
+                                  className="w-full rounded-lg border border-amber-300 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                                />
+                                <textarea
+                                  value={selDraft}
+                                  onChange={(e) => setSelDraft(e.target.value)}
+                                  rows={5}
+                                  placeholder="รายละเอียดงาน เช่น ขนาด · วัสดุ · จำนวนสี"
+                                  className="w-full resize-y rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-[11px] leading-snug text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                                />
+                                <p className="mt-0.5 text-[10px] text-slate-400">
+                                  ช่องบน = ชื่อรายการ (ว่าง = คงชื่อเดิม) · รายละเอียดบรรทัดละหัวข้อ “หัวข้อ: ค่า” · คลิกนอกช่องเพื่อบันทึก · Esc = ยกเลิก · ระบบลงประวัติว่าใครแก้
+                                </p>
+                              </div>
+                            ) : (
+                              <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
+                                <SelDetails sel={it.sel} text={it.selections} />
+                                {!locked && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelDraft(selectionsDraft(it));
+                                      setItemNameDraft(it.name);
+                                      setEditSel(i);
+                                      setItemOpen((cur) => ({ ...cur, [i]: true }));
+                                    }}
+                                    title="แก้ชื่อ/รายละเอียดของรายการนี้ (จำนวนแก้ที่ช่องจำนวน · ราคาแก้ที่ช่องราคา)"
+                                    className="mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-amber-600 transition hover:bg-amber-50"
+                                  >
+                                    ✏️ แก้ชื่อ/รายละเอียด
+                                  </button>
+                                )}
+                                {/* 🛠 แก้ตัวเลือก — เฉพาะรายการที่หยิบจากหน้าร้าน (มีสินค้าจริง + ตัวเลือกแบบหัวข้อ)
+                                    รายการที่กรอกชื่อ/ราคาเองไม่มีปุ่มนี้ เหมือนหน้าออเดอร์ */}
+                                {!locked && shopLine && (
+                                  <button
+                                    type="button"
+                                    onClick={() => editItemOptionsInShop(i)}
+                                    title="เปิดหน้าสินค้าพร้อมตัวเลือก/จำนวน/ลายเดิม (เหมือนปุ่มแก้ไขในตะกร้า) — แก้แล้วกด “ใส่ใบเสนอราคา” ระบบจะแทนที่รายการนี้ให้"
+                                    className="ml-1 mt-0.5 whitespace-nowrap rounded px-1 text-[10px] font-bold text-sky-600 transition hover:bg-sky-50"
+                                  >
+                                    🛠 แก้ตัวเลือก (หน้าร้าน)
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 📐 งานแบ่งแผ่น/เซ็ต — จำนวนที่เสนอไม่ใช่จำนวนชิ้นงาน บอกยอดชิ้นจริงคู่กับราคา · กด ✏️ แก้ตัวคูณได้ */}
+                            {editPer === i ? (
+                              <span className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px] font-bold text-sky-800">
+                                📐 1 {perUnit} =
+                                <input
+                                  autoFocus
+                                  type="number"
+                                  min={1}
+                                  value={perDraft}
+                                  onChange={(e) => setPerDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") setEditPer(null);
+                                    if (e.key === "Enter") saveItemPerUnit(i, Number(perDraft));
+                                  }}
+                                  onBlur={() => saveItemPerUnit(i, Number(perDraft))}
+                                  aria-label={`1 ${perUnit} เท่ากับกี่${perPiece}`}
+                                  className="w-16 rounded-md border border-sky-300 bg-white px-1.5 py-0.5 text-center focus:border-sky-500 focus:outline-none"
+                                />
+                                {perPiece}
+                                <span className="font-normal text-sky-600">· Enter บันทึก · Esc ยกเลิก</span>
+                              </span>
+                            ) : piecesLine ? (
+                              <p className="mt-1.5 text-[12px] font-bold text-sky-700">
+                                {piecesLine}
+                                {!locked && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPerDraft(String(it.unitYield?.per ?? y?.per ?? ""));
+                                      setEditPer(i);
+                                    }}
+                                    title="แก้ตัวเลขชิ้นต่อหน่วย — ร้านแก้ตารางทีหลังแล้วบรรทัดนี้ไม่ตรง ให้ตั้งเองตรงนี้"
+                                    className="ml-1 whitespace-nowrap rounded px-1 text-[10px] font-bold text-sky-600 transition hover:bg-sky-50"
+                                  >
+                                    ✏️ แก้จำนวนชิ้น
+                                  </button>
+                                )}
+                              </p>
+                            ) : (
+                              !locked &&
+                              open && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPerDraft("");
+                                    setEditPer(i);
+                                  }}
+                                  title="งานที่ขายเป็นเซ็ต/แผ่น — ตั้งว่า 1 หน่วยได้กี่ชิ้น แล้วทุกจอโชว์ยอดชิ้นจริงให้"
+                                  className="mt-1.5 block whitespace-nowrap rounded px-1 text-[10px] font-bold text-slate-400 transition hover:bg-sky-50 hover:text-sky-600"
+                                >
+                                  📐 ตั้งจำนวนชิ้นต่อหน่วย
+                                </button>
+                              )
+                            )}
+                          </div>
+
+                          {/* จำนวน · ราคา/หน่วย · ยอดรวม — มัดไว้ด้วยกัน จะพับลงบรรทัดใหม่ทั้งชุด ไม่แตกกลางทาง */}
+                          <span className="ml-auto flex shrink-0 items-start gap-3">
+                            {/* 🔢 จำนวน — แก้ได้เหมือนตะกร้า: [−] ช่องพิมพ์ [+] · ราคาขั้นบันได/เรทคิดใหม่ให้เอง */}
+                            {locked || areaLocked ? (
+                              <span
+                                className="w-24 shrink-0 text-center text-sm font-semibold text-slate-700"
+                                title={
+                                  areaLocked
+                                    ? "สินค้าคิดตามพื้นที่ — จำนวนล็อกตามขนาดที่กรอกไว้ (แก้ขนาดผ่าน “แก้ตัวเลือก” แทน)"
+                                    : "ใบนี้เป็นออเดอร์แล้ว — แก้ที่หน้าออเดอร์"
+                                }
+                              >
+                                {it.qty.toLocaleString("th-TH")}
+                              </span>
+                            ) : (
+                              <span
+                                className="flex w-24 shrink-0 items-center justify-center gap-0.5"
+                                title={
+                                  shopLine
+                                    ? "แก้จำนวนแล้วระบบคิดราคาขั้นบันได/เรทให้ใหม่เหมือนตะกร้า (ลงประวัติทุกครั้ง)"
+                                    : "แก้จำนวน — คงราคา/หน่วยเดิม (ลงประวัติทุกครั้ง)"
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => changeItemQty(i, it.qty - 1)}
+                                  disabled={it.qty <= 1}
+                                  aria-label="ลดจำนวน"
+                                  className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-sm font-bold leading-none text-slate-600 transition enabled:hover:border-amber-300 enabled:hover:bg-amber-50 enabled:hover:text-amber-700 disabled:opacity-40"
+                                >
+                                  −
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  inputMode="numeric"
+                                  value={qtyDraft[i] ?? String(it.qty)}
+                                  onChange={(e) => setQtyDraft((cur) => ({ ...cur, [i]: e.target.value }))}
+                                  onBlur={() => {
+                                    const draft = qtyDraft[i];
+                                    setQtyDraft((cur) => {
+                                      const n = { ...cur };
+                                      delete n[i];
+                                      return n;
+                                    });
+                                    if (draft === undefined) return;
+                                    const v = Math.floor(Number(draft));
+                                    if (Number.isFinite(v) && v >= 1 && v !== it.qty) changeItemQty(i, v);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                                    if (e.key === "Escape")
+                                      setQtyDraft((cur) => {
+                                        const n = { ...cur };
+                                        delete n[i];
+                                        return n;
+                                      });
+                                  }}
+                                  aria-label={`จำนวนของ ${it.name}`}
+                                  className="h-6 w-11 rounded-md border border-slate-200 bg-white px-1 text-center text-sm font-semibold text-slate-800 [appearance:textfield] focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-200 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => changeItemQty(i, it.qty + 1)}
+                                  aria-label="เพิ่มจำนวน"
+                                  className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-sm font-bold leading-none text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
+                                >
+                                  +
+                                </button>
+                              </span>
+                            )}
+
+                            {/* ราคา/หน่วย — กดที่ตัวเลข (หรือป้าย "รอตีราคา") เพื่อตีราคา · Enter บันทึก · Esc ยกเลิก */}
+                            <span className="w-28 shrink-0 text-right text-sm font-bold text-slate-900">
+                              {editPrice === i ? (
+                                <span className="flex items-center justify-end gap-1">
+                                  <span className="text-[11px] font-semibold text-slate-400">฿</span>
+                                  <input
+                                    autoFocus
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={priceDraft}
+                                    onChange={(e) => setPriceDraft(e.target.value)}
+                                    onBlur={() => saveItemPrice(i, priceDraft)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") setEditPrice(null);
+                                      if (e.key === "Enter") saveItemPrice(i, priceDraft);
+                                    }}
+                                    placeholder="0"
+                                    title="ราคาต่อ 1 หน่วย (ไม่ใช่ยอดรวม) — ระบบคูณจำนวนให้เอง"
+                                    className="w-20 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-right text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                                  />
+                                </span>
+                              ) : locked ? (
+                                <span>{formatPrice(it.unitPrice)}</span>
+                              ) : it.unitPrice > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPriceDraft(String(it.unitPrice));
+                                    setEditPrice(i);
+                                  }}
+                                  title="กดเพื่อแก้ราคา/หน่วย (ลงประวัติว่าใครแก้จากเท่าไร)"
+                                  className="rounded px-1 text-sm font-bold text-slate-900 transition hover:bg-amber-50 hover:text-amber-700"
+                                >
+                                  {formatPrice(it.unitPrice)}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPriceDraft("");
+                                    setEditPrice(i);
+                                  }}
+                                  title="กดเพื่อตีราคา — ใส่ราคาต่อ 1 หน่วย แล้วกด Enter"
+                                  className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-100"
+                                >
+                                  💬 รอตีราคา · กดใส่ราคา
+                                </button>
+                              )}
+                              <span className="mt-0.5 block text-[10px] font-normal text-slate-400">
+                                {it.qty.toLocaleString("th-TH")} × {formatPrice(it.unitPrice)}
+                              </span>
+                            </span>
+
+                            <span className="w-24 shrink-0 text-right text-sm font-extrabold tabular-nums text-slate-900">
+                              {formatPrice(it.qty * it.unitPrice)}
+                            </span>
                           </span>
                         </div>
-                        {/* 📐 งานแบ่งแผ่น/เซ็ต — จำนวนที่เสนอไม่ใช่จำนวนชิ้นงาน บอกยอดชิ้นจริงให้เห็นคู่กับราคา (เช่น สั่ง 2 แผ่น A3 ตัด A4 = 4 ชิ้น) */}
-                        {itemPiecesLine(it, prodById[it.productId]) && (
-                          <p className="mt-1.5 text-[12px] font-bold text-sky-700">{itemPiecesLine(it, prodById[it.productId])}</p>
+
+                        {/* 🎨 ภาพลายที่แนบมาตอนหยิบของ — กางการ์ดถึงจะจัดการได้ (เอาออกทีละรูป ไฟล์ยังอยู่ในคลัง) */}
+                        {open && arts.length > 0 && (
+                          <div className="mt-3 border-t border-slate-100 pt-3">
+                            <p className={`${MINI} mb-1.5`}>ภาพลายที่แนบ · {arts.length} รูป</p>
+                            <div className="flex flex-wrap gap-2">
+                              {arts.map((u, k) => (
+                                <span key={k} className="relative block">
+                                  <a
+                                    href={u}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="relative block"
+                                    title={[
+                                      artworkSide(it, u),
+                                      artQtyOf(it, u, k) ? `ลายที่ ${k + 1} × ${artQtyOf(it, u, k)} ชิ้น` : `ลายที่ ${k + 1}`,
+                                      artSizeOf(it, u, k) ? `📐 ${artSizeText(artSizeOf(it, u, k)!)}` : "",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={u} alt={artworkSide(it, u) ?? ""} className="h-14 w-14 rounded-md object-cover ring-1 ring-slate-200" />
+                                    {/* งานพิมพ์ 2 ด้าน — ป้ายหน้า/หลังด้านบน · 🔢 จำนวนต่อลายด้านล่าง */}
+                                    {artworkSide(it, u) && (
+                                      <span className="absolute left-0 right-0 top-0 rounded-t-md bg-slate-800/85 text-center text-[8px] font-bold leading-tight text-white">
+                                        {artworkSide(it, u) === "ด้านหลัง" ? "หลัง" : "หน้า"}
+                                      </span>
+                                    )}
+                                    {artQtyOf(it, u, k) ? (
+                                      <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-slate-900/75 text-center text-[9px] font-bold leading-tight text-white">
+                                        ×{artQtyOf(it, u, k)}
+                                      </span>
+                                    ) : null}
+                                  </a>
+                                  {/* ✕ เอารูปออกจากใบ (ใบที่กลายเป็นออเดอร์แล้วล็อกทั้งรายการ ไม่มีปุ่ม) */}
+                                  {!locked && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm(`เอารูปลายที่ ${k + 1} ออกจากรายการนี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับใบเสนอราคา)`)) removeArtwork(i, u);
+                                      }}
+                                      title="เอารูปนี้ออกจากใบเสนอราคา"
+                                      aria-label="เอารูปลายนี้ออก"
+                                      className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow transition hover:bg-rose-600"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {!quote.items.length && (
                   <p className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-400">
