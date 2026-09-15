@@ -7564,6 +7564,22 @@ export default function ProductDetail({
                         </p>
                       );
                     })()
+                  ) : rate?.extraDesignFee && rate.minPerDesign && !freeMix && designs > included ? (
+                    // กติกา "คละเกินโควตา คิดลายละ N" — ราคาต่อชิ้นยังคิดเรทยอดรวม บอกที่มาของค่าคละตรง ๆ
+                    (() => {
+                      const unit = matrix?.unit ?? "ชิ้น";
+                      const over = designs - included;
+                      return (
+                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                          💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละได้ฟรี {included.toLocaleString("th-TH")} ลาย
+                          (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — เลือก{" "}
+                          {designs.toLocaleString("th-TH")} ลาย เกินมา {over.toLocaleString("th-TH")} ลาย คิดลายละ{" "}
+                          {formatPrice(rate.extraDesignFee)} ={" "}
+                          <strong className="font-bold">+{formatPrice(over * rate.extraDesignFee)}</strong> ·
+                          ราคาต่อ{unit}ยังคิดเรทตามยอดรวมเหมือนเดิม
+                        </p>
+                      );
+                    })()
                   ) : tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
                     // คละเกินโควตาของเรท — ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย (บอกลูกค้าตรง ๆ ว่าจ่ายเรทไหน)
                     (() => {
@@ -7608,6 +7624,8 @@ export default function ProductDetail({
                         ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${pieceUnit}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}` +
                           (rate.underMinPieceFee
                             ? ` (ไม่ถึงคิดส่วนต่าง${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)})`
+                            : rate.extraDesignFee
+                            ? ` (คละเกินโควตาได้ ลายละ +${formatPrice(rate.extraDesignFee)})`
                             : "")
                         : ""}
                     </p>
