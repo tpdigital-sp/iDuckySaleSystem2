@@ -234,6 +234,7 @@ export function applyReplaceMarker(
     ...(old.proofNote ? { proofNote: old.proofNote } : {}),
     ...(old.proofUpdatedAt ? { proofUpdatedAt: old.proofUpdatedAt } : {}),
     ...(old.graphicAck ? { graphicAck: old.graphicAck } : {}),
+    ...(old.addedAt ? { addedAt: old.addedAt } : {}),
     ...(old.noteAck ? { noteAck: old.noteAck } : {}),
     ...(old.sampleRequired ? { sampleRequired: old.sampleRequired } : {}),
     ...(old.samplePacked ? { samplePacked: old.samplePacked } : {}),

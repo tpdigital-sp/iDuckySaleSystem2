@@ -2,7 +2,7 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderEarlyPayAmount, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { orderEarlyPayAmount, orderTotal, proofMissing, proofsOf, type Order, type OrderItem } from "@/lib/admin-data";
 import { amountsForRecord, tpAmountsFix } from "@/lib/tp-amounts";
 import { SITE_URL } from "@/lib/shop-info";
 import { itemQtyText, itemUnitYield } from "@/lib/item-yield";
@@ -58,6 +58,44 @@ function slipRefNoFor(order: Order, isFinal: boolean, slipPath?: string): string
 /** สูตรยอดของเรคอร์ด (bill / wht / received / fee) ย้ายไป @/lib/tp-amounts — ส่งออกต่อให้ที่เดิมยังเรียกได้ */
 export { amountsForRecord } from "@/lib/tp-amounts";
 
+/**
+ * 📦 รายการสินค้าแบบโครงสร้างที่ msVerify/msDaily และการ์ดบอร์ด WIP อ่าน
+ * qty = จำนวนที่ลูกค้าสั่ง (หน่วยขาย) · unit/pieces = หน่วยกับจำนวนชิ้นจริง (งานเซ็ต/แผ่น)
+ */
+function tpItem(i: OrderItem) {
+  const y = itemUnitYield(i);
+  return {
+    name: i.name,
+    qty: i.qty,
+    unit: y?.unit || "ชิ้น",
+    pieces: i.qty * Math.max(1, y?.per ?? 1),
+    piece: y?.piece || "ชิ้น",
+  };
+}
+
+/** ข้อความสรุปรายการ (ท้าย note ของเรคอร์ด) — "×17" อ่านเป็นหน่วยขายเหมือนหน้าออเดอร์ */
+function itemSummaryOf(order: Order): string {
+  return order.items
+    .map((i) => `${i.name} ×${itemQtyText(i)}`)
+    .join(", ")
+    .slice(0, 120);
+}
+
+/**
+ * ➕ "งานที่เพิ่มเข้าใบเดิมทีหลัง และยังไม่มีแบบ" ณ เวลาที่รายงาน — บอร์ด WIP กราฟฟิกใช้ตัดสินว่าต้องมีการ์ดใหม่ไหม
+ *
+ * ทำไม (เจ้าของร้าน/กราฟฟิกแจ้ง 15 ก.ย. 69 · OD-260910-1379 รัสรินทร์):
+ * ลูกค้ายืนยันแบบรอบแรกแล้วสั่งเพิ่มในออเดอร์เดิม → เงินก้อนใหม่เข้าเป็น "สลิปใบเพิ่ม" ซึ่งบอร์ดข้ามทุกใบ
+ * (ไม่ใช่งานใหม่ในกรณีปกติ — โอนขาด/ค่าส่ง) ส่วนการ์ดเดิมก็อนุมัติ+เคลียร์ไปแล้ว → ไม่มีการ์ดของงานที่เพิ่ม
+ *
+ * ส่ง "เวลาที่เพิ่ม" (OrderItem.addedAt) ไปด้วย ให้บอร์ดเทียบกับเวลาที่กราฟฟิกสร้างโฟลเดอร์เอง
+ * — เพิ่มก่อนสร้างโฟลเดอร์ = การ์ดหลักครอบคลุมอยู่แล้ว · เพิ่มหลังจากนั้น = ต้องมีการ์ดของตัวเอง
+ * รายการที่ติ๊ก "ไม่ต้องทำแบบ" (ค่าบริการ/ยอดเพิ่ม) ไม่นับ — ไม่มีอะไรให้ออกแบบ (ดู proofMissing)
+ */
+function addedWorkItems(order: Order) {
+  return order.items.filter((i) => i.addedAt && proofMissing(i)).map((i) => ({ ...tpItem(i), addedAt: i.addedAt }));
+}
+
 export async function reportPaidToTP(
   order: Order,
   verifiedBy: string,
@@ -109,10 +147,7 @@ export async function reportPaidToTP(
     const money = amountsForRecord(order, isFinal, opts);
     const slip = await slipLinkFor(order, isFinal, opts?.slipPath);
     /* 🔢 งานเซ็ต/แผ่น — "×17" อ่านเป็น 17 ชิ้น ทั้งที่เป็น 17 เซ็ต (= 102 ชิ้น) · ใช้ข้อความชุดเดียวกับหน้าออเดอร์ */
-    const itemSummary = order.items
-      .map((i) => `${i.name} ×${itemQtyText(i)}`)
-      .join(", ")
-      .slice(0, 120);
+    const itemSummary = itemSummaryOf(order);
 
     await db
       .collection(TP_PAID_COLLECTION)
@@ -141,17 +176,9 @@ export async function reportPaidToTP(
         orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(order.id)}`,
         note: opts?.noteSuffix ? `${opts.noteSuffix} · ${itemSummary}`.slice(0, 120) : itemSummary,
         // 📦 รายการสินค้าแบบโครงสร้าง — msVerify/msDaily เอาไปใส่คอลัมน์ "รายการสินค้า" (note ถูกตัด 120 ตัวอักษร ใช้ parse ไม่ครบ)
-        // qty = จำนวนที่ลูกค้าสั่ง (หน่วยขาย) · unit/pieces = หน่วยกับจำนวนชิ้นจริง (งานเซ็ต/แผ่น)
-        items: order.items.map((i) => {
-          const y = itemUnitYield(i);
-          return {
-            name: i.name,
-            qty: i.qty,
-            unit: y?.unit || "ชิ้น",
-            pieces: i.qty * Math.max(1, y?.per ?? 1),
-            piece: y?.piece || "ชิ้น",
-          };
-        }),
+        items: order.items.map(tpItem),
+        // ➕ ของที่ลูกค้าสั่งเพิ่มเข้าใบเดิมและยังไม่มีแบบ — บอร์ด WIP ขึ้นการ์ด "สั่งเพิ่ม" ให้เมื่อเพิ่มหลังสร้างโฟลเดอร์แล้ว
+        newWorkItems: addedWorkItems(order),
         // ข้อความหมายเหตุล้วน ๆ (ไม่ปนรายการสินค้า) เช่น "มัดจำ 50% งวดแรก" — ว่างได้
         noteText: opts?.noteSuffix ?? "",
         // สลิปโอน — msVerify เอาไปโชว์เป็นรูปย่อในตาราง (ลิงก์เซ็นอายุ 1 ปี · เก็บ path ไว้เซ็นใหม่ได้)
@@ -199,6 +226,39 @@ export async function syncPaidCompleteToTP(order: Order, verifiedBy: string, not
     await ref.set({ partial: false, paymentStatus: "ชำระแล้ว", paidCompleteAt: new Date().toISOString(), paidCompleteBy: verifiedBy }, { merge: true });
   } catch (e) {
     console.error("[tp-report] ปลดธงรับบางส่วนไม่สำเร็จ:", (e as Error)?.message);
+  }
+}
+
+/**
+ * 📦 รายการในใบเปลี่ยนหลังเรคอร์ดสะพานถูกสร้างไปแล้ว (ลูกค้าสั่งเพิ่มในออเดอร์เดิม / แอดมินแก้รายการ)
+ * → เรคอร์ดหลักต้องโชว์รายการชุดปัจจุบัน ไม่ใช่ชุดตอนเงินก้อนแรกเข้า
+ *   (การ์ดบอร์ด WIP กับคอลัมน์ "รายการสินค้า" ของ msVerify อ่านจากตรงนี้)
+ *
+ * แตะเฉพาะ note/items/newWorkItems — ยอดเงินเป็นของ syncAmountsToTP (คนละเรื่องกัน ห้ามปนกัน)
+ * ไม่แตะเรคอร์ดสลิปใบเพิ่ม: ใบเพิ่มคือ "ภาพ ณ ตอนเงินก้อนนั้นเข้า" ที่บอร์ดใช้ตัดสินว่ามีงานเพิ่มไหม
+ * ใบที่ยังไม่มี (ยังไม่ชำระ) = not-found ข้ามเงียบ · fire-and-forget เหมือน reportPaidToTP
+ */
+export async function syncItemsToTP(order: Order): Promise<void> {
+  const db = getFirestoreAdmin();
+  if (!db) return;
+  const summary = itemSummaryOf(order);
+  for (const suffix of ["", "-final"]) {
+    const ref = db.collection(TP_PAID_COLLECTION).doc(`${order.id}${suffix}`);
+    try {
+      const snap = await ref.get();
+      if (!snap.exists) continue;
+      const noteText = String(snap.get("noteText") ?? "");
+      await ref.update({
+        items: order.items.map(tpItem),
+        note: (noteText ? `${noteText} · ${summary}` : summary).slice(0, 120),
+        newWorkItems: addedWorkItems(order),
+        itemsUpdatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      const code = (e as { code?: number | string })?.code;
+      if (code !== 5 && code !== "not-found")
+        console.error("[tp-report] อัปเดตรายการสินค้าไป msVerify/WIP ไม่สำเร็จ:", (e as Error)?.message);
+    }
   }
 }
 

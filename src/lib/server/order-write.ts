@@ -1,5 +1,6 @@
-import { reconcileOrderTax, withLog, type Order } from "@/lib/admin-data";
+import { reconcileOrderTax, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { syncOrderEarlyPay } from "./order-early-pay";
+import { syncItemsToTP } from "./tp-report";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
 type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -39,6 +40,40 @@ function itemsFingerprint(o: Order | null | undefined): string {
     .join("¦");
 }
 
+/**
+ * ➕ ประทับเวลาให้ "รายการที่เพิ่มเข้าออเดอร์เดิมทีหลัง" (OrderItem.addedAt)
+ *
+ * ทำไม (เจ้าของร้าน/กราฟฟิกแจ้ง 15 ก.ย. 69 · OD-260910-1379):
+ * การ์ดกราฟฟิกบนบอร์ด WIP ถูกสร้างครั้งเดียวตอนเงินก้อนแรกเข้า — ลูกค้าสั่งเพิ่มในออเดอร์เดิม
+ * หลังกราฟฟิกทำแบบรอบแรกจบไปแล้ว เงินก้อนใหม่เข้าช่อง "สลิปใบเพิ่ม" ซึ่งบอร์ดข้ามทุกใบ
+ * → ไม่มีการ์ดของงานที่เพิ่ม งานหายเงียบ · เวลานี้คือสิ่งที่บอร์ดเอาไปเทียบกับเวลาที่สร้างโฟลเดอร์
+ *
+ * จับคู่รายการเก่า-ใหม่แบบ multiset ด้วย productId|ชื่อ เท่านั้น — แก้จำนวน/ตัวเลือก/ราคาของบรรทัดเดิม
+ * ไม่ถือว่าเป็นของใหม่ (ไม่ใช่งานแบบเพิ่ม) · บรรทัดที่เกินมาจากของเดิม = ของที่เพิ่ม
+ * ใบใหม่ (ไม่มี prev) ไม่ประทับ — ของที่สั่งพร้อมกันตอนเปิดใบอยู่ในการ์ดแรกอยู่แล้ว
+ */
+function stampAddedItems(prev: Order | null | undefined, next: Order, at: string): Order {
+  const before = prev?.items ?? [];
+  if (!before.length) return next;
+  const key = (i: OrderItem) => `${i.productId}|${i.name}`;
+  const pool = new Map<string, OrderItem[]>();
+  for (const i of before) {
+    const k = key(i);
+    if (!pool.has(k)) pool.set(k, []);
+    pool.get(k)!.push(i);
+  }
+  let changed = false;
+  const items = next.items.map((i) => {
+    const old = pool.get(key(i))?.shift();   // จับคู่ก่อนเสมอ (ของเดิมตัวหนึ่งจับคู่ได้ครั้งเดียว)
+    if (i.addedAt) return i;
+    // บรรทัดเดิม — คงเวลาเดิมไว้ (หน้าจอเก่าที่ส่งก้อนไม่มีฟิลด์นี้มา ต้องไม่ทำให้เวลาที่ประทับไว้หาย)
+    if (old && !old.addedAt) return i;
+    changed = true;
+    return { ...i, addedAt: old?.addedAt ?? at };
+  });
+  return changed ? { ...next, items } : next;
+}
+
 /** สร้างออเดอร์ใหม่ (insert) — ใบใหม่ = รายการเปลี่ยนเสมอ จึงคิดกฎตอนบันทึกให้ทุกครั้ง */
 export async function insertOrder(sb: SB, order: Order, by = "ระบบ"): Promise<WriteOrderResult> {
   const final = await syncOrderEarlyPay(sb, order, by);
@@ -59,6 +94,8 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
   const changed = itemsChanged(prev, order);
   const by = opts?.by ?? "ระบบ";
   let final = changed ? await syncOrderEarlyPay(sb, order, by) : order;
+  // ➕ ของที่เพิ่มเข้าใบเดิมทีหลัง — ประทับเวลาก่อนบันทึก (บอร์ด WIP กราฟฟิกใช้รู้ว่ามีงานเพิ่ม)
+  final = stampAddedItems(prev, final, new Date().toISOString());
   /**
    * 🧾 ฐานภาษีขยับ (แก้รายการ/ค่าส่ง/ส่วนลด) → VAT กับหัก ณ ที่จ่ายต้องขยับตาม ไม่ใช่ค้างเลขของฐานเก่า
    * กติกาอยู่ใน reconcileOrderTax (admin-data.ts) — วางไว้ตรงนี้ที่เดียว ทางเข้าใหม่ได้ไปด้วยอัตโนมัติ
@@ -66,5 +103,11 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
   const tax = reconcileOrderTax(prev, final);
   if (tax) final = withLog(tax.order, by, "คิดภาษีใหม่ตามยอดที่แก้", `${tax.note} (ยอดรวมต้องตรงบิลที่ออกให้ลูกค้า)`);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);
+  /**
+   * 🏭 รายการเปลี่ยน → เรคอร์ดสะพาน (msVerify / การ์ดบอร์ด WIP กราฟฟิก) ต้องเห็นรายการชุดใหม่
+   * ไม่งั้นการ์ดของออเดอร์ค้างโชว์รายการชุดแรก กราฟฟิกไม่รู้ว่าลูกค้าสั่งเพิ่มอะไรมา
+   * fire-and-forget แบบเดียวกับ sync ตัวอื่นใน tp-report (พังเงียบ ไม่ทำให้บันทึกออเดอร์ล้ม)
+   */
+  if (!error && changed) await syncItemsToTP(final);
   return { order: final, error };
 }
