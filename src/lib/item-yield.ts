@@ -1,4 +1,4 @@
-import { orderUnitYield, unitYieldOf, type Product } from "./products";
+import { backfillShowWhen, migrateRenamedGroupKeys, orderUnitYield, unitYieldOf, type Product } from "./products";
 import { orderPiecesPerUnit } from "./admin-data";
 import { parseSpecText } from "./spec-text";
 
@@ -17,10 +17,19 @@ export interface YieldItem {
 /**
  * ตัวเลือกแบบมีโครงสร้างของรายการ — ไม่มี (ใบเสนอราคาเก่า/ออเดอร์เก่าเก็บแต่ข้อความ) ก็กางจากข้อความ
  * "ขนาดตัด: A4 · เรทราคา: ปกติ" → { ขนาดตัด: "A4", เรทราคา: "ปกติ" } ให้ orderUnitYield อ่านตัวเลือกได้
+ *
+ * ⚠️ ส่งสินค้ามาด้วยทุกครั้งที่จะ "คำนวณสด" จากใบเก่า — ร้านเพิ่ม/เปลี่ยนชื่อกลุ่มทีหลังได้เรื่อย ๆ
+ * ใบที่สั่งไปก่อนหน้าไม่มีคีย์ของกลุ่มใหม่ กลุ่มลูกเลยถูกมองว่าซ่อน แล้วตัวเลขหล่นเงียบ ๆ
+ * (กลุ่ม "ขนาดไดคัท" 15 ก.ย. 69 → ช่องกรอกขนาดถูกซ่อน ชิ้น/แผ่น A3 จาก 36 เหลือ 1)
+ * กติกาเดียวกับฝั่งตะกร้า (repriceCartGroups) — ดู backfillShowWhen / migrateRenamedGroupKeys
  */
-export function itemSel(item: Pick<YieldItem, "sel" | "selections">): Record<string, string> {
-  if (item.sel && Object.keys(item.sel).length) return item.sel;
-  return Object.fromEntries(parseSpecText(item.selections ?? "").filter(([k]) => k));
+export function itemSel(item: Pick<YieldItem, "sel" | "selections">, product?: Product | null): Record<string, string> {
+  const sel =
+    item.sel && Object.keys(item.sel).length
+      ? item.sel
+      : Object.fromEntries(parseSpecText(item.selections ?? "").filter(([k]) => k));
+  if (!product || !Object.keys(sel).length) return sel;
+  return backfillShowWhen(product, migrateRenamedGroupKeys(product, sel));
 }
 
 /**
@@ -39,7 +48,7 @@ export function itemUnitYield(item: YieldItem, product?: Product | null): ItemUn
   const frozen = item.unitYield?.per ? item.unitYield : null;
   if (frozen && frozen.per > 1) return frozen;
   if (product) {
-    const y = orderUnitYield(product, itemSel(item));
+    const y = orderUnitYield(product, itemSel(item, product));
     if (y && (y.per > 1 || !frozen)) return y;
   }
   return frozen ?? orderPiecesPerUnit(item);
@@ -60,7 +69,7 @@ export function itemPiecesLine(item: YieldItem, product?: Product | null): strin
   // 📏 งานกรอกด้านยาวสุดด้านเดียว — ห้อย "กราฟฟิกแจ้งจำนวนที่ได้จริงตอนส่งแบบ" ทุกจอ (เจ้าของร้านสั่ง 10 ก.ย. 69)
   let note = "";
   if (product) {
-    const c = unitYieldOf(product, itemSel(item));
+    const c = unitYieldOf(product, itemSel(item, product));
     if (c && c.per === y.per) {
       size = ` (${c.label} ${c.size})`;
       approx = c.approx;

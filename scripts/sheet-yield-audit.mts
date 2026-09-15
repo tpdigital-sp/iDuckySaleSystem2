@@ -10,9 +10,12 @@
  * สคริปต์นี้เดินทุกสินค้าในฐาน แล้วเทียบกับ **โปรแกรม Print-Fit ตัวจริง** (~/Desktop/Print-Fit/js/print-fit.js)
  * ที่ร้านใช้จัดวางหน้างาน — ดู [[iducky-sheet-yield-printfit]] · [[iducky-diecut100-longest-only]]
  *
- * เกณฑ์:
+ * เกณฑ์ (ตรวจเฉพาะ **ชิ้นไม่จัตุรัส** = ทางที่ต้องตรงกับ Print-Fit เป๊ะ · จัตุรัสใช้ตารางของร้าน):
  *   ❌ บอกเกินจริง  = เว็บบอกมากกว่าที่ Print-Fit วางได้ → ลูกค้าสั่งแผ่นน้อยกว่าที่ต้องใช้จริง (ร้านเสียหาย)
  *   ⚠️ บอกต่ำกว่าจริง = เว็บบอกน้อยกว่าจริงเกิน 20% → ลูกค้าจ่ายเกินความจำเป็น (เคส 13.97 × 7 = 6 แทนที่จะเป็น 10)
+ * 📋 ชิ้นจัตุรัส (รวมกรอกด้านเดียว) ใช้ **ตารางของร้านตรง ๆ** ตามภาพ "ขนาด+จำนวนที่ได้ใน 1 A3"
+ *    (เจ้าของร้านย้ำ 15 ก.ย. 69 "4 × 4 ต้องได้ 60 · 5 × 5 ต้องได้ 40") จึงไม่เอามาตัดสินผ่าน/ไม่ผ่าน
+ *    แค่รายงานไว้ในหัวข้อ 📋 ว่าต่างจากผังจริงตรงไหน
  * ⚠️ เทียบได้เฉพาะกลุ่มที่ใช้ชีทเดียวกับ Print-Fit (ไดคัท 43.76 × 28.89 เว้น 0.5) กลุ่มที่ใช้แผ่นอื่นจะบอกว่า "ไม่ได้เทียบ"
  */
 import { readFileSync } from "node:fs";
@@ -110,6 +113,7 @@ const over: string[] = []; // ❌ บอกเกินจริง
 const under: string[] = []; // ⚠️ บอกต่ำกว่าจริงมาก
 const broken: string[] = []; // ❌ ตั้งค่าพัง นับไม่ได้เลย
 const skipped: string[] = []; // ℹ️ เทียบไม่ได้ (แผ่นคนละสเปก)
+const tableOnly: string[] = []; // 📋 ชิ้นจัตุรัส = ตารางของร้าน (รายงานอย่างเดียว ไม่ตัดสินผ่าน/ไม่ผ่าน)
 const push = (arr: string[], line: string) => {
   if (FULL || arr.length < 12) arr.push(line);
   else if (arr[arr.length - 1] !== "…") arr.push("…");
@@ -146,6 +150,7 @@ for (const p of products) {
       nUnder = 0;
     for (let w = wMin; w <= wMax; w += 0.5)
       for (let h = hMin; h <= hMax; h += 0.5) {
+        if (Math.abs(w - h) < 1e-9) continue; // จัตุรัส = ใช้ตารางของร้าน (รายงานแยกในหัวข้อ 📋)
         const web = sheetFitCount(cfg, w, h, bound);
         const real = printFitAuto(w, h);
         if (real === 0) continue; // งานเต็มแผ่น (เว็บนับ 1 ตามกติกาของร้าน)
@@ -160,6 +165,23 @@ for (const p of products) {
     const how = cfg.perSheetTiers ? (cfg.longestOnly ? "ตารางร้าน+จัดวาง" : "ตารางร้าน") : "จัดวาง";
     if (nOver) push(over, `${p.id} / ${opt.label} (${how}) — บอกเกิน ${nOver} ขนาด · หนักสุด ${exOver}`);
     if (nUnder) push(under, `${p.id} / ${opt.label} (${how}) — บอกต่ำ ${nUnder} ขนาด · หนักสุด ${exUnder}`);
+    /*
+     * 📋 ชิ้นจัตุรัส (กรอกด้านเดียวก็แทนเป็น L×L): อ่านตารางของร้านตรง ๆ
+     * ตารางเป็นตัวเลขที่ร้านประกาศกับลูกค้า ไม่ใช่ค่าที่คำนวณ — ต่างจากผังจริงได้ทั้งสองทาง รายงานไว้เฉย ๆ
+     */
+    if (cfg.longestOnly && cfg.perSheetTiers?.length) {
+      let nDiff = 0;
+      let worst = 0;
+      let ex = "";
+      for (let L = Math.max(wMin, hMin); L <= Math.min(wMax, hMax); L += 0.5) {
+        const real = printFitAuto(L, L);
+        const table = sheetFitCount(cfg, L, L, bound);
+        if (!real || table === real) continue;
+        nDiff++;
+        if (Math.abs(table - real) > worst) (worst = Math.abs(table - real)), (ex = `${L} ซม. ตาราง ${table} · ผังจริง ${real}`);
+      }
+      if (nDiff) push(tableOnly, `${p.id} / ${opt.label} — ต่างจากผังจริง ${nDiff} ขนาด · หนักสุด ${ex}`);
+    }
   }
 }
 
@@ -218,7 +240,7 @@ if (DOCS) {
         if (!frozen || frozen <= 1) continue;
         const prod = byId.get(it.productId);
         if (!prod) continue;
-        const now = orderUnitYield(prod, itemSel(it) as Record<string, string>);
+        const now = orderUnitYield(prod, itemSel(it, prod) as Record<string, string>);
         if (!now || now.per <= 1 || now.per === frozen) continue;
         docs.push(
           `${row.id} · ${it.name} — แช่ไว้ ${frozen} · วันนี้ ${now.per} ${now.piece}/${now.unit} (${d.status ?? "-"})`
@@ -238,6 +260,7 @@ section("❌", "บอกจำนวนเกินจริง (ลูกค�
 section("⚠️", "บอกจำนวนต่ำกว่าจริงเกิน 20% (ลูกค้าจ่ายเกิน)", under);
 section("❌", "ตั้งค่าพัง นับชิ้นไม่ได้", broken);
 section("⚠️", "เรทที่ระบบไม่รู้ตัวคูณหน่วยขาย", unitless);
+section("📋", "ชิ้นจัตุรัส = ใช้ตารางของร้าน (ตัวเลขตามภาพที่ส่งลูกค้า — ต่างจากผังจริงได้ ไม่ใช่บั๊ก)", tableOnly);
 section("ℹ️", "กลุ่มที่เทียบกับ Print-Fit ไม่ได้ (ใช้แผ่นคนละสเปก — ต้องเช็คด้วยมือ)", skipped);
 if (DOCS) section("🧊", "ใบที่แช่เลขไว้ไม่ตรงกับสินค้าวันนี้", docs);
 const bad = over.filter((l) => l !== "…").length + broken.filter((l) => l !== "…").length;

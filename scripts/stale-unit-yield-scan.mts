@@ -60,7 +60,7 @@ for (const table of ["orders", "quotes"] as const) {
       if (!frozen?.per || !it.productId || it.productId.includes("#") || it.productId === "special-item") return it;
       const prod = products.get(it.productId);
       if (!prod) return it;
-      const sel = itemSel(it);
+      const sel = itemSel(it, prod);
       if (!Object.keys(sel).length) return it;
       const now = orderUnitYield(prod, sel);
       if (!now || now.per === frozen.per) return it;

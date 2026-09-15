@@ -181,11 +181,11 @@ export async function withUnitYield<T extends YieldItem>(items: T[]): Promise<T[
   return Promise.all(
     items.map(async (it) => {
       if (it.unitYield?.per || !it.productId || it.productId.includes("#") || it.productId === "special-item") return it;
-      const sel = itemSel(it);
-      if (!Object.keys(sel).length) return it;
+      if (!Object.keys(itemSel(it)).length) return it;
       try {
         const prod = await getProductServer(it.productId);
-        const y = prod ? orderUnitYield(prod, sel) : null;
+        // เติมค่ากลุ่มควบคุมที่ร้านเพิ่งเพิ่มให้ก่อน (ใบเสนอราคาเก่าที่เพิ่งแปลงเป็นออเดอร์ — ดู itemSel)
+        const y = prod ? orderUnitYield(prod, itemSel(it, prod)) : null;
         return y ? { ...it, unitYield: y } : it;
       } catch {
         return it;
