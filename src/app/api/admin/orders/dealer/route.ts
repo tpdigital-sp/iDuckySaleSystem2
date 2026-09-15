@@ -8,6 +8,7 @@ import { getProductServer } from "@/lib/products-server";
 import { dealerLeftoverDiscount, dealerRepriceBlockedBy, repriceOrderForDealer } from "@/lib/order-dealer";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import { updateOrder } from "@/lib/server/order-write";
+import { dealerSenderForOrder } from "@/lib/server/dealer-sender";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,22 @@ export async function POST(req: Request) {
     `ยอดรวม ฿${thb(totalBefore)} → ฿${thb(total)}`,
   ].join(" · ");
 
-  const updated = withLog(repriced, who, on ? "🤝 เปลี่ยนเป็นราคาตัวแทนจำหน่าย" : "ถอดราคาตัวแทนจำหน่าย (กลับราคาปกติ)", detail);
+  /**
+   * 📮 ใบที่เพิ่งกลายเป็นออเดอร์ตัวแทน — เติม "ผู้ส่งประจำ" ที่ตัวแทนตั้งไว้เองให้เลย
+   * ไม่งั้นใบปะหน้ายังขึ้นชื่อร้านเรา ทั้งที่ตัวแทนตั้งชื่อร้านเขาไว้แล้ว (เจอจริง 15 ก.ย. 69 · OD-260915-3447)
+   * ใบที่ตั้งผู้ส่งไว้แล้วไม่ทับ · ถอดราคาตัวแทนไม่แตะผู้ส่ง (แอดมินกด "กลับไปใช้ชื่อร้านเรา" เองได้ในหน้าออเดอร์)
+   */
+  let senderNote = "";
+  let next = repriced;
+  if (on && !repriced.sender) {
+    const auto = await dealerSenderForOrder(sb, repriced);
+    if (auto) {
+      next = { ...next, sender: auto };
+      senderNote = ` · ผู้ส่งบนกล่อง: ${[auto.name, auto.phone].filter(Boolean).join(" ")}`;
+    }
+  }
+
+  const updated = withLog(next, who, on ? "🤝 เปลี่ยนเป็นราคาตัวแทนจำหน่าย" : "ถอดราคาตัวแทนจำหน่าย (กลับราคาปกติ)", detail + senderNote);
   const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

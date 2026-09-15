@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { OrderSender } from "@/lib/admin-data";
 import { cleanSender, senderKey } from "@/lib/order-sender";
 
-type SenderRow = OrderSender & { from: string; date?: string; uses: number };
+type SenderRow = OrderSender & { from: string; date?: string; uses: number; fromDealer?: boolean };
 
 const EMPTY = { name: "", phone: "", address: "" };
 const fill = (s: OrderSender | undefined) => ({ name: s?.name ?? "", phone: s?.phone ?? "", address: s?.address ?? "" });
@@ -132,7 +132,7 @@ export default function SenderPicker({
               onClick={() => use(suggest)}
               className="inline-flex min-h-[28px] items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 text-[11px] font-bold text-teal-700 transition hover:bg-teal-100"
             >
-              ↩️ ใช้ผู้ส่งเดิมของลูกค้ารายนี้: {suggest.name || suggest.phone}
+              ↩️ {suggest.fromDealer ? "ใช้ผู้ส่งที่ตัวแทนตั้งไว้เอง" : "ใช้ผู้ส่งเดิมของลูกค้ารายนี้"}: {suggest.name || suggest.phone}
             </button>
           )}
         </div>

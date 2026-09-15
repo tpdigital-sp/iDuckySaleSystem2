@@ -171,7 +171,7 @@ export default function AccountPage() {
         headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(next),
       });
-      const j = (await res.json()) as { sender?: OrderSender; error?: string };
+      const j = (await res.json()) as { sender?: OrderSender; applied?: string[]; error?: string };
       if (!res.ok) {
         setSenderErr(j.error ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
         return;
@@ -179,7 +179,9 @@ export default function AccountPage() {
       setSender(j.sender);
       setSenderOpen(false);
       setSenderSaved(true);
-      showToast("บันทึกชื่อผู้ส่งแล้ว");
+      // ใบที่ยังไม่ได้ปริ้นของคุณ ระบบเปลี่ยนชื่อผู้ส่งให้ด้วย — บอกไปเลยว่ากี่ใบ จะได้ไม่ต้องไล่เช็คเอง
+      const n = j.applied?.length ?? 0;
+      showToast(n ? `บันทึกแล้ว · ใช้กับออเดอร์ที่ยังไม่ได้ปริ้น ${n} ใบให้ด้วย` : "บันทึกชื่อผู้ส่งแล้ว");
     } catch {
       setSenderErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง");
     } finally {

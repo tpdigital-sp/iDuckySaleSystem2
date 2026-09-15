@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { isDealerUid } from "@/lib/server/dealers";
-import { loadDealerSender, saveDealerSender } from "@/lib/server/dealer-sender";
+import { loadDealerSender, resolveDealerUid, saveDealerSender } from "@/lib/server/dealer-sender";
 import { cleanSender } from "@/lib/order-sender";
-import type { OrderSender } from "@/lib/admin-data";
+import { withLog, type Order, type OrderSender, type OrderStatus } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
@@ -47,5 +48,28 @@ export async function POST(req: Request) {
 
   const { error } = await saveDealerSender(sb, uid, sender);
   if (error) return NextResponse.json({ error }, { status: 500 });
-  return NextResponse.json({ ok: true, ...(sender ? { sender } : {}) });
+
+  // ใบที่ยังค้างอยู่ก็ควรได้ชื่อนี้ด้วย — ไม่งั้นตัวแทนตั้งชื่อแล้วแต่ใบที่เพิ่งสั่งยังขึ้นชื่อร้านเรา
+  // (เจอจริง 15 ก.ย. 69 · OD-260915-3447) · แตะเฉพาะใบตัวแทนของเจ้าตัวที่ยังไม่ได้ตั้งผู้ส่ง และร้านยังไม่ปริ้นใบงาน
+  const applied = sender ? await applyToOpenOrders(sb, uid, sender) : [];
+  return NextResponse.json({ ok: true, ...(sender ? { sender } : {}) , applied });
+}
+
+const LOCKED: OrderStatus[] = ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"];
+
+/** เติมผู้ส่งให้ใบตัวแทนของบัญชีนี้ที่ยังแก้ได้ — คืนเลขออเดอร์ที่เติมให้ */
+async function applyToOpenOrders(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, uid: string, sender: OrderSender): Promise<string[]> {
+  const { data, error } = await sb.from("orders").select("data").not("data->dealer", "is", null).order("created_at", { ascending: false }).limit(200);
+  if (error) return [];
+  const done: string[] = [];
+  for (const row of data ?? []) {
+    const o = row.data as Order;
+    if (!o.dealer || o.printedAt || LOCKED.includes(o.status) || cleanSender(o.sender)) continue;
+    if ((await resolveDealerUid(sb, o)) !== uid) continue;
+    const next = withLog({ ...o, sender, savedAt: new Date().toISOString() }, "ตัวแทน", "ตั้งผู้ส่งบนใบปะหน้า",
+      `${[sender.name, sender.phone].filter(Boolean).join(" · ")} (ตั้งผู้ส่งประจำในหน้าบัญชี)`);
+    const { error: e } = await updateOrder(sb, next, { prev: o });
+    if (!e) done.push(o.id);
+  }
+  return done;
 }

@@ -1,7 +1,8 @@
 import "server-only";
 import type { getSupabaseAdmin } from "./supabase-admin";
 import { cleanSender } from "@/lib/order-sender";
-import type { OrderSender } from "@/lib/admin-data";
+import type { Order, OrderSender } from "@/lib/admin-data";
+import { loadDealers } from "./dealers";
 
 type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -36,4 +37,41 @@ export async function saveDealerSender(sb: SB, uid: string, sender: OrderSender 
   else delete meta[META_KEY];
   const { error: e2 } = await sb.auth.admin.updateUserById(uid, { user_metadata: meta });
   return e2 ? { error: e2.message } : {};
+}
+
+/**
+ * 🔎 ใบนี้เป็นของตัวแทนคนไหน — คืน uid ในทะเบียน __dealers__ (ไม่รู้ = "")
+ *
+ * ทำไมไม่ดู customerId อย่างเดียว (เจอจริง 15 ก.ย. 69 · OD-260915-3447):
+ * ตัวแทนลืมล็อกอินแล้วสั่ง → ใบไม่มี customerId เลย แอดมินมากดปุ่ม 🤝 คิดราคาตัวแทนทีหลัง
+ * ตัวตนที่ยังเหลืออยู่บนใบคือ LINE ที่พนักงานผูกไว้ / อีเมล / เบอร์ → ไล่จับตามลำดับความแน่นอน
+ */
+export async function resolveDealerUid(sb: SB, order: Pick<Order, "customerId" | "lineUserId" | "email" | "phone">): Promise<string> {
+  const users = await loadDealers();
+  const uids = Object.keys(users);
+  if (!uids.length) return "";
+  if (order.customerId && order.customerId in users) return order.customerId;
+
+  const line = (order.lineUserId ?? "").trim();
+  const email = (order.email ?? "").trim().toLowerCase();
+  const phone = (order.phone ?? "").replace(/\D/g, "");
+  if (!line && !email && phone.length < 9) return "";
+
+  for (const uid of uids) {
+    const { data } = await sb.auth.admin.getUserById(uid);
+    const u = data?.user;
+    if (!u) continue;
+    const meta = (u.user_metadata ?? {}) as { line_user_id?: string; phone?: string };
+    if (line && meta.line_user_id === line) return uid;
+    if (email && (u.email ?? "").toLowerCase() === email) return uid;
+    if (phone.length >= 9 && (meta.phone ?? "").replace(/\D/g, "") === phone) return uid;
+  }
+  return "";
+}
+
+/** ผู้ส่งประจำของตัวแทนเจ้าของใบนี้ (ไม่ใช่ใบตัวแทน/หาเจ้าของไม่เจอ/ยังไม่ตั้ง = undefined) */
+export async function dealerSenderForOrder(sb: SB, order: Pick<Order, "dealer" | "customerId" | "lineUserId" | "email" | "phone">): Promise<OrderSender | undefined> {
+  if (!order.dealer) return undefined;
+  const uid = await resolveDealerUid(sb, order);
+  return uid ? loadDealerSender(sb, uid) : undefined;
 }

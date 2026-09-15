@@ -3,6 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order, OrderSender } from "@/lib/admin-data";
 import { cleanSender, senderKey } from "@/lib/order-sender";
+import { dealerSenderForOrder } from "@/lib/server/dealer-sender";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,8 @@ export interface SenderRow extends OrderSender {
   date?: string;
   /** เคยใช้กี่ใบ */
   uses: number;
+  /** มาจาก "ผู้ส่งประจำ" ที่ตัวแทนตั้งไว้เอง (ไม่ใช่ใบเก่า) */
+  fromDealer?: boolean;
 }
 
 /** ใบสองใบนี้ "ลูกค้าคนเดียวกัน" ไหม — ผู้ติดต่อ/บัญชีสมาชิก/LINE ก่อน แล้วค่อยเบอร์โทร */
@@ -77,6 +80,12 @@ export async function GET(req: Request) {
     if (cur) cur.uses += 1;
     else byKey.set(k, { ...s, from: o.id, date: o.date, uses: 1 });
     if (!match && target && o.id !== target.id && sameBuyer(target, o)) match = byKey.get(k);
+  }
+
+  // ยังไม่เคยมีใบไหนตั้งผู้ส่งให้ลูกค้ารายนี้ → ใช้ "ผู้ส่งประจำ" ที่ตัวแทนตั้งไว้เองในหน้าบัญชีของเขา
+  if (!match && target?.dealer) {
+    const own = await dealerSenderForOrder(sb, target);
+    if (own) match = { ...own, from: "", uses: 0, fromDealer: true };
   }
 
   return NextResponse.json({ recent: [...byKey.values()].slice(0, 12), ...(match ? { match } : {}), ok: true });
