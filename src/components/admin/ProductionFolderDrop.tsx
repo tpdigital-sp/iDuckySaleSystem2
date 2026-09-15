@@ -6,7 +6,7 @@
  * ฝ่ายผลิตวางไฟล์งานไว้ที่ /Volumes/iDuckyShop/1.Order Today/<คน วันที่>/<หมวด>/<ชื่องาน>
  * โยนโฟลเดอร์ของวัน (หรือโฟลเดอร์งานทีละใบ) ลงตรงนี้ — อ่านแค่ "ชื่อโฟลเดอร์" ไม่อัปโหลดไฟล์
  * เซิร์ฟเวอร์ (/api/admin/orders/production-folders) จับคู่ชื่อกับออเดอร์ (ดู src/lib/production-match.ts)
- * ขั้นตอน: โยน → ดูผลจับคู่ก่อน (ยังไม่แตะ DB) → เลือกใบที่คลุมเครือเอง → กดยืนยัน
+ * ขั้นตอน: โยน → ดูผลจับคู่ก่อน (ยังไม่แตะ DB) → ติ๊กออกใบที่ยังไม่ส่งผลิต (แค่ทำตัวอย่างให้ลูกค้าดู) → เลือกใบที่คลุมเครือเอง → กดยืนยัน
  *
  * ลากวางใช้ webkitGetAsEntry เดินโฟลเดอร์ (Chrome/Edge/Safari) · ปุ่มเลือกใช้ input webkitdirectory (โฟลเดอร์ว่างจะไม่ขึ้น เพราะเบราว์เซอร์ให้แต่ไฟล์)
  */
@@ -62,6 +62,8 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const [err, setErr] = useState("");
   /** ใบที่คนเลือกให้โฟลเดอร์คลุมเครือ: folder → orderId ("" = ข้าม) */
   const [pick, setPick] = useState<Record<string, string>>({});
+  /** ใบที่จับคู่ได้แต่คนติ๊กออก (แค่ทำตัวอย่างให้ลูกค้าดู ยังไม่ส่งผลิต): orderId → true */
+  const [skip, setSkip] = useState<Record<string, boolean>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const scan = useCallback(async (list: string[]) => {
@@ -69,6 +71,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
     setPaths(uniq);
     setRes(null);
     setPick({});
+    setSkip({});
     setErr("");
     if (!uniq.length) {
       setErr("ไม่เจอโฟลเดอร์ในสิ่งที่โยนมา — โยนโฟลเดอร์ของวัน (เช่น Donut 10-09-69) หรือโฟลเดอร์งานทีละใบ");
@@ -129,10 +132,13 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       const picks = Object.entries(pick)
         .filter(([, id]) => id)
         .map(([folder, orderId]) => ({ folder, orderId }));
+      const skipIds = Object.entries(skip)
+        .filter(([, off]) => off)
+        .map(([orderId]) => orderId);
       const r = await fetch("/api/admin/orders/production-folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths, apply: true, pick: picks }),
+        body: JSON.stringify({ paths, apply: true, pick: picks, skip: skipIds }),
       });
       const j = (await r.json().catch(() => ({}))) as MatchResp;
       if (!r.ok) {
@@ -140,16 +146,21 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
         return;
       }
       setRes({ ...j, matched: [], ambiguous: [], unmatchedIds: j.unmatchedIds ?? [], alreadySent: [] });
+      setSkip({});
       onApplied();
     } catch {
       setErr("ติดต่อเซิร์ฟเวอร์ไม่ได้ — ลองใหม่อีกครั้ง");
     } finally {
       setBusy(null);
     }
-  }, [res, pick, paths, onApplied]);
+  }, [res, pick, skip, paths, onApplied]);
 
   const pickedCount = Object.values(pick).filter(Boolean).length;
-  const toApply = (res?.matched.length ?? 0) + pickedCount;
+  const matchedList = res?.matched ?? [];
+  /** ใบที่ยังติ๊กอยู่ = ใบที่จะถูกส่งเข้าผลิตจริง */
+  const chosen = matchedList.filter((m) => !skip[m.orderId]);
+  const allOn = matchedList.length > 0 && chosen.length === matchedList.length;
+  const toApply = chosen.length + pickedCount;
 
   return (
     <div className="dkb-g rounded-2xl p-3">
@@ -167,7 +178,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
         <span className="min-w-0 flex-1">
           <b className="block text-[14px]">โยนโฟลเดอร์งานที่เข้าผลิตลงตรงนี้</b>
           <span className="block text-[12px]" style={{ color: "var(--dk-faint)" }}>
-            โยนโฟลเดอร์ของวัน (เช่น “Donut 10-09-69”) หรือโฟลเดอร์งานทีละใบจาก 1.Order Today — อ่านแค่ชื่อโฟลเดอร์ ไม่อัปโหลดไฟล์ · ระบบจับคู่ชื่อกับออเดอร์แล้วให้ดูก่อนยืนยัน
+            โยนโฟลเดอร์ของวัน (เช่น “Donut 10-09-69”) หรือโฟลเดอร์งานทีละใบจาก 1.Order Today — อ่านแค่ชื่อโฟลเดอร์ ไม่อัปโหลดไฟล์ · ระบบจับคู่ชื่อกับออเดอร์แล้วให้ติ๊กออกใบที่ยังไม่ส่งผลิตก่อนยืนยัน
           </span>
         </span>
         <Btn small onClick={() => fileRef.current?.click()} disabled={busy !== null}>
@@ -200,19 +211,52 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
               ✅ ติ๊กส่งเข้าผลิตแล้ว {res.applied} ใบ — ย้ายไปกอง “ส่งผลิตแล้ว รอปริ้น”
             </p>
           )}
-          {res.matched.length > 0 && (
+          {matchedList.length > 0 && (
             <div>
-              <b>จับคู่ได้ {res.matched.length} ใบ</b>
-              <ul className="mt-1 space-y-0.5">
-                {res.matched.map((m) => (
-                  <li key={m.orderId} className="flex flex-wrap gap-x-2">
-                    <span className="dkb-num font-bold">{m.orderId}</span>
-                    <span>{m.customer}</span>
-                    <span style={{ color: "var(--dk-faint)" }}>
-                      ← {m.folder} {m.how === "file" ? "(จากไฟล์ OD ในโฟลเดอร์)" : m.how === "name" ? "(จับด้วยชื่อลูกค้า)" : ""}
-                    </span>
-                  </li>
-                ))}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <b>
+                  จับคู่ได้ {matchedList.length} ใบ
+                  {chosen.length < matchedList.length ? ` — ติ๊กออก ${matchedList.length - chosen.length} ใบ` : ""}
+                </b>
+                <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                  ติ๊กออกได้ ถ้าโฟลเดอร์ไหนแค่ทำตัวอย่างให้ลูกค้าดู ยังไม่ส่งผลิต
+                </span>
+                <button
+                  type="button"
+                  className="ml-auto min-h-[32px] px-1 text-[12.5px] font-bold underline"
+                  style={{ color: "var(--dk-navy)" }}
+                  onClick={() => setSkip(allOn ? Object.fromEntries(matchedList.map((m) => [m.orderId, true])) : {})}
+                >
+                  {allOn ? "ติ๊กออกทั้งหมด" : "เลือกทั้งหมด"}
+                </button>
+              </div>
+              <ul className="mt-1">
+                {matchedList.map((m) => {
+                  const on = !skip[m.orderId];
+                  return (
+                    <li key={m.orderId}>
+                      <label
+                        className="flex min-h-[44px] cursor-pointer flex-wrap items-center gap-x-2 rounded-lg px-1.5 py-1.5"
+                        style={{ background: on ? "transparent" : "var(--dk-hair)", opacity: on ? 1 : 0.65 }}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 shrink-0 accent-slate-700"
+                          checked={on}
+                          onChange={(e) => setSkip((v) => ({ ...v, [m.orderId]: !e.target.checked }))}
+                        />
+                        <span className="dkb-num font-bold" style={{ textDecoration: on ? "none" : "line-through" }}>
+                          {m.orderId}
+                        </span>
+                        <span>{m.customer}</span>
+                        <span style={{ color: "var(--dk-faint)" }}>
+                          ← {m.folder} {m.how === "file" ? "(จากไฟล์ OD ในโฟลเดอร์)" : m.how === "name" ? "(จับด้วยชื่อลูกค้า)" : ""}
+                        </span>
+                        {!on && <b style={{ color: "var(--dk-faint)" }}>— ไม่ส่งผลิตรอบนี้</b>}
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -288,17 +332,22 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
               {res.scanned === 0 ? " — ถ้าโยนโฟลเดอร์ของวันแล้วได้ 0 ลองกด “เลือกโฟลเดอร์” แทน หรือโยนโฟลเดอร์งานทีละใบ" : ""}
             </p>
           )}
-          {toApply > 0 && (
+          {(toApply > 0 || matchedList.length > 0) && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <Btn tone="navy" onClick={apply} disabled={busy !== null}>
+              <Btn tone="navy" onClick={apply} disabled={busy !== null || toApply === 0}>
                 {busy === "apply" ? "กำลังบันทึก…" : `🏭 ยืนยันส่งเข้าผลิต ${toApply} ใบ`}
               </Btn>
               <Btn small onClick={() => setRes(null)} disabled={busy !== null}>
                 ยกเลิก
               </Btn>
+              {toApply === 0 && (
+                <span className="font-bold" style={{ color: "var(--dk-faint)" }}>
+                  ติ๊กออกครบทุกใบแล้ว — ติ๊กกลับอย่างน้อย 1 ใบ ถึงจะยืนยันได้
+                </span>
+              )}
             </div>
           )}
-          {toApply === 0 && res.applied === 0 && res.ambiguous.length === 0 && (
+          {toApply === 0 && matchedList.length === 0 && res.applied === 0 && res.ambiguous.length === 0 && (
             <p style={{ color: "var(--dk-faint)" }}>ไม่มีใบใหม่ให้ติ๊กจากโฟลเดอร์ชุดนี้</p>
           )}
         </div>

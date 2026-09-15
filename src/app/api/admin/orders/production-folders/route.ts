@@ -13,10 +13,11 @@ const CANDIDATE_STATUSES: OrderStatus[] = ["รอตรวจสอบ", "ช�
 
 /**
  * 🏭 โยนโฟลเดอร์งานที่เข้าผลิต (จาก /Volumes/iDuckyShop/1.Order Today/<คน วันที่>/…) มาจับคู่กับออเดอร์
- *   POST { paths: string[], apply?: boolean, pick?: { folder: string; orderId: string }[] }
+ *   POST { paths: string[], apply?: boolean, pick?: { folder: string; orderId: string }[], skip?: string[] }
  *   · paths = พาธโฟลเดอร์ทั้งหมดที่หน้าเว็บอ่านได้ (ชื่อชั้นในสุดคือชื่องาน)
  *   · apply=false (ค่าเริ่มต้น) = ลองจับคู่ให้ดูก่อน ไม่แตะ DB · apply=true = ติ๊ก productionSent ให้ใบที่จับคู่ได้
  *   · pick = ใบที่คนเลือกเองจากรายการคลุมเครือ (ติ๊กให้ตอน apply)
+ *   · skip = orderId ที่คนติ๊กออกจากรายการจับคู่ได้ (โฟลเดอร์แค่ทำตัวอย่างให้ลูกค้าดู ยังไม่ส่งผลิต) — ไม่ติ๊กให้
  * ตอบ { ...FolderMatchResult, alreadySent: [...] (จับคู่ได้แต่ติ๊กไว้แล้ว ไม่ทับ), applied: n }
  */
 export async function POST(req: Request) {
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   const gate = await requirePerm(["pack.ship", "proof.manage", "orders.edit"]);
   if (gate.res) return gate.res;
 
-  let body: { paths?: string[]; apply?: boolean; pick?: { folder: string; orderId: string }[] };
+  let body: { paths?: string[]; apply?: boolean; pick?: { folder: string; orderId: string }[]; skip?: string[] };
   try {
     body = await req.json();
   } catch {
@@ -64,11 +65,15 @@ export async function POST(req: Request) {
   }
 
   const picks = (body.pick ?? []).filter((p) => p && typeof p.orderId === "string" && typeof p.folder === "string");
+  const skipIds = new Set((body.skip ?? []).filter((x): x is string => typeof x === "string"));
   let applied = 0;
   if (body.apply) {
     const by = gate.actor.name || gate.actor.username;
     const at = new Date().toISOString();
-    const todo = [...result.matched.map((m) => ({ orderId: m.orderId, folder: m.folder })), ...picks];
+    const todo = [
+      ...result.matched.filter((m) => !skipIds.has(m.orderId)).map((m) => ({ orderId: m.orderId, folder: m.folder })),
+      ...picks.filter((p) => !skipIds.has(p.orderId)),
+    ];
     for (const t of todo) {
       const o = fresh.find((x) => x.id === t.orderId);
       if (!o || o.productionSent) continue;
