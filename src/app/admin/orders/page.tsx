@@ -112,6 +112,10 @@ const dueNetOf = (o: Order) => {
    เจ้าของร้าน/แอดมินถามบ่อยว่า "ใครโอนมัดจำเข้ามาแล้วบ้าง" — งวดแรกเข้า = เริ่มทำแบบ/ผลิตได้
    แต่ยังห้ามส่งของจนกว่าจะเก็บครบ (ดู deposit.settledAt) จึงต้องแยกออกจากใบมัดจำที่ยังไม่โอน
    ใบยกเลิกไม่นับ — ไม่มีใครต้องตามงานใบที่ยกเลิกไปแล้ว */
+/** 🤝 ประเภทลูกค้าของใบ — ตัวแทนจำหน่าย (order.dealer) แยกจากลูกค้าทั่วไป */
+type CustKey = "all" | "dealer" | "retail";
+const CUST_LABEL: Record<Exclude<CustKey, "all">, string> = { dealer: "ตัวแทนจำหน่าย", retail: "ลูกค้าทั่วไป" };
+
 type DepKey = "all" | "wait" | "paid" | "settled";
 /** ใบนี้อยู่ขั้นไหนของมัดจำ — null = ไม่ใช่ออเดอร์มัดจำ (หรือยกเลิกไปแล้ว) */
 const depStageOf = (o: Order): Exclude<DepKey, "all"> | null => {
@@ -216,6 +220,11 @@ export default function AdminOrdersPage() {
   const [dep, setDep] = useState<DepKey>("all"); // ขั้นของออเดอร์มัดจำ 50% — "โอนมัดจำแล้ว" คือใบที่เริ่มงานได้แต่ยังค้างครึ่งหลัง
   /** ใครสร้างใบ: "all" · "customer" (ลูกค้ากดเอง) · "admin" (พนักงานทำให้ทุกคน) · "by:<ชื่อ>" (พนักงานคนนั้นคนเดียว) */
   const [by, setBy] = useState<"all" | "customer" | "admin" | `by:${string}`>("all");
+  /**
+   * 🤝 ประเภทลูกค้า — ออเดอร์ตัวแทนจำหน่ายคิดคนละตารางราคา ไม่มีส่วนลด/คูปอง/โอนไว/ของแถม
+   * เจ้าของร้านขอไว้ 15 ก.ย. 69 (ไล่ดูยอดตัวแทนแยกจากยอดปลีก) · แถวชิปซ่อนเองเมื่อช่วงนี้ไม่มีใบตัวแทนเลย
+   */
+  const [cust, setCust] = useState<CustKey>("all");
   const [dateKey, setDateKey] = useState<DateKey>("7d"); // ช่วงวันที่สั่ง — เริ่มที่ 7 วัน (เจ้าของร้านขอ 9 ก.ย. 69) ไม่ให้เปิดมาเจอทุกใบ
   const [from, setFrom] = useState(""); // yyyy-mm-dd จาก <input type="date">
   const [to, setTo] = useState("");
@@ -229,7 +238,7 @@ export default function AdminOrdersPage() {
   /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
   const [page, setPage] = useState(0);
   // เปลี่ยนตัวกรองอะไรก็ตาม = กลับหน้าแรก ไม่งั้นค้างอยู่หน้า 3 ที่ชุดใหม่ไม่มี
-  useEffect(() => setPage(0), [dept, filter, q, onlyDue, dep, by, dateKey, from, to]);
+  useEffect(() => setPage(0), [dept, filter, q, onlyDue, dep, by, cust, dateKey, from, to]);
 
   const can = useCan();
   const seesAll = can("orders.viewAll"); // ฝ่ายแพ็คเห็นเฉพาะคิวของตัวเอง
@@ -371,11 +380,18 @@ export default function AdminOrdersPage() {
   };
   const byLabel = by === "customer" ? "ลูกค้าสั่งเอง" : by === "admin" ? "แอดมินสร้างให้" : by.startsWith("by:") ? by.slice(3) : "";
 
+  // นับใบตัวแทน/ปลีก (ในช่วงวันที่ที่เลือก) — dealer = 0 คือช่วงนี้ไม่มีใบตัวแทน ซ่อนแถวชิปไปเลย ไม่ให้รกจอ
+  const custCounts = useMemo(() => {
+    const dealer = dated.filter((o) => o.dealer).length;
+    return { dealer, retail: dated.length - dealer };
+  }, [dated]);
+
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
   const shown = dated
     .filter(byMatch)
     .filter((o) => (dep === "all" ? true : depStageOf(o) === dep))
+    .filter((o) => (cust === "all" ? true : cust === "dealer" ? !!o.dealer : !o.dealer))
     .filter((o) => (onlyDue ? isDue(o) : true))
     .filter((o) => (onlyDue || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
     .filter((o) => (filter === "all" ? true : o.status === filter))
@@ -746,6 +762,40 @@ export default function AdminOrdersPage() {
               );
             })}
           </div>
+
+          {/* ── 🤝 ประเภทลูกค้า — ใบตัวแทนคิดคนละตารางราคา ไล่ยอดคนละกองกับใบปลีก (ซ่อนแถวถ้าช่วงนี้ไม่มีใบตัวแทน)
+              ชิปใช้มินต์ "อ่อน" เหมือนชิปกรองตัวอื่น ไม่ใช่สีทึบแบบป้ายในแถว — ในการ์ดตัวกรองทุกปุ่มน้ำหนักเท่ากัน ── */}
+          {seesMoney && custCounts.dealer > 0 && (
+            <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+              <span className="dkb-flab">ประเภทลูกค้า</span>
+              <button type="button" onClick={() => setCust("all")} aria-pressed={cust === "all"} className="dkb-fchip">
+                <i />
+                ไม่กรอง <b>{dated.length}</b>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCust(cust === "dealer" ? "all" : "dealer")}
+                aria-pressed={cust === "dealer"}
+                className="dkb-fchip"
+                style={cust === "dealer" ? undefined : { background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}
+                title="เฉพาะออเดอร์ตัวแทนจำหน่าย — คิดราคาเรทตัวแทน (ไม่มีส่วนลด/คูปอง/โอนไว/ของแถม)"
+              >
+                <i />
+                🤝 ตัวแทนจำหน่าย <b>{custCounts.dealer}</b>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCust(cust === "retail" ? "all" : "retail")}
+                aria-pressed={cust === "retail"}
+                data-zero={custCounts.retail === 0 ? "1" : undefined}
+                className="dkb-fchip"
+                title="ตัดใบตัวแทนออก เหลือเฉพาะลูกค้าทั่วไป"
+              >
+                <i />
+                ลูกค้าทั่วไป <b>{custCounts.retail}</b>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── รายการ ── */}
@@ -756,6 +806,7 @@ export default function AdminOrdersPage() {
             {shown.length > PAGE_SIZE ? ` · หน้า ${curPage + 1}/${pageCount} (ใบที่ ${pageFrom}–${pageTo})` : ""}
             {dateOn && rangeText ? ` · ${rangeText}` : ""}
             {dep !== "all" ? ` · ${DEP_LABEL[dep]}` : ""}
+            {cust !== "all" ? ` · ${CUST_LABEL[cust]}` : ""}
           </span>
         </div>
 
@@ -859,6 +910,21 @@ function OrderRow({
       <span className="dkb-main">
         <span className="dkb-who">
           <span className="nm">{o.customer || "ยังไม่ระบุชื่อ"}</span>
+          {/*
+            🤝 ออเดอร์ตัวแทนจำหน่าย — คิดราคาคนละตาราง (เรทตัวแทน) และไม่ได้ส่วนลด/คูปอง/โอนไว/ของแถม
+            ป้ายทึบเหมือน "งานเร่ง" เพราะเป็นคุณสมบัติของ "ยอดเงิน" ไม่ใช่สถานะงาน — คนตรวจยอดต้องเห็นตั้งแต่ในลิสต์
+            (ตัวแทนที่ลืมล็อกอินแล้วสั่งจะไม่มีป้ายนี้ ดูวิธีซ่อมที่ปุ่ม 🤝 ในหน้าออเดอร์)
+          */}
+          {o.dealer && (
+            <span
+              className="dkb-tag"
+              style={{ background: "var(--dk-mint-ink)", color: "#fff" }}
+              title="ออเดอร์ตัวแทนจำหน่าย — คิดราคาเรทตัวแทน (ไม่มีส่วนลด/คูปอง/โอนไว/ของแถม)"
+            >
+              <i />
+              🤝 ตัวแทน
+            </span>
+          )}
           {o.rush && (
             <span className="dkb-tag" style={{ background: "var(--dk-coral-deep)", color: "#fff" }} title="งานเร่ง">
               <i />

@@ -104,6 +104,7 @@ import {
   reuseArtText,
 } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
+import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
 import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
 import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
@@ -1099,6 +1100,7 @@ export default function AdminOrderDetailPage() {
   /** 🧾 ฟอร์มเก็บค่าบริการเพิ่ม (null = ปิด) */
   const [chargeForm, setChargeForm] = useState<{ label: string; amount: string; note: string } | null>(null);
   const [chargeBusy, setChargeBusy] = useState(false);
+  const [dealerBusy, setDealerBusy] = useState(false);
   /** สลิปใบเพิ่มที่กำลังกด "รับยอดเอง" อยู่ (paymentId) */
   const [acceptBusy, setAcceptBusy] = useState<string | null>(null);
   /** 💰 กล่อง "รับยอดเอง" ที่เปิดอยู่ — สลิปใบเพิ่มที่แอดมินกำลังใส่ยอด (null = ปิด) */
@@ -1192,6 +1194,8 @@ export default function AdminOrderDetailPage() {
   const seesMoney = can("orders.money"); // เห็นราคา/สลิป
   const isSuperAdmin = useRoleLabel() === "ผู้ดูแลระบบ"; // ลบสลิปได้เฉพาะผู้ดูแลระบบ (เซิร์ฟเวอร์บังคับซ้ำ)
   const mayEdit = can("orders.edit"); // เปลี่ยนสถานะ/แก้ข้อมูล
+  /** 🤝 ใบนี้ยังสลับราคาตัวแทน/ราคาปกติได้ไหม (กติกาเดียวกับเซิร์ฟเวอร์ — ตรงนี้แค่ไม่ให้กดแล้วเด้ง error) */
+  const dealerToggleReady = !!order && !dealerRepriceBlockedBy(order);
   /**
    * 💰 ยืนยันเงินเข้า — สิทธิ์แยกจาก orders.edit
    * ค่าเริ่มต้นมีแต่เจ้าของร้าน · พนักงานคนอื่นต้องให้เจ้าของเปิดให้เป็นรายคนที่หน้า /admin/staff
@@ -1660,6 +1664,58 @@ export default function AdminOrderDetailPage() {
       return;
     }
     setOrder(j.order);
+  }
+
+  /**
+   * 🤝 ทำใบนี้ให้เป็นราคาตัวแทนจำหน่าย (หรือถอดกลับ) — ตัวแทนลืมล็อกอินแล้วสั่ง เว็บเลยคิดราคาปลีกให้
+   * เซิร์ฟเวอร์สลับทุกบรรทัดไปเรทตัวแทน + ถอดส่วนลดที่ตัวแทนไม่ได้ (โอนไว/ระดับสมาชิก/ของแถม) ให้เอง
+   */
+  async function setDealerPrice(on: boolean) {
+    if (!order || dealerBusy) return;
+    if (demo) {
+      setErr("โหมดตัวอย่างเปลี่ยนราคาไม่ได้");
+      return;
+    }
+    if (
+      !(await askConfirm({
+        icon: "🤝",
+        title: on ? "คิดราคาตัวแทนจำหน่ายให้ใบนี้?" : "ถอดราคาตัวแทน กลับเป็นราคาปกติ?",
+        detail: on
+          ? "ทุกรายการที่มีราคาตัวแทนจะถูกคิดใหม่ตามเรทตัวแทน และถอดส่วนลดที่ตัวแทนไม่ได้ (โอนไว · ระดับสมาชิก · ของแถม) ออก\nยอดรวมของใบนี้จะเปลี่ยน — ใช้กับใบที่ยังไม่มีเงินเข้าเท่านั้น"
+          : "ทุกรายการจะกลับไปคิดราคาปกติที่ลูกค้าทั่วไปได้ · ยอดรวมจะเปลี่ยน",
+        confirmLabel: on ? "คิดราคาตัวแทน" : "กลับราคาปกติ",
+        danger: !on,
+      }))
+    )
+      return;
+    setDealerBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/dealer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, on }),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        order?: Order;
+        error?: string;
+        skipped?: string[];
+        leftoverDiscount?: number;
+      };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "เปลี่ยนราคาไม่สำเร็จ");
+        return;
+      }
+      setOrder(j.order);
+      // บอกสิ่งที่ระบบทำให้ไม่ได้ ไม่ใช่ปล่อยให้แอดมินไปเจอเองทีหลัง
+      const warn = [
+        j.skipped?.length ? `ยังไม่มีราคาตัวแทน ${j.skipped.length} รายการ: ${j.skipped.join(" · ")}` : "",
+        j.leftoverDiscount ? `ใบนี้ยังมีส่วนลดอื่นอยู่ ฿${j.leftoverDiscount.toLocaleString("th-TH")} (คูปอง/ส่วนลดที่ใส่เอง) — ตัวแทนไม่ได้ส่วนลดอื่น ถอดเองถ้าไม่ต้องการ` : "",
+      ].filter(Boolean);
+      if (warn.length) setErr(warn.join(" · "));
+    } finally {
+      setDealerBusy(false);
+    }
   }
 
   /** คงลิงก์สลิปที่เซ็นไว้บนจอ เมื่อรับก้อนใหม่จากเซิร์ฟเวอร์ (PATCH คืนก้อนที่ล้าง signed URL แล้ว) */
@@ -4047,11 +4103,28 @@ export default function AdminOrderDetailPage() {
                   </div>
                 </div>
               )}
-              {order.dealer && (
-                <p className="mt-2 inline-flex rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-200">
-                  🤝 ตัวแทนจำหน่าย — ราคาเรทตัวแทน (ไม่มีส่วนลด/คูปอง/โอนไว/ของแถม)
-                </p>
-              )}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {order.dealer && (
+                  <span className="inline-flex rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-200">
+                    🤝 ตัวแทนจำหน่าย — ราคาเรทตัวแทน (ไม่มีส่วนลด/คูปอง/โอนไว/ของแถม)
+                  </span>
+                )}
+                {/*
+                  🤝 ตัวแทนลืมล็อกอินแล้วสั่ง = เว็บไม่รู้ว่าเป็นตัวแทน คิดราคาปลีกให้ (OD-260915-3447)
+                  ปุ่มนี้คิดราคาใหม่ทั้งใบตามเรทตัวแทน + ถอดส่วนลดที่ตัวแทนไม่ได้ ในคลิกเดียว
+                  โชว์เฉพาะใบที่ยังแก้ยอดได้ (ยังไม่มีเงินเข้า/ยังไม่เลยขั้นเก็บเงิน — เซิร์ฟเวอร์บังคับซ้ำ)
+                */}
+                {mayEdit && seesMoney && dealerToggleReady && (
+                  <button
+                    type="button"
+                    onClick={() => setDealerPrice(!order.dealer)}
+                    disabled={dealerBusy}
+                    className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-white px-2.5 py-1 text-[11px] font-bold text-teal-700 transition hover:bg-teal-50 disabled:opacity-50"
+                  >
+                    {dealerBusy ? "กำลังคิดราคา…" : order.dealer ? "ถอดราคาตัวแทน" : "🤝 คิดราคาตัวแทน"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">

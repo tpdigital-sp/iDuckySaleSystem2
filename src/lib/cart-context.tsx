@@ -13,6 +13,7 @@ import {
 } from "react";
 import {
   dealerRateOf,
+  dealerTwinRate,
   getProduct,
   migrateRenamedGroupKeys,
   RATE_LABEL,
@@ -231,6 +232,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (p && dealerRateOf(p, i.selections)) {
         const selections = { ...i.selections };
         delete selections[RATE_LABEL];
+        item = { ...i, selections, key: cartItemKey(i.productId, selections) };
+        changed = true;
+      }
+      const ex = merged.get(item.key);
+      if (ex) ex.qty += item.qty; // คีย์ชนกับบรรทัดเดิม (สเปคเดียวกัน) = รวมจำนวน
+      else merged.set(item.key, { ...item });
+    }
+    if (changed) dispatch({ type: "hydrate", items: [...merged.values()] });
+  }, [state.hydrated, state.items, dealerReady, isDealer, productOf]);
+
+  /**
+   * 🤝 ทางกลับ: บัญชีตัวแทนจำหน่าย แต่ในตะกร้ายังมีบรรทัดราคาปกติค้างอยู่ → สลับให้เป็นเรทตัวแทน
+   *
+   * เกิดกับของที่ใส่ตะกร้าไว้ "ก่อน" ล็อกอิน/ก่อนร้านกดอนุมัติเป็นตัวแทน — หน้าสินค้าโชว์เฉพาะเรทตัวแทน
+   * ให้ตั้งแต่ตอนนั้นไม่ได้ ตะกร้าจึงถือราคาปลีกไว้เงียบ ๆ แล้วลูกค้าก็กดสั่งไปทั้งอย่างนั้น
+   * (เคสจริง OD-260915-3447 · 15 ก.ย. 69 — เคสพรีเมี่ยมใส ฿350 แทนราคาตัวแทน ฿250)
+   * ⚠️ ต้องรอ dealerReady เหมือนฝั่งล้าง และแลกเฉพาะบรรทัดที่สินค้ามี "เรทแฝดตัวแทน" ของเรทเดิมจริง ๆ
+   */
+  useEffect(() => {
+    if (!state.hydrated || !dealerReady || !isDealer) return;
+    let changed = false;
+    const merged = new Map<string, CartItem>();
+    for (const i of state.items) {
+      const p = productOf(i.productId);
+      let item = i;
+      const twin = p ? dealerTwinRate(p, i.selections) : undefined;
+      if (twin) {
+        const selections = { ...i.selections, [RATE_LABEL]: twin.label };
         item = { ...i, selections, key: cartItemKey(i.productId, selections) };
         changed = true;
       }

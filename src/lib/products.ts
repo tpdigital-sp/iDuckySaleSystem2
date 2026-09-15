@@ -5267,6 +5267,31 @@ export function dealerRateOf(p: Product, selections: Record<string, string>): Pr
   return (p.priceRates ?? []).find((r) => r.dealerOnly && r.label === label);
 }
 
+/**
+ * 🤝 เรทตัวแทนจำหน่ายที่ "คู่กับ" เรทที่บรรทัดนี้เลือกอยู่ — ใช้สลับบรรทัดราคาปกติให้เป็นราคาตัวแทน
+ * (ตะกร้าของบัญชีตัวแทน · ปุ่ม "คิดราคาตัวแทน" ในหน้าออเดอร์หลังบ้าน)
+ *
+ * เรทตัวแทนถูกสร้างเป็น "เรทแฝด" ของเรท public ทีละใบ โดยตั้ง id = `<id เรทปกติ>-dealer`
+ * (ดู scripts/dealer-rates-apply.mjs) — จับคู่ด้วย id จึงยังตรงแม้ชื่อเรทจะถูกแก้ทีหลัง
+ * สินค้าที่มีเรทตัวแทนใบเดียวคู่กับเรท public ใบเดียว ถอยไปจับคู่ตรง ๆ ให้ด้วย (สินค้า pricing เดี่ยวที่ถูกแปลง)
+ * อยู่บนเรทตัวแทนอยู่แล้ว / สินค้านี้ไม่มีราคาตัวแทน = undefined (ไม่มีอะไรให้สลับ)
+ */
+export function dealerTwinRate(p: Product, selections: Record<string, string>): PriceRate | undefined {
+  const dealers = (p.priceRates ?? []).filter((r) => r.dealerOnly);
+  if (!dealers.length || dealerRateOf(p, selections)) return undefined;
+  const cur = activeRate(p, selections);
+  if (!cur) return undefined;
+  return dealers.find((r) => r.id === `${cur.id}-dealer`) ?? (dealers.length === 1 && publicRates(p).length === 1 ? dealers[0] : undefined);
+}
+
+/** เรท public ที่คู่กับเรทตัวแทนของบรรทัดนี้ — ทางกลับของ dealerTwinRate (ยกเลิกราคาตัวแทน) */
+export function publicTwinRate(p: Product, selections: Record<string, string>): PriceRate | undefined {
+  const cur = dealerRateOf(p, selections);
+  if (!cur) return undefined;
+  const pub = publicRates(p);
+  return pub.find((r) => `${r.id}-dealer` === cur.id) ?? (pub.length === 1 ? pub[0] : undefined);
+}
+
 /** เรทที่ลูกค้าเลือกอยู่ (จาก selections) — ไม่เจอ/ไม่ได้เลือก = เรท public แรก · สินค้าไม่มีหลายเรท = undefined */
 export function activeRate(p: Product, selections: Record<string, string>): PriceRate | undefined {
   const rs = p.priceRates;
