@@ -76,6 +76,8 @@ let quotesBadgeCache: { at: number; n: number } | null = null;
 let editReqBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "เคลมสินค้าที่ยังไม่ได้ตอบ" — เคสเคลมที่เงียบไปคือเคสที่บานปลาย ต้องเห็นตั้งแต่เมนู */
 let claimsBadgeCache: { at: number; n: number } | null = null;
+/** แคชป้าย "ใบสมัครตัวแทนรออนุมัติ" — ใบสมัครเข้ามาวันละไม่กี่ใบ แต่ปล่อยค้างแล้วตัวแทนรอเก้อ */
+let dealerAppsBadgeCache: { at: number; n: number } | null = null;
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -121,6 +123,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [openEditRequests, setOpenEditRequests] = useState(0);
   // badge แจ้ง "เคลมสินค้า" ที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย — หายเองเมื่อตอบ/ปิดเคสครบ
   const [openClaims, setOpenClaims] = useState(0);
+  // badge แจ้ง "ใบสมัครตัวแทนจำหน่าย" ที่ยังรออนุมัติ — หายเองเมื่อกดอนุมัติ/ปฏิเสธครบ
+  const [openDealerApps, setOpenDealerApps] = useState(0);
 
   // ── โลโก้หลังบ้าน — กดที่โลโก้มุมซ้ายบนเพื่อเปลี่ยนรูปได้เลย (เก็บในแถวเมนู __site_nav__) ──
   const [adminLogo, setAdminLogo] = useState<string | undefined>(undefined);
@@ -346,6 +350,43 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("iducky:claims-changed", on);
   }, [refreshClaimsBadge]);
 
+  /**
+   * 🤝 ป้ายเตือน "ตัวแทนจำหน่าย" — ใบสมัครจากหน้า /dealer ที่ยังไม่มีใครกดอนุมัติ/ปฏิเสธ
+   * เดิมใบสมัครเข้ามาเงียบ ๆ รู้ได้ทางเดียวคือบังเอิญเปิดหน้า /admin/dealers (เจ้าของร้านสั่ง 15 ก.ย. 69)
+   * ตัวเลขตรงกับหัวข้อ "📥 รออนุมัติ (N ใบ)" ในหน้านั้น
+   */
+  const dealerBadgeReady = pathname !== "/admin/login" && perms.includes("dealers.manage");
+  const refreshDealerBadge = useCallback(async () => {
+    if (!dealerBadgeReady) return;
+    try {
+      const r = await fetch("/api/admin/dealers/count", { cache: "no-store" });
+      const j = r.ok ? await r.json() : { n: 0 };
+      const n = Number(j?.n) || 0;
+      dealerAppsBadgeCache = { at: Date.now(), n };
+      setOpenDealerApps(n);
+    } catch {
+      /* เน็ตสะดุด → คงเลขเดิมไว้ */
+    }
+  }, [dealerBadgeReady]);
+  useEffect(() => {
+    if (!dealerBadgeReady) return;
+    // อยู่หน้าตัวแทน = ดึงสด (เพิ่งกดอนุมัติไป ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาที
+    const fresh = pathname.startsWith("/admin/dealers");
+    const cached = dealerAppsBadgeCache && Date.now() - dealerAppsBadgeCache.at < 60_000 ? dealerAppsBadgeCache.n : null;
+    if (cached !== null && !fresh) {
+      setOpenDealerApps(cached);
+      return;
+    }
+    void refreshDealerBadge();
+  }, [dealerBadgeReady, pathname, refreshDealerBadge]);
+  usePolling(refreshDealerBadge, { intervalMs: 90_000, enabled: dealerBadgeReady });
+  // อนุมัติ/ปฏิเสธใบสมัครในหน้าตัวแทน → ยิงอีเวนต์ให้ป้ายนับใหม่ทันที
+  useEffect(() => {
+    const on = () => void refreshDealerBadge();
+    window.addEventListener("iducky:dealers-changed", on);
+    return () => window.removeEventListener("iducky:dealers-changed", on);
+  }, [refreshDealerBadge]);
+
   const isLoginPage = pathname === "/admin/login";
 
   useEffect(() => {
@@ -459,7 +500,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           ? openEditRequests
           : href === "/admin/claims"
             ? openClaims
-            : 0;
+            : href === "/admin/dealers"
+              ? openDealerApps
+              : 0;
   /** ป้ายทั้งแถบรวมกัน — ใช้บนปุ่ม ☰ ของมือถือ ตอนเมนูปิดอยู่จะได้ยังเห็นว่ามีงานค้าง */
   const badgeAll = menu.reduce((n, m) => n + badgeOf(m.href), 0);
 
@@ -522,7 +565,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 ? `${m.label} — ลูกค้าขอแก้ไข ${badgeN} ใบ ยังไม่ได้จัดการ`
                 : hasBadge && m.href === "/admin/claims"
                   ? `${m.label} — ${badgeN} เรื่อง ยังไม่ได้ตอบลูกค้า`
-                  : m.label
+                  : hasBadge && m.href === "/admin/dealers"
+                    ? `${m.label} — ใบสมัคร ${badgeN} ใบ รออนุมัติ`
+                    : m.label
             : undefined
         }
         className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${

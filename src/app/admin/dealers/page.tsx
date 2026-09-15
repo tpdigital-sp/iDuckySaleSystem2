@@ -177,6 +177,8 @@ export default function AdminDealersPage() {
       if (!res.ok) setErr(j.error ?? "โหลดรายชื่อไม่สำเร็จ — ลองรีเฟรชหน้า");
       setDealers(j.dealers ?? []);
       setApplications(j.applications ?? []);
+      // ป้ายตัวเลขข้างเมนูนับใบสมัครชุดเดียวกัน — โหลดหน้านี้ทีไรให้ป้ายตรงกับที่เห็นตรงหน้า
+      window.dispatchEvent(new Event("iducky:dealers-changed"));
     } catch {
       setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — รายชื่อที่เห็นอาจไม่ใช่ล่าสุด");
     } finally {
