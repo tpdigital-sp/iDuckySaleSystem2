@@ -16,6 +16,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/edit-requests", label: "คำขอแก้ไขออเดอร์", emoji: "✏️", perm: "orders.view", group: "งานขาย" },
+  // เคลมอยู่กลุ่มงานขาย (ไม่ใช่ "ลูกค้า & การตลาด") — เจ้าของร้านสั่ง 15 ก.ย. 69: ลูกค้าเคลมเข้ามาต้องเห็นตั้งแต่หมวดที่เปิดทุกวัน
+  { href: "/admin/claims", label: "เคลมสินค้า", emoji: "🧰", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },
@@ -37,7 +39,6 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/contacts", label: "ข้อมูลผู้ติดต่อ", emoji: "📇", perm: "orders.viewAll", group: "ลูกค้า" },
   { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage", group: "ลูกค้า" },
   { href: "/admin/dealers", label: "ตัวแทนจำหน่าย", emoji: "🤝", perm: "dealers.manage", group: "ลูกค้า" },
-  { href: "/admin/claims", label: "เคลมสินค้า", emoji: "🧰", perm: "orders.view", group: "ลูกค้า" },
   { href: "/admin/reviews", label: "รีวิวสินค้า", emoji: "⭐", perm: "orders.viewAll", group: "ลูกค้า" },
   { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll", group: "ลูกค้า" },
   // ⚙️ ร้าน & ระบบ

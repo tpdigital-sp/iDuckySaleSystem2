@@ -105,7 +105,7 @@ function ClaimsPageInner() {
   return (
     <PageShell>
       <PageHead
-        group="ลูกค้า"
+        group="งานขาย"
         title="เคลมสินค้า"
         count={`${all.length} เรื่อง`}
         sub="เคสจากหน้า “แจ้งปัญหา / เคลมสินค้า” ของลูกค้า — เปลี่ยนสถานะหรือตอบกลับแล้วระบบแจ้งลูกค้าทาง LINE ให้เอง"
