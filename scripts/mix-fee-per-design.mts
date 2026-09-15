@@ -28,6 +28,12 @@ import {
 } from "../src/lib/products";
 
 const WRITE = process.argv.includes("--write");
+/**
+ * 🔓 --force = ยอมให้เขียนทั้งที่ด่านตรวจเจอเคส "แพงขึ้น" (เจ้าของร้านเคาะเองเป็นตัว ๆ เท่านั้น)
+ * ใช้กับ 8 ตัวที่ค้างมาตั้งแต่ 15 ก.ย. 69 — เคสที่แพงขึ้นคือ "คละลายละ 1 ชิ้น" ซึ่งแพงขึ้นแค่ ฿1–5
+ * แลกกับเคสคละกลาง ๆ ที่ถูกลงเป็นร้อย · ยังพิมพ์ส่วนต่างให้เห็นทุกตัวก่อนเขียนเหมือนเดิม
+ */
+const FORCE = process.argv.includes("--force");
 const FEE = 5;
 const onlyArg = process.argv.find((a) => a.startsWith("--only"));
 const ONLY = onlyArg ? new Set((onlyArg.split("=")[1] ?? process.argv[process.argv.indexOf(onlyArg) + 1] ?? "").split(",").filter(Boolean)) : undefined;
@@ -108,10 +114,12 @@ for (const row of rows) {
   const big = Math.max(floorQty, baseRate!.freeMixBelowQty ?? 0, per * 2);
   const small = Math.max(1, per - 1);
   let worst: string | undefined;
+  let worstDiff = 0;
   let gain = 0;
   const cmp = (name: string, b: number, a: number) => {
     if (!Number.isFinite(b) || !Number.isFinite(a)) return;
-    if (a > b + 0.001) worst ??= `${name}: ฿${Math.round(b)} → ฿${Math.round(a)}`;
+    // เก็บเคสที่ "แพงขึ้นมากที่สุด" ไว้ตัวเดียว (เดิมเก็บเคสแรกที่เจอ — ตัวเลขที่รายงานเลยไม่ใช่กรณีแย่สุด)
+    if (a > b + 0.001 && a - b > worstDiff) { worstDiff = a - b; worst = `${name}: ฿${Math.round(b)} → ฿${Math.round(a)}`; }
     gain = Math.max(gain, b - a);
   };
   for (const qty of [small, floorQty, big, big * 2, per * 3]) {
@@ -130,12 +138,12 @@ for (const row of rows) {
     cmp(name, cartPrice(before, sel, lines), cartPrice(after, sel, lines));
   }
 
-  if (worst) { skip("ตรวจราคาแล้วแพงขึ้น", `${tag} | ${worst}`); continue; }
+  if (worst && !FORCE) { skip("ตรวจราคาแล้วแพงขึ้น", `${tag} | ${worst}`); continue; }
 
   const kinds = targets.map(({ r }) => (r.underMinPieceFee ? `ชิ้นละ ฿${r.underMinPieceFee}` : r.extraDesignFee ? `ลายละ ฿${r.extraDesignFee}` : "ไม่มีค่าคละ"));
   changed.push({
     row, indexes: targets.map((t) => t.i),
-    note: `ลายละ ${per} ชิ้น · ${targets.length} เรทฐาน (เดิม ${[...new Set(kinds)].join(" / ")})` + (gain > 0.001 ? ` · ถูกลงสูงสุด ฿${Math.round(gain)}` : " · ราคาเท่าเดิมทุกเคส"),
+    note: `ลายละ ${per} ชิ้น · ${targets.length} เรทฐาน (เดิม ${[...new Set(kinds)].join(" / ")})` + (gain > 0.001 ? ` · ถูกลงสูงสุด ฿${Math.round(gain)}` : " · ราคาเท่าเดิมทุกเคส") + (worst ? ` · ⚠️ แพงขึ้นสูงสุด ${worst}` : ""),
   });
 }
 
