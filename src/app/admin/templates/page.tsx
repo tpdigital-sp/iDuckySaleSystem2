@@ -20,6 +20,7 @@ import {
   slotsOf,
   templateCategories,
   templateFiles,
+  templateFrame,
   TEMPLATE_MAX_MB,
   type DesignTemplate,
   type TemplateFile,
@@ -250,6 +251,17 @@ function AdminTemplatesInner() {
   const [prodQ, setProdQ] = useState<Record<string, string>>({});
   /** การ์ดที่กำลังเปิดลิสต์ค้นหาสินค้าอยู่ */
   const [prodOpen, setProdOpen] = useState<string | null>(null);
+  /**
+   * 🎨 สินค้าที่ "ปิด" ปุ่มวางลายเองไว้ (productId → true) — ตรงกับ Product.studioOff
+   * เก็บแยกจาก usedBy เพราะเป็นค่าของตัวสินค้า ไม่ใช่ของชุดเทมเพลต
+   * (สินค้าตัวเดียวผูกได้หลายชุด แต่สวิตช์วางลายเองมีตัวเดียว)
+   */
+  const [studioOffBy, setStudioOffBy] = useState<Record<string, boolean>>({});
+  /** ช่องค้นหาในกล่อง "เปิดใช้กับสินค้า" (คนละช่องกับสินค้าอ้างอิงด้านบน) */
+  const [linkQ, setLinkQ] = useState<Record<string, string>>({});
+  const [linkOpen, setLinkOpen] = useState<string | null>(null);
+  /** แถวสินค้าที่กำลังบันทึกอยู่ — คีย์ "<templateId>:<productId>" */
+  const [linkBusy, setLinkBusy] = useState<Record<string, string>>({});
   /** ไฟล์ที่ระบบกำลังทำรูปตัวอย่างให้อยู่ — โชว์เป็นช่องกะพริบแทนรูป ไม่มีปุ่มให้กด */
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   /** ชุดที่กำลังเปิดหน้าต่างตั้งค่า Theme อยู่ (เก็บเป็น id — ข้อมูลอ่านสด ๆ จาก list) */
@@ -291,9 +303,13 @@ function AdminTemplatesInner() {
     setList(tpls.map((t) => ({ ...normalizeTemplate(t) })));
     setCatList(cats);
     const by: Record<string, { id: string; name: string }[]> = {};
-    for (const p of products)
+    const studio: Record<string, boolean> = {};
+    for (const p of products) {
       for (const id of p.templateIds ?? []) (by[id] ??= []).push({ id: p.id, name: p.name });
+      if (p.studioOff === true) studio[p.id] = true;
+    }
     setUsedBy(by);
+    setStudioOffBy(studio);
     setProductList(products.map((p) => ({ id: p.id, name: p.name })));
     setLoading(false);
   }
@@ -454,59 +470,88 @@ function AdminTemplatesInner() {
     setList((cur) => cur.filter((x) => x.id !== t.id));
   }
 
+  /** จับ/ปล่อยแถวสินค้าที่กำลังบันทึก — คีย์ "<templateId>:<productId>" */
+  function markRow(tid: string, pid: string, word?: string) {
+    setLinkBusy((b) => {
+      const n = { ...b };
+      if (word) n[`${tid}:${pid}`] = word;
+      else delete n[`${tid}:${pid}`];
+      return n;
+    });
+  }
+
   /**
-   * 🔗 ผูกชุดนี้เข้ากับ "สินค้าที่เลือกไว้ในช่อง 1️⃣" ให้เลย
+   * 🔗 เปิดใช้ชุดนี้กับสินค้าตัวหนึ่ง (เขียน templateIds ลงในตัวสินค้า)
    *
-   * ทำไมต้องมี: เลือกสินค้าตรงนั้นเป็นแค่การ "ยืมกลุ่มตัวเลือก" มาแยกไฟล์ ไม่ได้แปลว่าผูกกับสินค้า
+   * ทำไมต้องมี: เลือกสินค้าในช่อง 1️⃣ เป็นแค่การ "ยืมกลุ่มตัวเลือก" มาแยกไฟล์ ไม่ได้แปลว่าผูกกับสินค้า
    * ทีมงานเลยตั้งค่าครบแล้วแต่หน้าสินค้าไม่ขึ้นเทมเพลต ต้องไปกดติ๊กในหน้าแก้ไขสินค้าอีกที
-   * ปุ่มนี้ย่อขั้นตอนนั้นให้เหลือคลิกเดียว (เขียน templateIds ลงในตัวสินค้า)
+   * ตรงนี้ย่อขั้นตอนนั้นให้เหลือคลิกเดียว และผูกสินค้าตัวไหนก็ได้ ไม่ใช่แค่สินค้าอ้างอิง
+   *
+   * ⚠️ สินค้าที่ยังไม่เคยผูกชุดไหนเลย → ปิดปุ่ม "🎨 เริ่มสร้าง" ไว้ก่อน (studioOff)
+   * เพราะค่าเริ่มต้นของระบบคือเปิด พอผูกเทมเพลตที่รู้ขนาดงาน ปุ่มวางลายเองจะโผล่ทันที
+   * เจ้าของร้านต้องการเลือกเองว่าสินค้าตัวไหนให้ลูกค้าวางลายบนเว็บ เลยให้มากดเปิดทีละตัวจากสวิตช์ในแถว
+   * (สินค้าที่ผูกชุดอื่นอยู่แล้วไม่แตะสวิตช์ — ของที่เปิดใช้งานอยู่ต้องไม่ถูกปิดเพราะผูกชุดที่สอง)
    */
-  async function linkToProduct(t: Draft) {
-    const pid = t.optionProductId;
+  async function linkToProduct(t: Draft, productId?: string) {
+    const pid = productId ?? t.optionProductId;
     if (!pid) return;
     if (t._dirty) await save(t); // ชุดที่ยังไม่บันทึกยังไม่มีในฐาน ผูกไปก็ชี้ไม่เจอ
-    setBusy((b) => ({ ...b, [t.id]: "ผูกสินค้า" }));
-    const clear = () =>
-      setBusy((b) => {
-        const n = { ...b };
-        delete n[t.id];
-        return n;
-      });
+    markRow(t.id, pid, "กำลังเปิดใช้…");
     const p = await fetchProductRaw(pid);
     if (!p) {
-      clear();
+      markRow(t.id, pid);
       return setError("โหลดข้อมูลสินค้าไม่สำเร็จ");
     }
     const ids = p.templateIds ?? [];
     if (ids.includes(t.id)) {
-      clear();
-      setUsedBy((u) => ({ ...u, [t.id]: [...(u[t.id] ?? []), { id: p.id, name: p.name }] }));
+      markRow(t.id, pid);
+      setUsedBy((u) =>
+        (u[t.id] ?? []).some((x) => x.id === p.id)
+          ? u
+          : { ...u, [t.id]: [...(u[t.id] ?? []), { id: p.id, name: p.name }] }
+      );
       return;
     }
-    const res = await persistProduct({ ...p, templateIds: [...ids, t.id] }, p.savedAt);
-    clear();
-    if (!res.ok) return setError(res.error ?? "ผูกกับสินค้าไม่สำเร็จ");
+    const firstTemplate = ids.length === 0;
+    const res = await persistProduct(
+      { ...p, templateIds: [...ids, t.id], ...(firstTemplate ? { studioOff: true } : {}) },
+      p.savedAt
+    );
+    markRow(t.id, pid);
+    if (!res.ok) return setError(res.error ?? "เปิดใช้กับสินค้าไม่สำเร็จ");
     setUsedBy((u) => ({ ...u, [t.id]: [...(u[t.id] ?? []), { id: p.id, name: p.name }] }));
+    if (firstTemplate) setStudioOffBy((m) => ({ ...m, [p.id]: true }));
   }
 
   /** เอาชุดนี้ออกจากสินค้าตัวนั้น (ตรงข้ามกับ linkToProduct) */
   async function unlinkFromProduct(t: Draft, productId: string) {
-    setBusy((b) => ({ ...b, [t.id]: "ปลดสินค้า" }));
-    const clear = () =>
-      setBusy((b) => {
-        const n = { ...b };
-        delete n[t.id];
-        return n;
-      });
+    markRow(t.id, productId, "กำลังปลด…");
     const p = await fetchProductRaw(productId);
     if (!p) {
-      clear();
+      markRow(t.id, productId);
       return setError("โหลดข้อมูลสินค้าไม่สำเร็จ");
     }
     const res = await persistProduct({ ...p, templateIds: (p.templateIds ?? []).filter((x) => x !== t.id) }, p.savedAt);
-    clear();
+    markRow(t.id, productId);
     if (!res.ok) return setError(res.error ?? "ปลดออกจากสินค้าไม่สำเร็จ");
     setUsedBy((u) => ({ ...u, [t.id]: (u[t.id] ?? []).filter((x) => x.id !== productId) }));
+  }
+
+  /**
+   * 🎨 เปิด/ปิดปุ่ม "เริ่มสร้าง — วางลายบนสินค้า" ของสินค้าตัวหนึ่ง (Product.studioOff)
+   * เป็นค่าของตัวสินค้า ไม่ใช่ของชุด — สินค้าที่ผูกหลายชุดใช้สวิตช์ตัวเดียวกัน
+   */
+  async function setStudioFor(t: Draft, productId: string, on: boolean) {
+    markRow(t.id, productId, on ? "กำลังเปิด…" : "กำลังปิด…");
+    const p = await fetchProductRaw(productId);
+    if (!p) {
+      markRow(t.id, productId);
+      return setError("โหลดข้อมูลสินค้าไม่สำเร็จ");
+    }
+    const res = await persistProduct({ ...p, studioOff: on ? undefined : true }, p.savedAt);
+    markRow(t.id, productId);
+    if (!res.ok) return setError(res.error ?? "เปลี่ยนสวิตช์วางลายเองไม่สำเร็จ");
+    setStudioOffBy((m) => ({ ...m, [productId]: !on }));
   }
 
   /** อัปหลายไฟล์รวดเดียว (ลากวาง/เลือกหลายไฟล์) — เดารุ่นจากชื่อไฟล์ให้ด้วย */
@@ -1348,6 +1393,26 @@ function AdminTemplatesInner() {
               });
             const prodMatches = prodHits.slice(0, 40);
             const prodMoreCount = prodHits.length - prodMatches.length;
+            /** ผลค้นหาในกล่อง "เปิดใช้กับสินค้า" — ตัดตัวที่เปิดใช้อยู่แล้วออก (มีอยู่ในลิสต์ข้างล่างแล้ว) */
+            const lq = (linkQ[t.id] ?? "").trim().toLowerCase();
+            const linkHits = productList
+              .filter((p) => !used.some((u) => u.id === p.id))
+              .filter((p) => !lq || p.name.toLowerCase().includes(lq))
+              .sort((a, b) => {
+                if (lq) {
+                  const sa = a.name.toLowerCase().startsWith(lq) ? 0 : 1;
+                  const sb = b.name.toLowerCase().startsWith(lq) ? 0 : 1;
+                  if (sa !== sb) return sa - sb;
+                }
+                return a.name.localeCompare(b.name, "th");
+              });
+            const linkMatches = linkHits.slice(0, 40);
+            const linkMoreCount = linkHits.length - linkMatches.length;
+            /**
+             * ชุดนี้ถอดกรอบงานได้ไหม — ถอดไม่ได้ ต่อให้เปิดสวิตช์ 🎨 ปุ่มวางลายก็ไม่ขึ้นบนหน้าสินค้า
+             * (ต้องรู้ขนาดอาร์ตบอร์ดจากไฟล์ หรืออ่านขนาดจากชื่อไฟล์/ชื่อชุดได้)
+             */
+            const studioReady = files.some((f) => !!templateFrame(t, f));
             const expanded = !!open[t.id];
             const missing = files.filter((f) => !fileReady(f)).length;
             const uploading = busy[t.id];
@@ -1602,21 +1667,21 @@ function AdminTemplatesInner() {
                         {t.optionProductId &&
                           (used.some((u) => u.id === t.optionProductId) ? (
                             <span className={`${badge} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}>
-                              🔗 ผูกกับสินค้านี้แล้ว
+                              🔗 เปิดใช้กับสินค้านี้แล้ว
                             </span>
                           ) : (
                             <>
                               <span className="text-[11px] font-semibold text-rose-600">
-                                ⚠️ ยังไม่ได้ผูกกับสินค้านี้ — หน้าสินค้าจะไม่ขึ้นเทมเพลต
+                                ⚠️ ยังไม่ได้เปิดใช้กับสินค้านี้ — หน้าสินค้าจะไม่ขึ้นเทมเพลต
                               </span>
                               <button
                                 type="button"
                                 onClick={() => void linkToProduct(t)}
-                                disabled={!!busy[t.id]}
+                                disabled={!!busy[t.id] || !!linkBusy[`${t.id}:${t.optionProductId}`]}
                                 className={`${btnSmDucky} disabled:opacity-50`}
-                                title="ผูกชุดนี้เข้ากับสินค้าที่เลือกไว้ — เท่ากับไปติ๊กในหน้าแก้ไขสินค้า"
+                                title="เปิดใช้ชุดนี้กับสินค้าที่เลือกไว้ — เท่ากับไปติ๊กในหน้าแก้ไขสินค้า"
                               >
-                                🔗 ผูกกับสินค้านี้เลย
+                                🔗 เปิดใช้กับสินค้านี้เลย
                               </button>
                             </>
                           ))}
@@ -1646,6 +1711,154 @@ function AdminTemplatesInner() {
                           </span>
                         )}
                       </div>
+                    </div>
+
+                    {/*
+                      ── 🔗 เปิดใช้กับสินค้า ──
+                      2 สวิตช์คนละเรื่องกัน แยกให้ชัดในแถวเดียว:
+                        ① ผูกชุด = หน้าสินค้ามีกล่อง 📐 ให้โหลดไฟล์เทมเพลตไปทำเองในโปรแกรม
+                        ② 🎨 วางลายเอง = ให้ลูกค้าวางลายบนเว็บได้เลย (ปุ่ม "เริ่มสร้าง")
+                      เปิดใช้ใหม่จะได้แค่ ① ก่อนเสมอ — ② ต้องมากดเปิดเองทีละตัว
+                    */}
+                    <div className="space-y-2 rounded-xl bg-white p-2.5 ring-1 ring-slate-200">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-700">🔗 เปิดใช้กับสินค้า</span>
+                        <span
+                          className={`${badge} ${
+                            used.length
+                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                              : "bg-slate-100 text-slate-500 ring-1 ring-slate-200"
+                          }`}
+                        >
+                          {used.length} สินค้า
+                        </span>
+                        {used.some((u) => !studioOffBy[u.id]) && (
+                          <span className={`${badge} bg-violet-50 text-violet-700 ring-1 ring-violet-200`}>
+                            🎨 วางลายเอง {used.filter((u) => !studioOffBy[u.id]).length}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* ค้นหาเพื่อเปิดใช้เพิ่ม — ร้านมีสินค้า 300+ ตัว ดรอปดาวน์ธรรมดาเลื่อนหาไม่ไหว */}
+                      <div className="relative">
+                        <input
+                          value={linkOpen === t.id ? linkQ[t.id] ?? "" : ""}
+                          onFocus={() => {
+                            setLinkOpen(t.id);
+                            setLinkQ((q) => ({ ...q, [t.id]: "" }));
+                          }}
+                          onBlur={() => setTimeout(() => setLinkOpen((c) => (c === t.id ? null : c)), 150)}
+                          onChange={(e) => setLinkQ((q) => ({ ...q, [t.id]: e.target.value }))}
+                          placeholder="🔍 พิมพ์ชื่อสินค้าแล้วกดเพื่อเปิดใช้ชุดนี้…"
+                          className={`${inputSm} w-full py-2 sm:w-80`}
+                          aria-label="ค้นหาสินค้าเพื่อเปิดใช้เทมเพลตชุดนี้"
+                        />
+                        {linkOpen === t.id && (
+                          <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg sm:w-80">
+                            {linkMatches.length === 0 ? (
+                              <li className={`px-3 py-2 text-xs ${faint}`}>
+                                {/*
+                                  ลิสต์นี้ตัดตัวที่เปิดใช้อยู่แล้วออก — คำค้นที่ตรงกับตัวที่เปิดใช้อยู่จึงได้ลิสต์ว่าง
+                                  ถ้าเขียนว่า "ไม่เจอสินค้า" จะเข้าใจผิดว่าร้านไม่มีสินค้าตัวนั้น ต้องบอกให้ตรงว่าเปิดใช้ไปแล้ว
+                                */}
+                                {!lq
+                                  ? "เปิดใช้ครบทุกสินค้าแล้ว"
+                                  : used.some((u) => u.name.toLowerCase().includes(lq))
+                                    ? "สินค้าที่ตรงกับคำค้นเปิดใช้ชุดนี้อยู่แล้ว — ดูในรายการข้างล่าง"
+                                    : "ไม่เจอสินค้าที่ตรงกับคำค้น"}
+                              </li>
+                            ) : (
+                              linkMatches.map((p) => (
+                                <li key={p.id}>
+                                  <button
+                                    type="button"
+                                    // onMouseDown มาก่อน onBlur ของช่องค้นหา — ไม่งั้นลิสต์ปิดก่อนคลิกติด
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setLinkOpen(null);
+                                      void linkToProduct(t, p.id);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-emerald-50"
+                                  >
+                                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                                    <span className="shrink-0 text-emerald-600">＋ เปิดใช้</span>
+                                  </button>
+                                </li>
+                              ))
+                            )}
+                            {linkMoreCount > 0 && (
+                              <li className={`px-3 py-1.5 text-[11px] ${faint}`}>
+                                …อีก {linkMoreCount} รายการ — พิมพ์เพิ่มเพื่อกรองให้แคบลง
+                              </li>
+                            )}
+                          </ul>
+                        )}
+                      </div>
+
+                      {used.length === 0 ? (
+                        <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                          ยังไม่ได้เปิดใช้กับสินค้าตัวไหน — หน้าสินค้าจะไม่ขึ้นชุดนี้เลย
+                          <br />
+                          พิมพ์ชื่อสินค้าในช่องด้านบนเพื่อเปิดใช้
+                        </p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {used.map((u) => {
+                            const studioOn = !studioOffBy[u.id];
+                            const rowBusy = linkBusy[`${t.id}:${u.id}`];
+                            return (
+                              <li
+                                key={u.id}
+                                className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 ring-1 ring-slate-200"
+                              >
+                                <Link
+                                  href={`/admin/products/${u.id}`}
+                                  className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700 hover:text-amber-700 hover:underline"
+                                  title={`เปิดหน้าแก้ไข ${u.name}`}
+                                >
+                                  {u.name}
+                                </Link>
+                                {rowBusy ? (
+                                  <span className={`text-[11px] ${faint}`}>{rowBusy}</span>
+                                ) : (
+                                  <>
+                                    {/* 🎨 สวิตช์วางลายเอง — ค่าของตัวสินค้า สินค้าที่ผูกหลายชุดใช้ตัวเดียวกัน */}
+                                    <button
+                                      type="button"
+                                      onClick={() => void setStudioFor(t, u.id, !studioOn)}
+                                      className={`min-h-[34px] shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                                        studioOn
+                                          ? "bg-violet-100 text-violet-800 ring-1 ring-violet-300 hover:bg-violet-200"
+                                          : "bg-white text-slate-500 ring-1 ring-slate-300 hover:bg-slate-100"
+                                      }`}
+                                      title={
+                                        studioOn
+                                          ? "ตอนนี้ลูกค้าวางลายบนเว็บได้ — กดเพื่อปิด (เหลือแค่โหลดไฟล์ไปทำเอง)"
+                                          : "ตอนนี้ให้โหลดไฟล์ไปทำเองอย่างเดียว — กดเพื่อเปิดปุ่ม 🎨 เริ่มสร้าง บนหน้าสินค้า"
+                                      }
+                                    >
+                                      🎨 วางลายเอง · {studioOn ? "เปิด" : "ปิด"}
+                                    </button>
+                                    {studioOn && !studioReady && (
+                                      <span className="shrink-0 text-[11px] font-semibold text-amber-600">
+                                        ⚠️ ชุดนี้ยังไม่รู้ขนาดงาน — ปุ่มยังไม่ขึ้น
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => void unlinkFromProduct(t, u.id)}
+                                      className={`${btnSmDanger} shrink-0`}
+                                      title="ปลดชุดนี้ออกจากสินค้าตัวนี้"
+                                    >
+                                      ✕ ปลด
+                                    </button>
+                                  </>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </div>
 
                     {/* ── กล่องลากวาง ── */}
@@ -2047,26 +2260,6 @@ function AdminTemplatesInner() {
                         />
                         ซ่อนทั้งชุด
                       </label>
-                      {/* สินค้าที่ผูกชุดนี้อยู่ — กด ✕ เพื่อปลดออกได้จากตรงนี้เลย */}
-                      {used.map((u) => (
-                        <span
-                          key={u.id}
-                          className={`${badge} gap-1 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}
-                          title={`${u.name} ใช้ชุดนี้อยู่`}
-                        >
-                          🔗 <span className="max-w-[10rem] truncate">{u.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => void unlinkFromProduct(t, u.id)}
-                            disabled={!!busy[t.id]}
-                            className="text-emerald-500 transition hover:text-rose-600 disabled:opacity-40"
-                            title="ปลดชุดนี้ออกจากสินค้าตัวนี้"
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      ))}
-
                       <div className="ml-auto flex items-center gap-2">
                         <button type="button" onClick={() => remove(t)} className={btnSmDanger}>
                           🗑 ลบทั้งชุด

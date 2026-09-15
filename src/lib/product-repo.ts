@@ -169,7 +169,11 @@ export async function fetchProductNamesLite(): Promise<Product[]> {
   if (!sb) return mergedProducts();
   const { data, error } = await sb
     .from("products")
-    .select("id,name,category,badge,sort,slug:data->>slug,hidden:data->hidden,templateIds:data->templateIds")
+    .select(
+      "id,name,category,badge,sort,slug:data->>slug,hidden:data->hidden," +
+        // 📐 หน้าคลังเทมเพลตใช้ 2 ตัวนี้ตัดสินว่าสินค้าตัวไหน "ผูกชุดไหน" และ "เปิดให้วางลายเองไหม"
+        "templateIds:data->templateIds,studioOff:data->studioOff"
+    )
     .order("sort", { ascending: true });
   if (error || !data) return mergedProducts();
   return (data as unknown as Record<string, unknown>[])
