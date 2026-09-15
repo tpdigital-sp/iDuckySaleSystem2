@@ -22,6 +22,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },
   { href: "/admin/price-links", label: "ลิงก์ราคา", emoji: "🔗", perm: "admin.access", group: "งานขาย" },
+  { href: "/admin/reports", label: "รายงานยอดขาย", emoji: "📈", perm: "reports.view", group: "งานขาย" },
   // 🎨 งานแบบ — ฝ่ายกราฟฟิกเปิดหมวดนี้หมวดเดียวก็ทำงานได้ครบ
   { href: "/admin/graphics", label: "ออเดอร์กราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
   { href: "/admin/graphics/designs", label: "รายงานแบบงาน", emoji: "📋", perm: "proof.manage", group: "กราฟฟิก" },

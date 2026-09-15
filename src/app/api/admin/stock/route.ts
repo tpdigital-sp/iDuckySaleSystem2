@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     category?: string;
     reorderPoint?: number;
     leadTimeDays?: number;
+    unitCost?: number;
     productIds?: string[];
     active?: boolean;
   };
@@ -51,6 +52,8 @@ export async function POST(req: Request) {
       category: body.category,
       reorderPoint: Number.isFinite(body.reorderPoint) ? Math.max(0, Number(body.reorderPoint)) : undefined,
       leadTimeDays: Number.isFinite(body.leadTimeDays) ? Math.max(0, Number(body.leadTimeDays)) : undefined,
+      // ทุน/หน่วย — ส่ง 0 มาแปลว่า "ลบทุนออก" (undefined = ไม่ได้แตะช่องนี้ คงของเดิม)
+      unitCost: Number.isFinite(body.unitCost) ? Math.max(0, Number(body.unitCost)) : undefined,
       productIds: Array.isArray(body.productIds) ? body.productIds.map((p) => String(p).trim()).filter(Boolean) : undefined,
       active: body.active,
     });

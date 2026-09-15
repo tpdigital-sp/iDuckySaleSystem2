@@ -44,6 +44,13 @@ export interface StockItem {
   reorderPoint?: number;
   /** สั่งแล้วกี่วันของถึง (ไว้คำนวณจุดสั่งแนะนำ) */
   leadTimeDays?: number;
+  /**
+   * 💰 ราคาทุนต่อหน่วย (บาท) — ของที่ซื้อเข้ามาชิ้นนี้จ่ายไปเท่าไหร่
+   * ใช้ 2 อย่าง: มูลค่าของในคลัง (คงเหลือ × ทุน) และต้นทุนวัสดุต่อออเดอร์ในหน้ารายงาน
+   * ⚠️ แก้ตัวนี้แล้ว "ไม่" ย้อนไปเปลี่ยนต้นทุนของที่ขายไปแล้ว — ทุกครั้งที่เดินสต๊อกจะแช่ทุน ณ ตอนนั้นไว้ในแถว ledger
+   *    (ของขึ้นราคาแล้วกำไรเดือนก่อนต้องไม่ขยับตาม)
+   */
+  unitCost?: number;
   /** productId ของสินค้า iDucky ที่ตัดสต๊อกตัวนี้ตอนขาย (คั่นได้หลายตัว) */
   productIds?: string[];
   active: boolean;
@@ -65,6 +72,10 @@ export interface StockMove {
   source: "iducky" | "tp-withdraw";
   at: string;
   balanceAfter: number;
+  /** ทุนต่อหน่วยของ SKU ณ วินาทีที่เดินสต๊อก (แช่ไว้ — แก้ทุนทีหลังไม่กระทบแถวเก่า) */
+  unitCost?: number;
+  /** มูลค่าของแถวนี้ = qty × unitCost (ติดลบ = ของออกจากคลัง) · ไม่มี = ตอนนั้นยังไม่ได้ใส่ทุนให้ SKU */
+  cost?: number;
 }
 
 /** db เดียวกับหน้า TP-Leader (tpdigital-iducky / database "tp-fixflow") — subtab เบิกของคุยตรงได้ */
@@ -110,6 +121,7 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string }
     balance: cur?.balance ?? 0, // ยอดแก้ผ่าน move เท่านั้น
     reorderPoint: input.reorderPoint ?? cur?.reorderPoint,
     leadTimeDays: input.leadTimeDays ?? cur?.leadTimeDays,
+    unitCost: input.unitCost ?? cur?.unitCost,
     productIds: input.productIds ?? cur?.productIds ?? [],
     active: input.active ?? cur?.active ?? true,
     createdAt: cur?.createdAt ?? now,
@@ -139,6 +151,8 @@ export async function addStockMove(input: {
     if (!snap.exists) throw new Error("ไม่พบรายการสต๊อกนี้");
     const item = snap.data() as StockItem;
     const balanceAfter = (item.balance ?? 0) + input.qty;
+    // 💰 แช่ทุน ณ ตอนนี้ลงแถว ledger — รายงานกำไรย้อนหลังต้องใช้ทุนของวันที่ขาย ไม่ใช่ทุนวันนี้
+    const unitCost = Number.isFinite(item.unitCost) && (item.unitCost ?? 0) > 0 ? Number(item.unitCost) : undefined;
     const move: StockMove = {
       itemId: input.itemId,
       itemName: item.name,
@@ -150,6 +164,7 @@ export async function addStockMove(input: {
       source: input.source,
       at: new Date().toISOString(),
       balanceAfter,
+      ...(unitCost ? { unitCost, cost: Math.round(input.qty * unitCost * 100) / 100 } : {}),
     };
     tx.update(itemRef, { balance: balanceAfter, updatedAt: move.at });
     tx.set(moveRef, move);
@@ -266,4 +281,49 @@ export async function restoreStockForOrder(order: Order): Promise<void> {
   } catch (e) {
     console.error("[stock] คืนสต๊อกออเดอร์ไม่สำเร็จ:", (e as Error)?.message);
   }
+}
+
+/**
+ * 💰 ต้นทุนวัสดุที่ตัดไปแล้ว แยกตามออเดอร์ — วัตถุดิบของหน้ารายงานกำไร
+ *
+ * อ่านจาก ledger (ไม่ใช่คิดสดจากทุนวันนี้) เพราะแต่ละแถวแช่ทุน ณ วันที่ตัดไว้แล้ว
+ * → ของขึ้นราคาเดือนนี้ กำไรเดือนก่อนต้องไม่ขยับตาม
+ *
+ * ⚠️ ได้เฉพาะ SKU ที่ "ผูกกับสินค้า/ตัวเลือก" และ "ใส่ราคาทุนไว้" เท่านั้น
+ *    ใบที่ไม่มีแถวเลย = คิดต้นทุนไม่ได้ (ไม่ใช่ต้นทุน 0) — หน้ารายงานต้องบอกว่าครอบคลุมกี่ใบ
+ *
+ * @param fromIso/toIso ช่วงเวลาที่ "เดินสต๊อก" (ISO) — กว้างกว่าช่วงวันที่ของออเดอร์ เพราะตัดสต๊อกตอนเงินเข้า
+ *                      ซึ่งอาจห่างจากวันเปิดใบหลายวัน
+ */
+export async function orderCostsInRange(fromIso: string, toIso: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const db = getStockDb();
+  if (!db) return out;
+  try {
+    const LIMIT = 8000;
+    const snap = await db.collection(STOCK_MOVES).where("at", ">=", fromIso).where("at", "<=", toIso).limit(LIMIT).get();
+    // ชนเพดาน = ต้นทุนที่ได้ไม่ครบช่วง (ใบเก่าสุดหาย) — ขึ้น log ไว้ ไม่ใช่เงียบ ๆ แล้วให้คนอ่านกำไรผิด
+    if (snap.size === LIMIT) console.warn(`[stock] ledger ในช่วง ${fromIso}–${toIso} เกิน ${LIMIT} แถว ต้นทุนอาจไม่ครบ`);
+    for (const d of snap.docs) {
+      const m = d.data() as StockMove;
+      if (!m.refOrderId || !Number.isFinite(m.cost)) continue;
+      // ledger ติดลบ = ของออกจากคลัง → ต้นทุนเป็นบวก · คืนของตอนยกเลิกหักกลับเอง
+      out.set(m.refOrderId, Math.round(((out.get(m.refOrderId) ?? 0) - (m.cost as number)) * 100) / 100);
+    }
+  } catch (e) {
+    console.error("[stock] อ่านต้นทุนจาก ledger ไม่สำเร็จ:", (e as Error)?.message);
+  }
+  return out;
+}
+
+/** มูลค่าของที่ค้างในคลังตอนนี้ (คงเหลือ × ทุน) — นับเฉพาะ SKU ที่ใส่ทุนไว้ */
+export function stockValueOf(items: StockItem[]): { value: number; priced: number; total: number } {
+  let value = 0;
+  let priced = 0;
+  for (const i of items) {
+    if (!i.unitCost || i.unitCost <= 0) continue;
+    priced += 1;
+    value += Math.max(0, i.balance ?? 0) * i.unitCost;
+  }
+  return { value: Math.round(value * 100) / 100, priced, total: items.length };
 }

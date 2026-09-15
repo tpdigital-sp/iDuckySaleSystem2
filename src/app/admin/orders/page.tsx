@@ -245,6 +245,9 @@ export default function AdminOrdersPage() {
     // มาจากช่องขั้นงานในหน้าภาพรวม → เปิดมาพร้อมตัวกรองสถานะนั้นเลย
     const wanted = qs.get("status") as OrderStatus | null;
     if (wanted && ORDER_STATUSES.includes(wanted)) setFilter(wanted);
+    // มาจากแถวในหน้ารายงานยอดขาย (ชื่อสินค้า/ชื่อลูกค้า/เบอร์) → เปิดมาพร้อมคำค้นนั้นเลย
+    const wantQ = qs.get("q");
+    if (wantQ) setQ(wantQ);
 
     fetchOrdersAdmin().then((r) => {
       if (!r.ok) return setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
@@ -383,6 +386,8 @@ export default function AdminOrdersPage() {
       if ((o.placedBy ?? "").toLowerCase().includes(kw)) return true;
       // เลขเอกสาร FlowAccount (QT010529) / ชื่อบริษัทในใบกำกับ — ลูกค้านิติบุคคลมักอ้างเลขนี้
       if ((o.flowAccount?.docNo ?? "").toLowerCase().includes(kw) || (o.taxInvoice?.company ?? "").toLowerCase().includes(kw)) return true;
+      // ชื่อสินค้าในใบ — "ใบไหนบ้างที่สั่งพวงกุญแจอะคริลิค" (หน้ารายงานยอดขายลิงก์มาแบบนี้)
+      if (o.items.some((i) => (i.name ?? "").toLowerCase().includes(kw))) return true;
       // ค้นด้วยเบอร์โทรได้ด้วย — แอดมินมักได้เบอร์จากไลน์ก่อนได้เลขออเดอร์
       return digits.length >= 4 && (o.phone ?? "").replace(/\D/g, "").includes(digits);
     });
@@ -474,7 +479,7 @@ export default function AdminOrdersPage() {
                 <circle cx="11" cy="11" r="7" />
                 <path d="m20 20-3.5-3.5" />
               </svg>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า / เบอร์โทร" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นเลขออเดอร์ / ชื่อลูกค้า / เบอร์โทร / ชื่อสินค้า" />
             </label>
             {can("orders.edit") && <NewOrderButton onCreated={(id) => router.push(`/admin/orders/${id}`)} />}
             {can("orders.edit") && <FlowAccountButton onCreated={(id) => router.push(`/admin/orders/${id}`)} />}

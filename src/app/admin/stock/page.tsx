@@ -43,6 +43,8 @@ interface Item {
   balance: number;
   reorderPoint?: number;
   leadTimeDays?: number;
+  /** ทุนต่อหน่วย (บาท) — ใส่ไว้แล้วหน้ารายงานถึงคิดกำไรของออเดอร์ที่ใช้วัสดุตัวนี้ได้ */
+  unitCost?: number;
   productIds?: string[];
   needsReview?: boolean;
   autoCreated?: boolean;
@@ -153,6 +155,17 @@ export default function StockPage() {
   }, [items, moves]);
 
   const needOrder = useMemo(() => items.filter((i) => stats.get(i.id)?.level === "danger"), [items, stats]);
+  /** 💰 มูลค่าของที่ค้างอยู่ในคลัง — นับเฉพาะ SKU ที่ใส่ทุนไว้ (บอกด้วยว่าใส่ไปกี่ตัวจากทั้งหมด) */
+  const stockValue = useMemo(() => {
+    let value = 0;
+    let priced = 0;
+    for (const i of items) {
+      if (!i.unitCost || i.unitCost <= 0) continue;
+      priced += 1;
+      value += Math.max(0, i.balance) * i.unitCost;
+    }
+    return { value, priced };
+  }, [items]);
   const nearLow = useMemo(() => items.filter((i) => stats.get(i.id)?.level === "warn"), [items, stats]);
   const toReview = useMemo(() => items.filter((i) => i.needsReview), [items]);
 
@@ -279,7 +292,15 @@ export default function StockPage() {
           }
           pct={items.length ? (needOrder.length / items.length) * 100 : 0}
         />
-        <Stat label="เคลื่อนไหววันนี้" value={fmtN(todayMoves)} hint="ครั้ง (รับเข้า/เบิก/ขาย)" />
+        <Stat
+          label="มูลค่าของในคลัง"
+          value={stockValue.priced ? `฿${fmtN(Math.round(stockValue.value))}` : "—"}
+          hint={
+            stockValue.priced
+              ? `ใส่ทุนไว้ ${fmtN(stockValue.priced)}/${fmtN(items.length)} รายการ`
+              : "ยังไม่ได้ใส่ทุน/หน่วย — ใส่แล้วหน้ารายงานคิดกำไรให้"
+          }
+        />
         <Stat
           label="เบิกทำเสีย 30 วัน"
           value={fmtN(monthDefect)}
@@ -982,6 +1003,11 @@ function ItemDrawer({
             <Fact k="จะหมดใน" v={stat?.daysLeft != null ? `~${fmtN(stat.daysLeft)} วัน` : "—"} />
             <Fact k="รอของ" v={item.leadTimeDays ? `${item.leadTimeDays} วัน` : "—"} />
             <Fact k="ผูกสินค้า" v={`${item.productIds?.length ?? 0} ตัว`} />
+            <Fact k="ทุน/หน่วย" v={item.unitCost ? `฿${fmtN(item.unitCost)}` : "—"} />
+            <Fact
+              k="มูลค่าคงเหลือ"
+              v={item.unitCost ? `฿${fmtN(Math.round(Math.max(0, item.balance) * item.unitCost))}` : "—"}
+            />
           </dl>
 
           {item.maybeDuplicateOf && (
@@ -1072,6 +1098,7 @@ function ItemModal({
   const [category, setCategory] = useState(item?.category ?? "");
   const [reorderPoint, setReorderPoint] = useState(item?.reorderPoint != null ? String(item.reorderPoint) : "");
   const [leadTimeDays, setLeadTimeDays] = useState(item?.leadTimeDays != null ? String(item.leadTimeDays) : "");
+  const [unitCost, setUnitCost] = useState(item?.unitCost ? String(item.unitCost) : "");
   const [aliases, setAliases] = useState((item?.aliases ?? []).join(", "));
   const [productIds, setProductIds] = useState((item?.productIds ?? []).join(", "));
 
@@ -1124,6 +1151,20 @@ function ItemModal({
           </label>
         </div>
         <label className="block">
+          <span className={fieldLabel}>ทุน/หน่วย (บาท)</span>
+          <input
+            value={unitCost}
+            onChange={(e) => setUnitCost(e.target.value.replace(/[^\d.]/g, ""))}
+            inputMode="decimal"
+            placeholder="12.50"
+            className={inputCls}
+          />
+          <span className="mt-1 block text-[11px] text-slate-400">
+            ราคาที่ร้านซื้อเข้ามาต่อ 1 {unit || "ชิ้น"} — ใส่ไว้แล้วหน้ารายงานคิดต้นทุน/กำไรของออเดอร์ให้เอง ·
+            แก้ทีหลังไม่กระทบของที่ขายไปแล้ว
+          </span>
+        </label>
+        <label className="block">
           <span className={fieldLabel}>ชื่อที่เคยเรียก (คั่นด้วย , ) — ใช้ค้นหาให้เจอ</span>
           <input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Gtดำ, GT ดำ" className={inputCls} />
         </label>
@@ -1146,6 +1187,8 @@ function ItemModal({
             category: category || undefined,
             reorderPoint: reorderPoint ? Number(reorderPoint) : undefined,
             leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
+            // ล้างช่อง = ส่ง 0 ไปลบทุนออก (undefined จะกลายเป็น "ไม่แตะ" แล้วค่าเก่าค้าง)
+            unitCost: unitCost.trim() === "" ? 0 : Number(unitCost),
             aliases: aliases.split(",").map((x) => x.trim()).filter(Boolean),
             productIds: productIds.split(",").map((x) => x.trim()).filter(Boolean),
           })
