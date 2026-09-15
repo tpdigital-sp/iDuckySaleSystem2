@@ -315,6 +315,8 @@ type Draft = {
   name: string;
   /** ย่อหน้าคำอธิบายใต้ชื่อบนหน้าสินค้า (คนละอันกับ Meta description ของ SEO) */
   description: string;
+  /** 📐 ขนาดงานตายตัว เช่น "27.7 × 7.6 ซม." — สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้ลูกค้าเลือก */
+  workSize: string;
   /** ลิงก์ตามชื่อ (slug) ของหน้าสินค้า — ว่าง = ใช้ id ตามเดิม */
   slug: string;
   category: CategoryId;
@@ -543,6 +545,7 @@ function toDraft(p: Product): Draft {
   return {
     name: p.name,
     description: p.description ?? "",
+    workSize: p.workSize ?? "",
     mtoAlways: p.mtoAlways === true,
     area: p.areaPricing
       ? {
@@ -4306,6 +4309,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       ...original,
       name: draft.name.trim(),
       description: draft.description.trim(),
+      workSize: draft.workSize.trim() || undefined,
       slug: slug && slug !== productId ? slug : undefined,
       category: draft.category,
       featured: draft.featured,
@@ -5133,6 +5137,18 @@ export default function ProductEditor({ product }: { product: Product }) {
             rows={4}
             placeholder="เล่าว่าสินค้านี้คืออะไร ทำจากอะไร เลือกอะไรได้บ้าง — ลูกค้าเห็นเป็นย่อหน้าแรกใต้ชื่อสินค้า"
             className={`${inputCls} mt-1 w-full resize-y leading-relaxed`}
+          />
+        </label>
+        {/* 📐 ขนาดงานตายตัว — สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้เลือก ขนาดจึงไม่ติดไปกับรายการในออเดอร์
+            กราฟฟิกต้องเปิดหน้าสินค้าหาเอง · กรอกไว้ตรงนี้แล้วทุกจอขึ้นบรรทัด "ขนาด: …" ให้เอง */}
+        <label className="mt-3 block text-xs font-semibold text-slate-500">
+          ขนาดงาน (สินค้าขนาดเดียว) <span className="font-normal text-slate-400">(ไม่มีกลุ่มขนาดให้ลูกค้าเลือกถึงกรอก — ขึ้นเป็นบรรทัด “ขนาด” ในตะกร้า/ออเดอร์/ใบงาน)</span>
+          <input
+            type="text"
+            value={draft.workSize}
+            onChange={(e) => patch({ workSize: e.target.value })}
+            placeholder="เช่น 27.7 × 7.6 ซม."
+            className={`${inputCls} mt-1 w-full max-w-xs`}
           />
         </label>
       </section>

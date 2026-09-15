@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MOCK_ORDERS, type Order } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { fetchWorkSizes } from "@/lib/product-repo";
 import { usePolling } from "@/lib/use-polling";
 
 /**
@@ -31,6 +32,25 @@ export function useGraphicsOrders(): { orders: Order[]; demo: boolean } {
   usePolling(refresh, { enabled: !demo });
 
   return { orders, demo };
+}
+
+/**
+ * 📐 ขนาดงานตายตัวของสินค้า (id → ขนาด) — สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้ลูกค้าเลือก
+ * ขนาดจึงไม่ติดมากับรายการในออเดอร์ กราฟฟิกต้องเปิดหน้าสินค้าหาเอง (เจ้าของร้านทัก 15 ก.ย. 69)
+ * ดึงเฉพาะคอลัมน์ขนาด — บอร์ดมีสินค้าหลายสิบตัว โหลดสินค้าเต็มก้อนไม่คุ้ม
+ */
+export function useWorkSizes(): Record<string, string> {
+  const [sizes, setSizes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    void fetchWorkSizes().then((m) => {
+      if (alive) setSizes(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return sizes;
 }
 
 /** ค้นหาด้วยเลขออเดอร์ · ชื่อลูกค้า · ชื่อสินค้า */

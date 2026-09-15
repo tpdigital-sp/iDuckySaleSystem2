@@ -47,6 +47,7 @@ import {
   type OrderStatus,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { usePolling } from "@/lib/use-polling";
 import { useCan } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
@@ -73,7 +74,6 @@ const WAIT_THEM: OrderStatus[] = ["รอชำระเงิน", "รอต�
 /** จบแล้ว — แถวต้องเงียบกว่าใบที่ยังค้าง */
 const DONE: OrderStatus[] = ["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"];
 
-const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const openProofs = (o: Order) => o.items.filter((i) => !proofsOf(i).length || i.proofStatus === "ขอแก้ไข").length;
 const isDue = (o: Order) => !!o.deposit && !o.deposit.settledAt && o.status !== "ยกเลิก";
 
@@ -851,7 +851,7 @@ function Row({
   const open = openProofs(o);
   const line = lineUserOf(o, orders);
   const chat = lineChatOf(o, orders);
-  const qty = qtyOf(o);
+  const qtyText = orderQtyText(o.items); // "17 เซ็ต · 102 ชิ้น" — งานเซ็ต/แผ่นจำนวนที่สั่งไม่ใช่จำนวนชิ้น
 
   useEffect(() => {
     if (!menu) return;
@@ -940,11 +940,11 @@ function Row({
 
       {/* ── รายการ ── */}
       <td data-lb="รายการ">
-        <span className="opv-items" title={o.items.map((i) => `${i.name} × ${i.qty}`).join("\n")}>
+        <span className="opv-items" title={o.items.map((i) => `${i.name} × ${itemQtyText(i)}`).join("\n")}>
           <b>{first ? `${first.name} × ${first.qty}` : "ยังไม่มีรายการ"}</b>
           <span>
             {o.items.length > 1 ? `+ อีก ${o.items.length - 1} รายการ · ` : ""}
-            รวม {qty} ชิ้น
+            รวม {qtyText}
             {open > 0 && ` · แบบรอทำ ${open}`}
           </span>
         </span>
@@ -985,7 +985,7 @@ function Row({
       {/* ── ยอด ── */}
       <td data-lb={seesMoney ? "ยอด" : "จำนวน"}>
         <span className="opv-amt">
-          {seesMoney ? formatPrice(orderTotal(o)) : `${qty} ชิ้น`}
+          {seesMoney ? formatPrice(orderTotal(o)) : qtyText}
           {seesMoney && isDue(o) && (
             <small style={{ color: o.deposit?.firstPaidAt ? "var(--op-rose)" : "var(--op-violet)" }}>
               {o.deposit?.firstPaidAt ? "ค้าง" : "มัดจำ"} {formatPrice(amountDueNow(o))}

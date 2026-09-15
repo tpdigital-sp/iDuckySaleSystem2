@@ -1205,8 +1205,18 @@ export function orderUnitYield(product: Product, selections: Record<string, stri
     const p = (v ?? "").match(reNamePack);
     if (p && Number(p[2]) > 1) return { per: Number(p[2]), piece: p[3], unit: saleUnit || p[1] };
   }
-  // ไม่รู้ว่าเซ็ตละกี่ชิ้น แต่รู้ว่าขายเป็นเซ็ต — บอกหน่วยไว้ก่อน แอดมินเติมจำนวนต่อเซ็ตทีหลังได้
-  if (isPackUnit(saleUnit)) return { per: 1, piece: "ชิ้น", unit: saleUnit };
+  /*
+   * 📦 ขายเป็นเซ็ต/ชุด/แผ่น แล้วร้านตั้ง "ชิ้นต่อหน่วย" ไว้ที่ตัวเลือก (choice.perUnit) — CUP SLEEVE เซ็ตละ 6 ชิ้น
+   * ฟิลด์นั้นมีไว้กดเพดานจำนวนลายที่คละได้ แต่ความหมายคือ "1 หน่วยที่สั่งได้ของกี่ชิ้น" ตัวเดียวกันเป๊ะ
+   * (ดู ProductOptionChoice.perUnit) — ไม่อ่านมาใช้ด้วย ออเดอร์จะแช่ per 1 แล้วกราฟฟิกต้องมาตั้งเองทุกใบ
+   * เอาเฉพาะตอนขายเป็นหน่วยรวมจริง ๆ · สินค้าที่ขายเป็นชิ้น perUnit เป็นเพดานลายล้วน ๆ ห้ามเอามาคูณ
+   */
+  if (isPackUnit(saleUnit)) {
+    const cap = perUnitCapacity(product, selections);
+    if (cap && cap > 1) return { per: cap, piece: "ชิ้น", unit: saleUnit };
+    // ไม่รู้ว่าเซ็ตละกี่ชิ้น แต่รู้ว่าขายเป็นเซ็ต — บอกหน่วยไว้ก่อน แอดมินเติมจำนวนต่อเซ็ตทีหลังได้
+    return { per: 1, piece: "ชิ้น", unit: saleUnit };
+  }
   return null;
 }
 
@@ -2705,6 +2715,13 @@ export interface Product {
   featured?: boolean;
   description: string;
   highlights: string[];
+  /**
+   * 📐 ขนาดงานตายตัวของสินค้านี้ เช่น "27.7 × 7.6 ซม." — สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้ลูกค้าเลือก
+   * (CUP SLEEVE · ที่รองแก้ว ฯลฯ) กราฟฟิกจึงหาขนาดจากรายการในออเดอร์ไม่เจอ ต้องเปิดหน้าสินค้าดูเอง
+   * ตั้งไว้แล้วทุกจอที่โชว์รายละเอียดรายการจะขึ้นบรรทัด "ขนาด: …" ให้เอง (ดู withWorkSize ใน SpecLines)
+   * มีกลุ่มขนาดให้เลือกอยู่แล้ว = ไม่ต้องตั้ง (บรรทัดขนาดจากตัวเลือกชนะเสมอ)
+   */
+  workSize?: string;
   options: ProductOption[];
   /** กฎจำกัดตัวเลือกข้ามกลุ่ม (ไม่มี = ทุกตัวเลือกใช้ร่วมกันได้หมด) */
   rules?: OptionRule[];

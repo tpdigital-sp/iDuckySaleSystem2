@@ -72,6 +72,30 @@ export async function fetchProductsByIdsChecked(
 }
 
 /**
+ * 📐 ขนาดงานตายตัวของสินค้าทั้งร้าน (id → workSize) — ดึงแค่คอลัมน์เดียว ไม่เอาสินค้าเต็มก้อน
+ * จอรายการ/บอร์ด (คิวกราฟฟิก · สถานีแพ็ค) ต้องการแค่บรรทัดขนาด แต่มีสินค้าหลายสิบตัวในจอเดียว
+ * โหลดเต็มก้อนไม่คุ้ม (สินค้าทั้งร้าน ~1.4 MB) · ตัวที่ไม่ได้ตั้งขนาดไว้ไม่อยู่ในผลลัพธ์
+ * ไม่มีคีย์ฐานข้อมูล/เรียกไม่สำเร็จ = คืนแมปว่าง (จอแค่ไม่มีบรรทัดขนาด ไม่พัง)
+ */
+export async function fetchWorkSizes(): Promise<Record<string, string>> {
+  const fromList = (list: Product[]) =>
+    Object.fromEntries(list.filter((p) => p.workSize?.trim()).map((p) => [p.id, p.workSize!.trim()]));
+  const sb = getSupabase();
+  if (!sb) return fromList(mergedProducts());
+  try {
+    const { data, error } = await sb.from("products").select("id,workSize:data->>workSize");
+    if (error || !data) return {};
+    return Object.fromEntries(
+      (data as Array<{ id: string; workSize: string | null }>)
+        .filter((r) => !String(r.id).startsWith("__") && r.workSize?.trim())
+        .map((r) => [r.id, r.workSize!.trim()])
+    );
+  } catch {
+    return {};
+  }
+}
+
+/**
  * "คลังไหนถูกสินค้าไหนใช้อยู่บ้าง" สำหรับหน้าคลังตัวเลือก — ดึงแค่ id/ชื่อ/กลุ่มตัวเลือก
  * (เดิมดึงสินค้าทั้งร้านเต็มก้อนเพื่อนับ ทั้งที่ใช้แค่ presetId)
  */

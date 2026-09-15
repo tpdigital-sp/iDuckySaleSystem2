@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Order } from "@/lib/admin-data";
+import { itemQtyText } from "@/lib/item-yield";
 import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, isOpenClaim, type Claim, type ClaimStatus } from "@/lib/claims";
 import { createClaim, fetchMyClaims, sendClaimMessage, uploadClaimPhoto } from "@/lib/claims-repo";
 import { LINE_URL } from "@/components/LineButton";
@@ -338,7 +339,7 @@ function NewClaimModal({ claimable, onClose, onDone }: { claimable: Order[]; onC
                           setPicked(s);
                         }}
                       />
-                      {it.name} ×{it.qty}
+                      {it.name} ×{itemQtyText(it)}
                     </label>
                   ))}
                 </div>

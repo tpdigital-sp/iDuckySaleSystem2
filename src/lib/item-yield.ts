@@ -31,12 +31,18 @@ export function itemSel(item: Pick<YieldItem, "sel" | "selections">): Record<str
  * null = นับเป็นชิ้นตรง ๆ
  */
 export function itemUnitYield(item: YieldItem, product?: Product | null): ItemUnitYield | null {
-  if (item.unitYield?.per) return item.unitYield;
+  /*
+   * ⚠️ per 1 ที่แช่ไว้ไม่ใช่ "ตัวคูณของวันที่สั่ง" แต่แปลว่า "รู้แค่ว่าขายเป็นเซ็ต ยังไม่รู้ว่าเซ็ตละกี่ชิ้น"
+   * (ดู orderUnitYield ตอนจบ) — ใบพวกนี้อ่านจากสินค้าวันนี้ได้เลย ดีกว่าปล่อยให้กราฟฟิกมานั่งคูณเอง
+   * ตัวคูณจริง (per > 1) ยังชนะเสมอ ร้านแก้ตารางทีหลังก็ไม่ขยับ (ดู stale-unit-yield-scan.mts)
+   */
+  const frozen = item.unitYield?.per ? item.unitYield : null;
+  if (frozen && frozen.per > 1) return frozen;
   if (product) {
     const y = orderUnitYield(product, itemSel(item));
-    if (y) return y;
+    if (y && (y.per > 1 || !frozen)) return y;
   }
-  return orderPiecesPerUnit(item);
+  return frozen ?? orderPiecesPerUnit(item);
 }
 
 /**
@@ -63,4 +69,41 @@ export function itemPiecesLine(item: YieldItem, product?: Product | null): strin
   }
   const total = item.qty * y.per;
   return `📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${y.unit || "หน่วย"}${size} ได้${approx ? "ประมาณ" : ""} ${total.toLocaleString("th-TH")} ${y.piece}${note}`;
+}
+
+/**
+ * 🔢 จำนวนของรายการเดียวแบบสั้น ใช้ในตาราง/ป้าย/แถวคิว — "17 เซ็ต · 102 ชิ้น" · งานนับเป็นชิ้น = "17 ชิ้น"
+ * ต่างจาก itemPiecesLine ตรงที่ไม่มีคำว่า "สั่ง…ได้…" และไม่ห้อยขนาด — ที่แคบ ๆ เอาแค่ตัวเลขกับหน่วย
+ * ⛔ ห้ามเขียน "ชิ้น" ตายตัวต่อท้าย item.qty เองอีก — จำนวนที่สั่งของงานเซ็ต/แผ่นไม่ใช่จำนวนชิ้น
+ */
+export function itemQtyText(item: YieldItem, product?: Product | null): string {
+  const n = item.qty.toLocaleString("th-TH");
+  const y = itemUnitYield(item, product);
+  if (!y) return `${n} ชิ้น`;
+  const unit = y.unit || "ชิ้น";
+  if (y.per <= 1) return `${n} ${unit}`;
+  return `${n} ${unit} · ${(item.qty * y.per).toLocaleString("th-TH")} ${y.piece}`;
+}
+
+/**
+ * 🔢 จำนวนรวมทั้งใบ — "17 เซ็ต · 102 ชิ้น" · หลายรายการคนละหน่วยรวมเป็น "17 หน่วย · 102 ชิ้น"
+ * ใช้กับแถวคิว/ท้ายใบงานที่เดิมเขียน "N ชิ้น" จากผลบวก qty ดิบ (งานเซ็ต/แผ่นเลยบอกจำนวนผิด)
+ */
+export function orderQtyText(items: YieldItem[], productOf?: (id: string) => Product | null | undefined): string {
+  let units = 0;
+  let pieces = 0;
+  const unitWords = new Set<string>();
+  const pieceWords = new Set<string>();
+  for (const it of items) {
+    const y = itemUnitYield(it, productOf?.(it.productId ?? ""));
+    units += it.qty;
+    pieces += it.qty * Math.max(1, y?.per ?? 1);
+    unitWords.add(y?.unit || "ชิ้น");
+    pieceWords.add(y?.piece || "ชิ้น");
+  }
+  const unit = unitWords.size === 1 ? [...unitWords][0] : "หน่วย";
+  const piece = pieceWords.size === 1 ? [...pieceWords][0] : "ชิ้น";
+  const n = units.toLocaleString("th-TH");
+  if (pieces <= units) return `${n} ${unit}`;
+  return `${n} ${unit} · ${pieces.toLocaleString("th-TH")} ${piece}`;
 }

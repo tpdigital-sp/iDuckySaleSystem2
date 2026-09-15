@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderEarlyPayAmount, orderTotal, proofsOf, type Order } from "@/lib/admin-data";
 import { amountsForRecord, tpAmountsFix } from "@/lib/tp-amounts";
 import { SITE_URL } from "@/lib/shop-info";
+import { itemQtyText, itemUnitYield } from "@/lib/item-yield";
+import { getProductServer } from "@/lib/products-server";
 
 /**
  * ส่งออเดอร์ที่ "ชำระแล้ว" ไปหน้าตรวจหลักฐานการชำระของระบบ Admin (msVerify)
@@ -106,8 +108,9 @@ export async function reportPaidToTP(
     const isFinal = opts?.docSuffix === "-final";
     const money = amountsForRecord(order, isFinal, opts);
     const slip = await slipLinkFor(order, isFinal, opts?.slipPath);
+    /* 🔢 งานเซ็ต/แผ่น — "×17" อ่านเป็น 17 ชิ้น ทั้งที่เป็น 17 เซ็ต (= 102 ชิ้น) · ใช้ข้อความชุดเดียวกับหน้าออเดอร์ */
     const itemSummary = order.items
-      .map((i) => `${i.name} ×${i.qty}`)
+      .map((i) => `${i.name} ×${itemQtyText(i)}`)
       .join(", ")
       .slice(0, 120);
 
@@ -138,7 +141,17 @@ export async function reportPaidToTP(
         orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(order.id)}`,
         note: opts?.noteSuffix ? `${opts.noteSuffix} · ${itemSummary}`.slice(0, 120) : itemSummary,
         // 📦 รายการสินค้าแบบโครงสร้าง — msVerify/msDaily เอาไปใส่คอลัมน์ "รายการสินค้า" (note ถูกตัด 120 ตัวอักษร ใช้ parse ไม่ครบ)
-        items: order.items.map((i) => ({ name: i.name, qty: i.qty })),
+        // qty = จำนวนที่ลูกค้าสั่ง (หน่วยขาย) · unit/pieces = หน่วยกับจำนวนชิ้นจริง (งานเซ็ต/แผ่น)
+        items: order.items.map((i) => {
+          const y = itemUnitYield(i);
+          return {
+            name: i.name,
+            qty: i.qty,
+            unit: y?.unit || "ชิ้น",
+            pieces: i.qty * Math.max(1, y?.per ?? 1),
+            piece: y?.piece || "ชิ้น",
+          };
+        }),
         // ข้อความหมายเหตุล้วน ๆ (ไม่ปนรายการสินค้า) เช่น "มัดจำ 50% งวดแรก" — ว่างได้
         noteText: opts?.noteSuffix ?? "",
         // สลิปโอน — msVerify เอาไปโชว์เป็นรูปย่อในตาราง (ลิงก์เซ็นอายุ 1 ปี · เก็บ path ไว้เซ็นใหม่ได้)
@@ -198,6 +211,16 @@ export async function syncPaidCompleteToTP(order: Order, verifiedBy: string, not
  */
 export const TP_FOLLOWUP_COLLECTION = "iduckyPackFollowups";
 
+/** 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — อ่านไม่ได้/ไม่ได้ตั้งไว้ = "" (ไม่ใช่เรื่องคอขาดบาดตาย) */
+async function workSizeOf(productId?: string): Promise<string> {
+  if (!productId || productId.includes("#") || productId === "special-item") return "";
+  try {
+    return (await getProductServer(productId))?.workSize?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export async function syncArrivalToTP(before: Order, after: Order): Promise<void> {
   const db = getFirestoreAdmin();
   if (!db) return;
@@ -228,6 +251,10 @@ export async function syncArrivalToTP(before: Order, after: Order): Promise<void
             itemName: it.name,
             qty: it.qty,
             unit: it.unitYield?.unit || "ชิ้น",
+            // 🔢 ชิ้นจริงของรายการ (งานเซ็ต/แผ่น) + 📐 ขนาดงานตายตัว — ฝ่ายผลิตเช็คของได้โดยไม่ต้องเปิดออเดอร์
+            pieces: it.qty * Math.max(1, itemUnitYield(it)?.per ?? 1),
+            piece: itemUnitYield(it)?.piece || "ชิ้น",
+            size: await workSizeOf(it.productId),
             customerName: after.customer || "",
             phone: after.phone || "",
             orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(after.id)}`,

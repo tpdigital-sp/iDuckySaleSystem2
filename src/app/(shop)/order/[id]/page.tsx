@@ -8,7 +8,7 @@ import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
 import { artQtyOf, formatPrice, type Product } from "@/lib/products";
-import { itemPiecesLine } from "@/lib/item-yield";
+import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
@@ -707,7 +707,7 @@ export default function CustomerOrderPage() {
               .filter((it) => it.needStockCheck)
               .map((it, i) => (
                 <li key={i} className="text-xs font-semibold">
-                  • {it.name} × {it.qty.toLocaleString("th-TH")}
+                  • {it.name} × {itemQtyText(it, prodById[it.productId])}
                 </li>
               ))}
           </ul>
@@ -1475,6 +1475,8 @@ export default function CustomerOrderPage() {
                       /* 📐 งานแบ่งแผ่น/เซ็ต (สติ๊กเกอร์ตัด A4 · โฟโต้การ์ดเซ็ต) — จำนวนที่สั่งไม่ใช่จำนวนชิ้น บอกยอดชิ้นจริงประโยคเดียวเหมือนตะกร้า
                          ⚠️ SpecLines ใช้ truthy ของ after ตัดสินว่าจะวาดบล็อก — ไม่มีอะไรโชว์ต้องส่ง null */
                       after={itemPiecesLine(it, prodById[it.productId]) ? <p className="font-semibold t-blue">{itemPiecesLine(it, prodById[it.productId])}</p> : null}
+                      /* 📐 สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้เลือก — เติมบรรทัดขนาดจากสินค้าให้เอง */
+                      workSize={prodById[it.productId]?.workSize}
                     />
                     {/* 💬 ที่มาของราคาที่ร้านตีให้ (งานสั่งทำ) — บอกวิธีคิดตรง ๆ ไม่ต้องทักถาม */}
                     {it.quoteNote && (
@@ -1511,7 +1513,7 @@ export default function CustomerOrderPage() {
                       `${it.qty} × ${formatPrice(it.unitPrice)}`
                     ) : (
                       /* งานสั่งทำที่ร้านยังไม่ได้ตีราคา — บอกตรง ๆ ดีกว่าโชว์ ฿0 */
-                      <span className="ord-chip yolk">{it.qty} ชิ้น · รอร้านแจ้งราคา</span>
+                      <span className="ord-chip yolk">{itemQtyText(it, prodById[it.productId])} · รอร้านแจ้งราคา</span>
                     )}
                     {itemDiscountAmount(it) > 0 && (
                       <span className="block text-[11px] font-semibold t-ok">
@@ -1881,7 +1883,8 @@ export default function CustomerOrderPage() {
           <div className="ord-card p-4 sm:p-5">
             <p className="ord-eyebrow">สรุปยอด</p>
             <div className="mt-3 flex justify-between text-sm">
-              <span className="t-soft">รวมสินค้า ({order.items.reduce((s, i) => s + i.qty, 0)} ชิ้น)</span>
+              {/* 🔢 งานเซ็ต/แผ่น — จำนวนที่สั่งไม่ใช่จำนวนชิ้น (ดู orderQtyText) */}
+              <span className="t-soft">รวมสินค้า ({orderQtyText(order.items, (id) => prodById[id])})</span>
               <span>{formatPrice(subtotal)}</span>
             </div>
             <div className="mt-1.5 flex justify-between text-sm">

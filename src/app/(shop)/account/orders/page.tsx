@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
 import { orderBalance, orderTotal, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { itemQtyText } from "@/lib/item-yield";
 import { useCustomer } from "@/lib/customer-context";
 import { useReorder } from "@/lib/reorder";
 import { fetchMyOrders, readStoredOrders, setOrdersOwner } from "@/lib/my-orders";
@@ -191,7 +192,8 @@ function OrderCard({ order: o, onReorder, canReorder }: { order: Order; onReorde
         {items.map((it, i) => (
           <li key={i}>
             <span className="acd-ocard-item-name">{it.name}</span>
-            <span className="acd-ocard-item-qty">×{it.qty}</span>
+            {/* 🔢 งานเซ็ต/แผ่น — "×17" เฉย ๆ อ่านไม่ออกว่า 17 เซ็ตหรือ 17 ชิ้น (ดู itemQtyText) */}
+            <span className="acd-ocard-item-qty">×{itemQtyText(it)}</span>
           </li>
         ))}
         {rest > 0 && (

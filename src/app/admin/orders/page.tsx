@@ -35,6 +35,7 @@ import {
   type OrderStatus,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { orderQtyText } from "@/lib/item-yield";
 import { parseThaiDate } from "@/lib/admin-dash";
 import { usePolling } from "@/lib/use-polling";
 import { useCan } from "@/lib/perm-context";
@@ -83,7 +84,6 @@ const picTitle = (covers: { url: string; name: string }[]) => {
   const head = names.slice(0, 3).join(" · ") + (names.length > 3 ? ` และอีก ${names.length - 3} รายการ` : "");
   return `${head} — ${covers.length} รูป`;
 };
-const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 /** งานแบบที่ยังไม่จบ (ยังไม่มีแบบ หรือ ลูกค้าขอแก้) */
 const openProofs = (o: Order) => o.items.filter((i) => proofMissing(i) || i.proofStatus === "ขอแก้ไข").length;
@@ -996,7 +996,8 @@ function OrderRow({
               <span className="usedate">📅 {thaiDay(o.useByDate!)}</span>
             </span>
           )}
-          <span>{qtyOf(o)} ชิ้น</span>
+          {/* 🔢 งานเซ็ต/แผ่น — จำนวนที่สั่งไม่ใช่จำนวนชิ้น (ดู orderQtyText) */}
+          <span>{orderQtyText(o.items)}</span>
           {o.slipUrl && <span className="warn">แนบสลิปแล้ว</span>}
           {open > 0 && <span className="warn">แบบรอทำ {open}</span>}
           {o.items.some((i) => i.needStockCheck) && <span className="warn">รอเช็คสต๊อก</span>}
@@ -1042,7 +1043,7 @@ function OrderRow({
       <span className="dkb-side">
         <StatusChip s={o.status} label={orderStatusLabel(o)} />
         <span className="dkb-amt">
-          {seesMoney ? formatPrice(orderTotal(o)) : `${qtyOf(o)} ชิ้น`}
+          {seesMoney ? formatPrice(orderTotal(o)) : orderQtyText(o.items)}
           {/* ยังเก็บเงินไม่ครบ: บอกยอดที่ยังต้องตามเก็บใต้ยอดเต็ม
               ใบมัดจำ = ยอดงวดนี้ · ใบธรรมดา = ส่วนต่างที่โตขึ้นหลังลูกค้าโอนแล้ว (ตีราคาเพิ่ม/สั่งเพิ่ม) */}
           {seesMoney && isDue(o) && (

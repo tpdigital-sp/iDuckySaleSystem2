@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, splitArtUrls, stockCheckRows } from "@/lib/products";
+import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { getUnpicked, clearUnpicked } from "@/lib/cart-select";
@@ -88,6 +89,11 @@ export default function CheckoutPage() {
   // สินค้าที่ยืนยันแล้วว่าถูกลบจากร้าน = ห้ามหลุดเข้าออเดอร์ (หน้าตะกร้าโชว์ป้ายบอกให้ลบอยู่แล้ว)
   const items = allItems.filter((i) => !unpicked.includes(i.key) && !productGone(i.productId));
   const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
+  /** 🔢 "17 เซ็ต · 102 ชิ้น" — งานเซ็ต/แผ่นจำนวนที่สั่งไม่ใช่จำนวนชิ้น (ดู orderQtyText) */
+  const totalQtyText = orderQtyText(
+    items.map((i) => ({ productId: i.productId, sel: i.selections, qty: i.qty })),
+    productOf,
+  );
   /* 📦 รายการที่สั่งถึงเกณฑ์ต้องเช็คสต๊อก — ชุดเดียวกับที่ตะกร้าโชว์ และตรงกับธงที่ส่งไปหลังบ้าน */
   const stockRows = stockCheckRows(items, productOf);
   // 🤝 ตัวแทนจำหน่าย: ได้ราคาเรทตัวแทนอย่างเดียว — ไม่คิดส่วนลดสมาชิก/คูปอง/โอนไว/ของแถม (ตรงกับเซิร์ฟเวอร์)
@@ -532,14 +538,15 @@ export default function CheckoutPage() {
     // สร้างข้อความ LINE ก่อนล้างตะกร้า
     const lines = [`🦆 ออเดอร์ ${res.orderId}`, `ชื่อ: ${name.trim()} · ${phone.trim()}`, "━━━━━━━━━━━━━━"];
     orderItems.forEach((it, i) => {
-      lines.push(`${i + 1}) ${it.name} ×${it.qty} = ${it.unitPrice > 0 ? formatPrice(it.unitPrice * it.qty) : "รอตีราคา"}`);
+      // 🔢 งานเซ็ต/แผ่น — บอกหน่วยที่สั่งกับชิ้นจริงในข้อความไลน์ด้วย ("×17 เซ็ต · 102 ชิ้น")
+      lines.push(`${i + 1}) ${it.name} ×${itemQtyText(it, productOf(it.productId))} = ${it.unitPrice > 0 ? formatPrice(it.unitPrice * it.qty) : "รอตีราคา"}`);
       if (it.selections) lines.push(`   • ${it.selections}`);
       if (it.artworkUrls?.length) lines.push(`   🎨 แนบภาพลาย ${it.artworkUrls.length} รูป (ดูในลิงก์ออเดอร์)`);
       if (it.reuseArt) lines.push(`   ♻️ ${reuseArtText(it.reuseArt)}`);
       if (it.needStockCheck) lines.push(`   📦 สั่งจำนวนมาก — รอร้านยืนยันสต๊อก/คิวผลิต`);
     });
     lines.push("━━━━━━━━━━━━━━");
-    lines.push(`รวม ${totalQty} ชิ้น · จัดส่ง ${shippingCost > 0 ? formatPrice(shippingCost) : "ฟรี"}`);
+    lines.push(`รวม ${totalQtyText} · จัดส่ง ${shippingCost > 0 ? formatPrice(shippingCost) : "ฟรี"}`);
     lines.push(`ยอดชำระ: ${formatPrice(total)}`);
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
     lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
@@ -551,7 +558,7 @@ export default function CheckoutPage() {
       url: orderUrl,
       key: res.key,
       // งานที่แอดมินต้องตีราคาก่อน (เข้ามาที่ ฿0) — ยังโอนไม่ได้จนกว่าจะได้ราคาครบ
-      pending: orderItems.filter((it) => it.qty > 0 && it.unitPrice <= 0).map((it) => `${it.name} ×${it.qty.toLocaleString("th-TH")}`),
+      pending: orderItems.filter((it) => it.qty > 0 && it.unitPrice <= 0).map((it) => `${it.name} ×${itemQtyText(it, productOf(it.productId))}`),
     });
     // เอาเฉพาะรายการที่สั่งไปออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งรอบหน้า
     items.forEach((it) => removeItem(it.key));
@@ -1004,7 +1011,7 @@ export default function CheckoutPage() {
 
       {/* สรุปยอด */}
       <div className="mt-5 rounded-2xl bg-amber-50/70 p-4 ring-1 ring-amber-200">
-        <div className="flex justify-between text-sm text-stone-600"><span>รวมสินค้า ({totalQty} ชิ้น)</span><span>{formatPrice(subtotal)}</span></div>
+        <div className="flex justify-between text-sm text-stone-600"><span>รวมสินค้า ({totalQtyText})</span><span>{formatPrice(subtotal)}</span></div>
         {boxFeeSum > 0 && (
           <div className="mt-1 flex justify-between text-xs text-stone-500">
             <span>📦 รวมค่ากล่อง/แพ็ค (คิดอยู่ในยอดสินค้าแล้ว)</span>

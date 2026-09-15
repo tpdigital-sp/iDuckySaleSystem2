@@ -9,6 +9,9 @@ import { fetchOrderForCustomer } from "@/lib/order-repo";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
 import { resolveShipLabel } from "@/lib/ship-label";
 import { SpecLines } from "@/components/SpecLines";
+import { fetchProductsByIds } from "@/lib/product-repo";
+import { itemQtyText } from "@/lib/item-yield";
+import type { Product } from "@/lib/products";
 
 /** ใบเสร็จ/ใบรับเงิน ที่ลูกค้าเปิด+พิมพ์เองได้ (ต้องมี key) */
 export default function CustomerReceiptPage() {
@@ -20,6 +23,8 @@ export default function CustomerReceiptPage() {
   const [orderKey, setOrderKey] = useState("");
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]); // ไว้แปลงป้าย "ค่าส่ง"/ป้ายว่างเป็นชื่อวิธีส่งจริง
+  /** 📦 สินค้าของรายการในใบ — ใช้เติมขนาดงานตายตัว (สินค้าขนาดเดียว) + ตัวคูณชิ้น/หน่วยของใบเก่า */
+  const [prodById, setProdById] = useState<Record<string, Product>>({});
 
   useEffect(() => {
     void fetchShopPayment().then((p) => {
@@ -32,8 +37,11 @@ export default function CustomerReceiptPage() {
     async (key: string) => {
       const res = await fetchOrderForCustomer(orderId, key);
       setLoading(false);
-      if (res.order) setOrder(res.order);
-      else setErr(res.error ?? "เปิดใบเสร็จไม่สำเร็จ");
+      if (res.order) {
+        setOrder(res.order);
+        const ids = [...new Set(res.order.items.map((it) => it.productId).filter(Boolean))];
+        if (ids.length) void fetchProductsByIds(ids).then((ps) => setProdById(Object.fromEntries(ps.map((p) => [p.id, p]))));
+      } else setErr(res.error ?? "เปิดใบเสร็จไม่สำเร็จ");
     },
     [orderId]
   );
@@ -131,9 +139,16 @@ export default function CustomerReceiptPage() {
                 <tr key={i} className="border-b border-stone-100 align-top">
                   <td className="py-2">
                     <p className="font-semibold text-stone-800">{it.name}</p>
-                    <SpecLines sel={it.sel} text={it.selections} className="text-[11px] text-stone-400" stripLinks />
+                    <SpecLines
+                      sel={it.sel}
+                      text={it.selections}
+                      className="text-[11px] text-stone-400"
+                      stripLinks
+                      workSize={prodById[it.productId]?.workSize}
+                    />
                   </td>
-                  <td className="py-2 text-center tabular-nums">{it.qty}</td>
+                  {/* 🔢 งานเซ็ต/แผ่น — บอกหน่วยที่สั่งและชิ้นจริง ("17 เซ็ต · 102 ชิ้น") */}
+                  <td className="py-2 text-center text-xs tabular-nums">{itemQtyText(it, prodById[it.productId])}</td>
                   <td className="py-2 text-right tabular-nums">{formatPrice(it.unitPrice)}</td>
                   <td className="py-2 text-right font-semibold tabular-nums">{formatPrice(it.qty * it.unitPrice)}</td>
                 </tr>

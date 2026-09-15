@@ -11,6 +11,7 @@ import {
   type OrderStatus,
 } from "@/lib/admin-data";
 import { formatPrice } from "@/lib/products";
+import { itemQtyText } from "@/lib/item-yield";
 import { isPickupOrder } from "@/lib/ship-label";
 import { updateOrder } from "@/lib/server/order-write";
 
@@ -345,7 +346,12 @@ export function statusFlex(
   const oweNet = owe ? balanceNetTransfer(order, bal) : null;
   const first = order.items[0];
   const more = order.items.length - 1;
-  const items = first ? `${first.name}${first.qty > 1 ? ` ×${first.qty.toLocaleString()}` : ""}${more > 0 ? ` และอีก ${more} รายการ` : ""}` : "-";
+  /*
+   * 🔢 งานเซ็ต/แผ่น — "×17" เฉย ๆ ลูกค้าอ่านว่า 17 ชิ้น ทั้งที่เป็น 17 เซ็ต (= 102 ชิ้น)
+   * ใช้ข้อความชุดเดียวกับหน้าออเดอร์ (itemQtyText) · รายการเดียวชิ้นเดียวไม่ต้องห้อยจำนวน
+   */
+  const firstQty = first && (first.qty > 1 || (first.unitYield?.per ?? 1) > 1) ? ` ×${itemQtyText(first)}` : "";
+  const items = first ? `${first.name}${firstQty}${more > 0 ? ` และอีก ${more} รายการ` : ""}` : "-";
 
   const rows: unknown[] = [flexRow("รายการ", items)];
   rows.push(flexRow("ยอดรวม", formatPrice(total), "#0F172A", true));

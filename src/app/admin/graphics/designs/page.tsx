@@ -25,7 +25,8 @@ import {
   Tag,
 } from "@/components/admin/ui";
 import { isSelfDesigned, orderStatusLabel, proofBy, proofsOf, proofUnit, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
-import { dayOf, orderMatches, staffTally, useGraphicStaff, useGraphicsOrders } from "../data";
+import { dayOf, orderMatches, staffTally, useGraphicStaff, useGraphicsOrders, useWorkSizes } from "../data";
+import { itemQtyText } from "@/lib/item-yield";
 import UseBy from "../UseBy";
 
 /**
@@ -121,6 +122,7 @@ type Filter = State | "all" | "self" | "lowdpi";
 
 export default function DesignReportPage() {
   const { orders, demo } = useGraphicsOrders();
+  const workSizes = useWorkSizes();
   /** รายชื่อพนักงานแผนกกราฟฟิกใน employees2 — เป็นตัวตั้งของชิป "คนทำแบบ" */
   const roster = useGraphicStaff();
   const [filter, setFilter] = useState<Filter>("all");
@@ -342,6 +344,11 @@ export default function DesignReportPage() {
                                   ลายที่ {r.no}
                                   {r.proof.qty ? ` · ${r.proof.qty} ${proofUnit(r.proof)}` : ""}
                                 </span>
+                                {/* จำนวนทั้งรายการ + ขนาดงานตายตัว — เทียบกับเลขบนลายได้โดยไม่ต้องเปิดใบ */}
+                                <span>ทั้งรายการ {itemQtyText(r.item)}</span>
+                                {workSizes[r.item.productId] && !/ขนาด/.test(Object.keys(r.item.sel ?? {}).join("")) && (
+                                  <span>ขนาด {workSizes[r.item.productId]}</span>
+                                )}
                                 {r.dpi !== null && !low && <span>{r.dpi} DPI</span>}
                                 {r.note && (
                                   <span className="hot" title={r.note}>

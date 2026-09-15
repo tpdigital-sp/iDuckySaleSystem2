@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { proofsOf, type Order, type OrderItem } from "@/lib/admin-data";
+import { itemQtyText } from "@/lib/item-yield";
 import { reviewProof } from "@/lib/order-repo";
 import { AccountHead, AccountShell } from "@/components/account/AccountShell";
 import { orderHref, useAccountOrders } from "@/components/account/useAccountOrders";
@@ -132,7 +133,7 @@ export default function ProofsPage() {
                     <div className="acd-prf-name">
                       <b>{it.name}</b>
                       <span>
-                        ×{it.qty}
+                        ×{itemQtyText(it)}
                         {proofs.length > 1 ? ` · ${proofs.length} ภาพ` : ""}
                       </span>
                     </div>

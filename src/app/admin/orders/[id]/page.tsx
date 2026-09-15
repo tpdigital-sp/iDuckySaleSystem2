@@ -27,7 +27,7 @@ import { cartItemKey } from "@/lib/cart-context";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { PROOF_AUTO_NOTIFY_MINUTES, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
 import { fetchProductNamesLite, fetchProductsByIds } from "@/lib/product-repo";
-import { itemPiecesLine } from "@/lib/item-yield";
+import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
 import {
   allSelfDesignedApproved,
@@ -2318,7 +2318,7 @@ export default function AdminOrderDetailPage() {
     const it = order.items[itemIndex];
     if (!it?.needStockCheck) return;
     const ship = order.shipDate?.from ? ` (วันส่งที่ตั้งไว้: ${order.shipDate.from})` : "";
-    if (!(await askConfirm({ icon: "📦", title: "ยืนยันว่าเช็คสต๊อก/คิวผลิตแล้ว?", detail: `${it.name} × ${it.qty.toLocaleString("th-TH")} ชิ้น${ship} — ระบบจะแจ้งลูกค้าว่ารับผลิตได้`, confirmLabel: "ยืนยัน — แจ้งลูกค้า" }))) return;
+    if (!(await askConfirm({ icon: "📦", title: "ยืนยันว่าเช็คสต๊อก/คิวผลิตแล้ว?", detail: `${it.name} × ${itemQtyText(it, productOfItem(it.productId))}${ship} — ระบบจะแจ้งลูกค้าว่ารับผลิตได้`, confirmLabel: "ยืนยัน — แจ้งลูกค้า" }))) return;
     const items = order.items.map((x, i) => (i === itemIndex ? { ...x, needStockCheck: undefined } : x));
     applyOrder(
       withLog({ ...order, items }, actor, "ยืนยันสต๊อก/คิวผลิต", `${it.name} × ${it.qty} — แจ้งลูกค้าแล้ว`)
@@ -3207,6 +3207,7 @@ export default function AdminOrderDetailPage() {
           onPartialShip={() => setPartialOpen(true)}
           onPhotoAdd={addPackPhotos}
           onPhotoDelete={deletePackPhoto}
+          workSizeOf={(id) => productOfItem(id)?.workSize}
           gate={gate}
           onCheck={setPackCheck}
           onAck={toggleNoteAck}
@@ -3261,7 +3262,8 @@ export default function AdminOrderDetailPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const autoOpen = (_it: OrderItem) => true;
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  const qty = order.items.reduce((s, i) => s + i.qty, 0);
+  /** 🔢 "17 เซ็ต · 102 ชิ้น" — บรรทัดรวมสินค้าเคยบวก qty ดิบแล้วเขียน "ชิ้น" ทุกกรณี (งานเซ็ต/แผ่นเลยผิด) */
+  const qtyText = orderQtyText(order.items, (id) => productOfItem(id));
   /**
    * 📄 ยอดในระบบเพี้ยนจากใบ FlowAccount กี่บาท (0/null = ตรง) — บิลจริงออกที่ FlowAccount ลูกค้าโอนตามใบนั้น
    * ต่างเมื่อไหร่ = ตรวจสลิปเพี้ยน + ใบเสร็จ/ใบงานไม่ตรงบิล ต้องเตือนตรงที่แอดมินแก้ตัวเลข (โซนยอดเงิน)
@@ -4263,7 +4265,7 @@ export default function AdminOrderDetailPage() {
                         </div>
                       ) : (
                         <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
-                          <SelDetails sel={it.sel} text={it.selections} />
+                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} />
                           {mayEdit && (
                             <button
                               type="button"
@@ -4610,7 +4612,7 @@ export default function AdminOrderDetailPage() {
                   {it.needStockCheck && (
                     <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5 ring-1 ring-amber-200">
                       <p className="text-xs font-bold text-amber-800">
-                        📦 สั่งจำนวนมาก ({it.qty.toLocaleString("th-TH")} ชิ้น) — เช็คสต๊อก/คิวผลิตก่อนเริ่มงาน
+                        📦 สั่งจำนวนมาก ({itemQtyText(it, productOfItem(it.productId))}) — เช็คสต๊อก/คิวผลิตก่อนเริ่มงาน
                       </p>
                       {mayEdit && (
                         <button
@@ -5842,7 +5844,7 @@ export default function AdminOrderDetailPage() {
             <div className={`mt-2 ${soft("emerald")}`}>
               {/* โซนคำนวณ — ตัวเลขเงินอยู่คอลัมน์ขวาคอลัมน์เดียว (tabular) หลักตรงกันไล่ลงถึงยอดรวม · ตัวเลือก/ช่องกรอกเกาะฝั่งชื่อแถว */}
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className={muted}>รวมสินค้า · {qty} ชิ้น</span>
+                <span className={muted}>รวมสินค้า · {qtyText}</span>
                 <span className="font-semibold tabular-nums text-slate-800">{formatPrice(subtotal)}</span>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
@@ -7758,8 +7760,11 @@ function PackView({
   onZoom,
   onPhotoAdd,
   onPhotoDelete,
+  workSizeOf,
 }: {
   order: Order;
+  /** 📐 ขนาดงานตายตัวของสินค้า (สินค้าที่ไม่มีกลุ่มขนาดให้เลือก) — คนแพ็คเช็คของในกล่องกับขนาดที่สั่ง */
+  workSizeOf: (productId: string) => string | undefined;
   gate: ReturnType<typeof packGate>;
   /** 🏪 ใบมารับเอง — ไม่มีพัสดุ ใช้ปุ่ม "แพ็คเสร็จ" แทนช่องเลขพัสดุ */
   pickup: boolean;
@@ -7926,7 +7931,13 @@ function PackView({
               )}
 
               <div className="mb-2 flex items-baseline justify-between">
-                <p className="text-base font-extrabold text-slate-900">{it.name}</p>
+                <span className="min-w-0">
+                  <p className="text-base font-extrabold text-slate-900">{it.name}</p>
+                  {/* 📐 สินค้าขนาดเดียว — ขนาดไม่ได้อยู่ในตัวเลือก คนแพ็คจะได้เทียบของในกล่องกับที่สั่งได้ */}
+                  {workSizeOf(it.productId) && !/ขนาด/.test(Object.keys(it.sel ?? {}).join("")) && (
+                    <p className="text-xs font-bold text-slate-500">ขนาด {workSizeOf(it.productId)}</p>
+                  )}
+                </span>
                 {/* สั่งเป็นเซ็ต/แผ่น = โชว์จำนวนชิ้นจริงต่อท้าย คนแพ็คจะได้นับถูก ("12 เซ็ต = 240 ใบ") */}
                 <span className={`text-right text-lg font-black tabular-nums ${qtyMismatch ? "text-rose-600" : "text-slate-900"}`}>
                   {it.qty}

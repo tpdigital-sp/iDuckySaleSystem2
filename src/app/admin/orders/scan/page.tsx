@@ -66,6 +66,8 @@ import {
   type PackGate,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
+import { fetchWorkSizes } from "@/lib/product-repo";
+import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
 import { usePolling } from "@/lib/use-polling";
 
@@ -112,7 +114,6 @@ function PartialTag({ o }: { o: Order }) {
   );
 }
 
-const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 
 /** ใบงานถูกปริ้นแล้ว = ของถึงมือฝ่ายแพ็คแล้ว (ใบที่ยังไม่ปริ้นอยู่ที่คิวปริ้น ไม่ใช่โต๊ะแพ็ค) */
 const printedOf = (o: Order) => (o.printCount ?? (o.printedAt ? 1 : 0)) > 0;
@@ -221,6 +222,14 @@ export default function ScanTrackingPage() {
   }, []);
   const [tpReplies, setTpReplies] = useState<Record<string, TPReply>>({}); // 🏭 คำตอบจาก TP ต่อรายการที่รอของ
   const [arrivalFor, setArrivalFor] = useState<string | null>(null); // โมดัลปักของยังไม่มา — เก็บ id ไว้ อ่านออเดอร์สดจาก orders ทุกครั้ง
+  /**
+   * 📐 ขนาดงานตายตัวของสินค้า (id → ขนาด) — สินค้าที่ไม่มีกลุ่มขนาดให้เลือก ขนาดไม่ติดมากับรายการ
+   * จอนี้มีสินค้าหลายสิบตัว จึงดึงเฉพาะคอลัมน์ขนาด (fetchWorkSizes) ไม่โหลดสินค้าเต็มก้อน
+   */
+  const [workSizes, setWorkSizes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    void fetchWorkSizes().then(setWorkSizes);
+  }, []);
   const [savingArrival, setSavingArrival] = useState(false);
   const actor = useActor(); // ชื่อคนที่ล็อกอิน (ลงประวัติว่าใครปักของยังไม่มา)
   const [q, setQ] = useState(""); // ค้นหาในแท็บ "ยิงแล้ว"
@@ -718,7 +727,7 @@ export default function ScanTrackingPage() {
                     meta={
                       <>
                         <span className="id">{o.id}</span>
-                        <span>{qtyOf(o)} ชิ้น</span>
+                        <span>{orderQtyText(o.items)}</span>
                         <span>ตรวจนับครบ · ถ่ายรูปแล้ว</span>
                       </>
                     }
@@ -782,7 +791,7 @@ export default function ScanTrackingPage() {
                       meta={
                         <>
                           <span className="id">{o.id}</span>
-                          <span>{qtyOf(o)} ชิ้น</span>
+                          <span>{orderQtyText(o.items)}</span>
                           <span>
                             ติดของ {miss.length}/{o.items.length} รายการ
                             {okItems > 0 ? ` · อีก ${okItems} รายการมาแล้ว` : ""}
@@ -915,7 +924,7 @@ export default function ScanTrackingPage() {
                       meta={
                         <>
                           <span className="id">{o.id}</span>
-                          <span>{qtyOf(o)} ชิ้น</span>
+                          <span>{orderQtyText(o.items)}</span>
                           <span className="warn">{need ? `เหลือ ${need}` : "ยังไม่ได้ตรวจแพ็ค"}</span>
                         </>
                       }
@@ -1003,7 +1012,7 @@ export default function ScanTrackingPage() {
                                 </svg>
                               )}
                             </button>
-                            <span className="dkb-shipqty">{sh ? `${shipmentQty(sh) || "?"} ชิ้น` : `${qtyOf(o)} ชิ้น`}</span>
+                            <span className="dkb-shipqty">{sh ? `${shipmentQty(sh) || "?"} ชิ้น` : orderQtyText(o.items)}</span>
                             <span className="dkb-shiptime">{fmtTime(at)}</span>
                             <span className="dkb-shipst">
                               {round ? (
@@ -1126,11 +1135,8 @@ export default function ScanTrackingPage() {
                   {batch.length > 0 && (
                     <>
                       {" · "}
-                      {batch.reduce((n, id) => {
-                        const o = orders.find((x) => x.id === id);
-                        return n + (o ? qtyOf(o) : 0);
-                      }, 0)}{" "}
-                      ชิ้น
+                      {/* จำนวนรวมของทั้งชุด — งานเซ็ต/แผ่นบอกชิ้นจริงด้วย (ดู orderQtyText) */}
+                      {orderQtyText(batch.flatMap((id) => orders.find((x) => x.id === id)?.items ?? []))}
                     </>
                   )}
                 </span>
@@ -1285,9 +1291,20 @@ export default function ScanTrackingPage() {
               {arrivalOrder.items.map((it, i) => (
                 <div key={`${it.productId}-${i}`} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
                   <div className="mb-2 flex items-baseline justify-between gap-2">
-                    <p className="min-w-0 truncate text-[14px] font-extrabold text-slate-900">{it.name}</p>
-                    <span className="shrink-0 text-[15px] font-black tabular-nums text-slate-900">
+                    <span className="min-w-0">
+                      <p className="truncate text-[14px] font-extrabold text-slate-900">{it.name}</p>
+                      {/* 📐 สินค้าขนาดเดียว — บอกขนาดไว้ด้วย จะได้เทียบกับของที่ฝ่ายผลิตส่งมาได้ */}
+                      {workSizes[it.productId] && !/ขนาด/.test(Object.keys(it.sel ?? {}).join("")) && (
+                        <p className="text-[11px] font-bold text-slate-500">ขนาด {workSizes[it.productId]}</p>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-right text-[15px] font-black tabular-nums text-slate-900">
                       {it.qty} <span className="text-[11px] font-bold text-slate-400">{it.unitYield?.unit || "ชิ้น"}</span>
+                      {(it.unitYield?.per ?? 1) > 1 && (
+                        <span className="block text-[11px] font-bold text-slate-500">
+                          = {(it.qty * it.unitYield!.per).toLocaleString("th-TH")} {it.unitYield!.piece}
+                        </span>
+                      )}
                     </span>
                   </div>
                   <ArrivalPicker

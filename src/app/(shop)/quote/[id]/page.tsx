@@ -234,6 +234,8 @@ export default function CustomerQuotePage() {
                         className="mt-2 pl-[34px] text-[.8rem] leading-relaxed t-soft"
                         /* 📐 งานแบ่งแผ่น/เซ็ต — บอกจำนวนชิ้นจริงของยอดที่เสนอ (ประโยคเดียวเหมือนตะกร้า) · null = ไม่วาดบล็อก */
                         after={itemPiecesLine(it, prodById[it.productId]) ? <p className="font-semibold t-blue">{itemPiecesLine(it, prodById[it.productId])}</p> : null}
+                        /* 📐 สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้เลือก — เติมบรรทัดขนาดจากสินค้าให้เอง */
+                        workSize={prodById[it.productId]?.workSize}
                       />
                       {/* 🎨 ลายที่ลูกค้าแนบมากับรายการ — โชว์ให้เห็นว่าราคานี้คิดจากลายไหน (แตะเพื่อขยาย) */}
                       {(it.artworkUrls?.length ?? 0) > 0 && (

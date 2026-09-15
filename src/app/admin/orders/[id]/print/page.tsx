@@ -18,6 +18,9 @@ function fmtThaiDate(d?: string): string {
   return `${day}/${m}/${Number(y) + 543}`;
 }
 import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { fetchProductsByIds } from "@/lib/product-repo";
+import { itemQtyText, itemUnitYield, orderQtyText } from "@/lib/item-yield";
+import type { Product } from "@/lib/products";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
 import { resolveShipLabel } from "@/lib/ship-label";
@@ -31,12 +34,16 @@ import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginat
  * ข้อความสั้นบนป้ายแปะกล่อง — เอาเฉพาะตัวเลือกสินค้า (ขนาด/สี/รุ่น)
  * ตัดพวกพิกัด/ลิงก์/สรุปการวางลายออก เพราะป้ายต้องอ่านจากไกลได้ในบรรทัดเดียวสองบรรทัด
  */
-function boxSummary(it: Order["items"][number]): string {
+function boxSummary(it: Order["items"][number], workSize?: string): string {
+  // 📐 สินค้าขนาดเดียว (ไม่มีกลุ่มขนาดให้เลือก) — ขนาดต้องขึ้นป้ายด้วย คนแพ็ค/ลูกค้าเช็คหน้ากล่องได้เลย
+  const size = (workSize ?? "").trim();
+  const head = size && !/ขนาด/.test(`${it.selections ?? ""}${Object.keys(it.sel ?? {}).join("")}`) ? `ขนาด: ${size}` : "";
+  const join = (rest: string) => [head, rest].filter(Boolean).join(" · ");
   const opts = optionText(it);
-  if (opts) return opts;
+  if (opts) return join(opts);
   // ออเดอร์เก่าที่ไม่มีตัวเลือกแบบ key-value — ตัดให้สั้นพอติดกล่อง
   const t = cleanSelections(it.selections);
-  return t.length > 90 ? `${t.slice(0, 90)}…` : t;
+  return join(t.length > 90 ? `${t.slice(0, 90)}…` : t);
 }
 
 /** หัวข้อที่ไม่ต้องขึ้นใบงาน — พิกัด/ลิงก์/สรุปการวางลาย (ทีมผลิตดูจากไฟล์ .ai) */
@@ -92,13 +99,24 @@ export default function PrintOrderPage() {
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]); // วิธีส่งที่ร้านตั้ง — ไว้แปลงป้าย "ค่าส่ง"/ป้ายว่างเป็นชื่อวิธีส่งจริงตามราคา
   const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
+  /**
+   * 📦 สินค้าของรายการในใบ (id → สินค้า) — ใบงานต้องใช้ 2 อย่างที่ไม่ได้ติดมากับออเดอร์:
+   * ขนาดงานตายตัว (Product.workSize) และตัวคูณ "1 เซ็ต = กี่ชิ้น" ของใบเก่าที่ยังไม่ได้แช่ไว้
+   * มาช้ากว่าออเดอร์ได้ — ใส่ไว้ในตัวกระตุ้นวัดหน้าใหม่ด้วย ไม่งั้นบรรทัดที่เพิ่มมาล้นหน้าโดยไม่ถูกนับ
+   */
+  const [products, setProducts] = useState<Record<string, Product>>({});
 
   const load = useCallback(async (wanted: string[]) => {
     const r = await fetchOrdersAdmin();
     const list = r.orders.length > 0 ? r.orders : MOCK_ORDERS;
     // คงลำดับตามที่เลือกมาจากคิว — ใบที่หาไม่เจอข้ามไป
-    setOrders(wanted.map((id) => list.find((o) => o.id === id)).filter((o): o is Order => Boolean(o)));
+    const picked = wanted.map((id) => list.find((o) => o.id === id)).filter((o): o is Order => Boolean(o));
+    setOrders(picked);
     setLoading(false);
+    const ids = Array.from(new Set(picked.flatMap((o) => o.items.map((it) => it.productId)).filter(Boolean)));
+    if (ids.length) {
+      void fetchProductsByIds(ids).then((ps) => setProducts(Object.fromEntries(ps.map((p) => [p.id, p]))));
+    }
   }, []);
 
   useEffect(() => {
@@ -290,7 +308,7 @@ export default function PrintOrderPage() {
         )}
 
         {orders.map((o) => (
-          <OrderDocs key={o.id} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} />
+          <OrderDocs key={o.id} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} products={products} />
         ))}
       </div>
     </>
@@ -310,6 +328,7 @@ function OrderDocs({
   shipMethods,
   origin,
   seesMoney,
+  products,
 }: {
   order: Order;
   docs: Record<DocKey, boolean>;
@@ -320,6 +339,8 @@ function OrderDocs({
   shipMethods: ShippingMethod[];
   origin: string;
   seesMoney: boolean;
+  /** 📦 สินค้าของรายการในใบ (productId → สินค้า) — ใช้เติมขนาดงานตายตัว + ตัวคูณชิ้น/หน่วย · มาช้ากว่าออเดอร์ได้ */
+  products: Record<string, Product>;
 }) {
   /**
    * 🏷 ใบแปะกล่อง — งานขายส่งแพ็คแยกลาย (กล่องละลาย กล่องละ N ชิ้น)
@@ -358,7 +379,7 @@ function OrderDocs({
   const [pages, setPages] = useState<PageRange[] | null>(null);
   useEffect(() => {
     setPages(null); // ข้อมูล/ตัวเลือกพิมพ์เปลี่ยน → วัดใหม่
-  }, [order, withProofs, docs.work, labelOnly]);
+  }, [order, withProofs, docs.work, labelOnly, products]);
   useEffect(() => {
     if (pages !== null || labelOnly || !docs.work) return;
     const el = workRef.current;
@@ -407,16 +428,21 @@ function OrderDocs({
 
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const totalQty = order.items.reduce((s, i) => s + i.qty, 0);
+  /* 🔢 จำนวนรวมทั้งใบแบบบอกหน่วยถูก — "17 เซ็ต · 102 ชิ้น" (เดิมบวก qty ดิบแล้วเขียน "ชิ้น" ทุกกรณี) */
+  const totalQtyText = orderQtyText(order.items, (id) => products[id]);
   const workPages: PageRange[] = pages ?? [{ start: 0, end: order.items.length }];
   const printedRows = printedRowsOf(workPages);
   const cutRows = order.items.slice(printedRows); // แถวที่กระดาษ 3 หน้าไม่พอ → ดูมือถือ
-  const cutQty = cutRows.reduce((s, i) => s + i.qty, 0);
+  const cutQtyText = orderQtyText(cutRows, (id) => products[id]);
   const rowsOf = (pg: PageRange) => order.items.slice(pg.start, pg.end).map((it, k) => [it, pg.start + k] as const);
   const totalProofs = order.items.reduce((s, it) => s + proofsOf(it).length, 0); // แบบงานทั้งหมดกี่รูป
 
   /** แถวรายการหนึ่งแถว — ใช้ทั้งหน้า 1 และหน้าต่อ · i = ลำดับจริงในออเดอร์ (เลขหน้าตารางต้องต่อเนื่องข้ามหน้า) */
   const renderRow = (it: Order["items"][number], i: number) => {
                   const proofs = proofsOf(it);
+                  /* 🔢 จำนวนที่ต้องทำ — งานเซ็ต/แผ่นบอกชิ้นจริงใต้จำนวนที่สั่ง ("17 เซ็ต / = 102 ชิ้น")
+                     เดิมใบงานไม่มีช่องจำนวนเลย รายการที่ยังไม่มีแบบก็ไม่รู้ว่าต้องทำกี่ชิ้น (เจ้าของร้านสั่ง 15 ก.ย. 69) */
+                  const y = itemUnitYield(it, products[it.productId]);
                   return (
                     <tr key={`${it.productId}-${i}`} data-prow className="border-b border-slate-200 align-top">
                       <td className="py-3 pl-2 tabular-nums">{i + 1}</td>
@@ -480,6 +506,7 @@ function OrderDocs({
                             text={cleanSelections(it.selections)}
                             hide={PRINT_SKIP}
                             stripLinks
+                            workSize={products[it.productId]?.workSize}
                             labelClassName="text-slate-900"
                             className="mt-0.5 text-xs leading-relaxed text-slate-600"
                           />
@@ -489,6 +516,17 @@ function OrderDocs({
                             className="mt-1 leading-snug text-slate-900"
                             dangerouslySetInnerHTML={{ __html: `📝 ${it.adminNote}` }}
                           />
+                        )}
+                      </td>
+                      <td className="py-3 pr-2 text-right align-top">
+                        <p className="whitespace-nowrap text-lg font-extrabold leading-tight tabular-nums text-slate-900">
+                          {it.qty.toLocaleString("th-TH")}
+                          <span className="ml-1 text-xs font-bold text-slate-500">{y?.unit || "ชิ้น"}</span>
+                        </p>
+                        {y && y.per > 1 && (
+                          <p className="mt-0.5 whitespace-nowrap text-sm font-extrabold leading-tight tabular-nums text-slate-900">
+                            = {(it.qty * y.per).toLocaleString("th-TH")} {y.piece}
+                          </p>
                         )}
                       </td>
                     </tr>
@@ -725,7 +763,7 @@ function OrderDocs({
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ใบงาน / Packing list</p>
                 <p className="mt-0.5 font-mono text-lg font-extrabold tracking-tight">{order.id}</p>
                 <p className="text-xs text-slate-600">
-                  {order.customer} · {totalQty} ชิ้น · {order.items.length} รายการ
+                  {order.customer} · {totalQtyText} · {order.items.length} รายการ
                 </p>
                 {(order.tracking ?? "").trim() && (
                   <p className="mt-0.5 font-mono text-sm font-bold text-slate-800">📮 เลขพัสดุ{order.shipments?.length ? " (รอบสุดท้าย)" : ""}: {order.tracking}</p>
@@ -792,7 +830,7 @@ function OrderDocs({
 
             {/* ⚠️ กระดาษ 3 หน้าไม่พอ — บอกตั้งแต่แผ่นแรก จะได้ไม่คิดว่ารายการมีแค่นี้ */}
             {cutRows.length > 0 && (
-              <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQty={cutQty} totalProofs={totalProofs} top />
+              <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQtyText={cutQtyText} totalProofs={totalProofs} top />
             )}
 
             {/* ตารางงาน — หน้า 1 ได้เฉพาะแถวที่วัดแล้วว่าพอ (โหมดวัด = ทุกแถว) · ส่วนเกินตัดด้วย overflow กันหลุดหน้า */}
@@ -803,6 +841,7 @@ function OrderDocs({
                   <th className="w-8 py-2 pl-2">#</th>
                   <th className="w-96 py-2">แบบงาน</th>
                   <th className="py-2">รายการ / ตัวเลือก</th>
+                  <th className="w-24 py-2 pr-2 text-right">จำนวน</th>
                 </tr>
               </thead>
               <tbody>
@@ -810,12 +849,12 @@ function OrderDocs({
               </tbody>
               <tfoot data-ptfoot>
                 <tr className="border-t border-slate-300">
-                  <td colSpan={3} className="py-2 pl-2 text-xs text-slate-500">
+                  <td colSpan={4} className="py-2 pl-2 text-xs text-slate-500">
                     {workPages.length > 1
                       ? workPages[0].end === 0
-                        ? `รายการทั้งหมด ${printedRows} รายการอยู่หน้าถัดไป (หน้านี้มีแต่ใบปะหน้า/หัวใบงาน/ท้ายบิล) · รวมทั้งใบ ${order.items.length} รายการ ${totalQty} ชิ้น`
-                        : `รายการที่ ${workPages[0].end + 1}–${printedRows} อยู่หน้าถัดไป · รวมทั้งใบ ${order.items.length} รายการ ${totalQty} ชิ้น`
-                      : `รวม ${order.items.length} รายการ · ${totalQty} ชิ้น · สถานะ: ${order.status}`}
+                        ? `รายการทั้งหมด ${printedRows} รายการอยู่หน้าถัดไป (หน้านี้มีแต่ใบปะหน้า/หัวใบงาน/ท้ายบิล) · รวมทั้งใบ ${order.items.length} รายการ ${totalQtyText}`
+                        : `รายการที่ ${workPages[0].end + 1}–${printedRows} อยู่หน้าถัดไป · รวมทั้งใบ ${order.items.length} รายการ ${totalQtyText}`
+                      : `รวม ${order.items.length} รายการ · ${totalQtyText} · สถานะ: ${order.status}`}
                   </td>
                 </tr>
               </tfoot>
@@ -927,14 +966,15 @@ function OrderDocs({
                         <th className="w-8 py-2 pl-2">#</th>
                         <th className="w-96 py-2">แบบงาน</th>
                         <th className="py-2">รายการ / ตัวเลือก</th>
+                        <th className="w-24 py-2 pr-2 text-right">จำนวน</th>
                       </tr>
                     </thead>
                     <tbody>{rowsOf(pg).map(([it, i]) => renderRow(it, i))}</tbody>
                     <tfoot>
                       <tr className="border-t border-slate-300">
-                        <td colSpan={3} className="py-2 pl-2 text-xs text-slate-500">
+                        <td colSpan={4} className="py-2 pl-2 text-xs text-slate-500">
                           {last
-                            ? `รวมทั้งใบ ${order.items.length} รายการ · ${totalQty} ชิ้น · สถานะ: ${order.status}`
+                            ? `รวมทั้งใบ ${order.items.length} รายการ · ${totalQtyText} · สถานะ: ${order.status}`
                             : `รายการที่ ${pg.end + 1}–${printedRows} อยู่หน้าถัดไป`}
                         </td>
                       </tr>
@@ -942,7 +982,7 @@ function OrderDocs({
                   </table>
                 </div>
                 {last && cutRows.length > 0 && (
-                  <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQty={cutQty} totalProofs={totalProofs} />
+                  <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQtyText={cutQtyText} totalProofs={totalProofs} />
                 )}
                 <p className="mt-2 text-right text-[10px] text-slate-400">
                   {order.id} · หน้า {n}/{workPages.length} · พิมพ์เมื่อ {printedAt}
@@ -971,7 +1011,7 @@ function OrderDocs({
                   <div className="flex items-start justify-between gap-6 border-b-4 border-slate-900 pb-4">
                     <div className="min-w-0">
                       <p className="text-2xl font-extrabold leading-tight">{u.it.name}</p>
-                      <p className="mt-1 text-xl font-semibold leading-snug text-slate-700">{boxSummary(u.it)}</p>
+                      <p className="mt-1 text-xl font-semibold leading-snug text-slate-700">{boxSummary(u.it, products[u.it.productId]?.workSize)}</p>
                       {u.total > 1 && (
                         <p className="mt-1 text-3xl font-extrabold text-slate-900">ลายที่ {u.no}</p>
                       )}
@@ -1009,7 +1049,9 @@ function OrderDocs({
                     <p className="text-sm text-slate-500">
                       {order.date} · <span className="font-bold" style={{ color: shipColor }}>{shipName}</span>
                       {(order.tracking ?? "").trim() ? ` · ${order.tracking}` : ""}
-                      {u.qty ? ` · ลายนี้รวม ${u.qty.toLocaleString("th-TH")} ${u.unit}` : ""}
+                      {u.qty
+                        ? ` · ลายนี้รวม ${u.qty.toLocaleString("th-TH")} ${u.unit}`
+                        : ` · รายการนี้รวม ${itemQtyText(u.it, products[u.it.productId])}`}
                     </p>
                     <p className="flex items-end gap-3 text-5xl font-extrabold tabular-nums">
                       จำนวน
@@ -1056,7 +1098,7 @@ function OrderDocs({
                   <th className="w-8 py-2 pl-2">#</th>
                   <th className="py-2">รายการ</th>
                   <th className="w-24 py-2 text-right">ราคา/หน่วย</th>
-                  <th className="w-16 py-2 text-center">จำนวน</th>
+                  <th className="w-24 py-2 text-center">จำนวน</th>
                   <th className="w-24 py-2 pr-2 text-right">รวม</th>
                 </tr>
               </thead>
@@ -1071,12 +1113,14 @@ function OrderDocs({
                         text={it.selections}
                         hide={PRINT_SKIP}
                         stripLinks
+                        workSize={products[it.productId]?.workSize}
                         labelClassName="text-slate-700"
                         className="text-xs text-slate-500"
                       />
                     </td>
                     <td className="py-2 text-right tabular-nums">{formatPrice(it.unitPrice)}</td>
-                    <td className="py-2 text-center tabular-nums">{it.qty}</td>
+                    {/* 🔢 งานเซ็ต/แผ่น — บอกหน่วยที่สั่งและชิ้นจริง ("17 เซ็ต · 102 ชิ้น") */}
+                    <td className="py-2 text-center text-xs tabular-nums">{itemQtyText(it, products[it.productId])}</td>
                     <td className="py-2 pr-2 text-right tabular-nums">{formatPrice(it.qty * it.unitPrice)}</td>
                   </tr>
                 ))}
@@ -1213,14 +1257,15 @@ function WorkCutNote({
   order,
   printedRows,
   cutRows,
-  cutQty,
+  cutQtyText,
   totalProofs,
   top,
 }: {
   order: Order;
   printedRows: number;
   cutRows: number;
-  cutQty: number;
+  /** จำนวนของรายการที่พิมพ์ไม่ทัน — ข้อความสำเร็จรูป "3 เซ็ต · 18 ชิ้น" (ดู orderQtyText) */
+  cutQtyText: string;
   totalProofs: number;
   /** วางใต้หัวใบงานหน้า 1 (ตัวเตี้ยกว่า) */
   top?: boolean;
@@ -1230,7 +1275,7 @@ function WorkCutNote({
   return (
     <div className={`keep rounded-lg border-2 border-red-600 bg-red-50 px-3 ${top ? "mt-3 py-2" : "mt-3 py-3"}`}>
       <p className="font-extrabold leading-tight" style={{ color: "#dc2626", fontSize: top ? 15 : 18 }}>
-        ⚠️ กระดาษพิมพ์ได้ถึงรายการที่ {printedRows} จาก {to} — รายการที่ {from}–{to} (อีก {cutRows} รายการ {cutQty.toLocaleString("th-TH")} ชิ้น) ไม่ได้พิมพ์
+        ⚠️ กระดาษพิมพ์ได้ถึงรายการที่ {printedRows} จาก {to} — รายการที่ {from}–{to} (อีก {cutRows} รายการ {cutQtyText}) ไม่ได้พิมพ์
       </p>
       <p className="mt-0.5 text-xs font-bold text-slate-800">
         📱 สแกน QR แล้วตรวจครบทุกรายการบนมือถือ · แบบงานทั้งใบ {totalProofs} รูป · ระบบบังคับติ๊กครบก่อนยิงเลขพัสดุ

@@ -49,7 +49,8 @@ import {
   TabRow,
   Tag,
 } from "@/components/admin/ui";
-import { orderMatches, staffTally, useGraphicStaff, useGraphicsOrders } from "./data";
+import { orderMatches, staffTally, useGraphicStaff, useGraphicsOrders, useWorkSizes } from "./data";
+import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import UseBy from "./UseBy";
 
 const QUEUE: OrderStatus[] = ["ชำระแล้ว", "รอตรวจสอบ"];
@@ -70,7 +71,6 @@ interface Sent {
   by: string;
 }
 
-const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 
 /** ส่งแบบไปกี่วันแล้ว — ใช้บอกว่าควรทวงลูกค้าหรือยัง */
@@ -116,6 +116,7 @@ function sentProofs(orders: Order[]): Sent[] {
 
 export default function GraphicsOrdersPage() {
   const { orders, demo } = useGraphicsOrders();
+  const workSizes = useWorkSizes();
   /** รายชื่อพนักงานแผนกกราฟฟิกใน employees2 — เป็นตัวตั้งของชิป "คนทำแบบ" */
   const roster = useGraphicStaff();
   const [view, setView] = useState<View>("queue");
@@ -271,7 +272,7 @@ export default function GraphicsOrdersPage() {
           ) : (
             <Rows>
               {shownSent.map((s, i) => (
-                <SentRow key={`${s.order.id}-${s.proof.url}-${i}`} sent={s} />
+                <SentRow key={`${s.order.id}-${s.proof.url}-${i}`} sent={s} workSizes={workSizes} />
               ))}
             </Rows>
           )}
@@ -287,7 +288,7 @@ export default function GraphicsOrdersPage() {
           ) : (
             <Rows>
               {shown.map((o) => (
-                <QueueRow key={o.id} o={o} />
+                <QueueRow key={o.id} o={o} workSizes={workSizes} />
               ))}
             </Rows>
           )}
@@ -298,7 +299,7 @@ export default function GraphicsOrdersPage() {
 }
 
 /** หนึ่งใบในคิวรอทำแบบ */
-function QueueRow({ o }: { o: Order }) {
+function QueueRow({ o, workSizes }: { o: Order; workSizes: Record<string, string> }) {
   const todo = graphicTodoItems(o).length;
   const selfMade = o.items.filter(isSelfDesigned).length;
   const done = o.items.filter((it) => !isSelfDesigned(it) && proofsOf(it).length > 0).length;
@@ -338,9 +339,21 @@ function QueueRow({ o }: { o: Order }) {
             <span>{dayOf(o.date)}</span>
             {/* วันใช้งานที่ลูกค้าแจ้ง — ตัวนับ + 📅 วันที่จริง ให้กราฟฟิกจัดลำดับได้โดยไม่ต้องเปิดใบ */}
             <UseBy o={o} />
-            <span>{qtyOf(o)} ชิ้น</span>
+            {/* 🔢 งานเซ็ต/แผ่น — จำนวนที่สั่งไม่ใช่จำนวนชิ้น บอกทั้งสองเลข ("17 เซ็ต · 102 ชิ้น") */}
+            <span>{orderQtyText(o.items)}</span>
             {selfMade > 0 && <span title="ลูกค้าจัดวางลายเองมาแล้ว — ไม่ต้องทำแบบ">ลูกค้าทำเอง {selfMade}</span>}
             {done > 0 && <span>ทำแล้ว {done}</span>}
+            {/* 📐 รายการที่ต้องทำแบบ — ชื่อ · จำนวนชิ้นจริง · ขนาดงาน (สินค้าขนาดเดียวไม่มีขนาดในตัวเลือก)
+                เดิมแถวคิวบอกแค่ยอดรวม กราฟฟิกต้องเปิดใบถึงจะรู้ว่าทำอะไร ขนาดเท่าไหร่ (เจ้าของร้านสั่ง 15 ก.ย. 69) */}
+            {graphicTodoItems(o)
+              .slice(0, 3)
+              .map((it, n) => (
+                <span key={`${it.productId}-${n}`} title={`${it.name} · ${itemQtyText(it)}`}>
+                  <b>{it.name}</b> {itemQtyText(it)}
+                  {workSizes[it.productId] && !/ขนาด/.test(Object.keys(it.sel ?? {}).join("")) ? ` · ${workSizes[it.productId]}` : ""}
+                </span>
+              ))}
+            {todo > 3 && <span>+ อีก {todo - 3} รายการ</span>}
           </>
         }
       />
@@ -355,7 +368,7 @@ function QueueRow({ o }: { o: Order }) {
 }
 
 /** แบบ 1 รูปที่ส่งไปแล้ว — เห็นรูป ผลตรวจ และคอมเมนต์ที่ลูกค้าขอแก้ในแถวเดียว */
-function SentRow({ sent }: { sent: Sent }) {
+function SentRow({ sent, workSizes }: { sent: Sent; workSizes: Record<string, string> }) {
   const { order, item, proof, no, state } = sent;
   const redo = state === "ขอแก้ไข";
   /** คอมเมนต์รายรูปมาก่อน · ไม่มีค่อยใช้ของทั้งรายการ (บอกให้ชัดว่าไม่ใช่ของรูปนี้รูปเดียว) */
@@ -399,6 +412,11 @@ function SentRow({ sent }: { sent: Sent }) {
                 รูปที่ {no}
                 {proof.qty ? ` · ${proof.qty} ${proofUnit(proof)}` : ""}
               </span>
+              {/* จำนวนทั้งรายการ + ขนาดงาน — ตรวจแบบทีละรูปต้องรู้ว่ารายการนี้สั่งเท่าไหร่ ขนาดเท่าไหร่ */}
+              <span>ทั้งรายการ {itemQtyText(item)}</span>
+              {workSizes[item.productId] && !/ขนาด/.test(Object.keys(item.sel ?? {}).join("")) && (
+                <span>ขนาด {workSizes[item.productId]}</span>
+              )}
               {note && (
                 <span className="hot" title={note}>
                   {noteWhole ? "คอมเมนต์ทั้งรายการ: " : ""}

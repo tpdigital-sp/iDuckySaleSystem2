@@ -36,6 +36,18 @@ export function specEntries(
   return parseSpecText(text).filter(([k]) => !hide.includes(k));
 }
 
+/**
+ * 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — เติมบรรทัด "ขนาด: …" ให้รายการที่ไม่มีกลุ่มขนาดให้เลือก
+ * (CUP SLEEVE ขนาดเดียว 27.7 × 7.6 ซม. — กราฟฟิกอ่านจากรายการในออเดอร์ไม่เจอ ต้องไปเปิดหน้าสินค้าดูเอง)
+ * มีบรรทัดขนาดจากตัวเลือกอยู่แล้ว (ขนาดตัด / ขนาดไดคัท / ขนาดแต่ละลาย) = ของจริงชนะ ไม่เติมซ้ำ
+ * วางไว้บรรทัดแรก — ขนาดเป็นสเปคที่ทีมผลิตมองหาก่อนเสมอ
+ */
+export function withWorkSize(entries: [string, string][], workSize?: string): [string, string][] {
+  const size = (workSize ?? "").trim();
+  if (!size || entries.some(([k]) => /ขนาด|size/i.test(k))) return entries;
+  return [["ขนาด", size], ...entries];
+}
+
 /* ──────────────────────────────────────────────────────────────
  * 📐 "เพิ่มขนาด" ที่ลูกค้ากดเพิ่มทีละเซน/นิ้ว — โชว์เป็นขนาดจริงที่ต้องผลิตในบรรทัด "ขนาด"
  * (15 ซม. + เซนละ ×2 → "17 ซม. (15 + เพิ่ม 2)") ไม่งั้นทีมผลิต/ลูกค้าต้องบวกเองทุกครั้ง
@@ -336,6 +348,7 @@ export function SpecLines({
   stripLinks = false,
   extras,
   after,
+  workSize,
 }: {
   sel?: Record<string, string>;
   text?: string;
@@ -354,11 +367,16 @@ export function SpecLines({
   extras?: Record<string, number>;
   /** บรรทัดเสริมท้ายรายละเอียด เช่น "🎨 แนบลายแล้ว N รูป" */
   after?: ReactNode;
+  /** 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — ไม่มีกลุ่มขนาดให้เลือกถึงจะขึ้นบรรทัดให้ */
+  workSize?: string;
 }) {
-  const entries = foldSizeExtra(
-    specEntries(sel, text, hide)
-      .map(([k, v]) => [k, stripLinks ? stripUrls(v) : v] as [string, string])
-      .filter(([, v]) => v),
+  const entries = withWorkSize(
+    foldSizeExtra(
+      specEntries(sel, text, hide)
+        .map(([k, v]) => [k, stripLinks ? stripUrls(v) : v] as [string, string])
+        .filter(([, v]) => v),
+    ),
+    workSize,
   );
   if (!entries.length && !after) return null;
   const feeTag = (k: string) => {

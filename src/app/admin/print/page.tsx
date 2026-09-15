@@ -26,6 +26,7 @@ import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
 import { daysToUseBy, isPartiallyShipped, nextPlannedRound, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
+import { orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
 import { shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
 import { thaiDateTime } from "@/lib/bangkok-time";
@@ -58,7 +59,6 @@ const PRINT_QUEUE_STATUSES: OrderStatus[] = ["อนุมัติแบบ", "
 /** วันส่งห่างเกินเท่านี้ = ยังไม่ถึงคิว (งานขายส่ง/สั่งล่วงหน้า) ไปอยู่กองล่าง */
 const DUE_SOON_DAYS = 2;
 
-const qtyOf = (o: Order) => o.items.reduce((s, i) => s + i.qty, 0);
 const printCountOf = (o: Order) => o.printCount ?? (o.printedAt ? 1 : 0);
 /**
  * 🚚 ใบแบ่งส่งที่ยังมีรอบเหลือ → เลขรอบถัดไปที่ต้องปริ้นใบปะหน้ากล่อง (null = ไม่ใช่ใบแบ่งส่ง/ปิดแล้ว)
@@ -173,7 +173,6 @@ function PrintQueueInner() {
       nextRound: ready.filter((o) => nextRoundOf(o) !== null).length,
       done: ready.filter((o) => printCountOf(o) > 0).length,
       all: ready.length,
-      pieces: ready.reduce((s, o) => s + qtyOf(o), 0),
     };
   }, [ready, today, cards]);
 
@@ -545,8 +544,9 @@ function PrintRow({
           <>
             <span className="id">{o.id}</span>
             <span>{o.date}</span>
+            {/* 🔢 งานเซ็ต/แผ่น — จำนวนที่สั่งไม่ใช่จำนวนชิ้น (ดู orderQtyText) */}
             <span>
-              {o.items.length} รายการ · {qtyOf(o)} ชิ้น
+              {o.items.length} รายการ · {orderQtyText(o.items)}
             </span>
             {sent && o.productionSent?.folder && (
               <span title={o.productionSent.folder}>📁 {o.productionSent.folder.replace(/^[-+\s]+/, "").slice(0, 40)}</span>

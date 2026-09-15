@@ -34,6 +34,7 @@ import {
   splitArtUrls,
   stockCheckRows,
 } from "@/lib/products";
+import { orderQtyText } from "@/lib/item-yield";
 import { orderIdIn, parseReuseArt } from "@/lib/admin-data";
 import { clearPriceLinkBundle } from "@/lib/price-link";
 import {
@@ -218,6 +219,11 @@ export default function CartPage() {
   const subtotal =
     pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0) + boxFeeSum;
   const totalQty = pickedItems.reduce((n, i) => n + i.qty, 0);
+  /** 🔢 "17 เซ็ต · 102 ชิ้น" — งานเซ็ต/แผ่นจำนวนที่สั่งไม่ใช่จำนวนชิ้น (ดู orderQtyText) */
+  const totalQtyText = orderQtyText(
+    pickedItems.map((i) => ({ productId: i.productId, sel: i.selections, qty: i.qty })),
+    productOf,
+  );
   function commitUnpicked(next: string[]) {
     setUnpicked(next);
     saveUnpicked(next);
@@ -515,7 +521,7 @@ export default function CartPage() {
         <div className="shopp-head">
           <h1 className="ord-title">🛒 ตะกร้าสินค้า</h1>
           <span className="ord-chip">
-            {items.length} รายการ · เลือกสั่ง {pickedItems.length} รายการ {totalQty} ชิ้น
+            {items.length} รายการ · เลือกสั่ง {pickedItems.length} รายการ {totalQtyText}
           </span>
         </div>
 
@@ -702,6 +708,8 @@ export default function CartPage() {
                       return (
                         <SpecLines
                           sel={item.selections}
+                          /* 📐 สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้เลือก — เติมบรรทัดขนาดจากสินค้าให้เอง */
+                          workSize={product.workSize}
                           /* "หมายเหตุ" มีช่องกรอกของตัวเองด้านล่าง — โชว์ซ้ำเป็นบรรทัดสเปคจะงง
                              "เรทราคา" เป็นเรื่องภายใน (ชื่อเรทอย่าง "เรทที่ 1" ลูกค้าอ่านไม่รู้เรื่อง) —
                              เจ้าของร้านสั่งไม่ต้องโชว์ในตะกร้า (5 ก.ย. 69) · ยังติดไปกับออเดอร์/ใบงานตามเดิม
@@ -1181,7 +1189,7 @@ export default function CartPage() {
 
             <dl className="mt-5 flex flex-col gap-2 pt-4 text-sm" style={{ borderTop: "1px dashed var(--sky-200)" }}>
               <div className="flex justify-between t-soft">
-                <dt>ยอดรวมสินค้า ({totalQty} ชิ้น)</dt>
+                <dt>ยอดรวมสินค้า ({totalQtyText})</dt>
                 <dd className="font-semibold t-ink">{formatPrice(subtotal)}</dd>
               </div>
               {boxFeeSum > 0 && (

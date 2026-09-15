@@ -16,7 +16,7 @@ import { useParams, useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
 import { artQtyOf, artSizeOf, artSizeText, formatPrice, productPath, type Product } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
-import { itemPiecesLine, itemUnitYield } from "@/lib/item-yield";
+import { itemPiecesLine, itemUnitYield, orderQtyText } from "@/lib/item-yield";
 import { SelDetails } from "@/components/admin/SelDetails";
 import { applySelectionsDraft, selectionsDraft, selectionsDraftChanged } from "@/lib/edit-selections";
 import {
@@ -384,7 +384,8 @@ function QuoteDetailInner() {
   // ใบที่ลูกค้าตกลงแล้วไม่ต้องเตือนเรื่องวันยืนราคาอีก — จบขั้นตอน "รอลูกค้าตอบ" ไปแล้ว เหลือแค่รอเปิดงาน
   const soon = !locked && !waiting && st !== "ไม่รับ" && left !== null && left <= 3;
 
-  const qty = quote.items.reduce((s, i) => s + i.qty, 0);
+  /** 🔢 "17 เซ็ต · 102 ชิ้น" — งานเซ็ต/แผ่น จำนวนที่สั่งไม่ใช่จำนวนชิ้น */
+  const qtyText = orderQtyText(quote.items, (id) => prodById[id]);
   const subtotal = quote.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const memberAmount = quoteMemberDiscount(quote);
   const total = quoteTotal(quote);
@@ -751,7 +752,7 @@ function QuoteDetailInner() {
                               </div>
                             ) : (
                               <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
-                                <SelDetails sel={it.sel} text={it.selections} />
+                                <SelDetails sel={it.sel} text={it.selections} workSize={prod?.workSize} />
                                 {!locked && (
                                   <button
                                     type="button"
@@ -1056,7 +1057,7 @@ function QuoteDetailInner() {
               <GH t="emerald">💰 ยอดเงิน</GH>
               <div className={`mt-2 ${soft("emerald")}`}>
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className={muted}>รวมสินค้า · {qty} ชิ้น</span>
+                  <span className={muted}>รวมสินค้า · {qtyText}</span>
                   <span className="font-semibold tabular-nums text-slate-800">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
