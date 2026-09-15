@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { CHAT_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
+import { core, loadChatIndex, norm } from "@/lib/server/line-chat";
 
 export const runtime = "nodejs";
 
@@ -10,12 +11,12 @@ export const runtime = "nodejs";
  *
  * ค้นแบบ "มีคำนี้อยู่ตรงไหนของชื่อก็ได้" — ชื่อ LINE มักเอาอีโมจิ/ชื่อเล่นไว้ท้ายชื่อ
  * ไม่พิมพ์อะไร = โชว์คนที่คุยกับร้านล่าสุด · พิมพ์ userId (U…) = ดึงคนนั้นตรง ๆ
+ *
+ * ดัชนีรายชื่อ (+แคช) อยู่ที่ lib/server/line-chat.ts — ใช้ก้อนเดียวกับหน้า /admin/line-customers
  */
 const LIMIT = 12;
 /** ค้นหาชื่อสั้น ๆ (เช่น "S") มีคนชื่อเดียวกันหลายสิบ — โชว์ได้มากขึ้นเพื่อเทียบรูปโปรไฟล์ */
 const SEARCH_LIMIT = 24;
-/** อายุแคชรายชื่อในหน่วยความจำ — กันอ่าน Firestore ทั้งคอลเลกชันทุกครั้งที่พิมพ์ */
-const CACHE_MS = 5 * 60 * 1000;
 
 /**
  * ห่างจากการดึงสดครั้งก่อนอย่างน้อยเท่านี้ ถึงจะยอมดึงสดให้อัตโนมัติตอนค้นไม่เจอ
@@ -24,48 +25,7 @@ const CACHE_MS = 5 * 60 * 1000;
 const AUTO_FRESH_GAP_MS = 20 * 1000;
 
 type Row = { userId: string; name: string; picture?: string; lastSeen?: string };
-let cache: { at: number; rows: (Row & { key: string })[] } | null = null;
 let lastAutoFreshAt = 0;
-
-/**
- * ทำข้อความให้เทียบกันได้จริง ก่อนเอาไปหา
- *  - NFC: รวมตัวอักษรที่เขียนได้หลายแบบให้เป็นแบบเดียว (ภาษาไทย/ยุโรปที่มีวรรณยุกต์)
- *  - ตัด variation selector (U+FE0E/U+FE0F): "❤️" ที่คีย์บอร์ดพิมพ์ ≠ "❤" ที่บางคนใช้ตั้งชื่อ
- *    ไม่ตัด = พิมพ์ ❤️ แล้วหาคนที่ใช้ ❤ ไม่เจอ (วัดจริงกับคลังแชท: พลาด 7 คน)
- *  - ตัดโทนสีผิว (U+1F3FB–U+1F3FF): พิมพ์ 🫰 ให้เจอ 🫰🏻 ด้วย
- *  - lowercase: อังกฤษพิมพ์เล็ก/ใหญ่ก็เจอ
- */
-function norm(s: string): string {
-  return s
-    .normalize("NFC")
-    .toLowerCase()
-    .replace(/[︎️]/g, "")
-    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "");
-}
-
-/**
- * กุญแจ "ชื่อเดียวกัน" — ตัดตัวประดับที่คนชอบต่อท้ายชื่อสั้น ๆ ออก (จุด/ช่องว่าง/ขีด)
- * "S" · "S." · "s" ถือว่าเป็นชื่อเดียวกัน ตอนจัดอันดับผลค้นหา
- */
-function core(s: string): string {
-  return norm(s).replace(/[\s._\-·]/g, "");
-}
-
-/** อ่านรายชื่อทั้งคลังแชทมาทำดัชนีในหน่วยความจำ (มีแคช) */
-async function loadIndex(db: FirebaseFirestore.Firestore, fresh: boolean) {
-  if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.rows;
-  const snap = await db.collection(CHAT_COLLECTION).select("userId", "displayName", "pictureUrl", "lastSeen").get();
-  const rows = snap.docs.map((d) => {
-    const ls = d.get("lastSeen") as { _seconds?: number; toDate?: () => Date } | undefined;
-    const at = ls?.toDate ? ls.toDate().toISOString() : ls?._seconds ? new Date(ls._seconds * 1000).toISOString() : undefined;
-    const name = (d.get("displayName") as string) || "(ไม่มีชื่อ)";
-    return { userId: (d.get("userId") as string) || d.id, name, picture: d.get("pictureUrl") as string, lastSeen: at, key: norm(name) };
-  });
-  // เรียงคนคุยล่าสุดไว้บนสุดตั้งแต่ตอนทำดัชนี — ผลค้นหาจะได้เรียงมาให้เลย
-  rows.sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""));
-  cache = { at: Date.now(), rows };
-  return rows;
-}
 
 export async function GET(req: Request) {
   const gate = await requirePerm("orders.edit");
@@ -90,7 +50,7 @@ export async function GET(req: Request) {
 
     const needle = norm(q);
     const needleCore = core(q);
-    const rows = await loadIndex(db, fresh);
+    const rows = await loadChatIndex(db, fresh);
     /**
      * จัดอันดับผลค้นหา: ชื่อตรงพอดี → ขึ้นต้นด้วยคำที่พิมพ์ → มีคำนี้อยู่ตรงไหนก็ได้
      * (ในแต่ละชั้นยังเรียงคนคุยล่าสุดไว้บน เพราะดัชนีเรียงมาแล้วและ sort ของ JS เสถียร)
@@ -109,12 +69,14 @@ export async function GET(req: Request) {
      */
     if (!hits.length && q.length >= 2 && !refreshed && Date.now() - lastAutoFreshAt > AUTO_FRESH_GAP_MS) {
       lastAutoFreshAt = Date.now();
-      hits = (await loadIndex(db, true)).filter((r) => r.key.includes(needle)).sort((a, b) => rank(a.name) - rank(b.name));
+      hits = (await loadChatIndex(db, true)).filter((r) => r.key.includes(needle)).sort((a, b) => rank(a.name) - rank(b.name));
       refreshed = true;
     }
 
     return NextResponse.json({
-      customers: hits.slice(0, q.length < 1 ? LIMIT : SEARCH_LIMIT).map(({ key: _k, ...rest }) => rest),
+      customers: hits
+        .slice(0, q.length < 1 ? LIMIT : SEARCH_LIMIT)
+        .map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen })),
       total: hits.length, // เจอทั้งหมดกี่คน (โชว์แค่ LIMIT) — หน้าเว็บเอาไปบอกให้พิมพ์แคบลง
       exact: q.length < 1 ? 0 : hits.filter((r) => core(r.name) === needleCore).length, // ชื่อตรงพอดีกี่คน — หน้าเว็บบอกให้ดูรูปโปรไฟล์เทียบ
       recent: q.length < 1,

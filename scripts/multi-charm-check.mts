@@ -16,6 +16,7 @@ import {
   unitPriceParts,
   unitAddOnBreakdown,
   needsQuote,
+  RATE_LABEL,
   type Product,
 } from "../src/lib/products";
 
@@ -242,6 +243,41 @@ ok("ชิ้นที่ 1 กรอก 10.5 ซม. → ผ่อนเศษ�
 // ชิ้นที่ 5 ซ่อนอยู่ (พวง 2 ชิ้น) แต่มีค่า custom ค้าง → ช่องกรอกต้องไม่โผล่/ไม่บังคับกรอก
 const stale = resolveSelections(p, { ...selQ, [COUNT]: "2 ชิ้น", "ขนาดชิ้นที่ 5": CUSTOM });
 ok("ชิ้นที่ 5 ถูกซ่อน (พวง 2 ชิ้น) แม้ค่ากำหนดขนาดเองค้างอยู่ → ช่องกรอกชิ้นที่ 5 ไม่โผล่", !optionVisible(group(wL(5)), stale) && !needsQuote(p, stale));
+
+console.log("\n── เรทที่ 2 แบบไม่คละดีเทล (14 ก.ย. 69 — ราคาส่งโรงงาน ขั้นต่ำ 50 พวง · ดีเทลละ 25 พวง) ──");
+const R2 = "เรทที่ 2 แบบไม่คละดีเทล";
+const rateR1 = p.priceRates!.find((r) => r.id === "r1")!;
+const rateR2 = p.priceRates!.find((r) => r.id === "r2");
+ok("มีเรท r2 ชื่อ 'เรทที่ 2 แบบไม่คละดีเทล' · minQty 50 · ดีเทลละ 25 · ไม่ใช่เรทตัวแทน",
+  rateR2?.label === R2 && rateR2.minQty === 50 && rateR2.minPerDesign === 25 && !rateR2.dealerOnly);
+ok("r1 ชื่อ 'เรทที่ 1 แบบคละดีเทล' และเป็นเรทแรก (ตัว fallback)", p.priceRates![0].id === "r1" && rateR1.label === "เรทที่ 1 แบบคละดีเทล");
+ok("r2 แกนตาราง = แกน r1 (ชุดสเปคชิ้นที่ 1) และคีย์ช่องราคาตรงกันทั้ง 270 ช่อง",
+  !!rateR2 && rateR2.pricing.driverLabels.join("│") === rateR1.pricing.driverLabels.join("│") && Object.keys(rateR2.pricing.cells).length === 270 && Object.keys(rateR1.pricing.cells).every((k) => k in rateR2.pricing.cells));
+ok("r2 ป้ายช่วงราคาเป็น 'พวง' 7 ขั้น (ขั้นแรก 50-100 พวง)",
+  rateR2?.pricing.tiers.length === 7 && rateR2.pricing.tiers.every((t) => /พวง/.test(t.label ?? "") && !/ชิ้น/.test(t.label ?? "")) && rateR2.pricing.tiers[0].upTo === 100);
+ok("ลำดับเรท r1, r2, r1-dealer, r2-dealer (เรทตัวแทนอยู่หลังเรท public)",
+  p.priceRates!.map((r) => r.id).join(",") === "r1,r2,r1-dealer,r2-dealer" && p.priceRates!.filter((r) => r.dealerOnly).length === 2);
+// หน้าสินค้าเลือกเรทให้เองตามจำนวนแล้วใส่ selections[RATE_LABEL] (ProductDetail) — ตรงนี้จำลองด้วยการใส่ป้ายเรทเอง
+const sel3r2 = { ...sel3, [RATE_LABEL]: R2 };
+for (const [units, want, note] of [
+  [50, 77, "45 + 12 + 12 + 8"],
+  [100, 77, "45 + 12 + 12 + 8"],
+  [101, 72, "40 + 12 + 12 + 8"],
+  [200, 67, "35 + 12 + 12 + 8"],
+] as [number, number, string][]) {
+  const got = unitPriceParts(p, sel3r2, units);
+  ok(`เรท 2: ${units} พวง พวงละ 3 ชิ้น = ฿${got.total}/พวง (${note})${units === 50 ? " — ตรงใบเสนอราคาจริง 2 ก.ย. 69" : ""}`, got.total === want);
+}
+const two50 = unitPriceParts(p, { ...selQ, [RATE_LABEL]: R2 }, 50);
+ok(`เรท 2: 50 พวง พวงละ 2 ชิ้น = ฿${two50.total}/พวง (45 + 12 + 8)`, two50.total === 65);
+const r1at50 = unitPriceParts(p, sel3, 50);
+ok(`เรท 1 ที่ 50 พวง ยังคิดตามเดิม ฿${r1at50.total} (50 + 12 + 12 + 8) — ใบที่คละเกินดีเทลละ 25 ใช้เรทนี้`, r1at50.total === 82);
+const cusR2 = { ...resolveSelections(p, { ...sel3, "ขนาดชิ้นที่ 1": CUSTOM, [wL(1)]: "5", [hL(1)]: "4.5" }), [RATE_LABEL]: R2 };
+ok(`เรท 2: ชิ้นที่ 1 กำหนดขนาดเอง 5×4.5 → คิดเท่าแถว 5cm ของเรท 2 (฿${unitPriceFor(p, cusR2, 50)} = ฿${unitPriceFor(p, sel3r2, 50)})`,
+  unitPriceFor(p, cusR2, 50) === unitPriceFor(p, sel3r2, 50) && !needsQuote(p, cusR2));
+ok("แท็บวิธีคิดราคา + FAQ พูดถึงเรทที่ 2",
+  ((p as { tabs?: { text: string }[] }).tabs?.[0]?.text ?? "").includes("เรทที่ 2 แบบไม่คละดีเทล") &&
+    ((p as { seo?: { faqs?: { a: string }[] } }).seo?.faqs ?? []).some((f) => f.a.includes("เรทที่ 2")));
 
 console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทั้งหมด");
 process.exit(fail ? 1 : 0);

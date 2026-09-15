@@ -118,7 +118,11 @@ function buildRows(orders: Order[]): Row[] {
   return rows.reverse().sort((a, b) => ORDER_OF[a.state] - ORDER_OF[b.state]);
 }
 
-type Filter = State | "all" | "self" | "lowdpi";
+/** "open" = ยังไม่จบเรื่อง (ขอแก้ไข + ยังไม่ยืนยัน) */
+type Filter = State | "all" | "open" | "self" | "lowdpi";
+
+/** ลายที่ยังไม่จบเรื่อง — ลูกค้ายังไม่กดอนุมัติ */
+const isOpen = (r: Row) => r.state !== "อนุมัติแล้ว";
 
 export default function DesignReportPage() {
   const { orders, demo } = useGraphicsOrders();
@@ -135,6 +139,7 @@ export default function DesignReportPage() {
   const counts = useMemo(() => {
     const c: Record<Filter, number> = {
       all: rows.length,
+      open: 0,
       ขอแก้ไข: 0,
       ยังไม่ยืนยัน: 0,
       อนุมัติแล้ว: 0,
@@ -143,6 +148,7 @@ export default function DesignReportPage() {
     };
     for (const r of rows) {
       c[r.state]++;
+      if (isOpen(r)) c.open++;
       if (r.self) c.self++;
       if (r.dpi !== null && r.dpi < DPI_WARN) c.lowdpi++;
     }
@@ -158,11 +164,13 @@ export default function DesignReportPage() {
     .filter((r) =>
       filter === "all"
         ? true
-        : filter === "self"
-          ? r.self
-          : filter === "lowdpi"
-            ? r.dpi !== null && r.dpi < DPI_WARN
-            : r.state === filter
+        : filter === "open"
+          ? isOpen(r)
+          : filter === "self"
+            ? r.self
+            : filter === "lowdpi"
+              ? r.dpi !== null && r.dpi < DPI_WARN
+              : r.state === filter
     )
     .filter((r) => orderMatches(r.order, q));
 
@@ -198,10 +206,12 @@ export default function DesignReportPage() {
 
       <Stats cols={4}>
         <HeroStat
-          n={counts["ขอแก้ไข"] + counts["ยังไม่ยืนยัน"]}
+          n={counts.open}
           label="ยังไม่จบเรื่อง"
           detail={`ลูกค้าขอแก้ ${counts["ขอแก้ไข"]} · ส่งไปแล้วยังไม่ยืนยัน ${counts["ยังไม่ยืนยัน"]}`}
-          pct={counts.all ? ((counts["ขอแก้ไข"] + counts["ยังไม่ยืนยัน"]) / counts.all) * 100 : 0}
+          pct={counts.all ? (counts.open / counts.all) * 100 : 0}
+          onClick={() => setFilter(filter === "open" ? "all" : "open")}
+          active={filter === "open"}
         />
         <Stat label="อนุมัติแล้ว" value={counts["อนุมัติแล้ว"]} hint="จบเรื่องแล้ว" />
         <Stat
@@ -215,6 +225,13 @@ export default function DesignReportPage() {
       <FilterCard>
         <TabRow>
           <FChip on={filter === "all"} onClick={() => setFilter("all")} label="ทั้งหมด" count={counts.all} />
+          <FChip
+            on={filter === "open"}
+            onClick={() => setFilter("open")}
+            label="ยังไม่จบเรื่อง"
+            count={counts.open}
+            style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
+          />
           <FChip
             on={filter === "ขอแก้ไข"}
             onClick={() => setFilter("ขอแก้ไข")}

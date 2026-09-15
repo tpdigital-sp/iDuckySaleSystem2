@@ -56,6 +56,7 @@ const ID = "crop";
 const IMG = (name: string) =>
   `${env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/products/${ID}/${name}.jpg`;
 
+// color-*-hanger-v1 = ภาพ AI ชุดไม้แขวน (scripts/crop-color-option-ai.mjs 10 ก.ย. 69) — ของเดิม color-* ยังอยู่ใน FILES
 const FILES = [
   "gallery-1",
   "gallery-2",
@@ -313,7 +314,7 @@ const product: Product = {
       id: "dtf",
       label: RATE_DTF,
       desc: "พิมพ์ฟิล์มรีดร้อน สีสด คมชัด ระบบ CMYK · พิมพ์ได้ทั้งผ้าสีอ่อนและสีเข้ม",
-      imageSrc: IMG("rate-dtf"),
+      imageSrc: IMG("rate-dtf-duo-v1"), // ภาพ AI ขาว+ดำคู่ (scripts/crop-rate-dtf-ai.mjs 10 ก.ย. 69) — ของเดิม rate-dtf ยังอยู่ใน FILES
       freeMixBelowQty: 11,
       minPerDesign: 3,
       pricing: DTF,
@@ -360,10 +361,10 @@ const product: Product = {
       stockBearing: true,
       showWhen: { label: RATE_LABEL, choices: [RATE_DTF, RATE_FLEX, RATE_EMB] },
       choices: [
-        { name: "สีดำ", imageSrc: IMG("color-black") },
-        { name: "สีขาว", imageSrc: IMG("color-white") },
-        { name: "สีเบจ", imageSrc: IMG("color-beige") },
-        { name: "สีผ้าดิบ", imageSrc: IMG("color-natural") },
+        { name: "สีดำ", imageSrc: IMG("color-black-hanger-v1") },
+        { name: "สีขาว", imageSrc: IMG("color-white-hanger-v1") },
+        { name: "สีเบจ", imageSrc: IMG("color-beige-hanger-v1") },
+        { name: "สีผ้าดิบ", imageSrc: IMG("color-natural-hanger-v1") },
       ],
     },
     {
@@ -372,9 +373,9 @@ const product: Product = {
       stockBearing: true,
       showWhen: { label: RATE_LABEL, choices: [RATE_SUB] },
       choices: [
-        { name: "สีขาว", imageSrc: IMG("color-white") },
-        { name: "สีเบจ", imageSrc: IMG("color-beige") },
-        { name: "สีผ้าดิบ", imageSrc: IMG("color-natural") },
+        { name: "สีขาว", imageSrc: IMG("color-white-hanger-v1") },
+        { name: "สีเบจ", imageSrc: IMG("color-beige-hanger-v1") },
+        { name: "สีผ้าดิบ", imageSrc: IMG("color-natural-hanger-v1") },
       ],
     },
     {

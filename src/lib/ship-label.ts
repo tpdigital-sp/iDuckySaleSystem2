@@ -54,12 +54,36 @@ export function stripShipPrice(label: string): string {
     .trim();
 }
 
-/** ชื่อวิธีส่งสำหรับแสดงผล — ป้ายจริง → จับคู่ราคา → ค่าเก่า order.shipping */
+/**
+ * ค่าที่ระบบเติมเองตอนเปิดใบ (ไม่ใช่วิธีส่งที่ใครเลือก) — ทุกทางเข้าเซ็ต shipping = "ส่งธรรมดา" ไว้ก่อนเสมอ
+ * ⚠️ ร้านไม่มีวิธีส่งชื่อนี้ (มีแค่ EMS (50)/EMS (100)/มารับเอง) ใบที่เหลือแค่ค่านี้จึงแปลว่า "ยังไม่ได้เลือก"
+ */
+const DEFAULT_SHIPPING = "ส่งธรรมดา";
+
+/** คำที่ใช้ตรงกันทุกจอเมื่อใบนั้นยังไม่ได้เลือกวิธีส่ง */
+export const UNSET_SHIP_LABEL = "ยังไม่ระบุวิธีส่ง";
+
+/**
+ * ชื่อวิธีส่งสำหรับแสดงผล — ป้ายจริง → จับคู่ราคา → ค่าเก่า order.shipping
+ * คืน "" เมื่อยังไม่ได้เลือกวิธีส่งจริง ๆ (ไม่มีป้าย + ราคาจับคู่ไม่ได้ + เหลือแค่ค่า default)
+ * ⚠️ อย่าเดาเป็นชื่อวิธีส่ง — ใบปะหน้าขึ้น "ส่งธรรมดา" ตัวใหญ่ทั้งที่ไม่มีใครเลือก คนแพ็คแยกกองผิด (เจ้าของร้านทัก 15 ก.ย. 69)
+ */
 export function resolveShipLabel(
   o: { shipping?: string; shippingLabel?: string | null; shippingCost?: number },
   methods: ShippingMethod[] = []
 ): string {
   const s = (o.shippingLabel ?? "").trim();
   if (s && !isGenericShipLabel(s)) return s;
-  return shippingMethodByPrice(methods, Number(o.shippingCost) || 0)?.name ?? (o.shipping ?? "").trim() ?? s;
+  const byPrice = shippingMethodByPrice(methods, Number(o.shippingCost) || 0)?.name;
+  if (byPrice) return byPrice;
+  const legacy = (o.shipping ?? "").trim();
+  return legacy === DEFAULT_SHIPPING ? "" : legacy;
+}
+
+/** ใบนี้ยังไม่ได้เลือกวิธีส่ง — ไว้ติดป้ายเตือนให้แอดมินเลือกก่อนส่งของ */
+export function isShipMethodUnset(
+  o: { shipping?: string; shippingLabel?: string | null; shippingCost?: number },
+  methods: ShippingMethod[] = []
+): boolean {
+  return !resolveShipLabel(o, methods);
 }

@@ -38,6 +38,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/diecut", label: "เส้นไดคัท (ทดลอง)", emoji: "✂️", perm: "products.manage", group: "สินค้า" },
   // 💛 ลูกค้า & การตลาด
   { href: "/admin/contacts", label: "ข้อมูลผู้ติดต่อ", emoji: "📇", perm: "orders.viewAll", group: "ลูกค้า" },
+  // ย้ายมาจากหน้า AdminBuddy (พอร์ต 8765) 15 ก.ย. 69 — คลังแชท LINE + สวิตช์บอทรายคน
+  { href: "/admin/line-customers", label: "ลูกค้า LINE", emoji: "💬", perm: "orders.edit", group: "ลูกค้า" },
   { href: "/admin/coupons", label: "คูปอง", emoji: "🎟️", perm: "coupons.manage", group: "ลูกค้า" },
   { href: "/admin/dealers", label: "ตัวแทนจำหน่าย", emoji: "🤝", perm: "dealers.manage", group: "ลูกค้า" },
   { href: "/admin/reviews", label: "รีวิวสินค้า", emoji: "⭐", perm: "orders.viewAll", group: "ลูกค้า" },

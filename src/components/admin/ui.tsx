@@ -178,6 +178,8 @@ export function HeroStat({
   detail,
   pct,
   href,
+  onClick,
+  active,
 }: {
   n: ReactNode;
   label: string;
@@ -185,6 +187,9 @@ export function HeroStat({
   /** สัดส่วนของวงแหวน 0–100 */
   pct: number;
   href?: string;
+  /** กดกล่องแล้วกรองหน้าเดิม — ใช้แทน href เมื่อไม่ได้พาไปหน้าอื่น */
+  onClick?: () => void;
+  active?: boolean;
 }) {
   const inner = (
     <>
@@ -202,12 +207,21 @@ export function HeroStat({
     </>
   );
   const style = { ["--dk-pct" as string]: `${Math.max(0, Math.min(100, pct))}%` } as CSSProperties;
-  return href ? (
-    <Link href={href} className="dkb-g dkb-stat dkb-stat-hero" style={style}>
-      {inner}
-    </Link>
-  ) : (
-    <div className="dkb-g dkb-stat dkb-stat-hero" style={style}>
+  const cls = "dkb-g dkb-stat dkb-stat-hero";
+  if (href)
+    return (
+      <Link href={href} className={cls} style={style}>
+        {inner}
+      </Link>
+    );
+  if (onClick)
+    return (
+      <button type="button" onClick={onClick} aria-pressed={active} data-on={active ? "1" : undefined} className={cls} style={style}>
+        {inner}
+      </button>
+    );
+  return (
+    <div className={cls} style={style}>
       {inner}
     </div>
   );
