@@ -912,11 +912,9 @@ export default function ProductDetail({
   const [showBuyBar, setShowBuyBar] = useState(false);
   /**
    * 📦 กล่องเตือน "สั่งจำนวนมาก — เช็คสต๊อกก่อน" (มีเฉพาะตอนถึงเกณฑ์)
-   * เป็นจุดจอดของลิงก์ราคา: ปุ่ม "สั่งตามสเปคนี้" จะไม่หย่อนของลงตะกร้าเงียบ ๆ เมื่อจำนวนถึงเกณฑ์นี้
+   * เป็นจุดจอดสายตาของคนที่เปิดมาจากลิงก์ราคาแล้วไม่ได้กดสั่งอัตโนมัติ
    */
   const bulkBoxRef = useRef<HTMLDivElement>(null);
-  /** มาจากใบราคาแล้วถูกจอดไว้ที่กล่องเตือน (ยังไม่ได้ใส่ตะกร้าให้) — บอกลูกค้าว่าต้องกดเอง */
-  const [bulkStop, setBulkStop] = useState(false);
 
   // โหลดเวอร์ชันล่าสุด (Supabase หรือ localStorage) — ถ้ามีให้ใช้แทนข้อมูลตั้งต้น
   useEffect(() => {
@@ -1398,17 +1396,12 @@ export default function ProductDetail({
     if (!autoAdding) return;
     const t = setTimeout(() => {
       /*
-       * 📦 จำนวนถึงเกณฑ์ต้องเช็คสต๊อก → ห้ามหย่อนลงตะกร้าเงียบ ๆ
-       * ม่านบังหน้าอยู่ราวครึ่งวินาทีแล้วเด้งไปตะกร้าเลย ลูกค้าไม่มีทางเห็นกล่องเตือนที่หน้านี้
-       * (พนักงานแจ้ง 14 ก.ย. 69: สั่งจากใบราคา /p/CODE เกินเกณฑ์แล้วไม่มีอะไรเตือนเลย)
-       * → เปิดม่านออก จอดที่กล่องเตือน ให้ลูกค้าอ่านแล้วกด "เพิ่มลงตะกร้า" เองอีกครั้ง
+       * 📦 จำนวนถึงเกณฑ์ต้องเช็คสต๊อก = ใส่ตะกร้าให้ตามปกติ ไม่จอดไว้ที่หน้าสินค้า
+       * (เคยจอด 14 ก.ย. 69 เพื่อให้เห็นกล่องเตือน — พนักงานแจ้ง 15 ก.ย. 69 ว่าลูกค้างง
+       *  "กดแล้วเด้งไปหน้าแก้ไขสินค้า ไม่เข้าตะกร้า" ซึ่งใบราคาส่วนใหญ่เป็นงานจำนวนมากอยู่แล้ว)
+       * คำเตือนเช็คสต๊อกไม่หาย — StockCheckNote ขึ้นทั้งที่ตะกร้าและหน้ายืนยันสั่งซื้อ
+       * (คิดสดจากจำนวนล่าสุด) และธง selections["รอเช็คสต๊อก"] ยังติดไปกับบรรทัดเหมือนเดิม
        */
-      if (bulkAskRef.current) {
-        setAutoAdding(false);
-        setBulkStop(true);
-        bulkBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
       const ok = currentReadyRef.current && handleAddRef.current(true);
       if (ok) goAfterAdd();
       else setAutoAdding(false);
@@ -2944,9 +2937,6 @@ export default function ProductDetail({
 
   // สั่งถึงเกณฑ์จำนวนมากไหม (ตั้งต่อสินค้าได้ในหลังบ้าน)
   const bulkAsk = needsStockCheck(product, qty);
-  /** ตัวล่าสุดของ bulkAsk — effect "สั่งตามสเปคนี้" อ่านผ่านตัวนี้ จะได้ไม่ติด closure ก่อนติ๊กสเปคจากลิงก์ */
-  const bulkAskRef = useRef(bulkAsk);
-  bulkAskRef.current = bulkAsk;
 
   // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก ฯลฯ) — ตั้งสวิตช์ + เงื่อนไขไว้ในหลังบ้าน
   // (effective มี "เรทราคา" อยู่แล้ว เงื่อนไขจึงอ้างเรทหรือกลุ่มตัวเลือกไหนก็ได้)
@@ -3415,8 +3405,6 @@ export default function ProductDetail({
     clearLineExtras();
     // 🧼 สั่งเสร็จแล้ว — สเปคที่เพิ่งสั่งต้องไม่ค้างอยู่ในฟอร์ม กลับเป็นค่าเริ่มต้นทั้งหมด
     resetSpecForm();
-    // ใส่ตะกร้าแล้ว — ป้าย "ยังไม่ได้ใส่ตะกร้าให้" ของทางเข้าใบราคาต้องหายไป
-    setBulkStop(false);
     setAdded(true);
     if (!auto && hasPriceLinkBundle()) goAfterAdd();
     // โชว์ "✓ เพิ่มลงตะกร้าแล้ว!" ~5 วิ — พอให้ลูกค้าเห็นชัดว่าสั่งสำเร็จ
@@ -6604,17 +6592,7 @@ export default function ProductDetail({
             <div ref={bulkBoxRef}>
               <StockCheckNote
                 className="mt-5"
-                highlight={bulkStop}
                 title={`📦 สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ`}
-                /* 🧾 มาจากใบราคาแล้วระบบจอดไว้ตรงนี้ — ต้องบอกให้ชัดว่ายังไม่ได้ใส่ตะกร้าให้ */
-                note={
-                  bulkStop ? (
-                    <p className="mb-2 rounded-xl bg-white px-3 py-2 text-xs font-bold leading-relaxed text-yellow-900 ring-1 ring-yellow-400">
-                      ⏸️ ยังไม่ได้ใส่ตะกร้าให้ เพราะจำนวนนี้ต้องเช็คสต๊อกก่อน — อ่านด้านล่างแล้วกด
-                      &quot;เพิ่มลงตะกร้า&quot; เองอีกครั้งได้เลยครับ
-                    </p>
-                  ) : null
-                }
               />
             </div>
           )}
