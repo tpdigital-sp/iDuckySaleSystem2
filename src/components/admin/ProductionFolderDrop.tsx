@@ -24,7 +24,8 @@ interface MatchResp {
   skipped: number;
   skippedNames?: string[];
   scanned?: number;
-  alreadySent: FolderMatch[];
+  /** จับคู่ได้แต่ติ๊กส่งผลิตไปแล้ว — บอกด้วยว่าใบอยู่กองไหนในคิวปริ้น */
+  alreadySent: (FolderMatch & { status?: string; printed?: boolean; folderWas?: string })[];
   applied: number;
 }
 
@@ -254,7 +255,20 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
             </div>
           )}
           {res.alreadySent.length > 0 && (
-            <p style={{ color: "var(--dk-faint)" }}>ติ๊กไว้แล้วก่อนหน้า {res.alreadySent.length} ใบ (ไม่ทับ)</p>
+            <div>
+              <b>ใบนี้เข้าคิวไปแล้ว {res.alreadySent.length} ใบ</b>
+              <span style={{ color: "var(--dk-faint)" }}> — โยนซ้ำไม่ต้องทำอะไร ใบยังอยู่ในคิวปริ้น (ไม่ทับของเดิม)</span>
+              <ul className="mt-1 space-y-0.5">
+                {res.alreadySent.map((m) => (
+                  <li key={`${m.folder}-${m.orderId}`} title={m.folderWas ? `โฟลเดอร์ที่ติ๊กไว้ครั้งแรก: ${m.folderWas}` : undefined}>
+                    {m.printed ? "🖨" : "🏭"} {m.orderId} · {m.customer} —{" "}
+                    <b style={{ color: m.printed ? "var(--dk-faint)" : "var(--dk-navy)" }}>
+                      {m.printed ? "ปริ้นใบงานแล้ว — อยู่แท็บ “ปริ้นแล้ว”" : "รอปริ้น — อยู่แท็บ “🏭 ส่งผลิตแล้ว รอปริ้น”"}
+                    </b>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {res.skipped > 0 && (
             <details>

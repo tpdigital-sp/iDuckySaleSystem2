@@ -1723,7 +1723,15 @@ export interface PartialGate {
   reasons: string[];
   /** เป็นรอบที่เอาของที่เหลือไปทั้งหมด = ต้องยิงเป็นรอบสุดท้ายแทน */
   isLastRound: boolean;
+  /**
+   * 🚨 ของที่เหลือ (ที่ไม่ได้ไปรอบนี้) นับครบ+ของมาครบอยู่แล้ว และแอดมินไม่ได้สั่งแบ่งส่ง
+   * = เกือบทุกครั้งคือคนแพ็คส่งทั้งใบกล่องเดียวแต่กดผิดมาทางแบ่งส่ง (ดูเหตุผลข้อสุดท้ายใน reasons)
+   */
+  looksWhole: boolean;
 }
+
+/** ขึ้นต้นเหตุผล "ของที่เหลือพร้อมส่งอยู่แล้ว" — หน้าจอใช้คัดบรรทัดนี้ออกจากลิสต์ แล้วโชว์เป็นกล่องเตือนใหญ่แทน */
+export const SPLIT_WHOLE_HINT = "ของที่เหลือนับครบพร้อมส่งอยู่แล้ว";
 
 /** สิ่งที่เลือกไปรอบนี้: คีย์รูปเฉย ๆ = ทั้งที่เหลือของรูปนั้น · คู่ [คีย์, จำนวน] = แบ่งเฉพาะจำนวนนั้น */
 export type PartialSel = Map<string, number> | Iterable<string> | Iterable<readonly [string, number]>;
@@ -1756,18 +1764,28 @@ export function partialGate(order: Order, sel: PartialSel): PartialGate {
   const over: string[] = [];
   const sentOut: string[] = [];
   const unread = new Set<string>();
+  /** ของที่ "ไม่ได้ไปรอบนี้" แต่นับครบ + ของมาครบแล้ว = พร้อมส่งอยู่แล้ว (ไม่มีเหตุให้ค้างไว้รอบหน้า) */
+  const leftReady: string[] = [];
+  /** มีของที่ยังไม่พร้อม (ยังไม่ได้นับ/นับไม่ครบ/ของยังไม่มา) ค้างอยู่ = แบ่งส่งสมเหตุผล */
+  let leftWaiting = false;
   let remaining = 0;
   let selQty = 0;
   order.items.forEach((it, i) => {
+    const itemWaiting = !!it.arrival && it.arrival.status !== "มาครบ";
     proofsOf(it).forEach((p, j) => {
       const k = proofKey(i, j);
       const st = states.get(k) ?? { total: proofSplitTotal(p), labeled: false, shipped: 0, remaining: proofSplitTotal(p), rounds: [] };
       remaining += st.remaining;
       const q = want.get(k) ?? 0;
+      const label = `${it.name} รูปที่ ${j + 1}`;
+      const leftAfter = Math.max(0, st.remaining - Math.min(q, st.remaining));
+      if (leftAfter > 0) {
+        if (!itemWaiting && p.pack?.status === "ครบ") leftReady.push(`${label} ${leftAfter.toLocaleString("th-TH")} ${proofUnit(p)}`);
+        else leftWaiting = true;
+      }
       if (!q) return;
       const go = Math.min(q, st.remaining);
       selQty += go;
-      const label = `${it.name} รูปที่ ${j + 1}`;
       if (st.remaining <= 0) sentOut.push(label);
       else if (q > st.remaining) over.push(`${label} (เลือก ${q} เหลือ ${st.remaining})`);
       if (!p.pack) uncounted.push(label);
@@ -1787,7 +1805,18 @@ export function partialGate(order: Order, sel: PartialSel): PartialGate {
   // เลือกครบทุกชิ้นที่เหลือ = รอบสุดท้าย ต้องยิงช่องเลขพัสดุปกติให้ใบปิด (สถานะจัดส่งแล้ว + ด่านเต็ม)
   const isLastRound = selQty > 0 && remaining > 0 && selQty >= remaining;
   if (isLastRound) reasons.push("รอบนี้เอาของที่เหลือไปทั้งหมด = รอบสุดท้าย ให้ยิงที่ช่องเลขพัสดุด้านล่างแทน (ใบจะปิดเป็นจัดส่งแล้ว)");
-  return { ready: reasons.length === 0, reasons, isLastRound };
+  /**
+   * 🚨 ของที่เหลือพร้อมส่งอยู่แล้ว + แอดมินไม่ได้สั่งแบ่งส่ง = เกือบทุกครั้งคือกดผิดทาง
+   * เคสจริง 15 ก.ย. 69 (OD-260909-6151): ด่านทั้งใบล็อกที่ 🎁 งานตัวอย่าง คนแพ็คเลยอ้อมมาทางแบ่งส่ง
+   * → ลูกค้าได้ไลน์ "จัดส่งบางส่วน · ที่เหลือส่งรอบหน้า" ทั้งที่ของไปครบในกล่องเดียว และใบไม่ปิด
+   * ลูกค้าขอรับก่อนจริง ๆ = ให้แอดมินระบุแผนแบ่งส่ง (กติกาเจ้าของร้าน: ฝั่งแพ็คไม่ใช่คนตัดสินว่าจะแบ่ง)
+   */
+  const looksWhole = !isLastRound && selQty > 0 && !leftWaiting && leftReady.length > 0 && !(order.shipPlan?.length ?? 0);
+  if (looksWhole)
+    reasons.push(
+      `${SPLIT_WHOLE_HINT} (${leftReady.join(" · ")}) — ถ้าของทั้งใบไปกล่องเดียว อย่าใช้แบ่งส่ง ให้ยิงเลขที่ช่องเลขพัสดุด้านล่างเพื่อปิดใบ · ถ้าลูกค้าขอรับก่อนจริง ให้แอดมินระบุแผนแบ่งส่งก่อน`
+    );
+  return { ready: reasons.length === 0, reasons, isLastRound, looksWhole };
 }
 
 export function packGate(order: Order): PackGate {

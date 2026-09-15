@@ -61,6 +61,7 @@ import {
   packGate,
   nextPlannedRound,
   partialGate,
+  SPLIT_WHOLE_HINT,
   partialShipSummary,
   plannedProofRounds,
   proofKey,
@@ -3212,6 +3213,7 @@ export default function AdminOrderDetailPage() {
           onCheck={setPackCheck}
           onAck={toggleNoteAck}
           onSampleAck={toggleSamplePacked}
+          onSampleClear={mayProof || mayEdit ? toggleSampleRequired : undefined}
           onTaxInvoiceAck={toggleTaxInvoicePacked}
           onTaxInvoiceDelivery={setTaxInvoiceDelivery}
           onArrival={setArrival}
@@ -4647,14 +4649,14 @@ export default function AdminOrderDetailPage() {
                       <button
                         type="button"
                         onClick={() => toggleSampleRequired(i)}
-                        title="ติ๊กเมื่อขึ้นชิ้นงานตัวอย่างให้ลูกค้า — ฝ่ายแพ็คจะถูกบังคับให้ยืนยันว่าใส่กล่องแล้วก่อนยิงเลขพัสดุ"
+                        title="ติ๊กเฉพาะเมื่อมี “ชิ้นงานตัวอย่างของจริง” ต้องใส่กล่องไปให้ลูกค้า — ไม่ใช่การขึ้นแบบ/ขึ้นตัวอย่างในไฟล์ · ติ๊กแล้วฝ่ายแพ็คจะยิงเลขพัสดุไม่ได้จนกว่าจะยืนยันว่าใส่กล่องแล้ว"
                         className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                           it.sampleRequired
                             ? "bg-amber-500 text-white hover:bg-amber-600"
                             : "border border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"
                         }`}
                       >
-                        {it.sampleRequired ? "🎁 มีงานตัวอย่างต้องส่งให้ลูกค้า" : "☐ งานนี้มีชิ้นงานตัวอย่าง"}
+                        {it.sampleRequired ? "🎁 มีชิ้นงานตัวอย่าง (ของจริง) ต้องใส่กล่อง" : "☐ มีชิ้นงานตัวอย่าง (ของจริง) ส่งให้ลูกค้า"}
                       </button>
                       {it.sampleRequired && (
                         <span className="text-[10px] text-slate-400">
@@ -7747,6 +7749,7 @@ function PackView({
   onCheck,
   onAck,
   onSampleAck,
+  onSampleClear,
   onTaxInvoiceAck,
   onTaxInvoiceDelivery,
   onArrival,
@@ -7786,6 +7789,8 @@ function PackView({
   onCheck: (i: number, j: number, status: "ครบ" | "ไม่ครบ", got?: number) => void;
   onAck: (i: number) => void;
   onSampleAck: (i: number) => void;
+  /** เอาป้าย "มีชิ้นงานตัวอย่าง" ออก (กราฟฟิก/แอดมิน) — ไว้ปลดล็อกใบที่ติ๊กมาผิด ไม่ต้องติ๊กโกหกว่าใส่กล่องแล้ว */
+  onSampleClear?: (i: number) => void;
   onTaxInvoiceAck: () => void;
   onTaxInvoiceDelivery: (v: "box" | "email") => void;
   onArrival: (i: number, patch: ArrivalPatch) => void;
@@ -7909,25 +7914,38 @@ function PackView({
             >
               {/* งานตัวอย่าง — วางบนสุดให้สะดุดตาก่อนเริ่มแพ็ค · บังคับยืนยันก่อนยิงเลขพัสดุ */}
               {it.sampleRequired && (
-                <button
-                  type="button"
-                  onClick={() => onSampleAck(i)}
-                  className={`mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${
-                    it.samplePacked ? "bg-green-50 ring-1 ring-green-200" : "bg-rose-50 ring-2 ring-rose-300"
-                  }`}
-                >
-                  <span className="text-lg">{it.samplePacked ? "✅" : "🎁"}</span>
-                  <span className="min-w-0 flex-1 text-xs">
-                    <span className={`block font-extrabold ${it.samplePacked ? "text-slate-700" : "text-rose-700"}`}>
-                      อย่าลืม! ใส่ชิ้นงานตัวอย่างลงกล่อง
+                <div className="mb-2">
+                  <button
+                    type="button"
+                    onClick={() => onSampleAck(i)}
+                    className={`flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${
+                      it.samplePacked ? "bg-green-50 ring-1 ring-green-200" : "bg-rose-50 ring-2 ring-rose-300"
+                    }`}
+                  >
+                    <span className="text-lg">{it.samplePacked ? "✅" : "🎁"}</span>
+                    <span className="min-w-0 flex-1 text-xs">
+                      <span className={`block font-extrabold ${it.samplePacked ? "text-slate-700" : "text-rose-700"}`}>
+                        อย่าลืม! ใส่ชิ้นงานตัวอย่าง (ของจริง) ลงกล่อง
+                      </span>
+                      <span className={it.samplePacked ? "text-green-700" : "font-bold text-rose-600"}>
+                        {it.samplePacked
+                          ? `ใส่แล้ว · ยืนยันโดย ${it.samplePacked.by}`
+                          : "ใส่เรียบร้อยแล้วค่อยแตะยืนยันตรงนี้ — ยังไม่ยืนยัน ยิงเลขพัสดุไม่ได้"}
+                      </span>
                     </span>
-                    <span className={it.samplePacked ? "text-green-700" : "font-bold text-rose-600"}>
-                      {it.samplePacked
-                        ? `ใส่แล้ว · ยืนยันโดย ${it.samplePacked.by}`
-                        : "ใส่เรียบร้อยแล้วค่อยแตะยืนยันตรงนี้"}
-                    </span>
-                  </span>
-                </button>
+                  </button>
+                  {/* ใบนี้ไม่มีชิ้นงานตัวอย่างจริง (ติ๊กมาผิด/หมายถึงขึ้นแบบในไฟล์) = เอาป้ายออกตรงนี้
+                      ไม่งั้นด่านล็อกค้าง แล้วคนแพ็คจะไปอ้อมทางปุ่มแบ่งส่งแทน (15 ก.ย. 69) */}
+                  {!it.samplePacked && onSampleClear && (
+                    <button
+                      type="button"
+                      onClick={() => onSampleClear(i)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white py-2 text-[11px] font-bold text-slate-600"
+                    >
+                      ใบนี้ไม่มีชิ้นงานตัวอย่างของจริง — เอาป้ายนี้ออก
+                    </button>
+                  )}
+                </div>
               )}
 
               <div className="mb-2 flex items-baseline justify-between">
@@ -8345,16 +8363,22 @@ function PackView({
             </div>
           </div>
         ) : (
-          <div className="rounded-xl bg-slate-100 px-3 py-3 ring-1 ring-slate-200">
-            <p className="flex items-center gap-2 text-sm font-bold text-slate-500">
-              <span className="grayscale">🔒</span> ตรวจให้ครบก่อน ถึงยิงเลขพัสดุได้
+          // ล็อกอยู่ = ต้องบอกให้ชัดว่าเหลืออะไร ทำแล้วช่องยิงเลขเปิดเอง
+          // (เดิมเป็นแถบเทาจาง ๆ คนแพ็คอ่านว่า "ยิงไม่ได้" แล้วไปอ้อมทางปุ่มแบ่งส่งแทน — 15 ก.ย. 69 OD-260909-6151)
+          <div className="rounded-xl bg-amber-50 px-3 py-3 ring-2 ring-amber-300">
+            <p className="flex items-center gap-2 text-sm font-extrabold text-amber-900">
+              🔒 เหลืออีก {todos.length} ข้อ ถึงยิงเลขพัสดุได้
             </p>
-            <p className="mt-0.5 pl-6 text-[11px] leading-tight text-slate-400">
-              {todos
-                .slice(0, 2)
-                .map((t) => `${t.icon} ${t.text}`)
-                .join(" · ")}
-              {todos.length > 2 ? ` · + อีก ${todos.length - 2} จุด` : ""}
+            <ul className="mt-1 space-y-0.5 pl-6">
+              {todos.slice(0, 4).map((t, i) => (
+                <li key={i} className="text-[12px] font-bold leading-tight text-amber-900">
+                  {t.icon} {t.text}
+                </li>
+              ))}
+              {todos.length > 4 && <li className="text-[11px] font-bold text-amber-700">+ อีก {todos.length - 4} ข้อ — เลื่อนดูในหน้านี้</li>}
+            </ul>
+            <p className="mt-1.5 pl-6 text-[11px] font-bold leading-tight text-amber-700">
+              ทำครบแล้วช่องยิงเลขจะเปิดเอง — อย่าใช้ปุ่ม “แบ่งส่ง” แทน ลูกค้าจะได้ข้อความว่าส่งไม่ครบ
             </p>
           </div>
         )}
@@ -8663,6 +8687,10 @@ function PartialShipModal({
 }) {
   const [qtyMap, setQtyMap] = useState<Map<string, number>>(() => new Map(sel));
   const gate = partialGate(order, qtyMap);
+  /** ติ๊กยืนยันว่าตั้งใจแบ่งส่งจริง — บังคับเมื่อของที่เหลือพร้อมส่งอยู่แล้ว (กันกดผิดทางเหมือน 15 ก.ย. 69) */
+  const [sureSplit, setSureSplit] = useState(false);
+  /** ด่านของ "ทั้งใบ" — ไว้บอกว่าที่ยิงเลขรอบสุดท้ายไม่ได้เพราะติดอะไร จะได้ไปทำให้ครบแทนการแบ่งส่ง */
+  const closeTodos = packTodos(order, packGate(order));
   const [tracking, setTracking] = useState("");
   const [note, setNote] = useState(defaultNote);
   const [cam, setCam] = useState(false);
@@ -8700,8 +8728,9 @@ function PartialShipModal({
   const t = tracking.trim();
   const dupe = !!t && ((order.shipments ?? []).some((s) => s.tracking.trim() === t) || (order.tracking ?? "").trim() === t);
   const blockedAll = gate.isLastRound || rows.length === 0;
+  const otherReasons = gate.reasons.filter((r) => !r.startsWith(SPLIT_WHOLE_HINT));
   const needSkip = !gate.ready && !blockedAll;
-  const canGo = !!t && !dupe && !blockedAll && (gate.ready || mayEdit);
+  const canGo = !!t && !dupe && !blockedAll && (gate.ready || mayEdit) && (!gate.looksWhole || sureSplit);
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onCancel}>
       <div
@@ -8758,10 +8787,39 @@ function PartialShipModal({
           ))}
         </ul>
 
-        {/* ด่านตรวจเฉพาะรูปที่เลือก */}
-        {gate.reasons.length > 0 && (
+        {/* 🚨 ของที่เหลือพร้อมส่งอยู่แล้ว = น่าจะกดผิดทาง — ต้องอ่านและติ๊กยืนยันก่อนถึงจะยิงได้ */}
+        {gate.looksWhole && (
+          <div className="mx-5 mt-3 rounded-xl bg-rose-50 p-3 ring-2 ring-rose-300">
+            <p className="text-sm font-extrabold text-rose-700">⚠️ ของที่เหลือพร้อมส่งอยู่แล้ว — ใบนี้ต้องแบ่งส่งจริงหรือเปล่า?</p>
+            <p className="mt-1 text-xs font-bold leading-relaxed text-rose-700">
+              ถ้าของทั้งใบไปกล่องเดียว ให้กดยกเลิก แล้วยิงเลขที่ช่องเลขพัสดุด้านล่างแทน — ใบจะปิดเป็น “จัดส่งแล้ว” และลูกค้าได้ข้อความถูกต้อง
+              <br />
+              กดต่อตรงนี้ = ลูกค้าจะได้ไลน์ว่า <strong>“จัดส่งบางส่วน · ที่เหลือส่งรอบถัดไป”</strong> และใบนี้จะยังไม่ปิด
+            </p>
+            {closeTodos.length > 0 && (
+              <div className="mt-2 rounded-lg bg-white/70 px-2.5 py-2 ring-1 ring-rose-200">
+                <p className="text-[11px] font-extrabold text-rose-700">ที่ยิงเลขรอบสุดท้ายไม่ได้ เพราะยังเหลือ {closeTodos.length} ข้อ:</p>
+                <ul className="mt-1 space-y-0.5">
+                  {closeTodos.slice(0, 4).map((td, i) => (
+                    <li key={i} className="text-[11px] font-bold text-slate-700">
+                      {td.icon} {td.text}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-[11px] font-bold text-slate-500">ทำข้อพวกนี้ให้ครบแล้วยิงที่ช่องเลขพัสดุได้เลย ไม่ต้องแบ่งส่ง</p>
+              </div>
+            )}
+            <label className="mt-2 flex items-start gap-2 rounded-lg bg-white px-3 py-2.5 ring-1 ring-rose-200">
+              <input type="checkbox" checked={sureSplit} onChange={(e) => setSureSplit(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-rose-600" />
+              <span className="text-xs font-extrabold text-slate-800">ยืนยัน: ของที่เหลือยังอยู่ที่ร้าน ไม่ได้ใส่กล่องรอบนี้</span>
+            </label>
+          </div>
+        )}
+
+        {/* ด่านตรวจเฉพาะรูปที่เลือก (บรรทัด "ของที่เหลือพร้อมส่ง" ขึ้นเป็นกล่องเตือนข้างบนแล้ว) */}
+        {otherReasons.length > 0 && (
           <ul className="space-y-1.5 px-5 pt-3">
-            {gate.reasons.map((r, i) => (
+            {otherReasons.map((r, i) => (
               <li
                 key={i}
                 className={`flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-bold ring-1 ${
@@ -8819,7 +8877,11 @@ function PartialShipModal({
                 needSkip ? "border-2 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "bg-green-600 text-white hover:bg-green-700"
               }`}
             >
-              {needSkip ? "⚠️ ยืนยันข้ามด่าน — ส่งรอบนี้เลย" : `✅ บันทึกเลขพัสดุรอบที่ ${round}`}
+              {gate.looksWhole && !sureSplit
+                ? "⬆️ ติ๊กยืนยันข้างบนก่อน"
+                : needSkip
+                  ? "⚠️ ยืนยันข้ามด่าน — ส่งรอบนี้เลย"
+                  : `✅ บันทึกเลขพัสดุรอบที่ ${round}`}
             </button>
           )}
           <button type="button" onClick={onCancel} className="w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">

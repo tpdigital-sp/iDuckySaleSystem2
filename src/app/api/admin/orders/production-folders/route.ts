@@ -42,7 +42,12 @@ export async function POST(req: Request) {
   // ใบที่ติ๊กไว้แล้วไม่เอามาจับคู่ซ้ำ — แต่รายงานให้รู้ว่าโฟลเดอร์นี้เคยเข้าแล้ว
   const fresh = all.filter((o) => !o.productionSent);
   const result: FolderMatchResult = matchFoldersToOrders(paths, fresh, cards);
-  const already = matchFoldersToOrders(paths, all.filter((o) => o.productionSent), cards).matched;
+  // โยนโฟลเดอร์ "งานจริง" ทับใบที่ติ๊กไปแล้ว = จับคู่ไม่ขึ้นอีก คนโยนนึกว่าไม่ติด
+  // → บอกกลับไปว่าใบอยู่กองไหนแล้ว (รอปริ้น/ปริ้นแล้ว) จะได้ไม่ต้องหาอีก (15 ก.ย. 69)
+  const already = matchFoldersToOrders(paths, all.filter((o) => o.productionSent), cards).matched.map((m) => {
+    const o = all.find((x) => x.id === m.orderId);
+    return { ...m, status: o?.status ?? "", printed: (o?.printCount ?? (o?.printedAt ? 1 : 0)) > 0, folderWas: o?.productionSent?.folder ?? "" };
+  });
 
   // โฟลเดอร์ที่มีไฟล์ OD แต่ใบไม่อยู่ในกองรอผลิต → บอกสถานะจริงของใบนั้น (ส่งไปแล้ว/ยกเลิก/ยังไม่ชำระ) แทนคำว่า "ไม่อยู่ในคิว"
   const NOT_IN_QUEUE = /\((OD-\d{6}-\d{3,}) ไม่อยู่ในคิวรอผลิต\)$/;
