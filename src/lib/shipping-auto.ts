@@ -217,3 +217,87 @@ export function shippingAllowed(m: ShippingMethod, methods: ShippingMethod[], au
   const floor = methods.find((x) => x.id === auto.floorId);
   return !floor || rank(m) >= rank(floor);
 }
+
+/* ── ⚡ ค่าส่งอัตโนมัติชุดเดียวจบ (ไว้ให้หลังบ้านเรียก) ──
+ * หน้าตะกร้า/หน้าชำระเงินคิดเองทีละขั้นอยู่แล้ว (จัดกลุ่ม → ตารางตามจำนวน → เลือกวิธีส่ง → ยอดสุดท้าย)
+ * ออเดอร์งานพิเศษที่แอดมินสร้างเองก็ต้องได้เลขเดียวกัน — รวมขั้นตอนไว้ที่นี่จะได้ไม่ต้องก๊อปสูตรไปไว้หลังบ้านอีกชุด
+ */
+
+/** รายการหนึ่งบรรทัดเท่าที่การคิดค่าส่งอัตโนมัติต้องใช้ */
+export interface AutoShipLine {
+  productId: string;
+  name: string;
+  qty: number;
+  /** ตัวเลือกที่ลูกค้าเลือก (ไว้จับเงื่อนไขค่าส่งตามตัวเลือก เช่น ขนาด) */
+  selections?: Record<string, string>;
+  /** ตัวสินค้าจริงจากคลัง — ไม่มี = รายการพิเศษที่ไม่ได้อยู่ในคลัง (ไม่มีตารางค่าส่งของตัวเอง) */
+  product?: ShipConfig;
+}
+
+export interface AutoShipQuote {
+  /** วิธีส่งที่ระบบเลือกให้ (ไม่มีวิธีส่งในระบบเลย = undefined) */
+  method?: ShippingMethod;
+  /** ค่าส่งที่ควรคิด (บาท) */
+  cost: number;
+  /** ค่าส่งตามจำนวนชิ้นของของหนัก (ส่วนหนึ่งของ cost) */
+  qtyFee: number;
+  /** เหตุผลสั้น ๆ ว่าทำไมได้วิธีนี้/ราคานี้ — เอาไปโชว์และลงประวัติ */
+  reason: string;
+}
+
+/**
+ * ค่าส่งที่ระบบคิดให้จากรายการในออเดอร์ (กติกาเดียวกับหน้าตะกร้า)
+ * retailOnly = ทุกบรรทัดยังเป็นเรทปลีก → เกณฑ์ "ยอดถึงเท่านี้ใช้กล่องใหญ่" ไม่ทำงาน (ของแพงไม่ได้แปลว่ากล่องใหญ่)
+ * freeMin = โปรส่งฟรีตามยอด (ค่ากล่องปกติฟรี แต่ค่าของหนักตามจำนวนยังคิดตามจริง)
+ */
+export function autoShipQuote(
+  lines: AutoShipLine[],
+  methods: ShippingMethod[],
+  opts: { subtotal: number; freeMin?: number; retailOnly?: boolean }
+): AutoShipQuote {
+  if (!methods.length) return { cost: 0, qtyFee: 0, reason: "" };
+
+  // สินค้าเดียวกันอาจอยู่หลายบรรทัด — รวมจำนวนก่อนเทียบตาราง (ตารางคนละชุดนับแยกกลุ่ม)
+  const groups = new Map<string, { name: string; qty: number; tiers?: ShipTier[]; extra?: number; overflowMethodId?: string }>();
+  for (const l of lines) {
+    const prof = shipProfileOf(l.product, l.selections ?? {});
+    const key = `${l.productId}|${prof.ruleKey}`;
+    const cur = groups.get(key);
+    if (cur) {
+      cur.qty += l.qty;
+      continue;
+    }
+    groups.set(key, {
+      name: l.name + (prof.ruleKey ? ` (${prof.ruleLabel})` : ""),
+      qty: l.qty,
+      tiers: prof.tiers,
+      extra: prof.extra,
+      overflowMethodId: prof.overflowMethodId,
+    });
+  }
+  const qtyShip = cartQtyShipFee([...groups.values()].filter((g) => g.tiers?.length), methods);
+
+  const auto = pickShipping(methods, {
+    totalQty: lines.reduce((s, l) => s + l.qty, 0),
+    subtotal: opts.subtotal,
+    retailOnly: opts.retailOnly,
+    requiredIds: [
+      ...(lines.map((l) => shipProfileOf(l.product, l.selections ?? {}).shippingId).filter(Boolean) as string[]),
+      ...qtyShip.forceIds,
+    ],
+  });
+  const method = methods.find((m) => m.id === auto.id) ?? methods[0];
+
+  const freeMin = opts.freeMin ?? 0;
+  const free = freeMin > 0 && opts.subtotal >= freeMin;
+  // มารับเอง/ส่งฟรี (ราคา 0) = ไม่มีพัสดุ ไม่คิดอะไรเลย · ส่งฟรีตามยอด = เหลือเฉพาะค่าของหนัก
+  const cost = method.price === 0 ? 0 : free ? qtyShip.fee : Math.max(method.price, qtyShip.fee);
+
+  const why = [
+    auto.reason,
+    qtyShip.fee > 0 && method.price !== 0 ? `ค่าส่งตามจำนวนชิ้น ฿${qtyShip.fee.toLocaleString()}` : "",
+    free && method.price !== 0 ? `ส่งฟรีเมื่อยอดถึง ฿${freeMin.toLocaleString()}` : "",
+  ].filter(Boolean);
+
+  return { method, cost, qtyFee: qtyShip.fee, reason: why.join(" · ") || "ตามวิธีส่งเริ่มต้นของร้าน" };
+}

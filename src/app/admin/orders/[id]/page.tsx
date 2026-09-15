@@ -13,7 +13,8 @@ import { useParams, useRouter } from "next/navigation";
 import CameraScanner from "@/components/admin/CameraScanner";
 import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
 import { extractOrderId } from "@/lib/scan-code";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice, productPath, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, type Product } from "@/lib/products";
+import { autoShipQuote } from "@/lib/shipping-auto";
 import {
   applyReplaceMarker,
   cartSelectionsOf,
@@ -121,7 +122,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useActor, useCan, useIsAdministrator, usePermsReady, useRoleLabel } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
-import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
+import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
 import { isPickupOrder, normalizeShipLabel, resolveShipLabel } from "@/lib/ship-label";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
@@ -135,6 +136,9 @@ import { formatPhone } from "@/lib/contacts";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { SHIP_WINDOW_RULE, shipWindowForUseBy, shipWindowWarnings } from "@/lib/ship-date";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
+
+/** ค่าในช่องเลือกวิธีส่งที่แปลว่า "ให้ระบบคิดให้" — ไม่ใช่ id ของวิธีส่งจริง */
+const AUTO_SHIP = "__auto__";
 
 /** บรรทัดในเอกสาร FlowAccount ที่เป็น "ค่าส่ง" ไม่ใช่งานผลิต (ชุดเดียวกับกล่องสร้างออเดอร์จากลิงก์) */
 const DOC_SHIP_RE = /ค่าจัดส่ง|ค่าส่ง|ค่าขนส่ง|shipping|delivery/i;
@@ -1329,8 +1333,13 @@ export default function AdminOrderDetailPage() {
 
   // วิธีจัดส่งจากตั้งค่าร้าน — ให้แอดมินเลือกแล้วเติมค่าส่งอัตโนมัติ (ใช้ในออเดอร์งานพิเศษ/สั่งแทน)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]);
+  /** โปรส่งฟรีเมื่อยอดถึง — ต้องใช้ตอนคิดค่าส่งอัตโนมัติให้ได้เลขเดียวกับหน้าตะกร้า (0 = ไม่มีโปร) */
+  const [freeShipMin, setFreeShipMin] = useState(0);
   useEffect(() => {
-    void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
+    void fetchShopPayment().then((p) => {
+      setShipMethods(shippingOf(p));
+      setFreeShipMin(freeShippingMinOf(p));
+    });
   }, []);
 
   /** เปิดหน้าต่างเลือกไฟล์สลิป (แอดมินแนบแทนลูกค้า) — งวดแรก หรืองวดหลังของออเดอร์มัดจำ */
@@ -3348,6 +3357,59 @@ export default function AdminOrderDetailPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const autoOpen = (_it: OrderItem) => true;
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  /**
+   * ⚡ ค่าส่งที่ระบบคิดให้จากของในออเดอร์ (กติกาเดียวกับหน้าตะกร้า — ของเยอะ/ของหนักเด้งกล่องใหญ่เอง)
+   * ออเดอร์งานพิเศษไม่ได้ผ่านตะกร้า แอดมินเลยต้องเดาค่าส่งเองทุกใบ → เปิดให้เลือก "อัตโนมัติ" ในช่องวิธีส่ง
+   * รายการที่ไม่มีในคลัง (งานพิเศษ) ไม่มีตารางค่าส่งของตัวเอง และไม่นับเป็นเรทปลีก (เกณฑ์ยอดจึงทำงานตามปกติ)
+   */
+  const autoShip = shipMethods.length
+    ? autoShipQuote(
+        order.items.map((it) => {
+          const p = productOfItem(it.productId);
+          return { productId: it.productId, name: it.name, qty: it.qty, selections: it.sel ?? {}, product: p };
+        }),
+        shipMethods,
+        {
+          subtotal,
+          freeMin: freeShipMin,
+          retailOnly: order.items.every((it) => {
+            const p = productOfItem(it.productId);
+            return p ? isRetailRateLine(p, it.sel ?? {}, it.qty) : false;
+          }),
+        }
+      )
+    : null;
+  /**
+   * ค่าส่งที่ตั้งไว้ "ต่ำกว่า" ที่ระบบคิดให้ — เติมของหนัก/ของเยอะทีหลังแล้วลืมขยับค่าส่ง = ร้านออกค่ากล่องเอง
+   * เตือนเฉพาะขาขาดทุน: ตั้งไว้แพงกว่าถือว่าตั้งใจ (คิดค่ากล่องพิเศษ/ส่งหลายกล่อง) ไม่ต้องไปยุ่ง
+   * ⚠️ ไม่เตือนใบที่มีเงินเข้าแล้ว (ลูกค้าโอนตามยอดเดิมไปแล้ว) และใบที่ลูกค้ามารับเอง (ไม่มีพัสดุ)
+   */
+  const shipUnderAuto =
+    !!autoShip?.method &&
+    order.items.length > 0 &&
+    paidSoFar(order) === 0 &&
+    !isPickupOrder(order) &&
+    autoShip.cost > order.shippingCost;
+  /** เปลี่ยนวิธีส่ง + ค่าส่งพร้อมกัน (ช่องเลือก กับปุ่มค่าอัตโนมัติ ใช้ทางเดียวกัน — ต้องลงประวัติเสมอ)
+   * 🚚 เปลี่ยนวิธีส่งคือ "แก้ยอดเงิน" ค่าส่งเปลี่ยนตามทันที · เดิมเงียบสนิท:
+   * OD-260911-5435 เปลี่ยนเป็น "มารับเอง" แล้วค่าส่ง ฿100 ตามใบ FlowAccount หายไปโดยไม่มีร่องรอย */
+  const applyShipMethod = (m: ShippingMethod, cost: number, why?: string) => {
+    const before = `${resolveShipLabel(order, shipMethods) || "—"} ${formatPrice(order.shippingCost)}`;
+    const next = Math.max(0, cost);
+    applyOrder(
+      withLog(
+        {
+          ...order,
+          shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+          shippingLabel: m.name,
+          shippingCost: next,
+        },
+        actor,
+        "เปลี่ยนวิธีส่ง",
+        `${before} → ${m.name} ${formatPrice(next)}${why ? ` (${why})` : ""}`
+      )
+    );
+  };
   /** 🔢 "17 เซ็ต · 102 ชิ้น" — บรรทัดรวมสินค้าเคยบวก qty ดิบแล้วเขียน "ชิ้น" ทุกกรณี (งานเซ็ต/แผ่นเลยผิด) */
   const qtyText = orderQtyText(order.items, (id) => productOfItem(id));
   /**
@@ -6002,30 +6064,24 @@ export default function AdminOrderDetailPage() {
                       <select
                         value={shipMethods.find((m) => m.name === resolveShipLabel(order, shipMethods))?.id ?? ""}
                         onChange={(e) => {
+                          // ⚡ อัตโนมัติ = ให้ระบบคิดจากของในออเดอร์ (ของเยอะ/ของหนักเด้งกล่องใหญ่เอง) แล้วเติมให้เลย
+                          if (e.target.value === AUTO_SHIP) {
+                            if (autoShip?.method) applyShipMethod(autoShip.method, autoShip.cost, `อัตโนมัติ — ${autoShip.reason}`);
+                            return;
+                          }
                           const m = shipMethods.find((x) => x.id === e.target.value);
-                          if (!m) return;
-                          // 🚚 ลง log ด้วย — เปลี่ยนวิธีส่งคือ "แก้ยอดเงิน" (ค่าส่งเปลี่ยนตามทันที)
-                          // เดิมเงียบสนิท: OD-260911-5435 เปลี่ยนเป็น "มารับเอง" แล้วค่าส่ง ฿100 ตามใบ FlowAccount หายไปโดยไม่มีร่องรอย
-                          const shipBefore = `${resolveShipLabel(order, shipMethods) || "—"} ${formatPrice(order.shippingCost)}`;
-                          applyOrder(
-                            withLog(
-                              {
-                                ...order,
-                                shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
-                                shippingLabel: m.name,
-                                shippingCost: Math.max(0, m.price),
-                              },
-                              actor,
-                              "เปลี่ยนวิธีส่ง",
-                              `${shipBefore} → ${m.name} ${formatPrice(Math.max(0, m.price))}`
-                            )
-                          );
+                          if (m) applyShipMethod(m, m.price);
                         }}
                         className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
                       >
                         <option value="" disabled>
                           {order.shippingLabel || "เลือกวิธีส่ง…"}
                         </option>
+                        {autoShip?.method && (
+                          <option value={AUTO_SHIP}>
+                            ⚡ อัตโนมัติ — {autoShip.method.name} {formatPrice(autoShip.cost)}
+                          </option>
+                        )}
                         {shipMethods.map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name} — ฿{m.price}
@@ -6055,6 +6111,21 @@ export default function AdminOrderDetailPage() {
                   </>
                 )}
               </div>
+              {/* ⚡ ค่าส่งต่ำกว่าที่ระบบคิดให้ — กดปุ่มเดียวเติมให้ตรง (ไม่กดก็ไม่มีอะไรเปลี่ยน) */}
+              {mayEdit && shipUnderAuto && autoShip?.method && (
+                <button
+                  type="button"
+                  onClick={() => applyShipMethod(autoShip.method!, autoShip.cost, `อัตโนมัติ — ${autoShip.reason}`)}
+                  title={autoShip.reason}
+                  className="mt-1.5 flex w-full items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-2 text-left text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                >
+                  <span className="shrink-0">⚡ ใช้ค่าส่งอัตโนมัติ</span>
+                  <span className="min-w-0 flex-1 truncate font-normal text-sky-800">
+                    {autoShip.method.name} · {autoShip.reason}
+                  </span>
+                  <span className="shrink-0 tabular-nums">{formatPrice(autoShip.cost)}</span>
+                </button>
+              )}
               {(order.gifts ?? []).map((g) => (
                 <div key={g.promoId}>
                   {giftLinesOf(g).map((ln, k) => (
