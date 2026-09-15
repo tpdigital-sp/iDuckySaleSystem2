@@ -62,6 +62,7 @@ import {
   unitAddOnBreakdown,
   formatPrice,
   formatPriceRange,
+  formatMatrixPriceRange,
   getCategory,
   includedDesigns,
   isFreeMix,
@@ -6329,7 +6330,7 @@ export default function ProductDetail({
             ) : /* ตารางช่วงเดียว (ทุกจำนวนราคาเดียว) ไม่ได้ "ยิ่งสั่งเยอะยิ่งถูก" — ตกไปใช้ข้อความตามตัวเลือกด้านล่าง */
             matrix && matrix.tiers.length > 1 ? (
               <p className="mt-1 text-xs text-stone-400">
-                💡 เรทราคา {formatPriceRange(product)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
+                💡 เรทราคา {formatMatrixPriceRange(product, matrix)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
               </p>
             ) : (
               priceRange(product).max > priceRange(product).min && (

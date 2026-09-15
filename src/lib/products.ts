@@ -1161,10 +1161,14 @@ const YIELD_PIECE_WORDS = "ใบ|ชิ้น|ดวง|แผ่น|อัน|
 /** คำที่ร้านใช้เรียก "หน่วยที่ลูกค้าสั่ง" — ขายเป็นหน่วยพวกนี้ = 1 หน่วยมีของหลายชิ้น */
 const YIELD_PACK_WORDS = "เซ็ต|เซต|ชุด|แพ็ค|แพค|แผ่น|กล่อง|ถุง|ม้วน|เล่ม|พวง";
 
-/** งานที่ขายเป็นหน่วยรวม (เซ็ต/ชุด/แผ่น/กล่อง) — จำนวนที่สั่งไม่ใช่จำนวนชิ้นงาน */
+/**
+ * งานที่ขายเป็นหน่วยรวม (เซ็ต/ชุด/แผ่น/กล่อง/ตร.ม.) — จำนวนที่สั่งไม่ใช่จำนวนชิ้นงาน
+ * "ตร.ม." อยู่ในกลุ่มนี้ด้วย (สั่ง 1 ตร.ม. = ตัดได้หลายชิ้น) แต่แยกจาก YIELD_PACK_WORDS
+ * เพราะจุดในชื่อต้อง escape และฝั่งที่แกะข้อความ "20 ใบ/เซ็ต" ไม่มีสำนวนนี้
+ */
 export function isPackUnit(unit: string): boolean {
   const u = (unit ?? "").trim();
-  return !!u && u !== "ชิ้น" && new RegExp(`^(${YIELD_PACK_WORDS})(\\s|\\(|$)`).test(u);
+  return !!u && u !== "ชิ้น" && new RegExp(`^(${YIELD_PACK_WORDS}|ตร\\.\\s?ม\\.)(\\s|\\(|$)`).test(u);
 }
 
 /**
@@ -6144,6 +6148,22 @@ export function lotPreviewFor(
 /** ข้อความราคา: แสดงเป็นช่วง "฿ต่ำสุด – ฿สูงสุด" ถ้าตัวเลือกทำให้ราคาต่างกัน */
 export function formatPriceRange(p: Product): string {
   const { min, max } = priceRange(p);
+  return max > min ? `${formatPrice(min)} – ${formatPrice(max)}` : formatPrice(min);
+}
+
+/**
+ * ข้อความราคาของ "ตารางเรทเดียว" — ใช้กับประโยคที่ห้อยหน่วยของเรทที่เลือกอยู่
+ * ⚠️ สินค้าที่มีหลายเรทคนละหน่วย (สติ๊กเกอร์ UV ขายทั้งแผ่น A3 และ ตร.ม.) เอาช่วงรวมทั้งสินค้า
+ *   มาต่อท้ายหน่วยเดียวจะอ่านผิด: "฿78 – ฿1,000 ต่อ ตร.ม." ทั้งที่ ฿78 คือราคาต่อแผ่น A3 (15 ก.ย. 69)
+ * areaPricing คิดเหมือน priceRange — คอลัมน์ "ต่อหน่วยพื้นที่" ไม่ใช่ราคาต่อชิ้น ไม่เอามารวมช่วง
+ */
+export function formatMatrixPriceRange(p: Product, m: PriceMatrix): string {
+  const ap = p.areaPricing;
+  const cells = ap?.enabled && m.cells[ap.baseColumn]?.length ? [m.cells[ap.baseColumn]] : Object.values(m.cells);
+  const all = cells.flat().filter((n) => n > 0);
+  if (!all.length) return formatPriceRange(p);
+  const min = Math.min(...all);
+  const max = Math.max(...all);
   return max > min ? `${formatPrice(min)} – ${formatPrice(max)}` : formatPrice(min);
 }
 
