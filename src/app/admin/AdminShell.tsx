@@ -73,6 +73,8 @@ let ratingsBadgeCache: { at: number; rows: { id: string }[] } | null = null;
 let quotesBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "ลูกค้าขอแก้ไขออเดอร์" — เหตุผลเดียวกับใบเสนอราคา: เมนูอยู่ทุกหน้า ไม่ต้องถามฐานทุกคลิก */
 let editReqBadgeCache: { at: number; n: number } | null = null;
+/** แคชป้าย "เคลมสินค้าที่ยังไม่ได้ตอบ" — เคสเคลมที่เงียบไปคือเคสที่บานปลาย ต้องเห็นตั้งแต่เมนู */
+let claimsBadgeCache: { at: number; n: number } | null = null;
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -116,6 +118,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [waitingQuotes, setWaitingQuotes] = useState(0);
   // badge แจ้ง "ลูกค้าขอแก้ไขออเดอร์" ที่ยังไม่มีใครกดจัดการ — งานค้างจริง หายเองเมื่อกด "จัดการแล้ว" ครบ
   const [openEditRequests, setOpenEditRequests] = useState(0);
+  // badge แจ้ง "เคลมสินค้า" ที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย — หายเองเมื่อตอบ/ปิดเคสครบ
+  const [openClaims, setOpenClaims] = useState(0);
 
   // ── โลโก้หลังบ้าน — กดที่โลโก้มุมซ้ายบนเพื่อเปลี่ยนรูปได้เลย (เก็บในแถวเมนู __site_nav__) ──
   const [adminLogo, setAdminLogo] = useState<string | undefined>(undefined);
@@ -304,6 +308,43 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("iducky:edit-requests-changed", on);
   }, [refreshEditReqBadge]);
 
+  /**
+   * 🧰 ป้ายเตือน "เคลมสินค้า" — นับเคสที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย
+   * เดิมเคลมเข้ามารู้ได้ทางเดียวคือไลน์แจ้งกลุ่มร้าน เลื่อนผ่านแล้วเคสเงียบยาว (เจ้าของร้านสั่ง 15 ก.ย. 69)
+   * ตัวเลขตรงกับช่อง "ยังไม่ตอบลูกค้า" ในหน้า /admin/claims
+   */
+  const claimsBadgeReady = pathname !== "/admin/login" && perms.includes("orders.view");
+  const refreshClaimsBadge = useCallback(async () => {
+    if (!claimsBadgeReady) return;
+    try {
+      const r = await fetch("/api/admin/claims/count", { cache: "no-store" });
+      const j = r.ok ? await r.json() : { n: 0 };
+      const n = Number(j?.n) || 0;
+      claimsBadgeCache = { at: Date.now(), n };
+      setOpenClaims(n);
+    } catch {
+      /* เน็ตสะดุด → คงเลขเดิมไว้ */
+    }
+  }, [claimsBadgeReady]);
+  useEffect(() => {
+    if (!claimsBadgeReady) return;
+    // อยู่หน้าเคลม = ดึงสด (เพิ่งตอบลูกค้าไป ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาที
+    const fresh = pathname.startsWith("/admin/claims");
+    const cached = claimsBadgeCache && Date.now() - claimsBadgeCache.at < 60_000 ? claimsBadgeCache.n : null;
+    if (cached !== null && !fresh) {
+      setOpenClaims(cached);
+      return;
+    }
+    void refreshClaimsBadge();
+  }, [claimsBadgeReady, pathname, refreshClaimsBadge]);
+  usePolling(refreshClaimsBadge, { intervalMs: 90_000, enabled: claimsBadgeReady });
+  // ตอบเคลม / เปลี่ยนสถานะในหน้าเคลม → ยิงอีเวนต์ให้ป้ายนับใหม่ทันที
+  useEffect(() => {
+    const on = () => void refreshClaimsBadge();
+    window.addEventListener("iducky:claims-changed", on);
+    return () => window.removeEventListener("iducky:claims-changed", on);
+  }, [refreshClaimsBadge]);
+
   const isLoginPage = pathname === "/admin/login";
 
   useEffect(() => {
@@ -409,7 +450,15 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
    * ประเมินใหม่ที่ยังไม่ได้เปิดดู · ใบเสนอราคาที่ลูกค้าตกลงแล้วแต่ยังไม่ได้เปิดงาน
    */
   const badgeOf = (href: string) =>
-    href === "/admin/ratings" ? newRatings : href === "/admin/quotes" ? waitingQuotes : href === "/admin/edit-requests" ? openEditRequests : 0;
+    href === "/admin/ratings"
+      ? newRatings
+      : href === "/admin/quotes"
+        ? waitingQuotes
+        : href === "/admin/edit-requests"
+          ? openEditRequests
+          : href === "/admin/claims"
+            ? openClaims
+            : 0;
   /** ป้ายทั้งแถบรวมกัน — ใช้บนปุ่ม ☰ ของมือถือ ตอนเมนูปิดอยู่จะได้ยังเห็นว่ามีงานค้าง */
   const badgeAll = menu.reduce((n, m) => n + badgeOf(m.href), 0);
 
@@ -470,7 +519,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               ? `${m.label} — ลูกค้าตกลงแล้ว ${badgeN} ใบ รอสร้างออเดอร์`
               : hasBadge && m.href === "/admin/edit-requests"
                 ? `${m.label} — ลูกค้าขอแก้ไข ${badgeN} ใบ ยังไม่ได้จัดการ`
-                : m.label
+                : hasBadge && m.href === "/admin/claims"
+                  ? `${m.label} — ${badgeN} เรื่อง ยังไม่ได้ตอบลูกค้า`
+                  : m.label
             : undefined
         }
         className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${

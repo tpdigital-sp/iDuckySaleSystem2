@@ -199,6 +199,8 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
     setBusy(false);
     if (!res?.ok || !j.claim) return setErr(j.error ?? "บันทึกไม่สำเร็จ");
     onUpdate(j.claim as Claim);
+    // ตอบลูกค้า/ปิดเคสแล้ว → ให้ป้ายตัวเลขข้างเมนูนับใหม่ทันที ไม่ต้องรอรอบ 90 วิ
+    window.dispatchEvent(new Event("iducky:claims-changed"));
   }
 
   return (
