@@ -785,6 +785,26 @@ export function sheetBoundOf(pair: ProductOption | null | undefined, opt: Produc
 }
 
 /**
+ * 📋 เลขชิ้น/แผ่นของกลุ่มนี้มาจาก "ตารางของร้าน" (perSheetTiers) หรือจากการจัดวางจริง
+ * ใช้บอกที่มาบนหน้าจอให้ตรงกับที่คิดจริง — กติกาเดียวกับ sheetFitCount:
+ * ไม่ใช่ longestOnly = ใช้ตารางเสมอ · longestOnly = ใช้ตารางเฉพาะตอนยังไม่รู้รูปจริง (กรอกด้านเดียว/จัตุรัส)
+ */
+export function sheetYieldByTable(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>
+): boolean {
+  const cfg = opt.sheetYield;
+  if (!cfg?.perSheetTiers?.length) return false;
+  if (!cfg.longestOnly) return true;
+  const pair = product.options.find((o) => o.label === cfg.pairLabel);
+  if (!pair) return true;
+  const w = Number(parseInputValue(pair, selections[pair.label]));
+  const h = Number(parseInputValue(opt, selections[opt.label]));
+  return !(w > 0 && h > 0 && Math.abs(w - h) > 1e-9);
+}
+
+/**
  * จำนวนชิ้นโดยประมาณต่อ 1 แผ่น จากค่าที่ลูกค้ากรอก (กว้างจากกลุ่ม pairLabel × สูงจากกลุ่มนี้)
  * จัดวางแบบเดียวกับโปรแกรม Print-Fit — null = ไม่ได้ตั้ง sheetYield หรือยังกรอกไม่ครบ · 0 = ใหญ่เกินแผ่น
  */

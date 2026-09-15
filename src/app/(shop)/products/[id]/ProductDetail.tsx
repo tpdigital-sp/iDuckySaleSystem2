@@ -49,6 +49,7 @@ import {
   artSizeText,
   sheetFitCount,
   sheetBoundOf,
+  sheetYieldByTable,
   type ArtSize,
   orderUnitYield,
   ART_LABEL,
@@ -3946,12 +3947,16 @@ export default function ProductDetail({
                             const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
                             // 📐 คละหลายขนาด (ระบุใต้รูปแต่ละลาย) — ตัวเลขนี้คิดจากทุกขนาดแล้ว ไม่ใช่ขนาดหลักอย่างเดียว
                             const mixedN = parseArtSize(effective[ART_SIZE_LABEL]).size;
-                            // 📏 กรอกด้านยาวสุดด้านเดียว — เลขมาจากตารางร้าน + ต้องบอกว่ากราฟฟิกแจ้งจำนวนจริงตอนส่งแบบ
+                            // 📏 กรอกด้านยาวสุดด้านเดียว — ต้องบอกว่ากราฟฟิกแจ้งจำนวนจริงตอนส่งแบบ
                             const longestOnly = opt.sheetYield?.longestOnly === true;
-                            const byTable = longestOnly && !!opt.sheetYield?.perSheetTiers?.length;
+                            /*
+                             * กรอกครบสองด้านแล้วเลขมาจากการจัดวางจริง ไม่ใช่ตารางร้าน (ดู sheetYieldByTable)
+                             * ข้อความที่ห้อยต้องตรงกับที่คิดจริง ไม่งั้นแอดมินเทียบกับตารางแล้วงงว่าทำไมไม่ตรง
+                             */
+                            const byTable = sheetYieldByTable(product, opt, effective);
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : longestOnly ? "ด้านยาวสุดเท่านี้ได้ประมาณ" : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ 1 {sheet}
+                                📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : longestOnly && byTable ? "ด้านยาวสุดเท่านี้ได้ประมาณ" : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ 1 {sheet}
                                 {/*
                                   * คูณจำนวนที่สั่งให้เลย · เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.)
                                   * กางตัวคูณให้เห็นด้วย ไม่งั้นลูกค้าคิดตามไม่ได้ว่าเลขมาจากไหน
