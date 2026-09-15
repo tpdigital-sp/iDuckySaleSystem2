@@ -24,6 +24,7 @@ import {
   orderTotal,
   orderVatAmount,
   orderNetTransfer,
+  reconcileOrderTax,
   orderWhtAmount,
   paidSoFar,
   uncreditedReceived,
@@ -538,6 +539,16 @@ export async function PATCH(req: Request) {
    */
   if (mayEditFull && itemsChanged(existing, toSave))
     toSave = await syncOrderEarlyPay(sb, toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
+
+  /**
+   * 🧾 ฐานภาษีขยับในคำขอนี้ (แก้รายการ/ค่าส่ง/ส่วนลด) → VAT + หัก ณ ที่จ่าย คิดใหม่ตามเรต
+   * ⚠️ ต้องคิด "ก่อน" บล็อกยอดค้าง/แจ้งไลน์ด้านล่าง ไม่งั้นไลน์ทวงลูกค้าด้วยยอดที่ยังมีภาษีของฐานเก่าติดอยู่
+   * (OD-260915-1705 · 15 ก.ย. 69 — ดู reconcileOrderTax) · ประตูเขียนออเดอร์เรียกซ้ำอีกชั้น ไม่ลง log ซ้ำ
+   */
+  {
+    const tax = reconcileOrderTax(existing, toSave);
+    if (tax) toSave = withLog(tax.order, `แอดมิน ${actor.name?.trim() || actor.username}`, "คิดภาษีใหม่ตามยอดที่แก้", `${tax.note} (ยอดรวมต้องตรงบิลที่ออกให้ลูกค้า)`);
+  }
 
   /**
    * 💬 ตีราคา/แก้ราคาบนใบที่ลูกค้าโอนมาแล้ว → ยอดโตขึ้น ต้องตามเก็บส่วนต่าง

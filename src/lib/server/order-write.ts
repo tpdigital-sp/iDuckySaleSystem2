@@ -1,4 +1,4 @@
-import type { Order } from "@/lib/admin-data";
+import { reconcileOrderTax, withLog, type Order } from "@/lib/admin-data";
 import { syncOrderEarlyPay } from "./order-early-pay";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
@@ -57,7 +57,14 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
     prev = (data?.data as Order | undefined) ?? null;
   }
   const changed = itemsChanged(prev, order);
-  const final = changed ? await syncOrderEarlyPay(sb, order, opts?.by ?? "ระบบ") : order;
+  const by = opts?.by ?? "ระบบ";
+  let final = changed ? await syncOrderEarlyPay(sb, order, by) : order;
+  /**
+   * 🧾 ฐานภาษีขยับ (แก้รายการ/ค่าส่ง/ส่วนลด) → VAT กับหัก ณ ที่จ่ายต้องขยับตาม ไม่ใช่ค้างเลขของฐานเก่า
+   * กติกาอยู่ใน reconcileOrderTax (admin-data.ts) — วางไว้ตรงนี้ที่เดียว ทางเข้าใหม่ได้ไปด้วยอัตโนมัติ
+   */
+  const tax = reconcileOrderTax(prev, final);
+  if (tax) final = withLog(tax.order, by, "คิดภาษีใหม่ตามยอดที่แก้", `${tax.note} (ยอดรวมต้องตรงบิลที่ออกให้ลูกค้า)`);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);
   return { order: final, error };
 }

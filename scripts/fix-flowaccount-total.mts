@@ -125,6 +125,22 @@ for (const id of ids) {
   if ((doc.vat ?? 0) > 0) next.vat = { rate: doc.vatRate ?? 7, amount: r2(doc.vat!) };
   else delete next.vat;
   if ((doc.wht ?? 0) > 0) next.wht = { rate: doc.whtRate ?? 3, amount: r2(doc.wht!) };
+  /**
+   * 📄 ยอดสรุปที่เก็บไว้ต้องเป็นฉบับเดียวกับที่เพิ่งอ่านมา — ไม่งั้นระบบถือสองภาพของเอกสารเดียวกัน
+   * (รายการฉบับใหม่ · ยอดสรุปฉบับเก่า) แล้ว flowAccountGap/ด่านตรวจสลิป เทียบกับภาพที่ผิด
+   * ใบมัดจำไม่แตะ — ยอดในช่องนั้นเป็น "มูลค่างานเต็ม" ที่รวมมาจาก 2 เอกสาร
+   */
+  if (!fa.deposit && (doc.grandTotal ?? 0) > 0)
+    next.flowAccount = {
+      ...fa,
+      ...(doc.date ? { date: doc.date } : {}),
+      subtotal: doc.subtotal,
+      vat: r2(doc.vat ?? 0),
+      grandTotal: r2(doc.grandTotal!),
+      wht: r2(doc.wht ?? 0),
+      net: r2(doc.net ?? doc.grandTotal! - (doc.wht ?? 0)),
+      fetchedAt: new Date().toISOString(),
+    };
 
   const before = orderTotal(order);
   const after = orderTotal(next);
@@ -148,6 +164,7 @@ for (const id of ids) {
     (next.adminDiscount?.amount ?? 0) !== (order.adminDiscount?.amount ?? 0) ||
     (next.vat?.amount ?? 0) !== (order.vat?.amount ?? 0) ||
     (next.wht?.amount ?? 0) !== (order.wht?.amount ?? 0) ||
+    (next.flowAccount?.grandTotal ?? 0) !== (fa.grandTotal ?? 0) ||
     next.items.some((it, i) => it.qty !== order.items[i]?.qty || it.unitPrice !== order.items[i]?.unitPrice);
   if (moneyChanged)
     next = withLog(

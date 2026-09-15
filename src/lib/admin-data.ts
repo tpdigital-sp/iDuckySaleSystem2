@@ -1030,6 +1030,88 @@ export function orderNetTransfer(o: Order): number {
 }
 
 /**
+ * 🧮 ฐานคิดภาษีของใบนี้ (ยอดก่อน VAT) = สินค้า + ค่าส่ง − ส่วนลด
+ * ค่าบริการเพิ่ม (charges) ไม่อยู่ในฐาน — เก็บทีหลังนอกบิลที่ออกไปแล้ว (ดู orderTotal)
+ */
+export function orderTaxBase(o: Order): number {
+  return Math.max(0, Math.round((orderSubtotal(o) + (o.shippingCost ?? 0) - orderDiscountTotal(o)) * 100) / 100);
+}
+
+/** ภาษีจากฐาน × เรต ปัด 2 ตำแหน่ง (ท่าเดียวกับที่ FlowAccount คิดในใบ) */
+export function taxFromRate(base: number, rate: number): number {
+  return Math.max(0, Math.round(base * rate) / 100);
+}
+
+/**
+ * ⚠️ VAT / หัก ณ ที่จ่าย ที่เก็บไว้ ห่างจาก "เรต × ฐานล่าสุด" กี่บาท (บวก = ที่เก็บไว้น้อยกว่าที่ควรเป็น)
+ * ไม่ 0 = ตัวเลขภาษีเป็นของฐานเก่า (แก้รายการ/ค่าส่ง/ส่วนลดทีหลังแล้วภาษีไม่ตาม) หรือแอดมินพิมพ์ทับเอง
+ * → ยอดรวมของใบนี้ยังเชื่อไม่ได้ ห้ามเอาไปตัดสินว่าลูกค้าโอนขาด (ดู slip-apply)
+ */
+export function orderTaxDrift(o: Order): { vat: number; wht: number } {
+  const base = orderTaxBase(o);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    vat: o.vat?.rate ? r2(taxFromRate(base, o.vat.rate) - orderVatAmount(o)) : 0,
+    wht: o.wht?.rate ? r2(taxFromRate(base, o.wht.rate) - orderWhtAmount(o)) : 0,
+  };
+}
+
+/**
+ * ยอดที่ใบนี้ "ควรจะเป็น" ถ้าคิด VAT/หัก ณ ที่จ่าย ตามเรตกับฐานล่าสุด — [ยอดรวม, ยอดโอนจริง]
+ * ว่าง = ตัวเลขภาษีตรงเรตอยู่แล้ว (ยอดในระบบเชื่อได้) · ใช้ตอนตรวจสลิป: ลูกค้าโอนตรงยอดที่ถูกต้อง
+ * แต่ในระบบเป็นอีกยอดหนึ่ง = ข้อมูลฝั่งเราผิด ไม่ใช่โอนขาด
+ */
+export function reconciledOrderAmounts(o: Order): number[] {
+  const drift = orderTaxDrift(o);
+  if (Math.abs(drift.vat) < 0.01 && Math.abs(drift.wht) < 0.01) return [];
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const total = r2(orderTotal(o) + drift.vat);
+  return [total, r2(total - (orderWhtAmount(o) + drift.wht))].filter((n) => n > 0);
+}
+
+/**
+ * 🧾 คิด VAT/หัก ณ ที่จ่ายใหม่เมื่อ "ฐานภาษีขยับ" — กติกากลาง เรียกที่ประตูเขียนออเดอร์ที่เดียว
+ *
+ * ทำไมต้องมี (OD-260915-1705 · 15 ก.ย. 69): ใบเสนอราคา QT010660 แก้จำนวน 12 → 5 ชิ้น แอดมินกด
+ * "ดึงรายการตามเอกสาร" รายการเปลี่ยนเป็น 1,520 แต่ VAT ยังค้าง 255.36 (7% ของ 3,648 ใบเก่า) และ
+ * หัก ณ ที่จ่ายยังค้าง 109.44 → ยอดในระบบ 1,775.36 ไม่ตรงทั้งใบเก่าและใบใหม่ · ลูกค้าโอนสุทธิตามใบ
+ * 1,580.80 ครบแล้ว แต่ระบบนับเป็น "รับบางส่วน" แล้วส่งไลน์ทวงอีก 194.56 บาท
+ * (เคสเดียวกับ OD-260911-5435 คนละทางเข้า — ไล่อุดทีละทางเข้าไม่จบ จึงย้ายมาไว้ที่ประตูเขียน)
+ *
+ * แก้เฉพาะตัวเลขที่ "พิสูจน์ได้ว่าเป็นของฐานเก่า" คือ ผู้เรียกไม่ได้ส่งยอดใหม่มา + ยอดเดิมตรงเป๊ะกับ
+ * เรต × ฐานเก่า → ยอดที่แอดมินพิมพ์ทับเอง (ตามใบ 50 ทวิของลูกค้า) หรือยอดที่ซิงก์มาจากเอกสารไม่โดนแตะ
+ * คืน null = ไม่ต้องแก้อะไร
+ */
+export function reconcileOrderTax(prev: Order | null | undefined, next: Order): { order: Order; note: string } | null {
+  if (!prev || (!next.vat?.rate && !next.wht?.rate)) return null;
+  const before = orderTaxBase(prev);
+  const after = orderTaxBase(next);
+  if (Math.abs(before - after) < 0.01) return null; // ฐานไม่ขยับ = ภาษีไม่ต้องคิดใหม่
+  const thb = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const stale = (now: { rate: number; amount: number } | undefined, was: { rate: number; amount: number } | undefined): number | null => {
+    if (!now?.rate || !was?.rate || now.rate !== was.rate) return null;
+    if (Math.abs(now.amount - was.amount) >= 0.005) return null; // ผู้เรียกส่งยอดใหม่มาเอง = เชื่อตามนั้น
+    if (Math.abs(now.amount - taxFromRate(before, now.rate)) >= 0.01) return null; // ไม่ใช่ยอดของฐานเก่า = แอดมินพิมพ์เอง อย่าไปยุ่ง
+    const want = taxFromRate(after, now.rate);
+    return Math.abs(want - now.amount) < 0.01 ? null : want;
+  };
+  const vat = stale(next.vat, prev.vat);
+  const wht = stale(next.wht, prev.wht);
+  if (vat == null && wht == null) return null;
+  return {
+    order: {
+      ...next,
+      ...(vat != null ? { vat: { ...next.vat!, amount: vat } } : {}),
+      ...(wht != null ? { wht: { ...next.wht!, amount: wht } } : {}),
+    },
+    note:
+      `ฐานภาษี ${thb(before)} → ${thb(after)} บาท` +
+      (vat != null ? ` · VAT ${next.vat!.rate}% ${thb(next.vat!.amount)} → ${thb(vat)}` : "") +
+      (wht != null ? ` · หัก ณ ที่จ่าย ${next.wht!.rate}% ${thb(next.wht!.amount)} → ${thb(wht)}` : ""),
+  };
+}
+
+/**
  * 💵 เงินที่เข้าบัญชีจริงของใบนี้ที่แอดมินกรอกไว้ (0 = ยังไม่ได้กรอก → ถือว่าเข้าเท่ายอดโอนจริงตามบิล)
  * ใบเดียวจบเท่านั้น — ใบมัดจำโอนคนละงวด ยอดเข้าจริงของแต่ละงวดอ่านจากสลิปของงวดนั้น
  */

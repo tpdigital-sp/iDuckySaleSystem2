@@ -58,6 +58,9 @@ import {
   orderTotal,
   orderWhtAmount,
   orderVatAmount,
+  orderTaxBase,
+  orderTaxDrift,
+  taxFromRate,
   depositInstallments,
   packGate,
   nextPlannedRound,
@@ -1131,6 +1134,12 @@ export default function AdminOrderDetailPage() {
     docDiscount?: number;
     docGrandTotal?: number;
     applyDocItems?: boolean;
+    /** หัก ณ ที่จ่าย + ยอดสรุปตามเอกสาร — ไปพร้อมรายการเสมอ (ภาษีของเอกสารฉบับไหน ต้องมากับรายการฉบับนั้น) */
+    docWht?: number;
+    docWhtRate?: number;
+    docSubtotal?: number;
+    docNet?: number;
+    docDate?: string;
   } | null>(null);
   const [taxFetching, setTaxFetching] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
@@ -1804,6 +1813,11 @@ export default function AdminOrderDetailPage() {
           docTypeLabel?: string;
           vat?: number;
           vatRate?: number;
+          wht?: number;
+          whtRate?: number;
+          subtotal?: number;
+          net?: number;
+          date?: string;
           discount?: number;
           grandTotal?: number;
           items?: { name: string; detail: string; qty: number; unitPrice: number; amount: number }[];
@@ -1846,6 +1860,11 @@ export default function AdminOrderDetailPage() {
               docShipLabel: shipLines.length ? normalizeShipLabel(shipLines.map((it) => it.name).join(" · "), docShip, methods) : undefined,
               docDiscount: Number(j.doc!.discount) > 0 ? Number(j.doc!.discount) : undefined,
               docGrandTotal: Number(j.doc!.grandTotal) || undefined,
+              docWht: Number(j.doc!.wht) > 0 ? Number(j.doc!.wht) : undefined,
+              docWhtRate: Number(j.doc!.whtRate) || undefined,
+              docSubtotal: Number(j.doc!.subtotal) || undefined,
+              docNet: Number(j.doc!.net) || undefined,
+              docDate: j.doc!.date,
               // ใบงานยังไม่มีรายการ = ตั้งใจจะดึงมาอยู่แล้ว · มีรายการอยู่แล้วไม่ติ๊กให้ (ทับของเดิมต้องตั้งใจกด)
               applyDocItems: workLines.length > 0 && !order?.items.length,
             }
@@ -1872,7 +1891,9 @@ export default function AdminOrderDetailPage() {
       address: taxForm.address.trim(),
       ...(taxForm.docNo ? { docNo: taxForm.docNo, docUrl: docUrl || undefined, docTypeLabel: taxForm.docTypeLabel } : {}),
     };
-    const withVat = !!taxForm.applyDocVat && (taxForm.docVat ?? 0) > 0 && !order.vat;
+    const docVat = taxForm.docVat ?? 0;
+    const docWht = taxForm.docWht ?? 0;
+    const withVat = !!taxForm.applyDocVat && docVat > 0 && !order.vat;
     // 📋 ดึงรายการตามเอกสารมาใส่ใบงานด้วย (ค่าส่ง/ส่วนลดตามใบไปพร้อมกัน — ยอดจะได้เท่าบิล FlowAccount)
     const docItems = taxForm.applyDocItems ? (taxForm.docItems ?? []) : [];
     const withItems = docItems.length > 0;
@@ -1895,12 +1916,48 @@ export default function AdminOrderDetailPage() {
       withItems && (taxForm.docDiscount ?? 0) > 0 && !order.adminDiscount
         ? { adminDiscount: { label: `ส่วนลดตามใบ ${taxForm.docNo ?? ""}`.trim(), amount: taxForm.docDiscount! } }
         : {};
+    /**
+     * 🧾 ดึงรายการจากเอกสารเมื่อไหร่ "ภาษี + ยอดสรุปตามใบ" ต้องมาด้วยเสมอ
+     * (OD-260915-1705 · 15 ก.ย. 69: QT010660 แก้จำนวน 12 → 5 ชิ้น · ดึงรายการมาใหม่แล้วแต่ VAT ยังค้าง 255.36
+     *  ของ 12 ชิ้น หัก ณ ที่จ่ายค้าง 109.44 → ยอดในระบบ 1,775.36 ไม่ตรงทั้งใบเก่าและใบใหม่
+     *  ลูกค้าโอนสุทธิตามใบ 1,580.80 ครบแล้ว ระบบกลับนับเป็นรับบางส่วนแล้วส่งไลน์ทวงอีก 194.56)
+     * รายการของเอกสารฉบับหนึ่ง + ภาษีของอีกฉบับ = ยอดที่ไม่ใช่ของใครเลย ห้ามให้เกิดขึ้นอีก
+     */
+    const taxPatch: Partial<Order> = withItems
+      ? {
+          vat: docVat > 0 ? { rate: taxForm.docVatRate || 7, amount: docVat } : undefined,
+          ...(docWht > 0 ? { wht: { rate: taxForm.docWhtRate || 3, amount: docWht } } : {}),
+        }
+      : withVat
+        ? { vat: { rate: taxForm.docVatRate || 7, amount: docVat } }
+        : {};
+    /**
+     * 📄 ใบที่ผูกกับเอกสารฉบับเดียวกันอยู่แล้ว → อัปยอดสรุปที่เก็บไว้ให้เป็นฉบับล่าสุดด้วย
+     * ไม่งั้นระบบถือสองภาพของเอกสารเดียวกัน (รายการใหม่ · ยอดสรุปเก่า) แล้วด่านตรวจสลิปเทียบกับภาพที่ผิด
+     * ใบมัดจำไม่แตะ — ยอดในช่องนั้นเป็น "มูลค่างานเต็ม" ที่รวมมาจาก 2 เอกสาร
+     */
+    const sameDoc = !!order.flowAccount && !!taxForm.docNo && order.flowAccount.docNo === taxForm.docNo && !order.flowAccount.deposit;
+    const faPatch: Partial<Order> =
+      withItems && sameDoc
+        ? {
+            flowAccount: {
+              ...order.flowAccount!,
+              ...(taxForm.docDate ? { date: taxForm.docDate } : {}),
+              subtotal: taxForm.docSubtotal,
+              vat: docVat,
+              grandTotal: taxForm.docGrandTotal,
+              wht: docWht,
+              net: taxForm.docNet,
+              fetchedAt: new Date().toISOString(),
+            },
+          }
+        : {};
     const base = withLog(
       {
         ...order,
         taxInvoice,
-        ...(withItems ? { items, ...shipPatch, ...discountPatch } : {}),
-        ...(withVat ? { vat: { rate: taxForm.docVatRate || 7, amount: taxForm.docVat! } } : {}),
+        ...(withItems ? { items, ...shipPatch, ...discountPatch, ...faPatch } : {}),
+        ...taxPatch,
       },
       actor,
       order.taxInvoice ? "แก้ข้อมูลใบกำกับภาษี" : "ใส่ข้อมูลใบกำกับภาษี",
@@ -1916,14 +1973,25 @@ export default function AdminOrderDetailPage() {
           }${discountPatch.adminDiscount ? ` · ส่วนลด ${formatPrice(taxForm.docDiscount!)}` : ""}`
         )
       : base;
-    const next = withVat
-      ? withLog(withItemsLog, actor, "เปิด VAT ตามเอกสาร FlowAccount", `VAT ${formatPrice(taxForm.docVat!)} → ยอดรวม ${formatPrice(orderTotal(withItemsLog))}`)
-      : withItemsLog;
+    // ภาษีขยับจากของเดิม (เปิด VAT ครั้งแรก · หรือดึงรายการมาแล้วภาษีตามฉบับใหม่) — ต้องเห็นใน log ว่าเปลี่ยนจากเท่าไหร่
+    const vatMoved = (taxPatch.vat?.amount ?? 0) !== (order.vat?.amount ?? 0);
+    const whtMoved = (taxPatch.wht?.amount ?? order.wht?.amount ?? 0) !== (order.wht?.amount ?? 0);
+    const next =
+      vatMoved || whtMoved
+        ? withLog(
+            withItemsLog,
+            actor,
+            order.vat || order.wht ? "ภาษีตามเอกสาร FlowAccount" : "เปิด VAT ตามเอกสาร FlowAccount",
+            `${vatMoved ? `VAT ${formatPrice(order.vat?.amount ?? 0)} → ${formatPrice(taxPatch.vat?.amount ?? 0)}` : ""}${vatMoved && whtMoved ? " · " : ""}${
+              whtMoved ? `หัก ณ ที่จ่าย ${formatPrice(order.wht?.amount ?? 0)} → ${formatPrice(taxPatch.wht?.amount ?? 0)}` : ""
+            } → ยอดรวม ${formatPrice(orderTotal(withItemsLog))}`
+          )
+        : withItemsLog;
     // ยอดตามใบไม่ตรงกับที่คิดได้จากรายการ = แอดมินต้องรู้ก่อนแจ้งลูกค้า (ลิงก์แชร์อาจเป็นฉบับเก่า)
     const gap = taxForm.docGrandTotal != null && withItems ? Math.round((orderTotal(next) - taxForm.docGrandTotal) * 100) / 100 : 0;
     setTaxForm(null);
     // ยอดโต (เปิด VAT/ดึงรายการ) → รับก้อนจากเซิร์ฟเวอร์ (สถานะเด้งกลับรอชำระเงิน/paidTotal/แจ้งไลน์) · แค่ข้อมูลผู้ซื้อ = บันทึกธรรมดา
-    if (withVat || withItems) await applyOrderFromServer(next);
+    if (withVat || withItems || vatMoved || whtMoved) await applyOrderFromServer(next);
     else applyOrder(next);
     if (Math.abs(gap) >= 0.01)
       setErr(
@@ -3417,6 +3485,8 @@ export default function AdminOrderDetailPage() {
    * ต่างเมื่อไหร่ = ตรวจสลิปเพี้ยน + ใบเสร็จ/ใบงานไม่ตรงบิล ต้องเตือนตรงที่แอดมินแก้ตัวเลข (โซนยอดเงิน)
    */
   const faGap = flowAccountGap(order);
+  // 🧾 VAT/หัก ณ ที่จ่าย ห่างจาก "เรต × ยอดก่อน VAT" กี่บาท (ไม่ 0 = ตัวเลขภาษีค้างของฐานเก่า ยอดรวมยังเชื่อไม่ได้)
+  const taxDrift = orderTaxDrift(order);
   // ลิงก์ฝั่งลูกค้า (ต้องมี key ถึงเปิดได้) — origin ตั้งใน useEffect กัน SSR mismatch
   const customerUrl = origin
     ? `${origin}/order/${encodeURIComponent(order.id)}${order.key ? `?key=${encodeURIComponent(order.key)}` : ""}`
@@ -4147,7 +4217,9 @@ export default function AdminOrderDetailPage() {
                         <span>
                           ดึงรายการในเอกสารมาใส่ใบงานด้วย ({taxForm.docItems.length} รายการ
                           {taxForm.docShip != null ? ` · ค่าส่ง ${formatPrice(taxForm.docShip)}` : ""}
-                          {(taxForm.docDiscount ?? 0) > 0 ? ` · ส่วนลด ${formatPrice(taxForm.docDiscount!)}` : ""})
+                          {(taxForm.docDiscount ?? 0) > 0 ? ` · ส่วนลด ${formatPrice(taxForm.docDiscount!)}` : ""}
+                          {(taxForm.docVat ?? 0) > 0 ? ` · VAT ${formatPrice(taxForm.docVat!)}` : ""}
+                          {(taxForm.docWht ?? 0) > 0 ? ` · หัก ณ ที่จ่าย ${formatPrice(taxForm.docWht!)}` : ""})
                           {order.items.length > 0 && (
                             <span className="font-extrabold text-rose-700"> — ทับรายการเดิม {order.items.length} รายการ</span>
                           )}
@@ -4161,7 +4233,19 @@ export default function AdminOrderDetailPage() {
                         ))}
                       </ul>
                       {taxForm.docGrandTotal != null && (
-                        <p className="mt-1 pl-6 text-[11px] font-semibold tabular-nums text-slate-500">ยอดตามเอกสาร {formatPrice(taxForm.docGrandTotal)}</p>
+                        <p className="mt-1 pl-6 text-[11px] font-semibold tabular-nums text-slate-500">
+                          ยอดตามเอกสาร {formatPrice(taxForm.docGrandTotal)}
+                          {(taxForm.docNet ?? 0) > 0 && (taxForm.docWht ?? 0) > 0 ? ` · โอนจริง ${formatPrice(taxForm.docNet!)}` : ""}
+                        </p>
+                      )}
+                      {/* ภาษีไปพร้อมรายการเสมอ — รายการฉบับใหม่ + VAT ฉบับเก่า = ยอดไม่ตรงบิลทั้งสองใบ (OD-260915-1705) */}
+                      {!!taxForm.applyDocItems && ((taxForm.docVat ?? 0) > 0 || (taxForm.docWht ?? 0) > 0) && (
+                        <p className="mt-1 pl-6 text-[11px] font-semibold leading-snug text-sky-700">
+                          VAT / หัก ณ ที่จ่าย จะถูกตั้งตามเอกสารฉบับนี้ด้วย
+                          {order.vat && Math.abs((order.vat.amount ?? 0) - (taxForm.docVat ?? 0)) >= 0.01
+                            ? ` (ของเดิม VAT ${formatPrice(order.vat.amount)} → ${formatPrice(taxForm.docVat ?? 0)})`
+                            : ""}
+                        </p>
                       )}
                     </div>
                   )}
@@ -6443,6 +6527,50 @@ export default function AdminOrderDetailPage() {
                   </p>
                 </div>
               )}
+              {/* 🧾 ตัวเลขภาษีไม่ตรงเรต × ยอดก่อน VAT = ค้างของฐานเก่า (แก้รายการทีหลังแล้วภาษีไม่ตาม) หรือพิมพ์ทับเอง
+                  ปล่อยไว้ = ยอดรวม/ยอดโอนจริงผิด → ตรวจสลิปเพี้ยนและใบเสร็จไม่ตรงบิล (OD-260915-1705) */}
+              {(Math.abs(taxDrift.vat) >= 0.01 || Math.abs(taxDrift.wht) >= 0.01) && (
+                <div className="mt-2.5 rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-900">
+                  <p className="font-extrabold">⚠️ ตัวเลขภาษีไม่ตรงกับยอดในใบงาน</p>
+                  <p className="mt-0.5 tabular-nums">
+                    ยอดก่อน VAT <b>{formatPrice(orderTaxBase(order))}</b>
+                    {Math.abs(taxDrift.vat) >= 0.01 && (
+                      <>
+                        {" · "}VAT {order.vat?.rate}% ควรเป็น <b>{formatPrice(orderVatAmount(order) + taxDrift.vat)}</b> แต่ในใบเป็น{" "}
+                        <b>{formatPrice(orderVatAmount(order))}</b>
+                      </>
+                    )}
+                    {Math.abs(taxDrift.wht) >= 0.01 && (
+                      <>
+                        {" · "}หัก ณ ที่จ่าย {order.wht?.rate}% ควรเป็น <b>{formatPrice(orderWhtAmount(order) + taxDrift.wht)}</b> แต่ในใบเป็น{" "}
+                        <b>{formatPrice(orderWhtAmount(order))}</b>
+                      </>
+                    )}
+                  </p>
+                  {mayEdit && seesMoney && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const vat = order.vat ? { ...order.vat, amount: taxFromRate(orderTaxBase(order), order.vat.rate) } : undefined;
+                        const wht = order.wht ? { ...order.wht, amount: taxFromRate(orderTaxBase(order), order.wht.rate) } : undefined;
+                        const next = withLog(
+                          { ...order, ...(vat ? { vat } : {}), ...(wht ? { wht } : {}) },
+                          actor,
+                          "คิดภาษีใหม่ตามยอดในใบงาน",
+                          `${vat ? `VAT ${formatPrice(orderVatAmount(order))} → ${formatPrice(vat.amount)}` : ""}${vat && wht ? " · " : ""}${
+                            wht ? `หัก ณ ที่จ่าย ${formatPrice(orderWhtAmount(order))} → ${formatPrice(wht.amount)}` : ""
+                          }`
+                        );
+                        void applyOrderFromServer(next);
+                      }}
+                      className="mt-1.5 rounded-lg border border-amber-400 bg-white px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100"
+                    >
+                      ↻ คิดภาษีใหม่ตามยอดนี้
+                    </button>
+                  )}
+                  <p className="mt-1 text-[11px]">ถ้าบิลจริงเป็นตัวเลขอื่น (บัญชีลูกค้าคิดคนละฐาน) พิมพ์ทับในช่องด้านล่างได้ — แต่ยอดต้องเท่าบิลที่ลูกค้าถือเสมอ</p>
+                </div>
+              )}
               {/* ── แถบสรุป: ยอดรวมบิล → หัก ณ ที่จ่าย → ยอดโอนจริง จบในก้อนเดียว ──
                   ไม่หักภาษี = ยอดรวมคือเลขใหญ่ · หักภาษี = ยอดโอนจริงคือเลขใหญ่ (เลขที่ต้องเทียบเงินเข้าบัญชี) */}
               <div className="mt-2.5 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
@@ -6469,7 +6597,8 @@ export default function AdminOrderDetailPage() {
                           value={order.wht?.rate ?? 0}
                           onChange={(e) => {
                             const rate = Number(e.target.value) || 0;
-                            const amt = Math.round(orderTotal(order) * rate) / 100;
+                            // ฐานหัก ณ ที่จ่าย = ยอดก่อน VAT (สรรพากรคิดจากค่าบริการ ไม่ใช่ยอดรวม VAT) — ใบ FlowAccount คิดแบบนี้
+                            const amt = taxFromRate(orderTaxBase(order), rate);
                             const next = withLog(
                               { ...order, wht: rate > 0 ? { rate, amount: amt } : undefined },
                               actor,

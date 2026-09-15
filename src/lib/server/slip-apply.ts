@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTotal, paidSoFar, paidStatusFor, slipMatchesFlowAccountBill, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, slipMatchesFlowAccountBill, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer } from "@/lib/products-server";
@@ -192,17 +192,31 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
    *  รอบสองมักตอบ 1012 "สลิปซ้ำ" เสียเปล่า · ยืนยันเงินเข้าจะตั้ง paidTotal = ยอดเต็มตามบิลให้เอง ไม่เหลือค้างผี)
    */
   const billGap = flowAccountGap(order) ?? 0;
-  const paidPerBill = partialRaw && billGap !== 0 && slipMatchesFlowAccountBill(order, verify.amount!);
+  const perBillDoc = partialRaw && billGap !== 0 && slipMatchesFlowAccountBill(order, verify.amount!);
+  /**
+   * 🧾 ชั้นที่ 2 — ไม่ต้องมีเอกสาร FlowAccount ให้เทียบ: ตัวเลขภาษีของใบนี้เองไม่ตรงเรต × ฐาน
+   * (VAT/หัก ณ ที่จ่าย ค้างของฐานเก่า) แล้วลูกค้าโอน "ตรงยอดที่ควรจะเป็น" พอดี = ยอดในระบบผิด ไม่ใช่โอนขาด
+   * (OD-260915-1705 · 15 ก.ย. 69: ใบเสนอราคาแก้ 12 → 5 ชิ้น รายการตามแต่ VAT ค้าง 7% ของ 12 ชิ้น
+   *  ลูกค้าโอนสุทธิตามใบ 1,580.80 ครบ แต่ระบบหาว่าขาด 194.56 แล้วส่งไลน์ทวง)
+   */
+  const reconciled = partialRaw ? reconciledOrderAmounts(order) : [];
+  const perBillTax = reconciled.some((n) => Math.abs(n - verify.amount!) <= 1);
+  const paidPerBill = perBillDoc || perBillTax;
   const partial = partialRaw && !paidPerBill;
   if (paidPerBill)
     verify = {
       ...verify,
-      detail:
-        `⚠️ ยอดในระบบไม่ตรงกับใบ FlowAccount ${order.flowAccount?.docNo ?? ""} — ลูกค้าโอน ${thb(verify.amount!)} บาท ` +
-        `ตรงตามใบ (ใบ ${thb(order.flowAccount?.grandTotal ?? 0)} บาท${order.flowAccount?.net ? ` · สุทธิ ${thb(order.flowAccount.net)} บาท` : ""}) ` +
-        `แต่ยอดในระบบเป็น ${thb(orderTotal(order))} บาท (ต่าง ${thb(Math.abs(billGap))} บาท) — ` +
-        `แก้ยอดในระบบให้ตรงใบก่อน (ปุ่ม “🔄 เทียบกับเอกสารล่าสุด”) แล้วกดยืนยันเงินเข้าได้เลย — สลิปแท้และยอดตรงใบแล้ว ` +
-        `(อย่ากด “ตรวจสลิปอีกครั้ง” SlipOK จำสลิปใบนี้ได้ รอบสองจะตอบว่าสลิปซ้ำ) · ยังไม่นับยอดและยังไม่แจ้งลูกค้า`,
+      detail: perBillDoc
+        ? `⚠️ ยอดในระบบไม่ตรงกับใบ FlowAccount ${order.flowAccount?.docNo ?? ""} — ลูกค้าโอน ${thb(verify.amount!)} บาท ` +
+          `ตรงตามใบ (ใบ ${thb(order.flowAccount?.grandTotal ?? 0)} บาท${order.flowAccount?.net ? ` · สุทธิ ${thb(order.flowAccount.net)} บาท` : ""}) ` +
+          `แต่ยอดในระบบเป็น ${thb(orderTotal(order))} บาท (ต่าง ${thb(Math.abs(billGap))} บาท) — ` +
+          `แก้ยอดในระบบให้ตรงใบก่อน (ปุ่ม “🔄 เทียบกับเอกสารล่าสุด”) แล้วกดยืนยันเงินเข้าได้เลย — สลิปแท้และยอดตรงใบแล้ว ` +
+          `(อย่ากด “ตรวจสลิปอีกครั้ง” SlipOK จำสลิปใบนี้ได้ รอบสองจะตอบว่าสลิปซ้ำ) · ยังไม่นับยอดและยังไม่แจ้งลูกค้า`
+        : `⚠️ ภาษีในใบนี้ยังเป็นตัวเลขของยอดเก่า — ลูกค้าโอน ${thb(verify.amount!)} บาท ตรงกับยอดที่ถูกต้อง ` +
+          `(คิด VAT/หัก ณ ที่จ่ายตามเรตกับรายการล่าสุดแล้วได้ ${reconciled.map(thb).join(" / ")} บาท) ` +
+          `แต่ยอดในระบบเป็น ${thb(orderTotal(order))} บาท — แก้ VAT/หัก ณ ที่จ่ายในโซนยอดเงินให้ตรงบิลก่อน ` +
+          `แล้วกดยืนยันเงินเข้าได้เลย — สลิปแท้และยอดตรงบิลแล้ว ` +
+          `(อย่ากด “ตรวจสลิปอีกครั้ง” SlipOK จำสลิปใบนี้ได้ รอบสองจะตอบว่าสลิปซ้ำ) · ยังไม่นับยอดและยังไม่แจ้งลูกค้า`,
     };
   // ยอดที่นับเข้า paidTotal จากใบนี้ — ผ่าน = ยอดค้างทั้งก้อน (ส่วนต่างที่ยอมรับถือว่าจ่ายครบ) · บางส่วน = ยอดที่เข้าจริง
   const credit = pass ? expected : partial ? round2(verify.amount!) : 0;
@@ -326,7 +340,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     // ตรวจไม่ผ่านและนับยอดไม่ได้ (อ่านยอดไม่ได้ / ระบบล่ม / ซ้ำ) → รอแอดมินตรวจเอง
     if (phase === "first") updated = { ...updated, status: "รอตรวจสอบ" };
     if (paidPerBill)
-      updated = withLog(updated, "SlipOK", `${rc}⚠️ ยอดในระบบไม่ตรงใบ FlowAccount — ลูกค้าโอนตรงตามใบแล้ว รอแอดมินแก้ยอดให้ตรงก่อน`, verify.detail ?? "");
+      updated = withLog(updated, "SlipOK", perBillDoc ? `${rc}⚠️ ยอดในระบบไม่ตรงใบ FlowAccount — ลูกค้าโอนตรงตามใบแล้ว รอแอดมินแก้ยอดให้ตรงก่อน` : `${rc}⚠️ VAT/หัก ณ ที่จ่ายในใบยังเป็นตัวเลขของยอดเก่า — ลูกค้าโอนตรงยอดที่ถูกต้องแล้ว รอแอดมินแก้ยอดให้ตรงก่อน`, verify.detail ?? "");
     else if (verify.status === "fail")
       updated = withLog(updated, "SlipOK", `${rc}สลิป${phase === "balance" ? "ยอดคงเหลือ" : phase === "extra" ? "ใบเพิ่ม" : ""}ตรวจไม่ผ่าน — รอแอดมินตรวจเอง`, verify.detail ?? "");
     else if (phase !== "first") updated = withLog(updated, by, `แนบสลิป${phase === "balance" ? "ยอดคงเหลือ" : "เพิ่ม"} — รอแอดมินตรวจ`, verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
