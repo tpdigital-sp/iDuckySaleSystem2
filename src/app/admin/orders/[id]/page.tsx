@@ -1796,6 +1796,47 @@ export default function AdminOrderDetailPage() {
   }
 
   /**
+   * 🗑 ลบบิลบริษัทออกทั้งชุด — ลูกค้าเปลี่ยนใจไม่เอาใบกำกับภาษีแล้ว (OD-260915-6489 · 16 ก.ย. 69)
+   * ถอด: เอกสาร FlowAccount ที่ผูก · ข้อมูลผู้ซื้อในใบกำกับ · VAT/หัก ณ ที่จ่าย · ธงใส่ใบกำกับลงกล่อง
+   * รายการสินค้า/ค่าส่ง/ส่วนลดคงเดิม (ราคาต่อชิ้นตามใบเป็นราคาก่อน VAT อยู่แล้ว = ราคาที่ลูกค้าจ่ายเมื่อไม่มีบิล)
+   * ยอดรวมเล็กลง → ผ่านเซิร์ฟเวอร์ (คิดยอดค้าง/แจ้งยอดใหม่ให้เอง) · ใบมัดจำ FlowAccount ยอดมัดจำไม่แตะ แอดมินตรวจเอง
+   */
+  async function removeCompanyBill() {
+    if (!order || (!order.flowAccount && !order.taxInvoice)) return;
+    const after: Order = { ...order, flowAccount: undefined, taxInvoice: undefined, vat: undefined, wht: undefined, taxInvoiceDelivery: undefined, taxInvoicePacked: undefined };
+    const totalBefore = orderTotal(order);
+    const totalAfter = orderTotal(after);
+    const paid = paidSoFar(order);
+    const docLabel = order.flowAccount ? `${order.flowAccount.docTypeLabel} ${order.flowAccount.docNo}` : "";
+    const who = order.taxInvoice?.company ?? order.customer;
+    const ok = await askConfirm({
+      icon: "🗑",
+      title: "ลบบิลบริษัทออกจากออเดอร์นี้?",
+      detail: [
+        `${docLabel ? `${docLabel} · ` : ""}${who} จะไม่มีใบกำกับภาษีอีก — ลบเอกสาร FlowAccount ที่ผูก ข้อมูลผู้ซื้อ VAT และหัก ณ ที่จ่ายออกทั้งหมด`,
+        totalBefore !== totalAfter ? `ยอดรวม ${formatPrice(totalBefore)} → ${formatPrice(totalAfter)}` : "",
+        paid > 0 ? `⚠️ มีเงินเข้าแล้ว ${formatPrice(paid)} — ถ้าลูกค้าโอนรวม VAT มาแล้วจะกลายเป็นโอนเกิน` : "",
+        order.deposit ? "⚠️ ใบนี้เป็นใบมัดจำ ยอดมัดจำไม่เปลี่ยนตาม ตรวจอีกครั้ง" : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      confirmLabel: "ลบบิลบริษัท",
+      danger: true,
+    });
+    if (!ok) return;
+    await applyOrderFromServer(
+      withLog(
+        after,
+        actor,
+        "ลบบิลบริษัท (ลูกค้าไม่เอาใบกำกับแล้ว)",
+        `${docLabel ? `${docLabel} · ` : ""}${who}${order.vat ? ` · VAT ${formatPrice(orderVatAmount(order))}` : ""}${
+          order.wht ? ` · หัก ณ ที่จ่าย ${formatPrice(orderWhtAmount(order))}` : ""
+        } → ยอดรวม ${formatPrice(totalBefore)} → ${formatPrice(totalAfter)}`
+      )
+    );
+  }
+
+  /**
    * 🧾 เปิด VAT 7% ทีหลัง — ลูกค้าจ่ายราคาหน้าร้านไปแล้ว มาขอใบกำกับภาษี → คิด VAT จากยอดบิลปัจจุบันบวกเข้าไป
    * เซิร์ฟเวอร์ (PATCH) ตั้ง paidTotal ให้ถ้ายังไม่มี · เด้งกลับ "รอชำระเงิน" ถ้ายังไม่เข้าไลน์ผลิต · แจ้งไลน์ยอดที่ต้องโอนเพิ่ม + ลิงก์เดิม
    */
@@ -4229,6 +4270,18 @@ export default function AdminOrderDetailPage() {
                         </button>
                       )}
                     </p>
+                  )}
+                  {/* 🗑 ลูกค้าเปลี่ยนใจไม่เอาบิลบริษัท — ถอดใบกำกับ/FlowAccount/VAT ออกทั้งชุด (OD-260915-6489 · 16 ก.ย. 69) */}
+                  {mayEdit && order.status !== "ยกเลิก" && !taxForm && (
+                    <div className="mt-1.5 flex justify-end border-t border-sky-200/70 pt-1.5">
+                      <button
+                        type="button"
+                        onClick={removeCompanyBill}
+                        className="rounded-md px-2.5 py-1 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                      >
+                        🗑 ลบบิลบริษัท — ลูกค้าไม่เอาใบกำกับแล้ว
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
