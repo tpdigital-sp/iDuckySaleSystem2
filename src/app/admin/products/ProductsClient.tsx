@@ -15,7 +15,7 @@ import {
   type Product,
 } from "@/lib/products";
 import { loadOverrides, resetAll } from "@/lib/product-store";
-import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductsAdminRows, fetchProductSort, persistProduct, persistProductSorts } from "@/lib/product-repo";
+import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductsAdminRows, fetchProductSort, persistProduct, persistProductReviewed, persistProductSorts } from "@/lib/product-repo";
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, card, faint, muted } from "@/lib/admin-ui";
@@ -187,14 +187,25 @@ export default function AdminProductsPage({ initial = [] }: { initial?: Product[
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** สลับสถานะ "ตรวจแล้ว" ของสินค้า — บันทึกทันที (ไม่ต้องเปิดหน้าแก้ไข) */
+  /**
+   * สลับสถานะ "ตรวจแล้ว" ของสินค้า — บันทึกทันที (ไม่ต้องเปิดหน้าแก้ไข)
+   * ผ่าน API เฉพาะทาง (แตะแค่ data.reviewed) — สิทธิ์ดูสินค้าก็ติ๊กได้ ไม่ต้องมี products.manage
+   * เดิมส่งสินค้าทั้งก้อนไป POST /api/admin/products → ทีมงานที่ไม่มีสิทธิ์แก้สินค้าโดน 403
+   * แล้วปุ่มเด้งกลับเงียบ ๆ เหมือนกดไม่ติด (16 ก.ย. 69) — ตอนนี้ล้มเหลวต้องบอกเหตุผลเสมอ
+   */
   async function toggleReview(p: Product) {
-    const reviewed = p.reviewed ? undefined : { by: reviewer, at: new Date().toISOString() };
-    // อัปเดตหน้าจอทันที (optimistic) แล้วเขียนลงฐานข้อมูลด้วยข้อมูลดิบ (กันทับตัวเลือกที่ลิงก์คลัง)
-    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, reviewed } : x)));
-    const raw = (await fetchProductRaw(p.id)) ?? p;
-    const res = await persistProduct({ ...raw, reviewed });
-    if (!res.ok) refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
+    const want = !p.reviewed;
+    // อัปเดตหน้าจอทันที (optimistic) — ชื่อผู้ตรวจจริงเซิร์ฟเวอร์ใส่จาก session แล้วส่งกลับมา
+    const guess = want ? { by: reviewer, at: new Date().toISOString() } : undefined;
+    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, reviewed: guess } : x)));
+    const res = await persistProductReviewed(p.id, want);
+    if (!res.ok) {
+      refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
+      alert(`ติ๊ก "ตรวจแล้ว" ไม่สำเร็จ: ${res.error ?? "เกิดข้อผิดพลาด"}`);
+      return;
+    }
+    const real = res.reviewed ?? undefined;
+    setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, reviewed: real } : x)));
   }
 
   /**

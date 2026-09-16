@@ -5,7 +5,7 @@
  * กับโหมดเดโม (localStorage) ให้คอมโพเนนต์เรียกใช้ผ่านนี้ที่เดียว
  */
 import { getSupabase } from "./supabase";
-import { type Product } from "./products";
+import { type Product, type ProductReview } from "./products";
 import { resolveOptions, type OptionPreset } from "./option-presets";
 import { fetchPresets } from "./preset-repo";
 import { withImageVersion } from "./img";
@@ -439,6 +439,28 @@ export async function persistProduct(
     }
     const data = (await res.json().catch(() => ({}))) as { error?: string; savedAt?: string };
     return res.ok ? { ok: true, savedAt: data.savedAt } : { ok: false, error: data.error ?? "บันทึกไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
+/**
+ * ติ๊ก/ยกเลิก "ตรวจแล้ว" 1 ตัว — API เฉพาะทาง แตะแค่ data.reviewed (สิทธิ์ดูสินค้าก็ติ๊กได้)
+ * ไม่ส่งสินค้าทั้งก้อนเหมือน persistProduct → ไม่เสี่ยงทับตัวเลือก/ราคา และไม่ต้องมีสิทธิ์แก้สินค้า
+ */
+export async function persistProductReviewed(
+  id: string,
+  reviewed: boolean
+): Promise<{ ok: boolean; error?: string; reviewed?: ProductReview | null }> {
+  try {
+    const res = await fetch("/api/admin/products/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, reviewed }),
+    });
+    if (res.status === 503) return { ok: false, error: "โหมดเดโมยังติ๊กตรวจแล้วไม่ได้ (ยังไม่ตั้งค่า Supabase)" };
+    const data = (await res.json().catch(() => ({}))) as { error?: string; reviewed?: ProductReview | null };
+    return res.ok ? { ok: true, reviewed: data.reviewed ?? null } : { ok: false, error: data.error ?? "บันทึกไม่สำเร็จ" };
   } catch {
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }
