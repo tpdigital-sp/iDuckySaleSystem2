@@ -1272,7 +1272,7 @@ function ShipTierBox({
             <select
               value={value.mode}
               onChange={(e) => set({ mode: e.target.value as DraftShipTiers["mode"] })}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+              className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
             >
               <option value="last">ใช้ราคาขั้นสุดท้ายไปเรื่อย ๆ</option>
               <option value="extra">คิดเพิ่มต่อชิ้น (ระบุราคา)</option>
@@ -1298,7 +1298,7 @@ function ShipTierBox({
                 <select
                   value={value.methodId}
                   onChange={(e) => set({ methodId: e.target.value })}
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
+                  className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
                 >
                   <option value="">— เลือกวิธีส่ง —</option>
                   {/* วิธีที่ราคา 0 (มารับเอง/ส่งฟรี) เลือกไม่ได้ — ตั้งแล้วสั่งเยอะจะกลายเป็นส่งฟรี */}
@@ -7421,7 +7421,7 @@ export default function ProductEditor({ product }: { product: Product }) {
         </div>
 
         {/* ③ ค่าจัดส่งเฉพาะสินค้านี้ — 2 ช่องที่เกี่ยวกัน อยู่กล่องเดียวกัน */}
-        <div className="mt-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+        <div className="mt-3 min-w-0 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
           <p className="text-xs font-bold text-slate-700">🚚 ค่าจัดส่งเฉพาะสินค้านี้</p>
 
         {/* 🚚 ของชิ้นใหญ่ที่ยังไงก็ต้องกล่องใหญ่ — มีในตะกร้าเมื่อไหร่ ระบบยกระดับค่าส่งให้เอง */}
@@ -7430,7 +7430,7 @@ export default function ProductEditor({ product }: { product: Product }) {
           <select
             value={draft.shippingId}
             onChange={(e) => patch({ shippingId: e.target.value })}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            className="min-w-0 max-w-full flex-1 basis-60 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
           >
             <option value="">— ไม่บังคับ (คิดตามจำนวน/ยอดตามปกติ) —</option>
             {shipMethods.map((m) => (
