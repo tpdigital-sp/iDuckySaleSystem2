@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, nextPlannedRound, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, nextPlannedRound, pendingSampleRound, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -160,7 +160,7 @@ export default function PrintOrderPage() {
   const anyPaid = orders.some((o) => orderFullyPaid(o));
   const unpaidCount = orders.filter((o) => !orderFullyPaid(o)).length;
   // 🎁➗ ใบมัดจำรอบตัวอย่าง (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย) ใบปะหน้าออกได้แม้ยังไม่ครบ 100% — ป้ายหัวจอต้องพูดตรงกับใบที่พิมพ์ออกจริง
-  const labelOkOf = (o: Order) => orderFullyPaid(o) || depositSampleRun(o)?.ok === true;
+  const labelOkOf = (o: Order) => orderFullyPaid(o) || sampleLabelOk(o);
   const allLabels = orders.every(labelOkOf);
   const noLabelCount = orders.filter((o) => !labelOkOf(o)).length;
   // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
@@ -298,12 +298,15 @@ export default function PrintOrderPage() {
                     chosen.includes("work") &&
                     orderFullyPaid(o) &&
                     ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"].includes(o.status);
+                  // 🎁 ใบปะหน้ารอบตัวอย่าง (ยังไม่ครบ 100%) พิมพ์ได้ครั้งเดียว — ล็อกกลับบนจอทันที ตรงกับที่ printed route จดไว้
+                  const sp = chosen.includes("work") && !orderFullyPaid(o) && sampleLabelOk(o) ? pendingSampleRound(o) : null;
                   return {
                     ...o,
                     printedAt: o.printedAt ?? now,
                     printCount: (o.printCount ?? (o.printedAt ? 1 : 0)) + 1,
                     lastPrintedAt: now,
                     ...(toProduction ? { status: "กำลังผลิต" as const } : {}),
+                    ...(sp ? { shipPlan: (o.shipPlan ?? []).map((r, i) => (i === sp.index ? { ...r, samplePrintedAt: { by: "คุณ", at: now } } : r)) } : {}),
                   };
                 })
               );
@@ -556,7 +559,8 @@ function OrderDocs({
   const fullyPaid = orderFullyPaid(order);
   // 🎁➗ ใบมัดจำที่ส่งตัวอย่างก่อน (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย + ยังไม่ยิงรอบสุดท้าย) → ใบปะหน้ารอบตัวอย่างพิมพ์ได้ทั้งที่ยังไม่ครบ 100%
   const sampleRun = fullyPaid ? null : depositSampleRun(order);
-  const labelOk = fullyPaid || sampleRun?.ok === true;
+  // พิมพ์ได้ครั้งเดียว — พิมพ์แล้ว (samplePrintedAt) ล็อกกลับทันที จนกว่าเจ้าของร้านอนุญาตพิมพ์ซ้ำหรือยอดคงเหลือครบ
+  const labelOk = fullyPaid || sampleLabelOk(order);
   const balanceDue = Math.max(0, orderTotal(order) - (order.paidTotal ?? 0));
   // 📮 ผู้ส่งบนกล่อง — ใบฝากส่งของตัวแทนตั้งชื่อร้านตัวเองไว้ (order.sender) ที่เหลือใช้ข้อมูลร้าน
   const sender = senderOf(order, shop);
@@ -719,6 +723,12 @@ function OrderDocs({
                 {sampleRun && !sampleRun.ok && (
                   <p className="mt-1.5 text-xs font-semibold" style={{ color: "#7c3aed" }}>
                     🎁 ส่งตัวอย่างก่อนโดยยังไม่ครบ 100% ได้ ถ้า: {sampleRun.missing.join(" · ")}
+                  </p>
+                )}
+                {sampleRun?.ok && sampleRun.printed && (
+                  <p className="mt-1.5 text-xs font-semibold" style={{ color: "#7c3aed" }}>
+                    🖨 ใบปะหน้ารอบตัวอย่างพิมพ์ไปแล้ว โดย {sampleRun.printed.by} ·{" "}
+                    {new Date(sampleRun.printed.at).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })} — พิมพ์ได้ครั้งเดียว · ต้องการพิมพ์ซ้ำ ให้เจ้าของร้านกด “🔁 อนุญาตพิมพ์ซ้ำ” ในกล่อง 📋 แผนแบ่งส่ง หน้าออเดอร์
                   </p>
                 )}
               </div>

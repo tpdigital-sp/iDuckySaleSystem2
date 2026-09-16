@@ -141,6 +141,11 @@ export interface ShipPlanRound {
    * ไม่มี = ใบปะหน้าไม่พิมพ์ + ด่านแบ่งส่งยังล็อกมัดจำ · ด่านจริงอยู่ที่ PATCH /api/admin/orders (คนอื่นตั้งค่านี้ = 403)
    */
   sampleApproved?: { by: string; at: string };
+  /**
+   * 🖨 ใบปะหน้ารอบตัวอย่างพิมพ์ไปแล้ว (printed route ตั้งให้) → ใบปะหน้าล็อกกลับทันที พิมพ์ได้ครั้งเดียว
+   * (เจ้าของร้านทัก 16 ก.ย. 69 "ปริ้นไปแล้ว ทำไมที่อยู่ยังแสดง") · พิมพ์ซ้ำต้องให้เจ้าของร้านกด 🔁 อนุญาต (ล้างค่านี้ · คนอื่นล้าง = 403)
+   */
+  samplePrintedAt?: { by: string; at: string };
   /** ส่งภายในวันไหน (YYYY-MM-DD) — ขึ้นบนใบงาน/โหมดแพ็ค */
   dueDate?: string;
   note?: string;
@@ -1911,7 +1916,7 @@ export const isSampleFolderName = (name: string) => SAMPLE_FOLDER_RE.test(String
  *   ให้พิมพ์ใบปะหน้า + ส่งบางส่วน "รอบที่ไม่ใช่รอบสุดท้าย" ได้ · รอบสุดท้าย/ช่องเลขพัสดุปกติยังล็อกครบ 100% เหมือนเดิม
  * คืน null = ไม่เข้าเกณฑ์ · missing = สัญญาณที่ยังขาด (ไว้บอกคนหน้างานว่าต้องติ๊ก/โยนอะไร)
  */
-export function depositSampleRun(order: Order): { ok: boolean; missing: string[] } | null {
+export function depositSampleRun(order: Order): { ok: boolean; missing: string[]; printed?: { by: string; at: string } } | null {
   const d = order.deposit;
   if (!d?.firstPaidAt || d.settledAt) return null;
   if ((order.tracking ?? "").trim()) return null;
@@ -1927,7 +1932,14 @@ export function depositSampleRun(order: Order): { ok: boolean; missing: string[]
   if (!pending && sent > 0) missing.push("ส่งรอบตัวอย่างไปแล้ว — ที่เหลือคือล็อตหลัก ต้องเก็บยอดคงเหลือครบก่อน");
   else if (!pending) missing.push("แอดมินยังไม่ระบุแผนแบ่งส่งรอบตัวอย่าง (📋 ระบุของที่ส่งก่อน)");
   else if (!pending.round.sampleApproved) missing.push("รอเจ้าของร้านกด ✅ อนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือ (ในกล่อง 📋 แผนแบ่งส่ง)");
-  return { ok: missing.length === 0, missing };
+  const printed = pending?.round.samplePrintedAt;
+  return { ok: missing.length === 0, missing, ...(printed ? { printed } : {}) };
+}
+
+/** ใบปะหน้ารอบตัวอย่างพิมพ์ได้ไหม — ครบเงื่อนไข (depositSampleRun) และยังไม่เคยพิมพ์ (พิมพ์ได้ครั้งเดียว ล็อกกลับทันที) */
+export function sampleLabelOk(order: Order): boolean {
+  const r = depositSampleRun(order);
+  return !!r && r.ok && !r.printed;
 }
 
 /** รอบแบ่งส่งรอบถัดไปที่ยังไม่ออก (รอบตัวอย่างของใบมัดจำ) — index ในแผน + ตัวรอบ · null = ไม่มีแผนค้าง */

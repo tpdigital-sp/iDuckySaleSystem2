@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderFullyPaid, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderFullyPaid, pendingSampleRound, sampleLabelOk, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
 
@@ -90,6 +90,24 @@ export async function POST(req: Request) {
       "เริ่มผลิตอัตโนมัติ — ปริ้นใบงาน/ใบปะหน้าแล้ว",
       `${order.status} → กำลังผลิต`
     );
+
+  /**
+   * 🎁➗ ใบมัดจำที่พิมพ์ใบปะหน้ารอบตัวอย่าง (เก็บเงินยังไม่ครบ) = พิมพ์ได้ครั้งเดียว → จดไว้ที่รอบนั้น ใบปะหน้าล็อกกลับทันที
+   * พิมพ์ซ้ำต้องให้เจ้าของร้านกด 🔁 อนุญาตในหน้าออเดอร์ (เจ้าของร้านทัก 16 ก.ย. 69)
+   */
+  const samplePending = pendingSampleRound(order);
+  if ((body.docs ?? []).includes("work") && !orderFullyPaid(order) && sampleLabelOk(order) && samplePending) {
+    const by = gate.actor.name || gate.actor.username;
+    updated = withLog(
+      {
+        ...updated,
+        shipPlan: (updated.shipPlan ?? []).map((r, i) => (i === samplePending.index ? { ...r, samplePrintedAt: { by, at: now } } : r)),
+      },
+      by,
+      "🖨 พิมพ์ใบปะหน้ารอบตัวอย่างแล้ว — ใบปะหน้าล็อกกลับ",
+      `รอบที่ ${samplePending.index + 1} · พิมพ์ซ้ำต้องให้เจ้าของร้านกด 🔁 อนุญาตพิมพ์ซ้ำ`
+    );
+  }
 
   const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

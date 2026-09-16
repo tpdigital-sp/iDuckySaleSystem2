@@ -708,6 +708,9 @@ export async function PATCH(req: Request) {
     const newlyApproved = (toSave.shipPlan ?? []).some((r, n) => !!r.sampleApproved && r.sampleApproved.at !== (was[n] ?? ""));
     if (newlyApproved)
       return NextResponse.json({ error: "อนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือได้เฉพาะเจ้าของร้านเท่านั้น" }, { status: 403 });
+    // 🔁 ล้างธง "พิมพ์ใบปะหน้ารอบตัวอย่างแล้ว" (= อนุญาตพิมพ์ซ้ำ) ก็เจ้าของร้านเท่านั้น
+    const reprint = (existing.shipPlan ?? []).some((r, n) => !!r.samplePrintedAt && !toSave.shipPlan?.[n]?.samplePrintedAt && !!toSave.shipPlan?.[n]);
+    if (reprint) return NextResponse.json({ error: "อนุญาตพิมพ์ใบปะหน้ารอบตัวอย่างซ้ำได้เฉพาะเจ้าของร้านเท่านั้น" }, { status: 403 });
   }
 
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปทุกใบ (ช่องหลัก/ใบเพิ่ม) ต้องเซ็นใหม่ทุกครั้งที่ดึง

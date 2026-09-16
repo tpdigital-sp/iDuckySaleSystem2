@@ -7783,6 +7783,23 @@ export default function AdminOrderDetailPage() {
                           r.sampleApproved ? (
                             <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-green-700">
                               ✅ เจ้าของร้านอนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือ · {r.sampleApproved.by} · {shortTime(r.sampleApproved.at)}
+                              {r.samplePrintedAt && (
+                                <span className="text-slate-600">
+                                  · 🖨 พิมพ์ใบปะหน้าแล้ว {r.samplePrintedAt.by} {shortTime(r.samplePrintedAt.at)} — ล็อกกลับแล้ว
+                                  {isOwner && (
+                                    <button
+                                      type="button"
+                                      className="ml-2 rounded-lg bg-violet-100 px-2 py-0.5 font-extrabold text-violet-800 hover:bg-violet-200"
+                                      onClick={() => {
+                                        const shipPlan = order.shipPlan!.map((x, i) => (i === n ? { ...x, samplePrintedAt: undefined } : x));
+                                        applyOrder(withLog({ ...order, shipPlan }, actor, "🔁 อนุญาตพิมพ์ใบปะหน้ารอบตัวอย่างซ้ำ", `รอบที่ ${n + 1} — พิมพ์ได้อีก 1 ครั้ง`));
+                                      }}
+                                    >
+                                      🔁 อนุญาตพิมพ์ซ้ำ
+                                    </button>
+                                  )}
+                                </span>
+                              )}
                               {isOwner && (
                                 <button
                                   type="button"
