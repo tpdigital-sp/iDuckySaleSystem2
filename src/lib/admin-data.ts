@@ -1923,7 +1923,9 @@ export function depositSampleRun(order: Order): { ok: boolean; missing: string[]
   if (!isSampleFolderName(order.productionSent?.folder ?? "") && !planFromSample) missing.push('ยังไม่โยนโฟลเดอร์ผลิตที่ชื่อมี "(…ตย)" เช่น (เร่งขึ้นตย)');
   // ✅ รอบตัวอย่างที่จะออก (รอบถัดไปของแผน) ต้องมีเจ้าของร้านอนุมัติ — แอดมิน/กราฟฟิก/แพ็คตั้งเองไม่ได้
   const pending = pendingSampleRound(order);
-  if (!pending) missing.push("แอดมินยังไม่ระบุแผนแบ่งส่งรอบตัวอย่าง (📋 ระบุของที่ส่งก่อน)");
+  // รอบตัวอย่างออกไปแล้วและไม่มีรอบตัวอย่างต่อ = ที่เหลือคือล็อตหลัก → ล็อกกลับจนกว่ายอดคงเหลือครบ (เจ้าของร้านถาม 16 ก.ย. 69)
+  if (!pending && sent > 0) missing.push("ส่งรอบตัวอย่างไปแล้ว — ที่เหลือคือล็อตหลัก ต้องเก็บยอดคงเหลือครบก่อน");
+  else if (!pending) missing.push("แอดมินยังไม่ระบุแผนแบ่งส่งรอบตัวอย่าง (📋 ระบุของที่ส่งก่อน)");
   else if (!pending.round.sampleApproved) missing.push("รอเจ้าของร้านกด ✅ อนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือ (ในกล่อง 📋 แผนแบ่งส่ง)");
   return { ok: missing.length === 0, missing };
 }

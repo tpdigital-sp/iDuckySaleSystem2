@@ -1224,6 +1224,10 @@ export default function AdminOrderDetailPage() {
   const [partialOpen, setPartialOpen] = useState(false);
   // 📋 โมดัลแอดมินระบุแผนแบ่งส่ง (รูปไหนส่งก่อน)
   const [planOpen, setPlanOpen] = useState(false);
+  /** ✏️ รอบในแผนแบ่งส่งที่กำลังแก้ (null = เพิ่มรอบใหม่) — แก้ได้เฉพาะรอบที่ยังไม่ส่ง */
+  const [planEditIdx, setPlanEditIdx] = useState<number | null>(null);
+  /** 🔍 รอบในแผนที่กางรายละเอียด (รูป + จำนวน) อยู่ */
+  const [planDetail, setPlanDetail] = useState<number | null>(null);
   const [os, setOs] = useState<"mac" | "win" | "">(""); // เครื่องที่เปิดหน้านี้ (รู้หลัง mount) — ใช้เรียงตัวเลือกทางลัดแบบเนทีฟ
   useEffect(() => setOs(shortcutOs()), []);
   const trackingRef = useRef<string>(""); // เลขพัสดุที่บันทึกไปแล้ว กันบันทึกซ้ำตอน blur
@@ -2405,9 +2409,13 @@ export default function AdminOrderDetailPage() {
   const adHocSplit = !!order && mayEdit && !(order.shipPlan?.length ?? 0);
   const activeShipSel: Map<string, number> = planNext ? planNext.qty : adHocSplit ? shipSel : new Map();
 
-  /** 📋 แอดมินเพิ่มรอบในแผนแบ่งส่ง (จากโมดัลเลือกรูป) + log · ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" ทันที */
-  function addPlanRound(sel: Map<string, number>, note: string, dueDate: string) {
+  /**
+   * 📋 แอดมินเพิ่ม/แก้รอบในแผนแบ่งส่ง (จากโมดัลเลือกรูป) + log · ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" ทันที
+   * editIndex = แก้รอบเดิม (เฉพาะรอบที่ยังไม่ส่ง — ส่งแล้วแก้ไม่ได้ · เจ้าของร้านสั่ง 16 ก.ย. 69) · แก้แล้วคำอนุมัติส่งตัวอย่างหลุด ต้องอนุมัติใหม่
+   */
+  function savePlanRound(sel: Map<string, number>, note: string, dueDate: string, editIndex: number | null = null) {
     if (!order || !mayEdit || !sel.size) return;
+    if (editIndex !== null && (!order.shipPlan?.[editIndex] || order.shipments?.[editIndex])) return;
     const states = proofShipStates(order);
     const proofs: ShipPlanRound["proofs"] = [];
     sel.forEach((qty, k) => {
@@ -2427,16 +2435,27 @@ export default function AdminOrderDetailPage() {
       });
     });
     if (!proofs.length) return;
-    const round: ShipPlanRound = { proofs, by: actor, at: new Date().toISOString(), ...(note.trim() ? { note: note.trim() } : {}), ...(dueDate ? { dueDate } : {}) };
-    const n = (order.shipPlan?.length ?? 0) + 1;
+    const prev = editIndex !== null ? order.shipPlan![editIndex] : undefined;
+    const round: ShipPlanRound = {
+      proofs,
+      by: actor,
+      at: new Date().toISOString(),
+      ...(note.trim() ? { note: note.trim() } : {}),
+      ...(dueDate ? { dueDate } : {}),
+      // โฟลเดอร์ต้นทางของรอบตัวอย่างคงไว้ (หลักฐานว่ามาจากโฟลเดอร์ (…ตย)) · คำอนุมัติของเจ้าของร้านไม่ติดมา — ของเปลี่ยนต้องอนุมัติใหม่
+      ...(prev?.sampleFolder ? { sampleFolder: prev.sampleFolder } : {}),
+    };
+    const n = (editIndex ?? order.shipPlan?.length ?? 0) + 1;
     const qty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+    const shipPlan = editIndex !== null ? order.shipPlan!.map((x, i) => (i === editIndex ? round : x)) : [...(order.shipPlan ?? []), round];
     setPlanOpen(false);
+    setPlanEditIdx(null);
     applyOrder(
       withLog(
-        { ...order, shipPlan: [...(order.shipPlan ?? []), round] },
+        { ...order, shipPlan },
         actor,
-        "📋 ระบุแผนแบ่งส่ง",
-        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.note ? ` · ${round.note}` : ""}`
+        editIndex !== null ? "✏️ แก้ไขแผนแบ่งส่ง" : "📋 ระบุแผนแบ่งส่ง",
+        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.note ? ` · ${round.note}` : ""}${prev?.sampleApproved ? " · ⚠️ คำอนุมัติส่งตัวอย่างเดิมหลุด ต้องให้เจ้าของร้านอนุมัติใหม่" : ""}`
       )
     );
   }
@@ -7685,23 +7704,75 @@ export default function AdminOrderDetailPage() {
                   {(order.shipPlan ?? []).map((r, n) => {
                     const done = order.shipments?.[n];
                     const qty = r.proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+                    const open = planDetail === n;
                     return (
                       <div key={`plan-${n}`} className="mt-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] ring-1 ring-amber-100">
-                        <div className="flex items-center justify-between gap-2">
+                        {/* สรุปสั้น — รายละเอียดรายรูปกดกางดู (เดิมพ่นชื่อทุกรูปยาวเป็นหน้า อ่านไม่ออก · เจ้าของร้านทัก 16 ก.ย. 69) */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-bold text-slate-800">
-                            รอบที่ {n + 1}: {roundProofsText(order, r.proofs)}
-                            {r.proofs.length > 1 && qty ? ` · รวม ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                            รอบที่ {n + 1}: {r.proofs.length} รูป{qty ? ` · รวม ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                            {r.sampleFolder ? " · 🎁 จากโฟลเดอร์ตัวอย่าง" : ""}
                           </span>
                           {done ? (
-                            <span className="shrink-0 font-bold text-green-700">✅ ส่งแล้ว {done.tracking}</span>
-                          ) : mayEdit ? (
-                            <button type="button" onClick={() => removePlanRound(n)} className="shrink-0 font-bold text-rose-500 hover:underline">
-                              ลบ
-                            </button>
+                            <span className="font-bold text-green-700">✅ ส่งแล้ว {done.tracking}</span>
                           ) : (
-                            <span className="shrink-0 font-bold text-amber-700">รอแพ็ค</span>
+                            <span className="font-bold text-amber-700">รอแพ็ค</span>
                           )}
+                          <span className="ml-auto flex items-center gap-2">
+                            <button type="button" onClick={() => setPlanDetail(open ? null : n)} className="font-bold text-sky-700 hover:underline">
+                              {open ? "▲ ซ่อน" : "🔍 รายละเอียด"}
+                            </button>
+                            {done ? (
+                              <span className="font-bold text-slate-400" title="รอบนี้ยิงเลขพัสดุไปแล้ว แก้ไขไม่ได้">
+                                🔒 ส่งแล้ว
+                              </span>
+                            ) : mayEdit ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPlanEditIdx(n);
+                                    setPlanOpen(true);
+                                  }}
+                                  className="font-bold text-amber-700 hover:underline"
+                                >
+                                  ✏️ แก้ไข
+                                </button>
+                                <button type="button" onClick={() => removePlanRound(n)} className="font-bold text-rose-500 hover:underline">
+                                  ลบ
+                                </button>
+                              </>
+                            ) : null}
+                          </span>
                         </div>
+                        {open && (
+                          <ul className="mt-1.5 grid grid-cols-1 gap-1 sm:grid-cols-2">
+                            {r.proofs.map((p, pi) => {
+                              const it = order.items[p.item];
+                              const pr = it ? proofsOf(it)[p.proof] : undefined;
+                              const url = p.url ?? pr?.url;
+                              return (
+                                <li key={`${n}-${pi}`} className="flex items-center gap-2 rounded-lg bg-slate-50 px-1.5 py-1 ring-1 ring-slate-200">
+                                  {url ? (
+                                    <button type="button" onClick={() => showProof(p.item, p.proof)} className="h-10 w-10 shrink-0 overflow-hidden rounded bg-white ring-1 ring-slate-200" aria-label="ขยายดูรูป">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={url} alt="" className="h-full w-full object-contain" />
+                                    </button>
+                                  ) : (
+                                    <span className="h-10 w-10 shrink-0 rounded bg-slate-200" />
+                                  )}
+                                  <span className="min-w-0 leading-tight">
+                                    <span className="block truncate font-bold text-slate-700">{p.itemName ?? it?.name ?? ""}</span>
+                                    <span className="text-slate-500">
+                                      รูปที่ {p.proof + 1}
+                                      {p.qty ? ` · ${p.qty.toLocaleString("th-TH")}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty.toLocaleString("th-TH")}` : ""} ${p.unit || "ชิ้น"}` : " · ทั้งรูป"}
+                                    </span>
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
                         <p className={faint}>
                           {r.dueDate ? `ส่งภายใน ${r.dueDate} · ` : ""}
                           {r.note ? `📝 ${r.note} · ` : ""}
@@ -7885,7 +7956,17 @@ export default function AdminOrderDetailPage() {
           onConfirm={(t, note, sel) => commitPartialShipment(t, note, sel)}
         />
       )}
-      {planOpen && <ShipPlanModal order={order} onCancel={() => setPlanOpen(false)} onSave={addPlanRound} />}
+      {planOpen && (
+        <ShipPlanModal
+          order={order}
+          editIndex={planEditIdx}
+          onCancel={() => {
+            setPlanOpen(false);
+            setPlanEditIdx(null);
+          }}
+          onSave={(sel, note, due) => savePlanRound(sel, note, due, planEditIdx)}
+        />
+      )}
 
       {/* 💰 รับยอดสลิปใบเพิ่มเอง — แทน prompt() ของเบราว์เซอร์ */}
       {acceptForm && (
@@ -9070,19 +9151,34 @@ function roundProofsText(order: Order, proofs: Shipment["proofs"]): string {
     .join(", ");
 }
 
-function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: () => void; onSave: (sel: Map<string, number>, note: string, dueDate: string) => void }) {
+function ShipPlanModal({
+  order,
+  editIndex = null,
+  onCancel,
+  onSave,
+}: {
+  order: Order;
+  /** ✏️ แก้รอบเดิมในแผน (index) — null = เพิ่มรอบใหม่ · รอบที่แก้ไม่ถูกนับว่า "จองไว้แล้ว" และค่าเดิมถูกเติมให้ */
+  editIndex?: number | null;
+  onCancel: () => void;
+  onSave: (sel: Map<string, number>, note: string, dueDate: string) => void;
+}) {
+  const editing = editIndex !== null ? order.shipPlan?.[editIndex] : undefined;
   // คีย์รูป → จำนวนชิ้นที่จะส่งรอบนี้ (ติ๊กครั้งแรก = ที่เหลือทั้งหมด แล้วลดจำนวนได้ เช่น "ลายนี้ส่งก่อน 1 ชิ้น")
-  const [sel, setSel] = useState<Map<string, number>>(() => new Map());
-  const [note, setNote] = useState("");
-  const [due, setDue] = useState("");
+  const [sel, setSel] = useState<Map<string, number>>(() => (editing ? roundSel(order, editing.proofs) : new Map()));
+  const [note, setNote] = useState(editing?.note ?? "");
+  const [due, setDue] = useState(editing?.dueDate ?? "");
   /** รูปที่กำลังขยายดู (ตำแหน่งใน rows) — แอดมินต้องเห็นลายชัด ๆ ก่อนตัดสินใจว่ารูปไหนส่งก่อน */
   const [zoom, setZoom] = useState<number | null>(null);
   const states = proofShipStates(order);
   const planned = plannedProofRounds(order);
-  const n = (order.shipPlan?.length ?? 0) + 1;
-  // จำนวนที่รอบก่อน ๆ ในแผน (ที่ยังไม่ได้ส่ง) จองไว้แล้ว — รอบนี้เลือกได้แค่ส่วนที่เหลือจริง
+  const n = (editIndex ?? order.shipPlan?.length ?? 0) + 1;
+  // จำนวนที่รอบอื่นในแผน (ที่ยังไม่ได้ส่ง) จองไว้แล้ว — รอบนี้เลือกได้แค่ส่วนที่เหลือจริง · รอบที่กำลังแก้ไม่นับ (ของมันเองเลือกใหม่ได้)
   const booked = new Map<string, number>();
-  (order.shipPlan ?? []).forEach((r) => roundSel(order, r.proofs).forEach((q, k) => booked.set(k, (booked.get(k) ?? 0) + q)));
+  (order.shipPlan ?? []).forEach((r, ri) => {
+    if (ri === editIndex) return;
+    roundSel(order, r.proofs).forEach((q, k) => booked.set(k, (booked.get(k) ?? 0) + q));
+  });
   const rows: { key: string; item: string; index: number; qty?: number; unit: string; url: string; left: number; labeled: boolean; taken?: string }[] = [];
   order.items.forEach((it, i) =>
     proofsOf(it).forEach((p, j) => {
@@ -9100,7 +9196,7 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
         url: p.url,
         left,
         labeled: !!st?.labeled,
-        taken: left > 0 ? undefined : shipped >= total ? `ส่งแล้ว รอบ ${st?.rounds.at(-1)}` : planned.has(k) ? `ในแผน รอบ ${planned.get(k)}` : undefined,
+        taken: left > 0 ? undefined : shipped >= total ? `ส่งแล้ว รอบ ${st?.rounds.at(-1)}` : planned.has(k) && planned.get(k) !== n ? `ในแผน รอบ ${planned.get(k)}` : undefined,
       });
     })
   );
@@ -9147,7 +9243,10 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
         aria-modal="true"
       >
         <div className="bg-amber-50 px-5 pb-3 pt-4 ring-1 ring-inset ring-amber-100">
-          <p className="text-lg font-extrabold text-slate-900">📋 ระบุของที่ต้องส่งก่อน — รอบที่ {n}</p>
+          <p className="text-lg font-extrabold text-slate-900">{editing ? "✏️ แก้ไขของที่ส่งก่อน" : "📋 ระบุของที่ต้องส่งก่อน"} — รอบที่ {n}</p>
+          {editing?.sampleApproved && (
+            <p className="mt-1 text-xs font-bold text-rose-600">⚠️ รอบนี้เจ้าของร้านอนุมัติส่งตัวอย่างไว้แล้ว — บันทึกการแก้ไข = คำอนุมัติหลุด ต้องอนุมัติใหม่</p>
+          )}
           <p className="mt-0.5 text-xs text-slate-500">
             ติ๊กรูปแล้วใส่จำนวนที่จะส่งก่อนได้ (เช่น ลายนี้ส่งก่อน 1 ชิ้น ที่เหลือไปรอบหน้า) · ฝ่ายแพ็คจะเห็นป้าย “แอดมินสั่งส่งก่อน” พร้อมจำนวน และยิงเลขพัสดุรอบนี้ได้โดยไม่ต้องรอทั้งใบ
           </p>
@@ -9229,7 +9328,7 @@ function ShipPlanModal({ order, onCancel, onSave }: { order: Order; onCancel: ()
             onClick={() => onSave(sel, note, due)}
             className="w-full rounded-xl bg-amber-400 py-3 text-sm font-extrabold text-amber-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            บันทึกแผน รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+            {editing ? "บันทึกการแก้ไข" : "บันทึกแผน"} รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
           </button>
           <button type="button" onClick={onCancel} className="w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
             ยกเลิก
