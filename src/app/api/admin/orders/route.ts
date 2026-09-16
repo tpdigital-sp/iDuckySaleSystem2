@@ -9,7 +9,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { keepServerMoney } from "@/lib/server/order-money-guard";
-import { applyChangedKeys, CHANGED_KEYS_HEADER, parseChangedKeys } from "@/lib/server/order-merge";
+import { applyChangedKeys, CHANGED_KEYS_HEADER, keepCustomerVerdict, parseChangedKeys } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
@@ -130,7 +130,8 @@ function reconcileItem(cur: OrderItem | undefined, inc: OrderItem, clientSavedAt
   for (const k of STAMPED) o[k] = pickStamp(c[k], i[k], clientSavedAt, now);
   const proofs = reconcileProofs(proofsOf(cur), inc.proofs, clientSavedAt, now);
   if (proofs) out.proofs = proofs;
-  return out;
+  // 🧑‍⚖️ ผลตรวจของลูกค้า (review ต่อรูป · proofStatus ทั้งรายการ) ที่หน้าจอนี้ยังไม่เคยเห็น → คงของฐาน (OD-260915-5892)
+  return keepCustomerVerdict(cur, out, clientSavedAt);
 }
 
 /**
@@ -158,8 +159,12 @@ function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: stri
         delete clean.nameWas; // ชื่อเดิมใช้จับคู่ในคำขอนี้เท่านั้น — ไม่เก็บลงฐาน
         return sameLine(cur, inc) ? reconcileItem(cur, clean, clientSavedAt, now) : clean;
       });
+  // ของแถม: ผลตรวจแบบของลูกค้าบนของแถมก็ทับไม่ได้เช่นกัน (จับคู่ตาม promoId) — ช่องอื่นของของแถมยังเป็นของหน้าจอ
+  const gifts = Array.isArray(incoming.gifts)
+    ? incoming.gifts.map((g) => keepCustomerVerdict(existing.gifts?.find((x) => x.promoId === g.promoId), g, clientSavedAt))
+    : incoming.gifts;
   // ฟิลด์ที่เซิร์ฟเวอร์เป็นเจ้าของ — หน้าจอแอดมินไม่รู้จัก ส่งก้อนกลับมาโดยไม่มี = ห้ามหาย
-  const withItems: Order = { ...incoming, items, balanceNotified: existing.balanceNotified };
+  const withItems: Order = { ...incoming, items, ...(gifts ? { gifts } : {}), balanceNotified: existing.balanceNotified };
   // 🧭 ช่องอื่นที่ไม่ได้แก้ → ของฐาน (items จัดการไปแล้วด้านบน จึงบอกว่า "แก้" เพื่อไม่ให้ทับซ้ำ)
   const { order: merged, restored } = applyChangedKeys(existing, withItems, changed ? new Set([...changed, "items"]) : null);
   // 💰 เงินเข้า/สลิปที่เกิดหลังจากหน้าจอนี้เห็นล่าสุด = หน้าจอยังไม่รู้ → คงของในฐาน (ดู keepServerMoney)
@@ -272,13 +277,17 @@ function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: strin
   const gifts = existing.gifts?.map((g) => {
     const inc = incoming.gifts?.find((x) => x.promoId === g.promoId);
     if (!inc) return g;
-    return {
-      ...g,
-      proofs: reconcileProofs(g.proofs ?? [], inc.proofs, clientSavedAt, now),
-      proofStatus: inc.proofStatus,
-      proofNote: inc.proofNote,
-      proofUpdatedAt: inc.proofUpdatedAt ?? g.proofUpdatedAt,
-    };
+    return keepCustomerVerdict(
+      g,
+      {
+        ...g,
+        proofs: reconcileProofs(g.proofs ?? [], inc.proofs, clientSavedAt, now),
+        proofStatus: inc.proofStatus,
+        proofNote: inc.proofNote,
+        proofUpdatedAt: inc.proofUpdatedAt ?? g.proofUpdatedAt,
+      },
+      clientSavedAt
+    );
   });
 
   return {

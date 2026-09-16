@@ -1,4 +1,4 @@
-import type { Order } from "@/lib/admin-data";
+import type { Order, Proof, ProofStatus } from "@/lib/admin-data";
 
 /** ชื่อ header ที่หน้าออเดอร์ส่งรายชื่อช่องที่แก้จริงมาด้วย (ดู changedOrderKeys ใน order-repo.ts) */
 export const CHANGED_KEYS_HEADER = "x-changed-keys";
@@ -44,4 +44,59 @@ export function applyChangedKeys(existing: Order, incoming: Order, changed: Set<
     if (!SILENT.has(k)) restored.push(k);
   }
   return { order: out as unknown as Order, restored };
+}
+
+/** สิ่งที่ลูกค้าเป็นเจ้าของบนรายการ/ของแถม 1 ตัว — ผลตรวจต่อรูป + ผลตรวจทั้งรายการ */
+export interface VerdictHolder {
+  proofs?: Proof[];
+  proofStatus?: ProofStatus;
+  proofNote?: string;
+  proofReviewedAt?: string;
+}
+
+/** ผลตรวจที่ลูกค้าตัดสินแล้ว — "รอตรวจ" ไม่ใช่ผลตรวจ แค่สถานะเริ่มต้นตอนส่งแบบ */
+const isVerdict = (s: ProofStatus | undefined): s is "อนุมัติ" | "ขอแก้ไข" => s === "อนุมัติ" || s === "ขอแก้ไข";
+
+/**
+ * 🧑‍⚖️ ผลตรวจแบบของลูกค้าเป็นของลูกค้า — หน้าจอแอดมิน/กราฟฟิกที่เปิดค้างทับไม่ได้
+ *
+ * เคสจริง (OD-260915-5892 · 16 ก.ย. 69): ลูกค้ากดอนุมัติแบบ 12:31 → ฐานมี proofs[].review="อนุมัติ" + proofStatus="อนุมัติ" + ออเดอร์ "อนุมัติแบบ"
+ * 13 นาทีต่อมาพนักงานติ๊ก "มีงานตัวอย่าง" จากหน้าจอที่โหลดไว้ก่อนลูกค้ากด → ติ๊กอยู่ใน items จึงส่ง items ทั้งชุดจากหน้าจอเก่า:
+ * proofStatus กลับเป็น "รอตรวจ" และ review หาย · applyChangedKeys คงได้แค่ status (ช่องบนสุดที่หน้าจอไม่ได้แก้)
+ * → หน้าออเดอร์ขึ้น "อนุมัติแบบ" แต่บอร์ดลาย/รายงานแบบงาน (อ่านจากรายการ) ขึ้น "ยังไม่ยืนยัน"
+ *
+ * กติกา (ใช้กับ inc ที่ผ่าน reconcileProofs มาแล้ว — รูปจับคู่กันด้วย url):
+ *   · ต่อรูป: รูปเดิมที่ในฐานมี review แต่หน้าจอส่งมาไม่มี = หน้าจอไม่เคยเห็น (ไม่มีทางไหนของแอดมินที่ "ล้าง" review ของรูปเดิม —
+ *     อัปรูปใหม่คือเพิ่มรูป · ลบรูปคือรูปหาย · อนุมัติแทน (ลายลูกค้าจัดวางเอง) คือใส่ review) → คงของฐาน
+ *     ทั้งคู่มีแต่ต่างกัน: ของฐานใหม่กว่าที่หน้าจอเห็น (reviewAt > savedAt ของหน้าจอ) → คงของฐาน
+ *   · ทั้งรายการ: ฐานมีคำตัดสิน (อนุมัติ/ขอแก้ไข) แต่หน้าจอส่ง "รอตรวจ" มาโดยไม่มีรูปใหม่ = ไม่ใช่การส่งแบบรอบใหม่ → คงคำตัดสิน+คอมเมนต์
+ *     (อัปรูปใหม่ → มี url ใหม่ → รีเซ็ตเป็น "รอตรวจ" ได้ตามเดิม · ลบรูปหมด → proofStatus ว่างได้ตามเดิม)
+ *     คำตัดสินในฐานที่เกิดหลังหน้าจอเห็น (proofReviewedAt > savedAt) → คงของฐาน แม้หน้าจอส่งคำตัดสินอื่นมา (ตราบใดที่ชุดรูปไม่เปลี่ยน)
+ */
+export function keepCustomerVerdict<T extends VerdictHolder>(cur: T | undefined, inc: T, clientSavedAt: string): T {
+  if (!cur) return inc;
+  const out: T = { ...inc };
+  const curByUrl = new Map((cur.proofs ?? []).map((p) => [p.url, p]));
+  if (Array.isArray(inc.proofs)) {
+    out.proofs = inc.proofs.map((p) => {
+      const c = curByUrl.get(p.url);
+      if (!c?.review) return p;
+      const unseen = !p.review || (!!c.reviewAt && c.reviewAt > clientSavedAt);
+      return unseen && (p.review !== c.review || p.reviewNote !== c.reviewNote)
+        ? { ...p, review: c.review, reviewNote: c.reviewNote, ...(c.reviewAt ? { reviewAt: c.reviewAt } : {}) }
+        : p;
+    });
+  }
+  if (isVerdict(cur.proofStatus) && inc.proofStatus !== cur.proofStatus) {
+    const newer = !!cur.proofReviewedAt && cur.proofReviewedAt > clientSavedAt;
+    const incProofs = out.proofs ?? [];
+    // ชุดรูปไม่เปลี่ยน (ไม่มี url ใหม่ · ไม่ได้ลบหมด) — อัปรูปใหม่/ลบหมดคือรอบใหม่ของกราฟฟิก ต้องรีเซ็ตได้แม้หน้าจอจะค้าง
+    const sameSet = incProofs.length > 0 && incProofs.every((p) => curByUrl.has(p.url));
+    if (sameSet && (newer || inc.proofStatus === "รอตรวจ")) {
+      out.proofStatus = cur.proofStatus;
+      out.proofNote = cur.proofNote;
+      if (cur.proofReviewedAt) out.proofReviewedAt = cur.proofReviewedAt;
+    }
+  }
+  return out;
 }

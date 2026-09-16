@@ -252,6 +252,8 @@ export interface OrderGift {
   proofNote?: string;
   /** เวลาอัป/อัปเดตแบบของแถมล่าสุด (ISO) */
   proofUpdatedAt?: string;
+  /** เวลาที่ลูกค้าอนุมัติ/ขอแก้แบบของแถมล่าสุด (ISO) — ใช้กันหน้าจอค้างทับผลตรวจ เหมือน OrderItem.proofReviewedAt */
+  proofReviewedAt?: string;
 }
 
 /**

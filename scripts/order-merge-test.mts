@@ -4,7 +4,8 @@
  * ต่อจาก OD-260915-6742 (16 ก.ย. 69): หน้าออเดอร์ส่งออเดอร์ทั้งก้อน → หน้าจอค้างทับงานคนอื่นได้ทุกช่อง
  * แก้: หน้าจอส่งรายชื่อช่องที่แก้จริง (changedOrderKeys เทียบกับก้อนล่าสุดจากเซิร์ฟเวอร์) → เซิร์ฟเวอร์เอาช่องที่ไม่ได้แก้จากฐาน (applyChangedKeys)
  */
-import { applyChangedKeys, parseChangedKeys } from "../src/lib/server/order-merge";
+import { applyChangedKeys, keepCustomerVerdict, parseChangedKeys } from "../src/lib/server/order-merge";
+import type { OrderItem } from "../src/lib/admin-data";
 import { changedOrderKeys } from "../src/lib/order-repo";
 import type { Order } from "../src/lib/admin-data";
 
@@ -72,6 +73,53 @@ eq("ไม่มี header: ก้อนจากหน้าจอเป็น�
 // ── ค่าเท่ากันไม่ถูกนับว่า "คง" (ไม่ให้ log รก) ─────────────────────────────────────
 eq("บันทึกปกติจากหน้าจอสด แก้ช่องเดียว = restored ว่าง", applyChangedKeys(db, { ...db, address: "x" }, new Set(["address"])).restored, []);
 eq("id ไม่ถูกแตะแม้ไม่อยู่ในลิสต์", applyChangedKeys(db, { ...db, address: "x" }, new Set(["address"])).order.id, "OD-TEST");
+
+// ── 🧑‍⚖️ ผลตรวจแบบของลูกค้า — หน้าจอค้างทับไม่ได้ (OD-260915-5892 · 16 ก.ย. 69) ──────────────────
+const P1 = "https://x/proofs/a.jpg";
+const P2 = "https://x/proofs/b.jpg";
+/** ฐาน: ลูกค้าอนุมัติแล้วตอน 05:31 */
+const approvedItem: OrderItem = {
+  productId: "p1", name: "สายคล้องคอ", qty: 20, unitPrice: 90,
+  proofs: [{ url: P1, at: "2026-09-16T05:03:18Z", by: "bt", review: "อนุมัติ", reviewAt: "2026-09-16T05:31:23Z" }],
+  proofStatus: "อนุมัติ", proofReviewedAt: "2026-09-16T05:31:23Z",
+};
+/** หน้าจอโหลดไว้ 05:03 (ก่อนลูกค้ากด) แล้วติ๊ก "มีงานตัวอย่าง" → ส่งรายการทั้งก้อนแบบเก่า */
+const staleItem: OrderItem = {
+  ...approvedItem, proofs: [{ url: P1, at: "2026-09-16T05:03:18Z", by: "bt" }], proofStatus: "รอตรวจ", proofReviewedAt: undefined,
+  sampleRequired: { by: "โดนัท", at: "2026-09-16T05:44:56Z" },
+};
+const k1 = keepCustomerVerdict(approvedItem, staleItem, "2026-09-16T05:03:24Z");
+eq("หน้าจอค้างติ๊กงานตัวอย่าง: ผลอนุมัติทั้งรายการยังอยู่", k1.proofStatus, "อนุมัติ");
+eq("…review ต่อรูปยังอยู่ (พร้อมเวลา)", [k1.proofs?.[0].review, k1.proofs?.[0].reviewAt], ["อนุมัติ", "2026-09-16T05:31:23Z"]);
+eq("…ติ๊กของหน้าจอยังติดตามปกติ", k1.sampleRequired?.by, "โดนัท");
+eq("…เวลาตัดสินติดกลับมาด้วย", k1.proofReviewedAt, "2026-09-16T05:31:23Z");
+
+// ใบเก่าที่ยังไม่มี reviewAt/proofReviewedAt (ตรวจก่อนวันนี้) — กติกา "รีเซ็ตเป็นรอตรวจโดยไม่มีรูปใหม่ = ค้าง" ยังคุ้มครอง
+const legacy: OrderItem = { ...approvedItem, proofs: [{ url: P1, at: "2026-09-16T05:03:18Z", review: "อนุมัติ" }], proofReviewedAt: undefined };
+const k2 = keepCustomerVerdict(legacy, staleItem, "2026-09-16T05:03:24Z");
+eq("ใบเก่าไม่มีประทับเวลา: รอตรวจโดยไม่มีรูปใหม่ = คงอนุมัติ", [k2.proofStatus, k2.proofs?.[0].review], ["อนุมัติ", "อนุมัติ"]);
+
+// กราฟฟิกอัปรูปใหม่ (มี url ใหม่) → รีเซ็ตเป็น "รอตรวจ" ได้ตามเดิม แต่ review ของรูปเดิมไม่หาย
+const reupload: OrderItem = { ...staleItem, proofs: [...(staleItem.proofs ?? []), { url: P2, at: "2026-09-16T06:00:00Z", by: "bt" }], sampleRequired: undefined };
+const k3 = keepCustomerVerdict(approvedItem, reupload, "2026-09-16T05:03:24Z");
+eq("อัปรูปใหม่: รายการกลับเป็นรอตรวจได้", k3.proofStatus, "รอตรวจ");
+eq("…รูปเดิมยังจำว่าลูกค้าอนุมัติไว้ · รูปใหม่ยังไม่มีผล", [k3.proofs?.[0].review, k3.proofs?.[1].review], ["อนุมัติ", undefined]);
+
+// ลบรูปหมด → proofStatus ว่างได้ (ไม่ใช่การรีเซ็ต)
+const k4 = keepCustomerVerdict(approvedItem, { ...staleItem, proofs: [], proofStatus: undefined }, "2026-09-16T05:03:24Z");
+eq("ลบรูปหมด: สถานะแบบว่างตามที่หน้าจอสั่ง", k4.proofStatus, undefined);
+
+// ลูกค้าขอแก้ไขพร้อมคอมเมนต์ → หน้าจอค้างส่งรอตรวจมา = คงขอแก้ไข+คอมเมนต์
+const editItem: OrderItem = { ...approvedItem, proofs: [{ url: P1, at: "2026-09-16T05:03:18Z", review: "ขอแก้ไข", reviewNote: "ขอเปลี่ยนสี", reviewAt: "2026-09-16T05:31:23Z" }], proofStatus: "ขอแก้ไข", proofNote: "รูปที่ 1: ขอเปลี่ยนสี" };
+const k5 = keepCustomerVerdict(editItem, staleItem, "2026-09-16T05:03:24Z");
+eq("ขอแก้ไข+คอมเมนต์ไม่หาย", [k5.proofStatus, k5.proofNote, k5.proofs?.[0].reviewNote], ["ขอแก้ไข", "รูปที่ 1: ขอเปลี่ยนสี", "ขอเปลี่ยนสี"]);
+
+// หน้าจอสด (เห็นผลตรวจแล้ว) ส่งค่าเดิมกลับมา = ไม่แตะอะไร
+const k6 = keepCustomerVerdict(approvedItem, { ...approvedItem, sampleRequired: { by: "โดนัท", at: "x" } }, "2026-09-16T05:32:00Z");
+eq("หน้าจอสดส่งค่าเดิม = เหมือนเดิมทุกช่อง", [k6.proofStatus, k6.proofs?.[0].review], ["อนุมัติ", "อนุมัติ"]);
+
+// ไม่มีของเดิม (รายการใหม่) = เอาของหน้าจอ
+eq("รายการใหม่ไม่มีฐาน = ของหน้าจอ", keepCustomerVerdict(undefined, staleItem, "").proofStatus, "รอตรวจ");
 
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} เคส\n\n${fails.join("\n\n")}\n` : "");
 console.log(`${fails.length ? "❌" : "✅"} ผ่าน ${pass}/${pass + fails.length} เคส`);

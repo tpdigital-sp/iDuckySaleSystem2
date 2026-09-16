@@ -67,12 +67,13 @@ export async function POST(req: Request) {
             ...g,
             proofs: (g.proofs ?? []).map((p) =>
               action === "approve"
-                ? { ...p, review: "อนุมัติ" as const, reviewNote: undefined }
-                : { ...p, review: "ขอแก้ไข" as const, reviewNote: note }
+                ? { ...p, review: "อนุมัติ" as const, reviewNote: undefined, reviewAt: now }
+                : { ...p, review: "ขอแก้ไข" as const, reviewNote: note, reviewAt: now }
             ),
             proofStatus: (action === "approve" ? "อนุมัติ" : "ขอแก้ไข") as "อนุมัติ" | "ขอแก้ไข",
             proofNote: action === "approve" ? undefined : note,
             proofUpdatedAt: now,
+            proofReviewedAt: now, // 🧑‍⚖️ ด่าน PATCH ใช้กันหน้าจอค้างทับผลตรวจ (keepCustomerVerdict)
           }
         : g
     );
@@ -103,11 +104,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ไม่พบรูปแบบงานนี้" }, { status: 404 });
 
   // อัปเดตผลตรวจ "ต่อรูป" — มี proofIndex = เฉพาะรูปนั้น · ไม่มี = เหมาทุกรูป
+  // reviewAt = นาฬิกาเซิร์ฟเวอร์ ให้ด่าน PATCH เทียบกับ savedAt ของหน้าจอแอดมินได้ (หน้าจอค้างทับผลตรวจไม่ได้ · keepCustomerVerdict)
+  const now = new Date().toISOString();
   const proofs = itemProofs.map((p, j) => {
     if (proofIndex !== null && j !== proofIndex) return p;
     return action === "approve"
-      ? { ...p, review: "อนุมัติ" as const, reviewNote: undefined }
-      : { ...p, review: "ขอแก้ไข" as const, reviewNote: note };
+      ? { ...p, review: "อนุมัติ" as const, reviewNote: undefined, reviewAt: now }
+      : { ...p, review: "ขอแก้ไข" as const, reviewNote: note, reviewAt: now };
   });
 
   // สถานะรายการ (สรุปจากทุกรูป): มีขอแก้ → ขอแก้ไข · ครบทุกรูปอนุมัติ → อนุมัติ · ที่เหลือ → รอตรวจ
@@ -124,6 +127,7 @@ export async function POST(req: Request) {
           proofs,
           proofStatus: (anyEdit ? "ขอแก้ไข" : allOk ? "อนุมัติ" : "รอตรวจ") as "ขอแก้ไข" | "อนุมัติ" | "รอตรวจ",
           proofNote: anyEdit ? editNotes || note : undefined,
+          proofReviewedAt: now,
         }
       : it
   );
