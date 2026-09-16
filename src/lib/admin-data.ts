@@ -1076,6 +1076,34 @@ export function reconciledOrderAmounts(o: Order): number[] {
 }
 
 /**
+ * 🧾 คิด VAT/หัก ณ ที่จ่ายของใบนี้ใหม่ให้เป็น "เรต × ฐานล่าสุด" — ไม่ต้องมีใบก่อนหน้ามาเทียบ
+ *
+ * ต่างจาก reconcileOrderTax (ประตูเขียนออเดอร์) ที่ดูว่า "ฐานขยับจากใบเดิมไหม" แล้วกันเลขที่แอดมินพิมพ์เอง
+ * ทางนี้ไม่มีใบเดิมให้เทียบ จึงห้ามเรียกลอย ๆ — ใช้เฉพาะตอนมี **หลักฐานจากภายนอก** ว่าตัวเลขเดิมเป็นของฐานเก่า
+ * ปัจจุบันมีที่เดียว: สลิปที่ SlipOK ยืนยันแล้วว่าแท้ และยอดในสลิปตรงกับ "ยอดที่ควรจะเป็น" พอดี (ดู slip-apply.ts)
+ * คืน null = ตัวเลขตรงเรตอยู่แล้ว ไม่มีอะไรให้แก้
+ */
+export function orderTaxToRate(o: Order): { order: Order; note: string } | null {
+  const drift = orderTaxDrift(o);
+  if (Math.abs(drift.vat) < 0.01 && Math.abs(drift.wht) < 0.01) return null;
+  const base = orderTaxBase(o);
+  const thb = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const parts: string[] = [];
+  let next = o;
+  if (o.vat?.rate && Math.abs(drift.vat) >= 0.01) {
+    const want = taxFromRate(base, o.vat.rate);
+    parts.push(`VAT ${o.vat.rate}% ${thb(orderVatAmount(o))} → ${thb(want)}`);
+    next = { ...next, vat: { ...o.vat, amount: want } };
+  }
+  if (o.wht?.rate && Math.abs(drift.wht) >= 0.01) {
+    const want = taxFromRate(base, o.wht.rate);
+    parts.push(`หัก ณ ที่จ่าย ${o.wht.rate}% ${thb(orderWhtAmount(o))} → ${thb(want)}`);
+    next = { ...next, wht: { ...o.wht, amount: want } };
+  }
+  return parts.length ? { order: next, note: `ฐานภาษี ${thb(base)} บาท · ${parts.join(" · ")}` } : null;
+}
+
+/**
  * 🧾 คิด VAT/หัก ณ ที่จ่ายใหม่เมื่อ "ฐานภาษีขยับ" — กติกากลาง เรียกที่ประตูเขียนออเดอร์ที่เดียว
  *
  * ทำไมต้องมี (OD-260915-1705 · 15 ก.ย. 69): ใบเสนอราคา QT010660 แก้จำนวน 12 → 5 ชิ้น แอดมินกด

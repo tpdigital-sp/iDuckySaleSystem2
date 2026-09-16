@@ -1,11 +1,11 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, slipMatchesFlowAccountBill, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, slipMatchesFlowAccountBill, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer } from "@/lib/products-server";
 import type { Product } from "@/lib/products";
-import { verifySlipWithSlipOK, type SlipVerifyResult } from "@/lib/server/slipok";
+import { matchSlipAmount, verifySlipWithSlipOK, type SlipVerifyResult } from "@/lib/server/slipok";
 import { assertSlipNotDuplicate } from "@/lib/server/slip-dedupe";
 import { balanceNetTransfer, notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP, syncPaidCompleteToTP } from "@/lib/server/tp-report";
@@ -119,13 +119,13 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
    * เลยเวลาแล้ว = ไม่ล็อก ยอดที่ต้องโอนเป็นยอดเต็ม สลิปที่โอนขาดเท่าส่วนลดจะตกไป "รับบางส่วน" ให้แอดมินดู
    */
   const lockAt = input.paidReportedAt ?? new Date().toISOString();
-  const order =
+  let order: Order =
     earlyPayState(input.order, Date.parse(lockAt) || Date.now()) === "active"
       ? withLog(lockEarlyPay(input.order, lockAt, by), by, "ล็อกส่วนลดโอนไว", `แจ้งโอนทันเวลา — ได้ส่วนลด ${thb(input.order.earlyPay!.amount)} บาท`)
       : input.order;
 
   // ── ยอดที่สลิปใบนี้ควรจะเป็น = ยอดค้างของช่องนั้น ณ ตอนนี้ (ไม่ใช่ยอดเต็ม) ──
-  const expected = expectedForPhase(order, phase);
+  let expected = expectedForPhase(order, phase);
   const waiting = order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ";
   /**
    * ยังมีเงินให้รับอยู่ไหม — ลูกค้าแนบเองผ่านด่าน resolveSlipPhase มาก่อนแล้วเสมอ
@@ -171,6 +171,38 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       // ตรวจซ้ำ = ไฟล์เป็นของออเดอร์นี้อยู่แล้ว ห้ามลบ (แค่ตอบว่าซ้ำให้แอดมินไปตามต่อ)
       if (!input.recheck) await sb.storage.from("payment-slips-private").remove([path]).catch(() => undefined);
       throw e;
+    }
+  }
+
+  /**
+   * 🧾 สลิปเป็น "หลักฐาน" ว่าตัวเลขภาษีในใบเป็นของยอดเก่า → คิดใหม่ตามเรตแล้วถือว่าจ่ายครบ
+   *
+   * เคสต้นเรื่อง OD-260915-1705 (15 ก.ย. 69): ใบเสนอราคาแก้ 12 → 5 ชิ้น · รายการตามแล้วแต่ VAT ค้าง 7% ของ 12 ชิ้น
+   * ยอดในระบบเลยเป็น 1,775.36 ทั้งที่บิลจริง 1,626.40 — ลูกค้าโอนสุทธิตามบิล 1,580.80 (หัก ณ ที่จ่าย 3%) ครบแล้ว
+   * แต่ระบบหาว่า "โอนขาด 194.56" แล้วส่งไลน์ทวง · ประตูเขียนออเดอร์ (reconcileOrderTax) อุดทางเข้าไปแล้ว
+   * ทางนี้เป็นตาข่ายชั้นสุดท้ายตรงจุดที่ "รู้ว่าลูกค้าโอนเท่าไหร่จริง ๆ": ใบที่ภาษีไม่ใช่เรต × ฐานล่าสุด
+   * แล้วสลิปแท้ตรงกับยอดที่ควรจะเป็นพอดี = ยอดในระบบผิด ไม่ใช่ลูกค้าโอนขาด → แก้ให้ตรงแล้วผ่านไปเลย
+   * (เดิมได้แค่ "ไม่ทวง" แล้วค้าง "รอตรวจสอบ" รอแอดมินมาแก้เอง — ยอดตรงแล้วต้องผ่านเองได้)
+   *
+   * ปลอดภัยเพราะกว่าจะมาถึงตรงนี้ต้อง: SlipOK ยืนยันว่าสลิปแท้ + อ่านยอดได้ + ยอดนั้นอธิบายด้วยตัวเลขที่เก็บไว้ไม่ได้
+   * (ยอดที่แอดมินพิมพ์เองตามใบ 50 ทวิ ถ้าลูกค้าโอนตามนั้นจริงจะผ่านตั้งแต่ด่าน adminWht ไม่ตกมาถึงนี่)
+   */
+  if (eligible && verify.status === "fail" && verify.genuine === true && !verify.duplicate && (verify.amount ?? 0) > 0) {
+    const fix = orderTaxToRate(order);
+    const want = fix ? expectedForPhase(fix.order, phase) : 0;
+    const m = fix && want > 0 ? matchSlipAmount(want, verify.amount!, orderTotal(fix.order), fix.order.wht, earlyPayAllowed) : null;
+    if (fix && m?.ok) {
+      order = withLog(fix.order, "SlipOK", "คิดภาษีใหม่ตามยอดในใบงาน (สลิปลูกค้าตรงยอดที่ถูกต้อง)", `${fix.note} · ลูกค้าโอน ${thb(verify.amount!)} บาท`);
+      expected = want;
+      verify = {
+        ...verify,
+        status: "pass",
+        deduction: m.deduction,
+        detail:
+          `ยอดในสลิป ${thb(verify.amount!)} บาท ตรงกับยอดที่ถูกต้องของใบนี้ (คิด VAT/หัก ณ ที่จ่ายตามเรตกับรายการล่าสุดแล้วได้ ` +
+          `${thb(orderTotal(order))} บาท${order.wht?.amount ? ` − หัก ณ ที่จ่าย ${thb(order.wht.amount)} = ${thb(round2(orderTotal(order) - order.wht.amount))} บาท` : ""}) — ` +
+          `ตัวเลขภาษีในใบเป็นของยอดเก่า ระบบคิดใหม่ให้ตรงแล้ว (${fix.note})`,
+      };
     }
   }
 

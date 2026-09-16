@@ -1,13 +1,17 @@
 /**
- * 🧾 เทสกติกา "ภาษีต้องตามยอด" — npx tsx --tsconfig tsconfig.json scripts/order-tax-test.mts
+ * 🧾 เทสกติกา "ภาษีต้องตามยอด" — npm run check:tax
  *
  * กติกาที่เทส (src/lib/admin-data.ts):
  *   orderTaxBase         ฐานภาษี = สินค้า + ค่าส่ง − ส่วนลด (ไม่รวมค่าบริการเพิ่ม)
  *   reconcileOrderTax    ฐานขยับ → VAT/หัก ณ ที่จ่าย คิดใหม่ตามเรต · ยอดที่คนตั้งใจใส่เองต้องไม่โดนทับ
  *   orderTaxDrift        ตัวเลขภาษีที่ค้างของฐานเก่า
  *   reconciledOrderAmounts  ยอดที่ "ควรจะเป็น" ไว้ให้ด่านตรวจสลิปรู้ว่ายอดในระบบเชื่อไม่ได้
+ *   orderTaxToRate       คิดภาษีใหม่ตามเรตตอนสลิปลูกค้าพิสูจน์ว่าตัวเลขเดิมเป็นของฐานเก่า (ด่านตรวจสลิป)
+ *
+ * ⚠️ ต้องรันด้วย --conditions=react-server เพราะเทสเรียก matchSlipAmount จากโมดูล server-only
  */
-import { orderTaxBase, orderTaxDrift, orderTotal, reconcileOrderTax, reconciledOrderAmounts, type Order } from "../src/lib/admin-data";
+import { orderTaxBase, orderTaxDrift, orderTaxToRate, orderTotal, reconcileOrderTax, reconciledOrderAmounts, type Order } from "../src/lib/admin-data";
+import { matchSlipAmount } from "../src/lib/server/slipok";
 
 let pass = 0;
 const fails: string[] = [];
@@ -42,6 +46,22 @@ eq("คิดซ้ำอีกรอบไม่มีอะไรให้แ�
 eq("ตัวเลขภาษีค้างของฐานเก่า", orderTaxDrift(after), { vat: -148.96, wht: -63.84 });
 eq("ยอดที่ควรจะเป็น [รวม, โอนจริง]", reconciledOrderAmounts(after), [1626.4, 1580.8]);
 eq("ใบที่ภาษีตรงเรตอยู่แล้ว = ไม่มียอดสำรอง", reconciledOrderAmounts(fixed!.order), []);
+
+// ── ด่านตรวจสลิป: ลูกค้าโอนตรงยอดที่ถูกต้อง = คิดภาษีใหม่แล้วผ่านเลย (ไม่ใช่ "รับบางส่วน" แล้วทวง) ──
+// จำลองเส้นทางใน slip-apply.ts: SlipOK อ่านยอดได้ 1,580.80 แล้วเทียบกับยอดที่ต้องโอนของใบ
+const slipOnStale = matchSlipAmount(orderTotal(after), 1580.8, orderTotal(after), after.wht);
+eq("ใบภาษีเพี้ยน: สลิปตามบิลจริงเทียบกับยอดในระบบ = ไม่ผ่าน (ต้นเหตุที่ระบบทวงเพิ่ม 194.56)", slipOnStale.ok, false);
+
+const toRate = orderTaxToRate(after);
+eq("คิดภาษีใหม่ตามเรตจากใบเดียว: VAT", toRate?.order.vat, { rate: 7, amount: 106.4 });
+eq("คิดภาษีใหม่ตามเรตจากใบเดียว: หัก ณ ที่จ่าย", toRate?.order.wht, { rate: 3, amount: 45.6 });
+eq("ยอดรวมหลังคิดใหม่ = ยอดตามบิล", orderTotal(toRate!.order), 1626.4);
+
+const slipOnFixed = matchSlipAmount(orderTotal(toRate!.order), 1580.8, orderTotal(toRate!.order), toRate!.order.wht);
+eq("คิดภาษีใหม่แล้วสลิปใบเดิมผ่าน", slipOnFixed.ok, true);
+eq("ผ่านแบบรู้ว่าส่วนต่างคือหัก ณ ที่จ่าย 3%", slipOnFixed.deduction?.kind === "wht" && slipOnFixed.deduction.amount, 45.6);
+eq("ใบที่ภาษีตรงเรตอยู่แล้ว = ไม่มีอะไรให้คิดใหม่", orderTaxToRate(fixed!.order), null);
+eq("โอนขาดจริง ๆ ยังตกเหมือนเดิม แม้ใบจะภาษีเพี้ยน", matchSlipAmount(orderTotal(toRate!.order), 1000, orderTotal(toRate!.order), toRate!.order.wht).ok, false);
 
 // ── ห้ามแตะของที่คนตั้งใจใส่เอง ────────────────────────────────────────────────────
 eq("ฐานไม่ขยับ = ไม่คิดใหม่", reconcileOrderTax(before, mk({ ...before, customer: "ชื่อใหม่" })), null);
