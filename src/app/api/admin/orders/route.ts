@@ -13,6 +13,7 @@ import { applyChangedKeys, CHANGED_KEYS_HEADER, parseChangedKeys } from "@/lib/s
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { amountsForRecord } from "@/lib/tp-amounts";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { isPickupOrder } from "@/lib/ship-label";
@@ -360,6 +361,16 @@ export async function GET(req: Request) {
   }
 
   const orders = (data ?? []).map((r) => r.data as Order);
+  // 🩹 เงินครบตามสลิปแล้วแต่ใบยังค้าง "รอตรวจสอบ" (ผลตรวจถูกลงย้อนหลังตอนซ่อมยอด) → ปิดใบให้เองตอนเปิดหน้าออเดอร์
+  //    เงื่อนไขแคบมาก ดู settleCreditedOrder · ล้มก็แค่โชว์ใบเดิม (OD-260915-1705 · 16 ก.ย. 69)
+  if (wantId && orders[0]) {
+    try {
+      const healed = await settleCreditedOrder({ sb, order: orders[0], origin: new URL(req.url).origin });
+      if (healed) orders[0] = healed;
+    } catch (e) {
+      console.warn("[orders GET] settleCreditedOrder", e instanceof Error ? e.message : e);
+    }
+  }
   // เซ็น signed URL ชั่วคราวสำหรับสลิปใน bucket ส่วนตัว — เฉพาะตอนขอออเดอร์เดียว (หน้ารายละเอียด)
   // ⚠️ ทั้งสามงาน (เช็ค LINE ของบัญชีลูกค้า · เซ็นสลิปงวดแรก · เซ็นสลิปงวดหลัง) ไม่เกี่ยวกัน
   //    ทำขนานกันเสมอ — เดิมทำเรียงกันทำให้หน้ารายละเอียดรอนานโดยไม่จำเป็น

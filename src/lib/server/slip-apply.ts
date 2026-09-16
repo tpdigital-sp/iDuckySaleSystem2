@@ -585,3 +585,81 @@ export async function acceptPaymentManually(a: {
   await settleTP(pendingTP);
   return updated;
 }
+
+/**
+ * 🩹 ใบที่ "เงินครบแล้วแต่สถานะยังค้างรอตรวจสอบ" → ปิดใบให้เองเหมือนแอดมินกดยืนยันเงินเข้า
+ *
+ * ทำไมต้องมี (OD-260915-1705 · เจ้าของร้านถาม 16 ก.ย. 69 "ทำไมสถานะไม่เปลี่ยนเป็นชำระแล้วให้เลย"):
+ * SlipOK ตรวจสดตอนยอดในระบบยังไม่ตรงใบ FlowAccount → นับเป็นรับบางส่วน ค้างรอตรวจสอบ · สคริปต์ซ่อมยอด
+ * (fix-flowaccount-total) แก้ยอด + ตั้ง slipVerify ผ่าน + paidTotal ครบ ได้ แต่เปลี่ยนสถานะไม่ได้ เพราะผลข้างเคียง
+ * (msVerify/ตัดสต๊อก/ยอดขาย/แต้ม/แจ้งลูกค้า) อยู่ในโมดูล server-only — เลยฝากไว้ให้แอดมินกดเอง แล้วไม่มีใครกด
+ * ตัวนี้เก็บตกให้: เรียกตอนเปิดหน้าออเดอร์ (GET) — เงื่อนไขแคบมาก ใบธรรมดา (ไม่ใช่มัดจำ) · สลิปช่องแรกผ่าน · paidTotal ≥ ยอดบิล
+ * คืน null = ไม่เข้าเงื่อนไข ไม่แตะอะไร
+ */
+export function creditedOrderSettleable(order: Order): boolean {
+  const waiting = order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ";
+  if (!waiting || order.deposit || order.claimOf || order.paidTotal == null) return false;
+  // เงินต้องมาจากทางที่ "ตรวจแล้ว" เท่านั้น: SlipOK ผ่าน · SlipOK แท้แต่นับบางส่วน (credited) · แอดมินรับยอดสลิปใบเพิ่มเอง
+  // (paidTotal ที่ระบบเก่าตั้งล่วงหน้าตอนแจ้งโอนถูก paidSoFar ตัดออกอยู่แล้ว)
+  const v = order.slipVerify;
+  const verified = v?.status === "pass" || (v?.credited ?? 0) > 0 || (order.payments ?? []).some((p) => (p.credited ?? 0) > 0);
+  if (!verified) return false;
+  const total = orderTotal(order);
+  return total > 0 && paidSoFar(order) + 0.5 >= total;
+}
+
+export async function settleCreditedOrder(a: { sb: SupabaseClient; order: Order; origin: string }): Promise<Order | null> {
+  const { sb, order, origin } = a;
+  if (!creditedOrderSettleable(order)) return null;
+  const total = orderTotal(order);
+  const paid = paidSoFar(order);
+
+  const who = "ระบบ (ยอดครบตามสลิปแล้ว)";
+  let updated: Order = { ...order, status: order.reopenedFrom ?? paidStatusFor(order), reopenedFrom: undefined };
+  // สลิปช่องแรกเคยถูกนับ "รับบางส่วน" (ยอดในระบบผิดตอนตรวจสด) แล้วแอดมินแก้ยอดจนครบ → ป้ายผลตรวจต้องเป็นผ่าน ไม่ใช่ "โอนขาด" ค้างอยู่
+  const v = order.slipVerify;
+  if (v && v.status !== "pass" && (v.credited ?? 0) > 0)
+    updated = {
+      ...updated,
+      slipVerify: { ...v, status: "pass", credited: undefined, detail: `ยอดในสลิป ${thb(v.amount ?? v.credited ?? 0)} บาท ครบตามยอดบิลที่แก้แล้ว ${thb(total)} บาท (ตอนตรวจสดยอดในระบบยังไม่ตรง จึงนับเป็นรับบางส่วน)` },
+    };
+  updated = withLog(
+    updated,
+    who,
+    "ยืนยันการชำระเงินอัตโนมัติ (เก็บตก)",
+    `เงินที่ตรวจแล้ว ${thb(paid)} บาท ครบยอดบิล ${thb(total)} — ใบค้าง "${order.status}" เพราะยอดครบทีหลังจากการแก้ยอด ไม่ใช่ตอนตรวจสลิปสด ระบบปิดใบให้เอง`
+  );
+  const { error } = await updateOrder(sb, updated);
+  if (error) throw new Error(error.message);
+
+  const link = orderLink(origin, updated);
+  const whtAsk = order.slipVerify?.deduction?.kind === "wht" ? `\nรับยอดหลัง${order.slipVerify.deduction.label} — รบกวนส่งหนังสือรับรองหักภาษี ณ ที่จ่าย (50 ทวิ) ให้ทางร้านด้วยนะครับ` : "";
+  void notifyCustomerLogged(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`, "ยืนยันการชำระเงิน");
+  // เรคอร์ด msVerify idempotent (สลิปผ่านทางสดถูกส่งไปแล้ว / สคริปต์ซ่อมปลดธงแล้ว) — รอให้เสร็จก่อนตอบเหมือนทางอื่น
+  await settleTP([reportPaidToTP(updated, who, { received: order.slipVerify?.amount ?? paid })]);
+  void cutStockForOrder(updated);
+  void bumpSoldForOrder(updated.id);
+  void awardPointsForOrder(updated);
+  return updated;
+}
+
+/** 🧹 กวาดทุกใบที่ค้างรอเงินแล้วเข้าเกณฑ์ settleCreditedOrder — ใช้จาก cron (ไม่ต้องรอใครเปิดหน้าออเดอร์) */
+export async function sweepCreditedOrders(sb: SupabaseClient, origin: string, dry = false): Promise<{ scanned: number; settled: { id: string; status: string; error?: string }[] }> {
+  const { data, error } = await sb.from("orders").select("data").in("data->>status", ["รอตรวจสอบ", "รอชำระเงิน"]);
+  if (error) throw new Error(error.message);
+  const orders = (data ?? []).map((r) => r.data as Order).filter(creditedOrderSettleable);
+  const settled: { id: string; status: string; error?: string }[] = [];
+  for (const o of orders) {
+    if (dry) {
+      settled.push({ id: o.id, status: `${o.status} → ${o.reopenedFrom ?? paidStatusFor(o)} (dry)` });
+      continue;
+    }
+    try {
+      const u = await settleCreditedOrder({ sb, order: o, origin });
+      settled.push({ id: o.id, status: u?.status ?? o.status });
+    } catch (e) {
+      settled.push({ id: o.id, status: o.status, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { scanned: data?.length ?? 0, settled };
+}

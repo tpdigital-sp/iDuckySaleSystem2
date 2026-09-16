@@ -206,7 +206,7 @@ for (const id of ids) {
     );
     console.log(`   💰 ปิดยอด: สลิป ${thb(slipAmt)} = สุทธิตามใบ → paidTotal ${thb(after)} (ส่วนต่าง ${thb(whtAmt)} = หัก ณ ที่จ่าย รอใบ 50 ทวิ)`);
     if (wasWaiting)
-      console.log(`   👉 ใบนี้ยังเป็น "${next.status}" — เปิดหน้าออเดอร์แล้วกดยืนยันเงินเข้า เพื่อให้ระบบยิง msVerify/ตัดสต๊อก/ยอดขาย/แต้ม ให้ครบตามปกติ`);
+      console.log(`   👉 ใบนี้ยังเป็น "${next.status}" — ระบบจะปิดใบเป็นชำระแล้วให้เอง (ทันทีที่มีคนเปิดหน้าออเดอร์ หรือ cron settle-credited ภายใน 15 นาที) พร้อม msVerify/ตัดสต๊อก/ยอดขาย/แต้ม`);
   } else {
     console.log(`   ℹ️ ไม่ปิดยอดให้ (สลิป ${thb(slipAmt)} · สุทธิตามใบ ${thb(docNet)} · สถานะ ${next.status})`);
   }

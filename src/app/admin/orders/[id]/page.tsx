@@ -829,10 +829,11 @@ function SlipVerifyNote({ v, credited, settled = true, onRecheck, rechecking }: 
              * หัก ณ ที่จ่าย = ภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ร้านได้คืนเป็นเครดิตภาษีผ่านใบ 50 ทวิ ไม่ใช่ยอดค้าง
              */
             <span className="mt-1 block text-sky-700">
-              ✓ ครบตามบิล: ยอดบิล {formatPrice(Math.round(((v.amount ?? 0) + v.deduction.amount) * 100) / 100)} − {v.deduction.label} {formatPrice(v.deduction.amount)} = โอน{" "}
-              {formatPrice(v.amount ?? 0)}
+              {/* ขึ้นต้นด้วยเงินเข้าจริงเสมอ (ท่าเดียวกับกล่องสรุป รับแล้ว/ยอดบิล) — "ยอดบิล − หัก = โอน" ยังอ่านเป็นยอดบิลก่อน เจ้าของร้านทัก 16 ก.ย. 69 */}
+              ✓ เงินเข้าจริง {formatPrice(v.amount ?? 0)} + {v.deduction.label} {formatPrice(v.deduction.amount)} = ยอดบิล{" "}
+              {formatPrice(Math.round(((v.amount ?? 0) + v.deduction.amount) * 100) / 100)} ครบ
               {v.deduction.kind === "wht"
-                ? ` · ${formatPrice(v.deduction.amount)} ไม่ใช่ยอดค้าง — เป็นภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ตามหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) จากลูกค้ามาเก็บไว้`
+                ? ` · ${formatPrice(v.deduction.amount)} ไม่ใช่เงินที่ร้านได้รับและไม่ใช่ยอดค้าง — เป็นภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ตามใบ 50 ทวิที่ลูกค้าส่งมาเก็บไว้`
                 : v.deduction.kind === "bankFee"
                   ? " · ค่าธรรมเนียมที่ธนาคารหัก ไม่ต้องทวงลูกค้า"
                   : ""}
@@ -7553,18 +7554,47 @@ export default function AdminOrderDetailPage() {
                         </div>
                       ))}
                       {/* บรรทัดสรุป: รับแล้ว / ยอดบิล / ค้าง — ภาพเดียวกับที่ลูกค้าเห็น */}
-                      {paid != null && (
-                        <div
-                          className={`mt-2 flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-xs ring-1 ${
-                            bal > 0 ? "bg-rose-50 text-rose-800 ring-rose-200" : over > 0 ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                          }`}
-                        >
-                          <span className="font-bold">
-                            รับแล้ว {formatPrice(paid)} / ยอดบิล {formatPrice(orderTotal(order))}
-                          </span>
-                          <span className="font-bold">{bal > 0 ? `ค้าง ${formatPrice(bal)}` : over > 0 ? `โอนเกิน ${formatPrice(over)} — คืน/แปลงเป็นแต้ม` : "✓ ครบแล้ว"}</span>
-                        </div>
-                      )}
+                      {paid != null &&
+                        (() => {
+                          /*
+                           * 💵 ตัวเลขหลักต้องเป็น "เงินเข้าบัญชีจริง" — เดิมเขียน "รับแล้ว ฿1,626.40" ทั้งที่ลูกค้าโอนมา ฿1,580.80
+                           * (paidTotal นับภาษีหัก ณ ที่จ่ายที่ลูกค้าส่งสรรพากรแทนร้านรวมเข้าไปด้วย ใบถึงปิดครบได้)
+                           * เจ้าของร้านทัก 16 ก.ย. 69 (OD-260915-1705): ยอดนั้นไม่ใช่เงินที่รับเข้าจริง → แยกภาษีออกเป็นอีกก้อน
+                           * ภาษีที่ "นับแล้ว" = ยอด deduction ของสลิปที่ผ่าน/รับบางส่วน/แอดมินรับยอดเอง · ไม่มีในสลิป (ยอดปรับมือ) แต่ใบครบ → ใช้ wht ของออเดอร์
+                           */
+                          const whtCounted = Math.min(
+                            paid,
+                            entries.reduce(
+                              (s, e) => (e.verify?.deduction?.kind === "wht" && (e.state === "pass" || e.state === "partial" || e.state === "accepted") ? s + e.verify.deduction.amount : s),
+                              0
+                            ) || (bal <= 0 ? orderWhtAmount(order) : 0)
+                          );
+                          const cash = orderCashReceived(order) || Math.max(0, Math.round((paid - whtCounted) * 100) / 100);
+                          const whtRate = order.wht?.rate ?? entries.find((e) => e.verify?.deduction?.kind === "wht")?.verify?.deduction?.rate;
+                          return (
+                            <div
+                              className={`mt-2 flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-xs ring-1 ${
+                                bal > 0 ? "bg-rose-50 text-rose-800 ring-rose-200" : over > 0 ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                              }`}
+                            >
+                              {whtCounted > 0 ? (
+                                <span className="font-bold">
+                                  เงินเข้าจริง {formatPrice(cash)} + หัก ณ ที่จ่าย{whtRate ? ` ${whtRate}%` : ""} {formatPrice(whtCounted)} = {formatPrice(paid)} / ยอดบิล {formatPrice(orderTotal(order))}
+                                </span>
+                              ) : (
+                                <span className="font-bold">
+                                  รับแล้ว {formatPrice(paid)} / ยอดบิล {formatPrice(orderTotal(order))}
+                                </span>
+                              )}
+                              <span className="font-bold">{bal > 0 ? `ค้าง ${formatPrice(bal)}` : over > 0 ? `โอนเกิน ${formatPrice(over)} — คืน/แปลงเป็นแต้ม` : "✓ ครบแล้ว"}</span>
+                              {whtCounted > 0 && (
+                                <span className="block w-full font-normal opacity-80">
+                                  {formatPrice(whtCounted)} ไม่ใช่เงินที่ร้านได้รับ — เป็นภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ตามใบ 50 ทวิที่ลูกค้าส่งมาเก็บไว้ · เงินโอนเข้าบัญชีร้านจริง {formatPrice(cash)}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       {canAttach && (
                         <button
                           type="button"
