@@ -16,16 +16,17 @@ const PT = 72 / 25.4;
 
 /* ── สร้างไฟล์ทดสอบ ── */
 /** alpha = สี่เหลี่ยมทึบ (px) บนผืนโปร่ง → ไฟล์ 4 ช่อง RGB+A พร้อมภาพรวม raw หรือ RLE */
-function makePsd(w: number, h: number, dpi: number | null, psb = false, alpha?: { x: number; y: number; w: number; h: number; rle?: boolean }): Uint8Array {
+function makePsd(w: number, h: number, dpi: number | null, psb = false, alpha?: { x: number; y: number; w: number; h: number; rle?: boolean }, cmyk = false): Uint8Array {
   const header = new Uint8Array(26);
   const dv = new DataView(header.buffer);
   header.set([0x38, 0x42, 0x50, 0x53]); // 8BPS
   dv.setUint16(4, psb ? 2 : 1);
-  dv.setUint16(12, alpha ? 4 : 3);
+  const baseCh = cmyk ? 4 : 3;
+  dv.setUint16(12, alpha ? baseCh + 1 : baseCh);
   dv.setUint32(14, h);
   dv.setUint32(18, w);
   dv.setUint16(22, 8);
-  dv.setUint16(24, 3);
+  dv.setUint16(24, cmyk ? 4 : 3);
   const colorMode = new Uint8Array(4); // len 0
   const blocks: Uint8Array[] = [];
   // resource แปลกปลอมมาก่อน (ชื่อ pascal ยาวคี่) ให้ตัวเดินบล็อกต้องข้ามให้ถูก
@@ -51,12 +52,13 @@ function makePsd(w: number, h: number, dpi: number | null, psb = false, alpha?: 
   const a = new Uint8Array(plane);
   for (let y = alpha.y; y < alpha.y + alpha.h; y++) a.fill(255, y * w + alpha.x, y * w + alpha.x + alpha.w);
   const rgb = new Uint8Array(plane).fill(200);
+  const planes = cmyk ? [rgb, rgb, rgb, rgb, a] : [rgb, rgb, rgb, a];
   const comp = new Uint8Array(2);
-  if (!alpha.rle) return concat([header, colorMode, resHead, ...blocks, layerLen, comp, rgb, rgb, rgb, a]);
+  if (!alpha.rle) return concat([header, colorMode, resHead, ...blocks, layerLen, comp, ...planes]);
   comp[1] = 1;
   const rows: Uint8Array[] = [];
   const counts: number[] = [];
-  for (const ch of [rgb, rgb, rgb, a]) {
+  for (const ch of planes) {
     for (let y = 0; y < h; y++) {
       const packed = packBits(ch.subarray(y * w, (y + 1) * w));
       rows.push(packed);
@@ -147,6 +149,7 @@ async function synthetic() {
   await check("object-raw.psd", makePsd(1182, 1182, 300, false, { x: 10, y: 5, w: 1158, h: 1171 }), "98 × 99.1 มม. (ผืน 100.1 × 100.1)");
   await check("object-rle.psd", makePsd(1182, 1182, 300, false, { x: 10, y: 5, w: 1158, h: 1171, rle: true }), "98 × 99.1 มม. (ผืน 100.1 × 100.1)");
   await check("object-rle.psb", makePsd(600, 300, 300, true, { x: 0, y: 0, w: 300, h: 300, rle: true }), "25.4 × 25.4 มม. (ผืน 50.8 × 25.4)");
+  await check("cmyk-alpha.psd", makePsd(600, 300, 300, false, { x: 0, y: 0, w: 300, h: 300, rle: true }, true), "25.4 × 25.4 มม. (ผืน 50.8 × 25.4)");
   await check("full-alpha.psd", makePsd(300, 300, 300, false, { x: 0, y: 0, w: 300, h: 300, rle: true }), "25.4 × 25.4 มม.");
   await check("logo.eps", makeEps(50, 70), "50 × 70 มม.");
   await check("one-board.ai", await makeAi([[50, 70]]), "50 × 70 มม.");

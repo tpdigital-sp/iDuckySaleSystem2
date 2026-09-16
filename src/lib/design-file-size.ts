@@ -15,7 +15,8 @@
  *                ⚠️ .ai ที่ปิด "Create PDF Compatible File" ข้างในเป็นหน้าเปล่า 1 หน้าพร้อมข้อความเตือน → อ่านไม่ได้
  *                ⚠️ .ai รุ่น Illustrator 8 ลงไปเป็น PostScript ล้วน → อ่าน %%BoundingBox แบบ .eps แทน
  *  - .psd/.psb → กว้าง×สูงเป็นพิกเซล + DPI จาก ResolutionInfo (id 1005) → มม. · รูปย่อจาก resource 1036
- *                ชิ้นงาน: จากช่องอัลฟาของภาพรวม (merged image · ต้องเซฟแบบ Maximize Compatibility และมี 4 ช่องสี)
+ *                ไม่มี 1036 (เช่น CMYK จากบางรุ่น) → ถอดภาพรวมท้ายไฟล์เองใน เบราว์เซอร์ (RGB/CMYK/Gray 8 บิต raw/RLE)
+ *                ชิ้นงาน: จากช่องความโปร่งใสของภาพรวม (RGB ช่องที่ 4 · CMYK ช่องที่ 5 · ต้องเซฟแบบ Maximize Compatibility)
  *                ขนาดมม. ถูกก็ต่อเมื่อ DPI ในไฟล์ถูก (ลูกค้าตั้ง 72 DPI แต่บอกว่า 5 ซม. = ไฟล์บอกผิดเอง)
  *  - .eps      → %%HiResBoundingBox / %%BoundingBox (point) → มม.
  *  - png/webp  → พิกเซล + DPI (PNG pHYs) + ชิ้นงานจากอัลฟา (เบราว์เซอร์) · jpg ไม่มีอัลฟา = ชิ้นงานเต็มผืน
@@ -210,17 +211,16 @@ function unpackBits(src: Uint8Array, out: Uint8Array, outOff: number, outLen: nu
 }
 
 /**
- * ช่องอัลฟาของภาพรวม (merged image data ท้ายไฟล์) — เฉพาะ RGB 8 บิต 4 ช่อง
- * อ่านเป็นช่วง: raw = อ่านเฉพาะระนาบอัลฟา · RLE = อ่านตารางความยาวแถวแล้วอ่านเฉพาะแถวของอัลฟา
+ * อ่าน 1 ระนาบสี (channel) ของภาพรวม (merged image data ท้ายไฟล์) — 8 บิต
+ * อ่านเป็นช่วง: raw = อ่านเฉพาะระนาบนั้น · RLE = อ่านตารางความยาวแถวแล้วอ่านเฉพาะแถวของระนาบนั้น
  */
-async function psdMergedAlpha(src: ByteSource, imageOff: number, w: number, h: number, channels: number, psb: boolean): Promise<Uint8Array | null> {
-  if (imageOff + 2 > src.size || w * h > MAX_ALPHA_PX) return null;
+async function psdChannel(src: ByteSource, imageOff: number, w: number, h: number, channels: number, psb: boolean, ch: number): Promise<Uint8Array | null> {
+  if (imageOff + 2 > src.size || ch >= channels) return null;
   const compBytes = await src.bytes(imageOff, imageOff + 2);
   const comp = new DataView(compBytes.buffer, compBytes.byteOffset).getUint16(0);
   const plane = w * h;
-  const alphaCh = 3; // RGB + alpha
   if (comp === 0) {
-    const start = imageOff + 2 + alphaCh * plane;
+    const start = imageOff + 2 + ch * plane;
     if (start + plane > src.size) return null;
     return new Uint8Array(await src.bytes(start, start + plane));
   }
@@ -232,17 +232,17 @@ async function psdMergedAlpha(src: ByteSource, imageOff: number, w: number, h: n
   const tv = new DataView(table.buffer, table.byteOffset, table.byteLength);
   const count = (i: number) => (psb ? tv.getUint32(i * 4) : tv.getUint16(i * 2));
   let skip = 0;
-  for (let i = 0; i < alphaCh * h; i++) skip += count(i);
-  let alphaLen = 0;
+  for (let i = 0; i < ch * h; i++) skip += count(i);
+  let len = 0;
   const rowLens: number[] = [];
-  for (let i = alphaCh * h; i < (alphaCh + 1) * h; i++) {
+  for (let i = ch * h; i < (ch + 1) * h; i++) {
     const c = count(i);
     rowLens.push(c);
-    alphaLen += c;
+    len += c;
   }
   const dataStart = imageOff + 2 + tableLen + skip;
-  if (dataStart + alphaLen > src.size) return null;
-  const packed = await src.bytes(dataStart, dataStart + alphaLen);
+  if (dataStart + len > src.size) return null;
+  const packed = await src.bytes(dataStart, dataStart + len);
   const out = new Uint8Array(plane);
   let p = 0;
   for (let y = 0; y < h; y++) {
@@ -250,6 +250,61 @@ async function psdMergedAlpha(src: ByteSource, imageOff: number, w: number, h: n
     p += rowLens[y];
   }
   return out;
+}
+
+/** ตำแหน่งช่องความโปร่งใสในภาพรวมตามโหมดสี (null = โหมดที่ไม่รู้จัก) · ⚠️ CMYK ช่องที่ 4 คือหมึกดำ ไม่ใช่อัลฟา */
+function psdAlphaIndex(mode: number): number | null {
+  return mode === 3 ? 3 : mode === 4 ? 4 : mode === 1 ? 1 : null;
+}
+
+/** พิกเซลสูงสุดที่ยอมถอดภาพรวมเป็นรูปตัวอย่างในเบราว์เซอร์ (RGBA เต็ม = 4 ไบต์/px) */
+const MAX_PREVIEW_PX = 16_000_000;
+const PSD_PREVIEW_EDGE = 640;
+
+/**
+ * รูปตัวอย่างจากภาพรวมของ .psd ที่ไม่มี resource 1036 (Photoshop บางรุ่น/บางค่าเซฟไม่ฝังรูปย่อ) — เบราว์เซอร์เท่านั้น
+ * RGB ตรง ๆ · CMYK เก็บกลับด้าน (255 = ไม่มีหมึก) → R = C·K/255 · Grayscale ใช้ช่องเดียว
+ */
+async function psdComposite(read: (ch: number) => Promise<Uint8Array | null>, w: number, h: number, mode: number, channels: number): Promise<Blob | undefined> {
+  if (typeof OffscreenCanvas === "undefined" || w * h > MAX_PREVIEW_PX) return undefined;
+  const alphaIdx = psdAlphaIndex(mode);
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  if (mode === 3 || mode === 1) {
+    const chs = mode === 3 ? [await read(0), await read(1), await read(2)] : [await read(0)];
+    if (chs.some((c) => !c)) return undefined;
+    const [r, g, b] = mode === 3 ? (chs as Uint8Array[]) : [chs[0]!, chs[0]!, chs[0]!];
+    for (let i = 0, o = 0; i < w * h; i++, o += 4) {
+      rgba[o] = r[i];
+      rgba[o + 1] = g[i];
+      rgba[o + 2] = b[i];
+      rgba[o + 3] = 255;
+    }
+  } else if (mode === 4) {
+    const [c, m, y, k] = [await read(0), await read(1), await read(2), await read(3)];
+    if (!c || !m || !y || !k) return undefined;
+    for (let i = 0, o = 0; i < w * h; i++, o += 4) {
+      rgba[o] = (c[i] * k[i]) / 255;
+      rgba[o + 1] = (m[i] * k[i]) / 255;
+      rgba[o + 2] = (y[i] * k[i]) / 255;
+      rgba[o + 3] = 255;
+    }
+  } else return undefined;
+  if (alphaIdx !== null && channels > alphaIdx) {
+    const a = await read(alphaIdx);
+    if (a) for (let i = 0, o = 3; i < w * h; i++, o += 4) rgba[o] = a[i];
+  }
+  const full = new OffscreenCanvas(w, h);
+  const fctx = full.getContext("2d");
+  if (!fctx) return undefined;
+  fctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+  const sc = Math.min(1, PSD_PREVIEW_EDGE / Math.max(w, h));
+  const pw = Math.max(1, Math.round(w * sc));
+  const ph = Math.max(1, Math.round(h * sc));
+  const small = new OffscreenCanvas(pw, ph);
+  const sctx = small.getContext("2d");
+  if (!sctx) return undefined;
+  sctx.drawImage(full, 0, 0, pw, ph);
+  return await small.convertToBlob({ type: "image/png" });
 }
 
 async function parsePsd(src: ByteSource): Promise<DesignInfo> {
@@ -305,21 +360,32 @@ async function parsePsd(src: ByteSource): Promise<DesignInfo> {
   const board: Board = { label: "ผืนงาน", widthMm: pxToMm(w, dpi), heightMm: pxToMm(h, dpi) };
   info.boards = [board];
 
-  // ชิ้นงานจากอัลฟาของภาพรวม — RGB 8 บิตที่มีช่องที่ 4 (ความโปร่งใส) เท่านั้น · 3 ช่อง = ไม่มีพื้นใส = เต็มผืน
-  if (mode === 3 && depth === 8 && channels >= 4) {
+  // ภาพรวมท้ายไฟล์ (merged image · 8 บิต): ใช้หาชิ้นงานจากช่องความโปร่งใส และเป็นรูปตัวอย่างเมื่อไฟล์ไม่ได้ฝังรูปย่อ
+  if (depth === 8 && w * h <= MAX_ALPHA_PX) {
     try {
       const layerLenOff = resOff + 4 + resLen;
       const ll = await src.bytes(layerLenOff, layerLenOff + (psb ? 8 : 4));
       const lv = new DataView(ll.buffer, ll.byteOffset, ll.byteLength);
       const layerLen = psb ? Number(lv.getBigUint64(0)) : lv.getUint32(0);
-      const alpha = await psdMergedAlpha(src, layerLenOff + (psb ? 8 : 4) + layerLen, w, h, channels, psb);
-      if (alpha) {
-        const box = alphaBBox(alpha, w, h, 1, 0);
-        if (box && !boxIsFull(box, w, h)) board.object = { widthMm: pxToMm(box.x1 - box.x0, dpi), heightMm: pxToMm(box.y1 - box.y0, dpi) };
-        else if (!box) info.note = "ภาพรวมในไฟล์โปร่งใสทั้งผืน — เซฟแบบ Maximize Compatibility แล้วลองใหม่";
+      const imageOff = layerLenOff + (psb ? 8 : 4) + layerLen;
+      const cache = new Map<number, Uint8Array | null>();
+      const read = async (ch: number) => {
+        if (!cache.has(ch)) cache.set(ch, await psdChannel(src, imageOff, w, h, channels, psb, ch));
+        return cache.get(ch) ?? null;
+      };
+      const alphaIdx = psdAlphaIndex(mode);
+      // ชิ้นงาน: มีช่องความโปร่งใส (RGB 4 ช่อง · CMYK 5 ช่อง · Gray 2 ช่อง) — ไม่มี = มี background = เต็มผืน
+      if (alphaIdx !== null && channels > alphaIdx) {
+        const alpha = await read(alphaIdx);
+        if (alpha) {
+          const box = alphaBBox(alpha, w, h, 1, 0);
+          if (box && !boxIsFull(box, w, h)) board.object = { widthMm: pxToMm(box.x1 - box.x0, dpi), heightMm: pxToMm(box.y1 - box.y0, dpi) };
+          else if (!box) info.note = "ภาพรวมในไฟล์โปร่งใสทั้งผืน — เซฟแบบ Maximize Compatibility แล้วลองใหม่";
+        }
       }
+      if (!info.preview) info.preview = await psdComposite(read, w, h, mode, channels);
     } catch {
-      /* อ่านชิ้นงานไม่ได้ก็ยังมีขนาดผืน */
+      /* อ่านชิ้นงาน/รูปไม่ได้ก็ยังมีขนาดผืน */
     }
   }
   if (dpi < 150) info.note = `ไฟล์ตั้งไว้แค่ ${dpi} DPI — ขนาดมม. ที่ได้อาจไม่ใช่ขนาดที่ลูกค้าตั้งใจ ถามลูกค้ายืนยันก่อน`;

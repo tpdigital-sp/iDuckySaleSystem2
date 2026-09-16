@@ -2,6 +2,23 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "iducky-dev-3031",
+      "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3031"
+      ],
+      "port": 3031,
+      "autoPort": false,
+      "env": {
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3031"
+      }
+    },
+    {
       "name": "iducky-dev-3025",
       "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
       "runtimeArgs": [
