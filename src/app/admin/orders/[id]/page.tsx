@@ -804,7 +804,7 @@ const CHARGE_PRESETS = ["ค่าตัดภาพ", "ค่าส่งเพ
  * แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำทุกใบ (ใบแรก/งวดหลัง/ใบเพิ่ม)
  * credited = ยอดที่ใบนี้นับเข้าออเดอร์แล้วทั้งที่ตรวจ "ไม่ผ่าน" (สลิปแท้แต่โอนขาด → รับบางส่วน)
  */
-function SlipVerifyNote({ v, credited, onRecheck, rechecking }: { v: NonNullable<Order["slipVerify"]>; credited?: number; onRecheck?: () => void; rechecking?: boolean }) {
+function SlipVerifyNote({ v, credited, settled = true, onRecheck, rechecking }: { v: NonNullable<Order["slipVerify"]>; credited?: number; /** งวดของสลิปใบนี้ยืนยันเงินบนออเดอร์แล้วจริง — false = ผลตรวจผ่านแต่ใบยังค้างขั้นรอเงิน (ผลถูกลงย้อนหลัง/ซ่อมยอด) ห้ามเขียนว่า "ยืนยันให้อัตโนมัติ" */ settled?: boolean; onRecheck?: () => void; rechecking?: boolean }) {
   const partial = v.status !== "pass" && (credited ?? 0) > 0;
   return (
     <div
@@ -814,12 +814,27 @@ function SlipVerifyNote({ v, credited, onRecheck, rechecking }: { v: NonNullable
     >
       {v.status === "pass" ? (
         <>
-          ✅ SlipOK ตรวจแล้ว: ยอดถูกต้อง {v.amount ? formatPrice(v.amount) : ""} — นับยอด/ยืนยันการชำระให้อัตโนมัติ
+          ✅ SlipOK ตรวจแล้ว: ยอดถูกต้อง {v.amount ? formatPrice(v.amount) : ""}
+          {settled ? " — นับยอด/ยืนยันการชำระให้อัตโนมัติ" : ""}
           {v.transRef ? ` · อ้างอิง ${v.transRef}` : ""}
+          {/* ผลผ่านแต่ใบยังอยู่ขั้นรอเงิน = ผลถูกลงทีหลัง (ซ่อมยอด) ไม่ได้ผ่านตอนตรวจสด — เจ้าของร้านเห็น "ยืนยันให้อัตโนมัติ" แล้วเข้าใจว่าสถานะเปลี่ยนแล้ว (OD-260915-1705 · 16 ก.ย. 69) */}
+          {!settled && (
+            <span className="mt-1 block text-amber-700">⚠️ ยอดถูกแต่ใบยังอยู่ขั้น "รอตรวจสอบ" — ผลตรวจนี้ถูกลงย้อนหลังตอนแก้ยอด ไม่ได้ผ่านตอนตรวจสด กด "ยืนยันเงินเข้า" ด้านบนเพื่อปิดใบ</span>
+          )}
           {v.deduction && (
+            /*
+             * เขียนเป็นสมการ "ยอดบิล − ส่วนต่าง = ยอดโอน ✓ ครบ" — เดิมเขียน "โอนน้อยกว่ายอดตั้ง ฿45.60"
+             * เจ้าของร้านอ่านเป็น "ขาด 45.60" ทั้งที่ใบนับครบแล้ว (OD-260915-1705 · 16 ก.ย. 69)
+             * หัก ณ ที่จ่าย = ภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ร้านได้คืนเป็นเครดิตภาษีผ่านใบ 50 ทวิ ไม่ใช่ยอดค้าง
+             */
             <span className="mt-1 block text-sky-700">
-              💡 โอนน้อยกว่ายอดตั้ง {formatPrice(v.deduction.amount)} — {v.deduction.label}
-              {v.deduction.kind === "wht" ? " · อย่าลืมตามหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) จากลูกค้า" : ""}
+              ✓ ครบตามบิล: ยอดบิล {formatPrice(Math.round(((v.amount ?? 0) + v.deduction.amount) * 100) / 100)} − {v.deduction.label} {formatPrice(v.deduction.amount)} = โอน{" "}
+              {formatPrice(v.amount ?? 0)}
+              {v.deduction.kind === "wht"
+                ? ` · ${formatPrice(v.deduction.amount)} ไม่ใช่ยอดค้าง — เป็นภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ตามหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) จากลูกค้ามาเก็บไว้`
+                : v.deduction.kind === "bankFee"
+                  ? " · ค่าธรรมเนียมที่ธนาคารหัก ไม่ต้องทวงลูกค้า"
+                  : ""}
             </span>
           )}
           {(v.over ?? 0) > 0 && (
@@ -7373,6 +7388,15 @@ export default function AdminOrderDetailPage() {
                             <SlipVerifyNote
                               v={e.verify}
                               credited={e.state === "partial" ? e.credited : undefined}
+                              settled={
+                                e.phase === "first"
+                                  ? order.deposit
+                                    ? !!order.deposit.firstPaidAt
+                                    : !(order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ")
+                                  : e.phase === "balance"
+                                    ? !!order.deposit?.settledAt
+                                    : true
+                              }
                               onRecheck={e.state === "fail" || e.state === "pending" ? () => recheckSlip(e.phase, e.paymentId) : undefined}
                               rechecking={slipRechecking}
                             />
