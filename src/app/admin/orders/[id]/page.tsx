@@ -3852,6 +3852,26 @@ export default function AdminOrderDetailPage() {
                 </span>
               )}
             </div>
+            {/* ใครสร้างใบนี้ — ใต้ป้ายสถานะ ให้เห็นทันทีตั้งแต่หัวหน้า (เจ้าของร้านขอ 16 ก.ย. 69)
+                พนักงานทำให้ (สั่งแทนที่ตะกร้า · งานพิเศษ · แปลงจากใบเสนอราคา/FlowAccount · redo) = ป้ายทึบ + ชื่อคนทำ
+                ลูกค้ากดสั่งเองจากหน้าเว็บ = ป้ายจาง ๆ · คำเดียวกับหน้ารายการออเดอร์ (dkb-by) จะได้ไม่งงข้ามหน้า */}
+            {order.placedBy ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200"
+                title="ออเดอร์นี้พนักงานเป็นคนทำบิลให้ลูกค้า"
+              >
+                <span aria-hidden>🧑‍💼</span>
+                แอดมินสร้างให้ · {order.placedBy}
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200"
+                title="ลูกค้ากดสั่งเองจากหน้าเว็บ ไม่ใช่ใบที่พนักงานกรอก"
+              >
+                <span aria-hidden>🛒</span>
+                ลูกค้าสั่งเองจากเว็บ
+              </span>
+            )}
           </div>
         </div>
 
