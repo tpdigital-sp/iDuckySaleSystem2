@@ -134,6 +134,13 @@ export interface Shipment {
  */
 export interface ShipPlanRound {
   proofs: Shipment["proofs"];
+  /** 🎁 รอบนี้สร้างจากโฟลเดอร์ตัวอย่าง "(…ตย)" ที่โยนเข้าคิวปริ้น (จำนวนอ่านจากชื่อไฟล์ jpg) — เก็บชื่อโฟลเดอร์ไว้เป็นหลักฐาน */
+  sampleFolder?: string;
+  /**
+   * ✅ เจ้าของร้าน (Administrator) อนุมัติให้ส่งรอบตัวอย่างนี้ทั้งที่ยังเก็บยอดคงเหลือไม่ครบ (16 ก.ย. 69 "ต้องได้รับการอนุมัติจากฉันเท่านั้น")
+   * ไม่มี = ใบปะหน้าไม่พิมพ์ + ด่านแบ่งส่งยังล็อกมัดจำ · ด่านจริงอยู่ที่ PATCH /api/admin/orders (คนอื่นตั้งค่านี้ = 403)
+   */
+  sampleApproved?: { by: string; at: string };
   /** ส่งภายในวันไหน (YYYY-MM-DD) — ขึ้นบนใบงาน/โหมดแพ็ค */
   dueDate?: string;
   note?: string;
@@ -1889,6 +1896,50 @@ export function isPartiallyShipped(order: Order): boolean {
   return (order.shipments?.length ?? 0) > 0 && !(order.tracking ?? "").trim();
 }
 
+/**
+ * โฟลเดอร์ผลิตที่เป็น "งานตัวอย่าง" — กติกาเจ้าของร้าน 16 ก.ย. 69: ชื่อโฟลเดอร์ต้องมีป้ายวงเล็บที่ลงท้ายด้วย "ตย"
+ * ผ่าน: "(ตย)" "(เร่งขึ้นตย)" "(ขึ้นตย)" · ไม่ผ่าน: "(ขึ้นตยแล้ว)" (= ตัวอย่างผ่านแล้ว นี่คือโฟลเดอร์งานจริง) "(ids)"
+ */
+export const SAMPLE_FOLDER_RE = /\([^()]*ตย\s*\)/u;
+export const isSampleFolderName = (name: string) => SAMPLE_FOLDER_RE.test(String(name ?? "").normalize("NFC"));
+
+/**
+ * 🎁➗ รอบตัวอย่างของใบมัดจำ 50% (กติกาเจ้าของร้าน 16 ก.ย. 69 · OD-260911-8026 ลูกค้าโอนมัดจำแล้วขอดูชิ้นงานจริงก่อนผลิตล็อตหลัก)
+ * กฎ "พิมพ์ใบปะหน้า/ยิงเลขไม่ได้จนครบ 100%" มีไว้กันของหลักออกไปทั้งที่ยังเก็บเงินไม่ครบ
+ * → ถ้าใบนี้ (1) มัดจำงวดแรกเข้าแล้ว ยังไม่ครบ (2) กราฟฟิกติ๊ก 🎁 มีชิ้นงานตัวอย่างของจริง
+ *   (3) โยนโฟลเดอร์ผลิตชื่อ "(เร่งขึ้นตย)" แล้ว = ร้านตั้งใจส่งตัวอย่างก่อน
+ *   ให้พิมพ์ใบปะหน้า + ส่งบางส่วน "รอบที่ไม่ใช่รอบสุดท้าย" ได้ · รอบสุดท้าย/ช่องเลขพัสดุปกติยังล็อกครบ 100% เหมือนเดิม
+ * คืน null = ไม่เข้าเกณฑ์ · missing = สัญญาณที่ยังขาด (ไว้บอกคนหน้างานว่าต้องติ๊ก/โยนอะไร)
+ */
+export function depositSampleRun(order: Order): { ok: boolean; missing: string[] } | null {
+  const d = order.deposit;
+  if (!d?.firstPaidAt || d.settledAt) return null;
+  if ((order.tracking ?? "").trim()) return null;
+  const missing: string[] = [];
+  if (!order.items.some((it) => it.sampleRequired)) missing.push("กราฟฟิกยังไม่ติ๊ก 🎁 มีชิ้นงานตัวอย่าง (ของจริง)");
+  // โฟลเดอร์ตัวอย่างรู้ได้ 2 ทาง: ติ๊กส่งผลิตด้วยโฟลเดอร์ (…ตย) หรือแผนแบ่งส่งรอบที่ยังไม่ออกถูกสร้างจากโฟลเดอร์ (…ตย) (โยนโฟลเดอร์ → อ่านชื่อไฟล์ jpg)
+  const sent = (order.shipments ?? []).length;
+  const planFromSample = (order.shipPlan ?? []).some((r, n) => n >= sent && !!r.sampleFolder && isSampleFolderName(r.sampleFolder));
+  if (!isSampleFolderName(order.productionSent?.folder ?? "") && !planFromSample) missing.push('ยังไม่โยนโฟลเดอร์ผลิตที่ชื่อมี "(…ตย)" เช่น (เร่งขึ้นตย)');
+  // ✅ รอบตัวอย่างที่จะออก (รอบถัดไปของแผน) ต้องมีเจ้าของร้านอนุมัติ — แอดมิน/กราฟฟิก/แพ็คตั้งเองไม่ได้
+  const pending = pendingSampleRound(order);
+  if (!pending) missing.push("แอดมินยังไม่ระบุแผนแบ่งส่งรอบตัวอย่าง (📋 ระบุของที่ส่งก่อน)");
+  else if (!pending.round.sampleApproved) missing.push("รอเจ้าของร้านกด ✅ อนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือ (ในกล่อง 📋 แผนแบ่งส่ง)");
+  return { ok: missing.length === 0, missing };
+}
+
+/** รอบแบ่งส่งรอบถัดไปที่ยังไม่ออก (รอบตัวอย่างของใบมัดจำ) — index ในแผน + ตัวรอบ · null = ไม่มีแผนค้าง */
+export function pendingSampleRound(order: Order): { index: number; round: ShipPlanRound } | null {
+  const sent = (order.shipments ?? []).length;
+  const round = order.shipPlan?.[sent];
+  return round ? { index: sent, round } : null;
+}
+
+/** ใบมัดจำที่เข้าเกณฑ์ส่งตัวอย่างก่อน (ดู depositSampleRun) — ใช้ปลดล็อกใบปะหน้า/ด่านแบ่งส่งรอบที่ไม่ใช่รอบสุดท้าย */
+export function isDepositSampleRun(order: Order): boolean {
+  return depositSampleRun(order)?.ok === true;
+}
+
 /** ด่านตรวจก่อน "ส่งบางส่วน" — ตรวจเฉพาะรูปที่เลือกไปรอบนี้ + รายการที่รูปนั้นอยู่ (ไม่บังคับงานตัวอย่าง/ใบกำกับ/ของครบทั้งใบ = ไปกับรอบสุดท้าย) */
 export interface PartialGate {
   ready: boolean;
@@ -1974,9 +2025,17 @@ export function partialGate(order: Order, sel: PartialSel): PartialGate {
   if (short.length) reasons.push(`ของไม่พอกับจำนวนที่จะส่งรอบนี้: ${short.join(", ")}`);
   if (unread.size) reasons.push(`ยืนยันอ่านรายละเอียด: ${[...unread].join(", ")}`);
   if (!(order.packPhotos && order.packPhotos.length > 0)) reasons.push("ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง");
-  if (hasUnpaidBalance(order)) reasons.push(order.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ");
   // เลือกครบทุกชิ้นที่เหลือ = รอบสุดท้าย ต้องยิงช่องเลขพัสดุปกติให้ใบปิด (สถานะจัดส่งแล้ว + ด่านเต็ม)
   const isLastRound = selQty > 0 && remaining > 0 && selQty >= remaining;
+  // 🎁➗ ใบมัดจำที่ตั้งใจส่งตัวอย่างก่อน (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย) — รอบที่ไม่ใช่รอบสุดท้ายไม่ต้องรอครบ 100%
+  const sampleInfo = isLastRound ? null : depositSampleRun(order);
+  const sampleRun = sampleInfo?.ok === true;
+  if (hasUnpaidBalance(order) && !sampleRun)
+    reasons.push(
+      order.deposit
+        ? `ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ${sampleInfo && sampleInfo.missing.length ? ` — ส่งตัวอย่างก่อนได้ถ้า: ${sampleInfo.missing.join(" · ")}` : ""}`
+        : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ"
+    );
   if (isLastRound) reasons.push("รอบนี้เอาของที่เหลือไปทั้งหมด = รอบสุดท้าย ให้ยิงที่ช่องเลขพัสดุด้านล่างแทน (ใบจะปิดเป็นจัดส่งแล้ว)");
   /**
    * 🚨 ของที่เหลือพร้อมส่งอยู่แล้ว + แอดมินไม่ได้สั่งแบ่งส่ง = เกือบทุกครั้งคือกดผิดทาง
@@ -1998,9 +2057,11 @@ export function packGate(order: Order): PackGate {
   const short: PackGate["short"] = [];
   const unsampled: string[] = [];
 
+  // 🎁 ชิ้นงานตัวอย่างที่ส่งไปแล้วในรอบแบ่งส่งก่อนหน้า (ใบมัดจำส่งตัวอย่างก่อน) = ไม่ต้องใส่กล่องรอบสุดท้ายซ้ำ
+  const sampleWentEarlier = (order.shipments?.length ?? 0) > 0 && !!order.deposit && depositSampleRun({ ...order, tracking: "" })?.ok === true;
   order.items.forEach((it) => {
     if (!it.noteAck) unread.push(it.name);
-    if (it.sampleRequired && !it.samplePacked) unsampled.push(it.name);
+    if (it.sampleRequired && !it.samplePacked && !sampleWentEarlier) unsampled.push(it.name);
     proofsOf(it).forEach((p, j) => {
       if (!p.pack) uncounted.push({ item: it.name, index: j + 1 });
       else if (p.pack.status === "ไม่ครบ") short.push({ item: it.name, got: p.pack.got ?? 0, need: p.qty });

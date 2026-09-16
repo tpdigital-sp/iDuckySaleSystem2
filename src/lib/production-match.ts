@@ -1,4 +1,4 @@
-import type { Order } from "@/lib/admin-data";
+import { isSampleFolderName, proofsOf, type Order, type ShipPlanRound } from "@/lib/admin-data";
 import type { TPGraphicCard } from "@/lib/server/tp-report"; // type-only (ไฟล์นี้เป็นฟังก์ชันบริสุทธิ์ ใช้ได้ทั้งสองฝั่ง)
 
 /**
@@ -26,6 +26,8 @@ export interface FolderMatch {
    * ⚠️ เดิมกลืนเงียบ — แอดมินเลยไม่รู้ว่าโฟลเดอร์งานจริงเข้ามาด้วยหรือยัง (15 ก.ย. 69 OD-260909-6151)
    */
   alsoFolders?: string[];
+  /** 🎁 โฟลเดอร์ (…ตย) ของใบนี้มีไฟล์ jpg ที่อ่านจำนวนตัวอย่างได้ → เสนอตั้งแผนแบ่งส่งรอบตัวอย่างให้ (เซิร์ฟเวอร์เติม) */
+  sample?: { folder: string; qty: number; designs: number; unmatchedFiles: string[]; replacesPlan: boolean; lines: string[] };
 }
 export interface FolderAmbiguous {
   folder: string;
@@ -199,4 +201,118 @@ export function matchFoldersToOrders(
     }
   }
   return res;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 🎁 โฟลเดอร์ตัวอย่าง "(…ตย)" → แผนแบ่งส่งรอบตัวอย่าง (16 ก.ย. 69 — เจ้าของร้านสั่ง "โยน folder ได้ และให้ระบบจับจำนวนตามไฟล์ jpg")
+ * ไฟล์ในโฟลเดอร์ตั้งชื่อโดยกราฟฟิก:  "(1)Photocard PET ใส(รองขาวเฉพาะ)+เจาะรู_2 ชิ้น-1.jpg"
+ *   (1) = รายการที่ 1 ในออเดอร์ · "_2 ชิ้น" = จำนวนชิ้นตัวอย่างของลายนี้ · "-1" = ลายที่ 1 (ตรงกับรูปแบบงานรูปที่ 1)
+ * รูปแบบงานในระบบเก็บชื่อไฟล์ต้นทางไว้ใน proof.note ("1)Photocard PET ใส(รองขาวเฉพาะ)+เจาะรู -1") → จับคู่ด้วยชื่อก่อน (ชัวร์) ตำแหน่งทีหลัง
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export const SAMPLE_FILE_RE = /\.(jpe?g|png)$/i;
+
+/** แยกส่วนจากชื่อไฟล์ตัวอย่าง — null = ไม่ใช่รูปแบบ "…_<จำนวน> <หน่วย>-<ลาย>.jpg" */
+export function parseSampleFileName(fileName: string): { item?: number; base: string; qty: number; unit: string; design: number } | null {
+  const name = String(fileName || "").normalize("NFC").replace(SAMPLE_FILE_RE, "");
+  const m = name.match(/^(?:\((\d+)\))?(.*?)_(\d+)\s*([^\s_\-\d]*)\s*-\s*(\d+)$/u);
+  if (!m) return null;
+  const qty = Number(m[3]);
+  const design = Number(m[5]);
+  if (!(qty > 0) || !(design > 0)) return null;
+  return { ...(m[1] ? { item: Number(m[1]) } : {}), base: m[2].trim(), qty, unit: m[4] || "ชิ้น", design };
+}
+
+/** ชื่อไฟล์/หมายเหตุรูป ตัดเครื่องหมายทั้งหมดเหลือแต่ตัวอักษร-ตัวเลข ไว้เทียบกัน ("(1)Photocard…-1" ↔ "1)Photocard… -1") */
+const bareName = (s: string) => String(s || "").normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+export interface SamplePlanBuild {
+  round: ShipPlanRound;
+  /** จำนวนชิ้นรวมของรอบตัวอย่าง */
+  qty: number;
+  /** จำนวนลาย (รูป) ที่จับคู่ได้ */
+  designs: number;
+  /** ชื่อไฟล์ที่อ่านได้แต่หารูปแบบงานไม่เจอ / ชื่อไม่เข้ารูปแบบ — ให้คนดู */
+  unmatchedFiles: string[];
+}
+
+/**
+ * สร้างรอบตัวอย่างจากชื่อไฟล์ jpg ในโฟลเดอร์ (…ตย) ของใบนี้ · null = ไม่มีไฟล์ที่อ่านจำนวนได้เลย
+ * จำนวนต่อรูปไม่เกินจำนวนเต็มบนรูป (ตัวอย่างมากกว่าที่สั่งไม่มีจริง)
+ */
+export function sampleRoundFromFiles(order: Order, folder: string, fileNames: string[], by: string, at: string): SamplePlanBuild | null {
+  if (!isSampleFolderName(folder)) return null;
+  const proofs: ShipPlanRound["proofs"] = [];
+  const unmatchedFiles: string[] = [];
+  const used = new Set<string>();
+  const files = [...new Set(fileNames.map((f) => leafName(f)).filter((f) => SAMPLE_FILE_RE.test(f)))];
+  for (const f of files) {
+    const parsed = parseSampleFileName(f);
+    if (!parsed) {
+      unmatchedFiles.push(f);
+      continue;
+    }
+    // 1) ชื่อไฟล์ (ตัดจำนวนออก) ตรงกับ proof.note ที่กราฟฟิกอัปไว้
+    const want = bareName(`${parsed.item ? `(${parsed.item})` : ""}${parsed.base}-${parsed.design}`);
+    let hit: { i: number; j: number } | null = null;
+    order.items.forEach((it, i) =>
+      proofsOf(it).forEach((p, j) => {
+        if (hit || !p.note) return;
+        if (bareName(p.note) === want) hit = { i, j };
+      })
+    );
+    // 2) ตำแหน่ง: (N) = รายการที่ N · -M = รูปที่ M — ไม่มี (N) ให้ใช้รายการเดียวที่มีรูปที่ M
+    if (!hit) {
+      const cands = order.items
+        .map((it, i) => ({ i, n: proofsOf(it).length }))
+        .filter(({ i, n }) => (parsed.item ? i === parsed.item - 1 : true) && parsed.design <= n);
+      if (cands.length === 1) hit = { i: cands[0].i, j: parsed.design - 1 };
+    }
+    if (!hit) {
+      unmatchedFiles.push(f);
+      continue;
+    }
+    const { i, j } = hit as { i: number; j: number };
+    const key = `${i}:${j}`;
+    if (used.has(key)) continue; // ไฟล์ซ้ำลายเดิม (เช่น มีทั้ง jpg และ png) นับครั้งเดียว
+    used.add(key);
+    const it = order.items[i];
+    const p = proofsOf(it)[j];
+    const full = Math.floor(p.qty ?? 0);
+    const go = full > 0 ? Math.min(parsed.qty, full) : parsed.qty;
+    proofs.push({
+      item: i,
+      proof: j,
+      url: p.url,
+      qty: go,
+      ...(full > 0 ? { ofQty: full } : {}),
+      unit: p.unit || parsed.unit,
+      itemName: it.name,
+    });
+  }
+  if (!proofs.length) return null;
+  proofs.sort((a, b) => a.item - b.item || a.proof - b.proof);
+  const qty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+  const round: ShipPlanRound = {
+    proofs,
+    sampleFolder: folder,
+    note: `🎁 ตัวอย่าง ${qty} ชิ้น (${proofs.length} ลาย) — จำนวนตามชื่อไฟล์ในโฟลเดอร์ ${folder}`,
+    by,
+    at,
+  };
+  return { round, qty, designs: proofs.length, unmatchedFiles };
+}
+
+/** จัดกลุ่มพาธไฟล์ตัวอย่างที่หน้าเว็บส่งมา → โฟลเดอร์ชั้นในสุด → ชื่อไฟล์ */
+export function groupSampleFiles(paths: string[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const raw of paths) {
+    const parts = String(raw || "").split("/").filter(Boolean);
+    if (parts.length < 2) continue;
+    const file = parts[parts.length - 1];
+    const folder = parts[parts.length - 2];
+    if (!SAMPLE_FILE_RE.test(file) || !isSampleFolderName(folder)) continue;
+    out.set(folder, [...(out.get(folder) ?? []), file]);
+  }
+  return out;
 }

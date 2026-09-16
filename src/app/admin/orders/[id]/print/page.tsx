@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, MOCK_ORDERS, nextPlannedRound, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, nextPlannedRound, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -159,6 +159,10 @@ export default function PrintOrderPage() {
   const allPaid = orders.every((o) => orderFullyPaid(o));
   const anyPaid = orders.some((o) => orderFullyPaid(o));
   const unpaidCount = orders.filter((o) => !orderFullyPaid(o)).length;
+  // 🎁➗ ใบมัดจำรอบตัวอย่าง (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย) ใบปะหน้าออกได้แม้ยังไม่ครบ 100% — ป้ายหัวจอต้องพูดตรงกับใบที่พิมพ์ออกจริง
+  const labelOkOf = (o: Order) => orderFullyPaid(o) || depositSampleRun(o)?.ok === true;
+  const allLabels = orders.every(labelOkOf);
+  const noLabelCount = orders.filter((o) => !labelOkOf(o)).length;
   // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k] && !(k === "receipt" && !anyPaid));
 
@@ -199,7 +203,7 @@ export default function PrintOrderPage() {
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {(([
             // ยังเก็บเงินไม่ครบ = ใบปะหน้า (ที่อยู่จัดส่ง) ไม่ออก — ป้ายต้องบอกตรง ๆ ว่าจะได้แค่ใบงาน
-            ["work", allPaid ? "ใบงาน + ใบปะหน้าพัสดุ" : "ใบงาน"],
+            ["work", allLabels ? "ใบงาน + ใบปะหน้าพัสดุ" : "ใบงาน"],
             // ป้ายแปะหน้ากล่อง — ตัวใหญ่ อ่านจากไกล ไม่มีราคา ฝ่ายแพ็คใช้ได้
             ["box", "🏷 ใบแปะหน้ากล่อง"],
             // ใบเสร็จมีราคา — เฉพาะคนที่เห็นข้อมูลเงินได้
@@ -214,9 +218,14 @@ export default function PrintOrderPage() {
                 className="h-4 w-4 accent-amber-500"
               />
               {label}
-              {k === "work" && !allPaid && (
+              {k === "work" && !allLabels && (
                 <span className="text-xs font-semibold text-rose-500">
-                  · {batch ? `ใบปะหน้ายังไม่ออก ${unpaidCount} ใบ 🔒` : "ใบปะหน้ายังไม่ออก 🔒"}
+                  · {batch ? `ใบปะหน้ายังไม่ออก ${noLabelCount} ใบ 🔒` : "ใบปะหน้ายังไม่ออก 🔒"}
+                </span>
+              )}
+              {k === "work" && allLabels && !allPaid && (
+                <span className="text-xs font-semibold" style={{ color: "#7c3aed" }}>
+                  · 🎁 รอบตัวอย่าง (มัดจำ 50%)
                 </span>
               )}
               {k === "receipt" && !anyPaid ? " 🔒" : ""}
@@ -234,11 +243,18 @@ export default function PrintOrderPage() {
           </label>
         </div>
 
-        {!allPaid && (
+        {!allPaid && !allLabels && (
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
             {batch
-              ? `🔒 มี ${unpaidCount} ใบยังเก็บเงินไม่ครบ 100% — ใบนั้นออกได้เฉพาะ “ใบงาน”`
+              ? `🔒 มี ${noLabelCount} ใบยังเก็บเงินไม่ครบ 100% — ใบนั้นออกได้เฉพาะ “ใบงาน”`
               : "🔒 ยังเก็บเงินไม่ครบ 100% — พิมพ์ได้เฉพาะ “ใบงาน” · ใบปะหน้าพัสดุและใบเสร็จยังออกไม่ได้"}
+          </span>
+        )}
+        {!allPaid && allLabels && (
+          <span className="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-bold ring-1 ring-violet-200" style={{ color: "#6d28d9" }}>
+            {batch
+              ? `🎁 มี ${unpaidCount} ใบเป็นรอบตัวอย่างของใบมัดจำ — ใบปะหน้าออกได้ · ใบเสร็จรอครบ 100%`
+              : "🎁 รอบตัวอย่างของใบมัดจำ 50% — ใบปะหน้าออกได้ · ใบกำกับภาษี/ใบเสร็จไปกับล็อตหลักเมื่อครบ 100%"}
           </span>
         )}
         <button
@@ -538,6 +554,10 @@ function OrderDocs({
   const printedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
   // 🔒 ยังไม่ได้รับเงินครบ (รวมออเดอร์มัดจำที่ค้างยอดหลัง) → พิมพ์เอกสารไม่ได้
   const fullyPaid = orderFullyPaid(order);
+  // 🎁➗ ใบมัดจำที่ส่งตัวอย่างก่อน (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย + ยังไม่ยิงรอบสุดท้าย) → ใบปะหน้ารอบตัวอย่างพิมพ์ได้ทั้งที่ยังไม่ครบ 100%
+  const sampleRun = fullyPaid ? null : depositSampleRun(order);
+  const labelOk = fullyPaid || sampleRun?.ok === true;
+  const balanceDue = Math.max(0, orderTotal(order) - (order.paidTotal ?? 0));
   // 📮 ผู้ส่งบนกล่อง — ใบฝากส่งของตัวแทนตั้งชื่อร้านตัวเองไว้ (order.sender) ที่เหลือใช้ข้อมูลร้าน
   const sender = senderOf(order, shop);
   // ชื่อวิธีจัดส่งที่ลูกค้าเลือกจริง (เช่น "EMS (50)") — order.shipping เก็บได้แค่ 2 ค่าเก่า ธรรมดา/ด่วน จึงเพี้ยนเวลาร้านตั้งวิธีส่งเอง
@@ -688,18 +708,22 @@ function OrderDocs({
               </div>
             )}
             {/* 🔒 ยังไม่จ่ายครบ → พิมพ์ได้เฉพาะส่วนใบงาน · ใบปะหน้า (ที่อยู่จัดส่ง) ถูกกันไว้ */}
-            {!fullyPaid && (
+            {!labelOk && (
               <div className="keep mb-4 rounded-lg border-2 border-dashed border-rose-300 bg-rose-50 p-4 text-center">
                 <p className="text-sm font-extrabold" style={{ color: "#dc2626" }}>
                   🔒 ใบปะหน้าพัสดุยังไม่พิมพ์ — ลูกค้าชำระยังไม่ครบ 100%
-                  {order.deposit && !order.deposit.settledAt
-                    ? ` (ค้างยอดคงเหลือ ${formatPrice(Math.max(0, orderTotal(order) - (order.paidTotal ?? 0)))})`
-                    : ""}
+                  {order.deposit && !order.deposit.settledAt ? ` (ค้างยอดคงเหลือ ${formatPrice(balanceDue)})` : ""}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-600">เก็บเงินครบแล้วพิมพ์ใบงานใหม่ ใบปะหน้า/ที่อยู่จัดส่งจะแสดงอัตโนมัติ</p>
+                {/* ใบมัดจำ: บอกให้รู้ว่าถ้าจะส่งตัวอย่างก่อน ต้องติ๊ก/โยนอะไรถึงจะพิมพ์ได้ */}
+                {sampleRun && !sampleRun.ok && (
+                  <p className="mt-1.5 text-xs font-semibold" style={{ color: "#7c3aed" }}>
+                    🎁 ส่งตัวอย่างก่อนโดยยังไม่ครบ 100% ได้ ถ้า: {sampleRun.missing.join(" · ")}
+                  </p>
+                )}
               </div>
             )}
-            {fullyPaid && (<>
+            {labelOk && (<>
             {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด (เลขออเดอร์อยู่ในบาร์โค้ด + กล่องใบงานด้านล่างแล้ว) */}
             <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
@@ -722,7 +746,7 @@ function OrderDocs({
                 </div>
                 <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
                 {/* 🧾 บิล FlowAccount/บิล VAT ต้องมีใบกำกับตัวจริงในกล่อง — ตราบนส่วนที่ติดกล่อง คนแพ็คเห็นโดยไม่ต้องเปิดจอ (10 ก.ย. 69) */}
-                {orderNeedsTaxInvoiceInBox(order) && (
+                {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok && (
                   <p
                     className="keep mt-1.5 inline-block rounded border-[2.5px] border-red-600 bg-white px-2.5 py-1 text-sm font-extrabold leading-none"
                     style={{ color: "#dc2626", transform: "rotate(-1.5deg)" }}
@@ -736,6 +760,7 @@ function OrderDocs({
             {/* ผู้รับ — ส่วนนี้ขึ้นไปคือ "ป้ายติดกล่อง" ตัดตามเส้นประด้านล่าง */}
             <div className="keep mt-4 rounded border border-slate-300 p-5">
               {/* 🚚 กล่องรอบถัดไปของใบแบ่งส่ง — ตราให้คนแพ็ค/ขนส่งรู้ว่านี่กล่องที่เท่าไร */}
+              {/* ⚠️ ส่วนนี้แปะกล่อง ลูกค้าเห็น — ห้ามมีเรื่องเงิน/มัดจำ (เจ้าของร้านทัก 16 ก.ย. 69) เรื่องรอบตัวอย่างไปอยู่ส่วนใบงานด้านล่าง */}
               {(order.shipments?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && (
                 <p className="mb-2 inline-block rounded border-2 border-slate-900 px-2 py-0.5 text-sm font-extrabold">
                   🚚 แบ่งส่ง — กล่องรอบที่ {(order.shipments?.length ?? 0) + 1}
@@ -785,6 +810,17 @@ function OrderDocs({
                     🤝 ใบตัวแทน — ยังไม่ได้ตั้งผู้ส่ง ใบปะหน้านี้ขึ้นชื่อร้านเรา (ถามแอดมินก่อนแปะกล่อง)
                   </p>
                 )}
+                {/* 🎁➗ รอบตัวอย่างของใบมัดจำ — ใบปะหน้าออกได้ทั้งที่เงินยังไม่ครบ ต้องตะโกนตรงนี้ให้คนแพ็คส่งแค่ตัวอย่าง (ส่วนนี้ตัดเก็บ ลูกค้าไม่เห็น) */}
+                {sampleRun?.ok && (
+                  <div className="keep mt-2 rounded-lg border-[3px] border-red-600 bg-red-50 px-3 py-2">
+                    <p className="text-lg font-extrabold leading-tight" style={{ color: "#dc2626" }}>
+                      ⛔ ใบมัดจำ 50% — เงินยังไม่ครบ ค้าง {formatPrice(balanceDue)} · ส่งได้เฉพาะ 🎁 ชิ้นงานตัวอย่างตามแผนแบ่งส่งเท่านั้น
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold text-red-800">
+                      ห้ามส่งล็อตหลัก/ของทั้งใบ จนกว่าแอดมินยืนยันรับยอดคงเหลือครบ · ยิงเลขรอบตัวอย่างที่ปุ่ม "ส่งบางส่วน" ไม่ใช่ช่องเลขพัสดุปกติ
+                    </p>
+                  </div>
+                )}
                 {/* 📋 แผนแบ่งส่งจากแอดมิน — บอกคนแพ็คตั้งแต่ใบงานว่ารูปไหนต้องออกก่อน */}
                 {!(order.tracking ?? "").trim() &&
                   (order.shipPlan ?? []).map((r, n) =>
@@ -821,7 +857,13 @@ function OrderDocs({
                   </p>
                 )}
                 {/* 🧾 ใบกำกับภาษีต้องใส่กล่อง — บอกเลขเอกสารให้ไปพิมพ์จาก FlowAccount ได้ทันที */}
-                {orderNeedsTaxInvoiceInBox(order) &&
+                {/* รอบตัวอย่างของใบมัดจำ: ใบกำกับยังไม่ออก ไปกับกล่องล็อตหลัก */}
+                {orderNeedsTaxInvoiceInBox(order) && sampleRun?.ok && (
+                  <p className="mt-1.5 block w-fit rounded border border-slate-400 bg-white px-2 py-1 text-sm font-bold text-slate-600">
+                    🧾 กล่องตัวอย่างไม่ต้องใส่ใบกำกับภาษี — ใบกำกับไปกับล็อตหลักหลังเก็บยอดคงเหลือครบ
+                  </p>
+                )}
+                {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok &&
                   (() => {
                     const doc = taxInvoiceDocOf(order);
                     return (

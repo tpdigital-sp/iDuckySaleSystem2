@@ -7707,6 +7707,48 @@ export default function AdminOrderDetailPage() {
                           {r.note ? `📝 ${r.note} · ` : ""}
                           {r.by} · {shortTime(r.at)}
                         </p>
+                        {/* 🎁➗ ใบมัดจำที่ยังเก็บยอดคงเหลือไม่ครบ: รอบตัวอย่างออกได้ต่อเมื่อเจ้าของร้านอนุมัติ (16 ก.ย. 69) */}
+                        {!done && order.deposit?.firstPaidAt && !order.deposit.settledAt && (
+                          r.sampleApproved ? (
+                            <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-green-700">
+                              ✅ เจ้าของร้านอนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือ · {r.sampleApproved.by} · {shortTime(r.sampleApproved.at)}
+                              {isOwner && (
+                                <button
+                                  type="button"
+                                  className="font-bold text-rose-500 hover:underline"
+                                  onClick={() => {
+                                    const shipPlan = order.shipPlan!.map((x, i) => (i === n ? { ...x, sampleApproved: undefined } : x));
+                                    applyOrder(withLog({ ...order, shipPlan }, actor, "↩️ ถอนอนุมัติส่งตัวอย่าง", `รอบที่ ${n + 1}`));
+                                  }}
+                                >
+                                  ถอนอนุมัติ
+                                </button>
+                              )}
+                            </p>
+                          ) : isOwner ? (
+                            <button
+                              type="button"
+                              className="mt-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[11px] font-extrabold text-white hover:bg-violet-500"
+                              onClick={() => {
+                                const shipPlan = order.shipPlan!.map((x, i) => (i === n ? { ...x, sampleApproved: { by: actor, at: new Date().toISOString() } } : x));
+                                applyOrder(
+                                  withLog(
+                                    { ...order, shipPlan },
+                                    actor,
+                                    "✅ อนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือ",
+                                    `รอบที่ ${n + 1}: ${roundProofsText(order, r.proofs)}${qty ? ` · รวม ${qty} ชิ้น` : ""} · ยอดคงเหลือ ${formatPrice(Math.max(0, orderTotal(order) - (order.paidTotal ?? 0)))} ยังไม่เข้า`
+                                  )
+                                );
+                              }}
+                            >
+                              ✅ อนุมัติส่งตัวอย่างรอบนี้ก่อนเก็บยอดคงเหลือ (เจ้าของร้าน)
+                            </button>
+                          ) : (
+                            <p className="mt-1 text-[11px] font-bold" style={{ color: "#6d28d9" }}>
+                              ⏳ รอเจ้าของร้านอนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือ — ใบปะหน้า/ปุ่มส่งบางส่วนยังไม่เปิด
+                            </p>
+                          )
+                        )}
                       </div>
                     );
                   })}

@@ -3,7 +3,7 @@ import { withArtQtyMap } from "@/lib/edit-selections";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { randomBytes } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
-import { can, canPack, PACK_SCAN_HEADER } from "@/lib/permissions";
+import { can, canPack, PACK_SCAN_HEADER, ROLE_ADMINISTRATOR } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write";
@@ -698,6 +698,16 @@ export async function PATCH(req: Request) {
         },
         { status: 403 }
       );
+  }
+  /**
+   * ✅ อนุมัติส่งรอบตัวอย่างทั้งที่ยอดคงเหลือยังไม่ครบ = เจ้าของร้าน (Administrator) เท่านั้น (สั่ง 16 ก.ย. 69)
+   * ตรวจจากส่วนต่าง: รอบไหนในแผนแบ่งส่งที่ sampleApproved โผล่ใหม่/เปลี่ยนคน ทั้งที่ของเดิมไม่มี → คนอื่นโดน 403
+   */
+  if (actor.role !== ROLE_ADMINISTRATOR) {
+    const was = (existing.shipPlan ?? []).map((r) => r.sampleApproved?.at ?? "");
+    const newlyApproved = (toSave.shipPlan ?? []).some((r, n) => !!r.sampleApproved && r.sampleApproved.at !== (was[n] ?? ""));
+    if (newlyApproved)
+      return NextResponse.json({ error: "อนุมัติส่งตัวอย่างก่อนเก็บยอดคงเหลือได้เฉพาะเจ้าของร้านเท่านั้น" }, { status: 403 });
   }
 
   // อย่าเก็บ signed URL ชั่วคราวลงฐาน — สลิปทุกใบ (ช่องหลัก/ใบเพิ่ม) ต้องเซ็นใหม่ทุกครั้งที่ดึง

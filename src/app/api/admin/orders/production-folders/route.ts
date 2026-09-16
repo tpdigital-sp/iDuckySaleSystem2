@@ -3,7 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchGraphicCardsFromTP } from "@/lib/server/tp-report";
-import { matchFoldersToOrders, type FolderMatchResult } from "@/lib/production-match";
+import { groupSampleFiles, matchFoldersToOrders, sampleRoundFromFiles, type FolderMatch, type FolderMatchResult } from "@/lib/production-match";
 import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
@@ -19,7 +19,10 @@ const CANDIDATE_STATUSES: OrderStatus[] = ["รอตรวจสอบ", "ช�
  *   · pick = ใบที่คนเลือกเองจากรายการคลุมเครือ (ติ๊กให้ตอน apply)
  *   · skip = orderId ที่คนติ๊กออกจากรายการจับคู่ได้ (โฟลเดอร์แค่ทำตัวอย่างให้ลูกค้าดู ยังไม่ส่งผลิต) — ไม่ติ๊กให้
  *   · folderFor = ใบที่มีหลายโฟลเดอร์ (ขึ้นตัวอย่าง + งานจริง) คนเลือกว่าอันไหนคือโฟลเดอร์งานจริง → จดชื่อนั้น
- * ตอบ { ...FolderMatchResult, alreadySent: [...] (จับคู่ได้แต่ติ๊กไว้แล้ว ไม่ทับ), applied: n }
+ *   · sampleFiles = พาธไฟล์ jpg/png ในโฟลเดอร์ "(…ตย)" (หน้าเว็บอ่านแค่ชื่อ) → อ่านจำนวนตัวอย่างต่อลายจากชื่อไฟล์ เสนอแผนแบ่งส่งรอบตัวอย่าง
+ *   · samplePlan = orderId ที่คนติ๊กให้ตั้งแผนรอบตัวอย่าง (ตอน apply) — เขียน shipPlan + ติ๊ก 🎁 มีชิ้นงานตัวอย่างให้รายการที่เกี่ยว
+ *     (ใช้ได้ทั้งใบที่เพิ่งจับคู่และใบที่ติ๊กส่งผลิตไปแล้ว — โยนโฟลเดอร์ตัวอย่างซ้ำเพื่อตั้งแผนได้)
+ * ตอบ { ...FolderMatchResult, alreadySent: [...] (จับคู่ได้แต่ติ๊กไว้แล้ว ไม่ทับ), applied: n, sampleApplied: n }
  */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
@@ -33,6 +36,8 @@ export async function POST(req: Request) {
     pick?: { folder: string; orderId: string }[];
     skip?: string[];
     folderFor?: Record<string, string>;
+    sampleFiles?: string[];
+    samplePlan?: string[];
   };
   try {
     body = await req.json();
@@ -73,10 +78,43 @@ export async function POST(req: Request) {
 
   const picks = (body.pick ?? []).filter((p) => p && typeof p.orderId === "string" && typeof p.folder === "string");
   const skipIds = new Set((body.skip ?? []).filter((x): x is string => typeof x === "string"));
+  const by = gate.actor.name || gate.actor.username;
+  const at = new Date().toISOString();
+
+  // 🎁 โฟลเดอร์ (…ตย) ที่มีไฟล์ jpg → อ่านจำนวนตัวอย่างต่อลายจากชื่อไฟล์ เสนอแผนรอบตัวอย่างต่อใบ (ทั้งใบใหม่และใบที่ติ๊กไปแล้ว)
+  const sampleGroups = groupSampleFiles((body.sampleFiles ?? []).filter((p) => typeof p === "string").slice(0, 5000));
+  const sampleBuildFor = (m: FolderMatch, o: Order | undefined) => {
+    if (!o || (o.tracking ?? "").trim()) return null;
+    for (const f of [m.folder, ...(m.alsoFolders ?? [])]) {
+      const files = sampleGroups.get(f);
+      if (!files?.length) continue;
+      const b = sampleRoundFromFiles(o, f, files, by, at);
+      if (b) return { folder: f, build: b };
+    }
+    return null;
+  };
+  const decorate = (m: FolderMatch) => {
+    const o = all.find((x) => x.id === m.orderId);
+    const hit = sampleBuildFor(m, o);
+    if (!hit || !o) return;
+    const sent = (o.shipments ?? []).length;
+    m.sample = {
+      folder: hit.folder,
+      qty: hit.build.qty,
+      designs: hit.build.designs,
+      unmatchedFiles: hit.build.unmatchedFiles,
+      replacesPlan: (o.shipPlan ?? []).length > sent,
+      lines: hit.build.round.proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1} ×${p.qty}${p.ofQty ? `/${p.ofQty}` : ""}`),
+    };
+  };
+  result.matched.forEach(decorate);
+  already.forEach(decorate);
+
   let applied = 0;
+  let sampleApplied = 0;
   if (body.apply) {
-    const by = gate.actor.name || gate.actor.username;
-    const at = new Date().toISOString();
+    /** ใบล่าสุดหลังเขียน productionSent — แผนตัวอย่างต้องต่อยอดจากก้อนนี้ ไม่งั้นทับกัน */
+    const latest = new Map(all.map((o) => [o.id, o]));
     // ใบที่มีหลายโฟลเดอร์: จดชื่อที่คนเลือก (ต้องเป็นโฟลเดอร์ของใบนั้นจริง) ไม่เลือก = อันที่ระบบจับได้
     const folderFor = body.folderFor ?? {};
     const folderOf = (m: (typeof result.matched)[number]) => {
@@ -97,8 +135,35 @@ export async function POST(req: Request) {
         `โฟลเดอร์ “${t.folder}” — ใบขึ้นกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น`
       );
       const { error: e } = await updateOrder(sb, next);
-      if (!e) applied++;
+      if (!e) {
+        applied++;
+        latest.set(next.id, next);
+      }
+    }
+    // 🎁 ตั้งแผนแบ่งส่งรอบตัวอย่างจากชื่อไฟล์ + ติ๊ก "มีชิ้นงานตัวอย่าง" ให้รายการที่มีลายในรอบนี้
+    const wantPlan = new Set((body.samplePlan ?? []).filter((x): x is string => typeof x === "string"));
+    for (const m of [...result.matched, ...already]) {
+      if (!wantPlan.has(m.orderId) || !m.sample) continue;
+      const o = latest.get(m.orderId);
+      const hit = sampleBuildFor(m, o);
+      if (!o || !hit) continue;
+      const sent = (o.shipments ?? []).length;
+      // รอบที่ส่งไปแล้วคงไว้ · รอบที่ยังไม่ออก (แผนเก่า) แทนด้วยรอบตัวอย่างนี้
+      const shipPlan = [...(o.shipPlan ?? []).slice(0, sent), hit.build.round];
+      const itemsInRound = new Set(hit.build.round.proofs.map((p) => p.item));
+      const items = o.items.map((it, i) => (itemsInRound.has(i) && !it.sampleRequired ? { ...it, sampleRequired: { by, at } } : it));
+      const next = withLog(
+        { ...o, shipPlan, items },
+        by,
+        "🎁 ตั้งแผนส่งตัวอย่างจากโฟลเดอร์",
+        `รอบที่ ${sent + 1}: ${m.sample.lines.join(", ")} · รวม ${hit.build.qty} ชิ้น — จำนวนตามชื่อไฟล์ jpg ในโฟลเดอร์ “${hit.folder}”${m.sample.replacesPlan ? " · แทนแผนรอบที่ยังไม่ส่งเดิม" : ""}${hit.build.unmatchedFiles.length ? ` · ไฟล์ที่จับลายไม่ได้: ${hit.build.unmatchedFiles.join(", ")}` : ""}`
+      );
+      const { error: e } = await updateOrder(sb, next);
+      if (!e) {
+        sampleApplied++;
+        latest.set(next.id, next);
+      }
     }
   }
-  return NextResponse.json({ ok: true, ...result, alreadySent: already, applied });
+  return NextResponse.json({ ok: true, ...result, alreadySent: already, applied, sampleApplied });
 }

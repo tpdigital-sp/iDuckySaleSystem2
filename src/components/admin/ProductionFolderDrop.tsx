@@ -13,7 +13,8 @@
 
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { Btn } from "@/components/admin/ui";
-import type { FolderAmbiguous, FolderMatch } from "@/lib/production-match";
+import { isSampleFolderName } from "@/lib/admin-data";
+import { SAMPLE_FILE_RE, type FolderAmbiguous, type FolderMatch } from "@/lib/production-match";
 
 interface MatchResp {
   ok?: boolean;
@@ -27,14 +28,19 @@ interface MatchResp {
   /** จับคู่ได้แต่ติ๊กส่งผลิตไปแล้ว — บอกด้วยว่าใบอยู่กองไหนในคิวปริ้น */
   alreadySent: (FolderMatch & { status?: string; printed?: boolean; folderWas?: string })[];
   applied: number;
+  /** 🎁 ใบที่ตั้งแผนรอบตัวอย่างจากชื่อไฟล์ให้แล้ว */
+  sampleApplied?: number;
 }
 
 const MAX_DEPTH = 4;
 /** ไฟล์ในโฟลเดอร์งานที่ชื่อมีเลขออเดอร์ ("OD-260909-1588.html" ที่ระบบสร้างให้กราฟฟิก) — ส่งพาธไปด้วย เซิร์ฟเวอร์ใช้เลขนี้จับคู่แบบชัวร์ ไม่ต้องเดาจากชื่อโฟลเดอร์ */
 const OD_FILE_RE = /OD-\d{6}-\d{3,}/i;
 
-/** เดินโฟลเดอร์ที่ลากมา → พาธของทุกโฟลเดอร์ย่อย + ไฟล์ที่ชื่อมีเลข OD (อ่านแค่ชื่อ ไม่อ่านเนื้อไฟล์) */
-async function walkEntry(entry: FileSystemEntry, prefix: string, depth: number, out: string[]): Promise<void> {
+/**
+ * เดินโฟลเดอร์ที่ลากมา → พาธของทุกโฟลเดอร์ย่อย + ไฟล์ที่ชื่อมีเลข OD (อ่านแค่ชื่อ ไม่อ่านเนื้อไฟล์)
+ * 🎁 โฟลเดอร์ "(…ตย)" เก็บชื่อไฟล์ jpg/png ลง sampleFiles ด้วย — เซิร์ฟเวอร์อ่านจำนวนตัวอย่างต่อลายจากชื่อไฟล์ ("…_2 ชิ้น-1.jpg")
+ */
+async function walkEntry(entry: FileSystemEntry, prefix: string, depth: number, out: string[], sampleFiles: string[]): Promise<void> {
   if (!entry.isDirectory) return;
   const path = prefix ? `${prefix}/${entry.name}` : entry.name;
   out.push(path);
@@ -47,10 +53,12 @@ async function walkEntry(entry: FileSystemEntry, prefix: string, depth: number, 
     if (!batch.length) break;
     kids.push(...batch);
   }
+  const sampleDir = isSampleFolderName(entry.name);
   for (const k of kids) {
     if (k.name.startsWith(".")) continue;
-    if (k.isDirectory) await walkEntry(k, path, depth + 1, out);
+    if (k.isDirectory) await walkEntry(k, path, depth + 1, out, sampleFiles);
     else if (OD_FILE_RE.test(k.name)) out.push(`${path}/${k.name}`);
+    else if (sampleDir && SAMPLE_FILE_RE.test(k.name)) sampleFiles.push(`${path}/${k.name}`);
   }
 }
 
@@ -58,6 +66,10 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState<"scan" | "apply" | null>(null);
   const [paths, setPaths] = useState<string[]>([]);
+  /** ชื่อไฟล์ jpg ในโฟลเดอร์ (…ตย) — ส่งไปให้เซิร์ฟเวอร์อ่านจำนวนตัวอย่าง */
+  const [sampleFiles, setSampleFiles] = useState<string[]>([]);
+  /** 🎁 ใบที่จะตั้งแผนรอบตัวอย่างจากชื่อไฟล์: orderId → false = คนติ๊กออก (ค่าเริ่มต้นติ๊กไว้) */
+  const [samplePlanOff, setSamplePlanOff] = useState<Record<string, boolean>>({});
   const [res, setRes] = useState<MatchResp | null>(null);
   const [err, setErr] = useState("");
   /** ใบที่คนเลือกให้โฟลเดอร์คลุมเครือ: folder → orderId ("" = ข้าม) */
@@ -68,13 +80,16 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const [folderFor, setFolderFor] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const scan = useCallback(async (list: string[]) => {
+  const scan = useCallback(async (list: string[], files: string[] = []) => {
     const uniq = [...new Set(list)].filter(Boolean);
+    const uniqFiles = [...new Set(files)].filter(Boolean);
     setPaths(uniq);
+    setSampleFiles(uniqFiles);
     setRes(null);
     setPick({});
     setSkip({});
     setFolderFor({});
+    setSamplePlanOff({});
     setErr("");
     if (!uniq.length) {
       setErr("ไม่เจอโฟลเดอร์ในสิ่งที่โยนมา — โยนโฟลเดอร์ของวัน (เช่น Donut 10-09-69) หรือโฟลเดอร์งานทีละใบ");
@@ -85,7 +100,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       const r = await fetch("/api/admin/orders/production-folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths: uniq }),
+        body: JSON.stringify({ paths: uniq, sampleFiles: uniqFiles }),
       });
       const j = (await r.json().catch(() => ({}))) as MatchResp;
       if (!r.ok) setErr(j.error || `จับคู่ไม่สำเร็จ (${r.status})`);
@@ -103,11 +118,12 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       setOver(false);
       const items = Array.from(e.dataTransfer.items ?? []);
       const out: string[] = [];
+      const files: string[] = [];
       for (const it of items) {
         const entry = typeof it.webkitGetAsEntry === "function" ? it.webkitGetAsEntry() : null;
-        if (entry) await walkEntry(entry, "", 1, out);
+        if (entry) await walkEntry(entry, "", 1, out, files);
       }
-      await scan(out);
+      await scan(out, files);
     },
     [scan]
   );
@@ -115,14 +131,16 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const onPickFiles = useCallback(
     async (files: FileList | null) => {
       const out = new Set<string>();
+      const sample: string[] = [];
       Array.from(files ?? []).forEach((f) => {
         const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || "";
         const parts = rel.split("/").filter(Boolean);
         const fileName = parts.pop() ?? ""; // ตัดชื่อไฟล์ เหลือโฟลเดอร์
         for (let i = 1; i <= Math.min(parts.length, MAX_DEPTH); i++) out.add(parts.slice(0, i).join("/"));
         if (OD_FILE_RE.test(fileName) && parts.length) out.add([...parts, fileName].join("/"));
+        else if (parts.length && isSampleFolderName(parts[parts.length - 1]) && SAMPLE_FILE_RE.test(fileName)) sample.push([...parts, fileName].join("/"));
       });
-      await scan([...out]);
+      await scan([...out], sample);
     },
     [scan]
   );
@@ -138,10 +156,11 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       const skipIds = Object.entries(skip)
         .filter(([, off]) => off)
         .map(([orderId]) => orderId);
+      const samplePlan = [...(res.matched ?? []), ...(res.alreadySent ?? [])].filter((m) => m.sample && !samplePlanOff[m.orderId]).map((m) => m.orderId);
       const r = await fetch("/api/admin/orders/production-folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths, apply: true, pick: picks, skip: skipIds, folderFor }),
+        body: JSON.stringify({ paths, apply: true, pick: picks, skip: skipIds, folderFor, sampleFiles, samplePlan }),
       });
       const j = (await r.json().catch(() => ({}))) as MatchResp;
       if (!r.ok) {
@@ -156,14 +175,51 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
     } finally {
       setBusy(null);
     }
-  }, [res, pick, skip, folderFor, paths, onApplied]);
+  }, [res, pick, skip, folderFor, paths, sampleFiles, samplePlanOff, onApplied]);
 
   const pickedCount = Object.values(pick).filter(Boolean).length;
   const matchedList = res?.matched ?? [];
   /** ใบที่ยังติ๊กอยู่ = ใบที่จะถูกส่งเข้าผลิตจริง */
   const chosen = matchedList.filter((m) => !skip[m.orderId]);
   const allOn = matchedList.length > 0 && chosen.length === matchedList.length;
-  const toApply = chosen.length + pickedCount;
+  /** 🎁 ใบที่จะตั้งแผนรอบตัวอย่าง (ใบใหม่ + ใบที่ติ๊กส่งผลิตไปแล้ว) */
+  const sampleCount = [...matchedList, ...(res?.alreadySent ?? [])].filter((m) => m.sample && !samplePlanOff[m.orderId]).length;
+  const toApply = chosen.length + pickedCount + sampleCount;
+
+  /** กล่อง 🎁 ใต้แถวใบ — เสนอแผนรอบตัวอย่างที่อ่านจากชื่อไฟล์ ให้คนติ๊กออกได้ */
+  const SampleBox = ({ m }: { m: FolderMatch }) => {
+    if (!m.sample) return null;
+    const on = !samplePlanOff[m.orderId];
+    return (
+      <div className="ml-7 mb-1.5 rounded-lg px-2 py-1.5" style={{ background: "#f5f3ff", border: "1px solid #ddd6fe" }}>
+        <label className="flex min-h-[32px] cursor-pointer items-start gap-2 text-[12.5px]">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 shrink-0 accent-violet-700"
+            checked={on}
+            onChange={(e) => setSamplePlanOff((v) => ({ ...v, [m.orderId]: !e.target.checked }))}
+          />
+          <span className="min-w-0">
+            <b style={{ color: "#6d28d9" }}>
+              🎁 ตั้งแผนส่งตัวอย่างก่อน {m.sample.qty} ชิ้น / {m.sample.designs} ลาย — จำนวนตามชื่อไฟล์ jpg ในโฟลเดอร์ “{m.sample.folder}”
+            </b>
+            <span className="block" style={{ color: "var(--dk-faint)" }}>
+              {m.sample.lines.join(" · ")}
+            </span>
+            <span className="block" style={{ color: "var(--dk-faint)" }}>
+              ติ๊ก 🎁 มีชิ้นงานตัวอย่างให้ด้วย → ใบมัดจำพิมพ์ใบปะหน้า/ยิงรอบตัวอย่างได้โดยยังไม่ครบ 100%
+              {m.sample.replacesPlan ? " · ⚠️ จะแทนแผนรอบที่ยังไม่ส่งเดิมของใบนี้" : ""}
+            </span>
+            {m.sample.unmatchedFiles.length > 0 && (
+              <span className="block font-bold" style={{ color: "var(--dk-coral-deep)" }}>
+                อ่านจำนวนไม่ได้/หาลายไม่เจอ {m.sample.unmatchedFiles.length} ไฟล์: {m.sample.unmatchedFiles.join(", ")}
+              </span>
+            )}
+          </span>
+        </label>
+      </div>
+    );
+  };
 
   return (
     <div className="dkb-g rounded-2xl p-3">
@@ -212,6 +268,11 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
           {res.applied > 0 && (
             <p className="font-bold" style={{ color: "var(--dk-mint-ink)" }}>
               ✅ ติ๊กส่งเข้าผลิตแล้ว {res.applied} ใบ — ย้ายไปกอง “ส่งผลิตแล้ว รอปริ้น”
+            </p>
+          )}
+          {(res.sampleApplied ?? 0) > 0 && (
+            <p className="font-bold" style={{ color: "#6d28d9" }}>
+              🎁 ตั้งแผนส่งตัวอย่างจากชื่อไฟล์ให้แล้ว {res.sampleApplied} ใบ — ดูรอบที่ตั้งได้ในหน้าออเดอร์ (📋 แผนแบ่งส่ง)
             </p>
           )}
           {matchedList.length > 0 && (
@@ -280,6 +341,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                           ))}
                         </div>
                       )}
+                      <SampleBox m={m} />
                     </li>
                   );
                 })}
@@ -335,6 +397,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                     <b style={{ color: m.printed ? "var(--dk-faint)" : "var(--dk-navy)" }}>
                       {m.printed ? "ปริ้นใบงานแล้ว — อยู่แท็บ “ปริ้นแล้ว”" : "รอปริ้น — อยู่แท็บ “🏭 ส่งผลิตแล้ว รอปริ้น”"}
                     </b>
+                    <SampleBox m={m} />
                   </li>
                 ))}
               </ul>
@@ -361,7 +424,11 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
           {(toApply > 0 || matchedList.length > 0) && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <Btn tone="navy" onClick={apply} disabled={busy !== null || toApply === 0}>
-                {busy === "apply" ? "กำลังบันทึก…" : `🏭 ยืนยันส่งเข้าผลิต ${toApply} ใบ`}
+                {busy === "apply"
+                  ? "กำลังบันทึก…"
+                  : chosen.length + pickedCount > 0
+                    ? `🏭 ยืนยันส่งเข้าผลิต ${chosen.length + pickedCount} ใบ${sampleCount ? ` + 🎁 แผนตัวอย่าง ${sampleCount} ใบ` : ""}`
+                    : `🎁 ยืนยันตั้งแผนตัวอย่าง ${sampleCount} ใบ`}
               </Btn>
               <Btn small onClick={() => setRes(null)} disabled={busy !== null}>
                 ยกเลิก
@@ -371,9 +438,10 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                   ติ๊กออกครบทุกใบแล้ว — ติ๊กกลับอย่างน้อย 1 ใบ ถึงจะยืนยันได้
                 </span>
               )}
+              {/* ใบที่ติ๊กส่งผลิตไปแล้ว: ปกติไม่มีปุ่ม แต่ถ้ามีแผนตัวอย่างให้ตั้ง ต้องกดได้ */}
             </div>
           )}
-          {toApply === 0 && matchedList.length === 0 && res.applied === 0 && res.ambiguous.length === 0 && (
+          {toApply === 0 && matchedList.length === 0 && res.applied === 0 && (res.sampleApplied ?? 0) === 0 && res.ambiguous.length === 0 && (
             <p style={{ color: "var(--dk-faint)" }}>ไม่มีใบใหม่ให้ติ๊กจากโฟลเดอร์ชุดนี้</p>
           )}
         </div>
