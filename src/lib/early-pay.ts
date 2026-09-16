@@ -36,9 +36,16 @@ export interface EarlyPayDiscount {
    * 0 = ไม่จำกัดเวลา · ค่าที่ใช้จริงถูกแช่เป็น Order.earlyPay.expiresAt ตอนสร้างออเดอร์ (แก้ตั้งค่าทีหลังไม่กระทบใบเก่า)
    */
   windowMinutes: number;
+  /**
+   * 🕰️ ผ่อนเวลาให้อีกกี่นาทีเมื่อ "รู้เวลาโอนจริงจากสลิป" (เจ้าของร้านสั่ง 16 ก.ย. 69 "ผ่อนให้อีกนิด")
+   * ตัวตัดสินหลักคือเวลาแนบสลิป (paidReportedAt) — แต่ถ้า SlipOK อ่านเวลาโอนบนสลิปได้ และเวลานั้นอยู่ใน
+   * windowMinutes + graceMinutes → ถือว่าโอนทัน แม้จะแนบสลิปช้า (นาฬิกาธนาคารกับเว็บเหลื่อมกันได้)
+   * 0 = ไม่ผ่อน (ต้องโอนภายในเวลาเป๊ะ) · ไม่มีผลกับใบที่ windowMinutes = 0 (ไม่จำกัดเวลาอยู่แล้ว)
+   */
+  graceMinutes: number;
 }
 
-export const DEFAULT_EARLY_PAY: EarlyPayDiscount = { enabled: true, threshold: 999, small: 5, large: 10, windowMinutes: 60 };
+export const DEFAULT_EARLY_PAY: EarlyPayDiscount = { enabled: true, threshold: 999, small: 5, large: 10, windowMinutes: 60, graceMinutes: 15 };
 
 /** ชื่อที่โชว์บนบิล/ประวัติ — ใช้ตัวเดียวกันทุกที่ ให้ค้นเจอง่ายตอนกระทบยอด */
 export const EARLY_PAY_LABEL = "⚡ ส่วนลดโอนไว";
@@ -54,6 +61,7 @@ export function earlyPayOf(s: { earlyPay?: Partial<EarlyPayDiscount> } | null | 
     small: num(e.small, DEFAULT_EARLY_PAY.small),
     large: num(e.large, DEFAULT_EARLY_PAY.large),
     windowMinutes: num(e.windowMinutes, DEFAULT_EARLY_PAY.windowMinutes),
+    graceMinutes: num(e.graceMinutes, DEFAULT_EARLY_PAY.graceMinutes),
   };
 }
 

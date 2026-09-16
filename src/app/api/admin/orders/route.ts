@@ -8,6 +8,8 @@ import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
+import { keepServerMoney } from "@/lib/server/order-money-guard";
+import { applyChangedKeys, CHANGED_KEYS_HEADER, parseChangedKeys } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
@@ -138,16 +140,30 @@ function sameLine(cur: OrderItem | undefined, inc: OrderItem | undefined): cur i
   return !!cur && !!inc && (cur.name === inc.name || (typeof inc.nameWas === "string" && cur.name === inc.nameWas));
 }
 
-/** แอดมินสิทธิ์เต็ม: ก้อนที่ส่งมาคือของจริงทั้งใบ ยกเว้นติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (จับคู่รายการตามลำดับ+ชื่อ/ชื่อเดิม) */
-function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: string, now: string): Order {
-  const items = (incoming.items ?? []).map((inc, i) => {
-    const cur = existing.items?.[i];
-    const clean: OrderItem = { ...inc };
-    delete clean.nameWas; // ชื่อเดิมใช้จับคู่ในคำขอนี้เท่านั้น — ไม่เก็บลงฐาน
-    return sameLine(cur, inc) ? reconcileItem(cur, clean, clientSavedAt, now) : clean;
-  });
+/**
+ * แอดมินสิทธิ์เต็ม: ก้อนที่ส่งมาคือของจริงทั้งใบ ยกเว้น
+ *   · ช่องที่หน้าจอ "ไม่ได้แก้" (header x-changed-keys) → เอาจากฐาน (ดู order-merge.ts) — หน้าจอค้างทับงานคนอื่นไม่ได้
+ *   · ติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (จับคู่รายการตามลำดับ+ชื่อ/ชื่อเดิม) — ใช้เมื่อหน้าจอแก้ items เอง
+ *   · เรื่องเงินที่ใหม่กว่าที่หน้าจอเห็น (order-money-guard) — ชั้นสองเผื่อหน้าจอบอกว่า "แก้" ทั้งที่ค้าง
+ */
+function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: string, now: string, changed: Set<string> | null): { order: Order; keptMoney: string[]; restored: string[] } {
+  // items: หน้าจอไม่ได้แตะ (มี header และไม่มี "items") → ชุดในฐานทั้งดุ้น รวมของที่ลูกค้าเพิ่ง append/กราฟฟิกเพิ่งอัป
+  const itemsUntouched = !!changed && !changed.has("items");
+  const items = itemsUntouched
+    ? existing.items
+    : (incoming.items ?? []).map((inc, i) => {
+        const cur = existing.items?.[i];
+        const clean: OrderItem = { ...inc };
+        delete clean.nameWas; // ชื่อเดิมใช้จับคู่ในคำขอนี้เท่านั้น — ไม่เก็บลงฐาน
+        return sameLine(cur, inc) ? reconcileItem(cur, clean, clientSavedAt, now) : clean;
+      });
   // ฟิลด์ที่เซิร์ฟเวอร์เป็นเจ้าของ — หน้าจอแอดมินไม่รู้จัก ส่งก้อนกลับมาโดยไม่มี = ห้ามหาย
-  return { ...incoming, items, balanceNotified: existing.balanceNotified };
+  const withItems: Order = { ...incoming, items, balanceNotified: existing.balanceNotified };
+  // 🧭 ช่องอื่นที่ไม่ได้แก้ → ของฐาน (items จัดการไปแล้วด้านบน จึงบอกว่า "แก้" เพื่อไม่ให้ทับซ้ำ)
+  const { order: merged, restored } = applyChangedKeys(existing, withItems, changed ? new Set([...changed, "items"]) : null);
+  // 💰 เงินเข้า/สลิปที่เกิดหลังจากหน้าจอนี้เห็นล่าสุด = หน้าจอยังไม่รู้ → คงของในฐาน (ดู keepServerMoney)
+  const { order, kept } = keepServerMoney(existing, merged, clientSavedAt);
+  return { order, keptMoney: kept, restored: itemsUntouched && JSON.stringify(existing.items) !== JSON.stringify(incoming.items) ? ["items", ...restored] : restored };
 }
 
 /** รวมประวัติ 2 ฝั่งแบบไม่ซ้ำ เรียงตามเวลา — หน้าจอค้างส่ง log สั้นกว่าก็ไม่ทับรายการที่คนอื่น/เซิร์ฟเวอร์เพิ่งลง */
@@ -464,6 +480,8 @@ export async function PATCH(req: Request) {
   const now = new Date().toISOString();
   // 🕒 หน้าจอเห็นข้อมูลถึงตอนไหน (savedAt ที่ถือมา) — ไม่มี = ถือว่าเก่าสุด ห้ามทับติ๊ก/แบบที่คนอื่นทำไว้
   const clientSavedAt = typeof order.savedAt === "string" ? order.savedAt : "";
+  // 🧭 ช่องที่หน้าจอแก้จริง (หน้าออเดอร์ส่งมา) — ไม่มี = หน้าจอเก่า/หน้าอื่น ทำแบบเดิม
+  const changedKeys = parseChangedKeys(req.headers.get(CHANGED_KEYS_HEADER));
 
   // ดึงออเดอร์เดิม — ฝ่ายแพ็คใช้เป็นฐาน merge · ทุกคนใช้เทียบสถานะเก่าเพื่อแจ้งเตือน
   const { data: row, error: gErr } = await sb.from("orders").select("data").eq("id", order.id).single();
@@ -480,7 +498,22 @@ export async function PATCH(req: Request) {
   let toSave: Order;
   if (mayEditFull) {
     // ก้อนจากหน้าจอแอดมินเป็นหลัก แต่ติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (คนอื่นเพิ่งทำ) ต้องไม่หาย
-    toSave = reconcileFullEdit(existing, order, clientSavedAt, now);
+    const full = reconcileFullEdit(existing, order, clientSavedAt, now, changedKeys);
+    toSave = full.order;
+    // ช่องที่หน้าจอไม่ได้แก้แต่ค่าต่างจากฐาน (= ทางอื่นเขียนไประหว่างหน้าเปิดค้าง) ถูกคงไว้ — จดไว้ให้ตรวจย้อนหลังได้ว่ากันอะไรไป
+    if (full.restored.length)
+      toSave = withLog(toSave, actor.name || actor.username, "กันหน้าจอค้างทับข้อมูล", `ช่องที่หน้าจอนี้ไม่ได้แก้ คงค่าในฐานไว้: ${full.restored.join(" · ")}`);
+    /**
+     * บันทึกจากหน้าจอที่ยังไม่เห็นเงินก้อนล่าสุด — ของในฐานถูกคงไว้ ต้องบอกให้รู้ ไม่ใช่เงียบ
+     * (หน้าจอรับก้อนจากเซิร์ฟเวอร์กลับไปแสดงผลอยู่แล้ว ดู applyOrderFromServer — กดซ้ำจากค่าล่าสุดได้เลย)
+     */
+    if (full.keptMoney.length)
+      toSave = withLog(
+        toSave,
+        actor.name || actor.username,
+        "กันหน้าจอค้างทับข้อมูลการเงิน",
+        `หน้าจอนี้ยังไม่เห็นเงินก้อนล่าสุด — คงค่าในฐานไว้: ${full.keptMoney.join(" · ")}`
+      );
     // แอดมินยิงเลขทั้งที่ด่านตรวจยังไม่ครบ = อนุญาต (ตัดสินใจเอง) แต่บันทึก log ฝั่งเซิร์ฟเวอร์เสมอ — ตรวจย้อนหลังได้ว่าใครข้าม
     if (wantsTracking || wantsPickupDone) {
       const g = packGate(existing);

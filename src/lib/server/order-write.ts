@@ -74,9 +74,21 @@ function stampAddedItems(prev: Order | null | undefined, next: Order, at: string
   return changed ? { ...next, items } : next;
 }
 
+/**
+ * 🕒 ประทับ "เซิร์ฟเวอร์เขียนใบนี้ล่าสุดเมื่อไหร่" ทุกครั้งที่เขียนฐาน
+ *
+ * ทำไม (OD-260915-6742 · 15 ก.ย. 69): เดิมมีแต่ PATCH /api/admin/orders ที่ประทับ savedAt
+ * เงินเข้าจาก SlipOK · เก็บเพิ่ม · cron · แนบสลิป ไม่ขยับ savedAt เลย → หน้าจอที่เปิดค้างยังถือ
+ * savedAt ตัวเดิม "ดูทันสมัย" ทั้งที่พลาดเรื่องเงินไปแล้ว ด่านกันหน้าจอค้าง (ดู reconcileFullEdit)
+ * จึงมองไม่เห็นว่าหน้าจอนั้นเก่า — ลูกค้าโอนครบ แต่บันทึกจากหน้าจอค้างทับจนเงินหายทั้งใบ
+ */
+function stampSaved(o: Order): Order {
+  return { ...o, savedAt: new Date().toISOString() };
+}
+
 /** สร้างออเดอร์ใหม่ (insert) — ใบใหม่ = รายการเปลี่ยนเสมอ จึงคิดกฎตอนบันทึกให้ทุกครั้ง */
 export async function insertOrder(sb: SB, order: Order, by = "ระบบ"): Promise<WriteOrderResult> {
-  const final = await syncOrderEarlyPay(sb, order, by);
+  const final = stampSaved(await syncOrderEarlyPay(sb, order, by));
   const { error } = await sb.from("orders").insert({ id: final.id, data: final });
   return { order: final, error };
 }
@@ -102,6 +114,8 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
    */
   const tax = reconcileOrderTax(prev, final);
   if (tax) final = withLog(tax.order, by, "คิดภาษีใหม่ตามยอดที่แก้", `${tax.note} (ยอดรวมต้องตรงบิลที่ออกให้ลูกค้า)`);
+  // 🕒 ประทับเวลาบันทึกที่ประตู — ทางเข้าใหม่ได้ไปด้วยเอง ไม่ต้องจำว่าต้องเซ็ต savedAt เอง
+  final = stampSaved(final);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);
   /**
    * 🏭 รายการเปลี่ยน → เรคอร์ดสะพาน (msVerify / การ์ดบอร์ด WIP กราฟฟิก) ต้องเห็นรายการชุดใหม่

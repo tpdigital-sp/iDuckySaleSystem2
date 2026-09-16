@@ -13,8 +13,10 @@
     "backup": "node scripts/backup-db.mjs",
     "backup:files": "node scripts/backup-db.mjs --files",
     "check:orders": "node scripts/check-order-writes.mjs",
-    "check:early-pay": "tsx scripts/early-pay-check.mts",
+    "check:early-pay": "node --conditions=react-server --import tsx scripts/early-pay-check.mts",
     "check:money-guard": "tsx scripts/money-guard-test.mts",
+    "check:order-merge": "node --conditions=react-server --import tsx scripts/order-merge-test.mts",
+    "check:early-pay-reinstate": "node --conditions=react-server --import tsx scripts/early-pay-reinstate-test.mts",
     "check:yield": "tsx scripts/sheet-yield-audit.mts",
     "check:tax": "tsx --conditions=react-server scripts/order-tax-test.mts",
     "scan:tax": "tsx scripts/order-tax-scan.mts"

@@ -1,4 +1,5 @@
 import "server-only";
+import { parseSlipTransAt } from "@/lib/slip-time";
 
 /**
  * ตรวจสลิปโอนเงินอัตโนมัติผ่าน SlipOK (slipok.com)
@@ -15,6 +16,11 @@ export interface SlipVerifyResult {
   amount?: number;
   /** เลขอ้างอิงธุรกรรม — กันสลิปซ้ำ */
   transRef?: string;
+  /**
+   * 🕰️ เวลาโอนจริงบนสลิป (ISO) — SlipOK ส่ง transTimestamp (หรือ transDate+transTime เวลาไทย) มาด้วย
+   * ใช้ตัดสินส่วนลดโอนไวกรณี "โอนทันแต่แนบสลิปช้า" (slip-apply) · ไม่มี = ธนาคารนั้นไม่ส่ง/อ่านไม่ได้
+   */
+  transAt?: string;
   /** SlipOK บอกว่าสลิปใบนี้เคยถูกตรวจกับร้านไปแล้ว (log=true) — ใบเดิมถูกเวียนมาใช้ซ้ำ */
   duplicate?: boolean;
   /**
@@ -44,6 +50,7 @@ export interface SlipDeduction {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
 /** ค่าธรรมเนียมโอนที่ธนาคารไทยหักจริง (โอนต่างธนาคารผ่านสาขา/ATM/บริการพิเศษ) */
 const BANK_FEES = [5, 8, 10, 15, 20, 25, 30, 35];
 
@@ -135,31 +142,33 @@ export async function verifySlipWithSlipOK(
   if (!key || !branch) return { status: "skip", detail: "ยังไม่ได้ตั้งค่า SlipOK" };
 
   // ตัดสินจากยอดในสลิป (ใช้ทั้งเส้นทางจริงและโหมดทดสอบ — กติกาเดียวกันเป๊ะ)
-  const judge = (slipAmount: number | undefined, transRef: string | undefined, receiver?: string): SlipVerifyResult => {
+  const judge = (slipAmount: number | undefined, transRef: string | undefined, receiver?: string, transAt?: string): SlipVerifyResult => {
     if (expectedAmount > 0) {
-      if (!slipAmount) return { status: "fail", transRef, genuine: true, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
+      if (!slipAmount) return { status: "fail", transRef, transAt, genuine: true, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
       const m = matchSlipAmount(expectedAmount, slipAmount, orderTotalAmount, adminWht, earlyPayAllowed);
       if (!m.ok)
         return {
           status: "fail",
           amount: slipAmount,
           transRef,
+          transAt,
           genuine: true,
           detail: `ยอดในสลิป ${slipAmount.toLocaleString("th-TH")} บาท ไม่ตรงกับยอดที่ต้องชำระ ${expectedAmount.toLocaleString("th-TH")} บาท (ขาด ${(expectedAmount - slipAmount).toLocaleString("th-TH")} บาท)`,
         };
-      return { status: "pass", amount: slipAmount, transRef, genuine: true, detail: receiver, deduction: m.deduction };
+      return { status: "pass", amount: slipAmount, transRef, transAt, genuine: true, detail: receiver, deduction: m.deduction };
     }
-    return { status: "pass", amount: slipAmount, transRef, genuine: true, detail: receiver };
+    return { status: "pass", amount: slipAmount, transRef, transAt, genuine: true, detail: receiver };
   };
 
   // ── โหมดทดสอบ (dev เท่านั้น): ตั้ง SLIPOK_MOCK=1 + ไฟล์สลิปที่ฝังข้อความ "MOCKSLIP:<ยอด>" ──
   // จำลองว่า SlipOK ตอบ "สลิปแท้" แล้วให้กติกาเทียบยอดของเราตัดสินตามจริง — ไม่ยิง API จริง
   // production ปลอดภัยสองชั้น: Netlify ไม่ตั้ง SLIPOK_MOCK และ NODE_ENV เป็น production
   // "MOCKSLIP:<ยอด>:<REF>" = กำหนดเลขอ้างอิงเอง (ทดสอบกันสลิปซ้ำข้ามออเดอร์ที่ไฟล์ต่างกันแต่ธุรกรรมเดียวกัน)
+  // "MOCKSLIP:<ยอด>:<REF>:<ISO เวลาโอน>" = จำลองเวลาโอนบนสลิป (ทดสอบโอนทันแต่แนบช้า)
   if (process.env.SLIPOK_MOCK === "1" && process.env.NODE_ENV !== "production") {
-    const marker = /MOCKSLIP:([0-9.]+)(?::([A-Z0-9-]{4,40}))?/.exec(new TextDecoder().decode(bytes.subarray(0, 2048)));
+    const marker = /MOCKSLIP:([0-9.]+)(?::([A-Z0-9-]{4,40}))?(?::(\d{4}-\d{2}-\d{2}T[0-9:.]+Z))?/.exec(new TextDecoder().decode(bytes.subarray(0, 2048)));
     if (marker)
-      return judge(Number(marker[1]) || undefined, marker[2] || `MOCK-${Date.now().toString(36).toUpperCase()}`, "ผู้รับ: บัญชีทดสอบ (SLIPOK_MOCK)");
+      return judge(Number(marker[1]) || undefined, marker[2] || `MOCK-${Date.now().toString(36).toUpperCase()}`, "ผู้รับ: บัญชีทดสอบ (SLIPOK_MOCK)", marker[3] || undefined);
   }
 
   try {
@@ -178,7 +187,21 @@ export async function verifySlipWithSlipOK(
       signal: AbortSignal.timeout(20_000),
     });
     const j = (await res.json().catch(() => null)) as
-      | { success?: boolean; message?: string; code?: number; data?: { success?: boolean; message?: string; amount?: number; transRef?: string; receiver?: { displayName?: string } } }
+      | {
+          success?: boolean;
+          message?: string;
+          code?: number;
+          data?: {
+            success?: boolean;
+            message?: string;
+            amount?: number;
+            transRef?: string;
+            transTimestamp?: string;
+            transDate?: string;
+            transTime?: string;
+            receiver?: { displayName?: string };
+          };
+        }
       | null;
 
     // ผ่าน = HTTP 2xx และไม่มีธง success เป็น false ที่ชั้นไหนเลย
@@ -188,7 +211,8 @@ export async function verifySlipWithSlipOK(
       return judge(
         Number(j.data?.amount) || undefined,
         j.data?.transRef,
-        j.data?.receiver?.displayName ? `ผู้รับ: ${j.data.receiver.displayName}` : undefined
+        j.data?.receiver?.displayName ? `ผู้รับ: ${j.data.receiver.displayName}` : undefined,
+        parseSlipTransAt(j.data)
       );
     }
     // ปัญหาฝั่งร้าน (คีย์/สาขาผิด, แพ็กเกจ/โควตาหมด — SlipOK code 1000-1005) ไม่ใช่สลิปลูกค้า → ตกไปตรวจมือเงียบ ๆ

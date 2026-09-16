@@ -400,11 +400,36 @@ export function packScanHeaders(): Record<string, string> {
  * แอดมินอัปเดตออเดอร์ (เช่น เปลี่ยนสถานะ) — คืนเหตุผลด้วยเวลาพลาด
  * เซิร์ฟเวอร์ปฏิเสธ (403 ไม่มีสิทธิ์ · 409 ด่านตรวจ) ต้องขึ้นให้คนกดเห็น ไม่งั้นหน้าจอเหมือนบันทึกแล้วแต่รีเฟรชค่าเดิมกลับมา
  */
-export async function saveOrderAdminResult(order: Order): Promise<{ ok: boolean; error?: string; order?: Order }> {
+/**
+ * 🧭 ช่องระดับบนสุดที่หน้าจอ "แก้จริง" เทียบกับก้อนล่าสุดที่ได้จากเซิร์ฟเวอร์ (base)
+ * ส่งไปกับ PATCH ใน header x-changed-keys → เซิร์ฟเวอร์เอาช่องที่ไม่ได้แก้จากฐานเสมอ (ดู reconcileFullEdit)
+ * ทำไม (16 ก.ย. 69 ต่อจาก OD-260915-6742): หน้าจอส่งออเดอร์ทั้งก้อน เซิร์ฟเวอร์ไม่รู้ว่าแอดมินตั้งใจแก้ช่องไหน
+ * หน้าจอที่เปิดค้างเลยทับสิ่งที่ทางอื่นเพิ่งเขียน (ลูกค้าสั่งเพิ่ม · ขอแก้ไข · ผูกไลน์ · โยนโฟลเดอร์ผลิต · เงินเข้า) ได้หมด
+ * ไม่มี base (หน้าจออื่น/ยังโหลดไม่เสร็จ) = ไม่ส่ง header → เซิร์ฟเวอร์ทำแบบเดิม (ก้อนจากหน้าจอเป็นหลัก)
+ */
+export function changedOrderKeys(next: Order, base: Order | null | undefined): string[] | null {
+  if (!base || base.id !== next.id) return null;
+  const keys = new Set<string>([...Object.keys(base), ...Object.keys(next)]);
+  const out: string[] = [];
+  for (const k of keys) {
+    const a = (base as unknown as Record<string, unknown>)[k];
+    const b = (next as unknown as Record<string, unknown>)[k];
+    if (JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)) out.push(k);
+  }
+  return out;
+}
+
+export async function saveOrderAdminResult(order: Order, opts?: { base?: Order | null }): Promise<{ ok: boolean; error?: string; order?: Order }> {
   try {
+    const changed = opts && "base" in opts ? changedOrderKeys(order, opts.base) : null;
     const res = await fetch("/api/admin/orders", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", ...packScanHeaders() },
+      headers: {
+        "Content-Type": "application/json",
+        ...packScanHeaders(),
+        // ช่องที่แก้จริง — เข้ารหัสกันอักษรไทยใน header (ชื่อฟิลด์เป็นอังกฤษหมด แต่กันไว้)
+        ...(changed ? { "x-changed-keys": encodeURIComponent(JSON.stringify(changed)) } : {}),
+      },
       body: JSON.stringify(order),
     });
     if (res.ok) {

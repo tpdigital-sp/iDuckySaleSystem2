@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, slipMatchesFlowAccountBill, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { thaiDateTime } from "@/lib/bangkok-time";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer } from "@/lib/products-server";
@@ -86,6 +87,7 @@ function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"
     detail: verify.detail,
     amount: verify.amount,
     transRef: verify.transRef,
+    ...(verify.transAt ? { transAt: verify.transAt } : {}),
     at: now,
     deduction: verify.deduction,
     ...(verify.noRetry ? { noRetry: true } : {}),
@@ -203,6 +205,53 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
           `${thb(orderTotal(order))} บาท${order.wht?.amount ? ` − หัก ณ ที่จ่าย ${thb(order.wht.amount)} = ${thb(round2(orderTotal(order) - order.wht.amount))} บาท` : ""}) — ` +
           `ตัวเลขภาษีในใบเป็นของยอดเก่า ระบบคิดใหม่ให้ตรงแล้ว (${fix.note})`,
       };
+    }
+  }
+
+  /**
+   * ⚡↩️ ส่วนลดโอนไว "หมดเวลา" ไปแล้วตอนแนบสลิป — ดูหลักฐานบนสลิปก่อนตัดสิน (เจ้าของร้านสั่ง 16 ก.ย. 69)
+   *   1) SlipOK อ่านเวลาโอนบนสลิปได้ และโอนทันกำหนด (+ผ่อน graceMinutes) = ลูกค้าทำถูก แค่แนบสลิปช้า → คืนส่วนลด
+   *   2) โอนช้าจริง แต่โอน "ยอดที่ลดแล้ว" มาพอดี (ขาดเท่าส่วนลด) และเงินเข้าก่อนเริ่มผลิต → ยกให้ ไม่ทวง ฿5/฿10
+   *      (ทวง ฿5 เสียเวลาแอดมิน + ลูกค้าเสียความรู้สึก มากกว่าเงินที่ได้ · กติกาดั้งเดิม "โอนไว = โอนก่อนเริ่มผลิต")
+   * คืนแล้วคิด expected ใหม่ → สลิปที่เคย "ขาด" กลายเป็นตรงยอด ผ่านเป็นชำระแล้วเอง
+   * เฉพาะ: งวดแรกที่ยังรอเงิน · ยังไม่มีเงินเข้าก้อนก่อน · สลิปแท้ อ่านยอดได้ ไม่ซ้ำ · **สลิปยังไม่ตรงยอดเต็มเป๊ะ**
+   * (ลูกค้าที่เห็นยอดเต็มแล้วโอนเต็มมาเอง = ตั้งใจจ่ายเต็ม ไม่ต้องคืนให้แล้วไปโชว์ "โอนเกิน ฿5")
+   * ⚠️ ฿5/฿10 ชนกับ "หัก ณ ที่จ่าย 1% ของบิล 500/1,000" และ "ค่าธรรมเนียมโอน 5/10" พอดี — matchSlipAmount จึงปล่อยสลิป 495/500
+   *    ผ่านเป็น "หัก ณ ที่จ่าย 1%" (รอใบ 50 ทวิที่ไม่มีวันมา) แล้วนับเงินเข้า 500 ทั้งที่เข้าจริง 495 (พฤติกรรมเดิมที่จดไว้ว่า "ยังหลุดได้ ฿5")
+   *    → ใบที่มีส่วนลดโอนไวหมดเวลาอยู่ ให้ตีความว่า "ลูกค้าโอนยอดที่ลดแล้ว" ก่อน — บิล 495 เงินเข้า 495 ตรงบัญชีจริง
+   *    (ลำดับเดียวกับที่ matchSlipAmount ใช้ตอนส่วนลดยังไม่หัก: โอนไวมาก่อน wht/bankFee · ลูกค้านิติบุคคลจริงมี order.wht ตั้งไว้ = ไม่แตะ)
+   * ที่ทำตรงนี้ไม่ใช่ตอนล็อกก่อนตรวจ เพราะเวลาโอนบนสลิปรู้ได้หลัง SlipOK ตอบเท่านั้น
+   */
+  if (
+    eligible &&
+    phase === "first" &&
+    paidSoFar(order) <= 0 &&
+    (verify.status === "fail" || (verify.status === "pass" && !!verify.deduction && verify.deduction.kind !== "earlyPay" && !order.wht)) &&
+    verify.genuine === true &&
+    !verify.duplicate &&
+    (verify.amount ?? 0) > 0 &&
+    earlyPayState(order) === "expired"
+  ) {
+    let grace = 0;
+    try {
+      const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
+      grace = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined).graceMinutes;
+    } catch {
+      grace = 0; // อ่านตั้งค่าไม่ได้ = ไม่ผ่อนเวลา (ตัดสินจากเวลาโอนบนสลิปตรง ๆ)
+    }
+    const disc = order.earlyPay!.amount;
+    const inTime = transferredInTime(order, verify.transAt, grace);
+    const paidDiscounted = Math.abs(round2(expected - disc) - round2(verify.amount!)) < 0.01;
+    if (inTime || paidDiscounted) {
+      const reinstateAt = inTime ? verify.transAt! : new Date().toISOString();
+      const reason = inTime
+        ? `โอนจริงเวลา ${thaiDateTime(new Date(verify.transAt!))} ทันกำหนด${grace ? ` (ผ่อนให้ ${grace} นาที)` : ""} — แนบสลิปช้าไม่ถือว่าผิด`
+        : `โอนช้ากว่ากำหนด แต่โอนยอดที่ลดแล้ว ${thb(verify.amount!)} บาทมาพอดี และเงินเข้าก่อนเริ่มผลิต — ยกส่วนลดให้ ไม่ทวงส่วนต่าง`;
+      order = withLog(reinstateEarlyPay(order, reinstateAt, "SlipOK"), "SlipOK", "คืนส่วนลดโอนไว", `${reason} · ได้ส่วนลด ${thb(disc)} บาท`);
+      expected = expectedForPhase(order, phase);
+      const m = matchSlipAmount(expected, verify.amount!, orderTotal(order), order.wht, 0);
+      if (m.ok) verify = { ...verify, status: "pass", deduction: m.deduction, detail: `คืนส่วนลดโอนไวแล้ว — ${reason}` };
+      else if (verify.status === "pass") verify = { ...verify, status: "fail", deduction: undefined, detail: `คืนส่วนลดโอนไวแล้ว แต่ยอดในสลิป ${thb(verify.amount!)} บาท ยังไม่ตรงยอดที่ต้องชำระ ${thb(expected)} บาท` };
     }
   }
 

@@ -47,6 +47,7 @@ import {
   earlyPayMsLeft,
   earlyPayState,
   orderEarlyPayAmount,
+  reinstateEarlyPay,
   setEarlyPayWaived,
   orderItemDiscounts,
   orderFullyPaid,
@@ -875,6 +876,21 @@ export default function AdminOrderDetailPage() {
   const orderId = decodeURIComponent(String(params?.id ?? ""));
 
   const [order, setOrder] = useState<Order | null>(null);
+  /**
+   * 🧭 ก้อนล่าสุดที่ "เซิร์ฟเวอร์ให้มา" (โหลด · โพล · ก้อนที่ตอบกลับหลังบันทึก) — ไว้เทียบว่าหน้านี้แก้ช่องไหนจริงตอนส่ง PATCH
+   * (changedOrderKeys → header x-changed-keys) ช่องที่ไม่ได้แก้ เซิร์ฟเวอร์เอาจากฐานเสมอ หน้าจอที่เปิดค้างจึงทับงานคนอื่นไม่ได้
+   * ไม่อัปเดตในบางทาง (ตอบกลับจาก route อื่น) = ช่องนั้นถูกมองว่า "แก้" → เซิร์ฟเวอร์ทำแบบเดิม ปลอดภัยฝั่งเดียว
+   */
+  const baseRef = useRef<Order | null>(null);
+  const adoptFromServer = useCallback((o: Order | null | undefined) => {
+    if (o) baseRef.current = o;
+  }, []);
+  /** รับก้อนที่ route อื่นตอบกลับ (สลิป/ไลน์/ตัวแทน/แบบงาน/รูปแพ็ค…) มาเป็น state + base พร้อมกัน */
+  const adoptOrder = useCallback((o: Order | null | undefined) => {
+    if (!o) return;
+    baseRef.current = o;
+    setOrder(o);
+  }, []);
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
@@ -906,7 +922,7 @@ export default function AdminOrderDetailPage() {
       setErr(res.error ?? "แจ้งลูกค้าไม่สำเร็จ");
       return;
     }
-    if (res.order) setOrder(res.order);
+    adoptOrder(res.order);
     setProofNotifyMsg({
       item: itemIndex,
       text: res.skipped
@@ -1248,6 +1264,7 @@ export default function AdminOrderDetailPage() {
     // (บนเว็บจริงค่าเรียก serverless function รอบละ ~0.6-0.8 วิ · ในเครื่องแทบไม่รู้สึกจึงเคยมองไม่เห็นปัญหา)
     const seeded = readSsrOrder(orderId);
     if (seeded) {
+      adoptFromServer(seeded);
       setOrder(seeded);
       setDemo(false);
       setLoading(false);
@@ -1255,6 +1272,7 @@ export default function AdminOrderDetailPage() {
     const listLater = fetchOrdersAdmin({ lite: true }); // ยิงคู่ขนานไปเลย แต่ไม่รอ — ไม่ใช่ข้อมูลที่ใช้วาดหน้า
     const one = await fetchOrderAdmin(orderId); // ของสดจากเซิร์ฟเวอร์ (มี loginLine ที่ SSR ไม่ได้ดึงมา)
     if (one.order) {
+      adoptFromServer(one.order);
       setOrder(one.order);
       // เลขพัสดุที่มีอยู่แล้ว = บันทึกแล้ว → ป้าย ✅ ในโหมดแพ็คขึ้นถูก และ blur ช่องเดิมไม่บันทึกซ้ำ
       trackingRef.current = (one.order.tracking ?? "").trim();
@@ -1269,7 +1287,7 @@ export default function AdminOrderDetailPage() {
     // ใบเบาไม่มีรายการสินค้า → ใช้เป็นตัวออเดอร์หลักไม่ได้ ยกเว้นโหมดตัวอย่างที่ list เป็นข้อมูลเต็ม
     if (!one.order && demoMode) setOrder(list.find((o) => o.id === orderId) ?? null);
     setLoading(false);
-  }, [orderId]);
+  }, [orderId, adoptFromServer]);
 
   useEffect(() => {
     void load();
@@ -1291,8 +1309,9 @@ export default function AdminOrderDetailPage() {
     // ถามซ้ำทุก 15 วิ — ขอเฉพาะออเดอร์ใบนี้ใบเดียว (เดิมดึงทั้งตาราง + เซ็นลิงก์สลิปทุกใบ)
     const found = (await fetchOrderAdmin(orderId)).order;
     if (!found) return;
+    adoptFromServer(found);
     setOrder((cur) => (JSON.stringify(cur) === JSON.stringify(found) ? cur : found));
-  }, [orderId, uploadingIdx]);
+  }, [orderId, uploadingIdx, adoptFromServer]);
 
   usePolling(refresh, { enabled: !demo && !!order });
 
@@ -1521,7 +1540,7 @@ export default function AdminOrderDetailPage() {
         setErr(j.error ?? "ตรวจสลิปไม่สำเร็จ");
         return;
       }
-      setOrder(j.order);
+      adoptOrder(j.order);
     } finally {
       setSlipRechecking(false);
     }
@@ -1541,7 +1560,7 @@ export default function AdminOrderDetailPage() {
       setErr(j.error ?? "ลบสลิปไม่สำเร็จ");
       return;
     }
-    if (j.order) setOrder(j.order);
+    adoptOrder(j.order);
   }
 
   /** ลบสลิป "งวดหลัง" ของออเดอร์มัดจำ (แนบผิดใบ) — ไม่ยุ่งกับสถานะ/ยอดที่รับแล้ว */
@@ -1570,7 +1589,7 @@ export default function AdminOrderDetailPage() {
       setErr(j.error ?? "ลบสลิปไม่สำเร็จ");
       return;
     }
-    if (j.order) setOrder(j.order);
+    adoptOrder(j.order);
   }
 
   /** ลบสลิป "ใบเพิ่ม" ใบเดียว (แนบผิด/ทดสอบ) — ถ้าใบนั้นนับยอดแล้ว เซิร์ฟเวอร์ถอยยอดออกให้ (สถานะไม่เปลี่ยน) */
@@ -1598,7 +1617,7 @@ export default function AdminOrderDetailPage() {
       setErr(j.error ?? "ลบสลิปไม่สำเร็จ");
       return;
     }
-    if (j.order) setOrder(j.order);
+    adoptOrder(j.order);
   }
 
   /**
@@ -1630,7 +1649,7 @@ export default function AdminOrderDetailPage() {
         setErr(j.error ?? "รับยอดไม่สำเร็จ");
         return;
       }
-      setOrder(j.order);
+      adoptOrder(j.order);
       setAcceptForm(null);
     } finally {
       setAcceptBusy(null);
@@ -1667,7 +1686,7 @@ export default function AdminOrderDetailPage() {
         setErr(j.error ?? "เก็บเพิ่มไม่สำเร็จ");
         return;
       }
-      setOrder(j.order);
+      adoptOrder(j.order);
       setChargeForm(null);
     } finally {
       setChargeBusy(false);
@@ -1697,7 +1716,7 @@ export default function AdminOrderDetailPage() {
       setErr(j.error ?? "ถอดรายการไม่สำเร็จ");
       return;
     }
-    setOrder(j.order);
+    adoptOrder(j.order);
   }
 
   /**
@@ -1740,7 +1759,7 @@ export default function AdminOrderDetailPage() {
         setErr(j.error ?? "เปลี่ยนราคาไม่สำเร็จ");
         return;
       }
-      setOrder(j.order);
+      adoptOrder(j.order);
       // บอกสิ่งที่ระบบทำให้ไม่ได้ ไม่ใช่ปล่อยให้แอดมินไปเจอเองทีหลัง
       const warn = [
         j.skipped?.length ? `ยังไม่มีราคาตัวแทน ${j.skipped.length} รายการ: ${j.skipped.join(" · ")}` : "",
@@ -1766,11 +1785,12 @@ export default function AdminOrderDetailPage() {
   async function applyOrderFromServer(next: Order) {
     setOrder(next);
     if (demo) return;
-    const r = await saveOrderAdminResult(next);
+    const r = await saveOrderAdminResult(next, { base: baseRef.current });
     if (!r.ok) {
       setErr(`⚠️ ${r.error ?? "บันทึกลงฐานข้อมูลไม่สำเร็จ"} — สิ่งที่เพิ่งทำยังไม่ถูกบันทึก ลองใหม่หรือรีเฟรชดูค่าจริง`);
       return;
     }
+    adoptFromServer(r.order);
     if (r.order) setOrder((cur) => (cur ? keepSlipUrls(r.order!, cur) : r.order!));
   }
 
@@ -1794,6 +1814,38 @@ export default function AdminOrderDetailPage() {
     if (!ok) return;
     await applyOrderFromServer(
       withLog({ ...order, vat: { rate: 7, amount: amt } }, actor, "เปิด VAT 7% (ออกใบกำกับภาษีทีหลัง)", `VAT ${formatPrice(amt)} จากยอด ${formatPrice(base)} → ยอดรวม ${formatPrice(base + amt)}`)
+    );
+  }
+
+  /**
+   * ⚡↩️ คืนส่วนลดโอนไวให้ใบที่ "หมดเวลา" — ใช้ตอน SlipOK อ่านเวลาโอนบนสลิปไม่ได้ (สลิป K BIZ ไม่มี QR · แนบแทนลูกค้า)
+   * แต่แอดมินเห็นบนสลิปว่าโอนทัน หรือตกลงกับลูกค้าแล้ว · ทางอัตโนมัติอยู่ใน slip-apply (ดูเวลาโอนจาก SlipOK)
+   * เงินที่รับไว้แล้วครบยอดใหม่ + ใบยังรอเงิน + มีสิทธิ์ยืนยันเงินเข้า → เปลี่ยนเป็น "ชำระแล้ว" ในคำขอเดียว (ไม่ต้องกด 2 รอบ)
+   */
+  async function restoreEarlyPay() {
+    if (!order?.earlyPay || earlyPayState(order) !== "expired") return;
+    const next = reinstateEarlyPay(order, new Date().toISOString(), actor);
+    const total = orderTotal(next);
+    const paid = paidSoFar(next);
+    const waiting = next.status === "รอชำระเงิน" || next.status === "รอตรวจสอบ";
+    const confirmPaid = paid > 0 && paid + 0.5 >= total && waiting && mayMarkPaid && !next.deposit;
+    const ok = await askConfirm({
+      icon: "⚡",
+      title: `คืนส่วนลดโอนไว ${formatPrice(order.earlyPay.amount)} ให้ใบนี้?`,
+      detail:
+        `ส่วนลดหมดเวลาไปแล้วตามกติกา — กดคืนเมื่อเห็นบนสลิปว่าลูกค้าโอนทันเวลา หรือตกลงกับลูกค้าแล้ว\n` +
+        `ยอดรวมใหม่ ${formatPrice(total)}${paid > 0 ? ` · รับแล้ว ${formatPrice(paid)}${paid + 0.5 >= total ? " → ครบแล้ว" : ` → ค้าง ${formatPrice(Math.max(0, total - paid))}`}` : ""}` +
+        (confirmPaid ? '\nใบจะเปลี่ยนเป็น "ชำระแล้ว" ให้เลย (แจ้งลูกค้า + เข้าบอร์ดกราฟฟิก)' : ""),
+      confirmLabel: "คืนส่วนลด",
+    });
+    if (!ok) return;
+    await applyOrderFromServer(
+      withLog(
+        confirmPaid ? { ...next, status: "ชำระแล้ว" as OrderStatus } : next,
+        actor,
+        "คืนส่วนลดโอนไว",
+        `${order.earlyPay.label} ${formatPrice(order.earlyPay.amount)} — แอดมินคืนให้หลังหมดเวลา (ลูกค้าโอนทัน/ตกลงกันแล้ว) · ยอดรวม ${formatPrice(total)}${confirmPaid ? " · เงินครบ → ชำระแล้ว" : ""}`
+      )
     );
   }
 
@@ -2020,7 +2072,7 @@ export default function AdminOrderDetailPage() {
    * กราฟฟิกกด "ลบแบบ" แล้วเซิร์ฟเวอร์ตอบ 403 หน้าจอเหมือนลบได้ แต่พออัปรูปใหม่/รีเฟรช รูปเดิมกลับมา — งงกันทั้งร้าน
    */
   async function saveOrWarn(next: Order): Promise<boolean> {
-    const r = await saveOrderAdminResult(next);
+    const r = await saveOrderAdminResult(next, { base: baseRef.current });
     if (!r.ok) {
       setErr(`⚠️ ${r.error ?? "บันทึกลงฐานข้อมูลไม่สำเร็จ"} — สิ่งที่เพิ่งทำยังไม่ถูกบันทึก อย่าเพิ่งปิดหน้านี้ ลองใหม่หรือรีเฟรชดูค่าจริง`);
       return false;
@@ -2033,6 +2085,7 @@ export default function AdminOrderDetailPage() {
      * 🏅 ส่วนลดระดับสมาชิก เซิร์ฟเวอร์เป็นเจ้าของ (คิดจากผู้ติดต่อที่ผูก) — รับกลับมาเสมอ ไม่งั้นผูกผู้ติดต่อแล้วยอดบนจอยังเป็นราคาเต็ม
      */
     const saved = r.order;
+    adoptFromServer(saved);
     if (saved)
       setOrder((cur) => {
         if (!cur || cur.id !== saved.id) return cur;
@@ -2524,7 +2577,7 @@ export default function AdminOrderDetailPage() {
         setErr(j?.error ?? "อัปโหลดภาพไม่สำเร็จ");
         return;
       }
-      setOrder(j.order);
+      adoptOrder(j.order);
     }
   }
 
@@ -2547,7 +2600,7 @@ export default function AdminOrderDetailPage() {
       setErr(j?.error ?? "ลบภาพไม่สำเร็จ");
       return;
     }
-    setOrder(j.order);
+    adoptOrder(j.order);
   }
 
   /** พนักงานแพ็คกดยืนยันว่าอ่านรายละเอียดของรายการแล้ว (กดซ้ำ = ยกเลิก) */
@@ -3273,7 +3326,7 @@ export default function AdminOrderDetailPage() {
         break;
       }
       added++;
-      if (res.order) setOrder(res.order);
+      adoptOrder(res.order);
     }
     setUploadingIdx(null);
     // รูปที่ขึ้นแล้วจะโชว์แถบ "ยังไม่ได้แจ้งลูกค้า" ให้กด 📣 ทีเดียวเมื่อพร้อม (กรอกจำนวน/รายละเอียดก่อนได้)
@@ -3300,7 +3353,7 @@ export default function AdminOrderDetailPage() {
       setErr(res.error ?? "เปลี่ยนรูปไม่สำเร็จ");
       return;
     }
-    if (res.order) setOrder(res.order);
+    adoptOrder(res.order);
     setProofNotifyMsg(null);
   }
 
@@ -6260,7 +6313,7 @@ export default function AdminOrderDetailPage() {
                   <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>
                 </div>
               ) : earlyPayState(order) === "expired" ? (
-                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="ลูกค้าไม่ได้แจ้งโอนภายในเวลา ส่วนลดหายไปตามกติกา — ตกลงกับลูกค้าแล้วใส่ส่วนลดทั้งบิลเองได้">
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-400" title="ลูกค้าไม่ได้แจ้งโอนภายในเวลา ส่วนลดหายไปตามกติกา — เห็นบนสลิปว่าโอนทัน/ตกลงกับลูกค้าแล้ว กดปุ่มคืนส่วนลดด้านล่าง">
                   <span className="min-w-0">{order.earlyPay!.label} · หมดเวลาแจ้งโอน</span>
                   <span className="shrink-0 tabular-nums line-through">−{formatPrice(order.earlyPay!.amount)}</span>
                 </div>
@@ -6303,6 +6356,17 @@ export default function AdminOrderDetailPage() {
                   />
                   ลูกค้าไม่รับส่วนลดนี้ (คิดยอดเต็ม)
                 </label>
+              )}
+              {/* ⚡↩️ หมดเวลาแล้วแต่ลูกค้าโอนทัน (SlipOK อ่านเวลาไม่ได้) หรือตกลงกันแล้ว — คืนส่วนลดทีเดียว ไม่ต้องไปใส่ส่วนลดทั้งบิลเอง */}
+              {mayEdit && earlyPayState(order) === "expired" && (
+                <button
+                  type="button"
+                  onClick={() => void restoreEarlyPay()}
+                  className="mt-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                  title="ส่วนลดหมดเวลาไปแล้ว — กดคืนเมื่อเห็นบนสลิปว่าลูกค้าโอนทันเวลา หรือตกลงกับลูกค้าแล้ว"
+                >
+                  ⚡ คืนส่วนลดโอนไว −{formatPrice(order.earlyPay!.amount)}
+                </button>
               )}
               {orderItemDiscounts(order) > 0 && (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-rose-500">

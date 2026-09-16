@@ -836,6 +836,7 @@ function AdminSettingsPageInner() {
         small: Math.max(0, Number(earlyPay.small) || 0),
         large: Math.max(0, Number(earlyPay.large) || 0),
         windowMinutes: Math.max(0, Number(earlyPay.windowMinutes) || 0),
+        graceMinutes: Math.max(0, Number(earlyPay.graceMinutes) || 0),
       },
       tiers: tiers
         .map((t) => ({ ...t, name: t.name.trim(), minSpend: Number(t.minSpend) || 0, discountPct: Number(t.discountPct) || 0 }))
@@ -1470,7 +1471,7 @@ function AdminSettingsPageInner() {
                 </button>
               </div>
 
-              <div className={`mt-4 grid gap-4 sm:grid-cols-4 ${earlyPay.enabled ? "" : "pointer-events-none opacity-50"}`}>
+              <div className={`mt-4 grid gap-4 sm:grid-cols-5 ${earlyPay.enabled ? "" : "pointer-events-none opacity-50"}`}>
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-semibold text-slate-700">ยอดสินค้าไม่เกิน (บาท)</span>
                   <input
@@ -1525,11 +1526,26 @@ function AdminSettingsPageInner() {
                   />
                   <span className={`mt-1 block text-[11px] ${faint}`}>0 = ไม่จำกัดเวลา · 60 = 1 ชั่วโมง</span>
                 </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-700">ผ่อนเวลาโอนจริง (นาที)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={earlyPay.graceMinutes}
+                    onChange={(e) => {
+                      setEarlyPay({ ...earlyPay, graceMinutes: Number(e.target.value) });
+                      touch();
+                    }}
+                    className={`${inputCls} w-full text-right tabular-nums`}
+                  />
+                  <span className={`mt-1 block text-[11px] ${faint}`}>ดูเวลาโอนบนสลิป — โอนทันแต่แนบช้าก็ยังได้ · 0 = ไม่ผ่อน</span>
+                </label>
               </div>
 
               <p className={`mt-3 text-xs ${faint}`}>
                 {earlyPay.enabled
-                  ? `ยอดสินค้า (ก่อนค่าส่ง) ไม่เกิน ฿${Number(earlyPay.threshold).toLocaleString()} ลด ฿${earlyPay.small} · เกินกว่านั้นลด ฿${earlyPay.large} — คิดจากค่าสินค้าอย่างเดียว ค่าส่งไม่นับ · เฉพาะออเดอร์ราคาปลีกล้วน (มีรายการที่เข้าเรทขายส่งแม้รายการเดียว = ทั้งใบไม่ลด ได้ราคาส่งไปแล้ว) · ไม่ใช้ร่วมกับส่วนลดอื่น (ระดับสมาชิก/คูปอง/ส่วนลดจากแอดมิน = ไม่ลดโอนไวอีก) · ${earlyPayWindowText(earlyPay) ? `ลูกค้าต้องแจ้งโอน (แนบสลิป) ภายใน ${earlyPayWindowText(earlyPay)} หลังสั่งซื้อ ไม่งั้นส่วนลดหายไปเอง ยอดที่ต้องโอนกลับเป็นยอดเต็ม (แอดมินยืนยันเงินเข้าเองทันเวลาก็ล็อกให้)` : "ไม่จำกัดเวลาแจ้งโอน"}`
+                  ? `ยอดสินค้า (ก่อนค่าส่ง) ไม่เกิน ฿${Number(earlyPay.threshold).toLocaleString()} ลด ฿${earlyPay.small} · เกินกว่านั้นลด ฿${earlyPay.large} — คิดจากค่าสินค้าอย่างเดียว ค่าส่งไม่นับ · เฉพาะออเดอร์ราคาปลีกล้วน (มีรายการที่เข้าเรทขายส่งแม้รายการเดียว = ทั้งใบไม่ลด ได้ราคาส่งไปแล้ว) · ไม่ใช้ร่วมกับส่วนลดอื่น (ระดับสมาชิก/คูปอง/ส่วนลดจากแอดมิน = ไม่ลดโอนไวอีก) · ${earlyPayWindowText(earlyPay) ? `ลูกค้าต้องแจ้งโอน (แนบสลิป) ภายใน ${earlyPayWindowText(earlyPay)} หลังสั่งซื้อ ไม่งั้นส่วนลดหายไปเอง ยอดที่ต้องโอนกลับเป็นยอดเต็ม (แอดมินยืนยันเงินเข้าเองทันเวลาก็ล็อกให้) · แนบช้าแต่เวลาโอนบนสลิป (SlipOK) ยังอยู่ในกำหนด${earlyPay.graceMinutes ? ` +${earlyPay.graceMinutes} นาที` : ""} = ยังได้ส่วนลด · โอนช้าจริงแต่โอนยอดที่ลดแล้วมาพอดีก่อนเริ่มผลิต = ยกให้ ไม่ทวง ฿${earlyPay.small}/฿${earlyPay.large} · หน้าออเดอร์มีปุ่ม "คืนส่วนลดโอนไว" ให้แอดมินกดเองเมื่อ SlipOK อ่านเวลาไม่ได้` : "ไม่จำกัดเวลาแจ้งโอน"}`
                   : "ปิดอยู่ = ออเดอร์ใหม่ไม่ได้ส่วนลดนี้ และตัวตรวจสลิปจะไม่ยอมรับยอดที่โอนขาดไป 5-10 บาทอีกต่อไป"}
               </p>
             </section>

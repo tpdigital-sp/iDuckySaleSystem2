@@ -657,6 +657,11 @@ export interface Order {
     transRef?: string;
     at: string;
     /**
+     * 🕰️ เวลาโอนจริงบนสลิป (ISO) ที่ SlipOK อ่านได้ — ต่างจาก at ที่เป็นเวลาตรวจ
+     * ใช้ตัดสินส่วนลดโอนไวเมื่อลูกค้าโอนทันแต่แนบสลิปช้า (ดู reinstateEarlyPay) · ไม่มี = SlipOK ไม่ส่งมา/ตรวจไม่ได้
+     */
+    transAt?: string;
+    /**
      * ยอดในสลิปน้อยกว่ายอดที่ต้องโอน แต่ระบบรู้จักส่วนต่าง — ถือว่าจ่ายครบ
      * wht = ลูกค้านิติบุคคลหัก ณ ที่จ่าย (rate 1 หรือ 3%) ต้องตามใบ 50 ทวิจากลูกค้า
      * bankFee = ธนาคารหักค่าธรรมเนียมการโอน
@@ -974,6 +979,34 @@ export function earlyPayMsLeft(o: Order, now: number = Date.now()): number {
 export function lockEarlyPay(o: Order, at: string, by: string): Order {
   if (earlyPayState(o, Date.parse(at) || Date.now()) !== "active") return o;
   return { ...o, earlyPay: { ...o.earlyPay!, lockedAt: at, lockedBy: by } };
+}
+
+/**
+ * ⚡↩️ คืนส่วนลดโอนไวให้ใบที่ "หมดเวลา" ไปแล้ว — ล็อกย้อนหลังพร้อมเหตุผล
+ *
+ * ทางเข้า 3 ทาง (เจ้าของร้านสั่ง 16 ก.ย. 69 ให้ทำครบทั้งชุด):
+ *   1) slip-apply: SlipOK อ่านเวลาโอนบนสลิปได้ และโอนทันเวลา (+ผ่อน graceMinutes) แต่แนบสลิปช้า
+ *   2) slip-apply: โอนช้าจริง แต่โอนยอดที่ลดแล้วมาพอดี (ขาดเท่าส่วนลด) และเงินเข้าก่อนเริ่มผลิต → ยกให้ ไม่ทวง ฿5/฿10
+ *   3) แอดมินกดปุ่ม "คืนส่วนลดโอนไว" ในหน้าออเดอร์ (SlipOK อ่านเวลาไม่ได้ · แนบแทนลูกค้า)
+ * ทำงานเฉพาะสถานะ expired — ใบที่ล็อกแล้ว/ไม่รับส่วนลด/มีส่วนลดอื่น/ไม่มีส่วนลด คืนออเดอร์เดิม
+ * ผลลัพธ์ = lockedAt ประทับด้วย "เวลาที่ใช้ตัดสิน" (เวลาโอนจริง หรือเวลาที่คืน) → earlyPayState เป็น locked ทุกจอเอง
+ */
+export function reinstateEarlyPay(o: Order, at: string, by: string): Order {
+  if (earlyPayState(o) !== "expired") return o;
+  return { ...o, earlyPay: { ...o.earlyPay!, lockedAt: at, lockedBy: by } };
+}
+
+/**
+ * 🕰️ ลูกค้า "โอนทันเวลา" ไหม เมื่อรู้เวลาโอนจริงจากสลิป — เทียบกับ expiresAt + ผ่อน graceMinutes
+ * ใช้กับใบที่หมดเวลาไปแล้ว (แนบสลิปช้า) · ไม่รู้เวลาโอน/ไม่มี expiresAt = false (ให้ทางอื่นตัดสิน)
+ */
+export function transferredInTime(o: Order, transAt: string | undefined, graceMinutes: number): boolean {
+  const exp = o.earlyPay?.expiresAt;
+  if (!exp || !transAt) return false;
+  const t = Date.parse(transAt);
+  const e = Date.parse(exp);
+  if (!Number.isFinite(t) || !Number.isFinite(e)) return false;
+  return t <= e + Math.max(0, graceMinutes) * 60_000;
 }
 
 /**
