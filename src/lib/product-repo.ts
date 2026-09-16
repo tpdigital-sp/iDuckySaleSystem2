@@ -466,6 +466,51 @@ export async function persistProductReviewed(
   }
 }
 
+/**
+ * "รุ่น" ของคลังสินค้า = savedAt ล่าสุดในบรรดาสินค้าจริง (~40 ไบต์) — โพลล์ตัวนี้ถี่ ๆ ได้โดยแทบไม่กิน egress
+ * ทุกทางที่แก้สินค้า (บันทึกจากหน้าแก้ไข · ติ๊กตรวจแล้ว · สคริปต์) ขยับ savedAt → รุ่นเปลี่ยน = ค่อยดึงธงทั้งชุด
+ * ดึงพลาด = null
+ */
+export async function fetchProductsVersion(): Promise<string | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb
+    .from("products")
+    .select("savedAt:data->>savedAt")
+    .not("id", "like", "\\_\\_%")
+    .order("data->>savedAt", { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (error || !data) return null;
+  return (data[0] as { savedAt?: string | null } | undefined)?.savedAt ?? "";
+}
+
+/** ธงสถานะต่อสินค้าที่หน้ารายการโพลล์ดูแบบเรียลไทม์ (reviewed/hidden เท่านั้น) */
+export interface ProductFlags {
+  id: string;
+  reviewed?: ProductReview;
+  hidden?: boolean;
+}
+
+/**
+ * ธง "ตรวจแล้ว/เผยแพร่" ของสินค้าทุกตัว — ชุดจิ๋ว (~230 แถว ไม่กี่ KB) ไว้โพลล์ทุก 10 วิ
+ * ให้หน้ารายการของทุกคนเห็นเครื่องหมายที่เพื่อนร่วมทีมเพิ่งติ๊กโดยไม่ต้องรีเฟรช
+ * (Supabase Realtime ใช้ไม่ได้: ตาราง products ไม่ได้อยู่ใน publication และแต่ละอีเวนต์จะพา data ทั้งก้อน ~MB ติดมา = กิน egress)
+ * ยังไม่ตั้งค่า Supabase / ดึงพลาด = null (ผู้เรียกข้ามรอบนั้นไป)
+ */
+export async function fetchProductFlags(): Promise<ProductFlags[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb
+    .from("products")
+    .select("id,reviewed:data->reviewed,hidden:data->hidden")
+    // ตัดแถวพิเศษ (__categories__/__preset_*/…) ตั้งแต่ฝั่งฐาน — เหลือ ~230 แถว ~13 KB
+    .not("id", "like", "\\_\\_%");
+  if (error || !data) return null;
+  return (data as unknown as { id: string; reviewed: ProductReview | null; hidden: boolean | null }[])
+    .filter((r) => !String(r.id).startsWith("__"))
+    .map((r) => ({ id: r.id, reviewed: r.reviewed ?? undefined, hidden: r.hidden ?? undefined }));
+}
+
 /** ลบสินค้า (แอดมิน) */
 export async function deleteProductDb(id: string): Promise<boolean> {
   try {

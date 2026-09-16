@@ -15,7 +15,8 @@ import {
   type Product,
 } from "@/lib/products";
 import { loadOverrides, resetAll } from "@/lib/product-store";
-import { deleteProductDb, fetchProductRaw, fetchProductsAdminLite, fetchProductsAdminRows, fetchProductSort, persistProduct, persistProductReviewed, persistProductSorts } from "@/lib/product-repo";
+import { deleteProductDb, fetchProductFlags, fetchProductsVersion, fetchProductRaw, fetchProductsAdminLite, fetchProductsAdminRows, fetchProductSort, persistProduct, persistProductReviewed, persistProductSorts } from "@/lib/product-repo";
+import { usePolling } from "@/lib/use-polling";
 import { getAdminSession } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { badge, card, faint, muted } from "@/lib/admin-ui";
@@ -59,6 +60,10 @@ export default function AdminProductsPage({ initial = [] }: { initial?: Product[
   const [detailed, setDetailed] = useState(false);
   /** ลำดับรอบโหลดล่าสุด — ผลของรอบเก่าที่มาช้าจะถูกทิ้ง ไม่ให้ทับของใหม่ */
   const refreshRun = useRef(0);
+  /** id ที่กำลังติ๊ก/สลับอยู่ (ยังเขียนไม่เสร็จ) — รอบโพลล์ต้องไม่เอาค่าเก่าจากฐานมาทับหน้าจอ */
+  const pendingIds = useRef(new Set<string>());
+  /** รุ่นคลังสินค้า (savedAt ล่าสุด) ที่โพลล์เห็นรอบก่อน — ไม่เปลี่ยน = ไม่ต้องดึงธง */
+  const seenVersion = useRef<string | null>(null);
 
   // ── สถานะมุมมอง/ตัวกรอง ──
   const [view, setView] = useState<ViewMode>("table");
@@ -188,6 +193,38 @@ export default function AdminProductsPage({ initial = [] }: { initial?: Product[
   }, []);
 
   /**
+   * เรียลไทม์แบบเบา ๆ — ทุก 5 วิ (เฉพาะตอนแท็บเปิดอยู่) ถาม "รุ่น" ของคลังสินค้า (~40 ไบต์)
+   * รุ่นเปลี่ยน (ใครสักคนบันทึก/ติ๊กจากเครื่องอื่น) → ค่อยดึงธง "ตรวจแล้ว/เผยแพร่" ทั้งชุด (~13 KB) มาเทียบ
+   * ปุ่มบนจอนี้จึงเปลี่ยนตามเองโดยไม่ต้องรีเฟรช · ไม่ใช้ Supabase Realtime เพราะตาราง products ไม่อยู่ใน publication
+   * และทุกอีเวนต์จะพา data ทั้งก้อน (~MB) มาด้วย = กิน egress (เคยโดนล็อกโควตามาแล้ว)
+   * แตะเฉพาะ 2 ฟิลด์นี้ ไม่ทับชื่อ/รูป/ราคาที่โหลดมาแล้ว · ไม่มีอะไรเปลี่ยน = คืน state เดิม (ไม่ re-render)
+   */
+  usePolling(
+    async () => {
+      const version = await fetchProductsVersion();
+      if (version === null || version === seenVersion.current) return;
+      seenVersion.current = version; // รอบแรกก็ดึงธง 1 ครั้ง (13 KB) — กันพลาดของที่เปลี่ยนระหว่างโหลดหน้า
+      const flags = await fetchProductFlags();
+      if (!flags) return;
+      const byId = new Map(flags.map((f) => [f.id, f]));
+      setProducts((ps) => {
+        let changed = false;
+        const next = ps.map((p) => {
+          const f = byId.get(p.id);
+          if (!f || pendingIds.current.has(p.id)) return p;
+          const sameReviewed = JSON.stringify(p.reviewed ?? null) === JSON.stringify(f.reviewed ?? null);
+          const sameHidden = !!p.hidden === !!f.hidden;
+          if (sameReviewed && sameHidden) return p;
+          changed = true;
+          return { ...p, reviewed: f.reviewed, hidden: f.hidden };
+        });
+        return changed ? next : ps;
+      });
+    },
+    { intervalMs: 5000 }
+  );
+
+  /**
    * สลับสถานะ "ตรวจแล้ว" ของสินค้า — บันทึกทันที (ไม่ต้องเปิดหน้าแก้ไข)
    * ผ่าน API เฉพาะทาง (แตะแค่ data.reviewed) — สิทธิ์ดูสินค้าก็ติ๊กได้ ไม่ต้องมี products.manage
    * เดิมส่งสินค้าทั้งก้อนไป POST /api/admin/products → ทีมงานที่ไม่มีสิทธิ์แก้สินค้าโดน 403
@@ -197,8 +234,10 @@ export default function AdminProductsPage({ initial = [] }: { initial?: Product[
     const want = !p.reviewed;
     // อัปเดตหน้าจอทันที (optimistic) — ชื่อผู้ตรวจจริงเซิร์ฟเวอร์ใส่จาก session แล้วส่งกลับมา
     const guess = want ? { by: reviewer, at: new Date().toISOString() } : undefined;
+    pendingIds.current.add(p.id);
     setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, reviewed: guess } : x)));
     const res = await persistProductReviewed(p.id, want);
+    pendingIds.current.delete(p.id);
     if (!res.ok) {
       refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
       alert(`ติ๊ก "ตรวจแล้ว" ไม่สำเร็จ: ${res.error ?? "เกิดข้อผิดพลาด"}`);
@@ -215,9 +254,11 @@ export default function AdminProductsPage({ initial = [] }: { initial?: Product[
    */
   async function toggleHidden(p: Product) {
     const hidden = p.hidden ? undefined : true;
+    pendingIds.current.add(p.id);
     setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, hidden } : x)));
     const raw = (await fetchProductRaw(p.id)) ?? p;
     const res = await persistProduct({ ...raw, hidden });
+    pendingIds.current.delete(p.id);
     if (!res.ok) refresh(); // ล้มเหลว → ดึงสถานะจริงกลับมา
   }
 
