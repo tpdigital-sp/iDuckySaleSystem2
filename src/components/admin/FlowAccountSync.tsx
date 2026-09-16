@@ -59,6 +59,40 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
     }
   }
 
+  /** ตัวเลขบิลที่จะจำลงออเดอร์ (ยอดเต็ม ไม่ใช่ครึ่งมัดจำ) — ใช้ทั้งตอนซิงก์เต็มและตอนจดยอดอย่างเดียว */
+  function billFigures(d: FADoc): Order["flowAccount"] {
+    const f = fullFigures(d);
+    return {
+      ...fa!,
+      ...(d.date ? { date: d.date } : {}),
+      subtotal: f.subtotal,
+      vat: f.vat,
+      grandTotal: f.grandTotal,
+      wht: f.wht,
+      net: f.grandTotal != null ? Math.round((f.grandTotal - (f.wht ?? 0)) * 100) / 100 : d.net,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * 📝 เอกสารล่าสุดตรงกับยอดในระบบแล้ว แต่ "ยอดตามใบ" ที่จำไว้ในออเดอร์ยังเป็นฉบับเก่า
+   * (OD-260915-8658 · 16 ก.ย. 69: สร้างออเดอร์ตอนใบมี ฿267.50 → แก้ใบเป็น ฿3,852 แล้วแก้รายการในระบบตามมือ
+   * กดเทียบขึ้น ✓ ตรงกัน แต่ป้ายแดง "ไม่ตรงกับใบนี้ ฿267.50" ไม่หายเพราะไม่มีปุ่มให้จดยอดใหม่)
+   * → จดตัวเลขบิลอย่างเดียว ไม่แตะรายการ/ค่าส่ง/ส่วนลด — ป้ายแดงหาย + SlipOK เทียบกับยอดใบจริง
+   */
+  function refreshBill() {
+    if (!diff) return;
+    const d = diff.doc;
+    const next = withLog(
+      { ...order, flowAccount: billFigures(d) },
+      actor,
+      "จดยอดตามใบ FlowAccount ใหม่",
+      `${d.docTypeLabel} ${d.docNo} · ยอดตามใบเดิม ${(flowAccountBillTotal(order) ?? 0).toLocaleString("th-TH")} → ${(fullFigures(d).grandTotal ?? 0).toLocaleString("th-TH")} บาท (รายการในระบบตรงอยู่แล้ว)`,
+    );
+    onApply(next);
+    setDiff(null);
+  }
+
   function apply() {
     if (!diff) return;
     const d = diff.doc;
@@ -73,16 +107,7 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
       ...(diff.docShipLabel
         ? { shippingCost: diff.docShip, ...(isPickupOrder(order) ? {} : { shippingLabel: diff.docShipLabel }) }
         : {}),
-      flowAccount: {
-        ...fa!,
-        ...(d.date ? { date: d.date } : {}),
-        subtotal: f.subtotal,
-        vat: f.vat,
-        grandTotal: f.grandTotal,
-        wht: f.wht,
-        net: f.grandTotal != null ? Math.round((f.grandTotal - (f.wht ?? 0)) * 100) / 100 : d.net,
-        fetchedAt: new Date().toISOString(),
-      },
+      flowAccount: billFigures(d),
     };
     // ส่วนลด/VAT ตามเอกสาร — ไม่มีในเอกสาร = เอาออก
     if (d.discount && d.discount > 0) next.adminDiscount = { label: `ส่วนลดตามใบ ${d.docNo}`, amount: d.discount };
@@ -140,7 +165,25 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
               ⚠️ รายการในเอกสารที่จับคู่กับรายการในระบบไม่ได้ (ต้องแก้เอง): {diff.unmatched.join(" · ")}
             </p>
           )}
-          {diff.sameTotal ? (
+          {diff.sameTotal && gap ? (
+            <div className="mt-1.5">
+              <p className="text-[11px] font-semibold text-amber-700">
+                ✓ รายการในระบบตรงกับเอกสารล่าสุดแล้ว — แต่ยอดตามใบที่จำไว้ในออเดอร์ยังเป็นฉบับเก่า {formatPrice(flowAccountBillTotal(order) ?? 0)} กดจดยอดใหม่ ป้ายเตือนจะหาย
+              </p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={refreshBill}
+                  className="rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700"
+                >
+                  📝 จดยอดตามเอกสารล่าสุดลงบิล ({formatPrice(fullFigures(diff.doc).grandTotal ?? 0)})
+                </button>
+                <button type="button" onClick={() => setDiff(null)} className="text-[11px] font-semibold text-slate-500 hover:underline">
+                  ปิด
+                </button>
+              </div>
+            </div>
+          ) : diff.sameTotal ? (
             <p className="mt-1 text-[11px] font-semibold text-emerald-700">
               ✓ ยอดในระบบตรงกับเอกสารที่ลิงก์แชร์ส่งมาแล้ว — ถ้าในแอป FlowAccount เห็นยอดอื่น แปลว่าลิงก์แชร์ยังเป็นฉบับเก่า ให้กด “แชร์” ใหม่ในแอป แล้วลองอีกครั้ง
             </p>
