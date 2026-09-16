@@ -26,6 +26,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   // 🎨 งานแบบ — ฝ่ายกราฟฟิกเปิดหมวดนี้หมวดเดียวก็ทำงานได้ครบ
   { href: "/admin/graphics", label: "ออเดอร์กราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
   { href: "/admin/graphics/designs", label: "รายงานแบบงาน", emoji: "📋", perm: "proof.manage", group: "กราฟฟิก" },
+  // 📏 ลากไฟล์ .ai/.psd หลายไฟล์ดูขนาดชิ้นงานทีเดียว — อ่านในเครื่อง ไม่อัปโหลด (เจ้าของร้านขอ 16 ก.ย. 69: เปิดทีละไฟล์เช็คขนาดช้า)
+  { href: "/admin/file-size", label: "เช็คขนาดไฟล์งาน", emoji: "📏", perm: "admin.access", group: "กราฟฟิก" },
   // 🏷️ ของที่ขาย
   { href: "/admin/products", label: "สินค้า", emoji: "🏷️", perm: "products.view", group: "สินค้า" },
   { href: "/admin/import", label: "นำเข้าสินค้า", emoji: "📥", perm: "products.import", group: "สินค้า" },
