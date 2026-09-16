@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import type { Claim } from "@/lib/claims";
+import { bkkYmd } from "@/lib/bangkok-time";
+import { isOpenClaim, type Claim } from "@/lib/claims";
 
 /** ของกลางฝั่งเซิร์ฟเวอร์ของระบบเคลม — ใช้ร่วมกันหลาย route */
 
@@ -45,5 +46,28 @@ export async function saveClaim(sb: SupabaseClient, claim: Claim): Promise<{ err
     .from(CLAIM_TABLE)
     .update({ data: { ...claim, photoUrls: undefined, updatedAt: new Date().toISOString() } })
     .eq("id", claim.id);
+  return error ? { error: error.message } : {};
+}
+
+/** เลขเคส CL-YYMMDD-#### (วันที่ตามเวลาไทย — เซิร์ฟเวอร์เป็น UTC) */
+export const newClaimId = () => `CL-${bkkYmd(new Date(), true)}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+/** เคสที่ยังเดินเรื่องอยู่ของออเดอร์นี้ (ออเดอร์เดียวมีได้ทีละใบ) — null = ไม่มี · error = ถามฐานไม่ได้ */
+export async function findOpenClaimByOrder(
+  sb: SupabaseClient,
+  orderId: string,
+): Promise<{ claim: Claim | null; error?: { code?: string; message: string } }> {
+  const { data, error } = await sb.from(CLAIM_TABLE).select("data").eq("data->>orderId", orderId);
+  if (error) return { claim: null, error };
+  return { claim: ((data ?? []).map((r) => r.data as Claim).find(isOpenClaim) ?? null) };
+}
+
+/** บันทึกเคสใหม่ — id ชนกัน (โอกาสน้อยมาก) สุ่มใหม่อีกรอบ · คืน error เป็นข้อความ */
+export async function insertClaim(sb: SupabaseClient, claim: Claim): Promise<{ error?: string }> {
+  let { error } = await sb.from(CLAIM_TABLE).insert({ id: claim.id, data: { ...claim, photoUrls: undefined } });
+  if (error && /duplicate|unique/i.test(error.message)) {
+    claim.id = newClaimId();
+    ({ error } = await sb.from(CLAIM_TABLE).insert({ id: claim.id, data: { ...claim, photoUrls: undefined } }));
+  }
   return error ? { error: error.message } : {};
 }

@@ -10,12 +10,16 @@
  *
  * ของที่เพิ่มจากเดิม: นับ "ค้างมากี่วัน" ต่อเคส และยกเคสที่ค้างนานสุดขึ้นก่อน —
  * เรื่องเคลมที่เงียบไปคือเรื่องที่บานปลาย ของเดิมไม่มีอะไรบอกว่าเคสไหนถูกลืม
+ *
+ * 🧰 เชื่อมกับปุ่ม ♻️ ทำใหม่/เคลม ในหน้าออเดอร์ (16 ก.ย. 69):
+ *   - กดจากหน้าออเดอร์ → เปิดเคสให้เอง (source "admin") หรือผูกกับเคสที่เปิดอยู่ · ขึ้นในหน้านี้ทันที
+ *   - กดจากหน้านี้ (ปุ่ม "สร้างงานผลิตใหม่") → ยิง /api/admin/orders/redo ให้เอง ไม่ต้องไปกดในหน้าออเดอร์แล้วก๊อปเลขกลับมา
  */
 
 import RequirePerm from "@/components/RequirePerm";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CLAIM_STATUSES, isOpenClaim, type Claim, type ClaimStatus } from "@/lib/claims";
+import { CLAIM_STATUSES, isOpenClaim, needsReply, type Claim, type ClaimStatus } from "@/lib/claims";
 import {
   Banner,
   Btn,
@@ -91,7 +95,7 @@ function ClaimsPageInner() {
   }, [claims, filter]);
 
   /** เคสที่ยังไม่มีใครตอบเลย — ตัวเลขที่ต้องเป็นศูนย์ทุกวัน */
-  const noReply = openList.filter((c) => !(c.messages ?? []).some((m) => m.by === "admin")).length;
+  const noReply = openList.filter(needsReply).length;
   const stalest = openList.length ? Math.max(...openList.map((c) => ageOf(c.createdAt))) : 0;
 
   if (claims === null) {
@@ -108,7 +112,7 @@ function ClaimsPageInner() {
         group="งานขาย"
         title="เคลมสินค้า"
         count={`${all.length} เรื่อง`}
-        sub="เคสจากหน้า “แจ้งปัญหา / เคลมสินค้า” ของลูกค้า — เปลี่ยนสถานะหรือตอบกลับแล้วระบบแจ้งลูกค้าทาง LINE ให้เอง"
+        sub="เคสที่ลูกค้ายื่นจากหน้าบัญชี + เคสที่ทีมงานเปิดจากปุ่ม ♻️ ทำใหม่/เคลม ในหน้าออเดอร์ — เปลี่ยนสถานะหรือตอบกลับแล้วระบบแจ้งลูกค้าทาง LINE ให้เอง"
       />
 
       {needsSetup ? (
@@ -181,10 +185,11 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
   const [redoId, setRedoId] = useState(c.resolution?.redoOrderId ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [redoBusy, setRedoBusy] = useState(false);
 
   const days = ageOf(c.createdAt);
-  const answered = (c.messages ?? []).some((m) => m.by === "admin");
-  const hot = isOpenClaim(c) && !answered;
+  const hot = needsReply(c);
+  const byAdmin = c.source === "admin";
 
   async function patch(body: Record<string, unknown>) {
     if (busy) return;
@@ -203,6 +208,36 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
     window.dispatchEvent(new Event("iducky:claims-changed"));
   }
 
+  /** ♻️ สร้างงานผลิตใหม่ (ฟรี) จากเคสนี้ — เซิร์ฟเวอร์เติม redoOrderId + แนวทาง "ผลิตใหม่" กลับให้เอง */
+  async function createRedo() {
+    if (redoBusy || busy) return;
+    const which = c.items?.length ? `${c.items.length} รายการที่เคลม` : "ทุกรายการในออเดอร์";
+    if (!confirm(`สร้างออเดอร์ผลิตใหม่ให้ฟรีจาก ${c.orderId} (${which}) — ราคา ฿0 ค่าส่ง ฿0 เริ่มงานได้เลย?`)) return;
+    setRedoBusy(true);
+    setErr("");
+    const res = await fetch("/api/admin/orders/redo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromId: c.orderId,
+        mode: "claim",
+        claimId: c.id,
+        reason: `${c.id} · ${c.type}${note.trim() ? ` · ${note.trim()}` : ""}`,
+        ...(c.items?.length ? { picks: c.items.map((it) => ({ index: it.index, qty: it.qty })) } : {}),
+      }),
+    }).catch(() => null);
+    const j = res ? await res.json().catch(() => ({})) : {};
+    setRedoBusy(false);
+    if (!res?.ok) return setErr(j.error ?? "สร้างงานผลิตใหม่ไม่สำเร็จ");
+    if (j.claimWarn) setErr(j.claimWarn);
+    if (j.claim) {
+      onUpdate(j.claim as Claim);
+      setAction("ผลิตใหม่");
+      setRedoId(j.id);
+    }
+    window.dispatchEvent(new Event("iducky:claims-changed"));
+  }
+
   return (
     <article className="dkb-g relative overflow-hidden p-4 pl-5" style={{ ["--dk-tone" as string]: TONE[c.status] }}>
       <span className="absolute inset-y-0 left-0 w-[6px]" style={{ background: "var(--dk-tone)" }} />
@@ -211,6 +246,7 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
         <span className="min-w-0">
           <span className="dkb-who">
             <span className="nm">{c.customer}</span>
+            {byAdmin && <Tag tone="quiet">ทีมงานเปิดเคส{c.createdBy ? ` · ${c.createdBy}` : ""}</Tag>}
             {hot && <Tag tone="solid">ค้าง {days} วัน ยังไม่ตอบ</Tag>}
             {!hot && isOpenClaim(c) && days >= 2 && <Tag tone="yolk">ค้าง {days} วัน</Tag>}
           </span>
@@ -233,11 +269,15 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
 
       {open && (
         <div className="mt-4 space-y-4 border-t pt-4" style={{ borderColor: "var(--dk-hair)" }}>
-          {c.itemNames && c.itemNames.length > 0 && (
+          {c.items?.length ? (
+            <p className="text-[13.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+              รายการ: {c.items.map((it) => `${it.name} ×${it.qty}`).join(" · ")}
+            </p>
+          ) : c.itemNames && c.itemNames.length > 0 ? (
             <p className="text-[13.5px]" style={{ color: "var(--dk-navy-soft)" }}>
               รายการ: {c.itemNames.join(" · ")}
             </p>
-          )}
+          ) : null}
           <p
             className="whitespace-pre-wrap rounded-[16px] px-4 py-3 text-[14px]"
             style={{ background: hot ? "var(--dk-coral-wash)" : "rgba(255,255,255,.65)", color: hot ? "var(--dk-coral-ink)" : "var(--dk-navy)" }}
@@ -327,7 +367,7 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
             </label>
             <label className="dkb-g dkb-field">
               <span className="lb">เลขออเดอร์ผลิตใหม่</span>
-              <input value={redoId} onChange={(e) => setRedoId(e.target.value)} placeholder="ถ้ามี" />
+              <input value={redoId} onChange={(e) => setRedoId(e.target.value)} placeholder="กดปุ่มด้านล่างให้ระบบสร้าง หรือพิมพ์เอง" />
             </label>
             <div className="flex items-end">
               <Btn
@@ -342,15 +382,28 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
             </div>
           </div>
 
-          <p className="text-[13.5px]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13.5px]">
             <Link
               href={`/admin/orders/${encodeURIComponent(c.orderId)}`}
               className="font-semibold underline-offset-4 hover:underline"
               style={{ color: "var(--dk-blue-deep)" }}
             >
-              เปิดออเดอร์ {c.orderId} → สร้างงานผลิตใหม่ได้จากปุ่ม Redo ในนั้น
+              เปิดออเดอร์ {c.orderId}
             </Link>
-          </p>
+            {c.resolution?.redoOrderId ? (
+              <Link
+                href={`/admin/orders/${encodeURIComponent(c.resolution.redoOrderId)}`}
+                className="font-semibold underline-offset-4 hover:underline"
+                style={{ color: "var(--dk-mint-ink)" }}
+              >
+                ♻️ งานผลิตใหม่ {c.resolution.redoOrderId}
+              </Link>
+            ) : c.status !== "ปฏิเสธ" && c.status !== "เสร็จสิ้น" ? (
+              <Btn tone="navy" small disabled={redoBusy || busy} onClick={() => void createRedo()}>
+                {redoBusy ? "กำลังสร้าง…" : "♻️ สร้างงานผลิตใหม่ (ฟรี)"}
+              </Btn>
+            ) : null}
+          </div>
 
           {err && (
             <p className="text-[13px] font-semibold" style={{ color: "var(--dk-coral-ink)" }}>

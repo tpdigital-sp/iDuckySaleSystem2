@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { pushShopAlert } from "@/lib/server/line-alert";
-import { bkkYmd } from "@/lib/bangkok-time";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { bearerUser, CLAIM_TABLE, isMissingTable } from "@/lib/server/claims-db";
-import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, isOpenClaim, type Claim } from "@/lib/claims";
+import { bearerUser, findOpenClaimByOrder, insertClaim, isMissingTable, newClaimId } from "@/lib/server/claims-db";
+import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, type Claim } from "@/lib/claims";
 import type { Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -13,12 +12,6 @@ export const runtime = "nodejs";
  * เงื่อนไข: ออเดอร์ต้อง "จัดส่งแล้ว/เสร็จสิ้น" และไม่เกิน CLAIM_WINDOW_DAYS วันหลังจัดส่ง
  * (หาเวลาจัดส่งจาก log ของออเดอร์ — ถ้าไม่เจอก็ไม่ปิดกั้น ให้แอดมินใช้ดุลยพินิจ)
  */
-
-const claimId = () => {
-  const d = new Date();
-  const ymd = bkkYmd(d, true);
-  return `CL-${ymd}-${Math.floor(1000 + Math.random() * 9000)}`;
-};
 
 /** เวลาออเดอร์เปลี่ยนเป็น "จัดส่งแล้ว" จาก log (null = หาไม่เจอ) */
 function shippedAtOf(order: Order): number | null {
@@ -71,19 +64,20 @@ export async function POST(req: Request) {
     );
 
   // กันยื่นซ้ำ — ออเดอร์เดียวมีเคลมที่ยังเดินเรื่องได้ทีละใบ
-  const { data: existing, error: listErr } = await sb.from(CLAIM_TABLE).select("data").eq("data->>orderId", orderId);
+  const { claim: existing, error: listErr } = await findOpenClaimByOrder(sb, orderId);
   if (listErr) {
     if (isMissingTable(listErr)) return NextResponse.json({ error: "ระบบเคลมยังไม่พร้อม — ผู้ดูแลต้องรัน supabase/claims.sql ก่อน" }, { status: 503 });
     return NextResponse.json({ error: listErr.message }, { status: 500 });
   }
-  if ((existing ?? []).some((r) => isOpenClaim(r.data as Claim)))
+  if (existing)
     return NextResponse.json({ error: "ออเดอร์นี้มีเคลมที่กำลังดำเนินการอยู่แล้ว — ติดตาม/ตอบเพิ่มในเคลมเดิมได้เลย" }, { status: 400 });
 
   const now = new Date().toISOString();
   const claim: Claim = {
-    id: claimId(),
+    id: newClaimId(),
     orderId,
     customerId: user.id,
+    source: "web",
     customer: order.customer,
     phone: order.phone,
     ...(itemNames.length ? { itemNames } : {}),
@@ -96,13 +90,8 @@ export async function POST(req: Request) {
     log: [{ at: now, by: order.customer || "ลูกค้า", action: "ยื่นเคลม" }],
   };
 
-  // id ชนกัน (โอกาสน้อยมาก) → สุ่มใหม่อีกรอบ
-  let { error } = await sb.from(CLAIM_TABLE).insert({ id: claim.id, data: claim });
-  if (error && /duplicate|unique/i.test(error.message)) {
-    claim.id = claimId();
-    ({ error } = await sb.from(CLAIM_TABLE).insert({ id: claim.id, data: claim }));
-  }
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { error } = await insertClaim(sb, claim);
+  if (error) return NextResponse.json({ error }, { status: 500 });
 
   // 🔔 แจ้งทีมงานทาง LINE ทันที (fire-and-forget — แจ้งไม่ได้ก็ไม่ขวางการยื่น)
   // ⚠️ await ไม่ใช่ void — Netlify แช่ฟังก์ชันตอนตอบกลับ งานค้างอาจไม่ได้ทำ (ตัวส่ง timeout 10 วิ ไม่ throw)

@@ -1112,7 +1112,12 @@ export default function AdminOrderDetailPage() {
       });
       const j = await res.json();
       if (!res.ok) setRedoErr(j.error ?? "สร้างงานใหม่ไม่สำเร็จ");
-      else router.push(`/admin/orders/${encodeURIComponent(j.id)}`);
+      else {
+        // 🧰 งานเคลมผูกกับสมุดเคลมให้แล้ว — ผูกไม่สำเร็จให้บอกก่อนย้ายหน้า (ออเดอร์สร้างแล้ว แต่ต้องไปเปิดเคสเองในหน้าเคลม)
+        if (j.claimWarn) alert(j.claimWarn);
+        window.dispatchEvent(new Event("iducky:claims-changed"));
+        router.push(`/admin/orders/${encodeURIComponent(j.id)}`);
+      }
     } catch {
       setRedoErr("เชื่อมต่อไม่ได้");
     }
@@ -8094,6 +8099,11 @@ export default function AdminOrderDetailPage() {
               {redoErr && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{redoErr}</p>}
               <p className="text-[11px] leading-relaxed text-slate-400">
                 แบบงานเก่าไม่ถูกคัดลอกไป (ต้องทำ/ตรวจใหม่อยู่ดี) แต่ลายที่ลูกค้าแนบมาจะติดไปให้ · ทั้งสองออเดอร์จะลิงก์ถึงกันและลงประวัติไว้
+                {redoMode === "claim" && (
+                  <span className="mt-1 block font-semibold text-rose-500">
+                    🧰 เปิดเคสในหน้า “เคลมสินค้า” ให้เองด้วย (ถ้าออเดอร์นี้มีเคสค้างอยู่จะผูกกับเคสเดิม) — ตามเรื่อง/ตอบลูกค้าต่อได้ที่นั่น
+                  </span>
+                )}
               </p>
             </div>
 

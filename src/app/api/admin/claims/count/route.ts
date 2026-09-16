@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { CLAIM_TABLE, isMissingTable } from "@/lib/server/claims-db";
-import { isOpenClaim, type Claim } from "@/lib/claims";
+import { isOpenClaim, needsReply, type Claim } from "@/lib/claims";
 
 export const runtime = "nodejs";
 
@@ -39,7 +39,7 @@ export async function GET() {
 
   const claims = (data ?? []).map((r) => r.data as Claim).filter((c) => !!c?.id);
   const open = claims.filter(isOpenClaim);
-  const noReply = open.filter((c) => !(c.messages ?? []).some((m) => m.by === "admin"));
+  const noReply = open.filter(needsReply); // เคสที่ทีมงานเปิดเองไม่นับ — คุยกับลูกค้าอยู่แล้ว
   const oldestDays = open.length ? Math.max(...open.map((c) => ageOf(c.createdAt))) : 0;
   return NextResponse.json({ n: noReply.length, open: open.length, oldestDays, ok: true });
 }
