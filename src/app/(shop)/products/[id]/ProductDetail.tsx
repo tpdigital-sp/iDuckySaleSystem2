@@ -43,6 +43,7 @@ import {
   parseArtQty,
   ART_SIZE_LABEL,
   LONGEST_ONLY_NOTE,
+  longestOnlyPair,
   formatArtSize,
   parseArtSize,
   parseArtSizeInput,
@@ -988,8 +989,9 @@ export default function ProductDetail({
     const main =
       mw > 0 && mh > 0
         ? { w: mw, h: mh }
-        : yOpt.sheetYield?.longestOnly && mw > 0
-          ? { w: mw, h: mw, longest: true }
+        : yOpt.sheetYield?.longestOnly && Math.max(mw, mh) > 0
+          ? // กรอกช่องไหนก็ได้ช่องเดียว (กว้างหรือสูง) = ด้านยาวสุด
+            { w: Math.max(mw, mh), h: Math.max(mw, mh), longest: true }
           : undefined;
     return formatArtSize(artFiles.map((f) => f.size ?? main), yOpt.input?.unit ?? "ซม.");
   }, [artFiles, placed.length, product, resolved]);
@@ -1746,7 +1748,7 @@ export default function ProductDetail({
         // ช่องกรอกของงานปกติ (standardInput เช่น ขนาดไดคัท) แสดงอยู่เมื่อไหร่ต้องกรอกเสมอ
         .filter((o) => o.standardInput === true || madeToOrderOn(effective))
         // เก็บชื่อกลุ่มไว้ด้วย — ปุ่มสั่งจะได้บอกตรง ๆ ว่าติดช่องไหน และพาเลื่อนไปหาช่องนั้นได้
-        .map((o) => ({ label: o.label, msg: inputError(o, effective[o.label], effective) }))
+        .map((o) => ({ label: o.label, msg: inputError(o, effective[o.label], effective, product) }))
         .filter((e): e is { label: string; msg: string } => !!e.msg),
     [product, effective]
   );
@@ -2988,8 +2990,9 @@ export default function ProductDetail({
     const w = Number(parseInputValue(artSizePair, effective[artSizePair.label]));
     const h = Number(parseInputValue(artSizeOpt, effective[artSizeOpt.label]));
     if (w > 0 && h > 0) return { w, h };
-    // 📏 กรอกด้านยาวสุดด้านเดียว — ยังนับเป็นขนาดหลักได้ (ช่องสูงไม่บังคับ)
-    if (artLongestOnly && w > 0) return { w, h: w, longest: true };
+    // 📏 กรอกด้านยาวสุดด้านเดียว — ยังนับเป็นขนาดหลักได้ (กรอกช่องกว้างหรือช่องสูงช่องเดียวก็ได้)
+    const L = Math.max(w > 0 ? w : 0, h > 0 ? h : 0);
+    if (artLongestOnly && L > 0) return { w: L, h: L, longest: true };
     return null;
   }, [artSizeOpt, artSizePair, effective, artLongestOnly]);
   /** ชิ้นต่อแผ่นแบบคละขนาด (effective มี ART_SIZE_LABEL อยู่แล้วเมื่อมีลายที่ระบุขนาด) · null = ยังไม่มีใครระบุ */
@@ -3844,11 +3847,31 @@ export default function ProductDetail({
                         })()}
                       </span>
                     )}
-                    {isInput && opt.input?.required === false && (
-                      <span className="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
-                        ไม่บังคับ
-                      </span>
-                    )}
+                    {isInput &&
+                      (() => {
+                        /*
+                         * 📏 คู่ "กรอกด้านยาวสุดช่องเดียวพอ" — ป้ายขยับตามที่ลูกค้ากรอกจริง (เกณฑ์เดียวกับ inputError):
+                         * ยังไม่กรอกทั้งคู่ = บอกว่าช่องไหนก็ได้ · กรอกแล้วช่องหนึ่ง = อีกช่องขึ้น "ไม่บังคับ"
+                         */
+                        const pair = longestOnlyPair(product, opt);
+                        let tag = opt.input?.required === false ? "ไม่บังคับ" : "";
+                        if (pair) {
+                          const other = pair.longest === opt ? pair.other : pair.longest;
+                          const mine = parseInputValue(opt, effective[opt.label]);
+                          const theirs = parseInputValue(other, effective[other.label]);
+                          tag =
+                            !mine && !theirs
+                              ? "กรอกช่องเดียวพอ กว้างหรือสูงก็ได้"
+                              : !mine && !inputError(opt, effective[opt.label], effective, product)
+                                ? "ไม่บังคับ"
+                                : "";
+                        }
+                        return tag ? (
+                          <span className="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
+                            {tag}
+                          </span>
+                        ) : null;
+                      })()}
                   </span>
                   )}
                   {/* กลุ่มของเสริมที่ปิดสวิตช์อยู่ — ไม่กางอะไรต่อ (หน้าจะได้สั้น เหลือแค่แถวสวิตช์) */}
@@ -3877,7 +3900,7 @@ export default function ProductDetail({
                     (() => {
                       const cfg = opt.input;
                       const raw = parseInputValue(opt, effective[opt.label]);
-                      const err = inputError(opt, effective[opt.label], effective);
+                      const err = inputError(opt, effective[opt.label], effective, product);
                       // เขียนกลับลง selections พร้อมหน่วย ("2.5" + "ซม." → "2.5 ซม.")
                       const write = (v: string) =>
                         setSelections((sel) => ({ ...sel, [opt.label]: formatInputValue(opt, v) }));

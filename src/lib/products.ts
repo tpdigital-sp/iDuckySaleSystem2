@@ -549,7 +549,9 @@ export function inputError(
   opt: ProductOption,
   stored: string | undefined,
   /** ตัวเลือกที่เลือกอยู่ — ส่งมาด้วยถ้าเพดานของช่องนี้ขึ้นกับตัวเลือกอื่น (ดู inputMaxOf) */
-  selections?: Record<string, string>
+  selections?: Record<string, string>,
+  /** สินค้า — ส่งมาด้วยถ้าช่องนี้อาจเป็นคู่ "กรอกด้านยาวสุดช่องเดียวพอ" (ดู longestOnlyPair) */
+  product?: Product
 ): string | null {
   const cfg = opt.input;
   if (!cfg) return null;
@@ -557,7 +559,27 @@ export function inputError(
   const required = cfg.required !== false;
   // ชื่อกลุ่มมักมีวงเล็บ ("(ตัวหน้า) ขนาด") — ครอบอัญประกาศไว้ ประโยคจะได้ไม่อ่านติดกันจนงง
   const name = `“${opt.label}”`;
-  if (!raw) return required ? `กรอก ${name} ด้วยนะครับ` : null;
+  if (!raw) {
+    if (!required) return null;
+    /*
+     * 📏 คู่ "กรอกด้านยาวสุดช่องเดียวพอ" — กรอกช่องไหนก็ได้ อีกช่องกลายเป็นไม่บังคับ (พนักงานแจ้ง 17 ก.ย. 69:
+     * ไฟล์ทรงสูง ลูกค้ากรอก 4 ซม. ที่ช่อง "สูง" แล้วโดนบังคับกรอกช่อง "กว้าง" ด้วยถึงจะสั่งได้)
+     * ตัวนับชิ้น/แผ่นใช้ด้านที่ยาวกว่าของสองช่องอยู่แล้ว (sheetYieldCount) จึงไม่ต้องรู้ว่าเป็นช่องไหน
+     * ยกเว้นอีกช่องกรอกเกินเพดาน "ด้านยาวสุด" ของช่องนี้ (สูง 35 · เพดาน 30) — ชิ้นยาวขนาดนั้น
+     * ต้องรู้ทั้งสองด้านถึงจะบอกได้ว่าลงแผ่นไหม → ยังบังคับช่องนี้ตามเดิม
+     */
+    const pair = product ? longestOnlyPair(product, opt) : null;
+    if (pair) {
+      const other = pair.longest === opt ? pair.other : pair.longest;
+      const otherRaw = parseInputValue(other, selections?.[other.label]);
+      if (!otherRaw) return `กรอก ${name} หรือ “${other.label}” ช่องใดช่องหนึ่งด้วยนะครับ`;
+      const max = inputMaxOf(opt, selections);
+      const u = cfg.unit ? ` ${cfg.unit}` : "";
+      if (max != null && Number(otherRaw) > max) return `กรอก ${name} ด้วยนะครับ (ด้านยาวเกิน ${max}${u} ต้องทราบทั้งสองด้าน)`;
+      return null; // อีกช่องผิดเกณฑ์อื่น (ต่ำกว่าขั้นต่ำ/ไม่ใช่ตัวเลข) = ช่องนั้นฟ้องเองอยู่แล้ว
+    }
+    return `กรอก ${name} ด้วยนะครับ`;
+  }
   if (cfg.kind === "number") {
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return `${name} ต้องเป็นตัวเลข`;
@@ -631,6 +653,7 @@ export interface SheetYield {
    * 📏 "กรอกด้านยาวสุดด้านเดียวพอ" (ไดคัท 100% สติ๊กเกอร์/กระดาษ — เจ้าของร้านสั่ง 10 ก.ย. 69)
    * ลูกค้ามักบอกแค่ด้านที่ยาวที่สุด ไม่ได้วัด กว้าง×สูง มา → แอดมินต้องไปวัดจากไฟล์เอง งานช้า
    * เปิดแล้ว: ช่องคู่ (pairLabel) = ด้านยาวสุด · ช่องนี้ (สูง) ไม่บังคับ (ตั้ง input.required:false ใน DB ด้วย)
+   * 17 ก.ย. 69: กรอกช่องไหนก็ได้ช่องเดียว (ไฟล์ทรงสูงลูกค้ากรอกช่อง "สูง") — อีกช่องไม่บังคับเอง ดู longestOnlyPair/inputError
    * กรอกด้านเดียว → นับชิ้น/แผ่นจากด้านนั้น (perSheetTiers เทียบด้านยาวสุดอยู่แล้ว · ไม่มีตารางถือเป็นชิ้นจัตุรัส)
    * กรอกครบสองด้าน → ตารางใช้ไม่ได้แล้ว (มันคิดเป็นจัตุรัส) ต้องจัดวางตามรูปจริง — คู่กับ printFitOnly
    * ให้ได้เลขเดียวกับ Print-Fit (13.97 × 7 ซม. ตาราง 6 · วางจริง 10 — เจ้าของร้านทัก 15 ก.ย. 69)
@@ -652,6 +675,23 @@ export interface SheetYield {
 
 /** ข้อความห้อยท้ายจำนวนชิ้นของงานที่กรอกแค่ด้านยาวสุด (เจ้าของร้านสั่งให้ระบุทุกจอ 10 ก.ย. 69) */
 export const LONGEST_ONLY_NOTE = "กราฟฟิกแจ้งจำนวนที่ได้จริงตอนส่งแบบ";
+
+/**
+ * 📏 คู่ช่องกรอกของงาน "กรอกด้านยาวสุดช่องเดียวพอ" (SheetYield.longestOnly) ที่กลุ่มนี้เป็นสมาชิกอยู่
+ * longest = ช่องคู่ (pairLabel · "กว้าง") · other = ช่องที่ตั้ง sheetYield ("สูง") — null = กลุ่มนี้ไม่ได้อยู่ในคู่แบบนี้
+ * ใช้ตัดสิน "กรอกช่องไหนก็ได้ อีกช่องไม่บังคับ" (inputError + ป้ายบนหน้าสินค้า)
+ */
+export function longestOnlyPair(
+  product: Product,
+  opt: ProductOption
+): { longest: ProductOption; other: ProductOption } | null {
+  const other = opt.sheetYield?.longestOnly
+    ? opt
+    : (product.options ?? []).find((o) => o.sheetYield?.longestOnly && o.sheetYield.pairLabel === opt.label && o !== opt);
+  if (!other?.sheetYield) return null;
+  const longest = other === opt ? (product.options ?? []).find((o) => o.label === other.sheetYield!.pairLabel) : opt;
+  return longest && longest !== other ? { longest, other } : null;
+}
 
 /**
  * เรียงเป็นกริดแนวเดียวทั้งกล่อง — วิธีที่ช่างวางจริงและเป็นเลขที่การันตีได้ว่าวางได้แน่
