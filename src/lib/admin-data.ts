@@ -126,7 +126,15 @@ export interface Shipment {
   proofs: { item: number; proof: number; url?: string; qty?: number; unit?: string; itemName?: string; ofQty?: number }[];
   /** หมายเหตุรอบนี้ เช่น "ลูกค้าขอ 22 ใบก่อนงานอีเวนต์" */
   note?: string;
+  /**
+   * 🏪 รอบของใบ "มารับเอง" — ไม่มีเลขพัสดุ ฝ่ายแพ็คกด "แพ็คเสร็จรอบนี้" แทน (tracking = pickupRoundRef(n) ไว้กันซ้ำ/โชว์)
+   * (17 ก.ย. 69 · OD-260911-5435: ใบมารับเองมีแผนแบ่งส่ง แต่ทางเดียวที่กดได้คือ "แพ็คเสร็จ" ซึ่งปิดทั้งใบ → รอบที่เหลือหลุดจากคิวปริ้น)
+   */
+  pickup?: true;
 }
+
+/** 🏪 ข้อความแทนเลขพัสดุของรอบแบ่งส่งใบมารับเอง — อ่านรู้เรื่องในทุกจอที่โชว์ sh.tracking และไม่ซ้ำกันระหว่างรอบ */
+export const pickupRoundRef = (round: number) => `มารับเอง รอบที่ ${round}`;
 
 /**
  * 📋 แผนแบ่งส่ง 1 รอบ — แอดมินระบุที่หน้าออเดอร์ว่ารูปไหนต้องส่งก่อน (ฝ่ายแพ็คไม่รู้เอง ทำตามแผน)
@@ -1680,7 +1688,16 @@ export interface PackGate {
   taxInvoiceUnpacked: boolean;
   /** 📦 รายการที่ฝ่ายแพ็คปักว่า "ของยังไม่มา / มาไม่ครบ" — ห้ามส่งจนกว่าจะกดมาครบ */
   missing: PackMissing[];
+  /**
+   * 📋 แอดมินสั่งแบ่งส่งไว้ และรอบตามแผนยังไม่ได้ส่ง — ห้ามปิดทั้งใบ (ยิงเลขรอบสุดท้าย / แพ็คเสร็จมารับเอง)
+   * ต้องส่งรอบนี้ทางปุ่ม "🚚 ส่งบางส่วน" ก่อน ไม่งั้นใบปิดเป็นจัดส่งแล้วทั้งที่ของที่เหลือยังไม่ได้ผลิต/ส่ง แล้วหลุดจากคิวปริ้น
+   */
+  planPending: { round: number; qty: number } | null;
 }
+
+/** ข้อความเหตุผลของ PackGate.planPending — ใช้คำเดียวกันทุกจอ + ฝั่งเซิร์ฟเวอร์ */
+export const planPendingReason = (p: NonNullable<PackGate["planPending"]>) =>
+  `แอดมินสั่งแบ่งส่งไว้ — รอบที่ ${p.round}${p.qty ? ` (${p.qty.toLocaleString("th-TH")} ชิ้น)` : ""} ยังไม่ได้ส่ง ให้ใช้ปุ่ม “🚚 ส่งบางส่วน” ห้ามปิดทั้งใบ`;
 
 /** รายการที่ของยังไม่ถึงโต๊ะแพ็ค (สรุปจาก OrderItem.arrival) */
 export interface PackMissing {
@@ -1957,9 +1974,26 @@ export function partialShipSummary(order: Order): { rounds: number; shipped: num
   };
 }
 
+/**
+ * 📋 รอบตามแผนแบ่งส่งที่ "ยังไม่ได้ส่ง และไม่ใช่รอบสุดท้าย" → ห้ามปิดทั้งใบจนกว่าจะส่งรอบนี้ทางปุ่มส่งบางส่วน
+ * รอบตามแผนที่เอาของที่เหลือไปทั้งหมด = รอบสุดท้าย (partialGate ให้ไปปิดใบทางปกติ) จึงไม่นับ · ใบปิดไปแล้วไม่นับ
+ */
+export function pendingPlanRound(order: Order): { round: number; qty: number } | null {
+  if ((order.tracking ?? "").trim() || order.packedAt) return null;
+  const next = nextPlannedRound(order);
+  if (!next) return null;
+  let qty = 0;
+  next.qty.forEach((q) => (qty += q));
+  let remaining = 0;
+  proofShipStates(order).forEach((st) => (remaining += st.remaining));
+  if (qty <= 0 || qty >= remaining) return null;
+  return { round: (order.shipments?.length ?? 0) + 1, qty };
+}
+
 /** ใบที่ส่งไปแล้วบางส่วนแต่ยังไม่ปิด (ยังไม่ยิงเลขรอบสุดท้าย) */
 export function isPartiallyShipped(order: Order): boolean {
-  return (order.shipments?.length ?? 0) > 0 && !(order.tracking ?? "").trim();
+  // 🏪 ใบมารับเองไม่มีเลขพัสดุ — ปิดใบด้วย packedAt (กดแพ็คเสร็จรอบสุดท้าย)
+  return (order.shipments?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && !order.packedAt;
 }
 
 /**
@@ -2147,9 +2181,11 @@ export function packGate(order: Order): PackGate {
   const unpaidBalance = hasUnpaidBalance(order);
   const missing = packMissingOf(order);
   const taxInvoiceUnpacked = orderNeedsTaxInvoiceInBox(order) && !order.taxInvoicePacked;
+  const planPending = pendingPlanRound(order);
 
   return {
     ready:
+      !planPending &&
       !uncounted.length &&
       !unread.length &&
       !short.length &&
@@ -2166,6 +2202,7 @@ export function packGate(order: Order): PackGate {
     unpaidBalance,
     missing,
     taxInvoiceUnpacked,
+    planPending,
   };
 }
 

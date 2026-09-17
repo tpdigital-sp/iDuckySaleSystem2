@@ -35,6 +35,7 @@ import {
   orderAwaitingStock,
   packGate,
   partialGate,
+  planPendingReason,
   roundSel,
   proofsOf,
   shipmentQty,
@@ -51,6 +52,7 @@ import {
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
 function gateReasons(g: PackGate): string {
   return [
+    g.planPending ? planPendingReason(g.planPending) : "",
     g.uncounted.length ? `ตรวจนับอีก ${g.uncounted.length} รูป` : "",
     g.unread.length ? `ยืนยันอ่านอีก ${g.unread.length} รายการ` : "",
     g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
@@ -67,7 +69,11 @@ function gateReasons(g: PackGate): string {
 function newShipmentsOf(existing: Order, incoming: Order): Shipment[] {
   const inc = Array.isArray(incoming.shipments) ? incoming.shipments : [];
   const had = new Set((existing.shipments ?? []).map((s) => s.tracking.trim()));
-  return inc.filter((s) => s && typeof s.tracking === "string" && s.tracking.trim() && !had.has(s.tracking.trim()) && Array.isArray(s.proofs));
+  // 🏪 รอบ "มารับเอง" (ไม่มีเลขพัสดุจริง) รับเฉพาะใบมารับเอง — ใบส่งพัสดุต้องมีเลขเสมอ
+  const pickupOk = isPickupOrder(existing);
+  return inc.filter(
+    (s) => s && typeof s.tracking === "string" && s.tracking.trim() && !had.has(s.tracking.trim()) && Array.isArray(s.proofs) && (!s.pickup || pickupOk)
+  );
 }
 
 /** รวมรอบแบ่งส่ง: ของเดิมคงไว้ทั้งหมด + รอบใหม่ต่อท้าย (ฝ่ายแพ็คลบ/แก้รอบเก่าไม่ได้) */
@@ -989,11 +995,15 @@ export async function PATCH(req: Request) {
             }`
         )
         .join("\n");
+      const tail = `${qty ? `\nรอบนี้ ${qty.toLocaleString("th-TH")} ชิ้น` : ""}\n${lines}${sh.note ? `\n📝 ${sh.note}` : ""}`;
       void notifyCustomerLogged(
         sb,
         toSave,
-        `🚚 ออเดอร์ ${toSave.id} จัดส่งบางส่วนแล้วครับ (รอบที่ ${round})\nเลขพัสดุ: ${sh.tracking}${qty ? `\nรอบนี้ ${qty.toLocaleString("th-TH")} ชิ้น` : ""}\n${lines}${sh.note ? `\n📝 ${sh.note}` : ""}\nส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
-        `แจ้งส่งบางส่วน รอบที่ ${round} · ${sh.tracking}`,
+        // 🏪 ใบมารับเอง: รอบนี้ไม่มีเลขพัสดุ — บอกให้มารับของรอบนี้ได้เลย ที่เหลือแจ้งอีกครั้ง
+        sh.pickup
+          ? `🏪 ออเดอร์ ${toSave.id} แพ็คเสร็จบางส่วนแล้วครับ (รอบที่ ${round}) — มารับที่ร้านได้เลย${tail}\nส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ\n${link}`
+          : `🚚 ออเดอร์ ${toSave.id} จัดส่งบางส่วนแล้วครับ (รอบที่ ${round})\nเลขพัสดุ: ${sh.tracking}${tail}\nส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
+        sh.pickup ? `แจ้งแพ็คเสร็จบางส่วน (มารับเอง) รอบที่ ${round}` : `แจ้งส่งบางส่วน รอบที่ ${round} · ${sh.tracking}`,
         "key"
       );
     });

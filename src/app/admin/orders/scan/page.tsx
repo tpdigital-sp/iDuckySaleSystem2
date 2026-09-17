@@ -362,7 +362,10 @@ export default function ScanTrackingPage() {
   const scanned = useMemo(() => {
     const rows: { o: Order; at?: string; tracking: string; round?: number; key: string }[] = [];
     orders.forEach((o) => {
-      (o.shipments ?? []).forEach((sh, n) => rows.push({ o, at: sh.at, tracking: sh.tracking, round: n + 1, key: `${o.id}#${n}` }));
+      // 🏪 รอบของใบมารับเองไม่มีเลขพัสดุ — ไม่ใช่พัสดุที่ยิงออก ไม่ขึ้นรายการนี้
+      (o.shipments ?? []).forEach((sh, n) => {
+        if (!sh.pickup) rows.push({ o, at: sh.at, tracking: sh.tracking, round: n + 1, key: `${o.id}#${n}` });
+      });
       if (o.tracking) rows.push({ o, at: trackedAt(o), tracking: o.tracking, key: o.id });
     });
     return rows.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
@@ -909,6 +912,7 @@ export default function ScanTrackingPage() {
                 const g = packGate(o);
                 const printed = printedOf(o);
                 const need = [
+                  g.planPending ? `📋 แบ่งส่งรอบ ${g.planPending.round} ตามแผน` : "",
                   g.uncounted.length ? `ตรวจนับ ${g.uncounted.length} รูป` : "",
                   g.unread.length ? `อ่านรายละเอียด ${g.unread.length} รายการ` : "",
                   g.unsampled.length ? `ใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
@@ -1213,6 +1217,11 @@ export default function ScanTrackingPage() {
             >
               <p className="dkb-h2 text-[13px]">ต้องทำให้ครบก่อน</p>
               <ul className="mt-1.5 space-y-1 text-[13px] leading-relaxed">
+                {blocked.gate.planPending && (
+                  <li>
+                    · 📋 แอดมินสั่งแบ่งส่งไว้ — รอบที่ {blocked.gate.planPending.round} ยังไม่ได้ส่ง ให้เปิดใบแล้วกดปุ่มเหลือง “ส่งบางส่วน” (ห้ามปิดทั้งใบ)
+                  </li>
+                )}
                 {blocked.gate.uncounted.length > 0 && <li>· ยังไม่ได้ตรวจนับของ {blocked.gate.uncounted.length} รูป</li>}
                 {blocked.gate.unread.length > 0 && <li>· ยังไม่ได้ยืนยันอ่านรายละเอียด {blocked.gate.unread.length} รายการ</li>}
                 {blocked.gate.unsampled.map((name, k) => (

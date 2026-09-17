@@ -45,6 +45,8 @@ export type PickupRow = {
   date: string;
   packedAt?: string;
   packedBy?: string;
+  /** 🏪 แบ่งส่ง: รอบที่แพ็คเสร็จให้มารับไปก่อนแล้ว (ใบยังไม่ปิด ที่เหลือกำลังทำ) — "N รอบ · X ชิ้น" */
+  partialRounds?: string;
   pickedUpAt?: string;
   pickedUpBy?: string;
 };
@@ -79,6 +81,9 @@ function toRow(o: Order, group: PickupRow["group"]): PickupRow {
     ...(o.note?.trim() ? { note: o.note.trim() } : {}),
     date: o.date,
     ...(o.packedAt ? { packedAt: o.packedAt.at, packedBy: o.packedAt.by } : {}),
+    ...(!o.packedAt && (o.shipments?.length ?? 0) > 0
+      ? { partialRounds: `${o.shipments!.length} รอบ · ${o.shipments!.reduce((n, s) => n + s.proofs.reduce((m, p) => m + (p.qty ?? 0), 0), 0).toLocaleString("th-TH")} ชิ้น` }
+      : {}),
     ...(o.pickedUp ? { pickedUpAt: o.pickedUp.at, pickedUpBy: o.pickedUp.by } : {}),
   };
 }

@@ -2087,21 +2087,27 @@ export default function CustomerOrderPage() {
             order.shipments!.map((sh, n) => (
               <div key={`${sh.tracking}-${n}`} className="ord-note info p-4 sm:p-5">
                 <p className="ord-eyebrow">
-                  🚚 จัดส่งบางส่วน รอบที่ {n + 1}
+                  {sh.pickup ? "🏪 แพ็คเสร็จบางส่วน" : "🚚 จัดส่งบางส่วน"} รอบที่ {n + 1}
                   {shipmentQty(sh) ? ` · ${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น` : ""}
                 </p>
-                <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{sh.tracking}</p>
+                {sh.pickup ? (
+                  <p className="mt-1 text-lg font-bold t-ink">มารับของรอบนี้ที่ร้านได้เลย</p>
+                ) : (
+                  <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{sh.tracking}</p>
+                )}
                 <p className="mt-1 text-xs t-soft">
                   รอบนี้: {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` × ${p.qty.toLocaleString("th-TH")}${p.ofQty && p.ofQty > p.qty ? ` จาก ${p.ofQty.toLocaleString("th-TH")}` : ""} ${p.unit || "ชิ้น"}` : ""}`).join(" · ")}
                   {sh.note ? ` · ${sh.note}` : ""}
                 </p>
-                {/^[A-Z]{2}\d{9}TH$/i.test(sh.tracking.trim()) ? (
+                {sh.pickup ? null : /^[A-Z]{2}\d{9}TH$/i.test(sh.tracking.trim()) ? (
                   <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={sh.tracking.trim()} />
                 ) : (
                   <p className="mt-1 text-xs t-soft">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
                 )}
-                {!order.tracking && n === order.shipments!.length - 1 && (
-                  <p className="mt-2 text-xs font-bold t-soft">ส่วนที่เหลือกำลังผลิต จะจัดส่งในรอบถัดไปและแจ้งเลขพัสดุอีกครั้งครับ</p>
+                {!order.tracking && !order.packedAt && n === order.shipments!.length - 1 && (
+                  <p className="mt-2 text-xs font-bold t-soft">
+                    {sh.pickup ? "ส่วนที่เหลือกำลังผลิต ทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ" : "ส่วนที่เหลือกำลังผลิต จะจัดส่งในรอบถัดไปและแจ้งเลขพัสดุอีกครั้งครับ"}
+                  </p>
                 )}
               </div>
             ))}

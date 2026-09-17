@@ -771,7 +771,7 @@ function OrderDocs({
             <div className="keep mt-4 rounded border border-slate-300 p-5">
               {/* 🚚 กล่องรอบถัดไปของใบแบ่งส่ง — ตราให้คนแพ็ค/ขนส่งรู้ว่านี่กล่องที่เท่าไร */}
               {/* ⚠️ ส่วนนี้แปะกล่อง ลูกค้าเห็น — ห้ามมีเรื่องเงิน/มัดจำ (เจ้าของร้านทัก 16 ก.ย. 69) เรื่องรอบตัวอย่างไปอยู่ส่วนใบงานด้านล่าง */}
-              {(order.shipments?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && (
+              {(order.shipments?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && !order.packedAt && (
                 <p className="mb-2 inline-block rounded border-2 border-slate-900 px-2 py-0.5 text-sm font-extrabold">
                   🚚 แบ่งส่ง — กล่องรอบที่ {(order.shipments?.length ?? 0) + 1}
                   {order.shipPlan?.length && nextPlannedRound(order) ? "" : " (รอบสุดท้าย)"}

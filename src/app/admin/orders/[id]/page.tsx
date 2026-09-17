@@ -68,6 +68,8 @@ import {
   taxFromRate,
   depositInstallments,
   packGate,
+  pickupRoundRef,
+  planPendingReason,
   nextPlannedRound,
   partialGate,
   SPLIT_WHOLE_HINT,
@@ -2343,6 +2345,7 @@ export default function AdminOrderDetailPage() {
     const g = packGate(order);
     if (!g.ready) {
       const reasons = [
+        g.planPending ? planPendingReason(g.planPending) : "",
         g.uncounted.length ? `ตรวจนับแบบงานอีก ${g.uncounted.length} รูป` : "",
         g.unread.length ? `ยืนยันอ่านรายละเอียดอีก ${g.unread.length} รายการ` : "",
         g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
@@ -2381,6 +2384,7 @@ export default function AdminOrderDetailPage() {
   function gateReasonsOf(o: Order): string[] {
     const g = packGate(o);
     return [
+      g.planPending ? planPendingReason(g.planPending) : "",
       g.uncounted.length ? `ตรวจนับแบบงานอีก ${g.uncounted.length} รูป` : "",
       g.unread.length ? `ยืนยันอ่านรายละเอียดอีก ${g.unread.length} รายการ` : "",
       g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
@@ -2485,13 +2489,15 @@ export default function AdminOrderDetailPage() {
       });
     });
     if (!proofs.length) return;
-    const sh: Shipment = { tracking: t, at: new Date().toISOString(), by: actor, proofs, ...(note.trim() ? { note: note.trim() } : {}) };
     const round = (order.shipments?.length ?? 0) + 1;
+    // 🏪 ใบมารับเอง: รอบนี้ไม่มีเลขพัสดุ (โมดัลส่ง pickupRoundRef มาแทน) — ติดธง pickup ให้ทุกจอรู้ว่าไม่ต้องเช็คสถานะ ปณ.
+    const pickupRound = isPickupOrder(order);
+    const sh: Shipment = { tracking: t, at: new Date().toISOString(), by: actor, proofs, ...(note.trim() ? { note: note.trim() } : {}), ...(pickupRound ? { pickup: true as const } : {}) };
     const qty = shipmentQty(sh);
     const next = withLog(
       { ...order, shipments: [...(order.shipments ?? []), sh] },
       actor,
-      "🚚 ส่งบางส่วน",
+      pickupRound ? "🏪 แพ็คเสร็จบางส่วน — รอลูกค้ามารับ" : "🚚 ส่งบางส่วน",
       `รอบที่ ${round} · ${t} · ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}`
     );
     setShipSel(new Map());
@@ -3639,6 +3645,7 @@ export default function AdminOrderDetailPage() {
             mayEdit={mayEdit}
             editableQty={adHocSplit}
             defaultNote={planNext?.round.note ?? ""}
+            pickup={isPickupOrder(order)}
             onCancel={() => setPartialOpen(false)}
             onConfirm={(t, note, sel) => commitPartialShipment(t, note, sel)}
           />
@@ -8118,19 +8125,25 @@ export default function AdminOrderDetailPage() {
                           </button>
                         )}
                       </div>
-                      <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[13px] font-bold text-slate-800">
-                        {sh.tracking} <CopyChip label="คัดลอก" text={() => sh.tracking} />
-                      </p>
+                      {sh.pickup ? (
+                        <p className="mt-0.5 text-[13px] font-bold text-slate-800">🏪 แพ็คเสร็จรอบนี้ — ลูกค้ามารับเอง (ไม่มีเลขพัสดุ)</p>
+                      ) : (
+                        <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[13px] font-bold text-slate-800">
+                          {sh.tracking} <CopyChip label="คัดลอก" text={() => sh.tracking} />
+                        </p>
+                      )}
                       <p className={`mt-0.5 text-[11px] ${faint}`}>
                         {sh.by} · {shortTime(sh.at)} · {roundProofsText(order, sh.proofs)}
                         {sh.note ? ` · 📝 ${sh.note}` : ""}
                       </p>
-                      <ThaiPostStatus number={sh.tracking.trim()} />
+                      {!sh.pickup && <ThaiPostStatus number={sh.tracking.trim()} />}
                     </div>
                   ))}
-                  {!(order.tracking ?? "").trim() && (
+                  {!(order.tracking ?? "").trim() && !order.packedAt && (
                     <p className="text-[11px] font-bold text-amber-700">
-                      ใบยังไม่ปิด — ช่องด้านล่างคือเลขพัสดุ “รอบสุดท้าย” ยิงแล้วสถานะเป็นจัดส่งแล้ว
+                      {isPickupOrder(order)
+                        ? "ใบยังไม่ปิด — ปุ่มด้านล่างคือ “แพ็คเสร็จรอบสุดท้าย” กดแล้วสถานะเป็นแพ็คเสร็จ รอมารับ"
+                        : "ใบยังไม่ปิด — ช่องด้านล่างคือเลขพัสดุ “รอบสุดท้าย” ยิงแล้วสถานะเป็นจัดส่งแล้ว"}
                     </p>
                   )}
                 </div>
@@ -8142,6 +8155,23 @@ export default function AdminOrderDetailPage() {
                     ✅ แพ็คเสร็จแล้ว รอลูกค้ามารับ · {order.packedAt.by} · {shortTime(order.packedAt.at)}
                     {order.status === "เสร็จสิ้น" ? " · ลูกค้ารับแล้ว" : ""}
                   </p>
+                ) : packGate(order).planPending && planNext ? (
+                  // 📋 แผนแบ่งส่งค้าง: ปิดทั้งใบไม่ได้ — กดแพ็คเสร็จ "เฉพาะรอบนี้" (ใบยังไม่ปิด ที่เหลือกลับไปคิวปริ้นรอบถัดไป)
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPartialOpen(true)}
+                      className="flex w-full items-center justify-between gap-2 rounded-xl border-b-4 border-amber-600 bg-amber-400 px-3 py-2.5 text-left text-sm font-extrabold text-amber-950 shadow-md ring-2 ring-amber-500 transition hover:bg-amber-300 active:translate-y-0.5 active:border-b-2"
+                    >
+                      <span>🏪 แพ็คเสร็จบางส่วน รอบที่ {(order.shipments?.length ?? 0) + 1} (ตามแผนแบ่งส่ง)</span>
+                      <span className="shrink-0 text-lg" aria-hidden>
+                        →
+                      </span>
+                    </button>
+                    <p className={`mt-1.5 text-[11px] ${faint}`}>
+                      ใบนี้แอดมินสั่งแบ่งส่ง — กดแล้วแจ้งลูกค้าให้มารับเฉพาะของรอบนี้ · ใบยังไม่ปิด ของที่เหลือไปรอที่คิวปริ้น “ใบปะหน้ารอบถัดไป”
+                    </p>
+                  </>
                 ) : (
                   <>
                     <button
@@ -8229,6 +8259,7 @@ export default function AdminOrderDetailPage() {
           mayEdit={mayEdit}
           editableQty={adHocSplit}
           defaultNote={planNext?.round.note ?? ""}
+          pickup={isPickupOrder(order)}
           onCancel={() => setPartialOpen(false)}
           onConfirm={(t, note, sel) => commitPartialShipment(t, note, sel)}
         />
@@ -8646,6 +8677,12 @@ function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: str
       }`,
     })
   );
+  // 📋 แผนแบ่งส่งค้าง — ปิดทั้งใบไม่ได้ ต้องส่งรอบตามแผนทางปุ่มเหลืองก่อน (17 ก.ย. 69 · OD-260911-5435)
+  if (gate.planPending)
+    out.push({
+      icon: "📋",
+      text: `แอดมินสั่งแบ่งส่ง รอบที่ ${gate.planPending.round}${gate.planPending.qty ? ` (${gate.planPending.qty.toLocaleString("th-TH")} ชิ้น)` : ""} — กดปุ่มเหลือง “ส่งบางส่วน” ห้ามปิดทั้งใบ`,
+    });
   // ของไม่ครบขึ้นก่อน — ต้องถามแอดมินก่อนทำอย่างอื่น
   gate.short.forEach((s) => out.push({ icon: "⚠️", text: `ของไม่ครบ: ${s.item} (นับได้ ${s.got}/${s.need})` }));
   // ตรวจนับ: รวมรูปของรายการเดียวกันเป็นบรรทัดเดียว คนแพ็คไล่ทีละรายการอยู่แล้ว
@@ -9104,7 +9141,7 @@ function PackView({
               {order.shipments!.map((sh, n) => (
                 <li key={`${sh.tracking}-${n}`} className="rounded-xl bg-sky-50 px-3 py-2 text-xs ring-1 ring-sky-100">
                   <p className="font-bold text-sky-800">
-                    รอบที่ {n + 1} · <span className="font-mono">{sh.tracking}</span>
+                    รอบที่ {n + 1} · {sh.pickup ? "🏪 แพ็คเสร็จ ลูกค้ามารับเอง" : <span className="font-mono">{sh.tracking}</span>}
                     {shipmentQty(sh) ? ` · ${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น` : ""}
                   </p>
                   <p className="mt-0.5 text-[11px] text-slate-500">
@@ -9116,7 +9153,9 @@ function PackView({
             </ul>
             {!(order.tracking ?? "").trim() && (
               <p className="mt-1.5 text-[11px] font-bold text-amber-700">
-                {planNext ? `รอบถัดไปตามแผน: รูปที่ติดป้าย “ส่งก่อน” · ส่งครบทุกรูป = ยิงเลขที่ช่องด้านล่างให้ใบปิด` : "รูปที่เหลือทั้งหมด = รอบสุดท้าย ยิงเลขที่ช่องด้านล่างให้ใบปิด"}
+                {planNext
+                  ? `รอบถัดไปตามแผน: รูปที่ติดป้าย “ส่งก่อน” · ส่งครบทุกรูป = ${pickup ? "กดแพ็คเสร็จ" : "ยิงเลขที่ช่อง"}ด้านล่างให้ใบปิด`
+                  : `รูปที่เหลือทั้งหมด = รอบสุดท้าย ${pickup ? "กดแพ็คเสร็จ" : "ยิงเลขที่ช่อง"}ด้านล่างให้ใบปิด`}
               </p>
             )}
           </div>
@@ -9185,15 +9224,27 @@ function PackView({
             className="mb-2 flex w-full items-center justify-between gap-2 rounded-xl bg-amber-400 px-3 py-3 text-left text-sm font-extrabold text-amber-950 ring-2 ring-amber-500"
           >
             <span>
-              🚚 ส่งบางส่วน รอบที่ {(order.shipments?.length ?? 0) + 1}{planNext ? " (ตามแผนแอดมิน)" : ""}
+              {pickup ? "🏪 แพ็คเสร็จบางส่วน" : "🚚 ส่งบางส่วน"} รอบที่ {(order.shipments?.length ?? 0) + 1}{planNext ? " (ตามแผนแอดมิน)" : ""}
               <span className="block text-[11px] font-bold text-amber-800">
-                {shipSel.size} รูป{selQty ? ` · ${selQty.toLocaleString("th-TH")} ชิ้น` : ""} — แตะเพื่อยิงเลขพัสดุรอบนี้
+                {shipSel.size} รูป{selQty ? ` · ${selQty.toLocaleString("th-TH")} ชิ้น` : ""} — {pickup ? "แตะเพื่อยืนยันแพ็คเสร็จรอบนี้ (ใบยังไม่ปิด)" : "แตะเพื่อยิงเลขพัสดุรอบนี้"}
               </span>
             </span>
             <span className="shrink-0 text-lg">→</span>
           </button>
         )}
-        {pickup ? (
+        {gate.planPending && !order.packedAt ? (
+          // 📋 แผนแบ่งส่งค้าง: ทางปิดทั้งใบ (ยิงเลขรอบสุดท้าย/แพ็คเสร็จมารับเอง) ปิดไว้ก่อน — ให้เหลือปุ่มเหลืองข้างบนทางเดียว
+          // (17 ก.ย. 69 · OD-260911-5435: ใบมารับเองมีแผนรอบ 1 แต่ปุ่มใหญ่ที่กดได้คือ "แพ็คเสร็จ" → ปิดทั้งใบ รอบ 2 หลุดจากคิวปริ้น)
+          <div className="rounded-xl bg-sky-50 px-3 py-2.5 ring-1 ring-sky-200">
+            <p className="text-sm font-extrabold text-sky-900">
+              📋 ใบนี้แอดมินสั่งแบ่งส่ง — รอบที่ {gate.planPending.round}
+              {gate.planPending.qty ? ` (${gate.planPending.qty.toLocaleString("th-TH")} ชิ้น)` : ""} ยังไม่ได้ส่ง
+            </p>
+            <p className="mt-0.5 text-[11px] font-bold leading-tight text-sky-800">
+              กดปุ่มเหลืองด้านบนเพื่อ{pickup ? "ยืนยันแพ็คเสร็จ" : "ยิงเลขพัสดุ"}เฉพาะรอบนี้ · ปุ่มปิดทั้งใบจะเปิดเมื่อเหลือแต่รอบสุดท้าย
+            </p>
+          </div>
+        ) : pickup ? (
           // 🏪 มารับเอง: ไม่มีเลขพัสดุให้ยิง — ปุ่มเดียว "แพ็คเสร็จ" แล้วระบบแจ้งลูกค้าให้มารับ
           order.packedAt ? (
             <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2 ring-1 ring-emerald-200">
@@ -9691,6 +9742,7 @@ function PartialShipModal({
   mayEdit,
   editableQty = false,
   defaultNote = "",
+  pickup = false,
   onCancel,
   onConfirm,
 }: {
@@ -9698,6 +9750,8 @@ function PartialShipModal({
   /** คีย์รูป → จำนวนชิ้นที่จะไปกับรอบนี้ (ตามแผนแอดมิน หรือที่ติ๊กเอง) */
   sel: Map<string, number>;
   mayEdit: boolean;
+  /** 🏪 ใบมารับเอง — รอบนี้ไม่มีเลขพัสดุ กดยืนยัน "แพ็คเสร็จรอบนี้" แทน */
+  pickup?: boolean;
   /** แก้จำนวนในโมดัลได้ไหม — ตามแผนแอดมิน = ล็อกตามแผน · ติ๊กเอง (แอดมิน) = แก้ได้ */
   editableQty?: boolean;
   /** หมายเหตุจากแผนแอดมิน — เติมให้ก่อน แก้ได้ */
@@ -9747,8 +9801,9 @@ function PartialShipModal({
       else next.delete(k);
       return next;
     });
-  const t = tracking.trim();
-  const dupe = !!t && ((order.shipments ?? []).some((s) => s.tracking.trim() === t) || (order.tracking ?? "").trim() === t);
+  // 🏪 มารับเอง: ไม่มีเลขพัสดุ — ใช้ข้อความประจำรอบแทน (ไม่ซ้ำกันระหว่างรอบ)
+  const t = pickup ? pickupRoundRef(round) : tracking.trim();
+  const dupe = !pickup && !!t && ((order.shipments ?? []).some((s) => s.tracking.trim() === t) || (order.tracking ?? "").trim() === t);
   const blockedAll = gate.isLastRound || rows.length === 0;
   const otherReasons = gate.reasons.filter((r) => !r.startsWith(SPLIT_WHOLE_HINT));
   const needSkip = !gate.ready && !blockedAll;
@@ -9768,9 +9823,9 @@ function PartialShipModal({
         aria-modal="true"
       >
         <div className="bg-amber-50 px-5 pb-3 pt-4 ring-1 ring-inset ring-amber-100">
-          <p className="text-lg font-extrabold text-slate-900">🚚 ส่งบางส่วน — รอบที่ {round}</p>
+          <p className="text-lg font-extrabold text-slate-900">{pickup ? "🏪 แพ็คเสร็จบางส่วน (มารับเอง)" : "🚚 ส่งบางส่วน"} — รอบที่ {round}</p>
           <p className="mt-0.5 text-xs text-slate-500">
-            {order.id} · {rows.length} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""} · ใบยังไม่ปิด ที่เหลือส่งรอบถัดไป
+            {order.id} · {rows.length} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""} · ใบยังไม่ปิด {pickup ? "ที่เหลือกลับไปรอคิวปริ้น/ผลิตรอบถัดไป" : "ที่เหลือส่งรอบถัดไป"}
           </p>
         </div>
 
@@ -9869,6 +9924,11 @@ function PartialShipModal({
 
         {!blockedAll && (
           <div className="space-y-2 px-5 pt-3">
+            {pickup ? (
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold leading-relaxed text-amber-900 ring-1 ring-amber-200">
+                🏪 ใบนี้ลูกค้ามารับเอง — รอบนี้ไม่ต้องยิงเลขพัสดุ กดยืนยันด้านล่างได้เลย
+              </p>
+            ) : (
             <div className="flex items-center gap-2 rounded-xl bg-slate-900 px-2 py-2 text-white">
               <button type="button" onClick={() => setCam(true)} className="shrink-0 rounded-lg bg-white/20 px-3 py-1.5 text-xl" aria-label="สแกนเลขพัสดุ">
                 📷
@@ -9881,6 +9941,7 @@ function PartialShipModal({
                 className="w-full bg-transparent font-mono text-sm font-bold placeholder:font-sans placeholder:font-normal placeholder:text-white/60 focus:outline-none"
               />
             </div>
+            )}
             {dupe && <p className="text-xs font-bold text-rose-600">เลขนี้อยู่ในใบนี้แล้ว — ตรวจเลขบนใบส่งของอีกครั้ง</p>}
             <input
               value={note}
@@ -9889,7 +9950,9 @@ function PartialShipModal({
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none"
             />
             <p className="text-[11px] leading-relaxed text-slate-400">
-              บันทึกแล้วระบบแจ้งลูกค้าทางไลน์ทันทีว่าส่งบางส่วน พร้อมเลขพัสดุรอบนี้ · สถานะออเดอร์ยังเป็นเดิมจนกว่าจะยิงเลขรอบสุดท้าย
+              {pickup
+                ? "บันทึกแล้วระบบแจ้งลูกค้าทางไลน์ทันทีว่ามารับของรอบนี้ได้ · สถานะออเดอร์ยังเป็นเดิมจนกว่าจะกดแพ็คเสร็จรอบสุดท้าย"
+                : "บันทึกแล้วระบบแจ้งลูกค้าทางไลน์ทันทีว่าส่งบางส่วน พร้อมเลขพัสดุรอบนี้ · สถานะออเดอร์ยังเป็นเดิมจนกว่าจะยิงเลขรอบสุดท้าย"}
               {needSkip && mayEdit && (
                 <>
                   {" "}
@@ -9906,7 +9969,7 @@ function PartialShipModal({
             <button
               type="button"
               disabled={!canGo}
-              onClick={() => onConfirm(tracking, note, qtyMap)}
+              onClick={() => onConfirm(t, note, qtyMap)}
               className={`w-full rounded-xl py-3 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 needSkip ? "border-2 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "bg-green-600 text-white hover:bg-green-700"
               }`}
@@ -9915,7 +9978,9 @@ function PartialShipModal({
                 ? "⬆️ ติ๊กยืนยันข้างบนก่อน"
                 : needSkip
                   ? "⚠️ ยืนยันข้ามด่าน — ส่งรอบนี้เลย"
-                  : `✅ บันทึกเลขพัสดุรอบที่ ${round}`}
+                  : pickup
+                    ? `✅ แพ็คเสร็จรอบที่ ${round} — แจ้งลูกค้ามารับ`
+                    : `✅ บันทึกเลขพัสดุรอบที่ ${round}`}
             </button>
           )}
           <button type="button" onClick={onCancel} className="w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">

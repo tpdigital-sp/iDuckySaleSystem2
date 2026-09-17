@@ -195,6 +195,11 @@ function PickupInner() {
             <>
               <StatusChip s={r.status} label={r.label} />
               {r.rush && <Tag tone="solid">งานเร่ง</Tag>}
+              {r.partialRounds && (
+                <Tag tone="sky" title="ใบแบ่งส่ง — บางส่วนแพ็คเสร็จให้ลูกค้ามารับก่อนแล้ว ที่เหลือยังทำอยู่ ใบยังไม่ปิด">
+                  🏪 แพ็คเสร็จบางส่วนแล้ว {r.partialRounds}
+                </Tag>
+              )}
               {behind && <Tag tone="coral">{b === "today" ? "นัดรับวันนี้ ของยังไม่เสร็จ" : "เลยวันนัด ของยังไม่เสร็จ"}</Tag>}
               {r.group === "ready" && b === "late" && <Tag tone="yolk">เลยวันนัด ยังไม่มารับ — ทักตาม</Tag>}
               {r.due > 0 && <Tag tone="coral">{r.group === "ready" ? `เก็บเงินก่อนส่งมอบ ${baht(r.due)}` : `ยังค้าง ${baht(r.due)}`}</Tag>}
