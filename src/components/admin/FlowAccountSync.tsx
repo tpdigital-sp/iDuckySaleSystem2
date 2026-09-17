@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { formatPrice } from "@/lib/products";
-import { flowAccountBillTotal, flowAccountGap, orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { flowAccountBillTotal, flowAccountGap, orderBilledTotal, orderTotal, withLog, type Order } from "@/lib/admin-data";
 import type { FADoc } from "./FlowAccountOrderDialog";
 import type { ShippingMethod } from "@/lib/shop-settings";
 import { isPickupOrder, normalizeShipLabel } from "@/lib/ship-label";
@@ -128,7 +128,7 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
           (มักเกิดจากไปแก้ค่าส่ง/ส่วนลด/VAT ในโซนยอดเงินทีหลัง) ปล่อยไว้ = ตรวจสลิปเพี้ยน + ใบเสร็จไม่ตรงบิล */}
       {!!gap && (
         <p className="mb-1.5 rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-bold leading-relaxed text-rose-700">
-          ⚠️ ยอดในระบบ {formatPrice(orderTotal(order))} ไม่ตรงกับใบนี้ {formatPrice(flowAccountBillTotal(order) ?? 0)} (ต่าง {formatPrice(Math.abs(gap))}) — ลูกค้าโอนตามใบ ต้องแก้ให้ตรงก่อน
+          ⚠️ ยอดในระบบ {formatPrice(orderBilledTotal(order))} ไม่ตรงกับใบนี้ {formatPrice(flowAccountBillTotal(order) ?? 0)} (ต่าง {formatPrice(Math.abs(gap))}) — ลูกค้าโอนตามใบ ต้องแก้ให้ตรงก่อน
         </p>
       )}
       <button
@@ -251,7 +251,8 @@ function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Di
   const docDisc = doc.discount ?? 0;
   const nowVat = order.vat?.amount ?? 0;
   const docVat = f.vat ?? 0;
-  const nowTotal = orderTotal(order);
+  // ไม่นับค่าบริการเพิ่ม (charges) — เก็บทีหลังนอกบิล ไม่ได้อยู่ในเอกสาร
+  const nowTotal = orderBilledTotal(order);
   const docTotal = f.grandTotal ?? 0;
   const eq = (a: number, b: number) => Math.abs(a - b) < 0.01;
   const rows: Diff["rows"] = [

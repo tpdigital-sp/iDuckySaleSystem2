@@ -27,10 +27,9 @@ import {
   orderBalance,
   orderTotal,
   orderVatAmount,
-  orderNetTransfer,
   reconcileOrderTax,
+  whtCoversBalance,
   orderWhtAmount,
-  paidSoFar,
   uncreditedReceived,
   lockEarlyPay,
   orderAwaitingStock,
@@ -680,6 +679,35 @@ export async function PATCH(req: Request) {
   if (mayEditFull && !toSave.deposit && !toSave.claimOf && toSave.paidTotal == null && paidStageBefore && orderTotal(toSave) > orderTotal(existing) + 0.5)
     toSave = { ...toSave, paidTotal: orderTotal(existing) };
 
+  /**
+   * 💳 ลูกค้าโอนถึง "ยอดโอนจริงหลังหัก ณ ที่จ่าย" แล้ว = จ่ายครบเท่าที่ต้องจ่าย ส่วนที่เหลือมาเป็นใบ 50 ทวิ ไม่ใช่เงินโอน
+   * → นับ paidTotal เป็นยอดเต็มตามบิล (แพตเทิร์นเดียวกับตอน SlipOK ตรวจผ่านแล้วเจอหัก ณ ที่จ่าย: credit = ยอดที่ต้องชำระเต็ม)
+   *
+   * ทำไมต้องมี (OD-260911-5435 · 14 ก.ย. 69): ใบที่ paidTotal ถูกบันทึกเป็น "เงินที่เข้าจริง" (มาจากทางรับบางส่วน/ใบเก่า)
+   * พอแก้ยอดให้ตรงบิล เช่น เอาค่าส่งที่หายไปกลับมา จะเกิด "ยอดค้างผี" เท่ากับภาษีที่ลูกค้าหักไว้ แล้วระบบ
+   *   1) ส่งไลน์ "ยอดที่ต้องโอนเพิ่ม" ไปทวงลูกค้าที่จ่ายครบแล้ว   2) ล็อกใบไว้ไม่ให้ยิงเลขพัสดุ (orderFullyPaid ไม่ผ่าน)
+   * ทั้งที่เงินเข้าครบเท่าที่ลูกค้าต้องโอน · เงื่อนไขนี้ไม่กลบการโอนขาดจริง — โอนไม่ถึงยอดสุทธิยังค้าง/ยังทวงตามเดิม
+   * ⚠️ ต้องอยู่ "ก่อน" บล็อกเด้งกลับรอชำระเงินด้านล่าง — ไม่งั้นใบที่นับครบแล้วยังโดนถอยสถานะ (OD-260914-7626 · 17 ก.ย. 69)
+   */
+  if (
+    mayEditFull &&
+    !toSave.deposit &&
+    !toSave.claimOf &&
+    toSave.status !== "ยกเลิก" &&
+    // ยอดค้าง ≈ ภาษีที่หักทั้งก้อนเท่านั้น — ยอดเพิ่มจริงที่เล็กกว่าภาษี (ค่าส่งเพิ่ม ฿50) ห้ามโดนกลืน (ดู whtCoversBalance)
+    whtCoversBalance(toSave)
+  ) {
+    const cash = toSave.paidTotal ?? 0;
+    toSave = { ...toSave, paidTotal: orderTotal(toSave) };
+    toSave = withLog(
+      toSave,
+      `แอดมิน ${actor.name?.trim() || actor.username}`,
+      "นับว่าชำระครบ (หัก ณ ที่จ่าย)",
+      `เงินเข้าจริง ${cash.toLocaleString("th-TH")} บาท = ยอดโอนจริงหลังหัก ณ ที่จ่าย ${orderWhtAmount(toSave).toLocaleString("th-TH")} บาท` +
+        ` → นับยอดชำระเป็น ${orderTotal(toSave).toLocaleString("th-TH")} บาทตามบิล (ส่วนต่างรอใบ 50 ทวิ ไม่ต้องให้ลูกค้าโอนเพิ่ม)`
+    );
+  }
+
   // แอดมินเปลี่ยนสถานะเองในคำขอนี้ → ล้างสถานะที่จำไว้ก่อนเด้ง (ไม่ให้เด้งกลับไปทับสิ่งที่แอดมินตั้งใจ)
   if (mayEditFull && toSave.status !== existing.status && toSave.reopenedFrom) toSave = { ...toSave, reopenedFrom: undefined };
 
@@ -697,6 +725,29 @@ export async function PATCH(req: Request) {
       actor.name?.trim() || actor.username,
       "ยอดรวมเพิ่มขึ้น — กลับไปรอชำระเงิน",
       `ค้างอีก ${orderBalance(toSave).toLocaleString("th-TH")} บาท (จ่ายมาแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")})`
+    );
+
+  /**
+   * ↩️ ใบที่เคยเด้งกลับ "รอชำระเงิน" เพราะยอดโต แล้วคำขอนี้ทำให้ยอดค้างหมด (แก้ยอดกลับ/ถอดรายการที่เพิ่ม · นับครบเพราะหัก ณ ที่จ่าย)
+   * → กลับไปขั้นเดิมที่จำไว้เอง เงียบ ๆ ไม่แจ้งสถานะซ้ำ (ลูกค้าเคยได้ข่าวขั้นนั้นไปแล้ว · ยอดที่เคยแจ้งไว้ balanceShrank บอกให้เองว่าไม่ต้องโอนเพิ่ม)
+   * (OD-260914-7626 · 17 ก.ย. 69: แก้ค่าส่ง 100 → 150 → 100 ใบค้าง "รอชำระเงิน" ทั้งที่ส่งเข้าผลิตแล้ว ต้องซ่อมด้วยสคริปต์)
+   */
+  const restoredFromReopen =
+    mayEditFull &&
+    !toSave.deposit &&
+    !toSave.claimOf &&
+    existing.status === "รอชำระเงิน" &&
+    toSave.status === "รอชำระเงิน" &&
+    !!toSave.reopenedFrom &&
+    toSave.paidTotal != null &&
+    hasUnpaidBalance(existing) &&
+    !hasUnpaidBalance(toSave);
+  if (restoredFromReopen)
+    toSave = withLog(
+      { ...toSave, status: toSave.reopenedFrom!, reopenedFrom: undefined },
+      actor.name?.trim() || actor.username,
+      "ยอดค้างหมดแล้ว — กลับไปขั้นเดิม",
+      `รอชำระเงิน → ${toSave.reopenedFrom} (รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
     );
 
   /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */
@@ -748,37 +799,6 @@ export async function PATCH(req: Request) {
     toSave = lockEarlyPay(toSave, now, `แอดมิน ${actor.name?.trim() || actor.username}`);
   if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && toSave.paidTotal == null && !toSave.deposit)
     toSave = { ...toSave, paidTotal: orderTotal(toSave) };
-
-  /**
-   * 💳 ลูกค้าโอนถึง "ยอดโอนจริงหลังหัก ณ ที่จ่าย" แล้ว = จ่ายครบเท่าที่ต้องจ่าย ส่วนที่เหลือมาเป็นใบ 50 ทวิ ไม่ใช่เงินโอน
-   * → นับ paidTotal เป็นยอดเต็มตามบิล (แพตเทิร์นเดียวกับตอน SlipOK ตรวจผ่านแล้วเจอหัก ณ ที่จ่าย: credit = ยอดที่ต้องชำระเต็ม)
-   *
-   * ทำไมต้องมี (OD-260911-5435 · 14 ก.ย. 69): ใบที่ paidTotal ถูกบันทึกเป็น "เงินที่เข้าจริง" (มาจากทางรับบางส่วน/ใบเก่า)
-   * พอแก้ยอดให้ตรงบิล เช่น เอาค่าส่งที่หายไปกลับมา จะเกิด "ยอดค้างผี" เท่ากับภาษีที่ลูกค้าหักไว้ แล้วระบบ
-   *   1) ส่งไลน์ "ยอดที่ต้องโอนเพิ่ม" ไปทวงลูกค้าที่จ่ายครบแล้ว   2) ล็อกใบไว้ไม่ให้ยิงเลขพัสดุ (orderFullyPaid ไม่ผ่าน)
-   * ทั้งที่เงินเข้าครบเท่าที่ลูกค้าต้องโอน · เงื่อนไขนี้ไม่กลบการโอนขาดจริง — โอนไม่ถึงยอดสุทธิยังค้าง/ยังทวงตามเดิม
-   */
-  if (
-    mayEditFull &&
-    orderWhtAmount(toSave) > 0 &&
-    !toSave.deposit &&
-    !toSave.claimOf &&
-    toSave.status !== "ยกเลิก" &&
-    toSave.paidTotal != null &&
-    paidSoFar(toSave) > 0 &&
-    paidSoFar(toSave) + 0.5 >= orderNetTransfer(toSave) &&
-    (toSave.paidTotal ?? 0) + 0.5 < orderTotal(toSave)
-  ) {
-    const cash = toSave.paidTotal ?? 0;
-    toSave = { ...toSave, paidTotal: orderTotal(toSave) };
-    toSave = withLog(
-      toSave,
-      `แอดมิน ${actor.name?.trim() || actor.username}`,
-      "นับว่าชำระครบ (หัก ณ ที่จ่าย)",
-      `เงินเข้าจริง ${cash.toLocaleString("th-TH")} บาท = ยอดโอนจริงหลังหัก ณ ที่จ่าย ${orderWhtAmount(toSave).toLocaleString("th-TH")} บาท` +
-        ` → นับยอดชำระเป็น ${orderTotal(toSave).toLocaleString("th-TH")} บาทตามบิล (ส่วนต่างรอใบ 50 ทวิ ไม่ต้องให้ลูกค้าโอนเพิ่ม)`
-    );
-  }
 
   // 🕒 ประวัติรวม 2 ฝั่ง + ประทับเวลาบันทึก (หน้าจอรับกลับไปถือ = รอบหน้าเซิร์ฟเวอร์รู้ว่าหน้านั้นเห็นถึงตอนนี้แล้ว)
   // (ฐาน + ที่หน้าจอส่งมา + ที่เซิร์ฟเวอร์เพิ่งต่อท้ายในคำขอนี้ — ทางแพ็ค/กราฟฟิก toSave ตั้งต้นจากฐาน log ของหน้าจอจึงต้องรวมตรงนี้)
@@ -906,7 +926,7 @@ export async function PATCH(req: Request) {
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
   // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE) — กลับไปรอชำระเงินเพราะยอดโต แจ้งด้วยข้อความยอดค้างด้านบนแล้ว
-  if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && balanceGrew)) {
+  if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && balanceGrew) && !restoredFromReopen) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
     // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()

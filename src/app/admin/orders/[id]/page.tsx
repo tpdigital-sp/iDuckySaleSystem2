@@ -59,6 +59,7 @@ import {
   orderBankFee,
   flowAccountBillTotal,
   flowAccountGap,
+  orderBilledTotal,
   orderTotal,
   orderWhtAmount,
   orderVatAmount,
@@ -6869,7 +6870,7 @@ export default function AdminOrderDetailPage() {
                 <div className="mt-2.5 rounded-xl border-2 border-rose-300 bg-rose-50 px-3 py-2 text-[12px] leading-relaxed text-rose-800">
                   <p className="font-extrabold">⚠️ ยอดในระบบไม่ตรงกับใบ FlowAccount {order.flowAccount?.docNo ?? ""}</p>
                   <p className="mt-0.5 tabular-nums">
-                    ตามใบ <b>{formatPrice(flowAccountBillTotal(order) ?? 0)}</b> · ในระบบ <b>{formatPrice(orderTotal(order))}</b> · ต่าง{" "}
+                    ตามใบ <b>{formatPrice(flowAccountBillTotal(order) ?? 0)}</b> · ในระบบ <b>{formatPrice(orderBilledTotal(order))}</b> · ต่าง{" "}
                     <b>{formatPrice(Math.abs(faGap))}</b> ({faGap > 0 ? "ระบบน้อยกว่าใบ" : "ระบบมากกว่าใบ"})
                   </p>
                   <p className="mt-0.5">

@@ -1111,9 +1111,34 @@ export function orderWhtAmount(o: Order): number {
   return Math.max(0, o.wht?.amount ?? 0);
 }
 
+/**
+ * 📄 ยอด "ตามบิลที่ออกให้ลูกค้า" = ยอดรวมไม่นับค่าบริการเพิ่ม (charges)
+ * charges คือเงินที่เก็บทีหลังนอกบิลที่ออกไปแล้ว (ค่าส่งตัวอย่าง/ค่าส่งเพิ่ม/ค่าตัดภาพ) — ใช้เทียบกับใบ FlowAccount
+ * (OD-260914-7626 · 17 ก.ย. 69: ลูกค้าโอนค่าส่งตัวอย่าง ฿50 แยก — ต้องเก็บเพิ่มได้โดยบิล/VAT/หัก ณ ที่จ่ายไม่ขยับ และป้าย "ไม่ตรงใบ" ไม่ขึ้น)
+ */
+export function orderBilledTotal(o: Order): number {
+  return Math.max(0, Math.round((orderTotal(o) - orderChargesTotal(o)) * 100) / 100);
+}
+
 /** ยอดโอนจริงหลังหัก ณ ที่จ่าย — ลูกค้านิติบุคคลโอนเท่านี้ ส่วนต่างตามใบ 50 ทวิ */
 export function orderNetTransfer(o: Order): number {
   return Math.max(0, orderTotal(o) - orderWhtAmount(o));
+}
+
+/**
+ * 💳 ยอดค้างของใบนี้ "คือหัก ณ ที่จ่ายทั้งก้อน" ใช่ไหม — ลูกค้าโอนถึงยอดสุทธิแล้ว ส่วนที่เหลือมาเป็นใบ 50 ทวิ ไม่ใช่เงินโอน
+ * ใช้ตัดสินว่าจะนับ paidTotal เป็นยอดเต็มตามบิลได้ไหม (กติกา "นับว่าชำระครบ (หัก ณ ที่จ่าย)" ใน PATCH /api/admin/orders)
+ *
+ * ⚠️ ต้องเทียบว่ายอดค้าง ≈ ภาษีที่หัก ไม่ใช่แค่ "ค้างไม่เกินภาษีที่หัก" (OD-260914-7626 · 17 ก.ย. 69):
+ * ใบที่นับชำระครบตามบิลไปแล้ว (paidTotal = ยอดบิล ไม่ใช่เงินเข้าจริง) พอยอดโตจริง ฿53.50 (แก้ค่าส่ง) ซึ่งน้อยกว่าภาษีที่หัก ฿334.50
+ * กติกาเดิมมองว่า "โอนถึงยอดสุทธิแล้ว" เลยกลืนยอดเพิ่มทั้งก้อน — ลูกค้าหักภาษีทั้งก้อนหรือไม่หักเลย ยอดค้างที่เล็กกว่าภาษีมากจึงไม่ใช่ภาษี
+ * เผื่อ: ลูกค้าปัดยอดโอนขึ้นไม่เกิน ฿5 · เศษสตางค์ ฿0.50
+ */
+export function whtCoversBalance(o: Order): boolean {
+  const wht = orderWhtAmount(o);
+  if (!(wht > 0) || o.paidTotal == null || !(paidSoFar(o) > 0)) return false;
+  const gap = Math.round((orderTotal(o) - paidSoFar(o)) * 100) / 100;
+  return gap > 0.5 && gap <= wht + 0.5 && gap >= wht - 5;
 }
 
 /**
@@ -1267,7 +1292,7 @@ export function flowAccountBillTotal(o: Order): number | null {
 export function flowAccountGap(o: Order): number | null {
   const bill = flowAccountBillTotal(o);
   if (bill == null) return null;
-  const gap = Math.round((bill - orderTotal(o)) * 100) / 100;
+  const gap = Math.round((bill - orderBilledTotal(o)) * 100) / 100;
   return Math.abs(gap) < 0.01 ? 0 : gap;
 }
 

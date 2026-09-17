@@ -10,7 +10,7 @@
  *
  * ⚠️ ต้องรันด้วย --conditions=react-server เพราะเทสเรียก matchSlipAmount จากโมดูล server-only
  */
-import { orderTaxBase, orderTaxDrift, orderTaxToRate, orderTotal, reconcileOrderTax, reconciledOrderAmounts, type Order } from "../src/lib/admin-data";
+import { flowAccountGap, orderBilledTotal, whtCoversBalance, orderTaxBase, orderTaxDrift, orderTaxToRate, orderTotal, reconcileOrderTax, reconciledOrderAmounts, type Order } from "../src/lib/admin-data";
 import { matchSlipAmount } from "../src/lib/server/slipok";
 
 let pass = 0;
@@ -89,6 +89,30 @@ eq("ยอดรวมตรงบิล OD-260911-5435 (4,823.56)", orderTotal(
 const pickup = reconcileOrderTax(ship, { ...ship, shippingCost: 0 });
 eq("เปลี่ยนเป็นมารับเอง → VAT ตามฐานใหม่", pickup?.order.vat?.amount, 308.56);
 eq("ค่าบริการเพิ่มไม่เข้าฐานภาษี", orderTaxBase({ ...ship, charges: [{ id: "c1", label: "ค่าเร่ง", amount: 500, at: "" }] } as Order), 4508);
+
+// ── เคสจริง OD-260914-7626 (QT010635 · 17 ก.ย. 69): ลูกค้าโอนค่าส่งตัวอย่าง ฿50 แยกจากบิลที่มีหัก ณ ที่จ่าย ─────
+const qt635 = mk({
+  status: "อนุมัติแบบ",
+  items: [{ productId: "special-item", name: "Magsafe Wallet", qty: 100, unitPrice: 110 }],
+  shippingCost: 100,
+  vat: { rate: 7, amount: 777 },
+  wht: { rate: 3, amount: 333 },
+  paidTotal: 11877, // นับชำระครบตามบิลไปแล้ว (ไม่ใช่เงินเข้าจริง 11,544)
+  flowAccount: { url: "", docNo: "QT010635", docType: "qt", docTypeLabel: "ใบเสนอราคา", grandTotal: 11877, vat: 777, net: 11544, fetchedAt: "" },
+} as Partial<Order>);
+const fee50 = { ...qt635, charges: [{ id: "c1", label: "ค่าส่งตัวอย่าง", amount: 50, at: "" }] } as Order;
+eq("เก็บเพิ่ม ฿50: ยอดรวมโต 50 พอดี ภาษีไม่ขยับ", [orderTotal(fee50), fee50.vat?.amount, fee50.wht?.amount], [11927, 777, 333]);
+eq("เก็บเพิ่ม ฿50: ยอดตามบิลยังเท่าใบ FlowAccount", orderBilledTotal(fee50), 11877);
+eq("เก็บเพิ่ม ฿50: ป้าย 'ไม่ตรงใบ FlowAccount' ไม่ขึ้น", flowAccountGap(fee50), 0);
+eq("เก็บเพิ่ม ฿50: ยอดค้าง 50 ไม่ใช่หัก ณ ที่จ่าย — ห้ามนับว่าชำระครบ", whtCoversBalance(fee50), false);
+const ship150 = reconcileOrderTax(qt635, { ...qt635, shippingCost: 150 })!.order;
+eq("แก้ค่าส่ง 100 → 150: ยอดโต 53.50 (น้อยกว่าภาษีที่หัก 334.50) — ห้ามโดนกลืน", [orderTotal(ship150), whtCoversBalance(ship150)], [11930.5, false]);
+eq("แก้ค่าส่งในใบ FlowAccount = ยอดไม่ตรงใบ ต้องเตือน", flowAccountGap(ship150), -53.5);
+eq("ลูกค้าโอนสุทธิ 11,544 (เงินเข้าจริง) = ยอดค้างคือภาษีทั้งก้อน → นับครบ", whtCoversBalance({ ...qt635, paidTotal: 11544 }), true);
+eq("โอนสุทธิแล้วปัดขึ้นเป็น 11,545 ก็ยังนับครบ", whtCoversBalance({ ...qt635, paidTotal: 11545 }), true);
+eq("โอนขาดจริง 11,000 = ยังค้าง", whtCoversBalance({ ...qt635, paidTotal: 11000 }), false);
+eq("เคสเดิม OD-260911-5435: เงินเข้า 4,688.32 จากบิล 4,823.56 (หัก 135.24) → นับครบ", whtCoversBalance({ ...ship, status: "ชำระแล้ว", paidTotal: 4688.32 } as Order), true);
+eq("ไม่มีหัก ณ ที่จ่าย = ไม่เกี่ยว", whtCoversBalance({ ...qt635, wht: undefined, paidTotal: 11544 }), false);
 
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} เคส\n\n${fails.join("\n\n")}\n` : "");
 console.log(`${fails.length ? "❌" : "✅"} ผ่าน ${pass}/${pass + fails.length} เคส`);

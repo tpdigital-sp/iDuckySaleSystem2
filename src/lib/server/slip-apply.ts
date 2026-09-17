@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { earlyPayState, flowAccountGap, lockEarlyPay, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
@@ -290,7 +290,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       detail: perBillDoc
         ? `⚠️ ยอดในระบบไม่ตรงกับใบ FlowAccount ${order.flowAccount?.docNo ?? ""} — ลูกค้าโอน ${thb(verify.amount!)} บาท ` +
           `ตรงตามใบ (ใบ ${thb(order.flowAccount?.grandTotal ?? 0)} บาท${order.flowAccount?.net ? ` · สุทธิ ${thb(order.flowAccount.net)} บาท` : ""}) ` +
-          `แต่ยอดในระบบเป็น ${thb(orderTotal(order))} บาท (ต่าง ${thb(Math.abs(billGap))} บาท) — ` +
+          `แต่ยอดในระบบเป็น ${thb(orderBilledTotal(order))} บาท (ต่าง ${thb(Math.abs(billGap))} บาท) — ` +
           `แก้ยอดในระบบให้ตรงใบก่อน (ปุ่ม “🔄 เทียบกับเอกสารล่าสุด”) แล้วกดยืนยันเงินเข้าได้เลย — สลิปแท้และยอดตรงใบแล้ว ` +
           `(อย่ากด “ตรวจสลิปอีกครั้ง” SlipOK จำสลิปใบนี้ได้ รอบสองจะตอบว่าสลิปซ้ำ) · ยังไม่นับยอดและยังไม่แจ้งลูกค้า`
         : `⚠️ ภาษีในใบนี้ยังเป็นตัวเลขของยอดเก่า — ลูกค้าโอน ${thb(verify.amount!)} บาท ตรงกับยอดที่ถูกต้อง ` +
