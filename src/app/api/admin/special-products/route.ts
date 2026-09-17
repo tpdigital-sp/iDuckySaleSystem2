@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requirePerm } from "@/lib/server/require-perm";
+import { currentActor, requirePerm } from "@/lib/server/require-perm";
+import type { SpecialProduct } from "@/lib/special-product-image";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
 export const runtime = "nodejs";
@@ -10,15 +11,14 @@ export const runtime = "nodejs";
  */
 const ROW_ID = "__special_products__";
 
-export interface SpecialProduct {
-  name: string;
-  detail: string;
-}
+export type { SpecialProduct };
 
-/** รายการทั้งหมด (ใช้ในหลังบ้านเท่านั้น) */
+/**
+ * รายการทั้งหมด (ใช้ในหลังบ้านเท่านั้น) — พนักงานที่ล็อกอินทุกคนอ่านได้: หน้าออเดอร์ใช้คู่ "รายการพิเศษ → สินค้าที่ให้ยืมภาพ"
+ * กราฟฟิก/แพ็คที่ไม่มีสิทธิ์แก้ออเดอร์ก็ต้องเห็นภาพ (ในคลังมีแค่ชื่อ+สเปค ไม่มีราคา) · แก้คลัง (PUT) ยังต้อง orders.edit
+ */
 export async function GET() {
-  const gate = await requirePerm("orders.edit");
-  if (gate.res) return gate.res;
+  if (!(await currentActor())) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ list: [] });
   const { data } = await sb.from("products").select("data").eq("id", ROW_ID).maybeSingle();
@@ -33,14 +33,21 @@ export async function PUT(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { list?: { name?: string; detail?: string }[] };
+  let body: { list?: { name?: string; detail?: string; imageProductId?: string }[] };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
   const list = (Array.isArray(body.list) ? body.list : [])
-    .map((p) => ({ name: String(p.name ?? "").trim().slice(0, 200), detail: String(p.detail ?? "").trim().slice(0, 2000) }))
+    .map((p) => {
+      const imageProductId = String(p.imageProductId ?? "").trim().slice(0, 120);
+      return {
+        name: String(p.name ?? "").trim().slice(0, 200),
+        detail: String(p.detail ?? "").trim().slice(0, 2000),
+        ...(imageProductId ? { imageProductId } : {}),
+      };
+    })
     .filter((p) => p.name)
     .slice(0, 1000);
 

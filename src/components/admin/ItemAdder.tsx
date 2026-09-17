@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
+import { specialNameHead, type SpecialProduct } from "@/lib/special-product-image";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import { defaultSpecText } from "@/lib/product-spec";
 import { orderIdIn, type OrderItem } from "@/lib/admin-data";
@@ -116,7 +117,9 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
   const [artBusy, setArtBusy] = useState(false);
   const [artDrag, setArtDrag] = useState(false);
   // คลังสินค้าพิเศษ (นำเข้าจากระบบเดิม/เพิ่มเอง) — โหลดครั้งเดียวตอนเปิดฟอร์ม
-  const [catalog, setCatalog] = useState<{ name: string; detail: string }[]>([]);
+  const [catalog, setCatalog] = useState<SpecialProduct[]>([]);
+  /** แม่แบบที่เลือกจากคลัง — ไว้แช่ "สินค้าที่ยืมภาพ" (picProductId) ลงรายการ ถ้าตอนกดเพิ่มยังเป็นงานชนิดเดิม */
+  const [picked, setPicked] = useState<SpecialProduct | null>(null);
   const [showSug, setShowSug] = useState(false);
   useEffect(() => {
     if (!open || catalog.length) return;
@@ -170,6 +173,10 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
       qty: q,
       unitPrice: p,
       ...(art.length ? { artworkUrls: art } : {}),
+      // 🖼 ยืมภาพปกจากสินค้าที่แม่แบบผูกไว้ — เฉพาะเมื่อชื่อยังเป็นงานชนิดเดิม (เลือกแม่แบบแล้วพิมพ์ชื่องานอื่นทับ = ไม่เอา)
+      ...(mode !== "web" && picked?.imageProductId && specialNameHead(n) === specialNameHead(picked.name)
+        ? { picProductId: picked.imageProductId }
+        : {}),
       ...(noProof ? { noProof: { by: actor, at: new Date().toISOString() } } : {}),
       // ♻️ ใช้ไฟล์เก่า — เลข OD-… ในช่องดึงเป็น fromOrderId ที่เหลือเป็นหมายเหตุ
       ...(reuse
@@ -182,6 +189,7 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
     });
     setWebPick(null);
     setWebQuery("");
+    setPicked(null);
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch {}
@@ -430,6 +438,7 @@ export default function ItemAdder({ onAdd, draftKey, onShopAdd, target = "ออ
                       e.preventDefault();
                       setName(p.name);
                       setSpec(p.detail);
+                      setPicked(p);
                       setShowSug(false);
                     }}
                     className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-0 hover:bg-amber-50"

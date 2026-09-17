@@ -14,6 +14,9 @@ import CameraScanner from "@/components/admin/CameraScanner";
 import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
 import { extractOrderId } from "@/lib/scan-code";
 import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, type Product } from "@/lib/products";
+import { imgVersion, versionedSrc } from "@/lib/img";
+import { specialImageProductId, type SpecialProduct } from "@/lib/special-product-image";
+import ProductVisual from "@/components/ProductVisual";
 import { autoShipQuote } from "@/lib/shipping-auto";
 import {
   applyReplaceMarker,
@@ -1404,12 +1407,38 @@ export default function AdminOrderDetailPage() {
   usePolling(refresh, { enabled: !demo && !!order });
 
   // 🔢 โหลดตัวสินค้าของรายการที่หยิบจากหน้าร้าน — ไว้คิดราคาใหม่ตอนแก้จำนวน (รอให้หน้าวาดเสร็จก่อนค่อยถาม)
-  const itemProductIds = (order?.items ?? [])
-    .map((it) => it.productId)
-    .filter((id) => id && !id.includes("#") && id !== "special-item")
+  // 🖼 รายการพิเศษไม่ได้ผูกสินค้า → ยืมภาพปกจากสินค้าที่ร้านจับคู่ไว้ในคลังสินค้าพิเศษ (special-product-image.ts)
+  // โหลดคลังเฉพาะใบที่มีรายการพิเศษ "ที่ยังไม่มีรูปอะไรเลย" — ใบส่วนใหญ่ไม่ต้องเสียคำขอนี้
+  const [specialCatalog, setSpecialCatalog] = useState<SpecialProduct[] | null>(null);
+  const needSpecialPics = (order?.items ?? []).some(
+    (it) => it.productId === "special-item" && !it.picProductId && !it.noProof && !(it.artworkUrls?.length ?? 0)
+  );
+  useEffect(() => {
+    if (demo || !needSpecialPics || specialCatalog) return;
+    let alive = true;
+    fetch("/api/admin/special-products", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { list: [] }))
+      .then((j) => alive && setSpecialCatalog(j.list ?? []))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [demo, needSpecialPics, specialCatalog]);
+  /** สินค้าที่ให้ยืมภาพของรายการนี้ — สินค้าร้าน = ตัวมันเอง (บรรทัดค่าธรรมเนียม "id#…" ใช้สินค้าแม่) · รายการพิเศษ = คู่ในคลัง */
+  const picProductIdOf = (it: OrderItem): string | undefined =>
+    it.productId === "special-item"
+      ? it.picProductId ?? (specialCatalog ? specialImageProductId(specialCatalog, it.name) : undefined)
+      : it.productId.split("#")[0] || undefined;
+
+  const itemProductIds = [
+    ...(order?.items ?? []).map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item"),
+    ...(order?.items ?? []).filter((it) => it.productId === "special-item").map((it) => picProductIdOf(it) ?? ""),
+  ]
+    .filter((id, i, all) => id && all.indexOf(id) === i)
     .join("|");
   useEffect(() => {
-    if (!mayEdit || demo || !itemProductIds) return;
+    // ไม่ผูกกับสิทธิ์แก้ไข — กราฟฟิก/แพ็คก็ต้องเห็นภาพสินค้าในแถวรายการ (ข้อมูลสินค้าเป็นของสาธารณะอยู่แล้ว)
+    if (demo || !itemProductIds) return;
     const want = itemProductIds.split("|").filter((id) => !shopProducts.has(id) && !askedProductIds.current.has(id));
     if (!want.length) return;
     want.forEach((id) => askedProductIds.current.add(id));
@@ -1434,7 +1463,7 @@ export default function AdminOrderDetailPage() {
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mayEdit, demo, itemProductIds]);
+  }, [demo, itemProductIds]);
 
   /**
    * 🛠 แอดมินกด "แก้ตัวเลือก" → ไปแก้ที่หน้าร้าน → ของใหม่ถูกเพิ่มท้ายออเดอร์ (ทางเดียวกับ "สั่งเพิ่มในออเดอร์นี้")
@@ -4745,6 +4774,10 @@ export default function AdminOrderDetailPage() {
                       const cover = proofs[proofs.length - 1]?.url ?? it.artworkUrls?.[0];
                       // ไม่ต้องทำแบบ + ไม่มีรูป = ไม่ต้องโชว์กรอบรูปเปล่า ๆ (เลขรายการยังกด กาง/ยุบ ได้)
                       if (!cover && it.noProof) return null;
+                      // ยังไม่มีทั้งแบบและลายลูกค้า → ใช้ภาพสินค้าแทนกรอบเปล่า จะได้รู้ว่ารายการนี้คือสินค้าอะไร
+                      // (เจ้าของร้านสั่ง 17 ก.ย. 69 · OD-260917-6158) · รายการพิเศษ = สินค้าที่ร้านจับคู่ไว้ในคลังสินค้าพิเศษ
+                      const prodPic = cover ? undefined : productOfItem(picProductIdOf(it) ?? "");
+                      const prodSrc = prodPic?.imageSrc ? versionedSrc(prodPic.imageSrc, imgVersion(prodPic.savedAt)) : undefined;
                       return (
                         <button
                           type="button"
@@ -4755,13 +4788,22 @@ export default function AdminOrderDetailPage() {
                           {cover ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
                             <img src={cover} alt={it.name} className="h-20 w-20 rounded-lg object-cover ring-1 ring-slate-200" />
+                          ) : prodSrc ? (
+                            <ProductVisual
+                              emoji={prodPic!.emoji}
+                              gradient={prodPic!.gradient}
+                              src={prodSrc}
+                              alt={it.name}
+                              sizes="80px"
+                              className="h-20 w-20 rounded-lg ring-1 ring-slate-200"
+                            />
                           ) : (
                             <span className="grid h-20 w-20 place-items-center rounded-lg bg-slate-50 text-xl text-slate-300 ring-1 ring-slate-200">
                               🖼️
                             </span>
                           )}
                           <span className="mt-0.5 block text-[10px] leading-tight text-slate-400">
-                            {proofs.length ? `🖼 แบบ ${proofs.length}` : it.noProof ? "ไม่ต้องทำแบบ" : "ยังไม่มีแบบ"}
+                            {proofs.length ? `🖼 แบบ ${proofs.length}` : it.noProof ? "ไม่ต้องทำแบบ" : prodSrc ? "ภาพสินค้า · ยังไม่มีแบบ" : "ยังไม่มีแบบ"}
                             {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ลาย ${it.artworkUrls!.length}` : ""}
                           </span>
                         </button>

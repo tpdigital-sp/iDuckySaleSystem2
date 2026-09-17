@@ -13,11 +13,24 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
+import { fetchProductsLite } from "@/lib/product-repo";
+import type { Product } from "@/lib/products";
+import { suggestImageProduct, type SpecialProduct } from "@/lib/special-product-image";
 import { Banner, Btn, Empty, HeroStat, ListHead, PageHead, PageShell, Row, RowMain, RowSide, Rows, SearchBox, Stat, Stats, Tag } from "@/components/admin/ui";
 
-interface SP {
-  name: string;
-  detail: string;
+type SP = SpecialProduct;
+
+/** ภาพปกสินค้าร้านขนาดย่อ — ใช้ทั้งในแถวและช่องเลือกสินค้า */
+function Thumb({ p, size = 36 }: { p?: Product; size?: number }) {
+  const box = { width: size, height: size, borderRadius: 8, flex: "none" } as const;
+  if (!p?.imageSrc)
+    return (
+      <span className="grid place-items-center text-[13px]" style={{ ...box, background: "var(--dk-sky)", color: "var(--dk-faint)" }}>
+        {p?.emoji ?? "🖼️"}
+      </span>
+    );
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={p.imageSrc} alt="" loading="lazy" style={{ ...box, objectFit: "cover", boxShadow: "0 0 0 1px var(--dk-hair)" }} />;
 }
 
 function SpecialProductsInner() {
@@ -28,13 +41,32 @@ function SpecialProductsInner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState("");
+  /** สินค้าในร้าน (ชื่อ+ภาพปก) — ไว้เลือกว่ารายการพิเศษนี้ "ยืมภาพ" จากสินค้าตัวไหน */
+  const [products, setProducts] = useState<Product[]>([]);
+  const [pq, setPq] = useState("");
+  const [onlyNoPic, setOnlyNoPic] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/special-products", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => setList(j.list ?? []))
       .catch(() => setErr("โหลดคลังไม่สำเร็จ"));
+    fetchProductsLite()
+      .then(setProducts)
+      .catch(() => {});
   }, []);
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  /** คู่ที่น่าจะใช่ของรายการที่ยังไม่ผูกภาพ — แค่แนะนำ ต้องมีคนกดรับ (ชื่อจากระบบเก่าไม่ตรงชื่อสินค้าร้าน เดาเองเสี่ยงภาพผิด) */
+  const suggestByIdx = useMemo(() => {
+    const m = new Map<number, Product>();
+    if (!products.length) return m;
+    (list ?? []).forEach((sp, i) => {
+      if (sp.imageProductId || !sp.name.trim()) return;
+      const hit = suggestImageProduct(sp.name, products);
+      if (hit) m.set(i, hit);
+    });
+    return m;
+  }, [list, products]);
 
   const patch = (i: number, p: Partial<SP>) => {
     setList((xs) => (xs ? xs.map((x, j) => (j === i ? { ...x, ...p } : x)) : xs));
@@ -77,11 +109,15 @@ function SpecialProductsInner() {
   const kw = q.trim().toLowerCase();
   const shown = (list ?? [])
     .map((p, i) => ({ ...p, i }))
-    .filter((p) => !kw || p.name.toLowerCase().includes(kw) || p.detail.toLowerCase().includes(kw));
+    .filter((p) => !kw || p.name.toLowerCase().includes(kw) || p.detail.toLowerCase().includes(kw))
+    .filter((p) => !onlyNoPic || !p.imageProductId || p.i === openIdx);
 
   /** ของกลวงในคลัง — คลังที่นำเข้ามามักมีรายการที่ไม่มีสเปคปนอยู่ */
   const hollow = useMemo(() => (list ?? []).filter((p) => !p.detail.trim()).length, [list]);
   const unnamed = useMemo(() => (list ?? []).filter((p) => !p.name.trim()).length, [list]);
+  const noPic = useMemo(() => (list ?? []).filter((p) => !p.imageProductId).length, [list]);
+  const pkw = pq.trim().toLowerCase();
+  const pickList = pkw ? products.filter((p) => p.name.toLowerCase().includes(pkw) || p.id.toLowerCase().includes(pkw)).slice(0, 8) : [];
 
   return (
     <PageShell>
@@ -115,6 +151,13 @@ function SpecialProductsInner() {
         />
         <Stat label="ยังไม่ใส่สเปค" value={hollow} hint={hollow ? "รายการ — ควรเติม" : "รายการ"} tone={hollow ? "due" : undefined} />
         <Stat label="ยังไม่ตั้งชื่อ" value={unnamed} hint="ไม่บันทึกถ้าไม่มีชื่อ" />
+        <Stat
+          label="ยังไม่ผูกภาพสินค้า"
+          value={noPic}
+          hint={onlyNoPic ? "กำลังกรอง — กดอีกครั้งเพื่อดูทั้งหมด" : "กดเพื่อดูเฉพาะที่ยังไม่ผูก"}
+          onClick={() => setOnlyNoPic((v) => !v)}
+          active={onlyNoPic}
+        />
       </Stats>
 
       {/* สินค้า vs สินค้าสั่งพิเศษ ต่างกันยังไง — เขียนให้จบไม่ต้องถาม */}
@@ -135,6 +178,9 @@ function SpecialProductsInner() {
             </li>
             <li>· เป็นแค่แม่แบบชื่องาน+สเปค — พนักงานกรอกจำนวน/ราคาเองเป็นงาน ๆ ไป</li>
             <li>· เหมาะกับงานสั่งทำ/ตีราคาเป็นเคส เช่น ป้าย งานเย็บ งานตามแบบลูกค้า</li>
+            <li>
+              · <b>ผูกภาพจากสินค้าในร้าน</b>ได้ — หน้าออเดอร์จะโชว์ภาพสินค้านั้นแทนกรอบเปล่า ระหว่างที่ยังไม่มีแบบ/ลายลูกค้า
+            </li>
           </ul>
         </div>
       </div>
@@ -169,6 +215,68 @@ function SpecialProductsInner() {
                       style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "13px" }}
                     />
                   </label>
+                  {/* 🖼 ยืมภาพปกจากสินค้าในร้าน — หน้าออเดอร์ใช้แทนกรอบเปล่าเมื่อยังไม่มีแบบ/ลายลูกค้า */}
+                  <div className="dkb-g p-3">
+                    <p className="text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+                      ภาพในหน้าออเดอร์ — ใช้ภาพจากสินค้าในร้าน
+                    </p>
+                    {p.imageProductId ? (
+                      <div className="mt-2 flex items-center gap-2.5">
+                        <Thumb p={productById.get(p.imageProductId)} size={56} />
+                        <span className="min-w-0 flex-1 text-[13px] font-semibold" style={{ color: "var(--dk-navy)" }}>
+                          {productById.get(p.imageProductId)?.name ?? (products.length ? `ไม่พบสินค้า (${p.imageProductId}) — อาจถูกลบ เลือกใหม่ได้` : "กำลังโหลด…")}
+                        </span>
+                        <Btn small onClick={() => patch(p.i, { imageProductId: undefined })}>
+                          เอาออก
+                        </Btn>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                        ยังไม่ผูก — หน้าออเดอร์จะเป็นกรอบเปล่าจนกว่าจะมีแบบหรือลายลูกค้า
+                      </p>
+                    )}
+                    {!p.imageProductId && suggestByIdx.get(p.i) && (
+                      <div className="mt-2 flex items-center gap-2.5 rounded-xl p-2" style={{ background: "var(--dk-yolk-wash)" }}>
+                        <Thumb p={suggestByIdx.get(p.i)} size={44} />
+                        <span className="min-w-0 flex-1 text-[12.5px]" style={{ color: "var(--dk-yolk-ink)" }}>
+                          น่าจะเป็น <b>{suggestByIdx.get(p.i)!.name}</b> — ดูภาพแล้วใช่ค่อยกดใช้
+                        </span>
+                        <Btn tone="yolk" small onClick={() => patch(p.i, { imageProductId: suggestByIdx.get(p.i)!.id })}>
+                          ใช้ภาพนี้
+                        </Btn>
+                      </div>
+                    )}
+                    <label className="dkb-g dkb-field mt-2">
+                      <span className="lb">{p.imageProductId ? "เปลี่ยนเป็นสินค้าอื่น" : "ค้นสินค้าในร้าน"}</span>
+                      <input value={pq} onChange={(e) => setPq(e.target.value)} placeholder="พิมพ์ชื่อสินค้า เช่น การ์ดโฮลเดอร์" />
+                    </label>
+                    {pkw && (
+                      <div className="mt-1.5 grid gap-1">
+                        {pickList.length === 0 ? (
+                          <p className="px-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                            ไม่พบสินค้าชื่อนี้
+                          </p>
+                        ) : (
+                          pickList.map((sp) => (
+                            <button
+                              key={sp.id}
+                              type="button"
+                              onClick={() => {
+                                patch(p.i, { imageProductId: sp.id });
+                                setPq("");
+                              }}
+                              className="flex items-center gap-2.5 rounded-xl p-1.5 text-left transition hover:bg-white/70"
+                            >
+                              <Thumb p={sp} size={40} />
+                              <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: "var(--dk-navy)" }}>
+                                {sp.name}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
                     <Btn tone="navy" small onClick={() => setOpenIdx(null)}>
                       ปิด
@@ -182,13 +290,45 @@ function SpecialProductsInner() {
                 </div>
               </div>
             ) : (
-              <Row key={p.i} tone={p.detail.trim() ? "var(--dk-sky-300)" : "var(--dk-yolk-deep)"} onClick={() => setOpenIdx(p.i)}>
+              <Row
+                key={p.i}
+                tone={p.detail.trim() ? "var(--dk-sky-300)" : "var(--dk-yolk-deep)"}
+                onClick={() => {
+                  setOpenIdx(p.i);
+                  setPq("");
+                }}
+              >
                 <RowMain
                   name={p.name || "(ยังไม่ตั้งชื่อ)"}
                   tags={!p.detail.trim() ? <Tag tone="yolk">ยังไม่ใส่สเปค</Tag> : undefined}
                   meta={<span title={p.detail}>{p.detail.split("\n")[0] || "—"}</span>}
                 />
                 <RowSide>
+                  {p.imageProductId ? (
+                    <Thumb p={productById.get(p.imageProductId)} />
+                  ) : suggestByIdx.get(p.i) ? (
+                    /* แถวเป็น <button> อยู่แล้ว ซ้อนปุ่มจริงไม่ได้ → span กดได้ + กันไม่ให้ไปกางแถว */
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      title={`ใช้ภาพจาก "${suggestByIdx.get(p.i)!.name}" — ดูภาพแล้วใช่ค่อยกด`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        patch(p.i, { imageProductId: suggestByIdx.get(p.i)!.id });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" && e.key !== " ") return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        patch(p.i, { imageProductId: suggestByIdx.get(p.i)!.id });
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl py-1 pl-1 pr-2 text-[11.5px] font-semibold"
+                      style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
+                    >
+                      <Thumb p={suggestByIdx.get(p.i)} size={30} />
+                      <span className="max-w-[9rem] truncate">ใช่ {suggestByIdx.get(p.i)!.name}?</span>
+                    </span>
+                  ) : null}
                   <span style={{ color: "var(--dk-faint)" }}>›</span>
                 </RowSide>
               </Row>
