@@ -28,6 +28,7 @@ import {
   orderStepsOf,
   orderStatusLabel,
   orderTotal,
+  orderAwaitingStock,
   proofMissing,
   proofsOf,
   STEP_OF,
@@ -43,6 +44,7 @@ import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
 import NewCustomerDialog, { type NewCustomerDraft } from "@/components/admin/NewCustomerDialog";
 import FlowAccountOrderDialog from "@/components/admin/FlowAccountOrderDialog";
+import { StockWaitBar } from "@/components/admin/ui";
 import "@/components/admin/dashboard.css";
 
 /** แบ่งสถานะตามแผนกที่รับผิดชอบ — แต่ละแผนกเห็นเฉพาะงานของตัวเอง */
@@ -216,6 +218,7 @@ export default function AdminOrdersPage() {
   const [dept, setDept] = useState("all");
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
+  const [onlyStock, setOnlyStock] = useState(false); // 🛒 เห็นเฉพาะใบที่ยังรอของเข้า (Order.needsPurchase ยังไม่กด "ของเข้าแล้ว")
   const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม)
   const [dep, setDep] = useState<DepKey>("all"); // ขั้นของออเดอร์มัดจำ 50% — "โอนมัดจำแล้ว" คือใบที่เริ่มงานได้แต่ยังค้างครึ่งหลัง
   /** ใครสร้างใบ: "all" · "customer" (ลูกค้ากดเอง) · "admin" (พนักงานทำให้ทุกคน) · "by:<ชื่อ>" (พนักงานคนนั้นคนเดียว) */
@@ -238,7 +241,7 @@ export default function AdminOrdersPage() {
   /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
   const [page, setPage] = useState(0);
   // เปลี่ยนตัวกรองอะไรก็ตาม = กลับหน้าแรก ไม่งั้นค้างอยู่หน้า 3 ที่ชุดใหม่ไม่มี
-  useEffect(() => setPage(0), [dept, filter, q, onlyDue, dep, by, cust, dateKey, from, to]);
+  useEffect(() => setPage(0), [dept, filter, q, onlyDue, onlyStock, dep, by, cust, dateKey, from, to]);
 
   const can = useCan();
   const seesAll = can("orders.viewAll"); // ฝ่ายแพ็คเห็นเฉพาะคิวของตัวเอง
@@ -386,14 +389,21 @@ export default function AdminOrdersPage() {
     return { dealer, retail: dated.length - dealer };
   }, [dated]);
 
+  // 🛒 ใบที่ยังรอของเข้า (ในช่วงวันที่ที่เลือก) — paid = ลูกค้าโอนแล้ว ต้องสั่งของ (ตัวเลขที่ต้องลงมือ)
+  const stockWait = useMemo(() => {
+    const open = dated.filter((o) => orderAwaitingStock(o) && o.status !== "ยกเลิก");
+    return { n: open.length, paid: open.filter((o) => o.status !== "รอชำระเงิน" && o.status !== "รอตรวจสอบ").length };
+  }, [dated]);
+
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
   const shown = dated
     .filter(byMatch)
+    .filter((o) => (onlyStock ? orderAwaitingStock(o) && o.status !== "ยกเลิก" : true))
     .filter((o) => (dep === "all" ? true : depStageOf(o) === dep))
     .filter((o) => (cust === "all" ? true : cust === "dealer" ? !!o.dealer : !o.dealer))
     .filter((o) => (onlyDue ? isDue(o) : true))
-    .filter((o) => (onlyDue || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
+    .filter((o) => (onlyDue || onlyStock || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
     .filter((o) => (filter === "all" ? true : o.status === filter))
     .filter((o) => {
       if (!kw) return true;
@@ -605,6 +615,20 @@ export default function AdminOrdersPage() {
                 ค้างเก็บเงิน <b>{stats.dueCount}</b>
               </button>
             )}
+            {(stockWait.n > 0 || onlyStock) && (
+              <button
+                type="button"
+                onClick={() => setOnlyStock((v) => !v)}
+                aria-pressed={onlyStock}
+                className="dkb-fchip"
+                style={onlyStock ? undefined : { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+                title="ใบที่แอดมินติ๊กว่าต้องสั่งของและรอของเข้าก่อนผลิต — ทุกสถานะ ทุกแผนก"
+              >
+                <i />
+                🛒 รอของเข้า <b>{stockWait.n}</b>
+                {stockWait.paid > 0 ? ` · โอนแล้วต้องสั่งของ ${stockWait.paid}` : ""}
+              </button>
+            )}
             {!onlyDue && (
               <>
                 <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className="dkb-fchip">
@@ -807,6 +831,7 @@ export default function AdminOrdersPage() {
             {dateOn && rangeText ? ` · ${rangeText}` : ""}
             {dep !== "all" ? ` · ${DEP_LABEL[dep]}` : ""}
             {cust !== "all" ? ` · ${CUST_LABEL[cust]}` : ""}
+            {onlyStock ? " · 🛒 รอของเข้า" : ""}
           </span>
         </div>
 
@@ -1033,6 +1058,8 @@ function OrderRow({
               SlipOK ไม่ผ่าน
             </span>
           )}
+          {/* 🛒 รอของเข้า — แถบเต็มบรรทัดชุดเดียวกับคิวกราฟฟิก/คิวปริ้น */}
+          <StockWaitBar o={o} />
         </span>
 
         {/* ใครสร้างใบนี้ — บรรทัดของตัวเอง แยกจากป้ายสถานะอื่นให้เห็นทันที
@@ -1148,7 +1175,13 @@ function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
     const res = await fetch("/api/admin/orders", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ customerName: d.customer, phone: d.phone, address: d.address, contactId: d.contactId }),
+      body: JSON.stringify({
+        customerName: d.customer,
+        phone: d.phone,
+        address: d.address,
+        contactId: d.contactId,
+        needsPurchase: d.needsPurchase,
+      }),
     });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
@@ -1175,6 +1208,7 @@ function NewOrderButton({ onCreated }: { onCreated: (id: string) => void }) {
           title="สร้างออเดอร์งานพิเศษ"
           detail="ใส่ชื่อ (หรือเบอร์) ลูกค้าก่อน แล้วค่อยไปเพิ่มรายการในหน้าออเดอร์ — กดยกเลิกตอนนี้จะไม่มีออเดอร์เปล่าค้างในระบบ"
           confirmLabel="สร้างออเดอร์"
+          askNeedsPurchase
           busy={busy}
           error={err}
           onCancel={() => setOpen(false)}

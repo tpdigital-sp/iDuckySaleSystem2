@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CustomerContactInput } from "./CustomerContactInput";
+import { NeedsPurchaseTick } from "./NewCustomerDialog";
 import { formatPhone } from "@/lib/contacts";
 import { normalizeShipLabel } from "@/lib/ship-label";
 import { formatPrice } from "@/lib/products";
@@ -101,6 +102,8 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
   // 📄 หมายเหตุท้ายบิล — เติมจาก "หมายเหตุ" ในเอกสาร (ข้อกำหนดงาน เช่น งานผ้ามีจุดดำ/ผ้าหด) ให้ขึ้นบนใบงานตอนปริ้น (เจ้าของร้านขอ 11 ก.ย. 69)
   const [billNote, setBillNote] = useState("");
   const [useByDate, setUseByDate] = useState("");
+  const [needBuy, setNeedBuy] = useState(false);
+  const [needBuyNote, setNeedBuyNote] = useState("");
   // ➗ ใบมัดจำ: ลิงก์ใบที่มีรายการ (ใบเสนอราคา/ใบยอดคงเหลือ) + เปิดโหมดมัดจำ/ยอดงวดแรก (แก้ได้)
   const [itemsUrl, setItemsUrl] = useState("");
   const [depositOn, setDepositOn] = useState(false);
@@ -228,6 +231,7 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
           note: note.trim() || undefined,
           billNote: billNote.trim() || undefined,
           useByDate: useByDate || undefined,
+          needsPurchase: needBuy ? { note: needBuyNote.trim() } : undefined,
         }),
       });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
@@ -601,6 +605,8 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                   <input type="date" value={useByDate} onChange={(e) => setUseByDate(e.target.value)} className={INP} />
                 </div>
               </div>
+
+              <NeedsPurchaseTick on={needBuy} note={needBuyNote} onToggle={setNeedBuy} onNote={setNeedBuyNote} />
 
               {/* ── สรุปยอด: ต้องเท่าบิล FlowAccount ทุกบาท ── */}
               <div className="rounded-lg border border-slate-200 px-3 py-2 text-[12px] text-slate-600">

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderAwaitingStock, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchGraphicCardsFromTP } from "@/lib/server/tp-report";
 import { groupSampleFiles, matchFoldersToOrders, sampleRoundFromFiles, type FolderMatch, type FolderMatchResult } from "@/lib/production-match";
 import { updateOrder } from "@/lib/server/order-write";
@@ -128,12 +128,14 @@ export async function POST(req: Request) {
     for (const t of todo) {
       const o = fresh.find((x) => x.id === t.orderId);
       if (!o || o.productionSent) continue;
-      const next = withLog(
+      let next = withLog(
         { ...o, productionSent: { by, at, folder: t.folder } },
         by,
         "🏭 ส่งเข้าผลิตแล้ว (โยนโฟลเดอร์)",
         `โฟลเดอร์ “${t.folder}” — ใบขึ้นกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น`
       );
+      // 🛒 โฟลเดอร์ = ไฟล์เข้าผลิตไปแล้วจริง จึงไม่กัน — แต่ใบยังรอของเข้า ต้องทิ้งรอยไว้ให้ตรวจย้อนหลังได้
+      if (orderAwaitingStock(o)) next = withLog(next, by, "⚠️ ส่งเข้าผลิตทั้งที่ยังรอของเข้า", o.needsPurchase?.note);
       const { error: e } = await updateOrder(sb, next);
       if (!e) {
         applied++;

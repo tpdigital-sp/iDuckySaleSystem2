@@ -404,6 +404,25 @@ export function RowMain({ name, href, tags, meta }: { name: ReactNode; href?: st
   );
 }
 
+/**
+ * 🛒 แถบ "รอของเข้า — ยังห้ามส่งเข้าผลิต" ในแถวรายการ — ส่งเป็นลูกตัวสุดท้ายของ tags ใน <RowMain>
+ * ใช้ชุดเดียวกันทุกคิว (กราฟฟิก · รายการออเดอร์ · คิวปริ้น) ให้ตาจำรูปแบบเดียว · ของเข้าแล้ว/ไม่ได้ติ๊ก = ไม่วาดอะไร
+ */
+export function StockWaitBar({ o }: { o: { needsPurchase?: { note?: string; arrivedAt?: string }; status?: string } }) {
+  const np = o.needsPurchase;
+  if (!np || np.arrivedAt || o.status === "ยกเลิก") return null;
+  const unpaid = o.status === "รอชำระเงิน" || o.status === "รอตรวจสอบ";
+  return (
+    <span className="dkb-stockwait" title="แอดมินติ๊กไว้ว่าใบนี้ต้องสั่งของและรอของเข้าก่อน — ทำแบบได้ตามปกติ แต่ยังห้ามส่งเข้าผลิต">
+      <span>🛒 รอของเข้า — ยังห้ามส่งเข้าผลิต</span>
+      <small>
+        {unpaid ? "รอลูกค้าโอนก่อนสั่งของ" : "ลูกค้าโอนแล้ว ต้องสั่งของ"}
+        {np.note ? ` · ${np.note}` : ""}
+      </small>
+    </span>
+  );
+}
+
 export function RowSide({ children }: { children: ReactNode }) {
   return <span className="dkb-side">{children}</span>;
 }

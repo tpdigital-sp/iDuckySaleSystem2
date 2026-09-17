@@ -6,6 +6,7 @@ import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { updateOrder } from "@/lib/server/order-write";
+import { customerSafeOrder } from "@/lib/customer-order";
 
 export const runtime = "nodejs";
 
@@ -97,7 +98,6 @@ export async function POST(req: Request) {
   const { order: saved, error: saveErr } = await updateOrder(sb, logged, { prev: order, by: "ลูกค้า" });
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
-  const { key: _secret, ...safe } = saved;
-  void _secret;
+  const safe = customerSafeOrder(saved);
   return NextResponse.json({ ok: true, order: safe, owed: Math.max(0, owed) });
 }

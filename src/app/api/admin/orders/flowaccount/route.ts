@@ -16,6 +16,7 @@ import { orderTotal, textToNoteHtml, withLog, type Order, type OrderItem } from 
 import { normalizeShipLabel } from "@/lib/ship-label";
 import type { Contact } from "@/lib/contacts";
 import { insertOrder } from "@/lib/server/order-write";
+import { needsPurchaseStamp } from "@/lib/server/needs-purchase";
 
 export const runtime = "nodejs";
 
@@ -154,6 +155,8 @@ interface CreateBody {
   /** 📄 หมายเหตุท้ายบิล (Order.billNote — ขึ้นบนใบงานตอนปริ้น) ส่งมาเป็น text ธรรมดา เซิร์ฟเวอร์แปลงเป็น HTML ให้ · กล่องสร้างเติมจาก "หมายเหตุ" ในเอกสาร FlowAccount (เจ้าของร้านขอ 11 ก.ย. 69) */
   billNote?: string;
   useByDate?: string;
+  /** 🛒 แอดมินติ๊ก "รอของเข้า / ต้องสั่งของ" ตอนสร้าง — ใบที่สร้างแบบชำระแล้ว ประตูเขียนออเดอร์แจ้งกลุ่มไลน์ให้เอง */
+  needsPurchase?: { note?: string } | null;
 }
 
 export async function PUT(req: Request) {
@@ -230,6 +233,7 @@ export async function PUT(req: Request) {
     ...(body.note?.trim() ? { note: body.note.trim() } : {}),
     ...(body.billNote?.trim() ? { billNote: textToNoteHtml(body.billNote.trim()) } : {}),
     ...(useByDate ? { useByDate, ...autoShipDate(useByDate) } : {}),
+    ...(body.needsPurchase ? { needsPurchase: needsPurchaseStamp(by, body.needsPurchase.note) } : {}),
     taxInvoice: {
       company: doc.customer.name,
       ...(doc.customer.taxId ? { taxId: doc.customer.taxId } : {}),
@@ -280,6 +284,7 @@ export async function PUT(req: Request) {
       mismatch ? ` ⚠️ ไม่ตรงกับยอดในเอกสาร ${docTotal!.toLocaleString("th-TH")} บาท (แอดมินแก้รายการ/ค่าส่งก่อนสร้าง)` : ""
     }`
   );
+  if (order.needsPurchase) order = withLog(order, by, "🛒 ติ๊กรอของเข้า — ต้องสั่งของก่อนผลิต", order.needsPurchase.note);
   if (wantPaid)
     order = depositAmt > 0
       ? withLog(order, by, "ยืนยันรับมัดจำ 50% (FlowAccount)", `ยอด ${depositAmt.toLocaleString("th-TH")} บาท ตามเอกสาร FlowAccount ${doc.docNo} — ไม่มีสลิปในระบบนี้`)

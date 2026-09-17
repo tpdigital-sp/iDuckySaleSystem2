@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { Order } from "@/lib/admin-data";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
+import { customerSafeOrder } from "@/lib/customer-order";
 
 export const runtime = "nodejs";
 
@@ -32,8 +33,8 @@ export async function GET(req: Request) {
   if (order.key && order.key !== key)
     return NextResponse.json({ error: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" }, { status: 403 });
 
-  const { key: _secret, ...safe } = order;
-  void _secret;
+  // ตัด key + เรื่องภายในร้าน (โน้ต "ต้องสั่งอะไร" ของ 🛒 รอของเข้า) ก่อนส่งให้หน้าลูกค้า
+  const safe = customerSafeOrder(order);
 
   // ให้ลูกค้าเห็นสลิปที่ตัวเองแนบทุกใบ (ใบแรก/ยอดคงเหลือ/ใบเพิ่ม) — เซ็น URL ชั่วคราวจาก bucket ส่วนตัว
   // (key ของออเดอร์คือหลักฐานความเป็นเจ้าของแล้ว)

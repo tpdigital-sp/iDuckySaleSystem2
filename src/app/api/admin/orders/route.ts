@@ -8,6 +8,7 @@ import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
+import { needsPurchaseStamp } from "@/lib/server/needs-purchase";
 import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, keepCustomerVerdict, parseChangedKeys } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
@@ -32,6 +33,7 @@ import {
   paidSoFar,
   uncreditedReceived,
   lockEarlyPay,
+  orderAwaitingStock,
   packGate,
   partialGate,
   roundSel,
@@ -214,6 +216,9 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
   // 🧾 ยืนยันใส่ใบกำกับภาษีลงกล่อง + ทางส่งใบกำกับ (แนบกล่อง/อีเมล) — งานของโต๊ะแพ็ค
   if ("taxInvoicePacked" in incoming) merged.taxInvoicePacked = incoming.taxInvoicePacked;
   if ("taxInvoiceDelivery" in incoming) merged.taxInvoiceDelivery = incoming.taxInvoiceDelivery;
+  // 🛒 รอของเข้า: ฝ่ายแพ็ค/ผลิตเป็นคนรับของ → กด "ของเข้าแล้ว" ได้อย่างเดียว (ติ๊ก/ยกเลิก/แก้โน้ต = งานแอดมิน)
+  if (existing.needsPurchase && !existing.needsPurchase.arrivedAt && incoming.needsPurchase?.arrivedAt)
+    merged.needsPurchase = { ...existing.needsPurchase, arrivedAt: incoming.needsPurchase.arrivedAt, arrivedBy: incoming.needsPurchase.arrivedBy };
 
   // เลขพัสดุ + เปลี่ยนสถานะเป็น "จัดส่งแล้ว" ทำได้เฉพาะคนที่มีสิทธิ์ยิงเลขพัสดุ
   if (mayShip && typeof incoming.tracking === "string") {
@@ -432,6 +437,8 @@ export async function POST(req: Request) {
     contactId?: string;
     shipping?: string;
     shippingCost?: number;
+    /** 🛒 แอดมินติ๊ก "รอของเข้า / ต้องสั่งของ" มาตั้งแต่ตอนสร้าง */
+    needsPurchase?: { note?: string } | null;
   } = {};
   try {
     body = await req.json();
@@ -457,8 +464,10 @@ export async function POST(req: Request) {
     items: [],
     placedBy: by,
     ...(body.contactId?.trim() ? { contactId: body.contactId.trim() } : {}),
+    ...(body.needsPurchase ? { needsPurchase: needsPurchaseStamp(by, body.needsPurchase.note) } : {}),
   };
   order = withLog(order, by, "สร้างออเดอร์จากหลังบ้าน", "งานพิเศษ/สั่งแทนลูกค้า");
+  if (order.needsPurchase) order = withLog(order, by, "🛒 ติ๊กรอของเข้า — ต้องสั่งของก่อนผลิต", order.needsPurchase.note);
 
   const { error } = await insertOrder(sb, order, by);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -568,6 +577,10 @@ export async function PATCH(req: Request) {
     // กราฟฟิก (มีหรือไม่มีสิทธิ์แพ็คร่วมด้วยก็ได้) → ทับฟิลด์งานแบบต่อจากผลแพ็ค
     if (mayProof) toSave = mergeProofFields(toSave, order, clientSavedAt, now);
   }
+
+  // 🛒 ติ๊กส่งเข้าผลิตทั้งที่ใบยังรอของเข้า = อนุญาต (หน้าจอถามยืนยันแล้ว) แต่ลง log ฝั่งเซิร์ฟเวอร์เสมอ — ตรวจย้อนหลังได้ว่าใครส่ง
+  if (toSave.productionSent && !existing.productionSent && orderAwaitingStock(toSave))
+    toSave = withLog(toSave, actor.name || actor.username, "⚠️ ส่งเข้าผลิตทั้งที่ยังรอของเข้า", toSave.needsPurchase?.note);
 
   /**
    * 🏅 ส่วนลดระดับสมาชิกจากผู้ติดต่อที่ผูกไว้ — เซิร์ฟเวอร์เป็นเจ้าของ คิดใหม่ทุกครั้งที่แอดมินบันทึก
@@ -883,6 +896,15 @@ export async function PATCH(req: Request) {
   if (mayEditFull && tpMoneyKey(existing) !== tpMoneyKey(toSave)) await syncAmountsToTP(toSave);
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
   void syncArrivalToTP(existing, toSave);
+  // 🛒 ของเข้าร้านแล้ว (กด "ของเข้าแล้ว" ในคำขอนี้) → บอกลูกค้าทางไลน์ตามที่หน้าออเดอร์สัญญาไว้ · ข่าวคืบหน้า = ระดับ extra
+  if (toSave.needsPurchase?.arrivedAt && !existing.needsPurchase?.arrivedAt && toSave.status !== "ยกเลิก")
+    void notifyCustomerLogged(
+      sb,
+      toSave,
+      `📦 สินค้าสำหรับออเดอร์ ${toSave.id} เข้าร้านแล้วครับ\nทางร้านจะเริ่มผลิตให้ทันทีที่แบบงานได้รับการอนุมัติ — ดูสถานะได้ที่ลิงก์นี้เลย\n${orderLink(new URL(req.url).origin, toSave)}`,
+      "แจ้งลูกค้า: ของเข้าร้านแล้ว",
+      "extra"
+    );
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 

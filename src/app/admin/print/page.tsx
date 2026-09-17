@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
-import { daysToUseBy, isPartiallyShipped, nextPlannedRound, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, isPartiallyShipped, nextPlannedRound, orderAwaitingStock, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
@@ -47,10 +47,12 @@ import {
   SearchBox,
   Stat,
   Stats,
+  StockWaitBar,
   Tab,
   TabRow,
   Tag,
 } from "@/components/admin/ui";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 
 type TabKey = "sent" | "waitFolder" | "graphic" | "nextRound" | "done" | "all";
 
@@ -132,6 +134,7 @@ function PrintQueueInner() {
   const [cards, setCards] = useState<Record<string, TPGraphicCard>>({});
   const [cardsOk, setCardsOk] = useState<boolean | null>(null);
   const [marking, setMarking] = useState<string | null>(null);
+  const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
   const [err, setErr] = useState("");
   const today = todayBkkYmd();
 
@@ -226,6 +229,16 @@ function PrintQueueInner() {
   /** ติ๊ก/ยกเลิก "ส่งเข้าผลิตแล้ว" จากแถว (ใบที่ไม่มีโฟลเดอร์ให้โยน) — บันทึกผ่าน PATCH (ฝ่ายแพ็ค/กราฟฟิก/แอดมินผ่าน merge ได้ทุกทาง) */
   const markSent = useCallback(
     async (o: Order, sent: boolean) => {
+      // 🛒 ใบยังรอของเข้า — ถามย้ำก่อนส่งเข้าผลิต (เซิร์ฟเวอร์ลง log ให้อีกชั้นถ้ายืนยันส่ง)
+      if (sent && orderAwaitingStock(o)) {
+        const ok = await askConfirm({
+          icon: "🛒",
+          title: `${o.id} ยังรอของเข้า — ส่งเข้าผลิตเลยไหม?`,
+          detail: `${o.needsPurchase?.note ? `ต้องสั่ง: ${o.needsPurchase.note}\n\n` : ""}ถ้าของเข้าแล้ว เปิดใบแล้วกด “✓ ของเข้าแล้ว” ก่อน แถบรอของเข้าจะหายจากทุกคิว`,
+          confirmLabel: "ส่งเข้าผลิตทั้งที่ยังรอของ",
+        });
+        if (!ok) return;
+      }
       setMarking(o.id);
       setErr("");
       const next = sent
@@ -236,7 +249,7 @@ function PrintQueueInner() {
       else setOrders((cur) => cur.map((x) => (x.id === o.id ? (r.order ?? next) : x)));
       setMarking(null);
     },
-    [actor]
+    [actor, askConfirm]
   );
 
   /** ใบที่ติ๊กแล้วยังอยู่ในคิวจริง เรียงงานเร่งขึ้นก่อนเหมือนหน้าจอ — ใบที่หลุดคิวไปแล้วไม่นับ */
@@ -267,6 +280,7 @@ function PrintQueueInner() {
 
   return (
     <PageShell>
+      {confirmDialog}
       <PageHead
         group="งานขาย"
         title="คิวปริ้น"
@@ -538,6 +552,7 @@ function PrintRow({
             )}
             {!paid && <Tag tone="coral" title="ยังเก็บเงินไม่ครบ — ใบงานจะไม่มีใบปะหน้า">ไม่มีใบปะหน้า</Tag>}
             {noProof && <Tag tone="yolk" title="ยังมีรายการที่ไม่มีแบบงาน">มีรายการยังไม่มีแบบ</Tag>}
+            <StockWaitBar o={o} />
           </>
         }
         meta={

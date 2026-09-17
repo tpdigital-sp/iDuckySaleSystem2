@@ -76,6 +76,7 @@ import {
   shipmentQty,
   orderHasTaxInvoice,
   orderNeedsTaxInvoiceInBox,
+  orderAwaitingStock,
   taxInvoiceDocOf,
   applyArrival,
   arrivalOverdue,
@@ -117,6 +118,7 @@ import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/comp
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
 import ItemAdder from "@/components/admin/ItemAdder";
@@ -2217,7 +2219,8 @@ export default function AdminOrderDetailPage() {
       setOrder((cur) => {
         if (!cur || cur.id !== saved.id) return cur;
         if (cur === next && cur.items.length === saved.items.length)
-          return { ...cur, savedAt: saved.savedAt, discount: saved.discount, log: saved.log, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
+          // 🛒 needsPurchase.alertedAt เซิร์ฟเวอร์ประทับตอนแจ้งกลุ่มไลน์ — รับกลับมาด้วย ไม่งั้นรอบหน้าช่องนี้ถูกมองว่า "แก้" ทั้งที่ไม่ได้แตะ
+          return { ...cur, savedAt: saved.savedAt, discount: saved.discount, log: saved.log, needsPurchase: saved.needsPurchase, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
         return { ...cur, savedAt: saved.savedAt, discount: saved.discount };
       });
     return true;
@@ -2922,6 +2925,17 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next);
   }
 
+  /**
+   * 🛒 รอของเข้า / ต้องสั่งของ (Order.needsPurchase) — แอดมินติ๊ก/แก้โน้ต/ยกเลิก · แอดมินหรือฝ่ายแพ็คกด "ของเข้าแล้ว"
+   * ลูกค้าโอนแล้วขณะยังรอของ → เซิร์ฟเวอร์แจ้งกลุ่มไลน์ร้านเองที่ประตูเขียนออเดอร์ (needs-purchase.ts) หน้าจอไม่ต้องยิง
+   */
+  function saveNeedsPurchase(np: Order["needsPurchase"], action: string, detail?: string) {
+    if (!order) return;
+    const next = withLog({ ...order, needsPurchase: np }, actor, action, detail);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
   /** 🧾 พนักงานแพ็คยืนยันว่าใส่ใบกำกับภาษีลงกล่องแล้ว · กดซ้ำ = ยกเลิก (บิล FlowAccount/บิล VAT มักลืมพิมพ์ใบกำกับ) */
   function toggleTaxInvoicePacked() {
     if (!order) return;
@@ -3563,6 +3577,29 @@ export default function AdminOrderDetailPage() {
           </div>
         )}
         {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
+        {/* 🛒 รอของเข้า — ฝ่ายแพ็ค/ผลิตเป็นคนรับของ กด "ของเข้าแล้ว" จากตรงนี้ได้ */}
+        <div className="mx-auto max-w-[480px] px-3">
+          {order.needsPurchase && order.status !== "ยกเลิก" && (
+            <NeedsPurchaseStrip
+              key={order.needsPurchase.at}
+              value={order.needsPurchase}
+              paid={order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ"}
+              canManage={mayEdit}
+              canArrive={mayEdit || can("pack.check") || can("pack.ship")}
+              onArrived={() =>
+                saveNeedsPurchase(
+                  { ...order.needsPurchase!, arrivedAt: new Date().toISOString(), arrivedBy: actor },
+                  "🛒 ของเข้าแล้ว — ส่งเข้าผลิตได้",
+                  order.needsPurchase!.note
+                )
+              }
+              onUndoArrived={() =>
+                saveNeedsPurchase({ ...order.needsPurchase!, arrivedAt: undefined, arrivedBy: undefined }, "🛒 ยกเลิก “ของเข้าแล้ว” — กลับไปรอของเข้า")
+              }
+              onNote={(note) => saveNeedsPurchase({ ...order.needsPurchase!, note: note || undefined }, "🛒 แก้รายการที่ต้องสั่ง", note || "ลบโน้ต")}
+            />
+          )}
+        </div>
         {partialOpen && (
           <PartialShipModal
             order={order}
@@ -3734,6 +3771,28 @@ export default function AdminOrderDetailPage() {
         <div className="mb-4">
           <Banner tone="hot" title={`ต้องทำต่อ · ${blockers[0]}`} detail={nextStep ? `ขั้นถัดไปหลังเคลียร์แล้ว: ${nextStep}` : undefined} />
         </div>
+      )}
+
+      {/* 🛒 รอของเข้า — กราฟฟิกต้องเห็นก่อนอย่างอื่นว่าใบนี้ยังห้ามส่งเข้าผลิต */}
+      {order.needsPurchase && order.status !== "ยกเลิก" && (
+        <NeedsPurchaseStrip
+          key={order.needsPurchase.at}
+          value={order.needsPurchase}
+          paid={order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ"}
+          canManage={mayEdit}
+          canArrive={mayEdit || can("pack.check") || can("pack.ship")}
+          onArrived={() =>
+            saveNeedsPurchase(
+              { ...order.needsPurchase!, arrivedAt: new Date().toISOString(), arrivedBy: actor },
+              "🛒 ของเข้าแล้ว — ส่งเข้าผลิตได้",
+              order.needsPurchase!.note
+            )
+          }
+          onUndoArrived={() =>
+            saveNeedsPurchase({ ...order.needsPurchase!, arrivedAt: undefined, arrivedBy: undefined }, "🛒 ยกเลิก “ของเข้าแล้ว” — กลับไปรอของเข้า")
+          }
+          onNote={(note) => saveNeedsPurchase({ ...order.needsPurchase!, note: note || undefined }, "🛒 แก้รายการที่ต้องสั่ง", note || "ลบโน้ต")}
+        />
       )}
 
       {/*
@@ -7476,6 +7535,35 @@ export default function AdminOrderDetailPage() {
                   );
                 })()}
 
+                {/* 🛒 รอของเข้า / ต้องสั่งของ — แอดมินติ๊ก (ตอนสร้างคำสั่งซื้อ หรือทีหลังตรงนี้) · ติ๊กแล้วแถบใหญ่ขึ้นบนสุดของหน้า */}
+                {mayEdit && (
+                  <div className={`rounded-xl border p-2.5 transition ${order.needsPurchase ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-slate-50/70"}`}>
+                    <p className={`mb-1.5 text-xs font-bold ${order.needsPurchase ? "text-rose-700" : "text-slate-600"}`}>🛒 รอของเข้า / ต้องสั่งของ</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          order.needsPurchase
+                            ? saveNeedsPurchase(undefined, "ยกเลิกติ๊กรอของเข้า")
+                            : saveNeedsPurchase({ by: actor, at: new Date().toISOString() }, "🛒 ติ๊กรอของเข้า — ต้องสั่งของก่อนผลิต")
+                        }
+                        className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          order.needsPurchase ? "bg-rose-500 text-white shadow-sm hover:bg-rose-600" : "border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                        }`}
+                      >
+                        {order.needsPurchase ? "🛒 รอของเข้า (กดเพื่อยกเลิก)" : "🛒 ติ๊กว่าต้องสั่งของ"}
+                      </button>
+                      <span className="text-[11px] text-slate-500">
+                        {order.needsPurchase
+                          ? order.needsPurchase.arrivedAt
+                            ? `ของเข้าแล้ว · ${order.needsPurchase.arrivedBy ?? ""}`
+                            : "กรอก “ต้องสั่งอะไร” ที่แถบบนสุดของหน้า · ลูกค้าโอนแล้วระบบแจ้งกลุ่มไลน์ร้านให้เอง"
+                          : "ของยังไม่มีในร้าน ต้องสั่งและรอของเข้าก่อนผลิต — กราฟฟิกจะเห็นแถบ “รอของเข้า” บนใบนี้"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* 🏭 ส่งเข้าผลิตแล้ว — ติ๊กเองสำหรับใบที่ไม่ผ่านบอร์ดกราฟฟิก TP (ปกติคิวปริ้นอ่านจากการ์ดกราฟฟิกให้เอง) */}
                 {(can("orders.edit") || mayProof || can("pack.ship")) && (
                   <div className={`rounded-xl border p-2.5 transition ${order.productionSent ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50/70"}`}>
@@ -7488,13 +7576,23 @@ export default function AdminOrderDetailPage() {
                             ? "กดอีกครั้งเพื่อยกเลิก — ใบจะกลับไปกอง \"ยังไม่ส่งผลิต\" (ถ้าการ์ดกราฟฟิก TP อนุมัติแล้ว ยังนับว่าส่งแล้วอยู่)"
                             : "ใบที่ไม่ได้เดินผ่านบอร์ดกราฟฟิก TP (สั่งโรงงานตรง/งานพิเศษ) ติ๊กตรงนี้ให้ขึ้นกอง \"ส่งผลิตแล้ว รอปริ้น\" ในคิวปริ้น"
                         }
-                        onClick={() =>
+                        onClick={async () => {
+                          // 🛒 ใบยังรอของเข้า — ถามย้ำก่อน (เซิร์ฟเวอร์ลง log "ส่งเข้าผลิตทั้งที่ยังรอของเข้า" ให้อีกชั้น)
+                          if (!order.productionSent && orderAwaitingStock(order)) {
+                            const ok = await askConfirm({
+                              icon: "🛒",
+                              title: "ใบนี้ยังรอของเข้า — ส่งเข้าผลิตเลยไหม?",
+                              detail: `${order.needsPurchase?.note ? `ต้องสั่ง: ${order.needsPurchase.note}\n\n` : ""}ถ้าของเข้าแล้ว ให้กด “✓ ของเข้าแล้ว” ที่แถบบนสุดก่อน แล้วค่อยติ๊กส่งเข้าผลิต`,
+                              confirmLabel: "ส่งเข้าผลิตทั้งที่ยังรอของ",
+                            });
+                            if (!ok) return;
+                          }
                           applyOrder(
                             order.productionSent
                               ? withLog({ ...order, productionSent: undefined }, actor, "ยกเลิกติ๊กส่งเข้าผลิต")
                               : withLog({ ...order, productionSent: { by: actor, at: new Date().toISOString() } }, actor, "🏭 ติ๊กส่งเข้าผลิตแล้ว", "ใบขึ้นกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น")
-                          )
-                        }
+                          );
+                        }}
                         className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                           order.productionSent ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700" : "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
                         }`}

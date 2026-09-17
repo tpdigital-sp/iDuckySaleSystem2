@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order } from "@/lib/admin-data";
 import { seedTierStatus, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
+import { hideInternalStockNote } from "@/lib/customer-order";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: [], needsSetup: true });
     return NextResponse.json({ error: error.message, orders: [] }, { status: 500 });
   }
-  const mine = (data ?? []).map((r) => r.data as Order);
+  const mine = (data ?? []).map((r) => hideInternalStockNote(r.data as Order));
 
   // สถานะระดับสมาชิก (status-lock) — อ่านจาก contact ที่ผูก memberId ไว้
   // ยังไม่มี contact/สถานะ → ประเมินจากยอดที่จ่ายจริง (ยกยอดลูกค้าเก่า) เพื่อให้หน้า account โชว์ระดับได้

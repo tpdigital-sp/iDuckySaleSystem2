@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { syncCustomerToTP } from "@/lib/server/tp-report";
 import { updateOrder } from "@/lib/server/order-write";
+import { customerSafeOrder } from "@/lib/customer-order";
 
 export const runtime = "nodejs";
 
@@ -71,7 +72,6 @@ export async function POST(req: Request) {
   // ชื่อ/เบอร์เปลี่ยนหลังชำระ → อัปเดตการ์ดบอร์ด WIP กราฟฟิก (ใบยังไม่ชำระไม่มีเรคอร์ด ข้ามเงียบ)
   void syncCustomerToTP(order, updated);
 
-  const { key: _secret, ...safe } = updated;
-  void _secret;
+  const safe = customerSafeOrder(updated);
   return NextResponse.json({ ok: true, order: safe });
 }

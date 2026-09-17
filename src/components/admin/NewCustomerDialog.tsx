@@ -20,6 +20,8 @@ export interface NewCustomerDraft {
   phone: string;
   address: string;
   contactId?: string;
+  /** 🛒 ติ๊ก "รอของเข้า / ต้องสั่งของ" มาตั้งแต่ตอนสร้าง (เฉพาะกล่องที่เปิด askNeedsPurchase) */
+  needsPurchase?: { note: string };
 }
 
 const INP =
@@ -35,6 +37,7 @@ export default function NewCustomerDialog({
   error,
   onCancel,
   onCreate,
+  askNeedsPurchase,
 }: {
   icon?: string;
   title: string;
@@ -45,11 +48,15 @@ export default function NewCustomerDialog({
   error?: string;
   onCancel: () => void;
   onCreate: (d: NewCustomerDraft) => void;
+  /** 🛒 โชว์ช่องติ๊ก "รอของเข้า / ต้องสั่งของ" — เฉพาะตอนสร้างออเดอร์ (ใบเสนอราคาไม่ใช้) */
+  askNeedsPurchase?: boolean;
 }) {
   const [customer, setCustomer] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [contactId, setContactId] = useState<string | undefined>(undefined);
+  const [needBuy, setNeedBuy] = useState(false);
+  const [needBuyNote, setNeedBuyNote] = useState("");
 
   // มีชื่อหรือเบอร์อย่างน้อยหนึ่งอย่างถึงจะสร้างได้ — เว้นว่างทั้งคู่คือ "ยังไม่ได้พิมพ์อะไร"
   const ready = customer.trim().length > 0 || phone.trim().length > 0;
@@ -64,7 +71,13 @@ export default function NewCustomerDialog({
 
   function submit() {
     if (!ready || busy) return;
-    onCreate({ customer: customer.trim(), phone: phone.trim(), address: address.trim(), contactId });
+    onCreate({
+      customer: customer.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+      contactId,
+      ...(askNeedsPurchase && needBuy ? { needsPurchase: { note: needBuyNote.trim() } } : {}),
+    });
   }
 
   return (
@@ -142,6 +155,8 @@ export default function NewCustomerDialog({
             />
           </div>
 
+          {askNeedsPurchase && <NeedsPurchaseTick on={needBuy} note={needBuyNote} onToggle={setNeedBuy} onNote={setNeedBuyNote} />}
+
           {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p>}
 
           <div className="flex gap-2 pt-1">
@@ -164,6 +179,52 @@ export default function NewCustomerDialog({
           {!ready && <p className="text-center text-[11px] text-slate-400">พิมพ์ชื่อหรือเบอร์ลูกค้าก่อน ถึงจะสร้างได้</p>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 🛒 ช่องติ๊ก "รอของเข้า / ต้องสั่งของ" ตอนสร้างคำสั่งซื้อ — ใช้ร่วมกันทุกกล่องสร้างออเดอร์ของแอดมิน
+ * ติ๊กแล้ว: กราฟฟิกเห็นแถบ "รอของเข้า" บนใบนี้ · ลูกค้าโอนเมื่อไหร่ ระบบเด้งเตือนเข้ากลุ่ม LINE ร้านให้สั่งของ
+ */
+export function NeedsPurchaseTick({
+  on,
+  note,
+  onToggle,
+  onNote,
+}: {
+  on: boolean;
+  note: string;
+  onToggle: (v: boolean) => void;
+  onNote: (v: string) => void;
+}) {
+  return (
+    <div
+      className="rounded-xl border p-2.5"
+      style={
+        on
+          ? { borderColor: "var(--dk-coral)", background: "var(--dk-coral-wash)" }
+          : { borderColor: "var(--dk-hair)", background: "transparent" }
+      }
+    >
+      <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5">
+        <input type="checkbox" checked={on} onChange={(e) => onToggle(e.target.checked)} className="h-5 w-5 shrink-0" />
+        <span className="min-w-0">
+          <span className="block text-[13px] font-extrabold text-slate-800">🛒 รอของเข้า — ต้องสั่งของก่อนผลิต</span>
+          <span className="block text-[11px] leading-snug text-slate-500">
+            กราฟฟิกจะเห็นแถบ “รอของเข้า” บนใบนี้ · ลูกค้าโอนแล้วระบบแจ้งเตือนเข้ากลุ่มไลน์ร้านให้สั่งของ
+          </span>
+        </span>
+      </label>
+      {on && (
+        <input
+          value={note}
+          onChange={(e) => onNote(e.target.value)}
+          placeholder="ต้องสั่งอะไร เช่น แก้วเก็บความเย็น 20 oz สีดำ 50 ใบ (ไม่ใส่ก็ได้)"
+          maxLength={200}
+          className={`${INP} mt-2`}
+        />
+      )}
     </div>
   );
 }

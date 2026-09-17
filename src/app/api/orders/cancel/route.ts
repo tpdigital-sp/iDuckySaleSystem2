@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
+import { customerSafeOrder } from "@/lib/customer-order";
 
 export const runtime = "nodejs";
 
@@ -101,7 +102,5 @@ export async function POST(req: Request) {
 
 /** ตัด key ลับออกก่อนส่งกลับหน้าเว็บ (แบบเดียวกับ /api/orders/view) */
 function strip(o: Order) {
-  const { key: _secret, ...safe } = o;
-  void _secret;
-  return safe;
+  return customerSafeOrder(o);
 }

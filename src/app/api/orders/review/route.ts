@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
+import { customerSafeOrder } from "@/lib/customer-order";
 
 export const runtime = "nodejs";
 
@@ -91,8 +92,7 @@ export async function POST(req: Request) {
     );
     const { error: saveGiftErr } = await updateOrder(sb, updated);
     if (saveGiftErr) return NextResponse.json({ error: saveGiftErr.message }, { status: 500 });
-    const { key: _s, ...safeGift } = updated;
-    void _s;
+    const safeGift = customerSafeOrder(updated);
     return NextResponse.json({ ok: true, order: safeGift });
   }
 
@@ -149,7 +149,6 @@ export async function POST(req: Request) {
   const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
 
-  const { key: _secret, ...safe } = updated;
-  void _secret;
+  const safe = customerSafeOrder(updated);
   return NextResponse.json({ ok: true, order: safe });
 }

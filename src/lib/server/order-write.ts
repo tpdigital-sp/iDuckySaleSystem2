@@ -1,6 +1,7 @@
 import { reconcileOrderTax, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { syncOrderEarlyPay } from "./order-early-pay";
 import { syncItemsToTP } from "./tp-report";
+import { alertNeedsPurchase, stampNeedsPurchaseAlert } from "./needs-purchase";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
 type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -88,8 +89,11 @@ function stampSaved(o: Order): Order {
 
 /** สร้างออเดอร์ใหม่ (insert) — ใบใหม่ = รายการเปลี่ยนเสมอ จึงคิดกฎตอนบันทึกให้ทุกครั้ง */
 export async function insertOrder(sb: SB, order: Order, by = "ระบบ"): Promise<WriteOrderResult> {
-  const final = stampSaved(await syncOrderEarlyPay(sb, order, by));
+  // 🛒 ใบที่ติ๊ก "รอของเข้า" แล้วเกิดมาแบบจ่ายแล้วเลย (เช่น FlowAccount ที่ชำระแล้ว) → แจ้งให้สั่งของตั้งแต่ตอนสร้าง
+  const np = stampNeedsPurchaseAlert(null, await syncOrderEarlyPay(sb, order, by));
+  const final = stampSaved(np.order);
   const { error } = await sb.from("orders").insert({ id: final.id, data: final });
+  if (!error && np.due) await alertNeedsPurchase(final);
   return { order: final, error };
 }
 
@@ -114,9 +118,16 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
    */
   const tax = reconcileOrderTax(prev, final);
   if (tax) final = withLog(tax.order, by, "คิดภาษีใหม่ตามยอดที่แก้", `${tax.note} (ยอดรวมต้องตรงบิลที่ออกให้ลูกค้า)`);
+  /**
+   * 🛒 ใบ "รอของเข้า" เงินเข้าแล้ว (หรือเพิ่งติ๊กบนใบที่จ่ายแล้ว) → แจ้งกลุ่มไลน์ร้านให้สั่งของ ครั้งเดียวต่อการติ๊ก
+   * วางที่ประตูเพราะเงินเข้าได้หลายทาง (SlipOK · แอดมินยืนยัน · สลิปใบเพิ่ม · เก็บตก) — ดู needs-purchase.ts
+   */
+  const np = stampNeedsPurchaseAlert(prev, final);
+  final = np.order;
   // 🕒 ประทับเวลาบันทึกที่ประตู — ทางเข้าใหม่ได้ไปด้วยเอง ไม่ต้องจำว่าต้องเซ็ต savedAt เอง
   final = stampSaved(final);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);
+  if (!error && np.due) await alertNeedsPurchase(final);
   /**
    * 🏭 รายการเปลี่ยน → เรคอร์ดสะพาน (msVerify / การ์ดบอร์ด WIP กราฟฟิก) ต้องเห็นรายการชุดใหม่
    * ไม่งั้นการ์ดของออเดอร์ค้างโชว์รายการชุดแรก กราฟฟิกไม่รู้ว่าลูกค้าสั่งเพิ่มอะไรมา

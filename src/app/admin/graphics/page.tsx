@@ -45,6 +45,7 @@ import {
   SearchBox,
   Stat,
   Stats,
+  StockWaitBar,
   Tab,
   TabRow,
   Tag,
@@ -331,6 +332,8 @@ function QueueRow({ o, workSizes }: { o: Order; workSizes: Record<string, string
             )}
             {o.status === "รอตรวจสอบ" && <Tag tone="yolk" title="เงินยังไม่ยืนยัน — ทำแบบไปก่อนได้แต่ยังไม่เข้าผลิต">รอยืนยันเงินเข้า</Tag>}
             {noArt && <Tag tone="coral" title="มีรายการที่ลูกค้าไม่ได้แนบไฟล์ลายมา">ไม่มีไฟล์ลาย</Tag>}
+            {/* 🛒 รอของเข้า — ทำแบบได้ แต่ยังห้ามส่งเข้าผลิต (แถบเต็มบรรทัด กราฟฟิกเห็นโดยไม่ต้องเปิดใบ) */}
+            <StockWaitBar o={o} />
           </>
         }
         meta={
@@ -401,6 +404,7 @@ function SentRow({ sent, workSizes }: { sent: Sent; workSizes: Record<string, st
               )}
               {proof.revisedAt && <Tag tone="mint">แก้ให้แล้ว</Tag>}
               {!redo && waited !== null && waited >= 3 && <Tag tone="yolk">ค้าง {waited} วัน — ควรทวง</Tag>}
+              <StockWaitBar o={order} />
             </>
           }
           meta={
