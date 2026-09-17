@@ -266,7 +266,8 @@ export default function HolidayDatePicker({
                 </span>
               )}
             </p>
-            {min && minReason && <p className="font-semibold text-slate-700">⛔ {minReason}</p>}
+            {/* ข้อความของแต่ละจอ (ขึ้นบรรทัดใหม่ด้วย \n ได้) — ไอคอน/น้ำเสียงให้จอนั้นใส่มาเอง */}
+            {min && minReason && <p className="whitespace-pre-line font-semibold text-slate-700">{minReason}</p>}
             {monthHolidays.map((d) => (
               <p key={d} className="text-red-700">
                 <span className="font-bold tabular-nums">{Number(d.slice(8))} {TH_MONTHS_SHORT[vm - 1]}</span> {holidayName(d)}

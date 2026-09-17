@@ -1307,7 +1307,7 @@ export default function CartPage() {
                       id="use-by"
                       value={useBy}
                       min={minUseBy}
-                      minReason={`สั่งวันนี้ร้านส่งได้เร็วสุด ${shortThaiDay(earliestShipDate(today))} — เลือกวันใช้งานได้ตั้งแต่ ${shortThaiDay(minUseBy)}`}
+                      minReason={`งานต้องตรวจแบบ → ผลิต → จัดส่ง\nสั่งวันนี้ร้านส่งของได้เร็วสุด ${shortThaiDay(earliestShipDate(today))}\nจึงเลือกวันใช้งานได้ตั้งแต่ ${shortThaiDay(minUseBy)} ครับ\nงานด่วนกว่านี้ทัก LINE สอบถามคิวได้เลยครับ`}
                       onChange={saveUseBy}
                       clearable={false}
                       placeholder="เลือกวันใช้งาน"

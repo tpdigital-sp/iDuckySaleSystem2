@@ -7330,7 +7330,7 @@ export default function AdminOrderDetailPage() {
                   const orderedOn = orderDateYmd(order);
                   const shipMin = !order.rush && orderedOn ? earliestShipDate(orderedOn) : undefined;
                   const shipMinReason = shipMin
-                    ? `สั่ง ${shortThaiDay(orderedOn)} ไม่มีรอบคิวผลิตส่งในวัน — ส่งได้เร็วสุด ${shortThaiDay(shipMin)} · งานด่วนจริงให้กด 🔥 ทำเป็นงานเร่งก่อน`
+                    ? `⛔ สั่ง ${shortThaiDay(orderedOn)} ไม่มีรอบคิวผลิตส่งในวัน — ส่งได้เร็วสุด ${shortThaiDay(shipMin)} · งานด่วนจริงให้กด 🔥 ทำเป็นงานเร่งก่อน`
                     : undefined;
                   /** กด "+ ถึงวันที่" — มีวันใช้งานอยู่แล้วเติมวันปลายช่วงตามกติกาให้เลย (ก่อนใช้งาน 1 วันทำการ) */
                   const openRange = () => {
@@ -7369,7 +7369,7 @@ export default function AdminOrderDetailPage() {
                             <HolidayDatePicker
                               value={shipTo}
                               min={shipFrom || shipMin}
-                              minReason={shipFrom ? "วันส่งถึงต้องไม่ก่อนวันเริ่มส่ง" : shipMinReason}
+                              minReason={shipFrom ? "⛔ วันส่งถึงต้องไม่ก่อนวันเริ่มส่ง" : shipMinReason}
                               holidaySelectable={false}
                               ariaLabel="ส่งถึงวันที่"
                               onChange={(v) => applyOrder({ ...order, shipDate: { from: shipFrom, to: v || shipFrom } })}
