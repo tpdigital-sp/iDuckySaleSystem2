@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderAwaitingStock, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { notifyStockArrived } from "@/lib/server/needs-purchase";
+import { syncStockWaitToTP } from "@/lib/server/tp-report";
 
 export const runtime = "nodejs";
 
@@ -119,7 +120,7 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     next = saved;
     // ⏳ รอให้ส่งเสร็จก่อนตอบ — Netlify แช่เครื่องทันทีที่ตอบ งานเบื้องหลังหายเงียบ
-    await notifyStockArrived(sb, next, new URL(req.url).origin);
+    await Promise.all([notifyStockArrived(sb, next, new URL(req.url).origin), syncStockWaitToTP(next)]);
   }
   return NextResponse.json({ ok: true, row: toRow(next, groupOf(next) ?? "done") });
 }

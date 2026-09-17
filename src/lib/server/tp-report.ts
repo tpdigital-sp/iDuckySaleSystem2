@@ -200,6 +200,8 @@ export async function reportPaidToTP(
         useByDate: order.useByDate || "",
         // 📦 ช่วงวันจัดส่ง (จาก–ถึง) — บอร์ด WIP โชว์คู่กับวันใช้งานบนป้ายงานเร่ง
         shipDate: tpShipDate(order),
+        // 🛒 รอของเข้า / ต้องสั่งของ — บอร์ด WIP กราฟฟิกติดป้าย "รอของเข้า — ห้ามส่งผลิต" + ถามย้ำตอนอนุมัติ (แก้ทีหลังผ่าน syncStockWaitToTP)
+        stockWait: tpStockWait(order),
         paymentStatus: "ชำระแล้ว",
         origin: "iducky",
         createdAt: now.toISOString(),
@@ -471,6 +473,32 @@ export async function syncAmountsToTP(order: Order): Promise<void> {
     } catch (e) {
       const code = (e as { code?: number | string })?.code;
       if (code !== 5 && code !== "not-found") console.error("[tp-report] อัปเดตยอดเรคอร์ดไป msVerify ไม่สำเร็จ:", (e as Error)?.message);
+    }
+  }
+}
+
+/** 🛒 ธง "รอของเข้า" ที่ส่งให้บอร์ด WIP — null = ใบปกติ/ยกเลิกติ๊กแล้ว · arrivedAt มีค่า = ของเข้าแล้ว (บอร์ดเปลี่ยนเป็นป้ายเขียว) */
+function tpStockWait(order: Order): { at: string; by: string; note: string; arrivedAt: string } | null {
+  const np = order.needsPurchase;
+  return np ? { at: np.at, by: np.by, note: np.note ?? "", arrivedAt: np.arrivedAt ?? "" } : null;
+}
+
+/**
+ * 🛒 ติ๊ก/ยกเลิก "รอของเข้า" · แก้โน้ต · กด "ของเข้าแล้ว" หลังเรคอร์ดสะพานถูกสร้างไปแล้ว → อัปเดตให้บอร์ด WIP กราฟฟิกเห็นตาม
+ * (เจ้าของร้านสั่ง 17 ก.ย. 69: กราฟฟิกทำงานบนบอร์ด TP ต้องเห็นว่าใบไหนห้ามส่งผลิต) · แบบเดียวกับ syncRushToTP
+ * ใบที่ยังไม่ชำระ = ยังไม่มีเรคอร์ด → not-found ข้ามเงียบ (ตอนเงินเข้า reportPaidToTP พาธงไปเอง)
+ */
+export async function syncStockWaitToTP(order: Order): Promise<void> {
+  const db = getFirestoreAdmin();
+  if (!db) return;
+  const patch = { stockWait: tpStockWait(order), stockWaitUpdatedAt: new Date().toISOString() };
+  for (const suffix of ["", "-final"]) {
+    try {
+      await db.collection(TP_PAID_COLLECTION).doc(`${order.id}${suffix}`).update(patch);
+    } catch (e) {
+      const code = (e as { code?: number | string })?.code;
+      if (code !== 5 && code !== "not-found")
+        console.error("[tp-report] อัปเดตรอของเข้าไป WIP ไม่สำเร็จ:", (e as Error)?.message);
     }
   }
 }

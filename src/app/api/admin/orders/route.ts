@@ -13,7 +13,7 @@ import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, keepCustomerVerdict, parseChangedKeys } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
-import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP } from "@/lib/server/tp-report";
+import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
 import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { amountsForRecord } from "@/lib/tp-amounts";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
@@ -885,6 +885,10 @@ export async function PATCH(req: Request) {
   const shipKey = (o: Order) => `${o.shipDate?.from || ""}|${o.shipDate?.to || ""}`;
   if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "") || shipKey(toSave) !== shipKey(existing)))
     void syncRushToTP(toSave);
+  // 🛒 รอของเข้าเปลี่ยน (ติ๊ก/ยกเลิก/แก้โน้ต/ของเข้าแล้ว — แอดมินหรือฝ่ายแพ็ค) → ป้ายบนการ์ดบอร์ด WIP กราฟฟิกต้องตามทัน
+  //    ⏳ await: Netlify แช่เครื่องทันทีที่ตอบ — ป้าย "ห้ามส่งผลิต" ที่ไปไม่ถึงบอร์ด = กราฟฟิกส่งผลิตทั้งที่ของยังไม่มา
+  const swKey = (o: Order) => JSON.stringify([o.needsPurchase?.at ?? "", o.needsPurchase?.note ?? "", o.needsPurchase?.arrivedAt ?? ""]);
+  if (swKey(toSave) !== swKey(existing)) await syncStockWaitToTP(toSave);
   // 👤 แอดมินแก้ชื่อผู้รับ/เบอร์ → อัปเดตการ์ดบอร์ด WIP ให้ตรงหน้าออเดอร์ (เก็บชื่อเก่าไว้ให้จับคู่โฟลเดอร์เดิมได้)
   if (mayEditFull) void syncCustomerToTP(existing, toSave);
   // ยอดของเรคอร์ดสะพานทั้งสองใบ (งวดแรก + งวดหลัง) — ต่างกันเมื่อไหร่แปลว่าต้องยิงอัปเดตไป msVerify
