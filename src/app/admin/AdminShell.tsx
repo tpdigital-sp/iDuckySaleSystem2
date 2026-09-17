@@ -26,6 +26,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   // 🎨 งานแบบ — ฝ่ายกราฟฟิกเปิดหมวดนี้หมวดเดียวก็ทำงานได้ครบ
   { href: "/admin/graphics", label: "ออเดอร์กราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
   { href: "/admin/graphics/designs", label: "รายงานแบบงาน", emoji: "📋", perm: "proof.manage", group: "กราฟฟิก" },
+  // 🛒 ใบที่ต้องสั่งของ/รอของเข้าก่อนผลิต — ป้ายตัวเลข = ของเข้าแล้ว รอกราฟฟิกส่งเข้าผลิต (เจ้าของร้านสั่ง 17 ก.ย. 69)
+  { href: "/admin/stock-wait", label: "รอของเข้า", emoji: "🛒", perm: "admin.access", group: "กราฟฟิก" },
   // 📏 ลากไฟล์ .ai/.psd หลายไฟล์ดูขนาดชิ้นงานทีเดียว — อ่านในเครื่อง ไม่อัปโหลด (เจ้าของร้านขอ 16 ก.ย. 69: เปิดทีละไฟล์เช็คขนาดช้า)
   { href: "/admin/file-size", label: "เช็คขนาดไฟล์งาน", emoji: "📏", perm: "admin.access", group: "กราฟฟิก" },
   // 🏷️ ของที่ขาย
@@ -80,6 +82,8 @@ let ratingsBadgeCache: { at: number; rows: { id: string }[] } | null = null;
 let quotesBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "ลูกค้าขอแก้ไขออเดอร์" — เหตุผลเดียวกับใบเสนอราคา: เมนูอยู่ทุกหน้า ไม่ต้องถามฐานทุกคลิก */
 let editReqBadgeCache: { at: number; n: number } | null = null;
+/** แคชป้าย "ของเข้าแล้ว รอส่งเข้าผลิต" (เมนูรอของเข้า) — เหตุผลเดียวกัน: เมนูอยู่ทุกหน้า ไม่ต้องถามฐานทุกคลิก */
+let stockWaitBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "เคลมสินค้าที่ยังไม่ได้ตอบ" — เคสเคลมที่เงียบไปคือเคสที่บานปลาย ต้องเห็นตั้งแต่เมนู */
 let claimsBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "ใบสมัครตัวแทนรออนุมัติ" — ใบสมัครเข้ามาวันละไม่กี่ใบ แต่ปล่อยค้างแล้วตัวแทนรอเก้อ */
@@ -129,6 +133,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [openEditRequests, setOpenEditRequests] = useState(0);
   // badge แจ้ง "เคลมสินค้า" ที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย — หายเองเมื่อตอบ/ปิดเคสครบ
   const [openClaims, setOpenClaims] = useState(0);
+  const [readyStockWait, setReadyStockWait] = useState(0);
   // badge แจ้ง "ใบสมัครตัวแทนจำหน่าย" ที่ยังรออนุมัติ — หายเองเมื่อกดอนุมัติ/ปฏิเสธครบ
   const [openDealerApps, setOpenDealerApps] = useState(0);
 
@@ -320,6 +325,41 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }, [refreshEditReqBadge]);
 
   /**
+   * 🛒 ป้ายเตือน "รอของเข้า" — นับใบที่ของเข้าร้านแล้วแต่ยังไม่ได้ส่งเข้าผลิต (งานที่กราฟฟิกต้องลงมือ)
+   * หายเองเมื่อใบถูกติ๊ก 🏭 ส่งเข้าผลิต / สถานะถึงกำลังผลิต · ตัวเลขตรงกับกองแรกในหน้า /admin/stock-wait
+   */
+  const stockWaitBadgeReady = pathname !== "/admin/login" && perms.includes("admin.access");
+  const refreshStockWaitBadge = useCallback(async () => {
+    if (!stockWaitBadgeReady) return;
+    try {
+      const r = await fetch("/api/admin/orders/stock-wait?count=1", { cache: "no-store" });
+      const j = r.ok ? await r.json() : { n: 0 };
+      const n = Number(j?.n) || 0;
+      stockWaitBadgeCache = { at: Date.now(), n };
+      setReadyStockWait(n);
+    } catch {
+      /* เน็ตสะดุด → คงเลขเดิมไว้ */
+    }
+  }, [stockWaitBadgeReady]);
+  useEffect(() => {
+    if (!stockWaitBadgeReady) return;
+    // อยู่หน้ารอของเข้า/หน้าออเดอร์ = ดึงสด (เพิ่งกดของเข้าแล้ว/ส่งเข้าผลิต ตัวเลขต้องขยับทันที) หน้าอื่นใช้แคช 1 นาที
+    const fresh = pathname.startsWith("/admin/stock-wait") || pathname.startsWith("/admin/orders/");
+    const cached = stockWaitBadgeCache && Date.now() - stockWaitBadgeCache.at < 60_000 ? stockWaitBadgeCache.n : null;
+    if (cached !== null && !fresh) {
+      setReadyStockWait(cached);
+      return;
+    }
+    void refreshStockWaitBadge();
+  }, [stockWaitBadgeReady, pathname, refreshStockWaitBadge]);
+  usePolling(refreshStockWaitBadge, { intervalMs: 90_000, enabled: stockWaitBadgeReady });
+  useEffect(() => {
+    const on = () => void refreshStockWaitBadge();
+    window.addEventListener("iducky:stock-wait-changed", on);
+    return () => window.removeEventListener("iducky:stock-wait-changed", on);
+  }, [refreshStockWaitBadge]);
+
+  /**
    * 🧰 ป้ายเตือน "เคลมสินค้า" — นับเคสที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย
    * เดิมเคลมเข้ามารู้ได้ทางเดียวคือไลน์แจ้งกลุ่มร้าน เลื่อนผ่านแล้วเคสเงียบยาว (เจ้าของร้านสั่ง 15 ก.ย. 69)
    * ตัวเลขตรงกับช่อง "ยังไม่ตอบลูกค้า" ในหน้า /admin/claims
@@ -508,7 +548,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             ? openClaims
             : href === "/admin/dealers"
               ? openDealerApps
-              : 0;
+              : href === "/admin/stock-wait"
+                ? readyStockWait
+                : 0;
   /** ป้ายทั้งแถบรวมกัน — ใช้บนปุ่ม ☰ ของมือถือ ตอนเมนูปิดอยู่จะได้ยังเห็นว่ามีงานค้าง */
   const badgeAll = menu.reduce((n, m) => n + badgeOf(m.href), 0);
 
@@ -573,7 +615,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   ? `${m.label} — ${badgeN} เรื่อง ยังไม่ได้ตอบลูกค้า`
                   : hasBadge && m.href === "/admin/dealers"
                     ? `${m.label} — ใบสมัคร ${badgeN} ใบ รออนุมัติ`
-                    : m.label
+                    : hasBadge && m.href === "/admin/stock-wait"
+                      ? `${m.label} — ของเข้าแล้ว ${badgeN} ใบ รอส่งเข้าผลิต`
+                      : m.label
             : undefined
         }
         className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${

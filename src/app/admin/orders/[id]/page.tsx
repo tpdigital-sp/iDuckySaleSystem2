@@ -2933,7 +2933,8 @@ export default function AdminOrderDetailPage() {
     if (!order) return;
     const next = withLog({ ...order, needsPurchase: np }, actor, action, detail);
     setOrder(next);
-    if (!demo) void saveOrWarn(next);
+    // ป้ายข้างเมนู "รอของเข้า" (AdminShell) นับใหม่ทันทีหลังบันทึก
+    if (!demo) void saveOrWarn(next).then(() => window.dispatchEvent(new Event("iducky:stock-wait-changed")));
   }
 
   /** 🧾 พนักงานแพ็คยืนยันว่าใส่ใบกำกับภาษีลงกล่องแล้ว · กดซ้ำ = ยกเลิก (บิล FlowAccount/บิล VAT มักลืมพิมพ์ใบกำกับ) */

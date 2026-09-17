@@ -68,3 +68,20 @@ export async function alertNeedsPurchase(o: Order): Promise<void> {
     alt: `🛒 ${o.id} ลูกค้าโอนแล้ว ต้องสั่งของ${np.note ? ` — ${np.note}` : ""}`,
   });
 }
+
+/**
+ * 📦 ของเข้าร้านแล้ว → บอกลูกค้าทางไลน์ (ข่าวคืบหน้า = ระดับ extra เคารพสิ่งที่ลูกค้าเลือกรับ)
+ * ใช้ร่วมกันทั้ง PATCH หน้าออเดอร์ และปุ่ม "ของเข้าแล้ว" ในหน้า /admin/stock-wait — ข้อความต้องเป็นชุดเดียว
+ * notify.ts เป็น server-only → โหลดตอนจะส่งจริง (เหตุผลเดียวกับ alertNeedsPurchase)
+ */
+export async function notifyStockArrived(sb: unknown, o: Order, origin: string): Promise<void> {
+  if (o.status === "ยกเลิก") return;
+  const { notifyCustomerLogged, orderLink } = await import("./notify");
+  await notifyCustomerLogged(
+    sb as Parameters<typeof notifyCustomerLogged>[0],
+    o,
+    `📦 สินค้าสำหรับออเดอร์ ${o.id} เข้าร้านแล้วครับ\nทางร้านจะเริ่มผลิตให้ทันทีที่แบบงานได้รับการอนุมัติ — ดูสถานะได้ที่ลิงก์นี้เลย\n${orderLink(origin, o)}`,
+    "แจ้งลูกค้า: ของเข้าร้านแล้ว",
+    "extra"
+  );
+}

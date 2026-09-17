@@ -8,7 +8,7 @@ import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
-import { needsPurchaseStamp } from "@/lib/server/needs-purchase";
+import { needsPurchaseStamp, notifyStockArrived } from "@/lib/server/needs-purchase";
 import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, keepCustomerVerdict, parseChangedKeys } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
@@ -897,14 +897,7 @@ export async function PATCH(req: Request) {
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
   void syncArrivalToTP(existing, toSave);
   // 🛒 ของเข้าร้านแล้ว (กด "ของเข้าแล้ว" ในคำขอนี้) → บอกลูกค้าทางไลน์ตามที่หน้าออเดอร์สัญญาไว้ · ข่าวคืบหน้า = ระดับ extra
-  if (toSave.needsPurchase?.arrivedAt && !existing.needsPurchase?.arrivedAt && toSave.status !== "ยกเลิก")
-    void notifyCustomerLogged(
-      sb,
-      toSave,
-      `📦 สินค้าสำหรับออเดอร์ ${toSave.id} เข้าร้านแล้วครับ\nทางร้านจะเริ่มผลิตให้ทันทีที่แบบงานได้รับการอนุมัติ — ดูสถานะได้ที่ลิงก์นี้เลย\n${orderLink(new URL(req.url).origin, toSave)}`,
-      "แจ้งลูกค้า: ของเข้าร้านแล้ว",
-      "extra"
-    );
+  if (toSave.needsPurchase?.arrivedAt && !existing.needsPurchase?.arrivedAt) void notifyStockArrived(sb, toSave, new URL(req.url).origin);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
