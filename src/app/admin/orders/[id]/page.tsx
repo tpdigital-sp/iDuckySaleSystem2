@@ -2420,7 +2420,8 @@ export default function AdminOrderDetailPage() {
       "มารับเองที่ร้าน · ระบบแจ้งลูกค้าทางไลน์ให้มารับ"
     );
     setOrder(next);
-    if (!demo) void saveOrWarn(next);
+    // ป้ายข้างเมนู "ลูกค้าที่มารับเอง" นับใหม่ทันที (AdminShell ฟังอีเวนต์นี้)
+    if (!demo) void saveOrWarn(next).then(() => window.dispatchEvent(new Event("iducky:pickup-changed")));
   }
 
   /** แอดมินยืนยัน "ข้ามด่านตรวจ" จากโมดัล — เซิร์ฟเวอร์จะลง log ชื่อคนข้ามเสมอ */
