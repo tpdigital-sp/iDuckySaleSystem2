@@ -55,6 +55,24 @@ export function itemUnitYield(item: YieldItem, product?: Product | null): ItemUn
 }
 
 /**
+ * 🕰 ตัวคูณที่แช่ไว้ตอนสั่ง "ไม่ตรงกับที่สินค้าคิดได้วันนี้" — คืนเลขของวันนี้ให้หน้าออเดอร์เสนอปุ่มแก้ · null = ตรงกัน/เทียบไม่ได้
+ * ทำไมต้องมี: เลขที่แช่ตั้งใจไม่ขยับตามสินค้า (ดู itemUnitYield) แต่ถ้าร้านแก้กติกาเพราะเลขเดิม "ผิด"
+ * ใบที่สั่งก่อนแก้จะค้างเลขผิดไปตลอด และก่อนมีแบบงานไม่มีจุดไหนให้แก้เลย (กล่องฟ้า PerUnitSetter ขึ้นหลังอัปแบบเท่านั้น)
+ * OD-260915-9168 (17 ก.ย. 69): ไดคัท 5.5 ซม. สั่ง 19:22 น. แช่ 24 (ปัดขึ้นขั้น ≤6 ซม.) · 19:55 น. ร้านเปลี่ยนเป็นนับตาม Print-Fit = 28
+ * ⛔ ไม่แก้ให้เอง — เลขวันนี้ก็ผิดได้ (ร้านเพิ่มกลุ่มตัวเลือกทีหลัง ใบเก่าอ่านได้เลขเพี้ยน) ให้คนดูแล้วกดยืนยันทีละใบ
+ */
+export function staleUnitYield(item: YieldItem, product?: Product | null): ItemUnitYield | null {
+  const frozen = item.unitYield;
+  if (!product || !frozen?.per || frozen.per <= 1) return null;
+  const sel = itemSel(item, product);
+  if (!Object.keys(sel).length) return null;
+  const now = orderUnitYield(product, sel);
+  // เลขวันนี้ต้องเป็นตัวคูณจริง (per > 1) และหน่วยขายเดียวกัน — หน่วยเพี้ยนเป็นคนละเรื่อง (ดู fix-unit-yield-unit.mts)
+  if (!now || now.per <= 1 || now.per === frozen.per || (now.unit || "") !== (frozen.unit || "")) return null;
+  return now;
+}
+
+/**
  * 📐 หน่วยขายที่ใหญ่กว่าแผ่น (ตร.ม.) — ห้อยว่าเท่ากับกี่แผ่นพิมพ์ " = 8 A3" (กราฟฟิกขอ 17 ก.ย. 69 · OD-260914-7004)
  * กราฟฟิกจัดไฟล์เป็นแผ่น A3 ต้องรู้ว่างานที่สั่งเป็น ตร.ม. คือกี่แผ่น — คูณจำนวนที่สั่งให้เลย (3 ตร.ม. = 24 A3)
  * ตัวคูณอ่านจาก sheetYield.unitSheets ของสินค้า (ตัวเดียวกับที่ unitYieldOf ใช้) — กลุ่มที่ตั้งไว้อาจไม่ใช่กลุ่มที่ลูกค้าเลือก

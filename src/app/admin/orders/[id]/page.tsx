@@ -28,7 +28,7 @@ import { cartItemKey } from "@/lib/cart-context";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { PROOF_AUTO_NOTIFY_MINUTES, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
 import { fetchProductNamesLite, fetchProductsByIds } from "@/lib/product-repo";
-import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
+import { itemPiecesLine, itemQtyText, orderQtyText, staleUnitYield } from "@/lib/item-yield";
 import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
 import {
   allSelfDesignedApproved,
@@ -735,6 +735,77 @@ function ProofDropCheck({
 }
 
 /**
+ * 📐 ชิป "สั่ง 2 แผ่น A3 ได้ 56 ชิ้น" ใต้สเปครายการ + จุดแก้ตัวคูณ "1 แผ่น = กี่ชิ้น" ที่กดได้ทุกเมื่อ
+ * ทำไมต้องแก้ได้ตรงนี้: ตัวคูณแช่ไว้ตอนสั่ง ร้านแก้ตาราง/กติกาชิ้นต่อแผ่นทีหลัง ใบเก่าค้างเลขเดิม
+ * เดิมจุดแก้มีที่เดียวคือกล่องฟ้าในกล่องแบบงาน ซึ่งขึ้นหลังอัปแบบและป้ายหารลงตัวเท่านั้น — ใบที่ลูกค้าโอนแล้ว
+ * แต่ยังไม่มีแบบ แอดมินเห็นเลขผิดก็แก้ไม่ได้ (OD-260915-9168 · 17 ก.ย. 69 · แช่ 24 สินค้าวันนี้ 28)
+ * ตัวคูณไม่เกี่ยวกับยอดเงิน (ราคาคิดต่อหน่วยขาย) จึงแก้ได้แม้ชำระแล้ว
+ */
+function ItemPiecesChip({
+  item,
+  product,
+  onSetPerUnit,
+}: {
+  item: OrderItem;
+  product?: Product | null;
+  /** undefined = ไม่มีสิทธิ์แก้ (เห็นแต่ชิป) */
+  onSetPerUnit?: (per: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const line = itemPiecesLine(item, product);
+  if (!line) return null;
+  const stale = onSetPerUnit ? staleUnitYield(item, product) : null;
+  const unit = item.unitYield?.unit || stale?.unit || "หน่วย";
+  const piece = item.unitYield?.piece || "ชิ้น";
+  return (
+    <div className="mt-1">
+      <p
+        title="จำนวนชิ้นรวมที่ต้องทำ — คูณจากจำนวนที่ลูกค้าสั่ง"
+        className="inline-block rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-bold tabular-nums text-indigo-800 ring-1 ring-indigo-200"
+      >
+        {line}
+      </p>
+      {onSetPerUnit && item.unitYield?.per ? (
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          title={`แก้ว่า 1 ${unit} ได้กี่${piece} — ใช้เมื่อเลขไม่ตรงกับที่จัดวางได้จริง · ไม่กระทบยอดเงิน แก้ได้แม้ลูกค้าโอนแล้ว`}
+          className="ml-1 whitespace-nowrap rounded px-1 text-[10px] font-bold text-sky-600 transition hover:bg-sky-50"
+        >
+          ✏️ แก้จำนวนต่อ{unit}
+        </button>
+      ) : null}
+      {stale && onSetPerUnit && (
+        <p className="mt-1 rounded-lg bg-sky-50 px-2 py-1 text-[11px] font-semibold leading-relaxed text-sky-900 ring-1 ring-sky-300">
+          {`🕰 ใบนี้นับไว้ 1 ${unit} = ${item.unitYield!.per.toLocaleString("th-TH")} ${piece} (เลขวันที่สั่ง) · สินค้าวันนี้คิดได้ ${stale.per.toLocaleString("th-TH")} ${stale.piece} `}
+          <button
+            type="button"
+            onClick={() => onSetPerUnit(stale.per)}
+            className="rounded-lg bg-sky-600 px-2 py-0.5 text-[11px] font-bold text-white transition hover:bg-sky-700"
+          >
+            {`✔ ใช้ ${stale.per.toLocaleString("th-TH")} ${stale.piece} (รวม ${(item.qty * stale.per).toLocaleString("th-TH")} ${stale.piece})`}
+          </button>
+        </p>
+      )}
+      {editing && onSetPerUnit && (
+        <PerUnitSetter
+          unit={unit}
+          qty={item.qty}
+          suggest={0}
+          current={item.unitYield?.per ?? 1}
+          piece={piece}
+          manual
+          onSet={(per) => {
+            onSetPerUnit(per);
+            setEditing(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * ตั้ง "1 เซ็ต = กี่ชิ้น" ให้รายการนี้ — งานที่ขายเป็นเซ็ต/ชุด/แผ่น ระบบไม่รู้เองว่าเซ็ตละกี่ชิ้น
  * ตั้งแล้วใช้ต่อทุกที่: แถบเทียบจำนวน · แถบตรวจชื่อไฟล์ · โหมดแพ็ค (หัวรายการขึ้น "12 เซ็ต = 240 ชิ้น")
  * ระบบเดาให้ได้เมื่อป้ายบนแบบรวมแล้วหารจำนวนที่สั่งลงตัว — กดปุ่มยืนยันทีเดียวจบ
@@ -745,6 +816,7 @@ function PerUnitSetter({
   suggest,
   current,
   piece,
+  manual,
   onSet,
 }: {
   unit: string;
@@ -754,6 +826,8 @@ function PerUnitSetter({
   current: number;
   /** คำเรียกชิ้นย่อย เช่น "ใบ" */
   piece: string;
+  /** เปิดจากปุ่ม "แก้จำนวนต่อหน่วย" เอง (ไม่ได้ขึ้นเพราะป้ายบนแบบไม่ตรง) — ตัดท่อน "แบบที่ทำมาไม่ตรง" ออก */
+  manual?: boolean;
   onSet: (per: number) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -766,7 +840,7 @@ function PerUnitSetter({
       <p className="font-extrabold">
         📦 งานนี้ขายเป็น “{unit}” — สั่ง {qty} {unit} ·{" "}
         {current > 1
-          ? `ตอนนี้นับไว้ 1 ${unit} = ${current} ${piece} (เลขวันที่สั่ง) แต่แบบที่ทำมาไม่ตรงกับเลขนี้`
+          ? `ตอนนี้นับไว้ 1 ${unit} = ${current} ${piece} (เลขวันที่สั่ง)${manual ? "" : " แต่แบบที่ทำมาไม่ตรงกับเลขนี้"}`
           : `ยังไม่ได้ตั้งว่า 1 ${unit} เท่ากับกี่${piece}`}
       </p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -1021,7 +1095,7 @@ export default function AdminOrderDetailPage() {
     const items = order.items.map((x, i) =>
       i === itemIndex ? { ...x, unitYield: { per, piece: x.unitYield?.piece || "ชิ้น", unit } } : x
     );
-    const next = withLog({ ...order, items }, actor, "ตั้งจำนวนต่อหน่วย", `${it.name} — 1 ${unit} = ${per} ชิ้น`);
+    const next = withLog({ ...order, items }, actor, "ตั้งจำนวนต่อหน่วย", `${it.name} — 1 ${unit} = ${(it.unitYield?.per ?? 0) > 1 && it.unitYield!.per !== per ? `${it.unitYield!.per} → ` : ""}${per} ชิ้น`);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
   }
@@ -4736,18 +4810,11 @@ export default function AdminOrderDetailPage() {
                       {/* 📐 จำนวนชิ้นรวมของรายการนี้ — งานที่ขายเป็นแผ่น/เซ็ต จำนวนที่สั่งไม่ใช่จำนวนชิ้น
                           กราฟฟิกขอให้บอกยอดรวมมาให้เลย จะได้ไม่ต้องคูณเอง (เจ้าของร้านแจ้ง 14 ก.ย. 69)
                           อยู่นอกกล่องสเปคที่ line-clamp เพื่อให้เห็นทั้งตอนยุบและตอนกาง */}
-                      {(() => {
-                        const line = itemPiecesLine(it, productOfItem(it.productId));
-                        if (!line) return null;
-                        return (
-                          <p
-                            title="จำนวนชิ้นรวมที่ต้องทำ — คูณจากจำนวนที่ลูกค้าสั่ง · ไม่ตรงกับที่จัดวางได้จริง แก้ตัวเลขต่อหน่วยได้ที่กล่องแบบงานด้านล่าง"
-                            className="mt-1 inline-block rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-bold tabular-nums text-indigo-800 ring-1 ring-indigo-200"
-                          >
-                            {line}
-                          </p>
-                        );
-                      })()}
+                      <ItemPiecesChip
+                        item={it}
+                        product={productOfItem(it.productId)}
+                        onSetPerUnit={mayProof || mayEdit ? (per) => setItemPerUnit(i, per) : undefined}
+                      />
                       {/* 📝 ที่มาของราคาที่แอดมินตีไว้ (ลูกค้าเห็นด้วย) — กดเพื่อเปิดแผงตีราคาไปแก้ */}
                       {it.quoteNote && seesMoney && (
                         <button
