@@ -1,6 +1,6 @@
 /**
  * 📣 ลงป้ายประชาสัมพันธ์ "สั่งเองผ่านเว็บ ได้ตลอด 24 ชม." เข้าระบบป้ายหน้าแรก (/admin/banners)
- * เจ้าของร้านสั่ง 17 ก.ย. 69 — อัปรูป 2 ไฟล์ (จอคอม 2320×500 + มือถือ 1200×800) ขึ้น Storage
+ * เจ้าของร้านสั่ง 17 ก.ย. 69 — อัปรูป 2 ไฟล์ (จอคอม 2320×640 + มือถือ 1200×800) ขึ้น Storage
  * แล้วเพิ่มเข้าแถว __promo_banners__ (มีป้ายอื่นอยู่แล้ว = ต่อท้าย ไม่ทับ · รันซ้ำ = อัปเดตใบเดิมตาม id)
  *
  * v2 (17 ก.ย. 69): เจ้าของร้านทักว่าใบ 2320×320 "แคบไป" → ทำใหม่สูง 500 · ชื่อไฟล์ใหม่ทุกครั้งที่เปลี่ยนเนื้อรูป (กันแคช CDN)
@@ -46,7 +46,8 @@ async function resolve(list) {
 }
 await resolve(FX.layers);
 await resolve(FX.layersMobile);
-const image = await upload(`${PARTS}/web-order-24h-desktop-v4-base.webp`, "web-order-24h-desktop-v4-base.webp");
+// v5 (17 ก.ย. 69 ค่ำ): เจ้าของร้านขอ "สูงกว่านี้หน่อย" อีกรอบ → จอคอม 2320×640 (แสดงจริง 1160×320) · การ์ด/ลูกศรจอคอมเป็นชุด -v2
+const image = await upload(`${PARTS}/web-order-24h-desktop-v5-base.webp`, "web-order-24h-desktop-v5-base.webp");
 const imageMobile = await upload(`${PARTS}/web-order-24h-mobile-v3-base.webp`, "web-order-24h-mobile-v3-base.webp");
 
 const { data: row, error: readErr } = await sb.from("products").select("data").eq("id", ROW_ID).maybeSingle();
