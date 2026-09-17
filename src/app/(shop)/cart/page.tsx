@@ -34,7 +34,7 @@ import {
   splitArtUrls,
   stockCheckRows,
 } from "@/lib/products";
-import { orderQtyText } from "@/lib/item-yield";
+import { orderQtyText, unitSheetsNote } from "@/lib/item-yield";
 import { orderIdIn, parseReuseArt } from "@/lib/admin-data";
 import { clearPriceLinkBundle } from "@/lib/price-link";
 import {
@@ -732,7 +732,7 @@ export default function CartPage() {
                                 <p className="font-semibold t-blue">
                                   {/* ประโยคเดียวจบ (เจ้าของร้านสั่ง "แจ้งแค่จุดเดียว") — ยอดรวมของจำนวนที่สั่งเลย ไม่กางต่อหน่วยซ้ำ
                                       ต่อสตริงเองทั้งบรรทัด — JSX ตัดช่องว่างระหว่าง expression เคยทำให้เป็น "ได้2 ชิ้น" */}
-                                  {`📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${yieldInfo.unit || "หน่วย"}${yieldSize} ได้${yieldApprox ? "ประมาณ" : ""} ${(yieldInfo.per * item.qty).toLocaleString("th-TH")} ${yieldInfo.piece}${yieldNote}`}
+                                  {`📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${yieldInfo.unit || "หน่วย"}${unitSheetsNote(product, yieldInfo.unit, item.qty)}${yieldSize} ได้${yieldApprox ? "ประมาณ" : ""} ${(yieldInfo.per * item.qty).toLocaleString("th-TH")} ${yieldInfo.piece}${yieldNote}`}
                                 </p>
                               )}
                               {artCount > 0 && (

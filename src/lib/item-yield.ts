@@ -55,8 +55,26 @@ export function itemUnitYield(item: YieldItem, product?: Product | null): ItemUn
 }
 
 /**
+ * 📐 หน่วยขายที่ใหญ่กว่าแผ่น (ตร.ม.) — ห้อยว่าเท่ากับกี่แผ่นพิมพ์ " = 8 A3" (กราฟฟิกขอ 17 ก.ย. 69 · OD-260914-7004)
+ * กราฟฟิกจัดไฟล์เป็นแผ่น A3 ต้องรู้ว่างานที่สั่งเป็น ตร.ม. คือกี่แผ่น — คูณจำนวนที่สั่งให้เลย (3 ตร.ม. = 24 A3)
+ * ตัวคูณอ่านจาก sheetYield.unitSheets ของสินค้า (ตัวเดียวกับที่ unitYieldOf ใช้) — กลุ่มที่ตั้งไว้อาจไม่ใช่กลุ่มที่ลูกค้าเลือก
+ * (เลือก "ขนาดตัด A6" ตายตัว ตัวคูณยังอยู่ที่กลุ่มกรอกขนาดเอง) จึงไล่หาทั้งสินค้า · ไม่มีสินค้า/ไม่ได้ตั้ง = ""
+ */
+export function unitSheetsNote(product: Product | null | undefined, unit: string, qty: number): string {
+  if (!product || !unit || !(qty > 0)) return "";
+  for (const opt of product.options ?? []) {
+    const sheets = opt.sheetYield?.unitSheets?.[unit];
+    if (!sheets || !(sheets > 0)) continue;
+    // "แผ่น A3" → "A3" ให้สั้นแบบที่ร้านเขียนในใบงาน (1 ตร.ม. = 8 A3) · ชื่อแผ่นเป็นคำว่า "แผ่น" เฉย ๆ ก็คงไว้
+    const sheet = (opt.sheetYield?.sheetName ?? "แผ่น").replace(/^แผ่น\s+(?=\S)/, "");
+    return ` = ${(qty * sheets).toLocaleString("th-TH")} ${sheet}`;
+  }
+  return "";
+}
+
+/**
  * บรรทัดสรุปจำนวนชิ้นจริงให้ลูกค้า/แอดมินอ่าน — ประโยคเดียวจบเหมือนในตะกร้า (เจ้าของร้านสั่ง "แจ้งแค่จุดเดียว")
- *   "📐 สั่ง 2 แผ่น A3 (ขนาดตัด A4) ได้ 4 ชิ้น" · ขนาดที่กรอกเอง = "ได้ประมาณ"
+ *   "📐 สั่ง 2 แผ่น A3 (ขนาดตัด A4) ได้ 4 ชิ้น" · ขนาดที่กรอกเอง = "ได้ประมาณ" · ขายเป็น ตร.ม. = "สั่ง 1 ตร.ม. = 8 A3 (ขนาดตัด A6) ได้ 64 ชิ้น"
  * "" = งานนับเป็นชิ้นอยู่แล้ว (per ≤ 1) ไม่ต้องโชว์
  * ⚠️ ต่อสตริงทั้งบรรทัดใน template เดียว — JSX ตัดช่องว่างระหว่าง expression เคยได้ "ได้2 ชิ้น"
  */
@@ -77,7 +95,7 @@ export function itemPiecesLine(item: YieldItem, product?: Product | null): strin
     }
   }
   const total = item.qty * y.per;
-  return `📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${y.unit || "หน่วย"}${size} ได้${approx ? "ประมาณ" : ""} ${total.toLocaleString("th-TH")} ${y.piece}${note}`;
+  return `📐 สั่ง ${item.qty.toLocaleString("th-TH")} ${y.unit || "หน่วย"}${unitSheetsNote(product, y.unit, item.qty)}${size} ได้${approx ? "ประมาณ" : ""} ${total.toLocaleString("th-TH")} ${y.piece}${note}`;
 }
 
 /**
