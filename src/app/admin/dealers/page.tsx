@@ -9,8 +9,16 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Btn, Empty, Field, ListHead, PageHead, PageShell, Row, RowMain, RowSide, Rows, Tag } from "@/components/admin/ui";
+
+/** สิ่งที่ผู้สมัครกรอกมาจากหน้า /dealer */
+interface ApplicationInfo {
+  shopName: string;
+  channel: string;
+  detail?: string;
+  at: string;
+}
 
 interface DealerRow {
   uid: string;
@@ -20,6 +28,14 @@ interface DealerRow {
   picture: string;
   note: string;
   since: string;
+  /** ใบสมัครที่เก็บไว้ตอนอนุมัติ หรือที่แอดมินกรอกย้อนหลัง — เพิ่มด้วยอีเมลตรง ๆ / อนุมัติก่อน 17 ก.ย. 69 = ไม่มี */
+  application?: ApplicationInfo;
+  /** ผู้ส่งบนกล่องที่ตัวแทนตั้งเองในหน้า /account */
+  sender?: { name?: string; phone?: string; address?: string };
+  address: string;
+  joinedAt: string;
+  lastSignInAt: string;
+  orders: number;
 }
 
 interface ApplicationRow {
@@ -32,6 +48,10 @@ interface ApplicationRow {
   channel: string;
   detail: string;
   at: string;
+  address: string;
+  joinedAt: string;
+  lastSignInAt: string;
+  orders: number;
 }
 
 /** วันที่แบบที่ทีมใช้คุยกัน (พ.ศ.) — ค่าเก่าที่ไม่มี = "—" */
@@ -39,6 +59,135 @@ function thDate(iso: string): string {
   const d = new Date(iso);
   if (!iso || !isFinite(d.getTime())) return "—";
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** วันที่ + เวลา — ใบสมัครดูเวลาด้วย จะได้เทียบกับแชท LINE ที่เขาทักมาได้ */
+function thDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (!iso || !isFinite(d.getTime())) return "—";
+  return `${thDate(iso)} ${d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.`;
+}
+
+/* ── ใบสมัครที่ผู้สมัครกรอกมา ── */
+
+/** แผงรายละเอียดใต้แถว (เต็มความกว้างแถว) — ข้อความยาว/ขึ้นบรรทัดใหม่แสดงครบ ไม่ตัด */
+function InfoPanel({ items, children }: { items: [string, ReactNode][]; children?: ReactNode }) {
+  return (
+    <div
+      className="rounded-2xl px-3.5 py-3"
+      style={{ gridColumn: "1 / -1", background: "rgba(255,255,255,0.7)", border: "1px solid rgba(44,129,196,0.14)" }}
+    >
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-[13.5px] leading-relaxed sm:grid-cols-[9.5rem_minmax(0,1fr)]">
+        {items.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+              {label}
+            </dt>
+            <dd className="min-w-0 whitespace-pre-wrap break-words text-slate-800">
+              {value || <span style={{ color: "var(--dk-faint)" }}>— ไม่มีข้อมูล</span>}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {children}
+    </div>
+  );
+}
+
+const accountLine = (a: { name: string; email: string; phone: string }) => [a.name, a.email, a.phone].filter(Boolean).join(" · ");
+
+const ORDERS_NOTE = "นับเฉพาะใบที่ล็อกอินสั่ง — ใบที่สั่งแบบไม่ล็อกอินไม่ถูกนับ";
+
+/** ใบรออนุมัติ — กางให้เสมอ ต้องอ่านก่อนตัดสินใจ · ต่อท้ายด้วยข้อมูลบัญชีเท่าที่ระบบมี (เขาไม่ได้กรอกในใบสมัคร) */
+function ApplicationPanel({ a }: { a: ApplicationRow }) {
+  return (
+    <InfoPanel
+      items={[
+        ["ชื่อร้าน/ธุรกิจ", a.shopName],
+        ["ช่องทางขาย", a.channel],
+        ["รายละเอียดเพิ่มเติม", a.detail],
+        ["สมัครเมื่อ", thDateTime(a.at)],
+        ["บัญชีสมาชิก", accountLine(a)],
+        ["เบอร์โทร", a.phone || "ไม่ได้กรอกในโปรไฟล์ — ขอจากเขาตอนทักไลน์"],
+        ["ที่อยู่ในโปรไฟล์", a.address],
+        ["สมัครสมาชิกเว็บ", thDateTime(a.joinedAt)],
+        ["ล็อกอินล่าสุด", thDateTime(a.lastSignInAt)],
+        ["ออเดอร์ด้วยบัญชีนี้", `${a.orders} ใบ (${ORDERS_NOTE})`],
+      ]}
+    />
+  );
+}
+
+/**
+ * รายละเอียดตัวแทนที่อนุมัติแล้ว — ข้อมูลร้าน (จากใบสมัคร หรือแอดมินกรอกย้อนหลัง) + บัญชี + ผู้ส่งบนกล่อง + ออเดอร์
+ * คนที่ถูกเพิ่มก่อนระบบเก็บใบสมัคร (17 ก.ย. 69) หรือเพิ่มด้วยอีเมล = ไม่มีข้อมูลร้าน → กด ✏️ กรอกเองได้
+ */
+function DealerPanel({
+  d,
+  onSave,
+}: {
+  d: DealerRow;
+  onSave: (app: { shopName: string; channel: string; detail: string }) => Promise<boolean>;
+}) {
+  const app = d.application;
+  const [editing, setEditing] = useState(false);
+  const [shopName, setShopName] = useState(app?.shopName ?? d.note);
+  const [channel, setChannel] = useState(app?.channel ?? "");
+  const [detail, setDetail] = useState(app?.detail ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    if (await onSave({ shopName, channel, detail })) setEditing(false);
+    setSaving(false);
+  }
+
+  const sender = d.sender ? [d.sender.name, d.sender.phone, d.sender.address].filter(Boolean).join("\n") : "";
+  return (
+    <InfoPanel
+      items={[
+        ["ชื่อร้าน/ธุรกิจ", app?.shopName || d.note],
+        ["ช่องทางขาย", app?.channel ?? ""],
+        ["รายละเอียดเพิ่มเติม", app?.detail ?? ""],
+        ["ที่มาข้อมูลร้าน", app ? (app.at ? `ตัวแทนกรอกเองตอนสมัคร · ${thDateTime(app.at)}` : "แอดมินกรอกให้") : "ยังไม่มี — เพิ่มเข้าทะเบียนก่อนที่ระบบจะเก็บใบสมัคร กด ✏️ กรอกเองได้"],
+        ["บัญชีสมาชิก", accountLine(d)],
+        ["ที่อยู่ในโปรไฟล์", d.address],
+        ["ผู้ส่งบนกล่อง", sender || "ยังไม่ได้ตั้ง (ใช้ชื่อร้านเรา) — ตัวแทนตั้งเองได้ที่หน้าบัญชีของเขา"],
+        ["สมัครสมาชิกเว็บ", thDate(d.joinedAt)],
+        ["ล็อกอินล่าสุด", thDateTime(d.lastSignInAt)],
+        ["เป็นตัวแทนตั้งแต่", thDateTime(d.since)],
+        ["ออเดอร์ด้วยบัญชีนี้", `${d.orders} ใบ (${ORDERS_NOTE})`],
+      ]}
+    >
+      {editing ? (
+        <div className="mt-3 grid gap-2.5 border-t border-slate-200/70 pt-3 sm:grid-cols-2">
+          <Field label="ชื่อร้าน/ธุรกิจ" value={shopName} onChange={setShopName} placeholder="เช่น Baby cute case" />
+          <Field label="ช่องทางขาย" value={channel} onChange={setChannel} placeholder="เช่น IG : … / Facebook / หน้าร้าน" />
+          <div className="sm:col-span-2">
+            <Field label="รายละเอียดเพิ่มเติม (ไม่บังคับ)" value={detail} onChange={setDetail} rows={2} placeholder="เช่น ขายสินค้าอะไร สั่งประมาณเดือนละเท่าไหร่" />
+          </div>
+          <p className="text-[12px] sm:col-span-2" style={{ color: "var(--dk-navy-soft)" }}>
+            ใส่เฉพาะข้อมูลร้าน — ห้ามใส่เบอร์โทร/ที่อยู่ส่วนตัวในช่องเหล่านี้
+          </p>
+          <div className="flex gap-2 sm:col-span-2">
+            <Btn small tone="navy" disabled={saving || shopName.trim().length < 2} onClick={save}>
+              {saving ? "กำลังบันทึก…" : "💾 บันทึก"}
+            </Btn>
+            <Btn small tone="ghost" disabled={saving} onClick={() => setEditing(false)}>
+              ยกเลิก
+            </Btn>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 border-t border-slate-200/70 pt-3">
+          <Btn small tone="ghost" onClick={() => setEditing(true)}>
+            ✏️ {app ? "แก้ข้อมูลร้าน" : "กรอกข้อมูลร้าน"}
+          </Btn>
+        </div>
+      )}
+    </InfoPanel>
+  );
 }
 
 /* ── กล่องคู่มือ "วิธีเพิ่มตัวแทน" ── */
@@ -85,13 +234,15 @@ function HowToAddDealer({ open }: { open: boolean }) {
             <li className={HOWTO_STEP}>
               <span className={HOWTO_NUM} style={{ background: "var(--dk-mint-ink)" }}>2</span>
               <span>
-                ใบสมัครเด้งแจ้งเตือนเข้า LINE ร้าน และขึ้นแถบ <b>📥 รออนุมัติ</b> บนสุดของหน้านี้ (ถ้าไม่มีแถบ = ยังไม่มีใครสมัคร)
+                ใบสมัครเด้งแจ้งเตือนเข้า LINE ร้าน และขึ้นแถบ <b>📥 รออนุมัติ</b> บนสุดของหน้านี้ (ถ้าไม่มีแถบ = ยังไม่มีใครสมัคร) ·
+                หน้าสมัครบอกลูกค้าไว้แล้วว่า<b>ค่าสมัคร 200 บาท</b> และให้ทักไลน์ร้านหลังส่งใบ — รอเขาทักมา + ชำระค่าสมัครก่อนค่อยอนุมัติ
               </span>
             </li>
             <li className={HOWTO_STEP}>
               <span className={HOWTO_NUM} style={{ background: "var(--dk-mint-ink)" }}>3</span>
               <span>
-                กด <kbd className={KEY}>✅ อนุมัติ</kbd> → ย้ายเข้ารายชื่อตัวแทนทันที (ชื่อร้านที่กรอกมากลายเป็นโน้ตให้เอง) · ไม่ผ่านกด{" "}
+                กด <kbd className={KEY}>✅ อนุมัติ</kbd> → ย้ายเข้ารายชื่อตัวแทนทันที (ชื่อร้านที่กรอกมากลายเป็นโน้ตให้เอง · ใบสมัครเก็บไว้ กด{" "}
+                <kbd className={KEY}>📄 ดูรายละเอียด</kbd> ท้ายชื่อดูย้อนหลังได้) · ไม่ผ่านกด{" "}
                 <kbd className={KEY}>ปฏิเสธ</kbd> 2 ครั้ง ใบสมัครหาย ลูกค้าสมัครใหม่ได้
               </span>
             </li>
@@ -168,6 +319,8 @@ export default function AdminDealersPage() {
   const [acting, setActing] = useState("");
   /** uid ที่กด "ถอดออก"/"ปฏิเสธ" ครั้งแรกแล้ว — กดซ้ำถึงทำจริง (ยืนยันในที่ ไม่เด้ง dialog) */
   const [confirmKey, setConfirmKey] = useState("");
+  /** uid ของตัวแทนที่กางรายละเอียดดูอยู่ (ใบรออนุมัติกางให้เสมอ — ต้องอ่านก่อนตัดสินใจ) */
+  const [openApp, setOpenApp] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -191,7 +344,7 @@ export default function AdminDealersPage() {
   }, [load]);
 
   /** ยิงคำสั่งจัดการ (approve/reject/เพิ่ม/แก้โน้ต) แล้วโหลดรายชื่อใหม่ */
-  async function manage(body: Record<string, string>): Promise<boolean> {
+  async function manage(body: Record<string, unknown>): Promise<boolean> {
     setErr("");
     try {
       const res = await fetch("/api/admin/dealers", {
@@ -295,8 +448,6 @@ export default function AdminDealersPage() {
                       <span>{a.name || a.email || a.uid.slice(0, 8)}</span>
                       {a.email && <span> · {a.email}</span>}
                       {a.phone && <span> · {a.phone}</span>}
-                      <span> · ช่องทาง: {a.channel}</span>
-                      {a.detail && <span> · {a.detail}</span>}
                       <span> · สมัคร {thDate(a.at)}</span>
                     </>
                   }
@@ -314,6 +465,7 @@ export default function AdminDealersPage() {
                     {confirmKey === `rej:${a.uid}` ? "กดอีกครั้งเพื่อปฏิเสธ" : "ปฏิเสธ"}
                   </Btn>
                 </RowSide>
+                <ApplicationPanel a={a} />
               </Row>
             ))}
           </Rows>
@@ -367,6 +519,9 @@ export default function AdminDealersPage() {
                 }
               />
               <RowSide>
+                <Btn small tone="ghost" onClick={() => setOpenApp((o) => ({ ...o, [d.uid]: !o[d.uid] }))}>
+                  {openApp[d.uid] ? "ซ่อนรายละเอียด" : "📄 ดูรายละเอียด"}
+                </Btn>
                 <Btn
                   small
                   tone={confirmKey === `rm:${d.uid}` ? "navy" : "ghost"}
@@ -375,6 +530,7 @@ export default function AdminDealersPage() {
                   {confirmKey === `rm:${d.uid}` ? "กดอีกครั้งเพื่อถอดออก" : "ถอดออก"}
                 </Btn>
               </RowSide>
+              {openApp[d.uid] && <DealerPanel d={d} onSave={(application) => manage({ uid: d.uid, application })} />}
             </Row>
           ))}
         </Rows>

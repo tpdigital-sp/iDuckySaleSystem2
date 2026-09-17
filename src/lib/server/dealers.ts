@@ -16,6 +16,11 @@ export interface DealerEntry {
   note?: string;
   /** วันที่เพิ่มเป็นตัวแทน (ISO) */
   since: string;
+  /**
+   * ใบสมัครที่เขากรอกมาจากหน้า /dealer — เก็บติดตัวไว้ตอนอนุมัติ ให้แอดมินเปิดดูย้อนหลังได้
+   * (เดิมอนุมัติแล้วลบใบทิ้ง เหลือแค่ชื่อร้านเป็นโน้ต ช่องทางขาย/รายละเอียดหาย) · เพิ่มด้วยอีเมลตรง ๆ = ไม่มี
+   */
+  application?: DealerApplication;
 }
 
 export type DealersMap = Record<string, DealerEntry>;
@@ -46,6 +51,18 @@ const TTL = 10_000;
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
+/** ใบสมัครจากค่าดิบใน DB — ไม่มีชื่อร้าน = ไม่ใช่ใบสมัคร */
+function appOf(v: unknown): DealerApplication | null {
+  const a = (v ?? {}) as Partial<DealerApplication>;
+  if (!a.shopName) return null;
+  return {
+    shopName: str(a.shopName, 120),
+    channel: str(a.channel, 200),
+    at: typeof a.at === "string" ? a.at : "",
+    ...(a.detail ? { detail: str(a.detail, 500) } : {}),
+  };
+}
+
 /** ทะเบียน + ใบสมัครทั้งเอกสาร (ว่าง = ยังไม่มี) */
 export async function loadDealersDoc(): Promise<DealersDoc> {
   if (cache && Date.now() - cache.at < TTL) return cache.doc;
@@ -59,18 +76,17 @@ export async function loadDealersDoc(): Promise<DealersDoc> {
   for (const [uid, v] of Object.entries(raw.users ?? {})) {
     if (!uid) continue;
     const e = (v ?? {}) as Partial<DealerEntry>;
-    doc.users[uid] = { since: typeof e.since === "string" ? e.since : "", ...(e.note ? { note: String(e.note) } : {}) };
+    const application = appOf(e.application);
+    doc.users[uid] = {
+      since: typeof e.since === "string" ? e.since : "",
+      ...(e.note ? { note: String(e.note) } : {}),
+      ...(application ? { application } : {}),
+    };
   }
   for (const [uid, v] of Object.entries(raw.applications ?? {})) {
     if (!uid) continue;
-    const a = (v ?? {}) as Partial<DealerApplication>;
-    if (!a.shopName) continue;
-    doc.applications[uid] = {
-      shopName: str(a.shopName, 120),
-      channel: str(a.channel, 200),
-      at: typeof a.at === "string" ? a.at : "",
-      ...(a.detail ? { detail: str(a.detail, 500) } : {}),
-    };
+    const a = appOf(v);
+    if (a) doc.applications[uid] = a;
   }
   cache = { at: Date.now(), doc };
   return doc;

@@ -114,6 +114,11 @@ export default function DealerApplyPage() {
     }
   }
 
+  // ข้อความตั้งต้นในแชท (มือถือ) — แอดมินจับคู่กับใบสมัครในหลังบ้านได้จากชื่อร้าน · ไม่ใส่อีเมล/เบอร์ลงลิงก์
+  const lineHref = `${LINE_URL}?text=${encodeURIComponent(
+    `สมัครตัวแทนจำหน่ายบนเว็บแล้ว${shopName.trim() ? ` ชื่อร้าน: ${shopName.trim()}` : ""} ขอชำระค่าสมัคร 200 บาท และรออนุมัติ`
+  )}`;
+
   const showForm = customer && me && !me.dealer && (!me.applied || editing) && !sent;
 
   return (
@@ -133,6 +138,27 @@ export default function DealerApplyPage() {
             <li>✅ สั่งจำนวนน้อยก็ได้ราคาตัวแทน ไม่มีขั้นต่ำ</li>
             <li>ℹ️ ราคาตัวแทนใช้แทนส่วนลด/คูปอง/ของแถมทุกรายการ</li>
           </ul>
+
+          {/* 💵 ค่าสมัคร + ขั้นตอน — บอกก่อนกรอก กันลูกค้าส่งใบแล้วนั่งรอเฉย ๆ (ร้านอนุมัติเมื่อทักไลน์มาแล้วเท่านั้น) */}
+          {!me?.dealer && (
+            <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+              <p className="text-sm font-extrabold text-stone-800">
+                💵 ค่าสมัครตัวแทน <span className="text-teal-700">200 บาท</span>
+              </p>
+              <ol className="mt-1.5 space-y-1 text-xs leading-relaxed text-stone-600">
+                <li>
+                  <b>1.</b> เข้าสู่ระบบ / สมัครสมาชิก
+                </li>
+                <li>
+                  <b>2.</b> กรอกใบสมัครด้านล่าง แล้วกดส่ง
+                </li>
+                <li>
+                  <b>3. ขั้นตอนสุดท้าย — ทักไลน์ร้าน</b>แจ้งว่าสมัครตัวแทนแล้ว เพื่อชำระค่าสมัครและให้ร้านกดอนุมัติ
+                  (อนุมัติแล้วบัญชีนี้เห็นราคาตัวแทนทันที)
+                </li>
+              </ol>
+            </div>
+          )}
 
           <div className="mt-5">
             {loading || (customer && me === null) ? (
@@ -207,11 +233,22 @@ export default function DealerApplyPage() {
               </form>
             ) : (
               <div className="rounded-2xl bg-sky-50 px-4 py-4 text-center">
-                <p className="text-sm font-bold text-sky-700">📨 ส่งใบสมัครเรียบร้อยแล้ว</p>
-                <p className="mt-1 text-xs text-sky-600">
-                  ทางร้านจะตรวจและติดต่อกลับ — ได้รับอนุมัติเมื่อไหร่ บัญชีนี้จะเห็นราคาตัวแทนทันที
+                <p className="text-sm font-bold text-sky-700">📨 ส่งใบสมัครแล้ว — เหลืออีกขั้นตอนเดียว</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-sky-700">
+                  <b>ขั้นตอนสุดท้าย: ทักไลน์ร้าน</b>แจ้งว่าสมัครตัวแทนแล้ว เพื่อชำระค่าสมัคร <b>200 บาท</b> และให้ร้านกดอนุมัติ
                 </p>
-                <div className="mt-3 flex justify-center gap-2">
+                <p className="mt-1 text-[11px] text-sky-600">
+                  ⚠️ ยังไม่ทักไลน์ = ร้านยังไม่อนุมัติ · อนุมัติเมื่อไหร่ บัญชีนี้เห็นราคาตัวแทนทันที
+                </p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  <a
+                    href={lineHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full rounded-full bg-[#06C755] px-5 py-3 text-sm font-bold text-white transition hover:brightness-95"
+                  >
+                    💬 ขั้นตอนสุดท้าย: ทักไลน์ร้าน
+                  </a>
                   <button
                     type="button"
                     onClick={() => {
@@ -222,14 +259,6 @@ export default function DealerApplyPage() {
                   >
                     ✏️ แก้ไขใบสมัคร
                   </button>
-                  <a
-                    href={LINE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
-                  >
-                    💬 ทักไลน์ร้าน
-                  </a>
                 </div>
               </div>
             )}
