@@ -189,6 +189,12 @@ export async function reportPaidToTP(
         // 🎯 เลขอ้างอิงธุรกรรม (SlipOK transRef) — msVerify เอาไปเทียบตอนตรวจสลิปซ้ำ ("" = ไม่มี เช่น แอดมินยืนยันเอง)
         slipRefNo: slipRefNoFor(order, isFinal, opts?.slipPath),
         verifiedBy,
+        // 🧑‍💼 ใครทำใบสั่งซื้อ — ชื่อพนักงานที่ทำบิลให้ (สั่งแทน/งานพิเศษ/ใบเสนอราคา/FlowAccount/redo) · "" = ลูกค้าสั่งเองจากเว็บ
+        //    msVerify แท็บ 🛒 โชว์คอลัมน์ "ทำใบสั่งซื้อ" (ไม่มีฟิลด์นี้ = doc เก่า ยังไม่รู้ → scripts/backfill-tp-placedby.mjs)
+        placedBy: order.placedBy || "",
+        // 💬 LINE userId ของลูกค้า ("" = ยังไม่ผูก) — รายงาน "ตรวจคนทำใบสั่งซื้อ" (หน้า Reward ฝั่ง Admin) ใช้จับคู่ออเดอร์ ↔ งานลูกค้า
+        //    ชื่อบนเว็บเป็นชื่อจริง แต่งานลูกค้าเก็บชื่อ LINE → จับด้วยชื่อแทบไม่เจอ (17 ก.ย. 69: ไม่พบ 208/258 ใบ)
+        lineUserId: order.lineUserId || "",
         // 🔥 งานเร่ง + วันที่ลูกค้าต้องใช้งาน — บอร์ด WIP กราฟฟิกเอาไปติดป้ายแดง/จัดคิว (แก้ทีหลังผ่าน syncRushToTP)
         rush: !!order.rush,
         useByDate: order.useByDate || "",
