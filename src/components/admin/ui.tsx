@@ -423,6 +423,42 @@ export function StockWaitBar({ o }: { o: { needsPurchase?: { note?: string; arri
   );
 }
 
+/**
+ * 📅 บล็อกวันที่ซ้ายสุดของแถว — ใช้เมื่อ "วันไหน" คือสิ่งแรกที่คนเปิดหน้านี้ต้องเห็น (เช่น วันนัดรับของ)
+ * วางเป็นลูกตัวแรกของ <Row> · เลขวันตัวใหญ่สุดในแถว + ป้ายนับถอยหลังเป็นข้อความ (ไม่พึ่งสีอย่างเดียว)
+ * tone: today = วันนี้ (เหลืองเต็ม) · late = เลยวัน (ขอบคอรัล) · soon = พรุ่งนี้ · later = ถัดไป · none = ยังไม่ระบุ · done = จบแล้ว
+ */
+export function RowDate({
+  wd,
+  day,
+  mon,
+  note,
+  tone,
+  title,
+}: {
+  wd?: string;
+  day?: string;
+  mon?: string;
+  note: string;
+  tone: "today" | "late" | "soon" | "later" | "none" | "done";
+  title?: string;
+}) {
+  return (
+    <span className="dkb-date" data-tone={tone} title={title}>
+      {day ? (
+        <>
+          <span className="wd">{wd}</span>
+          <span className="dkb-num d">{day}</span>
+          <span className="m">{mon}</span>
+        </>
+      ) : (
+        <span className="dkb-num d">—</span>
+      )}
+      <span className="n">{note}</span>
+    </span>
+  );
+}
+
 export function RowSide({ children }: { children: ReactNode }) {
   return <span className="dkb-side">{children}</span>;
 }

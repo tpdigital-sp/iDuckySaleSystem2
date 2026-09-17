@@ -446,6 +446,47 @@
 .dkb-stockwait small { font-size: 0.74rem; font-weight: 600; opacity: 0.95; min-width: 0; overflow-wrap: anywhere; }
 .dkb-lrow[data-done="1"] .dkb-stockwait { opacity: 0.6; }
 
+/*
+ * 📅 บล็อกวันที่ซ้ายสุดของแถว (<RowDate>) — เลขวันใหญ่สุดในแถว อ่านได้จากระยะแขน
+ * แถวที่มีบล็อกนี้ได้คอลัมน์ที่ 3 เอง (:has) · จอแคบ: ปุ่มลงไปอยู่ใต้ชื่อ เต็มความกว้าง กดด้วยนิ้วโป้งได้
+ */
+.dkb-lrow:has(> .dkb-date) {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "date main side" "date dots dots";
+  align-items: center;
+}
+.dkb-date {
+  grid-area: date; align-self: stretch; width: 74px; padding: 7px 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border-radius: 15px; text-align: center; line-height: 1.15; color: var(--dk-navy);
+  background: rgba(255, 255, 255, 0.78); box-shadow: inset 0 0 0 1px var(--dk-hair);
+}
+.dkb-date .wd { font-size: 0.72rem; font-weight: 600; color: var(--dk-navy-soft); }
+.dkb-date .d { font-size: 1.85rem; font-weight: 600; }
+.dkb-date .m { font-size: 0.74rem; font-weight: 600; }
+.dkb-date .n {
+  margin-top: 4px; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  font-size: 0.66rem; font-weight: 700; background: rgba(23, 58, 107, 0.08); color: var(--dk-navy);
+}
+.dkb-date[data-tone="today"] { background: var(--dk-yolk); box-shadow: 0 6px 14px rgba(255, 182, 39, 0.35), inset 0 0 0 1px var(--dk-yolk-deep); }
+.dkb-date[data-tone="today"] .wd { color: var(--dk-yolk-ink); }
+.dkb-date[data-tone="today"] .n { background: var(--dk-navy); color: #fff; }
+.dkb-date[data-tone="late"] { background: var(--dk-coral-wash); color: var(--dk-coral-ink); box-shadow: inset 0 0 0 2px var(--dk-coral-deep); }
+.dkb-date[data-tone="late"] .wd { color: var(--dk-coral-ink); }
+.dkb-date[data-tone="late"] .n { background: var(--dk-coral-ink); color: #fff; }
+.dkb-date[data-tone="soon"] { background: var(--dk-sky); box-shadow: inset 0 0 0 1px var(--dk-sky-300); }
+.dkb-date[data-tone="soon"] .n { background: var(--dk-blue-deep); color: #fff; }
+.dkb-date[data-tone="none"] { background: transparent; box-shadow: none; border: 1.5px dashed var(--dk-faint); color: var(--dk-navy-soft); }
+.dkb-date[data-tone="none"] .d { font-size: 1.3rem; color: var(--dk-faint); }
+.dkb-date[data-tone="done"] { background: rgba(255, 255, 255, 0.45); color: var(--dk-faint); }
+.dkb-date[data-tone="done"] .wd { color: var(--dk-faint); }
+.dkb-date[data-tone="done"] .n { background: var(--dk-quiet); color: var(--dk-navy-soft); }
+@media (max-width: 640px) {
+  .dkb-lrow:has(> .dkb-date) { grid-template-areas: "date main" "side side"; grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .dkb-lrow:has(> .dkb-date) .dkb-side { flex-direction: row; align-items: stretch; }
+  .dkb-lrow:has(> .dkb-date) .dkb-side .dkb-btn { flex: 1; min-height: 44px; }
+}
+
 .dkb-side { grid-area: side; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; text-align: right; }
 .dkb-amt { font-weight: 600; font-variant-numeric: tabular-nums; font-size: 1.02rem; }
 .dkb-amt small { display: block; font-size: 0.7rem; font-weight: 600; }

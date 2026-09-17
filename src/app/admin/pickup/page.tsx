@@ -4,7 +4,10 @@
  * 🏪 ลูกค้าที่มารับเอง /admin/pickup — เมนูกลุ่มงานขาย (เจ้าของร้านสั่ง 17 ก.ย. 69)
  *
  * ลูกค้าเดินมาหน้าร้านแล้วบอกชื่อ/เบอร์/เลขออเดอร์ → หาใบเจอในช่องค้นหาทันที ไม่ต้องไล่ลิสต์คำสั่งซื้อทั้งร้าน
- * ตัวเลขข้างเมนู (AdminShell) = กอง "แพ็คเสร็จ รอมารับ" → ของที่วางรออยู่หน้าร้าน
+ * 📅 จัดวางรอบ 2 (เจ้าของร้านสั่ง "ให้วันที่มารับเด่น"): ทุกแถวมีบล็อกวันนัดรับตัวใหญ่ซ้ายสุด และรายการเรียงเป็นกลุ่มตามวัน
+ *    วันนี้ → เลยวันนัด → พรุ่งนี้ → ถัดไป → ยังไม่ระบุวัน · วันนัดรับ = Order.shipDate (ช่อง "วันที่จัดส่ง" ในหน้าออเดอร์)
+ * ใบที่ยังไม่โอน (รอชำระเงิน) ไม่เข้าหน้านี้ — API ตัดออกให้แล้ว
+ * ตัวเลขข้างเมนู (AdminShell) = ใบ "แพ็คเสร็จ รอมารับ" → ของที่วางรออยู่หน้าร้าน
  * ปุ่ม "✓ ลูกค้ารับของแล้ว" = จดคนส่งมอบ/เวลา + ปิดงานเป็นเสร็จสิ้น (ใบค้างยอดกดไม่ได้ ต้องเก็บเงินในหน้าออเดอร์ก่อน)
  */
 
@@ -12,18 +15,41 @@ import RequirePerm from "@/components/RequirePerm";
 import { useCan } from "@/lib/perm-context";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import StatusChip from "@/components/admin/StatusChip";
-import { ORDER_STATUSES } from "@/lib/admin-data";
 import { usePolling } from "@/lib/use-polling";
-import { Banner, Btn, Empty, FChip, FilterCard, HeroStat, ListHead, PageHead, PageShell, Row, RowMain, RowSide, Rows, SearchBox, Stat, Stats, TabRow, Tag } from "@/components/admin/ui";
+import { addDays, shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
+import { bkkParts } from "@/lib/bangkok-time";
+import { Banner, Btn, Empty, FChip, FilterCard, HeroStat, ListHead, PageHead, PageShell, Row, RowDate, RowMain, RowSide, Rows, SearchBox, Stat, Stats, TabRow, Tag } from "@/components/admin/ui";
 import type { PickupRow } from "@/app/api/admin/orders/pickup/route";
 
-type Group = PickupRow["group"];
+type View = "open" | "ready" | "working" | "done";
+/** กลุ่มตามวันนัดรับ — ลำดับนี้คือลำดับที่โชว์บนจอ (ลูกค้าที่ยืนอยู่หน้าร้านส่วนใหญ่คือนัดวันนี้) */
+type Bucket = "today" | "late" | "tomorrow" | "later" | "none";
+const BUCKETS: Bucket[] = ["today", "late", "tomorrow", "later", "none"];
 
 const thTime = (iso?: string) => {
   const d = iso ? new Date(iso) : null;
   return d && isFinite(d.getTime()) ? d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 };
 const baht = (n: number) => `฿${n.toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
+const digits = (s: string) => s.replace(/\D/g, "");
+
+/** เวลา ISO → วันที่ตามเวลาไทย YYYY-MM-DD */
+function isoToBkkDay(iso: string): string {
+  const p = bkkParts(new Date(iso));
+  return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+}
+
+/** ห่างกันกี่วัน (b − a) ของ YYYY-MM-DD สองค่า */
+function dayDiff(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+
+/** ชิ้นส่วนของวันที่สำหรับบล็อกวันที่: "ศ." · "18" · "ก.ย." */
+function dateParts(ymd: string): { wd: string; day: string; mon: string } {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  const f = (o: Intl.DateTimeFormatOptions) => d.toLocaleDateString("th-TH", { timeZone: "UTC", ...o });
+  return { wd: f({ weekday: "short" }), day: String(d.getUTCDate()), mon: f({ month: "short" }) };
+}
 
 /** ของวางรอมากี่วันแล้ว — ใบที่ค้างนานคือใบที่ต้องทักตามลูกค้า */
 function waitedDays(iso?: string): number {
@@ -32,18 +58,21 @@ function waitedDays(iso?: string): number {
   return isFinite(ms) && ms > 0 ? Math.floor(ms / 86_400_000) : 0;
 }
 
-/** ค้างหน้าร้านเกินเท่านี้ = ควรทักตามลูกค้า */
-const FOLLOW_UP_DAYS = 3;
-
-const TONE: Record<Group, string> = { ready: "var(--dk-mint)", working: "var(--dk-yolk)", done: "var(--dk-faint)" };
-const digits = (s: string) => s.replace(/\D/g, "");
+/** ใบนี้อยู่กลุ่มวันไหน — นัดเป็นช่วงวัน: ยังอยู่ในช่วง = วันนี้ · เลยวันสุดท้ายของช่วง = เลยนัด */
+function bucketOf(r: PickupRow, today: string): Bucket {
+  if (!r.pickupDate) return "none";
+  const last = r.pickupTo ?? r.pickupDate;
+  if (last < today) return "late";
+  if (r.pickupDate <= today) return "today";
+  return r.pickupDate === addDays(today, 1) ? "tomorrow" : "later";
+}
 
 function PickupInner() {
   const can = useCan();
   const mayHandOver = can("orders.edit") || can("pack.ship");
   const [rows, setRows] = useState<PickupRow[] | null>(null);
   const [reason, setReason] = useState("");
-  const [tab, setTab] = useState<Group | null>(null);
+  const [view, setView] = useState<View>("open");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -63,17 +92,12 @@ function PickupInner() {
   }, [load]);
   usePolling(load, { intervalMs: 60_000 });
 
+  const today = todayBkkYmd();
   const all = useMemo(() => rows ?? [], [rows]);
-  const by = useMemo(() => {
-    const g: Record<Group, PickupRow[]> = { ready: [], working: [], done: [] };
-    for (const r of all) g[r.group].push(r);
-    // รอมารับ = วางรอนานสุดขึ้นก่อน (ต้องทักตาม) · รับไปแล้ว = ล่าสุดขึ้นก่อน
-    g.ready.sort((a, b) => (a.packedAt ?? a.date).localeCompare(b.packedAt ?? b.date));
-    // กำลังทำ = ใกล้เสร็จขึ้นก่อน (กำลังผลิต → … → รอชำระเงิน) — ใบที่ลูกค้าจะมาถามถึงก่อนอยู่บนสุด
-    g.working.sort((a, b) => ORDER_STATUSES.indexOf(b.status) - ORDER_STATUSES.indexOf(a.status));
-    g.done.sort((a, b) => (b.pickedUpAt ?? "").localeCompare(a.pickedUpAt ?? ""));
-    return g;
-  }, [all]);
+  const open = useMemo(() => all.filter((r) => r.group !== "done"), [all]);
+  const ready = useMemo(() => open.filter((r) => r.group === "ready"), [open]);
+  const working = useMemo(() => open.filter((r) => r.group === "working"), [open]);
+  const done = useMemo(() => all.filter((r) => r.group === "done").sort((a, b) => (b.pickedUpAt ?? "").localeCompare(a.pickedUpAt ?? "")), [all]);
 
   // ค้นหา = ลูกค้ายืนอยู่ตรงหน้า → หาทุกกองพร้อมกัน ไม่ต้องเดาว่าใบอยู่แท็บไหน
   const needle = q.trim().toLowerCase();
@@ -81,20 +105,30 @@ function PickupInner() {
   const found = useMemo(() => {
     if (!searching) return [];
     const nd = digits(needle);
-    const rank: Record<Group, number> = { ready: 0, working: 1, done: 2 };
+    const rank = { ready: 0, working: 1, done: 2 } as const;
     return all
       .filter((r) => r.customer.toLowerCase().includes(needle) || r.id.toLowerCase().includes(needle) || (nd.length >= 3 && (digits(r.phone ?? "").includes(nd) || digits(r.id).includes(nd))))
       .sort((a, b) => rank[a.group] - rank[b.group]);
   }, [all, needle, searching]);
 
-  // ยังไม่เลือกแท็บเอง → เปิดกองที่ต้องลงมือก่อน: มีของรอรับ = รอมารับ · ไม่มี = กำลังทำ
-  const active: Group = tab ?? (by.ready.length || !by.working.length ? "ready" : "working");
-  const shown = searching ? found : by[active];
-  const longest = by.ready.reduce((m, r) => Math.max(m, waitedDays(r.packedAt)), 0);
-  const stale = by.ready.filter((r) => waitedDays(r.packedAt) >= FOLLOW_UP_DAYS).length;
-  const readyDue = by.ready.filter((r) => r.due > 0);
+  /** แบ่งกลุ่มตามวันนัดรับ — ในกลุ่มเดียวกัน: วันใกล้สุดก่อน แล้วใบที่ยังไม่เสร็จขึ้นก่อน (คือใบที่ต้องเร่ง) */
+  const sections = useMemo(() => {
+    const src = view === "ready" ? ready : view === "working" ? working : open;
+    const g: Record<Bucket, PickupRow[]> = { today: [], late: [], tomorrow: [], later: [], none: [] };
+    for (const r of src) g[bucketOf(r, today)].push(r);
+    for (const k of BUCKETS)
+      g[k].sort((a, b) => (a.pickupDate ?? "").localeCompare(b.pickupDate ?? "") || Number(a.group === "ready") - Number(b.group === "ready") || a.id.localeCompare(b.id));
+    return g;
+  }, [view, open, ready, working, today]);
+
+  const inBucket = (k: Bucket) => open.filter((r) => bucketOf(r, today) === k);
+  const dueToday = inBucket("today");
+  const dueTodayReady = dueToday.filter((r) => r.group === "ready").length;
+  const late = inBucket("late");
+  const lateNotReady = late.filter((r) => r.group === "working").length;
+  const tomorrow = inBucket("tomorrow");
+  const readyDue = ready.filter((r) => r.due > 0);
   const readyDueSum = readyDue.reduce((s, r) => s + r.due, 0);
-  const open = by.ready.length + by.working.length;
 
   async function handOver(r: PickupRow) {
     if (busy) return;
@@ -121,6 +155,92 @@ function PickupInner() {
     }
   }
 
+  /** บล็อกวันที่ซ้ายสุดของแถว — ใบที่รับไปแล้วโชว์วันที่รับจริง */
+  function dateBlock(r: PickupRow) {
+    if (r.group === "done") {
+      const ymd = r.pickedUpAt ? isoToBkkDay(r.pickedUpAt) : r.pickupDate;
+      return ymd ? <RowDate {...dateParts(ymd)} note="รับแล้ว" tone="done" title={r.pickedUpAt ? `รับของ ${thTime(r.pickedUpAt)}` : undefined} /> : <RowDate note="รับแล้ว" tone="done" />;
+    }
+    if (!r.pickupDate) return <RowDate note="ยังไม่นัดวัน" tone="none" title="ยังไม่ได้ระบุวันนัดรับ — กรอกช่อง “วันที่จัดส่ง” ในหน้าออเดอร์" />;
+    const b = bucketOf(r, today);
+    const p = dateParts(r.pickupDate);
+    const n = dayDiff(today, r.pickupDate);
+    const note = b === "today" ? "วันนี้" : b === "tomorrow" ? "พรุ่งนี้" : b === "late" ? `เลย ${dayDiff(r.pickupTo ?? r.pickupDate, today)} วัน` : `อีก ${n} วัน`;
+    return (
+      <RowDate
+        wd={p.wd}
+        day={p.day}
+        mon={r.pickupTo ? `ถึง ${shortThaiDay(r.pickupTo).replace(/^\S+\s/, "")}` : p.mon}
+        note={note}
+        tone={b === "today" ? "today" : b === "late" ? "late" : b === "tomorrow" ? "soon" : "later"}
+        title={`นัดรับ ${shortThaiDay(r.pickupDate)}${r.pickupTo ? ` – ${shortThaiDay(r.pickupTo)}` : ""}`}
+      />
+    );
+  }
+
+  function rowOf(r: PickupRow) {
+    const b = r.group === "done" ? null : bucketOf(r, today);
+    const days = waitedDays(r.packedAt);
+    const href = `/admin/orders/${encodeURIComponent(r.id)}`;
+    // นัดถึงแล้ว/เลยนัด แต่ของยังไม่เสร็จ = ใบที่ร้านต้องเร่ง → แถบซ้ายคอรัล
+    const behind = r.group === "working" && (b === "today" || b === "late");
+    const tone = r.group === "done" ? "var(--dk-faint)" : behind ? "var(--dk-coral-deep)" : r.group === "ready" ? "var(--dk-mint)" : "var(--dk-yolk)";
+    return (
+      <Row key={r.id} tone={tone} done={r.group === "done"}>
+        {dateBlock(r)}
+        <RowMain
+          name={r.customer || "ยังไม่ระบุชื่อ"}
+          href={href}
+          tags={
+            <>
+              <StatusChip s={r.status} label={r.label} />
+              {r.rush && <Tag tone="solid">งานเร่ง</Tag>}
+              {behind && <Tag tone="coral">{b === "today" ? "นัดรับวันนี้ ของยังไม่เสร็จ" : "เลยวันนัด ของยังไม่เสร็จ"}</Tag>}
+              {r.group === "ready" && b === "late" && <Tag tone="yolk">เลยวันนัด ยังไม่มารับ — ทักตาม</Tag>}
+              {r.due > 0 && <Tag tone="coral">{r.group === "ready" ? `เก็บเงินก่อนส่งมอบ ${baht(r.due)}` : `ยังค้าง ${baht(r.due)}`}</Tag>}
+            </>
+          }
+          meta={
+            <>
+              <span className="id">{r.id}</span>
+              {r.phone && (
+                <a href={`tel:${digits(r.phone)}`} className="id" title="โทรหาลูกค้า">
+                  ☎ {r.phone}
+                </a>
+              )}
+              {r.useByDate && r.group !== "done" && <span className={r.useByDate <= today ? "hot" : undefined}>ใช้งาน {shortThaiDay(r.useByDate)}</span>}
+              {r.items.slice(0, 3).map((t, i) => (
+                <span key={i}>{t}</span>
+              ))}
+              {r.items.length > 3 && <span>+ อีก {r.items.length - 3} รายการ</span>}
+              {r.packedAt && r.group === "ready" && (
+                <span>
+                  แพ็คเสร็จ {thTime(r.packedAt)} · {r.packedBy}
+                  {days >= 1 ? ` · วางรอมา ${days} วัน` : ""}
+                </span>
+              )}
+              {r.group === "done" && r.pickedUpAt && (
+                <span>
+                  รับของ {thTime(r.pickedUpAt)} · ส่งมอบโดย {r.pickedUpBy}
+                </span>
+              )}
+            </>
+          }
+        />
+        <RowSide>
+          {r.group === "ready" && mayHandOver && r.due <= 0 ? (
+            <Btn small tone="navy" disabled={busy === r.id} onClick={() => void handOver(r)} title="จดคนส่งมอบ/เวลา แล้วปิดงานเป็นเสร็จสิ้น">
+              {busy === r.id ? "กำลังบันทึก…" : "✓ ลูกค้ารับของแล้ว"}
+            </Btn>
+          ) : null}
+          <Btn small tone={r.group === "ready" && r.due > 0 ? "navy" : undefined} href={href}>
+            {r.group === "ready" && r.due > 0 ? "เปิดใบ → เก็บเงิน" : "เปิดออเดอร์"}
+          </Btn>
+        </RowSide>
+      </Row>
+    );
+  }
+
   if (rows === null) {
     return (
       <PageShell>
@@ -129,13 +249,24 @@ function PickupInner() {
     );
   }
 
+  const SECTION: Record<Bucket, { title: string; note: string }> = {
+    today: { title: `นัดรับวันนี้ · ${shortThaiDay(today)}`, note: "" },
+    late: { title: "เลยวันนัดแล้ว ยังไม่ได้รับ", note: "ทักตามลูกค้า" },
+    tomorrow: { title: `นัดรับพรุ่งนี้ · ${shortThaiDay(addDays(today, 1))}`, note: "" },
+    later: { title: "นัดรับวันถัดไป", note: "" },
+    none: { title: "ยังไม่ได้ระบุวันนัดรับ", note: "กรอกวันที่จัดส่งในหน้าออเดอร์" },
+  };
+  const flat = searching ? found : view === "done" ? done : null;
+  const sectionTotal = BUCKETS.reduce((n, k) => n + sections[k].length, 0);
+  const pick = (v: View) => (setQ(""), setView(v));
+
   return (
     <PageShell>
       <PageHead
         group="งานขาย"
         title="ลูกค้าที่มารับเอง"
-        count={`${open} ใบ`}
-        sub="ออเดอร์ที่เลือกวิธีส่ง “มารับเอง” ทั้งหมด — ลูกค้ามาถึงร้าน ค้นชื่อ เบอร์ หรือเลขออเดอร์ แล้วกดส่งมอบได้จากหน้านี้"
+        count={`${open.length} ใบ`}
+        sub="ออเดอร์ “มารับเอง” ที่โอนแล้ว เรียงตามวันนัดรับ — ลูกค้ามาถึงร้าน ค้นชื่อ เบอร์ หรือเลขออเดอร์ แล้วกดส่งมอบได้จากหน้านี้"
         tools={<SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อ / เบอร์โทร / เลขออเดอร์" />}
       />
 
@@ -147,107 +278,67 @@ function PickupInner() {
 
       <Stats>
         <HeroStat
-          n={by.ready.length}
-          label="แพ็คเสร็จ รอลูกค้ามารับ"
-          detail={by.ready.length ? "ของวางรออยู่หน้าร้าน" : "ยังไม่มีของรอรับ"}
-          pct={open ? (by.ready.length / open) * 100 : 0}
+          n={dueToday.length}
+          label={`นัดรับวันนี้ · ${shortThaiDay(today)}`}
+          detail={dueToday.length ? `แพ็คเสร็จแล้ว ${dueTodayReady} · ยังไม่เสร็จ ${dueToday.length - dueTodayReady}` : "วันนี้ไม่มีนัดรับ"}
+          pct={dueToday.length ? (dueTodayReady / dueToday.length) * 100 : 0}
         />
-        <Stat label="กำลังทำ / ยังไม่โอน" value={by.working.length} hint="ยังไม่พร้อมให้รับ" />
-        <Stat label="วางรอนานสุด" value={by.ready.length ? `${longest} วัน` : "—"} hint={stale ? `เกิน ${FOLLOW_UP_DAYS} วัน ${stale} ใบ ควรทักตาม` : "นับจากวันที่แพ็คเสร็จ"} tone={stale ? "due" : undefined} />
-        <Stat wide label="ต้องเก็บเงินตอนมารับ" value={readyDue.length ? baht(readyDueSum) : "—"} hint={readyDue.length ? `${readyDue.length} ใบ ยังค้างยอด` : "ใบที่รอรับจ่ายครบแล้ว"} tone={readyDue.length ? "due" : undefined} />
+        <Stat label="เลยวันนัด" value={late.length} hint={late.length ? (lateNotReady ? `ของยังไม่เสร็จ ${lateNotReady} ใบ` : "ของพร้อมแล้ว ทักตามลูกค้า") : "ไม่มีใบค้างนัด"} tone={late.length ? "due" : undefined} />
+        <Stat label="นัดรับพรุ่งนี้" value={tomorrow.length} hint={tomorrow.length ? `แพ็คเสร็จแล้ว ${tomorrow.filter((r) => r.group === "ready").length} ใบ` : "ยังไม่มีนัด"} />
+        <Stat
+          wide
+          label="แพ็คเสร็จ รอมารับ"
+          value={ready.length}
+          hint={readyDue.length ? `ต้องเก็บเงินตอนรับ ${baht(readyDueSum)} (${readyDue.length} ใบ)` : ready.length ? "จ่ายครบทุกใบ ส่งมอบได้เลย" : "ยังไม่มีของวางรอ"}
+          tone={readyDue.length ? "due" : undefined}
+        />
       </Stats>
 
       <FilterCard>
         <TabRow>
-          <FChip on={!searching && active === "ready"} onClick={() => (setQ(""), setTab("ready"))} label="แพ็คเสร็จ รอมารับ" count={by.ready.length} />
-          <FChip on={!searching && active === "working"} onClick={() => (setQ(""), setTab("working"))} label="กำลังทำ / ยังไม่โอน" count={by.working.length} />
-          <FChip on={!searching && active === "done"} onClick={() => (setQ(""), setTab("done"))} label="รับไปแล้ว" count={by.done.length} />
+          <FChip on={!searching && view === "open"} onClick={() => pick("open")} label="ยังไม่ได้รับ ทั้งหมด" count={open.length} />
+          <FChip on={!searching && view === "ready"} onClick={() => pick("ready")} label="แพ็คเสร็จ รอมารับ" count={ready.length} />
+          <FChip on={!searching && view === "working"} onClick={() => pick("working")} label="กำลังทำ" count={working.length} />
+          <FChip on={!searching && view === "done"} onClick={() => pick("done")} label="รับไปแล้ว" count={done.length} />
         </TabRow>
       </FilterCard>
 
-      <ListHead
-        title={searching ? `ผลค้นหา “${q.trim()}”` : active === "ready" ? "แพ็คเสร็จ — รอลูกค้ามารับ" : active === "working" ? "ยังไม่พร้อมให้รับ" : "ลูกค้ารับไปแล้ว"}
-        note={searching ? `${found.length} ใบ · หาจากทุกกอง` : active === "ready" ? "วางรอนานสุดขึ้นก่อน" : active === "working" ? "ใกล้เสร็จขึ้นก่อน · ลูกค้ามาถามก็ตอบได้ว่าถึงขั้นไหน" : `ดูย้อนหลัง ${by.done.length} ใบล่าสุด`}
-      />
-
       {err && (
-        <p className="mb-2 text-[13px] font-semibold" style={{ color: "var(--dk-coral-ink)" }}>
+        <p className="mt-3 text-[13px] font-semibold" style={{ color: "var(--dk-coral-ink)" }}>
           {err}
         </p>
       )}
 
-      {shown.length === 0 ? (
-        <Empty
-          title={searching ? "ไม่เจอใบที่ตรงกับคำค้น" : active === "ready" ? "ไม่มีของรอลูกค้ามารับ" : active === "working" ? "ไม่มีใบมารับเองที่กำลังทำ" : "ยังไม่มีใบที่ลูกค้ารับไปแล้ว"}
-          body={
-            searching
-              ? "หน้านี้มีเฉพาะใบที่วิธีส่งเป็น “มารับเอง” — ถ้าลูกค้าเลือกส่งพัสดุไว้ ให้หาในเมนูคำสั่งซื้อ แล้วเปลี่ยนวิธีส่งในหน้าออเดอร์"
-              : active === "ready"
-                ? "พอฝ่ายแพ็คกด “แพ็คเสร็จ” ในหน้าออเดอร์ ใบจะขึ้นตรงนี้ พร้อมตัวเลขข้างเมนู"
-                : active === "working"
-                  ? "ออเดอร์ที่ลูกค้าเลือก “มารับเอง” ตอนสั่ง จะขึ้นตรงนี้จนกว่าจะแพ็คเสร็จ"
-                  : "กด “ลูกค้ารับของแล้ว” ในกองรอมารับ ใบจะย้ายมาที่นี่"
-          }
-        />
+      {flat ? (
+        <>
+          <ListHead title={searching ? `ผลค้นหา “${q.trim()}”` : "ลูกค้ารับไปแล้ว"} note={searching ? `${found.length} ใบ · หาจากทุกกอง` : `ดูย้อนหลัง ${done.length} ใบล่าสุด`} />
+          {flat.length === 0 ? (
+            <Empty
+              title={searching ? "ไม่เจอใบที่ตรงกับคำค้น" : "ยังไม่มีใบที่ลูกค้ารับไปแล้ว"}
+              body={
+                searching
+                  ? "หน้านี้มีเฉพาะใบ “มารับเอง” ที่โอนแล้ว — ถ้าลูกค้ายังไม่โอน หรือเลือกส่งพัสดุไว้ ให้หาในเมนูคำสั่งซื้อ"
+                  : "กด “ลูกค้ารับของแล้ว” ในแถวที่แพ็คเสร็จ ใบจะย้ายมาที่นี่"
+              }
+            />
+          ) : (
+            <Rows>{flat.map(rowOf)}</Rows>
+          )}
+        </>
+      ) : sectionTotal === 0 ? (
+        <div className="mt-5">
+          <Empty
+            title={view === "ready" ? "ไม่มีของรอลูกค้ามารับ" : view === "working" ? "ไม่มีใบมารับเองที่กำลังทำ" : "ไม่มีออเดอร์มารับเองที่ค้างอยู่"}
+            body={view === "ready" ? "พอฝ่ายแพ็คกด “แพ็คเสร็จ” ในหน้าออเดอร์ ใบจะขึ้นตรงนี้ พร้อมตัวเลขข้างเมนู" : "ออเดอร์ที่ลูกค้าเลือก “มารับเอง” และโอนแล้ว จะขึ้นตรงนี้จนกว่าจะมารับของ"}
+          />
+        </div>
       ) : (
-        <Rows>
-          {shown.map((r) => {
-            const days = waitedDays(r.packedAt);
-            const href = `/admin/orders/${encodeURIComponent(r.id)}`;
-            return (
-              <Row key={r.id} tone={TONE[r.group]} done={r.group === "done"}>
-                <RowMain
-                  name={r.customer || "ยังไม่ระบุชื่อ"}
-                  href={href}
-                  tags={
-                    <>
-                      <StatusChip s={r.status} label={r.label} />
-                      {r.rush && <Tag tone="solid">งานเร่ง</Tag>}
-                      {r.due > 0 && <Tag tone="coral">{r.group === "ready" ? `เก็บเงินก่อนส่งมอบ ${baht(r.due)}` : `ยังค้าง ${baht(r.due)}`}</Tag>}
-                      {r.group === "ready" && days >= FOLLOW_UP_DAYS && <Tag tone="yolk">วางรอมา {days} วัน — ทักตาม</Tag>}
-                      {r.group === "done" && r.pickedUpAt && (
-                        <Tag tone="quiet" title={r.pickedUpBy}>
-                          รับของ {thTime(r.pickedUpAt)}
-                        </Tag>
-                      )}
-                    </>
-                  }
-                  meta={
-                    <>
-                      <span className="id">{r.id}</span>
-                      {r.phone && (
-                        <a href={`tel:${digits(r.phone)}`} className="id" title="โทรหาลูกค้า">
-                          ☎ {r.phone}
-                        </a>
-                      )}
-                      {r.useByDate && r.group !== "done" && <span className="hot">ใช้งาน {r.useByDate}</span>}
-                      {r.items.slice(0, 3).map((t, i) => (
-                        <span key={i}>{t}</span>
-                      ))}
-                      {r.items.length > 3 && <span>+ อีก {r.items.length - 3} รายการ</span>}
-                      {r.packedAt && r.group === "ready" && (
-                        <span>
-                          แพ็คเสร็จ {thTime(r.packedAt)} · {r.packedBy}
-                        </span>
-                      )}
-                      {r.group === "done" && r.pickedUpBy && <span>ส่งมอบโดย {r.pickedUpBy}</span>}
-                    </>
-                  }
-                />
-                <RowSide>
-                  {r.group === "ready" && mayHandOver && r.due <= 0 ? (
-                    <Btn small tone="navy" disabled={busy === r.id} onClick={() => void handOver(r)} title="จดคนส่งมอบ/เวลา แล้วปิดงานเป็นเสร็จสิ้น">
-                      {busy === r.id ? "กำลังบันทึก…" : "✓ ลูกค้ารับของแล้ว"}
-                    </Btn>
-                  ) : null}
-                  <Btn small tone={r.group === "ready" && r.due > 0 ? "navy" : undefined} href={href}>
-                    {r.group === "ready" && r.due > 0 ? "เปิดใบ → เก็บเงิน" : "เปิดออเดอร์"}
-                  </Btn>
-                </RowSide>
-              </Row>
-            );
-          })}
-        </Rows>
+        BUCKETS.filter((k) => sections[k].length).map((k) => (
+          <section key={k}>
+            <ListHead title={SECTION[k].title} note={`${sections[k].length} ใบ${SECTION[k].note ? ` · ${SECTION[k].note}` : ""}`} />
+            <Rows>{sections[k].map(rowOf)}</Rows>
+          </section>
+        ))
       )}
     </PageShell>
   );

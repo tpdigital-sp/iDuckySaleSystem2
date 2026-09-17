@@ -13,7 +13,11 @@ export const runtime = "nodejs";
  *
  * รวมทุกใบที่วิธีส่งเป็น "มารับเอง" (isPickupOrder) ไว้ที่เดียว — ลูกค้าเดินมาหน้าร้านแล้วหาใบเจอทันที แบ่ง 3 กอง:
  *   ready   = แพ็คเสร็จ รอลูกค้ามารับ (สถานะ "จัดส่งแล้ว" ของใบมารับเอง) ← ป้ายเมนูนับกองนี้ = ของที่วางรออยู่หน้าร้าน
- *   working = ยังทำอยู่ / ยังไม่โอน — ลูกค้ามาถามก็ตอบได้ว่าถึงขั้นไหน
+ *   working = โอนแล้ว กำลังทำอยู่ — ลูกค้ามาถามก็ตอบได้ว่าถึงขั้นไหน
+ *   ⚠️ ใบที่ยังไม่โอน (รอชำระเงิน) ไม่เอาเข้าหน้านี้ — เจ้าของร้านสั่ง 17 ก.ย. 69: ยังไม่ใช่งานที่ร้านต้องเตรียมของให้ใครมารับ
+ *
+ * 📅 วันนัดรับ = Order.shipDate (ช่อง "วันที่จัดส่ง" ในหน้าออเดอร์ — ใบมารับเองช่องเดียวกันนี้คือวันที่ลูกค้าจะมารับ)
+ *   หน้าเว็บโชว์เป็นบล็อกวันที่ตัวใหญ่และจัดกลุ่มตามวัน (เจ้าของร้านสั่ง "ให้วันที่มารับเด่น")
  *   done    = ลูกค้ารับไปแล้ว (เสร็จสิ้น · ดูย้อนหลัง)
  *
  * GET  → { n, rows }   (?count=1 = เอาแค่ n ไว้ให้ป้ายเมนู)
@@ -32,6 +36,9 @@ export type PickupRow = {
   /** ยอดที่ต้องเก็บก่อนส่งมอบ (0 = จ่ายครบแล้ว) */
   due: number;
   rush?: boolean;
+  /** วันนัดรับ (YYYY-MM-DD) จาก shipDate.from · pickupTo มีเมื่อนัดเป็นช่วงวัน */
+  pickupDate?: string;
+  pickupTo?: string;
   useByDate?: string;
   items: string[];
   note?: string;
@@ -46,13 +53,15 @@ export type PickupRow = {
 const DONE_KEEP = 40;
 
 function groupOf(o: Order): PickupRow["group"] | null {
-  if (o.status === "ยกเลิก" || !isPickupOrder(o)) return null;
+  if (o.status === "ยกเลิก" || o.status === "รอชำระเงิน" || !isPickupOrder(o)) return null;
   if (o.status === "เสร็จสิ้น") return "done";
   return o.status === "จัดส่งแล้ว" ? "ready" : "working";
 }
 
 function toRow(o: Order, group: PickupRow["group"]): PickupRow {
-  const unpaidStage = o.status === "รอชำระเงิน" || o.status === "รอตรวจสอบ";
+  const unpaidStage = o.status === "รอตรวจสอบ";
+  const from = o.shipDate?.from || o.shipDate?.to;
+  const to = o.shipDate?.to && o.shipDate.to !== from ? o.shipDate.to : undefined;
   return {
     id: o.id,
     customer: o.customer,
@@ -63,6 +72,8 @@ function toRow(o: Order, group: PickupRow["group"]): PickupRow {
     group,
     due: group !== "done" && (unpaidStage || hasUnpaidBalance(o)) ? amountDueNow(o) : 0,
     ...(o.rush ? { rush: true } : {}),
+    ...(from ? { pickupDate: from } : {}),
+    ...(to ? { pickupTo: to } : {}),
     ...(o.useByDate ? { useByDate: o.useByDate } : {}),
     items: o.items.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`),
     ...(o.note?.trim() ? { note: o.note.trim() } : {}),
