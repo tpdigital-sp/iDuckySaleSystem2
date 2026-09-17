@@ -11,6 +11,41 @@
 
 import { BKK_TZ } from "@/lib/bangkok-time";
 
+/** ท่าขยับของชิ้นลูกเล่น — CSS อยู่ท้าย landing.css (.promo-fx-*) */
+export const LAYER_ANIMS = ["bob", "twinkle", "drift", "ping", "rise", "blink", "hop", "nudge"] as const;
+/** ท่าที่วาดด้วย CSS ล้วน ไม่ต้องมีรูป (ping = วงแหวนเรียกกด · blink = เปลือกตาปิดแวบเดียว) */
+const SHAPE_ANIMS: readonly LayerAnim[] = ["ping", "blink"];
+export type LayerAnim = (typeof LAYER_ANIMS)[number];
+
+/**
+ * ✨ ชิ้นลูกเล่นที่ลอยทับป้ายภาพแล้วขยับ (น้องเป็ดโยกตัว · ดาววิบวับ · เมฆลอย · วงแหวนเรียกกดที่ปุ่ม)
+ * ตำแหน่ง/ขนาดเป็น "% ของป้าย" จึงย่อขยายตามจอได้เอง · ตำแหน่งผูกกับรูปใบนั้น → เปลี่ยนรูปเมื่อไหร่ต้องถอดลูกเล่นทิ้ง
+ * ยังไม่มีหน้าจอให้วางเอง — ลงผ่านสคริปต์ (ดู scripts/promo-banner-web-order.mjs) · หลังบ้านเปิด/ปิดการขยับได้
+ */
+export interface BannerLayer {
+  /** รูปของชิ้นนี้ (พื้นโปร่ง) — "ping" / "blink" ไม่ต้องมี (วาดด้วย CSS) */
+  src?: string;
+  /** ขอบซ้าย / ขอบบน / ความกว้าง เป็น % ของป้าย (ติดลบ/เกิน 100 ได้ = ล้นขอบแล้วโดนตัด) */
+  x: number;
+  y: number;
+  w: number;
+  anim: LayerAnim;
+  /** หมุนค้างไว้กี่องศา (ดาวเอียง ๆ) */
+  rot?: number;
+  /** ความทึบ 0–1 */
+  opacity?: number;
+  /** รอบละกี่วินาที / เริ่มช้ากี่วินาที (เหลื่อมจังหวะกันจะได้ไม่ขยับพร้อมกันเป็นแผง) */
+  dur?: number;
+  delay?: number;
+  /** สีของชิ้นที่วาดด้วย CSS (blink = สีผิวรอบตา) — รหัสสี #hex เท่านั้น */
+  color?: string;
+  /**
+   * ชิ้นลูกที่เกาะไปกับชิ้นนี้ (เปลือกตาบนหน้าเป็ด) — x/y/w เป็น % ของ "ชิ้นแม่" ไม่ใช่ของป้าย
+   * แม่โยกตัวไปทางไหนลูกไปด้วย · ซ้อนได้ชั้นเดียว
+   */
+  kids?: BannerLayer[];
+}
+
 export interface PromoBanner {
   id: string;
   /** ชื่อป้าย — หัวข้อของแถบข้อความ · ป้ายภาพใช้เป็นคำอธิบายรูป (alt) และชื่อในหลังบ้าน */
@@ -21,6 +56,13 @@ export interface PromoBanner {
   image?: string;
   /** รูปสำหรับมือถือ (ไม่ใส่ = ใช้รูปเดียวกับจอกว้าง) */
   imageMobile?: string;
+  /** ชิ้นลูกเล่นขยับบนรูปจอคอม / รูปมือถือ (คนละเลย์เอาต์ ตำแหน่งจึงแยกกัน) */
+  layers?: BannerLayer[];
+  layersMobile?: BannerLayer[];
+  /** แสงวิ่งพาดป้ายเป็นระยะ */
+  shine?: boolean;
+  /** ปิดการขยับทั้งหมดของป้ายนี้ (ชิ้นลูกเล่นยังวาดอยู่ แต่นิ่ง) */
+  still?: boolean;
   /** กดแล้วไปไหน (path ภายใน หรือ https://) — ไม่ใส่ = กดไม่ได้ */
   href?: string;
   /** ข้อความบนปุ่มของแถบข้อความ (ไม่ใส่ = "ดูรายละเอียด") */
@@ -47,8 +89,8 @@ export interface PromoBannerSet {
  * ความสูงไม่ถูกบังคับ (ระบบโชว์เต็มใบไม่ครอป) แต่ป้ายในสไลด์ชุดเดียวกันควรสูงเท่ากัน ไม่งั้นใบเตี้ยจะมีขอบขาวบนล่าง
  */
 export const BANNER_SPEC = {
-  desktop: { w: 2320, h: 320, shownAs: "1160×160", minText: 24, margin: 60 },
-  mobile: { w: 1200, h: 600, shownAs: "ประมาณ 375×188", minText: 36, margin: 50 },
+  desktop: { w: 2320, h: 500, shownAs: "1160×250", minText: 24, margin: 60 },
+  mobile: { w: 1200, h: 800, shownAs: "ประมาณ 375×250", minText: 36, margin: 50 },
   maxMB: 4.5,
 } as const;
 
@@ -77,6 +119,42 @@ const safeUrl = (v: unknown) => {
 };
 const ymd = (v: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(str(v)) ? str(v) : undefined);
 
+const num = (v: unknown, lo: number, hi: number) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : undefined;
+};
+
+export const MAX_LAYERS = 24;
+
+function layersOf(raw: unknown, nested = false): BannerLayer[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: BannerLayer[] = [];
+  for (const l of raw.slice(0, MAX_LAYERS) as Partial<BannerLayer>[]) {
+    const anim = LAYER_ANIMS.find((a) => a === l?.anim);
+    const x = num(l?.x, -60, 160);
+    const y = num(l?.y, -60, 160);
+    const w = num(l?.w, 0.5, 120);
+    const src = safeUrl(l?.src);
+    if (!anim || x === undefined || y === undefined || w === undefined) continue;
+    if (!SHAPE_ANIMS.includes(anim) && !src) continue;
+    out.push({
+      src,
+      x,
+      y,
+      w,
+      anim,
+      rot: num(l?.rot, -180, 180),
+      opacity: num(l?.opacity, 0, 1),
+      dur: num(l?.dur, 0.5, 60),
+      delay: num(l?.delay, 0, 60),
+      // สีถูกยัดลง style ตรง ๆ — รับเฉพาะรหัสสีจริง
+      color: /^#[0-9a-f]{3,8}$/i.test(str(l?.color)) ? str(l?.color) : undefined,
+      kids: nested ? undefined : layersOf(l?.kids, true),
+    });
+  }
+  return out.length ? out : undefined;
+}
+
 /** ล้างค่าที่รับมาให้เป็นรูปแบบที่ไว้ใจได้ (ใช้ทั้งตอนอ่านและก่อนบันทึก) */
 export function bannerSetOf(raw: Partial<PromoBannerSet> | null | undefined): PromoBannerSet {
   const seen = new Set<string>();
@@ -93,6 +171,11 @@ export function bannerSetOf(raw: Partial<PromoBannerSet> | null | undefined): Pr
         body: str(b.body).trim().slice(0, 240) || undefined,
         image: safeUrl(b.image),
         imageMobile: safeUrl(b.imageMobile),
+        // ลูกเล่นผูกกับรูป — ไม่มีรูปของฝั่งนั้นแล้วก็ไม่เก็บ
+        layers: safeUrl(b.image) ? layersOf(b.layers) : undefined,
+        layersMobile: safeUrl(b.imageMobile) ? layersOf(b.layersMobile) : undefined,
+        shine: Boolean(b.shine) || undefined,
+        still: Boolean(b.still) || undefined,
         href: safeUrl(b.href),
         btnLabel: str(b.btnLabel).trim().slice(0, 40) || undefined,
         hidden: Boolean(b.hidden) || undefined,

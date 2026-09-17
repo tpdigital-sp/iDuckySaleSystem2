@@ -35,6 +35,9 @@ const STATE: Record<BannerState, { tone: "mint" | "yolk" | "coral" | "quiet"; la
   hidden: { tone: "quiet", label: "ซ่อนอยู่", bar: "var(--dk-quiet)" },
 };
 
+/** จำนวนชิ้นลูกเล่นขยับของป้าย (จอคอม + มือถือ + แสงวิ่ง) */
+const fxCount = (b: PromoBanner) => (b.layers?.length ?? 0) + (b.layersMobile?.length ?? 0) + (b.shine ? 1 : 0);
+
 const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 /** "2026-09-17" → "17 ก.ย. 2569" (ทีมคุยกันเป็น พ.ศ.) */
 const thaiYmd = (v?: string) => {
@@ -367,6 +370,7 @@ function BannersInner() {
                       <b className="dkb-h2 min-w-0 flex-1 truncate text-[1rem]">{b.title || "ป้ายใหม่ (ยังไม่ตั้งชื่อ)"}</b>
                       <Tag tone={st.tone}>{st.label}</Tag>
                       <Tag tone="sky">{b.image ? "ป้ายภาพ" : "แถบข้อความ"}</Tag>
+                      {fxCount(b) > 0 && <Tag tone="lilac">{b.still ? "ลูกเล่นหยุดนิ่ง" : `ลูกเล่นขยับ ${fxCount(b)} ชิ้น`}</Tag>}
                     </div>
 
                     <div className="mt-3 grid gap-2.5 lg:grid-cols-2">
@@ -427,7 +431,10 @@ function BannersInner() {
                           spec={BANNER_SPEC.desktop}
                           hint={`JPG / PNG / WEBP ไม่เกิน ${BANNER_SPEC.maxMB}MB · ระบบแสดงเต็มใบไม่ครอป`}
                           value={b.image}
-                          onChange={(v) => patch(b.id, v ? { image: v } : { image: undefined, imageMobile: undefined })}
+                          onChange={(v) =>
+                            // ลูกเล่นขยับวางตำแหน่งตามรูปเดิม — เปลี่ยนรูปแล้วต้องถอด ไม่งั้นเป็ด/ดาวลอยผิดที่
+                            patch(b.id, v ? { image: v, layers: undefined } : { image: undefined, imageMobile: undefined, layers: undefined, layersMobile: undefined })
+                          }
                         />
                         {b.image && (
                           <ImageSlot
@@ -435,7 +442,7 @@ function BannersInner() {
                             spec={BANNER_SPEC.mobile}
                             hint="ป้ายจอคอมย่อลงมือถือแล้วตัวหนังสือเล็กจนอ่านไม่ออก — ให้กราฟฟิกจัดเลย์เอาต์มือถือแยกอีกใบ"
                             value={b.imageMobile}
-                            onChange={(v) => patch(b.id, { imageMobile: v })}
+                            onChange={(v) => patch(b.id, { imageMobile: v, layersMobile: undefined })}
                           />
                         )}
                       </div>
@@ -451,6 +458,11 @@ function BannersInner() {
                       <Btn small onClick={() => patch(b.id, { hidden: !b.hidden || undefined })}>
                         {b.hidden ? "กลับมาแสดง" : "ซ่อนไว้ก่อน"}
                       </Btn>
+                      {fxCount(b) > 0 && (
+                        <Btn small onClick={() => patch(b.id, { still: !b.still || undefined })} title="เป็ดโยกตัว · ดาววิบวับ · เมฆลอย — เปลี่ยนรูปเมื่อไหร่ลูกเล่นของรูปนั้นจะถูกถอด">
+                          {b.still ? "เปิดลูกเล่นขยับ" : "หยุดลูกเล่นขยับ"}
+                        </Btn>
+                      )}
                       <span className="flex-1" />
                       <Btn small onClick={() => void remove(b)}>
                         ลบป้าย

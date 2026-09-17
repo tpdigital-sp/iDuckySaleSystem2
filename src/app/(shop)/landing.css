@@ -2340,8 +2340,52 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 .dl .promo-img{display:flex;align-items:center;width:100%;line-height:0}
 .dl .promo-img picture{display:block;width:100%}
 .dl .promo-img img{display:block;width:100%;height:auto}
-.dl a.promo-img img{transition:transform .5s ease,filter .3s ease}
-.dl a.promo-img:hover img{transform:scale(1.012);filter:brightness(1.03)}
+.dl a.promo-img picture img{transition:transform .5s ease,filter .3s ease}
+.dl a.promo-img:hover picture img{transform:scale(1.012);filter:brightness(1.03)}
+/* ✨ ชิ้นลูกเล่นขยับทับป้ายภาพ (BannerLayer) — ขยับด้วย transform/opacity ล้วน ไม่กระทบ layout · ลดการเคลื่อนไหว = นิ่งหมด */
+.dl .promo-img{position:relative;overflow:hidden}
+.dl .promo-fx{position:absolute;inset:0;pointer-events:none;line-height:0}
+.dl .promo-fx>*,.dl .promo-fx>span>:not(img){position:absolute;height:auto;max-width:none;animation-iteration-count:infinite;animation-timing-function:ease-in-out;will-change:transform}
+.dl .promo-fx>span>img{display:block;width:100%;height:auto}
+.dl .promo-fx-bob{transform-origin:50% 92%;animation-name:promoBob;animation-duration:3.4s;filter:drop-shadow(0 .6vw 1vw rgba(23,58,107,.2))}
+.dl .promo-fx-twinkle{animation-name:promoTwinkle;animation-duration:2.6s}
+.dl .promo-fx-drift{animation-name:promoDrift;animation-duration:11s;animation-direction:alternate}
+.dl .promo-fx-ping{aspect-ratio:1;border-radius:50%;border:3px solid var(--yolk);animation-name:promoPing;animation-duration:2.2s;animation-timing-function:ease-out}
+/* หัวใจดวงเล็กลอยขึ้นแล้วจางหาย (heart.webp สีพีช → ย้อมชมพู) */
+.dl .promo-fx-rise{animation-name:promoRise;animation-duration:3.6s;animation-timing-function:ease-out;filter:hue-rotate(-28deg) saturate(1.5)}
+/* กะพริบตา: กรอบวงรีเท่าดวงตา (ตัดขอบ) · เปลือกตาบนเลื่อนลง + แก้มล่างทรงโดมดันขึ้นมาบรรจบกัน → ตาปิดเป็นเส้นโค้งยิ้ม ⌒
+   แบบเดียวกับตาข้างที่ขยิบอยู่ (เดิมใช้ scaleY ยืดวงรีแบบ linear — ดูเป็นแผ่นโตขึ้นกระตุก ๆ · เจ้าของร้านทัก 17 ก.ย. 69)
+   หลับเร็ว-ค้างแวบ-ลืมช้ากว่า แบบตาจริง · จังหวะ/ดีเลย์ของชิ้นส่งต่อให้ ::before/::after ด้วย inherit */
+/* ขอบกรอบจางด้วย mask (ไม่ใช่ตัดคม) + สีเปลือกตาไล่โทนบน→ล่างตามเงาผิวเป็ด — ไม่งั้นเห็นเป็นวงสีอ่อนลอยอยู่บนหน้า */
+.dl .promo-fx .promo-fx-blink{aspect-ratio:1/1.16;overflow:hidden;animation-name:none;animation-duration:4.4s;
+  --fx-lo:color-mix(in srgb,var(--fx-color,#FEEE84) 78%,#FFD050);
+  -webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 78%,transparent 98%);mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 78%,transparent 98%)}
+.dl .promo-fx-blink::before,.dl .promo-fx-blink::after{content:"";position:absolute;inset:0;will-change:transform;
+  animation-iteration-count:infinite;animation-duration:inherit;animation-delay:inherit}
+.dl .promo-fx-blink::before{background:linear-gradient(to bottom,var(--fx-color,#FEEE84) 30%,var(--fx-lo));transform:translateY(-101%);animation-name:promoLidTop}
+.dl .promo-fx-blink::after{transform:translateY(62%);animation-name:promoLidBot;
+  background:radial-gradient(ellipse 66% 58% at 50% 100%,var(--fx-lo) 86%,#3A2716 89%,#3A2716 97%,transparent 100%)}
+/* การ์ดขั้นตอนเด้งทีละใบ 1→2→3→4 (เหลื่อมด้วย delay ต่อชิ้น รอบละ 4.8 วิ) · ลูกศรขยับชี้ไปขั้นถัดไป */
+.dl .promo-fx-hop{animation-name:promoHop;animation-duration:4.8s}
+.dl .promo-fx-nudge{animation-name:promoNudge;animation-duration:1.4s}
+.dl .promo-fx-shine{position:absolute;top:-20%;bottom:-20%;left:0;width:22%;pointer-events:none;transform:translateX(-160%) skewX(-18deg);
+  background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.55) 50%,rgba(255,255,255,0));animation:promoShine 7s ease-in-out infinite 1.5s}
+.dl .promo-fx.still :is(*,*::before,*::after){animation:none}
+.dl .promo-fx.still :is(.promo-fx-ping,.promo-fx-rise,.promo-fx-blink){display:none}
+@keyframes promoBob{0%,100%{transform:translateY(0) rotate(-1.6deg)}50%{transform:translateY(-3.5%) rotate(1.8deg)}}
+@keyframes promoTwinkle{0%,100%{transform:scale(.72);opacity:.55}50%{transform:scale(1.12);opacity:1}}
+@keyframes promoDrift{from{transform:translateX(-7%)}to{transform:translateX(9%)}}
+@keyframes promoPing{0%{transform:scale(1);opacity:.85}70%,100%{transform:scale(2.1);opacity:0}}
+@keyframes promoRise{0%{transform:translate(0,0) scale(.35);opacity:0}14%{opacity:1}70%{opacity:.9}100%{transform:translate(45%,-300%) scale(1);opacity:0}}
+@keyframes promoLidTop{0%,90%{transform:translateY(-101%);animation-timing-function:cubic-bezier(.55,0,1,.7)}92.6%{transform:translateY(-30%)}94.8%{transform:translateY(-30%);animation-timing-function:cubic-bezier(.1,.5,.35,1)}98.6%,100%{transform:translateY(-101%)}}
+@keyframes promoLidBot{0%,90%{transform:translateY(62%);animation-timing-function:cubic-bezier(.55,0,1,.7)}92.6%{transform:translateY(0)}94.8%{transform:translateY(0);animation-timing-function:cubic-bezier(.1,.5,.35,1)}98.6%,100%{transform:translateY(62%)}}
+@keyframes promoHop{0%,18%,100%{transform:none}6%{transform:translateY(-7%) scale(1.045)}12%{transform:translateY(1%) scale(.99)}}
+@keyframes promoNudge{0%,100%{transform:translateX(-3%)}50%{transform:translateX(5%)}}
+@keyframes promoShine{0%,62%{transform:translateX(-160%) skewX(-18deg)}88%,100%{transform:translateX(620%) skewX(-18deg)}}
+@media(min-width:641px){.dl .promo-fx-m{display:none}}
+@media(max-width:640px){.dl .promo-fx-d{display:none}}
+@media(prefers-reduced-motion:reduce){.dl .promo-fx :is(*,*::before,*::after){animation:none}
+.dl :is(.promo-fx-ping,.promo-fx-rise,.promo-fx-blink,.promo-fx-shine){display:none}}
 .dl .promo-text{flex:1;display:flex;align-items:center;gap:16px;padding:20px 28px;min-height:96px;color:var(--navy);text-decoration:none;
   background:linear-gradient(100deg,#FFF6D9,#FFFBEF 38%,var(--sky-100))}
 .dl .promo-ico{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:1.5rem;
@@ -2365,7 +2409,7 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 .dl .promo-msg{flex-basis:calc(100% - 54px)}
 .dl .promo-msg b{font-size:1.02rem}
 .dl .promo-cta{margin-left:54px;padding:8px 16px;font-size:.85rem}}
-@media(prefers-reduced-motion:reduce){.dl a.promo-img img,.dl .promo-cta{transition:none}}
+@media(prefers-reduced-motion:reduce){.dl a.promo-img picture img,.dl .promo-cta{transition:none}}
 /* ── โหมดคุยจริง (HomeChat.tsx) — ต่อ n8n ตัวเดียวกับหน้าแชทแอดมิน ── */
 .dl .chat-cue{margin:2px 0 0;padding:11px 14px;border:1px dashed var(--sky-300);border-radius:16px;
   background:#fff;text-align:center;font-size:.82rem;line-height:1.6;color:var(--navy-soft)}

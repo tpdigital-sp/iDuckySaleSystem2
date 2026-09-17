@@ -1,0 +1,292 @@
+{
+  "layers": [
+    {
+      "src": "/landing/cloud.webp",
+      "x": -3.88,
+      "y": -12,
+      "w": 15.52,
+      "anim": "drift",
+      "opacity": 0.95,
+      "dur": 12
+    },
+    {
+      "src": "/landing/cloud.webp",
+      "x": 41.38,
+      "y": 85.15,
+      "w": 14.66,
+      "anim": "drift",
+      "opacity": 0.78,
+      "dur": 15,
+      "delay": 6
+    },
+    {
+      "src": "/landing/cloud.webp",
+      "x": 88.79,
+      "y": -25,
+      "w": 14.22,
+      "anim": "drift",
+      "dur": 10,
+      "delay": 3
+    },
+    {
+      "src": "/landing/duck-hug.webp",
+      "x": 1.55,
+      "y": 4,
+      "w": 19.48,
+      "anim": "bob",
+      "kids": [
+        {
+          "x": 58.75,
+          "y": 25.05,
+          "w": 13.6,
+          "anim": "blink",
+          "color": "#FEEE84"
+        }
+      ]
+    },
+    {
+      "src": "/landing/heart.webp",
+      "x": 17.13,
+      "y": 57.68,
+      "w": 1.46,
+      "anim": "rise"
+    },
+    {
+      "src": "/landing/heart.webp",
+      "x": 19.28,
+      "y": 65,
+      "w": 1.17,
+      "anim": "rise",
+      "delay": 1.3
+    },
+    {
+      "src": "/landing/heart.webp",
+      "x": 15.19,
+      "y": 50.36,
+      "w": 1.07,
+      "anim": "rise",
+      "delay": 2.4
+    },
+    {
+      "src": "/landing/star.webp",
+      "x": 18.53,
+      "y": 8,
+      "w": 2.59,
+      "anim": "twinkle"
+    },
+    {
+      "src": "/landing/star.webp",
+      "x": 46.98,
+      "y": 14,
+      "w": 1.98,
+      "anim": "twinkle",
+      "rot": 14,
+      "delay": 0.9
+    },
+    {
+      "src": "/landing/star.webp",
+      "x": 95.43,
+      "y": 79.8,
+      "w": 2.67,
+      "anim": "twinkle",
+      "rot": -10,
+      "delay": 1.7
+    },
+    {
+      "src": "@web-order-24h-d-card1-v1.webp",
+      "x": 49.74,
+      "y": 12.6,
+      "w": 14.48,
+      "anim": "hop",
+      "dur": 4.8
+    },
+    {
+      "src": "@web-order-24h-d-card2-v1.webp",
+      "x": 61.16,
+      "y": 12.6,
+      "w": 14.48,
+      "anim": "hop",
+      "dur": 4.8,
+      "delay": 3.6
+    },
+    {
+      "src": "@web-order-24h-d-card3-v1.webp",
+      "x": 72.63,
+      "y": 12.6,
+      "w": 14.48,
+      "anim": "hop",
+      "dur": 4.8,
+      "delay": 2.4
+    },
+    {
+      "src": "@web-order-24h-d-card4-v1.webp",
+      "x": 84.05,
+      "y": 12.6,
+      "w": 14.48,
+      "anim": "hop",
+      "dur": 4.8,
+      "delay": 1.2
+    },
+    {
+      "src": "@web-order-24h-d-arrow-v1.webp",
+      "x": 59.91,
+      "y": 28,
+      "w": 5.52,
+      "anim": "nudge"
+    },
+    {
+      "src": "@web-order-24h-d-arrow-v1.webp",
+      "x": 71.38,
+      "y": 28,
+      "w": 5.52,
+      "anim": "nudge",
+      "delay": 0.35
+    },
+    {
+      "src": "@web-order-24h-d-arrow-v1.webp",
+      "x": 82.8,
+      "y": 28,
+      "w": 5.52,
+      "anim": "nudge",
+      "delay": 0.7
+    },
+    {
+      "x": 61.46,
+      "y": 68.73,
+      "w": 2.59,
+      "anim": "ping"
+    }
+  ],
+  "layersMobile": [
+    {
+      "src": "/landing/cloud.webp",
+      "x": 40,
+      "y": -15,
+      "w": 26.67,
+      "anim": "drift",
+      "opacity": 0.95,
+      "dur": 12
+    },
+    {
+      "src": "/landing/cloud.webp",
+      "x": 50.83,
+      "y": 88.22,
+      "w": 28.33,
+      "anim": "drift",
+      "opacity": 0.78,
+      "dur": 15,
+      "delay": 6
+    },
+    {
+      "src": "/landing/cloud.webp",
+      "x": 80.83,
+      "y": -11.25,
+      "w": 25,
+      "anim": "drift",
+      "dur": 10,
+      "delay": 3
+    },
+    {
+      "src": "/landing/duck-hug.webp",
+      "x": 59.34,
+      "y": 33.75,
+      "w": 41.99,
+      "anim": "bob",
+      "kids": [
+        {
+          "x": 58.75,
+          "y": 25.05,
+          "w": 13.6,
+          "anim": "blink",
+          "color": "#FEEE84"
+        }
+      ]
+    },
+    {
+      "src": "/landing/heart.webp",
+      "x": 92.93,
+      "y": 71.15,
+      "w": 3.15,
+      "anim": "rise"
+    },
+    {
+      "src": "/landing/heart.webp",
+      "x": 97.55,
+      "y": 76.25,
+      "w": 2.52,
+      "anim": "rise",
+      "delay": 1.3
+    },
+    {
+      "src": "/landing/heart.webp",
+      "x": 88.73,
+      "y": 66.05,
+      "w": 2.31,
+      "anim": "rise",
+      "delay": 2.4
+    },
+    {
+      "src": "/landing/star.webp",
+      "x": 60.83,
+      "y": 21.25,
+      "w": 4.83,
+      "anim": "twinkle"
+    },
+    {
+      "src": "@web-order-24h-m-card1-v1.webp",
+      "x": 0.5,
+      "y": 46,
+      "w": 35.67,
+      "anim": "hop",
+      "dur": 4.8
+    },
+    {
+      "src": "@web-order-24h-m-card2-v1.webp",
+      "x": 30,
+      "y": 46,
+      "w": 35.67,
+      "anim": "hop",
+      "dur": 4.8,
+      "delay": 3.6
+    },
+    {
+      "src": "@web-order-24h-m-card3-v1.webp",
+      "x": 0.5,
+      "y": 61,
+      "w": 35.67,
+      "anim": "hop",
+      "dur": 4.8,
+      "delay": 2.4
+    },
+    {
+      "src": "@web-order-24h-m-card4-v1.webp",
+      "x": 30,
+      "y": 61,
+      "w": 35.67,
+      "anim": "hop",
+      "dur": 4.8,
+      "delay": 1.2
+    },
+    {
+      "src": "@web-order-24h-m-arrow-v1.webp",
+      "x": 27.83,
+      "y": 50.38,
+      "w": 10.5,
+      "anim": "nudge"
+    },
+    {
+      "src": "@web-order-24h-m-arrow-v1.webp",
+      "x": 27.83,
+      "y": 65.38,
+      "w": 10.5,
+      "anim": "nudge",
+      "delay": 0.35
+    },
+    {
+      "x": 24.58,
+      "y": 84.23,
+      "w": 5.33,
+      "anim": "ping"
+    }
+  ]
+}

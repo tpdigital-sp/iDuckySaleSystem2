@@ -4,11 +4,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  fetchPromoBanners,
-  liveBanners,
-  type PromoBanner,
-} from "@/lib/promo-banners";
+import type { CSSProperties } from "react";
+import { fetchPromoBanners, liveBanners, type BannerLayer, type PromoBanner } from "@/lib/promo-banners";
 import { canOptimize, optimizedSrcSet } from "@/lib/img";
 
 /**
@@ -230,6 +227,46 @@ function Slide({ b, eager }: { b: PromoBanner; eager: boolean }) {
           onError={() => setRaw(true)}
         />
       </picture>
+      {/* ✨ ชิ้นลูกเล่นขยับ — รูปมือถือเป็นคนละเลย์เอาต์ จึงมีชุดของตัวเอง สลับตามจอที่ 640px จุดเดียวกับ <source> */}
+      <Layers list={b.layers} still={b.still} scope={b.imageMobile ? "d" : undefined} />
+      {b.imageMobile && <Layers list={b.layersMobile} still={b.still} scope="m" />}
+      {b.shine && !b.still && <span className="promo-fx-shine" aria-hidden="true" />}
     </Wrap>
+  );
+}
+
+/** ชิ้นลูกเล่นทับป้าย (ตกแต่งล้วน — ซ่อนจากตัวอ่านหน้าจอ · กดทะลุไปที่ลิงก์ของป้าย) */
+function Layers({ list, still, scope }: { list?: BannerLayer[]; still?: boolean; scope?: "d" | "m" }) {
+  if (!list?.length) return null;
+  return (
+    <span className={`promo-fx${scope ? ` promo-fx-${scope}` : ""}${still ? " still" : ""}`} aria-hidden="true">
+      {list.map((l, i) => (
+        <Layer key={i} l={l} />
+      ))}
+    </span>
+  );
+}
+
+const SHAPES = new Set(["ping", "blink"]);
+
+function Layer({ l }: { l: BannerLayer }) {
+  const style = {
+    left: `${l.x}%`,
+    top: `${l.y}%`,
+    width: `${l.w}%`,
+    opacity: l.opacity,
+    rotate: l.rot ? `${l.rot}deg` : undefined,
+    animationDuration: l.dur ? `${l.dur}s` : undefined,
+    animationDelay: l.delay ? `-${l.delay}s` : undefined,
+    ["--fx-color" as string]: l.color,
+  } as CSSProperties;
+  if (SHAPES.has(l.anim)) return <i className={`promo-fx-${l.anim}`} style={style} />;
+  const img = <img src={l.src} alt="" draggable={false} loading="lazy" decoding="async" />;
+  // มีชิ้นลูก = ห่อเป็นกล่องเท่ารูปแม่ ลูกวางเป็น % ของกล่องนี้ แล้วทั้งกล่องขยับไปด้วยกัน
+  return (
+    <span className={`promo-fx-${l.anim}`} style={style}>
+      {img}
+      {l.kids?.map((k, i) => <Layer key={i} l={k} />)}
+    </span>
   );
 }
