@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { autoShipDate } from "@/lib/ship-date";
+import { loadShopHolidays } from "@/lib/server/shop-holidays";
 import { requirePerm } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
@@ -194,6 +195,8 @@ export async function PUT(req: Request) {
   const shippingLabel = normalizeShipLabel(body.shippingLabel, shipCost, await shippingMethods(sb)) || undefined;
   const whtOk = body.wht && Number(body.wht.amount) > 0 ? { rate: Number(body.wht.rate) || 0, amount: Number(body.wht.amount) } : undefined;
   const useByDate = /^\d{4}-\d{2}-\d{2}$/.test(body.useByDate ?? "") ? body.useByDate : undefined;
+  // วันส่งอัตโนมัติ (autoShipDate) เว้นวันหยุดตามปฏิทินร้าน — โหลดก่อนคำนวณ
+  if (useByDate) await loadShopHolidays();
   const discountAmt = Math.max(0, Number(body.discount ?? doc.discount ?? 0) || 0);
   const vatAmt = Math.round(Math.max(0, Number(body.vat ?? doc.vat ?? 0) || 0) * 100) / 100;
   const depositAmt = body.deposit && Number(body.deposit.amount) > 0 ? Math.round(Number(body.deposit.amount) * 100) / 100 : 0;

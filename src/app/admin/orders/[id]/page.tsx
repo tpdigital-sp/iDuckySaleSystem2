@@ -138,7 +138,9 @@ import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftCha
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
 import { thaiDateTime } from "@/lib/bangkok-time";
-import { SHIP_WINDOW_RULE, shipWindowForUseBy, shipWindowWarnings } from "@/lib/ship-date";
+import { SHIP_WINDOW_RULE, earliestShipDate, orderDateYmd, shipWindowForUseBy, shipWindowWarnings, shortThaiDay } from "@/lib/ship-date";
+import HolidayDatePicker from "@/components/HolidayDatePicker";
+import { useShopHolidays } from "@/lib/use-shop-holidays";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 
 /** ค่าในช่องเลือกวิธีส่งที่แปลว่า "ให้ระบบคิดให้" — ไม่ใช่ id ของวิธีส่งจริง */
@@ -2231,6 +2233,8 @@ export default function AdminOrderDetailPage() {
    * ทำครั้งเดียวต่อใบ · เฉพาะคนที่มีสิทธิ์แก้ออเดอร์ (ฝ่ายแพ็ค/กราฟฟิกเซิร์ฟเวอร์ไม่รับฟิลด์นี้อยู่แล้ว ไม่ต้องยิงให้เด้ง error)
    */
   const shipAutoRef = useRef<string>("");
+  /** 🗓 วันหยุดร้านจากปฏิทิน TP-Leader — โหลดเสร็จแล้ววาดคำเตือนวันส่งใหม่ด้วยวันหยุดชุดจริง */
+  useShopHolidays();
 
   /**
    * 📅 เปิดช่อง "ถึง" ให้ใบไหน — เจ้าของร้านสั่ง 14 ก.ย. 69: "ระบุ 1 วันก็ได้ ระบุจาก–ถึงก็ได้"
@@ -2242,7 +2246,7 @@ export default function AdminOrderDetailPage() {
     if (!order || demo || !permsReady || !rolCan("orders.edit")) return;
     if (!order.useByDate || order.shipDate?.from || order.shipDate?.to) return;
     if (shipAutoRef.current === order.id) return;
-    const win = shipWindowForUseBy(order.useByDate, todayYmd());
+    const win = shipWindowForUseBy(order.useByDate, todayYmd(), orderDateYmd(order));
     if (!win) return;
     shipAutoRef.current = order.id;
     applyOrder({ ...order, shipDate: { from: win.from, to: win.from } });
@@ -7316,15 +7320,22 @@ export default function AdminOrderDetailPage() {
                     เติมให้เองจากวันใช้งาน (ดู shipWindowForUseBy) · แอดมินแก้ทับได้
                     วันเดียว = เก็บ shipDate.from และ .to เป็นวันเดียวกัน · เป็นช่วง = to มากกว่า from (ใบปริ้น/บอร์ด WIP/หน้าลูกค้าอ่านทั้งคู่และโชว์ช่วงอยู่แล้ว) */}
                 {(() => {
-                  const warns = shipWindowWarnings(order.shipDate, order.useByDate);
+                  // วันที่สั่ง → เตือนเมื่อนัดส่งวันเดียวกับวันสั่ง/ก่อนมีรอบคิวผลิต (17 ก.ย. 69)
+                  const warns = shipWindowWarnings(order.shipDate, order.useByDate, orderDateYmd(order));
                   const shipFrom = order.shipDate?.from || order.shipDate?.to || "";
                   const shipTo = order.shipDate?.to || order.shipDate?.from || "";
                   const isRange = !!shipTo && shipTo !== shipFrom;
                   const rangeOn = isRange || shipRangeFor === order.id;
+                  /** วันส่งเร็วสุด = วันทำการถัดจากวันที่งานเข้าคิวผลิต (สั่งวันไหน ส่งวันนั้นไม่ได้) · งานเร่งที่ตกลงกันแล้ว (🔥) ไม่ล็อก */
+                  const orderedOn = orderDateYmd(order);
+                  const shipMin = !order.rush && orderedOn ? earliestShipDate(orderedOn) : undefined;
+                  const shipMinReason = shipMin
+                    ? `สั่ง ${shortThaiDay(orderedOn)} ไม่มีรอบคิวผลิตส่งในวัน — ส่งได้เร็วสุด ${shortThaiDay(shipMin)} · งานด่วนจริงให้กด 🔥 ทำเป็นงานเร่งก่อน`
+                    : undefined;
                   /** กด "+ ถึงวันที่" — มีวันใช้งานอยู่แล้วเติมวันปลายช่วงตามกติกาให้เลย (ก่อนใช้งาน 1 วันทำการ) */
                   const openRange = () => {
                     setShipRangeFor(order.id);
-                    const win = order.useByDate ? shipWindowForUseBy(order.useByDate, todayYmd()) : null;
+                    const win = order.useByDate ? shipWindowForUseBy(order.useByDate, todayYmd(), orderDateYmd(order)) : null;
                     if (shipFrom && win && win.to > shipFrom) applyOrder({ ...order, shipDate: { from: shipFrom, to: win.to } });
                   };
                   return (
@@ -7333,28 +7344,38 @@ export default function AdminOrderDetailPage() {
                     📅 วันที่จัดส่ง{rangeOn ? " (ช่วงวันที่)" : ""}
                   </p>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <input
-                      type="date"
-                      value={shipFrom}
-                      onChange={(e) => {
-                        // ช่วงที่ตั้งไว้ยังอยู่ถ้าวันปลายยังอยู่หลังวันเริ่ม · ไม่งั้นยุบเหลือวันเดียว
-                        const v = e.target.value;
-                        const to = rangeOn && shipTo && v && shipTo > v ? shipTo : v;
-                        applyOrder({ ...order, shipDate: { from: v, to } });
-                      }}
-                      className="min-w-[9.5rem] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[13px] tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
-                    />
+                    {/* ปฏิทินของร้านเอง (17 ก.ย. 69): วันหยุดร้านตัวแดงกดไม่ติด · วันก่อนมีรอบคิวผลิต (วันสั่ง) กดไม่ติด — ใบที่ติ๊ก 🔥 งานเร่ง ปลดล็อกวันกระชั้นให้ */}
+                    <div className="min-w-[9.5rem] flex-1 [&>div]:block">
+                      <HolidayDatePicker
+                        value={shipFrom}
+                        min={shipMin}
+                        minReason={shipMinReason}
+                        holidaySelectable={false}
+                        ariaLabel="วันที่จัดส่ง"
+                        onChange={(v) => {
+                          // ช่วงที่ตั้งไว้ยังอยู่ถ้าวันปลายยังอยู่หลังวันเริ่ม · ไม่งั้นยุบเหลือวันเดียว
+                          const to = rangeOn && shipTo && v && shipTo > v ? shipTo : v;
+                          applyOrder({ ...order, shipDate: { from: v, to } });
+                        }}
+                        className="min-h-[2.25rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
+                      />
+                    </div>
                     {rangeOn ? (
                       <>
                         {/* "ถึง" ติดกับช่องปลายช่วงเสมอ — คอลัมน์นี้แคบ ถ้าปล่อยให้ตัดบรรทัดแยกกันจะอ่านเป็น "วันที่ ... ถึง" ห้อยท้ายบรรทัด */}
                         <div className="flex min-w-[9.5rem] flex-1 items-center gap-1.5">
                           <span className="shrink-0 text-xs font-bold text-slate-400">ถึง</span>
-                          <input
-                            type="date"
-                            value={shipTo}
-                            onChange={(e) => applyOrder({ ...order, shipDate: { from: shipFrom, to: e.target.value || shipFrom } })}
-                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[13px] tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
-                          />
+                          <div className="min-w-0 flex-1 [&>div]:block">
+                            <HolidayDatePicker
+                              value={shipTo}
+                              min={shipFrom || shipMin}
+                              minReason={shipFrom ? "วันส่งถึงต้องไม่ก่อนวันเริ่มส่ง" : shipMinReason}
+                              holidaySelectable={false}
+                              ariaLabel="ส่งถึงวันที่"
+                              onChange={(v) => applyOrder({ ...order, shipDate: { from: shipFrom, to: v || shipFrom } })}
+                              className="min-h-[2.25rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[13px] text-slate-800 focus:border-amber-300 focus:outline-none"
+                            />
+                          </div>
                         </div>
                         <button
                           type="button"
@@ -7410,13 +7431,16 @@ export default function AdminOrderDetailPage() {
                         )}
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="date"
+                        {/* ปฏิทินร้าน: วันหยุดตัวแดง แต่ไม่ล็อกวัน — ช่องนี้บันทึกตามที่ลูกค้าแจ้งจริง (ตัวล็อกอยู่ที่ช่องวันที่จัดส่ง) */}
+                        <div className="min-w-fit flex-1 [&>div]:block">
+                        <HolidayDatePicker
                           value={order.useByDate ?? ""}
-                          onChange={(e) => {
+                          ariaLabel="วันที่ลูกค้าต้องใช้งาน"
+                          placeholder="ยังไม่ระบุ"
+                          onChange={(picked) => {
                             // ระบุวันใช้งาน → เติมวันส่งให้ทันที (วันเดียว = วันแรกของช่วงที่ควรส่ง · ก่อนใช้งาน 2 วันทำการ เว้นเสาร์-อาทิตย์/วันหยุด)
-                            const v = e.target.value || undefined;
-                            const win = v ? shipWindowForUseBy(v, todayYmd()) : null;
+                            const v = picked || undefined;
+                            const win = v ? shipWindowForUseBy(v, todayYmd(), orderDateYmd(order)) : null;
                             // ใบที่แอดมินเปิดโหมดช่วงไว้ เติมให้ทั้งช่วง (จาก–ถึง) · ใบปกติเติมวันเดียว
                             const wide = shipRangeFor === order.id || (!!order.shipDate?.to && order.shipDate.to !== order.shipDate.from);
                             applyOrder({
@@ -7425,10 +7449,11 @@ export default function AdminOrderDetailPage() {
                               ...(win ? { shipDate: { from: win.from, to: wide ? win.to : win.from } } : {}),
                             });
                           }}
-                          className={`min-w-fit flex-1 rounded-lg border bg-white px-2 py-1 text-[13px] tabular-nums focus:outline-none ${
+                          className={`min-h-[2.25rem] rounded-lg border bg-white px-2 py-1 text-[13px] focus:outline-none ${
                             order.rush || late ? "border-rose-300 font-bold text-rose-700" : soon ? "border-orange-300 font-bold text-orange-700" : "border-slate-200 text-slate-800 focus:border-amber-300"
                           }`}
                         />
+                        </div>
                         <button
                           type="button"
                           title={order.rush ? "กดอีกครั้งเพื่อยกเลิกงานเร่ง" : "ทำเครื่องหมายว่าเป็นงานเร่ง"}

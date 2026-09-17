@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
-import { addDays, isWorkingDay, shipWindowForUseBy, shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
+import { addDays, earliestShipDate, earliestUseBy, isWorkingDay, shipWindowForUseBy, shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
+import { useShopHolidays } from "@/lib/use-shop-holidays";
+import HolidayDatePicker from "@/components/HolidayDatePicker";
 import {
   activeMatrix,
   activeRate,
@@ -284,12 +286,28 @@ export default function CartPage() {
 
   // วันที่ต้องใช้งาน — เก็บไว้ให้หน้า checkout ส่งเข้าออเดอร์
   const [useBy, setUseBy] = useState("");
+  /**
+   * 🏭 วันใช้งานที่ลูกค้าเลือกแต่ร้านส่งไม่ทัน (สั่งวันไหน ส่งวันนั้นไม่ได้ — ไม่มีรอบคิวผลิตในวัน) → ไม่รับวันนั้น จำไว้แค่ขึ้นคำอธิบาย
+   * พนักงานแจ้ง 17 ก.ย. 69 · OD-260917-5550 สั่งตี 4 ระบุใช้งานพรุ่งนี้ · ด่านเดียวกันอยู่ที่ POST /api/orders
+   */
+  const [useByBlocked, setUseByBlocked] = useState("");
+  // 🗓 วันหยุดร้านจากปฏิทิน TP-Leader — โหลดเสร็จแล้ววาดใหม่ให้วันทำการตรงกับร้านจริง
+  useShopHolidays();
   useEffect(() => {
     try {
-      setUseBy(localStorage.getItem(USE_BY_KEY) ?? "");
+      // วันที่ค้างจากรอบก่อน (เลือกไว้เมื่อวาน) อาจกระชั้นเกินไปแล้ว — ล้างทิ้ง ไม่ปล่อยไปถึง checkout
+      const stored = localStorage.getItem(USE_BY_KEY) ?? "";
+      if (stored && stored < earliestUseBy(todayBkkYmd())) {
+        localStorage.removeItem(USE_BY_KEY);
+        setUseByBlocked(stored);
+      } else setUseBy(stored);
     } catch {}
   }, []);
   function saveUseBy(v: string) {
+    if (v && v < earliestUseBy(todayBkkYmd())) {
+      setUseByBlocked(v);
+      v = "";
+    } else setUseByBlocked("");
     setUseBy(v);
     try {
       if (v) localStorage.setItem(USE_BY_KEY, v);
@@ -1248,7 +1266,9 @@ export default function CartPage() {
               const bigQty = totalQty >= USE_BY_BIG_QTY;
               const wd = useBy ? workingDaysUntil(useBy) : -1;
               const rush = !!useBy && wd >= 0 && wd < USE_BY_RUSH_WORKDAYS;
-              const win = useBy ? shipWindowForUseBy(useBy, todayBkkYmd()) : null;
+              const today = todayBkkYmd();
+              const win = useBy ? shipWindowForUseBy(useBy, today, today) : null;
+              const minUseBy = earliestUseBy(today);
               return (
                 <div className="ord-sub mt-5 p-4">
                   <label htmlFor="use-by" className="ord-title block text-[.86rem]">
@@ -1282,14 +1302,17 @@ export default function CartPage() {
                     </li>
                   </ul>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <input
+                    {/* ปฏิทินของร้านเอง — วันหยุดร้านตัวแดง · วันที่กระชั้นเกินคิวผลิตกดไม่ติด (เจ้าของร้านสั่ง 17 ก.ย. 69) */}
+                    <HolidayDatePicker
                       id="use-by"
-                      type="date"
                       value={useBy}
-                      min={todayBkkYmd()}
-                      onChange={(e) => saveUseBy(e.target.value)}
+                      min={minUseBy}
+                      minReason={`สั่งวันนี้ร้านส่งได้เร็วสุด ${shortThaiDay(earliestShipDate(today))} — เลือกวันใช้งานได้ตั้งแต่ ${shortThaiDay(minUseBy)}`}
+                      onChange={saveUseBy}
+                      clearable={false}
+                      placeholder="เลือกวันใช้งาน"
                       className="ord-input"
-                      style={{ width: "auto", ...(rush ? { borderColor: "var(--coral-deep,#F2456B)" } : {}) }}
+                      style={{ width: "auto", minWidth: "12.5rem", minHeight: 44, cursor: "pointer", ...(rush ? { borderColor: "var(--coral-deep,#F2456B)" } : {}) }}
                     />
                     {useBy && (
                       <button type="button" onClick={() => saveUseBy("")} className="ord-btn quiet sm">
@@ -1300,13 +1323,22 @@ export default function CartPage() {
                       💬 ทักเช็คคิวงาน
                     </a>
                   </div>
+                  {useByBlocked && !useBy && (
+                    <p className="ord-note danger mt-2.5 px-3 py-2 text-[11.5px] leading-relaxed" role="alert">
+                      ⛔ <strong>เลือก {shortThaiDay(useByBlocked)} ไม่ได้ครับ</strong> —{" "}
+                      {isWorkingDay(today) ? "สั่งวันนี้ไม่มีรอบคิวผลิตส่งในวันเดียวกัน" : "วันนี้ร้านหยุด งานจะเข้าคิวผลิตวันทำการถัดไป"}{" "}
+                      ร้านส่งได้เร็วสุด <strong>{shortThaiDay(earliestShipDate(today))}</strong> (ร้านหยุดเสาร์-อาทิตย์และวันหยุด) →
+                      เลือกวันใช้งานได้ตั้งแต่ <strong>{shortThaiDay(minUseBy)}</strong> · งานด่วนกว่านี้รบกวน
+                      <strong>ทัก LINE เช็คคิวกับร้านก่อน</strong>นะครับ
+                    </p>
+                  )}
                   {useBy && win && (
                     <p className={`ord-note ${rush ? "danger" : "ok"} mt-2.5 px-3 py-2 text-[11.5px] leading-relaxed`}>
                       {rush ? (
                         <>
                           ⚠️ <strong>{shortThaiDay(useBy)} กระชั้นมาก</strong> (เหลือ{" "}
                           {wd === 0 ? "ไม่ถึง 1" : wd.toLocaleString("th-TH")} วันทำการ) —{" "}
-                          {win.to <= todayBkkYmd() ? "ของต้องออกวันนี้เลย" : `ของต้องถึงภายใน ${shortThaiDay(win.to)}`}{" "}
+                          {`ของต้องออกภายใน ${shortThaiDay(win.to)}`}{" "}
                           รบกวน<strong>ทักเช็คคิวก่อนกดสั่ง</strong>นะครับ
                         </>
                       ) : (

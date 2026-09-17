@@ -84,9 +84,20 @@ export function weekdayOf(ymd: string): number {
   return t == null ? -1 : new Date(t).getUTCDay();
 }
 
-/** ชื่อวันหยุดนักขัตฤกษ์ (ถ้าเป็น) */
+/**
+ * 🗓 วันหยุดของร้านจากปฏิทิน TP-Leader (calendar.html → Firestore `holidays`) — เจ้าของร้านสั่ง 17 ก.ย. 69
+ * "ร้านหยุดเสาร์ อาทิตย์ และวันหยุดตามปฏิทิน" → ปฏิทินร้านคือตัวจริง ตาราง THAI_HOLIDAYS ข้างบนเป็นแค่ตัวสำรอง
+ * ตอนยังโหลดปฏิทินไม่ได้/Firestore ล่ม · ฝั่งเซิร์ฟเวอร์เติมด้วย loadShopHolidays() (lib/server/shop-holidays.ts)
+ * ฝั่งเบราว์เซอร์เติมด้วย useShopHolidays() (lib/use-shop-holidays.ts)
+ */
+let shopHolidays: Record<string, string> | null = null;
+export function setShopHolidays(map: Record<string, string> | null): void {
+  shopHolidays = map;
+}
+
+/** ชื่อวันหยุด (ถ้าเป็น) — ปฏิทินร้านก่อน ไม่มีค่อยใช้ตารางสำรอง */
 export function holidayName(ymd: string): string | undefined {
-  return THAI_HOLIDAYS[ymd];
+  return (shopHolidays ?? THAI_HOLIDAYS)[ymd];
 }
 
 /** เหตุผลที่วันนี้ส่งของไม่ได้ · undefined = เป็นวันทำการ ส่งได้ */
@@ -109,18 +120,64 @@ export function prevWorkingDay(ymd: string): string {
   return d;
 }
 
+/** วันทำการแรกที่ "หลัง" วันนี้ (ไม่รวมตัวเอง) */
+export function nextWorkingDay(ymd: string): string {
+  let d = addDays(ymd, 1);
+  for (let i = 0; i < 30 && !isWorkingDay(d); i++) d = addDays(d, 1);
+  return d;
+}
+
+/**
+ * 🏭 วันส่งเร็วสุดของออเดอร์ที่สั่งวันนี้ — "สั่งวันไหน ส่งวันนั้นไม่ได้" (ไม่มีรอบคิวผลิตในวันเดียวกัน)
+ * พนักงานแจ้ง 17 ก.ย. 69 · OD-260917-5550 ลูกค้าสั่งตี 4 ใช้งานพรุ่งนี้ ระบบเติมวันส่ง = วันนี้ให้เอง
+ *  - งานเข้าคิวผลิตวันทำการแรกนับจากวันสั่ง (สั่งเสาร์/อาทิตย์/วันหยุด = เข้าคิววันทำการถัดไป)
+ *  - ส่งได้เร็วสุด = วันทำการถัดจากวันเข้าคิว · สั่ง พฤ → ส่ง ศ · สั่ง ศ → ส่ง จ · สั่ง ส/อา → เข้าคิว จ ส่ง อ
+ */
+export function earliestShipDate(orderDate: string): string {
+  if (toUtc(orderDate) == null) return orderDate;
+  const queueDay = isWorkingDay(orderDate) ? orderDate : nextWorkingDay(orderDate);
+  return nextWorkingDay(queueDay);
+}
+
+/** วันใช้งานเร็วสุดที่ลูกค้าระบุได้ตอนสั่งวันนี้ — ของต้องออกก่อนวันใช้งานอย่างน้อย 1 วัน */
+export function earliestUseBy(orderDate: string): string {
+  return addDays(earliestShipDate(orderDate), 1);
+}
+
+const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+/**
+ * วันที่สั่งของออเดอร์ → YYYY-MM-DD · อ่านจาก Order.date ("17 ก.ย. 2569 04:12" เวลาไทย) ก่อน
+ * แกะไม่ได้ค่อยใช้เลขใบ OD-YYMMDD-xxxx · "" = ไม่รู้วันสั่ง
+ */
+export function orderDateYmd(o: { date?: string; id?: string }): string {
+  const p = (o.date ?? "").replace(/,/g, " ").trim().split(/\s+/);
+  const day = Number(p[0]);
+  const month = TH_MONTHS.indexOf(p[1] ?? "");
+  const year = Number(p[2]);
+  if (day && month >= 0 && year) {
+    const y = year > 2400 ? year - 543 : year;
+    return `${y}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  const m = /^[A-Z]+-(\d{2})(\d{2})(\d{2})-/.exec(o.id ?? "");
+  return m ? `20${m[1]}-${m[2]}-${m[3]}` : "";
+}
+
 export interface ShipWindow {
   from: string;
   to: string;
   /** วันที่ถูกข้ามระหว่างวันใช้งานกับวัน "ถึง" (เสาร์/อาทิตย์/วันหยุด) พร้อมเหตุผล — ไว้บอกแอดมินว่าทำไมถอยมาหลายวัน */
   skipped: { date: string; reason: string }[];
+  /** วันใช้งานกระชั้นเกินคิวผลิต — วันส่งเร็วสุดยังไม่ก่อนวันใช้งาน (from/to ถูกดันมาที่วันส่งเร็วสุด) */
+  tight?: boolean;
 }
 
 /**
  * ช่วงวันส่งที่ควรเป็น สำหรับวันใช้งานที่ระบุ · null = วันใช้งานรูปแบบผิด
  * @param today YYYY-MM-DD ของวันนี้ (ถ้าให้มา) — "จาก" จะไม่ถอยไปก่อนวันนี้ถ้า "ถึง" ยังไม่เลย
+ * @param orderDate YYYY-MM-DD วันที่สั่ง (ถ้าให้มา) — วันส่งไม่ตกวันที่สั่ง/ก่อนมีรอบคิวผลิต (earliestShipDate)
+ *                  วันใช้งานกระชั้นจนวันส่งเร็วสุดเลยช่วงไปแล้ว → from = to = วันส่งเร็วสุด + tight
  */
-export function shipWindowForUseBy(useByDate: string, today?: string): ShipWindow | null {
+export function shipWindowForUseBy(useByDate: string, today?: string, orderDate?: string): ShipWindow | null {
   if (toUtc(useByDate) == null) return null;
   const skipped: ShipWindow["skipped"] = [];
   let to = addDays(useByDate, -1);
@@ -132,6 +189,11 @@ export function shipWindowForUseBy(useByDate: string, today?: string): ShipWindo
   }
   let from = prevWorkingDay(to);
   if (today && toUtc(today) != null && from < today && today <= to) from = today;
+  if (orderDate && toUtc(orderDate) != null) {
+    const floor = earliestShipDate(orderDate);
+    if (floor > to) return { from: floor, to: floor, skipped, tight: true };
+    if (from < floor) from = floor;
+  }
   return { from, to, skipped };
 }
 
@@ -150,8 +212,23 @@ export function shortThaiDay(ymd: string): string {
  * ไม่ล็อกอะไร แค่บอก — แอดมินตั้งใจส่งวันไหนก็ได้
  * หน้าออเดอร์เก็บวันเดียว (from = to, 11 ก.ย. 69) → ตรวจครั้งเดียวใช้ป้าย "วันที่จัดส่ง" · ใบเก่าที่ยังเป็นช่วงตรวจแยกจาก/ถึงเหมือนเดิม
  */
-export function shipWindowWarnings(ship: { from?: string; to?: string } | undefined, useByDate?: string): string[] {
+export function shipWindowWarnings(
+  ship: { from?: string; to?: string } | undefined,
+  useByDate?: string,
+  /** วันที่สั่ง YYYY-MM-DD (ถ้ารู้) — เตือนเมื่อนัดส่งก่อนมีรอบคิวผลิต */
+  orderDate?: string,
+): string[] {
   const out: string[] = [];
+  const first = ship?.from || ship?.to;
+  if (orderDate && first && toUtc(first) != null && toUtc(orderDate) != null && first >= orderDate) {
+    const floor = earliestShipDate(orderDate);
+    if (first < floor)
+      out.push(
+        first === orderDate
+          ? `วันที่จัดส่ง ${shortThaiDay(first)} เป็นวันเดียวกับวันที่สั่ง — ไม่มีรอบคิวผลิตส่งในวัน · ส่งได้เร็วสุด ${shortThaiDay(floor)}`
+          : `สั่ง ${shortThaiDay(orderDate)} งานเข้าคิวผลิต ${shortThaiDay(prevWorkingDay(floor))} — ส่งได้เร็วสุด ${shortThaiDay(floor)}`,
+      );
+  }
   const single = !!ship?.from && (!ship?.to || ship.to === ship.from);
   const checks: readonly (readonly ["from" | "to", string])[] = single
     ? [["from", "วันที่จัดส่ง"]]
@@ -183,6 +260,7 @@ export function todayBkkYmd(): string {
  */
 export function autoShipDate(useByDate: string | undefined): { shipDate?: { from: string; to: string } } {
   if (!useByDate) return {};
-  const w = shipWindowForUseBy(useByDate, todayBkkYmd());
+  const today = todayBkkYmd();
+  const w = shipWindowForUseBy(useByDate, today, today);
   return w ? { shipDate: { from: w.from, to: w.from } } : {};
 }

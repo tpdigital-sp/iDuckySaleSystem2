@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { pushShopAlert } from "@/lib/server/line-alert";
 import { SITE_URL } from "@/lib/shop-info";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
-import { autoShipDate } from "@/lib/ship-date";
+import { autoShipDate, earliestShipDate, earliestUseBy, shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
+import { loadShopHolidays } from "@/lib/server/shop-holidays";
 import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order, type OrderSender } from "@/lib/admin-data";
@@ -72,6 +73,25 @@ export async function POST(req: Request) {
     input.customerId = undefined;
     input.email = undefined;
     input.couponCode = undefined;
+  }
+
+  /**
+   * 🏭 สั่งวันไหน ส่งวันนั้นไม่ได้ — ไม่มีรอบคิวผลิตในวันเดียวกัน (พนักงานแจ้ง 17 ก.ย. 69 · OD-260917-5550 สั่งตี 4 ใช้งานพรุ่งนี้)
+   * ลูกค้าระบุวันใช้งานเร็วกว่าที่ร้านส่งทัน = ไม่รับ (ตะกร้าบล็อกไว้แล้ว นี่คือด่านฝั่งเซิร์ฟเวอร์กันหน้าเว็บค้าง/ยิงตรง)
+   * พนักงานสั่งแทนลูกค้าผ่านได้ (คุยคิวกันแล้ว) แต่วันส่งที่เติมให้เองก็ยังไม่ตกวันสั่งอยู่ดี (autoShipDate)
+   * โหลดปฏิทินวันหยุดร้านก่อน — autoShipDate ด้านล่างใช้ชุดเดียวกัน
+   */
+  await loadShopHolidays();
+  if (!input.staffOrder && /^\d{4}-\d{2}-\d{2}$/.test(input.useByDate ?? "")) {
+    const today = todayBkkYmd();
+    const minUseBy = earliestUseBy(today);
+    if (input.useByDate! < minUseBy)
+      return NextResponse.json(
+        {
+          error: `วันใช้งาน ${shortThaiDay(input.useByDate!)} กระชั้นเกินไป — สั่งวันนี้ไม่มีรอบคิวผลิตส่งในวันเดียวกัน ร้านส่งได้เร็วสุด ${shortThaiDay(earliestShipDate(today))} (ร้านหยุดเสาร์-อาทิตย์และวันหยุด) · เลือกวันใช้งานตั้งแต่ ${shortThaiDay(minUseBy)} หรือทัก LINE เช็คคิวงานด่วนกับร้านก่อนนะครับ`,
+        },
+        { status: 400 },
+      );
   }
 
   /**
