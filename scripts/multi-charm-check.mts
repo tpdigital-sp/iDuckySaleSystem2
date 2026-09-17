@@ -162,7 +162,39 @@ const partsC = unitPriceParts(p, oneCharm2cm, 1);
 ok("ค่าติ่งห้อยแยกบรรทัดให้ลูกค้าเห็น (+฿20)", partsC.addOns.some((a) => a.label === SIZE2 && a.amount === 20));
 // เนื้อ/งานสกรีนของติ่งห้อยไม่บวกราคาแล้ว (เดิมบวกผ่านตารางเรท) — บันทึกไว้ให้เห็นชัดว่าตั้งใจ
 const charmSpecial = unitPriceFor(p, resolveSelections(p, { ...oneCharm2cm, [TYPE2]: SPECIAL, "สีอะคริลิค ชิ้นที่ 2": "hologram-01" }), 1);
-ok(`ติ่งห้อยเลือกสีพิเศษ/สกรีน 2 ด้าน = ไม่บวกเพิ่ม (฿${charmSpecial})`, charmSpecial === unitPriceFor(p, oneCharm2cm, 1));
+ok(`ติ่งห้อยเลือกสีพิเศษ = ไม่บวกเพิ่ม (฿${charmSpecial})`, charmSpecial === unitPriceFor(p, oneCharm2cm, 1));
+
+console.log("\n── ตะขอฟรีช่วง 1-10 พวง + ค่าสกรีนของติ่งห้อยตามขนาด (17 ก.ย. 69 — เจ้าของร้านทักจากภาพตะกร้า) ──");
+// ใบราคาจริง: พวงหลายชิ้นเริ่ม 120.- = ตัวหลักไม่เกิน 5cm 100.- (รวมตะขอ เลือกแบบไหนก็ได้) + ติ่งห้อย 2cm 20.-
+const SCREEN2 = "งานสกรีน ชิ้นที่ 2";
+const ownerSel = resolveSelections(p, {
+  ...baseSel,
+  [TYPE1]: "อะคริลิคขาวขุ่น C-02",
+  [TYPE2]: "อะคริลิคขาวขุ่น C-02",
+  "งานสกรีน ชิ้นที่ 1": "สกรีน 2 ด้าน (บน-บน)",
+  [SCREEN2]: "สกรีน 2 ด้าน (บน-บน)",
+  "ขนาดชิ้นที่ 2": "📐 กำหนดขนาดเอง (ระบุ ก.×ส.)",
+  "ขนาดกำหนดเอง (กว้าง) ชิ้นที่ 2": "4.5 ซม.",
+  "ขนาดกำหนดเอง (สูง) ชิ้นที่ 2": "4.5 ซม.",
+  รับตะขอไหม: "รับตะขอ",
+  ตะขอ: "K ตะขอแมว (เงิน/ทอง/โรสโกลด์/รุ้ง)",
+});
+const owner = unitPriceParts(p, ownerSel, 2);
+ok(`เคสในภาพ: ตัวหลัก 5cm 2 ด้าน + ติ่ง 4.5 ซม. 2 ด้าน + ตะขอ K = ฿${owner.total} (100 + 10 + 40 + 10)`, owner.total === 160);
+ok("เคสในภาพ: ไม่มีบรรทัดค่าตะขอ · มีบรรทัดค่าสกรีนของติ่งห้อย ฿10",
+  !owner.addOns.some((a) => /ตะขอ/.test(a.label)) && owner.addOns.some((a) => a.label === SCREEN2 && a.amount === 10));
+const startSel = resolveSelections(p, { ...baseSel, "ขนาดชิ้นที่ 2": "2cm" });
+ok(`ราคาเริ่มต้น 1 พวง (ตัวหลัก 5cm + ติ่ง 2cm · ไม่รับตะขอ) = ฿${unitPriceFor(p, resolveSelections(p, { ...startSel, รับตะขอไหม: "ไม่รับตะขอ" }), 1)} ตรงใบราคา 120.-`,
+  unitPriceFor(p, resolveSelections(p, { ...startSel, รับตะขอไหม: "ไม่รับตะขอ" }), 1) === 120);
+const hookNames = group("ตะขอ").choices.map((c) => c.name);
+ok(`1-10 พวง เลือกตะขอแบบไหนก็ราคาเท่ากัน (${hookNames.length} แบบ)`,
+  hookNames.every((n) => unitPriceFor(p, resolveSelections(p, { ...startSel, รับตะขอไหม: "รับตะขอ", ตะขอ: n }), 10) === 120));
+for (const [size, side2, layer3] of [["2cm", 10, 20], ["5cm", 10, 20], ["6cm", 15, 30], ["7cm", 15, 30], ["8cm", 25, 50], ["10cm", 25, 50]] as [string, number, number][]) {
+  const one = resolveSelections(p, { ...baseSel, "ขนาดชิ้นที่ 2": size });
+  const at = (screen: string, units: number) => unitPriceFor(p, resolveSelections(p, { ...one, [SCREEN2]: screen }), units) - unitPriceFor(p, one, units);
+  ok(`ติ่ง ${size}: 2 ด้าน +${at("สกรีน 2 ด้าน (ใต้-บน)", 1)} · 3 เลเยอร์ +${at("สกรีน 3 เลเยอร์", 1)} (เท่ากันทุกช่วงจำนวน)`,
+    [1, 15, 50].every((u) => at("สกรีน 2 ด้าน (ใต้-บน)", u) === side2 && at("สกรีน 2 ด้าน (บน-บน)", u) === side2 && at("สกรีน 3 เลเยอร์", u) === layer3));
+}
 
 console.log("\n── ช่วงราคาคิดตามจำนวนพวง ไม่ใช่ชิ้นรวม (1 ก.ย. 69) ──");
 const selQ = resolveSelections(p, {
@@ -210,7 +242,7 @@ ok("ขนาดชิ้นที่ 1-10 ทุกกลุ่มมีตั�
     return g.choices.some((c) => c.name === CUSTOM) && g.sizeInput?.choice === CUSTOM && g.sizeInput.widthLabel === wL(k) && g.sizeInput.heightLabel === hL(k) && g.sizeInput.askOver === 10;
   }));
 ok("ช่องกรอกกว้าง/สูงของทุกชิ้นเป็น input บังคับกรอก อยู่ชุดเดียวกับกลุ่มขนาด",
-  Array.from({ length: 10 }, (_, i) => i + 1).every((k) => [wL(k), hL(k)].every((l) => { const g = group(l); return g?.display === "input" && g.standardInput === true && g.input?.required === true && g.section === group(`ขนาดชิ้นที่ ${k}`).section; })));
+  Array.from({ length: 10 }, (_, i) => i + 1).every((k) => [wL(k), hL(k)].every((l) => { const g = group(l); return g?.display === "input" && g.standardInput === true && g.input?.required !== false && g.section === group(`ขนาดชิ้นที่ ${k}`).section; })));
 // ชิ้นที่ 1 (แกนตาราง) 3.5×2 → เกาะแถว 3cm · ราคาต้องเท่าเลือก 3cm ตรง ๆ
 const std3 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 1": "3cm" });
 const cus1 = resolveSelections(p, { ...selQ, "ขนาดชิ้นที่ 1": CUSTOM, [wL(1)]: "3.5 ซม.", [hL(1)]: "2 ซม." });

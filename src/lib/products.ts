@@ -1722,6 +1722,14 @@ export function choiceBadgeOf(
   product?: Product
 ): number {
   const view = { ...selections, [opt.label]: choiceName };
+  // 📐 กลุ่มขนาด "อื่น" ที่ลูกค้ากำหนดเอง → มองเป็นแถวที่ราคาไปเกาะ เหมือนตอนคิดเงินจริง (unitPriceFor)
+  // ไม่งั้น +฿ ที่คิดตามขนาดของกลุ่มนั้น (sizeFee เช่น ค่าสกรีน 2 ด้านของติ่งห้อย) อ่านเลขจาก
+  // "กำหนดขนาดเอง (ระบุ ก.×ส.)" ไม่ออก ป้ายเลยว่างทั้งที่ตะกร้าคิดเงิน · กลุ่มตัวเองไม่สลับ (ป้ายของตัวเลือกกำหนดเองคงเดิม)
+  if (product) {
+    for (const pl of applySizeInputPlans(product, view).plans) {
+      if (pl.choice && pl.label !== opt.label) view[pl.label] = pl.choice;
+    }
+  }
   // กลุ่มราคาดึงจากตารางเรท (priceAsDriver) — ป้ายโชว์ราคาช่องจริงของตัวเลือกนั้น ณ จำนวนนี้
   if (opt.priceAsDriver && product) return priceAsDriverExtraOf(product, opt, view, choiceName, qty);
   // กลุ่มติ๊กหลายอย่างก็โดนค่าเหมาเหมือนกัน (คิดต่อชิ้นที่ติ๊ก — ดู groupAddOf)
