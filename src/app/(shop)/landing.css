@@ -2325,6 +2325,47 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 .dl .fresh-nav{display:none}}
 @media(max-width:560px){.dl .fresh-rail{grid-auto-columns:78%;gap:14px}
 .dl .fresh-band{padding-bottom:16px}}
+/* ===== ป้ายประชาสัมพันธ์ — แถบคั่นระหว่างแบนเนอร์ใหญ่กับ "สินค้ามาใหม่" (PromoBanners.tsx · ตั้งที่ /admin/banners) =====
+   หลายใบ = รางเลื่อนแนวนอน scroll-snap ใบละเต็มความกว้าง · ป้ายภาพสูงตามสัดส่วนรูปที่อัปมา ไม่ครอป */
+.dl .promo-band{position:relative;z-index:5;padding:2px 0 30px}
+.dl .promo-rail{display:grid;grid-auto-flow:column;grid-auto-columns:100%;align-items:stretch;overflow-x:auto;
+  overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;-ms-overflow-style:none;
+  border-radius:var(--r-m);box-shadow:var(--shadow-s);background:#fff}
+.dl .promo-rail::-webkit-scrollbar{display:none}
+/* ลูกศร ‹ › ใช้ปุ่ม .fresh-nav ชุดเดิม — ขยับมากึ่งกลางความสูงป้าย */
+.dl .promo-wrap{position:relative}
+.dl .promo-wrap .fresh-nav{top:50%}
+/* ป้ายสูงไม่เท่ากัน (ภาพคนละสัดส่วน/ปนแถบข้อความ) = รางสูงเท่าใบที่สูงสุด · ใบที่เตี้ยกว่า: ภาพอยู่กลาง แถบข้อความยืดเต็ม */
+.dl .promo-slide{scroll-snap-align:start;scroll-snap-stop:always;min-width:0;display:flex}
+.dl .promo-img{display:flex;align-items:center;width:100%;line-height:0}
+.dl .promo-img picture{display:block;width:100%}
+.dl .promo-img img{display:block;width:100%;height:auto}
+.dl a.promo-img img{transition:transform .5s ease,filter .3s ease}
+.dl a.promo-img:hover img{transform:scale(1.012);filter:brightness(1.03)}
+.dl .promo-text{flex:1;display:flex;align-items:center;gap:16px;padding:20px 28px;min-height:96px;color:var(--navy);text-decoration:none;
+  background:linear-gradient(100deg,#FFF6D9,#FFFBEF 38%,var(--sky-100))}
+.dl .promo-ico{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:1.5rem;
+  background:#fff;box-shadow:0 4px 14px rgba(255,182,39,.35)}
+.dl .promo-msg{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dl .promo-msg b{font-family:var(--display);font-weight:600;font-size:1.18rem;line-height:1.4}
+.dl .promo-msg span{font-size:.92rem;line-height:1.6;color:var(--navy-soft)}
+.dl .promo-cta{flex:none;padding:10px 20px;border-radius:999px;background:var(--navy);color:#fff;font-weight:600;font-size:.9rem;
+  white-space:nowrap;transition:background .22s ease,color .22s ease,transform .25s cubic-bezier(.34,1.56,.64,1)}
+.dl a.promo-text:hover .promo-cta{background:var(--yolk);color:var(--navy);transform:translateX(3px)}
+.dl .promo-dots{display:flex;justify-content:center;gap:4px;margin-top:6px}
+/* จุดเล็กแต่พื้นที่กดใหญ่ (24px) — นิ้วโป้งบนมือถือจิ้มโดน */
+.dl .promo-dots button{width:24px;height:24px;padding:0;border:0;background:none;cursor:pointer;display:grid;place-items:center}
+.dl .promo-dots button::before{content:"";width:8px;height:8px;border-radius:999px;background:var(--sky-300);
+  transition:width .3s ease,background .3s ease}
+.dl .promo-dots button.on::before{width:22px;background:var(--blue-deep)}
+@media(max-width:560px){.dl .promo-band{padding-bottom:22px}
+.dl .promo-rail{border-radius:var(--r-s)}
+.dl .promo-text{flex-wrap:wrap;gap:10px 12px;padding:16px 18px}
+.dl .promo-ico{width:42px;height:42px;font-size:1.2rem}
+.dl .promo-msg{flex-basis:calc(100% - 54px)}
+.dl .promo-msg b{font-size:1.02rem}
+.dl .promo-cta{margin-left:54px;padding:8px 16px;font-size:.85rem}}
+@media(prefers-reduced-motion:reduce){.dl a.promo-img img,.dl .promo-cta{transition:none}}
 /* ── โหมดคุยจริง (HomeChat.tsx) — ต่อ n8n ตัวเดียวกับหน้าแชทแอดมิน ── */
 .dl .chat-cue{margin:2px 0 0;padding:11px 14px;border:1px dashed var(--sky-300);border-radius:16px;
   background:#fff;text-align:center;font-size:.82rem;line-height:1.6;color:var(--navy-soft)}

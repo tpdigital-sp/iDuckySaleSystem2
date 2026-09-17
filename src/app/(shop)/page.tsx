@@ -10,6 +10,7 @@ import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } 
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import HomeChat from "@/components/HomeChat";
+import PromoBanners from "@/components/PromoBanners";
 import { useAltImage } from "@/components/CardAltImage";
 import CardSkeleton from "@/components/CardSkeleton";
 import { CAT_ICON, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
@@ -312,6 +313,9 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
+        {/* ── ป้ายประชาสัมพันธ์ (แอดมินตั้งที่ /admin/banners · ไม่มีป้าย = ไม่วาดอะไร) ── */}
+        <PromoBanners />
 
         {/* ── สินค้ามาใหม่ ── */}
         <section id="new-arrivals" className="fresh-band rv">

@@ -48,6 +48,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll", group: "ลูกค้า" },
   // ⚙️ ร้าน & ระบบ
   { href: "/admin/articles", label: "บทความ", emoji: "✍️", perm: "products.view", group: "ระบบ" },
+  { href: "/admin/banners", label: "ป้ายประชาสัมพันธ์", emoji: "📣", perm: "settings.manage", group: "ระบบ" },
   { href: "/admin/nav", label: "เมนูหน้าร้าน", emoji: "🧭", perm: "settings.manage", group: "ระบบ" },
   { href: "/admin/settings", label: "ตั้งค่าระบบ", emoji: "⚙️", perm: "settings.manage", group: "ระบบ" },
   { href: "/admin/staff", label: "พนักงาน", emoji: "👥", perm: "staff.manage", group: "ระบบ" },
