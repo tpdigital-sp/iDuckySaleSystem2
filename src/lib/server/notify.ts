@@ -374,7 +374,9 @@ export function statusFlex(
           paddingAll: "14px",
           contents: [
             { type: "text", text: "iDucky Prints Studio", size: "xs", color: "#FFFFFFCC" },
-            { type: "text", text: status, size: "xl", weight: "bold", color: "#FFFFFF" },
+            // 🏪 มารับเอง: สถานะในระบบคือ "จัดส่งแล้ว" แต่ลูกค้าต้องอ่านว่าแพ็คเสร็จ รอมารับ — ไม่งั้นเข้าใจว่าร้านส่งพัสดุไปแล้ว
+            // (ตรงกับ orderStatusLabel ในหน้าเว็บ · เจ้าของร้านเลือกแบบนี้ 17 ก.ย. 69)
+            { type: "text", text: status === "จัดส่งแล้ว" && isPickupOrder(order) ? "แพ็คเสร็จ รอมารับ" : status, size: "xl", weight: "bold", color: "#FFFFFF" },
           ],
         },
         body: {
