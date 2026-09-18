@@ -1931,6 +1931,32 @@ export function arrivalSummary(a: Pick<PackArrival, "status" | "got">, need: num
 export type ArrivalPatch = { status: PackArrivalStatus; got?: number; expectedAt?: string; note?: string };
 
 /**
+ * ↕️ ย้ายลำดับรายการในออเดอร์ (from → to) — คืน Order ใหม่ ไม่แก้ของเดิม · ยอดเงินไม่เปลี่ยน
+ * ⚠️ แผนแบ่งส่ง/รอบที่ส่งแล้ว อ้างรายการด้วย "ตำแหน่ง" (proofs[].item) → ต้องย้ายเลขตามไปด้วย ไม่งั้นรูปที่เลือกส่งชี้ผิดรายการ
+ * ⚠️ ใบที่มีรายการติดตาม "ของยังไม่มา" (arrival) ย้ายไม่ได้ — สะพานไป TP ใช้ตำแหน่งรายการเป็น doc id (ดู itemMoveBlocked)
+ */
+export function moveOrderItem(order: Order, from: number, to: number): Order {
+  const n = order.items.length;
+  if (from === to || from < 0 || to < 0 || from >= n || to >= n) return order;
+  const pos = order.items.map((_, i) => i); // pos[ตำแหน่งใหม่] = ตำแหน่งเดิม
+  pos.splice(to, 0, pos.splice(from, 1)[0]);
+  const newIndexOf = new Map(pos.map((old, now) => [old, now]));
+  const remap = <T extends { item: number }>(list: T[]): T[] => list.map((p) => ({ ...p, item: newIndexOf.get(p.item) ?? p.item }));
+  return {
+    ...order,
+    items: pos.map((old) => order.items[old]),
+    ...(order.shipPlan ? { shipPlan: order.shipPlan.map((r) => ({ ...r, proofs: remap(r.proofs ?? []) })) } : {}),
+    ...(order.shipments ? { shipments: order.shipments.map((s) => ({ ...s, proofs: remap(s.proofs ?? []) })) } : {}),
+  };
+}
+
+/** เหตุผลที่ย้ายลำดับรายการไม่ได้ ("" = ย้ายได้) */
+export function itemMoveBlocked(order: Order): string {
+  if (order.items.some((it) => it.arrival)) return "ใบนี้มีรายการที่ติดตาม “ของยังไม่มา” อยู่ — ย้ายลำดับไม่ได้ (ฝ่ายผลิตอ้างรายการตามลำดับเดิม)";
+  return "";
+}
+
+/**
  * 📦 ปักสถานะของรายการ (ยังไม่มา / มาไม่ครบ / มาครบ) + ลงประวัติ — คืน Order ใหม่ ไม่แก้ของเดิม
  * ใช้ทั้งโหมดแพ็คในหน้าออเดอร์และโมดัลที่สถานีแพ็ค–ส่ง จะได้ลง log/นับวันเหมือนกัน
  * since = วันที่ปักครั้งแรกในรอบนี้ (แก้หมายเหตุ/วันคาดไม่รีเซ็ต · มาครบแล้วปักใหม่ = เริ่มนับใหม่)

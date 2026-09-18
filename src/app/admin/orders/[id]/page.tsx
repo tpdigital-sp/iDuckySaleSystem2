@@ -85,6 +85,8 @@ import {
   orderAwaitingStock,
   taxInvoiceDocOf,
   applyArrival,
+  moveOrderItem,
+  itemMoveBlocked,
   arrivalOverdue,
   PROOF_STYLES,
   proofsOf,
@@ -1281,6 +1283,8 @@ export default function AdminOrderDetailPage() {
   const [itemOpen, setItemOpen] = useState<Record<number, boolean>>({});
   /** รายการ "ไม่ต้องทำแบบ" ที่แอดมินกดขอเปิดช่องรูปเอง (ปกติซ่อนไว้เพราะไม่มีอะไรให้แนบ) */
   const [picOpen, setPicOpen] = useState<Record<number, boolean>>({});
+  /** ↕️ นับครั้งที่ย้ายลำดับรายการ — ใส่ใน key ของการ์ดให้วาดใหม่ทั้งใบ (ช่องกรอก/หมายเหตุที่ค้างค่าไว้จะไม่ไปโผล่ผิดรายการ) */
+  const [itemsRev, setItemsRev] = useState(0);
   const [lightbox, setLightbox] = useState<{
     src: string;
     alt: string;
@@ -3244,6 +3248,37 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next);
   }
 
+  /** ↕️ ย้ายลำดับรายการ (ปุ่ม ▲▼ / เลือกลำดับที่หัวรายการ) — ยอดเงินไม่เปลี่ยน · แผนแบ่งส่งย้ายเลขตาม (moveOrderItem) · ลง log */
+  function moveItem(from: number, to: number) {
+    if (!order || from === to || to < 0 || to >= order.items.length) return;
+    const blocked = itemMoveBlocked(order);
+    if (blocked) {
+      setErr(`⚠️ ${blocked}`);
+      return;
+    }
+    const it = order.items[from];
+    const next = withLog(moveOrderItem(order, from, to), actor, "↕️ ย้ายลำดับรายการ", `${it.name} — ลำดับ ${from + 1} → ${to + 1}`);
+    // สถานะหน้าจอที่จำตามตำแหน่ง (กาง/ยุบ · ช่องที่เปิดค้าง) ย้ายตามรายการไปด้วย · ค่าที่พิมพ์ค้าง/ติ๊กทำใหม่ล้างทิ้ง
+    const pos = order.items.map((_, i) => i);
+    pos.splice(to, 0, pos.splice(from, 1)[0]);
+    const follow = (m: Record<number, boolean>) => {
+      const out: Record<number, boolean> = {};
+      pos.forEach((old, now) => {
+        if (old in m) out[now] = m[old];
+      });
+      return out;
+    };
+    setItemOpen(follow);
+    setNoteOpen(follow);
+    setDiscOpen(follow);
+    setPicOpen(follow);
+    setQtyDraft({});
+    setRedoPicks({});
+    setItemsRev((v) => v + 1);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
   /** ใช้ลายที่แนบไว้เป็นแบบให้ลูกค้ากดอนุมัติ/ขอแก้ไข (บางงานร้านใช้ลายลูกค้าเป็นแบบเลย) */
   function useArtAsProof(itemIndex: number, url: string) {
     if (!order) return;
@@ -4787,7 +4822,7 @@ export default function AdminOrderDetailPage() {
               const open = itemOpen[i] ?? autoOpen(it);
               return (
                 <div
-                  key={`${it.productId}-${i}`}
+                  key={`${it.productId}-${i}-${itemsRev}`}
                   className={`overflow-hidden rounded-2xl border-2 shadow-[0_2px_10px_rgba(15,23,42,0.05)] ${
                     i % 2 === 0 ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/40"
                   }`}
@@ -4807,6 +4842,44 @@ export default function AdminOrderDetailPage() {
                     >
                       รายการที่ {i + 1} / {order.items.length}
                     </span>
+                    {/* ↕️ จัดลำดับรายการเอง — ▲▼ ทีละขั้น · ใบที่มีหลายรายการเลือกลำดับปลายทางได้เลย */}
+                    {mayEdit && order.items.length > 1 && (
+                      <span className="mr-auto flex shrink-0 items-center gap-1" title={itemMoveBlocked(order) || "ย้ายลำดับรายการ (ยอดเงินไม่เปลี่ยน · ระบบลงประวัติ)"}>
+                        <button
+                          type="button"
+                          aria-label="เลื่อนรายการขึ้น"
+                          disabled={i === 0 || !!itemMoveBlocked(order)}
+                          onClick={() => moveItem(i, i - 1)}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-xs font-bold text-slate-500 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-30"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="เลื่อนรายการลง"
+                          disabled={i === order.items.length - 1 || !!itemMoveBlocked(order)}
+                          onClick={() => moveItem(i, i + 1)}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-xs font-bold text-slate-500 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-30"
+                        >
+                          ▼
+                        </button>
+                        {order.items.length > 2 && (
+                          <select
+                            aria-label="ย้ายไปลำดับที่"
+                            value={i}
+                            disabled={!!itemMoveBlocked(order)}
+                            onChange={(e) => moveItem(i, Number(e.target.value))}
+                            className="rounded-lg border border-slate-200 bg-white px-1 py-0.5 text-xs font-bold text-slate-500 disabled:opacity-30"
+                          >
+                            {order.items.map((_, k) => (
+                              <option key={k} value={k}>
+                                {k === i ? `ลำดับ ${k + 1}` : `→ ${k + 1}`}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </span>
+                    )}
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
                       {mayEdit && (

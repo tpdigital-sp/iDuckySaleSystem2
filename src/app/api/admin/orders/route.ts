@@ -151,6 +151,37 @@ function sameLine(cur: OrderItem | undefined, inc: OrderItem | undefined): cur i
   return !!cur && !!inc && (cur.name === inc.name || (typeof inc.nameWas === "string" && cur.name === inc.nameWas));
 }
 
+/** ลายนิ้วมือของรายการ — สิ่งที่ไม่เปลี่ยนตอนย้ายลำดับ (สินค้า + ตัวเลือก + ลายที่แนบ) ไว้แยกรายการชื่อซ้ำกัน */
+const itemPrint = (it: OrderItem) => JSON.stringify([it.productId, it.selections ?? null, it.artworkUrls ?? null]);
+
+/**
+ * ↕️ หาว่ารายการที่ส่งมาแต่ละตัวคือรายการไหนในฐาน (18 ก.ย. 69 — หน้าออเดอร์ย้ายลำดับรายการได้แล้ว)
+ * เดิมจับคู่ตามตำแหน่งอย่างเดียว → สลับรายการ "ชื่อเดียวกัน" 2 ตัว = ติ๊ก/แบบงานของอีกตัวถูกเอามาเทียบ แบบงานโดนประทับเวลาใหม่
+ * รอบแรก: ชื่อตรง + ลายนิ้วมือตรง (ตำแหน่งเดิมก่อน แล้วค่อยหาตำแหน่งอื่น) · รอบสอง: ที่เหลือใช้ตำแหน่งเดิมตามกติกาเก่า (sameLine ตัดสินต่อ)
+ */
+function matchExistingItems(existing: OrderItem[], incoming: OrderItem[]): (OrderItem | undefined)[] {
+  const used = new Set<number>();
+  const out: (OrderItem | undefined)[] = incoming.map(() => undefined);
+  const exact = (j: number, inc: OrderItem) => !used.has(j) && sameLine(existing[j], inc) && itemPrint(existing[j]) === itemPrint(inc);
+  incoming.forEach((inc, i) => {
+    const j = exact(i, inc) ? i : -1;
+    if (j < 0) return;
+    used.add(j);
+    out[i] = existing[j];
+  });
+  incoming.forEach((inc, i) => {
+    if (out[i]) return;
+    const j = existing.findIndex((_, k) => exact(k, inc));
+    if (j < 0) return;
+    used.add(j);
+    out[i] = existing[j];
+  });
+  incoming.forEach((_, i) => {
+    if (!out[i] && !used.has(i)) out[i] = existing[i];
+  });
+  return out;
+}
+
 /**
  * แอดมินสิทธิ์เต็ม: ก้อนที่ส่งมาคือของจริงทั้งใบ ยกเว้น
  *   · ช่องที่หน้าจอ "ไม่ได้แก้" (header x-changed-keys) → เอาจากฐาน (ดู order-merge.ts) — หน้าจอค้างทับงานคนอื่นไม่ได้
@@ -160,10 +191,11 @@ function sameLine(cur: OrderItem | undefined, inc: OrderItem | undefined): cur i
 function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: string, now: string, changed: Set<string> | null): { order: Order; keptMoney: string[]; restored: string[] } {
   // items: หน้าจอไม่ได้แตะ (มี header และไม่มี "items") → ชุดในฐานทั้งดุ้น รวมของที่ลูกค้าเพิ่ง append/กราฟฟิกเพิ่งอัป
   const itemsUntouched = !!changed && !changed.has("items");
+  const curOf = itemsUntouched ? [] : matchExistingItems(existing.items ?? [], incoming.items ?? []);
   const items = itemsUntouched
     ? existing.items
     : (incoming.items ?? []).map((inc, i) => {
-        const cur = existing.items?.[i];
+        const cur = curOf[i];
         const clean: OrderItem = { ...inc };
         delete clean.nameWas; // ชื่อเดิมใช้จับคู่ในคำขอนี้เท่านั้น — ไม่เก็บลงฐาน
         return sameLine(cur, inc) ? reconcileItem(cur, clean, clientSavedAt, now) : clean;
