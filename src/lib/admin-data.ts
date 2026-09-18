@@ -1642,7 +1642,33 @@ export function paidTotalIsReportedOnly(o: Order): boolean {
   if (o.deposit?.firstPaidAt) return false;
   if (o.slipVerify?.status === "pass" || (o.slipVerify?.credited ?? 0) > 0) return false;
   if ((o.payments ?? []).some((p) => (p.credited ?? 0) > 0)) return false;
+  if (paidTotalEverConfirmed(o)) return false;
   return true;
+}
+
+/** วันแรกที่โค้ดใหม่เลิกตั้ง paidTotal ตอนสลิปตรวจตก — ใบที่เกิดหลังจากนี้ไม่มีกับดักระบบเก่า (เลข OD-YYMMDD) */
+const PAID_TOTAL_TRAP_CUTOFF = "260910";
+
+/**
+ * 💰 paidTotal ของใบนี้เคยถูก "ยืนยันว่าเป็นเงินจริง" มาแล้ว — กับดักระบบเก่าห้ามนับเป็นศูนย์
+ *
+ * ทำไมต้องมี (OD-260914-7626 · 18 ก.ย. 69): สลิป K BIZ ไม่มี QR ตรวจตก → แอดมินยืนยันเงินเข้าเอง (ชำระแล้ว 11,877)
+ * → ส่งผลิต → เก็บค่าส่งเพิ่ม ฿50 → พนักงานดันสถานะกลับ "รอตรวจสอบ" ด้วยมือ → ใบเข้าเงื่อนไขกับดักพอดี
+ * (สลิปช่องหลักไม่เคย pass · ไม่มี credited) paidSoFar กลายเป็น 0 → กด 💰 รับยอด ฿50 เอง เขียน paidTotal = 50 ทับ 11,877
+ * สัญญาณว่าเงินจริง: ใบเกิดหลังโค้ดใหม่ (ไม่มีทางถูกตั้งล่วงหน้า) · เคยถอยจากขั้นที่ชำระแล้ว (reopenedFrom)
+ * · ประวัติมีการเปลี่ยนสถานะเข้าขั้นหลังชำระ / นับว่าชำระครบ (หัก ณ ที่จ่าย) / ยืนยันการชำระเงิน
+ */
+export function paidTotalEverConfirmed(o: Order): boolean {
+  const m = /^OD-(\d{6})-/.exec(o.id);
+  if (m && m[1] >= PAID_TOTAL_TRAP_CUTOFF) return true;
+  if (o.reopenedFrom) return true;
+  const paidStages = ORDER_STATUSES.filter((s) => !["รอชำระเงิน", "รอตรวจสอบ", "ยกเลิก"].includes(s));
+  return (o.log ?? []).some((l) => {
+    if (l.action.startsWith("นับว่าชำระครบ") || l.action.includes("ยืนยันการชำระเงิน")) return true;
+    if (l.action !== "เปลี่ยนสถานะ") return false;
+    const to = (l.detail ?? "").split("→").pop()?.trim() ?? "";
+    return paidStages.some((s) => to.startsWith(s));
+  });
 }
 
 /** ยอดที่ "รับแล้วจริง" ตามที่ระบบยืนยันได้ (บาท) — ตัดค่าที่ตั้งล่วงหน้าตอนแจ้งโอนของระบบเก่าออก */
