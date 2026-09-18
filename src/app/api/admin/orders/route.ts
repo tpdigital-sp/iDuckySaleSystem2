@@ -341,6 +341,43 @@ const LITE_SELECT = [
   "lineProfile:data->lineProfile",
 ].join(",");
 
+/** บรรทัด log ที่หน้ารายการยังต้องใช้ — ต้องตรงกับเงื่อนไขใน paidTotalEverConfirmed (admin-data.ts) ไม่งั้นยอดค้างใบเก่าเพี้ยน */
+const listKeepsLog = (l: { action: string }) =>
+  l.action === "เปลี่ยนสถานะ" || l.action.startsWith("นับว่าชำระครบ") || l.action.includes("ยืนยันการชำระเงิน");
+
+/**
+ * 🐢 ความจำก้อนหน้ารายการต่อ instance (18 ก.ย. 69) — เปิดหน้า /admin/orders ครั้งถัดไปไม่ต้องขนทุกใบจาก Supabase ซ้ำ (2.9 MB ~1.6 วิ)
+ * ขอแค่ใบที่ savedAt ใหม่กว่าเข็ม + เลขใบทุกใบ (ตัดใบที่ถูกลบ) แล้วปะเข้าก้อนเดิม · ถูกต้องเท่ากับโพล &since= ของหน้าเว็บ
+ * ⚠️ การเขียนที่ไม่ผ่านประตู (สคริปต์แก้ฐานตรง ๆ) ไม่ขยับ savedAt → ทุก LIST_MEMO_TTL โหลดเต็มใหม่ 1 ครั้งกันค้างยาว
+ */
+const LIST_MEMO_TTL = 3 * 60_000;
+let listMemo: { orders: Order[]; at: string; fullAt: number } | null = null;
+async function listFromMemo(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
+  const memo = listMemo;
+  if (!memo || Date.now() - memo.fullAt > LIST_MEMO_TTL) return null;
+  const at = new Date().toISOString();
+  const sinceIso = new Date(Date.parse(memo.at) - 60_000).toISOString(); // ถอย 60 วิ กันนาฬิกาเหลื่อมระหว่าง instance
+  const [delta, ids] = await Promise.all([
+    sb.from("orders").select("data").gt("data->>savedAt", sinceIso).order("created_at", { ascending: false }),
+    sb.from("orders").select("id").order("created_at", { ascending: false }),
+  ]);
+  if (delta.error || ids.error) return null;
+  const byId = new Map(memo.orders.map((o) => [o.id, o]));
+  for (const r of delta.data ?? []) {
+    const o = r.data as Order;
+    byId.set(o.id, o.log?.length ? { ...o, log: o.log.filter(listKeepsLog) } : o);
+  }
+  // เรียงตาม created_at ของฐาน (จากคิวรี ids) · ใบที่ไม่อยู่ใน ids = ถูกลบ · ใบใน ids ที่ไม่มีข้อมูล = ผิดคาด → โหลดเต็ม
+  const orders: Order[] = [];
+  for (const r of ids.data ?? []) {
+    const o = byId.get(r.id as string);
+    if (!o) return null;
+    orders.push(o);
+  }
+  listMemo = { orders, at, fullAt: memo.fullAt };
+  return { orders, at };
+}
+
 export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ orders: [] });
@@ -370,8 +407,23 @@ export async function GET(req: Request) {
     const liteRows = (rows ?? []) as unknown as Record<string, unknown>[];
     return NextResponse.json({ orders: liteRows.map((r) => ({ ...r, items: [] })) });
   }
+  /**
+   * 🐢 โหมดหน้ารายการ (?list=1 · 18 ก.ย. 69) — เดิมหน้า /admin/orders ขอทุกใบทั้งก้อน 4.2 MB ทุก 15 วิ
+   *   · log ถูกตัดเหลือเฉพาะบรรทัดที่ paidTotalEverConfirmed อ่าน (log กิน ~44% ของก้อน ลิสต์ไม่ได้โชว์)
+   *   · &since=ISO = เฉพาะใบที่ savedAt ใหม่กว่า (โพล 15 วิ) + ids ทุกใบไว้ให้หน้าเว็บตัดใบที่ถูกลบ
+   *     savedAt ประทับที่ประตูเขียนออเดอร์ทุกทาง (order-write.ts) จึงใช้เป็นเข็มได้
+   */
+  const listMode = url.searchParams.get("list") === "1" && !wantId;
+  const since = listMode ? url.searchParams.get("since") : null;
+  // ก้อนเต็มของหน้ารายการ: instance นี้เคยโหลดไว้ → ขอจากฐานแค่ใบที่เปลี่ยน (0.3 วิ แทน 1.6 วิ) ล้มเหลว = ตกไปทางปกติข้างล่าง
+  if (listMode && !since) {
+    const hit = await listFromMemo(sb);
+    if (hit) return NextResponse.json(hit);
+  }
   let q = sb.from("orders").select("data").order("created_at", { ascending: false });
   if (wantId) q = q.eq("id", wantId);
+  if (since && Number.isFinite(Date.parse(since))) q = q.gt("data->>savedAt", new Date(since).toISOString());
+  const idsLater = since ? sb.from("orders").select("id") : null;
   const { data, error } = await q;
   if (error) {
     // ตารางยังไม่ถูกสร้าง → บอกให้รัน SQL (ไม่ถือเป็น error ร้ายแรง)
@@ -381,6 +433,16 @@ export async function GET(req: Request) {
   }
 
   const orders = (data ?? []).map((r) => r.data as Order);
+  if (listMode) {
+    const slim = orders.map((o) => (o.log?.length ? { ...o, log: o.log.filter(listKeepsLog) } : o));
+    const at = new Date().toISOString();
+    if (!idsLater) {
+      listMemo = { orders: slim, at, fullAt: Date.now() };
+      return NextResponse.json({ orders: slim, at });
+    }
+    const { data: idRows, error: idErr } = await idsLater;
+    return NextResponse.json({ orders: slim, at, ...(idErr ? {} : { ids: (idRows ?? []).map((r) => r.id as string) }) });
+  }
   // 🩹 เงินครบตามสลิปแล้วแต่ใบยังค้าง "รอตรวจสอบ" (ผลตรวจถูกลงย้อนหลังตอนซ่อมยอด) → ปิดใบให้เองตอนเปิดหน้าออเดอร์
   //    เงื่อนไขแคบมาก ดู settleCreditedOrder · ล้มก็แค่โชว์ใบเดิม (OD-260915-1705 · 16 ก.ย. 69)
   if (wantId && orders[0]) {

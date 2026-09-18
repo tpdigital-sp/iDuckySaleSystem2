@@ -10,7 +10,7 @@
  * แยกสถานะด้วยมากกว่าสี: แถบสีซ้ายสุดของแถว + ป้ายสถานะ + สีแถบความคืบหน้า
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
@@ -39,7 +39,7 @@ import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
 import { parseThaiDate } from "@/lib/admin-dash";
 import { usePolling } from "@/lib/use-polling";
-import { useCan } from "@/lib/perm-context";
+import { useCan, usePermsReady } from "@/lib/perm-context";
 import { PACKING_QUEUE_STATUSES } from "@/lib/permissions";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
 import NewCustomerDialog, { type NewCustomerDraft } from "@/components/admin/NewCustomerDialog";
@@ -56,6 +56,9 @@ const DEPARTMENTS: { key: string; label: string; statuses: OrderStatus[] }[] = [
 ];
 
 /** ฝ่ายแพ็คเห็นเฉพาะออเดอร์ที่ถึงคิวแพ็คแล้ว — จอสะอาด หยิบผิดใบยาก */
+/** รายการล่าสุดที่หน้านี้โหลดไว้ (ดิบ ยังไม่กรองสิทธิ์) + เข็มโพล — อยู่ในหน่วยความจำของแท็บ ข้ามการสลับหน้าในหลังบ้าน */
+let listCache: { orders: Order[]; at: string } | null = null;
+
 const visibleTo = (list: Order[], seesAll: boolean) =>
   seesAll ? list : list.filter((o) => PACKING_QUEUE_STATUSES.includes(o.status));
 
@@ -214,7 +217,13 @@ const thaiDay = (iso: string) =>
 
 export default function AdminOrdersPage() {
   const router = useRouter();
-  const [orders, setOrders] = useState<Order[]>([]);
+  /**
+   * ออเดอร์ดิบทุกใบจากเซิร์ฟเวอร์ (ยังไม่กรองตามสิทธิ์) — แยกจาก orders ที่กรองแล้ว
+   * ⚠️ เดิมกรอง visibleTo ตอนรับข้อมูล + effect โหลดผูกกับ seesAll → สิทธิ์โหลดเสร็จทีหลัง (AdminShell) seesAll พลิก
+   *    false→true = ยิงโหลดทั้งก้อนซ้ำรอบ 2 ทุกครั้งที่เปิดหน้า (18 ก.ย. 69) · ตอนนี้โหลดรอบเดียว กรองตอนวาด
+   * เริ่มจาก listCache = กลับมาหน้านี้ (จากหน้าออเดอร์/เมนูอื่น) เห็นรายการทันที แล้วโพลขอเฉพาะใบที่เปลี่ยน
+   */
+  const [raw, setRaw] = useState<Order[]>(() => listCache?.orders ?? []);
   const [dept, setDept] = useState("all");
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
@@ -238,6 +247,8 @@ export default function AdminOrdersPage() {
    * โพลยังเดินต่อ (demo=false) → ฐานข้อมูลกลับมาเมื่อไรรายการขึ้นเองไม่ต้องรีเฟรช
    */
   const [loadErr, setLoadErr] = useState("");
+  /** เข็มโพล = เวลาเซิร์ฟเวอร์ของรอบล่าสุดที่ได้ครบ · ว่าง = ยังไม่เคยได้ก้อนเต็ม */
+  const cursor = useRef(listCache?.at ?? "");
   /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
   const [page, setPage] = useState(0);
   // เปลี่ยนตัวกรองอะไรก็ตาม = กลับหน้าแรก ไม่งั้นค้างอยู่หน้า 3 ที่ชุดใหม่ไม่มี
@@ -245,6 +256,9 @@ export default function AdminOrdersPage() {
 
   const can = useCan();
   const seesAll = can("orders.viewAll"); // ฝ่ายแพ็คเห็นเฉพาะคิวของตัวเอง
+  const permsReady = usePermsReady();
+  // สิทธิ์ยังไม่มา = ยังไม่รู้ว่าเห็นได้แค่ไหน → ยังไม่วาดใบไหน (กันฝ่ายแพ็คเห็นทุกใบแว๊บ / แอดมินเห็นแค่คิวแพ็คแว๊บ)
+  const orders = useMemo(() => (permsReady || demo ? visibleTo(raw, seesAll) : []), [raw, seesAll, permsReady, demo]);
   const seesMoney = can("orders.money");
 
   useEffect(() => {
@@ -261,25 +275,66 @@ export default function AdminOrdersPage() {
     const wantQ = qs.get("q");
     if (wantQ) setQ(wantQ);
 
-    fetchOrdersAdmin().then((r) => {
+    let dead = false;
+    const showAll = (r: Awaited<ReturnType<typeof fetchOrdersAdmin>>) => {
+      if (dead) return;
       if (!r.ok) return setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
       setLoadErr("");
-      if (r.orders.length > 0) setOrders(visibleTo(r.orders, seesAll));
+      cursor.current = r.at ?? "";
+      if (r.orders.length > 0) setRaw(r.orders);
       else {
-        setOrders(visibleTo(MOCK_ORDERS, seesAll));
+        setRaw(MOCK_ORDERS);
         setDemo(true);
       }
-    });
-  }, [router, seesAll]);
+    };
+    // 🐢 โหมด list = log ถูกตัดเหลือเท่าที่ลิสต์ใช้ · รอบถัดไปโพลขอเฉพาะใบที่เปลี่ยน (ดู refresh)
+    // มีของในความจำแล้ว (กลับมาหน้านี้) → ไม่ขอทั้งก้อนซ้ำ ขอเฉพาะใบที่เปลี่ยนตั้งแต่เข็มเดิม
+    if (listCache) void refreshRef.current();
+    else fetchOrdersAdmin({ list: {} }).then(showAll);
+    return () => {
+      dead = true;
+    };
+  }, [router]);
 
   const refresh = useCallback(async () => {
-    const r = await fetchOrdersAdmin();
+    // ยังไม่มีก้อนเต็ม (โหลดแรกพลาด/ฐานเพิ่งกลับมา) → ขอทั้งหมด · มีแล้ว → ขอเฉพาะใบที่บันทึกหลังเข็ม (ถอย 60 วิ กันนาฬิกาเซิร์ฟเวอร์เหลื่อม)
+    const since = cursor.current ? new Date(Date.parse(cursor.current) - 60_000).toISOString() : undefined;
+    const r = await fetchOrdersAdmin({ list: since ? { since } : {} });
     if (!r.ok) return setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
     setLoadErr("");
-    if (r.orders.length === 0) return;
-    const next = visibleTo(r.orders, seesAll);
-    setOrders((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
-  }, [seesAll]);
+    if (r.at) cursor.current = r.at;
+    if (!since) {
+      if (r.orders.length === 0) return;
+      const next = r.orders;
+      return setRaw((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
+    }
+    const changed = new Map(r.orders.map((o) => [o.id, o]));
+    const alive = r.ids ? new Set(r.ids) : null;
+    setRaw((cur) => {
+      const gone = alive ? cur.some((o) => !alive.has(o.id)) : false;
+      const same = [...changed.values()].every((o) => {
+        const old = cur.find((x) => x.id === o.id);
+        return old && JSON.stringify(old) === JSON.stringify(o);
+      });
+      if (!gone && same) return cur;
+      const kept = cur.filter((o) => !changed.has(o.id) && (!alive || alive.has(o.id)));
+      // ใบใหม่/ใบที่เปลี่ยน แทรกกลับแล้วเรียงใหม่→เก่า ตามเลขใบ (OD-YYMMDD-…) เหมือนลำดับ created_at ของเซิร์ฟเวอร์
+      const merged = [...changed.values(), ...kept];
+      const pos = new Map(cur.map((o, i) => [o.id, i]));
+      return merged.sort((a, b) => {
+        const ia = pos.get(a.id);
+        const ib = pos.get(b.id);
+        if (ia !== undefined && ib !== undefined) return ia - ib;
+        if (ia === undefined && ib === undefined) return b.id.localeCompare(a.id);
+        return ia === undefined ? -1 : 1;
+      });
+    });
+  }, []);
+  const refreshRef = useRef(refresh);
+  // จำรายการล่าสุด + เข็มไว้ระดับโมดูล (อยู่แค่ในแท็บนี้ รีเฟรชหน้า = หาย) — ไม่เก็บตัวอย่าง (demo)
+  useEffect(() => {
+    if (!demo && raw.length && cursor.current) listCache = { orders: raw, at: cursor.current };
+  }, [raw, demo]);
   usePolling(refresh, { enabled: !demo });
 
   // ── ช่วงวันที่: กรองก่อนใครเพื่อน แล้วให้ตัวเลขบนชิปทุกตัวนับจากชุดนี้ ──

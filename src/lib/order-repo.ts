@@ -352,9 +352,21 @@ export async function notifyProofReady(
 export async function fetchOrdersAdmin(opts?: {
   /** เอาเฉพาะฟิลด์ที่ใช้หาออเดอร์อื่นของลูกค้าคนเดียวกัน/ห้องแชท LINE (หน้ารายละเอียดใช้แค่นี้ — ก้อนเล็กลงมาก) */
   lite?: boolean;
-}): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean; error?: string }> {
+  /**
+   * 🐢 โหมดหน้ารายการ (/admin/orders) — log ถูกตัดเหลือเท่าที่ลิสต์ใช้ · ห้ามเอาก้อนนี้ไปบันทึกกลับ (log ไม่ครบ)
+   *   since = เฉพาะใบที่บันทึกหลังเวลานี้ (คืน ids ทุกใบมาด้วย ไว้ตัดใบที่ถูกลบ)
+   */
+  list?: { since?: string };
+}): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean; error?: string; at?: string; ids?: string[] }> {
   try {
-    const res = await fetch(`/api/admin/orders${opts?.lite ? "?lite=1" : ""}`, {
+    const qs = new URLSearchParams();
+    if (opts?.lite) qs.set("lite", "1");
+    if (opts?.list) {
+      qs.set("list", "1");
+      if (opts.list.since) qs.set("since", opts.list.since);
+    }
+    const query = qs.toString();
+    const res = await fetch(`/api/admin/orders${query ? `?${query}` : ""}`, {
       cache: "no-store",
       headers: packScanHeaders(),
     });
@@ -362,7 +374,7 @@ export async function fetchOrdersAdmin(opts?: {
     // ok=false พร้อมข้อความจากเซิร์ฟเวอร์ — หน้าเว็บต้องบอกว่า "ดึงไม่ได้" ไม่ใช่ตกไปโหมดตัวอย่างเงียบ ๆ
     // (14 ก.ย. 69 Supabase ระงับโปรเจกต์เพราะเกินโควตา → ทุกหน้าโชว์ "0 ใบ/ตัวอย่าง" จนคิดว่าออเดอร์หาย)
     const error = res.ok ? undefined : String(data.error ?? `เซิร์ฟเวอร์ตอบ ${res.status}`);
-    return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok, error };
+    return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok, error, at: data.at, ids: data.ids };
   } catch {
     return { orders: [], needsSetup: false, ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }
