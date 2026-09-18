@@ -31,7 +31,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/graphics", label: "ออเดอร์กราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
   { href: "/admin/graphics/designs", label: "รายงานแบบงาน", emoji: "📋", perm: "proof.manage", group: "กราฟฟิก" },
   // 🛒 ใบที่ต้องสั่งของ/รอของเข้าก่อนผลิต — ป้ายตัวเลข = ของเข้าแล้ว รอกราฟฟิกส่งเข้าผลิต (เจ้าของร้านสั่ง 17 ก.ย. 69)
-  { href: "/admin/stock-wait", label: "รอของเข้า", emoji: "🛒", perm: "admin.access", group: "กราฟฟิก" },
+  { href: "/admin/stock-wait", label: "ของเข้า รอส่งผลิต", emoji: "📦", perm: "admin.access", group: "กราฟฟิก" },
   // 📏 ลากไฟล์ .ai/.psd หลายไฟล์ดูขนาดชิ้นงานทีเดียว — อ่านในเครื่อง ไม่อัปโหลด (เจ้าของร้านขอ 16 ก.ย. 69: เปิดทีละไฟล์เช็คขนาดช้า)
   { href: "/admin/file-size", label: "เช็คขนาดไฟล์งาน", emoji: "📏", perm: "admin.access", group: "กราฟฟิก" },
   // 🏷️ ของที่ขาย

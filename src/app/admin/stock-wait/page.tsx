@@ -1,7 +1,10 @@
 "use client";
 
 /**
- * 🛒 รอของเข้า /admin/stock-wait — เมนูกลุ่มกราฟฟิก (เจ้าของร้านสั่ง 17 ก.ย. 69)
+ * 📦 ของเข้า รอส่งผลิต /admin/stock-wait — เมนูกลุ่มกราฟฟิก (เจ้าของร้านสั่ง 17 ก.ย. 69 · เดิมชื่อ "รอของเข้า")
+ *
+ * 18 ก.ย. 69 เจ้าของร้านขอ: โชว์เฉพาะใบที่ลูกค้าโอนเงินแล้ว (ใบยังไม่โอน = งานของฝ่ายขาย ดูที่ /admin/stock-buy)
+ * + แถบเตือนบนหัวหน้าเมื่อมีของเข้าแล้ว
  *
  * ใบที่แอดมินติ๊ก "รอของเข้า / ต้องสั่งของ" รวมไว้ที่เดียว — กราฟฟิกไม่ต้องไล่หาแถบแดงในคิว
  * ตัวเลขข้างเมนู (AdminShell) = กอง "ของเข้าแล้ว รอส่งเข้าผลิต" → งานที่กราฟฟิกต้องลงมือ
@@ -57,19 +60,19 @@ function StockWaitInner() {
   }, [load]);
   usePolling(load, { intervalMs: 60_000 });
 
-  const all = useMemo(() => rows ?? [], [rows]);
+  // เฉพาะใบที่ลูกค้าโอนแล้ว — ใบที่ยังไม่โอนยังไม่ใช่งานของกราฟฟิก
+  const all = useMemo(() => (rows ?? []).filter((r) => r.paid), [rows]);
   const by = useMemo(() => {
     const g: Record<Group, StockWaitRow[]> = { ready: [], waiting: [], done: [] };
     for (const r of all) g[r.group].push(r);
-    // ของเข้าล่าสุดขึ้นก่อน · กองรอของ = รอนานสุดขึ้นก่อน (ใบที่ลูกค้าโอนแล้วนำ)
+    // ของเข้าล่าสุดขึ้นก่อน · กองรอของ = รอนานสุดขึ้นก่อน
     g.ready.sort((a, b) => (b.arrivedAt ?? "").localeCompare(a.arrivedAt ?? ""));
-    g.waiting.sort((a, b) => Number(b.paid) - Number(a.paid) || a.at.localeCompare(b.at));
+    g.waiting.sort((a, b) => a.at.localeCompare(b.at));
     return g;
   }, [all]);
   // ยังไม่เลือกแท็บเอง → เปิดกองที่ต้องลงมือก่อน: มีของเข้า = ของเข้าแล้ว · ไม่มี = ยังรอของ
   const active: Group = tab ?? (by.ready.length ? "ready" : "waiting");
   const shown = by[active];
-  const paidWaiting = by.waiting.filter((r) => r.paid).length;
   const longest = by.waiting.reduce((m, r) => Math.max(m, waitedDays(r.at)), 0);
 
   async function arrived(id: string) {
@@ -108,14 +111,20 @@ function StockWaitInner() {
     <PageShell>
       <PageHead
         group="กราฟฟิก"
-        title="รอของเข้า"
+        title="ของเข้า รอส่งผลิต"
         count={`${by.ready.length + by.waiting.length} ใบ`}
-        sub="ใบที่แอดมินติ๊กว่าต้องสั่งของและรอของเข้าก่อนผลิต — ของเข้าแล้วจะย้ายขึ้นกองแรก ให้กราฟฟิกส่งเข้าผลิตได้เลย"
+        sub="เฉพาะใบที่ลูกค้าโอนเงินแล้วและต้องรอของเข้าก่อนผลิต — ของเข้าแล้วจะย้ายขึ้นกองแรก ให้กราฟฟิกส่งเข้าผลิตได้เลย"
       />
 
       {reason && (
         <div className="mt-4">
           <Banner tone="warm" title="ดึงรายการไม่สำเร็จ" detail={reason} />
+        </div>
+      )}
+
+      {by.ready.length > 0 && (
+        <div className="mt-4" onClick={() => setTab("ready")}>
+          <Banner tone="hot" title={`📦 ของเข้าแล้ว ${by.ready.length} ใบ — ส่งเข้าผลิตได้เลย`} detail={by.ready.slice(0, 3).map((r) => r.customer || r.id).join(" · ") + (by.ready.length > 3 ? ` + อีก ${by.ready.length - 3} ใบ` : "")} />
         </div>
       )}
 
@@ -126,7 +135,7 @@ function StockWaitInner() {
           detail={by.ready.length ? "เปิดใบ → ส่งไฟล์เข้าผลิตได้เลย" : "ยังไม่มีของเข้าใหม่"}
           pct={by.ready.length + by.waiting.length ? (by.ready.length / (by.ready.length + by.waiting.length)) * 100 : 0}
         />
-        <Stat label="ยังรอของเข้า" value={by.waiting.length} hint={paidWaiting ? `ลูกค้าโอนแล้ว ต้องสั่งของ ${paidWaiting} ใบ` : "ยังไม่มีใบที่โอนแล้ว"} tone={paidWaiting ? "due" : undefined} />
+        <Stat label="ยังรอของเข้า" value={by.waiting.length} hint="ลูกค้าโอนแล้ว ต้องสั่งของ/ตามของ" tone={by.waiting.length ? "due" : undefined} />
         <Stat label="รอนานสุด" value={by.waiting.length ? `${longest} วัน` : "—"} hint="นับจากวันที่ติ๊ก" tone={longest >= 7 ? "due" : undefined} />
       </Stats>
 
@@ -140,7 +149,7 @@ function StockWaitInner() {
 
       <ListHead
         title={active === "ready" ? "ของเข้าแล้ว — ส่งเข้าผลิตได้" : active === "waiting" ? "ยังรอของเข้า — ห้ามส่งเข้าผลิต" : "เข้าผลิตไปแล้ว"}
-        note={active === "ready" ? "ของเข้าล่าสุดขึ้นก่อน" : active === "waiting" ? "ลูกค้าโอนแล้วขึ้นก่อน · รอนานสุดขึ้นก่อน" : "ดูย้อนหลัง"}
+        note={active === "ready" ? "ของเข้าล่าสุดขึ้นก่อน" : active === "waiting" ? "รอนานสุดขึ้นก่อน" : "ดูย้อนหลัง"}
       />
 
       {err && (
@@ -156,7 +165,7 @@ function StockWaitInner() {
             active === "ready"
               ? "พอแอดมินหรือฝ่ายแพ็คกด “ของเข้าแล้ว” ใบจะขึ้นตรงนี้ พร้อมตัวเลขข้างเมนู"
               : active === "waiting"
-                ? "แอดมินติ๊ก “รอของเข้า” ตอนสร้างคำสั่งซื้อ หรือในหน้าออเดอร์ ใบจะขึ้นตรงนี้"
+                ? "ใบที่ติ๊ก “รอของเข้า” จะขึ้นตรงนี้เมื่อลูกค้าโอนเงินแล้ว"
                 : "ใบที่ของเข้าแล้วและส่งเข้าผลิตจะย้ายมาที่นี่"
           }
         />
@@ -178,7 +187,7 @@ function StockWaitInner() {
                           ✓ ของเข้าแล้ว {thTime(r.arrivedAt)}
                         </Tag>
                       )}
-                      {r.group === "waiting" && (r.paid ? <Tag tone="coral">ลูกค้าโอนแล้ว ต้องสั่งของ</Tag> : <Tag tone="quiet">รอลูกค้าโอนก่อนสั่งของ</Tag>)}
+                      {r.group === "waiting" && <Tag tone="coral">ลูกค้าโอนแล้ว ต้องสั่งของ</Tag>}
                       {r.group === "waiting" && days >= 3 && <Tag tone="yolk">รอมา {days} วัน</Tag>}
                       {r.group === "done" && <Tag tone="quiet">{r.arrivedAt ? `ของเข้า ${thTime(r.arrivedAt)}` : "ส่งผลิตทั้งที่ของยังไม่เข้า"}</Tag>}
                     </>

@@ -102,7 +102,8 @@ export async function GET(req: Request) {
     const g = groupOf(o);
     if (g) rows.push(toRow(o, g));
   }
-  const n = rows.filter((r) => r.group === "ready").length;
+  // ป้ายเมนูนับเฉพาะใบที่ลูกค้าโอนแล้ว — หน้า /admin/stock-wait โชว์แค่ใบที่โอนแล้ว ตัวเลขต้องตรงกับกองแรก (18 ก.ย. 69)
+  const n = rows.filter((r) => r.group === "ready" && r.paid).length;
   const paid = rows.filter((r) => r.group === "waiting" && r.paid).length;
   if (new URL(req.url).searchParams.get("count") === "1") return NextResponse.json({ n, paid, ok: true });
   return NextResponse.json({ n, paid, rows, ok: true });
