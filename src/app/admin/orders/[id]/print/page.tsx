@@ -25,6 +25,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
 import { senderOf } from "@/lib/order-sender";
 import { resolveShipLabel } from "@/lib/ship-label";
+import { isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { useActor, useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
@@ -685,6 +686,9 @@ function OrderDocs({
   // พิมพ์ได้ครั้งเดียว — พิมพ์แล้ว (samplePrintedAt) ล็อกกลับทันที จนกว่าเจ้าของร้านอนุญาตพิมพ์ซ้ำหรือยอดคงเหลือครบ
   const labelOk = fullyPaid || sampleLabelOk(order);
   const balanceDue = Math.max(0, orderTotal(order) - (order.paidTotal ?? 0));
+  // 📦 ส่งรวมกล่อง (lib/ship-with.ts): ใบตาม = ไม่มีใบปะหน้า (shipRiderOf = เลขใบหลัก) · ใบหลัก = ตราฝั่งใบงานว่าต้องใส่ของใบไหนเพิ่ม
+  const shipRiderOf = isShipRider(order) ? shipMainIdOf(order) : "";
+  const shipRidersIn = (order.tracking ?? "").trim() ? [] : shipRiderIdsOf(order);
   // 📮 ผู้ส่งบนกล่อง — ใบฝากส่งของตัวแทนตั้งชื่อร้านตัวเองไว้ (order.sender) ที่เหลือใช้ข้อมูลร้าน
   const sender = senderOf(order, shop);
   // ชื่อวิธีจัดส่งที่ลูกค้าเลือกจริง (เช่น "EMS (50)") — order.shipping เก็บได้แค่ 2 ค่าเก่า ธรรมดา/ด่วน จึงเพี้ยนเวลาร้านตั้งวิธีส่งเอง
@@ -854,7 +858,19 @@ function OrderDocs({
               </div>
             )}
             {/* 🔒 ยังไม่จ่ายครบ → พิมพ์ได้เฉพาะส่วนใบงาน · ใบปะหน้า (ที่อยู่จัดส่ง) ถูกกันไว้ */}
-            {!labelOk && (
+            {/* 📦 ใบตามของชุดส่งรวม (lib/ship-with.ts): ไม่มีใบปะหน้า — ของลงกล่องใบหลัก ที่อยู่/ป้ายขนส่งออกจากใบหลักใบเดียว
+                (พิมพ์ที่อยู่ออกมา = เสี่ยงโดนแปะกล่องส่งแยก) */}
+            {shipRiderOf && (
+              <div className="keep mb-4 rounded-lg border-[3px] border-red-600 bg-red-50 p-4 text-center">
+                <p className="text-2xl font-extrabold leading-tight" style={{ color: "#dc2626" }}>
+                  📦 ห้ามส่งแยก — ของใบนี้ลงกล่อง {shipRiderOf}
+                </p>
+                <p className="mt-1 text-sm font-bold text-red-800">
+                  ใบนี้ไม่มีใบปะหน้า · ใบปะหน้า/ที่อยู่/เลขพัสดุออกจาก {shipRiderOf} ใบเดียว · ผลิตเสร็จแล้วพักของไว้รอลงกล่องใบนั้น
+                </p>
+              </div>
+            )}
+            {!shipRiderOf && !labelOk && (
               <div className="keep mb-4 rounded-lg border-2 border-dashed border-rose-300 bg-rose-50 p-4 text-center">
                 <p className="text-sm font-extrabold" style={{ color: "#dc2626" }}>
                   🔒 ใบปะหน้าพัสดุยังไม่พิมพ์ — ลูกค้าชำระยังไม่ครบ 100%
@@ -875,7 +891,7 @@ function OrderDocs({
                 )}
               </div>
             )}
-            {labelOk && (<>
+            {!shipRiderOf && labelOk && (<>
             {/* แถวบน: ผู้ส่ง | วิธีจัดส่ง + บาร์โค้ด (เลขออเดอร์อยู่ในบาร์โค้ด + กล่องใบงานด้านล่างแล้ว) */}
             <div className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-3">
               <div>
@@ -897,17 +913,6 @@ function OrderDocs({
                   <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
                 </div>
                 <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
-                {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น (lib/ship-with.ts) — ตราบนใบ คนแพ็คเห็นโดยไม่ต้องเปิดจอ: ใบตามห้ามส่งแยก · ใบหลักต้องใส่ของใบไหนเพิ่ม */}
-                {order.shipWith?.orders.length && !(order.tracking ?? "").trim() ? (
-                  <p
-                    className="keep mt-1.5 inline-block max-w-[16rem] rounded border-[2.5px] border-red-600 bg-white px-2.5 py-1 text-right text-sm font-extrabold leading-tight"
-                    style={{ color: "#dc2626" }}
-                  >
-                    {order.shipWith.role === "rider"
-                      ? `📦 ห้ามส่งแยก — ลงกล่อง ${order.shipWith.orders[0]}`
-                      : `📦 ใส่ของ ${order.shipWith.orders.join(", ")} ลงกล่องนี้ด้วย`}
-                  </p>
-                ) : null}
                 {/* 🧾 บิล FlowAccount/บิล VAT ต้องมีใบกำกับตัวจริงในกล่อง — ตราบนส่วนที่ติดกล่อง คนแพ็คเห็นโดยไม่ต้องเปิดจอ (10 ก.ย. 69) */}
                 {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok && (
                   <p
@@ -976,6 +981,12 @@ function OrderDocs({
                 {sender.custom && (
                   <p className="mt-1.5 block w-fit rounded border-2 border-teal-600 bg-white px-2 py-1 text-base font-extrabold text-teal-700">
                     📮 ใบฝากส่ง — ผู้ส่งบนกล่องคือ &ldquo;{sender.name}&rdquo; ห้ามใส่เอกสาร/สื่อที่มีชื่อร้านลงกล่อง
+                  </p>
+                )}
+                {/* 📦 ใบหลักของชุดส่งรวม — ฝั่งใบงาน (ใต้เส้นตัด) ลูกค้าไม่เห็น: คนแพ็คต้องใส่ของใบไหนลงกล่องนี้เพิ่ม */}
+                {shipRidersIn.length > 0 && (
+                  <p className="mt-1.5 block w-fit rounded border-[3px] border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
+                    📦 กล่องนี้ต้องใส่ของ {shipRidersIn.join(", ")} ไปด้วย — เช็คให้ครบก่อนปิดกล่อง · ยิงเลขพัสดุใบนี้ใบเดียว
                   </p>
                 )}
                 {/* 🤝 ใบตัวแทนที่ยังไม่ได้ตั้งผู้ส่ง — กล่องจะขึ้นชื่อร้านเรา คนปริ้นต้องรู้ก่อนแปะ */}
