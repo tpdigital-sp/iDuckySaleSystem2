@@ -2288,6 +2288,67 @@ export default function AdminOrderDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, order?.useByDate, order?.shipDate?.from, order?.shipDate?.to, demo, permsReady]);
 
+  /**
+   * ⚡ ค่าส่งที่ระบบคิดให้จากของในออเดอร์ (กติกาเดียวกับหน้าตะกร้า — ของเยอะ/ของหนักเด้งกล่องใหญ่เอง)
+   * ออเดอร์งานพิเศษไม่ได้ผ่านตะกร้า แอดมินเลยต้องเดาค่าส่งเองทุกใบ → เปิดให้เลือก "อัตโนมัติ" ในช่องวิธีส่ง
+   * รายการที่ไม่มีในคลัง (งานพิเศษ) ไม่มีตารางค่าส่งของตัวเอง และไม่นับเป็นเรทปลีก (เกณฑ์ยอดจึงทำงานตามปกติ)
+   */
+  const autoShipOf = (o: Order) =>
+    shipMethods.length
+      ? autoShipQuote(
+          o.items.map((it) => {
+            const p = shopProducts.get(it.productId);
+            return { productId: it.productId, name: it.name, qty: it.qty, selections: it.sel ?? {}, product: p };
+          }),
+          shipMethods,
+          {
+            subtotal: o.items.reduce((s, i) => s + i.qty * i.unitPrice, 0),
+            freeMin: freeShipMin,
+            retailOnly: o.items.every((it) => {
+              const p = shopProducts.get(it.productId);
+              return p ? isRetailRateLine(p, it.sel ?? {}, it.qty) : false;
+            }),
+          }
+        )
+      : null;
+  /**
+   * 🚚 ใบที่ยังไม่เคยเลือกวิธีส่ง (สร้างออเดอร์งานพิเศษ/เพิ่มรายการเอง) → เติมวิธีส่ง+ค่าส่งอัตโนมัติลงช่องให้เลย
+   * เจ้าของร้านทัก 18 ก.ย. 69 (OD-260917-9204): ช่องวิธีส่งค้าง "เลือกวิธีส่ง…" ค่าส่ง 0 แต่มีแถบ "⚡ ใช้ค่าส่งอัตโนมัติ EMS ฿50"
+   * โผล่ใต้ช่องแทน — ค่าที่ระบบคิดให้ควรอยู่ในช่องเลยตั้งแต่แรก แอดมินแก้ตัวเลข/สลับวิธีต่อได้เหมือนเดิม
+   * ทำครั้งเดียวต่อใบ · รอสินค้าในออเดอร์โหลดครบก่อน (ตารางค่าส่งตามจำนวน/กล่องใหญ่อยู่ในตัวสินค้า) · ไม่แตะใบที่มีเงินเข้าแล้ว/มารับเอง
+   * ใบที่ตั้งใจให้ค่าส่ง 0 ต้องมีป้ายวิธีส่ง (เช่น "ส่งฟรี") ถึงไม่ถูกเติมทับ — ดู shippingUnset() · ใบจากใบเสนอราคา/FlowAccount/เคลม ข้ามทั้งหมด
+   */
+  const shipFillRef = useRef<string>("");
+  useEffect(() => {
+    if (!order || demo || !permsReady || !rolCan("orders.edit")) return;
+    if (shipFillRef.current === order.id) return;
+    // "ยังไม่เคยเลือกวิธีส่ง" = ไม่มีป้ายวิธีส่ง + ค่าส่ง 0 + ไม่ใช่มารับเอง (สูตรเดียวกับ shippingUnset ใน ship-label.ts)
+    const unset = !(order.shippingLabel ?? "").trim() && !(order.shippingCost > 0) && !isPickupOrder(order);
+    if (!order.items.length || !unset || paidSoFar(order) > 0) return;
+    // ใบที่ยอดตกลงกันไว้แล้ว (ใบเสนอราคา/บิล FlowAccount/งานเคลมร้านออกค่าส่ง) ค่าส่ง 0 ไม่มีป้าย = ตั้งใจ ห้ามบวก ฿50 ทับ
+    if (order.quoteOf || order.flowAccount || order.claimOf) return;
+    const realIds = order.items.map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item");
+    if (realIds.some((id) => !shopProducts.has(id))) return; // สินค้ายังโหลดไม่ครบ — รอรอบหน้า
+    const q = autoShipOf(order);
+    if (!q?.method) return;
+    shipFillRef.current = order.id;
+    const cost = Math.max(0, q.cost);
+    applyOrder(
+      withLog(
+        {
+          ...order,
+          shipping: (q.method.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+          shippingLabel: q.method.name,
+          shippingCost: cost,
+        },
+        actor,
+        "เปลี่ยนวิธีส่ง",
+        `— ${formatPrice(order.shippingCost)} → ${q.method.name} ${formatPrice(cost)} (อัตโนมัติ — ${q.reason})`
+      )
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, order?.items.length, order?.shippingLabel, order?.shippingCost, shipMethods, freeShipMin, shopProducts, demo, permsReady]);
+
   /** วันนี้แบบ YYYY-MM-DD ตามนาฬิกาเครื่องแอดมิน (ไว้กันช่วงวันส่งถอยไปก่อนวันนี้) */
   function todayYmd(): string {
     const d = new Date();
@@ -3713,28 +3774,8 @@ export default function AdminOrderDetailPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const autoOpen = (_it: OrderItem) => true;
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  /**
-   * ⚡ ค่าส่งที่ระบบคิดให้จากของในออเดอร์ (กติกาเดียวกับหน้าตะกร้า — ของเยอะ/ของหนักเด้งกล่องใหญ่เอง)
-   * ออเดอร์งานพิเศษไม่ได้ผ่านตะกร้า แอดมินเลยต้องเดาค่าส่งเองทุกใบ → เปิดให้เลือก "อัตโนมัติ" ในช่องวิธีส่ง
-   * รายการที่ไม่มีในคลัง (งานพิเศษ) ไม่มีตารางค่าส่งของตัวเอง และไม่นับเป็นเรทปลีก (เกณฑ์ยอดจึงทำงานตามปกติ)
-   */
-  const autoShip = shipMethods.length
-    ? autoShipQuote(
-        order.items.map((it) => {
-          const p = productOfItem(it.productId);
-          return { productId: it.productId, name: it.name, qty: it.qty, selections: it.sel ?? {}, product: p };
-        }),
-        shipMethods,
-        {
-          subtotal,
-          freeMin: freeShipMin,
-          retailOnly: order.items.every((it) => {
-            const p = productOfItem(it.productId);
-            return p ? isRetailRateLine(p, it.sel ?? {}, it.qty) : false;
-          }),
-        }
-      )
-    : null;
+  /** ⚡ ค่าส่งที่ระบบคิดให้ (ตัวคิดอยู่ที่ autoShipOf ด้านบน — ใช้ร่วมกับตัวเติมอัตโนมัติ) */
+  const autoShip = autoShipOf(order);
   /**
    * ค่าส่งที่ตั้งไว้ "ต่ำกว่า" ที่ระบบคิดให้ — เติมของหนัก/ของเยอะทีหลังแล้วลืมขยับค่าส่ง = ร้านออกค่ากล่องเอง
    * เตือนเฉพาะขาขาดทุน: ตั้งไว้แพงกว่าถือว่าตั้งใจ (คิดค่ากล่องพิเศษ/ส่งหลายกล่อง) ไม่ต้องไปยุ่ง
