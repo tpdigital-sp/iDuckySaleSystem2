@@ -88,7 +88,9 @@ const tailAt = (k: string) => TAIL_ORDER.findIndex((re) => re.test(bareLabel(k))
  * บรรทัดวัสดุ/สีของตัวงาน — เจ้าของร้านสั่งให้ขึ้นไปอยู่ต้น ๆ ถัดจากขนาด (15 ก.ย. 69 · OD-260915-6742)
  * "ทำด้วยอะไร สีอะไร" คือสเปคที่อ่านคู่กับขนาดเสมอ ไม่ใช่รายละเอียดปลีกย่อยท้ายการ์ด
  */
-const isMaterialLine = (k: string) => /^(สี|วัสดุ|เนื้อ|อะคริลิค|กระดาษ)/.test(bareLabel(k));
+const isMaterialLine = (k: string) => /^(สี|วัสดุ|เนื้อ|อะคริลิค|กระดาษ|ชนิด(?!เคลือบ))/.test(bareLabel(k));
+// "ชนิด…" = ชนิดกระดาษ · ชนิดผ้า · ชนิดฟิล์ม · ชนิดสติ๊กเกอร์ · ชนิดอะคริลิค (สำรวจ 18 ก.ย. 69 ทั้งร้านเป็นวัสดุหมด)
+// ยกเว้น "ชนิดเคลือบ" ที่เป็นเรื่องผิวงาน ไม่ใช่ตัววัสดุ — เดิม "ชนิดกระดาษ" ตกไปอยู่กลุ่ม 2 หลังบรรทัด "มุม" (OD-260917-6834)
 
 /**
  * 🎨 บรรทัด "เฉดสีพิเศษ" — กลุ่มเลือกเฉดที่โผล่ต่อจากตัวเลือก "สีพิเศษ / อะคริลิคพิเศษ" ของงานอะคริลิค
@@ -142,6 +144,73 @@ function mergeShadeLines(entries: [string, string][]): { e: [string, string]; ra
     out.push({ e: [k, v], rankKey: k });
   });
   return out;
+}
+
+/**
+ * 📐 คู่ช่องกรอก "กว้าง/สูง" ของตัวเลือกกำหนดขนาดเอง — ยุบเหลือบรรทัดเดียวที่ตำแหน่งตัวแม่ (กราฟฟิกขอ 18 ก.ย. 69 · OD-260917-6834)
+ *   ขนาดตัด: 📐 กำหนดขนาดเอง (ระบุ ก.×ส.)   ← ตัวแม่ ไม่มีข้อมูลแล้วเมื่อมีตัวเลข (กราฟฟิกกา ✗)
+ *   ขนาดตัด (สูง): 12.7 ซม.                  ← jsonb เรียงคีย์ตามความยาว "สูง" เลยขึ้นก่อน "กว้าง" ทุกใบ
+ *   ขนาดตัด (กว้าง): 8 ซม.
+ *   → ขนาดตัด: กว้าง 8 × สูง 12.7 ซม.         (กว้างก่อนสูงเสมอ · หน่วยเดียวกันเขียนครั้งเดียวท้ายบรรทัด)
+ * กรอกด้านเดียว "ขนาดกำหนดเอง (ด้านที่ยาวที่สุด): 6.5 ซม." → "ขนาด: ยาวสุด 6.5 ซม." (คำเดียวกับ sizeInputText หน้าร้าน)
+ * จับคู่ลูกกับตัวแม่ด้วยชิ้นส่วน (partOf: ตัว/ฐาน/ชิ้นที่ N) + ชื่อฐานตรงกัน — ไม่ตรงแต่ในชิ้นนั้นมีตัวแม่เดียว/คู่เดียวก็จับให้
+ * (พวงหลายชิ้น: ตัวแม่ "ขนาดชิ้นที่ 2" · ลูก "ขนาดกำหนดเอง (กว้าง) ชิ้นที่ 2") · ไม่มีตัวแม่ (ออเดอร์เก่า/สินค้าที่ไม่มีเมนูขนาด)
+ * = บรรทัดรวมยืนที่ลูกตัวแรก ใช้ชื่อฐานเป็นหัวข้อ · มีลูกด้านเดียวจากคู่ (กรอกไม่ครบ) = ปล่อยไว้ตามเดิม
+ * ⚠️ แสดงผลอย่างเดียว — ค่าตัวแม่ยังอยู่ในออเดอร์ (QuotePanel/ตารางราคาอ่านชื่อตัวเลือก "📐 กำหนดขนาดเอง" จากมัน)
+ */
+const SIDE_LABEL_RE = /^(.*?)\s*\((กว้าง|สูง|ยาว|ด้านที่ยาวที่สุด|ยาวสุด)\)\s*(.*)$/;
+const NUM_UNIT_RE = /^\s*([\d.]+)\s*(.*?)\s*$/;
+const isCustomSizeParent = (k: string, v: string) => isSizeLine(k) && /กำหนดขนาดเอง|ระบุขนาดเอง/.test(v);
+function mergeSizeInputs(entries: [string, string][]): [string, string][] {
+  type Side = { i: number; side: string; v: string };
+  const groups = new Map<string, Side[]>(); // ชื่อฐาน (ตัดวงเล็บด้านออก) → ลูกทุกด้าน
+  entries.forEach(([k, v], i) => {
+    const m = SIDE_LABEL_RE.exec(k);
+    if (!m || !v.trim()) return;
+    const base = `${m[1]} ${m[3]}`.replace(/\s+/g, " ").trim();
+    groups.set(base, [...(groups.get(base) ?? []), { i, side: m[2], v: v.trim() }]);
+  });
+  if (!groups.size) return entries;
+  const parents = entries.flatMap(([k, v], i) => (isCustomSizeParent(k, v) ? [i] : []));
+  const drop = new Set<number>();
+  const value = new Map<number, string>(); // ตำแหน่งบรรทัด → ค่าใหม่
+  const label = new Map<number, string>(); // ตำแหน่งบรรทัด → หัวข้อใหม่ (กรณีไม่มีตัวแม่)
+  for (const [base, sides] of groups) {
+    const w = sides.find((x) => x.side === "กว้าง");
+    const h = sides.find((x) => x.side === "สูง" || x.side === "ยาว");
+    const l = sides.find((x) => /ยาวสุด|ยาวที่สุด/.test(x.side));
+    let text: string;
+    let used: Side[];
+    if (w && h) {
+      const a = NUM_UNIT_RE.exec(w.v);
+      const b = NUM_UNIT_RE.exec(h.v);
+      text =
+        a && b && a[2] === b[2]
+          ? `กว้าง ${a[1]} × ${h.side} ${b[1]}${a[2] ? ` ${a[2]}` : ""}`
+          : `กว้าง ${w.v} × ${h.side} ${h.v}`;
+      used = [w, h];
+    } else if (l && !w && !h) {
+      text = `ยาวสุด ${l.v}`;
+      used = [l];
+    } else continue; // กรอกมาด้านเดียวจากคู่ — ไม่รู้จะเขียนยังไง ปล่อยไว้
+    const part = partOf(entries[used[0].i][0]);
+    const same = parents.filter((i) => partOf(entries[i][0]) === part && !value.has(i));
+    const exact = same.find((i) => bareLabel(entries[i][0]) === bareLabel(base));
+    const groupsInPart = [...groups.keys()].filter((g) => partOf(g) === part).length;
+    const parent = exact ?? (same.length === 1 && groupsInPart === 1 ? same[0] : undefined);
+    if (parent !== undefined) {
+      value.set(parent, text);
+      used.forEach((x) => drop.add(x.i));
+    } else {
+      value.set(used[0].i, text);
+      label.set(used[0].i, base);
+      used.slice(1).forEach((x) => drop.add(x.i));
+    }
+  }
+  if (!value.size) return entries;
+  return entries.flatMap(([k, v], i): [string, string][] =>
+    drop.has(i) ? [] : [[label.get(i) ?? k, value.get(i) ?? v]],
+  );
 }
 
 /**
@@ -240,6 +309,8 @@ function trimHookColors(entries: [string, string][]): [string, string][] {
  *   • ชุดหัวข้อที่ร้านกำหนดลำดับเอง (SPEC_GROUPS) อยู่ติดกันตามลำดับนั้น — เจาะรู → รับตะขอไหม → ตะขอ
  *   • ชื่อตะขอตัดวงเล็บรายการสีที่มีให้เลือกออก เมื่อมีบรรทัด "สีตะขอ" บอกสีจริงแล้ว (trimHookColors)
  *   • ตัวแม่ "สีอะคริลิค: สีพิเศษ (…)" + บรรทัดเฉดของชิ้นเดียวกัน ยุบเหลือบรรทัดเฉดบรรทัดเดียว ยืนที่ตัวแม่ (mergeShadeLines)
+ *   • ตัวแม่ "ขนาดตัด: 📐 กำหนดขนาดเอง" + คู่ช่อง (กว้าง)/(สูง) ยุบเป็น "ขนาดตัด: กว้าง 8 × สูง 12.7 ซม." บรรทัดเดียว (mergeSizeInputs)
+ *   • จอฝ่ายผลิต (compact): งานกระดาษ ชนิดกระดาษขึ้นบรรทัดแรก + "มุม" พับเข้าวงเล็บ (compactPaper) · งานสแตนดี้ยุบตาม compactStandee
  *
  * ⚠️ แสดงผลอย่างเดียว — ค่าที่เก็บในออเดอร์/แผงตีราคาไม่เปลี่ยน (QuotePanel ยังอ่านครบทุกบรรทัด)
  */
@@ -277,8 +348,38 @@ function compactStandee<T extends { e: [string, string]; key: string }>(rows: T[
   return out;
 }
 
+/** บรรทัดชนิดกระดาษ — "ชนิดกระดาษ" · "กระดาษ" · "ชนิดกระดาษเนื้อพิเศษ" (ไม่ใช่ "ขนาดกระดาษ"/"แนวกระดาษ"/"ความหนากระดาษ") */
+const isPaperLine = (k: string) => /^(ชนิด|ประเภท|เนื้อ)?กระดาษ/.test(bareLabel(k));
+/** บรรทัด "มุม" ของงานกระดาษ (มุมมน/มุมแหลม) — เป็นรายละเอียดของแผ่นกระดาษ อ่านคู่กับชนิดกระดาษ */
+const isCornerLine = (k: string) => /^มุม/.test(bareLabel(k));
+
+/**
+ * 📄 แพทเทิร์นย่อของงานกระดาษสำหรับจอฝ่ายผลิต — กราฟฟิกส่งภาพต้นแบบ 18 ก.ย. 69 (OD-260917-6834):
+ *   ชนิดกระดาษ: กระดาษอาร์ตมัน 300 แกรม (มุมมน)   ← กระดาษขึ้นบรรทัดแรก + "มุม" พับเข้าวงเล็บ
+ *   ขนาดตัด: กว้าง 8 × สูง 12.7 ซม.                ← (mergeSizeInputs)
+ *   จำนวนด้านที่พิมพ์: พิมพ์ 1 ด้าน
+ *   เคลือบ (เฉพาะด้านหน้า): ไม่เคลือบ
+ *   จำนวนลาย: 1 ลาย
+ * ทำเฉพาะรายการที่มีบรรทัดชนิดกระดาษ — สินค้าอื่นเรียงตาม specRank เหมือนเดิม (ขนาดก่อนวัสดุ)
+ * ใช้เฉพาะจอฝ่ายผลิต (tidySpec(..., { compact: true })) — หน้าลูกค้า/ใบเสร็จ/ใบเสนอราคายังขนาดขึ้นก่อน + มุมบรรทัดของตัวเอง
+ */
+function compactPaper<T extends { e: [string, string]; key: string }>(rows: T[]): T[] {
+  const at = rows.findIndex(({ key }) => isPaperLine(key) && tailAt(key) < 0);
+  if (at < 0) return rows;
+  const paper: T = { ...rows[at], e: [rows[at].e[0], rows[at].e[1]] };
+  const rest = rows.filter((r, i) => {
+    if (i === at) return false;
+    if (isCornerLine(r.key)) {
+      paper.e = [paper.e[0], `${paper.e[1]} (${r.e[1]})`];
+      return false;
+    }
+    return true;
+  });
+  return [paper, ...rest];
+}
+
 export function tidySpec(entries: [string, string][], opts?: { compact?: boolean }): [string, string][] {
-  const merged = mergeShadeLines(entries.filter(([k, v]) => !pickedNone(k, v)));
+  const merged = mergeShadeLines(mergeSizeInputs(entries.filter(([k, v]) => !pickedNone(k, v))));
   // จัดลำดับด้วย rankKey (หัวข้อตัวแม่ถ้าบรรทัดนั้นไปแทนตัวแม่) · หัวข้อที่โชว์จริงอยู่ใน e
   const kept = trimHookColors(merged.map((x) => x.e)).map((e, i) => ({ e, key: merged[i].rankKey }));
   const paired = new Set(kept.filter(({ key }) => isBackLine(key)).map(({ key }) => sideBase(key)));
@@ -305,7 +406,7 @@ export function tidySpec(entries: [string, string][], opts?: { compact?: boolean
       sub: specGroup(k)?.at ?? (isBackLine(k) ? 1 : 0),
     }))
     .sort((a, b) => a.rank - b.rank || a.at - b.at || a.sub - b.sub || a.i - b.i);
-  return (opts?.compact ? compactStandee(sorted) : sorted).map((x) => x.e);
+  return (opts?.compact ? compactPaper(compactStandee(sorted)) : sorted).map((x) => x.e);
 }
 
 /**
