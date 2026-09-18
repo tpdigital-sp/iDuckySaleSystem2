@@ -55,6 +55,20 @@ function slipRefNoFor(order: Order, isFinal: boolean, slipPath?: string): string
   return v?.transRef?.trim() ?? "";
 }
 
+/**
+ * 🕰️ เวลาโอนจริงบนสลิป (ISO) ที่ SlipOK อ่านได้ของ "สลิปใบที่รายงานนี้พูดถึง" — msVerify/msDaily ใช้เทียบคอลัมน์ "เวลา" ตอนจับคู่
+ * (17 ก.ย. 69: สลิป PANEE.C ฿80 โอน 17:06 ถูกจับคู่กับแถวโอนค้าง ฿80 ของวันที่ 15 เพราะเรคอร์ดมีแต่ time = เวลายืนยันเงิน
+ *  ฝั่ง Admin เลยไม่มี slipTime ให้กรอง → จับด้วยยอดอย่างเดียว) · เลือกใบเดียวกับ slipRefNoFor · "" = SlipOK ไม่ส่ง/แอดมินยืนยันเอง
+ */
+function slipTransAtFor(order: Order, isFinal: boolean, slipPath?: string): string {
+  if (slipPath) {
+    const p = (order.payments ?? []).find((x) => x.path === slipPath);
+    return p?.verify?.transAt?.trim() ?? "";
+  }
+  const v = isFinal ? order.deposit?.balanceVerify : order.slipVerify;
+  return v?.transAt?.trim() ?? "";
+}
+
 /** สูตรยอดของเรคอร์ด (bill / wht / received / fee) ย้ายไป @/lib/tp-amounts — ส่งออกต่อให้ที่เดิมยังเรียกได้ */
 export { amountsForRecord } from "@/lib/tp-amounts";
 
@@ -188,6 +202,9 @@ export async function reportPaidToTP(
         slipSignedAt: new Date().toISOString(),
         // 🎯 เลขอ้างอิงธุรกรรม (SlipOK transRef) — msVerify เอาไปเทียบตอนตรวจสลิปซ้ำ ("" = ไม่มี เช่น แอดมินยืนยันเอง)
         slipRefNo: slipRefNoFor(order, isFinal, opts?.slipPath),
+        // 🕰️ เวลาโอนจริงบนสลิป (ISO จาก SlipOK) — msVerify แปลงเป็น slipDate/slipTime ให้ใบที่ดึงเข้าไป ตัวจับคู่จึงเช็ค "วัน+เวลา" ได้
+        //    เหมือนสลิปที่แอดมินอัปเอง ("" = ไม่มี → จับคู่ด้วยยอดอย่างเดียวเหมือนเดิม) · doc เก่า → scripts/backfill-tp-transat.mjs
+        slipTransAt: slipTransAtFor(order, isFinal, opts?.slipPath),
         verifiedBy,
         // 🧑‍💼 ใครทำใบสั่งซื้อ — ชื่อพนักงานที่ทำบิลให้ (สั่งแทน/งานพิเศษ/ใบเสนอราคา/FlowAccount/redo) · "" = ลูกค้าสั่งเองจากเว็บ
         //    msVerify แท็บ 🛒 โชว์คอลัมน์ "ทำใบสั่งซื้อ" (ไม่มีฟิลด์นี้ = doc เก่า ยังไม่รู้ → scripts/backfill-tp-placedby.mjs)
