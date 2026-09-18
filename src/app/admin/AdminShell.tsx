@@ -16,6 +16,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin", label: "ภาพรวม", emoji: "📊", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/orders", label: "คำสั่งซื้อ", emoji: "📦", perm: "orders.view", group: "งานขาย" },
   { href: "/admin/edit-requests", label: "คำขอแก้ไขออเดอร์", emoji: "✏️", perm: "orders.view", group: "งานขาย" },
+  // 💸 ใบที่ติ๊กรอของเข้า + ลูกค้าโอนเงินแล้ว = ต้องสั่งของ/ตามของ — ป้ายตัวเลข = จำนวนใบกองนี้ (เจ้าของร้านขอ 18 ก.ย. 69)
+  { href: "/admin/stock-buy", label: "โอนแล้ว รอของเข้า", emoji: "💸", perm: "orders.view", group: "งานขาย" },
   // เคลมอยู่กลุ่มงานขาย (ไม่ใช่ "ลูกค้า & การตลาด") — เจ้าของร้านสั่ง 15 ก.ย. 69: ลูกค้าเคลมเข้ามาต้องเห็นตั้งแต่หมวดที่เปิดทุกวัน
   { href: "/admin/claims", label: "เคลมสินค้า", emoji: "🧰", perm: "orders.view", group: "งานขาย" },
   // ลูกค้าเดินมารับของหน้าร้าน ต้องหาใบเจอทันที — เจ้าของร้านสั่ง 17 ก.ย. 69 (เดิมต้องไล่หาในลิสต์คำสั่งซื้อทั้งร้าน)
@@ -85,7 +87,7 @@ let quotesBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "ลูกค้าขอแก้ไขออเดอร์" — เหตุผลเดียวกับใบเสนอราคา: เมนูอยู่ทุกหน้า ไม่ต้องถามฐานทุกคลิก */
 let editReqBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "ของเข้าแล้ว รอส่งเข้าผลิต" (เมนูรอของเข้า) — เหตุผลเดียวกัน: เมนูอยู่ทุกหน้า ไม่ต้องถามฐานทุกคลิก */
-let stockWaitBadgeCache: { at: number; n: number } | null = null;
+let stockWaitBadgeCache: { at: number; n: number; paid: number } | null = null;
 /** แคชป้าย "แพ็คเสร็จ รอลูกค้ามารับ" (เมนูลูกค้าที่มารับเอง) — ของที่วางรออยู่หน้าร้าน */
 let pickupBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "เคลมสินค้าที่ยังไม่ได้ตอบ" — เคสเคลมที่เงียบไปคือเคสที่บานปลาย ต้องเห็นตั้งแต่เมนู */
@@ -138,6 +140,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // badge แจ้ง "เคลมสินค้า" ที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย — หายเองเมื่อตอบ/ปิดเคสครบ
   const [openClaims, setOpenClaims] = useState(0);
   const [readyStockWait, setReadyStockWait] = useState(0);
+  // badge เมนู "โอนแล้ว รอของเข้า" (งานขาย) — ลูกค้าโอนแล้วแต่ของยังไม่เข้า · มาจากคำถามเดียวกับป้ายรอของเข้า
+  const [paidStockWait, setPaidStockWait] = useState(0);
   const [readyPickup, setReadyPickup] = useState(0);
   // badge แจ้ง "ใบสมัครตัวแทนจำหน่าย" ที่ยังรออนุมัติ — หายเองเมื่อกดอนุมัติ/ปฏิเสธครบ
   const [openDealerApps, setOpenDealerApps] = useState(0);
@@ -333,15 +337,17 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
    * 🛒 ป้ายเตือน "รอของเข้า" — นับใบที่ของเข้าร้านแล้วแต่ยังไม่ได้ส่งเข้าผลิต (งานที่กราฟฟิกต้องลงมือ)
    * หายเองเมื่อใบถูกติ๊ก 🏭 ส่งเข้าผลิต / สถานะถึงกำลังผลิต · ตัวเลขตรงกับกองแรกในหน้า /admin/stock-wait
    */
-  const stockWaitBadgeReady = pathname !== "/admin/login" && perms.includes("admin.access");
+  const stockWaitBadgeReady = pathname !== "/admin/login" && (perms.includes("admin.access") || perms.includes("orders.view"));
   const refreshStockWaitBadge = useCallback(async () => {
     if (!stockWaitBadgeReady) return;
     try {
       const r = await fetch("/api/admin/orders/stock-wait?count=1", { cache: "no-store" });
       const j = r.ok ? await r.json() : { n: 0 };
       const n = Number(j?.n) || 0;
-      stockWaitBadgeCache = { at: Date.now(), n };
+      const paid = Number(j?.paid) || 0;
+      stockWaitBadgeCache = { at: Date.now(), n, paid };
       setReadyStockWait(n);
+      setPaidStockWait(paid);
     } catch {
       /* เน็ตสะดุด → คงเลขเดิมไว้ */
     }
@@ -349,10 +355,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!stockWaitBadgeReady) return;
     // อยู่หน้ารอของเข้า/หน้าออเดอร์ = ดึงสด (เพิ่งกดของเข้าแล้ว/ส่งเข้าผลิต ตัวเลขต้องขยับทันที) หน้าอื่นใช้แคช 1 นาที
-    const fresh = pathname.startsWith("/admin/stock-wait") || pathname.startsWith("/admin/orders/");
-    const cached = stockWaitBadgeCache && Date.now() - stockWaitBadgeCache.at < 60_000 ? stockWaitBadgeCache.n : null;
+    const fresh = pathname.startsWith("/admin/stock-wait") || pathname.startsWith("/admin/stock-buy") || pathname.startsWith("/admin/orders/");
+    const cached = stockWaitBadgeCache && Date.now() - stockWaitBadgeCache.at < 60_000 ? stockWaitBadgeCache : null;
     if (cached !== null && !fresh) {
-      setReadyStockWait(cached);
+      setReadyStockWait(cached.n);
+      setPaidStockWait(cached.paid);
       return;
     }
     void refreshStockWaitBadge();
@@ -590,9 +597,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               ? openDealerApps
               : href === "/admin/stock-wait"
                 ? readyStockWait
-                : href === "/admin/pickup"
-                  ? readyPickup
-                  : 0;
+                : href === "/admin/stock-buy"
+                  ? paidStockWait
+                  : href === "/admin/pickup"
+                    ? readyPickup
+                    : 0;
   /** ป้ายทั้งแถบรวมกัน — ใช้บนปุ่ม ☰ ของมือถือ ตอนเมนูปิดอยู่จะได้ยังเห็นว่ามีงานค้าง */
   const badgeAll = menu.reduce((n, m) => n + badgeOf(m.href), 0);
 
@@ -659,9 +668,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     ? `${m.label} — ใบสมัคร ${badgeN} ใบ รออนุมัติ`
                     : hasBadge && m.href === "/admin/stock-wait"
                       ? `${m.label} — ของเข้าแล้ว ${badgeN} ใบ รอส่งเข้าผลิต`
-                      : hasBadge && m.href === "/admin/pickup"
-                        ? `${m.label} — แพ็คเสร็จ ${badgeN} ใบ รอลูกค้ามารับ`
-                        : m.label
+                      : hasBadge && m.href === "/admin/stock-buy"
+                        ? `${m.label} — ${badgeN} ใบ ลูกค้าโอนแล้ว ต้องสั่งของ`
+                        : hasBadge && m.href === "/admin/pickup"
+                          ? `${m.label} — แพ็คเสร็จ ${badgeN} ใบ รอลูกค้ามารับ`
+                          : m.label
             : undefined
         }
         className={`group relative flex items-center rounded-xl py-[9px] text-[13px] transition ${

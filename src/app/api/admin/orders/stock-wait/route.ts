@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderAwaitingStock, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderAwaitingStock, orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { notifyStockArrived } from "@/lib/server/needs-purchase";
 import { syncStockWaitToTP } from "@/lib/server/tp-report";
@@ -17,7 +17,10 @@ export const runtime = "nodejs";
  *   done    = ของเข้าแล้วและเข้าไลน์ผลิต/ส่งของไปแล้ว (ดูย้อนหลัง)
  * ป้ายหายเองเมื่อใบถูกติ๊ก 🏭 ส่งเข้าผลิต หรือสถานะไปถึง กำลังผลิต/จัดส่งแล้ว/เสร็จสิ้น
  *
- * GET  → { n, rows }   (?count=1 = เอาแค่ n ไว้ให้ป้ายเมนู)
+ * 💸 เมนู /admin/stock-buy (กลุ่มงานขาย · เจ้าของร้านขอ 18 ก.ย. 69) ใช้ API เดียวกัน — โชว์เฉพาะกอง waiting ที่ paid
+ *   ป้ายเมนูนั้นนับ `paid` = ลูกค้าโอนแล้ว ยังรอของเข้า (งานของฝ่ายขาย: ต้องสั่งของ/ตามของ)
+ *
+ * GET  → { n, paid, rows }   (?count=1 = เอาแค่ n + paid ไว้ให้ป้ายเมนู)
  * POST { id } → กด "ของเข้าแล้ว" จากหน้ารายการ — เขียนฝั่งเซิร์ฟเวอร์ ไม่ต้องส่งออเดอร์ทั้งก้อน (กันทับงานคนอื่น)
  */
 
@@ -28,6 +31,10 @@ export type StockWaitRow = {
   group: "ready" | "waiting" | "done";
   /** ลูกค้าโอนแล้ว (พ้น รอชำระเงิน/รอตรวจสอบ) */
   paid: boolean;
+  /** ยอดรวมของใบ — ฝ่ายขายดูว่าเงินก้อนไหนเข้ามาแล้วแต่งานยังไม่เดิน */
+  total: number;
+  /** เวลาที่ระบบแจ้งกลุ่มไลน์ "ลูกค้าโอนแล้ว — ต้องสั่งของ" (≈ เวลาที่เงินเข้า) */
+  paidAlertAt?: string;
   rush?: boolean;
   useByDate?: string;
   items: string[];
@@ -55,6 +62,8 @@ function toRow(o: Order, group: StockWaitRow["group"]): StockWaitRow {
     status: o.status,
     group,
     paid: o.status !== "รอชำระเงิน" && o.status !== "รอตรวจสอบ",
+    total: orderTotal(o),
+    ...(np.alertedAt ? { paidAlertAt: np.alertedAt } : {}),
     ...(o.rush ? { rush: true } : {}),
     ...(o.useByDate ? { useByDate: o.useByDate } : {}),
     items: o.items.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`),
@@ -94,8 +103,9 @@ export async function GET(req: Request) {
     if (g) rows.push(toRow(o, g));
   }
   const n = rows.filter((r) => r.group === "ready").length;
-  if (new URL(req.url).searchParams.get("count") === "1") return NextResponse.json({ n, ok: true });
-  return NextResponse.json({ n, rows, ok: true });
+  const paid = rows.filter((r) => r.group === "waiting" && r.paid).length;
+  if (new URL(req.url).searchParams.get("count") === "1") return NextResponse.json({ n, paid, ok: true });
+  return NextResponse.json({ n, paid, rows, ok: true });
 }
 
 export async function POST(req: Request) {
