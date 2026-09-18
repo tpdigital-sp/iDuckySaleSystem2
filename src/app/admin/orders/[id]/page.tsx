@@ -3056,7 +3056,7 @@ export default function AdminOrderDetailPage() {
     const next = withLog(
       { ...order, taxInvoiceDelivery: v },
       actor,
-      v === "email" ? "ใบกำกับภาษี: ส่งทางอีเมล ไม่ต้องแนบกล่อง" : "ใบกำกับภาษี: ต้องใส่ลงกล่อง"
+      v === "email" ? "ใบกำกับภาษี: ส่ง E-tax/อีเมลแล้ว ไม่ต้องแนบกล่อง" : "ใบกำกับภาษี: ต้องใส่ลงกล่อง"
     );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -4431,7 +4431,7 @@ export default function AdminOrderDetailPage() {
                     }`}
                   >
                     {order.taxInvoiceDelivery === "email"
-                      ? "📧 ใบกำกับส่งทางอีเมล — ไม่ต้องแนบกล่อง"
+                      ? "📧 ใบกำกับส่ง E-tax/อีเมลแล้ว — ไม่ต้องแนบกล่อง"
                       : order.taxInvoicePacked
                         ? `✅ ใส่ใบกำกับลงกล่องแล้ว · ${order.taxInvoicePacked.by} · ${shortTime(order.taxInvoicePacked.at)}`
                         : "🧾 ต้องใส่ใบกำกับภาษีลงกล่อง — ยังไม่ยืนยัน (กันยิงเลขพัสดุ)"}
@@ -4451,7 +4451,7 @@ export default function AdminOrderDetailPage() {
                           onClick={() => setTaxInvoiceDelivery(order.taxInvoiceDelivery === "email" ? "box" : "email")}
                           className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-bold text-slate-500"
                         >
-                          {order.taxInvoiceDelivery === "email" ? "ต้องแนบกล่อง" : "ส่งอีเมล ไม่แนบ"}
+                          {order.taxInvoiceDelivery === "email" ? "ต้องแนบกล่อง" : "ส่ง E-tax แล้ว ไม่แนบ"}
                         </button>
                       </span>
                     )}
@@ -9114,7 +9114,7 @@ function PackView({
                 <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-3 shadow-sm ring-1 ring-slate-200">
                   <span className="text-lg">📧</span>
                   <span className="min-w-0 flex-1 text-xs">
-                    <span className="block font-extrabold text-slate-700">ใบกำกับภาษีส่งทางอีเมลแล้ว — ไม่ต้องแนบกล่อง</span>
+                    <span className="block font-extrabold text-slate-700">ใบกำกับภาษีส่ง E-tax/อีเมลแล้ว — ไม่ต้องแนบกล่อง</span>
                     <span className="text-slate-500">{docLine}{doc.company ? ` · ${doc.company}` : ""}</span>
                   </span>
                   <button

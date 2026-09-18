@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, nextPlannedRound, pendingSampleRound, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, nextPlannedRound, pendingSampleRound, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -17,7 +17,7 @@ function fmtThaiDate(d?: string): string {
   if (!y || !m || !day) return d;
   return `${day}/${m}/${Number(y) + 543}`;
 }
-import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import { itemQtyText, itemUnitYield, orderQtyText } from "@/lib/item-yield";
 import type { Product } from "@/lib/products";
@@ -25,7 +25,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
 import { senderOf } from "@/lib/order-sender";
 import { resolveShipLabel } from "@/lib/ship-label";
-import { useCan } from "@/lib/perm-context";
+import { useActor, useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
 import { SpecLines } from "@/components/SpecLines";
@@ -101,12 +101,42 @@ export default function PrintOrderPage() {
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]); // วิธีส่งที่ร้านตั้ง — ไว้แปลงป้าย "ค่าส่ง"/ป้ายว่างเป็นชื่อวิธีส่งจริงตามราคา
   const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
+  const actor = useActor(); // ชื่อคนที่ล็อกอิน — ลงประวัติว่าใครติ๊ก
   /**
    * 📦 สินค้าของรายการในใบ (id → สินค้า) — ใบงานต้องใช้ 2 อย่างที่ไม่ได้ติดมากับออเดอร์:
    * ขนาดงานตายตัว (Product.workSize) และตัวคูณ "1 เซ็ต = กี่ชิ้น" ของใบเก่าที่ยังไม่ได้แช่ไว้
    * มาช้ากว่าออเดอร์ได้ — ใส่ไว้ในตัวกระตุ้นวัดหน้าใหม่ด้วย ไม่งั้นบรรทัดที่เพิ่มมาล้นหน้าโดยไม่ถูกนับ
    */
   const [products, setProducts] = useState<Record<string, Product>>({});
+
+  /**
+   * 🧾📧 ติ๊ก "ส่ง E-tax/อีเมลให้ลูกค้าแล้ว" จากหน้าปริ้น — เจ้าของร้านขอ 18 ก.ย. 69
+   * ลูกค้าบางรายรับใบกำกับเป็น E-tax ไปแล้ว ไม่ต้องปริ้นใบกำกับใส่กล่อง แต่ใบงาน/ใบปะหน้ายังตรา "แนบใบกำกับภาษี" อยู่
+   * ค่าเดียวกับปุ่มในหน้าออเดอร์ (Order.taxInvoiceDelivery) — ติ๊กแล้วตราแดงหายจากกระดาษทันที + ปลดด่านยิงเลขพัสดุ
+   * บันทึกผ่าน PATCH ปกติ (ฝ่ายแพ็คก็ติ๊กได้ — mergePackFields รับฟิลด์นี้) · base = ใบที่โหลดมา → x-changed-keys มีแค่ช่องนี้กับ log
+   */
+  const setTaxInvoiceDelivery = useCallback(
+    async (o: Order, v: "box" | "email") => {
+      if ((o.taxInvoiceDelivery ?? "box") === v) return;
+      const next = withLog(
+        { ...o, taxInvoiceDelivery: v },
+        actor,
+        v === "email" ? "ใบกำกับภาษี: ส่ง E-tax/อีเมลแล้ว ไม่ต้องแนบกล่อง" : "ใบกำกับภาษี: ต้องใส่ลงกล่อง",
+        "ติ๊กจากหน้าปริ้น"
+      );
+      setOrders((list) => list.map((x) => (x.id === o.id ? next : x)));
+      const r = await saveOrderAdminResult(next, { base: o });
+      if (!r.ok) {
+        // บันทึกไม่ผ่านต้องบอก + คืนค่าเดิม — ไม่งั้นกระดาษที่พิมพ์ออกไปไม่มีตรา แต่ด่านยิงเลขยังบล็อกอยู่
+        window.alert(`⚠️ บันทึกไม่สำเร็จ — ${r.error ?? "ลองใหม่อีกครั้ง"}`);
+        setOrders((list) => list.map((x) => (x.id === o.id ? o : x)));
+        return;
+      }
+      // รับ savedAt/log ที่เซิร์ฟเวอร์ประทับกลับมาถือไว้ — ติ๊กซ้ำรอบหน้าจะได้ไม่ถูกมองว่าหน้าจอค้าง
+      if (r.order) setOrders((list) => list.map((x) => (x.id === o.id ? { ...x, savedAt: r.order!.savedAt, log: r.order!.log } : x)));
+    },
+    [actor]
+  );
 
   const load = useCallback(async (wanted: string[]) => {
     const r = await fetchOrdersAdmin();
@@ -329,7 +359,7 @@ export default function PrintOrderPage() {
         )}
 
         {orders.map((o) => (
-          <OrderDocs key={o.id} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} products={products} />
+          <OrderDocs key={o.id} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} products={products} onTaxInvoiceDelivery={setTaxInvoiceDelivery} />
         ))}
       </div>
     </>
@@ -350,6 +380,7 @@ function OrderDocs({
   origin,
   seesMoney,
   products,
+  onTaxInvoiceDelivery,
 }: {
   order: Order;
   docs: Record<DocKey, boolean>;
@@ -362,6 +393,8 @@ function OrderDocs({
   seesMoney: boolean;
   /** 📦 สินค้าของรายการในใบ (productId → สินค้า) — ใช้เติมขนาดงานตายตัว + ตัวคูณชิ้น/หน่วย · มาช้ากว่าออเดอร์ได้ */
   products: Record<string, Product>;
+  /** 🧾📧 ติ๊ก "ส่ง E-tax/อีเมลแล้ว ไม่ต้องปริ้นใบกำกับใส่กล่อง" — บันทึกลงออเดอร์ (ค่าเดียวกับปุ่มในหน้าออเดอร์) */
+  onTaxInvoiceDelivery: (o: Order, v: "box" | "email") => void;
 }) {
   /**
    * 🏷 ใบแปะกล่อง — งานขายส่งแพ็คแยกลาย (กล่องละลาย กล่องละ N ชิ้น)
@@ -621,6 +654,25 @@ function OrderDocs({
             {" — กดพิมพ์อีกจะบันทึกเป็นปริ้นซ้ำ"}
           </span>
         )}
+        {/* 🧾📧 ใบที่มีใบกำกับภาษี: ลูกค้าบางรายรับ E-tax แล้ว → ติ๊กตรงนี้ ตรา "แนบใบกำกับ" บนกระดาษหายทันที ไม่ต้องกลับไปหน้าออเดอร์ (เจ้าของร้านขอ 18 ก.ย. 69) */}
+        {orderHasTaxInvoice(order) && (
+          <label
+            className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ${
+              order.taxInvoiceDelivery === "email" ? "bg-slate-100 text-slate-600 ring-slate-200" : "bg-rose-50 text-rose-700 ring-rose-200"
+            }`}
+            title="ค่าเดียวกับปุ่ม “ส่ง E-tax แล้ว ไม่แนบ” ในหน้าออเดอร์ — ติ๊กแล้วปลดด่านยิงเลขพัสดุด้วย"
+          >
+            <input
+              type="checkbox"
+              checked={order.taxInvoiceDelivery === "email"}
+              onChange={(e) => onTaxInvoiceDelivery(order, e.target.checked ? "email" : "box")}
+              className="h-4 w-4 accent-amber-500"
+            />
+            {order.taxInvoiceDelivery === "email"
+              ? "📧 ส่ง E-tax/อีเมลให้ลูกค้าแล้ว — ไม่ต้องปริ้นใบกำกับใส่กล่อง"
+              : "🧾 ใบนี้ต้องปริ้นใบกำกับภาษีใส่กล่อง — ถ้าส่ง E-tax ไปแล้วติ๊กตรงนี้"}
+          </label>
+        )}
       </div>
 
       {docs.box && (
@@ -871,6 +923,12 @@ function OrderDocs({
                 {orderNeedsTaxInvoiceInBox(order) && sampleRun?.ok && (
                   <p className="mt-1.5 block w-fit rounded border border-slate-400 bg-white px-2 py-1 text-sm font-bold text-slate-600">
                     🧾 กล่องตัวอย่างไม่ต้องใส่ใบกำกับภาษี — ใบกำกับไปกับล็อตหลักหลังเก็บยอดคงเหลือครบ
+                  </p>
+                )}
+                {/* 📧 ส่ง E-tax/อีเมลแล้ว — บอกคนแพ็คบนกระดาษว่าไม่ต้องหาใบกำกับมาใส่ (ไม่ใช่ลืมตรา) */}
+                {orderHasTaxInvoice(order) && order.taxInvoiceDelivery === "email" && !sampleRun?.ok && (
+                  <p className="mt-1.5 block w-fit rounded border border-slate-400 bg-white px-2 py-1 text-sm font-bold text-slate-600">
+                    📧 ใบกำกับภาษีส่ง E-tax/อีเมลให้ลูกค้าแล้ว — ไม่ต้องปริ้นใส่กล่อง
                   </p>
                 )}
                 {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok &&
