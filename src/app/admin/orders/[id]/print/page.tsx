@@ -897,6 +897,17 @@ function OrderDocs({
                   <Barcode value={order.id} displayValue={false} height={30} width={1.2} />
                 </div>
                 <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
+                {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น (lib/ship-with.ts) — ตราบนใบ คนแพ็คเห็นโดยไม่ต้องเปิดจอ: ใบตามห้ามส่งแยก · ใบหลักต้องใส่ของใบไหนเพิ่ม */}
+                {order.shipWith?.orders.length && !(order.tracking ?? "").trim() ? (
+                  <p
+                    className="keep mt-1.5 inline-block max-w-[16rem] rounded border-[2.5px] border-red-600 bg-white px-2.5 py-1 text-right text-sm font-extrabold leading-tight"
+                    style={{ color: "#dc2626" }}
+                  >
+                    {order.shipWith.role === "rider"
+                      ? `📦 ห้ามส่งแยก — ลงกล่อง ${order.shipWith.orders[0]}`
+                      : `📦 ใส่ของ ${order.shipWith.orders.join(", ")} ลงกล่องนี้ด้วย`}
+                  </p>
+                ) : null}
                 {/* 🧾 บิล FlowAccount/บิล VAT ต้องมีใบกำกับตัวจริงในกล่อง — ตราบนส่วนที่ติดกล่อง คนแพ็คเห็นโดยไม่ต้องเปิดจอ (10 ก.ย. 69) */}
                 {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok && (
                   <p

@@ -128,6 +128,8 @@ import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
+import ShipWithStrip, { ShipWithPicker, useShipWithLinked } from "@/components/admin/ShipWithStrip";
+import { isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
 import ItemAdder from "@/components/admin/ItemAdder";
@@ -1311,6 +1313,9 @@ export default function AdminOrderDetailPage() {
   }, [orderId]);
 
   const [skipGate, setSkipGate] = useState<string[] | null>(null); // โมดัลยืนยันข้ามด่านแพ็ค (เหตุผลที่ยังไม่ครบ)
+  // 📦 ส่งรวมกล่อง: ใบที่ผูกกับใบนี้ (ใบหลักได้ "ของใบตามพร้อมลงกล่องหรือยัง" มาด้วย) + หน้าต่างเลือกใบ
+  const shipLinked = useShipWithLinked(order);
+  const [shipPick, setShipPick] = useState(false);
   // 🚚 แบ่งส่ง: รูปที่ติ๊ก "ส่งรอบนี้" ในโหมดแพ็ค (คีย์ "item:proof" → จำนวนชิ้นที่จะส่งรอบนี้) + โมดัลยิงเลขรอบนี้
   const [shipSel, setShipSel] = useState<Map<string, number>>(() => new Map());
   const [partialOpen, setPartialOpen] = useState(false);
@@ -2407,8 +2412,11 @@ export default function AdminOrderDetailPage() {
     if (t !== (order.tracking ?? "").trim()) setOrder((cur) => (cur ? { ...cur, tracking: t } : cur));
 
     const g = packGate(order);
-    if (!g.ready) {
+    // 📦 ส่งรวมกล่อง: ของใบตามยังไม่พร้อมลงกล่อง = ด่านเดียวกัน (ฝ่ายแพ็คข้ามไม่ได้ · เซิร์ฟเวอร์เช็คซ้ำจากฐานจริง)
+    const riderWait = shipLinked.filter((r) => r.notReady?.length).map((r) => `ของส่งรวม ${r.id} ยังไม่พร้อมลงกล่อง (${r.notReady!.join(" · ")})`);
+    if (!g.ready || riderWait.length) {
       const reasons = [
+        ...riderWait,
         g.planPending ? planPendingReason(g.planPending) : "",
         g.uncounted.length ? `ตรวจนับแบบงานอีก ${g.uncounted.length} รูป` : "",
         g.unread.length ? `ยืนยันอ่านรายละเอียดอีก ${g.unread.length} รายการ` : "",
@@ -3696,6 +3704,7 @@ export default function AdminOrderDetailPage() {
         {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
         {/* 🛒 รอของเข้า — ฝ่ายแพ็ค/ผลิตเป็นคนรับของ กด "ของเข้าแล้ว" จากตรงนี้ได้ */}
         <div className="mx-auto max-w-[480px] px-3">
+          <ShipWithStrip order={order} linked={shipLinked} canManage={mayEdit} packMode onSaved={adoptOrder} />
           {order.needsPurchase && order.status !== "ยกเลิก" && (
             <NeedsPurchaseStrip
               key={order.needsPurchase.at}
@@ -3805,6 +3814,8 @@ export default function AdminOrderDetailPage() {
     order.items.length > 0 &&
     paidSoFar(order) === 0 &&
     !isPickupOrder(order) &&
+    // 📦 ใบตามของชุดส่งรวม: ค่าส่งอยู่ที่ใบหลัก — ห้ามชวนให้บวกค่าส่งใบนี้ (ยอดเพี้ยนจากบิล)
+    !isShipRider(order) &&
     autoShip.cost > order.shippingCost;
   /** เปลี่ยนวิธีส่ง + ค่าส่งพร้อมกัน (ช่องเลือก กับปุ่มค่าอัตโนมัติ ใช้ทางเดียวกัน — ต้องลงประวัติเสมอ)
    * 🚚 เปลี่ยนวิธีส่งคือ "แก้ยอดเงิน" ค่าส่งเปลี่ยนตามทันที · เดิมเงียบสนิท:
@@ -3872,6 +3883,9 @@ export default function AdminOrderDetailPage() {
         </div>
       )}
 
+      {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น — ใบตาม "ห้ามส่งแยก" ต้องเห็นก่อนอย่างอื่น */}
+      <ShipWithStrip order={order} linked={shipLinked} canManage={mayEdit} onSaved={adoptOrder} />
+      {shipPick && <ShipWithPicker order={order} onClose={() => setShipPick(false)} onSaved={adoptOrder} />}
       {/* 🛒 รอของเข้า — กราฟฟิกต้องเห็นก่อนอย่างอื่นว่าใบนี้ยังห้ามส่งเข้าผลิต */}
       {order.needsPurchase && order.status !== "ยกเลิก" && (
         <NeedsPurchaseStrip
@@ -6565,6 +6579,9 @@ export default function AdminOrderDetailPage() {
                           const m = shipMethods.find((x) => x.id === e.target.value);
                           if (m) applyShipMethod(m, m.price);
                         }}
+                        // 📦 ใบตามของชุดส่งรวม: วิธีส่งตามใบหลัก — เลือกใหม่ = ค่าส่งเด้งเข้าใบนี้ (ยกเลิกส่งรวมก่อนถ้าจะเปลี่ยน)
+                        disabled={isShipRider(order)}
+                        title={isShipRider(order) ? `ส่งรวมกล่องกับ ${shipMainIdOf(order)} — วิธีส่งตามใบนั้น` : undefined}
                         className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
                       >
                         <option value="" disabled>
@@ -8210,7 +8227,26 @@ export default function AdminOrderDetailPage() {
                   )}
                 </div>
               )}
-              {isPickupOrder(order) ? (
+              {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น — บิลแยก ส่งกล่องเดียว (ใบหลักเพิ่มใบตามได้อีก · ใบตาม/ใบที่ส่งแล้วไม่มีปุ่ม) */}
+              {mayEdit && !demo && !isShipRider(order) && !(order.tracking ?? "").trim() && !order.shipments?.length && order.status !== "ยกเลิก" && order.status !== "เสร็จสิ้น" && (
+                <button
+                  type="button"
+                  onClick={() => setShipPick(true)}
+                  className="mb-2 flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl bg-white px-3 text-left text-[12.5px] font-bold text-slate-700 ring-1 ring-slate-200 transition hover:ring-amber-300"
+                >
+                  <span>📦 ส่งรวมกล่องกับออเดอร์อื่นของลูกค้าคนนี้…</span>
+                  <span className="text-slate-400">→</span>
+                </button>
+              )}
+              {isShipRider(order) && !(order.tracking ?? "").trim() ? (
+                <p className="rounded-lg bg-rose-50 px-2.5 py-2 text-[12px] font-bold text-rose-800 ring-1 ring-rose-200">
+                  📦 ส่งรวมกล่องกับ{" "}
+                  <Link href={`/admin/orders/${encodeURIComponent(shipMainIdOf(order))}`} className="underline underline-offset-2">
+                    {shipMainIdOf(order)}
+                  </Link>{" "}
+                  — ยิงเลขพัสดุที่ใบนั้นใบเดียว เลขจะลงใบนี้ให้เอง
+                </p>
+              ) : isPickupOrder(order) ? (
                 // 🏪 มารับเอง: ไม่มีเลขพัสดุ — ปุ่มแพ็คเสร็จแทน (ด่านตรวจเดียวกับยิงเลข)
                 order.packedAt ? (
                   <p className="rounded-lg bg-emerald-50 px-2.5 py-2 text-[12px] font-bold text-emerald-800 ring-1 ring-emerald-200">
@@ -9307,6 +9343,20 @@ function PackView({
             <p className="mt-0.5 text-[11px] font-bold leading-tight text-sky-800">
               กดปุ่มเหลืองด้านบนเพื่อ{pickup ? "ยืนยันแพ็คเสร็จ" : "ยิงเลขพัสดุ"}เฉพาะรอบนี้ · ปุ่มปิดทั้งใบจะเปิดเมื่อเหลือแต่รอบสุดท้าย
             </p>
+          </div>
+        ) : isShipRider(order) && !(order.tracking ?? "").trim() ? (
+          // 📦 ใบตามของชุดส่งรวม: ไม่มีขั้นยิงเลข — ตรวจนับให้ครบแล้วพักของไว้ลงกล่องใบหลัก (ภาพก่อนปิดกล่องถ่ายที่ใบหลัก)
+          <div className="rounded-xl bg-rose-50 px-3 py-3 ring-1 ring-rose-200">
+            <p className="text-sm font-extrabold text-rose-800">📦 ห้ามส่งแยก — ของใบนี้ลงกล่อง {shipMainIdOf(order)}</p>
+            <p className="mt-0.5 text-[11px] font-semibold leading-tight text-rose-700">
+              {todos.filter((t) => !/ภาพ|ถ่าย/.test(t.text)).length
+                ? "ตรวจนับ/ยืนยันอ่านใบนี้ให้ครบก่อน แล้วพักของไว้"
+                : "✓ ตรวจครบแล้ว — พักของไว้รอลงกล่อง"}{" "}
+              · ยิงเลขพัสดุที่ {shipMainIdOf(order)} ใบเดียว เลขลงใบนี้ให้เอง
+            </p>
+            <Link href={`/admin/orders/${encodeURIComponent(shipMainIdOf(order))}?pack=1`} className="mt-2 inline-flex min-h-[44px] items-center rounded-xl bg-rose-700 px-4 text-sm font-extrabold text-white">
+              เปิดใบหลัก {shipMainIdOf(order).replace(/^OD-\d{6}-/, "")} →
+            </Link>
           </div>
         ) : pickup ? (
           // 🏪 มารับเอง: ไม่มีเลขพัสดุให้ยิง — ปุ่มเดียว "แพ็คเสร็จ" แล้วระบบแจ้งลูกค้าให้มารับ

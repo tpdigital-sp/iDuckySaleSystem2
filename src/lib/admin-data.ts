@@ -648,6 +648,17 @@ export interface OrderItem {
   unitYield?: { per: number; piece: string; unit: string };
 }
 
+/** 📦 ส่งรวมกล่อง — ดู Order.shipWith */
+export interface ShipWith {
+  role: "main" | "rider";
+  /** ใบหลัก: เลขใบตามทุกใบ · ใบตาม: [เลขใบหลัก] */
+  orders: string[];
+  at: string;
+  by: string;
+  /** ใบตาม: วิธีส่ง/ที่อยู่ก่อนผูก — ยกเลิกการผูกแล้วคืนค่านี้ */
+  prev?: { shipping: Order["shipping"]; shippingLabel?: string; address?: string };
+}
+
 export interface Order {
   id: string;
   customer: string;
@@ -676,6 +687,12 @@ export interface Order {
   packedAt?: { at: string; by: string };
   /** 🏪 มารับเอง: ลูกค้ามารับของไปแล้ว — ใครส่งมอบ เมื่อไหร่ (กดจากเมนู /admin/pickup · สถานะเป็นเสร็จสิ้นพร้อมกัน) */
   pickedUp?: { at: string; by: string };
+  /**
+   * 📦 ส่งรวมกล่องกับออเดอร์อื่น (บิลแยก ส่งกล่องเดียว) — ผูก/ยกเลิกผ่าน /api/admin/orders/ship-with เท่านั้น (ดู lib/ship-with.ts)
+   * ใบหลัก (role "main") = ใบที่ยิงเลขพัสดุ/ปริ้นใบปะหน้า · ใบตาม (role "rider") = ของใส่กล่องใบหลัก ห้ามส่งแยก
+   * ยิงเลขที่ใบหลัก → เซิร์ฟเวอร์ลงเลขเดียวกันให้ใบตามทุกใบ · ⚠️ ไม่แตะ shippingCost ของใบไหนเลย (ยอดต้องตรงบิล)
+   */
+  shipWith?: ShipWith;
   note?: string;
   items: OrderItem[];
   /** เชื่อมกับสมาชิก (ถ้าล็อกอินตอนสั่ง) — ไม่มี = สั่งแบบ guest */

@@ -648,8 +648,11 @@ export default function CustomerOrderPage() {
         ? "แพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ"
         : "ไม่มีพัสดุ · ของพร้อมแล้วทางร้านจะแจ้งให้มารับครับ"
     : order.tracking
-      ? `เลขพัสดุ ${order.tracking}`
-      : order.shippingCost === 0
+      ? `เลขพัสดุ ${order.tracking}${order.shipWith?.role === "rider" ? ` · ส่งรวมกล่องกับออเดอร์ ${order.shipWith.orders[0]}` : ""}`
+      : // 📦 ใบตามของชุดส่งรวม: ค่าส่ง 0 ไม่ได้แปลว่าส่งฟรี — ของไปกับกล่องของอีกออเดอร์ (lib/ship-with.ts)
+        order.shipWith?.role === "rider" && order.shipWith.orders[0]
+        ? `ส่งรวมกล่องเดียวกับออเดอร์ ${order.shipWith.orders[0]} · จัดส่งแล้วแจ้งเลขพัสดุครับ`
+        : order.shippingCost === 0
         ? "ส่งฟรี"
         : `ค่าส่ง ${formatPrice(order.shippingCost)}`;
   /**

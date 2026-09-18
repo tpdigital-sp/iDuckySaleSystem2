@@ -18,6 +18,7 @@ import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { amountsForRecord } from "@/lib/tp-amounts";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { isPickupOrder } from "@/lib/ship-label";
+import { isShipMain, isShipRider, riderNotReady, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
@@ -592,6 +593,27 @@ export async function PATCH(req: Request) {
   // 🏪 มารับเอง: กด "แพ็คเสร็จ" ในคำขอนี้ — ต้องผ่านด่านตรวจเหมือนยิงเลขพัสดุ (ของยังไม่ครบก็ปิดกล่องไม่ได้)
   const wantsPickupDone = isPickupOrder(existing) && !!order.packedAt && !existing.packedAt;
 
+  /**
+   * 📦 ส่งรวมกล่อง (lib/ship-with.ts) — ใบตามยิงเลขเองไม่ได้ (ของอยู่ในกล่องใบหลัก ยิงที่ใบหลักแล้วเลขลงมาเอง)
+   * ใบหลักจะยิงเลข → ของใบตามต้องพร้อมลงกล่องด้วย: ฝ่ายแพ็คข้ามไม่ได้ · แอดมินข้ามได้แต่ลง log (กติกาเดียวกับด่านแพ็ค)
+   */
+  if (wantsTracking && isShipRider(existing))
+    return NextResponse.json(
+      { error: `ใบนี้ส่งรวมกล่องกับ ${shipMainIdOf(existing)} — ยิงเลขพัสดุที่ ${shipMainIdOf(existing)} ใบเดียว เลขจะลงใบนี้ให้เอง` },
+      { status: 409 }
+    );
+  let shipRiders: Order[] = [];
+  if (wantsTracking && isShipMain(existing)) {
+    const { data: rr } = await sb.from("orders").select("data").in("id", shipRiderIdsOf(existing));
+    shipRiders = (rr ?? []).map((r) => r.data as Order).filter((r) => isShipRider(r) && shipMainIdOf(r) === existing.id);
+  }
+  const ridersNotReady = shipRiders.map((r) => ({ id: r.id, why: riderNotReady(r) })).filter((r) => r.why.length);
+  if (ridersNotReady.length && !mayEditFull)
+    return NextResponse.json(
+      { error: `ยังยิงเลขพัสดุไม่ได้ — ของที่ส่งรวมกล่องยังไม่พร้อม: ${ridersNotReady.map((r) => `${r.id} (${r.why.join(" · ")})`).join(" / ")}` },
+      { status: 409 }
+    );
+
   let toSave: Order;
   if (mayEditFull) {
     // ก้อนจากหน้าจอแอดมินเป็นหลัก แต่ติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (คนอื่นเพิ่งทำ) ต้องไม่หาย
@@ -645,6 +667,21 @@ export async function PATCH(req: Request) {
     // กราฟฟิก (มีหรือไม่มีสิทธิ์แพ็คร่วมด้วยก็ได้) → ทับฟิลด์งานแบบต่อจากผลแพ็ค
     if (mayProof) toSave = mergeProofFields(toSave, order, clientSavedAt, now);
   }
+
+  // 📦 ส่งรวมกล่อง: shipWith เป็นของเซิร์ฟเวอร์ (เขียนผ่าน /ship-with เท่านั้น) — หน้าจอที่เปิดค้างก่อนผูกต้องทับไม่ได้
+  if (existing.shipWith) toSave = { ...toSave, shipWith: existing.shipWith };
+  else if (toSave.shipWith) {
+    const { shipWith: _sw, ...rest } = toSave;
+    void _sw;
+    toSave = rest as Order;
+  }
+  if (ridersNotReady.length)
+    toSave = withLog(
+      toSave,
+      actor.name || actor.username,
+      "⚠️ ข้ามด่านตรวจ — ของส่งรวมกล่องยังไม่พร้อม",
+      ridersNotReady.map((r) => `${r.id}: ${r.why.join(" · ")}`).join(" / ")
+    );
 
   // 🛒 ติ๊กส่งเข้าผลิตทั้งที่ใบยังรอของเข้า = อนุญาต (หน้าจอถามยืนยันแล้ว) แต่ลง log ฝั่งเซิร์ฟเวอร์เสมอ — ตรวจย้อนหลังได้ว่าใครส่ง
   if (toSave.productionSent && !existing.productionSent && orderAwaitingStock(toSave))
@@ -1038,6 +1075,36 @@ export async function PATCH(req: Request) {
       );
       toSave = { ...toSave, deposit: { ...toSave.deposit, balanceRemindedAt: new Date().toISOString() } };
       void updateOrder(sb, toSave, { prev: toSave });
+    }
+  }
+
+  /**
+   * 📦 ส่งรวมกล่อง: ยิง/แก้เลขพัสดุที่ใบหลัก → ลงเลขเดียวกัน + "จัดส่งแล้ว" ให้ใบตามทุกใบ (กันลืมยิงใบที่สอง)
+   * ลูกค้าได้การ์ดแจ้งจัดส่งใบเดียวจากใบหลัก (บอกเลขใบที่รวมมาด้วย — ดู statusFlex) · ใบตามแจ้งแยกเฉพาะเมื่อผูก LINE คนละคน
+   * ⏳ await — Netlify แช่เครื่องทันทีที่ตอบ ใบตามที่ไม่ได้เลข = ลูกค้าเปิดใบนั้นแล้วไม่เห็นว่าส่งแล้ว
+   */
+  const trackNow = (toSave.tracking ?? "").trim();
+  const trackWas = (existing.tracking ?? "").trim();
+  if (shipRiders.length && trackNow && trackNow !== trackWas) {
+    const origin = new URL(req.url).origin;
+    for (const r of shipRiders) {
+      const rt = (r.tracking ?? "").trim();
+      if (rt && rt !== trackWas) continue; // ใบตามมีเลขของตัวเองที่ไม่ได้มาจากใบหลัก — ไม่ทับ
+      const nextRider = withLog(
+        { ...r, tracking: trackNow, status: (r.status === "เสร็จสิ้น" ? r.status : "จัดส่งแล้ว") as OrderStatus },
+        adminName,
+        `บันทึกเลขพัสดุ (ส่งรวมกล่องกับ ${toSave.id})`,
+        trackNow
+      );
+      const wr = await updateOrder(sb, nextRider, { prev: r, by: adminName });
+      if (wr.error) {
+        console.error(`[orders] ลงเลขพัสดุให้ใบส่งรวม ${r.id} ไม่สำเร็จ:`, wr.error.message);
+        continue;
+      }
+      if (r.lineUserId && r.lineUserId !== toSave.lineUserId) {
+        const link = orderLink(origin, wr.order);
+        await notifyCustomerLogged(sb, wr.order, statusFlex(wr.order, link), `แจ้งสถานะ "จัดส่งแล้ว" (ส่งรวมกับ ${toSave.id})`, "key");
+      }
     }
   }
 

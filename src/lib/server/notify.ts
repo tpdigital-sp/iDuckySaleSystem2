@@ -13,6 +13,7 @@ import {
 import { formatPrice } from "@/lib/products";
 import { itemQtyText } from "@/lib/item-yield";
 import { isPickupOrder } from "@/lib/ship-label";
+import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
 
 /**
@@ -243,6 +244,13 @@ export function balanceNetTransfer(o: Order, bal: number): { net: number; rateTx
  * ข้อความแจ้งลูกค้าเมื่อ "สถานะออเดอร์เปลี่ยน" — ครบทุกสถานะ ลูกค้าจะได้รู้ความคืบหน้าตลอดทาง
  * เขียนแบบลูกค้าอ่านรู้เรื่อง ไม่ใช่ศัพท์หลังบ้าน · คืน null = สถานะนั้นไม่ต้องแจ้ง
  */
+/** 📦 ส่งรวมกล่อง (lib/ship-with.ts): บรรทัดบอกลูกค้าว่ากล่องนี้มีของออเดอร์ไหนรวมอยู่ด้วย ("" = ไม่ได้ส่งรวม) */
+function shipWithLine(order: Order): string {
+  if (isShipMain(order)) return `📦 กล่องนี้รวมของออเดอร์ ${shipRiderIdsOf(order).join(", ")} ไปด้วยครับ`;
+  if (isShipRider(order)) return `📦 ส่งรวมกล่องเดียวกับออเดอร์ ${shipMainIdOf(order)} ครับ`;
+  return "";
+}
+
 export function statusMessage(order: Order, link: string): string | null {
   const id = order.id;
   // ยอดค้างต้องคิดเหมือนหน้าออเดอร์ทุกบาททุกสตางค์ (orderBalance + formatPrice) ไม่งั้นลูกค้าเทียบกับเว็บแล้วไม่ตรง
@@ -275,7 +283,7 @@ export function statusMessage(order: Order, link: string): string | null {
       // 🚚 เคยแบ่งส่งมาก่อน → บอกว่านี่คือรอบสุดท้าย (เลขรอบก่อนแจ้งไปแล้วตอนส่งรอบนั้น)
       return order.shipments?.length
         ? `🚚 ออเดอร์ ${id} จัดส่งรอบสุดท้ายแล้วครับ ครบทุกรายการ${order.tracking ? `\nเลขพัสดุรอบนี้: ${order.tracking}` : ""}\n${link}`
-        : `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${order.tracking ? `\nเลขพัสดุ: ${order.tracking}` : ""}\n${link}`;
+        : `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${order.tracking ? `\nเลขพัสดุ: ${order.tracking}` : ""}${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`;
     case "เสร็จสิ้น":
       return `🎉 ปิดงานออเดอร์ ${id} เรียบร้อย ขอบคุณที่ใช้บริการครับ 🦆\n${link}`;
     case "ยกเลิก":
@@ -361,6 +369,8 @@ export function statusFlex(
   if (oweNet) rows.push(flexRow(`↳ โอนจริงหลังหัก ณ ที่จ่าย${oweNet.rateTxt}`, formatPrice(oweNet.net), "#0F172A", true));
   if (order.status === "จัดส่งแล้ว" && order.tracking && !isPickupOrder(order))
     rows.push(flexRow(order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ", order.tracking, "#0F172A", true));
+  if (order.status === "จัดส่งแล้ว" && order.tracking && isShipMain(order)) rows.push(flexRow("รวมในกล่อง", shipRiderIdsOf(order).join(", ")));
+  if (order.status === "จัดส่งแล้ว" && order.tracking && isShipRider(order)) rows.push(flexRow("ส่งรวมกับ", shipMainIdOf(order)));
 
   return [
     {
