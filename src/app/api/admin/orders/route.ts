@@ -39,6 +39,7 @@ import {
   roundSel,
   proofsOf,
   shipmentQty,
+  shipToText,
   withLog,
   type LogEntry,
   type Order,
@@ -995,7 +996,7 @@ export async function PATCH(req: Request) {
             }`
         )
         .join("\n");
-      const tail = `${qty ? `\nรอบนี้ ${qty.toLocaleString("th-TH")} ชิ้น` : ""}\n${lines}${sh.note ? `\n📝 ${sh.note}` : ""}`;
+      const tail = `${qty ? `\nรอบนี้ ${qty.toLocaleString("th-TH")} ชิ้น` : ""}\n${lines}${sh.shipTo ? `\n📍 ส่งไปที่: ${shipToText(sh.shipTo)}` : ""}${sh.note ? `\n📝 ${sh.note}` : ""}`;
       void notifyCustomerLogged(
         sb,
         toSave,

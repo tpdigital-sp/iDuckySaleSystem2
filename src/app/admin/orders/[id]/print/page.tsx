@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, nextPlannedRound, pendingSampleRound, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, labelShipTo, nextPlannedRound, pendingSampleRound, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -835,10 +835,21 @@ function OrderDocs({
                   <span className="ml-2 font-normal text-slate-500">ส่งไปแล้ว {order.shipments!.length} รอบ: {order.shipments!.map((x) => x.tracking).join(", ")}</span>
                 </p>
               )}
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
-              <p className="mt-1 text-2xl font-extrabold leading-tight">{order.customer}</p>
-              <p className="mt-1 whitespace-pre-line text-lg leading-snug">{order.address}</p>
-              <p className="mt-2 text-xl font-bold tabular-nums">โทร. {order.phone}</p>
+              {/* 📍 รอบตามแผนที่ระบุที่อยู่อื่น → ใบปะหน้ากล่องรอบนี้ใช้ที่อยู่ของรอบ (ที่อยู่ในใบ = รอบสุดท้าย) · ตราบอกให้คนแพ็ครู้ว่าไม่ใช่ที่อยู่ในใบ */}
+              {(() => {
+                const to = labelShipTo(order);
+                return (
+                  <>
+                    {to.alt && (
+                      <p className="mb-1 inline-block rounded border-2 border-slate-900 px-2 py-0.5 text-sm font-extrabold">📍 รอบที่ {to.round} ส่งที่อยู่นี้ (ไม่ใช่ที่อยู่ในใบ)</p>
+                    )}
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
+                    <p className="mt-1 text-2xl font-extrabold leading-tight">{to.name}</p>
+                    <p className="mt-1 whitespace-pre-line text-lg leading-snug">{to.address}</p>
+                    <p className="mt-2 text-xl font-bold tabular-nums">โทร. {to.phone}</p>
+                  </>
+                );
+              })()}
             </div>
 
             {/* เส้นประสำหรับตัด — ส่วนบนเอาไปติดหน้ากล่อง ส่วนล่างเก็บไว้เป็นใบงาน */}
@@ -895,6 +906,7 @@ function OrderDocs({
                       <p key={`plan-${n}`} className="mt-0.5 text-[11px] font-bold text-amber-800">
                         📋 แบ่งส่ง รอบที่ {n + 1} ส่งก่อน: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""}` : ""}`).join(", ")}
                         {r.dueDate ? ` — ส่งภายใน ${r.dueDate}` : ""}
+                        {r.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(r.shipTo)}` : ""}
                         {r.note ? ` · ${r.note}` : ""}
                       </p>
                     )

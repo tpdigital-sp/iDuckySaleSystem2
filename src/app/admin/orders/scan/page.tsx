@@ -57,6 +57,7 @@ import {
   orderStatusLabel,
   packGate,
   nextPlannedRound,
+  shipToText,
   packMissingOf,
   partialShipSummary,
   proofsOf,
@@ -102,8 +103,8 @@ function PartialTag({ o }: { o: Order }) {
   return (
     <>
       {plan && (
-        <Tag tone="yolk" title={`แอดมินสั่งแบ่งส่ง รอบที่ ${plan.index + 1}: ${plan.round.proofs.map((x) => `${x.itemName ?? ""} รูปที่ ${x.proof + 1}${x.qty ? ` ${x.qty}${x.ofQty && x.ofQty > x.qty ? `/${x.ofQty}` : ""} ${x.unit || "ชิ้น"}` : ""}`).join(", ")}${plan.round.dueDate ? ` · ส่งภายใน ${plan.round.dueDate}` : ""}`}>
-          📋 แบ่งส่ง รอบ {plan.index + 1} รอแพ็ค{plan.round.dueDate ? ` · ${plan.round.dueDate}` : ""}
+        <Tag tone="yolk" title={`แอดมินสั่งแบ่งส่ง รอบที่ ${plan.index + 1}: ${plan.round.proofs.map((x) => `${x.itemName ?? ""} รูปที่ ${x.proof + 1}${x.qty ? ` ${x.qty}${x.ofQty && x.ofQty > x.qty ? `/${x.ofQty}` : ""} ${x.unit || "ชิ้น"}` : ""}`).join(", ")}${plan.round.dueDate ? ` · ส่งภายใน ${plan.round.dueDate}` : ""}${plan.round.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(plan.round.shipTo)}` : ""}`}>
+          📋 แบ่งส่ง รอบ {plan.index + 1} รอแพ็ค{plan.round.shipTo ? " · 📍 ที่อยู่อื่น" : ""}{plan.round.dueDate ? ` · ${plan.round.dueDate}` : ""}
         </Tag>
       )}
       {p && (

@@ -268,6 +268,10 @@
 .dkb-scroll::-webkit-scrollbar { display: none; }
 /* ไล่จางขอบขวา — บอกว่ายังเลื่อนต่อได้ */
 .dkb-scroll { -webkit-mask-image: linear-gradient(90deg, #000 0, #000 93%, transparent 100%); mask-image: linear-gradient(90deg, #000 0, #000 93%, transparent 100%); }
+/* จอกว้าง (≥900px) ตัดการเลื่อนแนวนอน — ชิปพับลงบรรทัดใหม่แทน ไม่ให้ตัวท้ายถูกไล่จางเหมือนหลุดขอบ (18 ก.ย. 69) */
+@media (min-width: 900px) {
+  .dkb-scroll { flex-wrap: wrap; row-gap: 6px; overflow-x: visible; -webkit-mask-image: none; mask-image: none; }
+}
 .dkb-tab {
   display: inline-flex; align-items: center; gap: 7px; flex: none;
   min-height: 40px; padding: 0 15px; border-radius: 999px;

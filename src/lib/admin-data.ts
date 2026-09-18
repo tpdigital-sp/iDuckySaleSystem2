@@ -126,11 +126,40 @@ export interface Shipment {
   proofs: { item: number; proof: number; url?: string; qty?: number; unit?: string; itemName?: string; ofQty?: number }[];
   /** หมายเหตุรอบนี้ เช่น "ลูกค้าขอ 22 ใบก่อนงานอีเวนต์" */
   note?: string;
+  /** 📍 รอบนี้ส่งไปที่อยู่อื่น (แช่จากแผนตอนยิงเลข) — ลูกค้า/ประวัติเห็นว่าเลขนี้ไปที่ไหน · ไม่มี = ที่อยู่ในใบ */
+  shipTo?: ShipTo;
   /**
    * 🏪 รอบของใบ "มารับเอง" — ไม่มีเลขพัสดุ ฝ่ายแพ็คกด "แพ็คเสร็จรอบนี้" แทน (tracking = pickupRoundRef(n) ไว้กันซ้ำ/โชว์)
    * (17 ก.ย. 69 · OD-260911-5435: ใบมารับเองมีแผนแบ่งส่ง แต่ทางเดียวที่กดได้คือ "แพ็คเสร็จ" ซึ่งปิดทั้งใบ → รอบที่เหลือหลุดจากคิวปริ้น)
    */
   pickup?: true;
+}
+
+/**
+ * 📍 ผู้รับของ "รอบแบ่งส่ง" ที่ไม่ใช่ที่อยู่ในใบ — เคสลูกค้าสั่ง 2 ชิ้นแล้วขอแยกส่ง 2 ที่อยู่ (OD-260917-1691 · 18 ก.ย. 69)
+ * ที่อยู่ในใบ (order.address) = รอบสุดท้าย · รอบในแผนที่มี shipTo = ใบปะหน้ารอบนั้นพิมพ์ที่อยู่นี้แทน ไม่ต้องแก้ที่อยู่ใบไปมา
+ */
+export interface ShipTo {
+  /** ชื่อผู้รับ — ว่าง = ชื่อในใบ */
+  name?: string;
+  /** เบอร์ผู้รับ — ว่าง = เบอร์ในใบ */
+  phone?: string;
+  address: string;
+}
+
+/** 📍 ที่อยู่ที่ต้องขึ้นใบปะหน้า "กล่องรอบถัดไป" — รอบตามแผนที่มี shipTo ใช้ของรอบ · ไม่มี/รอบสุดท้าย = ของใบ */
+export function labelShipTo(order: Order): { name: string; phone: string; address: string; round: number; alt: boolean } {
+  const n = order.shipments?.length ?? 0;
+  const to = (order.tracking ?? "").trim() ? undefined : order.shipPlan?.[n]?.shipTo;
+  if (to?.address?.trim())
+    return { name: to.name?.trim() || order.customer, phone: to.phone?.trim() || order.phone, address: to.address.trim(), round: n + 1, alt: true };
+  return { name: order.customer, phone: order.phone, address: order.address, round: n + 1, alt: false };
+}
+
+/** 📍 บรรทัดสั้น "ชื่อ · ที่อยู่" ของผู้รับรอบ (ไว้ขึ้นป้าย/หมายเหตุ/ไลน์) */
+export function shipToText(to: ShipTo | undefined): string {
+  if (!to?.address?.trim()) return "";
+  return [to.name?.trim(), to.address.trim().replace(/\s*\n+\s*/g, " "), to.phone?.trim() ? `โทร. ${to.phone.trim()}` : ""].filter(Boolean).join(" · ");
 }
 
 /** 🏪 ข้อความแทนเลขพัสดุของรอบแบ่งส่งใบมารับเอง — อ่านรู้เรื่องในทุกจอที่โชว์ sh.tracking และไม่ซ้ำกันระหว่างรอบ */
@@ -157,6 +186,8 @@ export interface ShipPlanRound {
   /** ส่งภายในวันไหน (YYYY-MM-DD) — ขึ้นบนใบงาน/โหมดแพ็ค */
   dueDate?: string;
   note?: string;
+  /** 📍 รอบนี้ส่งไปที่อยู่อื่น (ไม่ใช่ที่อยู่ในใบ) — ใบปะหน้ารอบนี้ใช้ที่อยู่นี้ · ที่อยู่ในใบเก็บไว้ให้รอบสุดท้าย */
+  shipTo?: ShipTo;
   by: string;
   at: string;
 }

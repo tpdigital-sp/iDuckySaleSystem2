@@ -104,6 +104,8 @@ import {
   type OrderStatus,
   type Shipment,
   type ShipPlanRound,
+  type ShipTo,
+  shipToText,
   type Proof,
   proofQtyCheck,
   orderedPieces,
@@ -2553,13 +2555,24 @@ export default function AdminOrderDetailPage() {
     const round = (order.shipments?.length ?? 0) + 1;
     // 🏪 ใบมารับเอง: รอบนี้ไม่มีเลขพัสดุ (โมดัลส่ง pickupRoundRef มาแทน) — ติดธง pickup ให้ทุกจอรู้ว่าไม่ต้องเช็คสถานะ ปณ.
     const pickupRound = isPickupOrder(order);
-    const sh: Shipment = { tracking: t, at: new Date().toISOString(), by: actor, proofs, ...(note.trim() ? { note: note.trim() } : {}), ...(pickupRound ? { pickup: true as const } : {}) };
+    // 📍 รอบตามแผนที่ระบุ "ส่งไปที่อยู่อื่น" → แช่ลงรอบที่ส่ง (ประวัติ/หน้าลูกค้ารู้ว่าเลขนี้ไปที่ไหน) · ใบมารับเองไม่มีที่อยู่
+    const pn = nextPlannedRound(order);
+    const shipTo = !pickupRound && pn && pn.index === (order.shipments?.length ?? 0) && pn.round.shipTo?.address?.trim() ? pn.round.shipTo : undefined;
+    const sh: Shipment = {
+      tracking: t,
+      at: new Date().toISOString(),
+      by: actor,
+      proofs,
+      ...(note.trim() ? { note: note.trim() } : {}),
+      ...(shipTo ? { shipTo } : {}),
+      ...(pickupRound ? { pickup: true as const } : {}),
+    };
     const qty = shipmentQty(sh);
     const next = withLog(
       { ...order, shipments: [...(order.shipments ?? []), sh] },
       actor,
       pickupRound ? "🏪 แพ็คเสร็จบางส่วน — รอลูกค้ามารับ" : "🚚 ส่งบางส่วน",
-      `รอบที่ ${round} · ${t} · ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}`
+      `รอบที่ ${round} · ${t} · ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}${sh.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(sh.shipTo)}` : ""}`
     );
     setShipSel(new Map());
     setPartialOpen(false);
@@ -2597,7 +2610,7 @@ export default function AdminOrderDetailPage() {
    * 📋 แอดมินเพิ่ม/แก้รอบในแผนแบ่งส่ง (จากโมดัลเลือกรูป) + log · ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" ทันที
    * editIndex = แก้รอบเดิม (เฉพาะรอบที่ยังไม่ส่ง — ส่งแล้วแก้ไม่ได้ · เจ้าของร้านสั่ง 16 ก.ย. 69) · แก้แล้วคำอนุมัติส่งตัวอย่างหลุด ต้องอนุมัติใหม่
    */
-  function savePlanRound(sel: Map<string, number>, note: string, dueDate: string, editIndex: number | null = null) {
+  function savePlanRound(sel: Map<string, number>, note: string, dueDate: string, shipTo: ShipTo | undefined, editIndex: number | null = null) {
     if (!order || !mayEdit || !sel.size) return;
     if (editIndex !== null && (!order.shipPlan?.[editIndex] || order.shipments?.[editIndex])) return;
     const states = proofShipStates(order);
@@ -2626,6 +2639,10 @@ export default function AdminOrderDetailPage() {
       at: new Date().toISOString(),
       ...(note.trim() ? { note: note.trim() } : {}),
       ...(dueDate ? { dueDate } : {}),
+      // 📍 ที่อยู่เฉพาะรอบ — เก็บเฉพาะช่องที่กรอก (ว่าง = ใช้ชื่อ/เบอร์ในใบ)
+      ...(shipTo?.address.trim()
+        ? { shipTo: { address: shipTo.address.trim(), ...(shipTo.name?.trim() ? { name: shipTo.name.trim() } : {}), ...(shipTo.phone?.trim() ? { phone: shipTo.phone.trim() } : {}) } }
+        : {}),
       // โฟลเดอร์ต้นทางของรอบตัวอย่างคงไว้ (หลักฐานว่ามาจากโฟลเดอร์ (…ตย)) · คำอนุมัติของเจ้าของร้านไม่ติดมา — ของเปลี่ยนต้องอนุมัติใหม่
       ...(prev?.sampleFolder ? { sampleFolder: prev.sampleFolder } : {}),
     };
@@ -2639,7 +2656,7 @@ export default function AdminOrderDetailPage() {
         { ...order, shipPlan },
         actor,
         editIndex !== null ? "✏️ แก้ไขแผนแบ่งส่ง" : "📋 ระบุแผนแบ่งส่ง",
-        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.note ? ` · ${round.note}` : ""}${prev?.sampleApproved ? " · ⚠️ คำอนุมัติส่งตัวอย่างเดิมหลุด ต้องให้เจ้าของร้านอนุมัติใหม่" : ""}`
+        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(round.shipTo)}` : ""}${round.note ? ` · ${round.note}` : ""}${prev?.sampleApproved ? " · ⚠️ คำอนุมัติส่งตัวอย่างเดิมหลุด ต้องให้เจ้าของร้านอนุมัติใหม่" : ""}`
       )
     );
   }
@@ -3706,6 +3723,7 @@ export default function AdminOrderDetailPage() {
             mayEdit={mayEdit}
             editableQty={adHocSplit}
             defaultNote={planNext?.round.note ?? ""}
+            shipTo={planNext?.round.shipTo}
             pickup={isPickupOrder(order)}
             onCancel={() => setPartialOpen(false)}
             onConfirm={(t, note, sel) => commitPartialShipment(t, note, sel)}
@@ -8054,6 +8072,7 @@ export default function AdminOrderDetailPage() {
                             ) : null}
                           </span>
                         </div>
+                        {r.shipTo && <p className="mt-1 font-bold text-sky-800">📍 ส่งไปที่: {shipToText(r.shipTo)}</p>}
                         {open && (
                           <ul className="mt-1.5 grid grid-cols-1 gap-1 sm:grid-cols-2">
                             {r.proofs.map((p, pi) => {
@@ -8301,6 +8320,7 @@ export default function AdminOrderDetailPage() {
           mayEdit={mayEdit}
           editableQty={adHocSplit}
           defaultNote={planNext?.round.note ?? ""}
+          shipTo={planNext?.round.shipTo}
           pickup={isPickupOrder(order)}
           onCancel={() => setPartialOpen(false)}
           onConfirm={(t, note, sel) => commitPartialShipment(t, note, sel)}
@@ -8314,7 +8334,7 @@ export default function AdminOrderDetailPage() {
             setPlanOpen(false);
             setPlanEditIdx(null);
           }}
-          onSave={(sel, note, due) => savePlanRound(sel, note, due, planEditIdx)}
+          onSave={(sel, note, due, shipTo) => savePlanRound(sel, note, due, shipTo, planEditIdx)}
         />
       )}
 
@@ -8841,6 +8861,7 @@ function PackView({
                     {r.proofs.length > 1 && qty ? ` · รวม ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
                     {r.dueDate ? ` · ส่งภายใน ${r.dueDate}` : ""}
                     {done ? ` · ${done.tracking}` : ""}
+                    {r.shipTo ? <span className="block font-normal text-sky-200">📍 ส่งไปที่: {shipToText(r.shipTo)}</span> : null}
                     {r.note ? <span className="block font-normal text-amber-100/80">📝 {r.note}</span> : null}
                   </li>
                 );
@@ -9536,13 +9557,17 @@ function ShipPlanModal({
   /** ✏️ แก้รอบเดิมในแผน (index) — null = เพิ่มรอบใหม่ · รอบที่แก้ไม่ถูกนับว่า "จองไว้แล้ว" และค่าเดิมถูกเติมให้ */
   editIndex?: number | null;
   onCancel: () => void;
-  onSave: (sel: Map<string, number>, note: string, dueDate: string) => void;
+  onSave: (sel: Map<string, number>, note: string, dueDate: string, shipTo: ShipTo | undefined) => void;
 }) {
   const editing = editIndex !== null ? order.shipPlan?.[editIndex] : undefined;
   // คีย์รูป → จำนวนชิ้นที่จะส่งรอบนี้ (ติ๊กครั้งแรก = ที่เหลือทั้งหมด แล้วลดจำนวนได้ เช่น "ลายนี้ส่งก่อน 1 ชิ้น")
   const [sel, setSel] = useState<Map<string, number>>(() => (editing ? roundSel(order, editing.proofs) : new Map()));
   const [note, setNote] = useState(editing?.note ?? "");
   const [due, setDue] = useState(editing?.dueDate ?? "");
+  /** 📍 รอบนี้ส่งไปที่อยู่อื่น — ที่อยู่ในใบเก็บไว้ให้รอบสุดท้าย (เคสสั่ง 2 ชิ้น แยกส่ง 2 ที่อยู่ · 18 ก.ย. 69) */
+  const [altTo, setAltTo] = useState(!!editing?.shipTo?.address);
+  const [to, setTo] = useState<ShipTo>({ name: editing?.shipTo?.name ?? "", phone: editing?.shipTo?.phone ?? "", address: editing?.shipTo?.address ?? "" });
+  const toOk = !altTo || !!to.address.trim();
   /** รูปที่กำลังขยายดู (ตำแหน่งใน rows) — แอดมินต้องเห็นลายชัด ๆ ก่อนตัดสินใจว่ารูปไหนส่งก่อน */
   const [zoom, setZoom] = useState<number | null>(null);
   const states = proofShipStates(order);
@@ -9695,15 +9720,50 @@ function ShipPlanModal({
             placeholder="หมายเหตุถึงฝ่ายแพ็ค เช่น ลูกค้าขอ 1 ชิ้นก่อนไปเช็คงาน"
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none"
           />
+          {/* 📍 ที่อยู่เฉพาะรอบ — ไม่ต้องแก้ที่อยู่ใบไปมาระหว่างรอบ ใบปะหน้ารอบนี้ดึงจากตรงนี้ (labelShipTo) */}
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs ring-1 ring-sky-200">
+            <input type="checkbox" checked={altTo} onChange={(e) => setAltTo(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600" />
+            <span>
+              <span className="block font-extrabold text-sky-800">📍 รอบนี้ส่งไปที่อยู่อื่น (ไม่ติ๊ก = ส่งที่อยู่ในใบตามปกติ)</span>
+              <span className="text-slate-600">ติ๊กเฉพาะเมื่อลูกค้าขอให้รอบนี้ไปคนละที่กับใบ เช่น สั่ง 2 ชิ้น แยกส่ง 2 ที่ — ใบปะหน้ารอบนี้จะพิมพ์ที่อยู่ที่กรอกแทน</span>
+            </span>
+          </label>
+          {altTo && (
+            <div className="space-y-1.5 rounded-xl bg-white p-2 ring-1 ring-sky-200">
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <input
+                  value={to.name ?? ""}
+                  onChange={(e) => setTo((c) => ({ ...c, name: e.target.value }))}
+                  placeholder={`ชื่อผู้รับ (ว่าง = ${order.customer || "ชื่อในใบ"})`}
+                  className="w-full rounded-xl border border-sky-200 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                />
+                <input
+                  value={to.phone ?? ""}
+                  inputMode="tel"
+                  onChange={(e) => setTo((c) => ({ ...c, phone: e.target.value }))}
+                  placeholder={`เบอร์ผู้รับ (ว่าง = ${order.phone || "เบอร์ในใบ"})`}
+                  className="w-full rounded-xl border border-sky-200 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+                />
+              </div>
+              <textarea
+                value={to.address}
+                rows={3}
+                onChange={(e) => setTo((c) => ({ ...c, address: e.target.value }))}
+                placeholder="ที่อยู่จัดส่งรอบนี้ (บังคับ)"
+                className="w-full rounded-xl border border-sky-200 px-3 py-2 text-sm focus:border-sky-400 focus:outline-none"
+              />
+              {!toOk && <p className="text-[11px] font-bold text-rose-600">ใส่ที่อยู่รอบนี้ก่อน หรือเอาติ๊กออกถ้าส่งที่อยู่ในใบ</p>}
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-2 p-5">
           <button
             type="button"
-            disabled={sel.size === 0 || all}
-            onClick={() => onSave(sel, note, due)}
+            disabled={sel.size === 0 || all || !toOk}
+            onClick={() => onSave(sel, note, due, altTo ? to : undefined)}
             className="w-full rounded-xl bg-amber-400 py-3 text-sm font-extrabold text-amber-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {editing ? "บันทึกการแก้ไข" : "บันทึกแผน"} รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
+            {editing ? "บันทึกการแก้ไข" : "บันทึกแผน"} รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}{altTo ? " · 📍 ที่อยู่อื่น" : ""}
           </button>
           <button type="button" onClick={onCancel} className="w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
             ยกเลิก
@@ -9785,6 +9845,7 @@ function PartialShipModal({
   editableQty = false,
   defaultNote = "",
   pickup = false,
+  shipTo,
   onCancel,
   onConfirm,
 }: {
@@ -9798,6 +9859,8 @@ function PartialShipModal({
   editableQty?: boolean;
   /** หมายเหตุจากแผนแอดมิน — เติมให้ก่อน แก้ได้ */
   defaultNote?: string;
+  /** 📍 รอบนี้ส่งไปที่อยู่อื่นตามแผน — โชว์ให้คนแพ็คเช็คใบปะหน้าก่อนปิดกล่อง */
+  shipTo?: ShipTo;
   onCancel: () => void;
   onConfirm: (tracking: string, note: string, sel: Map<string, number>) => void;
 }) {
@@ -9869,6 +9932,16 @@ function PartialShipModal({
           <p className="mt-0.5 text-xs text-slate-500">
             {order.id} · {rows.length} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""} · ใบยังไม่ปิด {pickup ? "ที่เหลือกลับไปรอคิวปริ้น/ผลิตรอบถัดไป" : "ที่เหลือส่งรอบถัดไป"}
           </p>
+          {shipTo && !pickup && (
+            <div className="mt-2 rounded-xl bg-sky-50 px-3 py-2 ring-1 ring-sky-200">
+              <p className="text-[11px] font-extrabold text-sky-800">📍 รอบนี้ส่งไปที่อยู่อื่น — เช็คใบปะหน้าบนกล่องให้ตรงก่อนยิงเลข</p>
+              <p className="mt-0.5 text-xs font-bold text-slate-800">
+                {shipTo.name?.trim() || order.customer}
+                {shipTo.phone?.trim() ? ` · โทร. ${shipTo.phone.trim()}` : ""}
+              </p>
+              <p className="whitespace-pre-line text-xs text-slate-700">{shipTo.address}</p>
+            </div>
+          )}
         </div>
 
         {/* ของที่จะไปรอบนี้ — แบ่งจำนวนได้ (ลายนี้ส่งก่อน 1 ชิ้น ที่เหลือรอบหน้า) */}

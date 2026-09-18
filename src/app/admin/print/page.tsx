@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
-import { daysToUseBy, isPartiallyShipped, nextPlannedRound, orderAwaitingStock, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, isPartiallyShipped, labelShipTo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
@@ -579,6 +579,7 @@ function PrintRow({
         {nextRound && (
           <Btn tone="navy" small href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=label`} title="เปิดเฉพาะใบปะหน้าพัสดุ (ที่อยู่ผู้รับ + บาร์โค้ด) สำหรับกล่องรอบถัดไป — ไม่พิมพ์ใบงานซ้ำ">
             📮 ใบปะหน้ารอบที่ {nextRound.round}
+            {labelShipTo(o).alt ? " · 📍 ที่อยู่อื่น" : ""}
           </Btn>
         )}
         <Btn tone={printed > 0 ? "ghost" : sent ? "navy" : "ghost"} small href={`/admin/orders/${encodeURIComponent(o.id)}/print`}>
