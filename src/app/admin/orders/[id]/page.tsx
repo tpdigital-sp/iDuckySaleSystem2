@@ -136,7 +136,7 @@ import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
-import { isPickupOrder, normalizeShipLabel, resolveShipLabel } from "@/lib/ship-label";
+import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shippingUnset } from "@/lib/ship-label";
 import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
@@ -3178,7 +3178,7 @@ export default function AdminOrderDetailPage() {
       localStorage.setItem("iducky-cart-v1", JSON.stringify([...cart.filter((c) => c?.key !== key), line]));
       localStorage.setItem(
         "iducky-append-order-v1",
-        JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer })
+        JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer, needShipping: shippingUnset(order) })
       );
       localStorage.removeItem("iducky-append-picks-v1");
       writeReplaceMarker({
@@ -6501,7 +6501,7 @@ export default function AdminOrderDetailPage() {
                 try {
                   localStorage.setItem(
                     "iducky-append-order-v1",
-                    JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer })
+                    JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer, needShipping: shippingUnset(order) })
                   );
                   localStorage.removeItem("iducky-append-picks-v1");
                 } catch {}

@@ -23,7 +23,7 @@ import { SpecLines } from "@/components/SpecLines";
 import { LINE_URL } from "@/components/LineButton";
 import SenderForm from "@/components/SenderForm";
 import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
-import { isPickupOrder, resolveShipLabel, stripShipPrice } from "@/lib/ship-label";
+import { isPickupOrder, resolveShipLabel, shippingUnset, stripShipPrice } from "@/lib/ship-label";
 import { todayBkkYmd } from "@/lib/ship-date";
 
 /*
@@ -2326,7 +2326,7 @@ export default function CustomerOrderPage() {
             <button
               type="button"
               onClick={() => {
-                setAppendTarget({ id: order.id, key: orderKey, shippingCost: order.shippingCost });
+                setAppendTarget({ id: order.id, key: orderKey, shippingCost: order.shippingCost, needShipping: shippingUnset(order) });
                 router.push("/products");
               }}
               className="ord-btn yolk mt-4"

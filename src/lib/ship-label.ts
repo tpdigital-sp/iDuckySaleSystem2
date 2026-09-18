@@ -44,6 +44,16 @@ export function isPickupOrder(o: { shipping?: string; shippingLabel?: string | n
 }
 
 /**
+ * 🚚 ออเดอร์นี้ "ยังไม่เคยเลือกวิธีส่ง" — ค่าส่ง 0 และไม่มีป้ายวิธีส่ง (ไม่ใช่มารับเอง/ส่งฟรีที่เลือกไว้แล้ว)
+ * = ใบเปล่าที่แอดมินเพิ่งกด "สร้างออเดอร์งานพิเศษ" (สร้างมาด้วย shippingCost 0 ไม่มี shippingLabel)
+ * ใบจากหน้าร้าน/ใบเสนอราคา/FlowAccount มีป้ายหรือตัวเลขค่าส่งเสมอ จึงไม่เข้าข้อนี้
+ * ใช้ตัดสินว่าตอน "สั่งเพิ่มในออเดอร์เดิม" ต้องคิดค่าส่งให้ด้วยไหม (ปกติสั่งเพิ่ม = ไม่คิดซ้ำ เพราะใบแรกจ่ายไปแล้ว)
+ */
+export function shippingUnset(o: { shipping?: string; shippingLabel?: string | null; shippingCost?: number }): boolean {
+  return !(o.shippingLabel ?? "").trim() && !((o.shippingCost ?? 0) > 0) && !isPickupOrder(o);
+}
+
+/**
  * ชื่อวิธีส่งแบบไม่มีราคาติดท้าย ("EMS (50)" → "EMS") — ไว้โชว์เป็นป้ายใหญ่ ราคาอยู่ในตารางยอดเงินอยู่แล้ว
  * (สูตรเดียวกับป้ายบนใบปะหน้า)
  */

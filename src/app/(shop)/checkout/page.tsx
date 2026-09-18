@@ -279,7 +279,10 @@ export default function CheckoutPage() {
   // 🚚 ค่ากล่องปกติถูกยกเว้น (ส่งฟรีตามยอด / สั่งเพิ่มในออเดอร์เดิม = จ่ายไปแล้วในออเดอร์แรก)
   // 📦 แต่ค่าส่งตามจำนวนของหนักยังคิดเสมอ — ต้นทุนกล่อง/น้ำหนักจริงที่โปรไม่ครอบคลุม
   // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดอะไรเลย · ต้องได้เลขตรงกับหน้าตะกร้าเป๊ะ
-  const methodFree = !!appendTo || freeShipping;
+  // 🛍️ สั่งเพิ่มเข้าใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง (แอดมินสร้างออเดอร์งานพิเศษแล้วหยิบจากหน้าร้าน) = คิดค่าส่งตามปกติ
+  //    แล้วส่งไปให้ออเดอร์นั้น — เดิมทุกการสั่งเพิ่ม "ไม่คิดค่าส่งซ้ำ" ใบเปล่าเลยไม่มีค่าส่งเลย (พนักงานแจ้ง 18 ก.ย. 69)
+  const appendNeedsShip = !!appendTo?.needShipping;
+  const methodFree = (!!appendTo && !appendNeedsShip) || freeShipping;
   const shippingCost =
     effectiveMethod.price === 0 ? 0 : methodFree ? qtyShipFee : Math.max(effectiveMethod.price, qtyShipFee);
 
@@ -489,7 +492,12 @@ export default function CheckoutPage() {
     if (appendTo) {
       setPlacing(true);
       setErr("");
-      const res = await appendToOrder(appendTo.id, appendTo.key, orderItems);
+      const res = await appendToOrder(
+        appendTo.id,
+        appendTo.key,
+        orderItems,
+        appendNeedsShip ? { shipping: effectiveMethod.name, shippingCost } : undefined
+      );
       setPlacing(false);
       if (!res.ok) {
         setErr(res.error ?? "สั่งเพิ่มไม่สำเร็จ");
@@ -922,7 +930,16 @@ export default function CheckoutPage() {
             🛍️ กำลังเพิ่มเข้าออเดอร์ <span className="font-mono">{appendTo.id}</span>
           </p>
           <p className="mt-1 text-xs leading-relaxed text-stone-600">
-            ใช้ชื่อ/ที่อยู่เดิม · <strong className="text-amber-700">ไม่คิดค่าจัดส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+            {appendNeedsShip ? (
+              <>
+                ใช้ชื่อ/ที่อยู่เดิม · ออเดอร์นี้ยังไม่มีค่าจัดส่ง →{" "}
+                <strong className="text-amber-700">คิดค่าส่งตามวิธีที่เลือกในตะกร้า ({effectiveMethod.name})</strong> แล้วใส่ให้ในออเดอร์
+              </>
+            ) : (
+              <>
+                ใช้ชื่อ/ที่อยู่เดิม · <strong className="text-amber-700">ไม่คิดค่าจัดส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+              </>
+            )}
           </p>
           <button
             type="button"
@@ -1091,14 +1108,14 @@ export default function CheckoutPage() {
             ค่าจัดส่ง
             {effectiveMethod.price > 0 && qtyShipFee > 0 && (methodFree || qtyShipFee > effectiveMethod.price)
               ? " (ตามจำนวนชิ้น 📦)"
-              : appendTo
+              : appendTo && !appendNeedsShip
                 ? ""
                 : ` (${effectiveMethod.name})`}
           </span>
           <span>
             {shippingCost > 0
               ? formatPrice(shippingCost)
-              : appendTo
+              : appendTo && !appendNeedsShip
                 ? "รวมกับออเดอร์เดิมแล้ว"
                 : "ฟรี"}
           </span>

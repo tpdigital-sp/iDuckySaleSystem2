@@ -7,6 +7,7 @@ import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
+import { shippingUnset } from "@/lib/ship-label";
 
 export const runtime = "nodejs";
 
@@ -20,13 +21,16 @@ const OPEN: OrderStatus[] = ["รอชำระเงิน", "รอตรว�
  * กติกา:
  * - เพิ่มได้เฉพาะออเดอร์ที่ยังไม่เข้าสายการผลิต (กันของที่ทำไปแล้วเพี้ยน)
  * - ไม่คิดค่าจัดส่งซ้ำ (ใช้ค่าส่งเดิมของออเดอร์)
+ *   🚚 ยกเว้นใบที่ "ยังไม่เคยเลือกวิธีส่ง" (shippingUnset — ใบเปล่าจาก "สร้างออเดอร์งานพิเศษ" ที่แอดมินหยิบจากหน้าร้าน):
+ *   รับ shipping/shippingCost ที่หน้าชำระเงินคิดไว้มาใส่ให้ (เหมือน /api/orders ตอนสั่งครั้งแรกที่เชื่อค่าส่งจากหน้าตะกร้า)
+ *   ใบที่มีค่าส่ง/ป้ายวิธีส่งแล้ว = ไม่แตะ แม้ส่งมา (พนักงานแจ้ง 18 ก.ย. 69: หยิบจากหน้าร้านแล้วค่าส่งไม่ตามมา)
  * - รายการใหม่ยังไม่มีแบบ → ดึงสถานะกลับมาที่ "รอชำระเงิน" ถ้ามียอดค้าง
  */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { orderId?: string; key?: string; items?: OrderItem[] };
+  let body: { orderId?: string; key?: string; items?: OrderItem[]; shipping?: string; shippingCost?: number };
   try {
     body = await req.json();
   } catch {
@@ -70,11 +74,22 @@ export async function POST(req: Request) {
   // 📐 แช่จำนวนชิ้นต่อหน่วยให้ของที่สั่งเพิ่มเหมือนตอนสั่งครั้งแรก
   const merged = [...order.items, ...(await withUnitYield(items))];
 
+  // 🚚 ใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง → รับค่าส่งที่หน้าชำระเงินคิดไว้ (ชื่อวิธีส่ง + ตัวเลข) มาใส่ให้เป็นครั้งแรก
+  const shipName = (body.shipping ?? "").trim().slice(0, 40);
+  const shipPatch: Partial<Order> =
+    shipName && shippingUnset(order)
+      ? {
+          shipping: shipName.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา",
+          shippingLabel: shipName,
+          shippingCost: Math.max(0, Number(body.shippingCost) || 0),
+        }
+      : {};
+
   /**
    * 🏅 ส่วนลดระดับสมาชิก — ใบที่ผูกผู้ติดต่อไว้ (พนักงานเปิดใบให้ทางไลน์) ต้องได้ % ของระดับตัวเองเหมือนสั่งเองจากเว็บ
    * คิดใหม่จากยอดสินค้าหลังเพิ่มรายการ · ใบที่แจ้งโอนแล้ว/มีส่วนลดที่ตกลงกันไว้ = ไม่แตะ (ดู lib/server/order-member-tier.ts)
    */
-  const priced = await syncOrderMemberTier(sb, { ...order, items: merged });
+  const priced = await syncOrderMemberTier(sb, { ...order, ...shipPatch, items: merged });
 
   /**
    * ⚡ ส่วนลดโอนไว — คิดที่ประตูเขียนออเดอร์ (updateOrder → syncOrderEarlyPay) ที่เดียวทั้งระบบ
@@ -93,7 +108,14 @@ export async function POST(req: Request) {
   const synced = await syncOrderEarlyPay(sb, updated, "ลูกค้า");
   const newTotal = orderTotal(synced);
   const owed = newTotal - (order.paidTotal ?? 0);
-  const logged = withLog(synced, "ลูกค้า", "สั่งเพิ่มในออเดอร์เดิม", `${items.length} รายการ · ยอดรวมใหม่ ฿${newTotal.toLocaleString()}`);
+  const logged = withLog(
+    synced,
+    "ลูกค้า",
+    "สั่งเพิ่มในออเดอร์เดิม",
+    `${items.length} รายการ` +
+      (shipPatch.shippingLabel ? ` · ใส่ค่าส่ง ${shipPatch.shippingLabel} ฿${(shipPatch.shippingCost ?? 0).toLocaleString()}` : "") +
+      ` · ยอดรวมใหม่ ฿${newTotal.toLocaleString()}`
+  );
 
   const { order: saved, error: saveErr } = await updateOrder(sb, logged, { prev: order, by: "ลูกค้า" });
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });

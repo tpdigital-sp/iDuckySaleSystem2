@@ -453,7 +453,9 @@ export default function CartPage() {
   const freeShipping = freeMin > 0 && subtotal >= freeMin;
 
   // 🚚 ค่ากล่องปกติถูกยกเว้นไหม — ส่งฟรีตามยอด / สั่งเพิ่มเข้าออเดอร์เดิม (ส่งรวมกล่องเดิม)
-  const methodFree = !!appendTo || freeShipping;
+  // 🛍️ ยกเว้นใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง (สร้างออเดอร์งานพิเศษแล้วหยิบจากหน้าร้าน) → คิดค่าส่งตามปกติ ส่งตามไปให้ออเดอร์
+  const appendNeedsShip = !!appendTo?.needShipping;
+  const methodFree = (!!appendTo && !appendNeedsShip) || freeShipping;
   // 📦 ค่าส่งตามจำนวนชิ้น (ของหนัก) = ต้นทุนกล่อง/น้ำหนักจริง — โปรส่งฟรีและการสั่งเพิ่ม "ไม่ล้าง" ส่วนนี้
   // (ของหนักใส่กล่องเดิมไม่ได้/ค่าขนส่งจริงแพงกว่าพัสดุปกติมาก ร้านออกให้ไม่ไหว)
   // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดอะไรเลย
@@ -1101,7 +1103,15 @@ export default function CartPage() {
                   <input type="radio" name="order-mode" checked readOnly className="mt-0.5" />
                   <span className="flex-1 text-xs leading-relaxed t-soft">
                     <strong className="ord-opt-name block text-[.86rem] t-ink">➕ เพิ่มเข้าออเดอร์เดิม {appendTo.id}</strong>
-                    ใช้ชื่อ/ที่อยู่เดิม · <strong className="t-ok">ไม่คิดค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+                    {appendNeedsShip ? (
+                      <>
+                        ใช้ชื่อ/ที่อยู่เดิม · ออเดอร์นี้ยังไม่มีค่าส่ง → <strong className="t-blue">เลือกวิธีส่งด้านล่าง</strong> ระบบจะใส่ค่าส่งให้ในออเดอร์
+                      </>
+                    ) : (
+                      <>
+                        ใช้ชื่อ/ที่อยู่เดิม · <strong className="t-ok">ไม่คิดค่าส่งเพิ่ม</strong> เพราะส่งรวมกล่องเดียวกัน
+                      </>
+                    )}
                     <span className="mt-1 block font-semibold t-blue">
                       ติ๊กเลือกรายการที่จะส่งเข้าออเดอร์เดิมได้ — เลือกแล้ว {pickedItems.length}/{items.length} รายการ
                       <span className="block font-normal t-soft">รายการที่ไม่ติ๊กจะยังอยู่ในตะกร้า สั่งทีหลังได้</span>
@@ -1220,7 +1230,7 @@ export default function CartPage() {
                 <dt>
                   {qtyShipApplied && methodFree
                     ? "ค่าจัดส่ง (ของหนัก — กล่องเพิ่ม)"
-                    : appendTo
+                    : appendTo && !appendNeedsShip
                       ? "ค่าจัดส่ง (รวมกล่องเดิม)"
                       : "ค่าจัดส่ง"}
                 </dt>

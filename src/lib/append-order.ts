@@ -11,7 +11,12 @@ export interface AppendTarget {
   id: string;
   key: string;
   /** ค่าจัดส่งเดิมของออเดอร์ — โชว์ให้ลูกค้ารู้ว่าไม่โดนคิดซ้ำ */
-  shippingCost: number;
+  shippingCost?: number;
+  /**
+   * 🚚 ออเดอร์ปลายทางยังไม่เคยเลือกวิธีส่ง (ใบเปล่าจาก "สร้างออเดอร์งานพิเศษ") → ตะกร้า/หน้าชำระเงินคิดค่าส่งตามปกติ
+   * แล้วส่งไปให้ออเดอร์นั้นตอนเพิ่มรายการ (ไม่ใช่ "ไม่คิดค่าส่งซ้ำ" เพราะยังไม่มีค่าส่งให้ซ้ำ) · ดู shippingUnset() ใน ship-label.ts
+   */
+  needShipping?: boolean;
 }
 
 export function getAppendTarget(): AppendTarget | null {

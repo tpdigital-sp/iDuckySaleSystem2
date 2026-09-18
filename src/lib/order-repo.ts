@@ -106,13 +106,15 @@ export async function reportPayment(
 export async function appendToOrder(
   orderId: string,
   key: string,
-  items: CreateOrderInput["items"]
+  items: CreateOrderInput["items"],
+  /** 🚚 ค่าส่งที่หน้าชำระเงินคิดไว้ — ส่งเฉพาะตอนออเดอร์ปลายทางยังไม่เคยเลือกวิธีส่ง (เซิร์ฟเวอร์รับเฉพาะกรณีนั้น) */
+  ship?: { shipping: string; shippingCost: number }
 ): Promise<{ ok: boolean; owed?: number; error?: string }> {
   try {
     const res = await fetch("/api/orders/append", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, key, items }),
+      body: JSON.stringify({ orderId, key, items, ...(ship ?? {}) }),
     });
     const data = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, owed: data.owed } : { ok: false, error: data.error ?? "สั่งเพิ่มไม่สำเร็จ" };
