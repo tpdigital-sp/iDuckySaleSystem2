@@ -43,9 +43,14 @@ export async function GET(req: Request) {
   const relevance = !!q && !url.searchParams.has("sort");
 
   let query = sb.from(CONTACT_TABLE).select("id,data", { count: "exact" });
-  if (q) {
-    const like = `%${q}%`;
-    const digits = q.replace(/\D/g, "");
+  // ค้นแบบ "แยกคำ" — ทุกคำต้องเจอ (ช่องไหนก็ได้) · .or() หลายก้อน PostgREST เอามา AND กัน
+  // ทำไม: cleanQuery ตัดวงเล็บ/จุลภาคทิ้ง → พิมพ์ชื่อเต็ม "ฉัตรธริกา (ใบหม่อน)" กลายเป็นค้นวลี "ฉัตรธริกา ใบหม่อน"
+  // ซึ่งไม่ตรงกับชื่อในคลัง (มีวงเล็บคั่น) → "ไม่พบ" ทั้งที่มี #23848 · ชื่อมีวงเล็บในคลัง 2,406 ราย
+  // (พนักงานแจ้ง 18 ก.ย. 69 OD-260918-6141 "ใส่ชื่อแล้วไม่ขึ้นเมมเบอร์") · เบอร์ที่พิมพ์เว้นวรรค/ขีด = คำเดียว
+  const tokens = q ? (/^[\d\s+-]+$/.test(q) ? [q] : q.split(" ")) : [];
+  for (const t of tokens) {
+    const like = `%${t}%`;
+    const digits = t.replace(/\D/g, "");
     const parts = [`data->>name.ilike.${like}`, `data->>address.ilike.${like}`, `data->>email.ilike.${like}`, `data->>note.ilike.${like}`];
     if (digits) parts.push(`data->>phone.ilike.%${digits}%`, `id.eq.${digits}`);
     else parts.push(`data->>phone.ilike.${like}`);
@@ -76,7 +81,7 @@ export async function GET(req: Request) {
     const prefix = sb
       .from(CONTACT_TABLE)
       .select("id,data")
-      .ilike("data->>name", `${q}%`)
+      .ilike("data->>name", `${tokens[0] ?? q}%`)
       .order("num", { ascending: false, nullsFirst: false })
       .order("id", { ascending: false })
       .limit(WINDOW);
@@ -97,7 +102,8 @@ export async function GET(req: Request) {
     const digits = q.replace(/\D/g, "");
     // อันดับ: 0 ชื่อตรงเป๊ะ · 1 ชื่อขึ้นต้นด้วยคำค้น · 2 ชื่อมีคำค้น · 3 เบอร์/รหัสตรง · 4 ที่อยู่/อีเมล/โน้ต — อันดับเท่ากันเรียงรหัสใหม่ก่อน (ลำดับเดิม)
     const rankOf = (c: Contact) => {
-      const n = (c.name ?? "").trim().toLowerCase();
+      // เทียบชื่อแบบตัดอักขระเดียวกับคำค้น — ชื่อในคลังที่มีวงเล็บจะได้นับว่า "ตรงเป๊ะ" กับที่พิมพ์มา
+      const n = cleanQuery(c.name ?? "").toLowerCase();
       if (n === nameQ) return 0;
       if (n.startsWith(nameQ)) return 1;
       if (n.includes(nameQ)) return 2;
