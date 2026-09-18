@@ -243,14 +243,12 @@ function trimHookColors(entries: [string, string][]): [string, string][] {
  *
  * ⚠️ แสดงผลอย่างเดียว — ค่าที่เก็บในออเดอร์/แผงตีราคาไม่เปลี่ยน (QuotePanel ยังอ่านครบทุกบรรทัด)
  */
-/** บรรทัด "งานสกรีน" ของตัวงาน (ไม่ใช่สกรีนฐาน) — "งานสกรีน: สกรีน 1 ด้าน (บน)" */
-const isScreenLine = (k: string) => /สกรีน/.test(bareLabel(k)) && !isBaseLine(k);
-
 /**
  * 🗜 แพทเทิร์นย่อของงานสแตนดี้ (ตัว + ฐาน) สำหรับจอฝ่ายผลิต — พนักงานส่งภาพต้นแบบ 18 ก.ย. 69 (OD-260915-7011):
  *   ขนาดตัวสแตนดี้: 15cm
- *   เลือกเฉดสีพิเศษ (ตัวสแตนดี้): hologram-01 + สกรีน 1 ด้าน (บน)   ← วัสดุ/เฉดตัว + งานสกรีน บรรทัดเดียว
- *   ขนาดฐาน: 7cm ทรงกลม hologram-01                                ← ทุกบรรทัดของฐานยุบเข้าบรรทัดขนาดฐาน
+ *   เลือกเฉดสีพิเศษ (ตัวสแตนดี้): hologram-01
+ *   งานสกรีน: สกรีน 1 ด้าน (บน)          ← บรรทัดของตัวเอง (พนักงานสั่งแยกรอบ 2: เดิมต่อท้ายเฉดด้วย " + ")
+ *   ขนาดฐาน: 7cm ทรงกลม hologram-01       ← ทุกบรรทัดของฐานยุบเข้าบรรทัดขนาดฐาน
  *   จำนวนลาย: 1 ลาย
  * ทำเฉพาะรายการที่มีบรรทัดฐาน (งานสแตนดี้) — สินค้าอื่นบรรทัดละหัวข้อเหมือนเดิม · ชุดท้ายการ์ด (เรท/จำนวนลาย/หมายเหตุ) ไม่แตะ
  * ใช้เฉพาะจอฝ่ายผลิต (tidySpec(..., { compact: true })) — หน้าลูกค้า/ใบเสร็จ/ใบเสนอราคายังบรรทัดละหัวข้อ
@@ -259,7 +257,6 @@ function compactStandee<T extends { e: [string, string]; key: string }>(rows: T[
   const isTail = (k: string) => tailAt(k) >= 0;
   if (!rows.some(({ key }) => isBaseLine(key) && !isTail(key))) return rows;
   const out: T[] = [];
-  let material: T | null = null; // บรรทัดวัสดุ/เฉดของตัวงาน (rank 1)
   let baseSize: T | null = null; // บรรทัดขนาดฐาน
   for (const r of rows) {
     const k = r.key;
@@ -273,15 +270,6 @@ function compactStandee<T extends { e: [string, string]; key: string }>(rows: T[
         out.push(baseSize);
       } else if (baseSize) baseSize.e = [baseSize.e[0], `${baseSize.e[1]} ${r.e[1]}`];
       else out.push(r); // ไม่มีบรรทัดขนาดฐานให้เกาะ — ปล่อยไว้ตามเดิม
-      continue;
-    }
-    if (specRank(k) === 1 && !material) {
-      material = { ...r, e: [r.e[0], r.e[1]] };
-      out.push(material);
-      continue;
-    }
-    if (isScreenLine(k) && material) {
-      material.e = [material.e[0], `${material.e[1]} + ${r.e[1]}`];
       continue;
     }
     out.push(r);
