@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { getApps } from "firebase-admin/app";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { pushShopAlert } from "@/lib/server/line-alert";
 
@@ -14,11 +15,17 @@ import { pushShopAlert } from "@/lib/server/line-alert";
  * ⚠️ หน้า TP เป็นไฟล์ static ใส่รหัสลับไม่ได้ — จึงไม่เชื่ออะไรจากคนเรียกนอกจากเลขใบ:
  *    อ่านใบจาก Firestore เอง · ต้องเป็น approved จริง · ธง lineAlertAt จองใน transaction
  *    (1 ใบแจ้งครั้งเดียว) คนนอกยิงมาได้มากสุด = แจ้งใบที่อนุมัติจริงและยังไม่เคยแจ้ง
+ *
+ * 📣 แจ้งเฉพาะใบที่ออเดอร์ต้นทางถูกติ๊ก "แจ้งกลุ่มแอดมินเมื่อของเข้า" ในแท็บจัดการคำสั่งซื้อ
+ *    (order-request.html#manage → order.notifyAdminOnReceive · ฐาน tpdigitalreciept คนละฐานกับใบรับของ)
+ *    ใบที่ไม่ผูกออเดอร์ / ออเดอร์ไม่ได้ติ๊ก = ไม่แจ้ง
  */
 
 export const dynamic = "force-dynamic";
 
 const COLLECTION = "goods_receipts";
+const ORDER_DB = "tpdigitalreciept";
+const ORDER_COLLECTION = "order";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -41,6 +48,12 @@ export async function POST(req: Request) {
   if (!db) return json({ ok: false, reason: "no-firestore" }, 503);
 
   const ref = db.collection(COLLECTION).doc(receiptId);
+
+  // ออเดอร์ต้นทางต้องติ๊กให้แจ้ง — อ่านก่อนจองธง ใบที่ไม่เข้าเงื่อนไขจะได้ไม่ถูกแตะเลย
+  const orderId = String((await ref.get()).data()?.orderRefId || "");
+  if (!orderId) return json({ ok: true, sent: false, reason: "no-order" });
+  const order = (await getFirestore(getApps()[0]!, ORDER_DB).collection(ORDER_COLLECTION).doc(orderId).get()).data();
+  if (order?.notifyAdminOnReceive !== true) return json({ ok: true, sent: false, reason: "not-flagged" });
   let r: FirebaseFirestore.DocumentData | null = null;
   const claimed = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -62,6 +75,7 @@ export async function POST(req: Request) {
     d.supplier ? { label: "ผู้ขาย/ผู้ส่ง", value: String(d.supplier) } : null,
     d.lot ? { label: "ล็อต", value: String(d.lot) } : null,
     total > 0 ? { label: "มูลค่า", value: `฿${total.toLocaleString("th-TH")}` } : null,
+    d.orderRequestedBy?.name ? { label: "ผู้ขอสั่ง", value: String(d.orderRequestedBy.name) } : null,
     { label: "ผู้รับของ", value: `${d.employeeName || "-"}${d.department ? ` (${d.department})` : ""}` },
     { label: "อนุมัติโดย", value: String(d.approvedBy || d.statusChangedBy || "-") },
   ].filter((x): x is { label: string; value: string; bold?: boolean } => !!x);
