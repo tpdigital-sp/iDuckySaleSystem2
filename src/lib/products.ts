@@ -6106,19 +6106,49 @@ export function repriceCartGroups(
         mixGroups.set(mk, g);
       }
       const splitMix = mixGroups.size > 1;
+      /**
+       * ค่าคละลายเป็นของ "กลุ่ม" (คิดครั้งเดียวจากยอดรวม กันนับซ้ำ) แต่ต้อง **เฉลี่ยลงทุกบรรทัดในกลุ่ม**
+       * ไม่ใช่กองไว้ที่บรรทัดแรกบรรทัดเดียว — ใบราคา W3KEX (18 ก.ย. 69): พวงกุญแจ 12 ชิ้น 12 ลาย × 2 สี
+       * ใบราคาแช่ไว้บรรทัดละ ฿1,214 (รวมค่าคละ ฿50) พอลงตะกร้า บรรทัดแรกกลายเป็น ฿1,264 (+฿100)
+       * บรรทัดที่สอง ฿1,164 ไม่มีค่าคละ → ดูเหมือน "ค่าคละลายไม่มาด้วย" ทั้งที่ยอดรวมถูก
+       * น้ำหนัก = ค่าคละที่บรรทัดนั้นจะโดนถ้าคิดเดี่ยว (ใครคละเยอะรับเยอะ) → ไม่มีใครโดน = ตามจำนวนลาย
+       * ยอดรวมของกลุ่มเท่าเดิมเป๊ะ (เศษปัดลงบรรทัดแรก)
+       */
       const mixFeeAt = new Map<number, number>();
-      if (splitMix) {
-        for (const g of mixGroups.values()) {
-          const head = g.idxs[0];
-          const gsel: Record<string, string> = {
-            ...lines[head].selections,
-            [DESIGN_LABEL]: String(g.designs),
-          };
-          if (pool.rate) gsel[RATE_LABEL] = pool.rate.label;
-          mixFeeAt.set(head, designFeeBase(p, gsel, g.qty));
+      const spreadMixFee = (gIdxs: number[], gQty: number, gDesigns: number) => {
+        const gsel: Record<string, string> = {
+          ...lines[gIdxs[0]].selections,
+          [DESIGN_LABEL]: String(gDesigns),
+        };
+        // กติกาเดียวทั้งล็อต = ใส่เรทด้วยเงื่อนไขเดียวกับตอนคิดราคาต่อชิ้นด้านล่าง (สเปคที่เรทนั้นไม่มีราคา ห้ามสลับเรทให้)
+        if (pool.rate) {
+          const m = pool.rate.pricing;
+          if (splitMix || !!m.cells[priceMatrixKey(m, gsel)] || m.driverLabels.some((l) => !gsel[l]))
+            gsel[RATE_LABEL] = pool.rate.label;
         }
-      }
-      pool.idxs.forEach((i, k) => {
+        const total = designFeeBase(p, gsel, gQty, splitMix ? gQty : lotQty);
+        if (!(total > 0) || gIdxs.length === 1) {
+          mixFeeAt.set(gIdxs[0], total);
+          return;
+        }
+        let w = gIdxs.map((i) => {
+          const own: Record<string, string> = { ...lines[i].selections };
+          if (pool.rate) own[RATE_LABEL] = pool.rate.label;
+          return Math.max(0, designFeeBase(p, own, lines[i].qty, lotQty));
+        });
+        if (!w.some((x) => x > 0)) w = gIdxs.map((i) => Math.max(0, designCountOf(lines[i].selections)));
+        const sum = w.reduce((a, b) => a + b, 0);
+        if (!(sum > 0)) {
+          mixFeeAt.set(gIdxs[0], total);
+          return;
+        }
+        const shares = w.map((x) => Math.floor((total * x) / sum));
+        shares[0] += total - shares.reduce((a, b) => a + b, 0);
+        gIdxs.forEach((i, k) => mixFeeAt.set(i, shares[k]));
+      };
+      if (splitMix) for (const g of mixGroups.values()) spreadMixFee(g.idxs, g.qty, g.designs);
+      else if (!pool.rate?.underMinPieceFee) spreadMixFee(pool.idxs, lotQty, poolDesigns);
+      pool.idxs.forEach((i) => {
         const own = lines[i].selections;
         const sel: Record<string, string> = { ...own, [DESIGN_LABEL]: String(poolDesigns) };
         if (pool.rate) {
@@ -6133,7 +6163,7 @@ export function repriceCartGroups(
           unitPrice: parts.total,
           addOns: parts.addOns,
           // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) คิดตามสเปค+จำนวนลายของบรรทัดตัวเอง (สเปคในกลุ่มต่างกันได้)
-          // ส่วน "ค่าคละลาย" เป็นของกลุ่มเรท — เกาะบรรทัดแรกของกลุ่มบรรทัดเดียว กันนับซ้ำ
+          // ส่วน "ค่าคละลาย" เป็นของกลุ่มเรท — คิดครั้งเดียวจากยอดรวมแล้วเฉลี่ยลงทุกบรรทัด (spreadMixFee ด้านบน)
           // ยกเว้นเรท underMinPieceFee: คิด "รายบรรทัด" จากชิ้น/ลายของบรรทัดตัวเอง (แม่นกว่ารวมทั้งล็อต —
           // ลายของแต่ละบรรทัดแยกกันจริง เอาชิ้นข้ามบรรทัดมาเติมลายกันไม่ได้) · เช็คช่วงปลีกที่ยอดรวมล็อต
           extraFee:
@@ -6143,11 +6173,7 @@ export function repriceCartGroups(
             backDesignFeeOf(p, own, lines[i].qty, lotQty) +
             (pool.rate?.underMinPieceFee
               ? underMinFeeFor(pool.rate, lines[i].qty, designCountOf(own), lotQty)
-              : splitMix
-                ? (mixFeeAt.get(i) ?? 0)
-                : k === 0
-                  ? designFeeBase(p, sel, lotQty)
-                  : 0),
+              : (mixFeeAt.get(i) ?? 0)),
           merged: { lines: idxs.length, totalQty: lotQty, totalDesigns: poolDesigns, rateLabel: sel[RATE_LABEL] },
         };
       });

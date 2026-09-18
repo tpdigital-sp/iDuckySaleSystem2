@@ -134,6 +134,10 @@ export default function PriceSheet({
                       {" "}
                       × {formatPrice(it.unitPrice)}
                       <span className="t-faint">/{it.unit}</span>
+                      {/* ยอดรายการแช่ค่าคละลาย/Add on ไว้ด้วย — ไม่บอก ลูกค้าคูณเองแล้วไม่ตรงยอด (ใบ W3KEX 12 × ฿97 ≠ ฿1,214) · ป้ายเดียวกับตะกร้า */}
+                      {it.total - it.unitPrice * it.qty > 0 && (
+                        <> · 🎨 Add on +{formatPrice(it.total - it.unitPrice * it.qty)}</>
+                      )}
                     </>
                   )}
                   {/* 📐 งานแบ่งแผ่น/เซ็ต — บอกด้วยว่าได้กี่ชิ้น (ประโยคเดียวกับตะกร้า) ไม่งั้น "25 แผ่น A3" ลูกค้าไม่รู้ว่าได้กี่ชิ้น */}
