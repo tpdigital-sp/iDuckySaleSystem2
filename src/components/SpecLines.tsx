@@ -91,6 +91,60 @@ const tailAt = (k: string) => TAIL_ORDER.findIndex((re) => re.test(bareLabel(k))
 const isMaterialLine = (k: string) => /^(สี|วัสดุ|เนื้อ|อะคริลิค|กระดาษ)/.test(bareLabel(k));
 
 /**
+ * 🎨 บรรทัด "เฉดสีพิเศษ" — กลุ่มเลือกเฉดที่โผล่ต่อจากตัวเลือก "สีพิเศษ / อะคริลิคพิเศษ" ของงานอะคริลิค
+ * "เลือกเฉดสีพิเศษ (ตัวสแตนดี้)" · "เลือกสีพิเศษของฐาน (ขนาดฐาน 7 ซม. · …)" · "เลือกเฉดสีพิเศษ ชิ้นที่ 2" · "เลือกเฉดอะคริลิคพิเศษ"
+ * (ชื่อกลุ่มทั้งร้านขึ้นต้น "เลือกเฉด…" หรือ "เลือกสีพิเศษ…" เท่านั้น — สำรวจ 18 ก.ย. 69)
+ */
+const isShadeLine = (k: string) => /^เลือก(เฉด|สีพิเศษ)/.test(bareLabel(k));
+
+/** ชิ้นส่วนที่บรรทัดพูดถึง — ฐาน / ชิ้นที่ N / ตัวงาน (ไว้จับคู่บรรทัด "สีพิเศษ" กับบรรทัดเฉดของชิ้นเดียวกัน) */
+const partOf = (k: string) => {
+  if (isBaseLine(k)) return "base";
+  const piece = /ชิ้นที่\s*(\d+)/.exec(k);
+  return piece ? `piece${piece[1]}` : "body";
+};
+
+/**
+ * 🎨 บรรทัดตัวแม่ "สีอะคริลิค: สีพิเศษ (โฮโลแกรม/กลิสเตอร์/สี)" — ประตูเปิดเมนูเฉดหน้าร้าน
+ * พอสั่งแล้วบรรทัดเฉด "เลือกเฉดสีพิเศษ: hologram-01" บอกครบกว่า สองบรรทัดซ้อนกันรก
+ * (กราฟฟิกขอตัด 18 ก.ย. 69 · OD-260915-7011 — ทั้งของตัว "สีอะคริลิค: สีพิเศษ (…)" และของฐาน "สีอะคริลิคฐาน: อะคริลิคพิเศษ (…)")
+ * ตัวแม่ = หัวข้อสี/ชนิด/ประเภทเนื้อ ที่ค่าเป็น "…พิเศษ" · จับคู่กับบรรทัดเฉดด้วยชิ้นส่วน (ตัว/ฐาน/ชิ้นที่ N)
+ * เลือก "อะคริลิคใส" ไม่มีบรรทัดเฉด → ไม่ใช่ตัวแม่ ขึ้นเหมือนเดิม
+ */
+const isShadeParent = (k: string, v: string) =>
+  !isShadeLine(k) && /อะคริลิคพิเศษ|สีพิเศษ/.test(v) && /^(สี|ชนิด|ประเภท|เนื้อ|วัสดุ|อะคริลิค)/.test(bareLabel(k));
+
+/**
+ * 🎨 ยุบตัวแม่ + บรรทัดเฉดของชิ้นเดียวกันเหลือบรรทัดเดียว — บรรทัดเฉดไปยืน "ตำแหน่งของตัวแม่" (ได้ลำดับกลุ่มของตัวแม่ด้วย
+ * ผ่าน rankKey — "สีอะคริลิค" เป็นบรรทัดวัสดุ · "สีอะคริลิคฐาน" อยู่กลุ่มฐาน) แล้วบรรทัดเฉดเดิมตัดทิ้ง
+ * ไม่มีตัวแม่ (ออเดอร์เก่า/สินค้าที่ไม่มีประตู) = บรรทัดเฉดอยู่ที่เดิมของมัน
+ * ⚠️ แสดงผลอย่างเดียว — ค่าตัวแม่ยังอยู่ในออเดอร์ (ตารางราคา/QuotePanel อ่านแกน "สีอะคริลิค" จากมัน)
+ */
+function mergeShadeLines(entries: [string, string][]): { e: [string, string]; rankKey: string }[] {
+  const shadeOf = new Map<string, [string, string]>(); // ชิ้นส่วน → บรรทัดเฉดบรรทัดแรก
+  const parentAt = new Map<string, number>(); // ชิ้นส่วน → ตำแหน่งตัวแม่บรรทัดแรก
+  entries.forEach(([k, v], i) => {
+    if (!v) return;
+    const part = partOf(k);
+    if (isShadeLine(k)) {
+      if (!shadeOf.has(part)) shadeOf.set(part, [k, v]);
+    } else if (isShadeParent(k, v) && !parentAt.has(part)) parentAt.set(part, i);
+  });
+  const out: { e: [string, string]; rankKey: string }[] = [];
+  entries.forEach(([k, v], i) => {
+    const part = partOf(k);
+    const shade = shadeOf.get(part);
+    const at = parentAt.get(part);
+    if (shade && at !== undefined) {
+      if (i === at) return void out.push({ e: shade, rankKey: k }); // ตัวแม่ → บรรทัดเฉดยืนแทน
+      if (isShadeParent(k, v) || (isShadeLine(k) && shade[0] === k)) return; // ตัวแม่ซ้ำ / บรรทัดเฉดที่ย้ายไปแล้ว
+    }
+    out.push({ e: [k, v], rankKey: k });
+  });
+  return out;
+}
+
+/**
  * 🧴 บรรทัด "เคลือบ" ผิวงาน — ต้องขึ้นเสมอ ถึงจะเลือก "ไม่เคลือบ" (เจ้าของร้านสั่ง 15 ก.ย. 69 · OD-260915-7842)
  * เป็นกลุ่มที่ทุกใบต้องเลือก — "ไม่เคลือบ" คือคำตอบจริงที่กราฟฟิก/ทีมผลิตต้องเห็น
  * ไม่ใช่ของเสริมที่ไม่ได้สั่ง (ไม่มีบรรทัด = ไม่รู้ว่าลูกค้าเลือกไว้ว่าอะไร ต้องย้อนไปเปิดหน้าสินค้าดูเอง)
@@ -185,12 +239,61 @@ function trimHookColors(entries: [string, string][]): [string, string][] {
  *     (งานสแตนดี้เคยสลับกันไปมา: ทรงฐาน → ขนาดฐาน → เรทราคา → … → ขนาดตัวสแตนดี้ อยู่บรรทัดสุดท้าย)
  *   • ชุดหัวข้อที่ร้านกำหนดลำดับเอง (SPEC_GROUPS) อยู่ติดกันตามลำดับนั้น — เจาะรู → รับตะขอไหม → ตะขอ
  *   • ชื่อตะขอตัดวงเล็บรายการสีที่มีให้เลือกออก เมื่อมีบรรทัด "สีตะขอ" บอกสีจริงแล้ว (trimHookColors)
+ *   • ตัวแม่ "สีอะคริลิค: สีพิเศษ (…)" + บรรทัดเฉดของชิ้นเดียวกัน ยุบเหลือบรรทัดเฉดบรรทัดเดียว ยืนที่ตัวแม่ (mergeShadeLines)
  *
  * ⚠️ แสดงผลอย่างเดียว — ค่าที่เก็บในออเดอร์/แผงตีราคาไม่เปลี่ยน (QuotePanel ยังอ่านครบทุกบรรทัด)
  */
-export function tidySpec(entries: [string, string][]): [string, string][] {
-  const kept = trimHookColors(entries.filter(([k, v]) => !pickedNone(k, v)));
-  const paired = new Set(kept.filter(([k]) => isBackLine(k)).map(([k]) => sideBase(k)));
+/** บรรทัด "งานสกรีน" ของตัวงาน (ไม่ใช่สกรีนฐาน) — "งานสกรีน: สกรีน 1 ด้าน (บน)" */
+const isScreenLine = (k: string) => /สกรีน/.test(bareLabel(k)) && !isBaseLine(k);
+
+/**
+ * 🗜 แพทเทิร์นย่อของงานสแตนดี้ (ตัว + ฐาน) สำหรับจอฝ่ายผลิต — พนักงานส่งภาพต้นแบบ 18 ก.ย. 69 (OD-260915-7011):
+ *   ขนาดตัวสแตนดี้: 15cm
+ *   เลือกเฉดสีพิเศษ (ตัวสแตนดี้): hologram-01 + สกรีน 1 ด้าน (บน)   ← วัสดุ/เฉดตัว + งานสกรีน บรรทัดเดียว
+ *   ขนาดฐาน: 7cm ทรงกลม hologram-01                                ← ทุกบรรทัดของฐานยุบเข้าบรรทัดขนาดฐาน
+ *   จำนวนลาย: 1 ลาย
+ * ทำเฉพาะรายการที่มีบรรทัดฐาน (งานสแตนดี้) — สินค้าอื่นบรรทัดละหัวข้อเหมือนเดิม · ชุดท้ายการ์ด (เรท/จำนวนลาย/หมายเหตุ) ไม่แตะ
+ * ใช้เฉพาะจอฝ่ายผลิต (tidySpec(..., { compact: true })) — หน้าลูกค้า/ใบเสร็จ/ใบเสนอราคายังบรรทัดละหัวข้อ
+ */
+function compactStandee<T extends { e: [string, string]; key: string }>(rows: T[]): T[] {
+  const isTail = (k: string) => tailAt(k) >= 0;
+  if (!rows.some(({ key }) => isBaseLine(key) && !isTail(key))) return rows;
+  const out: T[] = [];
+  let material: T | null = null; // บรรทัดวัสดุ/เฉดของตัวงาน (rank 1)
+  let baseSize: T | null = null; // บรรทัดขนาดฐาน
+  for (const r of rows) {
+    const k = r.key;
+    if (isTail(k)) {
+      out.push(r);
+      continue;
+    }
+    if (isBaseLine(k)) {
+      if (isSizeLine(k) && !baseSize) {
+        baseSize = { ...r, e: [r.e[0], r.e[1]] };
+        out.push(baseSize);
+      } else if (baseSize) baseSize.e = [baseSize.e[0], `${baseSize.e[1]} ${r.e[1]}`];
+      else out.push(r); // ไม่มีบรรทัดขนาดฐานให้เกาะ — ปล่อยไว้ตามเดิม
+      continue;
+    }
+    if (specRank(k) === 1 && !material) {
+      material = { ...r, e: [r.e[0], r.e[1]] };
+      out.push(material);
+      continue;
+    }
+    if (isScreenLine(k) && material) {
+      material.e = [material.e[0], `${material.e[1]} + ${r.e[1]}`];
+      continue;
+    }
+    out.push(r);
+  }
+  return out;
+}
+
+export function tidySpec(entries: [string, string][], opts?: { compact?: boolean }): [string, string][] {
+  const merged = mergeShadeLines(entries.filter(([k, v]) => !pickedNone(k, v)));
+  // จัดลำดับด้วย rankKey (หัวข้อตัวแม่ถ้าบรรทัดนั้นไปแทนตัวแม่) · หัวข้อที่โชว์จริงอยู่ใน e
+  const kept = trimHookColors(merged.map((x) => x.e)).map((e, i) => ({ e, key: merged[i].rankKey }));
+  const paired = new Set(kept.filter(({ key }) => isBackLine(key)).map(({ key }) => sideBase(key)));
   /** กุญแจของ "ชุดที่ต้องอยู่ติดกัน" — ชุดที่ร้านกำหนดลำดับเอง หรือคู่หน้า/หลังของหัวข้อเดียวกัน */
   const groupKey = (k: string) => {
     const g = specGroup(k);
@@ -199,21 +302,22 @@ export function tidySpec(entries: [string, string][]): [string, string][] {
   };
   // จุดยึดของแต่ละชุด = ตำแหน่งบรรทัดแรกของชุดนั้น (ทั้งชุดไปยืนตรงนั้น)
   const anchor = new Map<string, number>();
-  kept.forEach(([k], i) => {
+  kept.forEach(({ key: k }, i) => {
     const key = groupKey(k);
     if (key && !anchor.has(key)) anchor.set(key, i);
   });
-  return kept
-    .map((e, i) => ({
+  const sorted = kept
+    .map(({ e, key: k }, i) => ({
       e,
+      key: k,
       i,
-      rank: specRank(e[0]),
-      at: anchor.get(groupKey(e[0])) ?? i,
+      rank: specRank(k),
+      at: anchor.get(groupKey(k)) ?? i,
       // ในชุดเดียวกัน: ชุดที่ร้านกำหนดเรียงตามลิสต์ · คู่หน้า/หลังเอาหน้าก่อนหลัง
-      sub: specGroup(e[0])?.at ?? (isBackLine(e[0]) ? 1 : 0),
+      sub: specGroup(k)?.at ?? (isBackLine(k) ? 1 : 0),
     }))
-    .sort((a, b) => a.rank - b.rank || a.at - b.at || a.sub - b.sub || a.i - b.i)
-    .map((x) => x.e);
+    .sort((a, b) => a.rank - b.rank || a.at - b.at || a.sub - b.sub || a.i - b.i);
+  return (opts?.compact ? compactStandee(sorted) : sorted).map((x) => x.e);
 }
 
 /**
@@ -529,9 +633,12 @@ export function SpecLines({
   extras,
   after,
   workSize,
+  compact = false,
 }: {
   sel?: Record<string, string>;
   text?: string;
+  /** 🗜 จอฝ่ายผลิต — งานสแตนดี้ยุบเป็นแพทเทิร์นสั้น (ดู compactStandee) */
+  compact?: boolean;
   /** สไตล์ของ "ค่า" ทั้งบล็อก (ขนาด/สี) — กำหนดจากหน้าที่เรียกใช้ */
   className?: string;
   /** สีหัวข้อ (ตัวหนาให้อยู่แล้ว) — หลังบ้านใช้โทน slate หน้าร้านใช้ stone */
@@ -552,7 +659,7 @@ export function SpecLines({
 }) {
   const entries = withWorkSize(
     foldSizeExtra(
-      tidySpec(specEntries(sel, text, hide))
+      tidySpec(specEntries(sel, text, hide), { compact })
         .map(([k, v]) => [k, stripLinks ? stripUrls(v) : v] as [string, string])
         .filter(([, v]) => v),
     ),

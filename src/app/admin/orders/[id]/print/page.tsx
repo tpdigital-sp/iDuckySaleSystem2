@@ -28,7 +28,7 @@ import { resolveShipLabel } from "@/lib/ship-label";
 import { useActor, useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
-import { SpecLines } from "@/components/SpecLines";
+import { SpecLines, tidySpec } from "@/components/SpecLines";
 import { specLabel } from "@/lib/spec-text";
 import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginate";
 
@@ -50,11 +50,15 @@ function boxSummary(it: Order["items"][number], workSize?: string): string {
 
 /** หัวข้อที่ไม่ต้องขึ้นใบงาน — พิกัด/ลิงก์/สรุปการวางลาย (ทีมผลิตดูจากไฟล์ .ai) */
 const PRINT_SKIP = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก", "ลิงก์ไฟล์ลาย/อีเมล", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
+/**
+ * ใบงาน/ป้ายกล่อง (ฝ่ายผลิต) ซ่อน "เรทราคา" เพิ่ม — พนักงานแจ้ง 18 ก.ย. 69 (OD-260915-7011) ว่ากราฟฟิกไม่ต้องเห็น
+ * ใบเสร็จให้ลูกค้ายังใช้ PRINT_SKIP (เห็นเรทเหมือนหน้าออเดอร์ลูกค้า)
+ */
+const WORK_SKIP = [...PRINT_SKIP, "เรทราคา"];
 
-/** ตัวเลือกสินค้าล้วน ๆ (ขนาด/สี/รุ่น) — ตัดพิกัด/ลิงก์/สรุปการวางลายออก */
+/** ตัวเลือกสินค้าล้วน ๆ (ขนาด/สี/รุ่น) — ตัดพิกัด/ลิงก์/สรุปการวางลายออก · จัดบรรทัดด้วย tidySpec เหมือนใบงาน (ตัดตัวเลือกที่ไม่ได้ทำ/บรรทัดซ้อน) */
 function optionText(it: Order["items"][number]): string {
-  return Object.entries(it.sel ?? {})
-    .filter(([k, v]) => v && !PRINT_SKIP.includes(k))
+  return tidySpec(Object.entries(it.sel ?? {}).filter(([k, v]) => v && !WORK_SKIP.includes(k)), { compact: true })
     .map(([k, v]) => `${specLabel(k)}: ${v}`)
     .join(" · ");
 }
@@ -558,7 +562,8 @@ function OrderDocs({
                           <SpecLines
                             sel={it.sel}
                             text={cleanSelections(it.selections)}
-                            hide={PRINT_SKIP}
+                            hide={WORK_SKIP}
+                            compact
                             stripLinks
                             workSize={products[it.productId]?.workSize}
                             labelClassName="text-slate-900"

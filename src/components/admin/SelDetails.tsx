@@ -44,6 +44,12 @@ export function SelText({ text, plain = false }: { text: string; plain?: boolean
 
 /** ชื่อหัวข้อที่ไม่ต้องโชว์ในรายละเอียด (มีที่แสดงของตัวเองอยู่แล้ว) */
 export const SEL_HIDE = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก"];
+/**
+ * 🎨 จอของฝ่ายผลิต (หน้าออเดอร์แอดมิน · โหมดแพ็ค · ใบงาน) — ซ่อน "เรทราคา" เพิ่ม (พนักงานแจ้ง 18 ก.ย. 69 · OD-260915-7011)
+ * "เรทที่ 1 (สั่งแบบคละดีเทล)" เป็นเรื่องราคา กราฟฟิกไม่ได้ใช้ · หน้าลูกค้า/ใบเสร็จ/ใบเสนอราคายังโชว์เหมือนเดิม
+ * ⚠️ ซ่อนเฉพาะตอนวาด — ค่ายังอยู่ในออเดอร์ (QuotePanel/ตารางราคาอ่านจาก sel ตรง ๆ)
+ */
+export const SEL_HIDE_PRODUCTION = [...SEL_HIDE, "เรทราคา"];
 export const SEL_SPEC = "ตำแหน่งลาย (ทีมผลิต)";
 
 /** ตัดค่าที่มีหลายลายให้เป็นบรรทัดละลาย (ใช้กติกาเดียวกับหน้าร้าน) */
@@ -57,15 +63,24 @@ export function SelDetails({
   sel,
   text,
   workSize,
+  production = false,
 }: {
   sel?: Record<string, string>;
   text?: string;
   /** 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — สินค้าที่ไม่มีกลุ่มขนาดให้เลือก */
   workSize?: string;
+  /**
+   * 🎨 จอฝ่ายผลิต (หน้าออเดอร์แอดมิน) — ซ่อนเรทราคา (SEL_HIDE_PRODUCTION) + งานสแตนดี้ยุบเป็นแพทเทิร์นสั้น (compact)
+   * ใบเสนอราคาไม่ส่ง = บรรทัดละหัวข้อครบเหมือนหน้าลูกค้า
+   */
+  production?: boolean;
 }) {
   // ออเดอร์เก่าไม่มีตัวเลือกแบบหัวข้อ/ค่า — กางจากข้อความรวมให้เป็นบรรทัดละหัวข้อเหมือนกัน
   // บวก "เพิ่มขนาด" เข้าบรรทัดขนาดให้เหมือนหน้าร้าน/ใบงาน — ทีมผลิตอ่านขนาดจริงได้เลย
-  const entries = withWorkSize(foldSizeExtra(tidySpec(specEntries(sel, text, SEL_HIDE))), workSize);
+  const entries = withWorkSize(
+    foldSizeExtra(tidySpec(specEntries(sel, text, production ? SEL_HIDE_PRODUCTION : SEL_HIDE), { compact: production })),
+    workSize,
+  );
   if (!entries.length) {
     return <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>;
   }

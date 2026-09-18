@@ -141,7 +141,7 @@ import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
-import { SelDetails, SelText } from "@/components/admin/SelDetails";
+import { SEL_HIDE_PRODUCTION, SelDetails, SelText } from "@/components/admin/SelDetails";
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
@@ -4932,7 +4932,8 @@ export default function AdminOrderDetailPage() {
                         </div>
                       ) : (
                         <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
-                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} />
+                          {/* 🎨 จอกราฟฟิก — ซ่อนเรทราคา + งานสแตนดี้ยุบบรรทัด (production) · หน้าลูกค้ายังบรรทัดละหัวข้อ */}
+                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} production />
                           {mayEdit && (
                             <button
                               type="button"
@@ -9029,8 +9030,8 @@ function PackView({
                   <span className="min-w-0 flex-1 text-xs">
                     {/* บรรทัดละหัวข้อเหมือนที่อื่น — คนแพ็คอ่านทีละบรรทัดไม่ตกหล่น (อยู่ในปุ่ม จึงใช้ span ล้วน) */}
                     <span className="block font-bold text-slate-700">
-                      {foldSizeExtra(tidySpec(specEntries(it.sel, it.selections))).length
-                        ? foldSizeExtra(tidySpec(specEntries(it.sel, it.selections))).map(([k, v], n) => (
+                      {foldSizeExtra(tidySpec(specEntries(it.sel, it.selections, SEL_HIDE_PRODUCTION), { compact: true })).length
+                        ? foldSizeExtra(tidySpec(specEntries(it.sel, it.selections, SEL_HIDE_PRODUCTION), { compact: true })).map(([k, v], n) => (
                             <span key={`${k}-${n}`} className="block">
                               {k && <span className="text-slate-500">{specLabel(k)}: </span>}
                               <SelText text={v} plain />
