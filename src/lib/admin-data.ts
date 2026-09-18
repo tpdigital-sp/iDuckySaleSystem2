@@ -791,6 +791,13 @@ export interface Order {
    */
   productionSent?: { by: string; at: string; folder?: string };
   /**
+   * ⛔🖨 "ปริ้นเฉพาะที่พร้อม" — ใบที่ยังมีรายการแบบไม่ครบ/ลูกค้ายังไม่อนุมัติ (ดู proofBlockers) แต่คนมีสิทธิ์แก้ออเดอร์กดปลดล็อกปริ้นไปก่อน
+   * (งานเร่ง: รายการที่อนุมัติแล้วเดินผลิตก่อน) · waiting = รายการที่ยังค้างตอนนั้น — ใบงานคาดแถบแดง "ห้ามผลิต" ที่รายการพวกนี้
+   * ⚠️ ปริ้นแบบนี้ไม่นับ printCount · ไม่เลื่อนเป็น "กำลังผลิต" · ไม่แจ้งลูกค้า — ใบยังอยู่กองรอปริ้น ต้องปริ้นเต็มใบอีกรอบเมื่อแบบครบ
+   * เคสต้นเรื่อง OD-260916-4693 (18 ก.ย. 69): ลูกค้าสั่งเพิ่มรายการที่ 3 แบบยังไม่มี แต่ใบถูกโยนโฟลเดอร์+ปริ้นทั้งใบ
+   */
+  partialPrint?: { by: string; at: string; waiting: string[] };
+  /**
    * 🛒 "รอของเข้า / ต้องสั่งของ" — งานนี้ของ (วัสดุ/สินค้าเปล่า) ยังไม่มีในร้าน ต้องสั่งของและรอของเข้าก่อนถึงจะส่งเข้าผลิตได้
    * เจ้าของร้านสั่ง 17 ก.ย. 69: กราฟฟิกต้องเห็นชัดว่าใบนี้ทำแบบได้ แต่ห้ามเอาเข้าฝั่งผลิตจนกว่าของจะเข้า
    * ใครติ๊ก: แอดมิน (orders.edit) ตอนสร้างคำสั่งซื้อ หรือในหน้าออเดอร์ · กราฟฟิก/แพ็ค = เห็นอย่างเดียว
@@ -1485,6 +1492,67 @@ export function proofExempt(item: OrderItem): boolean {
  */
 export function proofMissing(item: OrderItem): boolean {
   return !proofsOf(item).length && !proofExempt(item);
+}
+
+/**
+ * บรรทัดค่าธรรมเนียม/ยอดเพิ่ม ที่ไม่มีแบบงานโดยธรรมชาติ — ไม่ต้องรอให้ใครติ๊ก "ไม่ต้องทำแบบ"
+ * · บรรทัด "🎨 Add on" ที่ระบบแตกให้ (productId ลงท้าย #…) · ชื่อขึ้นต้น "ค่า" (ค่าตัดภาพ · ค่าตัดแบ่ง+เย็บขอบ …)
+ * วัดของจริง ก.ย. 69: 254 ใบ มี 18 ใบที่บรรทัดแบบนี้ไม่มีแบบและไม่ได้ติ๊ก noProof — ถ้านับเป็น "ขาดแบบ" ด่านปริ้นจะกันใบพวกนี้ทุกใบ
+ */
+export function isFeeLine(item: OrderItem): boolean {
+  return (item.productId ?? "").includes("#") || /^\s*ค่า/.test(item.name ?? "");
+}
+
+/** รายการหนึ่งบรรทัดที่ยัง "ขวางการผลิต" — ดู proofBlockers */
+export interface ProofBlocker {
+  /** ลำดับในใบ (เริ่ม 0) · ของแถม = -1 */
+  index: number;
+  name: string;
+  qty: number;
+  /** missing = ยังไม่มีแบบ · waiting = ส่งแบบแล้วรอลูกค้าตรวจ · edit = ลูกค้าขอแก้ */
+  why: "missing" | "waiting" | "edit";
+}
+
+const BLOCKER_WHY: Record<ProofBlocker["why"], string> = {
+  missing: "ยังไม่มีแบบ",
+  waiting: "รอลูกค้าตรวจแบบ",
+  edit: "ลูกค้าขอแก้ไขแบบ",
+};
+
+/**
+ * ⛔ รายการที่ยังขวางการผลิต = ต้องมีแบบ (ไม่ใช่ค่าธรรมเนียม/ไม่ได้ติ๊กไม่ต้องทำแบบ) แต่ยังไม่มีแบบ หรือมีแล้วลูกค้ายังไม่อนุมัติ
+ * ใช้ 3 ด่านเดียวกัน: ลูกค้าอนุมัติแบบ (ออเดอร์ยังไม่เป็น "อนุมัติแบบ") · โยนโฟลเดอร์เข้าผลิต · ปริ้นใบงาน
+ * ⚠️ ใบที่เข้าผลิตไปแล้ว/ผ่านมาแล้ว ไม่ถูกแตะย้อนหลัง — ด่านดูตอนลงมือทำเท่านั้น
+ */
+export function proofBlockers(order: Order): ProofBlocker[] {
+  const out: ProofBlocker[] = [];
+  order.items.forEach((it, index) => {
+    const has = proofsOf(it).length > 0;
+    if (!has) {
+      if (proofExempt(it) || isFeeLine(it)) return;
+      out.push({ index, name: it.name, qty: it.qty, why: "missing" });
+    } else if (it.proofStatus !== "อนุมัติ") {
+      out.push({ index, name: it.name, qty: it.qty, why: it.proofStatus === "ขอแก้ไข" ? "edit" : "waiting" });
+    }
+  });
+  for (const g of order.gifts ?? []) {
+    if ((g.proofs ?? []).length && g.proofStatus !== "อนุมัติ")
+      out.push({ index: -1, name: `🎁 ${g.name}`, qty: g.qty ?? 0, why: g.proofStatus === "ขอแก้ไข" ? "edit" : "waiting" });
+  }
+  return out;
+}
+
+/**
+ * ⛔🖨 ด่านปริ้นใบงาน/โยนโฟลเดอร์ = proofBlockers ยกเว้นใบมัดจำรอบตัวอย่างที่เจ้าของร้านอนุมัติแล้ว (sampleLabelOk)
+ * — รอบตัวอย่างคือทำของจริงให้ลูกค้าดูก่อนอนุมัติ แบบยังไม่ผ่านเป็นเรื่องปกติของโฟลว์นั้น
+ */
+export function printBlockers(order: Order): ProofBlocker[] {
+  return sampleLabelOk(order) ? [] : proofBlockers(order);
+}
+
+/** ข้อความสั้นต่อบรรทัด เช่น "รายการที่ 3 โฟโต้การ์ด ×12 — ยังไม่มีแบบ" */
+export function proofBlockerLabel(b: ProofBlocker): string {
+  return `${b.index >= 0 ? `รายการที่ ${b.index + 1} ` : ""}${b.name}${b.qty ? ` ×${b.qty}` : ""} — ${BLOCKER_WHY[b.why]}`;
 }
 
 /**

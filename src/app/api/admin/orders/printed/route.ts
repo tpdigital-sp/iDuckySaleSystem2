@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderFullyPaid, pendingSampleRound, sampleLabelOk, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderFullyPaid, pendingSampleRound, printBlockers, proofBlockerLabel, sampleLabelOk, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
+import { can } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 
 export const runtime = "nodejs";
 
@@ -33,6 +35,11 @@ const BEFORE_PRODUCTION: OrderStatus[] = [
  * - ครั้งแรก: ตั้ง printedAt (ล็อกที่อยู่ฝั่งลูกค้า ไม่ให้แก้หลังใบปะหน้าออกไปแล้ว)
  * - ทุกครั้ง (รวมซ้ำ): +1 printCount · อัปเดต lastPrintedAt · ลงประวัติว่าใครปริ้น เอกสารอะไร ครั้งที่เท่าไร
  *   ปริ้นซ้ำต้องเห็นในประวัติเสมอ — ของออกสองรอบมักเริ่มจากตรงนี้
+ *
+ * ⛔ ด่านแบบไม่ครบ (18 ก.ย. 69 · OD-260916-4693): ใบงานปริ้นไม่ได้ถ้ายังมีรายการขาดแบบ/ลูกค้ายังไม่อนุมัติ (proofBlockers) → 409 blockers[]
+ *   ปลดล็อก = ส่ง partial:true (ต้องมีสิทธิ์ orders.edit) → "ปริ้นเฉพาะที่พร้อม": จด partialPrint + ล็อกที่อยู่ + ลงประวัติ
+ *   แต่ไม่นับ printCount · ไม่เลื่อนเป็นกำลังผลิต · ไม่แจ้งลูกค้า — ใบยังอยู่กองรอปริ้น รอปริ้นเต็มใบเมื่อแบบครบ
+ *   ใบเสร็จ/ใบแปะหน้ากล่องอย่างเดียว ไม่ติดด่านนี้
  */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
@@ -45,7 +52,7 @@ export async function POST(req: Request) {
   const gate = await requirePerm(["pack.ship", "orders.edit", "proof.manage", "pack.check"]);
   if (gate.res) return gate.res;
 
-  let body: { orderId?: string; docs?: string[] };
+  let body: { orderId?: string; docs?: string[]; partial?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -59,6 +66,29 @@ export async function POST(req: Request) {
 
   const order = row.data as Order;
   const now = new Date().toISOString();
+
+  const blockers = (body.docs ?? []).includes("work") ? printBlockers(order) : [];
+  if (blockers.length) {
+    const waiting = blockers.map(proofBlockerLabel);
+    if (!body.partial)
+      return NextResponse.json(
+        { ok: false, error: `แบบงานยังไม่ครบ — ${waiting.join(" · ")}`, blockers: waiting },
+        { status: 409 }
+      );
+    if (!can(gate.actor, "orders.edit", await loadRolePerms()))
+      return NextResponse.json({ ok: false, error: "ปลดล็อกปริ้นเฉพาะที่พร้อมได้เฉพาะคนที่มีสิทธิ์แก้ไขออเดอร์" }, { status: 403 });
+    const by = gate.actor.name || gate.actor.username;
+    const partial = withLog(
+      { ...order, printedAt: order.printedAt ?? now, printCount: order.printCount ?? (order.printedAt ? 1 : 0), partialPrint: { by, at: now, waiting } },
+      by,
+      "⛔🖨 ปลดล็อกปริ้นเฉพาะรายการที่พร้อม — แบบยังไม่ครบ",
+      `ห้ามผลิต: ${waiting.join(" · ")}`
+    );
+    const { error: pErr } = await updateOrder(sb, partial);
+    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
+    return NextResponse.json({ ok: true, partial: true, printCount: partial.printCount });
+  }
+
   const count = (order.printCount ?? (order.printedAt ? 1 : 0)) + 1;
   const first = count === 1;
   const what = (body.docs ?? []).map((d) => DOC_LABEL[d] ?? d).filter(Boolean).join(" + ") || "ใบงาน";
@@ -77,6 +107,7 @@ export async function POST(req: Request) {
       printedAt: order.printedAt ?? now,
       printCount: count,
       lastPrintedAt: now,
+      partialPrint: undefined, // แบบครบแล้วปริ้นเต็มใบ — ป้าย "ปริ้นบางส่วน" หมดหน้าที่
       ...(startsProduction ? { status: "กำลังผลิต" as OrderStatus } : {}),
     },
     gate.actor.name || gate.actor.username,

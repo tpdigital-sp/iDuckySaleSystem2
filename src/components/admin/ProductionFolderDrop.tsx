@@ -13,6 +13,7 @@
 
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { Btn } from "@/components/admin/ui";
+import { useCan } from "@/lib/perm-context";
 import { isSampleFolderName } from "@/lib/admin-data";
 import { SAMPLE_FILE_RE, type FolderAmbiguous, type FolderMatch } from "@/lib/production-match";
 
@@ -30,6 +31,8 @@ interface MatchResp {
   applied: number;
   /** 🎁 ใบที่ตั้งแผนรอบตัวอย่างจากชื่อไฟล์ให้แล้ว */
   sampleApplied?: number;
+  /** ⛔ ใบที่ขอส่งเข้าผลิตแต่ถูกกันไว้เพราะแบบงานยังไม่ครบ (ไม่มีสิทธิ์ปลดล็อก) */
+  heldBack?: { orderId: string; customer: string; waiting: string[] }[];
 }
 
 const MAX_DEPTH = 4;
@@ -79,6 +82,8 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   /** ใบที่เจอหลายโฟลเดอร์ (ขึ้นตัวอย่าง + งานจริง) คนเลือกว่าอันไหนคืองานจริง: orderId → ชื่อโฟลเดอร์ */
   const [folderFor, setFolderFor] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  /** ⛔ ใบที่แบบงานยังไม่ครบ ติ๊กกลับเข้าได้เฉพาะคนมีสิทธิ์แก้ออเดอร์ (เซิร์ฟเวอร์ตรวจซ้ำ) */
+  const canForceHold = useCan()("orders.edit");
 
   const scan = useCallback(async (list: string[], files: string[] = []) => {
     const uniq = [...new Set(list)].filter(Boolean);
@@ -104,7 +109,11 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       });
       const j = (await r.json().catch(() => ({}))) as MatchResp;
       if (!r.ok) setErr(j.error || `จับคู่ไม่สำเร็จ (${r.status})`);
-      else setRes(j);
+      else {
+        setRes(j);
+        // ⛔ ใบที่แบบงานยังไม่ครบ = ติ๊กออกให้ก่อน (แอ๋มโยนทั้งโฟลเดอร์โดยไม่รู้ว่าลูกค้าสั่งเพิ่ม — OD-260916-4693)
+        setSkip(Object.fromEntries((j.matched ?? []).filter((m) => m.proofHold?.length).map((m) => [m.orderId, true])));
+      }
     } catch {
       setErr("ติดต่อเซิร์ฟเวอร์ไม่ได้ — ลองใหม่อีกครั้ง");
     } finally {
@@ -160,7 +169,16 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       const r = await fetch("/api/admin/orders/production-folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths, apply: true, pick: picks, skip: skipIds, folderFor, sampleFiles, samplePlan }),
+        body: JSON.stringify({
+          paths,
+          apply: true,
+          pick: picks,
+          skip: skipIds,
+          folderFor,
+          sampleFiles,
+          samplePlan,
+          allowHold: (res.matched ?? []).filter((m) => m.proofHold?.length && !skip[m.orderId]).map((m) => m.orderId),
+        }),
       });
       const j = (await r.json().catch(() => ({}))) as MatchResp;
       if (!r.ok) {
@@ -181,7 +199,8 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const matchedList = res?.matched ?? [];
   /** ใบที่ยังติ๊กอยู่ = ใบที่จะถูกส่งเข้าผลิตจริง */
   const chosen = matchedList.filter((m) => !skip[m.orderId]);
-  const allOn = matchedList.length > 0 && chosen.length === matchedList.length;
+  const freeList = matchedList.filter((m) => !m.proofHold?.length);
+  const allOn = freeList.length > 0 && freeList.every((m) => !skip[m.orderId]);
   /** 🎁 ใบที่จะตั้งแผนรอบตัวอย่าง (ใบใหม่ + ใบที่ติ๊กส่งผลิตไปแล้ว) */
   const sampleCount = [...matchedList, ...(res?.alreadySent ?? [])].filter((m) => m.sample && !samplePlanOff[m.orderId]).length;
   const toApply = chosen.length + pickedCount + sampleCount;
@@ -270,6 +289,11 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
               ✅ ติ๊กส่งเข้าผลิตแล้ว {res.applied} ใบ — ย้ายไปกอง “ส่งผลิตแล้ว รอปริ้น”
             </p>
           )}
+          {(res.heldBack?.length ?? 0) > 0 && (
+            <p className="font-bold" style={{ color: "var(--dk-coral-deep)" }}>
+              ⛔ ไม่ได้ส่งเข้าผลิต {res.heldBack!.length} ใบ เพราะแบบงานยังไม่ครบ: {res.heldBack!.map((h) => `${h.orderId} (${h.waiting.join(" · ")})`).join(" , ")}
+            </p>
+          )}
           {(res.sampleApplied ?? 0) > 0 && (
             <p className="font-bold" style={{ color: "#6d28d9" }}>
               🎁 ตั้งแผนส่งตัวอย่างจากชื่อไฟล์ให้แล้ว {res.sampleApplied} ใบ — ดูรอบที่ตั้งได้ในหน้าออเดอร์ (📋 แผนแบ่งส่ง)
@@ -289,7 +313,11 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                   type="button"
                   className="ml-auto min-h-[32px] px-1 text-[12.5px] font-bold underline"
                   style={{ color: "var(--dk-navy)" }}
-                  onClick={() => setSkip(allOn ? Object.fromEntries(matchedList.map((m) => [m.orderId, true])) : {})}
+                  onClick={() =>
+                    setSkip(
+                      Object.fromEntries(matchedList.filter((m) => allOn || m.proofHold?.length).map((m) => [m.orderId, true]))
+                    )
+                  }
                 >
                   {allOn ? "ติ๊กออกทั้งหมด" : "เลือกทั้งหมด"}
                 </button>
@@ -307,6 +335,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                           type="checkbox"
                           className="h-5 w-5 shrink-0 accent-slate-700"
                           checked={on}
+                          disabled={!!m.proofHold?.length && !canForceHold}
                           onChange={(e) => setSkip((v) => ({ ...v, [m.orderId]: !e.target.checked }))}
                         />
                         <span className="dkb-num font-bold" style={{ textDecoration: on ? "none" : "line-through" }}>
@@ -318,6 +347,26 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                         </span>
                         {!on && <b style={{ color: "var(--dk-faint)" }}>— ไม่ส่งผลิตรอบนี้</b>}
                       </label>
+                      {/* ⛔ แบบงานยังไม่ครบ — ติ๊กออกให้ก่อน บอกว่าค้างรายการไหน (ลูกค้าสั่งเพิ่มทีหลัง/รอลูกค้าตรวจ) */}
+                      {(m.proofHold?.length ?? 0) > 0 && (
+                        <div className="ml-7 mb-1.5 rounded-lg px-2 py-1.5" style={{ background: "var(--dk-coral-wash)", border: "1px solid var(--dk-coral)" }}>
+                          <p className="text-[12.5px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>
+                            ⛔ แบบงานยังไม่ครบ — ยังไม่ส่งเข้าผลิต/เข้าคิวปริ้น
+                          </p>
+                          <ul className="text-[12.5px]" style={{ color: "var(--dk-coral-ink)" }}>
+                            {m.proofHold!.map((w) => (
+                              <li key={w}>• {w}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-0.5 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                            {on
+                              ? "ติ๊กส่งเข้าผลิตทั้งที่แบบไม่ครบ — ใบงานจะปริ้นได้เฉพาะแบบ “ปริ้นเฉพาะที่พร้อม” และลงประวัติไว้"
+                              : canForceHold
+                                ? "รอแบบครบแล้วโยนโฟลเดอร์ใหม่ · งานเร่งที่ต้องเดินรายการที่พร้อมก่อน ติ๊กกลับเข้าได้ · รายการที่ไม่ต้องทำแบบให้ติ๊ก “ไม่ต้องทำแบบ” ในหน้าออเดอร์"
+                                : "รอแบบครบแล้วโยนโฟลเดอร์ใหม่ · งานเร่งให้แอดมิน (สิทธิ์แก้ออเดอร์) เป็นคนติ๊ก · รายการที่ไม่ต้องทำแบบให้ติ๊ก “ไม่ต้องทำแบบ” ในหน้าออเดอร์"}
+                          </p>
+                        </div>
+                      )}
                       {/* ใบเดียวเจอหลายโฟลเดอร์ (ขึ้นตัวอย่าง + งานจริง) — เดิมอันที่ 2 หายเงียบ คนโยนไม่รู้ว่างานจริงเข้ามาด้วยหรือยัง */}
                       {(m.alsoFolders?.length ?? 0) > 0 && (
                         <div className="ml-7 mb-1.5 rounded-lg px-2 py-1.5" style={{ background: "var(--dk-yolk-wash)" }}>

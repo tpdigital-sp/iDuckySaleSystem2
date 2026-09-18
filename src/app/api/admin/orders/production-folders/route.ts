@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderAwaitingStock, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { isSampleFolderName, orderAwaitingStock, proofBlockerLabel, proofBlockers, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchGraphicCardsFromTP } from "@/lib/server/tp-report";
 import { groupSampleFiles, matchFoldersToOrders, sampleRoundFromFiles, type FolderMatch, type FolderMatchResult } from "@/lib/production-match";
 import { updateOrder } from "@/lib/server/order-write";
+import { can } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 
 export const runtime = "nodejs";
 
@@ -22,6 +24,8 @@ const CANDIDATE_STATUSES: OrderStatus[] = ["รอตรวจสอบ", "ช�
  *   · sampleFiles = พาธไฟล์ jpg/png ในโฟลเดอร์ "(…ตย)" (หน้าเว็บอ่านแค่ชื่อ) → อ่านจำนวนตัวอย่างต่อลายจากชื่อไฟล์ เสนอแผนแบ่งส่งรอบตัวอย่าง
  *   · samplePlan = orderId ที่คนติ๊กให้ตั้งแผนรอบตัวอย่าง (ตอน apply) — เขียน shipPlan + ติ๊ก 🎁 มีชิ้นงานตัวอย่างให้รายการที่เกี่ยว
  *     (ใช้ได้ทั้งใบที่เพิ่งจับคู่และใบที่ติ๊กส่งผลิตไปแล้ว — โยนโฟลเดอร์ตัวอย่างซ้ำเพื่อตั้งแผนได้)
+ *   · ⛔ ใบที่แบบงานยังไม่ครบ (proofBlockers) → matched[].proofHold บอกรายการที่ค้าง · ไม่ติ๊กส่งผลิตให้ เว้นแต่ allowHold มี orderId นั้น
+ *     และคนกดมีสิทธิ์ orders.edit (ลง log เตือนไว้) · โฟลเดอร์ "(…ตย)" ไม่ติดด่าน (ทำตัวอย่างให้ลูกค้าดูก่อนอนุมัติ) · ใบที่ถูกกัน → heldBack[]
  * ตอบ { ...FolderMatchResult, alreadySent: [...] (จับคู่ได้แต่ติ๊กไว้แล้ว ไม่ทับ), applied: n, sampleApplied: n }
  */
 export async function POST(req: Request) {
@@ -38,6 +42,7 @@ export async function POST(req: Request) {
     folderFor?: Record<string, string>;
     sampleFiles?: string[];
     samplePlan?: string[];
+    allowHold?: string[];
   };
   try {
     body = await req.json();
@@ -107,12 +112,23 @@ export async function POST(req: Request) {
       lines: hit.build.round.proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1} ×${p.qty}${p.ofQty ? `/${p.ofQty}` : ""}`),
     };
   };
+  /** ⛔ รายการที่ยังขวางการผลิตของใบนี้ — โฟลเดอร์ตัวอย่าง "(…ตย)" ไม่ติด */
+  const holdOf = (o: Order | undefined, folder: string) => (!o || isSampleFolderName(folder) ? [] : proofBlockers(o).map(proofBlockerLabel));
+  for (const m of result.matched) {
+    const folders = [m.folder, ...(m.alsoFolders ?? [])];
+    // มีหลายโฟลเดอร์ = ยังไม่รู้ว่าคนจะเลือกอันไหน → เตือนไว้ก่อนถ้ามีอันที่ไม่ใช่โฟลเดอร์ตัวอย่าง (ตัดสินจริงตอน apply ตามอันที่เลือก)
+    const hold = holdOf(all.find((x) => x.id === m.orderId), folders.find((f) => !isSampleFolderName(f)) ?? m.folder);
+    if (hold.length) m.proofHold = hold;
+  }
   result.matched.forEach(decorate);
   already.forEach(decorate);
 
   let applied = 0;
   let sampleApplied = 0;
+  const heldBack: { orderId: string; customer: string; waiting: string[] }[] = [];
   if (body.apply) {
+    const allowHold = new Set((body.allowHold ?? []).filter((x): x is string => typeof x === "string"));
+    const mayForce = can(gate.actor, "orders.edit", await loadRolePerms());
     /** ใบล่าสุดหลังเขียน productionSent — แผนตัวอย่างต้องต่อยอดจากก้อนนี้ ไม่งั้นทับกัน */
     const latest = new Map(all.map((o) => [o.id, o]));
     // ใบที่มีหลายโฟลเดอร์: จดชื่อที่คนเลือก (ต้องเป็นโฟลเดอร์ของใบนั้นจริง) ไม่เลือก = อันที่ระบบจับได้
@@ -128,6 +144,11 @@ export async function POST(req: Request) {
     for (const t of todo) {
       const o = fresh.find((x) => x.id === t.orderId);
       if (!o || o.productionSent) continue;
+      const hold = holdOf(o, t.folder);
+      if (hold.length && !(mayForce && allowHold.has(o.id))) {
+        heldBack.push({ orderId: o.id, customer: o.customer ?? "", waiting: hold });
+        continue;
+      }
       let next = withLog(
         { ...o, productionSent: { by, at, folder: t.folder } },
         by,
@@ -135,6 +156,7 @@ export async function POST(req: Request) {
         `โฟลเดอร์ “${t.folder}” — ใบขึ้นกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น`
       );
       // 🛒 โฟลเดอร์ = ไฟล์เข้าผลิตไปแล้วจริง จึงไม่กัน — แต่ใบยังรอของเข้า ต้องทิ้งรอยไว้ให้ตรวจย้อนหลังได้
+      if (hold.length) next = withLog(next, by, "⚠️ ส่งเข้าผลิตทั้งที่แบบงานยังไม่ครบ", `ยังค้าง: ${hold.join(" · ")} — ใบงานปริ้นได้เฉพาะแบบ “ปริ้นเฉพาะที่พร้อม”`);
       if (orderAwaitingStock(o)) next = withLog(next, by, "⚠️ ส่งเข้าผลิตทั้งที่ยังรอของเข้า", o.needsPurchase?.note);
       const { error: e } = await updateOrder(sb, next);
       if (!e) {
@@ -167,5 +189,5 @@ export async function POST(req: Request) {
       }
     }
   }
-  return NextResponse.json({ ok: true, ...result, alreadySent: already, applied, sampleApplied });
+  return NextResponse.json({ ok: true, ...result, alreadySent: already, applied, sampleApplied, heldBack });
 }

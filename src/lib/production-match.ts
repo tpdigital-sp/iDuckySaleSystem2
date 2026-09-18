@@ -28,6 +28,11 @@ export interface FolderMatch {
   alsoFolders?: string[];
   /** 🎁 โฟลเดอร์ (…ตย) ของใบนี้มีไฟล์ jpg ที่อ่านจำนวนตัวอย่างได้ → เสนอตั้งแผนแบ่งส่งรอบตัวอย่างให้ (เซิร์ฟเวอร์เติม) */
   sample?: { folder: string; qty: number; designs: number; unmatchedFiles: string[]; replacesPlan: boolean; lines: string[] };
+  /**
+   * ⛔ แบบงานยังไม่ครบทุกรายการ (ลูกค้าสั่งเพิ่มทีหลัง/ยังรอลูกค้าตรวจ) — เซิร์ฟเวอร์เติม (ดู printBlockers)
+   * หน้าโยนโฟลเดอร์ติ๊กออกให้ก่อน + ขึ้นกล่องแดงบอกรายการที่ค้าง · ติ๊กกลับได้เฉพาะคนมีสิทธิ์แก้ออเดอร์ (18 ก.ย. 69 OD-260916-4693)
+   */
+  proofHold?: string[];
 }
 export interface FolderAmbiguous {
   folder: string;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { proofsOf, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { proofBlockers, proofsOf, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
 
@@ -14,6 +14,8 @@ export const runtime = "nodejs";
  * มี proofIndex → ตรวจ "เฉพาะรูปนั้น" (per-image) · รายการเป็น "อนุมัติ" เมื่อครบทุกรูป
  * ไม่มี proofIndex → เหมาทั้งรายการ (ปุ่มอนุมัติทุกภาพที่เหลือ / ขอแก้ไขทั้งรายการ)
  * ทุกรายการ+ของแถมที่มีแบบอนุมัติครบ → ออเดอร์ = "อนุมัติแบบ" · ขอแก้ไข → ออเดอร์ = "แก้ไขแบบ"
+ * ⛔ ยังมีรายการที่ "ต้องมีแบบแต่ยังไม่มี" (ลูกค้าสั่งเพิ่มทีหลัง กราฟฟิกยังไม่ส่งแบบ) = ยังไม่ครบ ค้างที่ "รอตรวจแบบ"
+ *    เดิมนับเฉพาะรายการที่มีแบบ → OD-260916-4693 อนุมัติ 2 จาก 3 รายการแล้วทั้งใบเป็น "อนุมัติแบบ" เข้าคิวปริ้น (18 ก.ย. 69)
  */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
@@ -82,8 +84,13 @@ export async function POST(req: Request) {
     const withProof = order.items.filter((it) => proofsOf(it).length);
     const itemsOk = withProof.every((it) => it.proofStatus === "อนุมัติ");
     const giftsOk = gifts.filter((g) => (g.proofs ?? []).length).every((g) => g.proofStatus === "อนุมัติ");
+    const noneMissing = !proofBlockers({ ...order, gifts }).some((b) => b.why === "missing");
     const status: OrderStatus =
-      action === "request" ? "แก้ไขแบบ" : itemsOk && giftsOk && (withProof.length > 0 || gifts.some((g) => (g.proofs ?? []).length)) ? "อนุมัติแบบ" : "รอตรวจแบบ";
+      action === "request"
+        ? "แก้ไขแบบ"
+        : itemsOk && giftsOk && noneMissing && (withProof.length > 0 || gifts.some((g) => (g.proofs ?? []).length))
+          ? "อนุมัติแบบ"
+          : "รอตรวจแบบ";
     const updated = withLog(
       { ...order, gifts, status },
       "ลูกค้า",
@@ -135,7 +142,8 @@ export async function POST(req: Request) {
   // ทุกรายการที่มีแบบ ถูกอนุมัติครบแล้วหรือยัง — นับแบบของแถมด้วย ไม่งั้นออเดอร์เด้งเป็น "อนุมัติแบบ" ทั้งที่ของแถมยังรอตรวจ
   const withProof = items.filter((it) => proofsOf(it).length);
   const giftsApproved = (order.gifts ?? []).filter((g) => (g.proofs ?? []).length).every((g) => g.proofStatus === "อนุมัติ");
-  const allApproved = withProof.length > 0 && withProof.every((it) => it.proofStatus === "อนุมัติ") && giftsApproved;
+  const noneMissing = !proofBlockers({ ...order, items }).some((b) => b.why === "missing");
+  const allApproved = withProof.length > 0 && withProof.every((it) => it.proofStatus === "อนุมัติ") && giftsApproved && noneMissing;
   const status: OrderStatus = action === "request" ? "แก้ไขแบบ" : allApproved ? "อนุมัติแบบ" : "รอตรวจแบบ";
 
   const where = proofIndex !== null ? `${item.name} รูปที่ ${proofIndex + 1}/${itemProofs.length}` : item.name;

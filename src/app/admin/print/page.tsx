@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
-import { daysToUseBy, isPartiallyShipped, labelShipTo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, proofMissing, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, isPartiallyShipped, labelShipTo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
@@ -487,7 +487,8 @@ function PrintRow({
   const left = daysToUseBy(o);
   const ship = daysToShip(o, today);
   const paid = orderFullyPaid(o);
-  const noProof = o.items.some(proofMissing);
+  /** ⛔ รายการที่ยังขาดแบบ/ลูกค้ายังไม่อนุมัติ — ใบงานปริ้นไม่ได้ (ด่านเดียวกับหน้าปริ้น + printed route) */
+  const held = printBlockers(o).map(proofBlockerLabel);
   const sent = isSent(o);
   const stage = !sent && printed === 0 ? graphicStage(card, cardsOk) : null;
   const nextRound = nextRoundOf(o); // 🚚 แบ่งส่งแล้วบางรอบ รอใบปะหน้ากล่องรอบถัดไป
@@ -551,7 +552,16 @@ function PrintRow({
               </Tag>
             )}
             {!paid && <Tag tone="coral" title="ยังเก็บเงินไม่ครบ — ใบงานจะไม่มีใบปะหน้า">ไม่มีใบปะหน้า</Tag>}
-            {noProof && <Tag tone="yolk" title="ยังมีรายการที่ไม่มีแบบงาน">มีรายการยังไม่มีแบบ</Tag>}
+            {held.length > 0 && (
+              <Tag tone="coral" title={`ใบงานยังปริ้นไม่ได้ — แบบงานยังไม่ครบ:\n${held.join("\n")}\n\nงานเร่ง: แอดมิน (สิทธิ์แก้ออเดอร์) ปลดล็อก “ปริ้นเฉพาะรายการที่พร้อม” ได้ในหน้าปริ้น`}>
+                ⛔ แบบไม่ครบ {held.length} รายการ — ปริ้นไม่ได้
+              </Tag>
+            )}
+            {o.partialPrint && printed === 0 && (
+              <Tag tone="yolk" title={`ปริ้นเฉพาะรายการที่พร้อมไปแล้วโดย ${o.partialPrint.by} · ${thaiDateTime(new Date(o.partialPrint.at))}\nยังค้าง: ${o.partialPrint.waiting.join(" · ")}\nแบบครบแล้วต้องปริ้นเต็มใบอีกครั้ง`}>
+                🖨 ปริ้นบางส่วนแล้ว — รอปริ้นเต็มใบ
+              </Tag>
+            )}
             <StockWaitBar o={o} />
           </>
         }

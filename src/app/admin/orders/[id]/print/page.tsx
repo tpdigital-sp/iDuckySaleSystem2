@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, labelShipTo, nextPlannedRound, pendingSampleRound, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, labelShipTo, nextPlannedRound, pendingSampleRound, printBlockers, proofBlockerLabel, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -104,7 +104,15 @@ export default function PrintOrderPage() {
   const [origin, setOrigin] = useState(""); // สำหรับ QR มือถือ (ต้องอ่านฝั่งเบราว์เซอร์)
   const [shop, setShop] = useState<ShopInfo>(shopInfoOf(null)); // ข้อมูลร้าน (แอดมินแก้ได้ที่ตั้งค่าระบบ)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]); // วิธีส่งที่ร้านตั้ง — ไว้แปลงป้าย "ค่าส่ง"/ป้ายว่างเป็นชื่อวิธีส่งจริงตามราคา
-  const seesMoney = useCan()("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
+  const can = useCan();
+  const seesMoney = can("orders.money"); // ฝ่ายแพ็คไม่เห็นใบเสร็จ (มีราคา)
+  /**
+   * ⛔ ด่านแบบไม่ครบ (18 ก.ย. 69 · OD-260916-4693) — ใบที่ยังมีรายการขาดแบบ/ลูกค้ายังไม่อนุมัติ ใบงานไม่ออก (กล่องแดงบนจอแทน)
+   * คนมีสิทธิ์แก้ออเดอร์กด "ปริ้นเฉพาะที่พร้อม" ได้ → id เข้า partialOk · ใบงานคาดแถบแดง "ห้ามผลิต" ที่รายการค้าง
+   * เซิร์ฟเวอร์ (printed route) ตรวจซ้ำ: ปริ้นแบบนี้ไม่นับ printCount · ไม่เลื่อนกำลังผลิต · ไม่แจ้งลูกค้า
+   */
+  const canPartial = can("orders.edit");
+  const [partialOk, setPartialOk] = useState<Set<string>>(new Set());
   const actor = useActor(); // ชื่อคนที่ล็อกอิน — ลงประวัติว่าใครติ๊ก
   /**
    * 📦 สินค้าของรายการในใบ (id → สินค้า) — ใบงานต้องใช้ 2 อย่างที่ไม่ได้ติดมากับออเดอร์:
@@ -197,6 +205,11 @@ export default function PrintOrderPage() {
   const labelOkOf = (o: Order) => orderFullyPaid(o) || sampleLabelOk(o);
   const allLabels = orders.every(labelOkOf);
   const noLabelCount = orders.filter((o) => !labelOkOf(o)).length;
+  // ⛔ แบบไม่ครบ — กันเฉพาะตอนพิมพ์ "ใบงาน" (ใบเสร็จ/ใบแปะกล่องอย่างเดียวไม่ติด) · ใบปะหน้ารอบถัดไปของใบแบ่งส่ง (?doc=label) ไม่ติด
+  const blockersOf = (o: Order) => (docs.work && !labelOnly ? printBlockers(o) : []);
+  const proofHeldOf = (o: Order) => blockersOf(o).length > 0 && !partialOk.has(o.id);
+  const proofHeldCount = orders.filter(proofHeldOf).length;
+  const printableCount = orders.length - proofHeldCount;
   // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k] && !(k === "receipt" && !anyPaid));
 
@@ -291,6 +304,11 @@ export default function PrintOrderPage() {
               : "🎁 รอบตัวอย่างของใบมัดจำ 50% — ใบปะหน้าออกได้ · ใบกำกับภาษี/ใบเสร็จไปกับล็อตหลักเมื่อครบ 100%"}
           </span>
         )}
+        {proofHeldCount > 0 && (
+          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
+            {batch ? `⛔ ${proofHeldCount} ใบ แบบงานยังไม่ครบ — ใบนั้นไม่ออกใบงาน` : "⛔ แบบงานยังไม่ครบทุกรายการ — ใบงานยังพิมพ์ไม่ได้"}
+          </span>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -302,6 +320,8 @@ export default function PrintOrderPage() {
               const fails: string[] = [];
               const jobs: Promise<void>[] = [];
               for (const o of orders) {
+                if (proofHeldOf(o)) continue; // ⛔ แบบไม่ครบ ยังไม่ปลดล็อก — ไม่ได้พิมพ์อะไร
+                const partial = blockersOf(o).length > 0; // ปลดล็อกแล้ว = ปริ้นเฉพาะที่พร้อม
                 // ใบที่ยังไม่จ่ายครบไม่ออกใบเสร็จ — ประวัติต้องไม่บันทึกเกินจริง
                 const docsFor = chosen.filter((k) => k !== "receipt" || orderFullyPaid(o));
                 if (docsFor.length === 0) continue;
@@ -309,7 +329,7 @@ export default function PrintOrderPage() {
                   fetch("/api/admin/orders/printed", {
                     method: "POST",
                     headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ orderId: o.id, docs: docsFor }),
+                    body: JSON.stringify({ orderId: o.id, docs: docsFor, ...(partial ? { partial: true } : {}) }),
                   })
                     .then(async (r) => {
                       if (r.ok) return;
@@ -327,6 +347,9 @@ export default function PrintOrderPage() {
               });
               setOrders((list) =>
                 list.map((o) => {
+                  if (proofHeldOf(o)) return o; // ⛔ แบบไม่ครบ — ไม่แตะ
+                  // ⛔ ปริ้นเฉพาะที่พร้อม — ล็อกที่อยู่อย่างเดียว ไม่นับครั้ง/ไม่เลื่อนสถานะ (ตรงกับ printed route)
+                  if (blockersOf(o).length) return { ...o, printedAt: o.printedAt ?? now };
                   // ปริ้นใบงาน/ใบปะหน้า (เก็บเงินครบแล้ว) = งานเข้าไลน์ผลิต → เลื่อนสถานะให้ตรงกับฝั่งเซิร์ฟเวอร์
                   const toProduction =
                     chosen.includes("work") &&
@@ -347,8 +370,8 @@ export default function PrintOrderPage() {
             }
             window.print();
           }}
-          disabled={chosen.length === 0 || (!anyPaid && !docs.work)}
-          title={anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
+          disabled={chosen.length === 0 || (!anyPaid && !docs.work) || printableCount === 0}
+          title={printableCount === 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
           className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >
           {batch ? `🖨️ พิมพ์ทั้ง ${orders.length} ใบ` : "🖨️ พิมพ์"}
@@ -362,11 +385,65 @@ export default function PrintOrderPage() {
           </p>
         )}
 
-        {orders.map((o) => (
-          <OrderDocs key={o.id} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} products={products} onTaxInvoiceDelivery={setTaxInvoiceDelivery} />
-        ))}
+        {orders.map((o) =>
+          proofHeldOf(o) ? (
+            <ProofBlocked
+              key={o.id}
+              order={o}
+              waiting={blockersOf(o).map(proofBlockerLabel)}
+              canUnlock={canPartial}
+              onUnlock={() => setPartialOk((v) => new Set(v).add(o.id))}
+            />
+          ) : (
+          <OrderDocs key={o.id} holdItems={new Set(blockersOf(o).map((b) => b.index))} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} products={products} onTaxInvoiceDelivery={setTaxInvoiceDelivery} />
+          )
+        )}
       </div>
     </>
+  );
+}
+
+/**
+ * ⛔ ใบที่แบบงานยังไม่ครบทุกรายการ — ใบงานไม่ออก (18 ก.ย. 69 · OD-260916-4693 ลูกค้าสั่งเพิ่มรายการที่ 3 แบบยังไม่มี แต่ใบถูกปริ้นทั้งใบ)
+ * โชว์แค่บนจอ (no-print) · คนมีสิทธิ์แก้ออเดอร์ปลดล็อก "ปริ้นเฉพาะที่พร้อม" ได้ (งานเร่ง) — ใบงานจะคาดแถบแดงห้ามผลิตที่รายการค้าง
+ */
+function ProofBlocked({ order, waiting, canUnlock, onUnlock }: { order: Order; waiting: string[]; canUnlock: boolean; onUnlock: () => void }) {
+  return (
+    <section className="no-print rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center">
+      <p className="text-sm font-extrabold text-rose-700">
+        ⛔ {order.id} · {order.customer || "ยังไม่ระบุชื่อ"} — แบบงานยังไม่ครบ พิมพ์ใบงานไม่ได้
+      </p>
+      <ul className="mt-1 text-sm font-semibold text-rose-600">
+        {waiting.map((w) => (
+          <li key={w}>{w}</li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-slate-600">
+        รอกราฟฟิกส่งแบบ + ลูกค้าอนุมัติให้ครบก่อน · รายการที่ไม่ต้องทำแบบ (ค่าบริการ/ของสำเร็จรูป) ให้ติ๊ก “รายการนี้ไม่ต้องทำแบบ” ในหน้าออเดอร์
+      </p>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+        <Link
+          href={`/admin/orders/${encodeURIComponent(order.id)}`}
+          className="inline-block rounded-full bg-white px-4 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-100"
+        >
+          เปิดหน้าออเดอร์ →
+        </Link>
+        {canUnlock ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`ปริ้นเฉพาะรายการที่พร้อมของ ${order.id}?\n\nรายการที่ยังค้างจะถูกคาดแถบแดง “ห้ามผลิต” บนใบงาน\n• สถานะไม่เลื่อนเป็นกำลังผลิต · ไม่แจ้งลูกค้า\n• ใบยังอยู่ในคิวปริ้น ต้องปริ้นเต็มใบอีกครั้งเมื่อแบบครบ\n• ลงประวัติชื่อคนปลดล็อก`))
+                onUnlock();
+            }}
+            className="rounded-full bg-rose-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-rose-700"
+          >
+            🔓 งานเร่ง — ปริ้นเฉพาะรายการที่พร้อม
+          </button>
+        ) : (
+          <span className="text-xs font-semibold text-slate-500">งานเร่งที่ต้องเดินรายการที่พร้อมก่อน — ให้แอดมิน (สิทธิ์แก้ไขออเดอร์) เป็นคนปลดล็อก</span>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -385,7 +462,10 @@ function OrderDocs({
   seesMoney,
   products,
   onTaxInvoiceDelivery,
+  holdItems,
 }: {
+  /** ⛔ ลำดับรายการที่ยังขาดแบบ/ลูกค้ายังไม่อนุมัติ (ปริ้นเฉพาะที่พร้อม) — คาดแถบแดง "ห้ามผลิต" ที่แถวนั้น */
+  holdItems: Set<number>;
   order: Order;
   docs: Record<DocKey, boolean>;
   /** 🚚 พิมพ์เฉพาะใบปะหน้าพัสดุ (ไม่เอาใบงาน) — กล่องรอบถัดไปของใบแบ่งส่ง */
@@ -534,6 +614,11 @@ function OrderDocs({
                         )}
                       </td>
                       <td className="py-3">
+                        {holdItems.has(i) && (
+                          <p className="mb-1 inline-block rounded border-2 border-red-600 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#fff", background: "#dc2626" }}>
+                            ⛔ ยังไม่อนุมัติแบบ — ห้ามผลิตรายการนี้
+                          </p>
+                        )}
                         <p className="font-bold">{it.name}</p>
                         {/* ♻️ ป้ายใช้ไฟล์เก่า และ 🎨 ภาพลายจากลูกค้า ไม่ขึ้นใบงานแล้ว (เจ้าของร้านสั่ง 11 ก.ย. 69) —
                             รูปแบบงานคอลัมน์ซ้ายคือของที่ต้องเช็ค · บรรทัด "ใช้ไฟล์เก่า:" ยังอยู่ในสเปคตามเดิม */}
