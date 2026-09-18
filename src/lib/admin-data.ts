@@ -156,6 +156,17 @@ export function labelShipTo(order: Order): { name: string; phone: string; addres
   return { name: order.customer, phone: order.phone, address: order.address, round: n + 1, alt: false };
 }
 
+/**
+ * 🔒 ด่านติ๊ก "รอบนี้ส่งไปที่อยู่อื่น" — เจ้าของร้านสั่ง 18 ก.ย. 69: ต้องเก็บค่าส่งเพิ่ม (＋ เก็บเพิ่ม รายการที่มีคำว่า "ค่าส่ง") และลูกค้าโอนครบก่อน ถึงติ๊กได้
+ * (แยกส่ง 2 ที่ = ค่าส่ง 2 ต่อ ไม่ให้แอดมินตั้งที่อยู่ที่ 2 ทั้งที่ยังไม่ได้เก็บเงิน) · รอบที่เคยตั้งที่อยู่ไว้แล้วแก้ต่อได้เสมอ
+ */
+export function altShipToGate(order: Order): { ok: boolean; reason: string } {
+  const hasFee = (order.charges ?? []).some((c) => /ค่าส่ง/.test(c.label));
+  if (!hasFee) return { ok: false, reason: "ยังไม่ได้เก็บค่าส่งเพิ่ม — กด ＋ เก็บเพิ่ม (ค่าส่งเพิ่ม) ก่อน ถึงติ๊กได้" };
+  if (!orderFullyPaid(order)) return { ok: false, reason: "ลูกค้ายังโอนค่าส่งเพิ่มไม่ครบ — รอสลิปผ่านก่อน ถึงติ๊กได้" };
+  return { ok: true, reason: "" };
+}
+
 /** 📍 บรรทัดสั้น "ชื่อ · ที่อยู่" ของผู้รับรอบ (ไว้ขึ้นป้าย/หมายเหตุ/ไลน์) */
 export function shipToText(to: ShipTo | undefined): string {
   if (!to?.address?.trim()) return "";

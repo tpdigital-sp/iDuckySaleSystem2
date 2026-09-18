@@ -105,6 +105,7 @@ import {
   type Shipment,
   type ShipPlanRound,
   type ShipTo,
+  altShipToGate,
   shipToText,
   type Proof,
   proofQtyCheck,
@@ -9568,6 +9569,9 @@ function ShipPlanModal({
   const [altTo, setAltTo] = useState(!!editing?.shipTo?.address);
   const [to, setTo] = useState<ShipTo>({ name: editing?.shipTo?.name ?? "", phone: editing?.shipTo?.phone ?? "", address: editing?.shipTo?.address ?? "" });
   const toOk = !altTo || !!to.address.trim();
+  /** 🔒 ติ๊กที่อยู่อื่นได้ต่อเมื่อเก็บค่าส่งเพิ่ม + โอนครบแล้ว (เจ้าของร้านสั่ง 18 ก.ย. 69) · รอบที่เคยตั้งไว้แล้วแก้ต่อได้ */
+  const altGate = altShipToGate(order);
+  const altAllowed = altGate.ok || !!editing?.shipTo?.address;
   /** รูปที่กำลังขยายดู (ตำแหน่งใน rows) — แอดมินต้องเห็นลายชัด ๆ ก่อนตัดสินใจว่ารูปไหนส่งก่อน */
   const [zoom, setZoom] = useState<number | null>(null);
   const states = proofShipStates(order);
@@ -9721,11 +9725,15 @@ function ShipPlanModal({
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none"
           />
           {/* 📍 ที่อยู่เฉพาะรอบ — ไม่ต้องแก้ที่อยู่ใบไปมาระหว่างรอบ ใบปะหน้ารอบนี้ดึงจากตรงนี้ (labelShipTo) */}
-          <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs ring-1 ring-sky-200">
-            <input type="checkbox" checked={altTo} onChange={(e) => setAltTo(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600" />
+          <label className={`flex items-start gap-2 rounded-xl px-3 py-2 text-xs ring-1 ${altAllowed ? "cursor-pointer bg-sky-50 ring-sky-200" : "cursor-not-allowed bg-slate-50 ring-slate-200"}`}>
+            <input type="checkbox" checked={altTo} disabled={!altAllowed} onChange={(e) => setAltTo(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600 disabled:opacity-40" />
             <span>
-              <span className="block font-extrabold text-sky-800">📍 รอบนี้ส่งไปที่อยู่อื่น (ไม่ติ๊ก = ส่งที่อยู่ในใบตามปกติ)</span>
-              <span className="text-slate-600">ติ๊กเฉพาะเมื่อลูกค้าขอให้รอบนี้ไปคนละที่กับใบ เช่น สั่ง 2 ชิ้น แยกส่ง 2 ที่ — ใบปะหน้ารอบนี้จะพิมพ์ที่อยู่ที่กรอกแทน</span>
+              <span className={`block font-extrabold ${altAllowed ? "text-sky-800" : "text-slate-500"}`}>📍 รอบนี้ส่งไปที่อยู่อื่น (ไม่ติ๊ก = ส่งที่อยู่ในใบตามปกติ)</span>
+              {altAllowed ? (
+                <span className="text-slate-600">ติ๊กเฉพาะเมื่อลูกค้าขอให้รอบนี้ไปคนละที่กับใบ เช่น สั่ง 2 ชิ้น แยกส่ง 2 ที่ — ใบปะหน้ารอบนี้จะพิมพ์ที่อยู่ที่กรอกแทน</span>
+              ) : (
+                <span className="font-bold text-rose-600">🔒 {altGate.reason}</span>
+              )}
             </span>
           </label>
           {altTo && (
