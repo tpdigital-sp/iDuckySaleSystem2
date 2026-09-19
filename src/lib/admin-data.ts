@@ -227,6 +227,11 @@ export interface PackArrival {
   status: PackArrivalStatus;
   /** มาแล้วกี่ชิ้น (กรอกเมื่อ "มาไม่ครบ") — หน่วยเดียวกับ qty ของรายการ */
   got?: number;
+  /**
+   * 🔢 ตัวเลขจากการตรวจนับใต้รูป ในหน่วยเดียวกับป้ายบนรูป (เช่น 153/180 ชิ้น ของงาน 3 แผ่น A3)
+   * มีค่า = ทุกจอ (แถบโหมดแพ็ค · สถานี · หน้า TP) โชว์ตัวนี้แทน got/qty จะได้ตรงกับที่คนแพ็คเห็นบนรูป
+   */
+  count?: { got: number; need: number; unit: string };
   /** คาดว่าของจะมาวันไหน (YYYY-MM-DD) — เลยวันนี้แล้วยังไม่มา = ป้ายแดงที่สถานีแพ็ค */
   expectedAt?: string;
   /** รอจากไหน/ติดอะไร เช่น "รอโรงงานหุ้มอะคริลิค" */
@@ -1860,6 +1865,8 @@ export interface PackMissing {
   status: Exclude<PackArrivalStatus, "มาครบ">;
   /** มาแล้วกี่ชิ้น (มาไม่ครบ) */
   got?: number;
+  /** 🔢 ตัวเลขตรวจนับในหน่วยของป้ายบนรูป — มีค่า = โชว์ตัวนี้แทน got/need */
+  count?: PackArrival["count"];
   /** ต้องได้กี่ชิ้น (= qty ของรายการ) */
   need: number;
   expectedAt?: string;
@@ -1881,6 +1888,7 @@ export function packMissingOf(order: Order): PackMissing[] {
       item: it.name,
       status: a.status,
       got: a.status === "มาไม่ครบ" ? a.got ?? 0 : undefined,
+      count: a.status === "มาไม่ครบ" ? a.count : undefined,
       need: it.qty,
       expectedAt: a.expectedAt,
       note: a.note,
@@ -1922,13 +1930,14 @@ export function fmtExpected(ymd?: string): string {
 }
 
 /** ข้อความสรุปสถานะของบรรทัดเดียว — ใช้ในลิสต์/ป้าย ให้ทุกจอพูดเหมือนกัน */
-export function arrivalSummary(a: Pick<PackArrival, "status" | "got">, need: number, unit = "ชิ้น"): string {
+export function arrivalSummary(a: Pick<PackArrival, "status" | "got" | "count">, need: number, unit = "ชิ้น"): string {
   if (a.status === "มาครบ") return "มาครบแล้ว";
+  if (a.status === "มาไม่ครบ" && a.count) return `มาแล้ว ${a.count.got}/${a.count.need} ${a.count.unit} (ขาด ${Math.max(0, a.count.need - a.count.got)})`;
   if (a.status === "มาไม่ครบ") return `มาแล้ว ${a.got ?? 0}/${need} ${unit}`;
   return "ยังไม่มา";
 }
 
-export type ArrivalPatch = { status: PackArrivalStatus; got?: number; expectedAt?: string; note?: string };
+export type ArrivalPatch = { status: PackArrivalStatus; got?: number; expectedAt?: string; note?: string; count?: PackArrival["count"] };
 
 /**
  * ↕️ ย้ายลำดับรายการในออเดอร์ (from → to) — คืน Order ใหม่ ไม่แก้ของเดิม · ยอดเงินไม่เปลี่ยน
@@ -1972,6 +1981,10 @@ export function applyArrival(order: Order, itemIndex: number, patch: ArrivalPatc
   const arrival: PackArrival = {
     status: patch.status,
     ...(patch.status === "มาไม่ครบ" ? { got: patch.got ?? 0 } : {}),
+    // ตัวเลขตรวจนับ: มากับ patch = ใช้เลย · แก้แค่วันคาด/หมายเหตุ (got เท่าเดิม) = คงของเดิม · คนแก้ got เอง = ทิ้ง (ไม่ตรงกันแล้ว)
+    ...(patch.status === "มาไม่ครบ" && (patch.count ?? (prev?.status === "มาไม่ครบ" && (prev.got ?? 0) === (patch.got ?? 0) ? prev.count : undefined))
+      ? { count: patch.count ?? prev!.count }
+      : {}),
     ...(!done && patch.expectedAt ? { expectedAt: patch.expectedAt } : {}),
     ...(!done && patch.note ? { note: patch.note } : {}),
     by: actor,
@@ -1981,7 +1994,7 @@ export function applyArrival(order: Order, itemIndex: number, patch: ArrivalPatc
   const items = order.items.map((it, i) => (i === itemIndex ? { ...it, arrival } : it));
   const detail = [
     item.name,
-    patch.status === "มาไม่ครบ" ? `มาแล้ว ${patch.got ?? 0}/${item.qty}` : "",
+    patch.status === "มาไม่ครบ" ? (patch.count ? `มาแล้ว ${patch.count.got}/${patch.count.need} ${patch.count.unit}` : `มาแล้ว ${patch.got ?? 0}/${item.qty}`) : "",
     !done && patch.expectedAt ? `คาดว่ามา ${fmtExpected(patch.expectedAt)}` : "",
     !done && patch.note ? patch.note : "",
     done && wasMissing ? `รอมา ${waitingDays(prev!.since ?? prev!.at)} วัน` : "",
@@ -2033,8 +2046,13 @@ export function syncArrivalFromCount(order: Order, itemIndex: number, actor: str
     .join(" · ")}`;
   const note = [userNote, countNote].filter(Boolean).join(" ");
 
-  if (prev?.status === "มาไม่ครบ" && (prev.got ?? 0) === got && (prev.note ?? "") === note) return order;
-  return applyArrival(order, itemIndex, { status: "มาไม่ครบ", got, expectedAt: prev?.status !== "มาครบ" ? prev?.expectedAt : undefined, note }, actor);
+  // 🔢 ตัวเลขในหน่วยของป้ายบนรูป — ทุกรูปต้องมีจำนวนและหน่วยเดียวกัน ถึงจะรวมเป็นยอดเดียวได้
+  const units = new Set(proofs.map((p) => p.unit || "ชิ้น"));
+  const count =
+    sumProof > 0 && proofs.every((p) => p.qty) && units.size === 1 ? { got: Math.max(0, sumProof - lacking), need: sumProof, unit: [...units][0] } : undefined;
+
+  if (prev?.status === "มาไม่ครบ" && (prev.got ?? 0) === got && (prev.note ?? "") === note && JSON.stringify(prev.count ?? null) === JSON.stringify(count ?? null)) return order;
+  return applyArrival(order, itemIndex, { status: "มาไม่ครบ", got, expectedAt: prev?.status !== "มาครบ" ? prev?.expectedAt : undefined, note, count }, actor);
 }
 
 /**

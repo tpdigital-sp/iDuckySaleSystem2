@@ -86,6 +86,7 @@ import {
   orderAwaitingStock,
   taxInvoiceDocOf,
   applyArrival,
+  isFeeLine,
   syncArrivalFromCount,
   moveOrderItem,
   itemMoveBlocked,
@@ -8958,7 +8959,7 @@ function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: str
   gate.missing.forEach((m) =>
     out.push({
       icon: "📦",
-      text: `${m.status === "ยังไม่มา" ? "ของยังไม่มา" : `ของมาไม่ครบ (${m.got ?? 0}/${m.need})`}: ${m.item}${
+      text: `${m.status === "ยังไม่มา" ? "ของยังไม่มา" : `ของมาไม่ครบ (${m.count ? `${m.count.got}/${m.count.need} ${m.count.unit}` : `${m.got ?? 0}/${m.need}`})`}: ${m.item}${
         m.expectedAt ? ` · ${arrivalOverdue(m.expectedAt) ? "เลยกำหนด" : "คาดว่ามา"} ${fmtExpected(m.expectedAt)}` : ""
       }`,
     })
@@ -9215,7 +9216,8 @@ function PackView({
 
               {/* 📦 ของมาถึงโต๊ะแพ็คหรือยัง — ปักก่อนนับ: ของยังไม่มา/มาไม่ครบ = ออเดอร์ไปรอที่ขั้น "รอของ" ห้ามยิงเลข */}
               {/* มีรูปแบบงาน = ไม่ต้องมีกล่องนี้ — นับใต้รูปแล้วระบบปักให้เอง (แถบสถานะอยู่ใต้รูป) · ไม่มีรูปให้นับ = ยังต้องปักเอง */}
-              {proofs.length === 0 && (
+              {/* บรรทัดค่าธรรมเนียม/ยอดเพิ่ม (🎨 Add on · "ค่า…" · ติ๊กไม่ต้องทำแบบ) = ไม่มีของจริงให้รอ → ไม่ต้องถาม เว้นแต่เคยปักค้างไว้ */}
+              {proofs.length === 0 && ((!isFeeLine(it) && !it.noProof) || (it.arrival && it.arrival.status !== "มาครบ")) && (
                 <div className="mb-2">
                   <ArrivalPicker
                     arrival={it.arrival}
@@ -9259,7 +9261,7 @@ function PackView({
                   shipSelQty={(j) => shipSel.get(proofKey(i, j))}
                   onToggleShip={canSplit ? (j) => onToggleShip!(i, j) : undefined}
                 />
-              ) : (
+              ) : isFeeLine(it) || it.noProof ? null : (
                 <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs text-slate-400 ring-1 ring-slate-200">
                   ยังไม่มีรูปแบบงาน
                 </p>

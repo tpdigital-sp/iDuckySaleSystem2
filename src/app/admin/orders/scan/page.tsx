@@ -1238,7 +1238,7 @@ export default function ScanTrackingPage() {
                 ))}
                 {blocked.gate.missing.map((m) => (
                   <li key={`m-${m.index}`} className="font-semibold">
-                    · 📦 {m.status === "ยังไม่มา" ? "ของยังไม่มา" : `ของมาไม่ครบ (${m.got ?? 0}/${m.need})`}: {m.item}
+                    · 📦 {m.status === "ยังไม่มา" ? "ของยังไม่มา" : `ของมาไม่ครบ (${m.count ? `${m.count.got}/${m.count.need} ${m.count.unit}` : `${m.got ?? 0}/${m.need}`})`}: {m.item}
                     {m.expectedAt ? ` — ${arrivalOverdue(m.expectedAt) ? "เลยกำหนด" : "คาดว่ามา"} ${fmtExpected(m.expectedAt)}` : ""}
                   </li>
                 ))}

@@ -346,6 +346,10 @@ export async function syncArrivalToTP(before: Order, after: Order): Promise<void
             proofUrl: proofs[0]?.url || "",
             status: a.status,
             got: a.status === "มาไม่ครบ" ? a.got ?? 0 : null,
+            // 🔢 ตัวเลขตรวจนับในหน่วยของป้ายบนรูป (153/180 ชิ้น) — หน้า TP โชว์ตัวนี้ก่อน จะได้ตรงกับที่ฝ่ายแพ็คเห็น
+            countGot: a.status === "มาไม่ครบ" && a.count ? a.count.got : null,
+            countNeed: a.status === "มาไม่ครบ" && a.count ? a.count.need : null,
+            countUnit: a.status === "มาไม่ครบ" && a.count ? a.count.unit : null,
             expectedAt: open ? a.expectedAt || "" : "",
             note: open ? a.note || "" : "",
             by: a.by,
