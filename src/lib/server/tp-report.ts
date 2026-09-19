@@ -350,6 +350,13 @@ export async function syncArrivalToTP(before: Order, after: Order): Promise<void
             countGot: a.status === "มาไม่ครบ" && a.count ? a.count.got : null,
             countNeed: a.status === "มาไม่ครบ" && a.count ? a.count.need : null,
             countUnit: a.status === "มาไม่ครบ" && a.count ? a.count.unit : null,
+            // 🖼 ลายไหนขาด/ยังไม่มา — หน้า TP วาดรูปรายลายพร้อมจำนวน ฝ่ายผลิตไม่ต้องเปิดออเดอร์ไล่ดูว่า "รูปที่ 2" คือลายไหน
+            shorts: open
+              ? proofs
+                  .map((p, j) => ({ p, j }))
+                  .filter(({ p }) => p.pack?.status === "ไม่ครบ")
+                  .map(({ p, j }) => ({ index: j + 1, url: p.url, got: p.pack?.got ?? 0, need: p.qty ?? null, unit: p.unit || "ชิ้น" }))
+              : [],
             expectedAt: open ? a.expectedAt || "" : "",
             note: open ? a.note || "" : "",
             by: a.by,

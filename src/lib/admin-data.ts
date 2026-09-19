@@ -1525,6 +1525,39 @@ export function isFeeLine(item: OrderItem): boolean {
   return (item.productId ?? "").includes("#") || /^\s*ค่า/.test(item.name ?? "");
 }
 
+/**
+ * 🎨 บรรทัด Add on ที่ checkout แตกออกมาจากรายการสินค้า (productId = "<สินค้า>#designfee" · ค่าคละลาย/ค่าเคลือบ/ค่าสี)
+ * ข้อมูล/ยอดเงินเก็บแยกบรรทัดเหมือนเดิม (ใบเสร็จ · FlowAccount · รายงาน) — แต่ "หน้าจอ" โชว์เป็นแถวย่อยใต้รายการแม่
+ * เจ้าของร้านแจ้ง 19 ก.ย. 69: "Add on ไม่ควรเป็นรายการที่ 2 มันควรรวมอยู่ในรายการที่ 1"
+ */
+export function isAddOnLine(item: Pick<OrderItem, "productId">): boolean {
+  return (item.productId ?? "").endsWith("#designfee");
+}
+
+/**
+ * จับคู่บรรทัด Add on → ตำแหน่งรายการแม่ (Map<ตำแหน่ง Add on, ตำแหน่งแม่>) · หาแม่ไม่เจอ = ไม่อยู่ใน Map (โชว์เป็นรายการปกติ)
+ * checkout ต่อบรรทัด Add on ไว้ท้ายใบตามลำดับรายการที่มีค่าเพิ่ม → Add on ตัวที่ k ของสินค้า X จับกับรายการ X ตัวที่ k (เกินก็ตัวสุดท้าย)
+ */
+export function addOnParents(items: Pick<OrderItem, "productId">[]): Map<number, number> {
+  const out = new Map<number, number>();
+  const seen = new Map<string, number>();
+  items.forEach((it, i) => {
+    if (!isAddOnLine(it)) return;
+    const base = (it.productId ?? "").replace(/#designfee$/, "");
+    const hosts = items.map((x, k) => ((x.productId ?? "") === base ? k : -1)).filter((k) => k >= 0);
+    if (!hosts.length) return;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    out.set(i, hosts[Math.min(n, hosts.length - 1)]);
+  });
+  return out;
+}
+
+/** บรรทัด Add on ที่ไม่มีอะไรให้อ่าน (ไม่มีรายละเอียด/หมายเหตุใบงาน) — ฝ่ายแพ็คไม่ต้องกด "ยืนยันอ่านแล้ว" */
+export function addOnNothingToRead(item: OrderItem): boolean {
+  return isAddOnLine(item) && !(item.selections ?? "").trim() && !Object.keys(item.sel ?? {}).length && !noteHasText(item.adminNote);
+}
+
 /** รายการหนึ่งบรรทัดที่ยัง "ขวางการผลิต" — ดู proofBlockers */
 export interface ProofBlocker {
   /** ลำดับในใบ (เริ่ม 0) · ของแถม = -1 */
@@ -2042,7 +2075,7 @@ export function syncArrivalFromCount(order: Order, itemIndex: number, actor: str
   const sameUnit = sumProof === item.qty || sumProof === 0;
   const got = Math.max(0, sameUnit ? item.qty - lacking : sumProof > 0 ? Math.floor((item.qty * (sumProof - lacking)) / sumProof) : 0);
   const countNote = `${COUNT_NOTE_MARK} ${shorts
-    .map(({ p, j }) => `รูปที่ ${j + 1} ได้ ${p.pack?.got ?? 0}${needOf(p) != null ? `/${needOf(p)}` : ""}`)
+    .map(({ p, j }) => ((p.pack?.got ?? 0) === 0 ? `รูปที่ ${j + 1} ยังไม่มา${needOf(p) != null ? ` (0/${needOf(p)})` : ""}` : `รูปที่ ${j + 1} ได้ ${p.pack?.got}${needOf(p) != null ? `/${needOf(p)}` : ""}`))
     .join(" · ")}`;
   const note = [userNote, countNote].filter(Boolean).join(" ");
 
@@ -2407,7 +2440,7 @@ export function packGate(order: Order): PackGate {
   // 🎁 ชิ้นงานตัวอย่างที่ส่งไปแล้วในรอบแบ่งส่งก่อนหน้า (ใบมัดจำส่งตัวอย่างก่อน) = ไม่ต้องใส่กล่องรอบสุดท้ายซ้ำ
   const sampleWentEarlier = (order.shipments?.length ?? 0) > 0 && !!order.deposit && depositSampleRun({ ...order, tracking: "" })?.ok === true;
   order.items.forEach((it) => {
-    if (!it.noteAck) unread.push(it.name);
+    if (!it.noteAck && !addOnNothingToRead(it)) unread.push(it.name);
     if (it.sampleRequired && !it.samplePacked && !sampleWentEarlier) unsampled.push(it.name);
     proofsOf(it).forEach((p, j) => {
       if (!p.pack) uncounted.push({ item: it.name, index: j + 1 });

@@ -86,6 +86,8 @@ import {
   orderAwaitingStock,
   taxInvoiceDocOf,
   applyArrival,
+  addOnParents,
+  addOnNothingToRead,
   isFeeLine,
   syncArrivalFromCount,
   moveOrderItem,
@@ -1298,6 +1300,7 @@ export default function AdminOrderDetailPage() {
   const [origin, setOrigin] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [overrideLock, setOverrideLock] = useState(false); // แอดมินยืนยันให้ทำแบบก่อนจ่ายเงิน
+  const [addOnOpen, setAddOnOpen] = useState<Record<number, boolean>>({}); // 🎨 แถว Add on ที่กดกางการ์ดเต็ม
   const [packMode, setPackMode] = useState(false); // แอดมินสลับเข้าโหมดแพ็ค (ตรวจนับ/ยืนยันอ่าน) เอง
   /**
    * 📱 เปิดหน้านี้มาจาก QR บนใบงาน (?pack=1) — พนักงานคนไหนก็ได้ที่ล็อกอินอยู่
@@ -3699,6 +3702,12 @@ export default function AdminOrderDetailPage() {
   // ถือว่า "จ่ายแล้ว" เมื่อแอดมินยืนยันสลิปแล้ว (ชำระแล้วเป็นต้นไป)
   const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status);
   const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
+  // 🎨 Add on → แถวย่อยใต้รายการแม่: ลำดับวาด = แม่ตามด้วย Add on ของตัวเอง · เลข "รายการที่" นับเฉพาะรายการจริง
+  const addOnMap = addOnParents(order.items);
+  const addOnOrder = order.items.flatMap((_, i) =>
+    addOnMap.has(i) ? [] : [i, ...[...addOnMap].filter(([, host]) => host === i).map(([child]) => child)]
+  );
+  const mainNo = new Map(order.items.map((_, i) => i).filter((i) => !addOnMap.has(i)).map((i, n) => [i, n + 1]));
   // 📣 รูปแบบงานที่ยังไม่ได้แจ้งลูกค้า (นับจาก proofNotifiedAt) — โชว์แถบเตือนในกล่องแบบของรายการที่มีรูปค้าง
   const proofPending = pendingProofs(order);
   // ฝ่ายแพ็ค (ตรวจนับได้ แต่แก้ออเดอร์ไม่ได้) → เห็นหน้าแพ็คเสมอ · แอดมิน/พนักงานแอดมินกด "โหมดแพ็ค" เอง
@@ -4820,11 +4829,38 @@ export default function AdminOrderDetailPage() {
             {seesMoney && <span className="w-24 shrink-0 text-right">ยอดรวม</span>}
           </div>
           <div className="mt-1.5 space-y-4">
-            {order.items.map((it, i) => {
+            {addOnOrder.map((i) => {
+              const it = order.items[i];
               const proofs = proofsOf(it);
               // เทียบจำนวนบนแบบกับที่ลูกค้าสั่ง — คูณ "กี่ชิ้นต่อหน่วย" ให้แล้ว (สั่ง 12 เซ็ต × 20 ใบ = 240 ใบ)
               const qc = proofQtyCheck(it, proofs);
               const open = itemOpen[i] ?? autoOpen(it);
+              // 🎨 Add on = แถวย่อยใต้รายการแม่ (ข้อมูลยังแยกบรรทัด) — กด "แก้ไข" ถึงกางการ์ดเต็ม (แก้ราคา/ลบ/ส่วนลด)
+              const addOnOf = addOnMap.get(i);
+              if (addOnOf != null && !addOnOpen[i])
+                return (
+                  <div
+                    key={`addon-${it.productId}-${i}-${itemsRev}`}
+                    className="!-mt-2 ml-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs"
+                  >
+                    <span className="font-extrabold text-slate-400">└ รวมในรายการที่ {mainNo.get(addOnOf)}</span>
+                    <span className="min-w-0 flex-1 font-bold text-slate-700">{it.name}</span>
+                    {seesMoney && (
+                      <span className="font-extrabold tabular-nums text-slate-900">
+                        +{formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
+                      </span>
+                    )}
+                    {mayEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setAddOnOpen((cur) => ({ ...cur, [i]: true }))}
+                        className="rounded-lg px-2 py-1 font-bold text-slate-500 transition hover:bg-white hover:text-indigo-700"
+                      >
+                        ✏️ แก้ไข
+                      </button>
+                    )}
+                  </div>
+                );
               return (
                 <div
                   key={`${it.productId}-${i}-${itemsRev}`}
@@ -4845,8 +4881,17 @@ export default function AdminOrderDetailPage() {
                     <span
                       className={`shrink-0 whitespace-nowrap text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}
                     >
-                      รายการที่ {i + 1} / {order.items.length}
+                      {addOnOf != null ? `Add on ของรายการที่ ${mainNo.get(addOnOf)}` : `รายการที่ ${mainNo.get(i)} / ${mainNo.size}`}
                     </span>
+                    {addOnOf != null && (
+                      <button
+                        type="button"
+                        onClick={() => setAddOnOpen((cur) => ({ ...cur, [i]: false }))}
+                        className="shrink-0 rounded-lg px-2 py-0.5 text-xs font-bold text-slate-500 hover:bg-white"
+                      >
+                        ▴ ยุบ
+                      </button>
+                    )}
                     {/* ↕️ จัดลำดับรายการเอง — ▲▼ ทีละขั้น · ใบที่มีหลายรายการเลือกลำดับปลายทางได้เลย */}
                     {mayEdit && order.items.length > 1 && (
                       <span className="mr-auto flex shrink-0 items-center gap-1" title={itemMoveBlocked(order) || "ย้ายลำดับรายการ (ยอดเงินไม่เปลี่ยน · ระบบลงประวัติ)"}>
@@ -8808,11 +8853,28 @@ function ProofCarousel({
                   setShortAt(j);
                 }}
                 className={`flex-1 border-l border-white py-3 text-base font-bold ${
-                  p.pack?.status === "ไม่ครบ" ? "bg-rose-600 text-white" : "bg-slate-50 text-slate-500"
+                  p.pack?.status === "ไม่ครบ" && (p.pack.got ?? 0) > 0 ? "bg-rose-600 text-white" : "bg-slate-50 text-slate-500"
                 }`}
               >
-                {p.pack?.status === "ไม่ครบ" ? `⚠️ ได้ ${p.pack.got ?? 0}` : "✕ ไม่ครบ"}
+                {p.pack?.status === "ไม่ครบ" && (p.pack.got ?? 0) > 0 ? `⚠️ ได้ ${p.pack.got}` : "✕ ไม่ครบ"}
               </button>
+              {/* ⏳ ลายนี้ยังไม่มาเลย = นับได้ 0 กดครั้งเดียว ไม่ต้องพิมพ์ — ระบบแจ้งฝ่ายผลิตเอง
+                  โชว์เฉพาะรูปที่ยังไม่ได้นับ (หรือรูปที่ปักยังไม่มาอยู่) — รูปที่นับแล้ว "ครบ/ได้ N" ไม่ต้องมี ของมาแล้วจะถามว่ายังไม่มาทำไม */}
+              {(!p.pack || (p.pack.status === "ไม่ครบ" && (p.pack.got ?? 0) === 0)) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCheck(itemIndex, j, "ไม่ครบ", 0);
+                  const nextUnchecked = [...proofs.keys()].find((k) => k > j && !proofs[k].pack) ?? [...proofs.keys()].find((k) => k !== j && !proofs[k].pack);
+                  if (nextUnchecked != null) setTimeout(() => goTo(nextUnchecked), 120);
+                }}
+                className={`flex-1 border-l border-white py-3 text-base font-bold ${
+                  p.pack?.status === "ไม่ครบ" && (p.pack.got ?? 0) === 0 ? "bg-rose-600 text-white" : "bg-slate-50 text-slate-500"
+                }`}
+              >
+                ⏳ ยังไม่มา
+              </button>
+              )}
             </div>
             )}
             {/* 🚚 แบ่งส่ง — รูปที่ออกไปแล้วบอกรอบ · รูปที่นับครบแล้วติ๊กเลือกไปรอบนี้ได้ (ลูกค้าขอส่งบางลายก่อน) */}
@@ -9049,6 +9111,7 @@ function PackView({
   const todos = packTodos(order, gate);
   // 🚚 แบ่งส่ง: สถานะรูปแต่ละรูป (ส่งไปแล้ว/เหลือกี่ชิ้น) · แบ่งได้เมื่อมีหลายรูป หรือรูปเดียวแต่หลายชิ้น · จำนวนชิ้นที่ติ๊กไว้
   const shipStates = proofShipStates(order);
+  const packAddOns = addOnParents(order.items); // 🎨 Add on → รายการแม่
   const planRounds = plannedProofRounds(order);
   const planNext = nextPlannedRound(order);
   const partial = partialShipSummary(order);
@@ -9146,6 +9209,8 @@ function PackView({
       {/* รายการ */}
       <div className="space-y-4 p-3">
         {order.items.map((it, i) => {
+          // 🎨 Add on ที่ไม่มีอะไรให้อ่าน/ให้แพ็ค = ไม่เป็นการ์ดของตัวเอง โชว์เป็นบรรทัดเล็กใต้รายการแม่แทน
+          if (packAddOns.has(i) && addOnNothingToRead(it) && !(it.arrival && it.arrival.status !== "มาครบ")) return null;
           const proofs = proofsOf(it);
           // จำนวนที่ระบุไว้บนรูปแบบงาน (ป้ายมุมซ้ายบนของรูป) เทียบกับจำนวนที่ลูกค้าสั่ง
           // หน่วยต่างกัน (เซ็ต/ชุด) เทียบตรง ๆ ไม่ได้ — บอกให้รู้เฉย ๆ ไม่ตีว่าผิด
@@ -9266,6 +9331,14 @@ function PackView({
                   ยังไม่มีรูปแบบงาน
                 </p>
               )}
+              {/* 🎨 Add on ของรายการนี้ — ค่าบริการ ไม่มีของให้แพ็ค/ไม่ต้องกดยืนยัน บอกไว้ให้รู้เฉย ๆ */}
+              {[...packAddOns]
+                .filter(([child, host]) => host === i && addOnNothingToRead(order.items[child]))
+                .map(([child]) => (
+                  <p key={`addon-${child}`} className="mt-1.5 rounded-lg bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
+                    ＋ {order.items[child].name} <span className="font-semibold text-slate-400">· ค่าบริการ ไม่มีของให้แพ็ค</span>
+                  </p>
+                ))}
               {proofs.length > 0 && (
                 <ArrivalStrip
                   arrival={it.arrival}
