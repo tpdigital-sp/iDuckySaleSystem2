@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useCan } from "@/lib/perm-context";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { code as codeCls, input as inputCls, label as labelCls } from "@/lib/admin-ui";
 import {
   Banner,
@@ -31,6 +32,10 @@ import {
 interface Choice {
   name: string;
   stockItemId: string | null;
+  /** ใช้กี่หน่วยต่อสินค้า 1 ชิ้น (null = 1) */
+  stockQtyPer: number | null;
+  /** ลำดับจริงในกลุ่ม (ก่อนกรอง) — ใช้ชี้ตัวที่จะลบ เพราะชื่อซ้ำในกลุ่มเดียวกันมีอยู่จริง */
+  idx: number;
 }
 interface PresetRow {
   kind: "preset";
@@ -47,6 +52,8 @@ interface ProductRow {
   productName: string;
   draft: boolean;
   label: string;
+  /** ลำดับกลุ่มในสินค้า — กลุ่มชื่อซ้ำในสินค้าเดียวมีจริง ต้องส่งไปด้วยทุกครั้ง */
+  optionIndex: number;
   choices: Choice[];
 }
 type Row = PresetRow | ProductRow;
@@ -72,6 +79,7 @@ export default function StockLinkPage() {
   const [q, setQ] = useState("");
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/stock/link");
@@ -81,12 +89,21 @@ export default function StockLinkPage() {
       setErr(j?.error ?? "โหลดข้อมูลไม่สำเร็จ");
       return;
     }
-    setRows([...j.presetRows, ...j.productRows]);
+    const withIdx = (r: Row): Row => ({ ...r, choices: r.choices.map((c: Choice, idx: number) => ({ ...c, idx })) });
+    setRows([...j.presetRows, ...j.productRows].map(withIdx));
     setItems(j.items);
   }, []);
   useEffect(() => {
     void load();
   }, [load]);
+  // มาจากลิ้นชักหน้าคลัง (?q=ตระกูล) → เติมช่องค้นหาให้ + โชว์ทั้งหมด จะได้เห็นค่าที่ผูกแล้วด้วย
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("q");
+    if (v) {
+      setQ(v);
+      setOnlyOpen(false);
+    }
+  }, []);
 
   async function setLink(row: Row, choice: string, stockItemId: string | null) {
     const tag = `${row.key}|${choice}`;
@@ -95,7 +112,7 @@ export default function StockLinkPage() {
     const body =
       row.kind === "preset"
         ? { presetId: row.presetId, choice, stockItemId }
-        : { productId: row.productId, label: row.label, choice, stockItemId };
+        : { productId: row.productId, label: row.label, optionIndex: row.optionIndex, choice, stockItemId };
     const res = await fetch("/api/admin/stock/link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -110,7 +127,84 @@ export default function StockLinkPage() {
     // อัปเดตในจอทันที ไม่ต้องโหลดใหม่ทั้งตาราง (แถวเยอะ)
     setRows((prev) =>
       prev.map((r) =>
-        r.key !== row.key ? r : { ...r, choices: r.choices.map((c) => (c.name === choice ? { ...c, stockItemId } : c)) }
+        r.key !== row.key
+          ? r
+          : {
+              ...r,
+              choices: r.choices.map((c) =>
+                c.name !== choice ? c : { ...c, stockItemId, stockQtyPer: c.stockItemId === stockItemId ? c.stockQtyPer : null }
+              ),
+            }
+      )
+    );
+  }
+
+  /** ตั้ง "ใช้กี่หน่วยต่อ 1 ชิ้น" — ตอนตัดสต๊อก = จำนวนที่สั่ง × ค่านี้ (ว่าง/1 = ตัด 1 ต่อ 1) */
+  async function setPer(row: Row, choice: string, per: number | null) {
+    const tag = `${row.key}|${choice}`;
+    setSaving(tag);
+    setErr("");
+    const body =
+      row.kind === "preset"
+        ? { presetId: row.presetId, choice, stockQtyPer: per }
+        : { productId: row.productId, label: row.label, optionIndex: row.optionIndex, choice, stockQtyPer: per };
+    const res = await fetch("/api/admin/stock/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await res.json().catch(() => null);
+    setSaving(null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "บันทึกอัตราใช้ไม่สำเร็จ");
+      return;
+    }
+    const saved: number | null = j.stockQtyPer ?? null;
+    setRows((prev) =>
+      prev.map((r) =>
+        r.key !== row.key ? r : { ...r, choices: r.choices.map((c) => (c.name === choice ? { ...c, stockQtyPer: saved } : c)) }
+      )
+    );
+  }
+
+  /** ลบตัวเลือกทิ้งจากกลุ่ม (ไม่ใช่แค่ถอด SKU) — ถามก่อนเสมอ เพราะมีผลกับหน้าร้านทันที */
+  async function removeChoice(row: Row, c: Choice) {
+    const scope =
+      row.kind === "preset"
+        ? `ค่านี้อยู่ในคลังกลาง “${row.label}” — จะหายจากสินค้าทุกตัวที่ลิงก์คลังนี้ (${row.usedBy} ตัว)`
+        : `ค่านี้อยู่ในกลุ่ม “${row.label}” ของสินค้า ${row.productName} — ลูกค้าจะไม่เห็นค่านี้บนหน้าร้านอีก`;
+    const ok = await confirm({
+      icon: "🗑",
+      title: `ลบตัวเลือก “${c.name}” ทิ้งไหม?`,
+      detail: `${scope}\nกฎ/ราคาที่อ้างถึงค่านี้จะไม่ทำงาน · ระบบเก็บสำเนาเดิมไว้ในประวัติสินค้า กู้คืนได้ทีหลัง`,
+      confirmLabel: "ลบตัวเลือก",
+      danger: true,
+    });
+    if (ok !== true) return;
+    const tag = `${row.key}|${c.name}`;
+    setSaving(tag);
+    setErr("");
+    const body =
+      row.kind === "preset"
+        ? { presetId: row.presetId, choice: c.name, index: c.idx }
+        : { productId: row.productId, label: row.label, optionIndex: row.optionIndex, choice: c.name, index: c.idx };
+    const res = await fetch("/api/admin/stock/link", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await res.json().catch(() => null);
+    setSaving(null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "ลบไม่สำเร็จ");
+      return;
+    }
+    // ตัดออกจากจอ + จัดลำดับใหม่ให้ตรงกับฐาน (ตัวถัดไปเลื่อนขึ้นมา 1)
+    setRows((prev) =>
+      prev.map((r) =>
+        r.key !== row.key
+          ? r
+          : { ...r, choices: r.choices.filter((x) => x.idx !== c.idx).map((x, idx) => ({ ...x, idx })) }
       )
     );
   }
@@ -240,7 +334,10 @@ export default function StockLinkPage() {
                         choiceName={c.name}
                         value={c.stockItemId}
                         busy={saving === `${row.key}|${c.name}`}
+                        per={c.stockQtyPer}
                         onPick={(id) => setLink(row, c.name, id)}
+                        onPer={(n) => setPer(row, c.name, n)}
+                        onRemove={() => removeChoice(row, c)}
                       />
                     </li>
                   ))}
@@ -250,6 +347,7 @@ export default function StockLinkPage() {
           })}
         </div>
       )}
+      {dialog}
     </PageShell>
   );
 }
@@ -259,14 +357,22 @@ function ChoiceLink({
   items,
   choiceName,
   value,
+  per,
   busy,
   onPick,
+  onPer,
+  onRemove,
 }: {
   items: Sku[];
   choiceName: string;
   value: string | null;
+  /** ใช้กี่หน่วยต่อสินค้า 1 ชิ้น (null = 1) */
+  per: number | null;
   busy: boolean;
   onPick: (id: string | null) => void;
+  onPer: (n: number | null) => void;
+  /** ลบตัวเลือกทิ้งจากกลุ่ม (ต่างจาก "ถอด" ที่แค่เลิกผูก SKU) */
+  onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -309,9 +415,11 @@ function ChoiceLink({
           <span className="block text-[14px] font-medium">{picked.name}</span>
           {picked.code && <span className={codeCls}>{picked.code}</span>}
         </span>
+        <PerInput value={per} unit={picked.unit} busy={busy} onSave={onPer} />
         <button type="button" disabled={busy} onClick={() => onPick(null)} className="dkb-btn dkb-btn-ghost dkb-btn-sm">
           ถอด
         </button>
+        <RemoveBtn busy={busy} onClick={onRemove} />
       </span>
     );
   }
@@ -326,6 +434,7 @@ function ChoiceLink({
       <button type="button" disabled={busy} onClick={() => setOpen((v) => !v)} className="dkb-btn dkb-btn-ghost dkb-btn-sm">
         {busy ? "กำลังบันทึก…" : "เลือก SKU"}
       </button>
+      <RemoveBtn busy={busy} onClick={onRemove} />
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-80 rounded-[18px] border border-white/90 bg-white p-2 shadow-[0_20px_44px_rgba(23,58,107,.22)]">
           <input
@@ -361,5 +470,65 @@ function ChoiceLink({
         </div>
       )}
     </span>
+  );
+}
+
+/** ปุ่มลบตัวเลือก — ไอคอนล้วน ให้เล็กกว่าปุ่มผูก เพราะเป็นงานเก็บกวาดนาน ๆ ครั้ง ไม่ใช่งานหลักของหน้า */
+function RemoveBtn({ busy, onClick }: { busy: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      title="ลบตัวเลือกนี้ทิ้งจากกลุ่ม"
+      aria-label="ลบตัวเลือกนี้ทิ้งจากกลุ่ม"
+      className="dkb-btn dkb-btn-ghost dkb-btn-sm !px-2"
+      style={{ color: "var(--dk-coral-deep)" }}
+    >
+      🗑
+    </button>
+  );
+}
+
+/**
+ * ช่อง "ใช้กี่หน่วยต่อสินค้า 1 ชิ้น" — บันทึกตอนออกจากช่อง/กด Enter (ไม่ยิงทุกตัวอักษร)
+ * ว่างหรือ 1 = ค่าเริ่มต้น (ตัด 1 ต่อ 1) · รับทศนิยม เช่น 0.5 แผ่นต่อชิ้น
+ */
+function PerInput({ value, unit, busy, onSave }: { value: number | null; unit: string; busy: boolean; onSave: (n: number | null) => void }) {
+  const [txt, setTxt] = useState(value != null ? String(value) : "");
+  // ค่าจากเซิร์ฟเวอร์เปลี่ยน (บันทึกเสร็จ/ถอดแล้วผูกใหม่) → ช่องต้องตาม
+  useEffect(() => setTxt(value != null ? String(value) : ""), [value]);
+
+  const commit = () => {
+    const t = txt.trim();
+    const n = t === "" ? null : Number(t);
+    if (n != null && (!Number.isFinite(n) || n <= 0)) {
+      setTxt(value != null ? String(value) : ""); // พิมพ์ผิด → คืนค่าเดิม ไม่ส่ง
+      return;
+    }
+    const next = n === 1 ? null : n;
+    if (next === value) {
+      if (n === 1) setTxt("");
+      return;
+    }
+    onSave(next);
+  };
+
+  return (
+    <label className="flex shrink-0 items-center gap-1 text-[12px]" style={{ color: "var(--dk-navy-soft)" }} title="ตัดสต๊อก = จำนวนที่ลูกค้าสั่ง × ค่านี้">
+      ใช้
+      <input
+        value={txt}
+        disabled={busy}
+        onChange={(e) => setTxt(e.target.value.replace(/[^\d.]/g, ""))}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        inputMode="decimal"
+        placeholder="1"
+        aria-label="ใช้กี่หน่วยต่อสินค้า 1 ชิ้น"
+        className={`${inputCls.replace("w-full", "")} !h-8 w-16 !px-2 text-right tabular-nums`}
+      />
+      {unit}/ชิ้น
+    </label>
   );
 }

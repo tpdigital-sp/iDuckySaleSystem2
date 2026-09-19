@@ -4,6 +4,7 @@ import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import type { Order } from "@/lib/admin-data";
 import type { OptionPreset } from "@/lib/option-presets";
 import type { ProductOption } from "@/lib/products";
+import { planStockCuts } from "@/lib/stock-cut";
 
 /**
  * คลังสต๊อกวัสดุ (ระบบกลาง 3 ระบบใช้ร่วม):
@@ -53,7 +54,28 @@ export interface StockItem {
   unitCost?: number;
   /** productId ของสินค้า iDucky ที่ตัดสต๊อกตัวนี้ตอนขาย (คั่นได้หลายตัว) */
   productIds?: string[];
+  /**
+   * ชนิดของ เช่น "กรอบรูป" / "แผ่นจิ๊กซอว์" — หน้าคลังแบ่งกลุ่มย่อยในสินค้าตามค่านี้
+   * (รับเข้า/เบิก/สั่งของทำเป็นชุดตามชนิด: สั่งแต่แผ่นจิ๊กซอว์เพราะกรอบยังมี)
+   */
+  part?: string;
+  /**
+   * 🔩 วัสดุแฝง — ของที่ทุกชิ้นของสินค้าใช้ แต่ไม่มีในตัวเลือก (ขาตั้ง หมุด ถุง) · { productId: จำนวนต่อสินค้า 1 ชิ้น }
+   * แยกจาก productIds (= ตัวสินค้าเอง 1 ต่อ 1) เพราะปุ่ม "แยกตามตัวเลือก" ถอด productIds ทิ้ง แต่วัสดุแฝงต้องอยู่ต่อ
+   * ใช้ร่วมหลายสินค้าได้ (หมุดตัวเดียวใส่หลายสินค้า) · ตั้งจากปุ่ม "＋ วัสดุแฝง" หน้า /admin/stock
+   */
+  bomFor?: Record<string, number>;
+  /** 🖼 รูปวัสดุที่ตั้งเอง (URL) — ไม่ตั้งระบบเดารูปจากตัวเลือก/สินค้าที่ผูกให้ (ดู /api/admin/stock/images) */
+  imageUrl?: string;
   active: boolean;
+  /**
+   * 🚫 ไม่ต้องมีสต๊อก — ของสั่งผลิตตามออเดอร์/ไม่เก็บของไว้ที่ร้าน · ยังอยู่ในคลัง (กู้กลับได้) แต่
+   * ไม่เตือนต้องสั่ง ไม่นับมูลค่า ไม่ถูกตัดยอดตอนขาย (ไม่งั้นยอดติดลบไปเรื่อย ๆ โดยไม่มีความหมาย)
+   */
+  noStock?: boolean;
+  /** ลบ = ปิดการใช้งาน (active=false) เก็บเอกสารไว้ให้ ledger ยังอ้างถึงได้ · เวลาที่กดลบ */
+  deletedAt?: string;
+  deletedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,19 +120,69 @@ export async function listStock(): Promise<{ items: StockItem[]; moves: (StockMo
   return { items, moves };
 }
 
-export async function saveStockItem(input: Partial<StockItem> & { name: string }): Promise<StockItem> {
+/** รายการ SKU อย่างเดียว ไม่ลากประวัติ 400 บรรทัดมาด้วย — ใช้กับงานที่สนแค่ "มี SKU อะไรบ้าง" */
+export async function listStockItems(): Promise<StockItem[]> {
+  const db = getStockDb();
+  if (!db) return [];
+  const snap = await db.collection(STOCK_ITEMS).get();
+  return snap.docs.map((d) => d.data() as StockItem).filter((i) => i.active !== false);
+}
+
+/**
+ * ชื่อที่เคยเรียก — เปลี่ยนชื่อ SKU แล้วเก็บชื่อเดิมไว้ให้เอง (คนยังจำชื่อเก่าอยู่ พิมพ์ค้นต้องเจอ · ตัวจับคู่ตัวเลือกก็ยังเห็น)
+ */
+function aliasesOf(input: Partial<StockItem> & { name: string }, cur: StockItem | undefined): string[] | undefined {
+  const base = input.aliases ?? cur?.aliases ?? [];
+  const oldName = cur?.name?.trim();
+  const renamed = !!oldName && oldName !== input.name.trim();
+  const out = renamed && !base.some((a) => a.trim() === oldName) ? [...base, oldName] : base;
+  return out.length ? out : undefined;
+}
+
+/**
+ * รหัสถัดไปของชุด prefix — "P-PHOTOFRAME-3-B" → P-PHOTOFRAME-3-B1, B2, … · "M" → M-0001, M-0002, …
+ * นับจากรหัสที่มีอยู่จริง (รวมตัวที่ลบแล้ว กันออกรหัสซ้ำกับของเก่าในประวัติ)
+ */
+async function nextStockCode(db: Firestore, prefix: string): Promise<string> {
+  const snap = await db.collection(STOCK_ITEMS).get();
+  const codes = new Set(snap.docs.map((d) => String((d.data() as StockItem).code ?? "")));
+  const numbered = prefix === "M";
+  const re = numbered ? /^M-(\d+)$/ : new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`);
+  let n = 0;
+  for (const c of codes) {
+    const m = re.exec(c);
+    if (m) n = Math.max(n, Number(m[1]));
+  }
+  let code = "";
+  do code = numbered ? `M-${String(++n).padStart(4, "0")}` : `${prefix}${++n}`;
+  while (codes.has(code));
+  return code;
+}
+
+/** ตัวอักษรที่ใช้ในรหัสได้ — productId "photoframe-3" → "PHOTOFRAME-3" */
+export function codeSlug(s: string): string {
+  return s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 24);
+}
+
+/**
+ * บันทึก SKU · ไม่มีรหัส = ออกให้อัตโนมัติ (codePrefix ถ้าส่งมา เช่น วัสดุแฝง "P-PHOTOFRAME-3-B" · ไม่ส่ง = M-0001)
+ * รหัสใช้ติดป้ายชั้นวาง/ค้นหา — ของไม่มีรหัสหาบนชั้นยาก (เจ้าของร้านขอ 19 ก.ย. 69)
+ */
+export async function saveStockItem(input: Partial<StockItem> & { name: string; codePrefix?: string }): Promise<StockItem> {
   const db = getStockDb();
   if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
   const now = new Date().toISOString();
   const id = input.id || `sku-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const ref = db.collection(STOCK_ITEMS).doc(id);
   const cur = (await ref.get()).data() as StockItem | undefined;
+  const autoCode = !(input.code ?? cur?.code) ? await nextStockCode(db, input.codePrefix || "M") : undefined;
   const item: StockItem = {
     id,
     name: input.name.trim(),
+    ...(autoCode ? { code: autoCode } : {}),
     // ฟิลด์ที่หน้าแก้ไขยังไม่มีช่องกรอก — ต้องคงของเดิมไว้ ไม่งั้นกดบันทึกทีเดียวหายหมด
     ...(input.code ?? cur?.code ? { code: input.code ?? cur?.code } : {}),
-    ...(input.aliases ?? cur?.aliases ? { aliases: input.aliases ?? cur?.aliases } : {}),
+    ...(aliasesOf(input, cur) ? { aliases: aliasesOf(input, cur) } : {}),
     ...(input.family ?? cur?.family ? { family: input.family ?? cur?.family } : {}),
     ...(cur?.autoCreated ? { autoCreated: true } : {}),
     // แอดมินกดบันทึก = ถือว่าตรวจแล้ว → ปลดธงรอตรวจ
@@ -123,12 +195,92 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string }
     leadTimeDays: input.leadTimeDays ?? cur?.leadTimeDays,
     unitCost: input.unitCost ?? cur?.unitCost,
     productIds: input.productIds ?? cur?.productIds ?? [],
+    ...(cur?.noStock ? { noStock: true } : {}),
+    ...(cur?.bomFor && Object.keys(cur.bomFor).length ? { bomFor: cur.bomFor } : {}), // ตั้งจากเส้นทาง bom แยก — แก้ไข SKU ต้องไม่ล้าง
+    // ส่ง "" มา = ล้างชนิดของ · undefined = ไม่แตะ
+    ...(((input.part !== undefined ? input.part : cur?.part) ?? "").trim() ? { part: ((input.part !== undefined ? input.part : cur?.part) ?? "").trim() } : {}), // ตั้งจากปุ่มแยก (setNoStock) — การแก้ไขทั่วไปต้องไม่ล้างธงนี้
+    // ล้างช่อง = ส่ง "" มาลบรูปออก (undefined = ไม่แตะ)
+    ...((input.imageUrl ?? cur?.imageUrl) ? { imageUrl: input.imageUrl ?? cur?.imageUrl } : {}),
     active: input.active ?? cur?.active ?? true,
     createdAt: cur?.createdAt ?? now,
     updatedAt: now,
   };
-  await ref.set(item);
-  return item;
+  // Firestore ไม่รับค่า undefined (เช่น ไม่กรอกหมวด/จุดสั่ง) → ตัดคีย์ทิ้งก่อนเขียน ไม่งั้น "เพิ่มวัสดุ" ล้มทั้งใบ
+  const clean = Object.fromEntries(Object.entries(item).filter(([, v]) => v !== undefined)) as StockItem;
+  await ref.set(clean);
+  return clean;
+}
+
+/**
+ * ลบ SKU = ปิดการใช้งาน (soft delete) — ไม่ลบเอกสารทิ้ง เพราะ stockMoves/ต้นทุนในรายงานยังอ้าง itemId อยู่
+ * listStock/cutStockForOrder กรอง active !== false อยู่แล้ว → หายจากทุกจอและไม่ถูกตัดขายอีก
+ * คืน item ที่ปิดแล้ว (null = ไม่พบ)
+ */
+export async function deleteStockItem(id: string, by: string): Promise<StockItem | null> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const ref = db.collection(STOCK_ITEMS).doc(id);
+  const cur = (await ref.get()).data() as StockItem | undefined;
+  if (!cur) return null;
+  const now = new Date().toISOString();
+  const next: StockItem = { ...cur, active: false, deletedAt: now, deletedBy: by, updatedAt: now };
+  await ref.set(next);
+  return next;
+}
+
+/** ตั้ง/ถอดวัสดุแฝงของสินค้า 1 ตัว — per = null/0 คือถอด · ใช้ FieldPath เพราะ productId เป็นคีย์ใน map */
+export async function setBom(itemId: string, productId: string, per: number | null): Promise<StockItem | null> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldPath, FieldValue } = await import("firebase-admin/firestore");
+  const ref = db.collection(STOCK_ITEMS).doc(itemId);
+  const cur = (await ref.get()).data() as StockItem | undefined;
+  if (!cur || cur.active === false) return null;
+  await ref.update(new FieldPath("bomFor", productId), per && per > 0 ? per : FieldValue.delete(), "updatedAt", new Date().toISOString());
+  return (await ref.get()).data() as StockItem;
+}
+
+/** ตั้ง/ปลดธง "ไม่ต้องมีสต๊อก" ทีละหลายตัว (ปุ่มที่หัวกลุ่มสินค้ากดทีเดียวทั้งกลุ่ม) — คืนจำนวนที่เขียน */
+export async function setNoStock(ids: string[], on: boolean): Promise<number> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const now = new Date().toISOString();
+  let n = 0;
+  // Firestore batch รับได้ 500 คำสั่ง — แบ่งก้อนเผื่อกลุ่มใหญ่
+  for (let i = 0; i < ids.length; i += 400) {
+    const batch = db.batch();
+    for (const id of ids.slice(i, i + 400)) {
+      batch.update(db.collection(STOCK_ITEMS).doc(id), { noStock: on ? true : FieldValue.delete(), updatedAt: now });
+      n++;
+    }
+    await batch.commit();
+  }
+  return n;
+}
+
+/** ปลดป้าย "รอตรวจ" ทีละหลายตัว (ปุ่มตรวจแล้ว: รายแถว/ลิ้นชัก/ทั้งกลุ่มสินค้า) — คืนจำนวนที่เขียน */
+export async function setReviewed(ids: string[], by: string): Promise<number> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const now = new Date().toISOString();
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 400) {
+    const batch = db.batch();
+    for (const id of ids.slice(i, i + 400)) {
+      batch.update(db.collection(STOCK_ITEMS).doc(id), {
+        needsReview: FieldValue.delete(),
+        maybeDuplicateOf: FieldValue.delete(), // ตรวจแล้ว = ยืนยันว่าไม่ซ้ำ
+        reviewedAt: now,
+        reviewedBy: by,
+        updatedAt: now,
+      });
+      n++;
+    }
+    await batch.commit();
+  }
+  return n;
 }
 
 /** เดินสต๊อก 1 รายการแบบ atomic — คืนยอดหลังเดิน */
@@ -179,8 +331,8 @@ export async function addStockMove(input: {
  * ตัวเลือกที่ลิงก์คลังกลาง (presetId) ถูกคลี่ด้วย resolveOptions ก่อน — ผูกที่คลังครั้งเดียว
  * ทุกสินค้าที่ลิงก์คลังนั้นจึงตัดสต๊อกตามไปเองโดยไม่ต้องแก้รายตัว
  */
-async function loadOptionStockMap(productIds: string[]): Promise<Map<string, { id: string; per: number }>> {
-  const out = new Map<string, { id: string; per: number }>();
+async function loadOptionStockMap(productIds: string[]): Promise<Map<string, ProductOption[]>> {
+  const out = new Map<string, ProductOption[]>();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key || !productIds.length) return out;
@@ -192,21 +344,13 @@ async function loadOptionStockMap(productIds: string[]): Promise<Map<string, { i
     sb.from("products").select("data").eq("category", "__presets__"),
   ]);
   const presets = (presetRows.data ?? []).map((r) => r.data as OptionPreset).filter((p) => p?.id);
-  for (const row of prods.data ?? []) {
-    const raw = (row.data as { options?: ProductOption[] } | null)?.options ?? [];
-    for (const o of resolveOptions(raw, presets)) {
-      for (const c of o.choices ?? []) {
-        if (!c.stockItemId) continue;
-        out.set(`${row.id}|${o.label}|${c.name}`, { id: c.stockItemId, per: c.stockQtyPer ?? 1 });
-      }
-    }
-  }
+  // คืนตัวเลือกที่คลี่คลังกลางแล้วทั้งชุด — planStockCuts ต้องเห็นชื่อตัวเลือกทุกค่าเพื่อแยก "A + B" ให้ถูก
+  for (const row of prods.data ?? []) out.set(row.id, resolveOptions((row.data as { options?: ProductOption[] } | null)?.options ?? [], presets));
   return out;
 }
 
 
 /** ค่าที่ติ๊กได้หลายอย่างถูกเก็บรวมเป็นข้อความเดียวคั่นด้วย " + " — ต้องแยกก่อนไปหา SKU */
-const splitMulti = (v: string) => v.split(" + ").map((s) => s.trim()).filter(Boolean);
 
 /** ออเดอร์ชำระแล้ว → ตัดสต๊อกรายการที่ถูกผูกไว้ (idempotent ต่อออเดอร์) — fire-and-forget */
 export async function cutStockForOrder(order: Order): Promise<void> {
@@ -217,12 +361,14 @@ export async function cutStockForOrder(order: Order): Promise<void> {
     const dup = await db.collection(STOCK_MOVES).where("refOrderId", "==", order.id).where("reason", "==", "ขาย").limit(1).get();
     if (!dup.empty) return;
     const itemsSnap = await db.collection(STOCK_ITEMS).get();
-    const stockItems = itemsSnap.docs.map((d) => d.data() as StockItem).filter((i) => i.active !== false);
+    const allItems = itemsSnap.docs.map((d) => d.data() as StockItem);
+    const stockItems = allItems.filter((i) => i.active !== false && !i.noStock);
+    /** SKU ที่ตั้ง "ไม่ต้องมีสต๊อก" — ลิงก์จากตัวเลือกยังอยู่ แต่ไม่ตัดยอด */
+    const skip = new Set(allItems.filter((i) => i.noStock || i.active === false).map((i) => i.id));
     const optionMap = await loadOptionStockMap([...new Set(order.items.map((i) => i.productId))]);
     for (const oi of order.items) {
-      // 1) SKU ที่ผูกกับตัวสินค้าโดยตรง
-      const hit = stockItems.find((si) => (si.productIds ?? []).includes(oi.productId));
-      if (hit) {
+      // 1) SKU ที่ผูกกับตัวสินค้าโดยตรง — ตัดทุกตัวที่ผูก (เดิม .find ตัดแค่ตัวแรก ผูก 2 ตัวอีกตัวไม่เคยขยับ)
+      for (const hit of stockItems.filter((si) => (si.productIds ?? []).includes(oi.productId))) {
         await addStockMove({
           itemId: hit.id,
           qty: -Math.abs(oi.qty),
@@ -233,22 +379,35 @@ export async function cutStockForOrder(order: Order): Promise<void> {
           source: "iducky",
         });
       }
-      // 2) SKU ที่ผูกกับ "ตัวเลือกที่ลูกค้าเลือก" (สีไหม/สีตะขอ/เนื้อผ้า)
+      // 1b) วัสดุแฝง (ขาตั้ง/หมุด) — ทุกชิ้นของสินค้านี้ × จำนวนต่อชิ้น
+      for (const si of stockItems) {
+        const per = si.bomFor?.[oi.productId];
+        if (!per || per <= 0) continue;
+        const qty = Math.abs(oi.qty) * per;
+        if (!qty) continue;
+        await addStockMove({
+          itemId: si.id,
+          qty: -qty,
+          reason: "ขาย",
+          note: `${oi.name} · วัสดุแฝง`,
+          refOrderId: order.id,
+          by: "ระบบ (ขายอัตโนมัติ)",
+          source: "iducky",
+        });
+      }
+      // 2) SKU ที่ผูกกับ "ตัวเลือกที่ลูกค้าเลือก" (สีไหม/ตะขอ/ขนาด + ของที่มีเงื่อนไขข้ามกลุ่ม) — กติกาอยู่ที่ planStockCuts
       //    ออเดอร์เก่าไม่มี sel (มีแต่ selections ที่เป็นข้อความ) → ข้ามไปเงียบ ๆ
-      for (const [label, value] of Object.entries(oi.sel ?? {})) {
-        for (const choice of splitMulti(value)) {
-          const link = optionMap.get(`${oi.productId}|${label}|${choice}`);
-          if (!link) continue;
-          await addStockMove({
-            itemId: link.id,
-            qty: -Math.abs(oi.qty) * link.per,
-            reason: "ขาย",
-            note: `${oi.name} · ${label}: ${choice}`,
-            refOrderId: order.id,
-            by: "ระบบ (ขายอัตโนมัติ)",
-            source: "iducky",
-          });
-        }
+      for (const cut of planStockCuts(optionMap.get(oi.productId) ?? [], oi.sel, oi.qty)) {
+        if (skip.has(cut.itemId) || !cut.qty) continue;
+        await addStockMove({
+          itemId: cut.itemId,
+          qty: -cut.qty,
+          reason: "ขาย",
+          note: `${oi.name} · ${cut.via}`,
+          refOrderId: order.id,
+          by: "ระบบ (ขายอัตโนมัติ)",
+          source: "iducky",
+        });
       }
     }
   } catch (e) {

@@ -67,6 +67,8 @@ type DraftChoice = {
   videoSrc?: string;
   stockItemId?: string;
   stockQtyPer?: number;
+  /** 📦 SKU แบบมีเงื่อนไข — ตั้งจากหน้าคลัง ส่งกลับเฉย ๆ ไม่งั้นบันทึกสินค้าแล้วหาย */
+  stockLinks?: { stockItemId: string; per?: number; when?: { label: string; choices: string[] }[] }[];
   /** 💬 เลือกตัวนี้แล้ว = งานสั่งทำ ให้แอดมินตีราคา (เช่น "แบบที่ 3 กำหนดขนาดเอง") */
   askPrice?: boolean;
   /** ⭐ แบบที่ลูกค้านิยมสั่ง — หน้าสินค้าโชว์ป้าย "นิยม" */
@@ -594,6 +596,7 @@ function toDraft(p: Product): Draft {
         ...(c.videoSrc ? { videoSrc: c.videoSrc } : {}),
         ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
         ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
+        ...(c.stockLinks?.length ? { stockLinks: c.stockLinks } : {}),
         ...(c.askPrice ? { askPrice: true } : {}),
         ...(c.popular ? { popular: true } : {}),
         ...(c.exclusiveWith ? { exclusiveWith: c.exclusiveWith } : {}),
@@ -910,6 +913,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
             // ลิงก์คลังวัสดุ — หน้าแก้ไขไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.stockItemId ? { stockItemId: c.stockItemId } : {}),
             ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}),
+            ...(c.stockLinks?.length ? { stockLinks: c.stockLinks } : {}),
             ...(c.askPrice ? { askPrice: true as const } : {}),
             // ⭐ ป้าย "แบบยอดนิยม" — ต้องส่งกลับ ไม่งั้นบันทึกแล้วหาย
             ...(c.popular ? { popular: true as const } : {}),

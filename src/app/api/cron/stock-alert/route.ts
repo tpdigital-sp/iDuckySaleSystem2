@@ -26,6 +26,7 @@ export async function GET(req: Request) {
     usage.set(m.itemId, (usage.get(m.itemId) ?? 0) + Math.abs(m.qty));
   }
   const need = items
+    .filter((it) => !it.noStock) // ของที่ตั้ง "ไม่ต้องมีสต๊อก" ไม่ต้องเตือนสั่ง
     .map((it) => {
       const perDay = (usage.get(it.id) ?? 0) / 30;
       const suggest = perDay > 0 && it.leadTimeDays ? Math.ceil(perDay * it.leadTimeDays * 1.2) : null;
