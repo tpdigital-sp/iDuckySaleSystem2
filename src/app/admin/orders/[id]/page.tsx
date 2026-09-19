@@ -79,6 +79,7 @@ import {
   proofShipStates,
   roundSel,
   type ProofShipState,
+  type PackArrival,
   shipmentQty,
   orderHasTaxInvoice,
   orderNeedsTaxInvoiceInBox,
@@ -134,7 +135,7 @@ import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
 import ShipWithStrip, { ShipWithPicker, useShipWithLinked } from "@/components/admin/ShipWithStrip";
 import { isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
-import ArrivalPicker, { arrivalSummary, fmtExpected, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
+import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
 import ItemAdder from "@/components/admin/ItemAdder";
 import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
@@ -8663,6 +8664,9 @@ function ProofCarousel({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [current, setCurrent] = useState(0);
+  // ✕ ไม่ครบ → กรอกจำนวนที่นับได้ตรงใต้รูปเลย (ไม่ต้องเปิดรูปใหญ่) · บันทึกแล้วระบบปัก "มาไม่ครบ" + ส่งเรื่องให้ฝ่ายผลิตเอง
+  const [shortAt, setShortAt] = useState<number | null>(null);
+  const [gotText, setGotText] = useState("");
   const checked = proofs.filter((p) => p.pack).length;
 
   const goTo = (idx: number) => {
@@ -8689,6 +8693,14 @@ function ProofCarousel({
     // เลื่อนไปรูปถัดไปที่ยังไม่ตรวจ (วน หา k != j ที่ยังไม่มีผล)
     const order = [...proofs.keys()].filter((k) => k !== j);
     const nextUnchecked = order.find((k) => k > j && !proofs[k].pack) ?? order.find((k) => !proofs[k].pack);
+    if (nextUnchecked != null) setTimeout(() => goTo(nextUnchecked), 120);
+  };
+
+  const handleShort = (j: number) => {
+    if (gotText === "") return;
+    onCheck(itemIndex, j, "ไม่ครบ", Math.max(0, Number(gotText) || 0));
+    setShortAt(null);
+    const nextUnchecked = [...proofs.keys()].find((k) => k > j && !proofs[k].pack) ?? [...proofs.keys()].find((k) => k !== j && !proofs[k].pack);
     if (nextUnchecked != null) setTimeout(() => goTo(nextUnchecked), 120);
   };
 
@@ -8743,6 +8755,40 @@ function ProofCarousel({
                 🔍 ดูใหญ่
               </span>
             </button>
+            {shortAt === j ? (
+              <form
+                className="flex items-center gap-2 bg-rose-50 px-2 py-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleShort(j);
+                }}
+              >
+                <label className="flex min-w-0 flex-1 items-center gap-2 text-sm font-extrabold text-rose-700">
+                  <span className="shrink-0">นับได้</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    autoFocus
+                    value={gotText}
+                    onChange={(e) => setGotText(e.target.value)}
+                    className="min-h-[44px] w-full min-w-0 rounded-lg border-2 border-rose-400 bg-white px-2 text-lg font-black tabular-nums text-slate-900"
+                    aria-label={`นับได้จริงกี่${proofUnit(p)} รูปที่ ${j + 1}`}
+                  />
+                  {p.qty ? (
+                    <span className="shrink-0 tabular-nums text-slate-600">
+                      / {p.qty} {proofUnit(p)}
+                    </span>
+                  ) : null}
+                </label>
+                <button type="submit" disabled={gotText === ""} className="min-h-[44px] shrink-0 rounded-lg bg-rose-600 px-4 text-sm font-extrabold text-white disabled:opacity-40">
+                  บันทึก
+                </button>
+                <button type="button" onClick={() => setShortAt(null)} aria-label="ยกเลิก" className="min-h-[44px] w-10 shrink-0 rounded-lg text-lg font-bold text-slate-500">
+                  ✕
+                </button>
+              </form>
+            ) : (
             <div className="flex">
               <button
                 type="button"
@@ -8753,10 +8799,13 @@ function ProofCarousel({
               >
                 ✓ ครบ
               </button>
-              {/* ไม่ครบต้องกรอกจำนวน → เปิดรูปใหญ่ให้กรอกในแผงตรวจนับ */}
+              {/* ไม่ครบต้องกรอกจำนวน → ช่องกรอกโผล่ตรงนี้เลย */}
               <button
                 type="button"
-                onClick={() => onZoom(itemIndex, j)}
+                onClick={() => {
+                  setGotText(p.pack?.got != null ? String(p.pack.got) : "");
+                  setShortAt(j);
+                }}
                 className={`flex-1 border-l border-white py-3 text-base font-bold ${
                   p.pack?.status === "ไม่ครบ" ? "bg-rose-600 text-white" : "bg-slate-50 text-slate-500"
                 }`}
@@ -8764,6 +8813,7 @@ function ProofCarousel({
                 {p.pack?.status === "ไม่ครบ" ? `⚠️ ได้ ${p.pack.got ?? 0}` : "✕ ไม่ครบ"}
               </button>
             </div>
+            )}
             {/* 🚚 แบ่งส่ง — รูปที่ออกไปแล้วบอกรอบ · รูปที่นับครบแล้วติ๊กเลือกไปรอบนี้ได้ (ลูกค้าขอส่งบางลายก่อน) */}
             {(() => {
               const st = shipState?.(j);
@@ -8833,6 +8883,67 @@ function ProofCarousel({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * 📦 แถบสถานะ "ของมาหรือยัง" ใต้รูปตรวจนับ (แทนกล่อง 3 ปุ่มเดิม — เจ้าของร้านขอ 19 ก.ย. 69 ให้เหลือปุ่มเท่าที่จำเป็น)
+ * · นับใต้รูป "ได้ N" → ระบบปักมาไม่ครบ + ส่งเรื่องไป TP เอง · นับใหม่จนครบ → ปิดเรื่องเอง (syncArrivalFromCount)
+ * · ปุ่มเดียวที่เหลือ: "ของยังไม่มาเลย" (ไม่มีของให้นับ) กดแล้วบันทึกทันที · วันที่คาด/หมายเหตุ = ไม่บังคับ พับไว้
+ */
+function ArrivalStrip({
+  arrival,
+  need,
+  unit,
+  hasShort,
+  onSave,
+}: {
+  arrival?: PackArrival;
+  need: number;
+  unit: string;
+  hasShort: boolean;
+  onSave: (patch: ArrivalPatch) => void;
+}) {
+  const missing = !!arrival && arrival.status !== "มาครบ";
+  if (!missing)
+    return (
+      <button
+        type="button"
+        onClick={() => onSave({ status: "ยังไม่มา" })}
+        className="mt-1.5 min-h-[44px] w-full rounded-xl bg-white px-3 text-xs font-extrabold text-rose-700 ring-1 ring-rose-300"
+      >
+        ⏳ ของรายการนี้ยังไม่มาเลย — แจ้งฝ่ายผลิต
+      </button>
+    );
+  const none = arrival!.status === "ยังไม่มา";
+  const overdue = arrivalOverdue(arrival!.expectedAt);
+  return (
+    <div className={`mt-1.5 rounded-xl px-3 py-2 ${none ? "bg-rose-50 ring-2 ring-rose-300" : "bg-amber-50 ring-2 ring-amber-400"}`}>
+      <p className={`text-sm font-extrabold ${none ? "text-rose-700" : "text-amber-900"}`}>
+        {none ? "⏳ ของยังไม่มา" : `⚠️ ${arrivalSummary(arrival!, need, unit)}`}
+        {arrival!.expectedAt && (
+          <span className={`ml-1.5 inline-block rounded-full px-2 py-0.5 text-[11px] ${overdue ? "bg-rose-600 text-white" : "bg-white text-slate-700 ring-1 ring-slate-300"}`}>
+            {overdue ? "เลยกำหนด " : "คาดว่ามา "}
+            {fmtExpected(arrival!.expectedAt)}
+          </span>
+        )}
+      </p>
+      <p className="mt-0.5 text-[11px] font-bold text-slate-600">
+        📡 ส่งเรื่องให้ฝ่ายผลิต (TP) แล้ว · รอมา <span className="tabular-nums">{waitingDays(arrival!.since ?? arrival!.at)}</span> วัน · {arrival!.by}
+        {hasShort ? " · ของมาเติมแล้วกด ✓ ครบ ที่รูป เรื่องปิดเอง" : ""}
+      </p>
+      {arrival!.note && <p className="mt-0.5 break-words text-[11px] font-bold text-slate-700">{arrival!.note}</p>}
+      {/* ไม่มีรูปที่นับขาดค้างอยู่ = ไม่มีอะไรให้กด ✓ ครบ เพื่อปิดเรื่อง → ต้องมีปุ่มปิดเอง */}
+      {!hasShort && (
+        <button type="button" onClick={() => onSave({ status: "มาครบ" })} className="mt-2 min-h-[44px] w-full rounded-lg bg-green-600 px-3 text-sm font-extrabold text-white">
+          ✅ ของมาครบแล้ว
+        </button>
+      )}
+      <details className="mt-1.5">
+        <summary className="min-h-[32px] cursor-pointer py-1.5 text-[11px] font-bold text-slate-500">📅 ใส่วันที่คาดว่ามา / หมายเหตุถึงฝ่ายผลิต (ไม่บังคับ)</summary>
+        <ArrivalPicker arrival={arrival} need={need} unit={unit} compact onSave={onSave} />
+      </details>
     </div>
   );
 }
@@ -9103,14 +9214,17 @@ function PackView({
               </div>
 
               {/* 📦 ของมาถึงโต๊ะแพ็คหรือยัง — ปักก่อนนับ: ของยังไม่มา/มาไม่ครบ = ออเดอร์ไปรอที่ขั้น "รอของ" ห้ามยิงเลข */}
-              <div className="mb-2">
-                <ArrivalPicker
-                  arrival={it.arrival}
-                  need={it.qty}
-                  unit={qc.saleUnit || "ชิ้น"}
-                  onSave={(patch) => onArrival(i, patch)}
-                />
-              </div>
+              {/* มีรูปแบบงาน = ไม่ต้องมีกล่องนี้ — นับใต้รูปแล้วระบบปักให้เอง (แถบสถานะอยู่ใต้รูป) · ไม่มีรูปให้นับ = ยังต้องปักเอง */}
+              {proofs.length === 0 && (
+                <div className="mb-2">
+                  <ArrivalPicker
+                    arrival={it.arrival}
+                    need={it.qty}
+                    unit={qc.saleUnit || "ชิ้น"}
+                    onSave={(patch) => onArrival(i, patch)}
+                  />
+                </div>
+              )}
 
               {/* จำนวนบนรูปไม่ตรงกับที่ลูกค้าสั่ง — คนแพ็คต้องเห็นก่อนนับ ไม่งั้นแพ็คตามป้ายบนรูปผิดจำนวน */}
               {qtyMismatch && (
@@ -9149,6 +9263,15 @@ function PackView({
                 <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs text-slate-400 ring-1 ring-slate-200">
                   ยังไม่มีรูปแบบงาน
                 </p>
+              )}
+              {proofs.length > 0 && (
+                <ArrivalStrip
+                  arrival={it.arrival}
+                  need={it.qty}
+                  unit={qc.saleUnit || "ชิ้น"}
+                  hasShort={proofs.some((p) => p.pack?.status === "ไม่ครบ")}
+                  onSave={(patch) => onArrival(i, patch)}
+                />
               )}
 
               {/* รายละเอียด + ยืนยันอ่านแล้ว */}
