@@ -1996,6 +1996,45 @@ export function applyArrival(order: Order, itemIndex: number, patch: ArrivalPatc
   );
 }
 
+/** ป้ายนำหน้าส่วนของหมายเหตุที่ระบบเขียนเองจากผลตรวจนับ — ใช้แยกออกจากหมายเหตุที่คนพิมพ์ */
+export const COUNT_NOTE_MARK = "🔢 นับขาด:";
+
+/**
+ * 🔢→📦 ผลตรวจนับต่อรูป ("⚠️ ได้ 20") ปัก "มาไม่ครบ" ให้รายการเอง — ฝ่ายแพ็คไม่ต้องกรอกกล่อง 📦 ซ้ำ เรื่องไปหน้าติดตามของใน TP ทันที
+ * · มีรูปที่นับไม่ครบ → arrival = มาไม่ครบ · got = จำนวนทั้งรายการ − ที่ขาด · หมายเหตุต่อท้าย "🔢 นับขาด: รูปที่ 1 ได้ 20/30"
+ *   (หมายเหตุ/วันคาดที่คนกรอกไว้คงเดิม · ตัวเลขเดิมไม่เปลี่ยน = ไม่เขียนซ้ำ)
+ * · นับใหม่จนครบทุกรูป → ปิดเรื่องให้เอง เฉพาะเรื่องที่ระบบเปิดเอง (หมายเหตุมีป้าย 🔢) — เรื่องที่คนปักเองต้องกด "มาครบ" เอง
+ */
+export function syncArrivalFromCount(order: Order, itemIndex: number, actor: string): Order {
+  const item = order.items[itemIndex];
+  if (!item) return order;
+  const proofs = proofsOf(item);
+  const prev = item.arrival;
+  const userNote = (prev?.note ?? "").split(COUNT_NOTE_MARK)[0].trim();
+  const wasAuto = !!prev?.note?.includes(COUNT_NOTE_MARK);
+  const shorts = proofs.map((p, j) => ({ p, j })).filter(({ p }) => p.pack?.status === "ไม่ครบ");
+
+  if (!shorts.length) {
+    if (prev && prev.status !== "มาครบ" && wasAuto) return applyArrival(order, itemIndex, { status: "มาครบ" }, actor);
+    return order;
+  }
+
+  // จำนวนที่ต้องได้ของรูป: กราฟฟิกกรอกไว้ → ใช้เลย · ไม่ได้กรอกและมีรูปเดียว → ทั้งรายการ
+  const needOf = (p: Proof) => p.qty ?? (proofs.length === 1 ? item.qty : undefined);
+  const sumProof = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
+  const lacking = shorts.reduce((s, { p }) => s + Math.max(0, (needOf(p) ?? 0) - (p.pack?.got ?? 0)), 0);
+  // หน่วยของรูปอาจไม่ตรงกับ qty ของรายการ (งานเซ็ต/แผ่น) → เทียบสัดส่วนแทน
+  const sameUnit = sumProof === item.qty || proofs.length === 1;
+  const got = Math.max(0, sameUnit ? item.qty - lacking : sumProof > 0 ? Math.floor((item.qty * (sumProof - lacking)) / sumProof) : 0);
+  const countNote = `${COUNT_NOTE_MARK} ${shorts
+    .map(({ p, j }) => `รูปที่ ${j + 1} ได้ ${p.pack?.got ?? 0}${needOf(p) != null ? `/${needOf(p)}` : ""}`)
+    .join(" · ")}`;
+  const note = [userNote, countNote].filter(Boolean).join(" ");
+
+  if (prev?.status === "มาไม่ครบ" && (prev.got ?? 0) === got && (prev.note ?? "") === note) return order;
+  return applyArrival(order, itemIndex, { status: "มาไม่ครบ", got, expectedAt: prev?.status !== "มาครบ" ? prev?.expectedAt : undefined, note }, actor);
+}
+
 /**
  * ตรวจว่าออเดอร์ผ่านขั้นตอนแพ็คครบหรือยัง
  * ใช้ทั้งหน้าออเดอร์ (แสดงความคืบหน้า) และหน้ายิงเลขพัสดุ (บล็อกไม่ให้ยิง)

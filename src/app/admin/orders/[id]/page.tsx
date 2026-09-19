@@ -85,6 +85,7 @@ import {
   orderAwaitingStock,
   taxInvoiceDocOf,
   applyArrival,
+  syncArrivalFromCount,
   moveOrderItem,
   itemMoveBlocked,
   arrivalOverdue,
@@ -2725,12 +2726,14 @@ export default function AdminOrderDetailPage() {
     const items = order.items.map((it, i) =>
       i === itemIndex ? { ...it, proofs: proofsOf(it).map((p, j) => (j === proofIndex ? { ...p, pack } : p)) } : it
     );
-    const next = withLog(
+    const counted = withLog(
       { ...order, items },
       actor,
       status === "ครบ" ? "ตรวจนับ: ครบ" : "ตรวจนับ: ไม่ครบ",
       `${item?.name ?? ""} รูปที่ ${proofIndex + 1}${status === "ไม่ครบ" ? ` — นับได้ ${got ?? 0} ชิ้น` : ""}`
     );
+    // 🔢→📦 นับไม่ครบ = ปัก "มาไม่ครบ" ให้เอง เรื่องไปหน้าติดตามของใน TP ทันที (นับใหม่จนครบ = ปิดเรื่องที่ระบบเปิดเอง)
+    const next = syncArrivalFromCount(counted, itemIndex, actor);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
   }
