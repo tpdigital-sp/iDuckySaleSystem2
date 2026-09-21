@@ -295,6 +295,7 @@ export function FChip({
   label,
   count,
   style,
+  tone,
 }: {
   on: boolean;
   onClick: () => void;
@@ -302,6 +303,11 @@ export function FChip({
   count?: number;
   /** สีพื้น/ตัวอักษรตอนยังไม่ถูกเลือก (เช่นสีประจำสถานะ) */
   style?: CSSProperties;
+  /**
+   * โทนสีประจำสถานะ — ชิปเปลี่ยนเป็นทรง .dkb-schip (พาสเทลตอนไม่เลือก · ทึบ+วงแหวนตอนเลือก)
+   * ไม่ส่ง = ชิปกรองปกติสีเดียวทั้งแถวเหมือนเดิม
+   */
+  tone?: "coral" | "lilac" | "mint" | "yolk" | "sky" | "quiet";
 }) {
   const zero = count === 0;
   return (
@@ -310,7 +316,8 @@ export function FChip({
       onClick={onClick}
       aria-pressed={on}
       data-zero={zero ? "1" : undefined}
-      className="dkb-fchip"
+      className={tone ? "dkb-schip" : "dkb-fchip"}
+      data-tone={tone}
       style={on || zero ? undefined : style}
     >
       <i />

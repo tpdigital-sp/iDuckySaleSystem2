@@ -219,6 +219,9 @@ export async function reportPaidToTP(
         shipDate: tpShipDate(order),
         // 🛒 รอของเข้า / ต้องสั่งของ — บอร์ด WIP กราฟฟิกติดป้าย "รอของเข้า — ห้ามส่งผลิต" + ถามย้ำตอนอนุมัติ (แก้ทีหลังผ่าน syncStockWaitToTP)
         stockWait: tpStockWait(order),
+        // 🧰 งานเคลม/ทำใหม่ฟรี — ไม่มีเงินเข้า (ยอด 0) แต่เป็น "งานจริง" ที่กราฟฟิกต้องทำ
+        //    บอร์ด WIP เอาไปติดป้าย 🧰 + เหตุผล · msVerify ไม่ดึงใบยอด 0 เข้าระบบบัญชีอยู่แล้ว (จับคู่ธนาคารไม่ได้)
+        ...(order.claimOf ? { claimOf: order.claimOf, claimReason: order.claimReason ?? "" } : {}),
         paymentStatus: "ชำระแล้ว",
         origin: "iducky",
         createdAt: now.toISOString(),

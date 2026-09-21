@@ -297,6 +297,39 @@
 .dkb-fchip[aria-pressed="true"] > i { background: var(--dk-yolk); }
 .dkb-fchip[data-zero="1"] { opacity: 0.42; }
 
+/*
+ * 🧰 ชิปเปลี่ยนสถานะเคลม (หน้า /admin/claims) — เดิมทุกปุ่มขาวเหมือนกันหมด ต่างแค่ปุ่มที่เลือกเป็นกรมท่า
+ * ต้องกวาดตาแล้วรู้ทันทีว่าเคสนี้อยู่ขั้นไหน (เจ้าของร้านสั่ง 21 ก.ย. 69) → แยกสีต่อสถานะ
+ * ที่ยังไม่เลือก = พื้นพาสเทลอ่อน + ตัวอักษรสีเข้มของโทนนั้น · ที่เลือกอยู่ = พื้นทึบ + ตัวขาว + วงแหวนรอบ
+ * (แยกด้วย "น้ำหนัก + วงแหวน" ด้วย ไม่ใช่สีอย่างเดียว — ตาบอดสี/จอแสงจ้ายังอ่านออกว่าอันไหนถูกเลือก)
+ */
+.dkb-schip {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  min-height: 32px; padding: 0 13px; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600;
+  background: var(--dk-s-wash); color: var(--dk-s-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dk-s-ink) 18%, transparent);
+  transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+}
+.dkb-schip:hover:not([aria-pressed="true"]) { background: color-mix(in srgb, var(--dk-s-ink) 12%, #fff); transform: translateY(-1px); }
+.dkb-schip > i { width: 7px; height: 7px; border-radius: 50%; background: var(--dk-s-dot); flex: none; }
+.dkb-schip[aria-pressed="true"] {
+  background: var(--dk-s-ink); color: #fff; font-weight: 700;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dk-s-ink) 22%, transparent), 0 6px 14px color-mix(in srgb, var(--dk-s-ink) 30%, transparent);
+}
+.dkb-schip[aria-pressed="true"] > i { background: var(--dk-yolk); }
+.dkb-schip[data-tone="coral"] { --dk-s-wash: var(--dk-coral-wash); --dk-s-ink: var(--dk-coral-ink); --dk-s-dot: var(--dk-coral-deep); }
+.dkb-schip[data-tone="lilac"] { --dk-s-wash: var(--dk-lilac-wash); --dk-s-ink: var(--dk-lilac-ink); --dk-s-dot: var(--dk-lilac-ink); }
+.dkb-schip[data-tone="mint"]  { --dk-s-wash: var(--dk-mint-wash);  --dk-s-ink: var(--dk-mint-ink);  --dk-s-dot: var(--dk-mint); }
+.dkb-schip[data-tone="yolk"]  { --dk-s-wash: var(--dk-yolk-wash);  --dk-s-ink: var(--dk-yolk-ink);  --dk-s-dot: var(--dk-yolk-deep); }
+.dkb-schip[data-tone="sky"]   { --dk-s-wash: var(--dk-sky);        --dk-s-ink: var(--dk-blue-deep); --dk-s-dot: var(--dk-blue); }
+.dkb-schip[data-tone="quiet"] { --dk-s-wash: rgba(255,255,255,0.6); --dk-s-ink: var(--dk-navy-soft); --dk-s-dot: var(--dk-faint); }
+/* สถานะปัจจุบันปุ่มถูก disabled (กดซ้ำไม่ได้) — ต้องไม่จางเหมือนปุ่มที่ใช้ไม่ได้ */
+.dkb-schip b { font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.68; }
+.dkb-schip[data-zero="1"] { opacity: 0.42; }
+.dkb-schip[aria-pressed="true"]:disabled { opacity: 1; cursor: default; }
+.dkb-schip:disabled:not([aria-pressed="true"]) { opacity: 0.5; }
+
 /* ── ตัวกรองช่วงวันที่ ── */
 .dkb-flab {
   display: inline-flex; align-items: center; flex: none; padding-right: 2px;

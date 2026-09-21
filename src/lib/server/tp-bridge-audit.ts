@@ -53,9 +53,29 @@ const byOf = (pass: boolean, admin?: string): string => (pass ? "SlipOK อั�
 export function expectedBridgeRecords(o: Order): TPBridgeRecord[] {
   if (o.status === "ยกเลิก") return [];
   const dep = o.deposit;
+  const customer = o.customer || "ไม่ระบุชื่อ";
+
+  /* 🧰 งานเคลม/ทำใหม่ฟรี — ยอด 0 ทั้งใบ ไม่มีเงินเข้าสักบาท แต่เป็น "งานจริง" ที่ต้องขึ้นบอร์ด WIP กราฟฟิก
+     (เจ้าของร้านแจ้ง 21 ก.ย. 69: เคลมที่เปิดในเว็บไม่ขึ้นให้กราฟฟิกเลย · OD-260921-6979)
+     ใบพวกนี้เกิดมาพร้อมสถานะ "ชำระแล้ว" จาก /api/admin/orders/redo — ตัวเช็ค "มีเงินเข้าหรือยัง" ข้างล่างตัดทิ้งหมด
+     จึงต้องแยกมาก่อน เป็นเรคอร์ดใบเดียว (ไม่มีงวด/ใบเพิ่ม เพราะเก็บเงินกับใบเคลมไม่ได้อยู่แล้ว) */
+  if (o.claimOf)
+    return o.status === "ชำระแล้ว"
+      ? [
+          {
+            docId: o.id,
+            orderId: o.id,
+            customer,
+            kind: "first",
+            at: iso(o.paidReportedAt, o.savedAt),
+            verifiedBy: o.placedBy || "งานเคลม (เติมย้อนหลัง)",
+            noteSuffix: `งานเคลม ไม่คิดเงิน · จาก ${o.claimOf}`,
+          },
+        ]
+      : [];
+
   if (!(paidSoFar(o) > 0 || dep?.firstPaidAt)) return []; // ยังไม่มีเงินเข้า
   const out: TPBridgeRecord[] = [];
-  const customer = o.customer || "ไม่ระบุชื่อ";
 
   /**
    * ⚠️ เงินเข้าทาง "ช่องไหน" เป็นตัวตัดสินว่าควรมีเรคอร์ดใบไหน — ห้ามดูแค่ยอดรวม

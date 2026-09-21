@@ -90,8 +90,11 @@ let editReqBadgeCache: { at: number; n: number } | null = null;
 let stockWaitBadgeCache: { at: number; n: number; paid: number } | null = null;
 /** แคชป้าย "แพ็คเสร็จ รอลูกค้ามารับ" (เมนูลูกค้าที่มารับเอง) — ของที่วางรออยู่หน้าร้าน */
 let pickupBadgeCache: { at: number; n: number } | null = null;
-/** แคชป้าย "เคลมสินค้าที่ยังไม่ได้ตอบ" — เคสเคลมที่เงียบไปคือเคสที่บานปลาย ต้องเห็นตั้งแต่เมนู */
-let claimsBadgeCache: { at: number; n: number } | null = null;
+/**
+ * แคชป้าย "เคลมสินค้า" — ตัวเลขบนป้าย = เคสที่ยังเดินเรื่องอยู่ (เจ้าของร้านขอเห็นจำนวนเคลม 21 ก.ย. 69)
+ * เก็บ noReply ไว้ด้วยเพื่อเลือก "สีของป้าย": มีเคสที่ยังไม่ตอบลูกค้า = แดงเร่ง · ตอบครบแล้ว = เหลืองเตือน
+ */
+let claimsBadgeCache: { at: number; n: number; noReply: number } | null = null;
 /** แคชป้าย "ใบสมัครตัวแทนรออนุมัติ" — ใบสมัครเข้ามาวันละไม่กี่ใบ แต่ปล่อยค้างแล้วตัวแทนรอเก้อ */
 let dealerAppsBadgeCache: { at: number; n: number } | null = null;
 
@@ -137,8 +140,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [waitingQuotes, setWaitingQuotes] = useState(0);
   // badge แจ้ง "ลูกค้าขอแก้ไขออเดอร์" ที่ยังไม่มีใครกดจัดการ — งานค้างจริง หายเองเมื่อกด "จัดการแล้ว" ครบ
   const [openEditRequests, setOpenEditRequests] = useState(0);
-  // badge แจ้ง "เคลมสินค้า" ที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย — หายเองเมื่อตอบ/ปิดเคสครบ
+  // badge แจ้งจำนวน "เคลมสินค้า" ที่ยังเดินเรื่องอยู่ — หายเองเมื่อปิดเคสครบ (ตรงกับการ์ด "กำลังดำเนินการ" ในหน้าเคลม)
   const [openClaims, setOpenClaims] = useState(0);
+  // ในจำนวนนั้น มีกี่เคสที่ยังไม่มีใครตอบลูกค้าเลย — ใช้เลือกสีป้าย (แดง = ต้องรีบตอบ)
+  const [claimsNoReply, setClaimsNoReply] = useState(0);
   const [readyStockWait, setReadyStockWait] = useState(0);
   // badge เมนู "โอนแล้ว รอของเข้า" (งานขาย) — ลูกค้าโอนแล้วแต่ของยังไม่เข้า · มาจากคำถามเดียวกับป้ายรอของเข้า
   const [paidStockWait, setPaidStockWait] = useState(0);
@@ -407,19 +412,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }, [refreshPickupBadge]);
 
   /**
-   * 🧰 ป้ายเตือน "เคลมสินค้า" — นับเคสที่ยังเดินเรื่องอยู่และยังไม่มีใครตอบลูกค้าเลย
-   * เดิมเคลมเข้ามารู้ได้ทางเดียวคือไลน์แจ้งกลุ่มร้าน เลื่อนผ่านแล้วเคสเงียบยาว (เจ้าของร้านสั่ง 15 ก.ย. 69)
-   * ตัวเลขตรงกับช่อง "ยังไม่ตอบลูกค้า" ในหน้า /admin/claims
+   * 🧰 ป้ายเตือน "เคลมสินค้า" — ตัวเลข = เคสที่ยังเดินเรื่องอยู่ทั้งหมด (ใหม่ · กำลังตรวจสอบ · อนุมัติเคลม)
+   * เดิมนับเฉพาะเคสที่ "ยังไม่ตอบลูกค้า" ซึ่งไม่นับเคสที่ทีมงานเปิดเอง → เคลมที่แอดมินเปิดจากแชท LINE
+   * ไม่เคยขึ้นป้ายเลย เมนูดูว่างทั้งที่มีงานเคลมค้างอยู่ (เจ้าของร้านสั่ง 21 ก.ย. 69)
+   * ตัวเลขตรงกับการ์ด "กำลังดำเนินการ" ในหน้า /admin/claims · สีป้ายบอกความเร่ง (ดู claimsNoReply)
    */
   const claimsBadgeReady = pathname !== "/admin/login" && perms.includes("orders.view");
   const refreshClaimsBadge = useCallback(async () => {
     if (!claimsBadgeReady) return;
     try {
       const r = await fetch("/api/admin/claims/count", { cache: "no-store" });
-      const j = r.ok ? await r.json() : { n: 0 };
-      const n = Number(j?.n) || 0;
-      claimsBadgeCache = { at: Date.now(), n };
+      const j = r.ok ? await r.json() : { open: 0, n: 0 };
+      const n = Number(j?.open) || 0;
+      const noReply = Number(j?.n) || 0;
+      claimsBadgeCache = { at: Date.now(), n, noReply };
       setOpenClaims(n);
+      setClaimsNoReply(noReply);
     } catch {
       /* เน็ตสะดุด → คงเลขเดิมไว้ */
     }
@@ -428,9 +436,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (!claimsBadgeReady) return;
     // อยู่หน้าเคลม = ดึงสด (เพิ่งตอบลูกค้าไป ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาที
     const fresh = pathname.startsWith("/admin/claims");
-    const cached = claimsBadgeCache && Date.now() - claimsBadgeCache.at < 60_000 ? claimsBadgeCache.n : null;
-    if (cached !== null && !fresh) {
-      setOpenClaims(cached);
+    const cached = claimsBadgeCache && Date.now() - claimsBadgeCache.at < 60_000 ? claimsBadgeCache : null;
+    if (cached && !fresh) {
+      setOpenClaims(cached.n);
+      setClaimsNoReply(cached.noReply);
       return;
     }
     void refreshClaimsBadge();
@@ -647,6 +656,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     const active = m.href === activeHref;
     const badgeN = badgeOf(m.href);
     const hasBadge = badgeN > 0;
+    /* 🧰 เมนูเคลม: ป้ายบอก "จำนวนเคสที่ยังเดินเรื่อง" — แดง = มีเคสที่ยังไม่ได้ตอบลูกค้า (ต้องรีบ)
+       เหลือง = ตอบลูกค้าครบแล้ว แต่ยังมีงานเคลมค้างอยู่ (เดินเรื่อง/รอผลิตใหม่) — เมนูอื่นแดงเหมือนเดิม */
+    const calmBadge = m.href === "/admin/claims" && claimsNoReply === 0;
+    const badgeCls = calmBadge ? "bg-amber-400 text-[#5b3b00]" : "bg-rose-500 text-white";
     return (
       <Link
         key={m.href}
@@ -663,7 +676,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               : hasBadge && m.href === "/admin/edit-requests"
                 ? `${m.label} — ลูกค้าขอแก้ไข ${badgeN} ใบ ยังไม่ได้จัดการ`
                 : hasBadge && m.href === "/admin/claims"
-                  ? `${m.label} — ${badgeN} เรื่อง ยังไม่ได้ตอบลูกค้า`
+                  ? `${m.label} — กำลังเคลม ${badgeN} เรื่อง${claimsNoReply ? ` · ยังไม่ได้ตอบลูกค้า ${claimsNoReply}` : " · ตอบลูกค้าครบแล้ว"}`
                   : hasBadge && m.href === "/admin/dealers"
                     ? `${m.label} — ใบสมัคร ${badgeN} ใบ รออนุมัติ`
                     : hasBadge && m.href === "/admin/stock-wait"
@@ -694,11 +707,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         {/* โหมดพับก็บอกเป็น "จำนวน" ไม่ใช่จุดเปล่า ๆ — จุดบอกได้แค่ว่ามีงาน ไม่ได้บอกว่ามีกี่ใบ */}
         {hasBadge &&
           (rail ? (
-            <span className="absolute right-0.5 top-0.5 inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9.5px] font-bold leading-none text-white ring-2 ring-[#173A6B]">
+            <span className={`absolute right-0.5 top-0.5 inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-full px-1 text-[9.5px] font-bold leading-none ring-2 ring-[#173A6B] ${badgeCls}`}>
               {badgeN > 9 ? "9+" : badgeN}
             </span>
           ) : (
-            <span className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10.5px] font-bold text-white">
+            <span className={`ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold ${badgeCls}`}>
               {badgeN > 99 ? "99+" : badgeN}
             </span>
           ))}

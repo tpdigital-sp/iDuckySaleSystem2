@@ -49,12 +49,17 @@ const TONE: Record<ClaimStatus, string> = {
   ปฏิเสธ: "var(--dk-quiet)",
   เสร็จสิ้น: "var(--dk-quiet)",
 };
-const CHIP: Record<ClaimStatus, "coral" | "lilac" | "mint" | "quiet"> = {
+/**
+ * สีป้าย/ชิปต่อสถานะ — 5 สถานะต้องได้คนละสี ไม่งั้นแถบเปลี่ยนสถานะกวาดตาแล้วแยกไม่ออก (เจ้าของร้านสั่ง 21 ก.ย. 69)
+ * ปฏิเสธ = เหลืองเตือน (ต้องอธิบายลูกค้า ไม่ใช่งานที่จบสวย) · เสร็จสิ้น = ฟ้าเย็น (ปิดเคสเรียบร้อย)
+ * แถบสีซ้ายการ์ด (TONE) ยังเงียบเหมือนเดิมสำหรับเคสที่ปิดแล้ว — งานค้างต้องเด่นกว่างานจบเสมอ
+ */
+const CHIP: Record<ClaimStatus, "coral" | "lilac" | "mint" | "yolk" | "sky"> = {
   ใหม่: "coral",
   กำลังตรวจสอบ: "lilac",
   อนุมัติเคลม: "mint",
-  ปฏิเสธ: "quiet",
-  เสร็จสิ้น: "quiet",
+  ปฏิเสธ: "yolk",
+  เสร็จสิ้น: "sky",
 };
 
 const thTime = (iso: string) => {
@@ -187,6 +192,7 @@ function ClaimsPageInner() {
                   onClick={() => setFilter(s)}
                   label={s}
                   count={all.filter((c) => c.status === s).length}
+                  tone={CHIP[s]}
                 />
               ))}
             </TabRow>
@@ -389,7 +395,9 @@ function ClaimCard({ claim: c, focus, onUpdate }: { claim: Claim; focus?: boolea
                 type="button"
                 disabled={busy || s === c.status}
                 aria-pressed={s === c.status}
-                className="dkb-fchip"
+                className="dkb-schip"
+                data-tone={CHIP[s]}
+                title={s === c.status ? `สถานะตอนนี้: ${s}` : `เปลี่ยนสถานะเป็น "${s}"`}
                 onClick={() => void patch({ status: s })}
               >
                 <i />
@@ -467,6 +475,12 @@ function ClaimCard({ claim: c, focus, onUpdate }: { claim: Claim; focus?: boolea
                 {redoBusy ? "กำลังสร้าง…" : "♻️ สร้างงานผลิตใหม่ (ฟรี)"}
               </Btn>
             ) : null}
+            {/* บอกให้ชัดว่าไม่ต้องกลับมากดปิดเคสเอง — ระบบปิดให้ตอนของถึงมือลูกค้า (21 ก.ย. 69) */}
+            {c.resolution?.redoOrderId && c.status !== "เสร็จสิ้น" && c.status !== "ปฏิเสธ" && (
+              <span className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+                · ปิดเคสให้เองเมื่อใบผลิตใหม่เป็น “จัดส่งแล้ว”
+              </span>
+            )}
           </div>
 
           {err && (

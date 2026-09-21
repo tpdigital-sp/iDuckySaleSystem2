@@ -1,6 +1,7 @@
 import { reconcileOrderTax, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { syncOrderEarlyPay } from "./order-early-pay";
 import { syncItemsToTP } from "./tp-report";
+import { closeClaimsForDeliveredRedo } from "./claims-db";
 import { alertNeedsPurchase, stampNeedsPurchaseAlert } from "./needs-purchase";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
@@ -134,5 +135,12 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
    * fire-and-forget แบบเดียวกับ sync ตัวอื่นใน tp-report (พังเงียบ ไม่ทำให้บันทึกออเดอร์ล้ม)
    */
   if (!error && changed) await syncItemsToTP(final);
+  /**
+   * ✅ ใบงานเคลม "จัดส่งแล้ว/เสร็จสิ้น" → ปิดเคสในสมุดเคลมให้เอง (เจ้าของร้านสั่ง 21 ก.ย. 69)
+   * เดิมต้องกดปิดเองที่หน้าเคลม ซึ่งไม่มีใครกลับไปกด → เคสค้าง "อนุมัติเคลม" ตลอดกาล ป้ายจำนวนไม่มีวันเป็น 0
+   * ยิงเฉพาะตอน "สถานะเพิ่งเปลี่ยน" ในคำขอนี้ — บันทึกเรื่องอื่นบนใบเดิมจะได้ไม่ไปแตะเคสซ้ำ
+   * ⏳ await: Netlify แช่เครื่องทันทีที่ตอบ · ตัวมันกลืน error เองอยู่แล้ว ไม่ทำให้บันทึกออเดอร์ล้ม
+   */
+  if (!error && final.claimOf && prev?.status !== final.status) await closeClaimsForDeliveredRedo(sb, final, by);
   return { order: final, error };
 }

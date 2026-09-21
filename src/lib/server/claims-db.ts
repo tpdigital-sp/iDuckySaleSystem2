@@ -85,6 +85,38 @@ export async function claimsOfOrder(sb: SupabaseClient, orderId: string): Promis
   return (data ?? []).map((r) => r.data as Claim).filter((c) => !!c?.id);
 }
 
+/**
+ * ✅ ปิดเคสเคลมให้เองเมื่อ "งานผลิตใหม่ส่งถึงลูกค้าแล้ว" (เจ้าของร้านสั่ง 21 ก.ย. 69)
+ *
+ * เดิมสถานะเคลมเปลี่ยนด้วยมือล้วน — กดสร้างงานผลิตใหม่แล้วเคสค้างที่ "อนุมัติเคลม" ตลอดไป
+ * ต่อให้ของถึงมือลูกค้าแล้ว → ป้ายจำนวนเคลมข้างเมนูไม่มีวันกลับเป็น 0 และสถิติเคลมอ่านไม่ได้จริง
+ *
+ * ปิดเมื่อใบผลิตใหม่เข้าสถานะ "จัดส่งแล้ว" หรือ "เสร็จสิ้น" (ถึงก่อนอันไหนใช้อันนั้น)
+ * ปิดเฉพาะเคสที่ผูกกับใบนี้จริง (resolution.redoOrderId) และยังเดินเรื่องอยู่ — เคสที่ปิด/ปฏิเสธแล้วไม่แตะ
+ * ทำงานที่ประตูเขียนออเดอร์ (order-write.ts) ทางเข้าใหม่ทุกทางจึงได้ไปด้วย (ยิงเลขพัสดุ · สถานีแพ็ค · แอดมินกดเอง)
+ */
+export async function closeClaimsForDeliveredRedo(sb: SupabaseClient, order: Order, by: string): Promise<void> {
+  if (!order.claimOf) return; // ไม่ใช่ใบงานเคลม
+  if (order.status !== "จัดส่งแล้ว" && order.status !== "เสร็จสิ้น") return;
+  try {
+    const cases = await claimsOfOrder(sb, order.id);
+    for (const c of cases) {
+      if (c.resolution?.redoOrderId !== order.id || !isOpenClaim(c)) continue;
+      const at = new Date().toISOString();
+      c.log = [
+        ...(c.log ?? []),
+        { at, by, action: `สถานะ ${c.status} → เสร็จสิ้น (ปิดอัตโนมัติ — งานผลิตใหม่ ${order.id} ${order.status})` },
+      ];
+      c.status = "เสร็จสิ้น";
+      const { error } = await saveClaim(sb, c);
+      if (error) console.error("[claims] ปิดเคสอัตโนมัติไม่สำเร็จ:", c.id, error);
+    }
+  } catch (e) {
+    // ปิดเคสไม่สำเร็จห้ามทำให้บันทึกออเดอร์ล้ม — แอดมินยังกดปิดเองได้ที่หน้าเคลม
+    console.error("[claims] ปิดเคสอัตโนมัติไม่สำเร็จ:", (e as Error)?.message);
+  }
+}
+
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 export const CLAIM_PHOTO_MAX_BYTES = 15 * 1024 * 1024;
 

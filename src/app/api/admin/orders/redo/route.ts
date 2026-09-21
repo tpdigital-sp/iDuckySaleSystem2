@@ -5,6 +5,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { insertOrder, updateOrder } from "@/lib/server/order-write";
+import { reportPaidToTP } from "@/lib/server/tp-report";
 import { findOpenClaimByOrder, insertClaim, loadClaim, newClaimId, notifyClaimOpened, saveClaim, withSignedPhotos } from "@/lib/server/claims-db";
 import { claimTypeFromReason, type Claim } from "@/lib/claims";
 
@@ -124,6 +125,13 @@ export async function POST(req: Request) {
 
   const { error: insErr } = await insertOrder(sb, order, by);
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+
+  /* 🧰➡️🎨 งานเคลมต้องขึ้นบอร์ด WIP กราฟฟิกเหมือนออเดอร์ที่ชำระแล้วทั่วไป (เจ้าของร้านแจ้ง 21 ก.ย. 69 · OD-260921-6979)
+     ใบเคลมเกิดมาพร้อมสถานะ "ชำระแล้ว" ตรงนี้เลย ไม่ได้ผ่าน PATCH เปลี่ยนสถานะและไม่มีสลิปให้ตรวจ
+     → ไม่มีใครยิงเรคอร์ดสะพาน (iduckyPaidOrders) ให้ = กราฟฟิกไม่เห็นงานเลย ต้องมาบอกกันปากเปล่า
+     ยอดเป็น 0 ทั้งใบ — ฝั่ง msVerify ไม่ดึงใบยอด 0 เข้าระบบบัญชี (จับคู่ยอดธนาคารไม่ได้) จึงไม่รบกวนงานเคลียยอด
+     ⏳ await: Netlify แช่เครื่องทันทีที่ตอบ response — fire-and-forget ตายกลางทางได้ (ดู tp-bridge-audit) */
+  if (mode === "claim") await reportPaidToTP(order, by, { noteSuffix: `งานเคลม ไม่คิดเงิน · จาก ${fromId}` });
 
   // จดไว้ที่ออเดอร์ต้นทางด้วย — เปิดดูงานที่ทำใหม่ได้จากทั้งสองฝั่ง
   const srcNext = withLog(
