@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { hasQuoteOption, priceRange, type Product } from "@/lib/products";
@@ -7,6 +8,23 @@ import { snapshotRevision } from "@/lib/server/product-revisions";
 import { invalidateProductsSlim } from "@/lib/server/products-slim";
 
 export const runtime = "nodejs";
+
+/**
+ * ⏱️ ล้างแคชหน้าสินค้าสาธารณะทันทีที่แอดมินบันทึก/ลบ (21 ก.ย. 69)
+ * หน้า /products/[id] เก็บแคช 1 ชั่วโมง (ดู revalidate ในหน้านั้น) เพื่อไม่ให้ลูกค้าเจอหน้าสร้างสด 3.3 วิ
+ * ถ้าไม่ล้างให้ตรงนี้ แอดมินแก้ราคาแล้วจะเห็นของเก่าได้นานถึงชั่วโมง
+ * ⚠️ หน้าเดียวเข้าได้ 2 ทาง (id อังกฤษ + ลิงก์ตามชื่อ slug) ต้องล้างทั้งคู่
+ */
+function clearProductPageCache(p: { id: string; slug?: string }) {
+  for (const seg of [p.id, p.slug]) {
+    if (!seg) continue;
+    try {
+      revalidatePath(`/products/${seg}`);
+    } catch {
+      /* ล้างไม่ได้ก็ไม่ควรทำให้การบันทึกล้ม — อย่างช้าหน้าจะสดเองเมื่อครบชั่วโมง */
+    }
+  }
+}
 
 /** บันทึก/อัปเดตสินค้า (เฉพาะแอดมินที่ล็อกอิน) */
 export async function POST(req: Request) {
@@ -83,7 +101,10 @@ export async function POST(req: Request) {
     },
     { onConflict: "id" }
   );
-  if (!error) invalidateProductsSlim(); // หน้าคลังสต๊อกอ่านตัวเลือกจากแคช — บันทึกสินค้าแล้วต้องเห็นของใหม่
+  if (!error) {
+    invalidateProductsSlim(); // หน้าคลังสต๊อกอ่านตัวเลือกจากแคช — บันทึกสินค้าแล้วต้องเห็นของใหม่
+    clearProductPageCache(saved); // หน้าร้านต้องเห็นของใหม่ทันทีเหมือนกัน ไม่ต้องรอแคชหมดอายุ
+  }
   return error
     ? NextResponse.json({ error: error.message }, { status: 500 })
     : NextResponse.json({ ok: true, savedAt: saved.savedAt });
@@ -101,5 +122,6 @@ export async function DELETE(req: Request) {
   const { data: cur } = await sb.from("products").select("data").eq("id", id).maybeSingle();
   await snapshotRevision(sb, id, cur?.data, gate.actor, "delete");
   const { error } = await sb.from("products").delete().eq("id", id);
+  if (!error) clearProductPageCache({ id, slug: (cur?.data as Product | undefined)?.slug });
   return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ ok: true });
 }
