@@ -114,7 +114,7 @@ function matGroup(band: (typeof MAT_BANDS)[number]): ProductOption {
   ];
   return {
     label: matLabel(band.suffix),
-    note: `เนื้อของ "แผ่นอะคริลิคที่เพิ่ม" เท่านั้น (ตัว Griptok ยังเป็นฐานสีใสตามเดิม) · เนื้อพิเศษเพิ่ม 1-10 ชิ้น ชิ้นละ ${MAT_BELOW} บาท · ${MAT_FROM_QTY} ชิ้นขึ้นไป ชิ้นละ ${band.extra} บาท`,
+    note: `เนื้อของแผ่นที่เพิ่มเท่านั้น (ตัว Griptok เป็นฐานใส) · เนื้อพิเศษ +฿${MAT_BELOW}/ชิ้น · ${MAT_FROM_QTY} ชิ้นขึ้นไป +฿${band.extra}`,
     choices,
     display: "cards",
     section: SECTION,
@@ -126,7 +126,7 @@ function matGroup(band: (typeof MAT_BANDS)[number]): ProductOption {
 function shadeGroup(): ProductOption {
   return {
     label: SHADE_LABEL,
-    note: "เฉดเดียวกับที่โชว์ในชาร์ตสีของร้าน · ค่าเนื้อพิเศษคิดในกลุ่มด้านบนแล้ว เลือกเฉดไหนก็ราคาเท่ากัน",
+    note: "ทุกเฉดราคาเท่ากัน (ค่าเนื้อพิเศษคิดในกลุ่มด้านบนแล้ว)",
     choices: SHADES.map((name) => ({ name, imageSrc: acrylicColorImage(name) })),
     display: "dropdown",
     section: SECTION,
@@ -139,7 +139,7 @@ function charmGroup(): ProductOption {
   const ladder = CHARM_SIZES.map((s) => `${s.name} ${s.small}/${s.below}/${s.extra}`).join(" · ");
   return {
     label: CHARM_LABEL,
-    note: `แผ่นอะคริลิคชิ้นเล็กห้อยกับ "แผ่นอะคริลิคที่เพิ่ม" · เลือกเนื้อ/เฉดของติ่งแยกจากแผ่นได้ · ราคาต่อติ่ง (1-${CHARM_SMALL_UP_TO} ชิ้น / 11-${CHARM_FROM_QTY - 1} ชิ้น / ${CHARM_FROM_QTY} ชิ้นขึ้นไป): ${ladder} บาท — ฐาน 2 ซม. ใหญ่กว่านั้นบวก ซม. ละ 10 บาท`,
+    note: `ชิ้นเล็กห้อยกับแผ่นที่เพิ่ม เลือกเนื้อ/เฉดแยกจากแผ่นได้ · ต่อติ่ง (1-${CHARM_SMALL_UP_TO} / 11-${CHARM_FROM_QTY - 1} / ${CHARM_FROM_QTY} ชิ้นขึ้นไป): ${ladder}`,
     choices: [
       { name: CHARM_OFF },
       ...CHARM_SIZES.map((s) => ({
@@ -166,7 +166,7 @@ function charmGroup(): ProductOption {
 function charmMatGroup(): ProductOption {
   return {
     label: CHARM_MAT_LABEL,
-    note: `เนื้อของติ่งห้อยเอง เลือกคนละแบบกับแผ่นที่เพิ่มได้ · เนื้อพิเศษเพิ่ม 1-10 ชิ้น ติ่งละ ${MAT_BELOW} บาท · ${MAT_FROM_QTY} ชิ้นขึ้นไป ติ่งละ ${CHARM_MAT_EXTRA} บาท`,
+    note: `เลือกคนละแบบกับแผ่นได้ · เนื้อพิเศษ +฿${MAT_BELOW}/ติ่ง · ${MAT_FROM_QTY} ชิ้นขึ้นไป +฿${CHARM_MAT_EXTRA}`,
     choices: [
       { name: CLEAR, popular: true, imageSrc: IMG_CLEAR },
       { name: C02, imageSrc: acrylicColorImage(C02) },
@@ -182,7 +182,7 @@ function charmMatGroup(): ProductOption {
 function charmShadeGroup(): ProductOption {
   return {
     label: CHARM_SHADE_LABEL,
-    note: "เฉดของติ่งห้อย — ราคาเท่ากันทุกเฉด",
+    note: "ทุกเฉดราคาเท่ากัน",
     choices: SHADES.map((name) => ({ name, imageSrc: acrylicColorImage(name) })),
     display: "dropdown",
     section: SECTION,
