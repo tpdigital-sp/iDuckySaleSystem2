@@ -17,6 +17,7 @@ import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrd
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { setAppendTarget } from "@/lib/append-order";
+import { rememberOrderLink } from "@/lib/my-order-links";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
@@ -440,8 +441,12 @@ export default function CustomerOrderPage() {
       setLoading(true);
       const res = await fetchOrderForCustomer(orderId, key);
       setLoading(false);
-      if (res.order) setOrder(res.order);
-      else setLoadErr(res.error ?? "เปิดออเดอร์ไม่สำเร็จ");
+      if (res.order) {
+        setOrder(res.order);
+        // 🔗 จำลิงก์ใบนี้ไว้ในเครื่อง — ลูกค้าที่ไม่ได้สมัครสมาชิกกลับเข้ามาได้จาก /order/find
+        // (เปิดจากลิงก์ที่แอดมินส่งให้ทางไลน์ครั้งเดียว ครั้งต่อไปก็ไม่ต้องขอใหม่แล้ว)
+        rememberOrderLink({ id: res.order.id, key, name: res.order.customer, total: orderTotal(res.order) });
+      } else setLoadErr(res.error ?? "เปิดออเดอร์ไม่สำเร็จ");
     },
     [orderId]
   );
@@ -559,7 +564,11 @@ export default function CustomerOrderPage() {
             <h1 className="mt-3 text-xl">เปิดออเดอร์ไม่ได้</h1>
             <p className="mt-2 text-sm t-soft">{loadErr}</p>
             <p className="mt-1 text-xs t-faint">กรุณาเปิดจากลิงก์ที่ร้านส่งให้ (ลิงก์ต้องมีรหัสครบ)</p>
-            <Link href="/products" className="ord-btn yolk lg mt-6">
+            {/* 🔎 ทางออกแทนที่จะตันอยู่ตรงนี้ — ลิงก์หาย/คัดลอกมาไม่ครบ ก็ค้นด้วยเบอร์โทร + เลขออเดอร์ได้ */}
+            <Link href="/order/find" className="ord-btn yolk lg mt-6">
+              🔎 ตามหาออเดอร์ด้วยเบอร์โทร
+            </Link>
+            <Link href="/products" className="ord-btn mt-3">
               🛍️ ไปเลือกสินค้า
             </Link>
           </div>

@@ -39,11 +39,18 @@ function toCustomer(user: User | null | undefined): Customer | null {
   };
 }
 
+/**
+ * ข้อความจาก Supabase เป็นอังกฤษล้วน — แปลเป็นไทยให้ลูกค้าอ่านรู้เรื่อง (เจ้าของร้านสั่ง 21 ก.ย. 69)
+ * และที่สำคัญกว่าคือ "บอกทางออก" ไม่ใช่แค่บอกว่าผิด — ลูกค้าที่เจอ "รหัสผ่านไม่ถูก" ส่วนใหญ่
+ * คือคนที่ไม่เคยสมัครสมาชิก (สั่งแบบ guest) หน้าเข้าสู่ระบบจึงต้องพาไป /order/find ต่อ
+ */
 function mapErr(msg: string): string {
-  if (/already registered|already exists|user already/i.test(msg)) return "This email is already registered";
-  if (/invalid login|invalid credentials/i.test(msg)) return "Incorrect email or password";
-  if (/at least 6|password should be/i.test(msg)) return "Password must be at least 6 characters";
-  if (/email.*invalid|invalid.*email/i.test(msg)) return "That email address looks invalid";
+  if (/already registered|already exists|user already/i.test(msg)) return "อีเมลนี้สมัครไว้แล้ว — กดเข้าสู่ระบบได้เลยครับ";
+  if (/invalid login|invalid credentials/i.test(msg)) return "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+  if (/email not confirmed/i.test(msg)) return "ยังไม่ได้ยืนยันอีเมล — เปิดอีเมลที่เราส่งไปแล้วกดยืนยันก่อนนะครับ";
+  if (/at least 6|password should be/i.test(msg)) return "รหัสผ่านต้องยาว 6 ตัวขึ้นไป";
+  if (/email.*invalid|invalid.*email/i.test(msg)) return "รูปแบบอีเมลไม่ถูกต้อง";
+  if (/rate limit|too many requests|for security purposes/i.test(msg)) return "ลองบ่อยเกินไป — รอสักครู่แล้วลองใหม่ครับ";
   return msg;
 }
 

@@ -3961,6 +3961,28 @@ to{opacity:1;transform:none}}
 .dl .auth-line:hover{background:#05B34C;transform:translateY(-3px);box-shadow:0 14px 26px rgba(6,199,85,.34)}
 .dl .auth-line:active{transform:translateY(1px) scale(.99)}
 
+/* --- รายการออเดอร์ (หน้า /order/find) --- */
+.dl .auth-orders{display:flex;flex-direction:column;gap:9px;max-width:376px;margin:14px auto 0}
+.dl .auth-orders-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  max-width:376px;margin:18px auto 0;padding-inline:6px}
+.dl .auth-orders-h b{font-family:var(--display);font-weight:500;font-size:.9rem;color:var(--navy)}
+.dl .auth-orders-h span{font-size:.72rem;color:var(--navy-soft)}
+/* แถวออเดอร์ = พื้นที่กดทั้งแถบ (สูง >=56px กดด้วยนิ้วโป้งได้) · ปุ่มลืมใบนี้ซ้อนมุมขวา */
+.dl .auth-order{position:relative;display:block;background:#fff;border:1.5px solid var(--sky-200);
+  border-radius:var(--r-s);padding:11px 44px 11px 15px;min-height:56px;box-sizing:border-box;
+  transition:border-color .2s ease,box-shadow .2s ease,transform .2s cubic-bezier(.34,1.56,.64,1)}
+.dl .auth-order:hover{border-color:var(--blue);box-shadow:0 8px 18px -10px rgba(44,129,196,.5);transform:translateY(-1px)}
+.dl .auth-order:active{transform:translateY(0) scale(.995)}
+.dl .auth-order .no{font-family:var(--display);font-weight:500;font-size:.95rem;color:var(--navy);
+  font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.dl .auth-order .meta{display:block;margin-top:2px;font-size:.74rem;color:var(--navy-soft);line-height:1.5}
+.dl .auth-order .sum{font-variant-numeric:tabular-nums;font-weight:600;color:var(--blue-deep)}
+.dl .auth-order .go{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--blue-deep);font-size:1.1rem}
+/* ปุ่ม "เอาออกจากเครื่องนี้" — พื้นที่กด 44px แต่ไอคอนเล็ก ไม่แย่งสายตาจากตัวออเดอร์ */
+.dl .auth-forget{all:unset;cursor:pointer;position:absolute;right:-4px;top:-10px;width:44px;height:44px;
+  display:grid;place-items:center;color:var(--navy-soft);font-size:.8rem;border-radius:50%}
+.dl .auth-forget:hover{color:var(--navy)}
+
 /* --- ลิงก์ท้ายการ์ด --- */
 .dl .auth-back{display:block;text-align:center;margin-top:20px;font-size:.82rem;color:var(--navy-soft)}
 .dl .auth-back:hover{color:var(--navy);text-decoration:underline}

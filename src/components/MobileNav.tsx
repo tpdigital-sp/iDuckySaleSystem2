@@ -156,7 +156,8 @@ export default function MobileNav({ open, onClose, logo }: { open: boolean; onCl
                   <span>→</span>
                 </Link>
               )}
-              <Link href="/account/orders" onClick={onClose}>
+              {/* ยังไม่ล็อกอิน → /order/find (ค้นด้วยเบอร์โทร) — เดิมพาไปหน้าประวัติที่บังคับล็อกอิน แล้วลูกค้าที่สั่งแบบ guest ก็ตัน */}
+              <Link href={customer ? "/account/orders" : "/order/find"} onClick={onClose}>
                 <i>📦</i>
                 <b>ติดตามออเดอร์</b>
                 <span>→</span>

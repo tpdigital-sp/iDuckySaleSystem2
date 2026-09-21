@@ -31,6 +31,7 @@ import {
 import { giftsFor, giftSizesOf, giftUnlock, resolveGiftSize, splitGiftBySheet, readGiftSizes, readGiftArtwork, giftNeedsArtwork } from "@/lib/gifts";
 import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
+import { rememberOrderLink } from "@/lib/my-order-links";
 import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
 import { parseReuseArt, reuseArtText, type Order, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
@@ -559,6 +560,10 @@ export default function CheckoutPage() {
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
     lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
     if (res.coupon?.applied) localStorage.removeItem("ducky_coupon"); // คูปองถูกตัดใช้แล้ว
+    // 🔗 จำลิงก์ออเดอร์ไว้ในเครื่อง — ลูกค้าที่ไม่ได้สมัครสมาชิกจะกลับเข้าออเดอร์ได้จาก /order/find
+    // แม้ปิดเบราว์เซอร์ไปแล้ว (เดิมลิงก์โชว์ครั้งเดียวตรงนี้ ปิดแล้วหายเลย ต้องรอแอดมินส่งให้ทางไลน์)
+    // โหมดพนักงานสั่งแทนลูกค้าไม่ต้องจำ — ไม่งั้นเครื่องร้านจะสะสมออเดอร์ของลูกค้าคนอื่นไว้เต็มไปหมด
+    if (!staffMode) rememberOrderLink({ id: res.orderId, key: res.key, name: name.trim(), total });
     setPlaced({
       id: res.orderId,
       text: lines.join("\n"),
@@ -698,6 +703,14 @@ export default function CheckoutPage() {
           </button>
           <p className="mt-2 text-[11px] leading-relaxed text-stone-400">
             เก็บลิงก์นี้ไว้นะครับ — ใช้เช็คสถานะ · <strong className="text-stone-500">ดูแบบงานที่กราฟฟิกทำ และกดอนุมัติ</strong>
+          </p>
+          {/* 🔎 ทางกลับเข้าออเดอร์เมื่อลิงก์หาย — ลูกค้าที่ไม่ได้สมัครสมาชิกไม่มีหน้า "ประวัติออเดอร์" ให้เปิด */}
+          <p className="mt-1.5 text-[11px] leading-relaxed text-stone-500">
+            ทำลิงก์หาย? เข้าที่{" "}
+            <Link href="/order/find" className="font-bold text-emerald-700 underline underline-offset-2">
+              ตามหาออเดอร์
+            </Link>{" "}
+            แล้วกรอกเบอร์โทร + เลขออเดอร์ได้เลย
           </p>
         </div>
 

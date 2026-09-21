@@ -179,6 +179,11 @@ function LoginInner() {
                       ลืมรหัสผ่าน?
                     </Link>
                   </div>
+                  <div className="auth-row" style={{ justifyContent: "center" }}>
+                    <Link href="/order/find" className="auth-link">
+                      🔎 เช็คออเดอร์โดยไม่ต้องล็อกอิน
+                    </Link>
+                  </div>
                 </div>
               </>
             ) : (
@@ -225,6 +230,23 @@ function LoginInner() {
 
             {err && <p className="auth-msg err">{err}</p>}
             {confirmMsg && <p className="auth-msg ok">{confirmMsg}</p>}
+
+            {/*
+              🔎 เข้าสู่ระบบไม่ผ่าน ส่วนใหญ่แปลว่า "ไม่เคยสมัคร" ไม่ใช่ "จำรหัสผิด"
+              ลูกค้าร้านนี้สั่งแบบไม่ล็อกอินเป็นหลัก — หน้านี้จึงต้องพาไปดูออเดอร์ให้ได้ ไม่ใช่ปล่อยให้วนรีเซ็ตรหัส
+              (เคสจริง 21 ก.ย. 69: รอลิงก์รีเซ็ตที่ไม่มีวันมา จนแอดมินส่งลิงก์ออเดอร์ให้ทางไลน์)
+            */}
+            {mode === "login" && err.includes("ไม่ถูกต้อง") && (
+              <div className="auth-msg ok" style={{ textAlign: "left" }}>
+                <b>เคยสั่งของแต่ไม่ได้สมัครสมาชิก?</b> ออเดอร์แบบนั้นจะไม่มีรหัสผ่านให้เข้าครับ
+                <br />
+                เข้าดูออเดอร์ได้เลยที่{" "}
+                <Link href="/order/find" className="auth-link">
+                  ตามหาออเดอร์
+                </Link>{" "}
+                — ใช้เบอร์โทร + เลขออเดอร์
+              </div>
+            )}
 
             <div className="auth-actions">
               <button type="button" onClick={submit} disabled={busy} className="btn btn-yolk">

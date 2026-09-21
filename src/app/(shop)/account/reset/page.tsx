@@ -22,6 +22,8 @@ export default function ResetPasswordPage() {
   const [sent, setSent] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState("");
+  /** ผลตรวจอีเมลก่อนส่งลิงก์ — "none" ไม่มีบัญชี · "line" บัญชี LINE (ดู /api/auth/reset-check) */
+  const [noAccount, setNoAccount] = useState<"none" | "line" | null>(null);
 
   // ตรวจว่ามาจากลิงก์อีเมลไหม (Supabase ยิง event PASSWORD_RECOVERY) หรือมี session อยู่แล้ว
   useEffect(() => {
@@ -40,10 +42,30 @@ export default function ResetPasswordPage() {
     };
   }, []);
 
-  async function sendLink() {
+  /**
+   * ส่งลิงก์รีเซ็ต — แต่ตรวจก่อนว่าอีเมลนี้มีบัญชีจริงไหม
+   * ทำไม: Supabase ตอบ "ส่งแล้ว" เหมือนกันหมด ลูกค้าที่ไม่เคยสมัคร (สั่งแบบ guest) เลยนั่งรออีเมลที่ไม่มีวันมา
+   * `force` = ลูกค้ารู้แล้วว่าเป็นบัญชี LINE แต่ยังอยากตั้งรหัสผ่าน → ส่งให้ตามที่ขอ
+   */
+  async function sendLink(force = false) {
     setErr("");
+    setNoAccount(null);
     if (!email.trim()) return setErr("กรอกอีเมลที่สมัครไว้ก่อนนะครับ");
     setBusy(true);
+    if (!force) {
+      const chk = await fetch("/api/auth/reset-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      })
+        .then((r) => r.json())
+        .catch(() => ({ status: "unknown" as const }));
+      if (chk.status === "none" || chk.status === "line") {
+        setBusy(false);
+        setNoAccount(chk.status);
+        return;
+      }
+    }
     const res = await requestPasswordReset(email.trim());
     setBusy(false);
     if (!res.ok) return setErr(res.error ?? "ส่งลิงก์ไม่สำเร็จ");
@@ -102,8 +124,10 @@ export default function ResetPasswordPage() {
                 </>
               )
             ) : sent ? (
-              <p className="auth-msg ok">
+              <p className="auth-msg ok" style={{ textAlign: "left" }}>
                 📧 ส่งลิงก์รีเซ็ตไปที่ <b>{email}</b> แล้ว — เปิดอีเมลแล้วกดลิงก์เพื่อตั้งรหัสใหม่ได้เลย
+                <br />
+                ไม่เห็นในกล่องจดหมาย ลองดูใน <b>จดหมายขยะ/Spam</b> ด้วยนะครับ · เกิน 10 นาทีแล้วยังไม่มา ทักไลน์ร้านได้เลย
               </p>
             ) : (
               <>
@@ -114,17 +138,50 @@ export default function ResetPasswordPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="อีเมล *"
                     aria-label="อีเมล"
-                    onKeyDown={(e) => e.key === "Enter" && !busy && sendLink()}
+                    onKeyDown={(e) => e.key === "Enter" && !busy && sendLink(false)}
                     className="auth-input"
                   />
                   <p className="auth-hint">* จำเป็นต้องกรอก</p>
                 </div>
                 {err && <p className="auth-msg err">{err}</p>}
+
+                {/* ── ไม่มีบัญชีอีเมลนี้ / เป็นบัญชี LINE — บอกตรง ๆ แล้วพาไปทางที่ใช้ได้จริง ── */}
+                {noAccount === "none" && (
+                  <div className="auth-msg err" style={{ textAlign: "left" }}>
+                    <b>ยังไม่มีบัญชีที่ใช้อีเมลนี้ครับ</b> — ส่งลิงก์ไปก็จะไม่มีอีเมลเข้า
+                    <br />
+                    ถ้าเคยสั่งของโดย<b>ไม่ได้สมัครสมาชิก</b> เข้าดูออเดอร์ได้ที่{" "}
+                    <Link href="/order/find" className="auth-link">
+                      ตามหาออเดอร์
+                    </Link>{" "}
+                    (ใช้เบอร์โทร + เลขออเดอร์) หรือทักไลน์ร้านให้แอดมินส่งลิงก์ให้ก็ได้ครับ
+                  </div>
+                )}
+                {noAccount === "line" && (
+                  <div className="auth-msg ok" style={{ textAlign: "left" }}>
+                    <b>บัญชีนี้เข้าผ่านปุ่ม LINE ครับ</b> — ไม่ต้องใช้รหัสผ่านเลย กด{" "}
+                    <Link href="/account/login" className="auth-link">
+                      เข้าสู่ระบบด้วย LINE
+                    </Link>{" "}
+                    ได้ทันที
+                    <br />
+                    <button type="button" onClick={() => sendLink(true)} className="auth-link" style={{ background: "none", border: 0, padding: 0, cursor: "pointer", font: "inherit" }}>
+                      หรือส่งลิงก์ตั้งรหัสผ่านไปที่อีเมลนี้แทน
+                    </button>
+                  </div>
+                )}
+
                 <div className="auth-actions">
-                  <button type="button" onClick={sendLink} disabled={busy} className="btn btn-yolk">
+                  <button type="button" onClick={() => sendLink(false)} disabled={busy} className="btn btn-yolk">
                     {busy ? "กำลังส่ง…" : "ส่งลิงก์รีเซ็ต"} <span className="dot">→</span>
                   </button>
                 </div>
+                <p className="auth-hint" style={{ textAlign: "center", marginTop: 12 }}>
+                  สั่งของแบบไม่ได้สมัครสมาชิก?{" "}
+                  <Link href="/order/find" className="auth-link">
+                    ตามหาออเดอร์ด้วยเบอร์โทร
+                  </Link>
+                </p>
               </>
             )}
           </div>
