@@ -346,6 +346,16 @@ function ArtQtySummary({ it }: { it: OrderItem }) {
  * ออเดอร์ว่า "มีไฟล์ที่ผูกเทมเพลตอยู่ไหม" — แถบสคริปต์แยกเลเยอร์ต้องขึ้นครั้งเดียวทั้งใบ
  * ไม่ใช่ทุกรายการ (ออเดอร์ 6 รายการเคยได้แถบเดิม 6 อัน)
  */
+/** รูปใบแรกจากสิ่งที่ลาก/วางมา — Safari ส่งมาใน items ไม่ใช่ files (เจอจริงในหน้าคลังสต๊อก) */
+function imageFromTransfer(dt: DataTransfer | null | undefined): File | null {
+  if (!dt) return null;
+  return (
+    Array.from(dt.files).find((f) => f.type.startsWith("image/")) ??
+    Array.from(dt.items).find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile() ??
+    null
+  );
+}
+
 function printFilesOf(it: OrderItem, orderId: string, itemIndex: number) {
   const arts = it.artworkUrls ?? [];
   const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
@@ -3331,6 +3341,12 @@ export default function AdminOrderDetailPage() {
 
   /** แนบภาพลายเพิ่มให้รายการนี้ (ลากวาง/เลือกไฟล์ที่คอลัมน์รูป) */
   const [artUpIdx, setArtUpIdx] = useState<number | null>(null);
+  /**
+   * เปลี่ยนรูปลายใบเดิม 2 ทาง (เจ้าของร้านสั่ง 21 ก.ย. 69 — เอาแบบวางจากคลิปบอร์ดออก เหลือทางนี้เท่านั้น):
+   * เลือกไฟล์ หรือลากรูปมาวางบนการ์ด · artDropKey = การ์ดที่กำลังลากไฟล์ทับอยู่ คีย์ `${ลำดับรายการ}|${url เดิม}` (ไว้ขึ้นกรอบไฮไลต์)
+   */
+  const [artDropKey, setArtDropKey] = useState<string | null>(null);
+  const artKey = (itemIndex: number, url: string) => `${itemIndex}|${url}`;
   /** กำลังสร้างไฟล์ .ai พร้อมพิมพ์ของรายการไหนอยู่ (คีย์ = ออเดอร์-ลำดับรายการ) */
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   /** ลบรูปลายออกจากออเดอร์ได้เฉพาะเจ้าของระบบ — พนักงานคนอื่นเห็นแต่โหลดไฟล์ */
@@ -5632,7 +5648,25 @@ export default function AdminOrderDetailPage() {
                   ) : (
                   <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
                     {/* ซ้าย: ลายที่ลูกค้าส่งมา (ทีมงานเห็นเท่านั้น) */}
-                    <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3">
+                    <div
+                      onDragOver={(e) => {
+                        if (!mayEdit) return;
+                        e.preventDefault();
+                        setArtDropIdx(i);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDropIdx(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!mayEdit) return;
+                        e.preventDefault();
+                        setArtDropIdx(null);
+                        void addArtwork(i, e.dataTransfer.files);
+                      }}
+                      className={`rounded-xl border p-3 transition ${
+                        artDropIdx === i ? "border-sky-500 bg-sky-100 ring-2 ring-sky-400" : "border-sky-200 bg-sky-50/40"
+                      }`}
+                    >
                       <p className="text-xs font-bold text-sky-800">
                         🎨 ลายจากลูกค้า ({it.artworkUrls?.length ?? 0})
                         {(it.artworkBackUrls?.length ?? 0) > 0 && (
@@ -5678,82 +5712,121 @@ export default function AdminOrderDetailPage() {
                                     return (
                                       <li
                                         key={r.u}
-                                        className="flex items-start gap-2 rounded-lg bg-white p-2 ring-1 ring-sky-200"
+                                        onDragOver={(e) => {
+                                          if (!mayEdit) return;
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          setArtDropKey(artKey(i, r.u));
+                                        }}
+                                        onDragLeave={(e) => {
+                                          if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDropKey(null);
+                                        }}
+                                        onDrop={(e) => {
+                                          if (!mayEdit) return;
+                                          e.preventDefault();
+                                          e.stopPropagation(); // อย่าให้กล่องแม่รับไปแนบเป็นลายใบใหม่
+                                          setArtDropKey(null);
+                                          const file = imageFromTransfer(e.dataTransfer);
+                                          if (!file) return setErr("ลากมาแล้วไม่เจอไฟล์รูป — ลากไฟล์ JPG/PNG จากเครื่อง หรือกดปุ่ม 🔁 เปลี่ยนรูป เลือกไฟล์");
+                                          void replaceArtwork(i, r.u, file);
+                                        }}
+                                        title={mayEdit ? `ลากรูปมาวางบนการ์ดนี้ = เปลี่ยนรูปลายที่ ${r.no}` : undefined}
+                                        className={`flex items-start gap-2.5 rounded-xl bg-white p-2.5 transition ${
+                                          artDropKey === artKey(i, r.u) ? "ring-2 ring-amber-500" : "ring-1 ring-sky-200"
+                                        }`}
                                       >
+                                        {/* รูปลาย — ใหญ่พอให้ดูออกว่าใบไหน กดแล้วขยายเต็มจอ */}
                                         <button
                                           type="button"
                                           onClick={() => setLightbox({ src: r.u, alt: `${it.name} ลายที่ ${r.no}`, caption: it.name })}
-                                          className="h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
+                                          className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-300 transition hover:ring-2 hover:ring-sky-500"
                                           title="ดูรูปเต็ม"
                                         >
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
                                           <img src={r.u} alt={`ลายที่ ${r.no}`} className="h-full w-full object-cover" />
                                         </button>
-                                        {/* หัวแถวบอก "ลายที่เท่าไหร่ · กรอบกี่มิล" แล้วค่อยเป็นปุ่มโหลด
-                                            ชื่อไฟล์ยาว ๆ ไม่โชว์แล้ว (โดน truncate จนอ่านไม่ออกอยู่ดี) ย้ายไปอยู่ใน title */}
-                                        <span className="min-w-0 flex-1">
-                                          <span className="flex items-baseline justify-between gap-2">
-                                            <span className="text-xs font-semibold text-slate-700">
-                                              ลายที่ {r.no}
-                                              {/* 🔢 จำนวนของลายนี้ — กราฟฟิก/แอดมินแก้ได้ตรงนี้ (10 ก.ย. 69) */}
-                                              {mayEdit || mayProof ? (
-                                                <span className="ml-1.5 inline-block align-middle">
-                                                  <ArtQtyInput
-                                                    value={artQtyOf(it, r.u, r.no - 1)}
-                                                    unit={artQtyUnitOf(it, orderedPieces(it).piece)}
-                                                    label={`ลายที่ ${r.no}`}
-                                                    disabled={demo}
-                                                    onCommit={(q) => setArtQty(i, r.u, q)}
-                                                  />
-                                                </span>
-                                              ) : artQtyOf(it, r.u, r.no - 1) ? (
-                                                <span className="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800">
-                                                  × {artQtyOf(it, r.u, r.no - 1)!.toLocaleString("th-TH")} ชิ้น
-                                                </span>
-                                              ) : null}
-                                              {/* 📐 ขนาดที่ลูกค้าระบุให้ลายนี้ (คละหลายขนาดใน 1 แผ่น) */}
-                                              {artSizeOf(it, r.u, r.no - 1) ? (
-                                                <span className="ml-1 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-bold text-teal-800">
-                                                  📐 {artSizeText(artSizeOf(it, r.u, r.no - 1)!)}
-                                                </span>
-                                              ) : null}
-                                            </span>
-                                            <span className={`shrink-0 text-[11px] tabular-nums ${muted}`}>
-                                              {r.frame ? `${r.frame.widthMm}×${r.frame.heightMm} มม.` : "ไม่มีข้อมูลกรอบงาน"}
+
+                                        <div className="min-w-0 flex-1">
+                                          {/* บรรทัดหัว: ลายที่เท่าไหร่ · จำนวนต่อลาย (กราฟฟิก/แอดมินแก้ได้) · ขนาดที่ลูกค้าระบุ */}
+                                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                            <span className="text-[13px] font-bold leading-none text-slate-800">ลายที่ {r.no}</span>
+                                            {mayEdit || mayProof ? (
+                                              <ArtQtyInput
+                                                value={artQtyOf(it, r.u, r.no - 1)}
+                                                unit={artQtyUnitOf(it, orderedPieces(it).piece)}
+                                                label={`ลายที่ ${r.no}`}
+                                                disabled={demo}
+                                                onCommit={(q) => setArtQty(i, r.u, q)}
+                                              />
+                                            ) : artQtyOf(it, r.u, r.no - 1) ? (
+                                              <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800">
+                                                × {artQtyOf(it, r.u, r.no - 1)!.toLocaleString("th-TH")} ชิ้น
+                                              </span>
+                                            ) : null}
+                                            {/* 📐 ขนาดที่ลูกค้าระบุให้ลายนี้ (คละหลายขนาดใน 1 แผ่น) */}
+                                            {artSizeOf(it, r.u, r.no - 1) ? (
+                                              <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-bold text-teal-800">
+                                                📐 {artSizeText(artSizeOf(it, r.u, r.no - 1)!)}
+                                              </span>
+                                            ) : null}
+                                            {isOwner && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  if (confirm(`เอารูปลายที่ ${r.no} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)`))
+                                                    removeArtwork(i, r.u);
+                                                }}
+                                                title="เอารูปนี้ออกจากออเดอร์"
+                                                aria-label="เอารูปลายนี้ออก"
+                                                className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                              >
+                                                ✕
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {/* ขนาดกรอบงานจริง — มีเฉพาะลายที่ลูกค้าจัดวางบนเทมเพลตมา ไม่มีก็ไม่ต้องขึ้นอะไร */}
+                                          {r.frame && (
+                                            <p className={`mt-1 text-[11px] tabular-nums ${muted}`}>
+                                              กรอบงาน {r.frame.widthMm}×{r.frame.heightMm} มม.
                                               {r.dpi ? ` · ${r.dpi} DPI` : ""}
-                                            </span>
-                                          </span>
-                                          <span className="mt-1.5 flex flex-wrap gap-1.5">
-                                            <button
-                                              type="button"
-                                              disabled={!r.frame || aiBusy === aiKey}
-                                              onClick={async () => {
-                                                if (!r.frame) return;
-                                                setAiBusy(aiKey);
-                                                try {
-                                                  /**
-                                                   * ไฟล์นี้มีแต่ "ลายของลูกค้า" ล้วน ๆ ขนาดเท่ากรอบงานจริง (รวมตัดตก)
-                                                   * ไม่รวมงานของเทมเพลต — สำหรับงานที่กราฟฟิกอยากวางเองใน Illustrator
-                                                   * (แบบรวมเทมเพลต+เลเยอร์ครบ ใช้ปุ่ม 🧩 ข้าง ๆ แทน)
-                                                   */
-                                                  const blob = await buildPrintAi({
-                                                    imageUrl: r.u,
-                                                    widthMm: r.frame.widthMm,
-                                                    heightMm: r.frame.heightMm,
-                                                    title: `${order.id} ${it.name} ลายที่ ${r.no}`,
-                                                  });
-                                                  downloadBlob(blob, r.name);
-                                                } catch (e) {
-                                                  alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
-                                                } finally {
-                                                  setAiBusy(null);
-                                                }
-                                              }}
-                                              className={`${btnSm} whitespace-nowrap border border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100`}
-                                              title={`ลายของลูกค้าล้วน ๆ ขนาดเท่ากรอบงานจริง — ${r.name}`}
-                                            >
-                                              {aiBusy === aiKey ? "กำลังสร้าง…" : "⬇️ ลายอย่างเดียว"}
-                                            </button>
+                                            </p>
+                                          )}
+
+                                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                            {/* ⬇️ ไฟล์ลายล้วน ขนาดเท่ากรอบงานจริง (ไม่มีกรอบ = สร้างไม่ได้ ซ่อนปุ่มไปเลย) */}
+                                            {r.frame && (
+                                              <button
+                                                type="button"
+                                                disabled={aiBusy === aiKey}
+                                                onClick={async () => {
+                                                  if (!r.frame) return;
+                                                  setAiBusy(aiKey);
+                                                  try {
+                                                    /**
+                                                     * ไฟล์นี้มีแต่ "ลายของลูกค้า" ล้วน ๆ ขนาดเท่ากรอบงานจริง (รวมตัดตก)
+                                                     * ไม่รวมงานของเทมเพลต — สำหรับงานที่กราฟฟิกอยากวางเองใน Illustrator
+                                                     * (แบบรวมเทมเพลต+เลเยอร์ครบ ใช้ปุ่ม 🧩 ข้าง ๆ แทน)
+                                                     */
+                                                    const blob = await buildPrintAi({
+                                                      imageUrl: r.u,
+                                                      widthMm: r.frame.widthMm,
+                                                      heightMm: r.frame.heightMm,
+                                                      title: `${order.id} ${it.name} ลายที่ ${r.no}`,
+                                                    });
+                                                    downloadBlob(blob, r.name);
+                                                  } catch (e) {
+                                                    alert(e instanceof Error ? e.message : "สร้างไฟล์ .ai ไม่สำเร็จ");
+                                                  } finally {
+                                                    setAiBusy(null);
+                                                  }
+                                                }}
+                                                className="inline-flex min-h-[2.25rem] items-center rounded-lg border border-sky-300 bg-sky-50 px-2.5 text-[11px] font-bold whitespace-nowrap text-sky-900 transition hover:bg-sky-100 disabled:opacity-50"
+                                                title={`ลายของลูกค้าล้วน ๆ ขนาดเท่ากรอบงานจริง — ${r.name}`}
+                                              >
+                                                {aiBusy === aiKey ? "กำลังสร้าง…" : "⬇️ ลายอย่างเดียว"}
+                                              </button>
+                                            )}
                                             {/* 🧩 ไฟล์รวมเทมเพลต — ลายเป็นเลเยอร์ล่างสุด เส้นไดคัท/ไกด์ของเทมเพลตทับอยู่
                                                 มีเฉพาะออเดอร์ที่จดไฟล์เทมเพลตไว้ ([ai:…|tpl:…]) และเทมเพลตเป็น PDF compatible */}
                                             {r.frame?.tplUrl && (
@@ -5778,21 +5851,25 @@ export default function AdminOrderDetailPage() {
                                                     setAiBusy(null);
                                                   }
                                                 }}
-                                                className={`${btnSm} whitespace-nowrap border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100`}
+                                                className="inline-flex min-h-[2.25rem] items-center rounded-lg border border-teal-300 bg-teal-50 px-2.5 text-[11px] font-bold whitespace-nowrap text-teal-900 transition hover:bg-teal-100 disabled:opacity-50"
                                                 title="ไฟล์ .ai ที่มีทั้งเทมเพลต (เส้นไดคัท/ไกด์) และลายลูกค้าในไฟล์เดียว — Illustrator เปิดมาเป็นชั้นเดียว ใช้ปุ่ม “โหลด .jsx” ท้ายรายการสินค้าแยกเลเยอร์"
                                               >
                                                 {aiBusy === `${aiKey}-tpl` ? "กำลังรวม…" : "🧩 รวมเทมเพลต"}
                                               </button>
                                             )}
-                                            {/* 🔁 เปลี่ยนรูปลายนี้เป็นรูปอื่น — แทนที่ตำแหน่งเดิม ลำดับ/จำนวนต่อลายไม่เปลี่ยน */}
+                                            {/* 🔁 เปลี่ยนรูปลายนี้ — เลือกไฟล์ หรือลากรูปมาวางบนการ์ด (แทนที่ตำแหน่งเดิม ลำดับ/จำนวน/ขนาดต่อลายไม่เปลี่ยน) */}
                                             {mayEdit && (
                                               <label
-                                                className={`${btnSm} cursor-pointer whitespace-nowrap border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 ${
+                                                className={`inline-flex min-h-[2.25rem] cursor-pointer items-center rounded-lg bg-amber-50 px-2.5 text-[11px] font-bold whitespace-nowrap text-amber-900 ring-1 ring-amber-400 transition hover:bg-amber-100 ${
                                                   artUpIdx === i ? "pointer-events-none opacity-50" : ""
                                                 }`}
-                                                title={`เปลี่ยนรูปลายที่ ${r.no} เป็นรูปอื่น — ยังเป็นลายที่ ${r.no} เหมือนเดิม จำนวน/ขนาดต่อลายคงไว้`}
+                                                title={`เลือกไฟล์รูปมาแทนลายที่ ${r.no} หรือลากรูปมาวางบนการ์ดนี้ — ยังเป็นลายที่ ${r.no} เหมือนเดิม จำนวน/ขนาดต่อลายคงไว้`}
                                               >
-                                                {artUpIdx === i ? "กำลังอัป…" : "🔁 เปลี่ยนรูป"}
+                                                {artUpIdx === i
+                                                  ? "กำลังอัป…"
+                                                  : artDropKey === artKey(i, r.u)
+                                                    ? "⬇️ ปล่อยเพื่อเปลี่ยน"
+                                                    : "🔁 เปลี่ยนรูป · ลากวาง"}
                                                 <input
                                                   type="file"
                                                   accept="image/jpeg,image/png,image/webp"
@@ -5805,22 +5882,9 @@ export default function AdminOrderDetailPage() {
                                                 />
                                               </label>
                                             )}
-                                          </span>
-                                        </span>
-                                        {isOwner && (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              if (confirm(`เอารูปลายที่ ${r.no} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)`))
-                                                removeArtwork(i, r.u);
-                                            }}
-                                            title="เอารูปนี้ออกจากออเดอร์"
-                                            aria-label="เอารูปลายนี้ออก"
-                                            className="shrink-0 rounded px-1 py-0.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
-                                          >
-                                            ✕
-                                          </button>
-                                        )}
+                                          </div>
+
+                                        </div>
                                       </li>
                                     );
                                   })}
@@ -5837,7 +5901,28 @@ export default function AdminOrderDetailPage() {
                                 </p>
                                 <div className="mt-1 flex flex-wrap gap-1.5">
                                   {raw.map((u, k) => (
-                                    <span key={`${u}-${k}`} className="group relative block">
+                                    <span
+                                      key={`${u}-${k}`}
+                                      onDragOver={(e) => {
+                                        if (!mayEdit) return;
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setArtDropKey(artKey(i, u));
+                                      }}
+                                      onDragLeave={(e) => {
+                                        if (!e.currentTarget.contains(e.relatedTarget as Node)) setArtDropKey(null);
+                                      }}
+                                      onDrop={(e) => {
+                                        if (!mayEdit) return;
+                                        e.preventDefault();
+                                        e.stopPropagation(); // ทับใบเดิม ไม่ใช่แนบเพิ่ม
+                                        setArtDropKey(null);
+                                        const file = imageFromTransfer(e.dataTransfer);
+                                        if (!file) return setErr("ลากมาแล้วไม่เจอไฟล์รูป — ลากไฟล์ JPG/PNG จากเครื่อง หรือกดปุ่ม 🔁 บนรูป");
+                                        void replaceArtwork(i, u, file);
+                                      }}
+                                      className={`group relative block rounded-lg transition ${artDropKey === artKey(i, u) ? "ring-2 ring-amber-400" : ""}`}
+                                    >
                                       <button
                                         type="button"
                                         onClick={() => setLightbox({ src: u, alt: `${it.name} ต้นฉบับ ${k + 1}`, caption: it.name })}
