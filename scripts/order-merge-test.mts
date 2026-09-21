@@ -4,9 +4,10 @@
  * ต่อจาก OD-260915-6742 (16 ก.ย. 69): หน้าออเดอร์ส่งออเดอร์ทั้งก้อน → หน้าจอค้างทับงานคนอื่นได้ทุกช่อง
  * แก้: หน้าจอส่งรายชื่อช่องที่แก้จริง (changedOrderKeys เทียบกับก้อนล่าสุดจากเซิร์ฟเวอร์) → เซิร์ฟเวอร์เอาช่องที่ไม่ได้แก้จากฐาน (applyChangedKeys)
  */
-import { applyChangedKeys, keepCustomerVerdict, parseChangedKeys } from "../src/lib/server/order-merge";
+import { applyChangedKeys, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "../src/lib/server/order-merge";
 import type { OrderItem } from "../src/lib/admin-data";
 import { changedOrderKeys } from "../src/lib/order-repo";
+import { shortThaiDay } from "../src/lib/ship-date";
 import type { Order } from "../src/lib/admin-data";
 
 let pass = 0;
@@ -120,6 +121,26 @@ eq("หน้าจอสดส่งค่าเดิม = เหมือน�
 
 // ไม่มีของเดิม (รายการใหม่) = เอาของหน้าจอ
 eq("รายการใหม่ไม่มีฐาน = ของหน้าจอ", keepCustomerVerdict(undefined, staleItem, "").proofStatus, "รอตรวจ");
+
+// ── 📅 จดประวัติวันใช้งาน/วันส่ง (21 ก.ย. 69 · OD-260918-8582 "วันใช้งานนี้ใครใส่") ──────────
+const sBase = mk({ useByDate: "2026-09-25", shipDate: { from: "2026-09-23", to: "2026-09-23" } });
+eq("ไม่แตะวัน = ไม่จด", scheduleChanges(sBase, sBase), undefined);
+eq(
+  "ลบวันใช้งานทิ้ง = ต้องเห็นในประวัติ",
+  scheduleChanges(sBase, mk({ shipDate: { from: "2026-09-23", to: "2026-09-23" } })),
+  `วันที่ลูกค้าต้องใช้งาน: ${shortThaiDay("2026-09-25")} → (ไม่ระบุ)`
+);
+eq(
+  "ใส่วันใช้งานในใบที่ยังว่าง (วันส่งเติมตามให้เอง) = จดทั้งคู่",
+  scheduleChanges(mk({}), sBase),
+  `วันที่ลูกค้าต้องใช้งาน: (ไม่ระบุ) → ${shortThaiDay("2026-09-25")} · วันที่จัดส่ง: (ไม่ระบุ) → ${shortThaiDay("2026-09-23")}`
+);
+eq(
+  "นัดส่งเป็นช่วง + ติ๊กงานเร่ง",
+  scheduleChanges(sBase, mk({ useByDate: "2026-09-25", shipDate: { from: "2026-09-22", to: "2026-09-23" }, rush: true })),
+  `วันที่จัดส่ง: ${shortThaiDay("2026-09-23")} → ${shortThaiDay("2026-09-22")}–${shortThaiDay("2026-09-23")} · 🔥 ตั้งเป็นงานเร่ง`
+);
+eq("วันส่งว่างทั้งคู่ vs ไม่มีช่องเลย = ไม่นับว่าเปลี่ยน", scheduleChanges(mk({}), mk({ shipDate: { from: "", to: "" } })), undefined);
 
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} เคส\n\n${fails.join("\n\n")}\n` : "");
 console.log(`${fails.length ? "❌" : "✅"} ผ่าน ${pass}/${pass + fails.length} เคส`);

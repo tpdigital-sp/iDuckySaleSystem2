@@ -1,4 +1,5 @@
 import type { Order, Proof, ProofStatus } from "@/lib/admin-data";
+import { shortThaiDay } from "@/lib/ship-date";
 
 /** ชื่อ header ที่หน้าออเดอร์ส่งรายชื่อช่องที่แก้จริงมาด้วย (ดู changedOrderKeys ใน order-repo.ts) */
 export const CHANGED_KEYS_HEADER = "x-changed-keys";
@@ -99,4 +100,27 @@ export function keepCustomerVerdict<T extends VerdictHolder>(cur: T | undefined,
     }
   }
   return out;
+}
+
+/**
+ * 📅 บรรยายว่าวันใช้งาน/วันจัดส่ง/ธงงานเร่งเปลี่ยนจากอะไรเป็นอะไร (ไม่เปลี่ยน = undefined)
+ *
+ * ทำไม (พนักงานถาม 21 ก.ย. 69 · OD-260918-8582 "วันใช้งานนี้ใครใส่ ตรวจได้ไหม"):
+ * ช่องพวกนี้บันทึกทันทีที่จิ้มปฏิทิน ไม่มีร่องรอยเลยว่าใครใส่/ใครลบเมื่อไหร่ — ตอบพนักงานไม่ได้
+ * ค่าว่างก็ต้องจด "ลบวันใช้งาน" คือเหตุการณ์ที่ต้องเห็นพอ ๆ กับการใส่
+ */
+export function scheduleChanges(before: Order, after: Order): string | undefined {
+  const day = (v: string | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? shortThaiDay(v) : "(ไม่ระบุ)");
+  const ship = (o: Order) => {
+    const from = o.shipDate?.from || "";
+    const to = o.shipDate?.to || "";
+    if (!from && !to) return "(ไม่ระบุ)";
+    return !to || to === from ? day(from || to) : `${day(from)}–${day(to)}`;
+  };
+  const parts: string[] = [];
+  if ((before.useByDate ?? "") !== (after.useByDate ?? ""))
+    parts.push(`วันที่ลูกค้าต้องใช้งาน: ${day(before.useByDate)} → ${day(after.useByDate)}`);
+  if (ship(before) !== ship(after)) parts.push(`วันที่จัดส่ง: ${ship(before)} → ${ship(after)}`);
+  if (!!before.rush !== !!after.rush) parts.push(after.rush ? "🔥 ตั้งเป็นงานเร่ง" : "ยกเลิกงานเร่ง");
+  return parts.length ? parts.join(" · ") : undefined;
 }

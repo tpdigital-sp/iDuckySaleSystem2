@@ -80,8 +80,7 @@ import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append
 import { readReplaceMarker } from "@/lib/order-item-qty";
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/lib/shipping-auto";
 import { termLines } from "@/lib/term-lines";
-
-const USE_BY_KEY = "ducky-use-by-date";
+import { USE_BY_KEY, saveUseByDate } from "@/lib/use-by-date";
 
 /** 📅 กล่องวันใช้งาน — เกณฑ์เตือน (ปรับตัวเลขตรงนี้ที่เดียว) */
 /** สั่งรวมตั้งแต่กี่ชิ้นถือว่า "จำนวนเยอะ" ต้องสอบถามคิวผลิตก่อนสั่ง */
@@ -298,7 +297,7 @@ export default function CartPage() {
       // วันที่ค้างจากรอบก่อน (เลือกไว้เมื่อวาน) อาจกระชั้นเกินไปแล้ว — ล้างทิ้ง ไม่ปล่อยไปถึง checkout
       const stored = localStorage.getItem(USE_BY_KEY) ?? "";
       if (stored && stored < earliestUseBy(todayBkkYmd())) {
-        localStorage.removeItem(USE_BY_KEY);
+        saveUseByDate("");
         setUseByBlocked(stored);
       } else setUseBy(stored);
     } catch {}
@@ -309,10 +308,7 @@ export default function CartPage() {
       v = "";
     } else setUseByBlocked("");
     setUseBy(v);
-    try {
-      if (v) localStorage.setItem(USE_BY_KEY, v);
-      else localStorage.removeItem(USE_BY_KEY);
-    } catch {}
+    saveUseByDate(v);
   }
   // 🎁 ของแถมฟรี — นับเฉพาะบรรทัดที่ลูกค้าติ๊กสั่งรอบนี้ ให้ตรงกับยอดรวมด้านล่าง
   //    (เซิร์ฟเวอร์คิดใหม่เองตอนสร้างออเดอร์ ตรงนี้เป็นแค่ป้ายบอกลูกค้า)

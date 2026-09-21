@@ -37,6 +37,8 @@ import { parseReuseArt, reuseArtText, type Order, type Proof } from "@/lib/admin
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { publicOrigin } from "@/lib/shop-info";
+import { clearUseByDate, readUseByDate } from "@/lib/use-by-date";
+import { shortThaiDay } from "@/lib/ship-date";
 import { cartQtyShipFee, shipProfileOf } from "@/lib/shipping-auto";
 import { LINE_URL } from "@/components/LineButton";
 import StockCheckNote from "@/components/StockCheckNote";
@@ -129,6 +131,13 @@ export default function CheckoutPage() {
     setAddress((v) => v || customer.address);
   }, [customer]);
   const [placing, setPlacing] = useState(false);
+  /*
+   * 📅 วันใช้งานที่ลูกค้าเลือกไว้ในตะกร้า — โชว์ให้เห็นตรงนี้ด้วย (เจ้าของร้านสั่ง 21 ก.ย. 69)
+   * เดิมหน้านี้อ่านจากเครื่องแล้วแนบไปเงียบ ๆ ไม่มีใครเห็นก่อนกดสั่ง — พนักงานสั่งแทนลูกค้าจึงไม่รู้ว่าติดวันไปด้วย
+   * ค่าที่ส่งจริงตอนกดสั่ง = ค่าที่โชว์ตรงนี้เท่านั้น (กด ✕ แล้วต้องไม่มีวันติดไป)
+   */
+  const [useBy, setUseBy] = useState("");
+  useEffect(() => setUseBy(readUseByDate()), []);
   const [err, setErr] = useState("");
   const [placed, setPlaced] = useState<Placed | null>(null);
 
@@ -393,13 +402,9 @@ export default function CheckoutPage() {
       );
       return;
     }
-    const useByDate = (() => {
-      try {
-        return localStorage.getItem("ducky-use-by-date") || "";
-      } catch {
-        return "";
-      }
-    })();
+    // 📅 วันใช้งาน = ค่าที่โชว์บนจอหน้านี้ (มาจาก readUseByDate ตอนเปิดหน้า · ลูกค้ากด ✕ ออกได้)
+    //    ดู lib/use-by-date.ts — ค่านี้ถูกล้างทุกครั้งที่สั่งสำเร็จ ไม่งั้นไหลไปติดใบถัดไป
+    const useByDate = useBy;
     const orderItems = items.map((it) => {
       // ภาพลายที่ลูกค้าแนบ เก็บมาในตะกร้าเป็น URL คั่น " | " → แยกเป็นฟิลด์ของตัวเอง
       // (ไม่ปนกับข้อความตัวเลือก ไม่งั้น URL ยาวจะรกทั้งใบงานและหน้าออเดอร์)
@@ -505,6 +510,8 @@ export default function CheckoutPage() {
         return;
       }
       clearAppendTarget();
+      // 🧹 ตะกร้าว่างแล้ว วันใช้งานที่ค้างในเครื่องก็หมดหน้าที่ — ไม่งั้นไปโผล่ในใบถัดไป (ดู lib/use-by-date.ts)
+      clearUseByDate();
       setAppendDone({ owed: res.owed ?? 0 });
       // เอาเฉพาะรายการที่ส่งเข้าออเดอร์เดิมออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งทีหลัง
       items.forEach((it) => removeItem(it.key));
@@ -542,6 +549,12 @@ export default function CheckoutPage() {
       setErr(res.error ?? "สั่งซื้อไม่สำเร็จ");
       return;
     }
+    /*
+     * 🧹 ล้างวันใช้งานออกจากเครื่องทันทีที่สั่งสำเร็จ (บั๊กที่พนักงานเจอ 21 ก.ย. 69 · OD-260918-8582)
+     * เดิมค่านี้ค้างอยู่ข้ามออเดอร์ — เครื่องของร้านที่พนักงานสั่งแทนลูกค้าหลายใบต่อวัน
+     * ทำให้วันของลูกค้าคนก่อนไหลไปติดใบของลูกค้าคนถัดไปโดยไม่มีใครเห็น
+     */
+    clearUseByDate();
     // ลิงก์ออเดอร์ของลูกค้า — เช็คสถานะ / ดูแบบงาน / อนุมัติ (ต้องมี key ถึงเปิดได้)
     const orderUrl = `${publicOrigin()}/order/${res.orderId}${res.key ? `?key=${encodeURIComponent(res.key)}` : ""}`;
     // สร้างข้อความ LINE ก่อนล้างตะกร้า
@@ -1135,6 +1148,25 @@ export default function CheckoutPage() {
         </div>
         <div className="mt-2 flex justify-between border-t border-amber-100 pt-2 text-base font-extrabold text-amber-950"><span>{appendTo ? "ยอดที่ต้องโอนเพิ่ม" : "ยอดชำระ"}</span><span className="text-amber-600">{formatPrice(total)}</span></div>
       </div>
+
+      {/* 📅 วันที่ต้องใช้งานที่จะติดไปกับออเดอร์ — เห็นก่อนกดสั่งเสมอ · ไม่ได้กำหนดวันก็กด ✕ ออกได้ */}
+      {!appendTo && useBy && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5">
+          <span className="text-sm font-semibold text-sky-800">
+            📅 วันที่ต้องใช้งาน: <strong>{shortThaiDay(useBy)}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setUseBy("");
+              clearUseByDate();
+            }}
+            className="shrink-0 rounded-full border border-sky-300 bg-white px-3 py-1 text-xs font-bold text-sky-700 transition hover:bg-sky-100"
+          >
+            ✕ ไม่ได้กำหนดวัน
+          </button>
+        </div>
+      )}
 
       {/* 📦 สั่งจำนวนมาก → เตือนก่อนกดยืนยัน ว่าต้องรอร้านเช็คสต๊อก/คิวผลิตแล้วยืนยันกลับ */}
       <StockCheckNote rows={stockRows} className="mt-4" />

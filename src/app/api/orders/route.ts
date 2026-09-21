@@ -6,7 +6,7 @@ import { autoShipDate, earliestShipDate, earliestUseBy, shortThaiDay, todayBkkYm
 import { loadShopHolidays } from "@/lib/server/shop-holidays";
 import { randomBytes } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, type Order, type OrderSender } from "@/lib/admin-data";
+import { orderTotal, withLog, type Order, type OrderSender } from "@/lib/admin-data";
 import { tierDiscountAmount, tiersOf, lockedTier, seedTierStatus, type Tier, type TierStatus } from "@/lib/tiers";
 import { couponLabel, couponMaxUses, couponUses, validateCoupon, type Coupon } from "@/lib/coupons";
 import { giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
@@ -315,7 +315,20 @@ export async function POST(req: Request) {
     ...(dealer && dealerSender ? { sender: dealerSender } : {}),
   };
 
-  const { order: saved, error } = await insertOrder(sb, order, "ระบบ");
+  /*
+   * 📅 จดที่มาของวันใช้งานตั้งแต่ใบเกิด (พนักงานถาม 21 ก.ย. 69 · OD-260918-8582 "ลูกค้าใส่มาเองใช่ไหม")
+   * ใบที่พนักงานสั่งแทน วันนี้มาจากเบราว์เซอร์ของร้าน ไม่ใช่ลูกค้าพิมพ์เข้ามาเอง — ประวัติต้องแยกให้ออก
+   */
+  const orderToSave = order.useByDate
+    ? withLog(
+        order,
+        placedBy ? `พนักงาน ${placedBy}` : "ลูกค้า",
+        "ระบุวันที่ต้องใช้งาน",
+        `${shortThaiDay(order.useByDate)} — ${placedBy ? "พนักงานสั่งแทนลูกค้า (กรอกจากหน้าตะกร้าบนเครื่องของร้าน)" : "ลูกค้าเลือกเองในตะกร้า"}`
+      )
+    : order;
+
+  const { order: saved, error } = await insertOrder(sb, orderToSave, "ระบบ");
   if (error) {
     // สร้างออเดอร์พัง → คืนสิทธิ์คูปองที่เพิ่งตัด (best-effort) กันสิทธิ์หายฟรี
     // คืนเป็นสภาพก่อนตัดทั้งก้อน และเฉพาะใบที่ยังเป็นครั้งของออเดอร์นี้ — คนที่ใช้ต่อทีหลังจะไม่โดนย้อน
