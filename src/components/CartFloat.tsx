@@ -13,7 +13,9 @@
  * ⚠️ ในรูปมีคำว่า "ตะกร้า" ตายตัว เขียนยอดเงินทับไม่ได้ ตอนมีของจึงลอย "ป้ายยอด"
  *    (ยอดรวม + จำนวนรายการ) ไว้เหนือปุ่มแทน — เจ้าของร้านเลือกตำแหน่งนี้เอง 21 ก.ย. 69 รอบ 5
  *
- * มือถือไม่ขึ้น — แถบเมนูล่างมีปุ่มตะกร้าอยู่แล้ว (ดู BottomNav)
+ * มือถือ/แท็บเล็ต (21 ก.ย. 69 รอบ 6) — เจ้าของร้านสั่งให้ขึ้นด้วย จากเดิมซ่อนทั้งใบ
+ * ภาพป้ายยาวใส่ในกองปุ่มวงกลมไม่ลง จึงหดเป็น "วงกลมไอคอนตะกร้า + ป้ายจำนวน"
+ * วางต่อจากปุ่มบอท (LINE → บอท → ตะกร้า) · แถบเมนูล่างก็ยังมีปุ่มตะกร้าตามเดิม (ดู BottomNav)
  * สไตล์: ชุด .fabx ท้าย landing.css — ชุดเดียวกับปุ่ม LINE / แชทบอท / เข้าหลังบ้าน
  */
 
@@ -51,6 +53,19 @@ export default function CartFloat() {
         height={295}
         aria-hidden="true"
       />
+      {/* มือถือ: ไอคอนเส้น + ป้ายจำนวน (กฎสลับอยู่ท้าย landing.css — จอคอมซ่อนสองชิ้นนี้ ใช้ภาพแทน) */}
+      <i className="fabx-ico fabx-cart-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3.2 4h2.1l2 10.2h9.9l1.9-7.4H6.1" />
+          <circle cx="9.6" cy="19" r="1.5" />
+          <circle cx="16.6" cy="19" r="1.5" />
+        </svg>
+      </i>
+      {has && (
+        <span className="fabx-cart-count" aria-hidden="true">
+          {lines > 99 ? "99+" : lines}
+        </span>
+      )}
       {has && (
         <span className="fabx-cart-sum" aria-hidden="true">
           <b>฿{baht}</b>

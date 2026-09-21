@@ -2116,7 +2116,10 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
   .dl .icon-btn{animation:none!important}
   .dl .menu>a.on::after{animation:none!important}
   .dl .nav-cta .btn-yolk{display:none} /* ย้ายฟังก์ชัน "ช้อปเลย" ไปอยู่ในแถบล่างแทน ลดความรกด้านบน */
-  .dl .nav-cart-icon{display:none} /* ตะกร้าย้ายไปอยู่แถบเมนูล่างแล้ว เลยสลับช่องนี้เป็นปุ่มค้นหาแทน */
+  /* ตะกร้าบนหัวเว็บ — เจ้าของร้านสั่งให้ขึ้นบนมือถือด้วย 21 ก.ย. 69
+     เดิมซ่อนเพราะมีปุ่มตะกร้าในแถบเมนูล่างอยู่แล้ว แต่แถบล่างมองไม่เห็นตอนเปิดเมนู/แป้นพิมพ์
+     ตอนนี้ขึ้นคู่กับปุ่มค้นหาเต็มจอ (ยังอยู่ช่องเดิม) → เรียงเป็น ตะกร้า · ค้นหา · กระดิ่ง · ☰ */
+  .dl .nav-cart-icon{display:grid}
   .dl .nav-search-mobile{display:grid}
   .dl .nav-cta{margin-left:auto} /* .menu ที่เคยดัน nav-cta ไปทางขวาถูกซ่อนบนมือถือ เลยต้องดันเองตรงนี้แทน ไม่งั้นปุ่มจะไปติดกับโลโก้ */
   .dl .burger{display:grid!important}
@@ -4857,8 +4860,41 @@ to{opacity:1;transform:none}}
   .fabx-admin,.dl .fabx-admin{padding:0 6px}
 }
 
-/* มือถือมีปุ่มตะกร้าในแถบเมนูล่างแล้ว ไม่ต้องลอยซ้ำ */
-@media(max-width:1000px){.fabx-cart,.dl .fabx-cart{display:none}}
+/* ---------------------------------------------------------------------------
+   มือถือ/แท็บเล็ต: ปุ่มตะกร้าลอย = "วงกลม" (เจ้าของร้านสั่งเพิ่ม 21 ก.ย. 69)
+   ของเดิมซ่อนทั้งใบเพราะมีตะกร้าในแถบเมนูล่างแล้ว — แต่ตอนลูกค้าเลื่อนอ่านหน้าสินค้ายาว ๆ
+   สายตาอยู่มุมขวาล่าง (ปุ่มบอท/LINE) ไม่ได้อยู่ที่แถบล่าง ตะกร้าจึงต้องอยู่ในกองนี้ด้วย
+   ภาพป้ายยาว 211px ใส่ในวงกลมไม่ลง → มือถือใช้ไอคอนเส้น + ป้ายจำนวนแทน (ดู CartFloat.tsx)
+   เรียงต่อกองเดิม: LINE 100px → บอท 164px → ตะกร้า 228px (ขนาด/ระยะชุดเดียวกับปุ่ม LINE)
+   --------------------------------------------------------------------------- */
+@media(min-width:1001px){
+  /* จอคอมใช้ภาพป้ายทั้งใบอยู่แล้ว ชิ้นส่วนของมือถือไม่ต้องขึ้น */
+  .fabx-cart-ico,.dl .fabx-cart-ico,.fabx-cart-count,.dl .fabx-cart-count{display:none}
+}
+@media(max-width:1000px){
+  /* สี: เหลืองไข่ + ไอคอนกรมท่า (เจ้าของร้านสั่งเปลี่ยน 21 ก.ย. 69)
+     ของเดิมเป็นวงขาวตามชุดสีของกองปุ่ม (ขาว = ของลูกค้า) แต่มือถือปุ่มเล็กแค่ 50px
+     วงขาวบนพื้นหน้าสินค้าที่ขาวอยู่แล้วเหลือแค่เส้นขอบจาง ๆ มองไม่เห็นว่าเป็นปุ่ม
+     เหลืองคือสีปุ่มซื้อของร้าน (ชุดเดียวกับ "ช้อปเลย") และไม่ชนกับเพื่อนในกอง (กรมท่า=บอท เขียว=LINE) */
+  .fabx-cart,.dl .fabx-cart{position:fixed;right:16px;bottom:228px;z-index:80;
+    display:grid;place-items:center;width:50px;height:50px;padding:0;gap:0;border-radius:50%;
+    background:linear-gradient(180deg,var(--yolk) 0%,var(--yolk-deep) 100%);color:var(--navy);
+    border:2px solid #fff;
+    box-shadow:0 2px 6px rgba(23,58,107,.16),0 10px 22px rgba(255,182,39,.36);
+    animation:fabx-art-bounce 2.8s cubic-bezier(.34,1.56,.64,1) .6s infinite}
+  .fabx-cart:hover,.dl .fabx-cart:hover{box-shadow:0 3px 8px rgba(23,58,107,.2),0 14px 28px rgba(255,182,39,.44)}
+  /* ท่ายกตัว/กดลงใช้ transform จึงต้องปิดท่าเด้งก่อน ไม่งั้นโดนทับจนกดแล้วไม่มีปฏิกิริยา */
+  .fabx-cart:hover,.dl .fabx-cart:hover,.fabx-cart:active,.dl .fabx-cart:active{animation:none}
+  .fabx-cart-art,.dl .fabx-cart-art{display:none}   /* ภาพป้ายยาว — จอคอมเท่านั้น */
+  .fabx-cart-sum,.dl .fabx-cart-sum{display:none}   /* ป้ายยอดเงิน — ไม่มีที่ว่างข้างวงกลม */
+  .fabx-cart-ico,.dl .fabx-cart-ico{width:26px;height:26px;color:var(--navy)}
+  .fabx-cart-ico svg,.dl .fabx-cart-ico svg{display:block;width:23px;height:23px;stroke-width:2}
+  /* จำนวนรายการ — ใช้แดงชุดเดียวกับป้ายตะกร้าบนหัวเว็บ (--coral เป็นชมพูพาสเทล ตัวเลขขาวจะจม) */
+  .fabx-cart-count,.dl .fabx-cart-count{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;
+    padding:0 5px;border-radius:999px;background:#F43F5E;color:#fff;
+    font-family:var(--display);font-size:.64rem;font-weight:700;line-height:20px;text-align:center;
+    box-shadow:0 0 0 2px #fff}
+}
 
 /* ---------------------------------------------------------------------------
    ปุ่มตะกร้าลอย — ใช้ภาพสำเร็จทั้งใบ (เจ้าของร้านส่งภาพมา 21 ก.ย. 69 รอบ 4)
