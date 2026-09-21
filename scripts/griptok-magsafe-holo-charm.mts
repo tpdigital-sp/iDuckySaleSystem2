@@ -116,7 +116,7 @@ function matGroup(band: (typeof MAT_BANDS)[number]): ProductOption {
     label: matLabel(band.suffix),
     note: `เนื้อของแผ่นที่เพิ่มเท่านั้น (ตัว Griptok เป็นฐานใส) · เนื้อพิเศษ +฿${MAT_BELOW}/ชิ้น · ${MAT_FROM_QTY} ชิ้นขึ้นไป +฿${band.extra}`,
     choices,
-    display: "cards",
+    display: "dropdown",
     section: SECTION,
     extraFromQty: MAT_FROM_QTY,
     showWhen: { label: ADDON_LABEL, choices: band.sizes },
@@ -172,7 +172,7 @@ function charmMatGroup(): ProductOption {
       { name: C02, imageSrc: acrylicColorImage(C02) },
       { name: SPECIAL, extra: CHARM_MAT_EXTRA, extraBelow: MAT_BELOW, imageSrc: IMG_SPECIAL },
     ],
-    display: "cards",
+    display: "dropdown",
     section: SECTION,
     extraFromQty: MAT_FROM_QTY,
     showWhen: { label: CHARM_LABEL, choices: CHARM_SIZES.map((s) => s.name) },
@@ -257,15 +257,21 @@ const addonSizes = addon.choices.map((c) => c.name);
 for (const b of MAT_BANDS)
   for (const s of b.sizes) if (!addonSizes.includes(s)) die(`กลุ่ม Add On ไม่มีตัวเลือก "${s}" แล้ว — เงื่อนไข showWhen จะตาย`);
 
-/** เรียงใหม่: Add On → เนื้อ 3 กลุ่ม → เฉดสี → เคลือบเรซิ่น → ติ่งห้อย → ที่เหลือ (coil base) */
+/**
+ * เรียงใหม่ (พนักงานสั่ง 21 ก.ย. 69): Add On → เนื้อแผ่น 3 กลุ่ม → เฉดแผ่น
+ * → ติ่งห้อย → เนื้อติ่ง → เฉดติ่ง → เคลือบเรซิ่น → ที่เหลือ (coil base)
+ * คือ "คุยเรื่องชิ้นงานให้จบก่อน แล้วค่อยเคลือบผิว"
+ */
 const kept = before.filter((o) => !OWNED.includes(o.label));
 const options: ProductOption[] = [];
 for (const o of kept) {
   options.push(o);
-  if (o.label === ADDON_LABEL) options.push(...MAT_BANDS.map(matGroup), shadeGroup());
-  if (o.label === RESIN_LABEL) options.push(charmGroup(), charmMatGroup(), charmShadeGroup());
+  if (o.label === ADDON_LABEL)
+    options.push(...MAT_BANDS.map(matGroup), shadeGroup(), charmGroup(), charmMatGroup(), charmShadeGroup());
 }
-if (!options.some((o) => o.label === CHARM_LABEL)) die(`ไม่เจอกลุ่ม "${RESIN_LABEL}" — ไม่รู้จะวางติ่งห้อยตรงไหน`);
+if (!options.some((o) => o.label === CHARM_LABEL)) die(`ไม่เจอกลุ่ม "${ADDON_LABEL}" — ไม่รู้จะวางติ่งห้อยตรงไหน`);
+const at = (label: string) => options.findIndex((o) => o.label === label);
+if (at(CHARM_LABEL) > at(RESIN_LABEL)) die("ลำดับผิด — ติ่งห้อยต้องมาก่อนเคลือบเรซิ่น");
 
 const highlights = [...(product.highlights ?? [])].filter((h) => h && !LEGACY_HIGHLIGHTS.includes(h));
 if (!highlights.includes(HIGHLIGHT)) {
