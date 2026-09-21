@@ -141,6 +141,8 @@ type DraftOption = {
   priceAsDriver?: string;
   /** แกนอื่นของช่องราคาดึงจากกลุ่มอื่น (รายชิ้น) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   priceAsDriverAlso?: Record<string, string>;
+  /** 💰 ชั้นราคาต่ำสุดของกลุ่ม priceAsDriver (ชิ้นที่ 2 ไม่ใช้ราคาปลีก) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  priceAsDriverMinTier?: number;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
   smallFee?: string;
   smallUpTo?: string;
@@ -722,6 +724,7 @@ function toDraft(p: Product): Draft {
       ...(o.sectionTrim ? { sectionTrim: o.sectionTrim } : {}),
       ...(o.sectionClosed ? { sectionClosed: true } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
+      ...(Number.isFinite(Number(o.priceAsDriverMinTier)) && Number(o.priceAsDriverMinTier) > 0 ? { priceAsDriverMinTier: Number(o.priceAsDriverMinTier) } : {}),
       ...(o.smallQtyFee
         ? {
             smallFee: String(o.smallQtyFee.fee),
@@ -1045,6 +1048,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.sectionTrim ? { sectionTrim: o.sectionTrim } : {}),
       ...(o.sectionClosed ? { sectionClosed: true } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
+      ...(Number.isFinite(Number(o.priceAsDriverMinTier)) && Number(o.priceAsDriverMinTier) > 0 ? { priceAsDriverMinTier: Number(o.priceAsDriverMinTier) } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
             smallQtyFee: {

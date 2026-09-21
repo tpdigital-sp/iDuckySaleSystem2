@@ -344,6 +344,13 @@ export interface ProductOption {
    */
   priceAsDriverAlso?: Record<string, string>;
   /**
+   * 💰 ชั้นราคาต่ำสุดที่กลุ่ม priceAsDriver ใช้ได้ (index ของ tiers) — กันไม่ให้ชิ้นที่ 2+ ใช้ "ราคาปลีก"
+   * ใบราคาอะคริลิคประกบ: ราคาแถว 1-10 ชิ้น คือราคาต่อ "พวง" (รวมตะขอ/ขั้นต่ำต่อพวง) ชิ้นที่ห้อยเพิ่ม
+   * จึงเริ่มคิดที่แถวถัดไปเสมอ (ตั้ง 1 = ข้ามแถวปลีก · 6 พวง ติ่ง 3cm สกรีน 2 ด้าน = ฿59 ไม่ใช่ ฿210)
+   * สั่งเยอะกว่านั้นยังเลื่อนตามช่วงจำนวนปกติ · ไม่ตั้ง = ใช้ช่วงเดียวกับราคาฐาน
+   */
+  priceAsDriverMinTier?: number;
+  /**
    * ค่าธรรมเนียม "ช่วงสั่งน้อย" ของกลุ่มนี้ — คิดเพิ่มต่อชิ้นเมื่อสั่งไม่เกินจำนวนที่กำหนด
    * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
    * คิด "เพิ่มจาก" ราคาของตัวเลือกนั้นตามปกติ · ตัวเลือกใน freeChoices ไม่คิด
@@ -5598,7 +5605,9 @@ export function priceAsDriverExtraOf(
     if (v) view[axis] = v;
   }
   const cells = m.cells[priceMatrixKey(m, view)];
-  return cells?.length ? (cells[tierIndex(m, qty)] ?? 0) : 0;
+  // ชิ้นที่ห้อยเพิ่มไม่ใช้แถวราคาปลีก (ดู priceAsDriverMinTier) — ช่วงที่ต่ำกว่าขั้นต่ำถูกดันขึ้นมา
+  const ti = Math.max(tierIndex(m, qty), Math.floor(opt.priceAsDriverMinTier ?? 0));
+  return cells?.length ? (cells[Math.min(ti, cells.length - 1)] ?? 0) : 0;
 }
 
 export function unitPriceParts(
