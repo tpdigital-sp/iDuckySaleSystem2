@@ -270,6 +270,46 @@ export async function setNoStock(ids: string[], on: boolean): Promise<number> {
   return n;
 }
 
+/**
+ * ✅ กลุ่มวัสดุที่ "จัดแล้ว" — คนที่ไล่จัดวัสดุติ๊กเองทีละกลุ่มในหน้า /admin/stock
+ * 140 กลุ่มไล่ทีละตัวใช้เวลาหลายวัน ปิดหน้าไปแล้วกลับมาต้องรู้ว่าค้างที่ไหน (เจ้าของร้านขอ 21 ก.ย. 69)
+ * เก็บเป็น map ในเอกสารเดียว (กลุ่มละบรรทัด = อ่าน 140 ครั้งต่อการเปิดหน้า) · คีย์ = คีย์กลุ่มของหน้า (p:<รหัสสินค้า> / s:<ตระกูล> / …)
+ */
+export const STOCK_META = "stockMeta";
+const GROUPS_DONE_DOC = "groupsDone";
+
+export interface GroupDone {
+  /** เวลาที่ติ๊ก (ISO) */
+  at: string;
+  /** คนที่ติ๊ก */
+  by: string;
+}
+
+export async function listGroupsDone(): Promise<Record<string, GroupDone>> {
+  const db = getStockDb();
+  if (!db) return {};
+  const snap = await db.collection(STOCK_META).doc(GROUPS_DONE_DOC).get();
+  return ((snap.data()?.keys ?? {}) as Record<string, GroupDone>) ?? {};
+}
+
+/**
+ * ติ๊ก/ถอนติ๊ก 1 กลุ่ม — คืนตารางใหม่ทั้งใบ (หน้าจอเอาไปทับเลย ไม่ต้องโหลดซ้ำ)
+ * เขียนใน transaction เพราะคีย์กลุ่มเป็นชื่อตระกูลภาษาไทยที่มีจุดได้ (field path แบบจุดจะแตกคีย์ผิด)
+ */
+export async function setGroupDone(key: string, on: boolean, by: string): Promise<Record<string, GroupDone>> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const ref = db.collection(STOCK_META).doc(GROUPS_DONE_DOC);
+  return db.runTransaction(async (tx) => {
+    const cur = ((await tx.get(ref)).data()?.keys ?? {}) as Record<string, GroupDone>;
+    const next = { ...cur };
+    if (on) next[key] = { at: new Date().toISOString(), by };
+    else delete next[key];
+    tx.set(ref, { keys: next, updatedAt: new Date().toISOString() });
+    return next;
+  });
+}
+
 /** ปลดป้าย "รอตรวจ" ทีละหลายตัว (ปุ่มตรวจแล้ว: รายแถว/ลิ้นชัก/ทั้งกลุ่มสินค้า) — คืนจำนวนที่เขียน */
 export async function setReviewed(ids: string[], by: string): Promise<number> {
   const db = getStockDb();

@@ -41,13 +41,15 @@
     ".next-dev-3016/types/**/*.ts",
     ".next-dev-3021/types/**/*.ts",
     ".next-dev-3025/types/**/*.ts",
+    ".next-dev-3031/types/**/*.ts",
     ".next-dev-3099/types/**/*.ts",
+    ".next-verify-claims/types/**/*.ts",
     ".next-verify-claude/types/**/*.ts",
     ".next-verify/types/**/*.ts",
     ".next/types/**/*.ts",
     ".tmpwork/next-verify/types/**/*.ts",
     "next-env.d.ts",
-    ".next-dev-3031/types/**/*.ts"
+    ".next-verify-claims2/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

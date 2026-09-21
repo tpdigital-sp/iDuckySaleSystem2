@@ -7,6 +7,7 @@ import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
+import { lotRepriceNote, repriceOrderLot } from "@/lib/order-lot-reprice";
 import { shippingUnset } from "@/lib/ship-label";
 
 export const runtime = "nodejs";
@@ -74,6 +75,14 @@ export async function POST(req: Request) {
   // 📐 แช่จำนวนชิ้นต่อหน่วยให้ของที่สั่งเพิ่มเหมือนตอนสั่งครั้งแรก
   const merged = [...order.items, ...(await withUnitYield(items))];
 
+  /**
+   * 🧮 ยอดรวมทั้งใบเข้าเรทส่ง → ราคาต่อชิ้นต้องเท่ากันทั้งบิล (เจ้าของร้านสั่ง 21 ก.ย. 69 · OD-260917-1401)
+   * ของที่เพิ่งเพิ่มได้ราคาล็อตรวมอยู่แล้ว (ตะกร้านับของเดิมร่วมล็อต) — ตรงนี้ลดบรรทัดเดิมลงมาให้เท่ากัน
+   * ลดอย่างเดียว ไม่ขึ้นราคาย้อนหลัง · ดู lib/order-lot-reprice.ts
+   */
+  const addedIdx = merged.map((_, i) => i).filter((i) => i >= order.items.length);
+  const lot = await repriceOrderLot({ ...order, items: merged }, getProductServer, addedIdx);
+
   // 🚚 ใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง → รับค่าส่งที่หน้าชำระเงินคิดไว้ (ชื่อวิธีส่ง + ตัวเลข) มาใส่ให้เป็นครั้งแรก
   const shipName = (body.shipping ?? "").trim().slice(0, 40);
   const shipPatch: Partial<Order> =
@@ -89,7 +98,7 @@ export async function POST(req: Request) {
    * 🏅 ส่วนลดระดับสมาชิก — ใบที่ผูกผู้ติดต่อไว้ (พนักงานเปิดใบให้ทางไลน์) ต้องได้ % ของระดับตัวเองเหมือนสั่งเองจากเว็บ
    * คิดใหม่จากยอดสินค้าหลังเพิ่มรายการ · ใบที่แจ้งโอนแล้ว/มีส่วนลดที่ตกลงกันไว้ = ไม่แตะ (ดู lib/server/order-member-tier.ts)
    */
-  const priced = await syncOrderMemberTier(sb, { ...order, ...shipPatch, items: merged });
+  const priced = await syncOrderMemberTier(sb, { ...order, ...shipPatch, items: lot.order.items });
 
   /**
    * ⚡ ส่วนลดโอนไว — คิดที่ประตูเขียนออเดอร์ (updateOrder → syncOrderEarlyPay) ที่เดียวทั้งระบบ
@@ -108,7 +117,7 @@ export async function POST(req: Request) {
   const synced = await syncOrderEarlyPay(sb, updated, "ลูกค้า");
   const newTotal = orderTotal(synced);
   const owed = newTotal - (order.paidTotal ?? 0);
-  const logged = withLog(
+  let logged = withLog(
     synced,
     "ลูกค้า",
     "สั่งเพิ่มในออเดอร์เดิม",
@@ -116,6 +125,9 @@ export async function POST(req: Request) {
       (shipPatch.shippingLabel ? ` · ใส่ค่าส่ง ${shipPatch.shippingLabel} ฿${(shipPatch.shippingCost ?? 0).toLocaleString()}` : "") +
       ` · ยอดรวมใหม่ ฿${newTotal.toLocaleString()}`
   );
+  // 🧮 บอกให้ชัดว่าของเดิมถูกลดลงมาเท่ากับของใหม่เพราะยอดรวมเข้าเรทส่ง (ลูกค้า/แอดมินเห็นใน log ใบนี้)
+  if (lot.changed.length)
+    logged = withLog(logged, "ระบบ", "ปรับราคาต่อชิ้นให้เท่ากันทั้งบิล", `ยอดรวมทั้งใบเข้าเรทส่ง · ${lotRepriceNote(lot.changed)}`);
 
   const { order: saved, error: saveErr } = await updateOrder(sb, logged, { prev: order, by: "ลูกค้า" });
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });

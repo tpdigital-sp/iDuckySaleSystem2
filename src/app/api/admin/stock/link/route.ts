@@ -39,7 +39,20 @@ async function guard() {
   return null;
 }
 
-type Target = { presetId?: string; productId?: string; label?: string; optionIndex?: number; choice?: string; index?: number; stockItemId?: string | null; stockQtyPer?: number | null; unlinkExtra?: string };
+type WhenCond = { label: string; choices: string[] };
+type Target = {
+  presetId?: string;
+  productId?: string;
+  label?: string;
+  optionIndex?: number;
+  choice?: string;
+  index?: number;
+  stockItemId?: string | null;
+  stockQtyPer?: number | null;
+  unlinkExtra?: string;
+  /** ผูก "ของที่ตัดเพิ่มแบบมีเงื่อนไข" เข้ากับตัวเลือกนี้ (กรอบรูป A5 ตัดเพิ่มเมื่อ ตัวเลือก = กรอบรูป + แผ่นจิ๊กซอว์) */
+  linkExtra?: { stockItemId?: string; per?: number | null; when?: WhenCond[] };
+};
 
 /**
  * หากลุ่มตัวเลือกของสินค้า — ชี้ด้วยลำดับก่อน (ต้องชื่อตรงด้วย กันหน้าจอเก่า) ไม่มี/ไม่ตรง = กลุ่มแรกที่ชื่อตรง
@@ -77,6 +90,28 @@ export async function GET(req: Request) {
   if (bad) return bad;
   const db = sb();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+
+  /**
+   * ?options=<productId> → กลุ่มตัวเลือก "ทุกกลุ่ม" ของสินค้าตัวเดียว (ไม่กรองเฉพาะมิติที่กินสต๊อก)
+   * ฟอร์มตั้งเงื่อนไขต้องเลือกกลุ่มอย่าง "ตัวเลือก"/"แบบ" ที่ไม่ใช่มิติวัสดุได้ด้วย
+   */
+  const wantOptions = new URL(req.url).searchParams.get("options");
+  if (wantOptions) {
+    const { data: row } = await db.from("products").select("id,data").eq("id", wantOptions).maybeSingle();
+    if (!row?.data) return NextResponse.json({ error: "ไม่พบสินค้านี้" }, { status: 404 });
+    const p = row.data as Product;
+    return NextResponse.json({
+      ok: true,
+      productId: row.id,
+      productName: p.name,
+      options: (p.options ?? []).map((o, optionIndex) => ({
+        label: o.label,
+        optionIndex,
+        fromPreset: !!o.presetId, // มาจากคลังตัวเลือกกลาง — ผูกของมีเงื่อนไขที่นี่ไม่ได้ (ต้องไปแก้ที่คลังกลาง)
+        choices: (o.choices ?? []).map((c) => c.name),
+      })),
+    });
+  }
 
   // สินค้า+คลังตัวเลือกจากแคชกลาง (products-slim) · SKU จาก Firestore — ยิงพร้อมกัน
   const fresh = new URL(req.url).searchParams.get("fresh") === "1";
@@ -154,7 +189,8 @@ export async function POST(req: Request) {
   if (t.res) return t.res;
   const { body, rowId, row } = t;
   const { presetId, label, choice } = body;
-  const linkMode = "stockItemId" in body || !("stockQtyPer" in body);
+  const linkExtra = body.linkExtra;
+  const linkMode = !linkExtra && ("stockItemId" in body || !("stockQtyPer" in body));
   const stockItemId = body.stockItemId || null;
 
   let per: number | null = null;
@@ -165,8 +201,10 @@ export async function POST(req: Request) {
     per = body.stockQtyPer == null || n === 1 ? null : Math.round(n * 10000) / 10000;
   }
 
-  type Ch = { name: string; stockItemId?: string; stockQtyPer?: number; stockLinks?: { stockItemId: string }[] };
+  type Extra = { stockItemId: string; per?: number; when: WhenCond[] };
+  type Ch = { name: string; stockItemId?: string; stockQtyPer?: number; stockLinks?: Extra[] };
   const unlinkExtra = body.unlinkExtra;
+  let extra: Extra | null = null; // เติมค่าหลังตรวจ (setOn ถูกเรียกทีหลัง จึงอ่านค่าที่เติมแล้วเสมอ)
   const without = (c: Ch, keys: string[]) => Object.fromEntries(Object.entries(c).filter(([k]) => !keys.includes(k))) as Ch;
   let notLinked = false;
   const setOn = (choices: Ch[]) =>
@@ -176,6 +214,11 @@ export async function POST(req: Request) {
         // ถอดเฉพาะลิงก์แบบมีเงื่อนไขตัวนั้น — ลิงก์หลักของตัวเลือก (stockItemId) ไม่แตะ
         const rest = (c.stockLinks ?? []).filter((l) => l.stockItemId !== unlinkExtra);
         return rest.length ? { ...c, stockLinks: rest } : without(c, ["stockLinks"]);
+      }
+      if (extra) {
+        // ผูกซ้ำ SKU เดิม = แก้เงื่อนไข/จำนวนของตัวนั้น ไม่ใช่เพิ่มอีกบรรทัด
+        const rest = (c.stockLinks ?? []).filter((l) => l.stockItemId !== extra!.stockItemId);
+        return { ...c, stockLinks: [...rest, extra!] };
       }
       if (linkMode) {
         if (!stockItemId) return without(c, ["stockItemId", "stockQtyPer"]); // ถอด = ลบคีย์ทิ้ง ไม่เก็บ null
@@ -192,15 +235,52 @@ export async function POST(req: Request) {
   const opts: ProductOption[] = row.data.options ?? [];
   const oi = presetId ? -1 : findOption(opts, label, body.optionIndex);
   if (!presetId && oi < 0) return NextResponse.json({ error: "ไม่พบกลุ่มตัวเลือกนี้ในสินค้า" }, { status: 404 });
+
+  // ── ผูกของที่ตัดเพิ่มแบบมีเงื่อนไข ─────────────────────────────────────────────
+  if (linkExtra) {
+    if (presetId)
+      return NextResponse.json({ error: "คลังตัวเลือกกลางยังตั้งของมีเงื่อนไขไม่ได้ — ต้องตั้งที่ตัวเลือกของสินค้าเอง" }, { status: 400 });
+    const sid = (linkExtra.stockItemId ?? "").trim();
+    if (!sid) return NextResponse.json({ error: "ต้องเลือกวัสดุที่จะตัดเพิ่ม" }, { status: 400 });
+    const host = (opts[oi].choices ?? []).find((c) => c.name === choice);
+    if (!host) return NextResponse.json({ error: "ไม่พบตัวเลือกนี้ในกลุ่ม (อาจมีคนแก้ไปก่อน) — โหลดหน้าใหม่" }, { status: 404 });
+    if (host.stockItemId === sid)
+      return NextResponse.json({ error: "วัสดุตัวนี้เป็นลิงก์หลักของตัวเลือกอยู่แล้ว — ผูกซ้ำจะโดนตัด 2 เด้ง" }, { status: 409 });
+    // ผูกกับรหัสที่ไม่มีจริง = ลิงก์ตายตั้งแต่เกิด (เคยมี 32 SKU แบบนี้)
+    const stock = await listStock();
+    if (!stock.items.some((i) => i.id === sid)) return NextResponse.json({ error: "ไม่พบวัสดุนี้ในคลัง" }, { status: 404 });
+
+    const when = (linkExtra.when ?? [])
+      .map((w) => ({ label: (w?.label ?? "").trim(), choices: [...new Set((w?.choices ?? []).map((c) => String(c).trim()).filter(Boolean))] }))
+      .filter((w) => w.label && w.choices.length);
+    if (!when.length)
+      return NextResponse.json({ error: "ต้องมีเงื่อนไขอย่างน้อย 1 ข้อ — ถ้าตัดทุกครั้งอยู่แล้ว ให้ผูกแบบปกติหรือตั้งเป็นวัสดุแฝงแทน" }, { status: 400 });
+    for (const w of when) {
+      if (w.label === opts[oi].label)
+        return NextResponse.json({ error: `เงื่อนไขต้องเป็นกลุ่มอื่น — "${w.label}" เป็นกลุ่มเดียวกับตัวหลัก` }, { status: 400 });
+      const g = opts.find((o) => o.label === w.label);
+      if (!g) return NextResponse.json({ error: `ไม่มีกลุ่มตัวเลือก "${w.label}" ในสินค้านี้` }, { status: 404 });
+      const names = new Set((g.choices ?? []).map((c) => c.name));
+      const miss = w.choices.filter((c) => !names.has(c));
+      if (miss.length) return NextResponse.json({ error: `กลุ่ม "${w.label}" ไม่มีตัวเลือก: ${miss.join(", ")}` }, { status: 404 });
+    }
+
+    const n = Number(linkExtra.per ?? 1);
+    if (!Number.isFinite(n) || n <= 0 || n > 100000) return NextResponse.json({ error: "จำนวนต่อชิ้นต้องมากกว่า 0" }, { status: 400 });
+    extra = { stockItemId: sid, ...(n === 1 ? {} : { per: Math.round(n * 10000) / 10000 }), when };
+  }
+
   const next = presetId
     ? { ...row.data, choices: setOn(row.data.choices ?? []) }
     : { ...row.data, options: opts.map((o, i) => (i === oi ? { ...o, choices: setOn((o.choices ?? []) as Ch[]) } : o)) };
   if (notLinked) return NextResponse.json({ error: "ต้องผูก SKU ก่อน ถึงจะตั้งอัตราใช้ได้" }, { status: 409 });
 
+  // เปลี่ยนโครงตัวเลือก (ไม่ใช่แค่สลับรหัส SKU) → เก็บฉบับก่อนหน้าไว้ย้อนได้
+  if (extra) await snapshotRevision(db, rowId, row.data, await currentActor(), "save");
   const { error } = await db.from("products").update({ data: next }).eq("id", rowId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   invalidateProductsSlim();
-  return NextResponse.json({ ok: true, stockQtyPer: linkMode ? undefined : per });
+  return NextResponse.json({ ok: true, stockQtyPer: linkMode ? undefined : per, extra: extra ?? undefined });
 }
 
 /**
