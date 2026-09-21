@@ -3368,6 +3368,11 @@ export default function AdminOrderDetailPage() {
   /** ลบภาพลายของลูกค้าออกจากรายการ (ไฟล์ยังอยู่ในคลัง แต่ไม่ผูกกับออเดอร์แล้ว) */
   function removeArtwork(itemIndex: number, url: string) {
     if (!order) return;
+    // ลบแล้วต้องตามได้ว่าใครลบลายไหนของรายการไหน — เก็บเลขลาย ชื่อไฟล์ และจำนวนต่อลาย ณ ตอนลบ ไว้ในประวัติออเดอร์
+    const gone = order.items[itemIndex];
+    const goneNo = (gone?.artworkUrls ?? []).indexOf(url) + 1;
+    const goneFile = decodeURIComponent((url.split("/").pop() ?? "").split("?")[0] ?? "");
+    const goneQty = gone ? artQtyOf(gone, url, goneNo - 1) : undefined;
     const items = order.items.map((it, i) =>
       i === itemIndex
         ? {
@@ -3379,7 +3384,19 @@ export default function AdminOrderDetailPage() {
           }
         : it
     );
-    const next = withLog({ ...order, items }, actor, "ลบภาพลาย", order.items[itemIndex]?.name);
+    const next = withLog(
+      { ...order, items },
+      actor,
+      "ลบภาพลาย",
+      [
+        gone?.name,
+        `ลายที่ ${goneNo || "?"}`,
+        goneQty ? `× ${goneQty.toLocaleString("th-TH")}` : "",
+        goneFile,
+      ]
+        .filter(Boolean)
+        .join(" — ") + " (ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)"
+    );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
   }
@@ -5857,11 +5874,15 @@ export default function AdminOrderDetailPage() {
                                                 📐 {artSizeText(artSizeOf(it, r.u, r.no - 1)!)}
                                               </span>
                                             ) : null}
-                                            {isOwner && (
+                                            {mayEdit && (
                                               <button
                                                 type="button"
                                                 onClick={() => {
-                                                  if (confirm(`เอารูปลายที่ ${r.no} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)`))
+                                                  if (
+                                                    confirm(
+                                                      `เอารูปลายที่ ${r.no} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์ · บันทึกในประวัติออเดอร์ว่าใครลบ)`
+                                                    )
+                                                  )
                                                     removeArtwork(i, r.u);
                                                 }}
                                                 title="เอารูปนี้ออกจากออเดอร์"
@@ -6083,11 +6104,15 @@ export default function AdminOrderDetailPage() {
                                           />
                                         </span>
                                       )}
-                                      {isOwner && (
+                                      {mayEdit && (
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            if (confirm(`เอารูปต้นฉบับใบที่ ${k + 1} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)`))
+                                            if (
+                                              confirm(
+                                                `เอารูปต้นฉบับใบที่ ${k + 1} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์ · บันทึกในประวัติออเดอร์ว่าใครลบ)`
+                                              )
+                                            )
                                               removeArtwork(i, u);
                                           }}
                                           title="เอารูปนี้ออกจากออเดอร์"
