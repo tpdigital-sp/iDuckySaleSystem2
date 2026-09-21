@@ -1013,7 +1013,11 @@ function OrderRow({
             </span>
           )}
           {o.rush && (
-            <span className="dkb-tag" style={{ background: "var(--dk-coral-deep)", color: "#fff" }} title="งานเร่ง">
+            <span
+              className="dkb-tag"
+              style={{ background: "var(--dk-coral-deep)", color: "#fff" }}
+              title={o.rushAuto ? `🤖 ระบบตั้งเป็นงานเร่งให้เอง — ${o.rushAuto.reason}` : "แอดมินติ๊กว่าเป็นงานเร่ง"}
+            >
               <i />
               งานเร่ง
             </span>

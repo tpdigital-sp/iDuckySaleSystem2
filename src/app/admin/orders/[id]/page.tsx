@@ -162,6 +162,7 @@ import { formatPhone } from "@/lib/contacts";
 import { addressProblem, contactProblems, phoneProblem } from "@/lib/contact-validate";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { SHIP_WINDOW_RULE, earliestShipDate, orderDateYmd, shipWindowForUseBy, shipWindowWarnings, shortThaiDay } from "@/lib/ship-date";
+import { rushManualStamp } from "@/lib/rush-auto";
 import HolidayDatePicker from "@/components/HolidayDatePicker";
 import { useShopHolidays } from "@/lib/use-shop-holidays";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
@@ -7942,7 +7943,12 @@ export default function AdminOrderDetailPage() {
                         <button
                           type="button"
                           title={order.rush ? "กดอีกครั้งเพื่อยกเลิกงานเร่ง" : "ทำเครื่องหมายว่าเป็นงานเร่ง"}
-                          onClick={() => applyOrder({ ...order, rush: !order.rush })}
+                          /* คนกดเอง = คำตัดสินสุดท้าย — จดตรา rushManual ไว้ ระบบจะไม่ไปติ๊ก/ปลดธงใบนี้เองอีก (ดู lib/rush-auto.ts) */
+                          onClick={() => {
+                            const next = { ...order, rush: !order.rush, rushManual: rushManualStamp(actor, !order.rush) };
+                            delete next.rushAuto;
+                            applyOrder(next);
+                          }}
                           className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                             order.rush
                               ? "bg-rose-500 text-white shadow-sm hover:bg-rose-600"
@@ -7955,6 +7961,18 @@ export default function AdminOrderDetailPage() {
                       {d != null && (
                         <p className={`mt-1 text-[11px] font-bold ${late ? "text-rose-600" : soon ? "text-orange-600" : d <= 7 ? "text-orange-500" : "text-slate-400"}`}>
                           {late ? `⚠️ เลยวันใช้งานมาแล้ว ${Math.abs(d)} วัน` : d === 0 ? "⚠️ ต้องใช้งานวันนี้!" : `เหลืออีก ${d} วันถึงวันใช้งาน`}
+                        </p>
+                      )}
+                      {/* 🤖 ธงที่ระบบติ๊กให้เอง — บอกว่าไม่มีใครมากดปุ่ม ใบนี้ขึ้นงานเร่งเพราะวันใช้งานกระชั้น (กดยกเลิกได้ ระบบจะไม่ยุ่งอีก) */}
+                      {order.rush && order.rushAuto && (
+                        <p className="mt-1 text-[11px] font-semibold text-rose-500">
+                          🤖 ระบบตั้งให้เอง — {order.rushAuto.reason} · กราฟฟิกเห็นป้ายงานเร่งบนบอร์ดแล้ว
+                          {order.rushAuto.alertedAt ? " (แจ้งกลุ่มไลน์ร้านแล้ว)" : ""}
+                        </p>
+                      )}
+                      {order.rushManual && (
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          {order.rushManual.on ? "🔥 ติ๊กเอง" : "ยกเลิกเอง"}โดย {order.rushManual.by} — ระบบจะไม่เปลี่ยนธงนี้ให้อีก
                         </p>
                       )}
                     </div>

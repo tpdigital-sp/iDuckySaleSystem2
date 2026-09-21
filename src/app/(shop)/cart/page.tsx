@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
-import { addDays, earliestShipDate, earliestUseBy, isWorkingDay, shipWindowForUseBy, shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
+import { earliestShipDate, earliestUseBy, isWorkingDay, shipWindowForUseBy, shortThaiDay, todayBkkYmd } from "@/lib/ship-date";
+import { RUSH_AUTO_WORKDAYS, workingDaysUntil } from "@/lib/rush-auto";
 import { useShopHolidays } from "@/lib/use-shop-holidays";
 import HolidayDatePicker from "@/components/HolidayDatePicker";
 import {
@@ -85,15 +86,8 @@ import { USE_BY_KEY, saveUseByDate } from "@/lib/use-by-date";
 /** 📅 กล่องวันใช้งาน — เกณฑ์เตือน (ปรับตัวเลขตรงนี้ที่เดียว) */
 /** สั่งรวมตั้งแต่กี่ชิ้นถือว่า "จำนวนเยอะ" ต้องสอบถามคิวผลิตก่อนสั่ง */
 const USE_BY_BIG_QTY = 100;
-/** วันใช้งานห่างจากวันนี้ไม่ถึงกี่วันทำการ ถือว่า "กระชั้น" */
-const USE_BY_RUSH_WORKDAYS = 3;
-/** นับวันทำการ (จ–ศ เว้นวันหยุด) ตั้งแต่พรุ่งนี้จนถึงก่อนวันใช้งาน · -1 = วันผิดรูป/ย้อนหลัง */
-function workingDaysUntil(useBy: string, today = todayBkkYmd()): number {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(useBy) || useBy < today) return -1;
-  let n = 0;
-  for (let d = addDays(today, 1); d < useBy && n < 400; d = addDays(d, 1)) if (isWorkingDay(d)) n++;
-  return n;
-}
+/* วันใช้งานห่างไม่ถึงกี่วันทำการ = "กระชั้น" และตัวนับวันทำการ อยู่ที่ lib/rush-auto.ts ที่เดียว
+   — เกณฑ์เดียวกับที่ระบบใช้ติ๊กธง 🔥 งานเร่งให้ใบนั้นตอนบันทึก (ลูกค้าเห็นคำเตือน = หลังร้านเห็นป้ายงานเร่ง) */
 /** วิธีจัดส่งที่ลูกค้ากดเลือกเอง (เก็บ "ลายเซ็นตะกร้า" ตอนที่กด — ตะกร้าเปลี่ยน = ให้ระบบคิดใหม่) */
 const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
@@ -1272,7 +1266,7 @@ export default function CartPage() {
             {(() => {
               const bigQty = totalQty >= USE_BY_BIG_QTY;
               const wd = useBy ? workingDaysUntil(useBy) : -1;
-              const rush = !!useBy && wd >= 0 && wd < USE_BY_RUSH_WORKDAYS;
+              const rush = !!useBy && wd >= 0 && wd < RUSH_AUTO_WORKDAYS;
               const today = todayBkkYmd();
               const win = useBy ? shipWindowForUseBy(useBy, today, today) : null;
               const minUseBy = earliestUseBy(today);

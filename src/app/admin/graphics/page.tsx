@@ -314,7 +314,8 @@ function QueueRow({ o, workSizes }: { o: Order; workSizes: Record<string, string
         name={o.customer || "ยังไม่ระบุชื่อ"}
         tags={
           <>
-            {o.rush && <Tag tone="solid">งานเร่ง</Tag>}
+            {/* 🔥 ธงงานเร่ง — แอดมินกดเอง หรือระบบติ๊กให้เมื่อวันใช้งานกระชั้น (ใบที่ลูกค้าสั่งเองไม่มีใครมากดปุ่มให้) */}
+            {o.rush && <Tag tone="solid" title={o.rushAuto ? `🤖 ระบบตั้งเป็นงานเร่งให้เอง — ${o.rushAuto.reason}` : "แอดมินติ๊กว่าเป็นงานเร่ง"}>งานเร่ง</Tag>}
             {o.claimOf && (
               <Tag tone="lilac" title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}>
                 งานเคลม

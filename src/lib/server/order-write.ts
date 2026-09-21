@@ -1,8 +1,10 @@
 import { reconcileOrderTax, withLog, type Order, type OrderItem } from "@/lib/admin-data";
+import { applyAutoRush, stampRushAlert } from "@/lib/rush-auto";
 import { syncOrderEarlyPay } from "./order-early-pay";
-import { syncItemsToTP } from "./tp-report";
+import { syncItemsToTP, syncRushToTP } from "./tp-report";
 import { closeClaimsForDeliveredRedo } from "./claims-db";
 import { alertNeedsPurchase, stampNeedsPurchaseAlert } from "./needs-purchase";
+import { alertRushOrder } from "./rush-alert";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
 type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -88,13 +90,45 @@ function stampSaved(o: Order): Order {
   return { ...o, savedAt: new Date().toISOString() };
 }
 
+/**
+ * 🔥 งานเร่งอัตโนมัติ — วันใช้งานกระชั้นเท่ากับงานเร่ง ไม่ต้องรอใครมากดปุ่ม (พนักงานแจ้ง 21 ก.ย. 69)
+ *
+ * วางที่ประตูเพราะ "กระชั้นหรือยัง" เปลี่ยนไปตามวัน ไม่ใช่ตอนสั่งอย่างเดียว — ลูกค้าสั่งล่วงหน้าแล้วมาโอนช้า
+ * ใบจะกลายเป็นงานเร่งเองตอนเงินเข้า ซึ่งเป็นนาทีที่การ์ดขึ้นบอร์ด WIP กราฟฟิกพอดี · กติกาอยู่ใน lib/rush-auto.ts
+ * ใบที่คนกดปุ่มเอง (rushManual) ไม่ถูกแตะ · หน้าจอที่บันทึกทับโดยไม่รู้จักฟิลด์นี้ ระบบเติมธงกลับให้เอง
+ */
+async function withAutoRush(
+  prev: Order | null | undefined,
+  next: Order,
+  by: string,
+): Promise<{ order: Order; turned: "on" | "off" | null; alert: boolean }> {
+  // วันหยุดร้าน (ปฏิทิน TP) ทำให้ "เหลือกี่วันทำการ" ต่างไป — โหลดเฉพาะใบที่มีวันใช้งาน (แคช 10 นาทีต่อเครื่อง)
+  if (next.useByDate)
+    try {
+      const { loadShopHolidays } = await import("./shop-holidays");
+      await loadShopHolidays();
+    } catch {
+      // อ่านปฏิทินไม่ได้ = ใช้ตารางวันหยุดสำรองใน ship-date (คลาดได้ไม่เกิน 1 วันทำการ) ไม่ควรทำให้บันทึกออเดอร์ล้ม
+    }
+  const r = applyAutoRush(next);
+  let order = r.order;
+  if (r.turned === "on")
+    order = withLog(order, "ระบบ", "🔥 ตั้งเป็นงานเร่งให้อัตโนมัติ", `${r.reason ?? ""} · ${by === "ระบบ" ? "ไม่ต้องรอแอดมินกดปุ่ม" : `บันทึกโดย ${by}`}`.trim());
+  if (r.turned === "off") order = withLog(order, "ระบบ", "ปลดธงงานเร่งอัตโนมัติ", "วันใช้งานไม่กระชั้นแล้ว — กดปุ่ม 🔥 เองได้ถ้าต้องการให้เป็นงานเร่ง");
+  const s = stampRushAlert(prev, order);
+  return { order: s.order, turned: r.turned, alert: s.due };
+}
+
 /** สร้างออเดอร์ใหม่ (insert) — ใบใหม่ = รายการเปลี่ยนเสมอ จึงคิดกฎตอนบันทึกให้ทุกครั้ง */
 export async function insertOrder(sb: SB, order: Order, by = "ระบบ"): Promise<WriteOrderResult> {
   // 🛒 ใบที่ติ๊ก "รอของเข้า" แล้วเกิดมาแบบจ่ายแล้วเลย (เช่น FlowAccount ที่ชำระแล้ว) → แจ้งให้สั่งของตั้งแต่ตอนสร้าง
   const np = stampNeedsPurchaseAlert(null, await syncOrderEarlyPay(sb, order, by));
-  const final = stampSaved(np.order);
+  // 🔥 ใบเกิดมาพร้อมวันใช้งานกระชั้น (ลูกค้าสั่งเองแล้วเลือกวันชิด) → ติ๊กงานเร่งตั้งแต่ใบเกิด
+  const rush = await withAutoRush(null, np.order, by);
+  const final = stampSaved(rush.order);
   const { error } = await sb.from("orders").insert({ id: final.id, data: final });
   if (!error && np.due) await alertNeedsPurchase(final);
+  if (!error && rush.alert) await alertRushOrder(final);
   return { order: final, error };
 }
 
@@ -125,10 +159,19 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
    */
   const np = stampNeedsPurchaseAlert(prev, final);
   final = np.order;
+  /**
+   * 🔥 คิดธงงานเร่งใหม่ทุกครั้งที่บันทึก — "วันใช้งานกระชั้นไหม" ขยับตามวัน ไม่ใช่รู้ผลตั้งแต่ตอนสั่ง
+   * ใบที่สั่งล่วงหน้าแล้วโอนช้าจึงขึ้นธงเองตอนเงินเข้า (นาทีที่การ์ดขึ้นบอร์ด WIP กราฟฟิก) — ดู lib/rush-auto.ts
+   */
+  const rush = await withAutoRush(prev, final, by);
+  final = rush.order;
   // 🕒 ประทับเวลาบันทึกที่ประตู — ทางเข้าใหม่ได้ไปด้วยเอง ไม่ต้องจำว่าต้องเซ็ต savedAt เอง
   final = stampSaved(final);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);
   if (!error && np.due) await alertNeedsPurchase(final);
+  // 🏭 ธงงานเร่งเพิ่งเปลี่ยนเอง → การ์ดบนบอร์ด WIP กราฟฟิกต้องเห็นด้วย (ปุ่มในหน้าออเดอร์ sync เองอยู่แล้ว)
+  if (!error && rush.turned) await syncRushToTP(final);
+  if (!error && rush.alert) await alertRushOrder(final);
   /**
    * 🏭 รายการเปลี่ยน → เรคอร์ดสะพาน (msVerify / การ์ดบอร์ด WIP กราฟฟิก) ต้องเห็นรายการชุดใหม่
    * ไม่งั้นการ์ดของออเดอร์ค้างโชว์รายการชุดแรก กราฟฟิกไม่รู้ว่าลูกค้าสั่งเพิ่มอะไรมา
