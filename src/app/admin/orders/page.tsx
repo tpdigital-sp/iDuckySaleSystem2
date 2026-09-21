@@ -401,17 +401,22 @@ export default function AdminOrdersPage() {
     return m;
   }, [orders]);
 
-  // นับใบมัดจำแต่ละขั้น (ในช่วงวันที่ที่เลือก) — total = 0 คือช่วงนี้ไม่มีใบมัดจำเลย ซ่อนแถวชิปไปเลย ไม่ให้รกจอ
+  /**
+   * นับใบมัดจำแต่ละขั้น — ⚠️ นับจาก "ทุกใบ" ไม่ผูกช่วงวันที่ที่เลือก (เจ้าของร้านสั่ง 21 ก.ย. 69)
+   * ใบมัดจำอยู่ยาวข้ามสัปดาห์: โอนครึ่งแรกต้นเดือน กว่าจะเก็บครึ่งหลังอีกหลายวัน
+   * ถ้าผูกกับช่วงวันที่ (เปิดมาเป็น 7 วัน) ใบที่ยังต้องตามเก็บจะหายเงียบจนไม่มีใครตาม
+   * total = 0 คือร้านไม่เคยมีใบมัดจำเลย ซ่อนแถวชิปไปเลย ไม่ให้รกจอ
+   */
   const depCounts = useMemo(() => {
     const c = { wait: 0, paid: 0, settled: 0, total: 0 };
-    for (const o of dated) {
+    for (const o of orders) {
       const k = depStageOf(o);
       if (!k) continue;
       c[k]++;
       c.total++;
     }
     return c;
-  }, [dated]);
+  }, [orders]);
 
   // นับใบตามคนสร้าง (ในช่วงวันที่ที่เลือก) — ชื่อพนักงานเรียงตามจำนวนใบมาก→น้อย
   const byCounts = useMemo(() => {
@@ -452,7 +457,9 @@ export default function AdminOrdersPage() {
 
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
-  const shown = dated
+  // กดชิปมัดจำ = ดูข้ามช่วงวันที่ (ให้จำนวนแถวตรงกับตัวเลขบนชิป) · ไม่ได้กด = ตามช่วงวันที่ตามปกติ
+  const depBase = dep === "all" ? dated : orders;
+  const shown = depBase
     .filter(byMatch)
     .filter((o) => (onlyStock ? orderAwaitingStock(o) && o.status !== "ยกเลิก" : true))
     .filter((o) => (dep === "all" ? true : depStageOf(o) === dep))
@@ -715,7 +722,7 @@ export default function AdminOrdersPage() {
           {/* ── ออเดอร์มัดจำ 50% — "ใครโอนมัดจำมาแล้ว" คือใบที่เริ่มงานได้ แต่ยังห้ามส่งของ ── */}
           {seesMoney && depCounts.total > 0 && (
             <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
-              <span className="dkb-flab">มัดจำ 50%</span>
+              <span className="dkb-flab" title="แถวนี้นับใบมัดจำทุกวัน ไม่ขึ้นกับช่วงวันที่สั่งด้านล่าง">มัดจำ 50%</span>
               <button type="button" onClick={() => setDep("all")} aria-pressed={dep === "all"} className="dkb-fchip">
                 <i />
                 ไม่กรอง <b>{dated.length}</b>
@@ -883,8 +890,8 @@ export default function AdminOrdersPage() {
           <span className="text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
             เรียงใหม่ → เก่า · แสดง {shown.length} จาก {orders.length} ใบ
             {shown.length > PAGE_SIZE ? ` · หน้า ${curPage + 1}/${pageCount} (ใบที่ ${pageFrom}–${pageTo})` : ""}
-            {dateOn && rangeText ? ` · ${rangeText}` : ""}
-            {dep !== "all" ? ` · ${DEP_LABEL[dep]}` : ""}
+            {dateOn && rangeText && dep === "all" ? ` · ${rangeText}` : ""}
+            {dep !== "all" ? ` · ${DEP_LABEL[dep]} (ทุกวัน)` : ""}
             {cust !== "all" ? ` · ${CUST_LABEL[cust]}` : ""}
             {onlyStock ? " · 🛒 รอของเข้า" : ""}
           </span>
@@ -896,7 +903,7 @@ export default function AdminOrdersPage() {
               {kw
                 ? `ไม่พบออเดอร์ที่ตรงกับ “${q}”`
                 : dep !== "all"
-                  ? `ไม่มีใบ “${DEP_LABEL[dep]}”${dateOn && rangeText ? ` · ${rangeText}` : ""}`
+                  ? `ไม่มีใบ “${DEP_LABEL[dep]}” (ดูทุกวันแล้ว)`
                   : by !== "all"
                   ? `ไม่มีใบที่ “${byLabel}”${filter === "all" ? "" : ` สถานะ “${filter}”`}${dateOn && rangeText ? ` · ${rangeText}` : ""}`
                   : dateOn
@@ -909,7 +916,7 @@ export default function AdminOrdersPage() {
               {kw
                 ? "ลองค้นด้วยเลขออเดอร์ ชื่อลูกค้า หรือเบอร์โทรแทน"
                 : dep !== "all"
-                  ? "กด “ไม่กรอง” ในแถวมัดจำ 50% หรือขยายช่วงวันที่ เพื่อดูใบอื่น"
+                  ? "กด “ไม่กรอง” ในแถวมัดจำ 50% เพื่อกลับไปดูใบอื่น"
                   : by !== "all"
                   ? "กด “ทั้งหมด” ในแถวใครสร้าง เพื่อดูทุกใบ"
                   : dateOn
