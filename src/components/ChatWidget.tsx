@@ -9,7 +9,8 @@
  * ใช้สมองตัวเดียวกับกล่องแชทหน้าแรก (lib/shop-chat) และ sessionId เดียวกัน
  * ลูกค้าเริ่มถามหน้าแรกแล้วเดินไปหน้าอื่นแล้วกดปุ่มนี้ บทสนทนาต่อเนื่องไม่หลุด
  *
- * ตำแหน่ง: ปุ่มลอยมุมขวาล่างซ้อนกันเป็นชั้น — bottom-5 แอดมิน · LINE (.line-fab: เดสก์ท็อป 80px · มือถือ 100px) · bottom-36 ตัวนี้
+ * ตำแหน่ง: ปุ่มลอยมุมขวาล่างซ้อนกันเป็นชั้น — เดสก์ท็อปคุมระยะจากชุด .fabx ท้าย landing.css
+ * (หลังบ้าน 20 · LINE 78 · บอท 136 · ตะกร้า 194) · คลาส Tailwind ด้านล่างเหลือไว้คุมมือถือ
  * มือถือ (≤1000px) ตัวนี้ขยับขึ้นเป็น 164px ให้พ้นปุ่ม LINE ทรงกลม (100–150px) · ปุ่มแอดมินย้ายไปมุมซ้ายล่างเหนือแถบเมนูล่าง
  */
 
@@ -129,16 +130,30 @@ export default function ChatWidget() {
           วงแหวนขาว ไม่ใช่กรมท่าโปร่ง — เลื่อนถึง footer (พื้นกรมท่า) ปุ่มกรมท่าบนวงแหวนกรมท่าจะจมหายทั้งใบ
           ขาวตัดได้ทั้งพื้นฟ้าอ่อนด้านบนและพื้นกรมท่าด้านล่าง
         */
-        className="fixed bottom-36 right-5 z-40 max-[1000px]:bottom-[164px] max-[1000px]:right-4 flex items-center gap-2 rounded-full bg-[#173A6B] px-4 py-3 text-sm font-bold text-white shadow-lg ring-[3px] ring-white/85 transition hover:scale-105 hover:bg-[#1E4A85]"
+        className="fabx fabx-bot fixed bottom-36 right-5 z-40 max-[1000px]:bottom-[164px] max-[1000px]:right-4 flex items-center gap-2 rounded-full bg-[#173A6B] px-4 py-3 text-sm font-bold text-white shadow-lg ring-[3px] ring-white/85 transition hover:scale-105 hover:bg-[#1E4A85]"
       >
-        {open ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-5 w-5" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-          </svg>
-        ) : (
-          <ChatIcon />
-        )}
-        <span className="hidden sm:inline">{open ? "ปิดแชท" : "คุยกับบอท (ตอบทันที)"}</span>
+        {/* วงไอคอนขาว — ชุด .fabx ท้าย landing.css (ทรงเดียวกับปุ่มตะกร้า/LINE/เข้าหลังบ้าน) */}
+        <span className="fabx-ico">
+          {open ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-5 w-5" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <ChatIcon />
+          )}
+        </span>
+        <span className="fabx-label hidden sm:inline">
+          {open ? (
+            "ปิดแชท"
+          ) : (
+            <>
+              คุยกับบอท<small>ตอบทันที 24 ชม.</small>
+            </>
+          )}
+        </span>
+        <svg className="fabx-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 5l7 7-7 7" />
+        </svg>
         {/* จุดชวนกด — เห็นได้แม้บนมือถือที่ซ่อนข้อความ */}
         {nudge && !open && (
           <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">

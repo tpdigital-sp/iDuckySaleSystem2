@@ -1113,6 +1113,17 @@ function OrderRow({
               SlipOK ไม่ผ่าน
             </span>
           )}
+          {/* skip = SlipOK ไม่ได้ตอบ (ไม่ตอบทัน/ล่ม/โควตาหมด) — ต้องแยกจาก "ไม่ผ่าน" เพราะสาเหตุอยู่ที่ระบบ ไม่ใช่สลิปลูกค้า */}
+          {seesMoney && o.slipVerify?.status === "skip" && o.status === "รอตรวจสอบ" && (
+            <span
+              className="dkb-tag"
+              style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
+              title="SlipOK ไม่ได้ตอบ จึงตรวจอัตโนมัติไม่ได้ — เปิดใบแล้วกด “ตรวจสลิปอีกครั้ง” หรือเทียบยอดเอง"
+            >
+              <i />
+              SlipOK ไม่ได้ตรวจ
+            </span>
+          )}
           {/* 🛒 รอของเข้า — แถบเต็มบรรทัดชุดเดียวกับคิวกราฟฟิก/คิวปริ้น */}
           <StockWaitBar o={o} />
         </span>

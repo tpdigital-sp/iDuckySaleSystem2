@@ -396,7 +396,18 @@ const SIZE_OPTION: ProductOption = {
   ],
 };
 
-const OPTIONS: ProductOption[] = [SIZE_OPTION, ...coatGroups("หน้า"), ...FOIL_OPTIONS, ...coatGroups("หลัง")];
+/**
+ * กลุ่ม "จำนวนแผ่น" (พนักงานขอ 18 ก.ย. 69 · scripts/mini-calendar-pages-option.mjs) — ใบสเปคร้าน:
+ * 8 แผ่น = 1 A3 (16 หน้า) · 14 แผ่น = 1 A3 (28 หน้า) ราคาเท่ากัน → ไม่บวกราคา ไม่เป็นแกนตารางราคา
+ * ต้องอยู่ใน OPTIONS ด้วย เหตุผลเดียวกับ SIZE_OPTION
+ */
+const PAGES_OPTION: ProductOption = {
+  label: "จำนวนแผ่น",
+  note: "8 แผ่น = 16 หน้า (ปกหน้า + 12 เดือน) · 14 แผ่น = 28 หน้า (แยกเดือนละแผ่น) — ราคาเท่ากัน",
+  choices: [{ name: "8 แผ่น (16หน้า)" }, { name: "14 แผ่น (28หน้า)" }],
+};
+
+const OPTIONS: ProductOption[] = [SIZE_OPTION, PAGES_OPTION, ...coatGroups("หน้า"), ...FOIL_OPTIONS, ...coatGroups("หลัง")];
 
 /* ── 4. ประกอบสินค้า (patch ทับร่างเดิม — คงแท็บกลาง/ฟิลด์อื่นไว้) ── */
 const { data: row, error: rowErr } = await sb.from("products").select("name,data").eq("id", ID).single();

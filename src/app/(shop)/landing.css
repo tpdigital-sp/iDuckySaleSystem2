@@ -2273,6 +2273,34 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 .dl .nav-cart-count{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;
   background:#F43F5E;color:#fff;font-size:.66rem;font-weight:700;line-height:18px;text-align:center;
   box-shadow:0 0 0 2px #fff;font-family:var(--display)}
+
+/* ===== ตะกร้าบนแถบเมนู — ทำให้เห็นชัด (ลูกค้าแจ้งเอง 21 ก.ย. 69 "เห็นไม่เด่นชัด") =====
+   ของเดิม: วงกระจกใส (ขาว 14%) + ไอคอนเส้นบางสี --navy-soft วางบนแถบเมนูพื้นขาว
+   → วงแทบมองไม่เห็น ไอคอนก็จาง แล้วยังนั่งติดปุ่มเหลือง "ช้อปเลย" ที่สีจัดกว่า ตะกร้าเลยหายไปเลย
+   แก้: ให้ตะกร้าเป็น "วงทึบ" วงเดียวในกลุ่ม (กรมท่า ไอคอนขาว) ส่วนโปรไฟล์/กระดิ่ง/สามขีด
+   ยังเป็นวงกระจกเหมือนต้นแบบ แต่เพิ่มพื้น+ขอบให้เห็นเป็นปุ่มจริง และไล่สีไอคอนให้เข้มขึ้น
+   ⚠️ เขียนที่ส่วนท้ายไฟล์ (override) ห้ามไปแก้บล็อก .icon-btn ของต้นแบบด้านบน */
+.dl .icon-btn{background:rgba(255,255,255,.62);border-color:var(--sky-200);
+  box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 3px 10px rgba(23,58,107,.10);
+  animation:none}
+.dl .icon-btn .nav-icon-svg{color:var(--navy)}
+.dl .icon-btn:hover{background:#fff;border-color:var(--blue)}
+
+/* ตะกร้า = ทางเข้าสำคัญที่สุดในกลุ่มนี้ จึงเป็นจุดเดียวที่ "กล้า" — ทึบ ขอบขาว เงาลอย
+   ใช้กรมท่า (ไม่ใช่เหลือง) เพราะเหลืองไปชนปุ่ม CTA ที่อยู่ข้างกันจนแยกไม่ออก */
+.dl .nav-cart-icon{background:linear-gradient(150deg,#2F6FB5,var(--navy) 78%);
+  border:1px solid rgba(255,255,255,.9);
+  box-shadow:0 2px 6px rgba(23,58,107,.20),0 8px 20px rgba(23,58,107,.24);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+  animation:cartNudge 6s ease-in-out 2s infinite}
+.dl .nav-cart-icon .nav-icon-svg{color:#fff;width:22px;height:22px;stroke-width:2.1}
+.dl .nav-cart-icon:hover{background:linear-gradient(150deg,#3C87D2,#1E4C8C 78%);
+  border-color:#fff;box-shadow:0 2px 6px rgba(23,58,107,.22),0 12px 26px rgba(23,58,107,.32);
+  animation:none}
+.dl .nav-cart-icon:hover .nav-icon-svg{color:#fff}
+.dl .nav-cart-icon:active{background:linear-gradient(150deg,#2F6FB5,var(--navy) 78%)}
+/* ป้ายตัวเลขบนวงกรมท่า: ขอบขาวหนาขึ้นนิดเดียวให้ตัวเลขไม่จมไปกับพื้นเข้ม */
+.dl .nav-cart-icon .nav-cart-count{box-shadow:0 0 0 2.5px #fff,0 2px 6px rgba(23,58,107,.3)}
 /* เมนูสามขีด: แถวหมวดตอนกำลังโหลดสินค้าย่อย */
 .dl .mnav-list a i .mnav-real-ico{pointer-events:none}
 /* เมนูสามขีด: ปุ่มกางชนิดย่อยเป็น <span role=button> (ไม่ซ้อน <button> ใน <a>) — ต้นแบบซ่อน span ลูกศร → ไว้ จึงต้องเปิดตัวนี้กลับ */
@@ -2368,10 +2396,19 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 /* การ์ดขั้นตอนเด้งทีละใบ 1→2→3→4 (เหลื่อมด้วย delay ต่อชิ้น รอบละ 4.8 วิ) · ลูกศรขยับชี้ไปขั้นถัดไป */
 .dl .promo-fx-hop{animation-name:promoHop;animation-duration:4.8s}
 .dl .promo-fx-nudge{animation-name:promoNudge;animation-duration:1.4s}
+/* 👆 วงแหวนทรงปุ่ม "เรียกให้กด" ครอบปุ่มที่อยู่ในรูปป้าย (เริ่มสั่งเลย / ดูสิทธิ์ของฉัน / สมัครตัวแทน)
+   ปุ่มอยู่ในไฟล์ภาพ จะสั่งให้มันเด้งเองไม่ได้ — จึงวางวงแหวนทับตำแหน่งปุ่มแล้วให้วงแหวนกระเพื่อมแทน (กดทะลุไปลิงก์ของป้ายตามเดิม)
+   ต้องมีทั้ง w และ h เพราะปุ่มเป็นแคปซูลกว้างกว่าสูง (ping เป็นวงกลม ใช้ไม่ได้) · จังหวะ: กระเพื่อม 2 ที แล้วพักยาว ไม่ตอดตาตลอดเวลา */
+.dl .promo-fx .promo-fx-tap{border-radius:999px;border:clamp(2px,.28vw,7px) solid var(--fx-color,var(--yolk));
+  box-shadow:0 0 0 .16vw color-mix(in srgb,var(--fx-color,var(--yolk)) 32%,transparent);
+  animation-name:promoTap;animation-duration:3.8s;animation-timing-function:ease-out;opacity:0}
+@keyframes promoTap{0%{transform:scale(.985);opacity:0}4%{opacity:.95}22%{transform:scale(1.1);opacity:0}
+  24%{transform:scale(.985);opacity:0}28%{opacity:.75}46%{transform:scale(1.08);opacity:0}
+  48%,100%{transform:scale(.985);opacity:0}}
 .dl .promo-fx-shine{position:absolute;top:-20%;bottom:-20%;left:0;width:22%;pointer-events:none;transform:translateX(-160%) skewX(-18deg);
   background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.55) 50%,rgba(255,255,255,0));animation:promoShine 7s ease-in-out infinite 1.5s}
 .dl .promo-fx.still :is(*,*::before,*::after){animation:none}
-.dl .promo-fx.still :is(.promo-fx-ping,.promo-fx-rise,.promo-fx-blink){display:none}
+.dl .promo-fx.still :is(.promo-fx-ping,.promo-fx-rise,.promo-fx-blink,.promo-fx-tap){display:none}
 @keyframes promoBob{0%,100%{transform:translateY(0) rotate(-1.6deg)}50%{transform:translateY(-3.5%) rotate(1.8deg)}}
 @keyframes promoTwinkle{0%,100%{transform:scale(.72);opacity:.55}50%{transform:scale(1.12);opacity:1}}
 @keyframes promoDrift{from{transform:translateX(-7%)}to{transform:translateX(9%)}}
@@ -2382,10 +2419,54 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 @keyframes promoHop{0%,18%,100%{transform:none}6%{transform:translateY(-7%) scale(1.045)}12%{transform:translateY(1%) scale(.99)}}
 @keyframes promoNudge{0%,100%{transform:translateX(-3%)}50%{transform:translateX(5%)}}
 @keyframes promoShine{0%,62%{transform:translateX(-160%) skewX(-18deg)}88%,100%{transform:translateX(620%) skewX(-18deg)}}
+/* 🐣 ท่าขยับทั้งใบ (PromoBanner.motion · เลือกที่ /admin/banners) — ป้ายนิ่งสนิทดูเป็นรูปติดผนัง ขยับเบา ๆ แล้วน่ารักขึ้น
+   ขยับที่ <picture> ไม่ใช่ <img> (ซูมตอนชี้เมาส์เป็นของ img)
+   เคล็ดความน่ารักคือ "จังหวะ" ไม่ใช่ "ระยะ": ขึ้นเร็ว-ค้างนิด-ตกช้า · ย่อตัวก่อนกระโดด · สะบัดแล้วค่อย ๆ เบาลง
+   ระยะยังเบาเท่าเดิม (เลื่อน ~1% เอียง <1°) — ป้ายเต็มความกว้างจอ ขยับแรงกว่านี้ตัวหนังสือจะสั่นและกวนตา
+   ซูมพื้น 1.04–1.05 กันมุมโหว่ตอนเอียง/เลื่อน (สูตร: scale ≥ 1 + (กว้าง/สูง)×sin องศา + 2×ระยะเลื่อน)
+   ถูกตัดขอบราว 2% ต่อด้าน ยังอยู่ในระยะเว้นขอบ 60px ของสเปคไฟล์ (BANNER_SPEC) */
+.dl [class*=promo-mo-] picture{animation-iteration-count:infinite;animation-timing-function:ease-in-out;will-change:transform}
+.dl .promo-mo-float picture{animation-name:promoMoFloat;animation-duration:4.2s}
+.dl .promo-mo-sway picture{animation-name:promoMoSway;animation-duration:5.2s}
+.dl .promo-mo-breathe picture{animation-name:promoMoBreathe;animation-duration:4.4s}
+.dl .promo-mo-hop picture{animation-name:promoMoHop;animation-duration:5.4s}
+.dl .promo-mo-wiggle picture{animation-name:promoMoWiggle;animation-duration:6.4s}
+/* ลอยน้ำ: ลอยขึ้นเร็ว ค้างบนแป๊บ แล้วค่อย ๆ จมลงมาพักท้ายรอบ + เอียงสลับข้างนิดเดียวให้ดูมีน้ำหนัก */
+@keyframes promoMoFloat{
+  0%{transform:scale(1.045) translateY(1.05%) rotate(-.28deg);animation-timing-function:cubic-bezier(.22,.72,.32,1)}
+  42%{transform:scale(1.045) translateY(-1.15%) rotate(.3deg);animation-timing-function:cubic-bezier(.55,0,.68,.62)}
+  88%,100%{transform:scale(1.045) translateY(1.05%) rotate(-.28deg)}}
+/* โยกตัวแบบเป็ดเดิน: เอียงพร้อมถ่ายน้ำหนักไปข้างนั้นนิดหน่อย แล้วค้างปลายทางสั้น ๆ ก่อนโยกกลับ */
+@keyframes promoMoSway{
+  0%,7%{transform:scale(1.045) rotate(-.68deg) translateX(-.32%)}
+  50%,57%{transform:scale(1.045) rotate(.68deg) translateX(.32%)}
+  100%{transform:scale(1.045) rotate(-.68deg) translateX(-.32%)}}
+/* หายใจแบบตัวนิ่ม (squash & stretch): กว้างขึ้น-เตี้ยลง สลับกับ สูงขึ้น-แคบลง ไม่ใช่ซูมเข้าออกเฉย ๆ */
+@keyframes promoMoBreathe{
+  0%,100%{transform:scale(1.06,1.028)}
+  50%{transform:scale(1.032,1.062)}}
+/* เด้งดึ๋ง: นิ่งยาว → ย่อตัว → กระโดดยืดตัว → ลงพื้นย่ออีกที → เด้งเล็ก ๆ แล้วนิ่ง (จังหวะการ์ตูน) */
+@keyframes promoMoHop{
+  0%,58%{transform:scale(1.045) translateY(0)}
+  63%{transform:scale(1.062,1.024) translateY(.5%)}
+  71%{transform:scale(1.032,1.066) translateY(-2%)}
+  79%{transform:scale(1.058,1.028) translateY(.4%)}
+  86%{transform:scale(1.04,1.05) translateY(-.7%)}
+  93%,100%{transform:scale(1.045) translateY(0)}}
+/* สะบัดตัวเรียกให้มอง: นิ่งไว้ก่อนแล้วสะบัดถี่ ๆ แรงลดลงเรื่อย ๆ จนหยุดเอง */
+@keyframes promoMoWiggle{
+  0%,70%,100%{transform:scale(1.05) rotate(0)}
+  74%{transform:scale(1.05) rotate(-.85deg)}
+  78%{transform:scale(1.05) rotate(.78deg)}
+  82%{transform:scale(1.05) rotate(-.5deg)}
+  86%{transform:scale(1.05) rotate(.3deg)}
+  90%{transform:scale(1.05) rotate(-.14deg)}
+  94%{transform:scale(1.05) rotate(0)}}
 @media(min-width:641px){.dl .promo-fx-m{display:none}}
 @media(max-width:640px){.dl .promo-fx-d{display:none}}
 @media(prefers-reduced-motion:reduce){.dl .promo-fx :is(*,*::before,*::after){animation:none}
-.dl :is(.promo-fx-ping,.promo-fx-rise,.promo-fx-blink,.promo-fx-shine){display:none}}
+.dl [class*=promo-mo-] picture{animation:none}
+.dl :is(.promo-fx-ping,.promo-fx-rise,.promo-fx-blink,.promo-fx-tap,.promo-fx-shine){display:none}}
 .dl .promo-text{flex:1;display:flex;align-items:center;gap:16px;padding:20px 28px;min-height:96px;color:var(--navy);text-decoration:none;
   background:linear-gradient(100deg,#FFF6D9,#FFFBEF 38%,var(--sky-100))}
 .dl .promo-ico{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:1.5rem;
@@ -4736,3 +4817,245 @@ to{opacity:1;transform:none}}
   .shopp .ord-ship{gap:10px;padding:14px 16px;border-left-width:6px}
   .shopp .ord-ship-how{flex:1 1 100%;padding-left:0;padding-top:10px;border-left:0;border-top:1px solid var(--sky-200)}
 }
+
+/* ===========================================================================
+   กองปุ่มลอยมุมขวาล่าง — ชุดเดียวกันทั้ง 4 ปุ่ม
+   (เจ้าของร้านสั่ง 21 ก.ย. 69 พร้อมภาพต้นแบบ "ออกแบบให้เข้ากัน")
+
+   ทรงตามภาพต้นแบบ: แคปซูลกว้างเท่ากันทุกใบ → ไอคอน | เส้นคั่นบาง | ข้อความ | ลูกศร ›
+   ขนาด 208×46px (เจ้าของร้านสั่งย่อลงจาก 242×54 — กองปุ่มกินพื้นที่หน้าจอมากไป)
+   ของเดิมแต่ละปุ่มเกิดคนละเวลาเลยคนละชุด (ไอคอนเปล่าบ้าง วงกลมบ้าง ฟอนต์คนละตัว
+   ความสูง 40/46/51 ไม่เท่ากัน ชิดขวา 20/22 สลับกัน เงาคนละสูตร)
+   ชุดใหม่ต่างกันแค่ "สี" ซึ่งบอกว่าปุ่มไหนของใคร:
+     ขาว = ตะกร้า (ของลูกค้า) · กรมท่า = บอท · เขียว = LINE · ขาว+วงกรมท่า = เครื่องมือทีมงาน
+
+   ⚠️ ใช้ทั้งในตัวครอบ .dl (ตะกร้า · LINE) และนอก .dl (บอท · หลังบ้าน ที่เขียนด้วย Tailwind)
+      จึงต้องเขียน selector คู่ .fabx / .dl .fabx ให้ชนะทั้ง .dl .line-fab ของต้นแบบ
+      และคลาส utility ของ Tailwind (landing.css อยู่นอก @layer จึงชนะ utility เสมอ)
+   ⚠️ ขนาด/ตำแหน่งอยู่ใน @media(min-width:1001px) เท่านั้น — มือถือยังใช้กฎเดิมของแต่ละปุ่ม
+      (LINE หดเป็นวงกลม · หลังบ้านย้ายไปมุมซ้าย · ตะกร้าซ่อนเพราะมีในแถบเมนูล่างแล้ว)
+   =========================================================================== */
+.fabx,.dl .fabx{border-radius:999px;border:2px solid #fff;text-decoration:none;
+  font-family:var(--display);font-weight:500;line-height:1.25;
+  box-shadow:0 2px 6px rgba(23,58,107,.12),0 12px 26px rgba(23,58,107,.18);
+  transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease,background .2s ease}
+.fabx:hover,.dl .fabx:hover{transform:translateY(-3px) scale(1.02);
+  box-shadow:0 3px 8px rgba(23,58,107,.16),0 18px 34px rgba(23,58,107,.24)}
+.fabx:active,.dl .fabx:active{transform:translateY(0) scale(.97)}
+.fabx-ico,.dl .fabx-ico{flex:none;display:grid;place-items:center;font-style:normal;
+  transition:background .2s ease,color .2s ease}
+
+/* สีพื้นแคปซูล — ใช้ทุกจอ */
+.fabx-cart,.dl .fabx-cart{background:#fff;color:var(--navy)}
+.fabx-bot,.dl .fabx-bot{background:var(--navy);color:#fff}
+.fabx-line,.dl .fabx-line{background:#06C755;color:#fff}
+.fabx-admin,.dl .fabx-admin{background:#fff;color:var(--navy)}
+/* ใบสีขาวต้องมีเส้นขอบบาง ๆ เพิ่ม ไม่งั้นตอนลอยอยู่บนพื้นขาวของหน้าสินค้าจะเห็นแค่เงา (ขาวบนขาว) */
+.fabx-cart,.dl .fabx-cart,.fabx-admin,.dl .fabx-admin{
+  box-shadow:0 0 0 1px rgba(23,58,107,.10),0 2px 6px rgba(23,58,107,.12),0 12px 26px rgba(23,58,107,.18)}
+.fabx-cart:hover,.dl .fabx-cart:hover,.fabx-admin:hover,.dl .fabx-admin:hover{
+  box-shadow:0 0 0 1px rgba(23,58,107,.14),0 3px 8px rgba(23,58,107,.16),0 18px 34px rgba(23,58,107,.24)}
+/* ตะกร้ามีของ — ทรง/สีเหมือนตอนว่าง ต่างกันแค่ข้อความ (กฎอยู่ท้ายไฟล์ รอบ 3) */
+
+@media(min-width:1001px){
+  .fabx,.dl .fabx{position:fixed;right:20px;z-index:80;display:inline-flex;align-items:center;gap:11px;
+    width:208px;height:46px;padding:0 13px;font-size:.83rem}
+  .fabx-ico,.dl .fabx-ico{width:26px;height:26px}
+  .fabx-ico svg,.dl .fabx-ico svg{width:21px;height:21px;display:block}
+  /* เส้นคั่นบาง ๆ ระหว่างไอคอนกับข้อความ (ตามภาพต้นแบบ) — ใช้ขอบซ้ายของข้อความ ไม่ต้องเพิ่ม element */
+  .fabx-label,.dl .fabx-label{flex:1;min-width:0;text-align:left;padding-left:11px;
+    border-left:1px solid currentColor;border-left-color:color-mix(in srgb,currentColor 25%,transparent)}
+  .fabx-label small,.dl .fabx-label small{display:block;font-size:.63rem;opacity:.8;margin-top:1px}
+  /* ลูกศรท้ายปุ่ม — บอกว่ากดแล้วไปต่อ */
+  .fabx-go,.dl .fabx-go{flex:none;width:15px;height:15px;display:block;opacity:.45}
+  .fabx:hover .fabx-go,.dl .fabx:hover .fabx-go{opacity:.8;transform:translateX(2px)}
+  /* เรียงกอง: เครื่องมือทีมงานล่างสุด → ตะกร้าบนสุด (ยิ่งเกี่ยวกับการซื้อยิ่งอยู่สูงใกล้สายตา) */
+  .fabx-admin,.dl .fabx-admin{bottom:20px}
+  .fabx-line,.dl .fabx-line{bottom:78px}
+  .fabx-bot,.dl .fabx-bot{bottom:136px}
+  .fabx-cart,.dl .fabx-cart{bottom:194px}
+  /* ปุ่มของทีมงานคือใบเดียวที่ไอคอนอยู่ในวงกลมทึบ — อ่านออกทันทีว่าไม่ใช่ปุ่มของลูกค้า */
+  .fabx-admin .fabx-ico,.dl .fabx-admin .fabx-ico{width:30px;height:30px;border-radius:50%;
+    background:var(--navy);color:#fff}
+  .fabx-admin .fabx-ico svg,.dl .fabx-admin .fabx-ico svg{width:15px;height:15px}
+  .fabx-admin:hover .fabx-ico,.dl .fabx-admin:hover .fabx-ico{background:var(--yolk);color:var(--navy)}
+  /* ลูกศรบนพื้นเข้มต้องสว่างกว่าบนพื้นขาว ไม่งั้นจมหาย */
+  .fabx-bot .fabx-go,.dl .fabx-bot .fabx-go,.fabx-line .fabx-go,.dl .fabx-line .fabx-go{opacity:.75}
+}
+/* มือถือ: ซ่อนลูกศร (ปุ่มหดเป็นวงกลม/ไม่มีที่ว่าง) + ปุ่มทีมงานหดเหลือวงกลม
+   ระยะในปุ่มต้องมาจาก CSS เพราะคลาส p-* ของ Tailwind แพ้ .dl *{padding:0} */
+@media(max-width:1000px){
+  .fabx-go,.dl .fabx-go{display:none}
+  .fabx-admin,.dl .fabx-admin{padding:0 6px}
+}
+
+/* เป็ดเกาะขอบปุ่มตะกร้า (ตามภาพต้นแบบที่เจ้าของร้านส่งมา 21 ก.ย. 69)
+   รูป /landing/fab-duck-peek.webp ตัดจากภาพต้นแบบ พื้นหลังโปร่ง — ปีกสองข้างห้อยพาดขอบแคปซูล
+   ⚠️ รอบ 3 ตัดกว้างขึ้นเป็น 377×229 เพื่อเอา "ประกายเหลือง" ข้างเป็ดมาด้วย (ต้นแบบมี)
+      ตัวเป็ดจริงกินแค่ 602/756 ของไฟล์ → ต้องตั้ง width 86.6px ตัวเป็ดถึงจะยังเท่าเดิม 69px
+   สัดส่วนวัดจากภาพต้นแบบ (แคปซูลในรูป 1811×383 · เป็ด 602×459 · รวมประกาย 756):
+     เป็ดกว้าง = 602/1811 ของความกว้างปุ่ม → 208 × 0.332 ≈ 69px → ทั้งไฟล์ 86.6px
+     ชิดขวา    = ขอบขวาของไฟล์ห่างขอบนอกปุ่ม 7/1811 → 0.8px
+     ปีกห้อย   = ปลายปีกต่ำกว่าขอบบนปุ่ม 99/383 ของความสูงปุ่ม → 46 × 0.26 ≈ 12px
+   ⚠️ right/bottom ของลูก absolute วัดจาก padding box = เข้ามาจากขอบนอกแล้วเท่าความหนาขอบ (2.3px)
+      จึงสั่ง right:-1.5px และ bottom:calc(100% - 10px) ให้ผลรวมตรงกับที่วัดได้ */
+.fabx-duck,.dl .fabx-duck{position:absolute;right:-1.5px;bottom:calc(100% - 10px);width:86.6px;height:auto;display:block;
+  pointer-events:none;filter:drop-shadow(0 5px 9px rgba(23,58,107,.16));
+  transform-origin:75% 100%;
+  transition:transform .26s cubic-bezier(.34,1.56,.64,1);
+  animation:fabx-duck-bob 4.6s ease-in-out .9s infinite}
+/* ชี้เมาส์ = หยุดจังหวะวนแล้วโผล่ค้างให้ทัก (animation:none เพื่อให้ transform ของ hover มีผล) */
+.fabx-cart:hover .fabx-duck,.dl .fabx-cart:hover .fabx-duck{animation:none;transform:translateY(-2px) rotate(-3deg)}
+/* จังหวะขยับเองของเป็ด (เจ้าของร้านสั่ง 21 ก.ย. 69) — ลอยเบา ๆ ตลอด แล้วชะโงกทักแรง ๆ ตอนท้ายรอบ
+   รอบ 4.6 วิ เท่ากับไอคอน/ลูกศร (ดูชุดลูกเล่นท้ายไฟล์) ทั้งใบจะได้ขยับเป็นจังหวะเดียวกัน
+   ⚠️ ขยับได้แค่ transform เท่านั้น (ดูคำเตือนเรื่อง width/bottom ด้านล่าง)
+      เด้งสูงสุด -5.5px วัดแล้วปีกยังพาดขอบแคปซูลอยู่ 13px — แรงกว่านี้เป็ดเริ่มลอยหลุดปุ่ม */
+@keyframes fabx-duck-bob{
+  /* ช่วงต้น = ลอยขึ้นลงเบา ๆ เหมือนหายใจ */
+  0%,100%{transform:translateY(0) rotate(0)}
+  10%{transform:translateY(-2.5px) rotate(-2deg)}
+  20%{transform:translateY(0) rotate(0)}
+  30%{transform:translateY(-2.5px) rotate(2deg)}
+  42%{transform:translateY(0) rotate(0)}
+  /* ช่วงท้าย = ชะโงกทักแรง ๆ ทีหนึ่ง แล้วส่ายกลับเข้าที่ */
+  54%{transform:translateY(-5.5px) rotate(-6deg)}
+  62%{transform:translateY(-2px) rotate(3.5deg)}
+  70%{transform:translateY(-4.5px) rotate(-4deg)}
+  78%{transform:translateY(-1px) rotate(2deg)}
+  88%{transform:translateY(-2px) rotate(-1deg)}}
+/* ของชิ้นแรกเข้าตะกร้า = เป็ดเด้งทัก 1 ครั้ง
+   ⚠️ ห้ามเปลี่ยน width/bottom ตามสถานะ — ระยะ 86.6px + calc(100% - 10px) ข้างบนคือจุดที่ปีก
+      พาดขอบแคปซูลพอดี (วัดจากภาพต้นแบบ) ย่อ/ขยายแล้วปีกหลุดขอบทันที จึงขยับได้แค่ transform
+   transform-origin ที่ก้นเป็ด เพื่อให้ตอนเด้งปีกยังเกาะขอบปุ่มอยู่ */
+.fabx-cart.has .fabx-duck,.dl .fabx-cart.has .fabx-duck{transform-origin:75% 100%;
+  animation:fabx-duck-pop .52s cubic-bezier(.34,1.56,.64,1) both,
+            fabx-duck-bob 4.6s ease-in-out .52s infinite}
+@keyframes fabx-duck-pop{
+  0%{transform:translateY(5px) rotate(0)}
+  55%{transform:translateY(-5px) rotate(-5deg)}
+  100%{transform:translateY(0) rotate(0)}}
+@media(prefers-reduced-motion:reduce){
+  .fabx-duck,.dl .fabx-duck,.fabx-cart.has .fabx-duck,.dl .fabx-cart.has .fabx-duck{animation:none}
+  .fabx,.dl .fabx{transition:none}}
+@media(max-width:1000px){.fabx-duck,.dl .fabx-duck{display:none}}
+
+/* มือถือมีปุ่มตะกร้าในแถบเมนูล่างแล้ว ไม่ต้องลอยซ้ำ */
+@media(max-width:1000px){.fabx-cart,.dl .fabx-cart{display:none}}
+
+/* ---------------------------------------------------------------------------
+   ปุ่มตะกร้า — หน้าตาตามภาพต้นแบบ (เจ้าของร้านสั่ง 21 ก.ย. 69 รอบ 3)
+   เจ้าของร้านเอาของจริงไปเทียบกับภาพต้นแบบแล้วสั่งว่า "ทำไมไม่เหมือนกัน"
+   จึงเลิกใช้ชุดรอบ 2 (ว่าง = เงียบจาง / มีของ = พื้นเหลือง) — ตอนนี้ทรงเดียวกันทั้งสองสถานะ
+   ต่างกันแค่ข้อความ: ว่าง = "ตะกร้า" คำเดียว · มีของ = ยอดเงิน + จำนวนรายการ
+
+   ทุกระยะวัดจากภาพต้นแบบ (แคปซูลในรูป 1811×383px ย่อลงมาที่ 208×46 → ตัวคูณ 0.120):
+     ขอบฟ้า     19px → 2.3px   สี rgb(79,178,254)
+     วงไอคอน   281px → 34px    สี rgb(211,236,253)
+     ไอคอนตะกร้า 167px → 20px
+     เส้นคั่น     11px → 1.3px   สูง 278px → 32px   สี #A6DAFA
+     วงลูกศร   197px → 24px   (เล็กกว่าวงไอคอนจริง ๆ ในต้นแบบ ไม่ใช่วาดพลาด) ลูกศร #034899
+     คำว่า "ตะกร้า" กว้าง 402px → 46px ที่ความกว้างปุ่มเรา = Mitr 600 ราว 17.6px (1.1rem)
+   ⚠️ ความกว้างปุ่มยังเป็น 208px เท่ากองปุ่มที่เหลือ (ในรูปเทียบเท่า 217px) — ห้ามขยายตามรูป
+      ไม่งั้นแคปซูลตะกร้ายาวกว่า LINE/บอท/หลังบ้าน กองปุ่มจะเหลื่อมกันทันที
+   ⚠️ ต้องอยู่ท้ายสุดของไฟล์ เพราะทับกฎ .fabx / .fabx-cart ด้านบนที่ specificity เท่ากัน
+   --------------------------------------------------------------------------- */
+:root{--fab-blue:#4FB1FB;--fab-ring:#D2EBFC;--fab-line:#A6DAFA;--fab-go:#0A4B9B}  /* ดูดสีจากภาพต้นแบบทีละจุด */
+
+@media(min-width:1001px){
+  /* แคปซูล — คุมระยะในปุ่มเองทั้งหมด (gap:0) เพราะช่องซ้าย/ขวาของเส้นคั่นไม่เท่ากัน */
+  .fabx-cart,.dl .fabx-cart{gap:0;padding:0 9px 0 10px;
+    border:2.3px solid var(--fab-blue);color:var(--navy);
+    background:linear-gradient(180deg,#FCFDFE 0%,#FEFEFE 40%,#F6FBFD 78%,#DCF0FC 100%);
+    box-shadow:0 0 0 1px rgba(66,168,250,.16),0 2px 6px rgba(23,58,107,.10),0 12px 26px rgba(44,129,196,.22)}
+  .fabx-cart:hover,.dl .fabx-cart:hover{
+    box-shadow:0 0 0 1px rgba(66,168,250,.26),0 3px 8px rgba(23,58,107,.14),0 18px 34px rgba(44,129,196,.30)}
+
+  /* ไอคอนตะกร้าอยู่ในวงฟ้าอ่อน */
+  .fabx-cart .fabx-ico,.dl .fabx-cart .fabx-ico{width:34px;height:34px;border-radius:50%;
+    background:var(--fab-ring);color:var(--navy);box-shadow:none}
+  .fabx-cart .fabx-ico svg,.dl .fabx-cart .fabx-ico svg{width:20px;height:20px}
+
+  /* ข้อความ + เส้นคั่น
+     ⚠️ เส้นคั่นเป็น ::before ไม่ใช่ border-left เพราะตอนมีของข้อความเป็น 2 บรรทัด
+        ถ้าใช้ border เส้นจะยืดยาวตามข้อความ ไม่เท่ากับตอนว่าง = ไม่ตรงต้นแบบ */
+  .fabx-cart .fabx-label,.dl .fabx-cart .fabx-label{position:relative;flex:1;min-width:0;text-align:left;
+    display:flex;flex-direction:column;justify-content:center;border-left:0;
+    margin-left:9px;padding-left:15px;
+    font-size:1.1rem;font-weight:600;line-height:1.18;color:var(--navy)}
+  .fabx-cart .fabx-label::before,.dl .fabx-cart .fabx-label::before{content:"";position:absolute;
+    left:0;top:50%;transform:translateY(-50%);width:1.3px;height:32px;border-radius:2px;
+    background:var(--fab-line)}
+  .fabx-cart .fabx-label small,.dl .fabx-cart .fabx-label small{display:block;font-size:.66rem;
+    font-weight:500;line-height:1.35;margin-top:1px;opacity:.72;color:var(--navy)}
+  .fabx-sum,.dl .fabx-sum{display:block;font-size:1.02rem;font-weight:600;line-height:1.16;
+    letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+
+  /* ลูกศรอยู่ในวงฟ้าอ่อนเหมือนกัน — ใส่พื้นที่ตัว svg ได้เลย ไม่ต้องเพิ่ม element ในคอมโพเนนต์
+     (content-box เพื่อให้ padding เป็นขนาดวงจริง ๆ ไม่ไปบีบตัวลูกศร) */
+  .fabx-cart .fabx-go,.dl .fabx-cart .fabx-go{flex:none;width:15px;height:15px;padding:4.5px;
+    box-sizing:content-box;border-radius:50%;background:var(--fab-ring);color:var(--fab-go);opacity:1}
+  .fabx-cart:hover .fabx-go,.dl .fabx-cart:hover .fabx-go{background:#C2E4FC;opacity:1}
+}
+
+
+/* ---------------------------------------------------------------------------
+   ลูกเล่นขยับของปุ่มตะกร้าลอย (เจ้าของร้านสั่ง 21 ก.ย. 69 — "อยากให้มีแอนิเมชั่นขยับ ๆ")
+   ทุกท่าหมุนรอบเดียวกัน 4.6 วิ ให้จังหวะตรงกันทั้งใบ (เป็ด · ไอคอน · ลูกศร) ไม่ต่างคนต่างขยับ
+   ⚠️ ท่าลอยทั้งใบใช้ transform จึงต้องปิด (animation:none) ตอน hover/active
+      ไม่งั้นท่ายกตัว/กดลงของปุ่มจะโดนแอนิเมชันทับจนกดแล้วไม่มีปฏิกิริยา
+   ⚠️ เดสก์ท็อปเท่านั้น — มือถือซ่อนปุ่มนี้อยู่แล้ว (มีตะกร้าในแถบเมนูล่าง)
+   --------------------------------------------------------------------------- */
+@media(min-width:1001px){
+  /* ทั้งใบลอยขึ้นลงช้า ๆ — คนละจังหวะกับเป็ด (3.4 วิ) เลยไม่ขยับพร้อมกันจนดูแข็ง */
+  .fabx-cart,.dl .fabx-cart{animation:fabx-cart-float 3.4s ease-in-out infinite}
+  .fabx-cart:hover,.dl .fabx-cart:hover,.fabx-cart:active,.dl .fabx-cart:active{animation:none}
+
+  /* แสงวาดผ่านแคปซูลเป็นพัก ๆ เหมือนปุ่มมันเงา (ไม่ต้อง overflow:hidden — border-radius ตัดพื้นหลังให้เอง)
+     ⚠️ แถบแสงต้องเป็นฟ้าอ่อน ไม่ใช่สีขาว — แคปซูลพื้นขาวอยู่แล้ว ขาวทาบขาวคือมองไม่เห็นอะไรเลย */
+  .fabx-cart::before,.dl .fabx-cart::before{content:"";position:absolute;inset:0;border-radius:inherit;
+    pointer-events:none;
+    background:linear-gradient(105deg,transparent 40%,rgba(118,191,252,.40) 50%,transparent 60%);
+    background-size:230% 100%;background-repeat:no-repeat;background-position:-130% 0;
+    animation:fabx-cart-shine 4.6s ease-in-out 1.6s infinite}
+
+  /* ไอคอนตะกร้าส่ายตอนท้ายรอบ — ส่ายเฉพาะตัว svg วงฟ้ารอบนอกอยู่นิ่ง */
+  .fabx-cart .fabx-ico svg,.dl .fabx-cart .fabx-ico svg{
+    animation:fabx-ico-wiggle 4.6s ease-in-out infinite;transform-origin:50% 60%}
+
+  /* ลูกศรกระตุกไปข้างหน้า = ชวนให้กดต่อ (ตอน hover ปิดท่าวน ให้ท่า hover เดิมทำงาน) */
+  .fabx-cart .fabx-go,.dl .fabx-cart .fabx-go{animation:fabx-go-nudge 4.6s ease-in-out infinite}
+  .fabx-cart:hover .fabx-go,.dl .fabx-cart:hover .fabx-go{animation:none;transform:translateX(2px)}
+
+  /* มีของในตะกร้า = วงไอคอนเต้นเป็นคลื่นออกมา บอกว่ามีของรออยู่ ให้ไปจ่ายต่อ */
+  .fabx-cart.has .fabx-ico,.dl .fabx-cart.has .fabx-ico{animation:fabx-ico-pulse 2.4s ease-out infinite}
+}
+@keyframes fabx-cart-float{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-3px)}}
+@keyframes fabx-cart-shine{
+  0%,62%{background-position:-130% 0}
+  88%,100%{background-position:240% 0}}
+@keyframes fabx-ico-wiggle{
+  0%,52%,100%{transform:rotate(0)}
+  58%{transform:rotate(-10deg)}
+  66%{transform:rotate(8deg)}
+  74%{transform:rotate(-5deg)}
+  82%{transform:rotate(2deg)}
+  90%{transform:rotate(0)}}
+@keyframes fabx-go-nudge{
+  0%,54%,100%{transform:translateX(0)}
+  62%{transform:translateX(3px)}
+  72%{transform:translateX(0)}
+  80%{transform:translateX(2px)}
+  88%{transform:translateX(0)}}
+@keyframes fabx-ico-pulse{
+  0%{box-shadow:0 0 0 0 rgba(79,177,251,.5)}
+  70%,100%{box-shadow:0 0 0 10px rgba(79,177,251,0)}}
+/* เครื่องที่ตั้ง "ลดการเคลื่อนไหว" = อยู่นิ่งทั้งใบ */
+@media(prefers-reduced-motion:reduce){
+  .fabx-cart,.dl .fabx-cart,
+  .fabx-cart::before,.dl .fabx-cart::before,
+  .fabx-cart .fabx-ico svg,.dl .fabx-cart .fabx-ico svg,
+  .fabx-cart .fabx-go,.dl .fabx-cart .fabx-go,
+  .fabx-cart.has .fabx-ico,.dl .fabx-cart.has .fabx-ico{animation:none}
+  .fabx-cart::before,.dl .fabx-cart::before{display:none}}

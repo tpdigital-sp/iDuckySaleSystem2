@@ -8,13 +8,17 @@ import RequirePerm from "@/components/RequirePerm";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Btn, CopyChip, Empty, Field, ListHead, PageHead, PageShell, Switch, Tag } from "@/components/admin/ui";
 import {
+  BANNER_MOTIONS,
   BANNER_SPEC,
   DEFAULT_BANNER_SET,
+  DEFAULT_MOTION,
   MAX_BANNERS,
+  bannerMotion,
   bannerSetOf,
   bannerSpecText,
   bannerState,
   clearPromoBannersCache,
+  type BannerMotion,
   type BannerState,
   type PromoBanner,
   type PromoBannerSet,
@@ -37,6 +41,16 @@ const STATE: Record<BannerState, { tone: "mint" | "yolk" | "coral" | "quiet"; la
 
 /** จำนวนชิ้นลูกเล่นขยับของป้าย (จอคอม + มือถือ + แสงวิ่ง) */
 const fxCount = (b: PromoBanner) => (b.layers?.length ?? 0) + (b.layersMobile?.length ?? 0) + (b.shine ? 1 : 0);
+
+/** 🐣 ท่าขยับทั้งใบ — คำที่ทีมร้านพูดกันเอง (ท่าจริงอยู่ landing.css ชุด .promo-mo-*) */
+const MOTION: Record<BannerMotion | "none", { emoji: string; label: string }> = {
+  none: { emoji: "⏸️", label: "ไม่ขยับ" },
+  float: { emoji: "🎈", label: "ลอยขึ้นลง" },
+  sway: { emoji: "🐣", label: "โยกซ้ายขวา" },
+  breathe: { emoji: "🫧", label: "หายใจเข้าออก" },
+  hop: { emoji: "🐰", label: "เด้งดึ๋ง" },
+  wiggle: { emoji: "✨", label: "สะบัดเป็นจังหวะ" },
+};
 
 const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 /** "2026-09-17" → "17 ก.ย. 2569" (ทีมคุยกันเป็น พ.ศ.) */
@@ -66,6 +80,7 @@ function ImageSlot({
   spec,
   hint,
   value,
+  motion,
   onChange,
 }: {
   label: string;
@@ -73,6 +88,8 @@ function ImageSlot({
   spec: { w: number; h: number };
   hint: string;
   value?: string;
+  /** ท่าขยับที่เลือกไว้ — ตัวอย่างขยับให้ดูเลย ไม่ต้องเปิดหน้าร้านเทียบ (null = นิ่ง) */
+  motion?: BannerMotion | null;
   onChange: (v: string | undefined) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -95,7 +112,7 @@ function ImageSlot({
         <img
           src={value}
           alt=""
-          className="mt-2 max-h-40 w-full rounded-xl object-contain"
+          className={`mt-2 max-h-40 w-full rounded-xl object-contain${motion ? ` dkb-mo dkb-mo-${motion}` : ""}`}
           style={{ background: "var(--dk-sky)" }}
           onLoad={(e) => setDim({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
         />
@@ -148,6 +165,32 @@ function ImageSlot({
       </div>
       <p className="mt-1.5 text-[0.72rem]" style={{ color: err ? "var(--dk-coral-ink)" : "var(--dk-faint)", fontWeight: err ? 600 : undefined }}>
         {err || hint}
+      </p>
+    </div>
+  );
+}
+
+/** 🐣 เลือกท่าขยับของป้ายทั้งใบ — ชิปแต่ละตัวขยับท่าของตัวเองให้ดูก่อนกด */
+function MotionPicker({ b, onPick }: { b: PromoBanner; onPick: (m: BannerMotion | "none") => void }) {
+  const now = b.motion ?? DEFAULT_MOTION;
+  return (
+    <div className="dkb-g p-3.5">
+      <p className="text-[0.72rem]" style={{ color: "var(--dk-navy-soft)" }}>
+        ท่าขยับของป้ายทั้งใบบนหน้าแรก
+      </p>
+      <div className="dkb-scroll mt-2">
+        {(["none", ...BANNER_MOTIONS] as const).map((m) => (
+          <button key={m} type="button" className="dkb-mochip" aria-pressed={now === m} onClick={() => onPick(m)}>
+            <i aria-hidden="true" className={m === "none" ? undefined : `dkb-mo dkb-mo-${m}`}>
+              {MOTION[m].emoji}
+            </i>
+            {MOTION[m].label}
+            {m === DEFAULT_MOTION && <small>ค่าเริ่มต้น</small>}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[0.72rem]" style={{ color: "var(--dk-faint)" }}>
+        ป้ายที่นิ่งสนิทลูกค้าเลื่อนผ่าน — ขยับเบา ๆ ช่วยให้สะดุดตา · ตัวอย่างรูปด้านบนขยับท่าเดียวกับหน้าร้าน (ขึ้นจริงหลังกดบันทึก)
       </p>
     </div>
   );
@@ -355,6 +398,7 @@ function BannersInner() {
             <div className="space-y-3.5">
               {set.items.map((b, i) => {
                 const st = STATE[bannerState(b)];
+                const mo = bannerMotion(b);
                 const wrongRange = !!(b.startAt && b.endAt && b.startAt > b.endAt);
                 return (
                   <section
@@ -370,6 +414,7 @@ function BannersInner() {
                       <b className="dkb-h2 min-w-0 flex-1 truncate text-[1rem]">{b.title || "ป้ายใหม่ (ยังไม่ตั้งชื่อ)"}</b>
                       <Tag tone={st.tone}>{st.label}</Tag>
                       <Tag tone="sky">{b.image ? "ป้ายภาพ" : "แถบข้อความ"}</Tag>
+                      {b.image && <Tag tone={mo ? "lilac" : "quiet"}>{mo ? `${MOTION[mo].emoji} ${MOTION[mo].label}` : "ภาพนิ่ง"}</Tag>}
                       {fxCount(b) > 0 && <Tag tone="lilac">{b.still ? "ลูกเล่นหยุดนิ่ง" : `ลูกเล่นขยับ ${fxCount(b)} ชิ้น`}</Tag>}
                     </div>
 
@@ -431,6 +476,7 @@ function BannersInner() {
                           spec={BANNER_SPEC.desktop}
                           hint={`JPG / PNG / WEBP ไม่เกิน ${BANNER_SPEC.maxMB}MB · ระบบแสดงเต็มใบไม่ครอป`}
                           value={b.image}
+                          motion={mo}
                           onChange={(v) =>
                             // ลูกเล่นขยับวางตำแหน่งตามรูปเดิม — เปลี่ยนรูปแล้วต้องถอด ไม่งั้นเป็ด/ดาวลอยผิดที่
                             patch(b.id, v ? { image: v, layers: undefined } : { image: undefined, imageMobile: undefined, layers: undefined, layersMobile: undefined })
@@ -442,8 +488,22 @@ function BannersInner() {
                             spec={BANNER_SPEC.mobile}
                             hint="ป้ายจอคอมย่อลงมือถือแล้วตัวหนังสือเล็กจนอ่านไม่ออก — ให้กราฟฟิกจัดเลย์เอาต์มือถือแยกอีกใบ"
                             value={b.imageMobile}
+                            motion={mo}
                             onChange={(v) => patch(b.id, { imageMobile: v, layersMobile: undefined })}
                           />
+                        )}
+                        {b.image && (
+                          <>
+                            {/* ท่าขยับ + แสงวิ่ง อยู่ติดใต้รูป — เลือกแล้วเห็นผลกับรูปใบนั้นทันที
+                                กดเลือกท่า = ปลดธง "หยุดลูกเล่นขยับ" ให้เลย ไม่งั้นเลือกไปก็ไม่ขยับแล้วงงกันทั้งร้าน */}
+                            <MotionPicker b={b} onPick={(m) => patch(b.id, { motion: m, still: undefined })} />
+                            <Switch
+                              label="แสงวิ่งพาดป้ายเป็นระยะ"
+                              hint={b.shine ? "แสงกวาดผ่านป้ายทุก ๆ 7 วินาที" : "ปิดอยู่ — ป้ายไม่มีแสงกวาด"}
+                              on={!!b.shine}
+                              onToggle={() => patch(b.id, { shine: !b.shine || undefined })}
+                            />
+                          </>
                         )}
                       </div>
                     </div>
@@ -459,7 +519,7 @@ function BannersInner() {
                         {b.hidden ? "กลับมาแสดง" : "ซ่อนไว้ก่อน"}
                       </Btn>
                       {fxCount(b) > 0 && (
-                        <Btn small onClick={() => patch(b.id, { still: !b.still || undefined })} title="เป็ดโยกตัว · ดาววิบวับ · เมฆลอย — เปลี่ยนรูปเมื่อไหร่ลูกเล่นของรูปนั้นจะถูกถอด">
+                        <Btn small onClick={() => patch(b.id, { still: !b.still || undefined })} title="หยุดทั้งท่าขยับของป้ายและชิ้นลูกเล่น (เป็ดโยกตัว · ดาววิบวับ · เมฆลอย) — เปลี่ยนรูปเมื่อไหร่ลูกเล่นของรูปนั้นจะถูกถอด">
                           {b.still ? "เปิดลูกเล่นขยับ" : "หยุดลูกเล่นขยับ"}
                         </Btn>
                       )}

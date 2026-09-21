@@ -181,6 +181,7 @@ function attentionOf(o: Order, dupPhone: boolean): string[] {
   if (d !== null && d < 0) r.push(`เลยวันใช้งาน ${Math.abs(d)} วัน`);
   else if (d === 0) r.push("ลูกค้าใช้งานวันนี้");
   if (o.slipVerify?.status === "fail" && o.status === "รอตรวจสอบ") r.push("SlipOK ตรวจไม่ผ่าน");
+  if (o.slipVerify?.status === "skip" && o.status === "รอตรวจสอบ") r.push("SlipOK ไม่ได้ตอบ — ยังไม่ได้ตรวจ");
   if (o.status === "แก้ไขแบบ") r.push("ลูกค้าขอแก้แบบ");
   if (o.deposit?.firstPaidAt && !o.deposit.settledAt) r.push("ค้างมัดจำครึ่งหลัง");
   if (o.items.some((i) => i.needStockCheck)) r.push("รอเช็คสต๊อก");
@@ -963,7 +964,9 @@ function Row({
                 ? "SlipOK ตรวจผ่าน"
                 : o.slipVerify?.status === "fail"
                   ? "SlipOK ไม่ผ่าน — ตรวจเอง"
-                  : "แนบสลิปแล้ว"}
+                  : o.slipVerify?.status === "skip"
+                    ? "SlipOK ไม่ได้ตอบ — ตรวจเอง"
+                    : "แนบสลิปแล้ว"}
             </span>
           )}
         </td>

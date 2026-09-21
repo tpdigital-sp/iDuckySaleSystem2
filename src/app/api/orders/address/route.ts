@@ -4,6 +4,7 @@ import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { syncCustomerToTP } from "@/lib/server/tp-report";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
+import { cleanPhone, contactProblems } from "@/lib/contact-validate";
 
 export const runtime = "nodejs";
 
@@ -31,10 +32,13 @@ export async function POST(req: Request) {
   const orderId = (body.orderId ?? "").trim();
   const address = (body.address ?? "").trim();
   const customer = (body.customer ?? "").trim();
-  const phone = (body.phone ?? "").trim();
+  const phone = cleanPhone(body.phone);
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!customer || !phone || !address)
     return NextResponse.json({ error: "กรอกชื่อผู้รับ เบอร์โทร และที่อยู่ให้ครบ" }, { status: 400 });
+  // 📞📍 เบอร์จริง + ที่อยู่จริงเท่านั้น (กติกาเดียวกับตอนสั่งซื้อ)
+  const contactBad = contactProblems({ phone: body.phone, address });
+  if (contactBad.length) return NextResponse.json({ error: contactBad.join(" · ") }, { status: 400 });
 
   const { data: row, error: readErr } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });

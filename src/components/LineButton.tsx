@@ -20,12 +20,20 @@ function ChatIcon({ className = "h-5 w-5" }: { className?: string }) {
  * ปุ่ม LINE ลอยมุมขวาล่าง (ทุกหน้าร้าน) — มาร์กอัป .line-fab ตามไฟล์ต้นแบบ LADNDING PAGE.html
  * เดสก์ท็อป = พิลล์เขียวมีข้อความ · มือถือ = วงกลม 💬 เหนือแถบเมนูล่าง + ป้าย "ทักเราได้เลยนะ 👋" โผล่เป็นระยะ
  * สไตล์อยู่ใน landing.css (ต้องอยู่ใต้ตัวครอบ .dl — ดู (shop)/layout.tsx)
+ *
+ * คลาส .fabx = ชุดปุ่มลอยกลาง (ท้าย landing.css) ให้ทรงเดียวกับตะกร้า/แชทบอท/เข้าหลังบ้าน
+ * ไอคอนเปลี่ยนจากอิโมจิ 💬 เป็น SVG เพราะอิโมจิย้อมสีตามพิลล์ไม่ได้ (ในวงขาวต้องเป็นเขียว LINE)
  */
 export function LineFloat() {
   return (
-    <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="line-fab" aria-label="คุยกับแอดมินตัวจริงทาง LINE">
-      <i className="line-fab-ico">💬</i>
-      <span className="line-fab-tip">ทักเราได้เลยนะ 👋</span>
+    <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="line-fab fabx fabx-line" aria-label="คุยกับแอดมินตัวจริงทาง LINE">
+      <i className="line-fab-ico fabx-ico">
+        <ChatIcon />
+      </i>
+      <span className="line-fab-tip fabx-label">ทักเราได้เลยนะ 👋</span>
+      <svg className="fabx-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M9 5l7 7-7 7" />
+      </svg>
     </a>
   );
 }

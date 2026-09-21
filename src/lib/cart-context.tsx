@@ -25,6 +25,8 @@ import {
 } from "./products";
 import { fetchProductsByIds, fetchProductsByIdsChecked } from "./product-repo";
 import { useCustomer } from "./customer-context";
+import { APPEND_CHANGED_EVENT, appendLotLines, getAppendTarget, type AppendLotLine } from "./append-order";
+import { fetchOrderForCustomer } from "./order-repo";
 
 export interface CartItem {
   key: string;
@@ -161,6 +163,11 @@ interface CartContextValue {
    * productOf คืน undefined + productGone=false = แค่ยังโหลดไม่เสร็จ (หน้าตะกร้าต้องโชว์ว่ากำลังโหลด ไม่ใช่ซ่อนทิ้ง)
    */
   productGone: (id: string) => boolean;
+  /**
+   * 🧮 โหมดสั่งเพิ่มในออเดอร์เดิม: ของที่อยู่ในออเดอร์นั้นอยู่แล้ว — นับร่วมล็อตตอนคิดขั้นราคา (ว่าง = ไม่ได้อยู่โหมดสั่งเพิ่ม)
+   * ราคาในตะกร้ารวมให้แล้ว · หน้าสินค้าเอาไปต่อท้ายบรรทัดตะกร้าตอนพรีวิวราคา
+   */
+  lotExtras: AppendLotLine[];
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -300,6 +307,37 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [readStored]);
 
+  /**
+   * 🧮 สั่งเพิ่มในออเดอร์เดิม = ผลิตรอบเดียวกับของที่สั่งไว้แล้ว → ขั้นราคาต้องคิดจากยอดรวม (เดิม + ที่เพิ่ม)
+   * OD-260916-2955 (19 ก.ย. 69): เดิม PET 13 แผ่น ฿100 สั่งเพิ่ม 7 แผ่นโดนคิดขั้น 1-10 แผ่น ฿120 เพราะตะกร้าไม่รู้จักของในออเดอร์
+   * ใช้สำเนาที่ฝากมากับ AppendTarget ก่อน แล้วดึงของสดจากออเดอร์ทับ (แอดมินอาจแก้รายการไปแล้ว) · ดึงไม่ได้ = ใช้สำเนา
+   * ราคาของรายการเดิมในออเดอร์ไม่แตะ — คิดให้เฉพาะบรรทัดที่สั่งเพิ่ม
+   */
+  const [lotExtras, setLotExtras] = useState<AppendLotLine[]>([]);
+  useEffect(() => {
+    let run = 0;
+    const load = () => {
+      const mine = ++run;
+      const t = getAppendTarget();
+      setLotExtras(t?.lotItems ?? []);
+      if (!t) return;
+      fetchOrderForCustomer(t.id, t.key).then(({ order }) => {
+        if (mine === run && order) setLotExtras(appendLotLines(order.items));
+      });
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key.startsWith("iducky-append-order")) load();
+    };
+    load();
+    window.addEventListener(APPEND_CHANGED_EVENT, load);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      run++;
+      window.removeEventListener(APPEND_CHANGED_EVENT, load);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
   /** id ที่ถามฐานข้อมูลสำเร็จแล้วยืนยันว่า "ไม่มีสินค้านี้แล้ว" — เลิกถามซ้ำ ให้หน้าตะกร้าโชว์ป้ายบอกแทน */
   const [goneIds, setGoneIds] = useState<Set<string>>(new Set());
 
@@ -350,7 +388,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CartContextValue>(() => {
     // คำนวณราคา/หน่วยใหม่ทุกครั้งตามจำนวนปัจจุบัน (รองรับราคาขั้นบันได)
     // + รวมบรรทัดสเปคเดียวกันเป็นกลุ่ม แล้วคิดเรทตามจำนวนรวม (25+25 = 50 ชิ้น 2 ลาย → เรท 2)
-    const priced = repriceCartGroups(state.items, productOf);
+    // โหมดสั่งเพิ่ม: ต่อท้ายด้วยของในออเดอร์เดิม (ร่วมล็อต) — ผลลัพธ์อ่านเฉพาะ index ของบรรทัดตะกร้า
+    const priced = repriceCartGroups([...state.items, ...lotExtras], productOf);
     const items: CartItem[] = state.items.map((i, idx) => {
       const p = productOf(i.productId);
       if (!p) return i;
@@ -402,8 +441,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clear: () => dispatch({ type: "clear" }),
       productOf,
       productGone: (id) => goneIds.has(id),
+      lotExtras,
     };
-  }, [state.items, productOf, goneIds]);
+  }, [state.items, productOf, goneIds, lotExtras]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

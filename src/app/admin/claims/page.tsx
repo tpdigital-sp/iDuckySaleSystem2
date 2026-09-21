@@ -14,12 +14,15 @@
  * 🧰 เชื่อมกับปุ่ม ♻️ ทำใหม่/เคลม ในหน้าออเดอร์ (16 ก.ย. 69):
  *   - กดจากหน้าออเดอร์ → เปิดเคสให้เอง (source "admin") หรือผูกกับเคสที่เปิดอยู่ · ขึ้นในหน้านี้ทันที
  *   - กดจากหน้านี้ (ปุ่ม "สร้างงานผลิตใหม่") → ยิง /api/admin/orders/redo ให้เอง ไม่ต้องไปกดในหน้าออเดอร์แล้วก๊อปเลขกลับมา
+ *   - ปุ่ม ➕ บันทึกเคลม (NewClaimModal) ทีมงานเปิดเคสเองจากที่ลูกค้าแจ้งทาง LINE/โทร · ช่อง "ความผิดอยู่ที่ใคร" แก้ได้ในการ์ด
+ *   - เปิดหน้าด้วย #CL-xxx (จากป้ายในหน้าออเดอร์) → สลับเป็น "ทั้งหมด" กางการ์ดนั้นและเลื่อนไปหา
  */
 
 import RequirePerm from "@/components/RequirePerm";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CLAIM_STATUSES, isOpenClaim, needsReply, type Claim, type ClaimStatus } from "@/lib/claims";
+import NewClaimModal from "@/components/admin/NewClaimModal";
+import { CLAIM_FAULTS, CLAIM_STATUSES, isOpenClaim, needsReply, type Claim, type ClaimFault, type ClaimStatus } from "@/lib/claims";
 import {
   Banner,
   Btn,
@@ -71,6 +74,9 @@ function ClaimsPageInner() {
   const [claims, setClaims] = useState<Claim[] | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [filter, setFilter] = useState<"open" | "all" | ClaimStatus>("open");
+  const [creating, setCreating] = useState(false);
+  /** เคสที่ถูกชี้มาจาก URL hash (#CL-xxx) — กางไว้และเลื่อนไปหาครั้งเดียว */
+  const [focusId, setFocusId] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/claims", { cache: "no-store" })
@@ -81,6 +87,16 @@ function ClaimsPageInner() {
       })
       .catch(() => setClaims([]));
   }, []);
+
+  useEffect(() => {
+    if (!claims) return;
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (!id || !claims.some((c) => c.id === id)) return;
+    setFilter("all");
+    setFocusId(id);
+    // รอให้การ์ดขึ้นก่อนค่อยเลื่อน
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }, [claims]);
 
   const all = claims ?? [];
   const openList = all.filter(isOpenClaim);
@@ -112,8 +128,27 @@ function ClaimsPageInner() {
         group="งานขาย"
         title="เคลมสินค้า"
         count={`${all.length} เรื่อง`}
-        sub="เคสที่ลูกค้ายื่นจากหน้าบัญชี + เคสที่ทีมงานเปิดจากปุ่ม ♻️ ทำใหม่/เคลม ในหน้าออเดอร์ — เปลี่ยนสถานะหรือตอบกลับแล้วระบบแจ้งลูกค้าทาง LINE ให้เอง"
+        sub="เคสที่ลูกค้ายื่นจากหน้าบัญชี + เคสที่ทีมงานเปิดเอง (ปุ่มนี้ หรือ ♻️ ทำใหม่/เคลม ในหน้าออเดอร์) — เปลี่ยนสถานะหรือตอบกลับแล้วระบบแจ้งลูกค้าทาง LINE ให้เอง"
+        tools={
+          !needsSetup && (
+            <Btn tone="yolk" onClick={() => setCreating(true)}>
+              ➕ บันทึกเคลม
+            </Btn>
+          )
+        }
       />
+
+      {creating && (
+        <NewClaimModal
+          onClose={() => setCreating(false)}
+          onCreated={(c) => {
+            setClaims((cs) => [c, ...(cs ?? [])]);
+            setCreating(false);
+            setFilter("open");
+            setFocusId(c.id);
+          }}
+        />
+      )}
 
       {needsSetup ? (
         <div className="mt-4">
@@ -167,7 +202,12 @@ function ClaimsPageInner() {
           ) : (
             <div className="grid gap-3">
               {shown.map((c) => (
-                <ClaimCard key={c.id} claim={c} onUpdate={(u) => setClaims((cs) => cs?.map((x) => (x.id === u.id ? u : x)) ?? cs)} />
+                <ClaimCard
+                  key={c.id}
+                  claim={c}
+                  focus={c.id === focusId}
+                  onUpdate={(u) => setClaims((cs) => cs?.map((x) => (x.id === u.id ? u : x)) ?? cs)}
+                />
               ))}
             </div>
           )}
@@ -177,8 +217,12 @@ function ClaimsPageInner() {
   );
 }
 
-function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) => void }) {
-  const [open, setOpen] = useState(isOpenClaim(c));
+function ClaimCard({ claim: c, focus, onUpdate }: { claim: Claim; focus?: boolean; onUpdate: (c: Claim) => void }) {
+  const [open, setOpen] = useState(isOpenClaim(c) || !!focus);
+  useEffect(() => {
+    if (focus) setOpen(true);
+  }, [focus]);
+  const [fault, setFault] = useState<ClaimFault | "">(c.fault ?? "");
   const [reply, setReply] = useState("");
   const [action, setAction] = useState(c.resolution?.action ?? "");
   const [note, setNote] = useState(c.resolution?.note ?? "");
@@ -239,14 +283,20 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
   }
 
   return (
-    <article className="dkb-g relative overflow-hidden p-4 pl-5" style={{ ["--dk-tone" as string]: TONE[c.status] }}>
+    <article id={c.id} className="dkb-g relative overflow-hidden p-4 pl-5 scroll-mt-4" style={{ ["--dk-tone" as string]: TONE[c.status] }}>
       <span className="absolute inset-y-0 left-0 w-[6px]" style={{ background: "var(--dk-tone)" }} />
 
       <button type="button" className="flex w-full items-start justify-between gap-3 text-left" onClick={() => setOpen((v) => !v)}>
         <span className="min-w-0">
           <span className="dkb-who">
             <span className="nm">{c.customer}</span>
-            {byAdmin && <Tag tone="quiet">ทีมงานเปิดเคส{c.createdBy ? ` · ${c.createdBy}` : ""}</Tag>}
+            {byAdmin && (
+              <Tag tone="quiet">
+                ทีมงานเปิดเคส{c.createdBy ? ` · ${c.createdBy}` : ""}
+                {c.channel ? ` · ทาง ${c.channel}` : ""}
+              </Tag>
+            )}
+            {c.fault && <Tag tone={c.fault === "ร้าน" ? "coral" : c.fault === "ขนส่ง" ? "yolk" : "sky"}>ผิดที่{c.fault}</Tag>}
             {hot && <Tag tone="solid">ค้าง {days} วัน ยังไม่ตอบ</Tag>}
             {!hot && isOpenClaim(c) && days >= 2 && <Tag tone="yolk">ค้าง {days} วัน</Tag>}
           </span>
@@ -349,7 +399,18 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
           </div>
 
           {/* แนวทางชดเชย */}
-          <div className="grid gap-2 sm:grid-cols-[170px_1fr_190px_auto]">
+          <div className="grid gap-2 sm:grid-cols-[150px_150px_1fr_170px_auto]">
+            <label className="dkb-g dkb-field">
+              <span className="lb">ความผิดอยู่ที่</span>
+              <select value={fault} onChange={(e) => setFault(e.target.value as ClaimFault | "")}>
+                <option value="">ยังไม่ระบุ…</option>
+                {CLAIM_FAULTS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="dkb-g dkb-field">
               <span className="lb">แนวทางชดเชย</span>
               <select value={action} onChange={(e) => setAction(e.target.value)}>
@@ -374,7 +435,10 @@ function ClaimCard({ claim: c, onUpdate }: { claim: Claim; onUpdate: (c: Claim) 
                 tone="navy"
                 disabled={busy}
                 onClick={() =>
-                  void patch({ resolution: { action: action || undefined, note: note || undefined, redoOrderId: redoId || undefined } })
+                  void patch({
+                    resolution: { action: action || undefined, note: note || undefined, redoOrderId: redoId || undefined },
+                    ...(fault ? { fault } : {}),
+                  })
                 }
               >
                 บันทึก

@@ -292,6 +292,37 @@ export default function StockPage() {
     for (const [id, us] of Object.entries(usage)) out[id] = us.filter((u) => !(u.kind === "product" && u.missing));
     return out;
   }, [usage]);
+  /**
+   * ของที่โดนหักคู่กันต่อสินค้า — กลับด้าน usage (SKU → ตัวเลือก) เป็น (สินค้า → ตัวเลือก → SKU)
+   * ใช้เขียนกำกับใต้แถว "ตัดพร้อมกับ…" (กล่องสรุปทั้งสินค้าเอาออกแล้ว — เจ้าของร้านบอกไม่ต้อง 19 ก.ย. 69)
+   * ให้เห็นว่าของชิ้นไหนโดนหักคู่กัน (สั่งกรอบ = แผ่นจิ๊กซอว์โดนหักด้วย · เจ้าของร้านขอ 19 ก.ย. 69)
+   * ไม่รวมคลังกลาง (ตะขอ/สีไหม ใช้กับหลายสินค้า — มีบอกในแถวของมันเองอยู่แล้ว)
+   */
+  const recipes = useMemo(() => {
+    type Pick = { key: string; label: string; choice: string; optionIndex: number; always: string[]; extra: { id: string; cond?: string }[] };
+    const out = new Map<string, { always: { id: string; per: number }[]; picks: Map<string, Pick> }>();
+    const of = (pid: string) => out.get(pid) ?? out.set(pid, { always: [], picks: new Map() }).get(pid)!;
+    for (const [id, us] of Object.entries(live)) {
+      if (!items.some((i) => i.id === id)) continue; // ลบแล้ว/ไม่ต้องมี stock ไม่เอามาพูด
+      for (const u of us) {
+        if (u.kind === "preset") continue;
+        if (u.kind === "product") {
+          of(u.productId).always.push({ id, per: u.per ?? 1 });
+          continue;
+        }
+        const r = of(u.productId);
+        const key = `${u.optionIndex}|${u.choice}`;
+        const pk = r.picks.get(key) ?? r.picks.set(key, { key, label: u.label, choice: u.choice, optionIndex: u.optionIndex, always: [], extra: [] }).get(key)!;
+        if (u.extra) pk.extra.push({ id, cond: u.cond });
+        else pk.always.push(id);
+      }
+    }
+    return out;
+  }, [live, items]);
+  const nameOfId = useMemo(() => new Map(items.map((i) => [i.id, i.name])), [items]);
+  /** ชื่อสั้นไว้เขียนกำกับ — ตัด "(ชื่อสินค้า)" ท้ายชื่อทิ้ง อ่านง่ายขึ้นในประโยค */
+  const shortName = (id: string) => (nameOfId.get(id) ?? "?").replace(/\s*\([^()]*\)\s*$/, "");
+
   /** ยังไม่เชื่อมกับสินค้า/ตัวเลือกไหนเลย = ขายแล้วสต๊อกตัวนี้ไม่ขยับ */
   const unlinked = useMemo(() => (linksReady ? tracked.filter((i) => !live[i.id]?.length) : []), [tracked, live, linksReady]);
 
@@ -821,6 +852,40 @@ export default function StockPage() {
                       </span>
                       <span className="w-full min-w-0 pl-[57px] sm:w-80 sm:pl-0">
                         <LinkCell ready={linksReady} usage={live[it.id]} dead={dead} hasSuggest={!!suggest[it.id]?.length} showProduct={!grouped} />
+                        {(() => {
+                          // ของที่โดนหักคู่กันในออเดอร์เดียว — มองจากตัวเลือกเดียวกันของสินค้าเดียวกัน + วัสดุแฝงของสินค้านั้น
+                          const with1: string[] = [];
+                          const maybe: { id: string; cond?: string }[] = [];
+                          for (const u of live[it.id] ?? []) {
+                            if (u.kind === "preset") continue;
+                            const r = recipes.get(u.productId);
+                            if (!r) continue;
+                            r.always.forEach((a) => a.id !== it.id && with1.push(a.id));
+                            if (u.kind === "choice") {
+                              const pk = r.picks.get(`${u.optionIndex}|${u.choice}`);
+                              pk?.always.forEach((x) => x !== it.id && with1.push(x));
+                              // ตัวนี้เองเป็นของมีเงื่อนไข → ของหลักของตัวเลือกนั้นโดนหักแน่ ๆ (อยู่ใน with1 แล้ว)
+                              // ตัวนี้เป็นของหลัก → ของมีเงื่อนไขจะโดนหักเพิ่ม "ถ้า…"
+                              if (!u.extra) pk?.extra.forEach((x) => x.id !== it.id && maybe.push(x));
+                            }
+                          }
+                          const w = [...new Set(with1)];
+                          if (!w.length && !maybe.length) return null;
+                          return (
+                            <span className="mt-1 block space-y-0.5 text-[11.5px] leading-snug" style={{ color: "var(--dk-navy-soft)" }}>
+                              {w.length > 0 && (
+                                <span className="block">
+                                  🔗 ตัดพร้อมกับ <b className="font-semibold">{w.map(shortName).join(", ")}</b>
+                                </span>
+                              )}
+                              {maybe.map((m) => (
+                                <span key={m.id} className="block">
+                                  ➕ ถ้า{m.cond ? ` ${m.cond}` : "เลือกแบบนั้น"} ตัด <b className="font-semibold">{shortName(m.id)}</b> เพิ่ม
+                                </span>
+                              ))}
+                            </span>
+                          );
+                        })()}
                       </span>
                       <span className="ml-auto flex shrink-0 items-center gap-3 pl-[57px] sm:pl-0">
                         <span className="text-right">
@@ -2395,20 +2460,25 @@ function ProductPicker({ products, value, onChange }: { products: ProductLite[];
 }
 
 /**
- * แยกสต๊อกของสินค้าตามตัวเลือก — เลือกกลุ่ม (เช่น "ขนาด") → ได้ SKU 1 ตัวต่อ 1 ตัวเลือก ผูกให้เสร็จ
+ * แยกสต๊อกของสินค้าตามตัวเลือก
+ *   เลือก 1 กลุ่ม  → SKU ละ 1 ค่า (ขนาด 7×12 / 6.8×10.5) · มี "ของอีกชิ้นแบบมีเงื่อนไข" ได้ (กรอบตามขนาด)
+ *   เลือก 2 กลุ่ม → SKU ทุกคู่ (กระจกถือ ทรง 2 × สี 6 = 12) ผูกเป็นลิงก์มีเงื่อนไขบนค่าของกลุ่มแรก
  * SKU รวมเดิมที่ผูกกับตัวสินค้าจะถูกถอดออกเสมอ ไม่งั้นขาย 1 ชิ้นตัด 2 ต่อ
+ * หน้าต่าง: หัว/ท้ายตรึง เนื้อหาเลื่อนในตัว สูงไม่เกินจอ (เดิมยาวจนปุ่มสร้างตกขอบจอ · 19 ก.ย. 69)
  */
 function SplitModal({ product, onClose, onDone }: { product: { id: string; name: string }; onClose: () => void; onDone: (msg: string) => void }) {
-  type Group = { optionIndex: number; label: string; choices: { name: string; img?: string; stockItemId: string | null; skuName: string | null; extras?: string[] }[] };
+  type Link = { stockItemId: string; name: string | null; when: { label: string; choices: string[] }[] };
+  type Choice = { name: string; img?: string; stockItemId: string | null; skuName: string | null; extras?: string[]; links?: Link[] };
+  type Group = { optionIndex: number; label: string; choices: Choice[] };
   type Old = { id: string; name: string; code?: string; balance: number; unit: string; shared: boolean };
+  const SEP = "\u0001";
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [old, setOld] = useState<Old[]>([]);
-  const [gi, setGi] = useState(0);
+  /** กลุ่มที่เลือก ตามลำดับที่กด (สูงสุด 2) — ตัวแรก = กลุ่มที่ถือลิงก์ */
+  const [sel, setSel] = useState<number[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [removeOld, setRemoveOld] = useState(true);
-  /** ชื่อของชิ้นหลัก เช่น "แผ่นจิ๊กซอว์" (ว่าง = ใช้ชื่อสินค้า) */
   const [partName, setPartName] = useState("");
-  /** ของชิ้นที่ 2 ที่หยิบเพิ่มเมื่อกลุ่มอื่นเป็นค่าที่กำหนด เช่น "กรอบรูป" เมื่อ ตัวเลือก = กรอบรูป + แผ่นจิ๊กซอว์ */
   const [extraOn, setExtraOn] = useState(false);
   const [extraName, setExtraName] = useState("");
   const [condGroup, setCondGroup] = useState(-1);
@@ -2425,42 +2495,81 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
       if (!res.ok || !j?.ok) return setErr(j?.error ?? "โหลดตัวเลือกของสินค้าไม่สำเร็จ");
       setGroups(j.groups);
       setOld(j.old);
+      if (j.groups?.length) setSel([0]);
     })();
     return () => {
       dead = true;
     };
   }, [product.id]);
 
-  const g = groups?.[gi];
-  // เปลี่ยนกลุ่ม → ติ๊กทุกค่าที่ยังไม่มี SKU ให้ก่อน (งานส่วนใหญ่คือแยกครบทุกค่า)
   useEffect(() => {
-    if (g) setPicked(new Set(g.choices.filter((c) => extraOn || !c.stockItemId).map((c) => c.name)));
-  }, [g, extraOn]);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const gA = groups?.[sel[0] ?? -1];
+  const gB = sel.length > 1 ? groups?.[sel[1]] : undefined;
+  const pairMode = !!(gA && gB);
+
+  /** คู่ (a,b) มี SKU แล้วหรือยัง — ดูจากลิงก์มีเงื่อนไขบนค่าของกลุ่มแรก */
+  const pairSku = (a: Choice, b: string) =>
+    a.links?.find((l) => l.when.length === 1 && gB && l.when[0].label === gB.label && l.when[0].choices.length === 1 && l.when[0].choices[0] === b);
+
+  type Row = { key: string; a: Choice; b?: Choice; done: string | null };
+  const rows = useMemo((): Row[] => {
+    if (!gA) return [];
+    if (!gB) return gA.choices.map((c) => ({ key: c.name, a: c, done: c.stockItemId && !extraOn ? c.skuName ?? c.stockItemId : null }));
+    return gB.choices.flatMap((b) =>
+      gA.choices.map((a) => {
+        const ex = pairSku(a, b.name);
+        return { key: `${a.name}${SEP}${b.name}`, a, b, done: ex ? ex.name ?? ex.stockItemId : null };
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gA, gB, extraOn]);
+
+  // เปลี่ยนกลุ่ม → ติ๊กทุกแถวที่ยังไม่มี SKU ให้ก่อน (งานส่วนใหญ่คือแยกครบ)
+  useEffect(() => {
+    setPicked(new Set(rows.filter((r) => !r.done).map((r) => r.key)));
+  }, [rows]);
+
+  const toggleGroup = (i: number) => {
+    setErr("");
+    setSel((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].slice(-2)));
+    setCondGroup(-1);
+    setCondChoices(new Set());
+  };
 
   const canRemove = old.length > 0 && old.every((o) => o.balance === 0 && !o.shared);
-  const condGroups = (groups ?? []).map((x, i) => ({ x, i })).filter(({ i }) => i !== gi);
-  const cond = condGroup >= 0 && condGroup !== gi ? groups?.[condGroup] : undefined;
-  const extraReady = !extraOn || (extraName.trim() !== "" && !!cond && condChoices.size > 0);
-  /** มีอะไรให้สร้างไหม: ชิ้นหลักของค่าที่ยังไม่ผูก หรือชิ้นที่ 2 ของค่าที่ติ๊ก */
-  const todo = g ? g.choices.filter((c) => picked.has(c.name) && (!c.stockItemId || extraOn)).length : 0;
-  /** กลุ่มอื่นของสินค้านี้ที่ผูก SKU ไว้แล้ว — แยกซ้ำอีกกลุ่ม = ออเดอร์เดียวตัด 2 ตัว (เคยเกิด: แยกทั้ง "ขนาด" และ "รูปทรง") */
-  const alreadySplit = (groups ?? []).filter((x, i) => i !== gi && x.choices.some((c) => c.stockItemId)).map((x) => x.label);
+  const condGroups = (groups ?? []).map((x, i) => ({ x, i })).filter(({ i }) => i !== sel[0]);
+  const cond = condGroup >= 0 && condGroup !== sel[0] ? groups?.[condGroup] : undefined;
+  const extraReady = pairMode || !extraOn || (extraName.trim() !== "" && !!cond && condChoices.size > 0);
+  const todo = rows.filter((r) => picked.has(r.key) && !r.done).length + (!pairMode && extraOn ? rows.filter((r) => picked.has(r.key)).length : 0);
+  /** กลุ่มอื่นของสินค้านี้ที่ผูก SKU ไว้แล้ว — แยกซ้ำอีกกลุ่ม = ออเดอร์เดียวตัด 2 ตัว */
+  const alreadySplit = (groups ?? [])
+    .filter((x, i) => !sel.includes(i) && x.choices.some((c) => c.stockItemId || c.links?.length))
+    .map((x) => x.label);
+  const label = (r: Row) => (r.b ? `${r.b.name} · ${r.a.name}` : r.a.name);
 
   async function submit() {
-    if (!g) return;
+    if (!gA) return;
     setBusy(true);
     setErr("");
+    const chosen = rows.filter((r) => picked.has(r.key));
     const res = await fetch("/api/admin/stock/split", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         productId: product.id,
-        optionIndex: g.optionIndex,
-        label: g.label,
-        choices: [...picked],
+        optionIndex: gA.optionIndex,
+        label: gA.label,
+        choices: [...new Set(chosen.map((r) => r.a.name))],
         removeOld: removeOld && canRemove,
         partName: partName.trim() || undefined,
-        extra: extraOn && cond ? { name: extraName.trim(), when: { label: cond.label, choices: [...condChoices] } } : undefined,
+        ...(pairMode
+          ? { pair: { optionIndex: gB!.optionIndex, label: gB!.label }, combos: chosen.filter((r) => !r.done).map((r) => [r.a.name, r.b!.name]) }
+          : { extra: extraOn && cond ? { name: extraName.trim(), when: { label: cond.label, choices: [...condChoices] } } : undefined }),
       }),
     });
     const j = await res.json().catch(() => null);
@@ -2468,192 +2577,224 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
     if (!res.ok || !j?.ok) return setErr(j?.error ?? "แยกสต๊อกไม่สำเร็จ");
     const reused = (j.created as { reused?: boolean }[]).filter((x) => x.reused).length;
     onDone(
-      `แยกสต๊อก ${product.name} ตาม “${g.label}” แล้ว ${j.created.length} ตัว${reused ? ` (ใช้ของนำเข้าเดิม ${reused} ตัว)` : ""} — ยอดเริ่มที่ 0 กด “นับ” ใส่ยอดจริงของแต่ละตัว`
+      `แยกสต๊อก ${product.name} ตาม “${pairMode ? `${gB!.label} × ${gA.label}` : gA.label}” แล้ว ${j.created.length} ตัว${reused ? ` (ใช้ของนำเข้าเดิม ${reused} ตัว)` : ""} — ยอดเริ่มที่ 0 กด “นับ” หรือ “รับเข้า” ใส่ยอดจริง`
     );
   }
 
+  const chip = (on: boolean) =>
+    `min-h-[40px] rounded-xl border px-3 text-[13px] font-medium transition ${
+      on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+    }`;
+
   return (
-    <Modal title="แยกสต๊อกตามตัวเลือก" subtitle={product.name} onClose={onClose}>
-      {err && <p className={`mb-3 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
-      {!groups ? (
-        !err && <p className="py-8 text-center text-sm text-slate-400">กำลังโหลดตัวเลือกของสินค้า…</p>
-      ) : groups.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-500">
-          สินค้านี้ไม่มีกลุ่มตัวเลือกของตัวเองให้แยก — ถ้าใช้ตัวเลือกจากคลังกลาง (ตะขอ สีไหม) ให้ผูกที่หน้า “ผูกตัวเลือกสินค้า”
-        </p>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <span className={fieldLabel}>ของบนชั้นต่างกันตามตัวเลือกกลุ่มไหน</span>
-            <div className="flex flex-wrap gap-1.5">
-              {groups.map((x, i) => (
-                <button
-                  key={`${x.optionIndex}-${x.label}`}
-                  type="button"
-                  aria-pressed={gi === i}
-                  onClick={() => setGi(i)}
-                  className={`min-h-[44px] rounded-xl border px-3.5 text-sm font-medium transition ${
-                    gi === i ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  {x.label} <span className={gi === i ? "text-white/60" : "text-slate-400"}>{x.choices.length}</span>
-                </button>
-              ))}
-            </div>
+    <div className="fixed inset-0 z-[130] flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] sm:items-center sm:p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="แยกสต๊อกตามตัวเลือก"
+      >
+        <header className="flex items-start gap-3 border-b border-slate-100 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold text-slate-900">แยกสต๊อกตามตัวเลือก</p>
+            <p className={`truncate ${subtle}`}>{product.name}</p>
           </div>
+          <button type="button" onClick={onClose} className={btnSmGhost} aria-label="ปิด">
+            ✕
+          </button>
+        </header>
 
-          {g && (
-            <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-              {g.choices.map((c) => {
-                const mainDone = !!c.stockItemId;
-                const done = mainDone && !extraOn; // เปิด "ของชิ้นที่ 2" แล้ว ค่าที่ผูกชิ้นหลักไว้ก็ยังติ๊กเพื่อเพิ่มชิ้นที่ 2 ได้
-                const part = partName.trim();
-                return (
-                  <li key={c.name}>
-                    <label className={`flex min-h-[56px] items-center gap-3 px-3 py-2 ${done ? "" : "cursor-pointer hover:bg-slate-50"}`}>
-                      <input
-                        type="checkbox"
-                        className="h-5 w-5 accent-slate-900"
-                        disabled={done}
-                        checked={done || picked.has(c.name)}
-                        onChange={(e) =>
-                          setPicked((prev) => {
-                            const next = new Set(prev);
-                            if (e.target.checked) next.add(c.name);
-                            else next.delete(c.name);
-                            return next;
-                          })
-                        }
-                      />
-                      <Thumb src={c.img} name={c.name} size={40} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-slate-900">{c.name}</span>
-                        <span className="block truncate text-[11px] text-slate-400">
-                          {mainDone ? `มี SKU แล้ว: ${c.skuName ?? c.stockItemId}` : `จะสร้าง “${part ? `${part} ${c.name}` : `${product.name} · ${c.name}`}”`}
-                          {extraOn && extraName.trim() && picked.has(c.name) ? ` + “${extraName.trim()} ${c.name}”` : ""}
-                          {c.extras?.length ? ` · ชิ้นเพิ่มเดิม: ${c.extras.join(", ")}` : ""}
-                        </span>
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
+          {err && <p className={`rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
+          {!groups ? (
+            !err && <p className="py-8 text-center text-slate-400">กำลังโหลดตัวเลือกของสินค้า…</p>
+          ) : groups.length === 0 ? (
+            <p className="py-6 text-center text-slate-500">
+              สินค้านี้ไม่มีกลุ่มตัวเลือกของตัวเองให้แยก — ถ้าใช้ตัวเลือกจากคลังกลาง (ตะขอ สีไหม) ให้ผูกที่หน้า “ผูกตัวเลือกสินค้า”
+            </p>
+          ) : (
+            <>
+              <div>
+                <p className={fieldLabel}>ของบนชั้นต่างกันตามกลุ่มไหน (เลือกได้ 2 กลุ่ม)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {groups.map((x, i) => {
+                    const at = sel.indexOf(i);
+                    return (
+                      <button key={`${x.optionIndex}-${x.label}`} type="button" aria-pressed={at >= 0} onClick={() => toggleGroup(i)} className={chip(at >= 0)}>
+                        {at >= 0 && sel.length > 1 ? `${at + 1}. ` : ""}
+                        {x.label} <span className={at >= 0 ? "text-white/60" : "text-slate-400"}>{x.choices.length}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  {pairMode
+                    ? `สร้างครบทุกคู่ ${gB!.label} × ${gA!.label} = ${gB!.choices.length * gA!.choices.length} แบบ — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
+                    : "เลือกกลุ่มที่ 2 ด้วย ถ้าของต่างกันทั้ง 2 อย่าง (เช่น ทรง และ สี)"}
+                </p>
+              </div>
 
-          <label className="block">
-            <span className={fieldLabel}>ของชิ้นนี้เรียกว่าอะไร (ไม่บังคับ)</span>
-            <input value={partName} onChange={(e) => setPartName(e.target.value)} placeholder="เช่น แผ่นจิ๊กซอว์ — เว้นว่าง = ใช้ชื่อสินค้า" className={inputCls} />
-          </label>
-
-          {condGroups.length > 0 && (
-            <div className="rounded-xl border border-slate-200 px-3 py-2.5">
-              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
-                <input type="checkbox" className="h-5 w-5 accent-slate-900" checked={extraOn} onChange={(e) => setExtraOn(e.target.checked)} />
-                มีของอีกชิ้นที่ต้องหยิบเพิ่ม เมื่อลูกค้าเลือกบางแบบ
-              </label>
-              <p className="mt-1 text-[11px] text-slate-400">
-                เช่น กรอบรูปตามขนาด หยิบเฉพาะเมื่อลูกค้าเลือก “กรอบรูป + แผ่นจิ๊กซอว์” — ระบบสร้าง SKU ชิ้นที่ 2 ให้ทุกค่าที่ติ๊กด้านบน
-              </p>
-              {extraOn && (
-                <div className="mt-2.5 space-y-2.5">
-                  <input value={extraName} onChange={(e) => setExtraName(e.target.value)} placeholder="ชื่อของชิ้นที่ 2 เช่น กรอบรูป" className={inputCls} />
-                  <div>
-                    <span className={fieldLabel}>หยิบเพิ่มเมื่อกลุ่ม</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {condGroups.map(({ x, i }) => (
-                        <button
-                          key={`${x.optionIndex}-${x.label}`}
-                          type="button"
-                          aria-pressed={condGroup === i}
-                          onClick={() => {
-                            setCondGroup(i);
-                            setCondChoices(new Set());
-                          }}
-                          className={`min-h-[44px] rounded-xl border px-3.5 text-sm font-medium transition ${
-                            condGroup === i ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                          }`}
-                        >
-                          {x.label}
-                        </button>
-                      ))}
-                    </div>
+              {gA && (
+                <div className="rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5 text-[12px] text-slate-500">
+                    <span>
+                      เลือกแล้ว {rows.filter((r) => picked.has(r.key) && !r.done).length} / {rows.filter((r) => !r.done).length}
+                    </span>
+                    <button
+                      type="button"
+                      className="underline underline-offset-2 hover:text-slate-800"
+                      onClick={() =>
+                        setPicked((cur) => (rows.every((r) => r.done || cur.has(r.key)) ? new Set() : new Set(rows.filter((r) => !r.done).map((r) => r.key))))
+                      }
+                    >
+                      {rows.every((r) => r.done || picked.has(r.key)) ? "ไม่เลือกเลย" : "เลือกทั้งหมด"}
+                    </button>
                   </div>
-                  {cond && (
-                    <div>
-                      <span className={fieldLabel}>เป็นค่า</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {cond.choices.map((c) => {
-                          const on = condChoices.has(c.name);
-                          return (
-                            <button
-                              key={c.name}
-                              type="button"
-                              aria-pressed={on}
-                              onClick={() =>
-                                setCondChoices((prev) => {
+                  <ul className="max-h-[38dvh] divide-y divide-slate-100 overflow-y-auto">
+                    {rows.map((r) => {
+                      const on = !!r.done || picked.has(r.key);
+                      const part = partName.trim();
+                      return (
+                        <li key={r.key}>
+                          <label className={`flex min-h-[44px] items-center gap-2.5 px-3 py-1.5 ${r.done ? "" : "cursor-pointer hover:bg-slate-50"}`}>
+                            <input
+                              type="checkbox"
+                              className="h-[18px] w-[18px] shrink-0 accent-slate-900"
+                              disabled={!!r.done}
+                              checked={on}
+                              onChange={(e) =>
+                                setPicked((prev) => {
                                   const next = new Set(prev);
-                                  if (!next.delete(c.name)) next.add(c.name);
+                                  if (e.target.checked) next.add(r.key);
+                                  else next.delete(r.key);
                                   return next;
                                 })
                               }
-                              className={`min-h-[44px] rounded-xl border px-3.5 text-sm transition ${
-                                on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                              }`}
-                            >
-                              {on ? "✓ " : ""}
-                              {c.name}
-                            </button>
-                          );
-                        })}
+                            />
+                            <Thumb src={r.a.img ?? r.b?.img} name={label(r)} size={30} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px] font-medium text-slate-900">{label(r)}</span>
+                              <span className="block truncate text-[11px] text-slate-400">
+                                {r.done
+                                  ? `มี SKU แล้ว: ${r.done}`
+                                  : pairMode
+                                    ? `จะสร้าง “${part || product.name} · ${label(r)}”`
+                                    : `จะสร้าง “${part ? `${part} ${r.a.name}` : `${product.name} · ${r.a.name}`}”`}
+                                {!pairMode && extraOn && extraName.trim() && picked.has(r.key) ? ` + “${extraName.trim()} ${r.a.name}”` : ""}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              <label className="block">
+                <span className={fieldLabel}>ของชิ้นนี้เรียกว่าอะไร (ไม่บังคับ)</span>
+                <input value={partName} onChange={(e) => setPartName(e.target.value)} placeholder="เช่น กระจก / แผ่นจิ๊กซอว์ — เว้นว่าง = ใช้ชื่อสินค้า" className={inputCls} />
+              </label>
+
+              {!pairMode && condGroups.length > 0 && (
+                <div className="rounded-xl border border-slate-200 px-3 py-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-slate-800">
+                    <input type="checkbox" className="h-[18px] w-[18px] accent-slate-900" checked={extraOn} onChange={(e) => setExtraOn(e.target.checked)} />
+                    มีของอีกชิ้นที่หยิบเพิ่ม เฉพาะบางแบบ
+                  </label>
+                  <p className="mt-0.5 text-[11px] text-slate-400">เช่น กรอบรูปตามขนาด หยิบเฉพาะตอนลูกค้าเลือก “กรอบรูป + แผ่นจิ๊กซอว์”</p>
+                  {extraOn && (
+                    <div className="mt-2 space-y-2">
+                      <input value={extraName} onChange={(e) => setExtraName(e.target.value)} placeholder="ชื่อของชิ้นที่ 2 เช่น กรอบรูป" className={inputCls} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[12px] text-slate-500">หยิบเพิ่มเมื่อ</span>
+                        {condGroups.map(({ x, i }) => (
+                          <button
+                            key={`${x.optionIndex}-${x.label}`}
+                            type="button"
+                            aria-pressed={condGroup === i}
+                            onClick={() => {
+                              setCondGroup(i);
+                              setCondChoices(new Set());
+                            }}
+                            className={chip(condGroup === i)}
+                          >
+                            {x.label}
+                          </button>
+                        ))}
                       </div>
+                      {cond && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[12px] text-slate-500">เป็น</span>
+                          {cond.choices.map((c) => {
+                            const on = condChoices.has(c.name);
+                            return (
+                              <button
+                                key={c.name}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() =>
+                                  setCondChoices((prev) => {
+                                    const next = new Set(prev);
+                                    if (!next.delete(c.name)) next.add(c.name);
+                                    return next;
+                                  })
+                                }
+                                className={chip(on)}
+                              >
+                                {on ? "✓ " : ""}
+                                {c.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          )}
 
-          {alreadySplit.length > 0 && picked.size > 0 && !extraOn && (
-            <p className={`rounded-xl px-3 py-2.5 text-xs font-medium ${TONE.danger.bg} ${TONE.danger.text}`}>
-              สินค้านี้แยกสต๊อกตาม “{alreadySplit.join("”, “")}” ไว้แล้ว — ถ้าแยกตาม “{g?.label}” เพิ่มอีก ขาย 1 ชิ้นจะตัด 2 ตัว
-              ทำต่อเฉพาะเมื่อเป็นของคนละชิ้นจริง ๆ (เช่น ตัวแผ่น กับ ฐาน)
-            </p>
-          )}
-
-          {old.length > 0 && (
-            <div className={`rounded-xl px-3 py-2.5 text-xs ${TONE.warn.bg} ${TONE.warn.text}`}>
-              <p className="font-semibold">SKU รวมเดิมจะเลิกผูกกับสินค้านี้ (กันตัดยอดซ้ำ 2 ต่อ)</p>
-              <ul className="mt-1 space-y-0.5">
-                {old.map((o) => (
-                  <li key={o.id}>
-                    {o.name} · คงเหลือ {fmtN(o.balance)} {o.unit}
-                    {o.shared ? " · ยังใช้กับสินค้าอื่นอยู่" : ""}
-                  </li>
-                ))}
-              </ul>
-              {canRemove ? (
-                <label className="mt-2 flex cursor-pointer items-center gap-2">
-                  <input type="checkbox" className="h-4 w-4 accent-slate-900" checked={removeOld} onChange={(e) => setRemoveOld(e.target.checked)} />
-                  ลบ SKU รวมเดิมออกจากคลังด้วย (ยอดเป็น 0 อยู่แล้ว)
-                </label>
-              ) : (
-                <p className="mt-1.5">ยังมียอดค้างหรือใช้กับสินค้าอื่น — ระบบเก็บไว้ให้ ย้ายยอดไป SKU ใหม่ด้วยปุ่ม “นับ” แล้วค่อยลบเอง</p>
+              {alreadySplit.length > 0 && picked.size > 0 && !extraOn && (
+                <p className={`rounded-xl px-3 py-2 text-xs font-medium ${TONE.danger.bg} ${TONE.danger.text}`}>
+                  สินค้านี้แยกสต๊อกตาม “{alreadySplit.join("”, “")}” ไว้แล้ว — แยกเพิ่มอีก ขาย 1 ชิ้นจะตัด 2 ตัว (ลบชุดเดิมก่อน ถ้าจะเปลี่ยนวิธีแยก)
+                </p>
               )}
-            </div>
-          )}
 
-          <div className="flex gap-2">
-            <button type="button" onClick={onClose} className={`${btnNeutral} flex-1`}>
-              ยกเลิก
-            </button>
-            <button type="button" disabled={busy || todo === 0 || !extraReady} onClick={submit} className={`${btnPrimary} flex-1`}>
-              {busy ? "กำลังสร้าง…" : "สร้าง SKU แล้วผูกให้"}
-            </button>
-          </div>
+              {old.length > 0 && (
+                <div className={`rounded-xl px-3 py-2 text-xs ${TONE.warn.bg} ${TONE.warn.text}`}>
+                  <p className="font-semibold">SKU รวมเดิมจะเลิกผูกกับสินค้านี้ (กันตัดยอดซ้ำ 2 ต่อ)</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {old.map((o) => (
+                      <li key={o.id}>
+                        {o.name} · คงเหลือ {fmtN(o.balance)} {o.unit}
+                        {o.shared ? " · ยังใช้กับสินค้าอื่นอยู่" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                  {canRemove ? (
+                    <label className="mt-1.5 flex cursor-pointer items-center gap-2">
+                      <input type="checkbox" className="h-4 w-4 accent-slate-900" checked={removeOld} onChange={(e) => setRemoveOld(e.target.checked)} />
+                      ลบ SKU รวมเดิมออกจากคลังด้วย (ยอดเป็น 0 อยู่แล้ว)
+                    </label>
+                  ) : (
+                    <p className="mt-1">ยังมียอดค้างหรือใช้กับสินค้าอื่น — ระบบเก็บไว้ให้ ย้ายยอดไป SKU ใหม่ด้วยปุ่ม “นับ” แล้วค่อยลบเอง</p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
-    </Modal>
+
+        <footer className="flex gap-2 border-t border-slate-100 bg-white px-4 py-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+          <button type="button" onClick={onClose} className={`${btnNeutral} flex-1`}>
+            ยกเลิก
+          </button>
+          <button type="button" disabled={busy || todo === 0 || !extraReady || !gA} onClick={submit} className={`${btnPrimary} flex-[2]`}>
+            {busy ? "กำลังสร้าง…" : todo ? `สร้าง ${fmtN(todo)} SKU แล้วผูกให้` : "เลือกอย่างน้อย 1 แบบ"}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }
 

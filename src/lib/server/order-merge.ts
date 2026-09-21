@@ -102,6 +102,23 @@ export function keepCustomerVerdict<T extends VerdictHolder>(cur: T | undefined,
   return out;
 }
 
+/** 👤 บรรยายว่าชื่อ/เบอร์/ที่อยู่ลูกค้าเปลี่ยนจากอะไรเป็นอะไร (ไม่เปลี่ยน = undefined) — ไว้ลง log ให้ตามย้อนหลังได้ */
+export function customerInfoChanges(before: Order, after: Order): string | undefined {
+  const fields: Array<["customer" | "phone" | "address", string]> = [
+    ["customer", "ชื่อลูกค้า"],
+    ["phone", "เบอร์โทร"],
+    ["address", "ที่อยู่จัดส่ง"],
+  ];
+  const show = (v: string | undefined) => {
+    const t = (v ?? "").replace(/\s+/g, " ").trim();
+    return t ? (t.length > 120 ? `${t.slice(0, 120)}…` : t) : "(ว่าง)";
+  };
+  const parts = fields
+    .filter(([k]) => (before[k] ?? "").trim() !== (after[k] ?? "").trim())
+    .map(([k, label]) => `${label}: ${show(before[k])} → ${show(after[k])}`);
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
 /**
  * 📅 บรรยายว่าวันใช้งาน/วันจัดส่ง/ธงงานเร่งเปลี่ยนจากอะไรเป็นอะไร (ไม่เปลี่ยน = undefined)
  *

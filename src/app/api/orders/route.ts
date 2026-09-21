@@ -18,6 +18,7 @@ import { insertOrder } from "@/lib/server/order-write";
 import { dealerRateOf, lotShortfalls, type Product } from "@/lib/products";
 import { isDealerUid } from "@/lib/server/dealers";
 import { loadDealerSender } from "@/lib/server/dealer-sender";
+import { cleanPhone, contactProblems } from "@/lib/contact-validate";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -60,6 +61,9 @@ export async function POST(req: Request) {
   }
   if (!input?.customerName?.trim() || !input?.phone?.trim() || !input?.address?.trim())
     return NextResponse.json({ error: "กรอกชื่อ เบอร์ และที่อยู่ให้ครบ" }, { status: 400 });
+  // 📞📍 เบอร์จริง + ที่อยู่จริงเท่านั้น (ห้าม - + * / เลขมั่ว / ไม่มีรหัสไปรษณีย์) — กันยิงตรงข้ามหน้าเว็บ
+  const contactBad = contactProblems({ phone: input.phone, address: input.address });
+  if (contactBad.length) return NextResponse.json({ error: contactBad.join(" · ") }, { status: 400 });
   if (!Array.isArray(input.items) || input.items.length === 0)
     return NextResponse.json({ error: "ไม่มีรายการสินค้า" }, { status: 400 });
 
@@ -295,8 +299,8 @@ export async function POST(req: Request) {
     id,
     key,
     customer: input.customerName.trim(),
-    phone: input.phone.trim(),
-    address: input.address.trim(),
+    phone: cleanPhone(input.phone),
+    address: input.address.replace(/\s+/g, " ").trim(),
     date: thaiDateTime(now),
     payment: "โอนธนาคาร",
     shipping: input.shipping === "ส่งด่วน" ? "ส่งด่วน" : "ส่งธรรมดา",

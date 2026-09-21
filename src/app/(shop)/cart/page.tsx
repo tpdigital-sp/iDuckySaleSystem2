@@ -98,7 +98,7 @@ function workingDaysUntil(useBy: string, today = todayBkkYmd()): number {
 const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
 export default function CartPage() {
-  const { items, setQty, setNote, setExtra, removeItem, addItem, clear, productOf, productGone } = useCart();
+  const { items, setQty, setNote, setExtra, removeItem, addItem, clear, productOf, productGone, lotExtras } = useCart();
   // 🤝 ตัวแทนจำหน่าย — ไม่ได้ของแถม และบรรทัดเรทตัวแทนไม่สลับเรทอัตโนมัติ
   const { isDealer } = useCustomer();
   const router = useRouter();
@@ -215,7 +215,8 @@ export default function CartPage() {
    */
   const shortLots = lotShortfalls(
     pickedItems.map((i) => ({ productId: i.productId, selections: i.selections, qty: i.qty })),
-    productOf
+    productOf,
+    lotExtras // โหมดสั่งเพิ่ม: ของในออเดอร์เดิมผลิตรอบเดียวกัน นับรวมขั้นต่ำต่อรอบผลิตด้วย
   );
   const subtotal =
     pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0) + boxFeeSum;

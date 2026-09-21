@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { fetchPromoBanners, liveBanners, type BannerLayer, type PromoBanner } from "@/lib/promo-banners";
+import { bannerMotion, fetchPromoBanners, liveBanners, type BannerLayer, type PromoBanner } from "@/lib/promo-banners";
 
 /**
  * 📣 ป้ายประชาสัมพันธ์หน้าแรก — คั่นระหว่างแบนเนอร์ใหญ่กับ "สินค้ามาใหม่"
@@ -198,8 +198,11 @@ function Slide({ b, eager }: { b: PromoBanner; eager: boolean }) {
     );
   }
 
+  // 🐣 ท่าขยับทั้งใบ (ลอย/โยก/หายใจ/สะบัด) — ป้ายนิ่งสนิทดูเป็นรูปติดผนัง · ไม่ได้ตั้ง = ท่าเริ่มต้น
+  const mo = bannerMotion(b);
+
   return (
-    <Wrap href={b.href} className="promo-img" label={b.title || undefined}>
+    <Wrap href={b.href} className={`promo-img${mo ? ` promo-mo-${mo}` : ""}`} label={b.title || undefined}>
       <picture>
         {/* ใช้ไฟล์ต้นฉบับทั้งมือถือและจอกว้าง (เจ้าของร้านสั่ง 21 ก.ย. 69 "ต้องการให้ภาพคมชัด")
             — ตัวย่อ /_next/image สูงสุด 1200px + q82 ทำให้ตัวหนังสือในป้ายเบลอบนจอ retina/มือถือ 3x
@@ -233,13 +236,15 @@ function Layers({ list, still, scope }: { list?: BannerLayer[]; still?: boolean;
   );
 }
 
-const SHAPES = new Set(["ping", "blink"]);
+const SHAPES = new Set(["ping", "blink", "tap"]);
 
 function Layer({ l }: { l: BannerLayer }) {
   const style = {
     left: `${l.x}%`,
     top: `${l.y}%`,
     width: `${l.w}%`,
+    // ชิ้นทรงแคปซูล (tap) กำหนดสูงเอง — ชิ้นที่เป็นรูปปล่อยสูงตามสัดส่วนรูป
+    height: l.h ? `${l.h}%` : undefined,
     opacity: l.opacity,
     rotate: l.rot ? `${l.rot}deg` : undefined,
     animationDuration: l.dur ? `${l.dur}s` : undefined,

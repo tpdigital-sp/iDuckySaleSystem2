@@ -743,3 +743,53 @@
 .dkb-empty { padding: 44px 20px; text-align: center; }
 .dkb-empty b { display: block; font-family: var(--dk-display); font-weight: 500; font-size: 1rem; }
 .dkb-empty span { display: block; margin-top: 6px; font-size: 0.85rem; color: var(--dk-navy-soft); }
+
+/* ── 🐣 ท่าขยับของป้ายประชาสัมพันธ์ (/admin/banners) ──
+   ตัวอย่างรูป + ชิปตัวเลือกขยับท่าเดียวกับหน้าร้าน (ของจริงอยู่ landing.css ชุด .promo-mo-*)
+   จงใจขยับแรงกว่าของจริง — ตัวอย่างสูงแค่ ~160px ถ้าใช้ระยะเท่าหน้าร้านจะมองไม่เห็นว่าต่างกันตรงไหน
+   เพิ่มท่าใหม่ต้องเพิ่มทั้ง 2 ไฟล์ + BANNER_MOTIONS ใน src/lib/promo-banners.ts */
+.dkb-mo { animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.dkb-mo-float { animation-name: dkb-mo-float; animation-duration: 4.2s; }
+.dkb-mo-sway { animation-name: dkb-mo-sway; animation-duration: 5.2s; }
+.dkb-mo-breathe { animation-name: dkb-mo-breathe; animation-duration: 4.4s; }
+.dkb-mo-hop { animation-name: dkb-mo-hop; animation-duration: 5.4s; }
+.dkb-mo-wiggle { animation-name: dkb-mo-wiggle; animation-duration: 6.4s; }
+@keyframes dkb-mo-float {
+  0% { transform: translateY(2.5%) rotate(-1deg); animation-timing-function: cubic-bezier(0.22, 0.72, 0.32, 1); }
+  42% { transform: translateY(-2.5%) rotate(1deg); animation-timing-function: cubic-bezier(0.55, 0, 0.68, 0.62); }
+  88%, 100% { transform: translateY(2.5%) rotate(-1deg); }
+}
+@keyframes dkb-mo-sway {
+  0%, 7% { transform: rotate(-2.2deg) translateX(-1%); }
+  50%, 57% { transform: rotate(2.2deg) translateX(1%); }
+  100% { transform: rotate(-2.2deg) translateX(-1%); }
+}
+@keyframes dkb-mo-breathe { 0%, 100% { transform: scale(1.04, 0.96); } 50% { transform: scale(0.97, 1.05); } }
+@keyframes dkb-mo-hop {
+  0%, 58% { transform: scale(1, 1) translateY(0); }
+  63% { transform: scale(1.09, 0.9) translateY(4%); }
+  71% { transform: scale(0.94, 1.1) translateY(-14%); }
+  79% { transform: scale(1.07, 0.93) translateY(3%); }
+  86% { transform: scale(0.98, 1.04) translateY(-5%); }
+  93%, 100% { transform: scale(1, 1) translateY(0); }
+}
+@keyframes dkb-mo-wiggle {
+  0%, 70%, 100% { transform: rotate(0); }
+  74% { transform: rotate(-11deg); }
+  78% { transform: rotate(9deg); }
+  82% { transform: rotate(-6deg); }
+  86% { transform: rotate(3.5deg); }
+  90% { transform: rotate(-1.6deg); }
+  94% { transform: rotate(0); }
+}
+/* ชิปเลือกท่า — ตัวไอคอนในชิปขยับท่านั้นให้ดูก่อนเลือก (กดแล้วรูปตัวอย่างด้านบนขยับตามทั้งใบ) */
+.dkb-mochip { display: inline-flex; align-items: center; gap: 7px; flex: none; min-height: 44px; padding: 0 14px; border-radius: 999px;
+  font-size: 0.82rem; font-weight: 600; color: var(--dk-navy-soft); background: rgba(255, 255, 255, 0.6);
+  transition: background 0.18s ease, color 0.18s ease; }
+.dkb-mochip:hover { background: rgba(255, 255, 255, 0.92); }
+.dkb-mochip[aria-pressed="true"] { background: var(--dk-navy); color: #fff; box-shadow: 0 6px 14px rgba(23, 58, 107, 0.26); }
+.dkb-mochip > i { font-style: normal; font-size: 1.02rem; line-height: 1; display: inline-block; }
+.dkb-mochip small { font-weight: 600; font-size: 0.68rem; opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) {
+  .dkb-mo { animation: none; }
+}

@@ -12,10 +12,21 @@
 import { BKK_TZ } from "@/lib/bangkok-time";
 
 /** ท่าขยับของชิ้นลูกเล่น — CSS อยู่ท้าย landing.css (.promo-fx-*) */
-export const LAYER_ANIMS = ["bob", "twinkle", "drift", "ping", "rise", "blink", "hop", "nudge"] as const;
-/** ท่าที่วาดด้วย CSS ล้วน ไม่ต้องมีรูป (ping = วงแหวนเรียกกด · blink = เปลือกตาปิดแวบเดียว) */
-const SHAPE_ANIMS: readonly LayerAnim[] = ["ping", "blink"];
+export const LAYER_ANIMS = ["bob", "twinkle", "drift", "ping", "rise", "blink", "hop", "nudge", "tap"] as const;
+/** ท่าที่วาดด้วย CSS ล้วน ไม่ต้องมีรูป (ping = วงแหวนกลมเรียกกด · blink = เปลือกตาปิดแวบเดียว · tap = วงแหวนทรงปุ่มเรียกกดครอบปุ่มในรูป) */
+const SHAPE_ANIMS: readonly LayerAnim[] = ["ping", "blink", "tap"];
 export type LayerAnim = (typeof LAYER_ANIMS)[number];
+
+/**
+ * 🐣 ท่าขยับของ "ทั้งใบ" (ป้ายภาพ) — ลอยขึ้นลง / โยกซ้ายขวา / หายใจเข้าออก / เด้งดึ๋ง / สะบัดเป็นจังหวะ
+ * ป้ายนิ่งสนิทดูเป็นรูปติดผนัง ขยับเบา ๆ แล้วสะดุดตาขึ้นเยอะ — CSS ชุด .promo-mo-* ท้าย landing.css
+ * ต่างจาก BannerLayer: ไม่ต้องวางตำแหน่งเป็น % ไม่ผูกกับรูป เปลี่ยนรูปแล้วท่าเดิมใช้ต่อได้เลย (แอดมินเลือกเองได้ในหน้า /admin/banners)
+ * ไม่ได้ตั้งค่า = ใช้ท่า DEFAULT_MOTION · "none" = สั่งให้นิ่ง
+ */
+export const BANNER_MOTIONS = ["float", "sway", "breathe", "hop", "wiggle"] as const;
+export type BannerMotion = (typeof BANNER_MOTIONS)[number];
+export const DEFAULT_MOTION: BannerMotion = "float";
+const MOTION_VALUES = ["none", ...BANNER_MOTIONS] as const;
 
 /**
  * ✨ ชิ้นลูกเล่นที่ลอยทับป้ายภาพแล้วขยับ (น้องเป็ดโยกตัว · ดาววิบวับ · เมฆลอย · วงแหวนเรียกกดที่ปุ่ม)
@@ -29,6 +40,8 @@ export interface BannerLayer {
   x: number;
   y: number;
   w: number;
+  /** ความสูงเป็น % ของป้าย — เฉพาะชิ้นที่วาดด้วย CSS ทรงไม่จัตุรัส ("tap" ครอบปุ่มทรงแคปซูล) · ชิ้นที่เป็นรูปสูงตามสัดส่วนรูปเอง */
+  h?: number;
   anim: LayerAnim;
   /** หมุนค้างไว้กี่องศา (ดาวเอียง ๆ) */
   rot?: number;
@@ -59,6 +72,8 @@ export interface PromoBanner {
   /** ชิ้นลูกเล่นขยับบนรูปจอคอม / รูปมือถือ (คนละเลย์เอาต์ ตำแหน่งจึงแยกกัน) */
   layers?: BannerLayer[];
   layersMobile?: BannerLayer[];
+  /** ท่าขยับของทั้งใบ (ไม่ตั้ง = DEFAULT_MOTION · "none" = นิ่ง) */
+  motion?: BannerMotion | "none";
   /** แสงวิ่งพาดป้ายเป็นระยะ */
   shine?: boolean;
   /** ปิดการขยับทั้งหมดของป้ายนี้ (ชิ้นลูกเล่นยังวาดอยู่ แต่นิ่ง) */
@@ -142,6 +157,7 @@ function layersOf(raw: unknown, nested = false): BannerLayer[] | undefined {
       x,
       y,
       w,
+      h: num(l?.h, 0.5, 120),
       anim,
       rot: num(l?.rot, -180, 180),
       opacity: num(l?.opacity, 0, 1),
@@ -174,6 +190,7 @@ export function bannerSetOf(raw: Partial<PromoBannerSet> | null | undefined): Pr
         // ลูกเล่นผูกกับรูป — ไม่มีรูปของฝั่งนั้นแล้วก็ไม่เก็บ
         layers: safeUrl(b.image) ? layersOf(b.layers) : undefined,
         layersMobile: safeUrl(b.imageMobile) ? layersOf(b.layersMobile) : undefined,
+        motion: safeUrl(b.image) ? MOTION_VALUES.find((m) => m === b.motion) : undefined,
         shine: Boolean(b.shine) || undefined,
         still: Boolean(b.still) || undefined,
         href: safeUrl(b.href),
@@ -194,6 +211,13 @@ export function bannerSetOf(raw: Partial<PromoBannerSet> | null | undefined): Pr
 /** วันนี้ตามเวลาไทย "YYYY-MM-DD" (เซิร์ฟเวอร์เป็น UTC — ห้ามใช้ toISOString ตรง ๆ) */
 export function bkkToday(d: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: BKK_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+/** ท่าขยับที่ป้ายใบนี้ใช้จริง — null = นิ่ง (ไม่ใช่ป้ายภาพ / สั่งนิ่งเอง / กดหยุดลูกเล่นทั้งใบ) */
+export function bannerMotion(b: PromoBanner): BannerMotion | null {
+  if (!b.image || b.still) return null;
+  const m = b.motion ?? DEFAULT_MOTION;
+  return m === "none" ? null : m;
 }
 
 export type BannerState = "live" | "hidden" | "scheduled" | "expired";

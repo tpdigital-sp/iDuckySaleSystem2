@@ -750,7 +750,12 @@ export interface Order {
   paidReportedAt?: string;
   /** ผลตรวจสลิปอัตโนมัติ (SlipOK) — pass = ยืนยันชำระให้แล้ว · fail = ให้แอดมินตรวจเอง */
   slipVerify?: {
-    status: "pass" | "fail";
+    /**
+     * pass/fail = SlipOK ตอบแล้วตัดสินได้ · skip = ตรวจอัตโนมัติไม่ได้เลย (ไม่ตอบ/ตัดสาย/ตั้งค่าไม่ถูก/โควตาหมด)
+     * ⚠️ skip ต้องเก็บไว้ด้วย: เดิมทิ้งทั้งก้อน ออเดอร์เลยค้าง "รอตรวจสอบ" แบบไม่มีป้าย ไม่มีประวัติ ไม่มีปุ่มตรวจซ้ำ
+     * จนเจ้าของร้านต้องมานั่งหาเองว่า SlipOK ไม่ทำงาน (21 ก.ย. 69 · 4 ใบ)
+     */
+    status: "pass" | "fail" | "skip";
     detail?: string;
     amount?: number;
     transRef?: string;

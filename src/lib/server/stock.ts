@@ -159,6 +159,17 @@ async function nextStockCode(db: Firestore, prefix: string): Promise<string> {
   return code;
 }
 
+/**
+ * รหัสทุกตัวที่เคยออก "รวมตัวที่ลบแล้ว" — ออกรหัสใหม่ต้องเลี่ยงของเก่าในประวัติด้วย
+ * (เคยเกิด 19 ก.ย. 69: แยกสต๊อกกระจกถือรอบ 2 ได้ P-MIRROR-HAND-1 ซ้ำกับตัวที่ลบไปแล้ว เพราะนับจาก listStockItems ที่กรองตัวลบออก)
+ */
+export async function allStockCodes(): Promise<Set<string>> {
+  const db = getStockDb();
+  if (!db) return new Set();
+  const snap = await db.collection(STOCK_ITEMS).get();
+  return new Set(snap.docs.map((d) => String((d.data() as StockItem).code ?? "")).filter(Boolean));
+}
+
 /** ตัวอักษรที่ใช้ในรหัสได้ — productId "photoframe-3" → "PHOTOFRAME-3" */
 export function codeSlug(s: string): string {
   return s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 24);

@@ -94,6 +94,9 @@ for (const row of rows) {
   const tag = `${row.id} | ${row.name} | ${baseRate?.label ?? "-"}`;
 
   if (!targets.length) { skip("เรทฐานไม่มีโควตาต่อลาย (คละอิสระอยู่แล้ว)", tag); continue; }
+  // ค่าคละที่เจ้าของร้านตั้งสูงกว่า ฿5 เอง (หมวด Keychain & Acrylic 20 ตัว = ลายละ ฿10 · scripts/acrylic-mix-fee-10.mts 19 ก.ย. 69)
+  // ห้ามดึงกลับเป็น ฿5 — ด่าน "ห้ามแพงขึ้น" ไม่กันเคสนี้เพราะ 10→5 คือถูกลง
+  if (targets.some(({ r }) => (r.extraDesignFee ?? 0) > FEE)) { skip(`ตั้งค่าคละลายละสูงกว่า ฿${FEE} ไว้เอง (ไม่แตะ)`, tag); continue; }
   if (targets.every(({ r }) => r.extraDesignFee === FEE && !r.underMinPieceFee)) { skip(`ตั้งลายละ ฿${FEE} ไว้แล้วครบทุกเรทฐาน`, tag); continue; }
 
   const base = sampleSelections(baseRate!);

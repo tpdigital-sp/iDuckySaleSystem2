@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
-import type { ChatRow } from "@/lib/server/line-chat";
+import type { ChatIdHit, ChatRow } from "@/lib/server/line-chat";
 import {
   chatIndexAge,
   chatUrlOf,
@@ -26,6 +26,7 @@ import {
   setWhitelistMode,
 } from "@/lib/server/line-chat";
 import { fetchLineProfile } from "@/lib/server/notify";
+import { chatIdKeys, loadOaConfig, loadOaTagged, peekOaTagged, type OaChat, type OaTagged } from "@/lib/server/line-oa-manager";
 import { CUSTOMER_TAGS, TAG_KEYS, toCustomerTag, type CustomerTag } from "@/lib/line-tags";
 
 export const runtime = "nodejs";
@@ -65,6 +66,23 @@ export interface LineCustomerRow {
   chatUrl: string | null;
   /** ลิงก์นี้เก็บตกมาจากออเดอร์ ไม่ได้ตั้งไว้เอง */
   chatFromOrder: boolean;
+  /** ป้ายจาก LINE OA Manager ที่ห้องนี้ติดอยู่ (เช่น "แจ้งยอด") — เฉพาะป้ายที่ตั้งให้ดึง */
+  oaTags: string[];
+  /**
+   * แถวนี้มาจาก OA Manager ล้วน ๆ ยังจับคู่กับห้องในคลังแชทไม่ได้ (userId = "oa:" + chatId)
+   * เปิดแชทได้ แต่แก้/ปิดบอท/ติดป้ายของเราไม่ได้ จนกว่าจะเอาลิงก์ห้องไปผูกกับลูกค้าในคลัง
+   */
+  oaOnly?: boolean;
+}
+
+/** สถานะการดึงป้ายจาก OA Manager ที่ส่งไปกับทุกคำตอบ — null = ยังไม่ได้เชื่อม (ไม่มีคุกกี้) */
+export interface OaSummary {
+  ok: boolean;
+  error?: string;
+  /** ป้ายที่ตั้งให้ดึง + จำนวนห้อง (-1 = ป้ายนี้ไม่มีใน OA Manager) */
+  tags: { name: string; count: number }[];
+  /** ดึงมานานแล้วกี่มิลลิวินาที (-1 = รอบนี้ยังดึงไม่ทัน กำลังดึงอยู่) */
+  ageMs: number;
 }
 
 export interface LineCustomersResponse {
@@ -87,6 +105,47 @@ export interface LineCustomersResponse {
   ageMs: number | null;
   /** เลข OA ไว้ประกอบลิงก์ chat.line.biz ในกล่องแก้ไข */
   oaOwnerId: string;
+  /** ป้ายจาก OA Manager — null = ยังไม่ได้เชื่อม */
+  oa: OaSummary | null;
+}
+
+/** รอผล OA ได้ไม่เกินเท่านี้ในรอบที่ไม่ได้กรองด้วยป้าย OA — หน้าหลักต้องไม่ช้าเพราะ chat.line.biz */
+const OA_WAIT_MS = 2500;
+
+function oaSummaryOf(t: OaTagged | null, pending: boolean): OaSummary | null {
+  if (!t) return pending ? { ok: true, tags: [], ageMs: -1 } : null;
+  return { ok: t.ok, error: t.error, tags: t.tags, ageMs: Date.now() - t.fetchedAt };
+}
+
+/** userId → ป้าย OA ของห้องนั้น (จับคู่ผ่านตารางรหัสห้องที่พนักงานยืนยันไว้) */
+function oaTagsByUser(t: OaTagged | null, chatIds: Record<string, ChatIdHit>): { byUser: Record<string, string[]>; byChat: Record<string, string> } {
+  const byChat: Record<string, string> = {};
+  for (const [uid, hit] of Object.entries(chatIds)) for (const k of chatIdKeys(hit.id)) byChat[k] = uid;
+  const byUser: Record<string, string[]> = {};
+  if (t) for (const c of Object.values(t.chats)) {
+    const uid = chatIdKeys(c.chatId).map((k) => byChat[k]).find(Boolean);
+    if (uid) byUser[uid] = c.tagNames;
+  }
+  return { byUser, byChat };
+}
+
+function oaOnlyRow(c: OaChat, oaOwnerId: string): LineCustomerRow {
+  return {
+    userId: `oa:${c.chatId}`,
+    displayName: c.name,
+    adminAlias: null,
+    adminNote: "",
+    tag: null,
+    picture: c.picture,
+    lastSeen: c.updatedAt,
+    waiting: false,
+    allowed: false,
+    managerUserId: c.chatId,
+    chatUrl: chatUrlOf(oaOwnerId, c.chatId),
+    chatFromOrder: false,
+    oaTags: c.tagNames,
+    oaOnly: true,
+  };
 }
 
 export async function GET(req: Request) {
@@ -100,11 +159,92 @@ export async function GET(req: Request) {
   const filter = url.searchParams.get("filter") ?? "all";
   /** กรองตามป้าย — คนละแกนกับ filter ใช้ร่วมกันได้ (เช่น "รอแอดมินตอบ" + "ด่วนมาก") */
   const tag = url.searchParams.get("tag") ?? "";
+  /** กรองด้วยป้ายจาก LINE OA Manager (ชื่อป้าย เช่น "แจ้งยอด") — ใช้แทนตัวกรองอื่นทั้งหมด */
+  const oaTag = (url.searchParams.get("oaTag") ?? "").trim();
   const fresh = url.searchParams.get("fresh") === "1";
   const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
 
   try {
     const [chatIds, master, oaOwnerId] = await Promise.all([loadChatIds(db, fresh), loadWhitelist(db), loadOaOwnerId(db)]);
+
+    /**
+     * ป้ายจาก OA Manager — ยิง chat.line.biz ด้วยคุกกี้ที่เจ้าของร้านวางไว้ (มีแคช 2 นาที)
+     *  · กรองด้วยป้าย OA → ต้องรอผลจริง
+     *  · รอบอื่น → รอได้แค่ OA_WAIT_MS ไม่ทันก็ตอบไปก่อน (ห้องที่กำลังดึงจะโผล่รอบถัดไป)
+     */
+    const oaConfigured = !!(await loadOaConfig())?.cookie;
+    let oaData: OaTagged | null = null;
+    let oaPending = false;
+    if (oaConfigured) {
+      const job = loadOaTagged(oaOwnerId, fresh);
+      if (oaTag) oaData = await job;
+      else {
+        oaData = await Promise.race([job, new Promise<null>((r) => setTimeout(() => r(null), OA_WAIT_MS))]);
+        if (!oaData) {
+          oaData = peekOaTagged();
+          oaPending = !oaData;
+        }
+      }
+    }
+    const { byUser: oaByUser } = oaTagsByUser(oaData, chatIds);
+    const oa = oaSummaryOf(oaData, oaPending);
+
+    const toRow = (r: ChatRow): LineCustomerRow => ({
+      userId: r.userId,
+      displayName: r.displayName,
+      adminAlias: r.adminAlias,
+      adminNote: r.adminNote,
+      tag: r.tag,
+      picture: r.picture,
+      lastSeen: r.lastSeen,
+      waiting: isWaitingForAdmin(r),
+      allowed: master.allowed.has(r.userId),
+      managerUserId: chatIds[r.userId]?.id ?? null,
+      chatUrl: chatUrlOf(oaOwnerId, chatIds[r.userId]?.id),
+      chatFromOrder: !!chatIds[r.userId]?.fromOrder,
+      oaTags: oaByUser[r.userId] ?? [],
+    });
+
+    /* ── ทางป้าย OA: รายชื่อมาจาก OA Manager เรียงตามที่ OA อัปเดตล่าสุด ── */
+    if (oaTag) {
+      const chats = oaData
+        ? Object.values(oaData.chats)
+            .filter((c) => c.tagNames.includes(oaTag))
+            .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
+        : [];
+      const { byChat } = oaTagsByUser(oaData, chatIds);
+      const uidOf = (c: OaChat) => chatIdKeys(c.chatId).map((k) => byChat[k]).find(Boolean) ?? null;
+      const matchedIds = [...new Set(chats.map(uidOf).filter((x): x is string => !!x))];
+      let known = await loadChatByIds(db, matchedIds);
+      if (known === null) {
+        const all = await loadChatIndex(db, false);
+        const want = new Set(matchedIds);
+        known = all.filter((r) => want.has(r.userId));
+      }
+      const knownBy = new Map(known.map((r) => [r.userId, r]));
+      const all = chats.map((c) => {
+        const uid = uidOf(c);
+        const r = uid ? knownBy.get(uid) : undefined;
+        return r ? { ...toRow(r), oaTags: c.tagNames } : oaOnlyRow(c, oaOwnerId);
+      });
+      const total = all.length;
+      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      const safePage = Math.min(page, pages);
+      const body: LineCustomersResponse = {
+        master: { enabled: master.enabled, allowedCount: master.allowed.size },
+        rows: all.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+        total,
+        counts: { all: -1, aiOn: -1, adminOnly: -1, followup: -1 },
+        tagCounts: null,
+        indexed: -1,
+        page: safePage,
+        pages,
+        ageMs: null,
+        oaOwnerId,
+        oa,
+      };
+      return NextResponse.json(body);
+    }
 
     /**
      * เลือกทางให้ถูก — ตัวชี้ขาดคือ "ต้องกวาดทั้งคลังจริงไหม"
@@ -205,20 +345,7 @@ export async function GET(req: Request) {
 
     const body: LineCustomersResponse = {
       master: { enabled: master.enabled, allowedCount: master.allowed.size },
-      rows: slice.map((r) => ({
-        userId: r.userId,
-        displayName: r.displayName,
-        adminAlias: r.adminAlias,
-        adminNote: r.adminNote,
-        tag: r.tag,
-        picture: r.picture,
-        lastSeen: r.lastSeen,
-        waiting: isWaitingForAdmin(r),
-        allowed: master.allowed.has(r.userId),
-        managerUserId: chatIds[r.userId]?.id ?? null,
-        chatUrl: chatUrlOf(oaOwnerId, chatIds[r.userId]?.id),
-        chatFromOrder: !!chatIds[r.userId]?.fromOrder,
-      })),
+      rows: slice.map(toRow),
       total,
       counts,
       tagCounts,
@@ -228,6 +355,7 @@ export async function GET(req: Request) {
       // ทางเบาดึงสดจาก Firestore ทุกครั้ง → ไม่มี "อายุข้อมูล" ให้บอก
       ageMs: rows ? chatIndexAge() : null,
       oaOwnerId,
+      oa,
     };
     return NextResponse.json(body);
   } catch (e) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { pushShopAlert } from "@/lib/server/line-alert";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { bearerUser, findOpenClaimByOrder, insertClaim, isMissingTable, newClaimId } from "@/lib/server/claims-db";
+import { bearerUser, CLAIM_PHOTO_PATH_RE, findOpenClaimByOrder, insertClaim, isMissingTable, newClaimId } from "@/lib/server/claims-db";
 import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, type Claim } from "@/lib/claims";
 import type { Order } from "@/lib/admin-data";
 
@@ -24,9 +24,6 @@ function shippedAtOf(order: Order): number | null {
   return null;
 }
 
-/** path รูปต้องเป็นของ bucket เคลมที่เราเซ็นให้เอง — กันยัด path มั่วมาให้เซิร์ฟเวอร์เซ็น */
-const PHOTO_PATH_RE = /^claims\/\d{4}-\d{2}\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
-
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
@@ -47,7 +44,7 @@ export async function POST(req: Request) {
   const detail = (body?.detail ?? "").trim();
   if (!orderId || !type || !detail) return NextResponse.json({ error: "กรอกข้อมูลไม่ครบ (ออเดอร์ / ประเภทปัญหา / รายละเอียด)" }, { status: 400 });
   if (!(CLAIM_TYPES as readonly string[]).includes(type)) return NextResponse.json({ error: "ประเภทปัญหาไม่ถูกต้อง" }, { status: 400 });
-  const photoPaths = (body?.photoPaths ?? []).filter((p) => PHOTO_PATH_RE.test(p)).slice(0, 6);
+  const photoPaths = (body?.photoPaths ?? []).filter((p) => CLAIM_PHOTO_PATH_RE.test(p)).slice(0, 6);
   const itemNames = (body?.itemNames ?? []).map((s) => String(s).slice(0, 200)).slice(0, 30);
 
   // ── ตรวจออเดอร์: เป็นของบัญชีนี้ + สถานะ/กรอบเวลาเข้าเงื่อนไข ──

@@ -53,14 +53,23 @@ export async function sendClaimMessage(claimId: string, text: string): Promise<{
  * ยิงตรงเข้า Supabase ด้วยตั๋วอัปโหลด (Netlify รับผ่าน API ได้แค่ ~4.5MB จึงไม่มีทางสำรองผ่าน proxy)
  */
 export async function uploadClaimPhoto(file: File): Promise<string> {
+  return uploadClaimPhotoVia("/api/claims/sign", await authHeaders(), file);
+}
+
+/** เส้นทีมงาน — ตั๋วจาก /api/admin/claims/sign (สิทธิ์จาก cookie ล็อกอินหลังบ้าน ไม่ใช่ Bearer ลูกค้า) */
+export async function uploadClaimPhotoAdmin(file: File): Promise<string> {
+  return uploadClaimPhotoVia("/api/admin/claims/sign", { "Content-Type": "application/json" }, file);
+}
+
+async function uploadClaimPhotoVia(signUrl: string, headers: Record<string, string>, file: File): Promise<string> {
   const bad = checkArtworkFile(file); // กติกาไฟล์เดียวกับภาพลาย (JPG/PNG/WEBP ≤15MB + คำอธิบาย HEIC)
   if (bad) throw new Error(bad);
   const sb = getSupabase();
   if (!sb) throw new Error("ระบบอัปโหลดยังไม่พร้อม ลองใหม่อีกครั้ง");
 
-  const res = await fetch("/api/claims/sign", {
+  const res = await fetch(signUrl, {
     method: "POST",
-    headers: await authHeaders(),
+    headers,
     body: JSON.stringify({ type: file.type, size: file.size }),
   });
   const sign = (await res.json().catch(() => null)) as { bucket?: string; path?: string; token?: string; error?: string } | null;

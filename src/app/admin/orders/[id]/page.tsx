@@ -7,6 +7,7 @@ import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
+import { CLAIM_STATUS_STYLES, type Claim } from "@/lib/claims";
 /** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
 const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
 import { useParams, useRouter } from "next/navigation";
@@ -129,6 +130,7 @@ import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } f
 import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
 import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { usePolling } from "@/lib/use-polling";
+import { isTypingIn, keepUnsavedTyped, type TypedField } from "@/lib/order-poll-merge";
 import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
 import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
 import ImageLightbox from "@/components/ImageLightbox";
@@ -157,6 +159,7 @@ import { SEL_HIDE_PRODUCTION, SelDetails, SelText } from "@/components/admin/Sel
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
+import { addressProblem, contactProblems, phoneProblem } from "@/lib/contact-validate";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { SHIP_WINDOW_RULE, earliestShipDate, orderDateYmd, shipWindowForUseBy, shipWindowWarnings, shortThaiDay } from "@/lib/ship-date";
 import HolidayDatePicker from "@/components/HolidayDatePicker";
@@ -956,7 +959,15 @@ function SlipVerifyNote({ v, credited, settled = true, onRecheck, rechecking }: 
         </>
       ) : (
         <>
-          ⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${v.detail}` : ""} — กรุณาตรวจสลิปเอง
+          {/*
+            skip = SlipOK ไม่ได้ตัดสิน (ไม่ตอบ/ถูกตัดสาย/ตั้งค่าไม่ถูก/โควตาหมด) — คนละเรื่องกับ "ตรวจแล้วไม่ผ่าน"
+            ต้องเขียนให้ต่างกัน ไม่งั้นแอดมินอ่านว่าสลิปลูกค้ามีปัญหา แล้วไปตามลูกค้าผิดเรื่อง (21 ก.ย. 69)
+          */}
+          {v.status === "skip" ? (
+            <>⚠️ ตรวจอัตโนมัติไม่ได้ — ระบบ SlipOK ไม่ได้ตอบ ไม่ใช่ว่าสลิปลูกค้ามีปัญหา{v.detail ? `: ${v.detail}` : ""} · กรุณาเปิดสลิปเทียบยอด ผู้รับ และวันเวลาโอนเอง</>
+          ) : (
+            <>⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${v.detail}` : ""} — กรุณาตรวจสลิปเอง</>
+          )}
           {/* 🔄 ยิง SlipOK ซ้ำด้วยไฟล์เดิม — เคสลูกค้าแนบเร็วกว่าธนาคารส่งข้อมูล (1010) รอสักครู่แล้วกดตรวจใหม่ก็ผ่านได้ ไม่ต้องลบ/แนบใหม่ */}
           {onRecheck && !v.noRetry && (
             <span className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -968,7 +979,9 @@ function SlipVerifyNote({ v, credited, settled = true, onRecheck, rechecking }: 
               >
                 {rechecking ? "⏳ กำลังตรวจ…" : "🔄 ตรวจสลิปอีกครั้ง"}
               </button>
-              <span className="font-normal text-amber-700">ถ้าลูกค้าเพิ่งโอน รอ 2 นาทีแล้วกดตรวจใหม่ได้เลย</span>
+              <span className="font-normal text-amber-700">
+                {v.status === "skip" ? "SlipOK อาจตรวจใบนี้เสร็จไปแล้วตอนที่สายหลุด — กดเพื่อดึงผลกลับมา" : "ถ้าลูกค้าเพิ่งโอน รอ 2 นาทีแล้วกดตรวจใหม่ได้เลย"}
+              </span>
             </span>
           )}
         </>
@@ -991,6 +1004,17 @@ export default function AdminOrderDetailPage() {
   const baseRef = useRef<Order | null>(null);
   const adoptFromServer = useCallback((o: Order | null | undefined) => {
     if (o) baseRef.current = o;
+  }, []);
+  /**
+   * ✍️ ช่องข้อมูลลูกค้าที่ "พิมพ์แล้วยังไม่ได้บันทึก" (บันทึกตอน blur เท่านั้น: ชื่อ/เบอร์/ที่อยู่)
+   * ทำไม (18 ก.ย. 69 · OD-260917-6834 "ที่อยู่หายไปไหน"): โพล 15 วิ เช็คว่ากำลังพิมพ์อยู่ไหม *ก่อน* ยิงคำขอ
+   * แต่คำขอใช้เวลา — ถ้าพนักงานคลิกเข้าช่องแล้ววางที่อยู่ระหว่างนั้น ก้อนที่ตอบกลับมาจะทับ state ทั้งก้อน
+   * ที่อยู่ที่เพิ่งวางหายจากจอ แล้ว blur ก็บันทึกช่องว่างไป (ไม่มี log เพราะไม่ต่างจากฐาน) → ฐานไม่เคยได้ที่อยู่
+   * แก้: จำว่าช่องไหนพิมพ์ค้างอยู่ → โพล/ก้อนจากเซิร์ฟเวอร์ห้ามทับช่องนั้น จนกว่าจะบันทึกสำเร็จ (ล้างใน saveOrWarn)
+   */
+  const dirtyRef = useRef<Set<TypedField>>(new Set());
+  const markDirty = useCallback((k: TypedField) => {
+    dirtyRef.current.add(k);
   }, []);
   /** รับก้อนที่ route อื่นตอบกลับ (สลิป/ไลน์/ตัวแทน/แบบงาน/รูปแพ็ค…) มาเป็น state + base พร้อมกัน */
   const adoptOrder = useCallback((o: Order | null | undefined) => {
@@ -1200,6 +1224,28 @@ export default function AdminOrderDetailPage() {
   const [redoPicks, setRedoPicks] = useState<Record<number, boolean>>({});
   const [redoBusy, setRedoBusy] = useState(false);
   const [redoErr, setRedoErr] = useState("");
+  /** แจ้งลูกค้าทาง LINE ว่ารับเรื่องเคลม/กำลังผลิตใหม่ — ปิดได้ถ้าตอบในแชทไปแล้ว */
+  const [redoNotify, setRedoNotify] = useState(true);
+  /** 🧰 เคสเคลมที่เกี่ยวกับออเดอร์นี้ (เคลมใบนี้ หรือใบนี้เป็นงานผลิตใหม่ของเคส) — ป้ายลิงก์ไปหน้าเคลม */
+  const [claimCases, setClaimCases] = useState<Claim[]>([]);
+  useEffect(() => {
+    if (!order?.id) return;
+    let alive = true;
+    const load = () =>
+      fetch(`/api/admin/claims?orderId=${encodeURIComponent(order.id)}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j) => {
+          if (alive) setClaimCases((j.claims ?? []) as Claim[]);
+        })
+        .catch(() => {});
+    void load();
+    window.addEventListener("iducky:claims-changed", load);
+    return () => {
+      alive = false;
+      window.removeEventListener("iducky:claims-changed", load);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id]);
   async function submitRedo() {
     if (!order) return;
     const picks = order.items
@@ -1214,7 +1260,7 @@ export default function AdminOrderDetailPage() {
       const res = await fetch("/api/admin/orders/redo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromId: order.id, mode: redoMode, picks, reason: redoReason.trim() }),
+        body: JSON.stringify({ fromId: order.id, mode: redoMode, picks, reason: redoReason.trim(), notify: redoNotify }),
       });
       const j = await res.json();
       if (!res.ok) setRedoErr(j.error ?? "สร้างงานใหม่ไม่สำเร็จ");
@@ -1419,20 +1465,16 @@ export default function AdminOrderDetailPage() {
   const refresh = useCallback(async () => {
     if (uploadingIdx !== null) return; // กำลังอัปโหลดอยู่ อย่าเพิ่งทับ
     // กำลังพิมพ์ในช่องกรอก/หมายเหตุ (contentEditable) อยู่ → ข้ามรอบนี้ ไม่งั้นข้อความที่พิมพ์จะหาย
-    const el = document.activeElement as HTMLElement | null;
-    if (
-      el instanceof HTMLInputElement ||
-      el instanceof HTMLTextAreaElement ||
-      el instanceof HTMLSelectElement ||
-      el?.isContentEditable
-    )
-      return;
+    if (isTypingIn(document.activeElement)) return;
 
     // ถามซ้ำทุก 15 วิ — ขอเฉพาะออเดอร์ใบนี้ใบเดียว (เดิมดึงทั้งตาราง + เซ็นลิงก์สลิปทุกใบ)
     const found = (await fetchOrderAdmin(orderId)).order;
     if (!found) return;
+    // ระหว่างรอคำตอบ พนักงานอาจคลิกเข้าช่องกรอกแล้วเริ่มพิมพ์/วางแล้ว — เช็คซ้ำอีกรอบ ไม่งั้นก้อนที่ตอบกลับทับสิ่งที่เพิ่งพิมพ์
+    if (isTypingIn(document.activeElement)) return;
     adoptFromServer(found);
-    setOrder((cur) => (JSON.stringify(cur) === JSON.stringify(found) ? cur : found));
+    // ✍️ ช่องที่พิมพ์ค้างไว้ยังไม่ได้บันทึก (blur ยังไม่เกิด) → คงค่าบนจอ ที่เหลือรับของใหม่ (ตอน blur จะเห็นว่าต่างจาก base แล้วส่งไปบันทึก)
+    setOrder((cur) => (JSON.stringify(cur) === JSON.stringify(found) ? cur : keepUnsavedTyped(cur, found, dirtyRef.current)));
   }, [orderId, uploadingIdx, adoptFromServer]);
 
   usePolling(refresh, { enabled: !demo && !!order });
@@ -2278,6 +2320,8 @@ export default function AdminOrderDetailPage() {
     if (saved)
       setOrder((cur) => {
         if (!cur || cur.id !== saved.id) return cur;
+        // ✍️ ช่องข้อมูลลูกค้าที่ส่งไปกับคำขอนี้ = บันทึกแล้ว → เลิกกัน (ถ้าพิมพ์ต่อระหว่างรอ ค่าบนจอต่างจากที่ส่ง ยังกันไว้ให้รอบถัดไป)
+        for (const k of [...dirtyRef.current]) if ((cur[k] ?? "") === (next[k] ?? "")) dirtyRef.current.delete(k);
         if (cur === next && cur.items.length === saved.items.length)
           // 🛒 needsPurchase.alertedAt เซิร์ฟเวอร์ประทับตอนแจ้งกลุ่มไลน์ — รับกลับมาด้วย ไม่งั้นรอบหน้าช่องนี้ถูกมองว่า "แก้" ทั้งที่ไม่ได้แตะ
           return { ...cur, savedAt: saved.savedAt, discount: saved.discount, log: saved.log, needsPurchase: saved.needsPurchase, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
@@ -4195,12 +4239,20 @@ export default function AdminOrderDetailPage() {
           {/* พิมพ์เอกสาร: รวมเป็นปุ่มเดียว เมนูค่อยเลือกว่าใบไหน */}
           <div className="relative">
             <button type="button" onClick={() => setPrintMenu((v) => !v)} className={HBTN} aria-expanded={printMenu}>
-              🖨️ พิมพ์เอกสาร ▾
+              🖨️ พิมพ์เอกสาร {contactProblems(order).length ? "🔒" : "▾"}
             </button>
             {printMenu && (
               <>
                 <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="ปิดเมนู" onClick={() => setPrintMenu(false)} />
-                <div className="absolute left-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                <div className="absolute left-0 top-full z-40 mt-1 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  {/* 📞📍 เบอร์/ที่อยู่ไม่ผ่านด่าน → ไม่มีเอกสารให้เลือก (หน้า print กันซ้ำอีกชั้น) — เจ้าของร้านสั่ง 18 ก.ย. 69 */}
+                  {contactProblems(order).length > 0 ? (
+                    <p className="px-3 py-2.5 text-xs font-semibold leading-snug text-rose-700">
+                      🔒 พิมพ์เอกสารไม่ได้ — {contactProblems(order).join(" · ")}
+                      <br />
+                      <span className="font-normal text-slate-500">แก้ในกล่อง 👤 ลูกค้า / จัดส่ง ก่อน</span>
+                    </p>
+                  ) : (<>
                   {(
                     [
                       ["work", "🧾 ใบงาน + ใบปะหน้า"],
@@ -4223,6 +4275,7 @@ export default function AdminOrderDetailPage() {
                   >
                     ⚙️ เลือกเอกสารเอง…
                   </Link>
+                  </>)}
                 </div>
               </>
             )}
@@ -4362,8 +4415,22 @@ export default function AdminOrderDetailPage() {
       })()}
 
       {/* ── งานเคลม / สั่งซ้ำ — โยงกันสองทางให้กดข้ามไปมาได้ ── */}
-      {(order.claimOf || order.reorderOf || (order.redoOrders?.length ?? 0) > 0) && (
+      {(order.claimOf || order.reorderOf || (order.redoOrders?.length ?? 0) > 0 || claimCases.length > 0) && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 px-6 py-3">
+          {claimCases.map((c) => (
+            <Link
+              key={c.id}
+              href={`/admin/claims#${encodeURIComponent(c.id)}`}
+              title={`${c.type}${c.detail ? ` — ${c.detail.slice(0, 120)}` : ""}`}
+              className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-100"
+            >
+              🧰 เคสเคลม {c.id}
+              <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] ${CLAIM_STATUS_STYLES[c.status]}`}>{c.status}</span>
+              {c.orderId !== order.id && <span className="font-normal text-amber-700">· เคสของออเดอร์ {c.orderId}</span>}
+              {c.fault && <span className="font-normal text-amber-700">· ผิดที่{c.fault}</span>}
+              <span className="font-normal">→</span>
+            </Link>
+          ))}
           {order.claimOf && (
             <span className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200">
               ♻️ งานเคลม — ไม่คิดเงินกับลูกค้า
@@ -4408,7 +4475,10 @@ export default function AdminOrderDetailPage() {
                       <CustomerContactInput
                         // ออเดอร์เก่าเก็บ "ยังไม่ระบุชื่อ" เป็นค่าจริงในช่อง — ถือว่าว่าง ให้ขึ้นเป็นลายน้ำ (placeholder) แทน
                         value={order.customer === "ยังไม่ระบุชื่อ" ? "" : order.customer}
-                        onChange={(v) => setOrder((cur) => (cur ? { ...cur, customer: v } : cur))}
+                        onChange={(v) => {
+                          markDirty("customer");
+                          setOrder((cur) => (cur ? { ...cur, customer: v } : cur));
+                        }}
                         onBlur={persist}
                         onPick={(c) =>
                           applyOrder({
@@ -4425,11 +4495,14 @@ export default function AdminOrderDetailPage() {
                       <p className="mb-1 text-[10.5px] font-bold text-slate-400">เบอร์โทร</p>
                       <input
                         value={order.phone}
-                        onChange={(e) => setOrder((cur) => (cur ? { ...cur, phone: e.target.value.replace(/[^\d\-+ ]/g, "") } : cur))}
+                        onChange={(e) => {
+                          markDirty("phone");
+                          setOrder((cur) => (cur ? { ...cur, phone: e.target.value.replace(/\D/g, "") } : cur));
+                        }}
                         onBlur={persist}
                         inputMode="tel"
-                        placeholder="08x-xxx-xxxx"
-                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] tabular-nums text-slate-700 focus:border-amber-300 focus:outline-none"
+                        placeholder="0812345678"
+                        className={`w-full rounded-lg border bg-white px-2.5 py-1 text-[13px] tabular-nums text-slate-700 focus:outline-none ${phoneProblem(order.phone) ? "border-rose-300 focus:border-rose-400" : "border-slate-200 focus:border-amber-300"}`}
                       />
                     </div>
                   </div>
@@ -4437,13 +4510,22 @@ export default function AdminOrderDetailPage() {
                     <p className="mb-1 text-[10.5px] font-bold text-slate-400">ที่อยู่จัดส่ง</p>
                     <textarea
                       value={order.address}
-                      onChange={(e) => setOrder((cur) => (cur ? { ...cur, address: e.target.value } : cur))}
+                      onChange={(e) => {
+                        markDirty("address");
+                        setOrder((cur) => (cur ? { ...cur, address: e.target.value } : cur));
+                      }}
                       onBlur={persist}
                       rows={2}
                       placeholder="บ้านเลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์"
-                      className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[13px] text-slate-700 focus:border-amber-300 focus:outline-none"
+                      className={`w-full resize-y rounded-lg border bg-white px-2.5 py-1 text-[13px] text-slate-700 focus:outline-none ${addressProblem(order.address) ? "border-rose-300 focus:border-rose-400" : "border-slate-200 focus:border-amber-300"}`}
                     />
                   </div>
+                  {/* 📞📍 เบอร์/ที่อยู่ไม่ครบหรือไม่ใช่รูปแบบจริง (เช่น เบอร์ "0" ที่อยู่ "-") — กติกาเดียวกับหน้าร้าน (18 ก.ย. 69) */}
+                  {(phoneProblem(order.phone) || addressProblem(order.address)) && (
+                    <p className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[12px] font-semibold leading-snug text-rose-700 ring-1 ring-rose-200">
+                      ⚠️ {[phoneProblem(order.phone), addressProblem(order.address)].filter(Boolean).join(" · ")} — แก้ให้ครบก่อนส่งของ
+                    </p>
+                  )}
                   {/* 📮 ผู้ส่งบนใบปะหน้า — ใบฝากส่งของตัวแทนต้องขึ้นชื่อร้านตัวแทน ไม่ใช่ชื่อเรา (15 ก.ย. 69) */}
                   <SenderPicker
                     orderId={order.id}
@@ -4502,6 +4584,11 @@ export default function AdminOrderDetailPage() {
                     <span className={muted}>· {order.phone}</span>
                   </p>
                   <p className={`text-sm ${muted}`}>{order.address}</p>
+                  {(phoneProblem(order.phone) || addressProblem(order.address)) && (
+                    <p className="mt-1.5 rounded-lg bg-rose-50 px-2.5 py-1.5 text-[12px] font-semibold leading-snug text-rose-700 ring-1 ring-rose-200">
+                      ⚠️ {[phoneProblem(order.phone), addressProblem(order.address)].filter(Boolean).join(" · ")} — แจ้งแอดมินแก้ก่อนส่งของ
+                    </p>
+                  )}
                   {/* 📮 ใบฝากส่ง — คนแพ็คต้องรู้ว่ากล่องนี้ใช้ชื่อผู้ส่งของตัวแทน (แก้ไม่ได้ตรงนี้) */}
                   <div className="mt-1.5">
                     <SenderPicker orderId={order.id} sender={order.sender} dealer={order.dealer} mayEdit={false} onChange={() => {}} />
@@ -6740,6 +6827,7 @@ export default function AdminOrderDetailPage() {
               actor={actor}
               onShopAdd={() => {
                 // ใช้กลไกเดียวกับที่ลูกค้ากด "สั่งเพิ่มในออเดอร์นี้" — ของที่หยิบจะเข้าออเดอร์นี้ ไม่คิดค่าส่งซ้ำ
+                // 🚚 ยกเว้นใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง (สร้างออเดอร์งานพิเศษ) → ให้ตะกร้าคิดค่าส่งแล้วส่งตามมาด้วย
                 try {
                   localStorage.setItem(
                     "iducky-append-order-v1",
@@ -8096,9 +8184,14 @@ export default function AdminOrderDetailPage() {
                               ✅ {e.accepted.by} รับยอด {formatPrice(e.credited ?? 0)} เอง (เทียบกับธนาคารแล้ว)
                             </div>
                           )}
-                          {!e.verify && e.state === "pending" && e.phase === "extra" && (
+                          {/*
+                            ใบที่ไม่มีผลตรวจติดมาเลย — ออเดอร์เก่าก่อนวันที่ระบบเริ่มเก็บผล skip (21 ก.ย. 69)
+                            ⚠️ ต้องครอบทุก phase: เดิมจำกัดไว้ที่ใบเพิ่ม ใบแรกที่ SlipOK ไม่ตอบเลยโชว์สลิปเปล่า ๆ ไม่มีอะไรบอกแอดมิน
+                          */}
+                          {!e.verify && e.state === "pending" && (
                             <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
-                              ⚠️ ยังไม่ได้ตรวจอัตโนมัติ (SlipOK ไม่พร้อม) — ตรวจยอดเองแล้วกด “รับยอดเอง” หรือ
+                              ⚠️ ยังไม่ได้ตรวจอัตโนมัติ (SlipOK ไม่พร้อม) — ตรวจยอดเองแล้วกด{" "}
+                              {e.phase === "extra" ? "“รับยอดเอง”" : "“ยืนยันเงินเข้า”"} หรือ
                               <button
                                 type="button"
                                 onClick={() => recheckSlip(e.phase, e.paymentId)}
@@ -8663,6 +8756,10 @@ export default function AdminOrderDetailPage() {
                     placeholder="หรือพิมพ์เหตุผลเอง — จะบันทึกไว้ในประวัติทั้งสองออเดอร์"
                     className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-rose-300 focus:outline-none"
                   />
+                  <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={redoNotify} onChange={(e) => setRedoNotify(e.target.checked)} className="h-4 w-4 accent-rose-500" />
+                    แจ้งลูกค้าทาง LINE ว่ารับเรื่องเคลมแล้ว กำลังผลิตใหม่ให้ (ปิดได้ถ้าตอบในแชทไปแล้ว)
+                  </label>
                 </div>
               )}
 

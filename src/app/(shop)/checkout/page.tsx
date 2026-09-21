@@ -36,9 +36,10 @@ import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
 import { parseReuseArt, reuseArtText, type Order, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
-import { publicOrigin } from "@/lib/shop-info";
+import { addressProblem, cleanPhone, phoneProblem } from "@/lib/contact-validate";
 import { clearUseByDate, readUseByDate } from "@/lib/use-by-date";
 import { shortThaiDay } from "@/lib/ship-date";
+import { publicOrigin } from "@/lib/shop-info";
 import { cartQtyShipFee, shipProfileOf } from "@/lib/shipping-auto";
 import { LINE_URL } from "@/components/LineButton";
 import StockCheckNote from "@/components/StockCheckNote";
@@ -83,7 +84,7 @@ function selfDesignedProof(
 }
 
 export default function CheckoutPage() {
-  const { items: allItems, productOf, productGone, removeItem } = useCart();
+  const { items: allItems, productOf, productGone, removeItem, lotExtras } = useCart();
   /** รายการที่ลูกค้าเอาติ๊กออกในหน้าตะกร้า — ไม่เอาเข้าออเดอร์รอบนี้ (ยังค้างในตะกร้าต่อ) */
   const [unpicked, setUnpicked] = useState<string[]>([]);
   useEffect(() => {
@@ -391,7 +392,8 @@ export default function CheckoutPage() {
     // 📦 ขั้นต่ำต่อรอบผลิต (เรท minQtyScope: "lot") — กันคนเดินมาหน้านี้ตรง ๆ ข้ามประตูที่ตะกร้า
     const short = lotShortfalls(
       items.map((i) => ({ productId: i.productId, selections: i.selections, qty: i.qty })),
-      productOf
+      productOf,
+      lotExtras // โหมดสั่งเพิ่ม: ของในออเดอร์เดิมผลิตรอบเดียวกัน นับรวมขั้นต่ำต่อรอบผลิตด้วย
     );
     if (short.length) {
       const s = short[0];
@@ -519,16 +521,18 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!name.trim() || !phone.trim() || !address.trim()) {
-      setErr("กรอกชื่อ เบอร์โทร และที่อยู่จัดส่งให้ครบ");
+    // 📞📍 บังคับเบอร์จริง + ที่อยู่จริง (ห้าม - + * / เลขมั่ว / ไม่มีรหัสไปรษณีย์) — เซิร์ฟเวอร์เช็คซ้ำอีกชั้น
+    const contactErr = !name.trim() ? "กรอกชื่อผู้รับ" : (phoneProblem(phone) ?? addressProblem(address));
+    if (contactErr) {
+      setErr(contactErr);
       return;
     }
     setPlacing(true);
     setErr("");
     const res = await placeOrder({
       customerName: name,
-      phone,
-      address,
+      phone: cleanPhone(phone),
+      address: address.replace(/\s+/g, " ").trim(),
       email: staffMode ? undefined : customer?.email,
       customerId: staffMode ? undefined : customer?.id,
       shipping: effectiveMethod.name,
@@ -1003,11 +1007,13 @@ export default function CheckoutPage() {
         </div>
         <div>
           <label className="mb-1 block text-sm font-bold text-stone-700">เบอร์โทร</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))} inputMode="tel" placeholder="08x-xxx-xxxx" className={inputCls} />
+          <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} inputMode="tel" placeholder="0812345678 (ตัวเลขเท่านั้น)" className={inputCls} />
+          {phone && phoneProblem(phone) && <p className="mt-1 text-xs font-medium text-rose-600">{phoneProblem(phone)}</p>}
         </div>
         <div>
           <label className="mb-1 block text-sm font-bold text-stone-700">ที่อยู่จัดส่ง</label>
           <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} placeholder="บ้านเลขที่ · ถนน · ตำบล/อำเภอ · จังหวัด · รหัสไปรษณีย์" className={`${inputCls} resize-y`} />
+          {address && addressProblem(address) && <p className="mt-1 text-xs font-medium text-rose-600">{addressProblem(address)}</p>}
         </div>
       </div>
 

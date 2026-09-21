@@ -5,7 +5,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { insertOrder, updateOrder } from "@/lib/server/order-write";
-import { findOpenClaimByOrder, insertClaim, loadClaim, newClaimId, saveClaim, withSignedPhotos } from "@/lib/server/claims-db";
+import { findOpenClaimByOrder, insertClaim, loadClaim, newClaimId, notifyClaimOpened, saveClaim, withSignedPhotos } from "@/lib/server/claims-db";
 import { claimTypeFromReason, type Claim } from "@/lib/claims";
 
 export const runtime = "nodejs";
@@ -25,6 +25,7 @@ export const runtime = "nodejs";
  *   - ไม่มีเคส (กดจากหน้าออเดอร์ตอนคุย LINE) → เปิดเคสใหม่ให้เอง source "admin" สถานะ "อนุมัติเคลม"
  *   เดิมงานเคลมจากปุ่มนี้ไม่ทิ้งร่องรอยในหน้าเคลมเลย — สถิติเคลมนับต่ำกว่าจริง (เจ้าของร้านถาม 16 ก.ย. 69)
  *   ผูกเคสพลาดไม่ทำให้การสร้างออเดอร์ล้ม (ออเดอร์เขียนไปแล้ว) แต่ส่ง claimWarn กลับให้หน้าจอบอก
+ *   notify ≠ false → แจ้งลูกค้าทาง LINE ว่ารับเรื่องแล้ว กำลังผลิตใหม่ให้ (ผลลง log ของเคส) — เดิมเคสเปิดเงียบ ลูกค้าไม่รู้
  */
 export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
@@ -33,7 +34,15 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { fromId?: string; mode?: "claim" | "reorder"; picks?: { index: number; qty?: number }[]; reason?: string; claimId?: string };
+  let body: {
+    fromId?: string;
+    mode?: "claim" | "reorder";
+    picks?: { index: number; qty?: number }[];
+    reason?: string;
+    claimId?: string;
+    /** แจ้งลูกค้าทาง LINE ว่ารับเรื่องเคลม/กำลังผลิตใหม่ (ค่าเริ่มต้น true — ปิดได้ถ้าคุยกับลูกค้าไปแล้ว) */
+    notify?: boolean;
+  };
   try {
     body = await req.json();
   } catch {
@@ -152,6 +161,7 @@ export async function POST(req: Request) {
         }
         if (!found.items?.length) found.items = claimItems;
         found.log = [...(found.log ?? []), { at, by, action: `สร้างงานผลิตใหม่ ${id}` }];
+        if (body.notify !== false) await notifyClaimOpened(sb, src, found, by);
         const { error } = await saveClaim(sb, found);
         if (error) throw new Error(error);
         claim = found;
@@ -178,6 +188,7 @@ export async function POST(req: Request) {
             { at, by, action: `สร้างงานผลิตใหม่ ${id}` },
           ],
         };
+        if (body.notify !== false) await notifyClaimOpened(sb, src, claim, by);
         const { error } = await insertClaim(sb, claim);
         if (error) throw new Error(error);
         claimCreated = true;

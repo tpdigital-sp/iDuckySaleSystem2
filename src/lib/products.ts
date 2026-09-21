@@ -6220,7 +6220,12 @@ export interface LotShortfall {
  */
 export function lotShortfalls(
   rawLines: { productId: string; selections: Record<string, string>; qty: number }[],
-  productOf: (id: string) => Product | undefined
+  productOf: (id: string) => Product | undefined,
+  /**
+   * 🧮 โหมดสั่งเพิ่มในออเดอร์เดิม: ของที่อยู่ในออเดอร์นั้นแล้ว (ผลิตรอบเดียวกัน) — เติมยอดให้ล็อตของบรรทัดที่กำลังสั่งเท่านั้น
+   * ไม่เปิดล็อตใหม่ของตัวเอง (ของเดิมสั่งไปแล้ว ไม่ต้องมาเตือนขั้นต่ำซ้ำ)
+   */
+  lotExtras: { productId: string; selections: Record<string, string>; qty: number }[] = []
 ): LotShortfall[] {
   const groups = new Map<string, LotShortfall>();
   for (const l of rawLines) {
@@ -6247,6 +6252,14 @@ export function lotShortfalls(
       have: l.qty,
       short: 0,
     });
+  }
+  for (const l of lotExtras) {
+    const p = productOf(l.productId);
+    if (!p) continue;
+    const sel = backfillShowWhen(p, l.selections);
+    if (!lineMergeable(p, sel, l.qty)) continue;
+    const cur = groups.get(groupKeyOf(p, sel));
+    if (cur) cur.have += l.qty;
   }
   return [...groups.values()]
     .map((g) => ({ ...g, short: Math.max(0, g.need - g.have) }))

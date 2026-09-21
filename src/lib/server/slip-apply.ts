@@ -7,7 +7,7 @@ import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from 
 import { getProductServer } from "@/lib/products-server";
 import type { Product } from "@/lib/products";
 import { matchSlipAmount, verifySlipWithSlipOK, type SlipVerifyResult } from "@/lib/server/slipok";
-import { assertSlipNotDuplicate } from "@/lib/server/slip-dedupe";
+import { assertSlipNotDuplicate, findSlipOwners } from "@/lib/server/slip-dedupe";
 import { balanceNetTransfer, notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { reportPaidToTP, syncPaidCompleteToTP } from "@/lib/server/tp-report";
 import { cutStockForOrder } from "@/lib/server/stock";
@@ -79,9 +79,14 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const thb = (n: number) =>
   n.toLocaleString("th-TH", n % 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined);
 
-/** ผลตรวจที่จะเก็บลงออเดอร์ (ตัด skip ทิ้ง — ไม่มีอะไรให้จำ) */
+/**
+ * ผลตรวจที่จะเก็บลงออเดอร์ — เก็บ skip ด้วย
+ *
+ * ⚠️ เดิมทิ้ง skip ("ไม่มีอะไรให้จำ") แต่มันคือเคส "SlipOK ไม่ทำงาน" ที่แอดมินต้องรู้มากที่สุด:
+ * 21 ก.ย. 69 SlipOK ตอบช้าจนถูกตัดสาย 4 ใบ → ไม่มี slipVerify + ใบแรกไม่ลง log ด้วย (ดูท้ายไฟล์)
+ * หน้าออเดอร์เลยโชว์สลิปเปล่า ๆ ไม่มีป้ายผลตรวจ ไม่มีปุ่มตรวจซ้ำ เหมือนไม่เคยมีการตรวจเกิดขึ้น
+ */
 function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"] {
-  if (verify.status !== "pass" && verify.status !== "fail") return undefined;
   return {
     status: verify.status,
     detail: verify.detail,
@@ -163,6 +168,26 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     }
   }
   let verify = await verifySlipWithSlipOK(bytes, contentType, expected, orderTotal(order), order.wht, earlyPayAllowed);
+
+  /**
+   * 🕰️ "สลิปซ้ำ" ที่ซ้ำกับตัวเอง — กู้ผลของรอบที่ถูกตัดสายไป
+   *
+   * เคสต้นเรื่อง 21 ก.ย. 69: SlipOK ตอบช้า 16-22 วินาที เกินเพดานเวลา ฝั่งเราตัดสายทิ้ง (ผล skip)
+   * แต่ SlipOK ตรวจเสร็จจริงทีหลังและจำสลิปไว้ (log=true) — พอกด "ตรวจสลิปอีกครั้ง" จึงได้ 1012 "สลิปซ้ำ" ตันอยู่แค่นั้น
+   * ทั้งที่คำตอบ 1012 แนบข้อมูลสลิปมาครบ (ยอด/เลขอ้างอิง/เวลาโอน/ผู้รับ) พอตัดสินได้เลย
+   *
+   * ปลอดภัย 2 ชั้น:
+   *   1. เฉพาะตอนแอดมินกด "ตรวจสลิปอีกครั้ง" (recheck) เท่านั้น — ทางที่ลูกค้าแนบเองไม่แตะกติกาสลิปซ้ำเดิมเลย
+   *   2. ต้องไม่มีออเดอร์/ใบอื่นถือครองเลขอ้างอิงนี้ (= ยังไม่เคยมีใครนับเงินก้อนนี้)
+   *      ลูกค้าเอาสลิปเก่าที่เคยใช้กับออเดอร์อื่นมาเวียน = เจอเจ้าของ → ตกเป็นสลิปซ้ำเหมือนเดิม
+   */
+  if (input.recheck && verify.duplicate && verify.selfJudged && verify.transRef) {
+    const owners = await findSlipOwners(sb, { transRef: verify.transRef }, { orderId: order.id, phase, paymentId: input.paymentId });
+    if (!owners.length) {
+      const j = verify.selfJudged;
+      verify = { ...j, detail: `${j.detail ? `${j.detail} · ` : ""}(ผลจากรอบก่อนของใบนี้เองที่ SlipOK ตอบช้าจนถูกตัดสาย — ดึงกลับมาให้แล้ว)` };
+    }
+  }
 
   // ── กันสลิปซ้ำชั้นที่ 2: เลขอ้างอิงธุรกรรมจาก QR ซ้ำกับออเดอร์อื่น/ใบอื่น แม้ไฟล์จะต่างกัน ──
   // (แคปหน้าจอใหม่/ครอป/บีบรูป ลายนิ้วมือไฟล์ไม่เหมือนเดิม แต่ธุรกรรมเดียวกัน) → ลบไฟล์ที่เพิ่งอัปทิ้ง แล้วโยน 409
@@ -424,7 +449,14 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       updated = withLog(updated, "SlipOK", perBillDoc ? `${rc}⚠️ ยอดในระบบไม่ตรงใบ FlowAccount — ลูกค้าโอนตรงตามใบแล้ว รอแอดมินแก้ยอดให้ตรงก่อน` : `${rc}⚠️ VAT/หัก ณ ที่จ่ายในใบยังเป็นตัวเลขของยอดเก่า — ลูกค้าโอนตรงยอดที่ถูกต้องแล้ว รอแอดมินแก้ยอดให้ตรงก่อน`, verify.detail ?? "");
     else if (verify.status === "fail")
       updated = withLog(updated, "SlipOK", `${rc}สลิป${phase === "balance" ? "ยอดคงเหลือ" : phase === "extra" ? "ใบเพิ่ม" : ""}ตรวจไม่ผ่าน — รอแอดมินตรวจเอง`, verify.detail ?? "");
-    else if (phase !== "first") updated = withLog(updated, by, `แนบสลิป${phase === "balance" ? "ยอดคงเหลือ" : "เพิ่ม"} — รอแอดมินตรวจ`, verify.detail ?? "ตรวจอัตโนมัติไม่ได้");
+    // ⚠️ ต้องลงทุก phase รวม "first" — เดิมข้ามใบแรก ออเดอร์ที่ SlipOK ไม่ตอบเลยไม่มีร่องรอยในประวัติสักบรรทัด (21 ก.ย. 69)
+    else
+      updated = withLog(
+        updated,
+        phase === "first" ? "SlipOK" : by,
+        `แนบสลิป${phase === "balance" ? "ยอดคงเหลือ" : phase === "extra" ? "เพิ่ม" : ""} — ตรวจอัตโนมัติไม่ได้ รอแอดมินตรวจเอง`,
+        verify.detail ?? "ตรวจอัตโนมัติไม่ได้"
+      );
   }
 
   const { error: saveErr } = await updateOrder(sb, updated);

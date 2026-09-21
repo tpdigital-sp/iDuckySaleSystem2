@@ -22,6 +22,13 @@ export function claimTypeFromReason(reason: string): (typeof CLAIM_TYPES)[number
   return "อื่นๆ";
 }
 
+/** ความผิดอยู่ที่ใคร — แอดมินประเมิน (ลูกค้าประเมินเองไม่ได้) · ตัวตัดสินว่าใครจ่าย: ร้าน = ผลิตใหม่ฟรี · ขนส่ง = เคลมขนส่ง · ลูกค้า = คิดเงินปกติ */
+export const CLAIM_FAULTS = ["ร้าน", "ขนส่ง", "ลูกค้า", "ไม่ทราบ"] as const;
+export type ClaimFault = (typeof CLAIM_FAULTS)[number];
+
+/** ช่องทางที่ลูกค้าแจ้งเข้ามา (เคสที่ทีมงานเปิด) */
+export const CLAIM_CHANNELS = ["LINE", "โทร", "หน้าร้าน", "Facebook", "อื่นๆ"] as const;
+
 /** ยื่นเคลมได้ภายในกี่วันหลังจัดส่ง (ตกลงกับทางร้าน 20 ส.ค. 2569) — เกินแล้วให้ทักแอดมินทาง LINE แทน */
 export const CLAIM_WINDOW_DAYS = 7;
 
@@ -56,6 +63,10 @@ export interface Claim {
   source?: "web" | "admin";
   /** ชื่อทีมงานที่เปิดเคส (เฉพาะ source admin) */
   createdBy?: string;
+  /** ช่องทางที่ลูกค้าแจ้งเข้ามา (เฉพาะ source admin) */
+  channel?: string;
+  /** ความผิดอยู่ที่ใคร — แอดมินประเมิน แก้ได้ทีหลังในหน้าเคลม */
+  fault?: ClaimFault;
   /** สแนปช็อตไว้ให้แอดมินติดต่อ ไม่ต้องไล่เปิดออเดอร์ */
   customer?: string;
   phone?: string;

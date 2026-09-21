@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { deleteStockItem, listStockItems, saveStockItem } from "@/lib/server/stock";
+import { allStockCodes, deleteStockItem, listStockItems, saveStockItem } from "@/lib/server/stock";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { invalidateProductsSlim } from "@/lib/server/products-slim";
 import { normName } from "@/lib/stock-match";
@@ -76,6 +76,8 @@ export async function GET(req: Request) {
           stockItemId: c.stockItemId ?? null,
           skuName: c.stockItemId ? skuName.get(c.stockItemId) ?? null : null,
           extras: (c.stockLinks ?? []).map((l) => skuName.get(l.stockItemId) ?? l.stockItemId),
+          // ไว้ให้หน้าจอรู้ว่าคู่ไหน (ทรง × สี) มี SKU แล้ว
+          links: (c.stockLinks ?? []).map((l) => ({ stockItemId: l.stockItemId, name: skuName.get(l.stockItemId) ?? null, when: l.when ?? [] })),
         })),
     }));
 
@@ -100,6 +102,9 @@ export async function POST(req: Request) {
     removeOld?: boolean;
     partName?: string;
     extra?: { name?: string; when?: { label?: string; choices?: string[] } };
+    /** แยกทุกคู่ของ 2 กลุ่ม (ทรง × สี) — กลุ่มที่ 2 + คู่ที่ต้องการ [ค่ากลุ่มแรก, ค่ากลุ่มที่ 2] */
+    pair?: { optionIndex?: number; label?: string };
+    combos?: [string, string][];
   };
   try {
     body = await req.json();
@@ -123,7 +128,7 @@ export async function POST(req: Request) {
   const oldSkus = items.filter((i) => (i.productIds ?? []).includes(productId));
   const tpl = oldSkus[0]; // ยืมหน่วย/ตระกูล/ทุน/จุดสั่งจาก SKU รวมเดิม จะได้ไม่ต้องกรอกซ้ำ
   const baseCode = tpl?.code ?? `P-${productId.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toUpperCase()}`;
-  const usedCodes = new Set(items.map((i) => i.code).filter(Boolean));
+  const usedCodes = await allStockCodes(); // รวมตัวที่ลบแล้ว — กันรหัสซ้ำของเก่า
 
   const partName = body.partName?.trim() ?? "";
   const extraName = body.extra?.name?.trim() ?? "";
@@ -154,6 +159,81 @@ export async function POST(req: Request) {
     usedCodes.add(code);
     return code;
   };
+
+  /** 3) ถอด SKU รวมเดิมออกจากสินค้านี้ (กันตัดซ้ำ 2 ต่อ) · ขอให้ลบ + ยอด 0 + ไม่ได้ใช้กับสินค้าอื่น → ลบออกจากคลัง */
+  const retireOld = async () => {
+    const removed: string[] = [];
+    const kept: string[] = [];
+    for (const o of oldSkus) {
+      const rest = (o.productIds ?? []).filter((x) => x !== productId);
+      await saveStockItem({ id: o.id, name: o.name, productIds: rest });
+      if (body.removeOld && o.balance === 0 && rest.length === 0) {
+        await deleteStockItem(o.id, g.actor.name || g.actor.username);
+        removed.push(o.name);
+      } else kept.push(o.name);
+    }
+    return { removed, kept };
+  };
+
+  /**
+   * 🔀 แยกทุกคู่ของ 2 กลุ่ม — ของบนชั้นต่างกันทั้ง 2 อย่าง (กระจกถือ: ทรง 2 × สี 6 = 12 แบบ · เจ้าของร้านขอ 19 ก.ย. 69)
+   * SKU ต่อคู่ ผูกเป็นลิงก์มีเงื่อนไขบนค่าของกลุ่มแรก: สี = สีดำ → ตัด "…ทรงสี่เหลี่ยม · สีดำ" เฉพาะเมื่อ ทรง = ทรงสี่เหลี่ยม
+   * ใช้ stockLinks ตัวเดิม (planStockCuts ตัดให้อยู่แล้ว) ไม่ต้องมีโครงข้อมูลใหม่
+   */
+  if (body.pair) {
+    const bi = body.pair.optionIndex;
+    const bl = body.pair.label;
+    const optB = typeof bi === "number" ? opts[bi] : undefined;
+    if (typeof bi !== "number" || bi === optionIndex || !optB || optB.label !== bl || optB.presetId)
+      return NextResponse.json({ error: "กลุ่มที่ 2 เปลี่ยนไปแล้ว — ปิดแล้วเปิดใหม่" }, { status: 409 });
+    const bNames = new Set(((optB.choices ?? []) as Ch[]).map((c) => c.name));
+    const combos = (body.combos ?? []).filter(([a, b]) => want.has(a) && bNames.has(b));
+    if (!combos.length) return NextResponse.json({ error: "ยังไม่ได้เลือกคู่ที่จะสร้าง" }, { status: 400 });
+    const made: { choice: string; id: string; name: string }[] = [];
+    const linksOf = new Map<string, Link[]>();
+    try {
+      for (const [a, b] of combos) {
+        const ca = ((opt.choices ?? []) as Ch[]).find((c) => c.name === a);
+        const cb = ((optB.choices ?? []) as Ch[]).find((c) => c.name === b);
+        if (!ca || !cb) continue;
+        const has = (ca.stockLinks ?? []).some((l) => l.when?.length === 1 && l.when[0].label === bl && l.when[0].choices.length === 1 && l.when[0].choices[0] === b);
+        if (has) continue; // คู่นี้มี SKU แล้ว
+        const sku = await saveStockItem({
+          name: `${partName || p.name} · ${b} · ${a}`,
+          code: nextCode(),
+          unit: tpl?.unit,
+          family: tpl?.family,
+          category: tpl?.category,
+          unitCost: tpl?.unitCost,
+          reorderPoint: tpl?.reorderPoint,
+          leadTimeDays: tpl?.leadTimeDays,
+          aliases: [`${b} ${a}`],
+          imageUrl: ca.imageSrc ?? cb.imageSrc,
+          part: partName || undefined,
+        });
+        made.push({ choice: `${b} · ${a}`, id: sku.id, name: sku.name });
+        (linksOf.get(a) ?? linksOf.set(a, []).get(a)!).push({ stockItemId: sku.id, when: [{ label: bl!, choices: [b] }] });
+      }
+      if (!made.length) return NextResponse.json({ error: "คู่ที่เลือกมี SKU ครบแล้ว" }, { status: 409 });
+      const next = {
+        ...p,
+        options: opts.map((o, i) =>
+          i !== optionIndex
+            ? o
+            : { ...o, choices: ((o.choices ?? []) as Ch[]).map((c) => (linksOf.has(c.name) ? { ...c, stockLinks: [...(c.stockLinks ?? []), ...linksOf.get(c.name)!] } : c)) }
+        ),
+      };
+      await snapshotRevision(db, productId, p, g.actor, "save");
+      const { error } = await db.from("products").update({ data: next }).eq("id", productId);
+      if (error) throw new Error(error.message);
+      invalidateProductsSlim();
+    } catch (e) {
+      for (const x of made) await deleteStockItem(x.id, "ระบบ (แยกสต๊อกไม่สำเร็จ)").catch(() => null);
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, created: made, ...(await retireOld()) });
+  }
+
   try {
     for (const c of (opt.choices ?? []) as Ch[]) {
       if (!c.name?.trim() || !want.has(c.name)) continue;
@@ -228,17 +308,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  // 3) ถอด SKU รวมเดิมออกจากสินค้านี้ (กันตัดซ้ำ 2 ต่อ) · ขอให้ลบ + ยอด 0 + ไม่ได้ใช้กับสินค้าอื่น → ลบออกจากคลัง
-  const removed: string[] = [];
-  const kept: string[] = [];
-  for (const o of oldSkus) {
-    const rest = (o.productIds ?? []).filter((x) => x !== productId);
-    await saveStockItem({ id: o.id, name: o.name, productIds: rest });
-    if (body.removeOld && o.balance === 0 && rest.length === 0) {
-      await deleteStockItem(o.id, g.actor.name || g.actor.username);
-      removed.push(o.name);
-    } else kept.push(o.name);
-  }
-
-  return NextResponse.json({ ok: true, created, removed, kept });
+  return NextResponse.json({ ok: true, created, ...(await retireOld()) });
 }

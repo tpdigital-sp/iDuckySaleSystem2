@@ -16,7 +16,7 @@ import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
-import { setAppendTarget } from "@/lib/append-order";
+import { appendLotLines, setAppendTarget } from "@/lib/append-order";
 import { rememberOrderLink } from "@/lib/my-order-links";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
@@ -26,6 +26,7 @@ import SenderForm from "@/components/SenderForm";
 import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
 import { isPickupOrder, resolveShipLabel, shippingUnset, stripShipPrice } from "@/lib/ship-label";
 import { todayBkkYmd } from "@/lib/ship-date";
+import { addressProblem, cleanPhone, phoneProblem } from "@/lib/contact-validate";
 
 /*
  * ── สไตล์ปุ่ม/ช่องกรอกใน lightbox ──
@@ -341,16 +342,20 @@ export default function CustomerOrderPage() {
 
   async function saveAddr() {
     if (!order) return;
-    if (!addrForm.customer.trim() || !addrForm.phone.trim() || !addrForm.address.trim()) {
-      setAddrErr("กรอกชื่อผู้รับ เบอร์โทร และที่อยู่ให้ครบ");
+    // 📞📍 กติกาเดียวกับตอนสั่งซื้อ: เบอร์จริง + ที่อยู่จริง (เซิร์ฟเวอร์เช็คซ้ำ)
+    const addrProblem = !addrForm.customer.trim()
+      ? "กรอกชื่อผู้รับ"
+      : (phoneProblem(addrForm.phone) ?? addressProblem(addrForm.address));
+    if (addrProblem) {
+      setAddrErr(addrProblem);
       return;
     }
     setAddrBusy(true);
     setAddrErr("");
     const res = await updateOrderAddress(orderId, orderKey, {
       customer: addrForm.customer.trim(),
-      phone: addrForm.phone.trim(),
-      address: addrForm.address.trim(),
+      phone: cleanPhone(addrForm.phone),
+      address: addrForm.address.replace(/\s+/g, " ").trim(),
     });
     setAddrBusy(false);
     if (!res.ok) {
@@ -2204,7 +2209,7 @@ export default function CustomerOrderPage() {
                     />
                     <input
                       value={addrForm.phone}
-                      onChange={(e) => setAddrForm((f) => ({ ...f, phone: e.target.value.replace(/[^\d\-+ ]/g, "") }))}
+                      onChange={(e) => setAddrForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, "") }))}
                       inputMode="tel"
                       placeholder="เบอร์โทร"
                       className="ord-input"
@@ -2340,7 +2345,7 @@ export default function CustomerOrderPage() {
             <button
               type="button"
               onClick={() => {
-                setAppendTarget({ id: order.id, key: orderKey, shippingCost: order.shippingCost, needShipping: shippingUnset(order) });
+                setAppendTarget({ id: order.id, key: orderKey, shippingCost: order.shippingCost, needShipping: shippingUnset(order), lotItems: appendLotLines(order.items) });
                 router.push("/products");
               }}
               className="ord-btn yolk mt-4"

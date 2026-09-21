@@ -24,6 +24,7 @@ import type { Product } from "@/lib/products";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
 import { senderOf } from "@/lib/order-sender";
+import { contactProblems } from "@/lib/contact-validate";
 import { resolveShipLabel } from "@/lib/ship-label";
 import { isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { useActor, useCan } from "@/lib/perm-context";
@@ -206,11 +207,16 @@ export default function PrintOrderPage() {
   const labelOkOf = (o: Order) => orderFullyPaid(o) || sampleLabelOk(o);
   const allLabels = orders.every(labelOkOf);
   const noLabelCount = orders.filter((o) => !labelOkOf(o)).length;
+  // 📞📍 เบอร์โทร/ที่อยู่ไม่ผ่านด่าน (กติกาเดียวกับหน้าร้าน + หน้าออเดอร์) → ใบนั้นไม่ออกเอกสารใด ๆ ทั้งใบงาน/ใบปะหน้า/ใบเสร็จ
+  //    เจ้าของร้านสั่ง 18 ก.ย. 69: "ถ้าไม่มีที่อยู่หรือเบอร์ จะไม่สามารถพิมพ์เอกสารได้" (ใบ bo•ᴥ•คุณโบ เบอร์ "0" ที่อยู่ว่าง)
+  //    ปริ้นรวม: ใบที่ติดจะโชว์กล่องแดงบนจอแทนเอกสาร ไม่ติดไปในกระดาษ · ใบอื่นพิมพ์ต่อได้ตามปกติ
+  const contactBadOf = (o: Order) => contactProblems(o);
+  const contactBadCount = orders.filter((o) => contactBadOf(o).length > 0).length;
   // ⛔ แบบไม่ครบ — กันเฉพาะตอนพิมพ์ "ใบงาน" (ใบเสร็จ/ใบแปะกล่องอย่างเดียวไม่ติด) · ใบปะหน้ารอบถัดไปของใบแบ่งส่ง (?doc=label) ไม่ติด
   const blockersOf = (o: Order) => (docs.work && !labelOnly ? printBlockers(o) : []);
-  const proofHeldOf = (o: Order) => blockersOf(o).length > 0 && !partialOk.has(o.id);
+  const proofHeldOf = (o: Order) => !contactBadOf(o).length && blockersOf(o).length > 0 && !partialOk.has(o.id);
   const proofHeldCount = orders.filter(proofHeldOf).length;
-  const printableCount = orders.length - proofHeldCount;
+  const printableCount = orders.length - contactBadCount - proofHeldCount;
   // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k] && !(k === "receipt" && !anyPaid));
 
@@ -305,6 +311,13 @@ export default function PrintOrderPage() {
               : "🎁 รอบตัวอย่างของใบมัดจำ 50% — ใบปะหน้าออกได้ · ใบกำกับภาษี/ใบเสร็จไปกับล็อตหลักเมื่อครบ 100%"}
           </span>
         )}
+        {contactBadCount > 0 && (
+          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
+            {batch
+              ? `🔒 ${contactBadCount} ใบ เบอร์โทร/ที่อยู่ไม่ครบ — ใบนั้นพิมพ์ไม่ได้ แก้ในหน้าออเดอร์ก่อน`
+              : `🔒 ${contactBadOf(orders[0]).join(" · ")} — พิมพ์เอกสารไม่ได้ แก้ในหน้าออเดอร์ก่อน`}
+          </span>
+        )}
         {proofHeldCount > 0 && (
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
             {batch ? `⛔ ${proofHeldCount} ใบ แบบงานยังไม่ครบ — ใบนั้นไม่ออกใบงาน` : "⛔ แบบงานยังไม่ครบทุกรายการ — ใบงานยังพิมพ์ไม่ได้"}
@@ -321,6 +334,7 @@ export default function PrintOrderPage() {
               const fails: string[] = [];
               const jobs: Promise<void>[] = [];
               for (const o of orders) {
+                if (contactBadOf(o).length) continue; // 📞📍 ใบที่ถูกกันไว้ไม่ได้พิมพ์อะไร — ห้ามจดว่าปริ้นแล้ว/เลื่อนสถานะ
                 if (proofHeldOf(o)) continue; // ⛔ แบบไม่ครบ ยังไม่ปลดล็อก — ไม่ได้พิมพ์อะไร
                 const partial = blockersOf(o).length > 0; // ปลดล็อกแล้ว = ปริ้นเฉพาะที่พร้อม
                 // ใบที่ยังไม่จ่ายครบไม่ออกใบเสร็จ — ประวัติต้องไม่บันทึกเกินจริง
@@ -348,6 +362,7 @@ export default function PrintOrderPage() {
               });
               setOrders((list) =>
                 list.map((o) => {
+                  if (contactBadOf(o).length) return o; // 📞📍 ใบที่ถูกกันไว้ — ไม่แตะ
                   if (proofHeldOf(o)) return o; // ⛔ แบบไม่ครบ — ไม่แตะ
                   // ⛔ ปริ้นเฉพาะที่พร้อม — ล็อกที่อยู่อย่างเดียว ไม่นับครั้ง/ไม่เลื่อนสถานะ (ตรงกับ printed route)
                   if (blockersOf(o).length) return { ...o, printedAt: o.printedAt ?? now };
@@ -372,7 +387,7 @@ export default function PrintOrderPage() {
             window.print();
           }}
           disabled={chosen.length === 0 || (!anyPaid && !docs.work) || printableCount === 0}
-          title={printableCount === 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
+          title={printableCount === 0 ? (proofHeldCount > 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : "เบอร์โทร/ที่อยู่ไม่ครบ — แก้ในหน้าออเดอร์ก่อนจึงพิมพ์ได้") : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
           className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >
           {batch ? `🖨️ พิมพ์ทั้ง ${orders.length} ใบ` : "🖨️ พิมพ์"}
@@ -386,21 +401,50 @@ export default function PrintOrderPage() {
           </p>
         )}
 
-        {orders.map((o) =>
-          proofHeldOf(o) ? (
-            <ProofBlocked
-              key={o.id}
-              order={o}
-              waiting={blockersOf(o).map(proofBlockerLabel)}
-              canUnlock={canPartial}
-              onUnlock={() => setPartialOk((v) => new Set(v).add(o.id))}
-            />
-          ) : (
-          <OrderDocs key={o.id} holdItems={new Set(blockersOf(o).map((b) => b.index))} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} products={products} onTaxInvoiceDelivery={setTaxInvoiceDelivery} />
-          )
-        )}
+        {orders.map((o) => {
+          // 📞📍 เบอร์/ที่อยู่ไม่ผ่าน → กล่องแดงบนจอแทนเอกสาร (ไม่ติดไปในกระดาษ)
+          const bad = contactBadOf(o);
+          if (bad.length) return <ContactBlocked key={o.id} order={o} problems={bad} />;
+          if (proofHeldOf(o))
+            return (
+              <ProofBlocked
+                key={o.id}
+                order={o}
+                waiting={blockersOf(o).map(proofBlockerLabel)}
+                canUnlock={canPartial}
+                onUnlock={() => setPartialOk((v) => new Set(v).add(o.id))}
+              />
+            );
+          return (
+            <OrderDocs key={o.id} holdItems={new Set(blockersOf(o).map((b) => b.index))} order={o} docs={docs} labelOnly={labelOnly} withProofs={withProofs} shop={shop} shipMethods={shipMethods} origin={origin} seesMoney={seesMoney} products={products} onTaxInvoiceDelivery={setTaxInvoiceDelivery} />
+          );
+        })}
       </div>
     </>
+  );
+}
+
+/**
+ * 📞📍 ใบที่เบอร์โทร/ที่อยู่ไม่ผ่านด่าน — ไม่ออกเอกสารใด ๆ (18 ก.ย. 69)
+ * โชว์แค่บนจอ (no-print) บอกว่าติดตรงไหน + ลิงก์กลับไปแก้ · ปริ้นรวมใบอื่นยังพิมพ์ต่อได้
+ */
+function ContactBlocked({ order, problems }: { order: Order; problems: string[] }) {
+  return (
+    <section className="no-print rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center">
+      <p className="text-sm font-extrabold text-rose-700">
+        🔒 {order.id} · {order.customer || "ยังไม่ระบุชื่อ"} — พิมพ์เอกสารไม่ได้
+      </p>
+      <p className="mt-1 text-sm font-semibold text-rose-600">{problems.join(" · ")}</p>
+      <p className="mt-1 text-xs text-slate-600">
+        เบอร์โทร: {order.phone?.trim() || "—"} · ที่อยู่: {order.address?.trim() || "—"}
+      </p>
+      <Link
+        href={`/admin/orders/${encodeURIComponent(order.id)}`}
+        className="mt-3 inline-block rounded-full bg-white px-4 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-100"
+      >
+        แก้เบอร์โทร/ที่อยู่ในหน้าออเดอร์ →
+      </Link>
+    </section>
   );
 }
 

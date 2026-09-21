@@ -2,6 +2,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { LineFloat } from "@/components/LineButton";
 import ChatWidget from "@/components/ChatWidget";
+import CartFloat from "@/components/CartFloat";
 import AdminEditFabAuto from "@/components/AdminEditFabAuto";
 import NavProgress from "@/components/NavProgress";
 import { CartProvider } from "@/lib/cart-context";
@@ -24,6 +25,10 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
         {/* ปุ่มลอยมุมขวาล่าง: LINE = แอดมินตัวจริง · ChatWidget = ผู้ช่วย AI ตอบทันที */}
         <div className="dl dl-contents no-print">
           <LineFloat />
+        </div>
+        {/* ตะกร้าลอย — เดสก์ท็อปเท่านั้น (มือถือใช้ปุ่มตะกร้าในแถบเมนูล่าง) */}
+        <div className="dl dl-contents no-print">
+          <CartFloat />
         </div>
         <div className="no-print">
           <ChatWidget />

@@ -10,7 +10,7 @@ import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write
 import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { needsPurchaseStamp, notifyStockArrived } from "@/lib/server/needs-purchase";
 import { keepServerMoney } from "@/lib/server/order-money-guard";
-import { applyChangedKeys, CHANGED_KEYS_HEADER, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
+import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
@@ -655,9 +655,14 @@ export async function PATCH(req: Request) {
     if (full.restored.length)
       toSave = withLog(toSave, actor.name || actor.username, "กันหน้าจอค้างทับข้อมูล", `ช่องที่หน้าจอนี้ไม่ได้แก้ คงค่าในฐานไว้: ${full.restored.join(" · ")}`);
     /**
-     * 📅 วันใช้งาน/วันจัดส่ง/งานเร่งเปลี่ยน → จดลง log (21 ก.ย. 69 · OD-260918-8582
+     * 👤 ชื่อ/เบอร์/ที่อยู่ลูกค้าเปลี่ยน → จดลง log เสมอ (18 ก.ย. 69 · OD-260917-6834 "ที่อยู่หายไปไหน" — ตามย้อนหลังไม่ได้เลย
+     * เพราะช่องพวกนี้บันทึกตอน blur เงียบ ๆ ไม่มีร่องรอยว่าใครแก้/ลบเมื่อไหร่) · ค่าว่างก็จด — "ลบที่อยู่" คือเหตุการณ์ที่ต้องเห็น
+     */
+    const customerDiff = customerInfoChanges(existing, toSave);
+    if (customerDiff) toSave = withLog(toSave, actor.name || actor.username, "แก้ข้อมูลลูกค้า/ที่อยู่", customerDiff);
+    /**
+     * 📅 วันใช้งาน/วันจัดส่ง/งานเร่งเปลี่ยน → จดลง log เช่นกัน (21 ก.ย. 69 · OD-260918-8582
      * พนักงานถามว่า "วันใช้งานนี้ใครใส่" แล้วตอบไม่ได้ เพราะช่องปฏิทินบันทึกเงียบ ๆ ไม่มีร่องรอย)
-     * ค่าว่างก็จด — "ลบวันใช้งานทิ้ง" คือเหตุการณ์ที่ต้องเห็น
      */
     const scheduleDiff = scheduleChanges(existing, toSave);
     if (scheduleDiff) toSave = withLog(toSave, actor.name || actor.username, "แก้วันใช้งาน/วันจัดส่ง", scheduleDiff);

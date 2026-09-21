@@ -602,7 +602,7 @@ export default function ProductDetail({
       : getCategory(product.category);
   /** ชื่อที่ลูกค้าเห็น = ครึ่งไทยของชื่อหมวด (ชุดเดียวกับชิปหมวดในหน้ารายการสินค้า) */
   const catName = catShortName(category.name);
-  const { addItem, removeItem, items: cartItems, productOf } = useCart();
+  const { addItem, removeItem, items: cartItems, productOf, lotExtras } = useCart();
   /**
    * 🤝 บัญชีตัวแทนจำหน่าย — สินค้าที่มีเรท dealerOnly จะโชว์เฉพาะเรทตัวแทน (ราคาตัวแทน)
    * ลูกค้าทั่วไป/ยังเช็คไม่จบ เห็นเฉพาะเรท public เสมอ (ค่าเริ่มปลอดภัย — ISR วาดราคา public ก่อน
@@ -1687,8 +1687,9 @@ export default function ProductDetail({
     () =>
       useCustom && !customUsesMatrix
         ? undefined
-        : lotPreviewFor(product, cartItems, pricingSelections, qty, designs),
-    [product, cartItems, pricingSelections, qty, designs, useCustom, customUsesMatrix]
+        : // โหมดสั่งเพิ่ม: ของในออเดอร์เดิมร่วมล็อตด้วย (lotExtras) — ราคาที่เห็นตรงกับตะกร้า
+          lotPreviewFor(product, [...cartItems, ...lotExtras], pricingSelections, qty, designs),
+    [product, cartItems, lotExtras, pricingSelections, qty, designs, useCustom, customUsesMatrix]
   );
 
   /**
@@ -3106,7 +3107,7 @@ export default function ProductDetail({
       ...sheets.map((s) => ({ productId: product.id, selections: s.selections, qty: s.qty })),
       ...(currentReady ? [{ productId: product.id, selections: pricingSelections, qty }] : []),
     ];
-    const inCart = cartItems.map((i) => ({ productId: i.productId, selections: i.selections, qty: i.qty }));
+    const inCart = [...cartItems, ...lotExtras].map((i) => ({ productId: i.productId, selections: i.selections, qty: i.qty }));
     // ⚠️ แคตตาล็อกของตะกร้ารู้จักเฉพาะสินค้าที่ "อยู่ในตะกร้าแล้ว" — ตะกร้าว่างจะคืน undefined
     //    แล้วราคาทุกบรรทัดกลายเป็น ฿0 เงียบ ๆ · สินค้าที่เปิดหน้าอยู่ต้องยัดเข้าไปเอง
     const priceOf = (id: string) => (id === product.id ? product : productOf(id));
@@ -3118,7 +3119,7 @@ export default function ProductDetail({
       qty: mine.reduce((n, l) => n + l.qty, 0),
       total: priced.reduce((sum, r, i) => sum + r.unitPrice * mine[i].qty + r.extraFee, 0),
     };
-  }, [lotMinScope, sheets, product, pricingSelections, qty, cartItems, productOf, currentReady]);
+  }, [lotMinScope, sheets, product, pricingSelections, qty, cartItems, lotExtras, productOf, currentReady]);
   /** จำนวนที่กำลังจะกดสั่งรอบนี้ (แผ่นที่เก็บไว้ด้วยปุ่ม ➕ + แผ่นที่กำลังตั้งค่า) */
   const lotAddingQty = sheetRoll ? sheetRoll.qty : qty;
   /**
@@ -5513,6 +5514,66 @@ export default function ProductDetail({
     );
   }
 
+  /**
+   * ═══ ป้ายบนปุ่มสั่ง — "ชื่อปุ่ม" กับ "เหตุผลที่ยังกดไม่ได้" อยู่คนละบรรทัด ═══
+   * ⚠️ ชื่อปุ่มต้องอยู่เสมอ ห้ามเอาเหตุผลไปแทนที่ (กฎเดียวกับปุ่ม ➕ ที่แก้ไปแล้ว 31 ส.ค. 69)
+   *    เดิมปุ่มหลักขึ้นว่า "🎨 แนบลายก่อน…" ตั้งแต่เปิดหน้ามา → ทั้งหน้าสินค้าไม่มีคำว่า "ตะกร้า"
+   *    โผล่สักที่ ลูกค้านั่งหาปุ่มเข้าตะกร้าพักใหญ่แล้วทักมาบอกว่าหาไม่เจอ (ไลน์ 20 ก.ย. 69)
+   */
+  const ctaUnit = matrix?.unit ?? "ชิ้น";
+  const ctaSum = formatPrice(unitPrice * qty + designFee);
+  /** ชื่อปุ่ม — บอกว่ากดแล้วจะเกิดอะไร (มีคำว่า "ตะกร้า" เสมอ ยกเว้นโหมดแก้ไข/รอตีราคา) */
+  const ctaTitle =
+    sheetRoll && !sheetRoll.withCurrent
+      ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${ctaUnit} ที่เก็บไว้ — ${formatPrice(sheetRoll.total)}`
+      : editing
+        ? `💾 บันทึกการแก้ไข — ${ctaSum}`
+        : (useCustom && customAsk) || askQuote
+          ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
+          : sheetRoll
+            ? `🛒 สั่งทั้งหมด ${sheetRoll.qty.toLocaleString("th-TH")} ${ctaUnit} — ${formatPrice(sheetRoll.total)}`
+            : lotToCart && lotDone > 0
+              ? `🛒 เพิ่ม${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ลงตะกร้า — ${ctaSum}`
+              : `🛒 เพิ่มลงตะกร้า — ${ctaSum}`;
+  /** ชื่อปุ่มแบบสั้น — แถบซื้อลอยล่างจอ (ยอดเงินโชว์อยู่ข้างปุ่มแล้ว ไม่ต้องซ้ำ) */
+  const ctaTitleShort =
+    sheetRoll && !sheetRoll.withCurrent
+      ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${ctaUnit} ที่เก็บไว้`
+      : editing
+        ? "💾 บันทึกการแก้ไข"
+        : (useCustom && customAsk) || askQuote
+          ? "🛒 สั่งเลย"
+          : sheetRoll
+            ? `🛒 สั่งทั้งหมด ${sheetRoll.qty.toLocaleString("th-TH")} ${ctaUnit}`
+            : "🛒 เพิ่มลงตะกร้า";
+  /**
+   * เหตุผลที่ยังสั่งไม่ได้ — เรียงตามลำดับที่ readyToAdd() ตรวจจริง
+   * (ช่องกรอก → คุยลาย → แนบลาย → ขั้นต่ำ → จำนวนลาย)
+   * มีของพักไว้แล้ว = ปุ่มสั่งของที่เก็บไว้ สเปคที่ค้างอยู่ไม่เกี่ยว ไม่ต้องฟ้อง
+   */
+  const ctaStuck =
+    sheetRoll && !sheetRoll.withCurrent
+      ? null
+      : inputHardError || inputErrors.length > 0
+        ? { long: inputBlockLabel(), short: `⚠ ติดที่ “${(inputHardError ?? inputErrors[0]).label}”` }
+        : consultBlocked
+          ? { long: "💬 คุยลายกับแอดมินก่อนถึงจะสั่งได้", short: "💬 คุยลายก่อน" }
+          : artBlocked
+            ? { long: "🎨 แนบลายก่อน — อัปโหลดรูป หรือใส่ลิงก์ไฟล์", short: "🎨 แนบลายก่อน" }
+            : belowMin
+              ? {
+                  long: `⚠ ขั้นต่ำ ${hardMin} ชิ้นต่อลาย — สั่งอย่างน้อย ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`,
+                  short: `⚠ ขั้นต่ำ ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`,
+                }
+              : belowMinQty
+                ? {
+                    long: `⚠ เรทนี้เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${ctaUnit}`,
+                    short: `⚠ เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${ctaUnit}`,
+                  }
+                : needDesignsChoice && !designsOk
+                  ? { long: "⚠ ระบุก่อนว่ามีกี่ลาย", short: "⚠ ระบุจำนวนลายก่อน" }
+                  : null;
+
   return (
     <div className="homebg">
       {/* 🛒 ม่านระหว่าง "สั่งตามสเปคนี้" กำลังหย่อนลงตะกร้าให้ — ปิดเองเมื่อพาไปตะกร้าแล้ว หรือเมื่อสเปคติดด่านตรวจ */}
@@ -6990,52 +7051,36 @@ export default function ProductDetail({
                     disabled={orderBlocked}
                     // ⚠️ ตอนกดไม่ได้ห้ามใช้ opacity-40 ตัวขาว — บนพื้นฟ้าอ่อนกลายเป็นตัวขาวจางอ่านไม่ออก ทั้งที่ข้อความบนปุ่ม
                     //    คือ "เหตุผลที่กดไม่ได้" ที่ลูกค้าต้องอ่าน → ใช้แผ่นฟ้าจางทึบ ตัวน้ำเงินเข้ม ขอบฟ้าแทน (9 ก.ย. 69)
-                    className={`flex-1 rounded-full px-5 py-3 text-[13px] font-bold transition sm:flex-none sm:px-8 ${
+                    // 🛒 กินเต็มบรรทัดของตัวเอง (basis-full) — เดิมแชร์บรรทัดกับช่องจำนวนแล้วเหลือความกว้างไม่ถึงครึ่งแผง
+                    //    ลูกค้ากวาดตาหาปุ่มสั่งไม่เจอ (ไลน์ 20 ก.ย. 69)
+                    className={`basis-full rounded-full px-5 py-3.5 text-center text-sm font-extrabold transition sm:px-8 ${
                       added
                         ? "bg-emerald-500 text-white shadow-lg"
                         : orderBlocked
-                          ? "cursor-not-allowed bg-sky-50 text-sky-900 ring-1 ring-sky-200"
-                          : "bg-amber-400 text-white shadow-lg hover:scale-105 hover:bg-amber-500"
+                          ? "cursor-not-allowed bg-sky-100 text-sky-900 ring-2 ring-sky-300"
+                          : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:scale-[1.01] hover:bg-amber-500 hover:shadow-xl"
                     }`}
                   >
-                    {added
-                      ? editing
-                        ? "✓ บันทึกแล้ว!"
-                        : "✓ เพิ่มลงตะกร้าแล้ว!"
-                      : sheetRoll && !sheetRoll.withCurrent
-                        ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} ที่เก็บไว้ — ${formatPrice(sheetRoll.total)}`
-                      : inputHardError || inputErrors.length > 0
-                        ? inputBlockLabel()
-                      : consultBlocked
-                        ? "💬 คุยลายกับแอดมินก่อนถึงจะสั่งได้"
-                        : artBlocked
-                        ? "🎨 แนบลายก่อน — อัปโหลดรูป หรือใส่ลิงก์ไฟล์"
-                        : belowMin
-                        ? `⚠ ขั้นต่ำ ${hardMin} ชิ้นต่อลาย — สั่งอย่างน้อย ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
-                        : belowMinQty
-                        ? `⚠ เรทนี้เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
-                        // ⚠️ ต้องอยู่ "หลัง" ช่องกรอก/แนบลาย ให้ตรงลำดับที่ readyToAdd() ตรวจจริง
-                        //    เคยวางไว้หัวบันได ปุ่มเลยฟ้องเรื่องจำนวนลายทั้งที่ยังไม่ได้กรอกช่องด้านบน
-                        : needDesignsChoice && !designsOk
-                        ? "⚠ ระบุก่อนว่ามีกี่ลาย"
-                        // ✏️ โหมดแก้ไข — ป้ายต้องบอกว่า "บันทึกทับ" ไม่ใช่ "เพิ่มลงตะกร้า" (อยู่หลังด่านตรวจทุกอัน)
-                        : editing
-                        ? `💾 บันทึกการแก้ไข — ${formatPrice(unitPrice * qty + designFee)}`
-                        : (useCustom && customAsk) || askQuote
-                        ? "🛒 สั่งเลย — แอดมินตีราคาแล้วแจ้งกลับ"
-                        : sheetRoll
-                          ? `🛒 สั่งทั้งหมด ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — ${formatPrice(sheetRoll.total)}`
-                        // โหมดปุ่มเดียว: ใส่ไปแล้วกี่รุ่นก็นับต่อบนปุ่มเลย ลูกค้าจะได้รู้ว่ากดซ้ำได้เรื่อย ๆ
-                        : lotToCart && lotDone > 0
-                          ? `🛒 เพิ่ม${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`
-                          : `🛒 เพิ่มลงตะกร้า — ${formatPrice(unitPrice * qty + designFee)}`}
-                    {/* ครบขั้นต่ำเพราะรวมกับของในตะกร้า — ต้องพูดออกมา ไม่ให้ดูเหมือนขั้นต่ำไม่ทำงาน */}
-                    {!added && lotMetWithCart && (
-                      <span className="mt-0.5 block text-[11px] font-bold text-white/90">
-                        ✓ รวมกับในตะกร้าเป็น{" "}
-                        {((lotPreview?.cartQty ?? 0) + lotAddingQty).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} —
-                        ครบขั้นต่ำแล้ว
-                      </span>
+                    {added ? (
+                      editing ? "✓ บันทึกแล้ว!" : "✓ เพิ่มลงตะกร้าแล้ว!"
+                    ) : (
+                      <>
+                        {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ — เหตุผลที่ยังกดไม่ได้ห้ามมาแทนที่ (ดู ctaTitle/ctaStuck) */}
+                        <span className="block">{ctaTitle}</span>
+                        {ctaStuck && (
+                          <span className="mt-0.5 block text-[11.5px] font-bold leading-snug opacity-90">
+                            {ctaStuck.long}
+                          </span>
+                        )}
+                        {/* ครบขั้นต่ำเพราะรวมกับของในตะกร้า — ต้องพูดออกมา ไม่ให้ดูเหมือนขั้นต่ำไม่ทำงาน */}
+                        {lotMetWithCart && (
+                          <span className="mt-0.5 block text-[11px] font-bold opacity-90">
+                            ✓ รวมกับในตะกร้าเป็น{" "}
+                            {((lotPreview?.cartQty ?? 0) + lotAddingQty).toLocaleString("th-TH")} {ctaUnit} —
+                            ครบขั้นต่ำแล้ว
+                          </span>
+                        )}
+                      </>
                     )}
                   </button>
                 )}
@@ -7106,6 +7151,26 @@ export default function ProductDetail({
                   </button>
                 )}
               </div>
+              {/* 🧾 มีของอยู่ในตะกร้าแล้ว — ชี้ทางไป "ยืนยันการสั่งซื้อ" ให้ชัด
+                   ของในตะกร้ายังไม่ใช่ออเดอร์ · ลูกค้าเคยติ๊กสเปคครบแล้วไม่รู้ว่าต้องกดอะไรต่อ (ไลน์ 20 ก.ย. 69)
+                   โหมดหย่อนลงตะกร้าทันทีมีกล่องสรุปของตัวเองอยู่แล้ว ไม่ต้องซ้ำ */}
+              {cartItems.length > 0 && !editing && !(lotToCart && cartLot.lines > 0) && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
+                  <p className="text-[12px] font-extrabold text-emerald-800">
+                    🛒 ในตะกร้าแล้ว {cartItems.length.toLocaleString("th-TH")} รายการ
+                    <span className="block text-[11px] font-semibold text-emerald-700">
+                      ยังไม่เป็นออเดอร์จนกว่าจะกด “ยืนยันการสั่งซื้อ” ในตะกร้า
+                    </span>
+                  </p>
+                  <Link
+                    href="/cart"
+                    className="shrink-0 rounded-full bg-emerald-600 px-4 py-2 text-[11.5px] font-extrabold text-white shadow-sm transition hover:bg-emerald-700"
+                  >
+                    ✅ ไปยืนยันการสั่งซื้อ →
+                  </Link>
+                </div>
+              )}
+
               {/* 📦 ขั้นต่ำแบบนับทั้งล็อต — เพิ่มลงตะกร้าได้ตั้งแต่ชิ้นแรก แค่เตือน
                   ประตูจริงอยู่ที่ปุ่ม "ยืนยันการสั่งซื้อ" ในตะกร้า (ผู้ใช้สั่ง 31 ส.ค. 69) */}
               {lotShortNeed > 0 && !designDone && (
@@ -8072,13 +8137,18 @@ export default function ProductDetail({
         />
       )}
 
-      {/* ═══ แถบซื้อลอยล่างจอ (มือถือ) — ราคาปัจจุบัน + ปุ่มสั่ง ไม่ต้องเลื่อนกลับขึ้นไป ═══ */}
+      {/* ═══ แถบซื้อลอยล่างจอ — ราคาปัจจุบัน + ปุ่มสั่ง ไม่ต้องเลื่อนกลับขึ้นไป ═══
+           💻 เดสก์ท็อปเห็นด้วย (เดิม lg:hidden): แผงสั่งซื้อฝั่งขวายาวกว่าจอ ปุ่มสั่งเลื่อนพ้นตาไปแล้ว
+              ลูกค้าไล่ติ๊กตัวเลือกลงมาเรื่อย ๆ จนหาปุ่มเข้าตะกร้าไม่เจอ (ไลน์ 20 ก.ย. 69)
+              — บนจอใหญ่เป็นแคปซูลลอยกลางจอ ไม่บังปุ่มแชท/ไลน์ที่มุมขวาล่าง */}
+      {/* ⚠️ ต้องลอยเหนือแถบเมนูล่าง (.bottom-nav ใน landing.css: z-90 · สูง ~71px · ลอยห่างขอบ 10px + safe-area)
+           เดิมแถบซื้ออยู่ z-40 ชิดขอบล่าง = จมอยู่ใต้เมนูล่างทั้งแถบ มือถือจึงไม่เห็นปุ่มสั่งเลยสักที */}
       <div
-        className={`fixed inset-x-0 bottom-0 z-40 border-t border-amber-100 bg-white/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur transition-transform duration-200 lg:hidden ${
+        className={`fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(84px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
           showBuyBar ? "translate-y-0" : "translate-y-full"
         }`}
       >
-        <div className="flex items-center gap-3">
+        <div className="mx-auto flex items-center gap-3 rounded-3xl border border-amber-200 bg-white/95 px-4 py-2.5 shadow-[0_14px_34px_-12px_rgba(23,58,107,0.35)] backdrop-blur lg:max-w-3xl lg:rounded-full lg:px-5 lg:py-3">
           <div className="min-w-0">
             <p className="truncate text-[11px] text-stone-400">
               {/* 📦 สั่งหลายแผ่นในครั้งเดียว — แถบล่างมือถือบอกยอดรวมทั้งรอบ ไม่ใช่แค่แผ่นที่กำลังตั้งค่า */}
@@ -8126,33 +8196,33 @@ export default function ProductDetail({
               type="button"
               onClick={() => handleAdd()}
               disabled={barBlocked}
-              className={`ml-auto shrink-0 rounded-full px-6 py-3 text-sm font-bold transition ${
+              className={`ml-auto shrink-0 rounded-full px-6 py-2.5 text-center text-sm font-extrabold transition ${
                 added
                   ? "bg-emerald-500 text-white shadow-lg"
                   : barBlocked
-                    ? "cursor-not-allowed bg-sky-50 text-sky-900 ring-1 ring-sky-200"
-                    : "bg-amber-400 text-white shadow-lg hover:bg-amber-500"
+                    ? "cursor-not-allowed bg-sky-100 text-sky-900 ring-2 ring-sky-300"
+                    : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:bg-amber-500"
               }`}
             >
-              {added
-                ? "✓ เพิ่มแล้ว!"
-                : sheetRoll
-                  ? `🛒 สั่ง ${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`
-                : inputHardError || inputErrors.length > 0
-                  ? `⚠ ติดที่ “${(inputHardError ?? inputErrors[0]).label}”`
-                : consultBlocked
-                  ? "💬 คุยลายก่อน"
-                  : artBlocked
-                    ? "🎨 อัปโหลดรูป/ใส่ลิงก์ลาย"
-                      : belowMin
-                        ? `⚠ ขั้นต่ำ ${hardMinNeed.toLocaleString("th-TH")} ชิ้น`
-                        : "🛒 เพิ่มลงตะกร้า"}
+              {added ? (
+                "✓ เพิ่มแล้ว!"
+              ) : (
+                <>
+                  {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ เหตุผลที่ยังกดไม่ได้ต่อท้ายข้างล่าง (ห้ามเอามาแทนชื่อ) */}
+                  <span className="block">{ctaTitleShort}</span>
+                  {ctaStuck && (
+                    <span className="mt-0.5 block text-[10.5px] font-bold leading-snug opacity-90">
+                      {ctaStuck.short}
+                    </span>
+                  )}
+                </>
+              )}
             </button>
           )}
         </div>
       </div>
-      {/* กันแถบลอยบังเนื้อหาท้ายหน้า */}
-      <div className="h-20 lg:hidden" aria-hidden />
+      {/* กันแถบลอยบังเนื้อหาท้ายหน้า (แถบมีทั้งมือถือและเดสก์ท็อป) */}
+      <div className="h-20 lg:h-24" aria-hidden />
 
       {/*
         🔔 แนบรูปเกิน "จำนวนลายที่กำหนดไว้" — ถามให้ชัดตรงนี้ ไม่ข้ามไฟล์เงียบ ๆ
