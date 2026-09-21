@@ -89,8 +89,8 @@ export interface PromoBannerSet {
  * ความสูงไม่ถูกบังคับ (ระบบโชว์เต็มใบไม่ครอป) แต่ป้ายในสไลด์ชุดเดียวกันควรสูงเท่ากัน ไม่งั้นใบเตี้ยจะมีขอบขาวบนล่าง
  */
 export const BANNER_SPEC = {
-  desktop: { w: 2320, h: 640, shownAs: "1160×320", minText: 24, margin: 60 },
-  mobile: { w: 1200, h: 800, shownAs: "ประมาณ 375×250", minText: 36, margin: 50 },
+  desktop: { w: 2320, h: 810, shownAs: "1160×405", minText: 24, margin: 60 },
+  mobile: { w: 1536, h: 1024, shownAs: "ประมาณ 375×250", minText: 36, margin: 50 },
   maxMB: 4.5,
 } as const;
 

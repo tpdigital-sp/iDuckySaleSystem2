@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { fetchPromoBanners, liveBanners, type BannerLayer, type PromoBanner } from "@/lib/promo-banners";
-import { canOptimize, optimizedSrcSet } from "@/lib/img";
 
 /**
  * 📣 ป้ายประชาสัมพันธ์หน้าแรก — คั่นระหว่างแบนเนอร์ใหญ่กับ "สินค้ามาใหม่"
@@ -182,9 +181,6 @@ function Wrap({
 }
 
 function Slide({ b, eager }: { b: PromoBanner; eager: boolean }) {
-  // ตัวย่อรูปโหลดไม่ขึ้น → ถอด <source> ทิ้ง ใช้ไฟล์ต้นฉบับ (ป้ายต้องไม่หายจากหน้าเว็บ)
-  const [raw, setRaw] = useState(false);
-
   if (!b.image) {
     return (
       <Wrap href={b.href} className="promo-text">
@@ -202,29 +198,19 @@ function Slide({ b, eager }: { b: PromoBanner; eager: boolean }) {
     );
   }
 
-  const small = b.imageMobile ?? b.image;
   return (
     <Wrap href={b.href} className="promo-img" label={b.title || undefined}>
       <picture>
-        {/* มือถือ: รูปแนวมือถือ (ถ้ามี) ผ่านตัวย่อ · จอกว้างใช้ไฟล์ต้นฉบับ — ตัวย่อสูงสุด 1200px ตัวหนังสือในป้ายจะเบลอบนจอ retina */}
-        {!raw && canOptimize(small) ? (
-          <source
-            media="(max-width: 640px)"
-            srcSet={optimizedSrcSet(small, 82)}
-            sizes="100vw"
-          />
-        ) : (
-          b.imageMobile && (
-            <source media="(max-width: 640px)" srcSet={b.imageMobile} />
-          )
-        )}
+        {/* ใช้ไฟล์ต้นฉบับทั้งมือถือและจอกว้าง (เจ้าของร้านสั่ง 21 ก.ย. 69 "ต้องการให้ภาพคมชัด")
+            — ตัวย่อ /_next/image สูงสุด 1200px + q82 ทำให้ตัวหนังสือในป้ายเบลอบนจอ retina/มือถือ 3x
+            ป้ายมีไม่กี่ใบและใบที่ไม่ได้อยู่บนจอโหลดแบบ lazy จึงยอมจ่ายขนาดไฟล์เต็ม (~200–350 KB/ใบ) */}
+        {b.imageMobile && <source media="(max-width: 640px)" srcSet={b.imageMobile} />}
         <img
           src={b.image}
           alt={b.title}
           loading={eager ? "eager" : "lazy"}
           decoding="async"
           draggable={false}
-          onError={() => setRaw(true)}
         />
       </picture>
       {/* ✨ ชิ้นลูกเล่นขยับ — รูปมือถือเป็นคนละเลย์เอาต์ จึงมีชุดของตัวเอง สลับตามจอที่ 640px จุดเดียวกับ <source> */}
