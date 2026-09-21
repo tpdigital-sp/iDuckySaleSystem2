@@ -136,10 +136,17 @@ function shadeGroup(): ProductOption {
 
 /** ติ่งห้อย = แผ่นอะคริลิคชิ้นเล็กห้อยกับแผ่นที่เพิ่ม — เลือกขนาดเองได้ ราคาเกาะขนาด */
 function charmGroup(): ProductOption {
-  const ladder = CHARM_SIZES.map((s) => `${s.name} ${s.small}/${s.below}/${s.extra}`).join(" · ");
+  /**
+   * ป้าย +฿ บนปุ่มบอกราคาช่วงปลีกของแต่ละขนาดอยู่แล้ว — คำอธิบายจึงเหลือแค่ "สั่งเยอะลดเท่าไหร่"
+   * ส่วนลดเท่ากันทุกขนาด (−5 ที่ 11 ชิ้น · −8 ที่ 30 ชิ้น) assert ไว้ ถ้าวันหลังตารางเปลี่ยนจะได้รู้
+   */
+  const off1 = CHARM_SIZES[0].small - CHARM_SIZES[0].below;
+  const off2 = CHARM_SIZES[0].small - CHARM_SIZES[0].extra;
+  if (CHARM_SIZES.some((s) => s.small - s.below !== off1 || s.small - s.extra !== off2))
+    die("ส่วนลดติ่งห้อยไม่เท่ากันทุกขนาดแล้ว — ต้องเขียนคำอธิบายใหม่ (เขียนสั้นแบบ 'ลดติ่งละ' ไม่ได้)");
   return {
     label: CHARM_LABEL,
-    note: `ชิ้นเล็กห้อยกับแผ่นที่เพิ่ม เลือกเนื้อ/เฉดแยกจากแผ่นได้ · ต่อติ่ง (1-${CHARM_SMALL_UP_TO} / 11-${CHARM_FROM_QTY - 1} / ${CHARM_FROM_QTY} ชิ้นขึ้นไป): ${ladder}`,
+    note: `ห้อยกับแผ่นที่เพิ่ม เลือกเนื้อ/เฉดแยกได้ · ${CHARM_SMALL_UP_TO + 1} ชิ้นขึ้นไป ลดติ่งละ ฿${off1} · ${CHARM_FROM_QTY} ชิ้นขึ้นไป ลดติ่งละ ฿${off2}`,
     choices: [
       { name: CHARM_OFF },
       ...CHARM_SIZES.map((s) => ({
