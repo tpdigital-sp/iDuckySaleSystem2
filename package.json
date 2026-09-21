@@ -19,7 +19,8 @@
     "check:early-pay-reinstate": "node --conditions=react-server --import tsx scripts/early-pay-reinstate-test.mts",
     "check:yield": "tsx scripts/sheet-yield-audit.mts",
     "check:tax": "tsx --conditions=react-server scripts/order-tax-test.mts",
-    "scan:tax": "tsx scripts/order-tax-scan.mts"
+    "scan:tax": "tsx scripts/order-tax-scan.mts",
+    "scan:options": "tsx scripts/option-ref-scan.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

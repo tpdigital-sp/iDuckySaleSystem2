@@ -454,6 +454,98 @@ function unitLabelOf(u?: string): string {
   return ({ cm: "ซม.", inch: "นิ้ว", m: "เมตร" } as Record<string, string>)[u ?? ""] ?? u ?? "ซม.";
 }
 
+/**
+ * 🔗 ลาก "ทุกที่ที่อ้างชื่อกลุ่ม" ไปชื่อใหม่ตอนเปลี่ยนชื่อกลุ่มตัวเลือก
+ * ⚠️ ตกหล่นจุดไหน = กลุ่มที่อ้างชื่อเดิมซ่อนหายเงียบ ๆ (optionVisible หาค่ากลุ่มชื่อเดิมใน selections ไม่เจอ)
+ *    เคยเกิดจริงกับ "กระดาษเย็บบน" 21 ก.ย. 69: เปลี่ยนชื่อกลุ่มขนาด → ช่องกรอก "กำหนดขนาดเอง"
+ *    ทั้งกว้างและสูงไม่โผล่อีกเลย (scripts/staple-top-size-showwhen-fix.mjs ตามซ่อมข้อมูล)
+ * (แกนตารางราคา driverLabels และกฎ rules ลากที่ผู้เรียก — ตรงนั้นอยู่คนละก้อนกับ options)
+ */
+function retargetGroupLabel(options: DraftOption[], oldLabel: string, newLabel: string): DraftOption[] {
+  const old = oldLabel.trim();
+  if (!old || old === newLabel.trim()) return options;
+  const hit = (l?: string) => (l ?? "").trim() === old;
+  const cond = <T extends { label: string }>(c: T): T => (hit(c?.label) ? { ...c, label: newLabel } : c);
+  return options.map((o) => {
+    const n: DraftOption = { ...o };
+    if (hit(n.showWhenLabel)) n.showWhenLabel = newLabel;
+    if (hit(n.showWhenAlsoLabel)) n.showWhenAlsoLabel = newLabel;
+    if (n.showWhenAll) n.showWhenAll = n.showWhenAll.map(cond);
+    if (n.showWhenAny) n.showWhenAny = n.showWhenAny.map(cond);
+    if (hit(n.smallWhenLabel)) n.smallWhenLabel = newLabel;
+    if (hit(n.freeWhenLabel)) n.freeWhenLabel = newLabel;
+    if (hit(n.qtyFrom)) n.qtyFrom = newLabel;
+    if (hit(n.priceAsDriver)) n.priceAsDriver = newLabel;
+    // แกน/กลุ่มต้นทางของราคาที่ดึงจากกลุ่มอื่น — เป็นชื่อกลุ่มทั้งคีย์และค่า
+    if (n.priceAsDriverAlso)
+      n.priceAsDriverAlso = Object.fromEntries(
+        Object.entries(n.priceAsDriverAlso).map(([axis, src]) => [hit(axis) ? newLabel : axis, hit(src) ? newLabel : src])
+      );
+    if (hit(n.defaultBy?.label)) n.defaultBy = { ...n.defaultBy!, label: newLabel };
+    if (hit(n.sheetYield?.pairLabel)) n.sheetYield = { ...n.sheetYield!, pairLabel: newLabel };
+    if (hit(n.sheetFee?.by)) n.sheetFee = { ...n.sheetFee!, by: newLabel };
+    // 📐 กำหนดขนาดเอง: widthLabel/heightLabel ชี้ "กลุ่มช่องกรอก" — เป็นชื่อกลุ่มเหมือนกัน
+    if (n.sizeInput && (hit(n.sizeInput.widthLabel) || hit(n.sizeInput.heightLabel)))
+      n.sizeInput = {
+        ...n.sizeInput,
+        widthLabel: hit(n.sizeInput.widthLabel) ? newLabel : n.sizeInput.widthLabel,
+        ...(n.sizeInput.heightLabel ? { heightLabel: hit(n.sizeInput.heightLabel) ? newLabel : n.sizeInput.heightLabel } : {}),
+      };
+    n.choices = o.choices.map((c) =>
+      c.imageWhen || c.stockLinks
+        ? {
+            ...c,
+            ...(c.imageWhen ? { imageWhen: c.imageWhen.map((w) => ({ ...w, when: (w.when ?? []).map(cond) })) } : {}),
+            ...(c.stockLinks ? { stockLinks: c.stockLinks.map((l) => (l.when ? { ...l, when: l.when.map(cond) } : l)) } : {}) }
+        : c
+    );
+    return n;
+  });
+}
+
+/**
+ * 🔗 ลาก "ทุกที่ที่อ้างชื่อตัวเลือก" ของกลุ่มหนึ่งไปชื่อใหม่ตอนเปลี่ยนชื่อตัวเลือก
+ * ⚠️ ตกหล่น = กลุ่มลูกที่ตั้ง "แสดงเมื่อ" ไว้กับตัวเลือกนี้ไม่โผล่อีกเลย (เงื่อนไขค้างชื่อเดิม)
+ * (คีย์ราคาในตารางและกฎ rules ลากที่ผู้เรียก)
+ */
+function retargetChoiceName(options: DraftOption[], groupLabel: string, oldName: string, newName: string): DraftOption[] {
+  const old = oldName.trim();
+  if (!old || old === newName.trim()) return options;
+  const mine = (l?: string) => (l ?? "").trim() === groupLabel.trim();
+  const names = (list?: string[]) => list?.map((v) => (v.trim() === old ? newName : v));
+  const cond = <T extends { label: string; choices: string[] }>(c: T): T =>
+    mine(c?.label) ? { ...c, choices: names(c.choices) ?? c.choices } : c;
+  return options.map((o) => {
+    const n: DraftOption = { ...o };
+    if (mine(n.showWhenLabel)) n.showWhenChoices = names(n.showWhenChoices);
+    if (mine(n.showWhenAlsoLabel)) n.showWhenAlsoChoices = names(n.showWhenAlsoChoices);
+    if (n.showWhenAll) n.showWhenAll = n.showWhenAll.map(cond);
+    if (n.showWhenAny) n.showWhenAny = n.showWhenAny.map(cond);
+    if (mine(n.smallWhenLabel)) n.smallWhenChoices = names(n.smallWhenChoices);
+    if (mine(n.freeWhenLabel)) n.freeWhenChoices = names(n.freeWhenChoices);
+    if (mine(n.defaultBy?.label))
+      n.defaultBy = {
+        ...n.defaultBy!,
+        map: Object.fromEntries(Object.entries(n.defaultBy!.map).map(([k, v]) => [k.trim() === old ? newName : k, v])),
+      };
+    // ชื่อตัวเลือกที่กลุ่ม "ตัวเอง" อ้างถึง (ฟรีเมื่อ / ไม่คิดค่าธรรมเนียมช่วงสั่งน้อย / ตัวเลือกกำหนดขนาดเอง)
+    if (mine(n.label)) {
+      if (n.freeChoices) n.freeChoices = names(n.freeChoices);
+      if (n.smallFree) n.smallFree = names(n.smallFree);
+      if (n.sizeInput?.choice?.trim() === old) n.sizeInput = { ...n.sizeInput, choice: newName };
+    }
+    n.choices = o.choices.map((c) =>
+      c.imageWhen || c.stockLinks
+        ? {
+            ...c,
+            ...(c.imageWhen ? { imageWhen: c.imageWhen.map((w) => ({ ...w, when: (w.when ?? []).map(cond) })) } : {}),
+            ...(c.stockLinks ? { stockLinks: c.stockLinks.map((l) => (l.when ? { ...l, when: l.when.map(cond) } : l)) } : {}) }
+        : c
+    );
+    return n;
+  });
+}
+
 /** คอลัมน์ทั้งหมด = ผลคูณคาร์ทีเซียนของตัวเลือกในกลุ่ม driverLabels (แต่ละคอลัมน์ = ค่าที่เรียงตาม driverLabels) */
 function pricingColumns(options: DraftOption[], driverLabels: string[]): string[][] {
   // ไม่มี driver = ราคาแบบขั้นบันไดล้วน → คอลัมน์ราคาเดียว (key "")
@@ -1774,9 +1866,11 @@ export default function ProductEditor({ product }: { product: Product }) {
   function renameOptionGroup(gi: number, newLabel: string) {
     setDraft((d) => {
       const oldLabel = d.options[gi]?.label ?? "";
+      // เปลี่ยนชื่อกลุ่มก่อน แล้วค่อยลากทุกที่ที่อ้างชื่อเดิม (เงื่อนไขแสดงผล ฯลฯ) ตามไปในชุดเดียวกัน
+      const renamed = d.options.map((op, i) => (i === gi ? { ...op, label: newLabel } : op));
       return {
         ...d,
-        options: d.options.map((op, i) => (i === gi ? { ...op, label: newLabel } : op)),
+        options: retargetGroupLabel(renamed, oldLabel, newLabel),
         pricing: {
           ...d.pricing,
           driverLabels: d.pricing.driverLabels.map((l) => (l === oldLabel ? newLabel : l)),
@@ -1817,11 +1911,13 @@ export default function ProductEditor({ product }: { product: Product }) {
           })
         );
       };
+      const renamed = d.options.map((op, i) =>
+        i === gi ? { ...op, choices: op.choices.map((c, j) => (j === ci ? { ...c, name: newName } : c)) } : op
+      );
       return {
         ...d,
-        options: d.options.map((op, i) =>
-          i === gi ? { ...op, choices: op.choices.map((c, j) => (j === ci ? { ...c, name: newName } : c)) } : op
-        ),
+        // เงื่อนไข "แสดงเมื่อ" ของกลุ่มลูกอ้างชื่อตัวเลือกนี้ด้วย — ไม่ลากตาม = กลุ่มลูกซ่อนหายเงียบ ๆ
+        options: retargetChoiceName(renamed, group.label, oldName, newName),
         pricing: { ...d.pricing, cells: remap(d.pricing.cells, d.pricing.driverLabels) },
         extraRates: d.extraRates.map((r) => ({ ...r, cells: remap(r.cells, r.driverLabels) })),
         rules: d.rules.map((r) => ({
@@ -3683,15 +3779,19 @@ export default function ProductEditor({ product }: { product: Product }) {
     const newLabel = preset.label;
     setDraft((d) => ({
       ...d,
-      options: d.options.map((o, i) =>
-        i === gi
-          ? {
-              ...o,
-              presetId: preset.id,
-              label: newLabel,
-              choices: preset.choices.map((c) => ({ name: c.name, extra: c.extra ? String(c.extra) : "" })),
-            }
-          : o
+      options: retargetGroupLabel(
+        d.options.map((o, i) =>
+          i === gi
+            ? {
+                ...o,
+                presetId: preset.id,
+                label: newLabel,
+                choices: preset.choices.map((c) => ({ name: c.name, extra: c.extra ? String(c.extra) : "" })),
+              }
+            : o
+        ),
+        oldLabel,
+        newLabel
       ),
       pricing: {
         ...d.pricing,
