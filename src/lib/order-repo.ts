@@ -345,6 +345,13 @@ export async function notifyProofReady(
 }
 
 /**
+ * 🪶 ก้อนออเดอร์ทั้งตารางที่แท็บนี้ถืออยู่ + ตราประทับของเซิร์ฟเวอร์ (21 ก.ย. 69)
+ * ใช้ถามว่า "เปลี่ยนไหม" ตอนโพล — ไม่เปลี่ยนก็ไม่ต้องขนก้อนใหม่ข้ามเน็ต (ดูหมายเหตุใน api/admin/orders)
+ * ⚠️ อย่าแก้ค่าใน array นี้ตรง ๆ ทุกหน้าที่โพลใช้ร่วมกัน (ฝั่งหน้าจอเขียนแบบสร้างก้อนใหม่อยู่แล้ว)
+ */
+let fullCache: { orders: Order[]; at: string } | null = null;
+
+/**
  * แอดมินดึงออเดอร์ทั้งหมด · needsSetup = true เมื่อตาราง orders ยังไม่ถูกสร้าง
  * ok = false เมื่อยิงไม่ถึงเซิร์ฟเวอร์ (เน็ตหลุด) — คนละเรื่องกับ "ยิงถึงแต่ยังไม่มีออเดอร์"
  * หน้าจอที่โชว์ตัวเลขสรุปต้องแยกสองกรณีนี้ให้ออก ไม่งั้นเน็ตหลุดจะกลายเป็น "ยอดขาย 0"
@@ -358,12 +365,18 @@ export async function fetchOrdersAdmin(opts?: {
    */
   list?: { since?: string };
 }): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean; error?: string; at?: string; ids?: string[] }> {
+  const plain = !opts?.lite && !opts?.list; // โหมดทั้งก้อน (ภาพรวม/คิวปริ้น/สแกน/บอร์ดกราฟฟิก/ตัวอย่าง/ใบงาน)
   try {
     const qs = new URLSearchParams();
     if (opts?.lite) qs.set("lite", "1");
     if (opts?.list) {
       qs.set("list", "1");
       if (opts.list.since) qs.set("since", opts.list.since);
+    }
+    // 🪶 ถืออยู่แล้ว → ถามเซิร์ฟเวอร์ก่อนว่าเปลี่ยนไหม (ไม่เปลี่ยน = ไม่ต้องส่ง 4 MB กลับมา)
+    if (plain && fullCache) {
+      qs.set("stamp", fullCache.at);
+      qs.set("n", String(fullCache.orders.length));
     }
     const query = qs.toString();
     const res = await fetch(`/api/admin/orders${query ? `?${query}` : ""}`, {
@@ -374,6 +387,11 @@ export async function fetchOrdersAdmin(opts?: {
     // ok=false พร้อมข้อความจากเซิร์ฟเวอร์ — หน้าเว็บต้องบอกว่า "ดึงไม่ได้" ไม่ใช่ตกไปโหมดตัวอย่างเงียบ ๆ
     // (14 ก.ย. 69 Supabase ระงับโปรเจกต์เพราะเกินโควตา → ทุกหน้าโชว์ "0 ใบ/ตัวอย่าง" จนคิดว่าออเดอร์หาย)
     const error = res.ok ? undefined : String(data.error ?? `เซิร์ฟเวอร์ตอบ ${res.status}`);
+    if (plain && res.ok) {
+      // ก้อนเดิมใช้ได้ต่อ — คืนสำเนาตื้น (หน้าจอคนละหน้าจะได้ไม่ถือ array ก้อนเดียวกัน)
+      if (data.unchanged && fullCache) return { orders: [...fullCache.orders], needsSetup: false, ok: true, at: fullCache.at };
+      if (Array.isArray(data.orders) && data.at) fullCache = { orders: data.orders as Order[], at: String(data.at) };
+    }
     return { orders: data.orders ?? [], needsSetup: !!data.needsSetup, ok: res.ok, error, at: data.at, ids: data.ids };
   } catch {
     return { orders: [], needsSetup: false, ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };

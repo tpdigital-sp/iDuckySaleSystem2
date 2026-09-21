@@ -358,58 +358,95 @@ function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: strin
  * หาออเดอร์อื่นของลูกค้าคนเดียวกัน (id/status/phone) และเดาห้องแชท/LINE จากใบเก่า (lineChatOf/lineUserOf)
  * ตัด items/ประวัติ/ที่อยู่ ฯลฯ ทิ้ง — ก้อนใหญ่ที่หน้านั้นไม่ได้ใช้เลย
  *
- * ดึงด้วย jsonb projection ให้ Postgres ตัดฟิลด์ให้ตั้งแต่ต้นทาง (ไม่ใช่ดึงทั้งก้อนมาตัดทีหลัง)
- * วัดจริง 66 ใบ: ทั้งก้อน 137 KB / ~440 ms → เบา 16 KB / ~275 ms
+ * ตัดจากก้อนในความจำ (21 ก.ย. 69) — เดิมสั่ง Postgres ตัดให้ด้วย jsonb projection (`data->>customer` ฯลฯ)
+ * ซึ่งดูเหมือนเบาแต่ฐานต้องแกะ jsonb ทุกใบออกจาก TOAST มาอ่านทุกครั้ง = ตัวกิน Disk IO
+ * ก้อนที่ส่งออกเท่าเดิม (วัดจริง 66 ใบ: ทั้งก้อน 137 KB → เบา 16 KB) แต่ฐานไม่ต้องทำงานเลย
  */
-const LITE_SELECT = [
-  "id:data->>id",
-  "customer:data->>customer",
-  "phone:data->>phone",
-  "email:data->>email",
-  "customerId:data->>customerId",
-  "status:data->>status",
-  "date:data->>date",
-  "lineChatUrl:data->>lineChatUrl",
-  "lineUserId:data->>lineUserId",
-  "lineProfile:data->lineProfile",
-].join(",");
+const liteOf = (o: Order) => ({
+  id: o.id,
+  customer: o.customer,
+  phone: o.phone,
+  email: o.email,
+  customerId: o.customerId,
+  status: o.status,
+  date: o.date,
+  lineChatUrl: o.lineChatUrl,
+  lineUserId: o.lineUserId,
+  lineProfile: o.lineProfile,
+  items: [],
+});
 
 /** บรรทัด log ที่หน้ารายการยังต้องใช้ — ต้องตรงกับเงื่อนไขใน paidTotalEverConfirmed (admin-data.ts) ไม่งั้นยอดค้างใบเก่าเพี้ยน */
 const listKeepsLog = (l: { action: string }) =>
   l.action === "เปลี่ยนสถานะ" || l.action.startsWith("นับว่าชำระครบ") || l.action.includes("ยืนยันการชำระเงิน");
 
 /**
- * 🐢 ความจำก้อนหน้ารายการต่อ instance (18 ก.ย. 69) — เปิดหน้า /admin/orders ครั้งถัดไปไม่ต้องขนทุกใบจาก Supabase ซ้ำ (2.9 MB ~1.6 วิ)
- * ขอแค่ใบที่ savedAt ใหม่กว่าเข็ม + เลขใบทุกใบ (ตัดใบที่ถูกลบ) แล้วปะเข้าก้อนเดิม · ถูกต้องเท่ากับโพล &since= ของหน้าเว็บ
- * ⚠️ การเขียนที่ไม่ผ่านประตู (สคริปต์แก้ฐานตรง ๆ) ไม่ขยับ savedAt → ทุก LIST_MEMO_TTL โหลดเต็มใหม่ 1 ครั้งกันค้างยาว
+ * 🐢 ความจำออเดอร์ทั้งตารางต่อ instance (18 ก.ย. 69 · ขยายให้ทุกหน้าใช้ร่วมกัน 21 ก.ย. 69)
+ *
+ * เดิมมีเฉพาะหน้ารายการ ส่วนหน้าอื่น (ภาพรวม/คิวปริ้น/สแกน/บอร์ดกราฟฟิก/ตัวอย่าง/ใบงาน) ขนทุกใบจาก Supabase ใหม่ทุกครั้ง
+ * = Postgres ต้องแกะ jsonb ทุกใบออกจาก TOAST ทุกรอบ → กิน Disk IO จน Supabase ส่งเมลเตือน (21 ก.ย. 69)
+ *
+ * ทางนี้ขอจากฐานแค่ 2 อย่าง: ใบที่ savedAt ใหม่กว่าเข็ม (ดัชนี orders_saved_at_idx) + เลขใบทุกใบ (ตัดใบที่ถูกลบ)
+ * แล้วปะเข้าก้อนเดิม — ความถูกต้องเท่ากับโพล &since= ที่หน้ารายการใช้อยู่ก่อนแล้ว
+ *
+ * ⚠️ เก็บ log **ครบ** เสมอ (หน้าอื่นเอาไปบันทึกกลับ) การตัด log ให้หน้ารายการทำตอนตอบเท่านั้น
+ * ⚠️ การเขียนที่ไม่ผ่านประตู (สคริปต์แก้ฐานตรง ๆ) ไม่ขยับ savedAt → ทุก ALL_MEMO_TTL โหลดเต็มใหม่ 1 ครั้งกันค้างยาว
  */
-const LIST_MEMO_TTL = 3 * 60_000;
-let listMemo: { orders: Order[]; at: string; fullAt: number } | null = null;
-async function listFromMemo(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>) {
-  const memo = listMemo;
-  if (!memo || Date.now() - memo.fullAt > LIST_MEMO_TTL) return null;
+const ALL_MEMO_TTL = 3 * 60_000;
+let allMemo: { orders: Order[]; at: string; fullAt: number; gen: number } | null = null;
+/** เลขรุ่นของก้อน — ขยับทุกครั้งที่โหลดเต็มใหม่จากฐาน ใช้บอกหน้าเว็บว่า "ของที่ถืออยู่เทียบกันไม่ได้แล้ว ต้องรับก้อนใหม่" */
+let allGen = 0;
+
+type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+type LoadedOrders =
+  | { orders: Order[]; at: string; gen: number; error?: never }
+  | { orders?: never; at?: never; gen?: never; error: { code?: string; message: string } };
+
+/** ออเดอร์ทุกใบ (ใหม่→เก่า · log ครบ) — ผ่านความจำก้อนข้างบน */
+async function loadAllOrders(sb: SB): Promise<LoadedOrders> {
+  const memo = allMemo;
+  if (memo && Date.now() - memo.fullAt <= ALL_MEMO_TTL) {
+    const at = new Date().toISOString();
+    const sinceIso = new Date(Date.parse(memo.at) - 60_000).toISOString(); // ถอย 60 วิ กันนาฬิกาเหลื่อมระหว่าง instance
+    const [delta, ids] = await Promise.all([
+      sb.from("orders").select("data").gt("data->>savedAt", sinceIso),
+      sb.from("orders").select("id").order("created_at", { ascending: false }),
+    ]);
+    if (!delta.error && !ids.error) {
+      const byId = new Map(memo.orders.map((o) => [o.id, o]));
+      for (const r of delta.data ?? []) {
+        const o = r.data as Order;
+        byId.set(o.id, o);
+      }
+      // เรียงตาม created_at ของฐาน (จากคิวรี ids) · ใบที่ไม่อยู่ใน ids = ถูกลบ · ใบใน ids ที่ไม่มีข้อมูล = ผิดคาด → โหลดเต็ม
+      const orders: Order[] = [];
+      let complete = true;
+      for (const r of ids.data ?? []) {
+        const o = byId.get(r.id as string);
+        if (!o) {
+          complete = false;
+          break;
+        }
+        orders.push(o);
+      }
+      if (complete) {
+        allMemo = { orders, at, fullAt: memo.fullAt, gen: memo.gen };
+        return { orders, at, gen: memo.gen };
+      }
+    }
+  }
   const at = new Date().toISOString();
-  const sinceIso = new Date(Date.parse(memo.at) - 60_000).toISOString(); // ถอย 60 วิ กันนาฬิกาเหลื่อมระหว่าง instance
-  const [delta, ids] = await Promise.all([
-    sb.from("orders").select("data").gt("data->>savedAt", sinceIso).order("created_at", { ascending: false }),
-    sb.from("orders").select("id").order("created_at", { ascending: false }),
-  ]);
-  if (delta.error || ids.error) return null;
-  const byId = new Map(memo.orders.map((o) => [o.id, o]));
-  for (const r of delta.data ?? []) {
-    const o = r.data as Order;
-    byId.set(o.id, o.log?.length ? { ...o, log: o.log.filter(listKeepsLog) } : o);
-  }
-  // เรียงตาม created_at ของฐาน (จากคิวรี ids) · ใบที่ไม่อยู่ใน ids = ถูกลบ · ใบใน ids ที่ไม่มีข้อมูล = ผิดคาด → โหลดเต็ม
-  const orders: Order[] = [];
-  for (const r of ids.data ?? []) {
-    const o = byId.get(r.id as string);
-    if (!o) return null;
-    orders.push(o);
-  }
-  listMemo = { orders, at, fullAt: memo.fullAt };
-  return { orders, at };
+  const { data, error } = await sb.from("orders").select("data").order("created_at", { ascending: false });
+  if (error) return { error };
+  const orders = (data ?? []).map((r) => r.data as Order);
+  const gen = ++allGen;
+  allMemo = { orders, at, fullAt: Date.now(), gen };
+  return { orders, at, gen };
 }
+
+/** ตารางยังไม่ถูกสร้าง → บอกให้รัน SQL (ไม่ถือเป็น error ร้ายแรง) */
+const isMissingTable = (e: { code?: string; message: string }) =>
+  e.code === "42P01" || e.code === "PGRST205" || /schema cache|does not exist/i.test(e.message);
 
 export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
@@ -425,57 +462,65 @@ export async function GET(req: Request) {
   const wantId = url.searchParams.get("id");
   const lite = url.searchParams.get("lite") === "1";
 
-  // โหมดเบา — หน้ารายละเอียดขอตารางทั้งหมดไว้ทำแค่ 2 อย่าง (ออเดอร์อื่นของลูกค้าคนเดียวกัน + เดาห้องแชท
-  // LINE จากใบเก่า) ส่งทั้งก้อนไปเปลืองเปล่า ๆ · items:[] ใส่ไว้ให้โค้ดฝั่งหน้าเว็บที่วนรายการไม่พัง
-  if (lite && !wantId) {
-    const { data: rows, error: liteErr } = await sb
-      .from("orders")
-      .select(LITE_SELECT)
-      .order("created_at", { ascending: false });
-    if (liteErr) {
-      if (liteErr.code === "42P01" || liteErr.code === "PGRST205" || /schema cache|does not exist/i.test(liteErr.message))
-        return NextResponse.json({ orders: [], needsSetup: true });
-      return NextResponse.json({ error: liteErr.message, orders: [] }, { status: 500 });
+  // ── ขอทั้งตาราง (ทุกหน้ายกเว้นหน้ารายละเอียด) — ผ่านความจำก้อนเดียวกันหมด ──
+  if (!wantId) {
+    const got = await loadAllOrders(sb);
+    if (got.error) {
+      if (isMissingTable(got.error)) return NextResponse.json({ orders: [], needsSetup: true });
+      return NextResponse.json({ error: got.error.message, orders: [] }, { status: 500 });
     }
-    const liteRows = (rows ?? []) as unknown as Record<string, unknown>[];
-    return NextResponse.json({ orders: liteRows.map((r) => ({ ...r, items: [] })) });
+    const all = got.orders;
+
+    // โหมดเบา — หน้ารายละเอียดขอตารางทั้งหมดไว้ทำแค่ 2 อย่าง (ออเดอร์อื่นของลูกค้าคนเดียวกัน + เดาห้องแชท
+    // LINE จากใบเก่า) ส่งทั้งก้อนไปเปลืองเปล่า ๆ · items:[] ใส่ไว้ให้โค้ดฝั่งหน้าเว็บที่วนรายการไม่พัง
+    if (lite) return NextResponse.json({ orders: all.map(liteOf) });
+
+    /**
+     * 🐢 โหมดหน้ารายการ (?list=1 · 18 ก.ย. 69) — เดิมหน้า /admin/orders ขอทุกใบทั้งก้อน 4.2 MB ทุก 15 วิ
+     *   · log ถูกตัดเหลือเฉพาะบรรทัดที่ paidTotalEverConfirmed อ่าน (log กิน ~44% ของก้อน ลิสต์ไม่ได้โชว์)
+     *   · &since=ISO = เฉพาะใบที่ savedAt ใหม่กว่า (โพล 15 วิ) + ids ทุกใบไว้ให้หน้าเว็บตัดใบที่ถูกลบ
+     *     savedAt ประทับที่ประตูเขียนออเดอร์ทุกทาง (order-write.ts) จึงใช้เป็นเข็มได้
+     */
+    if (url.searchParams.get("list") === "1") {
+      const slimOf = (o: Order) => (o.log?.length ? { ...o, log: o.log.filter(listKeepsLog) } : o);
+      const since = url.searchParams.get("since");
+      if (since && Number.isFinite(Date.parse(since))) {
+        const cut = new Date(since).toISOString();
+        const changed = all.filter((o) => (o.savedAt ?? "") > cut);
+        return NextResponse.json({ orders: changed.map(slimOf), at: got.at, ids: all.map((o) => o.id) });
+      }
+      return NextResponse.json({ orders: all.map(slimOf), at: got.at });
+    }
+
+    /**
+     * 🪶 โพลแบบ "ถามก่อนว่าเปลี่ยนไหม" (21 ก.ย. 69) — หน้าที่เหลือ (ภาพรวม/คิวปริ้น/สแกน/บอร์ดกราฟฟิก/ตัวอย่าง)
+     * ขอทั้งก้อน 4 MB ทุก 15-30 วิ ทั้งที่ส่วนใหญ่ไม่มีอะไรเปลี่ยน · หน้าเว็บส่งตราประทับที่ถืออยู่มาด้วย (?stamp=)
+     * ไม่มีใบไหน savedAt ใหม่กว่า + จำนวนใบเท่าเดิม + รุ่นก้อนเดียวกัน → ตอบ unchanged ตัวเดียว หน้าเว็บใช้ของเดิมต่อ
+     * (รุ่นก้อนขยับทุก 3 นาทีตอนโหลดเต็ม = การแก้ฐานตรง ๆ ที่ไม่ขยับ savedAt อย่างช้าก็ถึงจอใน 3 นาที)
+     */
+    const stamp = `${got.gen}@${got.at}`;
+    const asked = url.searchParams.get("stamp");
+    if (asked) {
+      const [askedGen, askedAt] = asked.split("@");
+      const same =
+        Number(askedGen) === got.gen &&
+        !!askedAt &&
+        Number.isFinite(Date.parse(askedAt)) &&
+        Number(url.searchParams.get("n")) === all.length &&
+        !all.some((o) => (o.savedAt ?? "") > askedAt);
+      if (same) return NextResponse.json({ unchanged: true, at: stamp });
+    }
+    return NextResponse.json({ orders: all, at: stamp });
   }
-  /**
-   * 🐢 โหมดหน้ารายการ (?list=1 · 18 ก.ย. 69) — เดิมหน้า /admin/orders ขอทุกใบทั้งก้อน 4.2 MB ทุก 15 วิ
-   *   · log ถูกตัดเหลือเฉพาะบรรทัดที่ paidTotalEverConfirmed อ่าน (log กิน ~44% ของก้อน ลิสต์ไม่ได้โชว์)
-   *   · &since=ISO = เฉพาะใบที่ savedAt ใหม่กว่า (โพล 15 วิ) + ids ทุกใบไว้ให้หน้าเว็บตัดใบที่ถูกลบ
-   *     savedAt ประทับที่ประตูเขียนออเดอร์ทุกทาง (order-write.ts) จึงใช้เป็นเข็มได้
-   */
-  const listMode = url.searchParams.get("list") === "1" && !wantId;
-  const since = listMode ? url.searchParams.get("since") : null;
-  // ก้อนเต็มของหน้ารายการ: instance นี้เคยโหลดไว้ → ขอจากฐานแค่ใบที่เปลี่ยน (0.3 วิ แทน 1.6 วิ) ล้มเหลว = ตกไปทางปกติข้างล่าง
-  if (listMode && !since) {
-    const hit = await listFromMemo(sb);
-    if (hit) return NextResponse.json(hit);
-  }
-  let q = sb.from("orders").select("data").order("created_at", { ascending: false });
-  if (wantId) q = q.eq("id", wantId);
-  if (since && Number.isFinite(Date.parse(since))) q = q.gt("data->>savedAt", new Date(since).toISOString());
-  const idsLater = since ? sb.from("orders").select("id") : null;
-  const { data, error } = await q;
+
+  // ── ออเดอร์เดียว (หน้ารายละเอียด) — คิวรีด้วย primary key ไม่ผ่านความจำก้อน ต้องสดเสมอ ──
+  const { data, error } = await sb.from("orders").select("data").eq("id", wantId);
   if (error) {
-    // ตารางยังไม่ถูกสร้าง → บอกให้รัน SQL (ไม่ถือเป็น error ร้ายแรง)
-    if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|does not exist/i.test(error.message))
-      return NextResponse.json({ orders: [], needsSetup: true });
+    if (isMissingTable(error)) return NextResponse.json({ orders: [], needsSetup: true });
     return NextResponse.json({ error: error.message, orders: [] }, { status: 500 });
   }
 
   const orders = (data ?? []).map((r) => r.data as Order);
-  if (listMode) {
-    const slim = orders.map((o) => (o.log?.length ? { ...o, log: o.log.filter(listKeepsLog) } : o));
-    const at = new Date().toISOString();
-    if (!idsLater) {
-      listMemo = { orders: slim, at, fullAt: Date.now() };
-      return NextResponse.json({ orders: slim, at });
-    }
-    const { data: idRows, error: idErr } = await idsLater;
-    return NextResponse.json({ orders: slim, at, ...(idErr ? {} : { ids: (idRows ?? []).map((r) => r.id as string) }) });
-  }
   // 🩹 เงินครบตามสลิปแล้วแต่ใบยังค้าง "รอตรวจสอบ" (ผลตรวจถูกลงย้อนหลังตอนซ่อมยอด) → ปิดใบให้เองตอนเปิดหน้าออเดอร์
   //    เงื่อนไขแคบมาก ดู settleCreditedOrder · ล้มก็แค่โชว์ใบเดิม (OD-260915-1705 · 16 ก.ย. 69)
   if (wantId && orders[0]) {

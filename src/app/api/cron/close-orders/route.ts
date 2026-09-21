@@ -43,13 +43,13 @@ export async function GET(req: Request) {
   const days = Math.max(1, Number(url.searchParams.get("days")) || DEFAULT_DAYS);
   const cutoff = Date.now() - days * 86_400_000;
 
-  const { data, error } = await sb.from("orders").select("id,data");
+  // กรองสถานะที่ฐาน (ดัชนี orders_status_idx) — เดิมขนทั้งตารางมาแล้วค่อยคัดใน JS = อ่านดิสก์ทุกใบทิ้งเปล่า
+  const { data, error } = await sb.from("orders").select("id,data").eq("data->>status", "จัดส่งแล้ว");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const closed: { id: string; shipped: string | null }[] = [];
   for (const row of data ?? []) {
     const order = row.data as Order;
-    if (order.status !== "จัดส่งแล้ว") continue;
     const at = shippedAt(order);
     // ไม่รู้ว่าส่งเมื่อไหร่ = ไม่แตะ (ปลอดภัยกว่าเดา)
     if (!at || new Date(at).getTime() > cutoff) continue;

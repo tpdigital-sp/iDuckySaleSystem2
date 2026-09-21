@@ -33,7 +33,13 @@ export async function GET(req: Request) {
   const gapDays = Math.max(1, Number(url.searchParams.get("days")) || DEFAULT_GAP_DAYS);
   const gapCutoff = Date.now() - gapDays * 86_400_000;
 
-  const { data, error } = await sb.from("orders").select("id,data");
+  // ใบมัดจำที่ยังเก็บไม่ครบเท่านั้น — กรองที่ฐาน (ดัชนี orders_deposit_open_idx)
+  // เดิมขนออเดอร์ทุกใบทั้งก้อนมาคัดใน JS ทั้งที่ใช้จริงไม่กี่ใบ = อ่านดิสก์ทิ้งเปล่าทุกเช้า
+  const { data, error } = await sb
+    .from("orders")
+    .select("id,data")
+    .not("data->deposit->>firstPaidAt", "is", null)
+    .is("data->deposit->>settledAt", null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // ออเดอร์มัดจำที่รับงวดแรกแล้วแต่ยังไม่ครบ 100% (ยกเลิกแล้วไม่ต้องตาม)
