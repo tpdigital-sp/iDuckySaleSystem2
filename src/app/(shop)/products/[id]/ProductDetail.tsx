@@ -895,6 +895,12 @@ export default function ProductDetail({
   const [extraOpen, setExtraOpen] = useState<"art" | null>("art");
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
   const [artTouched, setArtTouched] = useState(false);
+  /**
+   * 🎨 ป้ายเตือน "ยังไม่ได้แนบลาย" ตอนกดเพิ่มลงตะกร้า
+   * เดิมปุ่มถูก disabled ไว้ = แตะแล้วเงียบสนิท ไม่มีอะไรขยับเลย ลูกค้านึกว่าเว็บค้าง
+   * แล้วทักไลน์มาถามว่าทำไมสั่งไม่ได้ (ทั้งที่ป้ายบนปุ่มบอกอยู่ แต่ไม่มีใครอ่าน)
+   */
+  const [artToast, setArtToast] = useState(false);
   // 📐 กล่องไฟล์เทมเพลต — สินค้าที่มีเทมเพลตหลายรุ่น (เคสมือถือ 14 รุ่น) ยุบไว้ก่อน ไม่ให้ดันเนื้อหาอื่นตกจอ
   const [tplOpen, setTplOpen] = useState(false);
   /**
@@ -2977,6 +2983,16 @@ export default function ProductDetail({
   const preArranged = staffOrdering || fromPriceLink;
   // ♻️ ติ๊กใช้ไฟล์เก่า = ถือว่ามีลายแล้ว (อยู่กับร้าน) ปุ่มสั่งไม่ล็อก
   const artProvided = artTotal > 0 || artLink.trim().length > 0 || reuseOld;
+  // ป้ายเตือน "ยังไม่ได้แนบลาย" — หายเองใน 6 วิ หรือหายทันทีที่แนบลายเสร็จ (ไม่ค้างฟ้องทั้งที่แก้แล้ว)
+  useEffect(() => {
+    if (!artToast) return;
+    if (artProvided) {
+      setArtToast(false);
+      return;
+    }
+    const t = window.setTimeout(() => setArtToast(false), 6000);
+    return () => window.clearTimeout(t);
+  }, [artToast, artProvided]);
   /** 🔢 โชว์ช่องจำนวนต่อลายไหม — แนบตั้งแต่ 2 รูป และไม่ใช่ลายที่วางบนเทมเพลต (มีช่องของตัวเองแล้ว) */
   const artQtyMode = artFiles.length > 1 && placed.length === 0;
   /** 🔢 ด้านหลังของงาน 2 ด้าน — แนบตั้งแต่ 2 รูปก็ระบุจำนวนแต่ละลายได้เหมือนด้านหน้า (นับแยกจากด้านหน้า) */
@@ -3233,8 +3249,9 @@ export default function ProductDetail({
       return false;
     }
     if (artBlocked) {
-      setArtTouched(false);
-      setExtraOpen("art");
+      // เด้งป้ายเตือน + เลื่อนจอไปกล่องแนบลายให้เลย (เดิมแค่กางกล่องเงียบ ๆ อยู่นอกจอ ลูกค้าไม่เห็นว่าอะไรขยับ)
+      setArtToast(true);
+      jumpToArt();
       return false;
     }
     // สินค้าที่มีระบบลาย: ต้องระบุจำนวนลายก่อน (แตะ +/− พิมพ์เลข หรือแนบรูปให้นับอัตโนมัติ)
@@ -5586,6 +5603,92 @@ export default function ProductDetail({
                   ? { long: "⚠ ระบุก่อนว่ามีกี่ลาย", short: "⚠ ระบุจำนวนลายก่อน" }
                   : null;
 
+  /**
+   * 🎨 ป้าย "เหตุผลที่ยังกดไม่ได้" — เดิมเป็นบรรทัดจาง (opacity-90) ใต้ชื่อปุ่ม ตัวเล็กสีเดียวกับชื่อปุ่ม
+   *    ลูกค้ากวาดตาผ่านไปไม่เห็น เห็นแต่ "🛒 เพิ่มลงตะกร้า — ฿139" แล้วทักมาถามว่าทำไมกดไม่ติด
+   *
+   * ⚠️ เคยลองทำเป็น "ป้ายเม็ดยาลอยอยู่ในปุ่ม" แล้วไม่เวิร์ก 2 เรื่อง:
+   *    1) เม็ดยาในปุ่มกลม = ปุ่มซ้อนปุ่ม ลูกค้าไม่รู้ว่าต้องกดอันไหน
+   *    2) ใช้สี amber-* ให้เด่น — แต่เว็บนี้รีแมป amber ทั้ง ramp เป็นฟ้าแบรนด์ (ดู globals.css)
+   *       ป้ายเลยจมไปกับพื้นปุ่มสีฟ้าเหมือนเดิม
+   * → เปลี่ยนเป็น **แถบเต็มความกว้างที่ก้นปุ่ม** สี "เหลืองเป็ด" (--color-ducky)
+   *   ซึ่งเป็น accent เดียวของแบรนด์ที่ไม่ใช่ฟ้า จึงเป็นจุดเดียวบนหน้าที่ตัดกับพื้นฟ้าทั้งหน้า
+   */
+  /**
+   * ปุ่ม "กดไม่ได้" — ยกเว้นเคส **ยังไม่แนบลาย** ที่ต้องกดได้ เพื่อให้มีเสียงตอบกลับ
+   * (readyToAdd จะเด้งป้ายเตือน + พาไปกล่องแนบลาย แล้ว return false ไม่มีทางหลุดลงตะกร้า)
+   */
+  const blockedBtnTone = artBlocked
+    ? "bg-sky-50 text-sky-900 ring-2 ring-sky-200 hover:bg-sky-100"
+    : "cursor-not-allowed bg-sky-50 text-sky-900 ring-2 ring-sky-200";
+  /**
+   * 🔒 ติดด่านอยู่ → สลับไอคอนหน้าชื่อปุ่มจาก 🛒/💾 เป็นกุญแจล็อก
+   * เป็นสัญญาณที่สองนอกจากสีปุ่ม — มองปราดเดียวรู้ว่า "ยังกดสั่งไม่ได้" โดยไม่ต้องอ่านตัวหนังสือ
+   * (ชื่อปุ่มยังอยู่ครบ มีคำว่า "ตะกร้า" เหมือนเดิม — เปลี่ยนแค่ไอคอนนำหน้า)
+   */
+  const lockTitle = (t: string) => (ctaStuck ? t.replace(/^(🛒|💾)/u, "🔒") : t);
+  /**
+   * ═══ 🎯 แถบ "เหลืออีกกี่ขั้นถึงจะสั่งได้" — วางเหนือปุ่มสั่ง ═══
+   * เรียงตามลำดับที่ readyToAdd() ตรวจจริง ขั้นที่ทำแล้วขีดฆ่า ขั้นที่ต้องทำตอนนี้เป็นปุ่มขาวกดได้
+   * (กดแล้วเลื่อนไปที่กล่องนั้นเลย — ไม่ใช่แค่บอกว่าติดอะไร แต่พาไปทำให้ด้วย)
+   * ตัวปุ่มสั่งจึงสะอาด เหลือแค่ชื่อปุ่ม ไม่มีข้อความเหตุผลเบียดอยู่ข้างใน
+   */
+  type CtaStep = { key: string; icon: string; label: string; done: boolean; jump: () => void };
+  const ctaSteps: CtaStep[] = [];
+  ctaSteps.push({
+    key: "opts",
+    icon: "✍️",
+    label: inputErrors.length > 0 ? `กรอก “${(inputHardError ?? inputErrors[0]).label}”` : "เลือกสเปค",
+    done: inputErrors.length === 0,
+    jump: jumpToInputError,
+  });
+  if (consultGate)
+    ctaSteps.push({
+      key: "consult",
+      icon: "💬",
+      label: "คุยลายกับแอดมิน",
+      done: !consultBlocked,
+      jump: () => {
+        setConsultWarn(true);
+        document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      },
+    });
+  if (artRequired && !preArranged && !studioMode)
+    ctaSteps.push({ key: "art", icon: "🎨", label: "แนบลาย", done: artProvided, jump: jumpToArt });
+  if (needDesignsChoice)
+    ctaSteps.push({
+      key: "designs",
+      icon: "🔢",
+      label: "ระบุจำนวนลาย",
+      done: designsOk,
+      jump: () => {
+        setDesignsWarn(true);
+        document.getElementById("designs-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      },
+    });
+  if (belowMin || belowMinQty) {
+    const need = belowMin ? hardMinNeed : rateMinQty;
+    ctaSteps.push({
+      key: "min",
+      icon: "⚠",
+      label: `สั่งอย่างน้อย ${need.toLocaleString("th-TH")} ${ctaUnit}`,
+      done: false,
+      jump: () => {
+        setQty(need);
+        setQtyText(String(need));
+      },
+    });
+  }
+  /**
+   * ยังติดด่านอยู่ แต่ไม่ตรงกับขั้นไหนข้างบนเลย (เช่น ขนาดกำหนดเองกรอกไม่ผ่าน)
+   * → ยกเหตุผลจาก ctaStuck มาเป็นขั้นสุดท้าย ไม่ให้แถบว่างเปล่าแล้วลูกค้าไม่รู้ว่าติดอะไร
+   */
+  if (ctaStuck && !ctaSteps.some((st) => !st.done))
+    ctaSteps.push({ key: "other", icon: "⚠", label: ctaStuck.short.replace(/^[⚠🎨💬]\s*/, ""), done: false, jump: jumpToInputError });
+  const ctaStepsLeft = ctaSteps.filter((st) => !st.done);
+  /** ขั้นที่ต้องทำ "ตอนนี้" — ขั้นแรกที่ยังไม่เสร็จ */
+  const ctaStepNow = ctaStepsLeft[0] ?? null;
+
   return (
     <div className="homebg">
       {/* 🛒 ม่านระหว่าง "สั่งตามสเปคนี้" กำลังหย่อนลงตะกร้าให้ — ปิดเองเมื่อพาไปตะกร้าแล้ว หรือเมื่อสเปคติดด่านตรวจ */}
@@ -7054,22 +7157,54 @@ export default function ProductDetail({
                   * ⚠️ ที่ต้องโผล่คู่กับ "เริ่มสร้าง": พักรุ่นที่ 1 ไว้แล้วระบบล้างลายทิ้งเพื่อรับรุ่นถัดไป
                   *    ถ้าไม่มีปุ่มนี้ ลูกค้าที่พอแล้วจะไม่มีทางสั่งของที่เก็บไว้ นอกจากวางลายรุ่นถัดไปให้จบก่อน
                   */}
+                {/* ═══ 🎯 เหลืออีกกี่ขั้นถึงจะสั่งได้ — แถบเหลืองเป็ดเหนือปุ่มสั่ง ═══
+                    โผล่เฉพาะตอนยังติดด่าน · ขั้นที่ทำแล้วขีดฆ่า ขั้นที่ต้องทำตอนนี้เป็นปุ่มขาวกดแล้วพาไปเลย */}
+                {ctaStuck && ctaStepNow && (
+                  <div className="basis-full rounded-2xl bg-ducky px-3.5 py-2 text-amber-950">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px] font-bold">
+                      <span className="font-extrabold">
+                        🎯 เหลืออีก {ctaStepsLeft.length.toLocaleString("th-TH")} ขั้นถึงจะสั่งได้
+                      </span>
+                      {ctaSteps.map((st, i) => (
+                        <span key={st.key} className="inline-flex items-center gap-1.5">
+                          {i > 0 && <span className="opacity-40">›</span>}
+                          {st.done ? (
+                            <span className="opacity-50">✓ {st.label}</span>
+                          ) : st.key === ctaStepNow.key ? (
+                            <button
+                              type="button"
+                              onClick={st.jump}
+                              className="rounded-full bg-white px-2.5 py-1 font-extrabold text-amber-950 shadow-sm transition hover:bg-stone-50"
+                            >
+                              {st.icon} {st.label} →
+                            </button>
+                          ) : (
+                            <span className="opacity-60">
+                              {st.icon} {st.label}
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {(!studioNeedsDesign || sheets.length > 0) && (
                   <button
                     type="button"
                     onClick={() => handleAdd()}
                     // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
                     // ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
-                    disabled={orderBlocked}
+                    disabled={orderBlocked && !artBlocked}
                     // ⚠️ ตอนกดไม่ได้ห้ามใช้ opacity-40 ตัวขาว — บนพื้นฟ้าอ่อนกลายเป็นตัวขาวจางอ่านไม่ออก ทั้งที่ข้อความบนปุ่ม
                     //    คือ "เหตุผลที่กดไม่ได้" ที่ลูกค้าต้องอ่าน → ใช้แผ่นฟ้าจางทึบ ตัวน้ำเงินเข้ม ขอบฟ้าแทน (9 ก.ย. 69)
                     // 🛒 กินเต็มบรรทัดของตัวเอง (basis-full) — เดิมแชร์บรรทัดกับช่องจำนวนแล้วเหลือความกว้างไม่ถึงครึ่งแผง
                     //    ลูกค้ากวาดตาหาปุ่มสั่งไม่เจอ (ไลน์ 20 ก.ย. 69)
+                    // เหตุผลที่ยังกดไม่ได้ไปอยู่บนแถบ "เหลืออีกกี่ขั้น" เหนือปุ่มแล้ว — ในปุ่มเหลือแค่ชื่อปุ่ม
                     className={`basis-full rounded-full px-5 py-3.5 text-center text-sm font-extrabold transition sm:px-8 ${
                       added
                         ? "bg-emerald-500 text-white shadow-lg"
                         : orderBlocked
-                          ? "cursor-not-allowed bg-sky-100 text-sky-900 ring-2 ring-sky-300"
+                          ? blockedBtnTone
                           : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:scale-[1.01] hover:bg-amber-500 hover:shadow-xl"
                     }`}
                   >
@@ -7078,12 +7213,7 @@ export default function ProductDetail({
                     ) : (
                       <>
                         {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ — เหตุผลที่ยังกดไม่ได้ห้ามมาแทนที่ (ดู ctaTitle/ctaStuck) */}
-                        <span className="block">{ctaTitle}</span>
-                        {ctaStuck && (
-                          <span className="mt-0.5 block text-[11.5px] font-bold leading-snug opacity-90">
-                            {ctaStuck.long}
-                          </span>
-                        )}
+                        <span className="block">{lockTitle(ctaTitle)}</span>
                         {/* ครบขั้นต่ำเพราะรวมกับของในตะกร้า — ต้องพูดออกมา ไม่ให้ดูเหมือนขั้นต่ำไม่ทำงาน */}
                         {lotMetWithCart && (
                           <span className="mt-0.5 block text-[11px] font-bold opacity-90">
@@ -8149,6 +8279,42 @@ export default function ProductDetail({
         />
       )}
 
+      {/* ═══ 🎨 ป้ายเตือน "ยังไม่ได้แนบลาย" — เด้งตอนกดเพิ่มลงตะกร้าทั้งที่ยังไม่มีรูป ═══
+           ลอยเหนือแถบซื้อ (z-91) และเหนือเมนูล่างมือถือ (.bottom-nav z-90) ไม่งั้นจมอยู่ใต้แถบ มองไม่เห็น
+           ระยะห่างจากขอบล่างแยกตามจอ: มือถือมีเมนูล่าง (~84px) + แถบซื้อ · เดสก์ท็อปมีแถบซื้ออย่างเดียว */}
+      {artToast && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3 max-[1000px]:pb-[calc(168px+env(safe-area-inset-bottom,0px))] min-[1001px]:pb-[96px] lg:px-6"
+        >
+          <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-2.5 rounded-2xl bg-rose-600 px-3.5 py-3 text-white shadow-[0_18px_40px_-12px_rgba(190,18,60,0.65)]">
+            <span aria-hidden className="text-lg leading-none">🎨</span>
+            <p className="min-w-0 flex-1 text-[12.5px] font-bold leading-snug">
+              ยังไม่ได้แนบลาย — อัปโหลดรูป หรือใส่ลิงก์ไฟล์ก่อน ถึงจะใส่ตะกร้าได้
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setArtToast(false);
+                jumpToArt();
+              }}
+              className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12px] font-extrabold text-rose-700 transition hover:bg-rose-50"
+            >
+              👆 ไปแนบลาย
+            </button>
+            <button
+              type="button"
+              onClick={() => setArtToast(false)}
+              aria-label="ปิดป้ายเตือน"
+              className="shrink-0 px-1 text-sm font-bold opacity-80 transition hover:opacity-100"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ═══ แถบซื้อลอยล่างจอ — ราคาปัจจุบัน + ปุ่มสั่ง ไม่ต้องเลื่อนกลับขึ้นไป ═══
            💻 เดสก์ท็อปเห็นด้วย (เดิม lg:hidden): แผงสั่งซื้อฝั่งขวายาวกว่าจอ ปุ่มสั่งเลื่อนพ้นตาไปแล้ว
               ลูกค้าไล่ติ๊กตัวเลือกลงมาเรื่อย ๆ จนหาปุ่มเข้าตะกร้าไม่เจอ (ไลน์ 20 ก.ย. 69)
@@ -8204,15 +8370,26 @@ export default function ProductDetail({
             </button>
           )}
           {(!studioNeedsDesign || sheets.length > 0) && (
+            <div className="ml-auto flex shrink-0 flex-col items-stretch gap-1">
+            {/* 🎯 แถบขั้นตอนแบบย่อ — พื้นที่แคบ บอกแค่ "เหลือกี่ขั้น + ขั้นที่ต้องทำตอนนี้" (กดแล้วพาไปเหมือนกัน) */}
+            {ctaStuck && ctaStepNow && !added && (
+              <button
+                type="button"
+                onClick={ctaStepNow.jump}
+                className="truncate rounded-xl bg-ducky px-2.5 py-1 text-[10.5px] font-extrabold text-amber-950"
+              >
+                เหลืออีก {ctaStepsLeft.length.toLocaleString("th-TH")} ขั้น · {ctaStepNow.icon} {ctaStepNow.label} →
+              </button>
+            )}
             <button
               type="button"
               onClick={() => handleAdd()}
-              disabled={barBlocked}
-              className={`ml-auto shrink-0 rounded-full px-6 py-2.5 text-center text-sm font-extrabold transition ${
+              disabled={barBlocked && !artBlocked}
+              className={`rounded-full px-6 py-2.5 text-center text-sm font-extrabold transition ${
                 added
                   ? "bg-emerald-500 text-white shadow-lg"
                   : barBlocked
-                    ? "cursor-not-allowed bg-sky-100 text-sky-900 ring-2 ring-sky-300"
+                    ? blockedBtnTone
                     : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:bg-amber-500"
               }`}
             >
@@ -8221,15 +8398,11 @@ export default function ProductDetail({
               ) : (
                 <>
                   {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ เหตุผลที่ยังกดไม่ได้ต่อท้ายข้างล่าง (ห้ามเอามาแทนชื่อ) */}
-                  <span className="block">{ctaTitleShort}</span>
-                  {ctaStuck && (
-                    <span className="mt-0.5 block text-[10.5px] font-bold leading-snug opacity-90">
-                      {ctaStuck.short}
-                    </span>
-                  )}
+                  <span className="block">{lockTitle(ctaTitleShort)}</span>
                 </>
               )}
             </button>
+            </div>
           )}
         </div>
       </div>
