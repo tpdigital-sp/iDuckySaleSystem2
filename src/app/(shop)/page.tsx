@@ -281,14 +281,6 @@ export default function HomePage() {
                 alt=""
                 aria-hidden="true"
               />
-              <div className="deco d-cart" style={{ top: "18%", left: "14%", width: "15%" }} aria-hidden="true">
-                <img src="/landing/cart-balloon.webp" alt="" />
-                {/* เส้นแสงวิ่งผ่านป้าย — ตัดตามรูปทรงด้วย mask */}
-                <span
-                  className="cart-shine"
-                  style={{ WebkitMaskImage: "url(/landing/cart-balloon.webp)", maskImage: "url(/landing/cart-balloon.webp)" }}
-                />
-              </div>
               <img
                 className="deco d-star1"
                 style={{ top: "4%", right: "-17%", width: "7.5%", animationDuration: "5.2s", animationDelay: "-.7s" }}

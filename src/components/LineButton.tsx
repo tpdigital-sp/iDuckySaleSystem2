@@ -27,6 +27,11 @@ function ChatIcon({ className = "h-5 w-5" }: { className?: string }) {
 export function LineFloat() {
   return (
     <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="line-fab fabx fabx-line" aria-label="คุยกับแอดมินตัวจริงทาง LINE">
+      {/* ภาพปุ่มสำเร็จรูป (เจ้าของร้านส่งมา 21 ก.ย. 69) — ขึ้นเฉพาะจอคอม
+          มือถือปุ่มหดเป็นวงกลม 💬 + ป้าย "ทักเราได้เลยนะ" โผล่ข้าง ๆ ภาพยาวใส่ไม่ลง
+          จึงยังต้องเก็บชิ้นส่วนข้างล่างไว้ (กฎสลับอยู่ท้าย landing.css) */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="fabx-line-art" src="/landing/line-chat-badge.webp" alt="" width={900} height={212} aria-hidden="true" />
       <i className="line-fab-ico fabx-ico">
         <ChatIcon />
       </i>

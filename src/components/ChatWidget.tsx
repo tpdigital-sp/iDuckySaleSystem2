@@ -132,6 +132,10 @@ export default function ChatWidget() {
         */
         className="fabx fabx-bot fixed bottom-36 right-5 z-40 max-[1000px]:bottom-[164px] max-[1000px]:right-4 flex items-center gap-2 rounded-full bg-[#173A6B] px-4 py-3 text-sm font-bold text-white shadow-lg ring-[3px] ring-white/85 transition hover:scale-105 hover:bg-[#1E4A85]"
       >
+        {/* ภาพปุ่มสำเร็จรูป (เจ้าของร้านส่งมา 21 ก.ย. 69) — ขึ้นเฉพาะ "จอคอม + แชทยังไม่เปิด"
+            ตอนเปิดแชทปุ่มต้องเขียนว่า "ปิดแชท" ซึ่งภาพเขียนไม่ได้ · มือถือปุ่มหดเหลือไอคอน ภาพยาวใส่ไม่ลง
+            ทั้งสองกรณีจึงกลับไปใช้แคปซูลที่วาดด้วย CSS ข้างล่างนี้ (กฎสลับอยู่ท้าย landing.css) */}
+        <img className="fabx-bot-art" src="/landing/bot-chat-badge.webp" alt="" width={900} height={214} aria-hidden="true" />
         {/* วงไอคอนขาว — ชุด .fabx ท้าย landing.css (ทรงเดียวกับปุ่มตะกร้า/LINE/เข้าหลังบ้าน) */}
         <span className="fabx-ico">
           {open ? (
@@ -156,7 +160,7 @@ export default function ChatWidget() {
         </svg>
         {/* จุดชวนกด — เห็นได้แม้บนมือถือที่ซ่อนข้อความ */}
         {nudge && !open && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
+          <span className="fabx-bot-nudge absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FFD447] opacity-75" />
             <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-[#FFD447] ring-2 ring-white" />
           </span>
