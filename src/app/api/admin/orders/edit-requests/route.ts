@@ -17,7 +17,15 @@ export const runtime = "nodejs";
  *              จะได้ไม่ต้องส่งออเดอร์ทั้งก้อนจากหน้ารายการ (กันทับงานคนอื่น ดู savedAt ใน orders/route.ts)
  *
  * ใบที่ยกเลิกไปแล้วไม่นับเป็นงานค้าง (แก้อะไรไม่ได้แล้ว) — ตรงกับเงื่อนไขป้ายในลิสต์ออเดอร์
+ *
+ * 💰 เฉพาะใบที่ "ชำระแล้ว" เป็นต้นไป (เจ้าของร้านสั่ง 22 ก.ย. 69) — ใบที่ยังไม่มีเงินเข้า
+ *    (รอชำระเงิน/รอตรวจสอบ) ลูกค้ายกเลิกแล้วสั่งใหม่เองได้ ไม่ใช่งานที่ทีมต้องตามแก้ให้
+ *    กรองที่นี่ที่เดียว ป้ายเลขข้างเมนู (AdminShell) กับหน้ารายการจึงตรงกันเสมอ
  */
+
+/** ยังไม่มีเงินเข้า — ไม่เอาเข้าหน้านี้เลย ทั้งที่ค้างและที่จัดการแล้ว */
+const PRE_PAID: OrderStatus[] = ["รอชำระเงิน", "รอตรวจสอบ"];
+const paidStage = (o: Order) => !PRE_PAID.includes(o.status);
 
 export type EditRequestRow = {
   id: string;
@@ -68,7 +76,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ n: 0, requests: [], ok: false, reason: error.message });
   }
 
-  const orders = (data ?? []).map((r) => r.data as Order).filter((o) => o.editRequest?.text);
+  const orders = (data ?? []).map((r) => r.data as Order).filter((o) => o.editRequest?.text && paidStage(o));
   const open = orders.filter(isOpen);
   const rows = (all ? orders : open).map(toRow);
   // ใหม่สุดตามเวลาที่ลูกค้าส่ง (ไม่ใช่วันสร้างออเดอร์)
