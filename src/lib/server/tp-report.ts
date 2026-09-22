@@ -1,8 +1,8 @@
 import "server-only";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderEarlyPayAmount, orderTotal, proofMissing, proofsOf, type Order, type OrderItem } from "@/lib/admin-data";
+import { orderEarlyPayAmount, orderTotal, proofMissing, proofsOf, type Order, type OrderItem, type PackArrival } from "@/lib/admin-data";
 import { amountsForRecord, tpAmountsFix } from "@/lib/tp-amounts";
 import { SITE_URL } from "@/lib/shop-info";
 import { itemQtyText, itemUnitYield } from "@/lib/item-yield";
@@ -313,73 +313,159 @@ export async function syncArrivalToTP(before: Order, after: Order): Promise<void
   const db = getFirestoreAdmin();
   if (!db) return;
   const now = new Date().toISOString();
+  const jobs: Promise<void>[] = [];
   for (let i = 0; i < after.items.length; i++) {
     const it = after.items[i];
     const a = it.arrival;
     if (!a) continue;
     const b = before.items[i]?.arrival;
     if (b && JSON.stringify(a) === JSON.stringify(b)) continue; // ไม่เปลี่ยน — ไม่ยิง
-    const open = a.status !== "มาครบ";
-    const proofs = proofsOf(it);
-    // เริ่ม "รอบใหม่" (เดิมไม่เคยปัก หรือมาครบไปแล้ว → ปักยังไม่มา/มาไม่ครบอีกครั้ง) → ล้างคำตอบฝ่ายผลิตของรอบก่อนทิ้ง
-    // ไม่งั้นการ์ดใน TP โชว์ "รับเรื่องแล้ว ส่งได้ <วันเก่า>" ทั้งที่เป็นเรื่องใหม่ (เจอตอนทดสอบ 9 ก.ย. 69) · tpHistory คงไว้เป็นประวัติ
-    const newRound = open && (!b || b.status === "มาครบ");
-    const clearReply = newRound
-      ? { tpStatus: FieldValue.delete(), tpEta: FieldValue.delete(), tpNote: FieldValue.delete(), tpBy: FieldValue.delete(), tpAt: FieldValue.delete() }
-      : {};
-    try {
-      await db
-        .collection(TP_FOLLOWUP_COLLECTION)
-        .doc(`${after.id}__${i}`)
-        .set(
-          {
-            id: `iducky-${after.id}__${i}`,
-            orderId: after.id,
-            itemIndex: i,
-            itemName: it.name,
-            qty: it.qty,
-            unit: it.unitYield?.unit || "ชิ้น",
-            // 🔢 ชิ้นจริงของรายการ (งานเซ็ต/แผ่น) + 📐 ขนาดงานตายตัว — ฝ่ายผลิตเช็คของได้โดยไม่ต้องเปิดออเดอร์
-            pieces: it.qty * Math.max(1, itemUnitYield(it)?.per ?? 1),
-            piece: itemUnitYield(it)?.piece || "ชิ้น",
-            size: await workSizeOf(it.productId),
-            customerName: after.customer || "",
-            phone: after.phone || "",
-            orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(after.id)}`,
-            proofUrl: proofs[0]?.url || "",
-            status: a.status,
-            got: a.status === "มาไม่ครบ" ? a.got ?? 0 : null,
-            // 🔢 ตัวเลขตรวจนับในหน่วยของป้ายบนรูป (153/180 ชิ้น) — หน้า TP โชว์ตัวนี้ก่อน จะได้ตรงกับที่ฝ่ายแพ็คเห็น
-            countGot: a.status === "มาไม่ครบ" && a.count ? a.count.got : null,
-            countNeed: a.status === "มาไม่ครบ" && a.count ? a.count.need : null,
-            countUnit: a.status === "มาไม่ครบ" && a.count ? a.count.unit : null,
-            // 🖼 ลายไหนขาด/ยังไม่มา — หน้า TP วาดรูปรายลายพร้อมจำนวน ฝ่ายผลิตไม่ต้องเปิดออเดอร์ไล่ดูว่า "รูปที่ 2" คือลายไหน
-            shorts: open
-              ? proofs
-                  .map((p, j) => ({ p, j }))
-                  .filter(({ p }) => p.pack?.status === "ไม่ครบ")
-                  .map(({ p, j }) => ({ index: j + 1, url: p.url, got: p.pack?.got ?? 0, need: p.qty ?? null, unit: p.unit || "ชิ้น" }))
-              : [],
-            expectedAt: open ? a.expectedAt || "" : "",
-            note: open ? a.note || "" : "",
-            by: a.by,
-            at: a.at,
-            since: a.since || a.at,
-            open,
-            resolvedAt: open ? null : a.at,
-            rush: !!after.rush,
-            useByDate: after.useByDate || "",
-            orderStatus: after.status,
-            origin: "iducky",
-            updatedAt: now,
-            ...clearReply,
-          },
-          { merge: true }
-        );
-    } catch (e) {
-      console.error("[tp-report] ส่งของยังไม่มาไป TP ไม่สำเร็จ:", (e as Error)?.message);
-    }
+    jobs.push(pushArrivalDoc(db, after, i, a, b, now));
   }
+  // ยิงทุกรายการพร้อมกันแล้วรอให้ครบ — ฝั่งที่เรียกต้อง await ก่อนตอบ response เสมอ (ดูคอมเมนต์ใน route)
+  await Promise.all(jobs);
+}
+
+/**
+ * เขียนใบติดตาม 1 ใบ (doc id = <เลขออเดอร์>__<ลำดับรายการ>)
+ *
+ * 🛡 กันเขียนสลับลำดับ — ฝ่ายแพ็คกด ✓ ตรวจนับรัวทีละรูป = PUT ซ้อนกัน 5-7 คำขอในไม่กี่วินาที
+ *    คำขอที่ถึง Firestore ช้ากว่าจะไปทับของใหม่ → การ์ดค้าง "มาไม่ครบ" ทั้งที่รูปสุดท้ายกดครบไปแล้ว
+ *    (พนักงานแจ้ง 22 ก.ย. 69 — OD-260916-1093 / OD-260916-4693 ส่งของไปแล้วแต่ยังค้างในหน้าติดตามของ)
+ *    → ทำใน transaction เทียบ arrival.at ที่อยู่ในฐาน ใบไหนใหม่กว่าก็ไม่ต้องเขียนทับ
+ */
+async function pushArrivalDoc(db: Firestore, after: Order, i: number, a: PackArrival, b: PackArrival | undefined, now: string): Promise<void> {
+  const it = after.items[i];
+  const open = a.status !== "มาครบ";
+  const proofs = proofsOf(it);
+  // เริ่ม "รอบใหม่" (เดิมไม่เคยปัก หรือมาครบไปแล้ว → ปักยังไม่มา/มาไม่ครบอีกครั้ง) → ล้างคำตอบฝ่ายผลิตของรอบก่อนทิ้ง
+  // ไม่งั้นการ์ดใน TP โชว์ "รับเรื่องแล้ว ส่งได้ <วันเก่า>" ทั้งที่เป็นเรื่องใหม่ (เจอตอนทดสอบ 9 ก.ย. 69) · tpHistory คงไว้เป็นประวัติ
+  const newRound = open && (!b || b.status === "มาครบ");
+  const clearReply = newRound
+    ? { tpStatus: FieldValue.delete(), tpEta: FieldValue.delete(), tpNote: FieldValue.delete(), tpBy: FieldValue.delete(), tpAt: FieldValue.delete() }
+    : {};
+  try {
+    const ref = db.collection(TP_FOLLOWUP_COLLECTION).doc(`${after.id}__${i}`);
+    const payload = {
+      id: `iducky-${after.id}__${i}`,
+      orderId: after.id,
+      itemIndex: i,
+      itemName: it.name,
+      qty: it.qty,
+      unit: it.unitYield?.unit || "ชิ้น",
+      // 🔢 ชิ้นจริงของรายการ (งานเซ็ต/แผ่น) + 📐 ขนาดงานตายตัว — ฝ่ายผลิตเช็คของได้โดยไม่ต้องเปิดออเดอร์
+      pieces: it.qty * Math.max(1, itemUnitYield(it)?.per ?? 1),
+      piece: itemUnitYield(it)?.piece || "ชิ้น",
+      // 📐 อ่านขนาดงานจากคลังสินค้าเฉพาะตอนเรื่อง "ยังค้าง" — ตอนปิดเรื่องไม่มีใครดู และยิ่งรออ่านยิ่งเสี่ยงเขียนไม่ทัน
+      ...(open ? { size: await workSizeOf(it.productId) } : {}),
+      customerName: after.customer || "",
+      phone: after.phone || "",
+      orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(after.id)}`,
+      proofUrl: proofs[0]?.url || "",
+      status: a.status,
+      got: a.status === "มาไม่ครบ" ? a.got ?? 0 : null,
+      // 🔢 ตัวเลขตรวจนับในหน่วยของป้ายบนรูป (153/180 ชิ้น) — หน้า TP โชว์ตัวนี้ก่อน จะได้ตรงกับที่ฝ่ายแพ็คเห็น
+      countGot: a.status === "มาไม่ครบ" && a.count ? a.count.got : null,
+      countNeed: a.status === "มาไม่ครบ" && a.count ? a.count.need : null,
+      countUnit: a.status === "มาไม่ครบ" && a.count ? a.count.unit : null,
+      // 🖼 ลายไหนขาด/ยังไม่มา — หน้า TP วาดรูปรายลายพร้อมจำนวน ฝ่ายผลิตไม่ต้องเปิดออเดอร์ไล่ดูว่า "รูปที่ 2" คือลายไหน
+      shorts: open
+        ? proofs
+            .map((p, j) => ({ p, j }))
+            .filter(({ p }) => p.pack?.status === "ไม่ครบ")
+            .map(({ p, j }) => ({ index: j + 1, url: p.url, got: p.pack?.got ?? 0, need: p.qty ?? null, unit: p.unit || "ชิ้น" }))
+        : [],
+      expectedAt: open ? a.expectedAt || "" : "",
+      note: open ? a.note || "" : "",
+      by: a.by,
+      at: a.at,
+      since: a.since || a.at,
+      open,
+      resolvedAt: open ? null : a.at,
+      rush: !!after.rush,
+      useByDate: after.useByDate || "",
+      orderStatus: after.status,
+      origin: "iducky",
+      updatedAt: now,
+      ...clearReply,
+    };
+    await db.runTransaction(async (tx) => {
+      const cur = await tx.get(ref);
+      const curAt = cur.get("at");
+      if (typeof curAt === "string" && curAt > a.at) return; // ใบในฐานใหม่กว่าคำขอนี้ — ปล่อยไว้ ห้ามย้อนเวลา
+      tx.set(ref, payload, { merge: true });
+    });
+  } catch (e) {
+    console.error("[tp-report] ส่งของยังไม่มาไป TP ไม่สำเร็จ:", (e as Error)?.message);
+  }
+}
+
+/**
+ * 🩹 กวาดใบติดตาม "ที่ยังเปิดอยู่" ของออเดอร์ใบเดียว ให้ตรงกับความจริงในออเดอร์ (ตาข่ายชั้นสอง)
+ * ใช้ตอนใบปิดงาน (จัดส่งแล้ว/เสร็จสิ้น/ยกเลิก) และตอน cron กวาดย้อนหลัง
+ *   • ออเดอร์บอกว่า "มาครบ" (หรือไม่มีเรื่องรอของแล้ว) → ปิดใบ ใช้เวลาที่ฝ่ายแพ็คกดจริงเป็น resolvedAt
+ *   • ใบปิดตาย (เสร็จสิ้น/ยกเลิก) → ปิดใบทิ้งแม้ยังปักค้างอยู่ ไม่ต้องให้ฝ่ายผลิตตามต่อ
+ *   • นอกนั้น (ยังค้างจริง) → แค่อัปเดตสถานะออเดอร์บนใบให้ตรงปัจจุบัน
+ * คืนจำนวนใบที่ปิดไป
+ */
+export async function reconcileFollowupsForOrder(order: Order): Promise<number> {
+  const db = getFirestoreAdmin();
+  if (!db) return 0;
+  const dead = order.status === "เสร็จสิ้น" || order.status === "ยกเลิก";
+  const now = new Date().toISOString();
+  let closed = 0;
+  try {
+    const snap = await db.collection(TP_FOLLOWUP_COLLECTION).where("orderId", "==", order.id).where("open", "==", true).get();
+    for (const d of snap.docs) {
+      const a = order.items[Number(d.get("itemIndex") ?? -1)]?.arrival;
+      const arrived = !a || a.status === "มาครบ";
+      if (!arrived && !dead) {
+        if (d.get("orderStatus") !== order.status) await d.ref.update({ orderStatus: order.status, updatedAt: now });
+        continue;
+      }
+      await d.ref.update({
+        // ของมาครบแล้วจริง → ล้างตัวเลข/ลายที่ขาดของรอบที่แล้วทิ้งด้วย จะได้ไม่ค้างในแท็บปิดแล้ว
+        ...(arrived ? { status: "มาครบ", got: null, countGot: null, countNeed: null, countUnit: null, shorts: [], expectedAt: "", note: "" } : {}),
+        open: false,
+        resolvedAt: (arrived && a?.at) || now,
+        by: (arrived && a?.by) || "ระบบ",
+        at: (arrived && a?.at) || now,
+        orderStatus: order.status,
+        updatedAt: now,
+      });
+      closed++;
+    }
+  } catch (e) {
+    console.error("[tp-report] กวาดใบติดตามของ TP ไม่สำเร็จ:", (e as Error)?.message);
+  }
+  return closed;
+}
+
+/**
+ * 🧹 ตาข่ายชั้นสาม — ไล่ใบติดตามที่ยังเปิดอยู่ทั้งหมด เทียบกับออเดอร์จริงในฐาน แล้วปิดใบที่จบไปแล้ว
+ * เรียกจาก /api/cron/pack-followup-audit (netlify/functions/pack-followup-audit.mjs)
+ * ใบที่เปิดอยู่มีไม่กี่สิบใบ → อ่านทีละใบได้ไม่เปลือง
+ */
+export async function sweepStaleFollowups(dry = false): Promise<{ checked: number; orders: number; closed: string[] }> {
+  const db = getFirestoreAdmin();
+  const sb = getSupabaseAdmin();
+  if (!db || !sb) return { checked: 0, orders: 0, closed: [] };
+  const snap = await db.collection(TP_FOLLOWUP_COLLECTION).where("open", "==", true).get();
+  const ids = [...new Set(snap.docs.map((d) => String(d.get("orderId") ?? "")).filter(Boolean))];
+  const closed: string[] = [];
+  for (const id of ids) {
+    const { data } = await sb.from("orders").select("data").eq("id", id).maybeSingle();
+    const order = (data as { data?: Order } | null)?.data;
+    if (!order) continue;
+    if (dry) {
+      const ghosts = snap.docs.filter((d) => d.get("orderId") === id && (order.items[Number(d.get("itemIndex") ?? -1)]?.arrival?.status ?? "มาครบ") === "มาครบ");
+      if (ghosts.length) closed.push(`${id} (${ghosts.length})`);
+      continue;
+    }
+    const n = await reconcileFollowupsForOrder(order);
+    if (n) closed.push(`${id} (${n})`);
+  }
+  return { checked: snap.size, orders: ids.length, closed };
 }
 
 /** ฝั่ง TP ตอบกลับอะไรบ้าง (tp* ที่หน้า pack-followup.html เขียน) — สถานีแพ็คเอาไปโชว์ใต้รายการ */

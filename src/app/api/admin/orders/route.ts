@@ -13,7 +13,7 @@ import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, statusFlex, statusMessage } from "@/lib/server/notify";
-import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
+import { reconcileFollowupsForOrder, reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
 import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { amountsForRecord } from "@/lib/tp-amounts";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
@@ -1119,7 +1119,13 @@ export async function PATCH(req: Request) {
   //    (พนักงานแจ้ง 14 ก.ย. 69: ออเดอร์ชำระแล้วไม่ขึ้นแท็บ 🛒 iDucky Store · ดู lib/server/tp-bridge-audit.ts)
   if (mayEditFull && tpMoneyKey(existing) !== tpMoneyKey(toSave)) await syncAmountsToTP(toSave);
   // 📦 ฝ่ายแพ็คปักของยังไม่มา/มาไม่ครบ/มาครบ → ส่งไปหน้า "ติดตามของ iDucky" ในระบบ TP (ยิงเฉพาะรายการที่เปลี่ยน)
-  void syncArrivalToTP(existing, toSave);
+  //    ⏳ await: Netlify แช่เครื่องทันทีที่ตอบ — ใบที่ยิงไม่ทันมักเป็น "ใบปิดเรื่อง" พอดี เพราะฝ่ายแพ็คกดครบรูปสุดท้ายแล้วเดินไปแพ็คต่อ
+  //    ผลคือการ์ดค้างหน้าติดตามของทั้งที่ส่งของไปแล้ว (พนักงานแจ้ง 22 ก.ย. 69 — OD-260916-1093 / OD-260916-4693)
+  await syncArrivalToTP(existing, toSave);
+  // 🩹 ใบเข้าสถานะปิดงาน (จัดส่งแล้ว/เสร็จสิ้น/ยกเลิก) → กวาดใบติดตามที่ยังค้างของออเดอร์นี้ให้ตรงกับความจริงอีกชั้น
+  //    ของถึงมือลูกค้าแล้ว = ไม่มีเหตุให้ค้างในหน้าติดตามของอีก (ใบที่ยังปักค้างจริงและยังไม่ปิดงาน จะแค่อัปเดตสถานะออเดอร์บนการ์ด)
+  if (toSave.status !== oldStatus && (["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"] as OrderStatus[]).includes(toSave.status))
+    await reconcileFollowupsForOrder(toSave);
   // 🛒 ของเข้าร้านแล้ว (กด "ของเข้าแล้ว" ในคำขอนี้) → บอกลูกค้าทางไลน์ตามที่หน้าออเดอร์สัญญาไว้ · ข่าวคืบหน้า = ระดับ extra
   if (toSave.needsPurchase?.arrivedAt && !existing.needsPurchase?.arrivedAt) void notifyStockArrived(sb, toSave, new URL(req.url).origin);
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
