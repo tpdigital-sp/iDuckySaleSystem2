@@ -31,6 +31,12 @@ create index if not exists orders_deposit_open_idx
   on public.orders ((data->'deposit'->>'firstPaidAt'))
   where (data->'deposit'->>'settledAt') is null;
 
+-- ยอดที่ต้องโอนเพิ่มที่ยังไม่ได้แจ้งลูกค้า — cron แจ้งแทนเมื่อแอดมินไม่กดปุ่ม 📣 (ทุก 10 นาที)
+-- ดัชนีบางส่วน: ปกติมีค้างไม่กี่ใบ ดัชนีเลยเล็กมาก และ cron ไม่ต้องสแกนทั้งตารางทุก 10 นาที
+create index if not exists orders_balance_pending_idx
+  on public.orders ((data->'balancePending'->>'at'))
+  where (data->'balancePending'->>'at') is not null;
+
 -- กันสลิปซ้ำ — ทุกครั้งที่ลูกค้าอัปสลิปจะถามว่า "hash/transRef นี้เคยใช้ในใบไหนหรือยัง" (data->payments @> ...)
 create index if not exists orders_payments_gin
   on public.orders using gin ((data->'payments') jsonb_path_ops);

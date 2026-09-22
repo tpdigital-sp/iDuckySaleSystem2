@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BULK_ASK_DEFAULT } from "@/lib/products";
+import { BALANCE_AUTO_NOTIFY_MINUTES } from "@/lib/balance-notify";
 import {
   Shot, ShotRedoButton, ShotRedoModal, ShotClaimBanner, ShotDepositBox, ShotAddButtons, ShotShipping, ShotProofPanels,
   ShotSlip, ShotDiscount, ShotCancel, ShotQuoteList, ShotQuoteAccept, ShotStaffOrder, ShotDeleteItem, ShotNotes,
@@ -629,6 +630,23 @@ export const TOPICS: Topic[] = [
                 ให้โอนเฉพาะส่วนต่าง · ไม่คิดค่าส่งซ้ำ
               </Warn>
             </div>
+          </div>
+        </div>
+        {/* 💳📣 คิวแจ้งยอด — พนักงานแจ้ง 22 ก.ย. 69 ว่าเพิ่มทีละรายการแล้วลูกค้าโดนไลน์ทุกครั้ง */}
+        <div className="mt-3 rounded-xl border-2 border-sky-300 bg-sky-50 p-3">
+          <p className="text-sm font-extrabold text-sky-900">💳 ยอดที่ต้องโอนเพิ่ม — เพิ่มให้ครบก่อน แล้วค่อยกดแจ้งทีเดียว</p>
+          <div className="mt-1.5 text-[0.82rem] leading-relaxed text-slate-700">
+            เพิ่ม/ลบ/แก้ราคาได้เรื่อย ๆ <Mark>ลูกค้ายังไม่ได้รับไลน์</Mark> — ยอดที่เปลี่ยนจะรออยู่ในแถบฟ้า
+            <B> “ยอดที่ต้องโอนเพิ่มยังไม่ได้แจ้งลูกค้า”</B> ในกล่อง 💰 ยอดเงิน · แก้เสร็จแล้วกด{" "}
+            <Key>📣 แจ้งลูกค้าทางไลน์</Key> ครั้งเดียวจบ
+            <br />
+            เพิ่มผิดแล้วลบออกจนยอดกลับเท่าเดิม = <B>คิวหายเอง ลูกค้าไม่รู้เรื่องเลย</B> · ตกลงกับลูกค้าทางแชทเองแล้วกด{" "}
+            <Key>🔕 ไม่ต้องแจ้ง</Key> ได้
+          </div>
+          <div className="mt-2">
+            <Warn>
+              ไม่กดภายใน <B>{BALANCE_AUTO_NOTIFY_MINUTES} นาที</B> หลังแก้ครั้งสุดท้าย ระบบจะแจ้งลูกค้าให้เอง — ลูกค้าต้องรู้ว่าต้องโอนเพิ่มเท่าไร
+            </Warn>
           </div>
         </div>
       </>

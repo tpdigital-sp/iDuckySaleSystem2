@@ -128,7 +128,8 @@ import {
 } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
 import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
-import { fetchOrderAdmin, fetchOrdersAdmin, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
+import { fetchOrderAdmin, fetchOrdersAdmin, notifyBalanceDue, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
+import { BALANCE_AUTO_NOTIFY_MINUTES, balanceNotifyMinutesLeft } from "@/lib/balance-notify";
 import { usePolling } from "@/lib/use-polling";
 import { isTypingIn, keepUnsavedTyped, type TypedField } from "@/lib/order-poll-merge";
 import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-ui";
@@ -1063,6 +1064,47 @@ export default function AdminOrderDetailPage() {
           ? `✅ แจ้งลูกค้าทางไลน์แล้ว (${res.count} รูป)`
           : `⚠️ ส่งไลน์ไม่ถึงลูกค้า — ${res.reason ?? "ไม่ทราบสาเหตุ"} · บันทึกไว้ในประวัติแล้ว`,
     });
+  }
+  /**
+   * 💳📣 แจ้งลูกค้า "ยอดที่ต้องโอนเพิ่ม" ครั้งเดียวหลังแก้รายการครบ — ยอดที่ขยับรออยู่ในคิว order.balancePending
+   * (พนักงานแจ้ง 22 ก.ย. 69: เพิ่มรายการทีละชิ้นแล้วลูกค้าโดนไลน์ทุกชิ้น · เพิ่มผิดแล้วลบยังเด้งอีกข้อความ)
+   * ยอดคิดสดฝั่งเซิร์ฟเวอร์ · ไม่กดภายใน BALANCE_AUTO_NOTIFY_MINUTES นาที ระบบแจ้งให้เอง
+   */
+  const [balanceNotifying, setBalanceNotifying] = useState(false);
+  const [balanceNotifyMsg, setBalanceNotifyMsg] = useState("");
+  async function notifyBalance(cancel = false) {
+    if (!order || balanceNotifying) return;
+    if (demo) {
+      setErr("ออเดอร์ตัวอย่าง — แจ้งลูกค้าได้เฉพาะออเดอร์จริง");
+      return;
+    }
+    if (cancel) {
+      const ok = await askConfirm({
+        icon: "🔕",
+        title: "ไม่ต้องแจ้งยอดนี้?",
+        detail: "ระบบจะทิ้งคิวไป ลูกค้าจะไม่ได้รับไลน์เรื่องยอดที่เปลี่ยน — ใช้เมื่อคุยกับลูกค้าทางแชทเองแล้ว",
+        confirmLabel: "ทิ้งคิว ไม่แจ้ง",
+      });
+      if (!ok) return;
+    }
+    setBalanceNotifying(true);
+    setBalanceNotifyMsg("");
+    const res = await notifyBalanceDue(order.id, cancel);
+    setBalanceNotifying(false);
+    if (!res.ok) {
+      setErr(res.error ?? "แจ้งยอดไม่สำเร็จ");
+      return;
+    }
+    adoptOrder(res.order);
+    setBalanceNotifyMsg(
+      res.cancelled
+        ? "🔕 ทิ้งคิวแล้ว — ไม่ได้ส่งไลน์"
+        : res.skipped
+          ? "ไม่มียอดต้องแจ้ง"
+          : res.sent
+            ? `✅ แจ้งลูกค้าทางไลน์แล้ว (${formatPrice(res.balance ?? 0)})`
+            : `⚠️ ส่งไลน์ไม่ถึงลูกค้า — ${res.reason ?? "ไม่ทราบสาเหตุ"} · บันทึกไว้ในประวัติแล้ว`
+    );
   }
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
@@ -7473,6 +7515,50 @@ export default function AdminOrderDetailPage() {
                   </div>
                 )}
               </div>
+
+              {/* ── 💳📣 ยอดที่ต้องโอนเพิ่ม "รอแจ้งลูกค้า" — แก้รายการให้ครบก่อน แล้วกดแจ้งทีเดียว ──
+                  พนักงานแจ้ง 22 ก.ย. 69: เดิมเพิ่มรายการทีละชิ้นลูกค้าโดนไลน์ทุกชิ้น เพิ่มผิดแล้วลบก็ยังเด้งอีกข้อความ
+                  ตอนนี้ยอดที่ขยับจะรออยู่ในคิวเงียบ ๆ (ลบกลับเป็นยอดเดิม = คิวหายเอง ลูกค้าไม่รู้เรื่อง) */}
+              {seesMoney && order.balancePending && (
+                <div className="mt-2.5 rounded-xl border-2 border-sky-400 bg-sky-50 px-3 py-2.5">
+                  <p className="text-[13px] font-extrabold text-sky-900">💳 ยอดที่ต้องโอนเพิ่มยังไม่ได้แจ้งลูกค้า</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-sky-900">
+                    ตอนนี้ค้าง <b className="tabular-nums">{formatPrice(orderBalance(order))}</b>
+                    {order.balancePending.from > 0 && <> (เดิมแจ้งไว้ <span className="tabular-nums">{formatPrice(order.balancePending.from)}</span>)</>} — เพิ่ม/ลบ
+                    รายการให้ครบก่อนได้เลย ยอดในคิวจะตามเอง · ลบจนยอดกลับเท่าเดิม = ไม่ต้องแจ้ง คิวหายเอง
+                  </p>
+                  {mayEdit && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void notifyBalance(false)}
+                        disabled={balanceNotifying}
+                        className="min-h-11 rounded-lg bg-sky-600 px-3.5 py-2 text-[12px] font-bold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-60"
+                      >
+                        {balanceNotifying ? "กำลังส่ง…" : `📣 แจ้งลูกค้าทางไลน์ (${formatPrice(orderBalance(order))})`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void notifyBalance(true)}
+                        disabled={balanceNotifying}
+                        className="min-h-11 rounded-lg border border-sky-300 bg-white px-3 py-2 text-[12px] font-semibold text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
+                        title="ทิ้งคิวไป ไม่ส่งไลน์ (คุยกับลูกค้าทางแชทเองแล้ว)"
+                      >
+                        🔕 ไม่ต้องแจ้ง
+                      </button>
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-[11px] font-semibold text-sky-700">
+                    {balanceNotifyMinutesLeft(order) > 0
+                      ? `⏳ ไม่กดภายใน ${balanceNotifyMinutesLeft(order)} นาที ระบบจะแจ้งให้เอง (นับใหม่ทุกครั้งที่แก้ยอด)`
+                      : `⏳ ครบ ${BALANCE_AUTO_NOTIFY_MINUTES} นาทีแล้ว — ระบบกำลังจะแจ้งลูกค้าให้เอง`}
+                  </p>
+                  {!!balanceNotifyMsg && <p className="mt-1 text-[11px] font-bold text-sky-800">{balanceNotifyMsg}</p>}
+                </div>
+              )}
+              {!order.balancePending && !!balanceNotifyMsg && (
+                <p className="mt-2 text-[11px] font-bold text-sky-800">{balanceNotifyMsg}</p>
+              )}
 
               {/* ── ออเดอร์ธรรมดาที่ยังไม่มีสลิป: ช่องแนบสลิปอยู่ใกล้ยอดรวมเลย (ลูกค้าส่งมาทางแชท) ── */}
               {!order.deposit &&

@@ -345,6 +345,28 @@ export async function notifyProofReady(
 }
 
 /**
+ * 💳📣 ปุ่ม "แจ้งยอดที่ต้องโอนเพิ่ม" ในหน้าออเดอร์ — ส่งไลน์ครั้งเดียวหลังแอดมินเพิ่ม/แก้รายการครบ
+ * (คู่กับคิว order.balancePending — กันลูกค้าโดนข้อความรัว ๆ ตอนเพิ่มรายการทีละชิ้น · ดู src/lib/balance-notify.ts)
+ */
+export async function notifyBalanceDue(
+  orderId: string,
+  /** true = ทิ้งคิวไปเลย ไม่ต้องแจ้ง (แจ้งลูกค้าเองทางแชทแล้ว) */
+  cancel = false
+): Promise<{ ok: boolean; sent?: boolean; skipped?: boolean; cancelled?: boolean; balance?: number; reason?: string; order?: Order; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/orders/balance/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, cancel }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true, ...data } : { ok: false, error: data.error ?? "แจ้งยอดไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
+/**
  * 🪶 ก้อนออเดอร์ทั้งตารางที่แท็บนี้ถืออยู่ + ตราประทับของเซิร์ฟเวอร์ (21 ก.ย. 69)
  * ใช้ถามว่า "เปลี่ยนไหม" ตอนโพล — ไม่เปลี่ยนก็ไม่ต้องขนก้อนใหม่ข้ามเน็ต (ดูหมายเหตุใน api/admin/orders)
  * ⚠️ อย่าแก้ค่าใน array นี้ตรง ๆ ทุกหน้าที่โพลใช้ร่วมกัน (ฝั่งหน้าจอเขียนแบบสร้างก้อนใหม่อยู่แล้ว)

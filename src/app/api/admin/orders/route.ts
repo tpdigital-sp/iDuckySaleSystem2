@@ -18,6 +18,7 @@ import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { amountsForRecord } from "@/lib/tp-amounts";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { isPickupOrder } from "@/lib/ship-label";
+import { planBalanceQueue } from "@/lib/balance-notify";
 import { isShipMain, isShipRider, riderNotReady, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
@@ -205,7 +206,7 @@ function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: stri
     ? incoming.gifts.map((g) => keepCustomerVerdict(existing.gifts?.find((x) => x.promoId === g.promoId), g, clientSavedAt))
     : incoming.gifts;
   // ฟิลด์ที่เซิร์ฟเวอร์เป็นเจ้าของ — หน้าจอแอดมินไม่รู้จัก ส่งก้อนกลับมาโดยไม่มี = ห้ามหาย
-  const withItems: Order = { ...incoming, items, ...(gifts ? { gifts } : {}), balanceNotified: existing.balanceNotified };
+  const withItems: Order = { ...incoming, items, ...(gifts ? { gifts } : {}), balanceNotified: existing.balanceNotified, balancePending: existing.balancePending };
   // 🧭 ช่องอื่นที่ไม่ได้แก้ → ของฐาน (items จัดการไปแล้วด้านบน จึงบอกว่า "แก้" เพื่อไม่ให้ทับซ้ำ)
   const { order: merged, restored } = applyChangedKeys(existing, withItems, changed ? new Set([...changed, "items"]) : null);
   // 💰 เงินเข้า/สลิปที่เกิดหลังจากหน้าจอนี้เห็นล่าสุด = หน้าจอยังไม่รู้ → คงของในฐาน (ดู keepServerMoney)
@@ -1044,8 +1045,42 @@ export async function PATCH(req: Request) {
     (toSave.paidTotal ?? 0) === (existing.paidTotal ?? 0) &&
     balNow < balBefore - 0.5 &&
     Math.abs(balNow - notified.balance) > 0.5;
-  // จำยอดที่กำลังบอกลูกค้า (ทั้งขึ้นและลง) — รอบหน้าจะได้รู้ว่าลูกค้าถือเลขไหนอยู่ · ลดจนเหลือ 0 ไม่เปลี่ยนสถานะให้ (แอดมินตั้งเอง กันซ้ำ side effect ของ "ชำระแล้ว")
-  if (balanceGrew || balanceShrank) toSave = { ...toSave, balanceNotified: { at: now, balance: balNow } };
+  /**
+   * 🕐 ยอดค้างขยับ → "เข้าคิวแจ้ง" เงียบ ๆ แทนการยิงไลน์ทันที (พนักงานแจ้ง 22 ก.ย. 69)
+   * เดิมเพิ่มรายการทีละชิ้นด้วยปุ่ม "เพิ่มเข้าออเดอร์" = ลูกค้าโดนไลน์ทุกชิ้น · เพิ่มผิดแล้วลบก็ยังได้อีกข้อความ
+   *   • คิวใหม่: จำ from = ยอดค้างที่ลูกค้ารู้อยู่ก่อน (ไว้เทียบตอนแอดมินแก้กลับ)
+   *   • แก้ต่อจนยอดกลับไปเท่า from (เพิ่มผิดแล้วลบทิ้ง) → คิวหายเงียบ ๆ ลูกค้าไม่ต้องรู้เรื่อง
+   *   • แก้ต่อแล้วยอดยังต่าง → อัปเดตยอดในคิว + เริ่มนับเวลาใหม่ (แอดมินยังทำงานอยู่)
+   * ส่งจริงตอนกดปุ่ม 📣 ในหน้าออเดอร์ หรือ cron แจ้งให้เองเมื่อค้างเกินกำหนด (ดู src/lib/balance-notify.ts)
+   */
+  const pendPrev = existing.balancePending;
+  // ทางแพ็ค/กราฟฟิก (ไม่ใช่สิทธิ์แก้เต็ม) ไม่ยุ่งกับเรื่องเงิน — อย่าให้ไปเปิด/ปิดคิวแทนแอดมิน
+  const plan = planBalanceQueue({ balBefore, balNow, pending: mayEditFull ? pendPrev : null, triggered: balanceGrew || balanceShrank });
+  const balanceQueued = plan.action === "start" || plan.action === "refresh";
+  if (plan.action === "start" || plan.action === "refresh") {
+    // เหตุผลที่จะพิมพ์ในไลน์ — เปิด VAT / ใส่ส่วนลดทั้งบิล (นอกนั้นใช้ "ยอดรวมเปลี่ยนเป็น X บาท" ตอนส่ง)
+    const discAdded = Math.round((adminDiscountAmount(toSave) - adminDiscountAmount(existing)) * 100) / 100;
+    const why = vatJustAdded
+      ? `ภาษีมูลค่าเพิ่ม ${toSave.vat!.rate}% ${orderVatAmount(toSave).toLocaleString("th-TH")} บาท (ออกใบกำกับภาษีตามที่ขอ)`
+      : discAdded > 0
+        ? `ส่วนลด${toSave.adminDiscount?.label?.trim() ? ` ${toSave.adminDiscount.label.trim()}` : ""} −${discAdded.toLocaleString("th-TH")} บาท`
+        : pendPrev?.why;
+    toSave = { ...toSave, balancePending: { at: now, from: plan.from, balance: plan.balance, why, by: actor.name?.trim() || actor.username } };
+    if (plan.action === "start")
+      toSave = withLog(
+        toSave,
+        `แอดมิน ${actor.name?.trim() || actor.username}`,
+        "ยอดที่ต้องโอนเพิ่มรอแจ้งลูกค้า",
+        `ค้าง ${balNow.toLocaleString("th-TH")} บาท (เดิม ${balBefore.toLocaleString("th-TH")}) — ยังไม่ส่งไลน์ กดปุ่ม 📣 แจ้งยอดในหน้าออเดอร์เมื่อแก้ครบ`
+      );
+  } else if (plan.action === "cancel") {
+    toSave = withLog(
+      { ...toSave, balancePending: undefined },
+      `แอดมิน ${actor.name?.trim() || actor.username}`,
+      "ยกเลิกคิวแจ้งยอดโอนเพิ่ม",
+      `ยอดค้างกลับมาเท่าเดิม ${balNow.toLocaleString("th-TH")} บาท — ไม่ได้ส่งไลน์ให้ลูกค้า`
+    );
+  }
 
   toSave = { ...toSave, log: mergeLogs(existing.log, order.log, toSave.log), savedAt: now };
 
@@ -1060,41 +1095,11 @@ export async function PATCH(req: Request) {
 
   const adminName = `แอดมิน ${actor.name?.trim() || actor.username}`;
 
-  if (balanceGrew) {
-    const origin = new URL(req.url).origin;
-    const total = orderTotal(toSave);
-    const bal = balNow;
-    const why = vatJustAdded
-      ? `ภาษีมูลค่าเพิ่ม ${toSave.vat!.rate}% ${orderVatAmount(toSave).toLocaleString("th-TH")} บาท (ออกใบกำกับภาษีตามที่ขอ)`
-      : `ยอดรวมเปลี่ยนเป็น ${total.toLocaleString("th-TH")} บาท`;
-    void notifyCustomerLogged(
-      sb,
-      toSave,
-      `🧾 ออเดอร์ ${toSave.id} มียอดเพิ่ม: ${why}\n💰 ยอดรวมทั้งบิล ${total.toLocaleString("th-TH")} บาท · รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} บาท\n💳 ยอดที่ต้องโอนเพิ่ม ${bal.toLocaleString("th-TH")} บาท\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${orderLink(origin, toSave)}`,
-      `แจ้งยอดค้างเพิ่ม ${bal.toLocaleString("th-TH")} บาท${vatJustAdded ? " (เปิด VAT)" : ""}`,
-      "key"
-    );
-  } else if (balanceShrank) {
-    const origin = new URL(req.url).origin;
-    const total = orderTotal(toSave);
-    const thb = (n: number) => n.toLocaleString("th-TH");
-    // บอกว่าลดเพราะอะไร — ส่วนลดทั้งบิลที่เพิ่งใส่/เพิ่ม (กรณีที่เจอจริง) · นอกนั้นบอกยอดรวมใหม่
-    const discDiff = Math.round((adminDiscountAmount(toSave) - adminDiscountAmount(existing)) * 100) / 100;
-    const why =
-      discDiff > 0
-        ? `ส่วนลด${toSave.adminDiscount?.label?.trim() ? ` ${toSave.adminDiscount.label.trim()}` : ""} −${thb(discDiff)} บาท`
-        : `ยอดรวมเปลี่ยนเป็น ${thb(total)} บาท`;
-    const prev = thb(notified!.balance);
-    void notifyCustomerLogged(
-      sb,
-      toSave,
-      balNow > 0
-        ? `🧾 ออเดอร์ ${toSave.id} ปรับยอดใหม่: ${why}\n💰 ยอดรวมทั้งบิล ${thb(total)} บาท · รับแล้ว ${thb(toSave.paidTotal ?? 0)} บาท\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(balNow)} บาท (แทนยอด ${prev} บาทที่แจ้งไว้ก่อนหน้า)\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${orderLink(origin, toSave)}`
-        : `🧾 ออเดอร์ ${toSave.id} ปรับยอดใหม่: ${why}\n💰 ยอดรวมทั้งบิล ${thb(total)} บาท · รับแล้ว ${thb(toSave.paidTotal ?? 0)} บาท\n✅ ไม่ต้องโอนเพิ่มแล้วครับ (ยกเลิกยอด ${prev} บาทที่แจ้งไว้ก่อนหน้า)\n${orderLink(origin, toSave)}`,
-      balNow > 0 ? `แจ้งยอดค้างใหม่ ${thb(balNow)} บาท (เดิมแจ้ง ${prev})` : `แจ้งว่าไม่ต้องโอนเพิ่มแล้ว (เดิมแจ้ง ${prev} บาท)`,
-      "key"
-    );
-  }
+  /*
+   * 💳📣 ยอดค้างที่ขยับในคำขอนี้ "ไม่ยิงไลน์ทันที" แล้ว — อยู่ในคิว toSave.balancePending
+   * แอดมินกดปุ่ม 📣 แจ้งยอดในหน้าออเดอร์ (POST /api/admin/orders/balance/notify) เมื่อแก้ครบ
+   * ไม่กด → /api/cron/balance-notify แจ้งให้เองหลังเงียบครบกำหนด (ดู src/lib/balance-notify.ts)
+   */
 
   // 🔥 ติ๊ก/ยกเลิกงานเร่ง หรือแก้วันที่ลูกค้าต้องใช้งาน/ช่วงวันจัดส่ง → ส่งต่อให้บอร์ด WIP กราฟฟิก (เฉพาะใบที่ชำระแล้วมีเรคอร์ดอยู่ · ใบอื่น not-found ข้ามเงียบ)
   const shipKey = (o: Order) => `${o.shipDate?.from || ""}|${o.shipDate?.to || ""}`;
@@ -1120,8 +1125,9 @@ export async function PATCH(req: Request) {
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
-  // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE) — กลับไปรอชำระเงินเพราะยอดโต แจ้งด้วยข้อความยอดค้างด้านบนแล้ว
-  if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && balanceGrew) && !restoredFromReopen) {
+  // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE)
+  // ⚠️ กลับไปรอชำระเงินเพราะยอดโต = เงียบไว้ก่อน ให้ข้อความ "ยอดที่ต้องโอนเพิ่ม" ในคิวเป็นคนบอก (ไม่งั้นลูกค้าได้ "รอชำระเงิน" ลอย ๆ ที่ไม่มียอด)
+  if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && (balanceGrew || balanceQueued)) && !restoredFromReopen) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
     // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()

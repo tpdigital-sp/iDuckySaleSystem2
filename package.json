@@ -22,6 +22,7 @@
     "check:tax": "tsx --conditions=react-server scripts/order-tax-test.mts",
     "scan:tax": "tsx scripts/order-tax-scan.mts",
     "scan:options": "tsx scripts/option-ref-scan.mts",
+    "check:balance-notify": "tsx scripts/balance-notify-test.mts",
     "check:lot-reprice": "tsx scripts/order-lot-reprice-test.mts",
     "scan:lot-reprice": "node --conditions=react-server --import tsx scripts/order-lot-reprice-scan.mts",
     "check:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-test.mts",
