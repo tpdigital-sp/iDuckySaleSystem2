@@ -31,7 +31,7 @@ export function LineFloat() {
           มือถือปุ่มหดเป็นวงกลม 💬 + ป้าย "ทักเราได้เลยนะ" โผล่ข้าง ๆ ภาพยาวใส่ไม่ลง
           จึงยังต้องเก็บชิ้นส่วนข้างล่างไว้ (กฎสลับอยู่ท้าย landing.css) */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className="fabx-line-art" src="/landing/line-chat-badge-v3.webp" alt="" width={1116} height={263} aria-hidden="true" />
+      <img className="fabx-art fabx-line-art" src="/landing/line-chat-badge-v4.webp" alt="" width={1152} height={272} aria-hidden="true" />
       <i className="line-fab-ico fabx-ico">
         <ChatIcon />
       </i>
