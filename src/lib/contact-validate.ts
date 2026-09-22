@@ -30,8 +30,11 @@ export function phoneProblem(raw: string | undefined | null): string | null {
 export function addressProblem(raw: string | undefined | null): string | null {
   const s = String(raw ?? "").replace(/\s+/g, " ").trim();
   if (!s) return "กรอกที่อยู่จัดส่ง";
-  // ขีด/บวก/ดอกจันที่ไม่ได้อยู่ระหว่างตัวเลข (เช่น "-", "ที่อยู่ +", "99/1-2" ยังได้) = ใส่แทนข้อมูล
-  if (/[+*]/.test(s) || /(?<!\d)-|-(?!\d)/.test(s)) return "ที่อยู่ห้ามใส่ - + * ให้พิมพ์ที่อยู่จริง";
+  // ⚠️ ขีดในที่อยู่จริงมีเยอะมาก (ถ.รังสิต-นครนายก · อโศก-ดินแดง · ประชาชื่น - พงษ์เพชร · Chula-Samyan)
+  // ห้ามเตือนขีดที่คั่นระหว่างคำ — เตือนเฉพาะที่ "ใส่สัญลักษณ์แทนที่อยู่" คือซ้ำติดกัน (---, ***)
+  // หรือทั้งช่องมีแต่สัญลักษณ์/เครื่องหมายวรรคตอน (พนักงานแจ้ง 22 ก.ย. 69 "บางที่อยู่มี - เกี่ยวข้องด้วย")
+  const contentOnly = s.replace(/[-+*_=~.,/\\()[\]{}'"|:;!?\s]/g, "");
+  if (/[-+*]{2,}/.test(s) || !contentOnly) return "ที่อยู่ห้ามใส่ - + * แทนที่อยู่จริง ให้พิมพ์ที่อยู่จริง";
   const letters = (s.match(/[A-Za-z฀-๿]/g) ?? []).length;
   const digits = (s.match(/\d/g) ?? []).length;
   if (s.length < 15 || letters < 6 || digits < 1)
