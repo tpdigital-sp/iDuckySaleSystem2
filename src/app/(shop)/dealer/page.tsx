@@ -17,9 +17,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCustomer } from "@/lib/customer-context";
-import { getAccessToken } from "@/lib/customer-auth";
+import { getAccessToken, signIn } from "@/lib/customer-auth";
 import { LINE_URL } from "@/components/LineButton";
 import { hasCustomSender } from "@/lib/order-sender";
+import { cleanPhone, phoneProblem } from "@/lib/contact-validate";
 import type { OrderSender } from "@/lib/admin-data";
 
 type Me = { dealer: boolean; applied: boolean; application?: { shopName: string; channel: string; detail?: string } };
@@ -99,7 +100,7 @@ const FAQS = [
 ];
 
 export default function DealerApplyPage() {
-  const { customer, loading } = useCustomer();
+  const { customer, loading, refresh } = useCustomer();
   const [me, setMe] = useState<Me | null>(null);
   const [shopName, setShopName] = useState("");
   const [channel, setChannel] = useState("");
@@ -108,6 +109,13 @@ export default function DealerApplyPage() {
   const [sent, setSent] = useState(false);
   const [editing, setEditing] = useState(false);
   const [err, setErr] = useState("");
+
+  /* 🆕 บล็อก "บัญชีสำหรับรับราคาตัวแทน" — โผล่เฉพาะคนที่ยังไม่ล็อกอิน
+     สิทธิ์ตัวแทนผูกกับบัญชีสมาชิกเสมอ เลยต้องมีบัญชี แต่ไม่เด้งออกไปหน้าอื่น สร้างให้ตรงนี้ตอนกดส่ง */
+  const [accName, setAccName] = useState("");
+  const [accPhone, setAccPhone] = useState("");
+  const [accEmail, setAccEmail] = useState("");
+  const [accPassword, setAccPassword] = useState("");
 
   /* 📮 ผู้ส่งประจำ — ชื่อร้านของตัวแทนที่จะขึ้นบนกล่องแทนชื่อร้านเรา (ออเดอร์ใหม่ติดไปเอง) */
   const [sender, setSender] = useState<OrderSender | undefined>(undefined);
@@ -158,6 +166,29 @@ export default function DealerApplyPage() {
     };
   }, [customer]);
 
+  /** ส่งใบสมัคร — ล็อกอินอยู่แล้วใช้ token · ยังไม่มีบัญชีส่ง account ไปให้เซิร์ฟเวอร์สร้างให้ในคำขอเดียว */
+  async function postApply(token: string | null, withAccount: boolean) {
+    return fetch("/api/dealers/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        shopName: shopName.trim(),
+        channel: channel.trim(),
+        detail: detail.trim() || undefined,
+        ...(withAccount
+          ? {
+              account: {
+                name: accName.trim(),
+                phone: cleanPhone(accPhone),
+                email: accEmail.trim(),
+                password: accPassword,
+              },
+            }
+          : {}),
+      }),
+    });
+  }
+
   async function submit() {
     if (busy) return;
     setErr("");
@@ -169,19 +200,56 @@ export default function DealerApplyPage() {
       setErr("กรอกช่องทางขาย เช่น IG / Facebook / หน้าร้าน");
       return;
     }
+    // ยังไม่ล็อกอิน = ต้องกรอกบัญชีให้ครบด้วย (เช็คฝั่งหน้าเว็บก่อน จะได้บอกทีละช่องได้)
+    if (!customer) {
+      if (accName.trim().length < 2) {
+        setErr("กรอกชื่อผู้สมัคร");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(accEmail.trim())) {
+        setErr("กรอกอีเมลให้ถูกต้อง — ใช้เข้าสู่ระบบและรับข่าวจากร้าน");
+        return;
+      }
+      const phoneErr = phoneProblem(accPhone);
+      if (phoneErr) {
+        setErr(phoneErr);
+        return;
+      }
+      if (accPassword.length < 6) {
+        setErr("ตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร");
+        return;
+      }
+    }
     setBusy(true);
     try {
       const token = await getAccessToken();
-      const res = await fetch("/api/dealers/apply", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ shopName: shopName.trim(), channel: channel.trim(), detail: detail.trim() || undefined }),
-      });
-      const j = await res.json();
+      let res = await postApply(token, !customer);
+      let j = await res.json();
+
+      // อีเมลนี้เคยสมัครไว้แล้ว → ลองเข้าสู่ระบบด้วยรหัสที่เพิ่งกรอก แล้วส่งใบสมัครซ้ำในนามบัญชีนั้น
+      if (!res.ok && j?.emailTaken) {
+        const login = await signIn(accEmail.trim(), accPassword);
+        if (!login.ok) {
+          setErr("อีเมลนี้มีบัญชีอยู่แล้ว แต่รหัสผ่านไม่ตรง — ใส่รหัสเดิม หรือกดลืมรหัสผ่านที่หน้าเข้าสู่ระบบ");
+          return;
+        }
+        await refresh();
+        res = await postApply(await getAccessToken(), false);
+        j = await res.json();
+      }
+
       if (!res.ok) {
-        setErr(j.error ?? "ส่งใบสมัครไม่สำเร็จ ลองใหม่อีกครั้ง");
+        setErr(j?.error ?? "ส่งใบสมัครไม่สำเร็จ ลองใหม่อีกครั้ง");
         return;
       }
+
+      // เพิ่งสร้างบัญชีให้ → ล็อกอินให้เลย จะได้เห็นสถานะใบสมัครและราคาตัวแทนทันทีที่ร้านอนุมัติ
+      if (j?.created) {
+        await signIn(accEmail.trim(), accPassword);
+        await refresh();
+        setAccPassword("");
+      }
+
       setSent(true);
       setEditing(false);
       setMe((m) => ({ ...(m ?? { dealer: false, applied: false }), applied: true }));
@@ -197,7 +265,8 @@ export default function DealerApplyPage() {
     `สมัครตัวแทนจำหน่ายบนเว็บแล้ว${shopName.trim() ? ` ชื่อร้าน: ${shopName.trim()}` : ""} ขอชำระค่าสมัคร 200 บาท และรออนุมัติ`
   )}`;
 
-  const showForm = customer && me && !me.dealer && (!me.applied || editing) && !sent;
+  // ยังไม่ล็อกอินก็กรอกได้เลย (สร้างบัญชีให้ตอนกดส่ง) · ล็อกอินแล้วรอผล /api/dealers/me ก่อน
+  const showForm = !sent && (!customer || (!!me && !me.dealer && (!me.applied || editing)));
   const isDealer = !!me?.dealer;
 
   return (
@@ -336,15 +405,6 @@ export default function DealerApplyPage() {
         <div className="dlr-apply">
           {loading || (customer && me === null) ? (
             <p className="dlr-wait">กำลังตรวจสอบบัญชี…</p>
-          ) : !customer ? (
-            <div className="dlr-state">
-              <span className="dlr-state-ico t-sky">🔑</span>
-              <b>เข้าสู่ระบบก่อนสมัคร</b>
-              <p>ใบสมัครผูกกับบัญชีสมาชิก — พอได้รับอนุมัติ บัญชีนี้จะเห็นราคาตัวแทนอัตโนมัติทุกครั้งที่ล็อกอิน</p>
-              <Link className="btn btn-primary" href="/account/login">
-                เข้าสู่ระบบ / สมัครสมาชิก <span className="dot">→</span>
-              </Link>
-            </div>
           ) : isDealer ? (
             <div className="dlr-state ok">
               <span className="dlr-state-ico t-mint">🎉</span>
@@ -409,14 +469,89 @@ export default function DealerApplyPage() {
                 />
               </label>
 
+              {/* 🔑 ยังไม่ล็อกอิน = กรอกบัญชีต่อท้ายในใบเดียวกัน ระบบสร้างบัญชีให้ตอนกดส่ง ไม่เด้งออกจากหน้านี้ */}
+              {!customer && (
+                <div className="dlr-acc">
+                  <p className="dlr-acc-head">
+                    <b>🔑 บัญชีสำหรับรับราคาตัวแทน</b>
+                    <span>ราคาตัวแทนผูกกับบัญชีนี้ — ระบบสร้างให้ตอนกดส่ง ไม่ต้องไปสมัครที่อื่นก่อน</span>
+                  </p>
+                  <div className="dlr-acc-grid">
+                    <label className="dlr-field">
+                      <span className="dlr-label">
+                        ชื่อผู้สมัคร <i>*</i>
+                      </span>
+                      <input
+                        className="auth-input"
+                        value={accName}
+                        onChange={(e) => setAccName(e.target.value)}
+                        autoComplete="name"
+                        placeholder="ชื่อ-นามสกุล หรือชื่อที่ให้แอดมินเรียก"
+                      />
+                    </label>
+                    <label className="dlr-field">
+                      <span className="dlr-label">
+                        เบอร์โทร <i>*</i>
+                      </span>
+                      <input
+                        className="auth-input"
+                        value={accPhone}
+                        onChange={(e) => setAccPhone(e.target.value)}
+                        autoComplete="tel"
+                        inputMode="tel"
+                        placeholder="เบอร์ที่แอดมินติดต่อกลับได้ เช่น 0812345678"
+                      />
+                    </label>
+                    <label className="dlr-field">
+                      <span className="dlr-label">
+                        อีเมล <i>*</i>
+                      </span>
+                      <input
+                        className="auth-input"
+                        type="email"
+                        value={accEmail}
+                        onChange={(e) => setAccEmail(e.target.value)}
+                        autoComplete="email"
+                        placeholder="ใช้เข้าสู่ระบบครั้งต่อไป"
+                      />
+                    </label>
+                    <label className="dlr-field">
+                      <span className="dlr-label">
+                        ตั้งรหัสผ่าน <i>*</i>
+                      </span>
+                      <input
+                        className="auth-input"
+                        type="password"
+                        value={accPassword}
+                        onChange={(e) => setAccPassword(e.target.value)}
+                        autoComplete="new-password"
+                        placeholder="อย่างน้อย 6 ตัวอักษร"
+                      />
+                    </label>
+                  </div>
+                  <p className="dlr-acc-alt">
+                    เคยสมัครสมาชิกไว้แล้ว? ใส่อีเมลกับรหัสผ่านเดิมได้เลย ระบบจะผูกใบสมัครเข้าบัญชีนั้นให้ · หรือ{" "}
+                    <a href="/api/auth/line/login">เข้าสู่ระบบด้วย LINE</a> แล้วค่อยกรอก
+                  </p>
+                </div>
+              )}
+
               {err && <p className="auth-msg err dlr-err">{err}</p>}
 
               <div className="dlr-submit">
                 <button className="btn btn-yolk" type="submit" disabled={busy}>
-                  {busy ? "กำลังส่ง…" : me?.applied ? "บันทึกใบสมัครใหม่" : "ส่งใบสมัคร"}{" "}
+                  {busy
+                    ? "กำลังส่ง…"
+                    : me?.applied
+                      ? "บันทึกใบสมัครใหม่"
+                      : customer
+                        ? "ส่งใบสมัคร"
+                        : "สร้างบัญชี + ส่งใบสมัคร"}{" "}
                   <span className="dot">{busy ? "…" : "→"}</span>
                 </button>
-                <span className="dlr-submit-hint">ส่งแล้วยังแก้ได้ จนกว่าร้านจะกดอนุมัติ</span>
+                <span className="dlr-submit-hint">
+                  {customer ? "ส่งแล้วยังแก้ได้ จนกว่าร้านจะกดอนุมัติ" : "กดแล้วระบบสร้างบัญชีให้ + ส่งใบสมัครในทีเดียว · แก้ไขได้จนกว่าร้านจะอนุมัติ"}
+                </span>
               </div>
             </form>
           ) : (

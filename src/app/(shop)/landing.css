@@ -5390,3 +5390,15 @@ to{opacity:1;transform:none}}
 .dl .dlr-sec .head{padding-inline:20px}
 .dl .dlr-sec.tight{padding-top:10px}
 .dl .dlr-cta-wrap{width:min(100% - 40px,var(--wrap));margin:0 auto;padding:8px 0 72px}
+
+/* --- บล็อก "บัญชีสำหรับรับราคาตัวแทน" ในใบสมัคร — โผล่เฉพาะคนที่ยังไม่ล็อกอิน --- */
+.dl .dlr-acc{grid-column:1/-1;margin-top:4px;padding:18px 20px 20px;border-radius:var(--r-m);
+  background:var(--sky-50);border:1px solid var(--sky-200)}
+.dl .dlr-acc-head{display:flex;flex-direction:column;gap:3px;margin-bottom:13px}
+.dl .dlr-acc-head b{font-family:var(--display);font-weight:500;font-size:.94rem;color:var(--navy)}
+.dl .dlr-acc-head span{font-size:.78rem;line-height:1.7;color:var(--navy-soft)}
+.dl .dlr-acc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.dl .dlr-acc-grid{grid-template-columns:1fr}}
+.dl .dlr-acc-alt{margin-top:12px;font-size:.76rem;line-height:1.75;color:var(--navy-soft)}
+.dl .dlr-acc-alt a{color:var(--blue-deep);font-weight:500;text-decoration:underline;text-underline-offset:3px}
+.dl .dlr-acc-alt a:hover{color:var(--navy)}
