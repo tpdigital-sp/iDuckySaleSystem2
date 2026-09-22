@@ -1,10 +1,17 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 /**
  * 🤝 หน้าสมัครตัวแทนจำหน่าย (/dealer) — ลิงก์นี้ร้านส่งให้ลูกค้าที่อยากเป็นตัวแทน
  *
  * ต้องล็อกอินก่อนสมัคร (ใบสมัครผูกกับบัญชี — พออนุมัติแล้วบัญชีนั้นเห็นราคาตัวแทนทันที)
  * ส่งใบสมัคร → รอร้านอนุมัติที่ /admin/dealers · สมัครซ้ำ = แก้ใบเดิมได้จนกว่าร้านจะจัดการ
+ *
+ * 🎨 ดีไซน์: ภาษาเดียวกับหน้าแรก — ครอบ `.dl dl-page dlr-page` แล้วใช้ token/คอมโพเนนต์ของ landing.css
+ * (Mitr หัวเรื่อง+ปุ่ม · Plex Looped เนื้อความ · sky/navy/yolk · พื้นฟ้าจาง + เมฆลอย)
+ * ⚠️ ห้ามใช้คลาส Tailwind ในหน้านี้ — `.dl *{margin:0;padding:0}` ล้างทิ้งหมด
+ * สไตล์ทั้งหมดอยู่ใน landing.css หัวข้อ "หน้าสมัครตัวแทนจำหน่าย" prefix .dlr-
  */
 
 import { useEffect, useState } from "react";
@@ -17,8 +24,79 @@ import type { OrderSender } from "@/lib/admin-data";
 
 type Me = { dealer: boolean; applied: boolean; application?: { shopName: string; channel: string; detail?: string } };
 
-const inputCls =
-  "w-full rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-700 ring-1 ring-amber-200 placeholder:text-stone-300 focus:outline-none focus:ring-2 focus:ring-teal-300";
+/** สิ่งที่ตัวแทนได้ — 4 ใบ เรียงจากเรื่องที่ลูกค้าถามบ่อยที่สุด */
+const PERKS = [
+  {
+    ico: "💸",
+    tone: "t-yolk",
+    title: "ราคาตัวแทนทุกชิ้น",
+    desc: "ราคาตัวแทนถูกกว่าราคาหน้าเว็บทุกช่วงจำนวน เห็นราคาจริงตั้งแต่หน้าสินค้า ไม่ต้องทักถามทีละชิ้น",
+  },
+  {
+    ico: "1️⃣",
+    tone: "t-sky",
+    title: "ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น",
+    desc: "สั่งชิ้นเดียวก็ได้ราคาตัวแทน รับออเดอร์ลูกค้ามาแล้วค่อยสั่ง ไม่ต้องสต๊อกของเอง",
+  },
+  {
+    ico: "📮",
+    tone: "t-mint",
+    title: "ส่งในชื่อร้านคุณ",
+    desc: "ตั้งชื่อร้านคุณเป็นผู้ส่งบนกล่องได้ — ลูกค้าปลายทางไม่เห็นชื่อร้านเรา ตั้งครั้งเดียวติดไปทุกออเดอร์",
+  },
+  {
+    ico: "⚡",
+    tone: "t-lilac",
+    title: "อนุมัติแล้วใช้ได้ทันที",
+    desc: "ราคาตัวแทนผูกกับบัญชีนี้ พออนุมัติแล้วเปิดหน้าสินค้าจะเห็นป้าย 🤝 และราคาใหม่ทันที",
+  },
+];
+
+/** 3 ขั้นตอนสมัคร — ไอคอนชุดเดียวกับหน้าวิธีสั่งซื้อ */
+const STEPS = [
+  {
+    ico: "guide",
+    title: "กรอกใบสมัคร",
+    desc: "เข้าสู่ระบบ แล้วกรอกชื่อร้านกับช่องทางขายของคุณในฟอร์มด้านล่าง ใช้เวลาไม่ถึงนาที",
+  },
+  {
+    ico: "pay",
+    title: "ทักไลน์ชำระค่าสมัคร",
+    desc: "ทักไลน์ร้านแจ้งว่าสมัครแล้ว พร้อมชำระค่าสมัคร 200 บาท (ครั้งเดียว ไม่มีรายปี)",
+  },
+  {
+    ico: "pick",
+    title: "ร้านอนุมัติ — เริ่มขายได้เลย",
+    desc: "แอดมินกดอนุมัติให้ บัญชีนี้จะเห็นราคาตัวแทนทั้งร้านทันที สั่งได้เลยไม่ต้องรอรอบ",
+  },
+];
+
+const FAQS = [
+  {
+    q: "ค่าสมัคร 200 บาท จ่ายครั้งเดียวจริงไหม?",
+    a: "จ่ายครั้งเดียวตอนสมัคร ไม่มีค่าต่ออายุรายปี ไม่มียอดสั่งขั้นต่ำที่ต้องรักษาไว้",
+  },
+  {
+    q: "ราคาตัวแทนใช้ร่วมกับส่วนลดอื่นได้ไหม?",
+    a: "ไม่ได้ — ราคาตัวแทนเป็นราคาสุทธิที่ใช้แทนส่วนลดทุกแบบ ทั้งส่วนลดระดับสมาชิก คูปอง ส่วนลดโอนไว และของแถมตามจำนวน",
+  },
+  {
+    q: "สมัครแล้วต้องรอนานไหม?",
+    a: "แอดมินอนุมัติหลังได้รับค่าสมัครทางไลน์แล้ว ปกติภายในวันทำการเดียวกัน · ยังไม่ทักไลน์ = ใบสมัครจะค้างรออยู่ ยังไม่ถูกอนุมัติ",
+  },
+  {
+    q: "ลูกค้าปลายทางจะรู้ไหมว่าสั่งจาก iDucky?",
+    a: "ตั้งชื่อร้านคุณเป็นผู้ส่งบนกล่องได้ที่หน้าบัญชีของฉัน — กล่องจะขึ้นชื่อร้านคุณแทน · ส่วนใบเสร็จ/ใบกำกับภาษีต้องเป็นชื่อร้านเราตามกฎหมาย",
+  },
+  {
+    q: "สั่งของยังไงหลังเป็นตัวแทนแล้ว?",
+    a: "สั่งผ่านเว็บตามปกติ แค่ต้องล็อกอินบัญชีที่เป็นตัวแทนก่อนทุกครั้ง — ถ้าลืมล็อกอินแล้วสั่ง ใบนั้นจะเป็นราคาปกติ ทักแอดมินให้แก้ให้ได้",
+  },
+  {
+    q: "กรอกใบสมัครผิด แก้ได้ไหม?",
+    a: "ได้ กดปุ่มแก้ไขใบสมัครในหน้านี้ แล้วส่งใหม่ทับใบเดิมได้เรื่อย ๆ จนกว่าร้านจะกดอนุมัติ",
+  },
+];
 
 export default function DealerApplyPage() {
   const { customer, loading } = useCustomer();
@@ -120,148 +198,291 @@ export default function DealerApplyPage() {
   )}`;
 
   const showForm = customer && me && !me.dealer && (!me.applied || editing) && !sent;
+  const isDealer = !!me?.dealer;
 
   return (
-    <div className="mx-auto max-w-md px-4 py-12">
-      <div className="overflow-hidden rounded-3xl bg-white shadow-lg ring-1 ring-amber-100">
-        {/* หัวการ์ด */}
-        <div className="bg-gradient-to-br from-teal-400 to-sky-500 px-6 py-8 text-center text-white">
-          <span className="text-5xl">🤝</span>
-          <p className="mt-2 text-lg font-extrabold">สมัครตัวแทนจำหน่าย iDucky</p>
-          <p className="mt-1 text-xs opacity-90">รับราคาตัวแทน สั่งได้ตั้งแต่ชิ้นแรก</p>
+    <div className="dl dl-page dlr-page">
+      {/* ── แถบฟ้าหัวหน้า: ฮีโร่ + สิ่งที่ตัวแทนได้ ── */}
+      <div className="top-stack dlr-stack">
+        <img className="bg-cloud dlr-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud dlr-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud dlr-c3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+
+        <section className="dlr-top">
+          <div className="dlr-hero">
+            <div className="dlr-hero-txt">
+              <span className="kicker kicker-yolk">
+                <i className="folder">🤝</i>โปรแกรมตัวแทนจำหน่าย
+              </span>
+              <h1>
+                ขายของพิมพ์ลาย<em>ในชื่อร้านคุณ</em>
+                <br />
+                ด้วย <span className="yolk-underline">ราคาตัวแทน</span>
+              </h1>
+              <p className="dlr-lead">
+                รับออเดอร์จากลูกค้าคุณ แล้วสั่งกับเราในราคาตัวแทน — <b>ไม่ต้องสต๊อกของ ไม่ต้องมีเครื่องพิมพ์</b>{" "}
+                เราผลิตและส่งตรงถึงลูกค้าปลายทางในชื่อร้านคุณได้เลย
+              </p>
+              <div className="dlr-facts">
+                <span className="dlr-fact">ค่าสมัคร 200 บาท ครั้งเดียว</span>
+                <span className="dlr-fact yolk">ไม่มีขั้นต่ำ เริ่มที่ 1 ชิ้น</span>
+                <span className="dlr-fact mint">ไม่มีค่าต่ออายุรายปี</span>
+              </div>
+              <div className="dlr-hero-btns">
+                {isDealer ? (
+                  <Link className="btn btn-yolk" href="/products">
+                    ดูสินค้าราคาตัวแทน <span className="dot">→</span>
+                  </Link>
+                ) : (
+                  <a className="btn btn-yolk" href="#apply">
+                    กรอกใบสมัคร <span className="dot">↓</span>
+                  </a>
+                )}
+                <a className="btn btn-ghost" href="#faq">
+                  คำถามที่พบบ่อย <span className="dot">?</span>
+                </a>
+              </div>
+              {isDealer && (
+                <p className="dlr-hero-flag">
+                  <b>🎉 บัญชีนี้เป็นตัวแทนจำหน่ายแล้ว</b> — สินค้าที่มีราคาตัวแทนจะขึ้นป้าย 🤝 ให้เห็นบนหน้าสินค้า
+                </p>
+              )}
+            </div>
+
+            {/* ฟองคำพูดต้องอยู่ในกรอบเดียวกับรูปเป็ด — ตำแหน่งจะได้อิงขอบรูปจริง ไม่ใช่ช่องตาราง */}
+            <div className="dlr-hero-art">
+              <span className="dlr-duck">
+                <span className="dlr-bub dlr-b1">ราคาตัวแทน ตั้งแต่ชิ้นแรก 🐥</span>
+                <span className="dlr-bub dlr-b2">กล่องขึ้นชื่อร้านคุณ 📮</span>
+                <img src="/landing/duck-hug.webp" alt="" aria-hidden="true" />
+              </span>
+            </div>
+          </div>
+
+          {/* สิ่งที่ตัวแทนได้ — 4 ใบกางเต็มความกว้าง */}
+          <div className="dlr-perks">
+            {PERKS.map((p) => (
+              <div className="dlr-perk" key={p.title}>
+                <i className={p.tone}>{p.ico}</i>
+                <b>{p.title}</b>
+                <p>{p.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* ข้อควรรู้ข้อเดียวที่ถามบ่อยที่สุด — วางก่อนสมัคร ไม่ให้ไปรู้ทีหลัง */}
+          <div className="dlr-note">
+            <b>ℹ️ ราคาตัวแทนเป็นราคาสุทธิ</b> ใช้แทนส่วนลดทุกแบบ — ส่วนลดระดับสมาชิก คูปอง ส่วนลดโอนไว และของแถมตามจำนวน
+            จะไม่ถูกนำมาคิดซ้ำในออเดอร์ของตัวแทน
+          </div>
+        </section>
+      </div>
+
+      {/* ── 3 ขั้นตอนสมัคร — แถบไล่สีชุดเดียวกับโซนขายดีหน้าแรก ── */}
+      <div className="combo-band dlr-band">
+        <div className="cb-bg" aria-hidden="true" />
+        <section className="wrap">
+          <div className="head">
+            <span className="kicker kicker-mint">
+              <i className="chat-ico">✨</i>สมัครง่าย ใช้เวลาไม่ถึงนาที
+            </span>
+            <h2>
+              สมัครวันนี้ <em>เริ่มขายได้เลย</em>
+            </h2>
+            <p>
+              ค่าสมัคร <b>200 บาท ครั้งเดียว</b> — ร้านอนุมัติหลังได้รับค่าสมัครทางไลน์แล้ว
+            </p>
+          </div>
+          <ol className="dlr-steps">
+            {STEPS.map((s, i) => (
+              <li className="dlr-step" key={s.title}>
+                <span className="dlr-node">{i + 1}</span>
+                <span className="dlr-ico">
+                  <img src={`/how-to/${s.ico}.webp`} alt="" aria-hidden="true" />
+                </span>
+                <span className="stepno">ขั้นที่ {i + 1}</span>
+                <h3>{s.title}</h3>
+                <p>{s.desc}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      </div>
+
+      {/* ── ใบสมัคร (หัวใจของหน้า) ── */}
+      <section className="dlr-sec" id="apply" style={{ scrollMarginTop: 100 }}>
+        {/* หัวข้อเปลี่ยนตามสถานะบัญชี — คนที่เป็นตัวแทนแล้วไม่ต้องเห็นคำว่า "กรอกใบสมัคร" */}
+        <div className="head">
+          <span className="kicker kicker-why">
+            <i className="beat-heart">{isDealer ? "🤝" : "📨"}</i>
+            {isDealer ? "สถานะบัญชีของคุณ" : "ใบสมัครตัวแทน"}
+          </span>
+          {isDealer ? (
+            <h2>
+              บัญชีตัวแทน<em>ของคุณ</em>
+            </h2>
+          ) : (
+            <h2>
+              กรอกใบสมัคร<em>ที่นี่</em>
+            </h2>
+          )}
+          <p>
+            {isDealer
+              ? "ราคาตัวแทนผูกกับบัญชีนี้แล้ว — ล็อกอินบัญชีนี้ทุกครั้งก่อนสั่งของ"
+              : "ใบสมัครผูกกับบัญชีสมาชิก — พออนุมัติ บัญชีนี้จะเห็นราคาตัวแทนอัตโนมัติ"}
+          </p>
         </div>
 
-        <div className="px-6 py-6">
-          {/* จุดขายสั้น ๆ */}
-          <ul className="space-y-1.5 text-sm text-stone-600">
-            <li>✅ เห็นราคาตัวแทนบนเว็บทันทีหลังได้รับอนุมัติ</li>
-            <li>✅ สั่งจำนวนน้อยก็ได้ราคาตัวแทน ไม่มีขั้นต่ำ</li>
-            <li>ℹ️ ราคาตัวแทนใช้แทนส่วนลด/คูปอง/ของแถมทุกรายการ</li>
-          </ul>
+        <div className="dlr-apply">
+          {loading || (customer && me === null) ? (
+            <p className="dlr-wait">กำลังตรวจสอบบัญชี…</p>
+          ) : !customer ? (
+            <div className="dlr-state">
+              <span className="dlr-state-ico t-sky">🔑</span>
+              <b>เข้าสู่ระบบก่อนสมัคร</b>
+              <p>ใบสมัครผูกกับบัญชีสมาชิก — พอได้รับอนุมัติ บัญชีนี้จะเห็นราคาตัวแทนอัตโนมัติทุกครั้งที่ล็อกอิน</p>
+              <Link className="btn btn-primary" href="/account/login">
+                เข้าสู่ระบบ / สมัครสมาชิก <span className="dot">→</span>
+              </Link>
+            </div>
+          ) : isDealer ? (
+            <div className="dlr-state ok">
+              <span className="dlr-state-ico t-mint">🎉</span>
+              <b>บัญชีของคุณเป็นตัวแทนจำหน่ายแล้ว</b>
+              <p>เปิดหน้าสินค้าได้เลย — สินค้าที่มีราคาตัวแทนจะขึ้นป้าย 🤝 และแสดงราคาตัวแทนให้ทันที</p>
+              <Link className="btn btn-yolk" href="/products">
+                ดูสินค้าราคาตัวแทน <span className="dot">→</span>
+              </Link>
 
-          {/* 💵 ค่าสมัคร + ขั้นตอน — บอกก่อนกรอก กันลูกค้าส่งใบแล้วนั่งรอเฉย ๆ (ร้านอนุมัติเมื่อทักไลน์มาแล้วเท่านั้น) */}
-          {!me?.dealer && (
-            <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
-              <p className="text-sm font-extrabold text-stone-800">
-                💵 ค่าสมัครตัวแทน <span className="text-teal-700">200 บาท</span>
+              {/* 📮 ฝากส่งให้ลูกค้าปลายทาง — ช่องตั้งค่าอยู่ที่ "บัญชีของฉัน" ที่เดียว (กันมีสองที่แก้) */}
+              <div className="dlr-sender">
+                <b>📮 ฝากส่งถึงลูกค้าของคุณ?</b>
+                <p>
+                  ตั้ง<b>ชื่อร้านคุณเป็นผู้ส่งบนกล่อง</b>ได้ — ลูกค้าปลายทางจะไม่เห็นชื่อร้านเรา
+                  {hasCustomSender({ sender })
+                    ? ` · ตอนนี้ตั้งไว้ว่า “${sender?.name || "ร้าน iDucky"}”`
+                    : " · ตอนนี้กล่องขึ้นชื่อร้าน iDucky"}
+                </p>
+                <Link className="dlr-mini" href="/account">
+                  📮 ตั้งชื่อผู้ส่งที่ บัญชีของฉัน
+                </Link>
+              </div>
+            </div>
+          ) : showForm ? (
+            <form
+              className="dlr-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
+            >
+              <label className="dlr-field">
+                <span className="dlr-label">
+                  ชื่อร้าน / ธุรกิจของคุณ <i>*</i>
+                </span>
+                <input
+                  className="auth-input"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  placeholder="เช่น ร้านของขวัญบ้านหมี"
+                />
+              </label>
+              <label className="dlr-field">
+                <span className="dlr-label">
+                  ช่องทางขาย <i>*</i>
+                </span>
+                <input
+                  className="auth-input"
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value)}
+                  placeholder="เช่น IG @bearshop · Facebook · หน้าร้านที่เชียงใหม่"
+                />
+              </label>
+              <label className="dlr-field wide">
+                <span className="dlr-label">รายละเอียดเพิ่มเติม (ไม่บังคับ)</span>
+                <textarea
+                  className="auth-input"
+                  rows={3}
+                  value={detail}
+                  onChange={(e) => setDetail(e.target.value)}
+                  placeholder="สินค้าที่สนใจ · ปริมาณที่คาดว่าจะสั่งต่อเดือน"
+                />
+              </label>
+
+              {err && <p className="auth-msg err dlr-err">{err}</p>}
+
+              <div className="dlr-submit">
+                <button className="btn btn-yolk" type="submit" disabled={busy}>
+                  {busy ? "กำลังส่ง…" : me?.applied ? "บันทึกใบสมัครใหม่" : "ส่งใบสมัคร"}{" "}
+                  <span className="dot">{busy ? "…" : "→"}</span>
+                </button>
+                <span className="dlr-submit-hint">ส่งแล้วยังแก้ได้ จนกว่าร้านจะกดอนุมัติ</span>
+              </div>
+            </form>
+          ) : (
+            <div className="dlr-state sent">
+              <span className="dlr-state-ico t-yolk">📨</span>
+              <b>ส่งใบสมัครแล้ว — เหลืออีกขั้นตอนเดียว</b>
+              <p>
+                <b>ขั้นตอนสุดท้าย: ทักไลน์ร้าน</b>แจ้งว่าสมัครตัวแทนแล้ว เพื่อชำระค่าสมัคร <b>200 บาท</b>{" "}
+                และให้ร้านกดอนุมัติ
               </p>
-              <ol className="mt-1.5 space-y-1 text-xs leading-relaxed text-stone-600">
-                <li>
-                  <b>1.</b> เข้าสู่ระบบ / สมัครสมาชิก
-                </li>
-                <li>
-                  <b>2.</b> กรอกใบสมัครด้านล่าง แล้วกดส่ง
-                </li>
-                <li>
-                  <b>3. ขั้นตอนสุดท้าย — ทักไลน์ร้าน</b>แจ้งว่าสมัครตัวแทนแล้ว เพื่อชำระค่าสมัครและให้ร้านกดอนุมัติ
-                  (อนุมัติแล้วบัญชีนี้เห็นราคาตัวแทนทันที)
-                </li>
-              </ol>
+              <p className="dlr-warn">⚠️ ยังไม่ทักไลน์ = ร้านยังไม่อนุมัติ · อนุมัติเมื่อไหร่ บัญชีนี้เห็นราคาตัวแทนทันที</p>
+              <a className="btn btn-line" href={lineHref} target="_blank" rel="noopener noreferrer">
+                ทักไลน์ร้าน <span className="dot">💬</span>
+              </a>
+              <button
+                className="dlr-mini"
+                type="button"
+                onClick={() => {
+                  setSent(false);
+                  setEditing(true);
+                }}
+              >
+                ✏️ แก้ไขใบสมัคร
+              </button>
             </div>
           )}
+        </div>
+      </section>
 
-          <div className="mt-5">
-            {loading || (customer && me === null) ? (
-              <p className="py-6 text-center text-sm text-stone-400">กำลังตรวจสอบบัญชี…</p>
-            ) : !customer ? (
-              <div className="rounded-2xl bg-amber-50 px-4 py-4 text-center">
-                <p className="text-sm font-semibold text-stone-700">เข้าสู่ระบบก่อนสมัคร</p>
-                <p className="mt-1 text-xs text-stone-500">
-                  ใบสมัครผูกกับบัญชีสมาชิก — พอได้รับอนุมัติ บัญชีนี้จะเห็นราคาตัวแทนอัตโนมัติ
-                </p>
-                <Link
-                  href="/account/login"
-                  className="mt-3 inline-block rounded-full bg-stone-800 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-stone-900"
-                >
-                  🔑 เข้าสู่ระบบ / สมัครสมาชิก
-                </Link>
-              </div>
-            ) : me?.dealer ? (
-              <div className="rounded-2xl bg-emerald-50 px-4 py-4 text-center">
-                <p className="text-sm font-bold text-emerald-700">🎉 บัญชีของคุณเป็นตัวแทนจำหน่ายแล้ว</p>
-                <p className="mt-1 text-xs text-emerald-600">เปิดหน้าสินค้าได้เลย — สินค้าที่มีราคาตัวแทนจะขึ้นป้าย 🤝</p>
-                <Link
-                  href="/products"
-                  className="mt-3 inline-block rounded-full bg-teal-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-teal-700"
-                >
-                  🛍️ ดูสินค้าราคาตัวแทน
-                </Link>
+      {/* ── คำถามที่พบบ่อย ── */}
+      <section className="dlr-sec tight" id="faq" style={{ scrollMarginTop: 100 }}>
+        <div className="head">
+          <span className="kicker kicker-why">
+            <i className="beat-heart">❓</i>คำถามที่พบบ่อย
+          </span>
+          <h2>
+            ถาม-ตอบ<em>ก่อนสมัคร</em>
+          </h2>
+        </div>
+        <div className="dlr-faq">
+          {FAQS.map((f) => (
+            <details key={f.q}>
+              <summary>
+                <i>▶</i>
+                {f.q}
+              </summary>
+              <p>{f.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
 
-                {/* 📮 ฝากส่งให้ลูกค้าปลายทาง — ช่องตั้งค่าอยู่ที่ "บัญชีของฉัน" ที่เดียว (กันมีสองที่แก้) */}
-                <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-left ring-1 ring-emerald-200">
-                  <p className="text-xs font-extrabold text-stone-700">📮 ฝากส่งถึงลูกค้าของคุณ?</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
-                    ตั้ง<b>ชื่อร้านคุณเป็นผู้ส่งบนกล่อง</b>ได้ — ลูกค้าปลายทางจะไม่เห็นชื่อร้านเรา
-                    {hasCustomSender({ sender }) ? ` · ตอนนี้ตั้งไว้ว่า “${sender?.name || "ร้าน iDucky"}”` : " · ตอนนี้กล่องขึ้นชื่อร้าน iDucky"}
-                  </p>
-                  <Link
-                    href="/account"
-                    className="mt-2 inline-block rounded-full bg-white px-4 py-2 text-xs font-bold text-stone-600 ring-1 ring-stone-200 transition hover:ring-teal-300"
-                  >
-                    📮 ตั้งชื่อผู้ส่งที่ บัญชีของฉัน
-                  </Link>
-                </div>
-              </div>
-            ) : showForm ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  submit();
-                }}
-                className="flex flex-col gap-3"
-              >
-                <label className="text-xs font-bold text-stone-600">
-                  ชื่อร้าน / ธุรกิจของคุณ *
-                  <input value={shopName} onChange={(e) => setShopName(e.target.value)} placeholder="เช่น ร้านของขวัญบ้านหมี" className={`mt-1 ${inputCls}`} />
-                </label>
-                <label className="text-xs font-bold text-stone-600">
-                  ช่องทางขาย *
-                  <input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="เช่น IG @bearshop · Facebook · หน้าร้านที่เชียงใหม่" className={`mt-1 ${inputCls}`} />
-                </label>
-                <label className="text-xs font-bold text-stone-600">
-                  รายละเอียดเพิ่มเติม (ไม่บังคับ)
-                  <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} placeholder="สินค้าที่สนใจ · ปริมาณที่คาดว่าจะสั่งต่อเดือน" className={`mt-1 resize-y ${inputCls}`} />
-                </label>
-                {err && <p className="text-xs font-semibold text-rose-600">{err}</p>}
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="rounded-full bg-teal-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-teal-700 disabled:opacity-40"
-                >
-                  {busy ? "กำลังส่ง…" : me?.applied ? "💾 บันทึกใบสมัครใหม่" : "📨 ส่งใบสมัคร"}
-                </button>
-              </form>
-            ) : (
-              <div className="rounded-2xl bg-sky-50 px-4 py-4 text-center">
-                <p className="text-sm font-bold text-sky-700">📨 ส่งใบสมัครแล้ว — เหลืออีกขั้นตอนเดียว</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-sky-700">
-                  <b>ขั้นตอนสุดท้าย: ทักไลน์ร้าน</b>แจ้งว่าสมัครตัวแทนแล้ว เพื่อชำระค่าสมัคร <b>200 บาท</b> และให้ร้านกดอนุมัติ
-                </p>
-                <p className="mt-1 text-[11px] text-sky-600">
-                  ⚠️ ยังไม่ทักไลน์ = ร้านยังไม่อนุมัติ · อนุมัติเมื่อไหร่ บัญชีนี้เห็นราคาตัวแทนทันที
-                </p>
-                <div className="mt-3 flex flex-wrap justify-center gap-2">
-                  <a
-                    href={lineHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full rounded-full bg-[#06C755] px-5 py-3 text-sm font-bold text-white transition hover:brightness-95"
-                  >
-                    💬 ขั้นตอนสุดท้าย: ทักไลน์ร้าน
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSent(false);
-                      setEditing(true);
-                    }}
-                    className="rounded-full bg-white px-4 py-2 text-xs font-bold text-stone-600 ring-1 ring-stone-200 transition hover:ring-teal-300"
-                  >
-                    ✏️ แก้ไขใบสมัคร
-                  </button>
-                </div>
-              </div>
-            )}
+      {/* ── ปิดท้าย — แถบเนวี่ตัวเดียวกับหน้าแรก ── */}
+      <div className="dlr-cta-wrap">
+        <div className="chat-cta">
+          <div className="cc-text">
+            <h3>ยังไม่แน่ใจว่าเหมาะกับร้านคุณไหม?</h3>
+            <p>ทักมาคุยกับแอดมินได้เลย — เล่าให้ฟังว่าขายอะไรอยู่ เราช่วยดูให้ว่าสินค้าตัวไหนน่าเริ่ม</p>
+          </div>
+          <div className="cc-btns">
+            <a className="btn btn-line" href={LINE_URL} target="_blank" rel="noopener noreferrer">
+              ทักแอดมินทาง LINE <span className="dot">💬</span>
+            </a>
+            <Link className="btn btn-yolk" href="/products">
+              ดูสินค้าทั้งหมด <span className="dot">→</span>
+            </Link>
           </div>
         </div>
       </div>
