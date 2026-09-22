@@ -106,9 +106,30 @@ check("ลดแล้วกลายเป็นโอนเกิน → ไ�
 const coupon = baseOrder({ discount: { label: "คูปอง", amount: 100 } } as Partial<Order>);
 check("ส่วนลดไม่มีธง tierId → ไม่แตะ", (await syncOrderMemberTier(fakeSb, coupon)).discount?.amount, 100);
 
-// 8) ใบที่เลยขั้นเก็บเงินไปแล้ว → ไม่แตะ
-const shipped = baseOrder({ status: "ชำระแล้ว" } as Partial<Order>);
-check("ใบเลยขั้นเก็บเงิน → ไม่คิดส่วนลดใหม่", (await syncOrderMemberTier(fakeSb, shipped)).discount, undefined);
+// 8) ใบที่จ่ายครบแล้ว ไม่มียอดค้าง → ไม่แตะ (บิลปิดแล้ว)
+const settled = baseOrder({ status: "ชำระแล้ว", paidTotal: 5570 } as Partial<Order>);
+check("ใบจ่ายครบ ไม่มียอดค้าง → ไม่คิดส่วนลดใหม่", (await syncOrderMemberTier(fakeSb, settled)).discount, undefined);
+
+// 9) ใบที่เลยเข้าสายผลิต/ส่งแล้ว → ไม่แตะ แม้มียอดค้าง (บิลปิด เด้งกลับไม่ได้)
+const shipped = baseOrder({ status: "จัดส่งแล้ว", paidTotal: 100 } as Partial<Order>);
+check("ใบจัดส่งแล้ว → ไม่คิดส่วนลดใหม่", (await syncOrderMemberTier(fakeSb, shipped)).discount, undefined);
+
+/**
+ * 10) 🔑 เคสที่ทำให้ใบ 7543 พลาดตั้งแต่ครั้งแรก: แอดมินเพิ่มรายการตอนใบอยู่ขั้น "อนุมัติแบบ"
+ * ทั้ง PATCH แอดมินและ /api/orders/append เรียก sync **ก่อน** สถานะเด้งกลับเป็น "รอชำระเงิน"
+ * → ต้องคิดส่วนลดได้ตั้งแต่ตอนนั้น ไม่ใช่รอให้มีการบันทึกซ้ำอีกรอบ
+ */
+const addedWhileApproved = baseOrder({
+  status: "อนุมัติแบบ",
+  paidTotal: 5294,
+  items: [
+    { name: "ของเดิม", qty: 4, unitPrice: 1380 },
+    { name: "ของที่เพิ่ม", qty: 1, unitPrice: 1380 },
+    { name: "ค่าอะคริลิคพิเศษ", qty: 4, unitPrice: 270 },
+  ],
+  discount: { label: "สมาชิก Silver (5%)", amount: 276, tierId: "silver" },
+} as Partial<Order>);
+check("เพิ่มของตอนใบอยู่ขั้นอนุมัติแบบ → ได้ส่วนลดทันที", (await syncOrderMemberTier(fakeSb, addedWhileApproved)).discount?.amount, 399);
 
 console.log(fail === 0 ? "\n✅ ผ่านทั้งหมด" : `\n❌ ไม่ผ่าน ${fail} ข้อ`);
 process.exit(fail === 0 ? 0 : 1);

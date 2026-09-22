@@ -1,4 +1,4 @@
-import { orderItemDiscounts, orderSubtotal, paidSoFar, type Order, type OrderStatus } from "@/lib/admin-data";
+import { hasUnpaidBalance, orderItemDiscounts, orderSubtotal, paidSoFar, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries } from "@/lib/payments";
 import { tierDiscountAmount } from "@/lib/tiers";
 import { memberTierOfContact } from "./quote-member-tier";
@@ -21,6 +21,22 @@ type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 /** ขั้นที่ยัง "ตั้งราคา/เก็บเงิน" อยู่ — ใบที่เลยไปแล้วห้ามขยับยอด */
 const OPEN_FOR_PRICING: OrderStatus[] = ["รอชำระเงิน", "รอตรวจสอบ"];
 
+/**
+ * ขั้นที่ "เด้งกลับไปรอชำระเงินได้ถ้ายอดโต" — ชุดเดียวกับ REOPEN_FOR_BALANCE ใน /api/admin/orders
+ *
+ * ⚠️ ทำไมต้องมี: ทั้ง 2 ทางเข้าเรียก syncOrderMemberTier **ก่อน** สถานะถูกเด้งกลับเป็น "รอชำระเงิน"
+ * (แอดมิน PATCH สลับสถานะทีหลัง · /api/orders/append ส่งสถานะเดิมเข้ามา) → ถ้าดูแค่ OPEN_FOR_PRICING
+ * ใบที่จ่ายแล้ว/อนุมัติแบบแล้วจะหลุดด่านทุกครั้งที่ "เพิ่มรายการครั้งแรก" (OD-260915-7543 · 22 ก.ย. 69 09:37)
+ * มียอดค้าง = ใบกลับเข้าขั้นเก็บเงินแล้วจริง ๆ จึงคิดส่วนลดต่อได้
+ */
+const REOPEN_FOR_BALANCE: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
+
+/** ใบนี้ยังอยู่ (หรือกำลังกลับเข้า) ขั้นเก็บเงินไหม */
+function openForPricing(o: Order): boolean {
+  if (OPEN_FOR_PRICING.includes(o.status)) return true;
+  return REOPEN_FOR_BALANCE.includes(o.status) && hasUnpaidBalance(o);
+}
+
 /** ป้ายส่วนลด — รูปแบบเดียวกับตอนลูกค้าล็อกอินสั่งเอง เพื่อให้ทุกใบอ่านเหมือนกัน */
 export const memberTierLabel = (name: string, pct: number) => `สมาชิก ${name} (${pct}%)`;
 
@@ -33,8 +49,8 @@ export const memberTierLabel = (name: string, pct: number) => `สมาชิ�
  */
 export function mayAutoMemberTier(o: Order): boolean {
   if (o.dealer || o.customerId || o.claimOf || o.flowAccount) return false;
-  // เฉพาะใบที่ยังอยู่ขั้นเก็บเงิน — เลยไปแล้ว (ผลิต/ส่ง/จบ/ยกเลิก) ยอดบิลปิดแล้ว แม้จะยังไม่มี paidTotal
-  if (!OPEN_FOR_PRICING.includes(o.status)) return false;
+  // เฉพาะใบที่ยังอยู่ขั้นเก็บเงิน (หรือยอดโตจนกำลังเด้งกลับไปรอชำระ) — เลยไปแล้ว (ผลิต/ส่ง/จบ/ยกเลิก) ยอดบิลปิดแล้ว
+  if (!openForPricing(o)) return false;
   if (o.discount && !o.discount.tierId) return false;
   return true;
 }
