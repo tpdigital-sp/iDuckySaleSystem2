@@ -114,13 +114,19 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
     else if (next.adminDiscount?.label?.startsWith("ส่วนลดตามใบ")) delete next.adminDiscount;
     if (f.vat && f.vat > 0) next.vat = { rate: d.vatRate ?? 7, amount: f.vat };
     else delete next.vat;
-    if (f.wht && f.wht > 0) next.wht = { rate: d.whtRate ?? 0, amount: f.wht };
+    // หัก ณ ที่จ่ายตามเอกสาร — ไม่มีในเอกสาร = เอาออก (เหมือน VAT/ส่วนลด)
+    // ปุ่มนี้แอดมินกดเอง และตารางข้างบนโชว์ให้เห็นก่อนแล้วว่าจะเปลี่ยนเป็นเท่าไร
+    if (f.wht && f.wht > 0) next.wht = { rate: d.whtRate ?? next.wht?.rate ?? 0, amount: f.wht };
+    else delete next.wht;
     next = withLog(next, actor, "ซิงก์ยอดจาก FlowAccount", `${d.docTypeLabel} ${d.docNo} · ยอดรวม ${orderTotal(next).toLocaleString("th-TH")} บาท${d.grandTotal != null ? ` (เอกสาร ${d.grandTotal.toLocaleString("th-TH")})` : ""}`);
     onApply(next);
     setDiff(null);
   }
 
   const gap = flowAccountGap(order);
+  // 🧾 ยอดหัก ณ ที่จ่ายที่จำไว้ตอนอ่านเอกสาร ไม่ตรงกับที่ใส่ในออเดอร์ = ลูกค้าจะโอนคนละยอดกับที่ระบบรอ
+  const faWht = order.flowAccount?.wht ?? 0;
+  const whtGap = faWht > 0 || (order.wht?.amount ?? 0) > 0 ? Math.round((faWht - (order.wht?.amount ?? 0)) * 100) / 100 : 0;
 
   return (
     <div className="mt-1.5">
@@ -129,6 +135,11 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
       {!!gap && (
         <p className="mb-1.5 rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-bold leading-relaxed text-rose-700">
           ⚠️ ยอดในระบบ {formatPrice(orderBilledTotal(order))} ไม่ตรงกับใบนี้ {formatPrice(flowAccountBillTotal(order) ?? 0)} (ต่าง {formatPrice(Math.abs(gap))}) — ลูกค้าโอนตามใบ ต้องแก้ให้ตรงก่อน
+        </p>
+      )}
+      {!gap && Math.abs(whtGap) >= 0.01 && (
+        <p className="mb-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold leading-relaxed text-amber-800">
+          🧾 หัก ณ ที่จ่ายตามใบนี้ {formatPrice(faWht)} แต่ในระบบ {formatPrice(order.wht?.amount ?? 0)} — ลูกค้าโอนจริง {formatPrice(orderBilledTotal(order) - faWht)} กดเทียบแล้วซิงก์ให้ตรง
         </p>
       )}
       <button
@@ -251,6 +262,10 @@ function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Di
   const docDisc = doc.discount ?? 0;
   const nowVat = order.vat?.amount ?? 0;
   const docVat = f.vat ?? 0;
+  // 🧾 หัก ณ ที่จ่าย: อยู่ในเอกสารแต่ไม่ขยับ "รวมทั้งสิ้น" — เทียบแยกช่อง ไม่งั้นใบที่เพิ่ม/ถอดภาษีหักทีหลัง
+  // จะขึ้นว่า "ตรงกัน" ทั้งที่ยอดที่ลูกค้าโอนจริงต่างกันทั้งก้อน (OD-260921-5230 · 22 ก.ย. 69)
+  const nowWht = order.wht?.amount ?? 0;
+  const docWht = f.wht ?? 0;
   // ไม่นับค่าบริการเพิ่ม (charges) — เก็บทีหลังนอกบิล ไม่ได้อยู่ในเอกสาร
   const nowTotal = orderBilledTotal(order);
   const docTotal = f.grandTotal ?? 0;
@@ -262,5 +277,19 @@ function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Di
     { label: `VAT ${doc.vatRate ?? 7}%`, doc: formatPrice(docVat), now: formatPrice(nowVat), same: eq(docVat, nowVat) },
     { label: doc.deposit ? "มูลค่างานเต็ม (ใบมัดจำ)" : "รวมทั้งสิ้น", doc: formatPrice(docTotal), now: formatPrice(nowTotal), same: eq(docTotal, nowTotal) },
   ];
-  return { doc, docShip, docShipLabel, rows, itemPatch, unmatched, sameTotal: eq(docTotal, nowTotal) };
+  if (docWht > 0 || nowWht > 0) {
+    rows.push({
+      label: `หัก ณ ที่จ่าย ${doc.whtRate ?? order.wht?.rate ?? 3}%`,
+      doc: docWht > 0 ? `−${formatPrice(docWht)}` : "— ไม่มีในใบ",
+      now: `−${formatPrice(nowWht)}`,
+      same: eq(docWht, nowWht),
+    });
+    rows.push({
+      label: "ยอดที่ลูกค้าโอนจริง",
+      doc: formatPrice(docTotal - docWht),
+      now: formatPrice(nowTotal - nowWht),
+      same: eq(docTotal - docWht, nowTotal - nowWht),
+    });
+  }
+  return { doc, docShip, docShipLabel, rows, itemPatch, unmatched, sameTotal: eq(docTotal, nowTotal) && eq(docWht, nowWht) };
 }

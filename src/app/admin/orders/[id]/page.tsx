@@ -56,6 +56,7 @@ import {
   orderItemDiscounts,
   orderFullyPaid,
   orderNetTransfer,
+  slipVerifyDetail,
   orderCashReceived,
   orderBankFee,
   flowAccountBillTotal,
@@ -916,7 +917,7 @@ const CHARGE_PRESETS = ["ค่าตัดภาพ", "ค่าส่งเพ
  * แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำทุกใบ (ใบแรก/งวดหลัง/ใบเพิ่ม)
  * credited = ยอดที่ใบนี้นับเข้าออเดอร์แล้วทั้งที่ตรวจ "ไม่ผ่าน" (สลิปแท้แต่โอนขาด → รับบางส่วน)
  */
-function SlipVerifyNote({ v, credited, settled = true, onRecheck, rechecking }: { v: NonNullable<Order["slipVerify"]>; credited?: number; /** งวดของสลิปใบนี้ยืนยันเงินบนออเดอร์แล้วจริง — false = ผลตรวจผ่านแต่ใบยังค้างขั้นรอเงิน (ผลถูกลงย้อนหลัง/ซ่อมยอด) ห้ามเขียนว่า "ยืนยันให้อัตโนมัติ" */ settled?: boolean; onRecheck?: () => void; rechecking?: boolean }) {
+function SlipVerifyNote({ v, order, credited, settled = true, onRecheck, rechecking }: { v: NonNullable<Order["slipVerify"]>; /** ออเดอร์ล่าสุด — ใช้คิด "ยอดที่ต้องเห็นในสลิป" ใหม่ ไม่ใช้ท่อนที่แช่ไว้ตอนตรวจ */ order: Order; credited?: number; /** งวดของสลิปใบนี้ยืนยันเงินบนออเดอร์แล้วจริง — false = ผลตรวจผ่านแต่ใบยังค้างขั้นรอเงิน (ผลถูกลงย้อนหลัง/ซ่อมยอด) ห้ามเขียนว่า "ยืนยันให้อัตโนมัติ" */ settled?: boolean; onRecheck?: () => void; rechecking?: boolean }) {
   const partial = v.status !== "pass" && (credited ?? 0) > 0;
   return (
     <div
@@ -966,9 +967,9 @@ function SlipVerifyNote({ v, credited, settled = true, onRecheck, rechecking }: 
             ต้องเขียนให้ต่างกัน ไม่งั้นแอดมินอ่านว่าสลิปลูกค้ามีปัญหา แล้วไปตามลูกค้าผิดเรื่อง (21 ก.ย. 69)
           */}
           {v.status === "skip" ? (
-            <>⚠️ ตรวจอัตโนมัติไม่ได้ — ระบบ SlipOK ไม่ได้ตอบ ไม่ใช่ว่าสลิปลูกค้ามีปัญหา{v.detail ? `: ${v.detail}` : ""} · กรุณาเปิดสลิปเทียบยอด ผู้รับ และวันเวลาโอนเอง</>
+            <>⚠️ ตรวจอัตโนมัติไม่ได้ — ระบบ SlipOK ไม่ได้ตอบ ไม่ใช่ว่าสลิปลูกค้ามีปัญหา{v.detail ? `: ${slipVerifyDetail(order, v.detail)}` : ""} · กรุณาเปิดสลิปเทียบยอด ผู้รับ และวันเวลาโอนเอง</>
           ) : (
-            <>⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${v.detail}` : ""} — กรุณาตรวจสลิปเอง</>
+            <>⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${slipVerifyDetail(order, v.detail)}` : ""} — กรุณาตรวจสลิปเอง</>
           )}
           {/* 🔄 ยิง SlipOK ซ้ำด้วยไฟล์เดิม — เคสลูกค้าแนบเร็วกว่าธนาคารส่งข้อมูล (1010) รอสักครู่แล้วกดตรวจใหม่ก็ผ่านได้ ไม่ต้องลบ/แนบใหม่ */}
           {onRecheck && !v.noRetry && (
@@ -8294,6 +8295,7 @@ export default function AdminOrderDetailPage() {
                           {e.verify && (
                             <SlipVerifyNote
                               v={e.verify}
+                              order={order}
                               credited={e.state === "partial" ? e.credited : undefined}
                               settled={
                                 e.phase === "first"
