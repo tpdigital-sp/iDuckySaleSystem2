@@ -2327,13 +2327,21 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 /* ===== ป้ายประชาสัมพันธ์ — แถบคั่นระหว่างแบนเนอร์ใหญ่กับ "สินค้ามาใหม่" (PromoBanners.tsx · ตั้งที่ /admin/banners) =====
    หลายใบ = รางเลื่อนแนวนอน scroll-snap ใบละเต็มความกว้าง · ป้ายภาพสูงตามสัดส่วนรูปที่อัปมา ไม่ครอป */
 .dl .promo-band{position:relative;z-index:5;padding:2px 0 30px}
+/* ขอบป้าย — เจ้าของร้านเคาะ 22 ก.ย. 69 หลังไล่ดู 3 แบบ: เอาแบบ "ขอบขาว"
+   (ของเดิม 22px + เงาชิดขอบ = คมไป · mask ไล่จางขอบ = เบลอเกินจริง)
+   = มุมมนกว้าง + เงาฟุ้งใต้ป้าย + เส้นขาวบางทับขอบ */
 .dl .promo-rail{display:grid;grid-auto-flow:column;grid-auto-columns:100%;align-items:stretch;overflow-x:auto;
   overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;-ms-overflow-style:none;
-  border-radius:var(--r-m);box-shadow:var(--shadow-s);background:#fff}
+  border-radius:var(--promo-r);background:#fff;
+  box-shadow:0 26px 54px -26px rgba(44,129,196,.42),0 8px 22px -14px rgba(23,58,107,.14)}
 .dl .promo-rail::-webkit-scrollbar{display:none}
 /* ลูกศร ‹ › ใช้ปุ่ม .fresh-nav ชุดเดิม — ขยับมากึ่งกลางความสูงป้าย */
-.dl .promo-wrap{position:relative}
+.dl .promo-wrap{position:relative;--promo-r:var(--r-xl)}
 .dl .promo-wrap .fresh-nav{top:50%}
+/* เส้นขาวบางทับขอบป้าย (ชุดเดียวกับแถบเมนู/การ์ดทั้งเว็บ) — ต้องเป็นชั้นบนสุด
+   เพราะ inset box-shadow ของตัวราง จะโดนรูปป้ายทับจนมองไม่เห็น · กดทะลุไปที่ลิงก์/ลูกศรได้ */
+.dl .promo-wrap::after{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;
+  border-radius:var(--promo-r);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.85)}
 /* ป้ายสูงไม่เท่ากัน (ภาพคนละสัดส่วน/ปนแถบข้อความ) = รางสูงเท่าใบที่สูงสุด · ใบที่เตี้ยกว่า: ภาพอยู่กลาง แถบข้อความยืดเต็ม */
 .dl .promo-slide{scroll-snap-align:start;scroll-snap-stop:always;min-width:0;display:flex}
 .dl .promo-img{display:flex;align-items:center;width:100%;line-height:0}
@@ -2455,7 +2463,7 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
   transition:width .3s ease,background .3s ease}
 .dl .promo-dots button.on::before{width:22px;background:var(--blue-deep)}
 @media(max-width:560px){.dl .promo-band{padding-bottom:22px}
-.dl .promo-rail{border-radius:var(--r-s)}
+.dl .promo-wrap{--promo-r:26px}
 .dl .promo-text{flex-wrap:wrap;gap:10px 12px;padding:16px 18px}
 .dl .promo-ico{width:42px;height:42px;font-size:1.2rem}
 .dl .promo-msg{flex-basis:calc(100% - 54px)}
