@@ -152,16 +152,21 @@ type HangRow = {
   kind: "extra" | "bom";
   per?: number;
   target?: { productId: string; label: string; optionIndex: number; choice: string };
+  /** bom: สินค้าที่แถวแม่ผูกอยู่และวัสดุแฝงตัวนี้ตัดด้วย — ถอดจากลิ้นชักแถวแม่ได้ทีละสินค้า */
+  bomFor?: { productId: string; productName: string }[];
 };
 
 /** ติ๊ก "จัดแล้ว" ของกลุ่มหนึ่ง — ใครติ๊กและติ๊กเมื่อไหร่ */
 type GroupDone = { at: string; by: string };
 /**
- * แถว "วัสดุแฝง" ที่ห้อยอยู่ใต้ SKU ตัวเลือก — ระยะเยื้อง (px) และตำแหน่งเส้นก้าน
- * เส้นก้านตั้งอยู่กลางรูปย่อของแถวแม่พอดี: .dkb-row เว้นซ้าย 10 + รูป 44 → กึ่งกลาง 32
+ * ระยะเยื้อง (px) ของแถวในกลุ่มสินค้า — ทุกแถวเริ่มตรงกับ "รูปหัวกลุ่ม" พอดี ไม่ยื่นออกมาทางซ้าย
+ * หัวกลุ่ม: เว้นซ้าย 20 + ลูกศร 12 + gap 12 + ช่องติ๊ก 26 + gap 12 → รูปเริ่มที่ 92
+ * (เจ้าของร้านขีดเส้นกำกับให้ 22 ก.ย. 69 — เดิมแถวเริ่มที่ 10 เลยยื่นไปซ้ายกว่าทุกอย่างในหัวกลุ่ม)
  */
-const NEST_PAD = 78;
-const NEST_RAIL = 32;
+const ROW_PAD = 92;
+/** แถว "วัสดุแฝง" ที่ห้อยใต้แถวแม่ — เยื้องจากแถวแม่อีก 46 · ก้านเส้นตั้งอยู่กลางรูปย่อแถวแม่ (รูป 44 → +22) */
+const NEST_PAD = ROW_PAD + 46;
+const NEST_RAIL = ROW_PAD + 22;
 type DoneFilter = "ทั้งหมด" | "ยังไม่จัด" | "จัดแล้ว";
 
 export default function StockPage() {
@@ -465,7 +470,7 @@ export default function StockPage() {
    * ของที่ "ห้อย" อยู่ใต้ SKU ตัวนี้ในตาราง — ชุดเดียวกับที่หน้ารายการวาดเป็นแถวลูก
    * ลิ้นชักเคยไม่โชว์เลย เปิดตัวแม่มาแล้วไม่รู้ว่ามีอะไรพ่วงอยู่ (เจ้าของร้านแจ้ง 21 ก.ย. 69)
    *   extra = ของมีเงื่อนไขที่ผูกไว้กับตัวเลือกเดียวกัน — ถอดได้จากตรงนี้ (ขอบเขตชัด: เฉพาะตัวเลือกนี้)
-   *   bom   = วัสดุแฝงของสินค้าที่ SKU นี้ผูกอยู่ — โชว์อย่างเดียว เพราะขอบเขตเป็น "ทั้งสินค้า" ไม่ใช่แถวนี้
+   *   bom   = วัสดุแฝงของสินค้าที่ SKU นี้ผูกอยู่ — ถอดได้เหมือนกัน แต่ขอบเขตเป็น "ทั้งสินค้า" จึงถามยืนยันก่อนเสมอ
    */
   function hangsOf(itemId: string): HangRow[] {
     const out: HangRow[] = [];
@@ -491,16 +496,27 @@ export default function StockPage() {
     // วัสดุแฝงของสินค้าเดียวกัน — ตัวมันเองไม่นับเป็นลูกของตัวเอง
     for (const [id, us] of Object.entries(live)) {
       if (seen.has(id)) continue;
-      const b = us.find((u) => u.kind === "product" && u.bom && pids.has(u.productId));
-      if (!b || !items.some((i) => i.id === id)) continue;
+      const bs = us.filter((u) => u.kind === "product" && u.bom && pids.has(u.productId));
+      if (!bs.length || !items.some((i) => i.id === id)) continue;
       seen.add(id);
-      out.push({ id, name: nameOfId.get(id) ?? "?", img: images[id], kind: "bom", per: b.kind === "product" ? b.per : undefined });
+      out.push({
+        id,
+        name: nameOfId.get(id) ?? "?",
+        img: images[id],
+        kind: "bom",
+        per: bs[0].kind === "product" ? bs[0].per : undefined,
+        bomFor: bs.flatMap((u) => (u.kind === "product" ? [{ productId: u.productId, productName: u.productName }] : [])),
+      });
     }
     return out;
   }
 
-  /** ถอดของมีเงื่อนไขออกจากตัวเลือก — สั่งจากลิ้นชักของ "ตัวแม่" (ขอบเขต = ตัวเลือกนั้นตัวเดียว) */
+  /**
+   * ถอดของที่ห้อยอยู่ออกจากแถวแม่ — สั่งจากลิ้นชักของ "ตัวแม่"
+   *   extra = เฉพาะตัวเลือกนั้นตัวเดียว · bom = ทั้งสินค้า (ทุกชิ้นเลิกตัดวัสดุตัวนี้) จึงถามยืนยันก่อน
+   */
   async function unlinkHang(h: HangRow): Promise<boolean> {
+    if (h.kind === "bom") return unlinkBom(h);
     if (!h.target) return false;
     setErr("");
     const res = await fetch("/api/admin/stock/link", {
@@ -515,6 +531,43 @@ export default function StockPage() {
     }
     await loadImages(true);
     setOk(`ถอดแล้ว — ${h.target.label} = ${h.target.choice} ไม่ตัด ${h.name} เพิ่มอีก`);
+    return true;
+  }
+
+  /**
+   * ถอดวัสดุแฝงจากลิ้นชักของแถวแม่ — ขอบเขตคือ "สินค้าที่แถวแม่ผูกอยู่" ทั้งตัว ไม่ใช่แค่แถวนี้
+   * (เจ้าของร้านหาปุ่มถอดไม่เจอ 22 ก.ย. 69 — เดิมบอกให้ไปถอดที่ลิ้นชักของวัสดุเอง)
+   */
+  async function unlinkBom(h: HangRow): Promise<boolean> {
+    const list = h.bomFor ?? [];
+    if (!list.length) return false;
+    const names = list.map((x) => `“${x.productName}”`).join(" และ ");
+    const ok = await confirm({
+      icon: "🔩",
+      title: `ถอด “${h.name}” ออกจาก ${names} ไหม?`,
+      detail: `ทุกชิ้นของสินค้านี้จะไม่ตัด “${h.name}” อีก · ตัววัสดุกับยอดคงเหลือยังอยู่ครบ ผูกกลับได้ทุกเมื่อ${
+        list.length > 1 ? `\nถอดพร้อมกัน ${list.length} สินค้า` : ""
+      }`,
+      confirmLabel: "ถอดวัสดุแฝง",
+      danger: true,
+    });
+    if (ok !== true) return false;
+    setErr("");
+    for (const x of list) {
+      const res = await fetch("/api/admin/stock/bom", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: x.productId, stockItemId: h.id }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        setErr(j?.error ?? "ถอดไม่สำเร็จ");
+        return false;
+      }
+      setItems((prev) => prev.map((i) => (i.id === h.id ? { ...i, bomFor: j.item.bomFor } : i)));
+      setUsage((u) => ({ ...u, [h.id]: (u[h.id] ?? []).filter((y) => !(y.kind === "product" && y.bom && y.productId === x.productId)) }));
+    }
+    setOk(`ถอดแล้ว — ${names} ไม่ตัด ${h.name} อีก`);
     return true;
   }
 
@@ -1048,7 +1101,7 @@ export default function StockPage() {
                       className={`dkb-row !rounded-none cursor-pointer flex-wrap px-4 sm:flex-nowrap ${nest ? "relative" : "pl-5"}`}
                       // ⚠️ เยื้องด้วย style ไม่ใช่คลาส — .dkb-row ใน dashboard.css ตั้ง padding ย่อ และไฟล์นั้นไม่ได้อยู่ใน @layer
                       // จึงชนะ utility ของ Tailwind v4 ทุกตัว (px-4/pl-* ข้างบนไม่เคยมีผลเลย · เจอจริง 21 ก.ย. 69)
-                      style={nest ? { paddingLeft: NEST_PAD, minHeight: 54 } : undefined}
+                      style={nest ? { paddingLeft: NEST_PAD, minHeight: 54 } : grouped ? { paddingLeft: ROW_PAD } : undefined}
                     >
                       {/* ก้านเส้นบอกว่าแถวนี้ห้อยอยู่ใต้แถวด้านบน — ตัวสุดท้ายเส้นตั้งจบกลางแถว ไม่ลากเลยไปแถวถัดไป */}
                       {nest && (
@@ -1267,8 +1320,8 @@ export default function StockPage() {
                     return (
                       <Fragment key={`part-${part}`}>
                         <li
-                          className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t px-4 py-2.5 pl-5 first:border-t-0"
-                          style={{ borderColor: "var(--dk-hair)", background: "var(--dk-sky)" }}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t px-4 py-2.5 first:border-t-0"
+                          style={{ borderColor: "var(--dk-hair)", background: "var(--dk-sky)", paddingLeft: ROW_PAD }}
                         >
                           <span className="min-w-0 flex-1 basis-[10rem]">
                             <span className="dkb-h2 block text-[0.95rem]" style={{ color: "var(--dk-navy)" }}>
@@ -2800,14 +2853,22 @@ function UsagePanel({
                     <span className="block truncate text-[13px] font-medium text-slate-900">{h.name}</span>
                     <span className="block truncate text-[11px] text-slate-400">
                       {h.kind === "bom"
-                        ? `วัสดุแฝงของสินค้า · ทุกชิ้น${h.per && h.per !== 1 ? ` ×${h.per}` : ""} — ถอดที่ลิ้นชักของตัวมันเอง`
+                        ? `วัสดุแฝง · ตัดทุกชิ้น${h.per && h.per !== 1 ? ` ×${h.per}` : ""}${
+                            h.bomFor?.length ? ` ของ ${h.bomFor.map((x) => x.productName).join(" · ")}` : ""
+                          }`
                         : h.cond
                           ? `ตัดเพิ่มถ้า ${h.cond}`
                           : "ตัดเพิ่มเมื่อเลือกตัวเลือกนี้"}
                     </span>
                   </span>
-                  {mayEdit && h.kind === "extra" && (
-                    <button type="button" disabled={busy === k} onClick={() => run(k, () => onUnlinkHang(h))} className={btnSmGhost}>
+                  {mayEdit && (h.kind === "extra" || !!h.bomFor?.length) && (
+                    <button
+                      type="button"
+                      disabled={busy === k}
+                      onClick={() => run(k, () => onUnlinkHang(h))}
+                      className={btnSmGhost}
+                      title={h.kind === "bom" ? "เลิกตัดวัสดุตัวนี้ทุกชิ้นของสินค้านี้ (ถามยืนยันก่อน)" : undefined}
+                    >
                       {busy === k ? "…" : "ถอด"}
                     </button>
                   )}
