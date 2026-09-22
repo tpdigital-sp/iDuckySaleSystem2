@@ -64,6 +64,8 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
     const f = fullFigures(d);
     return {
       ...fa!,
+      // ซิงก์แล้ว = ตรงกับเอกสารแล้ว ปลดธงเตือน "เอกสารถูกแก้" ทันที ไม่ต้องรอ cron รอบหน้า
+      docChanged: undefined,
       ...(d.date ? { date: d.date } : {}),
       subtotal: f.subtotal,
       vat: f.vat,
@@ -135,6 +137,22 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
       {!!gap && (
         <p className="mb-1.5 rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-bold leading-relaxed text-rose-700">
           ⚠️ ยอดในระบบ {formatPrice(orderBilledTotal(order))} ไม่ตรงกับใบนี้ {formatPrice(flowAccountBillTotal(order) ?? 0)} (ต่าง {formatPrice(Math.abs(gap))}) — ลูกค้าโอนตามใบ ต้องแก้ให้ตรงก่อน
+        </p>
+      )}
+      {/* 📄🔍 cron flowaccount-check เจอว่าเอกสารในแอปถูกแก้หลังเปิดออเดอร์ — เตือนตรงนี้ก่อนใครจะไปแตะยอด */}
+      {fa.docChanged && (
+        <p
+          className={`mb-1.5 rounded-md border px-2 py-1 text-[11px] font-bold leading-relaxed ${
+            fa.docChanged.mismatch ? "border-rose-300 bg-rose-50 text-rose-700" : "border-amber-300 bg-amber-50 text-amber-800"
+          }`}
+        >
+          📄 เอกสารใน FlowAccount ถูกแก้หลังเปิดออเดอร์ (ตรวจเจอ{" "}
+          {new Date(fa.docChanged.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}) — ในใบตอนนี้ ยอดรวม{" "}
+          {formatPrice(fa.docChanged.total ?? 0)}
+          {(fa.docChanged.wht ?? 0) > 0 ? ` · หัก ณ ที่จ่าย ${formatPrice(fa.docChanged.wht ?? 0)}` : ""}
+          {fa.docChanged.mismatch
+            ? " · ⚠️ ยอดที่ใช้คิดเงินในใบนี้ยังไม่ตรง ลูกค้าจะโอนคนละยอด — กดเทียบแล้วซิงก์ก่อน"
+            : " · ตัวเลขในใบตรงอยู่แล้ว เหลือกดเทียบแล้วจดยอดตามใบใหม่ (ไม่งั้นตรวจสลิปเทียบกับยอดเก่า)"}
         </p>
       )}
       {!gap && Math.abs(whtGap) >= 0.01 && (
