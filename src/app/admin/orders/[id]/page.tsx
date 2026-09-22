@@ -8576,10 +8576,12 @@ export default function AdminOrderDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShipPick(true)}
-                  className="mb-2 flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl bg-white px-3 text-left text-[12.5px] font-bold text-slate-700 ring-1 ring-slate-200 transition hover:ring-amber-300"
+                  className="mb-2 flex min-h-[48px] w-full items-center justify-between gap-2 rounded-xl border-b-4 border-indigo-800 bg-indigo-600 px-3 py-2.5 text-left text-[13px] font-extrabold leading-snug text-white shadow-md transition hover:bg-indigo-500 active:translate-y-0.5 active:border-b-2"
                 >
-                  <span>📦 ส่งรวมกล่องกับออเดอร์อื่นของลูกค้าคนนี้…</span>
-                  <span className="text-slate-400">→</span>
+                  <span>📦 ส่งรวมกล่องกับออเดอร์อื่นของลูกค้าคนนี้</span>
+                  <span className="shrink-0 text-lg text-indigo-100" aria-hidden>
+                    →
+                  </span>
                 </button>
               )}
               {isShipRider(order) && !(order.tracking ?? "").trim() ? (
