@@ -4974,6 +4974,12 @@ to{opacity:1;transform:none}}
      · เปิดแชทอยู่ (aria-expanded="true") ปุ่มต้องเขียนว่า "ปิดแชท" — ภาพเขียนไม่ได้
      · มือถือ (≤1000px) ปุ่มหดเหลือไอคอน (ข้อความ hidden sm:inline) — ภาพยาว ๆ ใส่ไม่ลง
 
+   ⚠️ ใบนี้ใบเดียวในกองที่ไม่ใช่ -v4 แต่เป็น -v4b — ในภาพชุด v4 สะกดผิดว่า "คุยกับบอก"
+      เจ้าของร้านแจ้ง 22 ก.ย. 69 ว่าต้องเป็น "คุยกับบอท" จึงแก้ตัวอักษรในรูปเอง
+      (ยืมตัว ท จากป้าย LINE คำว่า "ทักเรา" มาย้อมขาว — ฟอนต์เดียวกันเพราะมาจากภาพต้นฉบับใบเดียวกัน)
+      ดู scripts/fab-badge-fix-word.mjs · ขนาด/ทรง/ระยะเท่าไฟล์ -v4 เป๊ะ ตัวเลขข้างล่างจึงใช้ต่อได้เลย
+      🔁 ถ้าได้ภาพชุดใหม่จากเจ้าของร้านเมื่อไร ให้กลับไปใช้ fab-badges-from-sheet.mjs แล้วเลิกใช้ -v4b
+
    ระยะวัดจากไฟล์ภาพ 1145×273 (ตัวแคปซูลในภาพกินพื้นที่ x 1–1142 · y 1–271) — ชุด -v4 22 ก.ย. 69:
      อยากให้แคปซูลกว้าง 208px เท่ากองปุ่ม → ภาพต้องกว้าง 208 × 1145/1142 ≈ 208.5px
      สูงตามสัดส่วน = 208.5 × 273/1145 ≈ 49.7px  (แคปซูลเองสูง ≈ 49.4px · เป็ดอยู่ในกรอบแคปซูลเกือบหมด)
@@ -5167,8 +5173,8 @@ to{opacity:1;transform:none}}
        ต้องล้างขอบเขียวกับท่าเต้นออกเอง ไม่งั้นวงแหวนกลับมาเต้นตลอดเวลาบนหน้าแรก */
     border:0;animation:none}
   .fabx-bot[aria-expanded="false"]::before,.dl .fabx-bot[aria-expanded="false"]::before{
-    -webkit-mask:url(/landing/bot-chat-badge-v4.webp) no-repeat 0 0/100% 100%;
-    mask:url(/landing/bot-chat-badge-v4.webp) no-repeat 0 0/100% 100%}
+    -webkit-mask:url(/landing/bot-chat-badge-v4b.webp) no-repeat 0 0/100% 100%;
+    mask:url(/landing/bot-chat-badge-v4b.webp) no-repeat 0 0/100% 100%}
   .fabx-line::before,.dl .fabx-line::before{
     -webkit-mask:url(/landing/line-chat-badge-v4.webp) no-repeat 0 0/100% 100%;
     mask:url(/landing/line-chat-badge-v4.webp) no-repeat 0 0/100% 100%}
