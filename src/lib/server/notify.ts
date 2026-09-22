@@ -79,6 +79,7 @@ async function inheritedFromPastOrders(
   order: Order
 ): Promise<{ lineUserId?: string; notifyLevel?: NotifyLevel }> {
   const out: { lineUserId?: string; notifyLevel?: NotifyLevel } = {};
+  const seen = new Set<string>(); // LINE ที่ใบเก่าของลูกค้าคนนี้ผูกไว้ — เกิน 1 บัญชี = คนละคน ห้ามเดา
   try {
     const { data } = await sb.from("orders").select("data").order("created_at", { ascending: false }).limit(400);
     const phone = (order.phone ?? "").replace(/\D/g, "");
@@ -91,10 +92,16 @@ async function inheritedFromPastOrders(
         (phone.length >= 8 && (o.phone ?? "").replace(/\D/g, "") === phone) ||
         (!!email && (o.email ?? "").trim().toLowerCase() === email);
       if (!same) continue;
+      if (o.lineUserId) seen.add(o.lineUserId);
       if (!out.lineUserId && o.lineUserId) out.lineUserId = o.lineUserId;
       if (!out.notifyLevel && o.notifyLevel) out.notifyLevel = o.notifyLevel;
-      if (out.lineUserId && out.notifyLevel) break;
     }
+    /**
+     * ⚠️ ใบเก่าของ "เบอร์เดียวกัน" ชี้ไป LINE คนละบัญชี = เดาไม่ได้ว่าใบนี้คือใคร — ไม่เดาดีกว่าส่งผิดคน
+     * เบอร์เดียวกันไม่ได้แปลว่าคนเดียวกัน (สั่งแทนกัน/เบอร์ที่ทำงาน/พิมพ์เบอร์ผิด) · ส่งผิด = ข้อมูลออเดอร์
+     * ไปโผล่แชทคนอื่น · ใบแบบนี้จะขึ้นแถบแดง "ยังไม่ได้ผูก LINE" ให้พนักงานผูกเอง (ดู lineUserOf ใน admin-data)
+     */
+    if (seen.size > 1) delete out.lineUserId;
   } catch {
     /* หาไม่เจอก็ถือว่าไม่มี */
   }

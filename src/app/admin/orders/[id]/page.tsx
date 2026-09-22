@@ -11029,6 +11029,8 @@ function LineChatBox({
   const line = lineUserOf(order, allOrders); // จำจากออเดอร์เก่าของลูกค้าคนเดิมได้
   const [draft, setDraft] = useState("");
   const [linkDraft, setLinkDraft] = useState(""); // ช่องวางลิงก์ห้องแชทตอนผูก userId แล้วแต่ลิงก์ยังขาด
+  // กด "✕ ไม่ใช่ห้องนี้" บนลิงก์ที่ยืมมาจากใบเก่า → เปิดช่องวางลิงก์ที่ถูกต้องให้ใบนี้ (ลิงก์ของใบอื่นลบจากที่นี่ไม่ได้)
+  const [replaceLink, setReplaceLink] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [testing, setTesting] = useState(false);
@@ -11288,6 +11290,7 @@ function LineChatBox({
     }
     onSave(url);
     setLinkDraft("");
+    setReplaceLink(false);
     setMsg("✅ เก็บลิงก์ห้องแชทแล้ว — ครบทั้งลิงก์และ userId");
   }
 
@@ -11427,10 +11430,14 @@ function LineChatBox({
             </>
           )}
         </div>
-        {/* ผูกคนได้แล้วแต่ยังไม่มีลิงก์ห้องแชท — บังคับต้องมีทั้งคู่ ให้วางลิงก์ตรงนี้ได้เลย */}
-        {!chat && (
+        {/* ผูกคนได้แล้วแต่ยังไม่มีลิงก์ห้องแชท (หรือกดว่าลิงก์ที่ยืมมาไม่ใช่ห้องนี้) — บังคับต้องมีทั้งคู่ ให้วางลิงก์ตรงนี้ได้เลย */}
+        {(!chat || replaceLink) && (
           <div className="mt-1.5 rounded-lg bg-rose-50 p-2 ring-1 ring-rose-200">
-            <p className="text-[11px] font-bold text-rose-700">⛔ ยังขาด “ลิงก์ห้องแชท” (บังคับ) — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง</p>
+            <p className="text-[11px] font-bold text-rose-700">
+              {replaceLink
+                ? "🔗 วาง “ลิงก์ห้องแชทที่ถูกต้อง” ของใบนี้ — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง"
+                : "⛔ ยังขาด “ลิงก์ห้องแชท” (บังคับ) — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง"}
+            </p>
             {mayEdit ? (
               <div className="mt-1 flex gap-1.5">
                 <input
@@ -11462,6 +11469,20 @@ function LineChatBox({
               🔗 <a href={chat.url} target="_blank" rel="noopener noreferrer" className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600">{chat.url}</a>
               {chat.source === "prev" && <span className="ml-1">(จาก {chat.from})</span>}
             </span>
+            {/* ลิงก์ที่ยืมมาจากใบเก่า ลบจากที่นี่ไม่ได้ (เป็นของใบนั้น) — แต่วางลิงก์ที่ถูกต้องทับให้ใบนี้ได้ */}
+            {mayEdit && chat.source === "prev" && !replaceLink && (
+              <button
+                type="button"
+                onClick={() => {
+                  setReplaceLink(true);
+                  setMsg("");
+                }}
+                className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
+                title={`ลิงก์นี้ยืมมาจากออเดอร์ ${chat.from} — กดเพื่อวางลิงก์ห้องแชทที่ถูกต้องของใบนี้ทับ`}
+              >
+                ✕ ไม่ใช่ห้องนี้
+              </button>
+            )}
             {/* ลบเฉพาะลิงก์ (คงคนที่ผูกไว้) — ลิงก์ของใบนี้เท่านั้น ลิงก์ที่จำจากใบเก่าต้องไปลบที่ใบนั้น */}
             {mayEdit && chat.source === "self" && (
               <button

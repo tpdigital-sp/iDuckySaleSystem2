@@ -1433,28 +1433,6 @@ export function orderBalance(o: Order): number {
   return Math.max(0, orderTotal(o) - (o.paidTotal ?? 0));
 }
 
-/**
- * ลิงก์แชท LINE ของลูกค้าคนนี้ — ของใบนี้เอง หรือดึงจากออเดอร์เก่าของลูกค้าคนเดียวกัน
- * จับคู่จาก customerId ก่อน (แม่นสุด) ไม่มีค่อยใช้เบอร์โทร แล้วค่อยอีเมล
- * คืน source = "self" เมื่อเป็นของใบนี้ · "prev" เมื่อดึงมาจากใบก่อนหน้า (พนักงานไม่ต้องกรอกซ้ำ)
- */
-export function lineChatOf(order: Order, all: Order[]): { url: string; source: "self" | "prev"; from?: string } | null {
-  if (order.lineChatUrl) return { url: order.lineChatUrl, source: "self" };
-  const phone = (order.phone ?? "").replace(/\D/g, "");
-  const email = (order.email ?? "").trim().toLowerCase();
-  const same = (o: Order) =>
-    (order.customerId && o.customerId === order.customerId) ||
-    (phone.length >= 8 && (o.phone ?? "").replace(/\D/g, "") === phone) ||
-    (!!email && (o.email ?? "").trim().toLowerCase() === email);
-  // ใบใหม่สุดที่มีลิงก์ = ห้องแชทล่าสุดที่พนักงานใช้จริง
-  for (let i = all.length - 1; i >= 0; i--) {
-    const o = all[i];
-    if (o.id === order.id || !o.lineChatUrl || !same(o)) continue;
-    return { url: o.lineChatUrl, source: "prev", from: o.id };
-  }
-  return null;
-}
-
 /** ลูกค้าคนเดียวกันไหม — customerId แม่นสุด ไม่มีค่อยใช้เบอร์/อีเมล */
 function sameCustomer(a: Order, b: Order): boolean {
   const phone = (a.phone ?? "").replace(/\D/g, "");
@@ -1466,9 +1444,42 @@ function sameCustomer(a: Order, b: Order): boolean {
   );
 }
 
+const TH_MON_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+
+/**
+ * เวลาที่สั่งของออเดอร์เป็นตัวเลข — ใช้เรียงหา "ใบล่าสุด" เท่านั้น
+ * Order.date เป็นข้อความไทย ("18 ก.ย. 2569 16:21") เรียงตรง ๆ ไม่ได้ · แกะไม่ได้ค่อยใช้ YYMMDD ในเลขใบ
+ * (ไม่เรียกตัวแกะใน admin-dash เพราะไฟล์นั้น import ไฟล์นี้ — จะกลายเป็นวงกลม)
+ */
+function orderTimeMs(o: Order): number {
+  const p = (o.date ?? "").replace(/,/g, " ").trim().split(/\s+/);
+  const day = Number(p[0]);
+  const mon = TH_MON_SHORT.indexOf(p[1] ?? "");
+  const year = Number(p[2]);
+  if (day && mon >= 0 && year) {
+    const [h, m] = (p[3] ?? "00:00").split(":").map(Number);
+    return new Date(year > 2400 ? year - 543 : year, mon, day, h || 0, m || 0).getTime();
+  }
+  const g = /^[A-Za-z]+-(\d{2})(\d{2})(\d{2})-/.exec(o.id ?? "");
+  return g ? Date.UTC(2000 + Number(g[1]), Number(g[2]) - 1, Number(g[3])) : 0;
+}
+
+/**
+ * ใบอื่นของลูกค้าคนเดียวกัน เรียง "ใหม่ → เก่า" ด้วยวันที่สั่งจริง
+ * ⚠️ ห้ามพึ่งลำดับของอาเรย์ที่ส่งเข้ามา — เดิมวนจากท้ายอาเรย์โดยเขียนคอมเมนต์ว่า "ใบใหม่สุด"
+ *    แต่ API ส่งมาแบบใหม่→เก่า ท้ายอาเรย์จึงเป็น "ใบเก่าสุด" (คนละใบกับที่ตั้งใจ · OD-260921-1336)
+ */
+function prevOrdersOf(order: Order, all: Order[]): Order[] {
+  return all.filter((o) => o.id !== order.id && sameCustomer(order, o)).sort((a, b) => orderTimeMs(b) - orderTimeMs(a));
+}
+
 /**
  * LINE ของลูกค้าคนนี้ — ของใบนี้เอง หรือ "จำ" มาจากออเดอร์เก่าของลูกค้าคนเดียวกัน
  * ลูกค้าเก่าจึงไม่ต้องให้พนักงานผูกซ้ำทุกใบ (ระบบส่งข้อความได้เลย)
+ *
+ * ⚠️ ใบเก่าชี้ไป LINE คนละบัญชี = เดาไม่ได้ ต้องไม่เดา (คืน null ให้พนักงานผูกเอง)
+ *    เบอร์เดียวกันไม่ได้แปลว่าคนเดียวกันเสมอ — สั่งแทนกัน/เบอร์ที่ทำงาน/พิมพ์เบอร์ผิด ก็มาลงเบอร์เดียวกันได้
+ *    (0834359322 มี 2 คน 2 บัญชี LINE → ใบของคนหนึ่งเคยโชว์ห้องแชทของอีกคน · พนักงานแจ้ง 22 ก.ย. 69)
  */
 export function lineUserOf(
   order: Order,
@@ -1476,12 +1487,34 @@ export function lineUserOf(
 ): { id: string; name?: string; picture?: string; source: "self" | "prev"; from?: string } | null {
   if (order.lineUserId)
     return { id: order.lineUserId, name: order.lineProfile?.name, picture: order.lineProfile?.picture, source: "self" };
-  for (let i = all.length - 1; i >= 0; i--) {
-    const o = all[i];
-    if (o.id === order.id || !o.lineUserId || !sameCustomer(order, o)) continue;
-    return { id: o.lineUserId, name: o.lineProfile?.name, picture: o.lineProfile?.picture, source: "prev", from: o.id };
+  const cands = prevOrdersOf(order, all).filter((o) => o.lineUserId);
+  if (!cands.length) return null;
+  if (new Set(cands.map((o) => o.lineUserId)).size > 1) return null; // ใบเก่าไม่ตรงกันเอง = ไม่รู้ว่าคนไหน
+  const o = cands[0];
+  return { id: o.lineUserId!, name: o.lineProfile?.name, picture: o.lineProfile?.picture, source: "prev", from: o.id };
+}
+
+/**
+ * ลิงก์แชท LINE ของลูกค้าคนนี้ — ของใบนี้เอง หรือดึงจากออเดอร์เก่าของลูกค้าคนเดียวกัน
+ * จับคู่จาก customerId ก่อน (แม่นสุด) ไม่มีค่อยใช้เบอร์โทร แล้วค่อยอีเมล
+ * คืน source = "self" เมื่อเป็นของใบนี้ · "prev" เมื่อดึงมาจากใบก่อนหน้า (พนักงานไม่ต้องกรอกซ้ำ)
+ *
+ * ⚠️ ห้องแชทต้องเป็นของ "คนที่ผูกไว้กับใบนี้" เท่านั้น — ใบเก่าที่ผูก LINE คนอื่นไว้ = ห้องแชทของคนอื่น
+ *    (เดิมยืมมาทั้งที่คนละคน พนักงานกดลบก็ไม่ได้เพราะเป็นลิงก์ของใบอื่น → "กาออกไม่ได้ · ผูกสลับคน")
+ */
+export function lineChatOf(order: Order, all: Order[]): { url: string; source: "self" | "prev"; from?: string } | null {
+  if (order.lineChatUrl) return { url: order.lineChatUrl, source: "self" };
+  const user = order.lineUserId ?? lineUserOf(order, all)?.id;
+  let cands = prevOrdersOf(order, all).filter((o) => o.lineChatUrl);
+  if (user) {
+    // ใบที่ผูกคนเดียวกันก่อน · ไม่มีค่อยใช้ใบที่ยังไม่ได้ผูกใคร (ใบที่ผูกคนอื่นไว้ = ห้องคนอื่น ตัดทิ้ง)
+    const exact = cands.filter((o) => o.lineUserId === user);
+    cands = exact.length ? exact : cands.filter((o) => !o.lineUserId);
+  } else if (new Set(cands.map((o) => o.lineChatUrl)).size > 1) {
+    return null; // ยังไม่รู้ว่าลูกค้าคือใคร + ใบเก่าชี้คนละห้อง = เดาไม่ได้
   }
-  return null;
+  const o = cands[0];
+  return o ? { url: o.lineChatUrl!, source: "prev", from: o.id } : null;
 }
 
 /**
