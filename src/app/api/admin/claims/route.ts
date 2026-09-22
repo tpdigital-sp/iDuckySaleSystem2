@@ -14,7 +14,8 @@ import {
   saveClaim,
   withSignedPhotos,
 } from "@/lib/server/claims-db";
-import { notifyCustomer } from "@/lib/server/notify";
+import { noticeFlex, notifyCustomer } from "@/lib/server/notify";
+import { SITE_URL } from "@/lib/shop-info";
 import {
   CLAIM_FAULTS,
   CLAIM_STATUSES,
@@ -106,7 +107,24 @@ export async function PATCH(req: Request) {
         message ? `ข้อความจากร้าน: ${message}` : null,
         `ดูรายละเอียดที่หน้า บัญชีของฉัน › แจ้งปัญหา/เคลมสินค้า`,
       ].filter(Boolean);
-      void notifyCustomer(sb, order, lines.join("\n"));
+      void notifyCustomer(
+        sb,
+        order,
+        noticeFlex({
+          tone: "claimUpdate",
+          head: "อัปเดตเรื่องเคลม",
+          headline: statusChanged ? `สถานะล่าสุด: ${claim.status}` : "มีข้อความใหม่จากทางร้านค่ะ",
+          id: claim.id,
+          rows: [
+            { label: "ออเดอร์", value: claim.orderId, bold: true },
+            ...(statusChanged ? [{ label: "สถานะ", value: claim.status, bold: true }] : []),
+            ...(claim.status === "อนุมัติเคลม" && claim.resolution?.action ? [{ label: "แนวทาง", value: claim.resolution.action }] : []),
+          ],
+          ...(message ? { note: `ข้อความจากร้าน: ${message}` } : {}),
+          button: { label: "ดูเรื่องที่แจ้งไว้", uri: `${SITE_URL}/account/claims` },
+          alt: lines.join("\n"),
+        })
+      );
     }
   }
 

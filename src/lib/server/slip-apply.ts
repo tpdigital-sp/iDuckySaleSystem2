@@ -8,7 +8,7 @@ import { getProductServer } from "@/lib/products-server";
 import type { Product } from "@/lib/products";
 import { matchSlipAmount, verifySlipWithSlipOK, type SlipVerifyResult } from "@/lib/server/slipok";
 import { assertSlipNotDuplicate, findSlipOwners } from "@/lib/server/slip-dedupe";
-import { balanceNetTransfer, notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { balanceNetTransfer, notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 import { reportPaidToTP, syncPaidCompleteToTP } from "@/lib/server/tp-report";
 import { cutStockForOrder } from "@/lib/server/stock";
 import { bumpSoldForOrder } from "@/lib/server/sold";
@@ -493,22 +493,71 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     // ➗ ลูกค้าหัก ณ ที่จ่าย: บอกเงินที่ต้องโอนจริงคู่ไปด้วย ไม่งั้นโอนตามยอดงวดแล้วเกิน (ตรงกับหน้าออเดอร์)
     const remainNet = balanceNetTransfer(updated, remain);
     const remainNote = remainNet ? ` (โอนจริง ${thb(remainNet.net)} บาท หลังหัก ณ ที่จ่าย${remainNet.rateTxt})` : "";
-    void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(remain)} บาท ชำระก่อนจัดส่ง${remainNote}${whtAsk}\n${link}`, "ยืนยันรับมัดจำ");
+    void notifyCustomerLogged(
+      sb,
+      updated,
+      orderNotice(updated, link, {
+        tone: "depositIn",
+        head: "รับมัดจำแล้ว",
+        headline: "รับมัดจำเรียบร้อย เริ่มงานให้เลยครับ",
+        hero: { label: "ยอดคงเหลือ (ชำระก่อนจัดส่ง)", value: `${thb(remain)} บาท` },
+        rows: [{ label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท` }, { label: "รับแล้ว", value: `${thb(updated.paidTotal ?? 0)} บาท`, bold: true }],
+        note: `${remainNet ? `โอนจริง ${thb(remainNet.net)} บาท หลังหัก ณ ที่จ่าย${remainNet.rateTxt}\n` : ""}โอนยอดคงเหลือแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ${whtAsk}`,
+        alt: `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(remain)} บาท ชำระก่อนจัดส่ง${remainNote}${whtAsk}\n${link}`,
+      }),
+      "ยืนยันรับมัดจำ"
+    );
     tp("มัดจำ 50% งวดแรก");
     void cutStockForOrder(updated); // มัดจำ = เริ่มงานแล้วก็ตัดสต๊อกเลย
     void bumpSoldForOrder(updated.id);
   } else if (confirmedFull) {
     if (order.deposit) {
-      void notifyCustomerLogged(sb, updated, `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`, "ยืนยันรับยอดคงเหลือครบ");
+      void notifyCustomerLogged(
+        sb,
+        updated,
+        orderNotice(updated, link, {
+          tone: "settled",
+          head: "รับยอดคงเหลือครบแล้ว",
+          headline: "รับยอดคงเหลือครบแล้ว ขอบคุณครับ 🦆",
+          rows: [{ label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท`, bold: true }],
+          ...(whtAsk ? { note: whtAsk.trim() } : {}),
+          alt: `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`,
+        }),
+        "ยืนยันรับยอดคงเหลือครบ"
+      );
       tp(order.deposit.settledAt ? "เก็บยอดที่เพิ่มทีหลังครบแล้ว" : "ยอดคงเหลือ 50% หลัง (ครบแล้ว)");
     } else if (waiting) {
-      void notifyCustomerLogged(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`, "ยืนยันการชำระเงิน");
+      void notifyCustomerLogged(
+        sb,
+        updated,
+        orderNotice(updated, link, {
+          tone: "paidIn",
+          head: "ยืนยันการชำระเงินแล้ว",
+          headline: "ยืนยันการชำระเงินแล้ว กำลังเริ่มงานให้ครับ",
+          rows: [{ label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท`, bold: true }],
+          ...(whtAsk ? { note: whtAsk.trim() } : {}),
+          alt: `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`,
+        }),
+        "ยืนยันการชำระเงิน"
+      );
       tp(paidSoFar(order) > 0 ? "รับยอดส่วนที่เหลือครบแล้ว" : "");
       void cutStockForOrder(updated); // ตัดสต๊อกวัสดุที่ผูกไว้
       void bumpSoldForOrder(updated.id); // ยอด "ขายแล้ว" หน้าเว็บ (กันซ้ำในตัวเอง)
     } else {
       // งานเดินอยู่แล้ว เพิ่งเก็บส่วนต่าง (สั่งเพิ่ม/ค่าบริการเพิ่ม) ครบ — ปลดล็อกยิงเลขพัสดุ ไม่ต้องเริ่มงานซ้ำ
-      void notifyCustomerLogged(sb, updated, `✅ รับยอดส่วนต่างออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`, "ยืนยันรับยอดส่วนต่างครบ");
+      void notifyCustomerLogged(
+        sb,
+        updated,
+        orderNotice(updated, link, {
+          tone: "diffIn",
+          head: "รับยอดส่วนต่างครบแล้ว",
+          headline: "รับยอดส่วนต่างครบแล้ว ขอบคุณครับ 🦆",
+          rows: [{ label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท`, bold: true }],
+          ...(whtAsk ? { note: whtAsk.trim() } : {}),
+          alt: `✅ รับยอดส่วนต่างออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`,
+        }),
+        "ยืนยันรับยอดส่วนต่างครบ"
+      );
       tp("ยอดส่วนต่างที่เก็บเพิ่ม (ครบแล้ว)");
     }
     // 🦆 แต้มสะสม — บวกเมื่อชำระ "ครบ" เท่านั้น (idempotent)
@@ -518,7 +567,18 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     void notifyCustomerLogged(
       sb,
       updated,
-      `💳 รับยอด ${thb(credit)} บาท ของออเดอร์ ${updated.id} แล้วครับ\nยังขาดอีก ${thb(remain)} บาท — โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลย\n${link}`,
+      orderNotice(updated, link, {
+        tone: "partial",
+        head: "รับเงินบางส่วนแล้ว",
+        headline: `รับยอด ${thb(credit)} บาทแล้วครับ — ยังไม่ครบยอด`,
+        hero: { label: "ยังขาดอีก", value: `${thb(remain)} บาท` },
+        rows: [
+          { label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท` },
+          { label: "รับแล้ว", value: `${thb(updated.paidTotal ?? 0)} บาท`, bold: true },
+        ],
+        note: "โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลยครับ",
+        alt: `💳 รับยอด ${thb(credit)} บาท ของออเดอร์ ${updated.id} แล้วครับ\nยังขาดอีก ${thb(remain)} บาท — โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลย\n${link}`,
+      }),
       `รับเงินบางส่วน ${thb(credit)} บาท (ค้าง ${thb(remain)})`
     );
     tp(`รับบางส่วน ${thb(credit)} บาท · ค้าง ${thb(remain)} บาท`);
@@ -598,12 +658,36 @@ export async function acceptPaymentManually(a: {
   if ((confirmedDeposit || confirmedFull) && paidSoFar(order) > 0) pendingTP.push(syncPaidCompleteToTP(updated, adminName));
   if (confirmedDeposit) {
     const rem = orderTotal(updated) - (updated.paidTotal ?? 0);
-    void notifyCustomerLogged(sb, updated, `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(rem)} บาท ชำระก่อนจัดส่ง\n${link}`, "ยืนยันรับมัดจำ");
+    void notifyCustomerLogged(
+      sb,
+      updated,
+      orderNotice(updated, link, {
+        tone: "depositIn",
+        head: "รับมัดจำแล้ว",
+        headline: "รับมัดจำเรียบร้อย เริ่มงานให้เลยครับ",
+        hero: { label: "ยอดคงเหลือ (ชำระก่อนจัดส่ง)", value: `${thb(rem)} บาท` },
+        rows: [{ label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท` }, { label: "รับแล้ว", value: `${thb(updated.paidTotal ?? 0)} บาท`, bold: true }],
+        note: "โอนยอดคงเหลือแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ",
+        alt: `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(rem)} บาท ชำระก่อนจัดส่ง\n${link}`,
+      }),
+      "ยืนยันรับมัดจำ"
+    );
     tp("มัดจำ 50% งวดแรก (สลิปใบเพิ่ม)");
     void cutStockForOrder(updated);
     void bumpSoldForOrder(updated.id);
   } else if (confirmedFull) {
-    void notifyCustomerLogged(sb, updated, `✅ รับยอดออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ\n${link}`, "ยืนยันรับเงินครบ");
+    void notifyCustomerLogged(
+      sb,
+      updated,
+      orderNotice(updated, link, {
+        tone: "fullIn",
+        head: "รับยอดครบแล้ว",
+        headline: "รับยอดครบแล้ว ขอบคุณครับ 🦆",
+        rows: [{ label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท`, bold: true }],
+        alt: `✅ รับยอดออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ\n${link}`,
+      }),
+      "ยืนยันรับเงินครบ"
+    );
     tp(order.deposit ? "ยอดคงเหลือครบ (สลิปใบเพิ่ม)" : "รับครบ (สลิปใบเพิ่ม)");
     if (waiting && !order.deposit) {
       void cutStockForOrder(updated);
@@ -611,7 +695,23 @@ export async function acceptPaymentManually(a: {
     }
     void awardPointsForOrder(updated);
   } else {
-    void notifyCustomerLogged(sb, updated, `💳 รับยอด ${thb(amount)} บาท ของออเดอร์ ${updated.id} แล้วครับ\nยังขาดอีก ${thb(remain)} บาท — โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลย\n${link}`, `รับเงินบางส่วน ${thb(amount)} บาท`);
+    void notifyCustomerLogged(
+      sb,
+      updated,
+      orderNotice(updated, link, {
+        tone: "partial",
+        head: "รับเงินบางส่วนแล้ว",
+        headline: `รับยอด ${thb(amount)} บาทแล้วครับ — ยังไม่ครบยอด`,
+        hero: { label: "ยังขาดอีก", value: `${thb(remain)} บาท` },
+        rows: [
+          { label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท` },
+          { label: "รับแล้ว", value: `${thb(updated.paidTotal ?? 0)} บาท`, bold: true },
+        ],
+        note: "โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลยครับ",
+        alt: `💳 รับยอด ${thb(amount)} บาท ของออเดอร์ ${updated.id} แล้วครับ\nยังขาดอีก ${thb(remain)} บาท — โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลย\n${link}`,
+      }),
+      `รับเงินบางส่วน ${thb(amount)} บาท`
+    );
     tp(`รับบางส่วน ${thb(amount)} บาท · ค้าง ${thb(remain)} บาท`);
   }
   await settleTP(pendingTP);
@@ -666,7 +766,19 @@ export async function settleCreditedOrder(a: { sb: SupabaseClient; order: Order;
 
   const link = orderLink(origin, updated);
   const whtAsk = order.slipVerify?.deduction?.kind === "wht" ? `\nรับยอดหลัง${order.slipVerify.deduction.label} — รบกวนส่งหนังสือรับรองหักภาษี ณ ที่จ่าย (50 ทวิ) ให้ทางร้านด้วยนะครับ` : "";
-  void notifyCustomerLogged(sb, updated, `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`, "ยืนยันการชำระเงิน");
+  void notifyCustomerLogged(
+    sb,
+    updated,
+    orderNotice(updated, link, {
+      tone: "paidIn",
+      head: "ยืนยันการชำระเงินแล้ว",
+      headline: "ยืนยันการชำระเงินแล้ว กำลังเริ่มงานให้ครับ",
+      rows: [{ label: "ยอดรวมทั้งบิล", value: `${thb(orderTotal(updated))} บาท`, bold: true }],
+      ...(whtAsk ? { note: whtAsk.trim() } : {}),
+      alt: `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`,
+    }),
+    "ยืนยันการชำระเงิน"
+  );
   // เรคอร์ด msVerify idempotent (สลิปผ่านทางสดถูกส่งไปแล้ว / สคริปต์ซ่อมปลดธงแล้ว) — รอให้เสร็จก่อนตอบเหมือนทางอื่น
   await settleTP([reportPaidToTP(updated, who, { received: order.slipVerify?.amount ?? paid })]);
   void cutStockForOrder(updated);

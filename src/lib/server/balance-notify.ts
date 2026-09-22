@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { orderBalance, orderTotal, withLog, type Order } from "@/lib/admin-data";
-import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
 
 /**
@@ -38,10 +38,30 @@ export async function sendBalanceNotify(
     return { sent: false, skipped: true, balance: 0, reason: "ไม่มียอดค้างต้องแจ้ง", order: cleared };
   }
 
+  const rows = [
+    { label: "ยอดรวมทั้งบิล", value: `${thb(total)} บาท` },
+    { label: "รับแล้ว", value: `${thb(paid)} บาท`, bold: true },
+  ];
   const msg =
     bal > 0.5
-      ? `🧾 ออเดอร์ ${order.id} ${bal > pend.from ? "มียอดเพิ่ม" : "ปรับยอดใหม่"}: ${why}\n${head}\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(bal)} บาท${instead}\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${link}`
-      : `🧾 ออเดอร์ ${order.id} ปรับยอดใหม่: ${why}\n${head}\n✅ ไม่ต้องโอนเพิ่มแล้วครับ${told != null ? ` (ยกเลิกยอด ${thb(told)} บาทที่แจ้งไว้ก่อนหน้า)` : ""}\n${link}`;
+      ? orderNotice(order, link, {
+          tone: bal > pend.from ? "balanceUp" : "balanceDown",
+          head: bal > pend.from ? "มียอดเพิ่ม" : "ปรับยอดใหม่",
+          headline: why,
+          hero: { label: "ยอดที่ต้องโอนเพิ่ม", value: `${thb(bal)} บาท` },
+          rows,
+          note: `${instead ? `ยอดนี้แทนยอด ${thb(told!)} บาทที่แจ้งไว้ก่อนหน้าครับ\n` : ""}โอนแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ`,
+          alt: `🧾 ออเดอร์ ${order.id} ${bal > pend.from ? "มียอดเพิ่ม" : "ปรับยอดใหม่"}: ${why}\n${head}\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(bal)} บาท${instead}\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${link}`,
+        })
+      : orderNotice(order, link, {
+          tone: "noMoreDue",
+          head: "ไม่ต้องโอนเพิ่มแล้ว",
+          headline: `ปรับยอดใหม่: ${why}`,
+          hero: { label: "ยอดที่ต้องโอนเพิ่ม", value: "ไม่มีแล้วครับ ✅" },
+          rows,
+          ...(told != null ? { note: `ยกเลิกยอด ${thb(told)} บาทที่แจ้งไว้ก่อนหน้าครับ` } : {}),
+          alt: `🧾 ออเดอร์ ${order.id} ปรับยอดใหม่: ${why}\n${head}\n✅ ไม่ต้องโอนเพิ่มแล้วครับ${told != null ? ` (ยกเลิกยอด ${thb(told)} บาทที่แจ้งไว้ก่อนหน้า)` : ""}\n${link}`,
+        });
 
   const what =
     (bal > 0.5 ? `แจ้งยอดค้าง ${thb(bal)} บาท` : "แจ้งว่าไม่ต้องโอนเพิ่มแล้ว") +

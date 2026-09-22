@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import { bkkYmd } from "@/lib/bangkok-time";
 import { isOpenClaim, type Claim } from "@/lib/claims";
 import type { Order } from "@/lib/admin-data";
-import { notifyCustomer } from "@/lib/server/notify";
+import { noticeFlex, notifyCustomer } from "@/lib/server/notify";
+import { SITE_URL } from "@/lib/shop-info";
 
 /** ของกลางฝั่งเซิร์ฟเวอร์ของระบบเคลม — ใช้ร่วมกันหลาย route */
 
@@ -162,7 +163,27 @@ export async function notifyClaimOpened(sb: SupabaseClient, order: Order, claim:
     redo ? `ทีมงานกำลังผลิตใหม่ให้ (ออเดอร์ ${redo}) ไม่มีค่าใช้จ่ายเพิ่ม` : "ทีมงานกำลังตรวจสอบ จะแจ้งแนวทางให้ทราบอีกครั้งค่ะ",
     claim.customerId ? "ติดตามได้ที่หน้า บัญชีของฉัน › แจ้งปัญหา/เคลมสินค้า" : null,
   ].filter(Boolean) as string[];
-  const r = await notifyCustomer(sb, order, lines.join("\n"));
+  const r = await notifyCustomer(
+    sb,
+    order,
+    noticeFlex({
+      tone: "claimOpen",
+      head: "รับเรื่องเคลมแล้ว",
+      headline: "รับเรื่องเคลมแล้วค่ะ ทีมงานกำลังดูให้",
+      id: claim.id,
+      rows: [
+        { label: "ออเดอร์", value: claim.orderId, bold: true },
+        { label: "ประเภท", value: claim.type },
+        ...(claim.detail ? [{ label: "รายละเอียด", value: claim.detail.slice(0, 120) }] : []),
+        ...(redo ? [{ label: "ผลิตใหม่ให้ที่ออเดอร์", value: redo, bold: true }] : []),
+      ],
+      note: redo
+        ? "ทีมงานกำลังผลิตใหม่ให้ ไม่มีค่าใช้จ่ายเพิ่มค่ะ"
+        : "ทีมงานกำลังตรวจสอบ จะแจ้งแนวทางให้ทราบอีกครั้งค่ะ",
+      ...(claim.customerId ? { button: { label: "ดูเรื่องที่แจ้งไว้", uri: `${SITE_URL}/account/claims` } } : {}),
+      alt: lines.join("\n"),
+    })
+  );
   const at = new Date().toISOString();
   claim.log = [
     ...(claim.log ?? []),

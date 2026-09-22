@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, type Order } from "@/lib/admin-data";
-import { notifyCustomer, orderLink } from "@/lib/server/notify";
+import { notifyCustomer, orderNotice, orderLink } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
@@ -156,9 +156,21 @@ export async function POST(req: Request) {
   if (!silent) void notifyCustomer(
     sb,
     updated,
-    replaceIndex !== null
-      ? `🎨 รูปที่ ${replaceIndex + 1} ของออเดอร์ ${updated.id} แก้ไขเรียบร้อย พร้อมให้คุณตรวจอีกครั้ง\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`
-      : `🎨 แบบงานออเดอร์ ${updated.id} พร้อมให้คุณตรวจแล้ว\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`
+    orderNotice(updated, orderLink(origin, updated), {
+      tone: "proofReady",
+      head: "แบบงานพร้อมให้ตรวจ",
+      headline:
+        replaceIndex !== null
+          ? `แก้ไขรูปที่ ${replaceIndex + 1} เรียบร้อย พร้อมให้คุณตรวจอีกครั้งครับ`
+          : "แบบงานพร้อมให้คุณตรวจแล้วครับ",
+      rows: [{ label: "รายการ", value: updated.items[itemIndex]?.name ?? "-", bold: true }],
+      note: "กดดูแล้วกดอนุมัติ หรือแจ้งจุดที่อยากแก้ได้เลยครับ",
+      button: { label: "ดู / อนุมัติแบบ", uri: orderLink(origin, updated) },
+      alt:
+        replaceIndex !== null
+          ? `🎨 รูปที่ ${replaceIndex + 1} ของออเดอร์ ${updated.id} แก้ไขเรียบร้อย พร้อมให้คุณตรวจอีกครั้ง\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`
+          : `🎨 แบบงานออเดอร์ ${updated.id} พร้อมให้คุณตรวจแล้ว\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`,
+    })
   );
 
   return NextResponse.json({ ok: true, order: updated });

@@ -12,7 +12,7 @@ import { needsPurchaseStamp, notifyStockArrived } from "@/lib/server/needs-purch
 import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
-import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
+import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
 import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { amountsForRecord } from "@/lib/tp-amounts";
@@ -1165,7 +1165,15 @@ export async function PATCH(req: Request) {
       void notifyCustomerLogged(
         sb,
         toSave,
-        `🛠️ ออเดอร์ ${toSave.id} เข้าไลน์ผลิตแล้วครับ\n💳 เหลือยอดค้าง ${bal.toLocaleString()} บาท — โอนแล้วแนบสลิปได้ที่ลิงก์นี้เลย (ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`,
+        orderNotice(toSave, link, {
+          tone: "dueLeft",
+          head: "เหลือยอดค้างชำระ",
+          headline: "ออเดอร์เข้าไลน์ผลิตแล้วครับ — เหลือยอดค้างอีกนิดหน่อย",
+          hero: { label: "ยอดค้าง", value: `${bal.toLocaleString("th-TH")} บาท` },
+          rows: [{ label: "ยอดรวมทั้งบิล", value: `${orderTotal(toSave).toLocaleString("th-TH")} บาท` }, { label: "รับแล้ว", value: `${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} บาท`, bold: true }],
+          note: "โอนแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ (ทางร้านจัดส่งได้หลังชำระครบ)",
+          alt: `🛠️ ออเดอร์ ${toSave.id} เข้าไลน์ผลิตแล้วครับ\n💳 เหลือยอดค้าง ${bal.toLocaleString()} บาท — โอนแล้วแนบสลิปได้ที่ลิงก์นี้เลย (ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`,
+        }),
         "ทวงยอดคงเหลือ (เข้าไลน์ผลิต)"
       );
       toSave = { ...toSave, deposit: { ...toSave.deposit, balanceRemindedAt: new Date().toISOString() } };
@@ -1221,13 +1229,32 @@ export async function PATCH(req: Request) {
         )
         .join("\n");
       const tail = `${qty ? `\nรอบนี้ ${qty.toLocaleString("th-TH")} ชิ้น` : ""}\n${lines}${sh.shipTo ? `\n📍 ส่งไปที่: ${shipToText(sh.shipTo)}` : ""}${sh.note ? `\n📝 ${sh.note}` : ""}`;
+      // รายการของรอบนี้ — บรรทัดเดียวกับที่เคยส่งเป็นข้อความล้วน (ตัดจุดนำหน้าออก การ์ดใส่ให้เอง)
+      const bullets = lines.split("\n").filter(Boolean).map((l) => l.replace(/^•\s*/, ""));
+      const rows: { label: string; value: string; bold?: boolean }[] = [{ label: "รอบที่", value: String(round), bold: true }];
+      if (qty) rows.push({ label: "จำนวนรอบนี้", value: `${qty.toLocaleString("th-TH")} ชิ้น`, bold: true });
+      if (!sh.pickup && sh.tracking) rows.push({ label: "เลขพัสดุรอบนี้", value: sh.tracking, bold: true });
+      if (sh.shipTo) rows.push({ label: "📍 ส่งไปที่", value: shipToText(sh.shipTo) });
+      if (sh.note) rows.push({ label: "📝 หมายเหตุ", value: sh.note });
       void notifyCustomerLogged(
         sb,
         toSave,
         // 🏪 ใบมารับเอง: รอบนี้ไม่มีเลขพัสดุ — บอกให้มารับของรอบนี้ได้เลย ที่เหลือแจ้งอีกครั้ง
-        sh.pickup
-          ? `🏪 ออเดอร์ ${toSave.id} แพ็คเสร็จบางส่วนแล้วครับ (รอบที่ ${round}) — มารับที่ร้านได้เลย${tail}\nส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ\n${link}`
-          : `🚚 ออเดอร์ ${toSave.id} จัดส่งบางส่วนแล้วครับ (รอบที่ ${round})\nเลขพัสดุ: ${sh.tracking}${tail}\nส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
+        orderNotice(toSave, link, {
+          tone: sh.pickup ? "pickupRound" : "shipRound",
+          head: sh.pickup ? `แพ็คเสร็จบางส่วน (รอบที่ ${round})` : `จัดส่งบางส่วน (รอบที่ ${round})`,
+          headline: sh.pickup
+            ? "ของรอบนี้แพ็คเสร็จแล้ว — มารับที่ร้านได้เลยครับ"
+            : "ของรอบนี้จัดส่งแล้วครับ ตามเลขพัสดุด้านล่าง",
+          rows,
+          bullets,
+          note: sh.pickup
+            ? "ส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ"
+            : "ส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ",
+          alt: sh.pickup
+            ? `🏪 ออเดอร์ ${toSave.id} แพ็คเสร็จบางส่วนแล้วครับ (รอบที่ ${round}) — มารับที่ร้านได้เลย${tail}\nส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ\n${link}`
+            : `🚚 ออเดอร์ ${toSave.id} จัดส่งบางส่วนแล้วครับ (รอบที่ ${round})\nเลขพัสดุ: ${sh.tracking}${tail}\nส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
+        }),
         sh.pickup ? `แจ้งแพ็คเสร็จบางส่วน (มารับเอง) รอบที่ ${round}` : `แจ้งส่งบางส่วน รอบที่ ${round} · ${sh.tracking}`,
         "key"
       );
@@ -1247,7 +1274,24 @@ export async function PATCH(req: Request) {
     void notifyCustomer(
       sb,
       toSave,
-      `✅ เช็คสต๊อกเรียบร้อยแล้วครับ — ผลิตได้ตามจำนวนที่สั่ง\n${lines}${ship}\nออเดอร์ ${toSave.id}\n${orderLink(origin, toSave)}`
+      orderNotice(toSave, orderLink(origin, toSave), {
+        tone: "stockOk",
+        head: "เช็คสต๊อกเรียบร้อย",
+        headline: "เช็คสต๊อกให้แล้วครับ — ผลิตได้ตามจำนวนที่สั่ง",
+        bullets: stockJustConfirmed.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`),
+        ...(toSave.shipDate?.from
+          ? {
+              rows: [
+                {
+                  label: "กำหนดส่ง",
+                  value: `${toSave.shipDate.from}${toSave.shipDate.to && toSave.shipDate.to !== toSave.shipDate.from ? ` – ${toSave.shipDate.to}` : ""}`,
+                  bold: true,
+                },
+              ],
+            }
+          : {}),
+        alt: `✅ เช็คสต๊อกเรียบร้อยแล้วครับ — ผลิตได้ตามจำนวนที่สั่ง\n${lines}${ship}\nออเดอร์ ${toSave.id}\n${orderLink(origin, toSave)}`,
+      })
     );
   }
 
@@ -1271,9 +1315,22 @@ export async function PATCH(req: Request) {
     void notifyCustomerLogged(
       sb,
       toSave,
-      `💬 ตีราคางานสั่งทำให้แล้วครับ — ออเดอร์ ${toSave.id}\n${quoted}\n\n💰 ยอดรวมทั้งบิล ${total.toLocaleString("th-TH")} บาท${
-        bal !== total ? `\n💳 ยอดที่ต้องโอน ${bal.toLocaleString("th-TH")} บาท` : ""
-      }\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${orderLink(origin, toSave)}`,
+      orderNotice(toSave, orderLink(origin, toSave), {
+        tone: "quote",
+        head: "ตีราคาให้แล้ว",
+        headline: "ตีราคางานสั่งทำให้แล้วครับ — โอนแล้วแนบสลิปได้เลย",
+        hero: { label: bal !== total ? "ยอดที่ต้องโอน" : "ยอดรวมทั้งบิล", value: `${bal.toLocaleString("th-TH")} บาท` },
+        // บรรทัดราคาที่ตีให้ (พร้อมที่มาของราคาที่แอดมินพิมพ์ไว้) — ยุบเป็นบรรทัดเดียวต่อรายการบนการ์ด
+        bullets: quoted.split("\n").filter(Boolean).reduce<string[]>((acc, l) => {
+          if (l.startsWith("•")) acc.push(l.replace(/^•\s*/, ""));
+          else if (acc.length) acc[acc.length - 1] += ` — ${l.trim()}`;
+          return acc;
+        }, []),
+        ...(bal !== total ? { rows: [{ label: "ยอดรวมทั้งบิล", value: `${total.toLocaleString("th-TH")} บาท` }, { label: "รับแล้ว", value: `${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} บาท`, bold: true }] } : {}),
+        alt: `💬 ตีราคางานสั่งทำให้แล้วครับ — ออเดอร์ ${toSave.id}\n${quoted}\n\n💰 ยอดรวมทั้งบิล ${total.toLocaleString("th-TH")} บาท${
+          bal !== total ? `\n💳 ยอดที่ต้องโอน ${bal.toLocaleString("th-TH")} บาท` : ""
+        }\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${orderLink(origin, toSave)}`,
+      }),
       `แจ้งราคาที่ตีให้ (ยอดรวม ${total.toLocaleString("th-TH")} บาท)`,
       "key" // เรื่องเงิน — ส่งแม้ลูกค้าเลือกรับเฉพาะเรื่องสำคัญ
     );
@@ -1282,7 +1339,18 @@ export async function PATCH(req: Request) {
   // มัดจำ: แอดมินยืนยันรับยอดคงเหลือครบในคำขอนี้ → แจ้งลูกค้า + ส่งเรคอร์ดงวดหลังเข้า msVerify
   if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
     const origin = new URL(req.url).origin;
-    void notifyCustomerLogged(sb, toSave, `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`, "ยืนยันรับยอดคงเหลือครบ");
+    void notifyCustomerLogged(
+      sb,
+      toSave,
+      orderNotice(toSave, orderLink(origin, toSave), {
+        tone: "settled",
+        head: "รับยอดคงเหลือครบแล้ว",
+        headline: "รับยอดคงเหลือครบแล้ว ขอบคุณครับ 🦆",
+        rows: [{ label: "ยอดรวมทั้งบิล", value: `${orderTotal(toSave).toLocaleString("th-TH")} บาท`, bold: true }],
+        alt: `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`,
+      }),
+      "ยืนยันรับยอดคงเหลือครบ"
+    );
     await reportPaidToTP(toSave, adminName, { docSuffix: "-final", noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
     // 🦆 ออเดอร์มัดจำเพิ่งชำระครบ → บวกแต้มสะสม (idempotent)
     void awardPointsForOrder(toSave);

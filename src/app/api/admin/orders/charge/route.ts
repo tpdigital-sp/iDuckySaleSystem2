@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { orderBalance, orderTotal, withLog, type Order, type OrderCharge, type OrderStatus } from "@/lib/admin-data";
-import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import { updateOrder } from "@/lib/server/order-write";
 
@@ -76,9 +76,21 @@ export async function POST(req: Request) {
   void notifyCustomerLogged(
     sb,
     updated,
-    `🧾 ออเดอร์ ${updated.id} มีค่าบริการเพิ่ม: ${label} ${thb(amount)} บาท${note ? `\n${note}` : ""}\n💰 ยอดรวมทั้งบิล ${thb(total)} บาท${
-      due !== total ? `\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(due)} บาท` : ""
-    }\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${link}`,
+    orderNotice(updated, link, {
+      tone: "charge",
+      head: "มีค่าบริการเพิ่ม",
+      headline: `${label} ${thb(amount)} บาท${note ? ` — ${note}` : ""}`,
+      hero: { label: due !== total ? "ยอดที่ต้องโอนเพิ่ม" : "ยอดที่ต้องโอน", value: `${thb(due)} บาท` },
+      rows: [
+        { label: "ค่าบริการเพิ่ม", value: `${label} ${thb(amount)} บาท` },
+        { label: "ยอดรวมทั้งบิล", value: `${thb(total)} บาท` },
+        ...(updated.paidTotal != null ? [{ label: "รับแล้ว", value: `${thb(updated.paidTotal)} บาท`, bold: true }] : []),
+      ],
+      note: "โอนแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ",
+      alt: `🧾 ออเดอร์ ${updated.id} มีค่าบริการเพิ่ม: ${label} ${thb(amount)} บาท${note ? `\n${note}` : ""}\n💰 ยอดรวมทั้งบิล ${thb(total)} บาท${
+        due !== total ? `\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(due)} บาท` : ""
+      }\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${link}`,
+    }),
     `แจ้งเก็บเพิ่ม ${label} ${thb(amount)} บาท`,
     "key"
   );

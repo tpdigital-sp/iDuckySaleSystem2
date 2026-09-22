@@ -76,11 +76,18 @@ export async function alertNeedsPurchase(o: Order): Promise<void> {
  */
 export async function notifyStockArrived(sb: unknown, o: Order, origin: string): Promise<void> {
   if (o.status === "ยกเลิก") return;
-  const { notifyCustomerLogged, orderLink } = await import("./notify");
+  const { notifyCustomerLogged, orderLink, orderNotice } = await import("./notify");
+  const link = orderLink(origin, o);
   await notifyCustomerLogged(
     sb as Parameters<typeof notifyCustomerLogged>[0],
     o,
-    `📦 สินค้าสำหรับออเดอร์ ${o.id} เข้าร้านแล้วครับ\nทางร้านจะเริ่มผลิตให้ทันทีที่แบบงานได้รับการอนุมัติ — ดูสถานะได้ที่ลิงก์นี้เลย\n${orderLink(origin, o)}`,
+    orderNotice(o, link, {
+      tone: "stockIn",
+      head: "ของเข้าร้านแล้ว",
+      headline: "สินค้าสำหรับออเดอร์นี้เข้าร้านแล้วครับ",
+      note: "ทางร้านจะเริ่มผลิตให้ทันทีที่แบบงานได้รับการอนุมัติ",
+      alt: `📦 สินค้าสำหรับออเดอร์ ${o.id} เข้าร้านแล้วครับ\nทางร้านจะเริ่มผลิตให้ทันทีที่แบบงานได้รับการอนุมัติ — ดูสถานะได้ที่ลิงก์นี้เลย\n${link}`,
+    }),
     "แจ้งลูกค้า: ของเข้าร้านแล้ว",
     "extra"
   );

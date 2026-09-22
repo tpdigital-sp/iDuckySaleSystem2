@@ -152,13 +152,27 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, msg: stri
   if (!target)
     return { ok: false, reason: "ยังไม่ได้ผูก LINE ของลูกค้ากับออเดอร์นี้" };
 
-  try {
-    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+  const push = (messages: unknown[]) =>
+    fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ to: target.id, messages: typeof msg === "string" ? [{ type: "text", text: msg }] : msg }),
+      body: JSON.stringify({ to: target.id, messages }),
       signal: AbortSignal.timeout(10_000),
     });
+
+  try {
+    const messages = typeof msg === "string" ? [{ type: "text", text: msg }] : msg;
+    let res = await push(messages);
+    /**
+     * 🛟 การ์ด Flex ผิดรูป = LINE ตอบ 400 แล้ว "ลูกค้าไม่ได้ข้อความเลย" — เรื่องเงิน/จัดส่งหายเงียบไม่ได้
+     * ตกลงมาเป็นข้อความล้วนจาก altText (เนื้อความชุดเดียวกับก่อนเปลี่ยนเป็นการ์ด) แล้วส่งอีกครั้ง
+     * 400 เท่านั้น — 401/403/429 เป็นเรื่อง token/ลูกค้าบล็อก/โควตา ส่งซ้ำก็ไม่ผ่าน (ดู scripts/flex-messages-test.mts)
+     */
+    if (res.status === 400 && typeof msg !== "string" && msg.some((m) => m.type === "flex")) {
+      const text = msg.map((m) => (m.type === "flex" ? m.altText : m.text)).join("\n");
+      console.error(`[notify] การ์ด Flex ของออเดอร์ ${order.id} ถูก LINE ตีกลับ — ส่งเป็นข้อความล้วนแทน`);
+      res = await push([{ type: "text", text }]);
+    }
     if (res.ok) return { ok: true, via: target.via };
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     // 403 = ลูกค้าบล็อก OA หรือไม่ได้เป็นเพื่อน · 401 = token ผิด/หมดอายุ · 429 = โควตาข้อความหมด
@@ -303,7 +317,8 @@ export function statusMessage(order: Order, link: string): string | null {
 
 /** สีประจำสถานะสำหรับการ์ด LINE (hex — Flex ใช้ CSS class ไม่ได้) */
 const STATUS_HEX: Record<OrderStatus, string> = {
-  รอชำระเงิน: "#F0B429",
+  // 🔆 เข้มกว่าเดิม (#F0B429) — ตัวอักษรขาวบนเหลืองสดได้ contrast แค่ 1.9:1 อ่านไม่ออกกลางแดด (22 ก.ย. 69)
+  รอชำระเงิน: "#B97609",
   รอตรวจสอบ: "#EA7317",
   ชำระแล้ว: "#16A34A",
   รอตรวจแบบ: "#7C3AED",
@@ -312,7 +327,7 @@ const STATUS_HEX: Record<OrderStatus, string> = {
   กำลังผลิต: "#4F46E5",
   จัดส่งแล้ว: "#0284C7",
   เสร็จสิ้น: "#475569",
-  ยกเลิก: "#94A3B8",
+  ยกเลิก: "#78716C", // เทาอุ่น เข้มพอให้ตัวอักษรขาวอ่านออก (เดิม #94A3B8 = 2.6:1) และไม่ชนกับ "เสร็จสิ้น"
 };
 
 /** พาดหัวสั้น ๆ บนการ์ด (ข้อความยาวอยู่ใน statusMessage สำหรับ altText) */
@@ -447,7 +462,9 @@ export function statusFlex(
               type: "button",
               style: "primary",
               height: "sm",
-              color: "#2472AE",
+              // 🎨 ปุ่มสีเดียวกับหัวการ์ด (เจ้าของร้านสั่ง 22 ก.ย. 69) — การ์ดอ่านเป็นก้อนเดียว ไม่ใช่ฟ้าลอยมาจากไหนไม่รู้
+              // ทุกสีในจานผ่าน contrast ≥ 3:1 กับตัวอักษรขาวแล้ว (ดู npm run check:flex)
+              color: tone,
               action: { type: "uri", label: "เปิดหน้าออเดอร์", uri: link },
             },
           ],
@@ -455,4 +472,255 @@ export function statusFlex(
       },
     },
   ];
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 🎴 การ์ดแจ้งเตือนกลาง — ข้อความถึงลูกค้า "ทุกใบ" เป็น Flex (เจ้าของร้านสั่ง 22 ก.ย. 69)
+ *
+ * เดิม statusFlex ใช้ได้เฉพาะ "แจ้งสถานะออเดอร์" ข้อความอื่น (รับเงิน · ตีราคา · แบ่งส่ง ·
+ * ยอดโอนเพิ่ม · เคลม · ของเข้าร้าน) ยังเป็นข้อความล้วน — อ่านยาก ยอดเงินจมอยู่กลางบรรทัด
+ *
+ * ตัวนี้เป็นโครงเดียวกับ statusFlex (หัวสี → ประโยคนำ → เลขออเดอร์ → แถวข้อมูล → ปุ่ม)
+ * แต่ป้อนเนื้อหาเองได้ทุกช่อง · altText = ข้อความล้วนชุดเดิม (โชว์ในแถบแจ้งเตือน + เครื่องที่แสดงการ์ดไม่ได้)
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 🎨 โทนสีการ์ด — "หนึ่งเรื่อง หนึ่งสี" ไม่ซ้ำกันเลยสักใบ (เจ้าของร้านสั่ง 22 ก.ย. 69)
+ *
+ * รวมกับสีสถานะ 10 สีด้านบน = 31 สีที่ต้องแยกออกจากกันให้ได้ · เลือกด้วยเครื่องจากจานสีโทนสุภาพ
+ * (Tailwind 600/700/800) โดยไล่หาชุดที่ "ห่างกันมากที่สุด" แล้วตรวจ 3 ข้อทุกครั้งที่แก้ (npm run check:flex):
+ *   1) ไม่มีสีซ้ำ   2) ตัวอักษรขาวบนหัวการ์ดต้องได้ contrast ≥ 3:1 (อ่านออกกลางแดด)
+ *   3) ทุกคู่ต้องห่างกัน deltaE ≥ 13 — ใกล้กว่านี้คนแยกไม่ออกว่าคนละการ์ด (ตอนนี้ใกล้สุด 14.1)
+ * ⚠️ เพิ่มสีใหม่แล้วเทสตก = สีไปชนของเดิม ให้เลือกสีอื่น อย่าปิดเทส
+ */
+export type NoticeTone =
+  // 💰 เรื่องต้องจ่าย
+  | "balanceUp" // ยอดเพิ่ม ต้องโอนเพิ่ม
+  | "balanceDown" // ปรับยอดใหม่ (ลดลงแต่ยังต้องโอน)
+  | "charge" // ค่าบริการเพิ่ม
+  | "quote" // ตีราคางานสั่งทำให้แล้ว
+  | "dueLeft" // เหลือยอดค้าง (เข้าไลน์ผลิตแล้ว)
+  | "partial" // รับเงินบางส่วน ยังขาด
+  // ✅ เงินเข้าแล้ว
+  | "depositIn" // รับมัดจำ
+  | "settled" // รับยอดคงเหลือครบ
+  | "diffIn" // รับยอดส่วนต่างครบ
+  | "fullIn" // รับยอดครบ (สลิปใบเพิ่ม)
+  | "paidIn" // ยืนยันการชำระเงิน
+  | "noMoreDue" // ไม่ต้องโอนเพิ่มแล้ว
+  // 🎨 🚚 🏭 🧰
+  | "proofReady" // แบบงานพร้อมตรวจ
+  | "shipRound" // จัดส่งบางส่วน (มีเลขพัสดุ)
+  | "pickupRound" // แพ็คเสร็จบางส่วน (มารับเอง)
+  | "shipTogether" // ส่งรวมกล่อง
+  | "shipApart" // ยกเลิกส่งรวมกล่อง
+  | "stockOk" // เช็คสต๊อกเรียบร้อย
+  | "stockIn" // ของเข้าร้านแล้ว
+  | "claimOpen" // รับเรื่องเคลม
+  | "claimUpdate"; // อัปเดตเรื่องเคลม
+
+export const NOTICE_HEX: Record<NoticeTone, string> = {
+  balanceUp: "#C2410C",
+  balanceDown: "#155E75",
+  charge: "#9A3412",
+  quote: "#854D0E",
+  dueLeft: "#DC2626",
+  partial: "#44403C",
+  depositIn: "#15803D",
+  settled: "#065F46",
+  diffIn: "#4D7C0F",
+  fullIn: "#65A30D",
+  paidIn: "#3F6212",
+  noMoreDue: "#059669",
+  proofReady: "#C026D3",
+  shipRound: "#2563EB",
+  pickupRound: "#0891B2",
+  shipTogether: "#075985",
+  shipApart: "#1E40AF",
+  stockOk: "#6B21A8",
+  stockIn: "#86198F",
+  claimOpen: "#DB2777",
+  claimUpdate: "#9D174D",
+};
+
+/** ทุกสีของการ์ดทั้งระบบ (สถานะ + แจ้งเตือน) — เทสจานสีอ่านจากตัวนี้ */
+export const ALL_CARD_HEX = (): Record<string, string> => ({ ...STATUS_HEX, ...NOTICE_HEX });
+
+const hexRgb = (h: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+const toHex = (rgb: number[]) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+
+/**
+ * สีกล่องเน้นท้ายการ์ด — คิดจากสีหัวการ์ดเอง (พื้น = ผสมขาว 90% · ตัวอักษร = เข้มลง 25%)
+ * ทำแบบนี้แทนตารางมือ เพราะ 21 โทนต้องดูแลคู่สีมือทั้งหมด = ลืมง่ายและหลุดง่าย
+ */
+function noteColors(tone: NoticeTone): [string, string] {
+  const rgb = hexRgb(NOTICE_HEX[tone]);
+  return [toHex(rgb.map((v) => v + (255 - v) * 0.9)), toHex(rgb.map((v) => v * 0.75))];
+}
+
+export interface NoticeRow {
+  label: string;
+  value: string;
+  color?: string;
+  bold?: boolean;
+}
+
+export interface NoticeCard {
+  tone: NoticeTone;
+  /** คำบนหัวการ์ด เช่น "ยอดที่ต้องโอนเพิ่ม" */
+  head: string;
+  /** ประโยคนำใต้หัว — บอกว่าเกิดอะไรขึ้น */
+  headline: string;
+  /** เลขออเดอร์ (ตัวใหญ่กลางการ์ด) */
+  id: string;
+  /** ยอดเงินก้อนเด่น — ตัวเลขที่ลูกค้าต้องเห็นก่อนอย่างอื่น */
+  hero?: { label: string; value: string };
+  rows?: NoticeRow[];
+  /** รายการย่อย (รายการที่ส่งรอบนี้ · ราคาที่ตีให้ · อื่น ๆ) */
+  bullets?: string[];
+  /** กล่องเน้นท้ายการ์ด (สิ่งที่ลูกค้าต้องทำต่อ) */
+  note?: string;
+  /** ปุ่มท้ายการ์ด — ไม่ส่ง = ไม่มีปุ่ม */
+  button?: { label: string; uri: string };
+  /** ข้อความล้วนสำหรับแถบแจ้งเตือน (ชุดเดิมก่อนเปลี่ยนเป็นการ์ด) */
+  alt: string;
+}
+
+/** ตัดข้อความให้ไม่เกินที่ LINE รับ — ยาวเกินแล้ว push ทั้งก้อนไม่ผ่าน (400) ทั้งข้อความ */
+const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+/** การ์ดแจ้งเตือนทั่วไป (ไม่ผูกกับสถานะออเดอร์) — ดูหมายเหตุด้านบน */
+export function noticeFlex(card: NoticeCard): LineMessage[] {
+  const tone = NOTICE_HEX[card.tone];
+  const [noteBg, noteFg] = noteColors(card.tone);
+  const body: unknown[] = [
+    { type: "text", text: cut(card.headline, 300), size: "sm", color: "#334155", wrap: true },
+    { type: "text", text: cut(card.id, 60), size: "lg", weight: "bold", color: "#0F172A" },
+    { type: "separator", color: "#E2E8F0" },
+  ];
+  if (card.hero)
+    body.push({
+      type: "box",
+      layout: "vertical",
+      backgroundColor: noteBg,
+      cornerRadius: "8px",
+      paddingAll: "12px",
+      contents: [
+        { type: "text", text: cut(card.hero.label, 60), size: "xs", color: noteFg },
+        { type: "text", text: cut(card.hero.value, 40), size: "xxl", weight: "bold", color: noteFg },
+      ],
+    });
+  if (card.rows?.length)
+    body.push({
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: card.rows.map((r) => flexRow(cut(r.label, 60), cut(r.value, 120), r.color ?? "#334155", r.bold)),
+    });
+  if (card.bullets?.length)
+    body.push({
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      // ยาวเกิน 8 บรรทัดการ์ดจะสูงจนอ่านยาก — ที่เหลือบอกเป็นจำนวน (ครบ ๆ อยู่ใน altText + หน้าออเดอร์)
+      contents: [
+        ...card.bullets.slice(0, 8).map((b) => ({ type: "text", text: cut(`• ${b}`, 300), size: "xs", color: "#475569", wrap: true })),
+        ...(card.bullets.length > 8
+          ? [{ type: "text", text: `• และอีก ${card.bullets.length - 8} รายการ`, size: "xs", color: "#94A3B8", wrap: true }]
+          : []),
+      ],
+    });
+  if (card.note)
+    body.push({
+      type: "box",
+      layout: "vertical",
+      backgroundColor: noteBg,
+      cornerRadius: "8px",
+      paddingAll: "10px",
+      contents: [{ type: "text", text: cut(card.note, 500), size: "xs", color: noteFg, wrap: true }],
+    });
+
+  return [
+    {
+      type: "flex",
+      // altText ยาวเกิน 400 ตัว LINE ตีกลับทั้งข้อความ — ตัดให้พอดีเสมอ
+      altText: cut(card.alt, 400),
+      contents: {
+        type: "bubble",
+        header: {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: tone,
+          paddingAll: "14px",
+          contents: [
+            { type: "text", text: "iDucky Prints Studio", size: "xs", color: "#FFFFFFCC" },
+            { type: "text", text: cut(card.head, 40), size: "xl", weight: "bold", color: "#FFFFFF", wrap: true },
+          ],
+        },
+        body: { type: "box", layout: "vertical", spacing: "md", paddingAll: "16px", contents: body },
+        ...(card.button
+          ? {
+              footer: {
+                type: "box",
+                layout: "vertical",
+                paddingAll: "12px",
+                contents: [
+                  {
+                    type: "button",
+                    style: "primary",
+                    height: "sm",
+                    color: tone, // ปุ่มสีเดียวกับหัวการ์ด — ดูหมายเหตุใน statusFlex
+                    // ป้ายปุ่มเกิน 20 ตัว LINE ไม่รับ
+                    action: { type: "uri", label: cut(card.button.label, 20), uri: card.button.uri },
+                  },
+                ],
+              },
+            }
+          : {}),
+      },
+    },
+  ];
+}
+
+/** การ์ดมาตรฐานของออเดอร์ — เติมเลขออเดอร์/ปุ่ม "เปิดหน้าออเดอร์" ให้เอง (ใช้กับข้อความส่วนใหญ่) */
+export function orderNotice(order: Order, link: string, card: Omit<NoticeCard, "id" | "button"> & { button?: NoticeCard["button"] }): LineMessage[] {
+  return noticeFlex({
+    ...card,
+    id: order.id,
+    button: card.button ?? { label: "เปิดหน้าออเดอร์", uri: link },
+  });
+}
+
+/**
+ * 🧪 ตรวจการ์ดก่อนส่ง — คืนรายการปัญหา (ว่าง = ผ่าน) · ใช้ในเทส npm run check:flex
+ * กติกาที่ LINE ตีกลับทั้งข้อความ (400) ถ้าผิด: altText ≤ 400 · text ห้ามว่าง · ป้ายปุ่ม ≤ 20 · uri ต้อง http(s)
+ */
+export function checkFlexMessages(msgs: LineMessage[]): string[] {
+  const errs: string[] = [];
+  const walk = (n: unknown, path: string) => {
+    if (Array.isArray(n)) return n.forEach((c, i) => walk(c, `${path}[${i}]`));
+    if (!n || typeof n !== "object") return;
+    const o = n as Record<string, unknown>;
+    if (o.type === "text") {
+      const t = o.text;
+      if (typeof t !== "string" || !t.trim()) errs.push(`${path}: text ว่าง (LINE ไม่รับ)`);
+      else if (t.length > 2000) errs.push(`${path}: text ยาว ${t.length} ตัว (เกิน 2000)`);
+    }
+    if (o.type === "button") {
+      const a = o.action as Record<string, unknown> | undefined;
+      const label = typeof a?.label === "string" ? a.label : "";
+      if (!label) errs.push(`${path}: ปุ่มไม่มีป้าย`);
+      else if (label.length > 20) errs.push(`${path}: ป้ายปุ่ม "${label}" ยาว ${label.length} ตัว (เกิน 20)`);
+      const uri = typeof a?.uri === "string" ? a.uri : "";
+      if (!/^https?:\/\//.test(uri)) errs.push(`${path}: uri ปุ่มไม่ใช่ http(s) — "${uri}"`);
+    }
+    for (const [k, v] of Object.entries(o)) if (typeof v === "object") walk(v, `${path}.${k}`);
+  };
+  msgs.forEach((m, i) => {
+    if (m.type !== "flex") return;
+    if (!m.altText?.trim()) errs.push(`msg[${i}]: altText ว่าง`);
+    else if (m.altText.length > 400) errs.push(`msg[${i}]: altText ยาว ${m.altText.length} ตัว (เกิน 400)`);
+    walk(m.contents, `msg[${i}].contents`);
+  });
+  return errs;
 }

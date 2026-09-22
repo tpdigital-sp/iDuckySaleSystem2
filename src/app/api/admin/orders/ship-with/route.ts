@@ -6,7 +6,7 @@ import { orderStatusLabel, withLog, type Order } from "@/lib/admin-data";
 import { isPickupOrder, stripShipPrice } from "@/lib/ship-label";
 import { buildShipLink, cannotBeMain, cannotBeRider, isShipMain, isShipRider, riderNotReady, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
-import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 
 export const runtime = "nodejs";
 
@@ -140,7 +140,14 @@ export async function POST(req: Request) {
   await notifyCustomerLogged(
     sb,
     r1.order,
-    `📦 ออเดอร์ ${rider.id} จะจัดส่งรวมกล่องเดียวกับออเดอร์ ${main.id} ครับ${wasPickup ? " (เปลี่ยนจากมารับเอง — ไม่ต้องมารับที่ร้านแล้ว)" : ""}\nจัดส่งเมื่อไหร่ทางร้านแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
+    orderNotice(r1.order, link, {
+      tone: "shipTogether",
+      head: "ส่งรวมกล่องเดียวกัน",
+      headline: `ออเดอร์นี้จะจัดส่งรวมกล่องเดียวกับออเดอร์ ${main.id} ครับ`,
+      rows: [{ label: "ส่งรวมกับ", value: main.id, bold: true }],
+      note: `${wasPickup ? "เปลี่ยนจากมารับเอง — ไม่ต้องมารับที่ร้านแล้วครับ\n" : ""}จัดส่งเมื่อไหร่ทางร้านแจ้งเลขพัสดุอีกครั้งครับ`,
+      alt: `📦 ออเดอร์ ${rider.id} จะจัดส่งรวมกล่องเดียวกับออเดอร์ ${main.id} ครับ${wasPickup ? " (เปลี่ยนจากมารับเอง — ไม่ต้องมารับที่ร้านแล้ว)" : ""}\nจัดส่งเมื่อไหร่ทางร้านแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
+    }),
     `แจ้งส่งรวมกล่องกับ ${main.id}`,
     wasPackedForPickup ? "key" : "extra"
   );
@@ -195,7 +202,14 @@ export async function DELETE(req: Request) {
   await notifyCustomerLogged(
     sb,
     r1.order,
-    `📦 ออเดอร์ ${rider.id} ยกเลิกการส่งรวมกับออเดอร์ ${mainId} แล้วครับ${isPickupOrder(r1.order) ? " — กลับเป็นมารับเองที่ร้าน" : ""}\n${link}`,
+    orderNotice(r1.order, link, {
+      tone: "shipApart",
+      head: "ยกเลิกส่งรวมกล่อง",
+      headline: `ยกเลิกการส่งรวมกับออเดอร์ ${mainId} แล้วครับ`,
+      rows: [{ label: "วิธีส่ง", value: r1.order.shippingLabel || r1.order.shipping || "—", bold: true }],
+      ...(isPickupOrder(r1.order) ? { note: "กลับเป็นมารับเองที่ร้านครับ" } : {}),
+      alt: `📦 ออเดอร์ ${rider.id} ยกเลิกการส่งรวมกับออเดอร์ ${mainId} แล้วครับ${isPickupOrder(r1.order) ? " — กลับเป็นมารับเองที่ร้าน" : ""}\n${link}`,
+    }),
     `แจ้งยกเลิกส่งรวมกล่องกับ ${mainId}`,
     isPickupOrder(r1.order) && r1.order.packedAt ? "key" : "extra"
   );
