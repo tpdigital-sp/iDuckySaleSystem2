@@ -3,8 +3,11 @@
  * ใช้ร่วมกันทุกหน้า (หน้าแรก · หน้าสินค้า · หน้าออเดอร์)
  *
  * ── ทรงปุ่ม (เดสก์ท็อป) ──
- * มาจากชุด .fabx ท้าย landing.css — ชุดเดียวกับตะกร้า/LINE/แชทบอท
- * (พิลล์สูง 46px · ขอบขาว 2px · วงไอคอน 34px · ฟอนต์ Mitr) คลาส Tailwind ที่เหลือคุมมือถือ
+ * 22 ก.ย. 69 — ใช้ "ภาพสำเร็จทั้งใบ" แล้ว: /landing/admin-home-badge-v3.webp
+ * เจ้าของร้านส่งภาพกองปุ่มชุดใหม่มาทั้งแผ่น (ตะกร้า · บอท · LINE · หลังบ้าน) สั่งให้ใช้แทนของเดิมทั้งกอง
+ * ใบนี้เคยเป็นใบเดียวในกองที่ยังวาดด้วย CSS — ขอบ/เงา/ฟอนต์จึงไม่เท่าเพื่อน พอเปลี่ยนเป็นภาพชุดเดียวกัน
+ * ทั้งกองเข้าชุดกันหมด (ระยะ/ขนาดอยู่ในบล็อก .fabx-admin ท้าย landing.css · เลขมาจาก scripts/fab-badges-v3.mjs)
+ * ชิ้นส่วนที่วาดด้วย CSS ข้างล่าง (วงไอคอน · ข้อความ · ลูกศร) ยังต้องอยู่ครบ — มือถือใช้ชุดนั้น
  *
  * ── โครงสร้าง ──
  * เดสก์ท็อป: สูง 46px วงไอคอน 34px (จาก .fabx) — เหลือขอบบน-ล่างข้างละ 6px
@@ -53,6 +56,11 @@ export default function AdminEditFab({
       aria-label={title}
       className="group fabx fabx-admin fixed bottom-5 right-5 z-40 max-[1000px]:bottom-[92px] max-[1000px]:left-4 max-[1000px]:right-auto inline-flex h-10 items-center gap-2 rounded-full bg-white/90 ring-1 ring-slate-900/10 backdrop-blur-md transition duration-200"
     >
+      {/* ภาพปุ่มสำเร็จรูป (เจ้าของร้านส่งมา 22 ก.ย. 69) — ขึ้นเฉพาะจอคอม
+          มือถือปุ่มย้ายไปมุมซ้ายล่างและหดเหลือวงกลม ภาพยาวใส่ไม่ลง จึงกลับไปใช้ชิ้นส่วนข้างล่าง
+          (กฎสลับอยู่ในบล็อก .fabx-admin ท้าย landing.css) */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className="fabx-admin-art" src="/landing/admin-home-badge-v3.webp" alt="" width={1113} height={251} aria-hidden="true" />
       <span className="fabx-ico grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition duration-200">
         {/* ดินสอ (Lucide pencil) — ตรงกับคำว่า "แก้ไข" และรูปทรงเรียบพอที่จะอ่านออกที่ 14px
             ของเดิมใช้อิโมจิ 🔧 แล้วเปลี่ยนเป็น path ประแจที่วาดเองซึ่งกลายเป็นก้อนอ่านไม่ออก */}

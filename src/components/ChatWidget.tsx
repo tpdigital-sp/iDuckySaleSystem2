@@ -135,7 +135,7 @@ export default function ChatWidget() {
         {/* ภาพปุ่มสำเร็จรูป (เจ้าของร้านส่งมา 21 ก.ย. 69) — ขึ้นเฉพาะ "จอคอม + แชทยังไม่เปิด"
             ตอนเปิดแชทปุ่มต้องเขียนว่า "ปิดแชท" ซึ่งภาพเขียนไม่ได้ · มือถือปุ่มหดเหลือไอคอน ภาพยาวใส่ไม่ลง
             ทั้งสองกรณีจึงกลับไปใช้แคปซูลที่วาดด้วย CSS ข้างล่างนี้ (กฎสลับอยู่ท้าย landing.css) */}
-        <img className="fabx-bot-art" src="/landing/bot-chat-badge.webp" alt="" width={900} height={214} aria-hidden="true" />
+        <img className="fabx-bot-art" src="/landing/bot-chat-badge-v3.webp" alt="" width={1113} height={261} aria-hidden="true" />
         {/* วงไอคอนขาว — ชุด .fabx ท้าย landing.css (ทรงเดียวกับปุ่มตะกร้า/LINE/เข้าหลังบ้าน) */}
         <span className="fabx-ico">
           {open ? (
