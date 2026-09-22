@@ -56,6 +56,8 @@ interface Item {
   part?: string;
   /** 🔩 วัสดุแฝง { productId: จำนวนต่อสินค้า 1 ชิ้น } — ขาตั้ง/หมุดที่ไม่มีในตัวเลือก */
   bomFor?: Record<string, number>;
+  /** 📦 งานขายเป็นเซ็ต { productId: ตัดกี่หน่วยต่อ 1 ที่ลูกค้าสั่ง } — 1 ชุด = 2 ชิ้น */
+  productQtyPer?: Record<string, number>;
   /** 🚫 ไม่ต้องมีสต๊อก — ไม่เตือน ไม่นับมูลค่า ไม่ตัดยอดตอนขาย (อยู่ในชิป "ไม่ต้องมี stock" กู้กลับได้) */
   noStock?: boolean;
   needsReview?: boolean;
@@ -568,6 +570,32 @@ export default function StockPage() {
       setUsage((u) => ({ ...u, [h.id]: (u[h.id] ?? []).filter((y) => !(y.kind === "product" && y.bom && y.productId === x.productId)) }));
     }
     setOk(`ถอดแล้ว — ${names} ไม่ตัด ${h.name} อีก`);
+    return true;
+  }
+
+  /**
+   * 📦 งานขายเป็นเซ็ต — ตั้งว่า 1 ที่ลูกค้าสั่งตัดกี่หน่วย (CABLE CARE 1 ชุด = 2 ชิ้น)
+   * ใช้กับ SKU ที่ผูกกับ "ตัวสินค้า" ตรง ๆ เท่านั้น (ผูกที่ตัวเลือกตั้งอัตราในหน้าผูกคลัง)
+   */
+  async function setProductPer(itemId: string, u: StockUsage, per: number): Promise<boolean> {
+    if (u.kind !== "product") return false;
+    setErr("");
+    const res = await fetch("/api/admin/stock/per", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stockItemId: itemId, productId: u.productId, per }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "ตั้งจำนวนต่อชุดไม่สำเร็จ");
+      return false;
+    }
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, productQtyPer: j.item.productQtyPer } : i)));
+    setUsage((m) => ({
+      ...m,
+      [itemId]: (m[itemId] ?? []).map((x) => (x.kind === "product" && !x.bom && x.productId === u.productId ? { ...x, per: per > 1 ? per : undefined } : x)),
+    }));
+    setOk(per > 1 ? `ตั้งแล้ว — ขาย ${u.productName} 1 ที่ ตัด ${per} ${items.find((i) => i.id === itemId)?.unit ?? ""}` : "กลับไปตัด 1 ต่อ 1 แล้ว");
     return true;
   }
 
@@ -1577,6 +1605,7 @@ export default function StockPage() {
           hangs={linksReady ? hangsOf(openItem.id) : []}
           onLink={(t) => linkChoice(openItem.id, t, true)}
           onUnlink={(t) => linkChoice(openItem.id, t, false)}
+          onProductPer={(u, n) => setProductPer(openItem.id, u, n)}
           onLinkExtra={linkExtra}
           onUnlinkHang={unlinkHang}
           stat={stats.get(openItem.id)}
@@ -2142,6 +2171,7 @@ function ItemDrawer({
   hangs,
   onLink,
   onUnlink,
+  onProductPer,
   onLinkExtra,
   onUnlinkHang,
   stat,
@@ -2166,6 +2196,8 @@ function ItemDrawer({
   hangs: HangRow[];
   onLink: (t: StockSuggest) => Promise<boolean>;
   onUnlink: (t: StockUsage) => Promise<boolean>;
+  /** 📦 งานขายเป็นเซ็ต — ตั้งว่า 1 ที่ลูกค้าสั่งตัดกี่หน่วย (เฉพาะลิงก์กับตัวสินค้า) */
+  onProductPer: (u: StockUsage, per: number) => Promise<boolean>;
   onLinkExtra: (p: ExtraLinkPayload) => Promise<string | null>;
   onUnlinkHang: (h: HangRow) => Promise<boolean>;
   stat?: Stat;
@@ -2325,6 +2357,7 @@ function ItemDrawer({
             hangs={hangs}
             onLink={onLink}
             onUnlink={onUnlink}
+            onProductPer={onProductPer}
             onLinkExtra={onLinkExtra}
             onUnlinkHang={onUnlinkHang}
             onEdit={onEdit}
@@ -2686,7 +2719,10 @@ function LinkCell({
     if (u.kind === "product")
       return u.bom
         ? { main: `${here ? "สินค้านี้ทุกชิ้น" : `ทุกชิ้นของ ${u.productName}`}${u.per && u.per !== 1 ? ` ×${u.per}` : ""}`, sub: "วัสดุแฝง — ไม่มีในตัวเลือก" }
-        : { main: here ? "ทุกออเดอร์ของสินค้านี้" : `ทุกออเดอร์ของ ${u.productName}`, sub: "" };
+        : {
+            main: `${here ? "ทุกออเดอร์ของสินค้านี้" : `ทุกออเดอร์ของ ${u.productName}`}${u.per && u.per > 1 ? ` ×${u.per}` : ""}`,
+            sub: u.per && u.per > 1 ? "งานขายเป็นเซ็ต — ขาย 1 ที่ ตัดหลายหน่วย" : "",
+          };
     if (u.kind === "preset") return { main: `${u.label} = ${u.choice}`, sub: `คลังกลาง · ใช้กับ ${u.usedBy} สินค้า` };
     return {
       main: `${here ? "" : `${u.productName} · `}${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`,
@@ -2731,6 +2767,7 @@ function UsagePanel({
   hangs,
   onLink,
   onUnlink,
+  onProductPer,
   onLinkExtra,
   onUnlinkHang,
   onEdit,
@@ -2745,6 +2782,8 @@ function UsagePanel({
   hangs: HangRow[];
   onLink: (t: StockSuggest) => Promise<boolean>;
   onUnlink: (t: StockUsage) => Promise<boolean>;
+  /** 📦 งานขายเป็นเซ็ต — ตั้งว่า 1 ที่ลูกค้าสั่งตัดกี่หน่วย (เฉพาะลิงก์กับตัวสินค้า) */
+  onProductPer: (u: StockUsage, per: number) => Promise<boolean>;
   onLinkExtra: (p: ExtraLinkPayload) => Promise<string | null>;
   onUnlinkHang: (h: HangRow) => Promise<boolean>;
   onEdit: () => void;
@@ -2790,16 +2829,41 @@ function UsagePanel({
                         ? "ไม่มีสินค้ารหัสนี้แล้ว — ลิงก์นี้ไม่ตัดยอด กด “แก้” เพื่อเลือกสินค้าใหม่"
                         : u.bom
                           ? `วัสดุแฝง · ทุกชิ้น ×${u.per ?? 1} ${item.unit}`
-                          : "ทุกออเดอร์ของสินค้านี้ · 1 ต่อ 1"
+                          : u.per && u.per > 1
+                            ? `ทุกออเดอร์ของสินค้านี้ · ขาย 1 ที่ ตัด ${u.per} ${item.unit} (งานเป็นเซ็ต)`
+                            : "ทุกออเดอร์ของสินค้านี้ · 1 ต่อ 1"
                       : where(u)}
                     {u.kind !== "preset" && u.draft ? " · ร่าง" : ""}
                   </span>
                 </span>
                 {mayEdit &&
                   (u.kind === "product" && !u.bom ? (
-                    <button type="button" onClick={onEdit} className={btnSmGhost}>
-                      แก้
-                    </button>
+                    <>
+                      {/* งานขายเป็นเซ็ต: 1 ที่ลูกค้าสั่ง = หลายหน่วยในคลัง — ว่าง/1 = 1 ต่อ 1 */}
+                      <label className="flex shrink-0 items-center gap-1 text-[12px] text-slate-500" title="ตัดสต๊อก = จำนวนที่ลูกค้าสั่ง × ค่านี้ (งานขายเป็นเซ็ต)">
+                        ตัด
+                        <input
+                          defaultValue={u.per && u.per > 1 ? String(u.per) : ""}
+                          placeholder="1"
+                          inputMode="decimal"
+                          aria-label={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.productName}`}
+                          onBlur={(e) => {
+                            const t = e.target.value.trim();
+                            const n = t === "" ? 1 : Number(t);
+                            if (!Number.isFinite(n) || n <= 0) {
+                              e.target.value = u.per && u.per > 1 ? String(u.per) : "";
+                              return;
+                            }
+                            if (n !== (u.per ?? 1)) void run(k, () => onProductPer(u, n));
+                          }}
+                          className={`${inputCls.replace("w-full ", "")} !h-9 w-14 text-right tabular-nums`}
+                        />
+                        {item.unit}
+                      </label>
+                      <button type="button" onClick={onEdit} className={btnSmGhost}>
+                        แก้
+                      </button>
+                    </>
                   ) : (
                     <button type="button" disabled={busy === k} onClick={() => run(k, () => onUnlink(u))} className={btnSmGhost}>
                       {busy === k ? "…" : "ถอด"}

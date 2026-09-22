@@ -54,7 +54,17 @@ export async function GET(req: Request) {
   for (const it of items)
     for (const pid of it.productIds ?? []) {
       const p = prodById.get(pid);
-      push(it.id, { kind: "product", productId: pid, productName: p?.name ?? `${pid} (ไม่พบสินค้านี้)`, img: p?.img, draft: p?.draft, ...(p ? {} : { missing: true }) });
+      // อัตราต่อชุด (งานขายเป็นเซ็ต) — ไม่ตั้ง = 1 ต่อ 1
+      const per = it.productQtyPer?.[pid];
+      push(it.id, {
+        kind: "product",
+        productId: pid,
+        productName: p?.name ?? `${pid} (ไม่พบสินค้านี้)`,
+        img: p?.img,
+        draft: p?.draft,
+        ...(per && per > 1 ? { per } : {}),
+        ...(p ? {} : { missing: true }),
+      });
     }
 
   // 1b) วัสดุแฝง (ขาตั้ง/หมุด) — ตัดทุกชิ้นของสินค้า × จำนวนต่อชิ้น

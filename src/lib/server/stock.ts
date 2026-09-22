@@ -55,6 +55,12 @@ export interface StockItem {
   /** productId ของสินค้า iDucky ที่ตัดสต๊อกตัวนี้ตอนขาย (คั่นได้หลายตัว) */
   productIds?: string[];
   /**
+   * 📦 งานขายเป็นเซ็ต — ตัดกี่หน่วยต่อ "1 ที่ลูกค้าสั่ง" ของสินค้าใน productIds · { productId: จำนวน }
+   * (CABLE CARE 1 ชุด = 2 ชิ้น · CUP SLEEVE 1 เซ็ต = 6 ชิ้น) ไม่ตั้ง = 1 ต่อ 1 เหมือนเดิม
+   * แยกจาก bomFor เพราะตัวนี้คือ "ตัวสินค้าเอง" ไม่ใช่ของแฝง — แถวในตารางยังขึ้นเป็นตัวสินค้า
+   */
+  productQtyPer?: Record<string, number>;
+  /**
    * ชนิดของ เช่น "กรอบรูป" / "แผ่นจิ๊กซอว์" — หน้าคลังแบ่งกลุ่มย่อยในสินค้าตามค่านี้
    * (รับเข้า/เบิก/สั่งของทำเป็นชุดตามชนิด: สั่งแต่แผ่นจิ๊กซอว์เพราะกรอบยังมี)
    */
@@ -208,6 +214,7 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
     productIds: input.productIds ?? cur?.productIds ?? [],
     ...(cur?.noStock ? { noStock: true } : {}),
     ...(cur?.bomFor && Object.keys(cur.bomFor).length ? { bomFor: cur.bomFor } : {}), // ตั้งจากเส้นทาง bom แยก — แก้ไข SKU ต้องไม่ล้าง
+    ...(cur?.productQtyPer && Object.keys(cur.productQtyPer).length ? { productQtyPer: cur.productQtyPer } : {}), // เช่นกัน (ตั้งจาก /api/admin/stock/per)
     // ส่ง "" มา = ล้างชนิดของ · undefined = ไม่แตะ
     ...(((input.part !== undefined ? input.part : cur?.part) ?? "").trim() ? { part: ((input.part !== undefined ? input.part : cur?.part) ?? "").trim() } : {}), // ตั้งจากปุ่มแยก (setNoStock) — การแก้ไขทั่วไปต้องไม่ล้างธงนี้
     // ล้างช่อง = ส่ง "" มาลบรูปออก (undefined = ไม่แตะ)
@@ -248,6 +255,23 @@ export async function setBom(itemId: string, productId: string, per: number | nu
   const cur = (await ref.get()).data() as StockItem | undefined;
   if (!cur || cur.active === false) return null;
   await ref.update(new FieldPath("bomFor", productId), per && per > 0 ? per : FieldValue.delete(), "updatedAt", new Date().toISOString());
+  return (await ref.get()).data() as StockItem;
+}
+
+/**
+ * ตั้ง/ล้างอัตรา "ตัดกี่หน่วยต่อ 1 ที่ลูกค้าสั่ง" ของสินค้าที่ผูกตรง (งานขายเป็นเซ็ต)
+ * per = null/1 คือกลับไป 1 ต่อ 1 (ลบคีย์ทิ้ง ไม่เก็บ 1 ไว้ให้รก)
+ */
+export async function setProductPer(itemId: string, productId: string, per: number | null): Promise<StockItem | null> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldPath, FieldValue } = await import("firebase-admin/firestore");
+  const ref = db.collection(STOCK_ITEMS).doc(itemId);
+  const cur = (await ref.get()).data() as StockItem | undefined;
+  if (!cur || cur.active === false) return null;
+  // ผูกไว้กับสินค้านี้จริงไหม — ตั้งอัตราให้สินค้าที่ไม่ได้ผูก = ค่าค้างที่ไม่มีวันถูกใช้
+  if (!(cur.productIds ?? []).includes(productId)) throw new Error("SKU นี้ไม่ได้ผูกกับสินค้าตัวนั้น");
+  await ref.update(new FieldPath("productQtyPer", productId), per && per > 1 ? per : FieldValue.delete(), "updatedAt", new Date().toISOString());
   return (await ref.get()).data() as StockItem;
 }
 
@@ -420,11 +444,14 @@ export async function cutStockForOrder(order: Order): Promise<void> {
     for (const oi of order.items) {
       // 1) SKU ที่ผูกกับตัวสินค้าโดยตรง — ตัดทุกตัวที่ผูก (เดิม .find ตัดแค่ตัวแรก ผูก 2 ตัวอีกตัวไม่เคยขยับ)
       for (const hit of stockItems.filter((si) => (si.productIds ?? []).includes(oi.productId))) {
+        // งานขายเป็นเซ็ต: 1 ที่ลูกค้าสั่ง = หลายหน่วยในคลัง (CABLE CARE 1 ชุด = 2 ชิ้น)
+        const setPer = hit.productQtyPer?.[oi.productId];
+        const per = setPer && setPer > 0 ? setPer : 1;
         await addStockMove({
           itemId: hit.id,
-          qty: -Math.abs(oi.qty),
+          qty: -Math.abs(oi.qty) * per,
           reason: "ขาย",
-          note: oi.name,
+          note: per === 1 ? oi.name : `${oi.name} · ชุดละ ${per} ${hit.unit}`,
           refOrderId: order.id,
           by: "ระบบ (ขายอัตโนมัติ)",
           source: "iducky",
