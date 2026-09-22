@@ -73,10 +73,10 @@ function readTier(cid: string): { id: string; name: string; icon: string } | nul
 }
 
 /** เมนูในดรอปดาวน์บัญชี (ตามต้นแบบ) */
-const USER_LINKS = [
-  { href: "/account/orders", ico: "📦", label: "คำสั่งซื้อของฉัน" },
-  { href: "/account/profile", ico: "📍", label: "ที่อยู่จัดส่ง" },
-  { href: "/account", ico: "💛", label: "บัญชีของฉัน" },
+const USER_LINKS: { href: string; ico: string; label: string; auth?: boolean }[] = [
+  { href: "/account/orders", ico: "📦", label: "คำสั่งซื้อของฉัน", auth: true },
+  { href: "/account/profile", ico: "📍", label: "ที่อยู่จัดส่ง", auth: true },
+  { href: "/account", ico: "💛", label: "บัญชีของฉัน", auth: true },
   { href: "/dealer", ico: "🤝", label: "สมัครตัวแทนจำหน่าย" },
   { href: "/how-to-order", ico: "❓", label: "วิธีสั่งซื้อ & ช่วยเหลือ" },
 ];
@@ -179,7 +179,7 @@ function NavUserMenu() {
           </div>
         )}
         <div className="nav-user-links">
-          {USER_LINKS.map((l) => (
+          {USER_LINKS.filter((l) => customer || !l.auth).map((l) => (
             <Link key={l.href + l.label} href={l.href} role="menuitem" onClick={() => setOpen(false)}>
               <i>{l.ico}</i>
               {l.label}
