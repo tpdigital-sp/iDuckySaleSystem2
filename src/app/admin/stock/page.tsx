@@ -3267,7 +3267,8 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
   const [old, setOld] = useState<Old[]>([]);
   /** กลุ่มที่เลือก ตามลำดับที่กด (สูงสุด 2) — ตัวแรก = กลุ่มที่ถือลิงก์ */
   const [sel, setSel] = useState<number[]>([]);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  /** ตัวเลือกที่ผู้ใช้ติ๊กออกไว้ — จำข้ามการสลับกลุ่ม (ติ๊กออกตอนกลุ่มเดียว ต้องไม่กลับมาเองตอนเลือกกลุ่มที่ 2) */
+  const [off, setOff] = useState<Set<string>>(new Set());
   const [removeOld, setRemoveOld] = useState(true);
   const [partName, setPartName] = useState("");
   const [extraOn, setExtraOn] = useState(false);
@@ -3320,10 +3321,45 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gA, gB, extraOn]);
 
-  // เปลี่ยนกลุ่ม → ติ๊กทุกแถวที่ยังไม่มี SKU ให้ก่อน (งานส่วนใหญ่คือแยกครบ)
-  useEffect(() => {
-    setPicked(new Set(rows.filter((r) => !r.done).map((r) => r.key)));
-  }, [rows]);
+  // ค่าเริ่มต้น = ติ๊กทุกแถวที่ยังไม่มี SKU (งานส่วนใหญ่คือแยกครบ) แล้วหักเฉพาะที่ผู้ใช้ติ๊กออก
+  const nameOff = (label: string, name: string) => `${label}${SEP}${name}`;
+  const rowOff = (r: Row) => `#${r.key}`;
+  const isOff = (set: Set<string>, r: Row) =>
+    set.has(rowOff(r)) || (!!gA && set.has(nameOff(gA.label, r.a.name))) || (!!gB && !!r.b && set.has(nameOff(gB.label, r.b.name)));
+  const picked = useMemo(
+    () => new Set(rows.filter((r) => !r.done && !isOff(off, r)).map((r) => r.key)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, off]
+  );
+
+  /** ติ๊ก/ติ๊กออกทีละแถว — โหมดกลุ่มเดียวจำเป็น "ชื่อตัวเลือก" เพื่อให้ยังติ๊กออกอยู่เมื่อเพิ่มกลุ่มที่ 2 */
+  const setRowOn = (r: Row, on: boolean) =>
+    setOff((cur) => {
+      const next = new Set(cur);
+      if (!on) {
+        next.add(rowOff(r));
+        if (gA && !gB) next.add(nameOff(gA.label, r.a.name));
+        return next;
+      }
+      const names = [...(gA ? [nameOff(gA.label, r.a.name)] : []), ...(gB && r.b ? [nameOff(gB.label, r.b.name)] : [])].filter((k) => next.has(k));
+      if (names.length) {
+        for (const o of rows) if (o.key !== r.key && !o.done && isOff(next, o)) next.add(rowOff(o));
+        for (const k of names) next.delete(k);
+      }
+      next.delete(rowOff(r));
+      return next;
+    });
+
+  const setAllOn = (on: boolean) =>
+    setOff(() => {
+      if (on) return new Set<string>();
+      const next = new Set<string>();
+      for (const r of rows) {
+        next.add(rowOff(r));
+        if (gA && !gB) next.add(nameOff(gA.label, r.a.name));
+      }
+      return next;
+    });
 
   const toggleGroup = (i: number) => {
     setErr("");
@@ -3434,9 +3470,7 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
                     <button
                       type="button"
                       className="underline underline-offset-2 hover:text-slate-800"
-                      onClick={() =>
-                        setPicked((cur) => (rows.every((r) => r.done || cur.has(r.key)) ? new Set() : new Set(rows.filter((r) => !r.done).map((r) => r.key))))
-                      }
+                      onClick={() => setAllOn(!rows.every((r) => r.done || picked.has(r.key)))}
                     >
                       {rows.every((r) => r.done || picked.has(r.key)) ? "ไม่เลือกเลย" : "เลือกทั้งหมด"}
                     </button>
@@ -3453,14 +3487,7 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
                               className="h-[18px] w-[18px] shrink-0 accent-slate-900"
                               disabled={!!r.done}
                               checked={on}
-                              onChange={(e) =>
-                                setPicked((prev) => {
-                                  const next = new Set(prev);
-                                  if (e.target.checked) next.add(r.key);
-                                  else next.delete(r.key);
-                                  return next;
-                                })
-                              }
+                              onChange={(e) => setRowOn(r, e.target.checked)}
                             />
                             <Thumb src={r.a.img ?? r.b?.img} name={label(r)} size={30} />
                             <span className="min-w-0 flex-1">
