@@ -3649,6 +3649,16 @@ export default function ProductDetail({
    * หัวชุดบอกอยู่แล้วว่าชิ้นไหน จึงตัดชื่อชุดที่ซ้ำอยู่ท้ายชื่อกลุ่มออก ("ขนาดชิ้นที่ 2" → "ขนาด")
    * ตัดแล้วเหลือว่าง (ชื่อกลุ่มเท่ากับชื่อชุดพอดี) = คงชื่อเต็มไว้ ไม่งั้นหัวข้อหาย
    */
+  /**
+   * 🏷 ชื่อหัวข้อกลุ่มที่โชว์จริง — ถ้าตั้ง labelBy ไว้ ให้ใช้ชื่อของค่ากลุ่มคุม (เช่น ชื่อเรทราคา)
+   * แสดงผลอย่างเดียว ชื่อกลุ่มจริงยังใช้ในตะกร้า/ออเดอร์/แกนตารางราคาเหมือนเดิม
+   */
+  function groupHeading(opt: ProductOption): string {
+    const by = opt.labelBy;
+    const alt = by ? by.map[effective[by.label] ?? ""] : undefined;
+    return alt?.trim() || sectionShortLabel(opt);
+  }
+
   function sectionShortLabel(opt: ProductOption): string {
     // ชื่อชุดที่โชว์อาจไม่ตรงกับท้ายชื่อกลุ่ม (หัวชุด "ติ่งห้อย ชิ้นที่ 1" · ชื่อกลุ่ม "ขนาดชิ้นที่ 2")
     // — sectionTrim บอกว่าให้ตัดส่วนท้ายด้วยคำไหน
@@ -3671,7 +3681,7 @@ export default function ProductDetail({
               const lotLocked = lotLockedLabels.includes(opt.label);
               // 🧩 อยู่ในกรอบชุด (opt.section) = หัวชุดบอกอยู่แล้วว่าชิ้นไหน ตัดส่วนท้ายซ้ำออกจากชื่อกลุ่ม
               // ("ขนาดชิ้นที่ 2" → "ขนาด") · ชื่อเต็มยังใช้ที่อื่นทั้งหมด (ตะกร้า/ออเดอร์/ปุ่มพาไปช่องที่ติด)
-              const heading = sectionShortLabel(opt);
+              const heading = groupHeading(opt);
               const allowedByRules = allowedChoices(product, effective, opt.label);
               // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
               const byRate = matrix

@@ -278,6 +278,14 @@ export interface ProductOption {
    */
   sectionTrim?: string;
   /**
+   * 🏷 ชื่อหัวข้อกลุ่ม "ที่โชว์บนหน้าสินค้า" เปลี่ยนตามค่าของกลุ่มอื่น (แสดงผลอย่างเดียว)
+   * เช่น อะคริลิคประกบ: กลุ่ม "ขนาด" เป็นแกนตารางราคาของทุกเรท เปลี่ยนชื่อจริงไม่ได้
+   * แต่ในเรท 2 ชิ้นต้องอ่านว่า "ตัวหลัก" → { label: "เรทราคา", map: { "พวงกุญแจประกบ 2 ชิ้น…": "ตัวหลัก" } }
+   * ⚠️ ชื่อกลุ่มจริง (คีย์ใน selections · แกนตารางราคา · ตะกร้า/ออเดอร์/ใบงาน) ไม่เปลี่ยน
+   * ค่าที่ไม่อยู่ใน map = ใช้ชื่อเดิม · อ้าง "เรทราคา" (RATE_LABEL) ได้
+   */
+  labelBy?: { label: string; map: Record<string, string> };
+  /**
    * 🧩 กรอบชุดนี้ "หุบไว้ก่อน" ตอนเปิดหน้า (หัวชุดยังโชว์ค่าที่เลือกครบ กดกางได้)
    * — ชุดที่ซ้ำ ๆ กันหลายชุด (ติ่งห้อยชิ้นที่ 1-9) กางหมดแล้วหน้ายาวมาก
    */
@@ -350,6 +358,13 @@ export interface ProductOption {
    * สั่งเยอะกว่านั้นยังเลื่อนตามช่วงจำนวนปกติ · ไม่ตั้ง = ใช้ช่วงเดียวกับราคาฐาน
    */
   priceAsDriverMinTier?: number;
+  /**
+   * 💰 "ถูกกว่าราคาฐานกี่ขั้น" ของกลุ่ม priceAsDriver — เลื่อนแถวราคาลงจากช่วงของชิ้นหลัก
+   * ใบราคาอะคริลิคประกบ (เจ้าของร้านยืนยัน 22 ก.ย. 69): ติ่งห้อยคิดถูกกว่าตัวหลัก 1 ขั้นเสมอ
+   * (11-49 พวง → ติ่งใช้แถว 50-199 · 6 พวง → ติ่งใช้แถว 11-49) · เลยแถวสุดท้ายแล้วค้างที่แถวสุดท้าย
+   * ใช้คู่กับ priceAsDriverMinTier ได้ (เลื่อนแล้วยังไม่ต่ำกว่าขั้นต่ำ) · ไม่ตั้ง = ไม่เลื่อน
+   */
+  priceAsDriverTierShift?: number;
   /**
    * ค่าธรรมเนียม "ช่วงสั่งน้อย" ของกลุ่มนี้ — คิดเพิ่มต่อชิ้นเมื่อสั่งไม่เกินจำนวนที่กำหนด
    * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
@@ -5605,8 +5620,9 @@ export function priceAsDriverExtraOf(
     if (v) view[axis] = v;
   }
   const cells = m.cells[priceMatrixKey(m, view)];
-  // ชิ้นที่ห้อยเพิ่มไม่ใช้แถวราคาปลีก (ดู priceAsDriverMinTier) — ช่วงที่ต่ำกว่าขั้นต่ำถูกดันขึ้นมา
-  const ti = Math.max(tierIndex(m, qty), Math.floor(opt.priceAsDriverMinTier ?? 0));
+  // ชิ้นที่ห้อยเพิ่มเลื่อนแถวลงกี่ขั้น (priceAsDriverTierShift) และไม่ใช้แถวราคาปลีก (priceAsDriverMinTier)
+  const shift = Math.max(0, Math.floor(opt.priceAsDriverTierShift ?? 0));
+  const ti = Math.max(tierIndex(m, qty) + shift, Math.floor(opt.priceAsDriverMinTier ?? 0));
   return cells?.length ? (cells[Math.min(ti, cells.length - 1)] ?? 0) : 0;
 }
 

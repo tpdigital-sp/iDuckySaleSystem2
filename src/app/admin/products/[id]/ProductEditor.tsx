@@ -143,6 +143,8 @@ type DraftOption = {
   priceAsDriverAlso?: Record<string, string>;
   /** 💰 ชั้นราคาต่ำสุดของกลุ่ม priceAsDriver (ชิ้นที่ 2 ไม่ใช้ราคาปลีก) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
   priceAsDriverMinTier?: number;
+  /** 💰 กลุ่ม priceAsDriver เลื่อนแถวราคาลงกี่ขั้นจากชิ้นหลัก (ติ่งห้อยถูกกว่า 1 ขั้น) — ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  priceAsDriverTierShift?: number;
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
   smallFee?: string;
   smallUpTo?: string;
@@ -172,6 +174,8 @@ type DraftOption = {
   sectionClosed?: boolean;
   /** 🎯 ค่าเริ่มต้นตามกลุ่มคุม (เช่น ตามเรทราคา) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   defaultBy?: { label: string; map: Record<string, string> };
+  /** 🏷 ชื่อหัวข้อกลุ่มที่โชว์ตามกลุ่มคุม (เช่น ตามเรทราคา) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  labelBy?: { label: string; map: Record<string, string> };
   /** 🎨 โชว์เป็นตารางสวอตช์สีบนหน้าร้าน (กลุ่ม multi ที่ตัวเลือกเยอะ เช่น สีไหม) */
   swatchGrid?: boolean;
   /** ✍️ โชว์เป็นตารางแถบตัวอย่างบนหน้าร้าน (กลุ่มเลือกอย่างเดียว เช่น ฟอนต์ปัก) — ส่งกลับเฉย ๆ */
@@ -484,6 +488,7 @@ function retargetGroupLabel(options: DraftOption[], oldLabel: string, newLabel: 
         Object.entries(n.priceAsDriverAlso).map(([axis, src]) => [hit(axis) ? newLabel : axis, hit(src) ? newLabel : src])
       );
     if (hit(n.defaultBy?.label)) n.defaultBy = { ...n.defaultBy!, label: newLabel };
+    if (hit(n.labelBy?.label)) n.labelBy = { ...n.labelBy!, label: newLabel };
     if (hit(n.sheetYield?.pairLabel)) n.sheetYield = { ...n.sheetYield!, pairLabel: newLabel };
     if (hit(n.sheetFee?.by)) n.sheetFee = { ...n.sheetFee!, by: newLabel };
     // 📐 กำหนดขนาดเอง: widthLabel/heightLabel ชี้ "กลุ่มช่องกรอก" — เป็นชื่อกลุ่มเหมือนกัน
@@ -529,6 +534,11 @@ function retargetChoiceName(options: DraftOption[], groupLabel: string, oldName:
       n.defaultBy = {
         ...n.defaultBy!,
         map: Object.fromEntries(Object.entries(n.defaultBy!.map).map(([k, v]) => [k.trim() === old ? newName : k, v])),
+      };
+    if (mine(n.labelBy?.label))
+      n.labelBy = {
+        ...n.labelBy!,
+        map: Object.fromEntries(Object.entries(n.labelBy!.map).map(([k, v]) => [k.trim() === old ? newName : k, v])),
       };
     // ชื่อตัวเลือกที่กลุ่ม "ตัวเอง" อ้างถึง (ฟรีเมื่อ / ไม่คิดค่าธรรมเนียมช่วงสั่งน้อย / ตัวเลือกกำหนดขนาดเอง)
     if (mine(n.label)) {
@@ -725,6 +735,7 @@ function toDraft(p: Product): Draft {
       ...(o.sectionClosed ? { sectionClosed: true } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(Number.isFinite(Number(o.priceAsDriverMinTier)) && Number(o.priceAsDriverMinTier) > 0 ? { priceAsDriverMinTier: Number(o.priceAsDriverMinTier) } : {}),
+      ...(Number.isFinite(Number(o.priceAsDriverTierShift)) && Number(o.priceAsDriverTierShift) > 0 ? { priceAsDriverTierShift: Number(o.priceAsDriverTierShift) } : {}),
       ...(o.smallQtyFee
         ? {
             smallFee: String(o.smallQtyFee.fee),
@@ -750,6 +761,7 @@ function toDraft(p: Product): Draft {
       ...(o.showWhenAll?.length ? { showWhenAll: o.showWhenAll.map((c) => ({ label: c.label, choices: [...c.choices] })) } : {}),
       ...(o.showWhenAny?.length ? { showWhenAny: o.showWhenAny.map((c) => ({ label: c.label, choices: [...c.choices] })) } : {}),
       ...(o.defaultBy ? { defaultBy: { label: o.defaultBy.label, map: { ...o.defaultBy.map } } } : {}),
+      ...(o.labelBy ? { labelBy: { label: o.labelBy.label, map: { ...o.labelBy.map } } } : {}),
       ...(o.input
         ? {
             inKind: o.input.kind,
@@ -1049,6 +1061,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.sectionClosed ? { sectionClosed: true } : {}),
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(Number.isFinite(Number(o.priceAsDriverMinTier)) && Number(o.priceAsDriverMinTier) > 0 ? { priceAsDriverMinTier: Number(o.priceAsDriverMinTier) } : {}),
+      ...(Number.isFinite(Number(o.priceAsDriverTierShift)) && Number(o.priceAsDriverTierShift) > 0 ? { priceAsDriverTierShift: Number(o.priceAsDriverTierShift) } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
             smallQtyFee: {
@@ -1077,6 +1090,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         ? { showWhenAny: o.showWhenAny.filter((c) => c.label && c.choices.length).map((c) => ({ label: c.label, choices: [...c.choices] })) }
         : {}),
       // 🎯 ค่าเริ่มต้นตามกลุ่มคุม — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
+      ...(o.labelBy?.label && Object.keys(o.labelBy.map ?? {}).length
+        ? { labelBy: { label: o.labelBy.label, map: { ...o.labelBy.map } } }
+        : {}),
       ...(o.defaultBy?.label && Object.keys(o.defaultBy.map ?? {}).length
         ? { defaultBy: { label: o.defaultBy.label, map: { ...o.defaultBy.map } } }
         : {}),
