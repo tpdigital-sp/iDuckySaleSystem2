@@ -1,5 +1,5 @@
 import { orderItemDiscounts, orderSubtotal, paidSoFar, type Order, type OrderStatus } from "@/lib/admin-data";
-import { paymentEntries } from "@/lib/payments";
+import { overpaidAmount, paymentEntries } from "@/lib/payments";
 import { tierDiscountAmount } from "@/lib/tiers";
 import { memberTierOfContact } from "./quote-member-tier";
 import type { getSupabaseAdmin } from "./supabase-admin";
@@ -29,17 +29,22 @@ export const memberTierLabel = (name: string, pct: number) => `สมาชิ�
  * ไม่ได้เมื่อ: ตัวแทนจำหน่าย · ลูกค้าล็อกอินสั่งเอง (คิดตอนสร้างแล้ว) · ใบเคลม · ใบที่ยอดต้องตรงบิล FlowAccount
  * · ยกเลิก · มีส่วนลดที่ไม่ใช่ของระบบนี้อยู่
  *
- * ⚠️ และต้อง "ยังไม่แจ้งโอน" — ลูกค้าแนบสลิปแล้วคือโอนตามยอดที่ระบบบอกไปแล้ว ลดทีหลัง = กลายเป็นโอนเกิน
- * ต้องตามคืนเงิน (กติกาเดียวกับส่วนลดโอนไว OD-260909-5711) · นับสลิปทุกช่อง ไม่ใช่แค่ paidTotal
- * (OD-260914-3734 แนบสลิป 4,000 รอแอดมินตรวจ — slipPath มี แต่ paidTotal ยังว่าง)
+ * ⚠️ ใบที่แจ้งโอน/มีเงินเข้าแล้ว **ไม่ได้ห้ามทั้งหมด** — ดู memberTierMoneyIn + mayApplyOnMoneyIn ด้านล่าง (ของที่สั่งเพิ่มต้องได้ % ด้วย)
  */
 export function mayAutoMemberTier(o: Order): boolean {
   if (o.dealer || o.customerId || o.claimOf || o.flowAccount) return false;
   // เฉพาะใบที่ยังอยู่ขั้นเก็บเงิน — เลยไปแล้ว (ผลิต/ส่ง/จบ/ยกเลิก) ยอดบิลปิดแล้ว แม้จะยังไม่มี paidTotal
   if (!OPEN_FOR_PRICING.includes(o.status)) return false;
   if (o.discount && !o.discount.tierId) return false;
-  if (paidSoFar(o) > 0 || o.paidReportedAt || paymentEntries(o).length > 0) return false;
   return true;
+}
+
+/**
+ * ใบนี้ "แจ้งโอน/มีเงินเข้าแล้ว" ไหม — นับสลิปทุกช่อง ไม่ใช่แค่ paidTotal
+ * (OD-260914-3734 แนบสลิป 4,000 รอแอดมินตรวจ — slipPath มี แต่ paidTotal ยังว่าง)
+ */
+export function memberTierMoneyIn(o: Order): boolean {
+  return paidSoFar(o) > 0 || !!o.paidReportedAt || paymentEntries(o).length > 0;
 }
 
 /** เอาส่วนลดที่ระบบนี้เคยใส่ไว้ออก (ยกเลิกผูกผู้ติดต่อ/ตกระดับ → ส่วนลดต้องหายตาม) */
@@ -56,18 +61,35 @@ function withoutOurs(o: Order): Order {
  */
 export async function syncOrderMemberTier(sb: SB, order: Order): Promise<Order> {
   if (!mayAutoMemberTier(order)) return order;
-  if (!order.contactId) return withoutOurs(order);
+  // ใบที่มีเงินเข้าแล้ว: ยอดที่แจ้งลูกค้าไปปิดไปแล้ว — ล้าง/ลดส่วนลดไม่ได้ ทำได้อย่างเดียวคือ "ลดเพิ่ม" (ดู mayApplyOnMoneyIn)
+  const moneyIn = memberTierMoneyIn(order);
+  if (!order.contactId) return moneyIn ? order : withoutOurs(order);
   try {
     const tier = await memberTierOfContact(sb, order.contactId);
-    if (!tier) return withoutOurs(order);
+    if (!tier) return moneyIn ? order : withoutOurs(order);
     // ฐานเดียวกับส่วนลดทั้งบิลของแอดมิน: ยอดสินค้าหลังหักส่วนลดรายรายการ (ไม่รวมค่าส่ง)
     const base = Math.max(0, orderSubtotal(order) - orderItemDiscounts(order));
     const amount = tierDiscountAmount(base, tier.pct);
-    if (amount <= 0) return withoutOurs(order);
+    if (amount <= 0) return moneyIn ? order : withoutOurs(order);
     const cur = order.discount;
     if (cur?.tierId === tier.id && cur.amount === amount) return order;
-    return { ...order, discount: { label: memberTierLabel(tier.name, tier.pct), amount, tierId: tier.id } };
+    const next = { ...order, discount: { label: memberTierLabel(tier.name, tier.pct), amount, tierId: tier.id } };
+    if (moneyIn && !mayApplyOnMoneyIn(order, next)) return order;
+    return next;
   } catch {
     return order;
   }
+}
+
+/**
+ * ใบที่ลูกค้าโอนมาแล้ว แต่ยอดสินค้าโตขึ้น (สั่งเพิ่ม/แอดมินเพิ่มรายการพิเศษ) — ส่วนลดระดับต้องโตตาม
+ * ไม่งั้นของที่สั่งเพิ่มไม่ได้ % ของตัวเอง (OD-260915-7543 Silver 5% ค้างที่ −฿276 ของยอดเก่า ทั้งที่ยอดขึ้นเป็น ฿7,980)
+ *
+ * อนุญาตเฉพาะ 2 ข้อพร้อมกัน — กันไม่ให้กลายเป็น "โอนเกินต้องคืนเงิน" แบบที่ด่านเดิมกันไว้:
+ *  1) ส่วนลดใหม่ต้อง **มากกว่า** ของเดิมเท่านั้น (ลบรายการ/ตกระดับ = ไม่แตะ ไม่ไล่เก็บเงินเพิ่มย้อนหลัง)
+ *  2) ลดแล้วยอดรวมต้องยัง **ไม่ต่ำกว่าเงินที่รับมาแล้ว** (ลดจนเกินเงินที่โอน = ต้องตามคืน)
+ */
+function mayApplyOnMoneyIn(cur: Order, next: Order): boolean {
+  if ((next.discount?.amount ?? 0) <= (cur.discount?.amount ?? 0)) return false;
+  return overpaidAmount(next) <= 0;
 }

@@ -25,6 +25,7 @@
     "check:flex": "tsx --conditions=react-server scripts/flex-messages-test.mts",
     "check:balance-notify": "tsx scripts/balance-notify-test.mts",
     "check:lot-reprice": "tsx scripts/order-lot-reprice-test.mts",
+    "check:member-tier": "tsx --tsconfig tsconfig.json scripts/order-member-tier-test.mts",
     "scan:lot-reprice": "node --conditions=react-server --import tsx scripts/order-lot-reprice-scan.mts",
     "check:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-test.mts",
     "check:line-bind": "tsx scripts/line-bind-test.mts",
