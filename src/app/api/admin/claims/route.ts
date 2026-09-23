@@ -151,6 +151,15 @@ export async function POST(req: Request) {
     detail?: string;
     photoPaths?: string[];
     notify?: boolean;
+    /** 📄 ใบนอกระบบ (ระบบเก่า/ขายหน้าร้าน) — ไม่มีแถวในตาราง orders ทีมงานกรอกชื่อ/เบอร์/รายการเอง */
+    legacy?: boolean;
+    customer?: string;
+    phone?: string;
+    address?: string;
+    itemsText?: string;
+    legacyUrl?: string;
+    /** รายการของใบนอกระบบ — ชื่อ/จำนวนมาจากที่ทีมงานวางมา ไม่มีใบให้เทียบ */
+    legacyItems?: { name?: string; qty?: number }[];
   } | null;
 
   const orderId = (body?.orderId ?? "").trim();
@@ -162,9 +171,37 @@ export async function POST(req: Request) {
   const channel = String(body?.channel ?? "").trim().slice(0, 40) || undefined;
   const photoPaths = (body?.photoPaths ?? []).filter((p) => CLAIM_PHOTO_PATH_RE.test(p)).slice(0, 10);
 
+  // ค้นใบจริงก่อนเสมอ — ถึงหน้าบ้านจะติ๊ก "ใบนอกระบบ" มา ถ้าเลขนั้นมีใบจริงอยู่ ให้เดินทางปกติ (ได้ LINE + ปุ่มผลิตใหม่)
   const { data: row } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
   const order = row?.data as Order | undefined;
-  if (!order) return NextResponse.json({ error: `ไม่พบออเดอร์ ${orderId}` }, { status: 404 });
+  const legacy = !order && body?.legacy === true;
+  if (!order && !legacy) return NextResponse.json({ error: `ไม่พบออเดอร์ ${orderId}` }, { status: 404 });
+
+  // ใบนอกระบบไม่มีสแนปช็อตให้ดึง — ชื่อลูกค้าจึงต้องกรอกมา ไม่งั้นการ์ดเคลมจะไม่มีหัวเรื่อง
+  const legacyCustomer = (body?.customer ?? "").trim().slice(0, 120);
+  const legacyPhone = (body?.phone ?? "").trim().slice(0, 40);
+  const legacyAddress = (body?.address ?? "").trim().slice(0, 300);
+  const legacyRows = (Array.isArray(body?.legacyItems) ? body!.legacyItems! : [])
+    .map((r, i) => ({ index: i, name: String(r?.name ?? "").trim().slice(0, 300), qty: Math.max(1, Math.floor(Number(r?.qty) || 1)) }))
+    .filter((r) => !!r.name)
+    .slice(0, 30);
+  const legacyItems = (body?.itemsText ?? "")
+    .split(/[,\n·]/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  if (legacy && !legacyCustomer) return NextResponse.json({ error: "ใบนอกระบบต้องกรอกชื่อลูกค้า" }, { status: 400 });
+  // ลิงก์ใบในระบบเก่า — รับเฉพาะ http/https (การ์ดเคลมเอาไปทำปุ่มกดเปิด อย่าให้ javascript: หลุดเข้ามา)
+  const legacyUrl = (() => {
+    const t = (body?.legacyUrl ?? "").trim().slice(0, 500);
+    if (!t) return undefined;
+    try {
+      const u = new URL(t);
+      return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
 
   const { claim: existing, error: listErr } = await findOpenClaimByOrder(sb, orderId);
   if (listErr) {
@@ -175,9 +212,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `ออเดอร์นี้มีเคส ${existing.id} ที่ยังเดินเรื่องอยู่ — ตามต่อในเคสเดิม`, existingId: existing.id }, { status: 409 });
 
   // รายการที่เคลม — index ต้องมีจริงในออเดอร์ · ไม่ส่ง = ทั้งออเดอร์
-  const items = (Array.isArray(body?.items) ? body!.items! : [])
+  const items = (!order ? [] : Array.isArray(body?.items) ? body!.items! : [])
     .map((p) => {
-      const it = order.items[Number(p.index)];
+      const it = order!.items[Number(p.index)];
       if (!it) return null;
       const qty = Math.max(1, Math.min(Math.floor(Number(p.qty) || it.qty), it.qty));
       return { index: Number(p.index), name: it.name, qty };
@@ -189,24 +226,30 @@ export async function POST(req: Request) {
   const claim: Claim = {
     id: newClaimId(),
     orderId,
-    ...(order.customerId ? { customerId: order.customerId } : {}),
+    ...(order?.customerId ? { customerId: order.customerId } : {}),
     source: "admin",
     createdBy: by,
+    ...(legacy ? { legacy: true as const } : {}),
+    ...(legacy && legacyUrl ? { legacyUrl } : {}),
+    ...(legacy && legacyAddress ? { legacyAddress } : {}),
     ...(channel ? { channel } : {}),
     ...(fault ? { fault } : {}),
-    customer: order.customer,
-    phone: order.phone,
+    customer: order ? order.customer : legacyCustomer,
+    phone: order ? order.phone : legacyPhone,
     ...(items.length ? { items, itemNames: items.map((i) => i.name) } : {}),
+    ...(legacy && legacyRows.length ? { items: legacyRows, itemNames: legacyRows.map((i) => i.name) } : {}),
+    ...(legacy && !legacyRows.length && legacyItems.length ? { itemNames: legacyItems } : {}),
     type,
     detail: detail.slice(0, 2000),
     photoPaths,
     status: "กำลังตรวจสอบ",
     messages: [],
     createdAt: at,
-    log: [{ at, by, action: `ทีมงานบันทึกเคลม${channel ? ` (แจ้งทาง ${channel})` : ""}` }],
+    log: [{ at, by, action: `ทีมงานบันทึกเคลม${legacy ? " · ใบนอกระบบ" : ""}${channel ? ` (แจ้งทาง ${channel})` : ""}` }],
   };
 
-  if (body?.notify !== false) await notifyClaimOpened(sb, order, claim, by);
+  // ใบนอกระบบยิง LINE เองไม่ได้ — ไม่มีใบก็ไม่มีช่องทางของลูกค้า ทีมงานตอบในแชทที่คุยอยู่แล้ว
+  if (order && body?.notify !== false) await notifyClaimOpened(sb, order, claim, by);
 
   const { error } = await insertClaim(sb, claim);
   if (error) return NextResponse.json({ error }, { status: 500 });

@@ -296,18 +296,28 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const [searching, setSearching] = useState(false);
 
   const load = useCallback(
     (query: string) => {
       setErr("");
+      setSearching(true);
       fetch(`/api/admin/orders/ship-with?id=${encodeURIComponent(order.id)}${query ? `&q=${encodeURIComponent(query)}` : ""}`)
         .then((r) => r.json())
         .then((j: { candidates?: ShipWithRow[]; error?: string }) => (j.error ? setErr(j.error) : setRows(j.candidates ?? [])))
-        .catch(() => setErr("โหลดรายการไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+        .catch(() => setErr("โหลดรายการไม่สำเร็จ — ลองใหม่อีกครั้ง"))
+        .finally(() => setSearching(false));
     },
     [order.id]
   );
-  useEffect(() => load(""), [load]);
+
+  // ค้นให้เองระหว่างพิมพ์/วาง — ไม่ต้องกดปุ่ม (พนักงานวางเลขแล้วรอผลเลย · ว่าง = กลับไปรายการใบของลูกค้าคนนี้)
+  useEffect(() => {
+    const s = q.trim();
+    if (s && s.length < 3) return; // สั้นเกินไป ยิงไปก็ได้ทั้งร้าน
+    const t = setTimeout(() => load(s), s ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [q, load]);
 
   async function pick(other: ShipWithRow) {
     setBusy(other.id);
@@ -342,19 +352,29 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
               placeholder="ไม่เจอในรายการ? พิมพ์เลขออเดอร์ เช่น 6141"
               className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-[14px] text-slate-800 focus:border-amber-300 focus:outline-none"
             />
-            <button type="submit" className="dkb-btn dkb-btn-ghost min-h-[44px] shrink-0">
-              ค้น
+            <button type="submit" className="dkb-btn dkb-btn-ghost min-h-[44px] shrink-0" disabled={searching}>
+              {searching ? "กำลังค้น…" : "ค้น"}
             </button>
           </form>
         </div>
 
         <div className="px-5 pb-2">
           {rows === null && !err && <p className="py-6 text-center text-[13px] text-slate-400">กำลังหาออเดอร์อื่นของลูกค้าคนนี้…</p>}
-          {rows?.length === 0 && (
-            <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[13px] text-slate-500">
-              ไม่เจอใบที่รวมกล่องได้ — ใบที่ส่งออกไปแล้วไม่อยู่ในรายการนี้ · ถ้าชื่อ/เบอร์ในอีกใบไม่ตรงกัน พิมพ์เลขออเดอร์ในช่องค้นด้านบน
-            </p>
-          )}
+          {rows?.length === 0 &&
+            (/^CL-/i.test(q.trim()) ? (
+              // เลขเคลมกับเลขออเดอร์หน้าตาใกล้กัน — บอกให้รู้ตัวแทนปล่อยให้ค้นวนอยู่อย่างนั้น
+              <p className="rounded-xl bg-amber-50 px-3 py-4 text-center text-[13px] text-amber-800">
+                “{q.trim()}” เป็น<strong>เลขเคลม</strong> ไม่ใช่เลขออเดอร์ — ช่องนี้ค้นเลขออเดอร์ (ขึ้นต้น OD-) พิมพ์แค่ 4 ตัวท้ายก็พอ
+              </p>
+            ) : (
+              <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[13px] text-slate-500">
+                {q.trim() ? (
+                  <>ไม่เจอออเดอร์ที่ตรงกับ “{q.trim()}” — พิมพ์เลขออเดอร์ 4 ตัวท้ายก็พอ · ใบที่ส่งออกไปแล้วไม่อยู่ในรายการนี้</>
+                ) : (
+                  <>ไม่เจอใบที่รวมกล่องได้ — ใบที่ส่งออกไปแล้วไม่อยู่ในรายการนี้ · ถ้าชื่อ/เบอร์ในอีกใบไม่ตรงกัน พิมพ์เลขออเดอร์ในช่องค้นด้านบน</>
+                )}
+              </p>
+            ))}
           <ul className="grid gap-2">
             {(rows ?? []).map((r) => (
               <li key={r.id} className="rounded-xl px-3 py-2.5 ring-1 ring-slate-200">

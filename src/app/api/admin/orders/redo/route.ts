@@ -37,6 +37,8 @@ export async function POST(req: Request) {
 
   let body: {
     fromId?: string;
+    /** 📄 เคสของใบนอกระบบ (ระบบเก่า) — ไม่มีใบต้นทางให้ก๊อป สร้างใบ ฿0 จากข้อมูลในเคสแทน */
+    fromClaimId?: string;
     mode?: "claim" | "reorder";
     picks?: { index: number; qty?: number }[];
     reason?: string;
@@ -51,8 +53,10 @@ export async function POST(req: Request) {
   }
 
   const fromId = String(body.fromId ?? "").trim();
+  const fromClaimId = String(body.fromClaimId ?? "").trim();
   const mode = body.mode === "claim" ? "claim" : "reorder";
   const reason = String(body.reason ?? "").trim();
+  if (fromClaimId) return legacyRedo(sb, fromClaimId, reason, gate.actor.name?.trim() || gate.actor.username, body.picks);
   if (!fromId) return NextResponse.json({ error: "ไม่ได้ระบุออเดอร์ต้นทาง" }, { status: 400 });
   if (mode === "claim" && !reason) return NextResponse.json({ error: "งานเคลมต้องระบุเหตุผล" }, { status: 400 });
 
@@ -214,6 +218,105 @@ export async function POST(req: Request) {
     mode,
     hadProofs,
     ...(claim ? { claimId: claim.id, claimCreated, claim: await withSignedPhotos(sb, claim) } : {}),
+    ...(claimWarn ? { claimWarn } : {}),
+  });
+}
+
+/**
+ * 📄♻️ งานผลิตใหม่ของ "ใบนอกระบบ" — ไม่มีใบต้นทางในตาราง orders ให้ก๊อป
+ *
+ * ต่างจากทางปกติตรงไหน: ชื่อ/เบอร์/ที่อยู่/รายการ มาจากตัวเคสเอง (ที่ดึงมาจาก backoffice ตอนเปิดเคส)
+ * · ไม่มี productId/selections/ไฟล์ลาย — กราฟฟิกต้องไปโหลดจากลิงก์ใบเก่า จึงแปะลิงก์ไว้ในหมายเหตุใบงาน
+ * · ไม่ยิง LINE (ใบเก่าไม่มีช่องทางของลูกค้า) · ไม่มีใบต้นทางให้ไปจด redoOrders กลับ
+ * เหมือนทางปกติ: ราคาทุกรายการ 0 · ค่าส่ง 0 · เริ่มที่ "ชำระแล้ว" · ยิงสะพาน TP ให้ขึ้นบอร์ด WIP กราฟฟิก
+ */
+async function legacyRedo(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  claimId: string,
+  reason: string,
+  by: string,
+  picks?: { index: number; qty?: number }[]
+) {
+  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+  const claim = await loadClaim(sb, claimId);
+  if (!claim) return NextResponse.json({ error: `ไม่พบเคส ${claimId}` }, { status: 404 });
+  if (!claim.legacy) return NextResponse.json({ error: "เคสนี้มีใบในระบบอยู่แล้ว — ใช้ปุ่มสร้างงานผลิตใหม่ตามปกติ" }, { status: 400 });
+  if (claim.resolution?.redoOrderId)
+    return NextResponse.json({ error: `เคสนี้เปิดงานผลิตใหม่ไปแล้ว (${claim.resolution.redoOrderId})` }, { status: 409 });
+  if (!claim.customer?.trim()) return NextResponse.json({ error: "เคสนี้ไม่มีชื่อลูกค้า — เติมในเคสก่อน" }, { status: 400 });
+
+  const src: { index: number; name: string; qty: number }[] = claim.items?.length
+    ? claim.items
+    : (claim.itemNames ?? []).map((name, i) => ({ index: i, name, qty: 1 }));
+  const wanted: { index: number; qty?: number }[] = Array.isArray(picks) && picks.length ? picks : src.map((_, i) => ({ index: i }));
+  const items: OrderItem[] = [];
+  for (const p of wanted) {
+    const it = src[p.index];
+    if (!it?.name) continue;
+    items.push({
+      productId: "",
+      name: it.name,
+      selections: "",
+      qty: Math.max(1, Math.floor(Number(p.qty) || it.qty || 1)),
+      unitPrice: 0,
+    });
+  }
+  if (!items.length) return NextResponse.json({ error: "เคสนี้ไม่มีรายการให้ทำใหม่" }, { status: 400 });
+
+  const now = new Date();
+  const id = `OD-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const link = claim.legacyUrl ? ` · ไฟล์ลายอยู่ในใบเก่า: ${claim.legacyUrl}` : "";
+
+  let order: Order = {
+    id,
+    key: randomBytes(24).toString("base64url"),
+    customer: claim.customer,
+    phone: claim.phone ?? "",
+    address: claim.legacyAddress ?? "",
+    date: thaiDateTime(now),
+    payment: "โอนธนาคาร",
+    shipping: "ส่งธรรมดา",
+    shippingCost: 0,
+    status: "ชำระแล้ว",
+    items,
+    placedBy: by,
+    claimOf: claim.orderId,
+    claimReason: reason || `งานเคลมจากเคส ${claim.id} (ใบนอกระบบ ${claim.orderId})`,
+    note: `📄 งานเคลมของใบนอกระบบ ${claim.orderId} · เคส ${claim.id}${link}`,
+  };
+
+  order = withLog(order, by, "สร้างงานเคลมใบนอกระบบ (ไม่คิดเงิน)", `จากเคส ${claim.id} · ใบเก่า ${claim.orderId} · ${items.length} รายการ`);
+
+  const { error: insErr } = await insertOrder(sb, order, by);
+  if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+
+  // ขึ้นบอร์ด WIP กราฟฟิกเหมือนใบเคลมปกติ (ใบเกิดมาพร้อม "ชำระแล้ว" ไม่ได้ผ่าน PATCH จึงไม่มีใครยิงสะพานให้)
+  await reportPaidToTP(order, by, { noteSuffix: `งานเคลมใบนอกระบบ ไม่คิดเงิน · จากเคส ${claim.id}` });
+
+  let claimWarn: string | undefined;
+  try {
+    const at = new Date().toISOString();
+    claim.resolution = { ...claim.resolution, action: "ผลิตใหม่", redoOrderId: id };
+    if (claim.status === "ใหม่" || claim.status === "กำลังตรวจสอบ") {
+      claim.log = [...(claim.log ?? []), { at, by, action: `สถานะ ${claim.status} → อนุมัติเคลม` }];
+      claim.status = "อนุมัติเคลม";
+    }
+    claim.log = [...(claim.log ?? []), { at, by, action: `สร้างงานผลิตใหม่ ${id}` }];
+    const { error } = await saveClaim(sb, claim);
+    if (error) throw new Error(error);
+  } catch (e) {
+    claimWarn = `สร้างใบ ${id} แล้ว แต่บันทึกกลับเข้าเคสไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}`;
+    console.error("[orders/redo] legacy:", claimWarn);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    id,
+    mode: "claim",
+    hadProofs: false,
+    claimId: claim.id,
+    claimCreated: false,
+    claim: await withSignedPhotos(sb, claim),
     ...(claimWarn ? { claimWarn } : {}),
   });
 }

@@ -316,17 +316,18 @@ function ClaimCard({ claim: c, focus, onUpdate }: { claim: Claim; focus?: boolea
     if (redoBusy || busy) return;
     const which = c.items?.length ? `${c.items.length} รายการที่เคลม` : "ทุกรายการในออเดอร์";
     if (!confirm(`สร้างออเดอร์ผลิตใหม่ให้ฟรีจาก ${c.orderId} (${which}) — ราคา ฿0 ค่าส่ง ฿0 เริ่มงานได้เลย?`)) return;
+    // 📄 ใบนอกระบบไม่มีใบต้นทางให้ก๊อป — เซิร์ฟเวอร์สร้างใบจากข้อมูลในเคสแทน (ดู legacyRedo ใน orders/redo)
+    const from = c.legacy ? { fromClaimId: c.id } : { fromId: c.orderId, claimId: c.id };
     setRedoBusy(true);
     setErr("");
     const res = await fetch("/api/admin/orders/redo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fromId: c.orderId,
+        ...from,
         mode: "claim",
-        claimId: c.id,
         reason: `${c.id} · ${c.type}${note.trim() ? ` · ${note.trim()}` : ""}`,
-        ...(c.items?.length ? { picks: c.items.map((it) => ({ index: it.index, qty: it.qty })) } : {}),
+        ...(c.items?.length ? { picks: c.items.map((it, i) => ({ index: c.legacy ? i : it.index, qty: it.qty })) } : {}),
       }),
     }).catch(() => null);
     const j = res ? await res.json().catch(() => ({})) : {};
@@ -355,6 +356,7 @@ function ClaimCard({ claim: c, focus, onUpdate }: { claim: Claim; focus?: boolea
                 {c.channel ? ` · ทาง ${c.channel}` : ""}
               </Tag>
             )}
+            {c.legacy && <Tag tone="yolk">📄 ใบนอกระบบ</Tag>}
             {c.fault && <Tag tone={c.fault === "ร้าน" ? "coral" : c.fault === "ขนส่ง" ? "yolk" : "sky"}>ผิดที่{c.fault}</Tag>}
             {hot && <Tag tone="solid">ค้าง {days} วัน ยังไม่ตอบ</Tag>}
             {!hot && isOpenClaim(c) && days >= 2 && <Tag tone="yolk">ค้าง {days} วัน</Tag>}
@@ -512,13 +514,38 @@ function ClaimCard({ claim: c, focus, onUpdate }: { claim: Claim; focus?: boolea
           </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13.5px]">
-            <Link
-              href={`/admin/orders/${encodeURIComponent(c.orderId)}`}
-              className="font-semibold underline-offset-4 hover:underline"
-              style={{ color: "var(--dk-blue-deep)" }}
-            >
-              เปิดออเดอร์ {c.orderId}
-            </Link>
+            {c.legacy ? (
+              c.legacyUrl ? (
+                <a
+                  href={c.legacyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold underline-offset-4 hover:underline"
+                  style={{ color: "var(--dk-blue-deep)" }}
+                >
+                  เปิดใบ {c.orderId} ในระบบเก่า ↗
+                </a>
+              ) : (
+                <span style={{ color: "var(--dk-navy-soft)" }}>
+                  ใบอ้างอิง <b>{c.orderId}</b> · ใบนอกระบบ ไม่มีหน้าออเดอร์ให้เปิด
+                </span>
+              )
+            ) : null}
+            {!c.legacy && (
+              <Link
+                href={`/admin/orders/${encodeURIComponent(c.orderId)}`}
+                className="font-semibold underline-offset-4 hover:underline"
+                style={{ color: "var(--dk-blue-deep)" }}
+              >
+                เปิดออเดอร์ {c.orderId}
+              </Link>
+            )}
+            {/* ใบนอกระบบไม่มีหน้าออเดอร์ให้เปิดดูที่อยู่ — ต้องเก็บไว้ในเคสเอง ไม่งั้นส่งของชดเชยไม่ได้ */}
+            {c.legacyAddress && (
+              <span className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+                📮 {c.legacyAddress}
+              </span>
+            )}
             {c.resolution?.redoOrderId ? (
               <Link
                 href={`/admin/orders/${encodeURIComponent(c.resolution.redoOrderId)}`}
