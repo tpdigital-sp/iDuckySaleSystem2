@@ -241,6 +241,8 @@ export function isSpecIntent(text: string): boolean {
    * คำถามแบบนี้ต้องปล่อยไปให้คลังความรู้ของ n8n ตอบ
    */
   if (/ได้ไหม|ได้บ้าง|ได้ที่|ได้กับ|ใช้กับ|รองรับ|ทำได้|เคลือบได้|พิมพ์ได้|สั่งได้|ต้องใช้|เหมาะ/i.test(text)) return false;
+  // "ร้านใช้ค่าสีอะไรในการสกรีน" = ถามวิธีทำงาน/ไฟล์ ไม่ใช่ถามตัวเลือกสินค้า — คำว่า "สี" หลอกให้เป็นสเปก (เจอจริง 23 ก.ย. 69 ได้เมนูหมวกกลับไป)
+  if (/ค่าสี|โหมดสี|ระบบสี|cmyk|rgb|dpi|ความละเอียด|ไฟล์|ใช้\S{0,6}อะไร|ทำยังไง|อย่างไร|ขั้นตอน|วิธี/i.test(text)) return false;
   return /ขนาด|ไซ(ส์|ซ)|กี่ซม|กี่นิ้ว|กี่มิล|สี|เฉด|วัสดุ|เนื้อ|ความหนา|หนากี่|ทรง|แบบไหน|มีแบบ|ตัวเลือก|อะไรบ้าง/i.test(
     text,
   );
@@ -443,7 +445,14 @@ async function pickWithAI(
   // ชื่อตรงคำลูกค้าอยู่ในรายการ (23 ก.ย. 69) → บอกให้ดูตัวที่ชื่อมีคำเดียวกับลูกค้าก่อน
   // ตัดจำนวน/หน่วยออกก่อนเทียบชื่อ ไม่งั้น "50 ชิ้น" ไปจับ "พวงกุญแจแบบหลายชิ้น"
   const lexQuery = query.replace(/\d[\d,.]*\s*(?:ชิ้น|ใบ|อัน|แผ่น|ตัว|ผืน|เซ็ต|เซต|ชุด|เล่ม|คู่|ดวง|ม้วน|กล่อง|pcs)?/gi, " ");
-  const lexical = resolve(lexQuery, items).slice(0, 5).map((h) => h.item.name);
+  // ⚠️ คำใบ้ต้องตรงยาวพอ (≥5 ตัวอักษรติดกัน) — แค่ "แก้ว" 4 ตัวจะลาก "แก้วมัค" มาเป็นคำใบ้ให้คนถาม "ที่รองแก้ว" แล้ว AI เชื่อคำใบ้
+  const lq = norm(lexQuery);
+  const lexical = items
+    .map((it) => ({ it, l: lq ? lcsLen(lq, norm(it.name)) : 0 }))
+    .filter((x) => x.l >= 5)
+    .sort((a, b) => b.l - a.l)
+    .slice(0, 5)
+    .map((x) => x.it.name);
   const hint = lexical.length
     ? `\nสินค้าที่ "ชื่อมีคำเดียวกับที่ลูกค้าพิมพ์" (พิจารณาตัวพวกนี้ก่อน): ${lexical.join(" | ")}\n`
     : "";
@@ -744,9 +753,20 @@ async function candidates(query: string): Promise<{ items: Lite[]; broad: boolea
     : { items: hits.filter((h) => h.score >= top * 0.85).slice(0, 3).map((h) => h.item), broad: false };
 }
 
+/**
+ * ลูกค้า "เอ่ยชื่อสินค้า" จริงไหม (เทียบตัวอักษรกับชื่อสินค้าในร้าน) — ใช้กันเส้นสเปกตอบมั่ว:
+ * คำถามความรู้ที่ไม่มีชื่อสินค้าเลย ("ร้านใช้ค่าสีอะไรในการสกรีน") ตัวจับคู่ AI ยังเดาสินค้าออกมาได้ (ได้เมนูหมวก)
+ */
+export async function mentionsProduct(query: string): Promise<boolean> {
+  const all = await catalog().catch(() => []);
+  return resolve(query, all).length > 0;
+}
+
 /** ค้นหาสเปกสินค้าตามคำถาม — คำถามกว้างคืนเมนูให้เลือกก่อนเหมือนฝั่งราคา */
 export async function searchSpec(query: string): Promise<PriceAnswer> {
   const q = query.trim();
+  // ถามสเปกโดยไม่เอ่ยชื่อสินค้า = คำถามความรู้ ให้คลังความรู้/agent ตอบ (ห้ามเดาสินค้าให้)
+  if (!(await mentionsProduct(q))) return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "spec" };
   const { items, broad } = await candidates(q);
   if (broad) return menu(items.slice(0, 6), "spec");
   for (const item of items.slice(0, 2)) {
