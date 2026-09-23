@@ -572,6 +572,8 @@ function quote(p: Product, query: string, qty: number | null, narrow = false): P
   let printed = 0;
   let options = 0;
   let narrowed = false;
+  /** ขั้นบันได "ยิ่งสั่งเยอะยิ่งถูก" ของแบบถูกสุด — ใส่บรรทัดเดียวท้ายคำตอบ (เดิมกางครบทุกช่วงทุกเรท = 14 บรรทัด) */
+  let ladder = "";
 
   for (const rate of rates) {
     const m = rate.matrix;
@@ -582,6 +584,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false): P
     const matched = picked.length < all.length;
     if (matched) narrowed = true;
     const head = rateHead(rate, unit);
+    const range = (min: number, max: number) => (min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`);
 
     if (qty) {
       const i = tierIndex(m, qty);
@@ -604,40 +607,52 @@ function quote(p: Product, query: string, qty: number | null, narrow = false): P
       } else {
         const min = Math.min(...raw, shown[0].unit);
         const max = Math.max(...raw, shown[shown.length - 1].unit);
-        lines.push(`• ${head}: ${min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`}/${unit}`);
+        lines.push(`• ${head}: ${range(min, max)}/${unit}`);
         lines.push(`  ถูกสุด ${columnText(m, shown[0].key)} = ${formatPrice(shown[0].unit)}/${unit} (รวม ${formatPrice(shown[0].unit * qty)})`);
       }
     } else {
-      // ยังไม่บอกจำนวน → ช่วงราคาทั้งเรท + ขั้นบันไดของแบบที่ลูกค้าพูดถึง (ไม่พูดถึง = แบบถูกสุด)
+      // ยังไม่บอกจำนวน → ต่อเรท 1 บรรทัดช่วงราคา (ลูกค้าถาม "มีแบบไหนบ้าง" อยากเห็นตัวเลือก ไม่ใช่ตารางขั้นบันได)
       const vals = all.flatMap((k) => m.cells[k] ?? []).filter((v) => v > 0);
       if (!vals.length) continue;
       printed++;
       options += all.length;
-      const min = Math.min(...vals);
-      const max = Math.max(...vals);
-      lines.push(`• ${head}: ${min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`}/${unit} ตามแบบและจำนวน`);
-      const cheapest = [...all].sort((a, b) => (m.cells[a]?.[0] ?? 0) - (m.cells[b]?.[0] ?? 0))[0];
-      const cols = matched ? picked.slice(0, narrow ? 1 : 2) : [cheapest];
-      for (const key of cols) {
-        const steps = (m.cells[key] ?? [])
-          .map((v, j) => (v > 0 ? `${tierText(m, j)} = ${formatPrice(v)}` : ""))
-          .filter(Boolean)
-          .join(" · ");
-        if (steps) lines.push(`  ${matched ? "" : "ถูกสุด "}${columnText(m, key)}: ${steps}`);
+      const cols = matched ? picked.slice(0, narrow ? 1 : 2) : [];
+      if (cols.length) {
+        // ระบุแบบมา → ช่วงราคาของแบบนั้น (ต่ำสุด–สูงสุดตามจำนวน)
+        for (const key of cols) {
+          const cells = (m.cells[key] ?? []).filter((v) => v > 0);
+          if (!cells.length) continue;
+          lines.push(`• ${columnText(m, key)}${rates.length > 1 ? ` (${rate.label.trim()})` : ""}: ${range(Math.min(...cells), Math.max(...cells))}/${unit}`);
+        }
+      } else {
+        lines.push(`• ${head}: ${range(Math.min(...vals), Math.max(...vals))}/${unit}`);
+      }
+      if (!ladder) {
+        const cheapest = cols[0] ?? [...all].sort((a, b) => (m.cells[a]?.[0] ?? 0) - (m.cells[b]?.[0] ?? 0))[0];
+        const cells = m.cells[cheapest] ?? [];
+        const idx = cells.map((v, j) => (v > 0 ? j : -1)).filter((j) => j >= 0);
+        if (idx.length >= 2) {
+          const f = idx[0];
+          const l = idx[idx.length - 1];
+          // tierText มีหน่วยติดมาแล้ว ("1-10 แผ่น A3") อย่าเติมซ้ำ
+          ladder = `ยิ่งสั่งเยอะยิ่งถูก: ${tierText(m, f)} = ${formatPrice(cells[f])} … ${tierText(m, l)} = ${formatPrice(cells[l])}/${unit}`;
+        }
       }
     }
   }
 
   if (!printed) return null;
   if (allRates.length > rates.length) lines.push(`  (มีอีก ${allRates.length - rates.length} เรท ดูที่หน้าสินค้า)`);
+  if (ladder) lines.push(ladder);
 
   const unit0 = rates[0].matrix.unit || "ชิ้น";
   const header = qty ? `${p.name} — สั่ง ${qty.toLocaleString()} ${unit0}` : `${p.name} (ราคาต่อ ${unit0})`;
   const drivers = (rates[0].matrix.driverLabels ?? []).map((d) => d.trim()).filter(Boolean).slice(0, 4).join(" · ");
-  const footer =
-    !narrowed && drivers
-      ? `ราคาต่างกันตาม ${drivers} — เลือกแบบครบทุกตัวเลือก/สั่งได้ที่`
-      : "เลือกตัวเลือกครบ/สั่งได้ที่";
+  // ⚠️ ท้ายบรรทัดต้องจบในตัวเอง — บอท LINE ตัดบรรทัดลิงก์ทิ้ง (การ์ดมีปุ่มแล้ว) เคยเหลือ "…สั่งได้ที่" ค้างไว้
+  const footer = qty
+    ? `${!narrowed && drivers ? `ราคาต่างกันตาม ${drivers} — ` : ""}ดูครบทุกแบบ/สั่งได้ที่หน้าสินค้า`
+    : "บอกจำนวนที่ต้องการได้เลย เดี๋ยวคิดราคาให้ · ดูครบทุกแบบ/สั่งได้ที่หน้าสินค้า";
+  const pr = priceRange(p);
 
   return {
     answer: `${header}\n${lines.join("\n")}\n${footer}\n${url}`,
@@ -645,8 +660,15 @@ function quote(p: Product, query: string, qty: number | null, narrow = false): P
     kind: options > 1 ? "price-options" : "price",
     source: "web-price-engine",
     intent: qty ? "price_qty" : "price",
-    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc) },
+    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...pr },
   };
+}
+
+/** ช่วงราคาสาธารณะของสินค้า (ไว้โชว์บนการ์ด) — ใช้ค่าที่เซิร์ฟเวอร์คำนวณไว้ ไม่มีค่อยไล่จากตาราง */
+function priceRange(p: Product): { priceMin?: number; priceMax?: number } {
+  if (typeof p.priceMin === "number" && typeof p.priceMax === "number") return { priceMin: p.priceMin, priceMax: p.priceMax };
+  const vals = ratesOf(p).flatMap((r) => Object.values(r.matrix.cells).flat()).filter((v) => v > 0);
+  return vals.length ? { priceMin: Math.min(...vals), priceMax: Math.max(...vals) } : {};
 }
 
 /** ตัดวงเล็บท้ายชื่อกลุ่มออก — ชื่อกลุ่มยาว ๆ อย่าง "เลือกสีพิเศษของฐาน (ขนาดฐาน 3 ซม. · …)" อ่านไม่รู้เรื่อง */
@@ -698,7 +720,7 @@ function spec(p: Product, query: string): PriceAnswer | null {
     kind: "info",
     source: "web-price-engine",
     intent: "spec",
-    product: { id: p.id, name: p.name, url: botUrl(p), image: absImage(p.imageSrc) },
+    product: { id: p.id, name: p.name, url: botUrl(p), image: absImage(p.imageSrc), ...priceRange(p) },
   };
 }
 
