@@ -121,11 +121,21 @@ function absImage(src: unknown): string | undefined {
   return `${SITE_URL}${s.startsWith("/") ? "" : "/"}${s}`;
 }
 
+/**
+ * 🔗 ลิงก์สินค้าสำหรับบอท — slug ภาษาไทยกลายเป็น %E0%B8… ยาว 5 บรรทัดในไลน์ (เจ้าของร้านเห็น 23 ก.ย. 69)
+ * หน้าสินค้าเปิดด้วย id ได้อยู่แล้ว → slug ที่ไม่ใช่ ASCII ใช้ id แทน (สั้น อ่านออก) · slug อังกฤษใช้ตามเดิม
+ */
+function botUrl(p: { id: string; slug?: string }): string {
+  const slug = (p.slug ?? "").trim();
+  if (slug && /^[\x20-\x7e]+$/.test(slug)) return `${SITE_URL}${productPath(p)}`;
+  return `${SITE_URL}/products/${encodeURIComponent(p.id)}`;
+}
+
 function refOf(it: Lite): ProductRef {
   return {
     id: it.id,
     name: it.name,
-    url: `${SITE_URL}${productPath(it)}`,
+    url: botUrl(it),
     image: it.imageSrc,
     category: it.category || undefined,
     priceMin: it.priceMin,
@@ -222,6 +232,8 @@ export function isPriceIntent(text: string): boolean {
  */
 export function isSpecIntent(text: string): boolean {
   if (/ราคา|กี่บาท|บาท|เรท|ค่าทำ|price|cost/i.test(text)) return false;
+  // "อยากได้ที่ติดรถยนต์" ไม่ใช่คำถามความรู้ — ตัด "อยากได้/ต้องการ" ออกก่อน ไม่งั้น "ได้ที่" ไปชนกฎด้านล่าง (เจอจริง 23 ก.ย. 69)
+  text = text.replace(/อยากได้|อยากทำ|อยากสั่ง|ต้องการ|สนใจ/g, " ");
   /**
    * ⚠️ คำถาม "ทำได้ไหม/ใช้กับอะไรได้" เป็นคำถามความรู้ ไม่ใช่ถามตัวเลือกของสินค้าตัวใดตัวหนึ่ง
    * เช่น "งานเคลือบฟอย เคลือบได้ที่กระดาษความหนาเท่าไหร่บ้าง" — ประธานคือ "งานเคลือบฟอย"
@@ -332,7 +344,7 @@ async function minTable(): Promise<MinRow[]> {
         return {
           id: String(r.id),
           name: String(r.name),
-          url: `${SITE_URL}${productPath({ id: String(r.id), slug: (r as { slug?: string }).slug } as Product)}`,
+          url: botUrl({ id: String(r.id), slug: (r as { slug?: string }).slug }),
           image: absImage((r as { imageSrc?: unknown }).imageSrc),
           min: hard || (mins.length === rates.length && mins.length ? Math.min(...mins) : 0),
           unit: rawRates[0]?.pricing?.unit || "ชิ้น",
@@ -427,11 +439,19 @@ async function pickWithAI(
   if (!apiKey || !items.length) return null;
 
   const list = items.map((it) => `- ${it.name}`).join("\n");
+  // 🔤 คำใบ้จากการเทียบตัวอักษร — AI เคยหยิบ "PHONE STAND" ให้คนถาม "ที่ติดรถยนต์" ทั้งที่มี "แผ่นแม่เหล็กติดรถยนต์"
+  // ชื่อตรงคำลูกค้าอยู่ในรายการ (23 ก.ย. 69) → บอกให้ดูตัวที่ชื่อมีคำเดียวกับลูกค้าก่อน
+  // ตัดจำนวน/หน่วยออกก่อนเทียบชื่อ ไม่งั้น "50 ชิ้น" ไปจับ "พวงกุญแจแบบหลายชิ้น"
+  const lexQuery = query.replace(/\d[\d,.]*\s*(?:ชิ้น|ใบ|อัน|แผ่น|ตัว|ผืน|เซ็ต|เซต|ชุด|เล่ม|คู่|ดวง|ม้วน|กล่อง|pcs)?/gi, " ");
+  const lexical = resolve(lexQuery, items).slice(0, 5).map((h) => h.item.name);
+  const hint = lexical.length
+    ? `\nสินค้าที่ "ชื่อมีคำเดียวกับที่ลูกค้าพิมพ์" (พิจารณาตัวพวกนี้ก่อน): ${lexical.join(" | ")}\n`
+    : "";
   const prompt = `คุณเป็นแอดมินร้านพิมพ์/ผลิตตามสั่ง ลูกค้าถามว่า: "${query}"
 
 รายการสินค้าทั้งหมดในระบบ:
 ${list}
-
+${hint}
 เลือกว่าลูกค้าหมายถึงสินค้าตัวไหน ตอบ JSON เท่านั้น:
 {"names": ["ชื่อสินค้าที่คัดลอกมาจากรายการด้านบนแบบคำต่อคำ"], "broad": true/false}
 
@@ -441,6 +461,8 @@ ${list}
 - ลูกค้าพูดชื่อกลุ่มกว้าง ๆ ที่มีหลายสินค้าเข้าข่าย (เช่น "พวงกุญแจ" "สแตนดี้") → ใส่ทุกตัวที่เข้าข่าย (สูงสุด 6) แล้ว broad = true
 - ลูกค้าเจาะจงสินค้าเดียว → names มีตัวเดียว broad = false
 - คำถามไม่ได้ถามถึงสินค้าใดเลย (ถามค่าส่ง นโยบาย ระยะเวลาผลิต วิธีสั่ง หรือถามความรู้ทั่วไป) → {"names": [], "broad": false}
+- ไม่มีสินค้าตัวไหนตรงกับสิ่งที่ลูกค้าอยากได้ "อย่างชัดเจน" → {"names": [], "broad": false} ห้ามหยิบตัวที่แค่พอเกี่ยว (เช่น ถาม "ของติดรถยนต์" แล้วตอบขาตั้งมือถือ · ถาม "กันฝน" แล้วตอบร่ม ทั้งที่ลูกค้าไม่ได้พูดถึงร่ม)
+- ลูกค้าพูดถึงที่ใช้งาน/สถานที่ (รถยนต์ ตู้เย็น โต๊ะ กระเป๋า) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน ถ้าไม่มีให้ตอบว่าง
 - ชื่อสินค้าบางตัวเป็นภาษาอังกฤษ แต่ลูกค้าเรียกภาษาไทย ให้จับคู่ตามความหมาย เช่น "ที่รองแก้ว" = Coaster, "แก้วเยติ" = Tumbler`;
 
   try {
@@ -504,8 +526,14 @@ function ratesOf(p: Product): { label: string; desc?: string; minQty?: number; m
  */
 function pickColumns(keys: string[], query: string): string[] {
   const q = norm(query);
-  const hits = keys.filter((k) => k && norm(k).split("│").some((v) => v.length >= 2 && q.includes(v)));
-  return hits.length ? hits : keys;
+  // นับว่าคอลัมน์นี้ตรงกับคำของลูกค้ากี่ส่วน — "3cm 3mm" ต้องได้คอลัมน์ที่ตรงทั้งสองส่วน ไม่ใช่ทุกคอลัมน์ที่มี 3cm หรือ 3mm
+  const scored = keys.map((k) => ({
+    k,
+    n: k ? norm(k).split("│").filter((v) => v.length >= 2 && q.includes(v)).length : 0,
+  }));
+  const best = Math.max(0, ...scored.map((x) => x.n));
+  if (!best) return keys;
+  return scored.filter((x) => x.n === best).map((x) => x.k);
 }
 
 /** ราคาต่อหน่วยจริงจากเครื่องคิดเงินของตะกร้า — ผ่านตัวเลือกแกนตารางให้ครบ ไม่งั้นราคาหล่นไป product.price */
@@ -520,68 +548,101 @@ function unitPriceAt(p: Product, rateLabel: string, m: PriceMatrix, key: string,
   return unitPriceFor(p, selections, qty);
 }
 
+/** หัวเรทแบบสั้น — เอาแค่ชื่อเรท + ขั้นต่ำ (คำอธิบายยาว ๆ ไปอ่านที่หน้าสินค้า) */
+function rateHead(rate: { label: string; minQty?: number }, unit: string): string {
+  const label = rate.label.trim() || "ราคา";
+  return rate.minQty ? `${label} (ขั้นต่ำ ${rate.minQty} ${unit})` : label;
+}
+
 /**
  * ประกอบคำตอบราคาของสินค้าหนึ่งตัว — คืน null เมื่อสินค้านี้ตอบเป็นตารางไม่ได้
  * `narrow` = กำลังตอบหลายสินค้าพร้อมกัน ให้ย่อของแต่ละตัวลง ไม่งั้นคำตอบยาวจนไม่มีใครอ่าน
+ *
+ * 23 ก.ย. 69 เจ้าของร้านแจ้ง "บอทตอบยาวเกินไป" (พวงกุญแจ 100 ชิ้น = 12 บรรทัดตัวเลือก + หัวเรทยาว 2 บรรทัด
+ * ในไลน์ต้องกด See more) → ย่อเป็น: ต่อเรท 1 บรรทัดช่วงราคา + 1 บรรทัดแบบถูกสุด · โชว์รายตัวเลือกเฉพาะเมื่อ
+ * ลูกค้าระบุคำที่ตรงคอลัมน์ (เช่น "3cm") · ปิดท้ายบอกว่าราคาต่างกันตามอะไร + ลิงก์ (รายละเอียดครบอยู่บนหน้าสินค้า)
  */
 function quote(p: Product, query: string, qty: number | null, narrow = false): PriceAnswer | null {
-  const rates = ratesOf(p).slice(0, narrow ? 1 : MAX_RATES);
+  const allRates = ratesOf(p);
+  const rates = allRates.slice(0, narrow ? 1 : MAX_RATES);
   if (!rates.length) return null;
 
-  const url = `${SITE_URL}${productPath(p)}`;
+  const url = botUrl(p);
   const lines: string[] = [];
   let printed = 0;
+  let options = 0;
+  let narrowed = false;
 
   for (const rate of rates) {
     const m = rate.matrix;
-    // ยังไม่บอกจำนวน = ต้องกางทุกช่วงราคาอยู่แล้ว ถ้าเทหลายคอลัมน์ด้วยจะยาวจนลูกค้าไม่อ่าน
-    // (เจอจริง: ถาม "พวงกุญแจมีเรทยังไงบ้าง" แล้วได้ตาราง 6 คอลัมน์ × 6 ช่วง เต็มจอ)
-    const cap = narrow ? 2 : qty ? MAX_COLUMNS : 3;
-    const all = pickColumns(Object.keys(m.cells), query);
-    const keys = all.slice(0, cap);
-    if (!keys.length) continue;
+    const unit = m.unit || "ชิ้น";
+    const all = Object.keys(m.cells).filter((k) => (m.cells[k] ?? []).some((n) => n > 0));
+    if (!all.length) continue;
+    const picked = pickColumns(all, query);
+    const matched = picked.length < all.length;
+    if (matched) narrowed = true;
+    const head = rateHead(rate, unit);
 
-    const head = [rate.label, rate.desc].filter(Boolean).join(" — ");
-    if (head) lines.push(`【${head}】${rate.minQty ? ` ขั้นต่ำ ${rate.minQty} ${m.unit || "ชิ้น"}` : ""}`);
-
-    for (const key of keys) {
-      const cells = m.cells[key] ?? [];
-      if (!cells.some((n) => n > 0)) continue;
+    if (qty) {
+      const i = tierIndex(m, qty);
+      // ช่วงราคาดูจากตารางดิบทุกคอลัมน์ (ถูก) · ตัวที่โชว์ค่อยคิดด้วยเครื่องคิดเงินจริง (แพงกว่าแต่ตรงตะกร้า)
+      const raw = all.map((k) => m.cells[k]?.[i] ?? 0).filter((v) => v > 0);
+      const shown = picked
+        .map((key) => ({ key, unit: unitPriceAt(p, rate.label, m, key, qty) || m.cells[key]?.[i] || 0 }))
+        .filter((x) => x.unit > 0)
+        .sort((a, b) => a.unit - b.unit);
+      if (!shown.length) continue;
       printed++;
-
-      if (qty) {
-        // ลูกค้าบอกจำนวนมาแล้ว → ตอบตัวเลขเดียวที่ใช้จริง + ยอดรวม (คิดจากเครื่องเดียวกับตะกร้า)
-        const i = tierIndex(m, qty);
-        const unit = unitPriceAt(p, rate.label, m, key, qty) || cells[i] || 0;
-        if (!unit) continue;
-        lines.push(
-          `• ${columnText(m, key)} — ${qty.toLocaleString()} ${m.unit || "ชิ้น"}: ` +
-            `${formatPrice(unit)}/${m.unit || "ชิ้น"} (รวม ${formatPrice(unit * qty)})`,
+      options += shown.length;
+      const cap = narrow ? 1 : 3;
+      if (matched && shown.length <= cap * 2) {
+        // ลูกค้าระบุแบบมาแล้ว → ตอบตัวเลขของแบบนั้นตรง ๆ
+        lines.push(`• ${head}`);
+        shown.slice(0, cap * 2).forEach((x) =>
+          lines.push(`  ${columnText(m, x.key)} = ${formatPrice(x.unit)}/${unit} (รวม ${formatPrice(x.unit * qty)})`),
         );
       } else {
-        // ยังไม่บอกจำนวน → กางขั้นบันไดให้ครบทุกช่วง (system prompt ของ n8n ห้ามย่อเหลือราคาเริ่มต้น)
-        const steps = cells
-          .map((v, i) => (v > 0 ? `${tierText(m, i)} = ${formatPrice(v)}` : ""))
+        const min = Math.min(...raw, shown[0].unit);
+        const max = Math.max(...raw, shown[shown.length - 1].unit);
+        lines.push(`• ${head}: ${min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`}/${unit}`);
+        lines.push(`  ถูกสุด ${columnText(m, shown[0].key)} = ${formatPrice(shown[0].unit)}/${unit} (รวม ${formatPrice(shown[0].unit * qty)})`);
+      }
+    } else {
+      // ยังไม่บอกจำนวน → ช่วงราคาทั้งเรท + ขั้นบันไดของแบบที่ลูกค้าพูดถึง (ไม่พูดถึง = แบบถูกสุด)
+      const vals = all.flatMap((k) => m.cells[k] ?? []).filter((v) => v > 0);
+      if (!vals.length) continue;
+      printed++;
+      options += all.length;
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      lines.push(`• ${head}: ${min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`}/${unit} ตามแบบและจำนวน`);
+      const cheapest = [...all].sort((a, b) => (m.cells[a]?.[0] ?? 0) - (m.cells[b]?.[0] ?? 0))[0];
+      const cols = matched ? picked.slice(0, narrow ? 1 : 2) : [cheapest];
+      for (const key of cols) {
+        const steps = (m.cells[key] ?? [])
+          .map((v, j) => (v > 0 ? `${tierText(m, j)} = ${formatPrice(v)}` : ""))
           .filter(Boolean)
           .join(" · ");
-        if (steps) lines.push(`• ${columnText(m, key)}: ${steps}`);
+        if (steps) lines.push(`  ${matched ? "" : "ถูกสุด "}${columnText(m, key)}: ${steps}`);
       }
     }
-    if (all.length > keys.length)
-      lines.push(`  (ยังมีอีก ${all.length - keys.length} แบบในเรทนี้ — เลือกดูครบได้ที่หน้าสินค้า)`);
   }
 
   if (!printed) return null;
+  if (allRates.length > rates.length) lines.push(`  (มีอีก ${allRates.length - rates.length} เรท ดูที่หน้าสินค้า)`);
 
-  const unit = rates[0].matrix.unit || "ชิ้น";
-  const header = qty
-    ? `${p.name} — สั่ง ${qty.toLocaleString()} ${unit}`
-    : `${p.name} (ราคาต่อ ${unit} ตามช่วงจำนวน)`;
+  const unit0 = rates[0].matrix.unit || "ชิ้น";
+  const header = qty ? `${p.name} — สั่ง ${qty.toLocaleString()} ${unit0}` : `${p.name} (ราคาต่อ ${unit0})`;
+  const drivers = (rates[0].matrix.driverLabels ?? []).map((d) => d.trim()).filter(Boolean).slice(0, 4).join(" · ");
+  const footer =
+    !narrowed && drivers
+      ? `ราคาต่างกันตาม ${drivers} — เลือกแบบครบทุกตัวเลือก/สั่งได้ที่`
+      : "เลือกตัวเลือกครบ/สั่งได้ที่";
 
   return {
-    answer: `${header}\n${lines.join("\n")}\n${url}`,
-    // หลายคอลัมน์/หลายเรท = ลูกค้าต้องเลือกแบบก่อน → บอก n8n ว่าห้ามย่อรายการทิ้ง
-    kind: printed > 1 ? "price-options" : "price",
+    answer: `${header}\n${lines.join("\n")}\n${footer}\n${url}`,
+    // หลายแบบ/หลายเรท = ลูกค้าต้องเลือกแบบก่อน → บอก n8n ว่าห้ามย่อรายการทิ้ง
+    kind: options > 1 ? "price-options" : "price",
     source: "web-price-engine",
     intent: qty ? "price_qty" : "price",
     product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc) },
@@ -633,11 +694,11 @@ function spec(p: Product, query: string): PriceAnswer | null {
   if (!lines.length) return null;
 
   return {
-    answer: `${p.name}\n${lines.join("\n")}\n${SITE_URL}${productPath(p)}`,
+    answer: `${p.name}\n${lines.join("\n")}\n${botUrl(p)}`,
     kind: "info",
     source: "web-price-engine",
     intent: "spec",
-    product: { id: p.id, name: p.name, url: `${SITE_URL}${productPath(p)}`, image: absImage(p.imageSrc) },
+    product: { id: p.id, name: p.name, url: botUrl(p), image: absImage(p.imageSrc) },
   };
 }
 
@@ -692,7 +753,7 @@ function menu(items: Lite[], mode: "price" | "spec" = "price"): PriceAnswer {
           : min
             ? ` — เริ่ม ฿${min.toLocaleString()}`
             : "";
-    return `• ${it.name}${price}\n  ${SITE_URL}${productPath(it as unknown as Product)}`;
+    return `• ${it.name}${price}\n  ${botUrl(it)}`;
   });
   return {
     answer:

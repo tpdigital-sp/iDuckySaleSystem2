@@ -113,14 +113,23 @@ function pickMode(query: string, forced?: unknown): "price" | "spec" | "minqty" 
 }
 
 /**
- * คำถามที่ไม่ได้ถามราคา/สเปก/ขั้นต่ำ/จำนวนเลย ("ส่งไฟล์ยังไง") — ตัวจับคู่สินค้าด้วย AI ยังหยิบหมวดกว้าง ๆ
- * มาเป็นเมนูได้ (เจอจริง: ได้เมนูพวงกุญแจ 6 ตัว) → เมนูตอบได้เฉพาะเมื่อลูกค้าถามเรื่องพวกนี้จริง
- * สินค้าเจาะจงยังตอบตามปกติ (agent อาจส่งมาแค่ชื่อสินค้าโดด ๆ)
+ * คำถามที่ไม่ได้ถามราคา/สเปก/ขั้นต่ำ/จำนวนเลย — เครื่องคิดราคาต้อง "ไม่ตอบ" ปล่อยให้ agent ที่มีความจำตอบแทน
+ * เจอจริง 23 ก.ย. 69 ในไลน์: ลูกค้าคุยเรื่องของติดรถยนต์อยู่แล้วพิมพ์ต่อว่า "เอาแบบกันฝนค่ะ" → เครื่องคิดราคาไม่รู้บริบท
+ * จับคำว่า "กันฝน" เป็น "ร่มกอล์ฟ" แล้วเทตารางราคาร่มทับคำตอบของ agent ("ส่งไฟล์ยังไง" ก็เคยได้เมนูพวงกุญแจ)
+ * ยกเว้นพิมพ์มาแค่ "ชื่อสินค้า/หมวด" สั้น ๆ ("เคสมือถือ" · agent ส่งชื่อสินค้าโดด ๆ) → ตอบได้
  */
-function menuAllowed(query: string, qty: number | null): boolean {
+function productQueryAllowed(query: string, qty: number | null): boolean {
+  // "ตัวนี้เอา 50 ชิ้น" = อ้างถึงสินค้าที่คุยค้างไว้ — เครื่องคิดราคาไม่มีความจำ ตอบไปก็ผิดตัว ให้ agent ตอบ
+  if (/ตัวนี้|อันนี้|แบบนี้|ตัวนั้น|อันนั้น|แบบนั้น|ตัวเดิม|แบบเดิม|อันเดิม|เหมือนเดิม|ตัวเมื่อกี้|อันเมื่อกี้|ที่ว่า|ตัวข้างบน/.test(query))
+    return false;
   if (qty || isPriceIntent(query) || isSpecIntent(query) || isMinQtyIntent(query)) return true;
-  // พิมพ์มาแค่ชื่อหมวดสั้น ๆ ("เคสมือถือ") = อยากดูว่ามีอะไรบ้าง ให้เมนูได้ · ประโยคคำถามเรื่องอื่นไม่ให้
-  return query.length <= 24 && !/ยังไง|อย่างไร|ไหม|มั้ย|ทำไม|ที่ไหน|เมื่อไหร่|กี่วัน|ส่ง|ไฟล์|โอน|ชำระ|เคลม/.test(query);
+  // ประโยคที่มีคำกริยา/คำลงท้าย = คุยต่อจากบริบท ไม่ใช่ชื่อสินค้า
+  return (
+    query.length <= 24 &&
+    !/ยังไง|อย่างไร|ไหม|มั้ย|ทำไม|ที่ไหน|เมื่อไหร่|กี่วัน|ส่ง|ไฟล์|โอน|ชำระ|เคลม|อยาก|เอา|ขอ|ค่ะ|คะ|ครับ|นะ|หน่อย|ได้|แบบ|ตัวนี้|อันนี้|ตัวนั้น/.test(
+      query,
+    )
+  );
 }
 
 async function answer(req: Request, body: Record<string, unknown>) {
@@ -139,7 +148,9 @@ async function answer(req: Request, body: Record<string, unknown>) {
   const mode = pickMode(query, body.mode);
 
   let ans: PriceAnswer;
-  if (mode === "minqty") {
+  if (mode === "price" && !productQueryAllowed(query, qty)) {
+    ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
+  } else if (mode === "minqty") {
     ans = await searchMinQty(query);
   } else if (mode === "spec") {
     ans = await searchSpec(query);
@@ -151,7 +162,7 @@ async function answer(req: Request, body: Record<string, unknown>) {
     ans = await searchPrice(query, { qty, allowFallback: body.noFallback !== true });
   }
 
-  if (/_menu$/.test(ans.intent) && !menuAllowed(query, qty)) {
+  if (/_menu$/.test(ans.intent) && !productQueryAllowed(query, qty)) {
     ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
   }
 

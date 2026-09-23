@@ -1,0 +1,10 @@
+{
+  "_readme": "ค่าที่ต้องตั้งในโหนด tool `search_pricing` (HTTP Request Tool) ของ workflow ChatBot (Q9wMWpZsnQfSkpIT) — แก้แค่ URL + body ส่วนอื่นคงเดิม",
+  "method": "POST",
+  "url": "https://iduckystore.com/api/pricing/search",
+  "sendBody": true,
+  "specifyBody": "json",
+  "jsonBody": "={ \"query\": {{ JSON.stringify($fromAI('query', 'คำถามราคาของลูกค้าทั้งประโยค รวมชื่อสินค้า วัสดุ ขนาด และจำนวน ห้ามตัดจำนวนทิ้ง', 'string')) }}, \"qty\": {{ $fromAI('qty', 'จำนวนที่ลูกค้าจะสั่ง (ตัวเลข) ถ้าไม่บอกให้ใส่ 0', 'number') || 0 }}, \"noFallback\": false }",
+  "toolDescription": "ค้นราคา/ขั้นต่ำ/ตัวเลือกสินค้าจากเว็บ iduckystore.com (ราคาจริงที่ลูกค้าจะจ่าย) ส่งคำถามทั้งประโยคพร้อมจำนวน ผลลัพธ์มี answer (ข้อความราคา) และ product.url (ลิงก์หน้าสินค้า) product.image (รูปสินค้า) ต้องแนบ product.url ท้ายคำตอบเสมอ",
+  "options": { "timeout": 25000 }
+}
