@@ -864,6 +864,12 @@ export default function StockPage() {
       const pids = new Map<string, string>();
       for (const u of us) if (u.kind !== "preset") pids.set(u.productId, u.productName);
       if (us.length) {
+        // 🔩 วัสดุแฝงยืนเป็นกลุ่มของตัวเอง — สินค้าหลายตัวใช้ตัวเดียวกัน เติมสต๊อกต้องมีที่เดียวจบ
+        //    (เจ้าของร้านขอ 23 ก.ย. 69) · ยังห้อยใต้แถวสินค้าที่ใช้มันเหมือนเดิม ดู renderParts
+        if (us.every((u) => u.kind === "product" && u.bom)) {
+          put({ key: "bom", kind: 1, title: "วัสดุแฝง", sub: "ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก — เติมสต๊อกที่นี่ที่เดียว" }, it);
+          continue;
+        }
         const only = [...pids][0];
         if (pids.size === 1 && !us.some((u) => u.kind === "preset")) ofProduct(only[0], only[1], it);
         else put({ key: `s:${fam}`, kind: 1, title: fam, sub: "ใช้ร่วมหลายสินค้า" }, it);
@@ -1321,14 +1327,10 @@ export default function StockPage() {
                * แสดงเมื่อมีตั้งชนิดไว้อย่างน้อย 1 ตัว · ไม่ตั้งเลย = แถวเรียงแบบเดิม
                */
               const renderParts = (list: Item[], groupTitle: string, productId?: string) => {
-                // วัสดุแฝงไม่ยืนเป็นแถวของตัวเอง — ไปห้อยใต้ทุกแถวแทน (ตัวเลือกที่มีเงื่อนไขยังยืนแถวของตัวเองด้วย
-                // เพราะมันอยู่ในกลุ่มย่อย "ชนิดของ" ที่มีปุ่มรับเข้า/เบิกเป็นชุดของมันเอง)
-                const isBom = (r: Item) => {
-                  const us = live[r.id] ?? [];
-                  return us.length > 0 && us.every((u) => u.kind === "product" && u.bom && u.productId === productId);
-                };
-                const bom = productId ? list.filter(isBom) : [];
-                const byId = new Map(list.map((r) => [r.id, r]));
+                // วัสดุแฝงมีกลุ่ม "วัสดุแฝง" ของตัวเองแล้ว (เติมสต๊อกที่เดียวจบ) — ในกลุ่มสินค้าจึงเหลือแค่ห้อยใต้แถวที่ใช้มัน
+                // ต้องหาจากคลังทั้งก้อน ไม่ใช่จากแถวในกลุ่มนี้ เพราะตัวมันไม่ได้อยู่ในกลุ่มสินค้าแล้ว
+                const bom = productId ? items.filter((r) => (live[r.id] ?? []).some((u) => u.kind === "product" && u.bom && u.productId === productId)) : [];
+                const byId = new Map(items.map((r) => [r.id, r]));
                 const host = bom.length ? list.filter((r) => !bom.includes(r)) : list;
                 /** แถวหนึ่งแถว + ลูกที่ห้อยใต้มัน */
                 const hang = (l: Item[]) =>
