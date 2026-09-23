@@ -1762,10 +1762,10 @@ function WorkCutNote({
   return (
     <div className={`keep rounded-lg border-2 border-red-600 bg-red-50 px-3 ${top ? "mt-3 py-2" : "mt-3 py-3"}`}>
       <p className="font-extrabold leading-tight" style={{ color: "#dc2626", fontSize: top ? 15 : 18 }}>
-        ⚠️ ใบนี้ยังไม่ครบ — บนกระดาษมีแค่ {printedRows} จาก {to} รายการ · ยังเหลืออีก {cutRows} รายการ ({cutQtyText}) ที่ไม่ได้พิมพ์
+        ⚠️ ของยังไม่ครบ! กระดาษพิมพ์ได้แค่ {printedRows} จาก {to} รายการ
       </p>
       <p className="mt-0.5 text-xs font-bold text-slate-800">
-        📱 สแกน QR ด้านบน แล้วดูรายการที่เหลือในมือถือ · แบบงานทั้งใบมี {totalProofs} รูป · ต้องติ๊กครบทุกรายการก่อนยิงเลขพัสดุ
+        📱 สแกน QR ดูอีก {cutRows} รายการ ({cutQtyText}) ในมือถือ · แบบงานทั้งใบ {totalProofs} รูป · ติ๊กครบก่อนยิงเลขพัสดุ
       </p>
     </div>
   );
