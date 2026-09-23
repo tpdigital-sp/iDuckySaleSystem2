@@ -1,5 +1,5 @@
 // ============================================================
-//  🌐 Site Price Flex (iduckystore.com) v2 — โหนดใน LINE OA Bot (7v7dy4PvnVnGzlYg) · 23 ก.ย. 69
+//  🌐 Site Price Flex (iduckystore.com) v3 — โหนดใน LINE OA Bot (7v7dy4PvnVnGzlYg) · 23 ก.ย. 69
 //  ตำแหน่ง: Build Price Flex → [โหนดนี้] → Reply to LINE
 //
 //  ทำ 2 อย่าง:
@@ -99,6 +99,29 @@ try { mergedText = String($('Debounce Buffer').first().json.userText || ''); } c
 let lastText = '';
 try { lastText = String($('Parse LINE Event').first().json.userText || ''); } catch (e) {}
 
+// 🧠 v3: ข้อความก่อนหน้าของลูกค้า (จาก Build AI Request.previousMessages / Read Memory) → ส่งเป็น context ให้เว็บ
+// เว็บมีชั้นเข้าใจคำถามด้วย LLM: "เอาแบบกันฝนค่ะ" หลัง "ที่ติดรถยนต์" = แม่เหล็กติดรถยนต์ · "ตัวนี้ 50 ชิ้น" = สินค้าที่คุยค้าง
+function prevUserMessages() {
+  let raw = null;
+  try { raw = $('Build AI Request').first().json.previousMessages; } catch (e) {}
+  if (raw == null) { try { raw = $('Read Memory').first().json.messages || $('Read Memory').first().json.history; } catch (e) {} }
+  const out = [];
+  const push = (t) => { t = String(t || '').trim(); if (t && t.length <= 300) out.push(t); };
+  if (typeof raw === 'string') {
+    raw.split('\n').forEach(l => { const m = l.match(/^\s*(?:user|customer|ลูกค้า|u)\s*[:：]\s*(.+)$/i); if (m) push(m[1]); });
+  } else if (Array.isArray(raw)) {
+    for (const m of raw) {
+      if (typeof m === 'string') { push(m); continue; }
+      if (!m || typeof m !== 'object') continue;
+      const role = String(m.role || m.from || m.sender || m.type || '').toLowerCase();
+      if (role && !/user|customer|human|ลูกค้า/.test(role)) continue;
+      push(m.text || m.content || m.message || m.userText);
+    }
+  }
+  return out.slice(-5);
+}
+const context = prevUserMessages();
+
 const out = [];
 for (const item of $input.all()) {
   const j = item.json || {};
@@ -107,17 +130,15 @@ for (const item of $input.all()) {
   const ut = mergedText || lastText || j.userMessage || j.userText || j.text || '';
   const replyText = String(j.replyText || '');
   if (!ut || ut.length < 2 || NOT_PRODUCT.test(ut)) { out.push({ json: j }); continue; }
+  // v3: ถามเว็บทุกข้อความ (ยกเว้นเรื่องออเดอร์/ไฟล์) แล้วให้ชั้นเข้าใจคำถามของเว็บตัดสิน — regex เหลือแค่ตัวช่วย
   const askPrice = ASK_PRICE.test(ut);
-  const askProduct = ASK_PRODUCT.test(ut);
-
-  // 1) ถามราคา → การ์ดราคาแทนข้อความ
   let site = null;
-  if (askPrice || askProduct) {
-    try { site = await this.helpers.httpRequest({ method: 'POST', url: SITE_API, json: true, body: { query: ut, noFallback: true }, timeout: 20000 }); } catch (e) { site = null; }
-  }
+  try { site = await this.helpers.httpRequest({ method: 'POST', url: SITE_API, json: true, body: { query: ut, context, noFallback: true }, timeout: 20000 }); } catch (e) { site = null; }
   const siteProducts = site && site.found ? (Array.isArray(site.products) && site.products.length ? site.products : (site.product ? [site.product] : [])) : [];
   const priceIntent = site && /^price/.test(String(site.intent || ''));
-  if (askPrice && siteProducts.length && priceIntent) {
+  const understoodPrice = site && site.understood && site.understood.intent === 'price';
+  // 1) ถามราคา (regex หรือชั้นเข้าใจคำถามบอกว่าเป็นราคา) → การ์ดราคาแทนข้อความ
+  if ((askPrice || understoodPrice) && siteProducts.length && priceIntent) {
     let flexContents = null;
     try { flexContents = siteProducts.length > 1 && /_menu$/.test(String(site.intent)) ? { type: 'carousel', contents: siteProducts.slice(0, 8).map(p => productBubble(p, 'kilo')) } : priceBubble(site, siteProducts[0]); } catch (e) {}
     if (flexContents) {
@@ -126,6 +147,15 @@ for (const item of $input.all()) {
       out.push({ json: { ...j, messages: [{ type: 'flex', altText, contents: flexContents }, { type: 'text', text: closing }], siteAnswer: site.answer || site.text, siteProducts, siteFlex: 'price' } });
       continue;
     }
+  }
+
+  // 1.5) ลูกค้าถามหาของที่ร้านไม่มี (เว็บบอก intent=not_in_catalog) → ข้อความจากเว็บ "ยังไม่มี… ใกล้เคียงคือ…" + การ์ดตัวใกล้เคียง
+  if (site && site.found && site.intent === 'not_in_catalog') {
+    const t = String(site.answer || '').split('\n').filter(l => !/^\s*https?:\/\/\S+\s*$/.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const msgs = [{ type: 'text', text: t || replyText }];
+    if (siteProducts.length) msgs.push(productFlex(siteProducts, 'สินค้าใกล้เคียง'));
+    out.push({ json: { ...j, messages: msgs, siteAnswer: site.answer, siteProducts, siteFlex: 'not-in-catalog' } });
+    continue;
   }
 
   // 2) แนบการ์ดสินค้า (รูป+ลิงก์) ต่อท้ายข้อความเดิม — จากผล API หรือชื่อสินค้าที่ปรากฏในคำตอบ/คำถาม

@@ -452,6 +452,12 @@ export interface Understanding {
   /** คำถามเขียนใหม่ให้ครบในตัวเอง (ใส่ชื่อสินค้าจากบริบทให้แล้ว) */
   standalone: string;
   confidence: number;
+  /** ลูกค้าถามหาสินค้าที่ร้าน "ไม่มี" (พวงกุญแจหนังปัก) — ห้ามยัดเมนูหมวดใกล้เคียงให้เฉย ๆ ต้องบอกตรง ๆ + เสนอตัวใกล้เคียง */
+  notInCatalog: boolean;
+  /** สิ่งที่ลูกค้าเรียก (ตามคำลูกค้า) เมื่อ notInCatalog */
+  requested: string;
+  /** สินค้าใกล้เคียงที่พอเสนอแทนได้ (ชื่อ/ไอดีตรงแคตตาล็อก) */
+  alternatives: ProductRef[];
 }
 
 const understandCache = new Map<string, { at: number; u: Understanding }>();
@@ -480,7 +486,7 @@ ${ctxText}
 ${list}
 
 ตอบ JSON:
-{"intent":"price|spec|minqty|knowledge|order|chitchat|followup|other","products":["ชื่อสินค้าคัดลอกจากรายการตรงตัว"],"broad":true/false,"qty":ตัวเลขหรือnull,"standalone":"คำถามฉบับสมบูรณ์ในตัวเอง","confidence":0-1}
+{"intent":"price|spec|minqty|knowledge|order|chitchat|followup|other","products":["ชื่อสินค้าคัดลอกจากรายการตรงตัว"],"broad":true/false,"qty":ตัวเลขหรือnull,"standalone":"คำถามฉบับสมบูรณ์ในตัวเอง","notInCatalog":true/false,"requested":"สิ่งที่ลูกค้าเรียก","alternatives":["ชื่อสินค้าใกล้เคียงจากรายการ ไม่เกิน 3"],"confidence":0-1}
 
 ความหมายของ intent:
 - price = ถามราคา/เรท/ค่าทำ หรือบอกจำนวนที่จะสั่งของสินค้าที่รู้แล้วว่าตัวไหน
@@ -494,6 +500,7 @@ ${list}
 กติกา:
 - ถ้าข้อความล่าสุดพูดต่อจากบริบท (เช่น "เอาแบบกันฝนค่ะ" หลังถาม "ที่ติดรถยนต์") ให้ใช้บริบทหาสินค้า แล้วตั้ง intent ตามสิ่งที่ถามจริง (price/spec) ไม่ใช่ followup
 - products ต้องคัดลอกชื่อจากรายการตรงตัวอักษร เลือกเฉพาะที่ลูกค้าหมายถึงจริง ไม่ชัดเจน = [] · หมวดกว้าง (พวงกุญแจ/สแตนดี้) = ใส่ทุกตัวที่เข้าข่าย (สูงสุด 6) และ broad=true
+- ⚠️ ลูกค้าระบุ "ชนิด/วัสดุ/แบบ" เฉพาะที่ร้านไม่มีในรายการ (เช่น "พวงกุญแจหนังปัก" แต่ร้านมีแต่พวงกุญแจอะคริลิค/หมอน) → notInCatalog=true, requested="พวงกุญแจหนังปัก", products=[] และใส่ alternatives = สินค้าที่ใกล้เคียงที่สุด ไม่เกิน 3 (เช่น กระเป๋าใส่พวงกุญแจ งานปัก, อาร์มปัก) ห้ามยัดเมนูทั้งหมวดให้แทน
 - ลูกค้าพูดถึงที่ใช้งาน (รถยนต์ ตู้เย็น โต๊ะ) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน · ชื่ออังกฤษให้จับตามความหมาย (ที่รองแก้ว = Coaster, แก้วเยติ = Tumbler)
 - qty = จำนวนชิ้นที่จะสั่งเท่านั้น (ห้ามนับขนาด 3cm / 300 แกรม / A3) ไม่มี = null
 - standalone = เขียนคำถามใหม่เป็นภาษาไทยสั้น ๆ ให้เข้าใจได้โดยไม่ต้องอ่านบริบท ใส่ชื่อสินค้าและจำนวนที่รู้`;
@@ -514,7 +521,7 @@ ${list}
     if (!res.ok) return null;
     const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
-    const raw = JSON.parse(text) as Partial<Understanding> & { products?: unknown[] };
+    const raw = JSON.parse(text) as Partial<Omit<Understanding, "alternatives">> & { products?: unknown[]; alternatives?: unknown[] };
     const byName = new Map(items.map((it) => [norm(it.name), it]));
     const picked = (Array.isArray(raw.products) ? raw.products : [])
       .map((n) => byName.get(norm(String(n))))
@@ -522,8 +529,16 @@ ${list}
       .slice(0, 6);
     const intents = ["price", "spec", "minqty", "knowledge", "order", "chitchat", "followup", "other"] as const;
     const intent = intents.includes(raw.intent as (typeof intents)[number]) ? (raw.intent as Understanding["intent"]) : "other";
+    const alts = (Array.isArray(raw.alternatives) ? raw.alternatives : [])
+      .map((n) => byName.get(norm(String(n))))
+      .filter((it): it is Lite => !!it)
+      .slice(0, 3)
+      .map(refOf);
     const qtyN = Number(raw.qty);
     const u: Understanding = {
+      notInCatalog: !!raw.notInCatalog && picked.length === 0,
+      requested: String(raw.requested ?? "").trim(),
+      alternatives: alts,
       intent,
       products: picked.map((it) => it.name),
       ids: picked.map((it) => it.id),

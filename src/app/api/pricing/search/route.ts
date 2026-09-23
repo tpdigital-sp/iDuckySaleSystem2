@@ -162,8 +162,24 @@ async function answer(req: Request, body: Record<string, unknown>) {
   let ans: PriceAnswer | null = null;
 
   if (u) {
-    // เชื่อชั้นเข้าใจคำถามก่อน regex — คำถามที่ไม่ใช่เรื่องสินค้า/ราคา ให้ agent ที่มีความจำตอบ
-    if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent) || (!u.ids.length && u.intent !== "price")) {
+    // ลูกค้าถามหาของที่ร้านไม่มี → บอกตรง ๆ + เสนอตัวใกล้เคียง (เจอจริง 23 ก.ย. 69: "พวงกุญแจหนังปัก" ได้เมนูพวงกุญแจอะคริลิค/หมอนกลับไป)
+    if (u.notInCatalog && ["price", "spec", "minqty"].includes(u.intent)) {
+      const what = u.requested || query;
+      const alts = u.alternatives;
+      const lines = alts.map((a) => {
+        const pr =
+          a.priceMin && a.priceMax && a.priceMax > a.priceMin
+            ? ` — ฿${a.priceMin.toLocaleString()}-${a.priceMax.toLocaleString()}`
+            : a.priceMin
+              ? ` — เริ่ม ฿${a.priceMin.toLocaleString()}`
+              : "";
+        return `• ${a.name}${pr}\n  ${a.url}`;
+      });
+      const text = alts.length
+        ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
+        : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
+      ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
+    } else if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent) || (!u.ids.length && u.intent !== "price")) {
       ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
     } else {
       mode = u.intent === "spec" ? "spec" : u.intent === "minqty" ? "minqty" : "price";
@@ -216,7 +232,18 @@ async function answer(req: Request, body: Record<string, unknown>) {
     intent: ans.intent,
     mode,
     // สิ่งที่ชั้นเข้าใจคำถามสรุปได้ — ไว้ดีบัก/ให้บอทปลายทางตัดสินใจ (ไม่มี = ใช้ regex)
-    understood: u ? { intent: u.intent, products: u.products, qty: u.qty, standalone: u.standalone, confidence: u.confidence } : null,
+    understood: u
+      ? {
+          intent: u.intent,
+          products: u.products,
+          qty: u.qty,
+          standalone: u.standalone,
+          confidence: u.confidence,
+          notInCatalog: u.notInCatalog,
+          requested: u.requested,
+          alternatives: u.alternatives.map((a) => a.name),
+        }
+      : null,
     found: ans.kind !== "skip" && !!ans.answer,
     qty: qty ?? null,
     ...(product ? { product } : {}),

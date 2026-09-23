@@ -12,7 +12,7 @@
  *
  * ไฟล์นี้ไม่มีโค้ดฝั่งเซิร์ฟเวอร์ — หน้าจอกับ API ใช้ตัวตัดสินชุดเดียวกัน
  */
-import { hasUnpaidBalance, packGate, withLog, type Order } from "./admin-data";
+import { hasAdminShipPlan, hasUnpaidBalance, packGate, withLog, type Order } from "./admin-data";
 import { isGenericShipLabel, isPickupOrder } from "./ship-label";
 
 export const isShipMain = (o: Pick<Order, "shipWith">) => o.shipWith?.role === "main" && o.shipWith.orders.length > 0;
@@ -38,7 +38,8 @@ export function cannotBeRider(o: Order): string {
   if (CLOSED.includes(o.status)) return `${o.status}แล้ว`;
   if (o.shipWith?.orders.length) return isShipRider(o) ? `ผูกส่งรวมกับ ${shipMainIdOf(o)} อยู่แล้ว` : "เป็นใบหลักของชุดส่งรวมอื่นอยู่";
   if ((o.tracking ?? "").trim()) return "ยิงเลขพัสดุไปแล้ว";
-  if (o.shipments?.length || o.shipPlan?.length) return "ใบนี้แบ่งส่งหลายรอบ — ส่งรวมไม่ได้";
+  // แผนที่ระบบตั้งเองจากโฟลเดอร์ (…ตย) บนใบที่จ่ายครบไม่นับว่าแบ่งส่ง (hasAdminShipPlan) — ตัวอย่างไปกล่องเดียวกันอยู่แล้ว
+  if (o.shipments?.length || hasAdminShipPlan(o)) return "ใบนี้แบ่งส่งหลายรอบ — ส่งรวมไม่ได้";
   if (o.pickedUp) return "ลูกค้ามารับของไปแล้ว";
   // "จัดส่งแล้ว" ที่ไม่มีเลข = ใบมารับเองที่แพ็คเสร็จรอมารับ → ยังเอาไปใส่กล่องใบหลักได้
   if (o.status === "จัดส่งแล้ว" && !o.packedAt) return "จัดส่งแล้ว";

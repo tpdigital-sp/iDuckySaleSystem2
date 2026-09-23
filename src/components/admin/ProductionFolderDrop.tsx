@@ -71,7 +71,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const [paths, setPaths] = useState<string[]>([]);
   /** ชื่อไฟล์ jpg ในโฟลเดอร์ (…ตย) — ส่งไปให้เซิร์ฟเวอร์อ่านจำนวนตัวอย่าง */
   const [sampleFiles, setSampleFiles] = useState<string[]>([]);
-  /** 🎁 ใบที่จะตั้งแผนรอบตัวอย่างจากชื่อไฟล์: orderId → false = คนติ๊กออก (ค่าเริ่มต้นติ๊กไว้) */
+  /** 🎁 ใบที่จะตั้งแผนรอบตัวอย่างจากชื่อไฟล์: orderId → true = คนติ๊กออก · false = คนติ๊กเข้า · ไม่มีคีย์ = ค่าเริ่มต้นตาม sample.needsRound (ดู planOn) */
   const [samplePlanOff, setSamplePlanOff] = useState<Record<string, boolean>>({});
   const [res, setRes] = useState<MatchResp | null>(null);
   const [err, setErr] = useState("");
@@ -165,7 +165,9 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       const skipIds = Object.entries(skip)
         .filter(([, off]) => off)
         .map(([orderId]) => orderId);
-      const samplePlan = [...(res.matched ?? []), ...(res.alreadySent ?? [])].filter((m) => m.sample && !samplePlanOff[m.orderId]).map((m) => m.orderId);
+      const samplePlan = [...(res.matched ?? []), ...(res.alreadySent ?? [])]
+        .filter((m) => m.sample && (samplePlanOff[m.orderId] === undefined ? m.sample.needsRound : !samplePlanOff[m.orderId]))
+        .map((m) => m.orderId);
       const r = await fetch("/api/admin/orders/production-folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -201,14 +203,19 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
   const chosen = matchedList.filter((m) => !skip[m.orderId]);
   const freeList = matchedList.filter((m) => !m.proofHold?.length);
   const allOn = freeList.length > 0 && freeList.every((m) => !skip[m.orderId]);
+  /**
+   * 🎁 ใบนี้จะตั้งแผนรอบตัวอย่างไหม — ยังไม่ได้แตะ = ติ๊กไว้ก่อนเฉพาะใบที่ "ต้องแยกกล่อง" จริง (ยังมียอดค้าง · sample.needsRound)
+   * ใบที่เก็บเงินครบแล้วตัวอย่างไปกล่องเดียวกับล็อตหลักได้ ตั้งแผนให้เอง = ฝ่ายแพ็คโดนบังคับให้ยิงเป็น "ส่งบางส่วน" (OD-260914-5746)
+   */
+  const planOn = (m: FolderMatch) => !!m.sample && (samplePlanOff[m.orderId] === undefined ? m.sample.needsRound : !samplePlanOff[m.orderId]);
   /** 🎁 ใบที่จะตั้งแผนรอบตัวอย่าง (ใบใหม่ + ใบที่ติ๊กส่งผลิตไปแล้ว) */
-  const sampleCount = [...matchedList, ...(res?.alreadySent ?? [])].filter((m) => m.sample && !samplePlanOff[m.orderId]).length;
+  const sampleCount = [...matchedList, ...(res?.alreadySent ?? [])].filter(planOn).length;
   const toApply = chosen.length + pickedCount + sampleCount;
 
   /** กล่อง 🎁 ใต้แถวใบ — เสนอแผนรอบตัวอย่างที่อ่านจากชื่อไฟล์ ให้คนติ๊กออกได้ */
   const SampleBox = ({ m }: { m: FolderMatch }) => {
     if (!m.sample) return null;
-    const on = !samplePlanOff[m.orderId];
+    const on = planOn(m);
     return (
       <div className="ml-7 mb-1.5 rounded-lg px-2 py-1.5" style={{ background: "#f5f3ff", border: "1px solid #ddd6fe" }}>
         <label className="flex min-h-[32px] cursor-pointer items-start gap-2 text-[12.5px]">
@@ -226,7 +233,9 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
               {m.sample.lines.join(" · ")}
             </span>
             <span className="block" style={{ color: "var(--dk-faint)" }}>
-              ติ๊ก 🎁 มีชิ้นงานตัวอย่างให้ด้วย → ใบมัดจำพิมพ์ใบปะหน้า/ยิงรอบตัวอย่างได้โดยยังไม่ครบ 100%
+              {m.sample.needsRound
+                ? "ติ๊ก 🎁 มีชิ้นงานตัวอย่างให้ด้วย → ใบมัดจำพิมพ์ใบปะหน้า/ยิงรอบตัวอย่างได้โดยยังไม่ครบ 100%"
+                : "ใบนี้เก็บเงินครบแล้ว — ตัวอย่างใส่กล่องเดียวกับล็อตหลักได้ ไม่ต้องแบ่งส่ง · ติ๊กเองเฉพาะกรณีลูกค้าขอรับตัวอย่างไปดูก่อนจริง ๆ"}
               {m.sample.replacesPlan ? " · ⚠️ จะแทนแผนรอบที่ยังไม่ส่งเดิมของใบนี้" : ""}
             </span>
             {m.sample.unmatchedFiles.length > 0 && (

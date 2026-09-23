@@ -2489,6 +2489,21 @@ export function partialShipSummary(order: Order): { rounds: number; shipped: num
 }
 
 /**
+ * 🎁 รอบในแผนที่ "ระบบตั้งให้เองตอนโยนโฟลเดอร์ (…ตย)" บนใบที่เก็บเงินครบแล้ว = คำแนะนำ ไม่ใช่คำสั่งแบ่งส่ง
+ * ใบที่ไม่มียอดค้าง ตัวอย่างไปกล่องเดียวกับล็อตหลักได้อยู่แล้ว (เหตุผลที่ต้องแยกกล่องคือ "ยังเก็บเงินไม่ครบ" เท่านั้น)
+ * → รอบแบบนี้ห้ามล็อกทางปิดใบ ไม่งั้นของไปกล่องเดียวแต่ระบบบันทึกเป็น "ส่งบางส่วน" แล้วใบค้างไม่ปิด
+ * (OD-260914-5746 · 18 ก.ย. 69: ส่งครบในกล่องเดียวแต่ใบบันทึกแค่ 3/150 ชิ้น · พนักงานแจ้ง 23 ก.ย. 69)
+ */
+export function isAutoSampleRound(order: Order, round: ShipPlanRound | undefined): boolean {
+  return !!round?.sampleFolder && isSampleFolderName(round.sampleFolder) && !hasUnpaidBalance(order);
+}
+
+/** 📋 ใบนี้มีแผนแบ่งส่งที่ "คนสั่ง" จริงไหม — รอบที่ระบบตั้งเองบนใบที่เก็บเงินครบแล้วไม่นับ (ดู isAutoSampleRound) */
+export function hasAdminShipPlan(order: Order): boolean {
+  return (order.shipPlan ?? []).some((r) => !isAutoSampleRound(order, r));
+}
+
+/**
  * 📋 รอบตามแผนแบ่งส่งที่ "ยังไม่ได้ส่ง และไม่ใช่รอบสุดท้าย" → ห้ามปิดทั้งใบจนกว่าจะส่งรอบนี้ทางปุ่มส่งบางส่วน
  * รอบตามแผนที่เอาของที่เหลือไปทั้งหมด = รอบสุดท้าย (partialGate ให้ไปปิดใบทางปกติ) จึงไม่นับ · ใบปิดไปแล้วไม่นับ
  */
@@ -2496,6 +2511,8 @@ export function pendingPlanRound(order: Order): { round: number; qty: number } |
   if ((order.tracking ?? "").trim() || order.packedAt) return null;
   const next = nextPlannedRound(order);
   if (!next) return null;
+  // 🎁 รอบที่ระบบตั้งเองจากโฟลเดอร์ตัวอย่างบนใบที่ไม่มียอดค้าง = ไม่ล็อก (ปุ่มเหลือง "ส่งบางส่วน" ยังอยู่ ถ้าจะส่งตัวอย่างก่อนจริง)
+  if (isAutoSampleRound(order, next.round)) return null;
   let qty = 0;
   next.qty.forEach((q) => (qty += q));
   let remaining = 0;
@@ -2666,7 +2683,7 @@ export function partialGate(order: Order, sel: PartialSel): PartialGate {
    * → ลูกค้าได้ไลน์ "จัดส่งบางส่วน · ที่เหลือส่งรอบหน้า" ทั้งที่ของไปครบในกล่องเดียว และใบไม่ปิด
    * ลูกค้าขอรับก่อนจริง ๆ = ให้แอดมินระบุแผนแบ่งส่ง (กติกาเจ้าของร้าน: ฝั่งแพ็คไม่ใช่คนตัดสินว่าจะแบ่ง)
    */
-  const looksWhole = !isLastRound && selQty > 0 && !leftWaiting && leftReady.length > 0 && !(order.shipPlan?.length ?? 0);
+  const looksWhole = !isLastRound && selQty > 0 && !leftWaiting && leftReady.length > 0 && !hasAdminShipPlan(order);
   if (looksWhole)
     reasons.push(
       `${SPLIT_WHOLE_HINT} (${leftReady.join(" · ")}) — ถ้าของทั้งใบไปกล่องเดียว อย่าใช้แบ่งส่ง ให้ยิงเลขที่ช่องเลขพัสดุด้านล่างเพื่อปิดใบ · ถ้าลูกค้าขอรับก่อนจริง ให้แอดมินระบุแผนแบ่งส่งก่อน`

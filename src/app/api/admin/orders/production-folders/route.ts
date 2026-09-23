@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { isSampleFolderName, orderAwaitingStock, proofBlockerLabel, proofBlockers, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import {
+  hasUnpaidBalance,
+  isSampleFolderName,
+  orderAwaitingStock,
+  proofBlockerLabel,
+  proofBlockers,
+  withLog,
+  type Order,
+  type OrderStatus,
+} from "@/lib/admin-data";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchGraphicCardsFromTP } from "@/lib/server/tp-report";
 import { groupSampleFiles, matchFoldersToOrders, sampleRoundFromFiles, type FolderMatch, type FolderMatchResult } from "@/lib/production-match";
@@ -111,6 +120,8 @@ export async function POST(req: Request) {
       unmatchedFiles: hit.build.unmatchedFiles,
       replacesPlan: (o.shipPlan ?? []).length > sent,
       lines: hit.build.round.proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1} ×${p.qty}${p.ofQty ? `/${p.ofQty}` : ""}`),
+      // แยกกล่องส่งตัวอย่างก่อน มีเหตุผลเดียวคือ "ยังเก็บเงินไม่ครบ" — ใบที่จ่ายครบแล้วตัวอย่างไปกล่องเดียวกันได้
+      needsRound: hasUnpaidBalance(o),
     };
   };
   /** ⛔ รายการที่ยังขวางการผลิตของใบนี้ — โฟลเดอร์ตัวอย่าง "(…ตย)" ไม่ติด */
