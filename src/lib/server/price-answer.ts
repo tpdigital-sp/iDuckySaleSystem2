@@ -535,14 +535,41 @@ ${list}
       .slice(0, 3)
       .map(refOf);
     const qtyN = Number(raw.qty);
+    /**
+     * 🛡 ด่านกันเดา (LLM ไม่นิ่ง: "พวงกุญแจหนังปัก ราคาเท่าไหร่คะ" ได้เมนูพวงกุญแจ แต่ "…ค่ะ" ได้ notInCatalog)
+     * ลูกค้าระบุวัสดุ/เทคนิค (หนัง ไม้ ปัก …) แต่ไม่มีสินค้าที่เลือกมาตัวไหนมีคำนั้นในชื่อเลย = ร้านไม่มีของแบบนั้น
+     * → บอกตรง ๆ + เสนอตัวใกล้เคียง (สินค้าที่ชื่อมีวัสดุนั้น ถ้ามี ตามด้วยที่ AI เลือก)
+     */
+    const QUAL = /หนัง|ไม้|ผ้า|ปัก|โลหะ|เหล็ก|สแตนเลส|ซิลิโคน|เรซิ่น|pvc|กระดาษ|เซรามิก|พลาสติก|ยาง|ทองเหลือง|อลูมิเนียม|อะคริลิค|แก้ว|เย็บ|ถัก/gi;
+    const quals = [...new Set((q.match(QUAL) ?? []).map((x) => x.toLowerCase()))];
+    let notInCatalog = !!raw.notInCatalog && picked.length === 0;
+    let requested = String(raw.requested ?? "").trim();
+    let finalPicked = picked;
+    // "หนัง" ต้องไม่ไปจับ "หนังสือ" (สมุด/ที่คั่นหนังสือเคยโผล่มาเป็นตัวใกล้เคียงของพวงกุญแจหนัง)
+    const hasQual = (name: string, w: string) => (w === "หนัง" ? /หนัง(?!สือ)/.test(name) : norm(name).includes(norm(w)));
+    if (quals.length && picked.length && !picked.some((it) => quals.every((w) => hasQual(it.name, w)))) {
+      // ตัวใกล้เคียง: ชื่อมีวัสดุนั้น และยิ่งมีคำเดียวกับคำถาม (พวงกุญแจ) ยิ่งดี → "กระเป๋าใส่พวงกุญแจ งานปัก" มาก่อน "สมุดหนัง"
+      const qn = norm(q.replace(QUAL, " "));
+      const withQual = items
+        .map((it) => ({ it, s: quals.filter((w) => hasQual(it.name, w)).length * 2 + (qn && lcsLen(qn, norm(it.name)) >= 5 ? 3 : 0) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s)
+        .slice(0, 2)
+        .map((x) => x.it);
+      const merged = [...withQual, ...picked.filter((it) => !withQual.includes(it))].slice(0, 3);
+      notInCatalog = true;
+      requested = requested || q.replace(/ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขอเรท|เรท|ค่ะ|คะ|ครับ|หน่อย|ขอ|อยากได้|สนใจ|\?/g, "").replace(/\s+/g, " ").trim();
+      finalPicked = [];
+      alts.splice(0, alts.length, ...merged.map(refOf));
+    }
     const u: Understanding = {
-      notInCatalog: !!raw.notInCatalog && picked.length === 0,
-      requested: String(raw.requested ?? "").trim(),
+      notInCatalog,
+      requested,
       alternatives: alts,
       intent,
-      products: picked.map((it) => it.name),
-      ids: picked.map((it) => it.id),
-      broad: !!raw.broad && picked.length >= 2,
+      products: finalPicked.map((it) => it.name),
+      ids: finalPicked.map((it) => it.id),
+      broad: !!raw.broad && finalPicked.length >= 2,
       qty: Number.isFinite(qtyN) && qtyN > 0 ? Math.round(qtyN) : null,
       standalone: String(raw.standalone ?? "").trim() || q,
       confidence: Math.max(0, Math.min(1, Number(raw.confidence) || 0)),
