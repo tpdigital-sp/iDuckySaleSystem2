@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, depositSampleRun, MOCK_ORDERS, labelShipTo, nextPlannedRound, pendingSampleRound, printBlockers, proofBlockerLabel, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -18,6 +18,7 @@ function fmtThaiDate(d?: string): string {
   return `${day}/${m}/${Number(y) + 543}`;
 }
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
+import { shrinkImageForUpload } from "@/lib/image-shrink";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import { itemQtyText, itemUnitYield, orderQtyText } from "@/lib/item-yield";
 import type { Product } from "@/lib/products";
@@ -115,6 +116,11 @@ export default function PrintOrderPage() {
    */
   const canPartial = can("orders.edit");
   const [partialOk, setPartialOk] = useState<Set<string>>(new Set());
+  /**
+   * ♻️🖨 ด่านปริ้นซ้ำ (เจ้าของร้านสั่ง 23 ก.ย. 69) — เก็บ "เลขใบที่ต้องฉีกใบเก่าทิ้งก่อน" ตอนกดพิมพ์
+   * null = ไม่มีป๊อปอัพค้างอยู่ · ใบในลิสต์ต้องแนบภาพใบที่ฉีกแล้วครบทุกใบ ถึงปล่อยให้พิมพ์
+   */
+  const [reprintGate, setReprintGate] = useState<string[] | null>(null);
   const actor = useActor(); // ชื่อคนที่ล็อกอิน — ลงประวัติว่าใครติ๊ก
   /**
    * 📦 สินค้าของรายการในใบ (id → สินค้า) — ใบงานต้องใช้ 2 อย่างที่ไม่ได้ติดมากับออเดอร์:
@@ -219,6 +225,95 @@ export default function PrintOrderPage() {
   const printableCount = orders.length - contactBadCount - proofHeldCount;
   // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k] && !(k === "receipt" && !anyPaid));
+
+  /** เอกสารที่ใบนี้ได้จริงในรอบนี้ — ใบที่ยังจ่ายไม่ครบไม่ออกใบเสร็จ */
+  const docsForOf = (o: Order) => chosen.filter((k) => k !== "receipt" || orderFullyPaid(o));
+  /** กดพิมพ์รอบนี้แล้วใบนี้มีกระดาษออกจริงไหม (ไม่ติดด่านเบอร์/ที่อยู่ · ไม่ติดด่านแบบไม่ครบ · มีเอกสารให้ออก) */
+  const willPrint = (o: Order) => !contactBadOf(o).length && !proofHeldOf(o) && docsForOf(o).length > 0;
+  /**
+   * ♻️🖨 ใบที่รอบนี้เป็น "ปริ้นซ้ำ" และยังไม่ได้แนบภาพฉีกใบเก่าทิ้ง — ต้องผ่านป๊อปอัพก่อนถึงพิมพ์ได้
+   * ของออกสองรอบเริ่มจากใบเก่าที่ยังลอยอยู่ในไลน์ผลิต · เซิร์ฟเวอร์ (printed route) กันซ้ำอีกชั้น
+   */
+  const reprintPending = orders.filter((o) => willPrint(o) && isReprint(o) && !reprintUnlock(o));
+
+  /** อัปโหลดภาพ "ฉีกใบเก่าทิ้งแล้ว" ของใบหนึ่ง — สำเร็จแล้วใบนั้นหลุดจาก reprintPending เอง */
+  const uploadReprintPhoto = async (o: Order, file: File) => {
+    const fd = new FormData();
+    fd.append("orderId", o.id);
+    fd.append("file", await shrinkImageForUpload(file));
+    const res = await fetch("/api/admin/orders/reprint-photo", { method: "POST", body: fd });
+    const j = (await res.json().catch(() => null)) as { ok?: boolean; order?: Order; error?: string } | null;
+    // Netlify ตัดไฟล์ใหญ่ตั้งแต่ยังไม่ถึงโค้ดเรา → ไม่มี JSON ให้อ่าน บอกรหัสสถานะไว้จะได้ไล่เหตุถูก
+    if (!res.ok || !j?.ok || !j.order) throw new Error(j?.error ?? `อัปโหลดไม่สำเร็จ (รหัส ${res.status})`);
+    const saved = j.order;
+    setOrders((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+  };
+
+  const runPrint = () => {
+    // บันทึกทุกครั้งที่กดพิมพ์ รวมปริ้นซ้ำ — ประวัติจะเห็นว่าใครปริ้น เอกสารอะไร ครั้งที่เท่าไร
+    // (ครั้งแรกที่พิมพ์ใบปะหน้าจริง = ล็อกที่อยู่ฝั่งลูกค้าด้วย)
+    if (chosen.length > 0) {
+      const now = new Date().toISOString();
+      // บันทึกไม่สำเร็จต้องบอกคนปริ้น — เดิมกลืนเงียบ สถานะฝั่งเซิร์ฟเวอร์ไม่เลื่อนแต่หน้าจอโชว์ว่าเลื่อนแล้ว
+      const fails: string[] = [];
+      const jobs: Promise<void>[] = [];
+      for (const o of orders) {
+        if (contactBadOf(o).length) continue; // 📞📍 ใบที่ถูกกันไว้ไม่ได้พิมพ์อะไร — ห้ามจดว่าปริ้นแล้ว/เลื่อนสถานะ
+        if (proofHeldOf(o)) continue; // ⛔ แบบไม่ครบ ยังไม่ปลดล็อก — ไม่ได้พิมพ์อะไร
+        const partial = blockersOf(o).length > 0; // ปลดล็อกแล้ว = ปริ้นเฉพาะที่พร้อม
+        // ใบที่ยังไม่จ่ายครบไม่ออกใบเสร็จ — ประวัติต้องไม่บันทึกเกินจริง
+        const docsFor = docsForOf(o);
+        if (docsFor.length === 0) continue;
+        jobs.push(
+          fetch("/api/admin/orders/printed", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ orderId: o.id, docs: docsFor, ...(partial ? { partial: true } : {}) }),
+          })
+            .then(async (r) => {
+              if (r.ok) return;
+              const j = (await r.json().catch(() => ({}))) as { error?: string };
+              fails.push(`${o.id}: ${j.error ?? `HTTP ${r.status}`}`);
+            })
+            .catch(() => {
+              fails.push(`${o.id}: เชื่อมต่อเซิร์ฟเวอร์ไม่ได้`);
+            })
+        );
+      }
+      void Promise.all(jobs).then(() => {
+        if (fails.length)
+          window.alert(`⚠️ บันทึก "ปริ้นแล้ว" ไม่สำเร็จ — สถานะออเดอร์ยังไม่เลื่อนเป็นกำลังผลิต\n${fails.join("\n")}`);
+      });
+      setOrders((list) =>
+        list.map((o) => {
+          if (contactBadOf(o).length) return o; // 📞📍 ใบที่ถูกกันไว้ — ไม่แตะ
+          if (proofHeldOf(o)) return o; // ⛔ แบบไม่ครบ — ไม่แตะ
+          // ⛔ ปริ้นเฉพาะที่พร้อม — ล็อกที่อยู่อย่างเดียว ไม่นับครั้ง/ไม่เลื่อนสถานะ (ตรงกับ printed route)
+          if (blockersOf(o).length) return { ...o, printedAt: o.printedAt ?? now };
+          // ปริ้นใบงาน/ใบปะหน้า (เก็บเงินครบแล้ว) = งานเข้าไลน์ผลิต → เลื่อนสถานะให้ตรงกับฝั่งเซิร์ฟเวอร์
+          const toProduction =
+            chosen.includes("work") &&
+            orderFullyPaid(o) &&
+            ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"].includes(o.status);
+          // 🎁 ใบปะหน้ารอบตัวอย่าง (ยังไม่ครบ 100%) พิมพ์ได้ครั้งเดียว — ล็อกกลับบนจอทันที ตรงกับที่ printed route จดไว้
+          const sp = chosen.includes("work") && !orderFullyPaid(o) && sampleLabelOk(o) ? pendingSampleRound(o) : null;
+          // ♻️ ภาพฉีกใบเก่าที่ปลดล็อกรอบนี้ถือว่าใช้แล้ว — กดพิมพ์อีกรอบต้องถ่ายใหม่ (ตรงกับ printed route)
+          const used = reprintUnlock(o);
+          return {
+            ...o,
+            printedAt: o.printedAt ?? now,
+            printCount: orderPrintCount(o) + 1,
+            lastPrintedAt: now,
+            ...(used ? { reprintPhotos: (o.reprintPhotos ?? []).map((ph) => (ph === used ? { ...ph, usedAt: now } : ph)) } : {}),
+            ...(toProduction ? { status: "กำลังผลิต" as const } : {}),
+            ...(sp ? { shipPlan: (o.shipPlan ?? []).map((r, i) => (i === sp.index ? { ...r, samplePrintedAt: { by: "คุณ", at: now } } : r)) } : {}),
+          };
+        })
+      );
+    }
+    window.print();
+  };
+
 
   return (
     <>
@@ -326,65 +421,12 @@ export default function PrintOrderPage() {
         <button
           type="button"
           onClick={() => {
-            // บันทึกทุกครั้งที่กดพิมพ์ รวมปริ้นซ้ำ — ประวัติจะเห็นว่าใครปริ้น เอกสารอะไร ครั้งที่เท่าไร
-            // (ครั้งแรกที่พิมพ์ใบปะหน้าจริง = ล็อกที่อยู่ฝั่งลูกค้าด้วย)
-            if (chosen.length > 0) {
-              const now = new Date().toISOString();
-              // บันทึกไม่สำเร็จต้องบอกคนปริ้น — เดิมกลืนเงียบ สถานะฝั่งเซิร์ฟเวอร์ไม่เลื่อนแต่หน้าจอโชว์ว่าเลื่อนแล้ว
-              const fails: string[] = [];
-              const jobs: Promise<void>[] = [];
-              for (const o of orders) {
-                if (contactBadOf(o).length) continue; // 📞📍 ใบที่ถูกกันไว้ไม่ได้พิมพ์อะไร — ห้ามจดว่าปริ้นแล้ว/เลื่อนสถานะ
-                if (proofHeldOf(o)) continue; // ⛔ แบบไม่ครบ ยังไม่ปลดล็อก — ไม่ได้พิมพ์อะไร
-                const partial = blockersOf(o).length > 0; // ปลดล็อกแล้ว = ปริ้นเฉพาะที่พร้อม
-                // ใบที่ยังไม่จ่ายครบไม่ออกใบเสร็จ — ประวัติต้องไม่บันทึกเกินจริง
-                const docsFor = chosen.filter((k) => k !== "receipt" || orderFullyPaid(o));
-                if (docsFor.length === 0) continue;
-                jobs.push(
-                  fetch("/api/admin/orders/printed", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ orderId: o.id, docs: docsFor, ...(partial ? { partial: true } : {}) }),
-                  })
-                    .then(async (r) => {
-                      if (r.ok) return;
-                      const j = (await r.json().catch(() => ({}))) as { error?: string };
-                      fails.push(`${o.id}: ${j.error ?? `HTTP ${r.status}`}`);
-                    })
-                    .catch(() => {
-                      fails.push(`${o.id}: เชื่อมต่อเซิร์ฟเวอร์ไม่ได้`);
-                    })
-                );
-              }
-              void Promise.all(jobs).then(() => {
-                if (fails.length)
-                  window.alert(`⚠️ บันทึก "ปริ้นแล้ว" ไม่สำเร็จ — สถานะออเดอร์ยังไม่เลื่อนเป็นกำลังผลิต\n${fails.join("\n")}`);
-              });
-              setOrders((list) =>
-                list.map((o) => {
-                  if (contactBadOf(o).length) return o; // 📞📍 ใบที่ถูกกันไว้ — ไม่แตะ
-                  if (proofHeldOf(o)) return o; // ⛔ แบบไม่ครบ — ไม่แตะ
-                  // ⛔ ปริ้นเฉพาะที่พร้อม — ล็อกที่อยู่อย่างเดียว ไม่นับครั้ง/ไม่เลื่อนสถานะ (ตรงกับ printed route)
-                  if (blockersOf(o).length) return { ...o, printedAt: o.printedAt ?? now };
-                  // ปริ้นใบงาน/ใบปะหน้า (เก็บเงินครบแล้ว) = งานเข้าไลน์ผลิต → เลื่อนสถานะให้ตรงกับฝั่งเซิร์ฟเวอร์
-                  const toProduction =
-                    chosen.includes("work") &&
-                    orderFullyPaid(o) &&
-                    ["รอชำระเงิน", "รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"].includes(o.status);
-                  // 🎁 ใบปะหน้ารอบตัวอย่าง (ยังไม่ครบ 100%) พิมพ์ได้ครั้งเดียว — ล็อกกลับบนจอทันที ตรงกับที่ printed route จดไว้
-                  const sp = chosen.includes("work") && !orderFullyPaid(o) && sampleLabelOk(o) ? pendingSampleRound(o) : null;
-                  return {
-                    ...o,
-                    printedAt: o.printedAt ?? now,
-                    printCount: (o.printCount ?? (o.printedAt ? 1 : 0)) + 1,
-                    lastPrintedAt: now,
-                    ...(toProduction ? { status: "กำลังผลิต" as const } : {}),
-                    ...(sp ? { shipPlan: (o.shipPlan ?? []).map((r, i) => (i === sp.index ? { ...r, samplePrintedAt: { by: "คุณ", at: now } } : r)) } : {}),
-                  };
-                })
-              );
+            // ♻️ ปริ้นซ้ำ = ต้องฉีกใบเก่าทิ้งและถ่ายรูปก่อน — เด้งป๊อปอัพแทนการพิมพ์
+            if (reprintPending.length > 0) {
+              setReprintGate(reprintPending.map((o) => o.id));
+              return;
             }
-            window.print();
+            runPrint();
           }}
           disabled={chosen.length === 0 || (!anyPaid && !docs.work) || printableCount === 0}
           title={printableCount === 0 ? (proofHeldCount > 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : "เบอร์โทร/ที่อยู่ไม่ครบ — แก้ในหน้าออเดอร์ก่อนจึงพิมพ์ได้") : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
@@ -420,7 +462,139 @@ export default function PrintOrderPage() {
           );
         })}
       </div>
+
+      {/* ♻️🖨 ป๊อปอัพปริ้นซ้ำ — ฉีกใบเก่าทิ้ง + ถ่ายรูปก่อน ถึงจะพิมพ์ได้ */}
+      {reprintGate && (
+        <ReprintGateModal
+          orders={reprintGate.map((id) => orders.find((o) => o.id === id)).filter((o): o is Order => Boolean(o))}
+          onUpload={uploadReprintPhoto}
+          onCancel={() => setReprintGate(null)}
+          onPrint={() => {
+            setReprintGate(null);
+            runPrint();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * ♻️🖨 ป๊อปอัพ "ใบนี้ปริ้นซ้ำ" — เจ้าของร้านสั่ง 23 ก.ย. 69
+ *
+ * ต้นเรื่อง: ใบงานเก่าที่ปริ้นไปแล้วยังลอยอยู่ในไลน์ผลิต พอปริ้นใบใหม่ทับ ของเลยออกสองรอบ
+ * กติกา: ปริ้นซ้ำ = ฉีกใบเก่าทิ้งลงถังก่อน แล้วถ่ายรูปใบที่ฉีกแล้วแนบ ถึงกดพิมพ์ได้
+ *   - ปริ้นรวมหลายใบ = ต้องแนบครบทุกใบที่เป็นปริ้นซ้ำ (ใบที่ปริ้นครั้งแรกไม่ต้องแนบ)
+ *   - เซิร์ฟเวอร์ (printed route) ตรวจซ้ำอีกชั้น — ปิดจอนี้ทิ้งแล้วกดพิมพ์ตรง ๆ ก็ไม่ผ่าน
+ */
+function ReprintGateModal({
+  orders,
+  onUpload,
+  onCancel,
+  onPrint,
+}: {
+  orders: Order[];
+  onUpload: (o: Order, file: File) => Promise<void>;
+  onCancel: () => void;
+  onPrint: () => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<Record<string, string>>({});
+  const ready = orders.every((o) => !!reprintUnlock(o));
+
+  const pick = async (o: Order, file: File | undefined) => {
+    if (!file) return;
+    setBusy(o.id);
+    setErr((e) => ({ ...e, [o.id]: "" }));
+    try {
+      await onUpload(o, file);
+    } catch (e) {
+      setErr((x) => ({ ...x, [o.id]: e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ" }));
+    }
+    setBusy(null);
+  };
+
+  return (
+    <div className="no-print fixed inset-0 z-50 flex items-end justify-center bg-slate-900/70 p-0 sm:items-center sm:p-4">
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+        <div className="rounded-t-3xl bg-rose-600 px-5 py-4 text-white">
+          <p className="text-lg font-extrabold">⚠️ ปริ้นซ้ำ — ฉีกใบเก่าทิ้งก่อน</p>
+          <p className="mt-1 text-sm font-semibold text-rose-50">
+            ใบเก่าที่ยังลอยอยู่ในไลน์ผลิต = ของออกสองรอบ · ฉีกใบเก่าทิ้งลงถัง แล้วถ่ายรูปใบที่ฉีกแล้วแนบ ถึงจะปริ้นซ้ำได้
+          </p>
+        </div>
+
+        <div className="space-y-3 p-4">
+          {orders.map((o) => {
+            const done = reprintUnlock(o);
+            const printed = orderPrintCount(o);
+            return (
+              <div
+                key={o.id}
+                className={`rounded-2xl p-3 ring-1 ${done ? "bg-green-50 ring-green-300" : "bg-rose-50 ring-rose-300"}`}
+              >
+                <p className="font-mono text-sm font-extrabold text-slate-800">{o.id}</p>
+                <p className="text-xs font-semibold text-slate-600">
+                  {o.customer || "ยังไม่ระบุชื่อ"} · ปริ้นไปแล้ว <span className="tabular-nums">{printed}</span> ครั้ง
+                  {o.lastPrintedAt &&
+                    ` · ล่าสุด ${new Date(o.lastPrintedAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} น.`}
+                </p>
+
+                {done ? (
+                  <div className="mt-2 flex items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={done.url} alt="ใบเก่าที่ฉีกทิ้งแล้ว" className="h-16 w-16 rounded-lg object-cover ring-1 ring-green-300" />
+                    <p className="text-sm font-extrabold text-green-700">
+                      ✅ แนบภาพใบที่ฉีกแล้ว — ปริ้นซ้ำได้
+                      <span className="block text-xs font-semibold text-green-800">โดย {done.by}</span>
+                    </p>
+                  </div>
+                ) : (
+                  <label className="mt-2 flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-rose-700">
+                    {busy === o.id ? "กำลังอัปโหลด…" : "📷 ถ่ายรูปใบเก่าที่ฉีกแล้ว"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      disabled={busy === o.id}
+                      onChange={(e) => {
+                        void pick(o, e.target.files?.[0]);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+                {err[o.id] && <p className="mt-1 text-xs font-bold text-rose-700">⚠️ {err[o.id]}</p>}
+              </div>
+            );
+          })}
+
+          <p className="text-xs leading-relaxed text-slate-500">
+            ภาพนี้ลงประวัติออเดอร์ให้เอง (ใครฉีก เมื่อไหร่) และเด้งเตือนฝ่ายแพ็คว่าใบนี้ปริ้นซ้ำ · ภาพ 1 ใบ = ปริ้นซ้ำได้ 1 รอบ
+          </p>
+        </div>
+
+        <div className="sticky bottom-0 flex gap-2 border-t border-slate-200 bg-white px-4 py-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-[44px] rounded-xl px-4 text-sm font-bold text-slate-500 ring-1 ring-slate-300 transition hover:bg-slate-50"
+          >
+            ยังไม่ปริ้น
+          </button>
+          <button
+            type="button"
+            onClick={onPrint}
+            disabled={!ready}
+            title={ready ? undefined : "ถ่ายรูปใบเก่าที่ฉีกแล้วให้ครบทุกใบก่อน"}
+            className="min-h-[44px] flex-1 rounded-xl bg-amber-500 px-4 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
+          >
+            {ready ? "🖨️ ฉีกใบเก่าทิ้งแล้ว — ปริ้นซ้ำ" : `รออีก ${orders.filter((o) => !reprintUnlock(o)).length} ใบ`}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -845,6 +845,12 @@ export interface Order {
   printCount?: number;
   /** เวลาที่ปริ้นครั้งล่าสุด (ISO) */
   lastPrintedAt?: string;
+  /**
+   * ♻️🖨 ภาพ "ฉีกใบเก่าทิ้งแล้ว" ที่แนบก่อนปริ้นซ้ำแต่ละรอบ (เจ้าของร้านสั่ง 23 ก.ย. 69)
+   * ของออกสองรอบเริ่มจากใบเก่าที่ยังลอยอยู่ในไลน์ผลิต — ปริ้นซ้ำต้องฉีกใบเก่าทิ้งและถ่ายรูปยืนยันก่อน
+   * ภาพ 1 ใบ = ปลดล็อกปริ้นซ้ำได้ 1 รอบ (ดู reprintUnlock · /api/admin/orders/reprint-photo)
+   */
+  reprintPhotos?: ReprintPhoto[];
   /** ช่วงวันที่จัดส่ง (แอดมินระบุ) — โชว์บนใบงาน · เก็บเป็น yyyy-mm-dd */
   shipDate?: { from?: string; to?: string };
   /**
@@ -1747,6 +1753,26 @@ export function printBlockers(order: Order): ProofBlocker[] {
   return sampleLabelOk(order) ? [] : proofBlockers(order);
 }
 
+/** ปริ้นไปแล้วกี่ครั้ง (ใบเก่าที่ไม่มี printCount แต่มี printedAt = 1 ครั้ง) */
+export const orderPrintCount = (o: Order): number => o.printCount ?? (o.printedAt ? 1 : 0);
+
+/** กดพิมพ์รอบต่อไปของใบนี้ = "ปริ้นซ้ำ" (เคยปริ้นมาแล้วอย่างน้อยหนึ่งครั้ง) */
+export const isReprint = (o: Order): boolean => orderPrintCount(o) > 0;
+
+/**
+ * ♻️🖨 ภาพ "ฉีกใบเก่าทิ้งแล้ว" ที่ยังไม่ถูกใช้ → ปลดล็อกปริ้นซ้ำรอบนี้ได้ (ไม่มี = ปริ้นซ้ำไม่ได้)
+ * ต้องถ่ายหลังปริ้นครั้งล่าสุด (printedBefore >= จำนวนครั้งที่ปริ้นไปแล้ว) — ภาพเก่าจากรอบก่อนใช้ซ้ำไม่ได้
+ */
+export function reprintUnlock(o: Order): ReprintPhoto | undefined {
+  const printed = orderPrintCount(o);
+  return (o.reprintPhotos ?? []).find((p) => !p.usedAt && p.printedBefore >= printed);
+}
+
+/** ปริ้นซ้ำรอบล่าสุดที่ทำไปแล้ว (ภาพที่ถูกใช้ปลดล็อกล่าสุด) — ฝั่งแพ็คใช้โชว์ว่าใบเก่าถูกฉีกทิ้งโดยใคร */
+export function lastReprintProof(o: Order): ReprintPhoto | undefined {
+  return [...(o.reprintPhotos ?? [])].reverse().find((p) => p.usedAt);
+}
+
 /** ข้อความสั้นต่อบรรทัด เช่น "รายการที่ 3 โฟโต้การ์ด ×12 — ยังไม่มีแบบ" */
 export function proofBlockerLabel(b: ProofBlocker): string {
   return `${b.index >= 0 ? `รายการที่ ${b.index + 1} ` : ""}${b.name}${b.qty ? ` ×${b.qty}` : ""} — ${BLOCKER_WHY[b.why]}`;
@@ -1846,6 +1872,20 @@ export interface PackPhoto {
   path?: string;
   by: string;
   at: string;
+}
+
+/**
+ * ♻️🖨 หลักฐาน "ฉีกใบเก่าทิ้งแล้ว" ก่อนปริ้นซ้ำหนึ่งรอบ (ดู Order.reprintPhotos)
+ * printedBefore = ใบนี้ปริ้นไปแล้วกี่ครั้งตอนถ่ายรูป · usedAt = ใช้ปลดล็อกรอบปริ้นซ้ำไปแล้วเมื่อไหร่ (มีค่า = ใช้ซ้ำไม่ได้)
+ */
+export interface ReprintPhoto {
+  url: string;
+  /** path ใน storage (ใช้ตอนลบไฟล์จริง) */
+  path?: string;
+  by: string;
+  at: string;
+  printedBefore: number;
+  usedAt?: string;
 }
 
 /**

@@ -58,6 +58,8 @@ import {
   orderNetTransfer,
   slipVerifyDetail,
   orderCashReceived,
+  orderPrintCount,
+  lastReprintProof,
   orderBankFee,
   flowAccountBillTotal,
   flowAccountGap,
@@ -109,6 +111,7 @@ import {
   PROOF_UNITS,
   proofUnit,
   type Order,
+  type ReprintPhoto,
   type OrderCharge,
   type OrderItem,
   type OrderPayment,
@@ -9591,8 +9594,37 @@ function PackView({
   // 📷 กล้องมือถือของพนักงานเอง — "tracking" = สแกนเลขพัสดุใบนี้ · "next" = สแกนใบถัดไป
   const [cam, setCam] = useState<null | "tracking" | "next">(null);
   const [camErr, setCamErr] = useState<string | null>(null);
+  /**
+   * ♻️🖨 ใบนี้ถูกปริ้นซ้ำ — คนแพ็คต้องรู้ก่อนเริ่มหยิบของ (เจ้าของร้านสั่ง 23 ก.ย. 69)
+   * ใบงาน/ใบปะหน้าเก่าที่ยังลอยอยู่ = ของออกสองรอบ/ส่งซ้ำ · เด้งครั้งเดียวต่อรอบปริ้น (จำในแท็บด้วย sessionStorage)
+   * ปริ้นซ้ำรอบใหม่ = เลขครั้งเปลี่ยน → เด้งใหม่อีกครั้ง
+   */
+  const printedTimes = orderPrintCount(order);
+  const reprinted = printedTimes > 1;
+  const reprintProof = lastReprintProof(order);
+  const reprintAckKey = `ducky_reprint_ack_${order.id}_${printedTimes}`;
+  const [reprintAlert, setReprintAlert] = useState(false);
+  useEffect(() => {
+    if (!reprinted) return;
+    try {
+      if (window.sessionStorage.getItem(reprintAckKey) === "1") return;
+    } catch {
+      /* โหมดส่วนตัว — เด้งทุกครั้งดีกว่าไม่เด้ง */
+    }
+    setReprintAlert(true);
+  }, [reprinted, reprintAckKey]);
+  const ackReprint = () => {
+    try {
+      window.sessionStorage.setItem(reprintAckKey, "1");
+    } catch {
+      /* โหมดส่วนตัว */
+    }
+    setReprintAlert(false);
+  };
   return (
     <div className="mx-auto min-h-screen max-w-[480px] bg-slate-50 pb-28">
+      {/* ♻️🖨 ป๊อปอัพเตือนคนแพ็ค: ใบนี้ปริ้นซ้ำ — ใบเก่าอาจอยู่ในมือคนอื่น/ของอาจถูกแพ็คไปแล้วรอบหนึ่ง */}
+      {reprintAlert && <ReprintPackAlert order={order} times={printedTimes} proof={reprintProof} onAck={ackReprint} />}
       {/* 📦 คิวแพ็ค/ชุดงานจากสถานี — มีเฉพาะตอนไล่ทำตามคิว · เปิดจาก QR ตรง ๆ ไม่ขึ้น */}
       <PackQueueStrip currentId={order.id} onGo={onNextOrder} />
       {/* หัวเข้ม + ความคืบหน้า */}
@@ -9604,6 +9636,22 @@ function PackView({
         <p className="text-xs text-slate-300">
           {order.customer || "ยังไม่ระบุชื่อ"} · รวม {totalQty} ชิ้น
         </p>
+        {/* ♻️ ป้ายค้างหัวจอ — ปิดป๊อปอัพไปแล้วยังต้องเห็นว่าใบนี้ปริ้นซ้ำ */}
+        {reprinted && (
+          <button
+            type="button"
+            onClick={() => setReprintAlert(true)}
+            className="mt-2 flex w-full items-center gap-2 rounded-xl bg-rose-500/20 px-3 py-2 text-left ring-1 ring-rose-400/60"
+          >
+            <span className="text-lg">♻️</span>
+            <span className="min-w-0 flex-1 text-xs font-extrabold leading-tight text-rose-200">
+              ใบนี้ปริ้นซ้ำ {printedTimes} ครั้ง — เช็คว่าใบในมือเป็นใบล่าสุด
+              <span className="block font-semibold text-rose-100/80">
+                {reprintProof ? `ใบเก่าฉีกทิ้งแล้วโดย ${reprintProof.by}` : "ไม่มีภาพยืนยันว่าใบเก่าถูกฉีกทิ้ง"} · แตะดูรายละเอียด
+              </span>
+            </span>
+          </button>
+        )}
         {/* 📋 แผนแบ่งส่งจากแอดมิน — บอกคนแพ็คตั้งแต่หัวจอว่ารอบนี้เอารูปไหนไป ไม่ต้องเดา */}
         {(order.shipPlan?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && (
           <div className="mt-2 rounded-xl bg-amber-400/15 px-3 py-2 ring-1 ring-amber-400/50">
@@ -11138,6 +11186,86 @@ function AcceptPaymentModal({
 }
 
 /** โมดัลยืนยัน "ข้ามด่านตรวจแพ็ค" — แทน confirm() เดิม เน้นให้เห็นชัดว่าขาดอะไรและมีผลอะไร */
+/**
+ * ♻️🖨 ป๊อปอัพฝั่งแพ็ค: "ใบนี้ปริ้นซ้ำ" (เจ้าของร้านสั่ง 23 ก.ย. 69)
+ *
+ * ปริ้นซ้ำแปลว่ามีใบงาน/ใบปะหน้าของใบนี้ออกไปแล้วมากกว่าหนึ่งใบ — ถ้าใบเก่ายังลอยอยู่
+ * ของจะถูกผลิต/แพ็ค/ส่งสองรอบ · หน้าปริ้นบังคับถ่ายรูปใบที่ฉีกทิ้งไว้แล้ว ตรงนี้เอามาโชว์ให้คนแพ็คเช็ค
+ */
+function ReprintPackAlert({
+  order,
+  times,
+  proof,
+  onAck,
+}: {
+  order: Order;
+  /** ปริ้นไปแล้วกี่ครั้ง (รวมครั้งแรก) */
+  times: number;
+  /** ภาพใบเก่าที่ฉีกทิ้งของรอบล่าสุด — ไม่มี = ใบเก่าปริ้นซ้ำก่อนมีกติกานี้ ต้องไล่ถามเอง */
+  proof?: ReprintPhoto;
+  onAck: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/75 p-0 sm:items-center sm:p-4">
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+        <div className="rounded-t-3xl bg-rose-600 px-5 py-4 text-white">
+          <p className="text-lg font-extrabold">♻️ ใบนี้ปริ้นซ้ำ {times} ครั้ง</p>
+          <p className="mt-1 text-sm font-semibold text-rose-50">
+            มีใบงาน/ใบปะหน้าของใบนี้ออกไปแล้วหลายใบ — แพ็คตามใบเก่า = ของไปสองรอบ
+          </p>
+        </div>
+        <div className="space-y-3 p-4">
+          <p className="font-mono text-sm font-extrabold text-slate-800">{order.id}</p>
+          <ul className="space-y-2 text-sm font-bold leading-snug text-slate-700">
+            <li className="flex gap-2">
+              <span>📄</span>
+              <span>เช็คว่าใบที่ถืออยู่เป็นใบล่าสุด (เวลาพิมพ์ท้ายใบตรงกับ{" "}
+                {order.lastPrintedAt
+                  ? `${new Date(order.lastPrintedAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} น.`
+                  : "การพิมพ์ครั้งล่าสุด"}
+                )
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span>🗑</span>
+              <span>เจอใบเก่าของออเดอร์นี้ในกอง = ฉีกทิ้งทันที อย่าเอาไปแพ็ค</span>
+            </li>
+            <li className="flex gap-2">
+              <span>📦</span>
+              <span>เช็คก่อนว่าออเดอร์นี้ถูกแพ็ค/ส่งไปรอบหนึ่งแล้วหรือยัง (ดูเลขพัสดุ/ภาพก่อนปิดกล่องด้านล่าง)</span>
+            </li>
+          </ul>
+          {proof ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-green-50 p-3 ring-1 ring-green-300">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={proof.url} alt="ใบเก่าที่ฉีกทิ้งแล้ว" className="h-16 w-16 rounded-lg object-cover ring-1 ring-green-300" />
+              <p className="text-xs font-extrabold text-green-800">
+                คนปริ้นยืนยันฉีกใบเก่าทิ้งแล้ว
+                <span className="block font-semibold">
+                  {proof.by} · {new Date(proof.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} น.
+                </span>
+              </p>
+            </div>
+          ) : (
+            <p className="rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-300">
+              ⚠️ ปริ้นซ้ำรอบนี้ไม่มีภาพยืนยันว่าใบเก่าถูกฉีกทิ้ง (ปริ้นก่อนมีกติกานี้) — ถามคนปริ้นก่อนเริ่มแพ็ค
+            </p>
+          )}
+        </div>
+        <div className="sticky bottom-0 border-t border-slate-200 bg-white px-4 py-3">
+          <button
+            type="button"
+            onClick={onAck}
+            className="min-h-[48px] w-full rounded-xl bg-slate-900 px-4 text-sm font-extrabold text-white shadow-sm transition hover:bg-slate-800"
+          >
+            รับทราบ — ใบในมือเป็นใบล่าสุด
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SkipGateModal({ reasons, onCancel, onConfirm }: { reasons: string[]; onCancel: () => void; onConfirm: () => void }) {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onCancel}>

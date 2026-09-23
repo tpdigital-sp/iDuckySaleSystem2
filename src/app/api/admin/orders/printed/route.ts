@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderFullyPaid, pendingSampleRound, printBlockers, proofBlockerLabel, sampleLabelOk, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderFullyPaid, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, sampleLabelOk, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
 import { can } from "@/lib/permissions";
@@ -35,6 +35,9 @@ const BEFORE_PRODUCTION: OrderStatus[] = [
  * - ครั้งแรก: ตั้ง printedAt (ล็อกที่อยู่ฝั่งลูกค้า ไม่ให้แก้หลังใบปะหน้าออกไปแล้ว)
  * - ทุกครั้ง (รวมซ้ำ): +1 printCount · อัปเดต lastPrintedAt · ลงประวัติว่าใครปริ้น เอกสารอะไร ครั้งที่เท่าไร
  *   ปริ้นซ้ำต้องเห็นในประวัติเสมอ — ของออกสองรอบมักเริ่มจากตรงนี้
+ *
+ * ♻️ ด่านปริ้นซ้ำ (23 ก.ย. 69): ครั้งที่ 2 ขึ้นไปต้องมีภาพ "ฉีกใบเก่าทิ้งแล้ว" ที่ยังไม่ถูกใช้ (reprintUnlock) ไม่งั้น 409 reprint:true
+ *   ภาพแนบผ่าน /api/admin/orders/reprint-photo · ใช้แล้วประทับ usedAt — ปริ้นซ้ำรอบหน้าต้องถ่ายใหม่
  *
  * ⛔ ด่านแบบไม่ครบ (18 ก.ย. 69 · OD-260916-4693): ใบงานปริ้นไม่ได้ถ้ายังมีรายการขาดแบบ/ลูกค้ายังไม่อนุมัติ (proofBlockers) → 409 blockers[]
  *   ปลดล็อก = ส่ง partial:true (ต้องมีสิทธิ์ orders.edit) → "ปริ้นเฉพาะที่พร้อม": จด partialPrint + ล็อกที่อยู่ + ลงประวัติ
@@ -89,9 +92,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, partial: true, printCount: partial.printCount });
   }
 
-  const count = (order.printCount ?? (order.printedAt ? 1 : 0)) + 1;
+  const count = orderPrintCount(order) + 1;
   const first = count === 1;
   const what = (body.docs ?? []).map((d) => DOC_LABEL[d] ?? d).filter(Boolean).join(" + ") || "ใบงาน";
+
+  /**
+   * ♻️🖨 ด่านปริ้นซ้ำ (เจ้าของร้านสั่ง 23 ก.ย. 69) — ใบเก่าที่ยังลอยอยู่ในไลน์ผลิตคือต้นเหตุ "ของออกสองรอบ"
+   * ปริ้นซ้ำต้องฉีกใบเก่าทิ้งก่อนแล้วถ่ายรูปแนบ (/api/admin/orders/reprint-photo) → ที่นี่ถึงปล่อยผ่าน
+   * ไม่มีภาพ = 409 reprint:true — หน้าปริ้นเด้ง popup ให้ถ่ายรูปก่อน
+   */
+  const unlock = first ? undefined : reprintUnlock(order);
+  if (!first && !unlock)
+    return NextResponse.json(
+      {
+        ok: false,
+        reprint: true,
+        printCount: count - 1,
+        error: `ใบนี้ปริ้นไปแล้ว ${count - 1} ครั้ง — ต้องฉีกใบเก่าทิ้งแล้วถ่ายรูปแนบก่อน ถึงจะปริ้นซ้ำได้`,
+      },
+      { status: 409 }
+    );
 
   /**
    * ปริ้น "ใบงาน + ใบปะหน้า" (ใบที่มีที่อยู่จัดส่ง) = งานเข้าไลน์ผลิตแล้ว → เลื่อนเป็นกำลังผลิต
@@ -108,11 +128,13 @@ export async function POST(req: Request) {
       printCount: count,
       lastPrintedAt: now,
       partialPrint: undefined, // แบบครบแล้วปริ้นเต็มใบ — ป้าย "ปริ้นบางส่วน" หมดหน้าที่
+      // ภาพฉีกใบเก่าใบนี้ถูกใช้ปลดล็อกรอบนี้แล้ว — รอบหน้าต้องถ่ายใหม่
+      ...(unlock ? { reprintPhotos: (order.reprintPhotos ?? []).map((p) => (p === unlock ? { ...p, usedAt: now } : p)) } : {}),
       ...(startsProduction ? { status: "กำลังผลิต" as OrderStatus } : {}),
     },
     gate.actor.name || gate.actor.username,
     first ? "🖨 ปริ้นเอกสาร — ล็อกที่อยู่จัดส่ง" : `🖨 ปริ้นซ้ำ (ครั้งที่ ${count})`,
-    what
+    unlock ? `${what} · ♻️ ฉีกใบเก่าทิ้งแล้ว (ภาพยืนยันโดย ${unlock.by})` : what
   );
   if (startsProduction)
     updated = withLog(

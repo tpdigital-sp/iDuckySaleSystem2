@@ -53,7 +53,9 @@ import {
   MOCK_ORDERS,
   applyArrival,
   arrivalOverdue,
+  lastReprintProof,
   orderNeedsTaxInvoiceInBox,
+  orderPrintCount,
   orderStatusLabel,
   ownsTrackingNumber,
   packGate,
@@ -92,6 +94,26 @@ function TaxTag({ o }: { o: Order }) {
   ) : (
     <Tag tone="solid" title="บิล FlowAccount/บิล VAT — พิมพ์ใบกำกับจาก FlowAccount ใส่กล่อง แล้วกดยืนยันในหน้าออเดอร์ (โหมดแพ็ค)">
       🧾 ใบกำกับ ยังไม่ใส่กล่อง
+    </Tag>
+  );
+}
+
+/**
+ * ♻️ ใบที่ปริ้นซ้ำ — คนแพ็คต้องรู้ตั้งแต่ในลิสต์ว่าใบงานของออเดอร์นี้มีมากกว่าหนึ่งใบออกไป
+ * (ใบเก่าที่ยังลอยอยู่ = ของไปสองรอบ) · รายละเอียดเต็มเด้งเป็นป๊อปอัพตอนเข้าโหมดแพ็ค
+ */
+function ReprintTag({ o }: { o: Order }) {
+  const times = orderPrintCount(o);
+  if (times < 2) return null;
+  const proof = lastReprintProof(o);
+  return (
+    <Tag
+      tone="solid"
+      title={`ใบนี้ปริ้นไปแล้ว ${times} ครั้ง${
+        proof ? `\nใบเก่าฉีกทิ้งแล้วโดย ${proof.by}` : "\nไม่มีภาพยืนยันว่าใบเก่าถูกฉีกทิ้ง — ถามคนปริ้นก่อนแพ็ค"
+      }\nเช็คว่าใบงานในมือเป็นใบล่าสุด และของยังไม่ถูกแพ็ค/ส่งไปรอบหนึ่งแล้ว`}
+    >
+      ♻️ ปริ้นซ้ำ {times} ครั้ง
     </Tag>
   );
 }
@@ -760,6 +782,7 @@ export default function ScanTrackingPage() {
                     tags={
                       <>
                         <Tag tone="mint">พร้อมยิง</Tag>
+                        <ReprintTag o={o} />
                         <PartialTag o={o} />
                         <TaxTag o={o} />
                       </>
@@ -825,6 +848,7 @@ export default function ScanTrackingPage() {
                           <Tag tone="quiet">
                             รอมา {longest} วัน
                           </Tag>
+                          <ReprintTag o={o} />
                           <TaxTag o={o} />
                         </>
                       }
@@ -958,7 +982,8 @@ export default function ScanTrackingPage() {
                       tags={
                         <>
                           {printed ? <Tag tone="coral">ยังยิงไม่ได้</Tag> : <Tag tone="quiet">🖨 ยังไม่ปริ้นใบงาน</Tag>}
-                          <PartialTag o={o} />
+                          <ReprintTag o={o} />
+                        <PartialTag o={o} />
                           <TaxTag o={o} />
                         </>
                       }
