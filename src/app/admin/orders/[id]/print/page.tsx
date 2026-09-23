@@ -1758,15 +1758,14 @@ function WorkCutNote({
   /** วางใต้หัวใบงานหน้า 1 (ตัวเตี้ยกว่า) */
   top?: boolean;
 }) {
-  const from = printedRows + 1;
   const to = order.items.length;
   return (
     <div className={`keep rounded-lg border-2 border-red-600 bg-red-50 px-3 ${top ? "mt-3 py-2" : "mt-3 py-3"}`}>
       <p className="font-extrabold leading-tight" style={{ color: "#dc2626", fontSize: top ? 15 : 18 }}>
-        ⚠️ กระดาษพิมพ์ได้ถึงรายการที่ {printedRows} จาก {to} — รายการที่ {from}–{to} (อีก {cutRows} รายการ {cutQtyText}) ไม่ได้พิมพ์
+        ⚠️ ใบนี้ยังไม่ครบ — บนกระดาษมีแค่ {printedRows} จาก {to} รายการ · ยังเหลืออีก {cutRows} รายการ ({cutQtyText}) ที่ไม่ได้พิมพ์
       </p>
       <p className="mt-0.5 text-xs font-bold text-slate-800">
-        📱 สแกน QR แล้วตรวจครบทุกรายการบนมือถือ · แบบงานทั้งใบ {totalProofs} รูป · ระบบบังคับติ๊กครบก่อนยิงเลขพัสดุ
+        📱 สแกน QR ด้านบน แล้วดูรายการที่เหลือในมือถือ · แบบงานทั้งใบมี {totalProofs} รูป · ต้องติ๊กครบทุกรายการก่อนยิงเลขพัสดุ
       </p>
     </div>
   );
