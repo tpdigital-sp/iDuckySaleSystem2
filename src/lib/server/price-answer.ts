@@ -45,19 +45,37 @@ const MIN_SCORE = 10;
 
 export type PriceKind = "price" | "price-options" | "info" | "skip";
 
+/**
+ * 🔗🖼 สินค้าหนึ่งตัวในรูปที่ "ทุกช่องทาง" เอาไปแปะลิงก์/รูปได้ทันที
+ * url = หน้าสินค้าบนเว็บจริง · image = ภาพปกสินค้าบนเว็บ (imageSrc) — บอท LINE/AdminBuddy ใช้ชุดนี้แทน
+ * ลิงก์ราคา+รูปที่เคยเก็บแยกไว้ใน Firestore price_links (ไม่ผูกกับเว็บ อัปเดตแล้วไม่ตาม)
+ */
+export interface ProductRef {
+  id: string;
+  name: string;
+  url: string;
+  image?: string;
+  category?: string;
+  priceMin?: number;
+  priceMax?: number;
+}
+
 export interface PriceAnswer {
   answer: string;
   kind: PriceKind;
   source: string;
   intent: string;
   /** สินค้าที่จับคู่ได้ (ให้ผู้เรียกแนบลิงก์เองได้) */
-  product?: { id: string; name: string; url: string };
+  product?: ProductRef;
+  /** ทุกสินค้าที่คำตอบนี้พูดถึง (เมนู/หลายสินค้า/ขั้นต่ำ) — เรียงตามลำดับในคำตอบ */
+  products?: ProductRef[];
 }
 
 interface Lite {
   id: string;
   name: string;
   slug?: string;
+  imageSrc?: string;
   category: string;
   /** ช่วงราคาที่เซิร์ฟเวอร์คำนวณไว้ตอนบันทึกสินค้า — ใช้ทำเมนูโดยไม่ต้องโหลดตารางเต็ม */
   priceMin?: number;
@@ -80,7 +98,7 @@ async function loadLite(): Promise<Lite[]> {
   const { data } = await sb
     .from("products")
     .select(
-      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax",
+      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc",
     );
   return (data ?? [])
     .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden !== "true")
@@ -88,10 +106,39 @@ async function loadLite(): Promise<Lite[]> {
       id: String(r.id),
       name: String(r.name),
       slug: r.slug ?? undefined,
+      imageSrc: absImage(r.imageSrc),
       category: String(r.category ?? ""),
       priceMin: r.priceMin ? Number(r.priceMin) : undefined,
       priceMax: r.priceMax ? Number(r.priceMax) : undefined,
     }));
+}
+
+/** ภาพสินค้าเป็น URL เต็มเสมอ — ภาพที่เก็บเป็นพาธในเว็บ (/images/…) ต้องเติมโดเมน ไม่งั้นบอทนอกเว็บเปิดไม่ได้ */
+function absImage(src: unknown): string | undefined {
+  const s = typeof src === "string" ? src.trim() : "";
+  if (!s || s.startsWith("data:")) return undefined;
+  if (/^https?:\/\//i.test(s)) return s;
+  return `${SITE_URL}${s.startsWith("/") ? "" : "/"}${s}`;
+}
+
+function refOf(it: Lite): ProductRef {
+  return {
+    id: it.id,
+    name: it.name,
+    url: `${SITE_URL}${productPath(it)}`,
+    image: it.imageSrc,
+    category: it.category || undefined,
+    priceMin: it.priceMin,
+    priceMax: it.priceMax,
+  };
+}
+
+/**
+ * 📚 แคตตาล็อกสินค้าที่ลูกค้าเห็นได้ทั้งร้าน (ชื่อ/ลิงก์/รูป/ช่วงราคา) — ให้บอทนอกเว็บ (AdminBuddy, n8n)
+ * โหลดครั้งเดียวแล้วใช้จับคู่ลิงก์+รูปเอง แทนคลัง price_links ใน Firestore ที่ต้องมาคอยอัปเดตมือ
+ */
+export async function catalogRefs(): Promise<ProductRef[]> {
+  return (await catalog().catch(() => [])).map(refOf);
 }
 
 async function catalog(): Promise<Lite[]> {
@@ -241,6 +288,7 @@ interface MinRow {
   id: string;
   name: string;
   url: string;
+  image?: string;
   /** ขั้นต่ำต่ำสุดของสินค้านี้ (0 = ไม่มีขั้นต่ำ) */
   min: number;
   unit: string;
@@ -260,7 +308,7 @@ async function minTable(): Promise<MinRow[]> {
     const { data } = await sb
       .from("products")
       .select(
-        "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, rates:data->priceRates, hardMin:data->>hardMinQty",
+        "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, rates:data->priceRates, hardMin:data->>hardMinQty, imageSrc:data->>imageSrc",
       );
     const rows = (data ?? [])
       .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden !== "true")
@@ -285,6 +333,7 @@ async function minTable(): Promise<MinRow[]> {
           id: String(r.id),
           name: String(r.name),
           url: `${SITE_URL}${productPath({ id: String(r.id), slug: (r as { slug?: string }).slug } as Product)}`,
+          image: absImage((r as { imageSrc?: unknown }).imageSrc),
           min: hard || (mins.length === rates.length && mins.length ? Math.min(...mins) : 0),
           unit: rawRates[0]?.pricing?.unit || "ชิ้น",
           rates,
@@ -328,11 +377,14 @@ export async function searchMinQty(query: string): Promise<PriceAnswer> {
         : "";
       return `• ${r.name}: ${detail}${lot}${freeText}\n  ${r.url}`;
     });
+    const refs = picked.map((r) => ({ id: r.id, name: r.name, url: r.url, image: r.image }));
     return {
       answer: lines.join("\n"),
       kind: "info",
       source: "web-price-engine",
       intent: "min_qty",
+      product: refs[0],
+      products: refs,
     };
   }
 
@@ -532,7 +584,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false): P
     kind: printed > 1 ? "price-options" : "price",
     source: "web-price-engine",
     intent: qty ? "price_qty" : "price",
-    product: { id: p.id, name: p.name, url },
+    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc) },
   };
 }
 
@@ -585,7 +637,7 @@ function spec(p: Product, query: string): PriceAnswer | null {
     kind: "info",
     source: "web-price-engine",
     intent: "spec",
-    product: { id: p.id, name: p.name, url: `${SITE_URL}${productPath(p)}` },
+    product: { id: p.id, name: p.name, url: `${SITE_URL}${productPath(p)}`, image: absImage(p.imageSrc) },
   };
 }
 
@@ -650,6 +702,7 @@ function menu(items: Lite[], mode: "price" | "spec" = "price"): PriceAnswer {
     kind: "price-options",
     source: "web-price-engine",
     intent: mode === "spec" ? "spec_menu" : "price_menu",
+    products: items.map(refOf),
   };
 }
 
@@ -708,6 +761,7 @@ export async function searchPrice(
       source: "web-price-engine",
       intent: qty ? "price_qty" : "price",
       product: found[0].product,
+      products: found.map((f) => f.product).filter((x): x is ProductRef => !!x),
     };
 
   if (allowFallback) {
