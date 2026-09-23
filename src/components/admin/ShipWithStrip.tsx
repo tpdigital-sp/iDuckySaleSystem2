@@ -201,6 +201,8 @@ export function ShipWithSuggest({
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [all, setAll] = useState(false);
+  // หุบไว้ก่อน (เจ้าของร้านสั่ง 23 ก.ย. 69) — กล่องเหลืองกางเต็มบังหน้าออเดอร์ · กดหัวบรรทัดค่อยกาง
+  const [open, setOpen] = useState(false);
   const id = order.id;
   // ถามรายการใหม่เมื่อ "ชุดส่งรวมของใบนี้" เปลี่ยนเท่านั้น — ไม่ใช่ทุกครั้งที่เซฟใบ (หน้านี้เซฟบ่อย)
   const linkKey = (order.shipWith?.orders ?? []).join(",");
@@ -244,10 +246,21 @@ export function ShipWithSuggest({
 
   const show = all ? ready : ready.slice(0, 3);
   return (
-    <div className="dkb-g mb-2 p-3" style={{ background: "var(--dk-yolk-wash)", borderLeft: "6px solid var(--dk-yolk-ink)" }}>
-      <p className="text-[13.5px] font-extrabold leading-snug" style={{ color: "var(--dk-yolk-ink)" }}>
-        📦 ลูกค้าคนนี้มีอีก {ready.length} ออเดอร์ที่ยังไม่ได้ส่ง — ใส่กล่องเดียวกันได้
-      </p>
+    <div className={`dkb-g mb-2 ${open ? "p-3" : "px-3 py-1.5"}`} style={{ background: "var(--dk-yolk-wash)", borderLeft: "6px solid var(--dk-yolk-ink)" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex min-h-[32px] w-full items-start gap-2 text-left text-[13.5px] font-extrabold leading-snug"
+        style={{ color: "var(--dk-yolk-ink)" }}
+      >
+        <span className="shrink-0" aria-hidden>{open ? "▾" : "▸"}</span>
+        <span className="flex-1">
+          📦 ลูกค้าคนนี้มีอีก {ready.length} ออเดอร์ที่ยังไม่ได้ส่ง — ใส่กล่องเดียวกันได้
+          {!open && <span className="ml-2 text-[12px] font-bold underline underline-offset-2" style={{ color: "var(--dk-navy-soft)" }}>กดดู</span>}
+        </span>
+      </button>
+      {open && (<>
       <p className="mt-0.5 text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
         บิลแยกกันเหมือนเดิม ค่าส่งไม่เปลี่ยน · ผูกแล้วยิงเลขพัสดุที่ใบนี้ใบเดียว
       </p>
@@ -286,6 +299,7 @@ export function ShipWithSuggest({
         </button>
       </div>
       {err && <p className="mt-2 text-[12.5px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>⚠️ {err}</p>}
+      </>)}
     </div>
   );
 }
