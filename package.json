@@ -23,6 +23,7 @@
     "scan:tax": "tsx scripts/order-tax-scan.mts",
     "scan:options": "tsx scripts/option-ref-scan.mts",
     "check:flex": "tsx --conditions=react-server scripts/flex-messages-test.mts",
+    "check:track-box": "tsx --conditions=react-server scripts/tracking-box-test.mts",
     "check:balance-notify": "tsx scripts/balance-notify-test.mts",
     "check:lot-reprice": "tsx scripts/order-lot-reprice-test.mts",
     "check:member-tier": "tsx --tsconfig tsconfig.json scripts/order-member-tier-test.mts",

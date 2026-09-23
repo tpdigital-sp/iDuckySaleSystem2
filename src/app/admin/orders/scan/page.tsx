@@ -55,6 +55,7 @@ import {
   arrivalOverdue,
   orderNeedsTaxInvoiceInBox,
   orderStatusLabel,
+  ownsTrackingNumber,
   packGate,
   nextPlannedRound,
   shipToText,
@@ -181,6 +182,11 @@ export default function ScanTrackingPage() {
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   const [blocked, setBlocked] = useState<{ order: Order; gate: PackGate } | null>(null);
+  /**
+   * 📮 ใบนี้มีเลขพัสดุอยู่แล้ว แล้วยิงเลขใหม่เข้ามา — ถามก่อนว่า "อีกกล่องของใบเดิม" หรือ "เมื่อกี้ยิงผิด"
+   * (22 ก.ย. 69 · OD-260917-1691 ส่ง 2 กล่อง 2 ที่อยู่ ยิงรวดเดียว 2 เลข เลขแรกถูกทับหายไป ลูกค้าเห็นเลขเดียว)
+   */
+  const [boxAsk, setBoxAsk] = useState<{ order: Order; tracking: string } | null>(null);
   // 📷 กล้องมือถือแทนเครื่องยิง — "order" = รอเลขออเดอร์ · "tracking" = รอเลขพัสดุของ target
   const [cam, setCam] = useState<null | "order" | "tracking" | "batch">(null);
   const router = useRouter();
@@ -361,13 +367,15 @@ export default function ScanTrackingPage() {
   // ── ออเดอร์ที่มีเลขพัสดุในระบบแล้ว — ล่าสุดขึ้นก่อน (เรียงจากเวลาที่ยิงใน log) ──
   // 🚚 รอบแบ่งส่งขึ้นเป็นแถวของตัวเอง (เลขพัสดุคนละเลข) — ใบเดียวมีหลายแถวได้
   const scanned = useMemo(() => {
-    const rows: { o: Order; at?: string; tracking: string; round?: number; key: string }[] = [];
+    const rows: { o: Order; at?: string; tracking: string; round?: number; box?: number; key: string }[] = [];
     orders.forEach((o) => {
       // 🏪 รอบของใบมารับเองไม่มีเลขพัสดุ — ไม่ใช่พัสดุที่ยิงออก ไม่ขึ้นรายการนี้
       (o.shipments ?? []).forEach((sh, n) => {
         if (!sh.pickup) rows.push({ o, at: sh.at, tracking: sh.tracking, round: n + 1, key: `${o.id}#${n}` });
       });
       if (o.tracking) rows.push({ o, at: trackedAt(o), tracking: o.tracking, key: o.id });
+      // 📮 ใบเดียวส่งหลายกล่อง — กล่องที่ 2 ขึ้นไปเป็นพัสดุคนละใบ ต้องขึ้นแถวของตัวเองเหมือนรอบแบ่งส่ง
+      (o.extraTrackings ?? []).forEach((b, n) => rows.push({ o, at: b.at, tracking: b.tracking, box: n + 2, key: `${o.id}@${n}` }));
     });
     return rows.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
   }, [orders]);
@@ -467,7 +475,9 @@ export default function ScanTrackingPage() {
     setTarget(o);
     setMsg({
       kind: "info",
-      text: o.tracking ? `ออเดอร์นี้มีเลขพัสดุแล้ว (${o.tracking}) — ยิงใหม่เพื่อแทนที่` : "ยิงเลขพัสดุต่อได้เลย",
+      text: o.tracking
+        ? `ออเดอร์นี้มีเลขพัสดุแล้ว (${o.tracking}) — ยิงเลขใหม่แล้วเลือกได้ว่าเป็น “อีกกล่อง” หรือ “ยิงผิด แทนที่เลขเดิม”`
+        : "ยิงเลขพัสดุต่อได้เลย",
     });
     // มาจากกล้องมือถือ → เปิดกล้องต่อทันทีเพื่อสแกนเลขพัสดุ (ไม่ต้องกดปุ่มซ้ำ ไม่ให้คีย์บอร์ดเด้ง)
     if (viaCamera) setCam("tracking");
@@ -504,23 +514,42 @@ export default function ScanTrackingPage() {
     }
 
     // ── ขั้นที่ 2: ยิง/พิมพ์เลขพัสดุ ──
+    // ใบมีเลขอยู่แล้ว + เลขใหม่ไม่ซ้ำของใบนี้ = ถามก่อนว่ากล่องเพิ่มหรือยิงผิด (ห้ามทับเงียบ ๆ)
+    if ((target.tracking ?? "").trim() && !ownsTrackingNumber(target, v)) {
+      setBoxAsk({ order: target, tracking: v });
+      setMsg(null);
+      return;
+    }
+    await commitScan(target, v, "main");
+  }
+
+  /**
+   * บันทึกเลขที่ยิง — "main" = เลขพัสดุของใบ (ปิดใบเป็นจัดส่งแล้ว) · "box" = กล่องที่ 2 ขึ้นไปของใบเดิม
+   * กล่องเพิ่มไม่แตะสถานะ/เลขเดิม เซิร์ฟเวอร์แจ้งไลน์ให้ลูกค้าเองว่ามีพัสดุอีกกล่อง
+   */
+  async function commitScan(o: Order, v: string, mode: "main" | "box") {
     setBusy(true);
-    const next = withLog(
-      { ...target, tracking: v, status: target.status === "เสร็จสิ้น" ? target.status : "จัดส่งแล้ว" },
-      "แอดมิน",
-      "บันทึกเลขพัสดุ",
-      v
-    );
+    const box = (o.extraTrackings?.length ?? 0) + 2;
+    const next =
+      mode === "box"
+        ? withLog(
+            { ...o, extraTrackings: [...(o.extraTrackings ?? []), { tracking: v, at: new Date().toISOString(), by: "แอดมิน" }] },
+            "แอดมิน",
+            `📮 เพิ่มเลขพัสดุกล่องที่ ${box}`,
+            v
+          )
+        : withLog({ ...o, tracking: v, status: o.status === "เสร็จสิ้น" ? o.status : "จัดส่งแล้ว" }, "แอดมิน", "บันทึกเลขพัสดุ", v);
     const ok = demo ? true : await saveOrderAdmin(next);
     setBusy(false);
+    setBoxAsk(null);
 
     if (!ok) {
       setMsg({ kind: "err", text: "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง" });
       setTimeout(focusInput, 50);
       return;
     }
-    setOrders((os) => os.map((o) => (o.id === next.id ? next : o)));
-    reset({ kind: "ok", text: `บันทึกแล้ว — ${next.id} · ${v}` });
+    setOrders((os) => os.map((x) => (x.id === next.id ? next : x)));
+    reset({ kind: "ok", text: mode === "box" ? `บันทึกแล้ว — ${next.id} · กล่องที่ ${box} · ${v}` : `บันทึกแล้ว — ${next.id} · ${v}` });
   }
 
   const waiting = !target;
@@ -990,8 +1019,8 @@ export default function ScanTrackingPage() {
                       <div className="dkb-shipday">
                         {g.label} <small>{g.rows.length} ใบ</small>
                       </div>
-                      {g.rows.map(({ o, at, tracking, round, key }, i) => {
-                        const odd = !round && o.status !== "จัดส่งแล้ว" && o.status !== "เสร็จสิ้น";
+                      {g.rows.map(({ o, at, tracking, round, box, key }, i) => {
+                        const odd = !round && !box && o.status !== "จัดส่งแล้ว" && o.status !== "เสร็จสิ้น";
                         const sh = round ? o.shipments?.[round - 1] : undefined;
                         return (
                           <div key={key} className="dkb-shiprow" data-odd={odd ? "1" : undefined}>
@@ -1030,6 +1059,10 @@ export default function ScanTrackingPage() {
                               {round ? (
                                 <Tag tone="sky" title={`แบ่งส่ง รอบที่ ${round} · ${sh?.proofs.length ?? 0} รูป${sh?.note ? ` · ${sh.note}` : ""}`}>
                                   🚚 ส่งบางส่วน รอบ {round}
+                                </Tag>
+                              ) : box ? (
+                                <Tag tone="yolk" title={`พัสดุกล่องที่ ${box} ของใบนี้${o.extraTrackings?.[box - 2]?.note ? ` · ${o.extraTrackings![box - 2].note}` : ""}`}>
+                                  📮 กล่องที่ {box}
                                 </Tag>
                               ) : (
                                 <StatusChip s={o.status} label={orderStatusLabel(o)} />
@@ -1194,6 +1227,51 @@ export default function ScanTrackingPage() {
           ) : undefined
         }
       />
+
+      {/* 📮 ใบมีเลขพัสดุอยู่แล้ว — ให้คนแพ็คบอกเองว่าเป็นกล่องเพิ่มหรือยิงผิด (ไม่ทับเงียบ ๆ) */}
+      {boxAsk && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="box-title"
+          className="fixed inset-0 z-[100] grid place-items-center p-4"
+          style={{ background: "rgba(23,58,107,.62)", backdropFilter: "blur(4px)" }}
+        >
+          <div className="dkb w-full max-w-md rounded-[26px] p-5" style={{ boxShadow: "0 30px 60px rgba(23,58,107,.4)" }}>
+            <h2 id="box-title" className="dkb-display text-[1.3rem]">
+              ใบนี้มีเลขพัสดุอยู่แล้ว
+            </h2>
+            <p className="dkb-code mt-1 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+              {boxAsk.order.id}
+            </p>
+            <p className="text-[14px]">{boxAsk.order.customer}</p>
+            <div className="mt-3 rounded-[18px] px-4 py-3" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}>
+              <p className="text-[13px]">
+                เลขเดิม <span className="dkb-code font-bold">{(boxAsk.order.tracking ?? "").trim()}</span>
+                {(boxAsk.order.extraTrackings?.length ?? 0) > 0 ? ` (+ อีก ${boxAsk.order.extraTrackings!.length} กล่อง)` : ""}
+              </p>
+              <p className="mt-1 text-[13px]">
+                เลขที่เพิ่งยิง <span className="dkb-code font-bold">{boxAsk.tracking}</span>
+              </p>
+            </div>
+            <div className="mt-4 flex flex-col gap-2">
+              <Btn tone="navy" onClick={() => void commitScan(boxAsk.order, boxAsk.tracking, "box")}>
+                ＋ อีกกล่องของใบนี้ — เก็บเป็นกล่องที่ {(boxAsk.order.extraTrackings?.length ?? 0) + 2}
+              </Btn>
+              <Btn onClick={() => void commitScan(boxAsk.order, boxAsk.tracking, "main")}>เมื่อกี้ยิงผิด — แทนที่เลขเดิม</Btn>
+              <Btn
+                onClick={() => {
+                  setBoxAsk(null);
+                  setValue("");
+                  setTimeout(focusInput, 50);
+                }}
+              >
+                ยกเลิก
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {blocked && (
         <div

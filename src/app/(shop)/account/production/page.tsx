@@ -153,6 +153,20 @@ function ThaiPostBlock({ order: o }: { order: Order }) {
           เช็คที่เว็บ ปณ. →
         </a>
       </div>
+      {/* 📮 ใบที่ส่งหลายกล่อง — ไทม์ไลน์ข้างล่างเป็นของกล่องที่ 1 เลขกล่องอื่นบอกไว้ตรงนี้ (เช็คทีละกล่องได้ที่หน้าออเดอร์) */}
+      {(o.extraTrackings ?? []).map((b, n) => (
+        <div key={`${b.tracking}-${n}`} className="acd-thp-head">
+          📮 กล่องที่ {n + 2} <b>{b.tracking}</b>
+          <a
+            href={`https://track.thailandpost.co.th/?trackNumber=${encodeURIComponent(b.tracking)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="acd-track-link"
+          >
+            เช็คที่เว็บ ปณ. →
+          </a>
+        </div>
+      ))}
       {st.loading ? (
         <p className="acd-thp-wait">กำลังเช็คสถานะกับไปรษณีย์ไทย…</p>
       ) : st.events?.length ? (

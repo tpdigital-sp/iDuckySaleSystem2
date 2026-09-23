@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -59,6 +59,32 @@ function AccountRow({ label, value, copied, onCopy }: { label: string; value: st
         {copied ? "✓ คัดลอกแล้ว" : "คัดลอก"}
       </button>
     </div>
+  );
+}
+
+/**
+ * 📮 เลขพัสดุที่กดแล้วคัดลอกได้ทันที (เจ้าของร้านสั่ง 23 ก.ย. 69 — เดิมต้องลากเลือกเอง มือถือลากยาก)
+ * แยกเป็นคอมโพเนนต์ระดับโมดูลเหมือน AccountRow ไม่งั้น React remount ทุกครั้งที่หน้าโพล ป้าย "คัดลอกแล้ว" ไม่ทันขึ้น
+ */
+function TrackCopy({ tracking, big }: { tracking: string; big?: boolean }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className={`ord-trk${big ? " big" : ""}${done ? " done" : ""}`}
+      title={`คัดลอกเลขพัสดุ ${tracking}`}
+      aria-label={`คัดลอกเลขพัสดุ ${tracking}`}
+      onClick={() => {
+        navigator.clipboard?.writeText(tracking).catch(() => {
+          /* คัดลอกไม่ได้ (เบราว์เซอร์เก่า/ไม่ใช่ https) — ตัวเลขยังลากเลือกเองได้ */
+        });
+        setDone(true);
+        setTimeout(() => setDone(false), 1600);
+      }}
+    >
+      <span className="ord-trk-no">{tracking}</span>
+      <span className="ord-trk-tag">{done ? "✓ คัดลอกแล้ว" : "⧉ คัดลอก"}</span>
+    </button>
   );
 }
 
@@ -654,6 +680,8 @@ export default function CustomerOrderPage() {
           : shipLeft === 1
             ? { txt: "พรุ่งนี้", tone: "" }
             : { txt: `อีก ${shipLeft.toLocaleString("th-TH")} วัน`, tone: "" };
+  /** 📮 พัสดุทุกกล่องของใบนี้ (กล่องที่ 1 = เลขในใบ · กล่องถัดไป = ใบที่ส่งหลายกล่อง/หลายที่อยู่) */
+  const boxes = trackingBoxes(order);
   /** บรรทัดใต้รูปแบบการจัดส่ง — มีเลขพัสดุแล้วบอกเลข ไม่งั้นบอกค่าส่ง/วิธีรับของ */
   const shipNote = pickup
     ? order.status === "เสร็จสิ้น"
@@ -662,7 +690,10 @@ export default function CustomerOrderPage() {
         ? "แพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ"
         : "ไม่มีพัสดุ · ของพร้อมแล้วทางร้านจะแจ้งให้มารับครับ"
     : order.tracking
-      ? `เลขพัสดุ ${order.tracking}${order.shipWith?.role === "rider" ? ` · ส่งรวมกล่องกับออเดอร์ ${order.shipWith.orders[0]}` : ""}`
+      ? // 📮 เลขพัสดุอยู่ใน JSX ข้างล่าง (กดคัดลอกได้) — ตรงนี้เหลือไว้เฉพาะส่วนท้าย
+        order.shipWith?.role === "rider"
+        ? `ส่งรวมกล่องกับออเดอร์ ${order.shipWith.orders[0]}`
+        : ""
       : // 📦 ใบตามของชุดส่งรวม: ค่าส่ง 0 ไม่ได้แปลว่าส่งฟรี — ของไปกับกล่องของอีกออเดอร์ (lib/ship-with.ts)
         order.shipWith?.role === "rider" && order.shipWith.orders[0]
         ? `ส่งรวมกล่องเดียวกับออเดอร์ ${order.shipWith.orders[0]} · จัดส่งแล้วแจ้งเลขพัสดุครับ`
@@ -1078,7 +1109,18 @@ export default function CustomerOrderPage() {
             <div className="ord-ship-how">
               <p className="ord-eyebrow">รูปแบบการจัดส่ง</p>
               <p className="ord-ship-via">{pickup ? "🏪 มารับเองที่ร้าน" : `🚚 ${shipLabel || "ส่งพัสดุ"}`}</p>
-              <p className="ord-ship-note">{order.tracking ? <span className="select-all">{shipNote}</span> : shipNote}</p>
+              {/* 📮 เลขพัสดุทุกกล่อง — กดที่เลขแล้วคัดลอกได้เลย (ไม่ต้องลากเลือก) */}
+              {order.tracking && !pickup ? (
+                <p className="ord-ship-note">
+                  <span className="ord-trk-head">{boxes.length > 1 ? `เลขพัสดุ ${boxes.length} กล่อง` : "เลขพัสดุ"}</span>
+                  {boxes.map((b) => (
+                    <TrackCopy key={`hero-${b.box}`} tracking={b.tracking} />
+                  ))}
+                  {shipNote ? <span className="ord-trk-tail">· {shipNote}</span> : null}
+                </p>
+              ) : (
+                <p className="ord-ship-note">{shipNote}</p>
+              )}
             </div>
           </div>
         )}
@@ -2110,7 +2152,7 @@ export default function CustomerOrderPage() {
                 {sh.pickup ? (
                   <p className="mt-1 text-lg font-bold t-ink">มารับของรอบนี้ที่ร้านได้เลย</p>
                 ) : (
-                  <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{sh.tracking}</p>
+                  <TrackCopy tracking={sh.tracking.trim()} big />
                 )}
                 <p className="mt-1 text-xs t-soft">
                   รอบนี้: {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` × ${p.qty.toLocaleString("th-TH")}${p.ofQty && p.ofQty > p.qty ? ` จาก ${p.ofQty.toLocaleString("th-TH")}` : ""} ${p.unit || "ชิ้น"}` : ""}`).join(" · ")}
@@ -2119,7 +2161,7 @@ export default function CustomerOrderPage() {
                 {/* 📍 รอบนี้ส่งไปที่อยู่อื่น (ลูกค้าขอแยกส่ง) — บอกให้รู้ว่าเลขนี้ไปที่ไหน */}
                 {sh.shipTo && <p className="mt-1 text-xs font-bold t-ink">📍 ส่งไปที่: {shipToText(sh.shipTo)}</p>}
                 {sh.pickup ? null : /^[A-Z]{2}\d{9}TH$/i.test(sh.tracking.trim()) ? (
-                  <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={sh.tracking.trim()} />
+                  <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={sh.tracking.trim()} delayMs={(n + 1) * 1200} foldFrom={1} />
                 ) : (
                   <p className="mt-1 text-xs t-soft">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
                 )}
@@ -2141,14 +2183,47 @@ export default function CustomerOrderPage() {
               <p className="mt-1 text-xs t-soft">แพ็คเสร็จ {new Date(order.packedAt.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
             </div>
           )}
+          {/*
+            📮 พัสดุของใบนี้ — การ์ดใบเดียว แยกเป็น "แถวต่อกล่อง" (ใบที่ส่งหลายกล่อง/แยกส่งคนละที่อยู่)
+            เดิมแต่ละกล่องเป็นการ์ดใหญ่กางไทม์ไลน์เต็ม → 2 กล่องยาวเกิน 2 จอ หาเลขไม่เจอ (23 ก.ย. 69)
+            หลายกล่อง = ไทม์ไลน์พับเหลือ "ล่าสุดอยู่ไหน" กดดูประวัติเต็มได้ · กล่องเดียว = กางเหมือนเดิม
+          */}
           {order.tracking && (
             <div className="ord-note info p-4 sm:p-5">
-              <p className="ord-eyebrow">{pickup ? "🏪 รับของที่ร้านแล้ว" : order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ"}</p>
-              <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{order.tracking}</p>
-              {pickup ? null : /^[A-Z]{2}\d{9}TH$/i.test(order.tracking.trim()) ? (
-                <CustomerThaiPostStatus orderId={order.id} orderKey={orderKey} tracking={order.tracking.trim()} />
+              <p className="ord-eyebrow">
+                {pickup
+                  ? "🏪 รับของที่ร้านแล้ว"
+                  : boxes.length > 1
+                    ? `📮 พัสดุ ${boxes.length} กล่อง${order.shipments?.length ? " (รอบสุดท้าย)" : ""}`
+                    : order.shipments?.length
+                      ? "เลขพัสดุ (รอบสุดท้าย)"
+                      : "เลขพัสดุ"}
+              </p>
+              {pickup ? (
+                <p className="mt-1 select-all break-all font-mono text-lg font-bold t-ink">{order.tracking}</p>
               ) : (
-                <p className="mt-1 text-xs t-soft">แตะค้างเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
+                boxes.map((b) => (
+                  <div key={`box-${b.box}`} className="ord-box">
+                    {boxes.length > 1 && (
+                      <p className="ord-box-head">
+                        <span className="ord-box-no">กล่องที่ {b.box}</span>
+                        {b.note ? <span className="ord-box-note">📝 {b.note}</span> : null}
+                      </p>
+                    )}
+                    <TrackCopy tracking={b.tracking} big />
+                    {/^[A-Z]{2}\d{9}TH$/i.test(b.tracking) ? (
+                      <CustomerThaiPostStatus
+                        orderId={order.id}
+                        orderKey={orderKey}
+                        tracking={b.tracking}
+                        delayMs={(b.box - 1) * 1200}
+                        foldFrom={boxes.length > 1 ? 1 : undefined}
+                      />
+                    ) : (
+                      <p className="mt-1 text-xs t-soft">แตะที่เลขเพื่อคัดลอก แล้วนำไปเช็คสถานะกับขนส่งได้เลย</p>
+                    )}
+                  </div>
+                ))
               )}
             </div>
           )}
@@ -2827,7 +2902,21 @@ export default function CustomerOrderPage() {
 
 
 /** สถานะพัสดุไปรษณีย์ไทยฝั่งลูกค้า — ใช้กุญแจออเดอร์ยืนยันตัว · ไม่มี token = ลิงก์ไปเว็บ ปณ. */
-function CustomerThaiPostStatus({ orderId, orderKey, tracking }: { orderId: string; orderKey: string; tracking: string }) {
+function CustomerThaiPostStatus({
+  orderId,
+  orderKey,
+  tracking,
+  delayMs = 0,
+  foldFrom,
+}: {
+  orderId: string;
+  orderKey: string;
+  tracking: string;
+  /** หน่วงก่อนถาม ปณ. — ใบที่มีหลายพัสดุ ยิงพร้อมกันแล้ว ปณ. ตอบไม่ครบบางเลข (22 ก.ย. 69) */
+  delayMs?: number;
+  /** พับประวัติเหลือ N รายการล่าสุด (ใบหลายพัสดุ) — ไม่ใส่ = กางเต็ม */
+  foldFrom?: number;
+}) {
   const [st, setSt] = useState<{
     loading: boolean;
     configured?: boolean;
@@ -2839,20 +2928,24 @@ function CustomerThaiPostStatus({ orderId, orderKey, tracking }: { orderId: stri
   useEffect(() => {
     if (!orderKey) return;
     let live = true;
-    fetch(`/api/orders/track?orderId=${encodeURIComponent(orderId)}&key=${encodeURIComponent(orderKey)}`)
-      .then((r) => r.json())
-      .then((j) => live && setSt({ loading: false, ...j }))
-      .catch(() => live && setSt({ loading: false, error: "x" }));
+    const t = setTimeout(() => {
+      // ⚠️ ต้องส่งเลขไปด้วย — ใบที่มีหลายพัสดุ (แบ่งส่ง/หลายกล่อง) ไม่งั้นทุกการ์ดโชว์สถานะของเลขในใบเลขเดียว
+      fetch(`/api/orders/track?orderId=${encodeURIComponent(orderId)}&key=${encodeURIComponent(orderKey)}&number=${encodeURIComponent(tracking)}`)
+        .then((r) => r.json())
+        .then((j) => live && setSt({ loading: false, ...j }))
+        .catch(() => live && setSt({ loading: false, error: "x" }));
+    }, delayMs);
     return () => {
       live = false;
+      clearTimeout(t);
     };
-  }, [orderId, orderKey]);
+  }, [orderId, orderKey, tracking, delayMs]);
 
   return (
     <div className="mt-2">
       {st.events?.length ? (
         <div className="ord-sub p-3">
-          <ThaiPostTimeline events={st.events} />
+          <ThaiPostTimeline events={st.events} foldFrom={foldFrom} />
         </div>
       ) : st.loading && orderKey ? (
         <p className="text-xs t-faint">กำลังเช็คสถานะกับไปรษณีย์ไทย…</p>

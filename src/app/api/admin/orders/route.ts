@@ -38,6 +38,7 @@ import {
   uncreditedReceived,
   lockEarlyPay,
   orderAwaitingStock,
+  ownsTrackingNumber,
   packGate,
   partialGate,
   planPendingReason,
@@ -53,6 +54,7 @@ import {
   type PackGate,
   type Proof,
   type Shipment,
+  type TrackingBox,
 } from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
@@ -80,6 +82,22 @@ function newShipmentsOf(existing: Order, incoming: Order): Shipment[] {
   return inc.filter(
     (s) => s && typeof s.tracking === "string" && s.tracking.trim() && !had.has(s.tracking.trim()) && Array.isArray(s.proofs) && (!s.pickup || pickupOk)
   );
+}
+
+/**
+ * 📮 กล่องเพิ่มที่เพิ่งยิงมาในคำขอนี้ (เลขที่ยังไม่มีในใบเดิม) — ไว้แจ้งลูกค้า/ต่อท้ายให้ฝ่ายแพ็ค
+ * เลขที่ซ้ำกับกล่องหลัก/รอบแบ่งส่งไม่นับ (ยิงซ้ำ = ไม่ต้องเพิ่มกล่อง)
+ */
+function newExtraTrackingsOf(existing: Order, incoming: Order): TrackingBox[] {
+  const inc = Array.isArray(incoming.extraTrackings) ? incoming.extraTrackings : [];
+  return inc.filter((b) => b && typeof b.tracking === "string" && b.tracking.trim() && !ownsTrackingNumber(existing, b.tracking));
+}
+
+/** รวมกล่องเพิ่ม: ของเดิมคงไว้ + กล่องใหม่ต่อท้าย (ฝ่ายแพ็คลบ/แก้ของเดิมไม่ได้ — เหมือนรอบแบ่งส่ง) */
+function appendExtraTrackings(existing: Order, incoming: Order): TrackingBox[] | undefined {
+  const add = newExtraTrackingsOf(existing, incoming);
+  if (!add.length) return existing.extraTrackings;
+  return [...(existing.extraTrackings ?? []), ...add];
 }
 
 /** รวมรอบแบ่งส่ง: ของเดิมคงไว้ทั้งหมด + รอบใหม่ต่อท้าย (ฝ่ายแพ็คลบ/แก้รอบเก่าไม่ได้) */
@@ -270,6 +288,8 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
       merged.status = "จัดส่งแล้ว" as OrderStatus;
     }
   }
+  // 📮 กล่องเพิ่ม (ใบเดียวส่งหลายกล่อง): ต่อท้ายได้ด้วยสิทธิ์ยิงเลขเดียวกัน · ของเดิมแก้/ลบไม่ได้ (งานแอดมิน)
+  if (mayShip && Array.isArray(incoming.extraTrackings)) merged.extraTrackings = appendExtraTrackings(existing, incoming);
   // 🚚 แบ่งส่ง: รอบใหม่ต่อท้ายได้ (สิทธิ์ยิงเลขเดียวกัน) · รอบเดิมแตะไม่ได้ · สถานะใบไม่เปลี่ยน (ยังไม่ปิดจนกว่าจะยิงรอบสุดท้าย)
   if (mayShip && Array.isArray(incoming.shipments)) merged.shipments = appendShipments(existing, incoming);
   // 🏪 มารับเอง: กด "แพ็คเสร็จ" แทนยิงเลขพัสดุ → จดคน/เวลา + สถานะจัดส่งแล้ว (= พร้อมรับ) · สิทธิ์เดียวกับยิงเลข
@@ -1280,6 +1300,43 @@ export async function PATCH(req: Request) {
             : `🚚 ออเดอร์ ${toSave.id} จัดส่งบางส่วนแล้วครับ (รอบที่ ${round})\nเลขพัสดุ: ${sh.tracking}${tail}\nส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
         }),
         sh.pickup ? `แจ้งแพ็คเสร็จบางส่วน (มารับเอง) รอบที่ ${round}` : `แจ้งส่งบางส่วน รอบที่ ${round} · ${sh.tracking}`,
+        "key"
+      );
+    });
+  }
+
+  /**
+   * 📮 กล่องเพิ่มที่เพิ่งยิงในคำขอนี้ → แจ้งลูกค้าทันทีว่าใบนี้มีพัสดุอีกกล่อง พร้อมเลขของกล่องนั้น
+   * (ใบที่ส่ง 2 ที่อยู่/ของเยอะจนต้องแยกกล่อง — เดิมยิงทับช่องเดียว ลูกค้าได้เลขเดียว · 22 ก.ย. 69)
+   * ใบที่ยังไม่มีเลขกล่องหลัก = ยังไม่ได้ส่ง ไม่ต้องแจ้ง (การ์ด "จัดส่งแล้ว" จะไล่เลขให้ครบเองอยู่แล้ว)
+   */
+  const boxesNow = newExtraTrackingsOf(existing, toSave);
+  // ใบเพิ่งปิดเป็น "จัดส่งแล้ว" ในคำขอเดียวกัน = การ์ดสถานะไล่เลขทุกกล่องให้แล้ว ไม่ต้องยิงซ้ำ
+  const shipCardSent = toSave.status !== oldStatus && toSave.status === "จัดส่งแล้ว";
+  if (boxesNow.length && !shipCardSent && (toSave.tracking ?? "").trim() && !isPickupOrder(toSave)) {
+    const origin = new URL(req.url).origin;
+    const link = orderLink(origin, toSave);
+    const base = (existing.extraTrackings ?? []).length;
+    boxesNow.forEach((b, n) => {
+      const box = base + n + 2; // กล่องที่ 1 = เลขในช่องหลัก
+      const t = b.tracking.trim();
+      void notifyCustomerLogged(
+        sb,
+        toSave,
+        orderNotice(toSave, link, {
+          tone: "shipBox",
+          head: `พัสดุกล่องที่ ${box}`,
+          headline: "ออเดอร์นี้ส่งหลายกล่อง — นี่คือเลขของอีกกล่องครับ",
+          rows: [
+            { label: "กล่องที่", value: String(box), bold: true },
+            { label: "เลขพัสดุกล่องนี้", value: t, bold: true },
+            ...(b.note ? [{ label: "📝 หมายเหตุ", value: b.note }] : []),
+            ...(trackNow ? [{ label: "กล่องที่ 1", value: trackNow }] : []),
+          ],
+          note: "เช็คสถานะแต่ละกล่องได้ในหน้าออเดอร์ครับ",
+          alt: `📮 ออเดอร์ ${toSave.id} มีพัสดุอีกกล่องครับ (กล่องที่ ${box})\nเลขพัสดุกล่องนี้: ${t}${b.note ? `\n📝 ${b.note}` : ""}\n${link}`,
+        }),
+        `แจ้งเลขพัสดุกล่องที่ ${box} · ${t}`,
         "key"
       );
     });

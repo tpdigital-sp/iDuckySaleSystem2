@@ -136,6 +136,49 @@ export interface Shipment {
 }
 
 /**
+ * 📮 เลขพัสดุ "กล่องเพิ่ม" ของใบเดียวกัน — ส่งพร้อมกันหลายกล่อง/หลายที่อยู่ ไม่ใช่การแบ่งส่งคนละรอบ
+ * (พนักงานแจ้ง 22 ก.ย. 69 · OD-260917-1691 ลูกค้าขอแยกส่ง 2 ที่อยู่ แพ็ค 2 กล่องวันเดียวกัน แล้วยิงเลขทับกันในช่องเดียว
+ *  เลขกล่องแรกหายไปอยู่แต่ในประวัติ ลูกค้าเห็นเลขเดียว)
+ * กล่องที่ 1 = Order.tracking (ช่องเดิม สถานะ/แจ้งไลน์ทำงานเหมือนเดิม) · กล่องที่ 2 เป็นต้นไปอยู่ในลิสต์นี้
+ * ⚠️ คนละเรื่องกับ Shipment (แบ่งส่งคนละรอบ ใบยังไม่ปิด) — ตรงนี้ใบปิดแล้ว แค่ของไปหลายกล่อง
+ */
+export interface TrackingBox {
+  tracking: string;
+  /** เวลาที่ยิง (ISO) */
+  at: string;
+  /** ใครยิง */
+  by: string;
+  /** กล่องนี้คืออะไร เช่น "ส่งไปที่อยู่ที่ 2 (คุณน้ำมนต์)" — ขึ้นทั้งหลังบ้านและหน้าลูกค้า */
+  note?: string;
+}
+
+/**
+ * 📮 เลขพัสดุทุกกล่องของใบนี้ เรียงกล่องที่ 1, 2, 3… (ไม่รวมรอบแบ่งส่ง ซึ่งมีการ์ดของตัวเอง)
+ * ใบมารับเอง/ใบที่ยังไม่ยิงเลข = ลิสต์ว่าง
+ */
+export function trackingBoxes(order: Order): { tracking: string; box: number; note?: string; at?: string; by?: string }[] {
+  const main = (order.tracking ?? "").trim();
+  if (!main || isPickupOrder(order)) return [];
+  const extras = (order.extraTrackings ?? []).filter((b) => (b?.tracking ?? "").trim());
+  return [
+    { tracking: main, box: 1 },
+    ...extras.map((b, i) => ({ tracking: b.tracking.trim(), box: i + 2, note: b.note, at: b.at, by: b.by })),
+  ];
+}
+
+/** เลขพัสดุทุกเลขที่ใบนี้เป็นเจ้าของ (กล่องหลัก + กล่องเพิ่ม + รอบแบ่งส่ง) — ใช้เช็คสิทธิ์ตอนถามสถานะ ปณ. */
+export function ownsTrackingNumber(order: Order, number: string): boolean {
+  const n = number.trim().toUpperCase();
+  if (!n) return false;
+  const all = [
+    (order.tracking ?? "").trim(),
+    ...(order.extraTrackings ?? []).map((b) => (b?.tracking ?? "").trim()),
+    ...(order.shipments ?? []).map((s) => (s?.tracking ?? "").trim()),
+  ];
+  return all.some((t) => t.toUpperCase() === n);
+}
+
+/**
  * 📍 ผู้รับของ "รอบแบ่งส่ง" ที่ไม่ใช่ที่อยู่ในใบ — เคสลูกค้าสั่ง 2 ชิ้นแล้วขอแยกส่ง 2 ที่อยู่ (OD-260917-1691 · 18 ก.ย. 69)
  * ที่อยู่ในใบ (order.address) = รอบสุดท้าย · รอบในแผนที่มี shipTo = ใบปะหน้ารอบนั้นพิมพ์ที่อยู่นี้แทน ไม่ต้องแก้ที่อยู่ใบไปมา
  */
@@ -677,6 +720,8 @@ export interface Order {
   shippingCost: number;
   status: OrderStatus;
   tracking?: string;
+  /** 📮 เลขพัสดุกล่องที่ 2, 3… ของใบเดียวกัน (ส่งหลายกล่อง/หลายที่อยู่พร้อมกัน) — ดู TrackingBox */
+  extraTrackings?: TrackingBox[];
   /** 🚚 แบ่งส่ง: รอบที่ส่งออกไปแล้วบางส่วน (ก่อนยิงเลขรอบสุดท้ายลง tracking) — ดู Shipment */
   shipments?: Shipment[];
   /** 📋 แผนแบ่งส่งที่แอดมินระบุ (รูปไหนส่งก่อน รอบไหน) — ฝ่ายแพ็คทำตาม แก้ไม่ได้ (mergePackFields ไม่รับ) */

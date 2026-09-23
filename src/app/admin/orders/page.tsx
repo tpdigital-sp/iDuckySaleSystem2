@@ -1178,6 +1178,8 @@ function OrderRow({
           {o.items.some((i) => i.needStockCheck) && <span className="warn">รอเช็คสต๊อก</span>}
           {dup && <span className="warn">ออเดอร์ซ้ำเบอร์เดียวกัน</span>}
           {o.tracking && <span className="id">{o.tracking}</span>}
+          {/* 📮 ใบเดียวส่งหลายกล่อง — บอกให้เห็นตั้งแต่หน้ารายการว่ามีพัสดุมากกว่า 1 เลข */}
+          {(o.extraTrackings?.length ?? 0) > 0 && <span className="id">📮 อีก {o.extraTrackings!.length} กล่อง</span>}
           {!o.tracking && !o.packedAt && (o.shipments?.length ?? 0) > 0 && <span className="warn">🚚 ส่งบางส่วนแล้ว {o.shipments!.length} รอบ</span>}
         </span>
       </span>

@@ -229,7 +229,9 @@ export function stepTime(i: number, o: Order): string {
   const cur = STEP_OF[o.status];
   if (i === 0) return o.date;
   if (i === 1 && cur === 1) return orderBalance(o) > 0 ? `ค้างชำระ ${formatPrice(orderBalance(o))}` : "รอตรวจสอบ";
-  if (i === 4 && o.tracking && !isPickupOrder(o)) return `พัสดุ ${o.tracking}`;
+  if (i === 4 && o.tracking && !isPickupOrder(o))
+    // 📮 ส่งหลายกล่อง — บอกจำนวนกล่อง เลขครบอยู่ในหน้าออเดอร์
+    return `พัสดุ ${o.tracking}${(o.extraTrackings?.length ?? 0) > 0 ? ` (+ อีก ${o.extraTrackings!.length} กล่อง)` : ""}`;
   // แบบผ่านแล้วแต่ยังไม่เข้าผลิต — ขั้นแบบงานถือว่าเรียบร้อยทั้งที่ยังยืนอยู่ขั้นนี้
   if (i === 2 && o.status === "อนุมัติแบบ") return "เรียบร้อย";
   if (i < cur) return "เรียบร้อย";

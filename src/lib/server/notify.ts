@@ -6,6 +6,7 @@ import {
   orderNetTransfer,
   orderTotal,
   orderWhtAmount,
+  trackingBoxes,
   withLog,
   type Order,
   type OrderStatus,
@@ -302,9 +303,19 @@ export function statusMessage(order: Order, link: string): string | null {
       if (isPickupOrder(order))
         return `🏪 ออเดอร์ ${id} ${order.shipments?.length ? "แพ็คเสร็จรอบสุดท้ายแล้วครับ ครบทุกรายการ" : "แพ็คเสร็จแล้วครับ"} มารับที่ร้านได้เลย แจ้งเลขออเดอร์ตอนมารับนะครับ\n${link}`;
       // 🚚 เคยแบ่งส่งมาก่อน → บอกว่านี่คือรอบสุดท้าย (เลขรอบก่อนแจ้งไปแล้วตอนส่งรอบนั้น)
-      return order.shipments?.length
-        ? `🚚 ออเดอร์ ${id} จัดส่งรอบสุดท้ายแล้วครับ ครบทุกรายการ${order.tracking ? `\nเลขพัสดุรอบนี้: ${order.tracking}` : ""}\n${link}`
-        : `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${order.tracking ? `\nเลขพัสดุ: ${order.tracking}` : ""}${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`;
+      {
+        // 📮 หลายกล่องในใบเดียว → ไล่เลขทุกกล่อง (กล่องที่ 1/2/…) ไม่งั้นลูกค้าได้เลขเดียวทั้งที่มี 2 พัสดุ
+        const boxes = trackingBoxes(order);
+        const trackLines =
+          boxes.length > 1
+            ? `\n${boxes.map((b) => `เลขพัสดุ กล่องที่ ${b.box}${b.note ? ` (${b.note})` : ""}: ${b.tracking}`).join("\n")}`
+            : order.tracking
+              ? `\n${order.shipments?.length ? "เลขพัสดุรอบนี้" : "เลขพัสดุ"}: ${order.tracking}`
+              : "";
+        return order.shipments?.length
+          ? `🚚 ออเดอร์ ${id} จัดส่งรอบสุดท้ายแล้วครับ ครบทุกรายการ${trackLines}\n${link}`
+          : `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${trackLines}${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`;
+      }
     case "เสร็จสิ้น":
       return `🎉 ปิดงานออเดอร์ ${id} เรียบร้อย ขอบคุณที่ใช้บริการครับ 🦆\n${link}`;
     case "ยกเลิก":
@@ -389,8 +400,12 @@ export function statusFlex(
   if (owe) rows.push(flexRow("ยอดค้าง", formatPrice(bal), "#E11D48", true));
   // ➗ หัก ณ ที่จ่าย: ยอดงวดกับเงินที่โอนจริงคนละตัว — โชว์คู่กันเหมือนหน้าออเดอร์ ไม่งั้นลูกค้าโอนเกิน
   if (oweNet) rows.push(flexRow(`↳ โอนจริงหลังหัก ณ ที่จ่าย${oweNet.rateTxt}`, formatPrice(oweNet.net), "#0F172A", true));
-  if (order.status === "จัดส่งแล้ว" && order.tracking && !isPickupOrder(order))
-    rows.push(flexRow(order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ", order.tracking, "#0F172A", true));
+  if (order.status === "จัดส่งแล้ว" && order.tracking && !isPickupOrder(order)) {
+    // 📮 ใบเดียวส่งหลายกล่อง (คนละที่อยู่/ของเยอะ) → ขึ้นทุกเลข ไม่ใช่เลขล่าสุดเลขเดียว
+    const boxes = trackingBoxes(order);
+    if (boxes.length > 1) boxes.forEach((b) => rows.push(flexRow(`เลขพัสดุ กล่องที่ ${b.box}${b.note ? ` (${b.note})` : ""}`, b.tracking, "#0F172A", true)));
+    else rows.push(flexRow(order.shipments?.length ? "เลขพัสดุ (รอบสุดท้าย)" : "เลขพัสดุ", order.tracking, "#0F172A", true));
+  }
   if (order.status === "จัดส่งแล้ว" && order.tracking && isShipMain(order)) rows.push(flexRow("รวมในกล่อง", shipRiderIdsOf(order).join(", ")));
   if (order.status === "จัดส่งแล้ว" && order.tracking && isShipRider(order)) rows.push(flexRow("ส่งรวมกับ", shipMainIdOf(order)));
 
@@ -514,6 +529,7 @@ export type NoticeTone =
   | "pickupRound" // แพ็คเสร็จบางส่วน (มารับเอง)
   | "shipTogether" // ส่งรวมกล่อง
   | "shipApart" // ยกเลิกส่งรวมกล่อง
+  | "shipBox" // เพิ่มเลขพัสดุกล่องที่ 2 ขึ้นไป (ใบเดียวส่งหลายกล่อง)
   | "stockOk" // เช็คสต๊อกเรียบร้อย
   | "stockIn" // ของเข้าร้านแล้ว
   | "claimOpen" // รับเรื่องเคลม
@@ -537,6 +553,7 @@ export const NOTICE_HEX: Record<NoticeTone, string> = {
   pickupRound: "#0891B2",
   shipTogether: "#075985",
   shipApart: "#1E40AF",
+  shipBox: "#1E3A8A",
   stockOk: "#6B21A8",
   stockIn: "#86198F",
   claimOpen: "#DB2777",

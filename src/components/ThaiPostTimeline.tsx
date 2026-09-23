@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 /**
  * สถานะพัสดุสไตล์เว็บไปรษณีย์ไทย — stepper 4 ขั้น (รับเข้าระบบ → ระหว่างขนส่ง →
  * ออกไปนำจ่าย → นำจ่ายสำเร็จ) + timeline จุดเขียวไล่เหตุการณ์ (ล่าสุดอยู่บน)
@@ -38,9 +40,17 @@ function fmtAt(at: string): string {
   return m ? `${m[1]} ${m[2]} น.` : at;
 }
 
-export default function ThaiPostTimeline({ events }: { events: ThpEventView[] }) {
+/**
+ * foldFrom = จำนวนเหตุการณ์ล่าสุดที่โชว์ไว้ก่อน ที่เหลือพับไว้ใต้ปุ่ม "ดูอีก N รายการ"
+ * (ใบที่มีหลายพัสดุ — แบ่งส่ง/หลายกล่อง — กางไทม์ไลน์เต็มทุกอันแล้วหน้ายาวจนหาเลขไม่เจอ · 23 ก.ย. 69)
+ * ไม่ใส่ = กางทั้งหมดเหมือนเดิม
+ */
+export default function ThaiPostTimeline({ events, foldFrom }: { events: ThpEventView[]; foldFrom?: number }) {
+  const [open, setOpen] = useState(false);
   if (!events.length) return null;
   const stage = stageOf(events);
+  const folded = !!foldFrom && !open && events.length > foldFrom;
+  const shown = folded ? [...events].reverse().slice(0, foldFrom) : [...events].reverse();
 
   return (
     <div>
@@ -77,7 +87,7 @@ export default function ThaiPostTimeline({ events }: { events: ThpEventView[] })
 
       {/* ── timeline เหตุการณ์ (ล่าสุดอยู่บน) ── */}
       <ul className="mt-3 space-y-0">
-        {[...events].reverse().map((e, i, arr) => (
+        {shown.map((e, i, arr) => (
           <li key={`${e.at}-${i}`} className="relative flex gap-2.5 pb-3 last:pb-0">
             {/* เส้นประเชื่อมจุด */}
             {i < arr.length - 1 && (
@@ -100,6 +110,16 @@ export default function ThaiPostTimeline({ events }: { events: ThpEventView[] })
           </li>
         ))}
       </ul>
+      {/* พับไว้ก่อน — คนอ่านอยากรู้ "ล่าสุดอยู่ไหน" ก่อน ประวัติเต็มกดดูได้ */}
+      {!!foldFrom && events.length > foldFrom && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="mt-1 min-h-[36px] w-full rounded-lg bg-slate-50 px-3 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
+        >
+          {open ? "▴ ย่อประวัติการเดินทาง" : `▾ ดูประวัติการเดินทางทั้งหมด (${events.length} รายการ)`}
+        </button>
+      )}
     </div>
   );
 }

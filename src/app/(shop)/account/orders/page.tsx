@@ -208,6 +208,13 @@ function OrderCard({ order: o, onReorder, canReorder }: { order: Order; onReorde
       {o.tracking && (
         <p className="acd-ocard-track">
           🚚 เลขพัสดุ <b>{o.tracking}</b>
+          {/* 📮 ใบที่ส่งหลายกล่อง (แยกส่งคนละที่อยู่/ของเยอะ) — เลขที่เหลืออยู่ในหน้าออเดอร์ */}
+          {(o.extraTrackings?.length ?? 0) > 0 &&
+            (o.extraTrackings ?? []).map((b, n) => (
+              <span key={`${b.tracking}-${n}`}>
+                {" · "}กล่องที่ {n + 2} <b>{b.tracking}</b>
+              </span>
+            ))}
         </p>
       )}
 

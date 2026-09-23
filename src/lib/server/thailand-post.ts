@@ -105,7 +105,9 @@ export async function trackThailandPost(barcode: string): Promise<ThpResult> {
       at: e.status_date ?? "",
     }));
     const result: ThpResult = { configured: true, events };
-    trackCache.set(code, { at: Date.now(), result });
+    // ⚠️ ผลว่าง (ปณ. ยังไม่มีข้อมูลเลขนี้ / ตอบไม่ครบตอนถามหลายเลขพร้อมกัน) ห้าม cache —
+    //    ไม่งั้นพัสดุกล่องที่ 2 ของใบเดียวกันขึ้น "ไม่มีสถานะ" ค้างไป 5 นาทีทั้งที่ของเดินทางอยู่ (22 ก.ย. 69)
+    if (events.length) trackCache.set(code, { at: Date.now(), result });
     return result;
   } catch {
     return { configured: true, error: "เชื่อมต่อระบบ ปณ. ไม่ได้" };

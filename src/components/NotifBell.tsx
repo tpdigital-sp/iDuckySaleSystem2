@@ -35,7 +35,7 @@ function buildNotifs(orders: Order[]): Notif[] {
     if (waiting > 0)
       out.push({ key: `proof:${o.id}`, ico: "🖼️", t1: `แบบพิมพ์พร้อมให้อนุมัติแล้ว (${waiting} รายการ)`, t2: `ออเดอร์ ${o.id}`, href: orderHref(o) });
     if (o.status === "จัดส่งแล้ว")
-      out.push({ key: `ship:${o.id}`, ico: "🚚", t1: `ออเดอร์ ${o.id} จัดส่งแล้ว`, t2: o.tracking ? `พัสดุ ${o.tracking}` : "กำลังเดินทางไปหาคุณ", href: orderHref(o) });
+      out.push({ key: `ship:${o.id}`, ico: "🚚", t1: `ออเดอร์ ${o.id} จัดส่งแล้ว`, t2: o.tracking ? `พัสดุ ${o.tracking}${(o.extraTrackings?.length ?? 0) > 0 ? ` + อีก ${o.extraTrackings!.length} กล่อง` : ""}` : "กำลังเดินทางไปหาคุณ", href: orderHref(o) });
   }
   return out.slice(0, 6);
 }

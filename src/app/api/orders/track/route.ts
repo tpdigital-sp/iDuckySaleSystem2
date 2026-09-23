@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { isThaiPostNumber, trackThailandPost } from "@/lib/server/thailand-post";
-import type { Order } from "@/lib/admin-data";
+import { ownsTrackingNumber, type Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -25,7 +25,11 @@ export async function GET(req: Request) {
     const { data: row } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
     const order = row?.data as Order | undefined;
     if (!order || (order.key ?? "") !== key) return NextResponse.json({ error: "ไม่มีสิทธิ์เรียกดู" }, { status: 401 });
-    number = (order.tracking ?? "").trim().toUpperCase();
+    /**
+     * ใบเดียวมีได้หลายเลข (รอบแบ่งส่ง + กล่องที่ 2, 3…) — ลูกค้าถามเลขไหนก็ตอบเลขนั้น ตราบใดที่เป็นเลขของใบนี้
+     * ไม่ส่งเลขมา/เลขไม่ใช่ของใบนี้ = ตอบเลขในใบเหมือนเดิม (กันใช้เราเป็น proxy ยิง API ปณ.)
+     */
+    number = ownsTrackingNumber(order, number) ? number : (order.tracking ?? "").trim().toUpperCase();
   } else {
     // ทางทีมงาน: ส่ง ?number= ตรง ๆ ได้ (ต้องล็อกอินหลังบ้าน)
     const actor = await currentActor();

@@ -86,6 +86,8 @@ import {
   orderHasTaxInvoice,
   orderNeedsTaxInvoiceInBox,
   orderAwaitingStock,
+  ownsTrackingNumber,
+  trackingBoxes,
   taxInvoiceDocOf,
   applyArrival,
   addOnParents,
@@ -1429,6 +1431,8 @@ export default function AdminOrderDetailPage() {
   // 🚚 แบ่งส่ง: รูปที่ติ๊ก "ส่งรอบนี้" ในโหมดแพ็ค (คีย์ "item:proof" → จำนวนชิ้นที่จะส่งรอบนี้) + โมดัลยิงเลขรอบนี้
   const [shipSel, setShipSel] = useState<Map<string, number>>(() => new Map());
   const [partialOpen, setPartialOpen] = useState(false);
+  /** 📮 ช่องเพิ่ม "เลขพัสดุอีกกล่อง" ของใบเดียวกัน (null = ปิดอยู่) — ใบที่ส่งหลายกล่อง/หลายที่อยู่ */
+  const [boxAdd, setBoxAdd] = useState<{ tracking: string; note: string } | null>(null);
   // 📋 โมดัลแอดมินระบุแผนแบ่งส่ง (รูปไหนส่งก่อน)
   const [planOpen, setPlanOpen] = useState(false);
   /** ✏️ รอบในแผนแบ่งส่งที่กำลังแก้ (null = เพิ่มรอบใหม่) — แก้ได้เฉพาะรอบที่ยังไม่ส่ง */
@@ -2508,14 +2512,81 @@ export default function AdminOrderDetailPage() {
    *  ด่านตรวจยังไม่ครบ → แอดมินยืนยันข้ามได้ (เซิร์ฟเวอร์ลง log "ข้ามด่านตรวจ") · ฝ่ายแพ็คโดนเซิร์ฟเวอร์ปฏิเสธ */
   function saveTracking() {
     if (!order) return;
-    saveTrackingValue((order.tracking ?? "").trim());
+    void saveTrackingValue((order.tracking ?? "").trim());
+  }
+
+  /**
+   * 📮 เพิ่มเลขพัสดุ "อีกกล่อง" ของใบเดียวกัน — ใบที่ส่งหลายกล่อง/หลายที่อยู่พร้อมกัน
+   * เลขกล่องหลักยังอยู่ช่องเดิม สถานะ/แจ้งไลน์ทำงานเหมือนเดิม (คนละเรื่องกับ "แบ่งส่ง" ที่ใบยังไม่ปิด)
+   */
+  function addTrackingBox(raw: string, note = "", base?: Order) {
+    const cur = base ?? order;
+    if (!cur) return;
+    const t = raw.trim();
+    if (!t || ownsTrackingNumber(cur, t)) return; // เลขซ้ำของใบนี้ = ยิงซ้ำ ไม่ต้องเพิ่มกล่อง
+    const box = (cur.extraTrackings?.length ?? 0) + 2;
+    const next = withLog(
+      {
+        ...cur,
+        extraTrackings: [...(cur.extraTrackings ?? []), { tracking: t, at: new Date().toISOString(), by: actor, ...(note.trim() ? { note: note.trim() } : {}) }],
+      },
+      actor,
+      `📮 เพิ่มเลขพัสดุกล่องที่ ${box}`,
+      `${t}${note.trim() ? ` · ${note.trim()}` : ""}`
+    );
+    trackingRef.current = (cur.tracking ?? "").trim();
+    setOrder(next);
+    setBoxAdd(null);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** 📮 ถอดกล่องที่ยิงผิดออก (เฉพาะแอดมิน — ฝ่ายแพ็คต่อท้ายได้อย่างเดียว เหมือนรอบแบ่งส่ง) */
+  async function removeTrackingBox(n: number) {
+    if (!order || !mayEdit) return;
+    const b = order.extraTrackings?.[n];
+    if (!b) return;
+    if (
+      !(await askConfirm({
+        icon: "📮",
+        title: `ลบเลขพัสดุกล่องที่ ${n + 2}?`,
+        detail: `เลข ${b.tracking} จะถูกถอดออกจากใบนี้ — ถ้าเคยแจ้งลูกค้าไปแล้ว ต้องบอกลูกค้าเองว่ายกเลิก`,
+        confirmLabel: "ลบกล่องนี้",
+        danger: true,
+      }))
+    )
+      return;
+    applyOrder(withLog({ ...order, extraTrackings: order.extraTrackings!.filter((_, i) => i !== n) }, actor, `📮 ลบเลขพัสดุกล่องที่ ${n + 2}`, b.tracking));
   }
 
   /** บันทึกเลขพัสดุจากค่าที่ส่งมาตรง ๆ (กล้องมือถือสแกนได้) — ไม่ต้องรอ state ช่องกรอกอัปเดตก่อน */
-  function saveTrackingValue(raw: string) {
+  async function saveTrackingValue(raw: string) {
     if (!order) return;
     const t = raw.trim();
     if (!t || t === trackingRef.current) return; // ไม่เปลี่ยน → ไม่ต้องบันทึกซ้ำ
+    /**
+     * 📮 ใบนี้มีเลขพัสดุอยู่แล้ว แล้วมีเลขใหม่เข้ามา — ส่วนใหญ่คือ "กล่องที่ 2" ไม่ใช่การพิมพ์แก้
+     * (22 ก.ย. 69 · OD-260917-1691 ลูกค้าขอแยกส่ง 2 ที่อยู่ ยิง 2 เลขในช่องเดียว เลขแรกหายไปอยู่แต่ในประวัติ)
+     * ให้เลือกเอง: เพิ่มเป็นกล่องใหม่ (แนะนำ) หรือแทนที่เพราะพิมพ์ผิด
+     */
+    const had = trackingRef.current.trim();
+    if (had && !ownsTrackingNumber({ ...order, tracking: had }, t)) {
+      const box = (order.extraTrackings?.length ?? 0) + 2;
+      const ans = await askConfirm({
+        icon: "📮",
+        title: `ใบนี้มีเลขพัสดุอยู่แล้ว — ${had}`,
+        detail: `เลขที่เพิ่งยิง: ${t}\n\n• ส่งหลายกล่อง/แยกส่งคนละที่อยู่ → เพิ่มเป็นกล่องที่ ${box} (เลขเดิมยังอยู่ ลูกค้าเห็นครบทุกเลข)\n• เมื่อกี้พิมพ์/ยิงผิด → แทนที่เลขเดิม (เลขเดิมหายจากใบ เหลือแต่ในประวัติ)`,
+        altLabel: `＋ เพิ่มเป็นกล่องที่ ${box}`,
+        confirmLabel: "แทนที่เลขเดิม (ยิงผิด)",
+        danger: true,
+      });
+      if (ans !== true) {
+        // ช่องกรอกโชว์เลขใหม่อยู่ — คืนเลขเดิมให้ช่องเสมอ (เพิ่มกล่องใหม่ก็ไม่ได้เปลี่ยนเลขกล่องหลัก)
+        const back = { ...order, tracking: had };
+        setOrder(back);
+        if (ans === "alt") addTrackingBox(t, "", back);
+        return;
+      }
+    }
     // ให้ช่องกรอก/โมดัลข้ามด่านเห็นเลขเดียวกับที่สแกนมา
     if (t !== (order.tracking ?? "").trim()) setOrder((cur) => (cur ? { ...cur, tracking: t } : cur));
 
@@ -2720,6 +2791,8 @@ export default function AdminOrderDetailPage() {
    * ไม่มีแผน = แอดมิน (orders.edit) เลือกเองในโหมดแพ็คได้ · ฝ่ายแพ็คไม่มีปุ่มให้เลือก
    */
   const planNext = order ? nextPlannedRound(order) : null;
+  /** 📮 ใบนี้มีพัสดุกี่กล่อง (กล่องที่ 1 = ช่องเลขพัสดุ) — ใช้ตัดสินว่าจะพับไทม์ไลน์/ขึ้นหัว "กล่องที่ N" ไหม */
+  const boxCount = order ? trackingBoxes(order).length : 0;
   const adHocSplit = !!order && mayEdit && !(order.shipPlan?.length ?? 0);
   const activeShipSel: Map<string, number> = planNext ? planNext.qty : adHocSplit ? shipSel : new Map();
 
@@ -8724,23 +8797,104 @@ export default function AdminOrderDetailPage() {
                 )
               ) : (
                 <>
-                  <input
-                    value={order.tracking ?? ""}
-                    onChange={(e) => setOrder((cur) => (cur ? { ...cur, tracking: e.target.value } : cur))}
-                    onBlur={saveTracking}
-                    placeholder={order.shipments?.length ? "เลขพัสดุรอบสุดท้าย — ยิง QR หรือพิมพ์" : "ยิง QR หรือพิมพ์เลขพัสดุ"}
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[13px] text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
-                  />
-                  <p className={`mt-1.5 text-[11px] ${faint}`}>
-                    กรอกแล้วสถานะจะเปลี่ยนเป็น “จัดส่งแล้ว” · ลูกค้าจะเห็นเลขนี้ในหน้าเช็คออเดอร์
-                  </p>
-                  <Link href="/admin/orders/scan" className="mt-1.5 inline-block text-[11px] font-bold text-amber-600 hover:underline">
-                    📮 ใช้เครื่องยิง QR แทน →
-                  </Link>
+                  {/*
+                    📮 รายการ "กล่อง" ของใบนี้ เรียงกล่องที่ 1 → N เสมอ (ช่องยิงเลข = กล่องที่ 1)
+                    ออกแบบใหม่ 23 ก.ย. 69: เดิมกล่องที่ 2 ลอยอยู่เหนือกล่องที่ 1 · สถานะ ปณ. ของกล่องแรกหลุดไปอยู่นอกแผง
+                    · ไทม์ไลน์กางเต็มทุกกล่องจนแผงยาวเป็นจอ → ใบหลายกล่องพับเหลือ "ล่าสุดอยู่ไหน" กดดูเต็มได้
+                  */}
+                  {boxCount > 1 && (
+                    <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-extrabold text-amber-800">
+                      ใบนี้ส่ง {boxCount} กล่อง <span className="font-bold text-amber-600">· เรียงตามลำดับที่ยิงเลข</span>
+                    </p>
+                  )}
+                  <div className={boxCount > 1 ? "rounded-xl bg-white px-2.5 py-2 ring-1 ring-amber-200" : ""}>
+                    {boxCount > 1 && <p className="mb-1 text-[11px] font-bold text-amber-800">📮 กล่องที่ 1</p>}
+                    <input
+                      value={order.tracking ?? ""}
+                      onChange={(e) => setOrder((cur) => (cur ? { ...cur, tracking: e.target.value } : cur))}
+                      onBlur={saveTracking}
+                      placeholder={order.shipments?.length ? "เลขพัสดุรอบสุดท้าย — ยิง QR หรือพิมพ์" : "ยิง QR หรือพิมพ์เลขพัสดุ"}
+                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[13px] text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
+                    />
+                    {(order.tracking ?? "").trim() ? (
+                      <ThaiPostStatus number={order.tracking!.trim()} foldFrom={boxCount > 1 ? 1 : undefined} />
+                    ) : (
+                      <>
+                        <p className={`mt-1.5 text-[11px] ${faint}`}>
+                          กรอกแล้วสถานะจะเปลี่ยนเป็น “จัดส่งแล้ว” · ลูกค้าจะเห็นเลขนี้ในหน้าเช็คออเดอร์
+                        </p>
+                        <Link href="/admin/orders/scan" className="mt-1.5 inline-block text-[11px] font-bold text-amber-600 hover:underline">
+                          📮 ใช้เครื่องยิง QR แทน →
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                  {(order.tracking ?? "").trim() && (
+                    <div className="mt-1.5 space-y-1.5">
+                      {(order.extraTrackings ?? []).map((b, n) => (
+                        <div key={`${b.tracking}-${n}`} className="rounded-xl bg-white px-2.5 py-2 ring-1 ring-amber-200">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <p className="text-[11px] font-bold text-amber-800">📮 กล่องที่ {n + 2}</p>
+                            <p className="flex min-w-0 items-center gap-1.5 font-mono text-[13px] font-bold text-slate-800">
+                              {b.tracking} <CopyChip label="คัดลอก" text={() => b.tracking} />
+                            </p>
+                            {mayEdit && (
+                              <button type="button" onClick={() => void removeTrackingBox(n)} className="ml-auto text-[11px] font-bold text-rose-500 hover:underline">
+                                ลบกล่องนี้
+                              </button>
+                            )}
+                          </div>
+                          <p className={`mt-0.5 text-[11px] ${faint}`}>
+                            {b.by} · {shortTime(b.at)}
+                            {b.note ? ` · 📝 ${b.note}` : ""}
+                          </p>
+                          <ThaiPostStatus number={b.tracking.trim()} delayMs={(n + 1) * 1200} foldFrom={1} />
+                        </div>
+                      ))}
+                      {boxAdd ? (
+                        <div className="rounded-xl bg-white px-2.5 py-2 ring-1 ring-amber-300">
+                          <p className="text-[11px] font-bold text-amber-800">📮 เพิ่มกล่องที่ {(order.extraTrackings?.length ?? 0) + 2}</p>
+                          <input
+                            autoFocus
+                            value={boxAdd.tracking}
+                            onChange={(e) => setBoxAdd({ ...boxAdd, tracking: e.target.value })}
+                            placeholder="ยิง QR หรือพิมพ์เลขพัสดุกล่องนี้"
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[13px] text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
+                          />
+                          <input
+                            value={boxAdd.note}
+                            onChange={(e) => setBoxAdd({ ...boxAdd, note: e.target.value })}
+                            placeholder="กล่องนี้คืออะไร (ไม่ใส่ก็ได้) เช่น ส่งไปที่อยู่ที่ 2"
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[12px] text-slate-800 placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
+                          />
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={!boxAdd.tracking.trim()}
+                              onClick={() => addTrackingBox(boxAdd.tracking, boxAdd.note)}
+                              className="min-h-[38px] rounded-lg bg-amber-400 px-3 text-[12px] font-extrabold text-amber-950 hover:bg-amber-300 disabled:opacity-40"
+                            >
+                              บันทึกกล่องนี้ + แจ้งลูกค้า
+                            </button>
+                            <button type="button" onClick={() => setBoxAdd(null)} className="min-h-[38px] px-2 text-[11px] font-bold text-slate-500 hover:underline">
+                              ยกเลิก
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setBoxAdd({ tracking: "", note: "" })}
+                          className="min-h-[40px] w-full rounded-xl bg-amber-100 px-3 text-[12px] font-extrabold text-amber-900 ring-1 ring-amber-300 hover:bg-amber-200"
+                        >
+                          ＋ เพิ่มเลขพัสดุอีกกล่อง{boxCount > 1 ? ` (กล่องที่ ${boxCount + 1})` : " (ใบนี้ส่งหลายกล่อง)"}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
-            {(order.tracking ?? "").trim() && <ThaiPostStatus number={order.tracking!.trim()} />}
           </div>
 
           {/* 📸 ภาพที่ฝ่ายแพ็คถ่ายก่อนปิดกล่อง — โชว์ในหน้าตรวจสอบด้วย (จัดการรูปทำในโหมดแพ็ค) */}
@@ -10018,6 +10172,13 @@ function PackView({
                 </button>
               </div>
             )}
+            {/* 📮 ใบเดียวส่งหลายกล่อง — กล่องที่ยิงไปแล้วต้องเห็นตรงนี้ ไม่งั้นคนแพ็คนึกว่าเลขหาย แล้วยิงทับ */}
+            {(order.extraTrackings ?? []).map((b, n) => (
+              <p key={`${b.tracking}-${n}`} className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900 ring-1 ring-amber-200">
+                📮 กล่องที่ {n + 2} <span className="font-mono">{b.tracking}</span>
+                {b.note ? <span className="ml-1 text-[11px] font-bold">· {b.note}</span> : null}
+              </p>
+            ))}
             <div className="flex items-center gap-2 rounded-xl bg-green-600 px-2 py-2 text-white">
               <button
                 type="button"
@@ -10098,7 +10259,8 @@ function PackView({
 
 
 /** สถานะพัสดุจากไปรษณีย์ไทย — มี token = timeline สด · ไม่มี = ลิงก์ไปเช็คเว็บ ปณ. */
-function ThaiPostStatus({ number }: { number: string }) {
+/** delayMs = หน่วงก่อนถาม ปณ. — ใบที่มีหลายพัสดุ (แบ่งส่ง/หลายกล่อง) ยิงพร้อมกันแล้ว ปณ. ตอบไม่ครบบางเลข */
+function ThaiPostStatus({ number, delayMs = 0, foldFrom }: { number: string; delayMs?: number; foldFrom?: number }) {
   const [state, setState] = useState<{
     loading: boolean;
     configured?: boolean;
@@ -10111,14 +10273,17 @@ function ThaiPostStatus({ number }: { number: string }) {
   useEffect(() => {
     let live = true;
     setState({ loading: true });
-    fetch(`/api/orders/track?number=${encodeURIComponent(number)}`)
-      .then((r) => r.json())
-      .then((j) => live && setState({ loading: false, ...j }))
-      .catch(() => live && setState({ loading: false, error: "เชื่อมต่อไม่ได้" }));
+    const t = setTimeout(() => {
+      fetch(`/api/orders/track?number=${encodeURIComponent(number)}`)
+        .then((r) => r.json())
+        .then((j) => live && setState({ loading: false, ...j }))
+        .catch(() => live && setState({ loading: false, error: "เชื่อมต่อไม่ได้" }));
+    }, delayMs);
     return () => {
       live = false;
+      clearTimeout(t);
     };
-  }, [number]);
+  }, [number, delayMs]);
 
   if (!/^[A-Z]{2}\d{9}TH$/i.test(number)) return null; // ไม่ใช่เลข ปณ. (เช่น Flash/J&T) — ไม่โชว์
 
@@ -10143,7 +10308,7 @@ function ThaiPostStatus({ number }: { number: string }) {
         <p className="mt-1 text-xs text-slate-500">ปณ. ยังไม่มีข้อมูลเลขนี้ (พัสดุใหม่จะขึ้นหลังไปรษณีย์รับเข้าระบบ)</p>
       ) : (
         <div className="mt-2.5">
-          <ThaiPostTimeline events={state.events!} />
+          <ThaiPostTimeline events={state.events!} foldFrom={foldFrom} />
         </div>
       )}
     </div>
