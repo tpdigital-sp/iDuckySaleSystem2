@@ -166,7 +166,7 @@ import { SEL_HIDE_PRODUCTION, SelDetails, SelText } from "@/components/admin/Sel
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
-import { addressProblem, contactProblems, phoneProblem } from "@/lib/contact-validate";
+import { addressProblem, orderContactProblems, phoneProblem } from "@/lib/contact-validate";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { SHIP_WINDOW_RULE, earliestShipDate, orderDateYmd, shipWindowForUseBy, shipWindowWarnings, shortThaiDay } from "@/lib/ship-date";
 import { rushManualStamp } from "@/lib/rush-auto";
@@ -4376,16 +4376,16 @@ export default function AdminOrderDetailPage() {
           {/* พิมพ์เอกสาร: รวมเป็นปุ่มเดียว เมนูค่อยเลือกว่าใบไหน */}
           <div className="relative">
             <button type="button" onClick={() => setPrintMenu((v) => !v)} className={HBTN} aria-expanded={printMenu}>
-              🖨️ พิมพ์เอกสาร {contactProblems(order).length ? "🔒" : "▾"}
+              🖨️ พิมพ์เอกสาร {orderContactProblems(order).length ? "🔒" : "▾"}
             </button>
             {printMenu && (
               <>
                 <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="ปิดเมนู" onClick={() => setPrintMenu(false)} />
                 <div className="absolute left-0 top-full z-40 mt-1 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
                   {/* 📞📍 เบอร์/ที่อยู่ไม่ผ่านด่าน → ไม่มีเอกสารให้เลือก (หน้า print กันซ้ำอีกชั้น) — เจ้าของร้านสั่ง 18 ก.ย. 69 */}
-                  {contactProblems(order).length > 0 ? (
+                  {orderContactProblems(order).length > 0 ? (
                     <p className="px-3 py-2.5 text-xs font-semibold leading-snug text-rose-700">
-                      🔒 พิมพ์เอกสารไม่ได้ — {contactProblems(order).join(" · ")}
+                      🔒 พิมพ์เอกสารไม่ได้ — {orderContactProblems(order).join(" · ")}
                       <br />
                       <span className="font-normal text-slate-500">แก้ในกล่อง 👤 ลูกค้า / จัดส่ง ก่อน</span>
                     </p>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { isSampleFolderName, orderAwaitingStock, proofBlockerLabel, proofBlockers, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchGraphicCardsFromTP } from "@/lib/server/tp-report";
 import { groupSampleFiles, matchFoldersToOrders, sampleRoundFromFiles, type FolderMatch, type FolderMatchResult } from "@/lib/production-match";
 import { updateOrder } from "@/lib/server/order-write";
@@ -114,18 +115,28 @@ export async function POST(req: Request) {
   };
   /** ⛔ รายการที่ยังขวางการผลิตของใบนี้ — โฟลเดอร์ตัวอย่าง "(…ตย)" ไม่ติด */
   const holdOf = (o: Order | undefined, folder: string) => (!o || isSampleFolderName(folder) ? [] : proofBlockers(o).map(proofBlockerLabel));
+  /**
+   * 📞📍 เบอร์/ที่อยู่ไม่ครบ = ใบนี้พิมพ์เอกสารไม่ได้สักใบ (กติกา 18 ก.ย. 69) → ห้ามดันเข้าไลน์ผลิตตั้งแต่แรก
+   * เดิมด่านนี้อยู่ที่ "ตอนกดพิมพ์" อย่างเดียว งานจึงเข้าผลิตไปแล้วค่อยมาตันตอนปริ้น
+   * (เจ้าของร้านแจ้ง 23 ก.ย. 69 · วัดจริงตอนนั้น 14 ใบโยนโฟลเดอร์ทั้งที่เบอร์/ที่อยู่ไม่ครบ)
+   * ไม่ยกเว้นโฟลเดอร์ตัวอย่าง — รอบตัวอย่างก็ต้องมีใบปะหน้าส่งของเหมือนกัน
+   */
+  const contactOf = (o: Order | undefined) => (o ? orderContactProblems(o) : []);
   for (const m of result.matched) {
     const folders = [m.folder, ...(m.alsoFolders ?? [])];
     // มีหลายโฟลเดอร์ = ยังไม่รู้ว่าคนจะเลือกอันไหน → เตือนไว้ก่อนถ้ามีอันที่ไม่ใช่โฟลเดอร์ตัวอย่าง (ตัดสินจริงตอน apply ตามอันที่เลือก)
-    const hold = holdOf(all.find((x) => x.id === m.orderId), folders.find((f) => !isSampleFolderName(f)) ?? m.folder);
+    const o = all.find((x) => x.id === m.orderId);
+    const hold = holdOf(o, folders.find((f) => !isSampleFolderName(f)) ?? m.folder);
     if (hold.length) m.proofHold = hold;
+    const bad = contactOf(o);
+    if (bad.length) m.contactHold = bad;
   }
   result.matched.forEach(decorate);
   already.forEach(decorate);
 
   let applied = 0;
   let sampleApplied = 0;
-  const heldBack: { orderId: string; customer: string; waiting: string[] }[] = [];
+  const heldBack: { orderId: string; customer: string; waiting: string[]; contact?: boolean }[] = [];
   if (body.apply) {
     const allowHold = new Set((body.allowHold ?? []).filter((x): x is string => typeof x === "string"));
     const mayForce = can(gate.actor, "orders.edit", await loadRolePerms());
@@ -144,6 +155,12 @@ export async function POST(req: Request) {
     for (const t of todo) {
       const o = fresh.find((x) => x.id === t.orderId);
       if (!o || o.productionSent) continue;
+      // 📞📍 เบอร์/ที่อยู่ไม่ครบ — กันตายตัว ติ๊กกลับเข้าไม่ได้ (ต่างจากแบบไม่ครบ) เพราะใบนี้ปริ้นอะไรไม่ได้เลย
+      const badContact = contactOf(o);
+      if (badContact.length) {
+        heldBack.push({ orderId: o.id, customer: o.customer ?? "", waiting: badContact, contact: true });
+        continue;
+      }
       const hold = holdOf(o, t.folder);
       if (hold.length && !(mayForce && allowHold.has(o.id))) {
         heldBack.push({ orderId: o.id, customer: o.customer ?? "", waiting: hold });

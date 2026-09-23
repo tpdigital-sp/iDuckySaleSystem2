@@ -32,7 +32,7 @@ interface MatchResp {
   /** 🎁 ใบที่ตั้งแผนรอบตัวอย่างจากชื่อไฟล์ให้แล้ว */
   sampleApplied?: number;
   /** ⛔ ใบที่ขอส่งเข้าผลิตแต่ถูกกันไว้เพราะแบบงานยังไม่ครบ (ไม่มีสิทธิ์ปลดล็อก) */
-  heldBack?: { orderId: string; customer: string; waiting: string[] }[];
+  heldBack?: { orderId: string; customer: string; waiting: string[]; contact?: boolean }[];
 }
 
 const MAX_DEPTH = 4;
@@ -112,7 +112,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
       else {
         setRes(j);
         // ⛔ ใบที่แบบงานยังไม่ครบ = ติ๊กออกให้ก่อน (แอ๋มโยนทั้งโฟลเดอร์โดยไม่รู้ว่าลูกค้าสั่งเพิ่ม — OD-260916-4693)
-        setSkip(Object.fromEntries((j.matched ?? []).filter((m) => m.proofHold?.length).map((m) => [m.orderId, true])));
+        setSkip(Object.fromEntries((j.matched ?? []).filter((m) => m.proofHold?.length || m.contactHold?.length).map((m) => [m.orderId, true])));
       }
     } catch {
       setErr("ติดต่อเซิร์ฟเวอร์ไม่ได้ — ลองใหม่อีกครั้ง");
@@ -291,7 +291,9 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
           )}
           {(res.heldBack?.length ?? 0) > 0 && (
             <p className="font-bold" style={{ color: "var(--dk-coral-deep)" }}>
-              ⛔ ไม่ได้ส่งเข้าผลิต {res.heldBack!.length} ใบ เพราะแบบงานยังไม่ครบ: {res.heldBack!.map((h) => `${h.orderId} (${h.waiting.join(" · ")})`).join(" , ")}
+              ⛔ ไม่ได้ส่งเข้าผลิต {res.heldBack!.length} ใบ —{" "}
+              {res.heldBack!.some((h) => h.contact) ? "เบอร์โทร/ที่อยู่ไม่ครบ (พิมพ์เอกสารไม่ได้) / แบบงานยังไม่ครบ" : "แบบงานยังไม่ครบ"}:{" "}
+              {res.heldBack!.map((h) => `${h.orderId} (${h.waiting.join(" · ")})`).join(" , ")}
             </p>
           )}
           {(res.sampleApplied ?? 0) > 0 && (
@@ -335,7 +337,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                           type="checkbox"
                           className="h-5 w-5 shrink-0 accent-slate-700"
                           checked={on}
-                          disabled={!!m.proofHold?.length && !canForceHold}
+                          disabled={!!m.contactHold?.length || (!!m.proofHold?.length && !canForceHold)}
                           onChange={(e) => setSkip((v) => ({ ...v, [m.orderId]: !e.target.checked }))}
                         />
                         <span className="dkb-num font-bold" style={{ textDecoration: on ? "none" : "line-through" }}>
@@ -347,6 +349,26 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
                         </span>
                         {!on && <b style={{ color: "var(--dk-faint)" }}>— ไม่ส่งผลิตรอบนี้</b>}
                       </label>
+                      {/* 📞📍 เบอร์/ที่อยู่ไม่ครบ — ใบนี้พิมพ์เอกสารไม่ได้เลย จึงไม่ให้เข้าไลน์ผลิต ติ๊กกลับเข้าไม่ได้ */}
+                      {(m.contactHold?.length ?? 0) > 0 && (
+                        <div className="ml-7 mb-1.5 rounded-lg px-2 py-1.5" style={{ background: "var(--dk-coral-wash)", border: "1px solid var(--dk-coral)" }}>
+                          <p className="text-[12.5px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>
+                            🔒 เบอร์โทร/ที่อยู่ไม่ครบ — ใบนี้พิมพ์เอกสารไม่ได้ จึงยังไม่ส่งเข้าผลิต
+                          </p>
+                          <ul className="text-[12.5px]" style={{ color: "var(--dk-coral-ink)" }}>
+                            {m.contactHold!.map((w) => (
+                              <li key={w}>• {w}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-0.5 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                            แก้ในหน้าออเดอร์{" "}
+                            <a href={`/admin/orders/${encodeURIComponent(m.orderId)}`} target="_blank" rel="noreferrer" className="underline">
+                              {m.orderId}
+                            </a>{" "}
+                            (กล่อง 👤 ลูกค้า / จัดส่ง) แล้วโยนโฟลเดอร์ใหม่อีกรอบ
+                          </p>
+                        </div>
+                      )}
                       {/* ⛔ แบบงานยังไม่ครบ — ติ๊กออกให้ก่อน บอกว่าค้างรายการไหน (ลูกค้าสั่งเพิ่มทีหลัง/รอลูกค้าตรวจ) */}
                       {(m.proofHold?.length ?? 0) > 0 && (
                         <div className="ml-7 mb-1.5 rounded-lg px-2 py-1.5" style={{ background: "var(--dk-coral-wash)", border: "1px solid var(--dk-coral)" }}>

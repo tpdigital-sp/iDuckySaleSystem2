@@ -51,3 +51,21 @@ export function addressProblem(raw: string | undefined | null): string | null {
 export function contactProblems(v: { phone?: string | null; address?: string | null }): string[] {
   return [phoneProblem(v.phone), addressProblem(v.address)].filter((x): x is string => !!x);
 }
+
+/**
+ * 🏪 ด่านเดียวกันแต่มองทั้งใบ — ใบ "มารับเอง" ไม่ต้องมีที่อยู่จัดส่ง (ลูกค้ามารับที่ร้าน ไม่มีใบปะหน้า)
+ * แต่เบอร์โทรยังบังคับ เพราะต้องโทรตามตอนของเสร็จ
+ * ⚠️ ทุกจอที่ตัดสินว่า "ใบนี้พิมพ์เอกสาร/ส่งเข้าผลิตได้ไหม" ต้องเรียกตัวนี้ ไม่ใช่ contactProblems ตรง ๆ
+ * (23 ก.ย. 69 — ก่อนหน้านี้ใบมารับเอง 7 ใบติดด่านที่อยู่ทั้งที่ไม่ต้องส่งไปรษณีย์)
+ */
+export function orderContactProblems(o: {
+  phone?: string | null;
+  address?: string | null;
+  shipping?: string;
+  shippingLabel?: string | null;
+}): string[] {
+  const pickup = /รับเอง|มารับ|pick\s*-?up/i;
+  const isPickup = pickup.test(o.shippingLabel ?? "") || pickup.test(o.shipping ?? "");
+  const bad = [phoneProblem(o.phone), isPickup ? null : addressProblem(o.address)];
+  return bad.filter((x): x is string => !!x);
+}

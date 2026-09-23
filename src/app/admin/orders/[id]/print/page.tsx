@@ -25,7 +25,7 @@ import type { Product } from "@/lib/products";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
 import { senderOf } from "@/lib/order-sender";
-import { contactProblems } from "@/lib/contact-validate";
+import { orderContactProblems } from "@/lib/contact-validate";
 import { resolveShipLabel } from "@/lib/ship-label";
 import { isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { useActor, useCan } from "@/lib/perm-context";
@@ -216,7 +216,7 @@ export default function PrintOrderPage() {
   // 📞📍 เบอร์โทร/ที่อยู่ไม่ผ่านด่าน (กติกาเดียวกับหน้าร้าน + หน้าออเดอร์) → ใบนั้นไม่ออกเอกสารใด ๆ ทั้งใบงาน/ใบปะหน้า/ใบเสร็จ
   //    เจ้าของร้านสั่ง 18 ก.ย. 69: "ถ้าไม่มีที่อยู่หรือเบอร์ จะไม่สามารถพิมพ์เอกสารได้" (ใบ bo•ᴥ•คุณโบ เบอร์ "0" ที่อยู่ว่าง)
   //    ปริ้นรวม: ใบที่ติดจะโชว์กล่องแดงบนจอแทนเอกสาร ไม่ติดไปในกระดาษ · ใบอื่นพิมพ์ต่อได้ตามปกติ
-  const contactBadOf = (o: Order) => contactProblems(o);
+  const contactBadOf = (o: Order) => orderContactProblems(o);
   const contactBadCount = orders.filter((o) => contactBadOf(o).length > 0).length;
   // ⛔ แบบไม่ครบ — กันเฉพาะตอนพิมพ์ "ใบงาน" (ใบเสร็จ/ใบแปะกล่องอย่างเดียวไม่ติด) · ใบปะหน้ารอบถัดไปของใบแบ่งส่ง (?doc=label) ไม่ติด
   const blockersOf = (o: Order) => (docs.work && !labelOnly ? printBlockers(o) : []);

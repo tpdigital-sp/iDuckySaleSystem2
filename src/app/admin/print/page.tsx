@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
 import { daysToUseBy, isPartiallyShipped, labelShipTo, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
@@ -229,6 +230,16 @@ function PrintQueueInner() {
   /** ติ๊ก/ยกเลิก "ส่งเข้าผลิตแล้ว" จากแถว (ใบที่ไม่มีโฟลเดอร์ให้โยน) — บันทึกผ่าน PATCH (ฝ่ายแพ็ค/กราฟฟิก/แอดมินผ่าน merge ได้ทุกทาง) */
   const markSent = useCallback(
     async (o: Order, sent: boolean) => {
+      // 📞📍 เบอร์/ที่อยู่ไม่ครบ — ส่งเข้าผลิตได้ แต่ต้องรู้ตัวว่าใบนี้ปริ้นอะไรไม่ได้จนกว่าจะแก้ (ด่านเดียวกับตอนพิมพ์)
+      if (sent && orderContactProblems(o).length) {
+        const ok = await askConfirm({
+          icon: "🔒",
+          title: `${o.id} ${orderContactProblems(o).join(" · ")} — ส่งเข้าผลิตเลยไหม?`,
+          detail: "ใบนี้พิมพ์เอกสารไม่ได้สักใบ (ใบงาน/ใบปะหน้า/ใบเสร็จ) จนกว่าจะกรอกให้ครบในหน้าออเดอร์\nถ้าแก้ก่อนแล้วค่อยติ๊ก จะไม่มีใบค้างในกองรอปริ้น",
+          confirmLabel: "ส่งเข้าผลิตทั้งที่ยังไม่ครบ",
+        });
+        if (!ok) return;
+      }
       // 🛒 ใบยังรอของเข้า — ถามย้ำก่อนส่งเข้าผลิต (เซิร์ฟเวอร์ลง log ให้อีกชั้นถ้ายืนยันส่ง)
       if (sent && orderAwaitingStock(o)) {
         const ok = await askConfirm({
@@ -491,6 +502,8 @@ function PrintRow({
   const paid = orderFullyPaid(o);
   /** ⛔ รายการที่ยังขาดแบบ/ลูกค้ายังไม่อนุมัติ — ใบงานปริ้นไม่ได้ (ด่านเดียวกับหน้าปริ้น + printed route) */
   const held = printBlockers(o).map(proofBlockerLabel);
+  /** 📞📍 เบอร์/ที่อยู่ไม่ผ่านด่าน = กดปริ้นไปก็ไม่มีกระดาษออก — ต้องเห็นตั้งแต่ในคิว ไม่ใช่ไปตันหน้าปริ้น (23 ก.ย. 69) */
+  const contactBad = orderContactProblems(o);
   const sent = isSent(o);
   const stage = !sent && printed === 0 ? graphicStage(card, cardsOk) : null;
   const nextRound = nextRoundOf(o); // 🚚 แบ่งส่งแล้วบางรอบ รอใบปะหน้ากล่องรอบถัดไป
@@ -554,6 +567,11 @@ function PrintRow({
               </Tag>
             )}
             {!paid && <Tag tone="coral" title="ยังเก็บเงินไม่ครบ — ใบงานจะไม่มีใบปะหน้า">ไม่มีใบปะหน้า</Tag>}
+            {contactBad.length > 0 && (
+              <Tag tone="coral" title={`ใบนี้พิมพ์เอกสารไม่ได้ทั้งใบงาน/ใบปะหน้า/ใบเสร็จ:\n${contactBad.join("\n")}\n\nแก้ในหน้าออเดอร์ กล่อง 👤 ลูกค้า / จัดส่ง ก่อน`}>
+                🔒 {contactBad.join(" · ")} — ปริ้นไม่ได้
+              </Tag>
+            )}
             {held.length > 0 && (
               <Tag tone="coral" title={`ใบงานยังปริ้นไม่ได้ — แบบงานยังไม่ครบ:\n${held.join("\n")}\n\nงานเร่ง: แอดมิน (สิทธิ์แก้ออเดอร์) ปลดล็อก “ปริ้นเฉพาะรายการที่พร้อม” ได้ในหน้าปริ้น`}>
                 ⛔ แบบไม่ครบ {held.length} รายการ — ปริ้นไม่ได้
