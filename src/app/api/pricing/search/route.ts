@@ -8,8 +8,11 @@ import {
   searchMinQty,
   searchPrice,
   searchSpec,
+  understand,
+  type Pick,
   type PriceAnswer,
   type ProductRef,
+  type Understanding,
 } from "@/lib/server/price-answer";
 
 export const runtime = "nodejs";
@@ -144,25 +147,51 @@ async function answer(req: Request, body: Record<string, unknown>) {
   if (tooMany(clientIp(req))) return json({ error: "ถี่เกินไป" }, { status: 429 });
 
   const qtyRaw = Number(body.qty ?? body.quantity ?? 0);
-  const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : parseQty(query);
-  const mode = pickMode(query, body.mode);
+  let qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : parseQty(query);
 
-  let ans: PriceAnswer;
-  if (mode === "price" && !productQueryAllowed(query, qty)) {
-    ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
-  } else if (mode === "minqty") {
-    ans = await searchMinQty(query);
-  } else if (mode === "spec") {
-    ans = await searchSpec(query);
-  } else {
-    ans = await searchPrice(query, { qty, allowFallback: body.noFallback !== true });
-  }
-  // ขั้นต่ำ/สเปกตอบไม่ได้ → ลองราคาต่อ (คำถามอย่าง "สั่ง 1 ชิ้นได้ไหม ราคาเท่าไหร่" ไม่ควรตอบว่างเปล่า)
-  if (mode !== "price" && ans.kind === "skip") {
-    ans = await searchPrice(query, { qty, allowFallback: body.noFallback !== true });
+  // 🧠 ข้อความก่อนหน้าของลูกค้า (เก่า→ใหม่) — LINE/AdminBuddy ส่งมาให้ชั้นเข้าใจคำถามใช้แก้ "เอาแบบกันฝน" ให้เป็นสินค้าจริง
+  const context = (Array.isArray(body.context) ? body.context : typeof body.context === "string" ? [body.context] : [])
+    .map((c) => String(c ?? "").trim())
+    .filter(Boolean)
+    .slice(-5);
+  const u: Understanding | null = body.mode ? null : await understand(query, context);
+
+  let mode: "price" | "spec" | "minqty" = pickMode(query, body.mode);
+  let searchQuery = query;
+  let pick: Pick | undefined;
+  let ans: PriceAnswer | null = null;
+
+  if (u) {
+    // เชื่อชั้นเข้าใจคำถามก่อน regex — คำถามที่ไม่ใช่เรื่องสินค้า/ราคา ให้ agent ที่มีความจำตอบ
+    if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent) || (!u.ids.length && u.intent !== "price")) {
+      ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
+    } else {
+      mode = u.intent === "spec" ? "spec" : u.intent === "minqty" ? "minqty" : "price";
+      if (u.ids.length) pick = { ids: u.ids, broad: u.broad };
+      if (!qty && u.qty) qty = u.qty;
+      // ใช้คำถามฉบับสมบูรณ์ (มีชื่อสินค้าจากบริบท) ไว้เลือกคอลัมน์/จับคู่ — แต่คงจำนวนจากข้อความจริง
+      if (u.standalone && u.standalone.length <= 200) searchQuery = u.standalone;
+      // ราคาโดยไม่ระบุสินค้าเลย (ถามลอย ๆ ว่า "ราคาเท่าไหร่") → ให้เส้นเดิมลองจับคู่จากข้อความ
+    }
   }
 
-  if (/_menu$/.test(ans.intent) && !productQueryAllowed(query, qty)) {
+  if (!ans) {
+    if (!u && mode === "price" && !productQueryAllowed(query, qty)) {
+      ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
+    } else if (mode === "minqty") {
+      ans = await searchMinQty(searchQuery, pick);
+    } else if (mode === "spec") {
+      ans = await searchSpec(searchQuery, pick);
+    } else {
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
+    }
+    // ขั้นต่ำ/สเปกตอบไม่ได้ → ลองราคาต่อ (คำถามอย่าง "สั่ง 1 ชิ้นได้ไหม ราคาเท่าไหร่" ไม่ควรตอบว่างเปล่า)
+    if (mode !== "price" && ans.kind === "skip") {
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
+    }
+  }
+
+  if (!u && /_menu$/.test(ans.intent) && !productQueryAllowed(query, qty)) {
     ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
   }
 
@@ -186,6 +215,8 @@ async function answer(req: Request, body: Record<string, unknown>) {
     source: ans.source,
     intent: ans.intent,
     mode,
+    // สิ่งที่ชั้นเข้าใจคำถามสรุปได้ — ไว้ดีบัก/ให้บอทปลายทางตัดสินใจ (ไม่มี = ใช้ regex)
+    understood: u ? { intent: u.intent, products: u.products, qty: u.qty, standalone: u.standalone, confidence: u.confidence } : null,
     found: ans.kind !== "skip" && !!ans.answer,
     qty: qty ?? null,
     ...(product ? { product } : {}),

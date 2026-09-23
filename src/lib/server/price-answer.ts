@@ -369,11 +369,11 @@ export function isMinQtyIntent(text: string): boolean {
 }
 
 /** ตอบเรื่องขั้นต่ำ — เจาะจงสินค้า = บอกตัวเลขจริง · ถามกว้าง = สรุปทั้งร้านตามข้อมูลจริง */
-export async function searchMinQty(query: string): Promise<PriceAnswer> {
+export async function searchMinQty(query: string, pick?: Pick): Promise<PriceAnswer> {
   const rows = await minTable();
   if (!rows.length) return { answer: "", kind: "skip", source: "no-data", intent: "min_qty" };
 
-  const { items } = await candidates(query);
+  const { items } = await candidates(query, pick);
   const picked = items.map((it) => rows.find((r) => r.id === it.id)).filter((r): r is MinRow => !!r);
 
   if (picked.length && picked.length <= 4) {
@@ -433,6 +433,119 @@ export async function searchMinQty(query: string): Promise<PriceAnswer> {
  *
  * คืน null เมื่อไม่มีคีย์/ล้มเหลว → ผู้เรียกใช้การเทียบตัวอักษรแทน (ระบบไม่พังทั้งเส้น)
  */
+/**
+ * 🧠 ชั้น "เข้าใจคำถาม" — LLM อ่านข้อความล่าสุด + ข้อความก่อนหน้าของลูกค้า แล้วสรุปเป็นโครงสร้างเดียว
+ * (ประเภทคำถาม · สินค้าที่หมายถึงรวมจากบริบท · จำนวน · คำถามฉบับสมบูรณ์ในตัวเอง)
+ *
+ * ทำไมต้องมี (23 ก.ย. 69 เจ้าของร้านสั่ง "เพิ่มความฉลาดให้บอท"): ก่อนหน้านี้ตัดสินด้วย regex หลายชั้น
+ * (isPriceIntent/isSpecIntent/productQueryAllowed/…) แก้ทีละเคสไม่จบ — "เอาแบบกันฝนค่ะ" ต่อจาก "ที่ติดรถยนต์"
+ * ต้องรู้ว่าหมายถึงแม่เหล็กติดรถยนต์ · "ร้านใช้ค่าสีอะไร" ไม่ใช่ถามสินค้า · "ตัวนี้ 50 ชิ้น" ต้องดูบริบท
+ * ชั้นนี้ตอบคำถามพวกนั้นในคำเดียว แล้ว regex เดิมเหลือเป็นตัวสำรองตอนไม่มีคีย์/หมดเวลา
+ */
+export interface Understanding {
+  intent: "price" | "spec" | "minqty" | "knowledge" | "order" | "chitchat" | "followup" | "other";
+  /** ชื่อสินค้าในร้าน (ตรงกับแคตตาล็อก) ที่ลูกค้าหมายถึง — รวมที่อนุมานจากบริบท */
+  products: string[];
+  ids: string[];
+  broad: boolean;
+  qty: number | null;
+  /** คำถามเขียนใหม่ให้ครบในตัวเอง (ใส่ชื่อสินค้าจากบริบทให้แล้ว) */
+  standalone: string;
+  confidence: number;
+}
+
+const understandCache = new Map<string, { at: number; u: Understanding }>();
+
+export async function understand(query: string, context: string[] = []): Promise<Understanding | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const q = query.trim();
+  if (!apiKey || !q) return null;
+  const ctx = context.map((c) => String(c ?? "").trim()).filter(Boolean).slice(-5);
+  const key = `${ctx.join("\u0001")}\u0002${q}`;
+  const hit = understandCache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.u;
+
+  const items = await catalog().catch(() => []);
+  if (!items.length) return null;
+  const list = items.map((it) => `- ${it.name}`).join("\n");
+  const ctxText = ctx.length ? ctx.map((c, i) => `${i + 1}. ${c}`).join("\n") : "(ไม่มี)";
+  const prompt = `คุณเป็นแอดมินร้านพิมพ์/ผลิตของพรีเมียมตามสั่ง (iDucky) อ่านข้อความล่าสุดของลูกค้าให้เข้าใจ "เจตนา" จริง ๆ แล้วสรุปเป็น JSON เท่านั้น
+
+ข้อความก่อนหน้าของลูกค้า (เก่า→ใหม่):
+${ctxText}
+
+ข้อความล่าสุด: "${q}"
+
+รายการสินค้าทั้งหมดในร้าน:
+${list}
+
+ตอบ JSON:
+{"intent":"price|spec|minqty|knowledge|order|chitchat|followup|other","products":["ชื่อสินค้าคัดลอกจากรายการตรงตัว"],"broad":true/false,"qty":ตัวเลขหรือnull,"standalone":"คำถามฉบับสมบูรณ์ในตัวเอง","confidence":0-1}
+
+ความหมายของ intent:
+- price = ถามราคา/เรท/ค่าทำ หรือบอกจำนวนที่จะสั่งของสินค้าที่รู้แล้วว่าตัวไหน
+- spec = ถามตัวเลือกของสินค้าที่ระบุชัด (ขนาด สี วัสดุ มีแบบไหนบ้าง)
+- minqty = ถามขั้นต่ำ/สั่งน้อย ๆ ได้ไหม
+- knowledge = ถามความรู้/วิธีทำงาน/ไฟล์/ค่าสี/ระยะเวลาผลิต/การจัดส่ง/นโยบาย/รับทำไหม (ไม่ต้องการราคา)
+- order = ติดตามออเดอร์/ชำระเงิน/สลิป/เคลม/แก้ไขงาน
+- chitchat = ทักทาย ขอบคุณ ตอบรับสั้น ๆ
+- followup = พูดต่อจากบริบทโดยไม่เอ่ยสินค้า และบริบทก็ยังบอกไม่ได้ว่าสินค้าตัวไหน
+- other = อื่น ๆ
+กติกา:
+- ถ้าข้อความล่าสุดพูดต่อจากบริบท (เช่น "เอาแบบกันฝนค่ะ" หลังถาม "ที่ติดรถยนต์") ให้ใช้บริบทหาสินค้า แล้วตั้ง intent ตามสิ่งที่ถามจริง (price/spec) ไม่ใช่ followup
+- products ต้องคัดลอกชื่อจากรายการตรงตัวอักษร เลือกเฉพาะที่ลูกค้าหมายถึงจริง ไม่ชัดเจน = [] · หมวดกว้าง (พวงกุญแจ/สแตนดี้) = ใส่ทุกตัวที่เข้าข่าย (สูงสุด 6) และ broad=true
+- ลูกค้าพูดถึงที่ใช้งาน (รถยนต์ ตู้เย็น โต๊ะ) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน · ชื่ออังกฤษให้จับตามความหมาย (ที่รองแก้ว = Coaster, แก้วเยติ = Tumbler)
+- qty = จำนวนชิ้นที่จะสั่งเท่านั้น (ห้ามนับขนาด 3cm / 300 แกรม / A3) ไม่มี = null
+- standalone = เขียนคำถามใหม่เป็นภาษาไทยสั้น ๆ ให้เข้าใจได้โดยไม่ต้องอ่านบริบท ใส่ชื่อสินค้าและจำนวนที่รู้`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 400, temperature: 0, responseMimeType: "application/json" },
+        }),
+        signal: AbortSignal.timeout(9_000),
+      },
+    );
+    if (!res.ok) return null;
+    const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
+    const raw = JSON.parse(text) as Partial<Understanding> & { products?: unknown[] };
+    const byName = new Map(items.map((it) => [norm(it.name), it]));
+    const picked = (Array.isArray(raw.products) ? raw.products : [])
+      .map((n) => byName.get(norm(String(n))))
+      .filter((it): it is Lite => !!it)
+      .slice(0, 6);
+    const intents = ["price", "spec", "minqty", "knowledge", "order", "chitchat", "followup", "other"] as const;
+    const intent = intents.includes(raw.intent as (typeof intents)[number]) ? (raw.intent as Understanding["intent"]) : "other";
+    const qtyN = Number(raw.qty);
+    const u: Understanding = {
+      intent,
+      products: picked.map((it) => it.name),
+      ids: picked.map((it) => it.id),
+      broad: !!raw.broad && picked.length >= 2,
+      qty: Number.isFinite(qtyN) && qtyN > 0 ? Math.round(qtyN) : null,
+      standalone: String(raw.standalone ?? "").trim() || q,
+      confidence: Math.max(0, Math.min(1, Number(raw.confidence) || 0)),
+    };
+    understandCache.set(key, { at: Date.now(), u });
+    if (understandCache.size > 500) for (const [k, v] of understandCache) if (Date.now() - v.at > TTL_MS) understandCache.delete(k);
+    return u;
+  } catch {
+    return null;
+  }
+}
+
+/** สินค้าที่ชั้นเข้าใจคำถามชี้มาแล้ว — ส่งต่อให้เส้นค้นหาโดยไม่ต้องให้ AI จับคู่ซ้ำ */
+export interface Pick {
+  ids: string[];
+  broad: boolean;
+}
+
 async function pickWithAI(
   query: string,
   items: Lite[],
@@ -737,8 +850,13 @@ function spec(p: Product, query: string): PriceAnswer | null {
  * สินค้าที่เข้าข่ายคำถามนี้ — ใช้ AI เป็นหลัก ตกมาที่การเทียบตัวอักษรเมื่อ AI ใช้ไม่ได้
  * `broad` = ลูกค้าพูดชื่อกลุ่มกว้าง ๆ ที่มีหลายตัวเข้าข่าย → ผู้เรียกควรกางเมนูให้เลือกก่อน
  */
-async function candidates(query: string): Promise<{ items: Lite[]; broad: boolean }> {
+async function candidates(query: string, pick?: Pick): Promise<{ items: Lite[]; broad: boolean }> {
   const all = await catalog().catch(() => []);
+  if (pick) {
+    const byId = new Map(all.map((it) => [it.id, it]));
+    const items = pick.ids.map((id) => byId.get(id)).filter((it): it is Lite => !!it);
+    if (items.length) return { items, broad: pick.broad && items.length >= 2 };
+  }
   const ai = await pickWithAI(query, all);
   if (ai) {
     const byId = new Map(all.map((it) => [it.id, it]));
@@ -763,11 +881,12 @@ export async function mentionsProduct(query: string): Promise<boolean> {
 }
 
 /** ค้นหาสเปกสินค้าตามคำถาม — คำถามกว้างคืนเมนูให้เลือกก่อนเหมือนฝั่งราคา */
-export async function searchSpec(query: string): Promise<PriceAnswer> {
+export async function searchSpec(query: string, pick?: Pick): Promise<PriceAnswer> {
   const q = query.trim();
-  // ถามสเปกโดยไม่เอ่ยชื่อสินค้า = คำถามความรู้ ให้คลังความรู้/agent ตอบ (ห้ามเดาสินค้าให้)
-  if (!(await mentionsProduct(q))) return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "spec" };
-  const { items, broad } = await candidates(q);
+  // ถามสเปกโดยไม่เอ่ยชื่อสินค้า = คำถามความรู้ ให้คลังความรู้/agent ตอบ (ห้ามเดาสินค้าให้) — เว้นแต่ชั้นเข้าใจคำถามชี้สินค้ามาแล้ว
+  if (!pick?.ids.length && !(await mentionsProduct(q)))
+    return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "spec" };
+  const { items, broad } = await candidates(q, pick);
   if (broad) return menu(items.slice(0, 6), "spec");
   for (const item of items.slice(0, 2)) {
     const full = await getProductServer(item.id).catch(() => undefined);
@@ -839,13 +958,13 @@ async function fallback(query: string, timeoutMs: number): Promise<PriceAnswer |
  */
 export async function searchPrice(
   query: string,
-  opts: { qty?: number | null; allowFallback?: boolean; timeoutMs?: number } = {},
+  opts: { qty?: number | null; allowFallback?: boolean; timeoutMs?: number; pick?: Pick } = {},
 ): Promise<PriceAnswer> {
   const q = query.trim();
   const qty = opts.qty ?? parseQty(q);
   const allowFallback = opts.allowFallback !== false;
 
-  const { items, broad } = await candidates(q);
+  const { items, broad } = await candidates(q, opts.pick);
   // ลูกค้าพูดชื่อกลุ่มกว้าง ๆ ("พวงกุญแจ" = สินค้า 8 ตัว) → กางเมนูให้เลือกก่อน อย่าเดาให้เอง
   if (broad) return menu(items.slice(0, 6));
 
