@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
-import { daysToUseBy, isPartiallyShipped, labelShipTo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, isPartiallyShipped, labelShipTo, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
@@ -484,6 +484,8 @@ function PrintRow({
   later?: boolean;
 }) {
   const printed = printCountOf(o);
+  /** 🖨 ปริ้นครั้งล่าสุดเมื่อไหร่ โดยใคร (เจ้าของร้านขอ 23 ก.ย. 69) */
+  const lastPrint = lastPrintInfo(o);
   const left = daysToUseBy(o);
   const ship = daysToShip(o, today);
   const paid = orderFullyPaid(o);
@@ -576,7 +578,15 @@ function PrintRow({
             {sent && o.productionSent?.folder && (
               <span title={o.productionSent.folder}>📁 {o.productionSent.folder.replace(/^[-+\s]+/, "").slice(0, 40)}</span>
             )}
-            {printed > 0 ? <span>ปริ้นแล้ว {printed} ครั้ง</span> : <span className="warn">ยังไม่ปริ้นใบงาน</span>}
+            {printed > 0 ? (
+              <span title={printed > 1 ? "เวลาและคนที่ปริ้นครั้งล่าสุด — ดูทุกครั้งได้ในประวัติออเดอร์" : "เวลาและคนที่ปริ้นใบงาน"}>
+                🖨 ปริ้นแล้ว {printed} ครั้ง
+                {lastPrint?.at ? ` · ${printed > 1 ? "ล่าสุด " : ""}${thaiDateTime(new Date(lastPrint.at))}` : ""}
+                {lastPrint?.by ? ` · โดย ${lastPrint.by}` : ""}
+              </span>
+            ) : (
+              <span className="warn">ยังไม่ปริ้นใบงาน</span>
+            )}
           </>
         }
       />

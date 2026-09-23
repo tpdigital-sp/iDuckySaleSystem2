@@ -127,6 +127,7 @@ export async function POST(req: Request) {
       printedAt: order.printedAt ?? now,
       printCount: count,
       lastPrintedAt: now,
+      lastPrintedBy: gate.actor.name || gate.actor.username,
       partialPrint: undefined, // แบบครบแล้วปริ้นเต็มใบ — ป้าย "ปริ้นบางส่วน" หมดหน้าที่
       // ภาพฉีกใบเก่าใบนี้ถูกใช้ปลดล็อกรอบนี้แล้ว — รอบหน้าต้องถ่ายใหม่
       ...(unlock ? { reprintPhotos: (order.reprintPhotos ?? []).map((p) => (p === unlock ? { ...p, usedAt: now } : p)) } : {}),

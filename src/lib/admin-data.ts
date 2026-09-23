@@ -845,6 +845,8 @@ export interface Order {
   printCount?: number;
   /** เวลาที่ปริ้นครั้งล่าสุด (ISO) */
   lastPrintedAt?: string;
+  /** ใครปริ้นครั้งล่าสุด (ชื่อพนักงาน) — โชว์ในคิวปริ้น ใบเก่าที่ไม่มีให้อ่านย้อนจากประวัติ (lastPrintInfo) */
+  lastPrintedBy?: string;
   /**
    * ♻️🖨 ภาพ "ฉีกใบเก่าทิ้งแล้ว" ที่แนบก่อนปริ้นซ้ำแต่ละรอบ (เจ้าของร้านสั่ง 23 ก.ย. 69)
    * ของออกสองรอบเริ่มจากใบเก่าที่ยังลอยอยู่ในไลน์ผลิต — ปริ้นซ้ำต้องฉีกใบเก่าทิ้งและถ่ายรูปยืนยันก่อน
@@ -1755,6 +1757,19 @@ export function printBlockers(order: Order): ProofBlocker[] {
 
 /** ปริ้นไปแล้วกี่ครั้ง (ใบเก่าที่ไม่มี printCount แต่มี printedAt = 1 ครั้ง) */
 export const orderPrintCount = (o: Order): number => o.printCount ?? (o.printedAt ? 1 : 0);
+
+/**
+ * 🖨 ปริ้นครั้งล่าสุดเมื่อไหร่ โดยใคร (เจ้าของร้านขอโชว์ในคิวปริ้น 23 ก.ย. 69)
+ * ใบใหม่อ่านจาก lastPrintedAt/lastPrintedBy ตรง ๆ · ใบเก่าที่ยังไม่มี lastPrintedBy อ่านย้อนจากบรรทัดประวัติ "🖨 ปริ้น…" ล่าสุด
+ * (บรรทัด "⛔🖨 ปลดล็อกปริ้นเฉพาะที่พร้อม" ไม่นับ — ไม่ใช่การปริ้นเต็มใบ) · ไม่เคยปริ้น = undefined
+ */
+export function lastPrintInfo(o: Order): { at?: string; by?: string } | undefined {
+  if (orderPrintCount(o) === 0) return undefined;
+  const fromLog = [...(o.log ?? [])].reverse().find((l) => l.action.startsWith("🖨 ปริ้น"));
+  const at = o.lastPrintedAt ?? fromLog?.at ?? o.printedAt;
+  const by = o.lastPrintedBy ?? fromLog?.by;
+  return { at, by };
+}
 
 /** กดพิมพ์รอบต่อไปของใบนี้ = "ปริ้นซ้ำ" (เคยปริ้นมาแล้วอย่างน้อยหนึ่งครั้ง) */
 export const isReprint = (o: Order): boolean => orderPrintCount(o) > 0;
