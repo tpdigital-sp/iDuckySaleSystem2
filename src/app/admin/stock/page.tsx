@@ -166,6 +166,29 @@ type GroupDone = { at: string; by: string };
  * (เจ้าของร้านขีดเส้นกำกับให้ 22 ก.ย. 69 — เดิมแถวเริ่มที่ 10 เลยยื่นไปซ้ายกว่าทุกอย่างในหัวกลุ่ม)
  */
 const ROW_PAD = 92;
+/**
+ * ค้นสินค้าจากข้อความที่พิมพ์/วาง — รับได้ทั้งชื่อ รหัสสินค้า และ "ลิงก์หน้าสินค้า" ที่ก๊อปจากเบราว์เซอร์
+ * ลิงก์หน้าร้านเป็น /products/<ชื่อคั่นด้วยขีด> และถูก encode มาเป็น %E0%B8%81… วางแล้วค้นไม่เจอทุกที
+ * (เจ้าของร้านแจ้ง 23 ก.ย. 69 — วางลิงก์ "กรอบรูปจิ๊กซอร์-อะคริลิค" แล้วขึ้น "ไม่พบสินค้าที่ตรง")
+ */
+const flatText = (s: string) => s.toLowerCase().replace(/[\s\-_/]+/g, "");
+function matchProductQuery(p: { id: string; name: string }, raw: string): boolean {
+  const q = raw.trim();
+  if (!q) return false;
+  let seg = q;
+  if (/\/products\//.test(q)) {
+    const last = q.split(/[?#]/)[0].replace(/\/+$/, "").split("/").pop() ?? "";
+    try {
+      seg = decodeURIComponent(last);
+    } catch {
+      seg = last; // ลิงก์ที่ encode มาไม่ครบ — ใช้ของดิบไปก่อน ดีกว่าค้นไม่ได้เลย
+    }
+  }
+  const n = seg.toLowerCase();
+  if (p.name.toLowerCase().includes(n) || p.id.toLowerCase().includes(n)) return true;
+  const f = flatText(seg);
+  return !!f && (flatText(p.name).includes(f) || flatText(p.id).includes(f));
+}
 /** แถว "วัสดุแฝง" ที่ห้อยใต้แถวแม่ — เยื้องจากแถวแม่อีก 46 · ก้านเส้นตั้งอยู่กลางรูปย่อแถวแม่ (รูป 44 → +22) */
 const NEST_PAD = ROW_PAD + 46;
 const NEST_RAIL = ROW_PAD + 22;
@@ -1614,6 +1637,7 @@ export default function StockPage() {
           onClose={() => setOpenId(null)}
           onEdit={() => setEditFor(openItem)}
           onCount={() => setCountFor(openItem)}
+          onMove={(mode) => setBulkFor({ items: [openItem], title: openItem.name, mode })}
           onDelete={() => deleteItem(openItem)}
           onNoStock={(on) => markNoStock([openItem], on, openItem.name)}
           onReviewed={() => markReviewed([openItem], openItem.name)}
@@ -2180,6 +2204,7 @@ function ItemDrawer({
   onClose,
   onEdit,
   onCount,
+  onMove,
   onDelete,
   onNoStock,
   onReviewed,
@@ -2206,6 +2231,8 @@ function ItemDrawer({
   onClose: () => void;
   onEdit: () => void;
   onCount: () => void;
+  /** 📥 รับเข้า / เบิก ของ SKU ตัวเดียวจากลิ้นชัก — เดิมทำได้แค่ที่หัวกลุ่ม "ชนิดของ" ซึ่งวัสดุแฝงไม่มี (เจ้าของร้านถาม 23 ก.ย. 69) */
+  onMove: (mode: "in" | "out") => void;
   onDelete: () => void;
   onNoStock: (on: boolean) => void;
   onReviewed: () => void;
@@ -2400,11 +2427,22 @@ function ItemDrawer({
         </div>
 
         {mayEdit && (
-          <footer className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
-            <button type="button" onClick={onCount} className={btnSmNeutral}>
+          <footer className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+            {/* รับของเข้าคลังได้จากตรงนี้เลย — ของที่ไม่ได้อยู่ในกลุ่ม "ชนิดของ" (เช่นวัสดุแฝง) เดิมไม่มีทางรับเข้า ต้องไปใช้ "นับจริง" แทน */}
+            {!item.noStock && (
+              <>
+                <button type="button" onClick={() => onMove("in")} className={`${btnSmNeutral} flex-1`}>
+                  ＋ รับเข้า
+                </button>
+                <button type="button" onClick={() => onMove("out")} className={`${btnSmNeutral} flex-1`}>
+                  − เบิก
+                </button>
+              </>
+            )}
+            <button type="button" onClick={onCount} className={`${btnSmNeutral} flex-1`}>
               นับจริง
             </button>
-            <button type="button" onClick={onEdit} className={btnSmNeutral}>
+            <button type="button" onClick={onEdit} className={`${btnSmNeutral} flex-1`}>
               แก้ไข
             </button>
             {!item.noStock && (
@@ -3037,7 +3075,7 @@ function ExtraLinkForm({
   const hits = useMemo(() => {
     const n = q.trim().toLowerCase();
     if (!n) return [];
-    return products.filter((p) => p.name.toLowerCase().includes(n) || p.id.toLowerCase().includes(n)).slice(0, 8);
+    return products.filter((p) => matchProductQuery(p, q)).slice(0, 8);
   }, [products, q]);
   const kidHits = useMemo(() => {
     const n = kidQ.trim().toLowerCase();
@@ -3190,7 +3228,7 @@ function ExtraLinkForm({
             </div>
           ) : (
             <>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อสินค้า…" className={`${inputCls} mt-1`} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อสินค้า หรือวางลิงก์หน้าสินค้า…" className={`${inputCls} mt-1`} />
               {q.trim() && (
                 <ul className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
                   {hits.map((p) => (
@@ -3320,7 +3358,7 @@ function ProductPicker({ products, value, onChange }: { products: ProductLite[];
   const hits = useMemo(() => {
     const n = q.trim().toLowerCase();
     if (!n) return [];
-    return products.filter((p) => !value.includes(p.id) && (p.name.toLowerCase().includes(n) || p.id.toLowerCase().includes(n))).slice(0, 8);
+    return products.filter((p) => !value.includes(p.id) && matchProductQuery(p, q)).slice(0, 8);
   }, [products, q, value]);
 
   return (
@@ -3898,6 +3936,22 @@ function BomModal({
     return items.filter((i) => !current.some((c) => c.id === i.id) && matchItem(i, n)).slice(0, 8);
   }, [items, q, current]);
 
+  /**
+   * ยังไม่พิมพ์ค้นหา = ต้องมีตัวเลือกให้กดเลย (เจ้าของร้านแจ้ง 23 ก.ย. 69 — เดิมต้องเดาชื่อแล้วพิมพ์เองก่อนถึงเห็นอะไร)
+   * เรียงจาก "ของที่เป็นวัสดุแฝงของสินค้าอื่นอยู่แล้ว" (ใช้ร่วมกันได้เลย) → ของที่ตั้งชนิดเป็นวัสดุแฝงไว้
+   */
+  const picked = new Set(current.map((c) => c.id));
+  const bomCount = (i: Item) => Object.keys(i.bomFor ?? {}).length;
+  const isBomKind = (i: Item) => bomCount(i) > 0 || i.part?.trim() === "วัสดุแฝง";
+  const suggested = [
+    ...items.filter((i) => !picked.has(i.id) && isBomKind(i)).sort((a, b) => bomCount(b) - bomCount(a) || a.name.localeCompare(b.name, "th")),
+    // ของที่ยังไม่ได้ผูกกับสินค้าไหนเลย = ผู้ต้องสงสัยลำดับถัดมา (ตะขอ/หมุด/สายคล้องที่ยังลอยอยู่)
+    // ข้ามตัวที่ตั้ง "ไม่ต้องมี stock" — ผูกไปก็ไม่ถูกตัดยอด กลายเป็นลิงก์หลอกตา
+    ...items
+      .filter((i) => !picked.has(i.id) && !isBomKind(i) && !i.noStock && !(i.productIds ?? []).length)
+      .sort((a, b) => a.name.localeCompare(b.name, "th")),
+  ].slice(0, 12);
+
   async function call(method: "POST" | "DELETE", body: object) {
     setBusy(true);
     setErr("");
@@ -3985,6 +4039,24 @@ function BomModal({
         ) : (
           <>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นวัสดุที่มีอยู่แล้ว เช่น หมุด ขาตั้ง…" className={`${inputCls} mt-1.5`} />
+            {!q.trim() && suggested.length > 0 && (
+              <>
+                <p className="mt-2 text-[11px] text-slate-400">กดเลือกได้เลย — ของที่ใช้เป็นวัสดุแฝงอยู่แล้ว และของที่ยังไม่ได้ผูกกับสินค้าไหน</p>
+                <ul className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                  {suggested.map((i) => (
+                    <li key={i.id}>
+                      <button type="button" onClick={() => setPick(i)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-50">
+                        <Thumb src={images[i.id]} name={i.name} size={28} />
+                        <span className="min-w-0 flex-1 truncate text-[13px]">{i.name}</span>
+                        <span className="shrink-0 text-[11px] text-slate-400">
+                          {bomCount(i) > 0 ? `ใช้กับ ${bomCount(i)} สินค้า` : (i.productIds ?? []).length ? i.unit : `ยังไม่ผูก · ${i.unit}`}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             {q.trim() && (
               <ul className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
                 {hits.map((i) => (
