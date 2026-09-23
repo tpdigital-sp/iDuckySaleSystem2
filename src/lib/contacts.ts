@@ -140,3 +140,76 @@ export type PointLog = {
   orderId?: string;
   note?: string;
 };
+
+/* ── 🔗 ผูกบัญชีสมาชิกเว็บเข้ากับการ์ดผู้ติดต่อเดิม ─────────────── */
+
+/** บัญชีสมาชิกเว็บ (ย่อจาก Supabase Auth user) ที่จะผูกเข้ากับการ์ด */
+export type MemberAccount = {
+  id: string;
+  name?: string;
+  /** อีเมลจริง — อีเมลสังเคราะห์ของบัญชี LINE ให้ส่งมาเป็นค่าว่าง */
+  email?: string;
+  picture?: string;
+  channel: "line" | "email";
+  createdAt?: string;
+};
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * รวมการ์ดที่ระบบสร้างให้ตอนสมัคร (sources) เข้ากับการ์ดเดิมที่มีประวัติ (target) แล้วผูกบัญชีให้
+ *
+ * กติกา: ใบเดิมเป็นเจ้าของข้อมูล — เติมเฉพาะช่องที่ว่าง ไม่ทับของที่มีอยู่
+ * ยกเว้นแต้ม/สถิติออเดอร์ที่ต้อง "บวกรวม" และระดับที่ยึดของใบเดิมก่อน
+ *
+ * ฟังก์ชันล้วน (ไม่แตะฐาน) เพื่อเทสได้ — ดู scripts/contact-link-test.mts · เรียกจาก api/admin/contacts/link
+ */
+export function mergeMemberIntoContact(
+  target: Contact,
+  sources: Contact[],
+  member: MemberAccount,
+  opts?: { by?: string; now?: string }
+): Contact {
+  const next: Contact = { ...target };
+  for (const src of sources) {
+    if (src.id === target.id) continue;
+    if (!next.name) next.name = src.name ?? "";
+    if (!next.phone) next.phone = src.phone ?? "";
+    if (!next.address) next.address = src.address ?? "";
+    if (!next.email && src.email) next.email = src.email;
+    if (!next.customerType && src.customerType) next.customerType = src.customerType;
+    next.point = round2((next.point ?? 0) + (src.point ?? 0));
+    if (src.pointActive) next.pointActive = true;
+    next.origins = [...new Set([...(next.origins ?? []), ...(src.origins ?? [])])];
+    // ระดับสมาชิก: ใบเดิมเป็นเจ้าของประวัติ — ของใบใหม่ใช้ได้ต่อเมื่อใบเดิมยังไม่เคยซีดระดับไว้
+    if (!next.tierLevel && src.tierLevel) {
+      next.tierLevel = src.tierLevel;
+      next.tierAnchor = src.tierAnchor;
+      next.tierCycleSpend = src.tierCycleSpend;
+    }
+    if (src.orders?.count) {
+      const prev = next.orders;
+      next.orders = prev
+        ? {
+            count: prev.count + src.orders.count,
+            firstAt: [prev.firstAt, src.orders.firstAt].filter(Boolean).sort()[0],
+            lastAt: [prev.lastAt, src.orders.lastAt].filter(Boolean).sort().at(-1),
+            lastId: (prev.lastAt ?? "") > (src.orders.lastAt ?? "") ? prev.lastId : src.orders.lastId,
+            ...(prev.placedBy || src.orders.placedBy ? { placedBy: [prev.placedBy, src.orders.placedBy].filter(Boolean).join(" · ") } : {}),
+          }
+        : src.orders;
+    }
+    if (src.note && !(next.note ?? "").includes(src.note)) next.note = [next.note, src.note].filter(Boolean).join("\n");
+  }
+
+  next.memberId = member.id;
+  next.channel = member.channel;
+  if (member.picture) next.picture = member.picture;
+  if (member.createdAt) next.memberSince = member.createdAt;
+  if (!next.name && (member.name ?? "").trim()) next.name = (member.name ?? "").trim();
+  if (!next.email && member.email) next.email = member.email;
+  next.origins = [...new Set([...(next.origins ?? []), "member" as const])];
+  next.updatedAt = opts?.now ?? new Date().toISOString();
+  if (opts?.by) next.updatedBy = opts.by;
+  return next;
+}

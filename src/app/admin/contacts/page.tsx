@@ -125,6 +125,8 @@ export default function AdminContactsPage() {
   const [form, setForm] = useState<Form | null>(null); // null = ไม่ได้เปิดฟอร์ม
   const [busy, setBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  /** การ์ดที่กำลังเลือกบัญชีสมาชิกให้ผูก — null = ไม่ได้เปิด */
+  const [linkFor, setLinkFor] = useState<Contact | null>(null);
 
   const reqSeq = useRef(0);
   const load = useCallback(
@@ -250,6 +252,57 @@ export default function AdminContactsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * ↩️ ผูกผิดคน — คืนค่าทุกอย่างกลับเป็นก่อนกดผูก (การ์ดที่ถูกยุบกลับมา · แต้ม/ประวัติกลับที่เดิม)
+   * ไม่มีสำเนาให้คืน (ผูกไว้นานแล้ว) → ได้แค่ปลดบัญชีออกจากการ์ด ต้องบอกให้ชัดก่อนกด
+   */
+  async function unlink(c: Contact) {
+    let undo: { at: string; by: string; pointBefore: number; sources: { id: string; name: string; point: number }[]; editedAfter?: boolean } | null = null;
+    try {
+      const res = await fetch(`/api/admin/contacts/unlink?id=${encodeURIComponent(c.id)}`, { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      undo = j.undo ?? null;
+    } catch {
+      return setToast({ text: "เช็คข้อมูลย้อนกลับไม่ได้ — เช็คเน็ตแล้วลองใหม่", tone: "bad" });
+    }
+
+    const detail = undo
+      ? [
+          `ผูกไว้เมื่อ ${fmtDate(undo.at)} ${undo.at.slice(11, 16)} น. โดย ${undo.by}`,
+          `การ์ด #${c.id} จะกลับไปเป็นก่อนผูก (แต้ม ${fmtN(undo.pointBefore)})`,
+          ...(undo.sources.length ? [`การ์ดที่ถูกยุบไปจะกลับมา: ${undo.sources.map((s) => `#${s.id} ${s.name || "(ไม่มีชื่อ)"}`).join(" · ")}`] : []),
+          ...(undo.editedAfter ? ["⚠️ การ์ดใบนี้ถูกแก้หลังผูก — ของที่แก้หลังจากนั้นจะถูกทับด้วยค่าก่อนผูก"] : []),
+        ]
+      : [
+          "ไม่มีสำเนาก่อนผูกของการ์ดใบนี้ (ผูกไว้นานแล้ว หรือผูกก่อนมีระบบย้อนกลับ)",
+          "กดได้แค่ปลดบัญชีสมาชิกออกจากการ์ด — ข้อมูลอื่นในการ์ดยังอยู่ครบ แต่การ์ดที่เคยถูกยุบจะไม่กลับมา",
+        ];
+
+    const ok = await confirm({
+      icon: "↩️",
+      title: undo ? "ย้อนการผูกบัญชีนี้?" : "ปลดบัญชีสมาชิกออกจากการ์ด?",
+      detail: detail.join("\n"),
+      confirmLabel: undo ? "ย้อนกลับ" : "ปลดบัญชี",
+      danger: !undo || !!undo.editedAfter,
+    });
+    if (!ok) return;
+
+    const res = await fetch("/api/admin/contacts/unlink", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contactId: c.id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return setToast({ text: j.error ?? "ย้อนกลับไม่สำเร็จ", tone: "bad" });
+    const back = (j.restoredCards ?? []) as { id: string; name: string }[];
+    setSelected(j.contact ?? null);
+    setToast({
+      text: j.mode === "restore" ? `ย้อนการผูก #${c.id} แล้ว${back.length ? ` · การ์ด ${back.map((b) => `#${b.id}`).join(" ")} กลับมาแล้ว` : ""}` : `ปลดบัญชีออกจาก #${c.id} แล้ว`,
+      tone: "ok",
+    });
+    await load({ stats: true });
   }
 
   async function remove(c: Contact) {
@@ -526,13 +579,42 @@ export default function AdminContactsPage() {
       )}
 
       {/* ── ลิ้นชักรายละเอียด ── */}
-      {selected && !form && (
+      {selected && !form && !linkFor && (
         <Drawer title={selected.name || "(ไม่มีชื่อ)"} eyebrow={`ผู้ติดต่อ #${selected.id}`} onClose={() => setSelected(null)}>
           <div className="dkb-g px-4 py-1">
             <KV k="เบอร์โทร" v={selected.phone ? <a href={`tel:${selected.phone}`} className="hover:underline">{formatPhone(selected.phone)}</a> : "—"} />
             <KV k="อีเมล" v={selected.email || "—"} />
             <KV k="ที่มา" v={(selected.origins ?? []).map((o) => ORIGIN_LABEL[o]).join(" · ") || "—"} />
-            {selected.memberId && <KV k="สมาชิกเว็บ" v={`${selected.channel === "line" ? "LINE" : "อีเมล"} · สมัคร ${fmtDate(selected.memberSince)}`} />}
+            <KV
+              k="สมาชิกเว็บ"
+              v={
+                selected.memberId ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Tag tone={selected.channel === "line" ? "mint" : "sky"}>{selected.channel === "line" ? "LINE" : "อีเมล"}</Tag>
+                    <span>สมัคร {fmtDate(selected.memberSince)}</span>
+                    {canEdit && (
+                      <>
+                        <button type="button" onClick={() => setLinkFor(selected)} className="underline decoration-dotted underline-offset-2" style={{ color: "var(--dk-navy-soft)" }}>
+                          เปลี่ยนบัญชี
+                        </button>
+                        <button type="button" onClick={() => void unlink(selected)} className="underline decoration-dotted underline-offset-2" style={{ color: "var(--dk-coral-ink)" }}>
+                          ↩️ ผูกผิดคน
+                        </button>
+                      </>
+                    )}
+                  </span>
+                ) : canEdit ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span style={{ color: "var(--dk-faint)" }}>ยังไม่ได้ผูกบัญชี</span>
+                    <Btn small onClick={() => setLinkFor(selected)}>
+                      🔗 ผูกกับบัญชีสมาชิก
+                    </Btn>
+                  </span>
+                ) : (
+                  "ยังไม่ได้ผูกบัญชี"
+                )
+              }
+            />
             {selected.orders?.count ? (
               <KV
                 k="ออเดอร์ในระบบนี้"
@@ -623,6 +705,22 @@ export default function AdminContactsPage() {
             </div>
           )}
         </Drawer>
+      )}
+
+      {/* ── ผูกบัญชีสมาชิกเว็บเข้ากับการ์ดนี้ ── */}
+      {linkFor && (
+        <LinkDrawer
+          contact={linkFor}
+          tiers={tiers}
+          confirm={confirm}
+          onClose={() => setLinkFor(null)}
+          onLinked={(c, note) => {
+            setLinkFor(null);
+            setSelected(c);
+            setToast({ text: note, tone: "ok" });
+            void load({ stats: true });
+          }}
+        />
       )}
 
       {/* ── ฟอร์มเพิ่ม/แก้ไข ── */}
@@ -971,6 +1069,195 @@ function ImportDrawer({ onClose, onDone }: { onClose: () => void; onDone: () => 
         <Btn tone="navy" onClick={() => void run()} disabled={!preview || !!progress}>
           นำเข้า
         </Btn>
+      </div>
+    </Drawer>
+  );
+}
+
+/* ── ผูกบัญชีสมาชิกเว็บเข้ากับการ์ดเดิม ─────────────────── */
+
+type MemberOpt = {
+  memberId: string;
+  name: string;
+  email: string;
+  phone: string;
+  channel: "line" | "email";
+  picture?: string;
+  memberSince?: string;
+  boundTo?: { id: string; name: string; point: number; orders: number };
+};
+
+/**
+ * 🔗 ลูกค้าเก่าเพิ่งมาล็อกอินครั้งแรก → บัญชีใหม่เอี่ยม ไม่มีแต้ม/ระดับ (เจ้าของร้านแจ้ง 23 ก.ย. 69)
+ *
+ * แต้มกับระดับอยู่ที่ "การ์ดผู้ติดต่อ" ไม่ได้อยู่ที่บัญชีล็อกอิน — หน้าบัญชีของลูกค้ากับตอนคิดส่วนลด
+ * อ่านระดับจากการ์ดที่ถือ memberId ของบัญชีนั้น ดังนั้นย้าย memberId มาไว้ที่การ์ดเดิมก็จบ
+ * ลิ้นชักนี้คือทางเลือกบัญชี → ที่เหลือ (ยุบการ์ดซ้ำ ย้ายแต้ม+ประวัติ) API ทำให้เอง
+ */
+function LinkDrawer({
+  contact,
+  tiers,
+  confirm,
+  onClose,
+  onLinked,
+}: {
+  contact: Contact;
+  tiers: Tier[];
+  confirm: (o: { icon?: string; title: string; detail?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean | "alt">;
+  onClose: () => void;
+  onLinked: (c: Contact, note: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [list, setList] = useState<MemberOpt[] | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    setList(null);
+    setErr("");
+    const t = window.setTimeout(() => {
+      fetch(`/api/admin/contacts/members?q=${encodeURIComponent(q.trim())}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j) => {
+          if (!live) return;
+          if (j.error) setErr(j.error);
+          setList(j.members ?? []);
+        })
+        .catch(() => {
+          if (!live) return;
+          setErr("โหลดรายชื่อบัญชีไม่สำเร็จ — เช็คเน็ตแล้วลองใหม่");
+          setList([]);
+        });
+    }, q ? 300 : 0);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [q]);
+
+  async function link(m: MemberOpt) {
+    const detail = [
+      `บัญชี: ${m.name || "(ไม่มีชื่อ)"} · ${m.channel === "line" ? "เข้าด้วย LINE" : m.email || "เข้าด้วยอีเมล"}`,
+      `การ์ดปลายทาง: #${contact.id} ${contact.name || "(ไม่มีชื่อ)"} · แต้ม ${fmtN(contact.point ?? 0)}`,
+    ];
+    if (m.boundTo && m.boundTo.id !== contact.id)
+      detail.push(`การ์ด #${m.boundTo.id} ${m.boundTo.name} ที่บัญชีนี้ผูกอยู่ตอนนี้ จะถูกยุบรวมมาที่ใบนี้แล้วลบทิ้ง${m.boundTo.point ? ` (แต้ม ${fmtN(m.boundTo.point)} ย้ายตามมาด้วย)` : ""}`);
+    if (contact.memberId && contact.memberId !== m.memberId) detail.push("⚠️ ใบนี้ผูกกับบัญชีอื่นอยู่แล้ว — บัญชีเดิมจะถูกปลดออกจากใบนี้");
+    detail.push("ลูกค้าจะเห็นแต้มกับระดับสมาชิกของใบนี้ทันทีที่เปิดหน้าบัญชีของฉัน และได้ส่วนลดตามระดับตั้งแต่ออเดอร์ถัดไป");
+    const ok = await confirm({ icon: "🔗", title: "ผูกบัญชีนี้กับการ์ดเดิม?", detail: detail.join("\n"), confirmLabel: "ผูกเลย" });
+    if (!ok) return;
+    setBusy(m.memberId);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/contacts/link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contactId: contact.id, memberId: m.memberId }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return setErr(j.error ?? "ผูกไม่สำเร็จ");
+      const merged = (j.movedFrom ?? []).length;
+      onLinked(j.contact, `ผูก ${m.name || "บัญชีสมาชิก"} กับ #${contact.id} แล้ว${merged ? ` · ยุบการ์ดซ้ำ ${merged} ใบ` : ""}`);
+    } catch {
+      setErr("ผูกไม่สำเร็จ — เช็คเน็ตแล้วลองใหม่");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <Drawer title="ผูกบัญชีสมาชิกเว็บ" eyebrow={`เข้ากับผู้ติดต่อ #${contact.id}`} onClose={onClose}>
+      <div className="dkb-g px-4 py-3">
+        <p className="text-[0.72rem]" style={{ color: "var(--dk-navy-soft)" }}>
+          การ์ดปลายทาง — แต้มและระดับของใบนี้คือของที่ลูกค้าจะได้กลับไป
+        </p>
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-[0.95rem] font-semibold">
+          {contact.name || "(ไม่มีชื่อ)"}
+          <TierPill tiers={tiers} tier={contactTier(contact, tiers)} small />
+        </p>
+        <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+          {contact.phone ? formatPhone(contact.phone) : "ไม่มีเบอร์"} · แต้ม <b className="dkb-num">{fmtN(contact.point ?? 0)}</b>
+          {contact.orders?.count ? ` · ${contact.orders.count} ออเดอร์ในระบบนี้` : ""}
+        </p>
+      </div>
+
+      {/* วิธีทำ — วางไว้ในจอเลย พนักงานจะได้ไม่ต้องจำหรือเปิดคู่มือ (ทำไม่บ่อย ลืมง่าย) */}
+      <ol className="dkb-g mt-3 list-decimal space-y-1 px-4 py-3 pl-8 text-[12.5px] leading-relaxed" style={{ color: "var(--dk-navy-soft)" }}>
+        <li>
+          ให้ลูกค้ากด <b>เข้าสู่ระบบ → LINE</b> ที่หน้าเว็บ <b>1 ครั้งก่อน</b> — ยังไม่เคยล็อกอิน = ไม่มีบัญชีให้เลือก
+        </li>
+        <li>เลือกบัญชีของลูกค้าจากรายชื่อข้างล่าง (คนสมัครล่าสุดอยู่บนสุด · ค้นด้วยชื่อ LINE · อีเมล · เบอร์)</li>
+        <li>
+          ในกล่องยืนยัน เช็คให้ชัวร์ว่า <b>การ์ดปลายทางคือ #{contact.id}</b> ใบนี้ แล้วกด ผูกเลย
+        </li>
+        <li>
+          แต้มกับระดับของใบนี้จะไปอยู่กับลูกค้าทันที — ผูกผิดคนกดแก้ได้ที่ปุ่ม <b>↩️ ผูกผิดคน</b> ในนามบัตร (คืนทุกอย่างกลับเป็นก่อนผูก)
+        </li>
+      </ol>
+      <p className="mt-2 px-1 text-[11.5px] leading-relaxed" style={{ color: "var(--dk-faint)" }}>
+        ออเดอร์เก่าที่สั่งแบบไม่ล็อกอินยังไม่ขึ้นในหน้าประวัติของลูกค้า — ให้เขาค้นที่ ตามหาออเดอร์ (/order/find)
+      </p>
+
+      <div className="mt-3">
+        <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อบัญชี · อีเมล · เบอร์…" />
+      </div>
+
+      {err && (
+        <p className="mt-2 px-1 text-[12.5px]" style={{ color: "var(--dk-coral-ink)" }}>
+          {err}
+        </p>
+      )}
+
+      {list === null ? (
+        <p className="mt-4 px-1 text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
+          กำลังโหลดรายชื่อบัญชี…
+        </p>
+      ) : list.length === 0 ? (
+        <p className="mt-4 px-1 text-[12.5px] leading-relaxed" style={{ color: "var(--dk-faint)" }}>
+          {q ? "ไม่พบบัญชีที่ตรงกับคำค้น" : "ยังไม่มีบัญชีสมาชิกในระบบ"}
+          <br />
+          ให้ลูกค้ากด “เข้าสู่ระบบ → LINE” ที่หน้าเว็บหนึ่งครั้งก่อน แล้วกลับมาค้นชื่อ LINE ของเขาที่นี่
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-2">
+          {list.map((m) => {
+            const same = m.boundTo?.id === contact.id;
+            return (
+              <li key={m.memberId}>
+                <button
+                  type="button"
+                  disabled={!!busy || same}
+                  onClick={() => void link(m)}
+                  className="dkb-g flex w-full items-center gap-3 px-3 py-2.5 text-left transition-transform disabled:opacity-60 enabled:hover:-translate-y-px"
+                  style={{ minHeight: "3rem" }}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <b className="truncate text-[0.94rem]">{m.name || "(ไม่มีชื่อ)"}</b>
+                      <Tag tone={m.channel === "line" ? "mint" : "sky"}>{m.channel === "line" ? "LINE" : "อีเมล"}</Tag>
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
+                      {[m.email, m.phone ? formatPhone(m.phone) : "", `สมัคร ${fmtDate(m.memberSince)}`].filter(Boolean).join(" · ")}
+                    </span>
+                    {m.boundTo && (
+                      <span className="mt-0.5 block truncate text-[12px]" style={{ color: same ? "var(--dk-mint-ink)" : "var(--dk-yolk-ink)" }}>
+                        {same ? "ผูกกับการ์ดใบนี้อยู่แล้ว" : `ตอนนี้อยู่การ์ด #${m.boundTo.id} ${m.boundTo.name} — จะถูกยุบรวมมาที่นี่`}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-[12.5px] font-semibold" style={{ color: same ? "var(--dk-faint)" : "var(--dk-blue)" }}>
+                    {busy === m.memberId ? "กำลังผูก…" : same ? "—" : "ผูก →"}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <Btn onClick={onClose}>ปิด</Btn>
       </div>
     </Drawer>
   );

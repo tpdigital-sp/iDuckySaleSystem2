@@ -34,7 +34,8 @@
     "scan:proof-stage": "node --conditions=react-server --import tsx scripts/proof-stage-scan.mts",
     "check:line-bind": "tsx scripts/line-bind-test.mts",
     "scan:line-bind": "tsx scripts/line-bind-scan.mts",
-    "scan:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-scan.mts"
+    "scan:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-scan.mts",
+    "check:contact-link": "tsx scripts/contact-link-test.mts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
