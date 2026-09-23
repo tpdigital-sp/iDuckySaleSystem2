@@ -1076,6 +1076,45 @@ function ImportDrawer({ onClose, onDone }: { onClose: () => void; onDone: () => 
 
 /* ── ผูกบัญชีสมาชิกเว็บเข้ากับการ์ดเดิม ─────────────────── */
 
+/** สีชุดเดียวกับที่ใช้ทั้งหลังบ้าน — เลขขั้นตอนกับป้ายชื่อปุ่มหยิบจากตรงนี้ที่เดียว */
+// solid = สีวงกลมเลขขั้น · on = สีตัวเลขบนวงกลม (เหลืองต้องใช้ตัวหนังสือเข้ม ขาวบนเหลืองอ่านไม่ออกกลางแดด)
+const TONES = {
+  blue: { solid: "var(--dk-blue-deep)", on: "#fff", wash: "var(--dk-sky)", ink: "var(--dk-blue-deep)" },
+  mint: { solid: "var(--dk-mint-ink)", on: "#fff", wash: "var(--dk-mint-wash)", ink: "var(--dk-mint-ink)" },
+  yolk: { solid: "var(--dk-yolk-deep)", on: "var(--dk-navy)", wash: "var(--dk-yolk-wash)", ink: "var(--dk-yolk-ink)" },
+  lilac: { solid: "var(--dk-lilac-ink)", on: "#fff", wash: "var(--dk-lilac-wash)", ink: "var(--dk-lilac-ink)" },
+  coral: { solid: "var(--dk-coral-deep)", on: "#fff", wash: "var(--dk-coral-wash)", ink: "var(--dk-coral-ink)" },
+} as const;
+type Tone = keyof typeof TONES;
+
+/** ขั้นตอนหนึ่งข้อ — เลขในวงกลมสี ไล่สีตามลำดับให้กวาดตาแล้วรู้ว่าอยู่ขั้นไหน */
+function Step({ n, tone, children }: { n: number; tone: Tone; children: React.ReactNode }) {
+  return (
+    <li className="relative text-[12.5px] leading-relaxed" style={{ color: "var(--dk-navy-soft)" }}>
+      <span
+        className="absolute -left-8 grid h-[1.45rem] w-[1.45rem] place-items-center rounded-full text-[0.72rem] font-bold shadow-sm"
+        style={{ background: TONES[tone].solid, color: TONES[tone].on }}
+        aria-hidden
+      >
+        {n}
+      </span>
+      {children}
+    </li>
+  );
+}
+
+/** ป้ายชื่อปุ่ม/เลขการ์ด — สีเดียวกับของจริงบนจอ จะได้มองหาถูกตัว */
+function Pill({ tone, children }: { tone: Tone; children: React.ReactNode }) {
+  return (
+    <span
+      className="mx-0.5 inline-block whitespace-nowrap rounded-md px-1.5 py-0.5 text-[0.92em] font-semibold"
+      style={{ background: TONES[tone].wash, color: TONES[tone].ink }}
+    >
+      {children}
+    </span>
+  );
+}
+
 type MemberOpt = {
   memberId: string;
   name: string;
@@ -1182,19 +1221,33 @@ function LinkDrawer({
         </p>
       </div>
 
-      {/* วิธีทำ — วางไว้ในจอเลย พนักงานจะได้ไม่ต้องจำหรือเปิดคู่มือ (ทำไม่บ่อย ลืมง่าย) */}
-      <ol className="dkb-g mt-3 list-decimal space-y-1 px-4 py-3 pl-8 text-[12.5px] leading-relaxed" style={{ color: "var(--dk-navy-soft)" }}>
-        <li>
-          ให้ลูกค้ากด <b>เข้าสู่ระบบ → LINE</b> ที่หน้าเว็บ <b>1 ครั้งก่อน</b> — ยังไม่เคยล็อกอิน = ไม่มีบัญชีให้เลือก
-        </li>
-        <li>เลือกบัญชีของลูกค้าจากรายชื่อข้างล่าง (คนสมัครล่าสุดอยู่บนสุด · ค้นด้วยชื่อ LINE · อีเมล · เบอร์)</li>
-        <li>
-          ในกล่องยืนยัน เช็คให้ชัวร์ว่า <b>การ์ดปลายทางคือ #{contact.id}</b> ใบนี้ แล้วกด ผูกเลย
-        </li>
-        <li>
-          แต้มกับระดับของใบนี้จะไปอยู่กับลูกค้าทันที — ผูกผิดคนกดแก้ได้ที่ปุ่ม <b>↩️ ผูกผิดคน</b> ในนามบัตร (คืนทุกอย่างกลับเป็นก่อนผูก)
-        </li>
-      </ol>
+      {/* วิธีทำ — วางไว้ในจอเลย พนักงานจะได้ไม่ต้องจำหรือเปิดคู่มือ (ทำไม่บ่อย ลืมง่าย)
+          สีเลขขั้นไล่ตามลำดับ + ชื่อปุ่มไฮไลต์ด้วยสีเดียวกับปุ่มจริงบนจอ จะได้กวาดตาแล้วรู้ว่าต้องกดอะไร */}
+      <div className="dkb-g mt-3 px-4 py-3.5">
+        <p className="flex items-center gap-1.5 text-[0.72rem] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+          <span aria-hidden>📋</span> วิธีผูก
+        </p>
+        <ol className="relative mt-2.5 flex flex-col gap-3 pl-8">
+          <span className="absolute bottom-2 left-[0.72rem] top-2 w-px" style={{ background: "var(--dk-quiet)" }} aria-hidden />
+          <Step n={1} tone="blue">
+            ให้ลูกค้ากด <Pill tone="mint">เข้าสู่ระบบ → LINE</Pill> ที่หน้าเว็บ <b>1 ครั้งก่อน</b>
+            <span className="block" style={{ color: "var(--dk-faint)" }}>ยังไม่เคยล็อกอิน = ไม่มีบัญชีให้เลือก</span>
+          </Step>
+          <Step n={2} tone="lilac">
+            เลือกบัญชีของลูกค้าจากรายชื่อข้างล่าง
+            <span className="block" style={{ color: "var(--dk-faint)" }}>คนสมัครล่าสุดอยู่บนสุด · ค้นด้วยชื่อ LINE · อีเมล · เบอร์</span>
+          </Step>
+          <Step n={3} tone="yolk">
+            ในกล่องยืนยัน เช็คให้ชัวร์ว่าการ์ดปลายทางคือ <Pill tone="yolk">#{contact.id}</Pill> ใบนี้ แล้วกด <Pill tone="blue">ผูกเลย</Pill>
+          </Step>
+          <Step n={4} tone="coral">
+            แต้มกับระดับของใบนี้จะไปอยู่กับลูกค้าทันที
+            <span className="block">
+              ผูกผิดคนกดแก้ได้ที่ <Pill tone="coral">↩️ ผูกผิดคน</Pill> ในนามบัตร — คืนทุกอย่างกลับเป็นก่อนผูก
+            </span>
+          </Step>
+        </ol>
+      </div>
       <p className="mt-2 px-1 text-[11.5px] leading-relaxed" style={{ color: "var(--dk-faint)" }}>
         ออเดอร์เก่าที่สั่งแบบไม่ล็อกอินยังไม่ขึ้นในหน้าประวัติของลูกค้า — ให้เขาค้นที่ ตามหาออเดอร์ (/order/find)
       </p>
