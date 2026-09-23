@@ -144,7 +144,7 @@ import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
-import ShipWithStrip, { ShipWithPicker, useShipWithLinked } from "@/components/admin/ShipWithStrip";
+import ShipWithStrip, { ShipWithPicker, ShipWithSuggest, useShipWithLinked } from "@/components/admin/ShipWithStrip";
 import { isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
@@ -4034,16 +4034,6 @@ export default function AdminOrderDetailPage() {
       </>
     );
   }
-  // ออเดอร์อื่นของลูกค้าคนเดียวกันที่ยังไม่ปิด (จับคู่จากเบอร์โทร) — เตือนให้พิจารณารวมส่ง
-  const phoneKey = (order.phone ?? "").replace(/\D/g, "");
-  const related = allOrders.filter(
-    (o) =>
-      o.id !== order.id &&
-      phoneKey.length >= 8 &&
-      (o.phone ?? "").replace(/\D/g, "") === phoneKey &&
-      o.status !== "เสร็จสิ้น" &&
-      o.status !== "ยกเลิก"
-  );
   /** รายการไหนควรกางไว้เองตั้งแต่แรก — ออเดอร์ยาว ๆ กางเฉพาะอันที่ยังมีเรื่องต้องจัดการ */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const autoOpen = (_it: OrderItem) => true;
@@ -4490,25 +4480,6 @@ export default function AdminOrderDetailPage() {
             </div>
           );
         })()}
-
-      {related.length > 0 && (
-        <div className="border-b border-orange-200 bg-orange-50 px-6 py-3">
-          <p className="text-sm font-bold text-orange-800">
-            ⚠️ ลูกค้ารายนี้มีอีก {related.length} ออเดอร์ที่ยังไม่ปิด — พิจารณารวมส่งกล่องเดียว
-          </p>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            {related.map((o) => (
-              <Link
-                key={o.id}
-                href={`/admin/orders/${encodeURIComponent(o.id)}`}
-                className="rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-xs font-bold text-orange-700 hover:bg-orange-100"
-              >
-                {o.id} · {o.status}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── ⛔ บังคับผูก LINE — ต้องครบทั้ง "ลิงก์ห้องแชท" และ "userId" ──
            ลิงก์ห้องแชท = พนักงานกระโดดกลับไปคุยกับลูกค้าได้ · userId = ระบบส่งแจ้งสถานะเองได้
@@ -8735,18 +8706,10 @@ export default function AdminOrderDetailPage() {
                   )}
                 </div>
               )}
-              {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น — บิลแยก ส่งกล่องเดียว (ใบหลักเพิ่มใบตามได้อีก · ใบตาม/ใบที่ส่งแล้วไม่มีปุ่ม) */}
+              {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น — บิลแยก ส่งกล่องเดียว (ใบหลักเพิ่มใบตามได้อีก · ใบตาม/ใบที่ส่งแล้วไม่มีปุ่ม)
+                  23 ก.ย. 69: โชว์ใบอื่นของลูกค้าคนนี้คาไว้เลย ไม่มีใบให้รวม = เหลือบรรทัดจาง ๆ (เดิมเป็นปุ่มใหญ่ที่กดแล้วมักว่าง) */}
               {mayEdit && !demo && !isShipRider(order) && !(order.tracking ?? "").trim() && !order.shipments?.length && order.status !== "ยกเลิก" && order.status !== "เสร็จสิ้น" && (
-                <button
-                  type="button"
-                  onClick={() => setShipPick(true)}
-                  className="mb-2 flex min-h-[48px] w-full items-center justify-between gap-2 rounded-xl border-b-4 border-indigo-800 bg-indigo-600 px-3 py-2.5 text-left text-[13px] font-extrabold leading-snug text-white shadow-md transition hover:bg-indigo-500 active:translate-y-0.5 active:border-b-2"
-                >
-                  <span>📦 ส่งรวมกล่องกับออเดอร์อื่นของลูกค้าคนนี้</span>
-                  <span className="shrink-0 text-lg text-indigo-100" aria-hidden>
-                    →
-                  </span>
-                </button>
+                <ShipWithSuggest order={order} onOpenPicker={() => setShipPick(true)} onSaved={adoptOrder} />
               )}
               {isShipRider(order) && !(order.tracking ?? "").trim() ? (
                 <p className="rounded-lg bg-rose-50 px-2.5 py-2 text-[12px] font-bold text-rose-800 ring-1 ring-rose-200">

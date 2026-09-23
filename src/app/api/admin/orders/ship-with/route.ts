@@ -4,7 +4,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderStatusLabel, withLog, type Order } from "@/lib/admin-data";
 import { isPickupOrder, stripShipPrice } from "@/lib/ship-label";
-import { buildShipLink, cannotBeMain, cannotBeRider, isShipMain, isShipRider, riderNotReady, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
+import { alreadyShipped, buildShipLink, cannotBeMain, cannotBeRider, isShipMain, isShipRider, riderNotReady, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
 import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 
@@ -16,6 +16,7 @@ export const runtime = "nodejs";
  * GET  ?id=OD-…            → { linked: ShipWithRow[], candidates: ShipWithRow[] }
  *        linked     = ใบที่ผูกกับใบนี้อยู่ (ใบหลักเห็นใบตามทุกใบพร้อมสถานะ "ของพร้อมลงกล่องหรือยัง" · ใบตามเห็นใบหลัก)
  *        candidates = ใบอื่นของลูกค้าคนเดียวกันที่ยังไม่ปิด (จับจาก contactId/customerId/LINE/เบอร์/ชื่อ) · &q= ค้นเลขออเดอร์เพิ่มได้
+ *                     แต่ละใบมี blocked = เหตุผลที่ผูกไม่ได้ ("" = ผูกได้เลย) · ใบที่ผูกได้เรียงขึ้นก่อน
  * POST { mainId, riderId } → ผูก: เขียนสองใบ · ใบตามเปลี่ยนวิธีส่งตามใบหลัก (ค่าส่งไม่แตะ) · แจ้งลูกค้าทางไลน์
  * DELETE { mainId, riderId } → ยกเลิกการผูก: ใบตามได้วิธีส่ง/ที่อยู่เดิมคืน
  *
@@ -81,19 +82,43 @@ export async function GET(req: Request) {
   const asks = keys
     .filter(([, v]) => !!v)
     .map(([k, v]) => sb.from("orders").select("data").eq(k, v!).order("created_at", { ascending: false }).limit(30));
+  const qAsk = q ? asks.length : -1; // ตำแหน่งของชุดที่มาจากช่องค้นเลขออเดอร์ (ต่อท้ายเสมอ)
   if (q) asks.push(sb.from("orders").select("data").ilike("id", `%${q.replace(/[%_]/g, "")}%`).order("created_at", { ascending: false }).limit(10));
   const seen = new Set<string>([me.id, ...linkedIds]);
   const candidates: ShipWithRow[] = [];
-  for (const res of await Promise.all(asks)) {
+  for (const [i, res] of (await Promise.all(asks)).entries()) {
+    const typed = i === qAsk; // แอดมินพิมพ์เลขใบนี้มาเอง
     for (const r of res.data ?? []) {
       const o = r.data as Order;
       if (!o?.id || seen.has(o.id)) continue;
-      seen.add(o.id);
       if (o.status === "ยกเลิก" || o.status === "เสร็จสิ้น") continue;
-      candidates.push(toRow(o));
+      /**
+       * 📦 ใบที่ของออกจากร้านไปแล้ว ไม่ต้องโผล่ในรายการอัตโนมัติ — เดิมโชว์พร้อมเหตุผล "✗ ยิงเลขพัสดุไปแล้ว"
+       * แต่หน้างานอ่านแล้วสับสน (เจ้าของร้านแจ้ง 23 ก.ย. 69) รายการนี้ควรมีแต่ใบที่กดผูกได้จริง
+       * ยกเว้นคนพิมพ์เลขใบนั้นมาเอง — ตอบว่าทำไมรวมไม่ได้ ดีกว่าเงียบแล้วขึ้น "ไม่เจอออเดอร์"
+       */
+      if (!typed && alreadyShipped(o)) continue;
+      seen.add(o.id); // นับเฉพาะใบที่เข้ารายการ — ใบที่คัดออกยังให้ชุดค้นเลขหยิบมาตอบได้
+      candidates.push(toRow(o, { blocked: pairBlocked(me, o) }));
     }
   }
+  // ใบที่ผูกได้เลยขึ้นก่อน — หน้าออเดอร์เอาชุดนี้ไปโชว์คาไว้ที่ช่องเลขพัสดุ ไม่ต้องเปิดหน้าต่างก่อนถึงจะรู้ว่ามีใบให้รวมไหม
+  candidates.sort((a, b) => (a.blocked ? 1 : 0) - (b.blocked ? 1 : 0) || (b.date || "").localeCompare(a.date || ""));
   return NextResponse.json({ ok: true, linked, candidates });
+}
+
+/**
+ * คู่นี้ผูกส่งรวมไม่ได้เพราะอะไร ("" = ผูกได้) — ด่านเดียวกับตอน POST แต่ตอบล่วงหน้าให้ปุ่มบนจอ
+ * เหตุผลเขียนจากมุมของ "ใบที่อยู่ในรายการ" — ถ้าติดที่ใบที่เปิดอยู่ บอกว่าเป็นใบที่เปิดอยู่
+ */
+function pairBlocked(me: Order, other: Order): string {
+  const { main, rider } = pickRoles(me, other);
+  const whyMain = cannotBeMain(main);
+  const why = whyMain || cannotBeRider(rider);
+  if (!why) return "";
+  const culprit = whyMain ? main : rider;
+  const text = why.replace(/^ใบนี้/, "").trim();
+  return culprit.id === other.id ? text : `ใบที่เปิดอยู่${text}`;
 }
 
 /** หาว่าใครเป็นใบหลัก/ใบตามจากคู่ที่ส่งมา — ใบมารับเองเป็นใบหลักไม่ได้ สลับให้เองเมื่อส่งมากลับด้าน */

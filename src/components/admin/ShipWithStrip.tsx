@@ -182,6 +182,114 @@ export default function ShipWithStrip({
   );
 }
 
+/**
+ * 📦 ใบอื่นของลูกค้าคนนี้ที่ส่งรวมกล่องได้ — โชว์คาไว้ที่ช่องเลขพัสดุเลย (พนักงานขอ 23 ก.ย. 69)
+ * เดิมเป็นปุ่มเปล่า ๆ ต้องกดเปิดหน้าต่างก่อนถึงจะรู้ว่ามีใบให้รวมไหม — ส่วนใหญ่กดแล้วว่าง
+ * ไม่มีใบให้รวม = เหลือบรรทัดจาง ๆ (งานที่ไม่มีอะไรต้องทำ ห้ามเด่นกว่างานค้าง) แต่ยังค้นเลขออเดอร์เองได้
+ */
+export function ShipWithSuggest({
+  order,
+  onOpenPicker,
+  onSaved,
+}: {
+  order: Order;
+  /** เปิดหน้าต่างรายการเต็ม (ค้นเลขออเดอร์เองได้) */
+  onOpenPicker: () => void;
+  onSaved: (o: Order) => void;
+}) {
+  const [rows, setRows] = useState<ShipWithRow[] | null>(null);
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const [all, setAll] = useState(false);
+  const id = order.id;
+  // ถามรายการใหม่เมื่อ "ชุดส่งรวมของใบนี้" เปลี่ยนเท่านั้น — ไม่ใช่ทุกครั้งที่เซฟใบ (หน้านี้เซฟบ่อย)
+  const linkKey = (order.shipWith?.orders ?? []).join(",");
+
+  useEffect(() => {
+    let dead = false;
+    fetch(`/api/admin/orders/ship-with?id=${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { candidates?: ShipWithRow[] } | null) => !dead && setRows(j?.candidates ?? []))
+      .catch(() => !dead && setRows([]));
+    return () => {
+      dead = true;
+    };
+  }, [id, linkKey]);
+
+  async function pick(other: ShipWithRow) {
+    if (!window.confirm(`ส่งรวมกล่องเดียวกับ ${other.id}?\nบิลยังแยกกัน ค่าส่งไม่เปลี่ยน · ระบบแจ้งลูกค้าทางไลน์ให้`)) return;
+    setBusy(other.id);
+    setErr("");
+    const r = await call("POST", { mainId: order.id, riderId: other.id });
+    setBusy("");
+    if (r.error) return setErr(r.error);
+    const mine = r.main?.id === order.id ? r.main : r.rider?.id === order.id ? r.rider : null;
+    if (mine) onSaved(mine);
+  }
+
+  const ready = (rows ?? []).filter((r) => !r.blocked);
+  const quiet = (
+    <button
+      type="button"
+      onClick={onOpenPicker}
+      className="mb-2 min-h-[44px] text-left text-[12.5px] font-bold underline underline-offset-2"
+      style={{ color: "var(--dk-navy-soft)" }}
+    >
+      📦 ส่งรวมกล่องกับออเดอร์อื่น — ค้นเลขออเดอร์เอง →
+    </button>
+  );
+
+  if (rows === null) return <p className="mb-2 text-[12px]" style={{ color: "var(--dk-faint)" }}>📦 กำลังเช็คว่าลูกค้าคนนี้มีออเดอร์อื่นให้ส่งรวมกล่องไหม…</p>;
+  if (!ready.length) return quiet;
+
+  const show = all ? ready : ready.slice(0, 3);
+  return (
+    <div className="dkb-g mb-2 p-3" style={{ background: "var(--dk-yolk-wash)", borderLeft: "6px solid var(--dk-yolk-ink)" }}>
+      <p className="text-[13.5px] font-extrabold leading-snug" style={{ color: "var(--dk-yolk-ink)" }}>
+        📦 ลูกค้าคนนี้มีอีก {ready.length} ออเดอร์ที่ยังไม่ได้ส่ง — ใส่กล่องเดียวกันได้
+      </p>
+      <p className="mt-0.5 text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+        บิลแยกกันเหมือนเดิม ค่าส่งไม่เปลี่ยน · ผูกแล้วยิงเลขพัสดุที่ใบนี้ใบเดียว
+      </p>
+      <ul className="mt-2 grid gap-1.5">
+        {show.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl bg-white/85 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <Link
+                href={`/admin/orders/${encodeURIComponent(r.id)}`}
+                className="text-[13.5px] font-extrabold tabular-nums underline underline-offset-2"
+                style={{ color: "var(--dk-navy)" }}
+              >
+                {r.id}
+              </Link>
+              <span className="ml-2 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+                {r.label} · {r.shipLabel || "ยังไม่ระบุวิธีส่ง"}
+              </span>
+              <p className="truncate text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                {r.items.join(" · ")}
+              </p>
+            </div>
+            <button type="button" disabled={!!busy} onClick={() => pick(r)} className="dkb-btn dkb-btn-yolk min-h-[44px] shrink-0">
+              {busy === r.id ? "กำลังผูก…" : "ส่งรวมกับใบนี้"}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {ready.length > show.length && (
+          <button type="button" onClick={() => setAll(true)} className="min-h-[32px] text-[12.5px] font-bold underline underline-offset-2" style={{ color: "var(--dk-navy)" }}>
+            ดูอีก {ready.length - show.length} ใบ
+          </button>
+        )}
+        <button type="button" onClick={onOpenPicker} className="min-h-[32px] text-[12.5px] font-bold underline underline-offset-2" style={{ color: "var(--dk-navy-soft)" }}>
+          ไม่เจอใบที่ต้องการ? ค้นเลขออเดอร์เอง →
+        </button>
+      </div>
+      {err && <p className="mt-2 text-[12.5px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>⚠️ {err}</p>}
+    </div>
+  );
+}
+
 /** หน้าต่างเลือกใบที่จะส่งรวมกล่องกับใบนี้ — โชว์ใบอื่นของลูกค้าคนเดียวกันก่อน · ค้นเลขออเดอร์เพิ่มได้ */
 export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onClose: () => void; onSaved: (o: Order) => void }) {
   const [rows, setRows] = useState<ShipWithRow[] | null>(null);
@@ -244,7 +352,7 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
           {rows === null && !err && <p className="py-6 text-center text-[13px] text-slate-400">กำลังหาออเดอร์อื่นของลูกค้าคนนี้…</p>}
           {rows?.length === 0 && (
             <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-[13px] text-slate-500">
-              ไม่เจอออเดอร์อื่นของลูกค้าคนนี้ที่ยังไม่ปิด — ถ้าชื่อ/เบอร์ในอีกใบไม่ตรงกัน พิมพ์เลขออเดอร์ในช่องค้นด้านบน
+              ไม่เจอใบที่รวมกล่องได้ — ใบที่ส่งออกไปแล้วไม่อยู่ในรายการนี้ · ถ้าชื่อ/เบอร์ในอีกใบไม่ตรงกัน พิมพ์เลขออเดอร์ในช่องค้นด้านบน
             </p>
           )}
           <ul className="grid gap-2">
@@ -258,10 +366,20 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
                       {r.shippingCost > 0 ? ` ฿${r.shippingCost.toLocaleString("th-TH")}` : ""}
                     </p>
                     <p className="mt-0.5 truncate text-[12px] text-slate-400">{r.items.join(" · ")}</p>
+                    {/* ใบที่ผูกไม่ได้ยังโชว์อยู่ — บอกเหตุผลตรงนั้นดีกว่าให้กดแล้วเด้ง error */}
+                    {r.blocked && (
+                      <p className="mt-0.5 text-[12px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>
+                        ✗ ส่งรวมไม่ได้ — {r.blocked}
+                      </p>
+                    )}
                   </div>
-                  <button type="button" disabled={!!busy} onClick={() => pick(r)} className="dkb-btn dkb-btn-yolk min-h-[44px] shrink-0">
-                    {busy === r.id ? "กำลังผูก…" : "ส่งรวมกับใบนี้"}
-                  </button>
+                  {r.blocked ? (
+                    <span className="shrink-0 text-[12px] font-bold text-slate-400">—</span>
+                  ) : (
+                    <button type="button" disabled={!!busy} onClick={() => pick(r)} className="dkb-btn dkb-btn-yolk min-h-[44px] shrink-0">
+                      {busy === r.id ? "กำลังผูก…" : "ส่งรวมกับใบนี้"}
+                    </button>
+                  )}
                 </div>
               </li>
             ))}
