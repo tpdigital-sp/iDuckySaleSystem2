@@ -722,13 +722,14 @@ function OrderDocs({
     };
   }, [order.tracking]);
 
-  // ── 📄 ใบงานไม่เกิน 3 หน้า (เจ้าของร้านสั่ง 11 ก.ย. 69) ──
+  // ── 📄 ใบงานไม่เกิน 1 หน้า (เจ้าของร้านสั่ง 23 ก.ย. 69 "ปริ้นได้สูงสุด 1 หน้าเหมือนเดิม" · เคย 3 หน้า 11 ก.ย.–23 ก.ย. 69) ──
+  // ตัวแบ่งหน้ารองรับหลายหน้าอยู่แล้ว อยากกลับไป 3 หน้าแก้ MAX_WORK_PAGES ตัวเดียว
   // เดิมตัดแถวที่ 12 (มีรูป = 4) แล้วบอก "ดูมือถือ" → ออเดอร์ใหญ่ทุกใบต้องสแกนทีละใบ
   // ตอนนี้: วัดความสูงจริงของทุกแถวที่ความกว้าง A4 แล้วแบ่งลงหน้า 1–3 ไม่ตัดกลางแถว
   // หน้า 2–3 มีหัวใบซ้ำ + QR ตัวเล็ก + เลขหน้า · เกิน 3 หน้า = พิมพ์เท่าที่พอดี แล้วขึ้นกรอบเตือนบนหน้า 1 และท้ายหน้าสุดท้าย
   // ท้ายบิล (หมายเหตุ/ของแถม/ภาพก่อนปิดกล่อง) ตรึงอยู่หน้า 1 เสมอ ฝ่ายแพ็คเห็นตั้งแต่แผ่นแรก
   const PAGE_PX = 1047; // A4 หัก margin 10mm ที่ 96dpi (ตรงกับ .sheet height 277mm)
-  const MAX_WORK_PAGES = 3;
+  const MAX_WORK_PAGES = 1;
   const CUT_TOP_PX = 92; // กรอบเตือนใต้หัวใบงานหน้า 1
   const CUT_END_PX = 110; // กรอบเตือนท้ายหน้าสุดท้าย + บรรทัดรวม
   const workRef = useRef<HTMLElement>(null);
@@ -789,7 +790,7 @@ function OrderDocs({
   const totalQtyText = orderQtyText(order.items, (id) => products[id]);
   const workPages: PageRange[] = pages ?? [{ start: 0, end: order.items.length }];
   const printedRows = printedRowsOf(workPages);
-  const cutRows = order.items.slice(printedRows); // แถวที่กระดาษ 3 หน้าไม่พอ → ดูมือถือ
+  const cutRows = order.items.slice(printedRows); // แถวที่กระดาษหน้าเดียวไม่พอ → ดูมือถือ
   const cutQtyText = orderQtyText(cutRows, (id) => products[id]);
   const rowsOf = (pg: PageRange) => order.items.slice(pg.start, pg.end).map((it, k) => [it, pg.start + k] as const);
   const totalProofs = order.items.reduce((s, it) => s + proofsOf(it).length, 0); // แบบงานทั้งหมดกี่รูป
@@ -1315,7 +1316,7 @@ function OrderDocs({
               )}
             </div>
 
-            {/* ⚠️ กระดาษ 3 หน้าไม่พอ — บอกตั้งแต่แผ่นแรก จะได้ไม่คิดว่ารายการมีแค่นี้ */}
+            {/* ⚠️ กระดาษไม่พอ — บอกตั้งแต่แผ่นแรก จะได้ไม่คิดว่ารายการมีแค่นี้ */}
             {cutRows.length > 0 && (
               <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQtyText={cutQtyText} totalProofs={totalProofs} top />
             )}
@@ -1739,7 +1740,7 @@ function WorkContHead({ order, n, total, orderUrl }: { order: Order; n: number; 
   );
 }
 
-/** ⚠️ กระดาษ 3 หน้าไม่พอ — บอกว่าพิมพ์ถึงรายการไหน ที่เหลือกี่รายการกี่ชิ้น ให้ไปตรวจต่อบนมือถือ (โหมดแพ็คบังคับติ๊กครบก่อนยิงเลขพัสดุ) */
+/** ⚠️ กระดาษไม่พอ — บอกว่าพิมพ์ถึงรายการไหน ที่เหลือกี่รายการกี่ชิ้น ให้ไปตรวจต่อบนมือถือ (โหมดแพ็คบังคับติ๊กครบก่อนยิงเลขพัสดุ) */
 function WorkCutNote({
   order,
   printedRows,
