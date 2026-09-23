@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -793,6 +793,9 @@ function OrderDocs({
   const cutQtyText = orderQtyText(cutRows, (id) => products[id]);
   const rowsOf = (pg: PageRange) => order.items.slice(pg.start, pg.end).map((it, k) => [it, pg.start + k] as const);
   const totalProofs = order.items.reduce((s, it) => s + proofsOf(it).length, 0); // แบบงานทั้งหมดกี่รูป
+  /* 🚚 ใบที่แบ่งส่งไปแล้ว — ใต้รูปต้องบอก "เหลือกี่ชิ้น" ไม่ใช่จำนวนเต็ม (เจ้าของร้านแจ้ง 23 ก.ย. 69)
+     ปริ้นใบงานรอบ 2 แล้วยังขึ้นจำนวนเต็ม = คนแพ็คหยิบซ้ำของที่ส่งไปแล้ว */
+  const shipStates = proofShipStates(order);
 
   /** แถวรายการหนึ่งแถว — ใช้ทั้งหน้า 1 และหน้าต่อ · i = ลำดับจริงในออเดอร์ (เลขหน้าตารางต้องต่อเนื่องข้ามหน้า) */
   const renderRow = (it: Order["items"][number], i: number) => {
@@ -818,11 +821,26 @@ function OrderDocs({
                                   className="h-20 w-20 rounded border border-slate-300 object-contain"
                                 />
                                 {/* ใต้รูปเขียนแค่จำนวน (เจ้าของร้านสั่ง 11 ก.ย. 69) — ชื่อไฟล์/หมายเหตุแบบยาวรกกระดาษ คนแพ็คนับจากตัวเลขอย่างเดียว */}
-                                {p.qty ? (
-                                  <p className="mt-0.5 text-[10px] font-bold leading-tight text-slate-700">
-                                    {p.qty} {proofUnit(p)}
-                                  </p>
-                                ) : null}
+                                {p.qty
+                                  ? (() => {
+                                      const st = shipStates.get(proofKey(i, j));
+                                      if (st && st.shipped > 0 && st.remaining > 0)
+                                        return (
+                                          <p className="mt-0.5 rounded border border-black px-0.5 text-[10px] font-extrabold leading-tight text-black">
+                                            เหลือ {st.remaining} {proofUnit(p)}
+                                            <br />
+                                            (ส่งแล้ว {st.shipped}/{st.total})
+                                          </p>
+                                        );
+                                      if (st && st.shipped > 0)
+                                        return <p className="mt-0.5 text-[10px] font-extrabold leading-tight text-black">ส่งครบแล้ว</p>;
+                                      return (
+                                        <p className="mt-0.5 text-[10px] font-bold leading-tight text-slate-700">
+                                          {p.qty} {proofUnit(p)}
+                                        </p>
+                                      );
+                                    })()
+                                  : null}
                               </div>
                             ))}
                           </div>

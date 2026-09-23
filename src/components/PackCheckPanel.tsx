@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { shortTime } from "@/lib/admin-ui";
-import { proofUnit, type Proof } from "@/lib/admin-data";
+import { proofPackNeed, proofUnit, type Proof, type ProofShipState } from "@/lib/admin-data";
 
 /**
  * ปุ่มยืนยันการตรวจนับ — แสดงใต้ภาพขยายในไลต์บ็อกซ์
@@ -10,9 +10,12 @@ import { proofUnit, type Proof } from "@/lib/admin-data";
  */
 export default function PackCheckPanel({
   proof,
+  ship,
   onConfirm,
 }: {
   proof?: Proof;
+  /** 🚚 สถานะแบ่งส่งของรูปนี้ — มีค่าแล้วต้องบอก "รอบนี้ต้องได้กี่ชิ้น" ไม่ใช่จำนวนเต็มของลาย */
+  ship?: ProofShipState;
   onConfirm: (status: "ครบ" | "ไม่ครบ", got?: number) => void;
 }) {
   const [shortMode, setShortMode] = useState(false);
@@ -20,13 +23,22 @@ export default function PackCheckPanel({
 
   if (!proof) return null;
 
+  // แบ่งส่งไปแล้วบางส่วน = รอบนี้นับแค่ที่เหลือ (เจ้าของร้านแจ้ง 23 ก.ย. 69)
+  const partial = !!ship && ship.shipped > 0;
+  const need = proofPackNeed(proof, ship);
+
   return (
     <div className="rounded-2xl bg-white p-4 shadow-2xl">
       <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-slate-400">ตรวจนับของตามภาพนี้</p>
       <p className="mt-0.5 text-sm font-bold text-slate-800">
-        {proof.qty ? `ต้องได้ ${proof.qty} ${proofUnit(proof)}` : "ไม่ได้ระบุจำนวน"}
+        {proof.qty ? `${partial ? "รอบนี้ต้องได้" : "ต้องได้"} ${need} ${proofUnit(proof)}` : "ไม่ได้ระบุจำนวน"}
         {proof.note ? ` · ${proof.note}` : ""}
       </p>
+      {partial && (
+        <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-extrabold text-amber-900 ring-1 ring-amber-300">
+          🚚 ลายนี้ส่งออกไปแล้ว {ship!.shipped} จาก {ship!.total} {proofUnit(proof)} — รอบนี้หยิบแค่ {need}
+        </p>
+      )}
 
       {proof.pack && (
         <p className={`mt-1 text-[11px] ${proof.pack.status === "ครบ" ? "text-green-700" : "font-bold text-rose-600"}`}>
@@ -58,7 +70,7 @@ export default function PackCheckPanel({
       ) : (
         <div className="mt-3">
           <label htmlFor="got" className="text-xs font-bold text-slate-600">
-            นับได้จริงกี่ชิ้น{proof.qty ? ` (จาก ${proof.qty})` : ""}
+            นับได้จริงกี่ชิ้น{proof.qty ? ` (จาก ${need}${partial ? " ที่ต้องได้รอบนี้" : ""})` : ""}
           </label>
           <input
             id="got"

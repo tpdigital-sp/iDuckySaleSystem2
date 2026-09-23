@@ -2362,6 +2362,16 @@ export interface ProofShipState {
   rounds: number[];
 }
 
+/**
+ * 📦 จำนวนที่ฝ่ายแพ็คต้องนับ/หยิบ "รอบนี้" ของรูป 1 รูป — หักจำนวนที่แบ่งส่งออกไปแล้ว
+ * ใบที่ยังไม่เคยแบ่งส่ง = จำนวนเต็มของรูปเหมือนเดิม
+ * (เจ้าของร้านแจ้ง 23 ก.ย. 69: ฝั่งแพ็คขึ้นจำนวนเต็มทั้งที่รอบ 1 ออกไปแล้ว → หยิบเกิน ไม่เหลือให้รอบ 2)
+ */
+export function proofPackNeed(p: Proof, st?: ProofShipState): number {
+  if (st && st.shipped > 0) return Math.max(0, st.remaining);
+  return proofSplitTotal(p);
+}
+
 export function proofShipStates(order: Order): Map<string, ProofShipState> {
   const out = new Map<string, ProofShipState>();
   order.items.forEach((it, i) =>

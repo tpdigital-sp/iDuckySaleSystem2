@@ -80,6 +80,7 @@ import {
   partialShipSummary,
   plannedProofRounds,
   proofKey,
+  proofPackNeed,
   proofShipStates,
   roundSel,
   type ProofShipState,
@@ -1413,6 +1414,18 @@ export default function AdminOrderDetailPage() {
    * อ่านหลัง mount เพราะ URL ฝั่งเซิร์ฟเวอร์กับเบราว์เซอร์ต้องตรงกันตอน hydrate
    */
   const [viaScan, setViaScan] = useState(false);
+
+  /**
+   * 📦 เข้าโหมดแพ็คจากจอนี้ (ไม่ต้องส่อง QR ด้วยมือถือ) — เจ้าของร้านสั่ง 23 ก.ย. 69
+   * ล้างธง "กดกลับหน้าตรวจสอบออเดอร์" ของใบนี้ด้วย ไม่งั้นรีเฟรชแล้วหลุดออกทันทีเมื่อมี ?pack=1
+   */
+  const enterPackMode = useCallback(() => {
+    try {
+      sessionStorage.removeItem(packOptOutKey(orderId));
+    } catch {}
+    setPackMode(true);
+    window.scrollTo({ top: 0 });
+  }, [orderId]);
 
   useEffect(() => {
     const explicit = new URLSearchParams(window.location.search).get(PACK_SCAN_PARAM) === "1";
@@ -4021,6 +4034,7 @@ export default function AdminOrderDetailPage() {
               lightbox.at ? (
                 <PackCheckPanel
                   proof={proofsOf(order.items[lightbox.at.item])[lightbox.at.proof]}
+                  ship={proofShipStates(order).get(proofKey(lightbox.at.item, lightbox.at.proof))}
                   onConfirm={(status, got) => {
                     setPackCheck(lightbox.at!.item, lightbox.at!.proof, status, got);
                     setLightbox(null);
@@ -4407,6 +4421,18 @@ export default function AdminOrderDetailPage() {
               </>
             )}
           </div>
+          {/* 📦 โหมดแพ็คบนจอนี้ — ทางเข้าเดียวกับสแกน QR ใบงาน สำหรับตอนไม่อยากหยิบมือถือ (เจ้าของร้านสั่ง 23 ก.ย. 69)
+              ฝ่ายแพ็คเข้าหน้าแพ็คเองอยู่แล้ว (isPackOnly) ปุ่มนี้เลยโชว์เฉพาะสิทธิ์แอดมิน (orders.edit) */}
+          {mayEdit && (
+            <button
+              type="button"
+              onClick={enterPackMode}
+              title="ตรวจนับของ · ยืนยันอ่านรายละเอียด · ยิงเลขพัสดุ — ทำบนจอนี้ได้เลย ไม่ต้องสแกน QR ด้วยมือถือ"
+              className={HBTN}
+            >
+              📦 โหมดแพ็ค
+            </button>
+          )}
           {mayEdit && (
             <button
               type="button"
@@ -7957,6 +7983,14 @@ export default function AdminOrderDetailPage() {
                         ส่องด้วยกล้องมือถือ → เข้าโหมดแพ็คของใบนี้ทันที เช็คของตามภาพได้เลย ไม่ต้องรอปริ้นใบงาน ·
                         พนักงานแผนกไหนก็ใช้ได้ ขอแค่ล็อกอินหลังบ้านอยู่
                       </p>
+                      {/* ไม่อยากหยิบมือถือ — ทำบนจอนี้ต่อได้เลย (เจ้าของร้านสั่ง 23 ก.ย. 69) */}
+                      <button
+                        type="button"
+                        onClick={enterPackMode}
+                        className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition hover:bg-slate-50"
+                      >
+                        📦 เข้าโหมดแพ็คบนจอนี้ ›
+                      </button>
                     </div>
                   </div>
                 )}
@@ -9222,11 +9256,35 @@ function ProofCarousel({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={p.url} alt={`แบบงาน ${itemName}`} className="h-full w-full object-contain" />
-              {p.qty ? (
-                <span className="absolute left-1.5 top-1.5 rounded bg-slate-900/70 px-2 py-0.5 text-xs font-bold text-white">
-                  {p.qty} {proofUnit(p)}
-                </span>
-              ) : null}
+              {/*
+                🚚 ป้ายจำนวนบนรูป — ใบที่แบ่งส่งไปแล้วต้องขึ้น "จำนวนที่เหลือของรอบนี้" ไม่ใช่จำนวนเต็มของลาย
+                (เจ้าของร้านแจ้ง 23 ก.ย. 69 · OD-260914-5746 รูปที่ 1 ส่งไปแล้ว 1 จาก 10 แต่ฝั่งแพ็คยังขึ้น 10
+                 คนแพ็คหยิบ 10 = ของเกิน ไม่เหลือให้รอบ 2)
+              */}
+              {(() => {
+                const st = shipState?.(j);
+                const unit = proofUnit(p);
+                if (st && st.shipped > 0 && st.remaining > 0)
+                  return (
+                    <span className="absolute left-1.5 top-1.5 rounded bg-amber-400 px-2 py-0.5 text-xs font-black text-amber-950 ring-1 ring-amber-600">
+                      เหลือ {st.remaining.toLocaleString("th-TH")} {unit}
+                      <span className="ml-1 text-[10px] font-bold opacity-80">
+                        (ส่งไปแล้ว {st.shipped.toLocaleString("th-TH")}/{st.total.toLocaleString("th-TH")})
+                      </span>
+                    </span>
+                  );
+                if (st && st.shipped > 0 && st.remaining <= 0)
+                  return (
+                    <span className="absolute left-1.5 top-1.5 rounded bg-sky-600 px-2 py-0.5 text-xs font-black text-white">
+                      ส่งครบแล้ว {st.total.toLocaleString("th-TH")} {unit}
+                    </span>
+                  );
+                return p.qty ? (
+                  <span className="absolute left-1.5 top-1.5 rounded bg-slate-900/70 px-2 py-0.5 text-xs font-bold text-white">
+                    {p.qty} {unit}
+                  </span>
+                ) : null;
+              })()}
               {!single && (
                 <span className="absolute right-1.5 top-1.5 rounded bg-slate-900/60 px-2 py-0.5 text-xs font-bold text-white">
                   {j + 1}/{proofs.length}
@@ -9254,11 +9312,12 @@ function ProofCarousel({
                     value={gotText}
                     onChange={(e) => setGotText(e.target.value)}
                     className="min-h-[44px] w-full min-w-0 rounded-lg border-2 border-rose-400 bg-white px-2 text-lg font-black tabular-nums text-slate-900"
-                    aria-label={`นับได้จริงกี่${proofUnit(p)} รูปที่ ${j + 1}`}
+                    aria-label={`นับได้จริงกี่${proofUnit(p)} รูปที่ ${j + 1} (รอบนี้ต้องได้ ${proofPackNeed(p, shipState?.(j))})`}
                   />
+                  {/* ตัวหาร = จำนวนที่ต้องได้ "รอบนี้" (หักที่แบ่งส่งไปแล้ว) ไม่งั้นคนแพ็คกรอกเทียบกับยอดเต็ม */}
                   {p.qty ? (
                     <span className="shrink-0 tabular-nums text-slate-600">
-                      / {p.qty} {proofUnit(p)}
+                      / {(proofPackNeed(p, shipState?.(j))).toLocaleString("th-TH")} {proofUnit(p)}
                     </span>
                   ) : null}
                 </label>
@@ -9789,6 +9848,39 @@ function PackView({
                   <span className="tabular-nums">{qc.orderedText}</span>)
                 </p>
               )}
+
+              {/*
+                🚚 รายการนี้แบ่งส่งออกไปแล้วบางส่วน — ต้องเห็นก่อนหยิบของว่า "รอบนี้แพ็คแค่ที่เหลือ"
+                เดิมหัวรายการขึ้นจำนวนเต็มที่ลูกค้าสั่ง คนแพ็คหยิบครบจำนวน = ของเกิน ไม่เหลือให้รอบถัดไป
+                (เจ้าของร้านแจ้ง 23 ก.ย. 69 · OD-260914-5746)
+              */}
+              {(() => {
+                const sts = proofs
+                  .map((_, j) => shipStates.get(proofKey(i, j)))
+                  .filter((st): st is ProofShipState => !!st);
+                const sentQty = sts.reduce((n, st) => n + st.shipped, 0);
+                if (sentQty <= 0) return null;
+                const leftQty = sts.reduce((n, st) => n + st.remaining, 0);
+                const unit = qc.unit || "ชิ้น";
+                return (
+                  <div className="mb-2 rounded-xl bg-amber-50 px-3 py-2 ring-2 ring-amber-300">
+                    <p className="text-xs font-extrabold text-amber-900">🚚 รายการนี้แบ่งส่งไปแล้ว — รอบนี้แพ็คแค่ที่เหลือ</p>
+                    {/* ป้ายบนรูปรวมไม่ตรงกับที่ลูกค้าสั่งอยู่แล้ว = อย่าไปย้ำยอดรวมที่ยังเชื่อไม่ได้ ให้ดูเป็นลาย ๆ */}
+                    <p className="mt-0.5 text-[11px] font-bold text-amber-800">
+                      ส่งออกไปแล้ว <span className="tabular-nums">{sentQty.toLocaleString("th-TH")}</span> {unit}
+                      {qtyMismatch ? (
+                        " — หยิบตามจำนวนที่ป้ายบนรูปแต่ละลาย (หักของที่ออกไปแล้ว)"
+                      ) : (
+                        <>
+                          {" "}· เหลือแพ็ครอบนี้ <span className="text-sm font-black tabular-nums">{leftQty.toLocaleString("th-TH")}</span> {unit} —
+                          จำนวนของแต่ละลายดูที่ป้ายบนรูป
+                        </>
+                      )}
+                    </p>
+                  </div>
+                );
+              })()}
+
 
               {/* รูปแบบงาน — ปัดดูทีละรูป กด "ครบ" แล้วเลื่อนไปรูปถัดไปที่ยังไม่ตรวจ */}
               {proofs.length > 0 ? (
