@@ -17,6 +17,7 @@
 import { useMemo, useState } from "react";
 import StatusChip, { chipStyle, STATUS_TONE } from "@/components/admin/StatusChip";
 import {
+  effectiveStage,
   graphicTodoItems,
   isSelfDesigned,
   orderStatusLabel,
@@ -129,7 +130,8 @@ export default function GraphicsOrdersPage() {
 
   /** คิวของฝ่ายกราฟฟิก — ใบเก่าขึ้นก่อน ค้างนานสุดต้องรีบสุด */
   const queue = useMemo(
-    () => orders.filter((o) => QUEUE.includes(o.status)).sort((a, b) => a.id.localeCompare(b.id)),
+    // ใบที่ค้างเงินแต่ส่งแบบไปแล้ว (proofStage) ออกจากคิว ไปอยู่แท็บ "ส่งให้ลูกค้าแล้ว" เหมือนใบที่เงินเข้าแล้ว
+    () => orders.filter((o) => QUEUE.includes(effectiveStage(o))).sort((a, b) => a.id.localeCompare(b.id)),
     [orders]
   );
 

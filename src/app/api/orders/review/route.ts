@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { proofBlockers, proofsOf, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { proofBlockers, proofsOf, withLog, withProofStage, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
 
@@ -14,6 +14,9 @@ export const runtime = "nodejs";
  * มี proofIndex → ตรวจ "เฉพาะรูปนั้น" (per-image) · รายการเป็น "อนุมัติ" เมื่อครบทุกรูป
  * ไม่มี proofIndex → เหมาทั้งรายการ (ปุ่มอนุมัติทุกภาพที่เหลือ / ขอแก้ไขทั้งรายการ)
  * ทุกรายการ+ของแถมที่มีแบบอนุมัติครบ → ออเดอร์ = "อนุมัติแบบ" · ขอแก้ไข → ออเดอร์ = "แก้ไขแบบ"
+ * ⛔ ใบที่ยังค้างเงิน (รอชำระเงิน/รอตรวจสอบ) ขั้นแบบไปจำไว้ที่ proofStage สถานะบนใบไม่ขยับ — ห้ามข้ามประตูการเงิน
+ *    (OD-260915-7543 · 23 ก.ย. 69: ลูกค้าสั่งเพิ่ม ใบเด้งกลับ "รอชำระเงิน" ค้าง 2,337 · สลิป 3 ใบ SlipOK ไม่ผ่านสักใบ
+ *     ลูกค้ากดอนุมัติแบบ → ทางนี้เขียน "อนุมัติแบบ" ทับ ใบเลยดูจ่ายครบและเข้าคิวปริ้น/ส่งผลิต)
  * ⛔ ยังมีรายการที่ "ต้องมีแบบแต่ยังไม่มี" (ลูกค้าสั่งเพิ่มทีหลัง กราฟฟิกยังไม่ส่งแบบ) = ยังไม่ครบ ค้างที่ "รอตรวจแบบ"
  *    เดิมนับเฉพาะรายการที่มีแบบ → OD-260916-4693 อนุมัติ 2 จาก 3 รายการแล้วทั้งใบเป็น "อนุมัติแบบ" เข้าคิวปริ้น (18 ก.ย. 69)
  */
@@ -92,7 +95,7 @@ export async function POST(req: Request) {
           ? "อนุมัติแบบ"
           : "รอตรวจแบบ";
     const updated = withLog(
-      { ...order, gifts, status },
+      withProofStage({ ...order, gifts }, status),
       "ลูกค้า",
       action === "approve" ? "อนุมัติแบบของแถม" : "ขอแก้ไขแบบของแถม",
       action === "approve" ? `🎁 ${gift.name}` : `🎁 ${gift.name} — ${note}`
@@ -148,7 +151,7 @@ export async function POST(req: Request) {
 
   const where = proofIndex !== null ? `${item.name} รูปที่ ${proofIndex + 1}/${itemProofs.length}` : item.name;
   const updated = withLog(
-    { ...order, items, status },
+    withProofStage({ ...order, items }, status),
     "ลูกค้า",
     action === "approve" ? "อนุมัติแบบ" : "ขอแก้ไขแบบ",
     action === "approve" ? where : `${where} — ${note}`

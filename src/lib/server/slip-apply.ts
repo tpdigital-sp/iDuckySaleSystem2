@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, paidStatusFor, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { clearStageMemory, earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, stageAfterPayment, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
@@ -405,7 +405,8 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         updated = {
           ...updated,
           deposit: { ...updated.deposit, firstPaidAt: now },
-          status: waiting ? paidStatusFor(updated) : updated.status,
+          status: waiting ? stageAfterPayment(updated) : updated.status,
+          ...(waiting ? clearStageMemory : {}),
         };
         updated = withLog(updated, "SlipOK", `${rc}ยืนยันมัดจำ 50% อัตโนมัติ${paidBefore > 0 ? " (รวมยอดที่รับบางส่วนก่อนหน้า)" : ""}`, amountNote);
       } else {
@@ -429,7 +430,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       // ผ่านการตรวจอัตโนมัติเท่านั้นถึงยืนยันให้เลย — งานที่ลูกค้าจัดวางลายบนเทมเพลตเองมาครบ ข้ามไป "อนุมัติแบบ" เลย
       // ใบที่ถูกเด้งกลับมารอชำระเงินเพราะยอดโต (reopenedFrom) → กลับไปขั้นเดิม ไม่ถอยไป "ชำระแล้ว" ให้ตรวจแบบซ้ำ
       // งานที่เดินหน้าไปแล้ว (ค่าบริการเพิ่ม/สั่งเพิ่มระหว่างผลิต) คงสถานะเดิม แค่ปลดล็อกยอดค้าง
-      updated = { ...updated, status: waiting ? updated.reopenedFrom ?? paidStatusFor(updated) : updated.status, reopenedFrom: undefined };
+      updated = { ...updated, status: waiting ? stageAfterPayment(updated) : updated.status, ...clearStageMemory };
       updated = withLog(
         updated,
         "SlipOK",
@@ -629,7 +630,7 @@ export async function acceptPaymentManually(a: {
     const depositDue = Math.min(total, Math.max(0, updated.deposit.amount));
     if (paidNow + 0.5 >= depositDue) {
       confirmedDeposit = true;
-      updated = { ...updated, deposit: { ...updated.deposit, firstPaidAt: now }, status: waiting ? paidStatusFor(updated) : updated.status };
+      updated = { ...updated, deposit: { ...updated.deposit, firstPaidAt: now }, status: waiting ? stageAfterPayment(updated) : updated.status, ...(waiting ? clearStageMemory : {}) };
       updated = withLog(updated, who, "รับยอดสลิปใบเพิ่มเอง — ครบมัดจำ 50%", amountNote);
     } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — มัดจำยังขาดอีก ${thb(round2(depositDue - paidNow))} บาท`, amountNote);
   } else if (updated.deposit && !updated.deposit.settledAt) {
@@ -640,7 +641,7 @@ export async function acceptPaymentManually(a: {
     } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — ยังขาดอีก ${thb(remain)} บาท`, amountNote);
   } else if (remain <= 0.5) {
     confirmedFull = true;
-    updated = { ...updated, status: waiting ? updated.reopenedFrom ?? paidStatusFor(updated) : updated.status, reopenedFrom: undefined };
+    updated = { ...updated, status: waiting ? stageAfterPayment(updated) : updated.status, ...clearStageMemory };
     updated = withLog(updated, who, "รับยอดสลิปใบเพิ่มเอง — รับเงินครบแล้ว", amountNote);
   } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — ยังค้างอีก ${thb(remain)} บาท`, amountNote);
 
@@ -747,7 +748,7 @@ export async function settleCreditedOrder(a: { sb: SupabaseClient; order: Order;
   const paid = paidSoFar(order);
 
   const who = "ระบบ (ยอดครบตามสลิปแล้ว)";
-  let updated: Order = { ...order, status: order.reopenedFrom ?? paidStatusFor(order), reopenedFrom: undefined };
+  let updated: Order = { ...order, status: stageAfterPayment(order), ...clearStageMemory };
   // สลิปช่องแรกเคยถูกนับ "รับบางส่วน" (ยอดในระบบผิดตอนตรวจสด) แล้วแอดมินแก้ยอดจนครบ → ป้ายผลตรวจต้องเป็นผ่าน ไม่ใช่ "โอนขาด" ค้างอยู่
   const v = order.slipVerify;
   if (v && v.status !== "pass" && (v.credited ?? 0) > 0)
@@ -795,7 +796,7 @@ export async function sweepCreditedOrders(sb: SupabaseClient, origin: string, dr
   const settled: { id: string; status: string; error?: string }[] = [];
   for (const o of orders) {
     if (dry) {
-      settled.push({ id: o.id, status: `${o.status} → ${o.reopenedFrom ?? paidStatusFor(o)} (dry)` });
+      settled.push({ id: o.id, status: `${o.status} → ${stageAfterPayment(o)} (dry)` });
       continue;
     }
     try {

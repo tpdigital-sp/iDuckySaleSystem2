@@ -28,6 +28,8 @@
     "check:member-tier": "tsx --tsconfig tsconfig.json scripts/order-member-tier-test.mts",
     "scan:lot-reprice": "node --conditions=react-server --import tsx scripts/order-lot-reprice-scan.mts",
     "check:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-test.mts",
+    "check:proof-stage": "tsx --tsconfig tsconfig.json scripts/proof-stage-test.mts",
+    "scan:proof-stage": "node --conditions=react-server --import tsx scripts/proof-stage-scan.mts",
     "check:line-bind": "tsx scripts/line-bind-test.mts",
     "scan:line-bind": "tsx scripts/line-bind-scan.mts",
     "scan:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-scan.mts"

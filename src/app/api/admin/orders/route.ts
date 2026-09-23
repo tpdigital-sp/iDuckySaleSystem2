@@ -25,6 +25,9 @@ import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
 import {
   adminDiscountAmount,
+  awaitingPayment,
+  clearStageMemory,
+  stageAfterPayment,
   hasUnpaidBalance,
   orderBalance,
   orderTotal,
@@ -206,7 +209,7 @@ function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: stri
     ? incoming.gifts.map((g) => keepCustomerVerdict(existing.gifts?.find((x) => x.promoId === g.promoId), g, clientSavedAt))
     : incoming.gifts;
   // ฟิลด์ที่เซิร์ฟเวอร์เป็นเจ้าของ — หน้าจอแอดมินไม่รู้จัก ส่งก้อนกลับมาโดยไม่มี = ห้ามหาย
-  const withItems: Order = { ...incoming, items, ...(gifts ? { gifts } : {}), balanceNotified: existing.balanceNotified, balancePending: existing.balancePending };
+  const withItems: Order = { ...incoming, items, ...(gifts ? { gifts } : {}), balanceNotified: existing.balanceNotified, balancePending: existing.balancePending, proofStage: existing.proofStage };
   // 🧭 ช่องอื่นที่ไม่ได้แก้ → ของฐาน (items จัดการไปแล้วด้านบน จึงบอกว่า "แก้" เพื่อไม่ให้ทับซ้ำ)
   const { order: merged, restored } = applyChangedKeys(existing, withItems, changed ? new Set([...changed, "items"]) : null);
   // 💰 เงินเข้า/สลิปที่เกิดหลังจากหน้าจอนี้เห็นล่าสุด = หน้าจอยังไม่รู้ → คงของในฐาน (ดู keepServerMoney)
@@ -940,10 +943,10 @@ export async function PATCH(req: Request) {
     !hasUnpaidBalance(toSave);
   if (restoredFromReopen)
     toSave = withLog(
-      { ...toSave, status: toSave.reopenedFrom!, reopenedFrom: undefined },
+      { ...toSave, status: stageAfterPayment(toSave), ...clearStageMemory },
       actor.name?.trim() || actor.username,
       "ยอดค้างหมดแล้ว — กลับไปขั้นเดิม",
-      `รอชำระเงิน → ${toSave.reopenedFrom} (รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
+      `รอชำระเงิน → ${stageAfterPayment(toSave)} (รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
     );
 
   /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */
@@ -995,6 +998,21 @@ export async function PATCH(req: Request) {
     toSave = lockEarlyPay(toSave, now, `แอดมิน ${actor.name?.trim() || actor.username}`);
   if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && toSave.paidTotal == null && !toSave.deposit)
     toSave = { ...toSave, paidTotal: orderTotal(toSave) };
+
+  /**
+   * 🎨 ยืนยันเงินเข้าเองบนใบที่ "แบบเดินไปแล้วระหว่างค้างเงิน" → กลับไปขั้นแบบที่จำไว้ ไม่ใช่ค้างที่ "ชำระแล้ว" ให้ตรวจแบบซ้ำ
+   * (คู่กับ withProofStage ที่ทางอัปโหลดแบบ/ลูกค้าตรวจแบบใช้จำขั้นไว้ตอนใบยังค้างเงิน · ดู Order.proofStage)
+   * ต้องอยู่ "หลัง" ด่านสิทธิ์ยืนยันเงินเข้า — ไม่งั้นแปลงสถานะแล้วด่านจับไม่เจอ
+   */
+  if (mayEditFull && toSave.proofStage && awaitingPayment(existing) && toSave.status === "ชำระแล้ว")
+    toSave = withLog(
+      { ...toSave, status: toSave.proofStage, proofStage: undefined },
+      actor.name?.trim() || actor.username,
+      "ยืนยันเงินเข้า — กลับไปขั้นแบบที่ทำไว้แล้ว",
+      `ชำระแล้ว → ${toSave.proofStage} (แบบถูกทำ/ตรวจไปแล้วตอนใบยังค้างเงิน ไม่ต้องตรวจซ้ำ)`
+    );
+  // แอดมินดันสถานะไปขั้นอื่นเอง → ความจำขั้นแบบหมดความหมาย (ไม่งั้นเงินเข้าทีหลังจะเด้งไปทับสิ่งที่แอดมินตั้งใจ)
+  if (mayEditFull && toSave.proofStage && toSave.status !== existing.status) toSave = { ...toSave, proofStage: undefined };
 
   // 🕒 ประวัติรวม 2 ฝั่ง + ประทับเวลาบันทึก (หน้าจอรับกลับไปถือ = รอบหน้าเซิร์ฟเวอร์รู้ว่าหน้านั้นเห็นถึงตอนนี้แล้ว)
   // (ฐาน + ที่หน้าจอส่งมา + ที่เซิร์ฟเวอร์เพิ่งต่อท้ายในคำขอนี้ — ทางแพ็ค/กราฟฟิก toSave ตั้งต้นจากฐาน log ของหน้าจอจึงต้องรวมตรงนี้)

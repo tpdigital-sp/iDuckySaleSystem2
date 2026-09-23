@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { proofsOf, withLog, type Order } from "@/lib/admin-data";
+import { proofsOf, withLog, withProofStage, type Order } from "@/lib/admin-data";
 import { notifyCustomer, orderNotice, orderLink } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
 
@@ -137,10 +137,12 @@ export async function POST(req: Request) {
   }
 
   // ยังมีรายการไหนค้างแก้อยู่ไหม → คุมสถานะออเดอร์ให้ตรงความจริง
+  // ⛔ ใบที่ยังค้างเงิน (รอชำระเงิน/รอตรวจสอบ) สถานะไม่ขยับ — ขั้นแบบไปจำไว้ที่ proofStage (withProofStage)
+  //    กราฟฟิกทำแบบล่วงหน้าได้เหมือนเดิม แต่ใบต้องยังขึ้นว่าเงินยังไม่เข้าให้ฝ่ายการเงินเห็น (OD-260915-7543 · 23 ก.ย. 69)
   const anyEditLeft = items.some((it) => it.proofStatus === "ขอแก้ไข");
   const updated = withLog(
     // savedAt = now เท่ากับ at ของรูปที่เพิ่งอัป → หน้าจอที่รับ order กลับ "เห็นรูปนี้แล้ว" ลบ/แก้ต่อได้ทันที (ดู reconcileProofs)
-    { ...order, items, status: anyEditLeft ? ("แก้ไขแบบ" as const) : ("รอตรวจแบบ" as const), savedAt: now },
+    { ...withProofStage({ ...order, items }, anyEditLeft ? "แก้ไขแบบ" : "รอตรวจแบบ"), savedAt: now },
     by, // บันทึกชื่อคนที่อัปโหลดจริง (fallback: กราฟฟิก)
     replaceIndex !== null ? "เปลี่ยนรูปแบบงาน (แก้ตามคำขอ)" : "อัปโหลดแบบให้ลูกค้าตรวจ",
     replaceIndex !== null

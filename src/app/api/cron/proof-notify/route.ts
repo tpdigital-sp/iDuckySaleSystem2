@@ -23,9 +23,16 @@ export async function GET(req: Request) {
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
   const dry = url.searchParams.get("dry") === "1";
 
-  // แบบค้างตรวจมีได้แค่ใบสถานะ "รอตรวจแบบ"/"แก้ไขแบบ" (ตัวอัปโหลดตั้งให้) — กรองที่ฐานเลย ไม่ต้องดึงทั้งตาราง
-  const { data, error } = await sb.from("orders").select("id,data").in("data->>status", ["รอตรวจแบบ", "แก้ไขแบบ"]);
+  // แบบค้างตรวจมีได้แค่ใบที่ขั้นแบบเป็น "รอตรวจแบบ"/"แก้ไขแบบ" (ตัวอัปโหลดตั้งให้) — กรองที่ฐานเลย ไม่ต้องดึงทั้งตาราง
+  // ใบที่ยังค้างเงิน ขั้นแบบไปอยู่ที่ proofStage (ดู withProofStage) — ต้องทวงลูกค้าให้ตรวจแบบเหมือนกัน จึงดึงมาด้วย
+  const STAGES = ["รอตรวจแบบ", "แก้ไขแบบ"];
+  const [byStatus, byStage] = await Promise.all([
+    sb.from("orders").select("id,data").in("data->>status", STAGES),
+    sb.from("orders").select("id,data").in("data->>proofStage", STAGES),
+  ]);
+  const error = byStatus.error ?? byStage.error;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const data = [...(byStatus.data ?? []), ...(byStage.data ?? [])].filter((r, i, a) => a.findIndex((x) => x.id === r.id) === i);
 
   const now = Date.now();
   const due = (data ?? []).map((r) => r.data as Order).filter((o) => proofNotifyOverdue(o, now));
