@@ -730,7 +730,7 @@ function OrderDocs({
   // ท้ายบิล (หมายเหตุ/ของแถม/ภาพก่อนปิดกล่อง) ตรึงอยู่หน้า 1 เสมอ ฝ่ายแพ็คเห็นตั้งแต่แผ่นแรก
   const PAGE_PX = 1047; // A4 หัก margin 10mm ที่ 96dpi (ตรงกับ .sheet height 277mm)
   const MAX_WORK_PAGES = 1;
-  const CUT_TOP_PX = 92; // กรอบเตือนใต้หัวใบงานหน้า 1
+  const CUT_TOP_PX = 0; // ไม่มีกรอบเตือนใต้หัวใบงานแล้ว (ย้ายไปท้ายกระดาษ 23 ก.ย. 69)
   const CUT_END_PX = 110; // กรอบเตือนท้ายหน้าสุดท้าย + บรรทัดรวม
   const workRef = useRef<HTMLElement>(null);
   /** ช่วงแถวต่อหน้า · null = โหมดวัด (วาดทุกแถวในแผ่นเดียวก่อน แล้ววัด) */
@@ -1316,11 +1316,6 @@ function OrderDocs({
               )}
             </div>
 
-            {/* ⚠️ กระดาษไม่พอ — บอกตั้งแต่แผ่นแรก จะได้ไม่คิดว่ารายการมีแค่นี้ */}
-            {cutRows.length > 0 && (
-              <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQtyText={cutQtyText} totalProofs={totalProofs} top />
-            )}
-
             {/* ตารางงาน — หน้า 1 ได้เฉพาะแถวที่วัดแล้วว่าพอ (โหมดวัด = ทุกแถว) · ส่วนเกินตัดด้วย overflow กันหลุดหน้า */}
             <div className="sheet-body">
             <table data-ptable className="mt-5 w-full border-collapse text-sm">
@@ -1432,6 +1427,11 @@ function OrderDocs({
               />
             )}
 
+            {/* ⚠️ กระดาษหน้าเดียวพิมพ์ไม่ครบ — กรอบเตือนอยู่ท้ายกระดาษ (เจ้าของร้านสั่ง 23 ก.ย. 69 "ควรย้ายมาอยู่ที่ท้ายกระดาษ" ไม่เอาใต้หัวใบงาน)
+                หลายหน้าไปอยู่ท้ายหน้าสุดท้ายแทน · ตัวแบ่งหน้าเผื่อที่ cutEndPx ไว้ให้แล้ว · ตอนวัด (pages=null) cutRows ว่าง กรอบนี้จึงไม่ปนความสูงท้ายบิล */}
+            {workPages.length === 1 && cutRows.length > 0 && (
+              <WorkCutNote order={order} printedRows={printedRows} cutRows={cutRows.length} cutQtyText={cutQtyText} totalProofs={totalProofs} />
+            )}
             <p className="mt-4 text-right text-[10px] text-slate-400">พิมพ์เมื่อ {printedAt}</p>
             </>)}
           </section>
