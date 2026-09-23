@@ -8331,12 +8331,18 @@ export default function ProductDetail({
               — บนจอใหญ่เป็นแคปซูลลอยกลางจอ ไม่บังปุ่มแชท/ไลน์ที่มุมขวาล่าง */}
       {/* ⚠️ ต้องลอยเหนือแถบเมนูล่าง (.bottom-nav ใน landing.css: z-90 · สูง ~71px · ลอยห่างขอบ 10px + safe-area)
            เดิมแถบซื้ออยู่ z-40 ชิดขอบล่าง = จมอยู่ใต้เมนูล่างทั้งแถบ มือถือจึงไม่เห็นปุ่มสั่งเลยสักที */}
+      {/* ⚠️ กรอบนอกต้อง pointer-events-none — แคปซูลข้างในค่อยรับคลิก (pointer-events-auto)
+           กรอบนี้เต็มความกว้างจอและสูงเท่าแคปซูล+ช่องไฟ (จอคอม ~113px · มือถือ ~173px เพราะเว้นที่ให้เมนูล่าง)
+           พื้นที่ว่างรอบแคปซูลใสมองไม่เห็น แต่ถ้ารับคลิกอยู่จะ "กินคลิก" ทุกอย่างที่ลอยต่ำกว่า z-91 ทั้งแถบ:
+             ปุ่มเข้าหลังบ้านของทีมงาน (bottom 20px) · ครึ่งล่างปุ่ม LINE (bottom 78px) · เมนูล่างมือถือ (.bottom-nav z-90)
+           อาการคือ "เห็นปุ่มแต่กดไม่ติด" ไม่มีอะไรฟ้องเลย — เจ้าของร้านแจ้ง 23 ก.ย. 69 (ปุ่มแก้ไขในหลังบ้าน)
+           ป้ายเตือน "ยังไม่ได้แนบลาย" ข้างบนใช้ท่าเดียวกันนี้อยู่แล้ว */}
       <div
-        className={`fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(84px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
+        className={`pointer-events-none fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(84px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
           showBuyBar ? "translate-y-0" : "translate-y-full"
         }`}
       >
-        <div className="mx-auto flex items-center gap-3 rounded-3xl border border-amber-200 bg-white/95 px-4 py-2.5 shadow-[0_14px_34px_-12px_rgba(23,58,107,0.35)] backdrop-blur lg:max-w-3xl lg:rounded-full lg:px-5 lg:py-3">
+        <div className="pointer-events-auto mx-auto flex items-center gap-3 rounded-3xl border border-amber-200 bg-white/95 px-4 py-2.5 shadow-[0_14px_34px_-12px_rgba(23,58,107,0.35)] backdrop-blur lg:max-w-3xl lg:rounded-full lg:px-5 lg:py-3">
           <div className="min-w-0">
             <p className="truncate text-[11px] text-stone-400">
               {/* 📦 สั่งหลายแผ่นในครั้งเดียว — แถบล่างมือถือบอกยอดรวมทั้งรอบ ไม่ใช่แค่แผ่นที่กำลังตั้งค่า */}
