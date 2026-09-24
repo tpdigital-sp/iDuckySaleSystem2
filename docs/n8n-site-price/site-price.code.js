@@ -19,6 +19,9 @@ const body = j.body || j;
 
 const query = String(body.query ?? body.message ?? body.text ?? body.q ?? body.userText ?? '').trim();
 const qtyRaw = Number(body.qty ?? body.quantity ?? 0);
+// 🧠 ข้อความก่อนหน้าของลูกค้า (ChatBot/Fetch PO1 ส่งมาเป็น context[]) → ส่งต่อให้ชั้นเข้าใจคำถามของเว็บ
+const context = (Array.isArray(body.context) ? body.context : typeof body.context === 'string' ? [body.context] : [])
+  .map(c => String(c || '').trim()).filter(Boolean).slice(-5);
 
 if (!query) {
   return [{ json: { ...body, useLegacy: true, siteError: 'no query' } }];
@@ -32,6 +35,7 @@ try {
     json: true,
     body: {
       query,
+      context,
       ...(qtyRaw > 0 ? { qty: qtyRaw } : {}),
       // เว็บตอบเองไม่ได้ให้บอกตรง ๆ — ห้ามให้เว็บวนกลับมายิง webhook นี้ (จะกลายเป็นลูป)
       noFallback: true,

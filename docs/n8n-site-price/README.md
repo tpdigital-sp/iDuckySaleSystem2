@@ -23,6 +23,13 @@
 
 วิธีที่ใช้แก้: หน้า n8n ที่ล็อกอินแล้ว → วางโหนดด้วย paste JSON + ต่อสายผ่าน store (`workflowDocuments/<id>@latest`.addConnection) → เจ้าของร้านกด Save/Publish เอง (ระบบสิทธิ์ไม่ให้ Claude กด)
 
+## 🧠 23 ก.ย. 69 เย็น — ต้นตอ "บอทไม่เข้าใจคำถาม" และการแก้
+บอทมี 2 สมอง: agent (มีความจำ) กับเครื่องคิดราคาบนเว็บ (ไม่มีความจำ) และ PO Override1 เอาคำตอบเครื่องคิดราคาทับ agent โดยเครื่องคิดราคาไม่รู้ว่าคุยเรื่องอะไรค้างอยู่ → แก้ที่ต้นตอ: ส่ง "ข้อความก่อนหน้าของลูกค้า" (context) เข้าเครื่องคิดราคาทุกทาง และให้เว็บมีชั้นเข้าใจคำถามด้วย LLM
+- เว็บ: `understand(query, context)` (intent/สินค้า/จำนวน/standalone/notInCatalog) — commit 9f47f26, 83e885c, 5974118
+- ChatBot: Fetch PO1 ส่ง `{query, context}` ([chatbot-fetch-po1.expression.txt](chatbot-fetch-po1.expression.txt)) · PO Override1 รับ intent `not_in_catalog`
+- pricing-search: Site Price node ส่ง `context` ต่อ ([site-price.code.js](site-price.code.js))
+- LINE OA: Site Price Flex v3 ส่ง context จาก Build AI Request.previousMessages + ถามเว็บทุกข้อความ + กรณี not_in_catalog ([site-price-flex.code.js](site-price-flex.code.js))
+
 ## 📝 แผนเดิม (อ้างอิง) — 3 workflow
 
 ### 1) `pricing-search` (1xXH53w1Yzt4ZkKQ) — webhook `/webhook/pricing-search`

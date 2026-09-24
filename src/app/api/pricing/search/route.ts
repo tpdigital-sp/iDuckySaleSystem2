@@ -179,9 +179,11 @@ async function answer(req: Request, body: Record<string, unknown>) {
         ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
         : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
       ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
-    } else if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent) || (!u.ids.length && u.intent !== "price")) {
+    } else if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent)) {
       ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
     } else {
+      // price/spec/minqty — LLM ชี้สินค้ามาก็ใช้ ไม่ชี้ (แต่เขียนคำถามใหม่ให้ครบแล้ว เช่น "ที่ติดรถยนต์แบบกันฝนมีแบบไหนบ้าง")
+      // ก็เอาคำถามฉบับสมบูรณ์ไปค้นต่อตามปกติ — เคยตั้งให้ skip แล้วบอทเงียบทั้งที่ตีความถูก (24 ก.ย. 69)
       mode = u.intent === "spec" ? "spec" : u.intent === "minqty" ? "minqty" : "price";
       if (u.ids.length) pick = { ids: u.ids, broad: u.broad };
       if (!qty && u.qty) qty = u.qty;
