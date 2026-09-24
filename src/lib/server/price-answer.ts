@@ -527,7 +527,7 @@ ${list}
 - price = ถามราคา/เรท/ค่าทำ หรือบอกจำนวนที่จะสั่งของสินค้าที่รู้แล้วว่าตัวไหน
 - spec = ถามตัวเลือกของสินค้าที่ระบุชัด (ขนาด สี วัสดุ มีแบบไหนบ้าง)
 - minqty = ถามขั้นต่ำ/สั่งน้อย ๆ ได้ไหม
-- knowledge = ถามความรู้/วิธีทำงาน/ไฟล์/ค่าสี/ระยะเวลาผลิต/การจัดส่ง/นโยบาย/รับทำไหม (ไม่ต้องการราคา)
+- knowledge = ถามความรู้/วิธีทำงาน/ไฟล์/ค่าสี/ระยะเวลาผลิต/การจัดส่ง/นโยบาย/รับทำไหม (ไม่ต้องการราคา) รวมถึง "กติกาการสั่ง" เช่น คละลาย/คละแบบได้ไหม นับเป็นกี่ลาย ลายละกี่ชิ้น ใช่ไหม — พวกนี้ไม่ใช่ spec และห้ามตอบเป็นเมนูสินค้า
 - order = ติดตามออเดอร์/ชำระเงิน/สลิป/เคลม/แก้ไขงาน
 - chitchat = ทักทาย ขอบคุณ ตอบรับสั้น ๆ
 - followup = พูดต่อจากบริบทโดยไม่เอ่ยสินค้า และบริบทก็ยังบอกไม่ได้ว่าสินค้าตัวไหน
@@ -563,7 +563,12 @@ ${list}
       .filter((it): it is Lite => !!it)
       .slice(0, 6);
     const intents = ["price", "spec", "minqty", "knowledge", "order", "chitchat", "followup", "other"] as const;
-    const intent = intents.includes(raw.intent as (typeof intents)[number]) ? (raw.intent as Understanding["intent"]) : "other";
+    let intent = intents.includes(raw.intent as (typeof intents)[number]) ? (raw.intent as Understanding["intent"]) : "other";
+    // 🛡 คำถามกติกา ("1 เซ็ต ด้านหน้า 4 ลาย นับเป็น 4 ลายใช่ไหม" · "คละแบบได้ไหม") LLM ชอบตีเป็น spec แล้วระบบเทเมนูสินค้าให้
+    // (เจอจริง 24 ก.ย. 69) → ไม่มีคำเรื่องเงิน = ความรู้ ให้ agent/คลังความรู้ตอบ
+    if (intent === "spec" && /คละ|ผสม|นับเป็น|นับยังไง|ใช่ไหม|ใช่มั้ย|ได้ไหม|ได้มั้ย|ได้หรือเปล่า|ลายละ|แบบละ/.test(q) && !/ราคา|บาท|เรท|เท่าไหร่|เท่าไร/.test(q)) {
+      intent = "knowledge";
+    }
     const alts = (Array.isArray(raw.alternatives) ? raw.alternatives : [])
       .map((n) => byName.get(norm(String(n))))
       .filter((it): it is Lite => !!it)
