@@ -251,6 +251,8 @@ export async function syncPaidCompleteToTP(order: Order, verifiedBy: string, not
       await reportPaidToTP(order, verifiedBy, { noteSuffix: note ?? "รับครบผ่านสลิปหลายใบ" });
       return;
     }
+    // 🚫 เรคอร์ดที่ถูก void (สลิปโอนผิดบัญชี — OD-260922-6100 24 ก.ย. 69) ห้ามปลดกลับเป็น "ชำระแล้ว" · ยอดจริงอยู่ที่ใบเพิ่ม
+    if (snap.get("voided") === true) return;
     await ref.set({ partial: false, paymentStatus: "ชำระแล้ว", paidCompleteAt: new Date().toISOString(), paidCompleteBy: verifiedBy }, { merge: true });
   } catch (e) {
     console.error("[tp-report] ปลดธงรับบางส่วนไม่สำเร็จ:", (e as Error)?.message);
@@ -571,6 +573,8 @@ export async function syncAmountsToTP(order: Order): Promise<void> {
     try {
       const snap = await ref.get();
       if (!snap.exists) continue;
+      // 🚫 เรคอร์ดที่ถูก void (slipAmount 0 · สลิปโอนเข้าบัญชีคนอื่น) ห้ามคิดยอดกลับให้ — ไม่งั้นเงินผีเด้งกลับ msVerify
+      if (snap.get("voided") === true) continue;
       const money = tpAmountsFix(order, isFinal, snap.data() ?? {});
       if (!money) continue;
       const patch: Record<string, unknown> = {

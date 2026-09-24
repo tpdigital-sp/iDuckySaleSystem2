@@ -17,6 +17,7 @@
     "check:money-guard": "tsx scripts/money-guard-test.mts",
     "check:order-merge": "node --conditions=react-server --import tsx scripts/order-merge-test.mts",
     "check:early-pay-reinstate": "node --conditions=react-server --import tsx scripts/early-pay-reinstate-test.mts",
+    "check:slip-receiver": "node --conditions=react-server --import tsx scripts/slip-receiver-test.mts",
     "check:yield": "tsx scripts/sheet-yield-audit.mts",
     "check:contact": "tsx scripts/contact-validate-test.mts",
     "check:tax": "tsx --conditions=react-server scripts/order-tax-test.mts",

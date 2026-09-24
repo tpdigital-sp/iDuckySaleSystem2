@@ -42,6 +42,120 @@ export interface SlipVerifyResult {
    * แล้วจึงใช้ผลนี้แทน — ไม่งั้นกด "ตรวจสลิปอีกครั้ง" กี่รอบก็ตัน
    */
   selfJudged?: SlipVerifyResult;
+  /** 🏦 ผู้รับเงินบนสลิปที่ SlipOK อ่านได้ (ชื่อมักถูกตัดสั้น เช่น "บจก. ท") — เก็บไว้ตรวจย้อนหลัง */
+  receiver?: string;
+  /** 🏦 เลขบัญชี/พร้อมเพย์ผู้รับแบบปิดบางส่วน (เช่น xxx-x-x5332-x) — ตัวที่ใช้เทียบกับบัญชีร้านจริง */
+  receiverAccount?: string;
+  /**
+   * 🚫 สลิปโอนเข้าบัญชีที่ "ไม่ใช่ของร้าน" — เงินไม่ได้เข้าร้านเลย ห้ามนับยอด/ยืนยัน/รับบางส่วน (จงใจไม่ใส่ genuine)
+   * เคสต้นเรื่อง OD-260922-2240 (22 ก.ย. 69) ดู matchSlipReceiver
+   */
+  wrongReceiver?: boolean;
+}
+
+/** บัญชีรับเงินของร้าน (ตั้งใน /admin/payment · แถว __shop_payment__) ที่สลิปต้องโอนเข้า */
+export interface ShopReceiverAccounts {
+  banks?: { bank?: string; accountNo?: string; accountName?: string }[];
+  promptpay?: string;
+  promptpayName?: string;
+  /** อ่านตั้งค่าร้านจากฐานไม่ได้ — เทียบผู้รับไม่ได้ ต้องตกไปตรวจมือ (fail-safe) ไม่ใช่ปล่อยผ่านเหมือนไม่ได้ตั้ง */
+  unavailable?: boolean;
+}
+
+/** ผู้รับเงินที่ SlipOK อ่านจากสลิป — เลขบัญชีปิดบางส่วนตามรูปแบบสลิปธนาคาร (xxx-x-x5332-x) · พร้อมเพย์อยู่ที่ proxy (086xxx0000) */
+export interface SlipReceiver {
+  displayName?: string;
+  name?: string;
+  account?: { type?: string; value?: string };
+  proxy?: { type?: string; value?: string };
+}
+
+const digitsOf = (s: string) => s.replace(/\D/g, "");
+
+/**
+ * ทาบเลขปิดบางส่วนจากสลิป (xxx-x-x5332-x · 086xxx0000) กับเลขเต็มของร้าน (027-8-75332-8)
+ * ความยาวเท่ากัน = เทียบตำแหน่งต่อตำแหน่ง (x = อะไรก็ได้) · ความยาวต่างกัน (ธนาคารต่างรูปแบบ/ตัดหลักหน้า)
+ * = ทุกช่วงตัวเลขที่มองเห็นต้องอยู่ในเลขจริง และต้องมีอย่างน้อยหนึ่งช่วงยาว ≥ 3 หลัก (กันช่วงสั้น ๆ บังเอิญตรง)
+ */
+export function maskedNumberMatches(masked: string, full: string): boolean {
+  const m = masked.replace(/[^0-9xX]/g, "").toLowerCase();
+  const f = digitsOf(full);
+  if (!m || !f || !/\d/.test(m)) return false;
+  if (m.length === f.length) return [...m].every((c, i) => c === "x" || c === f[i]);
+  const runs = m.split(/x+/).filter(Boolean);
+  return runs.some((r) => r.length >= 3) && runs.every((r) => f.includes(r));
+}
+
+/** ตัดคำนำหน้านิติบุคคล/ช่องว่าง/เครื่องหมาย ให้เหลือแต่ตัวชื่อ — "บจก. ทีพีดิจิตอล" → "ทีพีดิจิตอล" */
+const normName = (s: string) =>
+  s
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/ห้างหุ้นส่วนจำกัด|บริษัท|หจก|บจก|จำกัด|มหาชน/g, "")
+    .replace(/\b(company|limited|partnership|ltd|part|co|inc)\b/g, "")
+    .replace(/[\s.,()'"\-]/g, "");
+
+/**
+ * ทางสำรองตอนไม่มีเลขบัญชีให้เทียบ: ชื่อบนสลิปมักถูกตัดสั้น ("บจก. ท" · "TPDIGITAL C") จึงเทียบแบบ "ขึ้นต้นเหมือนกัน"
+ * ⚠️ อ่อนกว่าเลขบัญชีมาก — ห้ามใช้เป็นด่านหลัก
+ */
+export function receiverNameMatches(slipName: string | undefined, shopName: string | undefined): boolean {
+  const a = normName(slipName ?? "");
+  const b = normName(shopName ?? "");
+  return !!a && !!b && (b.startsWith(a) || a.startsWith(b));
+}
+
+/** ข้อความผู้รับไว้โชว์/บันทึก — "บจก. ท xxx-x-x5332-x" */
+export function receiverLabel(r?: SlipReceiver): string {
+  const name = (r?.displayName || r?.name || "").trim();
+  const acct = (r?.account?.value || r?.proxy?.value || "").trim();
+  return [name, acct].filter(Boolean).join(" ");
+}
+
+/**
+ * 🏦 สลิปใบนี้โอนเข้า "บัญชีร้าน" จริงไหม
+ *
+ * เคสต้นเรื่อง OD-260922-2240 (22 ก.ย. 69): ลูกค้าแนบสลิปที่โอนให้ หจก. เอดีมีเดีย (xxx-x-x8919-x · memo "มัดจำงาน ad media")
+ * SlipOK ตอบว่าสลิปแท้ ยอด 1,300 ≥ 750 → ระบบผ่านให้อัตโนมัติ ยืนยันเงินเข้า ปริ้นใบงาน แพ็ค ทั้งที่เงินไม่ได้เข้าร้านเลย
+ * เพราะ judge() เทียบแต่ยอด — ชื่อผู้รับที่ SlipOK ส่งมาถูกเก็บเป็นข้อความโชว์เฉย ๆ ไม่เคยเอามาตัดสิน
+ *
+ * เทียบด้วย "เลขบัญชี" เป็นหลัก (receiver.account.value / proxy.value) ทาบกับบัญชี/พร้อมเพย์ร้านทุกบัญชี
+ * ⚠️ ห้ามใช้ชื่อเป็นหลัก — SlipOK ตัดชื่อสั้นจนใช้ไม่ได้ ("บจก. ท" 256 ใบ · "TPDIGITAL C" 27 ใบ จากการสแกน 24 ก.ย. 69)
+ *    ใช้ชื่อเป็นทางสำรองเฉพาะตอน SlipOK ไม่ส่งเลขบัญชี/พร้อมเพย์มาเลย
+ *
+ *   match        = โอนเข้าบัญชีร้าน
+ *   mismatch     = โอนเข้าบัญชีอื่น (หรือบัญชีใหม่ของร้านที่ยังไม่ได้เพิ่มใน /admin/payment)
+ *   noReceiver   = SlipOK ไม่ส่งข้อมูลผู้รับมา — ตัดสินไม่ได้ ต้องตรวจมือ
+ *   unconfigured = ร้านยังไม่ตั้งบัญชีไว้ให้เทียบ — ข้ามด่านนี้ (กติกาเดิม)
+ */
+export function matchSlipReceiver(
+  receiver: SlipReceiver | undefined,
+  shop: ShopReceiverAccounts | undefined
+): "match" | "mismatch" | "noReceiver" | "unconfigured" {
+  if (shop?.unavailable) return "noReceiver";
+  const banks = (shop?.banks ?? []).filter((b) => digitsOf(b.accountNo ?? "").length >= 4);
+  const pp = digitsOf(shop?.promptpay ?? "");
+  if (!banks.length && !pp) return "unconfigured";
+  const acct = (receiver?.account?.value ?? "").trim();
+  const proxy = (receiver?.proxy?.value ?? "").trim();
+  const numbers = [acct, proxy].filter((v) => /\d/.test(v));
+  if (numbers.length) {
+    const ok = numbers.some((v) => banks.some((b) => maskedNumberMatches(v, b.accountNo!)) || (!!pp && maskedNumberMatches(v, pp)));
+    return ok ? "match" : "mismatch";
+  }
+  const names = [receiver?.displayName, receiver?.name].filter((n): n is string => !!n?.trim());
+  if (names.length) {
+    const ok = names.some((n) => banks.some((b) => receiverNameMatches(n, b.accountName)) || receiverNameMatches(n, shop?.promptpayName));
+    return ok ? "match" : "mismatch";
+  }
+  return "noReceiver";
+}
+
+/** "กสิกร 027-8-75332-8" — ไว้บอกแอดมินว่าบัญชีร้านที่ระบบรู้จักคืออะไร */
+function shopAccountsLabel(shop: ShopReceiverAccounts | undefined): string {
+  const parts = (shop?.banks ?? []).filter((b) => b.accountNo?.trim()).map((b) => [b.bank, b.accountNo].filter(Boolean).join(" "));
+  if (shop?.promptpay?.trim()) parts.push(`พร้อมเพย์ ${shop.promptpay.trim()}`);
+  return parts.join(" / ");
 }
 
 /** ส่วนต่างระหว่างยอดที่ต้องโอนกับยอดในสลิป ที่ระบบยอมรับได้ */
@@ -155,29 +269,61 @@ export async function verifySlipWithSlipOK(
   /** ยอดหัก ณ ที่จ่ายที่แอดมินตั้งไว้ในออเดอร์ (order.wht) */
   adminWht?: { rate: number; amount: number },
   /** ⚡ ส่วนลดโอนไวที่ออเดอร์นี้ยังไม่ได้หัก (บาท) — ดู matchSlipAmount */
-  earlyPayAllowed?: number
+  earlyPayAllowed?: number,
+  /** 🏦 บัญชีร้านสำหรับเทียบผู้รับบนสลิป — ไม่ส่ง/ยังไม่ตั้ง = ข้ามด่านผู้รับ (ดู matchSlipReceiver) */
+  shop?: ShopReceiverAccounts
 ): Promise<SlipVerifyResult> {
   const key = process.env.SLIPOK_API_KEY;
   const branch = process.env.SLIPOK_BRANCH_ID;
   if (!key || !branch) return { status: "skip", detail: "ยังไม่ได้ตั้งค่า SlipOK" };
 
-  // ตัดสินจากยอดในสลิป (ใช้ทั้งเส้นทางจริงและโหมดทดสอบ — กติกาเดียวกันเป๊ะ)
-  const judge = (slipAmount: number | undefined, transRef: string | undefined, receiver?: string, transAt?: string): SlipVerifyResult => {
+  // ตัดสินจากผู้รับ + ยอดในสลิป (ใช้ทั้งเส้นทางจริงและโหมดทดสอบ — กติกาเดียวกันเป๊ะ)
+  const judge = (slipAmount: number | undefined, transRef: string | undefined, receiver: SlipReceiver | undefined, transAt?: string): SlipVerifyResult => {
+    const rl = receiverLabel(receiver);
+    const who = {
+      transRef,
+      transAt,
+      ...(receiver?.displayName || receiver?.name ? { receiver: (receiver.displayName || receiver.name)!.trim() } : {}),
+      ...(receiver?.account?.value || receiver?.proxy?.value ? { receiverAccount: (receiver.account?.value || receiver.proxy?.value)!.trim() } : {}),
+    };
+    /**
+     * 🏦 ด่านแรก: เงินต้องเข้า "บัญชีร้าน" — ก่อนจะคุยเรื่องยอด (OD-260922-2240: สลิปโอนให้ หจก. เอดีมีเดีย ผ่านเพราะยอดพอ)
+     * โอนเข้าบัญชีอื่น = ไม่ใส่ genuine → slip-apply จะไม่นับบางส่วน/ไม่คิดภาษีใหม่/ไม่คืนส่วนลดให้ · noRetry เพราะตรวจซ้ำก็ผู้รับเดิม
+     */
+    const where = matchSlipReceiver(receiver, shop);
+    if (where === "mismatch")
+      return {
+        status: "fail",
+        ...who,
+        amount: slipAmount,
+        wrongReceiver: true,
+        noRetry: true,
+        detail: `สลิปนี้โอนเข้าบัญชี "${rl || "ไม่ทราบชื่อ"}" ไม่ใช่บัญชีร้าน (${shopAccountsLabel(shop) || "ยังไม่ตั้งบัญชีร้าน"}) — เงินไม่ได้เข้าร้าน ห้ามยืนยันเงินเข้า · ถ้าร้านเพิ่งเปิดบัญชีใหม่ ให้เพิ่มใน 🏦 บัญชี/ชำระเงิน ก่อนแล้วให้ลูกค้าแนบสลิปใหม่`,
+      };
+    if (where === "noReceiver")
+      return {
+        status: "fail",
+        ...who,
+        amount: slipAmount,
+        detail: shop?.unavailable
+          ? "อ่านบัญชีร้านจากฐานไม่ได้ จึงเทียบผู้รับบนสลิปไม่ได้ — กรุณาเปิดสลิปเทียบผู้รับ ยอด และวันเวลาโอนเอง"
+          : "SlipOK ไม่ส่งข้อมูลผู้รับมา จึงยืนยันไม่ได้ว่าโอนเข้าบัญชีร้าน — กรุณาเปิดสลิปเทียบผู้รับ ยอด และวันเวลาโอนเอง",
+      };
+    const receiverText = rl ? `ผู้รับ: ${rl}` : undefined;
     if (expectedAmount > 0) {
-      if (!slipAmount) return { status: "fail", transRef, transAt, genuine: true, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
+      if (!slipAmount) return { status: "fail", ...who, genuine: true, detail: "สลิปแท้แต่อ่านยอดเงินไม่ได้ — รอแอดมินเทียบยอดเอง" };
       const m = matchSlipAmount(expectedAmount, slipAmount, orderTotalAmount, adminWht, earlyPayAllowed);
       if (!m.ok)
         return {
           status: "fail",
           amount: slipAmount,
-          transRef,
-          transAt,
+          ...who,
           genuine: true,
           detail: `ยอดในสลิป ${slipAmount.toLocaleString("th-TH")} บาท ไม่ตรงกับยอดที่ต้องชำระ ${expectedAmount.toLocaleString("th-TH")} บาท (ขาด ${(expectedAmount - slipAmount).toLocaleString("th-TH")} บาท)`,
         };
-      return { status: "pass", amount: slipAmount, transRef, transAt, genuine: true, detail: receiver, deduction: m.deduction };
+      return { status: "pass", amount: slipAmount, ...who, genuine: true, detail: receiverText, deduction: m.deduction };
     }
-    return { status: "pass", amount: slipAmount, transRef, transAt, genuine: true, detail: receiver };
+    return { status: "pass", amount: slipAmount, ...who, genuine: true, detail: receiverText };
   };
 
   // ── โหมดทดสอบ (dev เท่านั้น): ตั้ง SLIPOK_MOCK=1 + ไฟล์สลิปที่ฝังข้อความ "MOCKSLIP:<ยอด>" ──
@@ -187,8 +333,13 @@ export async function verifySlipWithSlipOK(
   // "MOCKSLIP:<ยอด>:<REF>:<ISO เวลาโอน>" = จำลองเวลาโอนบนสลิป (ทดสอบโอนทันแต่แนบช้า)
   if (process.env.SLIPOK_MOCK === "1" && process.env.NODE_ENV !== "production") {
     const marker = /MOCKSLIP:([0-9.]+)(?::([A-Z0-9-]{4,40}))?(?::(\d{4}-\d{2}-\d{2}T[0-9:.]+Z))?/.exec(new TextDecoder().decode(bytes.subarray(0, 2048)));
+    // ผู้รับจำลอง = บัญชีแรกของร้าน (ให้ด่านผู้รับผ่าน) · "MOCKSLIP:…:WRONGACCT" ท้ายสุด = จำลองโอนเข้าบัญชีคนอื่น
+    const wrongAcct = /MOCKSLIP:[^\s]*:WRONGACCT/.test(new TextDecoder().decode(bytes.subarray(0, 2048)));
+    const mockReceiver: SlipReceiver = wrongAcct
+      ? { displayName: "บัญชีคนอื่น (SLIPOK_MOCK)", account: { type: "BANKAC", value: "xxx-x-x0000-x" } }
+      : { displayName: "บัญชีทดสอบ (SLIPOK_MOCK)", account: { type: "BANKAC", value: shop?.banks?.[0]?.accountNo ?? "" } };
     if (marker)
-      return judge(Number(marker[1]) || undefined, marker[2] || `MOCK-${Date.now().toString(36).toUpperCase()}`, "ผู้รับ: บัญชีทดสอบ (SLIPOK_MOCK)", marker[3] || undefined);
+      return judge(Number(marker[1]) || undefined, marker[2] || `MOCK-${Date.now().toString(36).toUpperCase()}`, mockReceiver, marker[3] || undefined);
   }
 
   try {
@@ -219,7 +370,7 @@ export async function verifySlipWithSlipOK(
             transTimestamp?: string;
             transDate?: string;
             transTime?: string;
-            receiver?: { displayName?: string };
+            receiver?: SlipReceiver;
           };
         }
       | null;
@@ -228,12 +379,7 @@ export async function verifySlipWithSlipOK(
     // (SlipOK บางเวอร์ชันไม่ส่ง j.success ระดับบน — อย่าตีตกเพราะฟิลด์ที่ไม่มี)
     if (res.ok && j && j.success !== false && j.data?.success !== false) {
       // ── สลิปแท้แล้ว — เทียบยอดเองต่อ (ยอดต้องเข้าเงื่อนไขด้วย) ──
-      return judge(
-        Number(j.data?.amount) || undefined,
-        j.data?.transRef,
-        j.data?.receiver?.displayName ? `ผู้รับ: ${j.data.receiver.displayName}` : undefined,
-        parseSlipTransAt(j.data)
-      );
+      return judge(Number(j.data?.amount) || undefined, j.data?.transRef, j.data?.receiver, parseSlipTransAt(j.data));
     }
     // ปัญหาฝั่งร้าน (คีย์/สาขาผิด, แพ็กเกจ/โควตาหมด — SlipOK code 1000-1005) ไม่ใช่สลิปลูกค้า → ตกไปตรวจมือเงียบ ๆ
     const code = Number(j?.code);
@@ -286,12 +432,7 @@ export async function verifySlipWithSlipOK(
          * (รอบก่อนของใบนี้เองที่ SlipOK ตอบช้าจนเราตัดสาย แล้วมันตรวจเสร็จทีหลัง)
          */
         selfJudged: j?.data?.amount
-          ? judge(
-              Number(j.data.amount) || undefined,
-              j.data.transRef,
-              j.data.receiver?.displayName ? `ผู้รับ: ${j.data.receiver.displayName}` : undefined,
-              parseSlipTransAt(j.data)
-            )
+          ? judge(Number(j.data.amount) || undefined, j.data.transRef, j.data.receiver, parseSlipTransAt(j.data))
           : undefined,
       };
     // เก็บคำตอบดิบย่อ ๆ ไว้ในเหตุผล — วินิจฉัยเคสแปลก ๆ ได้จากหลังบ้านเลย

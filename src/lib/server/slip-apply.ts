@@ -6,7 +6,7 @@ import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer } from "@/lib/products-server";
 import type { Product } from "@/lib/products";
-import { matchSlipAmount, verifySlipWithSlipOK, type SlipVerifyResult } from "@/lib/server/slipok";
+import { matchSlipAmount, verifySlipWithSlipOK, type ShopReceiverAccounts, type SlipVerifyResult } from "@/lib/server/slipok";
 import { assertSlipNotDuplicate, findSlipOwners } from "@/lib/server/slip-dedupe";
 import { balanceNetTransfer, notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 import { reportPaidToTP, syncPaidCompleteToTP } from "@/lib/server/tp-report";
@@ -97,6 +97,10 @@ function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"
     at: now,
     deduction: verify.deduction,
     ...(verify.noRetry ? { noRetry: true } : {}),
+    // 🏦 ผู้รับบนสลิป — เก็บทุกใบไว้สแกนย้อนหลัง · wrongReceiver = โอนเข้าบัญชีอื่น (หน้าออเดอร์ขึ้นกล่องแดง)
+    ...(verify.receiver ? { receiver: verify.receiver } : {}),
+    ...(verify.receiverAccount ? { receiverAccount: verify.receiverAccount } : {}),
+    ...(verify.wrongReceiver ? { wrongReceiver: true } : {}),
   };
 }
 
@@ -142,6 +146,19 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
   const eligible = expected > 0 && (phase === "first" ? waiting : true);
 
   /**
+   * 🏦 ตั้งค่าร้าน (แถว __shop_payment__) อ่านครั้งเดียว — ใช้ทั้งเทียบ "ผู้รับบนสลิปต้องเป็นบัญชีร้าน" และส่วนลดโอนไว
+   * อ่านไม่ได้ = ส่ง unavailable ให้ตัวตรวจตกไปตรวจมือ (fail-safe) ไม่ใช่ปล่อยผ่านเหมือนร้านไม่ได้ตั้งบัญชี
+   */
+  let shopSettings: (ShopReceiverAccounts & { earlyPay?: EarlyPayDiscount }) | undefined;
+  try {
+    const { data: settRow, error: settErr } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
+    if (settErr) throw settErr;
+    shopSettings = (settRow?.data as typeof shopSettings) ?? {};
+  } catch {
+    shopSettings = { unavailable: true };
+  }
+
+  /**
    * ⚡ ส่วนลดโอนไวที่ออเดอร์นี้ "ยังไม่ได้หัก" — ยอมให้สลิปขาดได้เท่านี้โดยไม่ตกไปตรวจมือ
    * ออเดอร์ที่สั่งผ่านเว็บหลังเปิดโปรจะมี order.earlyPay อยู่แล้ว (ยอดที่ต้องโอนลดไปแล้ว) → 0 กันหักซ้ำ
    * เหลือไว้ให้ออเดอร์เก่า + ลูกค้าที่รู้โปรจากไลน์แล้วโอนน้อยกว่ายอดที่เห็นในเว็บ
@@ -154,7 +171,6 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
   //    ไม่งั้นใบที่กติกาใหม่ไม่ให้ลด กลับถูก "ลดที่ตัวตรวจสลิป" แทน แล้วเงินเข้าไม่ตรงบิลที่ออกให้ลูกค้า
   if (!order.earlyPay && !order.dealer && !earlyPayBillReason(order) && paidSoFar(order) <= 0 && orderOtherDiscounts(order) <= 0) {
     try {
-      const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
       const prods = new Map<string, Product>();
       for (const pid of [...new Set(order.items.map((i) => i.productId).filter(Boolean))]) {
         const p = await getProductServer(pid);
@@ -165,12 +181,12 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         (id) => prods.get(id),
         { mergeLots: true }
       );
-      earlyPayAllowed = earlyPayAmount(goods, earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined));
+      earlyPayAllowed = earlyPayAmount(goods, earlyPayOf(shopSettings?.unavailable ? undefined : shopSettings));
     } catch {
       // อ่านตั้งค่าไม่ได้ = ไม่ยอมรับส่วนต่าง ตกไปตรวจมือตามเดิม (fail-safe)
     }
   }
-  let verify = await verifySlipWithSlipOK(bytes, contentType, expected, orderTotal(order), order.wht, earlyPayAllowed);
+  let verify = await verifySlipWithSlipOK(bytes, contentType, expected, orderTotal(order), order.wht, earlyPayAllowed, shopSettings);
 
   /**
    * 🕰️ "สลิปซ้ำ" ที่ซ้ำกับตัวเอง — กู้ผลของรอบที่ถูกตัดสายไป
@@ -260,13 +276,8 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     (verify.amount ?? 0) > 0 &&
     earlyPayState(order) === "expired"
   ) {
-    let grace = 0;
-    try {
-      const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
-      grace = earlyPayOf(settRow?.data as { earlyPay?: EarlyPayDiscount } | undefined).graceMinutes;
-    } catch {
-      grace = 0; // อ่านตั้งค่าไม่ได้ = ไม่ผ่อนเวลา (ตัดสินจากเวลาโอนบนสลิปตรง ๆ)
-    }
+    // อ่านตั้งค่าไม่ได้ = ไม่ผ่อนเวลา (ตัดสินจากเวลาโอนบนสลิปตรง ๆ)
+    const grace = shopSettings?.unavailable ? 0 : earlyPayOf(shopSettings).graceMinutes;
     const disc = order.earlyPay!.amount;
     const inTime = transferredInTime(order, verify.transAt, grace);
     const paidDiscounted = Math.abs(round2(expected - disc) - round2(verify.amount!)) < 0.01;
@@ -392,6 +403,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     // ออเดอร์ยืนยันเงินครบไปแล้ว (แอดมินแนบหลักฐานย้อนหลัง) — บันทึกผลตรวจไว้ดูอย่างเดียว
     if (verify.status === "pass")
       updated = withLog(updated, "SlipOK", `${rc}ตรวจสลิปแล้ว: ยอดถูกต้อง (ออเดอร์ยืนยันรับเงินไว้ก่อนแล้ว — ไม่เปลี่ยนสถานะ)`, amountNote);
+    else if (verify.wrongReceiver) updated = withLog(updated, "SlipOK", `${rc}🚫 สลิปโอนเข้าบัญชีอื่น ไม่ใช่บัญชีร้าน — เงินไม่ได้เข้าร้าน`, verify.detail ?? "");
     else if (verify.status === "fail") updated = withLog(updated, "SlipOK", `${rc}สลิปตรวจไม่ผ่าน — กรุณาตรวจสลิปเอง`, verify.detail ?? "");
   } else if (credit > 0) {
     const paidBefore = paidSoFar(order);
@@ -451,6 +463,8 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     if (phase === "first") updated = { ...updated, status: "รอตรวจสอบ" };
     if (paidPerBill)
       updated = withLog(updated, "SlipOK", perBillDoc ? `${rc}⚠️ ยอดในระบบไม่ตรงใบ FlowAccount — ลูกค้าโอนตรงตามใบแล้ว รอแอดมินแก้ยอดให้ตรงก่อน` : `${rc}⚠️ VAT/หัก ณ ที่จ่ายในใบยังเป็นตัวเลขของยอดเก่า — ลูกค้าโอนตรงยอดที่ถูกต้องแล้ว รอแอดมินแก้ยอดให้ตรงก่อน`, verify.detail ?? "");
+    else if (verify.wrongReceiver)
+      updated = withLog(updated, "SlipOK", `${rc}🚫 สลิป${phase === "balance" ? "ยอดคงเหลือ" : phase === "extra" ? "ใบเพิ่ม" : ""}โอนเข้าบัญชีอื่น ไม่ใช่บัญชีร้าน — เงินไม่ได้เข้าร้าน รอแอดมินติดต่อลูกค้า`, verify.detail ?? "");
     else if (verify.status === "fail")
       updated = withLog(updated, "SlipOK", `${rc}สลิป${phase === "balance" ? "ยอดคงเหลือ" : phase === "extra" ? "ใบเพิ่ม" : ""}ตรวจไม่ผ่าน — รอแอดมินตรวจเอง`, verify.detail ?? "");
     // ⚠️ ต้องลงทุก phase รวม "first" — เดิมข้ามใบแรก ออเดอร์ที่ SlipOK ไม่ตอบเลยไม่มีร่องรอยในประวัติสักบรรทัด (21 ก.ย. 69)

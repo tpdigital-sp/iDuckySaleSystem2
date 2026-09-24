@@ -938,7 +938,7 @@ function SlipVerifyNote({ v, order, credited, settled = true, onRecheck, recheck
   return (
     <div
       className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${
-        v.status === "pass" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : partial ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-amber-50 text-amber-800 ring-amber-200"
+        v.status === "pass" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : v.wrongReceiver ? "bg-rose-50 text-rose-800 ring-rose-200" : partial ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-amber-50 text-amber-800 ring-amber-200"
       }`}
     >
       {v.status === "pass" ? (
@@ -982,7 +982,14 @@ function SlipVerifyNote({ v, order, credited, settled = true, onRecheck, recheck
             skip = SlipOK ไม่ได้ตัดสิน (ไม่ตอบ/ถูกตัดสาย/ตั้งค่าไม่ถูก/โควตาหมด) — คนละเรื่องกับ "ตรวจแล้วไม่ผ่าน"
             ต้องเขียนให้ต่างกัน ไม่งั้นแอดมินอ่านว่าสลิปลูกค้ามีปัญหา แล้วไปตามลูกค้าผิดเรื่อง (21 ก.ย. 69)
           */}
-          {v.status === "skip" ? (
+          {v.wrongReceiver ? (
+            /* 🚫 โอนเข้าบัญชีคนอื่น — เงินไม่ได้เข้าร้าน (OD-260922-2240 · 22 ก.ย. 69) ต้องเด่นกว่า "ตรวจไม่ผ่าน" ธรรมดา ไม่งั้นแอดมินกดยืนยันเงินเข้าตามความเคยชิน */
+            <>
+              🚫 <span className="font-extrabold">เงินไม่ได้เข้าร้าน</span> — {v.detail}
+              {v.amount ? ` · ยอดในสลิป ${formatPrice(v.amount)}` : ""}
+              {v.transRef ? ` · อ้างอิง ${v.transRef}` : ""}
+            </>
+          ) : v.status === "skip" ? (
             <>⚠️ ตรวจอัตโนมัติไม่ได้ — ระบบ SlipOK ไม่ได้ตอบ ไม่ใช่ว่าสลิปลูกค้ามีปัญหา{v.detail ? `: ${slipVerifyDetail(order, v.detail)}` : ""} · กรุณาเปิดสลิปเทียบยอด ผู้รับ และวันเวลาโอนเอง</>
           ) : (
             <>⚠️ SlipOK ตรวจไม่ผ่าน{v.detail ? `: ${slipVerifyDetail(order, v.detail)}` : ""} — กรุณาตรวจสลิปเอง</>
