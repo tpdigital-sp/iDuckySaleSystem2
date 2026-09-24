@@ -5,10 +5,12 @@ import {
   lcsLen,
   norm,
   isMinQtyIntent,
+  isMixIntent,
   isPriceIntent,
   isSpecIntent,
   parseQty,
   searchMinQty,
+  searchMix,
   searchPrice,
   searchSpec,
   understand,
@@ -109,9 +111,10 @@ export async function POST(req: Request) {
 }
 
 /** ประเภทคำถาม — ขั้นต่ำก่อน (มีคำว่า "1 ชิ้น" ปนราคาได้) · สเปกเฉพาะเมื่อไม่ใช่คำถามเงิน */
-function pickMode(query: string, forced?: unknown): "price" | "spec" | "minqty" {
-  if (forced === "spec" || forced === "minqty" || forced === "price") return forced;
+function pickMode(query: string, forced?: unknown): "price" | "spec" | "minqty" | "mix" {
+  if (forced === "spec" || forced === "minqty" || forced === "price" || forced === "mix") return forced;
   if (isMinQtyIntent(query)) return "minqty";
+  if (isMixIntent(query) && !/ราคา|บาท|เรท|เท่าไหร่|เท่าไร/.test(query)) return "mix";
   // isSpecIntent ตัดคำเรื่องเงิน (ราคา/บาท/เรท) ออกแล้ว — "ขนาดเท่าไหร่บ้าง" จึงเป็นสเปก ไม่ใช่ราคา
   // (isPriceIntent นับ "เท่าไหร่" เป็นราคา ถ้าเช็คตัวนั้นก่อนจะเทตารางราคาให้คนที่ถามขนาด)
   if (isSpecIntent(query)) return "spec";
@@ -159,7 +162,7 @@ async function answer(req: Request, body: Record<string, unknown>) {
     .slice(-5);
   const u: Understanding | null = body.mode ? null : await understand(query, context);
 
-  let mode: "price" | "spec" | "minqty" = pickMode(query, body.mode);
+  let mode: "price" | "spec" | "minqty" | "mix" = pickMode(query, body.mode);
   let searchQuery = query;
   let pick: Pick | undefined;
   let ans: PriceAnswer | null = null;
@@ -168,7 +171,7 @@ async function answer(req: Request, body: Record<string, unknown>) {
     // ลูกค้าถามหาของที่ร้านไม่มี → บอกตรง ๆ + เสนอตัวใกล้เคียง (เจอจริง 23 ก.ย. 69: "พวงกุญแจหนังปัก" ได้เมนูพวงกุญแจอะคริลิค/หมอนกลับไป)
     // สินค้าฉบับร่างที่ "ชื่อตรงกับที่ลูกค้าเรียก" ต้องชนะตัวใกล้เคียงที่ AI หยิบมาแทน (พวงกุญแจหนังปัก → ร่าง "พวงกุญแจหนังปักลาย"
     // ไม่ใช่ "กระเป๋าใส่พวงกุญแจ งานปัก") — เทียบว่าชื่อร่างตรงคำลูกค้ามากกว่าชื่อสินค้าที่ AI เลือกไหม
-    const draft = ["price", "spec", "minqty"].includes(u.intent) ? await findDraftProduct(u.requested || query) : null;
+    const draft = ["price", "spec", "minqty", "mix"].includes(u.intent) ? await findDraftProduct(u.requested || query) : null;
     const draftWins =
       !!draft && (u.notInCatalog || !u.products.length || lcsLen(norm(draft.name), norm(query)) > Math.max(...u.products.map((n) => lcsLen(norm(n), norm(query)))));
     if (draft && draftWins) {
@@ -200,7 +203,7 @@ async function answer(req: Request, body: Record<string, unknown>) {
     } else {
       // price/spec/minqty — LLM ชี้สินค้ามาก็ใช้ ไม่ชี้ (แต่เขียนคำถามใหม่ให้ครบแล้ว เช่น "ที่ติดรถยนต์แบบกันฝนมีแบบไหนบ้าง")
       // ก็เอาคำถามฉบับสมบูรณ์ไปค้นต่อตามปกติ — เคยตั้งให้ skip แล้วบอทเงียบทั้งที่ตีความถูก (24 ก.ย. 69)
-      mode = u.intent === "spec" ? "spec" : u.intent === "minqty" ? "minqty" : "price";
+      mode = u.intent === "spec" ? "spec" : u.intent === "minqty" ? "minqty" : u.intent === "mix" ? "mix" : "price";
       if (u.ids.length) pick = { ids: u.ids, broad: u.broad };
       if (!qty && u.qty) qty = u.qty;
       // ใช้คำถามฉบับสมบูรณ์ (มีชื่อสินค้าจากบริบท) ไว้เลือกคอลัมน์/จับคู่ — แต่คงจำนวนจากข้อความจริง
@@ -214,13 +217,16 @@ async function answer(req: Request, body: Record<string, unknown>) {
       ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
     } else if (mode === "minqty") {
       ans = await searchMinQty(searchQuery, pick);
+    } else if (mode === "mix") {
+      ans = await searchMix(searchQuery, pick);
     } else if (mode === "spec") {
       ans = await searchSpec(searchQuery, pick);
     } else {
       ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
     }
     // ขั้นต่ำ/สเปกตอบไม่ได้ → ลองราคาต่อ (คำถามอย่าง "สั่ง 1 ชิ้นได้ไหม ราคาเท่าไหร่" ไม่ควรตอบว่างเปล่า)
-    if (mode !== "price" && ans.kind === "skip") {
+    // คำถามคละลายไม่มีข้อมูล = ให้ agent ตอบ อย่าเทตารางราคา
+    if (mode !== "price" && mode !== "mix" && ans.kind === "skip") {
       ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
     }
   }

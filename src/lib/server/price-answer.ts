@@ -4,6 +4,7 @@ import { getProductServer } from "@/lib/products-server";
 import { SITE_URL } from "@/lib/shop-info";
 import {
   formatPrice,
+  mixFeePerUnit,
   needsQuote,
   productPath,
   RATE_LABEL,
@@ -481,7 +482,7 @@ export async function searchMinQty(query: string, pick?: Pick): Promise<PriceAns
  * ชั้นนี้ตอบคำถามพวกนั้นในคำเดียว แล้ว regex เดิมเหลือเป็นตัวสำรองตอนไม่มีคีย์/หมดเวลา
  */
 export interface Understanding {
-  intent: "price" | "spec" | "minqty" | "knowledge" | "order" | "chitchat" | "followup" | "other";
+  intent: "price" | "spec" | "minqty" | "mix" | "knowledge" | "order" | "chitchat" | "followup" | "other";
   /** ชื่อสินค้าในร้าน (ตรงกับแคตตาล็อก) ที่ลูกค้าหมายถึง — รวมที่อนุมานจากบริบท */
   products: string[];
   ids: string[];
@@ -524,13 +525,14 @@ ${ctxText}
 ${list}
 
 ตอบ JSON:
-{"intent":"price|spec|minqty|knowledge|order|chitchat|followup|other","products":["ชื่อสินค้าคัดลอกจากรายการตรงตัว"],"broad":true/false,"qty":ตัวเลขหรือnull,"standalone":"คำถามฉบับสมบูรณ์ในตัวเอง","notInCatalog":true/false,"requested":"สิ่งที่ลูกค้าเรียก","alternatives":["ชื่อสินค้าใกล้เคียงจากรายการ ไม่เกิน 3"],"confidence":0-1}
+{"intent":"price|spec|minqty|mix|knowledge|order|chitchat|followup|other","products":["ชื่อสินค้าคัดลอกจากรายการตรงตัว"],"broad":true/false,"qty":ตัวเลขหรือnull,"standalone":"คำถามฉบับสมบูรณ์ในตัวเอง","notInCatalog":true/false,"requested":"สิ่งที่ลูกค้าเรียก","alternatives":["ชื่อสินค้าใกล้เคียงจากรายการ ไม่เกิน 3"],"confidence":0-1}
 
 ความหมายของ intent:
 - price = ถามราคา/เรท/ค่าทำ หรือบอกจำนวนที่จะสั่งของสินค้าที่รู้แล้วว่าตัวไหน
 - spec = ถามตัวเลือกของสินค้าที่ระบุชัด (ขนาด สี วัสดุ มีแบบไหนบ้าง)
 - minqty = ถามขั้นต่ำ/สั่งน้อย ๆ ได้ไหม
-- knowledge = ถามความรู้/วิธีทำงาน/ไฟล์/ค่าสี/ระยะเวลาผลิต/การจัดส่ง/นโยบาย/รับทำไหม (ไม่ต้องการราคา) รวมถึง "กติกาการสั่ง" เช่น คละลาย/คละแบบได้ไหม นับเป็นกี่ลาย ลายละกี่ชิ้น ใช่ไหม — พวกนี้ไม่ใช่ spec และห้ามตอบเป็นเมนูสินค้า
+- mix = ถามกติกาคละลาย/คละแบบของสินค้า (คละได้ไหม คละได้กี่ลาย นับเป็นกี่ลาย ลายละกี่ชิ้น ด้านหลังคละได้ไหม) — ใส่ products ของสินค้าที่พูดถึง (รวมจากบริบท)
+- knowledge = ถามความรู้/วิธีทำงาน/ไฟล์/ค่าสี/ระยะเวลาผลิต/การจัดส่ง/นโยบาย/รับทำไหม (ไม่ต้องการราคา)
 - order = ติดตามออเดอร์/ชำระเงิน/สลิป/เคลม/แก้ไขงาน
 - chitchat = ทักทาย ขอบคุณ ตอบรับสั้น ๆ
 - followup = พูดต่อจากบริบทโดยไม่เอ่ยสินค้า และบริบทก็ยังบอกไม่ได้ว่าสินค้าตัวไหน
@@ -566,12 +568,12 @@ ${list}
       .map((n) => byName.get(norm(String(n))))
       .filter((it): it is Lite => !!it)
       .slice(0, 6);
-    const intents = ["price", "spec", "minqty", "knowledge", "order", "chitchat", "followup", "other"] as const;
+    const intents = ["price", "spec", "minqty", "mix", "knowledge", "order", "chitchat", "followup", "other"] as const;
     let intent = intents.includes(raw.intent as (typeof intents)[number]) ? (raw.intent as Understanding["intent"]) : "other";
-    // 🛡 คำถามกติกา ("1 เซ็ต ด้านหน้า 4 ลาย นับเป็น 4 ลายใช่ไหม" · "คละแบบได้ไหม") LLM ชอบตีเป็น spec แล้วระบบเทเมนูสินค้าให้
-    // (เจอจริง 24 ก.ย. 69) → ไม่มีคำเรื่องเงิน = ความรู้ ให้ agent/คลังความรู้ตอบ
-    if (intent === "spec" && /คละ|ผสม|นับเป็น|นับยังไง|ใช่ไหม|ใช่มั้ย|ได้ไหม|ได้มั้ย|ได้หรือเปล่า|ลายละ|แบบละ/.test(q) && !/ราคา|บาท|เรท|เท่าไหร่|เท่าไร/.test(q)) {
-      intent = "knowledge";
+    // 🛡 คำถามกติกาคละลาย ("1 เซ็ต ด้านหน้า 4 ลาย นับเป็น 4 ลายใช่ไหม" · "คละแบบได้ไหม") LLM ชอบตีเป็น spec แล้วระบบเทเมนูสินค้าให้
+    // (เจอจริง 24 ก.ย. 69) → เป็น mix ตอบจาก mixRule ของสินค้าจริง (agent เคยตอบ "คละไม่ได้" ทั้งที่ร้านคละได้)
+    if ((intent === "spec" || intent === "knowledge") && isMixIntent(q) && !/ราคา|บาท|เรท|เท่าไหร่|เท่าไร/.test(q)) {
+      intent = "mix";
     }
     const alts = (Array.isArray(raw.alternatives) ? raw.alternatives : [])
       .map((n) => byName.get(norm(String(n))))
@@ -966,6 +968,86 @@ async function candidates(query: string, pick?: Pick): Promise<{ items: Lite[]; 
   return band.length >= 3
     ? { items: band.slice(0, 6).map((h) => h.item), broad: true }
     : { items: hits.filter((h) => h.score >= top * 0.85).slice(0, 3).map((h) => h.item), broad: false };
+}
+
+/** ถามเรื่องคละลาย/คละแบบ */
+export function isMixIntent(text: string): boolean {
+  return /คละ|ผสมลาย|นับเป็น|กี่ลาย|ลายละ|แบบละ|หลายลาย|หลายแบบ|คนละลาย|ลายเดียวกัน/.test(text);
+}
+
+/**
+ * 🎨 กติกาคละลายของสินค้าจากข้อมูลจริงบนเว็บ (mixRule ระดับสินค้า/เรท · minPerDesign/freeMixBelowQty ของเรท · backDesign)
+ * ทำไม: agent ตอบจากคลังความรู้ว่า "โฟโต้การ์ด 1 เซ็ตคละแบบไม่ได้" ทั้งที่เว็บตั้งไว้ คละได้ 3 ลายฟรี เกินลายละ 5 บาท (24 ก.ย. 69)
+ */
+function mixText(p: Product, query = ""): PriceAnswer | null {
+  const pub = (p.priceRates ?? []).filter((r) => !r.dealerOnly);
+  const unit = pub[0]?.pricing?.unit || p.pricing?.unit || "ชิ้น";
+  const lines: string[] = [];
+  const ruleLines = (rule: { tiers?: { fromQty: number; baseFee: number; includedDesigns: number; extraFee: number; onePerUnit?: boolean }[]; baseFee: number; includedDesigns: number; extraFee: number; onePerUnitFromQty?: number }, prefix = "") => {
+    const tiers = rule.tiers?.length
+      ? [...rule.tiers].sort((a, b) => a.fromQty - b.fromQty)
+      : [{ fromQty: 1, baseFee: rule.baseFee, includedDesigns: rule.includedDesigns, extraFee: rule.extraFee, onePerUnit: false }];
+    for (const t of tiers) {
+      const parts: string[] = [];
+      parts.push(`คละได้ ${t.includedDesigns} ลายต่อ 1 ${unit}${t.baseFee ? ` (ค่าคละเหมา ${t.baseFee} บาท/${unit})` : " ฟรี"}`);
+      if (t.extraFee) parts.push(`เกินกว่านั้นคิดเพิ่มลายละ ${t.extraFee} บาท/${unit}`);
+      if (t.onePerUnit || (rule.onePerUnitFromQty && t.fromQty >= rule.onePerUnitFromQty)) parts.push(`คละได้ไม่เกินจำนวน${unit}ที่สั่ง`);
+      lines.push(`• ${prefix}${tiers.length > 1 || t.fromQty > 1 ? `สั่ง ${t.fromQty} ${unit}ขึ้นไป: ` : ""}${parts.join(" · ")}`);
+    }
+  };
+  if (p.mixRule) ruleLines(p.mixRule);
+  for (const r of pub) {
+    if (r.mixRule) {
+      ruleLines(r.mixRule, `${r.label}: `);
+      continue;
+    }
+    const parts: string[] = [];
+    if (r.freeMixBelowQty) parts.push(`ต่ำกว่า ${r.freeMixBelowQty} ${unit} คละได้อิสระ`);
+    if (r.minPerDesign) parts.push(`${r.freeMixBelowQty ? "ตั้งแต่นั้น" : ""}คละได้โดยแต่ละลายอย่างน้อย ${r.minPerDesign} ${unit}`);
+    if (r.extraDesignFee) parts.push(`คละเกินโควตาคิดเพิ่มลายละ ${r.extraDesignFee} บาท`);
+    if (r.underMinPieceFee) parts.push(`ลายที่ไม่ถึงขั้นต่ำคิดส่วนต่างชิ้นละ ${r.underMinPieceFee} บาท`);
+    if (!parts.length && r.desc && /คละ/.test(r.desc)) {
+      const seg = r.desc.split(/\s*[·•]\s*/).filter((x) => /คละ/.test(x)).join(" · ");
+      if (seg) parts.push(seg);
+    }
+    if (parts.length) lines.push(`• ${r.label}: ${parts.join(" · ")}`);
+  }
+  if (p.backDesign?.mixRule) {
+    const b = p.backDesign.mixRule;
+    lines.push(`• พิมพ์ 2 ด้าน: ด้านหลังคละได้อีก ${b.includedDesigns} ลาย${b.baseFee ? ` (เหมา ${b.baseFee} บาท)` : " ฟรี"}${b.extraFee ? ` · เกินคิดลายละ ${b.extraFee} บาท/${unit}` : ""} — ใช้ลายเดียวกันทั้งหมด = ไม่มีค่าคละ`);
+  }
+  if (!lines.length) return null;
+  // ลูกค้าบอกจำนวนลายมา ("ด้านหน้า 4 ลาย") → คิดค่าคละให้เห็นเลย
+  const asked = query.match(/(\d+)\s*ลาย/);
+  if (asked && p.mixRule) {
+    const n = Number(asked[1]);
+    if (n >= 2 && n <= 50) {
+      const fee = mixFeePerUnit(p.mixRule, n, 1);
+      lines.push(`→ คละ ${n} ลายใน 1 ${unit}: ${fee ? `ค่าคละ ${formatPrice(fee)}/${unit}` : "ไม่มีค่าคละ"}${p.backDesign?.mixRule ? " · ด้านหลังใช้ลายเดียวกันทั้งหมด = ไม่มีค่าคละเพิ่ม" : ""}`);
+    }
+  }
+  const url = botUrl(p);
+  return {
+    answer: `${p.name} คละลายได้ค่ะ (งานสั่งทำ)\n${lines.join("\n")}\nระบุจำนวนลายตอนสั่งบนเว็บได้เลย ระบบคิดค่าคละให้อัตโนมัติ\n${url}`,
+    kind: "info",
+    source: "web-price-engine",
+    intent: "mix",
+    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...priceRange(p) },
+  };
+}
+
+/** ถามกติกาคละลาย — ต้องรู้สินค้า (จากคำถามหรือบริบท) ไม่รู้ = เมนูให้เลือกก่อน · ไม่มีข้อมูลคละ = skip ให้ agent ตอบ */
+export async function searchMix(query: string, pick?: Pick): Promise<PriceAnswer> {
+  const q = query.trim();
+  if (!pick?.ids.length && !(await mentionsProduct(q))) return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "mix" };
+  const { items, broad } = await candidates(q, pick);
+  if (broad) return menu(items.slice(0, 6), "spec");
+  for (const item of items.slice(0, 2)) {
+    const full = await getProductServer(item.id).catch(() => undefined);
+    const ans = full ? mixText(full, q) : null;
+    if (ans) return ans;
+  }
+  return { answer: "", kind: "skip", source: "no-mix-rule", intent: "mix" };
 }
 
 /**
