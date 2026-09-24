@@ -709,7 +709,8 @@ export function foldSizeExtra(entries: [string, string][]): [string, string][] {
   return entries;
 }
 
-const stripUrls = (v: string) =>
+/** ตัดลิงก์ยาว ๆ ออกจากค่า (หน้าลูกค้า/ใบงาน/ใบเสร็จ PDF ไม่ต้องเห็น) */
+export const stripSpecUrls = (v: string) =>
   v.replace(/https?:\/\/\S+/g, "").replace(/\s·\s·\s/g, " · ").replace(/[·\s]+$/, "").trim();
 
 export function SpecLines({
@@ -749,7 +750,7 @@ export function SpecLines({
   const entries = withWorkSize(
     foldSizeExtra(
       tidySpec(specEntries(sel, text, hide), { compact })
-        .map(([k, v]) => [k, stripLinks ? stripUrls(v) : v] as [string, string])
+        .map(([k, v]) => [k, stripLinks ? stripSpecUrls(v) : v] as [string, string])
         .filter(([, v]) => v),
     ),
     workSize,

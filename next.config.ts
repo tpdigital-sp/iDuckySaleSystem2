@@ -11,6 +11,13 @@ const nextConfig: NextConfig = {
    * ต้องโหลดจาก node_modules ตรง ๆ ไม่ให้ Turbopack/webpack มัดรวม ไม่งั้น fake worker ของมันหาไฟล์ไม่เจอ
    */
   serverExternalPackages: ["pdfjs-dist"],
+  /**
+   * ไฟล์ฟอนต์ไทยของใบเสร็จ PDF (/api/orders/receipt อ่านจาก public/fonts ตอนรัน)
+   * — ต้องสั่งให้แพ็คไปกับฟังก์ชันด้วย ไม่งั้นบนเว็บจริงหาไฟล์ไม่เจอแล้วออกใบเสร็จพัง
+   */
+  outputFileTracingIncludes: {
+    "/api/orders/receipt": ["./public/fonts/Mitr-*.ttf"],
+  },
   images: {
     /**
      * รูปสินค้ามาจาก 2 ที่: Supabase Storage (อัปเองหลังบ้าน) และ static.wixstatic.com (นำเข้าจากเว็บเดิม)

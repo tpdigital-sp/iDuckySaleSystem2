@@ -35,9 +35,11 @@
     "check:line-bind": "tsx scripts/line-bind-test.mts",
     "scan:line-bind": "tsx scripts/line-bind-scan.mts",
     "scan:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-scan.mts",
-    "check:contact-link": "tsx scripts/contact-link-test.mts"
+    "check:contact-link": "tsx scripts/contact-link-test.mts",
+    "check:receipt-pdf": "tsx --tsconfig tsconfig.json scripts/receipt-pdf-test.mts"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@supabase/supabase-js": "^2.110.7",
     "@tiptap/extension-highlight": "^3.30.1",
     "@tiptap/extension-image": "^3.30.1",

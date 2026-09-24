@@ -5,6 +5,8 @@
  * ไฟล์ที่ import "server-only" จะดึงเข้าไปไม่ได้ (พังตอนรันเป็น 500)
  */
 
+import { SHOP } from "./shop-info";
+
 /** id ของแถวตั้งค่าร้านในตาราง products */
 export const SETTINGS_ID = "__shop_payment__";
 
@@ -94,4 +96,43 @@ export const DEFAULT_WELCOME_COUPON: WelcomeCouponConfig = {
 /** ตั้งค่าคูปองต้อนรับที่ใช้จริง (ตกไปใช้ค่าเริ่มต้นถ้ายังไม่ตั้ง) */
 export function welcomeCouponOf(s: { welcomeCoupon?: Partial<WelcomeCouponConfig> } | null | undefined): WelcomeCouponConfig {
   return { ...DEFAULT_WELCOME_COUPON, ...(s?.welcomeCoupon ?? {}) };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * ข้อมูลร้านบนเอกสาร — ย้ายมาจาก shop-settings.ts (24 ก.ย. 69)
+ * เพราะ API ออกใบเสร็จ PDF (/api/orders/receipt) ต้องใช้ shopInfoOf() ฝั่งเซิร์ฟเวอร์
+ * shop-settings.ts ยัง re-export ชื่อเดิมให้ฝั่งหน้าเว็บใช้ต่อได้
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** ข้อมูลร้านที่แอดมินแก้เองได้ (แสดงบนเอกสารพิมพ์ทุกใบ) */
+export interface ShopInfo {
+  /** ชื่อร้าน (แบรนด์) เช่น iDucky Prints Studio */
+  name: string;
+  /** ชื่อบริษัท/ผู้ส่งบนใบปะหน้า */
+  legalName: string;
+  /** ที่อยู่ (ขึ้นบรรทัดใหม่ได้) */
+  address: string;
+  phone: string;
+  /** เลขประจำตัวผู้เสียภาษี — เว้นว่าง = ไม่แสดงบนใบเสร็จ */
+  taxId?: string;
+}
+
+export const DEFAULT_SHOP_INFO: ShopInfo = {
+  name: SHOP.name,
+  legalName: SHOP.legalName,
+  address: SHOP.addressLines.join("\n"),
+  phone: SHOP.phone,
+  taxId: SHOP.taxId,
+};
+
+/** ข้อมูลร้านที่ใช้จริง (ตกไปใช้ค่าในโค้ดถ้ายังไม่ตั้ง/ตั้งไว้ว่าง) */
+export function shopInfoOf(s: { shopInfo?: Partial<ShopInfo> } | null | undefined): ShopInfo {
+  const i = s?.shopInfo;
+  return {
+    name: i?.name?.trim() || DEFAULT_SHOP_INFO.name,
+    legalName: i?.legalName?.trim() || DEFAULT_SHOP_INFO.legalName,
+    address: i?.address?.trim() || DEFAULT_SHOP_INFO.address,
+    phone: i?.phone?.trim() || DEFAULT_SHOP_INFO.phone,
+    taxId: i?.taxId?.trim() || DEFAULT_SHOP_INFO.taxId,
+  };
 }

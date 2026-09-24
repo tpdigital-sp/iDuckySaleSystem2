@@ -25,6 +25,12 @@ export default function CustomerReceiptPage() {
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]); // ไว้แปลงป้าย "ค่าส่ง"/ป้ายว่างเป็นชื่อวิธีส่งจริง
   /** 📦 สินค้าของรายการในใบ — ใช้เติมขนาดงานตายตัว (สินค้าขนาดเดียว) + ตัวคูณชิ้น/หน่วยของใบเก่า */
   const [prodById, setProdById] = useState<Record<string, Product>>({});
+  /**
+   * 🖨️ เครื่องนี้สั่งพิมพ์ได้ไหม (เมาส์ = คอม) — null คือยังไม่รู้ (ก่อน JS ทำงาน)
+   * มือถือสั่งพิมพ์จากเว็บไม่ได้ โดยเฉพาะเบราว์เซอร์ในแอป LINE ที่ลูกค้าเกือบทุกคนใช้เปิดลิงก์
+   * ปุ่มเดิมเป็น "พิมพ์ / บันทึก PDF" ปุ่มเดียว กดแล้วเงียบ ลูกค้าเลยเซฟใบเสร็จไม่ได้ (24 ก.ย. 69)
+   */
+  const [canPrint, setCanPrint] = useState<boolean | null>(null);
 
   useEffect(() => {
     void fetchShopPayment().then((p) => {
@@ -50,6 +56,7 @@ export default function CustomerReceiptPage() {
     const k = new URLSearchParams(window.location.search).get("key") ?? "";
     setOrderKey(k);
     void load(k);
+    setCanPrint(!!window.matchMedia?.("(pointer: fine)").matches);
   }, [load]);
 
   if (loading) return <div className="mx-auto max-w-lg px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
@@ -64,6 +71,8 @@ export default function CustomerReceiptPage() {
 
   const subtotal = order.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const backHref = `/order/${encodeURIComponent(orderId)}${orderKey ? `?key=${encodeURIComponent(orderKey)}` : ""}`;
+  // ไฟล์ใบเสร็จจริง — คอมโหลดเป็นไฟล์เลย (dl=1) · มือถือเปิดดูก่อนแล้วกดแชร์/เซฟของเครื่องเอง
+  const pdfHref = `/api/orders/receipt?id=${encodeURIComponent(orderId)}&key=${encodeURIComponent(orderKey)}${canPrint ? "&dl=1" : ""}`;
 
   // 🔒 ใบเสร็จออกได้เมื่อชำระครบ 100% เท่านั้น (ออเดอร์มัดจำต้องเก็บยอดหลังครบก่อน)
   if (!orderFullyPaid(order)) {
@@ -88,16 +97,37 @@ export default function CustomerReceiptPage() {
       <style>{`@media print { .no-print { display:none !important; } body { background:#fff !important; } }`}</style>
 
       <div className="mx-auto max-w-lg px-4 py-8">
-        <div className="no-print mb-4 flex items-center justify-between">
+        <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
           <Link href={backHref} className="text-sm font-semibold text-stone-400 hover:text-stone-600">← กลับหน้าออเดอร์</Link>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="rounded-full bg-amber-400 px-5 py-2 text-sm font-bold text-white transition hover:bg-amber-500"
-          >
-            🖨️ พิมพ์ / บันทึก PDF
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 🖨️ พิมพ์ = ของเครื่องที่ต่อปริ้นเตอร์เท่านั้น — มือถือกดแล้วไม่เกิดอะไรขึ้น จึงไม่โชว์ */}
+            {canPrint && (
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="rounded-full px-4 py-2 text-sm font-bold text-stone-500 ring-1 ring-stone-300 transition hover:bg-stone-100"
+              >
+                🖨️ พิมพ์
+              </button>
+            )}
+            {/* มือถือเปิดในแท็บเดิม — เบราว์เซอร์ในแอป LINE เปิดแท็บใหม่แล้วบางเครื่องได้หน้าขาว */}
+            <a
+              href={pdfHref}
+              target={canPrint ? "_blank" : undefined}
+              rel="noopener noreferrer"
+              className="rounded-full bg-amber-400 px-5 py-2 text-sm font-bold text-white transition hover:bg-amber-500"
+            >
+              💾 บันทึก PDF
+            </a>
+          </div>
         </div>
+
+        {/* มือถือเซฟไฟล์เองไม่ได้ทุกเครื่อง — บอกท่าให้ชัด (ในแอป LINE ต้องกดปุ่มแชร์ของเครื่อง) */}
+        {canPrint === false && (
+          <p className="no-print mb-4 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800">
+            กด <b>บันทึก PDF</b> แล้วไฟล์ใบเสร็จจะเปิดขึ้นมา — จากนั้นกดปุ่ม <b>แชร์/ดาวน์โหลด</b> ของเครื่อง เพื่อบันทึกเก็บไว้หรือส่งต่อได้เลย
+          </p>
+        )}
 
         <div className="rounded-2xl bg-white p-6 ring-1 ring-stone-200 print:ring-0">
           {/* หัว */}

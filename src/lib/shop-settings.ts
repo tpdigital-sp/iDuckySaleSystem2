@@ -9,8 +9,7 @@
  */
 import { getSupabase } from "./supabase";
 import { DEFAULT_TIERS, type Tier } from "./tiers";
-import { SHOP } from "./shop-info";
-import { SETTINGS_ID as SETTINGS_ID_SHARED, type SeoConfig } from "./settings-shared";
+import { SETTINGS_ID as SETTINGS_ID_SHARED, type SeoConfig, type ShopInfo } from "./settings-shared";
 // วิธีส่ง + คูปองต้อนรับ ย้ายไป settings-shared.ts (ไฟล์นี้เป็น "use client" — API เซิร์ฟเวอร์เรียกฟังก์ชันจากที่นี่ไม่ได้) · re-export ชื่อเดิมให้หน้าเว็บใช้ต่อ
 import { type ShippingMethod, type WelcomeCouponConfig } from "./settings-shared";
 export { DEFAULT_SHIPPING, shippingOf, DEFAULT_WELCOME_COUPON, welcomeCouponOf, type ShippingMethod, type WelcomeCouponConfig } from "./settings-shared";
@@ -87,38 +86,8 @@ export interface ShopPayment {
   earlyPay?: _EarlyPayDiscount;
 }
 
-/** ข้อมูลร้านที่แอดมินแก้เองได้ (แสดงบนเอกสารพิมพ์ทุกใบ) */
-export interface ShopInfo {
-  /** ชื่อร้าน (แบรนด์) เช่น iDucky Prints Studio */
-  name: string;
-  /** ชื่อบริษัท/ผู้ส่งบนใบปะหน้า */
-  legalName: string;
-  /** ที่อยู่ (ขึ้นบรรทัดใหม่ได้) */
-  address: string;
-  phone: string;
-  /** เลขประจำตัวผู้เสียภาษี — เว้นว่าง = ไม่แสดงบนใบเสร็จ */
-  taxId?: string;
-}
-
-export const DEFAULT_SHOP_INFO: ShopInfo = {
-  name: SHOP.name,
-  legalName: SHOP.legalName,
-  address: SHOP.addressLines.join("\n"),
-  phone: SHOP.phone,
-  taxId: SHOP.taxId,
-};
-
-/** ข้อมูลร้านที่ใช้จริง (ตกไปใช้ค่าในโค้ดถ้ายังไม่ตั้ง/ตั้งไว้ว่าง) */
-export function shopInfoOf(s: ShopPayment | null | undefined): ShopInfo {
-  const i = s?.shopInfo;
-  return {
-    name: i?.name?.trim() || DEFAULT_SHOP_INFO.name,
-    legalName: i?.legalName?.trim() || DEFAULT_SHOP_INFO.legalName,
-    address: i?.address?.trim() || DEFAULT_SHOP_INFO.address,
-    phone: i?.phone?.trim() || DEFAULT_SHOP_INFO.phone,
-    taxId: i?.taxId?.trim() || DEFAULT_SHOP_INFO.taxId,
-  };
-}
+// ข้อมูลร้านบนเอกสาร ย้ายไป settings-shared.ts (ไฟล์นี้เป็น "use client" — API ออกใบเสร็จ PDF เรียกจากที่นี่ไม่ได้) · re-export ชื่อเดิมให้หน้าเว็บใช้ต่อ
+export { DEFAULT_SHOP_INFO, shopInfoOf, type ShopInfo } from "./settings-shared";
 
 export const SETTINGS_ID = SETTINGS_ID_SHARED;
 const LOCAL_KEY = "iducky-payment-v1";
