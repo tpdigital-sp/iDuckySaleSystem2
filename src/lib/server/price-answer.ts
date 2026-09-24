@@ -1188,6 +1188,62 @@ export async function searchInfo(query: string, pick?: Pick): Promise<PriceAnswe
   return ans ?? { answer: "", kind: "skip", source: "no-page-info", intent: "info" };
 }
 
+/**
+ * 📚 ชุดความรู้ต่อสินค้า (ถาม-ตอบ) สำหรับส่งเข้าคลังความรู้ของ n8n/Pinecone — เจ้าของร้านขอ 24 ก.ย. 69
+ * "เก็บข้อมูลในเว็บลง n8n": ทุกอย่างสร้างจากข้อมูลจริงบนเว็บ (คำอธิบาย/แท็บ/ตัวเลือก/ราคา/คละลาย/ขั้นต่ำ/FAQ)
+ * แต่ละสินค้าได้ 4-6 รายการ · ให้ workflow ซิงก์ดึงทั้งก้อนแล้วเขียนทับ namespace ของเว็บทั้งหมด (ไม่มีของเก่าค้าง)
+ */
+export interface KnowledgeItem {
+  id: string;
+  productId: string;
+  product: string;
+  question: string;
+  answer: string;
+  type: "product-info" | "product-price" | "product-mix" | "product-minqty" | "product-options" | "product-faq";
+  url: string;
+}
+export async function knowledgeItems(offset = 0, limit = 60): Promise<{ items: KnowledgeItem[]; total: number; next: number | null }> {
+  const all = await catalog().catch(() => []);
+  const out: KnowledgeItem[] = [];
+  const minRows = await minTable().catch(() => [] as MinRow[]);
+  // ⏱ Netlify ให้ 30 วิ/คำขอ — ทั้งร้าน 228 ตัวใช้ ~45 วิ จึงแบ่งหน้า (60 ตัว ≈ 12 วิ) ให้ workflow ซิงก์วนดึงจนครบ
+  const page = all.slice(Math.max(0, offset), Math.max(0, offset) + Math.min(Math.max(1, limit), 120));
+  for (const lite of page) {
+    const p = await getProductServer(lite.id).catch(() => undefined);
+    if (!p) continue;
+    const url = botUrl(p);
+    const text = pageText(p);
+    const push = (type: KnowledgeItem["type"], question: string, answer: string, suffix: string = type) => {
+      if (answer.trim()) out.push({ id: `${p.id}:${suffix}`, productId: p.id, product: p.name, question, answer: answer.trim(), type, url });
+    };
+    // 1) รายละเอียด (คำอธิบาย + แท็บ + เงื่อนไข) — ตัดส่วนตัวเลือกออก ไปอยู่รายการของตัวเอง
+    const info = text.split("\n\n").filter((b) => !b.startsWith("[ตัวเลือกบนเว็บ") && !b.startsWith("[คำถามพบบ่อย]")).join("\n\n").slice(0, 3500);
+    push("product-info", `${p.name} คืออะไร รายละเอียด/สเปค/วัสดุ/วิธีสั่ง`, `${info}\nหน้าสินค้า: ${url}`);
+    // 2) ราคา (จากเครื่องคิดเงินเดียวกับตะกร้า)
+    const priceAns = quote(p, "", null);
+    if (priceAns) push("product-price", `${p.name} ราคาเท่าไหร่ เรทราคา/ขั้นบันได`, priceAns.answer);
+    // 3) คละลาย
+    const mixAns = mixText(p, "");
+    if (mixAns) push("product-mix", `${p.name} คละลาย/คละแบบได้ไหม ค่าคละคิดยังไง`, mixAns.answer);
+    // 4) ขั้นต่ำ
+    const mr = minRows.find((r) => r.id === p.id);
+    if (mr) {
+      const capped = mr.rates.filter((x) => x.min > 0);
+      const minText = capped.length
+        ? `${capped.map((x) => `${x.label || "เรทราคา"} ขั้นต่ำ ${x.min} ${x.unit}`).join(" · ")}${mr.lot ? " (ขั้นต่ำนับรวมทั้งล็อต คละแบบได้)" : ""}`
+        : `ไม่มีขั้นต่ำ สั่ง 1 ${mr.unit} ได้`;
+      push("product-minqty", `${p.name} สั่งขั้นต่ำกี่${mr.unit} สั่งน้อย ๆ ได้ไหม`, `${p.name}: ${minText}\n${url}`);
+    }
+    // 5) ตัวเลือก + ราคาเพิ่ม
+    const optBlock = text.split("\n\n").find((b) => b.startsWith("[ตัวเลือกบนเว็บ"));
+    if (optBlock) push("product-options", `${p.name} มีตัวเลือกอะไรบ้าง (ขนาด สี วัสดุ เคลือบ ฟอยล์) ราคาเพิ่มเท่าไหร่`, `${optBlock}\n${url}`);
+    // 6) FAQ ของสินค้า (รายการละข้อ)
+    (p.seo?.faqs ?? []).slice(0, 8).forEach((f, i) => push("product-faq", `${p.name}: ${f.q}`, `${f.a}\n${url}`, `faq${i}`));
+  }
+  const end = Math.max(0, offset) + page.length;
+  return { items: out, total: all.length, next: end < all.length ? end : null };
+}
+
 /** ถามกติกาคละลาย — ต้องรู้สินค้า (จากคำถามหรือบริบท) ไม่รู้ = เมนูให้เลือกก่อน · ไม่มีข้อมูลคละ = skip ให้ agent ตอบ */
 export async function searchMix(query: string, pick?: Pick): Promise<PriceAnswer> {
   const q = query.trim();

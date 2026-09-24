@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   catalogRefs,
   findDraftProduct,
+  knowledgeItems,
   lcsLen,
   norm,
   isMinQtyIntent,
@@ -92,6 +93,16 @@ export async function OPTIONS() {
  */
 export async function GET(req: Request) {
   const u = new URL(req.url);
+  // 📚 ?knowledge=1 → ชุดถาม-ตอบทุกสินค้า (ให้ workflow ซิงก์เข้า Pinecone ของ n8n) — หนัก (~228 สินค้า × 4-6 รายการ) แคช 30 นาที
+  if (u.searchParams.get("knowledge")) {
+    const offset = Number(u.searchParams.get("offset") ?? 0) || 0;
+    const limit = Number(u.searchParams.get("limit") ?? 60) || 60;
+    const page = await knowledgeItems(offset, limit);
+    return json(
+      { site: "https://iduckystore.com", generatedAt: new Date().toISOString(), offset, limit, total: page.total, next: page.next, count: page.items.length, items: page.items },
+      { cache: "public, max-age=1800" },
+    );
+  }
   if (u.searchParams.get("catalog")) {
     const items = await catalogRefs();
     return json({ site: "https://iduckystore.com", count: items.length, items }, { cache: "public, max-age=300" });
