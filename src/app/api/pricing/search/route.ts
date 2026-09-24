@@ -79,7 +79,8 @@ function clientIp(req: Request) {
 function json(body: unknown, init: { status?: number; cache?: string } = {}) {
   return NextResponse.json(body, {
     status: init.status ?? 200,
-    headers: { ...CORS, "Cache-Control": init.cache ?? "no-store" },
+    // ⚠️ CDN ของ Netlify ไม่เอา query string เป็นส่วนของ cache key — ?knowledge=1&offset=25 เคยได้หน้า offset=0 ที่แคชไว้ (24 ก.ย. 69)
+    headers: { ...CORS, "Cache-Control": init.cache ?? "no-store", "Netlify-Vary": "query" },
   });
 }
 
@@ -100,7 +101,7 @@ export async function GET(req: Request) {
     const page = await knowledgeItems(offset, limit);
     return json(
       { site: "https://iduckystore.com", generatedAt: new Date().toISOString(), offset, limit, total: page.total, next: page.next, count: page.items.length, items: page.items },
-      { cache: "public, max-age=1800" },
+      { cache: "no-store" },
     );
   }
   if (u.searchParams.get("catalog")) {
