@@ -35,6 +35,11 @@ Debounce Buffer รอ 5 วิแล้วปล่อย "ตัวล่า�
 - Debounce Buffer: ไม่ล้าง pendingMessages ตอน claim + ส่ง `idToken` ออกมาใน json
 - โหนดใหม่ **Reply Gate** ([reply-gate.code.js](reply-gate.code.js)) ระหว่าง Site Price Flex → Reply to LINE: เช็ค lastEventId อีกครั้งก่อนส่ง ไม่ใช่ตัวล่าสุด = ทิ้ง (ตัวใหม่รวมข้อความตอบครั้งเดียว) · ใช่ = ล้าง pending แล้วส่ง
 
+## 📚 24 ก.ย. 69 — "เก็บข้อมูลในเว็บลง n8n" (ความรู้จากเว็บ → Pinecone)
+- เว็บ: `GET /api/pricing/search?knowledge=1&offset=0&limit=25` → ถาม-ตอบต่อสินค้า (รายละเอียด/ราคา/คละลาย/ขั้นต่ำ/ตัวเลือก+ราคาเพิ่ม/FAQ) รวม ~2,050 รายการ · วนหน้าจน `next` เป็น null
+- workflow ใหม่ [website-knowledge-sync.workflow.json](website-knowledge-sync.workflow.json): Schedule 04:00 / Manual → Code ดึงทุกหน้า → Pinecone insert index `adminbuddy-index768-2` **namespace `website`** + clearNamespace (เขียนทับทั้ง namespace ทุกครั้ง ไม่มีของเก่าค้าง) — วางด้วย Import from File หรือ paste JSON บนผืนผ้าใบ แล้วเลือก credential ให้ Pinecone/Embeddings
+- ChatBot: tool ใหม่ `website_knowledge` (Vector Store Tool → Pinecone retrieve namespace website + Embeddings Vertex + Gemini) ต่อเข้า AI Agent1 + กติกาใน system prompt "ใช้ website_knowledge ก่อน product_knowledge" — ต้องเลือก credential ให้ 3 โหนดที่วางใหม่ (Pinecone (website) / Embeddings (website) / Gemini (website tool))
+
 ## 📝 แผนเดิม (อ้างอิง) — 3 workflow
 
 ### 1) `pricing-search` (1xXH53w1Yzt4ZkKQ) — webhook `/webhook/pricing-search`

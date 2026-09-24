@@ -1,0 +1,18 @@
+{
+  "name": "iDucky — Website Knowledge Sync (เว็บ → Pinecone namespace website)",
+  "nodes": [
+    { "parameters": { "rule": { "interval": [ { "field": "cronExpression", "expression": "0 4 * * *" } ] } }, "name": "Schedule 04:00", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [0, 0], "id": "wks-sched-0001" },
+    { "parameters": {}, "name": "Manual Trigger", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 220], "id": "wks-manual-0001" },
+    { "parameters": { "jsCode": "// 📚 ดึงความรู้ทุกสินค้าจากเว็บ iduckystore.com (ทีละหน้า 25 สินค้า) → รายการ {text, metadata} สำหรับฝังลง Pinecone\n// ปลายทาง: GET /api/pricing/search?knowledge=1&offset=&limit=25 (แต่ละหน้า ~10-20 วิ)\nconst BASE = 'https://iduckystore.com/api/pricing/search?knowledge=1&limit=25&offset=';\nconst out = [];\nlet offset = 0;\nfor (let guard = 0; guard < 40 && offset !== null; guard++) {\n  const page = await this.helpers.httpRequest({ method: 'GET', url: BASE + offset, json: true, timeout: 60000, headers: { 'User-Agent': 'n8n-website-knowledge-sync' } });\n  for (const it of (page.items || [])) {\n    out.push({ json: {\n      text: `คำถาม: ${it.question}\\n\\nคำตอบ: ${it.answer}`,\n      metadata: { id: it.id, question: it.question, product: it.product, productId: it.productId, type: it.type, url: it.url, source: 'website', syncedAt: new Date().toISOString() }\n    } });\n  }\n  offset = (page.next === null || page.next === undefined) ? null : page.next;\n}\nif (!out.length) throw new Error('website knowledge: no items — ยกเลิกไม่ให้ล้าง namespace ทิ้ง');\nreturn out;\n" }, "name": "Fetch Website Knowledge", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [300, 110], "id": "wks-fetch-0001" },
+    { "parameters": { "mode": "insert", "pineconeIndex": { "__rl": true, "mode": "list", "value": "adminbuddy-index768-2", "cachedResultName": "adminbuddy-index768-2" }, "embeddingBatchSize": 64, "options": { "pineconeNamespace": "website", "clearNamespace": true } }, "name": "Pinecone insert (website)", "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone", "typeVersion": 1.3, "position": [640, 110], "id": "wks-pc-0001" },
+    { "parameters": { "jsonMode": "expressionData", "jsonData": "={{ $json.text }}", "options": { "metadata": { "metadataValues": [ { "name": "question", "value": "={{ $json.metadata.question }}" }, { "name": "product", "value": "={{ $json.metadata.product }}" }, { "name": "type", "value": "={{ $json.metadata.type }}" }, { "name": "url", "value": "={{ $json.metadata.url }}" }, { "name": "source", "value": "website" } ] } } }, "name": "Website Data Loader", "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader", "typeVersion": 1.1, "position": [700, 330], "id": "wks-loader-0001" },
+    { "parameters": { "modelName": "text-embedding-004", "projectId": { "__rl": true, "mode": "list", "value": "tpdigital-iducky", "cachedResultName": "TPDigital-iDucky" } }, "name": "Embeddings (website sync)", "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleVertex", "typeVersion": 1, "position": [520, 330], "id": "wks-emb-0001" }
+  ],
+  "connections": {
+    "Schedule 04:00": { "main": [ [ { "node": "Fetch Website Knowledge", "type": "main", "index": 0 } ] ] },
+    "Manual Trigger": { "main": [ [ { "node": "Fetch Website Knowledge", "type": "main", "index": 0 } ] ] },
+    "Fetch Website Knowledge": { "main": [ [ { "node": "Pinecone insert (website)", "type": "main", "index": 0 } ] ] },
+    "Website Data Loader": { "ai_document": [ [ { "node": "Pinecone insert (website)", "type": "ai_document", "index": 0 } ] ] },
+    "Embeddings (website sync)": { "ai_embedding": [ [ { "node": "Pinecone insert (website)", "type": "ai_embedding", "index": 0 } ] ] }
+  }
+}
