@@ -9,6 +9,7 @@ import {
   isPriceIntent,
   isSpecIntent,
   parseQty,
+  searchInfo,
   searchMinQty,
   searchMix,
   searchPrice,
@@ -198,6 +199,14 @@ async function answer(req: Request, body: Record<string, unknown>) {
         ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
         : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
       ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
+    } else if (u.intent === "price" && u.ids.length && !u.broad && /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|บวกเท่าไหร่|ค่าเพิ่ม|add.?on|ของเสริม|ตัวเลือก/i.test(query) && !qty) {
+      // ถามราคา "ส่วนเสริม" (เคลือบ/ฟอยล์/พิมพ์ 2 ด้าน เพิ่มเท่าไหร่) → ตอบจากหน้าสินค้า (มีราคาเพิ่มระบุไว้) แทนการเทตารางราคาหลัก
+      ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: false });
+      if (ans.kind === "skip") ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick: { ids: u.ids, broad: u.broad } });
+    } else if (u.intent === "knowledge" && u.ids.length) {
+      // ถามความรู้เกี่ยวกับสินค้าที่รู้ตัว → อ่านจากหน้าสินค้าจริง (ไม่พอ = ให้ agent ตอบ)
+      ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: u.broad });
+      if (ans.kind === "skip") ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
     } else if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent)) {
       ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
     } else {

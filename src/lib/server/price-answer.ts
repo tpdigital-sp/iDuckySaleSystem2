@@ -1016,6 +1016,8 @@ function mixText(p: Product, query = ""): PriceAnswer | null {
     const b = p.backDesign.mixRule;
     lines.push(`• พิมพ์ 2 ด้าน: ด้านหลังคละได้อีก ${b.includedDesigns} ลาย${b.baseFee ? ` (เหมา ${b.baseFee} บาท)` : " ฟรี"}${b.extraFee ? ` · เกินคิดลายละ ${b.extraFee} บาท/${unit}` : ""} — ใช้ลายเดียวกันทั้งหมด = ไม่มีค่าคละ`);
   }
+  // "อ่านรายละเอียดในเว็บด้วย" — บรรทัดบนหน้าสินค้าที่พูดถึงการคละ (คำของร้านเอง)
+  for (const l of pageLinesAbout(p, /คละ/, 3)) if (!lines.some((x) => x.includes(l))) lines.push(`• หน้าสินค้าระบุ: ${l}`);
   if (!lines.length) return null;
   // ลูกค้าบอกจำนวนลายมา ("ด้านหน้า 4 ลาย") → คิดค่าคละให้เห็นเลย
   const asked = query.match(/(\d+)\s*ลาย/);
@@ -1034,6 +1036,133 @@ function mixText(p: Product, query = ""): PriceAnswer | null {
     intent: "mix",
     product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...priceRange(p) },
   };
+}
+
+/** ข้อความทั้งหมดที่ลูกค้าอ่านได้บนหน้าสินค้า (คำอธิบาย · เนื้อหา · แท็บ · เงื่อนไข · FAQ · ตัวเลือก) — ให้บอทอ่านแทนคน */
+function stripHtml(h: string): string {
+  return h
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h\d|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+export function pageText(p: Product): string {
+  const parts: string[] = [];
+  if (p.description) parts.push(`[คำอธิบาย]\n${p.description}`);
+  for (const b of p.body ?? []) {
+    const t = typeof (b as { html?: string }).html === "string" ? stripHtml((b as { html: string }).html) : "";
+    if (t) parts.push(t);
+  }
+  for (const t of p.tabs ?? []) {
+    const body = t.html ? stripHtml(t.html) : t.text ?? "";
+    if (body.trim()) parts.push(`[${t.title}]\n${body.trim()}`);
+  }
+  if (p.terms) parts.push(`[เงื่อนไข]\n${p.terms}`);
+  const faqs = p.seo?.faqs ?? [];
+  if (faqs.length) parts.push(`[คำถามพบบ่อย]\n${faqs.map((f) => `ถาม: ${f.q}\nตอบ: ${f.a}`).join("\n")}`);
+  const opts = (p.options ?? []).filter((o) => o.choices?.length).slice(0, 14);
+  const unit = (p.priceRates ?? []).find((r) => !r.dealerOnly)?.pricing?.unit || p.pricing?.unit || "ชิ้น";
+  if (opts.length)
+    parts.push(
+      `[ตัวเลือกบนเว็บ + ราคาเพิ่ม]\n${opts
+        .map((o) => {
+          const per = o.sheetFee ? `/${o.sheetFee.unit ?? "แผ่น"}` : o.extraPerDesign ? "/ลาย" : `/${unit}`;
+          const cs = o.choices
+            .slice(0, 12)
+            .map((c) => {
+              const ex = c.extraTiers?.length ? c.extraTiers[0]?.extra : c.extra;
+              return `${c.name}${ex ? ` (+฿${ex}${per})` : ""}`;
+            })
+            .join(" / ");
+          return `• ${groupLabel(o.label)}: ${cs}${o.choices.length > 12 ? " …" : ""}`;
+        })
+        .join("\n")}`,
+    );
+  return parts.join("\n\n").slice(0, 7000);
+}
+
+/** บรรทัดบนหน้าสินค้าที่พูดถึงเรื่องนี้ (ไว้แนบท้ายคำตอบกติกาคละลาย ตามที่เจ้าของร้านขอให้ "อ่านรายละเอียดในเว็บด้วย") */
+function pageLinesAbout(p: Product, re: RegExp, max = 3): string[] {
+  return pageText(p)
+    .split(/\n|(?=•)/)
+    .map((l) => l.replace(/^[•\s-]+/, "").trim())
+    .filter((l) => l.length >= 8 && re.test(l))
+    .slice(0, max);
+}
+
+const infoCache = new Map<string, { at: number; text: string }>();
+/**
+ * 📖 ตอบคำถามความรู้เกี่ยวกับสินค้า "จากข้อความบนหน้าสินค้าจริง" (LLM เรียบเรียงจากข้อความนั้นเท่านั้น)
+ * เจ้าของร้านขอ 24 ก.ย. 69: "อยากให้อ่านรายละเอียดในเว็บด้วย" — เดิม agent ตอบจากคลังความรู้เก่าที่ไม่ตรงเว็บ
+ */
+async function infoText(p: Product, query: string): Promise<PriceAnswer | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const text = pageText(p);
+  if (!apiKey || text.length < 40) return null;
+  const key = `${p.id}\u0002${query.trim()}`;
+  const hit = infoCache.get(key);
+  let out = hit && Date.now() - hit.at < TTL_MS ? hit.text : "";
+  if (!out) {
+    const prompt = `คุณเป็นแอดมินร้าน iDucky ตอบลูกค้าโดยใช้ "ข้อมูลจากหน้าสินค้า" ด้านล่างเท่านั้น ห้ามเดา ห้ามเพิ่มข้อมูลที่ไม่มี
+
+สินค้า: ${p.name}
+ข้อมูลจากหน้าสินค้า:
+${text}
+
+ลูกค้าถาม: "${query}"
+
+กติกา: ตอบภาษาไทย สุภาพ ลงท้าย "ค่ะ" ไม่เกิน 5 บรรทัด ตอบตรงคำถามก่อน ถ้ามีตัวเลข/เงื่อนไขในข้อมูลให้ใส่ให้ครบ
+ห้ามใช้ markdown (ห้าม * หรือ ** หรือ #) ใช้ • นำหน้ารายการแทน ไม่ต้องขึ้นต้นด้วย "สวัสดีค่ะ"
+ถ้าข้อมูลบนหน้าสินค้าไม่พอจะตอบคำถามนี้ ให้ตอบคำเดียวว่า NOT_FOUND`;
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 400, temperature: 0.2 } }),
+          signal: AbortSignal.timeout(9_000),
+        },
+      );
+      if (!res.ok) return null;
+      const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      out = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+      if (out) infoCache.set(key, { at: Date.now(), text: out });
+    } catch {
+      return null;
+    }
+  }
+  if (!out || /NOT_FOUND/.test(out)) return null;
+  // LINE/แชทโชว์ markdown เป็นตัวอักษรดิบ → ถอดออกให้หมด
+  out = out
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/^\s*[*-]\s+/gm, "• ")
+    .replace(/^#+\s*/gm, "")
+    .replace(/^สวัสดีค่ะ\s*/m, "")
+    .trim();
+  const url = botUrl(p);
+  return {
+    answer: `${out}\nรายละเอียดเต็มดูที่หน้าสินค้า\n${url}`,
+    kind: "info",
+    source: "web-page-info",
+    intent: "info",
+    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...priceRange(p) },
+  };
+}
+
+/** คำถามความรู้เกี่ยวกับสินค้าที่ระบุ — อ่านจากหน้าสินค้าจริง · ไม่รู้สินค้า/ไม่มีข้อมูล = skip ให้ agent ตอบ */
+export async function searchInfo(query: string, pick?: Pick): Promise<PriceAnswer> {
+  const q = query.trim();
+  if (!pick?.ids.length && !(await mentionsProduct(q))) return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "info" };
+  const { items, broad } = await candidates(q, pick);
+  if (broad || !items.length) return { answer: "", kind: "skip", source: "no-single-product", intent: "info" };
+  const full = await getProductServer(items[0].id).catch(() => undefined);
+  const ans = full ? await infoText(full, q) : null;
+  return ans ?? { answer: "", kind: "skip", source: "no-page-info", intent: "info" };
 }
 
 /** ถามกติกาคละลาย — ต้องรู้สินค้า (จากคำถามหรือบริบท) ไม่รู้ = เมนูให้เลือกก่อน · ไม่มีข้อมูลคละ = skip ให้ agent ตอบ */
