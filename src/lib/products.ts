@@ -5448,6 +5448,66 @@ export function priceDriverLabels(p: Product): string[] {
 }
 
 /**
+ * 🚫 ตัวเลือก "ไม่รับ/ไม่ทำ" ของกลุ่มนี้ — ชื่อขึ้นต้นด้วย ❌ หรือ "ไม่…" ที่ไม่ใช่คำเปรียบเทียบ
+ * ("ไม่เกิน 5 นิ้ว" เป็นขนาดจริง ไม่ใช่การปฏิเสธ — เกณฑ์เดียวกับ pickedNone ใน SpecLines)
+ */
+function noneChoiceOf(opt: ProductOption): string | undefined {
+  return (opt.choices ?? []).find(
+    (c) => /^[❌✖✗]/.test(c.name) || (/^ไม่/.test(c.name) && !/^ไม่(เกิน|ต่ำกว่า|น้อยกว่า|จำกัด|เท่ากับ)/.test(c.name))
+  )?.name;
+}
+
+/**
+ * 🧺 ตัวเลือกชุดที่ต้องติดไปกับตะกร้า/ใบราคา — "กลุ่มที่ซ่อนอยู่ = ลูกค้าไม่ได้สั่งของชิ้นนั้น"
+ *
+ *  • กลุ่มที่ซ่อน (showWhen ไม่ตรง) และไม่ใช่แกนตารางราคา → ตัดทิ้ง
+ *  • กลุ่มที่ซ่อนแต่เป็นแกนตารางราคา → ตัดทิ้งไม่ได้ (คีย์ราคาจะขาด ดู priceDriverLabels)
+ *    แต่ค่าที่ค้างอยู่คือ "ตัวแรกของกลุ่ม" ซึ่งเป็นของจริงที่ลูกค้าไม่ได้สั่ง
+ *    → สลับเป็นตัวเลือก "ไม่รับ/ไม่ทำ" ของกลุ่มนั้นแทน ถ้ามีและยังมีช่องราคาในตารางที่ใช้อยู่
+ *
+ * เคสจริง: เฟรมการ์ดใส เลือก "ชิ้นงาน: ไม่เจาะรู" แล้วกลุ่ม "ตะขอโซ่ไข่ปลา" ถูกซ่อน
+ * แต่ค่ายังค้างที่ "ตะขอ Z2 โซ่ไข่ปลาสีเงิน" → ตะกร้า/ใบงานขึ้นโซ่ไข่ปลาเงินที่ไม่มีใครสั่ง
+ * (พนักงานแจ้ง 24 ก.ย. 69) · ราคาช่อง "❌ ไม่รับตะขอ" เท่ากันทุกขั้น จึงสลับได้โดยราคาไม่ขยับ
+ *
+ * @param view ตัวเลือกชุดที่ใช้ตัดสินว่ากลุ่มไหนซ่อน (ไม่ใส่ = ใช้ชุดเดียวกับที่ส่งมา)
+ */
+export function orderableSelections(
+  p: Product,
+  selections: Record<string, string>,
+  view: Record<string, string> = selections
+): Record<string, string> {
+  const drivers = priceDriverLabels(p);
+  const mats = [p.pricing, ...(p.priceRates ?? []).map((r) => r.pricing)].filter(Boolean) as PriceMatrix[];
+  const out: Record<string, string> = { ...selections };
+  for (const opt of p.options ?? []) {
+    if (optionActive(opt, view)) continue;
+    if (!drivers.includes(opt.label)) {
+      delete out[opt.label];
+      continue;
+    }
+    const none = noneChoiceOf(opt);
+    if (!none || none === out[opt.label]) continue;
+    /*
+     * ⚠️ สลับได้เฉพาะเมื่อ "ราคาเท่ากันเป๊ะทุกขั้น ทุกเรท" เท่านั้น
+     * ไม่งั้นราคาในตะกร้าจะไม่ตรงกับที่ลูกค้าเห็นบนหน้าสินค้า (หน้าสินค้าคิดจากค่าที่ค้างอยู่)
+     * — เสื้อครอป เลือก "งานปัก" แล้วกลุ่ม "ขนาดสกรีน" ถูกซ่อน: ช่อง "ไม่สกรีน" ถูกกว่า "ไม่เกิน 5 นิ้ว"
+     *   สลับให้ = หน้าสินค้า ฿310 แต่ตะกร้า ฿280 (ดู [[iducky-price-driver-trap]])
+     */
+    const next = { ...out, [opt.label]: none };
+    const samePrice = mats.every((mx) => {
+      if (!mx.driverLabels.includes(opt.label)) return true;
+      const a = mx.cells[priceMatrixKey(mx, out)];
+      const b = mx.cells[priceMatrixKey(mx, next)];
+      // ไม่มีช่องราคาทั้งคู่ = ยังพิสูจน์ไม่ได้ว่าราคาเท่ากัน (📐 กำหนดขนาดเองไปเกาะแถวอื่นทีหลัง) → ไม่สลับ
+      return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+    });
+    if (!samePrice) continue;
+    out[opt.label] = none;
+  }
+  return out;
+}
+
+/**
  * คีย์คอลัมน์ราคา ที่เติมค่าเริ่มต้นให้แกนตารางที่ "ไม่มีค่า" ใน selections
  * ใช้กับของที่อยู่ในตะกร้า/ออเดอร์เก่าซึ่งเคยถูกตัดกลุ่มที่ซ่อนไว้ออกไป — ราคาจะได้ตรงกับที่ลูกค้าเห็นตอนสั่ง
  * (ค่าเริ่มต้นเลือกแบบเดียวกับ resolveSelections: ตัวแรกที่กฎอนุญาตและมีราคาในตาราง)

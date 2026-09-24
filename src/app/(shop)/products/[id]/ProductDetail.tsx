@@ -20,7 +20,7 @@ import {
   isMadeToOrderOption,
   madeToOrderOn,
   optionActive,
-  priceDriverLabels,
+  orderableSelections,
   MTO_LABEL,
   MTO_ON,
   needsQuote,
@@ -1954,12 +1954,10 @@ export default function ProductDetail({
         ? { c: { w: customW.trim(), h: customH.trim() } }
         : {}),
     };
-    const drivers = priceDriverLabels(product);
-    const hiddenLabels = new Set(
-      product.options.filter((o) => !optionActive(o, effective) && !drivers.includes(o.label)).map((o) => o.label)
-    );
     // บรรทัดโชว์บนลิงก์ราคา — บวก "เพิ่มขนาด" เข้าบรรทัดขนาดเหมือนตะกร้า/ออเดอร์ (ค่าจริงอยู่ใน spec.s)
-    const lines = foldSizeExtra(tidySpec(specEntries(pricingSelections).filter(([k]) => !hiddenLabels.has(k)) as [string, string][]));
+    const lines = foldSizeExtra(
+      tidySpec(specEntries(orderableSelections(product, pricingSelections, effective)) as [string, string][])
+    );
     // งานที่แอดมินต้องตีราคาเอง — อย่าโชว์ตัวเลข ฿0 ที่ไหนทั้งนั้น ลูกค้าอ่านว่าฟรี
     const askPrice = askQuote || (useCustom && customAsk);
     /*
@@ -3375,15 +3373,10 @@ export default function ProductDetail({
       return { ...kept, [custom.label]: customValue, ...extra };
     }
     // กลุ่มที่ถูกซ่อน (showWhen ไม่ตรง) หรือกลุ่มงานสั่งทำที่ลูกค้าไม่ได้ติ๊ก — ไม่ต้องติดไปกับตะกร้า/ออเดอร์
-    // ⚠️ ยกเว้นกลุ่มที่เป็นแกนตารางราคา — ตัดออกแล้วตะกร้าหาช่องราคาไม่เจอ ราคาหล่นไปที่ราคาตั้งต้น
-    // (เคยพลาด: พวงกุญแจ "ประเภทอะคริลิค" ถูกซ่อนด้วย showWhen หน้าสินค้า ฿110 แต่ในตะกร้าเหลือ ฿90)
-    const drivers = priceDriverLabels(product);
-    const hidden = product.options
-      .filter((o) => !optionActive(o, effective) && !drivers.includes(o.label))
-      .map((o) => o.label);
+    // (กลุ่มที่เป็นแกนตารางราคาตัดทิ้งไม่ได้ orderableSelections สลับให้เป็น "ไม่รับ/ไม่ทำ" แทน)
     // ค่าว่าง = กลุ่มติ๊กหลายอย่างที่ลูกค้าไม่ได้ติ๊กอะไรเลย — ไม่ต้องโชว์เป็นบรรทัดเปล่าในตะกร้า/ออเดอร์
     const shown = Object.fromEntries(
-      Object.entries(effectiveWithDesigns).filter(([k, v]) => !hidden.includes(k) && v !== "")
+      Object.entries(orderableSelections(product, effectiveWithDesigns, effective)).filter(([, v]) => v !== "")
     );
     return { ...shown, ...extra };
   }
