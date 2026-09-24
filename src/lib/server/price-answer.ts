@@ -76,6 +76,8 @@ interface Lite {
   name: string;
   slug?: string;
   imageSrc?: string;
+  /** คำอธิบายสั้น (ไว้เช็ควัสดุที่ไม่อยู่ในชื่อ เช่น แก้วมัค = เซรามิก) */
+  desc?: string;
   category: string;
   /** ช่วงราคาที่เซิร์ฟเวอร์คำนวณไว้ตอนบันทึกสินค้า — ใช้ทำเมนูโดยไม่ต้องโหลดตารางเต็ม */
   priceMin?: number;
@@ -98,7 +100,7 @@ async function loadLite(): Promise<Lite[]> {
   const { data } = await sb
     .from("products")
     .select(
-      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc",
+      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc, desc:data->>description",
     );
   return (data ?? [])
     .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden !== "true")
@@ -107,6 +109,7 @@ async function loadLite(): Promise<Lite[]> {
       name: String(r.name),
       slug: r.slug ?? undefined,
       imageSrc: absImage(r.imageSrc),
+      desc: typeof r.desc === "string" ? r.desc.slice(0, 400) : undefined,
       category: String(r.category ?? ""),
       priceMin: r.priceMin ? Number(r.priceMin) : undefined,
       priceMax: r.priceMax ? Number(r.priceMax) : undefined,
@@ -201,7 +204,7 @@ async function catalog(): Promise<Lite[]> {
 }
 
 /** ตัดช่องว่าง/วรรคตอนออกให้เทียบกันได้ — ไทยไม่มีเว้นวรรคระหว่างคำ เทียบดิบ ๆ จะพลาด */
-function norm(s: string): string {
+export function norm(s: string): string {
   return s
     .toLowerCase()
     .replace(/[\s​]+/g, "")
@@ -228,7 +231,7 @@ function lcsAt(a: string, b: string): { len: number; at: number } {
   return { len: best, at };
 }
 
-function lcsLen(a: string, b: string): number {
+export function lcsLen(a: string, b: string): number {
   return lcsAt(a, b).len;
 }
 
@@ -537,6 +540,7 @@ ${list}
 - products ต้องคัดลอกชื่อจากรายการตรงตัวอักษร เลือกเฉพาะที่ลูกค้าหมายถึงจริง ไม่ชัดเจน = [] · หมวดกว้าง (พวงกุญแจ/สแตนดี้) = ใส่ทุกตัวที่เข้าข่าย (สูงสุด 6) และ broad=true
 - ⚠️ ลูกค้าระบุ "ชนิด/วัสดุ/แบบ" เฉพาะที่ร้านไม่มีในรายการ (เช่น "พวงกุญแจหนังปัก" แต่ร้านมีแต่พวงกุญแจอะคริลิค/หมอน) → notInCatalog=true, requested="พวงกุญแจหนังปัก", products=[] และใส่ alternatives = สินค้าที่ใกล้เคียงที่สุด ไม่เกิน 3 (เช่น กระเป๋าใส่พวงกุญแจ งานปัก, อาร์มปัก) ห้ามยัดเมนูทั้งหมวดให้แทน
 - ลูกค้าพูดถึงที่ใช้งาน (รถยนต์ ตู้เย็น โต๊ะ) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน · ชื่ออังกฤษให้จับตามความหมาย (ที่รองแก้ว = Coaster, แก้วเยติ = Tumbler)
+- ลูกค้าเรียก "ชื่อสินค้า" ตรงกับรายการ (เช่น Photocard/โฟโต้การ์ด ขายเป็นเซ็ต) ให้เลือกสินค้าชื่อนั้น แม้จะพ่วงวัสดุมาด้วย (Photocard กระดาษอาร์ตมัน 300 แกรม = "โฟโต้การ์ด" ไม่ใช่ "งานพิมพ์กระดาษอาร์ตมัน" ที่ขายเป็นแผ่น A3) — วัสดุเป็นแค่ตัวเลือกในสินค้านั้น
 - qty = จำนวนชิ้นที่จะสั่งเท่านั้น (ห้ามนับขนาด 3cm / 300 แกรม / A3) ไม่มี = null
 - standalone = เขียนคำถามใหม่เป็นภาษาไทยสั้น ๆ ให้เข้าใจได้โดยไม่ต้องอ่านบริบท ใส่ชื่อสินค้าและจำนวนที่รู้`;
 
@@ -580,27 +584,38 @@ ${list}
      * ลูกค้าระบุวัสดุ/เทคนิค (หนัง ไม้ ปัก …) แต่ไม่มีสินค้าที่เลือกมาตัวไหนมีคำนั้นในชื่อเลย = ร้านไม่มีของแบบนั้น
      * → บอกตรง ๆ + เสนอตัวใกล้เคียง (สินค้าที่ชื่อมีวัสดุนั้น ถ้ามี ตามด้วยที่ AI เลือก)
      */
-    const QUAL = /หนัง|ไม้|ผ้า|ปัก|โลหะ|เหล็ก|สแตนเลส|ซิลิโคน|เรซิ่น|pvc|กระดาษ|เซรามิก|พลาสติก|ยาง|ทองเหลือง|อลูมิเนียม|อะคริลิค|แก้ว|เย็บ|ถัก/gi;
+    const QUAL = /หนัง|ไม้|ปัก|โลหะ|เหล็ก|สแตนเลส|ซิลิโคน|เรซิ่น|pvc|เซรามิก|พลาสติก|ยาง|ทองเหลือง|อลูมิเนียม|เย็บ|ถัก/gi;
     const quals = [...new Set((q.match(QUAL) ?? []).map((x) => x.toLowerCase()))];
     let notInCatalog = !!raw.notInCatalog && picked.length === 0;
-    let requested = String(raw.requested ?? "").trim();
+    // "requested" ต้องเป็นชื่อของ ไม่ใช่ทั้งประโยค ("แก้วเซรามิก ราคา" → "แก้วเซรามิก")
+    const cleanReq = (t: string) =>
+      t.replace(/ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขอเรท|เรท|ค่ะ|คะ|ครับ|หน่อย|ขอ|อยากได้|สนใจ|\?/g, "").replace(/\s+/g, " ").trim();
+    let requested = cleanReq(String(raw.requested ?? "")) || cleanReq(q);
     let finalPicked = picked;
     // "หนัง" ต้องไม่ไปจับ "หนังสือ" (สมุด/ที่คั่นหนังสือเคยโผล่มาเป็นตัวใกล้เคียงของพวงกุญแจหนัง)
-    const hasQual = (name: string, w: string) => (w === "หนัง" ? /หนัง(?!สือ)/.test(name) : norm(name).includes(norm(w)));
-    if (quals.length && picked.length && !picked.some((it) => quals.every((w) => hasQual(it.name, w)))) {
-      // ตัวใกล้เคียง: ชื่อมีวัสดุนั้น และยิ่งมีคำเดียวกับคำถาม (พวงกุญแจ) ยิ่งดี → "กระเป๋าใส่พวงกุญแจ งานปัก" มาก่อน "สมุดหนัง"
+    const hasQual = (it: Lite, w: string) => {
+      const hay = `${it.name} ${it.desc ?? ""}`;
+      return w === "หนัง" ? /หนัง(?!สือ)/.test(hay) : norm(hay).includes(norm(w));
+    };
+    // ใช้ด่านนี้เฉพาะตอน LLM ตอบเป็น "หมวดกว้าง" (broad) — ชี้สินค้าเดียวชัด ๆ (Photocard กระดาษอาร์ตมัน → โฟโต้การ์ด) ให้เชื่อ
+    if (quals.length && picked.length && !!raw.broad && !picked.some((it) => quals.every((w) => hasQual(it, w)))) {
+      // มีสินค้าตัวอื่นที่ชื่อ/คำอธิบายมีวัสดุนั้นครบไหม (สแตนดี้ไม้ → "สแตนดี้ไม้กระดก") → ใช้ตัวนั้นตอบตามปกติ
       const qn = norm(q.replace(QUAL, " "));
       const withQual = items
-        .map((it) => ({ it, s: quals.filter((w) => hasQual(it.name, w)).length * 2 + (qn && lcsLen(qn, norm(it.name)) >= 5 ? 3 : 0) }))
-        .filter((x) => x.s > 0)
-        .sort((a, b) => b.s - a.s)
-        .slice(0, 2)
-        .map((x) => x.it);
-      const merged = [...withQual, ...picked.filter((it) => !withQual.includes(it))].slice(0, 3);
-      notInCatalog = true;
-      requested = requested || q.replace(/ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขอเรท|เรท|ค่ะ|คะ|ครับ|หน่อย|ขอ|อยากได้|สนใจ|\?/g, "").replace(/\s+/g, " ").trim();
-      finalPicked = [];
-      alts.splice(0, alts.length, ...merged.map(refOf));
+        .filter((it) => quals.every((w) => hasQual(it, w)))
+        .map((it) => ({ it, s: (norm(it.name).includes(norm(quals[0])) ? 2 : 0) + (qn && lcsLen(qn, norm(it.name)) >= 5 ? 3 : 0) }))
+        .sort((a, b) => b.s - a.s);
+      const strong = withQual.filter((x) => x.s >= 3).map((x) => x.it);
+      if (strong.length) {
+        finalPicked = strong.slice(0, 3);
+        notInCatalog = false;
+      } else {
+        // ไม่มีจริง ๆ → บอกตรง ๆ + เสนอตัวใกล้เคียง (ที่มีวัสดุนั้นแม้ชื่อไม่ตรง ตามด้วยที่ AI เลือก)
+        const merged = [...withQual.slice(0, 2).map((x) => x.it), ...picked.filter((it) => !withQual.some((x) => x.it === it))].slice(0, 3);
+        notInCatalog = true;
+        finalPicked = [];
+        alts.splice(0, alts.length, ...merged.map(refOf));
+      }
     }
     const u: Understanding = {
       notInCatalog,
