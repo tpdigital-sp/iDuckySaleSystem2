@@ -1,6 +1,6 @@
 import { reconcileOrderTax, withLog, type Order, type OrderItem } from "@/lib/admin-data";
 import { applyAutoRush, stampRushAlert } from "@/lib/rush-auto";
-import { syncOrderEarlyPay } from "./order-early-pay";
+import { earlyPayBillAdded, syncOrderEarlyPay } from "./order-early-pay";
 import { syncItemsToTP, syncRushToTP } from "./tp-report";
 import { closeClaimsForDeliveredRedo } from "./claims-db";
 import { alertNeedsPurchase, stampNeedsPurchaseAlert } from "./needs-purchase";
@@ -142,8 +142,12 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
     const { data } = await sb.from("orders").select("data").eq("id", order.id).maybeSingle();
     prev = (data?.data as Order | undefined) ?? null;
   }
-  const changed = itemsChanged(prev, order);
   const by = opts?.by ?? "ระบบ";
+  /**
+   * 🧾 ใบที่เพิ่ง "ออกบิลบริษัท" ในการบันทึกครั้งนี้ (ผูกเอกสาร FlowAccount · กรอกข้อมูลใบกำกับ · เปิด VAT)
+   * ต้องคิดกฎใหม่ด้วย แม้รายการไม่เปลี่ยน — ส่วนลดโอนไวที่ได้ไปก่อนหน้าต้องหลุดออก (ยอดต้องตรงบิลที่ลูกค้าถือ)
+   */
+  const changed = itemsChanged(prev, order) || earlyPayBillAdded(prev, order);
   let final = changed ? await syncOrderEarlyPay(sb, order, by) : order;
   // ➕ ของที่เพิ่มเข้าใบเดิมทีหลัง — ประทับเวลาก่อนบันทึก (บอร์ด WIP กราฟฟิกใช้รู้ว่ามีงานเพิ่ม)
   final = stampAddedItems(prev, final, new Date().toISOString());

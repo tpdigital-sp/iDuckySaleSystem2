@@ -14,6 +14,7 @@ import { cutStockForOrder } from "@/lib/server/stock";
 import { bumpSoldForOrder } from "@/lib/server/sold";
 import { awardPointsForOrder } from "@/lib/server/contact-points";
 import { updateOrder } from "@/lib/server/order-write";
+import { earlyPayBillReason } from "@/lib/server/order-early-pay";
 
 /**
  * ตรวจสลิปกับ SlipOK แล้ว "ลงผล" ให้ออเดอร์ — ใช้ร่วมกันทั้งทางลูกค้าแนบเอง (/api/orders/slip)
@@ -149,7 +150,9 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
    */
   let earlyPayAllowed = 0;
   // 🤝 ออเดอร์ตัวแทนจำหน่ายไม่มีส่วนลดโอนไว — ห้ามยอมรับสลิปที่โอนขาด ฿5/฿10
-  if (!order.earlyPay && !order.dealer && paidSoFar(order) <= 0 && orderOtherDiscounts(order) <= 0) {
+  // 🧾 ใบที่มีบิลบริษัท (FlowAccount/ใบกำกับภาษี/ใบเสนอราคา) ก็ไม่มีส่วนลดนี้เหมือนกัน — โอนขาดต้องตกไปตรวจมือ
+  //    ไม่งั้นใบที่กติกาใหม่ไม่ให้ลด กลับถูก "ลดที่ตัวตรวจสลิป" แทน แล้วเงินเข้าไม่ตรงบิลที่ออกให้ลูกค้า
+  if (!order.earlyPay && !order.dealer && !earlyPayBillReason(order) && paidSoFar(order) <= 0 && orderOtherDiscounts(order) <= 0) {
     try {
       const { data: settRow } = await sb.from("products").select("data").eq("id", "__shop_payment__").maybeSingle();
       const prods = new Map<string, Product>();

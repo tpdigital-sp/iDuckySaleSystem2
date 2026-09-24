@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { earlyPayAmount, earlyPayOf, type EarlyPayDiscount } from "../src/lib/early-pay";
-import { earlyPayBaseOf, earlyPaySkipReason } from "../src/lib/server/order-early-pay";
+import { earlyPayBaseOf, earlyPayBillAdded, earlyPaySkipReason, syncOrderEarlyPay } from "../src/lib/server/order-early-pay";
 import { itemsChanged } from "../src/lib/server/order-write";
 import type { Order } from "../src/lib/admin-data";
 import type { Product } from "../src/lib/products";
@@ -52,6 +52,9 @@ const base = (over: Partial<Order> & { items: Order["items"] }): Order =>
 
 const line = (productId: string, qty: number, unitPrice: number, sel: Record<string, string> = {}) => ({ productId, name: productId, qty, unitPrice, sel });
 
+/** เอกสาร FlowAccount ปลอมสำหรับเทสต์ (ตัวเลขไม่ถูกใช้ — กฎดูแค่ "มีบิลไหม") */
+const FA: NonNullable<Order["flowAccount"]> = { url: "https://share.flowaccount.com/qt/th/test", docType: "qt", docTypeLabel: "ใบเสนอราคา", docNo: "QT010729", fetchedAt: new Date().toISOString() };
+
 if (process.argv.includes("--scan")) {
   const days = Number(process.argv[process.argv.indexOf("--scan") + 1]) || 3;
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
@@ -87,6 +90,10 @@ const CASES: { name: string; order: Order; want: number | string }[] = [
   { name: "มีเงินเข้าแล้ว → ข้าม (ห้ามแก้ย้อนหลัง)", order: base({ items: [line("calendar-desk", 1, 260)], paidTotal: 310 }), want: "มีเงินเข้า/แจ้งโอนแล้ว" },
   { name: "แนบสลิปแล้วรอตรวจ → ข้าม", order: base({ items: [line("calendar-desk", 1, 260)], paidReportedAt: new Date().toISOString() }), want: "มีเงินเข้า/แจ้งโอนแล้ว" },
   { name: "ใบเสนอราคา → ข้าม (นโยบาย)", order: base({ items: [line("calendar-desk", 1, 260)], quoteOf: "QT-1" }), want: "ใบเสนอราคา" },
+  // 🧾 บิลบริษัท (เจ้าของร้านสั่ง 24 ก.ย. 69) — ยอดในเว็บต้องตรงเอกสารที่ลูกค้าถือ ห้ามลด ฿5/฿10
+  { name: "ผูกบิล FlowAccount → ข้าม (นโยบาย)", order: base({ items: [line("calendar-desk", 1, 260)], flowAccount: FA }), want: "บิล FlowAccount" },
+  { name: "มีใบกำกับภาษีบริษัท → ข้าม (นโยบาย)", order: base({ items: [line("calendar-desk", 1, 260)], taxInvoice: { company: "บริษัท ทดสอบ จำกัด", address: "กรุงเทพ" } }), want: "ใบกำกับภาษี/บิล VAT" },
+  { name: "เปิด VAT ตามบิล → ข้าม (นโยบาย)", order: base({ items: [line("calendar-desk", 1, 260)], vat: { rate: 7, amount: 18.2 } }), want: "ใบกำกับภาษี/บิล VAT" },
   { name: "ใบเคลม → ข้าม", order: base({ items: [line("calendar-desk", 1, 260)], claimOf: "OD-1" }), want: "ใบเคลม" },
   { name: "เลยขั้นเก็บเงิน (กำลังผลิต) → ข้าม", order: base({ items: [line("calendar-desk", 1, 260)], status: "กำลังผลิต" }), want: "เลยขั้นเก็บเงินแล้ว" },
   { name: "ล็อกส่วนลดแล้ว → ข้าม", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: { label: "⚡", amount: 5, lockedAt: new Date().toISOString() } }), want: "ล็อก/ติ๊กไม่รับแล้ว" },
@@ -112,6 +119,40 @@ for (const t of TOUCH) {
   if (!ok) fail++;
   console.log(`${ok ? "✓" : "✗"} [ประตู] ${t.name}${ok ? "" : `  (ได้ ${got})`}`);
 }
+/**
+ * 🧾➖ ใบที่ได้ส่วนลดไปแล้ว แล้วมาออกบิลทีหลัง — ประตูต้องเอาส่วนลดออกให้ (ยอดต้องตรงบิล)
+ * แต่ห้ามแตะใบที่ลูกค้าโอน/แจ้งโอนตามตัวเลขเดิมไปแล้ว (ไม่งั้นค้าง ฿5/฿10 ปลอม แล้วไลน์ไปทวง — OD-260923-5389)
+ */
+const EP5 = { label: "⚡ ส่วนลดโอนไว", amount: 5 };
+// ⚠️ ใส่ได้เฉพาะเคส "มีบิล" — เคสไม่มีบิลจะไปเข้าทางที่ต้องโหลดสินค้าผ่าน products-server ซึ่งสคริปต์นอก Next อ่านไม่ได้
+//    (เคสคิดยอดปกติอยู่ใน CASES ด้านบนแล้ว ซึ่งโหลดสินค้าจากฐานเอง)
+const DROP: { name: string; order: Order; want: number }[] = [
+  { name: "ได้ส่วนลดแล้วผูกบิล FlowAccount → เอาออก", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, flowAccount: FA }), want: 0 },
+  { name: "ได้ส่วนลดแล้วกรอกใบกำกับภาษี → เอาออก", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, taxInvoice: { company: "บริษัท ทดสอบ จำกัด", address: "กรุงเทพ" } }), want: 0 },
+  { name: "ออกบิลแต่ลูกค้าแจ้งโอนแล้ว → คงส่วนลดเดิม", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, flowAccount: FA, paidReportedAt: new Date().toISOString() }), want: 5 },
+  { name: "ออกบิลแต่มีเงินเข้าแล้ว → คงส่วนลดเดิม", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, flowAccount: FA, paidTotal: 305 }), want: 5 },
+];
+
+/** ประตูต้องเรียกกฎใหม่ตอน "เพิ่งออกบิล" ด้วย แม้รายการไม่ขยับ */
+const BILLED: { name: string; a: Order; b: Order; want: boolean }[] = [
+  { name: "เพิ่งผูกบิล FlowAccount → คิดใหม่", a: base({ items: [line("calendar-desk", 1, 260)] }), b: base({ items: [line("calendar-desk", 1, 260)], flowAccount: FA }), want: true },
+  { name: "เพิ่งกรอกใบกำกับภาษี → คิดใหม่", a: base({ items: [line("calendar-desk", 1, 260)] }), b: base({ items: [line("calendar-desk", 1, 260)], taxInvoice: { company: "บริษัท ทดสอบ จำกัด", address: "กรุงเทพ" } }), want: true },
+  { name: "ใบมีบิลอยู่แล้ว บันทึกเรื่องอื่น → ไม่คิดใหม่", a: base({ items: [line("calendar-desk", 1, 260)], flowAccount: FA }), b: base({ items: [line("calendar-desk", 1, 260)], flowAccount: FA, status: "ชำระแล้ว" }), want: false },
+  { name: "ใบธรรมดา บันทึกเรื่องอื่น → ไม่คิดใหม่", a: base({ items: [line("calendar-desk", 1, 260)] }), b: base({ items: [line("calendar-desk", 1, 260)], status: "ชำระแล้ว" }), want: false },
+];
+
+for (const t of BILLED) {
+  const got = earlyPayBillAdded(t.a, t.b);
+  const ok = got === t.want;
+  if (!ok) fail++;
+  console.log(`${ok ? "✓" : "✗"} [ประตู·บิล] ${t.name}${ok ? "" : `  (ได้ ${got})`}`);
+}
+for (const d of DROP) {
+  const got = (await syncOrderEarlyPay(sb, d.order)).earlyPay?.amount ?? 0;
+  const ok = got === d.want;
+  if (!ok) fail++;
+  console.log(`${ok ? "✓" : "✗"} [เอาออก] ${d.name}${ok ? "" : `  (ได้ ${got} · ควรได้ ${d.want})`}`);
+}
 for (const c of CASES) {
   const { due, skip } = await dueOf(c.order);
   const got = skip ?? due;
@@ -119,6 +160,6 @@ for (const c of CASES) {
   if (!ok) fail++;
   console.log(`${ok ? "✓" : "✗"} ${c.name}${ok ? "" : `  (ได้ ${got} · ควรได้ ${c.want})`}`);
 }
-const total = CASES.length + TOUCH.length;
+const total = CASES.length + TOUCH.length + BILLED.length + DROP.length;
 console.log(fail ? `\n❌ ตก ${fail}/${total} เคส` : `\n✅ ผ่านครบ ${total} เคส`);
 process.exit(fail ? 1 : 0);
