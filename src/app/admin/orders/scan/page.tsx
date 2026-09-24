@@ -97,8 +97,8 @@ function TaxTag({ o }: { o: Order }) {
       🧾 {taxInvoiceCountLabel(o)}ใส่แล้ว · {o.taxInvoicePacked.by}
     </Tag>
   ) : (
-    <Tag tone="solid" title="บิล FlowAccount/บิล VAT — พิมพ์ใบกำกับจาก FlowAccount ใส่กล่อง แล้วกดยืนยันในหน้าออเดอร์ (โหมดแพ็ค)">
-      🧾 {taxInvoiceCountLabel(o)} ยังไม่ใส่กล่อง
+    <Tag tone={(o.flowAccountExtras?.length ?? 0) > 0 ? "lilac" : "solid"} title="บิล FlowAccount/บิล VAT — พิมพ์ใบกำกับจาก FlowAccount ใส่กล่อง แล้วกดยืนยันในหน้าออเดอร์ (โหมดแพ็ค)">
+      {(o.flowAccountExtras?.length ?? 0) > 0 ? "⚠️ " : ""}🧾 {taxInvoiceCountLabel(o)} ยังไม่ใส่กล่อง
     </Tag>
   );
 }

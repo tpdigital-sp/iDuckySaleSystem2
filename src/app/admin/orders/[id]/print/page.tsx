@@ -1152,11 +1152,14 @@ function OrderDocs({
                 <p className="mt-0.5 text-[9px] leading-tight text-slate-500">สแกนด้วยเครื่องยิง → ผูกเลขพัสดุ</p>
                 {/* 🧾 บิล FlowAccount/บิล VAT ต้องมีใบกำกับตัวจริงในกล่อง — ตราบนส่วนที่ติดกล่อง คนแพ็คเห็นโดยไม่ต้องเปิดจอ (10 ก.ย. 69) */}
                 {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok && (
+                  // 🧾➕ มากกว่า 1 ใบ = ตราม่วงพื้นทึบ (เจ้าของร้านสั่ง 24 ก.ย. 69: ให้สะดุดตาต่างจากใบกำกับใบเดียว)
                   <p
-                    className="keep mt-1.5 inline-block rounded border-[2.5px] border-red-600 bg-white px-2.5 py-1 text-sm font-extrabold leading-none"
-                    style={{ color: "#dc2626", transform: "rotate(-1.5deg)" }}
+                    className={`keep mt-1.5 inline-block rounded border-[2.5px] px-2.5 py-1 text-sm font-extrabold leading-none ${
+                      (order.flowAccountExtras?.length ?? 0) > 0 ? "border-violet-800 bg-violet-700" : "border-red-600 bg-white"
+                    }`}
+                    style={{ color: (order.flowAccountExtras?.length ?? 0) > 0 ? "#fff" : "#dc2626", transform: "rotate(-1.5deg)" }}
                   >
-                    🧾 แนบ{taxInvoiceCountLabel(order)}
+                    {(order.flowAccountExtras?.length ?? 0) > 0 ? "⚠️ " : ""}🧾 แนบ{taxInvoiceCountLabel(order)}
                   </p>
                 )}
               </div>
@@ -1299,8 +1302,12 @@ function OrderDocs({
                     const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo);
                     const docTxt = docs.length > 1 ? docs.map((d) => `${d.label} ${d.docNo}${d.extra ? " (บิลเพิ่ม)" : ""}`).join(" + ") : doc.docNo ? `${doc.label} ${doc.docNo}` : "";
                     return (
-                      <p className="mt-1.5 block w-fit rounded border-2 border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
-                        🧾 ต้องใส่{taxInvoiceCountLabel(order)}ลงกล่อง{docTxt ? ` — อ้างอิง ${docTxt}` : ""}
+                      // 🧾➕ มากกว่า 1 ใบ = กรอบม่วงพื้นทึบตัวขาว (คนแพ็คเห็นปุ๊บรู้ว่าต้องหา 2 ใบ ไม่ใช่ตราแดงใบเดียวแบบปกติ)
+                      <p
+                        className={`mt-1.5 block w-fit rounded border-2 px-2 py-1 text-base font-extrabold ${docs.length > 1 ? "border-violet-800 bg-violet-700" : "border-red-600 bg-white"}`}
+                        style={{ color: docs.length > 1 ? "#fff" : "#dc2626" }}
+                      >
+                        {docs.length > 1 ? "⚠️ " : ""}🧾 ต้องใส่{taxInvoiceCountLabel(order)}ลงกล่อง{docTxt ? ` — อ้างอิง ${docTxt}` : ""}
                         {order.flowAccount || doc.url ? " (พิมพ์จาก FlowAccount)" : ""}
                         {doc.company ? ` · ${doc.company}` : ""}
                       </p>

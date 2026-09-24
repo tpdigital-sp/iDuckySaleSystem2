@@ -4841,7 +4841,9 @@ export default function AdminOrderDetailPage() {
                         ? "bg-slate-100 text-slate-600"
                         : order.taxInvoicePacked
                           ? "bg-green-50 text-green-700"
-                          : "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+                          : (order.flowAccountExtras?.length ?? 0) > 0
+                            ? "bg-violet-700 text-white ring-1 ring-violet-800" // 🧾➕ มากกว่า 1 ใบ = ม่วงทึบให้สะดุดตา (24 ก.ย. 69)
+                            : "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
                     }`}
                   >
                     {order.taxInvoiceDelivery === "email"
@@ -10201,6 +10203,8 @@ function PackView({
             const doc = taxInvoiceDocOf(order);
             const byEmail = order.taxInvoiceDelivery === "email";
             const packed = !!order.taxInvoicePacked;
+            // 🧾➕ มากกว่า 1 ใบ = โทนม่วงทึบ (เจ้าของร้านสั่ง 24 ก.ย. 69 ให้ต่างจากใบกำกับใบเดียว)
+            const multi = (order.flowAccountExtras?.length ?? 0) > 0;
             // เอกสารต้นทางมักเป็นใบเสนอราคา FlowAccount — บอกว่า "อ้างอิง" กันเข้าใจผิดว่าใบนั้นคือใบกำกับ
             const docLine = doc.docNo ? `อ้างอิง ${doc.label} ${doc.docNo}` : "ใบกำกับภาษี";
             if (byEmail)
@@ -10221,18 +10225,18 @@ function PackView({
                 </div>
               );
             return (
-              <div className={`rounded-2xl bg-white p-3 shadow-sm ${packed ? "ring-1 ring-green-200" : "ring-2 ring-rose-300"}`}>
+              <div className={`rounded-2xl bg-white p-3 shadow-sm ${packed ? "ring-1 ring-green-200" : multi ? "ring-2 ring-violet-500" : "ring-2 ring-rose-300"}`}>
                 <button
                   type="button"
                   onClick={onTaxInvoiceAck}
-                  className={`flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${packed ? "bg-green-50" : "bg-rose-50"}`}
+                  className={`flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left ${packed ? "bg-green-50" : multi ? "bg-violet-700" : "bg-rose-50"}`}
                 >
                   <span className="text-lg">{packed ? "✅" : "🧾"}</span>
                   <span className="min-w-0 flex-1 text-xs">
-                    <span className={`block font-extrabold ${packed ? "text-slate-700" : "text-rose-700"}`}>
-                      อย่าลืม! ใส่{taxInvoiceCountLabel(order)}ลงกล่อง
+                    <span className={`block font-extrabold ${packed ? "text-slate-700" : multi ? "text-white" : "text-rose-700"}`}>
+                      {multi && !packed ? "⚠️ " : ""}อย่าลืม! ใส่{taxInvoiceCountLabel(order)}ลงกล่อง
                     </span>
-                    <span className={packed ? "text-green-700" : "font-bold text-rose-600"}>
+                    <span className={packed ? "text-green-700" : multi ? "font-bold text-violet-100" : "font-bold text-rose-600"}>
                       {packed
                         ? `ใส่แล้ว · ยืนยันโดย ${order.taxInvoicePacked!.by}`
                         : "พิมพ์ใบกำกับจาก FlowAccount ใส่กล่องแล้วค่อยแตะยืนยันตรงนี้"}
