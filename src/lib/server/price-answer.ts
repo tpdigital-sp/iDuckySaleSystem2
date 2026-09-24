@@ -1202,12 +1202,12 @@ export interface KnowledgeItem {
   type: "product-info" | "product-price" | "product-mix" | "product-minqty" | "product-options" | "product-faq";
   url: string;
 }
-export async function knowledgeItems(offset = 0, limit = 60): Promise<{ items: KnowledgeItem[]; total: number; next: number | null }> {
+export async function knowledgeItems(offset = 0, limit = 25): Promise<{ items: KnowledgeItem[]; total: number; next: number | null }> {
   const all = await catalog().catch(() => []);
   const out: KnowledgeItem[] = [];
   const minRows = await minTable().catch(() => [] as MinRow[]);
-  // ⏱ Netlify ให้ 30 วิ/คำขอ — ทั้งร้าน 228 ตัวใช้ ~45 วิ จึงแบ่งหน้า (60 ตัว ≈ 12 วิ) ให้ workflow ซิงก์วนดึงจนครบ
-  const page = all.slice(Math.max(0, offset), Math.max(0, offset) + Math.min(Math.max(1, limit), 120));
+  // ⏱ Netlify ให้ 30 วิ/คำขอ — ทั้งร้าน 228 ตัวใช้ ~45 วิ (dev) และบน Netlify 60 ตัวก็เกิน 30 วิ → หน้าละ 25 ตัว ให้ workflow ซิงก์วนดึงจนครบ
+  const page = all.slice(Math.max(0, offset), Math.max(0, offset) + Math.min(Math.max(1, limit), 40));
   for (const lite of page) {
     const p = await getProductServer(lite.id).catch(() => undefined);
     if (!p) continue;
