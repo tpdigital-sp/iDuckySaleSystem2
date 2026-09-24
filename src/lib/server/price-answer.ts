@@ -151,6 +151,41 @@ export async function catalogRefs(): Promise<ProductRef[]> {
   return (await catalog().catch(() => [])).map(refOf);
 }
 
+/**
+ * 📝 สินค้าที่ "มีในระบบแต่ยังไม่เผยแพร่" (hidden = ฉบับร่าง ยังไม่ใส่ราคา/รูป) — บอทเคยตอบ "ร้านไม่มีพวงกุญแจหนังปัก"
+ * ทั้งที่มีร่าง "พวงกุญแจหนังปักลาย" อยู่ (เจ้าของร้านแจ้ง 24 ก.ย. 69) → ต้องตอบว่า "มี แต่ราคายังไม่ขึ้นเว็บ ทักแอดมินตีราคา"
+ */
+let draftCache: { at: number; items: { id: string; name: string }[] } | null = null;
+async function drafts(): Promise<{ id: string; name: string }[]> {
+  if (draftCache && Date.now() - draftCache.at < TTL_MS) return draftCache.items;
+  const sb = supa();
+  if (!sb) return [];
+  try {
+    const { data } = await sb.from("products").select("id, category, name:data->>name, hidden:data->>hidden");
+    const items = (data ?? [])
+      .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden === "true")
+      .map((r) => ({ id: String(r.id), name: String(r.name) }));
+    draftCache = { at: Date.now(), items };
+    return items;
+  } catch {
+    return draftCache?.items ?? [];
+  }
+}
+
+/** ชื่อสินค้าฉบับร่างที่ตรงกับสิ่งที่ลูกค้าถาม (เทียบตัวอักษร ≥6 ตัวและ ≥60% ของชื่อ หรือชื่อครอบคำที่ถาม) */
+export async function findDraftProduct(text: string): Promise<{ id: string; name: string } | null> {
+  const t = norm(text);
+  if (t.length < 4) return null;
+  let best: { id: string; name: string; score: number } | null = null;
+  for (const d of await drafts()) {
+    const n = norm(d.name);
+    const l = lcsLen(t, n);
+    const ok = n.includes(t) || t.includes(n) || (l >= 6 && l >= n.length * 0.6);
+    if (ok && (!best || l > best.score)) best = { ...d, score: l };
+  }
+  return best ? { id: best.id, name: best.name } : null;
+}
+
 async function catalog(): Promise<Lite[]> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.items;
   inflight ??= loadLite()

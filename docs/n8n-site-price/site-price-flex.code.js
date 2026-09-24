@@ -150,7 +150,7 @@ for (const item of $input.all()) {
   }
 
   // 1.5) ลูกค้าถามหาของที่ร้านไม่มี (เว็บบอก intent=not_in_catalog) → ข้อความจากเว็บ "ยังไม่มี… ใกล้เคียงคือ…" + การ์ดตัวใกล้เคียง
-  if (site && site.found && site.intent === 'not_in_catalog') {
+  if (site && site.found && /^(not_in_catalog|draft_product)$/.test(String(site.intent))) {
     const t = String(site.answer || '').split('\n').filter(l => !/^\s*https?:\/\/\S+\s*$/.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
     const msgs = [{ type: 'text', text: t || replyText }];
     if (siteProducts.length) msgs.push(productFlex(siteProducts, 'สินค้าใกล้เคียง'));

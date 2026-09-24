@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   catalogRefs,
+  findDraftProduct,
   isMinQtyIntent,
   isPriceIntent,
   isSpecIntent,
@@ -163,7 +164,16 @@ async function answer(req: Request, body: Record<string, unknown>) {
 
   if (u) {
     // ลูกค้าถามหาของที่ร้านไม่มี → บอกตรง ๆ + เสนอตัวใกล้เคียง (เจอจริง 23 ก.ย. 69: "พวงกุญแจหนังปัก" ได้เมนูพวงกุญแจอะคริลิค/หมอนกลับไป)
-    if (u.notInCatalog && ["price", "spec", "minqty"].includes(u.intent)) {
+    const draft = u.notInCatalog && ["price", "spec", "minqty"].includes(u.intent) ? await findDraftProduct(u.requested || query) : null;
+    if (draft) {
+      // มีสินค้านี้ในระบบแต่ยังเป็นฉบับร่าง (ไม่มีราคา/รูปบนเว็บ) → บอกว่ารับทำ + ให้แอดมินตีราคา ไม่ใช่ "ร้านไม่มี"
+      ans = {
+        answer: `มีค่ะ ร้านรับทำ "${draft.name}" แต่ราคายังไม่ขึ้นบนเว็บ รบกวนแจ้งจำนวน ขนาด และลาย/ข้อความที่จะปัก แล้วแอดมินตีราคาให้เลยค่ะ`,
+        kind: "info",
+        source: "understood:draft-product",
+        intent: "draft_product",
+      };
+    } else if (u.notInCatalog && ["price", "spec", "minqty"].includes(u.intent)) {
       const what = u.requested || query;
       const alts = u.alternatives;
       const lines = alts.map((a) => {

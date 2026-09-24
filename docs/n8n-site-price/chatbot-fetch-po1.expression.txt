@@ -6,6 +6,6 @@
 ={{ (function(){ var b=($('Webhook4').first().json.body)||{}; var msg=String(b.message||''); var ctx=[]; try{ var hist=String(b.conversationHistory||''); if(hist){ ctx=hist.split('\n').filter(function(l){ return /^\s*(ลูกค้า|user|customer)\s*[:：]/i.test(l) }).map(function(l){ return l.replace(/^\s*(ลูกค้า|user|customer)\s*[:：]\s*/i,'').trim() }).filter(Boolean); } if(!ctx.length && Array.isArray(b.previousMessages)){ ctx=b.previousMessages.filter(function(m){ return m && (typeof m==='string' || !m.role || /user|customer|human/i.test(String(m.role))) }).map(function(m){ return String(typeof m==='string'?m:(m.text||m.content||m.message||'')).trim() }).filter(Boolean); } ctx=ctx.filter(function(c){ return c!==msg }).slice(-5); }catch(e){ ctx=[]; } return JSON.stringify({ query: msg, context: ctx }); })() }}
 
 # โหนด PO Override1 — เพิ่มบรรทัดแรกใน if (po) { … }:
-#   if (po.intent === 'not_in_catalog' && (po.answer || po.result)) out = (po.answer || po.result) + '';
+#   if (/^(not_in_catalog|draft_product)$/.test(String(po.intent||'')) && (po.answer || po.result)) out = (po.answer || po.result) + '';
 #   else if (po.kind === 'info' && po.source === 'need-size' …   (ของเดิม)
 # เหตุผล: เว็บบอกว่าร้านไม่มีของที่ถาม → ใช้ข้อความเว็บ (บอกตรง ๆ + ตัวใกล้เคียง) กัน agent ตอบว่า "มีค่ะ"
