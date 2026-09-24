@@ -30,6 +30,11 @@
 - pricing-search: Site Price node ส่ง `context` ต่อ ([site-price.code.js](site-price.code.js))
 - LINE OA: Site Price Flex v3 ส่ง context จาก Build AI Request.previousMessages + ถามเว็บทุกข้อความ + กรณี not_in_catalog ([site-price-flex.code.js](site-price-flex.code.js))
 
+## 🚦 24 ก.ย. 69 — พิมพ์ 3 บรรทัดได้ 3 คำตอบ (LINE)
+Debounce Buffer รอ 5 วิแล้วปล่อย "ตัวล่าสุด ณ ตอนนั้น" ไปคิดคำตอบ แต่ระหว่าง AI คิด 15-25 วิ ข้อความถัดไปกลายเป็นตัวล่าสุดใหม่ → ทุกตัวตอบ
+- Debounce Buffer: ไม่ล้าง pendingMessages ตอน claim + ส่ง `idToken` ออกมาใน json
+- โหนดใหม่ **Reply Gate** ([reply-gate.code.js](reply-gate.code.js)) ระหว่าง Site Price Flex → Reply to LINE: เช็ค lastEventId อีกครั้งก่อนส่ง ไม่ใช่ตัวล่าสุด = ทิ้ง (ตัวใหม่รวมข้อความตอบครั้งเดียว) · ใช่ = ล้าง pending แล้วส่ง
+
 ## 📝 แผนเดิม (อ้างอิง) — 3 workflow
 
 ### 1) `pricing-search` (1xXH53w1Yzt4ZkKQ) — webhook `/webhook/pricing-search`
