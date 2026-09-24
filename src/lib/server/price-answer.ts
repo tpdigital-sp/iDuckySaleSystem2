@@ -5,6 +5,7 @@ import { SITE_URL } from "@/lib/shop-info";
 import {
   formatPrice,
   mixFeePerUnit,
+  mixTierFor,
   needsQuote,
   productPath,
   RATE_LABEL,
@@ -982,55 +983,77 @@ export function isMixIntent(text: string): boolean {
 function mixText(p: Product, query = ""): PriceAnswer | null {
   const pub = (p.priceRates ?? []).filter((r) => !r.dealerOnly);
   const unit = pub[0]?.pricing?.unit || p.pricing?.unit || "ชิ้น";
+  const rule = p.mixRule ?? pub.find((r) => r.mixRule)?.mixRule;
+  const back = p.backDesign?.mixRule;
   const lines: string[] = [];
-  const ruleLines = (rule: { tiers?: { fromQty: number; baseFee: number; includedDesigns: number; extraFee: number; onePerUnit?: boolean }[]; baseFee: number; includedDesigns: number; extraFee: number; onePerUnitFromQty?: number }, prefix = "") => {
-    const tiers = rule.tiers?.length
-      ? [...rule.tiers].sort((a, b) => a.fromQty - b.fromQty)
-      : [{ fromQty: 1, baseFee: rule.baseFee, includedDesigns: rule.includedDesigns, extraFee: rule.extraFee, onePerUnit: false }];
-    for (const t of tiers) {
-      const parts: string[] = [];
-      parts.push(`คละได้ ${t.includedDesigns} ลายต่อ 1 ${unit}${t.baseFee ? ` (ค่าคละเหมา ${t.baseFee} บาท/${unit})` : " ฟรี"}`);
-      if (t.extraFee) parts.push(`เกินกว่านั้นคิดเพิ่มลายละ ${t.extraFee} บาท/${unit}`);
-      if (t.onePerUnit || (rule.onePerUnitFromQty && t.fromQty >= rule.onePerUnitFromQty)) parts.push(`คละได้ไม่เกินจำนวน${unit}ที่สั่ง`);
-      lines.push(`• ${prefix}${tiers.length > 1 || t.fromQty > 1 ? `สั่ง ${t.fromQty} ${unit}ขึ้นไป: ` : ""}${parts.join(" · ")}`);
+  const baht = (n: number) => `${n.toLocaleString()} บาท`;
+
+  // 🎯 ลูกค้าเล่าสถานการณ์มา ("ด้านหน้า 4 ลาย … ด้านหลังลายเดียวกัน นับเป็น 4 ลายใช่ไหม") → ตอบใช่/ไม่ใช่ + คิดค่าคละให้เห็นเลย
+  // (24 ก.ย. 69 เจ้าของร้าน: คำถามต่อเนื่องเคยได้กติกาทั้งชุดซ้ำ ไม่ตรงคำถาม)
+  const frontM = query.match(/(?:ด้านหน้า\s*)?(\d+)\s*ลาย/);
+  const n = frontM ? Number(frontM[1]) : 0;
+  const backSame = /ด้านหลัง[^\d]{0,12}(ลายเดียว|เหมือน|ลายเดียวกัน|ลายเดิม)/.test(query);
+  const backM = query.match(/ด้านหลัง\s*(\d+)\s*ลาย/);
+  const backN = backM ? Number(backM[1]) : backSame ? 1 : 0;
+  if (rule && n >= 1 && n <= 50) {
+    const t = mixTierFor(rule, 1);
+    const frontFee = mixFeePerUnit(rule, n, 1);
+    const yes = /ใช่ไหม|ใช่มั้ย|นับเป็น|ถูกไหม|ถูกมั้ย|ใช่รึเปล่า/.test(query);
+    lines.push(`${yes ? "ใช่ค่ะ นับเป็น " : "คละได้ค่ะ "}${n} ลาย${backN ? ` (ด้านหน้า)` : ""}`);
+    lines.push(
+      n <= t.includedDesigns
+        ? `• ด้านหน้า ${n} ลาย: อยู่ในโควตา ${t.includedDesigns} ลายฟรี ไม่มีค่าคละ`
+        : `• ด้านหน้า ${n} ลาย: ${t.includedDesigns} ลายแรกฟรี ลายที่ ${t.includedDesigns + 1}${n > t.includedDesigns + 1 ? `-${n}` : ""} คิดลายละ ${baht(t.extraFee)} = ค่าคละ ${baht(frontFee)}/${unit}`,
+    );
+    let backFee = 0;
+    if (backN && back) {
+      backFee = mixFeePerUnit(back, backN, 1);
+      lines.push(
+        backN <= back.includedDesigns
+          ? `• ด้านหลัง${backSame ? "ลายเดียวกัน" : ` ${backN} ลาย`}: ไม่มีค่าคละ`
+          : `• ด้านหลัง ${backN} ลาย: ${back.includedDesigns} ลายแรกฟรี ที่เหลือลายละ ${baht(back.extraFee)} = ${baht(backFee)}/${unit}`,
+      );
+    } else if (backSame) {
+      lines.push("• ด้านหลังลายเดียวกัน: ไม่มีค่าคละ");
     }
-  };
-  if (p.mixRule) ruleLines(p.mixRule);
-  for (const r of pub) {
-    if (r.mixRule) {
-      ruleLines(r.mixRule, `${r.label}: `);
-      continue;
+    lines.push(`รวมค่าคละ ${frontFee + backFee ? `${baht(frontFee + backFee)}/${unit}` : "0 บาท"} (บวกจากราคาพิมพ์ปกติ)`);
+  } else {
+    // กติกาทั่วไป — สั้น ๆ 2-3 บรรทัด (เจ้าของร้านขอให้กระชับ)
+    if (rule) {
+      const tiers = rule.tiers?.length ? [...rule.tiers].sort((a, b) => a.fromQty - b.fromQty) : [mixTierFor(rule, 1)];
+      lines.push("คละลายได้ค่ะ");
+      for (const t of tiers.slice(0, 3)) {
+        const head = tiers.length > 1 ? `สั่ง ${t.fromQty} ${unit}ขึ้นไป: ` : "";
+        lines.push(
+          `• ${head}1 ${unit} คละได้ ${t.includedDesigns} ลาย${t.baseFee ? ` (ค่าคละเหมา ${baht(t.baseFee)})` : "ฟรี"}${t.extraFee ? ` เกินคิดลายละ ${baht(t.extraFee)}` : ""}`,
+        );
+      }
+      if (back) lines.push(`• พิมพ์ 2 ด้าน: ด้านหลังคละได้อีก ${back.includedDesigns} ลายฟรี${back.extraFee ? ` เกินลายละ ${baht(back.extraFee)}` : ""} (ใช้ลายเดียวกัน = ไม่คิด)`);
+    } else {
+      for (const r of pub) {
+        const parts: string[] = [];
+        if (r.freeMixBelowQty) parts.push(`ต่ำกว่า ${r.freeMixBelowQty} ${unit} คละได้อิสระ`);
+        if (r.minPerDesign) parts.push(`${r.freeMixBelowQty ? "ตั้งแต่นั้น" : ""}คละได้โดยแต่ละลายอย่างน้อย ${r.minPerDesign} ${unit}`);
+        if (r.extraDesignFee) parts.push(`คละเกินโควตาคิดเพิ่มลายละ ${baht(r.extraDesignFee)}`);
+        if (r.underMinPieceFee) parts.push(`ลายที่ไม่ถึงขั้นต่ำคิดส่วนต่างชิ้นละ ${baht(r.underMinPieceFee)}`);
+        if (!parts.length && r.desc && /คละ/.test(r.desc)) {
+          const seg = r.desc.split(/\s*[·•]\s*/).filter((x) => /คละ/.test(x)).join(" · ");
+          if (seg) parts.push(seg);
+        }
+        if (parts.length) lines.push(`• ${r.label}: ${parts.join(" · ")}`);
+      }
+      if (lines.length) lines.unshift("คละลายได้ค่ะ");
+      // ไม่มีกติกาแบบโครงสร้าง → ใช้บรรทัดที่หน้าสินค้าเขียนไว้เอง
+      if (!lines.length) {
+        const fromPage = pageLinesAbout(p, /คละ/, 3);
+        if (fromPage.length) lines.push("คละลายได้ค่ะ", ...fromPage.map((l) => `• ${l}`));
+      }
     }
-    const parts: string[] = [];
-    if (r.freeMixBelowQty) parts.push(`ต่ำกว่า ${r.freeMixBelowQty} ${unit} คละได้อิสระ`);
-    if (r.minPerDesign) parts.push(`${r.freeMixBelowQty ? "ตั้งแต่นั้น" : ""}คละได้โดยแต่ละลายอย่างน้อย ${r.minPerDesign} ${unit}`);
-    if (r.extraDesignFee) parts.push(`คละเกินโควตาคิดเพิ่มลายละ ${r.extraDesignFee} บาท`);
-    if (r.underMinPieceFee) parts.push(`ลายที่ไม่ถึงขั้นต่ำคิดส่วนต่างชิ้นละ ${r.underMinPieceFee} บาท`);
-    if (!parts.length && r.desc && /คละ/.test(r.desc)) {
-      const seg = r.desc.split(/\s*[·•]\s*/).filter((x) => /คละ/.test(x)).join(" · ");
-      if (seg) parts.push(seg);
-    }
-    if (parts.length) lines.push(`• ${r.label}: ${parts.join(" · ")}`);
   }
-  if (p.backDesign?.mixRule) {
-    const b = p.backDesign.mixRule;
-    lines.push(`• พิมพ์ 2 ด้าน: ด้านหลังคละได้อีก ${b.includedDesigns} ลาย${b.baseFee ? ` (เหมา ${b.baseFee} บาท)` : " ฟรี"}${b.extraFee ? ` · เกินคิดลายละ ${b.extraFee} บาท/${unit}` : ""} — ใช้ลายเดียวกันทั้งหมด = ไม่มีค่าคละ`);
-  }
-  // "อ่านรายละเอียดในเว็บด้วย" — บรรทัดบนหน้าสินค้าที่พูดถึงการคละ (คำของร้านเอง)
-  for (const l of pageLinesAbout(p, /คละ/, 3)) if (!lines.some((x) => x.includes(l))) lines.push(`• หน้าสินค้าระบุ: ${l}`);
   if (!lines.length) return null;
-  // ลูกค้าบอกจำนวนลายมา ("ด้านหน้า 4 ลาย") → คิดค่าคละให้เห็นเลย
-  const asked = query.match(/(\d+)\s*ลาย/);
-  if (asked && p.mixRule) {
-    const n = Number(asked[1]);
-    if (n >= 2 && n <= 50) {
-      const fee = mixFeePerUnit(p.mixRule, n, 1);
-      lines.push(`→ คละ ${n} ลายใน 1 ${unit}: ${fee ? `ค่าคละ ${formatPrice(fee)}/${unit}` : "ไม่มีค่าคละ"}${p.backDesign?.mixRule ? " · ด้านหลังใช้ลายเดียวกันทั้งหมด = ไม่มีค่าคละเพิ่ม" : ""}`);
-    }
-  }
   const url = botUrl(p);
   return {
-    answer: `${p.name} คละลายได้ค่ะ (งานสั่งทำ)\n${lines.join("\n")}\nระบุจำนวนลายตอนสั่งบนเว็บได้เลย ระบบคิดค่าคละให้อัตโนมัติ\n${url}`,
+    answer: `${p.name}: ${lines.join("\n")}\n${url}`,
     kind: "info",
     source: "web-price-engine",
     intent: "mix",
