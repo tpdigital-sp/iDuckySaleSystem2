@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
+import { editRequestOpen } from "@/lib/edit-request";
+import { pushShopAlert } from "@/lib/server/line-alert";
 
 export const runtime = "nodejs";
 
@@ -59,6 +61,35 @@ export async function POST(req: Request) {
 
   const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
+
+  /**
+   * 🔔 แจ้งทีมงานทางไลน์ทันทีที่ลูกค้าส่งคำขอ — ไม่ต้องรอให้ใครบังเอิญเหลือบไปเห็นตัวเลขข้างเมนู
+   * พนักงานทัก 24 ก.ย. 69: "คำขอเข้ามาตั้งครึ่งชั่วโมงกว่าตัวเลขถึงขึ้น" — ต้นเหตุคือไม่มีใครบอก
+   * มีแต่ป้ายเลขที่รอจังหวะถามฐานเอง (ดู [[iducky-edit-requests-menu]])
+   *
+   * เงื่อนไขเดียวกับตัวเลขบนป้าย (lib/edit-request.ts) — ใบที่ยังไม่มีเงินเข้าไม่ขึ้นหน้าคำขออยู่แล้ว
+   * แจ้งไปก็ไม่มีอะไรให้กด · กดซ้ำรัว ๆ ภายใน 2 นาทีนับเป็นครั้งเดียว ไม่ยิงซ้ำเข้ากลุ่ม
+   * ⚠️ await ไม่ใช่ void — Netlify แช่ฟังก์ชันทันทีที่ตอบกลับ งานที่ยังค้างอาจไม่ได้ทำ
+   */
+  const justAsked = order.editRequest && !order.editRequest.doneAt
+    ? Date.now() - Date.parse(order.editRequest.at) < 120_000
+    : false;
+  if (editRequestOpen(updated.editRequest, updated.status) && !justAsked) {
+    await pushShopAlert({
+      tone: "#7C3AED",
+      title: "✏️ ลูกค้าขอแก้ไขออเดอร์",
+      headline: "ลูกค้ากำลังรอคำตอบอยู่ — รีบดูก่อนงานเข้าผลิต",
+      heroLabel: "เลขออเดอร์",
+      hero: order.id,
+      rows: [
+        { label: "ลูกค้า", value: `${order.customer} · ${order.phone}` },
+        { label: "สถานะใบ", value: order.status, bold: true, color: "#6D28D9" },
+      ],
+      note: text.slice(0, 300),
+      button: { label: "เปิดหน้าคำขอแก้ไข", uri: "https://iduckystore.com/admin/edit-requests" },
+      alt: `✏️ ขอแก้ไขออเดอร์ ${order.id} · ${order.customer} — ${text.slice(0, 100)}`,
+    });
+  }
 
   const safe = customerSafeOrder(updated);
   return NextResponse.json({ ok: true, order: safe });

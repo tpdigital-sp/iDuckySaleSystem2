@@ -310,7 +310,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const refreshEditReqBadge = useCallback(async () => {
     if (!editReqBadgeReady) return;
     try {
-      const r = await fetch("/api/admin/orders/edit-requests", { cache: "no-store" });
+      const r = await fetch("/api/admin/orders/edit-requests?count=1", { cache: "no-store" });
       const j = r.ok ? await r.json() : { n: 0 };
       const n = Number(j?.n) || 0;
       editReqBadgeCache = { at: Date.now(), n };
@@ -321,16 +321,18 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   }, [editReqBadgeReady]);
   useEffect(() => {
     if (!editReqBadgeReady) return;
-    // อยู่หน้าคำขอ/หน้าออเดอร์ = ดึงสด (เพิ่งกดจัดการแล้ว ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาที
+    // อยู่หน้าคำขอ/หน้าออเดอร์ = ดึงสด (เพิ่งกดจัดการแล้ว ตัวเลขต้องลดทันที) หน้าอื่นใช้แคชได้ไม่เกิน 1 รอบโพล
     const fresh = pathname.startsWith("/admin/edit-requests") || pathname.startsWith("/admin/orders/");
-    const cached = editReqBadgeCache && Date.now() - editReqBadgeCache.at < 60_000 ? editReqBadgeCache.n : null;
+    const cached = editReqBadgeCache && Date.now() - editReqBadgeCache.at < 25_000 ? editReqBadgeCache.n : null;
     if (cached !== null && !fresh) {
       setOpenEditRequests(cached);
       return;
     }
     void refreshEditReqBadge();
   }, [editReqBadgeReady, pathname, refreshEditReqBadge]);
-  usePolling(refreshEditReqBadge, { intervalMs: 90_000, enabled: editReqBadgeReady });
+  // ถี่กว่าป้ายอื่น (25 วิ) — ลูกค้าที่กดขอแก้ไขคือคนที่นั่งรอคำตอบอยู่ตรงนั้น
+  // ถามถี่ได้เพราะ ?count=1 ตอบแค่ตัวเลข ~1 KB (เดิมลากออเดอร์เต็มใบ ~65 KB ทุกรอบ)
+  usePolling(refreshEditReqBadge, { intervalMs: 25_000, enabled: editReqBadgeReady });
   // หน้าคำขอแก้ไข / หน้าออเดอร์กด "จัดการแล้ว" → ยิงอีเวนต์ให้ป้ายนับใหม่ทันที
   useEffect(() => {
     const on = () => void refreshEditReqBadge();

@@ -3,6 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
+import { editRequestOpen, isPaidStage } from "@/lib/edit-request";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,8 @@ export const runtime = "nodejs";
  * เดิมเห็นได้แค่ป้ายในลิสต์ + แบนเนอร์ในหน้าออเดอร์ ต้องไล่เปิดเอง — ที่นี่รวมทุกใบที่ยัง "ไม่ได้จัดการ" ไว้ที่เดียว
  *
  * GET  → { n, requests: [...] }  n = จำนวนที่ยังไม่ได้จัดการ (ป้ายเมนู)  ·  ?all=1 รวมที่จัดการแล้ว (ไว้ดูย้อนหลัง)
+ *        ?count=1 → { n } อย่างเดียว สำหรับป้ายเลขข้างเมนูที่ถามบ่อย ๆ — ดึงแค่ 2 ช่องที่ใช้ตัดสิน
+ *        (ก้อนละ ~1 KB แทนที่จะลากออเดอร์เต็มใบ ~65 KB ทุกครั้ง จะได้ถามถี่ขึ้นโดยไม่เปลืองโควตา)
  * POST { id } → ปิดคำขอ (doneAt/doneBy) แบบเดียวกับปุ่ม "จัดการแล้ว" ในหน้าออเดอร์ — เขียนฝั่งเซิร์ฟเวอร์
  *              จะได้ไม่ต้องส่งออเดอร์ทั้งก้อนจากหน้ารายการ (กันทับงานคนอื่น ดู savedAt ใน orders/route.ts)
  *
@@ -23,9 +26,8 @@ export const runtime = "nodejs";
  *    กรองที่นี่ที่เดียว ป้ายเลขข้างเมนู (AdminShell) กับหน้ารายการจึงตรงกันเสมอ
  */
 
-/** ยังไม่มีเงินเข้า — ไม่เอาเข้าหน้านี้เลย ทั้งที่ค้างและที่จัดการแล้ว */
-const PRE_PAID: OrderStatus[] = ["รอชำระเงิน", "รอตรวจสอบ"];
-const paidStage = (o: Order) => !PRE_PAID.includes(o.status);
+/** ยังไม่มีเงินเข้า — ไม่เอาเข้าหน้านี้เลย ทั้งที่ค้างและที่จัดการแล้ว (กติกากลางอยู่ที่ lib/edit-request.ts) */
+const paidStage = (o: Order) => isPaidStage(o.status);
 
 export type EditRequestRow = {
   id: string;
@@ -39,7 +41,7 @@ export type EditRequestRow = {
   doneBy?: string;
 };
 
-const isOpen = (o: Order) => !!o.editRequest && !o.editRequest.doneAt && o.status !== "ยกเลิก";
+const isOpen = (o: Order) => editRequestOpen(o.editRequest, o.status);
 
 function toRow(o: Order): EditRequestRow {
   const r = o.editRequest!;
@@ -62,9 +64,25 @@ export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ n: 0, requests: [], ok: false, reason: "ยังไม่ได้ตั้งค่า Supabase" });
 
-  const all = new URL(req.url).searchParams.get("all") === "1";
+  const params = new URL(req.url).searchParams;
+  const all = params.get("all") === "1";
 
-  // ให้ Postgres กรองเฉพาะใบที่เคยมีคำขอ (ส่วนใหญ่ของตารางไม่มี) — ไม่ต้องลากออเดอร์ทั้งร้านมาทุก 90 วิ
+  // ── โหมดนับอย่างเดียว (ป้ายเลขข้างเมนู) ─────────────────────────────
+  // ถามทุก 25 วิจากทุกแท็บที่เปิดหลังบ้านไว้ — ห้ามลากข้อมูลออเดอร์เต็มใบมาแค่เพื่อนับ
+  if (params.get("count") === "1") {
+    const { data, error } = await sb
+      .from("orders")
+      .select("er:data->editRequest,st:data->>status")
+      .not("data->editRequest", "is", null);
+    if (error) {
+      console.error("[orders/edit-requests] นับไม่สำเร็จ:", error.message);
+      return NextResponse.json({ n: 0, ok: false, reason: error.message });
+    }
+    const rows = (data ?? []) as unknown as { er: Order["editRequest"]; st: OrderStatus }[];
+    return NextResponse.json({ n: rows.filter((r) => editRequestOpen(r.er, r.st)).length, ok: true });
+  }
+
+  // ให้ Postgres กรองเฉพาะใบที่เคยมีคำขอ (ส่วนใหญ่ของตารางไม่มี) — ไม่ต้องลากออเดอร์ทั้งร้านมาวาดหน้า
   const { data, error } = await sb
     .from("orders")
     .select("data")

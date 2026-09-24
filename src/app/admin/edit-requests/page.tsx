@@ -79,8 +79,8 @@ function EditRequestsInner() {
   useEffect(() => {
     void load();
   }, [load]);
-  // คำขอใหม่เข้ามาระหว่างเปิดหน้าค้าง → โผล่เองไม่ต้องรีเฟรช
-  usePolling(load, { intervalMs: 60_000 });
+  // คำขอใหม่เข้ามาระหว่างเปิดหน้าค้าง → โผล่เองไม่ต้องรีเฟรช (ก้อนละ ~2 KB ถามถี่ได้)
+  usePolling(load, { intervalMs: 25_000 });
 
   const all = rows ?? [];
   const open = useMemo(() => all.filter((r) => !r.doneAt && r.status !== "ยกเลิก"), [all]);
