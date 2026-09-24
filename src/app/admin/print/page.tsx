@@ -24,7 +24,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
-import { daysToUseBy, isPartiallyShipped, labelShipTo, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { isPickupOrder } from "@/lib/ship-label";
+import { daysToUseBy, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
@@ -55,7 +56,7 @@ import {
 } from "@/components/admin/ui";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 
-type TabKey = "sent" | "waitFolder" | "graphic" | "nextRound" | "done" | "all";
+type TabKey = "sent" | "waitFolder" | "graphic" | "nextRound" | "followUp" | "done" | "all";
 
 /** สถานะที่ใบงานเข้าคิวปริ้นได้ — "กำลังผลิต" ต้องอยู่ด้วย เพราะบางใบถูกดันเข้าไลน์ผลิตตั้งแต่ยังไม่ปริ้น */
 const PRINT_QUEUE_STATUSES: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
@@ -67,6 +68,18 @@ const printCountOf = (o: Order) => o.printCount ?? (o.printedAt ? 1 : 0);
  * 🚚 ใบแบ่งส่งที่ยังมีรอบเหลือ → เลขรอบถัดไปที่ต้องปริ้นใบปะหน้ากล่อง (null = ไม่ใช่ใบแบ่งส่ง/ปิดแล้ว)
  * lastRound = รอบถัดไปคือรอบสุดท้าย (ไม่มีแผนรอบต่อไปค้าง) — ป้ายบอกให้รู้ว่ายิงเลขที่ช่องปกติ
  */
+/**
+ * 📦 ใบที่เปิด "รอบส่งตาม" ไว้ (ส่งออกไปแล้วแต่ของในกล่องไม่ครบ) — ต้องมีใบปะหน้ากล่องใหม่
+ * ⚠️ ใบพวกนี้สถานะเป็น "จัดส่งแล้ว/เสร็จสิ้น" แล้ว จึงไม่อยู่ใน ready (PRINT_QUEUE_STATUSES) — ต้องดึงจากลิสต์ทั้งหมด
+ * ใบมารับเองไม่มีใบปะหน้าให้พิมพ์ (ลูกค้ามารับที่ร้าน) — ไม่เข้ากองนี้
+ */
+const followUpWaiting = (o: Order): { no: number; qty: number } | null => {
+  if (isPickupOrder(o)) return null;
+  const open = openFollowUp(o);
+  if (!open) return null;
+  return { no: open.no, qty: followUpQty(open.round) };
+};
+
 const nextRoundOf = (o: Order): { round: number; lastRound: boolean } | null =>
   isPartiallyShipped(o) ? { round: (o.shipments?.length ?? 0) + 1, lastRound: !nextPlannedRound(o) } : null;
 const isSent = (o: Order) => !!o.productionSent;
@@ -175,10 +188,11 @@ function PrintQueueInner() {
       waitFolder: unprinted.filter((o) => !isSent(o) && graphicDone(cards[o.id])).length,
       graphic: unprinted.filter((o) => !isSent(o) && !graphicDone(cards[o.id])).length,
       nextRound: ready.filter((o) => nextRoundOf(o) !== null).length,
+      followUp: orders.filter((o) => followUpWaiting(o) !== null).length,
       done: ready.filter((o) => printCountOf(o) > 0).length,
       all: ready.length,
     };
-  }, [ready, today, cards]);
+  }, [ready, orders, today, cards]);
 
   /** ของที่ต้องรีบในกองส่งผลิตแล้ว — ใช้เป็นคำอธิบายใต้ตัวเลขใหญ่ */
   const urgent = useMemo(() => {
@@ -194,9 +208,11 @@ function PrintQueueInner() {
   }, [ready, today]);
 
   const kw = q.trim().toLowerCase();
+  /** 📦 กองส่งตามมาจากลิสต์ทั้งหมด ไม่ใช่ ready — ใบปิดไปแล้ว สถานะไม่อยู่ในคิวปริ้นปกติ */
+  const pool = useMemo(() => (tab === "followUp" ? orders.filter((o) => followUpWaiting(o) !== null) : ready), [tab, orders, ready]);
   const shown = useMemo(
     () =>
-      ready
+      pool
         .filter((o) =>
           tab === "sent"
             ? printCountOf(o) === 0 && isSent(o)
@@ -206,13 +222,15 @@ function PrintQueueInner() {
                 ? printCountOf(o) === 0 && !isSent(o) && !graphicDone(cards[o.id])
                 : tab === "nextRound"
                   ? nextRoundOf(o) !== null
-                  : tab === "done"
+                  : tab === "followUp"
+                    ? true
+                    : tab === "done"
                 ? printCountOf(o) > 0
                 : true
         )
         .filter((o) => (kw ? o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw) : true))
         .sort((a, b) => urgency(a, today) - urgency(b, today) || a.id.localeCompare(b.id)),
-    [ready, tab, kw, today, cards]
+    [pool, tab, kw, today, cards]
   );
   /** กองส่งผลิตแล้ว แบ่งอีกชั้น: ถึงคิวแล้ว / ยังไม่ถึงคิว (ส่งอีกหลายวัน) — แท็บอื่นไม่แบ่ง */
   const shownDue = useMemo(() => (tab === "sent" ? shown.filter((o) => isDue(o, today)) : shown), [shown, tab, today]);
@@ -336,6 +354,7 @@ function PrintQueueInner() {
           <Tab on={tab === "waitFolder"} onClick={() => setTab("waitFolder")} label="📂 รอโยนโฟลเดอร์" count={counts.waitFolder} />
           <Tab on={tab === "graphic"} onClick={() => setTab("graphic")} label="🎨 ยังอยู่ที่กราฟฟิก" count={counts.graphic} />
           <Tab on={tab === "nextRound"} onClick={() => setTab("nextRound")} label="🚚 รอปริ้นใบปะหน้ารอบถัดไป" count={counts.nextRound} />
+          <Tab on={tab === "followUp"} onClick={() => setTab("followUp")} label="📦 รอส่งตาม (ส่งไม่ครบ)" count={counts.followUp} />
           <Tab on={tab === "done"} onClick={() => setTab("done")} label="ปริ้นแล้ว" count={counts.done} />
           <Tab on={tab === "all"} onClick={() => setTab("all")} label="ทั้งหมด" count={counts.all} />
         </TabRow>
@@ -407,6 +426,8 @@ function PrintQueueInner() {
                     ? "ไม่มีใบค้างที่กราฟฟิก"
                     : tab === "nextRound"
                       ? "ไม่มีใบแบ่งส่งที่รอปริ้นใบปะหน้า"
+                      : tab === "followUp"
+                      ? "ไม่มีใบที่ต้องส่งของตามไปให้"
                     : "ไม่มีออเดอร์ในหมวดนี้"
           }
           body={
@@ -507,6 +528,7 @@ function PrintRow({
   const sent = isSent(o);
   const stage = !sent && printed === 0 ? graphicStage(card, cardsOk) : null;
   const nextRound = nextRoundOf(o); // 🚚 แบ่งส่งแล้วบางรอบ รอใบปะหน้ากล่องรอบถัดไป
+  const followUp = followUpWaiting(o); // 📦 ส่งไม่ครบ — รอแพ็คของที่ตกค้างส่งตามไป
   /** ยังไม่ปริ้น = งานค้าง (คอรัล) · ยังไม่ส่งผลิต = รอ (เหลือง) · ปริ้นแล้ว = เดินต่อได้ (เงียบ) */
   const tone =
     printed > 0
@@ -540,6 +562,14 @@ function PrintRow({
                 title={`ส่งไปแล้ว ${o.shipments!.length} รอบ (${o.shipments!.map((s) => s.tracking).join(", ")}) — กล่องรอบที่ ${nextRound.round} ต้องมีใบปะหน้าใหม่${nextRound.lastRound ? " · รอบนี้คือรอบสุดท้าย ยิงเลขที่ช่องเลขพัสดุปกติ" : ""}`}
               >
                 🚚 ส่งแล้ว {o.shipments!.length} รอบ · รอใบปะหน้ารอบที่ {nextRound.round}{nextRound.lastRound ? " (สุดท้าย)" : ""}
+              </Tag>
+            )}
+            {followUp && (
+              <Tag
+                tone="coral"
+                title={`ใบนี้ส่งออกไปแล้วแต่ของไม่ครบ — แอดมินเปิดรอบส่งตามไว้\nแพ็คของที่ตกค้างแล้วยิงเลขเป็น “กล่องเพิ่ม” ที่หน้าออเดอร์ ระบบจะปิดรอบ + แจ้งลูกค้าให้เอง`}
+              >
+                📦 ส่งไม่ครบ — ส่งตาม {followUp.qty.toLocaleString("th-TH")} ชิ้น (รอบที่ {followUp.no})
               </Tag>
             )}
             {sent && printed === 0 && (
@@ -614,6 +644,16 @@ function PrintRow({
             {marking ? "กำลังบันทึก…" : "🏭 ส่งผลิตแล้ว"}
           </Btn>
         ) : null}
+        {followUp && (
+          <Btn
+            tone="navy"
+            small
+            href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=label`}
+            title="ใบปะหน้าพัสดุของกล่องส่งตาม (ของที่ตกค้าง) — ไม่พิมพ์ใบงานซ้ำ"
+          >
+            📮 ใบปะหน้ากล่องส่งตาม
+          </Btn>
+        )}
         {nextRound && (
           <Btn tone="navy" small href={`/admin/orders/${encodeURIComponent(o.id)}/print?doc=label`} title="เปิดเฉพาะใบปะหน้าพัสดุ (ที่อยู่ผู้รับ + บาร์โค้ด) สำหรับกล่องรอบถัดไป — ไม่พิมพ์ใบงานซ้ำ">
             📮 ใบปะหน้ารอบที่ {nextRound.round}

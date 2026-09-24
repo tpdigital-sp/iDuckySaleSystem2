@@ -18,6 +18,8 @@ import {
   amountDueNow,
   depositInstallments,
   daysToUseBy,
+  followUpQty,
+  openFollowUp,
   hasUnpaidBalance,
   orderBalance,
   lineUserOf,
@@ -1181,6 +1183,8 @@ function OrderRow({
           {/* 📮 ใบเดียวส่งหลายกล่อง — บอกให้เห็นตั้งแต่หน้ารายการว่ามีพัสดุมากกว่า 1 เลข */}
           {(o.extraTrackings?.length ?? 0) > 0 && <span className="id">📮 อีก {o.extraTrackings!.length} กล่อง</span>}
           {!o.tracking && !o.packedAt && (o.shipments?.length ?? 0) > 0 && <span className="warn">🚚 ส่งบางส่วนแล้ว {o.shipments!.length} รอบ</span>}
+          {/* 📦 ส่งไม่ครบ — ใบปิดแล้วแต่ยังค้างของที่ต้องส่งตามไปให้ (ต้องเห็นตั้งแต่หน้ารายการ ไม่งั้นค้างเงียบ) */}
+          {openFollowUp(o) && <span className="warn">📦 ค้างส่งตาม {followUpQty(openFollowUp(o)!.round).toLocaleString("th-TH")} ชิ้น</span>}
         </span>
       </span>
 

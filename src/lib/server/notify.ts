@@ -8,6 +8,7 @@ import {
   orderWhtAmount,
   trackingBoxes,
   withLog,
+  type FollowUpRound,
   type Order,
   type OrderStatus,
 } from "@/lib/admin-data";
@@ -705,6 +706,41 @@ export function orderNotice(order: Order, link: string, card: Omit<NoticeCard, "
     ...card,
     id: order.id,
     button: card.button ?? { label: "เปิดหน้าออเดอร์", uri: link },
+  });
+}
+
+/**
+ * 📦 การ์ด "ส่งของที่ตกค้างให้แล้ว" — ปิดรอบส่งตาม (ใบที่ส่งไปแล้วแต่ของในกล่องไม่ครบ)
+ * เจ้าของร้านเคาะ 24 ก.ย. 69: ไลน์ออก "ตอนยิงเลขกล่องส่งตามเท่านั้น" ตอนเปิดรอบไม่ยิง (แอดมินคุยเองในแชท)
+ * การ์ดต้องบอกว่ากล่องนี้มีอะไร ไม่งั้นลูกค้าได้เลขพัสดุลอย ๆ แล้วงงว่าสั่งอะไรเพิ่ม
+ */
+export function followUpNotice(order: Order, link: string, round: FollowUpRound, tracking: string): LineMessage[] {
+  const what = round.items.map(
+    (it) => `${it.itemName ?? order.items[it.item]?.name ?? "รายการ"} ×${Math.max(1, Math.floor(Number(it.qty) || 1)).toLocaleString("th-TH")} ${it.unit ?? "ชิ้น"}`
+  );
+  const main = (order.tracking ?? "").trim();
+  const pickup = !tracking.trim();
+  return orderNotice(order, link, {
+    tone: "shipBox",
+    head: pickup ? "ของที่ตกค้างพร้อมให้มารับแล้ว" : "ส่งของที่ตกค้างให้แล้ว",
+    headline: pickup
+      ? "ของที่ยังไม่ได้ไปกับรอบแรก จัดเตรียมไว้ให้แล้ว มารับที่ร้านได้เลยครับ"
+      : "ของที่ยังไม่ได้ไปกับกล่องแรก ทางร้านส่งตามไปให้แล้วครับ",
+    bullets: what,
+    rows: [
+      ...(pickup ? [] : [{ label: "เลขพัสดุกล่องนี้", value: tracking, bold: true }]),
+      ...(main && !pickup ? [{ label: "กล่องแรก", value: main }] : []),
+    ],
+    note: "ต้องขออภัยในความไม่สะดวกด้วยครับ 🙏",
+    alt: [
+      pickup ? `📦 ออเดอร์ ${order.id} — ของที่ตกค้างพร้อมให้มารับแล้วครับ` : `📦 ออเดอร์ ${order.id} — ส่งของที่ตกค้างตามไปให้แล้วครับ`,
+      ...what.map((w) => `• ${w}`),
+      pickup ? "" : `เลขพัสดุกล่องนี้: ${tracking}`,
+      "ต้องขออภัยในความไม่สะดวกด้วยครับ 🙏",
+      link,
+    ]
+      .filter(Boolean)
+      .join("\n"),
   });
 }
 

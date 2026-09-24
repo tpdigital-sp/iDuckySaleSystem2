@@ -53,7 +53,9 @@ import {
   MOCK_ORDERS,
   applyArrival,
   arrivalOverdue,
+  followUpQty,
   lastReprintProof,
+  openFollowUp,
   orderNeedsTaxInvoiceInBox,
   orderPrintCount,
   orderStatusLabel,
@@ -71,6 +73,7 @@ import {
   type PackGate,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
+import { isPickupOrder } from "@/lib/ship-label";
 import { fetchWorkSizes } from "@/lib/product-repo";
 import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
@@ -79,7 +82,7 @@ import { usePolling } from "@/lib/use-polling";
 type Msg = { kind: "ok" | "err" | "info"; text: string } | null;
 /** คำตอบจากฝ่ายผลิต (ระบบ TP หน้า "ติดตามของ iDucky") ต่อรายการที่รอของ — key = <เลขออเดอร์>__<ลำดับรายการ> */
 type TPReply = { id: string; orderId: string; itemIndex: number; tpStatus?: string; tpNote?: string; tpEta?: string; tpBy?: string; tpAt?: string };
-type Tab = "print" | "wait" | "scan" | "done";
+type Tab = "print" | "wait" | "scan" | "followUp" | "done";
 
 /** สถานะที่อยู่ในสายงานแพ็ค–ส่ง (แบบผ่านแล้ว ยังไม่ส่ง) */
 const FULFILL: OrderStatus[] = ["อนุมัติแบบ", "กำลังผลิต"];
@@ -352,6 +355,13 @@ export default function ScanTrackingPage() {
     };
   }, [orders, taxOnly]);
 
+  /**
+   * 📦 ใบที่ "ส่งไปแล้วแต่ของไม่ครบ" และแอดมินเปิดรอบส่งตามไว้ — ต้องแพ็คของที่ตกค้างส่งตามไปอีกกล่อง
+   * ⚠️ ใบพวกนี้มี tracking แล้ว จึงถูกกรองออกจากทุกกองด้านบน (active = !o.tracking) ต้องดึงจากลิสต์ทั้งหมดเอง
+   * ใบมารับเองไม่มีเลขให้ยิง — แอดมินกดปิดรอบเองที่หน้าออเดอร์
+   */
+  const followUps = useMemo(() => orders.filter((o) => !isPickupOrder(o) && openFollowUp(o) !== null), [orders]);
+
   /** 🧾 ใบที่ยังไม่ยิงเลขและต้องใส่ใบกำกับลงกล่อง — ไว้ขึ้นชิปกรอง (นับจากทั้งหมด ไม่ขึ้นกับตัวกรอง) */
   const taxStats = useMemo(() => {
     const need = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking && orderNeedsTaxInvoiceInBox(o));
@@ -538,6 +548,15 @@ export default function ScanTrackingPage() {
     // ── ขั้นที่ 2: ยิง/พิมพ์เลขพัสดุ ──
     // ใบมีเลขอยู่แล้ว + เลขใหม่ไม่ซ้ำของใบนี้ = ถามก่อนว่ากล่องเพิ่มหรือยิงผิด (ห้ามทับเงียบ ๆ)
     if ((target.tracking ?? "").trim() && !ownsTrackingNumber(target, v)) {
+      /**
+       * 📦 ใบที่แอดมินเปิด "รอบส่งตาม" ไว้ = เลขที่เพิ่งยิงคือกล่องส่งตามแน่นอน → เก็บเป็นกล่องเพิ่มให้เลย ไม่ต้องถาม
+       * (เจ้าของร้านสั่ง 24 ก.ย. 69 "กลัวพนักงานกดแทนที่เลขเดิม") — เลขกล่องแรกหายแล้วลูกค้าเช็คพัสดุไม่ได้
+       * ยิงผิดจริง ๆ ให้แอดมินไปลบกล่องที่หน้าออเดอร์ (ปุ่มลบมีอยู่แล้ว) ปลอดภัยกว่าเปิดทางให้ทับเลขเดิม
+       */
+      if (openFollowUp(target)) {
+        await commitScan(target, v, "box");
+        return;
+      }
       setBoxAsk({ order: target, tracking: v });
       setMsg(null);
       return;
@@ -592,6 +611,7 @@ export default function ScanTrackingPage() {
       tone: waitOverdue ? "var(--dk-coral-ink)" : "var(--dk-yolk-deep)",
     },
     { key: "scan", label: "พร้อมยิง", n: toScan.length, hint: "ตรวจครบ รอเลขพัสดุ", tone: "var(--dk-mint)" },
+    ...(followUps.length ? [{ key: "followUp" as Tab, label: "ส่งตาม", n: followUps.length, hint: "ส่งไม่ครบ รอส่งของที่ตกค้าง", tone: "var(--dk-coral-deep)" }] : []),
     { key: "done", label: "ยิงแล้ว", n: scanned.length, hint: `วันนี้ ${scannedToday} ใบ`, tone: "var(--dk-quiet)" },
   ];
 
@@ -808,6 +828,54 @@ export default function ScanTrackingPage() {
                   </RowSide>
                 </Row>
               ))}
+            </Rows>
+          )}
+        </>
+      ) : tab === "followUp" ? (
+        <>
+          <ListHead title="ส่งไม่ครบ — ต้องส่งของที่ตกค้างตามไปให้" note={`${followUps.length} ใบ`} />
+          {followUps.length === 0 ? (
+            <Empty title="ไม่มีใบที่ต้องส่งตาม" body="ใบที่ส่งของไม่ครบ แอดมินจะเปิดรอบส่งตามให้จากหน้าออเดอร์" />
+          ) : (
+            <Rows>
+              {followUps.map((o) => {
+                const fu = openFollowUp(o)!;
+                return (
+                  <Row key={`fu-${o.id}`} tone="var(--dk-coral-deep)">
+                    <RowMain
+                      name={o.customer || "ยังไม่ระบุชื่อ"}
+                      href={coarse ? packHref(o.id) : `/admin/orders/${encodeURIComponent(o.id)}`}
+                      tags={
+                        <>
+                          <Tag tone="coral" title={`เปิดรอบโดย ${fu.round.by} · ${fu.round.reason}`}>
+                            📦 ส่งตาม {followUpQty(fu.round).toLocaleString("th-TH")} ชิ้น
+                          </Tag>
+                          <TaxTag o={o} />
+                        </>
+                      }
+                      meta={
+                        <>
+                          <span className="id">{o.id}</span>
+                          <span>{fu.round.items.map((it) => `${it.itemName ?? o.items[it.item]?.name ?? "รายการ"} ×${it.qty}`).join(" · ")}</span>
+                          <span>กล่องแรกส่งไปแล้ว {o.tracking}</span>
+                        </>
+                      }
+                    />
+                    <RowSide>
+                      <Btn
+                        tone="navy"
+                        small
+                        onClick={() => {
+                          setTarget(o);
+                          setMsg({ kind: "info", text: `📦 ${o.id} — ยิงเลขกล่องส่งตามได้เลย (เลือก “＋ อีกกล่องของใบนี้”)` });
+                        }}
+                      >
+                        ยิงเลขกล่องส่งตาม
+                      </Btn>
+                    </RowSide>
+                  </Row>
+                );
+              })}
             </Rows>
           )}
         </>

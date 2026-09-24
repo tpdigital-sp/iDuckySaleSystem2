@@ -45,6 +45,61 @@ export async function loadClaim(sb: SupabaseClient, id: string): Promise<Claim |
   return (data?.data as Claim) ?? null;
 }
 
+/**
+ * 📦 เปิดเคส "ส่งของไม่ครบ" คู่กับรอบส่งตาม — กติกาเจ้าของร้าน 24 ก.ย. 69 "เข้าสมุดเคลมทุกครั้ง"
+ * (ไว้ดูสถิติว่าเดือนนี้แพ็คตกกี่ใบ ใครแพ็ค · เดิมเคสแบบนี้ไม่เคยถูกนับเลย ยิงกล่องที่ 2 เงียบ ๆ)
+ * ⚠️ ไม่ยิงไลน์ตอนเปิดเคส (ต่างจาก redo) — ลูกค้าได้ข้อความตอนยิงเลขกล่องส่งตามทีเดียว
+ * ผูกพลาดไม่ล้มการเปิดรอบ — คืน warn ให้หน้าจอบอกแทน
+ */
+export async function openFollowUpClaim(
+  sb: SupabaseClient,
+  order: Order,
+  round: { items: { item: number; qty: number; unit?: string; itemName?: string }[]; reason: string; fault: Claim["fault"]; note?: string },
+  by: string,
+  channel?: string,
+): Promise<{ claimId?: string; warn?: string }> {
+  const what = round.items.map((it) => `${it.itemName ?? order.items[it.item]?.name ?? "รายการ"} ×${it.qty} ${it.unit ?? "ชิ้น"}`);
+  const claim: Claim = {
+    id: newClaimId(),
+    orderId: order.id,
+    ...(order.customerId ? { customerId: order.customerId } : {}),
+    source: "admin",
+    createdBy: by,
+    ...(channel ? { channel } : {}),
+    fault: round.fault,
+    customer: order.customer,
+    phone: order.phone,
+    itemNames: round.items.map((it) => it.itemName ?? order.items[it.item]?.name ?? "รายการ"),
+    items: round.items.map((it) => ({ index: it.item, name: it.itemName ?? order.items[it.item]?.name ?? "รายการ", qty: it.qty })),
+    type: "จำนวนไม่ครบ",
+    detail: [`ส่งของไม่ครบ — ${round.reason}`, `ของที่ตกค้าง: ${what.join(" · ")}`, round.note?.trim()].filter(Boolean).join("\n"),
+    photoPaths: [],
+    status: "อนุมัติเคลม",
+    resolution: { action: "อื่นๆ", note: "ส่งของที่ตกค้างตามไปให้ (รอบส่งตามในใบเดิม ไม่ได้เปิดใบใหม่)" },
+    messages: [],
+    createdAt: new Date().toISOString(),
+    log: [{ at: new Date().toISOString(), by, action: "เปิดเคสจากรอบส่งตามในหน้าออเดอร์" }],
+  };
+  const { error } = await insertClaim(sb, claim);
+  return error ? { warn: `เปิดรอบส่งตามแล้ว แต่บันทึกลงสมุดเคลมไม่ได้: ${error}` } : { claimId: claim.id };
+}
+
+/** 📦 ปิดเคสส่งตามเมื่อกล่องออกไปแล้ว — เงียบ ๆ ไม่ล้มการบันทึกออเดอร์ถ้าพลาด */
+export async function closeFollowUpClaim(sb: SupabaseClient, claimId: string, by: string, detail: string): Promise<void> {
+  try {
+    const claim = await loadClaim(sb, claimId);
+    if (!claim || claim.status === "เสร็จสิ้น") return;
+    await saveClaim(sb, {
+      ...claim,
+      status: "เสร็จสิ้น",
+      resolution: { ...claim.resolution, action: claim.resolution?.action ?? "อื่นๆ", note: detail },
+      log: [...(claim.log ?? []), { at: new Date().toISOString(), by, action: `ปิดเคส — ${detail}` }],
+    });
+  } catch {
+    /* ปิดเคสพลาดห้ามล้มการบันทึกออเดอร์ */
+  }
+}
+
 export async function saveClaim(sb: SupabaseClient, claim: Claim): Promise<{ error?: string }> {
   const { error } = await sb
     .from(CLAIM_TABLE)

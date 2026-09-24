@@ -1,5 +1,6 @@
 import type { OrderGift } from "./gifts";
 import { isPickupOrder } from "./ship-label";
+import type { ClaimFault } from "./claims";
 
 export type OrderStatus =
   | "รอชำระเงิน"
@@ -153,6 +154,59 @@ export interface TrackingBox {
 }
 
 /**
+ * 📦 รอบ "ส่งตามให้" — ใบปิดไปแล้ว (ยิงเลขพัสดุ/แพ็คเสร็จ) แต่ของในกล่องไม่ครบ ต้องส่งของที่ตกค้างตามไปอีกกล่อง
+ * (พนักงานแจ้ง 24 ก.ย. 69 "งานผลิตแล้วแต่ส่งไม่ครบ เลยต้องส่งสินค้าตามไปให้เขา")
+ *
+ * ⚠️ คนละเรื่องกับอีกสองตัวที่หน้าตาใกล้กัน — อย่าเอาไปยัดรวม:
+ *   Shipment (แบ่งส่ง)   = แอดมินวางแผนไว้ก่อน ใบ "ยังไม่ปิด" · ยัดเคสส่งตามลงตัวนี้จะไปพังด่านแพ็ค/คิวปริ้นทั้งชุด
+ *   TrackingBox (กล่อง N) = หลายกล่องที่ออก "วันเดียวกัน" · ไม่บอกว่าข้างในมีอะไร ทำไมถึงตามไป ใครพลาด
+ *
+ * กติกาเจ้าของร้าน 24 ก.ย. 69:
+ *   1. เก็บไว้ในใบเดิม ไม่เปิดใบใหม่ฟรี (ยอดขาย/แต้ม/ภาษี/บอร์ด WIP จะได้ไม่ต้องกันนับซ้ำ · ลูกค้าเห็นใบเดียว)
+ *   2. เปิดเคสในสมุดเคลมทุกครั้ง (ไว้ดูสถิติว่าเดือนนี้แพ็คตกกี่ใบ ใครแพ็ค)
+ *   3. แอดมินเท่านั้นเปิดรอบได้ — ฝ่ายแพ็คมีแค่ปุ่มแจ้งว่าของเหลือบนโต๊ะ
+ *   4. แจ้งไลน์ลูกค้า "ตอนยิงเลขอย่างเดียว" ไม่แจ้งตอนเปิดรอบ
+ *
+ * ⚠️ เปิดรอบแล้ว **สถานะใบห้ามย้อนกลับ** ยังเป็นจัดส่งแล้ว/เสร็จสิ้นเหมือนเดิม
+ *    (เคย OD-260914-5746 ใบไปค้าง "กำลังผลิต" 5 วันเพราะย้อนสถานะ)
+ * เลขพัสดุของรอบนี้ลง Order.extraTrackings ด้วยเสมอ (กล่องที่ N) — จอที่โชว์กล่อง/ไทม์ไลน์ ปณ. จึงทำงานให้ฟรีทุกที่
+ */
+export interface FollowUpRound {
+  /** ของที่ตกค้าง — item = ตำแหน่งใน order.items · proof = ตำแหน่งใน proofsOf(item) (ไม่ระบุ = ทั้งรายการ) · url ไว้จับคู่ถ้าลำดับรูปเปลี่ยน */
+  items: { item: number; proof?: number; url?: string; qty: number; unit?: string; itemName?: string }[];
+  /** ทำไมของถึงไม่ไปกับกล่องแรก (ชิปสำเร็จรูป FOLLOW_UP_REASONS หรือแอดมินพิมพ์เอง) */
+  reason: string;
+  /** ความผิดของใคร — ชุดเดียวกับสมุดเคลม (CLAIM_FAULTS) */
+  fault: ClaimFault;
+  /** รายละเอียดเพิ่มเติมที่แอดมินพิมพ์ */
+  note?: string;
+  /** เคสในสมุดเคลมที่เปิดคู่กัน (กติกาข้อ 2) — ผูกพลาดไม่ล้มการเปิดรอบ ไม่มีค่า = ผูกไม่ติด */
+  claimId?: string;
+  /** ใครเปิดรอบ (แอดมินเท่านั้น) */
+  by: string;
+  /** เปิดรอบเมื่อไหร่ (ISO) */
+  at: string;
+  /** เลขพัสดุกล่องส่งตาม — มีค่า = ส่งออกไปแล้ว (ลง extraTrackings คู่กันเสมอ) */
+  tracking?: string;
+  /** 🏪 ใบมารับเอง: ลูกค้ามารับของที่ตกค้างเอง ไม่มีเลขพัสดุให้ยิง */
+  pickup?: true;
+  /** ส่งออก/แพ็คเสร็จเมื่อไหร่ (ISO) — มีค่า = ปิดรอบแล้ว */
+  shippedAt?: string;
+  /** ใครส่ง */
+  shippedBy?: string;
+  /** ค่าส่งกล่องนี้ที่ร้านออกเอง (บาท) — เก็บไว้รวมยอดความเสียหายทีหลัง */
+  cost?: number;
+}
+
+/** ชิปสาเหตุสำเร็จรูปในฟอร์มเปิดรอบส่งตาม (พิมพ์เองก็ได้) */
+export const FOLLOW_UP_REASONS = [
+  "ลืมใส่กล่อง",
+  "ของไม่พอตอนแพ็ค",
+  "ของมาไม่ทันรอบ",
+  "ของเสียเลยคัดออก",
+] as const;
+
+/**
  * 📮 เลขพัสดุทุกกล่องของใบนี้ เรียงกล่องที่ 1, 2, 3… (ไม่รวมรอบแบ่งส่ง ซึ่งมีการ์ดของตัวเอง)
  * ใบมารับเอง/ใบที่ยังไม่ยิงเลข = ลิสต์ว่าง
  */
@@ -176,6 +230,72 @@ export function ownsTrackingNumber(order: Order, number: string): boolean {
     ...(order.shipments ?? []).map((s) => (s?.tracking ?? "").trim()),
   ];
   return all.some((t) => t.toUpperCase() === n);
+}
+
+/** 📦 รอบส่งตามทั้งหมดของใบ (กันค่าขยะใน jsonb) — ดู FollowUpRound */
+export function followUpRounds(order: Order): FollowUpRound[] {
+  return (order.followUp ?? []).filter((r): r is FollowUpRound => !!r && Array.isArray(r.items));
+}
+
+/** 📦 รอบส่งตามที่ยังไม่ได้ส่ง (มีได้ทีละรอบเท่านั้น) — index ไว้เขียนกลับ */
+export function openFollowUp(order: Order): { index: number; round: FollowUpRound; no: number } | null {
+  const all = followUpRounds(order);
+  const i = all.findIndex((r) => !r.shippedAt);
+  return i < 0 ? null : { index: i, round: all[i], no: i + 1 };
+}
+
+/** 📦 รอบส่งตามที่ส่งออกไปแล้ว (ไว้โชว์ประวัติ "ใบนี้เคยส่งไม่ครบ") */
+export function shippedFollowUps(order: Order): FollowUpRound[] {
+  return followUpRounds(order).filter((r) => !!r.shippedAt);
+}
+
+/** จำนวนชิ้นที่ตกค้างของรอบนั้น */
+export function followUpQty(round: FollowUpRound): number {
+  return round.items.reduce((n, it) => n + Math.max(0, Math.floor(Number(it.qty) || 0)), 0);
+}
+
+/**
+ * 📦 เปิดรอบส่งตามได้ไหม — ใบต้อง "ปิดไปแล้ว" (ยิงเลขพัสดุ หรือใบมารับเองที่แพ็คเสร็จ) และไม่มีรอบค้างอยู่
+ * ใบที่ยังไม่ปิดไม่ต้องใช้ตัวนี้ — ของยังไม่ออกจากร้าน ให้แก้ในใบตามปกติ/ใช้แบ่งส่ง
+ */
+export function canOpenFollowUp(order: Order): { ok: boolean; reason: string } {
+  if (order.status === "ยกเลิก") return { ok: false, reason: "ใบนี้ยกเลิกแล้ว" };
+  const closed = !!(order.tracking ?? "").trim() || !!order.packedAt;
+  if (!closed) return { ok: false, reason: "ใบนี้ยังไม่ได้ส่งออก — ของยังอยู่ในร้าน ให้แก้ในใบตามปกติ" };
+  const open = openFollowUp(order);
+  if (open) return { ok: false, reason: `มีรอบส่งตามค้างอยู่แล้ว (รอบที่ ${open.no}) — ส่งรอบนั้นให้จบก่อน` };
+  return { ok: true, reason: "" };
+}
+
+/**
+ * 📦 ปิดรอบส่งตามด้วยเลขกล่องที่เพิ่งยิง — คืนฟิลด์ที่ต้องเขียนกลับ (null = ใบนี้ไม่มีรอบค้าง ไม่ต้องทำอะไร)
+ * เรียกที่ประตูเขียนออเดอร์ (PATCH /api/admin/orders) เมื่อคำขอนั้นมีกล่องเพิ่ม — คนแพ็คทำท่าเดิมทุกอย่าง
+ * ⚠️ ไม่แตะสถานะใบ ไม่แตะ shipments (ใบปิดไปแล้ว รอบนี้ไม่ใช่การแบ่งส่ง)
+ */
+export function applyFollowUpShipped(
+  order: Order,
+  tracking: string,
+  by: string,
+  at: string
+): { followUp: FollowUpRound[]; extraTrackings: TrackingBox[] | undefined; round: FollowUpRound; no: number } | null {
+  const open = openFollowUp(order);
+  const t = tracking.trim();
+  if (!open || !t) return null;
+  const round: FollowUpRound = { ...open.round, tracking: t, shippedAt: at, shippedBy: by };
+  const followUp = [...(order.followUp ?? [])];
+  followUp[open.index] = round;
+  // ป้ายกล่องบอกว่าเป็นกล่องส่งตาม — คนอ่านหน้าออเดอร์/ลูกค้าจะได้รู้ว่าทำไมใบนี้มีอีกกล่อง (ไม่ทับป้ายที่คนพิมพ์เอง)
+  const extraTrackings = order.extraTrackings?.map((b) =>
+    b.tracking.trim() === t && !(b.note ?? "").trim() ? { ...b, note: followUpNote(round, open.no) } : b
+  );
+  return { followUp, extraTrackings, round, no: open.no };
+}
+
+/** ข้อความสั้นของรอบส่งตาม — ใช้เป็น note ของกล่องใน extraTrackings และป้ายทุกจอ (คำเดียวกันหมด) */
+export function followUpNote(round: FollowUpRound, no: number): string {
+  const names = [...new Set(round.items.map((it) => (it.itemName ?? "").trim()).filter(Boolean))];
+  const what = names.length ? ` (${names.slice(0, 2).join(", ")}${names.length > 2 ? "…" : ""})` : "";
+  return `📦 ส่งตาม รอบที่ ${no} — ของที่ตกค้าง ${followUpQty(round).toLocaleString("th-TH")} ชิ้น${what}`;
 }
 
 /**
@@ -724,6 +844,11 @@ export interface Order {
   extraTrackings?: TrackingBox[];
   /** 🚚 แบ่งส่ง: รอบที่ส่งออกไปแล้วบางส่วน (ก่อนยิงเลขรอบสุดท้ายลง tracking) — ดู Shipment */
   shipments?: Shipment[];
+  /**
+   * 📦 รอบ "ส่งตามให้" — ใบปิดแล้วแต่ส่งของไม่ครบ ต้องส่งของที่ตกค้างตามไปอีกกล่อง (ดู FollowUpRound)
+   * แอดมินเปิดรอบเท่านั้น (mergePackFields ไม่รับ) · เขียนผ่าน POST /api/admin/orders/follow-up
+   */
+  followUp?: FollowUpRound[];
   /** 📋 แผนแบ่งส่งที่แอดมินระบุ (รูปไหนส่งก่อน รอบไหน) — ฝ่ายแพ็คทำตาม แก้ไม่ได้ (mergePackFields ไม่รับ) */
   shipPlan?: ShipPlanRound[];
   /** โหมดมัดจำ 50% — ลูกค้าโอนงวดแรกก่อนเริ่มงาน เก็บส่วนที่เหลือให้ครบก่อนพิมพ์เอกสาร/ส่งของ */

@@ -12,9 +12,10 @@ import { needsPurchaseStamp, notifyStockArrived } from "@/lib/server/needs-purch
 import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
-import { KEY_STATUSES, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, statusFlex, statusMessage } from "@/lib/server/notify";
+import { KEY_STATUSES, followUpNotice, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reconcileFollowupsForOrder, reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
 import { settleCreditedOrder } from "@/lib/server/slip-apply";
+import { closeFollowUpClaim } from "@/lib/server/claims-db";
 import { amountsForRecord } from "@/lib/tp-amounts";
 import { signPaymentUrls, stripPaymentUrls } from "@/lib/server/slip-sign";
 import { isPickupOrder } from "@/lib/ship-label";
@@ -39,6 +40,9 @@ import {
   lockEarlyPay,
   orderAwaitingStock,
   ownsTrackingNumber,
+  applyFollowUpShipped,
+  followUpQty,
+  openFollowUp,
   packGate,
   partialGate,
   planPendingReason,
@@ -48,6 +52,7 @@ import {
   shipToText,
   withLog,
   type LogEntry,
+  type FollowUpRound,
   type Order,
   type OrderItem,
   type OrderStatus,
@@ -1120,6 +1125,47 @@ export async function PATCH(req: Request) {
     );
   }
 
+  /**
+   * 📦 รอบ "ส่งตาม" (ใบปิดแล้วแต่ส่งของไม่ครบ) — ช่องนี้เขียนได้ทางเดียวคือ POST /api/admin/orders/follow-up
+   * (แอดมินเท่านั้น · กติกาเจ้าของร้าน 24 ก.ย. 69) ก้อนจากหน้าจอไหนส่งมาก็ไม่รับ กันหน้าค้างลบรอบทิ้ง
+   */
+  toSave = { ...toSave, followUp: existing.followUp };
+  /**
+   * 📦 ปิดรอบส่งตามให้เอง เมื่อคำขอนี้ยิง "กล่องเพิ่ม" มา — คนแพ็คทำท่าเดิมทุกอย่าง (＋ เพิ่มเป็นกล่องที่ N)
+   * ไม่ต้องมีปุ่มพิเศษที่โต๊ะแพ็ค/สถานี · กล่องแรกที่เพิ่งยิงในคำขอนี้ = กล่องส่งตาม
+   * (ใบมารับเองไม่มีกล่องให้ยิง — ปิดรอบที่ route follow-up แทน)
+   */
+  /**
+   * 📦 ตาข่ายกันพลาดฝั่งเซิร์ฟเวอร์ (เจ้าของร้านสั่ง 24 ก.ย. 69 "กลัวพนักงานกดแทนที่เลขเดิม"):
+   * ใบที่มี "รอบส่งตาม" ค้างอยู่ แล้วมีเลขใหม่มาเขียนทับช่องเลขหลัก = ตั้งใจส่งกล่องส่งตามแน่ ๆ
+   * (ของกล่องแรกออกไปแล้ว ไม่มีเหตุให้เปลี่ยนเลขกล่องแรก) → ย้ายไปเป็น "กล่องเพิ่ม" แทน เลขเดิมห้ามหาย
+   * ยิงผิดจริง ๆ แอดมินลบกล่องทีหลังได้ · ทั้งหน้าออเดอร์และสถานีแพ็คไม่ถามให้เลือกแล้ว นี่คือด่านสุดท้าย
+   */
+  const fuHad = (existing.tracking ?? "").trim();
+  const fuNew = (toSave.tracking ?? "").trim();
+  if (openFollowUp(existing) && fuHad && fuNew && fuNew !== fuHad && !ownsTrackingNumber(existing, fuNew)) {
+    toSave = withLog(
+      {
+        ...toSave,
+        tracking: fuHad,
+        extraTrackings: [...(toSave.extraTrackings ?? existing.extraTrackings ?? []), { tracking: fuNew, at: now, by: actor.name?.trim() || actor.username }],
+      },
+      actor.name || actor.username,
+      "📮 เก็บเลขใหม่เป็นกล่องเพิ่มแทนการทับเลขเดิม",
+      `ใบนี้มีรอบส่งตามค้างอยู่ — ${fuNew} (เลขกล่องแรก ${fuHad} คงไว้)`
+    );
+  }
+  const fuBox = openFollowUp(existing) ? newExtraTrackingsOf(existing, toSave)[0] : undefined;
+  const fuShip = fuBox ? applyFollowUpShipped({ ...existing, extraTrackings: toSave.extraTrackings }, fuBox.tracking, actor.name?.trim() || actor.username, now) : null;
+  if (fuShip) {
+    toSave = withLog(
+      { ...toSave, followUp: fuShip.followUp, extraTrackings: fuShip.extraTrackings },
+      actor.name || actor.username,
+      `📦 ส่งของที่ตกค้างแล้ว — รอบส่งตามที่ ${fuShip.no}`,
+      `${fuShip.round.tracking} · ${followUpQty(fuShip.round).toLocaleString("th-TH")} ชิ้น`
+    );
+  }
+
   toSave = { ...toSave, log: mergeLogs(existing.log, order.log, toSave.log), savedAt: now };
 
   /**
@@ -1320,6 +1366,8 @@ export async function PATCH(req: Request) {
     boxesNow.forEach((b, n) => {
       const box = base + n + 2; // กล่องที่ 1 = เลขในช่องหลัก
       const t = b.tracking.trim();
+      // 📦 กล่องส่งตามมีการ์ดของตัวเอง (บอกว่าข้างในคืออะไร) — ไม่ต้องยิงการ์ด "พัสดุกล่องที่ N" ซ้ำ
+      if (fuShip && t === fuShip.round.tracking) return;
       void notifyCustomerLogged(
         sb,
         toSave,
@@ -1340,6 +1388,24 @@ export async function PATCH(req: Request) {
         "key"
       );
     });
+  }
+
+  /**
+   * 📦 ปิดรอบส่งตามในคำขอนี้ → แจ้งลูกค้าว่าของที่ตกค้างส่งตามไปแล้ว พร้อมบอกว่ากล่องนี้มีอะไร
+   * (กติกาเจ้าของร้าน 24 ก.ย. 69: ไลน์ยิง "ตอนยิงเลขอย่างเดียว" — ตอนเปิดรอบไม่ยิง แอดมินคุยเองในแชท)
+   */
+  if (fuShip) {
+    const origin = new URL(req.url).origin;
+    void notifyCustomerLogged(
+      sb,
+      toSave,
+      followUpNotice(toSave, orderLink(origin, toSave), fuShip.round, fuShip.round.tracking ?? ""),
+      `แจ้งส่งของที่ตกค้าง รอบที่ ${fuShip.no} · ${fuShip.round.tracking}`,
+      "key"
+    );
+  // 🧰 เคสในสมุดเคลมที่เปิดคู่กับรอบนี้ ปิดให้เอง (สถิติจะได้ไม่ค้างเปิดตลอดกาล)
+    if (fuShip.round.claimId)
+      void closeFollowUpClaim(sb, fuShip.round.claimId, adminName, `ส่งของที่ตกค้างให้แล้ว — ${fuShip.round.tracking} (ออเดอร์ ${toSave.id})`);
   }
 
   // 📦 แอดมินเพิ่งยืนยันสต๊อก/คิวผลิตของรายการที่สั่งจำนวนมาก → แจ้งลูกค้าทางไลน์ทันที

@@ -8,7 +8,7 @@
  * ตัวนี้สร้างการ์ดทุกแบบจากข้อมูลจริง ๆ แล้วตรวจกติกาที่ LINE ตีกลับ (ดู checkFlexMessages)
  * ⚠️ ของจริงมีชั้นกันตกอีกชั้นใน notifyCustomer: 400 = ส่งซ้ำเป็นข้อความล้วนจาก altText
  */
-import { ALL_CARD_HEX, NOTICE_HEX, checkFlexMessages, noticeFlex, orderNotice, statusFlex, type LineMessage, type NoticeTone } from "../src/lib/server/notify";
+import { ALL_CARD_HEX, NOTICE_HEX, checkFlexMessages, followUpNotice, noticeFlex, orderNotice, statusFlex, type LineMessage, type NoticeTone } from "../src/lib/server/notify";
 import { CLAIM_STATUSES } from "../src/lib/claims";
 import type { Order, OrderStatus } from "../src/lib/admin-data";
 
@@ -252,6 +252,29 @@ for (const status of CLAIM_STATUSES)
     statusFlex(order({ key: undefined, status: "รอชำระเงิน" }), "https://iduckystore.com/order/OD-OLD-0001")
   );
   check("ออเดอร์ไม่มีรายการสินค้า", statusFlex(order({ items: [] }), LINK));
+}
+
+// ── 📦 ส่งตามให้ (ใบปิดแล้วแต่ของไม่ครบ) ────────────────────────────────
+{
+  const round = {
+    items: [
+      { item: 0, qty: 3, unit: "ชิ้น", itemName: "โฟโต้การ์ด PVC" },
+      { item: 0, proof: 1, url: "https://x/y.jpg", qty: 1, unit: "เซ็ต", itemName: "พวงกุญแจอะคริลิค" },
+    ],
+    reason: "ลืมใส่กล่อง",
+    fault: "ร้าน" as const,
+    by: "แอดมิน",
+    at: "2026-09-24T03:00:00.000Z",
+  };
+  check("ส่งของที่ตกค้างแล้ว (มีเลขพัสดุ)", followUpNotice(order({ tracking: "EQ226638541TH" }), LINK, round, "EQ226638999TH"));
+  check(
+    "ของที่ตกค้างพร้อมให้มารับ (ใบมารับเอง ไม่มีเลขพัสดุ)",
+    followUpNotice(order({ shipping: "มารับเอง", shippingLabel: "มารับเองที่ร้าน" }), LINK, round, "")
+  );
+  check(
+    "ส่งตาม: ชื่อรายการยาว + ของหลายรายการ",
+    followUpNotice(order({ tracking: "EQ1TH" }), LINK, { ...round, items: Array.from({ length: 6 }, (_, i) => ({ item: 0, qty: i + 1, itemName: `${"ชื่อรายการยาวมากจนต้องถูกตัดในการ์ด ".repeat(3)}ชุดที่ ${i + 1}` })) }, "EQ2TH")
+  );
 }
 
 // ── ทุกโทนต้องสร้างการ์ดได้จริง (เพิ่มโทนใหม่แล้วลืมทดสอบ = ตกตรงนี้) ──────

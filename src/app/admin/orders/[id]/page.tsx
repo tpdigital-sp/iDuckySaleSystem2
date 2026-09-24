@@ -90,6 +90,10 @@ import {
   orderNeedsTaxInvoiceInBox,
   orderAwaitingStock,
   ownsTrackingNumber,
+  canOpenFollowUp,
+  followUpQty,
+  followUpRounds,
+  openFollowUp,
   trackingBoxes,
   taxInvoiceDocOf,
   applyArrival,
@@ -143,6 +147,7 @@ import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-
 import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
+import FollowUpModal, { type FollowUpForm } from "@/components/admin/FollowUpModal";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
 import ShipWithStrip, { ShipWithPicker, ShipWithSuggest, useShipWithLinked } from "@/components/admin/ShipWithStrip";
@@ -1449,6 +1454,9 @@ export default function AdminOrderDetailPage() {
   const [partialOpen, setPartialOpen] = useState(false);
   /** 📮 ช่องเพิ่ม "เลขพัสดุอีกกล่อง" ของใบเดียวกัน (null = ปิดอยู่) — ใบที่ส่งหลายกล่อง/หลายที่อยู่ */
   const [boxAdd, setBoxAdd] = useState<{ tracking: string; note: string } | null>(null);
+  /** 📦 โมดัลเปิดรอบ "ส่งตามให้" (ใบส่งไปแล้วแต่ของในกล่องไม่ครบ) + สถานะกำลังยิง API */
+  const [followOpen, setFollowOpen] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
   // 📋 โมดัลแอดมินระบุแผนแบ่งส่ง (รูปไหนส่งก่อน)
   const [planOpen, setPlanOpen] = useState(false);
   /** ✏️ รอบในแผนแบ่งส่งที่กำลังแก้ (null = เพิ่มรอบใหม่) — แก้ได้เฉพาะรอบที่ยังไม่ส่ง */
@@ -2556,6 +2564,69 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next);
   }
 
+  /**
+   * 📦 รอบ "ส่งตามให้" — ใบส่งออกไปแล้วแต่ของในกล่องไม่ครบ (ดู FollowUpRound ใน admin-data.ts)
+   * เขียนผ่าน route เดียว (เปิดเคสในสมุดเคลมให้พร้อมกัน) แล้วรับก้อนใหม่จากเซิร์ฟเวอร์มาทั้งใบ
+   * ⚠️ ไม่แจ้งลูกค้าตอนนี้ — ไลน์ออกตอนยิงเลขกล่องส่งตาม (เจ้าของร้านเคาะ 24 ก.ย. 69)
+   */
+  async function followUpCall(body: Record<string, unknown>, fallback: string) {
+    if (!order || followBusy) return;
+    if (demo) {
+      setErr("โหมดตัวอย่างเปิดรอบส่งตามไม่ได้");
+      return;
+    }
+    setFollowBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/follow-up", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, ...body }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string; claimWarn?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? fallback);
+        return;
+      }
+      adoptOrder(j.order);
+      setFollowOpen(false);
+      if (j.claimWarn) setErr(`⚠️ ${j.claimWarn}`);
+    } finally {
+      setFollowBusy(false);
+    }
+  }
+
+  const openFollowUpRound = (f: FollowUpForm) => followUpCall({ action: "open", ...f }, "เปิดรอบส่งตามไม่สำเร็จ");
+
+  /** 📦 ยกเลิกรอบที่ยังไม่ได้ส่ง (เปิดผิดใบ / ลูกค้าเจอของแล้ว) — เคสในสมุดเคลมยังเปิดอยู่ ต้องไปปิดเอง */
+  async function cancelFollowUpRound(no: number) {
+    if (
+      !(await askConfirm({
+        icon: "📦",
+        title: `ยกเลิกรอบส่งตามที่ ${no}?`,
+        detail: "ใบจะออกจากคิวปริ้น/คิวแพ็ครอบส่งตาม · เคสในสมุดเคลมยังเปิดอยู่ ต้องไปปิดเองที่หน้าเคลม",
+        confirmLabel: "ยกเลิกรอบ",
+        danger: true,
+      }))
+    )
+      return;
+    await followUpCall({ action: "cancel" }, "ยกเลิกรอบส่งตามไม่สำเร็จ");
+  }
+
+  /** 📦 ใบมารับเอง: ไม่มีเลขพัสดุให้ยิง — กดปิดรอบเองเมื่อของที่ตกค้างพร้อมให้ลูกค้ามารับ */
+  async function finishFollowUpPickup(no: number) {
+    if (
+      !(await askConfirm({
+        icon: "📦",
+        title: `ของที่ตกค้างรอบที่ ${no} พร้อมให้มารับแล้ว?`,
+        detail: "ลูกค้าจะได้ไลน์ว่ามารับของที่ตกค้างได้เลย",
+        confirmLabel: "แจ้งลูกค้า",
+      }))
+    )
+      return;
+    await followUpCall({ action: "ship" }, "ปิดรอบส่งตามไม่สำเร็จ");
+  }
+
   /** 📮 ถอดกล่องที่ยิงผิดออก (เฉพาะแอดมิน — ฝ่ายแพ็คต่อท้ายได้อย่างเดียว เหมือนรอบแบ่งส่ง) */
   async function removeTrackingBox(n: number) {
     if (!order || !mayEdit) return;
@@ -2586,6 +2657,16 @@ export default function AdminOrderDetailPage() {
      */
     const had = trackingRef.current.trim();
     if (had && !ownsTrackingNumber({ ...order, tracking: had }, t)) {
+      /**
+       * 📦 ใบที่เปิด "รอบส่งตาม" ไว้ = เลขนี้คือกล่องส่งตาม → เก็บเป็นกล่องเพิ่มให้เลย ไม่ถาม
+       * (เจ้าของร้านสั่ง 24 ก.ย. 69 "กลัวพนักงานกดแทนที่เลขเดิม") · ยิงผิดให้ลบกล่องทีหลังที่รายการกล่องด้านล่าง
+       */
+      if (openFollowUp(order)) {
+        const back = { ...order, tracking: had };
+        setOrder(back);
+        addTrackingBox(t, "", back);
+        return;
+      }
       const box = (order.extraTrackings?.length ?? 0) + 2;
       const ans = await askConfirm({
         icon: "📮",
@@ -8544,6 +8625,94 @@ export default function AdminOrderDetailPage() {
           <div>
             <GH t="orange">📮 เลขพัสดุ</GH>
             <div className={`mt-2 ${soft("orange")}`}>
+              {/*
+                📦 ส่งตามให้ — ใบส่งออกไปแล้วแต่ของในกล่องไม่ครบ (พนักงานแจ้ง 24 ก.ย. 69)
+                คนละเรื่องกับแผนแบ่งส่งด้านล่าง (นั่นคือใบที่ยังไม่ปิด) · ใบนี้ปิดแล้ว สถานะไม่ย้อนกลับ
+              */}
+              {(() => {
+                const rounds = followUpRounds(order);
+                const gate = canOpenFollowUp(order);
+                const open = openFollowUp(order);
+                if (!rounds.length && !(mayEdit && gate.ok)) return null;
+                const pickup = isPickupOrder(order);
+                return (
+                  <div className="mb-2 rounded-xl bg-sky-50 px-3 py-2 ring-1 ring-sky-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-bold text-sky-900">
+                        📦 ส่งตามให้ {rounds.length ? `· ${rounds.length} รอบ` : "— ใบนี้ส่งของครบ"}
+                      </p>
+                      {mayEdit && gate.ok && (
+                        <button
+                          type="button"
+                          onClick={() => setFollowOpen(true)}
+                          className="rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-extrabold text-white hover:bg-sky-700"
+                        >
+                          ส่งไม่ครบ — เปิดรอบส่งตาม
+                        </button>
+                      )}
+                    </div>
+                    {rounds.map((r, n) => {
+                      const done = !!r.shippedAt;
+                      return (
+                        <div key={`fu-${n}`} className="mt-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] ring-1 ring-sky-100">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="font-bold text-slate-800">
+                              รอบส่งตามที่ {n + 1}: {followUpQty(r).toLocaleString("th-TH")} ชิ้น
+                            </span>
+                            <span className="text-slate-500">
+                              {r.reason} · ความผิด{r.fault}
+                            </span>
+                            {done ? (
+                              <span className="font-bold text-green-700">{r.pickup ? "✅ พร้อมให้มารับแล้ว" : `✅ ส่งแล้ว ${r.tracking}`}</span>
+                            ) : (
+                              <span className="font-bold text-sky-700">รอแพ็ค</span>
+                            )}
+                            {r.claimId && (
+                              <a href={`/admin/claims#${r.claimId}`} className="font-bold text-violet-700 hover:underline">
+                                🧰 {r.claimId}
+                              </a>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-slate-500">
+                            {r.items.map((it) => `${it.itemName ?? order.items[it.item]?.name ?? "รายการ"} ×${it.qty} ${it.unit ?? "ชิ้น"}`).join(" · ")}
+                          </p>
+                          {r.note && <p className="mt-0.5 text-slate-500">📝 {r.note}</p>}
+                          {!done && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5">
+                              <span className="font-bold text-sky-900">
+                                {pickup
+                                  ? "ของที่ตกค้างพร้อมแล้วกดปุ่มนี้ ลูกค้าจะได้ไลน์ให้มารับ"
+                                  : `แพ็คแล้วยิงเลขกล่องส่งตามที่ช่องด้านล่าง เลือก “＋ เพิ่มเป็นกล่องที่ ${(order.extraTrackings?.length ?? 0) + 2}” — ระบบปิดรอบ + แจ้งลูกค้าให้เอง`}
+                              </span>
+                              {pickup && mayEdit && (
+                                <button
+                                  type="button"
+                                  disabled={followBusy}
+                                  onClick={() => finishFollowUpPickup(n + 1)}
+                                  className="rounded-lg bg-green-600 px-2.5 py-1 font-extrabold text-white hover:bg-green-700 disabled:opacity-60"
+                                >
+                                  ✅ พร้อมให้มารับแล้ว
+                                </button>
+                              )}
+                              {mayEdit && (
+                                <button
+                                  type="button"
+                                  disabled={followBusy}
+                                  onClick={() => cancelFollowUpRound(n + 1)}
+                                  className="ml-auto font-bold text-rose-500 hover:underline disabled:opacity-60"
+                                >
+                                  ยกเลิกรอบ
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {!!open && !mayEdit && <p className="mt-1 text-[11px] text-slate-500">รอบนี้แอดมินเป็นคนเปิด — ฝ่ายแพ็คแค่แพ็คของแล้วยิงเลขกล่องเพิ่ม</p>}
+                  </div>
+                );
+              })()}
               {/* 📋 แผนแบ่งส่ง — แอดมินระบุว่ารูปไหนต้องส่งก่อน ฝ่ายแพ็คทำตาม (ไม่มีแผน = ฝ่ายแพ็คไม่มีปุ่มแบ่งส่ง) */}
               {(mayEdit || (order.shipPlan?.length ?? 0) > 0) && !(order.tracking ?? "").trim() && (
                 <div className="mb-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
@@ -8962,6 +9131,8 @@ export default function AdminOrderDetailPage() {
           onSave={(sel, note, due, shipTo) => savePlanRound(sel, note, due, shipTo, planEditIdx)}
         />
       )}
+      {/* 📦 เปิดรอบส่งตาม — ใบส่งออกไปแล้วแต่ของในกล่องไม่ครบ */}
+      {followOpen && <FollowUpModal order={order} busy={followBusy} onCancel={() => setFollowOpen(false)} onSave={openFollowUpRound} />}
 
       {/* 💰 รับยอดสลิปใบเพิ่มเอง — แทน prompt() ของเบราว์เซอร์ */}
       {acceptForm && (
