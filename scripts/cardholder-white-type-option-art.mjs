@@ -244,9 +244,11 @@ const gb = (back.data.options ?? []).find((o) => o.label === GROUP);
 const fails = [
   [!!gb, `กลุ่ม "${GROUP}" หาย`],
   [gb?.display === "cards", "กลุ่มแบบไม่ใช่การ์ด"],
-  [gb?.choices?.length === 3, "จำนวนตัวเลือกไม่ครบ 3"],
-  ...TYPES.map((t, i) => [
-    gb?.choices?.[i]?.name === t.name, `ตัวเลือกลำดับ ${i + 1} ชื่อเพี้ยน (คีย์ตารางราคาพัง)`,
+  // 24 ก.ย. 69 มีแบบที่ 4 "+ โซ่ไข่ปลา" แทรกเข้ามา (scripts/cardholder-white-ballchain-type.mjs)
+  // → เช็คว่า 3 แบบนี้ "ยังอยู่ครบ" ตามชื่อ แทนการล็อกจำนวน/ลำดับ
+  [(gb?.choices?.length ?? 0) >= 3, "ตัวเลือกหายไปจากกลุ่มแบบ"],
+  ...TYPES.map((t) => [
+    gb?.choices?.some((c) => c.name === t.name), `ไม่เจอตัวเลือก "${t.name}" (คีย์ตารางราคาพัง)`,
   ]),
   ...TYPES.map((t) => {
     const c = gb?.choices?.find((x) => x.name === t.name);
