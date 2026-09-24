@@ -32,7 +32,7 @@ import { giftsFor, giftSizesOf, giftUnlock, resolveGiftSize, splitGiftBySheet, r
 import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { rememberOrderLink } from "@/lib/my-order-links";
-import { paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
+import { lockedTier, paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
 import { parseReuseArt, reuseArtText, type Order, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
@@ -303,8 +303,15 @@ export default function CheckoutPage() {
     if (!customer || appendTo || isDealer) { setTier(null); return; } // สั่งเพิ่ม/ตัวแทนไม่คิดส่วนลดใหม่
     (async () => {
       const [ordRes, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
-      const spend = paidSpend(ordRes.orders);
-      const t = tierForSpend(spend, tiersConfigOf(sett));
+      const tiers = tiersConfigOf(sett);
+      /**
+       * ระดับ = "ระดับที่ล็อกอยู่" จากเซิร์ฟเวอร์ (เหมือนที่ /api/orders คิดตอนสร้างออเดอร์จริง)
+       * เดิมคิดเองจาก paidSpend(ออเดอร์ของตัวเอง) → ลูกค้าเก่าที่ยกยอดมาจากระบบเดิมเห็น "ไม่มีส่วนลด"
+       * ตอนเช็คเอาต์ ทั้งที่ตอนกดสั่งเซิร์ฟเวอร์ลดให้จริง (พนักงานแจ้ง 24 ก.ย. 69)
+       */
+      const t = ordRes.tier
+        ? lockedTier(ordRes.tier, tiers)
+        : tierForSpend(typeof ordRes.spend === "number" ? ordRes.spend : paidSpend(ordRes.orders), tiers);
       setTier(t.discountPct > 0 ? { name: t.name, icon: t.icon, pct: t.discountPct } : null);
     })();
   }, [customer, appendTo, isDealer]);

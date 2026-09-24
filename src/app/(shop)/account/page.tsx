@@ -120,6 +120,8 @@ export default function AccountPage() {
   const { customer, loading, refresh, isDealer, dealerReady } = useCustomer();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [tierStatus, setTierStatus] = useState<TierStatus | null>(null);
+  /** ยอดสะสมทั้งหมดจากเซิร์ฟเวอร์ (การ์ดผู้ติดต่อ) — null = ยังไม่รู้ ค่อยบวกจากออเดอร์ของตัวเองไปก่อน */
+  const [memberSpend, setMemberSpend] = useState<number | null>(null);
   const [tierList, setTierList] = useState<Tier[] | null>(null);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -217,6 +219,7 @@ export default function AccountPage() {
       const [res, sett] = await Promise.all([fetchMyOrders(), fetchShopPayment()]);
       setOrders(res.orders);
       setTierStatus(res.tier ?? null);
+      setMemberSpend(typeof res.spend === "number" ? res.spend : null);
       setTierList(tiersConfigOf(sett));
     })();
   }, [customer]);
@@ -246,16 +249,25 @@ export default function AccountPage() {
   // ── ระดับสมาชิก ──
   const tiers = useMemo(() => tiersOf(tierList), [tierList]);
   // ระดับ = "ระดับที่ล็อกอยู่" (status-lock) จากเซิร์ฟเวอร์ · ยอดตลอดชีพเก็บไว้โชว์เฉย ๆ
-  const lifetimeSpend = orders ? paidSpend(orders) : 0;
+  /**
+   * ยอดสะสมทั้งหมด = ช่อง Point ของการ์ดผู้ติดต่อ (เลขเดียวกับหลังบ้าน) — รวมยอดที่ยกมาจากระบบเดิม
+   * เซิร์ฟเวอร์ยังไม่ตอบ/ยังไม่ผูกการ์ด → บวกเองจากออเดอร์ที่จ่ายแล้วในระบบนี้
+   */
+  const lifetimeSpend = memberSpend ?? (orders ? paidSpend(orders) : 0);
   const realTier = orders && tierStatus ? lockedTier(tierStatus, tierList) : orders ? tierForSpend(lifetimeSpend, tierList) : null;
   /** ข้อมูลครบรอบทบทวนระดับ (null = ระดับต่ำสุด/ยังไม่รู้รอบ) */
   const renewal = tierStatus ? tierRenewalInfo(tierStatus, tierList) : null;
-  /** ยอดในรอบปีปัจจุบัน (ใช้กับแถบความคืบหน้าไปเกณฑ์ระดับถัดไป) */
-  const spend = renewal ? renewal.cycleSpend : lifetimeSpend;
+  /** ยอดในรอบปีปัจจุบัน — ใช้ตัดสิน "ขึ้นระดับถัดไป" (กติกา status-lock) ไม่ใช่ยอดที่โชว์ใบใหญ่ */
+  const cycleSpend = renewal ? renewal.cycleSpend : lifetimeSpend;
   /** ระดับที่เอาไว้ลงสี/ตรา/ธีม — ยังโหลดไม่เสร็จก็ใช้ของที่จำไว้ไปก่อน หน้าจะได้ไม่เปลี่ยนสีทีหลัง */
   const paintTier = realTier ?? tierHint;
   const realIdx = paintTier ? Math.max(0, tiers.findIndex((t) => t.id === paintTier.id)) : 0;
-  const next = orders ? nextTier(spend, tierList) : null;
+  /**
+   * ระดับถัดไป — ต้องสูงกว่า "ระดับที่ล็อกอยู่" เสมอ
+   * ไม่งั้นคนที่ยกยอดมาจากระบบเดิม (ล็อก Silver แต่รอบนี้เพิ่งซื้อ ฿3,401) จะเห็น "อีก ฿46,599 ขึ้นระดับ Bronze"
+   * ซึ่งต่ำกว่าระดับตัวเอง (พนักงานแจ้ง 24 ก.ย. 69)
+   */
+  const next = orders ? nextTier(Math.max(cycleSpend, realTier?.minSpend ?? 0), tierList) : null;
   const shownTier = (previewTier && tiers.find((t) => t.id === previewTier)) || paintTier;
   /** ข้อมูลจริง (ยอดสะสม/ออเดอร์) ยังมาไม่ถึง — ตัวเลขต้องเป็นโครงกระดูก ไม่ใช่เลขมั่ว */
   const dataLoading = orders === null;
@@ -263,7 +275,7 @@ export default function AccountPage() {
   const isPreview = !!shownTier && !!realTier && shownTier.id !== realTier.id;
   const realRing = ringOf(paintTier, realIdx);
   const shownRing = ringOf(shownTier, shownIdx);
-  const progressPct = next && next.minSpend > 0 ? Math.min(100, Math.round((spend / next.minSpend) * 100)) : 100;
+  const progressPct = next && next.minSpend > 0 ? Math.min(100, Math.round((cycleSpend / next.minSpend) * 100)) : 100;
 
   // จำระดับจริงไว้ใช้กับจอแรกของครั้งหน้า
   useEffect(() => {
@@ -640,8 +652,8 @@ export default function AccountPage() {
                     </div>
                   </div>
                   <div className="acd-tier-stats">
-                    <small>{isPreview ? "ยอดขั้นต่ำที่ต้องใช้" : "ยอดสะสม"}</small>
-                    {dataLoading ? <span className="acd-skel acd-skel-amount" aria-label="กำลังโหลดยอดสะสม" /> : <b>{formatPrice(isPreview ? shownTier!.minSpend : spend)}</b>}
+                    <small>{isPreview ? "ยอดขั้นต่ำที่ต้องใช้" : "ยอดสะสมทั้งหมด"}</small>
+                    {dataLoading ? <span className="acd-skel acd-skel-amount" aria-label="กำลังโหลดยอดสะสม" /> : <b>{formatPrice(isPreview ? shownTier!.minSpend : lifetimeSpend)}</b>}
                   </div>
                   <div className="acd-progress">
                     <i style={{ width: dataLoading ? "0%" : `${isPreview ? 100 : progressPct}%` }} />
@@ -654,7 +666,12 @@ export default function AccountPage() {
                       </>
                     ) : next ? (
                       <>
-                        อีก <b>{formatPrice(Math.max(0, next.minSpend - spend))}</b> ขึ้นระดับ {next.icon} {next.name} (ลด {next.discountPct}%)
+                        อีก <b>{formatPrice(Math.max(0, next.minSpend - cycleSpend))}</b> ขึ้นระดับ {next.icon} {next.name} (ลด {next.discountPct}%)
+                        {renewal && (
+                          <span className="acd-tier-foot-hint">
+                            นับเฉพาะยอดในรอบนี้ — ตอนนี้ {formatPrice(cycleSpend)} จาก {formatPrice(next.minSpend)}
+                          </span>
+                        )}
                       </>
                     ) : realTier ? (
                       <>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, type Order } from "@/lib/admin-data";
-import { seedTierStatus, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
+import type { Order } from "@/lib/admin-data";
+import { paidSpend, seedTierStatus, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
 import { hideInternalStockNote } from "@/lib/customer-order";
 
 export const runtime = "nodejs";
@@ -34,6 +34,12 @@ export async function GET(req: Request) {
   // สถานะระดับสมาชิก (status-lock) — อ่านจาก contact ที่ผูก memberId ไว้
   // ยังไม่มี contact/สถานะ → ประเมินจากยอดที่จ่ายจริง (ยกยอดลูกค้าเก่า) เพื่อให้หน้า account โชว์ระดับได้
   let tier: TierStatus | undefined;
+  /**
+   * ยอดสะสมทั้งหมด (บาท · 1 บาท = 1 แต้ม) = ช่อง Point ของการ์ดผู้ติดต่อ — ตัวเลขเดียวกับที่หลังบ้านเห็น
+   * ทำไมต้องส่งมาด้วย: ลูกค้าเก่าที่ยกยอดมาจากระบบเดิมมีแต้มเป็นแสน แต่ออเดอร์ "ในระบบนี้" เพิ่งไม่กี่ใบ
+   * ถ้าหน้า /account บวกเองจากออเดอร์ที่ตัวเองเห็น จะโชว์น้อยกว่าหลังบ้านคนละโลก (พนักงานแจ้ง 24 ก.ย. 69)
+   */
+  let spend: number | undefined;
   try {
     const [{ data: c }, { data: sett }] = await Promise.all([
       sb.from("contacts").select("data").eq("data->>memberId", u.user.id).limit(1).maybeSingle(),
@@ -41,13 +47,12 @@ export async function GET(req: Request) {
     ]);
     const contact = c?.data as { tierLevel?: string; tierAnchor?: string; tierCycleSpend?: number; point?: number; importedAt?: string } | undefined;
     const tiers: Tier[] = tiersOf((((sett?.data as { tiers?: Tier[] } | undefined)?.tiers) ?? []).filter((t) => t.name?.trim()) || null);
+    // ไม่มีการ์ดผู้ติดต่อ (ยังไม่ผูก memberId) → ใช้ยอดที่จ่ายจริงในระบบนี้ไปก่อน
+    spend = contact?.point != null ? Number(contact.point) || 0 : paidSpend(mine);
     if (contact?.tierLevel) tier = { levelId: contact.tierLevel, anchor: contact.tierAnchor, cycleSpend: contact.tierCycleSpend };
-    else {
-      const lifetime = contact?.point ?? mine.filter((o) => ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"].includes(o.status)).reduce((sp, o) => sp + orderTotal(o), 0);
-      tier = seedTierStatus(lifetime, contact?.importedAt, tiers);
-    }
+    else tier = seedTierStatus(spend, contact?.importedAt, tiers);
   } catch {
     /* ไม่มีตาราง contacts ก็ข้าม — ระดับจะไม่โชว์ */
   }
-  return NextResponse.json({ orders: mine, tier });
+  return NextResponse.json({ orders: mine, tier, spend });
 }

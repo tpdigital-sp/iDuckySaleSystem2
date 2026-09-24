@@ -17,6 +17,8 @@ export interface MyOrders {
   needsSetup?: boolean;
   /** สถานะระดับสมาชิก (status-lock) จากเซิร์ฟเวอร์ */
   tier?: TierStatus;
+  /** ยอดสะสมทั้งหมด (บาท) จากการ์ดผู้ติดต่อ — ตัวเลขเดียวกับช่อง Point ในหลังบ้าน */
+  spend?: number;
 }
 
 /** อายุแคช — สั้นพอที่กลับมาหน้าเดิมแล้วยังเห็นของใหม่ แต่ยาวพอให้หลายคอมโพเนนต์ในหน้าเดียวใช้ร่วมกัน */
@@ -70,7 +72,7 @@ async function load(): Promise<MyOrders> {
     cache: "no-store",
   }).catch(() => null);
   const j: Partial<MyOrders> = res ? await res.json().catch(() => ({})) : {};
-  const value: MyOrders = { orders: j.orders ?? [], needsSetup: j.needsSetup, tier: j.tier };
+  const value: MyOrders = { orders: j.orders ?? [], needsSetup: j.needsSetup, tier: j.tier, spend: j.spend };
   cached = { at: Date.now(), value };
   // เก็บสำเนาไว้เฉพาะตอนได้ของจริง (401/เน็ตหลุด → j.orders ไม่มี → ไม่ทับของเดิม)
   if (owner && j.orders) writeStoredOrders(owner, value.orders);
