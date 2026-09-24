@@ -56,7 +56,10 @@ export default function CustomerReceiptPage() {
     const k = new URLSearchParams(window.location.search).get("key") ?? "";
     setOrderKey(k);
     void load(k);
-    setCanPrint(!!window.matchMedia?.("(pointer: fine)").matches);
+    // เมาส์ = คอม · เช็ค UA ซ้ำอีกชั้น เผื่อเบราว์เซอร์ในแอปบางตัวตอบ pointer ผิดเป็น fine
+    const mouse = !!window.matchMedia?.("(pointer: fine)").matches;
+    const phone = /Mobi|Android|iPhone|iPod|iPad|Line\/|FBAN|FBAV|Instagram/i.test(navigator.userAgent);
+    setCanPrint(mouse && !phone);
   }, [load]);
 
   if (loading) return <div className="mx-auto max-w-lg px-4 py-16 text-center text-sm text-stone-400">กำลังโหลด…</div>;
