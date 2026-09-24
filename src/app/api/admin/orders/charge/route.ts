@@ -3,22 +3,21 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { orderBalance, orderTotal, withLog, type Order, type OrderCharge, type OrderStatus } from "@/lib/admin-data";
-import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
+import { clearStageMemory, hasUnpaidBalance, orderTotal, stageAfterPayment, withLog, type Order, type OrderCharge } from "@/lib/admin-data";
+import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
+import { applyCharge, chargeNotice, newChargeId } from "@/lib/server/order-charge";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import { updateOrder } from "@/lib/server/order-write";
 
 export const runtime = "nodejs";
 
-/** สถานะที่ยังไม่เข้าไลน์ผลิต — ยอดโตแล้วให้เด้งกลับ "รอชำระเงิน" (ชุดเดียวกับ REOPEN_FOR_BALANCE ใน PATCH /api/admin/orders) */
-const REOPEN_FOR_BALANCE: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
 const thb = (n: number) => n.toLocaleString("th-TH");
 
 /**
  * 🧾 เก็บค่าบริการเพิ่มทีหลัง (ค่าตัดภาพ · ค่าส่งเพิ่ม · ค่าเร่งงาน · ค่าแก้ไฟล์ …) — ไม่ใช่สินค้า ไม่เข้าใบงานผลิต
  * POST { orderId, label, amount, note? } → ต่อท้าย order.charges[] · ยอดรวมโต · แจ้งลูกค้าทางไลน์ยอดที่ต้องโอนเพิ่ม + ลิงก์แนบสลิป
  *   • ใบที่แอดมินเคยกด "ชำระแล้ว" เองโดยไม่มี paidTotal → ถือว่ารับครบเท่ายอดก่อนเก็บเพิ่ม (ไม่งั้นระบบไม่รู้ว่าค้าง)
- *   • ยังไม่เข้าไลน์ผลิต → เด้งกลับ "รอชำระเงิน" · ผลิตอยู่แล้ว → สถานะเดิม แต่ล็อกยิงเลขพัสดุด้วยยอดค้าง (packGate/hasUnpaidBalance)
+ *   • มียอดค้างจริง → เด้งกลับ "รอชำระเงิน" (รวมใบที่กำลังผลิต ตั้งแต่ 24 ก.ย. 69 — คิวปริ้น/แพ็คยังเห็นผ่าน queueStageOf) · เงินครบกลับขั้นเดิมเอง
  * DELETE { orderId, chargeId } → ถอดรายการ (ลง log) — ถ้าลูกค้าโอนมาแล้วจะกลายเป็นโอนเกิน แอดมินดูเอง
  * สิทธิ์: orders.edit + orders.money (แก้บิลได้และเห็นเงิน)
  */
@@ -46,54 +45,16 @@ export async function POST(req: Request) {
   if (order.claimOf) return NextResponse.json({ error: "ออเดอร์เคลม/ทำใหม่ไม่คิดเงิน — เก็บเพิ่มไม่ได้" }, { status: 409 });
 
   const now = new Date().toISOString();
-  const charge: OrderCharge = { id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, label, amount, note, by: who, at: now };
-  const totalBefore = orderTotal(order);
-  const waiting = order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ";
-  let updated: Order = { ...order, charges: [...(order.charges ?? []), charge] };
-  // แอดมินยืนยันเงินเข้าเองมาก่อนโดยไม่มี paidTotal (เงินสด/ไม่มีสลิป) → ถือว่ารับครบเท่าบิลเดิม
-  if (updated.paidTotal == null && !waiting && !updated.deposit) updated = { ...updated, paidTotal: totalBefore };
-  const total = orderTotal(updated);
-  const bal = orderBalance(updated);
-  // ยังไม่เข้าไลน์ผลิต + มียอดค้างจริง → กลับไปรอชำระเงิน (ใบมัดจำมีเส้นทางเก็บงวดหลังของตัวเอง ไม่เด้ง)
-  const reopen = !updated.deposit && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
-  if (reopen) updated = { ...updated, status: "รอชำระเงิน", reopenedFrom: order.status };
-  updated = withLog(
-    updated,
-    who,
-    `เก็บเพิ่ม: ${label} ${thb(amount)} บาท`,
-    `ยอดรวม ${thb(totalBefore)} → ${thb(total)} บาท${updated.paidTotal != null ? ` · ค้าง ${thb(bal)} บาท` : ""}${note ? ` · ${note}` : ""}${reopen ? " · กลับไปรอชำระเงิน" : ""}`
-  );
-  // จำยอดค้างที่กำลังบอกลูกค้า — แอดมินลดยอดทีหลังก่อนลูกค้าโอน จะได้แจ้งยอดใหม่ให้ (ดู balanceShrank ใน /api/admin/orders)
-  // 📣 ข้อความข้างล่างบอกยอดค้างทั้งก้อนอยู่แล้ว → ปิดคิวแจ้งยอดที่ค้างอยู่ (ถ้ามี) ไปพร้อมกัน ไม่ต้องยิงซ้ำอีกข้อความ
-  if (updated.paidTotal != null) updated = { ...updated, balanceNotified: { at: now, balance: bal } };
-  if (updated.balancePending) updated = { ...updated, balancePending: undefined };
+  const charge: OrderCharge = { id: newChargeId(), label, amount, note, by: who, at: now };
+  // กติกากลาง (เด้งกลับรอชำระเงิน · balanceNotified · log) อยู่ที่ applyCharge — ใช้ร่วมกับ "แนบบิลเพิ่ม" FlowAccount
+  const applied = applyCharge(order, charge, who);
+  const updated = applied.order;
   const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // แจ้งลูกค้าทันที — บอกว่าเก็บอะไร เท่าไร และยอดที่ต้องโอนเพิ่ม (ลิงก์เดิม แนบสลิปได้เลย)
+  // แจ้งลูกค้าทันที — บอกว่าเก็บอะไร เท่าไร และยอดที่ต้องโอนเพิ่ม (ใบ FlowAccount = โอนตามเอกสาร ส่งสลิปในแชท)
   const link = orderLink(new URL(req.url).origin, updated);
-  const due = updated.paidTotal != null ? bal : total;
-  void notifyCustomerLogged(
-    sb,
-    updated,
-    orderNotice(updated, link, {
-      tone: "charge",
-      head: "มีค่าบริการเพิ่ม",
-      headline: `${label} ${thb(amount)} บาท${note ? ` — ${note}` : ""}`,
-      hero: { label: due !== total ? "ยอดที่ต้องโอนเพิ่ม" : "ยอดที่ต้องโอน", value: `${thb(due)} บาท` },
-      rows: [
-        { label: "ค่าบริการเพิ่ม", value: `${label} ${thb(amount)} บาท` },
-        { label: "ยอดรวมทั้งบิล", value: `${thb(total)} บาท` },
-        ...(updated.paidTotal != null ? [{ label: "รับแล้ว", value: `${thb(updated.paidTotal)} บาท`, bold: true }] : []),
-      ],
-      note: "โอนแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ",
-      alt: `🧾 ออเดอร์ ${updated.id} มีค่าบริการเพิ่ม: ${label} ${thb(amount)} บาท${note ? `\n${note}` : ""}\n💰 ยอดรวมทั้งบิล ${thb(total)} บาท${
-        due !== total ? `\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(due)} บาท` : ""
-      }\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${link}`,
-    }),
-    `แจ้งเก็บเพิ่ม ${label} ${thb(amount)} บาท`,
-    "key"
-  );
+  void notifyCustomerLogged(sb, updated, chargeNotice(applied, charge, link), `แจ้งเก็บเพิ่ม ${label} ${thb(amount)} บาท`, "key");
   // คืนออเดอร์พร้อมลิงก์สลิปที่เซ็นแล้ว — หน้าออเดอร์เอาไปแทนก้อนเดิมได้เลย
   return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated), charge });
 }
@@ -118,12 +79,25 @@ export async function DELETE(req: Request) {
   if (!c) return NextResponse.json({ error: "ไม่พบรายการเก็บเพิ่มนี้" }, { status: 404 });
 
   const updated = withLog(
-    { ...order, charges: (order.charges ?? []).filter((x) => x.id !== chargeId) },
+    {
+      ...order,
+      charges: (order.charges ?? []).filter((x) => x.id !== chargeId),
+      // 🧾➕ บิลเพิ่มที่คู่กับค่านี้ถอดตามไปด้วย (ใบกำกับที่ไม่ได้เก็บเงินแล้วไม่ควรค้างให้ฝ่ายแพ็คหา)
+      ...(order.flowAccountExtras?.some((x) => x.chargeId === chargeId)
+        ? { flowAccountExtras: order.flowAccountExtras.filter((x) => x.chargeId !== chargeId) }
+        : {}),
+    },
     who,
     `ถอดรายการเก็บเพิ่ม: ${c.label} ${thb(c.amount)} บาท`,
     `ยอดรวม ${thb(orderTotal(order))} → ${thb(orderTotal({ ...order, charges: (order.charges ?? []).filter((x) => x.id !== chargeId) }))} บาท`
   );
-  const { error } = await updateOrder(sb, updated);
+  // ↩️ ถอดแล้วยอดค้างหมด + ใบเคยถูกเด้งกลับรอชำระเงินเพราะยอดนี้ → คืนขั้นเดิมที่จำไว้เอง (กติกาเดียวกับ PATCH restoredFromReopen)
+  const restored =
+    updated.status === "รอชำระเงิน" && !!updated.reopenedFrom && !updated.deposit && !updated.claimOf && hasUnpaidBalance(order) && !hasUnpaidBalance(updated);
+  const final = restored
+    ? withLog({ ...updated, status: stageAfterPayment(updated), ...clearStageMemory }, who, "ยอดค้างหมดแล้ว — กลับไปขั้นเดิม", `รอชำระเงิน → ${stageAfterPayment(updated)}`)
+    : updated;
+  const { error } = await updateOrder(sb, final);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated) });
+  return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, final) });
 }

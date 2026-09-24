@@ -11,6 +11,7 @@
 import { ALL_CARD_HEX, NOTICE_HEX, checkFlexMessages, followUpNotice, noticeFlex, orderNotice, statusFlex, type LineMessage, type NoticeTone } from "../src/lib/server/notify";
 import { CLAIM_STATUSES } from "../src/lib/claims";
 import type { Order, OrderStatus } from "../src/lib/admin-data";
+import { applyCharge, chargeNotice } from "../src/lib/server/order-charge";
 
 let pass = 0;
 const fails: string[] = [];
@@ -338,6 +339,38 @@ for (const tone of Object.keys(NOTICE_HEX) as NoticeTone[])
   if (near.length) fails.push(`จานสี: คู่ที่ใกล้กันจนแยกไม่ออก (ต้องห่าง ≥ ${MIN_DE})\n   ${near.join("\n   ")}`);
   else pass++;
   console.log(`🎨 จานสีการ์ด ${names.length} สี — ไม่ซ้ำ · อ่านออก · ห่างกันพอ`);
+}
+
+// 🧾➕ การ์ด "มีค่าบริการเพิ่ม" จากตัวช่วยกลาง (order-charge.ts) — ใบธรรมดา · ใบ FlowAccount · ใบ FlowAccount + บิลเพิ่ม (ปุ่มชี้เอกสารใบที่ 2)
+{
+  const charge = { id: "c1", label: "ค่าตัดภาพ 3 รูป", amount: 150, by: "แอดมิน", at: "2026-09-24T09:00:00.000Z" };
+  const plain = applyCharge(order({ status: "กำลังผลิต" }), charge, "แอดมิน");
+  if (plain.order.status !== "รอชำระเงิน" || plain.order.reopenedFrom !== "กำลังผลิต") fails.push("applyCharge: ใบกำลังผลิตต้องเด้งกลับรอชำระเงิน + จำขั้นเดิม");
+  check("เก็บเพิ่ม (ใบธรรมดา)", chargeNotice(plain, charge, LINK));
+  const fa = order({
+    status: "กำลังผลิต",
+    items: [{ name: "แก้วมัค (แก้วใส)", qty: 20, unitPrice: 140 }],
+    paidTotal: 2996,
+    vat: { rate: 7, amount: 196 },
+    flowAccount: { url: "https://share.flowaccount.com/qt/th/x", docType: "qt", docTypeLabel: "ใบเสนอราคา", docNo: "QT010703", grandTotal: 2996, fetchedAt: "2026-09-21T08:09:07.802Z" },
+  } as Partial<Order>);
+  const extra = {
+    url: "https://share.flowaccount.com/qt/th/y",
+    docType: "qt",
+    docTypeLabel: "ใบเสนอราคา",
+    docNo: "QT010743",
+    grandTotal: 256.8,
+    vat: 16.8,
+    lines: ["แก้ไขรายละเอียดจากแก้วใส เป็น แก้ว-ขาวขุ่น ×20 @5", "**ชิ้นตัวอย่าง ผลิตแล้ว** แก้วมัค (แก้วใส) ×1 @140"],
+    by: "แอดมิน",
+    at: "2026-09-24T09:00:00.000Z",
+  };
+  const c2 = { id: "c2", label: "บิลเพิ่ม ใบเสนอราคา QT010743", amount: 256.8, note: "ตามใบเสนอราคา QT010743 · https://share.flowaccount.com/qt/th/y", by: "แอดมิน", at: extra.at };
+  const applied = applyCharge(fa, c2, "แอดมิน", { extraDoc: extra });
+  if (applied.order.flowAccountExtras?.[0]?.chargeId !== "c2") fails.push("applyCharge: บิลเพิ่มต้องผูก chargeId");
+  if (Math.abs(applied.bal - 256.8) > 0.01) fails.push(`applyCharge: ยอดค้างต้อง 256.80 ได้ ${applied.bal}`);
+  check("เก็บเพิ่ม (FlowAccount ไม่มีบิลเพิ่ม)", chargeNotice(applyCharge(fa, charge, "แอดมิน"), charge, LINK));
+  check("เก็บเพิ่ม (FlowAccount + บิลเพิ่ม)", chargeNotice(applied, c2, LINK, { ...extra, chargeId: "c2" }));
 }
 
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} ใบ (ผ่าน ${pass})\n\n${fails.join("\n\n")}\n` : `✅ การ์ดผ่านครบทั้ง ${pass} ใบ`);

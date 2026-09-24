@@ -651,6 +651,11 @@ export default function CustomerOrderPage() {
     order.status
   );
   const cancelled = order.status === "ยกเลิก";
+  /**
+   * 🧾➕ ใบ FlowAccount ที่มี "บิลเพิ่ม" และยังค้างส่วนต่าง (จ่ายบิลหลักไปแล้ว) — บอกให้โอนตามบิลเพิ่ม ไม่ใช่บิลหลัก
+   * (OD-260921-1879 · 24 ก.ย. 69: แบนเนอร์เดิมบอก "ชำระตาม QT010703 2,996" ทั้งที่ค้างแค่ 256.80 ตาม QT010743)
+   */
+  const extraDocsDue = !!order.flowAccount && (order.flowAccountExtras?.length ?? 0) > 0 && balance > 0 && paidSoFar(order) > 0 && !cancelled;
   /** 🏪 ลูกค้ามารับเองที่ร้าน — ไม่มีพัสดุ ป้าย/ข้อความเรื่อง "จัดส่ง" ต้องเปลี่ยนคำทั้งหน้า */
   const pickup = isPickupOrder(order);
   const shipLabel = stripShipPrice(resolveShipLabel(order, shippingOf(payment)));
@@ -832,7 +837,33 @@ export default function CustomerOrderPage() {
       )}
 
       {/* ── ใบที่ออกบิลใน FlowAccount: ชำระตามเอกสารนั้น ไม่ต้องโอนเข้าบัญชีร้าน/แนบสลิปที่นี่ ── */}
-      {order.status === "รอชำระเงิน" && order.flowAccount && (
+      {extraDocsDue && (
+        <div className="ord-note mt-4 p-4">
+          <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
+            💳 ยอดที่ต้องโอนเพิ่ม {formatPrice(balance)}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed">
+            บิลหลักรับชำระแล้ว ✓ — ส่วนต่างที่เพิ่มมาออกเป็นเอกสารแยก โอนตามใบด้านล่างแล้วส่งสลิปมาในแชท LINE ได้เลย ไม่ต้องแนบสลิปในหน้านี้
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {order.flowAccountExtras!.map((x) => (
+              <li key={x.docNo} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span>
+                  📄 {x.docTypeLabel} {x.docNo}
+                  {x.lines?.[0] ? <span className="block opacity-80">{x.lines.slice(0, 2).join(" · ")}</span> : null}
+                </span>
+                <span className="flex items-center gap-2">
+                  <b>{formatPrice(x.grandTotal)}</b>
+                  <a href={x.url} target="_blank" rel="noreferrer" className="ord-btn sm">
+                    เปิดเอกสาร ↗
+                  </a>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {order.status === "รอชำระเงิน" && order.flowAccount && !extraDocsDue && (
         <div className="ord-note mt-4 p-4">
           <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
             📄 {order.deposit && !order.deposit.firstPaidAt ? "โอนมัดจำงวดแรกตาม" : "ชำระตาม"}

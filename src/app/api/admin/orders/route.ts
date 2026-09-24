@@ -60,6 +60,7 @@ import {
   type Proof,
   type Shipment,
   type TrackingBox,
+  REOPEN_FOR_BALANCE,
 } from "@/lib/admin-data";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
@@ -845,8 +846,8 @@ export async function PATCH(req: Request) {
    * (กติกาเดียวกับตอนลูกค้าสั่งเพิ่มในออเดอร์เดิม — /api/orders/append)
    *
    * ทำเฉพาะ: แอดมินสิทธิ์เต็ม · คำขอนี้ไม่ได้ตั้งใจเปลี่ยนสถานะเอง (เคารพสิ่งที่แอดมินเลือก)
-   * · ใบที่ยังไม่เข้าไลน์ผลิต (เข้าผลิตแล้วดึงกลับ = ป่วนคิวงาน — ใบพวกนั้นพึ่งป้าย "ค้าง"
-   *   ในลิสต์ + ด่านยิงเลขพัสดุแทน) · ใบมัดจำ/เคลมมีเส้นทางเก็บเงินของตัวเอง (hasUnpaidBalance กันให้แล้ว)
+   * · สถานะในชุด REOPEN_FOR_BALANCE — รวมใบที่กำลังผลิตแล้วด้วย (24 ก.ย. 69 เจ้าของร้านทัก: มียอดค้างต้องเห็นเป็นรอชำระเงิน)
+   *   คิวปริ้น/สถานีแพ็ค/แท็บแพ็คของ มองใบผ่าน queueStageOf จึงไม่หลุดคิว · ใบมัดจำ/เคลมมีเส้นทางเก็บเงินของตัวเอง (hasUnpaidBalance กันให้แล้ว)
    */
   /**
    * 💰 ยอดบิลโตในคำขอนี้ (เปิด VAT ทีหลัง · แก้ค่าส่ง · เพิ่มรายการ) บนใบที่แอดมินเคยยืนยันเงินเองโดยไม่มี paidTotal
@@ -935,7 +936,7 @@ export async function PATCH(req: Request) {
   // แอดมินเปลี่ยนสถานะเองในคำขอนี้ → ล้างสถานะที่จำไว้ก่อนเด้ง (ไม่ให้เด้งกลับไปทับสิ่งที่แอดมินตั้งใจ)
   if (mayEditFull && toSave.status !== existing.status && toSave.reopenedFrom) toSave = { ...toSave, reopenedFrom: undefined };
 
-  const REOPEN_FOR_BALANCE: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
+  // ชุดสถานะอยู่ที่ admin-data (REOPEN_FOR_BALANCE) — รวม "กำลังผลิต" แล้ว 24 ก.ย. 69 (ดูหมายเหตุที่นั่น) · ใช้ร่วมกับ /charge และ /flowaccount/extra
   const reopenedForBalance =
     mayEditFull &&
     !toSave.deposit &&

@@ -36,6 +36,7 @@ import {
   STEP_OF,
   type Order,
   type OrderStatus,
+  queueStageOf,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
@@ -467,7 +468,10 @@ export default function AdminOrdersPage() {
     .filter((o) => (dep === "all" ? true : depStageOf(o) === dep))
     .filter((o) => (cust === "all" ? true : cust === "dealer" ? !!o.dealer : !o.dealer))
     .filter((o) => (onlyDue ? isDue(o) : true))
-    .filter((o) => (onlyDue || onlyStock || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status)))
+    // 💳 ใบที่เด้งกลับ "รอชำระเงิน" เพราะยอดโตระหว่างงานเดิน (reopenedFrom) ยังโผล่ในแท็บของแผนกเดิมด้วย — งานไม่หลุดจากสายตาฝ่ายผลิต/แพ็ค
+    .filter((o) =>
+      onlyDue || onlyStock || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status) || activeDept.statuses.includes(queueStageOf(o))
+    )
     .filter((o) => (filter === "all" ? true : o.status === filter))
     .filter((o) => {
       if (!kw) return true;

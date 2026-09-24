@@ -57,6 +57,8 @@ import {
   lastReprintProof,
   openFollowUp,
   orderNeedsTaxInvoiceInBox,
+  queueStageOf,
+  taxInvoiceCountLabel,
   orderPrintCount,
   orderStatusLabel,
   ownsTrackingNumber,
@@ -92,11 +94,11 @@ function TaxTag({ o }: { o: Order }) {
   if (!orderNeedsTaxInvoiceInBox(o)) return null;
   return o.taxInvoicePacked ? (
     <Tag tone="mint" title={`ยืนยันโดย ${o.taxInvoicePacked.by}`}>
-      🧾 ใบกำกับใส่แล้ว · {o.taxInvoicePacked.by}
+      🧾 {taxInvoiceCountLabel(o)}ใส่แล้ว · {o.taxInvoicePacked.by}
     </Tag>
   ) : (
     <Tag tone="solid" title="บิล FlowAccount/บิล VAT — พิมพ์ใบกำกับจาก FlowAccount ใส่กล่อง แล้วกดยืนยันในหน้าออเดอร์ (โหมดแพ็ค)">
-      🧾 ใบกำกับ ยังไม่ใส่กล่อง
+      🧾 {taxInvoiceCountLabel(o)} ยังไม่ใส่กล่อง
     </Tag>
   );
 }
@@ -331,7 +333,7 @@ export default function ScanTrackingPage() {
 
   // ── แยกออเดอร์เป็น 3 กอง ตามผลตรวจแพ็ค ──
   const { toScan, toPrint, unprinted, toWait, waitOverdue } = useMemo(() => {
-    const active = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking && (!taxOnly || orderNeedsTaxInvoiceInBox(o)));
+    const active = orders.filter((o) => FULFILL.includes(queueStageOf(o)) && !o.tracking && (!taxOnly || orderNeedsTaxInvoiceInBox(o)));
     const wait = active.filter((o) => packMissingOf(o).length > 0); // 📦 ของยังไม่มา/ไม่ครบ → รอของ
     // เลยวันที่คาดว่าจะมาก่อน · แล้วใบที่รอมานานสุดก่อน
     wait.sort((a, b) => {
@@ -364,7 +366,7 @@ export default function ScanTrackingPage() {
 
   /** 🧾 ใบที่ยังไม่ยิงเลขและต้องใส่ใบกำกับลงกล่อง — ไว้ขึ้นชิปกรอง (นับจากทั้งหมด ไม่ขึ้นกับตัวกรอง) */
   const taxStats = useMemo(() => {
-    const need = orders.filter((o) => FULFILL.includes(o.status) && !o.tracking && orderNeedsTaxInvoiceInBox(o));
+    const need = orders.filter((o) => FULFILL.includes(queueStageOf(o)) && !o.tracking && orderNeedsTaxInvoiceInBox(o));
     return { n: need.length, pending: need.filter((o) => !o.taxInvoicePacked).length };
   }, [orders]);
 

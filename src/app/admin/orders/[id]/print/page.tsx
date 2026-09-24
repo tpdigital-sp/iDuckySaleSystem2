@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice } from "@/lib/products";
-import { adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
+import { adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -1156,7 +1156,7 @@ function OrderDocs({
                     className="keep mt-1.5 inline-block rounded border-[2.5px] border-red-600 bg-white px-2.5 py-1 text-sm font-extrabold leading-none"
                     style={{ color: "#dc2626", transform: "rotate(-1.5deg)" }}
                   >
-                    🧾 แนบใบกำกับภาษี
+                    🧾 แนบ{taxInvoiceCountLabel(order)}
                   </p>
                 )}
               </div>
@@ -1295,9 +1295,12 @@ function OrderDocs({
                 {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok &&
                   (() => {
                     const doc = taxInvoiceDocOf(order);
+                    // 🧾➕ บิลเพิ่ม (ใบที่ 2 ขึ้นไป) ต้องบอกบนกระดาษว่ามีกี่ใบ เลขอะไรบ้าง — คนแพ็คจะได้พิมพ์ครบ
+                    const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo);
+                    const docTxt = docs.length > 1 ? docs.map((d) => `${d.label} ${d.docNo}${d.extra ? " (บิลเพิ่ม)" : ""}`).join(" + ") : doc.docNo ? `${doc.label} ${doc.docNo}` : "";
                     return (
                       <p className="mt-1.5 block w-fit rounded border-2 border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
-                        🧾 ต้องใส่ใบกำกับภาษีลงกล่อง{doc.docNo ? ` — อ้างอิง ${doc.label} ${doc.docNo}` : ""}
+                        🧾 ต้องใส่{taxInvoiceCountLabel(order)}ลงกล่อง{docTxt ? ` — อ้างอิง ${docTxt}` : ""}
                         {order.flowAccount || doc.url ? " (พิมพ์จาก FlowAccount)" : ""}
                         {doc.company ? ` · ${doc.company}` : ""}
                       </p>

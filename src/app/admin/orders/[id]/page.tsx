@@ -7,6 +7,7 @@ import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
+import FlowAccountExtraDocs from "@/components/admin/FlowAccountExtraDocs";
 import { CLAIM_STATUS_STYLES, type Claim } from "@/lib/claims";
 /** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
 const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
@@ -96,6 +97,10 @@ import {
   openFollowUp,
   trackingBoxes,
   taxInvoiceDocOf,
+  taxInvoiceDocsOf,
+  taxInvoiceCountLabel,
+  taxInvoiceDocNos,
+  waitingForBalanceFrom,
   applyArrival,
   addOnParents,
   addOnNothingToRead,
@@ -3349,8 +3354,8 @@ export default function AdminOrderDetailPage() {
     const next = withLog(
       { ...order, taxInvoicePacked: acked ? undefined : { by: actor, at: new Date().toISOString() } },
       actor,
-      acked ? "ยกเลิกยืนยันใส่ใบกำกับภาษี" : "ยืนยันใส่ใบกำกับภาษีลงกล่องแล้ว",
-      doc.docNo ? `${doc.label} ${doc.docNo}` : undefined
+      acked ? `ยกเลิกยืนยันใส่${taxInvoiceCountLabel(order)}` : `ยืนยันใส่${taxInvoiceCountLabel(order)}ลงกล่องแล้ว`,
+      taxInvoiceDocNos(order) || (doc.docNo ? `${doc.label} ${doc.docNo}` : undefined)
     );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -4436,6 +4441,15 @@ export default function AdminOrderDetailPage() {
             {/* ใครสร้างใบนี้ — ใต้ป้ายสถานะ ให้เห็นทันทีตั้งแต่หัวหน้า (เจ้าของร้านขอ 16 ก.ย. 69)
                 พนักงานทำให้ (สั่งแทนที่ตะกร้า · งานพิเศษ · แปลงจากใบเสนอราคา/FlowAccount · redo) = ป้ายทึบ + ชื่อคนทำ
                 ลูกค้ากดสั่งเองจากหน้าเว็บ = ป้ายจาง ๆ · คำเดียวกับหน้ารายการออเดอร์ (dkb-by) จะได้ไม่งงข้ามหน้า */}
+            {/* 💳 ใบที่เด้งกลับรอชำระเงินเพราะยอดโตระหว่างงานเดิน — บอกว่าเงินครบจะกลับขั้นไหน คิวผลิตยังเห็นอยู่ */}
+            {waitingForBalanceFrom(order) && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200"
+                title="ยอดรวมเพิ่มขึ้นหลังรับเงินแล้ว — ลูกค้าต้องโอนส่วนต่าง · เงินครบระบบคืนขั้นเดิมให้เอง · คิวปริ้น/สถานีแพ็คยังเห็นใบนี้"
+              >
+                💳 ค้างส่วนต่าง {formatPrice(orderBalance(order))} · เงินครบกลับไป &quot;{waitingForBalanceFrom(order)}&quot; เอง
+              </span>
+            )}
             {order.placedBy ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200"
@@ -4833,8 +4847,8 @@ export default function AdminOrderDetailPage() {
                     {order.taxInvoiceDelivery === "email"
                       ? "📧 ใบกำกับส่ง E-tax/อีเมลแล้ว — ไม่ต้องแนบกล่อง"
                       : order.taxInvoicePacked
-                        ? `✅ ใส่ใบกำกับลงกล่องแล้ว · ${order.taxInvoicePacked.by} · ${shortTime(order.taxInvoicePacked.at)}`
-                        : "🧾 ต้องใส่ใบกำกับภาษีลงกล่อง — ยังไม่ยืนยัน (กันยิงเลขพัสดุ)"}
+                        ? `✅ ใส่${taxInvoiceCountLabel(order)}ลงกล่องแล้ว · ${order.taxInvoicePacked.by} · ${shortTime(order.taxInvoicePacked.at)}`
+                        : `🧾 ต้องใส่${taxInvoiceCountLabel(order)}ลงกล่อง${order.flowAccountExtras?.length ? ` (${taxInvoiceDocNos(order)})` : ""} — ยังไม่ยืนยัน (กันยิงเลขพัสดุ)`}
                     {mayEdit && (
                       <span className="ml-auto flex gap-1">
                         {order.taxInvoiceDelivery !== "email" && (
@@ -4893,6 +4907,10 @@ export default function AdminOrderDetailPage() {
                     </p>
                   )}
                   {order.flowAccount && mayEdit && <FlowAccountSync order={order} actor={actor} onApply={applyOrder} />}
+                  {/* 🧾➕ บิลเพิ่ม — เอกสารใบที่ 2 ขึ้นไป (ส่วนต่างเปลี่ยนสเปค/วัสดุ) · ฝ่ายแพ็คต้องรู้ว่ามีกี่ใบ */}
+                  {(order.flowAccount || order.taxInvoice) && (mayEdit || (order.flowAccountExtras?.length ?? 0) > 0) && (
+                    <FlowAccountExtraDocs order={order} mayEdit={mayEdit && seesMoney} onApply={adoptOrder} />
+                  )}
                   {order.taxInvoice && (
                     <p className={muted}>
                       🧾 ใบกำกับ: <b className="text-slate-800">{order.taxInvoice.company}</b>
@@ -10212,7 +10230,7 @@ function PackView({
                   <span className="text-lg">{packed ? "✅" : "🧾"}</span>
                   <span className="min-w-0 flex-1 text-xs">
                     <span className={`block font-extrabold ${packed ? "text-slate-700" : "text-rose-700"}`}>
-                      อย่าลืม! ใส่ใบกำกับภาษีลงกล่อง
+                      อย่าลืม! ใส่{taxInvoiceCountLabel(order)}ลงกล่อง
                     </span>
                     <span className={packed ? "text-green-700" : "font-bold text-rose-600"}>
                       {packed
@@ -10222,7 +10240,7 @@ function PackView({
                   </span>
                 </button>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-                  <span className="min-w-0 truncate">
+                  <span className="min-w-0">
                     {doc.url ? (
                       <a href={doc.url} target="_blank" rel="noreferrer" className="font-bold text-sky-700 underline">
                         {docLine} ↗
@@ -10231,6 +10249,22 @@ function PackView({
                       docLine
                     )}
                     {doc.company ? ` · ${doc.company}` : ""}
+                    {/* 🧾➕ บิลเพิ่ม — ใบกำกับใบที่ 2 ขึ้นไป ต้องพิมพ์ใส่กล่องด้วย */}
+                    {taxInvoiceDocsOf(order)
+                      .filter((d) => d.extra && d.docNo)
+                      .map((d) => (
+                        <span key={d.docNo} className="block font-bold text-rose-700">
+                          ＋ บิลเพิ่ม:{" "}
+                          {d.url ? (
+                            <a href={d.url} target="_blank" rel="noreferrer" className="underline">
+                              {d.label} {d.docNo} ↗
+                            </a>
+                          ) : (
+                            `${d.label} ${d.docNo}`
+                          )}
+                          {d.amount != null ? ` · ${formatPrice(d.amount)}` : ""}
+                        </span>
+                      ))}
                   </span>
                   {!packed && (
                     <button

@@ -25,7 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
 import { isPickupOrder } from "@/lib/ship-label";
-import { daysToUseBy, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
@@ -84,7 +84,8 @@ const nextRoundOf = (o: Order): { round: number; lastRound: boolean } | null =>
   isPartiallyShipped(o) ? { round: (o.shipments?.length ?? 0) + 1, lastRound: !nextPlannedRound(o) } : null;
 const isSent = (o: Order) => !!o.productionSent;
 /** ผลิตอยู่แล้วแต่ยังไม่มีใบงาน — ของร้อนที่สุดในคิว ต้องปริ้นตามให้ทัน */
-const inProdUnprinted = (o: Order) => o.status === "กำลังผลิต" && printCountOf(o) === 0;
+// ⚠️ ดูขั้นงานผ่าน queueStageOf: ใบที่เด้งกลับ "รอชำระเงิน" เพราะยอดโตระหว่างผลิต (reopenedFrom) ยังอยู่ในคิว (24 ก.ย. 69)
+const inProdUnprinted = (o: Order) => queueStageOf(o) === "กำลังผลิต" && printCountOf(o) === 0;
 
 /** อีกกี่วันถึงวันที่จัดส่ง (shipDate.from) · ไม่มีวันส่ง = null */
 function daysToShip(o: Order, today: string): number | null {
@@ -176,7 +177,7 @@ function PrintQueueInner() {
   usePolling(load, { intervalMs: 20000 });
 
   /** แบบผ่านแล้วจนถึงกำลังผลิต — ก่อนหน้านี้แบบยังไม่นิ่ง ปริ้นไม่ได้ */
-  const ready = useMemo(() => orders.filter((o) => PRINT_QUEUE_STATUSES.includes(o.status)), [orders]);
+  const ready = useMemo(() => orders.filter((o) => PRINT_QUEUE_STATUSES.includes(queueStageOf(o))), [orders]);
 
   const counts = useMemo(() => {
     const unprinted = ready.filter((o) => printCountOf(o) === 0);
@@ -199,7 +200,7 @@ function PrintQueueInner() {
     const todo = ready.filter((o) => printCountOf(o) === 0 && isSent(o));
     return {
       rush: todo.filter((o) => o.rush).length,
-      inProd: todo.filter((o) => o.status === "กำลังผลิต").length,
+      inProd: todo.filter((o) => queueStageOf(o) === "กำลังผลิต").length,
       today: todo.filter((o) => {
         const d = daysToShip(o, today) ?? daysToUseBy(o);
         return d !== null && d <= 0;
@@ -556,6 +557,11 @@ function PrintRow({
               <Tag tone="coral" title="ใบนี้ถูกดันเข้าไลน์ผลิตแล้วทั้งที่ยังไม่ได้ปริ้นใบงาน">ผลิตอยู่ ยังไม่ปริ้น</Tag>
             )}
             {o.status === "กำลังผลิต" && printed > 0 && <Tag tone="quiet">กำลังผลิต</Tag>}
+            {waitingForBalanceFrom(o) && (
+              <Tag tone="coral" title={`ยอดรวมเพิ่มขึ้นหลังรับเงิน (เปลี่ยนสเปค/เก็บเพิ่ม) — ลูกค้าต้องโอนส่วนต่างก่อนปิดใบ · เงินครบกลับไป "${waitingForBalanceFrom(o)}" เอง`}>
+                💳 รอชำระส่วนต่าง
+              </Tag>
+            )}
             {nextRound && (
               <Tag
                 tone="yolk"

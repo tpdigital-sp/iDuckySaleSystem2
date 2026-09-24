@@ -1224,6 +1224,13 @@ export interface Order {
    */
   vat?: { rate: number; amount: number };
   /**
+   * 🧾➕ "บิลเพิ่ม" — เอกสาร FlowAccount ใบที่ 2, 3 … ที่ร้านออกหลังบิลหลัก (ส่วนต่างเปลี่ยนสเปค/วัสดุ · ค่าใช้จ่ายเพิ่ม)
+   * ยอดของใบพวกนี้ "ไม่เข้า" ฐานภาษีของบิลหลัก — เก็บผ่าน charges (ดู chargeId) เพื่อให้ยอดตามบิลหลัก (flowAccountGap) ยังตรง
+   * ใช้บอกฝ่ายแพ็คว่ากล่องนี้ต้องมีใบกำกับกี่ใบ (taxInvoiceDocsOf) และบอกลูกค้าว่าส่วนต่างโอนตามใบไหน
+   * (OD-260921-1879 · 24 ก.ย. 69: แก้วใส → ขาวขุ่น ออก QT010743 ส่วนต่าง 256.80 หลังบิลหลัก QT010703 จ่ายครบแล้ว)
+   */
+  flowAccountExtras?: FlowAccountExtraDoc[];
+  /**
    * 🧾 ใบกำกับภาษีส่งให้ลูกค้าทางไหน — เฉพาะใบที่มีใบกำกับ (flowAccount / taxInvoice / vat)
    * ไม่ระบุ = "box" ต้องใส่ใบกำกับลงกล่องไปกับของ → ขึ้นตราบนใบปะหน้า/ใบงาน + เป็นด่านก่อนยิงเลขพัสดุ
    * "email" = ส่งไฟล์ให้ลูกค้าแล้ว/ลูกค้าไม่ต้องการตัวจริง → ไม่ต้องแนบ ไม่ขึ้นป้าย ไม่กันยิงเลข
@@ -1258,6 +1265,27 @@ export function taxInvoiceDocOf(o: Order): { docNo?: string; url?: string; label
   if (t?.docNo) return { docNo: t.docNo, url: t.docUrl, label: t.docTypeLabel ?? "เอกสาร", company: t.company };
   if (f) return { docNo: f.docNo, url: f.url, label: f.docTypeLabel, company: t?.company };
   return { label: "ใบกำกับภาษี", company: t?.company };
+}
+
+/** 🧾 เอกสารใบกำกับ "ทุกใบ" ที่ต้องไปกับกล่อง — บิลหลักก่อน แล้วตามด้วยบิลเพิ่ม (flowAccountExtras) ตามลำดับที่แนบ */
+export function taxInvoiceDocsOf(o: Order): { docNo?: string; url?: string; label: string; extra?: boolean; amount?: number }[] {
+  const main = taxInvoiceDocOf(o);
+  const extras = (o.flowAccountExtras ?? []).map((x) => ({ docNo: x.docNo, url: x.url, label: x.docTypeLabel, extra: true, amount: x.grandTotal }));
+  return [main, ...extras];
+}
+
+/** 🧾 ป้ายสั้น "ใบกำกับภาษี" / "ใบกำกับภาษี 2 ใบ" — ใช้บนตราใบปะหน้า/ใบงาน/ด่านแพ็ค */
+export function taxInvoiceCountLabel(o: Order): string {
+  const n = 1 + (o.flowAccountExtras?.length ?? 0);
+  return n > 1 ? `ใบกำกับภาษี ${n} ใบ` : "ใบกำกับภาษี";
+}
+
+/** 🧾 "QT010703 + QT010743" — เลขเอกสารทุกใบต่อกัน (ไม่มีเลข = ว่าง) */
+export function taxInvoiceDocNos(o: Order): string {
+  return taxInvoiceDocsOf(o)
+    .map((d) => d.docNo)
+    .filter(Boolean)
+    .join(" + ");
 }
 
 /** ราคาสินค้ารวม (ก่อนค่าส่ง/ส่วนลด) */
@@ -2059,6 +2087,28 @@ export interface OrderPayment {
   expected?: number;
 }
 
+/** 🧾➕ บิลเพิ่มหนึ่งใบ (ดู Order.flowAccountExtras) — ตัวเลขตามเอกสาร FlowAccount ณ ตอนแนบ */
+export interface FlowAccountExtraDoc {
+  url: string;
+  /** qt · bl · inv … ตามตัวย่อในลิงก์ */
+  docType: string;
+  docTypeLabel: string;
+  docNo: string;
+  date?: string;
+  subtotal?: number;
+  vat?: number;
+  /** ยอดรวมทั้งสิ้นตามใบ (รวม VAT) = ยอดที่ลูกค้าต้องโอนเพิ่ม */
+  grandTotal: number;
+  wht?: number;
+  net?: number;
+  /** รายการในใบ (ชื่อ ×จำนวน) ไว้โชว์ว่าใบนี้เก็บอะไร */
+  lines?: string[];
+  /** ค่าบริการเพิ่ม (Order.charges[].id) ที่คู่กับใบนี้ — ไม่มี = แนบไว้อ้างอิงเฉย ๆ ไม่ได้เก็บเงินผ่านใบนี้ */
+  chargeId?: string;
+  by: string;
+  at: string;
+}
+
 /** 🧾 ค่าบริการเพิ่มหนึ่งรายการ (ดู Order.charges) */
 export interface OrderCharge {
   id: string;
@@ -2106,6 +2156,27 @@ export interface OrderDeposit {
  * ใบพวกนั้นจะกลายเป็น "ค้างเต็มจำนวน" แล้วโดนล็อกพิมพ์ใบงาน/ยิงเลขพัสดุยกกระดาน
  * ออเดอร์เคลมตั้งใจให้ ฿0 · ออเดอร์มัดจำมีเส้นทางเก็บงวดหลังของตัวเอง (deposit.settledAt)
  */
+/**
+ * 💳 สถานะที่ "ยอดโตแล้วให้เด้งกลับรอชำระเงิน" (จำขั้นเดิมไว้ใน reopenedFrom · เงินครบกลับเองผ่าน stageAfterPayment)
+ * เดิมหยุดที่ "อนุมัติแบบ" — ใบที่เข้าผลิตแล้วคงสถานะไว้ พึ่งป้าย "ค้าง" ในลิสต์ + ด่านยิงเลขพัสดุแทน
+ * เจ้าของร้านทัก 24 ก.ย. 69 (OD-260921-1879 เปลี่ยนวัสดุระหว่างผลิต ค้าง 256.80 แต่สถานะยัง "กำลังผลิต"): มียอดค้างต้องเห็นเป็นรอชำระเงิน
+ * → รวม "กำลังผลิต" ด้วย · คิวปริ้น/สถานีแพ็ค/แท็บแพ็คของ ใช้ queueStageOf() จึงยังเห็นใบอยู่ (งานไม่หลุดคิว แค่สถานะบอกว่าค้างเงิน)
+ */
+export const REOPEN_FOR_BALANCE: OrderStatus[] = ["รอตรวจสอบ", "ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต"];
+
+/**
+ * 🏭 ขั้นงานที่คิวผลิต/แพ็คควรมองใบนี้ — ใบที่ถูกเด้งกลับ "รอชำระเงิน" เพราะยอดโต (reopenedFrom) ยังนับเป็นขั้นเดิม
+ * ต่างจาก effectiveStage (ขั้นแบบ) ตรงที่ตัวนี้เชื่อ reopenedFrom เท่านั้น: ใบรอชำระเงินธรรมดา (ยังไม่เคยจ่าย) ไม่เข้าคิว
+ */
+export function queueStageOf(o: Order): OrderStatus {
+  return o.status === "รอชำระเงิน" && o.reopenedFrom ? o.reopenedFrom : o.status;
+}
+
+/** 💳 ใบนี้ค้าง "ส่วนต่าง" ระหว่างงานเดิน (เด้งกลับรอชำระเงินจากขั้นที่จำไว้) — ไว้ติดป้ายในคิว */
+export function waitingForBalanceFrom(o: Order): OrderStatus | null {
+  return o.status === "รอชำระเงิน" && o.reopenedFrom ? o.reopenedFrom : null;
+}
+
 export function hasUnpaidBalance(o: Order): boolean {
   if (o.status === "ยกเลิก" || o.claimOf) return false;
   // ใบมัดจำ: ยังไม่ครบสองงวด · หรือครบแล้วแต่ยอดโตทีหลัง (ค่าบริการเพิ่ม/สั่งเพิ่ม) — paidTotal ถูกตั้งตอน settle เสมอ
