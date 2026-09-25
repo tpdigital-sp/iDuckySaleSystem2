@@ -487,7 +487,7 @@ async function pdfRows(buf: Buffer): Promise<Row[]> {
       }
     }
   } finally {
-    void doc.destroy();
+    void doc.destroy(); // fire-and-forget-ok: ล้างหน่วยความจำ pdf.js หลังอ่านเสร็จ ไม่มีผลลัพธ์ให้รอ
   }
   return rows;
 }

@@ -495,8 +495,8 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
    */
   const pendingTP: Promise<unknown>[] = [];
   // เรคอร์ด msVerify แยกใบ: ช่องแรก = doc id หลัก · งวดหลัง = -final · ใบเพิ่ม = -<paymentId> (กันชนกัน)
-  const tp = (note: string) =>
-    void pendingTP.push(
+  const tp = (note: string) => {
+    pendingTP.push(
       reportPaidToTP(updated, "SlipOK อัตโนมัติ", {
         received,
         noteSuffix: `${note}${dedNote}`,
@@ -504,6 +504,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         ...(phase === "extra" ? { docSuffix: `-${paymentId}`, slipPath: path, extra: true } : phase === "balance" ? { docSuffix: "-final" } : {}),
       })
     );
+  };
   // ครบงวดด้วยสลิปใบเพิ่ม → เรคอร์ดหลักที่เคยติดธง "รับบางส่วน" ต้องปลดธง (บอร์ด WIP ถึงจะขึ้นการ์ด)
   const completeViaExtra = phase === "extra" && (confirmedDeposit || confirmedFull) && paidSoFar(order) > 0;
 
@@ -670,10 +671,11 @@ export async function acceptPaymentManually(a: {
   const adminName = `แอดมิน ${who}`;
   // 🧷 เรคอร์ด msVerify รอให้เสร็จก่อนตอบ (เหตุผลเดียวกับ pendingTP ใน applySlipVerification)
   const pendingTP: Promise<unknown>[] = [];
-  const tp = (note: string) =>
-    void pendingTP.push(
+  const tp = (note: string) => {
+    pendingTP.push(
       reportPaidToTP(updated, adminName, { received: amount, noteSuffix: note, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull })
     );
+  };
   if ((confirmedDeposit || confirmedFull) && paidSoFar(order) > 0) pendingTP.push(syncPaidCompleteToTP(updated, adminName));
   if (confirmedDeposit) {
     const rem = orderTotal(updated) - (updated.paidTotal ?? 0);
