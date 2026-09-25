@@ -9,8 +9,12 @@
  * ขอบเขต: src/app/api · src/lib/server · ไฟล์ที่มี "use server" (โค้ดที่รันในฟังก์ชันเซิร์ฟเวอร์เท่านั้น — ฝั่ง browser ไม่โดนแช่แข็ง)
  * ยกเว้นเป็นบรรทัด: ต่อท้าย `// fire-and-forget-ok: <เหตุผล>` (เช่นงานที่ตั้งใจให้ทิ้งได้จริง)
  *
- * รันเอง:  node scripts/check-fire-and-forget.mjs
- * รันอัตโนมัติ: npm run build (ผ่าน prebuild)
+ * ด่านจริงอยู่ที่ตอน commit ในเครื่อง (.githooks/pre-commit → `--files <ไฟล์ที่ stage>`) — เจ้าของร้านไม่ได้เฝ้า Netlify
+ * บน Netlify (prebuild) รันแบบ `--warn`: พิมพ์เตือนในบันทึก build แต่ไม่ล้ม เว็บขึ้นเสมอ
+ *
+ * รันเอง:  node scripts/check-fire-and-forget.mjs            (ทั้งโปรเจกต์ · เจอ = exit 1)
+ *          node scripts/check-fire-and-forget.mjs --files a.ts b.ts
+ *          node scripts/check-fire-and-forget.mjs --warn     (เตือนอย่างเดียว)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -19,6 +23,11 @@ import ts from "typescript";
 const ROOTS = ["src/app/api", "src/lib/server"];
 const EXTRA_ROOT = "src"; // หาไฟล์ "use server" นอก 2 โฟลเดอร์หลัก
 const ALLOW_FILE = ["src/lib/server/background.ts"];
+
+const argv = process.argv.slice(2);
+const WARN = argv.includes("--warn");
+const onlyIdx = argv.indexOf("--files");
+const ONLY = onlyIdx >= 0 ? argv.slice(onlyIdx + 1).filter((a) => !a.startsWith("--")) : null;
 
 const files = new Set();
 function walk(dir, pick) {
@@ -29,8 +38,17 @@ function walk(dir, pick) {
     else if (/\.tsx?$/.test(e.name) && pick(p)) files.add(p.split(path.sep).join("/"));
   }
 }
-for (const r of ROOTS) walk(r, () => true);
-walk(EXTRA_ROOT, (p) => /^\s*["']use server["']/m.test(fs.readFileSync(p, "utf8").slice(0, 400)));
+const inScope = (p) => {
+  const u = p.split(path.sep).join("/");
+  if (ROOTS.some((r) => u.startsWith(r + "/"))) return true;
+  return fs.existsSync(p) && /^\s*["']use server["']/m.test(fs.readFileSync(p, "utf8").slice(0, 400));
+};
+if (ONLY) {
+  for (const f of ONLY) if (/\.tsx?$/.test(f) && fs.existsSync(f) && inScope(f)) files.add(f.split(path.sep).join("/"));
+} else {
+  for (const r of ROOTS) walk(r, () => true);
+  walk(EXTRA_ROOT, (p) => inScope(p));
+}
 
 const bad = [];
 for (const f of files) {
@@ -50,12 +68,11 @@ for (const f of files) {
 }
 
 if (bad.length) {
-  console.error("\n⛔ โค้ดเซิร์ฟเวอร์ยิงงานแบบ `void task()` — บน Netlify งานจะถูกแช่แข็งแล้วตาย/หายเงียบ\n");
+  console.error(`\n${WARN ? "⚠️" : "⛔"} โค้ดเซิร์ฟเวอร์ยิงงานแบบ \`void task()\` — บน Netlify งานจะถูกแช่แข็งแล้วตาย/หายเงียบ${WARN ? " (โหมดเตือน: build ไปต่อ)" : ""}\n`);
   for (const b of bad) console.error("   " + b);
   console.error(
     "\n   แก้: import { inBackground } from \"@/lib/server/background\" แล้วเขียน inBackground(\"ชื่องาน\", task(...))" +
       "\n   ตั้งใจให้ทิ้งได้จริง: ต่อท้ายบรรทัดด้วย  // fire-and-forget-ok: <เหตุผล>\n"
   );
-  process.exit(1);
-}
-console.log(`✓ fire-and-forget: ไม่มี void task() ในโค้ดเซิร์ฟเวอร์ (ตรวจ ${files.size} ไฟล์)`);
+  if (!WARN) process.exit(1);
+} else console.log(`✓ fire-and-forget: ไม่มี void task() ในโค้ดเซิร์ฟเวอร์ (ตรวจ ${files.size} ไฟล์)`);

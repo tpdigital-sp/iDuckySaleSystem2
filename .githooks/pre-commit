@@ -1,0 +1,8 @@
+#!/bin/sh
+# 🚦 ด่านตอน commit (ในเครื่อง) — ห้าม `void task()` ในโค้ดเซิร์ฟเวอร์ (ดู scripts/check-fire-and-forget.mjs)
+# จับตรงนี้แทนบน Netlify: เจอปุ๊บบอกคนทำทันที ไม่ปล่อยไปล้มตอน build ตอนที่ไม่มีใครเฝ้า
+# ตรวจเฉพาะไฟล์ที่กำลังจะ commit (ใช้กับ `git commit --only` ของเซสชันขนานได้ ไม่ไปฟ้องไฟล์ของคนอื่น)
+# ข้ามชั่วคราว (ไม่แนะนำ): git commit --no-verify
+files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^src/.*\.tsx?$')
+[ -z "$files" ] && exit 0
+node scripts/check-fire-and-forget.mjs --files $files
