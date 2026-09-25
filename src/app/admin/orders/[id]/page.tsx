@@ -156,7 +156,7 @@ import FollowUpModal, { type FollowUpForm } from "@/components/admin/FollowUpMod
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
 import ShipWithStrip, { ShipWithPicker, ShipWithSuggest, useShipWithLinked } from "@/components/admin/ShipWithStrip";
-import { isPickupShipSet, isShipRider, shipMainIdOf } from "@/lib/ship-with";
+import { alreadyShipped, isPickupShipSet, isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
 import ItemAdder from "@/components/admin/ItemAdder";
@@ -2904,7 +2904,8 @@ export default function AdminOrderDetailPage() {
   const planNext = order ? nextPlannedRound(order) : null;
   /** 📮 ใบนี้มีพัสดุกี่กล่อง (กล่องที่ 1 = ช่องเลขพัสดุ) — ใช้ตัดสินว่าจะพับไทม์ไลน์/ขึ้นหัว "กล่องที่ N" ไหม */
   const boxCount = order ? trackingBoxes(order).length : 0;
-  const adHocSplit = !!order && mayEdit && !(order.shipPlan?.length ?? 0);
+  // 📦 ใบตามของชุดส่งรวม: ของที่เหลือไปกล่องใบหลัก — ไม่มีปุ่มแบ่งส่งเอง (เซิร์ฟเวอร์กัน 409 อีกชั้น)
+  const adHocSplit = !!order && mayEdit && !(order.shipPlan?.length ?? 0) && !isShipRider(order);
   const activeShipSel: Map<string, number> = planNext ? planNext.qty : adHocSplit ? shipSel : new Map();
 
   /**
@@ -8957,7 +8958,8 @@ export default function AdminOrderDetailPage() {
               )}
               {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น — บิลแยก ส่งกล่องเดียว (ใบหลักเพิ่มใบตามได้อีก · ใบตาม/ใบที่ส่งแล้วไม่มีปุ่ม)
                   23 ก.ย. 69: โชว์ใบอื่นของลูกค้าคนนี้คาไว้เลย ไม่มีใบให้รวม = เหลือบรรทัดจาง ๆ (เดิมเป็นปุ่มใหญ่ที่กดแล้วมักว่าง) */}
-              {mayEdit && !demo && !isShipRider(order) && !(order.tracking ?? "").trim() && !order.shipments?.length && order.status !== "ยกเลิก" && order.status !== "เสร็จสิ้น" && (
+              {/* 🚚 25 ก.ย. 69: ใบที่แบ่งส่งไปแล้วบางรอบแต่ของยังเหลือ ก็ผูกได้ (alreadyShipped = ออกครบทุกรอบแล้วเท่านั้น) */}
+              {mayEdit && !demo && !isShipRider(order) && !alreadyShipped(order) && order.status !== "ยกเลิก" && order.status !== "เสร็จสิ้น" && (
                 <ShipWithSuggest order={order} onOpenPicker={() => setShipPick(true)} onSaved={adoptOrder} />
               )}
               {/* 🏪 ใบตามของชุดรับพร้อมกันที่แพ็คเสร็จแล้ว (ลงมาจากใบหลัก) → ไปบรรทัดเขียว "แพ็คเสร็จแล้ว รอลูกค้ามารับ" ด้านล่างแทน */}

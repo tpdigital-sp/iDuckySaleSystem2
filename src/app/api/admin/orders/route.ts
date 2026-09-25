@@ -710,6 +710,12 @@ export async function PATCH(req: Request) {
       { error: `ใบนี้ส่งรวมกล่องกับ ${shipMainIdOf(existing)} — ยิงเลขพัสดุที่ ${shipMainIdOf(existing)} ใบเดียว เลขจะลงใบนี้ให้เอง` },
       { status: 409 }
     );
+  // 🚚 ใบตามแบ่งส่งเองไม่ได้เช่นกัน — ของที่เหลือทั้งหมดไปกล่องใบหลัก (ผูกได้ตั้งแต่ 25 ก.ย. 69 แม้เคยส่งไปแล้วบางรอบ)
+  if (isShipRider(existing) && newShipmentsOf(existing, order).length)
+    return NextResponse.json(
+      { error: `ใบนี้ส่งรวมกล่องกับ ${shipMainIdOf(existing)} — ของที่เหลือไปกล่องใบนั้นทั้งหมด แบ่งส่งจากใบนี้ไม่ได้ (ยกเลิกการผูกก่อนถ้าจะส่งแยก)` },
+      { status: 409 }
+    );
   // 🏪 ชุดรับพร้อมกัน (มารับเองทั้งคู่): "แพ็คเสร็จ" ก็กดที่ใบหลักใบเดียวเหมือนยิงเลข — ใบตามขึ้นแพ็คเสร็จให้เอง
   if (wantsPickupDone && isShipRider(existing))
     return NextResponse.json(

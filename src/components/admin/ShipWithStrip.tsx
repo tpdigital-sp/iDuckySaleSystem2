@@ -196,6 +196,11 @@ export default function ShipWithStrip({
                 <span className="text-[12px] text-slate-400">กำลังเช็ค…</span>
               )}
               {row && <span className="min-w-0 flex-1 truncate text-[12px] text-slate-500">{row.items.join(" · ")}</span>}
+              {row?.partial && (
+                <span className="basis-full text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+                  🚚 {row.partial}
+                </span>
+              )}
               {canManage && (
                 <button type="button" disabled={!!busy} onClick={() => unlink(id, order.id)} className="text-[12px] font-semibold text-slate-500 underline underline-offset-2">
                   {busy === id ? "กำลังยกเลิก…" : "ยกเลิก"}
@@ -314,6 +319,11 @@ export function ShipWithSuggest({
               <p className="truncate text-[12px]" style={{ color: "var(--dk-faint)" }}>
                 {r.items.join(" · ")}
               </p>
+              {r.partial && (
+                <p className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+                  🚚 {r.partial}
+                </p>
+              )}
             </div>
             <button type="button" disabled={!!busy} onClick={() => pick(r)} className="dkb-btn dkb-btn-yolk min-h-[44px] shrink-0">
               {busy === r.id ? "กำลังผูก…" : pickupMe ? "รวมกับใบนี้" : "ส่งรวมกับใบนี้"}
@@ -433,6 +443,8 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
                       {r.shippingCost > 0 ? ` ฿${r.shippingCost.toLocaleString("th-TH")}` : ""}
                     </p>
                     <p className="mt-0.5 truncate text-[12px] text-slate-400">{r.items.join(" · ")}</p>
+                    {/* 🚚 แบ่งส่งไปแล้วบางรอบ — กล่องรวมใส่เฉพาะที่เหลือ (ผูกได้ตั้งแต่ 25 ก.ย. 69) */}
+                    {r.partial && <p className="mt-0.5 text-[12px] font-bold text-sky-800">🚚 {r.partial}</p>}
                     {/* ใบที่ผูกไม่ได้ยังโชว์อยู่ — บอกเหตุผลตรงนั้นดีกว่าให้กดแล้วเด้ง error */}
                     {r.blocked && (
                       <p className="mt-0.5 text-[12px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>

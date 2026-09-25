@@ -362,8 +362,9 @@ export function statusMessage(order: Order, link: string): string | null {
             : order.tracking
               ? `\n${order.shipments?.length ? "เลขพัสดุรอบนี้" : "เลขพัสดุ"}: ${order.tracking}`
               : "";
+        // 📦 ใบที่เคยแบ่งส่งแล้วไปผูกส่งรวมกล่อง (25 ก.ย. 69): รอบสุดท้ายไปกับกล่องใบหลัก — บอกใบที่รวมด้วยเหมือนใบปกติ
         return order.shipments?.length
-          ? `🚚 ออเดอร์ ${id} จัดส่งรอบสุดท้ายแล้วครับ ครบทุกรายการ${trackLines}\n${link}`
+          ? `🚚 ออเดอร์ ${id} จัดส่งรอบสุดท้ายแล้วครับ ครบทุกรายการ${trackLines}${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`
           : `🚚 ออเดอร์ ${id} จัดส่งแล้วครับ${trackLines}${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`;
       }
     case "เสร็จสิ้น":

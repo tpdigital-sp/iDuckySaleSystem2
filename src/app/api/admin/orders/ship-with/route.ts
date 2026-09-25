@@ -4,7 +4,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderStatusLabel, withLog, type Order } from "@/lib/admin-data";
 import { isPickupOrder, stripShipPrice } from "@/lib/ship-label";
-import { alreadyShipped, buildShipLink, cannotBeMain, cannotBeRider, isShipMain, isShipRider, pickShipRoles, riderNotReady, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
+import { alreadyShipped, buildShipLink, cannotBeMain, cannotBeRider, isShipMain, isShipRider, partialShipNote, pickShipRoles, riderNotReady, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
 import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 
@@ -39,6 +39,8 @@ function toRow(o: Order, extra?: Partial<ShipWithRow>): ShipWithRow {
     shippingCost: o.shippingCost || 0,
     items: o.items.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`),
     date: o.date,
+    // 🚚 ใบที่แบ่งส่งไปแล้วบางรอบ — บอกให้รู้ว่ากล่องรวมนี้ใส่เฉพาะที่เหลือ (25 ก.ย. 69)
+    ...(partialShipNote(o) ? { partial: partialShipNote(o) } : {}),
     ...extra,
   };
 }

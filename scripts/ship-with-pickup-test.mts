@@ -86,5 +86,52 @@ const fr = JSON.stringify(N.statusFlex(packedRider, "LINK"));
 ok("flex ใบหลักมีแถว รับพร้อมกับ", fm.includes("รับพร้อมกับ") && fm.includes(b.id) && !fm.includes("รวมในกล่อง"));
 ok("flex ใบตามมีแถว รับพร้อมกับ", fr.includes("รับพร้อมกับ") && fr.includes(a.id));
 
+// 8) 🚚 ใบที่แบ่งส่งไปแล้วบางรอบ แต่ของยังเหลือ → เป็นใบตามได้ (พนักงานขอ 25 ก.ย. 69 · OD-260911-8472 ส่งรอบ 1 ไปแล้ว)
+const art = { url: "https://x/a.jpg", at: "2026-09-11T03:00:00Z", qty: 30, pack: { status: "ครบ", got: 30 } };
+const shipped10 = [{ tracking: "EX111TH", at: "2026-09-15T03:00:00Z", by: "แพ็ค", proofs: [{ item: 0, proof: 0, url: art.url, qty: 10, ofQty: 30 }] }];
+const partial = base("OD-260911-8472", {
+  shipping: "ems",
+  shippingLabel: "EMS (100)",
+  shippingCost: 100,
+  items: [{ name: "SHOPPING BAG", qty: 30, price: 100, proofs: [art] }],
+  shipments: shipped10,
+}) as O;
+ok("แบ่งส่งแล้ว 1 รอบ ของเหลือ → เป็นใบตามได้", SW.cannotBeRider(partial) === "", SW.cannotBeRider(partial));
+ok("แบ่งส่งแล้ว 1 รอบ ของเหลือ → เป็นใบหลักได้", SW.cannotBeMain(partial) === "", SW.cannotBeMain(partial));
+ok("ของเหลือยังอยู่ในร้าน ไม่ถูกคัดออกจากรายการ", !SW.alreadyShipped(partial));
+ok("เหลือ 20 ชิ้น", SW.remainingToShip(partial) === 20, String(SW.remainingToShip(partial)));
+ok("ป้ายบอกส่งไปแล้ว 1 รอบ เหลือ 20", /1 รอบ/.test(SW.partialShipNote(partial)) && /เหลือ 20/.test(SW.partialShipNote(partial)), SW.partialShipNote(partial));
+ok("ใบปกติไม่มีป้ายแบ่งส่ง", SW.partialShipNote(ems) === "");
+// ด่านใบตามใช้ packGate เดิม (ตัวอย่างนี้ยังไม่ยืนยันอ่านรายละเอียด) — ที่สำคัญคือต้องไม่ติดเรื่องแผน/แบ่งส่ง
+ok("ของที่เหลือนับครบแล้ว ไม่ติดเรื่องแบ่งส่ง", SW.riderNotReady(partial).every((w: string) => w.includes("อ่านรายละเอียด")), JSON.stringify(SW.riderNotReady(partial)));
+
+// ส่งออกไปครบทุกรอบทาง shipments (ไม่มี tracking รอบสุดท้าย — สภาพผิดปกติ) → ไม่มีของเหลือ ผูกไม่ได้ + คัดออก
+const allOut = { ...partial, shipments: [{ ...shipped10[0], proofs: [{ ...shipped10[0].proofs[0], qty: 30 }] }] };
+ok("ออกครบทุกรอบแล้ว → เป็นใบตามไม่ได้", SW.cannotBeRider(allOut).includes("ครบ"), SW.cannotBeRider(allOut));
+ok("ออกครบทุกรอบแล้ว → ถือว่าออกจากร้าน", SW.alreadyShipped(allOut));
+
+// แผนยังสั่งให้ส่งแยกอีกรอบ (รอบ 2 = 5 ชิ้น ไม่ใช่รอบสุดท้าย) → ต้องส่งรอบนั้นก่อน
+const planned = {
+  ...partial,
+  shipPlan: [
+    { proofs: [{ item: 0, proof: 0, url: art.url, qty: 10 }], by: "แอดมิน", at: "2026-09-12T03:00:00Z" },
+    { proofs: [{ item: 0, proof: 0, url: art.url, qty: 5 }], by: "แอดมิน", at: "2026-09-12T03:00:00Z" },
+    { proofs: [{ item: 0, proof: 0, url: art.url, qty: 15 }], by: "แอดมิน", at: "2026-09-12T03:00:00Z" },
+  ],
+};
+ok("แผนมีรอบแยกค้าง → ผูกไม่ได้ บอกรอบที่ 2", /รอบที่ 2/.test(SW.cannotBeRider(planned)) && /ส่งแยกก่อน/.test(SW.cannotBeRider(planned)), SW.cannotBeRider(planned));
+// แผน 2 รอบ รอบ 1 ส่งแล้ว รอบ 2 = ที่เหลือทั้งหมด (รอบสุดท้าย) → ผูกได้ ที่เหลือไปกล่องรวม
+const planLast = { ...planned, shipPlan: planned.shipPlan.slice(0, 2).map((r: O, i: number) => (i === 1 ? { ...r, proofs: [{ ...r.proofs[0], qty: 20 }] } : r)) };
+ok("แผนเหลือแค่รอบสุดท้าย → ผูกได้", SW.cannotBeRider(planLast) === "", SW.cannotBeRider(planLast));
+// ยังไม่เคยส่ง แต่แผนสั่งส่งรอบ 1 แยกก่อน → ผูกไม่ได้ (เหมือนกติกาเดิม)
+const planFresh = { ...planned, shipments: [] };
+ok("ยังไม่ส่ง แต่แผนสั่งแบ่งส่ง → ผูกไม่ได้", /รอบที่ 1/.test(SW.cannotBeRider(planFresh)), SW.cannotBeRider(planFresh));
+
+// ผูกแล้ว: ใบหลักยิงเลข → ใบตามได้เลข + ข้อความไลน์บอกรอบสุดท้าย ครบทุกรายการ
+const pl = SW.buildShipLink(ems, partial, "เทส", new Date().toISOString());
+const riderDone = { ...pl.nextRider, tracking: "EX222TH", status: "จัดส่งแล้ว" };
+const rmsg = N.statusMessage(riderDone, "LINK") ?? "";
+ok("ใบตามที่เคยแบ่งส่ง: ไลน์บอกรอบสุดท้าย + ใบหลัก", /รอบสุดท้าย/.test(rmsg) && rmsg.includes(ems.id), rmsg);
+
 console.log(fails.length ? `❌ พลาด ${fails.length}/${pass + fails.length}:\n  ${fails.join("\n  ")}` : `✅ ผ่าน ${pass} ข้อ`);
 process.exit(fails.length ? 1 : 0);

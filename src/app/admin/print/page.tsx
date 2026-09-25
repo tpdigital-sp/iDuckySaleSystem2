@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
 import { isPickupOrder } from "@/lib/ship-label";
+import { isShipRider } from "@/lib/ship-with";
 import { daysToUseBy, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
@@ -80,8 +81,9 @@ const followUpWaiting = (o: Order): { no: number; qty: number } | null => {
   return { no: open.no, qty: followUpQty(open.round) };
 };
 
+// 📦 ใบตามของชุดส่งรวมไม่มีใบปะหน้าของตัวเอง (ที่เหลือไปกล่องใบหลัก) — ไม่เข้ากอง "รอปริ้นใบปะหน้ารอบถัดไป"
 const nextRoundOf = (o: Order): { round: number; lastRound: boolean } | null =>
-  isPartiallyShipped(o) ? { round: (o.shipments?.length ?? 0) + 1, lastRound: !nextPlannedRound(o) } : null;
+  isPartiallyShipped(o) && !isShipRider(o) ? { round: (o.shipments?.length ?? 0) + 1, lastRound: !nextPlannedRound(o) } : null;
 const isSent = (o: Order) => !!o.productionSent;
 /** ผลิตอยู่แล้วแต่ยังไม่มีใบงาน — ของร้อนที่สุดในคิว ต้องปริ้นตามให้ทัน */
 // ⚠️ ดูขั้นงานผ่าน queueStageOf: ใบที่เด้งกลับ "รอชำระเงิน" เพราะยอดโตระหว่างผลิต (reopenedFrom) ยังอยู่ในคิว (24 ก.ย. 69)
