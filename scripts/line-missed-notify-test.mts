@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { missedLineNotifies } from "../src/lib/server/notify.ts";
 import { inBackground } from "../src/lib/server/background.ts";
+import { lastProofNotify } from "../src/lib/proof-notify.ts";
 import type { Order } from "../src/lib/admin-data.ts";
 
 const L = (action: string, detail?: string, by = "LINE") => ({ at: new Date().toISOString(), by, action, detail });
@@ -55,4 +56,25 @@ inBackground("test-fail", Promise.reject(new Error("จงใจล้ม")));
 await new Promise((r) => setTimeout(r, 50));
 assert.equal(ran, true);
 
-console.log("✅ line-missed-notify: ผ่านทั้ง 5 ข้อ");
+// 6) กล่องใต้แบบงานต้องบอกผลจริง — proofNotifiedAt ปักเวลาแม้ส่งไม่ถึง (เจ้าของร้านถาม 25 ก.ย. 69 "ปุ่มนี้กดแล้วแจ้งเตือนไหม")
+assert.equal(lastProofNotify(order([])), null);
+assert.equal(lastProofNotify(order([L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", "แบบงาน 1 รูป · ยังไม่ได้ผูก LINE ของลูกค้ากับออเดอร์นี้", "372")]))?.unbound, true);
+assert.equal(lastProofNotify(order([L("แจ้งลูกค้าทางไลน์แล้ว", "แบบงาน 2 รูป", "372")]))?.ok, true);
+// ล้มเพราะยังไม่ผูก แล้วแอดมินผูก → ส่งย้อนหลังถึงแล้ว = ok
+assert.equal(
+  lastProofNotify(order([
+    L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", "แบบงาน 1 รูป · ยังไม่ได้ผูก LINE ของลูกค้ากับออเดอร์นี้", "372"),
+    L("แจ้งลูกค้าทางไลน์แล้ว", "ส่งย้อนหลังหลังผูก LINE — การ์ดสถานะ \"อนุมัติแบบ\" (ที่พลาดไป: แบบงาน 1 รูป)"),
+  ]))?.ok,
+  true
+);
+// ล้มเพราะลูกค้าบล็อก แล้วมีข้อความสถานะอื่นส่งถึง — แบบงานยังถือว่าไม่ถึง
+assert.equal(
+  lastProofNotify(order([
+    L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", "แบบงาน 1 รูป · ลูกค้าบล็อกบัญชีร้าน หรือไม่ได้เป็นเพื่อนกับ OA", "372"),
+    L("แจ้งลูกค้าทางไลน์แล้ว", "แจ้งสถานะ \"กำลังผลิต\" · ผ่าน LINE ที่พนักงานผูกไว้"),
+  ]))?.ok,
+  false
+);
+
+console.log("✅ line-missed-notify: ผ่านทั้ง 6 ข้อ");

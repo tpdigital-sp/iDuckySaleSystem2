@@ -62,3 +62,33 @@ export function pendingProofsLabel(p: PendingProofs): string {
   if (p.revised) return `แก้รูปตามที่ลูกค้าขอ ${p.revised} รูป`;
   return `แบบใหม่ ${p.added} รูป`;
 }
+
+/** ผลการแจ้งแบบงานครั้งล่าสุด — อ่านจากประวัติออเดอร์ (บรรทัด "แจ้งลูกค้าทางไลน์…" ที่รายละเอียดขึ้นต้น "แบบงาน") */
+export interface LastProofNotify {
+  ok: boolean;
+  at: string;
+  /** เหตุผลตอนไม่ถึง เช่น "ยังไม่ได้ผูก LINE ของลูกค้ากับออเดอร์นี้" */
+  reason?: string;
+  /** ไม่ถึงเพราะใบยังไม่ได้ผูก LINE — ผูกเมื่อไหร่ระบบส่งย้อนหลังให้เอง ไม่ต้องกดซ้ำ */
+  unbound: boolean;
+}
+
+/**
+ * ⚠️ order.proofNotifiedAt ปักเวลาแม้ส่ง "ไม่ถึง" (กันเตือน/ยิงซ้ำทุก 10 นาที) — กล่องใต้แบบงานเคยอ่านค่านี้แล้วขึ้น
+ * "แจ้งลูกค้าแล้ว · 10:57" ทั้งที่ประวัติบอกไม่สำเร็จ (เจ้าของร้านถาม 25 ก.ย. 69 "ปุ่มนี้กดแล้วแจ้งเตือนไหม")
+ * ตัวนี้ตอบตามจริง: หาบรรทัดแบบงานล่าสุด · ถ้าล้มแต่มี "ส่งย้อนหลังหลังผูก LINE" ตามหลัง = ถึงแล้ว
+ */
+export function lastProofNotify(order: Order): LastProofNotify | null {
+  const log = order.log ?? [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (!e.action?.startsWith("แจ้งลูกค้าทางไลน์")) continue;
+    const d = e.detail ?? "";
+    if (e.action === "แจ้งลูกค้าทางไลน์แล้ว" && d.includes("ส่งย้อนหลังหลังผูก LINE")) return { ok: true, at: e.at, unbound: false };
+    if (!d.startsWith("แบบงาน")) continue;
+    if (e.action === "แจ้งลูกค้าทางไลน์แล้ว") return { ok: true, at: e.at, unbound: false };
+    const reason = d.split(" · ").slice(-1)[0];
+    return { ok: false, at: e.at, reason, unbound: reason.includes("ยังไม่ได้ผูก LINE") };
+  }
+  return null;
+}

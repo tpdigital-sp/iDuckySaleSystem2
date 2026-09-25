@@ -31,7 +31,7 @@ import {
 } from "@/lib/order-item-qty";
 import { cartItemKey } from "@/lib/cart-context";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
-import { PROOF_AUTO_NOTIFY_MINUTES, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
+import { PROOF_AUTO_NOTIFY_MINUTES, lastProofNotify, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
 import { fetchProductNamesLite, fetchProductsByIds } from "@/lib/product-repo";
 import { itemPiecesLine, itemQtyText, orderQtyText, staleUnitYield } from "@/lib/item-yield";
 import { SSR_ORDER_SCRIPT_ID } from "@/lib/ssr-order-id";
@@ -1086,7 +1086,9 @@ export default function AdminOrderDetailPage() {
         ? "ไม่มีแบบให้แจ้ง"
         : res.sent
           ? `✅ แจ้งลูกค้าทางไลน์แล้ว (${res.count} รูป)`
-          : `⚠️ ส่งไลน์ไม่ถึงลูกค้า — ${res.reason ?? "ไม่ทราบสาเหตุ"} · บันทึกไว้ในประวัติแล้ว`,
+          : res.reason?.includes("ยังไม่ได้ผูก LINE")
+            ? `⚠️ ส่งไม่ถึง — ใบนี้ยังไม่ได้ผูก LINE ลูกค้า${mayEdit ? " (ผูกที่ส่วน LINE ด้านบน)" : " (ต้องให้แอดมินผูก)"} · พอผูกแล้วระบบส่งแบบให้เองทันที ไม่ต้องกดซ้ำ`
+            : `⚠️ ส่งไลน์ไม่ถึงลูกค้า — ${res.reason ?? "ไม่ทราบสาเหตุ"} · บันทึกไว้ในประวัติแล้ว`,
     });
   }
   /**
@@ -6713,17 +6715,33 @@ export default function AdminOrderDetailPage() {
                             {notifyingProof ? "กำลังส่ง…" : "📣 แจ้งลูกค้าทางไลน์"}
                           </button>
                         </div>
-                      ) : (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200">
-                          <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-slate-500">
+                      ) : (() => {
+                        // ⚠️ proofNotifiedAt ปักเวลาแม้ส่งไม่ถึง — ต้องอ่านผลจริงจากประวัติ ไม่งั้นขึ้น "แจ้งแล้ว" ทั้งที่ลูกค้าไม่ได้รับ
+                        const last = lastProofNotify(order);
+                        const failed = !!last && !last.ok;
+                        const when = (iso?: string) => (iso ? new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
+                        return (
+                        <div className={`mt-2 flex flex-wrap items-center gap-2 rounded-lg px-3 py-1.5 ring-1 ${failed ? "bg-rose-50 ring-rose-300" : "bg-slate-50 ring-slate-200"}`}>
+                          <p className={`min-w-0 flex-1 text-[11px] leading-relaxed ${failed ? "text-rose-800" : "text-slate-500"}`}>
                             {proofNotifyMsg?.item === i ? (
-                              <span className="font-semibold text-emerald-700">{proofNotifyMsg.text}</span>
+                              <span className={`font-semibold ${proofNotifyMsg.text.startsWith("⚠️") ? "text-rose-700" : "text-emerald-700"}`}>{proofNotifyMsg.text}</span>
+                            ) : failed ? (
+                              <>
+                                <strong>⚠️ ส่งไลน์ไม่ถึงลูกค้า · {when(last.at)}</strong>
+                                {last.unbound ? (
+                                  <span className="block">
+                                    ใบนี้ยังไม่ได้ผูก LINE ลูกค้า —{" "}
+                                    {mayEdit ? <a href="#line-bind" className="font-bold underline">ผูกที่ส่วน LINE ด้านบน</a> : "ต้องให้แอดมินผูกก่อน"}
+                                    {" "}· พอผูกแล้วระบบส่งแบบให้เองทันที ไม่ต้องกดแจ้งซ้ำ
+                                  </span>
+                                ) : (
+                                  <span className="block">{last.reason} · แก้ต้นเหตุแล้วค่อยกดแจ้งอีกครั้ง</span>
+                                )}
+                              </>
                             ) : (
                               <>
                                 📣 แจ้งลูกค้าแล้ว
-                                {order.proofNotifiedAt
-                                  ? ` · ${new Date(order.proofNotifiedAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
-                                  : " · ตอนอัปแบบ"} — อัปรูปใหม่เมื่อไหร่ แถบเหลืองจะขึ้นให้กดแจ้งทีเดียว
+                                {last?.at || order.proofNotifiedAt ? ` · ${when(last?.at || order.proofNotifiedAt)}` : " · ตอนอัปแบบ"} — อัปรูปใหม่เมื่อไหร่ แถบเหลืองจะขึ้นให้กดแจ้งทีเดียว
                               </>
                             )}
                           </p>
@@ -6737,7 +6755,8 @@ export default function AdminOrderDetailPage() {
                             {notifyingProof ? "กำลังส่ง…" : "📣 แจ้งอีกครั้ง"}
                           </button>
                         </div>
-                      ))}
+                        );
+                      })())}
                       {mayProof && (
                         <label
                           onDragOver={(e) => {
