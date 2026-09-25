@@ -46,6 +46,12 @@ Debounce Buffer รอ 5 วิแล้วปล่อย "ตัวล่า�
 - Analyze Image: เพิ่ม part "รายชื่อสินค้าที่ร้านทำได้จริง" + JSON เพิ่ม `productMatch` (ชื่อจากรายชื่อตรงตัว) และ `canMake` yes/maybe/no · อนุญาตให้บอก "ยังไม่มีสินค้าแบบนี้ + แนะนำใกล้เคียง"
 - Format Image Reply: ส่ง `productGuess`, `canMake` ต่อ · Site Price Flex: ข้อความรูป → แนบการ์ดสินค้าที่ตรง (yes/maybe) จากเครื่องคิดราคาเว็บ · no = ข้อความอย่างเดียว
 
+## 🙋 25 ก.ย. 69 — ลูกค้าขอคุยแอดมิน (LINE OA Bot)
+- Build AI Request: `HANDOFF_RE` (ขอคุยแอดมิน/ติดต่อแอดมิน/คุยกับคนจริง/ไม่เอาบอท…) → mode `handoff` + presetReply "รับทราบค่ะ แอดมินจะเข้ามาตอบ…" + PATCH `line-conversations/{userId}.botPausedUntil = +60 นาที` (ใช้ idToken จาก Debounce) · ข้อความถัดไปของลูกค้าระหว่างพัก → `return []` (บอทเงียบ ไม่แทรกแอดมิน)
+- โหนด IF **Handoff?** (mode == handoff) ระหว่าง Build AI Request → true: Format Reply ตรง (ไม่เรียก AI 15 วิ) / false: Is Image? ตามเดิม
+- Check Escalation: mode handoff → escalateReason `customer_requested_admin` → Leader Inbox + กลุ่มแอดมิน + Customer Task
+- ยังไม่มี: คำสั่งแอดมินสั่งพัก/ปลุกบอทเอง (พักหมดเองใน 60 นาที) · หน้าเว็บยังแค่ให้ลิงก์ไลน์
+
 ## 📝 แผนเดิม (อ้างอิง) — 3 workflow
 
 ### 1) `pricing-search` (1xXH53w1Yzt4ZkKQ) — webhook `/webhook/pricing-search`
