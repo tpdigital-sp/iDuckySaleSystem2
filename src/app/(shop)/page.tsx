@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice, formatPriceLabel, PRODUCTS, productPath, type Product } from "@/lib/products";
 import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
 import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
@@ -14,7 +14,7 @@ import PromoBanners from "@/components/PromoBanners";
 import Spotlight from "@/components/Spotlight";
 import { useAltImage } from "@/components/CardAltImage";
 import CardSkeleton from "@/components/CardSkeleton";
-import { CAT_ICON, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
+import { CAT_ICON, catEnName, groupOf, HOME_TILE_ACCENTS, TAB_GROUPS } from "@/lib/cat-groups";
 import { SOCIAL_LINKS } from "@/components/SocialLinks";
 import { LINE_URL } from "@/components/LineButton";
 
@@ -111,6 +111,13 @@ export default function HomePage() {
       if (list.length < 5) list.push(p);
       m.set(p.category, list);
     }
+    return m;
+  }, [all]);
+
+  /** จำนวนสินค้าทั้งหมดในแต่ละหมวด — โชว์เป็นป้ายบนการ์ดหมวด */
+  const countByCat = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of all ?? []) m.set(p.category, (m.get(p.category) ?? 0) + 1);
     return m;
   }, [all]);
 
@@ -403,45 +410,42 @@ export default function HomePage() {
               <p>รับผลิตสินค้าคุณภาพหลากหลาย ครบจบในที่เดียว</p>
             </div>
 
-            <div className="cats">
+            {/* การ์ดหมวดแบบใหม่ (25 ก.ย. 69): แผ่นไอคอนสีพาสเทล + ชื่อไทยเป็นหลัก/อังกฤษเป็นป้ายเล็ก
+                + คำอธิบายตัด 2 บรรทัด + ป้ายจำนวนสินค้า · แถวสุดท้ายจัดกึ่งกลาง (จำนวนหมวดไม่ลงตัวก็ไม่เหลือช่องโหว่) */}
+            <div className="cgrid">
               {cats.map((c, i) => {
                 const group = groupOf(c.id);
                 const show = tab === "all" || group === tab;
-                const items = byCat.get(c.id) ?? [];
                 const href = `/products?category=${c.id}`;
+                const en = catEnName(c.name);
+                const count = countByCat.get(c.id) ?? 0;
+                const desc = (c.description || "").trim();
                 return (
-                  <div
+                  <Link
                     key={c.id}
-                    className={`cat${show ? " is-in" : " is-hide"}`}
+                    className={`ctile${show ? " is-in" : " is-hide"}`}
+                    href={href}
                     data-group={group}
-                    style={{ animationDelay: `${(i % 10) * 45}ms` }}
+                    style={{ "--ct": HOME_TILE_ACCENTS[i % HOME_TILE_ACCENTS.length], animationDelay: `${(i % 10) * 45}ms` } as CSSProperties}
                   >
-                    <Link className="cat-link" href={href}>
-                      {c.image ? (
-                        <img className="cat-ico" {...imgProps(c.image, "96px", 160)} alt="" aria-hidden="true" loading="lazy" decoding="async" onError={fallbackToOriginal(c.image)} />
-                      ) : CAT_ICON[c.id] ? (
-                        <img className="cat-ico" src={CAT_ICON[c.id]} alt="" aria-hidden="true" />
+                    <span className="ct-plate">
+                      {/* ชุดไอคอนที่เจ้าของร้านเลือก (CAT_ICON) มาก่อนรูปหมวดที่เคยอัปโหลดในหลังบ้าน — หมวดใหม่ที่ไม่มีในชุดค่อยใช้รูปจากฐาน/อีโมจิ */}
+                      {CAT_ICON[c.id] ? (
+                        <img src={CAT_ICON[c.id]} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+                      ) : c.image ? (
+                        <img {...imgProps(c.image, "96px", 160)} alt="" aria-hidden="true" loading="lazy" decoding="async" onError={fallbackToOriginal(c.image)} />
                       ) : (
                         <em>{c.emoji}</em>
                       )}
-                      <b>{c.name}</b>
-                      <small>{c.description || c.nameEn}</small>
-                    </Link>
-                    {items.length > 0 && (
-                      <div className="sub">
-                        <span className="sub-title">เลือกชนิดที่ต้องการ</span>
-                        {items.map((p) => (
-                          <Link key={p.id} href={productPath(p)}>
-                            {p.name}
-                            <span>›</span>
-                          </Link>
-                        ))}
-                        <Link className="sub-all" href={href}>
-                          ดูทั้งหมดในหมวดนี้ →
-                        </Link>
-                      </div>
-                    )}
-                  </div>
+                    </span>
+                    {en && <small className="ct-en">{en}</small>}
+                    <b className="ct-name">{catShortName(c.name)}</b>
+                    {desc && <span className="ct-desc">{desc}</span>}
+                    <span className="ct-foot">
+                      <span className="ct-count">{count > 0 ? `${count} รายการ` : "ดูสินค้า"}</span>
+                      <i className="ct-arrow" aria-hidden="true">→</i>
+                    </span>
+                  </Link>
                 );
               })}
             </div>

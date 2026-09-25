@@ -202,10 +202,11 @@ export default function NavCatMenu({ label, href }: { label: string; href: strin
               return (
                 <div key={c.id} className="nav-mega-col" data-cat={c.id} data-group={groupOf(c.id)} style={{ "--accent": accentOf(c.id, i) } as React.CSSProperties}>
                   <Link className="nav-mega-thumb" href={catHref} onClick={go} aria-label={c.name}>
-                    {c.image ? (
-                      <img {...imgProps(c.image, "80px", 160)} alt="" aria-hidden="true" loading="lazy" decoding="async" onError={fallbackToOriginal(c.image)} />
-                    ) : CAT_ICON[c.id] ? (
+                    {/* ชุดไอคอนที่เจ้าของร้านเลือก (CAT_ICON) มาก่อนรูปหมวดจากหลังบ้าน — ให้ตรงกับการ์ดหมวดหน้าแรก */}
+                    {CAT_ICON[c.id] ? (
                       <img src={CAT_ICON[c.id]} alt="" aria-hidden="true" loading="lazy" />
+                    ) : c.image ? (
+                      <img {...imgProps(c.image, "80px", 160)} alt="" aria-hidden="true" loading="lazy" decoding="async" onError={fallbackToOriginal(c.image)} />
                     ) : (
                       <span className="nav-mega-emoji" aria-hidden="true">{c.emoji}</span>
                     )}

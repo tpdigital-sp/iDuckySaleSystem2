@@ -8,6 +8,7 @@ import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } 
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import ShopProductCard from "@/components/ShopProductCard";
 import CardSkeleton from "@/components/CardSkeleton";
+import { CAT_ICON } from "@/lib/cat-groups";
 
 type SortKey = "popular" | "price-asc" | "price-desc" | "rating";
 
@@ -333,7 +334,9 @@ export default function ProductListing() {
                   onClick={() => pickCategory(c.id)}
                   className={`plist-cat${(grouped ? activeCat === c.id : category === c.id) ? " on" : ""}`}
                 >
-                  <em>{c.emoji}</em> {catShortName(c.name)}
+                  {/* ไอคอนหมวดชุดเดียวกับหน้าแรก — หมวดที่ไม่มีในชุดใช้อีโมจิจากฐาน */}
+                  {CAT_ICON[c.id] ? <img className="plist-ico" src={CAT_ICON[c.id]} alt="" aria-hidden="true" loading="lazy" decoding="async" /> : <em>{c.emoji}</em>}{" "}
+                  {catShortName(c.name)}
                   <i className="plist-n">{(countByCat.get(c.id) ?? 0).toLocaleString("th-TH")}</i>
                 </button>
               ))}
@@ -366,7 +369,7 @@ export default function ProductListing() {
                   <section key={g.id || "__etc__"} id={`pcat-${g.id}`} className="pcat">
                     <div className="head pcat-head">
                       <span className="kicker pcat-kicker">
-                        <i className="pcat-emo">{g.emoji}</i>
+                        <i className="pcat-emo">{CAT_ICON[g.id] ? <img src={CAT_ICON[g.id]} alt="" aria-hidden="true" loading="lazy" decoding="async" /> : g.emoji}</i>
                         {g.items.length.toLocaleString("th-TH")} รายการในหมวดนี้
                       </span>
                       <h2>{catTitle(g.name)}</h2>

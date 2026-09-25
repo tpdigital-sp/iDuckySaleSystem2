@@ -2221,6 +2221,61 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 /* ═══════════════════════════════════════════════════════════════════════════════
    ── เพิ่มเติมสำหรับเว็บจริง (ไม่มีในไฟล์ต้นแบบ) — ส่วนที่ 1: ของที่ผูกกับหน้าแรก/หัวเว็บ ──
    ═══════════════════════════════════════════════════════════════════════════════ */
+/* ═══ การ์ดหมวดสินค้าหน้าแรก แบบใหม่ (25 ก.ย. 69) — แทน .cats/.cat ของต้นแบบ (ชุดเดิมยังอยู่ด้านบน ไม่ได้ใช้แล้ว)
+   แนวคิด: แผ่นไอคอนสีพาสเทลเหมือนสติ๊กเกอร์ + ชื่อไทยเป็นหลัก อังกฤษเป็นป้ายเล็ก + คำอธิบายตัด 2 บรรทัด + ป้ายจำนวนสินค้า
+   ใช้ flex-wrap จัดกึ่งกลาง → แถวสุดท้ายที่ไม่เต็ม (13 หมวด = 5+5+3) ดูตั้งใจ ไม่เหลือช่องโหว่ขวาสุด · สีการ์ดส่งผ่าน --ct จาก TSX */
+.dl .cgrid{display:flex;flex-wrap:wrap;justify-content:center;gap:20px 16px;--cg:16px;--cn:5}
+.dl .ctile{--ct:#BFE3FB;flex:0 0 calc((100% - var(--cg) * (var(--cn) - 1)) / var(--cn));min-width:0;
+  display:flex;flex-direction:column;align-items:center;text-align:center;text-decoration:none;color:inherit;
+  background:#fff;border:2px solid #fff;border-radius:26px;padding:20px 16px 16px;position:relative;isolation:isolate;overflow:hidden;
+  box-shadow:var(--shadow-s);-webkit-tap-highlight-color:transparent;
+  transition:transform .28s cubic-bezier(.34,1.56,.64,1),box-shadow .28s ease,border-color .28s ease}
+/* แถบสีพาสเทลด้านบน ไล่จางลงมา — hover ค่อยลามเต็มใบ */
+.dl .ctile::before{content:"";position:absolute;left:0;right:0;top:0;height:112px;z-index:0;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--ct) 62%,#fff) 0%,rgba(255,255,255,0) 100%);transition:height .35s ease,opacity .35s ease}
+.dl .ctile:hover,.dl .ctile:focus-visible{transform:translateY(-8px);box-shadow:var(--shadow-m);border-color:color-mix(in srgb,var(--ct) 75%,#fff)}
+.dl .ctile:hover::before{height:100%;opacity:.6}
+.dl .ctile:focus{outline:none}
+.dl .ctile:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+.dl .ctile>*{position:relative;z-index:1}
+/* แผ่นไอคอน — สี่เหลี่ยมมนขาว ลอยบนแถบสี ให้รูป 3 มิติกับอีโมจิสำรองดูเป็นชุดเดียวกัน */
+.dl .ct-plate{width:92px;height:92px;border-radius:32px;background:#fff;display:grid;place-items:center;margin-bottom:12px;
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 10px 20px -6px color-mix(in srgb,var(--ct) 70%,rgba(44,129,196,.3)),0 2px 4px rgba(23,58,107,.06);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.dl .ct-plate img{width:74px;height:74px;object-fit:contain;display:block;filter:drop-shadow(0 6px 8px rgba(44,129,196,.14))}
+.dl .ct-plate em{font-style:normal;font-size:2.3rem;line-height:1}
+.dl .ctile:hover .ct-plate{transform:scale(1.08) rotate(-4deg) translateY(-3px)}
+.dl .ct-en{display:block;font-family:var(--display);font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;color:var(--blue-deep);line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.dl .ct-name{font-family:var(--display);font-weight:500;font-size:1rem;color:var(--navy);line-height:1.3;margin-top:3px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.dl .ct-desc{font-family:var(--body);font-size:.74rem;line-height:1.45;color:var(--navy-soft);margin-top:6px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+/* ป้ายจำนวนสินค้า + ลูกศรที่โผล่ตอนชี้ — เกาะก้นการ์ดเสมอ ทุกใบจึงสูงเท่ากันและป้ายอยู่แนวเดียวกัน */
+.dl .ct-foot{margin-top:auto;padding-top:14px;display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--display);font-size:.72rem;color:var(--blue-deep)}
+.dl .ct-count{background:color-mix(in srgb,var(--ct) 42%,#fff);color:var(--navy);border-radius:999px;padding:4px 11px;transition:background .25s ease,color .25s ease}
+.dl .ct-arrow{font-style:normal;font-weight:500;opacity:0;transform:translateX(-6px);transition:.25s cubic-bezier(.34,1.56,.64,1)}
+.dl .ctile:hover .ct-count{background:var(--navy);color:#fff}
+.dl .ctile:hover .ct-arrow{opacity:1;transform:none}
+/* ซ่อน/โผล่ตอนกดแท็บกรอง (keyframe catIn อยู่ส่วนต้นแบบ) */
+.dl .ctile.is-hide{display:none}
+.dl .ctile.is-in{animation:catIn .45s cubic-bezier(.22,1,.36,1) backwards}
+@media(max-width:1000px){.dl .cgrid{--cn:3;gap:18px 14px;--cg:14px}}
+@media(min-width:701px) and (max-width:1000px){.dl .ct-plate{width:96px;height:96px}.dl .ct-plate img{width:78px;height:78px}.dl .ct-name{font-size:1.04rem}}
+@media(max-width:560px){
+  .dl .cgrid{--cn:2;gap:12px 10px;--cg:10px}
+  .dl .ctile{padding:14px 10px 12px;border-radius:20px}
+  .dl .ctile::before{height:88px}
+  .dl .ct-plate{width:68px;height:68px;border-radius:22px;margin-bottom:9px}
+  .dl .ct-plate img{width:54px;height:54px}
+  .dl .ct-plate em{font-size:1.7rem}
+  .dl .ct-en{font-size:.54rem}
+  .dl .ct-name{font-size:.84rem}
+  /* มือถือซ่อนคำอธิบาย — 13 หมวด × 2 คอลัมน์ ถ้าเก็บไว้จะยาว ~3,000px ชื่อ+จำนวนพอให้เลือกแตะได้ */
+  .dl .ct-desc{display:none}
+  .dl .ct-foot{font-size:.64rem;padding-top:10px}
+  .dl .ct-count{padding:3px 9px}
+}
 /* ชื่อหมวดใน DB ยาว ("Keychain & Acrylic — พวงกุญแจ / งานอะคริลิค") ต้องตัดบรรทัดได้ + จองความสูง 2 บรรทัด */
 .dl .nav-mega-col .nav-mega-label{font-family:var(--display);font-weight:500;font-size:.88rem;color:var(--navy);
   margin-top:6px;line-height:1.25;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;outline:none;
@@ -4429,6 +4484,9 @@ to{opacity:1;transform:none}}
 .dl .plist-cat.on{background:linear-gradient(100deg,var(--blue) 0%,var(--blue-deep) 100%);color:#fff;
   border-color:transparent;box-shadow:0 8px 18px -6px rgba(44,129,196,.55)}
 .dl .plist-cat em{font-style:normal;font-size:.98rem;line-height:1}
+/* ไอคอนหมวดชุดใหม่ในชิป (แทนอีโมจิ) — ขนาดเท่าอีโมจิเดิม ขยับซ้ายนิดให้ชิดขอบแคปซูลพอดี */
+.dl .plist-cat .plist-ico{width:24px;height:24px;object-fit:contain;flex:none;margin:-4px 0 -4px -4px;filter:drop-shadow(0 2px 3px rgba(44,129,196,.18))}
+.dl .plist-cat.on .plist-ico{filter:drop-shadow(0 2px 3px rgba(0,0,0,.2))}
 /* จำนวนสินค้าในชิปหมวด — บอกให้รู้ก่อนกดว่าหมวดนี้มีของกี่ชิ้น */
 .dl .plist-n{font-style:normal;flex:none;margin-left:2px;padding:2px 8px;border-radius:999px;
   font-size:.7rem;line-height:1.6;color:var(--blue-deep);background:var(--sky-100);
@@ -4463,7 +4521,8 @@ to{opacity:1;transform:none}}
 /* ป้ายเล็กเหนือหัวข้อ — ต้องเป็น flex + width:max-content + margin auto เหมือน kicker ตัวอื่น
    ถ้าใช้ inline-flex จะกลายเป็นอินไลน์ ไปอยู่บรรทัดเดียวกับ <h2> แล้วหัวข้อเบี้ยวทั้งบล็อก */
 .dl .pcat-kicker{display:flex;width:max-content;margin:0 auto 14px;align-items:center;gap:8px}
-.dl .pcat-emo{font-style:normal;font-size:1rem;line-height:1}
+.dl .pcat-emo{font-style:normal;font-size:1rem;line-height:1;display:inline-flex}
+.dl .pcat-emo img{width:24px;height:24px;object-fit:contain;margin:-6px 0 -6px -4px}
 @media(max-width:560px){.dl .pcat + .pcat{margin-top:48px}
 .dl .pcat-head{margin-bottom:20px}}
 
