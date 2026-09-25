@@ -24,6 +24,7 @@ import {
   setBotAllowed,
   setOverride,
   setWhitelistMode,
+  setBotPause,
 } from "@/lib/server/line-chat";
 import { fetchLineProfile } from "@/lib/server/notify";
 import { chatIdKeys, loadOaConfig, loadOaTagged, peekOaTagged, type OaChat, type OaTagged } from "@/lib/server/line-oa-manager";
@@ -60,6 +61,8 @@ export interface LineCustomerRow {
   waiting: boolean;
   /** เปิดให้บอทตอบคนนี้ */
   allowed: boolean;
+  /** ⏸ บอทถูกพักถึง (ISO) — null = ไม่ได้พัก */
+  pausedUntil: string | null;
   /** รหัสในลิงก์ OA Manager (ตั้งเอง หรือเก็บตกจากลิงก์ในออเดอร์) */
   managerUserId: string | null;
   /** ลิงก์เปิดห้องแชทใน OA Manager — null = ยังไม่รู้รหัสห้องของคนนี้ */
@@ -140,6 +143,7 @@ function oaOnlyRow(c: OaChat, oaOwnerId: string): LineCustomerRow {
     lastSeen: c.updatedAt,
     waiting: false,
     allowed: false,
+    pausedUntil: null,
     managerUserId: c.chatId,
     chatUrl: chatUrlOf(oaOwnerId, c.chatId),
     chatFromOrder: false,
@@ -199,6 +203,7 @@ export async function GET(req: Request) {
       lastSeen: r.lastSeen,
       waiting: isWaitingForAdmin(r),
       allowed: master.allowed.has(r.userId),
+      pausedUntil: r.pausedUntil && new Date(r.pausedUntil).getTime() > Date.now() ? r.pausedUntil : null,
       managerUserId: chatIds[r.userId]?.id ?? null,
       chatUrl: chatUrlOf(oaOwnerId, chatIds[r.userId]?.id),
       chatFromOrder: !!chatIds[r.userId]?.fromOrder,
@@ -404,6 +409,8 @@ type Body = {
   userId?: string;
   enabled?: boolean;
   allow?: boolean;
+  /** พักบอทกี่นาที (0 = ปลุก) */
+  minutes?: number;
   adminAlias?: string;
   adminNote?: string;
   /** ลิงก์ OA Manager หรือ userId — ว่าง = ล้างค่าที่ตั้งทับไว้ */
@@ -448,6 +455,21 @@ export async function POST(req: Request) {
         if (bad) return bad;
         await setBotAllowed(db, uid, !!b.allow);
         return NextResponse.json({ ok: true, saved: b.allow ? "เปิดให้บอทตอบลูกค้ารายนี้" : "ปิดบอท — ให้แอดมินตอบเอง" });
+      }
+
+      /* ── ⏸ พัก/ปลุกบอทรายคน (ไม่ขึ้นกับโหมดเลือกตอบ) ── */
+      case "pause": {
+        const bad = needUid();
+        if (bad) return bad;
+        const minutes = Math.max(0, Math.min(24 * 60, Number(b.minutes ?? 0) || 0));
+        const until = minutes > 0 ? new Date(Date.now() + minutes * 60_000) : null;
+        await setBotPause(db, uid, until);
+        patchChatRow(uid, { pausedUntil: until ? until.toISOString() : "" });
+        return NextResponse.json({
+          ok: true,
+          pausedUntil: until ? until.toISOString() : null,
+          saved: until ? `พักบอท ${minutes} นาที — แอดมินคุยได้เลย บอทจะกลับมาเอง` : "ปลุกบอทแล้ว — บอทกลับมาตอบลูกค้ารายนี้",
+        });
       }
 
       /* ── ติด/ถอดป้ายความเร่งด่วน ── */

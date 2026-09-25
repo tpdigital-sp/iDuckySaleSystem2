@@ -10,6 +10,7 @@ import {
   writePriceReply,
 } from "@/lib/server/chat-parse";
 import { SITE_URL } from "@/lib/shop-info";
+import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec } from "@/lib/server/price-answer";
 
 export const runtime = "nodejs";
@@ -176,6 +177,23 @@ export async function POST(req: Request) {
   // (เกณฑ์มาจากชั้นวิเคราะห์: escalate + เหตุผล) เรื่องพวกนี้บอทตอบเองแล้วยิ่งทำให้ลูกค้าหงุดหงิด
   const hardHandoff = /ขอคุยแอดมิน|เคลม|ติดตามออเดอร์/.test(parsed?.intent ?? "");
   if (needsHuman(parsed) && hardHandoff) {
+    // 🙋 แจ้ง Leader Inbox (Firestore ordersure/leader-tasks — ชุดเดียวกับที่บอท LINE ยิง) ไม่ต้องรอลูกค้าไปทักไลน์เอง (25 ก.ย. 69)
+    try {
+      const db = getChatFirestore();
+      if (db)
+        await db.collection("leader-tasks").add({
+          question: message.slice(0, 1000),
+          aiResponse: "",
+          lineUserId: "",
+          sessionId,
+          source: "web",
+          status: "pending",
+          reason: parsed?.escalate_reason ?? "ลูกค้าขอคุยแอดมิน",
+          timestamp: new Date(),
+        });
+    } catch {
+      /* แจ้งไม่ได้ก็ยังส่งลิงก์ไลน์ให้ลูกค้าตามเดิม */
+    }
     return NextResponse.json(
       {
         reply:

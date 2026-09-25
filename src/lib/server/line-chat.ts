@@ -52,6 +52,8 @@ export interface ChatRow {
   lastSeen?: string;
   /** บอทยกธงว่า "ต้องให้คนตอบ" */
   needsHumanFollowup: boolean;
+  /** ⏸ บอทถูกพักถึงเวลานี้ (ISO) — ตั้งจากลูกค้าพิมพ์ "ขอคุยแอดมิน" (60 นาที) หรือแอดมินกดพักในหน้าลูกค้า LINE */
+  pausedUntil?: string;
   /** กุญแจค้นหาจากชื่อ LINE */
   key: string;
   /** กุญแจค้นหาจากชื่อที่แอดมินตั้ง */
@@ -124,6 +126,7 @@ const LIST_FIELDS = [
   "pictureUrl",
   "lastSeen",
   "needsHumanFollowup",
+  "botPausedUntil",
 ] as const;
 
 /** เอกสาร 1 ใบ → 1 แถวในรายการ (ใช้ร่วมกันทั้งดัชนีเต็มและการดึงทีละหน้า) */
@@ -140,6 +143,7 @@ export function rowOfDoc(d: FirebaseFirestore.DocumentSnapshot): ChatRow {
     picture: d.get("pictureUrl") as string,
     lastSeen: isoOf(d.get("lastSeen")),
     needsHumanFollowup: !!d.get("needsHumanFollowup"),
+    pausedUntil: isoOf(d.get("botPausedUntil")),
     key: norm(displayName || "(ไม่มีชื่อ)"),
     aliasKey: adminAlias ? norm(adminAlias) : "",
   };
@@ -328,9 +332,10 @@ export async function loadChatIds(
 }
 
 /** แก้ค่าในดัชนีที่แคชไว้ให้ตรงกับที่เพิ่งเขียนลงฐาน — จะได้ไม่ต้องอ่านทั้งคลังใหม่หลังกดแก้ทีละคน */
-export function patchChatRow(userId: string, patch: Partial<Pick<ChatRow, "adminAlias" | "adminNote" | "tag">>): void {
+export function patchChatRow(userId: string, patch: Partial<Pick<ChatRow, "adminAlias" | "adminNote" | "tag" | "pausedUntil">>): void {
   const row = cache?.rows.find((r) => r.userId === userId);
   if (!row) return;
+  if (patch.pausedUntil !== undefined) row.pausedUntil = patch.pausedUntil || undefined;
   if (patch.adminAlias !== undefined) {
     row.adminAlias = patch.adminAlias || null;
     row.aliasKey = row.adminAlias ? norm(row.adminAlias) : "";
@@ -395,6 +400,17 @@ export async function setBotAllowed(db: FirebaseFirestore.Firestore, userId: str
     { userIds: allow ? FieldValue.arrayUnion(userId) : FieldValue.arrayRemove(userId) },
     { merge: true }
   );
+}
+
+/**
+ * ⏸ พัก/ปลุกบอทรายคน — บอท LINE (Build AI Request) เงียบทุกข้อความของคนนี้จนกว่าจะถึงเวลา
+ * ใช้ฟิลด์เดียวกับที่ workflow ตั้งเองตอนลูกค้าพิมพ์ "ขอคุยแอดมิน" (25 ก.ย. 69) · null = ปลุกทันที
+ */
+export async function setBotPause(db: FirebaseFirestore.Firestore, userId: string, until: Date | null): Promise<void> {
+  await db
+    .collection(CHAT_COLLECTION)
+    .doc(userId)
+    .set({ botPausedUntil: until ?? FieldValue.delete() }, { merge: true });
 }
 
 /** เปิด/ปิดโหมด whitelist ทั้งระบบ */

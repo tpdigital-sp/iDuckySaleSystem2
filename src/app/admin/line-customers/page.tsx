@@ -466,6 +466,7 @@ function LineCustomersInner() {
                 masterOn={!!master?.enabled}
                 busy={busy}
                 onToggle={() => void act({ action: "toggle", userId: r.userId, allow: !r.allowed }, `t-${r.userId}`)}
+                onPause={(m) => void act({ action: "pause", userId: r.userId, minutes: m }, `p-${r.userId}`)}
                 onEdit={() => setEditing(r)}
                 linking={linking === r.userId}
                 onLink={(open) => setLinking(open ? r.userId : "")}
@@ -565,6 +566,7 @@ function CustomerRow({
   masterOn,
   busy,
   onToggle,
+  onPause,
   onEdit,
   onDelete,
   linking,
@@ -577,6 +579,8 @@ function CustomerRow({
   masterOn: boolean;
   busy: string;
   onToggle: () => void;
+  /** ⏸ พักบอทกี่นาที (0 = ปลุก) */
+  onPause: (minutes: number) => void;
   onEdit: () => void;
   onDelete: () => void;
   /** กำลังกางช่องวางลิงก์ของแถวนี้อยู่ */
@@ -730,6 +734,29 @@ function CustomerRow({
           <span className="dkb-sw" data-off={r.allowed ? undefined : "1"} aria-hidden />
           {r.allowed ? "บอทตอบ" : "แอดมินตอบเอง"}
         </button>
+        {/* ⏸ พักบอทชั่วคราว — ใช้ได้ทุกโหมด · ลูกค้าพิมพ์ "ขอคุยแอดมิน" ระบบพักให้เอง 60 นาที กดปลุกก่อนได้ */}
+        {r.pausedUntil ? (
+          <button
+            type="button"
+            onClick={() => onPause(0)}
+            disabled={!!busy}
+            className="dkb-btn dkb-btn-sm dkb-btn-ghost"
+            title={`บอทพักอยู่ถึง ${new Date(r.pausedUntil).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} — กดเพื่อให้บอทกลับมาตอบเลย`}
+            style={{ background: "var(--dk-peach-wash, #fff1e6)", color: "var(--dk-peach-ink, #9a3412)" }}
+          >
+            ⏸ พักถึง {new Date(r.pausedUntil).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} · ▶ ปลุก
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onPause(60)}
+            disabled={!!busy}
+            className="dkb-btn dkb-btn-sm dkb-btn-ghost"
+            title="พักบอท 1 ชั่วโมงให้แอดมินคุยเอง แล้วบอทกลับมาเอง"
+          >
+            ⏸ พัก 1 ชม.
+          </button>
+        )}
       </span>
 
       <RowSide>
