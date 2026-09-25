@@ -17,6 +17,7 @@ import { normalizeShipLabel } from "@/lib/ship-label";
 import type { Contact } from "@/lib/contacts";
 import { insertOrder } from "@/lib/server/order-write";
 import { needsPurchaseStamp } from "@/lib/server/needs-purchase";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -299,9 +300,9 @@ export async function PUT(req: Request) {
     // ยอดเงินเข้าจริงของงวดคิดใน amountsForRecord (งวด − หัก ณ ที่จ่ายของงวด) — ที่นี่บอกแค่ว่าเป็นงวดไหน
     // ⏳ รอให้เรคอร์ด msVerify ลงจริงก่อนตอบ (Netlify ตัดงานเบื้องหลังทิ้งหลังตอบ response)
     await reportPaidToTP(order, by, { noteSuffix: depositAmt > 0 ? `มัดจำ 50% งวดแรก · FlowAccount ${doc.docNo}` : `FlowAccount ${doc.docNo}` });
-    void cutStockForOrder(order);
-    void bumpSoldForOrder(order.id);
-    if (depositAmt <= 0) void awardPointsForOrder(order);
+    inBackground("cutStockForOrder", cutStockForOrder(order));
+    inBackground("bumpSoldForOrder", bumpSoldForOrder(order.id));
+    if (depositAmt <= 0) inBackground("awardPointsForOrder", awardPointsForOrder(order));
   }
   return NextResponse.json({ ok: true, id });
 }

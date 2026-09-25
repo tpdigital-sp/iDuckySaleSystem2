@@ -15,6 +15,7 @@ import { bumpSoldForOrder } from "@/lib/server/sold";
 import { awardPointsForOrder } from "@/lib/server/contact-points";
 import { updateOrder } from "@/lib/server/order-write";
 import { earlyPayBillReason } from "@/lib/server/order-early-pay";
+import { inBackground } from "@/lib/server/background";
 
 /**
  * ตรวจสลิปกับ SlipOK แล้ว "ลงผล" ให้ออเดอร์ — ใช้ร่วมกันทั้งทางลูกค้าแนบเอง (/api/orders/slip)
@@ -511,7 +512,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     // ➗ ลูกค้าหัก ณ ที่จ่าย: บอกเงินที่ต้องโอนจริงคู่ไปด้วย ไม่งั้นโอนตามยอดงวดแล้วเกิน (ตรงกับหน้าออเดอร์)
     const remainNet = balanceNetTransfer(updated, remain);
     const remainNote = remainNet ? ` (โอนจริง ${thb(remainNet.net)} บาท หลังหัก ณ ที่จ่าย${remainNet.rateTxt})` : "";
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       updated,
       orderNotice(updated, link, {
@@ -524,13 +525,13 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         alt: `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(remain)} บาท ชำระก่อนจัดส่ง${remainNote}${whtAsk}\n${link}`,
       }),
       "ยืนยันรับมัดจำ"
-    );
+    ));
     tp("มัดจำ 50% งวดแรก");
-    void cutStockForOrder(updated); // มัดจำ = เริ่มงานแล้วก็ตัดสต๊อกเลย
-    void bumpSoldForOrder(updated.id);
+    inBackground("cutStockForOrder", cutStockForOrder(updated)); // มัดจำ = เริ่มงานแล้วก็ตัดสต๊อกเลย
+    inBackground("bumpSoldForOrder", bumpSoldForOrder(updated.id));
   } else if (confirmedFull) {
     if (order.deposit) {
-      void notifyCustomerLogged(
+      inBackground("notifyCustomerLogged", notifyCustomerLogged(
         sb,
         updated,
         orderNotice(updated, link, {
@@ -542,10 +543,10 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
           alt: `✅ รับยอดคงเหลือออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`,
         }),
         "ยืนยันรับยอดคงเหลือครบ"
-      );
+      ));
       tp(order.deposit.settledAt ? "เก็บยอดที่เพิ่มทีหลังครบแล้ว" : "ยอดคงเหลือ 50% หลัง (ครบแล้ว)");
     } else if (waiting) {
-      void notifyCustomerLogged(
+      inBackground("notifyCustomerLogged", notifyCustomerLogged(
         sb,
         updated,
         orderNotice(updated, link, {
@@ -557,13 +558,13 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
           alt: `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`,
         }),
         "ยืนยันการชำระเงิน"
-      );
+      ));
       tp(paidSoFar(order) > 0 ? "รับยอดส่วนที่เหลือครบแล้ว" : "");
-      void cutStockForOrder(updated); // ตัดสต๊อกวัสดุที่ผูกไว้
-      void bumpSoldForOrder(updated.id); // ยอด "ขายแล้ว" หน้าเว็บ (กันซ้ำในตัวเอง)
+      inBackground("cutStockForOrder", cutStockForOrder(updated)); // ตัดสต๊อกวัสดุที่ผูกไว้
+      inBackground("bumpSoldForOrder", bumpSoldForOrder(updated.id)); // ยอด "ขายแล้ว" หน้าเว็บ (กันซ้ำในตัวเอง)
     } else {
       // งานเดินอยู่แล้ว เพิ่งเก็บส่วนต่าง (สั่งเพิ่ม/ค่าบริการเพิ่ม) ครบ — ปลดล็อกยิงเลขพัสดุ ไม่ต้องเริ่มงานซ้ำ
-      void notifyCustomerLogged(
+      inBackground("notifyCustomerLogged", notifyCustomerLogged(
         sb,
         updated,
         orderNotice(updated, link, {
@@ -575,14 +576,14 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
           alt: `✅ รับยอดส่วนต่างออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ${whtAsk}\n${link}`,
         }),
         "ยืนยันรับยอดส่วนต่างครบ"
-      );
+      ));
       tp("ยอดส่วนต่างที่เก็บเพิ่ม (ครบแล้ว)");
     }
     // 🦆 แต้มสะสม — บวกเมื่อชำระ "ครบ" เท่านั้น (idempotent)
-    void awardPointsForOrder(updated);
+    inBackground("awardPointsForOrder", awardPointsForOrder(updated));
   } else if (partial) {
     const remain = round2(Math.max(0, (updated.deposit && !updated.deposit.firstPaidAt ? Math.min(orderTotal(updated), updated.deposit.amount) : orderTotal(updated)) - (updated.paidTotal ?? 0)));
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       updated,
       orderNotice(updated, link, {
@@ -598,7 +599,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         alt: `💳 รับยอด ${thb(credit)} บาท ของออเดอร์ ${updated.id} แล้วครับ\nยังขาดอีก ${thb(remain)} บาท — โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลย\n${link}`,
       }),
       `รับเงินบางส่วน ${thb(credit)} บาท (ค้าง ${thb(remain)})`
-    );
+    ));
     tp(`รับบางส่วน ${thb(credit)} บาท · ค้าง ${thb(remain)} บาท`);
   }
 
@@ -676,7 +677,7 @@ export async function acceptPaymentManually(a: {
   if ((confirmedDeposit || confirmedFull) && paidSoFar(order) > 0) pendingTP.push(syncPaidCompleteToTP(updated, adminName));
   if (confirmedDeposit) {
     const rem = orderTotal(updated) - (updated.paidTotal ?? 0);
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       updated,
       orderNotice(updated, link, {
@@ -689,12 +690,12 @@ export async function acceptPaymentManually(a: {
         alt: `✅ รับมัดจำออเดอร์ ${updated.id} แล้ว เริ่มงานให้เลยครับ\nยอดคงเหลือ ${thb(rem)} บาท ชำระก่อนจัดส่ง\n${link}`,
       }),
       "ยืนยันรับมัดจำ"
-    );
+    ));
     tp("มัดจำ 50% งวดแรก (สลิปใบเพิ่ม)");
-    void cutStockForOrder(updated);
-    void bumpSoldForOrder(updated.id);
+    inBackground("cutStockForOrder", cutStockForOrder(updated));
+    inBackground("bumpSoldForOrder", bumpSoldForOrder(updated.id));
   } else if (confirmedFull) {
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       updated,
       orderNotice(updated, link, {
@@ -705,15 +706,15 @@ export async function acceptPaymentManually(a: {
         alt: `✅ รับยอดออเดอร์ ${updated.id} ครบแล้ว ขอบคุณครับ\n${link}`,
       }),
       "ยืนยันรับเงินครบ"
-    );
+    ));
     tp(order.deposit ? "ยอดคงเหลือครบ (สลิปใบเพิ่ม)" : "รับครบ (สลิปใบเพิ่ม)");
     if (waiting && !order.deposit) {
-      void cutStockForOrder(updated);
-      void bumpSoldForOrder(updated.id);
+      inBackground("cutStockForOrder", cutStockForOrder(updated));
+      inBackground("bumpSoldForOrder", bumpSoldForOrder(updated.id));
     }
-    void awardPointsForOrder(updated);
+    inBackground("awardPointsForOrder", awardPointsForOrder(updated));
   } else {
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       updated,
       orderNotice(updated, link, {
@@ -729,7 +730,7 @@ export async function acceptPaymentManually(a: {
         alt: `💳 รับยอด ${thb(amount)} บาท ของออเดอร์ ${updated.id} แล้วครับ\nยังขาดอีก ${thb(remain)} บาท — โอนส่วนที่เหลือแล้วแนบสลิปเพิ่มที่ลิงก์เดิมได้เลย\n${link}`,
       }),
       `รับเงินบางส่วน ${thb(amount)} บาท`
-    );
+    ));
     tp(`รับบางส่วน ${thb(amount)} บาท · ค้าง ${thb(remain)} บาท`);
   }
   await settleTP(pendingTP);
@@ -784,7 +785,7 @@ export async function settleCreditedOrder(a: { sb: SupabaseClient; order: Order;
 
   const link = orderLink(origin, updated);
   const whtAsk = order.slipVerify?.deduction?.kind === "wht" ? `\nรับยอดหลัง${order.slipVerify.deduction.label} — รบกวนส่งหนังสือรับรองหักภาษี ณ ที่จ่าย (50 ทวิ) ให้ทางร้านด้วยนะครับ` : "";
-  void notifyCustomerLogged(
+  inBackground("notifyCustomerLogged", notifyCustomerLogged(
     sb,
     updated,
     orderNotice(updated, link, {
@@ -796,12 +797,12 @@ export async function settleCreditedOrder(a: { sb: SupabaseClient; order: Order;
       alt: `✅ ยืนยันการชำระเงินออเดอร์ ${updated.id} แล้ว กำลังเริ่มงานให้ครับ${whtAsk}\n${link}`,
     }),
     "ยืนยันการชำระเงิน"
-  );
+  ));
   // เรคอร์ด msVerify idempotent (สลิปผ่านทางสดถูกส่งไปแล้ว / สคริปต์ซ่อมปลดธงแล้ว) — รอให้เสร็จก่อนตอบเหมือนทางอื่น
   await settleTP([reportPaidToTP(updated, who, { received: order.slipVerify?.amount ?? paid })]);
-  void cutStockForOrder(updated);
-  void bumpSoldForOrder(updated.id);
-  void awardPointsForOrder(updated);
+  inBackground("cutStockForOrder", cutStockForOrder(updated));
+  inBackground("bumpSoldForOrder", bumpSoldForOrder(updated.id));
+  inBackground("awardPointsForOrder", awardPointsForOrder(updated));
   return updated;
 }
 

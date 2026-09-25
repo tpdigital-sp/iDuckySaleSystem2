@@ -161,10 +161,25 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, msg: stri
       body: JSON.stringify({ to: target.id, messages }),
       signal: AbortSignal.timeout(10_000),
     });
+  /**
+   * 🔁 ต่อไม่ติด/หลุดกลางทาง (หมดเวลารอ · ECONNRESET · DNS) → พัก 1.5 วิ แล้วลองใหม่อีก 1 ครั้งก่อนยอมแพ้
+   * เฉพาะกรณี fetch "โยน error" เท่านั้น — LINE ตอบกลับมาแล้ว (4xx/5xx) จัดการข้างล่างตามรหัส
+   * ⚠️ สาเหตุหลักของ "ต่อ LINE ไม่ได้" ก่อน 25 ก.ย. 69 ไม่ใช่เน็ต แต่คือ fire-and-forget บนฟังก์ชันที่ถูกแช่แข็ง
+   *    (ดู lib/server/background.ts) — ตัวนี้เป็นตาข่ายรองรับเน็ตสะดุดจริง ๆ
+   */
+  const pushRetry = async (messages: unknown[]) => {
+    try {
+      return await push(messages);
+    } catch (e) {
+      console.error(`[notify] ต่อ LINE ไม่ได้ (ออเดอร์ ${order.id}) — ${netErrorText(e)} · ลองใหม่อีกครั้ง`);
+      await new Promise((r) => setTimeout(r, 1_500));
+      return push(messages);
+    }
+  };
 
   try {
     const messages = typeof msg === "string" ? [{ type: "text", text: msg }] : msg;
-    let res = await push(messages);
+    let res = await pushRetry(messages);
     /**
      * 🛟 การ์ด Flex ผิดรูป = LINE ตอบ 400 แล้ว "ลูกค้าไม่ได้ข้อความเลย" — เรื่องเงิน/จัดส่งหายเงียบไม่ได้
      * ตกลงมาเป็นข้อความล้วนจาก altText (เนื้อความชุดเดียวกับก่อนเปลี่ยนเป็นการ์ด) แล้วส่งอีกครั้ง
@@ -187,9 +202,37 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, msg: stri
             ? "โควตาข้อความของ LINE OA หมดแล้ว"
             : body?.message || `LINE ตอบกลับ ${res.status}`;
     return { ok: false, via: target.via, reason: hint };
-  } catch {
-    return { ok: false, via: target.via, reason: "ต่อ LINE ไม่ได้ (เน็ต/ปลายทางไม่ตอบ)" };
+  } catch (e) {
+    console.error(`[notify] ต่อ LINE ไม่ได้ (ออเดอร์ ${order.id}) — ${netErrorText(e)} · ยอมแพ้`);
+    return { ok: false, via: target.via, reason: `ต่อ LINE ไม่ได้ (เน็ต/ปลายทางไม่ตอบ · ${netErrorText(e)})` };
   }
+}
+
+/** ชื่อ error สั้น ๆ ไว้ลงประวัติ/console — จะได้แยกออกว่า "หมดเวลารอ" กับ "ต่อไม่ติด" (เดิมกลืนหายหมด ไล่ต่อไม่ได้) */
+function netErrorText(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  if (e.name === "TimeoutError" || e.name === "AbortError") return "หมดเวลารอ 10 วิ";
+  const cause = (e as { cause?: { code?: string; message?: string } }).cause;
+  return cause?.code || cause?.message || e.message || e.name;
+}
+
+/**
+ * 📨 ข้อความที่ "ส่งไม่ถึงเพราะยังไม่ได้ผูก LINE" ค้างอยู่ — นับจากครั้งล่าสุดที่ส่งถึง (ถ้าเคย) ถึงปัจจุบัน
+ * คืนชื่อเรื่องที่พลาด (เช่น "ยืนยันการชำระเงิน", "แบบงาน 2 รูป") ไม่ซ้ำ เรียงเก่า→ใหม่ · ใช้ตอนพนักงานเพิ่งผูก LINE
+ * เพื่อส่งการ์ดสถานะล่าสุดย้อนหลังให้เอง — ลูกค้าจ่ายเงินภายใน 1–3 นาทีหลังสั่ง แต่พนักงานผูก LINE ทีหลัง 2–30 นาที
+ * (25 ก.ย. 69 วัดจริง: "ยังไม่ได้ผูก" วันละ 7–16 ใบ ส่วนใหญ่คือใบที่ผูกตามหลังแล้วแต่การ์ดเงินเข้าหายไปแล้ว)
+ */
+export function missedLineNotifies(order: Order): string[] {
+  const out: string[] = [];
+  const log = order.log ?? [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.action === "แจ้งลูกค้าทางไลน์แล้ว") break;
+    if (e.action !== "แจ้งลูกค้าทางไลน์ไม่สำเร็จ" || !e.detail?.includes("ยังไม่ได้ผูก LINE")) continue;
+    const what = e.detail.split(" · ")[0].trim();
+    if (what && !out.includes(what)) out.unshift(what);
+  }
+  return out;
 }
 
 /**

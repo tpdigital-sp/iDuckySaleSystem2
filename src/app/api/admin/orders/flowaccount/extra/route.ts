@@ -9,6 +9,7 @@ import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import { updateOrder } from "@/lib/server/order-write";
 import { applyCharge, chargeNotice, newChargeId } from "@/lib/server/order-charge";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     const { error } = await updateOrder(sb, applied.order);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     const link = orderLink(new URL(req.url).origin, applied.order);
-    void notifyCustomerLogged(sb, applied.order, chargeNotice(applied, charge, link, { ...extra, chargeId: charge.id }), `แจ้งบิลเพิ่ม ${doc.docNo} ${thb(grandTotal)} บาท`, "key");
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(sb, applied.order, chargeNotice(applied, charge, link, { ...extra, chargeId: charge.id }), `แจ้งบิลเพิ่ม ${doc.docNo} ${thb(grandTotal)} บาท`, "key"));
     return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, applied.order), extra: { ...extra, chargeId: charge.id }, reopen: applied.reopen });
   }
 

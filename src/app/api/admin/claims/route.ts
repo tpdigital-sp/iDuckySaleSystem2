@@ -26,6 +26,7 @@ import {
   type ClaimStatus,
 } from "@/lib/claims";
 import type { Order } from "@/lib/admin-data";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -107,7 +108,7 @@ export async function PATCH(req: Request) {
         message ? `ข้อความจากร้าน: ${message}` : null,
         `ดูรายละเอียดที่หน้า บัญชีของฉัน › แจ้งปัญหา/เคลมสินค้า`,
       ].filter(Boolean);
-      void notifyCustomer(
+      inBackground("notifyCustomer", notifyCustomer(
         sb,
         order,
         noticeFlex({
@@ -124,7 +125,7 @@ export async function PATCH(req: Request) {
           button: { label: "ดูเรื่องที่แจ้งไว้", uri: `${SITE_URL}/account/claims` },
           alt: lines.join("\n"),
         })
-      );
+      ));
     }
   }
 

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { fetchLineProfile, lineUserIdFrom } from "@/lib/server/notify";
+import { fetchLineProfile, lineUserIdFrom, missedLineNotifies, notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
+import { sendProofNotify } from "@/lib/server/proof-notify";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { withLog, type Order } from "@/lib/admin-data";
@@ -188,5 +189,39 @@ export async function POST(req: Request) {
       /* จำไม่ได้ก็ไม่เป็นไร ครั้งหน้าถามใหม่ */
     }
   }
-  return NextResponse.json({ ok: true, profile, order: next });
+  /**
+   * 📨 ส่งย้อนหลัง: ระหว่างที่ยังไม่ได้ผูก มีข้อความส่งไม่ถึงค้างอยู่ (ยืนยันเงินเข้า/แบบงาน/ทวงยอด) → ส่ง "สถานะล่าสุด" ให้ทันที
+   * ไม่ยิงซ้ำทุกข้อความที่พลาด — การ์ดสถานะปัจจุบันครอบคลุมอยู่แล้ว (เงินเข้า+ยอดค้าง / แบบให้ตรวจ / จัดส่ง)
+   * ผูกใบที่ไม่เคยพลาดอะไร = เงียบเหมือนเดิม (ไม่ทักลูกค้าโดยไม่มีเรื่อง)
+   */
+  const missed = missedLineNotifies(order);
+  let resent: string | null = null;
+  let resentError: string | null = null;
+  let latest: Order = next;
+  if (missed.length) {
+    const origin = new URL(req.url).origin;
+    // แบบงานที่พลาด → ส่งการ์ดแบบงานพร้อมจำนวนรูป (ตัวเดียวกับปุ่ม 📣) · ถ้าไม่มีรูปค้างแล้วค่อยตกไปการ์ดสถานะ
+    if (missed.some((m) => m.startsWith("แบบงาน"))) {
+      const pr = await sendProofNotify(sb, next, origin, who, { force: true, note: "ส่งย้อนหลังหลังผูก LINE" });
+      latest = pr.order;
+      if (pr.sent) resent = `แบบงาน ${pr.pending.total} รูป`;
+      else if (pr.reason && pr.reason !== "ไม่มีแบบค้างแจ้ง") resentError = pr.reason;
+    }
+    const link = orderLink(origin, latest);
+    if (!resent && !resentError && statusMessage(latest, link)) {
+      const r = await notifyCustomerLogged(
+        sb,
+        latest,
+        statusFlex(latest, link),
+        `ส่งย้อนหลังหลังผูก LINE — การ์ดสถานะ "${latest.status}" (ที่พลาดไป: ${missed.join(" / ")})`,
+        "key"
+      );
+      if (r.ok) resent = `การ์ดสถานะ "${latest.status}"`;
+      else resentError = r.reason ?? "ส่งไม่สำเร็จ";
+      // notifyCustomerLogged เพิ่งต่อท้ายประวัติในฐาน — อ่านสดให้หน้าจอเห็นบรรทัดนั้นเลย
+      const { data: fresh } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
+      if (fresh?.data) latest = fresh.data as Order;
+    }
+  }
+  return NextResponse.json({ ok: true, profile, order: latest, missed, resent, resentError });
 }

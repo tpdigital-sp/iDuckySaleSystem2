@@ -62,6 +62,7 @@ import {
   type TrackingBox,
   REOPEN_FOR_BALANCE,
 } from "@/lib/admin-data";
+import { inBackground } from "@/lib/server/background";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
 function gateReasons(g: PackGate): string {
@@ -1195,13 +1196,13 @@ export async function PATCH(req: Request) {
   // 🔥 ติ๊ก/ยกเลิกงานเร่ง หรือแก้วันที่ลูกค้าต้องใช้งาน/ช่วงวันจัดส่ง → ส่งต่อให้บอร์ด WIP กราฟฟิก (เฉพาะใบที่ชำระแล้วมีเรคอร์ดอยู่ · ใบอื่น not-found ข้ามเงียบ)
   const shipKey = (o: Order) => `${o.shipDate?.from || ""}|${o.shipDate?.to || ""}`;
   if (mayEditFull && (!!toSave.rush !== !!existing.rush || (toSave.useByDate || "") !== (existing.useByDate || "") || shipKey(toSave) !== shipKey(existing)))
-    void syncRushToTP(toSave);
+    inBackground("syncRushToTP", syncRushToTP(toSave));
   // 🛒 รอของเข้าเปลี่ยน (ติ๊ก/ยกเลิก/แก้โน้ต/ของเข้าแล้ว — แอดมินหรือฝ่ายแพ็ค) → ป้ายบนการ์ดบอร์ด WIP กราฟฟิกต้องตามทัน
   //    ⏳ await: Netlify แช่เครื่องทันทีที่ตอบ — ป้าย "ห้ามส่งผลิต" ที่ไปไม่ถึงบอร์ด = กราฟฟิกส่งผลิตทั้งที่ของยังไม่มา
   const swKey = (o: Order) => JSON.stringify([o.needsPurchase?.at ?? "", o.needsPurchase?.note ?? "", o.needsPurchase?.arrivedAt ?? ""]);
   if (swKey(toSave) !== swKey(existing)) await syncStockWaitToTP(toSave);
   // 👤 แอดมินแก้ชื่อผู้รับ/เบอร์ → อัปเดตการ์ดบอร์ด WIP ให้ตรงหน้าออเดอร์ (เก็บชื่อเก่าไว้ให้จับคู่โฟลเดอร์เดิมได้)
-  if (mayEditFull) void syncCustomerToTP(existing, toSave);
+  if (mayEditFull) inBackground("syncCustomerToTP", syncCustomerToTP(existing, toSave));
   // ยอดของเรคอร์ดสะพานทั้งสองใบ (งวดแรก + งวดหลัง) — ต่างกันเมื่อไหร่แปลว่าต้องยิงอัปเดตไป msVerify
   const tpMoneyKey = (o: Order) => JSON.stringify([amountsForRecord(o, false), amountsForRecord(o, true)]);
   // 💵 ยอดที่ msVerify ต้องกระทบกับแถวโอนของธนาคารเปลี่ยนหลังส่งเรคอร์ดไปแล้ว → อัปเดตให้ตรง
@@ -1218,7 +1219,7 @@ export async function PATCH(req: Request) {
   if (toSave.status !== oldStatus && (["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"] as OrderStatus[]).includes(toSave.status))
     await reconcileFollowupsForOrder(toSave);
   // 🛒 ของเข้าร้านแล้ว (กด "ของเข้าแล้ว" ในคำขอนี้) → บอกลูกค้าทางไลน์ตามที่หน้าออเดอร์สัญญาไว้ · ข่าวคืบหน้า = ระดับ extra
-  if (toSave.needsPurchase?.arrivedAt && !existing.needsPurchase?.arrivedAt) void notifyStockArrived(sb, toSave, new URL(req.url).origin);
+  if (toSave.needsPurchase?.arrivedAt && !existing.needsPurchase?.arrivedAt) inBackground("notifyStockArrived", notifyStockArrived(sb, toSave, new URL(req.url).origin));
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
@@ -1229,14 +1230,14 @@ export async function PATCH(req: Request) {
     const link = orderLink(origin, toSave);
     // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()
     if (statusMessage(toSave, link))
-      void notifyCustomerLogged(
+      inBackground("notifyCustomerLogged", notifyCustomerLogged(
         sb,
         toSave,
         statusFlex(toSave, link),
         `แจ้งสถานะ "${toSave.status}"`,
         // เงิน/จัดส่ง/ยกเลิก = เรื่องสำคัญ ส่งแม้ลูกค้าเลือกรับเฉพาะสำคัญ · นอกนั้นเป็นข่าวคืบหน้า
         KEY_STATUSES.includes(toSave.status) ? "key" : "extra"
-      );
+      ));
     // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
     // ⏳ เรคอร์ด msVerify = ของที่ฝ่ายบัญชีต้องเห็น — รอให้เขียนเสร็จก่อนตอบ (ห้าม fire-and-forget)
     if (toSave.status === "ชำระแล้ว")
@@ -1247,19 +1248,19 @@ export async function PATCH(req: Request) {
         depositFirstNow ? { noteSuffix: "มัดจำ 50% งวดแรก" } : undefined
       );
     // ตัดสต๊อกวัสดุอัตโนมัติ (idempotent ต่อออเดอร์) · ยกเลิก → คืนของที่เคยตัด
-    if (toSave.status === "ชำระแล้ว") void cutStockForOrder(toSave);
+    if (toSave.status === "ชำระแล้ว") inBackground("cutStockForOrder", cutStockForOrder(toSave));
     // ยอด "ขายแล้ว" บนหน้าเว็บ บวก/ถอนอัตโนมัติ (idempotent เช่นกัน)
-    if (toSave.status === "ชำระแล้ว") void bumpSoldForOrder(toSave.id);
-    if (toSave.status === "ยกเลิก") void unbumpSoldForOrder(toSave.id);
-    if (toSave.status === "ยกเลิก") void restoreStockForOrder(toSave);
+    if (toSave.status === "ชำระแล้ว") inBackground("bumpSoldForOrder", bumpSoldForOrder(toSave.id));
+    if (toSave.status === "ยกเลิก") inBackground("unbumpSoldForOrder", unbumpSoldForOrder(toSave.id));
+    if (toSave.status === "ยกเลิก") inBackground("restoreStockForOrder", restoreStockForOrder(toSave));
     // 🦆 แต้มสะสม — ชำระครบ = บวกให้ผู้ติดต่อที่ผูกไว้ (ออเดอร์มัดจำรอเก็บยอดคงเหลือครบก่อน — บวกที่บล็อก settledAt ด้านล่าง)
-    if (toSave.status === "ชำระแล้ว" && !toSave.deposit) void awardPointsForOrder(toSave);
-    if (toSave.status === "ยกเลิก") void revokePointsForOrder(toSave);
+    if (toSave.status === "ชำระแล้ว" && !toSave.deposit) inBackground("awardPointsForOrder", awardPointsForOrder(toSave));
+    if (toSave.status === "ยกเลิก") inBackground("revokePointsForOrder", revokePointsForOrder(toSave));
 
     // ออเดอร์มัดจำเข้าไลน์ผลิตแล้วแต่ยังค้างงวดหลัง → ทวงตั้งแต่ตอนนี้ ไม่ต้องรอของเสร็จค่อยรู้
     if (toSave.status === "กำลังผลิต" && toSave.deposit?.firstPaidAt && !toSave.deposit.settledAt) {
       const bal = Math.max(0, orderTotal(toSave) - (toSave.paidTotal ?? 0));
-      void notifyCustomerLogged(
+      inBackground("notifyCustomerLogged", notifyCustomerLogged(
         sb,
         toSave,
         orderNotice(toSave, link, {
@@ -1272,9 +1273,9 @@ export async function PATCH(req: Request) {
           alt: `🛠️ ออเดอร์ ${toSave.id} เข้าไลน์ผลิตแล้วครับ\n💳 เหลือยอดค้าง ${bal.toLocaleString()} บาท — โอนแล้วแนบสลิปได้ที่ลิงก์นี้เลย (ทางร้านจัดส่งได้หลังชำระครบ)\n${link}`,
         }),
         "ทวงยอดคงเหลือ (เข้าไลน์ผลิต)"
-      );
+      ));
       toSave = { ...toSave, deposit: { ...toSave.deposit, balanceRemindedAt: new Date().toISOString() } };
-      void updateOrder(sb, toSave, { prev: toSave });
+      inBackground("updateOrder", updateOrder(sb, toSave, { prev: toSave }));
     }
   }
 
@@ -1360,7 +1361,7 @@ export async function PATCH(req: Request) {
       if (!sh.pickup && sh.tracking) rows.push({ label: "เลขพัสดุรอบนี้", value: sh.tracking, bold: true });
       if (sh.shipTo) rows.push({ label: "📍 ส่งไปที่", value: shipToText(sh.shipTo) });
       if (sh.note) rows.push({ label: "📝 หมายเหตุ", value: sh.note });
-      void notifyCustomerLogged(
+      inBackground("notifyCustomerLogged", notifyCustomerLogged(
         sb,
         toSave,
         // 🏪 ใบมารับเอง: รอบนี้ไม่มีเลขพัสดุ — บอกให้มารับของรอบนี้ได้เลย ที่เหลือแจ้งอีกครั้ง
@@ -1381,7 +1382,7 @@ export async function PATCH(req: Request) {
         }),
         sh.pickup ? `แจ้งแพ็คเสร็จบางส่วน (มารับเอง) รอบที่ ${round}` : `แจ้งส่งบางส่วน รอบที่ ${round} · ${sh.tracking}`,
         "key"
-      );
+      ));
     });
   }
 
@@ -1402,7 +1403,7 @@ export async function PATCH(req: Request) {
       const t = b.tracking.trim();
       // 📦 กล่องส่งตามมีการ์ดของตัวเอง (บอกว่าข้างในคืออะไร) — ไม่ต้องยิงการ์ด "พัสดุกล่องที่ N" ซ้ำ
       if (fuShip && t === fuShip.round.tracking) return;
-      void notifyCustomerLogged(
+      inBackground("notifyCustomerLogged", notifyCustomerLogged(
         sb,
         toSave,
         orderNotice(toSave, link, {
@@ -1420,7 +1421,7 @@ export async function PATCH(req: Request) {
         }),
         `แจ้งเลขพัสดุกล่องที่ ${box} · ${t}`,
         "key"
-      );
+      ));
     });
   }
 
@@ -1430,16 +1431,16 @@ export async function PATCH(req: Request) {
    */
   if (fuShip) {
     const origin = new URL(req.url).origin;
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       toSave,
       followUpNotice(toSave, orderLink(origin, toSave), fuShip.round, fuShip.round.tracking ?? ""),
       `แจ้งส่งของที่ตกค้าง รอบที่ ${fuShip.no} · ${fuShip.round.tracking}`,
       "key"
-    );
+    ));
   // 🧰 เคสในสมุดเคลมที่เปิดคู่กับรอบนี้ ปิดให้เอง (สถิติจะได้ไม่ค้างเปิดตลอดกาล)
     if (fuShip.round.claimId)
-      void closeFollowUpClaim(sb, fuShip.round.claimId, adminName, `ส่งของที่ตกค้างให้แล้ว — ${fuShip.round.tracking} (ออเดอร์ ${toSave.id})`);
+      inBackground("closeFollowUpClaim", closeFollowUpClaim(sb, fuShip.round.claimId, adminName, `ส่งของที่ตกค้างให้แล้ว — ${fuShip.round.tracking} (ออเดอร์ ${toSave.id})`));
   }
 
   // 📦 แอดมินเพิ่งยืนยันสต๊อก/คิวผลิตของรายการที่สั่งจำนวนมาก → แจ้งลูกค้าทางไลน์ทันที
@@ -1452,7 +1453,7 @@ export async function PATCH(req: Request) {
     const ship = toSave.shipDate?.from
       ? `\nกำหนดส่ง: ${toSave.shipDate.from}${toSave.shipDate.to && toSave.shipDate.to !== toSave.shipDate.from ? ` – ${toSave.shipDate.to}` : ""}`
       : "";
-    void notifyCustomer(
+    inBackground("notifyCustomer", notifyCustomer(
       sb,
       toSave,
       orderNotice(toSave, orderLink(origin, toSave), {
@@ -1473,7 +1474,7 @@ export async function PATCH(req: Request) {
           : {}),
         alt: `✅ เช็คสต๊อกเรียบร้อยแล้วครับ — ผลิตได้ตามจำนวนที่สั่ง\n${lines}${ship}\nออเดอร์ ${toSave.id}\n${orderLink(origin, toSave)}`,
       })
-    );
+    ));
   }
 
   // 💬 ตีราคาครบในคำขอนี้ → แจ้งลูกค้าทางไลน์ว่าเปิดหน้าแจ้งโอนได้แล้ว
@@ -1493,7 +1494,7 @@ export async function PATCH(req: Request) {
         return why ? `${line}\n   ${why.replace(/\n+/g, " · ")}` : line;
       })
       .join("\n");
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       toSave,
       orderNotice(toSave, orderLink(origin, toSave), {
@@ -1514,13 +1515,13 @@ export async function PATCH(req: Request) {
       }),
       `แจ้งราคาที่ตีให้ (ยอดรวม ${total.toLocaleString("th-TH")} บาท)`,
       "key" // เรื่องเงิน — ส่งแม้ลูกค้าเลือกรับเฉพาะเรื่องสำคัญ
-    );
+    ));
   }
 
   // มัดจำ: แอดมินยืนยันรับยอดคงเหลือครบในคำขอนี้ → แจ้งลูกค้า + ส่งเรคอร์ดงวดหลังเข้า msVerify
   if (toSave.deposit?.settledAt && !existing.deposit?.settledAt) {
     const origin = new URL(req.url).origin;
-    void notifyCustomerLogged(
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(
       sb,
       toSave,
       orderNotice(toSave, orderLink(origin, toSave), {
@@ -1531,10 +1532,10 @@ export async function PATCH(req: Request) {
         alt: `✅ รับยอดคงเหลือออเดอร์ ${toSave.id} ครบแล้ว ขอบคุณครับ\n${orderLink(origin, toSave)}`,
       }),
       "ยืนยันรับยอดคงเหลือครบ"
-    );
+    ));
     await reportPaidToTP(toSave, adminName, { docSuffix: "-final", noteSuffix: "ยอดคงเหลือ 50% หลัง (ครบแล้ว)" });
     // 🦆 ออเดอร์มัดจำเพิ่งชำระครบ → บวกแต้มสะสม (idempotent)
-    void awardPointsForOrder(toSave);
+    inBackground("awardPointsForOrder", awardPointsForOrder(toSave));
   }
 
   return NextResponse.json({ ok: true, order: toSave });

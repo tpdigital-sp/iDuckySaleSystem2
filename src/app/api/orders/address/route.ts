@@ -5,6 +5,7 @@ import { syncCustomerToTP } from "@/lib/server/tp-report";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
 import { cleanPhone, contactProblems } from "@/lib/contact-validate";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
   const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
   // ชื่อ/เบอร์เปลี่ยนหลังชำระ → อัปเดตการ์ดบอร์ด WIP กราฟฟิก (ใบยังไม่ชำระไม่มีเรคอร์ด ข้ามเงียบ)
-  void syncCustomerToTP(order, updated);
+  inBackground("syncCustomerToTP", syncCustomerToTP(order, updated));
 
   const safe = customerSafeOrder(updated);
   return NextResponse.json({ ok: true, order: safe });

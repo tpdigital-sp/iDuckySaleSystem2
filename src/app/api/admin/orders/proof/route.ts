@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, withLog, withProofStage, type Order } from "@/lib/admin-data";
 import { notifyCustomer, orderNotice, orderLink } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
 
   // แจ้งเตือนลูกค้าว่ามีแบบงานให้ตรวจ (เงียบถ้ายังไม่ตั้งค่า LINE) — ข้ามเมื่อหน้าจอขอรวมแจ้งทีเดียว
   const origin = new URL(req.url).origin;
-  if (!silent) void notifyCustomer(
+  if (!silent) inBackground("notifyCustomer", notifyCustomer(
     sb,
     updated,
     orderNotice(updated, orderLink(origin, updated), {
@@ -173,7 +174,7 @@ export async function POST(req: Request) {
           ? `🎨 รูปที่ ${replaceIndex + 1} ของออเดอร์ ${updated.id} แก้ไขเรียบร้อย พร้อมให้คุณตรวจอีกครั้ง\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`
           : `🎨 แบบงานออเดอร์ ${updated.id} พร้อมให้คุณตรวจแล้ว\nดู/อนุมัติได้ที่: ${orderLink(origin, updated)}`,
     })
-  );
+  ));
 
   return NextResponse.json({ ok: true, order: updated });
 }

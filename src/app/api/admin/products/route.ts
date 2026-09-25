@@ -7,6 +7,7 @@ import { sanitizeHtml } from "@/lib/server/sanitize-html";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { invalidateProductsSlim } from "@/lib/server/products-slim";
 import { coverStockForProducts } from "@/lib/server/stock-cover";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -107,7 +108,7 @@ export async function POST(req: Request) {
     clearProductPageCache(saved); // หน้าร้านต้องเห็นของใหม่ทันทีเหมือนกัน ไม่ต้องรอแคชหมดอายุ
     // 📦 สินค้าใหม่ → สร้าง SKU ให้เองจะได้โผล่ในหน้าคลังสต๊อกทันที (เจ้าของร้านสั่ง 23 ก.ย. 69)
     // เฉพาะตอน "สร้างใหม่" (ไม่มีแถวเดิม) · ล้มก็ไม่ให้กระทบการบันทึกสินค้า — cron เช้าจะกวาดซ้ำให้อยู่ดี
-    if (!cur) void coverStockForProducts(saved.id).catch((e) => console.error("[stock-cover] ", (e as Error)?.message));
+    if (!cur) inBackground("coverStockForProducts", coverStockForProducts(saved.id).catch((e) => console.error("[stock-cover] ", (e as Error)?.message)));
   }
   return error
     ? NextResponse.json({ error: error.message }, { status: 500 })

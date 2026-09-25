@@ -8,6 +8,7 @@ import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { applyCharge, chargeNotice, newChargeId } from "@/lib/server/order-charge";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import { updateOrder } from "@/lib/server/order-write";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
 
   // แจ้งลูกค้าทันที — บอกว่าเก็บอะไร เท่าไร และยอดที่ต้องโอนเพิ่ม (ใบ FlowAccount = โอนตามเอกสาร ส่งสลิปในแชท)
   const link = orderLink(new URL(req.url).origin, updated);
-  void notifyCustomerLogged(sb, updated, chargeNotice(applied, charge, link), `แจ้งเก็บเพิ่ม ${label} ${thb(amount)} บาท`, "key");
+  inBackground("notifyCustomerLogged", notifyCustomerLogged(sb, updated, chargeNotice(applied, charge, link), `แจ้งเก็บเพิ่ม ${label} ${thb(amount)} บาท`, "key"));
   // คืนออเดอร์พร้อมลิงก์สลิปที่เซ็นแล้ว — หน้าออเดอร์เอาไปแทนก้อนเดิมได้เลย
   return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated), charge });
 }

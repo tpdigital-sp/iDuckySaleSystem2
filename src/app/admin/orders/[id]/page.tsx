@@ -11783,11 +11783,14 @@ function LineChatBox({
         managerId?: string;
         suggestions?: typeof suggestions;
         resolved?: string;
+        missed?: string[];
+        resent?: string | null;
+        resentError?: string | null;
       };
       if (j.ok && j.order) onBound(j.order);
       if (j.ok && j.profile) {
         // ผูกได้เลย (userId ตรง หรือลิงก์ที่เคยจับคู่ไว้)
-        setMsg(`✅ ผูกกับ "${j.profile.name}" แล้ว${j.resolved === "override" ? " (จำจากลิงก์ห้องแชทที่เคยจับคู่ไว้)" : ""} — ระบบส่งข้อความถึงได้`);
+        setMsg(`✅ ผูกกับ "${j.profile.name}" แล้ว${j.resolved === "override" ? " (จำจากลิงก์ห้องแชทที่เคยจับคู่ไว้)" : ""} — ระบบส่งข้อความถึงได้${resentNote(j)}`);
         setDraft("");
         setChanging(false);
         return;
@@ -11808,6 +11811,13 @@ function LineChatBox({
     }
   }
 
+  /** 📨 หลังผูก ระบบส่งข้อความที่พลาดไประหว่างยังไม่ผูก (เช่นยืนยันเงินเข้า) ย้อนหลังให้เอง — บอกพนักงานว่าส่งอะไร/ติดอะไร */
+  function resentNote(j: { missed?: string[]; resent?: string | null; resentError?: string | null }): string {
+    if (j.resent) return ` · 📨 ส่ง${j.resent}ย้อนหลังให้ลูกค้าแล้ว (ที่พลาดไป: ${(j.missed ?? []).join(" / ")})`;
+    if (j.resentError) return ` · ⚠️ ส่งย้อนหลังไม่สำเร็จ: ${j.resentError}`;
+    return "";
+  }
+
   /** เลือกคนจากผลค้นหา → ผูกเลย */
   async function bindUserId(uid: string) {
     setBusy(true);
@@ -11819,10 +11829,10 @@ function LineChatBox({
         // แนบรหัสท้ายลิงก์ที่รอจับคู่ไปด้วย → ระบบจำว่าลิงก์นี้ = คนนี้ ครั้งหน้าผูกอัตโนมัติ
         body: JSON.stringify({ orderId: order.id, input: uid, managerId: pendingManagerId ?? undefined }),
       });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; profile?: { name: string }; order?: Order; error?: string };
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; profile?: { name: string }; order?: Order; error?: string; missed?: string[]; resent?: string | null; resentError?: string | null };
       if (j.ok) {
         if (j.order) onBound(j.order);
-        setMsg(`✅ ผูกกับ "${j.profile?.name}" แล้ว — ระบบส่งข้อความถึงได้`);
+        setMsg(`✅ ผูกกับ "${j.profile?.name}" แล้ว — ระบบส่งข้อความถึงได้${resentNote(j)}`);
         setDraft("");
         setHits([]);
         setChanging(false);

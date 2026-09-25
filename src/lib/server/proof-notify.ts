@@ -14,7 +14,7 @@ export async function sendProofNotify(
   order: Order,
   origin: string,
   by: string,
-  opts?: { auto?: boolean; force?: boolean }
+  opts?: { auto?: boolean; force?: boolean; /** ข้อความห้อยท้ายบรรทัดประวัติ เช่น "ส่งย้อนหลังหลังผูก LINE" */ note?: string }
 ): Promise<{ pending: PendingProofs; sent: boolean; reason?: string; order: Order }> {
   let pending = pendingProofs(order);
   // force = พนักงานกด "แจ้งอีกครั้ง" ทั้งที่ไม่มีรูปค้าง → ย้ำทุกรูปที่ลูกค้ายังไม่อนุมัติ
@@ -56,7 +56,7 @@ export async function sendProofNotify(
   // อ่านสดก่อนเขียน กันทับงานที่คนอื่นเพิ่งบันทึก
   const { data: row } = await sb.from("orders").select("data").eq("id", order.id).maybeSingle();
   const fresh = (row?.data as Order | undefined) ?? order;
-  const what = `แบบงาน ${pending.total} รูป${opts?.auto ? " · อัตโนมัติ (ค้างเกินกำหนด)" : opts?.force ? " · แจ้งซ้ำ" : ""}${r.reason ? ` · ${r.reason}` : ""}`;
+  const what = `แบบงาน ${pending.total} รูป${opts?.auto ? " · อัตโนมัติ (ค้างเกินกำหนด)" : opts?.note ? ` · ${opts.note}` : opts?.force ? " · แจ้งซ้ำ" : ""}${r.reason ? ` · ${r.reason}` : ""}`;
   const next = withLog(
     { ...fresh, proofNotifiedAt: new Date().toISOString(), savedAt: new Date().toISOString() },
     by,
