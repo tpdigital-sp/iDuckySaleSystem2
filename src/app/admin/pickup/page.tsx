@@ -148,6 +148,8 @@ function PickupInner() {
       }
       const u = j.row;
       setRows((rs) => rs?.map((x) => (x.id === u.id ? u : x)) ?? rs);
+      // 🏪📦 ชุดรับพร้อมกัน: เซิร์ฟเวอร์ปิดใบตามให้ด้วย — โหลดรายการใหม่ให้แถวพวกนั้นย้ายไปกอง "รับแล้ว"
+      if (u.shipWith?.role === "main") void load();
       // ป้ายข้างเมนูนับใหม่ทันที (AdminShell ฟังอีเวนต์นี้)
       window.dispatchEvent(new Event("iducky:pickup-changed"));
     } finally {
@@ -195,6 +197,12 @@ function PickupInner() {
             <>
               <StatusChip s={r.status} label={r.label} />
               {r.rush && <Tag tone="solid">งานเร่ง</Tag>}
+              {/* 🏪📦 ชุดรับพร้อมกัน (lib/ship-with.ts): ส่งมอบทั้งชุดทีเดียว — ปุ่มรับของอยู่ที่ใบหลัก */}
+              {r.shipWith && (
+                <Tag tone="lilac" title={r.shipWith.role === "main" ? "ใบหลัก — กดรับของแล้วที่ใบนี้ ปิดให้ทั้งชุด" : "ใบตาม — ของแพ็ครวมอยู่กับใบหลัก กดรับของแล้วที่ใบหลัก"}>
+                  {r.shipWith.role === "main" ? `📦 รวม ${r.shipWith.ids.map((x) => x.replace(/^OD-\d{6}-/, "")).join(", ")} ด้วย` : `📦 รับพร้อม ${r.shipWith.ids[0]}`}
+                </Tag>
+              )}
               {r.partialRounds && (
                 <Tag tone="sky" title="ใบแบ่งส่ง — บางส่วนแพ็คเสร็จให้ลูกค้ามารับก่อนแล้ว ที่เหลือยังทำอยู่ ใบยังไม่ปิด">
                   🏪 แพ็คเสร็จบางส่วนแล้ว {r.partialRounds}
@@ -233,9 +241,9 @@ function PickupInner() {
           }
         />
         <RowSide>
-          {r.group === "ready" && mayHandOver && r.due <= 0 ? (
-            <Btn small tone="navy" disabled={busy === r.id} onClick={() => void handOver(r)} title="จดคนส่งมอบ/เวลา แล้วปิดงานเป็นเสร็จสิ้น">
-              {busy === r.id ? "กำลังบันทึก…" : "✓ ลูกค้ารับของแล้ว"}
+          {r.group === "ready" && mayHandOver && r.due <= 0 && r.shipWith?.role !== "rider" ? (
+            <Btn small tone="navy" disabled={busy === r.id} onClick={() => void handOver(r)} title={r.shipWith ? "จดคนส่งมอบ/เวลา แล้วปิดงานทั้งชุดที่รับพร้อมกัน" : "จดคนส่งมอบ/เวลา แล้วปิดงานเป็นเสร็จสิ้น"}>
+              {busy === r.id ? "กำลังบันทึก…" : r.shipWith ? "✓ รับของแล้วทั้งชุด" : "✓ ลูกค้ารับของแล้ว"}
             </Btn>
           ) : null}
           <Btn small tone={r.group === "ready" && r.due > 0 ? "navy" : undefined} href={href}>

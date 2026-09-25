@@ -26,7 +26,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type ShopInfo } from "@/lib/shop-settings";
 import { senderOf } from "@/lib/order-sender";
 import { orderContactProblems } from "@/lib/contact-validate";
-import { resolveShipLabel } from "@/lib/ship-label";
+import { isPickupOrder, resolveShipLabel } from "@/lib/ship-label";
 import { isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { useActor, useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
@@ -926,6 +926,8 @@ function OrderDocs({
   // 📦 ส่งรวมกล่อง (lib/ship-with.ts): ใบตาม = ไม่มีใบปะหน้า (shipRiderOf = เลขใบหลัก) · ใบหลัก = ตราฝั่งใบงานว่าต้องใส่ของใบไหนเพิ่ม
   const shipRiderOf = isShipRider(order) ? shipMainIdOf(order) : "";
   const shipRidersIn = (order.tracking ?? "").trim() ? [] : shipRiderIdsOf(order);
+  // 🏪 ชุดรับพร้อมกัน (มารับเองทั้งคู่): ตราต้องพูดเรื่อง "แพ็ครวม รอลูกค้ามารับ" ไม่ใช่กล่อง/เลขพัสดุ
+  const pickupSet = isPickupOrder(order) && (!!shipRiderOf || shipRidersIn.length > 0);
   // 📮 ผู้ส่งบนกล่อง — ใบฝากส่งของตัวแทนตั้งชื่อร้านตัวเองไว้ (order.sender) ที่เหลือใช้ข้อมูลร้าน
   const sender = senderOf(order, shop);
   // ชื่อวิธีจัดส่งที่ลูกค้าเลือกจริง (เช่น "EMS (50)") — order.shipping เก็บได้แค่ 2 ค่าเก่า ธรรมดา/ด่วน จึงเพี้ยนเวลาร้านตั้งวิธีส่งเอง
@@ -1100,10 +1102,12 @@ function OrderDocs({
             {shipRiderOf && (
               <div className="keep mb-4 rounded-lg border-[3px] border-red-600 bg-red-50 p-4 text-center">
                 <p className="text-2xl font-extrabold leading-tight" style={{ color: "#dc2626" }}>
-                  📦 ห้ามส่งแยก — ของใบนี้ลงกล่อง {shipRiderOf}
+                  {pickupSet ? `🏪 รับพร้อมกัน — ของใบนี้แพ็ครวมกับ ${shipRiderOf}` : `📦 ห้ามส่งแยก — ของใบนี้ลงกล่อง ${shipRiderOf}`}
                 </p>
                 <p className="mt-1 text-sm font-bold text-red-800">
-                  ใบนี้ไม่มีใบปะหน้า · ใบปะหน้า/ที่อยู่/เลขพัสดุออกจาก {shipRiderOf} ใบเดียว · ผลิตเสร็จแล้วพักของไว้รอลงกล่องใบนั้น
+                  {pickupSet
+                    ? `ลูกค้ามารับเองทั้งสองใบ · ผลิตเสร็จแล้วพักของไว้รวมกับ ${shipRiderOf} · กด "แพ็คเสร็จ" ที่ ${shipRiderOf} ใบเดียว`
+                    : `ใบนี้ไม่มีใบปะหน้า · ใบปะหน้า/ที่อยู่/เลขพัสดุออกจาก ${shipRiderOf} ใบเดียว · ผลิตเสร็จแล้วพักของไว้รอลงกล่องใบนั้น`}
                 </p>
               </div>
             )}
@@ -1226,7 +1230,9 @@ function OrderDocs({
                 {/* 📦 ใบหลักของชุดส่งรวม — ฝั่งใบงาน (ใต้เส้นตัด) ลูกค้าไม่เห็น: คนแพ็คต้องใส่ของใบไหนลงกล่องนี้เพิ่ม */}
                 {shipRidersIn.length > 0 && (
                   <p className="mt-1.5 block w-fit rounded border-[3px] border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
-                    📦 กล่องนี้ต้องใส่ของ {shipRidersIn.join(", ")} ไปด้วย — เช็คให้ครบก่อนปิดกล่อง · ยิงเลขพัสดุใบนี้ใบเดียว
+                    {pickupSet
+                      ? `🏪 ลูกค้ามารับพร้อมกัน — แพ็ครวมของ ${shipRidersIn.join(", ")} ด้วย · เช็คให้ครบก่อนกดแพ็คเสร็จ (กดที่ใบนี้ใบเดียว)`
+                      : `📦 กล่องนี้ต้องใส่ของ ${shipRidersIn.join(", ")} ไปด้วย — เช็คให้ครบก่อนปิดกล่อง · ยิงเลขพัสดุใบนี้ใบเดียว`}
                   </p>
                 )}
                 {/* 🤝 ใบตัวแทนที่ยังไม่ได้ตั้งผู้ส่ง — กล่องจะขึ้นชื่อร้านเรา คนปริ้นต้องรู้ก่อนแปะ */}

@@ -709,15 +709,21 @@ export async function PATCH(req: Request) {
       { error: `ใบนี้ส่งรวมกล่องกับ ${shipMainIdOf(existing)} — ยิงเลขพัสดุที่ ${shipMainIdOf(existing)} ใบเดียว เลขจะลงใบนี้ให้เอง` },
       { status: 409 }
     );
+  // 🏪 ชุดรับพร้อมกัน (มารับเองทั้งคู่): "แพ็คเสร็จ" ก็กดที่ใบหลักใบเดียวเหมือนยิงเลข — ใบตามขึ้นแพ็คเสร็จให้เอง
+  if (wantsPickupDone && isShipRider(existing))
+    return NextResponse.json(
+      { error: `ใบนี้แพ็ครวมกับ ${shipMainIdOf(existing)} ให้ลูกค้ามารับพร้อมกัน — กด "แพ็คเสร็จ" ที่ ${shipMainIdOf(existing)} ใบเดียว ใบนี้จะขึ้นแพ็คเสร็จให้เอง` },
+      { status: 409 }
+    );
   let shipRiders: Order[] = [];
-  if (wantsTracking && isShipMain(existing)) {
+  if ((wantsTracking || wantsPickupDone) && isShipMain(existing)) {
     const { data: rr } = await sb.from("orders").select("data").in("id", shipRiderIdsOf(existing));
     shipRiders = (rr ?? []).map((r) => r.data as Order).filter((r) => isShipRider(r) && shipMainIdOf(r) === existing.id);
   }
   const ridersNotReady = shipRiders.map((r) => ({ id: r.id, why: riderNotReady(r) })).filter((r) => r.why.length);
   if (ridersNotReady.length && !mayEditFull)
     return NextResponse.json(
-      { error: `ยังยิงเลขพัสดุไม่ได้ — ของที่ส่งรวมกล่องยังไม่พร้อม: ${ridersNotReady.map((r) => `${r.id} (${r.why.join(" · ")})`).join(" / ")}` },
+      { error: `${wantsPickupDone ? "ยังยืนยันแพ็คเสร็จไม่ได้" : "ยังยิงเลขพัสดุไม่ได้"} — ของที่${wantsPickupDone ? "แพ็ครวม" : "ส่งรวมกล่อง"}ยังไม่พร้อม: ${ridersNotReady.map((r) => `${r.id} (${r.why.join(" · ")})`).join(" / ")}` },
       { status: 409 }
     );
 
@@ -1298,6 +1304,33 @@ export async function PATCH(req: Request) {
       if (r.lineUserId && r.lineUserId !== toSave.lineUserId) {
         const link = orderLink(origin, wr.order);
         await notifyCustomerLogged(sb, wr.order, statusFlex(wr.order, link), `แจ้งสถานะ "จัดส่งแล้ว" (ส่งรวมกับ ${toSave.id})`, "key");
+      }
+    }
+  }
+
+  /**
+   * 🏪 ชุดรับพร้อมกัน: กด "แพ็คเสร็จ" ที่ใบหลัก → ใบตามทุกใบขึ้นแพ็คเสร็จ + "จัดส่งแล้ว" (= รอมารับ) ด้วย
+   * ใบตามกดเองไม่ได้ (409 ด้านบน) ถ้าไม่ลงให้ตรงนี้ ใบตามจะค้าง "กำลังผลิต" ทั้งที่ของวางรออยู่หน้าร้านแล้ว
+   * ลูกค้าได้การ์ด "แพ็คเสร็จ มารับได้เลย" จากใบหลัก (บอกใบที่รวม — ดู statusFlex) · ใบตามแจ้งแยกเฉพาะเมื่อผูก LINE คนละคน
+   */
+  if (shipRiders.length && toSave.packedAt && !existing.packedAt && isPickupOrder(toSave)) {
+    const origin = new URL(req.url).origin;
+    for (const r of shipRiders) {
+      if (r.packedAt) continue; // ใบตามที่แพ็คเสร็จรอมารับอยู่ก่อนแล้ว — ไม่ทับคน/เวลาเดิม
+      const nextRider = withLog(
+        { ...r, packedAt: toSave.packedAt, status: (r.status === "เสร็จสิ้น" ? r.status : "จัดส่งแล้ว") as OrderStatus },
+        adminName,
+        `🏪 แพ็คเสร็จ — รอลูกค้ามารับ (แพ็ครวมกับ ${toSave.id})`,
+        `กดแพ็คเสร็จที่ ${toSave.id} — ใบนี้รับพร้อมกัน`
+      );
+      const wr = await updateOrder(sb, nextRider, { prev: r, by: adminName });
+      if (wr.error) {
+        console.error(`[orders] ลงแพ็คเสร็จให้ใบรับพร้อมกัน ${r.id} ไม่สำเร็จ:`, wr.error.message);
+        continue;
+      }
+      if (r.lineUserId && r.lineUserId !== toSave.lineUserId) {
+        const link = orderLink(origin, wr.order);
+        await notifyCustomerLogged(sb, wr.order, statusFlex(wr.order, link), `แจ้งสถานะ "จัดส่งแล้ว" (รับพร้อมกับ ${toSave.id})`, "key");
       }
     }
   }

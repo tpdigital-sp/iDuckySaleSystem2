@@ -1,4 +1,6 @@
-/** จำลอง "ส่งรวมกล่อง" กับออเดอร์จริง — อ่านอย่างเดียว ไม่เขียนฐาน ไม่ยิงไลน์ */
+/** จำลอง "ส่งรวมกล่อง" กับออเดอร์จริง — อ่านอย่างเดียว ไม่เขียนฐาน ไม่ยิงไลน์
+ * 🏪 ใบหลักที่มารับเองด้วย = "ชุดรับพร้อมกัน" (25 ก.ย. 69) — ใบตามยังเป็นมารับเอง ข้อความไลน์พูดเรื่องมารับ ไม่ใช่กล่อง/เลขพัสดุ
+ * กติกาล้วน ๆ ไม่ต้องใช้ฐาน: npm run check:ship-with */
 import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 const R = process.cwd();
@@ -36,22 +38,31 @@ for (const me of pickups.slice(0, 12) as any[]) {
     ok(`${me.id} ยอดใบตามไม่เปลี่ยน`, orderTotal(nextRider) === orderTotal(me), `${orderTotal(me)}→${orderTotal(nextRider)}`);
     ok(`${main.id} ยอดใบหลักไม่เปลี่ยน`, orderTotal(nextMain) === orderTotal(main));
     ok(`${me.id} ยอดค้างไม่เปลี่ยน`, orderBalance(nextRider) === orderBalance(me) && hasUnpaidBalance(nextRider) === hasUnpaidBalance(me));
-    ok(`${me.id} หลุดจากมารับเอง`, !isPickupOrder(nextRider), nextRider.shippingLabel);
+    const pickupSet = isPickupOrder(main);
+    if (pickupSet) ok(`${me.id} ยังเป็นมารับเอง (ชุดรับพร้อมกัน)`, isPickupOrder(nextRider) && SW.isPickupShipSet(nextRider), nextRider.shippingLabel);
+    else ok(`${me.id} หลุดจากมารับเอง`, !isPickupOrder(nextRider), nextRider.shippingLabel);
     ok(`${me.id} ป้ายวิธีส่งอ่านได้`, !!resolveShipLabel(nextRider, []), nextRider.shippingLabel);
     ok(`${me.id} ผูกซ้ำไม่ได้`, !!SW.cannotBeRider(nextRider) && !!SW.cannotBeMain(nextRider));
     ok(`${main.id} ยังเป็นใบหลักรับใบตามเพิ่มได้`, !SW.cannotBeMain(nextMain));
-    // ยิงเลขที่ใบหลัก
-    const shippedMain = { ...nextMain, tracking: "EX123456789TH", status: "จัดส่งแล้ว" };
-    const shippedRider = { ...nextRider, tracking: "EX123456789TH", status: "จัดส่งแล้ว" };
+    // ยิงเลขที่ใบหลัก (ชุดส่ง ปณ.) / กดแพ็คเสร็จที่ใบหลัก (ชุดรับพร้อมกัน)
+    const packed = { at: new Date().toISOString(), by: "เทส" };
+    const shippedMain = pickupSet ? { ...nextMain, packedAt: packed, status: "จัดส่งแล้ว" } : { ...nextMain, tracking: "EX123456789TH", status: "จัดส่งแล้ว" };
+    const shippedRider = pickupSet ? { ...nextRider, packedAt: packed, status: "จัดส่งแล้ว" } : { ...nextRider, tracking: "EX123456789TH", status: "จัดส่งแล้ว" };
     const mm = N.statusMessage(shippedMain, "LINK") ?? ""; const rm = N.statusMessage(shippedRider, "LINK") ?? "";
-    ok("ข้อความใบหลักบอกใบที่รวม", mm.includes(me.id) && mm.includes("EX123456789TH"), mm);
-    ok("ข้อความใบตามไม่พูดเรื่องมารับ", rm.includes(main.id) && !rm.includes("มารับ"), rm);
-    ok("flex ใบหลักสร้างได้", JSON.stringify(N.statusFlex(shippedMain, "LINK")).includes("รวมในกล่อง"));
+    if (pickupSet) {
+      ok("ข้อความใบหลักบอกใบที่รับพร้อมกัน", mm.includes(me.id) && mm.includes("มารับ") && !mm.includes("กล่อง") && !mm.includes("เลขพัสดุ"), mm);
+      ok("ข้อความใบตามบอกใบหลัก + มารับ", rm.includes(main.id) && rm.includes("มารับ") && !rm.includes("กล่อง"), rm);
+      ok("flex ใบหลักมีแถวรับพร้อมกับ", JSON.stringify(N.statusFlex(shippedMain, "LINK")).includes("รับพร้อมกับ"));
+    } else {
+      ok("ข้อความใบหลักบอกใบที่รวม", mm.includes(me.id) && mm.includes("EX123456789TH"), mm);
+      ok("ข้อความใบตามไม่พูดเรื่องมารับ", rm.includes(main.id) && !rm.includes("มารับ"), rm);
+      ok("flex ใบหลักสร้างได้", JSON.stringify(N.statusFlex(shippedMain, "LINK")).includes("รวมในกล่อง"));
+    }
     if (pairs === 1) {
       console.log(`\nตัวอย่างคู่จริง: ใบตาม ${me.id} (${me.shippingLabel || me.shipping} ฿${me.shippingCost} · ${me.status}) + ใบหลัก ${main.id} (${main.shippingLabel || main.shipping} ฿${main.shippingCost} · ${main.status})`);
       console.log(`  ใบตามหลังผูก: วิธีส่ง "${nextRider.shippingLabel}" ค่าส่ง ฿${nextRider.shippingCost} ยอดรวม ${orderTotal(nextRider)} (เดิม ${orderTotal(me)})`);
       console.log(`  ของใบตามพร้อมลงกล่อง?: ${JSON.stringify(SW.riderNotReady(nextRider))}`);
-      console.log(`  ไลน์ตอนยิงเลข:\n    ${mm.replace(/\n/g, "\n    ")}`);
+      console.log(`  ไลน์ตอน${pickupSet ? "แพ็คเสร็จ (รับพร้อมกัน)" : "ยิงเลข"}:\n    ${mm.replace(/\n/g, "\n    ")}`);
     }
   }
 }

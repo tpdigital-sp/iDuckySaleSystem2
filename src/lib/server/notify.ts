@@ -269,6 +269,12 @@ export function balanceNetTransfer(o: Order, bal: number): { net: number; rateTx
  */
 /** 📦 ส่งรวมกล่อง (lib/ship-with.ts): บรรทัดบอกลูกค้าว่ากล่องนี้มีของออเดอร์ไหนรวมอยู่ด้วย ("" = ไม่ได้ส่งรวม) */
 function shipWithLine(order: Order): string {
+  // 🏪 ชุดรับพร้อมกัน (มารับเองทั้งคู่) — ไม่มีกล่อง/เลขพัสดุ บอกว่ารับพร้อมกันได้เลย
+  if (isPickupOrder(order)) {
+    if (isShipMain(order)) return `🏪 แพ็ครวมของออเดอร์ ${shipRiderIdsOf(order).join(", ")} ไว้ด้วยแล้ว รับพร้อมกันได้เลยครับ`;
+    if (isShipRider(order)) return `🏪 แพ็ครวมกับออเดอร์ ${shipMainIdOf(order)} รับพร้อมกันได้เลยครับ`;
+    return "";
+  }
   if (isShipMain(order)) return `📦 กล่องนี้รวมของออเดอร์ ${shipRiderIdsOf(order).join(", ")} ไปด้วยครับ`;
   if (isShipRider(order)) return `📦 ส่งรวมกล่องเดียวกับออเดอร์ ${shipMainIdOf(order)} ครับ`;
   return "";
@@ -302,7 +308,7 @@ export function statusMessage(order: Order, link: string): string | null {
     case "จัดส่งแล้ว":
       // 🏪 มารับเอง — ไม่มีพัสดุ/เลขพัสดุ ข้อความต้องไม่พูดถึงการจัดส่ง
       if (isPickupOrder(order))
-        return `🏪 ออเดอร์ ${id} ${order.shipments?.length ? "แพ็คเสร็จรอบสุดท้ายแล้วครับ ครบทุกรายการ" : "แพ็คเสร็จแล้วครับ"} มารับที่ร้านได้เลย แจ้งเลขออเดอร์ตอนมารับนะครับ\n${link}`;
+        return `🏪 ออเดอร์ ${id} ${order.shipments?.length ? "แพ็คเสร็จรอบสุดท้ายแล้วครับ ครบทุกรายการ" : "แพ็คเสร็จแล้วครับ"} มารับที่ร้านได้เลย แจ้งเลขออเดอร์ตอนมารับนะครับ${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`;
       // 🚚 เคยแบ่งส่งมาก่อน → บอกว่านี่คือรอบสุดท้าย (เลขรอบก่อนแจ้งไปแล้วตอนส่งรอบนั้น)
       {
         // 📮 หลายกล่องในใบเดียว → ไล่เลขทุกกล่อง (กล่องที่ 1/2/…) ไม่งั้นลูกค้าได้เลขเดียวทั้งที่มี 2 พัสดุ
@@ -409,6 +415,9 @@ export function statusFlex(
   }
   if (order.status === "จัดส่งแล้ว" && order.tracking && isShipMain(order)) rows.push(flexRow("รวมในกล่อง", shipRiderIdsOf(order).join(", ")));
   if (order.status === "จัดส่งแล้ว" && order.tracking && isShipRider(order)) rows.push(flexRow("ส่งรวมกับ", shipMainIdOf(order)));
+  // 🏪 ชุดรับพร้อมกัน: แพ็คเสร็จ/รับแล้ว — บอกใบที่รับพร้อมกัน ลูกค้าจะได้รู้ว่ามารอบเดียวได้ครบ
+  if ((order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น") && isPickupOrder(order) && isShipMain(order)) rows.push(flexRow("รับพร้อมกับ", shipRiderIdsOf(order).join(", ")));
+  if ((order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น") && isPickupOrder(order) && isShipRider(order)) rows.push(flexRow("รับพร้อมกับ", shipMainIdOf(order)));
 
   return [
     {

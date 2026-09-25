@@ -4,7 +4,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderStatusLabel, withLog, type Order } from "@/lib/admin-data";
 import { isPickupOrder, stripShipPrice } from "@/lib/ship-label";
-import { alreadyShipped, buildShipLink, cannotBeMain, cannotBeRider, isShipMain, isShipRider, riderNotReady, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
+import { alreadyShipped, buildShipLink, cannotBeMain, cannotBeRider, isShipMain, isShipRider, pickShipRoles, riderNotReady, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
 import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 
@@ -18,6 +18,7 @@ export const runtime = "nodejs";
  *        candidates = ใบอื่นของลูกค้าคนเดียวกันที่ยังไม่ปิด (จับจาก contactId/customerId/LINE/เบอร์/ชื่อ) · &q= ค้นเลขออเดอร์เพิ่มได้
  *                     แต่ละใบมี blocked = เหตุผลที่ผูกไม่ได้ ("" = ผูกได้เลย) · ใบที่ผูกได้เรียงขึ้นก่อน
  * POST { mainId, riderId } → ผูก: เขียนสองใบ · ใบตามเปลี่ยนวิธีส่งตามใบหลัก (ค่าส่งไม่แตะ) · แจ้งลูกค้าทางไลน์
+ *        🏪 มารับเองทั้งคู่ = "ชุดรับพร้อมกัน" (pickShipRoles เลือกใบหลักให้) — ข้อความไลน์ไม่พูดเรื่องกล่อง/เลขพัสดุ
  * DELETE { mainId, riderId } → ยกเลิกการผูก: ใบตามได้วิธีส่ง/ที่อยู่เดิมคืน
  *
  * ⚠️ เขียนสองใบ ไม่มี transaction — เขียนใบตามก่อน (ใบที่ข้อมูลเปลี่ยนเยอะ) พลาดตรงนั้น = ยังไม่มีอะไรเปลี่ยน
@@ -112,19 +113,13 @@ export async function GET(req: Request) {
  * เหตุผลเขียนจากมุมของ "ใบที่อยู่ในรายการ" — ถ้าติดที่ใบที่เปิดอยู่ บอกว่าเป็นใบที่เปิดอยู่
  */
 function pairBlocked(me: Order, other: Order): string {
-  const { main, rider } = pickRoles(me, other);
+  const { main, rider } = pickShipRoles(me, other);
   const whyMain = cannotBeMain(main);
   const why = whyMain || cannotBeRider(rider);
   if (!why) return "";
   const culprit = whyMain ? main : rider;
   const text = why.replace(/^ใบนี้/, "").trim();
   return culprit.id === other.id ? text : `ใบที่เปิดอยู่${text}`;
-}
-
-/** หาว่าใครเป็นใบหลัก/ใบตามจากคู่ที่ส่งมา — ใบมารับเองเป็นใบหลักไม่ได้ สลับให้เองเมื่อส่งมากลับด้าน */
-function pickRoles(a: Order, b: Order): { main: Order; rider: Order } {
-  if (isPickupOrder(a) && !isPickupOrder(b)) return { main: b, rider: a };
-  return { main: a, rider: b };
 }
 
 export async function POST(req: Request) {
@@ -139,7 +134,8 @@ export async function POST(req: Request) {
 
   const [a, b] = await Promise.all([loadOrder(sb, mainId), loadOrder(sb, riderId)]);
   if (!a || !b) return NextResponse.json({ error: "ไม่พบออเดอร์" }, { status: 404 });
-  const { main, rider } = pickRoles(a, b);
+  // ใบหลัก/ใบตามตัดสินที่ lib/ship-with.ts (ใบส่ง ปณ. นำ · มารับเองทั้งคู่ = ใบที่ยังไม่แพ็คนำ)
+  const { main, rider } = pickShipRoles(a, b);
   const whyMain = cannotBeMain(main);
   if (whyMain) return NextResponse.json({ error: `${main.id} เป็นใบหลักไม่ได้ — ${whyMain}` }, { status: 409 });
   const whyRider = cannotBeRider(rider);
@@ -149,6 +145,8 @@ export async function POST(req: Request) {
   const at = new Date().toISOString();
   const wasPickup = isPickupOrder(rider);
   const wasPackedForPickup = wasPickup && !!rider.packedAt;
+  // 🏪 ชุดรับพร้อมกัน: ใบตามยังมารับเองเหมือนเดิม — แค่บอกว่ารับพร้อมอีกใบ ไม่ใช่ "เปลี่ยนจากมารับเอง"
+  const pickupSet = isPickupOrder(main);
   const { nextMain, nextRider } = buildShipLink(main, rider, by, at);
 
   const r1 = await updateOrder(sb, nextRider, { prev: rider, by });
@@ -165,16 +163,26 @@ export async function POST(req: Request) {
   await notifyCustomerLogged(
     sb,
     r1.order,
-    orderNotice(r1.order, link, {
-      tone: "shipTogether",
-      head: "ส่งรวมกล่องเดียวกัน",
-      headline: `ออเดอร์นี้จะจัดส่งรวมกล่องเดียวกับออเดอร์ ${main.id} ครับ`,
-      rows: [{ label: "ส่งรวมกับ", value: main.id, bold: true }],
-      note: `${wasPickup ? "เปลี่ยนจากมารับเอง — ไม่ต้องมารับที่ร้านแล้วครับ\n" : ""}จัดส่งเมื่อไหร่ทางร้านแจ้งเลขพัสดุอีกครั้งครับ`,
-      alt: `📦 ออเดอร์ ${rider.id} จะจัดส่งรวมกล่องเดียวกับออเดอร์ ${main.id} ครับ${wasPickup ? " (เปลี่ยนจากมารับเอง — ไม่ต้องมารับที่ร้านแล้ว)" : ""}\nจัดส่งเมื่อไหร่ทางร้านแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
-    }),
-    `แจ้งส่งรวมกล่องกับ ${main.id}`,
-    wasPackedForPickup ? "key" : "extra"
+    pickupSet
+      ? orderNotice(r1.order, link, {
+          tone: "shipTogether",
+          head: "รับพร้อมกันที่ร้าน",
+          headline: `ออเดอร์นี้ทางร้านแพ็ครวมกับออเดอร์ ${main.id} ให้มารับพร้อมกันทีเดียวครับ`,
+          rows: [{ label: "รับพร้อมกับ", value: main.id, bold: true }],
+          note: "แพ็คเสร็จเมื่อไหร่ทางร้านแจ้งให้มารับอีกครั้งครับ",
+          alt: `🏪 ออเดอร์ ${rider.id} ทางร้านแพ็ครวมกับออเดอร์ ${main.id} ให้มารับพร้อมกันทีเดียวครับ\nแพ็คเสร็จเมื่อไหร่ทางร้านแจ้งให้มารับอีกครั้งครับ\n${link}`,
+        })
+      : orderNotice(r1.order, link, {
+          tone: "shipTogether",
+          head: "ส่งรวมกล่องเดียวกัน",
+          headline: `ออเดอร์นี้จะจัดส่งรวมกล่องเดียวกับออเดอร์ ${main.id} ครับ`,
+          rows: [{ label: "ส่งรวมกับ", value: main.id, bold: true }],
+          note: `${wasPickup ? "เปลี่ยนจากมารับเอง — ไม่ต้องมารับที่ร้านแล้วครับ\n" : ""}จัดส่งเมื่อไหร่ทางร้านแจ้งเลขพัสดุอีกครั้งครับ`,
+          alt: `📦 ออเดอร์ ${rider.id} จะจัดส่งรวมกล่องเดียวกับออเดอร์ ${main.id} ครับ${wasPickup ? " (เปลี่ยนจากมารับเอง — ไม่ต้องมารับที่ร้านแล้ว)" : ""}\nจัดส่งเมื่อไหร่ทางร้านแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
+        }),
+    pickupSet ? `แจ้งรับพร้อมกับ ${main.id}` : `แจ้งส่งรวมกล่องกับ ${main.id}`,
+    // ใบที่เคยบอก "มารับได้เลย" แล้วกลายเป็นส่งไปรษณีย์ = เรื่องสำคัญ · ชุดรับพร้อมกันยังมารับเหมือนเดิม = ข่าวคืบหน้า
+    wasPackedForPickup && !pickupSet ? "key" : "extra"
   );
 
   return NextResponse.json({ ok: true, main: r2.order, rider: r1.order });
@@ -223,20 +231,30 @@ export async function DELETE(req: Request) {
   }
 
   // ใบกลับไปเป็น "มารับเอง" ที่แพ็คเสร็จแล้ว = ลูกค้าต้องรู้ว่ากลับมารับที่ร้าน
+  // 🏪 ชุดรับพร้อมกัน (ใบหลักก็มารับเอง): ใบนี้แค่แยกรับต่างหาก — ไม่ใช่ "กลับเป็นมารับเอง"
+  const wasPickupSet = !!main && isPickupOrder(main) && isPickupOrder(rider);
   const link = orderLink(new URL(req.url).origin, r1.order);
   await notifyCustomerLogged(
     sb,
     r1.order,
-    orderNotice(r1.order, link, {
-      tone: "shipApart",
-      head: "ยกเลิกส่งรวมกล่อง",
-      headline: `ยกเลิกการส่งรวมกับออเดอร์ ${mainId} แล้วครับ`,
-      rows: [{ label: "วิธีส่ง", value: r1.order.shippingLabel || r1.order.shipping || "—", bold: true }],
-      ...(isPickupOrder(r1.order) ? { note: "กลับเป็นมารับเองที่ร้านครับ" } : {}),
-      alt: `📦 ออเดอร์ ${rider.id} ยกเลิกการส่งรวมกับออเดอร์ ${mainId} แล้วครับ${isPickupOrder(r1.order) ? " — กลับเป็นมารับเองที่ร้าน" : ""}\n${link}`,
-    }),
-    `แจ้งยกเลิกส่งรวมกล่องกับ ${mainId}`,
-    isPickupOrder(r1.order) && r1.order.packedAt ? "key" : "extra"
+    wasPickupSet
+      ? orderNotice(r1.order, link, {
+          tone: "shipApart",
+          head: "แยกรับต่างหาก",
+          headline: `ออเดอร์นี้ไม่ได้รวมรับกับออเดอร์ ${mainId} แล้วครับ — แยกรับต่างหากตามใบนี้`,
+          rows: [{ label: "วิธีรับ", value: r1.order.shippingLabel || r1.order.shipping || "มารับเองที่ร้าน", bold: true }],
+          alt: `🏪 ออเดอร์ ${rider.id} ไม่ได้รวมรับกับออเดอร์ ${mainId} แล้วครับ — แยกรับต่างหากตามใบนี้\n${link}`,
+        })
+      : orderNotice(r1.order, link, {
+          tone: "shipApart",
+          head: "ยกเลิกส่งรวมกล่อง",
+          headline: `ยกเลิกการส่งรวมกับออเดอร์ ${mainId} แล้วครับ`,
+          rows: [{ label: "วิธีส่ง", value: r1.order.shippingLabel || r1.order.shipping || "—", bold: true }],
+          ...(isPickupOrder(r1.order) ? { note: "กลับเป็นมารับเองที่ร้านครับ" } : {}),
+          alt: `📦 ออเดอร์ ${rider.id} ยกเลิกการส่งรวมกับออเดอร์ ${mainId} แล้วครับ${isPickupOrder(r1.order) ? " — กลับเป็นมารับเองที่ร้าน" : ""}\n${link}`,
+        }),
+    wasPickupSet ? `แจ้งแยกรับจาก ${mainId}` : `แจ้งยกเลิกส่งรวมกล่องกับ ${mainId}`,
+    !wasPickupSet && isPickupOrder(r1.order) && r1.order.packedAt ? "key" : "extra"
   );
 
   return NextResponse.json({ ok: true, main: savedMain, rider: r1.order });

@@ -6,13 +6,15 @@
  * - ใบตาม = แถบคอรัลขอบซ้ายหนา "ห้ามส่งแยก" (ของค้างที่พลาดแล้วเสียหาย ต้องเด่นสุด) + ลิงก์ไปใบหลัก
  * - ใบหลัก = แถบเหลือง บอกว่าต้องเอาของใบไหนลงกล่องด้วย + ของใบนั้นพร้อมหรือยัง
  * - ยิงเลขไปแล้ว = บรรทัดเขียวเล็ก ๆ (งานจบแล้วต้องเงียบกว่างานค้าง)
+ * - 🏪 ชุดรับพร้อมกัน (มารับเองทั้งคู่ · isPickupShipSet): คำต้องไม่พูดถึงกล่อง/เลขพัสดุ — ใบหลักคือใบที่กด "แพ็คเสร็จ"/"ลูกค้ารับของแล้ว"
  * สิทธิ์: ผูก/ยกเลิก = orders.edit · ฝ่ายแพ็คเห็นแถบอย่างเดียว
  */
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { Order } from "@/lib/admin-data";
-import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
+import { isPickupOrder } from "@/lib/ship-label";
+import { isPickupShipSet, isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
 
 type Saved = { main: Order | null; rider: Order | null };
 
@@ -75,12 +77,14 @@ export default function ShipWithStrip({
   if (!order.shipWith?.orders.length || order.status === "ยกเลิก") return null;
 
   const href = (id: string) => `/admin/orders/${encodeURIComponent(id)}${packMode ? "?pack=1" : ""}`;
-  const shipped = !!(order.tracking ?? "").trim();
+  const pickupSet = isPickupShipSet(order);
+  // ชุดส่ง ปณ. จบเมื่อยิงเลข · ชุดรับพร้อมกันจบเมื่อแพ็คเสร็จ (ของวางรอหน้าร้านแล้ว) / ลูกค้ารับไป
+  const shipped = !!(order.tracking ?? "").trim() || (pickupSet && !!order.packedAt);
   const rider = isShipRider(order);
   const ids = rider ? [shipMainIdOf(order)] : shipRiderIdsOf(order);
 
   async function unlink(riderId: string, mainId: string) {
-    if (!window.confirm(`ยกเลิกส่งรวมกล่อง ${riderId} ↔ ${mainId}?\nใบ ${riderId} จะกลับไปใช้วิธีส่งเดิม และระบบแจ้งลูกค้าทางไลน์`)) return;
+    if (!window.confirm(pickupSet ? `ยกเลิกรับพร้อมกัน ${riderId} ↔ ${mainId}?\nใบ ${riderId} จะแยกรับต่างหาก และระบบแจ้งลูกค้าทางไลน์` : `ยกเลิกส่งรวมกล่อง ${riderId} ↔ ${mainId}?\nใบ ${riderId} จะกลับไปใช้วิธีส่งเดิม และระบบแจ้งลูกค้าทางไลน์`)) return;
     setBusy(riderId);
     setErr("");
     const r = await call("DELETE", { mainId, riderId });
@@ -91,18 +95,33 @@ export default function ShipWithStrip({
   }
 
   if (shipped) {
+    const links = ids.map((id, i) => (
+      <span key={id}>
+        {i > 0 && ", "}
+        <Link href={href(id)} className="underline underline-offset-2">
+          {id}
+        </Link>
+      </span>
+    ));
     return (
       <div className="mb-4 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold" style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}>
-        ✓ ส่งรวมกล่องเดียวกับ{" "}
-        {ids.map((id, i) => (
-          <span key={id}>
-            {i > 0 && ", "}
-            <Link href={href(id)} className="underline underline-offset-2">
-              {id}
-            </Link>
-          </span>
-        ))}{" "}
-        แล้ว · เลขพัสดุเดียวกัน
+        {pickupSet ? (
+          <>
+            ✓ แพ็ครวมกับ {links} แล้ว · {order.status === "เสร็จสิ้น" ? "ลูกค้ารับไปแล้วทั้งชุด" : "รอลูกค้ามารับพร้อมกัน"}
+            {!rider && order.status !== "เสร็จสิ้น" && canManage && (
+              <span className="block text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+                ลูกค้ามารับ → กด “ลูกค้ารับของแล้ว” ที่ใบนี้ใบเดียว ปิดให้ทั้งชุด
+              </span>
+            )}
+            {rider && order.status !== "เสร็จสิ้น" && (
+              <span className="block text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+                ลูกค้ามารับ → กด “ลูกค้ารับของแล้ว” ที่ {ids[0]} ใบเดียว ใบนี้ปิดให้เอง
+              </span>
+            )}
+          </>
+        ) : (
+          <>✓ ส่งรวมกล่องเดียวกับ {links} แล้ว · เลขพัสดุเดียวกัน</>
+        )}
       </div>
     );
   }
@@ -115,11 +134,20 @@ export default function ShipWithStrip({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[1.05rem] font-extrabold leading-snug" style={{ color: "var(--dk-coral-ink)" }}>
-              📦 ห้ามส่งแยก — ใส่กล่องไปกับ {mainId}
+              {pickupSet ? `🏪 รับพร้อมกัน — แพ็ครวมกับ ${mainId}` : `📦 ห้ามส่งแยก — ใส่กล่องไปกับ ${mainId}`}
             </p>
             <p className="mt-0.5 text-[13px] font-semibold leading-relaxed" style={{ color: "var(--dk-navy)" }}>
-              ตรวจนับของใบนี้ตามปกติ แล้วพักไว้รอลงกล่อง {mainId}
-              {main ? ` (${main.label})` : ""} · ยิงเลขพัสดุที่ {mainId} ใบเดียว เลขลงใบนี้ให้เอง
+              {pickupSet ? (
+                <>
+                  ตรวจนับของใบนี้ตามปกติ แล้วพักไว้รวมกับ {mainId}
+                  {main ? ` (${main.label})` : ""} · กด “แพ็คเสร็จ” ที่ {mainId} ใบเดียว ใบนี้ขึ้นแพ็คเสร็จให้เอง
+                </>
+              ) : (
+                <>
+                  ตรวจนับของใบนี้ตามปกติ แล้วพักไว้รอลงกล่อง {mainId}
+                  {main ? ` (${main.label})` : ""} · ยิงเลขพัสดุที่ {mainId} ใบเดียว เลขลงใบนี้ให้เอง
+                </>
+              )}
             </p>
           </div>
           <Link href={href(mainId)} className="dkb-btn dkb-btn-navy min-h-[44px] shrink-0">
@@ -128,7 +156,7 @@ export default function ShipWithStrip({
         </div>
         {canManage && (
           <button type="button" disabled={!!busy} onClick={() => unlink(order.id, mainId)} className="mt-2 text-[12px] font-semibold underline underline-offset-2" style={{ color: "var(--dk-coral-ink)" }}>
-            {busy ? "กำลังยกเลิก…" : "ลูกค้าเปลี่ยนใจ — ยกเลิกส่งรวม"}
+            {busy ? "กำลังยกเลิก…" : pickupSet ? "ลูกค้าเปลี่ยนใจ — แยกรับต่างหาก" : "ลูกค้าเปลี่ยนใจ — ยกเลิกส่งรวม"}
           </button>
         )}
         {err && <p className="mt-2 text-[12.5px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>⚠️ {err}</p>}
@@ -140,10 +168,10 @@ export default function ShipWithStrip({
   return (
     <div className="dkb-g mb-4 p-4" role="alert" style={{ background: "var(--dk-yolk-wash)", borderLeft: "6px solid var(--dk-yolk-ink)" }}>
       <p className="text-[1.05rem] font-extrabold leading-snug" style={{ color: "var(--dk-yolk-ink)" }}>
-        📦 กล่องนี้ต้องใส่ของอีก {ids.length} ออเดอร์ไปด้วย
+        {pickupSet ? `🏪 ลูกค้ามารับพร้อมกัน — แพ็ครวมของอีก ${ids.length} ออเดอร์ด้วย` : `📦 กล่องนี้ต้องใส่ของอีก ${ids.length} ออเดอร์ไปด้วย`}
       </p>
       <p className="mt-0.5 text-[13px] font-semibold" style={{ color: "var(--dk-navy)" }}>
-        ยิงเลขพัสดุใบนี้ใบเดียว — เลขลงให้ทุกใบ · ใบปะหน้าปริ้นจากใบนี้
+        {pickupSet ? "กด “แพ็คเสร็จ” ใบนี้ใบเดียว — ใบที่รวมขึ้นแพ็คเสร็จให้เอง · ลูกค้ามารับก็กด “รับของแล้ว” ที่ใบนี้ใบเดียว" : "ยิงเลขพัสดุใบนี้ใบเดียว — เลขลงให้ทุกใบ · ใบปะหน้าปริ้นจากใบนี้"}
       </p>
       <ul className="mt-2.5 grid gap-1.5">
         {ids.map((id) => {
@@ -157,11 +185,11 @@ export default function ShipWithStrip({
               {row ? (
                 wait.length ? (
                   <span className="text-[12.5px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>
-                    ✗ ยังไม่พร้อมลงกล่อง — {wait.join(" · ")}
+                    ✗ {pickupSet ? "ยังไม่พร้อมแพ็ครวม" : "ยังไม่พร้อมลงกล่อง"} — {wait.join(" · ")}
                   </span>
                 ) : (
                   <span className="text-[12.5px] font-semibold" style={{ color: "var(--dk-mint-ink)" }}>
-                    ✓ ของพร้อมลงกล่อง
+                    ✓ {pickupSet ? "ของพร้อมแพ็ครวม" : "ของพร้อมลงกล่อง"}
                   </span>
                 )
               ) : (
@@ -218,8 +246,11 @@ export function ShipWithSuggest({
     };
   }, [id, linkKey]);
 
+  // 🏪 ใบนี้มารับเอง: คู่ที่ส่ง ปณ. → ใบนั้นเป็นใบหลัก ส่งกล่องเดียว · คู่ที่มารับเองด้วยกัน → แพ็ครวมให้มารับพร้อมกัน (เซิร์ฟเวอร์เลือกใบหลักให้)
+  const pickupMe = isPickupOrder(order);
   async function pick(other: ShipWithRow) {
-    if (!window.confirm(`ส่งรวมกล่องเดียวกับ ${other.id}?\nบิลยังแยกกัน ค่าส่งไม่เปลี่ยน · ระบบแจ้งลูกค้าทางไลน์ให้`)) return;
+    const bothPickup = pickupMe && /รับเอง|มารับ|pick\s*-?up/i.test(other.shipLabel);
+    if (!window.confirm(bothPickup ? `แพ็ครวมกับ ${other.id} ให้ลูกค้ามารับพร้อมกัน?\nบิลยังแยกกัน · กดแพ็คเสร็จ/รับของแล้วที่ใบเดียว ปิดให้ทั้งชุด · ระบบแจ้งลูกค้าทางไลน์ให้` : `ส่งรวมกล่องเดียวกับ ${other.id}?\nบิลยังแยกกัน ค่าส่งไม่เปลี่ยน · ระบบแจ้งลูกค้าทางไลน์ให้`)) return;
     setBusy(other.id);
     setErr("");
     const r = await call("POST", { mainId: order.id, riderId: other.id });
@@ -256,13 +287,15 @@ export function ShipWithSuggest({
       >
         <span className="shrink-0" aria-hidden>{open ? "▾" : "▸"}</span>
         <span className="flex-1">
-          📦 ลูกค้าคนนี้มีอีก {ready.length} ออเดอร์ที่ยังไม่ได้ส่ง — ใส่กล่องเดียวกันได้
+          {pickupMe ? `🏪 ลูกค้าคนนี้มีอีก ${ready.length} ออเดอร์ที่ยังไม่ได้รับ — แพ็ครวมให้รับทีเดียวได้` : `📦 ลูกค้าคนนี้มีอีก ${ready.length} ออเดอร์ที่ยังไม่ได้ส่ง — ใส่กล่องเดียวกันได้`}
           {!open && <span className="ml-2 text-[12px] font-bold underline underline-offset-2" style={{ color: "var(--dk-navy-soft)" }}>กดดู</span>}
         </span>
       </button>
       {open && (<>
       <p className="mt-0.5 text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
-        บิลแยกกันเหมือนเดิม ค่าส่งไม่เปลี่ยน · ผูกแล้วยิงเลขพัสดุที่ใบนี้ใบเดียว
+        {pickupMe
+          ? "บิลแยกกันเหมือนเดิม · มารับเองทั้งคู่ = แพ็ครวม กดแพ็คเสร็จใบเดียว · อีกใบส่ง ปณ. = ใบนั้นเป็นใบหลัก ส่งกล่องเดียว"
+          : "บิลแยกกันเหมือนเดิม ค่าส่งไม่เปลี่ยน · ผูกแล้วยิงเลขพัสดุที่ใบนี้ใบเดียว"}
       </p>
       <ul className="mt-2 grid gap-1.5">
         {show.map((r) => (
@@ -283,7 +316,7 @@ export function ShipWithSuggest({
               </p>
             </div>
             <button type="button" disabled={!!busy} onClick={() => pick(r)} className="dkb-btn dkb-btn-yolk min-h-[44px] shrink-0">
-              {busy === r.id ? "กำลังผูก…" : "ส่งรวมกับใบนี้"}
+              {busy === r.id ? "กำลังผูก…" : pickupMe ? "รวมกับใบนี้" : "ส่งรวมกับใบนี้"}
             </button>
           </li>
         ))}
@@ -336,7 +369,7 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
   async function pick(other: ShipWithRow) {
     setBusy(other.id);
     setErr("");
-    // เซิร์ฟเวอร์ตัดสินเองว่าใบไหนเป็นใบหลัก (ใบมารับเองเป็นใบหลักไม่ได้ — สลับให้)
+    // เซิร์ฟเวอร์ตัดสินเองว่าใบไหนเป็นใบหลัก (ใบส่ง ปณ. นำใบมารับเอง · มารับเองทั้งคู่ = ใบที่ยังไม่แพ็คนำ — pickShipRoles)
     const r = await call("POST", { mainId: order.id, riderId: other.id });
     setBusy("");
     if (r.error) return setErr(r.error);
@@ -351,7 +384,7 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
         <div className="px-5 pb-3 pt-5">
           <p className="text-lg font-extrabold text-slate-900">📦 ส่งรวมกล่องกับออเดอร์ไหน</p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">
-            บิลยังแยกกัน ยอดเงินและค่าส่งของทั้งสองใบ<strong className="text-slate-700">ไม่เปลี่ยน</strong> · ใบที่มีพัสดุเป็นใบหลัก (ยิงเลข+ใบปะหน้า) อีกใบขึ้นป้าย “ห้ามส่งแยก” · ระบบแจ้งลูกค้าทางไลน์ให้
+            บิลยังแยกกัน ยอดเงินและค่าส่งของทั้งสองใบ<strong className="text-slate-700">ไม่เปลี่ยน</strong> · ใบที่มีพัสดุเป็นใบหลัก (ยิงเลข+ใบปะหน้า) อีกใบขึ้นป้าย “ห้ามส่งแยก” · มารับเองทั้งคู่ = แพ็ครวมให้มารับพร้อมกัน · ระบบแจ้งลูกค้าทางไลน์ให้
           </p>
           <form
             className="mt-3 flex gap-2"

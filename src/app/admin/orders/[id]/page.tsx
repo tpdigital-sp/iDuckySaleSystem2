@@ -156,7 +156,7 @@ import FollowUpModal, { type FollowUpForm } from "@/components/admin/FollowUpMod
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
 import ShipWithStrip, { ShipWithPicker, ShipWithSuggest, useShipWithLinked } from "@/components/admin/ShipWithStrip";
-import { isShipRider, shipMainIdOf } from "@/lib/ship-with";
+import { isPickupShipSet, isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
 import ItemAdder from "@/components/admin/ItemAdder";
@@ -8941,13 +8941,14 @@ export default function AdminOrderDetailPage() {
               {mayEdit && !demo && !isShipRider(order) && !(order.tracking ?? "").trim() && !order.shipments?.length && order.status !== "ยกเลิก" && order.status !== "เสร็จสิ้น" && (
                 <ShipWithSuggest order={order} onOpenPicker={() => setShipPick(true)} onSaved={adoptOrder} />
               )}
-              {isShipRider(order) && !(order.tracking ?? "").trim() ? (
+              {/* 🏪 ใบตามของชุดรับพร้อมกันที่แพ็คเสร็จแล้ว (ลงมาจากใบหลัก) → ไปบรรทัดเขียว "แพ็คเสร็จแล้ว รอลูกค้ามารับ" ด้านล่างแทน */}
+              {isShipRider(order) && !(order.tracking ?? "").trim() && !(isPickupShipSet(order) && order.packedAt) ? (
                 <p className="rounded-lg bg-rose-50 px-2.5 py-2 text-[12px] font-bold text-rose-800 ring-1 ring-rose-200">
-                  📦 ส่งรวมกล่องกับ{" "}
+                  {isPickupShipSet(order) ? "🏪 รับพร้อมกับ" : "📦 ส่งรวมกล่องกับ"}{" "}
                   <Link href={`/admin/orders/${encodeURIComponent(shipMainIdOf(order))}`} className="underline underline-offset-2">
                     {shipMainIdOf(order)}
                   </Link>{" "}
-                  — ยิงเลขพัสดุที่ใบนั้นใบเดียว เลขจะลงใบนี้ให้เอง
+                  {isPickupShipSet(order) ? "— กด “แพ็คเสร็จ” ที่ใบนั้นใบเดียว ใบนี้จะขึ้นแพ็คเสร็จให้เอง" : "— ยิงเลขพัสดุที่ใบนั้นใบเดียว เลขจะลงใบนี้ให้เอง"}
                 </p>
               ) : isPickupOrder(order) ? (
                 // 🏪 มารับเอง: ไม่มีเลขพัสดุ — ปุ่มแพ็คเสร็จแทน (ด่านตรวจเดียวกับยิงเลข)
@@ -10406,15 +10407,20 @@ function PackView({
               กดปุ่มเหลืองด้านบนเพื่อ{pickup ? "ยืนยันแพ็คเสร็จ" : "ยิงเลขพัสดุ"}เฉพาะรอบนี้ · ปุ่มปิดทั้งใบจะเปิดเมื่อเหลือแต่รอบสุดท้าย
             </p>
           </div>
-        ) : isShipRider(order) && !(order.tracking ?? "").trim() ? (
+        ) : isShipRider(order) && !(order.tracking ?? "").trim() && !(pickup && order.packedAt) ? (
           // 📦 ใบตามของชุดส่งรวม: ไม่มีขั้นยิงเลข — ตรวจนับให้ครบแล้วพักของไว้ลงกล่องใบหลัก (ภาพก่อนปิดกล่องถ่ายที่ใบหลัก)
+          // 🏪 ชุดรับพร้อมกัน (มารับเองทั้งคู่): ไม่มีปุ่มแพ็คเสร็จที่ใบนี้ — กดที่ใบหลัก แล้วใบนี้ขึ้นแพ็คเสร็จให้เอง (แพ็คแล้ว → บรรทัดเขียวด้านล่าง)
           <div className="rounded-xl bg-rose-50 px-3 py-3 ring-1 ring-rose-200">
-            <p className="text-sm font-extrabold text-rose-800">📦 ห้ามส่งแยก — ของใบนี้ลงกล่อง {shipMainIdOf(order)}</p>
+            <p className="text-sm font-extrabold text-rose-800">
+              {pickup ? `🏪 รับพร้อมกัน — ของใบนี้แพ็ครวมกับ ${shipMainIdOf(order)}` : `📦 ห้ามส่งแยก — ของใบนี้ลงกล่อง ${shipMainIdOf(order)}`}
+            </p>
             <p className="mt-0.5 text-[11px] font-semibold leading-tight text-rose-700">
               {todos.filter((t) => !/ภาพ|ถ่าย/.test(t.text)).length
                 ? "ตรวจนับ/ยืนยันอ่านใบนี้ให้ครบก่อน แล้วพักของไว้"
-                : "✓ ตรวจครบแล้ว — พักของไว้รอลงกล่อง"}{" "}
-              · ยิงเลขพัสดุที่ {shipMainIdOf(order)} ใบเดียว เลขลงใบนี้ให้เอง
+                : pickup
+                  ? "✓ ตรวจครบแล้ว — พักของไว้รอแพ็ครวม"
+                  : "✓ ตรวจครบแล้ว — พักของไว้รอลงกล่อง"}{" "}
+              {pickup ? `· กด “แพ็คเสร็จ” ที่ ${shipMainIdOf(order)} ใบเดียว ใบนี้ขึ้นให้เอง` : `· ยิงเลขพัสดุที่ ${shipMainIdOf(order)} ใบเดียว เลขลงใบนี้ให้เอง`}
             </p>
             <Link href={`/admin/orders/${encodeURIComponent(shipMainIdOf(order))}?pack=1`} className="mt-2 inline-flex min-h-[44px] items-center rounded-xl bg-rose-700 px-4 text-sm font-extrabold text-white">
               เปิดใบหลัก {shipMainIdOf(order).replace(/^OD-\d{6}-/, "")} →

@@ -4,8 +4,14 @@
  * เคสจริง: ลูกค้าสั่งใบแรกแบบ "มารับเอง" แล้วสั่งใบใหม่แบบส่ง ปณ. ขอให้เอาของใบแรกใส่กล่องใบใหม่ไปด้วย
  * เดิมต้องทำมือ 3 จุดที่พลาดแล้วเสียหาย: แก้วิธีส่งใบแรกแล้วค่าส่งเด้ง (ยอดเพี้ยนจากบิล) · แพ็คส่งใบแรกแยกไปก่อน · ลืมยิงเลขใบที่สอง
  *
+ * 🏪 เคสที่ 2 (25 ก.ย. 69 · OD-260919-1322 + OD-260924-5507): ลูกค้ามารับเอง "ทั้งสองใบ" อยากให้แพ็ครวมรับทีเดียว
+ * เดิมกติกาห้ามใบมารับเองเป็นใบหลัก (ไม่มีพัสดุให้ยิงเลข) → ทั้งคู่มารับเอง = สลับให้ก็ไม่รอด ขึ้น "เป็นใบหลักไม่ได้" ทั้งสองทาง
+ * ตอนนี้ = "ชุดรับพร้อมกัน" (isPickupShipSet): ใบหลักคือใบที่กด "แพ็คเสร็จ" + กด "ลูกค้ารับของแล้ว" ใบเดียว แล้วลงให้ใบตามเอง
+ *
  * กติกา:
  *  · ใบหลัก (main) = ใบที่ยิงเลขพัสดุ + ปริ้นใบปะหน้า · ใบตาม (rider) = ของใส่กล่องใบหลัก ยิงเลขเองไม่ได้
+ *  · ชุดรับพร้อมกัน (ทั้งคู่มารับเอง): ใบหลัก = ใบที่กด "แพ็คเสร็จ"/"ลูกค้ารับของแล้ว" · ใบตามกดเองไม่ได้ ขึ้นให้เองตามใบหลัก
+ *    ใบที่ยังไม่แพ็คเป็นใบหลัก (pickShipRoles) — ไม่งั้นใบตามที่ยังไม่แพ็คไม่มีทางกดแพ็คเสร็จ
  *  · ผูก/ยกเลิก ผ่าน /api/admin/orders/ship-with เท่านั้น (เขียนสองใบพร้อมกันฝั่งเซิร์ฟเวอร์)
  *  · ⚠️ ไม่แตะ shippingCost ของใบไหนเลย — ใบมารับเองค่าส่ง 0 อยู่แล้ว · ใบตามที่มีค่าส่งค้างอยู่ให้แอดมินตัดสินเอง (ยอดต้องตรงบิล)
  *  · ยิงเลขที่ใบหลัก → เซิร์ฟเวอร์ลงเลขเดียวกัน + สถานะจัดส่งแล้วให้ใบตามทุกใบ (PATCH /api/admin/orders)
@@ -17,6 +23,8 @@ import { isGenericShipLabel, isPickupOrder } from "./ship-label";
 
 export const isShipMain = (o: Pick<Order, "shipWith">) => o.shipWith?.role === "main" && o.shipWith.orders.length > 0;
 export const isShipRider = (o: Pick<Order, "shipWith">) => o.shipWith?.role === "rider" && o.shipWith.orders.length > 0;
+/** 🏪 ชุด "รับพร้อมกัน" — ผูกส่งรวมอยู่และเป็นใบมารับเอง (ใบตามรับวิธีส่งตามใบหลัก ทั้งชุดจึงเป็นมารับเองพร้อมกัน) */
+export const isPickupShipSet = (o: Pick<Order, "shipWith" | "shipping" | "shippingLabel">) => !!o.shipWith?.orders.length && isPickupOrder(o);
 /** เลขใบหลักของใบตามนี้ ("" = ไม่ใช่ใบตาม) */
 export const shipMainIdOf = (o: Pick<Order, "shipWith">) => (isShipRider(o) ? o.shipWith!.orders[0] : "");
 /** เลขใบตามทุกใบของใบหลักนี้ */
@@ -28,9 +36,26 @@ const CLOSED: Order["status"][] = ["ยกเลิก", "เสร็จสิ�
 export function cannotBeMain(o: Order): string {
   if (CLOSED.includes(o.status)) return `ใบนี้${o.status}แล้ว`;
   if (isShipRider(o)) return `ใบนี้เป็นใบตามของ ${shipMainIdOf(o)} อยู่`;
-  if (isPickupOrder(o)) return "ใบนี้ลูกค้ามารับเอง ไม่มีพัสดุให้ส่งรวม — เปลี่ยนวิธีส่งเป็นแบบจัดส่งก่อน";
-  if ((o.tracking ?? "").trim() || o.status === "จัดส่งแล้ว") return "ใบนี้ยิงเลขพัสดุไปแล้ว";
+  if ((o.tracking ?? "").trim()) return "ใบนี้ยิงเลขพัสดุไปแล้ว";
+  // 🏪 มารับเอง: ไม่มีพัสดุ แต่เป็นใบหลักของ "ชุดรับพร้อมกัน" ได้ตราบที่ของยังอยู่ในร้าน (แพ็คเสร็จรอมารับก็ยังได้)
+  // ⚠️ ห้ามกลับไปห้ามทั้งก้อน — ลูกค้ามารับเอง 2 ใบจะรวมกันไม่ได้เลย (25 ก.ย. 69) · คู่กับใบส่ง ปณ. pickShipRoles ยกใบส่งเป็นใบหลักให้เอง
+  if (isPickupOrder(o)) return o.pickedUp ? "ลูกค้ามารับของใบนี้ไปแล้ว" : "";
+  if (o.status === "จัดส่งแล้ว") return "ใบนี้ยิงเลขพัสดุไปแล้ว";
   return "";
+}
+
+/**
+ * ใครเป็นใบหลัก/ใบตามจากคู่ที่ส่งมา (a = ใบที่แอดมินเปิดอยู่)
+ *  · มารับเอง + ส่ง ปณ. → ใบส่ง ปณ. เป็นใบหลัก (มีพัสดุให้ยิงเลข) สลับให้เองเมื่อส่งมากลับด้าน
+ *  · มารับเองทั้งคู่ → ใบที่ "ยังไม่แพ็ค" เป็นใบหลัก: กดแพ็คเสร็จที่ใบหลักแล้วใบตามขึ้นให้เอง (ใบตามกดเองไม่ได้)
+ *    ถ้าให้ใบที่แพ็คแล้วเป็นใบหลัก ใบตามที่ยังไม่แพ็คจะไม่มีทางแพ็คเสร็จได้เลย
+ */
+export function pickShipRoles<T extends Order>(a: T, b: T): { main: T; rider: T } {
+  const pa = isPickupOrder(a);
+  const pb = isPickupOrder(b);
+  if (pa && !pb) return { main: b, rider: a };
+  if (pa && pb && a.packedAt && !b.packedAt) return { main: b, rider: a };
+  return { main: a, rider: b };
 }
 
 /** ใบนี้เป็น "ใบตาม" ได้ไหม — คืนเหตุผลที่ไม่ได้ ("" = ได้) */
@@ -83,8 +108,10 @@ export function riderNotReady(o: Order): string[] {
  */
 export function buildShipLink(main: Order, rider: Order, by: string, at: string): { nextMain: Order; nextRider: Order } {
   const mainLabel = (main.shippingLabel ?? "").trim();
-  const riderLabel = mainLabel && !isGenericShipLabel(mainLabel) ? mainLabel : `ส่งรวมกับ ${main.id}`;
-  const fillAddress = !rider.address?.trim() && !!main.address?.trim();
+  // 🏪 ชุดรับพร้อมกัน: ป้ายใบตามต้องยังอ่านเป็น "มารับเอง" (isPickupOrder) ไม่งั้นหลุดจากเมนูลูกค้ามารับเอง/ปุ่มแพ็คเสร็จ
+  const pickupSet = isPickupOrder(main);
+  const riderLabel = pickupSet ? mainLabel || `มารับเองพร้อม ${main.id}` : mainLabel && !isGenericShipLabel(mainLabel) ? mainLabel : `ส่งรวมกับ ${main.id}`;
+  const fillAddress = !pickupSet && !rider.address?.trim() && !!main.address?.trim();
   const nextRider = withLog(
     {
       ...rider,
@@ -100,14 +127,16 @@ export function buildShipLink(main: Order, rider: Order, by: string, at: string)
       },
     },
     by,
-    `📦 ส่งรวมกล่องกับ ${main.id}`,
-    `ของใบนี้ใส่กล่องไปกับ ${main.id} — ห้ามส่งแยก ยิงเลขพัสดุที่ ${main.id} ใบเดียว · วิธีส่ง ${rider.shippingLabel || rider.shipping || "—"} → ${riderLabel} (ค่าส่งคงเดิม ฿${(rider.shippingCost || 0).toLocaleString("th-TH")})${fillAddress ? " · เติมที่อยู่ตามใบหลัก" : ""}`
+    pickupSet ? `🏪 รับพร้อมกับ ${main.id}` : `📦 ส่งรวมกล่องกับ ${main.id}`,
+    pickupSet
+      ? `ของใบนี้แพ็ครวมกับ ${main.id} ให้ลูกค้ามารับพร้อมกัน — กด "แพ็คเสร็จ"/"ลูกค้ารับของแล้ว" ที่ ${main.id} ใบเดียว ใบนี้ขึ้นให้เอง · วิธีส่ง ${rider.shippingLabel || rider.shipping || "—"} → ${riderLabel}`
+      : `ของใบนี้ใส่กล่องไปกับ ${main.id} — ห้ามส่งแยก ยิงเลขพัสดุที่ ${main.id} ใบเดียว · วิธีส่ง ${rider.shippingLabel || rider.shipping || "—"} → ${riderLabel} (ค่าส่งคงเดิม ฿${(rider.shippingCost || 0).toLocaleString("th-TH")})${fillAddress ? " · เติมที่อยู่ตามใบหลัก" : ""}`
   );
   const nextMain = withLog(
     { ...main, shipWith: { role: "main" as const, orders: [...shipRiderIdsOf(main), rider.id], at: main.shipWith?.at ?? at, by: main.shipWith?.by ?? by } },
     by,
-    `📦 รับของ ${rider.id} มาส่งรวมกล่อง`,
-    `ยิงเลขพัสดุใบนี้ = ลงเลขให้ ${rider.id} ด้วย · ปริ้นใบปะหน้าจากใบนี้ใบเดียว`
+    pickupSet ? `🏪 รับของ ${rider.id} มาแพ็ครวม รับพร้อมกัน` : `📦 รับของ ${rider.id} มาส่งรวมกล่อง`,
+    pickupSet ? `กดแพ็คเสร็จ/ลูกค้ารับของแล้วที่ใบนี้ = ลงให้ ${rider.id} ด้วย` : `ยิงเลขพัสดุใบนี้ = ลงเลขให้ ${rider.id} ด้วย · ปริ้นใบปะหน้าจากใบนี้ใบเดียว`
   );
   return { nextMain, nextRider };
 }
