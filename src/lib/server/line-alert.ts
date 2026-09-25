@@ -29,8 +29,35 @@ export interface LineAlertDoc {
   to?: string;
   /** ห้องปลายทางเรื่องเงิน — เคลม · ยอดค้างงวด 2 (ไม่ตั้ง = ใช้ to) */
   adminTo?: string;
+  /**
+   * 🛟 ปลายทางสำรองของ "บัญชีร้าน" — ใช้เมื่อบัญชีแจ้งเตือนส่งไม่ออก (โควตาหมด/ถูกเอาออกจากกลุ่ม)
+   * ⚠️ ต้องเป็นเลขห้องที่ "บัญชีร้าน" ได้ยินเอง ใช้เลขของบัญชีแจ้งเตือนไม่ได้ (เลขผูกกับบัญชี)
+   *    ไม่ตั้ง = ถอยไปใช้ LINE_STOCK_ALERT_TO / LINE_ADMIN_ALERT_TO ใน env ตามเดิม
+   */
+  shopTo?: string;
+  /**
+   * ⏰ เจอ "โควตาเดือนนี้หมด" (LINE 429) ครั้งล่าสุดเมื่อไหร่
+   * 6 ชั่วโมงแรกข้ามบัญชีนั้นไปเลย ไม่ต้องรอ LINE ตีกลับทุกใบ — ประตูสร้างออเดอร์ await ตัวส่งอยู่
+   */
+  outAt?: string;
+  /** การ์ดที่ส่งไม่ออก 20 ใบล่าสุด — ไว้ขึ้นแถบแดงหน้า /admin/line-groups */
+  misses?: AlertMiss[];
   savedAt?: string;
   savedBy?: string;
+}
+
+/**
+ * 📭 รายการ "แจ้งเตือนที่ส่งไม่ออก"
+ *
+ * ⚠️ เก็บแค่หัวเรื่องกับสาเหตุ **ห้ามเก็บชื่อ/เบอร์/เลขออเดอร์** — แถวในตาราง products อ่าน public ได้
+ *    (RLS เปิด select เหมือน __line_sources__) อยากรู้ว่าใบไหนให้ไปดูหน้างานตามหัวเรื่อง
+ */
+export interface AlertMiss {
+  at: string;
+  /** หัวการ์ด เช่น "✏️ ลูกค้าขอแก้ไขออเดอร์" */
+  title: string;
+  /** สาเหตุที่ LINE ไม่รับ */
+  reason: string;
 }
 
 /** สภาพการตั้งค่าที่ปลอดภัยพอจะส่งให้หน้าจอแอดมิน (ไม่มี token ตัวจริง) */
@@ -38,6 +65,14 @@ export interface LineAlertStatus {
   hasToken: boolean;
   to: string;
   adminTo: string;
+  /** ปลายทางสำรองที่ตั้งเอง (ว่าง = ใช้ค่าใน env ถ้ามี) */
+  shopTo: string;
+  /** มีทางสำรองให้ถอยไปจริงไหม (บัญชีร้าน + ปลายทางของบัญชีร้าน) */
+  hasFallback: boolean;
+  /** เจอโควตาหมดครั้งล่าสุด (ISO) — มีค่า = ตอนนี้ระบบข้ามบัญชีแจ้งเตือนอยู่ */
+  outAt?: string;
+  /** การ์ดที่ส่งไม่ออก ใหม่สุดขึ้นก่อน */
+  misses: AlertMiss[];
   savedAt?: string;
   savedBy?: string;
   /** ครบคู่จนใช้งานได้จริงไหม (มี token + ปลายทาง) */
@@ -114,6 +149,10 @@ export function statusOf(doc: LineAlertDoc): LineAlertStatus {
     hasToken,
     to,
     adminTo: doc.adminTo ?? "",
+    shopTo: doc.shopTo ?? "",
+    hasFallback: !!process.env.LINE_MESSAGING_ACCESS_TOKEN && !!(doc.shopTo || process.env.LINE_STOCK_ALERT_TO || process.env.LINE_ADMIN_ALERT_TO),
+    outAt: doc.outAt,
+    misses: doc.misses ?? [],
     savedAt: doc.savedAt,
     savedBy: doc.savedBy,
     ready: hasToken && !!to,
@@ -155,6 +194,10 @@ export interface AlertResult {
   /** ส่งจากบัญชีไหน — บัญชีแจ้งเตือนที่ตั้งไว้ หรือบัญชีร้านตามเดิม */
   via: "alert" | "shop" | "none";
   reason?: string;
+  /** สถานะที่ LINE ตอบ (429 = โควตาเดือนนี้หมด · 403 = ไม่ได้อยู่ในห้อง · 401 = token ผิด) */
+  status?: number;
+  /** ส่งได้เพราะถอยไปใช้บัญชีร้าน (บัญชีแจ้งเตือนส่งไม่ออก) */
+  fallback?: boolean;
 }
 
 /** แถว ป้าย-ค่า ในการ์ด (ชุดเดียวกับการ์ดที่ส่งหาลูกค้าใน notify.ts) */
@@ -298,51 +341,138 @@ function bubbleOf(c: AlertCard): unknown {
 }
 
 /**
- * 📤 ส่งข้อความแจ้งร้าน — รับได้ทั้งการ์ด Flex และข้อความล้วน
+ * 📊 โควตาข้อความของบัญชีแจ้งเตือน — ไว้ขึ้นหน้าจอ ไม่ให้ตาย
  *
- * เลือกชุดที่ใช้แบบ "ทั้งคู่ต้องมาจากที่เดียวกัน":
- *   1. ตั้งบัญชีแจ้งเตือนไว้ครบ (token + ปลายทาง) → ใช้ชุดนั้น
- *   2. ไม่ครบ → ถอยไปใช้บัญชีร้าน + env เหมือนเดิมทุกประการ
- * money = เรื่องเงิน (เคลม · ยอดค้างงวด 2) ซึ่งเดิมมี LINE_ADMIN_ALERT_TO แยกอยู่แล้ว
+ * ⚠️ กับดักที่ทำให้ไลน์เงียบทั้งวัน 24 ก.ย. 69: การ์ด 1 ใบที่ส่งเข้า "กลุ่ม"
+ *    LINE ตัดโควตา **เท่าจำนวนคนในกลุ่ม** ไม่ใช่ 1 ข้อความ
+ *    บัญชีแจ้งเตือน iducky-admin เป็นแพ็กเกจฟรี = 300 ข้อความ/เดือน · กลุ่มแอดมินมี 8 คน
+ *    → ส่งได้เดือนละ ~37 ใบเท่านั้น พอครบ LINE ตอบ 429 "You have reached your monthly limit."
+ *    แล้วทุกการ์ดก็หายเงียบ เพราะไม่มีใครดูค่าที่ตัวส่งคืนมา
  */
-export async function pushShopAlert(
-  msg: string | AlertCard,
-  opts?: { money?: boolean },
-): Promise<AlertResult> {
+export interface AlertQuota {
+  /** ส่งได้ทั้งเดือนกี่ข้อความ (null = ไม่จำกัด/ถามไม่ได้) */
+  limit: number | null;
+  used: number;
+  left: number | null;
+  /** คนในห้องปลายทาง — การ์ด 1 ใบตัดโควตาเท่านี้ (แชทเดี่ยว = 1) */
+  members: number | null;
+  /** ส่งการ์ดได้อีกกี่ใบ */
+  cards: number | null;
+}
+
+let quotaCache: { at: number; token: string; to: string; q: AlertQuota } | null = null;
+const QUOTA_TTL = 600_000;
+
+async function ask<T>(url: string, token: string): Promise<T | null> {
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) });
+    return res.ok ? ((await res.json()) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** โควตาของบัญชี+ห้องคู่หนึ่ง (แคช 10 นาที — ตัวเลขนี้ไม่ต้องสดวินาทีต่อวินาที) */
+async function quotaOf(token: string, to: string): Promise<AlertQuota | null> {
+  if (quotaCache && quotaCache.token === token && quotaCache.to === to && Date.now() - quotaCache.at < QUOTA_TTL)
+    return quotaCache.q;
+  const [quota, used, members] = await Promise.all([
+    ask<{ type?: string; value?: number }>("https://api.line.me/v2/bot/message/quota", token),
+    ask<{ totalUsage?: number }>("https://api.line.me/v2/bot/message/quota/consumption", token),
+    to.startsWith("C")
+      ? ask<{ count?: number }>(`https://api.line.me/v2/bot/group/${encodeURIComponent(to)}/members/count`, token)
+      : Promise.resolve({ count: 1 }),
+  ]);
+  if (!quota && !used) return null;
+  const limit = quota?.type === "limited" && typeof quota.value === "number" ? quota.value : null;
+  const totalUsage = used?.totalUsage ?? 0;
+  const per = members?.count ?? null;
+  const left = limit === null ? null : Math.max(0, limit - totalUsage);
+  const q: AlertQuota = {
+    limit,
+    used: totalUsage,
+    left,
+    members: per,
+    cards: left === null ? null : per ? Math.floor(left / per) : left,
+  };
+  quotaCache = { at: Date.now(), token, to, q };
+  return q;
+}
+
+/** โควตาของบัญชีที่ใช้ส่งอยู่ตอนนี้ — หน้า /admin/line-groups เรียกตัวนี้ */
+export async function alertQuota(): Promise<AlertQuota | null> {
   const doc = await loadLineAlert();
   const tok = openToken(doc.enc);
-  const mine = opts?.money ? doc.adminTo || doc.to : doc.to;
+  if (tok && doc.to) return quotaOf(tok, doc.to);
+  const shop = process.env.LINE_MESSAGING_ACCESS_TOKEN;
+  const to = doc.shopTo || process.env.LINE_STOCK_ALERT_TO;
+  return shop && to ? quotaOf(shop, to) : null;
+}
 
-  let token: string | undefined;
-  let to: string | undefined;
-  let via: AlertResult["via"] = "none";
-  if (tok && mine) {
-    token = tok;
-    to = mine;
-    via = "alert";
-  } else {
-    token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
-    to = opts?.money
-      ? process.env.LINE_ADMIN_ALERT_TO || process.env.LINE_STOCK_ALERT_TO
-      : process.env.LINE_STOCK_ALERT_TO;
-    via = "shop";
+/**
+ * 📭 จดการ์ดที่ส่งไม่ออก — เดิมตัวส่งคืน { ok:false } แล้วทุกคนที่เรียกก็ทิ้งค่าไปเฉย ๆ
+ * ไลน์เงียบทั้งวันโดยไม่มีใครรู้ (24 ก.ย. 69) เพราะไม่มีที่ไหนเก็บว่า "ส่งไม่ผ่าน"
+ * ⚠️ ห้ามจดชื่อ/เบอร์/เลขออเดอร์ลงแถวนี้ — products อ่าน public ได้ (ดู AlertMiss)
+ */
+async function noteMiss(title: string, reason: string): Promise<void> {
+  console.error(`[line-alert] ส่งแจ้งเตือนไม่ออก: ${title} — ${reason}`);
+  try {
+    const old = await loadLineAlert();
+    const misses: AlertMiss[] = [{ at: new Date().toISOString(), title, reason }, ...(old.misses ?? [])].slice(0, 20);
+    await saveLineAlert({ misses });
+  } catch {
+    /* จดไม่ได้ก็ช่างมัน อย่าให้ล้มทับงานที่เรียกมา */
   }
-  if (!token || !to) return { ok: false, via: "none", reason: "ยังไม่ได้ตั้งบัญชีหรือปลายทางสำหรับแจ้งเตือน" };
+}
 
-  const messages =
-    typeof msg === "string"
-      ? [{ type: "text", text: msg }]
-      : // altText ยาวเกิน 400 ตัวอักษร LINE ปฏิเสธทั้งข้อความ — ตัดไว้ก่อน
-        [{ type: "flex", altText: msg.alt.slice(0, 380), contents: bubbleOf(msg) }];
+/** ลบรายการที่พลาดทิ้ง (แอดมินอ่านแล้ว) */
+export async function clearAlertMisses(): Promise<void> {
+  await saveLineAlert({ misses: [] });
+}
 
+export interface Attempt {
+  via: "alert" | "shop";
+  token: string;
+  to: string;
+}
+
+/**
+ * ลำดับการส่ง: บัญชีแจ้งเตือนก่อน → ไม่ผ่านค่อยถอยไปบัญชีร้าน
+ * ⚠️ เลขห้องผูกกับบัญชี ใช้ข้ามบัญชีไม่ได้ — ทางสำรองจึงต้องมีเลขห้องของ "บัญชีร้าน" เองเท่านั้น
+ *    (doc.shopTo ที่ตั้งในหน้าแอดมิน หรือ LINE_STOCK_ALERT_TO / LINE_ADMIN_ALERT_TO เดิมใน env)
+ * export ไว้ให้ npm run check:alert เรียกตรวจลำดับได้ โดยไม่ต้องยิงข้อความจริง
+ */
+export function planOf(doc: LineAlertDoc, money: boolean): Attempt[] {
+  const out: Attempt[] = [];
+  const tok = openToken(doc.enc);
+  const mine = money ? doc.adminTo || doc.to : doc.to;
+  // เพิ่งเจอโควตาหมดไม่ถึง 6 ชม. = ข้ามไปเลย ไม่ต้องเสียเวลารอ LINE ตีกลับทุกใบ
+  // (ไม่ข้ามยาวถึงสิ้นเดือน เผื่อร้านอัปเกรดแพ็กเกจระหว่างเดือนแล้วต้องกลับมาใช้ได้เอง)
+  const resting = doc.outAt ? Date.now() - Date.parse(doc.outAt) < 6 * 3_600_000 : false;
+  if (tok && mine && !resting) out.push({ via: "alert", token: tok, to: mine });
+
+  const shopToken = process.env.LINE_MESSAGING_ACCESS_TOKEN;
+  const shopTo =
+    doc.shopTo ||
+    (money ? process.env.LINE_ADMIN_ALERT_TO || process.env.LINE_STOCK_ALERT_TO : process.env.LINE_STOCK_ALERT_TO) ||
+    "";
+  if (shopToken && shopTo) out.push({ via: "shop", token: shopToken, to: shopTo });
+
+  // ไม่มีทางสำรองเลย = ลองบัญชีแจ้งเตือนอยู่ดี ดีกว่าไม่ส่งอะไรเลย
+  if (!out.length && tok && mine) out.push({ via: "alert", token: tok, to: mine });
+  return out;
+}
+
+/** ยิงจริง 1 ครั้ง — ไม่ throw ออกไปข้างนอกเด็ดขาด */
+async function sendOne(a: Attempt, messages: unknown[]): Promise<AlertResult> {
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ to, messages }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${a.token}` },
+      body: JSON.stringify({ to: a.to, messages }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (res.ok) return { ok: true, via };
+    if (res.ok) return { ok: true, via: a.via };
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     // 403 = บัญชีไม่ได้อยู่ในกลุ่มนั้น (หรือถูกบล็อก) · 401 = token ผิด/หมดอายุ · 429 = โควตาหมด
     const hint =
@@ -353,8 +483,65 @@ export async function pushShopAlert(
           : res.status === 429
             ? "โควตาข้อความของบัญชีนั้นหมดเดือนนี้"
             : body?.message || `LINE ตอบ ${res.status}`;
-    return { ok: false, via, reason: hint };
+    return { ok: false, via: a.via, reason: hint, status: res.status };
   } catch (e) {
-    return { ok: false, via, reason: e instanceof Error ? e.message : "ส่งไม่สำเร็จ" };
+    return { ok: false, via: a.via, reason: e instanceof Error ? e.message : "ส่งไม่สำเร็จ" };
   }
+}
+
+/**
+ * 📤 ส่งข้อความแจ้งร้าน — รับได้ทั้งการ์ด Flex และข้อความล้วน
+ *
+ * เลือกชุดที่ใช้แบบ "ทั้งคู่ต้องมาจากที่เดียวกัน":
+ *   1. ตั้งบัญชีแจ้งเตือนไว้ครบ (token + ปลายทาง) → ใช้ชุดนั้น
+ *   2. ส่งไม่ออก (โควตาหมด/ถูกเอาออกจากกลุ่ม/token เสีย) → ถอยไปบัญชีร้าน + ปลายทางของบัญชีร้าน
+ *   3. ไม่ผ่านทั้งคู่ → จดไว้ในรายการ "ส่งไม่ออก" ให้ขึ้นแถบแดงหน้า /admin/line-groups
+ * money = เรื่องเงิน (เคลม · ยอดค้างงวด 2) ซึ่งเดิมมี LINE_ADMIN_ALERT_TO แยกอยู่แล้ว
+ */
+export async function pushShopAlert(
+  msg: string | AlertCard,
+  opts?: { money?: boolean },
+): Promise<AlertResult> {
+  const doc = await loadLineAlert();
+  const plan = planOf(doc, !!opts?.money);
+  const title = typeof msg === "string" ? msg.slice(0, 60) : msg.title;
+  if (!plan.length) {
+    const reason = "ยังไม่ได้ตั้งบัญชีหรือปลายทางสำหรับแจ้งเตือน";
+    await noteMiss(title, reason);
+    return { ok: false, via: "none", reason };
+  }
+
+  let last: AlertResult = { ok: false, via: "none" };
+  for (const a of plan) {
+    /*
+     * ⚠️ เหลือโควตาน้อย = เตือนไปในการ์ดใบนี้เลย ไม่ยิงการ์ดเตือนใบใหม่
+     * (การ์ดเตือนก็กินโควตาเท่ากับคนในกลุ่ม — จะยิ่งเร่งให้หมดเร็ว)
+     */
+    const q = a.via === "alert" ? await quotaOf(a.token, a.to) : null;
+    const lowNote =
+      q && q.cards !== null && q.cards <= 5
+        ? `⚠️ โควตาแจ้งเตือนเดือนนี้เหลือส่งได้อีก ${q.cards.toLocaleString("th-TH")} ใบ (ใช้ไป ${q.used.toLocaleString("th-TH")}/${(q.limit ?? 0).toLocaleString("th-TH")} ข้อความ · การ์ด 1 ใบตัด ${(q.members ?? 1).toLocaleString("th-TH")} ข้อความตามจำนวนคนในกลุ่ม) — หมดแล้วไลน์จะเงียบทั้งกลุ่ม`
+        : "";
+    const card =
+      typeof msg === "string" || !lowNote ? msg : { ...msg, note: msg.note ? `${msg.note}\n\n${lowNote}` : lowNote };
+    const messages =
+      typeof card === "string"
+        ? [{ type: "text", text: lowNote ? `${card}\n\n${lowNote}` : card }]
+        : // altText ยาวเกิน 400 ตัวอักษร LINE ปฏิเสธทั้งข้อความ — ตัดไว้ก่อน
+          [{ type: "flex", altText: card.alt.slice(0, 380), contents: bubbleOf(card) }];
+
+    last = await sendOne(a, messages);
+    if (last.ok) {
+      // กลับมาส่งได้แล้ว = ล้างธงโควตาหมด (เช่น ขึ้นเดือนใหม่/อัปเกรดแพ็กเกจ)
+      if (a.via === "alert" && doc.outAt) await saveLineAlert({ outAt: undefined });
+      return { ...last, fallback: a.via === "shop" && plan.length > 1 };
+    }
+    if (a.via === "alert" && last.status === 429) {
+      quotaCache = null;
+      await saveLineAlert({ outAt: new Date().toISOString() });
+    }
+  }
+
+  await noteMiss(title, last.reason ?? "ส่งไม่สำเร็จ");
+  return last;
 }

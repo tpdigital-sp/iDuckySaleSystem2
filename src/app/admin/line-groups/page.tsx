@@ -41,6 +41,7 @@ const WEBHOOK_URL = "https://iduckystore.com/api/line/webhook";
 function LineGroupsInner() {
   const [data, setData] = useState<LineSourcesResponse | null>(null);
   const [token, setToken] = useState("");
+  const [shopTo, setShopTo] = useState("");
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
@@ -50,7 +51,16 @@ function LineGroupsInner() {
       const j = (await r.json().catch(() => null)) as LineSourcesResponse | null;
       if (j) setData(j);
     } catch {
-      setData((v) => v ?? { sources: [], alert: { hasToken: false, to: "", adminTo: "", ready: false }, accounts: [], envTo: "" });
+      setData(
+        (v) =>
+          v ?? {
+            sources: [],
+            alert: { hasToken: false, to: "", adminTo: "", shopTo: "", hasFallback: false, misses: [], ready: false },
+            accounts: [],
+            envTo: "",
+            quota: null,
+          },
+      );
     }
   }, []);
   useEffect(() => {
@@ -113,13 +123,16 @@ function LineGroupsInner() {
     );
   }
 
-  const { sources, alert, accounts } = data;
+  const { sources, alert, accounts, quota } = data;
   const alertAcc = accounts.find((a) => a.kind === "alert");
   const shopAcc = accounts.find((a) => a.kind === "shop");
   const accById = new Map(accounts.map((a) => [a.userId, a]));
   /** บัญชีที่จะใช้ส่งจริงตอนนี้ — เลขห้องต้องเป็นของบัญชีนี้เท่านั้น */
   const sender: LineAccount | undefined = alert.ready ? alertAcc : shopAcc;
   const groups = sources.filter((s) => s.type === "group");
+  /** โควตาใกล้หมด = ส่งได้อีกไม่เกิน 5 ใบ · หมดจริง = ส่งไม่ได้แล้วสักใบ */
+  const low = !!quota && quota.cards !== null && quota.cards <= 5;
+  const dry = !!quota && quota.cards !== null && quota.cards <= 0;
 
   return (
     <PageShell>
@@ -133,6 +146,70 @@ function LineGroupsInner() {
       {msg && (
         <div className="mt-4">
           <Banner tone={msg.tone === "ok" ? "warm" : "hot"} title={msg.tone === "ok" ? "สำเร็จ" : "ไม่สำเร็จ"} detail={msg.text} />
+        </div>
+      )}
+
+      {/* ── โควตาเดือนนี้ + ของที่ส่งไม่ออก ─────────────────────────────────
+          ⚠️ 24 ก.ย. 69 ไลน์เงียบทั้งวันโดยไม่มีใครรู้: การ์ด 1 ใบที่ส่งเข้ากลุ่ม
+          LINE ตัดโควตา "เท่าจำนวนคนในกลุ่ม" — บัญชีฟรี 300 ข้อความ/เดือน กลุ่ม 8 คน = ~37 ใบ
+          พอหมดก็ตอบ 429 เงียบ ๆ หน้านี้ต้องบอกให้เห็นก่อนถึงวันที่เงียบ */}
+      {quota && (
+        <div className="mt-4 rounded-xl border border-slate-200/70 bg-white p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[13px] font-bold text-slate-700">โควตาข้อความเดือนนี้</p>
+            <p className="text-[12px] text-slate-500 tabular-nums">
+              ใช้ไป {quota.used.toLocaleString("th-TH")}
+              {quota.limit !== null && ` / ${quota.limit.toLocaleString("th-TH")}`} ข้อความ
+            </p>
+          </div>
+          {quota.limit !== null && (
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.min(100, Math.round((quota.used / Math.max(1, quota.limit)) * 100))}%`,
+                  background: dry ? "var(--dk-coral)" : low ? "var(--dk-yolk-deep)" : "var(--dk-mint)",
+                }}
+              />
+            </div>
+          )}
+          <p className="mt-2 text-[12.5px] font-semibold leading-relaxed" style={{ color: dry ? "var(--dk-coral-ink)" : "var(--dk-mint-ink)" }}>
+            {dry
+              ? "❌ โควตาหมดแล้ว — ตอนนี้ส่งการ์ดเข้ากลุ่มไม่ได้เลย"
+              : quota.cards === null
+                ? "✅ บัญชีนี้ไม่จำกัดจำนวนข้อความ"
+                : `${low ? "⚠️" : "✅"} ส่งการ์ดได้อีก ${quota.cards.toLocaleString("th-TH")} ใบ`}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-slate-500">
+            การ์ด 1 ใบที่ส่งเข้ากลุ่มตัดโควตา <b className="text-slate-700">{(quota.members ?? 1).toLocaleString("th-TH")} ข้อความ</b>{" "}
+            (เท่าจำนวนคนในห้อง) ไม่ใช่ 1 ข้อความ · โควตาเริ่มนับใหม่ทุกวันที่ 1
+            {dry && " — ระหว่างนี้ระบบจะถอยไปส่งจากบัญชีร้านให้ ถ้าตั้งปลายทางสำรองไว้ (ข้อ 3)"}
+          </p>
+        </div>
+      )}
+
+      {alert.misses.length > 0 && (
+        <div className="mt-3 rounded-xl border p-4" style={{ borderColor: "var(--dk-coral)", background: "var(--dk-coral-wash)" }}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[13px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>
+              📭 แจ้งเตือน {alert.misses.length.toLocaleString("th-TH")} รายการส่งเข้ากลุ่มไม่ได้
+            </p>
+            <Btn small disabled={!!busy} onClick={() => void post({ action: "clearMisses" }, "misses")}>
+              {busy === "misses" ? "กำลังล้าง…" : "อ่านแล้ว ล้างทิ้ง"}
+            </Btn>
+          </div>
+          <p className="mt-1 text-[12px] leading-relaxed text-slate-600">
+            เรื่องพวกนี้ไม่มีใครในกลุ่มได้เห็น — ไปดูของจริงที่หน้างานตามหัวเรื่อง (คำขอแก้ไข · เคลม · ออเดอร์ใหม่)
+          </p>
+          <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-slate-700">
+            {alert.misses.slice(0, 10).map((m) => (
+              <li key={m.at} className="flex flex-wrap gap-x-2">
+                <span className="tabular-nums text-slate-500">{thTime(m.at)}</span>
+                <b>{m.title}</b>
+                <span className="text-slate-500">— {m.reason}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -283,6 +360,52 @@ function LineGroupsInner() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* ── ทางสำรองตอนบัญชีแจ้งเตือนส่งไม่ออก ──────────────────────────
+          บัญชีแจ้งเตือนเป็นแพ็กเกจฟรี พอโควตาหมดกลางเดือนทุกอย่างก็เงียบหมด
+          ทางสำรอง = ส่งจาก "บัญชีร้าน" (โควตาเยอะกว่ามาก) เข้าห้องของบัญชีร้านเอง */}
+      <div className="mt-3 rounded-xl border border-slate-200/70 bg-white p-4">
+        <p className="text-[13px] font-bold text-slate-700">4 · ทางสำรอง (กันไลน์เงียบ)</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">
+          บัญชีแจ้งเตือนส่งไม่ออกเมื่อไหร่ (โควตาหมด · ถูกเอาออกจากกลุ่ม · token เสีย) ระบบจะส่งซ้ำจาก
+          <b className="text-slate-700"> บัญชีร้าน {shopAcc?.basicId ?? ""}</b> ไปห้องนี้แทนให้เอง
+        </p>
+        <p className="mt-1 text-[12px] font-semibold leading-relaxed" style={{ color: alert.hasFallback ? "var(--dk-mint-ink)" : "var(--dk-coral-ink)" }}>
+          {alert.hasFallback
+            ? `✅ มีทางสำรองแล้ว${alert.shopTo ? "" : " (ใช้ค่าที่ตั้งไว้ใน Netlify)"}`
+            : "⚠️ ยังไม่มีทางสำรอง — บัญชีแจ้งเตือนส่งไม่ออกเมื่อไหร่ ไม่มีใครได้ข้อความเลย"}
+        </p>
+        {alert.shopTo && <p className="mt-1 break-all font-mono text-[11.5px] text-slate-700">{alert.shopTo}</p>}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            value={shopTo}
+            onChange={(e) => setShopTo(e.target.value)}
+            placeholder="เลขห้องที่บัญชีร้านได้ยิน (ขึ้นต้น C หรือ U)"
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 font-mono text-[12px] text-slate-700 focus:border-slate-400 focus:outline-none"
+            autoComplete="off"
+          />
+          <Btn
+            tone="navy"
+            small
+            disabled={!shopTo.trim() || !!busy}
+            onClick={() => {
+              void post({ action: "save", shopTo }, "shopto");
+              setShopTo("");
+            }}
+          >
+            {busy === "shopto" ? "กำลังบันทึก…" : "บันทึกทางสำรอง"}
+          </Btn>
+          {alert.shopTo && (
+            <Btn small disabled={!!busy} onClick={() => void post({ action: "save", shopTo: "" }, "unshopto")}>
+              ล้าง
+            </Btn>
+          )}
+        </div>
+        <p className="mt-2 text-[12px] leading-relaxed text-slate-500">
+          ⚠️ เลขห้องผูกกับบัญชี — ต้องเป็นห้องที่ <b>บัญชีร้าน</b> อยู่ด้วย (เชิญบัญชีร้านเข้ากลุ่มแอดมิน
+          หรือใช้แชทเดี่ยวของเจ้าของร้านกับบัญชีร้านก็ได้) เลขของบัญชีแจ้งเตือนใช้ตรงนี้ไม่ได้
+        </p>
       </div>
 
       <ListHead title="ห้องที่ระบบได้ยินล่าสุด" note="ใหม่สุดขึ้นก่อน · เก็บไว้ 8 ห้อง" />

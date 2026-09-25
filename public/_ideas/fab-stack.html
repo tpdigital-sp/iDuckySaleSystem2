@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>กองปุ่มลอยมุมขวา — 4 ทางเลือก</title>
+<!--
+  กองปุ่มลอยมุมขวา (ตะกร้า · คุยกับบอท · LINE · แก้ไขในหลังบ้าน) — รอบ "โทนเว็บ" 22 ก.ย. 69
+  เจ้าของร้าน: "ทั้ง 4 อันนี้ออกแบบให้ใหม่หน่อย เดิมสีมันจัดจ้านไปหน่อย ไม่ค่อยเข้ากับเว็บ"
+
+  หน้านี้เทียบ "ทั้งกอง" ไม่ใช่ทีละใบ เพราะปัญหาคือ 4 ใบนี้อยู่ติดกันบนจอเดียว
+  วางตำแหน่งเท่าของจริงทุกตัวเลข (กว้าง 208 · ขอบขวา 20 · ขอบล่าง 20/78/136/194)
+  หน้านี้เป็นหน้าเลือกแบบ ไม่ได้ผูกกับเว็บจริง
+-->
+<style>
+@font-face{font-family:'Mitr';src:url('/fonts/Mitr-Medium.ttf') format('truetype');font-weight:500;font-display:block}
+@font-face{font-family:'Mitr';src:url('/fonts/Mitr-SemiBold.ttf') format('truetype');font-weight:600;font-display:block}
+:root{--sky-50:#F2FAFF;--sky-100:#E2F3FE;--sky-200:#C6E8FB;--sky-300:#9CD8F6;
+  --blue:#57B6E8;--blue-deep:#2C81C4;--navy:#173A6B;--navy-soft:#4A6A96;
+  --yolk:#FFD447;--yolk-deep:#FFB627;--yolk-soft:#FFF0BC;--cream:#FFFBF2;
+  --line:#06C755;--line-soft:#E8F7EE;
+  --display:'Mitr',system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--display);font-weight:500;color:var(--navy);background:#F6FAFE;padding:24px 20px 60px}
+h1{font-size:1.2rem;font-weight:600}
+.sub{font-size:.78rem;color:var(--navy-soft);margin:6px 0 20px;line-height:1.7;max-width:1080px}
+
+.grid{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.col{width:268px}
+.col h2{font-size:.86rem;font-weight:600;margin-bottom:3px}
+.col p{font-size:.68rem;line-height:1.6;color:var(--navy-soft);min-height:4.8em;margin-bottom:9px}
+.screen{position:relative;width:268px;height:268px;border-radius:16px;overflow:hidden;margin-bottom:9px}
+.screen.sky{background:linear-gradient(168deg,#E2F3FE 0%,#EDF7FE 26%,#F8FCFF 58%,#fff 100%)}
+.screen.white{background:#fff;border:1px dashed #DCEAF6}
+.screen .tag{position:absolute;left:10px;top:8px;font-size:.6rem;color:var(--navy-soft);opacity:.65}
+
+/* ── โครงร่วมของทุกปุ่ม — ตัวเลขเท่าของจริงใน landing.css ─────────── */
+.fabx{position:absolute;right:20px;display:inline-flex;align-items:center;gap:11px;width:208px;height:46px;
+  padding:0 13px;border-radius:999px;border:2px solid #fff;font-size:.83rem;font-weight:500;line-height:1.25;
+  text-decoration:none;box-shadow:0 2px 6px rgba(23,58,107,.12),0 12px 26px rgba(23,58,107,.18)}
+.fabx-ico{flex:none;display:grid;place-items:center;width:26px;height:26px}
+.fabx-ico svg{width:21px;height:21px;display:block}
+.fabx-label{flex:1;min-width:0;text-align:left;padding-left:11px;
+  border-left:1px solid color-mix(in srgb,currentColor 25%,transparent)}
+.fabx-label small{display:block;font-size:.63rem;opacity:.8;margin-top:1px}
+.fabx-go{flex:none;width:15px;height:15px;display:block;opacity:.45}
+.f-admin{bottom:20px}
+.f-line{bottom:78px}
+.f-bot{bottom:136px}
+.f-cart{bottom:194px}
+/* เป็ดโผล่หลังปุ่มตะกร้า — ใบเดียว ให้ตะกร้าเป็นพระเอกของกอง */
+.duck{position:absolute;right:-2px;bottom:calc(100% - 13px);width:80px;height:auto;display:block;
+  pointer-events:none;filter:drop-shadow(0 5px 9px rgba(23,58,107,.18))}
+/* ปุ่มทีมงาน: ไอคอนในวงกลมทึบ = อ่านออกทันทีว่าไม่ใช่ปุ่มของลูกค้า (กฎเดิมของเว็บ) */
+.chip .fabx-ico{width:30px;height:30px;border-radius:50%}
+.chip .fabx-ico svg{width:15px;height:15px}
+
+/* ── ทาง A · ภาพเดิมย้อมสี (ใช้ไฟล์รูป) ───────────────────────────── */
+.art{position:absolute;display:block;height:auto;filter:drop-shadow(0 5px 9px rgba(23,58,107,.16))}
+.art.cart{width:211px;right:17.7px;bottom:181.2px}
+.art.bot{width:210px;right:19.1px;bottom:128.3px}
+.art.line{width:210px;right:19.1px;bottom:77.3px}
+
+/* ── ทาง B · ขาว-กรม (สีอยู่แค่ในวงไอคอน) ─────────────────────────── */
+.b .fabx{background:linear-gradient(180deg,#fff 0%,#F8FCFF 100%);color:var(--navy);
+  box-shadow:0 0 0 1px rgba(23,58,107,.10),0 2px 6px rgba(23,58,107,.12),0 12px 26px rgba(23,58,107,.18)}
+.b .fabx-ico{width:30px;height:30px;border-radius:50%}
+.b .fabx-ico svg{width:16px;height:16px}
+.b .fabx-label{border-left-color:var(--sky-200)}
+.b .fabx-go{color:var(--blue-deep);opacity:.5}
+.b .f-cart .fabx-ico{background:linear-gradient(180deg,var(--yolk),var(--yolk-deep));color:var(--navy)}
+.b .f-bot  .fabx-ico{background:var(--navy);color:#fff}
+.b .f-line .fabx-ico{background:var(--line);color:#fff}
+.b .f-admin .fabx-ico{background:var(--navy);color:#fff}
+
+/* ── ทาง C · เข้มพอดี (สีเต็มใบ แต่แบน ไม่มันวาว) ─────────────────── */
+.c .f-cart{background:linear-gradient(180deg,#FFDF7C 0%,var(--yolk) 48%,var(--yolk-deep) 100%);color:var(--navy);
+  box-shadow:0 2px 6px rgba(160,105,0,.16),0 12px 26px rgba(160,105,0,.22)}
+.c .f-cart .fabx-ico{background:#fff;border-radius:50%;width:30px;height:30px}
+.c .f-cart .fabx-ico svg{width:16px;height:16px}
+.c .f-cart .fabx-label{border-left-color:rgba(23,58,107,.22)}
+.c .f-bot{background:linear-gradient(180deg,#24507F 0%,var(--navy) 64%,#12305A 100%);color:#fff}
+.c .f-bot .fabx-label{border-left-color:rgba(255,255,255,.28)}
+.c .f-line{background:linear-gradient(180deg,#2FCE74 0%,#0CBE5A 62%,#06A94D 100%);color:#fff}
+.c .f-line .fabx-label{border-left-color:rgba(255,255,255,.32)}
+.c .f-admin{background:#fff;color:var(--navy);
+  box-shadow:0 0 0 1px rgba(23,58,107,.10),0 2px 6px rgba(23,58,107,.12),0 12px 26px rgba(23,58,107,.18)}
+.c .f-admin .fabx-ico{background:var(--navy);color:#fff}
+.c .f-bot .fabx-go,.c .f-line .fabx-go{opacity:.75}
+
+/* ── ทาง D · พื้นอ่อนแยกสี (พาสเทล ตัวหนังสือกรมทุกใบ) ────────────── */
+.d .fabx{color:var(--navy)}
+.d .fabx-go{opacity:.45}
+.d .fabx-ico{width:30px;height:30px;border-radius:50%}
+.d .fabx-ico svg{width:16px;height:16px}
+.d .f-cart{background:linear-gradient(180deg,#fff 0%,var(--cream) 100%);
+  box-shadow:0 0 0 1.5px var(--yolk),0 2px 6px rgba(23,58,107,.10),0 12px 26px rgba(160,105,0,.18)}
+.d .f-cart .fabx-ico{background:linear-gradient(180deg,var(--yolk),var(--yolk-deep))}
+.d .f-cart .fabx-label{border-left-color:rgba(255,182,39,.55)}
+.d .f-bot{background:linear-gradient(180deg,#fff 0%,var(--sky-100) 100%);
+  box-shadow:0 0 0 1.5px var(--sky-300),0 2px 6px rgba(23,58,107,.10),0 12px 26px rgba(44,129,196,.18)}
+.d .f-bot .fabx-ico{background:var(--navy);color:#fff}
+.d .f-bot .fabx-label{border-left-color:var(--sky-300)}
+.d .f-line{background:linear-gradient(180deg,#fff 0%,var(--line-soft) 100%);
+  box-shadow:0 0 0 1.5px #7DD9A4,0 2px 6px rgba(23,58,107,.10),0 12px 26px rgba(6,167,80,.16)}
+.d .f-line .fabx-ico{background:var(--line);color:#fff}
+.d .f-line .fabx-label{border-left-color:#9FE3BC}
+.d .f-admin{background:#fff;
+  box-shadow:0 0 0 1.5px rgba(23,58,107,.18),0 2px 6px rgba(23,58,107,.12),0 12px 26px rgba(23,58,107,.16)}
+.d .f-admin .fabx-ico{background:var(--navy);color:#fff}
+.d .f-admin .fabx-label{border-left-color:rgba(23,58,107,.2)}
+</style></head><body>
+
+<h1>กองปุ่มลอยมุมขวา — 4 ทางเลือก</h1>
+<div class="sub">
+  เทียบ “ทั้งกอง” เพราะปุ่ม 4 ใบนี้อยู่ติดกันบนจอเดียว · ตำแหน่ง/ขนาดเท่าของจริงทุกตัวเลข (กว้าง 208 · ห่างขอบขวา 20 · ขอบล่าง 20/78/136/194)<br>
+  แถวบน = วางบนพื้นฟ้าหน้าแรก · แถวล่าง = วางบนพื้นขาวหน้าสินค้า (เป็นที่ที่ปุ่มขาวทดสอบยากที่สุด)
+</div>
+
+<div class="grid" id="rowSky"></div>
+<div style="height:18px"></div>
+<div class="grid" id="rowWhite"></div>
+
+<script>
+const ICO = {
+  cart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4h2.1l2 10.2h9.9l1.9-7.4H6.1"/><circle cx="9.6" cy="19" r="1.5"/><circle cx="16.6" cy="19" r="1.5"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.4c-5 0-9 3.2-9 7.2 0 2.3 1.3 4.3 3.4 5.6-.1.9-.5 2.2-1.4 3.4 1.9-.3 3.4-1.2 4.4-2 .8.2 1.7.3 2.6.3 5 0 9-3.2 9-7.3S17 3.4 12 3.4Z"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20Z"/></svg>',
+};
+const GO = '<svg class="fabx-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
+
+const BUTTONS = [
+  { cls: "f-cart",  ico: "cart",   label: "ตะกร้า", duck: true },
+  { cls: "f-bot",   ico: "chat",   label: 'คุยกับบอท<small>ตอบทันที 24 ชม.</small>' },
+  { cls: "f-line",  ico: "chat",   label: "ทักเราได้เลยนะ 👋" },
+  { cls: "f-admin", ico: "pencil", label: "แก้ไขในหลังบ้าน", chip: true },
+];
+
+const WAYS = [
+  { key: "now", name: "ของเดิมวันนี้", why: "รูป 3 มิติ 3 ใบ (ฟ้านีออน · น้ำเงินสด · เขียวสด) + ปุ่มทีมงานสีขาว — สีสดกว่าทุกอย่างบนหน้าเว็บ กองปุ่มเลยดังกว่าสินค้า", art: "" },
+  { key: "a",   name: "ทาง A · ภาพเดิมย้อมสี", why: "ภาพ 3 มิติชุดเดิมทุกเส้น (เป็ดถือถุง · เป็ดเล่นมือถือ · เป็ดโบกมือ) แค่ลดความสดของพื้น/ขอบให้เป็นโทนเว็บ — ได้ความน่ารักเดิมครบ", art: "-v2" },
+  { key: "b",   name: "ทาง B · ขาว-กรม", why: "ทั้งกองเป็นพิลล์ขาว ตัวหนังสือกรม สีประจำปุ่มเหลืออยู่แค่ในวงไอคอน 30px — เงียบที่สุด กองปุ่มไม่แย่งสายตางานลูกค้าเลย" },
+  { key: "c",   name: "ทาง C · เข้มพอดี", why: "สีเต็มใบเหมือนเดิมแต่แบน ไม่มันวาว ไม่มีขอบเรือง: ตะกร้าเหลือง (ปุ่มที่อยากให้กด) · บอทกรม · LINE เขียว · ทีมงานขาว" },
+  { key: "d",   name: "ทาง D · พื้นอ่อนแยกสี", why: "พื้นพาสเทลของใครของมัน + เส้นขอบสีประจำปุ่ม ตัวหนังสือกรมทุกใบ — นุ่มแต่ยังแยกออกว่าใบไหนของใคร" },
+];
+
+function stack(way, bg) {
+  const box = document.createElement("div");
+  // ทางที่ใช้รูป ยืมกฎปุ่มทีมงานของทาง C มาใช้ (ใบนั้นเป็นพิลล์ขาวเหมือนกันทุกทาง)
+  box.className = "screen " + bg + " " + way.key + (way.art !== undefined ? " c" : "");
+  box.innerHTML = `<span class="tag">${bg === "sky" ? "พื้นฟ้า" : "พื้นขาว"}</span>`;
+
+  if (way.art !== undefined) {
+    // ทางที่ใช้รูปสำเร็จ — ตะกร้า/บอท/LINE เป็นภาพ ปุ่มทีมงานยังเป็นพิลล์ CSS เหมือนของจริง
+    for (const [n, f] of [["cart", "cart-shop-badge"], ["bot", "bot-chat-badge"], ["line", "line-chat-badge"]]) {
+      const img = document.createElement("img");
+      img.className = "art " + n;
+      img.src = `/landing/${f}${way.art}.webp`;
+      box.appendChild(img);
+    }
+    const a = BUTTONS[3];
+    box.appendChild(pill(a, "c"));
+    return box;
+  }
+  for (const b of BUTTONS) box.appendChild(pill(b, way.key));
+  return box;
+}
+
+function pill(b, wayKey) {
+  const el = document.createElement("a");
+  el.className = "fabx " + b.cls + (b.chip ? " chip" : "");
+  el.innerHTML =
+    (b.duck && wayKey !== "c0" ? '<img class="duck" src="/landing/fab-duck-peek.webp" alt="">' : "") +
+    `<span class="fabx-ico">${ICO[b.ico]}</span>` +
+    `<span class="fabx-label">${b.label}</span>` + GO;
+  return el;
+}
+
+for (const [rowId, bg] of [["rowSky", "sky"], ["rowWhite", "white"]]) {
+  const row = document.getElementById(rowId);
+  for (const way of WAYS) {
+    const col = document.createElement("div");
+    col.className = "col";
+    if (bg === "sky") col.innerHTML = `<h2>${way.name}</h2><p>${way.why}</p>`;
+    const sc = stack(way, bg);
+    // ตัวห่อชั้นนอกต้องถือคลาสของทาง เพื่อให้กฎ .b/.c/.d ถึงตัวปุ่มข้างใน
+    col.appendChild(sc);
+    row.appendChild(col);
+  }
+}
+</script>
+</body></html>

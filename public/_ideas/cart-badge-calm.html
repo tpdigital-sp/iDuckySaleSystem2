@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ปุ่มตะกร้าลอย — โทนเว็บ 5 แบบ</title>
+<!--
+  ไอเดียปุ่มตะกร้าลอยมุมขวา รอบ "โทนเว็บ" — 22 ก.ย. 69
+  เจ้าของร้าน: "เอาเดิมสีมันจัดจ้านไปหน่อย ไม่ค่อยเข้ากับเว็บ"
+
+  ทุกแบบใช้สีจาก landing.css ชุดเดียวกับหน้าเว็บ · ขนาดเท่าของจริงบนจอ (แคปซูล 208×46)
+  รูปเป็ด/ไอคอนรถเข็น 3 มิติ หยิบจาก /public ที่ใช้ในเว็บอยู่แล้ว ไม่ต้องวาดใหม่
+  หน้านี้เป็นหน้าเลือกแบบ ไม่ได้ผูกกับเว็บจริง — เลือกได้แล้วค่อยเอาไปทำจริงในปุ่ม
+-->
+<style>
+@font-face{font-family:'Mitr';src:url('/fonts/Mitr-Medium.ttf') format('truetype');font-weight:500;font-display:block}
+@font-face{font-family:'Mitr';src:url('/fonts/Mitr-SemiBold.ttf') format('truetype');font-weight:600;font-display:block}
+:root{--sky-50:#F2FAFF;--sky-100:#E2F3FE;--sky-200:#C6E8FB;--sky-300:#9CD8F6;
+  --blue:#57B6E8;--blue-deep:#2C81C4;--navy:#173A6B;--navy-soft:#4A6A96;
+  --yolk:#FFD447;--yolk-deep:#FFB627;--yolk-soft:#FFF0BC;--cream:#FFFBF2;--coral:#FF9EB0;
+  --display:'Mitr',system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--display);font-weight:500;color:var(--navy);background:#F6FAFE;padding:26px 22px 70px}
+h1{font-size:1.2rem;font-weight:600}
+.sub{font-size:.78rem;color:var(--navy-soft);margin:6px 0 22px;line-height:1.7}
+.row{display:grid;grid-template-columns:200px 1fr;gap:18px;align-items:center;background:#fff;
+  border:1px solid #E6F1FA;border-radius:18px;padding:18px;margin-bottom:14px;box-shadow:0 6px 18px rgba(44,129,196,.07)}
+.meta b{display:block;font-size:.95rem;font-weight:600;margin-bottom:5px}
+.meta span{display:block;font-size:.73rem;line-height:1.6;color:var(--navy-soft);font-weight:500}
+.stages{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.stage{position:relative;width:262px;height:112px;border-radius:14px;display:grid;place-items:center}
+.stage.sky{background:linear-gradient(160deg,#E3F2FD,#F7FCFF)}
+.stage.white{background:#fff;border:1px dashed #DCEAF6}
+.stage.zoom{width:352px;height:150px;background:linear-gradient(160deg,#EAF6FF,#fff)}
+.stage.zoom .wrap{transform:scale(1.55)}
+.tag{position:absolute;left:9px;top:7px;font-size:.6rem;color:var(--navy-soft);opacity:.7;font-weight:500}
+.wrap{position:relative}
+
+/* โครงร่วม — ขนาดเท่าปุ่มจริงบนเว็บ */
+.fab{position:relative;display:inline-flex;align-items:center;gap:11px;width:208px;height:46px;padding:0 13px;
+  border-radius:999px;border:2px solid #fff;font-size:.83rem;font-weight:500;line-height:1.25;text-decoration:none}
+.ico{flex:none;display:grid;place-items:center;width:26px;height:26px}
+.ico svg{width:20px;height:20px;display:block}
+.label{flex:1;min-width:0;text-align:left;padding-left:11px;border-left:1px solid rgba(23,58,107,.22)}
+.go{flex:none;width:14px;height:14px;opacity:.45}
+.duck{position:absolute;right:-2px;bottom:calc(100% - 13px);width:84px;height:auto;display:block;pointer-events:none;
+  filter:drop-shadow(0 5px 9px rgba(23,58,107,.18))}
+/* ป้าย SHOP! แบบเดียวกับของเดิม แต่เป็นสีไข่แดง-กรม */
+.shop{position:absolute;left:-7px;bottom:calc(100% - 15px);padding:3px 9px 4px;border-radius:9px;
+  font-size:.56rem;font-weight:600;letter-spacing:.04em;color:var(--navy);
+  background:linear-gradient(180deg,var(--yolk) 0%,var(--yolk-deep) 100%);border:2px solid #fff;
+  transform:rotate(-6deg);box-shadow:0 4px 9px rgba(160,105,0,.24)}
+.shop::after{content:"";position:absolute;right:9px;bottom:-6px;width:9px;height:8px;
+  background:var(--yolk-deep);clip-path:polygon(0 0,100% 0,18% 100%)}
+
+/* ── แบบ 1 · ขาวมุก ขอบฟ้า ───────────────────────────────────── */
+.v1{background:linear-gradient(180deg,#fff 0%,#F7FCFF 100%);color:var(--navy);
+  box-shadow:0 0 0 1.5px var(--sky-200),0 2px 6px rgba(23,58,107,.10),0 12px 26px rgba(44,129,196,.18)}
+.v1 .ico{background:var(--sky-100);border-radius:50%;color:var(--blue-deep)}
+.v1 .ico svg{width:17px;height:17px}
+.v1 .label{border-left-color:var(--sky-200);font-weight:600}
+.v1 .go{color:var(--blue-deep);opacity:.5}
+
+/* ── แบบ 2 · ไข่แดง ──────────────────────────────────────────── */
+.v2{background:linear-gradient(180deg,#FFDF7C 0%,var(--yolk) 46%,var(--yolk-deep) 100%);color:var(--navy);
+  box-shadow:0 0 0 1px rgba(170,112,0,.16),0 2px 6px rgba(160,105,0,.16),0 12px 26px rgba(160,105,0,.24)}
+.v2 .ico{background:#fff;border-radius:50%;color:var(--navy);box-shadow:0 1px 3px rgba(160,105,0,.22)}
+.v2 .ico svg{width:17px;height:17px}
+.v2 .label{border-left-color:rgba(23,58,107,.20);font-weight:600}
+.v2 .go{opacity:.55}
+.v2 .duck{filter:drop-shadow(0 0 1.6px #fff) drop-shadow(0 0 1.6px #fff) drop-shadow(0 4px 8px rgba(120,80,0,.28))}
+
+/* ── แบบ 3 · กรมทึบ ──────────────────────────────────────────── */
+.v3{background:linear-gradient(180deg,#24507F 0%,var(--navy) 62%,#122F58 100%);color:#fff;
+  box-shadow:0 2px 6px rgba(23,58,107,.20),0 12px 26px rgba(23,58,107,.30)}
+.v3 .ico{background:var(--yolk);border-radius:50%;color:var(--navy)}
+.v3 .ico svg{width:16px;height:16px}
+.v3 .label{border-left-color:rgba(255,255,255,.28);font-weight:500}
+.v3 .go{opacity:.7}
+
+/* ── แบบ 4 · ฟ้าพาสเทล ไอคอน 3 มิติล้นขอบ ────────────────────── */
+.v4{background:linear-gradient(180deg,#fff 0%,var(--sky-50) 55%,var(--sky-100) 100%);color:var(--navy);
+  padding-left:42px;box-shadow:0 0 0 1.5px var(--sky-300),0 2px 6px rgba(23,58,107,.10),0 12px 26px rgba(44,129,196,.20)}
+.v4 .ico{position:absolute;left:-15px;width:50px;height:50px;background:none}
+.v4 .ico img{width:50px;height:50px;display:block;filter:drop-shadow(0 4px 8px rgba(44,129,196,.34))}
+.v4 .label{border-left:0;padding-left:4px;font-weight:600}
+.v4 .go{color:var(--blue-deep);opacity:.55}
+
+/* ── แบบ 5 · ครีมขอบไข่แดง + ป้าย SHOP! ──────────────────────── */
+.v5{background:linear-gradient(180deg,#fff 0%,var(--cream) 100%);color:var(--navy);
+  box-shadow:0 0 0 1.5px var(--yolk),0 2px 6px rgba(23,58,107,.10),0 12px 26px rgba(160,105,0,.18)}
+.v5 .ico{background:var(--yolk-soft);border-radius:50%;color:var(--navy)}
+.v5 .ico svg{width:17px;height:17px}
+.v5 .label{border-left-color:rgba(255,182,39,.5);font-weight:600}
+.v5 .go{color:var(--yolk-deep);opacity:.8}
+
+/* แถวเทียบภาพเดิม */
+.art{display:block;width:211px;height:auto}
+.stage.zoom .art{transform:scale(1.55)}
+</style></head><body>
+
+<h1>ปุ่มตะกร้าลอยมุมขวา — โทนเว็บ 5 แบบ</h1>
+<div class="sub">
+  ทุกแบบใช้สีชุดเดียวกับหน้าเว็บ (กรม #173A6B · ฟ้า #57B6E8 · ไข่แดง #FFD447) · เป็ดกับไอคอนรถเข็น 3 มิติเป็นรูปที่ใช้ในเว็บอยู่แล้ว<br>
+  ซ้าย = วางบนพื้นฟ้าหน้าแรก · กลาง = วางบนพื้นขาวหน้าสินค้า · ขวา = ขยาย 1.55 เท่าให้ดูรายละเอียด
+</div>
+
+<!-- ตัวปุ่มร่วม: ประกาศครั้งเดียวด้วย template แล้วโคลนลงทุกเวที -->
+<template id="fab">
+  <div class="wrap">
+    <a class="fab">
+      <img class="duck" src="/landing/fab-duck-peek.webp" alt="">
+      <span class="ico"></span>
+      <span class="label">ตะกร้า</span>
+      <svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+    </a>
+  </div>
+</template>
+
+<div id="out"></div>
+
+<script>
+const CART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4h2.1l2 10.2h9.9l1.9-7.4H6.1"/><circle cx="9.6" cy="19" r="1.5"/><circle cx="16.6" cy="19" r="1.5"/></svg>';
+const BALLOON = '<img src="/landing/cart-balloon.webp" alt="">';
+
+const DESIGNS = [
+  { cls: "v1", name: "แบบ 1 · ขาวมุก ขอบฟ้า",
+    why: "ขาวสะอาด ขอบฟ้าอ่อนบาง ๆ ตัวหนังสือกรม — เงียบที่สุด กลืนไปกับหน้าเว็บ เหมาะถ้าไม่อยากให้ปุ่มแย่งสายตางานลูกค้า", ico: CART },
+  { cls: "v2", name: "แบบ 2 · ไข่แดง",
+    why: "พื้นเหลืองแบรนด์ ตัวหนังสือกรม วงไอคอนขาว — เด่นสุดในกอง เพราะอีก 3 ใบเป็นกรม/เขียว/ขาว แต่ยังเป็นสีของร้าน ไม่ฉูดฉาด", ico: CART, shop: true },
+  { cls: "v3", name: "แบบ 3 · กรมทึบ",
+    why: "สีเดียวกับปุ่มหลักทั้งเว็บ (ปุ่ม “ช้อปเลย”) ตัวหนังสือขาว ไอคอนวงเหลือง — สุภาพ เข้าชุดกับปุ่มคุยกับบอทที่อยู่ใต้กัน", ico: CART },
+  { cls: "v4", name: "แบบ 4 · ฟ้าพาสเทล ไอคอนล้นขอบ",
+    why: "ตัวปุ่มฟ้าจางไล่เฉด + รถเข็น 3 มิติโตยื่นออกนอกขอบซ้าย — มีมิติ ดูกดได้ สะดุดตาตอนเลื่อนหน้าโดยไม่ต้องใช้สีจัด", ico: BALLOON },
+  { cls: "v5", name: "แบบ 5 · ครีมขอบไข่แดง + ป้าย SHOP!",
+    why: "พื้นครีม ขอบเส้นไข่แดง มีป้าย SHOP! เหมือนใบเดิมแต่เปลี่ยนเป็นเหลือง-กรม — เก็บลูกเล่นเดิมไว้ในโทนที่นุ่มลง", ico: CART, shop: true },
+];
+
+const out = document.getElementById("out");
+const tpl = document.getElementById("fab");
+
+function make(d, zoom) {
+  const node = tpl.content.cloneNode(true);
+  const fab = node.querySelector(".fab");
+  fab.classList.add(d.cls);
+  node.querySelector(".ico").innerHTML = d.ico;
+  if (d.shop) {
+    const s = document.createElement("span");
+    s.className = "shop"; s.textContent = "SHOP!";
+    fab.appendChild(s);
+  }
+  return node;
+}
+
+for (const d of DESIGNS) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `<div class="meta"><b>${d.name}</b><span>${d.why}</span></div>`;
+  const stages = document.createElement("div");
+  stages.className = "stages";
+  for (const [cls, tag] of [["sky", "พื้นฟ้า"], ["white", "พื้นขาว"], ["zoom", "ขยาย 1.55x"]]) {
+    const st = document.createElement("div");
+    st.className = "stage " + cls;
+    st.innerHTML = `<span class="tag">${tag}</span>`;
+    st.appendChild(make(d));
+    stages.appendChild(st);
+  }
+  row.appendChild(stages);
+  out.appendChild(row);
+}
+
+// แถวเทียบ: ภาพเดิมของเจ้าของร้าน + ภาพเดิมที่ย้อมสีใหม่
+for (const [src, name, why] of [
+  ["/landing/cart-shop-badge.webp", "ของเดิมวันนี้", "ภาพที่เจ้าของร้านส่งมา — ฟ้านีออน น้ำเงินสด"],
+  ["/landing/cart-shop-badge-v2.webp", "แบบ 0 · ใบเดิมย้อมสีใหม่", "ภาพเดิมทั้งใบ (เป็ดถือถุง + ป้าย SHOP!) แค่เปลี่ยนสีให้เป็นโทนเว็บ — ได้ความน่ารักของภาพ 3 มิติเดิมไว้ครบ"],
+]) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `<div class="meta"><b>${name}</b><span>${why}</span></div>`;
+  const stages = document.createElement("div");
+  stages.className = "stages";
+  for (const [cls, tag] of [["sky", "พื้นฟ้า"], ["white", "พื้นขาว"], ["zoom", "ขยาย 1.55x"]]) {
+    const st = document.createElement("div");
+    st.className = "stage " + cls;
+    st.innerHTML = `<span class="tag">${tag}</span><img class="art" src="${src}" alt="">`;
+    stages.appendChild(st);
+  }
+  row.appendChild(stages);
+  out.appendChild(row);
+}
+</script>
+</body></html>

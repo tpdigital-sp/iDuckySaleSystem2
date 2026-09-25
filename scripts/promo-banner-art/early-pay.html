@@ -1,0 +1,48 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=IBM+Plex+Sans+Thai+Looped:wght@400;500;600&display=block" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+  .orb1{width:430px;height:430px;left:-130px;top:-160px;background:radial-gradient(circle at 35% 35%,#FFF7DE,#FFF0C6 58%,rgba(255,240,198,0));opacity:.8}
+  .orb2{width:400px;height:400px;right:-90px;bottom:-170px;background:radial-gradient(circle at 40% 40%,#EAF6FF,#D7EEFC 58%,rgba(215,238,252,0))}
+  .c1{width:132px;left:432px;top:26px;opacity:.5}
+  .c2{width:96px;right:34px;top:48px;opacity:.45}
+  .cards{position:absolute;left:0;top:104px;display:flex;gap:13px}
+  .tier{width:141px;height:176px;position:relative;padding:34px 10px 0;text-align:center}
+  .tier b{display:block;font-family:var(--display);font-weight:600;font-size:38px;line-height:1.1;color:var(--navy)}
+  .tier .t{font-family:var(--display);font-weight:500;font-size:14.5px;color:var(--blue-deep)}
+  .tier small{display:block;font-size:13px;line-height:1.5;color:var(--navy-soft);margin-top:8px}
+  .tier .ic{position:absolute;left:50%;translate:-50% 0;top:-21px;width:46px;height:46px;border-radius:50%;
+    background:#fff;display:grid;place-items:center;box-shadow:0 8px 16px rgba(44,129,196,.18)}
+  .tier .ic img{width:31px}
+  .duck1{right:-10px;bottom:-6px;width:214px}
+  .n1{left:2px;bottom:34px;width:320px}
+</style>
+<div class="bn">
+  <span class="orb orb1"></span><span class="orb orb2"></span>
+  <img class="cloud c1" src="../../public/landing/cloud.webp">
+  <img class="cloud c2" src="../../public/landing/cloud.webp">
+  <div class="bn-in">
+    <div class="left">
+      <span class="badge">ส่วนลดโอนไว</span>
+      <h1>โอนภายใน 1 ชม.<br>ลดเพิ่มสูงสุด <span class="hl"><span>฿10</span></span></h1>
+      <p class="sub">ลดท้ายบิลอัตโนมัติ · สำหรับออเดอร์ราคาปลีก</p>
+      <span class="cta">สั่งเลย<span class="dot">→</span></span>
+    </div>
+    <div class="right">
+      <div class="cards">
+        <div class="card tier">
+          <span class="ic"><img src="../../public/account/coupon-gift.webp"></span>
+          <span class="t">ลดเพิ่ม</span><b>฿5</b>
+          <small>ยอดสินค้า<br>ไม่เกิน ฿999</small>
+        </div>
+        <div class="card tier">
+          <span class="ic"><img src="../../public/account/coupon-gift.webp"></span>
+          <span class="t">ลดเพิ่ม</span><b>฿10</b>
+          <small>ยอดสินค้า<br>฿1,000 ขึ้นไป</small>
+        </div>
+      </div>
+      <img class="duck duck1" src="../../public/account/coupon-duck.webp">
+      <span class="note n1">*นับจากเวลาสั่งซื้อ · ยอดสินค้าไม่รวมค่าส่ง</span>
+    </div>
+  </div>
+</div>

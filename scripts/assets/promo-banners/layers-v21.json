@@ -1,0 +1,442 @@
+{
+  "dealer": {
+    "d": [
+      {
+        "x": 11.9,
+        "y": 74.9,
+        "w": 18.2,
+        "h": 14.9,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 35,
+        "y": 3,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 48,
+        "y": 3,
+        "w": 1.6,
+        "anim": "twinkle",
+        "delay": 1
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 30,
+        "y": 90,
+        "w": 1.5,
+        "anim": "twinkle",
+        "delay": 0.5,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 46,
+        "y": 88,
+        "w": 2,
+        "anim": "rise",
+        "delay": 0
+      }
+    ],
+    "m": [
+      {
+        "x": 11.1,
+        "y": 66.6,
+        "w": 24.1,
+        "h": 12.2,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 43,
+        "y": 5,
+        "w": 3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 88,
+        "y": 36,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 1
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 30,
+        "y": 89,
+        "w": 2.2,
+        "anim": "twinkle",
+        "delay": 0.5,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 58,
+        "y": 88,
+        "w": 2.8,
+        "anim": "rise",
+        "delay": 0
+      }
+    ]
+  },
+  "web-order-24h": {
+    "d": [
+      {
+        "x": 5.4,
+        "y": 80.3,
+        "w": 15.1,
+        "h": 14.2,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 30,
+        "y": 3,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 44,
+        "y": 3,
+        "w": 1.7,
+        "anim": "twinkle",
+        "delay": 1.1
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 26,
+        "y": 89,
+        "w": 1.5,
+        "anim": "twinkle",
+        "delay": 0.6,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 47,
+        "y": 88,
+        "w": 2,
+        "anim": "rise",
+        "delay": 0
+      }
+    ],
+    "m": [
+      {
+        "x": 15.4,
+        "y": 69.4,
+        "w": 22.5,
+        "h": 11.9,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 46,
+        "y": 5,
+        "w": 3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 89,
+        "y": 32,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 1.1
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 33,
+        "y": 88,
+        "w": 2.2,
+        "anim": "twinkle",
+        "delay": 0.6,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 60,
+        "y": 88,
+        "w": 2.8,
+        "anim": "rise",
+        "delay": 0
+      }
+    ]
+  },
+  "early-pay": {
+    "d": [
+      {
+        "x": 12.3,
+        "y": 64.7,
+        "w": 13.9,
+        "h": 15.6,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 33,
+        "y": 4,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 66,
+        "y": 6,
+        "w": 1.7,
+        "anim": "twinkle",
+        "delay": 1.2
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 22,
+        "y": 89,
+        "w": 1.5,
+        "anim": "twinkle",
+        "delay": 0.6,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 68,
+        "y": 86,
+        "w": 2,
+        "anim": "rise",
+        "delay": 0
+      }
+    ],
+    "m": [
+      {
+        "x": 8.8,
+        "y": 73.7,
+        "w": 15.3,
+        "h": 10.8,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 36,
+        "y": 4,
+        "w": 3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 52,
+        "y": 8,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 1.2
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 27,
+        "y": 89,
+        "w": 2.2,
+        "anim": "twinkle",
+        "delay": 0.6,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 62,
+        "y": 88,
+        "w": 2.8,
+        "anim": "rise",
+        "delay": 0
+      }
+    ]
+  },
+  "member-tier": {
+    "d": [
+      {
+        "x": 31.6,
+        "y": 63.3,
+        "w": 15.8,
+        "h": 13.5,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 47,
+        "y": 5,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 57,
+        "y": 13,
+        "w": 1.6,
+        "anim": "twinkle",
+        "delay": 1
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 34,
+        "y": 88,
+        "w": 1.5,
+        "anim": "twinkle",
+        "delay": 0.5,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 62,
+        "y": 86,
+        "w": 2,
+        "anim": "rise",
+        "delay": 0
+      }
+    ],
+    "m": [
+      {
+        "x": 52.6,
+        "y": 67.3,
+        "w": 23.7,
+        "h": 11.5,
+        "anim": "tap",
+        "color": "#FFB627"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 66,
+        "y": 6,
+        "w": 3,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 87,
+        "y": 34,
+        "w": 2.3,
+        "anim": "twinkle",
+        "delay": 1
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 30,
+        "y": 88,
+        "w": 2.2,
+        "anim": "twinkle",
+        "delay": 0.5,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 60,
+        "y": 88,
+        "w": 2.8,
+        "anim": "rise",
+        "delay": 0
+      }
+    ]
+  },
+  "line-consult": {
+    "d": [
+      {
+        "x": 35,
+        "y": 65.3,
+        "w": 30.3,
+        "h": 19.6,
+        "anim": "tap",
+        "color": "#FFFFFF"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 31,
+        "y": 5,
+        "w": 2.2,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 66,
+        "y": 6,
+        "w": 1.6,
+        "anim": "twinkle",
+        "delay": 0.8
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 23,
+        "y": 90,
+        "w": 1.5,
+        "anim": "twinkle",
+        "delay": 0.4,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 70,
+        "y": 84,
+        "w": 1.8,
+        "anim": "rise",
+        "delay": 0
+      }
+    ],
+    "m": [
+      {
+        "x": 34.7,
+        "y": 56.6,
+        "w": 33.4,
+        "h": 14.4,
+        "anim": "tap",
+        "color": "#FFFFFF"
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 28,
+        "y": 4,
+        "w": 2.8,
+        "anim": "twinkle",
+        "delay": 0
+      },
+      {
+        "src": "/landing/star4.webp",
+        "x": 63,
+        "y": 7,
+        "w": 2.2,
+        "anim": "twinkle",
+        "delay": 0.8
+      },
+      {
+        "src": "/landing/star.webp",
+        "x": 33,
+        "y": 88,
+        "w": 2.2,
+        "anim": "twinkle",
+        "delay": 0.4,
+        "opacity": 0.85
+      },
+      {
+        "src": "/landing/heart.webp",
+        "x": 62,
+        "y": 84,
+        "w": 2.4,
+        "anim": "rise",
+        "delay": 0
+      }
+    ]
+  }
+}

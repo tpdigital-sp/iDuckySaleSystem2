@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { clearLineSources, loadLineSources } from "@/lib/server/line-sources";
 import {
+  alertQuota,
+  clearAlertMisses,
   loadLineAlert,
   openToken,
   pushShopAlert,
   saveLineAlert,
   sealToken,
   statusOf,
+  type AlertQuota,
   type LineAlertStatus,
 } from "@/lib/server/line-alert";
 
@@ -61,6 +64,8 @@ export interface LineSourcesResponse {
   accounts: LineAccount[];
   /** ปลายทางเดิมที่ตั้งไว้ใน env (ใช้เมื่อยังไม่ได้ตั้งบัญชีแจ้งเตือน) */
   envTo: string;
+  /** โควตาข้อความเดือนนี้ของบัญชีที่ใช้ส่งอยู่ — null = ถามไม่ได้ */
+  quota: AlertQuota | null;
 }
 
 /** เลขห้องแชทที่ /api/line/webhook จดไว้ + สถานะบัญชีแจ้งเตือน */
@@ -74,6 +79,7 @@ export async function GET() {
     accounts: await accounts(),
     // โชว์แค่ตัวอักษรแรกพอให้รู้ว่าเป็นกลุ่มหรือแชทเดี่ยว ไม่ต้องเปิดเลขเต็ม
     envTo: (process.env.LINE_STOCK_ALERT_TO ?? "").slice(0, 1),
+    quota: await alertQuota(),
   };
   return NextResponse.json(body);
 }
@@ -92,6 +98,8 @@ export async function POST(req: Request) {
     token?: string;
     to?: string;
     adminTo?: string;
+    /** ปลายทางสำรองของบัญชีร้าน (ใช้ตอนบัญชีแจ้งเตือนส่งไม่ออก) */
+    shopTo?: string;
     /** ทดสอบ/ตั้งค่าฝั่งกลุ่มเรื่องเงิน (เคลม · ยอดค้างงวด 2) */
     money?: boolean;
   };
@@ -115,6 +123,12 @@ export async function POST(req: Request) {
     return NextResponse.json(r, { status: r.ok ? 200 : 400 });
   }
 
+  // แอดมินอ่านรายการที่ส่งไม่ออกแล้ว — เคลียร์แถบแดงทิ้ง
+  if (body.action === "clearMisses") {
+    await clearAlertMisses();
+    return NextResponse.json({ ok: true, saved: "ล้างรายการที่ส่งไม่ออกแล้ว", alert: statusOf(await loadLineAlert()) });
+  }
+
   if (body.action !== "save") return NextResponse.json({ error: "คำสั่งไม่ถูกต้อง" }, { status: 400 });
 
   const patch: Parameters<typeof saveLineAlert>[0] = {
@@ -123,6 +137,7 @@ export async function POST(req: Request) {
   };
   if (typeof body.to === "string") patch.to = body.to.trim();
   if (typeof body.adminTo === "string") patch.adminTo = body.adminTo.trim();
+  if (typeof body.shopTo === "string") patch.shopTo = body.shopTo.trim();
 
   /** บอกหน้าจอว่าเพิ่งทำอะไรสำเร็จ — เดิมขึ้นแค่ "บันทึกแล้ว" แยกไม่ออกว่า token เข้าหรือเปล่า */
   let saved = "";

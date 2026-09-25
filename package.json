@@ -39,6 +39,7 @@
     "check:contact-link": "tsx scripts/contact-link-test.mts",
     "check:receipt-pdf": "tsx --tsconfig tsconfig.json scripts/receipt-pdf-test.mts",
     "check:follow-up": "tsx --conditions=react-server scripts/follow-up-test.mts",
+    "check:alert": "tsx --conditions=react-server --env-file=.env.local scripts/line-alert-test.mts",
     "check:ship-with": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/ship-with-pickup-test.mts"
   },
   "dependencies": {
