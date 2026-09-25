@@ -129,6 +129,17 @@ for (const item of $input.all()) {
   try {
   const ut = mergedText || lastText || j.userMessage || j.userText || j.text || '';
   const replyText = String(j.replyText || '');
+  // 🖼 ข้อความเป็นรูป: Gemini จับคู่สินค้าจากรายชื่อเว็บแล้ว (productGuess/canMake จาก Format Image Reply) → แนบการ์ดสินค้าที่ตรง · ทำไม่ได้ = ข้อความอย่างเดียว
+  if (j.isImage) {
+    const guess = String(j.productGuess || '').trim();
+    if (guess && j.canMake !== 'no') {
+      let s2 = null;
+      try { s2 = await this.helpers.httpRequest({ method: 'POST', url: SITE_API, json: true, body: { query: guess, noFallback: true }, timeout: 20000 }); } catch (e) { s2 = null; }
+      const prods = s2 && s2.found ? (Array.isArray(s2.products) && s2.products.length ? s2.products : (s2.product ? [s2.product] : [])) : [];
+      if (prods.length) { out.push({ json: { ...j, messages: [{ type: 'text', text: replyText }, productFlex(prods.slice(0, 3), j.canMake === 'maybe' ? 'สินค้าใกล้เคียง' : 'สินค้าที่ตรงกับรูป')], siteProducts: prods, siteFlex: 'image' } }); continue; }
+    }
+    out.push({ json: j }); continue;
+  }
   if (!ut || ut.length < 2 || NOT_PRODUCT.test(ut)) { out.push({ json: j }); continue; }
   // v3: ถามเว็บทุกข้อความ (ยกเว้นเรื่องออเดอร์/ไฟล์) แล้วให้ชั้นเข้าใจคำถามของเว็บตัดสิน — regex เหลือแค่ตัวช่วย
   const askPrice = ASK_PRICE.test(ut);

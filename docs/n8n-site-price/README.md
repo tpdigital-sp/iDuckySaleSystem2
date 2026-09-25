@@ -40,6 +40,12 @@ Debounce Buffer รอ 5 วิแล้วปล่อย "ตัวล่า�
 - workflow ใหม่ [website-knowledge-sync.workflow.json](website-knowledge-sync.workflow.json): Schedule 04:00 / Manual → Code ดึงทุกหน้า → Pinecone insert index `adminbuddy-index768-2` **namespace `website`** + clearNamespace (เขียนทับทั้ง namespace ทุกครั้ง ไม่มีของเก่าค้าง) — วางด้วย Import from File หรือ paste JSON บนผืนผ้าใบ แล้วเลือก credential ให้ Pinecone/Embeddings
 - ChatBot: tool ใหม่ `website_knowledge` (Vector Store Tool → Pinecone retrieve namespace website + Embeddings Vertex + Gemini) ต่อเข้า AI Agent1 + กติกาใน system prompt "ใช้ website_knowledge ก่อน product_knowledge" — ต้องเลือก credential ให้ 3 โหนดที่วางใหม่ (Pinecone (website) / Embeddings (website) / Gemini (website tool))
 
+## 🖼 25 ก.ย. 69 — บอทดูรูปแล้ว "รู้ว่าทำได้ไหม เป็นสินค้าตัวไหน" (LINE OA)
+เดิม Analyze Image (Gemini) รู้จักสินค้าจากรายชื่อที่พิมพ์ตายตัวในพรอมป์ต + ห้ามปฏิเสธ → บอกได้แค่ประเภทกว้าง ๆ
+- โหนดใหม่ **Load Catalog (vision)** (Encode Base64 → ตัวนี้ → Analyze): ดึงรายชื่อสินค้า 228 ตัวจากเว็บ (`?catalog=1` แคช 10 นาที) ใส่ `catalogNames`
+- Analyze Image: เพิ่ม part "รายชื่อสินค้าที่ร้านทำได้จริง" + JSON เพิ่ม `productMatch` (ชื่อจากรายชื่อตรงตัว) และ `canMake` yes/maybe/no · อนุญาตให้บอก "ยังไม่มีสินค้าแบบนี้ + แนะนำใกล้เคียง"
+- Format Image Reply: ส่ง `productGuess`, `canMake` ต่อ · Site Price Flex: ข้อความรูป → แนบการ์ดสินค้าที่ตรง (yes/maybe) จากเครื่องคิดราคาเว็บ · no = ข้อความอย่างเดียว
+
 ## 📝 แผนเดิม (อ้างอิง) — 3 workflow
 
 ### 1) `pricing-search` (1xXH53w1Yzt4ZkKQ) — webhook `/webhook/pricing-search`
