@@ -37,8 +37,8 @@ export async function POST(req: Request) {
   }
 
   const spotlight = spotlightOf(body.spotlight);
-  if (spotlight.on && !spotlight.title1 && !spotlight.title2) {
-    return NextResponse.json({ error: "ยังไม่มีหัวข้อ — พิมพ์หัวข้ออย่างน้อย 1 บรรทัด หรือปิดสวิตช์แสดงผลแทน" }, { status: 400 });
+  if (spotlight.on && !spotlight.title) {
+    return NextResponse.json({ error: "ยังไม่มีหัวข้อ — พิมพ์หัวข้อก่อน หรือปิดสวิตช์แสดงผลแทน" }, { status: 400 });
   }
 
   const { error } = await sb

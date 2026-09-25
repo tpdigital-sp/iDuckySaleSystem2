@@ -9,8 +9,7 @@ import { fetchProductsLite } from "@/lib/product-repo";
 import { formatPrice, priceRange, type Product } from "@/lib/products";
 import {
   DEFAULT_SPOTLIGHT,
-  MAX_IDEAS,
-  MAX_POINTS,
+  MAX_CHIPS,
   MAX_STYLES,
   STYLE_TAG_TONES,
   clearSpotlightCache,
@@ -23,14 +22,14 @@ import {
 /**
  * 🎯 จุดเชียร์ขายหน้าแรก — ส่วนใต้ป้ายประชาสัมพันธ์ เหนือ "สินค้ามาใหม่"
  *
- * ร้านเลือกเองว่าจะเชียร์อะไร (เริ่มต้นเป็นเสื้อ) : รูปลุคบุ๊ค + คำเชียร์ + การ์ดสินค้าที่ผูกกับสินค้าจริง + ชิปไอเดีย
- * ราคาบนการ์ดดึงจากสินค้าจริง ไม่ต้องพิมพ์ · ข้อมูล/กติกาอยู่ที่ src/lib/spotlight.ts · หน้าร้านวาดด้วย components/Spotlight.tsx
+ * "จุดที่ร้านเลือกสินค้ามาแสดงให้ลูกค้าเห็นผ่านตา" (เจ้าของร้าน 25 ก.ย. 69): หัวข้อสั้น ๆ + รางเลื่อนการ์ดสินค้าที่เลือกเอง (สูงสุด 12 ตัว เลื่อนเองเมื่อเกิน 4)
+ * ราคา/รูป/ลิงก์บนการ์ดดึงจากสินค้าจริง ไม่ต้องพิมพ์ · ข้อมูล/กติกาอยู่ที่ src/lib/spotlight.ts · หน้าร้านวาดด้วย components/Spotlight.tsx
  */
 
-const TONE: Record<StyleTagTone, { label: string; color: string }> = {
-  coral: { label: "ชมพู", color: "#FF6B81" },
-  blue: { label: "ฟ้า", color: "#57B6E8" },
-  green: { label: "เขียว", color: "#2BB08A" },
+const TONE: Record<StyleTagTone, { label: string; color: string; emoji: string }> = {
+  hot: { label: "ส้มไฟ (แบบป้ายขายดี)", color: "#FF6F3C", emoji: "🔥" },
+  new: { label: "ฟ้า (แบบป้าย NEW)", color: "#3E86E0", emoji: "✨" },
+  mint: { label: "เขียว", color: "#2BB08A", emoji: "🌱" },
 };
 
 const MAX_MB = 4.5;
@@ -49,27 +48,20 @@ async function uploadImage(file: File): Promise<{ url?: string; error?: string }
   }
 }
 
-/** ช่องรูป: ตัวอย่าง + ปุ่มอัป/เปลี่ยน/เอาออก (ว่างได้ — ใช้รูปสำรองที่ hint บอก) */
-function ImageSlot({ label, hint, value, onChange, small }: { label: string; hint?: string; value?: string; onChange: (v: string | undefined) => void; small?: boolean }) {
+/** ช่องรูปการ์ด: ว่าง = ใช้รูปปกสินค้า (โชว์ให้ดูจาง ๆ) */
+function ImageSlot({ value, fallback, onChange }: { value?: string; fallback?: string; onChange: (v: string | undefined) => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const shown = value ?? fallback;
   return (
-    <div className={small ? "" : "dkb-g p-3.5"}>
+    <div>
       <p className="text-[0.72rem]" style={{ color: "var(--dk-navy-soft)" }}>
-        {label}
+        รูปการ์ด {value ? "" : "(ใช้รูปปกสินค้า)"}
       </p>
-      {value ? (
-        <img src={value} alt="" className={`mt-2 w-full rounded-xl object-cover ${small ? "h-24" : "max-h-48"}`} style={{ background: "var(--dk-sky)" }} />
-      ) : (
-        hint && (
-          <p className="mt-1 text-[0.76rem]" style={{ color: "var(--dk-faint)" }}>
-            {hint}
-          </p>
-        )
-      )}
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      {shown && <img src={shown} alt="" className="mt-1.5 aspect-square w-full rounded-xl object-cover" style={{ background: "var(--dk-sky)", opacity: value ? 1 : 0.75 }} />}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <label className="dkb-btn dkb-btn-ghost dkb-btn-sm cursor-pointer" aria-disabled={busy}>
-          {busy ? "กำลังอัปโหลด…" : value ? "เปลี่ยนรูป" : "เลือกรูป"}
+          {busy ? "อัป…" : value ? "เปลี่ยน" : "รูปเอง"}
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
@@ -90,12 +82,12 @@ function ImageSlot({ label, hint, value, onChange, small }: { label: string; hin
         </label>
         {value && (
           <Btn small onClick={() => onChange(undefined)}>
-            เอารูปออก
+            ใช้รูปปก
           </Btn>
         )}
       </div>
       {err && (
-        <p className="mt-1.5 text-[0.78rem] font-semibold" style={{ color: "var(--dk-coral-ink)" }}>
+        <p className="mt-1.5 text-[0.76rem] font-semibold" style={{ color: "var(--dk-coral-ink)" }}>
           {err}
         </p>
       )}
@@ -116,10 +108,10 @@ function ProductPick({ products, value, onPick }: { products: Product[]; value: 
   return (
     <div className="relative">
       <label className="dkb-g dkb-field">
-        <span className="lb">สินค้าที่ผูก {cur ? `· ${cur.name} (เริ่ม ${formatPrice(priceRange(cur).min)})` : value ? `· ไม่พบ "${value}" ในคลัง` : ""}</span>
+        <span className="lb">สินค้าที่ผูก {cur ? `· เริ่ม ${formatPrice(priceRange(cur).min)}` : value ? `· ไม่พบ "${value}" ในคลัง` : "· พิมพ์ค้นหา"}</span>
         <input
           value={open ? q : (cur?.name ?? value)}
-          placeholder="พิมพ์ชื่อสินค้าเพื่อค้นหา…"
+          placeholder="พิมพ์ชื่อสินค้า…"
           onFocus={() => {
             setOpen(true);
             setQ("");
@@ -206,8 +198,6 @@ function SpotlightInner() {
       [styles[i], styles[j]] = [styles[j], styles[i]];
       return { ...x, styles };
     });
-  const setList = (key: "points" | "ideas", i: number, v: string) => setS((x) => ({ ...x, [key]: x[key].map((t, j) => (j === i ? v : t)) }));
-  const dropList = (key: "points" | "ideas", i: number) => setS((x) => ({ ...x, [key]: x[key].filter((_, j) => j !== i) }));
 
   const save = async () => {
     setMsg(null);
@@ -239,7 +229,7 @@ function SpotlightInner() {
       <PageHead
         group="ร้าน & ระบบ"
         title="🎯 จุดเชียร์ขายหน้าแรก"
-        sub="ส่วนใต้ป้ายประชาสัมพันธ์ เหนือ “สินค้ามาใหม่” — เลือกเองว่าจะเชียร์อะไร ราคาบนการ์ดดึงจากสินค้าจริง"
+        sub="แถวใต้ป้ายประชาสัมพันธ์ เหนือ “สินค้ามาใหม่” — เลือกสินค้าที่อยากให้ลูกค้าเห็นผ่านตา ราคา/รูป/ลิงก์ดึงจากสินค้าจริง"
         live={s.on ? { ok: true, text: "กำลังแสดงบนหน้าแรก" } : { ok: false, text: "ปิดอยู่ — หน้าแรกไม่แสดงส่วนนี้" }}
         tools={
           <Btn href="/#spotlight" title="เปิดหน้าแรกดูของจริง">
@@ -271,104 +261,61 @@ function SpotlightInner() {
             <Btn
               onClick={() => {
                 set({ ...DEFAULT_SPOTLIGHT, on: s.on });
-                setMsg({ ok: true, text: "ใส่ชุดเริ่มต้น “เสื้อ” ให้แล้ว — กดบันทึกถ้าต้องการใช้" });
+                setMsg({ ok: true, text: "ใส่ชุดเริ่มต้นให้แล้ว — กดบันทึกถ้าต้องการใช้" });
               }}
-              title="กลับไปใช้ข้อความ/รูป/การ์ดชุดเสื้อที่ระบบเตรียมไว้"
+              title="กลับไปใช้ข้อความ/การ์ดชุดที่ระบบเตรียมไว้"
             >
-              ↺ ใช้ชุดเริ่มต้น (เสื้อ)
+              ↺ ใช้ชุดเริ่มต้น
             </Btn>
           </div>
 
-          {/* ── ชั้น 1+2: รูปใหญ่ + คำเชียร์ ── */}
-          <ListHead title="1) รูปใหญ่ + คำเชียร์" note="ฝั่งซ้ายรูปลูกค้าใส่จริง ฝั่งขวาหัวข้อและเหตุผลที่ควรซื้อ" />
-          <div className="grid gap-3 md:grid-cols-[1fr_1.4fr]">
-            <div className="grid gap-3">
-              <ImageSlot label="รูปใหญ่ (แนวนอน ~4:3 · รูปคนใส่จริงขายดีกว่ารูปสินค้าบนพื้นขาว)" hint="ไม่ใส่รูป = โชว์เฉพาะข้อความ" value={s.heroImage} onChange={(v) => set({ heroImage: v })} />
-              <Field label="คำอธิบายรูป (อ่านให้คนตาบอด/Google ฟัง)" value={s.heroAlt ?? ""} onChange={(v) => set({ heroAlt: v })} placeholder="เช่น ลูกค้าใส่เสื้อครอปสีดำพิมพ์ลายเป็ด" />
-              <div className="dkb-g p-3.5">
-                <p className="text-[0.72rem]" style={{ color: "var(--dk-navy-soft)" }}>
-                  ป้ายลอยบนรูป (สูงสุด 2 ใบ · รูปเล็กไม่บังคับ)
-                </p>
-                {[0, 1].map((i) => {
-                  const f = s.floats[i];
-                  return (
-                    <div key={i} className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
-                      <Field
-                        label={`ป้าย ${i + 1} ${i === 0 ? "(มุมล่างซ้าย)" : "(มุมบนขวา)"}`}
-                        value={f?.text ?? ""}
-                        onChange={(v) => {
-                          const floats = [...s.floats];
-                          while (floats.length <= i) floats.push({ text: "" });
-                          floats[i] = { ...floats[i], text: v };
-                          set({ floats });
-                        }}
-                        placeholder="เช่น สั่ง 1 ตัวก็ทำ ไม่มีขั้นต่ำ"
-                      />
-                      <div className="w-full sm:w-28">
-                        <ImageSlot
-                          small
-                          label="รูปเล็ก"
-                          value={f?.image}
-                          onChange={(v) => {
-                            const floats = [...s.floats];
-                            while (floats.length <= i) floats.push({ text: "" });
-                            floats[i] = { ...floats[i], image: v };
-                            set({ floats });
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="grid content-start gap-3">
-              <Field label="ป้ายเล็กเหนือหัวข้อ" value={s.kicker} onChange={(v) => set({ kicker: v })} placeholder="เช่น 👕 เสื้อพิมพ์ลายของคุณเอง" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="หัวข้อบรรทัด 1" value={s.title1} onChange={(v) => set({ title1: v })} placeholder="ลายที่คุณวาด" />
-                <Field label="หัวข้อบรรทัด 2" value={s.title2} onChange={(v) => set({ title2: v })} placeholder="ใส่ได้จริงในตัวเดียว" />
-              </div>
-              <Field
-                label="คำท้ายบรรทัด 2 ที่เน้นสีเหลือง (ต้องเป็นคำท้ายของบรรทัด 2 เป๊ะ ๆ)"
-                value={s.title2Accent ?? ""}
-                onChange={(v) => set({ title2Accent: v })}
-                placeholder="ในตัวเดียว"
-              />
-              <Field label="บรรทัดรอง" value={s.lead ?? ""} onChange={(v) => set({ lead: v })} rows={2} placeholder="เสื้อครอป · ยูนิเซ็กซ์ · โอเวอร์ไซส์ — ส่งลายมา ทีมงานจัดวางให้" />
-              <Field label="กล่อง “ทีมงานบอก:” (คำเชียร์แบบคุยกับลูกค้า)" value={s.pitch ?? ""} onChange={(v) => set({ pitch: v })} rows={2} placeholder="ลายไม่พร้อมไม่เป็นไร ส่งรูปมา เราช่วยออกแบบให้ฟรี" />
-              <div className="dkb-g p-3.5">
-                <p className="text-[0.72rem]" style={{ color: "var(--dk-navy-soft)" }}>
-                  จุดเด่น ✓ (สูงสุด {MAX_POINTS} ข้อ · สั้น ๆ ข้อละบรรทัด)
-                </p>
-                {s.points.map((pt, i) => (
-                  <div key={i} className="mt-2 flex items-center gap-2">
-                    <div className="min-w-0 flex-1">
-                      <Field label={`ข้อ ${i + 1}`} value={pt} onChange={(v) => setList("points", i, v)} />
-                    </div>
-                    <Btn small onClick={() => dropList("points", i)} title="ลบข้อนี้">
-                      ✕
-                    </Btn>
+          {/* ── หัวข้อ ── */}
+          <ListHead title="1) หัวข้อ" note="โครงเดียวกับหัวข้อ “สินค้ามาใหม่” — สั้น ๆ คำท้ายที่เน้นจะเป็นสีเหลือง" />
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="ป้ายเล็กเหนือหัวข้อ (มีไอคอน 📌 ขยับให้เอง)" value={s.kicker} onChange={(v) => set({ kicker: v })} placeholder="ร้านคัดมาให้" />
+            <Field label="บรรทัดรอง (1 บรรทัด)" value={s.lead ?? ""} onChange={(v) => set({ lead: v })} placeholder="ทีมงานเลือกมาให้เห็นก่อนใคร — เลื่อนดูได้เลย" />
+            <Field label="หัวข้อ" value={s.title} onChange={(v) => set({ title: v })} placeholder="สินค้าที่อยากให้ลองดู" />
+            <Field label="คำท้ายหัวข้อที่เน้นสีเหลือง (ต้องเป็นคำท้ายของหัวข้อเป๊ะ ๆ)" value={s.accent ?? ""} onChange={(v) => set({ accent: v })} placeholder="ลองดู" />
+          </div>
+          <div className="dkb-g mt-3 p-3.5">
+            <p className="text-[0.72rem]" style={{ color: "var(--dk-navy-soft)" }}>
+              ชิปจุดเด่นใต้หัวข้อ (ไม่บังคับ · สูงสุด {MAX_CHIPS} ใบ · คำละ 2–4 คำ เช่น สั่ง 1 ชิ้นก็ทำ)
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+              {s.chips.map((c, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <Field label={`ชิป ${i + 1}`} value={c} onChange={(v) => set({ chips: s.chips.map((x, j) => (j === i ? v : x)) })} />
                   </div>
-                ))}
-                {s.points.length < MAX_POINTS && (
-                  <div className="mt-2">
-                    <Btn small onClick={() => set({ points: [...s.points, ""] })}>
-                      ＋ เพิ่มข้อ
-                    </Btn>
-                  </div>
-                )}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="ข้อความบนปุ่ม" value={s.ctaLabel} onChange={(v) => set({ ctaLabel: v })} placeholder="ออกแบบเสื้อของฉัน" />
-                <Field label="กดปุ่มแล้วไปหน้าไหน (path ภายใน หรือ https://)" value={s.ctaHref} onChange={(v) => set({ ctaHref: v })} placeholder="/products/crop" />
-              </div>
+                  <Btn small onClick={() => set({ chips: s.chips.filter((_, j) => j !== i) })} title="ลบชิปนี้">
+                    ✕
+                  </Btn>
+                </div>
+              ))}
             </div>
+            {s.chips.length < MAX_CHIPS && (
+              <div className="mt-2">
+                <Btn small onClick={() => set({ chips: [...s.chips, ""] })}>
+                  ＋ เพิ่มชิป
+                </Btn>
+              </div>
+            )}
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <Field label="ข้อความลิงก์ท้ายแถว" value={s.ctaLabel} onChange={(v) => set({ ctaLabel: v })} placeholder="ดูสินค้าทั้งหมด" />
+            <Field label="กดแล้วไปหน้าไหน (path ภายใน หรือ https://)" value={s.ctaHref} onChange={(v) => set({ ctaHref: v })} placeholder="/products" />
           </div>
 
-          {/* ── ชั้น 3: การ์ดสินค้า ── */}
+          {/* ── การ์ดสินค้า ── */}
           <ListHead
             title={`2) การ์ดสินค้า (${s.styles.length}/${MAX_STYLES})`}
-            note={missing ? <Tag tone="coral">{missing} ใบผูกสินค้าที่ไม่พบ/ถูกซ่อน — หน้าแรกจะข้ามใบนั้น</Tag> : "ราคา “เริ่ม ฿” และลิงก์ดึงจากสินค้าที่ผูก · ไม่ใส่รูป = ใช้รูปปกสินค้า"}
+            note={
+              missing ? (
+                <Tag tone="coral">{missing} ใบผูกสินค้าที่ไม่พบ/ถูกซ่อน — หน้าแรกจะข้ามใบนั้น</Tag>
+              ) : (
+                "ราคา “เริ่ม ฿” ลิงก์ และรูปที่สองที่สลับเอง ดึงจากสินค้าที่ผูก · เกิน 4 ใบ = รางเลื่อนเอง มีลูกศร"
+              )
+            }
           />
           <div className="grid gap-3 md:grid-cols-2">
             {s.styles.map((st, i) => {
@@ -391,15 +338,13 @@ function SpotlightInner() {
                       </Btn>
                     </div>
                   </div>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-[6rem_1fr]">
-                    <div>
-                      <ImageSlot small label="รูปการ์ด" value={st.image ?? p?.imageSrc} onChange={(v) => setStyle(i, { image: v })} />
-                    </div>
-                    <div className="grid gap-2">
+                  <div className="mt-2 grid gap-3 sm:grid-cols-[7rem_1fr]">
+                    <ImageSlot value={st.image} fallback={p?.imageSrc} onChange={(v) => setStyle(i, { image: v })} />
+                    <div className="grid content-start gap-2">
                       <ProductPick products={products} value={st.productId} onPick={(id) => setStyle(i, { productId: id })} />
                       <div className="grid gap-2 sm:grid-cols-2">
                         <Field label="ชื่อที่โชว์ (ว่าง = ชื่อสินค้า)" value={st.name ?? ""} onChange={(v) => setStyle(i, { name: v })} placeholder={p?.name ?? ""} />
-                        <Field label="บรรทัดรอง" value={st.desc ?? ""} onChange={(v) => setStyle(i, { desc: v })} placeholder="เช่น สายหวาน ใส่กับยีนส์เอวสูง" />
+                        <Field label="บรรทัดเล็กเหนือชื่อ (ว่าง = ชื่อหมวด)" value={st.desc ?? ""} onChange={(v) => setStyle(i, { desc: v })} placeholder="สายหวาน ใส่กับยีนส์เอวสูง" />
                       </div>
                       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                         <Field label="ป้ายมุมการ์ด (ว่าง = ไม่มี)" value={st.tag ?? ""} onChange={(v) => setStyle(i, { tag: v })} placeholder="ฮิตสุด / มาใหม่ / ทีม" />
@@ -409,11 +354,13 @@ function SpotlightInner() {
                               key={t}
                               type="button"
                               title={TONE[t].label}
-                              aria-pressed={(st.tagTone ?? "coral") === t}
+                              aria-pressed={(st.tagTone ?? "hot") === t}
                               onClick={() => setStyle(i, { tagTone: t })}
-                              className="h-7 w-7 rounded-full border-2"
-                              style={{ background: TONE[t].color, borderColor: (st.tagTone ?? "coral") === t ? "var(--dk-navy)" : "transparent" }}
-                            />
+                              className="grid h-8 w-8 place-items-center rounded-full border-2 text-[0.8rem]"
+                              style={{ background: TONE[t].color, borderColor: (st.tagTone ?? "hot") === t ? "var(--dk-navy)" : "transparent" }}
+                            >
+                              {TONE[t].emoji}
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -425,34 +372,9 @@ function SpotlightInner() {
           </div>
           {s.styles.length < MAX_STYLES && (
             <div className="mt-3">
-              <Btn onClick={() => set({ styles: [...s.styles, { productId: "", tagTone: "coral" }] })}>＋ เพิ่มการ์ดสินค้า</Btn>
+              <Btn onClick={() => set({ styles: [...s.styles, { productId: "", tagTone: "hot" }] })}>＋ เพิ่มการ์ดสินค้า</Btn>
             </div>
           )}
-
-          {/* ── ชั้น 4: ชิปไอเดีย ── */}
-          <ListHead title="3) ชิปไอเดีย" note="ช่วยลูกค้าที่ยังไม่รู้จะสั่งอะไรเห็นภาพ · กดแล้วไปหน้าเดียวกับปุ่มหลัก" />
-          <div className="dkb-g p-3.5">
-            <Field label="หัวข้อแถว" value={s.ideasLabel ?? ""} onChange={(v) => set({ ideasLabel: v })} placeholder="💡 ไอเดียยอดฮิต:" />
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-              {s.ideas.map((t, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <Field label={`ชิป ${i + 1}`} value={t} onChange={(v) => setList("ideas", i, v)} />
-                  </div>
-                  <Btn small onClick={() => dropList("ideas", i)} title="ลบชิปนี้">
-                    ✕
-                  </Btn>
-                </div>
-              ))}
-            </div>
-            {s.ideas.length < MAX_IDEAS && (
-              <div className="mt-2">
-                <Btn small onClick={() => set({ ideas: [...s.ideas, ""] })}>
-                  ＋ เพิ่มชิป
-                </Btn>
-              </div>
-            )}
-          </div>
 
           {/* แถบบันทึกติดขอบล่าง — เห็นตลอดว่ายังมีของค้างบันทึกไหม */}
           <div className="sticky bottom-3 z-10 mt-5">

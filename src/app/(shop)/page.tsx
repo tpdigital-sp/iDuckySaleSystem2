@@ -318,7 +318,7 @@ export default function HomePage() {
         <PromoBanners />
 
         {/* ── จุดเชียร์ขาย (แอดมินตั้งที่ /admin/spotlight · ปิดสวิตช์ = ไม่วาดอะไร) ── */}
-        <Spotlight products={all} />
+        <Spotlight products={all} catName={catName} />
 
         {/* ── สินค้ามาใหม่ ── */}
         <section id="new-arrivals" className="fresh-band rv">
