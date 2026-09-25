@@ -54,7 +54,8 @@ export interface Spotlight {
 /**
  * รูปการ์ดชุดเริ่มต้น — ภาพไลฟ์สไตล์ที่สร้างจากรูปสินค้าจริง (Gemini image · 25 ก.ย. 69 เจ้าของร้านบอกรูปปกเดิม "ไม่น่าสนใจ")
  * อยู่ในโฟลเดอร์ products/spotlight/ ของ bucket product-images · มีภาพสำรองให้เลือกที่หลังบ้าน:
- * crop-duo-oldtown-v1 · oversize-hangers-v1 · sport-team-skatepark-v1 (นามสกุล .webp เหมือนกัน)
+ * crop-duo-oldtown-v1 · oversize-hangers-v1 · sport-team-front-v2 (นามสกุล .webp เหมือนกัน)
+ * ⚠️ เสื้อ SPORT: รูปสินค้าเปลี่ยนเป็นชุดครีม-ฟ้า ลายเป็ด 14 (25 ก.ย. 69) รูป v1 (เขียว-ดำ) เลิกใช้ ต้องสร้างจากรูปสินค้าปัจจุบันเสมอ
  */
 const SPOT_IMG = "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/spotlight/";
 
@@ -75,7 +76,7 @@ export const DEFAULT_SPOTLIGHT: Spotlight = {
     { productId: "crop", desc: "สายหวาน ใส่กับยีนส์เอวสูง", tag: "ฮิตสุด", tagTone: "hot", image: `${SPOT_IMG}crop-icecream-street-v1.webp` },
     { productId: "unisex", desc: "ทรงมาตรฐาน ใส่ได้ทุกคน", tag: "พิมพ์เต็มตัว", tagTone: "new" },
     { productId: "oversize", desc: "หลวมสบาย สไตล์เกาหลี", tag: "ทรงใหม่", tagTone: "mint", image: `${SPOT_IMG}oversize-headphones-street-v1.webp` },
-    { productId: "sport", desc: "ใส่ชื่อ-เบอร์ได้ทุกตัว", tag: "ทีม / รุ่น", tagTone: "new", image: `${SPOT_IMG}sport-team-backs-v1.webp` },
+    { productId: "sport", desc: "ใส่ชื่อ-เบอร์ได้ทุกตัว", tag: "ทีม / รุ่น", tagTone: "new", image: `${SPOT_IMG}sport-team-backs-v2.webp` },
   ],
 };
 
