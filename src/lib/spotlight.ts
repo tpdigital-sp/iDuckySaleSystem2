@@ -61,6 +61,7 @@ const SPOT_IMG = "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/pub
 
 /**
  * ชุดเริ่มต้น — ข้อความกลาง ๆ ใช้กับสินค้าอะไรก็ได้ · รายการสินค้าเริ่มด้วยเสื้อ 4 ทรง (เจ้าของร้านบอกเสื้อขายไม่ออก)
+ * 26 ก.ย. 69 เจ้าของร้านสั่งสลับ 2 ใบแรก (CROP · OVER SIZE) เป็น กางเกง COMFY PANTS + ผ้าห่ม — ใช้รูปปกสินค้าจริง ไม่สร้างภาพใหม่
  * รูปการ์ดใช้รูปปกที่ตั้งไว้ในสินค้า ไม่ต้องอัปใหม่ · เจ้าของร้านเปลี่ยน/เพิ่มสินค้าได้เองที่ /admin/spotlight
  */
 export const DEFAULT_SPOTLIGHT: Spotlight = {
@@ -73,9 +74,9 @@ export const DEFAULT_SPOTLIGHT: Spotlight = {
   ctaLabel: "ดูสินค้าทั้งหมด",
   ctaHref: "/products",
   styles: [
-    { productId: "crop", desc: "สายหวาน ใส่กับยีนส์เอวสูง", tag: "ฮิตสุด", tagTone: "hot", image: `${SPOT_IMG}crop-icecream-street-v1.webp` },
+    { productId: "new-mt2pl7cv-132", name: "กางเกง COMFY PANTS", desc: "ผ้าไหมอิตาลีนุ่มลื่น เอวยางยืด", tag: "ใส่สบาย", tagTone: "hot" },
+    { productId: "blanket-th", desc: "พิมพ์เต็มผืน ทำของขวัญ / แฟนคลับ", tag: "ของขวัญ", tagTone: "mint" },
     { productId: "unisex", desc: "ทรงมาตรฐาน ใส่ได้ทุกคน", tag: "พิมพ์เต็มตัว", tagTone: "new" },
-    { productId: "oversize", desc: "หลวมสบาย สไตล์เกาหลี", tag: "ทรงใหม่", tagTone: "mint", image: `${SPOT_IMG}oversize-headphones-street-v1.webp` },
     { productId: "sport", desc: "ใส่ชื่อ-เบอร์ได้ทุกตัว", tag: "ทีม / รุ่น", tagTone: "new", image: `${SPOT_IMG}sport-team-backs-v2.webp` },
   ],
 };
