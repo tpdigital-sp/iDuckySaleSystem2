@@ -627,13 +627,18 @@ ${list}
         ctx.length > 0 &&
         norm(q.replace(MAT, " ").replace(/แบบ|มีไหม|ด้วยไหม|ราคา|เท่าไหร่|เท่าไร|กี่บาท|ชิ้น|อัน|ใบ|แผ่น|ตัว|\d+|ค่ะ|คะ|ครับ|ไหม|หน่อย|ขอ|สั่ง|เอา/g, " "))
           .replace(/\s+/g, "").length <= 3;
-      const ctxNorm = norm(ctx.join(" "));
-      const inCtx = (it: Lite) => {
-        const core = norm(it.name).replace(STRIP_MAT, "").trim();
-        return core.length >= 4 && ctxNorm.includes(core);
+      // ⚠️ LINE ส่งข้อความเก่า 5 ข้อความ (ข้ามวัน: พวงกุญแจ/สแตนดี้/แม่เหล็ก) → ยึด "ข้อความล่าสุด" ที่พูดถึงสินค้าก่อน ไม่รวมทุกข้อความ
+      const coreOf = (it: Lite) => norm(it.name).replace(STRIP_MAT, "").trim();
+      const inMsg = (it: Lite, msgNorm: string) => {
+        const core = coreOf(it);
+        return core.length >= 4 && msgNorm.includes(core);
       };
-      if (mats.length && picked.length && bare && !picked.some(inCtx)) {
-        const fromCtx = items.filter((it) => hasMats(it) && inCtx(it));
+      if (mats.length && bare) {
+        let fromCtx: Lite[] = [];
+        for (let i = ctx.length - 1; i >= 0 && !fromCtx.length; i--) {
+          const m = norm(ctx[i]);
+          fromCtx = items.filter((it) => hasMats(it) && inMsg(it, m));
+        }
         if (fromCtx.length) {
           picked = fromCtx.slice(0, 3);
           finalPicked = picked;
