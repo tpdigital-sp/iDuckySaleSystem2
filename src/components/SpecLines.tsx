@@ -722,6 +722,22 @@ export function foldSizeExtra(entries: [string, string][]): [string, string][] {
 export const stripSpecUrls = (v: string) =>
   v.replace(/https?:\/\/\S+/g, "").replace(/\s·\s·\s/g, " · ").replace(/[·\s]+$/, "").trim();
 
+/**
+ * 📋 เรียงบรรทัดตามลำดับกลุ่มตัวเลือกของสินค้า (ดู productLineOrder ใน lib/products)
+ * จับคู่ด้วยชื่อหัวข้อตรง ๆ ก่อน ไม่ตรงค่อยลองชื่อที่ตัดวงเล็บท้าย (specLabel) — บรรทัดที่ tidySpec ยุบมาแล้วยังใช้ชื่อกลุ่มแม่
+ * หัวข้อที่ไม่อยู่ในลิสต์ (ลิงก์ลาย · จำนวนลาย · หมายเหตุ …) ไปต่อท้าย คงลำดับเดิมของ tidySpec (sort แบบ stable)
+ */
+export function orderByProduct(entries: [string, string][], order?: string[]): [string, string][] {
+  if (!order?.length) return entries;
+  const idx = (k: string) => {
+    const i = order.indexOf(k);
+    if (i >= 0) return i;
+    const j = order.findIndex((l) => specLabel(l) === specLabel(k));
+    return j >= 0 ? j : order.length;
+  };
+  return entries.map((e, n) => ({ e, n, i: idx(e[0]) })).sort((a, b) => a.i - b.i || a.n - b.n).map((x) => x.e);
+}
+
 export function SpecLines({
   sel,
   text,
@@ -733,9 +749,15 @@ export function SpecLines({
   after,
   workSize,
   compact = false,
+  order,
 }: {
   sel?: Record<string, string>;
   text?: string;
+  /**
+   * 📋 ลำดับหัวข้อตามหน้าสินค้า (productLineOrder) — หัวข้อที่อยู่ในลิสต์เรียงตามนั้น ที่เหลือต่อท้ายตามลำดับ tidySpec
+   * ตะกร้าใช้ (เจ้าของร้านสั่ง 28 ก.ย. 69) · จอที่ไม่มีสินค้าให้อ้าง (ออเดอร์/ใบงาน) ยังเรียงตาม tidySpec เหมือนเดิม
+   */
+  order?: string[];
   /** 🗜 จอฝ่ายผลิต — งานสแตนดี้ยุบเป็นแพทเทิร์นสั้น (ดู compactStandee) */
   compact?: boolean;
   /** สไตล์ของ "ค่า" ทั้งบล็อก (ขนาด/สี) — กำหนดจากหน้าที่เรียกใช้ */
@@ -756,13 +778,16 @@ export function SpecLines({
   /** 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — ไม่มีกลุ่มขนาดให้เลือกถึงจะขึ้นบรรทัดให้ */
   workSize?: string;
 }) {
-  const entries = withWorkSize(
-    foldSizeExtra(
-      tidySpec(specEntries(sel, text, hide), { compact })
-        .map(([k, v]) => [k, stripLinks ? stripSpecUrls(v) : v] as [string, string])
-        .filter(([, v]) => v),
+  const entries = orderByProduct(
+    withWorkSize(
+      foldSizeExtra(
+        tidySpec(specEntries(sel, text, hide), { compact })
+          .map(([k, v]) => [k, stripLinks ? stripSpecUrls(v) : v] as [string, string])
+          .filter(([, v]) => v),
+      ),
+      workSize,
     ),
-    workSize,
+    order,
   );
   if (!entries.length && !after) return null;
   const feeTag = (k: string) => {

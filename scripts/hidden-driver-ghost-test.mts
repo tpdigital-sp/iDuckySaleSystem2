@@ -6,7 +6,8 @@
  * เหตุ: กลุ่มนี้เป็นแกนของเรท "งานปัก" เลยถูกนับเป็น "แกนตารางราคา" ของสินค้าทั้งตัว → ตัดไม่ได้
  * และไม่มีตัวเลือก "ไม่ปัก" ให้สลับ → ค่าค้าง choices[0] หลุดไปกับออเดอร์
  */
-import { orderableSelections, resolveSelections, optionVisible, unitPriceFor, rateLineForCustomer, RATE_LABEL, type Product } from "../src/lib/products";
+import { orderableSelections, resolveSelections, optionVisible, unitPriceFor, rateLineForCustomer, productLineOrder, RATE_LABEL, type Product } from "../src/lib/products";
+import { orderByProduct } from "../src/components/SpecLines";
 
 let pass = 0;
 const fails: string[] = [];
@@ -185,6 +186,16 @@ ok("ชื่อซ้ำ A5: หน้าสินค้าคงค่าท�
 ok("ชื่อซ้ำ A5: ตะกร้ายังมีค่า + ราคา 259", orderableSelections(clip, a5)[SCREEN] === "2 ด้าน" && unitPriceFor(clip, orderableSelections(clip, a5), 1) === 259);
 const a5sw = resolveSelections(clip, { ขนาด: "ขนาด A5", [SCREEN]: "2 ด้าน (ใต้-บน)" });
 ok("ชื่อซ้ำ: สลับขนาดแล้วค่าของกลุ่มเก่าใช้ไม่ได้ → ตัวแรกของกลุ่มที่โชว์", a5sw[SCREEN] === "1 ด้าน");
+
+// 📋 ตะกร้าเรียงตามลำดับกลุ่มตัวเลือกบนหน้าสินค้า (กริ๊บต๊อก: เรทราคา → แบบ → ฐาน · เจ้าของร้านสั่ง 28 ก.ย. 69)
+const grip = { id: "grip", name: "กริ๊บต๊อก", price: 1, category: "x", options: [{ label: "แบบ", choices: [{ name: "ทรงกลม (UV)" }] }, { label: "ฐาน", choices: [{ name: "สีขาว" }] }], priceRates: [{ id: "a", label: "GripTok UV แบบปกติ", pricing: printPricing }, { id: "b", label: "GripTok UV แบบเคลือบเรซิ่น", pricing: printPricing }] } as unknown as Product;
+ok("ลำดับ: เรทบนสุดเป็นค่าเริ่มต้น", productLineOrder(grip).join(">") === "เรทราคา>แบบ>ฐาน");
+ok("ลำดับ: rateAfterOptions = เรทท้ายสุด", productLineOrder({ ...grip, rateAfterOptions: true } as Product).join(">") === "แบบ>ฐาน>เรทราคา");
+ok("ลำดับ: rateAfterOption = ใต้กลุ่มที่ระบุ", productLineOrder({ ...grip, rateAfterOption: "แบบ" } as Product).join(">") === "แบบ>เรทราคา>ฐาน");
+ok("ลำดับ: สินค้าเรทเดียวไม่มีบรรทัดเรทในลิสต์", productLineOrder({ ...grip, priceRates: undefined } as Product).join(">") === "แบบ>ฐาน");
+const sorted = orderByProduct([["ฐาน", "สีขาว"], ["แบบ", "ทรงกลม (UV)"], ["ลิงก์ไฟล์ลาย/อีเมล", "x"], [RATE_LABEL, "GripTok UV แบบปกติ"], ["จำนวนลาย", "1 ลาย"]], productLineOrder(grip));
+ok("เรียงจริง: เรท → แบบ → ฐาน แล้วที่เหลือต่อท้ายตามเดิม", sorted.map(([k]) => k).join(">") === "เรทราคา>แบบ>ฐาน>ลิงก์ไฟล์ลาย/อีเมล>จำนวนลาย");
+ok("เรียง: ไม่ส่ง order = ไม่แตะลำดับ", orderByProduct([["b", "1"], ["a", "2"]]).map(([k]) => k).join("") === "ba");
 
 console.log(`✅ ผ่าน ${pass} ข้อ${fails.length ? ` · ❌ ตก ${fails.length}` : ""}`);
 for (const f of fails) console.log(" ❌", f);

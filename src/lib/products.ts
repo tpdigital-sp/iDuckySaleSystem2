@@ -5394,6 +5394,25 @@ export function publicRates(p: Product): PriceRate[] {
  * กติกา: โชว์เมื่อสินค้ามีเรท public ให้เลือก ≥ 2 เรท และชื่อเรทไม่ใช่ชื่อทั่วไป (ขึ้นต้น "เรท…" / "ราคา…")
  * สำรวจ 28 ก.ย. 69: ชื่อเรท public 85 แบบ · ขึ้นต้น "เรท" 8 แบบ (181 เรท) ที่เหลือ 77 แบบเป็นชื่อที่มีความหมาย
  */
+/**
+ * 📋 ลำดับหัวข้อ "ตามหน้าสินค้า" — กลุ่มตัวเลือกเรียงตามที่ตั้งไว้ในสินค้า และ "เรทราคา" อยู่ตำแหน่งเดียวกับแผงเลือกเรท
+ * (บนสุดเป็นค่าเริ่มต้น · ใต้กลุ่มที่ระบุเมื่อตั้ง rateAfterOption · ใต้ทุกกลุ่มเมื่อตั้ง rateAfterOptions)
+ * เจ้าของร้านสั่ง 28 ก.ย. 69 ให้ตะกร้าเรียงบรรทัดตามลำดับนี้ (กริ๊บต๊อก: เรทราคา → แบบ → ฐาน ไม่ใช่เรทไปอยู่ท้าย)
+ * ใช้เป็น prop `order` ของ SpecLines — หัวข้อที่ไม่อยู่ในลิสต์ (ลิงก์ลาย · จำนวนลาย · หมายเหตุ) ต่อท้ายตามลำดับเดิม
+ */
+export function productLineOrder(p: Product): string[] {
+  const labels = (p.options ?? []).map((o) => o.label);
+  if (!p.priceRates?.length) return labels;
+  if (p.rateAfterOptions) return [...labels, RATE_LABEL];
+  const at = p.rateAfterOption ? labels.indexOf(p.rateAfterOption) : -1;
+  if (at < 0) return [RATE_LABEL, ...labels];
+  // แผงเรทบนหน้าสินค้าแทรก "ใต้กลุ่มลูก" ของกลุ่มที่ระบุด้วย (กลุ่มถัดไปที่ showWhen ชี้กลุ่มนั้น) — ทำให้ตรงกัน
+  let last = at;
+  const opts = p.options ?? [];
+  while (last + 1 < opts.length && [opts[last + 1].showWhen?.label, opts[last + 1].showWhenAlso?.label].includes(p.rateAfterOption)) last++;
+  return [...labels.slice(0, last + 1), RATE_LABEL, ...labels.slice(last + 1)];
+}
+
 export function rateLineForCustomer(p: Product, selections: Record<string, string>): boolean {
   const label = selections[RATE_LABEL];
   if (!label || publicRates(p).length < 2) return false;

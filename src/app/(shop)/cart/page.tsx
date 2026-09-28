@@ -26,6 +26,7 @@ import {
   qtyFromAreaOf,
   RATE_LABEL,
   rateLineForCustomer,
+  productLineOrder,
   ART_BACK_QTY_LABEL,
   ART_QTY_LABEL,
   ART_SIZE_LABEL,
@@ -720,6 +721,8 @@ export default function CartPage() {
                       return (
                         <SpecLines
                           sel={item.selections}
+                          /* 📋 เรียงบรรทัดตามลำดับกลุ่มตัวเลือกบนหน้าสินค้า + เรทอยู่ตำแหน่งแผงเลือกเรท (เจ้าของร้านสั่ง 28 ก.ย. 69) */
+                          order={productLineOrder(product)}
                           /* 📐 สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้เลือก — เติมบรรทัดขนาดจากสินค้าให้เอง */
                           workSize={product.workSize}
                           /* "หมายเหตุ" มีช่องกรอกของตัวเองด้านล่าง — โชว์ซ้ำเป็นบรรทัดสเปคจะงง
