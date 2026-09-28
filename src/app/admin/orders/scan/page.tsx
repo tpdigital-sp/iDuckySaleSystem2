@@ -30,7 +30,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { publicOrigin } from "@/lib/shop-info";
 import StatusChip, { STATUS_TONE } from "@/components/admin/StatusChip";
 import CameraScanner from "@/components/admin/CameraScanner";
-import { extractOrderId, looksLikeOrderId } from "@/lib/scan-code";
+import { extractOrderId, looksLikeOrderId, trackingScanProblem } from "@/lib/scan-code";
 import { PACK_QUEUE_EVENT, loadPackQueue, packQueueLeft, packQueueNext, shortOrderId, startPackQueue, type PackQueueSource } from "@/lib/pack-queue";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { hasCustomSender } from "@/lib/order-sender";
@@ -548,6 +548,13 @@ export default function ScanTrackingPage() {
     }
 
     // ── ขั้นที่ 2: ยิง/พิมพ์เลขพัสดุ ──
+    // 🚫 ยิง QR ใบงาน/ลิงก์ซ้ำในขั้นนี้ = ไม่ใช่เลขพัสดุ (OD-260921-3212 25 ก.ย. 69) — บอกแล้วรอยิงใหม่
+    const bad = trackingScanProblem(v);
+    if (bad) {
+      setMsg({ kind: "err", text: bad });
+      if (!viaCamera) setTimeout(focusInput, 50);
+      return;
+    }
     // ใบมีเลขอยู่แล้ว + เลขใหม่ไม่ซ้ำของใบนี้ = ถามก่อนว่ากล่องเพิ่มหรือยิงผิด (ห้ามทับเงียบ ๆ)
     if ((target.tracking ?? "").trim() && !ownsTrackingNumber(target, v)) {
       /**

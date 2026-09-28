@@ -14,7 +14,7 @@ const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
 import { useParams, useRouter } from "next/navigation";
 import CameraScanner from "@/components/admin/CameraScanner";
 import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
-import { extractOrderId } from "@/lib/scan-code";
+import { extractOrderId, trackingScanProblem } from "@/lib/scan-code";
 import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, type Product } from "@/lib/products";
 import { imgVersion, versionedSrc } from "@/lib/img";
 import { specialImageProductId, type SpecialProduct } from "@/lib/special-product-image";
@@ -2562,6 +2562,11 @@ export default function AdminOrderDetailPage() {
     if (!cur) return;
     const t = raw.trim();
     if (!t || ownsTrackingNumber(cur, t)) return; // เลขซ้ำของใบนี้ = ยิงซ้ำ ไม่ต้องเพิ่มกล่อง
+    const bad = trackingScanProblem(t);
+    if (bad) {
+      setErr(bad);
+      return;
+    }
     const box = (cur.extraTrackings?.length ?? 0) + 2;
     const next = withLog(
       {
@@ -2664,6 +2669,13 @@ export default function AdminOrderDetailPage() {
     if (!order) return;
     const t = raw.trim();
     if (!t || t === trackingRef.current) return; // ไม่เปลี่ยน → ไม่ต้องบันทึกซ้ำ
+    // 🚫 สแกน QR ใบงาน/ลิงก์ลงช่องเลขพัสดุ (OD-260921-3212 25 ก.ย. 69) — คืนเลขเดิมให้ช่อง ไม่บันทึก
+    const bad = trackingScanProblem(t);
+    if (bad) {
+      setOrder((cur) => (cur ? { ...cur, tracking: trackingRef.current || undefined } : cur));
+      setErr(bad);
+      return;
+    }
     /**
      * 📮 ใบนี้มีเลขพัสดุอยู่แล้ว แล้วมีเลขใหม่เข้ามา — ส่วนใหญ่คือ "กล่องที่ 2" ไม่ใช่การพิมพ์แก้
      * (22 ก.ย. 69 · OD-260917-1691 ลูกค้าขอแยกส่ง 2 ที่อยู่ ยิง 2 เลขในช่องเดียว เลขแรกหายไปอยู่แต่ในประวัติ)
@@ -2831,6 +2843,12 @@ export default function AdminOrderDetailPage() {
     if (!order) return;
     const t = tracking.trim();
     if (!t) return;
+    // 🚫 ชั้นสุดท้ายฝั่งจอ (โมดัลกันไว้แล้ว) — ห้ามลิงก์/เลขออเดอร์หลุดไปเป็นเลขพัสดุรอบนี้
+    const bad = trackingScanProblem(t);
+    if (bad) {
+      setErr(bad);
+      return;
+    }
     const states = proofShipStates(order);
     const proofs: Shipment["proofs"] = [];
     sel.forEach((qty, k) => {
@@ -11067,10 +11085,12 @@ function PartialShipModal({
   // 🏪 มารับเอง: ไม่มีเลขพัสดุ — ใช้ข้อความประจำรอบแทน (ไม่ซ้ำกันระหว่างรอบ)
   const t = pickup ? pickupRoundRef(round) : tracking.trim();
   const dupe = !pickup && !!t && ((order.shipments ?? []).some((s) => s.tracking.trim() === t) || (order.tracking ?? "").trim() === t);
+  /** 🚫 สแกน QR ใบงาน/ลิงก์แทนบาร์โค้ดพัสดุ (OD-260921-3212 25 ก.ย. 69) — โชว์เหตุผล ปุ่มยืนยันไม่ติด */
+  const badTrack = !pickup && !!t ? trackingScanProblem(t) : null;
   const blockedAll = gate.isLastRound || rows.length === 0;
   const otherReasons = gate.reasons.filter((r) => !r.startsWith(SPLIT_WHOLE_HINT));
   const needSkip = !gate.ready && !blockedAll;
-  const canGo = !!t && !dupe && !blockedAll && (gate.ready || mayEdit) && (!gate.looksWhole || sureSplit);
+  const canGo = !!t && !dupe && !badTrack && !blockedAll && (gate.ready || mayEdit) && (!gate.looksWhole || sureSplit);
   /** รูปที่เปิดขยายอยู่ — ใต้รูปมีช่องจำนวน จะได้เคาะจำนวนจากจอใหญ่ได้เลย */
   const zr = zoom !== null ? rows[zoom] : undefined;
   return (
@@ -11216,6 +11236,7 @@ function PartialShipModal({
             </div>
             )}
             {dupe && <p className="text-xs font-bold text-rose-600">เลขนี้อยู่ในใบนี้แล้ว — ตรวจเลขบนใบส่งของอีกครั้ง</p>}
+            {badTrack && <p className="text-xs font-bold text-rose-600">🚫 {badTrack}</p>}
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}

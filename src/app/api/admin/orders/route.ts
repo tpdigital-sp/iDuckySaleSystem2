@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trackingScanProblem } from "@/lib/scan-code";
 import { withArtQtyMap } from "@/lib/edit-selections";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
 import { randomBytes } from "node:crypto";
@@ -700,6 +701,21 @@ export async function PATCH(req: Request) {
     typeof order.tracking === "string" && order.tracking.trim() !== "" && order.tracking.trim() !== (existing.tracking ?? "");
   // 🏪 มารับเอง: กด "แพ็คเสร็จ" ในคำขอนี้ — ต้องผ่านด่านตรวจเหมือนยิงเลขพัสดุ (ของยังไม่ครบก็ปิดกล่องไม่ได้)
   const wantsPickupDone = isPickupOrder(existing) && !!order.packedAt && !existing.packedAt;
+
+  /**
+   * 🚫 เลขพัสดุที่เป็นลิงก์/เลขออเดอร์ = สแกน QR ใบงานผิดจุด ไม่ใช่เลขพัสดุ (OD-260921-3212 25 ก.ย. 69:
+   * คนแพ็คจ่อกล้องโดน QR ใบงาน ลงรอบแบ่งส่งรอบที่ 2 → ลูกค้าได้การ์ดไลน์ที่กล่องคัดลอกเป็นลิงก์ /admin/…?pack=1)
+   * เช็คทุกทางเขียน: ช่องหลัก · กล่องเพิ่ม · รอบแบ่งส่ง — ฝั่งจอกันแล้ว ตรงนี้กันเครื่องยิง USB/ทางอื่นซ้ำอีกชั้น
+   */
+  const badTracks = [
+    wantsTracking ? order.tracking!.trim() : "",
+    ...newExtraTrackingsOf(existing, order).map((b) => b.tracking.trim()),
+    ...newShipmentsOf(existing, order).filter((s) => !s.pickup).map((s) => s.tracking.trim()),
+  ]
+    .filter(Boolean)
+    .map((t) => ({ t, why: trackingScanProblem(t) }))
+    .filter((x) => x.why);
+  if (badTracks.length) return NextResponse.json({ error: `${badTracks[0].why} (${badTracks[0].t})` }, { status: 400 });
 
   /**
    * 📦 ส่งรวมกล่อง (lib/ship-with.ts) — ใบตามยิงเลขเองไม่ได้ (ของอยู่ในกล่องใบหลัก ยิงที่ใบหลักแล้วเลขลงมาเอง)
