@@ -6,7 +6,7 @@
  * เหตุ: กลุ่มนี้เป็นแกนของเรท "งานปัก" เลยถูกนับเป็น "แกนตารางราคา" ของสินค้าทั้งตัว → ตัดไม่ได้
  * และไม่มีตัวเลือก "ไม่ปัก" ให้สลับ → ค่าค้าง choices[0] หลุดไปกับออเดอร์
  */
-import { orderableSelections, resolveSelections, optionVisible, unitPriceFor, RATE_LABEL, type Product } from "../src/lib/products";
+import { orderableSelections, resolveSelections, optionVisible, unitPriceFor, rateLineForCustomer, RATE_LABEL, type Product } from "../src/lib/products";
 
 let pass = 0;
 const fails: string[] = [];
@@ -152,6 +152,39 @@ ok("ผ้าเชียร์: กลุ่มลูกซ่อนตาม �
 ok("ผ้าเชียร์: ราคาหน้าสินค้า = ตะกร้า", unitPriceFor(flag, orderableSelections(flag, eff), 1) === unitPriceFor(flag, eff, 1));
 const effOn = resolveSelections(flag, { ...raw, [FLEX]: "ขนาดไม่เกิน 15x55cm" });
 ok("ผ้าเชียร์: เปิด FLEX กลับมา ค่าที่เคยเลือกกลับมา + คิดเงินครบ", effOn[SIDE] === "ทั้ง 2 ด้าน" && unitPriceFor(flag, effOn, 1) === 950);
+
+// 🏷 บรรทัดเรทในตะกร้า: ชื่อเรทที่เป็นวิธีทำงานต้องโชว์ · ชื่อทั่วไป/สินค้าเรทเดียวซ่อน (เจ้าของร้านทัก 28 ก.ย. 69)
+ok("ตะกร้า: เสื้อโชว์ 'เรทราคา: พิมพ์ DTF/DFT'", rateLineForCustomer(shirt, dtf));
+ok("ตะกร้า: เสื้อโชว์ 'เรทราคา: งานปัก'", rateLineForCustomer(shirt, emb));
+ok("ตะกร้า: เรทตัวแทน (ตัวแทน) ตัดสินจากชื่อ public", rateLineForCustomer(shirtDealer, dealerSel));
+const generic = { ...shirt, priceRates: [{ id: "a", label: "เรทที่ 1", pricing: printPricing }, { id: "b", label: "เรทที่ 2 แบบไม่คละดีเทล", pricing: printPricing }] } as unknown as Product;
+ok("ตะกร้า: 'เรทที่ 1' ซ่อน", !rateLineForCustomer(generic, { [RATE_LABEL]: "เรทที่ 1" }));
+ok("ตะกร้า: 'ราคาต่อชิ้น' ซ่อน", !rateLineForCustomer({ ...generic, priceRates: [{ id: "a", label: "ราคาต่อชิ้น", pricing: printPricing }, { id: "b", label: "ราคาต่อเซ็ต", pricing: printPricing }] } as unknown as Product, { [RATE_LABEL]: "ราคาต่อชิ้น" }));
+ok("ตะกร้า: สินค้าเรทเดียวซ่อน", !rateLineForCustomer({ ...shirt, priceRates: [shirt.priceRates![0]] } as unknown as Product, dtf));
+ok("ตะกร้า: ไม่มีเรทในบรรทัด = ซ่อน", !rateLineForCustomer(shirt, { ไซส์: "S" }));
+
+// 🔁 กลุ่มชื่อซ้ำแยกด้วย showWhen (คลิปบอร์ดอะคริลิค: "สกรีน" ของ A6 / A5) — ค่าที่เลือกในกลุ่มที่โชว์ต้องอยู่ครบทั้งหน้าสินค้าและตะกร้า
+const SCREEN = "สกรีน";
+const clip = {
+  id: "clip-test",
+  name: "คลิปบอร์ด",
+  price: 199,
+  category: "acrylic",
+  options: [
+    { label: "ขนาด", choices: [{ name: "ขนาด A6" }, { name: "ขนาด A5" }] },
+    { label: SCREEN, showWhen: { label: "ขนาด", choices: ["ขนาด A6"] }, choices: [{ name: "1 ด้าน (ใต้)" }, { name: "2 ด้าน (ใต้-บน)", extra: 35 }] },
+    { label: SCREEN, showWhen: { label: "ขนาด", choices: ["ขนาด A5"] }, choices: [{ name: "1 ด้าน" }, { name: "2 ด้าน", extra: 60 }] },
+  ],
+} as unknown as Product;
+const a6 = resolveSelections(clip, { ขนาด: "ขนาด A6", [SCREEN]: "2 ด้าน (ใต้-บน)" });
+ok("ชื่อซ้ำ A6: หน้าสินค้าคงค่าที่เลือก", a6[SCREEN] === "2 ด้าน (ใต้-บน)");
+ok("ชื่อซ้ำ A6: ตะกร้ายังมีค่า", orderableSelections(clip, a6)[SCREEN] === "2 ด้าน (ใต้-บน)");
+ok("ชื่อซ้ำ A6: ราคาหน้าสินค้า = ตะกร้า = 234", unitPriceFor(clip, a6, 1) === 234 && unitPriceFor(clip, orderableSelections(clip, a6), 1) === 234);
+const a5 = resolveSelections(clip, { ขนาด: "ขนาด A5", [SCREEN]: "2 ด้าน" });
+ok("ชื่อซ้ำ A5: หน้าสินค้าคงค่าที่เลือก (กลุ่มที่ 2)", a5[SCREEN] === "2 ด้าน");
+ok("ชื่อซ้ำ A5: ตะกร้ายังมีค่า + ราคา 259", orderableSelections(clip, a5)[SCREEN] === "2 ด้าน" && unitPriceFor(clip, orderableSelections(clip, a5), 1) === 259);
+const a5sw = resolveSelections(clip, { ขนาด: "ขนาด A5", [SCREEN]: "2 ด้าน (ใต้-บน)" });
+ok("ชื่อซ้ำ: สลับขนาดแล้วค่าของกลุ่มเก่าใช้ไม่ได้ → ตัวแรกของกลุ่มที่โชว์", a5sw[SCREEN] === "1 ด้าน");
 
 console.log(`✅ ผ่าน ${pass} ข้อ${fails.length ? ` · ❌ ตก ${fails.length}` : ""}`);
 for (const f of fails) console.log(" ❌", f);

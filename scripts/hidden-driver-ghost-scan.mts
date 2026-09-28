@@ -16,6 +16,7 @@ import {
   orderableSelections,
   resolveSelections,
   optionActive,
+  optionByLabel,
   activeMatrix,
   unitPriceFor,
   RATE_LABEL,
@@ -61,6 +62,8 @@ for (const p of products) {
     const m = activeMatrix(p, view);
     for (const o of opts) {
       if (!(o.label in out) || optionActive(o, view)) continue;
+      // 🔁 ชื่อซ้ำ: ค่าในตะกร้าเป็นของกลุ่มพี่น้องที่โชว์อยู่ ไม่ใช่ของกลุ่มที่ซ่อนนี้
+      if (optionByLabel(p, o.label, view) !== o) continue;
       const isDriver = !!m?.driverLabels.includes(o.label);
       let kind: Kind = !isDriver ? "GHOST" : out[o.label] !== view[o.label] ? "SWAPPED" : isNoneValue(out[o.label]) ? "NONE" : "STUCK";
       // 🤝 เรทตัวแทน "X (ตัวแทน)" ไม่ตรง showWhen ที่ชี้ชื่อเรท public "X" → กลุ่มถูกมองว่าซ่อนทั้งที่ควรโชว์ (คนละปัญหา)

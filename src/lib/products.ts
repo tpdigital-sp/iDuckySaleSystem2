@@ -5385,6 +5385,22 @@ export function publicRates(p: Product): PriceRate[] {
 }
 
 /**
+ * 🏷 บรรทัด "เรทราคา" ในตะกร้าควรโชว์ให้ลูกค้าเห็นไหม
+ *
+ * เจ้าของร้านสั่ง 5 ก.ย. 69 ให้ซ่อนเรทในตะกร้า เพราะชื่ออย่าง "เรทที่ 1" / "เรทราคาปกติ" / "ราคาต่อชิ้น"
+ * เป็นเรื่องภายใน ลูกค้าอ่านไม่รู้เรื่อง — แต่สินค้าที่ชื่อเรทคือ "วิธีทำงาน" จริง ๆ (เสื้อ: พิมพ์ DTF/DFT · พิมพ์ FLEX · งานปัก
+ * · สติ๊กเกอร์: ขายแบบ ขนาด A3 / ตารางเมตร · ปลอกคอ: แบบผูก / ติดกระดุม) ซ่อนแล้วลูกค้าไม่รู้ว่าสั่งแบบไหน
+ * (เจ้าของร้านทัก 28 ก.ย. 69 จากตะกร้าเสื้อ YUEDPAO "เรทราคาไม่แสดงว่าพิมพ์อะไร")
+ * กติกา: โชว์เมื่อสินค้ามีเรท public ให้เลือก ≥ 2 เรท และชื่อเรทไม่ใช่ชื่อทั่วไป (ขึ้นต้น "เรท…" / "ราคา…")
+ * สำรวจ 28 ก.ย. 69: ชื่อเรท public 85 แบบ · ขึ้นต้น "เรท" 8 แบบ (181 เรท) ที่เหลือ 77 แบบเป็นชื่อที่มีความหมาย
+ */
+export function rateLineForCustomer(p: Product, selections: Record<string, string>): boolean {
+  const label = selections[RATE_LABEL];
+  if (!label || publicRates(p).length < 2) return false;
+  return !/^\s*(เรท|ราคา)/.test(publicRateLabelOf(label));
+}
+
+/**
  * บรรทัดนี้เลือกเรทตัวแทนจำหน่ายอยู่ไหม — ใช้ตัดสินว่าเป็น "บรรทัดตัวแทน"
  * (ห้ามโดนรวมล็อต/สลับเรทอัตโนมัติไปปนกับเรท public และฝั่งเซิร์ฟเวอร์ใช้เช็คสิทธิ์)
  */
@@ -5500,6 +5516,9 @@ export function orderableSelections(
   const out: Record<string, string> = { ...selections };
   for (const opt of p.options ?? []) {
     if (optionActive(opt, view)) continue;
+    // 🔁 ชื่อซ้ำ: กลุ่มนี้ซ่อน แต่กลุ่มพี่น้องชื่อเดียวกันโชว์อยู่ = ค่านี้เป็นของกลุ่มที่โชว์ ห้ามตัด/สลับ
+    // (คลิปบอร์ด A6 "สกรีน: 2 ด้าน (ใต้-บน)" เคยหายจากตะกร้าและราคาตก 234 → 199 · สแกน 28 ก.ย. 69)
+    if (optionByLabel(p, opt.label, view) !== opt) continue;
     /*
      * 👻 "แกนตารางราคา" ต้องดูเฉพาะเรทที่บรรทัดนี้ใช้อยู่ ไม่ใช่รวมทุกเรทของสินค้า
      * เสื้อ YUEDPAO: เรท "พิมพ์ DTF/DFT" มีแกน ขนาดสกรีน หน้า/หลัง · เรท "งานปัก" มีแกน "ขนาดปัก ด้านหน้า"
@@ -6519,12 +6538,24 @@ export function formatPriceLabel(p: Product): string {
  * ตัวเลือกที่อนุญาตของกลุ่ม `label` ภายใต้สิ่งที่เลือกอยู่ตอนนี้
  * (ตัดตามกฎทุกข้อที่เงื่อนไข `when` ตรง — ถ้ากฎตัดจนหมดจะคืนทั้งกลุ่มไว้กันหน้าพัง)
  */
+/**
+ * 🔁 หากลุ่มตัวเลือกตามชื่อ — สินค้าบางตัวมี **กลุ่มชื่อเดียวกันหลายกลุ่ม** แยกกันด้วย showWhen
+ * (คลิปบอร์ด: "สกรีน" ของ A6/A5/A4 · กระเป๋าผ้า: "พิมพ์กี่ด้าน" ของซับลิเมชั่น/DTF · สแตนดี้ฐานไฟ: "ขนาด" ของทรงกลม/สี่เหลี่ยม)
+ * `options.find(label)` เจอแค่กลุ่มแรกเสมอ → ลูกค้าเลือก A5 "2 ด้าน" แล้วโดนดันกลับเป็นค่าของกลุ่ม A6
+ * ให้เอากลุ่มที่ "โชว์อยู่" ตามค่าที่เลือกก่อน ไม่มีค่อยถอยไปกลุ่มแรก (สแกน 28 ก.ย. 69 · npm run scan:cart-line)
+ */
+export function optionByLabel(p: Product, label: string, selections: Record<string, string>): ProductOption | undefined {
+  const same = (p.options ?? []).filter((o) => o.label === label);
+  if (same.length <= 1) return same[0];
+  return same.find((o) => optionVisible(o, selections)) ?? same[0];
+}
+
 export function allowedChoices(
   product: Product,
   selections: Record<string, string>,
   label: string
 ): string[] {
-  const group = product.options.find((o) => o.label === label);
+  const group = optionByLabel(product, label, selections);
   if (!group) return [];
   let allowed = group.choices.map((c) => c.name);
   for (const rule of product.rules ?? []) {
@@ -6563,6 +6594,11 @@ export function resolveSelections(
      * ช่องกรอกคงข้อความไว้ (ไม่มีค่าเริ่มต้น · orderableSelections ตัดทิ้งตอนลงตะกร้าอยู่แล้ว)
      */
     const hidden = !optionVisible(opt, view);
+    // 🔁 ชื่อซ้ำ: กลุ่มที่ซ่อนอยู่ปล่อยให้กลุ่มพี่น้องที่โชว์อยู่เป็นคนตัดสินค่าของชื่อนี้ (ดู optionByLabel)
+    if (hidden && optionByLabel(product, opt.label, view) !== opt) {
+      if (!(opt.label in resolved)) resolved[opt.label] = selections[opt.label] ?? "";
+      continue;
+    }
     const current = hidden && !isInputOption(opt) ? undefined : selections[opt.label];
     // ช่องกรอก: ค่ามาจากลูกค้า ไม่มีรายการให้เทียบ/ไม่มีค่าเริ่มต้น — คงไว้ตามที่พิมพ์
     if (isInputOption(opt)) {
