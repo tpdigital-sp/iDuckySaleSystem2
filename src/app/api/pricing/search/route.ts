@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   catalogRefs,
   findDraftProduct,
+  fixTypos,
   knowledgeItems,
   lcsLen,
   norm,
@@ -158,9 +159,11 @@ async function answer(req: Request, body: Record<string, unknown>) {
   const t0 = Date.now();
 
   // agent ฝั่ง n8n ส่งชื่อฟิลด์ไม่แน่นอนตามที่ LLM เลือกใส่ — รับให้ครบทุกชื่อที่เจอ
-  const query = String(body.query ?? body.message ?? body.text ?? body.q ?? "")
-    .trim()
-    .slice(0, 500);
+  const query = fixTypos(
+    String(body.query ?? body.message ?? body.text ?? body.q ?? "")
+      .trim()
+      .slice(0, 500),
+  );
   if (!query) return json({ error: "ยังไม่ได้ส่งคำค้น" }, { status: 400 });
 
   if (tooMany(clientIp(req))) return json({ error: "ถี่เกินไป" }, { status: 429 });

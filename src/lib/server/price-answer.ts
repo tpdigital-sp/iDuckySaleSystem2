@@ -500,13 +500,27 @@ export interface Understanding {
   alternatives: ProductRef[];
 }
 
+/**
+ * ✍️ คำสะกดผิดที่ลูกค้าพิมพ์บ่อย → คำที่ใช้ในชื่อสินค้า (28 ก.ย. 69: "อะคลิลิค" ทำให้จับ "แม่เหล็กอะคริลิค" ไม่เจอ)
+ * ใช้ก่อนทุกอย่าง ทั้งข้อความล่าสุดและบริบท — เปลี่ยนเฉพาะคำที่ไม่มีทางเป็นคำอื่น
+ */
+export function fixTypos(text: string): string {
+  return text
+    .replace(/อะค[ลร]ิ?ลิ[คกข]|อคริลิค|อะคริลิก|อะครีลิค|อะคิลิค|acrylick?/gi, "อะคริลิค")
+    .replace(/สติ[กค]เกอ[ร์]?|สติ้กเกอร์|สติ๊กเกอ(?!ร์)/g, "สติ๊กเกอร์")
+    .replace(/โฟโต[กค]าร์ด|โฟโต้กาด|photo\s?card/gi, "โฟโต้การ์ด")
+    .replace(/กุญเเจ/g, "กุญแจ")
+    .replace(/สแตนดี|สแตนดี้|สแตนดี๊|standee/gi, "สแตนดี้")
+    .replace(/แม่เหล็ค|แม่เหล๊ก|magnet/gi, "แม่เหล็ก");
+}
+
 const understandCache = new Map<string, { at: number; u: Understanding }>();
 
 export async function understand(query: string, context: string[] = []): Promise<Understanding | null> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const q = query.trim();
+  const q = fixTypos(query.trim());
   if (!apiKey || !q) return null;
-  const ctx = context.map((c) => String(c ?? "").trim()).filter(Boolean).slice(-5);
+  const ctx = context.map((c) => fixTypos(String(c ?? "").trim())).filter(Boolean).slice(-5);
   const key = `${ctx.join("\u0001")}\u0002${q}`;
   const hit = understandCache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.u;
@@ -544,6 +558,7 @@ ${list}
 - ⚠️ ลูกค้าระบุ "ชนิด/วัสดุ/แบบ" เฉพาะที่ร้านไม่มีในรายการ (เช่น "พวงกุญแจหนังปัก" แต่ร้านมีแต่พวงกุญแจอะคริลิค/หมอน) → notInCatalog=true, requested="พวงกุญแจหนังปัก", products=[] และใส่ alternatives = สินค้าที่ใกล้เคียงที่สุด ไม่เกิน 3 (เช่น กระเป๋าใส่พวงกุญแจ งานปัก, อาร์มปัก) ห้ามยัดเมนูทั้งหมวดให้แทน
 - ลูกค้าพูดถึงที่ใช้งาน (รถยนต์ ตู้เย็น โต๊ะ) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน · ชื่ออังกฤษให้จับตามความหมาย (ที่รองแก้ว = Coaster, แก้วเยติ = Tumbler)
 - ลูกค้าเรียก "ชื่อสินค้า" ตรงกับรายการ (เช่น Photocard/โฟโต้การ์ด ขายเป็นเซ็ต) ให้เลือกสินค้าชื่อนั้น แม้จะพ่วงวัสดุมาด้วย (Photocard กระดาษอาร์ตมัน 300 แกรม = "โฟโต้การ์ด" ไม่ใช่ "งานพิมพ์กระดาษอาร์ตมัน" ที่ขายเป็นแผ่น A3) — วัสดุเป็นแค่ตัวเลือกในสินค้านั้น
+- แต่ถ้าลูกค้าถามต่อจากบริบทว่า "แบบ X ด้วยไหม / X มีไหม" (X = วัสดุ เช่น อะคริลิค PET ไม้) ให้หาสินค้าในรายการที่เป็น "สินค้าเดิม + วัสดุ X" ก่อน เช่น คุยแม่เหล็กติดตู้เย็นอยู่แล้วถาม "แบบอะคริลิคมีไหม" → "แม่เหล็กอะคริลิค" (ถ้ามีในรายการ) ไม่ใช่ตอบสินค้าเดิมซ้ำ
 - qty = จำนวนชิ้นที่จะสั่งเท่านั้น (ห้ามนับขนาด 3cm / 300 แกรม / A3) ไม่มี = null
 - standalone = เขียนคำถามใหม่เป็นภาษาไทยสั้น ๆ ให้เข้าใจได้โดยไม่ต้องอ่านบริบท ใส่ชื่อสินค้าและจำนวนที่รู้`;
 
@@ -565,7 +580,7 @@ ${list}
     const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
     const raw = JSON.parse(text) as Partial<Omit<Understanding, "alternatives">> & { products?: unknown[]; alternatives?: unknown[] };
     const byName = new Map(items.map((it) => [norm(it.name), it]));
-    const picked = (Array.isArray(raw.products) ? raw.products : [])
+    let picked = (Array.isArray(raw.products) ? raw.products : [])
       .map((n) => byName.get(norm(String(n))))
       .filter((it): it is Lite => !!it)
       .slice(0, 6);
@@ -600,6 +615,45 @@ ${list}
       const hay = `${it.name} ${it.desc ?? ""}`;
       return w === "หนัง" ? /หนัง(?!สือ)/.test(hay) : norm(hay).includes(norm(w));
     };
+    // 🔁 ลูกค้าระบุวัสดุ (อะคริลิค/PET/ไม้…) แต่สินค้าที่เลือกมาชื่อไม่มีวัสดุนั้น และร้านมี "สินค้าเดียวกันแบบวัสดุนั้น" อยู่
+    // (แม่เหล็กติดตู้เย็น + "แบบอะคริลิคมีไหม" → แม่เหล็กอะคริลิค · 28 ก.ย. 69) → สลับไปตัวนั้นก่อน
+    {
+      const MAT = /อะคริลิค|pet|pvc|กระดาษ|ผ้า|ไม้|หนัง|โลหะ|เซรามิก|ซิลิโคน|เรซิ่น|สแตนเลส|พลาสติก|แก้ว|ยาง|ปัก/gi;
+      const STRIP_MAT = /อะคริลิค|pet|pvc|กระดาษ|ผ้า|ไม้|หนัง/g;
+      const mats = [...new Set((q.match(MAT) ?? []).map((x) => x.toLowerCase()))];
+      const hasMats = (it: Lite) => mats.every((w) => norm(it.name).includes(norm(w)));
+      // คำถามต่อเนื่องที่มีแต่วัสดุ+จำนวน ("แบบอะคริลิค 30 ชิ้น ราคาเท่าไหร่") → ยึดสินค้าจากบทสนทนาก่อนหน้า
+      const bare =
+        ctx.length > 0 &&
+        norm(q.replace(MAT, " ").replace(/แบบ|มีไหม|ด้วยไหม|ราคา|เท่าไหร่|เท่าไร|กี่บาท|ชิ้น|อัน|ใบ|แผ่น|ตัว|\d+|ค่ะ|คะ|ครับ|ไหม|หน่อย|ขอ|สั่ง|เอา/g, " "))
+          .replace(/\s+/g, "").length <= 3;
+      const ctxNorm = norm(ctx.join(" "));
+      const inCtx = (it: Lite) => {
+        const core = norm(it.name).replace(STRIP_MAT, "").trim();
+        return core.length >= 4 && ctxNorm.includes(core);
+      };
+      if (mats.length && picked.length && bare && !picked.some(inCtx)) {
+        const fromCtx = items.filter((it) => hasMats(it) && inCtx(it));
+        if (fromCtx.length) {
+          picked = fromCtx.slice(0, 3);
+          finalPicked = picked;
+          raw.broad = fromCtx.length > 1;
+        }
+      }
+      if (mats.length && picked.length && !picked.some(hasMats)) {
+        const switched = items.filter((it) => {
+          const n = norm(it.name);
+          if (!mats.every((w) => n.includes(norm(w)))) return false;
+          // ต้องเป็น "สินค้าเดียวกัน" — ชื่อร่วมกับตัวที่เลือกอย่างน้อย 4 ตัวอักษร (แม่เหล็ก/สแตนดี้/พวงกุญแจ)
+          return picked.some((p) => lcsLen(norm(p.name).replace(/อะคริลิค|pet|pvc|กระดาษ|ผ้า|ไม้|หนัง/g, ""), n) >= 4);
+        });
+        if (switched.length) {
+          picked = switched.slice(0, 3);
+          finalPicked = picked;
+          raw.broad = switched.length > 1;
+        }
+      }
+    }
     // ใช้ด่านนี้เฉพาะตอน LLM ตอบเป็น "หมวดกว้าง" (broad) — ชี้สินค้าเดียวชัด ๆ (Photocard กระดาษอาร์ตมัน → โฟโต้การ์ด) ให้เชื่อ
     if (quals.length && picked.length && !!raw.broad && !picked.some((it) => quals.every((w) => hasQual(it, w)))) {
       // มีสินค้าตัวอื่นที่ชื่อ/คำอธิบายมีวัสดุนั้นครบไหม (สแตนดี้ไม้ → "สแตนดี้ไม้กระดก") → ใช้ตัวนั้นตอบตามปกติ
