@@ -37,7 +37,10 @@ const products = rows!.map((r) => ({ id: r.id, name: r.name, price: r.price, cat
 const isMulti = (o: ProductOption) => o.display === "multi";
 const conds = (o: ProductOption) => [o.showWhen, o.showWhenAlso, ...(o.showWhenAll ?? []), ...(o.showWhenAny ?? [])].filter((c) => c?.label);
 
-type Hit = { kind: "GHOST" | "STUCK" | "SWAPPED"; product: string; rate: string; scenario: string; group: string; value: string };
+type Kind = "GHOST" | "STUCK" | "SWAPPED" | "NONE" | "DEALER" | "PRICE";
+type Hit = { kind: Kind; product: string; rate: string; scenario: string; group: string; value: string };
+/** ค่านี้คือตัวเลือก "ไม่รับ/ไม่ทำ" ของกลุ่มอยู่แล้ว (เกณฑ์เดียวกับ noneChoiceOf/pickedNone) */
+const isNoneValue = (v: string) => /^[❌✖✗]/.test(v) || (/^ไม่/.test(v) && !/^ไม่(เกิน|ต่ำกว่า|น้อยกว่า|จำกัด|เท่ากับ)/.test(v));
 const hits: Hit[] = [];
 const seen = new Set<string>();
 let scenarios = 0;
@@ -59,7 +62,9 @@ for (const p of products) {
     for (const o of opts) {
       if (!(o.label in out) || optionActive(o, view)) continue;
       const isDriver = !!m?.driverLabels.includes(o.label);
-      const kind: Hit["kind"] = !isDriver ? "GHOST" : out[o.label] !== view[o.label] ? "SWAPPED" : "STUCK";
+      let kind: Kind = !isDriver ? "GHOST" : out[o.label] !== view[o.label] ? "SWAPPED" : isNoneValue(out[o.label]) ? "NONE" : "STUCK";
+      // 🤝 เรทตัวแทน "X (ตัวแทน)" ไม่ตรง showWhen ที่ชี้ชื่อเรท public "X" → กลุ่มถูกมองว่าซ่อนทั้งที่ควรโชว์ (คนละปัญหา)
+      if (kind === "STUCK" && rateLabel && conds(o).some((c) => c!.label === RATE_LABEL && c!.choices.some((x) => rateLabel.startsWith(x)))) kind = "DEALER";
       const key = `${p.id}|${rateLabel}|${o.label}|${kind}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -69,7 +74,7 @@ for (const p of products) {
     const a = unitPriceFor(p, view, 1), b = unitPriceFor(p, out, 1);
     if (a !== b) {
       const key = `${p.id}|${rateLabel}|price`;
-      if (!seen.has(key)) { seen.add(key); hits.push({ kind: "GHOST", product: `${p.id} · ${p.name}`, rate: rateLabel ?? "-", scenario, group: "💸 ราคาเปลี่ยนหลังตัด", value: `${a} → ${b}` }); }
+      if (!seen.has(key)) { seen.add(key); hits.push({ kind: "PRICE", product: `${p.id} · ${p.name}`, rate: rateLabel ?? "-", scenario, group: "ราคาเปลี่ยนหลังตัด", value: `${a} → ${b}` }); }
     }
   };
 
@@ -90,7 +95,10 @@ const show = (title: string, list: Hit[]) => {
   for (const h of list) console.log(`  ${h.product} · เรท ${h.rate} · [${h.scenario}] ${h.group}: ${h.value}`);
 };
 console.log(`สแกน ${products.length} สินค้า · ${scenarios} สถานการณ์`);
-show("❌ GHOST (บั๊ก ต้องเป็น 0):", by("GHOST"));
-show("⚠️ STUCK (ค่าค้างติดไปกับออเดอร์ · แก้ที่ข้อมูลสินค้า):", by("STUCK"));
-show("✅ SWAPPED (สลับเป็นไม่รับ ตั้งใจ):", by("SWAPPED"));
+show("❌ GHOST — กลุ่มซ่อนที่ไม่ใช่แกนของเรทที่เลือก แต่ยังติดไป (บั๊ก ต้องเป็น 0):", by("GHOST"));
+show("⚠️ STUCK — กลุ่มซ่อนที่เป็นแกนของเรทนี้ สลับเป็นไม่รับไม่ได้ ค่าตัวแรกติดไปกับออเดอร์ (แก้ที่ข้อมูลสินค้า):", by("STUCK"));
+show("💸 PRICE — ราคาหน้าสินค้า ≠ ตะกร้า หลังตัดกลุ่มซ่อน (กลุ่มซ่อนไปคุมกลุ่มที่โชว์อยู่ · แก้ showWhen ของกลุ่มลูก):", by("PRICE"));
+show("🤝 DEALER — เรทตัวแทน (ตัวแทน) ไม่ตรง showWhen ที่ชี้ชื่อเรท public → ตัวแทนไม่เห็นกลุ่มนี้ (คนละปัญหา):", by("DEALER"));
+show("✅ SWAPPED — สลับเป็นไม่รับ (ตั้งใจ):", by("SWAPPED"));
+show("✅ NONE — ค่าที่ค้างคือ \"ไม่มี/ไม่รับ\" อยู่แล้ว (ไม่ขึ้นบรรทัด):", by("NONE"));
 if (by("GHOST").length) process.exit(1);

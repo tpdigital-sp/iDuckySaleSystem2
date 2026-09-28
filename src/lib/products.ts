@@ -1519,9 +1519,25 @@ export function selectedNames(opt: ProductOption, selections: Record<string, str
  * รองรับกลุ่ม multi ด้วย — ติ๊กไว้หลายตัว ถ้ามีตัวใดตรงก็ถือว่าเข้าเงื่อนไข
  * (เช็คค่าตรง ๆ ก่อนเสมอ กันชื่อตัวเลือกที่มี " + " อยู่ในตัวถูกแยกผิด)
  */
+/**
+ * 🤝 ชื่อเรท public ที่คู่กับเรทตัวแทน — "พิมพ์ DTF/DFT (ตัวแทน)" → "พิมพ์ DTF/DFT"
+ * (เรทแฝดตัวแทนตั้งชื่อตามสูตรนี้ใน scripts/dealer-rates-apply.mjs · ชื่ออื่นคืนค่าเดิม)
+ */
+export function publicRateLabelOf(label: string): string {
+  return label.replace(/\s*\(ตัวแทน\)\s*$/, "");
+}
+
 function valueMatchesAny(current: string | undefined, wanted: string[]): boolean {
   if (!current) return false;
   if (wanted.includes(current)) return true;
+  /*
+   * 🤝 showWhen/กฎ ที่ชี้ชื่อเรท public ต้องตรงกับเรทตัวแทนแฝดด้วย
+   * เดิมบัญชีตัวแทนเปิดหน้าเสื้อ (dealerMode ถือเรท "พิมพ์ DTF/DFT (ตัวแทน)") กลุ่ม "ขนาดสกรีน ด้านหน้า"
+   * ที่ตั้ง showWhen เรทราคา = "พิมพ์ DTF/DFT" ถูกมองว่าซ่อน → ตัวแทนเลือกขนาดสกรีนไม่ได้ ราคาตกไปค่าเริ่มต้น
+   * (สแกน 28 ก.ย. 69: เสื้อ 4 ตัว + การ์ดสเปรย์แอลกอฮอล์ · npm run scan:ghost)
+   */
+  const pub = publicRateLabelOf(current);
+  if (pub !== current && wanted.includes(pub)) return true;
   // เทียบทั้งข้อความดิบ (เผื่อชื่อตัวเลือกมี " ×N" อยู่ในตัว) และชื่อที่ตัดจำนวนออกแล้ว
   return current
     .split(MULTI_SEP)
@@ -6537,7 +6553,17 @@ export function resolveSelections(
   for (const opt of product.options) {
     const view = { ...selections, ...resolved };
     const allowed = allowedChoices(product, view, opt.label);
-    const current = selections[opt.label];
+    /*
+     * 👻 กลุ่มที่ซ่อนอยู่ (showWhen ไม่ตรง) = ลูกค้าไม่ได้เลือกค่านั้นจริง → กลับไปค่าเริ่มต้นของกลุ่ม
+     * ไม่งั้นค่าที่ค้างจะไป "คุมกลุ่มลูก" ที่ยังโชว์อยู่ทั้งที่กลุ่มแม่หายไปแล้ว:
+     * ผ้าเชียร์ ปิด FLEX แล้ว "FLEX ลงด้านไหน" ยังค้าง "ทั้ง 2 ด้าน" → "FLEX ด้านที่ 2" (+250) ยังโชว์+คิดเงิน
+     * หน้าสินค้า ฿700 แต่ตะกร้า (ตัดกลุ่มซ่อนแล้ว) ฿450 · 3D Acrylic ยกเลิกชิ้นที่ 3 แล้วชิ้นที่ 4 ยังค้าง "เพิ่ม"
+     * (สแกน 28 ก.ย. 69 · npm run scan:ghost) — หลักเดียวกับ allowedChoices ที่ไม่นับกฎจากกลุ่มที่ซ่อน
+     * ค่าดิบใน state ยังอยู่: กลุ่มโผล่กลับมาเมื่อไหร่ ค่าที่ลูกค้าเคยเลือกก็กลับมาเอง
+     * ช่องกรอกคงข้อความไว้ (ไม่มีค่าเริ่มต้น · orderableSelections ตัดทิ้งตอนลงตะกร้าอยู่แล้ว)
+     */
+    const hidden = !optionVisible(opt, view);
+    const current = hidden && !isInputOption(opt) ? undefined : selections[opt.label];
     // ช่องกรอก: ค่ามาจากลูกค้า ไม่มีรายการให้เทียบ/ไม่มีค่าเริ่มต้น — คงไว้ตามที่พิมพ์
     if (isInputOption(opt)) {
       resolved[opt.label] = current ?? "";
