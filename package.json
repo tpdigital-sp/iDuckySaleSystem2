@@ -27,6 +27,8 @@
     "check:flex": "tsx --conditions=react-server scripts/flex-messages-test.mts",
     "check:track-box": "tsx --conditions=react-server scripts/tracking-box-test.mts",
     "check:track-scan": "tsx scripts/tracking-scan-guard-test.mts",
+    "check:ghost": "tsx scripts/hidden-driver-ghost-test.mts",
+    "scan:ghost": "tsx scripts/hidden-driver-ghost-scan.mts",
     "check:balance-notify": "tsx scripts/balance-notify-test.mts",
     "check:lot-reprice": "tsx scripts/order-lot-reprice-test.mts",
     "check:member-tier": "tsx --tsconfig tsconfig.json scripts/order-member-tier-test.mts",
@@ -43,6 +45,7 @@
     "check:receipt-pdf": "tsx --tsconfig tsconfig.json scripts/receipt-pdf-test.mts",
     "check:follow-up": "tsx --conditions=react-server scripts/follow-up-test.mts",
     "check:alert": "tsx --conditions=react-server --env-file=.env.local scripts/line-alert-test.mts",
+    "check:line-quota": "tsx --conditions=react-server --env-file=.env.local scripts/line-quota-check.mts",
     "check:ship-with": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/ship-with-pickup-test.mts"
   },
   "dependencies": {

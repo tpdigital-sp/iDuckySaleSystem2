@@ -37,6 +37,12 @@ create index if not exists orders_balance_pending_idx
   on public.orders ((data->'balancePending'->>'at'))
   where (data->'balancePending'->>'at') is not null;
 
+-- การ์ดไลน์ที่ค้างเพราะโควตา LINE OA หมด (28 ก.ย. 69) — cron balance-notify ส่งย้อนหลังให้เองเมื่อโควตากลับมา (ทุก 5 นาที)
+-- ดัชนีบางส่วน: ปกติว่าง/ไม่กี่ใบ — ไม่ต้องสแกนทั้งตารางทุกรอบ
+create index if not exists orders_line_quota_missed_idx
+  on public.orders ((data->'lineQuotaMissed'->>'at'))
+  where (data->'lineQuotaMissed'->>'at') is not null;
+
 -- กันสลิปซ้ำ — ทุกครั้งที่ลูกค้าอัปสลิปจะถามว่า "hash/transRef นี้เคยใช้ในใบไหนหรือยัง" (data->payments @> ...)
 create index if not exists orders_payments_gin
   on public.orders using gin ((data->'payments') jsonb_path_ops);

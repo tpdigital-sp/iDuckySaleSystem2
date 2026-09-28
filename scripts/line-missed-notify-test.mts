@@ -7,7 +7,7 @@
  * → ไม่มีใครส่งซ้ำ ลูกค้าไม่ได้การ์ดเงินเข้า · ตอนนี้ line-bind route ส่งการ์ดสถานะล่าสุดให้เองเมื่อมีเรื่องค้าง
  */
 import assert from "node:assert/strict";
-import { missedLineNotifies } from "../src/lib/server/notify.ts";
+import { isQuotaMiss, LINE_QUOTA_OUT, missedLineNotifies } from "../src/lib/server/notify.ts";
 import { inBackground } from "../src/lib/server/background.ts";
 import { lastProofNotify } from "../src/lib/proof-notify.ts";
 import type { Order } from "../src/lib/admin-data.ts";
@@ -49,6 +49,44 @@ assert.deepEqual(
   ["ยืนยันการชำระเงิน", "แบบงาน 2 รูป"]
 );
 
+// 4b) โควตา LINE OA หมด (28 ก.ย. 69 บัญชีร้าน 15,000/15,000) → นับเป็นเรื่องค้างด้วย (cron ส่งย้อนหลังเมื่อโควตากลับมา) · เหตุอื่น (บล็อก) ไม่นับ
+const quotaReason = `${LINE_QUOTA_OUT} (บัญชีร้าน ใช้ไป 15,000/15,000 ข้อความเดือนนี้ · รีเซ็ต 1 ต.ค. · ระบบจะส่งข้อความที่ค้างให้เองเมื่อโควตากลับมา)`;
+assert.equal(isQuotaMiss(quotaReason), true);
+assert.equal(isQuotaMiss("ลูกค้าบล็อกบัญชีร้าน หรือไม่ได้เป็นเพื่อนกับ OA"), false);
+assert.deepEqual(
+  missedLineNotifies(
+    order([
+      L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", `ยืนยันการชำระเงิน · ผ่าน LINE ที่พนักงานผูกไว้ · ${quotaReason}`),
+      L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", `แจ้งสถานะ "ชำระแล้ว" · ผ่าน LINE ที่พนักงานผูกไว้ · ${quotaReason}`),
+      L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", "แบบงาน 1 รูป · ลูกค้าบล็อกบัญชีร้าน หรือไม่ได้เป็นเพื่อนกับ OA", "372"),
+    ])
+  ),
+  ["ยืนยันการชำระเงิน", 'แจ้งสถานะ "ชำระแล้ว"']
+);
+// ส่งย้อนหลังแล้วล้มอีก (โควตายังหมด) → นับเรื่องเดิม ไม่เอาชื่อบรรทัดส่งย้อนหลังมาซ้อน
+assert.deepEqual(
+  missedLineNotifies(order([
+    L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", `ยืนยันการชำระเงิน · ${quotaReason}`),
+    L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", `ส่งย้อนหลังหลังผูก LINE — การ์ดสถานะ "ชำระแล้ว" (ที่พลาดไป: ยืนยันการชำระเงิน) · ผ่าน LINE ที่พนักงานผูกไว้ · ${quotaReason}`),
+  ])),
+  ["ยืนยันการชำระเงิน"]
+);
+// ส่งย้อนหลังหลังโควตากลับมาแล้ว → ไม่ค้าง และกล่องแบบงานถือว่าถึง
+assert.deepEqual(
+  missedLineNotifies(order([
+    L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", `แบบงาน 1 รูป · ${quotaReason}`, "372"),
+    L("แจ้งลูกค้าทางไลน์แล้ว", "ส่งย้อนหลังหลังโควตากลับมา — การ์ดสถานะ \"ชำระแล้ว\" (ที่พลาดไป: แบบงาน 1 รูป)"),
+  ])),
+  []
+);
+assert.equal(
+  lastProofNotify(order([
+    L("แจ้งลูกค้าทางไลน์ไม่สำเร็จ", `แบบงาน 1 รูป · ${quotaReason}`, "372"),
+    L("แจ้งลูกค้าทางไลน์แล้ว", "ส่งย้อนหลังหลังโควตากลับมา — การ์ดสถานะ \"ชำระแล้ว\" (ที่พลาดไป: แบบงาน 1 รูป)"),
+  ]))?.ok,
+  true
+);
+
 // 5) inBackground นอก request scope (สคริปต์/เทส): after() โยน → ต้องไม่ระเบิด และงานยังวิ่งจนจบ · งานล้มก็ไม่ระเบิด
 let ran = false;
 inBackground("test-ok", (async () => { await new Promise((r) => setTimeout(r, 10)); ran = true; })());
@@ -77,4 +115,4 @@ assert.equal(
   false
 );
 
-console.log("✅ line-missed-notify: ผ่านทั้ง 6 ข้อ");
+console.log("✅ line-missed-notify: ผ่านทั้ง 7 ข้อ (รวมโควตา LINE หมด)");

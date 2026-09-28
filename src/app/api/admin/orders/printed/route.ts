@@ -70,6 +70,10 @@ export async function POST(req: Request) {
   const order = row.data as Order;
   const now = new Date().toISOString();
 
+  // 🚫 ใบยกเลิกห้ามจดว่าปริ้น/เลื่อนสถานะ/ปลดล็อกใด ๆ — กันทางเขียนอื่นนอกหน้าปริ้น (เจ้าของร้านสั่ง 28 ก.ย. 69 · OD-260924-1902)
+  if (order.status === "ยกเลิก")
+    return NextResponse.json({ ok: false, cancelled: true, error: "ออเดอร์นี้ถูกยกเลิกแล้ว — พิมพ์เอกสารไม่ได้" }, { status: 409 });
+
   const blockers = (body.docs ?? []).includes("work") ? printBlockers(order) : [];
   if (blockers.length) {
     const waiting = blockers.map(proofBlockerLabel);

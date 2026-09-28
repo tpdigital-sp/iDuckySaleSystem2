@@ -14,7 +14,7 @@ import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, followUpNotice, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, statusFlex, statusMessage } from "@/lib/server/notify";
-import { reconcileFollowupsForOrder, reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
+import { reconcileFollowupsForOrder, reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCancelToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
 import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { closeFollowUpClaim } from "@/lib/server/claims-db";
 import { amountsForRecord } from "@/lib/tp-amounts";
@@ -1240,6 +1240,10 @@ export async function PATCH(req: Request) {
   //    ของถึงมือลูกค้าแล้ว = ไม่มีเหตุให้ค้างในหน้าติดตามของอีก (ใบที่ยังปักค้างจริงและยังไม่ปิดงาน จะแค่อัปเดตสถานะออเดอร์บนการ์ด)
   if (toSave.status !== oldStatus && (["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"] as OrderStatus[]).includes(toSave.status))
     await reconcileFollowupsForOrder(toSave);
+  // 🚫 ยกเลิกใบที่ชำระแล้ว (หรือถอนการยกเลิก) → การ์ดบอร์ด WIP กราฟฟิกขึ้นคาดทะแยง "ออเดอร์ถูกยกเลิก" (28 ก.ย. 69 · OD-260924-1902)
+  //    ⏳ await: งานที่กราฟฟิกกำลังทำอยู่ต้องรู้ทันที — ยิงไม่ทันเพราะ Netlify แช่เครื่อง = ทำแบบ/ส่งผลิตต่อทั้งที่ใบยกเลิกแล้ว
+  if (toSave.status !== oldStatus && (toSave.status === "ยกเลิก" || oldStatus === "ยกเลิก"))
+    await syncCancelToTP(toSave, adminName);
   // 🛒 ของเข้าร้านแล้ว (กด "ของเข้าแล้ว" ในคำขอนี้) → บอกลูกค้าทางไลน์ตามที่หน้าออเดอร์สัญญาไว้ · ข่าวคืบหน้า = ระดับ extra
   if (toSave.needsPurchase?.arrivedAt && !existing.needsPurchase?.arrivedAt) inBackground("notifyStockArrived", notifyStockArrived(sb, toSave, new URL(req.url).origin));
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify

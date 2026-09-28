@@ -50,7 +50,7 @@ Debounce Buffer รอ 5 วิแล้วปล่อย "ตัวล่า�
 - Build AI Request: `HANDOFF_RE` (ขอคุยแอดมิน/ติดต่อแอดมิน/คุยกับคนจริง/ไม่เอาบอท…) → mode `handoff` + presetReply "รับทราบค่ะ แอดมินจะเข้ามาตอบ…" + PATCH `line-conversations/{userId}.botPausedUntil = +60 นาที` (ใช้ idToken จาก Debounce) · ข้อความถัดไปของลูกค้าระหว่างพัก → `return []` (บอทเงียบ ไม่แทรกแอดมิน)
 - โหนด IF **Handoff?** (mode == handoff) ระหว่าง Build AI Request → true: Format Reply ตรง (ไม่เรียก AI 15 วิ) / false: Is Image? ตามเดิม
 - Check Escalation: mode handoff → escalateReason `customer_requested_admin` → Leader Inbox + กลุ่มแอดมิน + Customer Task
-- ยังไม่มี: คำสั่งแอดมินสั่งพัก/ปลุกบอทเอง (พักหมดเองใน 60 นาที) · หน้าเว็บยังแค่ให้ลิงก์ไลน์
+- แอดมินสั่งเอง: หน้า /admin/line-customers ปุ่ม ⏸ พัก 1 ชม. / ▶ ปลุก (API manage action `pause` {minutes}) เขียน `botPausedUntil` ฟิลด์เดียวกัน · แชทเว็บ: เคสขอคุยแอดมิน/เคลม/ติดตามออเดอร์ → เขียน `leader-tasks` (source web) + ลิงก์ไลน์
 
 ## 📝 แผนเดิม (อ้างอิง) — 3 workflow
 

@@ -84,7 +84,8 @@ export function lastProofNotify(order: Order): LastProofNotify | null {
     const e = log[i];
     if (!e.action?.startsWith("แจ้งลูกค้าทางไลน์")) continue;
     const d = e.detail ?? "";
-    if (e.action === "แจ้งลูกค้าทางไลน์แล้ว" && d.includes("ส่งย้อนหลังหลังผูก LINE")) return { ok: true, at: e.at, unbound: false };
+    // "ส่งย้อนหลังหลังผูก LINE" / "ส่งย้อนหลังหลังโควตากลับมา" (lib/server/line-backfill.ts) = ถึงแล้ว
+    if (e.action === "แจ้งลูกค้าทางไลน์แล้ว" && d.includes("ส่งย้อนหลัง")) return { ok: true, at: e.at, unbound: false };
     if (!d.startsWith("แบบงาน")) continue;
     if (e.action === "แจ้งลูกค้าทางไลน์แล้ว") return { ok: true, at: e.at, unbound: false };
     const reason = d.split(" · ").slice(-1)[0];

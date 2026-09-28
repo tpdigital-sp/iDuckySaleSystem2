@@ -1098,6 +1098,12 @@ export interface Order {
    */
   proofNotifiedAt?: string;
   /**
+   * 🚫📨 การ์ดไลน์ที่ส่งไม่ถึงเพราะ "โควตาข้อความ LINE OA ของบัญชีร้านหมดเดือนนี้" (LINE 429 · 28 ก.ย. 69 หมด 15,000/15,000)
+   * what = เรื่องที่พลาด เช่น "ยืนยันการชำระเงิน" · cron balance-notify ส่งสถานะล่าสุดให้เองเมื่อโควตากลับมา แล้วถอนธง
+   * (ตั้ง/ถอนใน notifyCustomerLogged · lib/server/line-backfill.ts) · ดัชนี orders_line_quota_missed_idx
+   */
+  lineQuotaMissed?: { at: string; what: string[] };
+  /**
    * 🎁 ของแถมฟรีที่ออเดอร์นี้ได้ (คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์จากโปรในตั้งค่าร้าน)
    * ต้องโชว์บนใบงาน/หน้าแพ็คด้วย ไม่งั้นของแถมไม่ได้ลงกล่อง
    */

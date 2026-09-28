@@ -639,6 +639,36 @@ export async function syncRushToTP(order: Order): Promise<void> {
   }
 }
 
+/**
+ * 🚫 ออเดอร์ถูกยกเลิก (หรือถอนการยกเลิก) หลังเงินเข้าแล้ว → บอกบอร์ด WIP กราฟฟิกให้การ์ดขึ้นคาดทะแยง "ออเดอร์ถูกยกเลิก"
+ *
+ * ทำไม (เจ้าของร้านถาม 28 ก.ย. 69 · OD-260924-1902): กดยกเลิกในหลังบ้านแล้ว แต่การ์ดกราฟฟิกสร้างโฟลเดอร์/เริ่มงานไปแล้ว
+ * เดิมเรคอร์ดสะพานไม่รู้เรื่องเลย — กราฟฟิกทำแบบต่อ/ส่งผลิตทั้งที่ใบยกเลิกไปแล้ว ต้องมาบอกกันปากเปล่า
+ *
+ * เขียน orderCancelled { at, by } ลงเรคอร์ดหลัก + -final (ใบมัดจำ) · ถอนการยกเลิก (ยกเลิก → สถานะอื่น) = เขียน null ป้ายหาย
+ * การ์ดสั่งเพิ่ม (➕ จากสลิปใบเพิ่ม) ฝั่งบอร์ดอ่านธงจากใบหลักของออเดอร์เดียวกันเอง ไม่ต้องยิงใบเพิ่ม
+ * ใบที่ยังไม่มีเรคอร์ด (ยังไม่ชำระ) = not-found ข้ามเงียบ · ⏳ ผู้เรียกต้อง await (Netlify แช่เครื่องหลังตอบ)
+ */
+export async function syncCancelToTP(order: Order, by: string): Promise<void> {
+  const db = getFirestoreAdmin();
+  if (!db) return;
+  const cancelled = order.status === "ยกเลิก";
+  const patch = {
+    orderStatus: order.status,
+    orderCancelled: cancelled ? { at: new Date().toISOString(), by } : null,
+    orderCancelledUpdatedAt: new Date().toISOString(),
+  };
+  for (const suffix of ["", "-final"]) {
+    try {
+      await db.collection(TP_PAID_COLLECTION).doc(`${order.id}${suffix}`).update(patch);
+    } catch (e) {
+      const code = (e as { code?: number | string })?.code;
+      if (code !== 5 && code !== "not-found")
+        console.error("[tp-report] อัปเดตสถานะยกเลิกไป WIP ไม่สำเร็จ:", (e as Error)?.message);
+    }
+  }
+}
+
 /* ===== 🏭 การ์ดกราฟฟิกของออเดอร์เว็บ (wip_graphic_folders "iducky-<OD>") — คิวปริ้นใช้แยกกอง "ส่งผลิตแล้ว/ยังไม่ส่ง" ===== */
 export const TP_GRAPHIC_COLLECTION = "wip_graphic_folders";
 

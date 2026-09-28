@@ -17,6 +17,7 @@ import { itemQtyText } from "@/lib/item-yield";
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
+import { forgetLineQuota, quotaResetText, quotaText, shopQuota } from "@/lib/server/line-quota";
 
 /**
  * แจ้งเตือนลูกค้าผ่าน LINE (push message)
@@ -38,6 +39,22 @@ export interface NotifyResult {
   via?: "login" | "bound" | "inherited";
   /** เหตุผลตอนส่งไม่สำเร็จ (โชว์ให้แอดมิน) */
   reason?: string;
+}
+
+/**
+ * 🚫 LINE ตอบ 429 = โควตาข้อความรายเดือนของ "บัญชีร้าน" หมด (28 ก.ย. 69: 15,000/15,000 ทั้งที่ระบบนี้ใช้ไป ~2,400)
+ * วลีนี้ต้องคงเดิม — ประวัติออเดอร์/หน้าจอ/สคริปต์เทียบด้วย includes() · ตัวเลขและวันรีเซ็ตต่อท้ายในวงเล็บ
+ */
+export const LINE_QUOTA_OUT = "โควตาข้อความของ LINE OA หมดแล้ว";
+export function isQuotaMiss(reason?: string): boolean {
+  return !!reason && reason.includes(LINE_QUOTA_OUT);
+}
+/** ข้อความบอกแอดมินเมื่อโควตาหมด — ใส่ตัวเลขใช้ไป/เพดาน + วันรีเซ็ต + บอกว่าระบบจะส่งย้อนหลังให้เอง */
+async function quotaOutReason(): Promise<string> {
+  forgetLineQuota(process.env.LINE_MESSAGING_ACCESS_TOKEN);
+  const q = await shopQuota({ fresh: true }).catch(() => null);
+  const parts = [q ? `บัญชีร้าน ${quotaText(q)}` : "บัญชีร้าน", `รีเซ็ต ${quotaResetText()}`, "ระบบจะส่งข้อความที่ค้างให้เองเมื่อโควตากลับมา"];
+  return `${LINE_QUOTA_OUT} (${parts.join(" · ")})`;
 }
 
 /**
@@ -199,7 +216,7 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, msg: stri
         : res.status === 401
           ? "LINE token ไม่ถูกต้อง/หมดอายุ"
           : res.status === 429
-            ? "โควตาข้อความของ LINE OA หมดแล้ว"
+            ? await quotaOutReason()
             : body?.message || `LINE ตอบกลับ ${res.status}`;
     return { ok: false, via: target.via, reason: hint };
   } catch (e) {
@@ -217,7 +234,7 @@ function netErrorText(e: unknown): string {
 }
 
 /**
- * 📨 ข้อความที่ "ส่งไม่ถึงเพราะยังไม่ได้ผูก LINE" ค้างอยู่ — นับจากครั้งล่าสุดที่ส่งถึง (ถ้าเคย) ถึงปัจจุบัน
+ * 📨 ข้อความที่ "ส่งไม่ถึงเพราะยังไม่ได้ผูก LINE" หรือ "โควตา LINE หมด" ค้างอยู่ — นับจากครั้งล่าสุดที่ส่งถึง (ถ้าเคย) ถึงปัจจุบัน
  * คืนชื่อเรื่องที่พลาด (เช่น "ยืนยันการชำระเงิน", "แบบงาน 2 รูป") ไม่ซ้ำ เรียงเก่า→ใหม่ · ใช้ตอนพนักงานเพิ่งผูก LINE
  * เพื่อส่งการ์ดสถานะล่าสุดย้อนหลังให้เอง — ลูกค้าจ่ายเงินภายใน 1–3 นาทีหลังสั่ง แต่พนักงานผูก LINE ทีหลัง 2–30 นาที
  * (25 ก.ย. 69 วัดจริง: "ยังไม่ได้ผูก" วันละ 7–16 ใบ ส่วนใหญ่คือใบที่ผูกตามหลังแล้วแต่การ์ดเงินเข้าหายไปแล้ว)
@@ -228,9 +245,14 @@ export function missedLineNotifies(order: Order): string[] {
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
     if (e.action === "แจ้งลูกค้าทางไลน์แล้ว") break;
-    if (e.action !== "แจ้งลูกค้าทางไลน์ไม่สำเร็จ" || !e.detail?.includes("ยังไม่ได้ผูก LINE")) continue;
-    const what = e.detail.split(" · ")[0].trim();
-    if (what && !out.includes(what)) out.unshift(what);
+    if (e.action !== "แจ้งลูกค้าทางไลน์ไม่สำเร็จ") continue;
+    // นับเฉพาะเหตุที่ "แก้แล้วส่งถึงได้": ยังไม่ผูก LINE (ผูกแล้วส่ง) · โควตาหมด (โควตากลับมาแล้วส่ง — cron balance-notify)
+    const detail = e.detail ?? "";
+    if (!detail.includes("ยังไม่ได้ผูก LINE") && !isQuotaMiss(detail)) continue;
+    const what = detail.split(" · ")[0].trim();
+    // บรรทัด "ส่งย้อนหลัง… — การ์ดสถานะ (ที่พลาดไป: …)" ที่ล้มอีก = เรื่องเดิมที่อยู่ในรายการอยู่แล้ว ไม่ต้องซ้อนชื่อยาว ๆ
+    if (!what || what.startsWith("ส่งย้อนหลัง")) continue;
+    if (!out.includes(what)) out.unshift(what);
   }
   return out;
 }
@@ -272,6 +294,17 @@ export async function notifyCustomerLogged(
       r.ok ? "แจ้งลูกค้าทางไลน์แล้ว" : "แจ้งลูกค้าทางไลน์ไม่สำเร็จ",
       `${what}${via ? ` · ${via}` : ""}${r.reason ? ` · ${r.reason}` : ""}`
     );
+    /**
+     * 🚫→📨 โควตา LINE หมด = ลูกค้าไม่ได้การ์ดใบนี้ (28 ก.ย. 69 ยืนยันเงินเข้า 12 ใบหายเงียบตั้งแต่ 08:49)
+     * ปักธง lineQuotaMissed ไว้ที่ใบ → cron balance-notify (ทุก 5 นาที) เห็นโควตากลับมาเมื่อไหร่ค่อยส่ง "สถานะล่าสุด" ให้เอง
+     * (lib/server/line-backfill.ts) · ส่งถึงเมื่อไหร่ถอนธง — ธงอยู่บนใบ ไม่ต้องสแกนประวัติทุกใบทุก 5 นาที
+     */
+    if (!r.ok && isQuotaMiss(r.reason)) {
+      const prev = fresh.lineQuotaMissed?.what ?? [];
+      next.lineQuotaMissed = { at: new Date().toISOString(), what: prev.includes(what) ? prev : [...prev, what].slice(-8) };
+    } else if (r.ok && next.lineQuotaMissed) {
+      delete next.lineQuotaMissed;
+    }
     await updateOrder(sb, next);
   } catch {
     /* บันทึกไม่ได้ก็ไม่ควรทำให้งานหลักพัง */

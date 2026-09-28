@@ -205,31 +205,40 @@ export default function PrintOrderPage() {
   }
 
   const batch = orders.length > 1;
-  // 🔒 เงินครบเป็นเรื่องรายใบ — ปริ้นรวมจึงดูทั้ง "ครบทุกใบ" (ป้ายเตือน) และ "ครบอย่างน้อยหนึ่งใบ" (เปิดใบเสร็จได้)
-  const allPaid = orders.every((o) => orderFullyPaid(o));
-  const anyPaid = orders.some((o) => orderFullyPaid(o));
-  const unpaidCount = orders.filter((o) => !orderFullyPaid(o)).length;
+  /**
+   * 🚫 ออเดอร์ที่ถูกยกเลิก — ไม่ออกเอกสารใด ๆ ทั้งใบงาน/ใบปะหน้า/ใบเสร็จ (เจ้าของร้านสั่ง 28 ก.ย. 69 · OD-260924-1902)
+   * เดิมหน้านี้ไม่รู้จักสถานะยกเลิกเลย: ใบ 1902 ยกเลิกแล้วแต่ยังขึ้นป้าย "เก็บเงินไม่ครบ / แบบไม่ครบ" เหมือนงานปกติ
+   * และแอดมินสิทธิ์แก้ออเดอร์ยังกด "งานเร่ง — ปริ้นเฉพาะที่พร้อม" ส่งใบยกเลิกเข้าไลน์ผลิตได้
+   * ด่านนี้อยู่ "ก่อน" ทุกด่าน: ป้ายเงิน/ที่อยู่/แบบ ไม่นับใบยกเลิก · กล่องแดงใหญ่แทนเอกสาร · เซิร์ฟเวอร์ (printed route) กันอีกชั้น
+   */
+  const cancelledOf = (o: Order) => o.status === "ยกเลิก";
+  const cancelledCount = orders.filter(cancelledOf).length;
+  const live = orders.filter((o) => !cancelledOf(o));
+  // 🔒 เงินครบเป็นเรื่องรายใบ — ปริ้นรวมจึงดูทั้ง "ครบทุกใบ" (ป้ายเตือน) และ "ครบอย่างน้อยหนึ่งใบ" (เปิดใบเสร็จได้) · ใบยกเลิกไม่นับ
+  const allPaid = live.every((o) => orderFullyPaid(o));
+  const anyPaid = live.some((o) => orderFullyPaid(o));
+  const unpaidCount = live.filter((o) => !orderFullyPaid(o)).length;
   // 🎁➗ ใบมัดจำรอบตัวอย่าง (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย) ใบปะหน้าออกได้แม้ยังไม่ครบ 100% — ป้ายหัวจอต้องพูดตรงกับใบที่พิมพ์ออกจริง
   const labelOkOf = (o: Order) => orderFullyPaid(o) || sampleLabelOk(o);
-  const allLabels = orders.every(labelOkOf);
-  const noLabelCount = orders.filter((o) => !labelOkOf(o)).length;
+  const allLabels = live.every(labelOkOf);
+  const noLabelCount = live.filter((o) => !labelOkOf(o)).length;
   // 📞📍 เบอร์โทร/ที่อยู่ไม่ผ่านด่าน (กติกาเดียวกับหน้าร้าน + หน้าออเดอร์) → ใบนั้นไม่ออกเอกสารใด ๆ ทั้งใบงาน/ใบปะหน้า/ใบเสร็จ
   //    เจ้าของร้านสั่ง 18 ก.ย. 69: "ถ้าไม่มีที่อยู่หรือเบอร์ จะไม่สามารถพิมพ์เอกสารได้" (ใบ bo•ᴥ•คุณโบ เบอร์ "0" ที่อยู่ว่าง)
   //    ปริ้นรวม: ใบที่ติดจะโชว์กล่องแดงบนจอแทนเอกสาร ไม่ติดไปในกระดาษ · ใบอื่นพิมพ์ต่อได้ตามปกติ
-  const contactBadOf = (o: Order) => orderContactProblems(o);
+  const contactBadOf = (o: Order) => (cancelledOf(o) ? [] : orderContactProblems(o));   // ใบยกเลิกติดด่านยกเลิกอยู่แล้ว ไม่ต้องซ้อนป้าย
   const contactBadCount = orders.filter((o) => contactBadOf(o).length > 0).length;
   // ⛔ แบบไม่ครบ — กันเฉพาะตอนพิมพ์ "ใบงาน" (ใบเสร็จ/ใบแปะกล่องอย่างเดียวไม่ติด) · ใบปะหน้ารอบถัดไปของใบแบ่งส่ง (?doc=label) ไม่ติด
-  const blockersOf = (o: Order) => (docs.work && !labelOnly ? printBlockers(o) : []);
+  const blockersOf = (o: Order) => (docs.work && !labelOnly && !cancelledOf(o) ? printBlockers(o) : []);
   const proofHeldOf = (o: Order) => !contactBadOf(o).length && blockersOf(o).length > 0 && !partialOk.has(o.id);
   const proofHeldCount = orders.filter(proofHeldOf).length;
-  const printableCount = orders.length - contactBadCount - proofHeldCount;
+  const printableCount = orders.length - cancelledCount - contactBadCount - proofHeldCount;
   // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k] && !(k === "receipt" && !anyPaid));
 
   /** เอกสารที่ใบนี้ได้จริงในรอบนี้ — ใบที่ยังจ่ายไม่ครบไม่ออกใบเสร็จ */
   const docsForOf = (o: Order) => chosen.filter((k) => k !== "receipt" || orderFullyPaid(o));
   /** กดพิมพ์รอบนี้แล้วใบนี้มีกระดาษออกจริงไหม (ไม่ติดด่านเบอร์/ที่อยู่ · ไม่ติดด่านแบบไม่ครบ · มีเอกสารให้ออก) */
-  const willPrint = (o: Order) => !contactBadOf(o).length && !proofHeldOf(o) && docsForOf(o).length > 0;
+  const willPrint = (o: Order) => !cancelledOf(o) && !contactBadOf(o).length && !proofHeldOf(o) && docsForOf(o).length > 0;
   /**
    * ♻️🖨 ใบที่รอบนี้เป็น "ปริ้นซ้ำ" และยังไม่ได้แนบภาพฉีกใบเก่าทิ้ง — ต้องผ่านป๊อปอัพก่อนถึงพิมพ์ได้
    * ของออกสองรอบเริ่มจากใบเก่าที่ยังลอยอยู่ในไลน์ผลิต · เซิร์ฟเวอร์ (printed route) กันซ้ำอีกชั้น
@@ -258,6 +267,7 @@ export default function PrintOrderPage() {
       const fails: string[] = [];
       const jobs: Promise<void>[] = [];
       for (const o of orders) {
+        if (cancelledOf(o)) continue; // 🚫 ใบยกเลิก — ไม่มีกระดาษออก ห้ามจดว่าปริ้นแล้ว
         if (contactBadOf(o).length) continue; // 📞📍 ใบที่ถูกกันไว้ไม่ได้พิมพ์อะไร — ห้ามจดว่าปริ้นแล้ว/เลื่อนสถานะ
         if (proofHeldOf(o)) continue; // ⛔ แบบไม่ครบ ยังไม่ปลดล็อก — ไม่ได้พิมพ์อะไร
         const partial = blockersOf(o).length > 0; // ปลดล็อกแล้ว = ปริ้นเฉพาะที่พร้อม
@@ -406,6 +416,11 @@ export default function PrintOrderPage() {
               : "🎁 รอบตัวอย่างของใบมัดจำ 50% — ใบปะหน้าออกได้ · ใบกำกับภาษี/ใบเสร็จไปกับล็อตหลักเมื่อครบ 100%"}
           </span>
         )}
+        {cancelledCount > 0 && (
+          <span className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-extrabold text-white ring-2 ring-rose-300">
+            {batch ? `🚫 ${cancelledCount} ใบ ออเดอร์ถูกยกเลิก — ใบนั้นพิมพ์ไม่ได้` : "🚫 ออเดอร์ถูกยกเลิกแล้ว — พิมพ์เอกสารไม่ได้"}
+          </span>
+        )}
         {contactBadCount > 0 && (
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
             {batch
@@ -429,7 +444,7 @@ export default function PrintOrderPage() {
             runPrint();
           }}
           disabled={chosen.length === 0 || (!anyPaid && !docs.work) || printableCount === 0}
-          title={printableCount === 0 ? (proofHeldCount > 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : "เบอร์โทร/ที่อยู่ไม่ครบ — แก้ในหน้าออเดอร์ก่อนจึงพิมพ์ได้") : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
+          title={printableCount === 0 ? (cancelledCount > 0 && cancelledCount === orders.length ? "ออเดอร์ถูกยกเลิกแล้ว — พิมพ์เอกสารไม่ได้" : proofHeldCount > 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : "เบอร์โทร/ที่อยู่ไม่ครบ — แก้ในหน้าออเดอร์ก่อนจึงพิมพ์ได้") : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
           className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >
           {batch ? `🖨️ พิมพ์ทั้ง ${orders.length} ใบ` : "🖨️ พิมพ์"}
@@ -445,6 +460,8 @@ export default function PrintOrderPage() {
 
         {orders.map((o) => {
           // 📞📍 เบอร์/ที่อยู่ไม่ผ่าน → กล่องแดงบนจอแทนเอกสาร (ไม่ติดไปในกระดาษ)
+          // 🚫 ใบยกเลิก → กล่องแดงใหญ่แทนเอกสาร (ก่อนด่านอื่นทั้งหมด)
+          if (cancelledOf(o)) return <CancelledBlocked key={o.id} order={o} />;
           const bad = contactBadOf(o);
           if (bad.length) return <ContactBlocked key={o.id} order={o} problems={bad} />;
           if (proofHeldOf(o))
@@ -595,6 +612,51 @@ function ReprintGateModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/** ใคร/เมื่อไร/ทำไม ที่ยกเลิก — จาก log "เปลี่ยนสถานะ … → ยกเลิก" (แอดมิน) หรือ "ยกเลิกออเดอร์เอง" (ลูกค้า) · ไม่มี = ไม่โชว์บรรทัดนั้น */
+function cancelInfoOf(order: Order): { byCustomer: boolean; by: string; at: string; reason: string } {
+  const byCustomer = !!order.cancelledByCustomer;
+  const hit = [...(order.log ?? [])].reverse().find((l) => l.by !== "LINE" && ((l.action === "เปลี่ยนสถานะ" && /→\s*ยกเลิก\s*$/.test(l.detail ?? "")) || l.action === "ยกเลิกออเดอร์เอง"));
+  const reason = order.cancelledByCustomer?.reason?.trim() || (hit?.action === "ยกเลิกออเดอร์เอง" ? (hit.detail ?? "").replace(/^เหตุผล:\s*/, "") : "");
+  return { byCustomer, by: byCustomer ? "ลูกค้า" : hit?.by || "", at: order.cancelledByCustomer?.at || hit?.at || "", reason };
+}
+
+/**
+ * 🚫 ใบที่ถูกยกเลิก — ไม่ออกเอกสารใด ๆ (28 ก.ย. 69 · OD-260924-1902)
+ * โชว์แค่บนจอ (no-print) ตัวใหญ่เห็นแต่ไกล บอกว่าใคร/เมื่อไร/ทำไมยกเลิก + ลิงก์กลับหน้าออเดอร์ · ไม่มีปุ่มปลดล็อกใด ๆ (ใบยกเลิกห้ามเข้าไลน์ผลิต)
+ */
+function CancelledBlocked({ order }: { order: Order }) {
+  const c = cancelInfoOf(order);
+  const when = c.at ? new Date(c.at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "";
+  return (
+    <section className="no-print overflow-hidden rounded-2xl border-4 border-rose-600 bg-rose-50 p-8 text-center shadow-lg">
+      <p className="text-5xl leading-none">🚫</p>
+      <p className="mt-3 text-3xl font-black tracking-tight text-rose-700">
+        {c.byCustomer ? "ลูกค้ายกเลิกออเดอร์นี้แล้ว" : "ออเดอร์นี้ถูกยกเลิกแล้ว"}
+      </p>
+      <p className="mt-2 text-lg font-extrabold text-rose-600">
+        {order.id} · {order.customer || "ยังไม่ระบุชื่อ"} — พิมพ์ใบงาน/ใบปะหน้า/ใบเสร็จไม่ได้ · ห้ามส่งเข้าผลิต
+      </p>
+      {(c.by || when) && (
+        <p className="mt-2 text-sm font-semibold text-slate-700">
+          ยกเลิกโดย {c.by || "—"}{when ? ` · ${when} น.` : ""}
+        </p>
+      )}
+      {c.reason && <p className="mt-1 text-sm text-slate-600">เหตุผล: {c.reason}</p>}
+      {(order.printedAt || order.printCount) ? (
+        <p className="mx-auto mt-3 max-w-md rounded-xl bg-white px-4 py-2 text-sm font-bold text-rose-700 ring-1 ring-rose-300">
+          ⚠️ ใบนี้เคยปริ้นไปแล้ว {orderPrintCount(order)} ครั้ง — ถ้าใบงานเก่ายังอยู่ในไลน์ผลิต ให้ตามเก็บฉีกทิ้งด้วย
+        </p>
+      ) : null}
+      <Link
+        href={`/admin/orders/${encodeURIComponent(order.id)}`}
+        className="mt-4 inline-block rounded-full bg-white px-5 py-2 text-sm font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-100"
+      >
+        เปิดหน้าออเดอร์ →
+      </Link>
+    </section>
   );
 }
 
