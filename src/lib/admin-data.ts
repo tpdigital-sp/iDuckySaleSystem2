@@ -799,6 +799,18 @@ export interface OrderItem {
    */
   addedAt?: string;
   /**
+   * 🔑 รหัสประจำบรรทัด (สุ่มตอน checkout เฉพาะบรรทัดที่มี Add on) — ให้บรรทัด Add on ชี้กลับมาหาแม่ได้แน่นอน
+   * ไม่ขึ้นกับลำดับ/ชื่อ (ย้ายลำดับ · ลบบรรทัด · แก้ชื่อ แล้วยังจับคู่ถูก) · ดู addOnParents
+   */
+  lineKey?: string;
+  /**
+   * 🎨 บรรทัด Add on (productId ลงท้าย #designfee) ชี้ว่าเป็นค่าเพิ่มของรายการไหน = lineKey ของแม่
+   * เหตุ: OD-260924-2339 (29 ก.ย. 69) สั่งเพิ่ม 2 บรรทัดสินค้าเดิม + Add on 1 บรรทัด → ตัวเดา "Add on ตัวที่ k จับรายการที่ k"
+   * ไปเกาะรายการที่ 1 ของใบ (สั่งตั้งแต่แรก ไม่มีค่าคละ) แทนรายการที่เพิ่งเพิ่ม → หน้าจอโชว์ผิดที่ เหมือนหาย
+   * ใบเก่าที่ไม่มีฟิลด์นี้ยังใช้ตัวเดาเดิม แต่จำกัดในชุดที่เพิ่มพร้อมกัน (addedAt เดียวกัน) ก่อน
+   */
+  addOnFor?: string;
+  /**
    * รายการนี้ "ไม่ต้องทำแบบ" — ยอดโอนเพิ่มภายหลัง/ค่าบริการที่ไม่มีชิ้นงานให้ออกแบบ
    * (ค่าตัดไฟล์, เพิ่มขนาด, คละลายเพิ่ม, ซื้อตะขอ ฯลฯ) แอดมิน/กราฟฟิกติ๊กเองในหน้าออเดอร์ หรือติ๊กตอนเพิ่มรายการ
    * ผล: ไม่นับเป็น "รอกราฟฟิกทำแบบ" ไม่ขึ้นคิวกราฟฟิก ไม่ติดป้าย "ยังไม่มีแบบ" ในใบงาน/รายการ
@@ -1853,18 +1865,38 @@ export function isAddOnLine(item: Pick<OrderItem, "productId">): boolean {
 
 /**
  * จับคู่บรรทัด Add on → ตำแหน่งรายการแม่ (Map<ตำแหน่ง Add on, ตำแหน่งแม่>) · หาแม่ไม่เจอ = ไม่อยู่ใน Map (โชว์เป็นรายการปกติ)
- * checkout ต่อบรรทัด Add on ไว้ท้ายใบตามลำดับรายการที่มีค่าเพิ่ม → Add on ตัวที่ k ของสินค้า X จับกับรายการ X ตัวที่ k (เกินก็ตัวสุดท้าย)
+ *
+ * ลำดับการหา:
+ *  1. ลิงก์ตรง — Add on มี addOnFor = lineKey ของแม่ (checkout ใส่ให้ตั้งแต่ 29 ก.ย. 69) → ชัวร์ที่สุด ไม่สนลำดับ
+ *  2. ตัวเดาสำหรับใบเก่า: checkout ต่อบรรทัด Add on ไว้ท้าย "ชุด" ตามลำดับรายการที่มีค่าเพิ่ม
+ *     → Add on ตัวที่ k ของสินค้า X จับกับรายการ X ตัวที่ k (เกินก็ตัวสุดท้าย)
+ *     ⚠️ ต้องนับใน "ชุดที่เข้าใบพร้อมกัน" (addedAt เดียวกัน · ไม่มี addedAt = ชุดเปิดใบ) ก่อน —
+ *     สั่งเพิ่มสินค้าเดิมทีหลัง Add on ของรอบใหม่ต้องไม่ไปเกาะรายการรอบแรก (OD-260924-2339)
+ *     ชุดเดียวกันไม่มีสินค้านั้นเลย (ข้อมูลเก่า/ถูกแก้) ค่อยถอยไปหาทั้งใบ
  */
-export function addOnParents(items: Pick<OrderItem, "productId">[]): Map<number, number> {
+export function addOnParents(items: Pick<OrderItem, "productId" | "lineKey" | "addOnFor" | "addedAt">[]): Map<number, number> {
   const out = new Map<number, number>();
   const seen = new Map<string, number>();
+  const batch = (it: Pick<OrderItem, "addedAt">) => it.addedAt ?? "";
   items.forEach((it, i) => {
     if (!isAddOnLine(it)) return;
+    // 1) ลิงก์ตรงด้วยรหัสบรรทัด
+    if (it.addOnFor) {
+      const k = items.findIndex((x, j) => j !== i && !isAddOnLine(x) && x.lineKey === it.addOnFor);
+      if (k >= 0) {
+        out.set(i, k);
+        return;
+      }
+    }
+    // 2) ตัวเดา — ในชุดที่เพิ่มพร้อมกันก่อน แล้วค่อยทั้งใบ
     const base = (it.productId ?? "").replace(/#designfee$/, "");
-    const hosts = items.map((x, k) => ((x.productId ?? "") === base ? k : -1)).filter((k) => k >= 0);
-    if (!hosts.length) return;
-    const n = seen.get(base) ?? 0;
-    seen.set(base, n + 1);
+    const all = items.map((x, k) => ((x.productId ?? "") === base ? k : -1)).filter((k) => k >= 0);
+    if (!all.length) return;
+    const same = all.filter((k) => batch(items[k]) === batch(it));
+    const hosts = same.length ? same : all;
+    const seenKey = `${base}|${same.length ? batch(it) : "*"}`;
+    const n = seen.get(seenKey) ?? 0;
+    seen.set(seenKey, n + 1);
     out.set(i, hosts[Math.min(n, hosts.length - 1)]);
   });
   return out;

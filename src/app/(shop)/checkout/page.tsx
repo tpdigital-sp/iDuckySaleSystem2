@@ -33,7 +33,7 @@ import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { rememberOrderLink } from "@/lib/my-order-links";
 import { lockedTier, paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
-import { parseReuseArt, reuseArtText, type Order, type Proof } from "@/lib/admin-data";
+import { parseReuseArt, reuseArtText, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { addressProblem, cleanPhone, phoneProblem } from "@/lib/contact-validate";
@@ -414,7 +414,7 @@ export default function CheckoutPage() {
     // 📅 วันใช้งาน = ค่าที่โชว์บนจอหน้านี้ (มาจาก readUseByDate ตอนเปิดหน้า · ลูกค้ากด ✕ ออกได้)
     //    ดู lib/use-by-date.ts — ค่านี้ถูกล้างทุกครั้งที่สั่งสำเร็จ ไม่งั้นไหลไปติดใบถัดไป
     const useByDate = useBy;
-    const orderItems = items.map((it) => {
+    const orderItems: OrderItem[] = items.map((it) => {
       // ภาพลายที่ลูกค้าแนบ เก็บมาในตะกร้าเป็น URL คั่น " | " → แยกเป็นฟิลด์ของตัวเอง
       // (ไม่ปนกับข้อความตัวเลือก ไม่งั้น URL ยาวจะรกทั้งใบงานและหน้าออเดอร์)
       // งานพิมพ์ 2 ด้านมีชุด "ด้านหลัง" อีกคีย์ — รวมเป็น artworkUrls ชุดเดียว (หน้าก่อน หลังต่อท้าย)
@@ -464,9 +464,16 @@ export default function CheckoutPage() {
     });
     // ค่า Add on (ค่าเคลือบต่อแผ่น · ค่าสีต่อลาย · ค่าคละลายเกินโควตา) → แยกเป็นบรรทัดของตัวเอง
     // (โชว์ชัดในออเดอร์/ใบเสร็จ · id ต่อท้าย #designfee ไม่ไปตัดสต๊อก)
-    for (const it of items) {
+    items.forEach((it, idx) => {
       const fee = it.extraFee ?? 0;
-      if (fee <= 0) continue;
+      if (fee <= 0) return;
+      /**
+       * 🔑 ผูก Add on กับบรรทัดแม่ด้วยรหัสประจำบรรทัด (OrderItem.lineKey ↔ addOnFor) — orderItems สร้างจาก items แบบ 1:1
+       * จึงรู้แม่ตรงตำแหน่ง idx · ก่อนหน้านี้หลังบ้านต้อง "เดา" จากลำดับ แล้วสั่งเพิ่มสินค้าเดิมทีหลังเคยเดาผิดไปเกาะ
+       * รายการรอบแรก (OD-260924-2339 · 29 ก.ย. 69) · ดู addOnParents ใน lib/admin-data.ts
+       */
+      const lineKey = `${Date.now().toString(36)}-${idx}-${Math.random().toString(36).slice(2, 8)}`;
+      orderItems[idx] = { ...orderItems[idx], lineKey };
       /**
        * ชื่อบรรทัดต้องบอกว่า "ค่าอะไร" — เดิมเขียน "Add on — ชื่อสินค้า (จำนวนลาย)" ซึ่งงานที่ไม่ได้คิดต่อลาย
        * (ค่าคละชิ้นที่ไม่ถึงขั้นต่ำ · ค่าเคลือบต่อแผ่น) จะได้วงเล็บว่างเปล่า ฝ่ายแพ็ค/ลูกค้าอ่านไม่รู้เรื่อง
@@ -485,8 +492,9 @@ export default function CheckoutPage() {
         sel: {},
         qty: 1,
         unitPrice: fee,
+        addOnFor: lineKey,
       });
-    }
+    });
 
     // 📦 ค่ากล่อง/ค่าแพ็คอัตโนมัติ (ครั้งเดียวต่อออเดอร์) → บรรทัดของตัวเอง (id ต่อท้าย #boxfee ไม่ไปตัดสต๊อก)
     for (const bl of boxFeeRows) {

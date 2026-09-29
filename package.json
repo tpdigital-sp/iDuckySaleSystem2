@@ -27,6 +27,7 @@
     "check:flex": "tsx --conditions=react-server scripts/flex-messages-test.mts",
     "check:track-box": "tsx --conditions=react-server scripts/tracking-box-test.mts",
     "check:track-scan": "tsx scripts/tracking-scan-guard-test.mts",
+    "check:add-on": "tsx scripts/add-on-parents-test.mts",
     "check:ghost": "tsx scripts/hidden-driver-ghost-test.mts",
     "scan:ghost": "tsx scripts/hidden-driver-ghost-scan.mts",
     "scan:cart-line": "tsx scripts/cart-line-scan.mts",
