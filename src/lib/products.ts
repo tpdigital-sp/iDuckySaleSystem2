@@ -2103,6 +2103,7 @@ export function spreadDesigns(designs: number, qty: number, cap = Infinity): num
  *     เช่น ไดคัท 50% ลายละ 20 (20/2/20): 3 แผ่น 4 ลาย → [2,1,1] = 20 (เติมเต็มจะได้ [2,2,1] = 40 แพงเกินจริง)
  * เสมอกัน = ใช้วิธีเติมเต็มแบบเดิม (หน้าจอไม่เปลี่ยนหน้าตากับสินค้าเก่า)
  * ⚠️ หน้าสินค้าที่กางรายแผ่นให้ลูกค้าดูต้องใช้ตัวนี้ตัวเดียวกับที่คิดเงิน — ไม่งั้นยอดกางไม่ตรงยอดเก็บ
+ * ⛔ 29 ก.ย. 69: เลิกใช้คิดเงินแล้ว (mixFeeTotal คิดจากจำนวนลายอย่างเดียว) — เหลือไว้ให้ spreadDesigns/หน้าจอเก่าอ้างถึง
  */
 export function mixSpread(rule: MixRule, designs: number, qty: number): number[] {
   const t = mixTierFor(rule, qty);
@@ -2126,7 +2127,12 @@ export function mixFeeTotal(rule: MixRule, designs: number, qty: number, tierQty
   if (designs <= 1 || qty <= 0) return 0;
   // ขั้นของกติกา (tiers.fromQty = "สั่งตั้งแต่…") ดูยอดที่ส่งมาเป็น tierQty — ตะกร้ารวมล็อตส่งยอดรวมล็อตมา · บรรทัดเดี่ยว = qty
   const t = mixTierFor(rule, tierQty);
-  return mixSpread(rule, designs, qty).reduce((sum, n) => sum + feeOfUnit(t, n), 0);
+  /**
+   * 🎨 เจ้าของร้านเคาะ 29 ก.ย. 69: ค่าคละคิดจาก "จำนวนลาย" อย่างเดียว คิดครั้งเดียวต่อรายการ ไม่ว่าสั่งกี่แผ่น
+   * (3 ลาย = ฿10 เสมอ · ไม่รวมกับรายการอื่น) — เดิม mixSpread กระจายลายลงแผ่นให้ถูกสุด (3 ลาย 2 แผ่น = ฿5 · 3 แผ่น = ฿0)
+   * พนักงานอ่านแล้วว่า "รวน" เพราะตัวเลขเปลี่ยนตามจำนวนแผ่น
+   */
+  return feeOfUnit(t, designs);
 }
 
 /**
@@ -2140,8 +2146,8 @@ export function mixUnitFee(rule: MixRule, designsOnUnit: number, qty: number): n
 /** ค่าคละของหน่วยที่มีลายมากที่สุด — ไว้โชว์ว่า "แผ่นที่แพงสุดแผ่นละเท่าไหร่" */
 export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
   if (designs <= 1 || qty <= 0) return 0;
-  const t = mixTierFor(rule, qty);
-  return feeOfUnit(t, Math.max(...mixSpread(rule, designs, qty)));
+  // กติกาใหม่ (29 ก.ย. 69) ค่าคละคิดจากจำนวนลายครั้งเดียว — "ต่อหน่วย" กับ "ทั้งรายการ" จึงเท่ากัน
+  return feeOfUnit(mixTierFor(rule, qty), designs);
 }
 
 /**

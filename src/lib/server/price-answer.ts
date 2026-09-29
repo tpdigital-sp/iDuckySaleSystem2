@@ -1118,7 +1118,7 @@ function mixText(p: Product, query = ""): PriceAnswer | null {
     lines.push(
       n <= t.includedDesigns
         ? `• ด้านหน้า ${n} ลาย: อยู่ในโควตา ${t.includedDesigns} ลายฟรี ไม่มีค่าคละ`
-        : `• ด้านหน้า ${n} ลาย: ${t.includedDesigns} ลายแรกฟรี ลายที่ ${t.includedDesigns + 1}${n > t.includedDesigns + 1 ? `-${n}` : ""} คิดลายละ ${baht(t.extraFee)} = ค่าคละ ${baht(frontFee)}/${unit}`,
+        : `• ด้านหน้า ${n} ลาย: ${t.includedDesigns} ลายแรกฟรี ลายที่ ${t.includedDesigns + 1}${n > t.includedDesigns + 1 ? `-${n}` : ""} คิดลายละ ${baht(t.extraFee)} = ค่าคละ ${baht(frontFee)} (คิดครั้งเดียว ไม่ว่ากี่${unit})`,
     );
     let backFee = 0;
     if (backN && back) {
@@ -1126,12 +1126,12 @@ function mixText(p: Product, query = ""): PriceAnswer | null {
       lines.push(
         backN <= back.includedDesigns
           ? `• ด้านหลัง${backSame ? "ลายเดียวกัน" : ` ${backN} ลาย`}: ไม่มีค่าคละ`
-          : `• ด้านหลัง ${backN} ลาย: ${back.includedDesigns} ลายแรกฟรี ที่เหลือลายละ ${baht(back.extraFee)} = ${baht(backFee)}/${unit}`,
+          : `• ด้านหลัง ${backN} ลาย: ${back.includedDesigns} ลายแรกฟรี ที่เหลือลายละ ${baht(back.extraFee)} = ${baht(backFee)} (คิดครั้งเดียว ไม่ว่ากี่${unit})`,
       );
     } else if (backSame) {
       lines.push("• ด้านหลังลายเดียวกัน: ไม่มีค่าคละ");
     }
-    lines.push(`รวมค่าคละ ${frontFee + backFee ? `${baht(frontFee + backFee)}/${unit}` : "0 บาท"} (บวกจากราคาพิมพ์ปกติ)`);
+    lines.push(`รวมค่าคละ ${frontFee + backFee ? baht(frontFee + backFee) : "0 บาท"} ต่อรายการ (บวกจากราคาพิมพ์ปกติ · ไม่คูณจำนวนแผ่น)`);
   } else {
     // กติกาทั่วไป — สั้น ๆ 2-3 บรรทัด (เจ้าของร้านขอให้กระชับ)
     if (rule) {
@@ -1140,7 +1140,7 @@ function mixText(p: Product, query = ""): PriceAnswer | null {
       for (const t of tiers.slice(0, 3)) {
         const head = tiers.length > 1 ? `สั่ง ${t.fromQty} ${unit}ขึ้นไป: ` : "";
         lines.push(
-          `• ${head}1 ${unit} คละได้ ${t.includedDesigns} ลาย${t.baseFee ? ` (ค่าคละเหมา ${baht(t.baseFee)})` : "ฟรี"}${t.extraFee ? ` เกินคิดลายละ ${baht(t.extraFee)}` : ""}`,
+          `• ${head}คละได้ ${t.includedDesigns} ลาย${t.baseFee ? ` (ค่าคละเหมา ${baht(t.baseFee)})` : "ฟรี"}${t.extraFee ? ` เกินคิดลายละ ${baht(t.extraFee)}` : ""} — คิดครั้งเดียวต่อรายการ ไม่ว่าสั่งกี่${unit}`,
         );
       }
       if (back) lines.push(`• พิมพ์ 2 ด้าน: ด้านหลังคละได้อีก ${back.includedDesigns} ลายฟรี${back.extraFee ? ` เกินลายละ ${baht(back.extraFee)}` : ""} (ใช้ลายเดียวกัน = ไม่คิด)`);
