@@ -2686,6 +2686,34 @@ export interface FeeLine {
 }
 
 /**
+ * 🧾 กระจายยอด Add on จริงของบรรทัด (fee) ลงบรรทัดย่อยเมื่อผลรวมจากแจกแจงเดี่ยวไม่เท่ากับที่คิดจริง
+ * — ตะกร้าคิด "ค่าคละลาย" ครั้งเดียวจากทั้งล็อต (spreadMixFee) ยอดต่อบรรทัดจึงไม่เท่ากับ feeBreakdown เดี่ยว
+ * กติกา: ค่าต่อลาย/ต่อแผ่น (ไม่ใช่ค่าคละลาย) คงยอดเดิม · ส่วนที่เหลือคือค่าคละลาย → บรรทัดคละบรรทัดเดียวรับไปทั้งก้อน
+ * หลายบรรทัด (หน้า/หลัง) แบ่งตามสัดส่วนยอดเดี่ยว (เศษไปบรรทัดสุดท้าย) · ไม่มีบรรทัดคละเลยแต่มียอดเหลือ = เพิ่ม "ค่าคละลาย"
+ * ผลรวม amount = fee เสมอ (ยอดเหลือ ≤ 0 = ตัดบรรทัดคละทิ้ง) · mixNote = "คละ 3 ลาย · เฉลี่ยจากล็อตรวม 5 แผ่น A3" ติดบรรทัดคละ
+ */
+export function addOnFeeLines(parts: FeeLine[], fee: number, mixNote?: string): FeeLine[] {
+  const isMix = (f: FeeLine) => f.label.includes("ค่าคละลาย");
+  const fixed = parts.filter((f) => !isMix(f));
+  const mixes = parts.filter(isMix);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const remain = r2(fee - fixed.reduce((s, f) => s + f.amount, 0));
+  const out: FeeLine[] = fixed.map((f) => ({ ...f }));
+  const withNote = (f: Pick<FeeLine, "label" | "amount">): FeeLine => (mixNote ? { ...f, note: mixNote } : { ...f });
+  if (remain <= 0) return out;
+  if (!mixes.length) return [...out, withNote({ label: "ค่าคละลาย", amount: remain })];
+  const base = mixes.reduce((s, f) => s + f.amount, 0);
+  let used = 0;
+  mixes.forEach((f, i) => {
+    const last = i === mixes.length - 1;
+    const amt = last ? r2(remain - used) : r2(base > 0 ? (remain * f.amount) / base : remain / mixes.length);
+    used = r2(used + amt);
+    out.push(withNote({ label: f.label, amount: amt }));
+  });
+  return out;
+}
+
+/**
  * 🧾 แจกแจงว่า designFeeFor() มาจากค่าอะไรบ้าง — ลูกค้าเห็นบรรทัด "+ Add on ฿100" แล้วต้องรู้ว่าคืออะไร
  * ไล่ตามลำดับเดียวกับ designFeeFor เป๊ะ ๆ (ต่อลาย → ต่อแผ่น → ค่าคละลาย) ยอดรวมของทุกบรรทัดจึงเท่ากันเสมอ
  */

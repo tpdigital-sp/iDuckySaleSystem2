@@ -106,6 +106,7 @@ import {
   addOnNothingToRead,
   isFeeLine,
   addOnDisplayName,
+  addOnNameHead,
   syncArrivalFromCount,
   moveOrderItem,
   itemMoveBlocked,
@@ -175,6 +176,7 @@ import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
 import { SEL_HIDE_PRODUCTION, SelDetails, SelText } from "@/components/admin/SelDetails";
+import { AddOnLines, addOnLineViews } from "@/components/AddOnLines";
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
@@ -5283,7 +5285,20 @@ export default function AdminOrderDetailPage() {
                     className="!-mt-2 ml-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs"
                   >
                     <span className="font-extrabold text-slate-400">└ รวมในรายการที่ {mainNo.get(addOnOf)}</span>
-                    <span className="min-w-0 flex-1 font-bold text-slate-700">{addOnDisplayName(it)}</span>
+                    {/* 🧾 ระบุว่าเพิ่มค่าอะไร กี่บาท — บรรทัดละค่าเหมือน "Add on = …" บนหน้าสินค้า (เจ้าของร้าน 29 ก.ย. 69) */}
+                    {addOnLineViews(it, order.items[addOnOf], productOfItem(order.items[addOnOf].productId)).length ? (
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-bold text-slate-700">{addOnNameHead(it)}</span>
+                        <AddOnLines
+                          item={it}
+                          parent={order.items[addOnOf]}
+                          product={productOfItem(order.items[addOnOf].productId)}
+                          className="mt-0.5 block text-[11px] font-medium text-slate-500"
+                        />
+                      </span>
+                    ) : (
+                      <span className="min-w-0 flex-1 font-bold text-slate-700">{addOnDisplayName(it)}</span>
+                    )}
                     {seesMoney && (
                       <span className="font-extrabold tabular-nums text-slate-900">
                         +{formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}

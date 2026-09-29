@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, orderUnitYield, splitArtUrls, stockCheckRows } from "@/lib/products";
+import { ART_SIZE_LABEL, REUSE_ART_LABEL, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, orderUnitYield, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { couponErrorText, type CouponError } from "@/lib/coupons";
 
 /** เหตุผลที่คูปองไม่ถูกตัดสิทธิ์ตอนกดสั่ง (จาก /api/orders) — เป็นภาษาคน ไว้บอกลูกค้าในข้อความสรุป */
@@ -41,7 +41,7 @@ import { getAccessToken } from "@/lib/customer-auth";
 import { fetchMyOrders } from "@/lib/my-orders";
 import { rememberOrderLink } from "@/lib/my-order-links";
 import { lockedTier, paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
-import { parseReuseArt, reuseArtText, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
+import { parseReuseArt, reuseArtText, type AddOnLine, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
 import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
 import { addressProblem, cleanPhone, phoneProblem } from "@/lib/contact-validate";
@@ -502,13 +502,20 @@ export default function CheckoutPage() {
       const designs = (it.selections["จำนวนลาย"] ?? "").trim();
       const mixTail = `${designs ? ` · คละ ${designs}` : ""}${lotNote}`;
       let detail: string;
+      /**
+       * 🧾 แจกแจงเป็นบรรทัดย่อยพร้อมยอด (OrderItem.addOnLines) — หน้าออเดอร์/หลังบ้านวาด "ค่าคละลาย (ด้านหน้า) ฿10 · คละ 3 ลาย"
+       * เหมือน "Add on = …" บนหน้าสินค้า (เจ้าของร้าน 29 ก.ย. 69) · ผลรวมต้องเท่ายอดบรรทัดเสมอ
+       */
+      let addOnLines: AddOnLine[];
       if (parts.length && Math.abs(partsSum - fee) < 0.01) {
         detail = parts.map((f) => (f.note ? `${f.label} · ${f.note}` : f.label)).join(" + ");
+        addOnLines = parts.map((f) => ({ label: f.label, amount: f.amount, ...(f.note ? { note: f.note } : {}) }));
       } else {
         // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) ยังชื่อเดิม · ส่วนต่างที่เหลือคือค่าคละลายของล็อต — ต้องมีคำว่า "ค่าคละลาย" เสมอ
         const labels = parts.map((f) => f.label);
         if (!labels.some((l) => l.includes("ค่าคละลาย"))) labels.push("ค่าคละลาย");
         detail = labels.join(" + ") + mixTail;
+        addOnLines = addOnFeeLines(parts, fee, mixTail.replace(/^\s*·\s*/u, ""));
       }
       orderItems.push({
         productId: `${it.productId}#designfee`,
@@ -518,6 +525,7 @@ export default function CheckoutPage() {
         qty: 1,
         unitPrice: fee,
         addOnFor: lineKey,
+        ...(addOnLines.length ? { addOnLines } : {}),
       });
     });
 

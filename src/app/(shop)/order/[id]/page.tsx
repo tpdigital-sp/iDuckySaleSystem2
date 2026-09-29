@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { addOnDisplayName, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { addOnDisplayName, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -21,6 +21,7 @@ import { rememberOrderLink } from "@/lib/my-order-links";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
+import { AddOnLines, addOnLineViews } from "@/components/AddOnLines";
 import { LINE_URL } from "@/components/LineButton";
 import SenderForm from "@/components/SenderForm";
 import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
@@ -1588,7 +1589,20 @@ export default function CustomerOrderPage() {
                   className="ord-note info !-mt-2 ml-4 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs sm:ml-6"
                 >
                   <span className="font-extrabold t-faint">└ รวมในรายการที่ {mainNo.get(addOnOf)}</span>
-                  <span className="min-w-0 flex-1 font-bold">{addOnDisplayName(it)}</span>
+                  {/* 🧾 ระบุว่าเพิ่มค่าอะไร กี่บาท — บรรทัดละค่าเหมือน "Add on = …" บนหน้าสินค้า (เจ้าของร้าน 29 ก.ย. 69) */}
+                  {addOnLineViews(it, order.items[addOnOf], prodById[order.items[addOnOf].productId]).length ? (
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold">{addOnNameHead(it)}</span>
+                      <AddOnLines
+                        item={it}
+                        parent={order.items[addOnOf]}
+                        product={prodById[order.items[addOnOf].productId]}
+                        className="mt-0.5 block text-[11px] font-medium t-soft"
+                      />
+                    </span>
+                  ) : (
+                    <span className="min-w-0 flex-1 font-bold">{addOnDisplayName(it)}</span>
+                  )}
                   <span className="ord-title shrink-0 text-sm">
                     {it.qty > 1 ? `${it.qty} × ` : "+"}{formatPrice(it.unitPrice)}
                     {itemDiscountAmount(it) > 0 && (

@@ -704,6 +704,13 @@ export function reuseArtText(r: ReuseArt): string {
   return `ใช้ไฟล์เก่า${r.fromOrderId ? ` · ${r.fromOrderId}` : ""}${r.note ? ` · ${r.note}` : ""}`;
 }
 
+/** หนึ่งค่าในบรรทัด Add on — label ชื่อค่า · amount ยอด (บาท) · note วิธีคิด เช่น "คละ 3 ลาย" / "฿40 × 2 แผ่น A3" */
+export interface AddOnLine {
+  label: string;
+  amount: number;
+  note?: string;
+}
+
 export interface OrderItem {
   productId: string;
   name: string;
@@ -810,6 +817,13 @@ export interface OrderItem {
    * ใบเก่าที่ไม่มีฟิลด์นี้ยังใช้ตัวเดาเดิม แต่จำกัดในชุดที่เพิ่มพร้อมกัน (addedAt เดียวกัน) ก่อน
    */
   addOnFor?: string;
+  /**
+   * 🧾 แจกแจงว่าบรรทัด Add on นี้เป็นค่าอะไรบ้าง (ชุดเดียวกับ "Add on = …" ใต้ราคาบนหน้าสินค้า) — checkout ใส่ให้ตั้งแต่ 29 ก.ย. 69
+   * ผลรวม amount = qty × unitPrice ของบรรทัด · ค่าคละลายที่ตะกร้าเฉลี่ยจากทั้งล็อตถูกกระจายลงบรรทัดคละแล้ว (ดู addOnFeeLines ใน checkout)
+   * เจ้าของร้าน 29 ก.ย. 69: "อยากให้ระบุ Add on ที่เพิ่มเหมือนตอนทำรายการหน้าสินค้า" — ชื่อบรรทัดยาว ๆ ไม่บอกว่าแต่ละค่ากี่บาท
+   * ใบเก่าไม่มีฟิลด์นี้ → หน้าจอถอดจากชื่อบรรทัด/คิดใหม่จากแม่ (ดู addOnLinesOf)
+   */
+  addOnLines?: AddOnLine[];
   /**
    * รายการนี้ "ไม่ต้องทำแบบ" — ยอดโอนเพิ่มภายหลัง/ค่าบริการที่ไม่มีชิ้นงานให้ออกแบบ
    * (ค่าตัดไฟล์, เพิ่มขนาด, คละลายเพิ่ม, ซื้อตะขอ ฯลฯ) แอดมิน/กราฟฟิกติ๊กเองในหน้าออเดอร์ หรือติ๊กตอนเพิ่มรายการ
@@ -1914,6 +1928,50 @@ export function addOnDisplayName(item: Pick<OrderItem, "productId" | "name">): s
   const m = name.match(/^(🎨\s*Add on)\s*—\s*(.*?)(?:\s*\((\d[\d,]*\s*ลาย)\))?\s*$/u);
   if (!m) return name;
   return `${m[1]} ค่าคละลาย — ${m[2]}${m[3] ? ` (คละ ${m[3]})` : ""}`;
+}
+
+/**
+ * 🏷 หัวชื่อบรรทัด Add on แบบสั้น "🎨 Add on — <สินค้า>" สำหรับจอที่แจกแจงค่าเป็นบรรทัดย่อยอยู่แล้ว (ดู AddOnLines)
+ * ตัดวงเล็บท้ายที่ checkout ต่อไว้ ("(ค่าคละลาย (ด้านหน้า) · คละ 3 ลาย + …)") — วงเล็บซ้อน 1 ชั้นได้ · ไม่ใช่บรรทัด Add on คืนชื่อเดิม
+ */
+export function addOnNameHead(item: Pick<OrderItem, "productId" | "name">): string {
+  const name = item.name ?? "";
+  if (!isAddOnLine(item)) return name;
+  return name.replace(/\s*\((?:[^()]|\([^()]*\))*\)\s*$/u, "").trim() || name;
+}
+
+/** หนึ่งบรรทัดย่อยของ Add on ที่จะวาดบนจอ — amount ไม่มี = รู้แค่ชื่อค่า (ใบเก่าที่มีหลายค่าแต่ไม่ได้เก็บยอดแยก) */
+export interface AddOnLineView {
+  label: string;
+  amount?: number;
+  note?: string;
+}
+
+/**
+ * 🧾 บรรทัดย่อยของ Add on สำหรับโชว์ "ระบุว่าเพิ่มค่าอะไร กี่บาท" เหมือนหน้าสินค้า
+ *  1. ใบใหม่ (29 ก.ย. 69+) มี addOnLines เก็บไว้ → ใช้ตรง ๆ
+ *  2. ใบเก่า → ถอดจากวงเล็บท้ายชื่อ ("ค่าคละลาย (ด้านหน้า) · คละ 3 ลาย + ค่าคละลาย (ด้านหลัง) · คละ 3 ลาย")
+ *     ค่าเดียว = ยอดทั้งบรรทัด · หลายค่า = ไม่รู้ยอดแยก (ให้ผู้เรียกลองคิดใหม่จากแม่ — ดู AddOnLines) · ชื่อรูปแบบเก่า "(3 ลาย)" = ค่าคละลาย
+ *  บรรทัดที่ไม่ใช่ Add on / ถอดไม่ได้ → []
+ */
+export function addOnLinesOf(item: Pick<OrderItem, "productId" | "name" | "qty" | "unitPrice" | "addOnLines">): AddOnLineView[] {
+  if (!isAddOnLine(item)) return [];
+  if (item.addOnLines?.length) return item.addOnLines.map((l) => ({ ...l }));
+  const total = (item.qty || 1) * (item.unitPrice || 0);
+  const m = (item.name ?? "").match(/\(((?:[^()]|\([^()]*\))*)\)\s*$/u);
+  if (!m) return [];
+  const raw = m[1].trim();
+  // รูปแบบเก่าสุด "(3 ลาย)" → ค่าคละลายของบรรทัดนี้
+  if (/^\d[\d,]*\s*ลาย$/u.test(raw)) return [{ label: "ค่าคละลาย", amount: total, note: `คละ ${raw}` }];
+  const parts = raw.split(/\s+\+\s+/u).filter(Boolean);
+  if (!parts.length) return [];
+  const views = parts.map((p) => {
+    const [label, ...rest] = p.split(" · ");
+    const note = rest.join(" · ").trim();
+    return { label: label.trim(), ...(note ? { note } : {}) } as AddOnLineView;
+  });
+  if (views.length === 1) views[0].amount = total;
+  return views;
 }
 
 /** บรรทัด Add on ที่ไม่มีอะไรให้อ่าน (ไม่มีรายละเอียด/หมายเหตุใบงาน) — ฝ่ายแพ็คไม่ต้องกด "ยืนยันอ่านแล้ว" */
