@@ -21,7 +21,7 @@ import { rememberOrderLink } from "@/lib/my-order-links";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { SpecLines } from "@/components/SpecLines";
-import { AddOnLines, addOnLineViews } from "@/components/AddOnLines";
+import { AddOnBreakdown, addOnLineViews, itemUnitExtras } from "@/components/AddOnLines";
 import { LINE_URL } from "@/components/LineButton";
 import SenderForm from "@/components/SenderForm";
 import { fetchShopPayment, shippingOf, type ShopPayment } from "@/lib/shop-settings";
@@ -1591,24 +1591,34 @@ export default function CustomerOrderPage() {
                   <span className="font-extrabold t-faint">└ รวมในรายการที่ {mainNo.get(addOnOf)}</span>
                   {/* 🧾 ระบุว่าเพิ่มค่าอะไร กี่บาท — บรรทัดละค่าเหมือน "Add on = …" บนหน้าสินค้า (เจ้าของร้าน 29 ก.ย. 69) */}
                   {addOnLineViews(it, order.items[addOnOf], prodById[order.items[addOnOf].productId]).length ? (
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-bold">{addOnNameHead(it)}</span>
-                      <AddOnLines
-                        item={it}
-                        parent={order.items[addOnOf]}
-                        product={prodById[order.items[addOnOf].productId]}
-                        className="mt-0.5 block text-[11px] font-medium t-soft"
-                      />
-                    </span>
+                    <>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-bold">{addOnNameHead(it)}</span>
+                        {/* 🧮 บวกให้ดูจนจบ: ราคาสินค้า + ค่าคละลาย = รวมรายการนี้ (เจ้าของร้าน 29 ก.ย. 69: "สุดท้ายแล้วมันควรเป็น 130 บาท") */}
+                        <AddOnBreakdown
+                          item={it}
+                          parent={order.items[addOnOf]}
+                          product={prodById[order.items[addOnOf].productId]}
+                          className="mt-0.5 block text-[11px] font-medium t-soft"
+                        />
+                      </span>
+                      {/* ยอดขวา = เฉพาะ Add on — ยอดรวม ฿130 อยู่ที่บรรทัด "= รวมรายการนี้" แล้ว โชว์ซ้ำสองที่ลูกค้าสับสน (เจ้าของร้าน 29 ก.ย. 69) */}
+                      <span className="ord-title shrink-0 text-right text-sm">
+                        +{formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
+                        <span className="block text-[11px] font-semibold t-faint">Add on</span>
+                      </span>
+                    </>
                   ) : (
-                    <span className="min-w-0 flex-1 font-bold">{addOnDisplayName(it)}</span>
+                    <>
+                      <span className="min-w-0 flex-1 font-bold">{addOnDisplayName(it)}</span>
+                      <span className="ord-title shrink-0 text-sm">
+                        {it.qty > 1 ? `${it.qty} × ` : "+"}{formatPrice(it.unitPrice)}
+                        {itemDiscountAmount(it) > 0 && (
+                          <span className="block text-[11px] font-semibold t-ok">ส่วนลด −{formatPrice(itemDiscountAmount(it))}</span>
+                        )}
+                      </span>
+                    </>
                   )}
-                  <span className="ord-title shrink-0 text-sm">
-                    {it.qty > 1 ? `${it.qty} × ` : "+"}{formatPrice(it.unitPrice)}
-                    {itemDiscountAmount(it) > 0 && (
-                      <span className="block text-[11px] font-semibold t-ok">ส่วนลด −{formatPrice(itemDiscountAmount(it))}</span>
-                    )}
-                  </span>
                 </div>
               );
             return (
@@ -1647,6 +1657,8 @@ export default function CustomerOrderPage() {
                       text={it.selections}
                       className="mt-1 text-xs t-soft"
                       stripLinks
+                      /* 💵 ป้าย +฿N/ชิ้น ท้ายบรรทัดที่บวกเพิ่มจากราคาเรท (เคลือบ/พิมพ์ 2 ด้าน/ตะขอ) — เหมือนตะกร้า (เจ้าของร้าน 29 ก.ย. 69) */
+                      extras={itemUnitExtras(it, prodById[it.productId])}
                       /* 📐 งานแบ่งแผ่น/เซ็ต (สติ๊กเกอร์ตัด A4 · โฟโต้การ์ดเซ็ต) — จำนวนที่สั่งไม่ใช่จำนวนชิ้น บอกยอดชิ้นจริงประโยคเดียวเหมือนตะกร้า
                          ⚠️ SpecLines ใช้ truthy ของ after ตัดสินว่าจะวาดบล็อก — ไม่มีอะไรโชว์ต้องส่ง null */
                       after={itemPiecesLine(it, prodById[it.productId]) ? <p className="font-semibold t-blue">{itemPiecesLine(it, prodById[it.productId])}</p> : null}

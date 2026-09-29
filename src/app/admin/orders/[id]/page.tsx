@@ -176,7 +176,7 @@ import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
 import { SEL_HIDE_PRODUCTION, SelDetails, SelText } from "@/components/admin/SelDetails";
-import { AddOnLines, addOnLineViews } from "@/components/AddOnLines";
+import { AddOnBreakdown, addOnLineViews } from "@/components/AddOnLines";
 import { applySelectionsDraft, artQtyUnitOf, selectionsDraft, selectionsDraftChanged, withArtQtyMap } from "@/lib/edit-selections";
 import { uploadArtworkFile } from "@/lib/artwork-upload";
 import { formatPhone } from "@/lib/contacts";
@@ -5287,22 +5287,36 @@ export default function AdminOrderDetailPage() {
                     <span className="font-extrabold text-slate-400">└ รวมในรายการที่ {mainNo.get(addOnOf)}</span>
                     {/* 🧾 ระบุว่าเพิ่มค่าอะไร กี่บาท — บรรทัดละค่าเหมือน "Add on = …" บนหน้าสินค้า (เจ้าของร้าน 29 ก.ย. 69) */}
                     {addOnLineViews(it, order.items[addOnOf], productOfItem(order.items[addOnOf].productId)).length ? (
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-bold text-slate-700">{addOnNameHead(it)}</span>
-                        <AddOnLines
-                          item={it}
-                          parent={order.items[addOnOf]}
-                          product={productOfItem(order.items[addOnOf].productId)}
-                          className="mt-0.5 block text-[11px] font-medium text-slate-500"
-                        />
-                      </span>
+                      <>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-bold text-slate-700">{addOnNameHead(it)}</span>
+                          {/* 🧮 บวกให้ดูจนจบ: ราคาสินค้า + ค่าคละลาย = รวมรายการนี้ (เจ้าของร้าน 29 ก.ย. 69: "สุดท้ายแล้วมันควรเป็น 130 บาท") */}
+                          {seesMoney && (
+                            <AddOnBreakdown
+                              item={it}
+                              parent={order.items[addOnOf]}
+                              product={productOfItem(order.items[addOnOf].productId)}
+                              className="mt-0.5 block text-[11px] font-medium text-slate-500"
+                            />
+                          )}
+                        </span>
+                        {/* ยอดขวา = เฉพาะ Add on — ยอดรวมอยู่ที่บรรทัด "= รวมรายการนี้" แล้ว ไม่โชว์ซ้ำ (เจ้าของร้าน 29 ก.ย. 69) */}
+                        {seesMoney && (
+                          <span className="text-right font-extrabold tabular-nums text-slate-900">
+                            +{formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
+                            <span className="block text-[11px] font-semibold text-slate-400">Add on</span>
+                          </span>
+                        )}
+                      </>
                     ) : (
-                      <span className="min-w-0 flex-1 font-bold text-slate-700">{addOnDisplayName(it)}</span>
-                    )}
-                    {seesMoney && (
-                      <span className="font-extrabold tabular-nums text-slate-900">
-                        +{formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
-                      </span>
+                      <>
+                        <span className="min-w-0 flex-1 font-bold text-slate-700">{addOnDisplayName(it)}</span>
+                        {seesMoney && (
+                          <span className="font-extrabold tabular-nums text-slate-900">
+                            +{formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
+                          </span>
+                        )}
+                      </>
                     )}
                     {mayEdit && (
                       <button

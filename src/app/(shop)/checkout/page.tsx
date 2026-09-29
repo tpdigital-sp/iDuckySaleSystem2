@@ -468,6 +468,8 @@ export default function CheckoutPage() {
         ...(artworkBackUrls.length ? { artworkBackUrls } : {}),
         ...(reuseArt ? { reuseArt } : {}),
         ...(needStock ? { needStockCheck: true } : {}),
+        // 💵 ค่าตัวเลือกต่อชิ้นที่รวมใน unitPrice (ตะขอ/เคลือบ/พิมพ์ 2 ด้าน) — หน้าออเดอร์แจกแจงเหมือนตะกร้า
+        ...(it.addOns?.length ? { addOns: it.addOns.map((a) => ({ label: a.label, choice: a.choice, amount: a.amount })) } : {}),
       };
     });
     // ค่า Add on (ค่าเคลือบต่อแผ่น · ค่าสีต่อลาย · ค่าคละลายเกินโควตา) → แยกเป็นบรรทัดของตัวเอง
