@@ -2122,9 +2122,10 @@ export function mixSpread(rule: MixRule, designs: number, qty: number): number[]
  *    สั่ง 2 แผ่น 2 ลาย = แผ่นละ 1 ลาย → ไม่ได้คละ ไม่คิดเงิน
  *    สั่ง 2 แผ่น 9 ลาย = [5,4] → 25 + 20 = 45 (ไม่ใช่คิดจากเลข 9 ตรง ๆ)
  */
-export function mixFeeTotal(rule: MixRule, designs: number, qty: number): number {
+export function mixFeeTotal(rule: MixRule, designs: number, qty: number, tierQty = qty): number {
   if (designs <= 1 || qty <= 0) return 0;
-  const t = mixTierFor(rule, qty);
+  // ขั้นของกติกา (tiers.fromQty = "สั่งตั้งแต่…") ดูยอดที่ส่งมาเป็น tierQty — ตะกร้ารวมล็อตส่งยอดรวมล็อตมา · บรรทัดเดี่ยว = qty
+  const t = mixTierFor(rule, tierQty);
   return mixSpread(rule, designs, qty).reduce((sum, n) => sum + feeOfUnit(t, n), 0);
 }
 
@@ -2847,7 +2848,7 @@ function mixFeeOfSide(
   // กติกาคละแบบคิดต่อหน่วยมาก่อน — ค่าคละ = (ค่าต่อหน่วยตามจำนวนลาย) × จำนวนที่สั่ง
   // อ่านผ่าน mixRuleFor เสมอ ให้ตัวเลือกที่ตั้งกติกาเอง (เช่น ไดคัท 50%) ได้ค่าคละของตัวเอง
   const mr = mixRuleFor(product, selections);
-  if (mr) return mixFeeTotal(mr, designs, Math.max(0, qty));
+  if (mr) return mixFeeTotal(mr, designs, Math.max(0, qty), Math.max(0, tierQty));
   const r = activeRate(product, selections);
   // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — คิดจากชิ้นในลายที่ไม่เต็มขั้นต่ำ
   if (r?.underMinPieceFee) return underMinFeeFor(r, qty, designs, tierQty);
@@ -6282,6 +6283,22 @@ export function repriceCartGroups(
           const m = pool.rate.pricing;
           if (splitMix || !!m.cells[priceMatrixKey(m, gsel)] || m.driverLabels.some((l) => !gsel[l]))
             gsel[RATE_LABEL] = pool.rate.label;
+        }
+        /**
+         * 📄 กติกา mixRule (ค่าคละ "ต่อแผ่น/ต่อหน่วย" — กระดาษ/สติ๊กเกอร์: ลายที่อยู่บนแผ่นเดียวกัน) ต้องคิด **รายบรรทัด** ไม่รวมล็อต
+         * mixFeeTotal เกลี่ยจำนวนลายลงทุกหน่วยที่ส่งมา — รวมล็อตแล้ว 3 ลายของบรรทัดนี้ถูกมองว่ากระจายไปอยู่บนแผ่นของบรรทัดอื่น
+         * (ล็อต 5 แผ่น 6 ลาย → แผ่นละ 1-2 ลาย = เกือบฟรี) ทั้งที่แผ่นของบรรทัดนี้มี 3 ลายจริง ๆ
+         * พนักงานแจ้ง 29 ก.ย. 69 (กระดาษอาร์ตมัน & PET · OD-260924-2339): หน้าสินค้า ฿110 + ค่าคละ ฿20 = ฿130 แต่ตะกร้าได้ ฿122–123
+         * → คิดจากลาย/แผ่นของบรรทัดตัวเองเหมือนหน้าสินค้า · ขั้นของกติกา (tiers.fromQty) ยังดูยอดรวมล็อต (tierQty)
+         * กติกาโควตาต่อลายของเรท (พวงกุญแจ/อะคริลิค: ⌊ยอดรวม ÷ ขั้นต่ำต่อลาย⌋) ไม่เข้าทางนี้ — ยังคิดครั้งเดียวจากล็อตแล้วเฉลี่ยเหมือนเดิม
+         */
+        if (mixRuleFor(p, gsel)) {
+          for (const i of gIdxs) {
+            const own: Record<string, string> = { ...lines[i].selections };
+            if (pool.rate) own[RATE_LABEL] = pool.rate.label;
+            mixFeeAt.set(i, Math.max(0, designFeeBase(p, own, lines[i].qty, lotQty)));
+          }
+          return;
         }
         const total = designFeeBase(p, gsel, gQty, splitMix ? gQty : lotQty);
         if (!(total > 0) || gIdxs.length === 1) {
