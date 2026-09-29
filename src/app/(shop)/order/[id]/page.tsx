@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { addOnDisplayName, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -715,6 +715,12 @@ export default function CustomerOrderPage() {
   // ขอแก้ไขได้จนกว่าของจะออกจากร้าน
   const canRequestEdit = !(["จัดส่งแล้ว", "เสร็จสิ้น", "ยกเลิก"] as OrderStatus[]).includes(order.status);
   const openEditReq = order.editRequest && !order.editRequest.doneAt ? order.editRequest : null;
+  // 🎨 Add on → แถวย่อยใต้รายการแม่ (ลำดับวาด = แม่ตามด้วย Add on ของตัวเอง) · เลข "รายการที่" นับเฉพาะรายการจริง — ชุดเดียวกับหลังบ้าน
+  const addOnMap = addOnParents(order.items);
+  const addOnOrder = order.items.flatMap((_, i) =>
+    addOnMap.has(i) ? [] : [i, ...[...addOnMap].filter(([, host]) => host === i).map(([child]) => child)]
+  );
+  const mainNo = new Map(order.items.map((_, i) => i).filter((i) => !addOnMap.has(i)).map((i, n) => [i, n + 1]));
   // 💸 ช่องที่สลิปใบต่อไปจะลง (null = ไม่มียอดค้าง) + ยอดที่ต้องโอนตอนนี้ + สลิปทุกใบที่แนบไว้
   const slipPhase = resolveSlipPhase(order);
   const dueNow = amountDueNow(order);
@@ -1566,11 +1572,31 @@ export default function CustomerOrderPage() {
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         {/* ซ้าย */}
         <div className="space-y-4">
-          {order.items.map((it, i) => {
+          {addOnOrder.map((i) => {
+            const it = order.items[i];
             const proofs = proofsOf(it);
             /* บรรทัดค่าธรรมเนียมที่ระบบใส่ให้ (#boxfee ค่ากล่อง · #designfee ค่า Add on)
                ไม่ใช่งานพิมพ์ — ไม่ต้องโชว์ส่วน "แบบงาน/รอแบบจากร้าน" ให้ลูกค้างง */
             const feeLine = it.productId.includes("#");
+            /* 🎨 Add on ของรายการไหน = แถวย่อยใต้รายการนั้น (แบบเดียวกับหลังบ้าน) — เจ้าของร้าน 29 ก.ย. 69:
+               "ค่าคละลายของรายการที่ 8 ควรอยู่ให้ตรงกับรายการ ไม่ใช่มาขึ้นรายการที่ 10" · ข้อมูล/ยอดยังแยกบรรทัดเหมือนเดิม */
+            const addOnOf = addOnMap.get(i);
+            if (addOnOf != null)
+              return (
+                <div
+                  key={`addon-${it.productId}-${i}`}
+                  className="ord-note info !-mt-2 ml-4 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs sm:ml-6"
+                >
+                  <span className="font-extrabold t-faint">└ รวมในรายการที่ {mainNo.get(addOnOf)}</span>
+                  <span className="min-w-0 flex-1 font-bold">{addOnDisplayName(it)}</span>
+                  <span className="ord-title shrink-0 text-sm">
+                    {it.qty > 1 ? `${it.qty} × ` : "+"}{formatPrice(it.unitPrice)}
+                    {itemDiscountAmount(it) > 0 && (
+                      <span className="block text-[11px] font-semibold t-ok">ส่วนลด −{formatPrice(itemDiscountAmount(it))}</span>
+                    )}
+                  </span>
+                </div>
+              );
             return (
               <div
                 key={`${it.productId}-${i}`}
@@ -1590,12 +1616,12 @@ export default function CustomerOrderPage() {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="ord-title text-[1rem]">
-                      {order.items.length > 1 && (
+                      {mainNo.size > 1 && (
                         <span className={`mr-1.5 text-xs ${i % 2 === 0 ? "t-faint" : "t-blue"}`}>
-                          {i + 1}.
+                          {mainNo.get(i)}.
                         </span>
                       )}
-                      {it.name}
+                      {addOnDisplayName(it)}
                     </p>
                     {/*
                       รายละเอียดของรายการ — บรรทัดละหัวข้อ อ่านง่ายกว่าต่อกันยาว ๆ

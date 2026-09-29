@@ -105,6 +105,7 @@ import {
   addOnParents,
   addOnNothingToRead,
   isFeeLine,
+  addOnDisplayName,
   syncArrivalFromCount,
   moveOrderItem,
   itemMoveBlocked,
@@ -5210,7 +5211,7 @@ export default function AdminOrderDetailPage() {
                     className="!-mt-2 ml-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs"
                   >
                     <span className="font-extrabold text-slate-400">└ รวมในรายการที่ {mainNo.get(addOnOf)}</span>
-                    <span className="min-w-0 flex-1 font-bold text-slate-700">{it.name}</span>
+                    <span className="min-w-0 flex-1 font-bold text-slate-700">{addOnDisplayName(it)}</span>
                     {seesMoney && (
                       <span className="font-extrabold tabular-nums text-slate-900">
                         +{formatPrice(it.qty * it.unitPrice - itemDiscountAmount(it))}
@@ -5297,7 +5298,7 @@ export default function AdminOrderDetailPage() {
                       </span>
                     )}
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-xs font-bold text-slate-400">{it.name}</span>
+                      <span className="truncate text-xs font-bold text-slate-400">{addOnDisplayName(it)}</span>
                       {mayEdit && (
                         <button
                           type="button"
@@ -5387,7 +5388,7 @@ export default function AdminOrderDetailPage() {
                         onClick={() => setItemOpen((cur) => ({ ...cur, [i]: !open }))}
                         className="text-left text-sm font-bold text-slate-800 hover:text-indigo-700"
                       >
-                        {it.name} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
+                        {addOnDisplayName(it)} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
                       </button>
                       {/* ♻️ ป้ายใช้ไฟล์เก่า — ข้างชื่อสินค้า เห็นตั้งแต่ยังไม่กางการ์ด · เลขออเดอร์เดิมกดเปิดใบเดิมในแท็บใหม่ */}
                       {it.reuseArt && (

@@ -1902,6 +1902,20 @@ export function addOnParents(items: Pick<OrderItem, "productId" | "lineKey" | "a
   return out;
 }
 
+/**
+ * 🏷 ชื่อบรรทัด Add on ที่ "บอกว่าค่าอะไร" สำหรับโชว์บนจอ — ใบเก่าก่อน 29 ก.ย. 69 checkout เขียนแค่
+ * "🎨 Add on — <สินค้า> (3 ลาย)" เมื่อยอดเฉลี่ยจากล็อตไม่ตรงกับแจกแจงเดี่ยว (OD-260924-2339) เจ้าของร้านอ่านไม่ออกว่าค่าอะไร
+ * บรรทัดแบบนั้นคือค่าคละลายเสมอ (ค่าต่อลาย/ต่อแผ่นแจกแจงตรงยอดได้ ไม่ตกมาทางนี้) → เติมคำให้ตอนแสดงผล ไม่แก้ข้อมูลในฐาน
+ * ชื่อที่มีคำว่า "ค่า" อยู่แล้ว (รูปแบบใหม่ · แอดมินแก้ชื่อเอง) คืนตามเดิม
+ */
+export function addOnDisplayName(item: Pick<OrderItem, "productId" | "name">): string {
+  const name = item.name ?? "";
+  if (!isAddOnLine(item) || name.includes("ค่า")) return name;
+  const m = name.match(/^(🎨\s*Add on)\s*—\s*(.*?)(?:\s*\((\d[\d,]*\s*ลาย)\))?\s*$/u);
+  if (!m) return name;
+  return `${m[1]} ค่าคละลาย — ${m[2]}${m[3] ? ` (คละ ${m[3]})` : ""}`;
+}
+
 /** บรรทัด Add on ที่ไม่มีอะไรให้อ่าน (ไม่มีรายละเอียด/หมายเหตุใบงาน) — ฝ่ายแพ็คไม่ต้องกด "ยืนยันอ่านแล้ว" */
 export function addOnNothingToRead(item: OrderItem): boolean {
   return isAddOnLine(item) && !(item.selections ?? "").trim() && !Object.keys(item.sel ?? {}).length && !noteHasText(item.adminNote);

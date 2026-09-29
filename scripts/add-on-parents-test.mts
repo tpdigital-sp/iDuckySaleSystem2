@@ -3,7 +3,7 @@
  * เคสจริง 29 ก.ย. 69 OD-260924-2339: เปิดใบด้วย paper-art-pet (ไม่มีค่าคละ) แล้วสั่งเพิ่ม paper-art-pet อีก 2 บรรทัด
  * + Add on 1 บรรทัด → ตัวเดาเดิมจับ Add on ไปเกาะรายการที่ 1 (รอบแรก) แทนรายการที่ 8 (รอบสั่งเพิ่ม) หน้าจอเลย "หายจากท้ายบิล"
  */
-import { addOnParents } from "../src/lib/admin-data";
+import { addOnParents, addOnDisplayName } from "../src/lib/admin-data";
 
 let pass = 0;
 const fails: string[] = [];
@@ -57,6 +57,13 @@ ok("ชุดเดียวกันไม่มีแม่ → หาทั�
 
 // 6) ไม่มีแม่เลย → ไม่อยู่ใน Map (โชว์เป็นรายการปกติ)
 ok("ไม่มีแม่ → ไม่จับคู่", addOnParents([{ productId: "z#designfee" }]).size === 0);
+
+// 7) 🏷 ชื่อโชว์ของบรรทัด Add on ใบเก่า ต้องบอกว่า "ค่าคละลาย"
+const dn = (name: string) => addOnDisplayName({ productId: "paper-art-pet#designfee", name });
+ok("ชื่อเก่า (3 ลาย) → เติมค่าคละลาย", dn("🎨 Add on — งานพิมพ์กระดาษอาร์ตมัน & แผ่นพลาสติก PET (3 ลาย)") === "🎨 Add on ค่าคละลาย — งานพิมพ์กระดาษอาร์ตมัน & แผ่นพลาสติก PET (คละ 3 ลาย)");
+ok("ชื่อเก่าไม่มีวงเล็บ → เติมค่าคละลาย", dn("🎨 Add on — โปสเตอร์") === "🎨 Add on ค่าคละลาย — โปสเตอร์");
+ok("ชื่อใหม่ที่มีคำว่าค่าอยู่แล้ว → คงเดิม", dn("🎨 Add on — โปสเตอร์ (ค่าคละลาย · คละ 3 ลาย)") === "🎨 Add on — โปสเตอร์ (ค่าคละลาย · คละ 3 ลาย)");
+ok("ไม่ใช่บรรทัด Add on → คงเดิม", addOnDisplayName({ productId: "poster-a3", name: "🎨 Add on — โปสเตอร์ (3 ลาย)" }) === "🎨 Add on — โปสเตอร์ (3 ลาย)");
 
 console.log(`✅ ผ่าน ${pass} ข้อ${fails.length ? ` · ❌ ตก ${fails.length}` : ""}`);
 for (const f of fails) console.log(" ❌", f);
