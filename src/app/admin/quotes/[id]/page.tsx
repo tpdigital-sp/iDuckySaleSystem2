@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import RequirePerm from "@/components/RequirePerm";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice, productPath, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, type Product } from "@/lib/products";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import { itemPiecesLine, itemUnitYield, orderQtyText } from "@/lib/item-yield";
 import { SelDetails } from "@/components/admin/SelDetails";
@@ -50,7 +50,11 @@ import PrevNextNav from "@/components/admin/PrevNextNav";
 const quoteHref = (id: string) => `/admin/quotes/${encodeURIComponent(id)}`;
 import { setQuoteTarget } from "@/lib/append-quote";
 import { formatPhone } from "@/lib/contacts";
-import { fetchShopPayment, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
+import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
+import { autoShipQuote } from "@/lib/shipping-auto";
+
+/** ค่าในช่องเลือกวิธีส่งที่แปลว่า "ให้ระบบคิดให้" (ชุดเดียวกับหน้าออเดอร์) */
+const AUTO_SHIP = "__auto__";
 
 /** ช่องกรอกชุดเดียวกับหน้าออเดอร์ */
 const INP =
@@ -89,10 +93,15 @@ function QuoteDetailInner() {
   const [quoteIds, setQuoteIds] = useState<string[]>([]);
   /** วิธีส่งจากตั้งค่าร้าน — ชุดเดียวกับหน้าออเดอร์ (เลือกแล้วราคาเติมให้เอง แก้ตัวเลขต่อได้) */
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]);
+  /** โปรส่งฟรีเมื่อยอดถึง — ต้องใช้ตอนคิดค่าส่งอัตโนมัติให้ได้เลขเดียวกับหน้าตะกร้า (0 = ไม่มีโปร) */
+  const [freeShipMin, setFreeShipMin] = useState(0);
 
   useEffect(() => setOrigin(window.location.origin), []);
   useEffect(() => {
-    void fetchShopPayment().then((p) => setShipMethods(shippingOf(p)));
+    void fetchShopPayment().then((p) => {
+      setShipMethods(shippingOf(p));
+      setFreeShipMin(freeShippingMinOf(p));
+    });
   }, []);
 
   const load = useCallback(async () => {
@@ -128,6 +137,56 @@ function QuoteDetailInner() {
   }, []);
 
   const patch = (p: Partial<Quote>) => quote && void persist({ ...quote, ...p });
+
+  /**
+   * ⚡ ค่าส่งที่ระบบคิดให้จากรายการในใบ (กติกาเดียวกับหน้าตะกร้า/หน้าออเดอร์ — ของเยอะ/ของหนักเด้งกล่องใหญ่เอง)
+   * เจ้าของร้านสั่ง 29 ก.ย. 69 (QT-260922-9954): ใบเสนอราคาให้แอดมินเดาค่าส่งเองทุกใบ → ต้องคิดให้เหมือนตะกร้า
+   * รายการที่ไม่มีในคลัง (งานพิเศษ) ไม่มีตารางค่าส่งของตัวเอง และไม่นับเป็นเรทปลีก (เกณฑ์ยอดจึงทำงานตามปกติ)
+   * คืน null เมื่อสินค้าจริงในใบยังโหลดไม่ครบ — คิดตอนนี้จะได้เลขต่ำกว่าจริง (ตารางค่าส่งอยู่ในตัวสินค้า)
+   */
+  const autoShipOf = (q: Quote) => {
+    if (!shipMethods.length || !q.items.length) return null;
+    const realIds = q.items.map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item");
+    if (realIds.some((id) => !prodById[id])) return null;
+    return autoShipQuote(
+      q.items.map((it) => ({ productId: it.productId, name: it.name, qty: it.qty, selections: it.sel ?? {}, product: prodById[it.productId] })),
+      shipMethods,
+      {
+        subtotal: q.items.reduce((s, i) => s + i.qty * i.unitPrice, 0),
+        freeMin: freeShipMin,
+        retailOnly: q.items.every((it) => {
+          const p = prodById[it.productId];
+          return p ? isRetailRateLine(p, it.sel ?? {}, it.qty) : false;
+        }),
+      }
+    );
+  };
+  /**
+   * 🚚 เติมค่าส่งอัตโนมัติลงช่องให้เอง — 2 กรณี
+   *  1) ใบที่ยังไม่เคยตั้งค่าส่ง (ไม่มีป้ายวิธีส่ง + ค่าส่ง 0) และยังเป็นฉบับร่าง → เติมครั้งแรกให้เลย (เหมือนหน้าออเดอร์)
+   *  2) ใบที่ค่าส่งมาจากระบบ (shippingAuto) → เพิ่ม/ลดรายการแล้วคิดใหม่ตามให้ (เหมือนตะกร้า) จนกว่าแอดมินจะเลือกเอง
+   * ใบที่ส่งให้ลูกค้าแล้ว/ลูกค้าตกลงแล้ว ไม่เติมทับเอง (ยอดที่ลูกค้าเห็นต้องนิ่ง) — โชว์ปุ่ม ⚡ ให้กดแทน · ใบที่แปลงเป็นออเดอร์แล้วไม่แตะ
+   */
+  useEffect(() => {
+    if (!quote || quote.orderId) return;
+    const auto = autoShipOf(quote);
+    if (!auto?.method) return;
+    const cost = Math.max(0, auto.cost);
+    const unset = !(quote.shippingLabel ?? "").trim() && !(quote.shippingCost > 0);
+    const firstFill = unset && quote.status === "ร่าง";
+    const follow = !!quote.shippingAuto && quote.status === "ร่าง";
+    if (!firstFill && !follow) return;
+    if (quote.shippingLabel === auto.method.name && quote.shippingCost === cost && quote.shippingAuto) return;
+    void persist(
+      withQuoteLog(
+        { ...quote, shippingLabel: auto.method.name, shippingCost: cost, shippingAuto: true },
+        actor,
+        "เปลี่ยนวิธีส่ง",
+        `${quote.shippingLabel || "—"} ${formatPrice(quote.shippingCost)} → ${auto.method.name} ${formatPrice(cost)} (อัตโนมัติ — ${auto.reason})`
+      )
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote?.id, quote?.status, quote?.orderId, quote?.shippingLabel, quote?.shippingCost, quote?.shippingAuto, quote?.items, shipMethods, freeShipMin, prodById]);
 
   /* เปิดใบที่ผูกผู้ติดต่อไว้ → บันทึกเปล่า 1 ครั้งให้เซิร์ฟเวอร์เช็คระดับสมาชิกสดจากผู้ติดต่อ (ยิงครั้งเดียวต่อใบ)
      ต้องทำแม้มี memberTier อยู่แล้ว — ระดับที่ล็อกในผู้ติดต่อเปลี่ยนได้ (ซีดใหม่/ขึ้น-ตกระดับ) แล้วใบต้องตามให้ทัน */
@@ -387,6 +446,32 @@ function QuoteDetailInner() {
   /** 🔢 "17 เซ็ต · 102 ชิ้น" — งานเซ็ต/แผ่น จำนวนที่สั่งไม่ใช่จำนวนชิ้น */
   const qtyText = orderQtyText(quote.items, (id) => prodById[id]);
   const subtotal = quote.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  /** ⚡ ค่าส่งที่ระบบคิดให้ (ตัวคิดอยู่ที่ autoShipOf ด้านบน — ใช้ร่วมกับตัวเติมอัตโนมัติ) */
+  const autoShip = autoShipOf(quote);
+  const autoShipCost = autoShip ? Math.max(0, autoShip.cost) : 0;
+  /**
+   * ค่าส่งที่ตั้งไว้ "ต่ำกว่า" ที่ระบบคิดให้ — เติมของหนัก/ของเยอะทีหลังแล้วลืมขยับค่าส่ง = ร้านออกค่ากล่องเอง
+   * เตือนเฉพาะขาขาดทุน: ตั้งไว้แพงกว่าถือว่าตั้งใจ · วิธีส่งราคา 0 (มารับเอง/ส่งฟรี) ไม่มีพัสดุ ไม่เตือน
+   */
+  const shipUnderAuto =
+    !locked &&
+    !!autoShip?.method &&
+    quote.items.length > 0 &&
+    (shipMethods.find((m) => m.name === quote.shippingLabel)?.price ?? -1) !== 0 &&
+    autoShipCost > quote.shippingCost;
+  /** เปลี่ยนวิธีส่ง + ค่าส่งพร้อมกัน (ช่องเลือก กับปุ่มค่าอัตโนมัติ ใช้ทางเดียวกัน — ลงประวัติเสมอ) · auto = ให้ระบบตามต่อเมื่อรายการเปลี่ยน */
+  const applyShipMethod = (m: ShippingMethod, cost: number, auto: boolean, why?: string) => {
+    const next = Math.max(0, cost);
+    const before = `${quote.shippingLabel || "—"} ${formatPrice(quote.shippingCost)}`;
+    void persist(
+      withQuoteLog(
+        { ...quote, shippingLabel: m.name, shippingCost: next, shippingAuto: auto },
+        actor,
+        "เปลี่ยนวิธีส่ง",
+        `${before} → ${m.name} ${formatPrice(next)}${why ? ` (${why})` : ""}`
+      )
+    );
+  };
   const memberAmount = quoteMemberDiscount(quote);
   const total = quoteTotal(quote);
   const nItems = `${quote.items.length} รายการ`;
@@ -1070,15 +1155,24 @@ function QuoteDetailInner() {
                       <select
                         value={shipMethods.find((m) => m.name === quote.shippingLabel)?.id ?? ""}
                         onChange={(e) => {
+                          // ⚡ อัตโนมัติ = ให้ระบบคิดจากของในใบ (ของเยอะ/ของหนักเด้งกล่องใหญ่เอง) แล้วตามต่อเมื่อรายการเปลี่ยน
+                          if (e.target.value === AUTO_SHIP) {
+                            if (autoShip?.method) applyShipMethod(autoShip.method, autoShipCost, true, `อัตโนมัติ — ${autoShip.reason}`);
+                            return;
+                          }
                           const m = shipMethods.find((x) => x.id === e.target.value);
-                          if (!m) return;
-                          patch({ shippingLabel: m.name, shippingCost: Math.max(0, m.price) });
+                          if (m) applyShipMethod(m, m.price, false);
                         }}
                         className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
                       >
                         <option value="" disabled>
                           {quote.shippingLabel || "เลือกวิธีส่ง…"}
                         </option>
+                        {autoShip?.method && (
+                          <option value={AUTO_SHIP}>
+                            ⚡ อัตโนมัติ — {autoShip.method.name} {formatPrice(autoShipCost)}
+                          </option>
+                        )}
                         {shipMethods.map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name} — ฿{m.price}
@@ -1092,10 +1186,32 @@ function QuoteDetailInner() {
                     min={0}
                     value={quote.shippingCost}
                     disabled={locked}
-                    onChange={(e) => patch({ shippingCost: Math.max(0, Number(e.target.value) || 0) })}
+                    // แก้ตัวเลขเอง = เลิกให้ระบบตาม (ไม่งั้นพิมพ์เสร็จระบบเขียนทับกลับทันที)
+                    onChange={(e) => patch({ shippingCost: Math.max(0, Number(e.target.value) || 0), shippingAuto: false })}
                     className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none disabled:bg-slate-50"
                   />
                 </div>
+                {/* ⚡ ค่าส่งมาจากระบบ — บอกไว้ว่าเพิ่ม/ลดรายการแล้วค่าส่งจะขยับตามเอง */}
+                {!locked && quote.shippingAuto && autoShip?.method && !shipUnderAuto && (
+                  <p className={`mt-1 text-[11px] ${faint}`} title={autoShip.reason}>
+                    ⚡ คิดให้อัตโนมัติ — {autoShip.reason}
+                  </p>
+                )}
+                {/* ⚡ ค่าส่งต่ำกว่าที่ระบบคิดให้ — กดปุ่มเดียวเติมให้ตรง (ไม่กดก็ไม่มีอะไรเปลี่ยน) */}
+                {shipUnderAuto && autoShip?.method && (
+                  <button
+                    type="button"
+                    onClick={() => applyShipMethod(autoShip.method!, autoShipCost, true, `อัตโนมัติ — ${autoShip.reason}`)}
+                    title={autoShip.reason}
+                    className="mt-1.5 flex w-full items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-2 text-left text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                  >
+                    <span className="shrink-0">⚡ ใช้ค่าส่งอัตโนมัติ</span>
+                    <span className="min-w-0 flex-1 truncate font-normal text-sky-800">
+                      {autoShip.method.name} · {autoShip.reason}
+                    </span>
+                    <span className="shrink-0 tabular-nums">{formatPrice(autoShipCost)}</span>
+                  </button>
+                )}
                 {/* 🏅 ส่วนลดระดับสมาชิก — เซิร์ฟเวอร์คิดจากผู้ติดต่อที่ผูก แอดมินปิดได้ต่อใบ (เช่น ราคาที่เสนอรวมส่วนลดไว้แล้ว) */}
                 {quote.memberTier && (
                   <div className="mt-1.5 flex items-center justify-between gap-3 text-sm">
