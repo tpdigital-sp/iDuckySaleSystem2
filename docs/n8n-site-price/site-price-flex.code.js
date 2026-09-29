@@ -161,10 +161,11 @@ for (const item of $input.all()) {
   }
 
   // 1.5) ลูกค้าถามหาของที่ร้านไม่มี (เว็บบอก intent=not_in_catalog) → ข้อความจากเว็บ "ยังไม่มี… ใกล้เคียงคือ…" + การ์ดตัวใกล้เคียง
-  if (site && site.found && /^(not_in_catalog|draft_product|mix|info)$/.test(String(site.intent))) {
+  if (site && site.found && /^(not_in_catalog|draft_product|mix|info|spec|spec_menu)$/.test(String(site.intent))) {
+    // 29 ก.ย. 69: spec/spec_menu (ตัวเลือก/ขนาดของสินค้าที่รู้ตัว) ก็ใช้ข้อความเว็บ — เดิมตกไปแนบการ์ดกับข้อความ agent ที่ตอบ "ขอเช็กรายละเอียด" ทั้งที่เว็บตอบได้
     const t = String(site.answer || '').split('\n').filter(l => !/^\s*https?:\/\/\S+\s*$/.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
     const msgs = [{ type: 'text', text: t || replyText }];
-    if (siteProducts.length) msgs.push(productFlex(siteProducts, 'สินค้าใกล้เคียง'));
+    if (siteProducts.length) msgs.push(productFlex(siteProducts, /^spec/.test(String(site.intent)) ? 'ดูรายละเอียด/สั่งบนเว็บ' : 'สินค้าใกล้เคียง'));
     out.push({ json: { ...j, messages: msgs, siteAnswer: site.answer, siteProducts, siteFlex: 'not-in-catalog' } });
     continue;
   }
