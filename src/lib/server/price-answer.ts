@@ -71,6 +71,8 @@ export interface PriceAnswer {
   product?: ProductRef;
   /** ทุกสินค้าที่คำตอบนี้พูดถึง (เมนู/หลายสินค้า/ขั้นต่ำ) — เรียงตามลำดับในคำตอบ */
   products?: ProductRef[];
+  /** ส่วนที่ตอบเพิ่มนอกเหนือราคา/ตัวเลือก (extraInfo) */
+  extra?: string;
 }
 
 interface Lite {
@@ -1144,6 +1146,11 @@ export function pageText(p: Product): string {
     if (body.trim()) parts.push(`[${t.title}]\n${body.trim()}`);
   }
   if (p.terms) parts.push(`[เงื่อนไข]\n${p.terms}`);
+  // แบบ/วัสดุแต่ละเรท (PET+Magnet เปียกน้ำได้ · สะท้อนแสงกลางคืน …) — ลูกค้าถาม "แบบไหนกันน้ำ" ต้องตอบแยกตามแบบได้ (29 ก.ย. 69)
+  const rateLines = (p.priceRates ?? [])
+    .filter((r) => !r.dealerOnly && r.label && r.desc)
+    .map((r) => `• ${r.label}: ${r.desc}`);
+  if (rateLines.length) parts.push(`[แบบ/วัสดุที่มีให้เลือก]\n${rateLines.join("\n")}`);
   const faqs = p.seo?.faqs ?? [];
   if (faqs.length) parts.push(`[คำถามพบบ่อย]\n${faqs.map((f) => `ถาม: ${f.q}\nตอบ: ${f.a}`).join("\n")}`);
   const opts = (p.options ?? []).filter((o) => o.choices?.length).slice(0, 14);
@@ -1181,11 +1188,12 @@ const infoCache = new Map<string, { at: number; text: string }>();
  * 📖 ตอบคำถามความรู้เกี่ยวกับสินค้า "จากข้อความบนหน้าสินค้าจริง" (LLM เรียบเรียงจากข้อความนั้นเท่านั้น)
  * เจ้าของร้านขอ 24 ก.ย. 69: "อยากให้อ่านรายละเอียดในเว็บด้วย" — เดิม agent ตอบจากคลังความรู้เก่าที่ไม่ตรงเว็บ
  */
-async function infoText(p: Product, query: string): Promise<PriceAnswer | null> {
+async function infoText(p: Product, query: string, opts?: { extra?: boolean }): Promise<PriceAnswer | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   const text = pageText(p);
   if (!apiKey || text.length < 40) return null;
-  const key = `${p.id}\u0002${query.trim()}`;
+  const extra = !!opts?.extra;
+  const key = `${p.id}\u0002${extra ? "x:" : ""}${query.trim()}`;
   const hit = infoCache.get(key);
   let out = hit && Date.now() - hit.at < TTL_MS ? hit.text : "";
   if (!out) {
@@ -1197,9 +1205,18 @@ ${text}
 
 ลูกค้าถาม: "${query}"
 
-กติกา: ตอบภาษาไทย สุภาพ ลงท้าย "ค่ะ" ไม่เกิน 5 บรรทัด ตอบตรงคำถามก่อน ถ้ามีตัวเลข/เงื่อนไขในข้อมูลให้ใส่ให้ครบ
+${
+  extra
+    ? `ลูกค้าถามหลายเรื่องในข้อความเดียว "ตารางราคาหลัก/ตัวเลือกหลัก/ขนาด/ขั้นต่ำ" ระบบตอบไปแล้ว ไม่ต้องเล่าซ้ำ
+ให้ตอบเฉพาะ "เรื่องอื่นที่ลูกค้าถามหรือระบุความต้องการ" เช่น กันน้ำ/กันฝน/ทนแดด/วัสดุ/การใช้งาน/สะท้อนแสง/ใช้ลายเองได้ไหม/ส่วนเสริม (เคลือบ ฟอยล์ รองพื้น — ราคาเพิ่มของส่วนเสริมบอกได้)
+ถ้าลูกค้าระบุความต้องการ (เช่น เอาแบบกันฝน) ให้บอกชัดว่า "แบบไหนตรง แบบไหนไม่ตรง" ตามข้อมูลแต่ละแบบ ถ้าข้อมูลบอกว่าทุกแบบทำได้ก็บอกว่าได้ทุกแบบ
+กติกา: ตอบภาษาไทย สุภาพ ลงท้าย "ค่ะ" ไม่เกิน 3 บรรทัด ห้ามใช้ markdown (ห้าม * หรือ ** หรือ #) ใช้ • นำหน้ารายการแทน ไม่ต้องขึ้นต้นด้วย "สวัสดีค่ะ"
+ห้ามตอบเรื่องอื่นแทนเรื่องที่ถาม (ถาม "ทนแดดไหม" แต่หน้าสินค้ามีแต่เรื่องกันน้ำ = ไม่มีข้อมูล)
+ถ้าลูกค้าไม่ได้ถามเรื่องอื่นเลยนอกจากราคาหลัก/ตัวเลือกหลัก หรือหน้าสินค้าไม่มีข้อมูลเรื่องที่ถาม ให้ตอบคำเดียวว่า NOT_FOUND`
+    : `กติกา: ตอบภาษาไทย สุภาพ ลงท้าย "ค่ะ" ไม่เกิน 5 บรรทัด ตอบตรงคำถามก่อน ถ้ามีตัวเลข/เงื่อนไขในข้อมูลให้ใส่ให้ครบ
 ห้ามใช้ markdown (ห้าม * หรือ ** หรือ #) ใช้ • นำหน้ารายการแทน ไม่ต้องขึ้นต้นด้วย "สวัสดีค่ะ"
-ถ้าข้อมูลบนหน้าสินค้าไม่พอจะตอบคำถามนี้ ให้ตอบคำเดียวว่า NOT_FOUND`;
+ถ้าข้อมูลบนหน้าสินค้าไม่พอจะตอบคำถามนี้ ให้ตอบคำเดียวว่า NOT_FOUND`
+}`;
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
@@ -1234,6 +1251,49 @@ ${text}
     intent: "info",
     product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...priceRange(p) },
   };
+}
+
+/**
+ * 🧩 ลูกค้าถามหลายเรื่องในข้อความเดียว ("อยากได้ที่ติดรถยนต์ / มีแบบไหนบ้าง / เอาแบบกันฝน") — ระบบตอบราคา/ตัวเลือกไปแล้ว
+ * ตัวนี้ตอบ "ส่วนที่เหลือ" (กันฝน/กันน้ำ/วัสดุ/การใช้งาน) จากหน้าสินค้า ไว้แปะหัวคำตอบหลัก · ไม่มีเรื่องอื่น/ไม่มีข้อมูล = "" (29 ก.ย. 69)
+ */
+/** เรื่องที่ลูกค้ามักถามพ่วง + คำที่คำตอบต้องมี (กัน LLM ตอบเรื่องอื่นแทน: ถาม "ทนแดด" ได้เรื่องกันน้ำ · ถาม "ส่งกี่วัน" ได้เรื่องฟิล์มกันรอย) */
+const EXTRA_TOPICS: { ask: RegExp; need: RegExp }[] = [
+  { ask: /กันน้ำ|กันฝน|โดนน้ำ|เปียก|ทนน้ำ|ล้างได้/i, need: /น้ำ|ฝน|เปียก|ล้าง/i },
+  { ask: /ทนแดด|แดด|ซีด|กันยูวี/i, need: /แดด|ซีด|ยูวี|uv.?(protect|กัน)|กันuv/i },
+  { ask: /ทนทาน|ทนไหม|ทนมั้ย|ลอก|หลุด|ขูด|ขีดข่วน|ฉีก/i, need: /ทน|ลอก|หลุด|ขูด|ขีด|ฉีก/i },
+  { ask: /สะท้อนแสง|เรืองแสง|กลางคืน/i, need: /สะท้อน|เรือง|กลางคืน|แสง/i },
+  { ask: /ติดแน่น|คราบ|กาว/i, need: /ติด|กาว|คราบ/i },
+  { ask: /หนาเท่าไหร่|หนากี่|บางไหม|กี่มิล|mm/i, need: /มิล|mm|หนา|บาง/i },
+  { ask: /กี่วัน|นานไหม|นานมั้ย|ใช้เวลา|ผลิตนาน|เมื่อไหร่|ทันไหม|ทันมั้ย/i, need: /วัน|สัปดาห์|ชั่วโมง|ชม\./i },
+  { ask: /ลายเอง|ส่งไฟล์|ไฟล์อะไร|ออกแบบให้/i, need: /ไฟล์|ลาย|ออกแบบ|แบบ/i },
+  { ask: /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|ค่าเพิ่ม/i, need: /เคลือบ|ฟอยล์|ด้าน|รองพื้น|บาท|฿/i },
+  { ask: /วัสดุอะไร|ทำจากอะไร|ต่างกันยังไง|ต่างกันอย่างไร|แบบไหนดี|แนะนำ|เหมาะกับ/i, need: /./ },
+];
+export const EXTRA_ASK_RE = new RegExp(EXTRA_TOPICS.map((t) => t.ask.source).join("|"), "i");
+const PRICEY_RE = /ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขั้นต่ำ|\d+\s*(ชิ้น|ใบ|อัน|แผ่น|ตัว|ดวง|เซ็ต)|มีแบบไหน|แบบไหนบ้าง|ขนาดไหน/i;
+export async function extraInfo(query: string, productId: string): Promise<string> {
+  const full = await getProductServer(productId).catch(() => undefined);
+  if (!full) return "";
+  const ans = await infoText(full, query, { extra: true });
+  if (!ans) return "";
+  // เอาเฉพาะเนื้อความ (ไม่เอาบรรทัดลิงก์/รายละเอียดเต็ม — คำตอบหลักมีอยู่แล้ว)
+  const text = ans.answer
+    .split("\n")
+    .filter((l) => !/^รายละเอียดเต็มดูที่หน้าสินค้า|^https?:\/\//.test(l.trim()))
+    .join("\n")
+    .trim();
+  if (!text) return "";
+  // 🛡 คำตอบต้องเป็นเรื่องที่ถามจริง — หัวข้อที่รู้จัก: ต้องมีคำของหัวข้อนั้น · หัวข้ออื่น: ต้องมีคำร่วมกับท่อนที่ถาม ≥ 4 ตัวอักษร
+  const topics = EXTRA_TOPICS.filter((t) => t.ask.test(query));
+  if (topics.length) return topics.some((t) => t.need.test(text)) ? text : "";
+  const asked = query
+    .split(/\s*\/\s*|\n+/)
+    .map((x) => x.trim())
+    .filter((x) => x && !PRICEY_RE.test(x))
+    .map((x) => norm(x.replace(/ค่ะ|คะ|ครับ|ไหม|มั้ย|หน่อย|ด้วย/g, "")))
+    .filter((x) => x.length >= 4);
+  return asked.some((a) => lcsLen(a, norm(text)) >= 4) ? text : "";
 }
 
 /** คำถามความรู้เกี่ยวกับสินค้าที่ระบุ — อ่านจากหน้าสินค้าจริง · ไม่รู้สินค้า/ไม่มีข้อมูล = skip ให้ agent ตอบ */

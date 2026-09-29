@@ -12,6 +12,8 @@ import {
   isSpecIntent,
   parseQty,
   searchInfo,
+  extraInfo,
+  EXTRA_ASK_RE,
   searchMinQty,
   searchMix,
   searchPrice,
@@ -214,7 +216,7 @@ async function answer(req: Request, body: Record<string, unknown>) {
         ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
         : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
       ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
-    } else if ((u.intent === "price" || u.intent === "spec") && u.ids.length && !u.broad && !qty && /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|บวกเท่าไหร่|ค่าเพิ่ม|add.?on|ของเสริม|ได้ไหม|ได้มั้ย|มีไหม|มีมั้ย/i.test(query)) {
+    } else if ((u.intent === "price" || u.intent === "spec") && u.ids.length && !u.broad && !(qty || u.qty) && /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|บวกเท่าไหร่|ค่าเพิ่ม|add.?on|ของเสริม|ได้ไหม|ได้มั้ย|มีไหม|มีมั้ย/i.test(query)) {
       // ถามเรื่อง "ส่วนเสริม/ทำได้ไหม" ของสินค้าที่รู้ตัว (เคลือบฟอยล์ได้ไหม เพิ่มเท่าไหร่ · พิมพ์ 2 ด้านเพิ่มเท่าไหร่)
       // → ตอบจากหน้าสินค้า (มีราคาเพิ่มระบุไว้) แทนการเทตารางราคาหลัก/รายการตัวเลือกทั้งหมด (LLM สลับ price/spec ไม่นิ่ง จึงรับทั้งคู่)
       ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: false });
@@ -226,6 +228,12 @@ async function answer(req: Request, body: Record<string, unknown>) {
       // ถามความรู้เกี่ยวกับสินค้าที่รู้ตัว → อ่านจากหน้าสินค้าจริง (ไม่พอ = ให้ agent ตอบ)
       ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: u.broad });
       if (ans.kind === "skip") ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
+    } else if (["chitchat", "other", "followup"].includes(u.intent) && u.ids.length && !u.broad && (u.qty || qty || isPriceIntent(query))) {
+      // LLM ตีเป็น other ทั้งที่ระบุสินค้า+จำนวน/คำว่าราคา (ข้อความหลายท่อน "สติ๊กเกอร์ UV 100 ดวง ราคา / ใช้ลายเองได้ไหม" · 29 ก.ย. 69) → คิดราคาตามปกติ
+      mode = "price";
+      pick = { ids: u.ids, broad: u.broad };
+      if (!qty && u.qty) qty = u.qty;
+      if (u.standalone && u.standalone.length <= 200) searchQuery = u.standalone;
     } else if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent)) {
       ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
     } else {
@@ -263,6 +271,21 @@ async function answer(req: Request, body: Record<string, unknown>) {
     ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
   }
 
+  // 🧩 ตอบให้ครบทุกเรื่องที่ลูกค้าถาม (29 ก.ย. 69 "อยากได้ที่ติดรถยนต์ / มีแบบไหนบ้าง / เอาแบบกันฝน" → เดิมได้แต่ตารางราคา)
+  // LINE รวมหลายข้อความด้วย " / " · ถ้ามีเรื่องคุณสมบัติ (กันน้ำ/กันฝน/…) หรือถามหลายท่อน และคำตอบหลักเป็นราคา/ตัวเลือกของสินค้าตัวเดียว
+  // → ถามหน้าสินค้าอีกรอบเฉพาะส่วนที่เหลือ แล้วแปะไว้หัวคำตอบ (ไม่มีเรื่องอื่น = ไม่แปะ)
+  const parts = query.split(/\s*\/\s*|\n+/).map((x) => x.trim()).filter(Boolean);
+  if (
+    ans.answer &&
+    ans.product &&
+    !/_menu$/.test(ans.intent) &&
+    /^(price|spec|minqty)/.test(ans.intent) &&
+    (EXTRA_ASK_RE.test(query) || parts.length >= 2)
+  ) {
+    const extra = await extraInfo(u?.standalone && u.standalone.length <= 200 && parts.length < 2 ? u.standalone : query, ans.product.id);
+    if (extra) ans = { ...ans, answer: `${extra}\n\n${ans.answer}`, source: `${ans.source}+extra-info`, extra };
+  }
+
   // ไม่มีคำตอบและไม่ใช่คำถามราคา → บอก agent ตรง ๆ ว่าเครื่องมือนี้ไม่ใช่ทางของคำถามนี้
   const text =
     ans.answer ||
@@ -297,6 +320,8 @@ async function answer(req: Request, body: Record<string, unknown>) {
         }
       : null,
     found: ans.kind !== "skip" && !!ans.answer,
+    // ส่วนที่ตอบเพิ่มนอกเหนือราคา/ตัวเลือก (กันน้ำ/ส่วนเสริม/ใช้ลายเอง) — แปะอยู่หัว answer แล้ว ให้ไว้เผื่อบอทปลายทางอยากแยกแสดง
+    extra: ans.extra ?? null,
     qty: qty ?? null,
     ...(product ? { product } : {}),
     products,
