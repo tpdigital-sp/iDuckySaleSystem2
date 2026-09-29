@@ -500,6 +500,8 @@ export interface Understanding {
   requested: string;
   /** สินค้าใกล้เคียงที่พอเสนอแทนได้ (ชื่อ/ไอดีตรงแคตตาล็อก) */
   alternatives: ProductRef[];
+  /** ไว้ดีบักด่านยึดสินค้าจากบทสนทนา (สินค้าที่คำถามเอ่ยถึงตรง ๆ / ชุดที่ยึดจากบริบท) */
+  debug?: { qMentions: string[]; anchor: string[]; trace: string[] };
 }
 
 /**
@@ -513,7 +515,10 @@ export function fixTypos(text: string): string {
     .replace(/โฟโต[กค]าร์ด|โฟโต้กาด|photo\s?card/gi, "โฟโต้การ์ด")
     .replace(/กุญเเจ/g, "กุญแจ")
     .replace(/สแตนดี|สแตนดี้|สแตนดี๊|standee/gi, "สแตนดี้")
-    .replace(/แม่เหล็ค|แม่เหล๊ก|magnet/gi, "แม่เหล็ก");
+    .replace(/แม่เหล็ค|แม่เหล๊ก|magnet/gi, "แม่เหล็ก")
+    // "ผ้าห่มฮูดดี้" → สินค้าชื่อ "BLANKET HOODIE / ผ้าห่มมีฮู้ด" (ฮูดดี้ กับ ฮู้ด ตัวอักษรร่วมกันแค่ 2 ตัว จับไม่เจอ)
+    .replace(/ฮูดดี้|ฮู้ดดี้|ฮู๊ดดี้|ฮูดี้|ฮู้ดดี/g, " hoodie ")
+    .replace(/\s{2,}/g, " ");
 }
 
 const understandCache = new Map<string, { at: number; u: Understanding }>();
@@ -582,6 +587,7 @@ ${list}
     const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
     const raw = JSON.parse(text) as Partial<Omit<Understanding, "alternatives">> & { products?: unknown[]; alternatives?: unknown[] };
     const byName = new Map(items.map((it) => [norm(it.name), it]));
+    let anchorDebug: { qMentions: string[]; anchor: string[]; trace: string[] } | undefined;
     let picked = (Array.isArray(raw.products) ? raw.products : [])
       .map((n) => byName.get(norm(String(n))))
       .filter((it): it is Lite => !!it)
@@ -598,6 +604,53 @@ ${list}
       .filter((it): it is Lite => !!it)
       .slice(0, 3)
       .map(refOf);
+    /**
+     * ⚓ คำถามต่อเนื่องที่ "ไม่เอ่ยชื่อสินค้าเลย" ("มีกระดุมแปะด้วยไหมคะ" หลังคุยผ้าห่มฮู้ด) — LLM หยิบสินค้าที่ไม่มีใครพูดถึง
+     * (GRIPTOK MIRROR · 29 ก.ย. 69) → สินค้าต้องมาจาก (1) ประโยคฉบับสมบูรณ์ที่ LLM เขียน (standalone) หรือ (2) ข้อความล่าสุด
+     * ในบทสนทนาที่พูดถึงสินค้า (ไล่จากท้าย) — ถ้าตัวที่ LLM เลือกไม่อยู่ในชุดนั้น ให้ใช้ชุดนั้นแทน
+     */
+    {
+      // เข้มกว่า resolve(): ต้องมีตัวอักษรร่วมกับชื่อสินค้าติดกัน ≥5 ("กระดุม" vs "กระดาษ" ร่วมแค่ "กระด" ไม่นับ)
+      // และเลือกตัวที่ "คำในชื่อ" ตรงมากที่สุดก่อน (ผ้าห่ม hoodie → BLANKET HOODIE / ผ้าห่มมีฮู้ด ตรง 2 คำ ชนะ "ผ้าห่ม" ที่ตรง 1 คำ)
+      // นับเฉพาะคำใน "ชื่อ" (ไม่เอา slug: card/new/… ทำให้การ์ดสเปรย์ชนะโฟโต้การ์ด) · ชื่อเต็มโผล่ในข้อความ = ตัวนั้นชนะคู่เสมอ
+      const top = (text: string) => {
+        const tn = norm(text);
+        const r = resolve(text, items).filter((x) => lcsLen(tn, norm(x.item.name)) >= 5);
+        if (!r.length) return [] as Lite[];
+        const toks = (it: Lite) => it.name.split(/[\s()[\]{}/|,+·–—-]+/).map(norm).filter((t) => t.length >= 3);
+        const tm = (it: Lite) => toks(it).filter((t) => lcsLen(tn, t) >= 4).length;
+        const maxTm = Math.max(...r.map((x) => tm(x.item)));
+        const r2 = r.filter((x) => tm(x.item) === maxTm).filter((x, _, arr) => x.score >= arr[0].score * 0.7);
+        const exact = r2.filter((x) => tn.includes(norm(x.item.name)));
+        return (exact.length ? exact : r2).map((x) => x.item);
+      };
+      const qMentions = top(q);
+      const dbgScores = (text: string) => {
+        const tn = norm(text);
+        return resolve(text, items)
+          .slice(0, 5)
+          .map((x) => `${x.item.name}:${x.score}:lcs${lcsLen(tn, norm(x.item.name))}:tm${nameTokens(x.item).filter((t) => lcsLen(tn, t) >= 4).length}`);
+      };
+      anchorDebug = { qMentions: qMentions.map((x) => x.name), anchor: [], trace: [`q=${q}`, ...dbgScores(q)] };
+      if (!qMentions.length && ctx.length) {
+        const standalone = String(raw.standalone ?? "").trim();
+        // ข้อความล่าสุดที่พูดถึงสินค้าชนะ "ประโยคฉบับสมบูรณ์" ของ LLM (LLM เคยเขียน "ชิกิชิมีกระดุมแปะไหม" ทั้งที่ข้อความล่าสุดคือผ้าห่มฮู้ด)
+        let anchor: Lite[] = [];
+        for (let i = ctx.length - 1; i >= 0 && !anchor.length; i--) {
+          anchor = top(ctx[i]);
+          anchorDebug.trace.push(`ctx[${i}]=${ctx[i]}`, ...dbgScores(ctx[i]));
+        }
+        if (!anchor.length && standalone) {
+          anchor = top(standalone);
+          anchorDebug.trace.push(`standalone=${standalone}`, ...dbgScores(standalone));
+        }
+        anchorDebug.anchor = anchor.map((x) => x.name);
+        if (anchor.length && !picked.some((p) => anchor.some((a) => a.id === p.id))) {
+          picked = anchor.slice(0, 3);
+          raw.broad = anchor.length > 1;
+        }
+      }
+    }
     const qtyN = Number(raw.qty);
     /**
      * 🛡 ด่านกันเดา (LLM ไม่นิ่ง: "พวงกุญแจหนังปัก ราคาเท่าไหร่คะ" ได้เมนูพวงกุญแจ แต่ "…ค่ะ" ได้ notInCatalog)
@@ -688,6 +741,7 @@ ${list}
       intent,
       products: finalPicked.map((it) => it.name),
       ids: finalPicked.map((it) => it.id),
+      debug: anchorDebug,
       broad: !!raw.broad && finalPicked.length >= 2,
       qty: Number.isFinite(qtyN) && qtyN > 0 ? Math.round(qtyN) : null,
       standalone: String(raw.standalone ?? "").trim() || q,

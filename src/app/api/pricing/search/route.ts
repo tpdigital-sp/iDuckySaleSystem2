@@ -317,6 +317,7 @@ async function answer(req: Request, body: Record<string, unknown>) {
           notInCatalog: u.notInCatalog,
           requested: u.requested,
           alternatives: u.alternatives.map((a) => a.name),
+          debug: u.debug ?? null,
         }
       : null,
     found: ans.kind !== "skip" && !!ans.answer,
