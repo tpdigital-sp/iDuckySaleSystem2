@@ -1368,6 +1368,10 @@ export default function AdminOrderDetailPage() {
   const [chargeForm, setChargeForm] = useState<{ label: string; amount: string; note: string } | null>(null);
   const [chargeBusy, setChargeBusy] = useState(false);
   const [dealerBusy, setDealerBusy] = useState(false);
+  // 🎟️ ช่องใส่คูปองให้ลูกค้าในการ์ดยอดเงิน — ซ่อนไว้ กด "＋ ใส่คูปอง" ถึงโผล่ (ลูกค้าได้คูปองมาแล้วให้แอดมินรวมยอด)
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
   /** สลิปใบเพิ่มที่กำลังกด "รับยอดเอง" อยู่ (paymentId) */
   const [acceptBusy, setAcceptBusy] = useState<string | null>(null);
   /** 💰 กล่อง "รับยอดเอง" ที่เปิดอยู่ — สลิปใบเพิ่มที่แอดมินกำลังใส่ยอด (null = ปิด) */
@@ -2045,6 +2049,74 @@ export default function AdminOrderDetailPage() {
       if (warn.length) setErr(warn.join(" · "));
     } finally {
       setDealerBusy(false);
+    }
+  }
+
+  /**
+   * 🎟️ ใส่คูปองให้ใบนี้ / ถอดออก — ลูกค้าได้คูปองมาแล้วแต่ทักไลน์ให้แอดมินรวมยอด (ไม่ได้กดสั่งเองผ่านเว็บ)
+   * เซิร์ฟเวอร์ตรวจ+ตัดสิทธิ์คูปองเอง กติกาเดียวกับตอนลูกค้าสั่งเอง (ดู /api/admin/orders/coupon)
+   */
+  async function applyCoupon() {
+    if (!order || couponBusy) return;
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return;
+    if (demo) {
+      setErr("โหมดตัวอย่างใส่คูปองไม่ได้");
+      return;
+    }
+    setCouponBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/coupon", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, code }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "ใส่คูปองไม่สำเร็จ");
+        return;
+      }
+      adoptOrder(keepSlipUrls(j.order, order));
+      setCouponOpen(false);
+      setCouponCode("");
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
+  async function removeCoupon() {
+    if (!order?.discount?.couponCode || couponBusy) return;
+    if (demo) {
+      setErr("โหมดตัวอย่างถอดคูปองไม่ได้");
+      return;
+    }
+    if (
+      !(await askConfirm({
+        icon: "🎟️",
+        title: `ถอดคูปอง ${order.discount.couponCode} ออกจากใบนี้?`,
+        detail: `ส่วนลด −${formatPrice(order.discount.amount)} จะหายไป ยอดรวมจะเพิ่มขึ้น · สิทธิ์คูปองคืนให้ลูกค้าใช้ใหม่ได้\nถ้าใบนี้เคยได้ส่วนลดระดับสมาชิก ระบบจะคิดกลับให้เอง`,
+        confirmLabel: "ถอดคูปอง",
+        danger: true,
+      }))
+    )
+      return;
+    setCouponBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/coupon", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, remove: true }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "ถอดคูปองไม่สำเร็จ");
+        return;
+      }
+      adoptOrder(keepSlipUrls(j.order, order));
+    } finally {
+      setCouponBusy(false);
     }
   }
 
@@ -7238,9 +7310,75 @@ export default function AdminOrderDetailPage() {
               ))}
               {order.discount && order.discount.amount > 0 && (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
-                  <span className="min-w-0">{order.discount.label}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0">{order.discount.label}</span>
+                    {/* 🎟️ คูปองที่แอดมินใส่ผิดใบ/ลูกค้าเปลี่ยนใจ — ถอดแล้วคืนสิทธิ์ให้คูปอง */}
+                    {order.discount.couponCode && mayEdit && seesMoney && order.status !== "ยกเลิก" && (
+                      <button
+                        type="button"
+                        onClick={removeCoupon}
+                        disabled={couponBusy}
+                        title="ถอดคูปองออกจากใบนี้ + คืนสิทธิ์ให้ลูกค้าใช้ใหม่"
+                        className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-slate-400 ring-1 ring-slate-200 transition hover:bg-rose-50 hover:text-rose-600 hover:ring-rose-200 disabled:opacity-50"
+                      >
+                        ถอดคูปอง
+                      </button>
+                    )}
+                  </span>
                   <span className="shrink-0 tabular-nums">−{formatPrice(order.discount.amount)}</span>
                 </div>
+              )}
+              {/* 🎟️ ใส่คูปองให้ลูกค้า — ลูกค้าได้คูปองมาแล้วแต่ให้แอดมินรวมยอด (ใบตัวแทน/ใบที่ใช้คูปองอยู่แล้ว/ใบยกเลิก ไม่มีช่องนี้) */}
+              {mayEdit && seesMoney && !order.dealer && !order.discount?.couponCode && order.status !== "ยกเลิก" && (
+                couponOpen ? (
+                  <form
+                    className="mt-1.5 flex items-center gap-1.5 text-xs"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void applyCoupon();
+                    }}
+                  >
+                    <span className={`shrink-0 ${muted}`}>🎟️ คูปอง</span>
+                    <input
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      placeholder="โค้ดคูปองของลูกค้า"
+                      autoFocus
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      className="w-full min-w-0 max-w-40 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-xs uppercase tracking-wider text-slate-700 focus:border-amber-300 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={couponBusy || !couponCode.trim()}
+                      className="shrink-0 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {couponBusy ? "กำลังตรวจ…" : "ใช้คูปอง"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCouponOpen(false);
+                        setCouponCode("");
+                      }}
+                      disabled={couponBusy}
+                      className="shrink-0 rounded-md px-1.5 py-1 text-xs text-slate-400 hover:text-slate-600"
+                    >
+                      ยกเลิก
+                    </button>
+                  </form>
+                ) : (
+                  <div className="mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCouponOpen(true)}
+                      title="ลูกค้าได้คูปองมาแต่ให้แอดมินรวมยอด — ใส่โค้ดแทนลูกค้าได้ที่นี่ (ตัดสิทธิ์คูปองเหมือนลูกค้าใช้เอง)"
+                      className="rounded-full px-1.5 py-0.5 text-[10px] font-bold text-slate-400 ring-1 ring-slate-200 transition hover:bg-emerald-50 hover:text-emerald-700 hover:ring-emerald-200"
+                    >
+                      ＋ ใส่คูปอง
+                    </button>
+                  </div>
+                )
               )}
               {earlyPayState(order) === "waived" ? (
                 <div

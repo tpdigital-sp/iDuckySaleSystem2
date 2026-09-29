@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, orderUnitYield, splitArtUrls, stockCheckRows } from "@/lib/products";
+import { couponErrorText, type CouponError } from "@/lib/coupons";
+
+/** เหตุผลที่คูปองไม่ถูกตัดสิทธิ์ตอนกดสั่ง (จาก /api/orders) — เป็นภาษาคน ไว้บอกลูกค้าในข้อความสรุป */
+function couponReasonText(reason?: string): string {
+  if (reason === "worse") return "ส่วนลดสมาชิกดีกว่า";
+  const known = ["notfound", "used", "usedbyyou", "void", "expired", "minspend", "notyours", "excluded"];
+  return reason && known.includes(reason) ? couponErrorText(reason as CouponError) : "ตรวจสิทธิ์ไม่ผ่าน";
+}
 import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
@@ -591,6 +599,15 @@ export default function CheckoutPage() {
      * ทำให้วันของลูกค้าคนก่อนไหลไปติดใบของลูกค้าคนถัดไปโดยไม่มีใครเห็น
      */
     clearUseByDate();
+    /**
+     * 🎟️ คูปองที่พรีวิวไว้ตัดสิทธิ์ไม่ทัน (คนอื่น/แอดมินใช้ไปก่อน · หมดสิทธิ์ระหว่างกรอก) → เซิร์ฟเวอร์เปิดใบที่ยอด "ไม่หักคูปอง"
+     * ยอดบนจอ/ข้อความไลน์ต้องเป็นยอดจริงของใบ ไม่ใช่ยอดที่หักคูปองไว้ตอนพรีวิว (29 ก.ย. 69)
+     * เหตุผลที่ใช้ซ้ำไม่ได้แล้ว → ลืมโค้ดที่จำไว้ในเครื่องด้วย ไม่งั้นรอบหน้าเด้งเตือนซ้ำ
+     */
+    const couponLost = useCoupon && !!couponPreview && !res.coupon?.applied;
+    const finalTotal = couponLost ? total + couponDisc - effTierDiscount : total;
+    if (couponLost && ["used", "usedbyyou", "void", "expired", "notyours", "notfound"].includes(res.coupon?.reason ?? ""))
+      localStorage.removeItem("ducky_coupon");
     // ลิงก์ออเดอร์ของลูกค้า — เช็คสถานะ / ดูแบบงาน / อนุมัติ (ต้องมี key ถึงเปิดได้)
     const orderUrl = `${publicOrigin()}/order/${res.orderId}${res.key ? `?key=${encodeURIComponent(res.key)}` : ""}`;
     // สร้างข้อความ LINE ก่อนล้างตะกร้า
@@ -605,18 +622,19 @@ export default function CheckoutPage() {
     });
     lines.push("━━━━━━━━━━━━━━");
     lines.push(`รวม ${totalQtyText} · จัดส่ง ${shippingCost > 0 ? formatPrice(shippingCost) : "ฟรี"}`);
-    lines.push(`ยอดชำระ: ${formatPrice(total)}`);
+    lines.push(`ยอดชำระ: ${formatPrice(finalTotal)}`);
+    if (couponLost) lines.push(`⚠️ คูปอง ${couponPreview!.code} ใช้ไม่ได้แล้ว (${couponReasonText(res.coupon?.reason)}) — ยอดนี้ยังไม่หักคูปอง`);
     lines.push("(โอนแล้วแนบรูปสลิปในแชทนี้ได้เลย)");
     lines.push(`🔗 เช็คออเดอร์/ดูแบบงาน: ${orderUrl}`);
     if (res.coupon?.applied) localStorage.removeItem("ducky_coupon"); // คูปองถูกตัดใช้แล้ว
     // 🔗 จำลิงก์ออเดอร์ไว้ในเครื่อง — ลูกค้าที่ไม่ได้สมัครสมาชิกจะกลับเข้าออเดอร์ได้จาก /order/find
     // แม้ปิดเบราว์เซอร์ไปแล้ว (เดิมลิงก์โชว์ครั้งเดียวตรงนี้ ปิดแล้วหายเลย ต้องรอแอดมินส่งให้ทางไลน์)
     // โหมดพนักงานสั่งแทนลูกค้าไม่ต้องจำ — ไม่งั้นเครื่องร้านจะสะสมออเดอร์ของลูกค้าคนอื่นไว้เต็มไปหมด
-    if (!staffMode) rememberOrderLink({ id: res.orderId, key: res.key, name: name.trim(), total });
+    if (!staffMode) rememberOrderLink({ id: res.orderId, key: res.key, name: name.trim(), total: finalTotal });
     setPlaced({
       id: res.orderId,
       text: lines.join("\n"),
-      total,
+      total: finalTotal,
       url: orderUrl,
       key: res.key,
       // งานที่แอดมินต้องตีราคาก่อน (เข้ามาที่ ฿0) — ยังโอนไม่ได้จนกว่าจะได้ราคาครบ
