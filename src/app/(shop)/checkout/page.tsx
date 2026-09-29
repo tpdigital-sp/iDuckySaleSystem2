@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, splitArtUrls, stockCheckRows } from "@/lib/products";
+import { ART_SIZE_LABEL, REUSE_ART_LABEL, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, orderUnitYield, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { useCart } from "@/lib/cart-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
@@ -481,10 +481,27 @@ export default function CheckoutPage() {
        */
       const prod = productOf(it.productId);
       const parts = prod ? feeBreakdown(prod, it.selections, it.qty, it.merged?.totalQty ?? it.qty) : [];
-      const detail =
-        parts.length && Math.abs(parts.reduce((s, f) => s + f.amount, 0) - fee) < 0.01
-          ? parts.map((f) => (f.note ? `${f.label} · ${f.note}` : f.label)).join(" + ")
-          : (it.selections["จำนวนลาย"] ?? "").trim();
+      const partsSum = parts.reduce((s, f) => s + f.amount, 0);
+      /**
+       * ⚠️ ยอดไม่ตรงกับที่แจกแจงรายบรรทัด ≠ แจกแจงไม่ได้ — ตะกร้าคิด "ค่าคละลาย" ครั้งเดียวจากทั้งล็อต (รวมของในออเดอร์เดิม
+       * ตอนสั่งเพิ่ม) แล้วเฉลี่ยลงแต่ละบรรทัด (ดู spreadMixFee ใน repriceCartGroups) ยอดต่อบรรทัดจึงไม่เท่ากับคิดเดี่ยว
+       * เดิมพอยอดไม่ตรงก็ถอยไปเขียนแค่ "(3 ลาย)" → เจ้าของร้านอ่านไม่ออกว่าค่าอะไร (OD-260924-2339 · 29 ก.ย. 69)
+       * → ยังใช้ "ชื่อ" จากการแจกแจง (ไม่เอาตัวเลข) + บอกว่าเฉลี่ยจากล็อตรวม · ไม่มีอะไรแจกแจงได้เลยแต่มียอด = ค่าคละลายของล็อต
+       */
+      const lotUnit = (prod && orderUnitYield(prod, it.selections)?.unit) || "หน่วย";
+      const lotNote =
+        it.merged && it.merged.lines > 1 ? ` · เฉลี่ยจากล็อตรวม ${it.merged.totalQty.toLocaleString("th-TH")} ${lotUnit}` : "";
+      const designs = (it.selections["จำนวนลาย"] ?? "").trim();
+      const mixTail = `${designs ? ` · คละ ${designs}` : ""}${lotNote}`;
+      let detail: string;
+      if (parts.length && Math.abs(partsSum - fee) < 0.01) {
+        detail = parts.map((f) => (f.note ? `${f.label} · ${f.note}` : f.label)).join(" + ");
+      } else {
+        // ค่าประจำบรรทัด (ต่อลาย/ต่อแผ่น) ยังชื่อเดิม · ส่วนต่างที่เหลือคือค่าคละลายของล็อต — ต้องมีคำว่า "ค่าคละลาย" เสมอ
+        const labels = parts.map((f) => f.label);
+        if (!labels.some((l) => l.includes("ค่าคละลาย"))) labels.push("ค่าคละลาย");
+        detail = labels.join(" + ") + mixTail;
+      }
       orderItems.push({
         productId: `${it.productId}#designfee`,
         name: `🎨 Add on — ${prod?.name ?? it.productId}${detail ? ` (${detail})` : ""}`,
