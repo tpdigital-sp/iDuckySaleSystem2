@@ -1832,7 +1832,20 @@ export default function AdminOrderDetailPage() {
   /** ลบสลิป (เฉพาะผู้ดูแลระบบ) — รีเซ็ตการแจ้งโอน ออเดอร์กลับเป็น รอชำระเงิน */
   async function deleteSlip() {
     if (!order) return;
-    if (!(await askConfirm({ icon: "🧾", title: `ลบสลิปของ ${order.id}?`, detail: 'การแจ้งโอนจะถูกรีเซ็ต ออเดอร์กลับเป็น "รอชำระเงิน" ให้ลูกค้าแนบใหม่', confirmLabel: "ลบสลิป", danger: true }))) return;
+    // ใบที่เลยขั้นตรวจเงินแล้ว (ทำแบบ→เสร็จสิ้น) เซิร์ฟเวอร์จะลบเฉพาะไฟล์ ไม่รีเซ็ตสถานะ — บอกให้ตรงกับที่จะเกิดจริง
+    const pastPayment = order.status !== "รอชำระเงิน" && order.status !== "รอตรวจสอบ" && order.status !== "ชำระแล้ว";
+    const ok = await askConfirm(
+      pastPayment
+        ? {
+            icon: "🧾",
+            title: `ลบไฟล์สลิปใบแรกของ ${order.id}?`,
+            detail: `ออเดอร์อยู่สถานะ "${order.status}" แล้ว — จะลบเฉพาะไฟล์สลิปกับผลตรวจ สถานะและยอดที่รับแล้วคงเดิม (ใช้ตอนสลิปผิดใบ/โอนผิดบัญชี)`,
+            confirmLabel: "ลบไฟล์สลิป",
+            danger: true,
+          }
+        : { icon: "🧾", title: `ลบสลิปของ ${order.id}?`, detail: 'การแจ้งโอนจะถูกรีเซ็ต ออเดอร์กลับเป็น "รอชำระเงิน" ให้ลูกค้าแนบใหม่', confirmLabel: "ลบสลิป", danger: true }
+    );
+    if (!ok) return;
     const res = await fetch("/api/admin/orders/slip", {
       method: "DELETE",
       headers: { "content-type": "application/json" },
@@ -1840,7 +1853,10 @@ export default function AdminOrderDetailPage() {
     });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setErr(j.error ?? "ลบสลิปไม่สำเร็จ");
+      // แถบ err อยู่เหนือตารางรายการ ไกลจากการ์ดสลิป — เด้งบอกตรงนี้ด้วย ไม่งั้นดูเหมือน "กดแล้วไม่มีอะไรเกิดขึ้น"
+      const msg = j.error ?? "ลบสลิปไม่สำเร็จ";
+      setErr(msg);
+      await askConfirm({ icon: "⚠️", title: "ลบสลิปไม่สำเร็จ", detail: msg, confirmLabel: "ปิด" });
       return;
     }
     adoptOrder(j.order);

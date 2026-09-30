@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { deleteStockItem, listStock, saveStockItem } from "@/lib/server/stock";
+import { deleteStockItem, listStock, recordUnlinked, saveStockItem, type UnlinkedRef } from "@/lib/server/stock";
 import { createClient } from "@supabase/supabase-js";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { getProductsSlim, invalidateProductsSlim } from "@/lib/server/products-slim";
@@ -112,11 +112,16 @@ export async function DELETE(req: Request) {
         ? await sb.from("products").select("id,data").in("id", refIds)
         : { data: [] as { id: string; data: unknown }[] }
       : await sb.from("products").select("id,data"); // slim พัง → ทางเดิม
-    type Ch = { name: string; stockItemId?: string; stockLinks?: { stockItemId: string }[] };
+    type Ch = { name: string; stockItemId?: string; stockQtyPer?: number; stockLinks?: { stockItemId: string; per?: number; when?: { label: string; choices: string[] }[] }[] };
     const hits = (c: Ch) => c.stockItemId === id || (c.stockLinks ?? []).some((l) => l.stockItemId === id);
-    const strip = (chs: Ch[]) =>
+    // จดทุกลิงก์ที่ถอด — กู้คืนแล้วผูกกลับได้ครบ ไม่ต้องไล่ผูกใหม่ (ลบผิดตัวแล้วสินค้าเลิกตัดสต๊อกเงียบ ๆ 30 ก.ย. 69)
+    const refs: UnlinkedRef[] = [];
+    const strip = (chs: Ch[], rowId: string, label?: string, optionIndex?: number) =>
       chs.map((c) => {
         if (!hits(c)) return c;
+        if (c.stockItemId === id) refs.push({ rowId, label, optionIndex, choice: c.name, main: true, ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}) });
+        for (const l of c.stockLinks ?? [])
+          if (l.stockItemId === id) refs.push({ rowId, label, optionIndex, choice: c.name, extra: { ...(l.per ? { per: l.per } : {}), when: l.when ?? [] } });
         const rest = (c.stockLinks ?? []).filter((l) => l.stockItemId !== id);
         const drop = [...(c.stockItemId === id ? ["stockItemId", "stockQtyPer"] : []), ...(rest.length ? [] : ["stockLinks"])];
         const base = Object.fromEntries(Object.entries(c).filter(([k]) => !drop.includes(k))) as Ch;
@@ -129,13 +134,14 @@ export async function DELETE(req: Request) {
       const hitProduct = !r.id.startsWith("__") && (d.options ?? []).some((o) => ((o.choices ?? []) as Ch[]).some(hits));
       if (!hitPreset && !hitProduct) continue;
       const next = hitPreset
-        ? { ...d, choices: strip(d.choices ?? []) }
-        : { ...d, options: (d.options ?? []).map((o) => ({ ...o, choices: strip((o.choices ?? []) as Ch[]) })) };
+        ? { ...d, choices: strip(d.choices ?? [], r.id) }
+        : { ...d, options: (d.options ?? []).map((o, oi) => ({ ...o, choices: strip((o.choices ?? []) as Ch[], r.id, o.label, oi) })) };
       await snapshotRevision(sb, r.id, d, actor, "save");
       const { error } = await sb.from("products").update({ data: next }).eq("id", r.id);
       if (!error) unlinked++;
     }
     if (unlinked) invalidateProductsSlim();
+    if (refs.length) await recordUnlinked(id, refs).catch(() => undefined); // จดไม่ได้ก็ไม่ควรทำให้ลบล้ม
   }
   return NextResponse.json({ ok: true, item, unlinked });
 }

@@ -253,8 +253,9 @@ export async function POST(req: Request) {
     const when = (linkExtra.when ?? [])
       .map((w) => ({ label: (w?.label ?? "").trim(), choices: [...new Set((w?.choices ?? []).map((c) => String(c).trim()).filter(Boolean))] }))
       .filter((w) => w.label && w.choices.length);
-    if (!when.length)
-      return NextResponse.json({ error: "ต้องมีเงื่อนไขอย่างน้อย 1 ข้อ — ถ้าตัดทุกครั้งอยู่แล้ว ให้ผูกแบบปกติหรือตั้งเป็นวัสดุแฝงแทน" }, { status: 400 });
+    // when ว่าง = "วัสดุแฝงของตัวเลือก": ตัดทุกครั้งที่ลูกค้าเลือกค่านี้ โดยไม่ต้องดูกลุ่มอื่น
+    // (ฐาน Griptok ตามสีที่เลือก — ตัวเลือกมี stockItemId หลักได้ตัวเดียว ของชิ้นที่ 2 จึงมาทางนี้ · เจ้าของร้านขอ 30 ก.ย. 69)
+    // planStockCuts มอง when ว่างเป็นเข้าเงื่อนไขเสมออยู่แล้ว ([].every = true)
     for (const w of when) {
       if (w.label === opts[oi].label)
         return NextResponse.json({ error: `เงื่อนไขต้องเป็นกลุ่มอื่น — "${w.label}" เป็นกลุ่มเดียวกับตัวหลัก` }, { status: 400 });

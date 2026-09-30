@@ -82,6 +82,11 @@ export interface StockItem {
   /** ลบ = ปิดการใช้งาน (active=false) เก็บเอกสารไว้ให้ ledger ยังอ้างถึงได้ · เวลาที่กดลบ */
   deletedAt?: string;
   deletedBy?: string;
+  /**
+   * 🔗 ลิงก์ตัวเลือกที่ถูกถอดตอนลบ (route DELETE บันทึกให้) — กู้คืนแล้วผูกกลับได้ครบ
+   * ⚠️ ไม่มีตัวนี้ = กู้กลับมาแล้ว "ยังไม่ผูกสินค้า" ต้องไล่ผูกใหม่เอง (ฐาน Griptok · สีดำ 30 ก.ย. 69 ลบแล้วสีดำของ 3 สินค้าไม่ตัดสต๊อกเงียบ ๆ)
+   */
+  unlinkedFrom?: UnlinkedRef[];
   createdAt: string;
   updatedAt: string;
 }
@@ -227,6 +232,53 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
   const clean = Object.fromEntries(Object.entries(item).filter(([, v]) => v !== undefined)) as StockItem;
   await ref.set(clean);
   return clean;
+}
+
+/** ตัวเลือกหนึ่งค่าที่เคยชี้มา SKU นี้ก่อนถูกลบ — rowId = product id หรือ __preset_<id> · main = เป็น stockItemId หลัก · extra = อยู่ใน stockLinks */
+export type UnlinkedRef = {
+  rowId: string;
+  label?: string;
+  optionIndex?: number;
+  choice: string;
+  main?: boolean;
+  stockQtyPer?: number;
+  extra?: { per?: number; when: { label: string; choices: string[] }[] };
+};
+
+/** จดว่าลบแล้วถอดลิงก์จากตัวเลือกไหนบ้าง (เรียกจาก route DELETE หลังไล่ถอดเสร็จ) */
+export async function recordUnlinked(id: string, refs: UnlinkedRef[]): Promise<void> {
+  const db = getStockDb();
+  if (!db || !refs.length) return;
+  await db.collection(STOCK_ITEMS).doc(id).update({ unlinkedFrom: refs });
+}
+
+/** SKU ที่ถูกลบ (soft delete) ล่าสุดก่อน — ไว้ให้กู้คืนจากหน้าจอ */
+export async function listDeletedStock(limit = 100): Promise<StockItem[]> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const snap = await db.collection(STOCK_ITEMS).where("active", "==", false).get();
+  return snap.docs
+    .map((d) => d.data() as StockItem)
+    .sort((a, b) => (b.deletedAt ?? "").localeCompare(a.deletedAt ?? ""))
+    .slice(0, limit);
+}
+
+/**
+ * กู้คืน SKU ที่ลบไป — เปิด active กลับ ลบร่องรอยการลบ · คืนรายการลิงก์ที่เคยถอดไว้ให้ route ไปผูกกลับ
+ * (null = ไม่พบ · ถ้ายังไม่ได้ถูกลบก็คืนตัวเดิมพร้อม refs ว่าง)
+ */
+export async function restoreStockItem(id: string): Promise<{ item: StockItem; refs: UnlinkedRef[] } | null> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const ref = db.collection(STOCK_ITEMS).doc(id);
+  const cur = (await ref.get()).data() as StockItem | undefined;
+  if (!cur) return null;
+  if (cur.active !== false) return { item: cur, refs: [] };
+  const refs = cur.unlinkedFrom ?? [];
+  await ref.update({ active: true, deletedAt: FieldValue.delete(), deletedBy: FieldValue.delete(), unlinkedFrom: FieldValue.delete(), updatedAt: new Date().toISOString() });
+  const { deletedAt: _a, deletedBy: _b, unlinkedFrom: _c, ...rest } = cur; // eslint-disable-line @typescript-eslint/no-unused-vars
+  return { item: { ...rest, active: true }, refs };
 }
 
 /**

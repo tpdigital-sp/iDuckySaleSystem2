@@ -252,6 +252,8 @@ export default function StockPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [editFor, setEditFor] = useState<Item | null>(null);
   const [countFor, setCountFor] = useState<Item | null>(null);
+  /** 🗑↩ โมดัล "ที่ลบไปแล้ว" — กู้คืน SKU ที่ลบผิดตัว (เดิมกู้ได้แค่แก้ Firestore เอง) */
+  const [deletedOpen, setDeletedOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   /** สินค้าที่กำลังแยกสต๊อกตามตัวเลือก */
   const [splitFor, setSplitFor] = useState<{ id: string; name: string } | null>(null);
@@ -623,6 +625,42 @@ export default function StockPage() {
   }
 
   /**
+   * 📦 งานขายเป็นเซ็ตฝั่ง "ตัวเลือก/คลังกลาง" — เข็มกลัด 1 เซ็ต (ตัวเลือกขนาด) = 10 ชิ้น
+   * เขียน choice.stockQtyPer ผ่าน POST /api/admin/stock/link (body มีแค่ stockQtyPer = โหมดตั้งอัตรา · 1 = ลบคีย์)
+   * ลิงก์แบบมีเงื่อนไข (extra) ไม่รับที่นี่ — จำนวนของมันอยู่ใน stockLinks[].per ต้องส่ง when กลับไปด้วย แก้ที่ฟอร์ม "ตัดเพิ่ม" แทน
+   */
+  async function setChoicePer(itemId: string, u: StockUsage, per: number): Promise<boolean> {
+    if (u.kind === "product" || ("extra" in u && u.extra)) return false;
+    setErr("");
+    const body =
+      u.kind === "preset"
+        ? { presetId: u.presetId, choice: u.choice, stockQtyPer: per }
+        : { productId: u.productId, label: u.label, optionIndex: u.optionIndex, choice: u.choice, stockQtyPer: per };
+    const res = await fetch("/api/admin/stock/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "ตั้งจำนวนต่อชุดไม่สำเร็จ");
+      return false;
+    }
+    const saved: number = j.stockQtyPer ?? 1;
+    setUsage((m) => ({
+      ...m,
+      [itemId]: (m[itemId] ?? []).map((x) => {
+        if (x.kind === "product" || x.kind !== u.kind || x.choice !== u.choice) return x;
+        if (x.kind === "preset") return u.kind === "preset" && x.presetId === u.presetId ? { ...x, per: saved } : x;
+        return u.kind === "choice" && x.productId === u.productId && x.optionIndex === u.optionIndex && !x.extra ? { ...x, per: saved } : x;
+      }),
+    }));
+    const unit = items.find((i) => i.id === itemId)?.unit ?? "";
+    setOk(saved > 1 ? `ตั้งแล้ว — ${u.label} = ${u.choice} สั่ง 1 ที่ ตัด ${saved} ${unit}` : "กลับไปตัด 1 ต่อ 1 แล้ว");
+    return true;
+  }
+
+  /**
    * ➕ ผูก SKU ตัวนี้เป็น "ของที่ตัดเพิ่มแบบมีเงื่อนไข" ของตัวเลือกหนึ่งในสินค้า
    * เขียนลง choices[ตัวหลัก].stockLinks — คืนข้อความ error ถ้าไม่สำเร็จ (null = สำเร็จ)
    * โหลดลิงก์ใหม่ทั้งชุดหลังผูก เพราะแถวลูกที่ห้อยใต้ตัวหลักต้องคำนวณจาก usage ของอีกตัว
@@ -643,7 +681,7 @@ export default function StockPage() {
     const j = await res.json().catch(() => null);
     if (!res.ok || !j?.ok) return j?.error ?? "ผูกไม่สำเร็จ";
     await loadImages(true);
-    setOk(`ผูกแล้ว — ${pl.label} = ${pl.choice} จะตัด ${nameOfId.get(pl.stockItemId) ?? ""} เพิ่มตามเงื่อนไข`);
+    setOk(`บันทึกวัสดุแฝงแล้ว — เลือก ${pl.label} = ${pl.choice} จะตัด ${nameOfId.get(pl.stockItemId) ?? ""} ด้วย${pl.when.length ? " (ตามเงื่อนไข)" : ""}`);
     return null;
   }
 
@@ -811,7 +849,7 @@ export default function StockPage() {
     const ok = await confirm({
       icon: "🗑",
       title: `ลบวัสดุ “${it.name}” ไหม?`,
-      detail: `หายจากคลังและไม่ถูกตัดสต๊อกตอนขายอีก · ตัวเลือกสินค้าที่ผูกกับตัวนี้จะถูกถอดลิงก์ให้เอง\nประวัติการเคลื่อนไหวและต้นทุนในรายงานยังอยู่ครบ${bal}`,
+      detail: `หายจากคลังและไม่ถูกตัดสต๊อกตอนขายอีก · ตัวเลือกสินค้าที่ผูกกับตัวนี้จะถูกถอดลิงก์ให้เอง\nกู้คืนได้จากปุ่ม “ที่ลบไปแล้ว” (ลิงก์จะกลับมาด้วย) · ประวัติการเคลื่อนไหวและต้นทุนในรายงานยังอยู่ครบ${bal}`,
       confirmLabel: "ลบวัสดุ",
       danger: true,
     });
@@ -1029,6 +1067,11 @@ export default function StockPage() {
               />
               {untracked.length > 0 && (
                 <FChip on={filter === "ไม่ต้องมีสต๊อก"} onClick={() => setFilter("ไม่ต้องมีสต๊อก")} label="ไม่ต้องมี stock" count={untracked.length} />
+              )}
+              {mayEdit && (
+                <button type="button" onClick={() => setDeletedOpen(true)} className={`${btnSmGhost} whitespace-nowrap`} title="SKU ที่ถูกลบ — กู้คืนพร้อมลิงก์ตัวเลือกเดิม">
+                  ที่ลบไปแล้ว…
+                </button>
               )}
             </TabRow>
             <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
@@ -1313,7 +1356,7 @@ export default function StockPage() {
                 for (const u of live[r.id] ?? []) {
                   if (u.kind !== "choice" || u.productId !== productId || u.extra) continue;
                   for (const x of recipes.get(productId)?.picks.get(`${u.optionIndex}|${u.choice}`)?.extra ?? [])
-                    add(byId.get(x.id), x.cond ? `ตัดเพิ่มถ้า ${x.cond}` : "ตัดเพิ่มเมื่อเลือกตัวเลือกนี้");
+                    add(byId.get(x.id), x.cond ? `วัสดุแฝงของตัวเลือก · ตัดเมื่อ ${x.cond}` : "วัสดุแฝงของตัวเลือก · ตัดทุกครั้งที่เลือกค่านี้");
                 }
                 for (const b of bom) {
                   const per = (live[b.id] ?? []).find((u) => u.kind === "product" && u.bom && u.productId === productId)?.per;
@@ -1631,6 +1674,7 @@ export default function StockPage() {
           onLink={(t) => linkChoice(openItem.id, t, true)}
           onUnlink={(t) => linkChoice(openItem.id, t, false)}
           onProductPer={(u, n) => setProductPer(openItem.id, u, n)}
+          onChoicePer={(u, n) => setChoicePer(openItem.id, u, n)}
           onLinkExtra={linkExtra}
           onUnlinkHang={unlinkHang}
           stat={stats.get(openItem.id)}
@@ -1734,6 +1778,16 @@ export default function StockPage() {
         />
       )}
 
+      {deletedOpen && (
+        <DeletedModal
+          onClose={() => setDeletedOpen(false)}
+          onRestored={async (name, relinked, skipped) => {
+            setErr("");
+            setOk(`กู้คืน ${name} แล้ว${relinked ? ` · ผูกกลับตัวเลือกสินค้า ${fmtN(relinked)} รายการ` : ""}${skipped.length ? ` · ข้าม ${skipped.join(", ")}` : ""}`);
+            await load();
+          }}
+        />
+      )}
       {countFor && (
         <CountModal
           item={countFor}
@@ -2198,6 +2252,7 @@ function ItemDrawer({
   onLink,
   onUnlink,
   onProductPer,
+  onChoicePer,
   onLinkExtra,
   onUnlinkHang,
   stat,
@@ -2225,6 +2280,8 @@ function ItemDrawer({
   onUnlink: (t: StockUsage) => Promise<boolean>;
   /** 📦 งานขายเป็นเซ็ต — ตั้งว่า 1 ที่ลูกค้าสั่งตัดกี่หน่วย (เฉพาะลิงก์กับตัวสินค้า) */
   onProductPer: (u: StockUsage, per: number) => Promise<boolean>;
+  /** 📦 อย่างเดียวกันแต่ฝั่งลิงก์กับตัวเลือก/คลังกลาง (choice.stockQtyPer) — ไม่รวมลิงก์มีเงื่อนไข */
+  onChoicePer: (u: StockUsage, per: number) => Promise<boolean>;
   onLinkExtra: (p: ExtraLinkPayload) => Promise<string | null>;
   onUnlinkHang: (h: HangRow) => Promise<boolean>;
   stat?: Stat;
@@ -2387,6 +2444,7 @@ function ItemDrawer({
             onLink={onLink}
             onUnlink={onUnlink}
             onProductPer={onProductPer}
+            onChoicePer={onChoicePer}
             onLinkExtra={onLinkExtra}
             onUnlinkHang={onUnlinkHang}
             onEdit={onEdit}
@@ -2429,39 +2487,48 @@ function ItemDrawer({
         </div>
 
         {mayEdit && (
-          <footer className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
-            {/* รับของเข้าคลังได้จากตรงนี้เลย — ของที่ไม่ได้อยู่ในกลุ่ม "ชนิดของ" (เช่นวัสดุแฝง) เดิมไม่มีทางรับเข้า ต้องไปใช้ "นับจริง" แทน */}
-            {!item.noStock && (
-              <>
-                <button type="button" onClick={() => onMove("in")} className={`${btnSmNeutral} flex-1`}>
-                  ＋ รับเข้า
-                </button>
-                <button type="button" onClick={() => onMove("out")} className={`${btnSmNeutral} flex-1`}>
-                  − เบิก
-                </button>
-              </>
-            )}
-            <button type="button" onClick={onCount} className={`${btnSmNeutral} flex-1`}>
-              นับจริง
-            </button>
-            <button type="button" onClick={onEdit} className={`${btnSmNeutral} flex-1`}>
-              แก้ไข
-            </button>
-            {!item.noStock && (
-              <button type="button" onClick={() => onNoStock(true)} className={btnSmGhost} title="ของสั่งผลิตตามออเดอร์ / ไม่เก็บของไว้ที่ร้าน">
-                🚫 ไม่ต้องมี stock
+          /*
+           * แถบปุ่มท้ายลิ้นชัก 2 ชั้น (เจ้าของร้านขอออกแบบใหม่ 30 ก.ย. 69 — เดิม flex-wrap ปุ่มแตกคำ "รับ/เข้า" 3 บรรทัดบนมือถือ)
+           *   บน = งานประจำที่ทำทุกวัน: รับเข้า / เบิก / นับจริง — ช่องเท่ากัน สูง 44 กดด้วยนิ้วโป้ง ห้ามตัดคำ
+           *   ล่าง = งานนาน ๆ ครั้ง: แก้ไข · ไม่ต้องมี stock · ลบ — ตัวเล็ก ลบอยู่ขวาสุดสีอันตราย ไม่ปนกับปุ่มงานประจำ
+           */
+          <footer className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+            <div className={`grid gap-2 ${item.noStock ? "grid-cols-1" : "grid-cols-3"}`}>
+              {/* รับของเข้าคลังได้จากตรงนี้เลย — ของที่ไม่ได้อยู่ในกลุ่ม "ชนิดของ" (เช่นวัสดุแฝง) เดิมไม่มีทางรับเข้า ต้องไปใช้ "นับจริง" แทน */}
+              {!item.noStock && (
+                <>
+                  <button type="button" onClick={() => onMove("in")} className={`${btnNeutral} min-h-[44px] whitespace-nowrap !px-2`}>
+                    <span aria-hidden className="mr-1 text-emerald-600">＋</span>รับเข้า
+                  </button>
+                  <button type="button" onClick={() => onMove("out")} className={`${btnNeutral} min-h-[44px] whitespace-nowrap !px-2`}>
+                    <span aria-hidden className="mr-1 text-rose-500">−</span>เบิก
+                  </button>
+                </>
+              )}
+              <button type="button" onClick={onCount} className={`${btnNeutral} min-h-[44px] whitespace-nowrap !px-2`}>
+                นับจริง
               </button>
-            )}
-            {/* ลบอยู่ท้ายสุดและเป็นไอคอน — งานนาน ๆ ครั้ง ไม่ให้เผลอกดแทนแก้ไข */}
-            <button
-              type="button"
-              onClick={onDelete}
-              className={`${btnSmGhost} ${TONE.danger.text}`}
-              title="ลบวัสดุนี้ออกจากคลัง"
-              aria-label="ลบวัสดุนี้ออกจากคลัง"
-            >
-              🗑 ลบ
-            </button>
+            </div>
+            <div className="mt-2 flex items-center gap-1">
+              <button type="button" onClick={onEdit} className={`${btnSmGhost} whitespace-nowrap`}>
+                แก้ไขข้อมูล
+              </button>
+              {!item.noStock && (
+                <button type="button" onClick={() => onNoStock(true)} className={`${btnSmGhost} whitespace-nowrap`} title="ของสั่งผลิตตามออเดอร์ / ไม่เก็บของไว้ที่ร้าน">
+                  ไม่ต้องมี stock
+                </button>
+              )}
+              {/* ลบอยู่ขวาสุดแยกจากปุ่มอื่น — งานนาน ๆ ครั้ง ไม่ให้เผลอกดแทนแก้ไข */}
+              <button
+                type="button"
+                onClick={onDelete}
+                className={`${btnSmGhost} ml-auto whitespace-nowrap ${TONE.danger.text}`}
+                title="ลบวัสดุนี้ออกจากคลัง"
+                aria-label="ลบวัสดุนี้ออกจากคลัง"
+              >
+                ลบ
+              </button>
+            </div>
           </footer>
         )}
       </aside>
@@ -2682,6 +2749,81 @@ function CountModal({ item, onClose, onSave }: { item: Item; onClose: () => void
   );
 }
 
+/**
+ * 🗑↩ รายการ SKU ที่ลบไปแล้ว + ปุ่มกู้คืน (GET/POST /api/admin/stock/restore)
+ * เกิดจาก 30 ก.ย. 69: ลบ "ฐาน Griptok · สีดำ" ผิดตัว → ตัวเลือกสีดำของ 3 สินค้าเลิกตัดสต๊อกเงียบ ๆ และไม่มีทางเอากลับจากหน้าจอ
+ * กู้คืน = เปิดกลับ + ผูกกลับตัวเลือกที่เคยชี้มา (ค่าที่ไปผูกตัวอื่นแทนแล้วจะไม่ทับ)
+ */
+type DeletedRow = { id: string; code?: string; name: string; unit: string; family?: string; imageUrl?: string; deletedAt?: string; deletedBy?: string; links: number };
+function DeletedModal({ onClose, onRestored }: { onClose: () => void; onRestored: (name: string, relinked: number, skipped: string[]) => Promise<void> }) {
+  const [rows, setRows] = useState<DeletedRow[] | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+
+  const reload = useCallback(async () => {
+    const res = await fetch("/api/admin/stock/restore");
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "อ่านรายการที่ลบไม่ได้");
+      setRows([]);
+      return;
+    }
+    setRows(j.items ?? []);
+  }, []);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const restore = async (r: DeletedRow) => {
+    setBusy(r.id);
+    setErr("");
+    const res = await fetch("/api/admin/stock/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) });
+    const j = await res.json().catch(() => null);
+    setBusy(null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "กู้คืนไม่สำเร็จ");
+      return;
+    }
+    setRows((rs) => (rs ?? []).filter((x) => x.id !== r.id));
+    await onRestored(r.name, j.relinked ?? 0, j.skipped ?? []);
+  };
+
+  const n = q.trim().toLowerCase();
+  const shown = (rows ?? []).filter((r) => !n || r.name.toLowerCase().includes(n) || (r.code ?? "").toLowerCase().includes(n));
+  return (
+    <Modal title="ที่ลบไปแล้ว" subtitle="กู้คืนได้ทุกตัว — ลิงก์กับตัวเลือกสินค้าที่เคยผูกจะกลับมาด้วย" onClose={onClose}>
+      {rows && rows.length > 6 && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อ/รหัส…" className={`${inputCls} mb-2`} />}
+      {err && <p className={`mb-2 rounded-lg px-2 py-1.5 text-[12px] ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
+      {!rows ? (
+        <p className="py-6 text-center text-xs text-slate-400">กำลังโหลด…</p>
+      ) : !shown.length ? (
+        <p className="py-6 text-center text-xs text-slate-400">{rows.length ? "ไม่มีรายการที่ตรงกับคำค้น" : "ไม่มีวัสดุที่ถูกลบ"}</p>
+      ) : (
+        <ul className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">
+          {shown.map((r) => (
+            <li key={r.id} className="flex items-center gap-2.5 px-2.5 py-2">
+              <Thumb src={r.imageUrl} name={r.name} size={36} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-slate-900">{r.name}</span>
+                <span className="block truncate text-[11px] text-slate-400">
+                  {r.code ? `${r.code} · ` : ""}
+                  {r.deletedAt ? `ลบเมื่อ ${fmtAt(r.deletedAt)}` : "ลบแล้ว"}
+                  {r.deletedBy ? ` โดย ${r.deletedBy}` : ""}
+                  {r.links ? ` · เคยผูก ${fmtN(r.links)} ตัวเลือก` : ""}
+                </span>
+              </span>
+              <button type="button" disabled={busy === r.id} onClick={() => void restore(r)} className={`${btnSmNeutral} whitespace-nowrap`}>
+                {busy === r.id ? "กำลังกู้…" : "กู้คืน"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
 function Modal({
   title,
   subtitle,
@@ -2796,6 +2938,40 @@ function LinkCell({
 }
 
 /** ลิ้นชัก: ขายอะไรแล้วตัด SKU ตัวนี้ + คู่ที่น่าจะใช่ (กดผูกได้เลย) */
+/**
+ * ช่อง "ตัด __ หน่วย" ของแถวลิงก์ในลิ้นชัก — บันทึกตอนออกจากช่อง/Enter (ไม่ยิงทุกตัวอักษร) · ว่าง/1 = 1 ต่อ 1
+ * ใช้ทั้งลิงก์กับตัวสินค้า (productQtyPer) และลิงก์กับตัวเลือก/คลังกลาง (choice.stockQtyPer)
+ */
+function PerField({ per, unit, ariaLabel, onSave }: { per?: number; unit: string; ariaLabel: string; onSave: (n: number) => void }) {
+  const cur = per && per > 1 ? String(per) : "";
+  return (
+    <label className="flex shrink-0 items-center gap-1 text-[12px] text-slate-500" title="ตัดสต๊อก = จำนวนที่ลูกค้าสั่ง × ค่านี้ (งานขายเป็นเซ็ต)">
+      ตัด
+      <input
+        key={cur}
+        defaultValue={cur}
+        placeholder="1"
+        inputMode="decimal"
+        aria-label={ariaLabel}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        onBlur={(e) => {
+          const t = e.target.value.trim();
+          const n = t === "" ? 1 : Number(t);
+          if (!Number.isFinite(n) || n <= 0) {
+            e.target.value = cur;
+            return;
+          }
+          if (n !== (per ?? 1)) onSave(n);
+        }}
+        className={`${inputCls.replace("w-full ", "")} !h-9 w-14 text-right tabular-nums`}
+      />
+      {unit}
+    </label>
+  );
+}
+
 function UsagePanel({
   item,
   usage,
@@ -2808,6 +2984,7 @@ function UsagePanel({
   onLink,
   onUnlink,
   onProductPer,
+  onChoicePer,
   onLinkExtra,
   onUnlinkHang,
   onEdit,
@@ -2824,6 +3001,8 @@ function UsagePanel({
   onUnlink: (t: StockUsage) => Promise<boolean>;
   /** 📦 งานขายเป็นเซ็ต — ตั้งว่า 1 ที่ลูกค้าสั่งตัดกี่หน่วย (เฉพาะลิงก์กับตัวสินค้า) */
   onProductPer: (u: StockUsage, per: number) => Promise<boolean>;
+  /** 📦 อย่างเดียวกันแต่ฝั่งลิงก์กับตัวเลือก/คลังกลาง (choice.stockQtyPer) — ไม่รวมลิงก์มีเงื่อนไข */
+  onChoicePer: (u: StockUsage, per: number) => Promise<boolean>;
   onLinkExtra: (p: ExtraLinkPayload) => Promise<string | null>;
   onUnlinkHang: (h: HangRow) => Promise<boolean>;
   onEdit: () => void;
@@ -2880,34 +3059,31 @@ function UsagePanel({
                   (u.kind === "product" && !u.bom ? (
                     <>
                       {/* งานขายเป็นเซ็ต: 1 ที่ลูกค้าสั่ง = หลายหน่วยในคลัง — ว่าง/1 = 1 ต่อ 1 */}
-                      <label className="flex shrink-0 items-center gap-1 text-[12px] text-slate-500" title="ตัดสต๊อก = จำนวนที่ลูกค้าสั่ง × ค่านี้ (งานขายเป็นเซ็ต)">
-                        ตัด
-                        <input
-                          defaultValue={u.per && u.per > 1 ? String(u.per) : ""}
-                          placeholder="1"
-                          inputMode="decimal"
-                          aria-label={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.productName}`}
-                          onBlur={(e) => {
-                            const t = e.target.value.trim();
-                            const n = t === "" ? 1 : Number(t);
-                            if (!Number.isFinite(n) || n <= 0) {
-                              e.target.value = u.per && u.per > 1 ? String(u.per) : "";
-                              return;
-                            }
-                            if (n !== (u.per ?? 1)) void run(k, () => onProductPer(u, n));
-                          }}
-                          className={`${inputCls.replace("w-full ", "")} !h-9 w-14 text-right tabular-nums`}
-                        />
-                        {item.unit}
-                      </label>
+                      <PerField
+                        per={u.per}
+                        unit={item.unit}
+                        ariaLabel={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.productName}`}
+                        onSave={(n) => run(k, () => onProductPer(u, n))}
+                      />
                       <button type="button" onClick={onEdit} className={btnSmGhost}>
                         แก้
                       </button>
                     </>
                   ) : (
-                    <button type="button" disabled={busy === k} onClick={() => run(k, () => onUnlink(u))} className={btnSmGhost}>
-                      {busy === k ? "…" : "ถอด"}
-                    </button>
+                    <>
+                      {/* ลิงก์กับตัวเลือก/คลังกลางก็ขายเป็นเซ็ตได้ (เข็มกลัด 1 เซ็ต = 10 ชิ้น) — ลิงก์มีเงื่อนไขแก้จำนวนที่ฟอร์ม "ตัดเพิ่ม" */}
+                      {u.kind !== "product" && !("extra" in u && u.extra) && (
+                        <PerField
+                          per={u.per}
+                          unit={item.unit}
+                          ariaLabel={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.label} = ${u.choice}`}
+                          onSave={(n) => run(k, () => onChoicePer(u, n))}
+                        />
+                      )}
+                      <button type="button" disabled={busy === k} onClick={() => run(k, () => onUnlink(u))} className={btnSmGhost}>
+                        {busy === k ? "…" : "ถอด"}
+                      </button>
+                    </>
                   ))}
               </li>
             );
@@ -2961,8 +3137,8 @@ function UsagePanel({
                             h.bomFor?.length ? ` ของ ${h.bomFor.map((x) => x.productName).join(" · ")}` : ""
                           }`
                         : h.cond
-                          ? `ตัดเพิ่มถ้า ${h.cond}`
-                          : "ตัดเพิ่มเมื่อเลือกตัวเลือกนี้"}
+                          ? `วัสดุแฝงของตัวเลือก · ตัดเมื่อ ${h.cond}`
+                          : "วัสดุแฝงของตัวเลือก · ตัดทุกครั้งที่เลือกค่านี้"}
                     </span>
                   </span>
                   {mayEdit && (h.kind === "extra" || !!h.bomFor?.length) && (
@@ -2994,8 +3170,8 @@ function UsagePanel({
           onClose={() => setAddExtra(false)}
         />
       ) : (
-        <button type="button" onClick={() => setAddExtra(true)} className={`${btnSmNeutral} mt-2`}>
-          ＋ ตัดเพิ่มแบบมีเงื่อนไข
+        <button type="button" onClick={() => setAddExtra(true)} className={`${btnSmNeutral} mt-2`} title="ของที่ต้องตัดเพิ่มทุกครั้งที่ลูกค้าเลือกค่านี้ (หรือต่อเมื่อกลุ่มอื่นตรงเงื่อนไขด้วย)">
+          ＋ วัสดุแฝงของตัวเลือกนี้
         </button>
       ))}
 
@@ -3023,12 +3199,15 @@ type ExtraLinkPayload = {
   /** SKU ที่จะถูกตัดเพิ่ม (ตัวห้อย) — ไม่จำเป็นต้องเป็น SKU ที่เปิดลิ้นชักอยู่ */
   stockItemId: string;
   per: number;
+  /** ว่าง = ตัดทุกครั้งที่เลือกค่านี้ (วัสดุแฝงของตัวเลือก) · มีรายการ = ต่อเมื่อกลุ่มอื่นตรงเงื่อนไขทุกข้อ */
   when: { label: string; choices: string[] }[];
 };
 
 /**
- * ➕ ผูก "ของที่ตัดเพิ่มแบบมีเงื่อนไข" — ของที่โดนตัดก็ต่อเมื่อลูกค้าเลือกครบหลายกลุ่มพร้อมกัน
- * (ขาย แผ่นจิ๊กซอว์ A5 แล้วตัด กรอบรูป A5 เพิ่ม เมื่อ ตัวเลือก = กรอบรูป + แผ่นจิ๊กซอว์)
+ * ➕ ผูก "ของที่ตัดเพิ่มตามตัวเลือก" 2 แบบ (เขียนลง choices[ตัวหลัก].stockLinks เหมือนกัน ต่างกันที่ when):
+ *   - วัสดุแฝงของตัวเลือก: when ว่าง = ตัดทุกครั้งที่ลูกค้าเลือกค่านี้ (ฐาน Griptok = สีดำ → ตัดฐานสีดำ · เจ้าของร้านขอ 30 ก.ย. 69)
+ *     ต้องมีทางนี้เพราะตัวเลือกมี stockItemId หลักได้ตัวเดียว และวัสดุแฝงระดับสินค้า (bomFor) เลือกตามค่าที่กดไม่ได้
+ *   - มีเงื่อนไข: ตัดก็ต่อเมื่อลูกค้าเลือกครบหลายกลุ่มพร้อมกัน (ขาย แผ่นจิ๊กซอว์ A5 แล้วตัด กรอบรูป A5 เพิ่ม เมื่อ ตัวเลือก = กรอบรูป + แผ่นจิ๊กซอว์)
  * ก่อนหน้านี้ตั้งได้จากสคริปต์อย่างเดียว ถอดได้แต่ผูกกลับไม่ได้ (เจ้าของร้านขอ 21 ก.ย. 69)
  *
  * ผูกได้ 2 ทิศ เพราะคนคิดมาทั้งสองแบบ:
@@ -3065,6 +3244,8 @@ function ExtraLinkForm({
   const [upKey, setUpKey] = useState("");
   const [upChoice, setUpChoice] = useState("");
   const [conds, setConds] = useState<{ label: string; choices: string[] }[]>([{ label: "", choices: [] }]);
+  /** true = วัสดุแฝงของตัวเลือก (ตัดทุกครั้งที่เลือกค่านี้ ไม่ดูกลุ่มอื่น) · false = ต้องตรงเงื่อนไขกลุ่มอื่นด้วย */
+  const [always, setAlways] = useState(true);
   const [per, setPer] = useState("1");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3114,12 +3295,15 @@ function ExtraLinkForm({
   const setCond = (i: number, next: { label: string; choices: string[] }) => setConds((cs) => cs.map((c, j) => (j === i ? next : c)));
 
   const target = dir === "down" ? kidId : item.id;
-  const ready = !!pid && !!mainLabel && !!mainChoice && mainIndex >= 0 && !!target && conds.some((c) => c.label && c.choices.length) && Number(per) > 0;
-  const kidName = dir === "down" ? kid?.name ?? "…" : item.name;
-  const preview = mainLabel
-    ? `ตัด ${kidName}${Number(per) !== 1 ? ` ×${per}` : ""} เพิ่ม เมื่อ ${mainLabel} = ${mainChoice || "…"}` +
-      conds.filter((c) => c.label && c.choices.length).map((c) => ` และ ${c.label} = ${c.choices.join(" / ")}`).join("")
-    : "";
+  const activeConds = always ? [] : conds.filter((c) => c.label && c.choices.length);
+  const ready = !!pid && !!mainLabel && !!mainChoice && mainIndex >= 0 && !!target && (always || activeConds.length > 0) && Number(per) > 0;
+  const kidName = dir === "down" ? kid?.name ?? "" : item.name;
+  const unitWord = dir === "up" ? item.unit : "หน่วย";
+  // สรุปเป็นประโยคเดียว — โชว์เมื่อครบทั้ง "เลือกอะไร" และ "ตัดอะไร" (ก่อนหน้านี้ขึ้น "ตัด … ทุกครั้ง" ตั้งแต่ยังไม่เลือก ทำให้งง)
+  const preview =
+    mainLabel && mainChoice && kidName
+      ? `ลูกค้าเลือก ${mainLabel} = ${mainChoice}${activeConds.map((c) => ` และ ${c.label} = ${c.choices.join(" / ")}`).join("")} → ตัด ${kidName} เพิ่ม ${per || "1"} ${unitWord}`
+      : "";
 
   const submit = async () => {
     if (!ready) return;
@@ -3132,7 +3316,7 @@ function ExtraLinkForm({
       choice: mainChoice,
       stockItemId: target,
       per: Number(per),
-      when: conds.filter((c) => c.label && c.choices.length),
+      when: activeConds,
     });
     setBusy(false);
     if (msg) setErr(msg);
@@ -3140,117 +3324,124 @@ function ExtraLinkForm({
   };
 
   const selectCls = `${inputCls} !py-1.5 text-[13px]`;
-  const dirBtn = (v: "down" | "up", text: string) => (
-    <button
-      type="button"
-      onClick={() => setDir(v)}
-      aria-pressed={dir === v}
-      className={`flex-1 rounded-lg px-2 py-1.5 text-[11.5px] leading-snug ${dir === v ? "bg-slate-800 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
-    >
-      {text}
-    </button>
+  const rowLabel = "w-[96px] shrink-0 pt-2 text-[12px] font-semibold text-slate-600";
+  const linkCls = "text-[11.5px] text-slate-500 underline underline-offset-2 hover:text-slate-800";
+
+  /* ช่องเลือก "ของที่จะตัดเพิ่ม" (โหมด down) — เลือกแล้วเป็นการ์ด + ปุ่มเปลี่ยน */
+  const kidPicker = kid ? (
+    <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+      <Thumb src={kid.img} name={kid.name} size={28} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] text-slate-900">{kid.name}</span>
+        {kid.code && <span className={codeCls}>{kid.code}</span>}
+      </span>
+      <button type="button" onClick={() => (setKidId(""), setKidQ(""))} className={btnSmGhost}>
+        เปลี่ยน
+      </button>
+    </div>
+  ) : (
+    <>
+      <input value={kidQ} onChange={(e) => setKidQ(e.target.value)} placeholder="พิมพ์ชื่อวัสดุ เช่น ฐาน Griptok…" className={inputCls} autoFocus />
+      {kidQ.trim() && (
+        <ul className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+          {kidHits.map((k) => (
+            <li key={k.id}>
+              <button type="button" onClick={() => setKidId(k.id)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-50">
+                <Thumb src={k.img} name={k.name} size={28} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] text-slate-800">{k.name}</span>
+                  {k.code && <span className={codeCls}>{k.code}</span>}
+                </span>
+              </button>
+            </li>
+          ))}
+          {!kidHits.length && <li className="px-2 py-2 text-[12px] text-slate-400">ไม่พบวัสดุที่ตรง — ถ้าเพิ่งลบไป กู้ได้จากปุ่ม “ที่ลบไปแล้ว…”</li>}
+        </ul>
+      )}
+    </>
   );
 
+  /*
+   * ฟอร์มอ่านเป็นประโยคเดียว 3 แถว: เมื่อลูกค้าเลือก → ให้ตัดเพิ่ม → จำนวน (เจ้าของร้านขอ "ใช้ง่าย เข้าใจง่าย" 30 ก.ย. 69)
+   * ของที่นาน ๆ ใช้ (เงื่อนไขกลุ่มอื่น · กลับด้าน) ซ่อนหลังลิงก์ — เดิมโชว์สวิตช์ 2 ชุด + select ที่มีค่าเดียว ทำให้ดูเป็น 5 คำถาม
+   */
   return (
     <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <p className="text-[12px] font-semibold text-slate-700">ตัดเพิ่มแบบมีเงื่อนไข</p>
+      <p className="text-[12px] font-semibold text-slate-700">{dir === "down" ? "วัสดุแฝงของตัวเลือกนี้" : "ตัวนี้เป็นวัสดุแฝงของตัวเลือกอื่น"}</p>
       <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
-        ใช้กับของที่ตัดก็ต่อเมื่อลูกค้าเลือกครบหลายกลุ่มพร้อมกัน — ถ้าตัดทุกครั้งอยู่แล้ว ให้ผูกแบบปกติ หรือตั้งเป็นวัสดุแฝงแทน
+        {dir === "down" ? "ลูกค้าเลือกค่านี้ทีไร ให้ตัดของอีกชิ้นเพิ่มด้วย" : "ลูกค้าเลือกค่าที่ระบุทีไร ให้ตัดตัวนี้เพิ่มด้วย"}
       </p>
 
-      <div className="mt-2.5 flex gap-1.5">
-        {dirBtn("down", "ขายตัวนี้ แล้วตัดตัวอื่นเพิ่ม")}
-        {dirBtn("up", "ขายตัวอื่น แล้วตัดตัวนี้เพิ่ม")}
-      </div>
-
       {dir === "down" ? (
-        <>
-          {!hosts.length ? (
-            <p className={`mt-2 rounded-lg px-2 py-1.5 text-[12px] ${TONE.review.bg} ${TONE.review.text}`}>
-              SKU นี้ยังไม่ได้ผูกกับตัวเลือกไหน — ผูกก่อน ถึงจะพ่วงของตัดเพิ่มได้ (หรือสลับไปโหมดอีกอันได้)
-            </p>
-          ) : (
-            <>
-              <label className={`${fieldLabel} mt-2.5 block`}>ตอนขายตัวนี้ในฐานะ</label>
-              <select value={hostKey} onChange={(e) => setHostKey(e.target.value)} className={`${selectCls} mt-1`} aria-label="ตัวเลือกที่เป็นตัวหลัก">
-                <option value="">— เลือก —</option>
-                {hosts.map((h, i) => (
-                  <option key={i} value={`${i}`}>
-                    {h.productName} · {h.label} = {h.choice}
-                  </option>
-                ))}
-              </select>
-
-              <label className={`${fieldLabel} mt-3 block`}>ให้ตัดวัสดุนี้เพิ่ม</label>
-              {kid ? (
-                <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-                  <Thumb src={kid.img} name={kid.name} size={28} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-slate-900">{kid.name}</span>
-                    {kid.code && <span className={codeCls}>{kid.code}</span>}
+        !hosts.length ? (
+          <p className={`mt-2 rounded-lg px-2 py-1.5 text-[12px] ${TONE.review.bg} ${TONE.review.text}`}>
+            SKU นี้ยังไม่ได้ผูกกับตัวเลือกไหน — ผูกก่อน ถึงจะตั้งวัสดุแฝงของตัวเลือกได้
+          </p>
+        ) : (
+          <>
+            <div className="mt-3 flex items-start gap-2">
+              <span className={rowLabel}>เมื่อลูกค้าเลือก</span>
+              {hosts.length === 1 && host ? (
+                <span className="min-w-0 flex-1 pt-2 text-[13px] leading-snug">
+                  <span className="font-medium text-slate-900">
+                    {host.label} = {host.choice}
                   </span>
-                  <button type="button" onClick={() => (setKidId(""), setKidQ(""))} className={btnSmGhost}>
+                  <span className="text-slate-400"> · {host.productName}</span>
+                </span>
+              ) : (
+                <select value={hostKey} onChange={(e) => setHostKey(e.target.value)} className={`${selectCls} min-w-0 flex-1`} aria-label="ตัวเลือกที่เป็นตัวหลัก">
+                  <option value="">— เลือก —</option>
+                  {hosts.map((h, i) => (
+                    <option key={i} value={`${i}`}>
+                      {h.productName} · {h.label} = {h.choice}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="mt-2 flex items-start gap-2">
+              <span className={rowLabel}>ให้ตัดเพิ่ม</span>
+              <div className="min-w-0 flex-1">{kidPicker}</div>
+            </div>
+          </>
+        )
+      ) : (
+        <>
+          <div className="mt-3 flex items-start gap-2">
+            <span className={rowLabel}>สินค้า</span>
+            <div className="min-w-0 flex-1">
+              {product ? (
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+                  <Thumb src={product.img} name={product.name} size={28} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-slate-900">{product.name}</span>
+                  <button type="button" onClick={() => (setProductId(""), setQ(""))} className={btnSmGhost}>
                     เปลี่ยน
                   </button>
                 </div>
               ) : (
                 <>
-                  <input value={kidQ} onChange={(e) => setKidQ(e.target.value)} placeholder="ค้นชื่อ/รหัสวัสดุ…" className={`${inputCls} mt-1`} />
-                  {kidQ.trim() && (
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อสินค้า หรือวางลิงก์หน้าสินค้า…" className={inputCls} autoFocus />
+                  {q.trim() && (
                     <ul className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-                      {kidHits.map((k) => (
-                        <li key={k.id}>
-                          <button type="button" onClick={() => setKidId(k.id)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-50">
-                            <Thumb src={k.img} name={k.name} size={28} />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] text-slate-800">{k.name}</span>
-                              {k.code && <span className={codeCls}>{k.code}</span>}
-                            </span>
+                      {hits.map((p) => (
+                        <li key={p.id}>
+                          <button type="button" onClick={() => setProductId(p.id)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-50">
+                            <Thumb src={p.img} name={p.name} size={28} />
+                            <span className="min-w-0 flex-1 truncate text-[13px] text-slate-800">{p.name}</span>
                           </button>
                         </li>
                       ))}
-                      {!kidHits.length && <li className="px-2 py-2 text-[12px] text-slate-400">ไม่พบวัสดุที่ตรง</li>}
+                      {!hits.length && <li className="px-2 py-2 text-[12px] text-slate-400">ไม่พบสินค้าที่ตรง</li>}
                     </ul>
                   )}
                 </>
               )}
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          <label className={`${fieldLabel} mt-2.5 block`}>สินค้า</label>
-          {product ? (
-            <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-              <Thumb src={product.img} name={product.name} size={28} />
-              <span className="min-w-0 flex-1 truncate text-[13px] text-slate-900">{product.name}</span>
-              <button type="button" onClick={() => (setProductId(""), setQ(""))} className={btnSmGhost}>
-                เปลี่ยน
-              </button>
             </div>
-          ) : (
-            <>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นชื่อสินค้า หรือวางลิงก์หน้าสินค้า…" className={`${inputCls} mt-1`} />
-              {q.trim() && (
-                <ul className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-                  {hits.map((p) => (
-                    <li key={p.id}>
-                      <button type="button" onClick={() => setProductId(p.id)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-50">
-                        <Thumb src={p.img} name={p.name} size={28} />
-                        <span className="min-w-0 flex-1 truncate text-[13px] text-slate-800">{p.name}</span>
-                      </button>
-                    </li>
-                  ))}
-                  {!hits.length && <li className="px-2 py-2 text-[12px] text-slate-400">ไม่พบสินค้าที่ตรง</li>}
-                </ul>
-              )}
-            </>
-          )}
-
+          </div>
           {groups && (
-            <>
-              <label className={`${fieldLabel} mt-3 block`}>ตัดเพิ่มเมื่อลูกค้าเลือก</label>
-              <div className="mt-1 grid grid-cols-2 gap-1.5">
+            <div className="mt-2 flex items-start gap-2">
+              <span className={rowLabel}>เมื่อลูกค้าเลือก</span>
+              <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5">
                 <select value={upKey} onChange={(e) => (setUpKey(e.target.value), setUpChoice(""))} className={selectCls} aria-label="กลุ่มตัวเลือกหลัก">
                   <option value="">— กลุ่ม —</option>
                   {groups.filter((g) => !g.fromPreset).map((g) => (
@@ -3267,11 +3458,9 @@ function ExtraLinkForm({
                     </option>
                   ))}
                 </select>
+                {groups.some((g) => g.fromPreset) && <p className="col-span-2 text-[11px] text-slate-400">กลุ่มจากคลังตัวเลือกกลางตั้งตรงนี้ไม่ได้ — ต้องไปแก้ที่คลังกลาง</p>}
               </div>
-              {groups.some((g) => g.fromPreset) && (
-                <p className="mt-1 text-[11px] text-slate-400">กลุ่มที่มาจากคลังตัวเลือกกลางตั้งตรงนี้ไม่ได้ — ต้องไปแก้ที่คลังกลาง</p>
-              )}
-            </>
+            </div>
           )}
         </>
       )}
@@ -3279,74 +3468,101 @@ function ExtraLinkForm({
       {loadErr && <p className={`mt-2 rounded-lg px-2 py-1.5 text-[12px] ${TONE.danger.bg} ${TONE.danger.text}`}>{loadErr}</p>}
       {pid && !groups && !loadErr && <p className="mt-2 text-[12px] text-slate-400">กำลังอ่านตัวเลือก…</p>}
 
-      {groups && mainLabel && (
+      {mainLabel && mainChoice && (
         <>
-          {/* เงื่อนไข — กลุ่มอื่นต้องตรงด้วย */}
-          <label className={`${fieldLabel} mt-3 block`}>และเมื่อกลุ่มอื่นเป็น</label>
-          {conds.map((c, i) => {
-            const g = condGroup(c.label);
-            return (
-              <div key={i} className="mt-1 rounded-lg border border-slate-200 bg-white p-2">
-                <div className="flex items-center gap-1.5">
-                  <select
-                    value={c.label}
-                    onChange={(e) => setCond(i, { label: e.target.value, choices: [] })}
-                    className={`${selectCls} min-w-0 flex-1`}
-                    aria-label={`กลุ่มเงื่อนไขที่ ${i + 1}`}
-                  >
-                    <option value="">— กลุ่ม —</option>
-                    {groups.filter((x) => x.label !== mainLabel).map((x) => (
-                      <option key={x.optionIndex} value={x.label}>
-                        {x.label}
-                      </option>
-                    ))}
-                  </select>
-                  {conds.length > 1 && (
-                    <button type="button" onClick={() => setConds((cs) => cs.filter((_, j) => j !== i))} className={btnSmGhost} aria-label="เอาเงื่อนไขนี้ออก">
-                      ✕
-                    </button>
-                  )}
+          <div className="mt-2 flex items-center gap-2">
+            <span className={`${rowLabel} !pt-0`}>จำนวน</span>
+            <input
+              value={per}
+              onChange={(e) => setPer(e.target.value.replace(/[^\d.]/g, ""))}
+              inputMode="decimal"
+              aria-label="ใช้กี่หน่วยต่อสินค้า 1 ชิ้น"
+              className={`${inputCls.replace("w-full ", "")} !h-9 w-16 text-right tabular-nums`}
+            />
+            <span className="text-[12px] text-slate-500">{unitWord} ต่อสินค้า 1 ชิ้น</span>
+          </div>
+
+          {/* ขั้นสูง: ตัดเฉพาะเมื่อกลุ่มอื่นตรงเงื่อนไข — นาน ๆ ใช้ (กรอบรูปตามขนาด) จึงพับไว้ */}
+          {groups &&
+            (always ? (
+              <button type="button" onClick={() => setAlways(false)} className={`${linkCls} mt-2 block`}>
+                ＋ ตัดเฉพาะเมื่อกลุ่มอื่นตรงเงื่อนไขด้วย…
+              </button>
+            ) : (
+              <div className="mt-2 rounded-lg border border-dashed border-slate-300 p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-semibold text-slate-600">และเมื่อกลุ่มอื่นเป็น</span>
+                  <button type="button" onClick={() => setAlways(true)} className={linkCls}>
+                    เอาเงื่อนไขออก
+                  </button>
                 </div>
-                {g && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {g.choices.map((name) => {
-                      const on = c.choices.includes(name);
-                      return (
-                        <button
-                          key={name}
-                          type="button"
-                          onClick={() => setCond(i, { label: c.label, choices: on ? c.choices.filter((x) => x !== name) : [...c.choices, name] })}
-                          className={`rounded-full px-2 py-1 text-[11.5px] ${on ? "bg-slate-800 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
-                          aria-pressed={on}
+                {conds.map((c, i) => {
+                  const g = condGroup(c.label);
+                  return (
+                    <div key={i} className="mt-1.5 rounded-lg border border-slate-200 bg-white p-2">
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={c.label}
+                          onChange={(e) => setCond(i, { label: e.target.value, choices: [] })}
+                          className={`${selectCls} min-w-0 flex-1`}
+                          aria-label={`กลุ่มเงื่อนไขที่ ${i + 1}`}
                         >
-                          {name}
-                        </button>
-                      );
-                    })}
-                    {c.choices.length > 1 && <span className="self-center text-[11px] text-slate-400">เลือกค่าไหนก็เข้าเงื่อนไข</span>}
-                  </div>
-                )}
+                          <option value="">— กลุ่ม —</option>
+                          {groups.filter((x) => x.label !== mainLabel).map((x) => (
+                            <option key={x.optionIndex} value={x.label}>
+                              {x.label}
+                            </option>
+                          ))}
+                        </select>
+                        {conds.length > 1 && (
+                          <button type="button" onClick={() => setConds((cs) => cs.filter((_, j) => j !== i))} className={btnSmGhost} aria-label="เอาเงื่อนไขนี้ออก">
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {g && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {g.choices.map((name) => {
+                            const on = c.choices.includes(name);
+                            return (
+                              <button
+                                key={name}
+                                type="button"
+                                onClick={() => setCond(i, { label: c.label, choices: on ? c.choices.filter((x) => x !== name) : [...c.choices, name] })}
+                                className={`rounded-full px-2 py-1 text-[11.5px] ${on ? "bg-slate-800 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+                                aria-pressed={on}
+                              >
+                                {name}
+                              </button>
+                            );
+                          })}
+                          {c.choices.length > 1 && <span className="self-center text-[11px] text-slate-400">เลือกค่าไหนก็เข้าเงื่อนไข</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <button type="button" onClick={() => setConds((cs) => [...cs, { label: "", choices: [] }])} className={`${btnSmGhost} mt-1`}>
+                  ＋ เพิ่มเงื่อนไข
+                </button>
               </div>
-            );
-          })}
-          <button type="button" onClick={() => setConds((cs) => [...cs, { label: "", choices: [] }])} className={`${btnSmGhost} mt-1`}>
-            ＋ เพิ่มเงื่อนไข
-          </button>
-
-          <label className={`${fieldLabel} mt-3 block`}>ใช้กี่หน่วยต่อสินค้า 1 ชิ้น</label>
-          <input value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" className={`${inputCls} mt-1 w-28`} />
-
-          {preview && <p className="mt-2.5 rounded-lg bg-white px-2 py-1.5 text-[12px] leading-snug text-slate-600">{preview}</p>}
+            ))}
         </>
       )}
 
+      {preview && <p className="mt-2.5 rounded-lg bg-white px-2 py-1.5 text-[12px] leading-snug text-slate-700">{preview}</p>}
       {err && <p className={`mt-2 rounded-lg px-2 py-1.5 text-[12px] ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
-      <div className="mt-3 flex items-center gap-2">
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" disabled={!ready || busy} onClick={() => void submit()} className={`${btnSmNeutral} disabled:opacity-40`}>
-          {busy ? "กำลังผูก…" : "ผูก"}
+          {busy ? "กำลังบันทึก…" : "บันทึกวัสดุแฝง"}
         </button>
         <button type="button" onClick={onClose} className={btnSmGhost}>
           ยกเลิก
+        </button>
+        {/* กลับด้าน — นาน ๆ ใช้ (เปิดลิ้นชักของ "วัสดุแฝง" เองแล้วอยากผูกขึ้นไปหาตัวเลือก) */}
+        <button type="button" onClick={() => setDir(dir === "down" ? "up" : "down")} className={`${linkCls} ml-auto`}>
+          {dir === "down" ? "ตัวนี้เป็นวัสดุแฝงของตัวอื่น?" : "กลับไปแบบ: ขายตัวนี้แล้วตัดตัวอื่น"}
         </button>
       </div>
     </div>

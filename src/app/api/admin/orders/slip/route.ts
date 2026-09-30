@@ -184,6 +184,7 @@ export async function PUT(req: Request) {
  * ลบสลิปออกจากออเดอร์ (ใช้ตอนสลิปผิดใบ/ทดสอบ) — เฉพาะ "ผู้ดูแลระบบ" เท่านั้น
  * body: { orderId, phase?: "first" | "balance" | "extra", paymentId? }
  *   first (ค่าเริ่มต้น) = รีเซ็ตการแจ้งโอนทั้งหมด → ออเดอร์กลับเป็น "รอชำระเงิน" ให้ลูกค้าแนบใหม่ได้
+ *     ⚠️ ใบที่เลยขั้นตรวจเงินแล้ว (ทำแบบ→เสร็จสิ้น) = ลบเฉพาะไฟล์ สถานะ/ยอดที่รับแล้วคงเดิม (ตอบ fileOnly:true) · ใบยกเลิกลบไม่ได้
  *   balance = ลบเฉพาะไฟล์งวดหลัง ไม่ยุ่งกับสถานะ/ยอดที่รับแล้ว
  *   extra = ลบใบเพิ่มใบเดียว — ถ้าใบนั้นนับยอดแล้ว ถอยยอดนั้นออกจาก paidTotal (สถานะไม่ถอย · แอดมินดูเองว่าต้องเก็บเพิ่มไหม)
  */
@@ -257,9 +258,27 @@ export async function DELETE(req: Request) {
   }
 
   if (!order.slipPath && !order.slipUrl) return NextResponse.json({ error: "ออเดอร์นี้ไม่มีสลิป" }, { status: 404 });
-  // กันลบสลิปงานที่เดินหน้าไปแล้ว — ลบได้เฉพาะช่วงตรวจเงิน
-  if (order.status !== "รอตรวจสอบ" && order.status !== "ชำระแล้ว" && order.status !== "รอชำระเงิน")
-    return NextResponse.json({ error: `ออเดอร์อยู่สถานะ "${order.status}" แล้ว — ลบสลิปไม่ได้` }, { status: 409 });
+  // งานที่เดินหน้าไปแล้ว (ทำแบบ/ผลิต/ส่ง/ปิดใบ) ห้ามรีเซ็ตกลับ รอชำระเงิน — แต่ยังต้องเอาสลิปผิดใบ/โอนผิดบัญชีออกได้
+  // (OD-260922-2240 30 ก.ย. 69: ใบเสร็จสิ้นแล้ว สลิปใบแรกโอนเข้าบัญชีคนอื่น เจ้าของร้านลบไม่ออกเพราะติด 409)
+  // → ลบเฉพาะไฟล์ + ผลตรวจ · สถานะและยอดที่รับแล้วคงเดิม (แบบเดียวกับลบสลิปงวดหลังของใบที่ปิดแล้ว)
+  if (order.status !== "รอตรวจสอบ" && order.status !== "ชำระแล้ว" && order.status !== "รอชำระเงิน") {
+    if (order.status === "ยกเลิก" && !body.phase)
+      return NextResponse.json({ error: `ออเดอร์อยู่สถานะ "${order.status}" แล้ว — ลบสลิปไม่ได้` }, { status: 409 });
+    if (order.slipPath) await sb.storage.from(BUCKET).remove([order.slipPath]).catch(() => undefined);
+    const v = order.slipVerify;
+    const wrong = !!v?.wrongReceiver;
+    const credited = v?.credited ?? 0;
+    const fileOnly = withLog(
+      { ...order, slipPath: undefined, slipHash: undefined, slipUrl: undefined, slipVerify: undefined, paidReportedAt: undefined },
+      who,
+      "ลบสลิปใบแรก (เก็บสถานะ/ยอดที่รับแล้ว)",
+      `ออเดอร์อยู่สถานะ "${order.status}" แล้ว — ลบเฉพาะไฟล์สลิป ไม่รีเซ็ตสถานะ · รับแล้ว ${paidSoFar(order).toLocaleString("th-TH")} จาก ${orderTotal(order).toLocaleString("th-TH")} คงเดิม` +
+        (wrong ? ` · สลิปนี้โอนเข้าบัญชีอื่น (${v?.receiver ?? "?"}) ไม่เคยนับยอด` : credited > 0 ? ` · ⚠️ ใบนี้เคยนับยอด ${credited.toLocaleString("th-TH")} บาท — ยอดที่รับแล้วไม่ถอย ตรวจเองว่าถูกต้อง` : "")
+    );
+    const { error: e4 } = await updateOrder(sb, fileOnly);
+    if (e4) return NextResponse.json({ error: e4.message }, { status: 500 });
+    return NextResponse.json({ ok: true, fileOnly: true, order: await signPaymentUrls(sb, fileOnly) });
+  }
 
   // ลบไฟล์จริงใน bucket (best-effort — path เก่าบางออเดอร์อาจไม่มี)
   if (order.slipPath) await sb.storage.from(BUCKET).remove([order.slipPath]);
