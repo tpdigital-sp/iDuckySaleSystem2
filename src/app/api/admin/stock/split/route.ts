@@ -3,10 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { allStockCodes, deleteStockItem, listStockItems, saveStockItem } from "@/lib/server/stock";
+import { allStockCodes, deleteStockItem, listStockItems, saveStockItem, setNoStock } from "@/lib/server/stock";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { invalidateProductsSlim } from "@/lib/server/products-slim";
-import { normName } from "@/lib/stock-match";
+import { normName, skuPage } from "@/lib/stock-match";
 import { RATE_OPTION_INDEX, rateStockOption, writeRateStock } from "@/lib/stock-rate";
 import type { Product, ProductOption } from "@/lib/products";
 
@@ -25,6 +25,9 @@ export const runtime = "nodejs";
  *   extra    = { name: "กรอบรูป", when: { label: "ตัวเลือก", choices: ["กรอบรูป + แผ่นจิ๊กซอว์"] } }
  *              → SKU อีกตัวต่อ 1 ตัวเลือก ผูกแบบมีเงื่อนไข (choice.stockLinks) · กติกาตัดอยู่ที่ lib/stock-cut.ts
  * SKU นำเข้าที่ยัง "รอตรวจ" และชื่อตรงกับตัวเลือก (PL-* จากตารางราคา) ถูกหยิบมาใช้เป็นชิ้นหลักแทนการสร้างซ้ำ
+ *   ⚠️ ชื่อสั้น ๆ (S/M/L/XL/สีดำ) ต้องมาจากหน้าตารางราคาเดียวกับสินค้าเท่านั้น — กติกาเดียวกับ "คู่ที่น่าจะใช่" ใน /links
+ *   (30 ก.ย. 69: เสื้อ AWESOME.BKK ไซส์ S/M/L ไปหยิบ SKU "S/M/L" ของปลอกคอสัตว์เลี้ยงมาใช้ · ตัวนำเข้าพวกนี้ติดธง
+ *   "ไม่ต้องมีสต๊อก" ทั้งชุด → ทุก SKU ของเสื้อโดนกรองหายจากหน้าคลัง = "สินค้าหาย") · หยิบมาใช้แล้วต้องปลดธง noStock ด้วย
  *
  * ⚠️ ต้องถอด SKU รวมเดิมเสมอ — ไม่งั้นออเดอร์เดียวตัด 2 ต่อ (ตัวสินค้า 1 + ตัวเลือก 1)
  *
@@ -158,10 +161,18 @@ export async function POST(req: Request) {
 
   // SKU นำเข้าที่รอตรวจ ยังไม่ผูกกับอะไร และชื่อ/alias ตรงกับตัวเลือก → ใช้ตัวนั้นเป็นชิ้นหลัก ไม่สร้างซ้ำ
   const linkedIds = new Set(allGroups.flatMap(({ o }) => ((o.choices ?? []) as Ch[]).flatMap((c) => [c.stockItemId, ...(c.stockLinks ?? []).map((l) => l.stockItemId)])).filter(Boolean));
-  const reusable = (choice: string) =>
-    items.find(
-      (i) => i.needsReview && !(i.productIds ?? []).length && !linkedIds.has(i.id) && [i.name, ...(i.aliases ?? [])].some((n) => normName(n) === normName(choice))
-    );
+  //   ชื่อสั้นกว่า 8 ตัว (S/M/L/สีดำ) ซ้ำกันทั้งร้าน → ต้องมาจากหน้าตารางราคาเดียวกัน (รหัส PL-<PAGE>- อยู่ในรหัสสินค้า) เหมือนตัวเสนอคู่ใน /links
+  const idNorm = productId.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  const reusable = (choice: string) => {
+    const n = normName(choice);
+    if (n.length < 2) return undefined;
+    return items.find((i) => {
+      if (!i.needsReview || (i.productIds ?? []).length || linkedIds.has(i.id)) return false;
+      const page = skuPage(i.code);
+      if (n.length < 8 && !(page && idNorm.includes(page))) return false;
+      return [i.name, ...(i.aliases ?? [])].some((nm) => normName(nm) === n);
+    });
+  };
 
   // 1) สร้าง (หรือหยิบของนำเข้ามาใช้) SKU ให้ตัวเลือกที่ขอ
   const created: { choice: string; id: string; name: string; reused?: boolean; extra?: boolean }[] = [];
@@ -250,7 +261,16 @@ export async function POST(req: Request) {
         const hit = reusable(c.name);
         const sku = await saveStockItem(
           hit
-            ? { id: hit.id, name: nameFor(partName, c.name), imageUrl: hit.imageUrl ?? c.imageSrc, part: partName || undefined } // saveStockItem เก็บชื่อเดิมเป็น alias + ปลดรอตรวจให้
+            ? {
+                id: hit.id,
+                name: nameFor(partName, c.name),
+                // ย้ายมาอยู่ตระกูล/หมวด/หน่วยของสินค้านี้ (ตาม SKU รวมเดิม) — ไม่มีก็คงของนำเข้าไว้
+                unit: tpl?.unit,
+                family: tpl?.family,
+                category: tpl?.category,
+                imageUrl: hit.imageUrl ?? c.imageSrc,
+                part: partName || undefined,
+              } // saveStockItem เก็บชื่อเดิมเป็น alias + ปลดรอตรวจให้
             : {
                 name: nameFor(partName, c.name),
                 code: nextCode(),
@@ -265,7 +285,11 @@ export async function POST(req: Request) {
                 part: partName || undefined,
               }
         );
-        if (hit) linkedIds.add(hit.id);
+        if (hit) {
+          linkedIds.add(hit.id);
+          // ของนำเข้าที่รอตรวจถูกติดธง "ไม่ต้องมีสต๊อก" ไว้ทั้งชุด — แยกสต๊อกต่อตัวเลือกคือต้องนับ → ปลดธง ไม่งั้นแถวหายจากหน้าคลัง
+          if (hit.noStock) await setNoStock([hit.id], false);
+        }
         mainOf.set(c.name, sku.id);
         created.push({ choice: c.name, id: sku.id, name: sku.name, reused: !!hit });
       }
