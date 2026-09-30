@@ -62,6 +62,7 @@ import {
   type Shipment,
   type TrackingBox,
   REOPEN_FOR_BALANCE,
+  receiveDepositFirst,
 } from "@/lib/admin-data";
 import { inBackground } from "@/lib/server/background";
 
@@ -1053,6 +1054,21 @@ export async function PATCH(req: Request) {
     toSave = lockEarlyPay(toSave, now, `แอดมิน ${actor.name?.trim() || actor.username}`);
   if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && toSave.paidTotal == null && !toSave.deposit)
     toSave = { ...toSave, paidTotal: orderTotal(toSave) };
+  /**
+   * ➗ ใบมัดจำ 50% ที่ยังไม่รับงวดแรก: ทุกทางที่เขียน "ชำระแล้ว" มาถึงนี่ = ยืนยันรับมัดจำงวดแรก ไม่ใช่ชำระครบ
+   * (เมนูเปลี่ยนสถานะ · แนบสลิปแล้วเปลี่ยนสถานะต่อ · หน้าอื่นที่ส่ง status มา) — ปุ่มม่วงส่ง firstPaidAt มาแล้วจึงไม่ทำซ้ำ
+   * เดิมข้ามใบมัดจำโดยคิดว่ามีแต่ปุ่มม่วงที่ทำได้ → OD-260928-1506 (30 ก.ย. 69) "ชำระแล้ว" ทั้งที่ firstPaidAt/paidTotal ว่าง
+   * ต้องอยู่ก่อนบล็อกขั้นแบบ (proofStage) ด้านล่าง — ไม่งั้นสถานะถูกแปลงไปก่อนแล้วไม่เข้าเงื่อนไข
+   */
+  if (toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && toSave.deposit && !toSave.deposit.firstPaidAt) {
+    toSave = receiveDepositFirst(toSave, now);
+    toSave = withLog(
+      toSave,
+      actor.name?.trim() || actor.username,
+      "ยืนยันรับมัดจำ 50%",
+      `ยอด ${toSave.deposit!.amount.toLocaleString("th-TH")} บาท — จากเมนูเปลี่ยนสถานะ (${existing.status} → ชำระแล้ว) ระบบนับเป็นงวดแรก ไม่ใช่ชำระครบ · ค้างงวดที่ 2 ${orderBalance(toSave).toLocaleString("th-TH")} บาท`
+    );
+  }
 
   /**
    * 🎨 ยืนยันเงินเข้าเองบนใบที่ "แบบเดินไปแล้วระหว่างค้างเงิน" → กลับไปขั้นแบบที่จำไว้ ไม่ใช่ค้างที่ "ชำระแล้ว" ให้ตรวจแบบซ้ำ

@@ -12,6 +12,7 @@ import {
   type OptionInput,
   type OptionRule,
   type PriceMatrix,
+  type PriceRate,
   type Product,
   type ProductImage,
   type ProductOption,
@@ -290,7 +291,7 @@ type DraftPricing = {
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) — mixRule = ค่าคละเฉพาะเรท (ตั้งจากสคริปต์ หน้านี้แค่พาผ่านตอนบันทึก ไม่มี UI แก้) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; minQtyScope?: "line" | "lot"; /** 🤝 เรทเฉพาะตัวแทนจำหน่าย (ลูกค้าทั่วไปไม่เห็น) — ติ๊กได้เฉพาะเรทเพิ่มเติม ห้ามเป็นเรทแรก */ dealerOnly?: boolean };
+type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; minQtyScope?: "line" | "lot"; /** 🤝 เรทเฉพาะตัวแทนจำหน่าย (ลูกค้าทั่วไปไม่เห็น) — ติ๊กได้เฉพาะเรทเพิ่มเติม ห้ามเป็นเรทแรก */ dealerOnly?: boolean; /** 📦 สต๊อกตามเรท (ตั้งจากหน้าคลัง) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วเลิกตัดสต๊อกเงียบ ๆ */ stockItemId?: string; stockQtyPer?: number; stockLinks?: PriceRate["stockLinks"] };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -303,6 +304,12 @@ type DraftExtraRate = DraftRateMeta & {
   tiers: DraftTier[];
   cells: Record<string, string[]>;
 };
+/** 📦 คีย์สต๊อกของเรท (ตั้งจากหน้าคลัง /admin/stock แยกตามเรท) — หยิบเฉพาะที่มีค่า ไว้พาผ่านตอนโหลด/บันทึก */
+const rateStockOf = (r: Pick<PriceRate, "stockItemId" | "stockQtyPer" | "stockLinks">) => ({
+  ...(r.stockItemId ? { stockItemId: r.stockItemId } : {}),
+  ...(r.stockQtyPer ? { stockQtyPer: r.stockQtyPer } : {}),
+  ...(r.stockLinks?.length ? { stockLinks: r.stockLinks } : {}),
+});
 const EMPTY_RATE_META: DraftRateMeta = { label: "", desc: "", minQty: "", minPerDesign: "", extraDesignFee: "", underMinPieceFee: "", freeMixBelowQty: "" , minQtyScope: undefined };
 /** ชื่อเรทมาตรฐานของร้าน (ตามหน้ารายการราคา) — เลือกจากลิสต์ได้ ไม่ต้องพิมพ์เอง */
 const RATE_NAME_PRESETS = [
@@ -853,6 +860,7 @@ function toDraft(p: Product): Draft {
           minQtyScope: p.priceRates[0].minQtyScope,
           ...(p.priceRates[0].imageSrc ? { imageSrc: p.priceRates[0].imageSrc } : {}),
           ...(p.priceRates[0].mixRule ? { mixRule: p.priceRates[0].mixRule } : {}),
+          ...rateStockOf(p.priceRates[0]),
         }
       : { ...EMPTY_RATE_META },
     extraRates: (p.priceRates ?? []).slice(1).map((r) => ({
@@ -870,6 +878,7 @@ function toDraft(p: Product): Draft {
       ...(r.dealerOnly ? { dealerOnly: true } : {}),
       ...(r.imageSrc ? { imageSrc: r.imageSrc } : {}),
       ...(r.mixRule ? { mixRule: r.mixRule } : {}),
+      ...rateStockOf(r),
       tiers: r.pricing.tiers.map((t) => ({ upTo: t.upTo == null ? "" : String(t.upTo), label: t.label })),
       cells: Object.fromEntries(Object.entries(r.pricing.cells).map(([k, v]) => [k, v.map((n) => String(n))])),
     })),
@@ -4377,6 +4386,8 @@ export default function ProductEditor({ product }: { product: Product }) {
         ...(m.minQtyScope ? { minQtyScope: m.minQtyScope } : {}),
         // 🤝 เรทเฉพาะตัวแทนจำหน่าย — ลืมพาผ่าน = ธงหายตอนบันทึก แล้วลูกค้าทั่วไปเห็นราคาตัวแทน
         ...(m.dealerOnly ? { dealerOnly: true } : {}),
+        // 📦 สต๊อกตามเรท (ผูกจากหน้าคลัง) — พาผ่านเหมือนกัน
+        ...rateStockOf(m),
       });
       const list: NonNullable<Product["priceRates"]> = [
         { id: "r1", ...metaOf(draft.rateMeta, "เรทที่ 1"), pricing },

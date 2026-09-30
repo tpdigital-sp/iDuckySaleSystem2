@@ -6,7 +6,8 @@ import { deleteStockItem, listStock, recordUnlinked, saveStockItem, type Unlinke
 import { createClient } from "@supabase/supabase-js";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { getProductsSlim, invalidateProductsSlim } from "@/lib/server/products-slim";
-import type { ProductOption } from "@/lib/products";
+import { RATE_LABEL, type PriceRate, type ProductOption } from "@/lib/products";
+import { RATE_OPTION_INDEX, rateStockOption, writeRateStock } from "@/lib/stock-rate";
 
 export const runtime = "nodejs";
 
@@ -104,7 +105,7 @@ export async function DELETE(req: Request) {
     const refIds = slim
       ? [
           ...slim.presets.filter((r) => JSON.stringify(r.data.choices ?? []).includes(`"${id}"`)).map((r) => r.id),
-          ...slim.products.filter((r) => JSON.stringify(r.data.options ?? []).includes(`"${id}"`)).map((r) => r.id),
+          ...slim.products.filter((r) => JSON.stringify([r.data.options ?? [], r.data.priceRates ?? []]).includes(`"${id}"`)).map((r) => r.id),
         ]
       : null;
     const { data: rows } = refIds
@@ -128,14 +129,20 @@ export async function DELETE(req: Request) {
         return rest.length ? { ...base, stockLinks: rest } : base;
       });
     for (const r of rows ?? []) {
-      const d = r.data as { choices?: Ch[]; options?: ProductOption[] } | null;
+      const d = r.data as { choices?: Ch[]; options?: ProductOption[]; priceRates?: PriceRate[] } | null;
       if (!d) continue;
       const hitPreset = r.id.startsWith("__preset_") && (d.choices ?? []).some(hits);
       const hitProduct = !r.id.startsWith("__") && (d.options ?? []).some((o) => ((o.choices ?? []) as Ch[]).some(hits));
-      if (!hitPreset && !hitProduct) continue;
+      // สต๊อกตามเรท (การ์ดสเปรย์ 20/40 ml) — ลิงก์อยู่บน priceRates ไม่ใช่ options
+      const hitRate = !r.id.startsWith("__") && ((rateStockOption(d.priceRates)?.choices ?? []) as Ch[]).some(hits);
+      if (!hitPreset && !hitProduct && !hitRate) continue;
       const next = hitPreset
         ? { ...d, choices: strip(d.choices ?? [], r.id) }
-        : { ...d, options: (d.options ?? []).map((o, oi) => ({ ...o, choices: strip((o.choices ?? []) as Ch[], r.id, o.label, oi) })) };
+        : {
+            ...d,
+            options: (d.options ?? []).map((o, oi) => ({ ...o, choices: strip((o.choices ?? []) as Ch[], r.id, o.label, oi) })),
+            ...(hitRate ? { priceRates: writeRateStock(d.priceRates ?? [], (chs) => strip((chs ?? []) as Ch[], r.id, RATE_LABEL, RATE_OPTION_INDEX) as ProductOption["choices"]) } : {}),
+          };
       await snapshotRevision(sb, r.id, d, actor, "save");
       const { error } = await sb.from("products").update({ data: next }).eq("id", r.id);
       if (!error) unlinked++;

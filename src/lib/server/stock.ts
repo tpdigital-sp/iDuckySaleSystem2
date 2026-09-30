@@ -3,8 +3,9 @@ import type { Firestore } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import type { Order } from "@/lib/admin-data";
 import type { OptionPreset } from "@/lib/option-presets";
-import type { ProductOption } from "@/lib/products";
+import type { PriceRate, ProductOption } from "@/lib/products";
 import { planStockCuts } from "@/lib/stock-cut";
+import { optionsWithRates, withDefaultRate } from "@/lib/stock-rate";
 
 /**
  * คลังสต๊อกวัสดุ (ระบบกลาง 3 ระบบใช้ร่วม):
@@ -310,6 +311,18 @@ export async function setBom(itemId: string, productId: string, per: number | nu
   return (await ref.get()).data() as StockItem;
 }
 
+/** ตั้ง/ล้าง "ชนิดของ" ทีเดียว — ใช้ตอน "นำ SKU เดิมเข้าคลังวัสดุแฝง" (part = BOM_PART) โดยไม่แตะฟิลด์อื่น */
+export async function setStockPart(itemId: string, part: string | null): Promise<StockItem | null> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const ref = db.collection(STOCK_ITEMS).doc(itemId);
+  const cur = (await ref.get()).data() as StockItem | undefined;
+  if (!cur || cur.active === false) return null;
+  await ref.update({ part: part?.trim() ? part.trim() : FieldValue.delete(), updatedAt: new Date().toISOString() });
+  return (await ref.get()).data() as StockItem;
+}
+
 /**
  * ตั้ง/ล้างอัตรา "ตัดกี่หน่วยต่อ 1 ที่ลูกค้าสั่ง" ของสินค้าที่ผูกตรง (งานขายเป็นเซ็ต)
  * per = null/1 คือกลับไป 1 ต่อ 1 (ลบคีย์ทิ้ง ไม่เก็บ 1 ไว้ให้รก)
@@ -472,7 +485,11 @@ async function loadOptionStockMap(productIds: string[]): Promise<Map<string, Pro
   ]);
   const presets = (presetRows.data ?? []).map((r) => r.data as OptionPreset).filter((p) => p?.id);
   // คืนตัวเลือกที่คลี่คลังกลางแล้วทั้งชุด — planStockCuts ต้องเห็นชื่อตัวเลือกทุกค่าเพื่อแยก "A + B" ให้ถูก
-  for (const row of prods.data ?? []) out.set(row.id, resolveOptions((row.data as { options?: ProductOption[] } | null)?.options ?? [], presets));
+  // + กลุ่มเสมือน "เรทราคา" ต่อท้าย (สต๊อกตามเรท: การ์ดสเปรย์ 20/40 ml · sel["เรทราคา"] มีอยู่แล้วในทุกออเดอร์)
+  for (const row of prods.data ?? []) {
+    const d = row.data as { options?: ProductOption[]; priceRates?: PriceRate[] } | null;
+    out.set(row.id, optionsWithRates(resolveOptions(d?.options ?? [], presets), d?.priceRates));
+  }
   return out;
 }
 
@@ -527,7 +544,9 @@ export async function cutStockForOrder(order: Order): Promise<void> {
       }
       // 2) SKU ที่ผูกกับ "ตัวเลือกที่ลูกค้าเลือก" (สีไหม/ตะขอ/ขนาด + ของที่มีเงื่อนไขข้ามกลุ่ม) — กติกาอยู่ที่ planStockCuts
       //    ออเดอร์เก่าไม่มี sel (มีแต่ selections ที่เป็นข้อความ) → ข้ามไปเงียบ ๆ
-      for (const cut of planStockCuts(optionMap.get(oi.productId) ?? [], oi.sel, oi.qty)) {
+      //    sel ไม่มี "เรทราคา" แต่สินค้ามีหลายเรท → ถือเป็นเรทแรก (ราคาก็คิดแบบนั้น) จะได้ตัดสต๊อกตามเรทถูกตัว
+      const optsOf = optionMap.get(oi.productId) ?? [];
+      for (const cut of planStockCuts(optsOf, withDefaultRate(optsOf, oi.sel), oi.qty)) {
         if (skip.has(cut.itemId) || !cut.qty) continue;
         await addStockMove({
           itemId: cut.itemId,

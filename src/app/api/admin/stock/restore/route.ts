@@ -6,7 +6,8 @@ import { loadRolePerms } from "@/lib/server/role-perms";
 import { listDeletedStock, restoreStockItem, type UnlinkedRef } from "@/lib/server/stock";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { invalidateProductsSlim } from "@/lib/server/products-slim";
-import type { ProductOption } from "@/lib/products";
+import type { PriceRate, ProductOption } from "@/lib/products";
+import { isRateGroup, writeRateStock } from "@/lib/stock-rate";
 
 export const runtime = "nodejs";
 
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
       return c;
     };
     for (const row of rows ?? []) {
-      const d = row.data as { choices?: Ch[]; options?: ProductOption[] } | null;
+      const d = row.data as { choices?: Ch[]; options?: ProductOption[]; priceRates?: PriceRate[] } | null;
       if (!d) continue;
       const refs = byRow.get(row.id) ?? [];
       const before = relinked;
@@ -94,14 +95,19 @@ export async function POST(req: Request) {
       if (row.id.startsWith("__preset_")) {
         next = { ...d, choices: (d.choices ?? []).map((c) => refs.filter((r) => r.choice === c.name).reduce(apply, c)) };
       } else {
+        // สต๊อกตามเรท: ลิงก์ที่จดไว้ชี้กลุ่มเสมือน "เรทราคา" (-1) → เขียนกลับลง priceRates
+        const rateRefs = refs.filter((r) => isRateGroup(r.label, r.optionIndex));
         next = {
           ...d,
           options: (d.options ?? []).map((o, oi) => {
             // ชี้กลุ่มด้วยลำดับ+ชื่อ (กลุ่มชื่อซ้ำมีจริง) · ลำดับเลื่อนไปแล้วก็ยังหาด้วยชื่อ
-            const mine = refs.filter((r) => (r.optionIndex === oi && (!r.label || r.label === o.label)) || (r.optionIndex !== oi && r.label === o.label && !(d.options ?? [])[r.optionIndex ?? -1]));
+            const mine = refs.filter((r) => !isRateGroup(r.label, r.optionIndex) && ((r.optionIndex === oi && (!r.label || r.label === o.label)) || (r.optionIndex !== oi && r.label === o.label && !(d.options ?? [])[r.optionIndex ?? -1])));
             if (!mine.length) return o;
             return { ...o, choices: ((o.choices ?? []) as Ch[]).map((c) => mine.filter((r) => r.choice === c.name).reduce(apply, c)) };
           }),
+          ...(rateRefs.length && d.priceRates?.length
+            ? { priceRates: writeRateStock(d.priceRates, (chs) => ((chs ?? []) as Ch[]).map((c) => rateRefs.filter((r) => r.choice === c.name).reduce(apply, c)) as ProductOption["choices"]) }
+            : {}),
         };
       }
       if (relinked === before) continue;

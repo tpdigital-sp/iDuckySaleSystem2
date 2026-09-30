@@ -143,6 +143,7 @@ import {
   artworkSide,
   orderIdIn,
   reuseArtText,
+  receiveDepositFirst,
 } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
 import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
@@ -1735,6 +1736,13 @@ export default function AdminOrderDetailPage() {
       setOrder((cur) => (cur ? { ...cur } : cur)); // รีเซ็ต <select> กลับสถานะเดิม
       return;
     }
+    // ➗ ใบมัดจำที่ยังไม่รับงวดแรก: "ชำระแล้ว" = ยืนยันรับมัดจำ 50% แรก ไม่ใช่ชำระครบ → ใช้กล่องยืนยันมัดจำ (บอกยอดโอนจริงหลังหัก ณ ที่จ่าย)
+    // เซิร์ฟเวอร์ก็แปลงให้เองอยู่แล้ว (PATCH) — ตรงนี้ให้คนกดเห็นว่ากำลังยืนยันงวดแรก (OD-260928-1506 · 30 ก.ย. 69)
+    if (status === "ชำระแล้ว" && order.deposit && !order.deposit.firstPaidAt) {
+      setOrder((cur) => (cur ? { ...cur } : cur)); // รีเซ็ต <select> — กล่องยืนยันเป็นคนเปลี่ยนสถานะให้
+      await confirmDepositFirst();
+      return;
+    }
     // "ชำระแล้ว" ต้องมีสลิปเป็นหลักฐานเสมอ — ไม่มีสลิปให้แนบตรงนั้นเลย หรือยืนยันเองแล้วลง log
     const noSlip = status === "ชำระแล้ว" && !order.slipPath && !order.slipUrl && !(order.payments?.length);
     if (noSlip) {
@@ -3172,12 +3180,8 @@ export default function AdminOrderDetailPage() {
     const now = new Date().toISOString();
     applyOrder(
       withLog(
-        {
-          ...order,
-          deposit: { ...order.deposit, firstPaidAt: now },
-          paidTotal: order.deposit.amount,
-          status: (["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status) ? ("ชำระแล้ว" as OrderStatus) : order.status,
-        },
+        // ตัวเดียวกับที่เซิร์ฟเวอร์ใช้ตอนเมนูเปลี่ยนสถานะ — firstPaidAt · paidTotal = ยอดมัดจำ · ใบหน้าประตูการเงินไป "ชำระแล้ว"
+        receiveDepositFirst(order, now),
         actor,
         "ยืนยันรับมัดจำ 50%",
         `ยอด ${order.deposit.amount} บาท${inst && inst.wht > 0 ? ` (โอนจริง ${inst.firstNet} หลังหัก ณ ที่จ่าย)` : ""}${noSlip ? " · ไม่มีสลิปแนบ" : ""}`
@@ -4529,10 +4533,12 @@ export default function AdminOrderDetailPage() {
                           // "ชำระแล้ว" ปิดไว้สำหรับคนที่ไม่มีสิทธิ์ยืนยันเงินเข้า — เห็นได้แต่เลือกไม่ได้
                           <option key={st} value={st} disabled={st === "ชำระแล้ว" && !mayMarkPaid}>
                             {/* ออเดอร์มัดจำ: ป้าย "ชำระแล้ว" ต้องบอกว่าเงินเข้างวดไหน (แรก = ครึ่งเดียว · หลัง = ครบ 100%) */}
-                            {st === "ชำระแล้ว" && order.deposit?.firstPaidAt
+                            {st === "ชำระแล้ว" && order.deposit
                               ? order.deposit.settledAt
                                 ? "ชำระแล้ว 50% หลัง"
-                                : "ชำระแล้ว 50% แรก"
+                                : order.deposit.firstPaidAt
+                                  ? "ชำระแล้ว 50% แรก"
+                                  : "ชำระแล้ว 50% แรก (ยืนยันรับมัดจำ)"
                               : st}
                             {st === "ชำระแล้ว" && !mayMarkPaid
                               ? "  (เฉพาะคนที่มีสิทธิ์ยืนยันเงินเข้า)"

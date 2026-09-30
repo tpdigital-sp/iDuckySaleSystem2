@@ -6,7 +6,8 @@ import { loadRolePerms } from "@/lib/server/role-perms";
 import { listStock } from "@/lib/server/stock";
 import { getProductsSlim, invalidateProductsSlim } from "@/lib/server/products-slim";
 import { snapshotRevision } from "@/lib/server/product-revisions";
-import type { Product, ProductOption } from "@/lib/products";
+import type { PriceRate, Product, ProductOption } from "@/lib/products";
+import { RATE_OPTION_INDEX, isRateGroup, rateStockOption, writeRateStock } from "@/lib/stock-rate";
 
 export const runtime = "nodejs";
 
@@ -59,6 +60,7 @@ type Target = {
  * ⚠️ ห้ามใช้ label อย่างเดียว: กลุ่มชื่อซ้ำในสินค้าเดียวมีอยู่จริง
  */
 function findOption(opts: ProductOption[], label: string | undefined, optionIndex: number | undefined): number {
+  if (isRateGroup(label, optionIndex)) return RATE_OPTION_INDEX; // กลุ่มเสมือน "เรทราคา" (สต๊อกตามเรท)
   if (typeof optionIndex === "number" && opts[optionIndex]?.label === label && !opts[optionIndex]?.presetId) return optionIndex;
   return opts.findIndex((o) => o.label === label && !o.presetId);
 }
@@ -233,8 +235,14 @@ export async function POST(req: Request) {
     });
 
   const opts: ProductOption[] = row.data.options ?? [];
+  const rateGroup = presetId ? null : rateStockOption(row.data.priceRates as PriceRate[] | undefined);
   const oi = presetId ? -1 : findOption(opts, label, body.optionIndex);
-  if (!presetId && oi < 0) return NextResponse.json({ error: "ไม่พบกลุ่มตัวเลือกนี้ในสินค้า" }, { status: 404 });
+  const isRate = !presetId && oi === RATE_OPTION_INDEX;
+  if (!presetId && (oi < 0 && !isRate)) return NextResponse.json({ error: "ไม่พบกลุ่มตัวเลือกนี้ในสินค้า" }, { status: 404 });
+  if (isRate && !rateGroup) return NextResponse.json({ error: "สินค้านี้ไม่มีหลายเรทราคา" }, { status: 404 });
+  /** กลุ่มที่กำลังแก้ (จริงหรือเสมือน) + ทุกกลุ่มไว้เช็คเงื่อนไข */
+  const host = isRate ? rateGroup! : opts[oi];
+  const allGroups: ProductOption[] = [...(rateGroup ? [rateGroup] : []), ...opts];
 
   // ── ผูกของที่ตัดเพิ่มแบบมีเงื่อนไข ─────────────────────────────────────────────
   if (linkExtra) {
@@ -242,9 +250,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "คลังตัวเลือกกลางยังตั้งของมีเงื่อนไขไม่ได้ — ต้องตั้งที่ตัวเลือกของสินค้าเอง" }, { status: 400 });
     const sid = (linkExtra.stockItemId ?? "").trim();
     if (!sid) return NextResponse.json({ error: "ต้องเลือกวัสดุที่จะตัดเพิ่ม" }, { status: 400 });
-    const host = (opts[oi].choices ?? []).find((c) => c.name === choice);
-    if (!host) return NextResponse.json({ error: "ไม่พบตัวเลือกนี้ในกลุ่ม (อาจมีคนแก้ไปก่อน) — โหลดหน้าใหม่" }, { status: 404 });
-    if (host.stockItemId === sid)
+    const hostChoice = (host.choices ?? []).find((c) => c.name === choice);
+    if (!hostChoice) return NextResponse.json({ error: "ไม่พบตัวเลือกนี้ในกลุ่ม (อาจมีคนแก้ไปก่อน) — โหลดหน้าใหม่" }, { status: 404 });
+    if (hostChoice.stockItemId === sid)
       return NextResponse.json({ error: "วัสดุตัวนี้เป็นลิงก์หลักของตัวเลือกอยู่แล้ว — ผูกซ้ำจะโดนตัด 2 เด้ง" }, { status: 409 });
     // ผูกกับรหัสที่ไม่มีจริง = ลิงก์ตายตั้งแต่เกิด (เคยมี 32 SKU แบบนี้)
     const stock = await listStock();
@@ -257,9 +265,9 @@ export async function POST(req: Request) {
     // (ฐาน Griptok ตามสีที่เลือก — ตัวเลือกมี stockItemId หลักได้ตัวเดียว ของชิ้นที่ 2 จึงมาทางนี้ · เจ้าของร้านขอ 30 ก.ย. 69)
     // planStockCuts มอง when ว่างเป็นเข้าเงื่อนไขเสมออยู่แล้ว ([].every = true)
     for (const w of when) {
-      if (w.label === opts[oi].label)
+      if (w.label === host.label)
         return NextResponse.json({ error: `เงื่อนไขต้องเป็นกลุ่มอื่น — "${w.label}" เป็นกลุ่มเดียวกับตัวหลัก` }, { status: 400 });
-      const g = opts.find((o) => o.label === w.label);
+      const g = allGroups.find((o) => o.label === w.label);
       if (!g) return NextResponse.json({ error: `ไม่มีกลุ่มตัวเลือก "${w.label}" ในสินค้านี้` }, { status: 404 });
       const names = new Set((g.choices ?? []).map((c) => c.name));
       const miss = w.choices.filter((c) => !names.has(c));
@@ -273,7 +281,9 @@ export async function POST(req: Request) {
 
   const next = presetId
     ? { ...row.data, choices: setOn(row.data.choices ?? []) }
-    : { ...row.data, options: opts.map((o, i) => (i === oi ? { ...o, choices: setOn((o.choices ?? []) as Ch[]) } : o)) };
+    : isRate
+      ? { ...row.data, priceRates: writeRateStock(row.data.priceRates as PriceRate[], (chs) => setOn((chs ?? []) as Ch[]) as ProductOption["choices"]) }
+      : { ...row.data, options: opts.map((o, i) => (i === oi ? { ...o, choices: setOn((o.choices ?? []) as Ch[]) } : o)) };
   if (notLinked) return NextResponse.json({ error: "ต้องผูก SKU ก่อน ถึงจะตั้งอัตราใช้ได้" }, { status: 409 });
 
   // เปลี่ยนโครงตัวเลือก (ไม่ใช่แค่สลับรหัส SKU) → เก็บฉบับก่อนหน้าไว้ย้อนได้
@@ -322,6 +332,7 @@ export async function DELETE(req: Request) {
   } else {
     const opts: ProductOption[] = row.data.options ?? [];
     const oi = findOption(opts, label, body.optionIndex);
+    if (oi === RATE_OPTION_INDEX) return NextResponse.json({ error: "ลบเรทราคาจากหน้านี้ไม่ได้ — ไปที่หน้าแก้ไขสินค้า" }, { status: 400 });
     if (oi < 0) return NextResponse.json({ error: "ไม่พบกลุ่มตัวเลือกนี้ในสินค้า" }, { status: 404 });
     const r = dropAt(opts[oi].choices ?? []);
     if (r.err) return NextResponse.json({ error: r.err }, { status: 409 });

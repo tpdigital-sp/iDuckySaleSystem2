@@ -7,6 +7,7 @@ import { allStockCodes, deleteStockItem, listStockItems, saveStockItem } from "@
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { invalidateProductsSlim } from "@/lib/server/products-slim";
 import { normName } from "@/lib/stock-match";
+import { RATE_OPTION_INDEX, rateStockOption, writeRateStock } from "@/lib/stock-rate";
 import type { Product, ProductOption } from "@/lib/products";
 
 export const runtime = "nodejs";
@@ -26,6 +27,9 @@ export const runtime = "nodejs";
  * SKU นำเข้าที่ยัง "รอตรวจ" และชื่อตรงกับตัวเลือก (PL-* จากตารางราคา) ถูกหยิบมาใช้เป็นชิ้นหลักแทนการสร้างซ้ำ
  *
  * ⚠️ ต้องถอด SKU รวมเดิมเสมอ — ไม่งั้นออเดอร์เดียวตัด 2 ต่อ (ตัวสินค้า 1 + ตัวเลือก 1)
+ *
+ * 📦 "เรทราคา" แยกได้ด้วย (การ์ดสเปรย์ 20 ml / 40 ml เป็นขวดคนละแบบ · 30 ก.ย. 69): ส่งมาเป็นกลุ่มเสมือน
+ * optionIndex = RATE_OPTION_INDEX (-1) label = "เรทราคา" · เขียนกลับลง priceRates[].stockItemId/stockLinks (lib/stock-rate.ts)
  */
 
 function sb() {
@@ -62,12 +66,14 @@ export async function GET(req: Request) {
   const skuName = new Map(items.map((i) => [i.id, i.name]));
 
   // กลุ่มที่แยกได้: ของสินค้าเอง (ไม่ลิงก์คลังกลาง — พวกนั้นผูกที่หน้าผูกคลัง) · เป็นตัวเลือกให้เลือก ไม่ใช่ช่องกรอก · มีค่าที่มีชื่อ
-  const groups = (p.options ?? [])
-    .map((o, optionIndex) => ({ o, optionIndex }))
-    .filter(({ o }) => !o.presetId && o.display !== "input" && (o.choices ?? []).some((c) => c.name?.trim()))
+  // + "เรทราคา" เป็นกลุ่มเสมือนนำหน้า (มีเมื่อสินค้ามีหลายเรท) — เรทตัวแทนไม่โชว์ เพราะยืม SKU ของเรท public คู่ของมันตอนตัด
+  const rateGroup = rateStockOption(p.priceRates);
+  const groups = [...(rateGroup && (rateGroup.choices ?? []).length > 1 ? [{ o: rateGroup, optionIndex: RATE_OPTION_INDEX }] : []), ...(p.options ?? []).map((o, optionIndex) => ({ o, optionIndex }))]
+    .filter(({ o, optionIndex }) => optionIndex === RATE_OPTION_INDEX || (!o.presetId && o.display !== "input" && (o.choices ?? []).some((c) => c.name?.trim())))
     .map(({ o, optionIndex }) => ({
       optionIndex,
       label: o.label,
+      rate: optionIndex === RATE_OPTION_INDEX,
       choices: ((o.choices ?? []) as Ch[])
         .filter((c) => c.name?.trim())
         .map((c) => ({
@@ -120,7 +126,17 @@ export async function POST(req: Request) {
   const p = row?.data as Product | undefined;
   if (!p?.name) return NextResponse.json({ error: "ไม่พบสินค้านี้" }, { status: 404 });
   const opts: ProductOption[] = p.options ?? [];
-  const opt = opts[optionIndex];
+  const rateGroup = rateStockOption(p.priceRates);
+  /** กลุ่มตามลำดับ — -1 = กลุ่มเสมือน "เรทราคา" */
+  const groupAt = (i: number): ProductOption | undefined => (i === RATE_OPTION_INDEX ? rateGroup ?? undefined : opts[i]);
+  /** ทุกกลุ่มพร้อมลำดับ (ไว้เช็คเงื่อนไข/ลิงก์ที่มีอยู่) */
+  const allGroups = [...(rateGroup ? [{ o: rateGroup, i: RATE_OPTION_INDEX }] : []), ...opts.map((o, i) => ({ o, i }))];
+  /** เขียน choices ของกลุ่มที่ i กลับลงสินค้า — กลุ่มเสมือนเรท → priceRates · กลุ่มจริง → options */
+  const applyTo = (i: number, f: (chs: Ch[]) => Ch[]): Product =>
+    i === RATE_OPTION_INDEX
+      ? { ...p, priceRates: writeRateStock(p.priceRates ?? [], (chs) => f((chs ?? []) as Ch[]) as ProductOption["choices"]) }
+      : { ...p, options: opts.map((o, j) => (j !== i ? o : { ...o, choices: f((o.choices ?? []) as Ch[]) as ProductOption["choices"] })) };
+  const opt = groupAt(optionIndex);
   if (!opt || opt.label !== label || opt.presetId)
     return NextResponse.json({ error: "กลุ่มตัวเลือกเปลี่ยนไปแล้ว — ปิดแล้วเปิดใหม่" }, { status: 409 });
 
@@ -134,14 +150,14 @@ export async function POST(req: Request) {
   const extraName = body.extra?.name?.trim() ?? "";
   const extraWhen = body.extra?.when?.label && body.extra.when.choices?.length ? [{ label: body.extra.when.label, choices: body.extra.when.choices }] : null;
   if (extraName && !extraWhen) return NextResponse.json({ error: "ของชิ้นที่ 2 ต้องระบุเงื่อนไข (กลุ่ม + ค่าที่เลือก)" }, { status: 400 });
-  if (extraWhen && !opts.some((o, i) => i !== optionIndex && o.label === extraWhen[0].label))
+  if (extraWhen && !allGroups.some(({ o, i }) => i !== optionIndex && o.label === extraWhen[0].label))
     return NextResponse.json({ error: "ไม่พบกลุ่มตัวเลือกของเงื่อนไข" }, { status: 409 });
   // มีชื่อชิ้นส่วน → "แผ่นจิ๊กซอว์ ขนาด 15*20cm (ชื่อสินค้า)" · ไม่มี → รูปแบบเดิม "ชื่อสินค้า · ตัวเลือก"
   const nameFor = (part: string, choice: string) => (part ? `${part} ${choice} (${p.name})` : `${p.name} · ${choice}`);
   const sameWhen = (l: Link) => JSON.stringify(l.when ?? []) === JSON.stringify(extraWhen ?? []);
 
   // SKU นำเข้าที่รอตรวจ ยังไม่ผูกกับอะไร และชื่อ/alias ตรงกับตัวเลือก → ใช้ตัวนั้นเป็นชิ้นหลัก ไม่สร้างซ้ำ
-  const linkedIds = new Set(opts.flatMap((o) => ((o.choices ?? []) as Ch[]).flatMap((c) => [c.stockItemId, ...(c.stockLinks ?? []).map((l) => l.stockItemId)])).filter(Boolean));
+  const linkedIds = new Set(allGroups.flatMap(({ o }) => ((o.choices ?? []) as Ch[]).flatMap((c) => [c.stockItemId, ...(c.stockLinks ?? []).map((l) => l.stockItemId)])).filter(Boolean));
   const reusable = (choice: string) =>
     items.find(
       (i) => i.needsReview && !(i.productIds ?? []).length && !linkedIds.has(i.id) && [i.name, ...(i.aliases ?? [])].some((n) => normName(n) === normName(choice))
@@ -183,7 +199,7 @@ export async function POST(req: Request) {
   if (body.pair) {
     const bi = body.pair.optionIndex;
     const bl = body.pair.label;
-    const optB = typeof bi === "number" ? opts[bi] : undefined;
+    const optB = typeof bi === "number" ? groupAt(bi) : undefined;
     if (typeof bi !== "number" || bi === optionIndex || !optB || optB.label !== bl || optB.presetId)
       return NextResponse.json({ error: "กลุ่มที่ 2 เปลี่ยนไปแล้ว — ปิดแล้วเปิดใหม่" }, { status: 409 });
     const bNames = new Set(((optB.choices ?? []) as Ch[]).map((c) => c.name));
@@ -215,14 +231,7 @@ export async function POST(req: Request) {
         (linksOf.get(a) ?? linksOf.set(a, []).get(a)!).push({ stockItemId: sku.id, when: [{ label: bl!, choices: [b] }] });
       }
       if (!made.length) return NextResponse.json({ error: "คู่ที่เลือกมี SKU ครบแล้ว" }, { status: 409 });
-      const next = {
-        ...p,
-        options: opts.map((o, i) =>
-          i !== optionIndex
-            ? o
-            : { ...o, choices: ((o.choices ?? []) as Ch[]).map((c) => (linksOf.has(c.name) ? { ...c, stockLinks: [...(c.stockLinks ?? []), ...linksOf.get(c.name)!] } : c)) }
-        ),
-      };
+      const next = applyTo(optionIndex, (chs) => chs.map((c) => (linksOf.has(c.name) ? { ...c, stockLinks: [...(c.stockLinks ?? []), ...linksOf.get(c.name)!] } : c)));
       await snapshotRevision(db, productId, p, g.actor, "save");
       const { error } = await db.from("products").update({ data: next }).eq("id", productId);
       if (error) throw new Error(error.message);
@@ -278,26 +287,18 @@ export async function POST(req: Request) {
     if (!created.length) return NextResponse.json({ error: "ตัวเลือกที่เลือกผูก SKU ไว้ครบแล้ว" }, { status: 409 });
 
     // 2) ผูก SKU เข้าตัวเลือก — ชิ้นหลัก = ตัดเสมอ · ชิ้นที่ 2 = ตัดเมื่อเงื่อนไขตรง
-    const next = {
-      ...p,
-      options: opts.map((o, i) =>
-        i !== optionIndex
-          ? o
-          : {
-              ...o,
-              choices: ((o.choices ?? []) as Ch[]).map((c) => {
-                const main = !c.stockItemId ? mainOf.get(c.name) : undefined;
-                const extra = extraOf.get(c.name);
-                if (!main && !extra) return c;
-                return {
-                  ...c,
-                  ...(main ? { stockItemId: main } : {}),
-                  ...(extra ? { stockLinks: [...(c.stockLinks ?? []), { stockItemId: extra, when: extraWhen! }] } : {}),
-                };
-              }),
-            }
-      ),
-    };
+    const next = applyTo(optionIndex, (chs) =>
+      chs.map((c) => {
+        const main = !c.stockItemId ? mainOf.get(c.name) : undefined;
+        const extra = extraOf.get(c.name);
+        if (!main && !extra) return c;
+        return {
+          ...c,
+          ...(main ? { stockItemId: main } : {}),
+          ...(extra ? { stockLinks: [...(c.stockLinks ?? []), { stockItemId: extra, when: extraWhen! }] } : {}),
+        };
+      })
+    );
     await snapshotRevision(db, productId, p, g.actor, "save");
     const { error } = await db.from("products").update({ data: next }).eq("id", productId);
     if (error) throw new Error(error.message);

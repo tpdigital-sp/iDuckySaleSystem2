@@ -1989,6 +1989,15 @@ export interface PriceRate {
    * ห้ามถูก auto-pick ให้ลูกค้าทั่วไป และห้ามเป็นเรทแรก (เรทแรกถูกเซฟเป็น pricing หลักที่ทุกอย่าง fallback)
    */
   dealerOnly?: boolean;
+  /**
+   * 📦 สต๊อกตามเรท — สินค้าที่ "เรทราคา" คือของคนละชิ้นบนชั้น (การ์ดสเปรย์ 20 ml กับ 40 ml เป็นขวดคนละแบบ)
+   * ความหมายเหมือน choice.stockItemId / stockQtyPer / stockLinks ของกลุ่มตัวเลือกทุกประการ
+   * ระบบสต๊อกมองเรทเป็น "กลุ่มตัวเลือกเสมือน" ชื่อ RATE_LABEL ลำดับ RATE_OPTION_INDEX (ดู lib/stock-rate.ts)
+   * เรทตัวแทน (id ลงท้าย -dealer) ที่ไม่ได้ผูกเอง = ใช้ SKU ของเรท public คู่ของมัน
+   */
+  stockItemId?: string;
+  stockQtyPer?: number;
+  stockLinks?: { stockItemId: string; per?: number; when?: { label: string; choices: string[] }[] }[];
   pricing: PriceMatrix;
 }
 

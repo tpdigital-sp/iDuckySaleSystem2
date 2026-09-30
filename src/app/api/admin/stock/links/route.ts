@@ -4,6 +4,7 @@ import { listStockItems } from "@/lib/server/stock";
 import { getProductsSlim } from "@/lib/server/products-slim";
 import { normName, skuPage, type StockSuggest, type StockUsage } from "@/lib/stock-match";
 import type { Product } from "@/lib/products";
+import { RATE_OPTION_INDEX, rateStockOption } from "@/lib/stock-rate";
 
 export const runtime = "nodejs";
 
@@ -97,15 +98,23 @@ export async function GET(req: Request) {
   }
 
   // 3) ผูกที่ตัวเลือกของสินค้าเอง (กลุ่มที่ไม่ลิงก์คลัง) — เก็บลำดับกลุ่มไว้ชี้ตอนผูก/ถอด (กลุ่มชื่อซ้ำมีจริง)
+  //    + กลุ่มเสมือน "เรทราคา" (optionIndex = -1) สำหรับสินค้าที่สต๊อกแยกตามเรท (การ์ดสเปรย์ 20/40 ml)
   for (const { id, p } of prods) {
     const idNorm = id.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-    (p.options ?? []).forEach((o, oi) => {
+    const rateGroup = rateStockOption(p.priceRates);
+    const groups: { o: NonNullable<Product["options"]>[number]; oi: number }[] = [
+      ...(rateGroup ? [{ o: rateGroup, oi: RATE_OPTION_INDEX }] : []),
+      ...(p.options ?? []).map((o, oi) => ({ o, oi })),
+    ];
+    groups.forEach(({ o, oi }) => {
       if (o.presetId) return;
+      // เรทที่ยังไม่ผูก ไม่เสนอเป็น "คู่ที่น่าจะใช่" (ชื่อเรทยาว ๆ ไม่มีทางตรงชื่อ SKU)
+      const suggestable = oi !== RATE_OPTION_INDEX;
       for (const c of (o.choices ?? []) as Ch[]) {
         const img = c.imageSrc ?? cover(p);
         if (c.stockItemId)
           push(c.stockItemId, { kind: "choice", productId: id, productName: p.name, img, draft: !!p.hidden, label: o.label, optionIndex: oi, choice: c.name, per: c.stockQtyPer ?? 1 });
-        else open.push({ n: normName(c.name), idNorm, s: { kind: "choice", productId: id, productName: p.name, img, label: o.label, optionIndex: oi, choice: c.name } });
+        else if (suggestable) open.push({ n: normName(c.name), idNorm, s: { kind: "choice", productId: id, productName: p.name, img, label: o.label, optionIndex: oi, choice: c.name } });
         // ของชิ้นที่ต้องหยิบเพิ่มแบบมีเงื่อนไข (กรอบรูปตามขนาด เมื่อเลือกแบบมีกรอบ)
         for (const l of c.stockLinks ?? [])
           if (l.stockItemId)

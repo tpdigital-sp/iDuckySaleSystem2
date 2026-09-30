@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import type { OptionPreset } from "@/lib/option-presets";
-import type { Product } from "@/lib/products";
+import type { PriceRate, Product } from "@/lib/products";
 
 /**
  * ตารางสินค้าแบบ "ฟิลด์ที่หน้าคลังใช้" พร้อมแคชในหน่วยความจำ
@@ -20,7 +20,18 @@ export type ProductsSlim = { products: SlimProduct[]; presets: SlimPreset[]; at:
 
 const TTL_MS = 60_000;
 const SELECT =
-  "id,name:data->name,price:data->price,hidden:data->hidden,options:data->options,images:data->images,label:data->label,choices:data->choices,pid:data->id";
+  "id,name:data->name,price:data->price,hidden:data->hidden,options:data->options,images:data->images,label:data->label,choices:data->choices,pid:data->id,rates:data->priceRates";
+
+/** เรทราคาแบบไม่เอาตารางราคา — หน้าคลังใช้แค่ชื่อ/รูป/ลิงก์สต๊อกของเรท (สต๊อกตามเรท 30 ก.ย. 69) */
+function slimRates(rates: unknown): PriceRate[] | undefined {
+  if (!Array.isArray(rates) || !rates.length) return undefined;
+  return rates
+    .filter((r) => r && typeof r === "object" && (r as PriceRate).label)
+    .map((r) => {
+      const { pricing: _p, ...rest } = r as PriceRate;
+      return { ...rest, pricing: { unit: "", driverLabels: [], tiers: [], cells: {} } } as PriceRate;
+    });
+}
 
 let cache: ProductsSlim | null = null;
 let inflight: Promise<ProductsSlim> | null = null;
@@ -44,7 +55,11 @@ async function fetchSlim(): Promise<ProductsSlim> {
       const p = { id: r.pid, label: r.label, choices: r.choices } as unknown as OptionPreset;
       if (p.id) presets.push({ id: r.id, data: p });
     } else if (!r.id.startsWith("__") && r.name && typeof r.price === "number") {
-      products.push({ id: r.id, data: { name: r.name, price: r.price, hidden: r.hidden, options: r.options ?? [], images: r.images ?? [] } as unknown as SlimProduct["data"] });
+      const priceRates = slimRates(r.rates);
+      products.push({
+        id: r.id,
+        data: { name: r.name, price: r.price, hidden: r.hidden, options: r.options ?? [], images: r.images ?? [], ...(priceRates ? { priceRates } : {}) } as unknown as SlimProduct["data"],
+      });
     }
   }
   // ⚠️ ได้ว่างต้องถือว่าพัง ห้ามแคช/ห้ามคำนวณต่อ — เคยเกิด Supabase ตอบว่างชั่วคราว ทุก SKU กลายเป็น "สินค้าหายไป"
