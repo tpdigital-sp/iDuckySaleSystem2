@@ -824,6 +824,13 @@ export async function PATCH(req: Request) {
     void _sw;
     toSave = rest as Order;
   }
+  // ✅ งานเสร็จพร้อมส่ง: ของเซิร์ฟเวอร์เช่นกัน (เขียนผ่าน /ready) — หน้าออเดอร์ที่เปิดค้างก่อนฝ่ายผลิตติ๊ก ห้ามลบ/ทับ
+  if (existing.readyToShip) toSave = { ...toSave, readyToShip: existing.readyToShip };
+  else if (toSave.readyToShip) {
+    const { readyToShip: _rt, ...rest } = toSave;
+    void _rt;
+    toSave = rest as Order;
+  }
   if (ridersNotReady.length)
     toSave = withLog(
       toSave,
