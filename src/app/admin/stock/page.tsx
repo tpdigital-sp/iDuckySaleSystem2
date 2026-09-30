@@ -287,6 +287,8 @@ export default function StockPage() {
   const [deletedOpen, setDeletedOpen] = useState(false);
   /** 🗂 หน้าต่างจัดการหมวด (เพิ่ม/เปลี่ยนชื่อ/ลบ) + รายชื่อหมวดที่เก็บไว้ (stockMeta/categories) */
   const [catsOpen, setCatsOpen] = useState(false);
+  /** 🗂 หน้าต่างย้ายหมวด — รายการที่จะย้าย + ชื่อชุด (ทั้งกลุ่ม หรือตัวเดียวจากลิ้นชัก) */
+  const [moveCatFor, setMoveCatFor] = useState<{ items: Item[]; title: string } | null>(null);
   const [catList, setCatList] = useState<string[]>([]);
   const loadCats = useCallback(async () => {
     const res = await fetch("/api/admin/stock/categories");
@@ -1921,6 +1923,7 @@ export default function StockPage() {
                       if (g.key === "bom") menu.push({ icon: "🔩", label: "จัดการคลังวัสดุแฝง", onClick: () => setBomLib(true) });
                     }
                     if (g.productId) menu.push({ icon: "↗", label: "เปิดหน้าสินค้า", href: `/admin/products/${encodeURIComponent(g.productId)}` });
+                    if (mayEdit) menu.push({ icon: "🗂", label: `ย้ายหมวดทั้งกลุ่ม (${fmtN(g.rows.length)})…`, onClick: () => setMoveCatFor({ items: g.rows, title: g.title }) });
                     if (isOwner && !untrackedView)
                       menu.push({ icon: "🧹", label: "รีเซ็ตยอดทั้งกลุ่มเป็น 0 (เจ้าของร้าน)", danger: true, onClick: () => void resetItems(g.rows, g.title) });
                     if (mayEdit) {
@@ -2091,6 +2094,7 @@ export default function StockPage() {
           onDelete={() => deleteItem(openItem)}
           onNoStock={(on) => markNoStock([openItem], on, openItem.name)}
           onReset={isOwner ? () => void resetItems([openItem], openItem.name) : undefined}
+          onMoveCategory={mayEdit ? () => setMoveCatFor({ items: [openItem], title: openItem.name }) : undefined}
           onReviewed={() => markReviewed([openItem], openItem.name)}
           onRename={(name) => saveItem({ id: openItem.id, name, unit: openItem.unit })}
           onImage={async (url) => {
@@ -2230,6 +2234,19 @@ export default function StockPage() {
         />
       )}
 
+      {moveCatFor && (
+        <MoveCategoryModal
+          items={moveCatFor.items}
+          title={moveCatFor.title}
+          allCats={cats}
+          onClose={() => setMoveCatFor(null)}
+          onDone={async (msg) => {
+            setMoveCatFor(null);
+            setOk(msg);
+            await Promise.all([loadCats(), load()]);
+          }}
+        />
+      )}
       {catsOpen && (
         <CategoriesModal
           names={cats}
@@ -2977,6 +2994,7 @@ function ItemDrawer({
   onNoStock,
   onReviewed,
   onReset,
+  onMoveCategory,
   onRename,
   onImage,
 }: {
@@ -3009,6 +3027,8 @@ function ItemDrawer({
   onReviewed: () => void;
   /** 🧹 รีเซ็ตยอดเป็น 0 — ส่งมาเฉพาะเจ้าของร้าน (ไม่ส่ง = ไม่มีปุ่ม) */
   onReset?: () => void;
+  /** 🗂 ย้ายหมวดของตัวนี้ (ไม่ต้องเปิดฟอร์มแก้ไขทั้งใบ) */
+  onMoveCategory?: () => void;
   onRename: (name: string) => Promise<boolean>;
   onImage: (url: string) => Promise<boolean>;
 }) {
@@ -3286,6 +3306,11 @@ function ItemDrawer({
                 </button>
               )}
               {/* ขึ้นเสมอสำหรับเจ้าของร้าน (ซ่อนตอนยอด 0 แล้วหาไม่เจอ 30 ก.ย. 69) — ยอด 0 อยู่แล้วกดได้แต่ระบบบอกว่าไม่มีอะไรต้องล้าง */}
+              {onMoveCategory && (
+                <button type="button" onClick={onMoveCategory} className={`${btnSmGhost} whitespace-nowrap`} title="ย้ายไปหมวดอื่น">
+                  🗂 ย้ายหมวด
+                </button>
+              )}
               {onReset && (
                 <button type="button" onClick={onReset} className={`${btnSmGhost} whitespace-nowrap`} title="ล้างยอดคงเหลือเป็น 0 (เจ้าของร้านเท่านั้น) — ลงประวัติให้ ย้อนดูได้">
                   🧹 รีเซ็ตเป็น 0
@@ -3874,6 +3899,53 @@ function CategoriesModal({
       <div className="mt-4">
         <button type="button" onClick={onClose} className={`${btnNeutral} w-full`}>
           ปิด
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/** 🗂 ย้ายหมวด — เลือกหมวดปลายทาง (จากรายชื่อ หรือพิมพ์ใหม่) ให้วัสดุชุดนี้ทั้งชุด · POST categories action=assign */
+function MoveCategoryModal({ items, title, allCats, onClose, onDone }: { items: Item[]; title: string; allCats: string[]; onClose: () => void; onDone: (msg: string) => Promise<void> }) {
+  const cur = [...new Set(items.map((i) => i.category?.trim() || ""))];
+  const [cat, setCat] = useState(cur.length === 1 ? cur[0] : "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    setBusy(true);
+    setErr("");
+    const res = await fetch("/api/admin/stock/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "assign", ids: items.map((i) => i.id), name: cat.trim() }),
+    });
+    const j = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok || !j?.ok) return setErr(j?.error ?? "ย้ายไม่สำเร็จ");
+    await onDone(`ย้าย ${title} ${fmtN(j.moved ?? items.length)} รายการ ไปหมวด “${cat.trim() || "ยังไม่จัดหมวด"}” แล้ว`);
+  };
+  return (
+    <Modal title="ย้ายหมวด" subtitle={`${title} · ${fmtN(items.length)} รายการ${cur.length === 1 && cur[0] ? ` · ตอนนี้อยู่หมวด “${cur[0]}”` : cur.length > 1 ? " · ตอนนี้อยู่คนละหมวดกัน" : ""}`} onClose={onClose}>
+      {err && <p className={`mb-3 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
+      <label className="block">
+        <span className={fieldLabel}>ย้ายไปหมวด</span>
+        <UnitSelect options={allCats} value={cat} onChange={setCat} emptyLabel="— ยังไม่จัดหมวด —" placeholder="พิมพ์หมวดใหม่" />
+        <span className="mt-1 block text-[11px] text-slate-400">พิมพ์หมวดใหม่ได้ ระบบจะเพิ่มเข้ารายชื่อหมวดให้เอง · เลือก “ยังไม่จัดหมวด” = ถอดหมวดออก</span>
+      </label>
+      <ul className="mt-3 max-h-[30vh] overflow-y-auto rounded-xl border border-slate-200 text-[12px] text-slate-600">
+        {items.slice(0, 30).map((i) => (
+          <li key={i.id} className="truncate border-b border-slate-100 px-3 py-1.5 last:border-0">
+            {i.name}
+          </li>
+        ))}
+        {items.length > 30 && <li className="px-3 py-1.5 text-slate-400">… และอีก {fmtN(items.length - 30)} รายการ</li>}
+      </ul>
+      <div className="mt-4 flex gap-2">
+        <button type="button" onClick={onClose} className={`${btnNeutral} flex-1`}>
+          ยกเลิก
+        </button>
+        <button type="button" disabled={busy} onClick={submit} className={`${btnPrimary} flex-1`}>
+          {busy ? "กำลังย้าย…" : `ย้าย ${fmtN(items.length)} รายการ`}
         </button>
       </div>
     </Modal>

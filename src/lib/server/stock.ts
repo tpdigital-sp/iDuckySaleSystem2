@@ -775,3 +775,25 @@ export async function deleteStockCategory(name: string, moveTo?: string): Promis
   const names = await writeStockCategories(cur.filter((n) => n !== name));
   return { names, moved };
 }
+
+/** 🗂 ย้ายวัสดุหลายตัวไปหมวดเดียวกัน (ว่าง = ยังไม่จัดหมวด) — ใช้จากเมนู ⋯ ของกลุ่ม/ลิ้นชัก (เจ้าของร้านขอ 30 ก.ย. 69) */
+export async function assignStockCategory(ids: string[], category: string): Promise<number> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const cat = category.trim();
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 400) {
+    const b = db.batch();
+    for (const id of ids.slice(i, i + 400)) {
+      b.update(db.collection(STOCK_ITEMS).doc(id), { category: cat || FieldValue.delete(), updatedAt: new Date().toISOString() });
+      n++;
+    }
+    await b.commit();
+  }
+  if (cat) {
+    const cur = await listStockCategories();
+    if (!cur.includes(cat)) await addStockCategory(cat); // หมวดใหม่ที่พิมพ์เอง → เข้ารายชื่อหมวดด้วย
+  }
+  return n;
+}

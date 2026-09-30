@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { addStockCategory, deleteStockCategory, listStockCategories, listStockItems, renameStockCategory } from "@/lib/server/stock";
+import { addStockCategory, assignStockCategory, deleteStockCategory, listStockCategories, listStockItems, renameStockCategory } from "@/lib/server/stock";
 
 export const runtime = "nodejs";
 
@@ -27,11 +27,21 @@ export async function POST(req: Request) {
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
   if (!can(actor, "orders.edit", await loadRolePerms()))
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์จัดการสต๊อก" }, { status: 403 });
-  let body: { action?: string; name?: string; to?: string; moveTo?: string };
+  let body: { action?: string; name?: string; to?: string; moveTo?: string; ids?: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
+  }
+  // ย้ายวัสดุตาม ids ไปหมวด name (ว่าง = ยังไม่จัดหมวด)
+  if (body.action === "assign") {
+    const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string" && !!x) : [];
+    if (!ids.length) return NextResponse.json({ error: "ระบุรายการที่จะย้าย" }, { status: 400 });
+    try {
+      return NextResponse.json({ ok: true, moved: await assignStockCategory(ids, body.name ?? "") });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
   }
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: "ต้องมีชื่อหมวด" }, { status: 400 });
