@@ -2,6 +2,23 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "iducky-dev-3033",
+      "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3033"
+      ],
+      "port": 3033,
+      "autoPort": false,
+      "env": {
+        "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "NEXT_DIST_DIR": ".next-dev-3033"
+      }
+    },
+    {
       "name": "iducky-dev-3031",
       "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/npm",
       "runtimeArgs": [
@@ -163,6 +180,15 @@
         "PATH": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "NEXT_DIST_DIR": ".next-dev-3014"
       }
+    },
+    {
+      "name": "stock-proto-3099",
+      "runtimeExecutable": "/Users/iduckshop/.local/node-v22.23.1-darwin-arm64/bin/node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-iduckshop-Desktop-iDuckySaleSystem2/bbf843a3-c979-4535-b86d-772ee78dc817/scratchpad/serve.js"
+      ],
+      "port": 3099,
+      "autoPort": false
     }
   ]
 }

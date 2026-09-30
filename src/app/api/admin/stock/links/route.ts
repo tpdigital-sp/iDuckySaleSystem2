@@ -44,7 +44,8 @@ export async function GET(req: Request) {
 
   const cover = (p: Product) => (p.images ?? []).find((im) => im?.src)?.src;
   const products = prods
-    .map(({ id, p }) => ({ id, name: p.name, img: cover(p), draft: !!p.hidden }))
+    // slug = ลิงก์ตามชื่อ (/products/อาร์มปัก-Arm-Patch) — ไว้ให้ช่องวางลิงก์สินค้าจับคู่ได้ตรง ๆ ไม่ต้องเดาจากชื่อ (30 ก.ย. 69)
+    .map(({ id, p }) => ({ id, name: p.name, img: cover(p), draft: !!p.hidden, ...(p.slug ? { slug: p.slug } : {}) }))
     .sort((a, b) => a.name.localeCompare(b.name, "th"));
   const prodById = new Map(products.map((p) => [p.id, p]));
 

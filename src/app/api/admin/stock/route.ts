@@ -40,6 +40,9 @@ export async function POST(req: Request) {
     productIds?: string[];
     imageUrl?: string;
     part?: string;
+    packUnit?: string;
+    packSize?: number;
+    manualOnly?: boolean;
     active?: boolean;
   };
   try {
@@ -64,6 +67,10 @@ export async function POST(req: Request) {
       productIds: Array.isArray(body.productIds) ? body.productIds.map((p) => String(p).trim()).filter(Boolean) : undefined,
       imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() : undefined,
       part: typeof body.part === "string" ? body.part.trim() : undefined,
+      // 📦 หน่วยแพ็ค — ส่ง 0 = ล้าง (undefined = ไม่แตะ)
+      packSize: Number.isFinite(body.packSize) ? Math.max(0, Math.trunc(Number(body.packSize))) : undefined,
+      packUnit: typeof body.packUnit === "string" ? body.packUnit.trim() : undefined,
+      manualOnly: typeof body.manualOnly === "boolean" ? body.manualOnly : undefined,
       active: body.active,
     });
     return NextResponse.json({ ok: true, item });

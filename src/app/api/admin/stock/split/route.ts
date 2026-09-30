@@ -77,6 +77,9 @@ export async function GET(req: Request) {
       optionIndex,
       label: o.label,
       rate: optionIndex === RATE_OPTION_INDEX,
+      // เงื่อนไขแสดงกลุ่ม (showWhen ฯลฯ) — ให้หน้าจอตัดคู่ที่กลุ่มนี้ไม่โชว์ทิ้ง (เช่น กลุ่มสีที่มีเฉพาะตอนเลือกทรงหัวใจ)
+      show: [o.showWhen, o.showWhenAlso, ...(o.showWhenAll ?? [])].filter((s): s is { label: string; choices: string[] } => !!s?.label && !!s.choices?.length),
+      showAny: (o.showWhenAny ?? []).filter((s): s is { label: string; choices: string[] } => !!s?.label && !!s.choices?.length),
       choices: ((o.choices ?? []) as Ch[])
         .filter((c) => c.name?.trim())
         .map((c) => ({
@@ -94,7 +97,8 @@ export async function GET(req: Request) {
     .filter((i) => (i.productIds ?? []).includes(productId))
     .map((i) => ({ id: i.id, name: i.name, code: i.code, balance: i.balance, unit: i.unit, shared: (i.productIds ?? []).length > 1 }));
 
-  return NextResponse.json({ ok: true, product: { id: productId, name: p.name }, groups, old });
+  // กฎตัวเลือกขึ้นต่อกัน (OptionRule) — โหมด 2 กลุ่มต้องไม่สร้าง SKU ของคู่ที่ลูกค้าเลือกไม่ได้ (เคสธรรมดา ไม่มี iPhone 17 · เจ้าของร้านเจอ 30 ก.ย. 69)
+  return NextResponse.json({ ok: true, product: { id: productId, name: p.name }, groups, old, rules: p.rules ?? [] });
 }
 
 export async function POST(req: Request) {
@@ -114,6 +118,14 @@ export async function POST(req: Request) {
     /** แยกทุกคู่ของ 2 กลุ่ม (ทรง × สี) — กลุ่มที่ 2 + คู่ที่ต้องการ [ค่ากลุ่มแรก, ค่ากลุ่มที่ 2] */
     pair?: { optionIndex?: number; label?: string };
     combos?: [string, string][];
+    /** ✏️ ชื่อ SKU รายแถวที่ผู้ใช้แก้ในหน้าต่าง — คีย์ = ชื่อตัวเลือก หรือ "a\u0001b" ในโหมดคู่ · ไม่ส่ง/ว่าง = ตั้งจาก nameFor */
+    /** 🏭 ใช้ตัวเลือกเป็น "รายชื่อ" เท่านั้น — สร้างวัสดุแบบเบิกเอง ไม่ผูกกับสินค้า ไม่แตะ product (เจ้าของร้านสั่ง 30 ก.ย. 69: สีผ้าสักหลาดไม่ตัดตามการขาย) */
+    manualOnly?: boolean;
+    names?: Record<string, string>;
+    /** 📍 จุดสั่งซื้อ/รอของ รายแถว (คีย์เดียวกับ names) — ทับ defaults เฉพาะแถวนั้น */
+    perRow?: Record<string, { reorderPoint?: number; leadTimeDays?: number }>;
+    /** 📝 รายละเอียดของวัสดุที่จะสร้าง (หน่วย/แพ็ค/ตระกูล/ทุน/จุดสั่ง) — เจ้าของร้านขอกรอกก่อนสร้าง ไม่ใช่ได้ "ชิ้น" ค่าว่างมาแล้วไล่แก้ทีหลัง (30 ก.ย. 69) */
+    defaults?: { unit?: string; packUnit?: string; packSize?: number; family?: string; category?: string; unitCost?: number; reorderPoint?: number; leadTimeDays?: number };
   };
   try {
     body = await req.json();
@@ -146,6 +158,20 @@ export async function POST(req: Request) {
   const items = await listStockItems();
   const oldSkus = items.filter((i) => (i.productIds ?? []).includes(productId));
   const tpl = oldSkus[0]; // ยืมหน่วย/ตระกูล/ทุน/จุดสั่งจาก SKU รวมเดิม จะได้ไม่ต้องกรอกซ้ำ
+  // ค่าที่กรอกในหน้าต่างมาก่อน · ไม่กรอก = ยืมจาก SKU รวมเดิม (ถ้ามี)
+  const fin = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
+  const dft = body.defaults ?? {};
+  const D = {
+    unit: dft.unit?.trim() || tpl?.unit,
+    family: dft.family?.trim() || tpl?.family,
+    category: dft.category?.trim() || tpl?.category,
+    unitCost: fin(dft.unitCost) ?? tpl?.unitCost,
+    reorderPoint: fin(dft.reorderPoint) ?? tpl?.reorderPoint,
+    leadTimeDays: fin(dft.leadTimeDays) ?? tpl?.leadTimeDays,
+    packUnit: dft.packUnit?.trim() || tpl?.packUnit,
+    packSize: fin(dft.packSize) ?? tpl?.packSize,
+    manualOnly: body.manualOnly ? true : undefined,
+  };
   const baseCode = tpl?.code ?? `P-${productId.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toUpperCase()}`;
   const usedCodes = await allStockCodes(); // รวมตัวที่ลบแล้ว — กันรหัสซ้ำของเก่า
 
@@ -156,7 +182,17 @@ export async function POST(req: Request) {
   if (extraWhen && !allGroups.some(({ o, i }) => i !== optionIndex && o.label === extraWhen[0].label))
     return NextResponse.json({ error: "ไม่พบกลุ่มตัวเลือกของเงื่อนไข" }, { status: 409 });
   // มีชื่อชิ้นส่วน → "แผ่นจิ๊กซอว์ ขนาด 15*20cm (ชื่อสินค้า)" · ไม่มี → รูปแบบเดิม "ชื่อสินค้า · ตัวเลือก"
-  const nameFor = (part: string, choice: string) => (part ? `${part} ${choice} (${p.name})` : `${p.name} · ${choice}`);
+  // ชื่อ SKU ตั้งจาก "กลุ่มตัวเลือก" ไม่ใช่ชื่อสินค้า — วัสดุคือผ้าสักหลาดสีขาว ไม่ใช่อาร์มปัก (เจ้าของร้านสั่ง 30 ก.ย. 69)
+  // ตัดวงเล็บท้ายชื่อกลุ่มทิ้ง: "สีไหม Madeira (รวมในราคา 3 สี …)" → "สีไหม Madeira"
+  const shortLabel = (s: string) => s.replace(/\s*[(（].*$/, "").trim() || s;
+  const nameFor = (part: string, choice: string) => (part ? `${part} ${choice} (${p.name})` : `${shortLabel(label)} · ${choice}`);
+  const customName = (key: string) => body.names?.[key]?.trim() || "";
+  // โหมดเบิกเอง: ตระกูล = ชื่อกลุ่มตัวเลือก (จะได้รวมกลุ่มกันในหน้าคลังใต้ "ของใช้ในโรงงาน") ถ้าไม่ได้กรอกมา
+  if (body.manualOnly && !dft.family?.trim()) D.family = shortLabel(label);
+  const rowMeta = (key: string) => {
+    const r = body.perRow?.[key];
+    return { reorderPoint: fin(r?.reorderPoint) ?? D.reorderPoint, leadTimeDays: fin(r?.leadTimeDays) ?? D.leadTimeDays };
+  };
   const sameWhen = (l: Link) => JSON.stringify(l.when ?? []) === JSON.stringify(extraWhen ?? []);
 
   // SKU นำเข้าที่รอตรวจ ยังไม่ผูกกับอะไร และชื่อ/alias ตรงกับตัวเลือก → ใช้ตัวนั้นเป็นชิ้นหลัก ไม่สร้างซ้ำ
@@ -224,16 +260,20 @@ export async function POST(req: Request) {
         const cb = ((optB.choices ?? []) as Ch[]).find((c) => c.name === b);
         if (!ca || !cb) continue;
         const has = (ca.stockLinks ?? []).some((l) => l.when?.length === 1 && l.when[0].label === bl && l.when[0].choices.length === 1 && l.when[0].choices[0] === b);
-        if (has) continue; // คู่นี้มี SKU แล้ว
+        if (has && !body.manualOnly) continue; // คู่นี้มี SKU แล้ว (โหมดเบิกเองไม่สนลิงก์)
         const sku = await saveStockItem({
-          name: `${partName || p.name} · ${b} · ${a}`,
+          name: customName(`${a}\u0001${b}`) || `${partName || shortLabel(label)} · ${b} · ${a}`,
+          ...rowMeta(`${a}\u0001${b}`),
           code: nextCode(),
-          unit: tpl?.unit,
-          family: tpl?.family,
-          category: tpl?.category,
-          unitCost: tpl?.unitCost,
-          reorderPoint: tpl?.reorderPoint,
-          leadTimeDays: tpl?.leadTimeDays,
+          unit: D.unit,
+          family: D.family,
+          category: D.category,
+          unitCost: D.unitCost,
+          reorderPoint: D.reorderPoint,
+          leadTimeDays: D.leadTimeDays,
+          packUnit: D.packUnit,
+          packSize: D.packSize,
+          manualOnly: D.manualOnly,
           aliases: [`${b} ${a}`],
           imageUrl: ca.imageSrc ?? cb.imageSrc,
           part: partName || undefined,
@@ -242,6 +282,7 @@ export async function POST(req: Request) {
         (linksOf.get(a) ?? linksOf.set(a, []).get(a)!).push({ stockItemId: sku.id, when: [{ label: bl!, choices: [b] }] });
       }
       if (!made.length) return NextResponse.json({ error: "คู่ที่เลือกมี SKU ครบแล้ว" }, { status: 409 });
+      if (body.manualOnly) return NextResponse.json({ ok: true, created: made, manualOnly: true }); // ไม่ผูกสินค้า ไม่แตะ product
       const next = applyTo(optionIndex, (chs) => chs.map((c) => (linksOf.has(c.name) ? { ...c, stockLinks: [...(c.stockLinks ?? []), ...linksOf.get(c.name)!] } : c)));
       await snapshotRevision(db, productId, p, g.actor, "save");
       const { error } = await db.from("products").update({ data: next }).eq("id", productId);
@@ -257,29 +298,34 @@ export async function POST(req: Request) {
   try {
     for (const c of (opt.choices ?? []) as Ch[]) {
       if (!c.name?.trim() || !want.has(c.name)) continue;
-      if (!c.stockItemId) {
+      if (!c.stockItemId || body.manualOnly) {
         const hit = reusable(c.name);
         const sku = await saveStockItem(
           hit
             ? {
                 id: hit.id,
-                name: nameFor(partName, c.name),
+                name: customName(c.name) || nameFor(partName, c.name),
+                ...rowMeta(c.name),
                 // ย้ายมาอยู่ตระกูล/หมวด/หน่วยของสินค้านี้ (ตาม SKU รวมเดิม) — ไม่มีก็คงของนำเข้าไว้
-                unit: tpl?.unit,
-                family: tpl?.family,
-                category: tpl?.category,
+                unit: D.unit,
+                family: D.family,
+                category: D.category,
                 imageUrl: hit.imageUrl ?? c.imageSrc,
                 part: partName || undefined,
               } // saveStockItem เก็บชื่อเดิมเป็น alias + ปลดรอตรวจให้
             : {
-                name: nameFor(partName, c.name),
+                name: customName(c.name) || nameFor(partName, c.name),
+                ...rowMeta(c.name),
                 code: nextCode(),
-                unit: tpl?.unit,
-                family: tpl?.family,
-                category: tpl?.category,
-                unitCost: tpl?.unitCost,
-                reorderPoint: tpl?.reorderPoint,
-                leadTimeDays: tpl?.leadTimeDays,
+                unit: D.unit,
+                family: D.family,
+                category: D.category,
+                unitCost: D.unitCost,
+                reorderPoint: D.reorderPoint,
+                leadTimeDays: D.leadTimeDays,
+                packUnit: D.packUnit,
+                packSize: D.packSize,
+                manualOnly: D.manualOnly,
                 aliases: [c.name],
                 imageUrl: c.imageSrc,
                 part: partName || undefined,
@@ -299,9 +345,12 @@ export async function POST(req: Request) {
           name: nameFor(extraName, c.name),
           part: extraName,
           code: nextCode(),
-          unit: tpl?.unit ?? main?.unit,
-          family: tpl?.family ?? main?.family,
-          category: tpl?.category ?? main?.category,
+          unit: D.unit ?? main?.unit,
+          family: D.family ?? main?.family,
+          category: D.category ?? main?.category,
+          packUnit: D.packUnit,
+          packSize: D.packSize,
+          manualOnly: D.manualOnly,
           imageUrl: c.imageSrc,
         });
         extraOf.set(c.name, sku.id);
@@ -309,6 +358,8 @@ export async function POST(req: Request) {
       }
     }
     if (!created.length) return NextResponse.json({ error: "ตัวเลือกที่เลือกผูก SKU ไว้ครบแล้ว" }, { status: 409 });
+    // 🏭 โหมดเบิกเอง: ได้วัสดุแล้วจบ ไม่ผูกเข้าตัวเลือก ไม่ปลดของเก่า
+    if (body.manualOnly) return NextResponse.json({ ok: true, created, manualOnly: true });
 
     // 2) ผูก SKU เข้าตัวเลือก — ชิ้นหลัก = ตัดเสมอ · ชิ้นที่ 2 = ตัดเมื่อเงื่อนไขตรง
     const next = applyTo(optionIndex, (chs) =>

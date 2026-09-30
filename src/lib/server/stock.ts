@@ -37,8 +37,17 @@ export interface StockItem {
   needsReview?: boolean;
   /** อาจซ้ำกับ SKU รหัสนี้ — ระบบเตือนไว้ ไม่ยุบให้เอง (ยุบผิดย้อนกลับไม่ได้) */
   maybeDuplicateOf?: string;
-  /** หน่วยนับ เช่น ชิ้น, แผ่น, กล่อง */
+  /** หน่วยนับ (หน่วยฐาน — ยอดคงเหลือและ ledger นับเป็นหน่วยนี้เสมอ) เช่น ชิ้น, แผ่น */
   unit: string;
+  /**
+   * 📦 หน่วยแพ็ค (ไม่บังคับ): ของที่ซื้อ/เบิกเป็นแพ็คแต่ใช้เป็นแผ่น เช่น กระดาษ 1 แพ็ค = 100 แผ่น
+   * packSize = 1 แพ็คมีกี่หน่วยฐาน (>1 ถึงจะนับว่ามีแพ็ค) · packUnit = ชื่อหน่วยแพ็ค ("แพ็ค", "รีม", "กล่อง")
+   * ยอดยังเก็บเป็นหน่วยฐาน — หน้าจอแปลงเป็น "3 แพ็ค + 40 แผ่น" ให้ และฟอร์มรับ/เบิกเลือกหน่วยได้ (เจ้าของร้านสั่ง 30 ก.ย. 69)
+   */
+  packUnit?: string;
+  packSize?: number;
+  /** 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว ไม่ผูกกับสินค้า — ไม่นับเป็น "ขายแล้วไม่ตัดยอด" และไม่อยู่ในขั้นผูกสินค้า */
+  manualOnly?: boolean;
   category?: string;
   /** ยอดคงเหลือ (ดูแลผ่าน transaction เท่านั้น) */
   balance: number;
@@ -188,6 +197,22 @@ export function codeSlug(s: string): string {
 }
 
 /**
+ * 🏷 รหัสอัตโนมัติจากชื่อ (เจ้าของร้านขอ 30 ก.ย. 69 — "ให้ระบบตั้งชื่อรหัสเอง"):
+ * เอาตัวอักษรอังกฤษ/ตัวเลขในชื่อมาทำรหัส "กระดาษแข็ง Ultra-Hard 2 mm · A4" → ULTRA-HARD-2-MM-A4 · ซ้ำ = ต่อท้าย -2, -3 …
+ * ชื่อไทยล้วน (ไม่มีอังกฤษ/ตัวเลข) → M-0001 แบบเดิม · เลี่ยงรหัสที่เคยออกแล้วรวมตัวที่ลบไป (ดู allStockCodes)
+ */
+async function autoStockCode(db: Firestore, name: string): Promise<string> {
+  const slug = codeSlug(name);
+  if (!slug) return nextStockCode(db, "M");
+  const codes = new Set((await db.collection(STOCK_ITEMS).get()).docs.map((d) => String((d.data() as StockItem).code ?? "")));
+  if (!codes.has(slug)) return slug;
+  for (let n = 2; ; n++) {
+    const c = `${slug}-${n}`;
+    if (!codes.has(c)) return c;
+  }
+}
+
+/**
  * บันทึก SKU · ไม่มีรหัส = ออกให้อัตโนมัติ (codePrefix ถ้าส่งมา เช่น วัสดุแฝง "P-PHOTOFRAME-3-B" · ไม่ส่ง = M-0001)
  * รหัสใช้ติดป้ายชั้นวาง/ค้นหา — ของไม่มีรหัสหาบนชั้นยาก (เจ้าของร้านขอ 19 ก.ย. 69)
  */
@@ -198,7 +223,8 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
   const id = input.id || `sku-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const ref = db.collection(STOCK_ITEMS).doc(id);
   const cur = (await ref.get()).data() as StockItem | undefined;
-  const autoCode = !(input.code ?? cur?.code) ? await nextStockCode(db, input.codePrefix || "M") : undefined;
+  // ไม่มีรหัส: มี codePrefix (แยกตามตัวเลือก/วัสดุแฝง) = นับต่อจาก prefix · ไม่มี = ตั้งจากชื่อให้เอง
+  const autoCode = !(input.code ?? cur?.code) ? (input.codePrefix ? await nextStockCode(db, input.codePrefix) : await autoStockCode(db, input.name)) : undefined;
   const item: StockItem = {
     id,
     name: input.name.trim(),
@@ -212,6 +238,20 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
     ...(input.needsReview ? { needsReview: true } : {}),
     ...(cur?.maybeDuplicateOf && input.needsReview ? { maybeDuplicateOf: cur.maybeDuplicateOf } : {}),
     unit: (input.unit ?? cur?.unit ?? "ชิ้น").trim() || "ชิ้น",
+    // 📦 หน่วยแพ็ค: ส่ง packSize 0 = ล้าง · undefined = ไม่แตะ · ต้อง > 1 ถึงจะเก็บ
+    ...(() => {
+      const size = input.packSize !== undefined ? input.packSize : cur?.packSize;
+      const pu = ((input.packUnit !== undefined ? input.packUnit : cur?.packUnit) ?? "").trim();
+      return size && size > 1 ? { packSize: Math.trunc(size), packUnit: pu || "แพ็ค" } : {};
+    })(),
+    ...((input.manualOnly !== undefined ? input.manualOnly : cur?.manualOnly) ? { manualOnly: true } : {}),
+    // 📦 หน่วยแพ็ค: ส่ง packSize 0 = ล้าง · undefined = ไม่แตะ · ต้อง > 1 ถึงจะเก็บ
+    ...(() => {
+      const size = input.packSize !== undefined ? input.packSize : cur?.packSize;
+      const pu = ((input.packUnit !== undefined ? input.packUnit : cur?.packUnit) ?? "").trim();
+      return size && size > 1 ? { packSize: Math.trunc(size), packUnit: pu || "แพ็ค" } : {};
+    })(),
+    ...((input.manualOnly !== undefined ? input.manualOnly : cur?.manualOnly) ? { manualOnly: true } : {}),
     category: input.category?.trim() || cur?.category,
     balance: cur?.balance ?? 0, // ยอดแก้ผ่าน move เท่านั้น
     reorderPoint: input.reorderPoint ?? cur?.reorderPoint,
@@ -634,4 +674,104 @@ export function stockValueOf(items: StockItem[]): { value: number; priced: numbe
     value += Math.max(0, i.balance ?? 0) * i.unitCost;
   }
   return { value: Math.round(value * 100) / 100, priced, total: items.length };
+}
+
+/**
+ * 🧹 รีเซ็ตยอดคงเหลือเป็น 0 — เจ้าของร้าน (Administrator) เท่านั้น (สั่ง 30 ก.ย. 69)
+ * ใช้ตอนตั้งต้นคลังใหม่: ของที่ติดลบเพราะขายตัดไปก่อนเคยรับเข้า ล้างให้เป็น 0 แล้วค่อยนับจริง/รับเข้าใหม่
+ * ไม่ลบประวัติ — ลงเป็นแถว ledger "ปรับยอดนับจริง" จำนวน = -ยอดเดิม พร้อมหมายเหตุ ย้อนดูได้ว่าใครรีเซ็ตเมื่อไหร่
+ * ตัวที่เป็น 0 อยู่แล้วข้ามไป (ไม่สร้างแถวเปล่า)
+ */
+export async function resetStockToZero(ids: string[], by: string): Promise<{ reset: number; skipped: number }> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  let reset = 0;
+  let skipped = 0;
+  for (const id of ids) {
+    const itemRef = db.collection(STOCK_ITEMS).doc(id);
+    const moveRef = db.collection(STOCK_MOVES).doc();
+    const did = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(itemRef);
+      if (!snap.exists) return false;
+      const item = snap.data() as StockItem;
+      const before = item.balance ?? 0;
+      if (before === 0) return false;
+      const at = new Date().toISOString();
+      const move: StockMove = {
+        itemId: id,
+        itemName: item.name,
+        qty: -before,
+        reason: "ปรับยอดนับจริง",
+        note: `รีเซ็ตยอดเป็น 0 (เดิม ${before}) โดยเจ้าของร้าน`,
+        by,
+        source: "iducky",
+        at,
+        balanceAfter: 0,
+      };
+      tx.update(itemRef, { balance: 0, updatedAt: at });
+      tx.set(moveRef, move);
+      return true;
+    });
+    if (did) reset += 1;
+    else skipped += 1;
+  }
+  return { reset, skipped };
+}
+
+/* ═══ 🗂 หมวดวัสดุ — รายชื่อหมวดเก็บใน stockMeta/categories (เจ้าของร้านขอเพิ่ม/ลบ/แก้ชื่อหมวดได้ 30 ก.ย. 69) ═══
+ * หมวดที่ "มีจริง" = รายชื่อที่เก็บไว้ ∪ หมวดที่พิมพ์ค้างอยู่ในวัสดุ · เปลี่ยนชื่อ/ลบ = ไล่แก้ field category ของวัสดุทุกตัวในหมวดนั้นให้ด้วย */
+const CATEGORIES_DOC = "categories";
+export async function listStockCategories(): Promise<string[]> {
+  const db = getStockDb();
+  if (!db) return [];
+  const snap = await db.collection(STOCK_META).doc(CATEGORIES_DOC).get();
+  return ((snap.data()?.names ?? []) as string[]).filter((s) => typeof s === "string" && s.trim());
+}
+async function writeStockCategories(names: string[]): Promise<string[]> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const clean = [...new Set(names.map((s) => s.trim()).filter(Boolean))];
+  await db.collection(STOCK_META).doc(CATEGORIES_DOC).set({ names: clean, updatedAt: new Date().toISOString() });
+  return clean;
+}
+export async function addStockCategory(name: string): Promise<string[]> {
+  const cur = await listStockCategories();
+  return writeStockCategories([...cur, name]);
+}
+/** เปลี่ยนชื่อหมวด — วัสดุทุกตัว (รวมที่ลบแล้ว) ที่อยู่หมวดเดิมย้ายตามให้ · คืนจำนวนที่ย้าย */
+export async function renameStockCategory(from: string, to: string): Promise<{ names: string[]; moved: number }> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const snap = await db.collection(STOCK_ITEMS).where("category", "==", from).get();
+  let moved = 0;
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const b = db.batch();
+    for (const d of snap.docs.slice(i, i + 400)) {
+      b.update(d.ref, { category: to, updatedAt: new Date().toISOString() });
+      if ((d.data() as StockItem).active !== false) moved++; // ตัวที่ลบไปแล้วย้ายตามด้วยแต่ไม่นับ — ตัวเลขต้องตรงกับที่หน้าจอเห็น
+    }
+    await b.commit();
+  }
+  const cur = await listStockCategories();
+  const names = await writeStockCategories(cur.map((n) => (n === from ? to : n)).concat(cur.includes(from) ? [] : [to]));
+  return { names, moved };
+}
+/** ลบหมวด — วัสดุในหมวดย้ายไป moveTo (ไม่ส่ง = "ยังไม่จัดหมวด" คือลบ field ทิ้ง) */
+export async function deleteStockCategory(name: string, moveTo?: string): Promise<{ names: string[]; moved: number }> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const snap = await db.collection(STOCK_ITEMS).where("category", "==", name).get();
+  let moved = 0;
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const b = db.batch();
+    for (const d of snap.docs.slice(i, i + 400)) {
+      b.update(d.ref, { category: moveTo?.trim() ? moveTo.trim() : FieldValue.delete(), updatedAt: new Date().toISOString() });
+      if ((d.data() as StockItem).active !== false) moved++;
+    }
+    await b.commit();
+  }
+  const cur = await listStockCategories();
+  const names = await writeStockCategories(cur.filter((n) => n !== name));
+  return { names, moved };
 }

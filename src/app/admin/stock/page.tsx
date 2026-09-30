@@ -3,13 +3,15 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import ImageLightbox from "@/components/ImageLightbox";
 import { shrinkImageFile } from "@/lib/shrink-image";
-import { useCan } from "@/lib/perm-context";
+import { useCan, useIsAdministrator } from "@/lib/perm-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { BOM_PART, type StockSuggest, type StockUsage } from "@/lib/stock-match";
+import { publicRateLabelOf, ruleWhenMatches, type OptionRule } from "@/lib/products";
 import {
   badge,
   btnNeutral,
   btnPrimary,
+  btnSmDanger,
   btnSmGhost,
   btnSmNeutral,
   card,
@@ -32,8 +34,10 @@ import { Btn, CopyChip, Empty, FChip, FilterCard, HeroStat, ListHead, PageHead, 
  * คลังสต๊อกวัสดุ — ยอดคงเหลือมาจาก ledger (stockMoves) เท่านั้น แก้ตัวเลขลอย ๆ ไม่ได้
  * ฝั่งผลิตเบิกจากหน้า TP-Leader (เบิกวัสดุผลิต) — คลังเดียวกัน เห็นในแท็บประวัติที่นี่ด้วย
  *
- * แบ่ง 4 แท็บให้ตรงกับงานจริง (โครงเดียวกับระบบรับของ/เบิกของฝั่ง TP):
- *   รายการสินค้า = ตารางดูยอด · รับเข้า / เบิกของ = ฟอร์มทำงาน · ประวัติ = ledger เต็ม
+ * โครงหน้า (รื้อใหม่ 30 ก.ย. 69 — เจ้าของร้านขอให้ใช้ง่าย/เข้าใจง่าย):
+ *   หัว = ปุ่มงานประจำ รับเข้า/เบิกของ/เพิ่มวัสดุ · ของตั้งค่าอยู่ในเมนู ⋯
+ *   "ต้องทำตอนนี้" 4 กล่อง (ติดลบ → ต้องสั่ง → รอตรวจ → ยังไม่ผูก) กดแล้วกรอง · "ตั้งค่าคลังให้ครบ" = แถบ % งานตั้งต้น
+ *   แถบเครื่องมือติดขอบบน: คลัง | ประวัติ + ค้นหา + ชิปสถานะ · กลุ่มตามสินค้า (ปุ่มตั้งค่าอยู่ในเมนู ⋯ ของกลุ่ม)
  */
 
 interface Item {
@@ -60,6 +64,11 @@ interface Item {
   productQtyPer?: Record<string, number>;
   /** 🚫 ไม่ต้องมีสต๊อก — ไม่เตือน ไม่นับมูลค่า ไม่ตัดยอดตอนขาย (อยู่ในชิป "ไม่ต้องมี stock" กู้กลับได้) */
   noStock?: boolean;
+  /** 📦 หน่วยแพ็ค: 1 packUnit = packSize หน่วยฐาน (unit) · ยอดยังเป็นหน่วยฐาน หน้าจอแปลงให้ (ดู packText) */
+  packUnit?: string;
+  packSize?: number;
+  /** 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว — ไม่ผูกสินค้า ไม่เตือน "ยังไม่ผูก" */
+  manualOnly?: boolean;
   needsReview?: boolean;
   autoCreated?: boolean;
   maybeDuplicateOf?: string;
@@ -119,6 +128,22 @@ const dkSelect =
   "min-h-[44px] max-w-[13rem] flex-1 basis-[9rem] rounded-full border border-white/90 bg-white/75 px-4 text-[0.85rem] text-[color:var(--dk-navy)] outline-none focus:border-[color:var(--dk-blue)] sm:flex-none";
 
 const fmtN = (n: number) => n.toLocaleString("th-TH");
+/** ของตัวนี้นับเป็นแพ็คได้ไหม (ตั้ง packSize > 1 ไว้) */
+const hasPack = (it: { packSize?: number }) => (it.packSize ?? 0) > 1;
+/**
+ * 📦 แปลงยอดหน่วยฐานเป็น "แพ็ค + เศษ" ไว้แสดง: 340 แผ่น (1 แพ็ค = 100) → "3 แพ็ค + 40 แผ่น" · ติดลบ → "−3 แพ็ค + 40 แผ่น"
+ * ไม่ได้ตั้งแพ็ค = null (ไม่ต้องแสดงบรรทัดนี้)
+ */
+const packText = (it: { unit: string; packUnit?: string; packSize?: number }, n: number): string | null => {
+  if (!hasPack(it)) return null;
+  const size = it.packSize!;
+  const abs = Math.abs(n);
+  const packs = Math.floor(abs / size);
+  const rest = abs % size;
+  const pu = it.packUnit || "แพ็ค";
+  const s = packs ? `${fmtN(packs)} ${pu}${rest ? ` + ${fmtN(rest)} ${it.unit}` : ""}` : `${fmtN(rest)} ${it.unit}`;
+  return n < 0 ? `−${s}` : s;
+};
 const fmtAt = (iso: string) =>
   new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -131,15 +156,18 @@ const REASON_TONE: Record<string, Tone> = {
   ปรับยอดนับจริง: "warn",
 };
 const MOVE_FILTERS = ["ทั้งหมด", "นำเข้า", "ขาย", "เบิกผลิต", "เบิกทำเสีย", "ปรับยอดนับจริง"] as const;
+/** 4 มุมมอง: คลัง (รายการ) · รับเข้า · เบิกของ · ประวัติ — รับเข้า/เบิกของเคยเป็นฟอร์มเด้ง (Modal) ในโครงใหม่ 30 ก.ย. 69 แต่เจ้าของร้านขอเป็นหน้าเต็ม (ฟอร์ม+รายการล่าสุดยาว เลื่อนใน popup ไม่สะดวก) */
 const TABS = ["รายการสินค้า", "รับเข้า", "เบิกของ", "ประวัติ"] as const;
 type Tab = (typeof TABS)[number];
-type Filter = "ทั้งหมด" | "ต้องสั่ง" | "ใกล้หมด" | "รอตรวจ" | "ยังไม่ผูก" | "ไม่ต้องมีสต๊อก";
+type Filter = "ทั้งหมด" | "ติดลบ" | "ต้องสั่ง" | "ใกล้หมด" | "รอตรวจ" | "ยังไม่ผูก" | "ยังไม่ตั้งจุดสั่ง" | "ไม่ต้องมีสต๊อก";
 /** สินค้าให้เลือกผูกในฟอร์มแก้ไข SKU */
 interface ProductLite {
   id: string;
   name: string;
   img?: string;
   draft?: boolean;
+  /** ลิงก์ตามชื่อของหน้าสินค้า (data.slug) — ใช้จับคู่ตอนวางลิงก์ */
+  slug?: string;
 }
 type SortKey = "urgency" | "name" | "balance" | "daysLeft";
 /**
@@ -162,17 +190,17 @@ type HangRow = {
 type GroupDone = { at: string; by: string };
 /**
  * ระยะเยื้อง (px) ของแถวในกลุ่มสินค้า — ทุกแถวเริ่มตรงกับ "รูปหัวกลุ่ม" พอดี ไม่ยื่นออกมาทางซ้าย
- * หัวกลุ่ม: เว้นซ้าย 20 + ลูกศร 12 + gap 12 + ช่องติ๊ก 26 + gap 12 → รูปเริ่มที่ 92
+ * หัวกลุ่ม: เว้นซ้าย 20 + ลูกศร 12 + gap 12 → รูปเริ่มที่ 44 (เดิม 92 ตอนยังมีช่องติ๊ก 26 + gap 12 อยู่หน้าชื่อ)
  * (เจ้าของร้านขีดเส้นกำกับให้ 22 ก.ย. 69 — เดิมแถวเริ่มที่ 10 เลยยื่นไปซ้ายกว่าทุกอย่างในหัวกลุ่ม)
  */
-const ROW_PAD = 92;
+const ROW_PAD = 44; // โครงใหม่ 30 ก.ย. 69: ไม่มีช่องติ๊กหน้าชื่อแล้ว (ย้ายเป็นป้าย "จัดแล้ว" ฝั่งขวา) → 20 + 12 + 12 = 44
 /**
  * ค้นสินค้าจากข้อความที่พิมพ์/วาง — รับได้ทั้งชื่อ รหัสสินค้า และ "ลิงก์หน้าสินค้า" ที่ก๊อปจากเบราว์เซอร์
  * ลิงก์หน้าร้านเป็น /products/<ชื่อคั่นด้วยขีด> และถูก encode มาเป็น %E0%B8%81… วางแล้วค้นไม่เจอทุกที
  * (เจ้าของร้านแจ้ง 23 ก.ย. 69 — วางลิงก์ "กรอบรูปจิ๊กซอร์-อะคริลิค" แล้วขึ้น "ไม่พบสินค้าที่ตรง")
  */
-const flatText = (s: string) => s.toLowerCase().replace(/[\s\-_/]+/g, "");
-function matchProductQuery(p: { id: string; name: string }, raw: string): boolean {
+const flatText = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+function matchProductQuery(p: { id: string; name: string; slug?: string }, raw: string): boolean {
   const q = raw.trim();
   if (!q) return false;
   let seg = q;
@@ -185,6 +213,8 @@ function matchProductQuery(p: { id: string; name: string }, raw: string): boolea
     }
   }
   const n = seg.toLowerCase();
+  // ลิงก์ตามชื่อ (slug) ตรงตัว = สินค้านี้แน่นอน (เจ้าของร้านวางลิงก์ อาร์มปัก แล้วขึ้น "ไม่พบ" 30 ก.ย. 69 — ชื่อมีวงเล็บ slug ไม่มี)
+  if (p.slug && (p.slug.toLowerCase() === n || flatText(p.slug) === flatText(seg))) return true;
   if (p.name.toLowerCase().includes(n) || p.id.toLowerCase().includes(n)) return true;
   const f = flatText(seg);
   return !!f && (flatText(p.name).includes(f) || flatText(p.id).includes(f));
@@ -197,6 +227,8 @@ type DoneFilter = "ทั้งหมด" | "ยังไม่จัด" | "จ
 export default function StockPage() {
   const can = useCan();
   const mayEdit = can("orders.edit");
+  /** 🧹 รีเซ็ตยอดเป็น 0 ทำได้เฉพาะเจ้าของร้าน (Administrator) — API /stock/reset ตรวจซ้ำฝั่งเซิร์ฟเวอร์ */
+  const isOwner = useIsAdministrator();
   const [tab, setTab] = useState<Tab>("รายการสินค้า");
   const [items, setItems] = useState<Item[]>([]);
   /** รูป + การเชื่อมกับสินค้าของแต่ละ SKU — โหลดแยกครั้งเดียว ไม่ตามรอบรีเฟรชยอด 20 วิ */
@@ -213,7 +245,6 @@ export default function StockPage() {
 
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("ทุกหมวด");
-  const [fam, setFam] = useState("ทุกตระกูล");
   const [filter, setFilter] = useState<Filter>("ทั้งหมด");
   const [sort, setSort] = useState<SortKey>("urgency");
   /** ตาราง 2 มุมมอง: แยกกลุ่มตามชื่อสินค้า (ค่าเริ่มต้น) / รายการรวมแบบเดิม */
@@ -254,6 +285,17 @@ export default function StockPage() {
   const [countFor, setCountFor] = useState<Item | null>(null);
   /** 🗑↩ โมดัล "ที่ลบไปแล้ว" — กู้คืน SKU ที่ลบผิดตัว (เดิมกู้ได้แค่แก้ Firestore เอง) */
   const [deletedOpen, setDeletedOpen] = useState(false);
+  /** 🗂 หน้าต่างจัดการหมวด (เพิ่ม/เปลี่ยนชื่อ/ลบ) + รายชื่อหมวดที่เก็บไว้ (stockMeta/categories) */
+  const [catsOpen, setCatsOpen] = useState(false);
+  const [catList, setCatList] = useState<string[]>([]);
+  const loadCats = useCallback(async () => {
+    const res = await fetch("/api/admin/stock/categories");
+    const j = await res.json().catch(() => null);
+    if (res.ok && j?.ok) setCatList(j.names ?? []);
+  }, []);
+  useEffect(() => {
+    void loadCats();
+  }, [loadCats]);
   const [addOpen, setAddOpen] = useState(false);
   /** สินค้าที่กำลังแยกสต๊อกตามตัวเลือก */
   const [splitFor, setSplitFor] = useState<{ id: string; name: string } | null>(null);
@@ -265,6 +307,13 @@ export default function StockPage() {
   const [bomLib, setBomLib] = useState(false);
   /** รับเข้า/เบิกทั้งชุด (กลุ่มย่อยตามชนิดของ) */
   const [bulkFor, setBulkFor] = useState<{ items: Item[]; title: string; mode: "in" | "out" } | null>(null);
+  /** 📥 ฟอร์มรับเข้า/เบิกของ (เดิมเป็นแท็บ) — เด้งจากปุ่มหัวหน้า ทำเสร็จกลับมาหน้ารายการเดิม */
+  /** เมนู ⋯ ที่กำลังเปิด (หัวหน้า = "head" · กลุ่ม = "g:<key>") เปิดได้ทีละอัน */
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  /** มือถือ: กางช่องเลือกหมวด/ตระกูล/เรียง/มุมมอง (เดสก์ท็อปโชว์เสมอ) */
+  const [moreFilters, setMoreFilters] = useState(false);
+  /** 🔗 แกนกรองแยก "ผูกกับสินค้าแล้ว / ไม่ผูก" (เจ้าของร้านขอ 30 ก.ย. 69) — ซ้อนกับชิปสถานะได้ (คนละแกน) */
+  const [linkFilter, setLinkFilter] = useState<"all" | "linked" | "unlinked">("all");
   /** รูปที่กำลังขยายดู */
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
   const openZoom = useCallback((src: string, alt: string) => setZoom({ src, alt }), []);
@@ -371,6 +420,10 @@ export default function StockPage() {
     return { value, priced };
   }, [tracked]);
   const nearLow = useMemo(() => tracked.filter((i) => stats.get(i.id)?.level === "warn"), [tracked, stats]);
+  /** ⚠️ ยอดติดลบ = ขายตัดไปแล้วแต่ไม่เคยรับเข้า — ตัวเลขเชื่อไม่ได้จนกว่าจะนับจริง (30 ก.ย. 69 มี 37 ตัว) มาก่อนทุกสถานะ */
+  const negative = useMemo(() => tracked.filter((i) => i.balance < 0), [tracked]);
+  /** ยังไม่ตั้งจุดสั่ง (และไม่มีสถิติให้เดา) = ระบบเตือน "ต้องสั่ง" ให้ไม่ได้ — ต้องบอกให้เห็น ไม่ใช่โชว์ "ต้องสั่ง 0" เฉย ๆ */
+  const unsetPoint = useMemo(() => tracked.filter((i) => stats.get(i.id)?.point == null), [tracked, stats]);
   const toReview = useMemo(() => tracked.filter((i) => i.needsReview), [tracked]);
   // "วัสดุแฝง" ต้องมีให้เลือกเสมอ — ตั้งชนิดนี้ = เข้าคลังวัสดุแฝงกลาง ทุกช่องเลือกวัสดุจะเสนอมันก่อน
   const allParts = useMemo(() => [...new Set([BOM_PART, ...(items.map((i) => i.part).filter(Boolean) as string[])])].sort((a, b) => a.localeCompare(b, "th")), [items]);
@@ -416,28 +469,20 @@ export default function StockPage() {
     return out;
   }, [live, items]);
   const nameOfId = useMemo(() => new Map(items.map((i) => [i.id, i.name])), [items]);
+  const prodNameOf = useMemo(() => new Map(products.map((p) => [p.id, p.name])), [products]);
   /** ชื่อสั้นไว้เขียนกำกับ — ตัด "(ชื่อสินค้า)" ท้ายชื่อทิ้ง อ่านง่ายขึ้นในประโยค */
   const shortName = (id: string) => (nameOfId.get(id) ?? "?").replace(/\s*\([^()]*\)\s*$/, "");
 
   /** ยังไม่เชื่อมกับสินค้า/ตัวเลือกไหนเลย = ขายแล้วสต๊อกตัวนี้ไม่ขยับ */
-  const unlinked = useMemo(() => (linksReady ? tracked.filter((i) => !live[i.id]?.length) : []), [tracked, live, linksReady]);
+  const unlinked = useMemo(() => (linksReady ? tracked.filter((i) => !i.manualOnly && !live[i.id]?.length) : []), [tracked, live, linksReady]);
+  /** ของที่ควรผูกกับสินค้า (ตัดของใช้ในโรงงานที่เบิกเองอย่างเดียวออก) — ตัวหารของขั้น "ผูกวัสดุกับสินค้า" */
+  const linkable = useMemo(() => tracked.filter((i) => !i.manualOnly), [tracked]);
 
   /** รายการหมวด/ตระกูลที่มีจริงในคลัง — ตระกูลตามหมวดที่เลือกอยู่ ไม่ให้เลือกคู่ที่ไม่มีของ */
+  // หมวด = รายชื่อที่เก็บไว้ (จัดการได้จากเมนู ⋯ → จัดการหมวด) ∪ หมวดที่พิมพ์ค้างในวัสดุ
   const cats = useMemo(
-    () => [...new Set(items.map((i) => i.category).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "th")),
-    [items]
-  );
-  const fams = useMemo(
-    () =>
-      [
-        ...new Set(
-          items
-            .filter((i) => cat === "ทุกหมวด" || i.category === cat)
-            .map((i) => i.family)
-            .filter(Boolean) as string[]
-        ),
-      ].sort((a, b) => a.localeCompare(b, "th")),
-    [items, cat]
+    () => [...new Set([...catList, ...(items.map((i) => i.category).filter(Boolean) as string[])])].sort((a, b) => a.localeCompare(b, "th")),
+    [items, catList]
   );
 
   /** ตระกูลทั้งหมด (ไม่กรองตามหมวด) — ใช้เป็นตัวเลือกในฟอร์มแก้ไข */
@@ -454,8 +499,10 @@ export default function StockPage() {
     else if (filter === "ใกล้หมด") list = nearLow;
     else if (filter === "รอตรวจ") list = toReview;
     else if (filter === "ยังไม่ผูก") list = unlinked;
+    else if (filter === "ติดลบ") list = negative;
+    else if (filter === "ยังไม่ตั้งจุดสั่ง") list = unsetPoint;
+    if (linkFilter !== "all" && linksReady) list = list.filter((i) => ((live[i.id]?.length ?? 0) > 0) === (linkFilter === "linked"));
     if (cat !== "ทุกหมวด") list = list.filter((i) => i.category === cat);
-    if (fam !== "ทุกตระกูล") list = list.filter((i) => i.family === fam);
     // ค้นชื่อสินค้าที่ใช้วัสดุนี้ได้ด้วย — "ปั๊มนูน" ต้องเจอ "ฐาน Griptok · สีขาว" (ชื่อ SKU ไม่มีคำนั้น · เจ้าของร้านหาไม่เจอ 30 ก.ย. 69)
     if (needle)
       list = list.filter(
@@ -468,11 +515,15 @@ export default function StockPage() {
       if (sort === "name") return a.name.localeCompare(b.name, "th");
       if (sort === "balance") return a.balance - b.balance;
       if (sort === "daysLeft") return (sa?.daysLeft ?? 1e9) - (sb?.daysLeft ?? 1e9);
+      // "มีปัญหาก่อน": ติดลบขึ้นก่อนทุกอย่าง (ยอดเชื่อไม่ได้) แล้วค่อยไล่ตามระดับเตือน
+      const na = a.balance < 0 ? 0 : 1;
+      const nb = b.balance < 0 ? 0 : 1;
+      if (na !== nb) return na - nb;
       return (
         (rank[sa?.level ?? "neutral"] ?? 9) - (rank[sb?.level ?? "neutral"] ?? 9) || a.name.localeCompare(b.name, "th")
       );
     });
-  }, [tracked, untracked, q, cat, fam, filter, sort, needOrder, nearLow, toReview, unlinked, stats, live]);
+  }, [tracked, untracked, q, cat, filter, sort, needOrder, nearLow, negative, unsetPoint, toReview, unlinked, stats, live, linkFilter, linksReady]);
 
   async function doMove(itemId: string, qty: number, reason: string, note?: string, refOrderId?: string) {
     setErr("");
@@ -873,6 +924,47 @@ export default function StockPage() {
     setOk(targets.length === 1 ? `ตรวจ “${label}” แล้ว` : `ตรวจ “${label}” แล้ว ${fmtN(targets.length)} รายการ`);
   }
 
+  /**
+   * 🧹 รีเซ็ตยอดคงเหลือเป็น 0 — ทีละตัว (ลิ้นชัก) หรือทั้งกลุ่ม (เมนู ⋯) · เจ้าของร้านเท่านั้น (สั่ง 30 ก.ย. 69)
+   * ไว้ล้างยอดติดลบตอนตั้งต้นคลัง แล้วค่อยนับจริง/รับเข้าใหม่ · ลงประวัติเป็น "ปรับยอดนับจริง" ย้อนดูได้ ไม่ลบอะไร
+   */
+  async function resetItems(list: Item[], label: string) {
+    const targets = list.filter((i) => i.balance !== 0);
+    if (!targets.length) {
+      setOk(`${label} — ยอดเป็น 0 อยู่แล้วทุกตัว`);
+      return;
+    }
+    const ok = await confirm({
+      icon: "🧹",
+      title: targets.length === 1 ? `รีเซ็ตยอด “${label}” เป็น 0 ไหม?` : `${label} — รีเซ็ตยอดเป็น 0 ทั้ง ${fmtN(targets.length)} รายการ?`,
+      detail: `ยอดเดิม: ${targets.slice(0, 6).map((i) => `${i.name} ${fmtN(i.balance)}`).join(" · ")}${targets.length > 6 ? ` · และอีก ${fmtN(targets.length - 6)} ตัว` : ""}\nระบบจะลงประวัติเป็น “ปรับยอดนับจริง” ให้ ย้อนดูได้ว่าใครรีเซ็ตเมื่อไหร่ · ตัวที่เป็น 0 อยู่แล้วไม่ถูกแตะ`,
+      confirmLabel: "รีเซ็ตเป็น 0",
+      danger: true,
+    });
+    if (ok !== true) return;
+    setErr("");
+    setOk(`กำลังรีเซ็ต ${fmtN(targets.length)} รายการ…`);
+    // ส่งเป็นชุดละ 400 (API รับครั้งละไม่เกิน 500) — "ทุกรายการ" มีหลายร้อยตัว
+    let done = 0;
+    for (let i = 0; i < targets.length; i += 400) {
+      const res = await fetch("/api/admin/stock/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: targets.slice(i, i + 400).map((x) => x.id) }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        setOk("");
+        setErr(`${j?.error ?? "รีเซ็ตไม่สำเร็จ"}${done ? ` — ทำไปแล้ว ${fmtN(done)} รายการ` : ""}`);
+        await load();
+        return;
+      }
+      done += j.reset ?? 0;
+    }
+    setOk(`รีเซ็ต “${label}” เป็น 0 แล้ว ${fmtN(done)} รายการ`);
+    await load();
+  }
+
   /** ลบ SKU = ปิดการใช้งาน (ประวัติ/ต้นทุนในรายงานยังอยู่) + ถอดลิงก์จากตัวเลือกสินค้าให้เอง */
   async function deleteItem(it: Item) {
     const bal = it.balance !== 0 ? `\nคงเหลือในระบบ ${fmtN(it.balance)} ${it.unit} — ยอดนี้จะหายจากมูลค่าคลังทันที` : "";
@@ -938,17 +1030,28 @@ export default function StockPage() {
       if (us.length) {
         // 🔩 วัสดุแฝงยืนเป็นกลุ่มของตัวเอง — สินค้าหลายตัวใช้ตัวเดียวกัน เติมสต๊อกต้องมีที่เดียวจบ
         //    (เจ้าของร้านขอ 23 ก.ย. 69) · ยังห้อยใต้แถวสินค้าที่ใช้มันเหมือนเดิม ดู renderParts
-        if (us.every((u) => u.kind === "product" && u.bom)) {
-          put({ key: "bom", kind: 1, title: "วัสดุแฝง", sub: "ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก — เติมสต๊อกที่นี่ที่เดียว" }, it);
+        // 🔩 ของที่ติดป้าย "วัสดุแฝง" (จากคลังกลาง) แล้วผูกตามตัวเลือกกับสินค้าตั้งแต่ 2 ตัวขึ้นไป — กระดาษแข็ง SHIKISHI A7–A3 ที่ Ultra-Hard CardBoard ใช้ด้วย
+        //    ก็ไปอยู่กลุ่มวัสดุแฝงที่เดียว ไม่โผล่ซ้ำใต้ทุกสินค้า (เจ้าของร้านขอ "อยากให้เป็นแบบวัสดุแฝง" 30 ก.ย. 69) · ใช้กับสินค้าเดียวยังอยู่ใต้สินค้านั้นตามเดิม
+        //    ⚠️ แต่ยังต้องโผล่ใต้สินค้าแต่ละตัวด้วย — ไม่งั้นสินค้าที่มีแต่ฐานร่วม (กริ๊บต๊อก 5 ตัว · SHIKISHI/Ultra-Hard) หายจากรายการทั้งกลุ่ม
+        //    เจ้าของร้านค้นชื่อสินค้าแล้วไม่เจอ (30 ก.ย. 69) · แบบเดียวกับวัสดุแฝงจริงที่ห้อยใต้แถวสินค้า
+        const sharedPart = it.part?.trim() === BOM_PART && pids.size >= 2;
+        if (us.every((u) => u.kind === "product" && u.bom) || sharedPart) {
+          put({ key: "bom", kind: 1, title: "วัสดุแฝง", sub: "ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก หรือของที่หลายสินค้าใช้ร่วมกัน — เติมสต๊อกที่นี่ที่เดียว" }, it);
+          if (sharedPart) for (const [pid, name] of pids) ofProduct(pid, name, it);
           continue;
         }
         if (pids.size >= 1 && pids.size <= SHARED_MAX && !us.some((u) => u.kind === "preset")) for (const [pid, name] of pids) ofProduct(pid, name, it);
         else put({ key: `s:${fam}`, kind: 1, title: fam, sub: "ใช้ร่วมหลายสินค้า" }, it);
         continue;
       }
+      // 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว — กลุ่มของตัวเองตามตระกูล ไม่ตกไป "ยังไม่รู้ว่าใช้กับสินค้าไหน" (ซึ่งถูกซ่อน)
+      if (it.manualOnly) {
+        put({ key: `m:${fam}`, kind: 1, title: fam, sub: "ของใช้ในโรงงาน — เบิกเองอย่างเดียว ไม่ผูกสินค้า" }, it);
+        continue;
+      }
       // 🔩 สร้างจากคลังกลางแล้วยังไม่ได้ผูกสินค้า — อยู่กลุ่มวัสดุแฝงเลย ไม่ตกไป "ยังไม่รู้ว่าใช้กับสินค้าไหน" (30 ก.ย. 69)
       if (it.part?.trim() === BOM_PART) {
-        put({ key: "bom", kind: 1, title: "วัสดุแฝง", sub: "ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก — เติมสต๊อกที่นี่ที่เดียว" }, it);
+        put({ key: "bom", kind: 1, title: "วัสดุแฝง", sub: "ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก หรือของที่หลายสินค้าใช้ร่วมกัน — เติมสต๊อกที่นี่ที่เดียว" }, it);
         continue;
       }
       const sg = suggest[it.id]?.[0];
@@ -962,20 +1065,40 @@ export default function StockPage() {
   }, [rows, usage, live, suggest, products]);
   const grouped = view === "group" && linksReady;
   /** กำลังค้น/กรองอยู่ = กางทุกกลุ่มให้เห็นผลเลย ไม่ต้องไล่กดเปิด */
-  const forceOpen = q.trim() !== "" || filter !== "ทั้งหมด" || cat !== "ทุกหมวด" || fam !== "ทุกตระกูล";
+  const forceOpen = q.trim() !== "" || filter !== "ทั้งหมด" || cat !== "ทุกหมวด" || linkFilter !== "all";
+  /** อยู่ในหมวดที่เลือกไหม — ใช้นับตัวเลขบนชิปให้ตรงกับรายการ */
+  const inCat = (i: Item) => cat === "ทุกหมวด" || i.category === cat;
+  /** ฟอร์มเพิ่ม/แก้ไขวัสดุเปิดเป็น "หน้า" แทน popup (เจ้าของร้านขอ 30 ก.ย. 69) — ตอนเปิดซ่อนแถบเครื่องมือกับรายการไว้ก่อน */
+  const formOpen = addOpen || !!editFor;
   const allOpen = groups.length > 0 && groups.every((g) => openGroups.has(g.key));
   const doneCount = useMemo(() => groups.filter((g) => doneGroups[g.key]).length, [groups, doneGroups]);
+  /** จำนวน "รายการ" (SKU ไม่ซ้ำ) ในกลุ่มที่จัดแล้ว/ยังไม่จัด — ไว้โชว์บนชิปให้หน่วยเดียวกับชิปสถานะ */
+  const doneRows = useMemo(() => {
+    const d = new Set<string>();
+    const n = new Set<string>();
+    for (const g of groups) for (const r of g.rows) (doneGroups[g.key] ? d : n).add(r.id);
+    return { done: d.size, notDone: n.size };
+  }, [groups, doneGroups]);
+  /** ความคืบหน้า "จัดครบทุกสินค้า" ทั้งคลัง ไม่ขึ้นกับตัวกรอง — สินค้า = ตัวที่มี SKU ผูกอยู่จริง (การ์ดตั้งค่าคลัง) */
+  const doneProducts = useMemo(() => {
+    const pids = new Set<string>();
+    for (const it of tracked) for (const u of live[it.id] ?? []) if (u.kind !== "preset") pids.add(u.productId);
+    let done = 0;
+    for (const p of pids) if (doneGroups[`p:${p}`]) done += 1;
+    return { done, total: pids.size };
+  }, [tracked, live, doneGroups]);
   /**
    * กลุ่ม "ยังไม่รู้ว่าใช้กับสินค้าไหน" (kind 3 — SKU ที่ไม่ผูกอะไรและไม่มีคู่ให้เดา) ไม่โชว์ในมุมมองตามสินค้า
    * (เจ้าของร้านบอก 30 ก.ย. 69 "แบบนี้ไม่ต้องนำมาแสดง") — ยังดูได้จากชิป "ยังไม่ผูกสินค้า" หรือตอนค้นหา และมีบรรทัดท้ายบอกว่าซ่อนไปกี่รายการ
    */
   const showOrphans = filter === "ยังไม่ผูก" || q.trim() !== "";
+  const doneFilterActive = doneFilter !== "ทั้งหมด" && q.trim() === "";
   const shownGroups = useMemo(
     () =>
-      (doneFilter === "ทั้งหมด" ? groups : groups.filter((g) => !!doneGroups[g.key] === (doneFilter === "จัดแล้ว"))).filter(
+      (!doneFilterActive ? groups : groups.filter((g) => !!doneGroups[g.key] === (doneFilter === "จัดแล้ว"))).filter(
         (g) => showOrphans || g.kind !== 3,
       ),
-    [groups, doneGroups, doneFilter, showOrphans],
+    [groups, doneGroups, doneFilter, doneFilterActive, showOrphans],
   );
   const hiddenOrphans = useMemo(() => (showOrphans ? 0 : groups.filter((g) => g.kind === 3).reduce((n, g) => n + g.rows.length, 0)), [groups, showOrphans]);
 
@@ -996,192 +1119,322 @@ export default function StockPage() {
         count={`${fmtN(tracked.length)} รายการ`}
         sub="ขายหน้าเว็บตัดอัตโนมัติ · ฝั่งผลิตเบิกจากระบบเบิกของ · ทุกการเปลี่ยนมีบันทึกใน ledger"
         tools={
-          mayEdit ? (
-            <>
-              <Btn href="/admin/stock/link">ผูกตัวเลือกสินค้า</Btn>
-              <Btn onClick={() => setBomLib(true)} title="คลังกลางของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก เช่น ขาตั้ง หมุด ถุง — สร้างที่เดียว ใช้ได้ทุกสินค้า/ทุกตัวเลือก">
-                ＋ วัสดุแฝง
-              </Btn>
-              <Btn tone="yolk" onClick={() => setAddOpen(true)}>
-                เพิ่มวัสดุ
-              </Btn>
-            </>
-          ) : undefined
+          // งานประจำ 3 ปุ่ม (รับ/เบิก/เพิ่ม) · งานตั้งค่า (ผูกตัวเลือก/วัสดุแฝง/ที่ลบแล้ว/ประวัติ) เก็บในเมนู ⋯ ไม่แย่งที่
+          <>
+            {mayEdit && (
+              <>
+                <Btn tone="navy" onClick={() => setTab("รับเข้า")}>
+                  ＋ รับเข้า
+                </Btn>
+                <Btn onClick={() => setTab("เบิกของ")}>− เบิกของ</Btn>
+                <Btn tone="yolk" onClick={() => setAddOpen(true)}>
+                  เพิ่มวัสดุ
+                </Btn>
+              </>
+            )}
+            <ActionMenu
+              id="head"
+              open={menuOpen}
+              setOpen={setMenuOpen}
+              label="เมนูตั้งค่าคลัง"
+              items={[
+                { head: "ตั้งค่าคลัง" },
+                { icon: "🔗", label: "ผูกตัวเลือกสินค้ากับวัสดุ", href: "/admin/stock/link" },
+                ...(mayEdit
+                  ? [
+                      { icon: "🔩", label: "คลังวัสดุแฝง (ขาตั้ง หมุด ถุง)", onClick: () => setBomLib(true) },
+                      { icon: "🗑", label: "วัสดุที่ลบไปแล้ว…", onClick: () => setDeletedOpen(true) },
+                { icon: "🗂", label: "จัดการหมวด (เพิ่ม/เปลี่ยนชื่อ/ลบ)", onClick: () => setCatsOpen(true) },
+                    ]
+                  : []),
+                { head: "" },
+                { icon: "📜", label: "ประวัติทั้งคลัง", onClick: () => setTab("ประวัติ") },
+                // 🧹 ล้างยอดทั้งคลังทีเดียว — เจ้าของร้านเท่านั้น (สั่ง 30 ก.ย. 69 ตอนตั้งต้นคลังใหม่) · ถามยืนยันพร้อมจำนวนก่อนเสมอ
+                ...(isOwner
+                  ? [
+                      { head: "" },
+                      {
+                        icon: "🧹",
+                        label: `รีเซ็ตยอดทุกรายการเป็น 0 (${fmtN(tracked.filter((i) => i.balance !== 0).length)} ตัวที่ยอดไม่ใช่ 0)`,
+                        danger: true,
+                        onClick: () => void resetItems(tracked, "ทุกรายการในคลัง"),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          </>
         }
       />
 
-      {/* กล่องสรุป = ทางลัดไปงานที่ต้องทำ: กดแล้วสลับมาแท็บรายการ + กรองให้เลย */}
-      <Stats cols={stockValue.priced > 0 ? undefined : 4}>
-        <HeroStat
-          n={fmtN(needOrder.length)}
-          label="ถึงจุดต้องสั่ง"
-          detail={
-            // กล่องเด่นกิน 2 ช่องจาก 5 → เหลือที่ให้อีก 3 ใบ · "ใกล้หมด" จึงมาอยู่ในบรรทัดนี้ (และเป็นชิปกรองด้านล่าง)
-            `${needOrder.length ? "สั่งเพิ่มก่อนของหมด" : "ของพอใช้ทุกตัว"} · ใกล้หมดอีก ${fmtN(nearLow.length)} ตัว · วันนี้เคลื่อนไหว ${fmtN(todayMoves)} ครั้ง`
-          }
-          pct={tracked.length ? (needOrder.length / tracked.length) * 100 : 0}
-          onClick={() => jump("ต้องสั่ง")}
-          active={tab === "รายการสินค้า" && filter === "ต้องสั่ง"}
+      {/*
+       * ── ต้องทำตอนนี้ — 4 กล่อง กดแล้วกรองรายการด้านล่าง (โครงใหม่ 30 ก.ย. 69) ──
+       * กล่องเด่นเป็น "ปัญหาหนักสุดที่มีอยู่จริง": มีของติดลบ (ขายตัดไปแต่ไม่เคยรับเข้า) → ติดลบมาก่อน
+       * ไม่มีติดลบแล้วค่อยเป็น "ถึงจุดต้องสั่ง" — เดิมโชว์ "ต้องสั่ง 0 · ของพอใช้ทุกตัว" ทั้งที่ยังไม่มีใครตั้งจุดสั่งสักตัว (หลอกตา)
+       */}
+      <p className="dkb-eyebrow mt-5 px-1" style={{ color: "var(--dk-navy-soft)" }}>
+        ต้องทำตอนนี้{" "}
+        <span className="font-normal tracking-normal" style={{ color: "var(--dk-faint)" }}>
+          · กดกล่องเพื่อดูรายการ
+        </span>
+      </p>
+      <Stats>
+        {negative.length > 0 ? (
+          <HeroStat
+            n={fmtN(negative.length)}
+            label={`ติดลบ ${fmtN(negative.length)} รายการ`}
+            detail="ขายไปแล้วแต่ยังไม่เคยรับของเข้าระบบ — นับของจริงแล้วบันทึกยอด ตัวเลขถึงจะเชื่อได้"
+            pct={tracked.length ? (negative.length / tracked.length) * 100 : 0}
+            onClick={() => jump("ติดลบ")}
+            active={tab === "รายการสินค้า" && filter === "ติดลบ"}
+          />
+        ) : (
+          <HeroStat
+            n={fmtN(needOrder.length)}
+            label="ถึงจุดต้องสั่ง"
+            detail={
+              needOrder.length
+                ? `สั่งเพิ่มก่อนของหมด · ใกล้หมดอีก ${fmtN(nearLow.length)} ตัว`
+                : unsetPoint.length
+                  ? `ตั้งจุดสั่งไว้ ${fmtN(tracked.length - unsetPoint.length)}/${fmtN(tracked.length)} ตัว — ที่ยังไม่ตั้ง ระบบเตือนให้ไม่ได้`
+                  : `ของพอใช้ทุกตัว · ใกล้หมดอีก ${fmtN(nearLow.length)} ตัว · วันนี้เคลื่อนไหว ${fmtN(todayMoves)} ครั้ง`
+            }
+            pct={tracked.length ? (needOrder.length / tracked.length) * 100 : 0}
+            onClick={() => jump("ต้องสั่ง")}
+            active={tab === "รายการสินค้า" && filter === "ต้องสั่ง"}
+          />
+        )}
+        {negative.length > 0 && (
+          <Stat
+            label="ถึงจุดต้องสั่ง"
+            value={fmtN(needOrder.length)}
+            hint={
+              unsetPoint.length
+                ? `ใกล้หมดอีก ${fmtN(nearLow.length)} · ตั้งจุดสั่งไว้ ${fmtN(tracked.length - unsetPoint.length)}/${fmtN(tracked.length)} ตัว — ที่ยังไม่ตั้ง ระบบเตือนให้ไม่ได้`
+                : `ใกล้หมดอีก ${fmtN(nearLow.length)} ตัว`
+            }
+            tone={needOrder.length ? "due" : undefined}
+            onClick={() => jump("ต้องสั่ง")}
+            active={tab === "รายการสินค้า" && filter === "ต้องสั่ง"}
+          />
+        )}
+        <Stat
+          label="รอตรวจ"
+          value={fmtN(toReview.length)}
+          hint={toReview.length ? "ระบบสร้างเองจากการนำเข้า ยังไม่มีคนยืนยันชื่อ/หน่วย" : "ตรวจครบทุกตัวแล้ว"}
+          onClick={() => jump("รอตรวจ")}
+          active={tab === "รายการสินค้า" && filter === "รอตรวจ"}
         />
         <Stat
           label="ขายแล้วไม่ตัดยอด"
           value={linksReady ? fmtN(unlinked.length) : "…"}
-          hint={linksReady ? `จาก ${fmtN(tracked.length)} รายการ — ยังไม่ผูกกับสินค้า` : "กำลังตรวจการเชื่อมกับสินค้า"}
+          hint={
+            linksReady
+              ? unlinked.length
+                ? "ยังไม่ผูกกับสินค้าไหน — ขายไปสต๊อกก็ไม่ขยับ"
+                : `ผูกครบทุกตัว · วันนี้เคลื่อนไหว ${fmtN(todayMoves)} ครั้ง`
+              : "กำลังตรวจการเชื่อมกับสินค้า"
+          }
           tone={unlinked.length ? "due" : undefined}
           onClick={() => jump("ยังไม่ผูก")}
           active={tab === "รายการสินค้า" && filter === "ยังไม่ผูก"}
         />
-        <Stat
-          label="เบิกทำเสีย 30 วัน"
-          value={fmtN(monthDefect)}
-          hint={monthDefect ? "ชิ้น — ควรดูสาเหตุ" : "ชิ้น"}
-          tone={monthDefect ? "due" : undefined}
-        />
-        {/* ยังไม่ใส่ทุนสักตัว = กล่องนี้มีแต่ขีด — ไม่เอาพื้นที่ครึ่งบนของจอไปให้ของที่ไม่มีข้อมูล (คำชวนใส่ทุนอยู่ในฟอร์มแก้ไขแล้ว) */}
-        {stockValue.priced > 0 && (
-          <Stat
-            wide
-            label="มูลค่าของในคลัง"
-            value={`฿${fmtN(Math.round(stockValue.value))}`}
-            hint={`ใส่ทุนไว้ ${fmtN(stockValue.priced)}/${fmtN(tracked.length)} รายการ`}
-          />
+        {negative.length === 0 && (
+          <Stat label="เบิกทำเสีย 30 วัน" value={fmtN(monthDefect)} hint={monthDefect ? "ชิ้น — ควรดูสาเหตุ" : "ชิ้น"} tone={monthDefect ? "due" : undefined} />
         )}
       </Stats>
 
-      {/* ── แท็บ ── */}
-      <div className="dkb-g mb-4 mt-4 inline-flex p-1" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => {
-              setTab(t);
-              setOk("");
-              setErr("");
-            }}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
-              tab === t ? "bg-[color:var(--dk-navy)] text-white" : "text-[color:var(--dk-navy-soft)] hover:bg-white/70"
-            }`}
-          >
-            {t}
-            {t === "รายการสินค้า" && needOrder.length > 0 && (
-              <span className={`ml-1.5 rounded-full px-1.5 text-[11px] ${tab === t ? "bg-white/20" : `${TONE.danger.bg} ${TONE.danger.text}`}`}>
-                {needOrder.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* ── ตั้งค่าคลังให้ครบ — งานตั้งต้นที่ทำครั้งเดียว มีแถบ % · ครบ 100% ยุบเหลือบรรทัดเดียว ไม่แย่งที่กับงานประจำ ── */}
+      <SetupCard
+        steps={[
+          {
+            label: "ผูกวัสดุกับสินค้า",
+            n: linkable.length - unlinked.length,
+            of: linkable.length,
+            why: "ขายแล้วถึงตัดยอดให้เอง",
+            ready: linksReady,
+            on: tab === "รายการสินค้า" && filter === "ยังไม่ผูก",
+            pick: () => jump("ยังไม่ผูก"),
+          },
+          {
+            label: "ตรวจของที่นำเข้า",
+            n: tracked.length - toReview.length,
+            of: tracked.length,
+            why: "ยืนยันชื่อ/หน่วย/ตระกูล",
+            on: tab === "รายการสินค้า" && filter === "รอตรวจ",
+            pick: () => jump("รอตรวจ"),
+          },
+          {
+            label: "ตั้งจุดสั่งซื้อ",
+            n: tracked.length - unsetPoint.length,
+            of: tracked.length,
+            why: "ระบบถึงเตือน “ต้องสั่ง” ได้",
+            on: tab === "รายการสินค้า" && filter === "ยังไม่ตั้งจุดสั่ง",
+            pick: () => jump("ยังไม่ตั้งจุดสั่ง"),
+          },
+          {
+            label: "จัดวัสดุครบทุกสินค้า",
+            n: doneProducts.done,
+            of: doneProducts.total,
+            why: "กด “ยังไม่จัด” ที่หัวกลุ่มเมื่อจัดเสร็จ",
+            ready: linksReady,
+            on: tab === "รายการสินค้า" && doneFilter === "ยังไม่จัด",
+            pick: () => {
+              setTab("รายการสินค้า");
+              pickDoneFilter(doneFilter === "ยังไม่จัด" ? "ทั้งหมด" : "ยังไม่จัด");
+            },
+          },
+        ]}
+        extra={
+          stockValue.priced > 0
+            ? `มูลค่าของในคลัง ฿${fmtN(Math.round(stockValue.value))} · ใส่ทุนไว้ ${fmtN(stockValue.priced)}/${fmtN(tracked.length)} รายการ`
+            : undefined
+        }
+      />
 
       {err && <Banner tone="danger">{err}</Banner>}
       {ok && <Banner tone="ok">{ok}</Banner>}
 
-      {/* ── รายการสินค้า ── */}
-      {tab === "รายการสินค้า" && (
-        <>
-          <FilterCard>
-            <TabRow>
-              <FChip on={filter === "ทั้งหมด"} onClick={() => setFilter("ทั้งหมด")} label="ทั้งหมด" count={tracked.length} />
-              <FChip
-                on={filter === "ต้องสั่ง"}
-                onClick={() => setFilter("ต้องสั่ง")}
-                label="ต้องสั่ง"
-                count={needOrder.length}
-                style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
-              />
-              <FChip
-                on={filter === "ใกล้หมด"}
-                onClick={() => setFilter("ใกล้หมด")}
-                label="ใกล้หมด"
-                count={nearLow.length}
-                style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
-              />
-              <FChip
-                on={filter === "ยังไม่ผูก"}
-                onClick={() => setFilter("ยังไม่ผูก")}
-                label="ยังไม่ผูกสินค้า"
-                count={unlinked.length}
-                style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
-              />
-              <FChip
-                on={filter === "รอตรวจ"}
-                onClick={() => setFilter("รอตรวจ")}
-                label="รอตรวจ"
-                count={toReview.length}
-                style={{ background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }}
-              />
-              {untracked.length > 0 && (
-                <FChip on={filter === "ไม่ต้องมีสต๊อก"} onClick={() => setFilter("ไม่ต้องมีสต๊อก")} label="ไม่ต้องมี stock" count={untracked.length} />
-              )}
-              {mayEdit && (
-                <button type="button" onClick={() => setDeletedOpen(true)} className={`${btnSmGhost} whitespace-nowrap`} title="SKU ที่ถูกลบ — กู้คืนพร้อมลิงก์ตัวเลือกเดิม">
-                  ที่ลบไปแล้ว…
+      {/*
+       * ── แถบเครื่องมือ — ติดขอบบนตอนเลื่อน: คลัง | ประวัติ · ค้นหา · หมวด/ตระกูล/เรียง · มุมมอง · ชิปสถานะ ──
+       * มือถือ: ช่องเลือกซ่อนไว้หลังปุ่ม "กรอง" (ไม่งั้นกิน 3 บรรทัดก่อนถึงรายการ) · ชิปเลื่อนแนวนอน
+       */}
+      {!formOpen && (
+      <div className="sticky top-[62px] z-[40] md:top-2">
+        <FilterCard>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex shrink-0 rounded-full p-[3px]" role="tablist" style={{ background: "rgba(23, 58, 107, 0.07)" }}>
+              {TABS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t}
+                  onClick={() => {
+                    setTab(t);
+                    setOk("");
+                    setErr("");
+                  }}
+                  className={`min-h-[36px] rounded-full px-4 text-[0.85rem] font-medium transition ${
+                    tab === t ? "bg-[color:var(--dk-navy)] text-white shadow-[0_4px_10px_rgba(23,58,107,0.25)]" : "text-[color:var(--dk-navy-soft)] hover:bg-white/70"
+                  }`}
+                >
+                  {t === "รายการสินค้า" ? "คลัง" : t}
                 </button>
-              )}
-            </TabRow>
-            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
-              <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อ รหัส ตระกูล หรือชื่อที่เคยเรียก…" />
-              <select
-                value={cat}
-                onChange={(e) => {
-                  setCat(e.target.value);
-                  setFam("ทุกตระกูล"); // เปลี่ยนหมวดแล้วตระกูลเดิมอาจไม่มีในหมวดใหม่
-                }}
-                className={dkSelect}
-                aria-label="หมวด"
-              >
-                <option>ทุกหมวด</option>
-                {cats.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-              <select value={fam} onChange={(e) => setFam(e.target.value)} className={dkSelect} aria-label="ตระกูล">
-                <option>ทุกตระกูล</option>
-                {fams.map((f) => (
-                  <option key={f}>{f}</option>
-                ))}
-              </select>
-              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className={dkSelect} aria-label="เรียงลำดับ">
-                <option value="urgency">เรียง: ต้องสั่งก่อน</option>
-                <option value="daysLeft">เรียง: จะหมดเร็วสุด</option>
-                <option value="balance">เรียง: คงเหลือน้อยสุด</option>
-                <option value="name">เรียง: ชื่อ ก-ฮ</option>
-              </select>
-              {/* ✅ กรองตามติ๊ก "จัดแล้ว" — คนละแกนกับชิปสถานะของข้างบน (นั่นกรองรายการ อันนี้กรองกลุ่ม) กดชิปเดิมซ้ำ = กลับเป็นทั้งหมด */}
-              {grouped && (
-                <span className="flex items-center gap-1.5 sm:ml-auto" role="group" aria-label="กรองกลุ่มตามการจัดวัสดุ">
-                  <FChip
-                    on={doneFilter === "ยังไม่จัด"}
-                    onClick={() => pickDoneFilter(doneFilter === "ยังไม่จัด" ? "ทั้งหมด" : "ยังไม่จัด")}
-                    label="ยังไม่จัด"
-                    count={groups.length - doneCount}
-                    tone="yolk"
-                  />
-                  <FChip
-                    on={doneFilter === "จัดแล้ว"}
-                    onClick={() => pickDoneFilter(doneFilter === "จัดแล้ว" ? "ทั้งหมด" : "จัดแล้ว")}
-                    label="จัดแล้ว"
-                    count={doneCount}
-                    tone="mint"
-                  />
-                </span>
-              )}
+              ))}
             </div>
-          </FilterCard>
+            {tab === "รายการสินค้า" ? (
+              <>
+                <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อวัสดุ รหัส หรือชื่อสินค้า…" />
+                {/* ⚠️ .dkb-btn ตั้ง display เองใน dashboard.css (โหลดหลัง Tailwind) — sm:hidden บนปุ่มไม่ทำงาน ต้องครอบ span */}
+                <span className="sm:hidden">
+                  <button type="button" onClick={() => setMoreFilters((v) => !v)} aria-expanded={moreFilters} className="dkb-btn dkb-btn-ghost dkb-btn-sm !min-h-[42px]">
+                    กรอง {moreFilters ? "▴" : "▾"}
+                  </button>
+                </span>
+                <div className={`${moreFilters ? "flex" : "hidden"} w-full flex-wrap items-center gap-2 sm:flex sm:w-auto`}>
+                  <select
+                    value={cat}
+                    onChange={(e) => setCat(e.target.value)}
+                    className={dkSelect}
+                    aria-label="หมวด"
+                  >
+                    <option>ทุกหมวด</option>
+                    {cats.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                  {/* เมนูกรอง "ตระกูล" ถอดออก 30 ก.ย. 69 (เจ้าของร้านขอ) — ตระกูลยังใช้จัดกลุ่ม "ใช้ร่วมหลายสินค้า" และเป็นช่องในลิ้นชักแก้ไข SKU ตามเดิม */}
+                  <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className={dkSelect} aria-label="เรียงลำดับ">
+                    <option value="urgency">เรียง: มีปัญหาก่อน</option>
+                    <option value="daysLeft">เรียง: จะหมดเร็วสุด</option>
+                    <option value="balance">เรียง: คงเหลือน้อยสุด</option>
+                    <option value="name">เรียง: ชื่อ ก-ฮ</option>
+                  </select>
+                  <div className="inline-flex rounded-full p-[3px]" role="group" aria-label="มุมมองรายการ" style={{ background: "rgba(23, 58, 107, 0.07)" }}>
+                    {(["group", "flat"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        aria-pressed={view === v}
+                        onClick={() => pickView(v)}
+                        className={`min-h-[36px] rounded-full px-3.5 text-[0.8rem] font-medium transition ${
+                          view === v ? "bg-[color:var(--dk-navy)] text-white" : "text-[color:var(--dk-navy-soft)] hover:bg-white/70"
+                        }`}
+                      >
+                        {v === "group" ? "ตามสินค้า" : "รายการ"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : tab === "ประวัติ" ? (
+              <SearchBox value={logQ} onChange={setLogQ} placeholder="ค้นชื่อวัสดุ หมายเหตุ ผู้ทำ หรือเลขออเดอร์…" />
+            ) : null}
+          </div>
+          {/* แท็บรับเข้า/เบิกของ มีฟอร์มของตัวเอง ไม่มีชิปกรอง */}
+          {tab !== "รับเข้า" && tab !== "เบิกของ" && (
+          <TabRow divider>
+            {tab === "รายการสินค้า" ? (
+              <>
+                {/* ตัวเลขบนชิปนับเฉพาะหมวดที่เลือกอยู่ — ให้ตรงกับจำนวนในรายการ (เจ้าของร้านเห็น 495 กับ 10 ไม่ตรงกัน 30 ก.ย. 69) */}
+                <FChip on={filter === "ทั้งหมด"} onClick={() => setFilter("ทั้งหมด")} label="ทั้งหมด" count={tracked.filter(inCat).length} />
+                <FChip on={filter === "ติดลบ"} onClick={() => setFilter("ติดลบ")} label="ติดลบ" count={negative.filter(inCat).length} tone="coral" />
+                <FChip on={filter === "ต้องสั่ง"} onClick={() => setFilter("ต้องสั่ง")} label="ต้องสั่ง" count={needOrder.filter(inCat).length} tone="coral" />
+                <FChip on={filter === "ใกล้หมด"} onClick={() => setFilter("ใกล้หมด")} label="ใกล้หมด" count={nearLow.filter(inCat).length} tone="yolk" />
+                <FChip on={filter === "รอตรวจ"} onClick={() => setFilter("รอตรวจ")} label="รอตรวจ" count={toReview.filter(inCat).length} tone="lilac" />
+                <FChip on={filter === "ยังไม่ผูก"} onClick={() => setFilter("ยังไม่ผูก")} label="ยังไม่ผูกสินค้า" count={linksReady ? unlinked.filter(inCat).length : undefined} tone="coral" />
+                <FChip on={filter === "ยังไม่ตั้งจุดสั่ง"} onClick={() => setFilter("ยังไม่ตั้งจุดสั่ง")} label="ยังไม่ตั้งจุดสั่ง" count={unsetPoint.filter(inCat).length} tone="quiet" />
+                {/* ของ "ไม่ต้องมี stock" ไม่ใช่งานประจำ — ชิปโผล่เฉพาะตอนกำลังดูอยู่ (ทางเข้าอยู่บรรทัดท้ายรายการ) */}
+                {filter === "ไม่ต้องมีสต๊อก" && <FChip on onClick={() => setFilter("ทั้งหมด")} label="ไม่ต้องมี stock" count={untracked.length} tone="quiet" />}
+                {/* 🔗 แกนที่ 2: ผูกสินค้าแล้ว / ไม่ผูก — กดซ้ำ = ยกเลิก · ใช้ร่วมกับชิปสถานะข้างบนได้ */}
+                <span className="mx-1 self-center border-l" style={{ borderColor: "var(--dk-hair)", height: 22 }} aria-hidden />
+                <FChip
+                  on={linkFilter === "linked"}
+                  onClick={() => setLinkFilter(linkFilter === "linked" ? "all" : "linked")}
+                  label="ผูกสินค้าแล้ว"
+                  count={linksReady ? tracked.filter((i) => inCat(i) && (live[i.id]?.length ?? 0) > 0).length : undefined}
+                  tone="mint"
+                />
+                <FChip
+                  on={linkFilter === "unlinked"}
+                  onClick={() => setLinkFilter(linkFilter === "unlinked" ? "all" : "unlinked")}
+                  label="ไม่ผูกสินค้า"
+                  count={linksReady ? tracked.filter((i) => inCat(i) && !(live[i.id]?.length ?? 0)).length : undefined}
+                  tone="quiet"
+                />
+              </>
+            ) : (
+              MOVE_FILTERS.map((f) => (
+                <FChip
+                  key={f}
+                  on={moveFilter === f}
+                  onClick={() => setMoveFilter(f)}
+                  label={f}
+                  count={f === "ทั้งหมด" ? moves.length : moves.filter((m) => m.reason === f).length}
+                  tone={f === "ทั้งหมด" ? undefined : CHIP_TONE[REASON_TONE[f] ?? "neutral"]}
+                />
+              ))
+            )}
+          </TabRow>
+          )}
+        </FilterCard>
+      </div>
+      )}
 
+      {/* ── รายการสินค้า ── */}
+      {!formOpen && tab === "รายการสินค้า" && (
+        <>
           <div className="flex flex-wrap items-end justify-between gap-2">
             <ListHead
               title={grouped ? "วัสดุแยกตามสินค้า" : "วัสดุทั้งหมด"}
               note={
                 grouped ? (
                   <>
-                    {fmtN(groups.length)} กลุ่ม · {fmtN(rows.length)} รายการ ·{" "}
+                    {fmtN(shownGroups.length)} กลุ่ม · {fmtN(rows.length)} รายการ ·{" "}
                     <b style={{ color: groups.length && doneCount === groups.length ? "var(--dk-mint-ink)" : "var(--dk-navy)" }}>
                       จัดแล้ว {fmtN(doneCount)}/{fmtN(groups.length)}
                     </b>
-                    {doneCount < groups.length ? ` · เหลือ ${fmtN(groups.length - doneCount)}` : ""}
                   </>
                 ) : (
                   `${fmtN(rows.length)} รายการ`
@@ -1189,6 +1442,26 @@ export default function StockPage() {
               }
             />
             <div className="flex items-center gap-2 px-2 pb-2">
+              {/* ✅ กรองกลุ่มตามติ๊ก "จัดแล้ว" — เห็นตลอดที่หัวรายการ (เจ้าของร้านถามหา 30 ก.ย. 69 ตอนย้ายไปซ่อนในการ์ดตั้งค่า) · กดชิปเดิมซ้ำ = กลับเป็นทั้งหมด */}
+              {grouped && (
+                <span className="flex items-center gap-1.5" role="group" aria-label="กรองกลุ่มตามการจัดวัสดุ">
+                  {/* ตัวเลขบนชิป = จำนวนรายการ (หน่วยเดียวกับชิปสถานะข้างบน) · จำนวนกลุ่มบอกในชื่อชิป — เจ้าของร้านขอให้ 3 กับ 10 อ่านแล้วเข้าใจตรงกัน (30 ก.ย. 69) */}
+                  <FChip
+                    on={doneFilter === "ยังไม่จัด"}
+                    onClick={() => pickDoneFilter(doneFilter === "ยังไม่จัด" ? "ทั้งหมด" : "ยังไม่จัด")}
+                    label={`ยังไม่จัด · ${fmtN(groups.length - doneCount)} กลุ่ม`}
+                    count={doneRows.notDone}
+                    tone="yolk"
+                  />
+                  <FChip
+                    on={doneFilter === "จัดแล้ว"}
+                    onClick={() => pickDoneFilter(doneFilter === "จัดแล้ว" ? "ทั้งหมด" : "จัดแล้ว")}
+                    label={`จัดแล้ว · ${fmtN(doneCount)} กลุ่ม`}
+                    count={doneRows.done}
+                    tone="mint"
+                  />
+                </span>
+              )}
               {grouped && !forceOpen && (
                 <button
                   type="button"
@@ -1198,21 +1471,6 @@ export default function StockPage() {
                   {allOpen ? "ปิดทุกกลุ่ม" : "เปิดทุกกลุ่ม"}
                 </button>
               )}
-              <div className="dkb-g inline-flex p-1" role="group" aria-label="มุมมองรายการ">
-                {(["group", "flat"] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    aria-pressed={view === v}
-                    onClick={() => pickView(v)}
-                    className={`min-h-[34px] rounded-lg px-3 text-[0.78rem] font-medium transition ${
-                      view === v ? "bg-[color:var(--dk-navy)] text-white" : "text-[color:var(--dk-navy-soft)] hover:bg-white/70"
-                    }`}
-                  >
-                    {v === "group" ? "ตามสินค้า" : "รายการรวม"}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
@@ -1238,6 +1496,27 @@ export default function StockPage() {
                 const st = stats.get(it.id);
                 const level = st?.level ?? "neutral";
                 const dead = (usage[it.id]?.length ?? 0) > (live[it.id]?.length ?? 0);
+                // ชื่อในกลุ่มสินค้า: ตัดชื่อสินค้าที่ซ้ำกับหัวกลุ่มทิ้ง ("กระเป๋าผ้าแคนวาส · สีดำ · 40x30" → "สีดำ · 40x30") อ่านง่ายขึ้นในแถวแคบ
+                const pname = inProductId ? prodNameOf.get(inProductId) ?? "" : "";
+                const shown = pname && it.name.startsWith(pname) ? it.name.slice(pname.length).replace(/^\s*[·\-–]\s*/, "") || it.name : it.name;
+                /**
+                 * ป้ายสถานะแถว — ติดลบมาก่อนทุกอย่าง (ยอดเชื่อไม่ได้) · ยังไม่ตั้งจุดสั่ง = ระบบเตือนไม่ได้ ต้องบอกให้เห็น
+                 * แยกกันด้วยพื้น/น้ำหนัก ไม่ใช่สีอย่างเดียว: ติดลบ = ทึบขาว · ต้องสั่ง = คอรัลอ่อน · พอใช้ = มินต์ · ยังไม่ตั้ง = โปร่ง
+                 */
+                const pill =
+                  it.balance < 0 ? (
+                    <Tag tone="solid">ติดลบ</Tag>
+                  ) : level === "danger" ? (
+                    <Tag tone="coral">ต้องสั่ง</Tag>
+                  ) : level === "warn" ? (
+                    <Tag tone="yolk">ใกล้หมด</Tag>
+                  ) : st?.point == null ? (
+                    <Tag tone="quiet" title="ตั้งจุดสั่งในแก้ไขข้อมูล — ระบบจะเตือน “ต้องสั่ง” ให้เอง">
+                      ยังไม่ตั้งจุดสั่ง
+                    </Tag>
+                  ) : (
+                    <Tag tone="mint">พอใช้</Tag>
+                  );
                 return (
                   <li key={nest?.key ?? it.id}>
                     <div
@@ -1245,7 +1524,7 @@ export default function StockPage() {
                       tabIndex={0}
                       onClick={() => setOpenId(it.id)}
                       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setOpenId(it.id))}
-                      className={`dkb-row !rounded-none cursor-pointer flex-wrap px-4 sm:flex-nowrap ${nest ? "relative" : "pl-5"}`}
+                      className={`dkb-row group !rounded-none cursor-pointer flex-wrap px-4 sm:flex-nowrap ${nest ? "relative" : "pl-5"}`}
                       // ⚠️ เยื้องด้วย style ไม่ใช่คลาส — .dkb-row ใน dashboard.css ตั้ง padding ย่อ และไฟล์นั้นไม่ได้อยู่ใน @layer
                       // จึงชนะ utility ของ Tailwind v4 ทุกตัว (px-4/pl-* ข้างบนไม่เคยมีผลเลย · เจอจริง 21 ก.ย. 69)
                       style={nest ? { paddingLeft: NEST_PAD, minHeight: 54 } : grouped ? { paddingLeft: ROW_PAD } : undefined}
@@ -1263,11 +1542,11 @@ export default function StockPage() {
                           />
                         </span>
                       )}
-                      <Thumb src={images[it.id]} name={it.name} size={nest ? 32 : 44} />
+                      <Thumb src={images[it.id]} name={it.name} size={nest ? 32 : 40} />
                       <span className="min-w-0 flex-1 basis-[12rem]">
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className={nest ? "text-[13px] font-medium" : "text-[14.5px] font-medium"} style={{ color: "var(--dk-navy)" }}>
-                            {it.name}
+                            {shown}
                           </span>
                           {it.needsReview && <Tag tone="lilac">รอตรวจ</Tag>}
                         </span>
@@ -1276,7 +1555,8 @@ export default function StockPage() {
                           {!grouped && <span>{it.family ?? it.category ?? ""}</span>}
                         </span>
                       </span>
-                      <span className={`w-full min-w-0 sm:w-80 sm:pl-0 ${nest ? "pl-[45px]" : "pl-[57px]"}`}>
+                      {/* มือถือ: บรรทัด "ตัดเมื่อ…" เหลือไม่เกิน 2 บรรทัด (รายละเอียดเต็มอยู่ในลิ้นชัก) ไม่งั้นแถวเดียวสูงเกือบเต็มจอ */}
+                      <span className={`w-full min-w-0 max-sm:line-clamp-2 max-sm:text-[12px] sm:w-72 sm:pl-0 ${nest ? "pl-[41px]" : "pl-[53px]"}`}>
                         {nest ? (
                           <span className="block break-words leading-snug">
                             <span className="block text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
@@ -1289,7 +1569,7 @@ export default function StockPage() {
                             )}
                           </span>
                         ) : (
-                          <LinkCell ready={linksReady} usage={live[it.id]} dead={dead} hasSuggest={!!suggest[it.id]?.length} inProductId={inProductId} />
+                          <LinkCell ready={linksReady} usage={live[it.id]} dead={dead} hasSuggest={!!suggest[it.id]?.length} inProductId={inProductId} manual={!!it.manualOnly} />
                         )}
                         {(() => {
                           // ของที่โดนหักคู่กันในออเดอร์เดียว — มองจากตัวเลือกเดียวกันของสินค้าเดียวกัน + วัสดุแฝงของสินค้านั้น
@@ -1327,57 +1607,61 @@ export default function StockPage() {
                           );
                         })()}
                       </span>
-                      <span className={`ml-auto flex shrink-0 items-center gap-3 sm:pl-0 ${nest ? "pl-[45px]" : "pl-[57px]"}`}>
-                        <span className="text-right">
-                          <span className="dkb-num block text-[1.15rem]" style={{ color: it.balance < 0 || level === "danger" ? "var(--dk-coral-ink)" : "var(--dk-navy)" }}>
-                            {fmtN(it.balance)} <span className="text-[11px] font-normal" style={{ color: "var(--dk-faint)" }}>{it.unit}</span>
+                      {/* ขวาสุด = ตัวเลขที่ต้องอ่านจากระยะแขน: คงเหลือ (ใหญ่ · Prompt tabular) + ป้ายสถานะ · ปุ่มลัด ＋ − นับ โผล่ตอนชี้ (เดสก์ท็อป) มือถือใช้ในลิ้นชัก */}
+                      <span className={`ml-auto flex shrink-0 items-center gap-2 sm:pl-0 ${nest ? "pl-[41px]" : "pl-[53px]"}`}>
+                        <span className="flex flex-col items-end gap-0.5">
+                          <span className="text-[10px] leading-none" style={{ color: "var(--dk-faint)" }}>
+                            คงเหลือ
                           </span>
-                          <span className="mt-1 block text-[11px] tabular-nums" style={{ color: "var(--dk-faint)" }}>
-                            {st?.point != null ? `สั่งเมื่อ ≤ ${fmtN(st.point)}${it.reorderPoint == null ? "*" : ""}` : "ยังไม่ตั้งจุดสั่ง"}
-                            {st?.daysLeft != null ? ` · หมดใน ~${fmtN(st.daysLeft)} วัน` : ""}
+                          <span
+                            className="dkb-num text-[1.25rem]"
+                            style={{ color: it.balance < 0 ? "var(--dk-coral-ink)" : it.balance === 0 ? "var(--dk-faint)" : "var(--dk-navy)" }}
+                          >
+                            {fmtN(it.balance)}{" "}
+                            <span className="text-[11px] font-normal" style={{ color: "var(--dk-navy-soft)" }}>
+                              {it.unit}
+                            </span>
+                          </span>
+                          {/* 📦 ของที่นับเป็นแพ็ค: บอกใต้ตัวเลขว่าเท่ากับกี่แพ็ค + เศษกี่แผ่น */}
+                          {packText(it, it.balance) && (
+                            <span className="text-[11px] tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
+                              = {packText(it, it.balance)}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1.5">
+                            {pill}
+                            {st?.daysLeft != null && (
+                              <span className="text-[11px] tabular-nums" style={{ color: "var(--dk-faint)" }}>
+                                หมดใน ~{fmtN(st.daysLeft)} วัน
+                              </span>
+                            )}
                           </span>
                         </span>
-                        {level === "danger" ? <Tag tone="solid">ต้องสั่ง</Tag> : level === "warn" ? <Tag tone="yolk">ใกล้หมด</Tag> : null}
                         {mayEdit && it.needsReview && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void markReviewed([it], it.name);
-                            }}
-                            className="dkb-btn dkb-btn-ghost dkb-btn-sm !min-h-[44px]"
-                            style={{ color: "var(--dk-lilac-ink)" }}
-                            title="ยืนยันว่าชื่อ/หน่วย/ตระกูลถูกต้องแล้ว ปลดป้ายรอตรวจ"
-                          >
+                          <RowBtn title="ยืนยันว่าชื่อ/หน่วย/ตระกูลถูกต้องแล้ว ปลดป้ายรอตรวจ" onClick={() => void markReviewed([it], it.name)} small lilac>
                             ✓ ตรวจแล้ว
-                          </button>
+                          </RowBtn>
                         )}
                         {mayEdit && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCountFor(it);
-                            }}
-                            className="dkb-btn dkb-btn-ghost dkb-btn-sm !min-h-[44px]"
-                          >
-                            นับ
-                          </button>
-                        )}
-                        {mayEdit && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void deleteItem(it);
-                            }}
-                            className="dkb-btn dkb-btn-ghost dkb-btn-sm !min-h-[44px] !px-3"
-                            style={{ color: "var(--dk-coral-ink)" }}
-                            title="ลบวัสดุนี้ออกจากคลัง"
-                            aria-label={`ลบ ${it.name} ออกจากคลัง`}
-                          >
-                            ลบ
-                          </button>
+                          <span className="hidden items-center gap-1 sm:flex sm:opacity-0 sm:transition sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+                            {!it.noStock && (
+                              <>
+                                <RowBtn title="รับเข้า" onClick={() => setBulkFor({ items: [it], title: it.name, mode: "in" })}>
+                                  ＋
+                                </RowBtn>
+                                <RowBtn title="เบิกออก" onClick={() => setBulkFor({ items: [it], title: it.name, mode: "out" })}>
+                                  −
+                                </RowBtn>
+                                <RowBtn title="นับจริง" onClick={() => setCountFor(it)} small>
+                                  นับ
+                                </RowBtn>
+                              </>
+                            )}
+                            {/* ลบจากแถวได้เลย ไม่ต้องเปิดลิ้นชัก (เจ้าของร้านขอ 30 ก.ย. 69) — ถามยืนยันก่อนเสมอ กู้คืนได้จาก "ที่ลบไปแล้ว" */}
+                            <RowBtn title={`ลบ ${it.name} ออกจากคลัง`} onClick={() => void deleteItem(it)} small danger>
+                              ลบ
+                            </RowBtn>
+                          </span>
                         )}
                       </span>
                     </div>
@@ -1426,17 +1710,70 @@ export default function StockPage() {
                 const hung = new Set<string>();
                 if (productId) for (const r of list) for (const k of kidsOf(r, bom, byId, productId)) if (k.item.id !== r.id) hung.add(k.item.id);
                 const host = list.filter((r) => !bom.includes(r) && !hung.has(r.id));
-                /** แถวหนึ่งแถว + ลูกที่ห้อยใต้มัน */
-                const hang = (l: Item[]) =>
-                  l.flatMap((r) => {
-                    const kids = productId ? kidsOf(r, bom, byId, productId) : [];
-                    return [
-                      renderRow(r, productId, undefined, new Set(kids.map((k) => k.item.id))),
-                      ...kids.map((k, i) =>
-                        renderRow(k.item, productId, { last: i === kids.length - 1, key: `${r.id}/${k.item.id}`, why: k.why, sub: k.sub }),
-                      ),
-                    ];
-                  });
+                /**
+                 * 🔩 วัสดุแฝงของตัวเลือกที่ "ไม่มีวัสดุหลัก" ให้ห้อย (กระดาษแข็ง A3–A7 ของ SHIKISHI/Ultra-Hard — ตัวเลือกขนาดมีแต่ลิงก์แบบแฝง)
+                 * เดิมวาดเป็นแถวปกติ เจ้าของร้านถาม "ยังไม่เห็นห้อยเป็นวัสดุแฝง" (30 ก.ย. 69) → ห้อยใต้หัวข้อชนิดของ/กลุ่มแทน พร้อมก้านเส้น
+                 */
+                const extraOnly = (r: Item): { why: string; sub?: string } | null => {
+                  if (!productId) return null;
+                  const us = (live[r.id] ?? []).filter((u) => u.kind !== "preset" && u.productId === productId);
+                  if (!us.length || !us.every((u) => u.kind === "choice" && u.extra)) return null;
+                  const cs = us.filter((u): u is Extract<StockUsage, { kind: "choice" }> => u.kind === "choice");
+                  return {
+                    why: `วัสดุแฝงของตัวเลือก · ตัดเมื่อ ${cs.map((u) => `${u.label} = ${u.choice}${u.per && u.per !== 1 ? ` (×${u.per})` : ""}`).join(" · ")}`,
+                    sub: cs.map((u) => u.cond).filter(Boolean).length ? `เฉพาะเมื่อ ${cs.map((u) => u.cond).filter(Boolean).join(" · ")}` : "ไม่มีในตัวเลือก — ตัดเพิ่มเมื่อลูกค้าเลือกค่านี้",
+                  };
+                };
+                /** แถวหนึ่งแถว + ลูกที่ห้อยใต้มัน · ท้ายชุด = วัสดุแฝงของตัวเลือกที่ไม่มีตัวหลักให้ห้อย (ห้อยใต้หัวข้อชุดแทน) */
+                const hang = (l: Item[]) => {
+                  const loose = l.filter((r) => extraOnly(r));
+                  const mains = l.filter((r) => !extraOnly(r));
+                  return [
+                    ...mains.flatMap((r) => {
+                      const kids = productId ? kidsOf(r, bom, byId, productId) : [];
+                      return [
+                        renderRow(r, productId, undefined, new Set(kids.map((k) => k.item.id))),
+                        ...kids.map((k, i) =>
+                          renderRow(k.item, productId, { last: i === kids.length - 1, key: `${r.id}/${k.item.id}`, why: k.why, sub: k.sub }),
+                        ),
+                      ];
+                    }),
+                    // แถวแม่ = "ตัวเลือก" ที่ของแฝงเกาะอยู่ (ขนาด A5 พร้อมรูปตัวเลือก) แล้วห้อยของแฝงใต้มัน — ให้อ่านออกเหมือน แผ่นจิ๊กซอว์ → กรอบรูป
+                    // (เจ้าของร้านเทียบภาพ 30 ก.ย. 69: ก้านเส้นลอยจากหัวข้อเฉย ๆ "ไม่เหมือนกัน")
+                    ...(() => {
+                      type Host = { label: string; choice: string; img?: string; kids: Item[] };
+                      const byChoice = new Map<string, Host>();
+                      for (const r of loose) {
+                        const u = (live[r.id] ?? []).find((x): x is Extract<StockUsage, { kind: "choice" }> => x.kind === "choice" && x.productId === productId);
+                        if (!u) continue;
+                        const k = `${u.label}|${u.choice}`;
+                        (byChoice.get(k) ?? byChoice.set(k, { label: u.label, choice: u.choice, img: u.img, kids: [] }).get(k)!).kids.push(r);
+                      }
+                      return [...byChoice.entries()].flatMap(([k, h]) => [
+                        <li key={`c/${k}`}>
+                          <div className="dkb-row !rounded-none flex-wrap px-4 sm:flex-nowrap" style={{ paddingLeft: ROW_PAD, background: "transparent" }}>
+                            <Thumb src={h.img} name={h.choice} size={40} />
+                            <span className="min-w-0 flex-1 basis-[12rem]">
+                              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="text-[14.5px] font-medium" style={{ color: "var(--dk-navy)" }}>
+                                  {h.choice}
+                                </span>
+                                <Tag tone="sky">{h.label}</Tag>
+                              </span>
+                              <span className="mt-0.5 block text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                                ตัวเลือกของ {groupTitle} — ไม่มีวัสดุหลักของตัวเอง ใช้วัสดุแฝงด้านล่าง
+                              </span>
+                            </span>
+                          </div>
+                        </li>,
+                        ...h.kids.map((r, i) => {
+                          const x = extraOnly(r)!;
+                          return renderRow(r, productId, { last: i === h.kids.length - 1, key: `x/${k}/${r.id}`, why: x.why, sub: x.sub });
+                        }),
+                      ]);
+                    })(),
+                  ];
+                };
                 if (!host.length) return list.map((r) => renderRow(r, productId)); // มีแต่วัสดุแฝง ไม่มีอะไรให้ห้อย
                 if (!host.some((r) => r.part)) return hang(host);
                 list = host;
@@ -1516,30 +1853,46 @@ export default function StockPage() {
                 );
 
               if (!shownGroups.length)
-                return doneFilter === "จัดแล้ว" ? (
-                  <Empty title="ยังไม่ได้ติ๊กกลุ่มไหนเลย" body="ติ๊กช่องหน้าชื่อกลุ่มเมื่อจัดวัสดุกลุ่มนั้นเสร็จ แล้วกลับมาดูที่นี่ได้ว่าทำอะไรไปแล้วบ้าง" />
-                ) : (
-                  <Empty title={`จัดครบแล้วทั้ง ${fmtN(groups.length)} กลุ่ม`} body="ไม่มีกลุ่มที่ยังไม่ได้จัด — กดชิป “ยังไม่จัด” อีกครั้งเพื่อกลับไปดูทุกกลุ่ม" />
+                return (
+                  <div>
+                    {doneFilter === "จัดแล้ว" ? (
+                      <Empty title={`กำลังดูเฉพาะกลุ่มที่ติ๊ก “จัดแล้ว” — ตอนนี้ยังไม่มี`} body={`มี ${fmtN(groups.length)} กลุ่มที่ยังไม่ได้ติ๊ก ถูกซ่อนอยู่ · กดปุ่มด้านล่างเพื่อดูทุกกลุ่ม`} />
+                    ) : (
+                      <Empty title={`จัดครบแล้วทั้ง ${fmtN(groups.length)} กลุ่ม`} body="ไม่มีกลุ่มที่ยังไม่ได้จัด — กดปุ่มด้านล่างเพื่อดูทุกกลุ่ม" />
+                    )}
+                    <div className="mt-2 text-center">
+                      <button type="button" onClick={() => pickDoneFilter("ทั้งหมด")} className="dkb-btn dkb-btn-navy dkb-btn-sm">
+                        ดูทุกกลุ่ม (ยกเลิกตัวกรอง “{doneFilter}”)
+                      </button>
+                    </div>
+                  </div>
                 );
 
               return (
                 <div className="grid gap-2.5">
                   {shownGroups.map((g) => {
-                    const open = forceOpen || openGroups.has(g.key);
                     const done = doneGroups[g.key];
+                    const nNeg = g.rows.filter((r) => r.balance < 0).length;
                     const nDanger = g.rows.filter((r) => stats.get(r.id)?.level === "danger").length;
                     const nWarn = g.rows.filter((r) => stats.get(r.id)?.level === "warn").length;
-                    const nUnlinked = g.rows.filter((r) => !live[r.id]?.length).length;
+                    const nUnlinked = g.rows.filter((r) => !r.manualOnly && !live[r.id]?.length).length;
                     const nReview = g.rows.filter((r) => r.needsReview).length;
+                    /**
+                     * ทุกกลุ่มหุบไว้ก่อนเสมอ กดหัวกลุ่มถึงกาง (เจ้าของร้านขอ 30 ก.ย. 69 — เดิมกลุ่มติดลบ/ต้องสั่งกางเองทำให้หน้ายาว)
+                     * ปัญหาในกลุ่มยังเห็นจากป้ายบนหัวกลุ่ม (ติดลบ/ต้องสั่ง) และแถบสีซ้าย · ค้นหา/กรองอยู่ = กางทั้งหมด (forceOpen)
+                     */
+                    const open = forceOpen || openGroups.has(g.key);
                     // แถบสีซ้าย: งานค้างเด่นกว่ากลุ่มที่เรียบร้อยแล้วเสมอ — ติ๊กว่าจัดแล้วและไม่มีงานค้าง = เงียบที่สุด
                     const tone =
-                      nDanger || g.kind === 2
+                      nNeg || nDanger || g.kind === 2
                         ? "var(--dk-coral-deep)"
                         : nWarn || nUnlinked
                           ? "var(--dk-yolk-deep)"
-                          : done || g.kind === 3
-                            ? "var(--dk-quiet)"
-                            : "var(--dk-mint)";
+                          : nReview
+                            ? "var(--dk-lilac-ink)"
+                            : done || g.kind === 3
+                              ? "var(--dk-quiet)"
+                              : "var(--dk-mint)";
                     const toggle = () =>
                       !forceOpen &&
                       setOpenGroups((prev) => {
@@ -1547,9 +1900,44 @@ export default function StockPage() {
                         if (!next.delete(g.key)) next.add(g.key);
                         return next;
                       });
+                    /**
+                     * เมนู ⋯ ของกลุ่ม — เดิมเป็นปุ่มเม็ด 4–5 ปุ่มซ้ำทุกกลุ่ม (109 กลุ่ม) งานประจำกับงานตั้งค่าปนกันจนหาไม่เจอ
+                     * บน = ทำบ่อย (รับเข้า/เบิก/ตรวจทั้งกลุ่ม) · ล่าง = ตั้งค่า (วัสดุแฝง/แยกตัวเลือก/เปิดสินค้า/ไม่ต้องมี stock)
+                     */
+                    const untrackedView = filter === "ไม่ต้องมีสต๊อก";
+                    const menu: MenuItem[] = [];
+                    if (mayEdit && !untrackedView) {
+                      menu.push({ head: "งานประจำ" });
+                      menu.push({ icon: "＋", label: `รับเข้าทั้งกลุ่ม (${fmtN(g.rows.length)})`, onClick: () => setBulkFor({ items: g.rows, title: g.title, mode: "in" }) });
+                      menu.push({ icon: "−", label: "เบิกออกทั้งกลุ่ม", onClick: () => setBulkFor({ items: g.rows, title: g.title, mode: "out" }) });
+                      if (nReview > 0) menu.push({ icon: "✓", label: `ตรวจแล้วทั้งกลุ่ม (${nReview})`, onClick: () => void markReviewed(g.rows, g.title) });
+                    }
+                    if (mayEdit && (g.productId || g.key === "bom")) {
+                      menu.push({ head: "ตั้งค่า" });
+                      if (g.productId) {
+                        menu.push({ icon: "🔩", label: "เพิ่มวัสดุแฝง (ขาตั้ง หมุด ถุง)", onClick: () => setBomFor({ id: g.productId!, name: g.title }) });
+                        menu.push({ icon: "✂️", label: "แยกสต๊อกตามตัวเลือก", onClick: () => setSplitFor({ id: g.productId!, name: g.title }) });
+                      }
+                      if (g.key === "bom") menu.push({ icon: "🔩", label: "จัดการคลังวัสดุแฝง", onClick: () => setBomLib(true) });
+                    }
+                    if (g.productId) menu.push({ icon: "↗", label: "เปิดหน้าสินค้า", href: `/admin/products/${encodeURIComponent(g.productId)}` });
+                    if (isOwner && !untrackedView)
+                      menu.push({ icon: "🧹", label: "รีเซ็ตยอดทั้งกลุ่มเป็น 0 (เจ้าของร้าน)", danger: true, onClick: () => void resetItems(g.rows, g.title) });
+                    if (mayEdit) {
+                      menu.push({ head: "" });
+                      menu.push(
+                        untrackedView
+                          ? { icon: "↩", label: "กลับมานับสต๊อกทั้งกลุ่ม", onClick: () => void markNoStock(g.rows, false, g.title) }
+                          : { icon: "🚫", label: "ไม่ต้องมี stock ทั้งกลุ่ม", danger: true, onClick: () => void markNoStock(g.rows, true, g.title) },
+                      );
+                    }
+                    // min-w-0: เดิมพึ่ง overflow-hidden ให้การ์ดไม่กว้างเกินคอลัมน์ — เอาออกเพื่อให้เมนู ⋯ โผล่พ้นกรอบได้ จึงต้องตั้ง min-width เอง
+                    // การ์ดกระจก (backdrop-filter) เป็น stacking context ของตัวเอง — เมนู ⋯ ที่เปิดอยู่จะโดนการ์ดถัดไปทับ ต้องยกการ์ดใบนั้นขึ้นด้วย z-index
+                    /** 📦 คงเหลือรวมของกลุ่ม แยกตามหน่วย — พนักงานดู "มีของเหลือเท่าไหร่" ได้จากหัวกลุ่มโดยไม่ต้องกาง (เจ้าของร้านแจ้ง 30 ก.ย. 69) */
+                    const totals = [...g.rows.reduce((m, r) => m.set(r.unit, (m.get(r.unit) ?? 0) + r.balance), new Map<string, number>())];
                     return (
-                      <section key={g.key} className="dkb-g relative overflow-hidden" style={{ ["--dk-tone" as string]: tone }}>
-                        <span className="absolute inset-y-0 left-0 w-[6px]" style={{ background: "var(--dk-tone)" }} />
+                      <section key={g.key} className={`dkb-g relative min-w-0 ${menuOpen === `g:${g.key}` ? "z-[70]" : ""}`} style={{ ["--dk-tone" as string]: tone }}>
+                        <span className="absolute inset-y-0 left-0 w-[6px]" style={{ background: "var(--dk-tone)", borderRadius: "24px 0 0 24px" }} />
                         <header
                           role="button"
                           tabIndex={0}
@@ -1561,101 +1949,47 @@ export default function StockPage() {
                           <span className={`w-3 text-[10px] transition ${open ? "rotate-90" : ""}`} style={{ color: "var(--dk-faint)" }} aria-hidden>
                             ▶
                           </span>
-                          {/* ✅ ช่องติ๊ก "จัดแล้ว" — สิทธิ์ดูอย่างเดียวเห็นสถานะแต่ไม่มีปุ่มให้กด (กดแล้วเงียบเพราะ 403 คือกับดักเดิม) */}
-                          <DoneBox done={done} onToggle={mayEdit ? () => void toggleGroupDone(g.key, g.title) : undefined} />
-                          {g.kind === 0 && <Thumb src={g.img} name={g.title} size={44} />}
+                          {g.kind === 0 ? (
+                            <Thumb src={g.img} name={g.title} size={44} />
+                          ) : (
+                            <span
+                              className="grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[12px] text-[16px]"
+                              style={{ background: "var(--dk-sky)", color: "var(--dk-navy-soft)" }}
+                              aria-hidden
+                            >
+                              {g.kind === 3 ? "?" : g.key === "bom" ? "🔩" : "▫"}
+                            </span>
+                          )}
                           <span className="min-w-0 flex-1 basis-[11rem]">
-                            <span className="dkb-display block truncate text-[1rem]" style={{ color: done ? "var(--dk-faint)" : "var(--dk-navy)" }}>
+                            <span className="dkb-display block truncate text-[1rem]" style={{ color: done && !(nNeg || nDanger || g.kind === 2) ? "var(--dk-faint)" : "var(--dk-navy)" }}>
                               {g.title}
                             </span>
-                            <span className="block text-[12px]" style={{ color: "var(--dk-faint)" }}>
-                              {g.sub ? `${g.sub} · ` : ""}
-                              {fmtN(g.rows.length)} รายการ
-                              {done ? ` · จัดแล้ว ${done.by === "กำลังบันทึก…" ? done.by : `${done.by} ${fmtAt(done.at)}`}` : ""}
+                            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                              <span>
+                                {fmtN(g.rows.length)} รายการ{g.sub ? ` · ${g.sub}` : ""}
+                              </span>
+                              {nNeg > 0 && <Tag tone="solid">ติดลบ {nNeg}</Tag>}
+                              {nDanger > 0 && <Tag tone="coral">ต้องสั่ง {nDanger}</Tag>}
+                              {nWarn > 0 && <Tag tone="yolk">ใกล้หมด {nWarn}</Tag>}
+                              {nUnlinked > 0 && g.kind < 2 && <Tag tone="coral">ยังไม่ผูก {nUnlinked}</Tag>}
+                              {nReview > 0 && <Tag tone="lilac">รอตรวจ {nReview}</Tag>}
+                              {!nNeg && !nDanger && !nWarn && !nUnlinked && !nReview && g.kind < 2 && <Tag tone="mint">✓ ไม่มีปัญหา</Tag>}
                             </span>
                           </span>
-                          <span className="flex flex-wrap items-center gap-1.5">
-                            {nDanger > 0 && <Tag tone="solid">ต้องสั่ง {nDanger}</Tag>}
-                            {nWarn > 0 && <Tag tone="yolk">ใกล้หมด {nWarn}</Tag>}
-                            {nUnlinked > 0 && g.kind < 2 && <Tag tone="coral">ยังไม่ผูก {nUnlinked}</Tag>}
-                            {nReview > 0 && <Tag tone="lilac">รอตรวจ {nReview}</Tag>}
-                          </span>
-                          {/* มือถือ: ปุ่มเครื่องมือโผล่เฉพาะกลุ่มที่กางอยู่ — 141 กลุ่ม × ปุ่ม 3 ปุ่ม ทำให้ต้องเลื่อนยาวเกินเหตุ */}
-                          <span className={`${open ? "flex" : "hidden sm:flex"} shrink-0 flex-wrap items-center gap-2`}>
-                            {mayEdit && nReview > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void markReviewed(g.rows, g.title);
-                                }}
-                                className="dkb-btn dkb-btn-ghost dkb-btn-sm"
-                                style={{ color: "var(--dk-lilac-ink)" }}
-                                title="ปลดป้ายรอตรวจทุกรายการในกลุ่มนี้"
-                              >
-                                ✓ ตรวจแล้วทั้งกลุ่ม ({nReview})
-                              </button>
-                            )}
-                            {g.productId && mayEdit && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setBomFor({ id: g.productId!, name: g.title });
-                                }}
-                                className="dkb-btn dkb-btn-ghost dkb-btn-sm"
-                                title="ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก เช่น ขาตั้ง หมุด ถุง"
-                              >
-                                ＋ วัสดุแฝง
-                              </button>
-                            )}
-                            {g.key === "bom" && mayEdit && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setBomLib(true);
-                                }}
-                                className="dkb-btn dkb-btn-ghost dkb-btn-sm"
-                                title="สร้างวัสดุแฝงใหม่ / ผูกกับสินค้าหลายตัวทีเดียว"
-                              >
-                                จัดการคลังวัสดุแฝง
-                              </button>
-                            )}
-                            {g.productId && mayEdit && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSplitFor({ id: g.productId!, name: g.title });
-                                }}
-                                className="dkb-btn dkb-btn-ghost dkb-btn-sm"
-                                title="สินค้าที่ลูกค้าเลือกแบบ/ขนาดแล้วได้ของคนละชิ้น — สร้าง SKU แยกให้ทีละตัวเลือก"
-                              >
-                                แยกตามตัวเลือก
-                              </button>
-                            )}
-                            {g.productId && (
-                              <a
-                                href={`/admin/products/${encodeURIComponent(g.productId)}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="dkb-btn dkb-btn-ghost dkb-btn-sm"
-                              >
-                                เปิดสินค้า
-                              </a>
-                            )}
-                            {mayEdit && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void markNoStock(g.rows, filter !== "ไม่ต้องมีสต๊อก", g.title);
-                                }}
-                                className="dkb-btn dkb-btn-ghost dkb-btn-sm"
-                              >
-                                {filter === "ไม่ต้องมีสต๊อก" ? "กลับมานับสต๊อก" : "ไม่ต้องมี stock"}
-                              </button>
-                            )}
+                          {g.kind < 2 && (
+                            <span className="ml-auto shrink-0 text-right sm:ml-0">
+                              <span className="block text-[10px] leading-none" style={{ color: "var(--dk-faint)" }}>
+                                คงเหลือรวม
+                              </span>
+                              <span className="dkb-num mt-1 block text-[1.05rem]" style={{ color: nNeg ? "var(--dk-coral-ink)" : "var(--dk-navy)" }}>
+                                {totals.map(([u, n]) => `${fmtN(n)} ${u}`).join(" · ")}
+                              </span>
+                            </span>
+                          )}
+                          <span className="ml-auto flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            {/* ✅ "จัดแล้ว" — สิทธิ์ดูอย่างเดียวเห็นสถานะแต่ไม่มีปุ่มให้กด (กดแล้วเงียบเพราะ 403 คือกับดักเดิม) */}
+                            {g.kind === 0 && <DonePill done={done} onToggle={mayEdit ? () => void toggleGroupDone(g.key, g.title) : undefined} />}
+                            {menu.length > 0 && <ActionMenu id={`g:${g.key}`} open={menuOpen} setOpen={setMenuOpen} label={`เมนู ${g.title}`} items={menu} />}
                           </span>
                         </header>
                         {open && (
@@ -1680,57 +2014,52 @@ export default function StockPage() {
           )}
           {!loading && rows.length > 0 && (
             <p className="px-2 pt-3 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-              * จุดสั่งที่ระบบแนะนำจากสถิติการใช้ 30 วัน ยังไม่ได้ตั้งเอง · ยอดรีเฟรชเองทุก 20 วินาที
+              ยอดรีเฟรชเองทุก 20 วินาที · จุดสั่งที่ยังไม่ได้ตั้งเอง ระบบเดาจากสถิติการใช้ 30 วัน
+              {untracked.length > 0 && (
+                <>
+                  {" "}
+                  · ของที่ตั้งว่า “ไม่ต้องมีสต๊อก” อีก <b>{fmtN(untracked.length)}</b> รายการไม่แสดงที่นี่ —{" "}
+                  <button
+                    type="button"
+                    onClick={() => setFilter(filter === "ไม่ต้องมีสต๊อก" ? "ทั้งหมด" : "ไม่ต้องมีสต๊อก")}
+                    className="underline underline-offset-2 hover:text-slate-800"
+                  >
+                    {filter === "ไม่ต้องมีสต๊อก" ? "กลับไปดูคลัง" : "ดูรายการ"}
+                  </button>
+                </>
+              )}
             </p>
           )}
         </>
       )}
 
-      {/* ── รับเข้า / เบิกของ ── */}
-      {(tab === "รับเข้า" || tab === "เบิกของ") && (
-        <MovePanel
-          key={tab}
-          mode={tab === "รับเข้า" ? "in" : "out"}
-          items={items}
-          moves={moves}
-          mayEdit={mayEdit}
-          onSubmit={async (itemId, qty, reason, note, refId) => {
-            const done = await doMove(itemId, qty, reason, note, refId);
-            if (done) {
-              const it = items.find((i) => i.id === itemId);
-              setOk(`บันทึกแล้ว — ${it?.name ?? ""} ${qty > 0 ? "+" : ""}${fmtN(qty)} ${it?.unit ?? ""}`);
-            }
-            return done;
-          }}
-        />
+      {/* ── รับเข้า / เบิกของ — หน้าเต็มในแท็บ (ปุ่มหัวหน้าก็พามาแท็บนี้) ── */}
+      {!formOpen && (tab === "รับเข้า" || tab === "เบิกของ") && (
+        <div className="mt-4">
+          {/* เสนอเฉพาะของที่นับสต๊อกจริง — รายการ "ไม่ต้องมีสต๊อก" (เช่น PL-PREMIUMBAG-* ที่นำเข้าจากไฟล์ราคา) เคยโผล่ให้เลือกแล้วเจ้าของร้านแยกไม่ออก (30 ก.ย. 69) */}
+            <MovePanel
+              key={tab}
+              mode={tab === "รับเข้า" ? "in" : "out"}
+              items={tracked}
+              moves={moves}
+              mayEdit={mayEdit}
+              onSubmit={async (itemId, qty, reason, note, refId) => {
+                const done = await doMove(itemId, qty, reason, note, refId);
+                if (done) {
+                  const it = items.find((i) => i.id === itemId);
+                  setOk(`บันทึกแล้ว — ${it?.name ?? ""} ${qty > 0 ? "+" : ""}${fmtN(qty)} ${it?.unit ?? ""}`);
+                }
+                return done;
+              }}
+            />
+        </div>
       )}
 
       {/* ── ประวัติ ── */}
-      {tab === "ประวัติ" && (
-        <>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <input
-              value={logQ}
-              onChange={(e) => setLogQ(e.target.value)}
-              placeholder="ค้นชื่อวัสดุ หมายเหตุ ผู้ทำ หรือเลขออเดอร์…"
-              className={`${inputCls} w-full sm:w-72`}
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {MOVE_FILTERS.map((f) => (
-                <Chip
-                  key={f}
-                  active={moveFilter === f}
-                  onClick={() => setMoveFilter(f)}
-                  count={f === "ทั้งหมด" ? moves.length : moves.filter((m) => m.reason === f).length}
-                  tone={f === "ทั้งหมด" ? undefined : REASON_TONE[f]}
-                >
-                  {f}
-                </Chip>
-              ))}
-            </div>
-          </div>
+      {!formOpen && tab === "ประวัติ" && (
+        <div className="mt-4">
           <MoveTable rows={logRows} showItem />
-        </>
+        </div>
       )}
 
       {openItem && (
@@ -1753,11 +2082,15 @@ export default function StockPage() {
           moves={moves.filter((m) => m.itemId === openItem.id)}
           mayEdit={mayEdit}
           onClose={() => setOpenId(null)}
-          onEdit={() => setEditFor(openItem)}
+          onEdit={() => {
+            setOpenId(null); // ฟอร์มแก้ไขเป็นหน้าเต็ม — ปิดลิ้นชักก่อน ไม่งั้นซ้อนกัน
+            setEditFor(openItem);
+          }}
           onCount={() => setCountFor(openItem)}
           onMove={(mode) => setBulkFor({ items: [openItem], title: openItem.name, mode })}
           onDelete={() => deleteItem(openItem)}
           onNoStock={(on) => markNoStock([openItem], on, openItem.name)}
+          onReset={isOwner ? () => void resetItems([openItem], openItem.name) : undefined}
           onReviewed={() => markReviewed([openItem], openItem.name)}
           onRename={(name) => saveItem({ id: openItem.id, name, unit: openItem.unit })}
           onImage={async (url) => {
@@ -1784,6 +2117,19 @@ export default function StockPage() {
               setAddOpen(false);
               setEditFor(null);
             }
+          }}
+          onSaveMany={async (list) => {
+            let n = 0;
+            for (const b of list) {
+              if (!(await saveItem(b))) break; // saveItem โชว์ error ไว้แล้ว — หยุดตรงตัวที่พัง ไม่สร้างซ้ำ
+              n++;
+            }
+            if (n === list.length) setAddOpen(false);
+            if (n) setOk(`เพิ่มวัสดุแล้ว ${fmtN(n)} ตัว${n < list.length ? ` (จาก ${fmtN(list.length)} — ที่เหลือยังไม่ได้สร้าง)` : ""}`);
+          }}
+          onSplitProduct={(p) => {
+            setAddOpen(false);
+            setSplitFor(p); // หน้าต่าง "แยกสต๊อกตามตัวเลือก" — ติ๊กเลือกตัวเลือกที่จะทำเป็นวัสดุ แล้วสร้าง+ผูกให้ทีเดียว
           }}
         />
       )}
@@ -1873,6 +2219,7 @@ export default function StockPage() {
       {splitFor && (
         <SplitModal
           product={splitFor}
+          allCats={cats}
           onClose={() => setSplitFor(null)}
           onDone={async (msg) => {
             setSplitFor(null);
@@ -1883,6 +2230,26 @@ export default function StockPage() {
         />
       )}
 
+      {catsOpen && (
+        <CategoriesModal
+          names={cats}
+          // นับแยก "นับสต๊อก" กับ "ไม่ต้องมีสต๊อก" — ตัวกรองหมวดในรายการเห็นเฉพาะที่นับสต๊อก เจ้าของร้านเลือกหมวดแล้วว่างเพราะทั้งหมวดเป็นของนำเข้าที่ไม่นับ (30 ก.ย. 69)
+          counts={tracked.reduce<Record<string, number>>((m, i) => {
+            if (i.category?.trim()) m[i.category.trim()] = (m[i.category.trim()] ?? 0) + 1;
+            return m;
+          }, {})}
+          countsOff={untracked.reduce<Record<string, number>>((m, i) => {
+            if (i.category?.trim()) m[i.category.trim()] = (m[i.category.trim()] ?? 0) + 1;
+            return m;
+          }, {})}
+          uncategorized={tracked.filter((i) => !i.category?.trim()).length}
+          onClose={() => setCatsOpen(false)}
+          onChanged={async (msg) => {
+            setOk(msg);
+            await Promise.all([loadCats(), load()]);
+          }}
+        />
+      )}
       {deletedOpen && (
         <DeletedModal
           onClose={() => setDeletedOpen(false)}
@@ -1913,53 +2280,283 @@ export default function StockPage() {
   );
 }
 
+/** โทนชิปกรอง (FChip) ต่อโทนสถานะของ admin-ui — ใช้กับชิปประเภทการเคลื่อนไหวในแท็บประวัติ */
+const CHIP_TONE: Record<Tone, "coral" | "lilac" | "mint" | "yolk" | "sky" | "quiet"> = {
+  ok: "mint",
+  warn: "yolk",
+  danger: "coral",
+  review: "lilac",
+  neutral: "quiet",
+};
+
 /**
- * ✅ ช่องติ๊ก "จัดแล้ว" ที่หัวกลุ่มสินค้า — ไล่จัดวัสดุทีละกลุ่มแล้วติ๊กไว้ว่าทำถึงไหน
- * ยังไม่ติ๊ก = กรอบว่างเห็นชัดว่ายังต้องทำ · ติ๊กแล้ว = กล่องทึบมีเครื่องหมายถูก (แยกออกจากกันได้แม้จอสีเพี้ยน)
- * พื้นที่กด 44×44 ตามนิ้วโป้ง · onToggle ว่าง = สิทธิ์ดูอย่างเดียว แสดงสถานะแต่กดไม่ได้
+ * 🧭 การ์ด "ตั้งค่าคลังให้ครบ" — งานตั้งต้นที่ทำครั้งเดียว (ผูกสินค้า · ตรวจของ · ตั้งจุดสั่ง · จัดครบ) มีแถบ % ต่อขั้น
+ * กดขั้นไหน = กรองรายการให้เหลือแต่ของที่ยังไม่เสร็จของขั้นนั้น · ครบทุกขั้นแล้วยุบเองเหลือบรรทัดเดียว (กางเองได้)
+ * ทำไมต้องมี: 30 ก.ย. 69 คลังมี 382 SKU ตั้งจุดสั่ง 0 ตัว — กล่อง "ต้องสั่ง 0" เลยเขียวทั้งที่ระบบยังเตือนอะไรไม่ได้
  */
-function DoneBox({ done, onToggle }: { done?: GroupDone; onToggle?: () => void }) {
-  const box = (
-    <span
-      className="flex h-[26px] w-[26px] items-center justify-center rounded-[9px] text-[15px] font-bold leading-none"
-      style={
-        done
-          ? { background: "var(--dk-mint-ink)", color: "#fff", boxShadow: "inset 0 0 0 2px var(--dk-mint-ink)" }
-          : { background: "#fff", color: "transparent", boxShadow: "inset 0 0 0 2px var(--dk-hair)" }
-      }
-      aria-hidden
-    >
-      ✓
+type SetupStep = { label: string; n: number; of: number; why: string; on?: boolean; pick: () => void; /** false = ตัวเลขยังโหลดอยู่ */ ready?: boolean };
+function SetupCard({ steps, extra }: { steps: SetupStep[]; extra?: string }) {
+  const left = steps.filter((s) => s.n < s.of).length;
+  const pct = Math.round((steps.reduce((sum, s) => sum + (s.of ? Math.min(1, s.n / s.of) : 1), 0) / steps.length) * 100);
+  // ผู้ใช้กด/หุบเองแล้วจำไว้ในรอบนี้ · ยังไม่กด = กางเมื่อยังไม่ครบ
+  const [manual, setManual] = useState<boolean | null>(null);
+  const open = manual ?? left > 0;
+  return (
+    <details className="dkb-g mt-3 px-4 py-3" open={open} onToggle={(e) => setManual(e.currentTarget.open)}>
+      <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
+        <span className="dkb-h2 shrink-0 whitespace-nowrap text-[0.98rem]">ตั้งค่าคลังให้ครบ</span>
+        <span className="h-[7px] min-w-[48px] flex-1 overflow-hidden rounded-full sm:max-w-[200px]" style={{ background: "rgba(23, 58, 107, 0.08)" }}>
+          <i className="block h-full rounded-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--dk-blue), var(--dk-blue-deep))" }} />
+        </span>
+        <span className="whitespace-nowrap text-[12px] tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
+          {pct}% {left ? `· เหลือ ${left} ขั้น` : "· ครบแล้ว"}
+        </span>
+        <span className={`ml-auto text-[10px] transition ${open ? "rotate-180" : ""}`} style={{ color: "var(--dk-faint)" }} aria-hidden>
+          ▼
+        </span>
+      </summary>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {steps.map((s, i) => {
+          const done = s.n >= s.of;
+          const p = s.of ? Math.round((Math.min(s.n, s.of) / s.of) * 100) : 100;
+          return (
+            <button
+              key={s.label}
+              type="button"
+              onClick={s.pick}
+              aria-pressed={!!s.on}
+              className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-1 rounded-[14px] border px-3 py-2.5 text-left transition hover:bg-white"
+              style={{ borderColor: s.on ? "var(--dk-navy)" : "rgba(255, 255, 255, 0.9)", background: s.on ? "#fff" : "rgba(255, 255, 255, 0.65)" }}
+            >
+              <span
+                className="row-span-2 grid h-[30px] w-[30px] place-items-center rounded-full text-[12px] font-semibold"
+                style={done ? { background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" } : { background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}
+              >
+                {done ? "✓" : i + 1}
+              </span>
+              <span className="text-[13px] font-medium" style={{ color: "var(--dk-navy)" }}>
+                {s.label}
+              </span>
+              <span className="dkb-num-sm text-[13px]">
+                <b style={{ color: done ? "var(--dk-mint-ink)" : "var(--dk-blue-deep)" }}>{s.ready === false ? "…" : fmtN(s.n)}</b>
+                <span style={{ color: "var(--dk-navy-soft)" }}>/{fmtN(s.of)}</span>
+              </span>
+              <span className="col-span-2 h-[5px] overflow-hidden rounded-full" style={{ background: "rgba(23, 58, 107, 0.08)" }}>
+                <i className="block h-full rounded-full" style={{ width: `${p}%`, background: done ? "var(--dk-mint)" : "var(--dk-blue-deep)" }} />
+              </span>
+              <span className="col-span-2 text-[11px]" style={{ color: "var(--dk-faint)" }}>
+                {s.why}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {extra && (
+        <p className="mt-2 text-[11.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+          {extra}
+        </p>
+      )}
+    </details>
+  );
+}
+
+/** รายการในเมนู ⋯ — head = หัวข้อคั่น (ว่าง = เส้นคั่น) · href = ลิงก์ · danger = สีอันตราย */
+type MenuItem = { label?: string; icon?: string; onClick?: () => void; href?: string; danger?: boolean; head?: string };
+/**
+ * เมนู ⋯ แบบเด้งลง — ใช้ที่หัวหน้า (ตั้งค่าคลัง) และหัวกลุ่มสินค้า
+ * เปิดได้ทีละอัน (id เดียวกับ state ของหน้า) · ปิดเมื่อกดที่อื่น/Esc/เลือกรายการ
+ */
+function ActionMenu({ id, open, setOpen, label, items }: { id: string; open: string | null; setOpen: (v: string | null) => void; label: string; items: MenuItem[] }) {
+  const isOpen = open === id;
+  useEffect(() => {
+    if (!isOpen) return;
+    const off = () => setOpen(null);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    document.addEventListener("click", off);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("click", off);
+      document.removeEventListener("keydown", key);
+    };
+  }, [isOpen, setOpen]);
+  const itemCls = "flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13px] transition hover:bg-[color:var(--dk-sky)]";
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-label={label}
+        title={label}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(isOpen ? null : id);
+        }}
+        className="grid h-[40px] w-[40px] place-items-center rounded-full text-[18px] leading-none transition hover:bg-white"
+        style={{ background: "rgba(255, 255, 255, 0.6)", color: "var(--dk-navy-soft)" }}
+      >
+        ⋯
+      </button>
+      {isOpen && (
+        <div
+          role="menu"
+          className="absolute right-0 top-[44px] z-[60] min-w-[240px] rounded-2xl bg-white p-1.5 text-left shadow-[0_16px_40px_rgba(23,58,107,0.22)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {items.map((m, i) =>
+            m.head !== undefined ? (
+              m.head ? (
+                <p key={i} className="px-3 pb-0.5 pt-2 text-[10.5px] font-semibold tracking-[0.08em]" style={{ color: "var(--dk-faint)" }}>
+                  {m.head}
+                </p>
+              ) : (
+                <hr key={i} className="mx-2 my-1 border-0 border-t" style={{ borderColor: "var(--dk-hair)" }} />
+              )
+            ) : m.href ? (
+              <a key={i} href={m.href} role="menuitem" className={itemCls} style={{ color: "var(--dk-navy)" }}>
+                <span className="w-5 text-center" aria-hidden>
+                  {m.icon}
+                </span>
+                {m.label}
+              </a>
+            ) : (
+              <button
+                key={i}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(null);
+                  m.onClick?.();
+                }}
+                className={itemCls}
+                style={{ color: m.danger ? "var(--dk-coral-ink)" : "var(--dk-navy)" }}
+              >
+                <span className="w-5 text-center" aria-hidden>
+                  {m.icon}
+                </span>
+                {m.label}
+              </button>
+            ),
+          )}
+        </div>
+      )}
     </span>
   );
-  const label = done
-    ? `จัดแล้ว${done.by === "กำลังบันทึก…" ? "" : ` โดย ${done.by} ${fmtAt(done.at)}`} — กดเพื่อเอาติ๊กออก`
-    : "ติ๊กเมื่อจัดวัสดุกลุ่มนี้เสร็จแล้ว";
+}
+
+/**
+ * ✅ ป้าย "จัดแล้ว / ยังไม่จัด" ที่หัวกลุ่มสินค้า — ไล่จัดวัสดุทีละกลุ่มแล้วกดไว้ว่าทำถึงไหน
+ * ยังไม่จัด = พื้นเหลืองเห็นชัดว่ายังต้องทำ · จัดแล้ว = โปร่งมีขอบมินต์ (เงียบกว่า — งานที่จบแล้วต้องไม่แย่งตา)
+ * onToggle ว่าง = สิทธิ์ดูอย่างเดียว แสดงสถานะแต่กดไม่ได้
+ */
+function DonePill({ done, onToggle }: { done?: GroupDone; onToggle?: () => void }) {
+  const on = !!done;
+  const cls = "inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] font-semibold";
+  const style = on
+    ? { color: "var(--dk-mint-ink)", boxShadow: "inset 0 0 0 1px rgba(13, 107, 81, 0.3)" }
+    : { background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" };
+  const text = on ? "✓ จัดแล้ว" : "ยังไม่จัด";
+  const title = done ? `จัดแล้ว · ${done.by === "กำลังบันทึก…" ? done.by : `${done.by} ${fmtAt(done.at)}`} · กดเพื่อเอาออก` : "กดเมื่อจัดวัสดุกลุ่มนี้เสร็จ";
   if (!onToggle)
     return (
-      <span className="flex h-11 w-9 shrink-0 items-center justify-center" title={done ? label.split(" — ")[0] : "ยังไม่ได้จัด"}>
-        {box}
+      <span className={cls} style={style} title={title}>
+        {text}
       </span>
     );
   return (
     <button
       type="button"
-      role="checkbox"
-      aria-checked={!!done}
-      aria-label={label}
-      title={label}
+      aria-pressed={on}
       onClick={(e) => {
-        e.stopPropagation(); // กดติ๊กต้องไม่กางกลุ่มไปด้วย
+        e.stopPropagation();
         onToggle();
       }}
-      className="-my-1 flex h-11 w-9 shrink-0 items-center justify-center"
+      className={`${cls} transition hover:brightness-95`}
+      style={style}
+      title={title}
     >
-      {box}
+      {text}
     </button>
   );
 }
 
-/** รูปย่อ SKU ในตาราง — ไม่มีรูป = กรอบว่างสีอ่อน (ไม่ใส่อีโมจิ กันตารางลายตา) */
+/** ปุ่มลัดในแถว (＋ รับเข้า · − เบิก · นับ · ✓ ตรวจแล้ว · ลบ) — กลม 36px หยุดการกดไม่ให้เปิดลิ้นชัก · danger = ลบ (สีแดง กันเผลอกด) */
+function RowBtn({ title, onClick, small, lilac, danger, children }: { title: string; onClick: () => void; small?: boolean; lilac?: boolean; danger?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={`grid h-[36px] min-w-[36px] place-items-center whitespace-nowrap rounded-full font-semibold transition hover:!text-white ${
+        danger ? "hover:!bg-[color:var(--dk-coral-deep)]" : "hover:!bg-[color:var(--dk-navy)]"
+      } ${small ? "px-2.5 text-[11.5px]" : "text-[15px]"}`}
+      style={{ background: "rgba(255, 255, 255, 0.85)", color: danger ? "var(--dk-coral-deep)" : lilac ? "var(--dk-lilac-ink)" : "var(--dk-navy)", boxShadow: "0 2px 6px rgba(44, 129, 196, 0.15)" }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** หน่วยที่ร้านใช้บ่อย — เป็นตัวเลือกให้กดในฟอร์มเพิ่ม/แก้ไขวัสดุ (พิมพ์เองก็ยังได้ · เจ้าของร้านขอ 30 ก.ย. 69) */
+// ชุดเดียวกันทั้ง "หน่วยนับเล็กสุด" และ "หน่วยแพ็ค" — เจ้าของร้านขอให้สองช่องมีตัวเลือกตรงกัน (30 ก.ย. 69)
+const UNIT_OPTIONS = ["ชิ้น", "แผ่น", "ใบ", "ตัว", "อัน", "เส้น", "คู่", "ชุด", "แพ็ค", "รีม", "กล่อง", "ลัง", "ถุง", "โหล", "ม้วน", "ขวด", "แกลลอน", "เมตร", "กิโลกรัม"];
+const BASE_UNITS = UNIT_OPTIONS;
+const PACK_UNITS = UNIT_OPTIONS;
+/**
+ * ช่องเลือกหน่วยแบบ dropdown (เจ้าของร้านขอ 30 ก.ย. 69 — ชิปแล้วรก) · เลือก "กำหนดเอง…" ถึงจะได้ช่องพิมพ์
+ * ค่าที่ไม่อยู่ในรายการ (ของเก่า/พิมพ์เอง) ถือเป็นกำหนดเองให้อัตโนมัติ
+ */
+function UnitSelect({ options, value, onChange, emptyLabel, placeholder }: { options: string[]; value: string; onChange: (v: string) => void; emptyLabel: string; placeholder: string }) {
+  const custom = value.trim() !== "" && !options.includes(value.trim());
+  const [free, setFree] = useState(custom);
+  const isFree = free || custom;
+  return (
+    <span className="flex gap-2">
+      <select
+        value={isFree ? "__custom" : value}
+        onChange={(e) => {
+          if (e.target.value === "__custom") {
+            setFree(true);
+            onChange("");
+          } else {
+            setFree(false);
+            onChange(e.target.value);
+          }
+        }}
+        className={`${inputCls} ${isFree ? "w-40 shrink-0" : ""}`}
+      >
+        <option value="">{emptyLabel}</option>
+        {options.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+        <option value="__custom">กำหนดเอง…</option>
+      </select>
+      {isFree && <input autoFocus value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={inputCls} />}
+    </span>
+  );
+}
+
+/** 📦 สวิตช์หน่วยในฟอร์มรับ/เบิก: [แผ่น | แพ็ค] — ของที่ตั้ง packSize ไว้เท่านั้น */
+function UnitSwitch({ unit, packUnit, inPack, onChange }: { unit: string; packUnit: string; inPack: boolean; onChange: (v: boolean) => void }) {
+  const cls = (on: boolean) => `min-h-[26px] rounded-full px-2.5 text-[11px] font-semibold transition ${on ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"}`;
+  return (
+    <span className="inline-flex rounded-full border border-slate-200 bg-white p-0.5" role="group" aria-label="หน่วยที่กรอก">
+      <button type="button" aria-pressed={!inPack} onClick={() => onChange(false)} className={cls(!inPack)}>
+        {unit}
+      </button>
+      <button type="button" aria-pressed={inPack} onClick={() => onChange(true)} className={cls(inPack)}>
+        {packUnit}
+      </button>
+    </span>
+  );
+}
+
 function Thumb({ src, name, size = 40 }: { src?: string; name: string; size?: number }) {
   const zoom = useContext(ZoomCtx);
   const style = { width: size, height: size, background: "var(--dk-sky)", boxShadow: "inset 0 0 0 1px var(--dk-hair)" };
@@ -2014,33 +2611,6 @@ function Banner({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   );
 }
 
-
-function Chip({
-  children,
-  active,
-  count,
-  tone,
-  onClick,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  count: number;
-  tone?: Tone;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
-        active ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
-    >
-      <span className={!active && tone && count > 0 ? TONE[tone].text : undefined}>{children}</span>
-      <span className={`ml-1.5 tabular-nums ${active ? "text-white/60" : "text-slate-400"}`}>{count}</span>
-    </button>
-  );
-}
 
 function Th({
   children,
@@ -2143,8 +2713,12 @@ function MovePanel({
   const [note, setNote] = useState("");
   const [refId, setRefId] = useState("");
   const [busy, setBusy] = useState(false);
+  // 📦 กรอกเป็นแพ็ค (เฉพาะของที่ตั้ง packSize) — ระบบคูณเป็นหน่วยฐานให้ก่อนบันทึก
+  const [inPack, setInPack] = useState(false);
+  const packOn = !!sel && hasPack(sel) && inPack;
 
-  const n = Number(qty);
+  const raw = Number(qty);
+  const n = packOn ? raw * (sel?.packSize ?? 1) : raw;
   const needNote = mode === "out" && reason === "อื่นๆ";
   const after = sel ? sel.balance + (mode === "in" ? n : -n) : 0;
   const willNegative = mode === "out" && sel != null && qty !== "" && after < 0;
@@ -2159,10 +2733,14 @@ function MovePanel({
   async function submit() {
     if (invalid || !sel) return;
     setBusy(true);
-    const done = await onSubmit(sel.id, mode === "in" ? n : -n, reason, note || undefined, refId || undefined);
+    // จดในหมายเหตุว่ากรอกมาเป็นกี่แพ็ค — ประวัติอ่านย้อนได้ว่า "เบิก 2 แพ็ค" ไม่ใช่แค่ -200
+    const packNote = packOn ? `${fmtN(raw)} ${sel.packUnit || "แพ็ค"}` : "";
+    const fullNote = [note.trim(), packNote ? `(${packNote})` : ""].filter(Boolean).join(" ");
+    const done = await onSubmit(sel.id, mode === "in" ? n : -n, reason, fullNote || undefined, refId || undefined);
     setBusy(false);
     if (done) {
       setSel(null);
+      setInPack(false);
       setQty("");
       setNote("");
       setRefId("");
@@ -2186,10 +2764,17 @@ function MovePanel({
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem_11rem]">
           <div>
             <span className={fieldLabel}>วัสดุ *</span>
-            <SkuPicker items={items} value={sel} onChange={setSel} />
+            <SkuPicker
+              items={items}
+              value={sel}
+              onChange={(i) => {
+                setSel(i);
+                setInPack(false);
+              }}
+            />
           </div>
           <label className="block">
-            <span className={fieldLabel}>จำนวน *</span>
+            <span className={fieldLabel}>จำนวน *{packOn ? ` (${sel?.packUnit || "แพ็ค"})` : sel ? ` (${sel.unit})` : ""}</span>
             <input
               value={qty}
               onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))}
@@ -2197,6 +2782,17 @@ function MovePanel({
               placeholder="0"
               className={`${inputCls} text-right tabular-nums`}
             />
+            {/* 📦 สลับหน่วย: ของที่ตั้งแพ็คไว้กรอกเป็นแพ็คหรือหน่วยย่อยก็ได้ */}
+            {sel && hasPack(sel) && (
+              <span className="mt-1.5 flex items-center gap-1 text-[11px]">
+                <UnitSwitch unit={sel.unit} packUnit={sel.packUnit || "แพ็ค"} inPack={inPack} onChange={setInPack} />
+                {qty !== "" && packOn && (
+                  <span className="text-slate-500">
+                    = {fmtN(n)} {sel.unit}
+                  </span>
+                )}
+              </span>
+            )}
           </label>
           {mode === "out" ? (
             <label className="block">
@@ -2213,6 +2809,7 @@ function MovePanel({
                 {sel ? (
                   <>
                     คงเหลือหลังรับ <span className="font-semibold tabular-nums text-slate-800">{fmtN(after)}</span> {sel.unit}
+                    {packText(sel, after) ? ` (${packText(sel, after)})` : ""}
                   </>
                 ) : (
                   "เลือกวัสดุก่อน"
@@ -2246,7 +2843,7 @@ function MovePanel({
           <p className={`mt-3 rounded-xl px-3 py-2 text-xs ${willNegative ? `${TONE.danger.bg} ${TONE.danger.text}` : "bg-slate-50 text-slate-600"}`}>
             {willNegative
               ? `เบิกเกินยอดในระบบ — คงเหลือจะติดลบเป็น ${fmtN(after)} ${sel.unit} (ยังบันทึกได้ แต่ควรนับจริงก่อน)`
-              : `คงเหลือหลังเบิก ${fmtN(after)} ${sel.unit}`}
+              : `คงเหลือหลังเบิก ${fmtN(after)} ${sel.unit}${packText(sel, after) ? ` (${packText(sel, after)})` : ""}`}
           </p>
         )}
 
@@ -2379,6 +2976,7 @@ function ItemDrawer({
   onDelete,
   onNoStock,
   onReviewed,
+  onReset,
   onRename,
   onImage,
 }: {
@@ -2409,6 +3007,8 @@ function ItemDrawer({
   onDelete: () => void;
   onNoStock: (on: boolean) => void;
   onReviewed: () => void;
+  /** 🧹 รีเซ็ตยอดเป็น 0 — ส่งมาเฉพาะเจ้าของร้าน (ไม่ส่ง = ไม่มีปุ่ม) */
+  onReset?: () => void;
   onRename: (name: string) => Promise<boolean>;
   onImage: (url: string) => Promise<boolean>;
 }) {
@@ -2483,6 +3083,11 @@ function ItemDrawer({
               {item.code && <span className={codeCls}>{item.code}</span>}
               {item.family && <span className="text-[11px] text-slate-400">{item.family}</span>}
               {item.needsReview && <span className={`${badge} ${TONE.review.bg} ${TONE.review.text}`}>รอตรวจ</span>}
+              {item.manualOnly && (
+                <span className={`${badge} ${TONE.neutral.bg} ${TONE.neutral.text}`} title="ของใช้ในโรงงาน — พนักงานเบิกเอง ไม่ผูกกับสินค้า">
+                  🏭 เบิกเองอย่างเดียว
+                </span>
+              )}
             </p>
           </div>
           <button type="button" onClick={onClose} className={btnSmGhost} aria-label="ปิด">
@@ -2492,17 +3097,85 @@ function ItemDrawer({
         {imgOpen && <ImagePanel onSave={async (url) => (await onImage(url)) && setImgOpen(false)} onClose={() => setImgOpen(false)} />}
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <div className="flex items-end justify-between">
+          <div className="flex items-end justify-between gap-3">
             <p className={`${metric} ${item.balance < 0 ? TONE.danger.text : ""}`}>
               {fmtN(item.balance)} <span className="text-sm font-medium text-slate-400">{item.unit}</span>
+              {packText(item, item.balance) && (
+                <span className="mt-1 block text-sm font-medium tabular-nums text-slate-500">= {packText(item, item.balance)}</span>
+              )}
             </p>
-            {stat?.point != null && (
+            {item.balance < 0 ? (
+              <span className={`${badge} bg-rose-600 text-white`}>ติดลบ</span>
+            ) : stat?.point != null ? (
               <span className={`${badge} ${TONE[level].bg} ${TONE[level].text}`}>
                 จุดสั่ง ≤ {fmtN(stat.point)}
                 {item.reorderPoint == null ? " (แนะนำ)" : ""}
               </span>
+            ) : (
+              !item.noStock && <span className={`${badge} ${TONE.neutral.bg} ${TONE.neutral.text}`}>ยังไม่ตั้งจุดสั่ง</span>
             )}
           </div>
+
+          {/*
+           * งานประจำ 3 ปุ่มขึ้นบนสุด — เปิดลิ้นชักมาเพื่อ "ทำ" ไม่ใช่มาอ่าน (โครงใหม่ 30 ก.ย. 69 · เดิมอยู่ท้ายลิ้นชักต้องเลื่อนผ่านประวัติก่อน)
+           * ช่องเท่ากัน สูง 52 กดด้วยนิ้วโป้ง ห้ามตัดคำ · แก้ไข/ไม่ต้องมี stock/ลบ ยังอยู่ท้ายลิ้นชัก (งานนาน ๆ ครั้ง)
+           */}
+          {mayEdit && (
+            <div className={`mt-3 grid gap-2 ${item.noStock ? "grid-cols-1" : "grid-cols-3"}`}>
+              {!item.noStock && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onMove("in")}
+                    className="min-h-[52px] rounded-2xl bg-slate-900 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                  >
+                    <span className="block text-lg leading-none">＋</span>รับเข้า
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMove("out")}
+                    className="min-h-[52px] rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <span className="block text-lg leading-none text-rose-500">−</span>เบิกออก
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={onCount}
+                className="min-h-[52px] rounded-2xl bg-amber-400 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-amber-500"
+              >
+                <span className="block text-lg leading-none">≡</span>นับจริง
+              </button>
+            </div>
+          )}
+
+          {/* กล่องบอก "ปัญหาของตัวนี้" พร้อมปุ่มแก้ในที่เดียว — ติดลบ → นับจริง · ยังไม่ตั้งจุดสั่ง → ตั้งในแก้ไขข้อมูล */}
+          {item.balance < 0 && (
+            <div className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>
+              <span className="min-w-0 flex-1">
+                ยอดติดลบ — ขายไป {fmtN(-item.balance)} {item.unit} ก่อนเคยรับของเข้าระบบ นับของจริงบนชั้นแล้วบันทึก ตัวเลขถึงจะตรง
+              </span>
+              {mayEdit && (
+                <button type="button" onClick={onCount} className={btnSmNeutral}>
+                  นับจริง
+                </button>
+              )}
+            </div>
+          )}
+          {item.balance >= 0 && stat?.point == null && !item.noStock && (
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">
+              <span className="min-w-0 flex-1">
+                ยังไม่ตั้งจุดสั่ง — ใส่ตัวเลขไว้ ระบบจะเตือน “ต้องสั่ง” ให้เองเมื่อของเหลือถึงจุดนั้น
+                {stat && stat.perDay > 0 ? ` (ตอนนี้ใช้เฉลี่ย ${stat.perDay.toFixed(1)} ${item.unit}/วัน)` : ""}
+              </span>
+              {mayEdit && (
+                <button type="button" onClick={onEdit} className={btnSmNeutral}>
+                  ตั้งจุดสั่ง
+                </button>
+              )}
+            </div>
+          )}
 
           <dl className="mt-4 grid grid-cols-2 gap-2">
             <Fact k="ใช้เฉลี่ย/วัน" v={stat && stat.perDay > 0 ? stat.perDay.toFixed(1) : "—"} />
@@ -2601,35 +3274,21 @@ function ItemDrawer({
         </div>
 
         {mayEdit && (
-          /*
-           * แถบปุ่มท้ายลิ้นชัก 2 ชั้น (เจ้าของร้านขอออกแบบใหม่ 30 ก.ย. 69 — เดิม flex-wrap ปุ่มแตกคำ "รับ/เข้า" 3 บรรทัดบนมือถือ)
-           *   บน = งานประจำที่ทำทุกวัน: รับเข้า / เบิก / นับจริง — ช่องเท่ากัน สูง 44 กดด้วยนิ้วโป้ง ห้ามตัดคำ
-           *   ล่าง = งานนาน ๆ ครั้ง: แก้ไข · ไม่ต้องมี stock · ลบ — ตัวเล็ก ลบอยู่ขวาสุดสีอันตราย ไม่ปนกับปุ่มงานประจำ
-           */
+          /* แถบท้ายลิ้นชัก = งานนาน ๆ ครั้ง: แก้ไข · ไม่ต้องมี stock · ลบ (ปุ่มงานประจำ รับเข้า/เบิก/นับจริง ย้ายขึ้นบนสุดของลิ้นชักแล้ว 30 ก.ย. 69) */
           <footer className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
-            <div className={`grid gap-2 ${item.noStock ? "grid-cols-1" : "grid-cols-3"}`}>
-              {/* รับของเข้าคลังได้จากตรงนี้เลย — ของที่ไม่ได้อยู่ในกลุ่ม "ชนิดของ" (เช่นวัสดุแฝง) เดิมไม่มีทางรับเข้า ต้องไปใช้ "นับจริง" แทน */}
-              {!item.noStock && (
-                <>
-                  <button type="button" onClick={() => onMove("in")} className={`${btnNeutral} min-h-[44px] whitespace-nowrap !px-2`}>
-                    <span aria-hidden className="mr-1 text-emerald-600">＋</span>รับเข้า
-                  </button>
-                  <button type="button" onClick={() => onMove("out")} className={`${btnNeutral} min-h-[44px] whitespace-nowrap !px-2`}>
-                    <span aria-hidden className="mr-1 text-rose-500">−</span>เบิก
-                  </button>
-                </>
-              )}
-              <button type="button" onClick={onCount} className={`${btnNeutral} min-h-[44px] whitespace-nowrap !px-2`}>
-                นับจริง
-              </button>
-            </div>
-            <div className="mt-2 flex items-center gap-1">
+            <div className="flex items-center gap-1">
               <button type="button" onClick={onEdit} className={`${btnSmGhost} whitespace-nowrap`}>
                 แก้ไขข้อมูล
               </button>
               {!item.noStock && (
                 <button type="button" onClick={() => onNoStock(true)} className={`${btnSmGhost} whitespace-nowrap`} title="ของสั่งผลิตตามออเดอร์ / ไม่เก็บของไว้ที่ร้าน">
                   ไม่ต้องมี stock
+                </button>
+              )}
+              {/* ขึ้นเสมอสำหรับเจ้าของร้าน (ซ่อนตอนยอด 0 แล้วหาไม่เจอ 30 ก.ย. 69) — ยอด 0 อยู่แล้วกดได้แต่ระบบบอกว่าไม่มีอะไรต้องล้าง */}
+              {onReset && (
+                <button type="button" onClick={onReset} className={`${btnSmGhost} whitespace-nowrap`} title="ล้างยอดคงเหลือเป็น 0 (เจ้าของร้านเท่านั้น) — ลงประวัติให้ ย้อนดูได้">
+                  🧹 รีเซ็ตเป็น 0
                 </button>
               )}
               {/* ลบอยู่ขวาสุดแยกจากปุ่มอื่น — งานนาน ๆ ครั้ง ไม่ให้เผลอกดแทนแก้ไข */}
@@ -2669,6 +3328,8 @@ function ItemModal({
   allParts,
   onClose,
   onSave,
+  onSaveMany,
+  onSplitProduct,
 }: {
   item: Item | null;
   products: ProductLite[];
@@ -2677,9 +3338,23 @@ function ItemModal({
   allParts: string[];
   onClose: () => void;
   onSave: (b: Partial<Item> & { name: string }) => void;
+  /** 🧬 เพิ่มหลายตัวทีเดียว (ต่างกันแค่สี/ขนาด/ความยาว) — เจ้าของร้านขอ 30 ก.ย. 69 */
+  onSaveMany?: (list: (Partial<Item> & { name: string })[]) => void;
+  /** 🔗 วางลิงก์/ชื่อสินค้า → ไปหน้าต่าง "แยกสต๊อกตามตัวเลือก" เลือกตัวเลือกที่จะทำเป็นวัสดุ (เจ้าของร้านขอ 30 ก.ย. 69) */
+  onSplitProduct?: (p: { id: string; name: string }) => void;
 }) {
   const [name, setName] = useState(item?.name ?? "");
+  /** รายการที่ต่างกัน (สี/ขนาด) คั่นด้วย , หรือขึ้นบรรทัดใหม่ → สร้าง "ชื่อ · ค่า" ทีละตัว ตั้งค่าอื่นเหมือนกันหมด */
+  const [variants, setVariants] = useState("");
+  const variantList = useMemo(() => [...new Set(variants.split(/[,\n]/).map((x) => x.trim()).filter(Boolean))], [variants]);
+  /** ค้นสินค้าจากลิงก์/ชื่อ เพื่อดึงตัวเลือกทั้งหมดมาเลือกทำเป็นวัสดุ */
+  const [prodQ, setProdQ] = useState("");
+  const prodHits = useMemo(() => (prodQ.trim() ? products.filter((p) => matchProductQuery(p, prodQ)).slice(0, 6) : []), [products, prodQ]);
   const [codeVal, setCodeVal] = useState(item?.code ?? "");
+  /** รหัส: ค่าเริ่มต้นให้ระบบตั้งจากชื่อ (เจ้าของร้านขอ 30 ก.ย. 69) · กด "แก้เอง" ถึงพิมพ์ได้ · ของเดิมที่มีรหัสแล้ว = แก้เองตลอด */
+  const [codeManual, setCodeManual] = useState(!!item?.code);
+  /** ตัวอย่างรหัสที่ระบบจะตั้ง — สูตรเดียวกับ codeSlug ฝั่งเซิร์ฟเวอร์ (ชื่อไทยล้วน → M-xxxx ตอนบันทึก) */
+  const codePreview = name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 24);
   const [unit, setUnit] = useState(item?.unit ?? "ชิ้น");
   const [family, setFamily] = useState(item?.family ?? "");
   const [category, setCategory] = useState(item?.category ?? "");
@@ -2690,149 +3365,336 @@ function ItemModal({
   const [productIds, setProductIds] = useState<string[]>(item?.productIds ?? []);
   const [imageUrl, setImageUrl] = useState(item?.imageUrl ?? "");
   const [part, setPart] = useState(item?.part ?? "");
+  // 📦 หน่วยแพ็ค + 🏭 เบิกเองอย่างเดียว (เจ้าของร้านสั่ง 30 ก.ย. 69 — กระดาษ/อะคริลิคซื้อเป็นแพ็ค ใช้เป็นแผ่น)
+  const [packUnit, setPackUnit] = useState(item?.packUnit ?? "");
+  const [packSize, setPackSize] = useState(item?.packSize && item.packSize > 1 ? String(item.packSize) : "");
+  const [manualOnly, setManualOnly] = useState(!!item?.manualOnly);
+
+  const u = unit.trim() || "ชิ้น";
+  const pu = packUnit.trim() || "แพ็ค";
+  const hasPack = !!packUnit.trim() && Number(packSize) > 1;
+  const canSave = !!name.trim();
+  const payload = (nm: string, alias?: string): Partial<Item> & { name: string } => ({
+      id: item?.id,
+      name: nm,
+      code: codeManual ? codeVal.trim() || undefined : undefined, // อัตโนมัติ = ไม่ส่ง ให้เซิร์ฟเวอร์ตั้งจากชื่อ (กันซ้ำที่นั่น)
+      unit,
+      family: family.trim() || undefined,
+      category: category || undefined,
+      reorderPoint: reorderPoint ? Number(reorderPoint) : undefined,
+      leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
+      // ล้างช่อง = ส่ง 0 ไปลบทุนออก (undefined จะกลายเป็น "ไม่แตะ" แล้วค่าเก่าค้าง)
+      unitCost: unitCost.trim() === "" ? 0 : Number(unitCost),
+      aliases: [...aliases.split(",").map((x) => x.trim()).filter(Boolean), ...(alias ? [alias] : [])],
+      productIds: manualOnly ? [] : productIds,
+      // ล้างช่อง = ส่ง "" ให้เซิร์ฟเวอร์ลบรูปที่ตั้งเองออก
+      imageUrl: imageUrl.trim(),
+      part: part.trim(), // ว่าง = ล้างชนิดของ
+      packUnit: packUnit.trim(),
+      packSize: packSize ? Number(packSize) : 0, // 0 = ล้างหน่วยแพ็ค
+      manualOnly,
+    });
+  // ของใหม่ + ใส่รายการสี/ขนาดไว้ = สร้างทีละตัว "ชื่อ · ค่า" (ค่าเป็นชื่อที่เคยเรียกด้วย ค้น "ขาว" เจอ) · ไม่งั้นบันทึกตัวเดียวตามเดิม
+  const save = () => (!item && variantList.length && onSaveMany ? onSaveMany(variantList.map((v) => payload(`${name.trim()} · ${v}`, v))) : onSave(payload(name)));
+  const hint = "mt-1 block text-[11.5px]";
+  const hintStyle = { color: "var(--dk-faint)" } as const;
+  /** บรรทัดสรุปในแผงขวา — ให้คนเห็นผลของที่กรอกเป็นภาษาคน ไม่ต้องไล่อ่านทุกช่อง */
+  const summary: { k: string; v: string; warn?: boolean }[] = [
+    { k: "รหัส", v: codeVal.trim() || "ออกให้เองตอนบันทึก" },
+    { k: "นับเป็น", v: hasPack ? `${u} · 1 ${pu} = ${fmtN(Number(packSize))} ${u}` : u },
+    manualOnly
+      ? { k: "ตัดตอนขาย", v: "ไม่ตัด — ของใช้ในโรงงาน เบิกเอง" }
+      : productIds.length
+        ? { k: "ตัดตอนขาย", v: `${fmtN(productIds.length)} สินค้า · ขาย 1 ชิ้นตัด 1 ${u}` }
+        : { k: "ตัดตอนขาย", v: "ยังไม่ผูกสินค้า", warn: true },
+    reorderPoint
+      ? { k: "เตือนสั่ง", v: `เหลือ ≤ ${fmtN(Number(reorderPoint))} ${u}${leadTimeDays ? ` · รอของ ${leadTimeDays} วัน` : ""}` }
+      : { k: "เตือนสั่ง", v: "ยังไม่ตั้ง — ระบบเดาจากสถิติให้ทีหลัง", warn: true },
+    { k: "ทุน", v: unitCost.trim() ? `฿${unitCost}/${u}` : "ยังไม่ใส่ — รายงานกำไรจะไม่นับตัวนี้" },
+  ];
 
   return (
-    <Modal title={item ? "แก้ไขวัสดุ" : "เพิ่มวัสดุใหม่"} onClose={onClose}>
-      <div className="space-y-3">
-        <label className="block">
-          <span className={fieldLabel}>ชื่อวัสดุ *</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น ไหมเย็บ ขาว (1803)" className={inputCls} />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className={fieldLabel}>รหัส (ติดป้ายชั้นวาง)</span>
-            <input value={codeVal} onChange={(e) => setCodeVal(e.target.value.toUpperCase())} placeholder="เว้นว่าง = ออกรหัสให้เอง" className={inputCls} />
-          </label>
-          <label className="block">
-            <span className={fieldLabel}>หน่วยนับ</span>
-            <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ชิ้น" className={inputCls} />
-          </label>
+    <div className="mt-4">
+      <button type="button" onClick={onClose} className="dkb-btn dkb-btn-ghost dkb-btn-sm mb-3">
+        ← กลับไปคลัง
+      </button>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        {/* ── ฟอร์ม 4 หมวด เรียงตามคำถามที่คนกรอกคิดจริง ── */}
+        <div className="min-w-0 flex-1 space-y-4">
+          <FormSection n={1} title={item ? `แก้ไข “${item.name}”` : "ของชิ้นนี้คืออะไร"} hint="ชื่อกับหน่วยคือของบังคับ ที่เหลือใส่ทีหลังได้">
+            {!item && onSplitProduct && (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-3">
+                <span className={fieldLabel}>🔗 มีสินค้าอยู่แล้ว? วางลิงก์หรือพิมพ์ชื่อสินค้า — ระบบดึงตัวเลือกทั้งหมดมาให้เลือกทำเป็นวัสดุทีเดียว</span>
+                <input
+                  value={prodQ}
+                  onChange={(e) => setProdQ(e.target.value)}
+                  placeholder="วางลิงก์หน้าสินค้า หรือพิมพ์ชื่อ เช่น กรอบรูปอะคริลิค"
+                  className={inputCls}
+                />
+                {prodHits.length > 0 && (
+                  <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    {prodHits.map((p) => (
+                      <li key={p.id}>
+                        <button type="button" onClick={() => onSplitProduct(p)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50">
+                          <Thumb src={p.img} name={p.name} size={28} />
+                          <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                          <span className="shrink-0 text-[11px] text-slate-400">เลือกตัวเลือก →</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {prodQ.trim() !== "" && !prodHits.length && <span className={`mt-1 block text-[11px] text-slate-400`}>ไม่พบสินค้าที่ตรง</span>}
+              </div>
+            )}
+            <label className="block">
+              <span className={fieldLabel}>ชื่อวัสดุ *</span>
+              <input autoFocus={!item} value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น ไหมเย็บ ขาว (1803)" className={`${inputCls} !h-12 text-base font-semibold`} />
+            </label>
+            {!item && onSaveMany && (
+              <label className="block">
+                <span className={fieldLabel}>🧬 เพิ่มหลายตัวทีเดียว — ของเหมือนกันต่างแค่สี/ขนาด/ความยาว (คั่นด้วย , หรือขึ้นบรรทัดใหม่)</span>
+                <textarea
+                  value={variants}
+                  onChange={(e) => setVariants(e.target.value)}
+                  rows={2}
+                  placeholder="เช่น ขาว, ดำ, แดง  หรือ  1 เมตร, 2 เมตร, 5 เมตร"
+                  className={`${inputCls} !h-auto py-2`}
+                />
+                {variantList.length > 0 && (
+                  <span className="mt-1 block text-[11.5px] text-slate-500">
+                    จะสร้าง <b>{fmtN(variantList.length)}</b> ตัว: {variantList.slice(0, 5).map((v) => `${name.trim() || "ชื่อ"} · ${v}`).join(", ")}
+                    {variantList.length > 5 ? ` … และอีก ${fmtN(variantList.length - 5)}` : ""} — หน่วย/แพ็ค/ตระกูล/สินค้าที่ผูก ใช้ค่าเดียวกันทั้งชุด
+                  </span>
+                )}
+              </label>
+            )}
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr]">
+              <label className="block">
+                <span className={`${fieldLabel} flex items-center justify-between`}>
+                  <span>รหัส (ติดป้ายชั้นวาง)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCodeManual((v) => !v);
+                      setCodeVal(codeManual ? "" : codePreview);
+                    }}
+                    className="text-[11px] font-medium text-slate-500 underline underline-offset-2 hover:text-slate-800"
+                  >
+                    {codeManual ? "ให้ระบบตั้งให้" : "แก้เอง"}
+                  </button>
+                </span>
+                {codeManual ? (
+                  <input value={codeVal} onChange={(e) => setCodeVal(e.target.value.toUpperCase())} placeholder="เช่น PAPER-A4" className={`${inputCls} font-mono`} />
+                ) : (
+                  <span className={`${inputCls} flex items-center font-mono text-slate-500`} title="ระบบตั้งจากชื่อให้อัตโนมัติตอนบันทึก">
+                    {codePreview || (name.trim() ? "M-xxxx (ออกเลขให้ตอนบันทึก)" : "ตั้งให้อัตโนมัติจากชื่อ")}
+                  </span>
+                )}
+              </label>
+              <label className="block">
+                <span className={fieldLabel}>หน่วยนับ (เล็กสุด) *</span>
+                <UnitSelect options={BASE_UNITS} value={unit} onChange={setUnit} emptyLabel="— เลือกหน่วย —" placeholder="พิมพ์หน่วยเอง" />
+              </label>
+              <label className="block">
+                <span className={fieldLabel}>ชนิดของ</span>
+                <input value={part} onChange={(e) => setPart(e.target.value)} list="stock-parts" placeholder="กรอบรูป / วัสดุแฝง" className={inputCls} />
+                <datalist id="stock-parts">
+                  {allParts.map((x) => (
+                    <option key={x} value={x} />
+                  ))}
+                </datalist>
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* เลือกจากที่มีอยู่ได้ แต่พิมพ์ใหม่ก็ยังได้ — กันหมวดแตกเพราะสะกดต่างกันนิดเดียว */}
+              <label className="block">
+                <span className={fieldLabel}>ตระกูล</span>
+                <input value={family} onChange={(e) => setFamily(e.target.value)} list="stock-families" placeholder="สีไหมเย็บ" className={inputCls} />
+                <datalist id="stock-families">
+                  {allFams.map((f) => (
+                    <option key={f} value={f} />
+                  ))}
+                </datalist>
+              </label>
+              <label className="block">
+                <span className={fieldLabel}>หมวด</span>
+                <UnitSelect options={allCats} value={category} onChange={setCategory} emptyLabel="— เลือกหมวด —" placeholder="พิมพ์หมวดใหม่" />
+              </label>
+            </div>
+            <label className="block">
+              <span className={fieldLabel}>ชื่อที่เคยเรียก (คั่นด้วย , )</span>
+              <input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Gtดำ, GT ดำ" className={inputCls} />
+              <span className={hint} style={hintStyle}>คนเรียกของคนละชื่อกัน ใส่ไว้ให้ค้นเจอทุกชื่อ</span>
+            </label>
+            <label className="block">
+              <span className={fieldLabel}>รูป</span>
+              <span className="flex items-center gap-2.5">
+                <Thumb src={imageUrl.trim() || undefined} name={name} size={44} />
+                <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/thread-1803.jpg (เว้นว่างได้)" className={inputCls} />
+              </span>
+              <span className={hint} style={hintStyle}>เว้นว่าง = ใช้ภาพตัวเลือกที่ผูก SKU นี้ หรือรูปแรกของสินค้าที่ผูกให้เอง</span>
+            </label>
+          </FormSection>
+
+          <FormSection n={2} title="นับยังไง" hint="ยอดคงเหลือนับเป็นหน่วยเล็กสุดเสมอ แพ็คมีไว้ให้กรอกเร็วตอนรับเข้า/เบิก">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className={fieldLabel}>📦 ชื่อหน่วยแพ็ค (ไม่บังคับ)</span>
+                <UnitSelect options={PACK_UNITS} value={packUnit} onChange={setPackUnit} emptyLabel="— ไม่ตั้งแพ็ค —" placeholder="พิมพ์ชื่อแพ็คเอง" />
+              </label>
+              <label className="block">
+                <span className={fieldLabel}>
+                  1 {pu} = กี่{u}
+                </span>
+                <input value={packSize} onChange={(e) => setPackSize(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="100" className={`${inputCls} text-right tabular-nums`} />
+              </label>
+            </div>
+            <span className={hint} style={hintStyle}>
+              {hasPack ? `หน้าจอจะบอกเป็น “3 ${pu} + 40 ${u}” และตอนรับเข้า/เบิกเลือกกรอกเป็น${pu}ได้` : "ยังไม่ตั้งแพ็ค — กรอกและแสดงเป็น" + u + "อย่างเดียว"}
+            </span>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3" style={{ background: manualOnly ? "rgba(255, 212, 71, 0.18)" : "var(--dk-sky)" }}>
+              <input type="checkbox" checked={manualOnly} onChange={(e) => setManualOnly(e.target.checked)} className="mt-1 h-5 w-5 accent-amber-500" />
+              <span>
+                <span className="block text-sm font-semibold" style={{ color: "var(--dk-navy)" }}>
+                  🏭 ของใช้ในโรงงาน — พนักงานเบิกเองอย่างเดียว
+                </span>
+                <span className="block text-[11.5px]" style={hintStyle}>
+                  ไม่ผูกกับสินค้า ยอดขยับเฉพาะตอนรับเข้า/เบิก/นับจริง · ไม่ขึ้นเตือน “ยังไม่ผูกสินค้า”
+                </span>
+              </span>
+            </label>
+          </FormSection>
+
+          {!manualOnly && (
+            <FormSection n={3} title="ขายอะไรแล้วตัดตัวนี้" hint="ใช้กับของที่ขาย 1 ชิ้น = ใช้วัสดุนี้ 1 ชิ้นเสมอ · ของที่เปลี่ยนตามตัวเลือกลูกค้า (สี/ขนาด/ตะขอ) ให้ผูกที่ตัวเลือกจากหน้าคลังแทน">
+              <ProductPicker products={products} value={productIds} onChange={setProductIds} />
+            </FormSection>
+          )}
+
+          <FormSection n={manualOnly ? 3 : 4} title="เตือนสั่งซื้อและทุน" hint="ตั้งไว้แล้วระบบเตือน “ต้องสั่ง” และส่ง LINE ให้เอง ทุนใช้คิดกำไรในรายงาน">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className={fieldLabel}>จุดสั่งซื้อ ({u})</span>
+                <input value={reorderPoint} onChange={(e) => setReorderPoint(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="20" className={`${inputCls} text-right tabular-nums`} />
+              </label>
+              <label className="block">
+                <span className={fieldLabel}>รอของ (วัน)</span>
+                <input value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="7" className={`${inputCls} text-right tabular-nums`} />
+              </label>
+              <label className="block">
+                <span className={fieldLabel}>ทุน/{u} (บาท)</span>
+                <input value={unitCost} onChange={(e) => setUnitCost(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="12.50" className={`${inputCls} text-right tabular-nums`} />
+              </label>
+            </div>
+            <span className={hint} style={hintStyle}>
+              {reorderPoint ? `เหลือ ≤ ${fmtN(Number(reorderPoint))} ${u} = ขึ้น “ต้องสั่ง”` : "ยังไม่ตั้งจุดสั่ง — เมื่อมีสถิติการใช้ 30 วัน ระบบจะเดาให้"} · แก้ทุนทีหลังไม่กระทบของที่ขายไปแล้ว
+            </span>
+          </FormSection>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {/* เลือกจากที่มีอยู่ได้ แต่พิมพ์ใหม่ก็ยังได้ — กันหมวดแตกเพราะสะกดต่างกันนิดเดียว */}
-          <label className="block">
-            <span className={fieldLabel}>ตระกูล</span>
-            <input value={family} onChange={(e) => setFamily(e.target.value)} list="stock-families" placeholder="สีไหมเย็บ" className={inputCls} />
-            <datalist id="stock-families">
-              {allFams.map((f) => (
-                <option key={f} value={f} />
-              ))}
-            </datalist>
-          </label>
-          <label className="block">
-            <span className={fieldLabel}>หมวด</span>
-            <input value={category} onChange={(e) => setCategory(e.target.value)} list="stock-categories" placeholder="ด้าย/ไหม" className={inputCls} />
-            <datalist id="stock-categories">
-              {allCats.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-          </label>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className={fieldLabel}>จุดสั่งซื้อ (เหลือ ≤ นี้ = แจ้ง)</span>
-            <input value={reorderPoint} onChange={(e) => setReorderPoint(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="20" className={inputCls} />
-          </label>
-          <label className="block">
-            <span className={fieldLabel}>รอของกี่วัน</span>
-            <input value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="7" className={inputCls} />
-          </label>
-        </div>
-        <label className="block">
-          <span className={fieldLabel}>ทุน/หน่วย (บาท)</span>
-          <input
-            value={unitCost}
-            onChange={(e) => setUnitCost(e.target.value.replace(/[^\d.]/g, ""))}
-            inputMode="decimal"
-            placeholder="12.50"
-            className={inputCls}
-          />
-          <span className="mt-1 block text-[11px] text-slate-400">
-            ราคาที่ร้านซื้อเข้ามาต่อ 1 {unit || "ชิ้น"} — ใส่ไว้แล้วหน้ารายงานคิดต้นทุน/กำไรของออเดอร์ให้เอง ·
-            แก้ทีหลังไม่กระทบของที่ขายไปแล้ว
-          </span>
-        </label>
-        <label className="block">
-          <span className={fieldLabel}>ชื่อที่เคยเรียก (คั่นด้วย , ) — ใช้ค้นหาให้เจอ</span>
-          <input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Gtดำ, GT ดำ" className={inputCls} />
-        </label>
-        <div>
-          <span className={fieldLabel}>ขายสินค้าตัวไหนแล้วตัดวัสดุนี้ (1 ชิ้น ต่อ 1 ชิ้น)</span>
-          <ProductPicker products={products} value={productIds} onChange={setProductIds} />
-          <span className="mt-1 block text-[11px] text-slate-400">
-            ใช้กับของที่ขาย 1 ชิ้น = ใช้วัสดุนี้ 1 ชิ้นเสมอ · วัสดุที่เปลี่ยนตามตัวเลือกของลูกค้า (สี/ขนาด/ตะขอ) ให้ผูกที่ตัวเลือกแทน
-          </span>
-        </div>
-        <label className="block">
-          <span className={fieldLabel}>ชนิดของ (ไม่บังคับ)</span>
-          <input value={part} onChange={(e) => setPart(e.target.value)} list="stock-parts" placeholder="เช่น กรอบรูป / แผ่นจิ๊กซอว์" className={inputCls} />
-          <datalist id="stock-parts">
-            {allParts.map((x) => (
-              <option key={x} value={x} />
+
+        {/* ── แผงสรุป + ปุ่มบันทึก ติดจอ (มือถือไปอยู่ล่างสุด) ── */}
+        <aside className="dkb-g w-full shrink-0 p-4 lg:sticky lg:top-4 lg:w-72">
+          <div className="flex items-center gap-3">
+            <Thumb src={imageUrl.trim() || undefined} name={name || "วัสดุใหม่"} size={48} />
+            <span className="min-w-0">
+              <span className="dkb-h2 block truncate text-[1.05rem]" style={{ color: name.trim() ? "var(--dk-navy)" : "var(--dk-faint)" }}>
+                {name.trim() || "ยังไม่ได้ตั้งชื่อ"}
+              </span>
+              <span className="block text-[11.5px]" style={hintStyle}>
+                {[part.trim(), family.trim()].filter(Boolean).join(" · ") || "ไม่มีชนิด/ตระกูล"}
+              </span>
+            </span>
+          </div>
+          <dl className="mt-4 space-y-2 text-[12.5px]">
+            {summary.map((row) => (
+              <div key={row.k} className="flex gap-2">
+                <dt className="w-16 shrink-0" style={hintStyle}>
+                  {row.k}
+                </dt>
+                <dd className="min-w-0 flex-1 font-medium" style={{ color: row.warn ? "var(--dk-yolk-deep)" : "var(--dk-navy)" }}>
+                  {row.v}
+                </dd>
+              </div>
             ))}
-          </datalist>
-          <span className="mt-1 block text-[11px] text-slate-400">ใส่ชื่อเดียวกัน = อยู่ชุดเดียวกันในหน้าคลัง รับเข้า/เบิก/สั่งของทีเดียวทั้งชุด</span>
-        </label>
-        <label className="block">
-          <span className={fieldLabel}>ลิงก์รูปวัสดุ (ไม่บังคับ)</span>
-          <span className="flex items-center gap-2">
-            <Thumb src={imageUrl.trim() || undefined} name={name} size={44} />
-            <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/thread-1803.jpg" className={inputCls} />
-          </span>
-          <span className="mt-1 block text-[11px] text-slate-400">
-            เว้นว่างได้ — ระบบใช้ภาพตัวเลือกที่ผูก SKU นี้ (สีไหม/เคลือบ) หรือรูปแรกของสินค้าที่ผูกให้เอง
-          </span>
-        </label>
+          </dl>
+          <div className="mt-5 grid gap-2">
+            <button type="button" disabled={!canSave} onClick={save} className="dkb-btn dkb-btn-navy min-h-[48px] w-full disabled:opacity-40 disabled:shadow-none">
+              {item ? "บันทึกการแก้ไข" : variantList.length ? `บันทึก ${fmtN(variantList.length)} ตัวเข้าคลัง` : "บันทึกเข้าคลัง"}
+            </button>
+            <button type="button" onClick={onClose} className="dkb-btn dkb-btn-ghost min-h-[44px] w-full">
+              ยกเลิก
+            </button>
+            {!canSave && (
+              <span className="text-center text-[11.5px]" style={hintStyle}>
+                ใส่ชื่อวัสดุก่อนถึงบันทึกได้
+              </span>
+            )}
+          </div>
+        </aside>
       </div>
-      <ModalFooter
-        onClose={onClose}
-        disabled={!name.trim()}
-        onConfirm={() =>
-          onSave({
-            id: item?.id,
-            name,
-            code: codeVal.trim() || undefined,
-            unit,
-            family: family.trim() || undefined,
-            category: category || undefined,
-            reorderPoint: reorderPoint ? Number(reorderPoint) : undefined,
-            leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
-            // ล้างช่อง = ส่ง 0 ไปลบทุนออก (undefined จะกลายเป็น "ไม่แตะ" แล้วค่าเก่าค้าง)
-            unitCost: unitCost.trim() === "" ? 0 : Number(unitCost),
-            aliases: aliases.split(",").map((x) => x.trim()).filter(Boolean),
-            productIds,
-            // ล้างช่อง = ส่ง "" ให้เซิร์ฟเวอร์ลบรูปที่ตั้งเองออก
-            imageUrl: imageUrl.trim(),
-            part: part.trim(), // ว่าง = ล้างชนิดของ
-          })
-        }
-      />
-    </Modal>
+    </div>
   );
 }
 
 /** นับจริง — กรอกยอดที่นับได้ ระบบคิดส่วนต่างให้ + บังคับเหตุผลเมื่อของขาด */
 function CountModal({ item, onClose, onSave }: { item: Item; onClose: () => void; onSave: (diff: number, note?: string) => void }) {
   const [qty, setQty] = useState("");
+  // 📦 ของที่นับเป็นแพ็ค: กรอก "กี่แพ็ค" + "เศษกี่แผ่น" แยกช่อง ตรงกับที่นับบนชั้นจริง
+  const [packs, setPacks] = useState("");
   const [note, setNote] = useState("");
-  const n = Number(qty);
-  const diff = qty !== "" ? n - item.balance : null;
+  const packed = hasPack(item);
+  const filled = packed ? qty !== "" || packs !== "" : qty !== "";
+  const n = packed ? Number(packs || 0) * item.packSize! + Number(qty || 0) : Number(qty);
+  const diff = filled ? n - item.balance : null;
   const needNote = (diff ?? 0) < 0;
 
   return (
-    <Modal title="นับสต๊อกจริง" subtitle={`${item.name} · คงเหลือในระบบ ${fmtN(item.balance)} ${item.unit}`} onClose={onClose}>
+    <Modal
+      title="นับสต๊อกจริง"
+      subtitle={`${item.name} · คงเหลือในระบบ ${fmtN(item.balance)} ${item.unit}${packText(item, item.balance) ? ` (${packText(item, item.balance)})` : ""}`}
+      onClose={onClose}
+    >
       <div className="space-y-3">
-        <label className="block">
-          <span className={fieldLabel}>จำนวนที่นับได้จริง *</span>
-          <input
-            value={qty}
-            onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))}
-            inputMode="numeric"
-            autoFocus
-            className={`${inputCls} text-right tabular-nums`}
-          />
-        </label>
+        {packed ? (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className={fieldLabel}>นับได้กี่{item.packUnit || "แพ็ค"} (เต็ม)</span>
+              <input
+                value={packs}
+                onChange={(e) => setPacks(e.target.value.replace(/[^\d]/g, ""))}
+                inputMode="numeric"
+                autoFocus
+                placeholder="0"
+                className={`${inputCls} text-right tabular-nums`}
+              />
+            </label>
+            <label className="block">
+              <span className={fieldLabel}>เศษอีกกี่{item.unit}</span>
+              <input
+                value={qty}
+                onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))}
+                inputMode="numeric"
+                placeholder="0"
+                className={`${inputCls} text-right tabular-nums`}
+              />
+            </label>
+            <span className="col-span-2 text-[11px] text-slate-500">
+              1 {item.packUnit || "แพ็ค"} = {fmtN(item.packSize!)} {item.unit} → รวม <b className="tabular-nums">{fmtN(n)}</b> {item.unit}
+            </span>
+          </div>
+        ) : (
+          <label className="block">
+            <span className={fieldLabel}>จำนวนที่นับได้จริง *</span>
+            <input
+              value={qty}
+              onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))}
+              inputMode="numeric"
+              autoFocus
+              className={`${inputCls} text-right tabular-nums`}
+            />
+          </label>
+        )}
         {diff != null && (
           <p className={`rounded-xl px-3 py-2 text-xs font-medium ${diff === 0 ? `${TONE.ok.bg} ${TONE.ok.text}` : `${TONE.danger.bg} ${TONE.danger.text}`}`}>
             {diff === 0
@@ -2856,8 +3718,8 @@ function CountModal({ item, onClose, onSave }: { item: Item; onClose: () => void
       </div>
       <ModalFooter
         onClose={onClose}
-        disabled={qty === "" || diff === 0 || (needNote && !note.trim())}
-        onConfirm={() => diff != null && diff !== 0 && onSave(diff, note || `นับจริงได้ ${n}`)}
+        disabled={!filled || diff === 0 || (needNote && !note.trim())}
+        onConfirm={() => diff != null && diff !== 0 && onSave(diff, note || `นับจริงได้ ${n}${packed ? ` (${packText(item, n)})` : ""}`)}
       />
     </Modal>
   );
@@ -2868,6 +3730,156 @@ function CountModal({ item, onClose, onSave }: { item: Item; onClose: () => void
  * เกิดจาก 30 ก.ย. 69: ลบ "ฐาน Griptok · สีดำ" ผิดตัว → ตัวเลือกสีดำของ 3 สินค้าเลิกตัดสต๊อกเงียบ ๆ และไม่มีทางเอากลับจากหน้าจอ
  * กู้คืน = เปิดกลับ + ผูกกลับตัวเลือกที่เคยชี้มา (ค่าที่ไปผูกตัวอื่นแทนแล้วจะไม่ทับ)
  */
+/**
+ * 🗂 จัดการหมวดวัสดุ — เพิ่ม / เปลี่ยนชื่อ (วัสดุทุกตัวในหมวดย้ายตาม) / ลบ (เลือกหมวดปลายทางให้วัสดุที่ค้างก่อน)
+ * (เจ้าของร้านขอ 30 ก.ย. 69 — เดิมหมวดเป็นแค่ข้อความในแต่ละวัสดุ แก้ชื่อทีต้องไล่แก้ทีละตัว)
+ */
+function CategoriesModal({
+  names,
+  counts,
+  countsOff,
+  uncategorized,
+  onClose,
+  onChanged,
+}: {
+  names: string[];
+  /** จำนวนวัสดุที่นับสต๊อกในหมวด (= ที่เห็นในรายการเมื่อกรองหมวด) */
+  counts: Record<string, number>;
+  /** จำนวนที่ตั้ง "ไม่ต้องมีสต๊อก" — ไม่โผล่ในรายการปกติ */
+  countsOff: Record<string, number>;
+  /** วัสดุที่นับสต๊อกแต่ยังไม่ระบุหมวดเลย */
+  uncategorized: number;
+  onClose: () => void;
+  onChanged: (msg: string) => Promise<void>;
+}) {
+  const [newName, setNewName] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [moveTo, setMoveTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const call = async (body: Record<string, unknown>, msg: (j: { moved?: number }) => string) => {
+    setBusy(true);
+    setErr("");
+    const res = await fetch("/api/admin/stock/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok || !j?.ok) return setErr(j?.error ?? "บันทึกไม่สำเร็จ");
+    setEditing(null);
+    setDeleting(null);
+    setNewName("");
+    await onChanged(msg(j));
+  };
+  return (
+    <Modal title="จัดการหมวดวัสดุ" subtitle="เปลี่ยนชื่อ = วัสดุทุกตัวในหมวดย้ายตาม · ลบ = ต้องเลือกก่อนว่าจะย้ายวัสดุไปหมวดไหน" onClose={onClose}>
+      {err && <p className={`mb-3 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
+      <form
+        className="mb-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const n = newName.trim();
+          if (!n) return;
+          if (names.includes(n)) return setErr("มีหมวดนี้อยู่แล้ว");
+          void call({ action: "add", name: n }, () => `เพิ่มหมวด “${n}” แล้ว`);
+        }}
+      >
+        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ชื่อหมวดใหม่ เช่น อะไหล่ตะขอ" className={inputCls} />
+        <button type="submit" disabled={busy || !newName.trim()} className={`${btnPrimary} shrink-0`}>
+          ＋ เพิ่ม
+        </button>
+      </form>
+      {uncategorized > 0 && (
+        <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          วัสดุที่นับสต๊อกอีก <b>{fmtN(uncategorized)}</b> ตัวยังไม่ระบุหมวด — เปิดแก้ไขข้อมูลรายตัว หรือใช้ “แก้รายละเอียดทั้งกลุ่ม” เพื่อจัดหมวด
+        </p>
+      )}
+      <p className="mb-1 px-1 text-[11px] text-slate-400">ตัวเลข = วัสดุที่นับสต๊อก (ที่เห็นในรายการ) · ในวงเล็บ = ของที่ตั้ง “ไม่ต้องมีสต๊อก” ซึ่งไม่แสดงในรายการ</p>
+      <ul className="max-h-[55vh] divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">
+        {names.map((n) => (
+          <li key={n} className="px-3 py-2">
+            {editing === n ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const to = editVal.trim();
+                  if (!to || to === n) return setEditing(null);
+                  if (names.includes(to)) return setErr(`มีหมวด “${to}” อยู่แล้ว — ถ้าต้องการรวม ให้ลบหมวดนี้แล้วเลือกย้ายไป “${to}”`);
+                  void call({ action: "rename", name: n, to }, (j) => `เปลี่ยนชื่อหมวด “${n}” → “${to}” แล้ว (ย้ายวัสดุ ${fmtN(j.moved ?? 0)} ตัว)`);
+                }}
+              >
+                <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)} className={inputCls} aria-label="ชื่อหมวดใหม่" />
+                <button type="submit" disabled={busy} className={btnSmNeutral}>
+                  บันทึก
+                </button>
+                <button type="button" onClick={() => setEditing(null)} className={btnSmGhost}>
+                  ยกเลิก
+                </button>
+              </form>
+            ) : deleting === n ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1">
+                  ลบ “{n}” — วัสดุ {fmtN((counts[n] ?? 0) + (countsOff[n] ?? 0))} ตัวในหมวดนี้ย้ายไป
+                </span>
+                <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className={`${inputCls} w-auto`} aria-label="หมวดปลายทาง">
+                  <option value="">ยังไม่จัดหมวด</option>
+                  {names.filter((x) => x !== n).map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" disabled={busy} onClick={() => void call({ action: "delete", name: n, moveTo: moveTo || undefined }, (j) => `ลบหมวด “${n}” แล้ว (ย้ายวัสดุ ${fmtN(j.moved ?? 0)} ตัวไป ${moveTo || "ยังไม่จัดหมวด"})`)} className={btnSmDanger}>
+                  ยืนยันลบ
+                </button>
+                <button type="button" onClick={() => setDeleting(null)} className={btnSmGhost}>
+                  ยกเลิก
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{n}</span>
+                <span className={`text-[11px] tabular-nums ${counts[n] ? "text-slate-600" : "text-slate-400"}`} title="นับสต๊อก (ในวงเล็บ = ไม่ต้องมีสต๊อก)">
+                  {fmtN(counts[n] ?? 0)} ตัว{countsOff[n] ? ` (+${fmtN(countsOff[n])} ไม่นับ)` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(n);
+                    setEditVal(n);
+                    setDeleting(null);
+                  }}
+                  className={btnSmGhost}
+                >
+                  ✎ เปลี่ยนชื่อ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleting(n);
+                    setMoveTo("");
+                    setEditing(null);
+                  }}
+                  className={btnSmDanger}
+                >
+                  ลบ
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+        {!names.length && <li className="px-3 py-6 text-center text-sm text-slate-400">ยังไม่มีหมวด — เพิ่มด้านบน</li>}
+      </ul>
+      <div className="mt-4">
+        <button type="button" onClick={onClose} className={`${btnNeutral} w-full`}>
+          ปิด
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 type DeletedRow = { id: string; code?: string; name: string; unit: string; family?: string; imageUrl?: string; deletedAt?: string; deletedBy?: string; links: number };
 function DeletedModal({ onClose, onRestored }: { onClose: () => void; onRestored: (name: string, relinked: number, skipped: string[]) => Promise<void> }) {
   const [rows, setRows] = useState<DeletedRow[] | null>(null);
@@ -2938,6 +3950,30 @@ function DeletedModal({ onClose, onRestored }: { onClose: () => void; onRestored
   );
 }
 
+/** หมวดของฟอร์มเพิ่ม/แก้ไขวัสดุ — เลขลำดับ + หัวข้อเป็นคำถาม + คำอธิบายสั้น (โครงเดียวกับการ์ด "ตั้งค่าคลังให้ครบ") */
+function FormSection({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="dkb-g p-4 sm:p-5">
+      <header className="mb-3 flex items-start gap-3">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[12px] font-bold" style={{ background: "var(--dk-sky)", color: "var(--dk-navy)" }}>
+          {n}
+        </span>
+        <span className="min-w-0">
+          <span className="dkb-h2 block text-[1rem]" style={{ color: "var(--dk-navy)" }}>
+            {title}
+          </span>
+          {hint && (
+            <span className="block text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+              {hint}
+            </span>
+          )}
+        </span>
+      </header>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
 function Modal({
   title,
   subtitle,
@@ -2997,14 +4033,23 @@ function LinkCell({
   dead,
   hasSuggest,
   inProductId,
+  manual,
 }: {
   ready: boolean;
   usage?: StockUsage[];
   dead: boolean;
   hasSuggest: boolean;
   inProductId?: string;
+  /** 🏭 เบิกเองอย่างเดียว — ไม่ผูกสินค้าโดยตั้งใจ ไม่ต้องขึ้นป้ายแดง "ยังไม่ผูก" */
+  manual?: boolean;
 }) {
   if (!ready) return <span className="text-[11px]" style={{ color: "var(--dk-quiet)" }}>…</span>;
+  if (!usage?.length && manual)
+    return (
+      <span className="text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
+        🏭 ของใช้ในโรงงาน — พนักงานเบิกเอง ไม่ตัดตามการขาย
+      </span>
+    );
   if (!usage?.length)
     return (
       <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -3869,14 +4914,27 @@ function ProductPicker({ products, value, onChange }: { products: ProductLite[];
  * SKU รวมเดิมที่ผูกกับตัวสินค้าจะถูกถอดออกเสมอ ไม่งั้นขาย 1 ชิ้นตัด 2 ต่อ
  * หน้าต่าง: หัว/ท้ายตรึง เนื้อหาเลื่อนในตัว สูงไม่เกินจอ (เดิมยาวจนปุ่มสร้างตกขอบจอ · 19 ก.ย. 69)
  */
-function SplitModal({ product, onClose, onDone }: { product: { id: string; name: string }; onClose: () => void; onDone: (msg: string) => void }) {
+function SplitModal({ product, allCats, onClose, onDone }: { product: { id: string; name: string }; /** รายชื่อหมวดให้เลือก (จัดการได้จากเมนู ⋯ → จัดการหมวด) */ allCats: string[]; onClose: () => void; onDone: (msg: string) => void }) {
   type Link = { stockItemId: string; name: string | null; when: { label: string; choices: string[] }[] };
   type Choice = { name: string; img?: string; stockItemId: string | null; skuName: string | null; extras?: string[]; links?: Link[] };
   /** rate = กลุ่มเสมือน "เรทราคา" (optionIndex -1) — สินค้าที่ของบนชั้นต่างกันตามเรท เช่น การ์ดสเปรย์ 20 ml / 40 ml */
-  type Group = { optionIndex: number; label: string; choices: Choice[]; rate?: boolean };
+  type Cond = { label: string; choices: string[] };
+  /** show = เงื่อนไข "และ" ที่กลุ่มนี้จะโชว์ (showWhen/Also/All) · showAny = เงื่อนไข "หรือ" */
+  type Group = { optionIndex: number; label: string; choices: Choice[]; rate?: boolean; show?: Cond[]; showAny?: Cond[] };
   type Old = { id: string; name: string; code?: string; balance: number; unit: string; shared: boolean };
   const SEP = "\u0001";
+  /** ชื่อกลุ่มแบบสั้น (ตัดวงเล็บท้าย) — ใช้เป็นชื่อฐานของ SKU ที่จะสร้าง สูตรเดียวกับฝั่งเซิร์ฟเวอร์ */
+  const shortLabel = (s: string) => s.replace(/\s*[(（].*$/, "").trim() || s;
+  /** ✏️ ชื่อ SKU ที่ผู้ใช้แก้เองรายแถว (คีย์ = key ของแถว) — แก้แล้วจำทันที ไม่ต้องกดบันทึก ใช้ตอนกดสร้าง (เจ้าของร้านขอ 30 ก.ย. 69) */
+  const [names, setNames] = useState<Record<string, string>>({});
+  /** 📍 จุดสั่งซื้อ / รอของ (วัน) รายแถว — แต่ละสีไม่เท่ากัน (เจ้าของร้านขอ 30 ก.ย. 69) · ว่าง = ไม่ตั้ง */
+  const [rowMeta, setRowMeta] = useState<Record<string, { reorder?: string; lead?: string }>>({});
+  /** 🏭 ใช้ตัวเลือกเป็นแค่ "รายชื่อ" — สร้างเป็นของใช้ในโรงงาน เบิกเอง ไม่ผูกสินค้า (เจ้าของร้านสั่ง 30 ก.ย. 69) */
+  const [manualOnly, setManualOnly] = useState(false);
+  const setMeta = (key: string, patch: { reorder?: string; lead?: string }) => setRowMeta((m) => ({ ...m, [key]: { ...m[key], ...patch } }));
   const [groups, setGroups] = useState<Group[] | null>(null);
+  /** กฎตัวเลือกขึ้นต่อกันของสินค้า (เลือก A แล้วกลุ่ม B เหลือเฉพาะ …) — ใช้ตัดคู่ที่เป็นไปไม่ได้ในโหมด 2 กลุ่ม */
+  const [rules, setRules] = useState<OptionRule[]>([]);
   const [old, setOld] = useState<Old[]>([]);
   /** กลุ่มที่เลือก ตามลำดับที่กด (สูงสุด 2) — ตัวแรก = กลุ่มที่ถือลิงก์ */
   const [sel, setSel] = useState<number[]>([]);
@@ -3884,6 +4942,14 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
   const [off, setOff] = useState<Set<string>>(new Set());
   const [removeOld, setRemoveOld] = useState(true);
   const [partName, setPartName] = useState("");
+  /** 📝 รายละเอียดของวัสดุที่จะสร้าง — กรอกก่อนสร้าง ไม่ใช่ได้ "ชิ้น"/ค่าว่างแล้วไล่แก้ 129 ตัว (เจ้าของร้านเจอ 30 ก.ย. 69) · ว่าง = ยืมจาก SKU รวมเดิม */
+  const [dUnit, setDUnit] = useState("");
+  const [dPackUnit, setDPackUnit] = useState("");
+  const [dPackSize, setDPackSize] = useState("");
+  const [dFamily, setDFamily] = useState("");
+  const [dCategory, setDCategory] = useState("");
+  const [dCost, setDCost] = useState("");
+
   const [extraOn, setExtraOn] = useState(false);
   const [extraName, setExtraName] = useState("");
   const [condGroup, setCondGroup] = useState(-1);
@@ -3900,6 +4966,7 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
       if (!res.ok || !j?.ok) return setErr(j?.error ?? "โหลดตัวเลือกของสินค้าไม่สำเร็จ");
       setGroups(j.groups);
       setOld(j.old);
+      setRules(Array.isArray(j.rules) ? j.rules : []);
       if (j.groups?.length) setSel([0]);
     })();
     return () => {
@@ -3921,18 +4988,56 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
   const pairSku = (a: Choice, b: string) =>
     a.links?.find((l) => l.when.length === 1 && gB && l.when[0].label === gB.label && l.when[0].choices.length === 1 && l.when[0].choices[0] === b);
 
+  /**
+   * คู่ (a ของกลุ่ม A, b ของกลุ่ม B) ลูกค้าเลือกได้จริงไหม — ตามกฎเดียวกับหน้าสินค้า (allowedChoices/optionVisible)
+   *   1) OptionRule: เลือก a แล้วกลุ่ม B เหลือเฉพาะ allow → b ต้องอยู่ใน allow (และกลับด้าน)
+   *   2) showWhen ของกลุ่ม B ที่ชี้มากลุ่ม A → ต้องมี a (และกลับด้าน) · เงื่อนไขที่ชี้กลุ่มอื่นที่ไม่ได้เลือก ไม่นับ
+   * เดิมสร้างครบทุกคู่ (2 × 20 = 40) ทั้งที่เคสธรรมดาไม่มี iPhone 17 — เจ้าของร้านเจอ 30 ก.ย. 69
+   */
+  const pairOk = (a: Choice, b: Choice): boolean => {
+    if (!gA || !gB) return true;
+    const sel: Record<string, string> = { [gA.label]: a.name, [gB.label]: b.name };
+    const has = (choices: string[], v: string) => choices.includes(v) || choices.includes(publicRateLabelOf(v));
+    for (const r of rules) {
+      if (!ruleWhenMatches(r, sel)) continue;
+      if (r.when.label === gA.label && r.limit.label === gB.label && r.limit.allow.length && !has(r.limit.allow, b.name)) return false;
+      if (r.when.label === gB.label && r.limit.label === gA.label && r.limit.allow.length && !has(r.limit.allow, a.name)) return false;
+    }
+    const visible = (g: Group, otherLabel: string, otherVal: string) => {
+      const and = (g.show ?? []).filter((c) => c.label === otherLabel);
+      if (and.some((c) => !has(c.choices, otherVal))) return false;
+      const any = (g.showAny ?? []).filter((c) => c.label === otherLabel);
+      return !any.length || any.some((c) => has(c.choices, otherVal));
+    };
+    return visible(gB, gA.label, a.name) && visible(gA, gB.label, b.name);
+  };
+
   type Row = { key: string; a: Choice; b?: Choice; done: string | null };
-  const rows = useMemo((): Row[] => {
-    if (!gA) return [];
-    if (!gB) return gA.choices.map((c) => ({ key: c.name, a: c, done: c.stockItemId && !extraOn ? c.skuName ?? c.stockItemId : null }));
-    return gB.choices.flatMap((b) =>
-      gA.choices.map((a) => {
-        const ex = pairSku(a, b.name);
-        return { key: `${a.name}${SEP}${b.name}`, a, b, done: ex ? ex.name ?? ex.stockItemId : null };
+  /** ชื่อเริ่มต้นของ SKU ที่จะสร้าง — สูตรเดียวกับฝั่งเซิร์ฟเวอร์ (nameFor) · ใส่ "ของชิ้นนี้เรียกว่าอะไร" = ใช้ชื่อนั้นนำ */
+  const defName = (r: Row): string => {
+    const part = partName.trim();
+    if (!gA) return r.a.name;
+    if (r.b) return `${part || shortLabel(gA.label)} · ${r.b.name} · ${r.a.name}`;
+    return part ? `${part} ${r.a.name} (${product.name})` : `${shortLabel(gA.label)} · ${r.a.name}`;
+  };
+  const { rows, hiddenPairs } = useMemo((): { rows: Row[]; hiddenPairs: number } => {
+    if (!gA) return { rows: [], hiddenPairs: 0 };
+    // โหมดเบิกเอง: ลิงก์เดิมไม่เกี่ยว — เลือกได้ทุกค่า
+    if (!gB) return { rows: gA.choices.map((c) => ({ key: c.name, a: c, done: c.stockItemId && !extraOn && !manualOnly ? c.skuName ?? c.stockItemId : null })), hiddenPairs: 0 };
+    let hidden = 0;
+    const out = gB.choices.flatMap((b) =>
+      gA.choices.flatMap((a): Row[] => {
+        if (!pairOk(a, b)) {
+          hidden += 1;
+          return [];
+        }
+        const ex = manualOnly ? undefined : pairSku(a, b.name);
+        return [{ key: `${a.name}${SEP}${b.name}`, a, b, done: ex ? ex.name ?? ex.stockItemId : null }];
       })
     );
+    return { rows: out, hiddenPairs: hidden };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gA, gB, extraOn]);
+  }, [gA, gB, extraOn, rules, manualOnly]);
 
   // ค่าเริ่มต้น = ติ๊กทุกแถวที่ยังไม่มี SKU (งานส่วนใหญ่คือแยกครบ) แล้วหักเฉพาะที่ผู้ใช้ติ๊กออก
   const nameOff = (label: string, name: string) => `${label}${SEP}${name}`;
@@ -4005,8 +5110,24 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
         optionIndex: gA.optionIndex,
         label: gA.label,
         choices: [...new Set(chosen.map((r) => r.a.name))],
-        removeOld: removeOld && canRemove,
+        removeOld: !manualOnly && removeOld && canRemove,
+        manualOnly,
         partName: partName.trim() || undefined,
+        // ชื่อ SKU รายแถว (ที่ผู้ใช้แก้หรือค่าเริ่มต้น) — คีย์ = ชื่อตัวเลือก (โหมดเดียว) หรือ "a\u0001b" (โหมดคู่)
+        names: Object.fromEntries(chosen.filter((r) => !r.done).map((r) => [r.key, (names[r.key] ?? defName(r)).trim()])),
+        perRow: Object.fromEntries(
+          chosen
+            .filter((r) => !r.done && (rowMeta[r.key]?.reorder || rowMeta[r.key]?.lead))
+            .map((r) => [r.key, { reorderPoint: rowMeta[r.key]?.reorder ? Number(rowMeta[r.key]!.reorder) : undefined, leadTimeDays: rowMeta[r.key]?.lead ? Number(rowMeta[r.key]!.lead) : undefined }]),
+        ),
+        defaults: {
+          unit: dUnit.trim() || undefined,
+          packUnit: dPackUnit.trim() || undefined,
+          packSize: dPackSize ? Number(dPackSize) : undefined,
+          family: dFamily.trim() || undefined,
+          category: dCategory.trim() || undefined,
+          unitCost: dCost ? Number(dCost) : undefined,
+        },
         ...(pairMode
           ? { pair: { optionIndex: gB!.optionIndex, label: gB!.label }, combos: chosen.filter((r) => !r.done).map((r) => [r.a.name, r.b!.name]) }
           : { extra: extraOn && cond ? { name: extraName.trim(), when: { label: cond.label, choices: [...condChoices] } } : undefined }),
@@ -4017,7 +5138,9 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
     if (!res.ok || !j?.ok) return setErr(j?.error ?? "แยกสต๊อกไม่สำเร็จ");
     const reused = (j.created as { reused?: boolean }[]).filter((x) => x.reused).length;
     onDone(
-      `แยกสต๊อก ${product.name} ตาม “${pairMode ? `${gB!.label} × ${gA.label}` : gA.label}” แล้ว ${j.created.length} ตัว${reused ? ` (ใช้ของนำเข้าเดิม ${reused} ตัว)` : ""} — ยอดเริ่มที่ 0 กด “นับ” หรือ “รับเข้า” ใส่ยอดจริง`
+      manualOnly
+        ? `สร้างวัสดุ “${shortLabel(gA.label)}” แบบเบิกเอง ${j.created.length} ตัว (ไม่ผูกกับ ${product.name}) — อยู่กลุ่ม “ของใช้ในโรงงาน” · ยอดเริ่มที่ 0 กด “รับเข้า” ใส่ยอดจริง`
+        : `แยกสต๊อก ${product.name} ตาม “${pairMode ? `${gB!.label} × ${gA.label}` : gA.label}” แล้ว ${j.created.length} ตัว${reused ? ` (ใช้ของนำเข้าเดิม ${reused} ตัว)` : ""} — ยอดเริ่มที่ 0 กด “นับ” หรือ “รับเข้า” ใส่ยอดจริง`
     );
   }
 
@@ -4027,9 +5150,9 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
     }`;
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[130] flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] sm:items-center sm:p-4">
       <div
-        className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-xl sm:rounded-2xl"
+        className="flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="แยกสต๊อกตามตัวเลือก"
@@ -4070,7 +5193,7 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
                   {pairMode
-                    ? `สร้างครบทุกคู่ ${gB!.label} × ${gA!.label} = ${gB!.choices.length * gA!.choices.length} แบบ — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
+                    ? `สร้างตามคู่ที่ลูกค้าเลือกได้จริง ${gB!.label} × ${gA!.label} = ${rows.length} แบบ${hiddenPairs ? ` (ตัดคู่ที่กฎตัวเลือกไม่อนุญาตออก ${hiddenPairs} คู่)` : ""} — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
                     : gA?.rate
                       ? "ของบนชั้นต่างกันตามเรทที่ลูกค้าเลือก (เช่น ขวด 20 ml กับ 40 ml) · เรทตัวแทนใช้ของชิ้นเดียวกับเรทปกติให้เอง"
                       : "เลือกกลุ่มที่ 2 ด้วย ถ้าของต่างกันทั้ง 2 อย่าง (เช่น ทรง และ สี)"}
@@ -4108,15 +5231,49 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
                             <Thumb src={r.a.img ?? r.b?.img} name={label(r)} size={30} />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-[13px] font-medium text-slate-900">{label(r)}</span>
-                              <span className="block truncate text-[11px] text-slate-400">
-                                {r.done
-                                  ? `มี SKU แล้ว: ${r.done}`
-                                  : pairMode
-                                    ? `จะสร้าง “${part || product.name} · ${label(r)}”`
-                                    : `จะสร้าง “${part ? `${part} ${r.a.name}` : `${product.name} · ${r.a.name}`}”`}
-                                {!pairMode && extraOn && extraName.trim() && picked.has(r.key) ? ` + “${extraName.trim()} ${r.a.name}”` : ""}
-                              </span>
+                              {r.done ? (
+                                <span className="block truncate text-[11px] text-slate-400">มี SKU แล้ว: {r.done}</span>
+                              ) : (
+                                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                                  <span className="shrink-0">ชื่อ SKU:</span>
+                                  {/* คลิกแก้ชื่อได้เลย — ค่าเริ่มต้น "ชื่อกลุ่ม · ตัวเลือก" · แก้แล้วจำทันที · ล้างช่อง = กลับเป็นค่าเริ่มต้น */}
+                                  <input
+                                    value={names[r.key] ?? defName(r)}
+                                    onChange={(e) => setNames((m) => ({ ...m, [r.key]: e.target.value }))}
+                                    onBlur={(e) => !e.target.value.trim() && setNames((m) => { const n = { ...m }; delete n[r.key]; return n; })}
+                                    onClick={(e) => e.stopPropagation()}
+                                    disabled={!on}
+                                    aria-label={`ชื่อ SKU ของ ${label(r)}`}
+                                    className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[12px] text-slate-700 hover:border-slate-200 focus:border-slate-400 focus:bg-white focus:outline-none disabled:opacity-50"
+                                  />
+                                  {!pairMode && extraOn && extraName.trim() && picked.has(r.key) && <span className="shrink-0">+ “{extraName.trim()} {r.a.name}”</span>}
+                                </span>
+                              )}
                             </span>
+                            {!r.done && (
+                              <span className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  value={rowMeta[r.key]?.reorder ?? ""}
+                                  onChange={(e) => setMeta(r.key, { reorder: e.target.value.replace(/\D/g, "") })}
+                                  disabled={!on}
+                                  inputMode="numeric"
+                                  placeholder="จุดสั่ง"
+                                  title="จุดสั่งซื้อ (เหลือ ≤ นี้ = แจ้ง)"
+                                  aria-label={`จุดสั่งซื้อ ${label(r)}`}
+                                  className={`${inputCls.replace("w-full ", "")} !h-9 w-[4.5rem] text-right text-[12px] tabular-nums disabled:opacity-40`}
+                                />
+                                <input
+                                  value={rowMeta[r.key]?.lead ?? ""}
+                                  onChange={(e) => setMeta(r.key, { lead: e.target.value.replace(/\D/g, "") })}
+                                  disabled={!on}
+                                  inputMode="numeric"
+                                  placeholder="รอ(วัน)"
+                                  title="รอของกี่วัน"
+                                  aria-label={`รอของกี่วัน ${label(r)}`}
+                                  className={`${inputCls.replace("w-full ", "")} !h-9 w-[4.5rem] text-right text-[12px] tabular-nums disabled:opacity-40`}
+                                />
+                              </span>
+                            )}
                           </label>
                         </li>
                       );
@@ -4127,10 +5284,59 @@ function SplitModal({ product, onClose, onDone }: { product: { id: string; name:
 
               <label className="block">
                 <span className={fieldLabel}>ของชิ้นนี้เรียกว่าอะไร (ไม่บังคับ)</span>
-                <input value={partName} onChange={(e) => setPartName(e.target.value)} placeholder="เช่น กระจก / แผ่นจิ๊กซอว์ — เว้นว่าง = ใช้ชื่อสินค้า" className={inputCls} />
+                <input value={partName} onChange={(e) => setPartName(e.target.value)} placeholder={`เช่น กระจก / แผ่นจิ๊กซอว์ — เว้นว่าง = ใช้ชื่อกลุ่มตัวเลือก (${gA ? shortLabel(gA.label) : "…"})`} className={inputCls} />
               </label>
 
-              {!pairMode && condGroups.length > 0 && (
+              <label className={`flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 ${manualOnly ? "border-amber-300 bg-amber-50/60" : "border-slate-200"}`}>
+                <input type="checkbox" checked={manualOnly} onChange={(e) => setManualOnly(e.target.checked)} className="mt-0.5 h-[18px] w-[18px] accent-slate-900" />
+                <span>
+                  <span className="block text-[13px] font-semibold text-slate-800">🏭 ไม่ผูกกับสินค้า — ใช้ตัวเลือกเป็นแค่รายชื่อ พนักงานเบิกเอง</span>
+                  <span className="block text-[11px] text-slate-500">
+                    ได้วัสดุชื่อตามตัวเลือก (เช่น สีผ้าสักหลาด · ขาว) ไปอยู่กลุ่ม “ของใช้ในโรงงาน” · ขายสินค้าแล้วไม่ตัด ยอดขยับเฉพาะตอนรับเข้า/เบิก/นับจริง
+                  </span>
+                </span>
+              </label>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <p className="text-[13px] font-semibold text-slate-800">📝 รายละเอียดวัสดุที่จะสร้าง (ใช้ค่าเดียวกันทุกตัว)</p>
+                <p className="mb-2 text-[11px] text-slate-400">หน่วยคือของบังคับ ที่เหลือใส่ทีหลังได้ · เว้นว่าง = ยืมค่าจากวัสดุรวมเดิมของสินค้านี้ (ถ้ามี)</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="block">
+                    <span className={fieldLabel}>หน่วยนับ (เล็กสุด) *</span>
+                    <UnitSelect options={BASE_UNITS} value={dUnit} onChange={setDUnit} emptyLabel="— เลือกหน่วย —" placeholder="พิมพ์หน่วยเอง" />
+                  </label>
+                  <div className="grid grid-cols-[1fr_8rem] gap-2">
+                    <label className="block">
+                      <span className={fieldLabel}>📦 หน่วยแพ็ค</span>
+                      <UnitSelect options={PACK_UNITS} value={dPackUnit} onChange={setDPackUnit} emptyLabel="— ไม่ตั้งแพ็ค —" placeholder="ชื่อแพ็ค" />
+                    </label>
+                    <label className="block">
+                      {/* ป้ายตามหน่วยที่เลือกจริง — "1 แพ็ค =" ค้างทั้งที่เลือก ม้วน (เจ้าของร้านชี้ 30 ก.ย. 69) */}
+                      <span className={`${fieldLabel} whitespace-nowrap`}>
+                        1 {dPackUnit.trim() || "แพ็ค"} = กี่{dUnit.trim() || "หน่วย"}
+                      </span>
+                      <input value={dPackSize} onChange={(e) => setDPackSize(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="100" className={`${inputCls} text-right tabular-nums`} />
+                    </label>
+                  </div>
+                  <label className="block">
+                    <span className={fieldLabel}>ตระกูล</span>
+                    <input value={dFamily} onChange={(e) => setDFamily(e.target.value)} placeholder="เช่น สีไหมเย็บ" className={inputCls} />
+                  </label>
+                  <label className="block">
+                    <span className={fieldLabel}>หมวด</span>
+                    {/* หมวดเป็น dropdown จากรายชื่อหมวดที่มี (เจ้าของร้านขอ 30 ก.ย. 69) · "กำหนดเอง…" = พิมพ์หมวดใหม่ */}
+                    <UnitSelect options={allCats} value={dCategory} onChange={setDCategory} emptyLabel="— เลือกหมวด —" placeholder="พิมพ์หมวดใหม่" />
+                  </label>
+                  <label className="block">
+                    <span className={fieldLabel}>ทุน/หน่วย (บาท)</span>
+                    <input value={dCost} onChange={(e) => setDCost(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="12.50" className={`${inputCls} text-right tabular-nums`} />
+                  </label>
+                </div>
+                {/* จุดสั่งซื้อ/รอของ ไม่อยู่ในนี้ — แต่ละสี/ขนาดไม่เท่ากัน ตั้งทีหลังรายตัวในลิ้นชัก (เจ้าของร้านสั่ง 30 ก.ย. 69) */}
+                <p className="mt-2 text-[11px] text-slate-400">จุดสั่งซื้อและรอของกี่วัน ไม่ตั้งตรงนี้ — แต่ละตัวไม่เท่ากัน เปิดลิ้นชักของแต่ละตัวแล้วตั้งทีหลัง</p>
+              </div>
+
+              {!pairMode && !manualOnly && condGroups.length > 0 && (
                 <div className="rounded-xl border border-slate-200 px-3 py-2">
                   <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-slate-800">
                     <input type="checkbox" className="h-[18px] w-[18px] accent-slate-900" checked={extraOn} onChange={(e) => setExtraOn(e.target.checked)} />
@@ -4256,7 +5462,13 @@ function BulkMoveModal({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const lines = items.map((i) => ({ i, n: Math.trunc(Number(qty[i.id] || 0)) })).filter((x) => x.n > 0);
+  // 📦 แถวไหนกรอกเป็นแพ็ค (เฉพาะของที่ตั้ง packSize) — คูณเป็นหน่วยฐานก่อนบันทึก + จดหมายเหตุ "(2 แพ็ค)"
+  const [packOn, setPackOn] = useState<Record<string, boolean>>({});
+  const baseOf = (i: Item) => {
+    const raw = Math.trunc(Number(qty[i.id] || 0));
+    return packOn[i.id] && hasPack(i) ? { raw, n: raw * i.packSize! } : { raw, n: raw };
+  };
+  const lines = items.map((i) => ({ i, ...baseOf(i) })).filter((x) => x.n > 0);
   const needNote = mode === "out" && reason === "อื่นๆ";
   const over = mode === "out" ? lines.filter((x) => x.n > x.i.balance) : [];
 
@@ -4264,11 +5476,13 @@ function BulkMoveModal({
     setBusy(true);
     setErr("");
     let done = 0;
-    for (const { i, n } of lines) {
+    for (const { i, n, raw } of lines) {
+      const packNote = packOn[i.id] && hasPack(i) ? `(${fmtN(raw)} ${i.packUnit || "แพ็ค"})` : "";
+      const lineNote = [note.trim(), packNote].filter(Boolean).join(" ");
       const res = await fetch("/api/admin/stock/move", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: i.id, qty: mode === "in" ? n : -n, reason, note: note.trim() || undefined }),
+        body: JSON.stringify({ itemId: i.id, qty: mode === "in" ? n : -n, reason, note: lineNote || undefined }),
       });
       const j = await res.json().catch(() => null);
       if (!res.ok || !j?.ok) {
@@ -4290,7 +5504,7 @@ function BulkMoveModal({
       {err && <p className={`mb-3 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
       <ul className="max-h-[50vh] divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">
         {items.map((i) => {
-          const n = Math.trunc(Number(qty[i.id] || 0));
+          const { n } = baseOf(i);
           const after = mode === "in" ? i.balance + n : i.balance - n;
           return (
             <li key={i.id} className="flex min-h-[56px] items-center gap-3 px-3 py-2">
@@ -4299,6 +5513,7 @@ function BulkMoveModal({
                 <span className="block truncate text-sm font-medium text-slate-900">{i.name}</span>
                 <span className="block text-[11px] tabular-nums text-slate-400">
                   มี {fmtN(i.balance)} {i.unit}
+                  {packText(i, i.balance) ? ` (${packText(i, i.balance)})` : ""}
                   {n > 0 && (
                     <span className={after < 0 ? TONE.danger.text : "text-slate-600"}>
                       {" "}
@@ -4306,13 +5521,19 @@ function BulkMoveModal({
                     </span>
                   )}
                 </span>
+                {hasPack(i) && (
+                  <span className="mt-1 block">
+                    <UnitSwitch unit={i.unit} packUnit={i.packUnit || "แพ็ค"} inPack={!!packOn[i.id]} onChange={(v) => setPackOn((p) => ({ ...p, [i.id]: v }))} />
+                  </span>
+                )}
               </span>
               <input
                 value={qty[i.id] ?? ""}
                 onChange={(e) => setQty((q) => ({ ...q, [i.id]: e.target.value.replace(/\D/g, "") }))}
                 inputMode="numeric"
                 placeholder="0"
-                aria-label={`จำนวน ${i.name}`}
+                aria-label={`จำนวน ${i.name}${packOn[i.id] && hasPack(i) ? ` (${i.packUnit || "แพ็ค"})` : ""}`}
+                title={packOn[i.id] && hasPack(i) ? `กรอกเป็น${i.packUnit || "แพ็ค"}` : undefined}
                 className={`${inputCls.replace("w-full ", "")} !h-11 w-20 text-right tabular-nums`}
               />
             </li>
@@ -4400,8 +5621,27 @@ function BomLibraryModal({
   const [attachPer, setAttachPer] = useState("1");
   /** แถวที่กำลังกางแถบยืนยันลบ — ยืนยันในแถวเอง เพราะกล่องยืนยันกลาง (z-120) อยู่หลังโมดัลนี้ (z-130) */
   const [delFor, setDelFor] = useState<string | null>(null);
+  /** ✎ แก้ชื่อในแถว (เจ้าของร้านขอ 30 ก.ย. 69 — เดิมต้องปิดโมดัลไปเปิดลิ้นชัก) · ชื่อเดิมถูกเก็บเป็นชื่อที่เคยเรียกฝั่งเซิร์ฟเวอร์ ค้นหาเจอเหมือนเดิม */
+  const [editFor, setEditFor] = useState<{ id: string; name: string } | null>(null);
   const [ok, setOk] = useState("");
   const prodName = useMemo(() => new Map(products.map((p) => [p.id, p.name])), [products]);
+
+  /** เปลี่ยนชื่อ SKU — ทางเดียวกับลิ้นชัก (POST /api/admin/stock) ส่ง unit เดิมไปด้วยเพราะ route บังคับ */
+  async function rename(i: Item, name: string): Promise<boolean> {
+    setBusy(true);
+    setErr("");
+    const res = await fetch("/api/admin/stock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: i.id, name, unit: i.unit }) });
+    const j = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "เปลี่ยนชื่อไม่สำเร็จ");
+      return false;
+    }
+    onChanged(j.item as Item);
+    setChanged(true);
+    setOk(`เปลี่ยนชื่อเป็น “${name}” แล้ว`);
+    return true;
+  }
 
   const needle = q.trim().toLowerCase();
   const lib = useMemo(
@@ -4537,7 +5777,47 @@ function BomLibraryModal({
                 <div className="flex min-h-[44px] items-center gap-2.5">
                   <Thumb src={images[i.id]} name={i.name} size={36} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-900">{i.name}</span>
+                    {editFor?.id === i.id ? (
+                      <form
+                        className="flex items-center gap-1.5"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          const n = editFor.name.trim();
+                          if (!n || n === i.name) return setEditFor(null);
+                          if (await rename(i, n)) setEditFor(null);
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={editFor.name}
+                          disabled={busy}
+                          onChange={(e) => setEditFor({ id: i.id, name: e.target.value })}
+                          onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setEditFor(null))}
+                          aria-label="ชื่อวัสดุ"
+                          className={`${inputCls} !h-9 text-sm font-medium`}
+                        />
+                        <button type="submit" disabled={busy} className={`${btnSmNeutral} shrink-0`}>
+                          บันทึก
+                        </button>
+                        <button type="button" disabled={busy} onClick={() => setEditFor(null)} className={`${btnSmGhost} shrink-0`}>
+                          ยกเลิก
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <span className="min-w-0 truncate text-sm font-medium text-slate-900">{i.name}</span>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setEditFor({ id: i.id, name: i.name })}
+                          className="shrink-0 rounded-lg px-1.5 py-0.5 text-sm text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          title="แก้ชื่อ — ชื่อเดิมถูกเก็บเป็นชื่อที่เคยเรียก ค้นหาเจอเหมือนเดิม"
+                          aria-label={`แก้ชื่อ ${i.name}`}
+                        >
+                          ✎
+                        </button>
+                      </span>
+                    )}
                     <span className="block text-[11px] text-slate-400">
                       {i.code ? `${i.code} · ` : ""}คงเหลือ <span className="tabular-nums">{fmtN(i.balance)}</span> {i.unit}
                       {i.part?.trim() && i.part.trim() !== BOM_PART ? ` · ${i.part}` : ""}
