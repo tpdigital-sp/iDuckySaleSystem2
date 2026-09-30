@@ -3,7 +3,7 @@ import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getProductsSlim } from "@/lib/server/products-slim";
-import { codeSlug, saveStockItem, setBom, setStockPart } from "@/lib/server/stock";
+import { codeSlug, saveStockItem, setBom } from "@/lib/server/stock";
 import { BOM_PART } from "@/lib/stock-match";
 
 export const runtime = "nodejs";
@@ -14,7 +14,6 @@ export const runtime = "nodejs";
  *   POST { productId, per, create: { name, unit, part? } }    → สร้าง SKU ใหม่แล้วผูก
  *   POST { productIds: [...], per, stockItemId }              → ผูก SKU เดิมกับหลายสินค้าทีเดียว (จากคลังกลาง)
  *   POST { create: { name, unit, part? } }                    → 🔩 สร้างเข้า "คลังวัสดุแฝงกลาง" ยังไม่ผูกสินค้า (part = วัสดุแฝง · รหัส BOM-n)
- *   POST { stockItemId, library: true }                       → นำ SKU เดิมเข้าคลังวัสดุแฝง (ตั้ง part = วัสดุแฝง) ให้ทุกช่องเลือกเสนอมันก่อน
  *   DELETE { productId, stockItemId }                         → ถอด
  * ตัดที่ cutStockForOrder (ข้อ 1b) · สิทธิ์เดียวกับแก้ไข SKU (orders.edit)
  * คลังกลาง (เจ้าของร้านขอ 30 ก.ย. 69): เดิมสร้างวัสดุแฝงได้เฉพาะจากสินค้าทีละตัว ของที่ทำไว้กับสินค้า A ไม่โผล่ให้เลือกตอนทำสินค้า B
@@ -36,7 +35,6 @@ export async function POST(req: Request) {
     per?: number;
     stockItemId?: string;
     create?: { name?: string; unit?: string; part?: string };
-    library?: boolean;
   };
   try {
     body = await req.json();
@@ -46,16 +44,8 @@ export async function POST(req: Request) {
   const productIds = [...new Set([body.productId?.trim(), ...(Array.isArray(body.productIds) ? body.productIds.map((p) => String(p).trim()) : [])].filter(Boolean) as string[])];
   const per = Number(body.per);
 
-  // 🔩 นำ SKU เดิมเข้าคลังวัสดุแฝง — ไม่ผูกสินค้า แค่ติดป้ายชนิดของให้ทุกช่องเลือกเสนอมันก่อน
-  if (body.library && body.stockItemId?.trim() && !productIds.length) {
-    try {
-      const item = await setStockPart(body.stockItemId.trim(), BOM_PART);
-      if (!item) return NextResponse.json({ error: "ไม่พบวัสดุนี้" }, { status: 404 });
-      return NextResponse.json({ ok: true, item });
-    } catch (e) {
-      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
-    }
-  }
+  // (เคยมีโหมด { stockItemId, library: true } = ติดป้ายชนิดของอย่างเดียวไม่ผูกสินค้า → ไม่ตัดสต๊อก เจ้าของร้านสับสน ถอดออก 30 ก.ย. 69
+  //  ทางเดียวคือผูกกับสินค้า (productIds) — ผูกแล้วเป็นสมาชิกคลังเอง)
 
   // 🔩 สร้างเข้าคลังกลางอย่างเดียว (ยังไม่ผูกสินค้า) — ค่อยเลือก "ใช้กับสินค้า…" ทีหลังได้ทุกจุด
   if (!productIds.length && body.create) {

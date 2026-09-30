@@ -4356,7 +4356,9 @@ function BulkMoveModal({
  * 🔩 คลังวัสดุแฝงกลาง — ที่เดียวสำหรับ "สร้าง" วัสดุแฝง (ขาตั้ง หมุด ถุง ฐาน) โดยยังไม่ต้องเลือกสินค้าก่อน
  * แล้วค่อยกด "ใช้กับสินค้า…" ผูกได้หลายตัวทีเดียว · ของในคลังนี้โผล่ให้เลือกก่อนในทุกช่อง (วัสดุแฝงของสินค้า / วัสดุแฝงของตัวเลือก)
  * (เจ้าของร้านขอ 30 ก.ย. 69 — เดิมสร้างได้เฉพาะจากสินค้าทีละตัว ของที่ทำไว้กับสินค้า A ไม่โผล่ให้เลือกตอนทำสินค้า B)
- * สมาชิกคลัง = ชนิดของ "วัสดุแฝง" · หรือเป็นวัสดุแฝงของสินค้า/ตัวเลือกอยู่แล้ว (isLib) — SKU อื่นค้นแล้ว "นำเข้าคลัง" ได้
+ * สมาชิกคลัง = ชนิดของ "วัสดุแฝง" · หรือเป็นวัสดุแฝงของสินค้า/ตัวเลือกอยู่แล้ว (isLib)
+ * SKU อื่นค้นแล้วกด "ใช้กับสินค้า…" ผูกได้เลย — ผูกแล้วเป็นสมาชิกคลังเอง (ไม่มีปุ่ม "นำเข้าคลัง" แยกอีก:
+ * เดิมมันแค่ติดป้ายชนิดของ ไม่ผูกสินค้า = ไม่ตัดสต๊อก เจ้าของร้านสับสน 30 ก.ย. 69)
  */
 function BomLibraryModal({
   items,
@@ -4405,13 +4407,17 @@ function BomLibraryModal({
   const lib = useMemo(
     () =>
       items
-        .filter(isLib)
-        .filter((i) => !needle || matchItem(i, needle))
+        // แถวที่กำลังกางช่องผูกจากรายการ "SKU อื่น" ให้ขึ้นมาอยู่ในลิสต์นี้ชั่วคราว จะได้ใช้ช่องผูกชุดเดียวกัน
+        .filter((i) => isLib(i) || i.id === attachFor)
+        .filter((i) => !needle || matchItem(i, needle) || i.id === attachFor)
         .sort((a, b) => Object.keys(b.bomFor ?? {}).length - Object.keys(a.bomFor ?? {}).length || a.name.localeCompare(b.name, "th")),
-    [items, isLib, needle],
+    [items, isLib, needle, attachFor],
   );
-  /** SKU นอกคลังที่ชื่อตรงคำค้น — เสนอปุ่ม "นำเข้าคลัง" (ของเก่าที่เคยสร้างเป็นวัสดุธรรมดา เช่น ตะขอ/สายคล้อง) */
-  const outside = useMemo(() => (needle ? items.filter((i) => !isLib(i) && !i.noStock && matchItem(i, needle)).slice(0, 6) : []), [items, isLib, needle]);
+  /** SKU นอกคลังที่ชื่อตรงคำค้น (ของเก่าที่เคยสร้างเป็นวัสดุธรรมดา เช่น ตะขอ/สายคล้อง) — กด "ใช้กับสินค้า…" ผูกได้เลย */
+  const outside = useMemo(
+    () => (needle ? items.filter((i) => !isLib(i) && !i.noStock && i.id !== attachFor && matchItem(i, needle)).slice(0, 6) : []),
+    [items, isLib, needle, attachFor],
+  );
 
   async function call(method: "POST" | "DELETE", body: object): Promise<Item | null> {
     setBusy(true);
@@ -4513,7 +4519,7 @@ function BomLibraryModal({
 
       <div className="mt-4 flex items-center gap-2">
         <p className={`${labelCls} shrink-0`}>ในคลัง {fmtN(lib.length)} รายการ</p>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นในคลัง หรือค้น SKU อื่นเพื่อนำเข้าคลัง…" className={`${inputCls} !h-10 min-w-0 flex-1`} aria-label="ค้นวัสดุแฝง" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นในคลัง หรือค้น SKU อื่นเพื่อผูกกับสินค้า…" className={`${inputCls} !h-10 min-w-0 flex-1`} aria-label="ค้นวัสดุแฝง" />
       </div>
 
       <div className="mt-2 max-h-[52vh] overflow-y-auto rounded-xl border border-slate-200">
@@ -4637,14 +4643,23 @@ function BomLibraryModal({
 
         {outside.length > 0 && (
           <div className="border-t border-slate-200 bg-slate-50/60 px-3 py-2">
-            <p className="text-[11px] text-slate-500">SKU อื่นที่ชื่อตรง — นำเข้าคลังแล้วจะโผล่ให้เลือกก่อนทุกช่อง</p>
+            <p className="text-[11px] text-slate-500">SKU อื่นที่ชื่อตรง — ยังไม่ได้เป็นวัสดุแฝง กด “ใช้กับสินค้า…” ผูกแล้วระบบจะตัดให้ทุกออเดอร์</p>
             <ul className="mt-1 space-y-1">
               {outside.map((i) => (
                 <li key={i.id} className="flex min-h-[40px] items-center gap-2">
                   <Thumb src={images[i.id]} name={i.name} size={28} />
                   <span className="min-w-0 flex-1 truncate text-[13px] text-slate-800">{i.name}</span>
-                  <button type="button" disabled={busy} onClick={() => void call("POST", { stockItemId: i.id, library: true })} className={btnSmNeutral}>
-                    นำเข้าคลัง
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setAttachFor(i.id);
+                      setAttachIds([]);
+                      setAttachPer("1");
+                    }}
+                    className={btnSmNeutral}
+                  >
+                    ＋ ใช้กับสินค้า…
                   </button>
                 </li>
               ))}
