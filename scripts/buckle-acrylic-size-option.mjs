@@ -142,7 +142,7 @@ function art(cm) {
   ${buckle(cx, cy + ph * 0.06)}
   ${dimV(cx + pw / 2 + 30, top, top + ph, `${cm} ซม.`)}
   ${ruler(cm)}
-  <text x="${cx}" y="${H - 66}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">บัคเคิ้ลใส (ก้าน) ขนาดเท่าเดิมทุกไซซ์ — ร้อยสายคล้องมือถือได้</text>
+  <text x="${cx}" y="${H - 66}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">บัคเคิ้ลใส (ก้าน) ขนาดเท่าเดิมทุกไซส์ — ร้อยสายคล้องมือถือได้</text>
   <text x="${cx}" y="${H - 34}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">วัดจากด้านยาวสุดของชิ้นงาน · ลายในภาพเป็นตัวอย่าง</text>
 </svg>`;
 }

@@ -39,7 +39,7 @@ const std = (cm: string, qty = 1) => price(resolveSelections(p, { [SIZE]: cm }),
 const cus = (w?: string) => resolveSelections(p, { [SIZE]: CUSTOM, ...(w ? { [W]: w } : {}) });
 
 // ── โครงตัวเลือก ────────────────────────────────────────────────────
-ok("กลุ่มขนาด = 5 ไซซ์ + กำหนดเอง + ตามไฟล์", group(SIZE).choices.map((c) => c.name).join("|") === `2 cm|3 cm|4 cm|5 cm|6 cm|${CUSTOM}|${BY_FILE}`);
+ok("กลุ่มขนาด = 5 ไซส์ + กำหนดเอง + ตามไฟล์", group(SIZE).choices.map((c) => c.name).join("|") === `2 cm|3 cm|4 cm|5 cm|6 cm|${CUSTOM}|${BY_FILE}`);
 ok("กลุ่มติดกิ๊บมี ด้านอื่นๆ ต่อท้าย ซ้าย/ขวา", group(SIDE).choices.map((c) => c.name).join("|") === `ด้านซ้าย|ด้านขวา|${OTHER_SIDE}`);
 ok("ช่องกรอกอยู่ชุดเดียวกับกลุ่มขนาด", group(W).section === group(SIZE).section, `${group(W).section} / ${group(SIZE).section}`);
 ok("กรอกด้านเดียว (sizeInput ชี้ช่องเดียวกัน)", group(SIZE).sizeInput?.heightLabel === group(SIZE).sizeInput?.widthLabel);
@@ -57,7 +57,7 @@ ok("เลือกกำหนดเอง → ช่องกรอกโผ�
 // ── ราคา ────────────────────────────────────────────────────────────
 const BASE = std("3 cm");
 console.log("ราคาแถวมาตรฐาน 1 ชิ้น:", ["2 cm", "4 cm", "6 cm"].map((c) => `${c}=฿${std(c)}`).join(" · "));
-ok("ทุกไซซ์มาตรฐานราคาเท่ากัน (ขนาดไม่ใช่แกนราคา)", ["2 cm", "4 cm", "5 cm", "6 cm"].every((c) => std(c) === BASE), `฿${BASE}`);
+ok("ทุกไซส์มาตรฐานราคาเท่ากัน (ขนาดไม่ใช่แกนราคา)", ["2 cm", "4 cm", "5 cm", "6 cm"].every((c) => std(c) === BASE), `฿${BASE}`);
 ok("ตามไฟล์ = ราคาปกติ ไม่ต้องรอตีราคา", price(resolveSelections(p, { [SIZE]: BY_FILE })) === BASE && !needsQuote(p, resolveSelections(p, { [SIZE]: BY_FILE })));
 ok("ด้านอื่นๆ (ติดกิ๊บ) ไม่กระทบราคา", price(resolveSelections(p, { [SIDE]: OTHER_SIDE })) === price(resolveSelections(p, { [SIDE]: "ด้านซ้าย" })));
 

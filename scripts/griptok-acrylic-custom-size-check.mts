@@ -23,7 +23,7 @@ let fail = 0;
 const ok = (name: string, pass: boolean, extra = "") => { if (!pass) fail++; console.log(pass ? "✅" : "❌", name, extra); };
 const group = (l: string) => p.options.find((o) => o.label === l)!;
 
-ok("กลุ่มขนาดมี 7 ตัวเลือก (6 ไซซ์ + กำหนดเอง)", group(SIZE).choices.length === 7 && group(SIZE).choices.at(-1)!.name === CUSTOM);
+ok("กลุ่มขนาดมี 7 ตัวเลือก (6 ไซส์ + กำหนดเอง)", group(SIZE).choices.length === 7 && group(SIZE).choices.at(-1)!.name === CUSTOM);
 ok("ช่องกรอกอยู่ชุดเดียวกับกลุ่มขนาด", group(W).section === group(SIZE).section);
 ok("กรอกด้านเดียว — ไม่มีช่องคู่ ก./ส. และ sizeInput ชี้ช่องเดียว",
   group(SIZE).sizeInput?.heightLabel === group(SIZE).sizeInput?.widthLabel &&

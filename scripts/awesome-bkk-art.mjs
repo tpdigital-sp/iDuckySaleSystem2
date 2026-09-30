@@ -19,8 +19,8 @@
  *
  * 3) วาดเอง — ของที่บล็อกนี้ไม่มีภาพให้
  *    front-none / back-none   "ไม่สกรีนด้านนี้" (เสื้อเปล่า)
- *    size-s/m/l/xl            การ์ดไซซ์รายตัว · size-chart การ์ดตารางไซซ์รวม
- *    ตัวเลขไซซ์มาจากบล็อกเดียวกัน: S 40|26.5|9 · M 44|27.5|10 · L 48|29.5|10.5 · XL 52|30.5|11 (นิ้ว)
+ *    size-s/m/l/xl            การ์ดไซส์รายตัว · size-chart การ์ดตารางไซส์รวม
+ *    ตัวเลขไซส์มาจากบล็อกเดียวกัน: S 40|26.5|9 · M 44|27.5|10 · L 48|29.5|10.5 · XL 52|30.5|11 (นิ้ว)
  *
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคชไว้) — ชุดนี้ลงท้าย -v1 ตอนอัป ครั้งหน้าขึ้น v2
  */
@@ -160,7 +160,7 @@ async function screenCards() {
 /* ── 3. ของที่วาดเอง ──────────────────────────────────────────────── */
 
 /**
- * เสื้อยืดวาดแบน 1 ตัว — ใช้กับการ์ด "ไม่สกรีน" และการ์ดไซซ์
+ * เสื้อยืดวาดแบน 1 ตัว — ใช้กับการ์ด "ไม่สกรีน" และการ์ดไซส์
  * back = true → คอตื้นและมีแถบคอด้านหลัง (ให้ดูออกว่าเป็นด้านหลัง)
  */
 function tee(x, y, w, h, { back = false, fill = "#111827", stroke = "#0f172a" } = {}) {
@@ -200,7 +200,7 @@ async function noneCards() {
   }
 }
 
-/** ตารางไซซ์ของบล็อกนี้ (นิ้ว) — รอบอก | ความยาว | ความยาวแขน */
+/** ตารางไซส์ของบล็อกนี้ (นิ้ว) — รอบอก | ความยาว | ความยาวแขน */
 export const SIZES = [
   { name: "S", chest: 40, length: 26.5, sleeve: 9 },
   { name: "M", chest: 44, length: 27.5, sleeve: 10 },
@@ -208,9 +208,9 @@ export const SIZES = [
   { name: "XL", chest: 52, length: 30.5, sleeve: 11 },
 ];
 
-/** การ์ดไซซ์รายตัว — เสื้อ + เส้นบอกขนาดจริงของไซซ์นั้น */
+/** การ์ดไซส์รายตัว — เสื้อ + เส้นบอกขนาดจริงของไซส์นั้น */
 async function sizeCards() {
-  console.log("🖼  การ์ดไซซ์ S/M/L/XL (วาดเอง)");
+  console.log("🖼  การ์ดไซส์ S/M/L/XL (วาดเอง)");
   for (const s of SIZES) {
     // กว้างของรูปเสื้อผันตามรอบอกจริง เพื่อให้เทียบกันได้ระหว่างการ์ด (S แคบสุด · XL กว้างสุด)
     const w = 250 + (s.chest - 40) * 8;
@@ -218,7 +218,7 @@ async function sizeCards() {
     const x = W / 2 - w / 2;
     const y = 250;
     const svg = frame(`
-      ${title(`ไซซ์ ${s.name}`, `รอบอก ${s.chest} · ความยาว ${s.length} · แขน ${s.sleeve} นิ้ว`)}
+      ${title(`ไซส์ ${s.name}`, `รอบอก ${s.chest} · ความยาว ${s.length} · แขน ${s.sleeve} นิ้ว`)}
       ${tee(x, y, w, h)}
       <g stroke="${CYAN}" stroke-width="2.5" fill="none">
         <path d="M ${x} ${y + h + 34} L ${x + w} ${y + h + 34}"/>
@@ -229,14 +229,14 @@ async function sizeCards() {
       <text x="${W / 2}" y="${y + h + 78}" font-family="${TH}" font-size="26" font-weight="700" text-anchor="middle" fill="${CYAN}">รอบอก ${s.chest} นิ้ว</text>
       <text x="${x + w + 70}" y="${y + h / 2}" font-family="${TH}" font-size="26" font-weight="700" fill="${CYAN}">ยาว</text>
       <text x="${x + w + 70}" y="${y + h / 2 + 32}" font-family="${TH}" font-size="26" font-weight="700" fill="${CYAN}">${s.length}"</text>
-      ${foot(["ขนาดวัดจากตารางไซซ์ของร้าน (หน่วยเป็นนิ้ว)", "แต่ละไซซ์อาจคลาดเคลื่อน + – ไม่เกินครึ่งนิ้ว"])}`);
+      ${foot(["ขนาดวัดจากตารางไซส์ของร้าน (หน่วยเป็นนิ้ว)", "แต่ละไซส์อาจคลาดเคลื่อน + – ไม่เกินครึ่งนิ้ว"])}`);
     await saveSvg(`size-${s.name.toLowerCase()}`, svg);
   }
 }
 
-/** การ์ดตารางไซซ์รวม — ใช้ในแท็บ "ตารางไซซ์" (ภาษาภาพเดียวกับของเสื้อ OVER SIZE) */
+/** การ์ดตารางไซส์รวม — ใช้ในแท็บ "ตารางไซส์" (ภาษาภาพเดียวกับของเสื้อ OVER SIZE) */
 async function sizeChart() {
-  console.log("🖼  การ์ดตารางไซซ์รวม (วาดเอง)");
+  console.log("🖼  การ์ดตารางไซส์รวม (วาดเอง)");
   const cols = ["Size\nขนาด", "Chest\nรอบอก", "Length\nความยาว", "Sleeve\nความยาวแขน"];
   const cw = [180, 230, 230, 260];
   const x0 = 60;
@@ -262,10 +262,10 @@ async function sizeChart() {
     });
   });
   const svg = frame(`
-    <text x="60" y="98" font-family="${TH}" font-size="40" font-weight="700" fill="${INK}">ตารางไซซ์ · AWESOME.BKK</text>
-    <text x="60" y="140" font-family="${TH}" font-size="24" fill="${SUB}">หน่วยเป็นนิ้ว · มี 4 ไซซ์ S M L XL</text>
+    <text x="60" y="98" font-family="${TH}" font-size="40" font-weight="700" fill="${INK}">ตารางไซส์ · AWESOME.BKK</text>
+    <text x="60" y="140" font-family="${TH}" font-size="24" fill="${SUB}">หน่วยเป็นนิ้ว · มี 4 ไซส์ S M L XL</text>
     ${head}${body}
-    <text x="60" y="${y0 + rowH * 5 + 60}" font-family="${TH}" font-size="22" fill="${SUB}">** แต่ละไซซ์อาจมีความคลาดเคลื่อน + – ไม่เกินครึ่งนิ้ว **</text>
+    <text x="60" y="${y0 + rowH * 5 + 60}" font-family="${TH}" font-size="22" fill="${SUB}">** แต่ละไซส์อาจมีความคลาดเคลื่อน + – ไม่เกินครึ่งนิ้ว **</text>
     <text x="60" y="${y0 + rowH * 5 + 96}" font-family="${TH}" font-size="22" fill="${SUB}">เสื้อยืดคอกลม แขนสั้น · สีขาว | สีดำ</text>`);
   await saveSvg("size-chart", svg);
 }

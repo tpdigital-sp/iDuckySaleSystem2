@@ -7,6 +7,7 @@ import { sanitizeHtml } from "@/lib/server/sanitize-html";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { invalidateProductsSlim } from "@/lib/server/products-slim";
 import { coverStockForProducts } from "@/lib/server/stock-cover";
+import { coverChoicesInProduct } from "@/lib/server/stock-cover-choices";
 import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
@@ -69,7 +70,10 @@ export async function POST(req: Request) {
   // 🗂️ เก็บเวอร์ชันเดิมไว้ก่อนเขียนทับ — กลุ่มตัวเลือก/ข้อมูลหายเมื่อไหร่ กู้จาก product_revisions ได้
   await snapshotRevision(sb, p.id, cur?.data, gate.actor, "save");
 
-  const { sort, ...product } = p;
+  const { sort, ...product0 } = p;
+  // 📱 ค่าที่เพิ่งเพิ่มในกลุ่มที่แยกสต๊อกแล้ว (รุ่นมือถือใหม่) → สร้าง SKU + ใส่ stockItemId ให้ "ก่อน" เขียน
+  // เทียบกับแถวเดิม (cur) ว่าค่าไหนใหม่ · เขียนสินค้าครั้งเดียว ไม่มีการเขียนซ้อนทีหลัง · ล้ม (Firestore ล่ม) = ได้สินค้าเดิมคืน การบันทึกไม่ล้มตาม
+  const { product, made: stockMade } = await coverChoicesInProduct(product0 as Product, cur?.data as Product | undefined);
   // เก็บช่วงราคาที่คำนวณไว้ด้วย — หน้ารายการ/หน้าแรกจะได้โชว์ราคาโดยไม่ต้องโหลดตารางราคาทั้งก้อน
   const range = priceRange(product as Product);
   const saved: Product = {
@@ -112,7 +116,7 @@ export async function POST(req: Request) {
   }
   return error
     ? NextResponse.json({ error: error.message }, { status: 500 })
-    : NextResponse.json({ ok: true, savedAt: saved.savedAt });
+    : NextResponse.json({ ok: true, savedAt: saved.savedAt, ...(stockMade.length ? { stockMade } : {}) });
 }
 
 /** ลบสินค้า (เฉพาะแอดมิน) — /api/admin/products?id=xxx */

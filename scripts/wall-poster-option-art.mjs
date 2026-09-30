@@ -112,7 +112,7 @@ const SIZES = {
   A3: { w: 29.7, h: 42 }, A2: { w: 42, h: 59.4 }, A1: { w: 59.4, h: 84.1 }, A0: { w: 84.1, h: 118.8 },
 };
 const CMS = 4.55;           // สเกลร่วมทุกใบ: A0 สูง 118.8 ซม. = 541px
-const BAR_TOP = 232;        // ขอบบนท่อแขวน ตำแหน่งเดียวกันทุกใบ/ทุกไซซ์ (ผืนห้อยลงจากบน)
+const BAR_TOP = 232;        // ขอบบนท่อแขวน ตำแหน่งเดียวกันทุกใบ/ทุกไซส์ (ผืนห้อยลงจากบน)
 const HOOK_Y = 158;
 
 /** ท่อสอดสีขาว + เชือกขึ้นไปหาตะขอ (ทรงเดียวกับรูปจริงในใบสเปค) */
@@ -129,7 +129,7 @@ function sizeArt(name) {
   const s = SIZES[name];
   const w = s.w * CMS, h = s.h * CMS;
   const cx = 450, y0 = BAR_TOP + 16;
-  /* เงาเส้นประของไซซ์อื่น ๆ — แขวนจากท่อเดียวกัน เทียบกันได้ทันทีว่าใบนี้ใหญ่แค่ไหน */
+  /* เงาเส้นประของไซส์อื่น ๆ — แขวนจากท่อเดียวกัน เทียบกันได้ทันทีว่าใบนี้ใหญ่แค่ไหน */
   const ghosts = Object.entries(SIZES).filter(([k]) => k !== name).map(([k, g]) => {
     const gw = g.w * CMS, gh = g.h * CMS;
     return `<rect x="${cx - gw / 2}" y="${y0}" width="${gw}" height="${gh}" rx="4" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="8 7"/>

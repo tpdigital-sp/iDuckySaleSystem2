@@ -25,7 +25,7 @@ const ok = (name: string, pass: boolean, extra = "") => { if (!pass) fail++; con
 const group = (l: string) => p.options.find((o) => o.label === l)!;
 
 ok("product.custom ถูกลบ", !p.custom);
-ok("กลุ่มขนาดมี 10 ตัวเลือก (9 ไซซ์ + กำหนดเอง)", group(SIZE).choices.length === 10 && group(SIZE).choices.at(-1)!.name === CUSTOM);
+ok("กลุ่มขนาดมี 10 ตัวเลือก (9 ไซส์ + กำหนดเอง)", group(SIZE).choices.length === 10 && group(SIZE).choices.at(-1)!.name === CUSTOM);
 ok("ช่องกรอกอยู่ชุด 1. ขนาด", group(W).section === "1. ขนาด" && group(H).section === "1. ขนาด");
 
 const base = resolveSelections(p, {});

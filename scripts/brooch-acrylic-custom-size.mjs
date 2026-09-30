@@ -9,7 +9,7 @@
  *
  * ใช้:  node scripts/brooch-acrylic-custom-size.mjs --dry     (วาดภาพ + โชว์ที่จะเขียน ไม่แตะ DB)
  *       node scripts/brooch-acrylic-custom-size.mjs           (อัปโหลดภาพ + เขียน DB + อ่านกลับเทียบ)
- * รันซ้ำได้ (idempotent) · ⚠️ ชื่อกลุ่ม/ชื่อ 9 ไซซ์เดิมห้ามแตะ — เป็นคีย์ตารางราคา
+ * รันซ้ำได้ (idempotent) · ⚠️ ชื่อกลุ่ม/ชื่อ 9 ไซส์เดิมห้ามแตะ — เป็นคีย์ตารางราคา
  */
 import { createClient } from "@supabase/supabase-js";
 import { mkdirSync, writeFileSync } from "node:fs";

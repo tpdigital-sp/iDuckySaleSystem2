@@ -30,7 +30,7 @@ const ok = (name: string, pass: boolean, extra = "") => { if (!pass) fail++; con
 const group = (l: string) => p.options.find((o) => o.label === l)!;
 
 // ── โครงข้อมูล
-ok("กลุ่มขนาดมี 15 ตัวเลือก (14 ไซซ์ + กำหนดเอง ท้ายสุด)",
+ok("กลุ่มขนาดมี 15 ตัวเลือก (14 ไซส์ + กำหนดเอง ท้ายสุด)",
   group(SIZE).choices.length === 15 && group(SIZE).choices.at(-1)!.name === CUSTOM);
 ok("ช่องกรอกอยู่ชุดเดียวกับกลุ่มขนาด", group(W).section === group(SIZE).section, group(W).section ?? "");
 ok("กรอกด้านเดียว (heightLabel ชี้ช่องเดียวกับ widthLabel)",

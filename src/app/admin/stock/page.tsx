@@ -915,11 +915,15 @@ export default function StockPage() {
   /**
    * จัดแถวเป็นกลุ่มตามชื่อสินค้า
    *   เชื่อมกับสินค้าตัวเดียว            → อยู่ใต้สินค้านั้น
+   *   เชื่อมกับสินค้าไม่กี่ตัว (≤ SHARED_MAX) → อยู่ใต้ "ทุก" สินค้าที่ใช้มัน (แถวเดียวกันโผล่ซ้ำ) — ไม่งั้นกลุ่มสินค้าหายทั้งกลุ่ม
+   *                                       (สแตนดี้เฟรมการ์ดถูกผูกเพิ่มกับสินค้าที่ 2 → กลุ่ม "สแตนดี้เฟรมการ์ด" หายไปอยู่ "ใช้ร่วมหลายสินค้า" เจ้าของร้านหาไม่เจอ 30 ก.ย. 69)
    *   ยังไม่เชื่อม แต่มีคู่ที่น่าจะใช่     → อยู่ใต้สินค้าของคู่นั้น (แถวยังขึ้นป้ายแดง "ยังไม่ผูก")
-   *   ใช้กับหลายสินค้า/ผ่านคลังกลาง (ตะขอ สีไหม) → กลุ่ม "ใช้ร่วมหลายสินค้า · <ตระกูล>" ไม่งั้นต้องโชว์ซ้ำทุกสินค้า
+   *   ใช้กับสินค้าจำนวนมาก/ผ่านคลังกลาง (ตะขอ สีไหม) → กลุ่ม "ใช้ร่วมหลายสินค้า · <ตระกูล>" ไม่งั้นต้องโชว์ซ้ำเป็นสิบ ๆ ที่
    *   ไม่รู้เลยว่าเป็นของสินค้าไหน       → กลุ่มท้ายสุดแยกตามตระกูล
    */
   const groups = useMemo(() => {
+    /** SKU ที่ใช้กับสินค้าไม่เกินเท่านี้ = โชว์ใต้ทุกสินค้าที่ใช้ · มากกว่านั้น (ตะขอ/สีไหมผ่านคลังกลาง) ไปกลุ่มรวม */
+    const SHARED_MAX = 4;
     const prodById = new Map(products.map((p) => [p.id, p]));
     type G = { key: string; kind: 0 | 1 | 2 | 3; title: string; sub?: string; img?: string; productId?: string; rows: Item[] };
     const map = new Map<string, G>();
@@ -938,8 +942,7 @@ export default function StockPage() {
           put({ key: "bom", kind: 1, title: "วัสดุแฝง", sub: "ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก — เติมสต๊อกที่นี่ที่เดียว" }, it);
           continue;
         }
-        const only = [...pids][0];
-        if (pids.size === 1 && !us.some((u) => u.kind === "preset")) ofProduct(only[0], only[1], it);
+        if (pids.size >= 1 && pids.size <= SHARED_MAX && !us.some((u) => u.kind === "preset")) for (const [pid, name] of pids) ofProduct(pid, name, it);
         else put({ key: `s:${fam}`, kind: 1, title: fam, sub: "ใช้ร่วมหลายสินค้า" }, it);
         continue;
       }
@@ -962,10 +965,19 @@ export default function StockPage() {
   const forceOpen = q.trim() !== "" || filter !== "ทั้งหมด" || cat !== "ทุกหมวด" || fam !== "ทุกตระกูล";
   const allOpen = groups.length > 0 && groups.every((g) => openGroups.has(g.key));
   const doneCount = useMemo(() => groups.filter((g) => doneGroups[g.key]).length, [groups, doneGroups]);
+  /**
+   * กลุ่ม "ยังไม่รู้ว่าใช้กับสินค้าไหน" (kind 3 — SKU ที่ไม่ผูกอะไรและไม่มีคู่ให้เดา) ไม่โชว์ในมุมมองตามสินค้า
+   * (เจ้าของร้านบอก 30 ก.ย. 69 "แบบนี้ไม่ต้องนำมาแสดง") — ยังดูได้จากชิป "ยังไม่ผูกสินค้า" หรือตอนค้นหา และมีบรรทัดท้ายบอกว่าซ่อนไปกี่รายการ
+   */
+  const showOrphans = filter === "ยังไม่ผูก" || q.trim() !== "";
   const shownGroups = useMemo(
-    () => (doneFilter === "ทั้งหมด" ? groups : groups.filter((g) => !!doneGroups[g.key] === (doneFilter === "จัดแล้ว"))),
-    [groups, doneGroups, doneFilter],
+    () =>
+      (doneFilter === "ทั้งหมด" ? groups : groups.filter((g) => !!doneGroups[g.key] === (doneFilter === "จัดแล้ว"))).filter(
+        (g) => showOrphans || g.kind !== 3,
+      ),
+    [groups, doneGroups, doneFilter, showOrphans],
   );
+  const hiddenOrphans = useMemo(() => (showOrphans ? 0 : groups.filter((g) => g.kind === 3).reduce((n, g) => n + g.rows.length, 0)), [groups, showOrphans]);
 
   const logRows = useMemo(() => {
     const needle = logQ.trim().toLowerCase();
@@ -1654,6 +1666,14 @@ export default function StockPage() {
                       </section>
                     );
                   })}
+                  {hiddenOrphans > 0 && (
+                    <p className="px-1 pt-1 text-[12.5px] text-slate-500">
+                      ซ่อน {fmtN(hiddenOrphans)} รายการที่ยังไม่รู้ว่าใช้กับสินค้าไหน —{" "}
+                      <button type="button" onClick={() => setFilter("ยังไม่ผูก")} className="underline underline-offset-2 hover:text-slate-800">
+                        ดูที่ชิป “ยังไม่ผูกสินค้า”
+                      </button>
+                    </p>
+                  )}
                 </div>
               );
             })()
@@ -1780,6 +1800,10 @@ export default function StockPage() {
           onChanged={(it) => {
             setItems((prev) => (prev.some((i) => i.id === it.id) ? prev.map((i) => (i.id === it.id ? it : i)) : [...prev, it]));
           }}
+          onRemoved={(id) => {
+            if (openId === id) setOpenId(null);
+            setItems((prev) => prev.filter((i) => i.id !== id));
+          }}
           onDone={async () => {
             setBomLib(false);
             setOpenGroups((prev) => new Set(prev).add("bom"));
@@ -1814,6 +1838,7 @@ export default function StockPage() {
           items={items}
           images={images}
           allParts={allParts}
+          isLib={isLib}
           onClose={() => setBomFor(null)}
           onChanged={(it) => {
             setItems((prev) => (prev.some((i) => i.id === it.id) ? prev.map((i) => (i.id === it.id ? it : i)) : [...prev, it]));
@@ -1968,6 +1993,15 @@ function matchItem(i: Item, needle: string) {
   return [i.name, i.code, i.family, i.category, ...(i.aliases ?? [])]
     .filter(Boolean)
     .some((s) => String(s).toLowerCase().includes(needle));
+}
+/**
+ * ผลค้นในช่องเลือกวัสดุ (วัสดุแฝงของสินค้า / ของตัวเลือก) — ของในคลังวัสดุแฝงกลางขึ้นก่อนเสมอ แล้วค่อยตามด้วยของอื่นตามลำดับเดิม
+ * เดิมตัดไว้ 8 ตัวแรกตามลำดับตาราง: คำกว้าง ๆ อย่าง "A3" ชนกรอบรูป/ขนาดสกรีน/ตะขอ AA3 เต็ม 8 ก่อน
+ * "SHIKISHI · A3" ที่เพิ่งสร้างเข้าคลังเลยไม่โผล่ ทั้งที่คลังกลางค้นเจอ (เจ้าของร้านแจ้ง 30 ก.ย. 69)
+ */
+const PICK_LIMIT = 30;
+function rankLibFirst<T>(list: T[], isLib: (t: T) => boolean): T[] {
+  return [...list.filter(isLib), ...list.filter((t) => !isLib(t))].slice(0, PICK_LIMIT);
 }
 
 // ─────────────────────────── ชิ้นส่วนร่วม ───────────────────────────
@@ -3367,7 +3401,10 @@ function ExtraLinkForm({
   const kidHits = useMemo(() => {
     const n = kidQ.trim().toLowerCase();
     if (!n) return [];
-    return skus.filter((k) => k.id !== item.id && (k.name.toLowerCase().includes(n) || (k.code ?? "").toLowerCase().includes(n))).slice(0, 8);
+    return rankLibFirst(
+      skus.filter((k) => k.id !== item.id && (k.name.toLowerCase().includes(n) || (k.code ?? "").toLowerCase().includes(n))),
+      (k) => !!k.lib,
+    );
   }, [skus, kidQ, item.id]);
   /**
    * โหมด up ค้นได้แต่ "สินค้า" — ถ้าที่พิมพ์ตรงกับชื่อวัสดุในคลังแทน (พิมพ์ "ด้าม" หา ด้ามพัดพลาสติก) ต้องบอกให้รู้
@@ -3376,7 +3413,10 @@ function ExtraLinkForm({
   const skuHitsUp = useMemo(() => {
     const n = q.trim().toLowerCase();
     if (!n) return [];
-    return skus.filter((k) => k.id !== item.id && (k.name.toLowerCase().includes(n) || (k.code ?? "").toLowerCase().includes(n))).slice(0, 3);
+    return rankLibFirst(
+      skus.filter((k) => k.id !== item.id && (k.name.toLowerCase().includes(n) || (k.code ?? "").toLowerCase().includes(n))),
+      (k) => !!k.lib,
+    ).slice(0, 3);
   }, [skus, q, item.id]);
   /** ยังไม่พิมพ์ค้น = เสนอของในคลังวัสดุแฝงกลางก่อน (ฐาน Griptok / หมุด / ถุง ที่สร้างไว้แล้วจากคลัง) — ไม่ต้องเดาชื่อ */
   const libKids = useMemo(() => skus.filter((k) => k.lib && k.id !== item.id).sort((a, b) => a.name.localeCompare(b.name, "th")).slice(0, 10), [skus, item.id]);
@@ -3448,13 +3488,14 @@ function ExtraLinkForm({
    * แถวในลิสต์เลือกวัสดุ — สูง ≥44px กดด้วยนิ้วโป้งได้ (เดิม 40px + รูป 28 ดูเป็นตัวอักษรเบียดกัน)
    * ⚠️ รูป (Thumb) เป็นปุ่มขยายอยู่แล้ว ต้องวางข้างปุ่มเลือก ไม่ใช่ข้างใน — <button> ซ้อน <button> = hydration error
    */
-  const pickRow = (k: { id: string; name: string; code?: string; img?: string }, onPick: () => void) => (
+  const pickRow = (k: { id: string; name: string; code?: string; img?: string; lib?: boolean }, onPick: () => void) => (
     <li key={k.id} className="flex items-center gap-2.5 pl-2.5 hover:bg-slate-50">
       <Thumb src={k.img} name={k.name} size={32} />
       <button type="button" onClick={onPick} className="flex min-h-[44px] min-w-0 flex-1 flex-col justify-center py-1.5 pr-2.5 text-left">
         <span className="block w-full truncate text-[13px] text-slate-800">{k.name}</span>
         {k.code && <span className={codeCls}>{k.code}</span>}
       </button>
+      {k.lib && <span className="mr-2.5 shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] text-slate-500">คลัง</span>}
     </li>
   );
   /* การ์ด "ของที่เลือกแล้ว" — ชื่อ/รหัส + ปุ่มเปลี่ยน (ไม่มีปุ่ม = ล็อกไว้ เช่น ตัวที่เปิดลิ้นชักอยู่) */
@@ -4326,6 +4367,7 @@ function BomLibraryModal({
   isLib,
   onClose,
   onChanged,
+  onRemoved,
   onDone,
   onPickProduct,
 }: {
@@ -4337,6 +4379,8 @@ function BomLibraryModal({
   isLib: (i: Item) => boolean;
   onClose: () => void;
   onChanged: (it: Item) => void;
+  /** ลบ SKU ออกจากคลังแล้ว (soft delete) — เอาแถวออกจากจอแม่ทันที */
+  onRemoved: (id: string) => void;
   onDone: () => void;
   /** ทางเดิม: เลือกสินค้าก่อนแล้วจัดวัสดุแฝงของสินค้านั้นทีละตัว */
   onPickProduct: () => void;
@@ -4352,6 +4396,9 @@ function BomLibraryModal({
   const [attachFor, setAttachFor] = useState<string | null>(null);
   const [attachIds, setAttachIds] = useState<string[]>([]);
   const [attachPer, setAttachPer] = useState("1");
+  /** แถวที่กำลังกางแถบยืนยันลบ — ยืนยันในแถวเอง เพราะกล่องยืนยันกลาง (z-120) อยู่หลังโมดัลนี้ (z-130) */
+  const [delFor, setDelFor] = useState<string | null>(null);
+  const [ok, setOk] = useState("");
   const prodName = useMemo(() => new Map(products.map((p) => [p.id, p.name])), [products]);
 
   const needle = q.trim().toLowerCase();
@@ -4404,6 +4451,25 @@ function BomLibraryModal({
     }
   };
 
+  /** ลบ SKU = ปิดการใช้งาน (เหมือนปุ่มลบในลิ้นชัก SKU) — เซิร์ฟเวอร์ถอดลิงก์ตัวเลือกให้ · กู้คืนได้จาก "ที่ลบไปแล้ว" */
+  const remove = async (it: Item) => {
+    setBusy(true);
+    setErr("");
+    setOk("");
+    const res = await fetch(`/api/admin/stock?id=${encodeURIComponent(it.id)}`, { method: "DELETE" });
+    const j = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok || !j?.ok) {
+      setErr(`${j?.error ?? "ลบไม่สำเร็จ"} — ${it.name} ยังอยู่ในคลัง`);
+      return;
+    }
+    setDelFor(null);
+    if (attachFor === it.id) setAttachFor(null);
+    setChanged(true);
+    onRemoved(it.id);
+    setOk(`ลบ ${it.name} แล้ว${j.unlinked ? ` · ถอดลิงก์จากตัวเลือกสินค้า ${fmtN(j.unlinked)} รายการ` : ""} — กู้คืนได้จากปุ่ม “ที่ลบไปแล้ว”`);
+  };
+
   const bomOf = (i: Item) => Object.entries(i.bomFor ?? {}).filter(([, n]) => n > 0);
   const extraCount = (i: Item) => (live[i.id] ?? []).filter((u) => u.kind === "choice" && u.extra).length;
 
@@ -4415,6 +4481,7 @@ function BomLibraryModal({
       wide
     >
       {err && <p className={`mb-3 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
+      {ok && !err && <p className={`mb-3 rounded-xl px-3 py-2 text-xs ${TONE.ok.bg} ${TONE.ok.text}`}>{ok}</p>}
 
       {/* สร้างใหม่ — อยู่บนสุดเพราะเป็นเหตุผลหลักที่เปิดหน้านี้ · ไม่ต้องเลือกสินค้าก่อน */}
       <div className="rounded-xl border border-slate-200 p-3">
@@ -4458,6 +4525,7 @@ function BomLibraryModal({
             const bom = bomOf(i);
             const extras = extraCount(i);
             const opening = attachFor === i.id;
+            const deleting = delFor === i.id;
             return (
               <li key={i.id} className="px-3 py-2.5">
                 <div className="flex min-h-[44px] items-center gap-2.5">
@@ -4481,7 +4549,40 @@ function BomLibraryModal({
                   >
                     {opening ? "ปิด" : "＋ ใช้กับสินค้า…"}
                   </button>
+                  {/* ลบแยกจากปุ่มผูก — งานนาน ๆ ครั้ง ไม่ให้เผลอกดแทน */}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDelFor(deleting ? null : i.id)}
+                    className={`${btnSmGhost} min-h-[44px] shrink-0 !px-2 ${TONE.danger.text}`}
+                    title="ลบวัสดุนี้ออกจากคลัง"
+                    aria-label={`ลบ ${i.name} ออกจากคลัง`}
+                  >
+                    ลบ
+                  </button>
                 </div>
+
+                {deleting && (
+                  <div className={`mt-2 rounded-lg p-2.5 ring-1 ring-inset ${TONE.danger.bg} ${TONE.danger.ring}`}>
+                    <p className="text-[13px] font-semibold text-slate-900">ลบวัสดุ “{i.name}” ไหม?</p>
+                    <p className="mt-0.5 text-[11px] text-slate-600">
+                      หายจากคลังและไม่ถูกตัดสต๊อกตอนขายอีก · สินค้า/ตัวเลือกที่ผูกกับตัวนี้จะถูกถอดลิงก์ให้เอง · กู้คืนได้จากปุ่ม “ที่ลบไปแล้ว” (ลิงก์จะกลับมาด้วย)
+                      {i.balance !== 0 && (
+                        <>
+                          {" "}· คงเหลือในระบบ <span className="tabular-nums">{fmtN(i.balance)}</span> {i.unit} — ยอดนี้จะหายจากมูลค่าคลังทันที
+                        </>
+                      )}
+                    </p>
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <button type="button" disabled={busy} onClick={() => setDelFor(null)} className={`${btnSmNeutral} min-h-[44px]`}>
+                        ยกเลิก
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => void remove(i)} className={`${btnSmNeutral} min-h-[44px] !border-rose-200 !bg-rose-600 !text-white hover:!bg-rose-700`}>
+                        {busy ? "กำลังลบ…" : "ลบวัสดุ"}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* สินค้าที่ตัดวัสดุตัวนี้อยู่ — ชิปละสินค้า ถอดได้ตรงนี้ */}
                 {(bom.length > 0 || extras > 0) && (
@@ -4573,6 +4674,7 @@ function BomModal({
   items,
   images,
   allParts,
+  isLib,
   onClose,
   onChanged,
   onDone,
@@ -4581,6 +4683,8 @@ function BomModal({
   product: { id: string; name: string };
   items: Item[];
   images: Record<string, string>;
+  /** สมาชิกคลังวัสดุแฝงกลาง — ผลค้นเอาขึ้นก่อน (ชุดเดียวกับ BomLibraryModal) */
+  isLib?: (i: Item) => boolean;
   allParts: string[];
   onClose: () => void;
   onChanged: (it: Item) => void;
@@ -4602,8 +4706,11 @@ function BomModal({
   const hits = useMemo(() => {
     const n = q.trim().toLowerCase();
     if (!n) return [];
-    return items.filter((i) => !current.some((c) => c.id === i.id) && matchItem(i, n)).slice(0, 8);
-  }, [items, q, current]);
+    return rankLibFirst(
+      items.filter((i) => !current.some((c) => c.id === i.id) && matchItem(i, n)),
+      (i) => (isLib ? isLib(i) : i.part?.trim() === BOM_PART || Object.keys(i.bomFor ?? {}).length > 0),
+    );
+  }, [items, q, current, isLib]);
 
   /**
    * ยังไม่พิมพ์ค้นหา = ต้องมีตัวเลือกให้กดเลย (เจ้าของร้านแจ้ง 23 ก.ย. 69 — เดิมต้องเดาชื่อแล้วพิมพ์เองก่อนถึงเห็นอะไร)
@@ -4733,6 +4840,7 @@ function BomModal({
                     <button type="button" onClick={() => setPick(i)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-50">
                       <Thumb src={images[i.id]} name={i.name} size={28} />
                       <span className="min-w-0 flex-1 truncate text-[13px]">{i.name}</span>
+                      {isLib?.(i) && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] text-slate-500">คลัง</span>}
                       <span className="text-[11px] text-slate-400">{i.unit}</span>
                     </button>
                   </li>

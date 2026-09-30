@@ -72,4 +72,4 @@ for (const sz of SIZES) {
   if (typeof v !== "string" || v !== urlOf(sz.key)) die(`อ่านกลับ ${sz.name} ไม่ตรง: ${v}`);
 }
 if (back.data.savedAt !== d.savedAt) die("savedAt ไม่ตรง");
-console.log(`✓ เขียนแล้ว อ่านกลับตรง 4 ไซซ์ · savedAt=${back.data.savedAt}`);
+console.log(`✓ เขียนแล้ว อ่านกลับตรง 4 ไซส์ · savedAt=${back.data.savedAt}`);

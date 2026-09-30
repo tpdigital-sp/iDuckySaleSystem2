@@ -7,12 +7,12 @@
  *
  * เจ้าของร้านสั่ง 25 ก.ย. 69 "ออกแบบภาพให้ใหม่หน่อย ของกลุ่มขนาด" — ของเดิม (size-s.jpg?v=2) มีปัญหา
  *   1. เสื้อในภาพเป็นเสื้อยืดแร็กแลนสีฟ้าซีด ไม่เหมือนเสื้อจริงในแกลเลอรี (ครีม · คอกลมกรมท่า · แขนฟ้า · แถบหมากรุกที่ชาย)
- *   2. ตัวไซซ์อยู่แค่ในชิปมุมซ้ายบน ย่อลงปุ่ม 80 px แล้ว S/M/L/XL หน้าตาเหมือนกันหมด
+ *   2. ตัวไซส์อยู่แค่ในชิปมุมซ้ายบน ย่อลงปุ่ม 80 px แล้ว S/M/L/XL หน้าตาเหมือนกันหมด
  *   3. บรรทัดวิธีวัดอยู่ชิดขอบล่าง โดนป้ายตัวนับ "7/10" ของแกลเลอรีทับ
- * v3 จึง: วาดเสื้อตามของจริง · ตัวไซซ์เป็นเบอร์ใหญ่บนอกแบบเสื้อกีฬา · เสื้อเล็ก-ใหญ่ตามสัดส่วนจริง
+ * v3 จึง: วาดเสื้อตามของจริง · ตัวไซส์เป็นเบอร์ใหญ่บนอกแบบเสื้อกีฬา · เสื้อเล็ก-ใหญ่ตามสัดส่วนจริง
  *   (ชายเสื้อบรรทัดเดียวกัน + เงาเส้นประของ XL ไว้เทียบ) · ข้อความทั้งหมดอยู่เหนือ 86% ของความสูง
  *
- * ตัวเลขจากตารางไซซ์ของทางร้าน (19 ส.ค. 69 · ทรง SPORT มีถึง XL) หน่วยนิ้ว:
+ * ตัวเลขจากตารางไซส์ของทางร้าน (19 ส.ค. 69 · ทรง SPORT มีถึง XL) หน่วยนิ้ว:
  *   Size       S     M   L     XL
  *   รอบอก      39    42  45    48
  *   ความยาว    22.5  25  27.5  30
@@ -68,13 +68,13 @@ const outlinePath = `M ${-SH.neckHalf} ${SH.neckY} L ${-SH.sleeveX} ${SH.sleeveT
   Q ${SH.bodyHalf} ${SH.hem} ${SH.bodyHalf} ${SH.hem - 22} L ${SH.bodyHalf - 8} ${SH.armpit + 12} L ${SH.cuffX} ${SH.sleeveBot}
   L ${SH.sleeveX} ${SH.sleeveTop} L ${SH.neckHalf} ${SH.neckY} Q 0 ${SH.neckY + 34} ${-SH.neckHalf} ${SH.neckY} Z`;
 
-/** ตำแหน่งบนการ์ด: ชายเสื้อทุกไซซ์อยู่บรรทัดเดียวกัน (HEM_Y) กึ่งกลาง CX */
+/** ตำแหน่งบนการ์ด: ชายเสื้อทุกไซส์อยู่บรรทัดเดียวกัน (HEM_Y) กึ่งกลาง CX */
 const CX = 392;
 const HEM_Y = 672;
 
 const mascot = await mascotDataUri("hello", 360);
 
-/** วาดเสื้อไซซ์หนึ่ง (สเกลตามรอบอก/ความยาวจริงเทียบ XL) */
+/** วาดเสื้อไซส์หนึ่ง (สเกลตามรอบอก/ความยาวจริงเทียบ XL) */
 function shirt(sz) {
   const sx = sz.chest / XL.chest;
   const sy = sz.len / XL.len;
@@ -102,14 +102,14 @@ function shirt(sz) {
     <!-- คอกลมกรมท่า -->
     <ellipse cx="0" cy="${SH.neckY + 12}" rx="${SH.neckHalf + 10}" ry="22" fill="${NAVY}"/>
     <ellipse cx="0" cy="${SH.neckY + 13}" rx="${SH.neckHalf - 4}" ry="12" fill="#ffffff"/>
-    <!-- ลายบนอก: iDUCKY + เบอร์ไซซ์ + เป็ด -->
+    <!-- ลายบนอก: iDUCKY + เบอร์ไซส์ + เป็ด -->
     <image href="${mascot.uri}" x="${-SH.bodyHalf + 18}" y="${SH.hem - 60 - 118}" width="${104 * mascot.ratio}" height="104" preserveAspectRatio="xMidYMax meet"/>
     <polygon points="158,150 164,166 180,168 168,178 171,194 158,186 145,194 148,178 136,168 152,166" fill="#ffdb57" stroke="${NAVY}" stroke-width="2"/>
   `)}
   ${chestPrint(sz)}`;
 }
 
-/** ลาย "iDUCKY" + เบอร์ไซซ์บนอก — วาดในพิกัดการ์ด (ไม่โดนสเกลบี้) ใหญ่เท่าที่อกรับได้ */
+/** ลาย "iDUCKY" + เบอร์ไซส์บนอก — วาดในพิกัดการ์ด (ไม่โดนสเกลบี้) ใหญ่เท่าที่อกรับได้ */
 function chestPrint(sz) {
   const sx = sz.chest / XL.chest;
   const sy = sz.len / XL.len;
@@ -125,7 +125,7 @@ function chestPrint(sz) {
   <text x="${CX + (two ? 36 : 22)}" y="${baseline}" font-family="${TH}" font-size="${F}" font-weight="700" text-anchor="middle" fill="${NAVY}" stroke="${SKY}" stroke-width="7" paint-order="stroke" stroke-linejoin="round">${sz.name}</text>`;
 }
 
-/** เงาเส้นประของ XL ไว้เทียบ (ไซซ์ที่ไม่ใช่ XL) */
+/** เงาเส้นประของ XL ไว้เทียบ (ไซส์ที่ไม่ใช่ XL) */
 function ghostXL(sz) {
   if (sz.key === XL.key) return "";
   const top = HEM_Y - SH.hem;
@@ -176,7 +176,7 @@ function card(sz) {
   <rect x="56" y="56" width="112" height="112" rx="30" fill="url(#chip)"/>
   <text x="112" y="${sz.name.length > 1 ? 133 : 136}" font-family="${TH}" font-size="${sz.name.length > 1 ? 54 : 66}" font-weight="700" text-anchor="middle" fill="#ffffff">${sz.name}</text>
   <text x="192" y="104" font-family="${TH}" font-size="42" font-weight="700" fill="${INK}">เสื้อกีฬา ทรง SPORT</text>
-  <text x="192" y="144" font-family="${TH}" font-size="23" fill="${SUB}">ไซซ์ ${sz.name} · รอบอก ${sz.chest}" (≈ ${cm(sz.chest)} ซม.) · ความยาว ${sz.len}" (≈ ${cm(sz.len)} ซม.)</text>
+  <text x="192" y="144" font-family="${TH}" font-size="23" fill="${SUB}">ไซส์ ${sz.name} · รอบอก ${sz.chest}" (≈ ${cm(sz.chest)} ซม.) · ความยาว ${sz.len}" (≈ ${cm(sz.len)} ซม.)</text>
   <text x="192" y="176" font-family="${TH}" font-size="19" fill="#8aa0b5">รอบอก = วัดรอบตัวช่วงอก · ความยาว = วัดจากบ่าลงถึงชายเสื้อ</text>
 
   ${ghostXL(sz)}
@@ -264,4 +264,4 @@ for (const sz of SIZES) {
   if (typeof v !== "string" || !v.startsWith("https://") || v !== urlOf(sz.key)) die(`อ่านกลับ ${sz.name} ไม่ตรง: ${v}`);
 }
 if (back.data.savedAt !== d.savedAt) die("savedAt อ่านกลับไม่ตรง");
-console.log(`✓ เขียนแล้ว อ่านกลับตรงทั้ง ${SIZES.length} ไซซ์ · savedAt=${back.data.savedAt}`);
+console.log(`✓ เขียนแล้ว อ่านกลับตรงทั้ง ${SIZES.length} ไซส์ · savedAt=${back.data.savedAt}`);

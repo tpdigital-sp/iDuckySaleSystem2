@@ -6,7 +6,7 @@
  *   node scripts/mini-standee-spring-option-art.mjs --write    (+ อัปโหลด storage + เขียน DB + อ่านกลับเทียบ)
  *
  * ผู้ใช้สั่ง 4 ก.ย. 69 — 3 ข้อ:
- *   1. กลุ่ม "ขนาด" (dropdown 6 ไซซ์ 2–2.5 ซม.) → เป็นการ์ด
+ *   1. กลุ่ม "ขนาด" (dropdown 6 ไซส์ 2–2.5 ซม.) → เป็นการ์ด
  *   2. ทำภาพตัวอย่างให้กลุ่มตัวเลือก
  *   3. กลุ่มสกรีนกี่ด้าน ให้เขียนว่า "สกรีน 1 ด้าน" / "สกรีน 2 ด้าน"
  *      (ของเดิมชื่อกลุ่มสะกดผิด "สรีนลาย" ตัวเลือกเป็น "1 ด้าน"/"2 ด้าน" — เปลี่ยนชื่อกลุ่มเป็น
@@ -16,7 +16,7 @@
  *   ก้นสปริงมีกาว 2 หน้า ติดขอบจอ/โต๊ะได้ · โยกเด้งไปมา · ขนาดนับจากด้านที่ยาวที่สุด (terms ของสินค้า)
  *
  * ราคา: ตารางราคาไม่มีแกน (`pricing.cells = {"": [...]}` · driverLabels = []) →
- *   ทุกไซซ์ราคาเท่ากัน และเปลี่ยนชื่อกลุ่ม/ชื่อตัวเลือกได้ ไม่ชนแกนตารางราคา ([[iducky-price-driver-trap]])
+ *   ทุกไซส์ราคาเท่ากัน และเปลี่ยนชื่อกลุ่ม/ชื่อตัวเลือกได้ ไม่ชนแกนตารางราคา ([[iducky-price-driver-trap]])
  *   สคริปต์เช็คซ้ำก่อนเขียนว่า driverLabels ว่างจริงทั้ง pricing และ priceRates ทุกเรท ไม่งั้นหยุด
  *   "2 ด้าน" บวกเพิ่ม 5 บาท (choice.extra) — ยกมาทั้งค่าเดิม ไม่แตะ
  *
@@ -24,7 +24,7 @@
  *   ⚠️ ต้องคั่น toBuffer() ระหว่าง .blur() กับ .threshold() ไม่งั้น threshold ไม่ทำงาน ([[iducky-sharp-blur-threshold]])
  *
  * ⚠️ 6 ตัวเลือก = การ์ดโหมดกระชับ (รูป 48px · ไม่โชว์ desc) → ต่างกันแค่ 0.1 ซม. ดูด้วยตาไม่ออก
- *    ทุกใบจึงมีป้ายเลขไซซ์ตัวใหญ่กลางภาพ + แถบเทียบ 6 ไซซ์สเกลเดียวกันด้านล่าง ([[iducky-option-thumb-crop]])
+ *    ทุกใบจึงมีป้ายเลขไซส์ตัวใหญ่กลางภาพ + แถบเทียบ 6 ไซส์สเกลเดียวกันด้านล่าง ([[iducky-option-thumb-crop]])
  * ⚠️ อัปทับชื่อไฟล์เดิมไม่ได้ (CDN/Next แคช) — แก้ภาพเมื่อไหร่ให้ขึ้นรุ่น VER ใหม่ ([[iducky-image-cache-bust]])
  *
  * รันซ้ำได้: read-modify-write กลุ่มเดิม ไม่ย้ายลำดับกลุ่ม ไม่แตะ pricing/priceRates
@@ -140,15 +140,15 @@ const pill = (cx, y, text, tone = OK, bg = "#ecfeff", fs = 24) => {
 // ── กลุ่ม "ขนาด" ────────────────────────────────────────────────────
 /** ชื่อ choice ต้องตรง DB เป๊ะ ๆ */
 const SIZES = [
-  { choice: "2 cm",   cm: 2.0, tag: "2 ซม.",   strip: "2",   desc: "ไซซ์เล็กสุด · ลายเดี่ยว ตัวคาแรกเตอร์ล้วน ๆ ชัดกว่า" },
-  { choice: "2.1 cm", cm: 2.1, tag: "2.1 ซม.", strip: "2.1", desc: "ใหญ่กว่าไซซ์เล็กสุดนิดเดียว" },
+  { choice: "2 cm",   cm: 2.0, tag: "2 ซม.",   strip: "2",   desc: "ไซส์เล็กสุด · ลายเดี่ยว ตัวคาแรกเตอร์ล้วน ๆ ชัดกว่า" },
+  { choice: "2.1 cm", cm: 2.1, tag: "2.1 ซม.", strip: "2.1", desc: "ใหญ่กว่าไซส์เล็กสุดนิดเดียว" },
   { choice: "2.2 cm", cm: 2.2, tag: "2.2 ซม.", strip: "2.2", desc: "ขนาดกลาง ๆ ของช่วง 2–2.5 ซม." },
   { choice: "2.3 cm", cm: 2.3, tag: "2.3 ซม.", strip: "2.3", desc: "ขนาดกลางค่อนใหญ่" },
   { choice: "2.4 cm", cm: 2.4, tag: "2.4 ซม.", strip: "2.4", desc: "เกือบใหญ่สุด" },
-  { choice: "2.5 cm", cm: 2.5, tag: "2.5 ซม.", strip: "2.5", desc: "ไซซ์ใหญ่สุด · ใส่รายละเอียดลายได้มากที่สุด" },
+  { choice: "2.5 cm", cm: 2.5, tag: "2.5 ซม.", strip: "2.5", desc: "ไซส์ใหญ่สุด · ใส่รายละเอียดลายได้มากที่สุด" },
 ];
 
-/** แถบเทียบ 6 ไซซ์ สเกลเดียวกัน ก้นเสมอกัน — ไฮไลต์ไซซ์ที่เลือก */
+/** แถบเทียบ 6 ไซส์ สเกลเดียวกัน ก้นเสมอกัน — ไฮไลต์ไซส์ที่เลือก */
 const compareStrip = (cur, shapes) => {
   const S2 = 40;               // px ต่อ 1 ซม. (ย่อจากสเกลหลัก)
   const gap = 26;
@@ -171,7 +171,7 @@ const compareStrip = (cur, shapes) => {
   return `
     <line x1="${W / 2 - total / 2 - 16}" y1="${base}" x2="${W / 2 + total / 2 + 16}" y2="${base}" stroke="#e2e8f0" stroke-width="2"/>
     ${parts.join("")}
-    <text x="${W / 2}" y="${722}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">เทียบ 6 ไซซ์ สเกลเดียวกัน · ทุกไซซ์ราคาเท่ากัน</text>`;
+    <text x="${W / 2}" y="${722}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">เทียบ 6 ไซส์ สเกลเดียวกัน · ทุกไซส์ราคาเท่ากัน</text>`;
 };
 
 function sizeCard(s, art, shapes) {
@@ -196,12 +196,12 @@ function sizeCard(s, art, shapes) {
 
   ${dimV(cx - pw / 2 - 34, top, PIECE_BOTTOM - 12, s.tag)}
 
-  <!-- ป้ายไซซ์ตัวใหญ่ — สิ่งเดียวที่ยังอ่านออกตอนย่อเป็นการ์ด 48px -->
+  <!-- ป้ายไซส์ตัวใหญ่ — สิ่งเดียวที่ยังอ่านออกตอนย่อเป็นการ์ด 48px -->
   <rect x="${700 - tagW / 2}" y="${384}" width="${tagW}" height="70" rx="18" fill="#0f172a" opacity="0.10"/>
   <rect x="${700 - tagW / 2}" y="${380}" width="${tagW}" height="70" rx="18" fill="#ffffff" stroke="#a5f3fc" stroke-width="3"/>
   <text x="700" y="${428}" font-family="${TH}" font-size="44" font-weight="800" text-anchor="middle" fill="${INK}">${esc(s.tag)}</text>
   <text x="700" y="${486}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">สปริง + กาว 2 หน้า</text>
-  <text x="700" y="${516}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">เท่ากันทุกไซซ์</text>
+  <text x="700" y="${516}" font-family="${TH}" font-size="21" text-anchor="middle" fill="${SUB}">เท่ากันทุกไซส์</text>
 
   ${compareStrip(s, shapes)}
 </svg>`;
@@ -209,7 +209,7 @@ function sizeCard(s, art, shapes) {
 
 // ── กลุ่ม "สกรีนกี่ด้าน" ─────────────────────────────────────────────
 function screenCard({ title, sub, front, back, backLabel, note }) {
-  const ph = 2.5 * S;                       // ใช้ไซซ์ใหญ่สุดเป็นตัวแสดง
+  const ph = 2.5 * S;                       // ใช้ไซส์ใหญ่สุดเป็นตัวแสดง
   const fw = ph * (front.w / front.h);
   const bw = ph * (back.w / back.h);
   const L = 255, R = 645;
