@@ -1,0 +1,62 @@
+/*
+ * หน้าเข้าสู่ระบบหลังบ้าน — ส่วนเสริมเฉพาะหน้านี้ (prefix .adl-)
+ * ตัวหลักยืมชุด .auth-* จาก (shop)/landing.css ทั้งชุด (พื้นฟ้าจาง+เมฆ · การ์ดกระจก · ช่องกรอกมน · ปุ่ม .btn)
+ * ไฟล์นี้ต้อง import "หลัง" landing.css เพื่อให้ทับค่าเดิมได้ (specificity เท่ากัน = ลำดับชนะ)
+ *
+ * ⚠️ หน้านี้ไม่มีแถบเมนูหน้าร้านด้านบน → .top-stack ที่ดึงตัวเองขึ้น -200px จะทำให้ฟ้าหายไปครึ่งหนึ่ง
+ *    จึงรีเซ็ต margin/padding-top ที่นี่ (กติกาเดียวกับหน้า preview ใน memory iducky-design-system)
+ */
+.dl.auth-page.adl-page{min-height:100svh;display:flex;flex-direction:column}
+.dl.auth-page .adl-stack{margin-top:0;padding-top:0;flex:1;display:flex;flex-direction:column;justify-content:center;
+  padding-bottom:48px;min-height:100svh}
+.dl.auth-page .adl-stack .auth-wrap{padding-block:36px 8px;width:min(100% - 32px,500px)}
+
+/* ป้ายเล็กเหนือหัวเรื่อง — บอกว่านี่คือประตูของทีมงาน ไม่ใช่ลูกค้า */
+.dl .adl-eyebrow{display:inline-flex;align-items:center;gap:7px;margin:0 auto;padding:6px 14px 6px 10px;border-radius:999px;
+  background:var(--sky-100);border:1px solid var(--sky-200);color:var(--blue-deep);
+  font-family:var(--display);font-size:.78rem;line-height:1;letter-spacing:.01em}
+.dl .adl-eyebrow-wrap{display:flex;justify-content:center;margin-top:16px}
+.dl .adl-eyebrow .lock{width:20px;height:20px;border-radius:50%;background:var(--blue-deep);color:#fff;display:grid;place-items:center}
+
+/* ภาพเป็ดนั่งหน้าคอม — ขนาดพอดีการ์ดไม่มีแท็บ */
+.dl .adl-art{width:62%;max-width:214px;margin-top:4px}
+
+/* ป้ายชื่อช่อง — หน้าแอดมินคงป้ายไว้ (ไม่ใช้ placeholder อย่างเดียว) เพราะพนักงานใหม่หลายคนไม่คุ้น */
+.dl .adl-lab{display:block;font-family:var(--display);font-size:.8rem;color:var(--navy);margin:0 0 6px 8px;line-height:1.3}
+.dl .adl-fld{display:block}
+.dl .adl-fld + .adl-fld{margin-top:2px}
+
+/* ปุ่มโชว์/ซ่อนรหัสผ่านที่ปลายช่อง */
+.dl .auth-field.adl-has-eye .auth-input{padding-right:50px}
+.dl .adl-eye{all:unset;position:absolute;right:7px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;
+  display:grid;place-items:center;cursor:pointer;color:var(--navy-soft);transition:background .2s ease,color .2s ease}
+.dl .adl-eye:hover{background:var(--sky-100);color:var(--blue-deep)}
+.dl .adl-eye:focus-visible{outline:3px dashed var(--blue-deep);outline-offset:2px}
+
+/* กล่องเตือนโหมดเดโม (ยังไม่ตั้งค่าฐานข้อมูล) — โทนไข่แดง */
+.dl .auth-msg.warn{background:var(--yolk-soft);color:#7A5200;border:1px solid rgba(255,182,39,.45);text-align:left}
+.dl .auth-msg.warn a{color:var(--navy);font-weight:600;text-decoration:underline}
+
+/* กล่องแจ้งผลอยู่ในฟอร์ม flex → margin:auto จะบีบให้แคบเท่าข้อความ ต้องกางเต็ม */
+.dl .auth-form>.auth-msg{width:100%}
+
+/* ปุ่มหลักกางเต็มความกว้างของฟอร์ม */
+.dl .adl-actions{margin-top:20px}
+.dl .adl-actions .btn{width:min(100%,376px);justify-content:center}
+.dl .adl-actions .btn .dot{position:absolute;right:10px}
+
+/* คำใบ้ท้ายฟอร์ม + ลิงก์กลับ */
+.dl .adl-help{max-width:376px;margin:14px auto 0;text-align:center;font-size:.76rem;color:var(--navy-soft);line-height:1.65}
+.dl .adl-help b{font-weight:600;color:var(--navy)}
+.dl .adl-foot{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:22px;font-size:.8rem}
+.dl .adl-foot a{color:var(--navy-soft);display:inline-flex;align-items:center;gap:6px;transition:color .2s ease}
+.dl .adl-foot a:hover{color:var(--navy);text-decoration:underline}
+.dl .adl-foot .sep{color:var(--sky-300)}
+
+@media (max-width:560px){
+  .dl.auth-page .adl-stack .auth-wrap{padding-top:22px}
+  .dl .auth-card{padding-inline:20px}
+}
+@media (prefers-reduced-motion:reduce){
+  .dl .auth-art,.dl .bg-cloud{animation:none}
+}

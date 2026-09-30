@@ -1,9 +1,18 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAdminSession, signInAdmin } from "@/lib/auth";
+/*
+ * ดีไซน์ (30 ก.ย. 69): ยกเข้าภาษาการออกแบบเดียวกับหน้าแรก/หน้าล็อกอินลูกค้า
+ * ครอบ .dl dl-page auth-page แล้วยืมชุด .auth-* จาก landing.css ทั้งชุด · ส่วนเสริมเฉพาะหน้านี้อยู่ login.css (prefix .adl-)
+ * ⚠️ landing.css ต้องมาก่อน login.css (ลำดับ import = ลำดับทับ)
+ */
+import "@/app/(shop)/landing.css";
+import "./login.css";
 
 /** จำ "ชื่อผู้ใช้" ล่าสุดไว้ในเครื่อง */
 const REMEMBER_KEY = "admin.login.username";
@@ -24,6 +33,7 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [showPw, setShowPw] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   // เติมชื่อผู้ใช้ + รหัสผ่านที่จำไว้ในเครื่อง — เหลือกดปุ่ม "เข้าสู่ระบบ" ปุ่มเดียว
@@ -78,82 +88,153 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-cream px-4">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-lg ring-1 ring-amber-100">
-        <div className="mb-6 text-center">
-          <span className="text-4xl">🦆</span>
-          <h1 className="mt-2 text-xl font-extrabold text-amber-950">เข้าสู่ระบบหลังบ้าน</h1>
-          <p className="mt-1 text-xs text-stone-400">iDucky Prints Studio — สำหรับแอดมิน</p>
-        </div>
+    <div className="dl dl-page auth-page adl-page">
+      <div className="top-stack auth-stack adl-stack">
+        <img className="bg-cloud auth-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud auth-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
+        <img className="bg-cloud auth-c3" src="/landing/cloud.webp" alt="" aria-hidden="true" />
 
-        {configured === false && (
-          <p className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200">
-            ⚠️ ยังไม่ได้ตั้งค่า Firebase — ตอนนี้เป็นโหมดเดโม เข้าหลังบ้านได้เลยไม่ต้องล็อกอิน{" "}
-            <Link href="/admin" className="font-bold underline">
-              ไปหลังบ้าน →
-            </Link>
-          </p>
-        )}
+        <div className="auth-wrap">
+          <div className="auth-card">
+            <div className="adl-eyebrow-wrap">
+              <span className="adl-eyebrow">
+                <span className="lock" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8.4 11V8.8a3.6 3.6 0 0 1 7.2 0V11M7.6 11h8.8a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H7.6a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z" />
+                  </svg>
+                </span>
+                สำหรับทีมงาน iDucky
+              </span>
+            </div>
 
-        {/* method/action ใส่ไว้เป็น "ป้ายบอก" ตัวจำรหัสของ Safari ว่านี่คือฟอร์มล็อกอินจริง (JS ยิง API เองผ่าน onSubmit) */}
-        <form onSubmit={handleSubmit} method="post" action="/admin" className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-xs font-bold text-stone-600">ชื่อผู้ใช้ (username)</span>
-            <input
-              type="text"
-              name="username"
-              id="admin-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              required
-              className="w-full rounded-xl bg-stone-50 px-4 py-2.5 text-sm ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-ducky"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-bold text-stone-600">รหัสผ่าน</span>
-            <input
-              ref={passwordRef}
-              type="password"
-              name="password"
-              id="admin-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-              className="w-full rounded-xl bg-stone-50 px-4 py-2.5 text-sm ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-ducky"
-            />
-          </label>
+            {/* เป็ดนั่งหน้าคอม — ภาพเดียวกับหน้าล็อกอินลูกค้า */}
+            <img src="/account/duck-login.svg" alt="" className="auth-art adl-art" width={408} height={317} />
+            <h1 className="auth-h1">
+              เข้าสู่ระบบ<em>หลังบ้าน</em>
+            </h1>
+            <p className="auth-sub">ระบบจัดการร้าน iDucky Prints Studio · สำหรับแอดมินและพนักงาน</p>
 
-          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-stone-500">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4 accent-amber-500"
-            />
-            จำการเข้าสู่ระบบในเครื่องนี้ — ครั้งหน้าไม่ต้องพิมพ์ใหม่
-          </label>
+            {configured === false && (
+              <p className="auth-msg warn">
+                ⚠️ ยังไม่ได้ตั้งค่าฐานข้อมูล — ตอนนี้เป็นโหมดเดโม เข้าหลังบ้านได้เลยไม่ต้องล็อกอิน{" "}
+                <Link href="/admin">ไปหลังบ้าน →</Link>
+              </p>
+            )}
 
-          {error && (
-            <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200">
-              ⚠️ {error}
+            {/* method/action ใส่ไว้เป็น "ป้ายบอก" ตัวจำรหัสของ Safari ว่านี่คือฟอร์มล็อกอินจริง (JS ยิง API เองผ่าน onSubmit) */}
+            <form onSubmit={handleSubmit} method="post" action="/admin" className="auth-form">
+              <div className="adl-fld">
+                <label htmlFor="admin-username" className="adl-lab">
+                  ชื่อผู้ใช้ (username)
+                </label>
+                <span className="auth-field">
+                  <FieldIcon name="user" />
+                  <input
+                    type="text"
+                    name="username"
+                    id="admin-username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="เช่น champ"
+                    required
+                    className="auth-input"
+                  />
+                </span>
+              </div>
+              <div className="adl-fld">
+                <label htmlFor="admin-password" className="adl-lab">
+                  รหัสผ่าน
+                </label>
+                <span className="auth-field adl-has-eye">
+                  <FieldIcon name="lock" />
+                  <input
+                    ref={passwordRef}
+                    type={showPw ? "text" : "password"}
+                    name="password"
+                    id="admin-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    required
+                    className="auth-input"
+                  />
+                  <button
+                    type="button"
+                    className="adl-eye"
+                    onClick={() => setShowPw((v) => !v)}
+                    aria-label={showPw ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                    aria-pressed={showPw}
+                    title={showPw ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                  >
+                    <EyeIcon off={showPw} />
+                  </button>
+                </span>
+              </div>
+
+              <div className="auth-row">
+                <label className="auth-check">
+                  <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                  จำการเข้าสู่ระบบในเครื่องนี้
+                </label>
+              </div>
+
+              {error && (
+                <p className="auth-msg err" role="alert">
+                  ⚠️ {error}
+                </p>
+              )}
+
+              <div className="auth-actions adl-actions">
+                <button type="submit" disabled={loading} className="btn btn-yolk">
+                  {loading ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"} <span className="dot">→</span>
+                </button>
+              </div>
+            </form>
+
+            <p className="adl-help">
+              ลืมรหัสผ่าน? แจ้ง<b>เจ้าของร้าน</b>ตั้งรหัสใหม่ให้ได้ที่หน้า “พนักงาน”
             </p>
-          )}
+          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-full bg-amber-950 px-6 py-3 text-sm font-bold text-ducky shadow-lg transition hover:bg-stone-800 disabled:opacity-50"
-          >
-            {loading ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
-          </button>
-        </form>
-
-        <Link href="/" className="mt-4 block text-center text-xs text-stone-400 hover:text-amber-600">
-          ← กลับหน้าร้าน
-        </Link>
+          <div className="adl-foot">
+            <Link href="/">← กลับหน้าร้าน</Link>
+            <span className="sep" aria-hidden="true">
+              ·
+            </span>
+            <Link href="/account/login">เข้าสู่ระบบสมาชิก (ลูกค้า)</Link>
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+/** ไอคอนวงกลมฟ้าหน้าช่องกรอก — ชุดเดียวกับหน้าล็อกอินลูกค้า */
+function FieldIcon({ name }: { name: "user" | "lock" }) {
+  const d =
+    name === "user"
+      ? "M12 12a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm-5.6 6.4a5.6 5.6 0 0 1 11.2 0"
+      : "M8.4 11V8.8a3.6 3.6 0 0 1 7.2 0V11M7.6 11h8.8a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H7.6a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z";
+  return (
+    <span className="ico" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d={d} />
+      </svg>
+    </span>
+  );
+}
+
+/** ตา = แสดงรหัส · ตาขีดทับ = ซ่อน */
+function EyeIcon({ off }: { off: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.8" />
+      {off && <path d="M4 4l16 16" />}
+    </svg>
   );
 }
