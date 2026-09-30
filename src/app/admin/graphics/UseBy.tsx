@@ -16,7 +16,7 @@ const YMD = /^\d{4}-\d{2}-\d{2}$/;
  * ช่วงวันส่งของใบนี้ (YYYY-MM-DD) — เอาที่แอดมินตั้งไว้ใน Order.shipDate ก่อน
  * ใบเก่าที่ยังไม่มี shipDate แต่มีวันใช้งาน → คิดให้ตามกติกาเดียวกับตอนสร้างออเดอร์ (ก่อนใช้งาน 1–2 วันทำการ)
  */
-export function shipRangeOf(o: Order): { from: string; to: string; auto: boolean } | null {
+export function shipRangeOf(o: Pick<Order, "shipDate" | "useByDate">): { from: string; to: string; auto: boolean } | null {
   const from = YMD.test(o.shipDate?.from ?? "") ? o.shipDate!.from! : "";
   const to = YMD.test(o.shipDate?.to ?? "") ? o.shipDate!.to! : "";
   if (from || to) return { from: from || to, to: to || from, auto: false };

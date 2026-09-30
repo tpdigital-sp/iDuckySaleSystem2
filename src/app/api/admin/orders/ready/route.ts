@@ -16,8 +16,8 @@ export const runtime = "nodejs";
  * POST { id, on } → { ok, readyToShip? }
  */
 export async function POST(req: Request) {
-  // คนที่ยืนหน้าเครื่อง/แพ็ค + แอดมิน — กราฟฟิกไม่ติ๊ก (ไม่ใช่คนเห็นของจริง)
-  const gate = await requirePerm(["orders.edit", "pack.check", "pack.ship"]);
+  // ฝ่ายผลิต (wip.view) + คนหน้าแพ็ค + แอดมิน — กราฟฟิกไม่ติ๊ก (ไม่ใช่คนเห็นของจริง)
+  const gate = await requirePerm(["wip.view", "orders.edit", "pack.check", "pack.ship"]);
   if (gate.res) return gate.res;
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });

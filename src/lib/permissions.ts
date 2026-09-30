@@ -21,6 +21,13 @@ export const DEPT_CONTENT = "คอนเทนต์";
 export const DEPT_GRAPHIC = "กราฟฟิก";
 /** แผนกหัวหน้า/ผู้บริหาร (ค่าใน Firestore เขียนเป็นอังกฤษ "Leadership") */
 export const DEPT_LEADERSHIP = "Leadership";
+/**
+ * 🏭 แผนกฝ่ายผลิต (ชื่อตรงกับ employees2 ของ TP ณ 30 ก.ย. 69) — ล็อกอินด้วยบัญชี TP เดิม
+ * ได้สิทธิ์เดียวคือ wip.view: เข้าหน้ารายงานงานค้าง (/admin/reports/wip) + ติ๊ก "งานเสร็จพร้อมส่ง" · หน้าอื่นเข้าไม่ได้
+ * (เจ้าของร้านกำหนดขอบเขต 30 ก.ย. 69: "ดูได้อย่างเดียว ติ๊กงานเสร็จได้ เข้าได้แค่หน้านี้หน้าเดียว")
+ * แผนกใหม่ที่ยังไม่อยู่ในนี้ → เปิดได้ที่ ตั้งค่าระบบ → บทบาท โดยไม่ต้องแก้โค้ด
+ */
+export const DEPT_PRODUCTION: string[] = ["กระดาษ/สตก.", "uv(goods)", "uv(acrylic)", "ซับลิเมชั่น", "เย็บผ้า", "ประกอบงาน", "QC", "ปัก"];
 /** พนักงานที่ยังทำงานอยู่เท่านั้นถึงล็อกอินได้ (allowlist — สถานะอื่นปิดไว้ก่อน) */
 export const WORK_STATUS_ACTIVE = "working";
 
@@ -85,11 +92,18 @@ export type Perm =
    * เห็นทั้งร้านรวดเดียว — ยอดขาย ส่วนลดที่จ่ายไป ต้นทุน กำไร ลูกค้ารายใหญ่
    * ค่าเริ่มต้นให้เฉพาะเจ้าของร้าน/หัวหน้า · เปิดให้แผนกอื่นได้ที่ ตั้งค่าระบบ → บทบาท
    */
-  | "reports.view";
+  | "reports.view"
+  /**
+   * 🏭 รายงานงานค้าง โอนแล้ว→กำลังผลิต (/admin/reports/wip) + ติ๊ก "งานเสร็จพร้อมส่งแล้ว"
+   * สิทธิ์เดียวของฝ่ายผลิต — เห็นเฉพาะเลขที่/ชื่อลูกค้า/รายการ/วันส่ง ไม่เห็นเบอร์ ยอดเงิน หน้าออเดอร์ หรือเมนูอื่น
+   * (ข้อมูลผ่าน /api/admin/orders/wip ซึ่งตัดฟิลด์ให้ตามสิทธิ์ · ไม่ใช่ /api/admin/orders)
+   */
+  | "wip.view";
 
 /** สิทธิ์ของพนักงานฝ่ายแอดมิน (ออฟฟิศ — ดูแลลูกค้า/ออเดอร์/งานแบบ) */
 const STAFF_ADMIN: Perm[] = [
   "admin.access",
+  "wip.view",
   "orders.view",
   "orders.viewAll",
   "orders.money",
@@ -107,7 +121,10 @@ const STAFF_ADMIN: Perm[] = [
 ];
 
 /** สิทธิ์ของพนักงานฝ่ายแพ็คของ (หน้างาน — ตรวจนับ ยิงเลขพัสดุ) */
-const STAFF_PACKING: Perm[] = ["admin.access", "orders.view", "pack.check", "pack.ship"];
+const STAFF_PACKING: Perm[] = ["admin.access", "orders.view", "pack.check", "pack.ship", "wip.view"];
+
+/** 🏭 สิทธิ์ของฝ่ายผลิต — หน้ารายงานงานค้างหน้าเดียว (ดู + ติ๊กงานเสร็จ) ไม่มี admin.access จึงไม่เห็นเมนูอื่น */
+const STAFF_PRODUCTION: Perm[] = ["wip.view"];
 
 /** สิทธิ์ของพนักงานฝ่ายคอนเทนต์ (ดูแลหน้าเว็บ — เพิ่ม/แก้สินค้า ราคา ตัวเลือก นำเข้าจาก URL) */
 const STAFF_CONTENT: Perm[] = [
@@ -124,6 +141,7 @@ const STAFF_CONTENT: Perm[] = [
  */
 const STAFF_GRAPHIC: Perm[] = [
   "admin.access",
+  "wip.view",
   "orders.view",
   "orders.viewAll",
   "proof.manage",
@@ -151,6 +169,7 @@ export const DEFAULT_ROLE_PERMS: RolePermsMap = {
   [DEPT_CONTENT]: STAFF_CONTENT,
   [DEPT_GRAPHIC]: STAFF_GRAPHIC,
   [DEPT_LEADERSHIP]: STAFF_LEADERSHIP,
+  ...Object.fromEntries(DEPT_PRODUCTION.map((d) => [d, STAFF_PRODUCTION])),
 };
 
 /** กรองค่าจาก DB ให้เหลือเฉพาะสิทธิ์ที่ระบบรู้จัก (กันข้อมูลเก่า/พิมพ์ผิด) */
@@ -218,6 +237,7 @@ export const ALL_PERMS: Perm[] = [
   "dealers.manage",
   "staff.manage",
   "reports.view",
+  "wip.view",
 ];
 
 /** คำอธิบายสิทธิ์แต่ละตัว (ไว้แสดงหน้าตั้งค่า → แท็บบทบาท) — จัดกลุ่มเพื่ออ่านง่าย */
@@ -243,6 +263,7 @@ export const PERM_INFO: { group: string; perms: { perm: Perm; label: string }[] 
       { perm: "proof.manage", label: "อัปโหลด/ลบภาพแบบงาน + ติ๊กงานตัวอย่าง (งานกราฟฟิก)" },
       { perm: "pack.check", label: "ตรวจนับของ · ยืนยันอ่านรายละเอียด · ยืนยันใส่งานตัวอย่าง" },
       { perm: "pack.ship", label: "ยิงเลขพัสดุเข้าระบบ (ต้องผ่านด่านตรวจครบ ข้ามเองไม่ได้)" },
+      { perm: "wip.view", label: "🏭 รายงานงานค้าง โอนแล้ว→ผลิต + ติ๊ก \"งานเสร็จพร้อมส่ง\" (ฝ่ายผลิต: หน้าเดียว ไม่เห็นเบอร์/ยอดเงิน/ออเดอร์)" },
     ],
   },
   {

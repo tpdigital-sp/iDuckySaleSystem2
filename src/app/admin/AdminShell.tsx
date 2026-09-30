@@ -28,7 +28,7 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/price-links", label: "ลิงก์ราคา", emoji: "🔗", perm: "admin.access", group: "งานขาย" },
   { href: "/admin/reports", label: "รายงานยอดขาย", emoji: "📈", perm: "reports.view", group: "งานขาย" },
   // 🗂 ชั่วคราว (พนักงานขอ 30 ก.ย. 69): ใบที่เงินเข้าแล้วแต่ยังไม่ส่งของ เรียงตามวันจัดส่ง — ถอดได้เมื่อรายงานหลักครอบแล้ว
-  { href: "/admin/reports/wip", label: "งานค้าง โอนแล้ว→ผลิต", emoji: "🗂", perm: "orders.view", group: "งานขาย" },
+  { href: "/admin/reports/wip", label: "งานค้าง โอนแล้ว→ผลิต", emoji: "🗂", perm: "wip.view", group: "งานขาย" },
   // 🎨 งานแบบ — ฝ่ายกราฟฟิกเปิดหมวดนี้หมวดเดียวก็ทำงานได้ครบ
   { href: "/admin/graphics", label: "ออเดอร์กราฟฟิก", emoji: "🎨", perm: "proof.manage", group: "กราฟฟิก" },
   { href: "/admin/graphics/designs", label: "รายงานแบบงาน", emoji: "📋", perm: "proof.manage", group: "กราฟฟิก" },
@@ -521,6 +521,15 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       active = false;
     };
   }, [isLoginPage, pathname, router, sessionTry]);
+
+  /**
+   * 🏭 ฝ่ายผลิต (มีแค่ wip.view) — หลังล็อกอินตกมาที่ /admin (หน้าภาพรวมที่เขาเปิดไม่ได้) → พาไปหน้ารายงานงานค้างเลย
+   * ต้องอยู่เหนือ early return ทุกตัว (กติกา hooks)
+   */
+  const wipOnly = permsReady && allowed && !isAdministrator && perms.includes("wip.view") && !perms.includes("orders.view");
+  useEffect(() => {
+    if (wipOnly && pathname === "/admin") router.replace("/admin/reports/wip");
+  }, [wipOnly, pathname, router]);
 
   async function handleSignOut() {
     await signOut();
