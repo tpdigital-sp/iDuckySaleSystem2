@@ -1810,6 +1810,9 @@ export default function StockPage() {
                         )}
                         {(() => {
                           // ของที่โดนหักคู่กันในออเดอร์เดียว — มองจากตัวเลือกเดียวกันของสินค้าเดียวกัน + วัสดุแฝงของสินค้านั้น
+                          const usesHere = live[it.id] ?? [];
+                          // ของที่ใช้ร่วมหลายสินค้า (ตะขอ/สีไหม) ไม่ขึ้นบรรทัดนี้ — ชื่อ SKU ตัวอื่น ("พวงกุญแจกล่องดนตรี") ดูเหมือนชื่อสินค้า เจ้าของร้านงง 1 ต.ค. 69
+                          if (usesHere.some((u) => u.kind === "preset") || new Set(usesHere.filter((u) => u.kind !== "preset").map((u) => u.productId)).size >= 3) return null;
                           if (nest) return null; // แถวที่ห้อยอยู่แล้วบอกอยู่ในตัวว่าตัดคู่กับแถวบน ไม่ต้องย้ำ
                           const with1: string[] = [];
                           const maybe: { id: string; cond?: string }[] = [];
@@ -1832,7 +1835,7 @@ export default function StockPage() {
                             <span className="mt-1 block space-y-0.5 text-[11.5px] leading-snug" style={{ color: "var(--dk-navy-soft)" }}>
                               {w.length > 0 && (
                                 <span className="block">
-                                  🔗 ตัดพร้อมกับ <b className="font-semibold">{w.map(shortName).join(", ")}</b>
+                                  🔗 วัสดุอื่นที่ถูกตัดพร้อมกัน: <b className="font-semibold">{w.map(shortName).join(", ")}</b>
                                 </span>
                               )}
                               {maybe.map((m) => (
@@ -1969,6 +1972,8 @@ export default function StockPage() {
                     if (!h.img && img) h.img = img;
                     for (const x of us) h.products.add(x.productName);
                     for (const x of pus) for (const nm of x.usedByNames ?? []) h.products.add(nm);
+                    // สินค้าที่ตั้งชื่อกลุ่มต่าง ("ตะขอ / ห่วง") แต่ค่าเดียวกัน — นับรวม ไม่งั้นตัวเลข 10 กับ 11 ไม่ตรงกัน
+                    for (const x of live[r.id] ?? []) if (x.kind === "choice" && x.choice === u.choice) h.products.add(x.productName);
                     const all = [...pus, ...us];
                     const conds = [...new Set(all.map((x) => x.cond).filter((c): c is string => !!c))];
                     const per = all.find((x) => x.per && x.per !== 1)?.per;
@@ -4872,9 +4877,11 @@ function LinkCell({
       const per = u.per && u.per !== 1 ? ` ×${u.per}` : "";
       add(u.bom ? `bom${per}` : `all${per}`, { main: u.bom ? `ทุกชิ้น${per}` : `ทุกออเดอร์${per}`, preset: false, kind: u.bom ? "bom" : "all" }, [u.productName]);
     } else if (u.kind === "preset") {
-      add(`${u.label}=${u.choice}|${u.cond ?? ""}`, { main: `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`, cond: u.cond, preset: true, kind: "cond" }, u.usedByNames ?? [], true);
+      // คีย์ = ค่า + เงื่อนไข (ไม่สนชื่อกลุ่ม — สินค้าบางตัวตั้งชื่อกลุ่ม "ตะขอ / ห่วง" แต่คือตัวเลือกเดียวกัน) · ชื่อกลุ่มจากคลังกลางชนะ
+      add(`${u.choice}|${u.cond ?? ""}`, { main: `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`, cond: u.cond, preset: true, kind: "cond" }, u.usedByNames ?? [], true);
+      lines.get(`${u.choice}|${u.cond ?? ""}`)!.main = `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`;
     } else {
-      add(`${u.label}=${u.choice}|${u.cond ?? ""}`, { main: `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`, cond: u.cond, preset: false, kind: "cond" }, [u.productName]);
+      add(`${u.choice}|${u.cond ?? ""}`, { main: `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`, cond: u.cond, preset: false, kind: "cond" }, [u.productName]);
     }
   }
   const hereName = inProductId ? usage.find((u): u is Extract<StockUsage, { kind: "choice" | "product" }> => u.kind !== "preset" && u.productId === inProductId)?.productName : undefined;
