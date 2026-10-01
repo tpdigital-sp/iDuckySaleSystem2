@@ -85,3 +85,43 @@ export function renameChoiceInProduct(p: Product, optionIndex: number, oldName: 
     ...(rules ? { rules } : {}),
   };
 }
+
+/**
+ * 🔗 เปลี่ยนชื่อตัวเลือกใน "คลังตัวเลือกกลาง" แล้วลากสินค้าที่ลิงก์คลังนั้นตาม — กลุ่มที่ลิงก์คลังเก็บ choices เป็นสำเนา และ
+ * showWhen/กฎ/ราคาในสินค้าอ้างชื่อตัวเลือกนั้นตรง ๆ · เปลี่ยนที่คลังอย่างเดียว = กลุ่มสีตะขอหายจากหน้าร้านเงียบ ๆ
+ * (1 ต.ค. 69: เจ้าของร้านย่อชื่อ "G ตะขอสปริงพลาสติก (หลายสี)" → "G (หลายสี)" ที่ /admin/options แล้วสีตะขอ G/H/I หายทั้ง 5 สินค้า)
+ * คืนสินค้าเดิม (อ้างอิงเดิม) ถ้าไม่มีกลุ่มที่ลิงก์คลังนี้
+ */
+export function renamePresetChoiceInProduct(p: Product, presetId: string, oldName: string, newName: string): Product {
+  let out = p;
+  (p.options ?? []).forEach((o, i) => {
+    if (o.presetId === presetId) out = renameChoiceInProduct(out, i, oldName, newName);
+  });
+  return out;
+}
+
+/**
+ * คู่ชื่อที่เปลี่ยนระหว่างคลังเวอร์ชันเก่า→ใหม่ — จับคู่ตามลำดับเมื่อจำนวนเท่ากัน · ไม่เท่ากัน (เพิ่ม/ลบ) จับคู่ด้วย "รหัสนำหน้า" (G / AA)
+ * คืนเฉพาะคู่ที่ชื่อเปลี่ยนจริงและชื่อเก่าไม่มีในชุดใหม่แล้ว (กันสลับที่กันเฉย ๆ)
+ */
+export function presetRenames(oldChoices: { name: string }[], newChoices: { name: string }[]): [string, string][] {
+  const o = oldChoices.map((c) => c.name.trim()).filter(Boolean);
+  const n = newChoices.map((c) => c.name.trim()).filter(Boolean);
+  const newSet = new Set(n);
+  const pairs: [string, string][] = [];
+  if (o.length === n.length) {
+    o.forEach((a, i) => {
+      if (a !== n[i] && !newSet.has(a)) pairs.push([a, n[i]]);
+    });
+    return pairs;
+  }
+  const code = (s: string) => s.split(/\s+/)[0] ?? "";
+  const byCode = new Map<string, string[]>();
+  for (const b of n) (byCode.get(code(b)) ?? byCode.set(code(b), []).get(code(b))!).push(b);
+  for (const a of o) {
+    if (newSet.has(a)) continue;
+    const cands = byCode.get(code(a)) ?? [];
+    if (cands.length === 1) pairs.push([a, cands[0]]);
+  }
+  return pairs;
+}
