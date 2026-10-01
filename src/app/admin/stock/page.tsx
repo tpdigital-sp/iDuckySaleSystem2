@@ -1994,7 +1994,7 @@ export default function StockPage() {
                                   <Tag tone="sky">{optionLabel}</Tag>
                                 </span>
                                 <span className="mt-0.5 block text-[12px]" style={{ color: "var(--dk-faint)" }}>
-                                  ตัวเลือก {optionLabel} ของ {[...h.products].join(" · ")} — แยกสต๊อกตามค่าที่ลูกค้าเลือก ดูด้านล่าง
+                                  ตัวเลือก {optionLabel} · ใช้กับ {fmtN(h.products.size)} สินค้า{h.products.size ? `: ${[...h.products].slice(0, 4).join(", ")}${h.products.size > 4 ? ` +${h.products.size - 4}` : ""}` : ""} — แยกสต๊อกตามค่าที่ลูกค้าเลือก ดูด้านล่าง
                                 </span>
                               </span>
                             </div>
@@ -4855,47 +4855,58 @@ function LinkCell({
         {hasSuggest && <span className="text-[11px]" style={{ color: "var(--dk-navy-soft)" }}>มีคู่ที่น่าจะใช่ — กดเพื่อผูก</span>}
       </span>
     );
-  const MAX = 3;
-  const line = (u: StockUsage) => {
-    const here = u.kind !== "preset" && !!inProductId && u.productId === inProductId;
-    if (u.kind === "product")
-      return u.bom
-        ? { main: `${here ? "สินค้านี้ทุกชิ้น" : `ทุกชิ้นของ ${u.productName}`}${u.per && u.per !== 1 ? ` ×${u.per}` : ""}`, sub: "วัสดุแฝง — ไม่มีในตัวเลือก" }
-        : {
-            main: `${here ? "ทุกออเดอร์ของสินค้านี้" : `ทุกออเดอร์ของ ${u.productName}`}${u.per && u.per > 1 ? ` ×${u.per}` : ""}`,
-            sub: u.per && u.per > 1 ? "งานขายเป็นเซ็ต — ขาย 1 ที่ ตัดหลายหน่วย" : "",
-          };
-    if (u.kind === "preset")
-      return {
-        main: `${u.label} = ${u.choice}`,
-        // ชื่อสินค้าที่ใช้คลังนี้ (เจ้าของร้านขอเห็น 1 ต.ค. 69) — เกิน 6 ตัวย่อเป็น +N
-        sub: `${u.cond ? `เฉพาะเมื่อ ${u.cond} · ` : ""}คลังกลาง · ใช้กับ ${u.usedBy} สินค้า${u.usedByNames?.length ? `: ${u.usedByNames.slice(0, 6).join(", ")}${u.usedByNames.length > 6 ? ` +${u.usedByNames.length - 6}` : ""}` : ""}`,
-      };
-    return {
-      main: `${here ? "" : `${u.productName} · `}${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`,
-      sub: u.cond ? `เฉพาะเมื่อ ${u.cond}` : "",
-    };
+  /**
+   * รวมลิงก์ที่ "เงื่อนไขเดียวกัน" เป็นบรรทัดเดียว แล้วไล่ชื่อสินค้าชุดเดียว (เจ้าของร้าน 1 ต.ค. 69: ลิงก์คลังกลาง + ลิงก์ในสินค้า 6 ตัว
+   * ขึ้นคนละบรรทัด ชื่อสินค้าไม่เหมือนกัน "งง") — คลังกลางกับลิงก์ในสินค้าตัดด้วยเงื่อนไขเดียวกัน จึงเป็นเรื่องเดียวกันสำหรับคนดู
+   * ผลิตภัณฑ์ที่กำลังดูอยู่ (inProductId) เรียกว่า "สินค้านี้" และขึ้นก่อน
+   */
+  type Line = { key: string; main: string; cond?: string; products: Set<string>; preset: boolean; kind: "cond" | "all" | "bom" };
+  const lines = new Map<string, Line>();
+  const add = (key: string, init: Omit<Line, "products" | "key">, names: string[], preset = false) => {
+    const l = lines.get(key) ?? lines.set(key, { key, ...init, products: new Set() }).get(key)!;
+    for (const n of names) l.products.add(n);
+    if (preset) l.preset = true;
   };
+  for (const u of usage) {
+    if (u.kind === "product") {
+      const per = u.per && u.per !== 1 ? ` ×${u.per}` : "";
+      add(u.bom ? `bom${per}` : `all${per}`, { main: u.bom ? `ทุกชิ้น${per}` : `ทุกออเดอร์${per}`, preset: false, kind: u.bom ? "bom" : "all" }, [u.productName]);
+    } else if (u.kind === "preset") {
+      add(`${u.label}=${u.choice}|${u.cond ?? ""}`, { main: `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`, cond: u.cond, preset: true, kind: "cond" }, u.usedByNames ?? [], true);
+    } else {
+      add(`${u.label}=${u.choice}|${u.cond ?? ""}`, { main: `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`, cond: u.cond, preset: false, kind: "cond" }, [u.productName]);
+    }
+  }
+  const hereName = inProductId ? usage.find((u): u is Extract<StockUsage, { kind: "choice" | "product" }> => u.kind !== "preset" && u.productId === inProductId)?.productName : undefined;
+  const nameList = (set: Set<string>, max = 5) => {
+    const arr = [...set].sort((a, b) => (a === hereName ? -1 : b === hereName ? 1 : a.localeCompare(b, "th"))).map((n) => (n === hereName ? "สินค้านี้" : n));
+    return arr.length <= max ? arr.join(", ") : `${arr.slice(0, max).join(", ")} +${arr.length - max}`;
+  };
+  const list = [...lines.values()];
+  const MAX = 3;
   return (
     <span className="block min-w-0 space-y-1">
-      {usage.slice(0, MAX).map((u, i) => {
-        const l = line(u);
-        return (
-          <span key={i} className="block break-words leading-snug">
-            <span className="block text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
-              ตัดเมื่อ {l.main}
-            </span>
-            {l.sub && (
-              <span className="block text-[11px]" style={{ color: u.kind === "choice" && u.cond ? "var(--dk-yolk-ink)" : "var(--dk-faint)" }}>
-                {l.sub}
-              </span>
-            )}
+      {list.slice(0, MAX).map((l) => (
+        <span key={l.key} className="block break-words leading-snug">
+          <span className="block text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+            {l.kind === "cond" ? `ตัดเมื่อ ${l.main}` : l.kind === "bom" ? `วัสดุแฝง — ตัด${l.main}ของ ${nameList(l.products)}` : `ตัด${l.main}ของ ${nameList(l.products)}`}
           </span>
-        );
-      })}
-      {usage.length > MAX && (
+          {l.cond && (
+            <span className="block text-[11px]" style={{ color: "var(--dk-yolk-ink)" }}>
+              เฉพาะเมื่อ {l.cond}
+            </span>
+          )}
+          {l.kind === "cond" && (
+            <span className="block text-[11px]" style={{ color: "var(--dk-faint)" }}>
+              ใช้กับ {fmtN(l.products.size)} สินค้า{l.products.size ? `: ${nameList(l.products)}` : ""}
+              {l.preset ? " · ผ่านคลังกลาง" : ""}
+            </span>
+          )}
+        </span>
+      ))}
+      {list.length > MAX && (
         <span className="block text-[11px]" style={{ color: "var(--dk-faint)" }}>
-          +{usage.length - MAX} จุด — กดแถวเพื่อดูทั้งหมด
+          +{list.length - MAX} เงื่อนไข — กดแถวเพื่อดูทั้งหมด
         </span>
       )}
     </span>
