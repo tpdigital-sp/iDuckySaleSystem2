@@ -12,6 +12,7 @@ import {
 import { SITE_URL } from "@/lib/shop-info";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec } from "@/lib/server/price-answer";
+import { priceSearch } from "@/lib/server/price-search";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -150,7 +151,21 @@ export async function POST(req: Request) {
   // ขั้นวิเคราะห์คำถามด้วย Gemini ก่อน (Smart Preprocessing แบบ chat.html)
   // — แยกสินค้า/วัสดุ/จำนวน/ประเภทคำถาม + เลือกหัวข้อ KB · ล้มเหลว = null แล้วใช้จับคู่คำแทน
   const kbTitles = await getKbTitleCandidates(message).catch(() => []);
-  const parsed = await parseCustomerMessage(message, kbTitles, convo);
+  // ⚡ 1 ต.ค. 69 "ตอบไวขึ้น": ถามเครื่องคิดเงิน+ชั้นเข้าใจคำถามของเว็บ (ชุดเดียวกับ LINE · เห็นบทสนทนาสองฝั่งจากหน้าจอ)
+  // ควบคู่กับชั้นวิเคราะห์เดิม ไม่ต่อคิวกัน — เว็บตอบได้ (ราคา/ตัวเลือก/ข้อมูลหน้าสินค้า/คละลาย/ไม่มีของ) = ตอบเลย ไม่ไป n8n
+  const siteHistory = (body.history ?? [])
+    .filter((t) => typeof t?.text === "string" && t.text.trim())
+    .slice(-14)
+    .map((t) => ({ role: t.role === "shop" ? "assistant" : "user", text: String(t.text).trim().slice(0, 400) }));
+  const [parsed, site] = await Promise.all([
+    parseCustomerMessage(message, kbTitles, convo),
+    isOpener(message) ? Promise.resolve(null) : priceSearch({ query: message, history: siteHistory, noFallback: true }).catch(() => null),
+  ]);
+  const siteBody = (site?.body ?? null) as { found?: boolean; intent?: string; answer?: string } | null;
+  const siteVia =
+    siteBody?.found && siteBody.answer && /^(price|spec|info|mix|not_in_catalog|draft_product)/.test(String(siteBody.intent ?? ""))
+      ? String(siteBody.intent)
+      : "";
   /** ยังไม่ได้ถามอะไรจริง — ห้ามเดาว่าถามเรื่องเดิมต่อ (ดู isOpener) */
   const opener = isOpener(message) || isGreeting(parsed);
 
@@ -223,7 +238,12 @@ export async function POST(req: Request) {
   let priceFacts = "";
   /** ตารางราคาดิบที่เว็บคิดเอง — ใช้ตอบลูกค้าตรง ๆ โดยไม่ต้องพึ่ง agent */
   let priceText = "";
-  if (!opener && (isPricingQuestion(parsed) || !parsed)) {
+  if (siteVia) {
+    priceText = String(siteBody?.answer ?? "");
+    priceFacts =
+      "\n[ราคาจริงจากระบบเว็บร้าน - ตัวเลขชุดนี้คือราคาที่ลูกค้าจะจ่ายจริงตอนกดสั่งบนเว็บ ให้ยึดชุดนี้ก่อนผลจาก search_pricing เสมอ]\n" +
+      `${priceText}\n`;
+  } else if (!opener && (isPricingQuestion(parsed) || !parsed)) {
     const found = await searchPrice(`${message} ${parsed?.search_query ?? ""}`.trim(), {
       // ⚠️ จำนวนต้องเอาจาก slots หรือข้อความ "ต้นฉบับ" — search_query ที่ชั้นวิเคราะห์เรียบเรียงใหม่
       // มักตัดจำนวนทิ้ง พอไม่มีจำนวนระบบจะกางขั้นบันไดทั้งตารางแทนที่จะตอบยอดรวมของจำนวนที่สั่ง
@@ -283,11 +303,12 @@ export async function POST(req: Request) {
   // คำถามที่ไม่ใช่ราคา (วิธีสั่ง/นโยบาย/ค่าส่ง) ยังเดินเส้นเดิมผ่าน n8n เหมือนเคย
   const direct = priceText || minText || specText;
   if (direct) {
-    const written = await writePriceReply(message, direct, convo).catch(() => null);
+    // คำตอบจากชั้นเข้าใจคำถาม (siteVia) เรียบเรียงมาแล้ว ไม่ต้องให้ Gemini เขียนใหม่ (ประหยัด 1-2 วิ) · เส้นเดิม (regex) ยังเรียบเรียงเหมือนเคย
+    const written = siteVia ? null : await writePriceReply(message, direct, convo).catch(() => null);
     return NextResponse.json(
       {
         reply: withProductLinks(written || direct) + adminNote,
-        ...(body.debug ? { debug: { parsed, stats: ctx?.stats, links: ctx?.productLinks, priceFacts, via: priceText ? "web-price-engine" : minText ? "web-minqty" : "web-spec", ms: Date.now() - t0 } } : {}),
+        ...(body.debug ? { debug: { parsed, stats: ctx?.stats, links: ctx?.productLinks, priceFacts, via: siteVia ? `site:${siteVia}` : priceText ? "web-price-engine" : minText ? "web-minqty" : "web-spec", ms: Date.now() - t0 } } : {}),
       },
       { headers: { "Cache-Control": "no-store" } },
     );

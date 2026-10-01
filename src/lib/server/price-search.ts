@@ -1,0 +1,247 @@
+import "server-only";
+import {
+  catalogRefs,
+  findDraftProduct,
+  fixTypos,
+  knowledgeItems,
+  lcsLen,
+  norm,
+  isMinQtyIntent,
+  isMixIntent,
+  isPriceIntent,
+  isSpecIntent,
+  parseQty,
+  searchInfo,
+  extraInfo,
+  EXTRA_ASK_RE,
+  searchMinQty,
+  searchMix,
+  searchPrice,
+  searchSpec,
+  understand,
+  type Pick,
+  type PriceAnswer,
+  type ProductRef,
+  type Understanding,
+} from "@/lib/server/price-answer";
+
+/**
+ * 💰 แกนของ /api/pricing/search แยกออกมาเป็นฟังก์ชัน (1 ต.ค. 69) — ให้ /api/chat (แชทเว็บ) เรียกตรง ๆ ไม่ต้องยิง HTTP วนกลับมาเอง
+ * route.ts เหลือแค่รับ request/กันยิงรัว/CORS แล้วเรียก priceSearch()
+ */
+export interface PriceSearchResult {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+function pickMode(query: string, forced?: unknown): "price" | "spec" | "minqty" | "mix" {
+  if (forced === "spec" || forced === "minqty" || forced === "price" || forced === "mix") return forced;
+  if (isMinQtyIntent(query)) return "minqty";
+  if (isMixIntent(query) && !/ราคา|บาท|เรท|เท่าไหร่|เท่าไร/.test(query)) return "mix";
+  // isSpecIntent ตัดคำเรื่องเงิน (ราคา/บาท/เรท) ออกแล้ว — "ขนาดเท่าไหร่บ้าง" จึงเป็นสเปก ไม่ใช่ราคา
+  // (isPriceIntent นับ "เท่าไหร่" เป็นราคา ถ้าเช็คตัวนั้นก่อนจะเทตารางราคาให้คนที่ถามขนาด)
+  if (isSpecIntent(query)) return "spec";
+  return "price";
+}
+
+/**
+ * คำถามที่ไม่ได้ถามราคา/สเปก/ขั้นต่ำ/จำนวนเลย — เครื่องคิดราคาต้อง "ไม่ตอบ" ปล่อยให้ agent ที่มีความจำตอบแทน
+ * เจอจริง 23 ก.ย. 69 ในไลน์: ลูกค้าคุยเรื่องของติดรถยนต์อยู่แล้วพิมพ์ต่อว่า "เอาแบบกันฝนค่ะ" → เครื่องคิดราคาไม่รู้บริบท
+ * จับคำว่า "กันฝน" เป็น "ร่มกอล์ฟ" แล้วเทตารางราคาร่มทับคำตอบของ agent ("ส่งไฟล์ยังไง" ก็เคยได้เมนูพวงกุญแจ)
+ * ยกเว้นพิมพ์มาแค่ "ชื่อสินค้า/หมวด" สั้น ๆ ("เคสมือถือ" · agent ส่งชื่อสินค้าโดด ๆ) → ตอบได้
+ */
+function productQueryAllowed(query: string, qty: number | null): boolean {
+  // "ตัวนี้เอา 50 ชิ้น" = อ้างถึงสินค้าที่คุยค้างไว้ — เครื่องคิดราคาไม่มีความจำ ตอบไปก็ผิดตัว ให้ agent ตอบ
+  if (/ตัวนี้|อันนี้|แบบนี้|ตัวนั้น|อันนั้น|แบบนั้น|ตัวเดิม|แบบเดิม|อันเดิม|เหมือนเดิม|ตัวเมื่อกี้|อันเมื่อกี้|ที่ว่า|ตัวข้างบน/.test(query))
+    return false;
+  if (qty || isPriceIntent(query) || isSpecIntent(query) || isMinQtyIntent(query)) return true;
+  // ประโยคที่มีคำกริยา/คำลงท้าย = คุยต่อจากบริบท ไม่ใช่ชื่อสินค้า
+  return (
+    query.length <= 24 &&
+    !/ยังไง|อย่างไร|ไหม|มั้ย|ทำไม|ที่ไหน|เมื่อไหร่|กี่วัน|ส่ง|ไฟล์|โอน|ชำระ|เคลม|อยาก|เอา|ขอ|ค่ะ|คะ|ครับ|นะ|หน่อย|ได้|แบบ|ตัวนี้|อันนี้|ตัวนั้น/.test(
+      query,
+    )
+  );
+}
+
+export async function priceSearch(body: Record<string, unknown>): Promise<PriceSearchResult> {
+  const t0 = Date.now();
+
+  // agent ฝั่ง n8n ส่งชื่อฟิลด์ไม่แน่นอนตามที่ LLM เลือกใส่ — รับให้ครบทุกชื่อที่เจอ
+  const query = fixTypos(
+    String(body.query ?? body.message ?? body.text ?? body.q ?? "")
+      .trim()
+      .slice(0, 500),
+  );
+  if (!query) return { status: 400, body: { error: "ยังไม่ได้ส่งคำค้น" } };
+
+  const qtyRaw = Number(body.qty ?? body.quantity ?? 0);
+  let qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : parseQty(query);
+
+  // 🧠 ข้อความก่อนหน้าของลูกค้า (เก่า→ใหม่) — LINE/AdminBuddy ส่งมาให้ชั้นเข้าใจคำถามใช้แก้ "เอาแบบกันฝน" ให้เป็นสินค้าจริง
+  const context = (Array.isArray(body.context) ? body.context : typeof body.context === "string" ? [body.context] : [])
+    .map((c) => String(c ?? "").trim())
+    .filter(Boolean)
+    .slice(-5);
+  // 🧠 บทสนทนาทั้งสองฝั่ง [{role, text, at}] (1 ต.ค. 69) — ชั้นเข้าใจคำถามเห็นคำตอบของบอทด้วย + ตัดรอบสนทนาเก่าออกเอง
+  // 🧠 profile = ก้อนข้อความโปรไฟล์ลูกค้าจาก /api/bot/customer-profile (ออเดอร์เก่า ระดับสมาชิก สรุปแชท) ถ้าบอทส่งมา
+  const profile = typeof body.profile === "string" ? body.profile : "";
+  // understandModel = ชื่อโมเดล Gemini ไว้ทดสอบเทียบ (ไม่ส่ง = ค่าเริ่มต้น gemini-2.5-flash ถอยไป flash-lite เมื่อล้มเหลว)
+  const understandModel = typeof body.understandModel === "string" && /^gemini-[a-z0-9.-]+$/.test(body.understandModel) ? body.understandModel : undefined;
+  const u: Understanding | null = body.mode ? null : await understand(query, context, body.history, profile, understandModel);
+
+  let mode: "price" | "spec" | "minqty" | "mix" = pickMode(query, body.mode);
+  let searchQuery = query;
+  let pick: Pick | undefined;
+  let ans: PriceAnswer | null = null;
+
+  if (u) {
+    // ลูกค้าถามหาของที่ร้านไม่มี → บอกตรง ๆ + เสนอตัวใกล้เคียง (เจอจริง 23 ก.ย. 69: "พวงกุญแจหนังปัก" ได้เมนูพวงกุญแจอะคริลิค/หมอนกลับไป)
+    // สินค้าฉบับร่างที่ "ชื่อตรงกับที่ลูกค้าเรียก" ต้องชนะตัวใกล้เคียงที่ AI หยิบมาแทน (พวงกุญแจหนังปัก → ร่าง "พวงกุญแจหนังปักลาย"
+    // ไม่ใช่ "กระเป๋าใส่พวงกุญแจ งานปัก") — เทียบว่าชื่อร่างตรงคำลูกค้ามากกว่าชื่อสินค้าที่ AI เลือกไหม
+    const draft = ["price", "spec", "minqty", "mix"].includes(u.intent) ? await findDraftProduct(u.requested || query) : null;
+    const draftWins =
+      !!draft && (u.notInCatalog || !u.products.length || lcsLen(norm(draft.name), norm(query)) > Math.max(...u.products.map((n) => lcsLen(norm(n), norm(query)))));
+    if (draft && draftWins) {
+      // มีสินค้านี้ในระบบแต่ยังเป็นฉบับร่าง (ไม่มีราคา/รูปบนเว็บ) → บอกว่ารับทำ + ให้แอดมินตีราคา ไม่ใช่ "ร้านไม่มี"
+      ans = {
+        answer: `มีค่ะ ร้านรับทำ "${draft.name}" แต่ราคายังไม่ขึ้นบนเว็บ รบกวนแจ้งจำนวน ขนาด และลาย/ข้อความที่จะปัก แล้วแอดมินตีราคาให้เลยค่ะ`,
+        kind: "info",
+        source: "understood:draft-product",
+        intent: "draft_product",
+      };
+    } else if (u.notInCatalog && ["price", "spec", "minqty"].includes(u.intent)) {
+      const what = u.requested || query;
+      const alts = u.alternatives;
+      const lines = alts.map((a) => {
+        const pr =
+          a.priceMin && a.priceMax && a.priceMax > a.priceMin
+            ? ` — ฿${a.priceMin.toLocaleString()}-${a.priceMax.toLocaleString()}`
+            : a.priceMin
+              ? ` — เริ่ม ฿${a.priceMin.toLocaleString()}`
+              : "";
+        return `• ${a.name}${pr}\n  ${a.url}`;
+      });
+      const text = alts.length
+        ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
+        : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
+      ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
+    } else if ((u.intent === "price" || u.intent === "spec") && u.ids.length && !u.broad && !(qty || u.qty) && /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|บวกเท่าไหร่|ค่าเพิ่ม|add.?on|ของเสริม|ได้ไหม|ได้มั้ย|มีไหม|มีมั้ย|ด้วยไหม|ด้วยมั้ย|ใช่ไหม|ใช่มั้ย/i.test(query)) {
+      // ถามเรื่อง "ส่วนเสริม/ทำได้ไหม" ของสินค้าที่รู้ตัว (เคลือบฟอยล์ได้ไหม เพิ่มเท่าไหร่ · พิมพ์ 2 ด้านเพิ่มเท่าไหร่)
+      // → ตอบจากหน้าสินค้า (มีราคาเพิ่มระบุไว้) แทนการเทตารางราคาหลัก/รายการตัวเลือกทั้งหมด (LLM สลับ price/spec ไม่นิ่ง จึงรับทั้งคู่)
+      ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: false });
+      if (ans.kind === "skip") {
+        const pk = { ids: u.ids, broad: u.broad };
+        ans = u.intent === "spec" ? await searchSpec(searchQuery, pk) : await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick: pk });
+      }
+    } else if (u.intent === "knowledge" && u.ids.length) {
+      // ถามความรู้เกี่ยวกับสินค้าที่รู้ตัว → อ่านจากหน้าสินค้าจริง (ไม่พอ = ให้ agent ตอบ)
+      ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: u.broad });
+      if (ans.kind === "skip") ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
+    } else if (["chitchat", "other", "followup"].includes(u.intent) && u.ids.length && !u.broad && (u.qty || qty || isPriceIntent(query))) {
+      // LLM ตีเป็น other ทั้งที่ระบุสินค้า+จำนวน/คำว่าราคา (ข้อความหลายท่อน "สติ๊กเกอร์ UV 100 ดวง ราคา / ใช้ลายเองได้ไหม" · 29 ก.ย. 69) → คิดราคาตามปกติ
+      mode = "price";
+      pick = { ids: u.ids, broad: u.broad };
+      if (!qty && u.qty) qty = u.qty;
+      if (u.standalone && u.standalone.length <= 200) searchQuery = u.standalone;
+    } else if (["knowledge", "order", "chitchat", "other", "followup"].includes(u.intent)) {
+      ans = { answer: "", kind: "skip", source: `understood:${u.intent}`, intent: "unknown" };
+    } else {
+      // price/spec/minqty — LLM ชี้สินค้ามาก็ใช้ ไม่ชี้ (แต่เขียนคำถามใหม่ให้ครบแล้ว เช่น "ที่ติดรถยนต์แบบกันฝนมีแบบไหนบ้าง")
+      // ก็เอาคำถามฉบับสมบูรณ์ไปค้นต่อตามปกติ — เคยตั้งให้ skip แล้วบอทเงียบทั้งที่ตีความถูก (24 ก.ย. 69)
+      mode = u.intent === "spec" ? "spec" : u.intent === "minqty" ? "minqty" : u.intent === "mix" ? "mix" : "price";
+      // บอกจำนวนที่จะสั่งมาด้วย ("สีขาวขุ่น 5cm 30 ชิ้น") = ต้องการราคา แม้ LLM จะตีเป็น spec (1 ต.ค. 69)
+      if (mode === "spec" && (qty || u.qty) && u.ids.length === 1) mode = "price";
+      if (u.ids.length) pick = { ids: u.ids, broad: u.broad };
+      if (!qty && u.qty) qty = u.qty;
+      // ใช้คำถามฉบับสมบูรณ์ (มีชื่อสินค้าจากบริบท) ไว้เลือกคอลัมน์/จับคู่ — แต่คงจำนวนจากข้อความจริง
+      if (u.standalone && u.standalone.length <= 200) searchQuery = u.standalone;
+      // ราคาโดยไม่ระบุสินค้าเลย (ถามลอย ๆ ว่า "ราคาเท่าไหร่") → ให้เส้นเดิมลองจับคู่จากข้อความ
+    }
+  }
+
+  if (!ans) {
+    if (!u && mode === "price" && !productQueryAllowed(query, qty)) {
+      ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
+    } else if (mode === "minqty") {
+      ans = await searchMinQty(searchQuery, pick);
+    } else if (mode === "mix") {
+      ans = await searchMix(searchQuery, pick);
+    } else if (mode === "spec") {
+      ans = await searchSpec(searchQuery, pick);
+    } else {
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
+    }
+    // ขั้นต่ำ/สเปกตอบไม่ได้ → ลองราคาต่อ (คำถามอย่าง "สั่ง 1 ชิ้นได้ไหม ราคาเท่าไหร่" ไม่ควรตอบว่างเปล่า)
+    // คำถามคละลายไม่มีข้อมูล = ให้ agent ตอบ อย่าเทตารางราคา
+    if (mode !== "price" && mode !== "mix" && ans.kind === "skip") {
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
+    }
+  }
+
+  if (!u && /_menu$/.test(ans.intent) && !productQueryAllowed(query, qty)) {
+    ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
+  }
+
+  // 🧩 ตอบให้ครบทุกเรื่องที่ลูกค้าถาม (29 ก.ย. 69 "อยากได้ที่ติดรถยนต์ / มีแบบไหนบ้าง / เอาแบบกันฝน" → เดิมได้แต่ตารางราคา)
+  // LINE รวมหลายข้อความด้วย " / " · ถ้ามีเรื่องคุณสมบัติ (กันน้ำ/กันฝน/…) หรือถามหลายท่อน และคำตอบหลักเป็นราคา/ตัวเลือกของสินค้าตัวเดียว
+  // → ถามหน้าสินค้าอีกรอบเฉพาะส่วนที่เหลือ แล้วแปะไว้หัวคำตอบ (ไม่มีเรื่องอื่น = ไม่แปะ)
+  const parts = query.split(/\s*\/\s*|\n+/).map((x) => x.trim()).filter(Boolean);
+  if (
+    ans.answer &&
+    ans.product &&
+    !/_menu$/.test(ans.intent) &&
+    /^(price|spec|minqty)/.test(ans.intent) &&
+    (EXTRA_ASK_RE.test(query) || parts.length >= 2)
+  ) {
+    const extra = await extraInfo(u?.standalone && u.standalone.length <= 200 && parts.length < 2 ? u.standalone : query, ans.product.id);
+    if (extra) ans = { ...ans, answer: `${extra}\n\n${ans.answer}`, source: `${ans.source}+extra-info`, extra };
+  }
+
+  // ไม่มีคำตอบและไม่ใช่คำถามราคา → บอก agent ตรง ๆ ว่าเครื่องมือนี้ไม่ใช่ทางของคำถามนี้
+  const text =
+    ans.answer ||
+    (isPriceIntent(query)
+      ? "ยังไม่มีราคาของรายการนี้ในระบบ รบกวนถามแอดมินให้ตีราคาให้นะครับ"
+      : "คำถามนี้ไม่ใช่คำถามราคา ไม่ต้องใช้ผลจากเครื่องมือนี้");
+
+  const products: ProductRef[] = ans.products?.length ? ans.products : ans.product ? [ans.product] : [];
+  const product = ans.product ?? products[0];
+
+  return { status: 200, body: {
+    // 4 ชื่อนี้ซ้ำกันโดยตั้งใจ — workflow เดิมอ่านคนละฟิลด์กันแล้วแต่โหนด
+    answer: text,
+    result: text,
+    response: text,
+    text,
+    kind: ans.kind,
+    source: ans.source,
+    intent: ans.intent,
+    mode,
+    // สิ่งที่ชั้นเข้าใจคำถามสรุปได้ — ไว้ดีบัก/ให้บอทปลายทางตัดสินใจ (ไม่มี = ใช้ regex)
+    understood: u
+      ? {
+          intent: u.intent,
+          products: u.products,
+          qty: u.qty,
+          standalone: u.standalone,
+          confidence: u.confidence,
+          notInCatalog: u.notInCatalog,
+          requested: u.requested,
+          alternatives: u.alternatives.map((a) => a.name),
+          debug: u.debug ?? null,
+        }
+      : null,
+    found: ans.kind !== "skip" && !!ans.answer,
+    // ส่วนที่ตอบเพิ่มนอกเหนือราคา/ตัวเลือก (กันน้ำ/ส่วนเสริม/ใช้ลายเอง) — แปะอยู่หัว answer แล้ว ให้ไว้เผื่อบอทปลายทางอยากแยกแสดง
+    extra: ans.extra ?? null,
+    qty: qty ?? null,
+    ...(product ? { product } : {}),
+    products,
+    // แบน ๆ ให้ Code node / Flex builder หยิบตรง ๆ — ลิงก์และรูปของเว็บจริงเท่านั้น
+    links: products.map((p) => p.url),
+    images: products.map((p) => p.image).filter((s): s is string => !!s),
+    site: "https://iduckystore.com",
+    ms: Date.now() - t0,
+  } };
+}
