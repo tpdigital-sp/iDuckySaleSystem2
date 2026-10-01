@@ -40,6 +40,9 @@ import { Btn, CopyChip, Empty, FChip, FilterCard, HeroStat, ListHead, PageHead, 
  *   แถบเครื่องมือติดขอบบน: คลัง | ประวัติ + ค้นหา + ชิปสถานะ · กลุ่มตามสินค้า (ปุ่มตั้งค่าอยู่ในเมนู ⋯ ของกลุ่ม)
  */
 
+/** ชื่อกลุ่มตัวเลือกแบบสั้น (ตัดวงเล็บท้าย) — "สีไหม Madeira (รวมในราคา 3 สี)" → "สีไหม Madeira" · สูตรเดียวกับ split route */
+const shortOptionLabel = (s: string) => s.replace(/\s*[(（].*$/, "").trim() || s;
+
 interface Item {
   id: string;
   name: string;
@@ -69,6 +72,8 @@ interface Item {
   packSize?: number;
   /** 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว — ไม่ผูกสินค้า ไม่เตือน "ยังไม่ผูก" */
   manualOnly?: boolean;
+  /** 🧩 วัสดุกลางตามตัวเลือก — มุมมองตามสินค้าจัดกลุ่มใต้ชื่อกลุ่มตัวเลือก (ประเภทอะคริลิค) ไม่ใช่ชื่อสินค้า · ยังผูก/ตัดตามตัวเลือกปกติ */
+  groupByOption?: boolean;
   needsReview?: boolean;
   autoCreated?: boolean;
   maybeDuplicateOf?: string;
@@ -1019,7 +1024,7 @@ export default function StockPage() {
     /** SKU ที่ใช้กับสินค้าไม่เกินเท่านี้ = โชว์ใต้ทุกสินค้าที่ใช้ · มากกว่านั้น (ตะขอ/สีไหมผ่านคลังกลาง) ไปกลุ่มรวม */
     const SHARED_MAX = 4;
     const prodById = new Map(products.map((p) => [p.id, p]));
-    type G = { key: string; kind: 0 | 1 | 2 | 3; title: string; sub?: string; img?: string; productId?: string; rows: Item[] };
+    type G = { key: string; kind: 0 | 1 | 2 | 3; title: string; sub?: string; img?: string; productId?: string; optionLabel?: string; rows: Item[] };
     const map = new Map<string, G>();
     const put = (g: Omit<G, "rows">, it: Item) => (map.get(g.key) ?? map.set(g.key, { ...g, rows: [] }).get(g.key)!).rows.push(it);
     const ofProduct = (pid: string, name: string, it: Item) =>
@@ -1041,6 +1046,19 @@ export default function StockPage() {
           put({ key: "bom", kind: 1, title: "วัสดุแฝง", sub: "ของที่ทุกชิ้นใช้แต่ไม่มีในตัวเลือก หรือของที่หลายสินค้าใช้ร่วมกัน — เติมสต๊อกที่นี่ที่เดียว" }, it);
           if (sharedPart) for (const [pid, name] of pids) ofProduct(pid, name, it);
           continue;
+        }
+        // 🧩 วัสดุกลางตามตัวเลือก (แผ่นอะคริลิคตามสี/ประเภท) — หัวกลุ่ม = ชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า
+        //    เจ้าของร้านชี้ 1 ต.ค. 69 "ไม่ต้องการให้เป็นชื่อสินค้า ต้องการให้เป็นชื่อตัวเลือก" · ยังผูก/ตัดตามตัวเลือกตามปกติ
+        //    SKU เดียวใช้กับหลายสินค้าได้ (พวงกุญแจ/สแตนดี้/กรอบรูปใช้แผ่นเดียวกัน) มาอยู่กลุ่มเดียวกันไม่โผล่ซ้ำใต้ทุกสินค้า
+        if (it.groupByOption) {
+          const cs = us.filter((u): u is Extract<StockUsage, { kind: "choice" }> => u.kind === "choice");
+          const labels = [...new Set(cs.map((u) => shortOptionLabel(u.label)))];
+          for (const lb of labels)
+            put(
+              { key: `o:${lb}`, kind: 1, title: lb, sub: "วัสดุกลางตามตัวเลือก — ใช้ร่วมได้หลายสินค้า", img: cs.find((u) => shortOptionLabel(u.label) === lb)?.img, optionLabel: lb },
+              it,
+            );
+          if (labels.length) continue;
         }
         if (pids.size >= 1 && pids.size <= SHARED_MAX && !us.some((u) => u.kind === "preset")) for (const [pid, name] of pids) ofProduct(pid, name, it);
         else put({ key: `s:${fam}`, kind: 1, title: fam, sub: "ใช้ร่วมหลายสินค้า" }, it);
@@ -1084,7 +1102,10 @@ export default function StockPage() {
   /** ความคืบหน้า "จัดครบทุกสินค้า" ทั้งคลัง ไม่ขึ้นกับตัวกรอง — สินค้า = ตัวที่มี SKU ผูกอยู่จริง (การ์ดตั้งค่าคลัง) */
   const doneProducts = useMemo(() => {
     const pids = new Set<string>();
-    for (const it of tracked) for (const u of live[it.id] ?? []) if (u.kind !== "preset") pids.add(u.productId);
+    for (const it of tracked) {
+      if (it.groupByOption) continue; // วัสดุกลางตามตัวเลือกไม่มีกลุ่มสินค้าให้ติ๊ก — ไม่นับเป็นสินค้าที่ต้องจัด ไม่งั้นครบ 109 ไม่ได้
+      for (const u of live[it.id] ?? []) if (u.kind !== "preset") pids.add(u.productId);
+    }
     let done = 0;
     for (const p of pids) if (doneGroups[`p:${p}`]) done += 1;
     return { done, total: pids.size };
@@ -1702,7 +1723,58 @@ export default function StockPage() {
                * กลุ่มย่อยตาม "ชนิดของ" — ของในสินค้าเดียวแต่รับเข้า/เบิก/สั่งแยกกัน (กรอบรูปยังมี สั่งแต่แผ่นจิ๊กซอว์)
                * แสดงเมื่อมีตั้งชนิดไว้อย่างน้อย 1 ตัว · ไม่ตั้งเลย = แถวเรียงแบบเดิม
                */
-              const renderParts = (list: Item[], groupTitle: string, productId?: string) => {
+              const renderParts = (list: Item[], groupTitle: string, productId?: string, optionLabel?: string) => {
+                // 🧩 กลุ่มวัสดุกลางตามตัวเลือก: แถวแม่ = ค่าตัวเลือก (สีพิเศษ) → ห้อย SKU ที่ตัดเมื่อเงื่อนไขตรง (สีอะคริลิค = C-01)
+                //    ค่าเดียว → SKU เดียวไม่มีเงื่อนไข = วาดแถว SKU ตรง ๆ ไม่ต้องมีแม่ซ้ำชื่อ · ไม่ใช่ "วัสดุแฝง" (ตัวนี้คือแผ่นหลักของแบบนั้นเอง)
+                if (optionLabel) {
+                  type Kid = { item: Item; why: string; cond: boolean };
+                  type Host = { choice: string; img?: string; products: Set<string>; kids: Kid[] };
+                  const byChoice = new Map<string, Host>();
+                  const plain: Item[] = [];
+                  for (const r of list) {
+                    const us = (live[r.id] ?? []).filter((u): u is Extract<StockUsage, { kind: "choice" }> => u.kind === "choice" && shortOptionLabel(u.label) === optionLabel);
+                    if (!us.length) {
+                      plain.push(r);
+                      continue;
+                    }
+                    const u = us[0];
+                    const h = byChoice.get(u.choice) ?? byChoice.set(u.choice, { choice: u.choice, img: u.img, products: new Set(), kids: [] }).get(u.choice)!;
+                    for (const x of us) h.products.add(x.productName);
+                    const conds = [...new Set(us.map((x) => x.cond).filter((c): c is string => !!c))];
+                    const per = us.find((x) => x.per && x.per !== 1)?.per;
+                    const times = per ? ` (×${per})` : "";
+                    h.kids.push({ item: r, cond: conds.length > 0, why: conds.length ? `ตัดเมื่อ ${conds.join(" · ")}${times}` : `ตัดทุกครั้งที่เลือก ${u.choice}${times}` });
+                  }
+                  const cmp = (a: string, b: string) => a.localeCompare(b, "th", { numeric: true });
+                  return [
+                    ...[...byChoice.values()]
+                      .sort((a, b) => cmp(a.choice, b.choice))
+                      .flatMap((h) => {
+                        const kids = [...h.kids].sort((a, b) => cmp(a.item.name, b.item.name));
+                        if (kids.length === 1 && !kids[0].cond) return [renderRow(kids[0].item)];
+                        return [
+                          <li key={`oc/${h.choice}`}>
+                            <div className="dkb-row !rounded-none flex-wrap px-4 sm:flex-nowrap" style={{ paddingLeft: ROW_PAD, background: "transparent" }}>
+                              <Thumb src={h.img} name={h.choice} size={40} />
+                              <span className="min-w-0 flex-1 basis-[12rem]">
+                                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <span className="text-[14.5px] font-medium" style={{ color: "var(--dk-navy)" }}>
+                                    {h.choice}
+                                  </span>
+                                  <Tag tone="sky">{optionLabel}</Tag>
+                                </span>
+                                <span className="mt-0.5 block text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                                  ตัวเลือก {optionLabel} ของ {[...h.products].join(" · ")} — แยกสต๊อกตามค่าที่ลูกค้าเลือก ดูด้านล่าง
+                                </span>
+                              </span>
+                            </div>
+                          </li>,
+                          ...kids.map((k, i) => renderRow(k.item, undefined, { last: i === kids.length - 1, key: `oc/${h.choice}/${k.item.id}`, why: k.why })),
+                        ];
+                      }),
+                    ...plain.map((r) => renderRow(r)),
+                  ];
+                }
                 // วัสดุแฝงมีกลุ่ม "วัสดุแฝง" ของตัวเองแล้ว (เติมสต๊อกที่เดียวจบ) — ในกลุ่มสินค้าจึงเหลือแค่ห้อยใต้แถวที่ใช้มัน
                 // ต้องหาจากคลังทั้งก้อน ไม่ใช่จากแถวในกลุ่มนี้ เพราะตัวมันไม่ได้อยู่ในกลุ่มสินค้าแล้ว
                 const bom = productId ? items.filter((r) => (live[r.id] ?? []).some((u) => u.kind === "product" && u.bom && u.productId === productId)) : [];
@@ -1952,7 +2024,7 @@ export default function StockPage() {
                           <span className={`w-3 text-[10px] transition ${open ? "rotate-90" : ""}`} style={{ color: "var(--dk-faint)" }} aria-hidden>
                             ▶
                           </span>
-                          {g.kind === 0 ? (
+                          {g.kind === 0 || g.img ? (
                             <Thumb src={g.img} name={g.title} size={44} />
                           ) : (
                             <span
@@ -1997,7 +2069,7 @@ export default function StockPage() {
                         </header>
                         {open && (
                           <ul className="border-t" style={{ borderColor: "var(--dk-hair)" }}>
-                            {renderParts(g.rows, g.title, g.productId)}
+                            {renderParts(g.rows, g.title, g.productId, g.optionLabel)}
                           </ul>
                         )}
                       </section>
@@ -2224,6 +2296,8 @@ export default function StockPage() {
         <SplitModal
           product={splitFor}
           allCats={cats}
+          // 🧩 ชื่อกลุ่มตัวเลือกที่มีวัสดุกลางตามตัวเลือกอยู่แล้ว — แยกกลุ่มชื่อเดียวกันในสินค้าอื่น (สแตนดี้ก็มี "ประเภทอะคริลิค") ติ๊ก 🧩 ให้เอง ไม่กลับไปเป็นชื่อสินค้าอีก
+          optionGroupLabels={new Set(items.flatMap((i) => (i.groupByOption ? (live[i.id] ?? []).flatMap((u) => (u.kind === "choice" ? [shortOptionLabel(u.label)] : [])) : [])))}
           onClose={() => setSplitFor(null)}
           onDone={async (msg) => {
             setSplitFor(null);
@@ -3394,6 +3468,8 @@ function ItemModal({
   const [packUnit, setPackUnit] = useState(item?.packUnit ?? "");
   const [packSize, setPackSize] = useState(item?.packSize && item.packSize > 1 ? String(item.packSize) : "");
   const [manualOnly, setManualOnly] = useState(!!item?.manualOnly);
+  // 🧩 วัสดุกลางตามตัวเลือก — หัวกลุ่มหน้าคลังเป็นชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (เจ้าของร้านสั่ง 1 ต.ค. 69)
+  const [groupByOption, setGroupByOption] = useState(!!item?.groupByOption);
 
   const u = unit.trim() || "ชิ้น";
   const pu = packUnit.trim() || "แพ็ค";
@@ -3418,6 +3494,7 @@ function ItemModal({
       packUnit: packUnit.trim(),
       packSize: packSize ? Number(packSize) : 0, // 0 = ล้างหน่วยแพ็ค
       manualOnly,
+      groupByOption: manualOnly ? false : groupByOption,
     });
   // ของใหม่ + ใส่รายการสี/ขนาดไว้ = สร้างทีละตัว "ชื่อ · ค่า" (ค่าเป็นชื่อที่เคยเรียกด้วย ค้น "ขาว" เจอ) · ไม่งั้นบันทึกตัวเดียวตามเดิม
   const save = () => (!item && variantList.length && onSaveMany ? onSaveMany(variantList.map((v) => payload(`${name.trim()} · ${v}`, v))) : onSave(payload(name)));
@@ -3589,6 +3666,19 @@ function ItemModal({
                 </span>
               </span>
             </label>
+            {!manualOnly && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3" style={{ background: groupByOption ? "rgba(96, 165, 250, 0.16)" : "var(--dk-sky)" }}>
+                <input type="checkbox" checked={groupByOption} onChange={(e) => setGroupByOption(e.target.checked)} className="mt-1 h-5 w-5 accent-sky-600" />
+                <span>
+                  <span className="block text-sm font-semibold" style={{ color: "var(--dk-navy)" }}>
+                    🧩 วัสดุกลางตามตัวเลือก — หัวกลุ่มในหน้าคลังเป็นชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า
+                  </span>
+                  <span className="block text-[11.5px]" style={hintStyle}>
+                    ของที่หลายสินค้าใช้ร่วมกันตามตัวเลือก (แผ่นอะคริลิคตามสี/ประเภท) · ยังผูกกับตัวเลือกและตัดตอนขายตามเดิม
+                  </span>
+                </span>
+              </label>
+            )}
           </FormSection>
 
           {!manualOnly && (
@@ -4986,7 +5076,21 @@ function ProductPicker({ products, value, onChange }: { products: ProductLite[];
  * SKU รวมเดิมที่ผูกกับตัวสินค้าจะถูกถอดออกเสมอ ไม่งั้นขาย 1 ชิ้นตัด 2 ต่อ
  * หน้าต่าง: หัว/ท้ายตรึง เนื้อหาเลื่อนในตัว สูงไม่เกินจอ (เดิมยาวจนปุ่มสร้างตกขอบจอ · 19 ก.ย. 69)
  */
-function SplitModal({ product, allCats, onClose, onDone }: { product: { id: string; name: string }; /** รายชื่อหมวดให้เลือก (จัดการได้จากเมนู ⋯ → จัดการหมวด) */ allCats: string[]; onClose: () => void; onDone: (msg: string) => void }) {
+function SplitModal({
+  product,
+  allCats,
+  optionGroupLabels,
+  onClose,
+  onDone,
+}: {
+  product: { id: string; name: string };
+  /** รายชื่อหมวดให้เลือก (จัดการได้จากเมนู ⋯ → จัดการหมวด) */
+  allCats: string[];
+  /** 🧩 ชื่อกลุ่มตัวเลือก (แบบสั้น) ที่มีวัสดุกลางตามตัวเลือกอยู่แล้ว — เลือกกลุ่มชื่อนี้ = ติ๊ก 🧩 ให้เองเป็นค่าเริ่มต้น */
+  optionGroupLabels: Set<string>;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
   type Link = { stockItemId: string; name: string | null; when: { label: string; choices: string[] }[] };
   type Choice = { name: string; img?: string; stockItemId: string | null; skuName: string | null; extras?: string[]; links?: Link[] };
   /** rate = กลุ่มเสมือน "เรทราคา" (optionIndex -1) — สินค้าที่ของบนชั้นต่างกันตามเรท เช่น การ์ดสเปรย์ 20 ml / 40 ml */
@@ -5003,6 +5107,10 @@ function SplitModal({ product, allCats, onClose, onDone }: { product: { id: stri
   const [rowMeta, setRowMeta] = useState<Record<string, { reorder?: string; lead?: string }>>({});
   /** 🏭 ใช้ตัวเลือกเป็นแค่ "รายชื่อ" — สร้างเป็นของใช้ในโรงงาน เบิกเอง ไม่ผูกสินค้า (เจ้าของร้านสั่ง 30 ก.ย. 69) */
   const [manualOnly, setManualOnly] = useState(false);
+  /** 🧩 วัสดุกลางตามตัวเลือก — หน้าคลังจัดกลุ่มใต้ชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (เจ้าของร้านสั่ง 1 ต.ค. 69 เคสแผ่นอะคริลิค) */
+  const [groupByOption, setGroupByOption] = useState(false);
+  /** ผู้ใช้แตะช่อง 🧩 เองแล้ว — เลิกตั้งค่าเริ่มต้นให้ตอนสลับกลุ่ม */
+  const [groupByOptionTouched, setGroupByOptionTouched] = useState(false);
   const setMeta = (key: string, patch: { reorder?: string; lead?: string }) => setRowMeta((m) => ({ ...m, [key]: { ...m[key], ...patch } }));
   const [groups, setGroups] = useState<Group[] | null>(null);
   /** กฎตัวเลือกขึ้นต่อกันของสินค้า (เลือก A แล้วกลุ่ม B เหลือเฉพาะ …) — ใช้ตัดคู่ที่เป็นไปไม่ได้ในโหมด 2 กลุ่ม */
@@ -5053,6 +5161,12 @@ function SplitModal({ product, allCats, onClose, onDone }: { product: { id: stri
   }, [onClose]);
 
   const gA = groups?.[sel[0] ?? -1];
+  // 🧩 กลุ่มชื่อเดียวกับที่เคยทำเป็นวัสดุกลางตามตัวเลือกไว้ (ประเภทอะคริลิค) → ติ๊ก 🧩 ให้เอง จะได้ไม่เป็นปัญหา "หัวกลุ่มเป็นชื่อสินค้า" ซ้ำ (1 ต.ค. 69)
+  const gALabel = gA ? shortLabel(gA.label) : "";
+  useEffect(() => {
+    if (!groupByOptionTouched) setGroupByOption(!!gALabel && optionGroupLabels.has(gALabel));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gALabel]);
   const gB = sel.length > 1 ? groups?.[sel[1]] : undefined;
   const pairMode = !!(gA && gB);
 
@@ -5184,6 +5298,7 @@ function SplitModal({ product, allCats, onClose, onDone }: { product: { id: stri
         choices: [...new Set(chosen.map((r) => r.a.name))],
         removeOld: !manualOnly && removeOld && canRemove,
         manualOnly,
+        groupByOption: !manualOnly && groupByOption,
         partName: partName.trim() || undefined,
         // ชื่อ SKU รายแถว (ที่ผู้ใช้แก้หรือค่าเริ่มต้น) — คีย์ = ชื่อตัวเลือก (โหมดเดียว) หรือ "a\u0001b" (โหมดคู่)
         names: Object.fromEntries(chosen.filter((r) => !r.done).map((r) => [r.key, (names[r.key] ?? defName(r)).trim()])),
@@ -5212,7 +5327,7 @@ function SplitModal({ product, allCats, onClose, onDone }: { product: { id: stri
     onDone(
       manualOnly
         ? `สร้างวัสดุ “${shortLabel(gA.label)}” แบบเบิกเอง ${j.created.length} ตัว (ไม่ผูกกับ ${product.name}) — อยู่กลุ่ม “ของใช้ในโรงงาน” · ยอดเริ่มที่ 0 กด “รับเข้า” ใส่ยอดจริง`
-        : `แยกสต๊อก ${product.name} ตาม “${pairMode ? `${gB!.label} × ${gA.label}` : gA.label}” แล้ว ${j.created.length} ตัว${reused ? ` (ใช้ของนำเข้าเดิม ${reused} ตัว)` : ""} — ยอดเริ่มที่ 0 กด “นับ” หรือ “รับเข้า” ใส่ยอดจริง`
+        : `แยกสต๊อก ${product.name} ตาม “${pairMode ? `${gB!.label} × ${gA.label}` : gA.label}” แล้ว ${j.created.length} ตัว${reused ? ` (ใช้ของนำเข้าเดิม ${reused} ตัว)` : ""}${groupByOption ? ` — อยู่กลุ่ม “${shortLabel(gA.label)}” (วัสดุกลางตามตัวเลือก)` : ""} — ยอดเริ่มที่ 0 กด “นับ” หรือ “รับเข้า” ใส่ยอดจริง`
     );
   }
 
@@ -5368,6 +5483,29 @@ function SplitModal({ product, allCats, onClose, onDone }: { product: { id: stri
                   </span>
                 </span>
               </label>
+
+              {!manualOnly && (
+                <label className={`flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 ${groupByOption ? "border-sky-300 bg-sky-50/60" : "border-slate-200"}`}>
+                  <input
+                    type="checkbox"
+                    checked={groupByOption}
+                    onChange={(e) => {
+                      setGroupByOptionTouched(true);
+                      setGroupByOption(e.target.checked);
+                    }}
+                    className="mt-0.5 h-[18px] w-[18px] accent-slate-900"
+                  />
+                  <span>
+                    <span className="block text-[13px] font-semibold text-slate-800">
+                      🧩 วัสดุกลางตามตัวเลือก — หัวกลุ่มในหน้าคลังเป็น “{gA ? shortLabel(gA.label) : "ชื่อกลุ่มตัวเลือก"}” ไม่ใช่ “{product.name}”
+                    </span>
+                    <span className="block text-[11px] text-slate-500">
+                      ของที่หลายสินค้าใช้ร่วมกันตามตัวเลือก (แผ่นอะคริลิคตามสี/ประเภท) · ยังผูกกับตัวเลือกและตัดตอนขายตามเดิม · ตระกูลไม่กรอก = ชื่อกลุ่มตัวเลือก
+                      {!!gALabel && optionGroupLabels.has(gALabel) && ` · ติ๊กให้เองเพราะกลุ่ม “${gALabel}” มีวัสดุกลางอยู่แล้ว`}
+                    </span>
+                  </span>
+                </label>
+              )}
 
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                 <p className="text-[13px] font-semibold text-slate-800">📝 รายละเอียดวัสดุที่จะสร้าง (ใช้ค่าเดียวกันทุกตัว)</p>

@@ -48,6 +48,12 @@ export interface StockItem {
   packSize?: number;
   /** 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว ไม่ผูกกับสินค้า — ไม่นับเป็น "ขายแล้วไม่ตัดยอด" และไม่อยู่ในขั้นผูกสินค้า */
   manualOnly?: boolean;
+  /**
+   * 🧩 วัสดุกลางตามตัวเลือก — หน้า /admin/stock (มุมมองตามสินค้า) จัดกลุ่มใต้ "ชื่อกลุ่มตัวเลือก" (ประเภทอะคริลิค) ไม่ใช่ชื่อสินค้า
+   * ใช้กับของที่ไม่ใช่ของสินค้าตัวใดตัวหนึ่ง (แผ่นอะคริลิคตามสี/ประเภท ที่พวงกุญแจ/สแตนดี้/กรอบรูปใช้ร่วมกัน)
+   * ยังผูกกับตัวเลือกและตัดตอนขายตามปกติ — ต่างจาก manualOnly ที่ไม่ผูกอะไรเลย (เจ้าของร้านสั่ง 1 ต.ค. 69)
+   */
+  groupByOption?: boolean;
   category?: string;
   /** ยอดคงเหลือ (ดูแลผ่าน transaction เท่านั้น) */
   balance: number;
@@ -252,6 +258,7 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
       return size && size > 1 ? { packSize: Math.trunc(size), packUnit: pu || "แพ็ค" } : {};
     })(),
     ...((input.manualOnly !== undefined ? input.manualOnly : cur?.manualOnly) ? { manualOnly: true } : {}),
+    ...((input.groupByOption !== undefined ? input.groupByOption : cur?.groupByOption) ? { groupByOption: true } : {}),
     category: input.category?.trim() || cur?.category,
     balance: cur?.balance ?? 0, // ยอดแก้ผ่าน move เท่านั้น
     reorderPoint: input.reorderPoint ?? cur?.reorderPoint,

@@ -121,6 +121,8 @@ export async function POST(req: Request) {
     /** ✏️ ชื่อ SKU รายแถวที่ผู้ใช้แก้ในหน้าต่าง — คีย์ = ชื่อตัวเลือก หรือ "a\u0001b" ในโหมดคู่ · ไม่ส่ง/ว่าง = ตั้งจาก nameFor */
     /** 🏭 ใช้ตัวเลือกเป็น "รายชื่อ" เท่านั้น — สร้างวัสดุแบบเบิกเอง ไม่ผูกกับสินค้า ไม่แตะ product (เจ้าของร้านสั่ง 30 ก.ย. 69: สีผ้าสักหลาดไม่ตัดตามการขาย) */
     manualOnly?: boolean;
+    /** 🧩 วัสดุกลางตามตัวเลือก — หน้าคลังจัดกลุ่มใต้ชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (ยังผูก/ตัดตามปกติ) · ตระกูลไม่กรอก = ชื่อกลุ่มตัวเลือก */
+    groupByOption?: boolean;
     names?: Record<string, string>;
     /** 📍 จุดสั่งซื้อ/รอของ รายแถว (คีย์เดียวกับ names) — ทับ defaults เฉพาะแถวนั้น */
     perRow?: Record<string, { reorderPoint?: number; leadTimeDays?: number }>;
@@ -171,6 +173,7 @@ export async function POST(req: Request) {
     packUnit: dft.packUnit?.trim() || tpl?.packUnit,
     packSize: fin(dft.packSize) ?? tpl?.packSize,
     manualOnly: body.manualOnly ? true : undefined,
+    groupByOption: body.groupByOption && !body.manualOnly ? true : undefined,
   };
   const baseCode = tpl?.code ?? `P-${productId.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toUpperCase()}`;
   const usedCodes = await allStockCodes(); // รวมตัวที่ลบแล้ว — กันรหัสซ้ำของเก่า
@@ -189,6 +192,8 @@ export async function POST(req: Request) {
   const customName = (key: string) => body.names?.[key]?.trim() || "";
   // โหมดเบิกเอง: ตระกูล = ชื่อกลุ่มตัวเลือก (จะได้รวมกลุ่มกันในหน้าคลังใต้ "ของใช้ในโรงงาน") ถ้าไม่ได้กรอกมา
   if (body.manualOnly && !dft.family?.trim()) D.family = shortLabel(label);
+  // 🧩 วัสดุกลางตามตัวเลือก: ตระกูล = ชื่อกลุ่มตัวเลือกเช่นกัน — มุมมอง "วัสดุทั้งหมด" และกลุ่ม "ใช้ร่วมหลายสินค้า" จะได้ชื่อเดียวกับหัวกลุ่ม
+  if (D.groupByOption && !dft.family?.trim()) D.family = shortLabel(label);
   const rowMeta = (key: string) => {
     const r = body.perRow?.[key];
     return { reorderPoint: fin(r?.reorderPoint) ?? D.reorderPoint, leadTimeDays: fin(r?.leadTimeDays) ?? D.leadTimeDays };
@@ -274,6 +279,7 @@ export async function POST(req: Request) {
           packUnit: D.packUnit,
           packSize: D.packSize,
           manualOnly: D.manualOnly,
+          groupByOption: D.groupByOption,
           aliases: [`${b} ${a}`],
           imageUrl: ca.imageSrc ?? cb.imageSrc,
           part: partName || undefined,
@@ -312,6 +318,7 @@ export async function POST(req: Request) {
                 category: D.category,
                 imageUrl: hit.imageUrl ?? c.imageSrc,
                 part: partName || undefined,
+                groupByOption: D.groupByOption,
               } // saveStockItem เก็บชื่อเดิมเป็น alias + ปลดรอตรวจให้
             : {
                 name: customName(c.name) || nameFor(partName, c.name),
@@ -326,6 +333,7 @@ export async function POST(req: Request) {
                 packUnit: D.packUnit,
                 packSize: D.packSize,
                 manualOnly: D.manualOnly,
+                groupByOption: D.groupByOption,
                 aliases: [c.name],
                 imageUrl: c.imageSrc,
                 part: partName || undefined,
@@ -351,6 +359,7 @@ export async function POST(req: Request) {
           packUnit: D.packUnit,
           packSize: D.packSize,
           manualOnly: D.manualOnly,
+          groupByOption: D.groupByOption,
           imageUrl: c.imageSrc,
         });
         extraOf.set(c.name, sku.id);

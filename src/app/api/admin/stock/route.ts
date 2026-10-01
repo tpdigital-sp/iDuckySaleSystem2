@@ -43,6 +43,7 @@ export async function POST(req: Request) {
     packUnit?: string;
     packSize?: number;
     manualOnly?: boolean;
+    groupByOption?: boolean;
     active?: boolean;
   };
   try {
@@ -71,6 +72,7 @@ export async function POST(req: Request) {
       packSize: Number.isFinite(body.packSize) ? Math.max(0, Math.trunc(Number(body.packSize))) : undefined,
       packUnit: typeof body.packUnit === "string" ? body.packUnit.trim() : undefined,
       manualOnly: typeof body.manualOnly === "boolean" ? body.manualOnly : undefined,
+      groupByOption: typeof body.groupByOption === "boolean" ? body.groupByOption : undefined,
       active: body.active,
     });
     return NextResponse.json({ ok: true, item });
