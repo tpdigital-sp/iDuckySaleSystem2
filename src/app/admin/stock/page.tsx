@@ -5023,62 +5023,96 @@ function UsagePanel({
         )
       ) : (
         <ul className="mt-1.5 divide-y divide-slate-100 rounded-xl border border-slate-200">
-          {usage.map((u, i) => {
-            const k = `u${i}`;
-            return (
-              <li key={k} className="flex items-center gap-2.5 px-2.5 py-2">
-                <Thumb src={u.img} name={u.kind === "preset" ? u.choice : u.productName} size={36} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium text-slate-900">
-                    {u.kind === "product" ? u.productName : u.choice}
-                    {u.kind !== "product" && u.per !== 1 && <span className="ml-1 font-normal text-slate-400">× {u.per} {item.unit}</span>}
+          {(() => {
+            /**
+             * จัดกลุ่มตาม "เงื่อนไขที่ตัด" (ค่า + เฉพาะเมื่อ) แล้วไล่สินค้าใต้หัวข้อเดียว — เดิมลิงก์ 6 สินค้าของตัวเลือกเดียวกันขึ้น 6 แถว
+             * ชื่อตัวเลือกยาวซ้ำกันทุกแถวและโดนตัดคำ เจ้าของร้านอ่านไม่ออก (1 ต.ค. 69) · ลิงก์ทั้งตัวสินค้า/วัสดุแฝงเป็นกลุ่มของตัวเอง
+             */
+            type Entry = { u: StockUsage; i: number };
+            type G = { key: string; title: string; cond?: string; img?: string; entries: Entry[]; products: Set<string> };
+            const groups = new Map<string, G>();
+            usage.forEach((u, i) => {
+              const key = u.kind === "product" ? (u.bom ? "bom" : "all") : `${u.choice}|${u.cond ?? ""}`;
+              const g =
+                groups.get(key) ??
+                groups
+                  .set(key, {
+                    key,
+                    title: u.kind === "product" ? (u.bom ? "วัสดุแฝง — ตัดทุกชิ้นของสินค้า" : "ตัดทุกออเดอร์ของสินค้า") : `${u.label} = ${u.choice}`,
+                    cond: u.kind !== "product" ? u.cond : undefined,
+                    entries: [],
+                    products: new Set(),
+                  })
+                  .get(key)!;
+              // ภาพ: ตัวเลือกจากคลังกลางก่อน (ลิงก์ในสินค้าให้รูปปกสินค้า) · ชื่อกลุ่มของคลังกลางชนะ ("ตะขอ / ห่วง" ของจุกใสเป็นตัวเลือกเดียวกัน)
+              if (u.kind === "preset") {
+                g.title = `${u.label} = ${u.choice}`;
+                if (u.img) g.img = u.img;
+                for (const nm of u.usedByNames ?? []) g.products.add(nm);
+              } else {
+                if (!g.img && u.img) g.img = u.img;
+                g.products.add(u.productName);
+              }
+              g.entries.push({ u, i });
+            });
+            const names = (set: Set<string>, max = 4) => {
+              const a = [...set];
+              return a.length <= max ? a.join(", ") : `${a.slice(0, max).join(", ")} +${a.length - max}`;
+            };
+            return [...groups.values()].map((g) => (
+              <li key={g.key} className="px-2.5 py-2">
+                <div className="flex items-start gap-2.5">
+                  <Thumb src={g.img} name={g.title} size={36} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium leading-snug text-slate-900">{g.title}</span>
+                    {g.cond && <span className="block text-[11px] leading-snug text-orange-700">เฉพาะเมื่อ {g.cond}</span>}
+                    <span className="block text-[11px] text-slate-400">ใช้กับ {fmtN(g.products.size)} สินค้า</span>
                   </span>
-                  <span className="block truncate text-[11px] text-slate-400">
-                    {u.kind === "product"
-                      ? u.missing
-                        ? "ไม่มีสินค้ารหัสนี้แล้ว — ลิงก์นี้ไม่ตัดยอด กด “แก้” เพื่อเลือกสินค้าใหม่"
-                        : u.bom
-                          ? `วัสดุแฝง · ทุกชิ้น ×${u.per ?? 1} ${item.unit}`
-                          : u.per && u.per > 1
-                            ? `ทุกออเดอร์ของสินค้านี้ · ขาย 1 ที่ ตัด ${u.per} ${item.unit} (งานเป็นเซ็ต)`
-                            : "ทุกออเดอร์ของสินค้านี้ · 1 ต่อ 1"
-                      : where(u)}
-                    {u.kind !== "preset" && u.draft ? " · ร่าง" : ""}
-                  </span>
-                </span>
-                {mayEdit &&
-                  (u.kind === "product" && !u.bom ? (
-                    <>
-                      {/* งานขายเป็นเซ็ต: 1 ที่ลูกค้าสั่ง = หลายหน่วยในคลัง — ว่าง/1 = 1 ต่อ 1 */}
-                      <PerField
-                        per={u.per}
-                        unit={item.unit}
-                        ariaLabel={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.productName}`}
-                        onSave={(n) => run(k, () => onProductPer(u, n))}
-                      />
-                      <button type="button" onClick={onEdit} className={btnSmGhost}>
-                        แก้
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {/* ลิงก์กับตัวเลือก/คลังกลางก็ขายเป็นเซ็ตได้ (เข็มกลัด 1 เซ็ต = 10 ชิ้น) — ลิงก์มีเงื่อนไขแก้จำนวนที่ฟอร์ม "ตัดเพิ่ม" */}
-                      {u.kind !== "product" && !("extra" in u && u.extra) && (
-                        <PerField
-                          per={u.per}
-                          unit={item.unit}
-                          ariaLabel={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.label} = ${u.choice}`}
-                          onSave={(n) => run(k, () => onChoicePer(u, n))}
-                        />
-                      )}
-                      <button type="button" disabled={busy === k} onClick={() => run(k, () => onUnlink(u))} className={btnSmGhost}>
-                        {busy === k ? "…" : "ถอด"}
-                      </button>
-                    </>
-                  ))}
+                </div>
+                <ul className="mt-1 space-y-0.5 pl-[46px]">
+                  {g.entries.map(({ u, i }) => {
+                    const k = `u${i}`;
+                    const text =
+                      u.kind === "preset"
+                        ? `คลังกลาง “${u.label}” · ${fmtN(u.usedBy)} สินค้า: ${names(new Set(u.usedByNames ?? []))}`
+                        : u.kind === "choice"
+                          ? `${u.productName}${u.draft ? " · ร่าง" : ""}${u.per !== 1 ? ` · ×${u.per} ${item.unit}` : ""}`
+                          : `${u.productName}${u.missing ? " · ไม่มีสินค้ารหัสนี้แล้ว — ลิงก์นี้ไม่ตัดยอด" : u.per && u.per > 1 ? ` · ขาย 1 ที่ ตัด ${u.per} ${item.unit}` : ""}`;
+                    return (
+                      <li key={k} className="flex min-h-[32px] items-center gap-2 text-[12px] text-slate-600">
+                        <span className="min-w-0 flex-1 leading-snug">
+                          <span className="mr-1 text-slate-300" aria-hidden>
+                            •
+                          </span>
+                          {text}
+                        </span>
+                        {mayEdit &&
+                          (u.kind === "product" && !u.bom ? (
+                            <>
+                              {/* งานขายเป็นเซ็ต: 1 ที่ลูกค้าสั่ง = หลายหน่วยในคลัง — ว่าง/1 = 1 ต่อ 1 */}
+                              <PerField per={u.per} unit={item.unit} ariaLabel={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.productName}`} onSave={(n) => run(k, () => onProductPer(u, n))} />
+                              <button type="button" onClick={onEdit} className={btnSmGhost}>
+                                แก้
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {/* ลิงก์กับตัวเลือก/คลังกลางก็ขายเป็นเซ็ตได้ — ลิงก์มีเงื่อนไขแก้จำนวนที่ฟอร์ม "ตัดเพิ่ม" */}
+                              {u.kind !== "product" && !("extra" in u && u.extra) && (
+                                <PerField per={u.per} unit={item.unit} ariaLabel={`ตัดกี่ ${item.unit} ต่อ 1 ที่ลูกค้าสั่ง ${u.label} = ${u.choice}`} onSave={(n) => run(k, () => onChoicePer(u, n))} />
+                              )}
+                              <button type="button" disabled={busy === k} onClick={() => run(k, () => onUnlink(u))} className={btnSmGhost}>
+                                {busy === k ? "…" : "ถอด"}
+                              </button>
+                            </>
+                          ))}
+                      </li>
+                    );
+                  })}
+                </ul>
               </li>
-            );
-          })}
+            ));
+          })()}
         </ul>
       )}
 
@@ -5114,7 +5148,8 @@ function UsagePanel({
       )}
 
       {/* ของที่ห้อยใต้ตัวนี้ — ชุดเดียวกับแถวลูกในตาราง เปิดลิ้นชักตัวแม่ต้องเห็นว่ามีอะไรพ่วงอยู่ */}
-      {ready && hangs.length > 0 && (
+      {/* ของใช้ร่วมหลายสินค้า (คลังกลาง / ≥3 สินค้า) ไม่โชว์ "ตัดอะไรเพิ่มอีก" — เป็นวัสดุแฝงของสินค้าโน้นนี้ ไม่เกี่ยวกับตัวนี้ตรง ๆ เจ้าของร้านงง (1 ต.ค. 69) */}
+      {ready && hangs.length > 0 && !(usage.some((u) => u.kind === "preset") || new Set(usage.filter((u) => u.kind !== "preset").map((u) => u.productId)).size >= 3) && (
         <div className="mt-3">
           <p className="text-[11px] font-semibold text-slate-500">ขายตัวนี้แล้วตัดอะไรเพิ่มอีก</p>
           <ul className="mt-1.5 divide-y divide-slate-100 rounded-xl border border-slate-200">
