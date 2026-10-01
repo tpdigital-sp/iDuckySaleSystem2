@@ -121,6 +121,14 @@ function prevUserMessages() {
   return out.slice(-5);
 }
 const context = prevUserMessages();
+// 🧠 1 ต.ค. 69: ส่งบทสนทนาทั้งสองฝั่งของรอบนี้ [{role,text,at}] ให้เว็บด้วย (เว็บตัดรอบเก่าเองจาก at) — เว็บเห็นว่าบอทเพิ่งเสนออะไรไป
+function historyTurns() {
+  let raw = null;
+  try { raw = $('Build AI Request').first().json.previousMessages; } catch (e) {}
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(m => m && typeof m === 'object' && (m.text || m.content)).map(m => ({ role: /user|customer|human|ลูกค้า/i.test(String(m.role || '')) ? 'user' : 'assistant', text: String(m.text || m.content || '').slice(0, 400), at: m.at || undefined })).slice(-14);
+}
+const history = historyTurns();
 
 const out = [];
 for (const item of $input.all()) {
@@ -144,7 +152,7 @@ for (const item of $input.all()) {
   // v3: ถามเว็บทุกข้อความ (ยกเว้นเรื่องออเดอร์/ไฟล์) แล้วให้ชั้นเข้าใจคำถามของเว็บตัดสิน — regex เหลือแค่ตัวช่วย
   const askPrice = ASK_PRICE.test(ut);
   let site = null;
-  try { site = await this.helpers.httpRequest({ method: 'POST', url: SITE_API, json: true, body: { query: ut, context, noFallback: true }, timeout: 20000 }); } catch (e) { site = null; }
+  try { site = await this.helpers.httpRequest({ method: 'POST', url: SITE_API, json: true, body: { query: ut, context, history, noFallback: true }, timeout: 20000 }); } catch (e) { site = null; }
   const siteProducts = site && site.found ? (Array.isArray(site.products) && site.products.length ? site.products : (site.product ? [site.product] : [])) : [];
   const priceIntent = site && /^price/.test(String(site.intent || ''));
   const understoodPrice = site && site.understood && site.understood.intent === 'price';

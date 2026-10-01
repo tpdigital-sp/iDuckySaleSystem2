@@ -14,3 +14,6 @@
 
 # 29 ก.ย. 69 PO Override1: regex เป็น /^(not_in_catalog|draft_product|mix|info|spec|spec_menu)$/ — spec = ตัวเลือก/ขนาดของสินค้าที่รู้ตัว (kind "info" intent "spec")
 #   เจอจริง: "มีกระดุมแปะด้วยไหมคะ" หลังคุยผ้าห่มฮู้ด → agent ตอบ "ขอเช็กรายละเอียด" ทั้งที่เว็บตอบได้ (+ Site Price Flex ก็รับ spec|spec_menu เช่นกัน)
+
+# 1 ต.ค. 69 Fetch PO1 ส่ง history[] (ทั้งสองฝั่ง) เพิ่มจาก context[]: แยกบรรทัด conversationHistory ทั้ง "ลูกค้า:" และ "แอดมิน:/ผู้ช่วย:" → {role:'user'|'assistant', text} ≤14 บรรทัด (ไม่มี previousMessages ใน body ของ Call AI จึงไม่มี at — รอบสนทนาถูกตัดมาแล้วที่ Build AI Request)
+#   ท้าย expression: … return JSON.stringify({ query: msg, context: ctx, history: history }); })() }}

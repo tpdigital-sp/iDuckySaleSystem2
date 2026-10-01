@@ -99,3 +99,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - เคส: "รับทำผ้าห่มฮูดดี้ใช่มั้ยคะ" → "มีกระดุมแปะด้วยไหมคะ" → เว็บเลือก GRIPTOK MIRROR (LLM หยิบมั่ว) + agent ตอบ "ขอเช็กรายละเอียด" + การ์ดผิดตัว
 - เว็บ `understand()`: ⚓ คำถามที่ไม่เอ่ยชื่อสินค้า → สินค้าต้องมาจากข้อความล่าสุดในบทสนทนาที่พูดถึงสินค้า (ไล่จากท้าย · นับคำในชื่อที่ตรง · ชื่อเต็มโผล่ = ชนะ) ไม่ใช่ที่ LLM เลือก · `fixTypos` ฮูดดี้ → hoodie · `understood.debug` {qMentions, anchor, trace}
 - n8n (ร่าง รอ Save+Publish): **Site Price Flex** branch 1.5 รับ `spec|spec_menu` ใช้ข้อความเว็บ+การ์ด "ดูรายละเอียด/สั่งบนเว็บ" · **ChatBot PO Override1** regex + `spec|spec_menu` — เพราะคำตอบ spec ของเว็บมี kind "info" intent "spec" ไม่เข้าเงื่อนไขเดิม
+
+## 1 ต.ค. 69 — ข้อ 1 ของแผน "ฉลาดเหมือน Claude/ChatGPT": บอทเห็นบทสนทนาทั้งสองฝั่งของรอบนี้
+- เว็บ `/api/pricing/search` รับ `history: [{role:'user'|'assistant', text, at}]` → `understand()` แสดงเป็นบรรทัด ลูกค้า:/แอดมิน: และ `currentSession()` ตัดข้อความก่อนช่องว่าง >6 ชม. (ข้อความล่าสุดเก่ากว่า 6 ชม. = เริ่มใหม่หมด) · ด่านยึดสินค้าใช้ทั้งสองฝั่ง (เมนูที่บอทเสนอ = รายการ) · อ้างลำดับ "แบบที่ 2/ตัวแรก/อันสุดท้าย" หยิบจากรายการล่าสุดของบอทแบบตายตัว · ไม่มีสินค้าทั้งในคำถามและบทสนทนา = ห้าม LLM เดา
+- n8n (ร่าง 3 โหนด รอ Save+Publish): LINE **Build AI Request** ตัดรอบสนทนา 6 ชม. ([snippet](build-ai-request.session-cut.snippet.js)) · LINE **Site Price Flex** ส่ง `history` จาก previousMessages ([site-price-flex.code.js](site-price-flex.code.js)) · ChatBot **Fetch PO1** ส่ง `history` จาก conversationHistory ทั้งสองฝั่ง ([expression](chatbot-fetch-po1.expression.txt))
+- ยังไม่ทำ (ข้อ 2–3 ของแผน): โปรไฟล์/ความจำต่อลูกค้า · ยกชั้นเข้าใจคำถามเป็นโมเดลใหญ่ขึ้น
