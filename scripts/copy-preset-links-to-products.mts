@@ -48,13 +48,16 @@ for (const row of prods ?? []) {
   }
   const g = opts[gi];
   /** กลุ่มสีของสินค้านี้ที่โชว์เมื่อเลือกตะขอ hookName และมีค่า b — คืน label ของกลุ่มนั้น (ชื่อค่าในกลุ่มลิงก์คลังอ่านจากคลังสด) */
-  const colorGroupFor = (hookName: string, b: string): string | undefined => {
+  const norm = (s: string) => s.trim().replace(/^สี\s*/, "");
+  /** คืน {label, choice} ของกลุ่มสีในสินค้านี้ — ชื่อสีตรงเป๊ะก่อน ไม่งั้นตัดคำ "สี" นำหน้า (กล่องดนตรีใช้ "เงิน" แทน "สีเงิน") */
+  const colorGroupFor = (hookName: string, b: string): { label: string; choice: string } | undefined => {
     for (const o of opts) {
       const conds = [o.showWhen, o.showWhenAlso, ...(o.showWhenAll ?? []), ...(o.showWhenAny ?? [])].filter((c): c is { label: string; choices: string[] } => !!c?.label);
       if (!conds.some((c) => c.label === g.label && c.choices.includes(hookName))) continue;
       const live = o.presetId ? presets.find((ps) => ps.id === o.presetId) : undefined;
       const choices = (live?.choices ?? o.choices ?? []) as ProductOptionChoice[];
-      if (choices.some((c) => c.name === b)) return live?.label ?? o.label;
+      const hit = choices.find((c) => c.name === b) ?? choices.find((c) => norm(c.name) === norm(b));
+      if (hit) return { label: live?.label ?? o.label, choice: hit.name };
     }
     return undefined;
   };
@@ -73,9 +76,9 @@ for (const row of prods ?? []) {
       const w = (l.when ?? [])[0];
       const b = w?.choices?.[0];
       if (!w || !b) continue;
-      const label = colorGroupFor(c.name, b);
-      if (!label) { miss.push(`${code(c.name)} × ${b}`); continue; }
-      const when = [{ label, choices: [b] }];
+      const hit = colorGroupFor(c.name, b);
+      if (!hit) { miss.push(`${code(c.name)} × ${b}`); continue; }
+      const when = [{ label: hit.label, choices: [hit.choice] }];
       if (links.some((x) => JSON.stringify(x.when ?? []) === JSON.stringify(when))) { skip++; continue; }
       links.push({ stockItemId: l.stockItemId, when });
       cond++;
