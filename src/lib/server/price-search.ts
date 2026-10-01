@@ -132,7 +132,7 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
       ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: false });
       if (ans.kind === "skip") {
         const pk = { ids: u.ids, broad: u.broad };
-        ans = u.intent === "spec" ? await searchSpec(searchQuery, pk) : await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick: pk });
+        ans = u.intent === "spec" ? await searchSpec(searchQuery, pk) : await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, pick: pk });
       }
     } else if (u.intent === "knowledge" && u.ids.length) {
       // ถามความรู้เกี่ยวกับสินค้าที่รู้ตัว → อ่านจากหน้าสินค้าจริง (ไม่พอ = ให้ agent ตอบ)
@@ -170,12 +170,12 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     } else if (mode === "spec") {
       ans = await searchSpec(searchQuery, pick);
     } else {
-      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, pick });
     }
     // ขั้นต่ำ/สเปกตอบไม่ได้ → ลองราคาต่อ (คำถามอย่าง "สั่ง 1 ชิ้นได้ไหม ราคาเท่าไหร่" ไม่ควรตอบว่างเปล่า)
     // คำถามคละลายไม่มีข้อมูล = ให้ agent ตอบ อย่าเทตารางราคา
     if (mode !== "price" && mode !== "mix" && ans.kind === "skip") {
-      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, pick });
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, pick });
     }
   }
 

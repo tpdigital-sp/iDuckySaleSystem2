@@ -735,6 +735,20 @@ ${list}
           if (listed.length >= 2 && n >= 1 && n <= listed.length) {
             picked = [listed[n - 1]];
             raw.broad = false;
+          } else if (listed.length < 2) {
+            // ข้อความล่าสุดของบอทเป็นตารางราคาสินค้าเดียว ("• ไดคัท 100%: ฿…" "• SET-KIT: ฿…") → "แบบที่ 2" = เรทที่ 2 ของสินค้านั้น
+            const rateLabels = lastBot.text
+              .split("\n")
+              .map((l) => /^\s*•\s*([^:：]{2,40})[:：]\s*฿/.exec(l)?.[1]?.trim() ?? "")
+              .filter(Boolean);
+            const nn = ord[2] ? 1 : ord[3] ? rateLabels.length : Number(ord[1]);
+            const prodOfBot = top(lastBot.text.split("\n")[0] ?? "");
+            if (rateLabels.length >= 2 && nn >= 1 && nn <= rateLabels.length && prodOfBot.length === 1) {
+              picked = [prodOfBot[0]];
+              raw.broad = false;
+              const qtyPart = /\d+\s*(ชิ้น|อัน|ใบ|แผ่น|ตัว|ดวง|เซ็ต|ผืน)/.exec(q)?.[0] ?? "";
+              raw.standalone = `${prodOfBot[0].name} ${rateLabels[nn - 1]} ${qtyPart} ราคาเท่าไหร่`.replace(/\s+/g, " ").trim();
+            }
           }
         }
       }
@@ -1021,9 +1035,18 @@ function rateHead(rate: { label: string; minQty?: number }, unit: string): strin
  * ในไลน์ต้องกด See more) → ย่อเป็น: ต่อเรท 1 บรรทัดช่วงราคา + 1 บรรทัดแบบถูกสุด · โชว์รายตัวเลือกเฉพาะเมื่อ
  * ลูกค้าระบุคำที่ตรงคอลัมน์ (เช่น "3cm") · ปิดท้ายบอกว่าราคาต่างกันตามอะไร + ลิงก์ (รายละเอียดครบอยู่บนหน้าสินค้า)
  */
-function quote(p: Product, query: string, qty: number | null, narrow = false): PriceAnswer | null {
+function quote(p: Product, query: string, qty: number | null, narrow = false, rateHint = ""): PriceAnswer | null {
   const allRates = ratesOf(p);
-  const rates = allRates.slice(0, narrow ? 1 : MAX_RATES);
+  // 🎯 ลูกค้าเอ่ยชื่อเรท/แบบ ("SET-KIT 50 ชิ้น" · "แบบไดคัท 100%") → ตอบเฉพาะเรทนั้น (1 ต.ค. 69 "แบบที่ 2" หลังตารางราคา = เรทที่ 2)
+  // rateHint = ข้อความดิบของลูกค้า (standalone ที่ LLM เขียนใหม่มักตัดชื่อเรททิ้ง)
+  const qnRate = norm(`${query} ${rateHint}`);
+  const named = allRates.filter((r) => {
+    const ln = norm(r.label).replace(/^เรทที่\d+/, "");
+    if (ln.length < 3) return false;
+    const l = lcsLen(qnRate, ln);
+    return qnRate.includes(ln) || (l >= 4 && l >= Math.ceil(ln.length * 0.6));
+  });
+  const rates = (named.length && named.length < allRates.length ? named : allRates).slice(0, narrow ? 1 : MAX_RATES);
   if (!rates.length) return null;
 
   const url = botUrl(p);
@@ -1412,6 +1435,11 @@ ${
     }
   }
   if (!out || /NOT_FOUND/.test(out)) return null;
+  // 🛡 ถาม "ส่งกี่วัน" แล้วหน้าสินค้ามีแต่ FAQ กว้าง ๆ ("หลังยืนยันชำระเงิน…จัดส่งทั่วไทย") = ไม่ได้ตอบ → ให้ agent/คลังความรู้ตอบแทน (1 ต.ค. 69)
+  if (!extra) {
+    const topics = EXTRA_TOPICS.filter((t) => t.ask.test(query));
+    if (topics.length && !topics.some((t) => t.need.test(out))) return null;
+  }
   // LINE/แชทโชว์ markdown เป็นตัวอักษรดิบ → ถอดออกให้หมด
   out = out
     .replace(/\*\*(.+?)\*\*/g, "$1")
@@ -1640,7 +1668,7 @@ async function fallback(query: string, timeoutMs: number): Promise<PriceAnswer |
  */
 export async function searchPrice(
   query: string,
-  opts: { qty?: number | null; allowFallback?: boolean; timeoutMs?: number; pick?: Pick } = {},
+  opts: { qty?: number | null; allowFallback?: boolean; timeoutMs?: number; pick?: Pick; rateHint?: string } = {},
 ): Promise<PriceAnswer> {
   const q = query.trim();
   const qty = opts.qty ?? parseQty(q);
@@ -1654,7 +1682,7 @@ export async function searchPrice(
   for (const item of items.slice(0, 3)) {
     const full = await getProductServer(item.id).catch(() => undefined);
     if (!full) continue;
-    const ans = quote(full, q, qty, items.length > 1);
+    const ans = quote(full, q, qty, items.length > 1, opts.rateHint);
     if (ans) found.push(ans);
   }
   if (found.length === 1) return found[0];
