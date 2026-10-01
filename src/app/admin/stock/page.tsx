@@ -4858,7 +4858,7 @@ function LinkCell({
             main: `${here ? "ทุกออเดอร์ของสินค้านี้" : `ทุกออเดอร์ของ ${u.productName}`}${u.per && u.per > 1 ? ` ×${u.per}` : ""}`,
             sub: u.per && u.per > 1 ? "งานขายเป็นเซ็ต — ขาย 1 ที่ ตัดหลายหน่วย" : "",
           };
-    if (u.kind === "preset") return { main: `${u.label} = ${u.choice}`, sub: `คลังกลาง · ใช้กับ ${u.usedBy} สินค้า` };
+    if (u.kind === "preset") return { main: `${u.label} = ${u.choice}`, sub: `${u.cond ? `เฉพาะเมื่อ ${u.cond} · ` : ""}คลังกลาง · ใช้กับ ${u.usedBy} สินค้า` };
     return {
       main: `${here ? "" : `${u.productName} · `}${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`,
       sub: u.cond ? `เฉพาะเมื่อ ${u.cond}` : "",
@@ -4969,7 +4969,7 @@ function UsagePanel({
   };
   const where = (t: StockUsage | StockSuggest) =>
     t.kind === "preset"
-      ? `คลังกลาง “${t.label}” · ${t.usedBy} สินค้า`
+      ? `คลังกลาง “${t.label}” · ${t.usedBy} สินค้า${"cond" in t && t.cond ? ` · เฉพาะเมื่อ ${t.cond}` : ""}`
       : t.kind === "choice"
         ? `${t.productName} · ${t.label}${"cond" in t && t.cond ? ` · เฉพาะเมื่อ ${t.cond}` : ""}`
         : "";

@@ -95,6 +95,21 @@ export async function GET(req: Request) {
         });
       else if (users.length)
         open.push({ n: normName(c.name), idNorm: "", s: { kind: "preset", presetId: ps.id, label: ps.label, choice: c.name, img: c.imageSrc, usedBy: users.length } });
+      // ลิงก์มีเงื่อนไขบนตัวเลือกคลังกลาง (แยกสต๊อก ตะขอ × สีตะขอ — 1 ต.ค. 69) — เดิมไม่อ่าน → SKU 218 ตัวดูเหมือน "ยังไม่ผูก" แล้วหายไปอยู่กลุ่มที่ซ่อน
+      for (const l of c.stockLinks ?? [])
+        if (l.stockItemId)
+          push(l.stockItemId, {
+            kind: "preset",
+            presetId: ps.id,
+            label: ps.label,
+            choice: c.name,
+            per: l.per ?? 1,
+            img: c.imageSrc,
+            usedBy: users.length,
+            usedByNames: users.slice(0, 4).map((u) => u.p.name),
+            extra: true,
+            cond: (l.when ?? []).map((w) => `${w.label} = ${w.choices.join(" / ")}`).join(" และ ") || undefined,
+          });
     }
   }
 

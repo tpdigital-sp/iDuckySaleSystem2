@@ -56,7 +56,19 @@ export type StockUsage =
       extra?: boolean;
       cond?: string;
     }
-  | { kind: "preset"; presetId: string; label: string; choice: string; per: number; img?: string; usedBy: number; usedByNames: string[] };
+  | {
+      kind: "preset";
+      presetId: string;
+      label: string;
+      choice: string;
+      per: number;
+      img?: string;
+      usedBy: number;
+      usedByNames: string[];
+      /** ผูกแบบมีเงื่อนไขบนตัวเลือกของคลังกลาง (choice.stockLinks — แยกสต๊อก ตะขอ × สี) · cond = ข้อความเงื่อนไข */
+      extra?: boolean;
+      cond?: string;
+    };
 
 export type StockSuggest =
   | { kind: "choice"; productId: string; productName: string; img?: string; label: string; optionIndex: number; choice: string }
