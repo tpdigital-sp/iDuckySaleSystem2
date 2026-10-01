@@ -5954,20 +5954,31 @@ function SplitModal({
   );
 
   /** ติ๊ก/ติ๊กออกทีละแถว — โหมดกลุ่มเดียวจำเป็น "ชื่อตัวเลือก" เพื่อให้ยังติ๊กออกอยู่เมื่อเพิ่มกลุ่มที่ 2 */
+  /** ติ๊ก/เอาออกทีละแถวบนชุด off (ใช้ซ้ำกับ "ทั้งตะขอ" และ "ทั้งหมด") · แถวลูกโหมดแตกกลุ่มย่อยปิดเฉพาะตัวเอง ไม่ปิดทั้งตะขอ */
+  const applyRowOn = (next: Set<string>, r: Row, on: boolean) => {
+    if (!on) {
+      next.add(rowOff(r));
+      if (gA && !gB && !r.dep) next.add(nameOff(gA.label, r.a.name));
+      return;
+    }
+    const names = [...(gA && !r.dep ? [nameOff(gA.label, r.a.name)] : []), ...(gB && r.b ? [nameOff(gB.label, r.b.name)] : [])].filter((k) => next.has(k));
+    if (names.length) {
+      for (const o of rows) if (o.key !== r.key && !o.done && isOff(next, o)) next.add(rowOff(o));
+      for (const k of names) next.delete(k);
+    }
+    next.delete(rowOff(r));
+  };
   const setRowOn = (r: Row, on: boolean) =>
     setOff((cur) => {
       const next = new Set(cur);
-      if (!on) {
-        next.add(rowOff(r));
-        if (gA && !gB) next.add(nameOff(gA.label, r.a.name));
-        return next;
-      }
-      const names = [...(gA ? [nameOff(gA.label, r.a.name)] : []), ...(gB && r.b ? [nameOff(gB.label, r.b.name)] : [])].filter((k) => next.has(k));
-      if (names.length) {
-        for (const o of rows) if (o.key !== r.key && !o.done && isOff(next, o)) next.add(rowOff(o));
-        for (const k of names) next.delete(k);
-      }
-      next.delete(rowOff(r));
+      applyRowOn(next, r, on);
+      return next;
+    });
+  /** ☑ ติ๊ก/เอาออกหลายแถวทีเดียว (ทั้งตะขอ C = ทุกสีของ C) */
+  const setManyOn = (list: Row[], on: boolean) =>
+    setOff((cur) => {
+      const next = new Set(cur);
+      for (const r of list) if (!r.done) applyRowOn(next, r, on);
       return next;
     });
 
@@ -6152,18 +6163,30 @@ function SplitModal({
 
               {gA && (
                 <div className="rounded-xl border border-slate-200">
-                  <div className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5 text-[12px] text-slate-500">
-                    <span>
-                      เลือกแล้ว {rows.filter((r) => picked.has(r.key) && !r.done).length} / {rows.filter((r) => !r.done).length}
-                    </span>
-                    <button
-                      type="button"
-                      className="underline underline-offset-2 hover:text-slate-800"
-                      onClick={() => setAllOn(!rows.every((r) => r.done || picked.has(r.key)))}
-                    >
-                      {rows.every((r) => r.done || picked.has(r.key)) ? "ไม่เลือกเลย" : "เลือกทั้งหมด"}
-                    </button>
-                  </div>
+                  {/* ☑ ช่องติ๊กทั้งหมดอยู่ตำแหน่งเดียวกับช่องติ๊กของแถว (เจ้าของร้านขอ 1 ต.ค. 69 — เดิมเป็นลิงก์ข้อความมุมขวา หาไม่เจอ) · ติ๊กบางส่วน = ขีด */}
+                  {(() => {
+                    const todoRows = rows.filter((r) => !r.done);
+                    const nOn = todoRows.filter((r) => picked.has(r.key)).length;
+                    const all = todoRows.length > 0 && nOn === todoRows.length;
+                    return (
+                      <label className="flex min-h-[40px] cursor-pointer items-center gap-2.5 border-b border-slate-100 px-3 py-1.5 text-[12px] text-slate-600 hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          className="h-[18px] w-[18px] shrink-0 accent-amber-500"
+                          checked={all}
+                          ref={(el) => {
+                            if (el) el.indeterminate = nOn > 0 && !all;
+                          }}
+                          onChange={(e) => setAllOn(e.target.checked)}
+                          aria-label={all ? "ไม่เลือกเลย" : "เลือกทั้งหมด"}
+                        />
+                        <span className="font-medium text-slate-800">{all ? "ไม่เลือกเลย" : "เลือกทั้งหมด"}</span>
+                        <span className="ml-auto tabular-nums">
+                          เลือกแล้ว {fmtN(nOn)} / {fmtN(todoRows.length)}
+                        </span>
+                      </label>
+                    );
+                  })()}
                   {/* ส่วนประกอบของชื่อ SKU — ติ๊กออกได้ (เช่น ไม่เอา "อะคริลิคพิเศษ" ที่ซ้ำทุกแถว) · ตัวอย่างชื่อแถวแรกอัปเดตทันที */}
                   <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-3 py-2 text-[12px] text-slate-500">
                     <span className="mr-1 shrink-0">ชื่อ SKU ประกอบจาก</span>
@@ -6207,12 +6230,37 @@ function SplitModal({
                     )}
                   </div>
                   <ul className="max-h-[38dvh] divide-y divide-slate-100 overflow-y-auto">
-                    {rows.map((r) => {
+                    {rows.map((r, idx) => {
                       const on = !!r.done || picked.has(r.key);
                       const part = partName.trim();
+                      // 🌳 แถวแรกของแต่ละตะขอในโหมดแตกกลุ่มย่อย → หัวตะขอพร้อมช่องติ๊ก "ทั้งตะขอนี้" (ทุกสี)
+                      const firstOfParent = !!r.dep && (idx === 0 || rows[idx - 1].a !== r.a);
+                      const siblings = r.dep ? rows.filter((o) => o.a === r.a && o.dep) : [];
+                      const sibTodo = siblings.filter((o) => !o.done);
+                      const sibOn = sibTodo.filter((o) => picked.has(o.key)).length;
                       return (
                         <li key={r.key}>
-                          <label className={`flex min-h-[44px] items-center gap-2.5 px-3 py-1.5 ${r.done ? "" : "cursor-pointer hover:bg-slate-50"}`}>
+                          {firstOfParent && (
+                            <label className="flex min-h-[40px] cursor-pointer items-center gap-2.5 bg-slate-50/70 px-3 py-1 text-[13px] hover:bg-slate-100/70">
+                              <input
+                                type="checkbox"
+                                className="h-[18px] w-[18px] shrink-0 accent-amber-500"
+                                checked={sibTodo.length > 0 && sibOn === sibTodo.length}
+                                disabled={!sibTodo.length}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = sibOn > 0 && sibOn < sibTodo.length;
+                                }}
+                                onChange={(e) => setManyOn(siblings, e.target.checked)}
+                                aria-label={`เลือกทุกสีของ ${r.a.name}`}
+                              />
+                              <Thumb src={r.a.img} name={r.a.name} size={26} />
+                              <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{r.a.name}</span>
+                              <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
+                                {fmtN(sibOn)} / {fmtN(siblings.length)} {shortLabel(r.dep!.label)}
+                              </span>
+                            </label>
+                          )}
+                          <label className={`flex min-h-[44px] items-center gap-2.5 px-3 py-1.5 ${r.dep ? "pl-9" : ""} ${r.done ? "" : "cursor-pointer hover:bg-slate-50"}`}>
                             <input
                               type="checkbox"
                               className="h-[18px] w-[18px] shrink-0 accent-slate-900"
