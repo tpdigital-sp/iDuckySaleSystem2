@@ -389,9 +389,17 @@ export default function StockPage() {
   const [moveFilter, setMoveFilter] = useState<(typeof MOVE_FILTERS)[number]>("ทั้งหมด");
   const [logQ, setLogQ] = useState("");
 
+  /**
+   * 🏁 ลำดับคำขอโหลดรายการ — รายการใหญ่ (~2,000 SKU) โหลดช้าหลายวิ · poll ทุก 20 วิ ที่ยิงไป "ก่อน" บันทึก อาจตอบกลับ "หลัง"
+   * load() ของการบันทึก แล้วเอาของเก่าทับ (เจ้าของร้าน 1 ต.ค. 69: ตั้งแพ็คแล้วเปิดดูเป็นค่าเก่า → บันทึกซ้ำจากฟอร์มเก่า → ค่าหาย)
+   * → คำตอบที่ไม่ใช่ของคำขอล่าสุดทิ้งไป
+   */
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const res = await fetch("/api/admin/stock");
     const j = await res.json().catch(() => null);
+    if (seq !== loadSeq.current) return; // มีคำขอใหม่กว่าออกไปแล้ว — ของนี้เก่า
     setLoading(false);
     if (!res.ok || !j?.ok) {
       setErr(j?.error ?? "โหลดข้อมูลไม่สำเร็จ");
@@ -3539,7 +3547,8 @@ function ItemDrawer({
   const [moreOpen, setMoreOpen] = useState<string | null>(null);
   // ปิดด้วย Esc + ล็อกสกรอลล์พื้นหลัง ไม่งั้นเลื่อนลิ้นชักแล้วหน้าหลังเลื่อนตาม
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Esc ปิดลิ้นชัก — ยกเว้นตอนโฟกัสอยู่ที่ <select> (คนกด Esc เพื่อปิดเมนูเลือก ไม่ใช่ปิดลิ้นชัก — เคยปิดทั้งลิ้นชักจนที่กรอกหาย)
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !(e.target instanceof HTMLSelectElement) && onClose();
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -4034,7 +4043,8 @@ function ItemModal({
    */
   const baseline = useRef<Record<string, unknown>>(item ? snapshotOf(item) : {});
   useEffect(() => {
-    if (!item || item.updatedAt === seenAt.current) return;
+    // เฉพาะของที่ "ใหม่กว่า" ที่ฟอร์มถืออยู่ (ISO string เทียบได้) — ของเก่ากว่า (poll ช้า) ไม่เอามาทับ
+    if (!item || !item.updatedAt || (seenAt.current && item.updatedAt <= seenAt.current)) return;
     seenAt.current = item.updatedAt;
     if (dirty.current) return;
     baseline.current = snapshotOf(item);
@@ -4063,7 +4073,19 @@ function ItemModal({
   const u = unit.trim() || "ชิ้น";
   const pu = packUnit.trim() || "แพ็ค";
   const hasPack = !!packUnit.trim() && Number(packSize) > 1;
-  const canSave = item ? !!name.trim() : nameList.length > 0;
+  /**
+   * ⚠️ แพ็คที่ตั้งแล้วเซิร์ฟเวอร์จะไม่เก็บ (ทิ้งเงียบ ๆ): 1 แพ็ค ≤ 1 หน่วย หรือชื่อแพ็คซ้ำกับหน่วยนับ ("1 ชิ้น = 1 ชิ้น")
+   * เจ้าของร้านใส่ 1 แล้ว "ไม่บันทึก" (1 ต.ค. 69) → บอกตรง ๆ ที่ช่อง + ล็อกปุ่มบันทึกจนกว่าจะแก้หรือเลือก "ไม่ตั้งแพ็ค"
+   */
+  const packTouched = packSize.trim() !== "" || packUnit.trim() !== "";
+  const packProblem = !packTouched
+    ? ""
+    : !(Number(packSize) > 1)
+      ? `1 ${pu} ต้องมากกว่า 1 ${u} (เช่น 100) — ถ้าซื้อและนับเป็น${u}อยู่แล้ว เลือก “ไม่ตั้งแพ็ค” และเว้นช่องว่าง`
+      : packUnit.trim() === u
+        ? `ชื่อหน่วยแพ็คซ้ำกับหน่วยนับ (${u}) — ตั้งเป็น แพ็ค/กล่อง/ถุง หรือเลือก “ไม่ตั้งแพ็ค”`
+        : "";
+  const canSave = (item ? !!name.trim() : nameList.length > 0) && !packProblem;
   const payload = (nm: string, alias?: string): Partial<Item> & { name: string } => {
     const full = fullPayload(nm, alias);
     if (!item) return full;
@@ -4105,7 +4127,7 @@ function ItemModal({
   /** บรรทัดสรุปในแผงขวา — ให้คนเห็นผลของที่กรอกเป็นภาษาคน ไม่ต้องไล่อ่านทุกช่อง */
   const summary: { k: string; v: string; warn?: boolean }[] = [
     { k: "รหัส", v: codeVal.trim() || "ออกให้เองตอนบันทึก" },
-    { k: "นับเป็น", v: hasPack ? `${u} · 1 ${pu} = ${fmtN(Number(packSize))} ${u}` : u },
+    packProblem ? { k: "นับเป็น", v: "แพ็คยังตั้งไม่ถูก — ดูช่อง “นับยังไง”", warn: true } : { k: "นับเป็น", v: hasPack ? `${u} · 1 ${pu} = ${fmtN(Number(packSize))} ${u}` : u },
     manualOnly
       ? { k: "ตัดตอนขาย", v: "ไม่ตัด — ของใช้ในโรงงาน เบิกเอง" }
       : productIds.length
@@ -4255,8 +4277,12 @@ function ItemModal({
                 <input value={packSize} onChange={(e) => setPackSize(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="100" className={`${inputCls} text-right tabular-nums`} />
               </label>
             </div>
-            <span className={hint} style={hintStyle}>
-              {hasPack ? `หน้าจอจะบอกเป็น “3 ${pu} + 40 ${u}” และตอนรับเข้า/เบิกเลือกกรอกเป็น${pu}ได้` : "ยังไม่ตั้งแพ็ค — กรอกและแสดงเป็น" + u + "อย่างเดียว"}
+            <span className={`${hint} ${packProblem ? "font-semibold" : ""}`} style={packProblem ? { color: "var(--dk-coral-deep)" } : hintStyle}>
+              {packProblem
+                ? `⚠️ ${packProblem}`
+                : hasPack
+                  ? `หน้าจอจะบอกเป็น “3 ${pu} + 40 ${u}” และตอนรับเข้า/เบิกเลือกกรอกเป็น${pu}ได้`
+                  : "ยังไม่ตั้งแพ็ค — กรอกและแสดงเป็น" + u + "อย่างเดียว"}
             </span>
           </FormSection>
 
@@ -4406,7 +4432,7 @@ function ItemModal({
           </div>
           {!canSave && (
             <span className="mt-1 block text-center text-[11.5px]" style={hintStyle}>
-              ใส่ชื่อวัสดุก่อนถึงบันทึกได้
+              {packProblem ? "แก้ช่องแพ็คก่อนถึงบันทึกได้" : "ใส่ชื่อวัสดุก่อนถึงบันทึกได้"}
             </span>
           )}
         </div>
@@ -4454,7 +4480,7 @@ function ItemModal({
             </button>
             {!canSave && (
               <span className="text-center text-[11.5px]" style={hintStyle}>
-                ใส่ชื่อวัสดุก่อนถึงบันทึกได้
+                {packProblem ? "แก้ช่องแพ็คก่อนถึงบันทึกได้" : "ใส่ชื่อวัสดุก่อนถึงบันทึกได้"}
               </span>
             )}
           </div>
