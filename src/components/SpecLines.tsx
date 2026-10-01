@@ -24,16 +24,31 @@ export function specValueLines(v: string): string[] {
     .filter(Boolean);
 }
 
+const RATE_LINE = "เรทราคา";
+/**
+ * 🏷 token ใส่ในลิสต์ hide = ซ่อนบรรทัด "เรทราคา" เฉพาะที่ชื่อเรทเป็นชื่อทั่วไป
+ * "เรทที่ 1 (สั่งแบบคละดีเทล)" / "ราคาต่อชิ้น" เป็นเรื่องราคา ฝ่ายผลิตไม่ได้ใช้ → ซ่อน (พนักงานแจ้ง 18 ก.ย. 69)
+ * "พิมพ์ DTF/DFT" / "พิมพ์ FLEX" / "งานปัก" / "งานสกรีน" / "ตัดตามขนาด" คือวิธีทำงาน → ต้องขึ้น
+ * (พนักงานแจ้ง 1 ต.ค. 69 · OD-260928-7354 เสื้อ YUEDPAO หน้าออเดอร์ไม่บอกว่าสกรีนแบบไหน เพราะซ่อนทั้งหัวข้อ)
+ * กติกาเดียวกับ rateLineForCustomer ในตะกร้า แต่ดูจาก "ค่า" อย่างเดียว — จอหลังบ้าน/ใบงานไม่ได้โหลดสินค้า
+ * ใส่ชื่อหัวข้อ "เรทราคา" ตรง ๆ ในลิสต์ hide ยังซ่อนทั้งหมดเหมือนเดิม
+ */
+export const HIDE_GENERIC_RATE = "เรทราคา (ชื่อทั่วไป)";
+/** ชื่อเรทที่ไม่บอกวิธีทำงาน — ขึ้นต้น "เรท…"/"ราคา…" (ตัด " (ตัวแทน)" ท้ายชื่อก่อน) */
+export const isGenericRateName = (v: string) => /^\s*(เรท|ราคา)/.test(v.replace(/\s*\(ตัวแทน\)\s*$/, ""));
+const hiddenLine = (hide: string[], k: string, v: string) =>
+  hide.includes(k) || (k === RATE_LINE && hide.includes(HIDE_GENERIC_RATE) && isGenericRateName(v));
+
 /** ใช้ตัวเลือกแบบมีหัวข้อก่อน (ออเดอร์ใหม่) — ไม่มีค่อยกางจากข้อความรวม (ออเดอร์เก่า) */
 export function specEntries(
   sel?: Record<string, string>,
   text?: string,
   hide: string[] = SPEC_HIDE,
 ): [string, string][] {
-  const entries = Object.entries(sel ?? {}).filter(([k, v]) => v && !hide.includes(k));
+  const entries = Object.entries(sel ?? {}).filter(([k, v]) => v && !hiddenLine(hide, k, v));
   if (entries.length) return entries;
   if (!text?.trim()) return [];
-  return parseSpecText(text).filter(([k]) => !hide.includes(k));
+  return parseSpecText(text).filter(([k, v]) => !hiddenLine(hide, k, v));
 }
 
 /** ฐานของหัวข้อไว้จับคู่หน้า/หลัง — "เคลือบ (เฉพาะด้านหน้า)" กับ "เคลือบด้านหลัง" ฐานเดียวกันคือ "เคลือบ" */

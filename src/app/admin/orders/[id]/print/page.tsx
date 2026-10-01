@@ -31,7 +31,7 @@ import { isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { useActor, useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
-import { SpecLines, tidySpec } from "@/components/SpecLines";
+import { HIDE_GENERIC_RATE, SpecLines, specEntries, tidySpec } from "@/components/SpecLines";
 import { specLabel } from "@/lib/spec-text";
 import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginate";
 
@@ -55,13 +55,14 @@ function boxSummary(it: Order["items"][number], workSize?: string): string {
 const PRINT_SKIP = ["ภาพลายที่แนบ", "ภาพลายที่แนบ (ด้านหลัง)", "รอเช็คสต๊อก", "ลิงก์ไฟล์ลาย/อีเมล", PLACEMENT_SPEC_LABEL, PLACEMENT_LABEL];
 /**
  * ใบงาน/ป้ายกล่อง (ฝ่ายผลิต) ซ่อน "เรทราคา" เพิ่ม — พนักงานแจ้ง 18 ก.ย. 69 (OD-260915-7011) ว่ากราฟฟิกไม่ต้องเห็น
+ * ซ่อนเฉพาะชื่อเรททั่วไป (HIDE_GENERIC_RATE) — "พิมพ์ DTF/DFT" / "งานปัก" / "งานสกรีน" คือวิธีทำงาน ต้องขึ้นในใบงาน (1 ต.ค. 69 · OD-260928-7354)
  * ใบเสร็จให้ลูกค้ายังใช้ PRINT_SKIP (เห็นเรทเหมือนหน้าออเดอร์ลูกค้า)
  */
-const WORK_SKIP = [...PRINT_SKIP, "เรทราคา"];
+const WORK_SKIP = [...PRINT_SKIP, HIDE_GENERIC_RATE];
 
 /** ตัวเลือกสินค้าล้วน ๆ (ขนาด/สี/รุ่น) — ตัดพิกัด/ลิงก์/สรุปการวางลายออก · จัดบรรทัดด้วย tidySpec เหมือนใบงาน (ตัดตัวเลือกที่ไม่ได้ทำ/บรรทัดซ้อน) */
 function optionText(it: Order["items"][number]): string {
-  return tidySpec(Object.entries(it.sel ?? {}).filter(([k, v]) => v && !WORK_SKIP.includes(k)), { compact: true })
+  return tidySpec(specEntries(it.sel, undefined, WORK_SKIP), { compact: true })
     .map(([k, v]) => `${specLabel(k)}: ${v}`)
     .join(" · ");
 }

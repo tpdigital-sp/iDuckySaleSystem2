@@ -3,7 +3,7 @@
  * กราฟฟิกขอ 18 ก.ย. 69 (OD-260917-6834) — เรียกฟังก์ชันจริงที่ทุกจอใช้ ไม่แตะ DB
  *   npx tsx scripts/spec-lines-paper-check.mts
  */
-import { tidySpec, specEntries } from "../src/components/SpecLines";
+import { HIDE_GENERIC_RATE, isGenericRateName, tidySpec, specEntries } from "../src/components/SpecLines";
 
 let fail = 0;
 const ok = (name: string, pass: boolean, extra = "") => { if (!pass) fail++; console.log(pass ? "  ✅" : "  ❌", name, extra); };
@@ -122,5 +122,27 @@ ok("'ชนิดเคลือบ' ไม่ถูกนับเป็นว�
 const cloth = lines(tidySpec([["ชนิดผ้า", "ผ้าซาติน"], ["จำนวนลาย", "1 ลาย"], ["ขนาด", "20x60 cm"]]));
 ok("'ชนิดผ้า' = วัสดุ ขึ้นถัดจากขนาด", same(cloth, ["ขนาด: 20x60 cm", "ชนิดผ้า: ผ้าซาติน", "จำนวนลาย: 1 ลาย"]), show(cloth));
 
-console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทุกข้อ");
+
+// ─── 🏷 เรทราคาจอฝ่ายผลิต — ซ่อนเฉพาะชื่อทั่วไป (OD-260928-7354 · 1 ต.ค. 69) ───
+console.log("N) เรทราคาบนจอฝ่ายผลิต: ชื่อที่เป็นวิธีทำงานต้องขึ้น · ชื่อทั่วไปต้องซ่อน (HIDE_GENERIC_RATE)");
+const shirt: Record<string, string> = {
+  "ไซส์": "L", "สีเสื้อ": "สีขาว", "เรทราคา": "พิมพ์ DTF/DFT", "จำนวนลาย": "1 ลาย",
+  "ขนาดสกรีน ด้านหน้า": "ไม่เกิน 5 นิ้ว", "ขนาดสกรีน ด้านหลัง": "ไม่สกรีน",
+};
+const shirtProd = lines(tidySpec(specEntries(shirt, undefined, [HIDE_GENERIC_RATE]), { compact: true }));
+ok("เสื้อ YUEDPAO เรท 'พิมพ์ DTF/DFT' ขึ้นบนหน้าออเดอร์/ใบงาน", shirtProd.includes("เรทราคา: พิมพ์ DTF/DFT"), show(shirtProd));
+const generic = lines(tidySpec(specEntries({ ...od6834, "เรทราคา": "เรทที่ 1 (สั่งแบบคละดีเทล)" }, undefined, [HIDE_GENERIC_RATE]), { compact: true }));
+ok("'เรทที่ 1 (สั่งแบบคละดีเทล)' ยังซ่อน", !generic.some((l) => l.startsWith("เรทราคา")), show(generic));
+const perPiece = lines(tidySpec(specEntries({ ...od6834, "เรทราคา": "ราคาต่อชิ้น" }, undefined, [HIDE_GENERIC_RATE]), { compact: true }));
+ok("'ราคาต่อชิ้น' ยังซ่อน", !perPiece.some((l) => l.startsWith("เรทราคา")));
+const dealer = lines(tidySpec(specEntries({ ...shirt, "เรทราคา": "เรทที่ 2 (ตัวแทน)" }, undefined, [HIDE_GENERIC_RATE]), { compact: true }));
+ok("เรทตัวแทนชื่อทั่วไป 'เรทที่ 2 (ตัวแทน)' ยังซ่อน", !dealer.some((l) => l.startsWith("เรทราคา")));
+const dealerDtf = lines(tidySpec(specEntries({ ...shirt, "เรทราคา": "พิมพ์ DTF/DFT (ตัวแทน)" }, undefined, [HIDE_GENERIC_RATE]), { compact: true }));
+ok("เรทตัวแทน 'พิมพ์ DTF/DFT (ตัวแทน)' ขึ้น", dealerDtf.some((l) => l.startsWith("เรทราคา: พิมพ์ DTF/DFT")));
+const legacy = lines(tidySpec(specEntries(undefined, "ไซส์: M · เรทราคา: งานปัก · ขนาดปัก ด้านหน้า: ไม่เกิน 10 ซม.", [HIDE_GENERIC_RATE]), { compact: true }));
+ok("ออเดอร์เก่า (ข้อความรวม) 'งานปัก' ขึ้น", legacy.includes("เรทราคา: งานปัก"), show(legacy));
+const hardHide = lines(tidySpec(specEntries(shirt, undefined, ["เรทราคา"]), { compact: true }));
+ok("ใส่ชื่อหัวข้อ 'เรทราคา' ตรง ๆ ยังซ่อนทั้งหมดเหมือนเดิม", !hardHide.some((l) => l.startsWith("เรทราคา")));
+ok("isGenericRateName: ตัดตามขนาด = วิธีทำงาน", !isGenericRateName("ตัดตามขนาด") && isGenericRateName("เรทราคาปกติ") && isGenericRateName(" ราคาส่ง (ตัวแทน)"));
+console.log(fail ? `\n❌ ไม่ผ่าน ${fail} ข้อ` : "\n✅ ผ่านทุกข้อ (รวมชุดเรทราคา)");
 process.exit(fail ? 1 : 0);
