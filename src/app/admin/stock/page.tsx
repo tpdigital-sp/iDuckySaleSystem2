@@ -1085,6 +1085,30 @@ export default function StockPage() {
    * 🧹 รีเซ็ตยอดคงเหลือเป็น 0 — ทีละตัว (ลิ้นชัก) หรือทั้งกลุ่ม (เมนู ⋯) · เจ้าของร้านเท่านั้น (สั่ง 30 ก.ย. 69)
    * ไว้ล้างยอดติดลบตอนตั้งต้นคลัง แล้วค่อยนับจริง/รับเข้าใหม่ · ลงประวัติเป็น "ปรับยอดนับจริง" ย้อนดูได้ ไม่ลบอะไร
    */
+  /** 🎯 ตั้งจุดสั่ง/รอของให้หลาย SKU ทีเดียว (หัวกลุ่มตะขอ) — ยิง API ทีละตัว (API รับตัวเดียว) แล้วอัปเดตแถวในหน้า */
+  async function applyPointToAll(list: Item[], point: number | undefined, days: number | undefined) {
+    const failed: string[] = [];
+    for (const it of list) {
+      try {
+        const res = await fetch("/api/admin/stock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: it.id, name: it.name, ...(point !== undefined ? { reorderPoint: point } : {}), ...(days !== undefined ? { leadTimeDays: days } : {}) }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error || res.statusText);
+      } catch (e) {
+        failed.push(`${it.name}: ${(e as Error).message}`);
+      }
+    }
+    const ok = new Set(list.map((i) => i.id));
+    for (const f of failed) ok.delete(list.find((i) => f.startsWith(`${i.name}:`))?.id ?? "");
+    setItems((prev) =>
+      prev.map((i) => (ok.has(i.id) ? { ...i, ...(point !== undefined ? { reorderPoint: point } : {}), ...(days !== undefined ? { leadTimeDays: days } : {}) } : i)),
+    );
+    if (failed.length) alert(`ตั้งไม่สำเร็จ ${failed.length} ตัว:\n${failed.join("\n")}`);
+  }
+
   async function resetItems(list: Item[], label: string) {
     const targets = list.filter((i) => i.balance !== 0);
     if (!targets.length) {
@@ -2046,6 +2070,7 @@ export default function StockPage() {
                                 <span className="mt-0.5 block text-[12px]" style={{ color: "var(--dk-faint)" }}>
                                   ตัวเลือก {optionLabel} · ใช้กับ {fmtN(h.products.size)} สินค้า{h.products.size ? `: ${[...h.products].slice(0, 4).join(", ")}${h.products.size > 4 ? ` +${h.products.size - 4}` : ""}` : ""} — แยกสต๊อกตามค่าที่ลูกค้าเลือก ดูด้านล่าง
                                 </span>
+                                {mayEdit && kids.length > 1 && <BulkPoint kids={kids.map((k) => k.item)} onApply={(pt, dy) => applyPointToAll(kids.map((k) => k.item), pt, dy)} />}
                               </span>
                             </div>
                           </li>,
@@ -3051,6 +3076,82 @@ function GroupTitle({ title, color, canRename, onRename }: { title: string; colo
         >
           ✎
         </button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * 🎯 ตั้ง "จุดสั่ง/รอของ" ให้ทั้งชุดทีเดียว — หัวกลุ่มตะขอ/วัสดุกลางตามตัวเลือก (AA ห่วง… มีลูก AA1-AA7 คนละสี)
+ * เจ้าของร้านขอ 1 ต.ค. 69: ไม่อยากกดแก้ไขทีละสี 7 ครั้ง · ใช้กับทุก SKU ลูกในชุด · ช่องว่าง = ไม่แตะค่านั้น
+ */
+function BulkPoint({ kids, onApply }: { kids: Item[]; onApply: (point: number | undefined, days: number | undefined) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [point, setPoint] = useState("");
+  const [days, setDays] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pts = [...new Set(kids.map((k) => k.reorderPoint ?? null))];
+  const dys = [...new Set(kids.map((k) => k.leadTimeDays ?? null))];
+  const same = (xs: (number | null)[]) => (xs.length === 1 ? xs[0] : undefined);
+  const curP = same(pts);
+  const curD = same(dys);
+  const summary =
+    pts.length === 1 && dys.length === 1
+      ? curP == null && curD == null
+        ? "ยังไม่ตั้งจุดสั่งทั้งชุด"
+        : `ทั้งชุด: จุดสั่ง ${curP != null ? fmtN(curP) : "—"} · รอของ ${curD != null ? `${curD} วัน` : "—"}`
+      : "จุดสั่ง/รอของต่างกันในชุด";
+  const submit = async () => {
+    const p = point.trim() === "" ? undefined : Math.max(0, Number(point));
+    const d = days.trim() === "" ? undefined : Math.max(0, Number(days));
+    if (p === undefined && d === undefined) return;
+    if ((p !== undefined && !Number.isFinite(p)) || (d !== undefined && !Number.isFinite(d))) return;
+    setBusy(true);
+    try {
+      await onApply(p, d);
+      setOpen(false);
+      setPoint("");
+      setDays("");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-2 text-[12px]" onClick={(e) => e.stopPropagation()}>
+      <span style={{ color: "var(--dk-faint)" }}>{summary}</span>
+      {!open ? (
+        <button type="button" className="dkb-chip" onClick={() => setOpen(true)} title="ตั้งจุดสั่งและวันรอของให้ทุกสีในชุดนี้ทีเดียว">
+          🎯 ตั้งทั้งชุด ({fmtN(kids.length)} ตัว)
+        </button>
+      ) : (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <input
+            type="number"
+            min={0}
+            inputMode="numeric"
+            placeholder={`จุดสั่ง (ชิ้น)${curP != null ? ` · ตอนนี้ ${fmtN(curP)}` : ""}`}
+            value={point}
+            onChange={(e) => setPoint(e.target.value)}
+            className="dkb-input w-36"
+            disabled={busy}
+          />
+          <input
+            type="number"
+            min={0}
+            inputMode="numeric"
+            placeholder={`รอของ (วัน)${curD != null ? ` · ตอนนี้ ${curD}` : ""}`}
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className="dkb-input w-36"
+            disabled={busy}
+          />
+          <Btn tone="navy" small onClick={submit} disabled={busy || (point.trim() === "" && days.trim() === "")}>
+            {busy ? "กำลังบันทึก…" : `ใช้กับทั้ง ${fmtN(kids.length)} ตัว`}
+          </Btn>
+          <Btn small onClick={() => setOpen(false)} disabled={busy}>
+            ยกเลิก
+          </Btn>
+        </span>
       )}
     </span>
   );
