@@ -162,12 +162,12 @@ function snapshotOf(it: Item): Record<string, unknown> {
     imageUrl: (it.imageUrl ?? "").trim(),
     part: (it.part ?? "").trim(),
     packUnit: (it.packUnit ?? "").trim(),
-    packSize: it.packSize && it.packSize > 1 ? it.packSize : 0,
+    packSize: it.packSize && it.packSize >= 1 ? it.packSize : 0,
     manualOnly: !!it.manualOnly,
     groupByOption: it.manualOnly ? false : !!it.groupByOption,
   };
 }
-/** ของตัวนี้นับเป็นแพ็คได้ไหม (ตั้ง packSize > 1 ไว้) */
+/** ของตัวนี้มีสวิตช์กรอกเป็นแพ็คไหม — เฉพาะ packSize > 1 (1 แพ็ค = 1 ชิ้น ตั้งได้แต่ไม่ต้องมีสวิตช์ เพราะเท่ากับนับชิ้น) */
 const hasPack = (it: { packSize?: number }) => (it.packSize ?? 0) > 1;
 /**
  * 📦 แปลงยอดหน่วยฐานเป็น "แพ็ค + เศษ" ไว้แสดง: 340 แผ่น (1 แพ็ค = 100) → "3 แพ็ค + 40 แผ่น" · ติดลบ → "−3 แพ็ค + 40 แผ่น"
@@ -4026,7 +4026,7 @@ function ItemModal({
   const [part, setPart] = useState(base?.part ?? "");
   // 📦 หน่วยแพ็ค + 🏭 เบิกเองอย่างเดียว (เจ้าของร้านสั่ง 30 ก.ย. 69 — กระดาษ/อะคริลิคซื้อเป็นแพ็ค ใช้เป็นแผ่น)
   const [packUnit, setPackUnit] = useState(base?.packUnit ?? "");
-  const [packSize, setPackSize] = useState(base?.packSize && base.packSize > 1 ? String(base.packSize) : "");
+  const [packSize, setPackSize] = useState(base?.packSize && base.packSize >= 1 ? String(base.packSize) : "");
   const [manualOnly, setManualOnly] = useState(!!base?.manualOnly);
   // 🧩 วัสดุกลางตามตัวเลือก — หัวกลุ่มหน้าคลังเป็นชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (เจ้าของร้านสั่ง 1 ต.ค. 69)
   const [groupByOption, setGroupByOption] = useState(!!base?.groupByOption);
@@ -4062,7 +4062,7 @@ function ItemModal({
     setImageUrl(item.imageUrl ?? "");
     setPart(item.part ?? "");
     setPackUnit(item.packUnit ?? "");
-    setPackSize(item.packSize && item.packSize > 1 ? String(item.packSize) : "");
+    setPackSize(item.packSize && item.packSize >= 1 ? String(item.packSize) : "");
     setManualOnly(!!item.manualOnly);
     setGroupByOption(!!item.groupByOption);
   }, [item]);
@@ -4072,19 +4072,13 @@ function ItemModal({
 
   const u = unit.trim() || "ชิ้น";
   const pu = packUnit.trim() || "แพ็ค";
-  const hasPack = !!packUnit.trim() && Number(packSize) > 1;
+  const hasPack = !!packUnit.trim() && Number(packSize) >= 1;
   /**
-   * ⚠️ แพ็คที่ตั้งแล้วเซิร์ฟเวอร์จะไม่เก็บ (ทิ้งเงียบ ๆ): 1 แพ็ค ≤ 1 หน่วย หรือชื่อแพ็คซ้ำกับหน่วยนับ ("1 ชิ้น = 1 ชิ้น")
-   * เจ้าของร้านใส่ 1 แล้ว "ไม่บันทึก" (1 ต.ค. 69) → บอกตรง ๆ ที่ช่อง + ล็อกปุ่มบันทึกจนกว่าจะแก้หรือเลือก "ไม่ตั้งแพ็ค"
+   * ⚠️ แพ็คที่ตั้งแล้วเซิร์ฟเวอร์จะไม่เก็บ (ทิ้งเงียบ ๆ): ตั้งชื่อแพ็คแต่ไม่ใส่จำนวน หรือใส่ 0
+   * เจ้าของร้าน 1 ต.ค. 69: "1 ชิ้น = 1 ชิ้น ต้องใส่ได้" → 1 ถือว่าถูก (= นับเป็นชิ้นตรง ๆ) · ล็อกปุ่มบันทึกเฉพาะตอนจำนวนว่าง/0
    */
   const packTouched = packSize.trim() !== "" || packUnit.trim() !== "";
-  const packProblem = !packTouched
-    ? ""
-    : !(Number(packSize) > 1)
-      ? `1 ${pu} ต้องมากกว่า 1 ${u} (เช่น 100) — ถ้าซื้อและนับเป็น${u}อยู่แล้ว เลือก “ไม่ตั้งแพ็ค” และเว้นช่องว่าง`
-      : packUnit.trim() === u
-        ? `ชื่อหน่วยแพ็คซ้ำกับหน่วยนับ (${u}) — ตั้งเป็น แพ็ค/กล่อง/ถุง หรือเลือก “ไม่ตั้งแพ็ค”`
-        : "";
+  const packProblem = packTouched && !(Number(packSize) >= 1) ? `ใส่จำนวน${u}ต่อ 1 ${pu} (อย่างน้อย 1) — หรือเลือก “ไม่ตั้งแพ็ค” ถ้าไม่ใช้` : "";
   const canSave = (item ? !!name.trim() : nameList.length > 0) && !packProblem;
   const payload = (nm: string, alias?: string): Partial<Item> & { name: string } => {
     const full = fullPayload(nm, alias);
@@ -4280,9 +4274,11 @@ function ItemModal({
             <span className={`${hint} ${packProblem ? "font-semibold" : ""}`} style={packProblem ? { color: "var(--dk-coral-deep)" } : hintStyle}>
               {packProblem
                 ? `⚠️ ${packProblem}`
-                : hasPack
-                  ? `หน้าจอจะบอกเป็น “3 ${pu} + 40 ${u}” และตอนรับเข้า/เบิกเลือกกรอกเป็น${pu}ได้`
-                  : "ยังไม่ตั้งแพ็ค — กรอกและแสดงเป็น" + u + "อย่างเดียว"}
+                : hasPack && Number(packSize) === 1
+                  ? `1 ${pu} = 1 ${u} — นับเป็น${u}ตรง ๆ`
+                  : hasPack
+                    ? `หน้าจอจะบอกเป็น “3 ${pu} + 40 ${u}” และตอนรับเข้า/เบิกเลือกกรอกเป็น${pu}ได้`
+                    : "ยังไม่ตั้งแพ็ค — กรอกและแสดงเป็น" + u + "อย่างเดียว"}
             </span>
           </FormSection>
 

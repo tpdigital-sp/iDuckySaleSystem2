@@ -275,18 +275,18 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
     ...(input.needsReview ? { needsReview: true } : {}),
     ...(cur?.maybeDuplicateOf && input.needsReview ? { maybeDuplicateOf: cur.maybeDuplicateOf } : {}),
     unit: (input.unit ?? cur?.unit ?? "ชิ้น").trim() || "ชิ้น",
-    // 📦 หน่วยแพ็ค: ส่ง packSize 0 = ล้าง · undefined = ไม่แตะ · ต้อง > 1 ถึงจะเก็บ
+    // 📦 หน่วยแพ็ค: ส่ง packSize 0 = ล้าง · undefined = ไม่แตะ · ≥ 1 เก็บ (1 ชิ้น = 1 ชิ้น ก็ตั้งได้ — เจ้าของร้าน 1 ต.ค. 69)
     ...(() => {
       const size = input.packSize !== undefined ? input.packSize : cur?.packSize;
       const pu = ((input.packUnit !== undefined ? input.packUnit : cur?.packUnit) ?? "").trim();
-      return size && size > 1 ? { packSize: Math.trunc(size), packUnit: pu || "แพ็ค" } : {};
+      return size && size >= 1 ? { packSize: Math.trunc(size), packUnit: pu || "แพ็ค" } : {};
     })(),
     ...((input.manualOnly !== undefined ? input.manualOnly : cur?.manualOnly) ? { manualOnly: true } : {}),
-    // 📦 หน่วยแพ็ค: ส่ง packSize 0 = ล้าง · undefined = ไม่แตะ · ต้อง > 1 ถึงจะเก็บ
+    // 📦 หน่วยแพ็ค: ส่ง packSize 0 = ล้าง · undefined = ไม่แตะ · ≥ 1 เก็บ (1 ชิ้น = 1 ชิ้น ก็ตั้งได้ — เจ้าของร้าน 1 ต.ค. 69)
     ...(() => {
       const size = input.packSize !== undefined ? input.packSize : cur?.packSize;
       const pu = ((input.packUnit !== undefined ? input.packUnit : cur?.packUnit) ?? "").trim();
-      return size && size > 1 ? { packSize: Math.trunc(size), packUnit: pu || "แพ็ค" } : {};
+      return size && size >= 1 ? { packSize: Math.trunc(size), packUnit: pu || "แพ็ค" } : {};
     })(),
     ...((input.manualOnly !== undefined ? input.manualOnly : cur?.manualOnly) ? { manualOnly: true } : {}),
     ...((input.groupByOption !== undefined ? input.groupByOption : cur?.groupByOption) ? { groupByOption: true } : {}),
