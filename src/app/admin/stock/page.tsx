@@ -5866,8 +5866,21 @@ function SplitModal({
    * แยกสต๊อกจากกลุ่มนี้ตรง ๆ จะได้ SKU "สีเงิน" ตัวเดียวที่ตะขอ 7 แบบตัดร่วมกัน (ผิด) — ต้องแยกจาก "ตะขอ" แล้วให้สีแตกใต้ตะขอ
    * (เจ้าของร้านชี้ 1 ต.ค. 69 ว่าหน้าสินค้า D กับ X แยกกัน แต่ชิปรวมเป็น "เงิน/ทอง (D/X)")
    */
-  const parentOf = (x: Group): Group | undefined =>
-    (groups ?? []).find((g) => g !== x && !g.rate && [...(x.show ?? []), ...(x.showAny ?? [])].some((c) => c.label === g.label));
+  const parentOf = (x: Group): Group | undefined => {
+    // เงื่อนไขที่อ้างค่ามากสุด = กลุ่มแม่ตัวจริง (ตะขอ ∈ {F…O} 7 ค่า ชนะ เจาะรู = เจาะรู 1 ค่า) — เดิมเจอ "เจาะรู" ก่อนตามลำดับ (บั๊ก 1 ต.ค. 69)
+    let best: { g: Group; n: number } | undefined;
+    for (const c of [...(x.show ?? []), ...(x.showAny ?? [])]) {
+      const g = (groups ?? []).find((g) => g !== x && !g.rate && g.label === c.label);
+      if (g && (!best || c.choices.length > best.n)) best = { g, n: c.choices.length };
+    }
+    return best?.g;
+  };
+  /**
+   * 🎯 กดชิปกลุ่มย่อย (สีตะขอ · โลหะ) = เปิดกลุ่มแม่ (ตะขอ) แล้วโชว์เฉพาะตัวที่ใช้กลุ่มย่อยนั้น (F/J/K/L/M/N/O) แต่ละตัวแตกสีใต้ตัวเอง
+   * เจ้าของร้านกดชิปสีซ้ำ 3 รอบและบอก "ยังเป็นแบบเดิม" (1 ต.ค. 69) — การเตือนให้ไปกดชิปอื่นไม่พอ ต้องพาไปเลย
+   */
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const focusGroup = focusIdx != null ? groups?.[focusIdx] : undefined;
   const [treeOn, setTreeOn] = useState(true);
   /**
    * 🧩 ชื่อ SKU ประกอบจากส่วนไหนบ้าง (เจ้าของร้านขอ 1 ต.ค. 69 — คู่ "สีอะคริลิค × ชนิด" ไม่อยากให้ "อะคริลิคพิเศษ" ติดทุกชื่อ)
@@ -5902,6 +5915,8 @@ function SplitModal({
     if (!gB)
       return {
         rows: gA.choices.flatMap((c): Row[] => {
+          // 🎯 โฟกัสกลุ่มย่อย: เอาเฉพาะตัวที่กลุ่มย่อยนั้นแสดงให้ (ตะขอ F…O ของ "สีตะขอ · โลหะ")
+          if (focusGroup && !depsOf(c).includes(focusGroup)) return [];
           const dep = treeOn ? depsOf(c)[0] : undefined;
           if (!dep) return [{ key: c.name, a: c, done: c.stockItemId && !extraOn && !manualOnly ? c.skuName ?? c.stockItemId : null }];
           // แตกตามกลุ่มย่อย: SKU ต่อ (ตะขอ, สี) — มีแล้ว = ลิงก์มีเงื่อนไขบนค่าหลักที่ชี้สีนั้น
@@ -5925,7 +5940,7 @@ function SplitModal({
     );
     return { rows: out, hiddenPairs: hidden };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gA, gB, extraOn, rules, manualOnly, treeOn, groups]);
+  }, [gA, gB, extraOn, rules, manualOnly, treeOn, groups, focusGroup]);
 
   // ค่าเริ่มต้น = ติ๊กทุกแถวที่ยังไม่มี SKU (งานส่วนใหญ่คือแยกครบ) แล้วหักเฉพาะที่ผู้ใช้ติ๊กออก
   const nameOff = (label: string, name: string) => `${label}${SEP}${name}`;
@@ -5969,6 +5984,21 @@ function SplitModal({
 
   const toggleGroup = (i: number) => {
     setErr("");
+    const x = groups?.[i];
+    const parent = x ? parentOf(x) : undefined;
+    const pIdx = parent ? (groups ?? []).indexOf(parent) : -1;
+    if (x && parent && pIdx >= 0) {
+      // 🎯 กลุ่มย่อย → เปิดกลุ่มแม่แล้วโฟกัสเฉพาะตัวที่ใช้กลุ่มย่อยนี้ · กดซ้ำ = เลิกโฟกัส (เห็นกลุ่มแม่ทั้งหมด)
+      if (focusIdx === i) setFocusIdx(null);
+      else {
+        setSel([pIdx]);
+        setFocusIdx(i);
+      }
+      setCondGroup(-1);
+      setCondChoices(new Set());
+      return;
+    }
+    setFocusIdx(null);
     // 🔗 กลุ่มคลังกลางจับคู่กับกลุ่มอื่นไม่ได้ (ลิงก์อยู่ที่คลัง ไม่ใช่ที่สินค้า) → เลือกแล้วเป็นกลุ่มเดียว
     setSel((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : groups?.[i]?.preset || cur.some((x) => groups?.[x]?.preset) ? [i] : [...cur, i].slice(-2)));
     setCondGroup(-1);
@@ -6082,8 +6112,8 @@ function SplitModal({
                         type="button"
                         aria-pressed={at >= 0}
                         onClick={() => toggleGroup(i)}
-                        className={`${chip(at >= 0)}${parent && at < 0 ? " !border-dashed !text-slate-500" : ""}`}
-                        title={parent ? `กลุ่มย่อยของ “${parent.label}” — แยกสต๊อกที่ “${parent.label}” แล้วระบบแตกค่ากลุ่มนี้ใต้แต่ละตัวให้เอง` : undefined}
+                        className={`${chip(at >= 0 || focusIdx === i)}${parent && at < 0 && focusIdx !== i ? " !border-dashed !text-slate-500" : ""}`}
+                        title={parent ? `กลุ่มย่อยของ “${parent.label}” — กดแล้วแสดง ${parent.label} เฉพาะตัวที่ใช้กลุ่มนี้ แต่ละตัวแตกค่าของกลุ่มนี้ใต้ตัวเอง` : undefined}
                       >
                         {at >= 0 && sel.length > 1 ? `${at + 1}. ` : ""}
                         {parent ? "↳ " : ""}
@@ -6098,6 +6128,8 @@ function SplitModal({
                     ? `สร้างตามคู่ที่ลูกค้าเลือกได้จริง ${gB!.label} × ${gA!.label} = ${rows.length} แบบ${hiddenPairs ? ` (ตัดคู่ที่กฎตัวเลือกไม่อนุญาตออก ${hiddenPairs} คู่)` : ""} — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
                     : gA?.rate
                       ? "ของบนชั้นต่างกันตามเรทที่ลูกค้าเลือก (เช่น ขวด 20 ml กับ 40 ml) · เรทตัวแทนใช้ของชิ้นเดียวกับเรทปกติให้เอง"
+                      : focusGroup && gA
+                      ? `🎯 แสดง “${gA.label}” เฉพาะตัวที่ใช้ “${focusGroup.label}” (${fmtN(rows.length)} แถว) — แต่ละตัวแตก${shortLabel(focusGroup.label)}ใต้ตัวเอง เป็น SKU คนละตัว · กดชิปซ้ำเพื่อดู ${gA.label} ทั้งหมด`
                       : gA && parentOf(gA)
                       ? `⚠️ “${gA.label}” เป็นกลุ่มย่อยของ “${parentOf(gA)!.label}” (โชว์เฉพาะตอนเลือกค่าบางตัว) — แยกตรงนี้จะได้ SKU ต่อสีที่หลายตัวใช้ร่วมกัน ให้เลือก “${parentOf(gA)!.label}” แทน แล้วระบบแตกสีใต้แต่ละตัวให้เอง`
                       : gA?.preset
