@@ -4886,6 +4886,19 @@ function LinkCell({
       add(`${u.choice}|${u.cond ?? ""}`, { main: `${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`, cond: u.cond, preset: false, kind: "cond" }, [u.productName]);
     }
   }
+  /**
+   * ผูกคลังกลางอยู่ → ลิงก์ในสินค้าที่ "เงื่อนไขเดียวกัน" แต่ชื่อตัวเลือกต่าง (สินค้ากลุ่ม B ใช้ชื่อเก่า "E ตะขอสปริง 19.2×33mm" / "Z1 … — ฟรี")
+   * คือตัวเลือกเดียวกัน → รวมเข้าบรรทัดคลังกลาง ไม่งั้นนับแยก 5+6 / 9+1+1 (เจ้าของร้านสงสัย 1 ต.ค. 69)
+   */
+  const presetLines = [...lines.values()].filter((l) => l.preset);
+  if (presetLines.length)
+    for (const l of [...lines.values()]) {
+      if (l.preset || l.kind !== "cond") continue;
+      const target = presetLines.find((pl) => (pl.cond ?? "") === (l.cond ?? ""));
+      if (!target) continue;
+      for (const n of l.products) target.products.add(n);
+      lines.delete(l.key);
+    }
   const hereName = inProductId ? usage.find((u): u is Extract<StockUsage, { kind: "choice" | "product" }> => u.kind !== "preset" && u.productId === inProductId)?.productName : undefined;
   const nameList = (set: Set<string>, max = 5) => {
     const arr = [...set].sort((a, b) => (a === hereName ? -1 : b === hereName ? 1 : a.localeCompare(b, "th"))).map((n) => (n === hereName ? "สินค้านี้" : n));
@@ -5057,6 +5070,17 @@ function UsagePanel({
               }
               g.entries.push({ u, i });
             });
+            // ผูกคลังกลางอยู่ → กลุ่มของสินค้าที่เงื่อนไขเดียวกันแต่ชื่อตัวเลือกต่าง (ชื่อเก่าในสินค้ากลุ่ม B) รวมเข้ากลุ่มคลังกลาง
+            const presetGroups = [...groups.values()].filter((g) => g.entries.some(({ u }) => u.kind === "preset"));
+            if (presetGroups.length)
+              for (const g of [...groups.values()]) {
+                if (presetGroups.includes(g) || g.key === "all" || g.key === "bom") continue;
+                const target = presetGroups.find((pg) => (pg.cond ?? "") === (g.cond ?? ""));
+                if (!target) continue;
+                target.entries.push(...g.entries);
+                for (const n of g.products) target.products.add(n);
+                groups.delete(g.key);
+              }
             const names = (set: Set<string>, max = 4) => {
               const a = [...set];
               return a.length <= max ? a.join(", ") : `${a.slice(0, max).join(", ")} +${a.length - max}`;
