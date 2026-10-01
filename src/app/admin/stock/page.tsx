@@ -273,6 +273,11 @@ export default function StockPage() {
   const [view, setView] = useState<"group" | "flat">("group");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   /**
+   * 🔽 กลุ่มที่ "หุบเอง" ขณะค้นหา/กรอง — ตอนค้นหากางทุกกลุ่มให้ก่อน (forceOpen) แต่เดิมล็อกหัวกลุ่มไว้กดไม่ได้เลย
+   * (เจ้าของร้าน 1 ต.ค. 69: ค้น "ตะขอ" เจอ 242 แถว กดหุบไม่ได้) → เก็บชุดที่หุบแยกต่างหาก ล้างเมื่อคำค้น/ตัวกรองเปลี่ยน
+   */
+  const [closedWhileSearch, setClosedWhileSearch] = useState<Set<string>>(new Set());
+  /**
    * ✅ กลุ่มที่ติ๊กว่า "จัดแล้ว" — ไล่จัดวัสดุ 140 กลุ่มใช้เวลาหลายวัน ปิดหน้าไปต้องกลับมาทำต่อถูกที่
    * เก็บที่เซิร์ฟเวอร์ (ไม่ใช่ในเครื่อง) ทีมที่ช่วยกันจัดจะได้เห็นตรงกันว่าถึงไหนแล้ว
    */
@@ -1258,7 +1263,10 @@ export default function StockPage() {
   const inCat = (i: Item) => cat === "ทุกหมวด" || i.category === cat;
   /** ฟอร์มเพิ่ม/แก้ไขวัสดุเปิดเป็น "หน้า" แทน popup (เจ้าของร้านขอ 30 ก.ย. 69) — ตอนเปิดซ่อนแถบเครื่องมือกับรายการไว้ก่อน */
   const formOpen = addOpen || !!editFor;
-  const allOpen = groups.length > 0 && groups.every((g) => openGroups.has(g.key));
+  const allOpen = groups.length > 0 && (forceOpen ? !groups.some((g) => closedWhileSearch.has(g.key)) : groups.every((g) => openGroups.has(g.key)));
+  const closeAll = () => (forceOpen ? setClosedWhileSearch(new Set(groups.map((g) => g.key))) : setOpenGroups(new Set()));
+  const openAll = () => (forceOpen ? setClosedWhileSearch(new Set()) : setOpenGroups(new Set(groups.map((g) => g.key))));
+  useEffect(() => setClosedWhileSearch(new Set()), [q, filter, cat, linkFilter]);
   const doneCount = useMemo(() => groups.filter((g) => doneGroups[g.key]).length, [groups, doneGroups]);
   /** จำนวน "รายการ" (SKU ไม่ซ้ำ) ในกลุ่มที่จัดแล้ว/ยังไม่จัด — ไว้โชว์บนชิปให้หน่วยเดียวกับชิปสถานะ */
   const doneRows = useMemo(() => {
@@ -1654,10 +1662,10 @@ export default function StockPage() {
                   />
                 </span>
               )}
-              {grouped && !forceOpen && (
+              {grouped && (
                 <button
                   type="button"
-                  onClick={() => setOpenGroups(allOpen ? new Set() : new Set(groups.map((g) => g.key)))}
+                  onClick={allOpen ? closeAll : openAll}
                   className="dkb-btn dkb-btn-ghost dkb-btn-sm"
                 >
                   {allOpen ? "ปิดทุกกลุ่ม" : "เปิดทุกกลุ่ม"}
@@ -2190,9 +2198,9 @@ export default function StockPage() {
                     const nReview = g.rows.filter((r) => r.needsReview).length;
                     /**
                      * ทุกกลุ่มหุบไว้ก่อนเสมอ กดหัวกลุ่มถึงกาง (เจ้าของร้านขอ 30 ก.ย. 69 — เดิมกลุ่มติดลบ/ต้องสั่งกางเองทำให้หน้ายาว)
-                     * ปัญหาในกลุ่มยังเห็นจากป้ายบนหัวกลุ่ม (ติดลบ/ต้องสั่ง) และแถบสีซ้าย · ค้นหา/กรองอยู่ = กางทั้งหมด (forceOpen)
+                     * ปัญหาในกลุ่มยังเห็นจากป้ายบนหัวกลุ่ม (ติดลบ/ต้องสั่ง) และแถบสีซ้าย · ค้นหา/กรองอยู่ = กางทั้งหมดให้ก่อน (forceOpen) แต่ยังหุบเองได้
                      */
-                    const open = forceOpen || openGroups.has(g.key);
+                    const open = forceOpen ? !closedWhileSearch.has(g.key) : openGroups.has(g.key);
                     // แถบสีซ้าย: งานค้างเด่นกว่ากลุ่มที่เรียบร้อยแล้วเสมอ — ติ๊กว่าจัดแล้วและไม่มีงานค้าง = เงียบที่สุด
                     const tone =
                       nNeg || nDanger || g.kind === 2
@@ -2204,13 +2212,12 @@ export default function StockPage() {
                             : done || g.kind === 3
                               ? "var(--dk-quiet)"
                               : "var(--dk-mint)";
-                    const toggle = () =>
-                      !forceOpen &&
-                      setOpenGroups((prev) => {
-                        const next = new Set(prev);
-                        if (!next.delete(g.key)) next.add(g.key);
-                        return next;
-                      });
+                    const flip = (prev: Set<string>) => {
+                      const next = new Set(prev);
+                      if (!next.delete(g.key)) next.add(g.key);
+                      return next;
+                    };
+                    const toggle = () => (forceOpen ? setClosedWhileSearch(flip) : setOpenGroups(flip));
                     /**
                      * เมนู ⋯ ของกลุ่ม — เดิมเป็นปุ่มเม็ด 4–5 ปุ่มซ้ำทุกกลุ่ม (109 กลุ่ม) งานประจำกับงานตั้งค่าปนกันจนหาไม่เจอ
                      * บน = ทำบ่อย (รับเข้า/เบิก/ตรวจทั้งกลุ่ม) · ล่าง = ตั้งค่า (วัสดุแฝง/แยกตัวเลือก/เปิดสินค้า/ไม่ต้องมี stock)
@@ -2262,7 +2269,7 @@ export default function StockPage() {
                           aria-expanded={open}
                           onClick={toggle}
                           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggle())}
-                          className={`flex min-h-[60px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 pl-5 ${forceOpen ? "" : "cursor-pointer"}`}
+                          className="flex min-h-[60px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 pl-5 cursor-pointer"
                         >
                           <span className={`w-3 text-[10px] transition ${open ? "rotate-90" : ""}`} style={{ color: "var(--dk-faint)" }} aria-hidden>
                             ▶
