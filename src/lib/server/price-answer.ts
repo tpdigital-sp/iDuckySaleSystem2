@@ -657,6 +657,7 @@ ${list}
 กติกา:
 - ถ้าข้อความล่าสุดพูดต่อจากบริบท (เช่น "เอาแบบกันฝนค่ะ" หลังถาม "ที่ติดรถยนต์") ให้ใช้บริบทหาสินค้า แล้วตั้ง intent ตามสิ่งที่ถามจริง (price/spec) ไม่ใช่ followup
 - ลูกค้าอ้างลำดับ ("แบบที่ 2" "ตัวแรก" "อันสุดท้าย" "ตัวนั้น") = สินค้าลำดับนั้นในรายการที่แอดมินเสนอล่าสุด → products ใส่ตัวเดียว broad=false
+- ถาม "มีแบบไหนบ้าง / มีกี่แบบ / มีอะไรบ้าง" กับชื่อที่เป็น "กลุ่ม" (แม่เหล็กติดตู้เย็น · สแตนดี้ · พวงกุญแจ · โฟโต้การ์ด) → intent spec, products = ทุกสินค้าในรายการที่เป็นของกลุ่มเดียวกันจริง ๆ (เช่น แม่เหล็กติดตู้เย็น + แม่เหล็กอะคริลิค + กรอบรูปอะคริลิค แม่เหล็ก · ไม่เอาแม่เหล็กติดรถยนต์) broad=true แม้ชื่อตรงกับสินค้าตัวหนึ่งพอดี
 - products ต้องคัดลอกชื่อจากรายการตรงตัวอักษร เลือกเฉพาะที่ลูกค้าหมายถึงจริง ไม่ชัดเจน = [] · หมวดกว้าง (พวงกุญแจ/สแตนดี้) = ใส่ทุกตัวที่เข้าข่าย (สูงสุด 6) และ broad=true
 - ⚠️ ลูกค้าระบุ "ชนิด/วัสดุ/แบบ" เฉพาะที่ร้านไม่มีในรายการ (เช่น "พวงกุญแจหนังปัก" แต่ร้านมีแต่พวงกุญแจอะคริลิค/หมอน) → notInCatalog=true, requested="พวงกุญแจหนังปัก", products=[] และใส่ alternatives = สินค้าที่ใกล้เคียงที่สุด ไม่เกิน 3 (เช่น กระเป๋าใส่พวงกุญแจ งานปัก, อาร์มปัก) ห้ามยัดเมนูทั้งหมวดให้แทน
 - ลูกค้าพูดถึงที่ใช้งาน (รถยนต์ ตู้เย็น โต๊ะ) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน · ชื่ออังกฤษให้จับตามความหมาย (ที่รองแก้ว = Coaster, แก้วเยติ = Tumbler)
@@ -1572,7 +1573,7 @@ export async function searchMix(query: string, pick?: Pick): Promise<PriceAnswer
   const q = query.trim();
   if (!pick?.ids.length && !(await mentionsProduct(q))) return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "mix" };
   const { items, broad } = await candidates(q, pick);
-  if (broad) return menu(items.slice(0, 6), "spec");
+  if (broad) return menu(items.slice(0, 6), "spec", q);
   for (const item of items.slice(0, 2)) {
     const full = await getProductServer(item.id).catch(() => undefined);
     const ans = full ? mixText(full, q) : null;
@@ -1597,7 +1598,7 @@ export async function searchSpec(query: string, pick?: Pick): Promise<PriceAnswe
   if (!pick?.ids.length && !(await mentionsProduct(q)))
     return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "spec" };
   const { items, broad } = await candidates(q, pick);
-  if (broad) return menu(items.slice(0, 6), "spec");
+  if (broad) return menu(items.slice(0, 6), "spec", q);
   for (const item of items.slice(0, 2)) {
     const full = await getProductServer(item.id).catch(() => undefined);
     const ans = full ? spec(full, q) : null;
@@ -1611,26 +1612,40 @@ export async function searchSpec(query: string, pick?: Pick): Promise<PriceAnswe
  * → ห้ามเลือกให้เองตัวเดียวแล้วเทตารางยาว ๆ (เคยตอบ "พวงกุญแจกล่องดนตรี" ให้คนถามพวงกุญแจทั่วไป)
  * ตอบเป็นเมนูพร้อมช่วงราคาแล้วให้ลูกค้าชี้ก่อน แบบเดียวกับที่แอดมินตอบ
  */
-function menu(items: Lite[], mode: "price" | "spec" = "price"): PriceAnswer {
-  const lines = items.map((it) => {
+/**
+ * เมนูกลุ่มสินค้า — 1 ต.ค. 69 เจ้าของร้านชี้ว่า agent ตอบ "แม่เหล็กติดตู้เย็น มีแบบไหนบ้าง" ได้ดีกว่าเว็บ (เล่าทุกแบบพร้อมคำอธิบาย)
+ * → เมนูบอกต่อแบบ: ราคาต่อหน่วย · คำอธิบายสั้น · แบบย่อย (เรท) · ลิงก์ — ยังกระชับ (บรรทัดละแบบ)
+ */
+async function menu(items: Lite[], mode: "price" | "spec" = "price", query = ""): Promise<PriceAnswer> {
+  // ถามเป็นกลุ่ม ("แม่เหล็กติดตู้เย็น มีแบบไหนบ้าง") LLM ชอบเหมาใส่ของพ่วง (กล่องดนตรี/ที่คั่นหนังสือ) → เรียงตามความใกล้ชื่อที่ถาม เอาแค่ 4
+  if (query && items.length > 4) {
+    const qn = norm(query);
+    items = [...items].sort((x, y) => lcsLen(qn, norm(y.name)) - lcsLen(qn, norm(x.name))).slice(0, 4);
+  }
+  const fulls = await Promise.all(items.map((it) => getProductServer(it.id).catch(() => undefined)));
+  const lines = items.map((it, i) => {
     const min = it.priceMin;
     const max = it.priceMax;
-    // ถามสเปกอยู่ อย่าเอาราคามาเสนอ — ตอบไม่ตรงคำถามซ้ำอีกรอบ
+    const full = fulls[i];
+    const rates = full ? ratesOf(full).filter((r) => !/ตัวแทน/.test(r.label)) : [];
+    const unit = rates[0]?.matrix?.unit || "ชิ้น";
     const price =
-      mode === "spec"
-        ? ""
-        : min && max && max > min
-          ? ` — ฿${min.toLocaleString()}-${max.toLocaleString()}`
-          : min
-            ? ` — เริ่ม ฿${min.toLocaleString()}`
-            : "";
-    return `• ${it.name}${price}\n  ${botUrl(it)}`;
+      min && max && max > min ? ` — ฿${min.toLocaleString()}-${max.toLocaleString()}/${unit}` : min ? ` — เริ่ม ฿${min.toLocaleString()}/${unit}` : "";
+    // คำอธิบายสั้น: ประโยคแรก ≤ 80 ตัวอักษร
+    const desc = String(full?.description ?? it.desc ?? "").replace(/\s+/g, " ").trim();
+    const blurb = desc ? `  ${desc.length > 80 ? desc.slice(0, 80).replace(/\s+\S*$/, "") + "…" : desc}\n` : "";
+    const subs =
+      rates.length > 1 && rates.length <= 4
+        ? `  แบบย่อย: ${rates.map((r) => r.label.replace(/^เรทที่\s*\d+\s*/, "").replace(/^\((.*)\)$/, "$1").trim()).join(" · ")}\n`
+        : "";
+    return `• ${it.name}${price}\n${blurb}${subs}  ${botUrl(it)}`;
   });
+  const head = `มีให้เลือก ${items.length} แบบค่ะ`;
   return {
     answer:
       mode === "spec"
-        ? `กลุ่มนี้มีหลายแบบ แต่ละแบบมีขนาด/ตัวเลือกไม่เหมือนกันครับ\n${lines.join("\n")}\n\nสนใจแบบไหนครับ เดี๋ยวบอกขนาดกับตัวเลือกให้ครบ`
-        : `ของกลุ่มนี้มีหลายแบบ ราคาต่างกันตามแบบและจำนวนครับ\n${lines.join("\n")}\n\nสนใจแบบไหนกับจำนวนเท่าไหร่ครับ เดี๋ยวแจ้งเรทเต็มให้`,
+        ? `${head}\n${lines.join("\n")}\n\nสนใจแบบไหนคะ เดี๋ยวบอกขนาดกับตัวเลือกให้ครบ`
+        : `${head} ราคาต่างกันตามแบบและจำนวน\n${lines.join("\n")}\n\nสนใจแบบไหนกับจำนวนเท่าไหร่คะ เดี๋ยวคิดราคาให้`,
     kind: "price-options",
     source: "web-price-engine",
     intent: mode === "spec" ? "spec_menu" : "price_menu",
@@ -1676,7 +1691,7 @@ export async function searchPrice(
 
   const { items, broad } = await candidates(q, opts.pick);
   // ลูกค้าพูดชื่อกลุ่มกว้าง ๆ ("พวงกุญแจ" = สินค้า 8 ตัว) → กางเมนูให้เลือกก่อน อย่าเดาให้เอง
-  if (broad) return menu(items.slice(0, 6));
+  if (broad) return menu(items.slice(0, 6), "price", q);
 
   const found: PriceAnswer[] = [];
   for (const item of items.slice(0, 3)) {
