@@ -40,6 +40,9 @@ import { Btn, CopyChip, Empty, FChip, FilterCard, HeroStat, ListHead, PageHead, 
  *   แถบเครื่องมือติดขอบบน: คลัง | ประวัติ + ค้นหา + ชิปสถานะ · กลุ่มตามสินค้า (ปุ่มตั้งค่าอยู่ในเมนู ⋯ ของกลุ่ม)
  */
 
+/** แท็บในลิ้นชักวัสดุ: ภาพรวม (ยอด/รับเข้า/ผูก) · แก้ไขข้อมูล (ฟอร์มเต็มในลิ้นชัก) · ประวัติ */
+type DrawerTab = "overview" | "edit" | "history";
+
 /** ชื่อกลุ่มตัวเลือกแบบสั้น (ตัดวงเล็บท้าย) — "สีไหม Madeira (รวมในราคา 3 สี)" → "สีไหม Madeira" · สูตรเดียวกับ split route */
 const shortOptionLabel = (s: string) => s.replace(/\s*[(（].*$/, "").trim() || s;
 
@@ -74,6 +77,10 @@ interface Item {
   manualOnly?: boolean;
   /** 🧩 วัสดุกลางตามตัวเลือก — มุมมองตามสินค้าจัดกลุ่มใต้ชื่อกลุ่มตัวเลือก (ประเภทอะคริลิค) ไม่ใช่ชื่อสินค้า · ยังผูก/ตัดตามตัวเลือกปกติ */
   groupByOption?: boolean;
+  /** ⧉ ทำซ้ำมาจาก SKU ไหน — ยังไม่ผูกอะไรก็ให้อยู่กลุ่มเดียวกับต้นแบบไปก่อน (ดู groups) */
+  cloneOf?: string;
+  /** ↕ ลำดับที่ลากจัดเองในกลุ่ม (เลขน้อยขึ้นก่อน · ไม่มี = ท้ายสุด เรียงชื่อ) */
+  sort?: number;
   needsReview?: boolean;
   autoCreated?: boolean;
   maybeDuplicateOf?: string;
@@ -236,6 +243,16 @@ export default function StockPage() {
   const isOwner = useIsAdministrator();
   const [tab, setTab] = useState<Tab>("รายการสินค้า");
   const [items, setItems] = useState<Item[]>([]);
+  /**
+   * ↕ ลากจัดลำดับแถวในกลุ่มด้วยเมาส์ (เจ้าของร้านขอ 1 ต.ค. 69 — อะคริลิคใส 10/1.5/1/2/3/5 mm เรียงตามตัวอักษรไม่ตรงความหนา)
+   * dragArmed = แถวที่กดมือจับ ⠿ ค้างไว้ (ทั้งแถวถึงจะลากได้ ไม่ให้ลากเผลอตอนกดเปิดลิ้นชัก) · dragId = กำลังลาก · dragOver = แถวที่ชี้อยู่
+   * ปล่อย = เรียง ids ของกลุ่มใหม่ → เขียน sort ทันทีในหน้า (optimistic) → POST /api/admin/stock/sort · พลาด = โหลดใหม่
+   */
+  const [dragArmed, setDragArmed] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+  /** ลำดับที่ลากจัด (sort) มาก่อน · ไม่มี sort = ท้ายสุด เรียงชื่อแบบตัวเลข (1 mm, 1.5 mm, 2 mm, 10 mm) */
+  const bySort = (a: Item, b: Item) => (a.sort ?? 1e9) - (b.sort ?? 1e9) || a.name.localeCompare(b.name, "th", { numeric: true });
   /** รูป + การเชื่อมกับสินค้าของแต่ละ SKU — โหลดแยกครั้งเดียว ไม่ตามรอบรีเฟรชยอด 20 วิ */
   const [images, setImages] = useState<Record<string, string>>({});
   const [usage, setUsage] = useState<Record<string, StockUsage[]>>({});
@@ -286,6 +303,19 @@ export default function StockPage() {
     } catch {}
   };
   const [openId, setOpenId] = useState<string | null>(null);
+  /** แท็บในลิ้นชัก — "แก้ไขข้อมูล" อยู่ในลิ้นชักเดียวกัน ไม่เด้งไปหน้าเต็ม (เจ้าของร้านขอ 1 ต.ค. 69) */
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
+  const openDrawer = (id: string, tab: DrawerTab = "overview") => {
+    setDrawerTab(tab);
+    setOpenId(id);
+  };
+  /** ⧉ แถวที่เพิ่งทำซ้ำ — ไฮไลต์ชั่วครู่ให้เห็นว่าโผล่ตรงไหน */
+  const [flashId, setFlashId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!flashId) return;
+    const t = setTimeout(() => setFlashId(null), 4000);
+    return () => clearTimeout(t);
+  }, [flashId]);
   const [editFor, setEditFor] = useState<Item | null>(null);
   const [countFor, setCountFor] = useState<Item | null>(null);
   /** 🗑↩ โมดัล "ที่ลบไปแล้ว" — กู้คืน SKU ที่ลบผิดตัว (เดิมกู้ได้แค่แก้ Firestore เอง) */
@@ -511,10 +541,13 @@ export default function StockPage() {
     if (linkFilter !== "all" && linksReady) list = list.filter((i) => ((live[i.id]?.length ?? 0) > 0) === (linkFilter === "linked"));
     if (cat !== "ทุกหมวด") list = list.filter((i) => i.category === cat);
     // ค้นชื่อสินค้าที่ใช้วัสดุนี้ได้ด้วย — "ปั๊มนูน" ต้องเจอ "ฐาน Griptok · สีขาว" (ชื่อ SKU ไม่มีคำนั้น · เจ้าของร้านหาไม่เจอ 30 ก.ย. 69)
-    if (needle)
-      list = list.filter(
-        (i) => matchItem(i, needle) || (live[i.id] ?? []).some((u) => u.kind !== "preset" && u.productName.toLowerCase().includes(needle)),
-      );
+    if (needle) {
+      // ขั้นแรก: ตัว SKU เองตรง → เอาแค่นั้น · ไม่มีเลย → ถอยไปหาผ่านตระกูล/หมวด/ชื่อสินค้าที่ผูก
+      const direct = list.filter((i) => matchItemDirect(i, needle));
+      list = direct.length
+        ? direct
+        : list.filter((i) => matchItem(i, needle) || (live[i.id] ?? []).some((u) => u.kind !== "preset" && u.productName.toLowerCase().includes(needle)));
+    }
     const rank: Record<string, number> = { danger: 0, warn: 1, neutral: 2, ok: 3, review: 4 };
     return [...list].sort((a, b) => {
       const sa = stats.get(a.id);
@@ -549,7 +582,83 @@ export default function StockPage() {
     return true;
   }
 
-  async function saveItem(body: Partial<Item> & { name: string }) {
+  /** id ของ SKU ที่เพิ่งบันทึกล่าสุด — ใช้ตอน "ทำซ้ำ" เปิดลิ้นชักตัวใหม่ให้ต่อทันที (ตัวใหม่ยังไม่ผูกอะไร = ไม่อยู่ในกลุ่มสินค้าไหน หาเองยาก) */
+  const lastSavedId = useRef<string | null>(null);
+  /**
+   * ⧉ ทำซ้ำ — สร้าง SKU ใหม่จากต้นแบบทันที ไม่ต้องกรอกฟอร์ม (เจ้าของร้านสั่ง 1 ต.ค. 69: "เพิ่มปกติมาอีกบรรทัดเลย" เพราะข้อมูลคล้ายต้นแบบ แก้ทีหลังด้วยปุ่มแก้ไข)
+   * ก๊อป: หน่วย/ตระกูล/หมวด/แพ็ค/ทุน/จุดสั่ง/รอของ/รูป/ชนิดของ/ธง 🏭🧩 · ไม่ก๊อป: รหัส ชื่อเคยเรียก สินค้าที่ผูก (กันตัด 2 เด้ง) · ยอด 0
+   * ชื่อ = "ชื่อเดิม (สำเนา)" / "(สำเนา 2)" … · cloneOf = ต้นแบบ → โผล่ใต้กลุ่มเดียวกันทันทีแม้ยังไม่ผูกอะไร
+   */
+  async function duplicateItem(src: Item) {
+    const taken = new Set(items.map((i) => i.name.trim()));
+    let name = `${src.name} (สำเนา)`;
+    for (let n = 2; taken.has(name); n += 1) name = `${src.name} (สำเนา ${n})`;
+    // รหัสนับต่อจากต้นแบบ: P-ACRYLICMAGNET-1-1 → P-ACRYLICMAGNET-1-2 · รหัสไม่ลงท้ายตัวเลข (3MM) → 3MM-1 (เจ้าของร้านขอ 1 ต.ค. 69)
+    const m = /^(.*?)(\d+)$/.exec(src.code ?? "");
+    const codePrefix = src.code ? (m ? m[1] : `${src.code}-`) : undefined;
+    const ok = await saveItem({
+      name,
+      codePrefix,
+      unit: src.unit,
+      family: src.family,
+      category: src.category,
+      reorderPoint: src.reorderPoint,
+      leadTimeDays: src.leadTimeDays,
+      unitCost: src.unitCost,
+      productIds: [],
+      imageUrl: src.imageUrl ?? "",
+      part: src.part ?? "",
+      packUnit: src.packUnit ?? "",
+      packSize: src.packSize ?? 0,
+      manualOnly: !!src.manualOnly,
+      groupByOption: !!src.groupByOption,
+      cloneOf: src.cloneOf || src.id,
+    });
+    if (!ok) return;
+    setOk(`ทำซ้ำ “${src.name}” → “${name}” แล้ว (อยู่กลุ่มเดียวกัน ยอด 0 ยังไม่ผูกสินค้า) — กด “แก้ไข” ที่แถวใหม่เพื่อเปลี่ยนชื่อ/ผูกตัวเลือก`);
+    if (lastSavedId.current) setFlashId(lastSavedId.current);
+  }
+  /** ↕ ย้าย fromId ไปวางที่ตำแหน่งของ toId ภายในกลุ่ม groupRows แล้วบันทึกลำดับทั้งกลุ่ม */
+  async function reorderRows(groupRows: Item[], fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const ordered = [...groupRows].sort(bySort).map((r) => r.id);
+    const from = ordered.indexOf(fromId);
+    const to = ordered.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ordered.splice(from, 1);
+    ordered.splice(to, 0, fromId);
+    const pos = new Map(ordered.map((id, i) => [id, i * 10]));
+    setItems((prev) => prev.map((i) => (pos.has(i.id) ? { ...i, sort: pos.get(i.id) } : i)));
+    setErr("");
+    const res = await fetch("/api/admin/stock/sort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ordered }) });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "บันทึกลำดับไม่สำเร็จ");
+      await load();
+    }
+  }
+
+  /** 🏷 แก้ชื่อหัวกลุ่มที่จัดตามตระกูล (m:/s:/n:) = เปลี่ยน family ของทุกแถวในกลุ่มทีเดียว (เจ้าของร้านขอ 1 ต.ค. 69) */
+  async function renameFamily(rows: Item[], from: string, to: string) {
+    const name = to.trim();
+    if (!name || name === from) return false;
+    setErr("");
+    const res = await fetch("/api/admin/stock/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "assign-family", ids: rows.map((r) => r.id), name }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "เปลี่ยนชื่อไม่สำเร็จ");
+      return false;
+    }
+    await load();
+    setOk(`เปลี่ยนชื่อกลุ่ม “${from}” → “${name}” แล้ว (${fmtN(rows.length)} รายการ)`);
+    return true;
+  }
+
+  async function saveItem(body: Partial<Item> & { name: string; codePrefix?: string }) {
     setErr("");
     const res = await fetch("/api/admin/stock", {
       method: "POST",
@@ -561,6 +670,7 @@ export default function StockPage() {
       setErr(j?.error ?? "บันทึกไม่สำเร็จ");
       return false;
     }
+    lastSavedId.current = typeof j.item?.id === "string" ? j.item.id : null;
     await load();
     void loadImages(true); // ผูกสินค้า/ลิงก์รูปเปลี่ยน → รูปในตารางต้องตาม
     return true;
@@ -1029,8 +1139,14 @@ export default function StockPage() {
     const put = (g: Omit<G, "rows">, it: Item) => (map.get(g.key) ?? map.set(g.key, { ...g, rows: [] }).get(g.key)!).rows.push(it);
     const ofProduct = (pid: string, name: string, it: Item) =>
       put({ key: `p:${pid}`, kind: 0, title: prodById.get(pid)?.name ?? name, img: prodById.get(pid)?.img, productId: pid }, it);
+    const rowById = new Map(items.map((r) => [r.id, r]));
     for (const it of rows) {
-      const us = live[it.id] ?? [];
+      let us = live[it.id] ?? [];
+      // ⧉ สำเนาที่ยังไม่ผูกอะไร → ยืมลิงก์ของต้นแบบมาจัดกลุ่ม (โผล่ใต้กลุ่มเดียวกันทันที) · ผูกเองเมื่อไหร่ใช้ลิงก์ตัวเองทันที
+      if (!us.length && it.cloneOf) {
+        const tpl = rowById.get(it.cloneOf);
+        if (tpl) us = live[tpl.id] ?? [];
+      }
       const fam = it.family ?? it.category ?? "อื่น ๆ";
       const pids = new Map<string, string>();
       for (const u of us) if (u.kind !== "preset") pids.set(u.productId, u.productName);
@@ -1081,8 +1197,18 @@ export default function StockPage() {
         put({ key: "ghost", kind: 2, title: "สินค้าที่ผูกไว้ไม่มีในระบบแล้ว", sub: "สินค้าถูกลบหรือเปลี่ยนรหัส — ขายแล้วไม่ตัดยอด ต้องเปิดแก้ไขแล้วเลือกสินค้าใหม่" }, it);
       else put({ key: `n:${fam}`, kind: 3, title: fam, sub: "ยังไม่รู้ว่าใช้กับสินค้าไหน" }, it);
     }
-    return [...map.values()].sort((a, b) => a.kind - b.kind || a.title.localeCompare(b.title, "th"));
-  }, [rows, usage, live, suggest, products]);
+    /**
+     * 🔍 ตอนค้นหา: แถวที่ติดมาเพราะ "ชื่อสินค้าที่ผูก" ตรงคำค้น (ฐาน Griptok ← กริ๊บต๊อกกระจกอะคริลิคใส) ถูกวางใต้ "ทุกสินค้า" ที่มันผูกอยู่
+     * → กลุ่ม "กริ๊บต๊อก" โผล่มาทั้งที่ไม่มีคำว่า อะคริลิคใส เลย (เจ้าของร้านถาม 1 ต.ค. 69)
+     * เหลือเฉพาะกลุ่มที่ชื่อกลุ่มตรงคำค้น หรือมีแถวที่ตัวมันเองตรง (ชื่อ/รหัส/ตระกูล/หมวด/ชื่อเดิม)
+     */
+    const needle = q.trim().toLowerCase();
+    const all = [...map.values()].sort((a, b) => a.kind - b.kind || a.title.localeCompare(b.title, "th"));
+    if (!needle) return all;
+    // ขั้นเดียวกับ rows: มีตัวที่ตรงเอง → กลุ่มต้องมีตัวนั้น · ไม่มี → กลุ่มที่ชื่อตรงหรือมีแถวตรงผ่านตระกูล/หมวด
+    const direct = rows.some((r) => matchItemDirect(r, needle));
+    return all.filter((g) => (direct ? g.rows.some((r) => matchItemDirect(r, needle)) : g.title.toLowerCase().includes(needle) || g.rows.some((r) => matchItem(r, needle))));
+  }, [rows, items, usage, live, suggest, products, q]);
   const grouped = view === "group" && linksReady;
   /** กำลังค้น/กรองอยู่ = กางทุกกลุ่มให้เห็นผลเลย ไม่ต้องไล่กดเปิด */
   const forceOpen = q.trim() !== "" || filter !== "ทั้งหมด" || cat !== "ทุกหมวด" || linkFilter !== "all";
@@ -1163,6 +1289,7 @@ export default function StockPage() {
               items={[
                 { head: "ตั้งค่าคลัง" },
                 { icon: "🔗", label: "ผูกตัวเลือกสินค้ากับวัสดุ", href: "/admin/stock/link" },
+                { icon: "🏷", label: "พิมพ์ป้าย QR ชั้นวาง ทุกตัว (สแกน = เบิก)", href: "/admin/stock/labels" },
                 ...(mayEdit
                   ? [
                       { icon: "🔩", label: "คลังวัสดุแฝง (ขาตั้ง หมุด ถุง)", onClick: () => setBomLib(true) },
@@ -1540,14 +1667,46 @@ export default function StockPage() {
                   ) : (
                     <Tag tone="mint">พอใช้</Tag>
                   );
+                const canDrag = mayEdit && !nest;
+                /** กลุ่มที่แถวนี้กับแถวที่ลากมาอยู่ด้วยกัน — ไว้เรียงลำดับเฉพาะในกลุ่มนั้น */
+                const dropGroup = dragId && dragId !== it.id ? groups.find((g) => g.rows.some((r) => r.id === it.id) && g.rows.some((r) => r.id === dragId)) : undefined;
                 return (
                   <li key={nest?.key ?? it.id}>
                     <div
                       role="button"
                       tabIndex={0}
-                      onClick={() => setOpenId(it.id)}
-                      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setOpenId(it.id))}
-                      className={`dkb-row group !rounded-none cursor-pointer flex-wrap px-4 sm:flex-nowrap ${nest ? "relative" : "pl-5"}`}
+                      onClick={() => openDrawer(it.id)}
+                      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), openDrawer(it.id))}
+                      draggable={canDrag && dragArmed === it.id}
+                      onDragStart={(e) => {
+                        if (!canDrag || dragArmed !== it.id) return e.preventDefault();
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", it.id);
+                        setDragId(it.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setDragOver(null);
+                        setDragArmed(null);
+                      }}
+                      onDragOver={(e) => {
+                        if (!dropGroup) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (dragOver !== it.id) setDragOver(it.id);
+                      }}
+                      onDragLeave={() => dragOver === it.id && setDragOver(null)}
+                      onDrop={(e) => {
+                        if (!dropGroup || !dragId) return;
+                        e.preventDefault();
+                        void reorderRows(dropGroup.rows, dragId, it.id);
+                        setDragId(null);
+                        setDragOver(null);
+                        setDragArmed(null);
+                      }}
+                      className={`dkb-row group !rounded-none cursor-pointer flex-wrap px-4 sm:flex-nowrap ${nest ? "relative" : "pl-5"}${flashId === it.id ? " ring-2 ring-inset ring-amber-400 bg-amber-50/70" : ""}${
+                        dragId === it.id ? " opacity-40" : ""
+                      }${dragOver === it.id && dropGroup ? " shadow-[inset_0_3px_0_var(--dk-blue-deep)]" : ""}`}
                       // ⚠️ เยื้องด้วย style ไม่ใช่คลาส — .dkb-row ใน dashboard.css ตั้ง padding ย่อ และไฟล์นั้นไม่ได้อยู่ใน @layer
                       // จึงชนะ utility ของ Tailwind v4 ทุกตัว (px-4/pl-* ข้างบนไม่เคยมีผลเลย · เจอจริง 21 ก.ย. 69)
                       style={nest ? { paddingLeft: NEST_PAD, minHeight: 54 } : grouped ? { paddingLeft: ROW_PAD } : undefined}
@@ -1563,6 +1722,21 @@ export default function StockPage() {
                             className="absolute top-1/2 block h-0"
                             style={{ left: NEST_RAIL, width: NEST_PAD - NEST_RAIL - 12, borderTop: "2px solid var(--dk-quiet)" }}
                           />
+                        </span>
+                      )}
+                      {/* ⠿ มือจับลาก — กดค้างแล้วลากทั้งแถวขึ้น/ลงในกลุ่ม · โผล่ชัดตอนชี้แถว */}
+                      {canDrag && (
+                        <span
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            setDragArmed(it.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="-ml-3 mr-0.5 shrink-0 cursor-grab select-none px-1 text-[16px] leading-none text-slate-300 opacity-60 transition hover:text-slate-500 group-hover:opacity-100 active:cursor-grabbing"
+                          title="ลากเพื่อจัดลำดับในกลุ่ม"
+                          aria-hidden
+                        >
+                          ⠿
                         </span>
                       )}
                       <Thumb src={images[it.id]} name={it.name} size={nest ? 32 : 40} />
@@ -1680,6 +1854,14 @@ export default function StockPage() {
                                 </RowBtn>
                               </>
                             )}
+                            {/* ✏️ แก้ไขจากแถว — คู่กับทำซ้ำ: สำเนาข้อมูลคล้ายต้นแบบ แก้แค่ชื่อ/ขนาด (เจ้าของร้านขอ 1 ต.ค. 69) */}
+                            <RowBtn title={`แก้ไขข้อมูล ${it.name}`} onClick={() => openDrawer(it.id, "edit")} small>
+                              แก้ไข
+                            </RowBtn>
+                            {/* ⧉ ทำซ้ำจากแถว — สร้างทันทีเป็นอีกบรรทัดในกลุ่มเดียวกัน ไม่ต้องกรอกฟอร์ม */}
+                            <RowBtn title={`ทำซ้ำ ${it.name} — เพิ่มอีกบรรทัดทันที ข้อมูลเหมือนต้นแบบ (ยอด 0 ไม่ผูกสินค้า)`} onClick={() => void duplicateItem(it)} small>
+                              ⧉ ทำซ้ำ
+                            </RowBtn>
                             {/* ลบจากแถวได้เลย ไม่ต้องเปิดลิ้นชัก (เจ้าของร้านขอ 30 ก.ย. 69) — ถามยืนยันก่อนเสมอ กู้คืนได้จาก "ที่ลบไปแล้ว" */}
                             <RowBtn title={`ลบ ${it.name} ออกจากคลัง`} onClick={() => void deleteItem(it)} small danger>
                               ลบ
@@ -1723,7 +1905,9 @@ export default function StockPage() {
                * กลุ่มย่อยตาม "ชนิดของ" — ของในสินค้าเดียวแต่รับเข้า/เบิก/สั่งแยกกัน (กรอบรูปยังมี สั่งแต่แผ่นจิ๊กซอว์)
                * แสดงเมื่อมีตั้งชนิดไว้อย่างน้อย 1 ตัว · ไม่ตั้งเลย = แถวเรียงแบบเดิม
                */
-              const renderParts = (list: Item[], groupTitle: string, productId?: string, optionLabel?: string) => {
+              const renderParts = (list0: Item[], groupTitle: string, productId?: string, optionLabel?: string) => {
+                // ↕ ลำดับที่ลากจัดมาก่อน (sort) · ที่เหลือเรียงชื่อแบบตัวเลข — ใช้กับทุกทางในกลุ่ม
+                let list = [...list0].sort(bySort);
                 // 🧩 กลุ่มวัสดุกลางตามตัวเลือก: แถวแม่ = ค่าตัวเลือก (สีพิเศษ) → ห้อย SKU ที่ตัดเมื่อเงื่อนไขตรง (สีอะคริลิค = C-01)
                 //    ค่าเดียว → SKU เดียวไม่มีเงื่อนไข = วาดแถว SKU ตรง ๆ ไม่ต้องมีแม่ซ้ำชื่อ · ไม่ใช่ "วัสดุแฝง" (ตัวนี้คือแผ่นหลักของแบบนั้นเอง)
                 if (optionLabel) {
@@ -1857,7 +2041,7 @@ export default function StockPage() {
                   const k = r.part?.trim() || OTHER;
                   (byPart.get(k) ?? byPart.set(k, []).get(k)!).push(r);
                 }
-                const numeric = (a: Item, b: Item) => a.name.localeCompare(b.name, "th", { numeric: true });
+                const numeric = bySort;
                 return [...byPart.entries()]
                   .sort(([a], [b]) => (a === OTHER ? 1 : b === OTHER ? -1 : a.localeCompare(b, "th")))
                   .map(([part, rs]) => {
@@ -1995,6 +2179,9 @@ export default function StockPage() {
                       if (g.key === "bom") menu.push({ icon: "🔩", label: "จัดการคลังวัสดุแฝง", onClick: () => setBomLib(true) });
                     }
                     if (g.productId) menu.push({ icon: "↗", label: "เปิดหน้าสินค้า", href: `/admin/products/${encodeURIComponent(g.productId)}` });
+                    // 🏷 ป้าย QR ทั้งกลุ่ม — พิมพ์ทีเดียวติดชั้นทั้งแถว (ไม่รวมตัวที่ไม่ต้องมี stock)
+                    if (!untrackedView && g.rows.some((r) => !r.noStock))
+                      menu.push({ icon: "🏷", label: `พิมพ์ป้าย QR ชั้นวางทั้งกลุ่ม (${fmtN(g.rows.filter((r) => !r.noStock).length)})`, href: `/admin/stock/labels?ids=${g.rows.filter((r) => !r.noStock).map((r) => encodeURIComponent(r.id)).join(",")}` });
                     if (mayEdit) menu.push({ icon: "🗂", label: `ย้ายหมวดทั้งกลุ่ม (${fmtN(g.rows.length)})…`, onClick: () => setMoveCatFor({ items: g.rows, title: g.title }) });
                     if (isOwner && !untrackedView)
                       menu.push({ icon: "🧹", label: "รีเซ็ตยอดทั้งกลุ่มเป็น 0 (เจ้าของร้าน)", danger: true, onClick: () => void resetItems(g.rows, g.title) });
@@ -2036,9 +2223,13 @@ export default function StockPage() {
                             </span>
                           )}
                           <span className="min-w-0 flex-1 basis-[11rem]">
-                            <span className="dkb-display block truncate text-[1rem]" style={{ color: done && !(nNeg || nDanger || g.kind === 2) ? "var(--dk-faint)" : "var(--dk-navy)" }}>
-                              {g.title}
-                            </span>
+                            {/* 🏷 กลุ่มที่จัดตามตระกูล (เบิกเอง/ใช้ร่วม/ยังไม่รู้) แก้ชื่อได้ตรงหัวกลุ่ม — กลุ่มสินค้า/วัสดุแฝง/ตัวเลือก ชื่อมาจากที่อื่น */}
+                            <GroupTitle
+                              title={g.title}
+                              color={done && !(nNeg || nDanger || g.kind === 2) ? "var(--dk-faint)" : "var(--dk-navy)"}
+                              canRename={mayEdit && /^[msn]:/.test(g.key)}
+                              onRename={(to) => renameFamily(g.rows, g.title, to)}
+                            />
                             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
                               <span>
                                 {fmtN(g.rows.length)} รายการ{g.sub ? ` · ${g.sub}` : ""}
@@ -2157,10 +2348,14 @@ export default function StockPage() {
           moves={moves.filter((m) => m.itemId === openItem.id)}
           mayEdit={mayEdit}
           onClose={() => setOpenId(null)}
-          onEdit={() => {
-            setOpenId(null); // ฟอร์มแก้ไขเป็นหน้าเต็ม — ปิดลิ้นชักก่อน ไม่งั้นซ้อนกัน
-            setEditFor(openItem);
-          }}
+          onEdit={() => setDrawerTab("edit")}
+          tab={drawerTab}
+          onTab={setDrawerTab}
+          allCats={cats}
+          allFams={allFams}
+          allParts={allParts}
+          onSaveEdit={saveItem}
+          onDuplicate={() => void duplicateItem(openItem)}
           onCount={() => setCountFor(openItem)}
           onMove={(mode) => setBulkFor({ items: [openItem], title: openItem.name, mode })}
           onDelete={() => deleteItem(openItem)}
@@ -2457,7 +2652,7 @@ type MenuItem = { label?: string; icon?: string; onClick?: () => void; href?: st
  * เมนู ⋯ แบบเด้งลง — ใช้ที่หัวหน้า (ตั้งค่าคลัง) และหัวกลุ่มสินค้า
  * เปิดได้ทีละอัน (id เดียวกับ state ของหน้า) · ปิดเมื่อกดที่อื่น/Esc/เลือกรายการ
  */
-function ActionMenu({ id, open, setOpen, label, items }: { id: string; open: string | null; setOpen: (v: string | null) => void; label: string; items: MenuItem[] }) {
+function ActionMenu({ id, open, setOpen, label, items, up }: { id: string; open: string | null; setOpen: (v: string | null) => void; label: string; items: MenuItem[]; /** เด้งขึ้นบน — ใช้เมื่อปุ่มอยู่ติดขอบล่างจอ (แถบท้ายลิ้นชัก) */ up?: boolean }) {
   const isOpen = open === id;
   useEffect(() => {
     if (!isOpen) return;
@@ -2491,7 +2686,7 @@ function ActionMenu({ id, open, setOpen, label, items }: { id: string; open: str
       {isOpen && (
         <div
           role="menu"
-          className="absolute right-0 top-[44px] z-[60] min-w-[240px] rounded-2xl bg-white p-1.5 text-left shadow-[0_16px_40px_rgba(23,58,107,0.22)]"
+          className={`absolute right-0 z-[60] min-w-[240px] rounded-2xl bg-white p-1.5 text-left shadow-[0_16px_40px_rgba(23,58,107,0.22)] ${up ? "bottom-[44px]" : "top-[44px]"}`}
           onClick={(e) => e.stopPropagation()}
         >
           {items.map((m, i) =>
@@ -2648,6 +2843,121 @@ function UnitSwitch({ unit, packUnit, inPack, onChange }: { unit: string; packUn
   );
 }
 
+/**
+ * ชื่อที่พิมพ์แก้ได้เลย (ชื่อตัวเลือกในหน้าต่างแยกสต๊อก) — ไม่ต้องกดดินสอ (เจ้าของร้านขอ 1 ต.ค. 69)
+ * ช่องดูเหมือนข้อความ ชี้เมาส์/โฟกัสถึงเห็นกรอบ · ออกจากช่องหรือ Enter = บันทึกถ้าเปลี่ยน · Esc = คืนค่าเดิม
+ * บันทึกไม่ผ่าน = คงค่าที่พิมพ์ไว้ให้แก้ต่อ (ข้อผิดพลาดขึ้นที่แถบของหน้าต่าง)
+ */
+function InlineName({ text, canEdit, onSave, onReject }: { text: string; canEdit: boolean; onSave: (to: string) => Promise<boolean>; /** ลบจนว่าง = บอกเหตุผลว่าทำไมไม่บันทึก (ชื่อตัวเลือกว่างไม่ได้) */ onReject?: (msg: string) => void }) {
+  const [val, setVal] = useState(text);
+  const [busy, setBusy] = useState(false);
+  // ชื่อจากเซิร์ฟเวอร์เปลี่ยน (หลังบันทึก/โหลดใหม่) → ตามให้
+  useEffect(() => setVal(text), [text]);
+  if (!canEdit) return <span className="min-w-0 truncate">{text}</span>;
+  const commit = async () => {
+    const nu = val.trim();
+    if (busy) return;
+    if (!nu) {
+      // ลบจนว่างแล้วออกจากช่อง — เดิมคืนค่าเดิมเงียบ ๆ เจ้าของร้านคิดว่าระบบไม่ลบให้ (1 ต.ค. 69)
+      onReject?.(`ชื่อตัวเลือก “${text}” ว่างไม่ได้ — ชื่อนี้คือตัวเลือกที่ลูกค้าเห็นหน้าร้าน ถ้าต้องการเอาตัวเลือกนี้ออกจากสินค้า ให้ลบที่หน้าสินค้า (ตารางราคา/กฎจะถูกเก็บกวาดให้ที่นั่น)`);
+      return setVal(text);
+    }
+    if (nu === text) return setVal(text);
+    setBusy(true);
+    const ok = await onSave(nu);
+    setBusy(false);
+    if (ok) setVal(nu);
+  };
+  return (
+    <span className="relative inline-grid max-w-full">
+      {/* ตัวเงาไว้วัดความกว้างให้ช่องพอดีข้อความ (หน่วย ch คลาดกับอักษรไทย ทำให้เว้นช่องว่างกว้าง) */}
+      <span aria-hidden className="invisible col-start-1 row-start-1 whitespace-pre px-1.5 py-0.5 text-[13px] font-medium">
+        {val || text}
+      </span>
+    <input
+      value={val}
+      disabled={busy}
+      onChange={(e) => setVal(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onBlur={() => void commit()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          setVal(text);
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      aria-label={`ชื่อตัวเลือก ${text}`}
+      title="พิมพ์แก้ชื่อตัวเลือกได้เลย — ออกจากช่องแล้วบันทึกให้ (ราคา/กฎ/เงื่อนไขย้ายตาม)"
+      className={`col-start-1 row-start-1 w-full min-w-[3rem] rounded-md border px-1.5 py-0.5 text-[13px] font-medium text-slate-900 transition focus:border-amber-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-100 disabled:opacity-50 ${
+        val.trim() !== text ? "border-amber-300 bg-amber-50/40" : "border-transparent bg-transparent hover:border-slate-300 hover:bg-white"
+      }`}
+    />
+    </span>
+  );
+}
+
+/**
+ * ชื่อหัวกลุ่ม + ✎ แก้ชื่อในที่ (เฉพาะกลุ่มตามตระกูล) — หัวกลุ่มเป็น role=button กาง/หุบ จึงต้องหยุด click/keydown ไม่ให้ไหลขึ้นไป
+ */
+function GroupTitle({ title, color, canRename, onRename }: { title: string; color: string; canRename: boolean; onRename: (to: string) => Promise<boolean> }) {
+  const [val, setVal] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  if (val !== null)
+    return (
+      <form
+        className="flex items-center gap-1.5"
+        onClick={stop}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Escape") setVal(null);
+        }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (busy) return;
+          setBusy(true);
+          const ok = await onRename(val);
+          setBusy(false);
+          if (ok || val.trim() === title) setVal(null);
+        }}
+      >
+        <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} aria-label="ชื่อกลุ่ม" className={`${inputCls} !h-9 max-w-[16rem] text-[0.95rem] font-medium`} />
+        <button type="submit" disabled={busy || !val.trim()} className={btnSmNeutral}>
+          {busy ? "…" : "บันทึก"}
+        </button>
+        <button type="button" onClick={() => setVal(null)} className={btnSmGhost}>
+          ยกเลิก
+        </button>
+      </form>
+    );
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      <span className="dkb-display block truncate text-[1rem]" style={{ color }}>
+        {title}
+      </span>
+      {canRename && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setVal(title);
+          }}
+          onKeyDown={stop}
+          className="shrink-0 rounded-md px-1.5 py-0.5 text-[13px] text-slate-400 hover:bg-white hover:text-slate-700"
+          title="แก้ชื่อกลุ่ม — เปลี่ยนตระกูลของทุกรายการในกลุ่มนี้"
+          aria-label={`แก้ชื่อกลุ่ม ${title}`}
+        >
+          ✎
+        </button>
+      )}
+    </span>
+  );
+}
+
 function Thumb({ src, name, size = 40 }: { src?: string; name: string; size?: number }) {
   const zoom = useContext(ZoomCtx);
   const style = { width: size, height: size, background: "var(--dk-sky)", boxShadow: "inset 0 0 0 1px var(--dk-hair)" };
@@ -2681,6 +2991,16 @@ function matchItem(i: Item, needle: string) {
   return [i.name, i.code, i.family, i.category, ...(i.aliases ?? [])]
     .filter(Boolean)
     .some((s) => String(s).toLowerCase().includes(needle));
+}
+/**
+ * 🔍 ตรงที่ "ตัว SKU เอง" (ชื่อ/รหัส/ชื่อที่เคยเรียก) — ขั้นแรกของการค้น
+ * ถ้ามีตัวที่ตรงแบบนี้ ให้โชว์เฉพาะพวกนี้ · ไม่มีเลยค่อยถอยไปหาผ่านตระกูล/หมวด/ชื่อสินค้าที่ผูก (matchItem + ชื่อสินค้า)
+ * เจ้าของร้านค้น "อะคริลิคใส" แล้วเจอฐาน Griptok ติดมา (ผูกกับ "กริ๊บต๊อกกระจกอะคริลิคใส") 1 ต.ค. 69 · แต่ "ปั๊มนูน" ยังต้องเจอฐาน Griptok (30 ก.ย. 69)
+ */
+function matchItemDirect(i: Item, needle: string) {
+  // ⚠️ ไม่รวม "ชื่อที่เคยเรียก" — เปลี่ยนชื่อ SKU แล้วชื่อเดิมถูกเก็บเป็น alias ซึ่งมักมีชื่อสินค้าแม่ติดมา
+  //    (ฐาน Griptok เคยชื่อ "กริ๊บต๊อกกระจกอะคริลิคใส · ฐาน…") → ค้น "อะคริลิคใส" แล้วติดมาทั้งที่ชื่อปัจจุบันไม่มี · alias ยังค้นเจอในขั้นสอง
+  return [i.name, i.code].filter(Boolean).some((s) => String(s).toLowerCase().includes(needle));
 }
 /**
  * ผลค้นในช่องเลือกวัสดุ (วัสดุแฝงของสินค้า / ของตัวเลือก) — ของในคลังวัสดุแฝงกลางขึ้นก่อนเสมอ แล้วค่อยตามด้วยของอื่นตามลำดับเดิม
@@ -3062,6 +3382,13 @@ function ItemDrawer({
   mayEdit,
   onClose,
   onEdit,
+  tab,
+  onTab,
+  allCats,
+  allFams,
+  allParts,
+  onSaveEdit,
+  onDuplicate,
   onCount,
   onMove,
   onDelete,
@@ -3092,7 +3419,17 @@ function ItemDrawer({
   moves: Move[];
   mayEdit: boolean;
   onClose: () => void;
+  /** ไปแท็บ "แก้ไขข้อมูล" (ปุ่มตั้งจุดสั่ง/ผูกสินค้าเรียกใช้) */
   onEdit: () => void;
+  tab: DrawerTab;
+  onTab: (t: DrawerTab) => void;
+  allCats: string[];
+  allFams: string[];
+  allParts: string[];
+  /** บันทึกฟอร์มแก้ไขในแท็บ — ทางเดียวกับหน้าเพิ่มวัสดุ (POST /api/admin/stock) */
+  onSaveEdit: (b: Partial<Item> & { name: string }) => Promise<boolean>;
+  /** ⧉ ทำซ้ำ — เพิ่มอีกบรรทัดทันทีในกลุ่มเดียวกัน ข้อมูลเหมือนตัวนี้ (ยอด 0 ไม่ก๊อปลิงก์) */
+  onDuplicate: () => void;
   onCount: () => void;
   /** 📥 รับเข้า / เบิก ของ SKU ตัวเดียวจากลิ้นชัก — เดิมทำได้แค่ที่หัวกลุ่ม "ชนิดของ" ซึ่งวัสดุแฝงไม่มี (เจ้าของร้านถาม 23 ก.ย. 69) */
   onMove: (mode: "in" | "out") => void;
@@ -3108,6 +3445,8 @@ function ItemDrawer({
 }) {
   const [editName, setEditName] = useState<string | null>(null);
   const [imgOpen, setImgOpen] = useState(false);
+  /** เมนู ⋯ ท้ายลิ้นชัก (ไม่ต้องมี stock / รีเซ็ต) — ปุ่มแถวเดียวเคยล้นจอมือถือจน "ลบ" โดนตัด (1 ต.ค. 69) */
+  const [moreOpen, setMoreOpen] = useState<string | null>(null);
   // ปิดด้วย Esc + ล็อกสกรอลล์พื้นหลัง ไม่งั้นเลื่อนลิ้นชักแล้วหน้าหลังเลื่อนตาม
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -3127,10 +3466,10 @@ function ItemDrawer({
       <aside className={drawerPanel} role="dialog" aria-label={`รายละเอียด ${item.name}`}>
         <header className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
           <span className="flex shrink-0 flex-col items-center gap-1">
-            <Thumb src={image} name={item.name} size={56} />
+            <Thumb src={image} name={item.name} size={60} />
             {mayEdit && (
-              <button type="button" onClick={() => setImgOpen((v) => !v)} className="text-[11px] text-slate-500 underline underline-offset-2 hover:text-slate-800">
-                เปลี่ยนรูป
+              <button type="button" onClick={() => setImgOpen((v) => !v)} className="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+                {imgOpen ? "ปิด" : "เปลี่ยนรูป"}
               </button>
             )}
           </span>
@@ -3176,6 +3515,7 @@ function ItemDrawer({
             <p className="mt-1 flex flex-wrap items-center gap-2">
               {item.code && <span className={codeCls}>{item.code}</span>}
               {item.family && <span className="text-[11px] text-slate-400">{item.family}</span>}
+              {item.category && item.category !== item.family && <span className="text-[11px] text-slate-400">· {item.category}</span>}
               {item.needsReview && <span className={`${badge} ${TONE.review.bg} ${TONE.review.text}`}>รอตรวจ</span>}
               {item.manualOnly && (
                 <span className={`${badge} ${TONE.neutral.bg} ${TONE.neutral.text}`} title="ของใช้ในโรงงาน — พนักงานเบิกเอง ไม่ผูกกับสินค้า">
@@ -3190,128 +3530,243 @@ function ItemDrawer({
         </header>
         {imgOpen && <ImagePanel onSave={async (url) => (await onImage(url)) && setImgOpen(false)} onClose={() => setImgOpen(false)} />}
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <div className="flex items-end justify-between gap-3">
-            <p className={`${metric} ${item.balance < 0 ? TONE.danger.text : ""}`}>
-              {fmtN(item.balance)} <span className="text-sm font-medium text-slate-400">{item.unit}</span>
-              {packText(item, item.balance) && (
-                <span className="mt-1 block text-sm font-medium tabular-nums text-slate-500">= {packText(item, item.balance)}</span>
-              )}
-            </p>
-            {item.balance < 0 ? (
-              <span className={`${badge} bg-rose-600 text-white`}>ติดลบ</span>
-            ) : stat?.point != null ? (
-              <span className={`${badge} ${TONE[level].bg} ${TONE[level].text}`}>
-                จุดสั่ง ≤ {fmtN(stat.point)}
-                {item.reorderPoint == null ? " (แนะนำ)" : ""}
-              </span>
-            ) : (
-              !item.noStock && <span className={`${badge} ${TONE.neutral.bg} ${TONE.neutral.text}`}>ยังไม่ตั้งจุดสั่ง</span>
-            )}
-          </div>
+        {/* แท็บ: งานประจำอยู่ "ภาพรวม" · แก้ไขข้อมูลอยู่ในลิ้นชักเดียวกัน (เดิมเด้งไปหน้าเต็ม เจ้าของร้านขอรวม 1 ต.ค. 69) · ประวัติแยกออกมาจะได้ไม่ต้องเลื่อนผ่าน */}
+        <nav className="flex gap-1 border-b border-slate-100 px-5" role="tablist" aria-label="ส่วนของลิ้นชัก">
+          {(
+            [
+              { id: "overview" as const, label: "ภาพรวม" },
+              ...(mayEdit ? [{ id: "edit" as const, label: "แก้ไขข้อมูล" }] : []),
+              { id: "history" as const, label: `ประวัติ${moves.length ? ` (${fmtN(moves.length)})` : ""}` },
+            ] as { id: DrawerTab; label: string }[]
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => onTab(t.id)}
+              className={`-mb-px min-h-[42px] border-b-2 px-3 text-[13px] font-medium transition ${
+                tab === t.id ? "border-amber-500 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
 
+        {tab === "edit" && mayEdit && (
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {/* key = id → สลับวัสดุแล้วฟอร์มเริ่มใหม่จากค่าของตัวนั้น ไม่ค้างของตัวก่อน */}
+            <ItemModal
+              key={item.id}
+              embedded
+              item={item}
+              products={products}
+              allCats={allCats}
+              allFams={allFams}
+              allParts={allParts}
+              onClose={() => onTab("overview")}
+              onSave={async (b) => {
+                if (await onSaveEdit(b)) onTab("overview");
+              }}
+            />
+          </div>
+        )}
+
+        {tab === "history" && (
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            <p className={labelCls}>ประวัติการเคลื่อนไหว</p>
+            <div className="mt-1.5">
+              {moves.slice(0, 80).map((m) => {
+                const tone = REASON_TONE[m.reason] ?? "neutral";
+                return (
+                  <div key={m.id} className="flex items-center gap-2 border-b border-slate-100 py-2 text-xs last:border-0">
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[tone].bg} ${TONE[tone].text}`}>
+                      {m.reason}
+                    </span>
+                    <span className={`w-14 shrink-0 text-right font-semibold tabular-nums ${m.qty > 0 ? TONE.ok.text : TONE.danger.text}`}>
+                      {m.qty > 0 ? `+${fmtN(m.qty)}` : fmtN(m.qty)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-slate-500">{m.note}</span>
+                    <span className="shrink-0 text-slate-400">{fmtAt(m.at)}</span>
+                  </div>
+                );
+              })}
+              {moves.length === 0 && <p className="py-6 text-center text-xs text-slate-400">ยังไม่มีการเคลื่อนไหว</p>}
+            </div>
+          </div>
+        )}
+
+        <div className={`flex-1 overflow-y-auto px-5 py-4${tab === "overview" || (tab === "edit" && !mayEdit) ? "" : " hidden"}`}>
           {/*
-           * งานประจำ 3 ปุ่มขึ้นบนสุด — เปิดลิ้นชักมาเพื่อ "ทำ" ไม่ใช่มาอ่าน (โครงใหม่ 30 ก.ย. 69 · เดิมอยู่ท้ายลิ้นชักต้องเลื่อนผ่านประวัติก่อน)
-           * ช่องเท่ากัน สูง 52 กดด้วยนิ้วโป้ง ห้ามตัดคำ · แก้ไข/ไม่ต้องมี stock/ลบ ยังอยู่ท้ายลิ้นชัก (งานนาน ๆ ครั้ง)
+           * โครงลิ้นชัก (รื้อ 1 ต.ค. 69): ① ยอด+ตัวเทียบ ② ปุ่มงานประจำ ③ รายการต้องจัดการ ④ สถิติ ⑤ ผูกสินค้า
+           * เดิมยอดลอยเดี่ยว ป้ายซ้ำกับกล่องเตือน การ์ดสถิติ 6 ใบส่วนใหญ่เป็น "—" กินครึ่งจอ ปุ่ม 3 สี ปุ่มท้ายล้นจอมือถือ
            */}
+          {(() => {
+            const neg = item.balance < 0;
+            const pt = !neg && !item.noStock ? (stat?.point ?? null) : null;
+            // แถบเทียบ: เต็มหลอด = 2 เท่าของจุดสั่ง · ขีดกลาง = จุดสั่ง → ยอดอยู่ซ้ายขีด = ต้องสั่ง
+            const pct = pt != null && pt > 0 ? Math.min(100, Math.round((item.balance / (pt * 2)) * 100)) : null;
+            const tone: Tone = neg ? "danger" : pt != null ? level : "neutral";
+            const line = neg
+              ? `ติดลบ — ขายไป ${fmtN(-item.balance)} ${item.unit} ก่อนเคยรับเข้า`
+              : item.noStock
+                ? "ไม่ต้องมี stock — ไม่เตือนสั่ง ไม่นับมูลค่า"
+                : pt != null
+                  ? `จุดสั่ง ≤ ${fmtN(pt)}${item.reorderPoint == null ? " (แนะนำ)" : ""}${
+                      level === "danger" ? " · ถึงจุดต้องสั่ง" : level === "warn" ? " · ใกล้ถึงจุดสั่ง" : stat?.daysLeft != null ? ` · หมดใน ~${fmtN(stat.daysLeft)} วัน` : ""
+                    }`
+                  : "ยังไม่ตั้งจุดสั่ง — ระบบยังเตือนให้ไม่ได้";
+            const pack = packText(item, item.balance);
+            return (
+              <div>
+                <p className={`flex flex-wrap items-baseline gap-x-2 ${metric} ${neg ? TONE.danger.text : ""}`}>
+                  <span>
+                    {fmtN(item.balance)} <span className="text-sm font-medium text-slate-400">{item.unit}</span>
+                  </span>
+                  {pack && <span className="text-sm font-medium tabular-nums text-slate-500">= {pack}</span>}
+                </p>
+                {pct != null && (
+                  <div className="relative mt-2.5 h-1.5 rounded-full bg-slate-100" aria-hidden>
+                    <span className={`absolute inset-y-0 left-0 rounded-full ${TONE[tone].bar}`} style={{ width: `${pct}%` }} />
+                    <span className="absolute -inset-y-0.5 left-1/2 w-0.5 rounded-full bg-slate-500" title={`จุดสั่ง ${fmtN(pt!)}`} />
+                  </div>
+                )}
+                <p className={`mt-1.5 text-xs font-medium ${TONE[tone].text}`}>{line}</p>
+              </div>
+            );
+          })()}
+
+          {/* งานประจำ 3 ปุ่ม ชุดเดียวกัน (เดิมดำ/ขาว/ฟ้า 3 สี) — รับเข้าเป็นปุ่มหลัก · สูง 48 กดด้วยนิ้วโป้ง */}
           {mayEdit && (
-            <div className={`mt-3 grid gap-2 ${item.noStock ? "grid-cols-1" : "grid-cols-3"}`}>
+            <div className={`mt-4 grid gap-2 ${item.noStock ? "grid-cols-1" : "grid-cols-3"}`}>
               {!item.noStock && (
                 <>
                   <button
                     type="button"
                     onClick={() => onMove("in")}
-                    className="min-h-[52px] rounded-2xl bg-slate-900 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                    className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold bg-amber-500 text-white shadow-sm transition hover:bg-amber-600"
                   >
-                    <span className="block text-lg leading-none">＋</span>รับเข้า
+                    <span className="text-base leading-none" aria-hidden>＋</span>รับเข้า
                   </button>
                   <button
                     type="button"
                     onClick={() => onMove("out")}
-                    className="min-h-[52px] rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
                   >
-                    <span className="block text-lg leading-none text-rose-500">−</span>เบิกออก
+                    <span className="text-base leading-none" aria-hidden>−</span>เบิกออก
                   </button>
                 </>
               )}
               <button
                 type="button"
                 onClick={onCount}
-                className="min-h-[52px] rounded-2xl bg-amber-400 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-amber-500"
+                className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
               >
-                <span className="block text-lg leading-none">≡</span>นับจริง
+                <span className="text-base leading-none" aria-hidden>≡</span>นับจริง
               </button>
             </div>
           )}
 
-          {/* กล่องบอก "ปัญหาของตัวนี้" พร้อมปุ่มแก้ในที่เดียว — ติดลบ → นับจริง · ยังไม่ตั้งจุดสั่ง → ตั้งในแก้ไขข้อมูล */}
-          {item.balance < 0 && (
-            <div className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>
-              <span className="min-w-0 flex-1">
-                ยอดติดลบ — ขายไป {fmtN(-item.balance)} {item.unit} ก่อนเคยรับของเข้าระบบ นับของจริงบนชั้นแล้วบันทึก ตัวเลขถึงจะตรง
-              </span>
-              {mayEdit && (
-                <button type="button" onClick={onCount} className={btnSmNeutral}>
-                  นับจริง
-                </button>
-              )}
-            </div>
-          )}
-          {item.balance >= 0 && stat?.point == null && !item.noStock && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">
-              <span className="min-w-0 flex-1">
-                ยังไม่ตั้งจุดสั่ง — ใส่ตัวเลขไว้ ระบบจะเตือน “ต้องสั่ง” ให้เองเมื่อของเหลือถึงจุดนั้น
-                {stat && stat.perDay > 0 ? ` (ตอนนี้ใช้เฉลี่ย ${stat.perDay.toFixed(1)} ${item.unit}/วัน)` : ""}
-              </span>
-              {mayEdit && (
-                <button type="button" onClick={onEdit} className={btnSmNeutral}>
-                  ตั้งจุดสั่ง
-                </button>
-              )}
-            </div>
+          {/* 🏷 ป้าย QR ชั้นวาง — ลิงก์เห็นชัดใต้ปุ่มงานประจำ (เดิมอยู่แค่ในเมนู ⋯ ท้ายลิ้นชัก เจ้าของร้านหาไม่เจอ 1 ต.ค. 69) */}
+          {mayEdit && !item.noStock && (
+            <a
+              href={`/admin/stock/labels?ids=${encodeURIComponent(item.id)}`}
+              className="mt-2 inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              title="พิมพ์ป้ายติดชั้นวาง — พนักงานสแกนด้วยกล้องมือถือแล้วเปิดหน้าเบิกของตัวนี้ทันที"
+            >
+              <span aria-hidden>🏷</span> พิมพ์ป้าย QR ชั้นวาง (สแกน = เบิก)
+            </a>
           )}
 
-          <dl className="mt-4 grid grid-cols-2 gap-2">
-            <Fact k="ใช้เฉลี่ย/วัน" v={stat && stat.perDay > 0 ? stat.perDay.toFixed(1) : "—"} />
-            <Fact k="จะหมดใน" v={stat?.daysLeft != null ? `~${fmtN(stat.daysLeft)} วัน` : "—"} />
-            <Fact k="รอของ" v={item.leadTimeDays ? `${item.leadTimeDays} วัน` : "—"} />
-            <Fact k="ผูกสินค้า" v={`${item.productIds?.length ?? 0} ตัว`} />
-            <Fact k="ทุน/หน่วย" v={item.unitCost ? `฿${fmtN(item.unitCost)}` : "—"} />
-            <Fact
-              k="มูลค่าคงเหลือ"
-              v={item.unitCost ? `฿${fmtN(Math.round(Math.max(0, item.balance) * item.unitCost))}` : "—"}
-            />
-          </dl>
+          {/* รายการ "ต้องจัดการ" ของตัวนี้ — ทุกแถวมีปุ่มทำให้จบตรงนั้น · จุดสี+ตัวหนาแยกชนิดกัน ไม่พึ่งสีอย่างเดียว */}
+          {(() => {
+            type Todo = { key: string; tone: Tone; title: string; desc: string; action?: { label: string; onClick: () => void } };
+            const todo: Todo[] = [];
+            if (item.balance < 0)
+              todo.push({
+                key: "neg",
+                tone: "danger",
+                title: "นับของจริงก่อน",
+                desc: `ขายไป ${fmtN(-item.balance)} ${item.unit} ก่อนเคยรับเข้า ตัวเลขยังเชื่อไม่ได้`,
+                action: mayEdit ? { label: "นับจริง", onClick: onCount } : undefined,
+              });
+            else if (!item.noStock && stat?.point != null && (level === "danger" || level === "warn"))
+              todo.push({
+                key: "order",
+                tone: level,
+                title: level === "danger" ? "ถึงจุดต้องสั่ง" : "ใกล้ถึงจุดสั่ง",
+                desc: `เหลือ ${fmtN(item.balance)} ${item.unit} · จุดสั่ง ${fmtN(stat.point)}${item.leadTimeDays ? ` · รอของ ${item.leadTimeDays} วัน` : ""}`,
+                action: mayEdit ? { label: "รับเข้า", onClick: () => onMove("in") } : undefined,
+              });
+            else if (!item.noStock && stat?.point == null)
+              todo.push({
+                key: "point",
+                tone: "neutral",
+                title: "ตั้งจุดสั่ง",
+                desc: `ใส่ตัวเลขไว้ ระบบจะเตือน “ต้องสั่ง” ให้เองเมื่อของเหลือถึงจุดนั้น${stat && stat.perDay > 0 ? ` (ตอนนี้ใช้เฉลี่ย ${stat.perDay.toFixed(1)} ${item.unit}/วัน)` : ""}`,
+                action: mayEdit ? { label: "ตั้งจุดสั่ง", onClick: onEdit } : undefined,
+              });
+            if (item.needsReview)
+              todo.push({
+                key: "review",
+                tone: "review",
+                title: "รอตรวจ",
+                desc: `มาจากการนำเข้า ยังไม่มีคนยืนยันชื่อ/หน่วย/ตระกูล${item.maybeDuplicateOf ? ` · อาจซ้ำกับ ${item.maybeDuplicateOf}` : ""}`,
+                action: mayEdit ? { label: "✓ ตรวจแล้ว", onClick: onReviewed } : undefined,
+              });
+            if (item.noStock)
+              todo.push({
+                key: "nostock",
+                tone: "neutral",
+                title: "ไม่ต้องมี stock",
+                desc: "ไม่เตือนสั่ง ไม่นับมูลค่า ขายแล้วไม่ตัดยอด",
+                action: mayEdit ? { label: "กลับมานับสต๊อก", onClick: () => onNoStock(false) } : undefined,
+              });
+            if (!todo.length) return null;
+            return (
+              <ul className="mt-4 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                {todo.map((t) => (
+                  <li key={t.key} className="flex items-center gap-3 px-3 py-2.5">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${TONE[t.tone].bar}`} aria-hidden />
+                    <span className="min-w-0 flex-1 text-xs leading-snug">
+                      <span className={`font-semibold ${TONE[t.tone].text}`}>{t.title}</span>
+                      <span className="text-slate-500"> — {t.desc}</span>
+                    </span>
+                    {t.action && (
+                      <button type="button" onClick={t.action.onClick} className={`${btnSmNeutral} shrink-0`}>
+                        {t.action.label}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
 
-          {item.needsReview && (
-            <div className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${TONE.review.bg} ${TONE.review.text}`}>
-              <span className="min-w-0 flex-1">
-                รอตรวจ — มาจากการนำเข้า ยังไม่มีคนยืนยันชื่อ/หน่วย/ตระกูล
-                {item.maybeDuplicateOf && (
-                  <>
-                    {" "}
-                    · อาจซ้ำกับ <span className="font-mono">{item.maybeDuplicateOf}</span>
-                  </>
-                )}
-              </span>
-              {mayEdit && (
-                <button type="button" onClick={onReviewed} className={btnSmNeutral}>
-                  ✓ ตรวจแล้ว
-                </button>
-              )}
-            </div>
-          )}
-
-          {item.noStock && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-600">
-              <span className="min-w-0 flex-1">🚫 ตั้งเป็น “ไม่ต้องมี stock” — ไม่เตือนสั่ง ไม่นับมูลค่า ขายแล้วไม่ตัดยอด</span>
-              {mayEdit && (
-                <button type="button" onClick={() => onNoStock(false)} className={btnSmNeutral}>
-                  กลับมานับสต๊อก
-                </button>
-              )}
-            </div>
-          )}
+          {/* สถิติ — แถวบาง ๆ เฉพาะที่มีค่า (เดิมการ์ด 6 ใบส่วนใหญ่ "—") · "ผูกสินค้า N ตัว" ย้ายไปอยู่หัวส่วนผูกสินค้า */}
+          {(() => {
+            const rows = (
+              [
+                ["ใช้เฉลี่ย/วัน", stat && stat.perDay > 0 ? `${stat.perDay.toFixed(1)} ${item.unit}` : null],
+                ["จะหมดใน", stat?.daysLeft != null ? `~${fmtN(stat.daysLeft)} วัน` : null],
+                ["รอของ", item.leadTimeDays ? `${item.leadTimeDays} วัน` : null],
+                ["ทุน/หน่วย", item.unitCost ? `฿${fmtN(item.unitCost)}` : null],
+                ["มูลค่าคงเหลือ", item.unitCost ? `฿${fmtN(Math.round(Math.max(0, item.balance) * item.unitCost))}` : null],
+              ] as [string, string | null][]
+            ).filter((r): r is [string, string] => !!r[1]);
+            return rows.length ? (
+              <dl className="mt-4 grid grid-cols-2 gap-x-5">
+                {rows.map(([k, v]) => (
+                  <Fact key={k} k={k} v={v} />
+                ))}
+              </dl>
+            ) : (
+              <p className="mt-4 text-[11px] leading-relaxed text-slate-400">
+                ยังไม่มีสถิติการใช้ — ระบบคำนวณให้เองหลังมีการขาย/เบิก · ทุน/หน่วยกับเวลารอของใส่ได้ที่ “แก้ไขข้อมูล”
+              </p>
+            );
+          })()}
 
           <UsagePanel
             item={item}
@@ -3344,63 +3799,48 @@ function ItemDrawer({
             </div>
           )}
 
-          <div className="mt-5">
-            <p className={labelCls}>ประวัติ</p>
-            <div className="mt-1.5">
-              {moves.slice(0, 40).map((m) => {
-                const tone = REASON_TONE[m.reason] ?? "neutral";
-                return (
-                  <div key={m.id} className="flex items-center gap-2 border-b border-slate-100 py-2 text-xs last:border-0">
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[tone].bg} ${TONE[tone].text}`}>
-                      {m.reason}
-                    </span>
-                    <span className={`w-14 shrink-0 text-right font-semibold tabular-nums ${m.qty > 0 ? TONE.ok.text : TONE.danger.text}`}>
-                      {m.qty > 0 ? `+${fmtN(m.qty)}` : fmtN(m.qty)}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-slate-500">{m.note}</span>
-                    <span className="shrink-0 text-slate-400">{fmtAt(m.at)}</span>
-                  </div>
-                );
-              })}
-              {moves.length === 0 && <p className="py-4 text-center text-xs text-slate-400">ยังไม่มีการเคลื่อนไหว</p>}
-            </div>
-          </div>
+          {moves.length > 0 && (
+            <button type="button" onClick={() => onTab("history")} className="mt-5 text-[12px] text-slate-500 underline underline-offset-2 hover:text-slate-800">
+              ดูประวัติ {fmtN(moves.length)} รายการ →
+            </button>
+          )}
         </div>
 
-        {mayEdit && (
-          /* แถบท้ายลิ้นชัก = งานนาน ๆ ครั้ง: แก้ไข · ไม่ต้องมี stock · ลบ (ปุ่มงานประจำ รับเข้า/เบิก/นับจริง ย้ายขึ้นบนสุดของลิ้นชักแล้ว 30 ก.ย. 69) */
-          <footer className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={onEdit} className={`${btnSmGhost} whitespace-nowrap`}>
-                แก้ไขข้อมูล
+        {mayEdit && tab !== "edit" && (
+          /*
+           * แถบท้ายลิ้นชัก = งานนาน ๆ ครั้ง · เห็น 2 ปุ่ม (ทำซ้ำ · ย้ายหมวด) + เมนู ⋯ (ไม่ต้องมี stock · รีเซ็ต) + ลบขวาสุด
+           * เดิมเรียง 5 ปุ่มแถวเดียวล้นจอมือถือ "ลบ" โดนตัด (1 ต.ค. 69) · ลบยังแยกขวาสุด ไม่ให้เผลอกดแทนปุ่มอื่น
+           */
+          <footer className="flex items-center gap-1 border-t border-slate-100 bg-slate-50/60 px-3 py-2">
+            <button type="button" onClick={onDuplicate} className={`${btnSmGhost} min-h-[40px] whitespace-nowrap`} title="เพิ่มอีกบรรทัดทันทีในกลุ่มเดียวกัน ข้อมูลเหมือนตัวนี้ (ยอด 0 ไม่ก๊อปลิงก์สินค้า) แล้วค่อยกดแก้ไขที่แถวใหม่">
+              ⧉ ทำซ้ำ
+            </button>
+            {onMoveCategory && (
+              <button type="button" onClick={onMoveCategory} className={`${btnSmGhost} min-h-[40px] whitespace-nowrap`} title="ย้ายไปหมวดอื่น">
+                ย้ายหมวด
               </button>
-              {!item.noStock && (
-                <button type="button" onClick={() => onNoStock(true)} className={`${btnSmGhost} whitespace-nowrap`} title="ของสั่งผลิตตามออเดอร์ / ไม่เก็บของไว้ที่ร้าน">
-                  ไม่ต้องมี stock
-                </button>
-              )}
-              {/* ขึ้นเสมอสำหรับเจ้าของร้าน (ซ่อนตอนยอด 0 แล้วหาไม่เจอ 30 ก.ย. 69) — ยอด 0 อยู่แล้วกดได้แต่ระบบบอกว่าไม่มีอะไรต้องล้าง */}
-              {onMoveCategory && (
-                <button type="button" onClick={onMoveCategory} className={`${btnSmGhost} whitespace-nowrap`} title="ย้ายไปหมวดอื่น">
-                  🗂 ย้ายหมวด
-                </button>
-              )}
-              {onReset && (
-                <button type="button" onClick={onReset} className={`${btnSmGhost} whitespace-nowrap`} title="ล้างยอดคงเหลือเป็น 0 (เจ้าของร้านเท่านั้น) — ลงประวัติให้ ย้อนดูได้">
-                  🧹 รีเซ็ตเป็น 0
-                </button>
-              )}
-              {/* ลบอยู่ขวาสุดแยกจากปุ่มอื่น — งานนาน ๆ ครั้ง ไม่ให้เผลอกดแทนแก้ไข */}
+            )}
+            <span className="ml-auto flex items-center gap-1">
+              {(() => {
+                const more: MenuItem[] = [];
+                // 🏷 ป้าย QR ชั้นวาง → สแกนแล้วเปิดหน้าเบิก /admin/stock/take/<id> (ของเบิกเองลืมกดเบิก = ยอดค้าง · 1 ต.ค. 69)
+                if (!item.noStock) more.push({ icon: "🏷", label: "พิมพ์ป้าย QR ชั้นวาง (สแกน = เบิก)", href: `/admin/stock/labels?ids=${encodeURIComponent(item.id)}` });
+                if (!item.noStock) more.push({ icon: "🚫", label: "ไม่ต้องมี stock", onClick: () => onNoStock(true) });
+                else more.push({ icon: "↩", label: "กลับมานับสต๊อก", onClick: () => onNoStock(false) });
+                // ขึ้นเสมอสำหรับเจ้าของร้าน (ซ่อนตอนยอด 0 แล้วหาไม่เจอ 30 ก.ย. 69) — ยอด 0 อยู่แล้วกดได้แต่ระบบบอกว่าไม่มีอะไรต้องล้าง
+                if (onReset) more.push({ icon: "🧹", label: "รีเซ็ตยอดเป็น 0 (เจ้าของร้าน)", danger: true, onClick: onReset });
+                return <ActionMenu id="drawer-more" open={moreOpen} setOpen={setMoreOpen} label="เพิ่มเติม" items={more} up />;
+              })()}
               <button
                 type="button"
                 onClick={onDelete}
-                className={`${btnSmGhost} ml-auto whitespace-nowrap ${TONE.danger.text}`}
+                className={`${btnSmGhost} min-h-[40px] whitespace-nowrap ${TONE.danger.text}`}
                 title="ลบวัสดุนี้ออกจากคลัง"
                 aria-label="ลบวัสดุนี้ออกจากคลัง"
               >
                 ลบ
               </button>
-            </div>
+            </span>
           </footer>
         )}
       </aside>
@@ -3408,11 +3848,12 @@ function ItemDrawer({
   );
 }
 
+/** แถวสถิติในลิ้นชัก — ชื่อซ้าย ค่าขวา คั่นเส้นบาง (การ์ดใบละตัวเลขเปลืองพื้นที่) */
 function Fact({ k, v }: { k: string; v: string }) {
   return (
-    <div className="rounded-xl bg-slate-50 px-3 py-2">
-      <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{k}</dt>
-      <dd className="mt-0.5 text-sm font-semibold tabular-nums text-slate-700">{v}</dd>
+    <div className="flex items-baseline justify-between gap-2 border-b border-slate-100 py-1.5">
+      <dt className="text-[11px] text-slate-500">{k}</dt>
+      <dd className="text-[13px] font-semibold tabular-nums text-slate-800">{v}</dd>
     </div>
   );
 }
@@ -3421,6 +3862,7 @@ function Fact({ k, v }: { k: string; v: string }) {
 
 function ItemModal({
   item,
+  embedded = false,
   products,
   allCats,
   allFams,
@@ -3431,6 +3873,8 @@ function ItemModal({
   onSplitProduct,
 }: {
   item: Item | null;
+  /** ฝังในลิ้นชัก (แท็บแก้ไขข้อมูล): คอลัมน์เดียว ไม่มีแผงสรุปข้าง ปุ่มบันทึกติดล่าง */
+  embedded?: boolean;
   products: ProductLite[];
   allCats: string[];
   allFams: string[];
@@ -3442,7 +3886,24 @@ function ItemModal({
   /** 🔗 วางลิงก์/ชื่อสินค้า → ไปหน้าต่าง "แยกสต๊อกตามตัวเลือก" เลือกตัวเลือกที่จะทำเป็นวัสดุ (เจ้าของร้านขอ 30 ก.ย. 69) */
   onSplitProduct?: (p: { id: string; name: string }) => void;
 }) {
-  const [name, setName] = useState(item?.name ?? "");
+  const base: Item | null = item;
+  /**
+   * ➕ เพิ่มทีละหลายรายการ (เจ้าของร้านขอ 1 ต.ค. 69): ของใหม่พิมพ์ชื่อได้หลายบรรทัด แต่ละบรรทัด = วัสดุ 1 ตัว
+   * ตั้งค่าอื่น (หน่วย/แพ็ค/หมวด/ตัดสต๊อก/จุดสั่ง) ใช้ร่วมกันทั้งชุด · วางข้อความหลายบรรทัดลงช่องเดียวแตกเป็นหลายบรรทัดให้เอง
+   * ตอนแก้ไขมีบรรทัดเดียวเสมอ (name = names[0])
+   */
+  const [names, setNames] = useState<string[]>([item?.name ?? ""]);
+  const name = names[0] ?? "";
+  const setName = (v: string) => setNames((ns) => [v, ...ns.slice(1)]);
+  const nameList = useMemo(() => [...new Set(names.map((x) => x.trim()).filter(Boolean))], [names]);
+  const setNameAt = (i: number, v: string) =>
+    setNames((ns) => {
+      // วางหลายบรรทัดลงช่องเดียว → แตกเป็นบรรทัดละตัว
+      const parts = v.split(/\r?\n/);
+      if (parts.length <= 1) return ns.map((x, k) => (k === i ? v : x));
+      return [...ns.slice(0, i), ...parts.map((x) => x.trim()).filter(Boolean), ...ns.slice(i + 1)];
+    });
+  const removeNameAt = (i: number) => setNames((ns) => (ns.length > 1 ? ns.filter((_, k) => k !== i) : [""]));
   /** รายการที่ต่างกัน (สี/ขนาด) คั่นด้วย , หรือขึ้นบรรทัดใหม่ → สร้าง "ชื่อ · ค่า" ทีละตัว ตั้งค่าอื่นเหมือนกันหมด */
   const [variants, setVariants] = useState("");
   const variantList = useMemo(() => [...new Set(variants.split(/[,\n]/).map((x) => x.trim()).filter(Boolean))], [variants]);
@@ -3454,31 +3915,32 @@ function ItemModal({
   const [codeManual, setCodeManual] = useState(!!item?.code);
   /** ตัวอย่างรหัสที่ระบบจะตั้ง — สูตรเดียวกับ codeSlug ฝั่งเซิร์ฟเวอร์ (ชื่อไทยล้วน → M-xxxx ตอนบันทึก) */
   const codePreview = name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 24);
-  const [unit, setUnit] = useState(item?.unit ?? "ชิ้น");
-  const [family, setFamily] = useState(item?.family ?? "");
-  const [category, setCategory] = useState(item?.category ?? "");
-  const [reorderPoint, setReorderPoint] = useState(item?.reorderPoint != null ? String(item.reorderPoint) : "");
-  const [leadTimeDays, setLeadTimeDays] = useState(item?.leadTimeDays != null ? String(item.leadTimeDays) : "");
-  const [unitCost, setUnitCost] = useState(item?.unitCost ? String(item.unitCost) : "");
+  const [unit, setUnit] = useState(base?.unit ?? "ชิ้น");
+  const [family, setFamily] = useState(base?.family ?? "");
+  const [category, setCategory] = useState(base?.category ?? "");
+  const [reorderPoint, setReorderPoint] = useState(base?.reorderPoint != null ? String(base.reorderPoint) : "");
+  const [leadTimeDays, setLeadTimeDays] = useState(base?.leadTimeDays != null ? String(base.leadTimeDays) : "");
+  const [unitCost, setUnitCost] = useState(base?.unitCost ? String(base.unitCost) : "");
   const [aliases, setAliases] = useState((item?.aliases ?? []).join(", "));
   const [productIds, setProductIds] = useState<string[]>(item?.productIds ?? []);
-  const [imageUrl, setImageUrl] = useState(item?.imageUrl ?? "");
-  const [part, setPart] = useState(item?.part ?? "");
+  const [imageUrl, setImageUrl] = useState(base?.imageUrl ?? "");
+  const [part, setPart] = useState(base?.part ?? "");
   // 📦 หน่วยแพ็ค + 🏭 เบิกเองอย่างเดียว (เจ้าของร้านสั่ง 30 ก.ย. 69 — กระดาษ/อะคริลิคซื้อเป็นแพ็ค ใช้เป็นแผ่น)
-  const [packUnit, setPackUnit] = useState(item?.packUnit ?? "");
-  const [packSize, setPackSize] = useState(item?.packSize && item.packSize > 1 ? String(item.packSize) : "");
-  const [manualOnly, setManualOnly] = useState(!!item?.manualOnly);
+  const [packUnit, setPackUnit] = useState(base?.packUnit ?? "");
+  const [packSize, setPackSize] = useState(base?.packSize && base.packSize > 1 ? String(base.packSize) : "");
+  const [manualOnly, setManualOnly] = useState(!!base?.manualOnly);
   // 🧩 วัสดุกลางตามตัวเลือก — หัวกลุ่มหน้าคลังเป็นชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (เจ้าของร้านสั่ง 1 ต.ค. 69)
-  const [groupByOption, setGroupByOption] = useState(!!item?.groupByOption);
+  const [groupByOption, setGroupByOption] = useState(!!base?.groupByOption);
 
   const u = unit.trim() || "ชิ้น";
   const pu = packUnit.trim() || "แพ็ค";
   const hasPack = !!packUnit.trim() && Number(packSize) > 1;
-  const canSave = !!name.trim();
+  const canSave = item ? !!name.trim() : nameList.length > 0;
   const payload = (nm: string, alias?: string): Partial<Item> & { name: string } => ({
       id: item?.id,
       name: nm,
-      code: codeManual ? codeVal.trim() || undefined : undefined, // อัตโนมัติ = ไม่ส่ง ให้เซิร์ฟเวอร์ตั้งจากชื่อ (กันซ้ำที่นั่น)
+      // อัตโนมัติ = ไม่ส่ง ให้เซิร์ฟเวอร์ตั้งจากชื่อ (กันซ้ำที่นั่น) · เพิ่มหลายตัวทีเดียวห้ามใช้รหัสเดียวกันทั้งชุด → ปล่อยให้ระบบตั้ง
+      code: codeManual && nameList.length <= 1 && !variantList.length ? codeVal.trim() || undefined : undefined,
       unit,
       family: family.trim() || undefined,
       category: category || undefined,
@@ -3497,7 +3959,12 @@ function ItemModal({
       groupByOption: manualOnly ? false : groupByOption,
     });
   // ของใหม่ + ใส่รายการสี/ขนาดไว้ = สร้างทีละตัว "ชื่อ · ค่า" (ค่าเป็นชื่อที่เคยเรียกด้วย ค้น "ขาว" เจอ) · ไม่งั้นบันทึกตัวเดียวตามเดิม
-  const save = () => (!item && variantList.length && onSaveMany ? onSaveMany(variantList.map((v) => payload(`${name.trim()} · ${v}`, v))) : onSave(payload(name)));
+  /** รายการที่จะสร้างจริง (ของใหม่): ทุกชื่อ × ทุกค่าสี/ขนาด (ถ้าใส่) · ไม่มีสี/ขนาด = ชื่อละตัว */
+  const batch = useMemo(
+    () => (item ? [] : nameList.flatMap((nm) => (variantList.length ? variantList.map((v) => ({ nm: `${nm} · ${v}`, alias: v })) : [{ nm, alias: undefined as string | undefined }]))),
+    [item, nameList, variantList],
+  );
+  const save = () => (!item && batch.length > 1 && onSaveMany ? onSaveMany(batch.map((b) => payload(b.nm, b.alias))) : onSave(payload(batch[0]?.nm ?? name, batch[0]?.alias)));
   const hint = "mt-1 block text-[11.5px]";
   const hintStyle = { color: "var(--dk-faint)" } as const;
   /** บรรทัดสรุปในแผงขวา — ให้คนเห็นผลของที่กรอกเป็นภาษาคน ไม่ต้องไล่อ่านทุกช่อง */
@@ -3515,15 +3982,25 @@ function ItemModal({
     { k: "ทุน", v: unitCost.trim() ? `฿${unitCost}/${u}` : "ยังไม่ใส่ — รายงานกำไรจะไม่นับตัวนี้" },
   ];
 
-  return (
-    <div className="mt-4">
-      <button type="button" onClick={onClose} className="dkb-btn dkb-btn-ghost dkb-btn-sm mb-3">
-        ← กลับไปคลัง
-      </button>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        {/* ── ฟอร์ม 4 หมวด เรียงตามคำถามที่คนกรอกคิดจริง ── */}
-        <div className="min-w-0 flex-1 space-y-4">
-          <FormSection n={1} title={item ? `แก้ไข “${item.name}”` : "ของชิ้นนี้คืออะไร"} hint="ชื่อกับหน่วยคือของบังคับ ที่เหลือใส่ทีหลังได้">
+  // ในลิ้นชักกว้างแค่ ~26rem — breakpoint sm วัดจากจอ ไม่ใช่จากลิ้นชัก จึงกำหนดคอลัมน์ตรง ๆ (ช่องตัวเลขสั้น ๆ วาง 2–3 ช่องต่อแถวได้)
+  const g2 = embedded ? "grid grid-cols-2 gap-3" : "grid gap-3 sm:grid-cols-2";
+  const g3 = embedded ? "grid grid-cols-3 gap-2" : "grid gap-3 sm:grid-cols-3";
+  const sec = { plain: embedded };
+  /** ช่องใน "เพิ่มเติม" ที่มีค่าอยู่ — เปิดกลุ่มไว้ให้เห็นถ้ามีของ ไม่งั้นพับ (รหัส/ตระกูล/ชนิด/ชื่อเดิม/รูป ใช้ไม่บ่อย) */
+  const extraFilled = [codeManual ? codeVal : "", family, part, aliases, imageUrl].filter((x) => x.trim()).length;
+  /** การ์ดเลือก "ตัดตอนขาย / เบิกเอง" — ปุ่มเลือก 2 ใบแทนช่องติ๊ก ให้เห็นทั้งสองทางแล้วเลือก ไม่ต้องตีความว่าติ๊กแปลว่าอะไร */
+  const choiceCard = (on: boolean) =>
+    `flex min-h-[64px] cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
+      on ? "border-amber-500 bg-amber-500 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+    }`;
+  /*
+   * ── ฟอร์มเรียงตามคำถามที่คนกรอกคิดจริง (รื้อ 1 ต.ค. 69) ──
+   * ① ชื่อ·หน่วย·หมวด ② นับยังไง (แพ็ค) ③ ตัดสต๊อกตอนขายไหม (เลือก 2 ทาง) ④ เตือนสั่ง+ทุน ⑤ เพิ่มเติม (พับ: รหัส/ตระกูล/ชนิด/ชื่อเดิม/รูป)
+   * เดิมหมวด 1 มี 8 ช่องรวมของที่นาน ๆ ใช้ (รหัส ชนิด ตระกูล ชื่อเดิม URL รูป) คนกรอกต้องไล่อ่านทุกช่องกว่าจะถึงของสำคัญ
+   */
+  const form = (
+        <div className={embedded ? "min-w-0 flex-1 space-y-5" : "min-w-0 flex-1 space-y-4"}>
+          <FormSection {...sec} n={1} title={item ? "ชื่อและหน่วย" : "ของชิ้นนี้คืออะไร"} hint="ชื่อกับหน่วยคือของบังคับ ที่เหลือใส่ทีหลังได้">
             {!item && onSplitProduct && (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-3">
                 <span className={fieldLabel}>🔗 มีสินค้าอยู่แล้ว? วางลิงก์หรือพิมพ์ชื่อสินค้า — ระบบดึงตัวเลือกทั้งหมดมาให้เลือกทำเป็นวัสดุทีเดียว</span>
@@ -3549,13 +4026,60 @@ function ItemModal({
                 {prodQ.trim() !== "" && !prodHits.length && <span className={`mt-1 block text-[11px] text-slate-400`}>ไม่พบสินค้าที่ตรง</span>}
               </div>
             )}
-            <label className="block">
-              <span className={fieldLabel}>ชื่อวัสดุ *</span>
-              <input autoFocus={!item} value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น ไหมเย็บ ขาว (1803)" className={`${inputCls} !h-12 text-base font-semibold`} />
-            </label>
+            {item ? (
+              <label className="block">
+                <span className={fieldLabel}>ชื่อวัสดุ *</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น ไหมเย็บ ขาว (1803)" className={`${inputCls} !h-12 text-base font-semibold`} />
+              </label>
+            ) : (
+              <div>
+                <span className={`${fieldLabel} flex items-center justify-between`}>
+                  <span>ชื่อวัสดุ * {names.length > 1 ? <span className="font-normal text-slate-400">— {fmtN(names.length)} บรรทัด = {fmtN(names.length)} ตัว</span> : null}</span>
+                  <span className="font-normal text-slate-400">Enter = บรรทัดถัดไป · วางหลายบรรทัดได้</span>
+                </span>
+                <div className="space-y-1.5">
+                  {names.map((v, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-slate-400">{i + 1}</span>
+                      <textarea
+                        autoFocus={i === 0 || i === names.length - 1}
+                        value={v}
+                        rows={1}
+                        onChange={(e) => setNameAt(i, e.target.value)}
+                        onKeyDown={(e) => {
+                          // Enter = เพิ่มบรรทัดใหม่ต่อท้ายบรรทัดนี้ (ไม่ขึ้นบรรทัดในช่อง) · Backspace ช่องว่าง = ลบบรรทัด
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            setNames((ns) => [...ns.slice(0, i + 1), "", ...ns.slice(i + 1)]);
+                          } else if (e.key === "Backspace" && !v && names.length > 1) {
+                            e.preventDefault();
+                            removeNameAt(i);
+                          }
+                        }}
+                        placeholder={i === 0 ? "เช่น ไหมเย็บ ขาว (1803)" : "ชื่อวัสดุตัวถัดไป"}
+                        className={`${inputCls} !h-12 min-w-0 flex-1 resize-none py-3 text-base font-semibold`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeNameAt(i)}
+                        disabled={names.length === 1 && !v}
+                        className="h-10 w-10 shrink-0 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                        aria-label={`ลบบรรทัดที่ ${i + 1}`}
+                        title="ลบบรรทัดนี้"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setNames((ns) => [...ns, ""])} className={`${btnSmNeutral} mt-2`}>
+                  ＋ เพิ่มอีกบรรทัด
+                </button>
+              </div>
+            )}
             {!item && onSaveMany && (
               <label className="block">
-                <span className={fieldLabel}>🧬 เพิ่มหลายตัวทีเดียว — ของเหมือนกันต่างแค่สี/ขนาด/ความยาว (คั่นด้วย , หรือขึ้นบรรทัดใหม่)</span>
+                <span className={fieldLabel}>🧬 แตกตามสี/ขนาด/ความยาว (ไม่บังคับ) — ใส่แล้วทุกชื่อข้างบนจะได้ตัวละ 1 ค่า เช่น “ไหมเย็บ · ขาว” (คั่นด้วย , หรือขึ้นบรรทัดใหม่)</span>
                 <textarea
                   value={variants}
                   onChange={(e) => setVariants(e.target.value)}
@@ -3563,86 +4087,30 @@ function ItemModal({
                   placeholder="เช่น ขาว, ดำ, แดง  หรือ  1 เมตร, 2 เมตร, 5 เมตร"
                   className={`${inputCls} !h-auto py-2`}
                 />
-                {variantList.length > 0 && (
+                {batch.length > 1 && (
                   <span className="mt-1 block text-[11.5px] text-slate-500">
-                    จะสร้าง <b>{fmtN(variantList.length)}</b> ตัว: {variantList.slice(0, 5).map((v) => `${name.trim() || "ชื่อ"} · ${v}`).join(", ")}
-                    {variantList.length > 5 ? ` … และอีก ${fmtN(variantList.length - 5)}` : ""} — หน่วย/แพ็ค/ตระกูล/สินค้าที่ผูก ใช้ค่าเดียวกันทั้งชุด
+                    จะสร้าง <b>{fmtN(batch.length)}</b> ตัว: {batch.slice(0, 5).map((b) => b.nm).join(", ")}
+                    {batch.length > 5 ? ` … และอีก ${fmtN(batch.length - 5)}` : ""} — หน่วย/แพ็ค/หมวด/สินค้าที่ผูก/จุดสั่ง ใช้ค่าเดียวกันทั้งชุด
                   </span>
                 )}
               </label>
             )}
-            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr]">
-              <label className="block">
-                <span className={`${fieldLabel} flex items-center justify-between`}>
-                  <span>รหัส (ติดป้ายชั้นวาง)</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCodeManual((v) => !v);
-                      setCodeVal(codeManual ? "" : codePreview);
-                    }}
-                    className="text-[11px] font-medium text-slate-500 underline underline-offset-2 hover:text-slate-800"
-                  >
-                    {codeManual ? "ให้ระบบตั้งให้" : "แก้เอง"}
-                  </button>
-                </span>
-                {codeManual ? (
-                  <input value={codeVal} onChange={(e) => setCodeVal(e.target.value.toUpperCase())} placeholder="เช่น PAPER-A4" className={`${inputCls} font-mono`} />
-                ) : (
-                  <span className={`${inputCls} flex items-center font-mono text-slate-500`} title="ระบบตั้งจากชื่อให้อัตโนมัติตอนบันทึก">
-                    {codePreview || (name.trim() ? "M-xxxx (ออกเลขให้ตอนบันทึก)" : "ตั้งให้อัตโนมัติจากชื่อ")}
-                  </span>
-                )}
-              </label>
+            <div className={g2}>
               <label className="block">
                 <span className={fieldLabel}>หน่วยนับ (เล็กสุด) *</span>
                 <UnitSelect options={BASE_UNITS} value={unit} onChange={setUnit} emptyLabel="— เลือกหน่วย —" placeholder="พิมพ์หน่วยเอง" />
-              </label>
-              <label className="block">
-                <span className={fieldLabel}>ชนิดของ</span>
-                <input value={part} onChange={(e) => setPart(e.target.value)} list="stock-parts" placeholder="กรอบรูป / วัสดุแฝง" className={inputCls} />
-                <datalist id="stock-parts">
-                  {allParts.map((x) => (
-                    <option key={x} value={x} />
-                  ))}
-                </datalist>
-              </label>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {/* เลือกจากที่มีอยู่ได้ แต่พิมพ์ใหม่ก็ยังได้ — กันหมวดแตกเพราะสะกดต่างกันนิดเดียว */}
-              <label className="block">
-                <span className={fieldLabel}>ตระกูล</span>
-                <input value={family} onChange={(e) => setFamily(e.target.value)} list="stock-families" placeholder="สีไหมเย็บ" className={inputCls} />
-                <datalist id="stock-families">
-                  {allFams.map((f) => (
-                    <option key={f} value={f} />
-                  ))}
-                </datalist>
               </label>
               <label className="block">
                 <span className={fieldLabel}>หมวด</span>
                 <UnitSelect options={allCats} value={category} onChange={setCategory} emptyLabel="— เลือกหมวด —" placeholder="พิมพ์หมวดใหม่" />
               </label>
             </div>
-            <label className="block">
-              <span className={fieldLabel}>ชื่อที่เคยเรียก (คั่นด้วย , )</span>
-              <input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Gtดำ, GT ดำ" className={inputCls} />
-              <span className={hint} style={hintStyle}>คนเรียกของคนละชื่อกัน ใส่ไว้ให้ค้นเจอทุกชื่อ</span>
-            </label>
-            <label className="block">
-              <span className={fieldLabel}>รูป</span>
-              <span className="flex items-center gap-2.5">
-                <Thumb src={imageUrl.trim() || undefined} name={name} size={44} />
-                <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/thread-1803.jpg (เว้นว่างได้)" className={inputCls} />
-              </span>
-              <span className={hint} style={hintStyle}>เว้นว่าง = ใช้ภาพตัวเลือกที่ผูก SKU นี้ หรือรูปแรกของสินค้าที่ผูกให้เอง</span>
-            </label>
           </FormSection>
 
-          <FormSection n={2} title="นับยังไง" hint="ยอดคงเหลือนับเป็นหน่วยเล็กสุดเสมอ แพ็คมีไว้ให้กรอกเร็วตอนรับเข้า/เบิก">
-            <div className="grid gap-3 sm:grid-cols-2">
+          <FormSection {...sec} n={2} title="นับยังไง" hint="ยอดคงเหลือนับเป็นหน่วยเล็กสุดเสมอ ตั้งแพ็คไว้จะได้กรอกเร็วตอนรับเข้า/เบิก">
+            <div className={g2}>
               <label className="block">
-                <span className={fieldLabel}>📦 ชื่อหน่วยแพ็ค (ไม่บังคับ)</span>
+                <span className={fieldLabel}>ชื่อหน่วยแพ็ค (ไม่บังคับ)</span>
                 <UnitSelect options={PACK_UNITS} value={packUnit} onChange={setPackUnit} emptyLabel="— ไม่ตั้งแพ็ค —" placeholder="พิมพ์ชื่อแพ็คเอง" />
               </label>
               <label className="block">
@@ -3655,42 +4123,48 @@ function ItemModal({
             <span className={hint} style={hintStyle}>
               {hasPack ? `หน้าจอจะบอกเป็น “3 ${pu} + 40 ${u}” และตอนรับเข้า/เบิกเลือกกรอกเป็น${pu}ได้` : "ยังไม่ตั้งแพ็ค — กรอกและแสดงเป็น" + u + "อย่างเดียว"}
             </span>
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3" style={{ background: manualOnly ? "rgba(255, 212, 71, 0.18)" : "var(--dk-sky)" }}>
-              <input type="checkbox" checked={manualOnly} onChange={(e) => setManualOnly(e.target.checked)} className="mt-1 h-5 w-5 accent-amber-500" />
-              <span>
-                <span className="block text-sm font-semibold" style={{ color: "var(--dk-navy)" }}>
-                  🏭 ของใช้ในโรงงาน — พนักงานเบิกเองอย่างเดียว
+          </FormSection>
+
+          <FormSection {...sec} n={3} title="ตัดสต๊อกตอนขายไหม" hint="เลือกทางเดียว — เปลี่ยนทีหลังได้ ยอดและประวัติไม่หาย">
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="ตัดสต๊อกตอนขายไหม">
+              <button type="button" role="radio" aria-checked={!manualOnly} onClick={() => setManualOnly(false)} className={choiceCard(!manualOnly)}>
+                <span className="mt-0.5 text-sm leading-none" aria-hidden>{!manualOnly ? "●" : "○"}</span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold">ตัดตามการขาย</span>
+                  <span className={`block text-[11px] leading-snug ${!manualOnly ? "text-white/80" : "text-slate-400"}`}>ลูกค้าสั่งสินค้าที่ผูกไว้ ยอดตัวนี้ลดเอง</span>
                 </span>
-                <span className="block text-[11.5px]" style={hintStyle}>
-                  ไม่ผูกกับสินค้า ยอดขยับเฉพาะตอนรับเข้า/เบิก/นับจริง · ไม่ขึ้นเตือน “ยังไม่ผูกสินค้า”
+              </button>
+              <button type="button" role="radio" aria-checked={manualOnly} onClick={() => setManualOnly(true)} className={choiceCard(manualOnly)}>
+                <span className="mt-0.5 text-sm leading-none" aria-hidden>{manualOnly ? "●" : "○"}</span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold">เบิกเองอย่างเดียว</span>
+                  <span className={`block text-[11px] leading-snug ${manualOnly ? "text-white/80" : "text-slate-400"}`}>ของใช้ในโรงงาน ยอดขยับเฉพาะรับเข้า/เบิก/นับจริง</span>
                 </span>
-              </span>
-            </label>
+              </button>
+            </div>
             {!manualOnly && (
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3" style={{ background: groupByOption ? "rgba(96, 165, 250, 0.16)" : "var(--dk-sky)" }}>
-                <input type="checkbox" checked={groupByOption} onChange={(e) => setGroupByOption(e.target.checked)} className="mt-1 h-5 w-5 accent-sky-600" />
-                <span>
-                  <span className="block text-sm font-semibold" style={{ color: "var(--dk-navy)" }}>
-                    🧩 วัสดุกลางตามตัวเลือก — หัวกลุ่มในหน้าคลังเป็นชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า
+              <>
+                <div>
+                  <span className={fieldLabel}>ขายสินค้าตัวไหนแล้วตัดตัวนี้</span>
+                  <ProductPicker products={products} value={productIds} onChange={setProductIds} />
+                  <span className={hint} style={hintStyle}>
+                    ใช้กับของที่ขาย 1 ชิ้น = ใช้วัสดุนี้ 1 ชิ้นเสมอ · ของที่เปลี่ยนตามตัวเลือกลูกค้า (สี/ขนาด/ตะขอ) ให้ผูกที่ตัวเลือกจากหน้าผูกคลังแทน
                   </span>
-                  <span className="block text-[11.5px]" style={hintStyle}>
-                    ของที่หลายสินค้าใช้ร่วมกันตามตัวเลือก (แผ่นอะคริลิคตามสี/ประเภท) · ยังผูกกับตัวเลือกและตัดตอนขายตามเดิม
+                </div>
+                <label className="flex cursor-pointer items-start gap-2.5 text-[12px] text-slate-600">
+                  <input type="checkbox" checked={groupByOption} onChange={(e) => setGroupByOption(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" />
+                  <span>
+                    <span className="font-medium text-slate-700">วัสดุกลางตามตัวเลือก</span> — หัวกลุ่มในหน้าคลังเป็นชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (ของที่หลายสินค้าใช้ร่วมกัน เช่น แผ่นอะคริลิคตามสี)
                   </span>
-                </span>
-              </label>
+                </label>
+              </>
             )}
           </FormSection>
 
-          {!manualOnly && (
-            <FormSection n={3} title="ขายอะไรแล้วตัดตัวนี้" hint="ใช้กับของที่ขาย 1 ชิ้น = ใช้วัสดุนี้ 1 ชิ้นเสมอ · ของที่เปลี่ยนตามตัวเลือกลูกค้า (สี/ขนาด/ตะขอ) ให้ผูกที่ตัวเลือกจากหน้าคลังแทน">
-              <ProductPicker products={products} value={productIds} onChange={setProductIds} />
-            </FormSection>
-          )}
-
-          <FormSection n={manualOnly ? 3 : 4} title="เตือนสั่งซื้อและทุน" hint="ตั้งไว้แล้วระบบเตือน “ต้องสั่ง” และส่ง LINE ให้เอง ทุนใช้คิดกำไรในรายงาน">
-            <div className="grid gap-3 sm:grid-cols-3">
+          <FormSection {...sec} n={4} title="เตือนสั่งซื้อและทุน" hint="ตั้งไว้แล้วระบบเตือน “ต้องสั่ง” และส่ง LINE ให้เอง · ทุนใช้คิดกำไรในรายงาน">
+            <div className={g3}>
               <label className="block">
-                <span className={fieldLabel}>จุดสั่งซื้อ ({u})</span>
+                <span className={fieldLabel}>จุดสั่ง ({u})</span>
                 <input value={reorderPoint} onChange={(e) => setReorderPoint(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="20" className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="block">
@@ -3698,7 +4172,7 @@ function ItemModal({
                 <input value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="7" className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="block">
-                <span className={fieldLabel}>ทุน/{u} (บาท)</span>
+                <span className={fieldLabel}>ทุน/{u} (฿)</span>
                 <input value={unitCost} onChange={(e) => setUnitCost(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="12.50" className={`${inputCls} text-right tabular-nums`} />
               </label>
             </div>
@@ -3706,7 +4180,110 @@ function ItemModal({
               {reorderPoint ? `เหลือ ≤ ${fmtN(Number(reorderPoint))} ${u} = ขึ้น “ต้องสั่ง”` : "ยังไม่ตั้งจุดสั่ง — เมื่อมีสถิติการใช้ 30 วัน ระบบจะเดาให้"} · แก้ทุนทีหลังไม่กระทบของที่ขายไปแล้ว
             </span>
           </FormSection>
+
+          {/* ของที่นาน ๆ แก้ที — พับไว้ เปิดเองถ้ามีค่าอยู่ (จะได้ไม่งงว่ารหัส/ตระกูลหายไปไหน) */}
+          <details open={extraFilled > 0} className={embedded ? "group" : "dkb-g group p-4 sm:p-5"}>
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-[13px] font-semibold text-slate-800 [&::-webkit-details-marker]:hidden">
+              <span className="shrink-0 text-[10px] text-slate-400 transition group-open:rotate-90" aria-hidden>▶</span>
+              <span className="shrink-0 whitespace-nowrap">เพิ่มเติม</span>
+              <span className="min-w-0 font-normal leading-snug text-slate-400">— รหัส · ตระกูล · ชนิด · ชื่อที่เคยเรียก · รูป{extraFilled ? ` (ใส่แล้ว ${fmtN(extraFilled)})` : ""}</span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              <div className={g2}>
+                <label className="block">
+                  <span className={`${fieldLabel} flex items-center justify-between`}>
+                    <span>รหัส (ติดป้ายชั้นวาง)</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCodeManual((v) => !v);
+                        setCodeVal(codeManual ? "" : codePreview);
+                      }}
+                      className="text-[11px] font-medium text-slate-500 underline underline-offset-2 hover:text-slate-800"
+                    >
+                      {codeManual ? "ให้ระบบตั้งให้" : "แก้เอง"}
+                    </button>
+                  </span>
+                  {codeManual ? (
+                    <input value={codeVal} onChange={(e) => setCodeVal(e.target.value.toUpperCase())} placeholder="เช่น PAPER-A4" className={`${inputCls} font-mono`} />
+                  ) : (
+                    <span className={`${inputCls} flex items-center font-mono text-slate-500`} title="ระบบตั้งจากชื่อให้อัตโนมัติตอนบันทึก">
+                      {codePreview || (name.trim() ? "M-xxxx (ออกเลขให้ตอนบันทึก)" : "ตั้งให้อัตโนมัติจากชื่อ")}
+                    </span>
+                  )}
+                </label>
+                {/* เลือกจากที่มีอยู่ได้ แต่พิมพ์ใหม่ก็ยังได้ — กันตระกูลแตกเพราะสะกดต่างกันนิดเดียว */}
+                <label className="block">
+                  <span className={fieldLabel}>ตระกูล</span>
+                  <input value={family} onChange={(e) => setFamily(e.target.value)} list="stock-families" placeholder="สีไหมเย็บ" className={inputCls} />
+                  <datalist id="stock-families">
+                    {allFams.map((f) => (
+                      <option key={f} value={f} />
+                    ))}
+                  </datalist>
+                </label>
+              </div>
+              <div className={g2}>
+                <label className="block">
+                  <span className={fieldLabel}>ชนิดของ</span>
+                  <input value={part} onChange={(e) => setPart(e.target.value)} list="stock-parts" placeholder="กรอบรูป / วัสดุแฝง" className={inputCls} />
+                  <datalist id="stock-parts">
+                    {allParts.map((x) => (
+                      <option key={x} value={x} />
+                    ))}
+                  </datalist>
+                </label>
+                <label className="block">
+                  <span className={fieldLabel}>ชื่อที่เคยเรียก (คั่นด้วย , )</span>
+                  <input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="Gtดำ, GT ดำ" className={inputCls} />
+                </label>
+              </div>
+              <label className="block">
+                <span className={fieldLabel}>รูป (ลิงก์)</span>
+                <span className="flex items-center gap-2.5">
+                  <Thumb src={imageUrl.trim() || undefined} name={name} size={44} />
+                  <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/thread-1803.jpg (เว้นว่างได้)" className={inputCls} />
+                </span>
+                <span className={hint} style={hintStyle}>เว้นว่าง = ใช้ภาพตัวเลือกที่ผูก SKU นี้ หรือรูปแรกของสินค้าที่ผูกให้เอง · ชื่อที่เคยเรียกใส่ไว้ให้ค้นเจอทุกชื่อ</span>
+              </label>
+            </div>
+          </details>
         </div>
+  );
+  if (embedded)
+    return (
+      <div className="space-y-4">
+        {form}
+        {/* ปุ่มบันทึกติดล่างของลิ้นชัก — เลื่อนฟอร์มยาวแล้วยังกดได้ */}
+        <div className="sticky -bottom-4 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50">
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={save}
+              className="inline-flex min-h-[48px] flex-[2] items-center justify-center rounded-xl text-[13px] font-semibold bg-amber-500 text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+            >
+              บันทึกการแก้ไข
+            </button>
+          </div>
+          {!canSave && (
+            <span className="mt-1 block text-center text-[11.5px]" style={hintStyle}>
+              ใส่ชื่อวัสดุก่อนถึงบันทึกได้
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  return (
+    <div className="mt-4">
+      <button type="button" onClick={onClose} className="dkb-btn dkb-btn-ghost dkb-btn-sm mb-3">
+        ← กลับไปคลัง
+      </button>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        {form}
 
         {/* ── แผงสรุป + ปุ่มบันทึก ติดจอ (มือถือไปอยู่ล่างสุด) ── */}
         <aside className="dkb-g w-full shrink-0 p-4 lg:sticky lg:top-4 lg:w-72">
@@ -3735,7 +4312,7 @@ function ItemModal({
           </dl>
           <div className="mt-5 grid gap-2">
             <button type="button" disabled={!canSave} onClick={save} className="dkb-btn dkb-btn-navy min-h-[48px] w-full disabled:opacity-40 disabled:shadow-none">
-              {item ? "บันทึกการแก้ไข" : variantList.length ? `บันทึก ${fmtN(variantList.length)} ตัวเข้าคลัง` : "บันทึกเข้าคลัง"}
+              {item ? "บันทึกการแก้ไข" : batch.length > 1 ? `บันทึก ${fmtN(batch.length)} ตัวเข้าคลัง` : "บันทึกเข้าคลัง"}
             </button>
             <button type="button" onClick={onClose} className="dkb-btn dkb-btn-ghost min-h-[44px] w-full">
               ยกเลิก
@@ -4113,7 +4690,17 @@ function DeletedModal({ onClose, onRestored }: { onClose: () => void; onRestored
 }
 
 /** หมวดของฟอร์มเพิ่ม/แก้ไขวัสดุ — เลขลำดับ + หัวข้อเป็นคำถาม + คำอธิบายสั้น (โครงเดียวกับการ์ด "ตั้งค่าคลังให้ครบ") */
-function FormSection({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
+function FormSection({ n, title, hint, children, plain }: { n: number; title: string; hint?: string; children: React.ReactNode; /** ในลิ้นชัก: หัวข้อ+เส้นคั่น ไม่มีเลข ไม่มีการ์ด (ลิ้นชักแคบ การ์ดซ้อนการ์ดบนพื้นฟ้าอ่านยาก) */ plain?: boolean }) {
+  if (plain)
+    return (
+      <section className="border-b border-slate-100 pb-5 last:border-0">
+        <header className="mb-3">
+          <span className="block text-[13px] font-semibold text-slate-800">{title}</span>
+          {hint && <span className="mt-0.5 block text-[11.5px] leading-snug text-slate-400">{hint}</span>}
+        </header>
+        <div className="space-y-3">{children}</div>
+      </section>
+    );
   return (
     <section className="dkb-g p-4 sm:p-5">
       <header className="mb-3 flex items-start gap-3">
@@ -4347,13 +4934,21 @@ function UsagePanel({
 
   return (
     <div className="mt-5">
-      <p className={labelCls}>ขายอะไรแล้วตัดตัวนี้</p>
+      <p className="flex items-baseline justify-between gap-2">
+        <span className={labelCls}>ขายอะไรแล้วตัดตัวนี้</span>
+        {ready && usage.length > 0 && <span className="text-[11px] tabular-nums text-slate-400">{fmtN(usage.length)} จุด</span>}
+      </p>
       {!ready ? (
         <p className="py-3 text-xs text-slate-400">กำลังโหลด…</p>
       ) : usage.length === 0 ? (
-        <p className={`mt-1.5 rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>
-          ยังไม่เชื่อมกับสินค้าหรือตัวเลือกไหนเลย — ขายแล้วยอดตัวนี้ไม่ขยับ ต้องเบิกเอง
-        </p>
+        // ยังไม่ผูก = ยังตั้งไม่เสร็จ (โทนเตือน) ไม่ใช่ของพัง (แดง) · ของใช้ในโรงงานตั้งใจไม่ผูก = เทา
+        item.manualOnly ? (
+          <p className={`mt-1.5 rounded-xl px-3 py-2.5 text-xs ${TONE.neutral.bg} ${TONE.neutral.text}`}>ของใช้ในโรงงาน — พนักงานเบิกเอง ไม่ตัดตามการขาย</p>
+        ) : (
+          <p className={`mt-1.5 rounded-xl px-3 py-2.5 text-xs leading-relaxed ${TONE.warn.bg} ${TONE.warn.text}`}>
+            <span className="font-semibold">ยังไม่ผูกกับสินค้าหรือตัวเลือกไหน</span> — ขายแล้วยอดตัวนี้ไม่ขยับ ต้องเบิกเอง
+          </p>
+        )
       ) : (
         <ul className="mt-1.5 divide-y divide-slate-100 rounded-xl border border-slate-200">
           {usage.map((u, i) => {
@@ -4415,7 +5010,13 @@ function UsagePanel({
         </ul>
       )}
 
-      {ready && suggest.length > 0 && (
+      {/* ของเบิกเองอย่างเดียว = ตั้งใจไม่ผูก — ไม่เสนอคู่ที่น่าจะใช่/ปุ่มผูก (เคยโผล่ขัดกับป้าย 1 ต.ค. 69) เหลือทางเดียวคือสลับโหมดในแก้ไขข้อมูล */}
+      {ready && mayEdit && item.manualOnly && usage.length === 0 && (
+        <button type="button" onClick={onEdit} className={`${btnSmGhost} mt-1.5`}>
+          เปลี่ยนเป็นตัดตามการขาย →
+        </button>
+      )}
+      {ready && !item.manualOnly && suggest.length > 0 && (
         <div className="mt-3">
           <p className="text-[11px] font-semibold text-slate-500">ตัวเลือกที่ชื่อตรงกัน — น่าจะเป็นตัวนี้</p>
           <ul className="mt-1.5 divide-y divide-slate-100 rounded-xl border border-dashed border-slate-300">
@@ -4483,7 +5084,7 @@ function UsagePanel({
         </div>
       )}
 
-      {ready && mayEdit && (addExtra ? (
+      {ready && mayEdit && addExtra && (
         <ExtraLinkForm
           item={item}
           products={products}
@@ -4499,21 +5100,35 @@ function UsagePanel({
           onSubmit={onLinkExtra}
           onClose={() => setAddExtra(false)}
         />
-      ) : (
-        <button type="button" onClick={() => setAddExtra(true)} className={`${btnSmNeutral} mt-2`} title="ของที่ต้องตัดเพิ่มทุกครั้งที่ลูกค้าเลือกค่านี้ (หรือต่อเมื่อกลุ่มอื่นตรงเงื่อนไขด้วย)">
-          ＋ วัสดุแฝงของตัวเลือกนี้
-        </button>
-      ))}
+      )}
 
-      {ready && mayEdit && (
-        <p className="mt-2 flex flex-wrap gap-x-3 text-[11px] text-slate-400">
-          <button type="button" onClick={onEdit} className="underline underline-offset-2 hover:text-slate-600">
-            ผูกกับตัวสินค้า
+      {/* ทางผูก 3 ทางเป็นปุ่มชุดเดียวกัน (เดิมปุ่ม 1 + ลิงก์ขีดเส้นใต้ 2 น้ำหนักไม่เท่ากัน) · ตอนยังไม่ผูก ผูกกับสินค้า/ตัวเลือกขึ้นก่อน */}
+      {ready && mayEdit && !addExtra && !(item.manualOnly && usage.length === 0) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {usage.length === 0 ? (
+            <>
+              <button type="button" onClick={onEdit} className={btnSmNeutral}>
+                ผูกกับตัวสินค้า
+              </button>
+              <a href={`/admin/stock/link?q=${encodeURIComponent(item.family ?? item.name)}`} className={btnSmNeutral}>
+                ผูกกับตัวเลือก ↗
+              </a>
+            </>
+          ) : null}
+          <button type="button" onClick={() => setAddExtra(true)} className={btnSmNeutral} title="ของที่ต้องตัดเพิ่มทุกครั้งที่ลูกค้าเลือกค่านี้ (หรือต่อเมื่อกลุ่มอื่นตรงเงื่อนไขด้วย)">
+            ＋ วัสดุแฝงของตัวเลือกนี้
           </button>
-          <a href={`/admin/stock/link?q=${encodeURIComponent(item.family ?? item.name)}`} className="underline underline-offset-2 hover:text-slate-600">
-            ผูกกับตัวเลือก (หน้าผูกคลัง)
-          </a>
-        </p>
+          {usage.length > 0 ? (
+            <>
+              <button type="button" onClick={onEdit} className={btnSmGhost}>
+                ผูกกับตัวสินค้า
+              </button>
+              <a href={`/admin/stock/link?q=${encodeURIComponent(item.family ?? item.name)}`} className={btnSmGhost}>
+                ผูกกับตัวเลือก ↗
+              </a>
+            </>
+          ) : null}
+        </div>
       )}
     </div>
   );
@@ -5136,10 +5751,36 @@ function SplitModal({
   const [condChoices, setCondChoices] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  /** นับรอบโหลดใหม่ — เปลี่ยนชื่อตัวเลือกในหน้าต่างนี้แล้วดึงชื่อใหม่มาโดยไม่ต้องปิดเปิด */
+  const [reloadTick, setReloadTick] = useState(0);
+  const [ok, setOk] = useState("");
+
+  /**
+   * ✏️ เปลี่ยนชื่อตัวเลือกของสินค้าตรงนี้ (เจ้าของร้านขอ 1 ต.ค. 69 — เดิมต้องเด้งไปหน้าสินค้า)
+   * ฝั่งเซิร์ฟเวอร์ลากราคา/กฎ/เงื่อนไขตามให้ (lib/option-rename) · ชื่อ SKU ที่พิมพ์ไว้ในแถวไม่เปลี่ยนตาม (คนละชื่อกัน)
+   */
+  async function renameChoice(g: Group, oldName: string, newName: string): Promise<boolean> {
+    const nu = newName.trim();
+    if (!nu || nu === oldName) return false;
+    setErr("");
+    const res = await fetch("/api/admin/stock/split/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId: product.id, optionIndex: g.optionIndex, oldName, newName: nu }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "เปลี่ยนชื่อไม่สำเร็จ");
+      return false;
+    }
+    setOk(`เปลี่ยนชื่อตัวเลือก “${oldName}” → “${nu}” แล้ว (ราคา/กฎ/เงื่อนไขย้ายตาม)`);
+    setReloadTick((n) => n + 1);
+    return true;
+  }
 
   useEffect(() => {
     let dead = false;
-    (async () => {
+    const load = async (first: boolean) => {
       const res = await fetch(`/api/admin/stock/split?productId=${encodeURIComponent(product.id)}`);
       const j = await res.json().catch(() => null);
       if (dead) return;
@@ -5147,12 +5788,17 @@ function SplitModal({
       setGroups(j.groups);
       setOld(j.old);
       setRules(Array.isArray(j.rules) ? j.rules : []);
-      if (j.groups?.length) setSel([0]);
-    })();
+      if (first && j.groups?.length) setSel([0]);
+    };
+    void load(true);
+    // ✏️ ไปแก้ชื่อตัวเลือกที่หน้าสินค้า (แท็บใหม่) แล้วกลับมา → โหลดชื่อใหม่ให้เอง ไม่ต้องปิดหน้าต่างเปิดใหม่ (เจ้าของร้านขอ 1 ต.ค. 69)
+    const onFocus = () => void load(false);
+    window.addEventListener("focus", onFocus);
     return () => {
       dead = true;
+      window.removeEventListener("focus", onFocus);
     };
-  }, [product.id]);
+  }, [product.id, reloadTick]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -5199,13 +5845,29 @@ function SplitModal({
   };
 
   type Row = { key: string; a: Choice; b?: Choice; done: string | null };
-  /** ชื่อเริ่มต้นของ SKU ที่จะสร้าง — สูตรเดียวกับฝั่งเซิร์ฟเวอร์ (nameFor) · ใส่ "ของชิ้นนี้เรียกว่าอะไร" = ใช้ชื่อนั้นนำ */
+  /**
+   * 🧩 ชื่อ SKU ประกอบจากส่วนไหนบ้าง (เจ้าของร้านขอ 1 ต.ค. 69 — คู่ "สีอะคริลิค × ชนิด" ไม่อยากให้ "อะคริลิคพิเศษ" ติดทุกชื่อ)
+   * head = ชื่อชิ้น/ชื่อกลุ่ม · b = ค่าของกลุ่มที่ 2 · a = ค่าของกลุ่มที่ 1 · product = ชื่อสินค้าต่อท้าย (โหมดเดี่ยวที่ตั้งชื่อชิ้น)
+   * ปิดหมด = เหลือค่ากลุ่มที่ 1 เสมอ (ชื่อว่างไม่ได้) · ชื่อที่พิมพ์แก้เองรายแถวไม่ถูกแตะ
+   */
+  const [nameParts, setNameParts] = useState({ head: true, b: true, a: true, product: true });
+  /** ชื่อเริ่มต้นของ SKU ที่จะสร้าง — สูตรเดียวกับฝั่งเซิร์ฟเวอร์ (nameFor) ตอนเปิดทุกส่วน · ใส่ "ของชิ้นนี้เรียกว่าอะไร" = ใช้ชื่อนั้นนำ */
   const defName = (r: Row): string => {
     const part = partName.trim();
     if (!gA) return r.a.name;
-    if (r.b) return `${part || shortLabel(gA.label)} · ${r.b.name} · ${r.a.name}`;
-    return part ? `${part} ${r.a.name} (${product.name})` : `${shortLabel(gA.label)} · ${r.a.name}`;
+    const a = nameParts.a ? r.a.name : "";
+    if (r.b) {
+      const segs = [nameParts.head ? part || shortLabel(gA.label) : "", nameParts.b ? r.b.name : "", a].filter(Boolean);
+      return segs.length ? segs.join(" · ") : r.a.name;
+    }
+    if (part) {
+      const main = [nameParts.head ? part : "", a].filter(Boolean).join(" ") || r.a.name;
+      return nameParts.product ? `${main} (${product.name})` : main;
+    }
+    const segs = [nameParts.head ? shortLabel(gA.label) : "", a].filter(Boolean);
+    return segs.length ? segs.join(" · ") : r.a.name;
   };
+  const customNames = Object.keys(names).length;
   const { rows, hiddenPairs } = useMemo((): { rows: Row[]; hiddenPairs: number } => {
     if (!gA) return { rows: [], hiddenPairs: 0 };
     // โหมดเบิกเอง: ลิงก์เดิมไม่เกี่ยว — เลือกได้ทุกค่า
@@ -5356,6 +6018,7 @@ function SplitModal({
 
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
           {err && <p className={`rounded-xl px-3 py-2 text-xs ${TONE.danger.bg} ${TONE.danger.text}`}>{err}</p>}
+          {ok && !err && <p className={`rounded-xl px-3 py-2 text-xs ${TONE.ok.bg} ${TONE.ok.text}`}>{ok}</p>}
           {!groups ? (
             !err && <p className="py-8 text-center text-slate-400">กำลังโหลดตัวเลือกของสินค้า…</p>
           ) : groups.length === 0 ? (
@@ -5401,6 +6064,48 @@ function SplitModal({
                       {rows.every((r) => r.done || picked.has(r.key)) ? "ไม่เลือกเลย" : "เลือกทั้งหมด"}
                     </button>
                   </div>
+                  {/* ส่วนประกอบของชื่อ SKU — ติ๊กออกได้ (เช่น ไม่เอา "อะคริลิคพิเศษ" ที่ซ้ำทุกแถว) · ตัวอย่างชื่อแถวแรกอัปเดตทันที */}
+                  <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-3 py-2 text-[12px] text-slate-500">
+                    <span className="mr-1 shrink-0">ชื่อ SKU ประกอบจาก</span>
+                    {(
+                      [
+                        ["head", partName.trim() ? `ชื่อชิ้น “${partName.trim()}”` : `ชื่อกลุ่ม “${shortLabel(gA.label)}”`, true],
+                        ["b", gB ? `ค่า ${shortLabel(gB.label)}` : "", !!gB],
+                        ["a", `ค่า ${shortLabel(gA.label)}`, true],
+                        ["product", `ชื่อสินค้า (${product.name})`, !gB && !!partName.trim()],
+                      ] as [keyof typeof nameParts, string, boolean][]
+                    )
+                      .filter(([, , show]) => show)
+                      .map(([k, lb]) => {
+                        const on = nameParts[k];
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            role="switch"
+                            aria-checked={on}
+                            onClick={() => setNameParts((p) => ({ ...p, [k]: !p[k] }))}
+                            className={`inline-flex min-h-[30px] items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition ${
+                              on ? "border-amber-500 bg-amber-500 text-white" : "border-slate-200 bg-white text-slate-500 line-through decoration-slate-300 hover:bg-slate-50"
+                            }`}
+                            title={on ? "กดเพื่อตัดส่วนนี้ออกจากชื่อ" : "กดเพื่อใส่ส่วนนี้กลับเข้าชื่อ"}
+                          >
+                            <span aria-hidden>{on ? "✓" : "✕"}</span>
+                            {lb}
+                          </button>
+                        );
+                      })}
+                    {customNames > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setNames({})}
+                        className="ml-auto underline underline-offset-2 hover:text-slate-800"
+                        title="แถวที่พิมพ์ชื่อเองไว้จะไม่เปลี่ยนตามตัวเลือกข้างบน — กดเพื่อล้างแล้วใช้ชื่อตามสูตรทุกแถว"
+                      >
+                        ล้างชื่อที่แก้เอง ({fmtN(customNames)})
+                      </button>
+                    )}
+                  </div>
                   <ul className="max-h-[38dvh] divide-y divide-slate-100 overflow-y-auto">
                     {rows.map((r) => {
                       const on = !!r.done || picked.has(r.key);
@@ -5417,24 +6122,38 @@ function SplitModal({
                             />
                             <Thumb src={r.a.img ?? r.b?.img} name={label(r)} size={30} />
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] font-medium text-slate-900">{label(r)}</span>
+                              {/* ชื่อตัวเลือกของสินค้า (ลูกค้าเห็นหน้าร้าน) — ✎ แก้ตรงนี้ได้ เซิร์ฟเวอร์ลากราคา/กฎ/เงื่อนไขตาม · โหมดคู่แก้ได้ทั้งสองส่วน · กลุ่ม "เรทราคา" แก้ที่หน้าสินค้า */}
+                              <span className="flex min-w-0 flex-wrap items-center gap-x-1 text-[13px] font-medium text-slate-900" onClick={(e) => e.stopPropagation()}>
+                                {r.b && gB && (
+                                  <>
+                                    <InlineName text={r.b.name} canEdit={!gB.rate && !r.done} onSave={(v) => renameChoice(gB, r.b!.name, v)} onReject={setErr} />
+                                    <span className="text-slate-400">·</span>
+                                  </>
+                                )}
+                                {gA && <InlineName text={r.a.name} canEdit={!gA.rate && !r.done} onSave={(v) => renameChoice(gA, r.a.name, v)} onReject={setErr} />}
+                              </span>
                               {r.done ? (
                                 <span className="block truncate text-[11px] text-slate-400">มี SKU แล้ว: {r.done}</span>
                               ) : (
-                                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                                <label className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400" onClick={(e) => e.stopPropagation()}>
                                   <span className="shrink-0">ชื่อ SKU:</span>
-                                  {/* คลิกแก้ชื่อได้เลย — ค่าเริ่มต้น "ชื่อกลุ่ม · ตัวเลือก" · แก้แล้วจำทันที · ล้างช่อง = กลับเป็นค่าเริ่มต้น */}
+                                  {/*
+                                   * ช่องแก้ชื่อต้องดูเป็นช่อง (เดิมโปร่งใสเหมือนข้อความ + ปิดเมื่อยังไม่ติ๊ก → เจ้าของร้านกดแล้วไม่เกิดอะไร 1 ต.ค. 69)
+                                   * โฟกัส = ติ๊กแถวให้เอง · ✎ อยู่ใน label กดแล้วโฟกัสช่อง · ค่าเริ่มต้น "ชื่อกลุ่ม · ตัวเลือก" · ล้างช่อง = กลับเป็นค่าเริ่มต้น
+                                   */}
                                   <input
                                     value={names[r.key] ?? defName(r)}
                                     onChange={(e) => setNames((m) => ({ ...m, [r.key]: e.target.value }))}
+                                    onFocus={() => !on && setRowOn(r, true)}
                                     onBlur={(e) => !e.target.value.trim() && setNames((m) => { const n = { ...m }; delete n[r.key]; return n; })}
-                                    onClick={(e) => e.stopPropagation()}
-                                    disabled={!on}
                                     aria-label={`ชื่อ SKU ของ ${label(r)}`}
-                                    className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[12px] text-slate-700 hover:border-slate-200 focus:border-slate-400 focus:bg-white focus:outline-none disabled:opacity-50"
+                                    className={`min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-[12px] text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100 ${on ? "border-slate-200" : "border-dashed border-slate-200 text-slate-500"}`}
                                   />
+                                  <span className="shrink-0 cursor-text rounded-md px-1 text-[13px] text-slate-400 hover:bg-slate-100 hover:text-slate-800" title="แก้ชื่อ SKU ที่จะสร้าง" aria-hidden>
+                                    ✎
+                                  </span>
                                   {!pairMode && extraOn && extraName.trim() && picked.has(r.key) && <span className="shrink-0">+ “{extraName.trim()} {r.a.name}”</span>}
-                                </span>
+                                </label>
                               )}
                             </span>
                             {!r.done && (

@@ -103,6 +103,23 @@ export function SearchBox({
         <path d="m20 20-3.5-3.5" />
       </svg>
       <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      {/* ✕ ล้างคำค้น — โผล่เมื่อมีข้อความ (เจ้าของร้านขอ 1 ต.ค. 69) · ใช้ทุกหน้าที่ใช้ SearchBox */}
+      {value !== "" && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            onChange("");
+          }}
+          aria-label="ล้างคำค้น"
+          title="ล้างคำค้น"
+          className="-mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden style={{ color: "currentColor" }}>
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      )}
     </label>
   );
 }

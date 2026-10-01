@@ -54,6 +54,13 @@ export interface StockItem {
    * ยังผูกกับตัวเลือกและตัดตอนขายตามปกติ — ต่างจาก manualOnly ที่ไม่ผูกอะไรเลย (เจ้าของร้านสั่ง 1 ต.ค. 69)
    */
   groupByOption?: boolean;
+  /**
+   * ⧉ ทำซ้ำมาจาก SKU ไหน — ตัวใหม่ยังไม่ผูกอะไร หน้าคลังเลยไม่รู้ว่าควรอยู่กลุ่มไหน → ยืมกลุ่มของต้นแบบไปก่อน
+   * (โผล่เป็น "อีกบรรทัด" ใต้กลุ่มเดียวกันทันที · ผูกตัวเลือกเมื่อไหร่ก็จัดกลุ่มตามลิงก์จริงของตัวเอง) ไม่ก๊อปลิงก์ กันตัด 2 เด้ง
+   */
+  cloneOf?: string;
+  /** ↕ ลำดับที่เจ้าของร้านลากจัดเองในกลุ่ม (เลขน้อยขึ้นก่อน · ไม่มี = ท้ายสุด เรียงชื่อ) — ตั้งผ่าน POST /api/admin/stock/sort */
+  sort?: number;
   category?: string;
   /** ยอดคงเหลือ (ดูแลผ่าน transaction เท่านั้น) */
   balance: number;
@@ -145,6 +152,30 @@ export async function listStock(): Promise<{ items: StockItem[]; moves: (StockMo
     .sort((a, b) => a.name.localeCompare(b.name, "th"));
   const moves = movesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as StockMove) }));
   return { items, moves };
+}
+
+/** SKU ตัวเดียว (null = ไม่มี/ถูกลบ) — หน้าเบิกผ่าน QR ไม่ต้องลากทั้งคลัง */
+export async function getStockItem(id: string): Promise<StockItem | null> {
+  const db = getStockDb();
+  if (!db || !id) return null;
+  const snap = await db.collection(STOCK_ITEMS).doc(id).get();
+  if (!snap.exists) return null;
+  const it = snap.data() as StockItem;
+  return it.active === false ? null : it;
+}
+
+/**
+ * ประวัติของ SKU ตัวเดียว ล่าสุดก่อน — where อย่างเดียวแล้วเรียงในหน่วยความจำ (where+orderBy ต้องมี composite index ซึ่งยังไม่ได้สร้าง)
+ * ของเบิกเองมีไม่กี่ร้อยบรรทัด · ตัวที่ขายเยอะมากใช้หน้าคลังหลักดูแทน
+ */
+export async function listItemMoves(itemId: string, limit = 10): Promise<(StockMove & { id: string })[]> {
+  const db = getStockDb();
+  if (!db || !itemId) return [];
+  const snap = await db.collection(STOCK_MOVES).where("itemId", "==", itemId).get();
+  return snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as StockMove) }))
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+    .slice(0, limit);
 }
 
 /** รายการ SKU อย่างเดียว ไม่ลากประวัติ 400 บรรทัดมาด้วย — ใช้กับงานที่สนแค่ "มี SKU อะไรบ้าง" */
@@ -259,6 +290,7 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
     })(),
     ...((input.manualOnly !== undefined ? input.manualOnly : cur?.manualOnly) ? { manualOnly: true } : {}),
     ...((input.groupByOption !== undefined ? input.groupByOption : cur?.groupByOption) ? { groupByOption: true } : {}),
+    ...((input.cloneOf !== undefined ? input.cloneOf : cur?.cloneOf) ? { cloneOf: input.cloneOf !== undefined ? input.cloneOf : cur?.cloneOf } : {}),
     category: input.category?.trim() || cur?.category,
     balance: cur?.balance ?? 0, // ยอดแก้ผ่าน move เท่านั้น
     reorderPoint: input.reorderPoint ?? cur?.reorderPoint,
@@ -784,6 +816,43 @@ export async function deleteStockCategory(name: string, moveTo?: string): Promis
 }
 
 /** 🗂 ย้ายวัสดุหลายตัวไปหมวดเดียวกัน (ว่าง = ยังไม่จัดหมวด) — ใช้จากเมนู ⋯ ของกลุ่ม/ลิ้นชัก (เจ้าของร้านขอ 30 ก.ย. 69) */
+/**
+ * 🏷 เปลี่ยนชื่อตระกูล (หัวกลุ่มของกลุ่มที่จัดตามตระกูล: เบิกเอง/ใช้ร่วมหลายสินค้า/ยังไม่รู้ว่าใช้กับสินค้าไหน) ให้ทั้งชุด
+ * เจ้าของร้านขอแก้ชื่อหัวกลุ่ม "แม่เหล็ก" จากหน้าคลัง 1 ต.ค. 69 · ว่าง = ถอดตระกูล (แถวจะไปรวมใต้หมวด/อื่น ๆ)
+ */
+/** ↕ บันทึกลำดับที่ลากจัด — ids เรียงตามที่ต้องการ ได้ sort = 0,10,20,… (เว้นช่องไว้ให้แทรกทีหลังโดยไม่ต้องเขียนทั้งชุด) */
+export async function setStockSort(ids: string[]): Promise<number> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 400) {
+    const b = db.batch();
+    for (const [k, id] of ids.slice(i, i + 400).entries()) {
+      b.update(db.collection(STOCK_ITEMS).doc(id), { sort: (i + k) * 10, updatedAt: new Date().toISOString() });
+      n++;
+    }
+    await b.commit();
+  }
+  return n;
+}
+
+export async function assignStockFamily(ids: string[], family: string): Promise<number> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const fam = family.trim();
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 400) {
+    const b = db.batch();
+    for (const id of ids.slice(i, i + 400)) {
+      b.update(db.collection(STOCK_ITEMS).doc(id), { family: fam || FieldValue.delete(), updatedAt: new Date().toISOString() });
+      n++;
+    }
+    await b.commit();
+  }
+  return n;
+}
+
 export async function assignStockCategory(ids: string[], category: string): Promise<number> {
   const db = getStockDb();
   if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");

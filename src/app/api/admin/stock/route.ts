@@ -44,6 +44,9 @@ export async function POST(req: Request) {
     packSize?: number;
     manualOnly?: boolean;
     groupByOption?: boolean;
+    cloneOf?: string;
+    /** ⧉ ทำซ้ำ: รหัสนับต่อจากต้นแบบ ("P-ACRYLICMAGNET-1-" → -2) — ไม่ส่ง = ตั้งจากชื่อ */
+    codePrefix?: string;
     active?: boolean;
   };
   try {
@@ -57,6 +60,7 @@ export async function POST(req: Request) {
       id: body.id,
       name: body.name,
       code: body.code?.trim() || undefined,
+      codePrefix: typeof body.codePrefix === "string" && body.codePrefix.trim() ? body.codePrefix.trim() : undefined,
       family: body.family?.trim() || undefined,
       aliases: Array.isArray(body.aliases) ? body.aliases.map((a) => String(a).trim()).filter(Boolean) : undefined,
       unit: body.unit,
@@ -73,6 +77,7 @@ export async function POST(req: Request) {
       packUnit: typeof body.packUnit === "string" ? body.packUnit.trim() : undefined,
       manualOnly: typeof body.manualOnly === "boolean" ? body.manualOnly : undefined,
       groupByOption: typeof body.groupByOption === "boolean" ? body.groupByOption : undefined,
+      cloneOf: typeof body.cloneOf === "string" ? body.cloneOf.trim() : undefined,
       active: body.active,
     });
     return NextResponse.json({ ok: true, item });

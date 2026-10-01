@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { addStockCategory, assignStockCategory, deleteStockCategory, listStockCategories, listStockItems, renameStockCategory } from "@/lib/server/stock";
+import { addStockCategory, assignStockCategory, assignStockFamily, deleteStockCategory, listStockCategories, listStockItems, renameStockCategory } from "@/lib/server/stock";
 
 export const runtime = "nodejs";
 
@@ -34,6 +34,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
   // ย้ายวัสดุตาม ids ไปหมวด name (ว่าง = ยังไม่จัดหมวด)
+  // 🏷 เปลี่ยนชื่อตระกูลทั้งชุด (หัวกลุ่มตามตระกูลในหน้าคลัง) — ids + name ใหม่
+  if (body.action === "assign-family") {
+    const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string" && !!x) : [];
+    if (!ids.length) return NextResponse.json({ error: "ระบุรายการที่จะเปลี่ยนตระกูล" }, { status: 400 });
+    try {
+      return NextResponse.json({ ok: true, moved: await assignStockFamily(ids, body.name ?? "") });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
+  }
   if (body.action === "assign") {
     const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string" && !!x) : [];
     if (!ids.length) return NextResponse.json({ error: "ระบุรายการที่จะย้าย" }, { status: 400 });

@@ -578,7 +578,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
    * → บอกตรง ๆ ว่าให้ไปสแกน QR ดีกว่า (หน้าออเดอร์ปล่อยผ่าน เพราะนั่นคืองานของเขา)
    */
   const packScanOnly = configured && allowed && perms.length === 0 && !isAdministrator;
-  const onOrderPage = /^\/admin\/orders\/[^/]+$/.test(pathname);
+  // หน้าออเดอร์ (QR ใบงาน) และหน้าเบิกวัสดุ (QR ป้ายชั้นวาง · 1 ต.ค. 69) คืองานหน้างานของเขา — ปล่อยผ่าน
+  const onOrderPage = /^\/admin\/orders\/[^/]+$/.test(pathname) || /^\/admin\/stock\/take\/[^/]+$/.test(pathname);
   if (packScanOnly && !onOrderPage) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
