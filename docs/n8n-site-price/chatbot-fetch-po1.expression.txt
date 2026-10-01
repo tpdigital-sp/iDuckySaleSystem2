@@ -17,3 +17,5 @@
 
 # 1 ต.ค. 69 Fetch PO1 ส่ง history[] (ทั้งสองฝั่ง) เพิ่มจาก context[]: แยกบรรทัด conversationHistory ทั้ง "ลูกค้า:" และ "แอดมิน:/ผู้ช่วย:" → {role:'user'|'assistant', text} ≤14 บรรทัด (ไม่มี previousMessages ใน body ของ Call AI จึงไม่มี at — รอบสนทนาถูกตัดมาแล้วที่ Build AI Request)
 #   ท้าย expression: … return JSON.stringify({ query: msg, context: ctx, history: history }); })() }}
+# 1 ต.ค. 69 (ข้อ 2) Fetch PO1 ส่ง profile: ตัดบล็อก "== ข้อมูลลูกค้าคนนี้ … == … == จบข้อมูลลูกค้า ==" จาก conversationHistory (Build AI Request แปะไว้) → profile ≤900 ตัวอักษร
+#   ท้าย expression: … return JSON.stringify({ query: msg, context: ctx, history: history, profile: profile }); })() }}
