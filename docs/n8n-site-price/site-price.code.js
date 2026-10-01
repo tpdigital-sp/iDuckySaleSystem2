@@ -22,6 +22,9 @@ const qtyRaw = Number(body.qty ?? body.quantity ?? 0);
 // 🧠 ข้อความก่อนหน้าของลูกค้า (ChatBot/Fetch PO1 ส่งมาเป็น context[]) → ส่งต่อให้ชั้นเข้าใจคำถามของเว็บ
 const context = (Array.isArray(body.context) ? body.context : typeof body.context === 'string' ? [body.context] : [])
   .map(c => String(c || '').trim()).filter(Boolean).slice(-5);
+// 🧠 1 ต.ค. 69: บทสนทนาทั้งสองฝั่ง [{role,text,at}] + โปรไฟล์ลูกค้า (Fetch PO1 ส่งมา) → ส่งต่อให้เว็บ (ไม่ส่ง = "แบบที่ 2" ไม่รู้ว่าตัวไหน)
+const history = Array.isArray(body.history) ? body.history.filter(m => m && typeof m === 'object' && m.text).slice(-14) : [];
+const profile = typeof body.profile === 'string' ? body.profile.slice(0, 900) : '';
 
 if (!query) {
   return [{ json: { ...body, useLegacy: true, siteError: 'no query' } }];
@@ -36,6 +39,8 @@ try {
     body: {
       query,
       context,
+      history,
+      profile,
       ...(qtyRaw > 0 ? { qty: qtyRaw } : {}),
       // เว็บตอบเองไม่ได้ให้บอกตรง ๆ — ห้ามให้เว็บวนกลับมายิง webhook นี้ (จะกลายเป็นลูป)
       noFallback: true,
