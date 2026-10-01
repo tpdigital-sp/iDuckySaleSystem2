@@ -179,7 +179,9 @@ async function answer(req: Request, body: Record<string, unknown>) {
     .filter(Boolean)
     .slice(-5);
   // 🧠 บทสนทนาทั้งสองฝั่ง [{role, text, at}] (1 ต.ค. 69) — ชั้นเข้าใจคำถามเห็นคำตอบของบอทด้วย + ตัดรอบสนทนาเก่าออกเอง
-  const u: Understanding | null = body.mode ? null : await understand(query, context, body.history);
+  // 🧠 profile = ก้อนข้อความโปรไฟล์ลูกค้าจาก /api/bot/customer-profile (ออเดอร์เก่า ระดับสมาชิก สรุปแชท) ถ้าบอทส่งมา
+  const profile = typeof body.profile === "string" ? body.profile : "";
+  const u: Understanding | null = body.mode ? null : await understand(query, context, body.history, profile);
 
   let mode: "price" | "spec" | "minqty" | "mix" = pickMode(query, body.mode);
   let searchQuery = query;

@@ -559,7 +559,12 @@ function normHistory(history: unknown): HistoryTurn[] {
     .filter((h): h is HistoryTurn => !!h);
 }
 
-export async function understand(query: string, context: string[] = [], history: unknown = undefined): Promise<Understanding | null> {
+export async function understand(
+  query: string,
+  context: string[] = [],
+  history: unknown = undefined,
+  profile: string = "",
+): Promise<Understanding | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   const q = fixTypos(query.trim());
   if (!apiKey || !q) return null;
@@ -569,8 +574,10 @@ export async function understand(query: string, context: string[] = [], history:
     ? turns.filter((t) => t.role === "user").map((t) => t.text).slice(-5)
     : context.map((c) => fixTypos(String(c ?? "").trim())).filter(Boolean).slice(-5);
   // ข้อความที่ใช้ยึดสินค้าจากบทสนทนา (ทั้งสองฝั่ง: บอทเพิ่งเสนอ "แม่เหล็กอะคริลิค" แล้วลูกค้าถาม "ตัวนั้น 50 ชิ้น")
-  const anchorMsgs = turns.length ? turns.map((t) => t.text) : ctx;
-  const key = `${turns.map((t) => `${t.role}:${t.text}`).join("\u0001")}\u0003${ctx.join("\u0001")}\u0002${q}`;
+  // 🧠 โปรไฟล์ลูกค้า (เคยสั่งอะไร ระดับสมาชิก/ตัวแทน สรุปแชทก่อนหน้า) จาก /api/bot/customer-profile — ให้ "ตัวที่เคยสั่ง" "สั่งซ้ำ" ชี้สินค้าได้
+  const prof = String(profile ?? "").trim().slice(0, 900);
+  const anchorMsgs = [...(prof ? [prof] : []), ...(turns.length ? turns.map((t) => t.text) : ctx)];
+  const key = `${prof}\u0004${turns.map((t) => `${t.role}:${t.text}`).join("\u0001")}\u0003${ctx.join("\u0001")}\u0002${q}`;
   const hit = understandCache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.u;
 
@@ -584,7 +591,7 @@ export async function understand(query: string, context: string[] = [], history:
       : "(ไม่มี)";
   const prompt = `คุณเป็นแอดมินร้านพิมพ์/ผลิตของพรีเมียมตามสั่ง (iDucky) อ่านข้อความล่าสุดของลูกค้าให้เข้าใจ "เจตนา" จริง ๆ แล้วสรุปเป็น JSON เท่านั้น
 
-${turns.length ? "บทสนทนารอบนี้ (เก่า→ใหม่ · แอดมิน = บอทของร้านที่ตอบไปแล้ว):" : "ข้อความก่อนหน้าของลูกค้า (เก่า→ใหม่):"}
+${prof ? `ข้อมูลลูกค้าคนนี้ (จากระบบออเดอร์/แชทก่อนหน้า — ใช้ตีความ "ตัวที่เคยสั่ง/สั่งซ้ำ/อันเดิม"):\n${prof}\n\n` : ""}${turns.length ? "บทสนทนารอบนี้ (เก่า→ใหม่ · แอดมิน = บอทของร้านที่ตอบไปแล้ว):" : "ข้อความก่อนหน้าของลูกค้า (เก่า→ใหม่):"}
 ${ctxText}
 
 ข้อความล่าสุด: "${q}"
