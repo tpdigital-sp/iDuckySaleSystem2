@@ -8,7 +8,7 @@ import { snapshotRevision } from "@/lib/server/product-revisions";
 import { getProductsSlim, invalidateProductsSlim } from "@/lib/server/products-slim";
 import { normName, skuPage } from "@/lib/stock-match";
 import { RATE_OPTION_INDEX, rateStockOption, writeRateStock } from "@/lib/stock-rate";
-import type { Product, ProductOption } from "@/lib/products";
+import { choiceImage, type Product, type ProductOption, type ProductOptionChoice } from "@/lib/products";
 import type { OptionPreset } from "@/lib/option-presets";
 
 export const runtime = "nodejs";
@@ -51,7 +51,7 @@ async function guard() {
 }
 
 type Link = { stockItemId: string; per?: number; when?: { label: string; choices: string[] }[] };
-type Ch = { name: string; stockItemId?: string; imageSrc?: string; stockLinks?: Link[] };
+type Ch = { name: string; stockItemId?: string; imageSrc?: string; imageWhen?: { when: { label: string; choices: string[] }[]; imageSrc: string }[]; stockLinks?: Link[] };
 
 export async function GET(req: Request) {
   const g = await guard();
@@ -102,6 +102,8 @@ export async function GET(req: Request) {
         .map((c) => ({
           name: c.name,
           img: c.imageSrc,
+          // 🖼 ภาพสลับตามกลุ่มอื่น (สีตะขอ: ภาพ "สีเงิน" ของตะขอแมว ≠ ของตะขอดาว) — หน้าจอเลือกให้ตามตะขอในแถว
+          imageWhen: c.imageWhen?.length ? c.imageWhen : undefined,
           stockItemId: c.stockItemId ?? null,
           skuName: c.stockItemId ? skuName.get(c.stockItemId) ?? null : null,
           extras: (c.stockLinks ?? []).map((l) => skuName.get(l.stockItemId) ?? l.stockItemId),
@@ -433,7 +435,8 @@ export async function POST(req: Request) {
         manualOnly: D.manualOnly,
         groupByOption: D.groupByOption,
         aliases: [`${a} · ${b}`],
-        imageUrl: bc.imageSrc ?? host.imageSrc,
+        // ภาพ SKU = ภาพสีของตะขอตัวนี้ (imageWhen ตะขอ = a) → ไม่มีก็ภาพสีทั่วไป → ไม่มีก็ภาพตะขอ
+        imageUrl: choiceImage(bc as ProductOptionChoice, { [label]: a }) ?? host.imageSrc,
         part: partName || undefined,
       });
       (treeLinks.get(a) ?? treeLinks.set(a, []).get(a)!).push({ stockItemId: sku.id, when });

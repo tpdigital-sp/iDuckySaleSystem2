@@ -5749,7 +5749,7 @@ function SplitModal({
   onDone: (msg: string) => void;
 }) {
   type Link = { stockItemId: string; name: string | null; when: { label: string; choices: string[] }[] };
-  type Choice = { name: string; img?: string; stockItemId: string | null; skuName: string | null; extras?: string[]; links?: Link[] };
+  type Choice = { name: string; img?: string; /** 🖼 ภาพสลับตามกลุ่มอื่น (สีตะขอตามตะขอที่เลือก) */ imageWhen?: { when: Cond[]; imageSrc: string }[]; stockItemId: string | null; skuName: string | null; extras?: string[]; links?: Link[] };
   /** rate = กลุ่มเสมือน "เรทราคา" (optionIndex -1) — สินค้าที่ของบนชั้นต่างกันตามเรท เช่น การ์ดสเปรย์ 20 ml / 40 ml */
   type Cond = { label: string; choices: string[] };
   /** show = เงื่อนไข "และ" ที่กลุ่มนี้จะโชว์ (showWhen/Also/All) · showAny = เงื่อนไข "หรือ" */
@@ -6068,6 +6068,14 @@ function SplitModal({
     .filter((x, i) => !sel.includes(i) && x.choices.some((c) => c.stockItemId || c.links?.length))
     .map((x) => x.label);
   const label = (r: Row) => (r.dep && r.b ? `${r.a.name} · ${r.b.name}` : r.b ? `${r.b.name} · ${r.a.name}` : r.a.name);
+  /** ภาพของแถว: แถวลูก (ตะขอ × สี) ใช้ภาพสีที่ตั้ง imageWhen ไว้กับตะขอตัวนั้นก่อน → ภาพสีทั่วไป → ภาพตะขอ */
+  const rowImg = (r: Row): string | undefined => {
+    if (r.dep && r.b && gA) {
+      const alt = (r.b.imageWhen ?? []).find((w) => w.when.some((c) => c.label === gA.label && c.choices.includes(r.a.name)));
+      return alt?.imageSrc ?? r.b.img ?? r.a.img;
+    }
+    return r.a.img ?? r.b?.img;
+  };
 
   async function submit() {
     if (!gA) return;
@@ -6310,7 +6318,7 @@ function SplitModal({
                               checked={on}
                               onChange={(e) => setRowOn(r, e.target.checked)}
                             />
-                            <Thumb src={r.a.img ?? r.b?.img} name={label(r)} size={30} />
+                            <Thumb src={rowImg(r)} name={label(r)} size={r.dep ? 40 : 30} />
                             <span className="min-w-0 flex-1">
                               {/* ชื่อตัวเลือกของสินค้า (ลูกค้าเห็นหน้าร้าน) — ✎ แก้ตรงนี้ได้ เซิร์ฟเวอร์ลากราคา/กฎ/เงื่อนไขตาม · โหมดคู่แก้ได้ทั้งสองส่วน · กลุ่ม "เรทราคา" แก้ที่หน้าสินค้า */}
                               <span className="flex min-w-0 flex-wrap items-center gap-x-1 text-[13px] font-medium text-slate-900" onClick={(e) => e.stopPropagation()}>
