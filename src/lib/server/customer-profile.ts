@@ -60,7 +60,8 @@ type Turn = { role: string; text: string; at: string };
 
 function thDate(iso: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  // Order.date เป็นสตริงไทยอยู่แล้ว ("1 ต.ค. 2569") → ใช้ตามนั้น (เคยตัดเหลือ "1 ต.ค. 256")
+  if (Number.isNaN(d.getTime())) return iso.trim().slice(0, 16);
   const months = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
   const bkk = new Date(d.getTime() + 7 * 3600_000);
   return `${bkk.getUTCDate()} ${months[bkk.getUTCMonth()]}`;
