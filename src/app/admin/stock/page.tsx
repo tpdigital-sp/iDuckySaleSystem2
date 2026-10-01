@@ -5861,6 +5861,13 @@ function SplitModal({
             [...(x.show ?? []), ...(x.showAny ?? [])].some((c) => c.label === gA.label && (c.choices.includes(a.name) || c.choices.includes(publicRateLabelOf(a.name)))),
         );
   const hasDeps = !!gA && !gB && gA.choices.some((a) => depsOf(a).length > 0);
+  /**
+   * กลุ่มย่อยของกลุ่มไหน — "สีตะขอ · โลหะ (F/J/K/L/M/N/O)" แสดงเมื่อ ตะขอ ∈ {F…O} = สีชุดเดียวที่ตะขอ 7 แบบใช้ร่วม
+   * แยกสต๊อกจากกลุ่มนี้ตรง ๆ จะได้ SKU "สีเงิน" ตัวเดียวที่ตะขอ 7 แบบตัดร่วมกัน (ผิด) — ต้องแยกจาก "ตะขอ" แล้วให้สีแตกใต้ตะขอ
+   * (เจ้าของร้านชี้ 1 ต.ค. 69 ว่าหน้าสินค้า D กับ X แยกกัน แต่ชิปรวมเป็น "เงิน/ทอง (D/X)")
+   */
+  const parentOf = (x: Group): Group | undefined =>
+    (groups ?? []).find((g) => g !== x && !g.rate && [...(x.show ?? []), ...(x.showAny ?? [])].some((c) => c.label === g.label));
   const [treeOn, setTreeOn] = useState(true);
   /**
    * 🧩 ชื่อ SKU ประกอบจากส่วนไหนบ้าง (เจ้าของร้านขอ 1 ต.ค. 69 — คู่ "สีอะคริลิค × ชนิด" ไม่อยากให้ "อะคริลิคพิเศษ" ติดทุกชื่อ)
@@ -6068,9 +6075,18 @@ function SplitModal({
                 <div className="flex flex-wrap gap-1.5">
                   {groups.map((x, i) => {
                     const at = sel.indexOf(i);
+                    const parent = parentOf(x);
                     return (
-                      <button key={`${x.optionIndex}-${x.label}`} type="button" aria-pressed={at >= 0} onClick={() => toggleGroup(i)} className={chip(at >= 0)}>
+                      <button
+                        key={`${x.optionIndex}-${x.label}`}
+                        type="button"
+                        aria-pressed={at >= 0}
+                        onClick={() => toggleGroup(i)}
+                        className={`${chip(at >= 0)}${parent && at < 0 ? " !border-dashed !text-slate-500" : ""}`}
+                        title={parent ? `กลุ่มย่อยของ “${parent.label}” — แยกสต๊อกที่ “${parent.label}” แล้วระบบแตกค่ากลุ่มนี้ใต้แต่ละตัวให้เอง` : undefined}
+                      >
                         {at >= 0 && sel.length > 1 ? `${at + 1}. ` : ""}
+                        {parent ? "↳ " : ""}
                         {x.rate ? "🏷 " : x.preset ? "🔗 " : ""}
                         {x.label} <span className={at >= 0 ? "text-white/60" : "text-slate-400"}>{x.choices.length}</span>
                       </button>
@@ -6082,6 +6098,8 @@ function SplitModal({
                     ? `สร้างตามคู่ที่ลูกค้าเลือกได้จริง ${gB!.label} × ${gA!.label} = ${rows.length} แบบ${hiddenPairs ? ` (ตัดคู่ที่กฎตัวเลือกไม่อนุญาตออก ${hiddenPairs} คู่)` : ""} — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
                     : gA?.rate
                       ? "ของบนชั้นต่างกันตามเรทที่ลูกค้าเลือก (เช่น ขวด 20 ml กับ 40 ml) · เรทตัวแทนใช้ของชิ้นเดียวกับเรทปกติให้เอง"
+                      : gA && parentOf(gA)
+                      ? `⚠️ “${gA.label}” เป็นกลุ่มย่อยของ “${parentOf(gA)!.label}” (โชว์เฉพาะตอนเลือกค่าบางตัว) — แยกตรงนี้จะได้ SKU ต่อสีที่หลายตัวใช้ร่วมกัน ให้เลือก “${parentOf(gA)!.label}” แทน แล้วระบบแตกสีใต้แต่ละตัวให้เอง`
                       : gA?.preset
                         ? `🔗 ชุดตัวเลือกจากคลังกลาง ใช้ร่วม ${fmtN(gA.usedBy ?? 0)} สินค้า — แยกแล้วผูกที่คลัง ทุกสินค้าที่ใช้ชุดนี้ตัดสต๊อกตามทันที · ชื่อตัวเลือกแก้ที่ /admin/options · จับคู่กับกลุ่มอื่นไม่ได้`
                         : "เลือกกลุ่มที่ 2 ด้วย ถ้าของต่างกันทั้ง 2 อย่าง (เช่น ทรง และ สี)"}
