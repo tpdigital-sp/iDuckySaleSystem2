@@ -1208,7 +1208,9 @@ export default function StockPage() {
         if (it.groupByOption) {
           const cs = us.filter((u): u is Extract<StockUsage, { kind: "choice" }> => u.kind === "choice");
           // ลิงก์ที่คลังกลางก็เป็น "กลุ่มตัวเลือก" ได้ (ตะขอ) — ไม่งั้น SKU ที่ผูกแค่คลังตกไปกลุ่ม "ใช้ร่วมหลายสินค้า" แทนกลุ่มชื่อตัวเลือก
-          const labels = [...new Set([...cs.map((u) => shortOptionLabel(u.label)), ...us.filter((u) => u.kind === "preset").map((u) => shortOptionLabel(u.label))])];
+          // ผูกคลังกลางอยู่ → ใช้ชื่อกลุ่มของคลังอย่างเดียว (สินค้าที่ตั้งชื่อกลุ่มต่าง "ตะขอ / ห่วง" คือตัวเลือกเดียวกัน ไม่ใช่อีกกลุ่ม — เคยโผล่เป็นกลุ่มซ้ำ 9 รายการพร้อมรูปปกสินค้า 1 ต.ค. 69)
+          const presetLabels = us.filter((u) => u.kind === "preset").map((u) => shortOptionLabel(u.label));
+          const labels = [...new Set(presetLabels.length ? presetLabels : cs.map((u) => shortOptionLabel(u.label)))];
           for (const lb of labels)
             put(
               { key: `o:${lb}`, kind: 1, title: lb, sub: "วัสดุกลางตามตัวเลือก — ใช้ร่วมได้หลายสินค้า", img: us.find((u) => u.kind === "preset" && shortOptionLabel(u.label) === lb && u.img)?.img ?? cs.find((u) => shortOptionLabel(u.label) === lb)?.img, optionLabel: lb },
