@@ -196,10 +196,17 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   const useful = !!summary && !/^ยังไม่มีข้อมูลสำคัญ/.test(summary) && noInfoCount < 2 && summary.length > 40;
   if (useful) lines.push(`จากแชทก่อนหน้า: ${summary}`);
 
+  const text = lines.join("\n").slice(0, 900);
+  // ⚡ แคชก้อนข้อความไว้ในห้องแชท (profile.text/textAt) — n8n Build AI Request อ่านจาก Read Memory ได้ทันที ไม่ต้องเรียก API ทุกข้อความ (1 ต.ค. 69)
+  await db
+    .collection(CHAT_COLLECTION)
+    .doc(userId)
+    .set({ profile: { text, textAt: new Date().toISOString() } }, { merge: true })
+    .catch(() => undefined);
   return {
     userId,
     name,
-    text: lines.join("\n").slice(0, 900),
+    text,
     summary,
     orders: orders.slice(0, 5).map((o) => ({ id: o.id, date: o.date, status: o.status, items: itemsText(o), total: orderTotal(o) })),
     tier,
