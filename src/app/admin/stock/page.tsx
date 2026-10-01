@@ -5148,8 +5148,8 @@ function UsagePanel({
       )}
 
       {/* ของที่ห้อยใต้ตัวนี้ — ชุดเดียวกับแถวลูกในตาราง เปิดลิ้นชักตัวแม่ต้องเห็นว่ามีอะไรพ่วงอยู่ */}
-      {/* ของใช้ร่วมหลายสินค้า (คลังกลาง / ≥3 สินค้า) ไม่โชว์ "ตัดอะไรเพิ่มอีก" — เป็นวัสดุแฝงของสินค้าโน้นนี้ ไม่เกี่ยวกับตัวนี้ตรง ๆ เจ้าของร้านงง (1 ต.ค. 69) */}
-      {ready && hangs.length > 0 && !(usage.some((u) => u.kind === "preset") || new Set(usage.filter((u) => u.kind !== "preset").map((u) => u.productId)).size >= 3) && (
+      {/* โชว์เสมอ — เคยซ่อนสำหรับของใช้ร่วมหลายสินค้า แล้วเจ้าของร้านขอคืน (1 ต.ค. 69) */}
+      {ready && hangs.length > 0 && (
         <div className="mt-3">
           <p className="text-[11px] font-semibold text-slate-500">ขายตัวนี้แล้วตัดอะไรเพิ่มอีก</p>
           <ul className="mt-1.5 divide-y divide-slate-100 rounded-xl border border-slate-200">
