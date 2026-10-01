@@ -514,7 +514,8 @@ export function fixTypos(text: string): string {
     .replace(/สติ[กค]เกอ[ร์]?|สติ้กเกอร์|สติ๊กเกอ(?!ร์)/g, "สติ๊กเกอร์")
     .replace(/โฟโต[กค]าร์ด|โฟโต้กาด|photo\s?card/gi, "โฟโต้การ์ด")
     .replace(/กุญเเจ/g, "กุญแจ")
-    .replace(/สแตนดี|สแตนดี้|สแตนดี๊|standee/gi, "สแตนดี้")
+    // ⚠️ ต้องเอาตัวยาว (มีวรรณยุกต์) ขึ้นก่อน — เดิม "สแตนดี" ชนะก่อนแล้วเหลือ "้" ค้าง กลายเป็น "สแตนดี้้" ทำให้ชื่อสินค้าจับไม่ตรง (1 ต.ค. 69)
+    .replace(/สแตนดี้|สแตนดี๊|สแตนดี(?![้๊])|standee/gi, "สแตนดี้")
     .replace(/แม่เหล็ค|แม่เหล๊ก|magnet/gi, "แม่เหล็ก")
     // "ผ้าห่มฮูดดี้" → สินค้าชื่อ "BLANKET HOODIE / ผ้าห่มมีฮู้ด" (ฮูดดี้ กับ ฮู้ด ตัวอักษรร่วมกันแค่ 2 ตัว จับไม่เจอ)
     .replace(/ฮูดดี้|ฮู้ดดี้|ฮู๊ดดี้|ฮูดี้|ฮู้ดดี/g, " hoodie ")
@@ -559,11 +560,52 @@ function normHistory(history: unknown): HistoryTurn[] {
     .filter((h): h is HistoryTurn => !!h);
 }
 
+/**
+ * 🧠 ข้อ 3 ของแผน (1 ต.ค. 69): ชั้นเข้าใจคำถามใช้โมเดลใหญ่ขึ้น — ค่าเริ่มต้น gemini-2.5-flash (ปิด thinking ให้เร็ว ~1-2 วิ)
+ * ล้มเหลว/ช้าเกิน → ถอยไป flash-lite ตัวเดิม · ตั้งได้ด้วย env UNDERSTAND_MODEL · ทดสอบเทียบได้ด้วย body.understandModel
+ */
+export const UNDERSTAND_MODEL_DEFAULT = "gemini-2.5-flash";
+const UNDERSTAND_MODEL_FALLBACK = "gemini-2.5-flash-lite";
+async function geminiJson(apiKey: string, model: string, prompt: string, timeoutMs: number): Promise<string> {
+  // flash: ปิด thinking (เร็ว) · pro: ปิดไม่ได้ ให้คิดน้อยสุด 128 · flash-lite: ไม่มี thinking
+  const thinking = /pro/.test(model) ? { thinkingConfig: { thinkingBudget: 128 } } : /flash(?!-lite)/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {};
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 500, temperature: 0, responseMimeType: "application/json", ...thinking },
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`${model} HTTP ${res.status}`);
+  const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
+  if (!text) throw new Error(`${model} empty`);
+  JSON.parse(text); // ต้องเป็น JSON ไม่งั้นให้ถอยไปโมเดลสำรอง
+  return text;
+}
+async function callUnderstandModel(apiKey: string, prompt: string, override?: string): Promise<string> {
+  const primary = (override || process.env.UNDERSTAND_MODEL || UNDERSTAND_MODEL_DEFAULT).trim();
+  try {
+    return await geminiJson(apiKey, primary, prompt, 9_000);
+  } catch (e) {
+    if (primary === UNDERSTAND_MODEL_FALLBACK) return "";
+    console.warn(`[understand] ${primary} ล้มเหลว → ใช้ ${UNDERSTAND_MODEL_FALLBACK}:`, e instanceof Error ? e.message : e);
+    try {
+      return await geminiJson(apiKey, UNDERSTAND_MODEL_FALLBACK, prompt, 8_000);
+    } catch {
+      return "";
+    }
+  }
+}
+
 export async function understand(
   query: string,
   context: string[] = [],
   history: unknown = undefined,
   profile: string = "",
+  modelOverride?: string,
 ): Promise<Understanding | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   const q = fixTypos(query.trim());
@@ -577,7 +619,7 @@ export async function understand(
   // 🧠 โปรไฟล์ลูกค้า (เคยสั่งอะไร ระดับสมาชิก/ตัวแทน สรุปแชทก่อนหน้า) จาก /api/bot/customer-profile — ให้ "ตัวที่เคยสั่ง" "สั่งซ้ำ" ชี้สินค้าได้
   const prof = String(profile ?? "").trim().slice(0, 900);
   const anchorMsgs = [...(prof ? [prof] : []), ...(turns.length ? turns.map((t) => t.text) : ctx)];
-  const key = `${prof}\u0004${turns.map((t) => `${t.role}:${t.text}`).join("\u0001")}\u0003${ctx.join("\u0001")}\u0002${q}`;
+  const key = `${modelOverride ?? ""}\u0005${prof}\u0004${turns.map((t) => `${t.role}:${t.text}`).join("\u0001")}\u0003${ctx.join("\u0001")}\u0002${q}`;
   const hit = understandCache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.u;
 
@@ -624,21 +666,8 @@ ${list}
 - standalone = เขียนคำถามใหม่เป็นภาษาไทยสั้น ๆ ให้เข้าใจได้โดยไม่ต้องอ่านบริบท ใส่ชื่อสินค้าและจำนวนที่รู้`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 400, temperature: 0, responseMimeType: "application/json" },
-        }),
-        signal: AbortSignal.timeout(9_000),
-      },
-    );
-    if (!res.ok) return null;
-    const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
+    const text = await callUnderstandModel(apiKey, prompt, modelOverride);
+    if (!text) return null;
     const raw = JSON.parse(text) as Partial<Omit<Understanding, "alternatives">> & { products?: unknown[]; alternatives?: unknown[] };
     const byName = new Map(items.map((it) => [norm(it.name), it]));
     let anchorDebug: { qMentions: string[]; anchor: string[]; trace: string[] } | undefined;
@@ -718,6 +747,13 @@ ${list}
       anchorDebug = { qMentions: qMentions.map((x) => x.name), anchor: [], trace: [`q=${q}`, ...dbgScores(q)] };
       // ไม่มีทั้งชื่อสินค้าในคำถามและบทสนทนาก่อนหน้า ("ราคาเท่าไหร่" ลอย ๆ) → LLM เดาสินค้าไม่ได้ ต้องถามกลับ
       if (!qMentions.length && !anchorMsgs.length && picked.length && !ord) picked = [];
+      // คำถามเอ่ยชื่อสินค้าชัด ("สแตนดี้ไม้ มีไหม" "แก้วเยติสกรีนโลโก้") แต่ LLM ไม่ใส่ products → ใช้ตัวที่ชื่อตรง (gemini-2.5-flash ชอบตอบ "ไม่รู้" แทนเดา)
+      // ต้อง "ตรงแรง": ตัวอักษรร่วมกัน ≥60% ของชื่อสินค้า (สแตนดี้ไม้ ↔ สแตนดี้ไม้กระดก ✓ · "งานพิมพ์" ↔ งานพิมพ์กระดาษอาร์ตมัน & แผ่นพลาสติก PET ✗)
+      const strongMentions = qMentions.filter((it) => lcsLen(norm(q), norm(it.name)) >= Math.ceil(norm(it.name).length * 0.6));
+      if (!picked.length && strongMentions.length && strongMentions.length <= 3 && /price|spec|minqty|mix|knowledge|other/.test(intent)) {
+        picked = strongMentions.slice(0, 3);
+        raw.broad = strongMentions.length > 1;
+      }
       if (!qMentions.length && anchorMsgs.length && !(ord && picked.length === 1)) {
         const standalone = String(raw.standalone ?? "").trim();
         // ข้อความล่าสุดที่พูดถึงสินค้าชนะ "ประโยคฉบับสมบูรณ์" ของ LLM (LLM เคยเขียน "ชิกิชิมีกระดุมแปะไหม" ทั้งที่ข้อความล่าสุดคือผ้าห่มฮู้ด)

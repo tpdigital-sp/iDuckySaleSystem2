@@ -181,7 +181,9 @@ async function answer(req: Request, body: Record<string, unknown>) {
   // 🧠 บทสนทนาทั้งสองฝั่ง [{role, text, at}] (1 ต.ค. 69) — ชั้นเข้าใจคำถามเห็นคำตอบของบอทด้วย + ตัดรอบสนทนาเก่าออกเอง
   // 🧠 profile = ก้อนข้อความโปรไฟล์ลูกค้าจาก /api/bot/customer-profile (ออเดอร์เก่า ระดับสมาชิก สรุปแชท) ถ้าบอทส่งมา
   const profile = typeof body.profile === "string" ? body.profile : "";
-  const u: Understanding | null = body.mode ? null : await understand(query, context, body.history, profile);
+  // understandModel = ชื่อโมเดล Gemini ไว้ทดสอบเทียบ (ไม่ส่ง = ค่าเริ่มต้น gemini-2.5-flash ถอยไป flash-lite เมื่อล้มเหลว)
+  const understandModel = typeof body.understandModel === "string" && /^gemini-[a-z0-9.-]+$/.test(body.understandModel) ? body.understandModel : undefined;
+  const u: Understanding | null = body.mode ? null : await understand(query, context, body.history, profile, understandModel);
 
   let mode: "price" | "spec" | "minqty" | "mix" = pickMode(query, body.mode);
   let searchQuery = query;

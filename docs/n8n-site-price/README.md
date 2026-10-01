@@ -109,3 +109,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - เว็บ `POST /api/bot/customer-profile {userId}` (สิทธิ์ Bearer Firebase ID token ของบัญชีบอท หรือ x-cron-secret) → `src/lib/server/customer-profile.ts` รวม: ออเดอร์ที่ผูก lineUserId/customerId (3 ใบล่าสุด + ใบที่ยังไม่จบ) · ระดับสมาชิก/ตัวแทนจากการ์ดผู้ติดต่อ · สรุปแชท ≤60 ข้อความด้วย flash-lite (แคชใน line-conversations.profile · สรุปใหม่เมื่อเกิน 24 ชม. หรือมีข้อความใหม่ ≥6 · แชท <4 ข้อความไม่สรุป) → `text` ≤900 ตัวอักษร
 - `/api/pricing/search` รับ `profile` (ข้อความ) → understand() ใส่หัวพรอมป์ต + ใช้เป็นข้อความยึดสินค้าอันดับแรก ("สั่งซ้ำแบบเดิม 50 ชิ้น" → สินค้าในออเดอร์เก่า)
 - n8n (ร่าง): LINE **Build AI Request** เรียก API ด้วย idToken ([snippet](build-ai-request.customer-profile.snippet.js)) แปะหัว conversationHistory + output `customerProfile` · **Site Price Flex** ส่ง `profile` · ChatBot **Fetch PO1** ตัดบล็อก "== ข้อมูลลูกค้าคนนี้ ==" ออกจาก history แล้วส่งเป็น `profile`
+
+## 1 ต.ค. 69 — ข้อ 3: ชั้นเข้าใจคำถามใช้ gemini-2.5-flash
+- `understand()` เรียก gemini-2.5-flash (thinkingBudget 0) ก่อน ล้มเหลว/ช้าเกิน 9 วิ → flash-lite · env `UNDERSTAND_MODEL` เปลี่ยนได้ · ทดสอบเทียบด้วย body `understandModel`
+- ผลวัด 20 เคส (dev): pro 17/20 เฉลี่ย 4.1 วิ · flash 18/20 เฉลี่ย 2.2 วิ · flash-lite 18/20 เฉลี่ย 1.8 วิ — เลือก flash เพราะตอนพลาด "ตอบไม่รู้" (ให้ agent ตอบ) ส่วน lite "หยิบสินค้ามั่ว" (ที่ติดรถยนต์ → สติ๊กเกอร์รูปทรง · "ราคาเท่าไหร่" → พวงกุญแจ)
+- แถม: LLM ไม่ใส่ products ทั้งที่คำถามเอ่ยชื่อชัด ("สแตนดี้ไม้ มีไหม") → ใช้ชื่อที่ตรงแรง (≥60% ของชื่อ) · 🐛 fixTypos "สแตนดี" ชนะก่อน "สแตนดี้" → ได้ "สแตนดี้้" (วรรณยุกต์ซ้อน) ตั้งแต่ 28 ก.ย. — แก้เรียงตัวยาวก่อน
