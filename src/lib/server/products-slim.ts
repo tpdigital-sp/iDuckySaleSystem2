@@ -20,7 +20,8 @@ export type ProductsSlim = { products: SlimProduct[]; presets: SlimPreset[]; at:
 
 const TTL_MS = 60_000;
 const SELECT =
-  "id,name:data->name,price:data->price,hidden:data->hidden,options:data->options,images:data->images,label:data->label,choices:data->choices,pid:data->id,rates:data->priceRates";
+  // slug = ลิงก์ตามชื่อ (/products/พวงกุญแจ-หลายชิ้นใน-1-พวง) — ช่องวางลิงก์สินค้าในหน้าคลังใช้จับคู่ (ไม่มี = วางลิงก์แล้ว "ไม่พบ" 1 ต.ค. 69)
+  "id,name:data->name,slug:data->slug,price:data->price,hidden:data->hidden,options:data->options,images:data->images,label:data->label,choices:data->choices,pid:data->id,rates:data->priceRates";
 
 /** เรทราคาแบบไม่เอาตารางราคา — หน้าคลังใช้แค่ชื่อ/รูป/ลิงก์สต๊อกของเรท (สต๊อกตามเรท 30 ก.ย. 69) */
 function slimRates(rates: unknown): PriceRate[] | undefined {
@@ -58,7 +59,15 @@ async function fetchSlim(): Promise<ProductsSlim> {
       const priceRates = slimRates(r.rates);
       products.push({
         id: r.id,
-        data: { name: r.name, price: r.price, hidden: r.hidden, options: r.options ?? [], images: r.images ?? [], ...(priceRates ? { priceRates } : {}) } as unknown as SlimProduct["data"],
+        data: {
+          name: r.name,
+          price: r.price,
+          hidden: r.hidden,
+          ...(typeof r.slug === "string" && r.slug ? { slug: r.slug } : {}),
+          options: r.options ?? [],
+          images: r.images ?? [],
+          ...(priceRates ? { priceRates } : {}),
+        } as unknown as SlimProduct["data"],
       });
     }
   }
