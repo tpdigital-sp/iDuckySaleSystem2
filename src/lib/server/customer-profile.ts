@@ -191,7 +191,8 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   }
   if (activeOrders.length) lines.push(`มีออเดอร์ที่ยังไม่จบ ${activeOrders.length} ใบ: ${activeOrders.map((o) => `${o.id} ${o.status}`).join(", ")}`);
   // สรุปที่บอกแต่ว่า "ยังไม่มีข้อมูล…" ทุกประโยค = ไม่มีประโยชน์ ไม่แปะ
-  const useful = summary && !/^ยังไม่มีข้อมูลสำคัญ/.test(summary) && summary.replace(/[^ก-๙]*ยังไม่มีข้อมูล[^.·\n]*/g, "").trim().length > 40;
+  const noInfoCount = (summary.match(/ไม่มีข้อมูล|ไม่ได้ระบุ|ไม่มีข้อควรระวัง/g) ?? []).length;
+  const useful = !!summary && !/^ยังไม่มีข้อมูลสำคัญ/.test(summary) && noInfoCount < 2 && summary.length > 40;
   if (useful) lines.push(`จากแชทก่อนหน้า: ${summary}`);
 
   return {
