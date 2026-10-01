@@ -141,6 +141,12 @@ export async function POST(req: Request) {
     /** 🧩 วัสดุกลางตามตัวเลือก — หน้าคลังจัดกลุ่มใต้ชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (ยังผูก/ตัดตามปกติ) · ตระกูลไม่กรอก = ชื่อกลุ่มตัวเลือก */
     groupByOption?: boolean;
     names?: Record<string, string>;
+    /**
+     * 🌳 แตกตามกลุ่มย่อยที่ขึ้นกับค่า (ตะขอ K ตะขอแมว → สีตะขอ โลหะ = เงิน/ทอง/โรสโกลด์/รุ้ง · เจ้าของร้านขอ 1 ต.ค. 69 "ต้องเป็นแบบหน้าสินค้า")
+     * [ค่ากลุ่มหลัก, ชื่อกลุ่มย่อย, ค่ากลุ่มย่อย] → SKU ต่อคู่ ผูกเป็นลิงก์มีเงื่อนไขบนค่ากลุ่มหลัก (เหมือนโหมดคู่ แต่กลุ่มย่อยต่างกันได้ต่อค่า)
+     * คีย์ names/perRow = "a\u0001b"
+     */
+    tree?: [string, string, string][];
     /** 📍 จุดสั่งซื้อ/รอของ รายแถว (คีย์เดียวกับ names) — ทับ defaults เฉพาะแถวนั้น */
     perRow?: Record<string, { reorderPoint?: number; leadTimeDays?: number }>;
     /** 📝 รายละเอียดของวัสดุที่จะสร้าง (หน่วย/แพ็ค/ตระกูล/ทุน/จุดสั่ง) — เจ้าของร้านขอกรอกก่อนสร้าง ไม่ใช่ได้ "ชิ้น" ค่าว่างมาแล้วไล่แก้ทีหลัง (30 ก.ย. 69) */
@@ -153,7 +159,8 @@ export async function POST(req: Request) {
   }
   const { productId, optionIndex, label } = body;
   const want = new Set((body.choices ?? []).map((x) => String(x)));
-  if (!productId || typeof optionIndex !== "number" || !label || !want.size)
+  const tree = (body.tree ?? []).filter((t): t is [string, string, string] => Array.isArray(t) && t.length === 3 && t.every((x) => typeof x === "string" && !!x.trim()));
+  if (!productId || typeof optionIndex !== "number" || !label || (!want.size && !tree.length))
     return NextResponse.json({ error: "ข้อมูลไม่ครบ" }, { status: 400 });
 
   const { data: row } = await db.from("products").select("id,data").eq("id", productId).maybeSingle();
@@ -164,9 +171,16 @@ export async function POST(req: Request) {
   /** 🔗 กลุ่มที่ขอแยกเป็นคลังตัวเลือกกลาง → ใช้ choices สดจากแถวคลัง และเขียนกลับที่คลัง (ดู GET) */
   const presetId = typeof optionIndex === "number" && optionIndex >= 0 ? opts[optionIndex]?.presetId : undefined;
   const presetRowId = presetId ? `__preset_${presetId}` : null;
-  const presetRow = presetRowId ? ((await db.from("products").select("id,data").eq("id", presetRowId).maybeSingle()).data?.data as OptionPreset | undefined) : undefined;
+  // ทุกกลุ่มที่ลิงก์คลังกลางใช้ choices สด (กลุ่มย่อย "สีตะขอ X" ก็เป็นคลังกลาง — ต้องเห็นค่าจริงตอนแตกตามกลุ่มย่อย)
+  const allPresetIds = [...new Set(opts.map((o) => o.presetId).filter((x): x is string => !!x))];
+  const presetRows = allPresetIds.length ? (await db.from("products").select("id,data").in("id", allPresetIds.map((id) => `__preset_${id}`))).data ?? [] : [];
+  const presetOf = new Map(presetRows.map((r) => [String(r.id).replace(/^__preset_/, ""), r.data as OptionPreset]));
+  for (let i = 0; i < opts.length; i++) {
+    const pr = opts[i].presetId ? presetOf.get(opts[i].presetId!) : undefined;
+    if (pr) opts[i] = { ...opts[i], label: pr.label, choices: pr.choices };
+  }
+  const presetRow = presetId ? presetOf.get(presetId) : undefined;
   if (presetId && !presetRow) return NextResponse.json({ error: "ไม่พบคลังตัวเลือกกลางของกลุ่มนี้ — อาจถูกลบไปแล้ว" }, { status: 404 });
-  if (presetRow && opts[optionIndex!]) opts[optionIndex!] = { ...opts[optionIndex!], label: presetRow.label, choices: presetRow.choices };
   /** กลุ่มตามลำดับ — -1 = กลุ่มเสมือน "เรทราคา" */
   const groupAt = (i: number): ProductOption | undefined => (i === RATE_OPTION_INDEX ? rateGroup ?? undefined : opts[i]);
   /** ทุกกลุ่มพร้อมลำดับ (ไว้เช็คเงื่อนไข/ลิงก์ที่มีอยู่) */
@@ -392,6 +406,39 @@ export async function POST(req: Request) {
         created.push({ choice: c.name, id: sku.id, name: sku.name, extra: true });
       }
     }
+    // 🌳 แตกตามกลุ่มย่อย: SKU ต่อ (ค่าหลัก, ค่าย่อย) ผูกเป็นลิงก์มีเงื่อนไขบนค่าหลัก — ตะขอแมว + สีเงิน = "ตะขอ · K ตะขอแมว · สีเงิน"
+    const treeLinks = new Map<string, Link[]>();
+    for (const [a, depLabel, b] of tree) {
+      const host = ((opt.choices ?? []) as Ch[]).find((c) => c.name === a);
+      if (!host) return NextResponse.json({ error: `ไม่พบตัวเลือก “${a}” ในกลุ่ม “${label}”` }, { status: 409 });
+      const dep = allGroups.find(({ o, i }) => i !== optionIndex && o.label === depLabel)?.o;
+      if (!dep) return NextResponse.json({ error: `ไม่พบกลุ่มย่อย “${depLabel}”` }, { status: 409 });
+      const bc = ((dep.choices ?? []) as Ch[]).find((c) => c.name === b);
+      if (!bc) return NextResponse.json({ error: `กลุ่ม “${depLabel}” ไม่มีค่า “${b}”` }, { status: 409 });
+      const when = [{ label: depLabel, choices: [b] }];
+      if ((host.stockLinks ?? []).some((l) => JSON.stringify(l.when ?? []) === JSON.stringify(when))) continue; // มีแล้ว
+      const key = `${a}\u0001${b}`;
+      const sku = await saveStockItem({
+        name: customName(key) || `${shortLabel(label)} · ${a} · ${b}`,
+        ...rowMeta(key),
+        code: nextCode(),
+        unit: D.unit,
+        family: D.family,
+        category: D.category,
+        unitCost: D.unitCost,
+        reorderPoint: D.reorderPoint,
+        leadTimeDays: D.leadTimeDays,
+        packUnit: D.packUnit,
+        packSize: D.packSize,
+        manualOnly: D.manualOnly,
+        groupByOption: D.groupByOption,
+        aliases: [`${a} · ${b}`],
+        imageUrl: bc.imageSrc ?? host.imageSrc,
+        part: partName || undefined,
+      });
+      (treeLinks.get(a) ?? treeLinks.set(a, []).get(a)!).push({ stockItemId: sku.id, when });
+      created.push({ choice: `${a} · ${b}`, id: sku.id, name: sku.name });
+    }
     if (!created.length) return NextResponse.json({ error: "ตัวเลือกที่เลือกผูก SKU ไว้ครบแล้ว" }, { status: 409 });
     // 🏭 โหมดเบิกเอง: ได้วัสดุแล้วจบ ไม่ผูกเข้าตัวเลือก ไม่ปลดของเก่า
     if (body.manualOnly) return NextResponse.json({ ok: true, created, manualOnly: true });
@@ -401,11 +448,12 @@ export async function POST(req: Request) {
       chs.map((c) => {
         const main = !c.stockItemId ? mainOf.get(c.name) : undefined;
         const extra = extraOf.get(c.name);
-        if (!main && !extra) return c;
+        const kids = treeLinks.get(c.name) ?? [];
+        if (!main && !extra && !kids.length) return c;
         return {
           ...c,
           ...(main ? { stockItemId: main } : {}),
-          ...(extra ? { stockLinks: [...(c.stockLinks ?? []), { stockItemId: extra, when: extraWhen! }] } : {}),
+          ...(extra || kids.length ? { stockLinks: [...(c.stockLinks ?? []), ...(extra ? [{ stockItemId: extra, when: extraWhen! }] : []), ...kids] } : {}),
         };
       })
     );

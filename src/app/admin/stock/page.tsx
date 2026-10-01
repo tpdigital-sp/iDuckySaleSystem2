@@ -5844,7 +5844,24 @@ function SplitModal({
     return visible(gB, gA.label, a.name) && visible(gA, gB.label, b.name);
   };
 
-  type Row = { key: string; a: Choice; b?: Choice; done: string | null };
+  /** dep = แถวลูกจากกลุ่มย่อยที่ขึ้นกับค่า a (สีตะขอ โลหะ ใต้ K ตะขอแมว) — b คือค่าของกลุ่มย่อยนั้น */
+  type Row = { key: string; a: Choice; b?: Choice; done: string | null; dep?: Group };
+  /**
+   * 🌳 กลุ่มย่อยที่ "แสดงเมื่อ" กลุ่มหลักเลือกค่า a (showWhen ชี้มาที่กลุ่มหลักและมี a) — หน้าสินค้าเลือกตะขอแล้วถึงโผล่ "สีตะขอ"
+   * เจ้าของร้านขอ 1 ต.ค. 69: รายการต้องเป็นแบบหน้าสินค้า (ตะขอ 31 แบบ สีแตกใต้ตะขอ) ไม่ใช่ไล่เลือก "สีตะขอ X" ทีละกลุ่ม
+   */
+  const depsOf = (a: Choice): Group[] =>
+    !gA || gB
+      ? []
+      : (groups ?? []).filter(
+          (x) =>
+            x !== gA &&
+            !x.rate &&
+            x.choices.length > 0 &&
+            [...(x.show ?? []), ...(x.showAny ?? [])].some((c) => c.label === gA.label && (c.choices.includes(a.name) || c.choices.includes(publicRateLabelOf(a.name)))),
+        );
+  const hasDeps = !!gA && !gB && gA.choices.some((a) => depsOf(a).length > 0);
+  const [treeOn, setTreeOn] = useState(true);
   /**
    * 🧩 ชื่อ SKU ประกอบจากส่วนไหนบ้าง (เจ้าของร้านขอ 1 ต.ค. 69 — คู่ "สีอะคริลิค × ชนิด" ไม่อยากให้ "อะคริลิคพิเศษ" ติดทุกชื่อ)
    * head = ชื่อชิ้น/ชื่อกลุ่ม · b = ค่าของกลุ่มที่ 2 · a = ค่าของกลุ่มที่ 1 · product = ชื่อสินค้าต่อท้าย (โหมดเดี่ยวที่ตั้งชื่อชิ้น)
@@ -5856,6 +5873,10 @@ function SplitModal({
     const part = partName.trim();
     if (!gA) return r.a.name;
     const a = nameParts.a ? r.a.name : "";
+    if (r.dep && r.b) {
+      const segs = [nameParts.head ? part || shortLabel(gA.label) : "", a, nameParts.b ? r.b.name : ""].filter(Boolean);
+      return segs.length ? segs.join(" · ") : r.a.name;
+    }
     if (r.b) {
       const segs = [nameParts.head ? part || shortLabel(gA.label) : "", nameParts.b ? r.b.name : "", a].filter(Boolean);
       return segs.length ? segs.join(" · ") : r.a.name;
@@ -5871,7 +5892,19 @@ function SplitModal({
   const { rows, hiddenPairs } = useMemo((): { rows: Row[]; hiddenPairs: number } => {
     if (!gA) return { rows: [], hiddenPairs: 0 };
     // โหมดเบิกเอง: ลิงก์เดิมไม่เกี่ยว — เลือกได้ทุกค่า
-    if (!gB) return { rows: gA.choices.map((c) => ({ key: c.name, a: c, done: c.stockItemId && !extraOn && !manualOnly ? c.skuName ?? c.stockItemId : null })), hiddenPairs: 0 };
+    if (!gB)
+      return {
+        rows: gA.choices.flatMap((c): Row[] => {
+          const dep = treeOn ? depsOf(c)[0] : undefined;
+          if (!dep) return [{ key: c.name, a: c, done: c.stockItemId && !extraOn && !manualOnly ? c.skuName ?? c.stockItemId : null }];
+          // แตกตามกลุ่มย่อย: SKU ต่อ (ตะขอ, สี) — มีแล้ว = ลิงก์มีเงื่อนไขบนค่าหลักที่ชี้สีนั้น
+          return dep.choices.map((b) => {
+            const ex = manualOnly ? undefined : c.links?.find((l) => l.when.length === 1 && l.when[0].label === dep.label && l.when[0].choices.length === 1 && l.when[0].choices[0] === b.name);
+            return { key: `${c.name}${SEP}${b.name}`, a: c, b, dep, done: ex ? ex.name ?? ex.stockItemId : null };
+          });
+        }),
+        hiddenPairs: 0,
+      };
     let hidden = 0;
     const out = gB.choices.flatMap((b) =>
       gA.choices.flatMap((a): Row[] => {
@@ -5885,7 +5918,7 @@ function SplitModal({
     );
     return { rows: out, hiddenPairs: hidden };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gA, gB, extraOn, rules, manualOnly]);
+  }, [gA, gB, extraOn, rules, manualOnly, treeOn, groups]);
 
   // ค่าเริ่มต้น = ติ๊กทุกแถวที่ยังไม่มี SKU (งานส่วนใหญ่คือแยกครบ) แล้วหักเฉพาะที่ผู้ใช้ติ๊กออก
   const nameOff = (label: string, name: string) => `${label}${SEP}${name}`;
@@ -5944,7 +5977,7 @@ function SplitModal({
   const alreadySplit = (groups ?? [])
     .filter((x, i) => !sel.includes(i) && x.choices.some((c) => c.stockItemId || c.links?.length))
     .map((x) => x.label);
-  const label = (r: Row) => (r.b ? `${r.b.name} · ${r.a.name}` : r.a.name);
+  const label = (r: Row) => (r.dep && r.b ? `${r.a.name} · ${r.b.name}` : r.b ? `${r.b.name} · ${r.a.name}` : r.a.name);
 
   async function submit() {
     if (!gA) return;
@@ -5958,7 +5991,9 @@ function SplitModal({
         productId: product.id,
         optionIndex: gA.optionIndex,
         label: gA.label,
-        choices: [...new Set(chosen.map((r) => r.a.name))],
+        choices: [...new Set(chosen.filter((r) => !r.dep).map((r) => r.a.name))],
+        // 🌳 แถวลูกจากกลุ่มย่อย (ตะขอ × สี) — คีย์ "a\u0001b" ใน names/perRow
+        tree: chosen.filter((r) => r.dep && r.b && !r.done).map((r) => [r.a.name, r.dep!.label, r.b!.name]),
         removeOld: !manualOnly && removeOld && canRemove,
         manualOnly,
         groupByOption: !manualOnly && groupByOption,
@@ -6053,6 +6088,18 @@ function SplitModal({
                 </p>
               </div>
 
+              {hasDeps && (
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2 text-[13px] text-slate-800">
+                  <input type="checkbox" className="mt-0.5 h-[18px] w-[18px] accent-amber-500" checked={treeOn} onChange={(e) => setTreeOn(e.target.checked)} />
+                  <span>
+                    <span className="font-medium">แตกตามกลุ่มย่อยที่ขึ้นกับค่าที่เลือก (เหมือนหน้าสินค้า)</span>
+                    <span className="block text-[11px] text-slate-400">
+                      เช่น เลือก “K ตะขอแมว” แล้วหน้าสินค้าถามสี → ได้ SKU ตะขอแมว × สีเงิน/ทอง/โรสโกลด์/รุ้ง · ตะขอที่ไม่มีสีได้ SKU เดียว · ปิด = SKU ต่อตะขออย่างเดียว
+                    </span>
+                  </span>
+                </label>
+              )}
+
               {gA && (
                 <div className="rounded-xl border border-slate-200">
                   <div className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5 text-[12px] text-slate-500">
@@ -6073,7 +6120,7 @@ function SplitModal({
                     {(
                       [
                         ["head", partName.trim() ? `ชื่อชิ้น “${partName.trim()}”` : `ชื่อกลุ่ม “${shortLabel(gA.label)}”`, true],
-                        ["b", gB ? `ค่า ${shortLabel(gB.label)}` : "", !!gB],
+                        ["b", gB ? `ค่า ${shortLabel(gB.label)}` : hasDeps && treeOn ? "ค่ากลุ่มย่อย (สี)" : "", !!gB || (hasDeps && treeOn)],
                         ["a", `ค่า ${shortLabel(gA.label)}`, true],
                         ["product", `ชื่อสินค้า (${product.name})`, !gB && !!partName.trim()],
                       ] as [keyof typeof nameParts, string, boolean][]
@@ -6134,6 +6181,13 @@ function SplitModal({
                                   </>
                                 )}
                                 {gA && <InlineName text={r.a.name} canEdit={!gA.rate && !gA.preset && !r.done} onSave={(v) => renameChoice(gA, r.a.name, v)} onReject={setErr} />}
+                                {r.dep && r.b && (
+                                  <>
+                                    <span className="text-slate-400">·</span>
+                                    <span className="text-slate-700">{r.b.name}</span>
+                                    <span className="rounded-full bg-slate-100 px-1.5 text-[10.5px] font-normal text-slate-500">{shortLabel(r.dep.label)}</span>
+                                  </>
+                                )}
                               </span>
                               {r.done ? (
                                 <span className="block truncate text-[11px] text-slate-400">มี SKU แล้ว: {r.done}</span>
