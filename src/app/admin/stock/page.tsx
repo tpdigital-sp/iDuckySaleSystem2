@@ -5711,7 +5711,7 @@ function SplitModal({
   /** rate = กลุ่มเสมือน "เรทราคา" (optionIndex -1) — สินค้าที่ของบนชั้นต่างกันตามเรท เช่น การ์ดสเปรย์ 20 ml / 40 ml */
   type Cond = { label: string; choices: string[] };
   /** show = เงื่อนไข "และ" ที่กลุ่มนี้จะโชว์ (showWhen/Also/All) · showAny = เงื่อนไข "หรือ" */
-  type Group = { optionIndex: number; label: string; choices: Choice[]; rate?: boolean; show?: Cond[]; showAny?: Cond[] };
+  type Group = { optionIndex: number; label: string; choices: Choice[]; rate?: boolean; show?: Cond[]; showAny?: Cond[]; /** 🔗 ลิงก์คลังตัวเลือกกลาง — แยกแล้วผูกที่คลัง มีผลทุกสินค้าที่ใช้ชุดนี้ · จับคู่/ของชิ้นที่ 2/แก้ชื่อ ไม่ได้ */ preset?: boolean; presetId?: string; usedBy?: number };
   type Old = { id: string; name: string; code?: string; balance: number; unit: string; shared: boolean };
   const SEP = "\u0001";
   /** ชื่อกลุ่มแบบสั้น (ตัดวงเล็บท้าย) — ใช้เป็นชื่อฐานของ SKU ที่จะสร้าง สูตรเดียวกับฝั่งเซิร์ฟเวอร์ */
@@ -5929,7 +5929,8 @@ function SplitModal({
 
   const toggleGroup = (i: number) => {
     setErr("");
-    setSel((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].slice(-2)));
+    // 🔗 กลุ่มคลังกลางจับคู่กับกลุ่มอื่นไม่ได้ (ลิงก์อยู่ที่คลัง ไม่ใช่ที่สินค้า) → เลือกแล้วเป็นกลุ่มเดียว
+    setSel((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : groups?.[i]?.preset || cur.some((x) => groups?.[x]?.preset) ? [i] : [...cur, i].slice(-2)));
     setCondGroup(-1);
     setCondChoices(new Set());
   };
@@ -6035,7 +6036,7 @@ function SplitModal({
                     return (
                       <button key={`${x.optionIndex}-${x.label}`} type="button" aria-pressed={at >= 0} onClick={() => toggleGroup(i)} className={chip(at >= 0)}>
                         {at >= 0 && sel.length > 1 ? `${at + 1}. ` : ""}
-                        {x.rate ? "🏷 " : ""}
+                        {x.rate ? "🏷 " : x.preset ? "🔗 " : ""}
                         {x.label} <span className={at >= 0 ? "text-white/60" : "text-slate-400"}>{x.choices.length}</span>
                       </button>
                     );
@@ -6046,7 +6047,9 @@ function SplitModal({
                     ? `สร้างตามคู่ที่ลูกค้าเลือกได้จริง ${gB!.label} × ${gA!.label} = ${rows.length} แบบ${hiddenPairs ? ` (ตัดคู่ที่กฎตัวเลือกไม่อนุญาตออก ${hiddenPairs} คู่)` : ""} — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
                     : gA?.rate
                       ? "ของบนชั้นต่างกันตามเรทที่ลูกค้าเลือก (เช่น ขวด 20 ml กับ 40 ml) · เรทตัวแทนใช้ของชิ้นเดียวกับเรทปกติให้เอง"
-                      : "เลือกกลุ่มที่ 2 ด้วย ถ้าของต่างกันทั้ง 2 อย่าง (เช่น ทรง และ สี)"}
+                      : gA?.preset
+                        ? `🔗 ชุดตัวเลือกจากคลังกลาง ใช้ร่วม ${fmtN(gA.usedBy ?? 0)} สินค้า — แยกแล้วผูกที่คลัง ทุกสินค้าที่ใช้ชุดนี้ตัดสต๊อกตามทันที · ชื่อตัวเลือกแก้ที่ /admin/options · จับคู่กับกลุ่มอื่นไม่ได้`
+                        : "เลือกกลุ่มที่ 2 ด้วย ถ้าของต่างกันทั้ง 2 อย่าง (เช่น ทรง และ สี)"}
                 </p>
               </div>
 
@@ -6126,11 +6129,11 @@ function SplitModal({
                               <span className="flex min-w-0 flex-wrap items-center gap-x-1 text-[13px] font-medium text-slate-900" onClick={(e) => e.stopPropagation()}>
                                 {r.b && gB && (
                                   <>
-                                    <InlineName text={r.b.name} canEdit={!gB.rate && !r.done} onSave={(v) => renameChoice(gB, r.b!.name, v)} onReject={setErr} />
+                                    <InlineName text={r.b.name} canEdit={!gB.rate && !gB.preset && !r.done} onSave={(v) => renameChoice(gB, r.b!.name, v)} onReject={setErr} />
                                     <span className="text-slate-400">·</span>
                                   </>
                                 )}
-                                {gA && <InlineName text={r.a.name} canEdit={!gA.rate && !r.done} onSave={(v) => renameChoice(gA, r.a.name, v)} onReject={setErr} />}
+                                {gA && <InlineName text={r.a.name} canEdit={!gA.rate && !gA.preset && !r.done} onSave={(v) => renameChoice(gA, r.a.name, v)} onReject={setErr} />}
                               </span>
                               {r.done ? (
                                 <span className="block truncate text-[11px] text-slate-400">มี SKU แล้ว: {r.done}</span>
@@ -6265,7 +6268,7 @@ function SplitModal({
                 <p className="mt-2 text-[11px] text-slate-400">จุดสั่งซื้อและรอของกี่วัน ไม่ตั้งตรงนี้ — แต่ละตัวไม่เท่ากัน เปิดลิ้นชักของแต่ละตัวแล้วตั้งทีหลัง</p>
               </div>
 
-              {!pairMode && !manualOnly && condGroups.length > 0 && (
+              {!pairMode && !manualOnly && !gA?.preset && condGroups.length > 0 && (
                 <div className="rounded-xl border border-slate-200 px-3 py-2">
                   <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-slate-800">
                     <input type="checkbox" className="h-[18px] w-[18px] accent-slate-900" checked={extraOn} onChange={(e) => setExtraOn(e.target.checked)} />

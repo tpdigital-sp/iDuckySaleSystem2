@@ -5,10 +5,11 @@ import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { allStockCodes, deleteStockItem, listStockItems, saveStockItem, setNoStock } from "@/lib/server/stock";
 import { snapshotRevision } from "@/lib/server/product-revisions";
-import { invalidateProductsSlim } from "@/lib/server/products-slim";
+import { getProductsSlim, invalidateProductsSlim } from "@/lib/server/products-slim";
 import { normName, skuPage } from "@/lib/stock-match";
 import { RATE_OPTION_INDEX, rateStockOption, writeRateStock } from "@/lib/stock-rate";
 import type { Product, ProductOption } from "@/lib/products";
+import type { OptionPreset } from "@/lib/option-presets";
 
 export const runtime = "nodejs";
 
@@ -67,16 +68,32 @@ export async function GET(req: Request) {
   const p = row?.data as Product | undefined;
   if (!p?.name) return NextResponse.json({ error: "ไม่พบสินค้านี้" }, { status: 404 });
   const skuName = new Map(items.map((i) => [i.id, i.name]));
+  /**
+   * 🔗 กลุ่มที่ลิงก์คลังตัวเลือกกลาง (ตะขอ preset-3 ที่พวงกุญแจทุกตัวใช้) — เดิมถูกตัดทิ้ง (ตั้งใจให้ไปผูกที่หน้าผูกคลัง)
+   * เจ้าของร้านเปิดแยกสต๊อกพวงกุญแจแล้วไม่เจอรายการตะขอ 31 ตัว (1 ต.ค. 69) → โชว์ด้วย โดยอ่าน choices สดจากแถวคลัง (ไม่ใช่สำเนาในสินค้า)
+   * แยกแล้วเขียน stockItemId ลง "คลังกลาง" = มีผลกับทุกสินค้าที่ใช้ชุดนั้น (ทางเดียวกับหน้าผูกคลัง)
+   */
+  const presetIds = [...new Set((p.options ?? []).map((o) => o.presetId).filter((x): x is string => !!x))];
+  const presetRows = presetIds.length ? (await db.from("products").select("id,data").in("id", presetIds.map((id) => `__preset_${id}`))).data ?? [] : [];
+  const presetOf = new Map(presetRows.map((r) => [String(r.id).replace(/^__preset_/, ""), r.data as OptionPreset]));
+  const usedBy = new Map<string, number>();
+  if (presetIds.length) {
+    const slim = await getProductsSlim();
+    for (const id of presetIds) usedBy.set(id, slim.products.filter((r) => (r.data.options ?? []).some((o: ProductOption) => o.presetId === id)).length);
+  }
 
   // กลุ่มที่แยกได้: ของสินค้าเอง (ไม่ลิงก์คลังกลาง — พวกนั้นผูกที่หน้าผูกคลัง) · เป็นตัวเลือกให้เลือก ไม่ใช่ช่องกรอก · มีค่าที่มีชื่อ
   // + "เรทราคา" เป็นกลุ่มเสมือนนำหน้า (มีเมื่อสินค้ามีหลายเรท) — เรทตัวแทนไม่โชว์ เพราะยืม SKU ของเรท public คู่ของมันตอนตัด
   const rateGroup = rateStockOption(p.priceRates);
   const groups = [...(rateGroup && (rateGroup.choices ?? []).length > 1 ? [{ o: rateGroup, optionIndex: RATE_OPTION_INDEX }] : []), ...(p.options ?? []).map((o, optionIndex) => ({ o, optionIndex }))]
-    .filter(({ o, optionIndex }) => optionIndex === RATE_OPTION_INDEX || (!o.presetId && o.display !== "input" && (o.choices ?? []).some((c) => c.name?.trim())))
+    .map(({ o, optionIndex }) => (o.presetId && presetOf.get(o.presetId) ? { o: { ...o, label: presetOf.get(o.presetId)!.label, choices: presetOf.get(o.presetId)!.choices }, optionIndex } : { o, optionIndex }))
+    .filter(({ o, optionIndex }) => optionIndex === RATE_OPTION_INDEX || (o.display !== "input" && (o.choices ?? []).some((c) => c.name?.trim())))
     .map(({ o, optionIndex }) => ({
       optionIndex,
       label: o.label,
       rate: optionIndex === RATE_OPTION_INDEX,
+      // 🔗 คลังตัวเลือกกลาง — แยกแล้วผูกที่คลัง มีผลทุกสินค้าที่ใช้ชุดนี้ · ของชิ้นที่ 2/โหมดคู่/แก้ชื่อ ทำที่คลังไม่ได้
+      ...(o.presetId ? { preset: true, presetId: o.presetId, usedBy: usedBy.get(o.presetId) ?? 0 } : {}),
       // เงื่อนไขแสดงกลุ่ม (showWhen ฯลฯ) — ให้หน้าจอตัดคู่ที่กลุ่มนี้ไม่โชว์ทิ้ง (เช่น กลุ่มสีที่มีเฉพาะตอนเลือกทรงหัวใจ)
       show: [o.showWhen, o.showWhenAlso, ...(o.showWhenAll ?? [])].filter((s): s is { label: string; choices: string[] } => !!s?.label && !!s.choices?.length),
       showAny: (o.showWhenAny ?? []).filter((s): s is { label: string; choices: string[] } => !!s?.label && !!s.choices?.length),
@@ -144,6 +161,12 @@ export async function POST(req: Request) {
   if (!p?.name) return NextResponse.json({ error: "ไม่พบสินค้านี้" }, { status: 404 });
   const opts: ProductOption[] = p.options ?? [];
   const rateGroup = rateStockOption(p.priceRates);
+  /** 🔗 กลุ่มที่ขอแยกเป็นคลังตัวเลือกกลาง → ใช้ choices สดจากแถวคลัง และเขียนกลับที่คลัง (ดู GET) */
+  const presetId = typeof optionIndex === "number" && optionIndex >= 0 ? opts[optionIndex]?.presetId : undefined;
+  const presetRowId = presetId ? `__preset_${presetId}` : null;
+  const presetRow = presetRowId ? ((await db.from("products").select("id,data").eq("id", presetRowId).maybeSingle()).data?.data as OptionPreset | undefined) : undefined;
+  if (presetId && !presetRow) return NextResponse.json({ error: "ไม่พบคลังตัวเลือกกลางของกลุ่มนี้ — อาจถูกลบไปแล้ว" }, { status: 404 });
+  if (presetRow && opts[optionIndex!]) opts[optionIndex!] = { ...opts[optionIndex!], label: presetRow.label, choices: presetRow.choices };
   /** กลุ่มตามลำดับ — -1 = กลุ่มเสมือน "เรทราคา" */
   const groupAt = (i: number): ProductOption | undefined => (i === RATE_OPTION_INDEX ? rateGroup ?? undefined : opts[i]);
   /** ทุกกลุ่มพร้อมลำดับ (ไว้เช็คเงื่อนไข/ลิงก์ที่มีอยู่) */
@@ -154,8 +177,10 @@ export async function POST(req: Request) {
       ? { ...p, priceRates: writeRateStock(p.priceRates ?? [], (chs) => f((chs ?? []) as Ch[]) as ProductOption["choices"]) }
       : { ...p, options: opts.map((o, j) => (j !== i ? o : { ...o, choices: f((o.choices ?? []) as Ch[]) as ProductOption["choices"] })) };
   const opt = groupAt(optionIndex);
-  if (!opt || opt.label !== label || opt.presetId)
+  if (!opt || opt.label !== label)
     return NextResponse.json({ error: "กลุ่มตัวเลือกเปลี่ยนไปแล้ว — ปิดแล้วเปิดใหม่" }, { status: 409 });
+  if (presetRow && body.pair) return NextResponse.json({ error: "กลุ่มคลังตัวเลือกกลางแยกได้ทีละกลุ่ม (จับคู่กับกลุ่มอื่นไม่ได้ — ลิงก์อยู่ที่คลัง ไม่ใช่ที่สินค้า)" }, { status: 400 });
+  if (presetRow && body.extra?.name?.trim()) return NextResponse.json({ error: "คลังตัวเลือกกลางยังตั้งของชิ้นที่ 2 แบบมีเงื่อนไขไม่ได้ — ต้องตั้งที่ตัวเลือกของสินค้าเอง" }, { status: 400 });
 
   const items = await listStockItems();
   const oldSkus = items.filter((i) => (i.productIds ?? []).includes(productId));
@@ -173,7 +198,8 @@ export async function POST(req: Request) {
     packUnit: dft.packUnit?.trim() || tpl?.packUnit,
     packSize: fin(dft.packSize) ?? tpl?.packSize,
     manualOnly: body.manualOnly ? true : undefined,
-    groupByOption: body.groupByOption && !body.manualOnly ? true : undefined,
+    // 🔗 กลุ่มคลังกลาง = ใช้ร่วมหลายสินค้าโดยนิยาม → หัวกลุ่มหน้าคลังเป็นชื่อกลุ่มตัวเลือก (ไม่ใช่ชื่อสินค้าตัวที่เปิดแยก)
+    groupByOption: (body.groupByOption || !!presetRow) && !body.manualOnly ? true : undefined,
   };
   const baseCode = tpl?.code ?? `P-${productId.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toUpperCase()}`;
   const usedCodes = await allStockCodes(); // รวมตัวที่ลบแล้ว — กันรหัสซ้ำของเก่า
@@ -252,7 +278,7 @@ export async function POST(req: Request) {
     const bi = body.pair.optionIndex;
     const bl = body.pair.label;
     const optB = typeof bi === "number" ? groupAt(bi) : undefined;
-    if (typeof bi !== "number" || bi === optionIndex || !optB || optB.label !== bl || optB.presetId)
+    if (typeof bi !== "number" || bi === optionIndex || !optB || optB.label !== bl || optB.presetId || presetRow)
       return NextResponse.json({ error: "กลุ่มที่ 2 เปลี่ยนไปแล้ว — ปิดแล้วเปิดใหม่" }, { status: 409 });
     const bNames = new Set(((optB.choices ?? []) as Ch[]).map((c) => c.name));
     const combos = (body.combos ?? []).filter(([a, b]) => want.has(a) && bNames.has(b));
@@ -383,9 +409,17 @@ export async function POST(req: Request) {
         };
       })
     );
-    await snapshotRevision(db, productId, p, g.actor, "save");
-    const { error } = await db.from("products").update({ data: next }).eq("id", productId);
-    if (error) throw new Error(error.message);
+    if (presetRow && presetRowId) {
+      // 🔗 ผูกที่คลังตัวเลือกกลาง — choices ของแถว __preset_ (สินค้าทุกตัวที่ลิงก์คลังนี้ตัดสต๊อกตามทันที)
+      const nextPreset: OptionPreset = { ...presetRow, choices: (next.options[optionIndex] as ProductOption).choices };
+      await snapshotRevision(db, presetRowId, presetRow, g.actor, "save");
+      const { error } = await db.from("products").update({ data: nextPreset }).eq("id", presetRowId);
+      if (error) throw new Error(error.message);
+    } else {
+      await snapshotRevision(db, productId, p, g.actor, "save");
+      const { error } = await db.from("products").update({ data: next }).eq("id", productId);
+      if (error) throw new Error(error.message);
+    }
     invalidateProductsSlim();
   } catch (e) {
     // เขียนสินค้าไม่สำเร็จ → เก็บ SKU ที่เพิ่งสร้างทิ้ง ไม่ให้ค้างเป็นตัวลอยในคลัง (ตัวที่หยิบของนำเข้ามาใช้ ไม่ลบ)
@@ -393,5 +427,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, created, ...(await retireOld()) });
+  // 🔗 แยกตามคลังกลาง (ตะขอ) ไม่ใช่ "วัสดุหลัก" ของสินค้า — SKU รวมเดิมของสินค้า (แผ่นอะคริลิค) ต้องอยู่ต่อ ไม่ปลด
+  return NextResponse.json({ ok: true, created, ...(presetRow ? { preset: true, usedBy: presetRow.label, removed: [], kept: [] } : await retireOld()) });
 }
