@@ -1207,10 +1207,11 @@ export default function StockPage() {
         //    SKU เดียวใช้กับหลายสินค้าได้ (พวงกุญแจ/สแตนดี้/กรอบรูปใช้แผ่นเดียวกัน) มาอยู่กลุ่มเดียวกันไม่โผล่ซ้ำใต้ทุกสินค้า
         if (it.groupByOption) {
           const cs = us.filter((u): u is Extract<StockUsage, { kind: "choice" }> => u.kind === "choice");
-          const labels = [...new Set(cs.map((u) => shortOptionLabel(u.label)))];
+          // ลิงก์ที่คลังกลางก็เป็น "กลุ่มตัวเลือก" ได้ (ตะขอ) — ไม่งั้น SKU ที่ผูกแค่คลังตกไปกลุ่ม "ใช้ร่วมหลายสินค้า" แทนกลุ่มชื่อตัวเลือก
+          const labels = [...new Set([...cs.map((u) => shortOptionLabel(u.label)), ...us.filter((u) => u.kind === "preset").map((u) => shortOptionLabel(u.label))])];
           for (const lb of labels)
             put(
-              { key: `o:${lb}`, kind: 1, title: lb, sub: "วัสดุกลางตามตัวเลือก — ใช้ร่วมได้หลายสินค้า", img: cs.find((u) => shortOptionLabel(u.label) === lb)?.img, optionLabel: lb },
+              { key: `o:${lb}`, kind: 1, title: lb, sub: "วัสดุกลางตามตัวเลือก — ใช้ร่วมได้หลายสินค้า", img: us.find((u) => u.kind === "preset" && shortOptionLabel(u.label) === lb && u.img)?.img ?? cs.find((u) => shortOptionLabel(u.label) === lb)?.img, optionLabel: lb },
               it,
             );
           if (labels.length) continue;
@@ -1956,15 +1957,21 @@ export default function StockPage() {
                   const plain: Item[] = [];
                   for (const r of list) {
                     const us = (live[r.id] ?? []).filter((u): u is Extract<StockUsage, { kind: "choice" }> => u.kind === "choice" && shortOptionLabel(u.label) === optionLabel);
-                    if (!us.length) {
+                    // ลิงก์ที่คลังกลาง (ตะขอ) — ตัวเลือกเดียวกัน ใช้กับหลายสินค้า · ภาพตัวเลือกจากคลังมาก่อน (ลิงก์ในสินค้ากลุ่ม B ให้รูปปกสินค้า = "เป็นตะขอ" ผิดรูป 1 ต.ค. 69)
+                    const pus = (live[r.id] ?? []).filter((u): u is Extract<StockUsage, { kind: "preset" }> => u.kind === "preset" && shortOptionLabel(u.label) === optionLabel);
+                    if (!us.length && !pus.length) {
                       plain.push(r);
                       continue;
                     }
-                    const u = us[0];
-                    const h = byChoice.get(u.choice) ?? byChoice.set(u.choice, { choice: u.choice, img: u.img, products: new Set(), kids: [] }).get(u.choice)!;
+                    const u = (us[0] ?? pus[0])!;
+                    const img = pus.find((x) => x.img)?.img ?? us.find((x) => x.img)?.img;
+                    const h = byChoice.get(u.choice) ?? byChoice.set(u.choice, { choice: u.choice, img, products: new Set(), kids: [] }).get(u.choice)!;
+                    if (!h.img && img) h.img = img;
                     for (const x of us) h.products.add(x.productName);
-                    const conds = [...new Set(us.map((x) => x.cond).filter((c): c is string => !!c))];
-                    const per = us.find((x) => x.per && x.per !== 1)?.per;
+                    for (const x of pus) for (const nm of x.usedByNames ?? []) h.products.add(nm);
+                    const all = [...pus, ...us];
+                    const conds = [...new Set(all.map((x) => x.cond).filter((c): c is string => !!c))];
+                    const per = all.find((x) => x.per && x.per !== 1)?.per;
                     const times = per ? ` (×${per})` : "";
                     h.kids.push({ item: r, cond: conds.length > 0, why: conds.length ? `ตัดเมื่อ ${conds.join(" · ")}${times}` : `ตัดทุกครั้งที่เลือก ${u.choice}${times}` });
                   }
@@ -4858,7 +4865,12 @@ function LinkCell({
             main: `${here ? "ทุกออเดอร์ของสินค้านี้" : `ทุกออเดอร์ของ ${u.productName}`}${u.per && u.per > 1 ? ` ×${u.per}` : ""}`,
             sub: u.per && u.per > 1 ? "งานขายเป็นเซ็ต — ขาย 1 ที่ ตัดหลายหน่วย" : "",
           };
-    if (u.kind === "preset") return { main: `${u.label} = ${u.choice}`, sub: `${u.cond ? `เฉพาะเมื่อ ${u.cond} · ` : ""}คลังกลาง · ใช้กับ ${u.usedBy} สินค้า` };
+    if (u.kind === "preset")
+      return {
+        main: `${u.label} = ${u.choice}`,
+        // ชื่อสินค้าที่ใช้คลังนี้ (เจ้าของร้านขอเห็น 1 ต.ค. 69) — เกิน 6 ตัวย่อเป็น +N
+        sub: `${u.cond ? `เฉพาะเมื่อ ${u.cond} · ` : ""}คลังกลาง · ใช้กับ ${u.usedBy} สินค้า${u.usedByNames?.length ? `: ${u.usedByNames.slice(0, 6).join(", ")}${u.usedByNames.length > 6 ? ` +${u.usedByNames.length - 6}` : ""}` : ""}`,
+      };
     return {
       main: `${here ? "" : `${u.productName} · `}${u.label} = ${u.choice}${u.per !== 1 ? ` (×${u.per})` : ""}`,
       sub: u.cond ? `เฉพาะเมื่อ ${u.cond}` : "",
@@ -4969,7 +4981,7 @@ function UsagePanel({
   };
   const where = (t: StockUsage | StockSuggest) =>
     t.kind === "preset"
-      ? `คลังกลาง “${t.label}” · ${t.usedBy} สินค้า${"cond" in t && t.cond ? ` · เฉพาะเมื่อ ${t.cond}` : ""}`
+      ? `คลังกลาง “${t.label}” · ${t.usedBy} สินค้า${"usedByNames" in t && t.usedByNames?.length ? `: ${t.usedByNames.slice(0, 6).join(", ")}${t.usedByNames.length > 6 ? ` +${t.usedByNames.length - 6}` : ""}` : ""}${"cond" in t && t.cond ? ` · เฉพาะเมื่อ ${t.cond}` : ""}`
       : t.kind === "choice"
         ? `${t.productName} · ${t.label}${"cond" in t && t.cond ? ` · เฉพาะเมื่อ ${t.cond}` : ""}`
         : "";

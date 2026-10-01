@@ -91,7 +91,7 @@ export async function GET(req: Request) {
           per: c.stockQtyPer ?? 1,
           img: c.imageSrc,
           usedBy: users.length,
-          usedByNames: users.slice(0, 4).map((u) => u.p.name),
+          usedByNames: users.map((u) => u.p.name),
         });
       else if (users.length)
         open.push({ n: normName(c.name), idNorm: "", s: { kind: "preset", presetId: ps.id, label: ps.label, choice: c.name, img: c.imageSrc, usedBy: users.length } });
@@ -106,7 +106,7 @@ export async function GET(req: Request) {
             per: l.per ?? 1,
             img: c.imageSrc,
             usedBy: users.length,
-            usedByNames: users.slice(0, 4).map((u) => u.p.name),
+            usedByNames: users.map((u) => u.p.name),
             extra: true,
             cond: (l.when ?? []).map((w) => `${w.label} = ${w.choices.join(" / ")}`).join(" และ ") || undefined,
           });
