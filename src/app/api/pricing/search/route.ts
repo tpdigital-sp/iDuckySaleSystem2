@@ -178,7 +178,8 @@ async function answer(req: Request, body: Record<string, unknown>) {
     .map((c) => String(c ?? "").trim())
     .filter(Boolean)
     .slice(-5);
-  const u: Understanding | null = body.mode ? null : await understand(query, context);
+  // 🧠 บทสนทนาทั้งสองฝั่ง [{role, text, at}] (1 ต.ค. 69) — ชั้นเข้าใจคำถามเห็นคำตอบของบอทด้วย + ตัดรอบสนทนาเก่าออกเอง
+  const u: Understanding | null = body.mode ? null : await understand(query, context, body.history);
 
   let mode: "price" | "spec" | "minqty" | "mix" = pickMode(query, body.mode);
   let searchQuery = query;
@@ -216,7 +217,7 @@ async function answer(req: Request, body: Record<string, unknown>) {
         ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
         : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
       ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
-    } else if ((u.intent === "price" || u.intent === "spec") && u.ids.length && !u.broad && !(qty || u.qty) && /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|บวกเท่าไหร่|ค่าเพิ่ม|add.?on|ของเสริม|ได้ไหม|ได้มั้ย|มีไหม|มีมั้ย/i.test(query)) {
+    } else if ((u.intent === "price" || u.intent === "spec") && u.ids.length && !u.broad && !(qty || u.qty) && /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|บวกเท่าไหร่|ค่าเพิ่ม|add.?on|ของเสริม|ได้ไหม|ได้มั้ย|มีไหม|มีมั้ย|ด้วยไหม|ด้วยมั้ย|ใช่ไหม|ใช่มั้ย/i.test(query)) {
       // ถามเรื่อง "ส่วนเสริม/ทำได้ไหม" ของสินค้าที่รู้ตัว (เคลือบฟอยล์ได้ไหม เพิ่มเท่าไหร่ · พิมพ์ 2 ด้านเพิ่มเท่าไหร่)
       // → ตอบจากหน้าสินค้า (มีราคาเพิ่มระบุไว้) แทนการเทตารางราคาหลัก/รายการตัวเลือกทั้งหมด (LLM สลับ price/spec ไม่นิ่ง จึงรับทั้งคู่)
       ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: false });
@@ -240,6 +241,8 @@ async function answer(req: Request, body: Record<string, unknown>) {
       // price/spec/minqty — LLM ชี้สินค้ามาก็ใช้ ไม่ชี้ (แต่เขียนคำถามใหม่ให้ครบแล้ว เช่น "ที่ติดรถยนต์แบบกันฝนมีแบบไหนบ้าง")
       // ก็เอาคำถามฉบับสมบูรณ์ไปค้นต่อตามปกติ — เคยตั้งให้ skip แล้วบอทเงียบทั้งที่ตีความถูก (24 ก.ย. 69)
       mode = u.intent === "spec" ? "spec" : u.intent === "minqty" ? "minqty" : u.intent === "mix" ? "mix" : "price";
+      // บอกจำนวนที่จะสั่งมาด้วย ("สีขาวขุ่น 5cm 30 ชิ้น") = ต้องการราคา แม้ LLM จะตีเป็น spec (1 ต.ค. 69)
+      if (mode === "spec" && (qty || u.qty) && u.ids.length === 1) mode = "price";
       if (u.ids.length) pick = { ids: u.ids, broad: u.broad };
       if (!qty && u.qty) qty = u.qty;
       // ใช้คำถามฉบับสมบูรณ์ (มีชื่อสินค้าจากบริบท) ไว้เลือกคอลัมน์/จับคู่ — แต่คงจำนวนจากข้อความจริง

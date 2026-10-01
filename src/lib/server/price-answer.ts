@@ -523,22 +523,68 @@ export function fixTypos(text: string): string {
 
 const understandCache = new Map<string, { at: number; u: Understanding }>();
 
-export async function understand(query: string, context: string[] = []): Promise<Understanding | null> {
+/** หนึ่งข้อความในบทสนทนา (ทั้งสองฝั่ง) ที่บอทปลายทางส่งมา — `at` ไว้ตัดรอบสนทนา */
+export interface HistoryTurn {
+  role: "user" | "assistant";
+  text: string;
+  at?: string | number;
+}
+/** เงียบเกินเท่านี้ = คนละรอบสนทนา (ข้อความเก่ากว่านั้นไม่เอามาปน: shikishi เมื่อวาน vs ผ้าห่มวันนี้) */
+export const SESSION_GAP_MS = 6 * 3600_000;
+/** เอาเฉพาะรอบสนทนาปัจจุบัน (ไล่จากท้าย หยุดเมื่อเจอช่องว่าง > SESSION_GAP_MS) · ไม่มีเวลา = ถือว่ารอบเดียวกัน */
+export function currentSession(turns: HistoryTurn[], max = 14): HistoryTurn[] {
+  const out: HistoryTurn[] = [];
+  // เริ่มเทียบจาก "ตอนนี้" — ข้อความล่าสุดเก่ากว่า 6 ชม. (ลูกค้ากลับมาทักใหม่) = ไม่เอารอบเก่ามาปนเลย
+  let prevAt: number | null = Date.now();
+  for (let i = turns.length - 1; i >= 0 && out.length < max; i--) {
+    const t = turns[i];
+    const at = t.at == null ? NaN : typeof t.at === "number" ? t.at : Date.parse(String(t.at));
+    if (prevAt != null && Number.isFinite(at) && prevAt - at > SESSION_GAP_MS) break;
+    if (Number.isFinite(at)) prevAt = at;
+    out.unshift(t);
+  }
+  return out;
+}
+function normHistory(history: unknown): HistoryTurn[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .map((h): HistoryTurn | null => {
+      if (!h || typeof h !== "object") return null;
+      const o = h as Record<string, unknown>;
+      const role = /assistant|bot|shop|admin|แอดมิน|ผู้ช่วย/i.test(String(o.role ?? "")) ? "assistant" : "user";
+      const text = fixTypos(String(o.text ?? o.content ?? o.message ?? "").trim()).slice(0, 400);
+      if (!text) return null;
+      return { role, text, at: (o.at as string | number | undefined) ?? undefined };
+    })
+    .filter((h): h is HistoryTurn => !!h);
+}
+
+export async function understand(query: string, context: string[] = [], history: unknown = undefined): Promise<Understanding | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   const q = fixTypos(query.trim());
   if (!apiKey || !q) return null;
-  const ctx = context.map((c) => fixTypos(String(c ?? "").trim())).filter(Boolean).slice(-5);
-  const key = `${ctx.join("\u0001")}\u0002${q}`;
+  // 🧠 บทสนทนาทั้งสองฝั่งของรอบนี้ (ถ้าบอทส่งมา) — ข้อความฝั่งลูกค้าล้วน (context) เป็นทางสำรอง
+  const turns = currentSession(normHistory(history)).filter((t) => t.text !== q);
+  const ctx = turns.length
+    ? turns.filter((t) => t.role === "user").map((t) => t.text).slice(-5)
+    : context.map((c) => fixTypos(String(c ?? "").trim())).filter(Boolean).slice(-5);
+  // ข้อความที่ใช้ยึดสินค้าจากบทสนทนา (ทั้งสองฝั่ง: บอทเพิ่งเสนอ "แม่เหล็กอะคริลิค" แล้วลูกค้าถาม "ตัวนั้น 50 ชิ้น")
+  const anchorMsgs = turns.length ? turns.map((t) => t.text) : ctx;
+  const key = `${turns.map((t) => `${t.role}:${t.text}`).join("\u0001")}\u0003${ctx.join("\u0001")}\u0002${q}`;
   const hit = understandCache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.u;
 
   const items = await catalog().catch(() => []);
   if (!items.length) return null;
   const list = items.map((it) => `- ${it.name}`).join("\n");
-  const ctxText = ctx.length ? ctx.map((c, i) => `${i + 1}. ${c}`).join("\n") : "(ไม่มี)";
+  const ctxText = turns.length
+    ? turns.map((t) => `${t.role === "user" ? "ลูกค้า" : "แอดมิน"}: ${t.text.replace(/\n+/g, " ")}`).join("\n")
+    : ctx.length
+      ? ctx.map((c, i) => `${i + 1}. ${c}`).join("\n")
+      : "(ไม่มี)";
   const prompt = `คุณเป็นแอดมินร้านพิมพ์/ผลิตของพรีเมียมตามสั่ง (iDucky) อ่านข้อความล่าสุดของลูกค้าให้เข้าใจ "เจตนา" จริง ๆ แล้วสรุปเป็น JSON เท่านั้น
 
-ข้อความก่อนหน้าของลูกค้า (เก่า→ใหม่):
+${turns.length ? "บทสนทนารอบนี้ (เก่า→ใหม่ · แอดมิน = บอทของร้านที่ตอบไปแล้ว):" : "ข้อความก่อนหน้าของลูกค้า (เก่า→ใหม่):"}
 ${ctxText}
 
 ข้อความล่าสุด: "${q}"
@@ -561,6 +607,7 @@ ${list}
 - other = อื่น ๆ
 กติกา:
 - ถ้าข้อความล่าสุดพูดต่อจากบริบท (เช่น "เอาแบบกันฝนค่ะ" หลังถาม "ที่ติดรถยนต์") ให้ใช้บริบทหาสินค้า แล้วตั้ง intent ตามสิ่งที่ถามจริง (price/spec) ไม่ใช่ followup
+- ลูกค้าอ้างลำดับ ("แบบที่ 2" "ตัวแรก" "อันสุดท้าย" "ตัวนั้น") = สินค้าลำดับนั้นในรายการที่แอดมินเสนอล่าสุด → products ใส่ตัวเดียว broad=false
 - products ต้องคัดลอกชื่อจากรายการตรงตัวอักษร เลือกเฉพาะที่ลูกค้าหมายถึงจริง ไม่ชัดเจน = [] · หมวดกว้าง (พวงกุญแจ/สแตนดี้) = ใส่ทุกตัวที่เข้าข่าย (สูงสุด 6) และ broad=true
 - ⚠️ ลูกค้าระบุ "ชนิด/วัสดุ/แบบ" เฉพาะที่ร้านไม่มีในรายการ (เช่น "พวงกุญแจหนังปัก" แต่ร้านมีแต่พวงกุญแจอะคริลิค/หมอน) → notInCatalog=true, requested="พวงกุญแจหนังปัก", products=[] และใส่ alternatives = สินค้าที่ใกล้เคียงที่สุด ไม่เกิน 3 (เช่น กระเป๋าใส่พวงกุญแจ งานปัก, อาร์มปัก) ห้ามยัดเมนูทั้งหมวดให้แทน
 - ลูกค้าพูดถึงที่ใช้งาน (รถยนต์ ตู้เย็น โต๊ะ) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน · ชื่ออังกฤษให้จับตามความหมาย (ที่รองแก้ว = Coaster, แก้วเยติ = Tumbler)
@@ -613,18 +660,48 @@ ${list}
       // เข้มกว่า resolve(): ต้องมีตัวอักษรร่วมกับชื่อสินค้าติดกัน ≥5 ("กระดุม" vs "กระดาษ" ร่วมแค่ "กระด" ไม่นับ)
       // และเลือกตัวที่ "คำในชื่อ" ตรงมากที่สุดก่อน (ผ้าห่ม hoodie → BLANKET HOODIE / ผ้าห่มมีฮู้ด ตรง 2 คำ ชนะ "ผ้าห่ม" ที่ตรง 1 คำ)
       // นับเฉพาะคำใน "ชื่อ" (ไม่เอา slug: card/new/… ทำให้การ์ดสเปรย์ชนะโฟโต้การ์ด) · ชื่อเต็มโผล่ในข้อความ = ตัวนั้นชนะคู่เสมอ
+      // กติกา: ชื่อเต็มโผล่ ≥2 ตัว = ข้อความเป็น "รายการ" (เมนูที่บอทเสนอ) เอาทุกตัว · ชื่อเต็มโผล่ 1 ตัว = ตัวนั้น เว้นแต่มีตัวที่
+      // "คำในชื่อ" ตรงมากกว่า (ผ้าห่ม hoodie → BLANKET HOODIE / ผ้าห่มมีฮู้ด ชนะ "ผ้าห่ม") · ไม่มีชื่อเต็ม = ตัวที่คำในชื่อตรงมากสุด
       const top = (text: string) => {
         const tn = norm(text);
         const r = resolve(text, items).filter((x) => lcsLen(tn, norm(x.item.name)) >= 5);
         if (!r.length) return [] as Lite[];
         const toks = (it: Lite) => it.name.split(/[\s()[\]{}/|,+·–—-]+/).map(norm).filter((t) => t.length >= 3);
-        const tm = (it: Lite) => toks(it).filter((t) => lcsLen(tn, t) >= 4).length;
-        const maxTm = Math.max(...r.map((x) => tm(x.item)));
-        const r2 = r.filter((x) => tm(x.item) === maxTm).filter((x, _, arr) => x.score >= arr[0].score * 0.7);
-        const exact = r2.filter((x) => tn.includes(norm(x.item.name)));
-        return (exact.length ? exact : r2).map((x) => x.item);
+        const cov = (it: Lite) => toks(it).reduce((sum, t) => { const n = lcsLen(tn, t); return sum + (n >= 4 ? n : 0); }, 0);
+        const exact = r.filter((x) => tn.includes(norm(x.item.name)));
+        if (exact.length >= 2) return exact.map((x) => x.item);
+        if (exact.length === 1) {
+          const e = exact[0];
+          const better = r.filter((x) => cov(x.item) > cov(e.item));
+          if (!better.length) return [e.item];
+          const maxCov = Math.max(...better.map((x) => cov(x.item)));
+          return better.filter((x) => cov(x.item) === maxCov).map((x) => x.item);
+        }
+        const maxCov = Math.max(...r.map((x) => cov(x.item)));
+        return r.filter((x) => cov(x.item) === maxCov).filter((x, _, arr) => x.score >= arr[0].score * 0.7).map((x) => x.item);
       };
       const qMentions = top(q);
+      // 🔢 อ้างลำดับจากรายการที่บอทเสนอล่าสุด ("แบบที่ 2" "ตัวแรก" "อันสุดท้าย") → หยิบตามลำดับจริงในข้อความแอดมินล่าสุด (LLM นับผิดบ่อย)
+      const ord = /(?:แบบ|ตัว|อัน|ข้อ|รายการ)\s*(?:ที่\s*)?(\d+)|(ตัวแรก|อันแรก|แบบแรก)|(ตัวสุดท้าย|อันสุดท้าย|แบบสุดท้าย)/.exec(q);
+      if (ord && !qMentions.length) {
+        const lastBot = [...turns].reverse().find((t) => t.role === "assistant");
+        if (lastBot) {
+          const listed = lastBot.text
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => /^(?:•|-|\d+[.)])\s*/.test(l))
+            .map((l) => {
+              const ln = norm(l.replace(/^(?:•|-|\d+[.)])\s*/, ""));
+              return items.filter((it) => ln.startsWith(norm(it.name))).sort((x, y) => y.name.length - x.name.length)[0];
+            })
+            .filter((it): it is Lite => !!it);
+          const n = ord[2] ? 1 : ord[3] ? listed.length : Number(ord[1]);
+          if (listed.length >= 2 && n >= 1 && n <= listed.length) {
+            picked = [listed[n - 1]];
+            raw.broad = false;
+          }
+        }
+      }
       const dbgScores = (text: string) => {
         const tn = norm(text);
         return resolve(text, items)
@@ -632,13 +709,15 @@ ${list}
           .map((x) => `${x.item.name}:${x.score}:lcs${lcsLen(tn, norm(x.item.name))}:tm${nameTokens(x.item).filter((t) => lcsLen(tn, t) >= 4).length}`);
       };
       anchorDebug = { qMentions: qMentions.map((x) => x.name), anchor: [], trace: [`q=${q}`, ...dbgScores(q)] };
-      if (!qMentions.length && ctx.length) {
+      // ไม่มีทั้งชื่อสินค้าในคำถามและบทสนทนาก่อนหน้า ("ราคาเท่าไหร่" ลอย ๆ) → LLM เดาสินค้าไม่ได้ ต้องถามกลับ
+      if (!qMentions.length && !anchorMsgs.length && picked.length && !ord) picked = [];
+      if (!qMentions.length && anchorMsgs.length && !(ord && picked.length === 1)) {
         const standalone = String(raw.standalone ?? "").trim();
         // ข้อความล่าสุดที่พูดถึงสินค้าชนะ "ประโยคฉบับสมบูรณ์" ของ LLM (LLM เคยเขียน "ชิกิชิมีกระดุมแปะไหม" ทั้งที่ข้อความล่าสุดคือผ้าห่มฮู้ด)
         let anchor: Lite[] = [];
-        for (let i = ctx.length - 1; i >= 0 && !anchor.length; i--) {
-          anchor = top(ctx[i]);
-          anchorDebug.trace.push(`ctx[${i}]=${ctx[i]}`, ...dbgScores(ctx[i]));
+        for (let i = anchorMsgs.length - 1; i >= 0 && !anchor.length; i--) {
+          anchor = top(anchorMsgs[i]);
+          anchorDebug.trace.push(`msg[${i}]=${anchorMsgs[i].slice(0, 120)}`, ...dbgScores(anchorMsgs[i]));
         }
         if (!anchor.length && standalone) {
           anchor = top(standalone);
