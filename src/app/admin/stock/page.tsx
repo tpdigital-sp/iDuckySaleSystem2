@@ -73,6 +73,8 @@ interface Item {
   /** 📦 หน่วยแพ็ค: 1 packUnit = packSize หน่วยฐาน (unit) · ยอดยังเป็นหน่วยฐาน หน้าจอแปลงให้ (ดู packText) */
   packUnit?: string;
   packSize?: number;
+  /** เวลาที่เซิร์ฟเวอร์เขียนล่าสุด — ฟอร์มแก้ไขใช้รู้ว่าข้อมูลที่ถืออยู่เก่ากว่าของจริงไหม */
+  updatedAt?: string;
   /** 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว — ไม่ผูกสินค้า ไม่เตือน "ยังไม่ผูก" */
   manualOnly?: boolean;
   /** 🧩 วัสดุกลางตามตัวเลือก — มุมมองตามสินค้าจัดกลุ่มใต้ชื่อกลุ่มตัวเลือก (ประเภทอะคริลิค) ไม่ใช่ชื่อสินค้า · ยังผูก/ตัดตามตัวเลือกปกติ */
@@ -140,6 +142,31 @@ const dkSelect =
   "min-h-[44px] max-w-[13rem] flex-1 basis-[9rem] rounded-full border border-white/90 bg-white/75 px-4 text-[0.85rem] text-[color:var(--dk-navy)] outline-none focus:border-[color:var(--dk-blue)] sm:flex-none";
 
 const fmtN = (n: number) => n.toLocaleString("th-TH");
+/**
+ * 📸 รูปของ SKU "อย่างที่ฟอร์มแก้ไขจะส่ง" ถ้าไม่แตะอะไรเลย — ต้องตรงกับ fullPayload ใน ItemModal ทุกช่อง
+ * ใช้เทียบหาช่องที่เปลี่ยนจริงตอนบันทึก (ช่องไม่เปลี่ยน = ไม่ส่ง)
+ */
+function snapshotOf(it: Item): Record<string, unknown> {
+  return {
+    id: it.id,
+    name: it.name,
+    code: it.code || undefined,
+    unit: it.unit,
+    family: it.family?.trim() || undefined,
+    category: it.category || undefined,
+    reorderPoint: it.reorderPoint != null ? Number(it.reorderPoint) : undefined,
+    leadTimeDays: it.leadTimeDays != null ? Number(it.leadTimeDays) : undefined,
+    unitCost: it.unitCost ? Number(it.unitCost) : 0,
+    aliases: (it.aliases ?? []).map((x) => x.trim()).filter(Boolean),
+    productIds: it.manualOnly ? [] : (it.productIds ?? []),
+    imageUrl: (it.imageUrl ?? "").trim(),
+    part: (it.part ?? "").trim(),
+    packUnit: (it.packUnit ?? "").trim(),
+    packSize: it.packSize && it.packSize > 1 ? it.packSize : 0,
+    manualOnly: !!it.manualOnly,
+    groupByOption: it.manualOnly ? false : !!it.groupByOption,
+  };
+}
 /** ของตัวนี้นับเป็นแพ็คได้ไหม (ตั้ง packSize > 1 ไว้) */
 const hasPack = (it: { packSize?: number }) => (it.packSize ?? 0) > 1;
 /**
@@ -3994,12 +4021,57 @@ function ItemModal({
   const [manualOnly, setManualOnly] = useState(!!base?.manualOnly);
   // 🧩 วัสดุกลางตามตัวเลือก — หัวกลุ่มหน้าคลังเป็นชื่อกลุ่มตัวเลือก ไม่ใช่ชื่อสินค้า (เจ้าของร้านสั่ง 1 ต.ค. 69)
   const [groupByOption, setGroupByOption] = useState(!!base?.groupByOption);
+  /**
+   * 🔄 ฟอร์มถือ "สำเนา" ของ SKU ตอนเปิด — ถ้าเปิดขณะรายการยังเป็นของที่จำไว้ในเครื่อง (warm cache) หรือมีคนแก้จากเครื่องอื่น
+   * ช่องจะโชว์ค่าเก่า (แพ็คว่าง) แล้วกดบันทึก = ส่งค่าว่างไปทับของจริง (เจ้าของร้านเจอ 1 ต.ค. 69: ตั้งแพ็คแล้วหายทุกครั้ง)
+   * → เมื่อของจริงมาถึง (updatedAt เปลี่ยน) และยังไม่ได้แตะฟอร์ม ให้เติมค่าใหม่ทุกช่อง · แตะแล้วไม่ยุ่ง (ไม่ทับที่กำลังพิมพ์)
+   */
+  const dirty = useRef(false);
+  const seenAt = useRef(item?.updatedAt);
+  /**
+   * 📸 ค่าตั้งต้นของ SKU ในรูปเดียวกับที่ฟอร์มจะส่ง — ตอนบันทึก "ส่งเฉพาะช่องที่ต่างจากตั้งต้น" (ช่องที่ไม่แตะ = ไม่ส่ง เซิร์ฟเวอร์คงของเดิม)
+   * กันกรณีฟอร์มถือสำเนาเก่า/คนอื่นแก้พร้อมกัน แล้วกดบันทึกช่องเดียวไปทับช่องอื่นเป็นค่าว่าง (แพ็คหาย 1 ต.ค. 69)
+   */
+  const baseline = useRef<Record<string, unknown>>(item ? snapshotOf(item) : {});
+  useEffect(() => {
+    if (!item || item.updatedAt === seenAt.current) return;
+    seenAt.current = item.updatedAt;
+    if (dirty.current) return;
+    baseline.current = snapshotOf(item);
+    setNames([item.name]);
+    setCodeVal(item.code ?? "");
+    setCodeManual(!!item.code);
+    setUnit(item.unit ?? "ชิ้น");
+    setFamily(item.family ?? "");
+    setCategory(item.category ?? "");
+    setReorderPoint(item.reorderPoint != null ? String(item.reorderPoint) : "");
+    setLeadTimeDays(item.leadTimeDays != null ? String(item.leadTimeDays) : "");
+    setUnitCost(item.unitCost ? String(item.unitCost) : "");
+    setAliases((item.aliases ?? []).join(", "));
+    setProductIds(item.productIds ?? []);
+    setImageUrl(item.imageUrl ?? "");
+    setPart(item.part ?? "");
+    setPackUnit(item.packUnit ?? "");
+    setPackSize(item.packSize && item.packSize > 1 ? String(item.packSize) : "");
+    setManualOnly(!!item.manualOnly);
+    setGroupByOption(!!item.groupByOption);
+  }, [item]);
+  const markDirty = () => {
+    dirty.current = true;
+  };
 
   const u = unit.trim() || "ชิ้น";
   const pu = packUnit.trim() || "แพ็ค";
   const hasPack = !!packUnit.trim() && Number(packSize) > 1;
   const canSave = item ? !!name.trim() : nameList.length > 0;
-  const payload = (nm: string, alias?: string): Partial<Item> & { name: string } => ({
+  const payload = (nm: string, alias?: string): Partial<Item> & { name: string } => {
+    const full = fullPayload(nm, alias);
+    if (!item) return full;
+    // ของเดิม: ส่งเฉพาะช่องที่เปลี่ยนจากตั้งต้น (id/name/unit ส่งเสมอ) — ช่องที่ไม่แตะเซิร์ฟเวอร์คงค่าเดิม
+    const keep = new Set(["id", "name", "unit"]);
+    return Object.fromEntries(Object.entries(full).filter(([k, v]) => keep.has(k) || JSON.stringify(v ?? null) !== JSON.stringify(baseline.current[k] ?? null))) as Partial<Item> & { name: string };
+  };
+  const fullPayload = (nm: string, alias?: string): Partial<Item> & { name: string } => ({
       id: item?.id,
       name: nm,
       // อัตโนมัติ = ไม่ส่ง ให้เซิร์ฟเวอร์ตั้งจากชื่อ (กันซ้ำที่นั่น) · เพิ่มหลายตัวทีเดียวห้ามใช้รหัสเดียวกันทั้งชุด → ปล่อยให้ระบบตั้ง
@@ -4062,7 +4134,7 @@ function ItemModal({
    * เดิมหมวด 1 มี 8 ช่องรวมของที่นาน ๆ ใช้ (รหัส ชนิด ตระกูล ชื่อเดิม URL รูป) คนกรอกต้องไล่อ่านทุกช่องกว่าจะถึงของสำคัญ
    */
   const form = (
-        <div className={embedded ? "min-w-0 flex-1 space-y-5" : "min-w-0 flex-1 space-y-4"}>
+        <div className={embedded ? "min-w-0 flex-1 space-y-5" : "min-w-0 flex-1 space-y-4"} onChangeCapture={markDirty} onInputCapture={markDirty} onClickCapture={markDirty}>
           <FormSection {...sec} n={1} title={item ? "ชื่อและหน่วย" : "ของชิ้นนี้คืออะไร"} hint="ชื่อกับหน่วยคือของบังคับ ที่เหลือใส่ทีหลังได้">
             {!item && onSplitProduct && (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-3">
