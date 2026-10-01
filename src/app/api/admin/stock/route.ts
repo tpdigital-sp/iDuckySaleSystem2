@@ -96,30 +96,43 @@ export async function DELETE(req: Request) {
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
   if (!can(actor, "orders.edit", await loadRolePerms()))
     return NextResponse.json({ error: "บัญชีนี้ไม่มีสิทธิ์จัดการสต๊อก" }, { status: 403 });
-  const id = new URL(req.url).searchParams.get("id")?.trim();
-  if (!id) return NextResponse.json({ error: "ไม่มี id" }, { status: 400 });
+  // ?id=  ลบตัวเดียว · ?ids=a,b,c ลบทั้งชุด (ลบทั้งกลุ่มจากเมนู ⋯ หน้าคลัง — เจ้าของร้านขอ 1 ต.ค. 69) ถอดลิงก์รอบเดียวทุกตัว
+  const sp = new URL(req.url).searchParams;
+  const ids = [...new Set([sp.get("id")?.trim() ?? "", ...(sp.get("ids") ?? "").split(",").map((x) => x.trim())].filter(Boolean))];
+  if (!ids.length) return NextResponse.json({ error: "ไม่มี id" }, { status: 400 });
+  if (ids.length > 300) return NextResponse.json({ error: "ลบได้ครั้งละไม่เกิน 300 รายการ" }, { status: 400 });
 
-  let item;
-  try {
-    item = await deleteStockItem(id, actor.name || actor.username);
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  const deleted: string[] = [];
+  const notFound: string[] = [];
+  let item: Awaited<ReturnType<typeof deleteStockItem>> = null;
+  for (const id of ids) {
+    try {
+      const it = await deleteStockItem(id, actor.name || actor.username);
+      if (it) {
+        deleted.push(id);
+        item ??= it;
+      } else notFound.push(id);
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message, deleted: deleted.length }, { status: 500 });
+    }
   }
-  if (!item) return NextResponse.json({ error: "ไม่พบวัสดุนี้ (อาจถูกลบไปแล้ว)" }, { status: 404 });
+  if (!deleted.length) return NextResponse.json({ error: ids.length === 1 ? "ไม่พบวัสดุนี้ (อาจถูกลบไปแล้ว)" : "ไม่พบวัสดุในชุดนี้ (อาจถูกลบไปแล้ว)" }, { status: 404 });
+  const idSet = new Set(deleted);
 
-  // ถอดลิงก์จากตัวเลือกที่ชี้มา SKU นี้ — แถวคลังตัวเลือก (__preset_*) กับสินค้าอยู่ตารางเดียวกัน
+  // ถอดลิงก์จากตัวเลือกที่ชี้มา SKU พวกนี้ — แถวคลังตัวเลือก (__preset_*) กับสินค้าอยู่ตารางเดียวกัน
   let unlinked = 0;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (url && key) {
     const sb = createClient(url, key, { auth: { persistSession: false } });
     // เดิมดึงสินค้าทั้งตาราง ~7MB ทุกครั้งที่ลบ = 4–6 วิ (18 ก.ย. 69 คนกดลบซ้ำเพราะคิดว่าไม่ติด)
-    // → หาแถวที่อ้างถึง SKU นี้จากข้อมูลแบบ slim ก่อน แล้วดึงเต็มเฉพาะแถวนั้น (fresh = ห้ามพลาดลิงก์ที่เพิ่งผูก)
+    // → หาแถวที่อ้างถึง SKU พวกนี้จากข้อมูลแบบ slim ก่อน แล้วดึงเต็มเฉพาะแถวนั้น (fresh = ห้ามพลาดลิงก์ที่เพิ่งผูก)
     const slim = await getProductsSlim({ fresh: true }).catch(() => null);
+    const mentions = (s: string) => deleted.some((id) => s.includes(`"${id}"`));
     const refIds = slim
       ? [
-          ...slim.presets.filter((r) => JSON.stringify(r.data.choices ?? []).includes(`"${id}"`)).map((r) => r.id),
-          ...slim.products.filter((r) => JSON.stringify([r.data.options ?? [], r.data.priceRates ?? []]).includes(`"${id}"`)).map((r) => r.id),
+          ...slim.presets.filter((r) => mentions(JSON.stringify(r.data.choices ?? []))).map((r) => r.id),
+          ...slim.products.filter((r) => mentions(JSON.stringify([r.data.options ?? [], r.data.priceRates ?? []]))).map((r) => r.id),
         ]
       : null;
     const { data: rows } = refIds
@@ -128,17 +141,19 @@ export async function DELETE(req: Request) {
         : { data: [] as { id: string; data: unknown }[] }
       : await sb.from("products").select("id,data"); // slim พัง → ทางเดิม
     type Ch = { name: string; stockItemId?: string; stockQtyPer?: number; stockLinks?: { stockItemId: string; per?: number; when?: { label: string; choices: string[] }[] }[] };
-    const hits = (c: Ch) => c.stockItemId === id || (c.stockLinks ?? []).some((l) => l.stockItemId === id);
-    // จดทุกลิงก์ที่ถอด — กู้คืนแล้วผูกกลับได้ครบ ไม่ต้องไล่ผูกใหม่ (ลบผิดตัวแล้วสินค้าเลิกตัดสต๊อกเงียบ ๆ 30 ก.ย. 69)
-    const refs: UnlinkedRef[] = [];
+    const hits = (c: Ch) => (!!c.stockItemId && idSet.has(c.stockItemId)) || (c.stockLinks ?? []).some((l) => idSet.has(l.stockItemId));
+    // จดทุกลิงก์ที่ถอด (แยกตาม SKU) — กู้คืนแล้วผูกกลับได้ครบ ไม่ต้องไล่ผูกใหม่ (ลบผิดตัวแล้วสินค้าเลิกตัดสต๊อกเงียบ ๆ 30 ก.ย. 69)
+    const refsOf = new Map<string, UnlinkedRef[]>();
+    const note = (id: string, ref: UnlinkedRef) => (refsOf.get(id) ?? refsOf.set(id, []).get(id)!).push(ref);
     const strip = (chs: Ch[], rowId: string, label?: string, optionIndex?: number) =>
       chs.map((c) => {
         if (!hits(c)) return c;
-        if (c.stockItemId === id) refs.push({ rowId, label, optionIndex, choice: c.name, main: true, ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}) });
+        const mainGone = !!c.stockItemId && idSet.has(c.stockItemId);
+        if (mainGone) note(c.stockItemId!, { rowId, label, optionIndex, choice: c.name, main: true, ...(c.stockQtyPer ? { stockQtyPer: c.stockQtyPer } : {}) });
         for (const l of c.stockLinks ?? [])
-          if (l.stockItemId === id) refs.push({ rowId, label, optionIndex, choice: c.name, extra: { ...(l.per ? { per: l.per } : {}), when: l.when ?? [] } });
-        const rest = (c.stockLinks ?? []).filter((l) => l.stockItemId !== id);
-        const drop = [...(c.stockItemId === id ? ["stockItemId", "stockQtyPer"] : []), ...(rest.length ? [] : ["stockLinks"])];
+          if (idSet.has(l.stockItemId)) note(l.stockItemId, { rowId, label, optionIndex, choice: c.name, extra: { ...(l.per ? { per: l.per } : {}), when: l.when ?? [] } });
+        const rest = (c.stockLinks ?? []).filter((l) => !idSet.has(l.stockItemId));
+        const drop = [...(mainGone ? ["stockItemId", "stockQtyPer"] : []), ...(rest.length ? [] : ["stockLinks"])];
         const base = Object.fromEntries(Object.entries(c).filter(([k]) => !drop.includes(k))) as Ch;
         return rest.length ? { ...base, stockLinks: rest } : base;
       });
@@ -162,7 +177,7 @@ export async function DELETE(req: Request) {
       if (!error) unlinked++;
     }
     if (unlinked) invalidateProductsSlim();
-    if (refs.length) await recordUnlinked(id, refs).catch(() => undefined); // จดไม่ได้ก็ไม่ควรทำให้ลบล้ม
+    for (const [id, refs] of refsOf) if (refs.length) await recordUnlinked(id, refs).catch(() => undefined); // จดไม่ได้ก็ไม่ควรทำให้ลบล้ม
   }
-  return NextResponse.json({ ok: true, item, unlinked });
+  return NextResponse.json({ ok: true, item, deleted: deleted.length, notFound, unlinked });
 }

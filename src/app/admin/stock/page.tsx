@@ -1110,6 +1110,45 @@ export default function StockPage() {
     await load();
   }
 
+  /** 🗑 ลบทั้งกลุ่ม (เมนู ⋯ หัวกลุ่ม — เจ้าของร้านขอ 1 ต.ค. 69: กลุ่ม "ตะขอ" 165 ตัวที่สร้างผิด) · ลบทีละชุดผ่าน DELETE ?ids= ถอดลิงก์รอบเดียว · กู้คืนได้จาก "ที่ลบไปแล้ว" */
+  async function deleteItems(list: Item[], title: string) {
+    if (!list.length) return;
+    const withBal = list.filter((i) => i.balance !== 0);
+    const linked = list.filter((i) => (live[i.id] ?? []).length > 0);
+    const ok = await confirm({
+      icon: "🗑",
+      title: `ลบวัสดุทั้งกลุ่ม “${title}” ${fmtN(list.length)} รายการ?`,
+      detail: `หายจากคลังทั้งชุดและไม่ถูกตัดสต๊อกตอนขายอีก${linked.length ? ` · ${fmtN(linked.length)} ตัวผูกกับสินค้า/ตัวเลือกอยู่ จะถูกถอดลิงก์ให้เอง` : ""}${
+        withBal.length ? `\n${fmtN(withBal.length)} ตัวมียอดคงเหลือ (เช่น ${withBal.slice(0, 3).map((i) => `${i.name} ${fmtN(i.balance)} ${i.unit}`).join(" · ")}) — ยอดจะหายจากมูลค่าคลัง` : ""
+      }\nกู้คืนทีละตัวได้จากเมนู ⋯ → “วัสดุที่ลบไปแล้ว” (ลิงก์กลับมาด้วย) · ประวัติการเคลื่อนไหวยังอยู่ครบ`,
+      confirmLabel: `ลบ ${fmtN(list.length)} รายการ`,
+      danger: true,
+    });
+    if (ok !== true) return;
+    setErr("");
+    setOpenId(null);
+    const ids = new Set(list.map((i) => i.id));
+    setItems((prev) => prev.filter((i) => !ids.has(i.id))); // เอาออกจากจอทันที กันกดซ้ำระหว่างเซิร์ฟเวอร์ถอดลิงก์
+    setOk(`กำลังลบ “${title}” ${fmtN(list.length)} รายการ…`);
+    let deleted = 0;
+    let unlinked = 0;
+    const all = [...ids];
+    for (let i = 0; i < all.length; i += 100) {
+      const res = await fetch(`/api/admin/stock?ids=${encodeURIComponent(all.slice(i, i + 100).join(","))}`, { method: "DELETE" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        setOk("");
+        setErr(`${j?.error ?? "ลบไม่สำเร็จ"} — ลบไปแล้ว ${fmtN(deleted)} จาก ${fmtN(all.length)} ที่เหลือยังอยู่ในคลัง`);
+        await load();
+        return;
+      }
+      deleted += Number(j.deleted ?? 0);
+      unlinked += Number(j.unlinked ?? 0);
+    }
+    setOk(`ลบ “${title}” แล้ว ${fmtN(deleted)} รายการ${unlinked ? ` · ถอดลิงก์จากสินค้า/ตัวเลือก ${fmtN(unlinked)} รายการ` : ""} — กู้คืนได้จาก “วัสดุที่ลบไปแล้ว”`);
+    await load();
+  }
+
   const todayMoves = moves.filter((m) => new Date(m.at).toDateString() === new Date().toDateString()).length;
   const monthDefect = moves
     .filter((m) => m.reason === "เบิกทำเสีย" && Date.now() - new Date(m.at).getTime() < 30 * 86400_000)
@@ -2192,6 +2231,9 @@ export default function StockPage() {
                           ? { icon: "↩", label: "กลับมานับสต๊อกทั้งกลุ่ม", onClick: () => void markNoStock(g.rows, false, g.title) }
                           : { icon: "🚫", label: "ไม่ต้องมี stock ทั้งกลุ่ม", danger: true, onClick: () => void markNoStock(g.rows, true, g.title) },
                       );
+                      // 🗑 ลบทั้งกลุ่ม — ล่างสุด แยกเส้นจากอันอื่น ถามยืนยันพร้อมจำนวน/ยอด/ลิงก์ก่อนเสมอ (กู้คืนได้จาก "ที่ลบไปแล้ว")
+                      menu.push({ head: "" });
+                      menu.push({ icon: "🗑", label: `ลบวัสดุทั้งกลุ่ม (${fmtN(g.rows.length)})…`, danger: true, onClick: () => void deleteItems(g.rows, g.title) });
                     }
                     // min-w-0: เดิมพึ่ง overflow-hidden ให้การ์ดไม่กว้างเกินคอลัมน์ — เอาออกเพื่อให้เมนู ⋯ โผล่พ้นกรอบได้ จึงต้องตั้ง min-width เอง
                     // การ์ดกระจก (backdrop-filter) เป็น stacking context ของตัวเอง — เมนู ⋯ ที่เปิดอยู่จะโดนการ์ดถัดไปทับ ต้องยกการ์ดใบนั้นขึ้นด้วย z-index
