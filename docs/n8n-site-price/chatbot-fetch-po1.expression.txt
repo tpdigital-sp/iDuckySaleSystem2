@@ -21,3 +21,4 @@
 #   ท้าย expression: … return JSON.stringify({ query: msg, context: ctx, history: history, profile: profile }); })() }}
 # ⚠️ 1 ต.ค. 69 บ่าย: ตอนเพิ่ม history ลืมปิด try ด้วย catch → expression ทั้งก้อน "invalid syntax" ตั้งแต่เช้า 1 ต.ค. (Fetch PO1 ตอบ {error:"invalid syntax"} ใน 6 ms · PO Override1 ไม่ทับ · LINE ยังรอดเพราะ Site Price Flex ถามเว็บเอง แต่แชทเว็บเสียราคา) → เติม `}catch(e){ history=[]; }` หลัง `.slice(-14); }` ของ history
 #   วิธีเช็คก่อน Publish: ดึง jsonBody ตัด ={{ }} แล้ว new Function('$','return '+inner)(fake$) ต้องไม่ throw
+# 1 ต.ค. 69 (รอบ 3) history parser: บรรทัดที่ไม่ขึ้นต้นด้วย "ลูกค้า:/แอดมิน:" (เช่น "• แม่เหล็กอะคริลิค" ในเมนูที่บอทเสนอ) ต้องต่อท้ายข้อความก่อนหน้า ไม่ใช่ทิ้ง — ไม่งั้นเว็บไม่เห็นรายการ "แบบที่ 2" จึงตอบตัวแรก · ข้ามบล็อก "== ข้อมูลลูกค้าคนนี้ … == จบข้อมูลลูกค้า ==" และบรรทัด "== …" อื่น ๆ
