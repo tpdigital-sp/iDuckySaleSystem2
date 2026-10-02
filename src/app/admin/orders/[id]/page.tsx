@@ -101,6 +101,7 @@ import {
   taxInvoiceCountLabel,
   taxInvoiceDocNos,
   waitingForBalanceFrom,
+  stageAfterPayment,
   applyArrival,
   addOnParents,
   addOnNothingToRead,
@@ -4119,7 +4120,8 @@ export default function AdminOrderDetailPage() {
   }
 
   // ถือว่า "จ่ายแล้ว" เมื่อแอดมินยืนยันสลิปแล้ว (ชำระแล้วเป็นต้นไป)
-  const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status);
+  // ใบที่เคยผ่านประตูเงินแล้วแต่ถูกพักกลับ รอชำระเงิน/รอตรวจสอบ (reopenedFrom — ยอดโต/สลิปงวดหลังตก) ไม่ล็อกทำแบบ: งานยังเดินอยู่ขั้นเดิม (2 ต.ค. 69)
+  const paidOk = !(["รอชำระเงิน", "รอตรวจสอบ"] as OrderStatus[]).includes(order.status) || !!order.reopenedFrom;
   const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
   // 🎨 Add on → แถวย่อยใต้รายการแม่: ลำดับวาด = แม่ตามด้วย Add on ของตัวเอง · เลข "รายการที่" นับเฉพาะรายการจริง
   const addOnMap = addOnParents(order.items);
@@ -4332,7 +4334,8 @@ export default function AdminOrderDetailPage() {
         : `รอลูกค้าโอนมัดจำงวดแรก ${inst ? dueText(inst.first, inst.firstNet) : formatPrice(due)} — ยังไม่เริ่มงาน`
     );
   }
-  const nextStep = NEXT_STATUS[order.status]?.to;
+  // ใบที่พักไว้รอเงิน/รอตรวจสลิประหว่างงานเดิน → ขั้นถัดไปคือขั้นที่จำไว้ (stageAfterPayment) ไม่ใช่ "ชำระแล้ว" ตามตารางปกติ
+  const nextStep = waitingForBalanceFrom(order) ? stageAfterPayment(order) : NEXT_STATUS[order.status]?.to;
 
   return (
     <PageShell>
@@ -5243,7 +5246,7 @@ export default function AdminOrderDetailPage() {
           </div>
           {/* โชว์เฉพาะ "รอตรวจสอบ" (ลูกค้าแจ้งโอนแล้ว รอตรวจสลิป) — ตอน "รอชำระเงิน" ยังไม่ต้องเตือน
               ตัวล็อกอัปโหลดแบบยังคุมทุกสถานะที่ยังไม่จ่ายเหมือนเดิม (มีป้าย+ปุ่มปลดล็อกที่รายการ) */}
-          {order.status === "รอตรวจสอบ" && (
+          {order.status === "รอตรวจสอบ" && !paidOk && (
             <div className="mt-2 rounded-xl bg-yellow-50 p-3 ring-1 ring-yellow-200">
               <p className="text-xs font-bold text-yellow-800">
                 ⚠️ ยังไม่ยืนยันการชำระเงิน (สถานะ “{order.status}”)

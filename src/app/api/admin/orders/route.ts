@@ -974,10 +974,12 @@ export async function PATCH(req: Request) {
   if (mayEditFull && toSave.status !== existing.status && toSave.reopenedFrom) toSave = { ...toSave, reopenedFrom: undefined };
 
   // ชุดสถานะอยู่ที่ admin-data (REOPEN_FOR_BALANCE) — รวม "กำลังผลิต" แล้ว 24 ก.ย. 69 (ดูหมายเหตุที่นั่น) · ใช้ร่วมกับ /charge และ /flowaccount/extra
+  // ใบที่อยู่หน้าประตูเงินอยู่แล้ว (รอตรวจสอบ — สลิปรอคนตรวจ/รับบางส่วน) ไม่ต้องเด้ง ไม่งั้น reopenedFrom ถูกทับเป็น "รอตรวจสอบ" แล้วเงินครบกลับผิดขั้น
   const reopenedForBalance =
     mayEditFull &&
     !toSave.deposit &&
     toSave.status === existing.status &&
+    !awaitingPayment(toSave) &&
     REOPEN_FOR_BALANCE.includes(toSave.status) &&
     hasUnpaidBalance(toSave);
   if (reopenedForBalance)
@@ -998,8 +1000,8 @@ export async function PATCH(req: Request) {
     mayEditFull &&
     !toSave.deposit &&
     !toSave.claimOf &&
-    existing.status === "รอชำระเงิน" &&
-    toSave.status === "รอชำระเงิน" &&
+    awaitingPayment(existing) &&
+    toSave.status === existing.status &&
     !!toSave.reopenedFrom &&
     toSave.paidTotal != null &&
     hasUnpaidBalance(existing) &&
@@ -1009,7 +1011,7 @@ export async function PATCH(req: Request) {
       { ...toSave, status: stageAfterPayment(toSave), ...clearStageMemory },
       actor.name?.trim() || actor.username,
       "ยอดค้างหมดแล้ว — กลับไปขั้นเดิม",
-      `รอชำระเงิน → ${stageAfterPayment(toSave)} (รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
+      `${existing.status} → ${stageAfterPayment(toSave)} (รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
     );
 
   /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */

@@ -39,6 +39,7 @@ import {
   queueStageOf,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
+import { paymentEntries } from "@/lib/payments";
 import { orderQtyText } from "@/lib/item-yield";
 import { parseThaiDate } from "@/lib/admin-dash";
 import { usePolling } from "@/lib/use-polling";
@@ -362,8 +363,11 @@ export default function AdminOrdersPage() {
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: dated.length };
     for (const s of ORDER_STATUSES) c[s] = dated.filter((o) => o.status === s).length;
+    // 💳 "รอตรวจสอบ" นับข้ามช่วงวันที่ — สลิปงวดหลัง/ใบเพิ่มมาบนใบที่สั่งไว้หลายสัปดาห์ก่อนเสมอ (OD-260911-8026 สั่ง 11 ก.ย. สลิปงวด 2 มา 2 ต.ค.)
+    // ถ้านับเฉพาะ 7 วันตามค่าเริ่มต้น ชิปขึ้น 0 ทั้งที่มีสลิปรอคนตรวจ · ชุดที่กดชิปแล้วเห็นก็ข้ามวันที่เหมือนกัน (ตัวเลขตรงกับแถว)
+    c["รอตรวจสอบ"] = orders.filter((o) => o.status === "รอตรวจสอบ").length;
     return c;
-  }, [dated]);
+  }, [dated, orders]);
 
   const activeDept = DEPARTMENTS.find((d) => d.key === dept) ?? DEPARTMENTS[0];
   const deptCounts = useMemo(() => {
@@ -461,7 +465,9 @@ export default function AdminOrdersPage() {
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
   // กดชิปมัดจำ = ดูข้ามช่วงวันที่ (ให้จำนวนแถวตรงกับตัวเลขบนชิป) · ไม่ได้กด = ตามช่วงวันที่ตามปกติ
-  const depBase = dep === "all" ? dated : orders;
+  // กดชิป "รอตรวจสอบ" ก็ข้ามวันที่ — สลิปที่รอคนตรวจต้องไม่หายเพราะใบเก่ากว่าช่วงที่เลือก (ดู counts)
+  const allDates = dep !== "all" || filter === "รอตรวจสอบ";
+  const depBase = allDates ? orders : dated;
   const shown = depBase
     .filter(byMatch)
     .filter((o) => (onlyStock ? orderAwaitingStock(o) && o.status !== "ยกเลิก" : true))
@@ -896,8 +902,9 @@ export default function AdminOrdersPage() {
           <span className="text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
             เรียงใหม่ → เก่า · แสดง {shown.length} จาก {orders.length} ใบ
             {shown.length > PAGE_SIZE ? ` · หน้า ${curPage + 1}/${pageCount} (ใบที่ ${pageFrom}–${pageTo})` : ""}
-            {dateOn && rangeText && dep === "all" ? ` · ${rangeText}` : ""}
+            {dateOn && rangeText && !allDates ? ` · ${rangeText}` : ""}
             {dep !== "all" ? ` · ${DEP_LABEL[dep]} (ทุกวัน)` : ""}
+            {dep === "all" && filter === "รอตรวจสอบ" && dateOn ? " · รอตรวจสอบ (ทุกวัน)" : ""}
             {cust !== "all" ? ` · ${CUST_LABEL[cust]}` : ""}
             {onlyStock ? " · 🛒 รอของเข้า" : ""}
           </span>
@@ -988,6 +995,8 @@ function OrderRow({
   const done = DONE.includes(o.status);
   const step = STEP_OF[o.status];
   const days = o.useByDate && !done ? daysToUseBy(o) : null;
+  // สลิปใบล่าสุดที่ยังรอคนตรวจ (ตก/ไม่ได้ตรวจ) — ใบแรก งวดหลัง หรือใบเพิ่มก็ได้ · ไว้ติดป้ายเฉพาะใบที่อยู่ "รอตรวจสอบ"
+  const pendingSlip = o.status === "รอตรวจสอบ" ? [...paymentEntries(o)].reverse().find((e) => e.state === "fail" || e.state === "pending") : undefined;
   const line = lineUserOf(o, orders);
   const chat = lineChatOf(o, orders);
   const dup = (openByPhone[(o.phone ?? "").replace(/\D/g, "")] ?? 0) > 1;
@@ -1120,25 +1129,21 @@ function OrderRow({
               SlipOK ตรวจผ่าน
             </span>
           )}
-          {seesMoney && o.slipVerify?.status === "fail" && o.status === "รอตรวจสอบ" && (
+          {/* สลิปที่รอคนตรวจ — ดูทุกใบ (ใบแรก · งวดหลังของใบมัดจำ · ใบเพิ่ม) ไม่ใช่แค่ใบแรก
+              fail = SlipOK ตรวจไม่ผ่าน (K BIZ ไม่มี QR ฯลฯ) · skip/pending = SlipOK ไม่ได้ตอบ (ไม่ตอบทัน/ล่ม/โควตาหมด) — สาเหตุอยู่ที่ระบบ ไม่ใช่สลิปลูกค้า */}
+          {seesMoney && o.status === "รอตรวจสอบ" && pendingSlip && (
             <span
               className="dkb-tag"
               style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
-              title="ตรวจสลิปอัตโนมัติไม่ผ่าน — ต้องตรวจเอง"
+              title={
+                (pendingSlip.state === "fail" ? "ตรวจสลิปอัตโนมัติไม่ผ่าน — ต้องตรวจเอง" : "SlipOK ไม่ได้ตอบ จึงตรวจอัตโนมัติไม่ได้ — เปิดใบแล้วกด “ตรวจสลิปอีกครั้ง” หรือเทียบยอดเอง") +
+                (pendingSlip.phase !== "first" ? ` · ${pendingSlip.label} (ใบที่ ${pendingSlip.n})` : "") +
+                (o.reopenedFrom ? ` · งานยังอยู่ขั้น “${o.reopenedFrom}” — ตรวจเงินแล้วใบกลับไปเอง` : "")
+              }
             >
               <i />
-              SlipOK ไม่ผ่าน
-            </span>
-          )}
-          {/* skip = SlipOK ไม่ได้ตอบ (ไม่ตอบทัน/ล่ม/โควตาหมด) — ต้องแยกจาก "ไม่ผ่าน" เพราะสาเหตุอยู่ที่ระบบ ไม่ใช่สลิปลูกค้า */}
-          {seesMoney && o.slipVerify?.status === "skip" && o.status === "รอตรวจสอบ" && (
-            <span
-              className="dkb-tag"
-              style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
-              title="SlipOK ไม่ได้ตอบ จึงตรวจอัตโนมัติไม่ได้ — เปิดใบแล้วกด “ตรวจสลิปอีกครั้ง” หรือเทียบยอดเอง"
-            >
-              <i />
-              SlipOK ไม่ได้ตรวจ
+              {pendingSlip.state === "fail" ? "SlipOK ไม่ผ่าน" : "SlipOK ไม่ได้ตรวจ"}
+              {pendingSlip.phase === "balance" ? " · งวดหลัง" : pendingSlip.phase === "extra" ? " · ใบเพิ่ม" : ""}
             </span>
           )}
           {/* 🛒 รอของเข้า — แถบเต็มบรรทัดชุดเดียวกับคิวกราฟฟิก/คิวปริ้น */}

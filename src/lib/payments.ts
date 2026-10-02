@@ -92,7 +92,8 @@ export function paymentEntries(o: Order): PaymentEntry[] {
 
   if (o.slipPath || o.slipUrl) {
     // ใบแรกถือว่า "ผ่าน" เมื่องวดแรกยืนยันแล้ว (ใบมัดจำ) หรือออเดอร์เลยขั้นรอเงินไปแล้ว (ใบธรรมดา — รวมแอดมินยืนยันเอง)
-    const confirmed = d ? !!d.firstPaidAt : !waiting && o.status !== "ยกเลิก";
+    // ใบที่ถูกเด้งกลับรอชำระเงิน/รอตรวจสอบทั้งที่เคยผ่านประตูเงินแล้ว (reopenedFrom) = ใบแรกเคยยืนยันแล้ว ป้ายห้ามกลับเป็น "ตก"
+    const confirmed = d ? !!d.firstPaidAt : (!waiting || !!o.reopenedFrom) && o.status !== "ยกเลิก";
     const credited = o.slipVerify?.status === "pass" || confirmed ? undefined : o.slipVerify?.credited;
     out.push({
       key: "first",

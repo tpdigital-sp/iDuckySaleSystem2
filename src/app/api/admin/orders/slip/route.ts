@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { currentActor, requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { ROLE_ADMINISTRATOR } from "@/lib/permissions";
-import { orderTotal, paidSoFar, withLog, type Order } from "@/lib/admin-data";
-import { findPayment, resolveSlipPhase, type SlipPhase } from "@/lib/payments";
+import { clearStageMemory, orderTotal, paidSoFar, stageAfterPayment, withLog, type Order } from "@/lib/admin-data";
+import { findPayment, hasPendingSlip, resolveSlipPhase, type SlipPhase } from "@/lib/payments";
 import { acceptPaymentManually, applySlipVerification } from "@/lib/server/slip-apply";
 import { acquireSlipLock, assertSlipNotDuplicate, SlipDuplicateError, slipHashOf, type SlipOwner } from "@/lib/server/slip-dedupe";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
@@ -188,6 +188,15 @@ export async function PUT(req: Request) {
  *   balance = ลบเฉพาะไฟล์งวดหลัง ไม่ยุ่งกับสถานะ/ยอดที่รับแล้ว
  *   extra = ลบใบเพิ่มใบเดียว — ถ้าใบนั้นนับยอดแล้ว ถอยยอดนั้นออกจาก paidTotal (สถานะไม่ถอย · แอดมินดูเองว่าต้องเก็บเพิ่มไหม)
  */
+/**
+ * ↩️ ลบสลิปที่ค้างตรวจออกแล้วไม่เหลือใบไหนให้คนตรวจ + ใบถูกพักไว้ "รอตรวจสอบ" ทั้งที่งานเดินไปแล้ว (parkForSlipReview จำขั้นไว้ที่ reopenedFrom)
+ * → พากลับขั้นที่จำไว้ ไม่ให้ใบค้างรอตรวจสอบทั้งที่ไม่มีสลิปให้ตรวจ (ยอดค้างถ้ายังมีก็ค้างต่อไปตามปกติของใบมัดจำ/ใบส่วนต่าง)
+ */
+function unparkIfNothingToReview(o: Order): Order {
+  if (o.status !== "รอตรวจสอบ" || !o.reopenedFrom || hasPendingSlip(o)) return o;
+  return { ...o, status: stageAfterPayment(o), ...clearStageMemory };
+}
+
 export async function DELETE(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
@@ -219,7 +228,7 @@ export async function DELETE(req: Request) {
     const credited = p.credited ?? 0;
     const paidAfter = credited > 0 ? Math.max(0, Math.round((paidSoFar(order) - credited) * 100) / 100) : order.paidTotal;
     const cleaned = withLog(
-      { ...order, payments: (order.payments ?? []).filter((x) => x.id !== paymentId), paidTotal: paidAfter },
+      unparkIfNothingToReview({ ...order, payments: (order.payments ?? []).filter((x) => x.id !== paymentId), paidTotal: paidAfter }),
       who,
       "ลบสลิปใบเพิ่ม",
       credited > 0
@@ -239,11 +248,11 @@ export async function DELETE(req: Request) {
     const credited = settled ? 0 : order.deposit.balanceVerify?.credited ?? 0;
     const cleaned = withLog(
       // ล้าง balanceSlipHash ด้วย — ไม่งั้นแนบใบเดิมกลับมาจะโดนกันซ้ำทั้งที่ลบไปแล้ว
-      {
+      unparkIfNothingToReview({
         ...order,
         deposit: { ...order.deposit, balanceSlipPath: undefined, balanceSlipHash: undefined, balanceSlipUrl: undefined, balanceReportedAt: undefined, balanceVerify: undefined },
         ...(credited > 0 ? { paidTotal: Math.max(0, Math.round((paidSoFar(order) - credited) * 100) / 100) } : {}),
-      },
+      }),
       who,
       "ลบสลิปงวดหลัง",
       settled
@@ -261,7 +270,8 @@ export async function DELETE(req: Request) {
   // งานที่เดินหน้าไปแล้ว (ทำแบบ/ผลิต/ส่ง/ปิดใบ) ห้ามรีเซ็ตกลับ รอชำระเงิน — แต่ยังต้องเอาสลิปผิดใบ/โอนผิดบัญชีออกได้
   // (OD-260922-2240 30 ก.ย. 69: ใบเสร็จสิ้นแล้ว สลิปใบแรกโอนเข้าบัญชีคนอื่น เจ้าของร้านลบไม่ออกเพราะติด 409)
   // → ลบเฉพาะไฟล์ + ผลตรวจ · สถานะและยอดที่รับแล้วคงเดิม (แบบเดียวกับลบสลิปงวดหลังของใบที่ปิดแล้ว)
-  if (order.status !== "รอตรวจสอบ" && order.status !== "ชำระแล้ว" && order.status !== "รอชำระเงิน") {
+  // ใบที่ถูกพักไว้ รอชำระเงิน/รอตรวจสอบ ทั้งที่เคยผ่านประตูเงินแล้ว (reopenedFrom — ยอดโต/สลิปงวดหลังตก) ก็ห้ามรีเซ็ตยอด/สถานะเช่นกัน
+  if ((order.status !== "รอตรวจสอบ" && order.status !== "ชำระแล้ว" && order.status !== "รอชำระเงิน") || order.reopenedFrom) {
     if (order.status === "ยกเลิก" && !body.phase)
       return NextResponse.json({ error: `ออเดอร์อยู่สถานะ "${order.status}" แล้ว — ลบสลิปไม่ได้` }, { status: 409 });
     if (order.slipPath) await sb.storage.from(BUCKET).remove([order.slipPath]).catch(() => undefined);

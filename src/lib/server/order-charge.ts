@@ -39,8 +39,9 @@ export function applyCharge(order: Order, charge: OrderCharge, who: string, opts
   if (updated.paidTotal == null && !waiting && !updated.deposit) updated = { ...updated, paidTotal: totalBefore };
   const total = orderTotal(updated);
   const bal = updated.paidTotal != null ? orderBalance(updated) : 0;
-  const reopen = !updated.deposit && !updated.claimOf && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
-  if (reopen) updated = { ...updated, status: "รอชำระเงิน", reopenedFrom: order.status };
+  // ใบที่พักอยู่ "รอตรวจสอบ" (สลิปรอคนตรวจ · parkForSlipReview) ไม่เด้งซ้ำ — ไม่งั้น reopenedFrom ถูกทับเป็น "รอตรวจสอบ"
+  const reopen = !updated.deposit && !updated.claimOf && !waiting && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
+  if (reopen) updated = { ...updated, status: "รอชำระเงิน", reopenedFrom: order.reopenedFrom ?? order.status };
   const docTxt = opts?.extraDoc ? ` · บิลเพิ่ม ${opts.extraDoc.docTypeLabel} ${opts.extraDoc.docNo}` : "";
   updated = withLog(
     updated,

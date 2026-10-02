@@ -3,7 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { clearStageMemory, hasUnpaidBalance, orderTotal, stageAfterPayment, withLog, type Order, type OrderCharge } from "@/lib/admin-data";
+import { awaitingPayment, clearStageMemory, hasUnpaidBalance, orderTotal, stageAfterPayment, withLog, type Order, type OrderCharge } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { applyCharge, chargeNotice, newChargeId } from "@/lib/server/order-charge";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
@@ -94,9 +94,9 @@ export async function DELETE(req: Request) {
   );
   // ↩️ ถอดแล้วยอดค้างหมด + ใบเคยถูกเด้งกลับรอชำระเงินเพราะยอดนี้ → คืนขั้นเดิมที่จำไว้เอง (กติกาเดียวกับ PATCH restoredFromReopen)
   const restored =
-    updated.status === "รอชำระเงิน" && !!updated.reopenedFrom && !updated.deposit && !updated.claimOf && hasUnpaidBalance(order) && !hasUnpaidBalance(updated);
+    awaitingPayment(updated) && !!updated.reopenedFrom && !updated.deposit && !updated.claimOf && hasUnpaidBalance(order) && !hasUnpaidBalance(updated);
   const final = restored
-    ? withLog({ ...updated, status: stageAfterPayment(updated), ...clearStageMemory }, who, "ยอดค้างหมดแล้ว — กลับไปขั้นเดิม", `รอชำระเงิน → ${stageAfterPayment(updated)}`)
+    ? withLog({ ...updated, status: stageAfterPayment(updated), ...clearStageMemory }, who, "ยอดค้างหมดแล้ว — กลับไปขั้นเดิม", `${updated.status} → ${stageAfterPayment(updated)}`)
     : updated;
   const { error } = await updateOrder(sb, final);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

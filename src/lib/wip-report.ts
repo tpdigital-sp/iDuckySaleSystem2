@@ -72,7 +72,8 @@ export const WIP_STATUSES: OrderStatus[] = ["ชำระแล้ว", "รอ�
 
 /** ขั้นงานจริงของใบ — ใบที่เด้งกลับรอชำระเงินเพราะค้างส่วนต่าง ยังนับตามขั้นที่จำไว้ (ตรงกับ queueStageOf) */
 export function wipStageOf(o: Pick<WipOrder, "status" | "reopenedFrom">): OrderStatus {
-  return o.status === "รอชำระเงิน" && o.reopenedFrom ? o.reopenedFrom : o.status;
+  // รอตรวจสอบ + reopenedFrom = สลิปงวดหลัง/ใบเพิ่มรอคนตรวจ งานยังเดินอยู่ขั้นเดิม (parkForSlipReview)
+  return (o.status === "รอชำระเงิน" || o.status === "รอตรวจสอบ") && o.reopenedFrom ? o.reopenedFrom : o.status;
 }
 
 /** ใบนี้อยู่ในรายงานไหม (ไม่รวมยกเลิก) */

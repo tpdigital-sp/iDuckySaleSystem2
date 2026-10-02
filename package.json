@@ -42,6 +42,7 @@
     "check:reprint": "tsx --tsconfig tsconfig.json scripts/reprint-gate-test.mts",
     "check:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-test.mts",
     "check:proof-stage": "tsx --tsconfig tsconfig.json scripts/proof-stage-test.mts",
+    "check:slip-review": "tsx --tsconfig tsconfig.json scripts/slip-review-park-test.mts",
     "scan:proof-stage": "node --conditions=react-server --import tsx scripts/proof-stage-scan.mts",
     "check:line-bind": "tsx scripts/line-bind-test.mts",
     "check:line-missed": "tsx --conditions=react-server scripts/line-missed-notify-test.mts",

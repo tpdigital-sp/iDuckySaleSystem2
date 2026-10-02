@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { clearStageMemory, earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, stageAfterPayment, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { clearStageMemory, earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, parkForSlipReview, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, stageAfterPayment, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
@@ -428,16 +428,23 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       } else {
         // มัดจำขาด → "รอตรวจสอบ" ให้แอดมินเปิดสลิปดูก่อน (เจ้าของร้านสั่ง 10 ก.ย. 69: SlipOK ไม่ผ่านทุกแบบต้องเข้ารอตรวจสอบ
         // — ยอดขาดอาจเป็นหัก ณ ที่จ่ายฐานที่สูตรเดาไม่ถูก ไม่ใช่ลูกค้าโอนไม่ครบจริง) · ลูกค้ายังเห็นยอดค้าง+แนบเพิ่มได้ (phase extra)
-        updated = { ...updated, status: waiting ? "รอตรวจสอบ" : updated.status };
+        updated = parkForSlipReview(updated);
         updated = withLog(updated, "SlipOK", `${rc}รับมัดจำบางส่วน ${thb(credit)} บาท — ยังขาดอีก ${thb(round2(depositDue - paidNow))} บาท (รอลูกค้าโอนเพิ่ม)`, amountNote);
       }
     } else if (updated.deposit && !updated.deposit.settledAt) {
       if (remain <= 0.5) {
-        // งวดหลังครบ — สถานะงานเดินต่อตามเดิม ไม่ถอยกลับไปรอตรวจสอบ
+        // งวดหลังครบ — สถานะงานเดินต่อตามเดิม · ใบที่ถูกพักไว้ "รอตรวจสอบ" เพราะสลิปก่อนหน้าตก (parkForSlipReview) กลับขั้นที่จำไว้
         confirmedFull = true;
-        updated = { ...updated, paidTotal: Math.max(paidNow, total), deposit: { ...updated.deposit, settledAt: now } };
+        updated = {
+          ...updated,
+          paidTotal: Math.max(paidNow, total),
+          deposit: { ...updated.deposit, settledAt: now },
+          ...(waiting ? { status: stageAfterPayment(updated), ...clearStageMemory } : {}),
+        };
         updated = withLog(updated, "SlipOK", `${rc}รับยอดคงเหลือครบแล้ว (อัตโนมัติ)`, amountNote);
       } else {
+        // งวดหลังโอนขาด → พักใบไว้ "รอตรวจสอบ" (ยอดขาดอาจเป็นหัก ณ ที่จ่ายที่สูตรเดาไม่ถูก) · งานยังอยู่ขั้นเดิมผ่าน queueStageOf
+        updated = parkForSlipReview(updated);
         updated = withLog(updated, "SlipOK", `${rc}รับยอดคงเหลือบางส่วน ${thb(credit)} บาท — ยังขาดอีก ${thb(remain)} บาท`, amountNote);
       }
     } else if (remain <= 0.5) {
@@ -454,14 +461,16 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         amountNote
       );
     } else {
-      // รับบางส่วน — ยอดค้างที่เหลือโชว์ให้ลูกค้าโอนต่อ (phase extra) · ใบธรรมดาที่ยังไม่เริ่มงานเข้า "รอตรวจสอบ"
+      // รับบางส่วน — ยอดค้างที่เหลือโชว์ให้ลูกค้าโอนต่อ (phase extra) · ใบเข้า "รอตรวจสอบ" ทุกใบ รวมงานที่เดินไปแล้ว (จำขั้นเดิมไว้ · parkForSlipReview)
       // (เดิมกลับไป "รอชำระเงิน" — เจ้าของร้านสั่ง 10 ก.ย. 69 ว่า SlipOK ไม่ผ่านทุกแบบให้เข้ารอตรวจสอบ เพราะยอดขาดอาจเป็นหัก ณ ที่จ่ายที่สูตรไม่รู้จัก)
-      updated = { ...updated, status: waiting ? "รอตรวจสอบ" : updated.status };
+      updated = parkForSlipReview(updated);
       updated = withLog(updated, "SlipOK", `${rc}รับเงินบางส่วน ${thb(credit)} บาท — ยังค้างอีก ${thb(remain)} บาท (รอลูกค้าโอนเพิ่ม)`, amountNote);
     }
   } else {
     // ตรวจไม่ผ่านและนับยอดไม่ได้ (อ่านยอดไม่ได้ / ระบบล่ม / ซ้ำ) → รอแอดมินตรวจเอง
-    if (phase === "first") updated = { ...updated, status: "รอตรวจสอบ" };
+    // ⚠️ ทุก phase — เดิมตั้ง "รอตรวจสอบ" เฉพาะใบแรก สลิปงวดหลัง/ใบเพิ่มที่ตกได้แค่บรรทัดประวัติ ใบไม่โผล่ในชิปรอตรวจสอบของลิสต์
+    // (OD-260911-8026 · 2 ต.ค. 69) → parkForSlipReview จำขั้นเดิมไว้ที่ reopenedFrom งานไม่หลุดคิว
+    updated = parkForSlipReview(updated);
     if (paidPerBill)
       updated = withLog(updated, "SlipOK", perBillDoc ? `${rc}⚠️ ยอดในระบบไม่ตรงใบ FlowAccount — ลูกค้าโอนตรงตามใบแล้ว รอแอดมินแก้ยอดให้ตรงก่อน` : `${rc}⚠️ VAT/หัก ณ ที่จ่ายในใบยังเป็นตัวเลขของยอดเก่า — ลูกค้าโอนตรงยอดที่ถูกต้องแล้ว รอแอดมินแก้ยอดให้ตรงก่อน`, verify.detail ?? "");
     else if (verify.wrongReceiver)
@@ -655,7 +664,13 @@ export async function acceptPaymentManually(a: {
   } else if (updated.deposit && !updated.deposit.settledAt) {
     if (remain <= 0.5) {
       confirmedFull = true;
-      updated = { ...updated, paidTotal: Math.max(paidNow, total), deposit: { ...updated.deposit, settledAt: now } };
+      // ใบที่ถูกพักไว้ "รอตรวจสอบ" เพราะสลิปตก (parkForSlipReview) → กลับขั้นที่จำไว้
+      updated = {
+        ...updated,
+        paidTotal: Math.max(paidNow, total),
+        deposit: { ...updated.deposit, settledAt: now },
+        ...(waiting ? { status: stageAfterPayment(updated), ...clearStageMemory } : {}),
+      };
       updated = withLog(updated, who, "รับยอดสลิปใบเพิ่มเอง — ยอดคงเหลือครบแล้ว", amountNote);
     } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — ยังขาดอีก ${thb(remain)} บาท`, amountNote);
   } else if (remain <= 0.5) {

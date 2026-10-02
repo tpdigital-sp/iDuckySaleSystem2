@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { pushShopAlert } from "@/lib/server/line-alert";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { amountDueNow, withLog, type Order } from "@/lib/admin-data";
+import { hasPendingSlip } from "@/lib/payments";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 import { SITE_URL } from "@/lib/shop-info";
 import { updateOrder } from "@/lib/server/order-write";
@@ -52,7 +53,8 @@ export async function GET(req: Request) {
       status: o.status,
       balance: amountDueNow(o),
       remindedAt: o.deposit!.balanceRemindedAt ?? null,
-      hasSlip: !!o.deposit!.balanceSlipPath, // แนบสลิปมาแล้วแต่แอดมินยังไม่กดยืนยัน
+      // แนบสลิปมาแล้วแต่แอดมินยังไม่กดยืนยัน — รวมใบเพิ่มใน payments[] ด้วย (แอดมินแนบแทนลูกค้าลงช่องนั้น · OD-260911-8026 2 ต.ค. 69 เคยทวงซ้ำทั้งที่มีสลิปแล้ว)
+      hasSlip: !!o.deposit!.balanceSlipPath || hasPendingSlip(o),
       order: o,
     }))
     .sort((a, b) => b.balance - a.balance);

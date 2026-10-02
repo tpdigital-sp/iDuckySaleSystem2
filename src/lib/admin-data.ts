@@ -2300,12 +2300,28 @@ export const REOPEN_FOR_BALANCE: OrderStatus[] = ["รอตรวจสอบ",
  * ต่างจาก effectiveStage (ขั้นแบบ) ตรงที่ตัวนี้เชื่อ reopenedFrom เท่านั้น: ใบรอชำระเงินธรรมดา (ยังไม่เคยจ่าย) ไม่เข้าคิว
  */
 export function queueStageOf(o: Order): OrderStatus {
-  return o.status === "รอชำระเงิน" && o.reopenedFrom ? o.reopenedFrom : o.status;
+  // รวม "รอตรวจสอบ" ด้วย — สลิปงวดหลัง/ใบเพิ่มที่ SlipOK ตกระหว่างงานเดิน พักใบไว้รอตรวจแบบจำขั้นเดิม (parkForSlipReview · 2 ต.ค. 69)
+  return awaitingPayment(o) && o.reopenedFrom ? o.reopenedFrom : o.status;
 }
 
-/** 💳 ใบนี้ค้าง "ส่วนต่าง" ระหว่างงานเดิน (เด้งกลับรอชำระเงินจากขั้นที่จำไว้) — ไว้ติดป้ายในคิว */
+/** 💳 ใบนี้ค้าง "ส่วนต่าง" ระหว่างงานเดิน (เด้งกลับรอชำระเงิน/รอตรวจสอบ จากขั้นที่จำไว้) — ไว้ติดป้ายในคิว */
 export function waitingForBalanceFrom(o: Order): OrderStatus | null {
-  return o.status === "รอชำระเงิน" && o.reopenedFrom ? o.reopenedFrom : null;
+  return awaitingPayment(o) && o.reopenedFrom ? o.reopenedFrom : null;
+}
+
+/**
+ * 🚦 สลิปที่ต้องให้คนตรวจ (SlipOK ตก/อ่านไม่ได้/โอนขาด) → ใบต้องโผล่ใน "รอตรวจสอบ" ให้ฝ่ายการเงินเห็น แม้งานเดินไปแล้ว
+ * (OD-260911-8026 · 2 ต.ค. 69: ใบมัดจำอยู่ "อนุมัติแบบ" พนักงานแนบสลิปงวด 2 สลิป K BIZ ไม่มี QR → SlipOK ตก
+ *  เดิมตั้งรอตรวจสอบเฉพาะสลิปใบแรก งวดหลัง/ใบเพิ่มได้แค่บรรทัดประวัติ ใบเลยไม่ขึ้นชิป "รอตรวจสอบ" ในลิสต์)
+ * กติกาเดียวกับยอดโต (REOPEN_FOR_BALANCE): จำขั้นเดิมไว้ที่ reopenedFrom · เงินเข้า/รับยอดเอง → stageAfterPayment พากลับขั้นเดิม
+ * · คิวปริ้น/แพ็ค/WIP ยังเห็นใบผ่าน queueStageOf · ใบที่ส่งแล้ว/เสร็จสิ้น/ยกเลิก ไม่ถอย (ได้แค่บรรทัดประวัติเหมือนเดิม)
+ */
+export function parkForSlipReview(o: Order): Order {
+  if (o.status === "รอตรวจสอบ") return o;
+  // รอชำระเงิน (รวมใบที่เด้งกลับเพราะยอดโต) → รอตรวจสอบ · reopenedFrom เดิมคงไว้
+  if (o.status === "รอชำระเงิน") return { ...o, status: "รอตรวจสอบ" };
+  if (!REOPEN_FOR_BALANCE.includes(o.status)) return o;
+  return { ...o, status: "รอตรวจสอบ", reopenedFrom: o.reopenedFrom ?? o.status };
 }
 
 export function hasUnpaidBalance(o: Order): boolean {
