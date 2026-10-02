@@ -9,8 +9,9 @@ const row:any = data![0]; const p = {id:row.id,name:row.name,price:row.price,cat
 const sel: Record<string,string> = {};
 for (const o of p.options) if (o.choices?.length && o.label!=="พิมพ์รองสีขาว (ด้านหน้า)") sel[o.label]=o.choices[0].label;
 console.log("mixRuleFor:", JSON.stringify(mixRuleFor(p, sel)));
-// 🎨 29 ก.ย. 69: ค่าคละคิดจากจำนวนลายอย่างเดียว ไม่ว่ากี่แผ่น (เดิมกระจายลายลงแผ่น: 2 แผ่น 3 ลาย = 5 · 3 แผ่น 3 ลาย = 0)
-const cases: [number,number,number][] = [[1,1,0],[1,2,5],[1,3,10],[1,4,15],[1,5,20],[2,3,10],[2,4,15],[3,3,10],[10,4,15],[2,9,40]];
+// 🎨 2 ต.ค. 69: ลายละ 1 แผ่นไม่ถือว่าคละ (ลาย ≤ แผ่น = 0) · เกินจำนวนแผ่นคิดเฉพาะลายที่ต้องลงแผ่นเดียวกัน (2 แผ่น 3 ลาย = 5 · 3 แผ่น 3 ลาย = 0)
+// (29 ก.ย.–1 ต.ค. เคยนับจำนวนลายอย่างเดียว: 2 แผ่น 3 ลาย = 10 · 3 แผ่น 3 ลาย = 10)
+const cases: [number,number,number][] = [[1,1,0],[1,2,5],[1,3,10],[1,4,15],[1,5,20],[2,2,0],[2,3,5],[2,4,10],[3,3,0],[10,4,0],[2,9,35]];
 let fail=0;
 for (const [qty,designs,want] of cases) {
   const s = {...sel, [DESIGN_LABEL]: String(designs)};

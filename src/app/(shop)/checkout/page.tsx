@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ART_SIZE_LABEL, REUSE_ART_LABEL, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, lotShortfalls, needsStockCheck, orderUnitYield, splitArtUrls, stockCheckRows } from "@/lib/products";
+import { ART_SIZE_LABEL, REUSE_ART_LABEL, activeMatrix, activeRate, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, includedDesigns, lotShortfalls, mixRuleFor, needsStockCheck, orderUnitYield, perUnitCapacity, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { couponErrorText, type CouponError } from "@/lib/coupons";
 
 /** เหตุผลที่คูปองไม่ถูกตัดสิทธิ์ตอนกดสั่ง (จาก /api/orders) — เป็นภาษาคน ไว้บอกลูกค้าในข้อความสรุป */
@@ -498,11 +498,34 @@ export default function CheckoutPage() {
        * เดิมพอยอดไม่ตรงก็ถอยไปเขียนแค่ "(3 ลาย)" → เจ้าของร้านอ่านไม่ออกว่าค่าอะไร (OD-260924-2339 · 29 ก.ย. 69)
        * → ยังใช้ "ชื่อ" จากการแจกแจง (ไม่เอาตัวเลข) + บอกว่าเฉลี่ยจากล็อตรวม · ไม่มีอะไรแจกแจงได้เลยแต่มียอด = ค่าคละลายของล็อต
        */
-      const lotUnit = (prod && orderUnitYield(prod, it.selections)?.unit) || "หน่วย";
+      const lotUnit = (prod && (orderUnitYield(prod, it.selections)?.unit || activeMatrix(prod, it.selections)?.unit)) || "ชิ้น";
       const lotNote =
         it.merged && it.merged.lines > 1 ? ` · เฉลี่ยจากล็อตรวม ${it.merged.totalQty.toLocaleString("th-TH")} ${lotUnit}` : "";
       const designs = (it.selections["จำนวนลาย"] ?? "").trim();
-      const mixTail = `${designs ? ` · คละ ${designs}` : ""}${lotNote}`;
+      /**
+       * 🏷 ค่าคละจาก "โควตาของเรท" ที่คิดรวมทั้งล็อต (สแตนดี้/อะคริลิค: ⌊ยอดรวม ÷ ลายละ N⌋ ลายฟรี เกินลายละ ฿X) —
+       * บรรทัดนี้อาจมีลายเดียวแต่ยังโดนค่าคละเพราะทั้งล็อตคละเกินโควตา · เดิมเขียนแค่ "คละ 1 ลาย · เฉลี่ยจากล็อตรวม 12 หน่วย"
+       * พนักงานอ่านว่า "ค่าคละรวนมาหาสแตนดี้" (OD-261001-2510 · 2 ต.ค. 69: 4+7+1 = 12 ชิ้น 3 ลาย ฟรี 2 ลาย เกิน 1 × ฿10)
+       * → บอกที่มาให้ครบ: ล็อตรวมกี่ชิ้น คละกี่ลาย ฟรีกี่ลาย เกินกี่ลาย × ลายละเท่าไหร่ เฉลี่ยกี่บรรทัด
+       */
+      const lotRate = prod ? activeRate(prod, it.selections) : undefined;
+      const lotQuota =
+        prod && it.merged && it.merged.lines > 1 && lotRate?.extraDesignFee && lotRate.minPerDesign && !mixRuleFor(prod, it.selections)
+          ? (() => {
+              const free = includedDesigns(lotRate, it.merged.totalQty, perUnitCapacity(prod, it.selections) ?? 1, it.merged.totalQty);
+              const over = Math.max(0, it.merged.totalDesigns - free);
+              if (over <= 0) return "";
+              // ค่าคละทั้งล็อตมากองที่บรรทัดนี้บรรทัดเดียว (ไม่มีบรรทัดไหนคละเกินเอง) vs เฉลี่ยตามสัดส่วน (หลายบรรทัดคละเกินเอง)
+              const whole = Math.abs(over * lotRate.extraDesignFee! - fee) < 0.01;
+              return (
+                ` · ล็อตรวม ${it.merged.totalQty.toLocaleString("th-TH")} ${lotUnit} คละ ${it.merged.totalDesigns.toLocaleString("th-TH")} ลาย` +
+                ` (ฟรี ${free.toLocaleString("th-TH")} ลาย · เกิน ${over.toLocaleString("th-TH")} ลาย × ${formatPrice(lotRate.extraDesignFee!)})` +
+                (whole ? ` คิดรวมไว้ที่บรรทัดนี้` : ` เฉลี่ยลง ${it.merged.lines.toLocaleString("th-TH")} บรรทัด`) +
+                `${designs ? ` · บรรทัดนี้ ${designs}` : ""}`
+              );
+            })()
+          : "";
+      const mixTail = lotQuota || `${designs ? ` · คละ ${designs}` : ""}${lotNote}`;
       let detail: string;
       /**
        * 🧾 แจกแจงเป็นบรรทัดย่อยพร้อมยอด (OrderItem.addOnLines) — หน้าออเดอร์/หลังบ้านวาด "ค่าคละลาย (ด้านหน้า) ฿10 · คละ 3 ลาย"

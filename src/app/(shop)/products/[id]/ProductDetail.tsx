@@ -74,7 +74,9 @@ import {
   mixFeePerUnit,
   mixMaxDesigns,
   mixRuleFor,
+  mixSpread,
   mixTierFor,
+  mixUnitFee,
   underMinPieces,
   choiceImage,
   optionExtraApplies,
@@ -7672,14 +7674,19 @@ export default function ProductDetail({
                       const mt = mixTierFor(mixRule, qty);
                       const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
                       /*
-                        🎨 กติกา 29 ก.ย. 69 (เจ้าของร้าน): ค่าคละคิดจาก "จำนวนลาย" อย่างเดียว คิดครั้งเดียวต่อรายการ ไม่ว่าสั่งกี่แผ่น
-                        (เดิมกระจายลายลงแผ่น 3 ลาย 2 แผ่น = ฿5 — พนักงานอ่านว่ารวน) · ตัวเลขต้องตรงกับ mixFeeTotal ที่คิดเงิน
+                        🎨 2 ต.ค. 69: ลายละ 1 แผ่น (ลาย ≤ แผ่น) ไม่ถือว่าคละ = ฿0 · เกินจำนวนแผ่นค่อยคิดเฉพาะลายที่ต้องลงแผ่นเดียวกัน
+                        (พนักงานทดสอบ "2 แผ่น 2 ลาย ลายละ 1 A3 ต้องไม่มีค่าคละ" — กติกา 29 ก.ย. เคยนับจำนวนลายอย่างเดียวจึงโดน ฿5)
+                        กระจายลายด้วยตัวเดียวกับที่คิดเงิน (mixSpread) — ยอดกางต้องตรงยอดเก็บ
                       */
                       const total = designFee;
-                      const included = Math.max(1, mt.includedDesigns);
-                      /* กติกาแบบง่าย = ไม่มีค่าเหมา + ลายแรกฟรี → ราคา = ลายที่เกิน × ลายละ ตรง ๆ */
+                      const safeQty = Math.max(1, qty);
+                      const spread = mixSpread(mixRule, designs, safeQty);
+                      const groups = [...new Set(spread)]
+                        .sort((a, b) => b - a)
+                        .map((n) => ({ n, units: spread.filter((x) => x === n).length, fee: mixUnitFee(mixRule, n, qty) }));
+                      /* กติกาแบบง่าย = ไม่มีค่าเหมา + ลายแรกฟรี → ราคา = ลายที่เกินจำนวนแผ่น × ลายละ ตรง ๆ */
                       const simple = mt.baseFee === 0 && mt.includedDesigns === 1;
-                      const over = Math.max(0, designs - included);
+                      const over = Math.max(0, designs - safeQty);
                       return (
                         <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
                           {/* เพดานจากจำนวนชิ้นที่ใส่ได้จริงต่อแผ่น — บอกเหตุผลไว้ ไม่งั้นลูกค้างงว่าทำไมกด + ไม่ขึ้น */}
@@ -7693,7 +7700,8 @@ export default function ProductDetail({
                           ) : null}
                           {simple ? (
                             <p>
-                              💡 ลายแรกไม่คิดค่าคละ · ลายถัดไปคิดลายละ {formatPrice(mt.extraFee)} — คิดครั้งเดียวต่อรายการ ไม่ว่าสั่งกี่{unit}
+                              💡 ลายละ 1 {unit} ไม่คิดค่าคละ (สั่ง {safeQty.toLocaleString("th-TH")} {unit} คละได้{" "}
+                              {safeQty.toLocaleString("th-TH")} ลายฟรี) · ลายที่เกินจำนวน{unit}คิดลายละ {formatPrice(mt.extraFee)}
                               {over > 0 ? (
                                 <>
                                   {" "}
@@ -7716,17 +7724,32 @@ export default function ProductDetail({
                                 : ` เกิน ${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit}`}
                               {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""}
                             </p>
+                          ) : over <= 0 ? (
+                            <p>
+                              ✅ คละ {designs.toLocaleString("th-TH")} ลาย บน {safeQty.toLocaleString("th-TH")} {unit} = ลายละ 1 {unit}
+                              ไม่มี{unit}ไหนต้องคละ → <strong className="font-bold text-emerald-700">ไม่มีค่าคละ</strong>
+                            </p>
                           ) : (
                             <>
                               <p>
-                                🎨 คละ {designs.toLocaleString("th-TH")} ลาย ={" "}
+                                🎨 คละ {designs.toLocaleString("th-TH")} ลาย บน {safeQty.toLocaleString("th-TH")} {unit} → เกินจำนวน{unit}{" "}
+                                <strong className="font-bold">{over.toLocaleString("th-TH")} ลาย</strong> ต้องลง{unit}เดียวกัน ={" "}
                                 <strong className="font-bold">
-                                  {mt.baseFee > 0 ? `เหมา ${formatPrice(mt.baseFee)} (รวม ${included.toLocaleString("th-TH")} ลาย)` : `${included.toLocaleString("th-TH")} ลายแรกฟรี`}
-                                  {over > 0 ? ` + เกิน ${over.toLocaleString("th-TH")} ลาย × ${formatPrice(mt.extraFee)}` : ""}
-                                </strong>{" "}
+                                  {groups.map((g) => `${g.units} ${unit} × ${g.n} ลาย`).join(" + ")}
+                                </strong>
+                              </p>
+                              <p>
+                                {groups
+                                  .map((g) => `${g.units}×${formatPrice(g.fee)}`)
+                                  .join(" + ")}{" "}
                                 = <strong className="font-bold text-amber-700">{formatPrice(total)}</strong>
                               </p>
-                              <p className="text-teal-700">คิดครั้งเดียวต่อรายการ ไม่ว่าสั่งกี่{unit} · ไม่รวมกับรายการอื่นในตะกร้า</p>
+                              <p className="text-teal-700">
+                                {mt.baseFee > 0
+                                  ? `${unit}ที่คละ ${mt.includedDesigns <= 2 ? "2" : `2–${mt.includedDesigns.toLocaleString("th-TH")}`} ลาย = ${formatPrice(mt.baseFee)}`
+                                  : `${unit}ที่คละ ลายแรกฟรี`}
+                                {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""} · คิดเฉพาะรายการนี้ ไม่รวมกับรายการอื่นในตะกร้า
+                              </p>
                             </>
                           )}
                           {(() => {

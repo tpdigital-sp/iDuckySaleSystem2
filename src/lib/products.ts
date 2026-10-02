@@ -2112,10 +2112,11 @@ export function spreadDesigns(designs: number, qty: number, cap = Infinity): num
  *     เช่น ไดคัท 50% ลายละ 20 (20/2/20): 3 แผ่น 4 ลาย → [2,1,1] = 20 (เติมเต็มจะได้ [2,2,1] = 40 แพงเกินจริง)
  * เสมอกัน = ใช้วิธีเติมเต็มแบบเดิม (หน้าจอไม่เปลี่ยนหน้าตากับสินค้าเก่า)
  * ⚠️ หน้าสินค้าที่กางรายแผ่นให้ลูกค้าดูต้องใช้ตัวนี้ตัวเดียวกับที่คิดเงิน — ไม่งั้นยอดกางไม่ตรงยอดเก็บ
- * ⛔ 29 ก.ย. 69: เลิกใช้คิดเงินแล้ว (mixFeeTotal คิดจากจำนวนลายอย่างเดียว) — เหลือไว้ให้ spreadDesigns/หน้าจอเก่าอ้างถึง
+ * 🔁 2 ต.ค. 69: กลับมาเป็นตัวคิดเงินของ mixFeeTotal (29 ก.ย.–1 ต.ค. เคยคิดจากจำนวนลายอย่างเดียว ดูหมายเหตุที่ mixFeeTotal)
+ * tierQty = ยอดที่ใช้เลือกขั้นของกติกา (tiers.fromQty) — ตะกร้ารวมล็อตส่งยอดรวมล็อตมา · บรรทัดเดี่ยว = qty
  */
-export function mixSpread(rule: MixRule, designs: number, qty: number): number[] {
-  const t = mixTierFor(rule, qty);
+export function mixSpread(rule: MixRule, designs: number, qty: number, tierQty = qty): number[] {
+  const t = mixTierFor(rule, tierQty);
   const fill = spreadDesigns(designs, qty, t.includedDesigns);
   if (designs <= qty || qty <= 0) return fill; // ลายละหน่วยขึ้นไป = ไม่ได้คละ ไม่มีอะไรให้เลือก
   const base = Math.floor(designs / qty);
@@ -2134,14 +2135,18 @@ export function mixSpread(rule: MixRule, designs: number, qty: number): number[]
  */
 export function mixFeeTotal(rule: MixRule, designs: number, qty: number, tierQty = qty): number {
   if (designs <= 1 || qty <= 0) return 0;
-  // ขั้นของกติกา (tiers.fromQty = "สั่งตั้งแต่…") ดูยอดที่ส่งมาเป็น tierQty — ตะกร้ารวมล็อตส่งยอดรวมล็อตมา · บรรทัดเดี่ยว = qty
-  const t = mixTierFor(rule, tierQty);
   /**
-   * 🎨 เจ้าของร้านเคาะ 29 ก.ย. 69: ค่าคละคิดจาก "จำนวนลาย" อย่างเดียว คิดครั้งเดียวต่อรายการ ไม่ว่าสั่งกี่แผ่น
-   * (3 ลาย = ฿10 เสมอ · ไม่รวมกับรายการอื่น) — เดิม mixSpread กระจายลายลงแผ่นให้ถูกสุด (3 ลาย 2 แผ่น = ฿5 · 3 แผ่น = ฿0)
-   * พนักงานอ่านแล้วว่า "รวน" เพราะตัวเลขเปลี่ยนตามจำนวนแผ่น
+   * 🎨 2 ต.ค. 69 (พนักงานทดสอบ · เจ้าของร้านส่งมาแก้): "สั่ง 2 แผ่น 2 ลาย ลายละ 1 A3 ต้องไม่มีค่าคละ"
+   * → ลาย ≤ แผ่น = ทุกแผ่นมีลายเดียว ไม่มีแผ่นไหน "คละ" = ฿0 · ลายเกินจำนวนแผ่นค่อยคิด เฉพาะลายที่ต้องลงแผ่นเดียวกัน
+   *   (กระดาษ 5/2/5: 3 ลาย 1 แผ่น ฿10 · 2 แผ่น ฿5 · 3 แผ่น ฿0 — ไดคัท 50% 20/2/20: 2 A3 3 ลาย ฿20 ตามกติกา 26 ส.ค. 69)
+   * การกระจายลายลงแผ่นใช้ mixSpread (เลือกวิธีที่ถูกสุดให้ลูกค้า — กติกาเชิงเส้นได้ (ลาย − แผ่น) × ลายละ)
+   * ⚠️ 29 ก.ย.–1 ต.ค. 69 เคยคิด feeOfUnit(จำนวนลาย) ครั้งเดียวไม่ดูแผ่น (คอมมิต 0fcaf53) → 2 แผ่น 2 ลายโดน ฿5 ทั้งที่ไม่ได้คละ
+   * ยังคง "คิดต่อรายการ ไม่รวมรายการอื่นในตะกร้า" (repriceCartGroups คิดรายบรรทัดสำหรับ mixRule)
+   * ขั้นของกติกา (tiers.fromQty = "สั่งตั้งแต่…") ดูยอดที่ส่งมาเป็น tierQty — ตะกร้ารวมล็อตส่งยอดรวมล็อตมา · บรรทัดเดี่ยว = qty
    */
-  return feeOfUnit(t, designs);
+  if (designs <= qty) return 0;
+  const t = mixTierFor(rule, tierQty);
+  return mixSpread(rule, designs, qty, tierQty).reduce((s, n) => s + feeOfUnit(t, n), 0);
 }
 
 /**
@@ -2154,9 +2159,9 @@ export function mixUnitFee(rule: MixRule, designsOnUnit: number, qty: number): n
 
 /** ค่าคละของหน่วยที่มีลายมากที่สุด — ไว้โชว์ว่า "แผ่นที่แพงสุดแผ่นละเท่าไหร่" */
 export function mixFeePerUnit(rule: MixRule, designs: number, qty = 1): number {
-  if (designs <= 1 || qty <= 0) return 0;
-  // กติกาใหม่ (29 ก.ย. 69) ค่าคละคิดจากจำนวนลายครั้งเดียว — "ต่อหน่วย" กับ "ทั้งรายการ" จึงเท่ากัน
-  return feeOfUnit(mixTierFor(rule, qty), designs);
+  if (designs <= 1 || qty <= 0 || designs <= qty) return 0;
+  const t = mixTierFor(rule, qty);
+  return Math.max(...mixSpread(rule, designs, qty).map((n) => feeOfUnit(t, n)));
 }
 
 /**
@@ -6353,7 +6358,15 @@ export function repriceCartGroups(
           if (pool.rate) own[RATE_LABEL] = pool.rate.label;
           return Math.max(0, designFeeBase(p, own, lines[i].qty, lotQty));
         });
-        if (!w.some((x) => x > 0)) w = gIdxs.map((i) => Math.max(0, designCountOf(lines[i].selections)));
+        /**
+         * ไม่มีบรรทัดไหนคละเกินโควตาด้วยตัวเอง = ค่าคละเกิดจาก "การรวมล็อต" ล้วน ๆ (สแตนดี้ 4+7+1 ชิ้น ลายละ 1 ลาย
+         * รวม 12 ชิ้น 3 ลาย เกินโควตา 1 ลาย) → กองไว้บรรทัดเดียว ไม่หารเฉลี่ย (เจ้าของร้าน 2 ต.ค. 69: "เฉลี่ยเป็น 3 บรรทัด งง"
+         * OD-261001-2510 ได้ ฿4/฿3/฿3) · เลือกบรรทัดสุดท้ายของล็อต = ลายที่มาทีหลังสุดคือตัวที่ทำให้เกินโควตา
+         */
+        if (!w.some((x) => x > 0)) {
+          mixFeeAt.set(gIdxs[gIdxs.length - 1], total);
+          return;
+        }
         const sum = w.reduce((a, b) => a + b, 0);
         if (!(sum > 0)) {
           mixFeeAt.set(gIdxs[0], total);
