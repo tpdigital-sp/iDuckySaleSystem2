@@ -113,6 +113,8 @@ type DraftOption = {
   display: "pills" | "dropdown" | "multi" | "input" | "cards";
   /** 🔽 กลุ่มของเสริม — หน้าสินค้าปิดไว้ก่อน โชว์แค่สวิตช์ (ตัวเลือกแรกต้องเป็นตัวที่ไม่คิดเงิน) */
   collapsible?: boolean;
+  /** 🏷 (multi) ค่าที่ตะกร้า/ออเดอร์บันทึกตอนลูกค้าไม่ติ๊กอะไรเลย เช่น "ไม่เกิน A4" · ว่าง = ไม่มีบรรทัด */
+  noneLabel?: string;
   /** ── กลุ่มชนิด "ช่องกรอก" (display: input) — เก็บเป็น string เพราะกรอกในช่อง ── */
   inKind?: "number" | "text" | "textarea";
   inUnit?: string;
@@ -728,6 +730,7 @@ function toDraft(p: Product): Draft {
       // มีตัวไหนเปิด "ระบุจำนวน" ไว้ = กลุ่มนี้เคยเปิดสวิตช์ → เปิดค้างไว้ให้เห็นค่าเดิม
       ...(o.choices.some((c) => c.qty) || o.qtyPerChoice ? { qtyOn: true } : {}),
       ...(o.collapsible ? { collapsible: true } : {}),
+      ...(o.noneLabel ? { noneLabel: o.noneLabel } : {}),
       display: o.display ?? "pills",
       ...(o.extraFromQty ? { extraFromQty: String(o.extraFromQty) } : {}),
       ...(o.extraSmallUpToQty ? { extraSmallUpToQty: o.extraSmallUpToQty } : {}),
@@ -1059,6 +1062,8 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
         ? { display: o.display }
         : {}),
       ...(o.collapsible ? { collapsible: true } : {}),
+      // 🏷 ค่าตอนไม่ติ๊ก — เฉพาะกลุ่มติ๊กหลายอย่าง (สลับ display แล้วค่าเก่าไม่ติดไป)
+      ...(o.display === "multi" && o.noneLabel?.trim() ? { noneLabel: o.noneLabel.trim() } : {}),
       ...(Number(o.extraFromQty) > 0 ? { extraFromQty: Math.floor(Number(o.extraFromQty)) } : {}),
       ...(Number(o.extraSmallUpToQty) > 0 ? { extraSmallUpToQty: Math.floor(Number(o.extraSmallUpToQty)) } : {}),
       ...(o.extraQtyScope ? { extraQtyScope: o.extraQtyScope } : {}),
@@ -3767,6 +3772,21 @@ export default function ProductEditor({ product }: { product: Product }) {
                   (เช่น เพิ่มสาย 2 เส้น → +฿ ของตัวนั้นคูณ 2 — ติ๊กแล้วเลือกทีละตัวได้ด้านล่าง)
                 </span>
               </span>
+            </label>
+            {/* 🏷 ค่าตอนไม่ติ๊ก — กลุ่มที่ตัวเลือกมีแต่ "ของเพิ่ม" (ใหญ่กว่า A4 +฿20) การไม่ติ๊กมีความหมาย (= ไม่เกิน A4)
+                แต่ตะกร้า/ออเดอร์/ใบงานไม่มีบรรทัดนี้เลย ฝ่ายผลิตต้องเดา → ตั้งค่านี้แล้วระบบบันทึกเป็นบรรทัดให้ */}
+            <label className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600">
+              <span>
+                🏷 ไม่ติ๊กเลย ให้ตะกร้า/ออเดอร์บันทึกว่า
+                <span className="ml-1 font-normal text-slate-400">(ว่าง = ไม่มีบรรทัด · ไม่คิดเงิน ไม่ตัดสต๊อก)</span>
+              </span>
+              <input
+                type="text"
+                value={opt.noneLabel ?? ""}
+                onChange={(e) => setOpt({ noneLabel: e.target.value || undefined })}
+                placeholder="เช่น ไม่เกิน A4"
+                className="h-7 w-44 rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-medium text-slate-700 placeholder:text-slate-300 focus:border-amber-400 focus:outline-none"
+              />
             </label>
           </div>
         )}

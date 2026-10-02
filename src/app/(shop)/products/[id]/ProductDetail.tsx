@@ -3858,7 +3858,8 @@ export default function ProductDetail({
                                 return formatMultiPick(p.name, p.qty) + (u && p.qty > 1 ? ` ${u}` : "");
                               })
                               .join(", ")
-                          : "ไม่เลือก"
+                          : // 🏷 กลุ่มที่ตั้ง "ค่าตอนไม่ติ๊ก" ไว้ (เช่น ไม่เกิน A4) โชว์ค่านั้นแทน — ตรงกับที่ตะกร้า/ออเดอร์จะบันทึก
+                            opt.noneLabel || "ไม่เลือก"
                         : isInput
                           ? effective[opt.label] || "ยังไม่ได้กรอก"
                           : effective[opt.label]}

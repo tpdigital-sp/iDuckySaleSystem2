@@ -457,6 +457,15 @@ export interface ProductOption {
    */
   swatchGrid?: boolean;
   /**
+   * 🏷 "ค่าที่บันทึกตอนลูกค้าไม่ติ๊กอะไรเลย" ของกลุ่มติ๊กหลายอย่าง — เช่น กลุ่ม "ขนาดลายพิมพ์" ที่ตัวเลือกมีแต่
+   * "(หน้า) ใหญ่กว่า A4 +฿20" การไม่ติ๊กแปลว่า "ไม่เกิน A4" แต่ตะกร้า/ออเดอร์/ใบงานไม่มีบรรทัดนี้เลย
+   * → ฝ่ายผลิตถามว่าวางลายได้ไม่เกิน A4 หรือ A3 (กระเป๋าผ้าแคนวาส OD-260929-6855 · 2 ต.ค. 69)
+   * ตั้งไว้ = ตอนลงตะกร้า (orderableSelections) กลุ่มที่โชว์อยู่และไม่ได้ติ๊ก จะบันทึก selections[label] = ค่านี้
+   * ค่านี้ไม่ใช่ตัวเลือกจริง: ไม่คิด +฿ ไม่ตัดสต๊อก ไม่นับเป็นที่ติ๊ก (selectedPicks คืนว่าง) · หน้าสินค้าโชว์แทนคำว่า "ไม่เลือก"
+   * ไม่ตั้ง = พฤติกรรมเดิม (ไม่ติ๊ก = ไม่มีบรรทัด)
+   */
+  noneLabel?: string;
+  /**
    * ✍️ แสดงกลุ่ม "เลือกได้อย่างเดียว" เป็น "ตารางแถบตัวอย่าง" — รูปแถบยาว + รหัสใต้ภาพ เรียงตาราง
    * ใช้กับกลุ่มที่หน้าตาของตัวอย่างคือสาระหลักและตัวเลือกเยอะ (เช่น ฟอนต์ปัก 26 แบบ)
    * รูปประจำตัวเลือกคือ "ทั้งบรรทัดตัวอย่าง" — ในตารางโชว์ครึ่งซ้าย (ตัวโตพอเห็นทรง)
@@ -1502,6 +1511,8 @@ export function selectedPicks(opt: ProductOption, selections: Record<string, str
   const cur = selections[opt.label];
   if (!cur) return [];
   if (!isMultiOption(opt)) return [{ name: cur, qty: 1 }];
+  // 🏷 ค่า "ไม่ได้ติ๊กอะไรเลย" ที่ตะกร้าบันทึกไว้ (noneLabel) ไม่ใช่ตัวเลือก — ไม่คิด +฿ ไม่ตัดสต๊อก ไม่ขึ้นติ๊ก
+  if (opt.noneLabel && cur.trim() === opt.noneLabel.trim()) return [];
   const picks = splitMultiPicks(cur, opt.choices.map((c) => c.name));
   // ตัวที่ไม่ได้เปิดช่องจำนวน นับเป็น 1 เสมอ (กันข้อมูลเก่าที่เคยเปิดไว้ทำราคาเพี้ยน)
   return picks.map((p) =>
@@ -5616,6 +5627,18 @@ export function orderableSelections(
       return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
     });
     if (!samePrice) continue;
+    out[opt.label] = none;
+  }
+  /*
+   * 🏷 กลุ่มติ๊กหลายอย่างที่ "โชว์อยู่แต่ไม่ได้ติ๊ก" และตั้ง noneLabel ไว้ → บันทึกค่านั้นเป็นบรรทัดสเปค
+   * ("ขนาดลายพิมพ์: ไม่เกิน A4") ฝ่ายผลิตจะได้ไม่ต้องเดาว่าการไม่มีบรรทัดแปลว่าอะไร
+   * ชื่อซ้ำ: ให้เฉพาะกลุ่มที่โชว์อยู่จริง (optionByLabel) · ค่านี้ไม่ใช่ตัวเลือก (selectedPicks ข้ามให้)
+   */
+  for (const opt of p.options ?? []) {
+    const none = opt.noneLabel?.trim();
+    if (!none || !isMultiOption(opt)) continue;
+    if (!optionActive(opt, view) || optionByLabel(p, opt.label, view) !== opt) continue;
+    if (selectedPicks(opt, out).length) continue;
     out[opt.label] = none;
   }
   return out;
