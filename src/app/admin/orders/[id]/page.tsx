@@ -2,7 +2,7 @@
 
 import { shrinkImageFile } from "@/lib/shrink-image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
@@ -10553,6 +10553,56 @@ function PackView({
                   : `รูปที่เหลือทั้งหมด = รอบสุดท้าย ${pickup ? "กดแพ็คเสร็จ" : "ยิงเลขที่ช่อง"}ด้านล่างให้ใบปิด`}
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 🎁 ของแถมที่ต้องใส่กล่อง — โหมดแพ็คเดิมไม่มีกล่องนี้เลย คนแพ็คเห็นแต่ในใบงานกระดาษ
+          รูป = แบบที่กราฟฟิกทำแล้ว (gifts[].proofs) ไม่มีค่อยใช้ลายที่ลูกค้าแนบ (OD-260925-3684 · 2 ต.ค. 69) */}
+      {(order.gifts?.length ?? 0) > 0 && (
+        <div className="px-3 pt-1">
+          <div className="rounded-2xl bg-white p-3 shadow-sm ring-2 ring-amber-300">
+            <p className="text-sm font-extrabold text-slate-900">🎁 ของแถมที่ต้องใส่กล่อง</p>
+            <ul className="mt-1.5 space-y-2">
+              {(order.gifts ?? []).map((g) => {
+                const pics = giftPackImages(g);
+                return (
+                  <li key={g.promoId} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-100">
+                    {giftLinesOf(g).map((ln, k) => (
+                      <p key={k} className="flex items-baseline justify-between gap-3 text-sm font-bold text-slate-900">
+                        <span className="min-w-0">☐ {ln.label}</span>
+                        <span className="shrink-0 text-lg font-black tabular-nums">×{ln.qty}</span>
+                      </p>
+                    ))}
+                    {giftArtLabel(g) && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">🎨 {giftArtLabel(g)}</p>}
+                    {giftProofLabel(g) && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">🖼 {giftProofLabel(g)}</p>}
+                    {pics.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {pics.map((x, k) => (
+                          <a key={`${x.url}-${k}`} href={x.url} target="_blank" rel="noreferrer" className="relative block">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={x.url}
+                              alt={x.source === "proof" ? `แบบของแถม ${k + 1}` : `ลายของแถม ${k + 1}`}
+                              className="h-24 w-24 rounded-lg bg-white object-contain ring-1 ring-slate-200"
+                            />
+                            {x.review && (
+                              <span
+                                className={`absolute bottom-1 left-1 rounded px-1 text-[9px] font-bold text-white ${
+                                  x.review === "อนุมัติ" ? "bg-emerald-500" : "bg-rose-500"
+                                }`}
+                              >
+                                {x.review === "อนุมัติ" ? "✓ อนุมัติ" : "✏ ขอแก้"}
+                              </span>
+                            )}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
       )}

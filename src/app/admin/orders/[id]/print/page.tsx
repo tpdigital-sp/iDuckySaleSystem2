@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel } from "@/lib/gifts";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -1479,14 +1479,37 @@ function OrderDocs({
                           🎨 {giftArtLabel(g)}
                         </span>
                       )}
-                      {(g.artworkUrls?.length ?? 0) > 0 && (
-                        <span className="mt-1 flex flex-wrap gap-1 pl-4">
-                          {(g.artworkUrls ?? []).slice(0, 4).map((u, k) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={u} src={u} alt={`ลายของแถม ${k + 1}`} className="h-14 w-14 rounded border border-slate-300 object-cover" />
-                          ))}
+                      {/* 🖼 แบบของแถมที่กราฟฟิกทำแล้ว (gifts[].proofs) — คนแพ็คเทียบของในมือกับรูปนี้
+                          เดิมขึ้นแต่ลายที่ลูกค้าแนบ (artworkUrls) → ใบที่ลูกค้าเลือก "ใช้ลายเดียวกับสินค้า" ไม่มีรูปเลย (OD-260925-3684 · 2 ต.ค. 69)
+                          ติ๊ก "พิมพ์พร้อมแบบงาน" ออก = ซ่อนแบบเหมือนรายการสินค้า แต่ลายที่ลูกค้าแนบยังขึ้นตามเดิม */}
+                      {giftProofLabel(g) && (
+                        <span className="mt-0.5 block pl-4 text-xs font-semibold text-slate-600">
+                          🖼 {giftProofLabel(g)}
                         </span>
                       )}
+                      {(() => {
+                        const pics = giftPackImages(g).filter((x) => withProofs || x.source !== "proof");
+                        if (!pics.length) return null;
+                        return (
+                          <span className="mt-1 flex flex-wrap gap-1.5 pl-4">
+                            {pics.slice(0, 6).map((x, k) => (
+                              <span key={`${x.url}-${k}`} className="relative block">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={x.url}
+                                  alt={x.source === "proof" ? `แบบของแถม ${k + 1}` : `ลายของแถม ${k + 1}`}
+                                  className={`rounded border border-slate-300 ${x.source === "proof" ? "h-20 w-20 object-contain" : "h-14 w-14 object-cover"}`}
+                                />
+                                {x.review && (
+                                  <span className="absolute bottom-0.5 left-0.5 rounded border border-black bg-white px-0.5 text-[9px] font-extrabold leading-tight text-black">
+                                    {x.review === "อนุมัติ" ? "✓ อนุมัติ" : "✏ ขอแก้"}
+                                  </span>
+                                )}
+                              </span>
+                            ))}
+                          </span>
+                        );
+                      })()}
                     </li>
                   ))}
                 </ul>

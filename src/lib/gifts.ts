@@ -276,6 +276,28 @@ export function giftArtLabel(g: OrderGift): string | null {
   return n > 0 ? `ลายเฉพาะของแถม ${n} รูป (ลูกค้าแนบมา)` : "ใช้ลายเดียวกับสินค้าที่สั่ง";
 }
 
+/**
+ * 🖼 รูปของแถมที่ "ฝ่ายแพ็ค/กราฟฟิก" ต้องเห็น — แบบที่ร้านทำแล้ว (proofs) มาก่อน ไม่มีค่อยใช้ลายที่ลูกค้าแนบ
+ *
+ * 🐞 บั๊กที่แก้ (OD-260925-3684 · 2 ต.ค. 69): ใบงาน/หน้าแพ็คดึงแต่ artworkUrls (ลายที่ลูกค้าแนบ)
+ *    ลูกค้าส่วนใหญ่เลือก "ใช้ลายเดียวกับสินค้าที่สั่ง" → ลิสต์ว่าง ทั้งที่กราฟฟิกอัปแบบรองหลังไว้ใน proofs
+ *    และลูกค้าอนุมัติแล้ว → ฝ่ายแพ็คไม่เห็นรูปเลย ต้องไปเปิดหน้าออเดอร์เอง
+ *    กติกาเดียวกับรายการสินค้า (coversOf/boxUnits): มีแบบใช้แบบ ไม่มีค่อยใช้ลายลูกค้า
+ */
+export function giftPackImages(g: OrderGift): { url: string; source: "proof" | "artwork"; review?: "อนุมัติ" | "ขอแก้ไข" }[] {
+  const proofs = (g.proofs ?? []).filter((p) => p?.url);
+  if (proofs.length) return proofs.map((p) => ({ url: p.url, source: "proof" as const, ...(p.review ? { review: p.review } : {}) }));
+  return (g.artworkUrls ?? []).filter(Boolean).map((url) => ({ url, source: "artwork" as const }));
+}
+
+/** บรรทัดสถานะแบบของแถม (ใบงาน/หน้าแพ็ค) — null = ยังไม่มีแบบ */
+export function giftProofLabel(g: OrderGift): string | null {
+  const n = (g.proofs ?? []).filter((p) => p?.url).length;
+  if (!n) return null;
+  const st = g.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : g.proofStatus === "ขอแก้ไข" ? "ลูกค้าขอแก้ไข" : "รอลูกค้าตรวจ";
+  return `แบบของแถม ${n} รูป · ${st}`;
+}
+
 const num = (v: unknown, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
 /** โปรที่ตั้งไว้และยังใช้งานได้ ณ เวลานี้ (ตัดตัวที่ปิด/หมดช่วงเวลา/ตั้งไม่ครบทิ้ง) */
