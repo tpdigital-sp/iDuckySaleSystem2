@@ -8,6 +8,7 @@ import {
   ROLE_ADMINISTRATOR,
   ROLE_LEADER,
   ROLE_STAFF,
+  WORK_STATUS_ACTIVE,
   type Perm,
 } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
@@ -27,7 +28,11 @@ interface EmpDoc {
   iduckySuspended?: boolean;
 }
 
-/** รายชื่อพนักงานทั้งหมด (ไม่ส่งรหัสผ่านออกไปเด็ดขาด) */
+/**
+ * รายชื่อพนักงาน "ที่ยังทำงานอยู่" (ไม่ส่งรหัสผ่านออกไปเด็ดขาด)
+ * ซิงค์จากฐาน employees2 ของระบบ TP เฉพาะ workStatus=working ตั้งแต่ตัว query —
+ * คนพ้นสภาพแล้ว (resigned) ไม่ถูกดึงมาเลย (เจ้าของร้านสั่ง 2 ต.ค. 69) ไม่ใช่ดึงมาทั้งหมดแล้วค่อยซ่อนที่หน้าจอ
+ */
 export async function GET() {
   const gate = await requirePerm("staff.manage");
   if (gate.res) return gate.res;
@@ -35,7 +40,7 @@ export async function GET() {
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase" }, { status: 503 });
 
   const [rows, rolePerms, userPerms] = await Promise.all([
-    db.collection(EMPLOYEE_COLLECTION).get(),
+    db.collection(EMPLOYEE_COLLECTION).where("workStatus", "==", WORK_STATUS_ACTIVE).get(),
     loadRolePerms(),
     loadUserPerms(),
   ]);

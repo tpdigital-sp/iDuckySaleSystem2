@@ -287,7 +287,7 @@ function StaffPageInner() {
     u.trim().toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "") ||
     u.trim().toLowerCase();
 
-  // แสดงเฉพาะคนที่ยังทำงานอยู่ (พ้นสภาพแล้วไม่โชว์)
+  // เซิร์ฟเวอร์ซิงค์มาเฉพาะคนที่ยังทำงานอยู่แล้ว (where workStatus=working) — กรองซ้ำไว้กันหลุด
   const working = (staff ?? []).filter((s) => s.workStatus === "working");
   // "ใช้งานระบบได้" — เซิร์ฟเวอร์คิดมาให้แล้ว (ชุดสิทธิ์เดียวกับตอนล็อกอิน รวมบทบาทที่แอดมินแก้เอง)
   const hasAccess = (s: Staff) => s.hasAccess;

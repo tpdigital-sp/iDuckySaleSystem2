@@ -31,7 +31,8 @@ export async function GET() {
   const db = getFirestoreAdmin();
   if (!db) return NextResponse.json({ staff: [] });
 
-  const rows = await db.collection(EMPLOYEE_COLLECTION).get();
+  // ดึงเฉพาะคนที่ยังทำงานอยู่ตั้งแต่ตัว query (คนลาออกไม่ต้องวิ่งมาถึงเซิร์ฟเวอร์นี้เลย)
+  const rows = await db.collection(EMPLOYEE_COLLECTION).where("workStatus", "==", WORK_STATUS_ACTIVE).get();
   const staff = rows.docs
     .map((d) => d.data() as EmpDoc)
     .filter((e) => GRAPHIC_DEPTS.has((e.department ?? "").trim().toLowerCase()))
