@@ -227,6 +227,8 @@ type HangRow = {
 
 /** ติ๊ก "จัดแล้ว" ของกลุ่มหนึ่ง — ใครติ๊กและติ๊กเมื่อไหร่ */
 type GroupDone = { at: string; by: string };
+/** 🏷 ชื่อหัวกลุ่มที่ตั้งเอง (กลุ่มสินค้า/ตัวเลือก/วัสดุแฝง — ชื่อเดิมมาจากที่อื่น) · คีย์ = คีย์กลุ่ม */
+type GroupTitleOverride = { name: string; at: string; by: string };
 /**
  * ระยะเยื้อง (px) ของแถวในกลุ่มสินค้า — ทุกแถวเริ่มตรงกับ "รูปหัวกลุ่ม" พอดี ไม่ยื่นออกมาทางซ้าย
  * หัวกลุ่ม: เว้นซ้าย 20 + ลูกศร 12 + gap 12 → รูปเริ่มที่ 44 (เดิม 92 ตอนยังมีช่องติ๊ก 26 + gap 12 อยู่หน้าชื่อ)
@@ -309,6 +311,8 @@ export default function StockPage() {
    * เก็บที่เซิร์ฟเวอร์ (ไม่ใช่ในเครื่อง) ทีมที่ช่วยกันจัดจะได้เห็นตรงกันว่าถึงไหนแล้ว
    */
   const [doneGroups, setDoneGroups] = useState<Record<string, GroupDone>>({});
+  /** 🏷 ชื่อกลุ่มที่ตั้งเองในหน้านี้ — ชื่อสินค้าหน้าร้านยาว คนจัดของเรียกสั้น ๆ ได้โดยไม่แตะชื่อที่ลูกค้าเห็น (เจ้าของร้านขอ 2 ต.ค. 69) */
+  const [groupTitles, setGroupTitles] = useState<Record<string, GroupTitleOverride>>({});
   /** กรองกลุ่มตามติ๊ก "จัดแล้ว" — ไล่จัดต่อจากเดิมให้เลือก "ยังไม่จัด" จะเหลือแต่ของที่ต้องทำ · จำไว้ข้ามวัน (งานนี้ทำหลายวัน) */
   const [doneFilter, setDoneFilter] = useState<DoneFilter>("ทั้งหมด");
   useEffect(() => {
@@ -395,6 +399,8 @@ export default function StockPage() {
    * → คำตอบที่ไม่ใช่ของคำขอล่าสุดทิ้งไป
    */
   const loadSeq = useRef(0);
+  /** SKU ที่เพิ่งบันทึกจากหน้านี้ — กันคำตอบโหลดที่เก่ากว่าทับ (ดู load) */
+  const recentSaves = useRef(new Map<string, { item: Item; at: number }>());
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
     const res = await fetch("/api/admin/stock");
@@ -405,9 +411,19 @@ export default function StockPage() {
       setErr(j?.error ?? "โหลดข้อมูลไม่สำเร็จ");
       return;
     }
-    setItems(j.items);
+    // 🧷 รายการที่เพิ่งบันทึก (≤ 30 วิ) ต้องอยู่เสมอ — poll 20 วิ ที่เริ่มก่อน POST เสร็จแต่ตอบทีหลัง เคยทับจน "เพิ่มแล้วไม่ขึ้น" จนกว่าจะ poll รอบถัดไป (2 ต.ค. 69)
+    const now = Date.now();
+    const list = [...(j.items as Item[])];
+    const seen = new Set(list.map((i) => i.id));
+    for (const [id, r] of recentSaves.current) {
+      if (now - r.at > 30_000 || seen.has(id)) recentSaves.current.delete(id);
+      else list.push(r.item);
+    }
+    setItems(list);
     setMoves(j.moves);
-    warmWrite("stock:list", { items: j.items, moves: j.moves });
+    // 🗂 รายชื่อหมวดที่เก็บไว้มากับทุกรอบโหลด — เดิมโหลดครั้งเดียวตอนเปิดหน้า เปลี่ยนชื่อหมวดจากแท็บ/เครื่องอื่นแล้วแท็บนี้ยังเห็นชื่อเก่าค้างในดรอปดาวน์ (อะไหล่ตะขอ 2 ต.ค. 69)
+    if (Array.isArray(j.categories)) setCatList(j.categories);
+    warmWrite("stock:list", { items: list, moves: j.moves });
   }, []);
   // เปิดหน้า: โชว์ของที่จำไว้ก่อน (ถ้ามี) ระหว่างรอของจริง
   useEffect(() => {
@@ -450,6 +466,17 @@ export default function StockPage() {
       if (!res.ok || !j?.ok) return; // ดูสต๊อกไม่ได้/เน็ตหลุด — ของที่จำไว้ในแท็บยังใช้ต่อได้
       setDoneGroups(j.done ?? {});
       warmWrite("stock:done", j.done ?? {});
+    })();
+  }, []);
+  useEffect(() => {
+    const w = warmRead<Record<string, GroupTitleOverride>>("stock:titles");
+    if (w) setGroupTitles(w);
+    void (async () => {
+      const res = await fetch("/api/admin/stock/group-title");
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) return;
+      setGroupTitles(j.titles ?? {});
+      warmWrite("stock:titles", j.titles ?? {});
     })();
   }, []);
   useEffect(() => {
@@ -678,6 +705,30 @@ export default function StockPage() {
     }
   }
 
+  /**
+   * 🏷 ตั้ง/ล้างชื่อหัวกลุ่มที่ชื่อมาจากที่อื่น (สินค้า/ตัวเลือก/วัสดุแฝง) — เป็นชื่อแสดงในหน้านี้เท่านั้น ชื่อสินค้าหน้าร้านไม่เปลี่ยน
+   * ใส่ชื่อเดิมหรือเว้นว่าง = ล้างชื่อที่ตั้ง กลับไปใช้ชื่อจากสินค้า
+   */
+  async function renameGroupTitle(key: string, original: string, to: string) {
+    const name = to.trim() === original ? "" : to.trim();
+    if (!name && !groupTitles[key]) return true; // ไม่มีอะไรให้ล้าง — ปิดช่องเฉย ๆ
+    setErr("");
+    const res = await fetch("/api/admin/stock/group-title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, name }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "ตั้งชื่อไม่สำเร็จ");
+      return false;
+    }
+    setGroupTitles(j.titles ?? {});
+    warmWrite("stock:titles", j.titles ?? {});
+    setOk(name ? `ตั้งชื่อกลุ่ม “${original}” → “${name}” แล้ว (เฉพาะหน้าสต๊อก — ชื่อสินค้าหน้าร้านไม่เปลี่ยน)` : `กลับไปใช้ชื่อเดิม “${original}” แล้ว`);
+    return true;
+  }
+
   /** 🏷 แก้ชื่อหัวกลุ่มที่จัดตามตระกูล (m:/s:/n:) = เปลี่ยน family ของทุกแถวในกลุ่มทีเดียว (เจ้าของร้านขอ 1 ต.ค. 69) */
   async function renameFamily(rows: Item[], from: string, to: string) {
     const name = to.trim();
@@ -698,7 +749,11 @@ export default function StockPage() {
     return true;
   }
 
-  async function saveItem(body: Partial<Item> & { name: string; codePrefix?: string }) {
+  /**
+   * บันทึก SKU 1 ตัว · defer = ยังไม่โหลดรายการ/รูปใหม่ (ผู้เรียกบันทึกหลายตัวแล้วโหลดเองทีเดียวตอนท้าย)
+   * ⚠️ เดิมบันทึกหลายตัว = โหลดทั้งคลัง + คำนวณ /links (ลากตาราง products ทั้งก้อน) ซ้ำทุกตัว → 8 ตัวรอเป็นนาที (2 ต.ค. 69)
+   */
+  async function saveItem(body: Partial<Item> & { name: string; codePrefix?: string }, opts?: { defer?: boolean }) {
     setErr("");
     const res = await fetch("/api/admin/stock", {
       method: "POST",
@@ -711,8 +766,16 @@ export default function StockPage() {
       return false;
     }
     lastSavedId.current = typeof j.item?.id === "string" ? j.item.id : null;
-    await load();
-    void loadImages(true); // ผูกสินค้า/ลิงก์รูปเปลี่ยน → รูปในตารางต้องตาม
+    // ⚡ ใส่/แทนแถวในรายการทันทีจากคำตอบของเซิร์ฟเวอร์ — ไม่ต้องรอโหลดทั้งคลัง (996 ตัว ~1–2 วิ) ก่อนปิดฟอร์ม
+    if (j.item?.id) {
+      recentSaves.current.set(j.item.id, { item: j.item, at: Date.now() });
+      setItems((prev) => (prev.some((i) => i.id === j.item.id) ? prev.map((i) => (i.id === j.item.id ? { ...i, ...j.item } : i)) : [...prev, j.item]));
+    }
+    if (opts?.defer) return true;
+    void load(); // ยอด/การเรียงจากเซิร์ฟเวอร์ตามมาเป็นฉากหลัง
+    // /links ลากตาราง products ทั้งก้อน (7 MB · 18,000 ตัวเลือก) — ยิงเฉพาะเมื่อการผูกสินค้า/รูปเปลี่ยน · ของเบิกเองที่ไม่ผูกอะไรไม่ต้อง
+    const linksTouched = !body.manualOnly || (body.productIds?.length ?? 0) > 0 || typeof body.imageUrl === "string" || body.id !== undefined;
+    if (linksTouched) void loadImages(true);
     return true;
   }
 
@@ -1237,7 +1300,7 @@ export default function StockPage() {
     /** SKU ที่ใช้กับสินค้าไม่เกินเท่านี้ = โชว์ใต้ทุกสินค้าที่ใช้ · มากกว่านั้น (ตะขอ/สีไหมผ่านคลังกลาง) ไปกลุ่มรวม */
     const SHARED_MAX = 4;
     const prodById = new Map(products.map((p) => [p.id, p]));
-    type G = { key: string; kind: 0 | 1 | 2 | 3; title: string; sub?: string; img?: string; productId?: string; optionLabel?: string; rows: Item[] };
+    type G = { key: string; kind: 0 | 1 | 2 | 3; title: string; /** ชื่อก่อนถูกตั้งทับ (มีเมื่อกลุ่มนี้ตั้งชื่อเองไว้) */ originalTitle?: string; sub?: string; img?: string; productId?: string; optionLabel?: string; rows: Item[] };
     const map = new Map<string, G>();
     const put = (g: Omit<G, "rows">, it: Item) => (map.get(g.key) ?? map.set(g.key, { ...g, rows: [] }).get(g.key)!).rows.push(it);
     const ofProduct = (pid: string, name: string, it: Item) =>
@@ -1287,8 +1350,11 @@ export default function StockPage() {
         continue;
       }
       // 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว — กลุ่มของตัวเองตามตระกูล ไม่ตกไป "ยังไม่รู้ว่าใช้กับสินค้าไหน" (ซึ่งถูกซ่อน)
+      // 🧺 หมวดละกลุ่มเดียว — ของเบิกเอง และของที่ยังไม่ผูกสินค้า (kind 3 เดิม) รวมใต้หัวหมวดเดียวกัน
+      //    (เจ้าของร้าน 2 ต.ค. 69 "อุปกรณ์เย็บ/ปัก ซ้ำ 2 รายการ นำมารวมกัน มันต้องมีหมวดเดียว") · ป้าย "ยังไม่ผูก N" บนหัวกลุ่มบอกตัวที่ยังไม่ผูก
+      const FAM_SUB = "ของใช้ในโรงงาน / ยังไม่ผูกสินค้า — เบิกเองอย่างเดียว หรือยังไม่ได้เลือกสินค้าที่ตัด";
       if (it.manualOnly) {
-        put({ key: `m:${fam}`, kind: 1, title: fam, sub: "ของใช้ในโรงงาน — เบิกเองอย่างเดียว ไม่ผูกสินค้า" }, it);
+        put({ key: `m:${fam}`, kind: 1, title: fam, sub: FAM_SUB }, it);
         continue;
       }
       // 🔩 สร้างจากคลังกลางแล้วยังไม่ได้ผูกสินค้า — อยู่กลุ่มวัสดุแฝงเลย ไม่ตกไป "ยังไม่รู้ว่าใช้กับสินค้าไหน" (30 ก.ย. 69)
@@ -1301,23 +1367,35 @@ export default function StockPage() {
       else if (sg?.kind === "preset") put({ key: `s:${fam}`, kind: 1, title: fam, sub: "ใช้ร่วมหลายสินค้า" }, it);
       else if (usage[it.id]?.length)
         put({ key: "ghost", kind: 2, title: "สินค้าที่ผูกไว้ไม่มีในระบบแล้ว", sub: "สินค้าถูกลบหรือเปลี่ยนรหัส — ขายแล้วไม่ตัดยอด ต้องเปิดแก้ไขแล้วเลือกสินค้าใหม่" }, it);
-      else put({ key: `n:${fam}`, kind: 3, title: fam, sub: "ยังไม่รู้ว่าใช้กับสินค้าไหน" }, it);
+      else put({ key: `m:${fam}`, kind: 1, title: fam, sub: FAM_SUB }, it); // เดิม n:<fam> kind 3 แยกกลุ่ม/ซ่อน — ตอนนี้รวมกับของเบิกเองหมวดเดียวกัน
     }
     /**
      * 🔍 ตอนค้นหา: แถวที่ติดมาเพราะ "ชื่อสินค้าที่ผูก" ตรงคำค้น (ฐาน Griptok ← กริ๊บต๊อกกระจกอะคริลิคใส) ถูกวางใต้ "ทุกสินค้า" ที่มันผูกอยู่
      * → กลุ่ม "กริ๊บต๊อก" โผล่มาทั้งที่ไม่มีคำว่า อะคริลิคใส เลย (เจ้าของร้านถาม 1 ต.ค. 69)
      * เหลือเฉพาะกลุ่มที่ชื่อกลุ่มตรงคำค้น หรือมีแถวที่ตัวมันเองตรง (ชื่อ/รหัส/ตระกูล/หมวด/ชื่อเดิม)
      */
+    // 🏷 ชื่อที่ตั้งเองทับชื่อจากสินค้า/ตัวเลือก — กลุ่มตระกูล (m:/s:/n:) แก้ที่ family จริงอยู่แล้ว ไม่ใช้ตรงนี้
+    for (const g of map.values()) {
+      const t = groupTitles[g.key]?.name;
+      if (t && !/^[msn]:/.test(g.key) && t !== g.title) {
+        g.originalTitle = g.title;
+        g.title = t;
+      }
+    }
     const needle = q.trim().toLowerCase();
     const all = [...map.values()].sort((a, b) => a.kind - b.kind || a.title.localeCompare(b.title, "th"));
     if (!needle) return all;
-    // ขั้นเดียวกับ rows: มีตัวที่ตรงเอง → กลุ่มต้องมีตัวนั้น · ไม่มี → กลุ่มที่ชื่อตรงหรือมีแถวตรงผ่านตระกูล/หมวด
+    // ขั้นเดียวกับ rows: มีตัวที่ตรงเอง → กลุ่มต้องมีตัวนั้น · ไม่มี → กลุ่มที่ชื่อตรง (ชื่อที่ตั้งหรือชื่อเดิม) หรือมีแถวตรงผ่านตระกูล/หมวด
     const direct = rows.some((r) => matchItemDirect(r, needle));
-    return all.filter((g) => (direct ? g.rows.some((r) => matchItemDirect(r, needle)) : g.title.toLowerCase().includes(needle) || g.rows.some((r) => matchItem(r, needle))));
-  }, [rows, items, usage, live, suggest, products, q]);
+    const titleHit = (g: G) => g.title.toLowerCase().includes(needle) || !!g.originalTitle?.toLowerCase().includes(needle);
+    return all.filter((g) => (direct ? g.rows.some((r) => matchItemDirect(r, needle)) : titleHit(g) || g.rows.some((r) => matchItem(r, needle))));
+  }, [rows, items, usage, live, suggest, products, q, groupTitles]);
   const grouped = view === "group" && linksReady;
-  /** กำลังค้น/กรองอยู่ = กางทุกกลุ่มให้เห็นผลเลย ไม่ต้องไล่กดเปิด */
-  const forceOpen = q.trim() !== "" || filter !== "ทั้งหมด" || cat !== "ทุกหมวด" || linkFilter !== "all";
+  /**
+   * กำลังค้น/กรองสถานะอยู่ = กางทุกกลุ่มให้เห็นผลเลย ไม่ต้องไล่กดเปิด
+   * ⚠️ "เลือกหมวด" ไม่นับ — หมวดหนึ่งมีได้หลายกลุ่ม/หลายสิบรายการ กางหมดแล้วยาวเป็นหน้า เจ้าของร้านขอให้หุบเหมือนปกติ (2 ต.ค. 69)
+   */
+  const forceOpen = q.trim() !== "" || filter !== "ทั้งหมด" || linkFilter !== "all";
   /** อยู่ในหมวดที่เลือกไหม — ใช้นับตัวเลขบนชิปให้ตรงกับรายการ */
   const inCat = (i: Item) => cat === "ทุกหมวด" || i.category === cat;
   /** ฟอร์มเพิ่ม/แก้ไขวัสดุเปิดเป็น "หน้า" แทน popup (เจ้าของร้านขอ 30 ก.ย. 69) — ตอนเปิดซ่อนแถบเครื่องมือกับรายการไว้ก่อน */
@@ -1346,10 +1424,12 @@ export default function StockPage() {
     return { done, total: pids.size };
   }, [tracked, live, doneGroups]);
   /**
-   * กลุ่ม "ยังไม่รู้ว่าใช้กับสินค้าไหน" (kind 3 — SKU ที่ไม่ผูกอะไรและไม่มีคู่ให้เดา) ไม่โชว์ในมุมมองตามสินค้า
-   * (เจ้าของร้านบอก 30 ก.ย. 69 "แบบนี้ไม่ต้องนำมาแสดง") — ยังดูได้จากชิป "ยังไม่ผูกสินค้า" หรือตอนค้นหา และมีบรรทัดท้ายบอกว่าซ่อนไปกี่รายการ
+   * กลุ่ม "ยังไม่รู้ว่าใช้กับสินค้าไหน" (kind 3 — SKU ที่ไม่ผูกอะไรและไม่มีคู่ให้เดา)
+   * 30 ก.ย. 69 เคยซ่อนในมุมมองตามสินค้า (เจ้าของร้าน "แบบนี้ไม่ต้องนำมาแสดง" — ตอนนั้นคือกองของนำเข้าที่ยังไม่ผูก)
+   * 2 ต.ค. 69 กลับมาโชว์: ของที่เพิ่มเองจากฟอร์มแบบ "ตัดตามการขาย" แต่ยังไม่เลือกสินค้า ตกกลุ่มนี้ทั้งหมด → "เพิ่มแล้วเปิดดูไม่มี"
+   * จนกดสร้างซ้ำ 5 ตัว (วีราเน่ 200ENF) · ตอนนี้กลุ่มนี้เหลือ ~12 ตัว ล้วนของที่เพิ่มเองวันนี้ · กลุ่มหุบอยู่แล้วและเรียงท้ายสุด ไม่รก
    */
-  const showOrphans = filter === "ยังไม่ผูก" || q.trim() !== "";
+  const showOrphans = true;
   const doneFilterActive = doneFilter !== "ทั้งหมด" && q.trim() === "";
   const shownGroups = useMemo(
     () =>
@@ -2293,8 +2373,9 @@ export default function StockPage() {
                     if (mayEdit && (g.productId || g.key === "bom")) {
                       menu.push({ head: "ตั้งค่า" });
                       if (g.productId) {
-                        menu.push({ icon: "🔩", label: "เพิ่มวัสดุแฝง (ขาตั้ง หมุด ถุง)", onClick: () => setBomFor({ id: g.productId!, name: g.title }) });
-                        menu.push({ icon: "✂️", label: "แยกสต๊อกตามตัวเลือก", onClick: () => setSplitFor({ id: g.productId!, name: g.title }) });
+                        // ชื่อสินค้าจริง ไม่ใช่ชื่อกลุ่มที่ตั้งทับ — ฟอร์มแยกสต๊อกเอาไปตั้งชื่อ SKU ต้องตรงกับหน้าร้าน
+                        menu.push({ icon: "🔩", label: "เพิ่มวัสดุแฝง (ขาตั้ง หมุด ถุง)", onClick: () => setBomFor({ id: g.productId!, name: g.originalTitle ?? g.title }) });
+                        menu.push({ icon: "✂️", label: "แยกสต๊อกตามตัวเลือก", onClick: () => setSplitFor({ id: g.productId!, name: g.originalTitle ?? g.title }) });
                       }
                       if (g.key === "bom") menu.push({ icon: "🔩", label: "จัดการคลังวัสดุแฝง", onClick: () => setBomLib(true) });
                     }
@@ -2346,12 +2427,17 @@ export default function StockPage() {
                             </span>
                           )}
                           <span className="min-w-0 flex-1 basis-[11rem]">
-                            {/* 🏷 กลุ่มที่จัดตามตระกูล (เบิกเอง/ใช้ร่วม/ยังไม่รู้) แก้ชื่อได้ตรงหัวกลุ่ม — กลุ่มสินค้า/วัสดุแฝง/ตัวเลือก ชื่อมาจากที่อื่น */}
+                            {/*
+                             * 🏷 แก้ชื่อได้ทุกกลุ่ม (เจ้าของร้านขอ 2 ต.ค. 69 — เดิมมีดินสอเฉพาะกลุ่มตระกูล)
+                             * กลุ่มตระกูล (เบิกเอง/ใช้ร่วม/ยังไม่รู้) = เปลี่ยน family จริงของทุกแถว · กลุ่มสินค้า/ตัวเลือก/วัสดุแฝง = ชื่อแสดงในหน้านี้ ชื่อสินค้าหน้าร้านคงเดิม
+                             */}
                             <GroupTitle
                               title={g.title}
+                              original={g.originalTitle}
                               color={done && !(nNeg || nDanger || g.kind === 2) ? "var(--dk-faint)" : "var(--dk-navy)"}
-                              canRename={mayEdit && /^[msn]:/.test(g.key)}
-                              onRename={(to) => renameFamily(g.rows, g.title, to)}
+                              canRename={mayEdit && g.key !== "ghost"}
+                              family={/^[msn]:/.test(g.key)}
+                              onRename={(to) => (/^[msn]:/.test(g.key) ? renameFamily(g.rows, g.title, to) : renameGroupTitle(g.key, g.originalTitle ?? g.title, to))}
                             />
                             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
                               <span>
@@ -2515,8 +2601,13 @@ export default function StockPage() {
           onSaveMany={async (list) => {
             let n = 0;
             for (const b of list) {
-              if (!(await saveItem(b))) break; // saveItem โชว์ error ไว้แล้ว — หยุดตรงตัวที่พัง ไม่สร้างซ้ำ
+              if (!(await saveItem(b, { defer: true }))) break; // saveItem โชว์ error ไว้แล้ว — หยุดตรงตัวที่พัง ไม่สร้างซ้ำ
               n++;
+            }
+            // โหลดรายการ+รูปใหม่ครั้งเดียวหลังจบชุด (ไม่ใช่ทุกตัว)
+            if (n) {
+              await load();
+              void loadImages(true);
             }
             if (n === list.length) setAddOpen(false);
             if (n) setOk(`เพิ่มวัสดุแล้ว ${fmtN(n)} ตัว${n < list.length ? ` (จาก ${fmtN(list.length)} — ที่เหลือยังไม่ได้สร้าง)` : ""}`);
@@ -3024,9 +3115,24 @@ function InlineName({ text, canEdit, onSave, onReject }: { text: string; canEdit
 }
 
 /**
- * ชื่อหัวกลุ่ม + ✎ แก้ชื่อในที่ (เฉพาะกลุ่มตามตระกูล) — หัวกลุ่มเป็น role=button กาง/หุบ จึงต้องหยุด click/keydown ไม่ให้ไหลขึ้นไป
+ * ชื่อหัวกลุ่ม + ✎ แก้ชื่อในที่ — หัวกลุ่มเป็น role=button กาง/หุบ จึงต้องหยุด click/keydown ไม่ให้ไหลขึ้นไป
+ * family = กลุ่มตระกูล (เปลี่ยน family จริง) · ไม่ใช่ = ชื่อแสดงทับ มี original เมื่อถูกตั้งทับอยู่ (โชว์ชื่อเดิมใต้ชื่อ + ปุ่มกลับชื่อเดิม)
  */
-function GroupTitle({ title, color, canRename, onRename }: { title: string; color: string; canRename: boolean; onRename: (to: string) => Promise<boolean> }) {
+function GroupTitle({
+  title,
+  original,
+  color,
+  canRename,
+  family,
+  onRename,
+}: {
+  title: string;
+  original?: string;
+  color: string;
+  canRename: boolean;
+  family?: boolean;
+  onRename: (to: string) => Promise<boolean>;
+}) {
   const [val, setVal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -3048,34 +3154,68 @@ function GroupTitle({ title, color, canRename, onRename }: { title: string; colo
           if (ok || val.trim() === title) setVal(null);
         }}
       >
-        <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} aria-label="ชื่อกลุ่ม" className={`${inputCls} !h-9 max-w-[16rem] text-[0.95rem] font-medium`} />
-        <button type="submit" disabled={busy || !val.trim()} className={btnSmNeutral}>
+        <input
+          autoFocus
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          aria-label="ชื่อกลุ่ม"
+          placeholder={original ?? title}
+          title={family ? "เปลี่ยนตระกูลของทุกรายการในกลุ่มนี้" : "ชื่อแสดงเฉพาะหน้าสต๊อก — ชื่อสินค้าหน้าร้านไม่เปลี่ยน"}
+          className={`${inputCls} !h-9 max-w-[16rem] text-[0.95rem] font-medium`}
+        />
+        <button type="submit" disabled={busy || (!val.trim() && family)} className={btnSmNeutral}>
           {busy ? "…" : "บันทึก"}
         </button>
+        {original && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              // ⚠️ ปุ่มนี้ "ลบชื่อที่ตั้ง" ไม่ใช่ปิดช่อง — เคยถูกกดแล้วชื่อหายทั้งที่ตั้งใจแค่ปิด (2 ต.ค. 69) → ถามก่อน
+              if (!window.confirm(`ลบชื่อที่ตั้ง “${title}” แล้วกลับไปใช้ชื่อเดิม “${original}” ใช่ไหม?\n(แค่ปิดช่องให้กด “ยกเลิก”)`)) return;
+              setBusy(true);
+              const ok = await onRename("");
+              setBusy(false);
+              if (ok) setVal(null);
+            }}
+            className={`${btnSmGhost} whitespace-nowrap`}
+            title={`ลบชื่อที่ตั้ง แล้วกลับไปใช้ชื่อเดิม “${original}”`}
+          >
+            ↩ ชื่อเดิม
+          </button>
+        )}
         <button type="button" onClick={() => setVal(null)} className={btnSmGhost}>
           ยกเลิก
         </button>
       </form>
     );
   return (
-    <span className="flex min-w-0 items-center gap-1">
-      <span className="dkb-display block truncate text-[1rem]" style={{ color }}>
-        {title}
+    <span className="block min-w-0">
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="dkb-display block truncate text-[1rem]" style={{ color }}>
+          {title}
+        </span>
+        {canRename && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setVal(title);
+            }}
+            onKeyDown={stop}
+            className="shrink-0 rounded-md px-1.5 py-0.5 text-[13px] text-slate-400 hover:bg-white hover:text-slate-700"
+            title={family ? "แก้ชื่อกลุ่ม — เปลี่ยนตระกูลของทุกรายการในกลุ่มนี้" : "แก้ชื่อกลุ่ม — ชื่อแสดงเฉพาะหน้าสต๊อก ชื่อสินค้าหน้าร้านไม่เปลี่ยน"}
+            aria-label={`แก้ชื่อกลุ่ม ${title}`}
+          >
+            ✎
+          </button>
+        )}
       </span>
-      {canRename && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setVal(title);
-          }}
-          onKeyDown={stop}
-          className="shrink-0 rounded-md px-1.5 py-0.5 text-[13px] text-slate-400 hover:bg-white hover:text-slate-700"
-          title="แก้ชื่อกลุ่ม — เปลี่ยนตระกูลของทุกรายการในกลุ่มนี้"
-          aria-label={`แก้ชื่อกลุ่ม ${title}`}
-        >
-          ✎
-        </button>
+      {/* ชื่อเดิมอยู่บรรทัดของตัวเอง — อยู่แถวเดียวกับชื่อใหม่แล้วเบียดจนชื่อใหม่ถูกตัด (จอแคบ) */}
+      {original && (
+        <span className="block truncate text-[12px] font-normal" style={{ color: "var(--dk-faint)" }} title={`ชื่อเดิม: ${original}`}>
+          ชื่อเดิม: {original}
+        </span>
       )}
     </span>
   );
@@ -4080,9 +4220,9 @@ function ItemModal({
   allFams: string[];
   allParts: string[];
   onClose: () => void;
-  onSave: (b: Partial<Item> & { name: string }) => void;
+  onSave: (b: Partial<Item> & { name: string }) => void | Promise<void>;
   /** 🧬 เพิ่มหลายตัวทีเดียว (ต่างกันแค่สี/ขนาด/ความยาว) — เจ้าของร้านขอ 30 ก.ย. 69 */
-  onSaveMany?: (list: (Partial<Item> & { name: string })[]) => void;
+  onSaveMany?: (list: (Partial<Item> & { name: string })[]) => void | Promise<void>;
   /** 🔗 วางลิงก์/ชื่อสินค้า → ไปหน้าต่าง "แยกสต๊อกตามตัวเลือก" เลือกตัวเลือกที่จะทำเป็นวัสดุ (เจ้าของร้านขอ 30 ก.ย. 69) */
   onSplitProduct?: (p: { id: string; name: string }) => void;
 }) {
@@ -4216,7 +4356,20 @@ function ItemModal({
     () => (item ? [] : nameList.flatMap((nm) => (variantList.length ? variantList.map((v) => ({ nm: `${nm} · ${v}`, alias: v })) : [{ nm, alias: undefined as string | undefined }]))),
     [item, nameList, variantList],
   );
-  const save = () => (!item && batch.length > 1 && onSaveMany ? onSaveMany(batch.map((b) => payload(b.nm, b.alias))) : onSave(payload(batch[0]?.nm ?? name, batch[0]?.alias)));
+  /**
+   * 🔒 ล็อกปุ่มระหว่างบันทึก — เดิมกดได้ซ้ำขณะรอ (บันทึกหลายตัวช้า) ทำให้สร้างชื่อเดิมซ้ำ 2–5 ตัวต่อชื่อ + รหัสชนกัน (2 ต.ค. 69)
+   */
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      if (!item && batch.length > 1 && onSaveMany) await onSaveMany(batch.map((b) => payload(b.nm, b.alias)));
+      else await onSave(payload(batch[0]?.nm ?? name, batch[0]?.alias));
+    } finally {
+      setSaving(false);
+    }
+  };
   const hint = "mt-1 block text-[11.5px]";
   const hintStyle = { color: "var(--dk-faint)" } as const;
   /** บรรทัดสรุปในแผงขวา — ให้คนเห็นผลของที่กรอกเป็นภาษาคน ไม่ต้องไล่อ่านทุกช่อง */
@@ -4569,8 +4722,8 @@ function ItemModal({
             ))}
           </dl>
           <div className="mt-5 grid gap-2">
-            <button type="button" disabled={!canSave} onClick={save} className="dkb-btn dkb-btn-navy min-h-[48px] w-full disabled:opacity-40 disabled:shadow-none">
-              {item ? "บันทึกการแก้ไข" : batch.length > 1 ? `บันทึก ${fmtN(batch.length)} ตัวเข้าคลัง` : "บันทึกเข้าคลัง"}
+            <button type="button" disabled={!canSave || saving} onClick={save} className="dkb-btn dkb-btn-navy min-h-[48px] w-full disabled:opacity-40 disabled:shadow-none">
+              {saving ? `กำลังบันทึก${batch.length > 1 ? ` ${fmtN(batch.length)} ตัว` : ""}…` : item ? "บันทึกการแก้ไข" : batch.length > 1 ? `บันทึก ${fmtN(batch.length)} ตัวเข้าคลัง` : "บันทึกเข้าคลัง"}
             </button>
             <button type="button" onClick={onClose} className="dkb-btn dkb-btn-ghost min-h-[44px] w-full">
               ยกเลิก
@@ -6042,7 +6195,7 @@ function SplitModal({
   onDone: (msg: string) => void;
 }) {
   type Link = { stockItemId: string; name: string | null; when: { label: string; choices: string[] }[] };
-  type Choice = { name: string; img?: string; /** 🖼 ภาพสลับตามกลุ่มอื่น (สีตะขอตามตะขอที่เลือก) */ imageWhen?: { when: Cond[]; imageSrc: string }[]; stockItemId: string | null; skuName: string | null; extras?: string[]; links?: Link[] };
+  type Choice = { name: string; img?: string; /** 🖼 ภาพสลับตามกลุ่มอื่น (สีตะขอตามตะขอที่เลือก) */ imageWhen?: { when: Cond[]; imageSrc: string }[]; stockItemId: string | null; skuName: string | null; extras?: string[]; links?: Link[]; /** 💰 (เฉพาะค่าของกลุ่มเรทราคา) กลุ่มแกนตาราง → ตัวเลือกที่มีราคาในเรทนี้ — ไม่มีคีย์ = ไม่จำกัด */ priced?: Record<string, string[]> };
   /** rate = กลุ่มเสมือน "เรทราคา" (optionIndex -1) — สินค้าที่ของบนชั้นต่างกันตามเรท เช่น การ์ดสเปรย์ 20 ml / 40 ml */
   type Cond = { label: string; choices: string[] };
   /** show = เงื่อนไข "และ" ที่กลุ่มนี้จะโชว์ (showWhen/Also/All) · showAny = เงื่อนไข "หรือ" */
@@ -6159,10 +6312,17 @@ function SplitModal({
    * คู่ (a ของกลุ่ม A, b ของกลุ่ม B) ลูกค้าเลือกได้จริงไหม — ตามกฎเดียวกับหน้าสินค้า (allowedChoices/optionVisible)
    *   1) OptionRule: เลือก a แล้วกลุ่ม B เหลือเฉพาะ allow → b ต้องอยู่ใน allow (และกลับด้าน)
    *   2) showWhen ของกลุ่ม B ที่ชี้มากลุ่ม A → ต้องมี a (และกลับด้าน) · เงื่อนไขที่ชี้กลุ่มอื่นที่ไม่ได้เลือก ไม่นับ
+   *   3) 💰 เรทราคา × กลุ่มแกนตาราง → ตัวเลือกต้องมีช่องราคาในเรทนั้น (เรทที่มีแค่ 2cm ไม่สร้าง 1.5/2.5 · สายห้อยคล้องคอ เจ้าของร้านเจอ 2 ต.ค. 69)
    * เดิมสร้างครบทุกคู่ (2 × 20 = 40) ทั้งที่เคสธรรมดาไม่มี iPhone 17 — เจ้าของร้านเจอ 30 ก.ย. 69
    */
   const pairOk = (a: Choice, b: Choice): boolean => {
     if (!gA || !gB) return true;
+    const pricedOk = (rate: Choice, other: Group, v: string) => {
+      const list = rate.priced?.[other.label];
+      return !list || list.includes(v);
+    };
+    if (gA.rate && !pricedOk(a, gB, b.name)) return false;
+    if (gB.rate && !pricedOk(b, gA, a.name)) return false;
     const sel: Record<string, string> = { [gA.label]: a.name, [gB.label]: b.name };
     const has = (choices: string[], v: string) => choices.includes(v) || choices.includes(publicRateLabelOf(v));
     for (const r of rules) {
@@ -6479,7 +6639,7 @@ function SplitModal({
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
                   {pairMode
-                    ? `สร้างตามคู่ที่ลูกค้าเลือกได้จริง ${gB!.label} × ${gA!.label} = ${rows.length} แบบ${hiddenPairs ? ` (ตัดคู่ที่กฎตัวเลือกไม่อนุญาตออก ${hiddenPairs} คู่)` : ""} — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
+                    ? `สร้างตามคู่ที่ลูกค้าเลือกได้จริง ${gB!.label} × ${gA!.label} = ${rows.length} แบบ${hiddenPairs ? ` (ตัดคู่ที่กฎตัวเลือก/ตารางราคาไม่อนุญาตออก ${hiddenPairs} คู่)` : ""} — ใช้เมื่อของต่างกันทั้ง 2 อย่าง เช่น กระจกทรงหัวใจสีดำ`
                     : gA?.rate
                       ? "ของบนชั้นต่างกันตามเรทที่ลูกค้าเลือก (เช่น ขวด 20 ml กับ 40 ml) · เรทตัวแทนใช้ของชิ้นเดียวกับเรทปกติให้เอง"
                       : focusGroup && gA

@@ -201,20 +201,54 @@ function aliasesOf(input: Partial<StockItem> & { name: string }, cur: StockItem 
  * รหัสถัดไปของชุด prefix — "P-PHOTOFRAME-3-B" → P-PHOTOFRAME-3-B1, B2, … · "M" → M-0001, M-0002, …
  * นับจากรหัสที่มีอยู่จริง (รวมตัวที่ลบแล้ว กันออกรหัสซ้ำกับของเก่าในประวัติ)
  */
+/**
+ * รหัสที่ขึ้นต้นด้วย prefix (รวมตัวที่ลบแล้ว) — range query บนช่อง code แทนการลากทั้งคอลเลกชัน
+ * (2 ต.ค. 69 "บันทึก 8 ตัวช้ามาก": ออกรหัสแต่ละตัวอ่าน stockItems ทั้ง 2,182 ตัว ~0.7 วิ × ตัวละ 1–2 ครั้ง)
+ */
+async function codesWithPrefix(db: Firestore, prefix: string): Promise<Set<string>> {
+  const snap = await db.collection(STOCK_ITEMS).where("code", ">=", prefix).where("code", "<", `${prefix}`).get();
+  return new Set(snap.docs.map((d) => String((d.data() as StockItem).code ?? "")));
+}
+
+/**
+ * 🔒 จองเลขรหัสแบบกันชน — คำขอที่วิ่งพร้อมกัน (กดบันทึกซ้ำระหว่างรอ) เคยสแกนรหัสพร้อมกันแล้วได้เลขเดียวกัน
+ * (2 ต.ค. 69: B-6000-3 ×2 · M-0012 ×2 · A-B-3 ×2) → เก็บเลขล่าสุดที่ออกต่อ prefix ไว้ที่ stockMeta/codeSeq.seq[<prefix>]
+ * ใน transaction: เลขที่ได้ = ตัวแรกที่ ≥ ทั้งเลขจากการสแกน และ เลขล่าสุดที่จอง+1 · สองคำขอชนกันที่เอกสารนี้ → ตัวหลัง retry ได้เลขถัดไป
+ * @param from เลขต่ำสุดที่ยอมรับ (จากการสแกนรหัสที่มีจริง) · @param taken รหัสที่มีอยู่แล้ว (ข้ามให้) · @param fmt แปลงเลขเป็นรหัส
+ */
+let codeSeqQueue: Promise<unknown> = Promise.resolve();
+async function reserveCodeNumber(db: Firestore, key: string, from: number, taken: Set<string>, fmt: (n: number) => string): Promise<string> {
+  const ref = db.collection(STOCK_META).doc("codeSeq");
+  // ต่อคิวในโปรเซสเดียวกันก่อน (คำขอซ้อนจากหน้าเดียวกันมาที่เซิร์ฟเวอร์ตัวเดียว) · transaction + retry เยอะ ๆ กันข้ามโปรเซส
+  // (ทดสอบ 6 transaction พร้อมกันบนเอกสารเดียว: ค่าเริ่มต้น retry 5 ครั้งไม่พอ → ABORTED)
+  const run = () =>
+    db.runTransaction(
+      async (tx) => {
+        const doc = (await tx.get(ref)).data() ?? {};
+        const seq = { ...((doc.seq ?? {}) as Record<string, number>) };
+        let n = Math.max(from, (Number(seq[key]) || 0) + 1);
+        while (taken.has(fmt(n))) n++;
+        seq[key] = n;
+        tx.set(ref, { seq, updatedAt: new Date().toISOString() });
+        return fmt(n);
+      },
+      { maxAttempts: 20 },
+    );
+  const next = codeSeqQueue.then(run, run);
+  codeSeqQueue = next.catch(() => undefined);
+  return next;
+}
+
 async function nextStockCode(db: Firestore, prefix: string): Promise<string> {
-  const snap = await db.collection(STOCK_ITEMS).get();
-  const codes = new Set(snap.docs.map((d) => String((d.data() as StockItem).code ?? "")));
   const numbered = prefix === "M";
+  const codes = await codesWithPrefix(db, numbered ? "M-" : prefix);
   const re = numbered ? /^M-(\d+)$/ : new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`);
   let n = 0;
   for (const c of codes) {
     const m = re.exec(c);
     if (m) n = Math.max(n, Number(m[1]));
   }
-  let code = "";
-  do code = numbered ? `M-${String(++n).padStart(4, "0")}` : `${prefix}${++n}`;
-  while (codes.has(code));
-  return code;
+  return reserveCodeNumber(db, numbered ? "M-" : prefix, n + 1, codes, (k) => (numbered ? `M-${String(k).padStart(4, "0")}` : `${prefix}${k}`));
 }
 
 /**
@@ -241,12 +275,9 @@ export function codeSlug(s: string): string {
 async function autoStockCode(db: Firestore, name: string): Promise<string> {
   const slug = codeSlug(name);
   if (!slug) return nextStockCode(db, "M");
-  const codes = new Set((await db.collection(STOCK_ITEMS).get()).docs.map((d) => String((d.data() as StockItem).code ?? "")));
-  if (!codes.has(slug)) return slug;
-  for (let n = 2; ; n++) {
-    const c = `${slug}-${n}`;
-    if (!codes.has(c)) return c;
-  }
+  const codes = await codesWithPrefix(db, slug); // slug เอง + slug-2, slug-3, … อยู่ในช่วงเดียวกัน
+  // เลข 1 = slug เปล่า · 2 ขึ้นไป = slug-n · จองผ่าน codeSeq กันสองคำขอพร้อมกันได้รหัสเดียวกัน
+  return reserveCodeNumber(db, slug, 1, codes, (n) => (n <= 1 ? slug : `${slug}-${n}`));
 }
 
 /**
@@ -474,6 +505,50 @@ export async function setGroupDone(key: string, on: boolean, by: string): Promis
     if (on) next[key] = { at: new Date().toISOString(), by };
     else delete next[key];
     tx.set(ref, { keys: next, updatedAt: new Date().toISOString() });
+    return next;
+  });
+}
+
+/**
+ * 🏷 ชื่อหัวกลุ่มที่ตั้งเองในหน้า /admin/stock — เฉพาะกลุ่มที่ชื่อมาจากที่อื่น (สินค้า p:<id> / ตัวเลือก o:<ชื่อ> / วัสดุแฝง)
+ * ชื่อสินค้าหน้าร้านยาว ("งานพิมพ์กระดาษอาร์ตมัน & แผ่นพลาสติก PET") คนจัดของอยากเรียกสั้น ๆ โดยไม่แตะชื่อที่ลูกค้าเห็น (เจ้าของร้านขอ 2 ต.ค. 69)
+ * เก็บ map ในเอกสารเดียวแบบเดียวกับ "จัดแล้ว" · คีย์ = คีย์กลุ่มของหน้า · ลบชื่อ = กลับไปใช้ชื่อเดิม
+ */
+const GROUP_TITLES_DOC = "groupTitles";
+
+export interface GroupTitle {
+  /** ชื่อที่ตั้ง */
+  name: string;
+  /** เวลาที่ตั้ง (ISO) */
+  at: string;
+  /** คนที่ตั้ง */
+  by: string;
+}
+
+export async function listGroupTitles(): Promise<Record<string, GroupTitle>> {
+  const db = getStockDb();
+  if (!db) return {};
+  const snap = await db.collection(STOCK_META).doc(GROUP_TITLES_DOC).get();
+  return ((snap.data()?.keys ?? {}) as Record<string, GroupTitle>) ?? {};
+}
+
+/** ตั้ง/ล้างชื่อ 1 กลุ่ม (name ว่าง = กลับชื่อเดิม) — คืนตารางใหม่ทั้งใบ · transaction เพราะคีย์มีจุดได้ (o:ขนาด 2.5 นิ้ว) */
+export async function setGroupTitle(key: string, name: string, by: string): Promise<Record<string, GroupTitle>> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const ref = db.collection(STOCK_META).doc(GROUP_TITLES_DOC);
+  const clean = name.trim();
+  return db.runTransaction(async (tx) => {
+    const doc = (await tx.get(ref)).data() ?? {};
+    const cur = (doc.keys ?? {}) as Record<string, GroupTitle>;
+    // 🗃 ชื่อที่ถูกล้าง/ทับเก็บไว้ที่ `cleared` — กู้คืนได้ถ้ากดล้างผิด (2 ต.ค. 69 ชื่อที่ตั้งหายหลังรีเฟรช ตามรอยไม่ได้เพราะเอกสารเหลือแต่ keys ว่าง)
+    const cleared = { ...((doc.cleared ?? {}) as Record<string, GroupTitle & { clearedAt: string; clearedBy: string }>) };
+    const next = { ...cur };
+    const now = new Date().toISOString();
+    if (cur[key] && cur[key].name !== clean) cleared[key] = { ...cur[key], clearedAt: now, clearedBy: by };
+    if (clean) next[key] = { name: clean, at: now, by };
+    else delete next[key];
+    tx.set(ref, { keys: next, cleared, updatedAt: now });
     return next;
   });
 }

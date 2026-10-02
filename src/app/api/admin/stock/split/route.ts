@@ -8,7 +8,7 @@ import { snapshotRevision } from "@/lib/server/product-revisions";
 import { getProductsSlim, invalidateProductsSlim } from "@/lib/server/products-slim";
 import { normName, skuPage } from "@/lib/stock-match";
 import { RATE_OPTION_INDEX, rateStockOption, writeRateStock } from "@/lib/stock-rate";
-import { choiceImage, type Product, type ProductOption, type ProductOptionChoice } from "@/lib/products";
+import { choiceImage, isSizeInputChoice, matrixChoiceAvailable, type Product, type ProductOption, type ProductOptionChoice } from "@/lib/products";
 import type { OptionPreset } from "@/lib/option-presets";
 
 export const runtime = "nodejs";
@@ -85,6 +85,22 @@ export async function GET(req: Request) {
   // กลุ่มที่แยกได้: ของสินค้าเอง (ไม่ลิงก์คลังกลาง — พวกนั้นผูกที่หน้าผูกคลัง) · เป็นตัวเลือกให้เลือก ไม่ใช่ช่องกรอก · มีค่าที่มีชื่อ
   // + "เรทราคา" เป็นกลุ่มเสมือนนำหน้า (มีเมื่อสินค้ามีหลายเรท) — เรทตัวแทนไม่โชว์ เพราะยืม SKU ของเรท public คู่ของมันตอนตัด
   const rateGroup = rateStockOption(p.priceRates);
+  /**
+   * 💰 ตัวเลือกที่ "มีราคา" ในตารางของแต่ละเรท — กลุ่มแกนตาราง (ขนาดสาย) ที่บางเรทมีราคาแค่ 2cm หน้าร้านซ่อน 1.5/2.5 ให้เอง (matrixChoiceAvailable)
+   * โหมดจับคู่ เรทราคา × ขนาดสาย เคยสร้างครบทุกขนาดทุกเรท (สายห้อยคล้องคอ 8 เรท × 3 ขนาด = 24 ทั้งที่เลือกได้จริง 15 · เจ้าของร้านเจอ 2 ต.ค. 69)
+   * → ส่ง priced[ชื่อกลุ่ม] = รายชื่อที่มีราคาในเรทนั้น ไปให้หน้าจอตัดคู่ (กลุ่มที่ไม่ใช่แกนตารางของเรทนั้นไม่อยู่ใน map = ไม่จำกัด) · 📐 กำหนดขนาดเอง ไม่มีช่องราคาโดยตั้งใจ นับว่ามีเสมอ
+   */
+  const pricedIn = (rateLabel: string): Record<string, string[]> | undefined => {
+    const m = (p.priceRates ?? []).find((r) => r?.label === rateLabel)?.pricing;
+    if (!m?.driverLabels?.length) return undefined;
+    const out: Record<string, string[]> = {};
+    for (const label of m.driverLabels) {
+      const opt = (p.options ?? []).find((o) => o.label === label);
+      if (!opt) continue;
+      out[label] = (opt.choices ?? []).map((c) => c.name).filter((n) => n?.trim() && (isSizeInputChoice(opt, n) || matrixChoiceAvailable(m, label, n)));
+    }
+    return Object.keys(out).length ? out : undefined;
+  };
   const groups = [...(rateGroup && (rateGroup.choices ?? []).length > 1 ? [{ o: rateGroup, optionIndex: RATE_OPTION_INDEX }] : []), ...(p.options ?? []).map((o, optionIndex) => ({ o, optionIndex }))]
     .map(({ o, optionIndex }) => (o.presetId && presetOf.get(o.presetId) ? { o: { ...o, label: presetOf.get(o.presetId)!.label, choices: presetOf.get(o.presetId)!.choices }, optionIndex } : { o, optionIndex }))
     .filter(({ o, optionIndex }) => optionIndex === RATE_OPTION_INDEX || (o.display !== "input" && (o.choices ?? []).some((c) => c.name?.trim())))
@@ -106,6 +122,8 @@ export async function GET(req: Request) {
           imageWhen: c.imageWhen?.length ? c.imageWhen : undefined,
           stockItemId: c.stockItemId ?? null,
           skuName: c.stockItemId ? skuName.get(c.stockItemId) ?? null : null,
+          // 💰 เฉพาะกลุ่มเรทราคา: ตัวเลือกของกลุ่มแกนตารางที่มีราคาในเรทนี้ (ดู pricedIn)
+          ...(optionIndex === RATE_OPTION_INDEX && pricedIn(c.name) ? { priced: pricedIn(c.name) } : {}),
           extras: (c.stockLinks ?? []).map((l) => skuName.get(l.stockItemId) ?? l.stockItemId),
           // ไว้ให้หน้าจอรู้ว่าคู่ไหน (ทรง × สี) มี SKU แล้ว
           links: (c.stockLinks ?? []).map((l) => ({ stockItemId: l.stockItemId, name: skuName.get(l.stockItemId) ?? null, when: l.when ?? [] })),

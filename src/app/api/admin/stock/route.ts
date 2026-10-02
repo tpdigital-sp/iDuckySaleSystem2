@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { deleteStockItem, listStock, recordUnlinked, saveStockItem, type UnlinkedRef } from "@/lib/server/stock";
+import { deleteStockItem, listStock, listStockCategories, recordUnlinked, saveStockItem, type UnlinkedRef } from "@/lib/server/stock";
 import { createClient } from "@supabase/supabase-js";
 import { snapshotRevision } from "@/lib/server/product-revisions";
 import { getProductsSlim, invalidateProductsSlim } from "@/lib/server/products-slim";
@@ -15,8 +15,9 @@ export const runtime = "nodejs";
 export async function GET() {
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
-  const data = await listStock();
-  return NextResponse.json({ ok: true, ...data });
+  // 🗂 รายชื่อหมวดที่เก็บไว้ไปด้วย — หน้าคลัง poll ทุก 20 วิ จะเห็นชื่อหมวดใหม่ทัน (2 ต.ค. 69)
+  const [data, categories] = await Promise.all([listStock(), listStockCategories()]);
+  return NextResponse.json({ ok: true, ...data, categories });
 }
 
 /** สร้าง/แก้ไขรายการ SKU — สิทธิ์แก้ออเดอร์ (orders.edit) */
