@@ -196,7 +196,7 @@ export async function answerChat(
   ]);
   const siteBody = (site?.body ?? null) as { found?: boolean; intent?: string; answer?: string; products?: ProductRef[] } | null;
   const siteVia =
-    siteBody?.found && siteBody.answer && /^(price|spec|info|mix|not_in_catalog|draft_product)/.test(String(siteBody.intent ?? ""))
+    siteBody?.found && siteBody.answer && /^(price|spec|info|mix|min_qty|not_in_catalog|draft_product)/.test(String(siteBody.intent ?? ""))
       ? String(siteBody.intent)
       : "";
   /** ยังไม่ได้ถามอะไรจริง — ห้ามเดาว่าถามเรื่องเดิมต่อ (ดู isOpener) */
