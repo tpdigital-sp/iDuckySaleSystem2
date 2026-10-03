@@ -130,3 +130,7 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - วันนี้บอทตอบลูกค้านอก whitelist 5 คน (09:48–12:36) · 14 วันก่อนหน้า 0 · ทุกครั้งตรงกับ **Read Whitelist (HTTP · googleApi service account) timeout** ("The connection timed out") ~5% ของรัน (4/85 ช่วง 12:15–12:40) และรอ timeout นานจนบอทตอบช้า ~3 นาที
 - ต้นตอ: Parse LINE Event เริ่มที่ `whitelistEnabled = false` แล้วค่อยอ่านจาก Firestore → อ่านไม่ได้ = "ไม่ได้เปิดโหมดรายชื่อ" = ตอบทุกคน
 - แก้ (ร่าง 3 ต.ค.): Parse LINE Event อ่านสำเร็จ = จำ `lastWhitelist` ใน static data · อ่านไม่ได้ = ใช้ตัวที่จำไว้ · ไม่มีเลย = whitelistEnabled true + รายชื่อว่าง (เงียบกับทุกคน) · Read Whitelist `options.timeout` 6000 ms + retryOnFail 2 ครั้ง ห่าง 1 วิ · ทดสอบ logic 3 กรณีผ่าน
+
+## 3 ต.ค. 69 — คำถามขั้นต่ำตอบ "ขอเช็ก" (intent min_qty ไม่ผ่าน)
+- เว็บตอบขั้นต่ำถูก (`intent: "min_qty"`, kind info) แต่ทุกด่านกรองไว้แค่ price/spec/info/mix → agent ตอบ "ขอเช็กรายละเอียด" แทน
+- แก้: เว็บ `chat-answer.ts` siteVia + min_qty (deploy 044dbf6) · n8n ร่าง: LINE Build AI Request (site-first regex) + Site Price Flex (branch 1.5) + ChatBot PO Override1 เพิ่ม `min_qty`
