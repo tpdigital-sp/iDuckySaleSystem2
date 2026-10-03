@@ -13,6 +13,7 @@ import {
   type OrderStatus,
 } from "@/lib/admin-data";
 import { formatPrice } from "@/lib/products";
+import { customerOrigin } from "@/lib/shop-info";
 import { itemQtyText } from "@/lib/item-yield";
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
@@ -314,7 +315,7 @@ export async function notifyCustomerLogged(
 
 /** ลิงก์หน้าเช็คออเดอร์สำหรับแนบในข้อความ (ต้องมี key) */
 export function orderLink(origin: string, order: Order): string {
-  return `${origin}/order/${encodeURIComponent(order.id)}${order.key ? `?key=${encodeURIComponent(order.key)}` : ""}`;
+  return `${customerOrigin(origin)}/order/${encodeURIComponent(order.id)}${order.key ? `?key=${encodeURIComponent(order.key)}` : ""}`;
 }
 
 /**

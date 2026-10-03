@@ -35,3 +35,12 @@ export function publicOrigin(): string {
   }
   return SITE_URL;
 }
+
+/**
+ * ฝั่งเซิร์ฟเวอร์: origin ของคำขอ → ฐาน URL ที่ลูกค้าเปิดได้
+ * พนักงานกดยืนยันจาก dev (localhost:3016) เคยได้ลิงก์ localhost ในการ์ดไลน์ลูกค้า (OD-260929-2180 · 3 ต.ค. 69)
+ */
+export function customerOrigin(origin: string | null | undefined): string {
+  const o = (origin || "").replace(/\/+$/, "");
+  return o && !PRIVATE_HOST.test(o) ? o : SITE_URL;
+}
