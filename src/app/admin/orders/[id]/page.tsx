@@ -16,7 +16,7 @@ import { useParams, useRouter } from "next/navigation";
 import CameraScanner from "@/components/admin/CameraScanner";
 import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
 import { extractOrderId, trackingScanProblem } from "@/lib/scan-code";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, rateSpecOfLine, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productLineOrder, productPath, rateSpecOfLine, type Product } from "@/lib/products";
 import { imgVersion, versionedSrc } from "@/lib/img";
 import { shopProductIdByName, specialImageProductId, type SpecialProduct } from "@/lib/special-product-image";
 import ProductVisual from "@/components/ProductVisual";
@@ -1675,6 +1675,16 @@ export default function AdminOrderDetailPage() {
   /** สินค้าที่ใช้ดึงสเปคเรทของรายการนี้ — สินค้าร้าน = ตัวมันเอง · รายการพิเศษ = สินค้าชื่อตรงเป๊ะ */
   const specProductIdOf = (it: OrderItem): string | undefined =>
     it.productId === "special-item" ? (shopNames ? shopProductIdByName(shopNames, it.name) : undefined) : it.productId;
+
+  /**
+   * 📋 รายการพิเศษที่ผูกสินค้าได้ = เรียงบรรทัดตามกลุ่มตัวเลือกของสินค้า (เรทราคา → สเปคเรท → ขนาด → ชนิดผ้า …)
+   * รายการหน้าร้านคงลำดับ tidySpec ที่กราฟฟิกใช้อยู่ (ขนาดก่อน · กระดาษก่อน · เรทท้าย) — เจ้าของร้านเลือก 3 ต.ค. 69
+   */
+  const specialOrderOf = (it: OrderItem): string[] | undefined => {
+    if (it.productId !== "special-item") return undefined;
+    const p = productOfItem(specProductIdOf(it) ?? "");
+    return p ? productLineOrder(p) : undefined;
+  };
 
   const itemProductIds = [
     ...(order?.items ?? []).map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item"),
@@ -5661,7 +5671,7 @@ export default function AdminOrderDetailPage() {
                       ) : (
                         <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
                           {/* 🎨 จอกราฟฟิก — ซ่อนเรทราคา + งานสแตนดี้ยุบบรรทัด (production) · หน้าลูกค้ายังบรรทัดละหัวข้อ */}
-                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} rateSpec={rateSpecOfLine(productOfItem(specProductIdOf(it) ?? ""), it.sel, it.selections)} production />
+                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} rateSpec={rateSpecOfLine(productOfItem(specProductIdOf(it) ?? ""), it.sel, it.selections, "admin")} order={specialOrderOf(it)} production />
                           {mayEdit && (
                             <button
                               type="button"

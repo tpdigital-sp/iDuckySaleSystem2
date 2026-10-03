@@ -30,7 +30,7 @@ import RichEditor from "@/components/RichEditor";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { autoSeoOf } from "@/lib/auto-seo";
 import { fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } from "@/lib/categories";
-import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL, mixTierFor } from "@/lib/products";
+import { BULK_ASK_DEFAULT, CONSULT_NOTE_DEFAULT, RATE_LABEL, autoRateSpec, mixTierFor, type SpecScreen } from "@/lib/products";
 import { hasOverride, resetOverride } from "@/lib/product-store";
 import { deleteProductDb, fetchProductNamesLite, fetchProductRaw, persistProduct } from "@/lib/product-repo";
 import { adminProductPath, shortChoice, slugifyProductName } from "@/lib/products";
@@ -293,7 +293,7 @@ type DraftPricing = {
 type DraftMixTier = { fromQty: string; baseFee: string; includedDesigns: string; extraFee: string; onePerUnit: boolean };
 const EMPTY_MIX_TIER: DraftMixTier = { fromQty: "", baseFee: "", includedDesigns: "", extraFee: "", onePerUnit: false };
 /** ข้อมูลกำกับเรทราคา (ชื่อ + เงื่อนไขการสั่ง + ภาพประจำเรท) — mixRule = ค่าคละเฉพาะเรท (ตั้งจากสคริปต์ หน้านี้แค่พาผ่านตอนบันทึก ไม่มี UI แก้) */
-type DraftRateMeta = { label: string; desc: string; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; minQtyScope?: "line" | "lot"; /** 🤝 เรทเฉพาะตัวแทนจำหน่าย (ลูกค้าทั่วไปไม่เห็น) — ติ๊กได้เฉพาะเรทเพิ่มเติม ห้ามเป็นเรทแรก */ dealerOnly?: boolean; /** 📦 สต๊อกตามเรท (ตั้งจากหน้าคลัง) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วเลิกตัดสต๊อกเงียบ ๆ */ stockItemId?: string; stockQtyPer?: number; stockLinks?: PriceRate["stockLinks"] };
+type DraftRateMeta = { label: string; desc: string; /** 🏷 สเปคเรทที่พิมพ์เอง (ว่าง = ตัดจาก desc) */ workSpec?: string; /** 🏷 จอที่โชว์สเปคเรท (ไม่ตั้ง = ค่าเริ่มต้น) */ specOn?: SpecScreen[]; minQty: string; minPerDesign: string; extraDesignFee: string; underMinPieceFee: string; freeMixBelowQty: string; imageSrc?: string; mixRule?: MixRule; minQtyScope?: "line" | "lot"; /** 🤝 เรทเฉพาะตัวแทนจำหน่าย (ลูกค้าทั่วไปไม่เห็น) — ติ๊กได้เฉพาะเรทเพิ่มเติม ห้ามเป็นเรทแรก */ dealerOnly?: boolean; /** 📦 สต๊อกตามเรท (ตั้งจากหน้าคลัง) — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วเลิกตัดสต๊อกเงียบ ๆ */ stockItemId?: string; stockQtyPer?: number; stockLinks?: PriceRate["stockLinks"] };
 /** เรทเพิ่มเติม — มีช่วงจำนวน+ตารางราคาของตัวเอง (คอลัมน์/หน่วยใช้ร่วมกับเรทหลัก) */
 type DraftExtraRate = DraftRateMeta & {
   id: string;
@@ -854,6 +854,9 @@ function toDraft(p: Product): Draft {
       ? {
           label: p.priceRates[0].label,
           desc: p.priceRates[0].desc ?? "",
+          // 🏷 สเปคเรท/จอที่โชว์ — พาผ่านตอนบันทึก ไม่งั้นกดบันทึกแล้วหายเงียบ ๆ
+          workSpec: p.priceRates[0].workSpec ?? "",
+          ...(p.priceRates[0].specOn ? { specOn: [...p.priceRates[0].specOn] } : {}),
           minQty: p.priceRates[0].minQty != null ? String(p.priceRates[0].minQty) : "",
           minPerDesign: p.priceRates[0].minPerDesign != null ? String(p.priceRates[0].minPerDesign) : "",
           extraDesignFee: p.priceRates[0].extraDesignFee != null ? String(p.priceRates[0].extraDesignFee) : "",
@@ -871,6 +874,8 @@ function toDraft(p: Product): Draft {
       driverLabels: [...r.pricing.driverLabels],
       label: r.label,
       desc: r.desc ?? "",
+      workSpec: r.workSpec ?? "",
+      ...(r.specOn ? { specOn: [...r.specOn] } : {}),
       minQty: r.minQty != null ? String(r.minQty) : "",
       minPerDesign: r.minPerDesign != null ? String(r.minPerDesign) : "",
       extraDesignFee: r.extraDesignFee != null ? String(r.extraDesignFee) : "",
@@ -1235,6 +1240,70 @@ function tabTextToHtml(text: string): string {
 }
 
 /** แถวปุ่มเลือกค่าเดียวจากไม่กี่ตัว (ชิปกดเลือก) — เช่น ตำแหน่ง/ขนาดรูปในแท็บ */
+const SPEC_SCREENS: { id: SpecScreen; label: string }[] = [
+  { id: "cart", label: "ตะกร้า (ลูกค้า)" },
+  { id: "admin", label: "หน้าออเดอร์หลังบ้าน" },
+  { id: "work", label: "ใบงาน" },
+];
+
+/**
+ * 🏷 ช่องตั้ง "สเปคเรท" ของเรทที่เลือกอยู่ — บรรทัดใต้ "เรทราคา" ในตะกร้า/หน้าออเดอร์/ใบงาน (เจ้าของร้านขอ 3 ต.ค. 69)
+ * ว่าง = ไม่มีบรรทัด (ตั้งเป็นเคส ๆ) · ปุ่ม ＋ เติมจากคำอธิบายเรท = ตัวช่วย · ติ๊กจอ = เขียน specOn ทั้งชุด · ↺ = กลับไปค่าเริ่มต้น
+ */
+function RateSpecFields({
+  meta,
+  defaultCart,
+  onChange,
+}: {
+  meta: DraftRateMeta;
+  /** ค่าเริ่มต้นของตะกร้าเมื่อยังไม่ได้ติ๊กเอง (หลายเรท + ชื่อไม่ใช่ "เรทที่ 1") */
+  defaultCart: boolean;
+  onChange: (pt: Partial<DraftRateMeta>) => void;
+}) {
+  const auto = autoRateSpec({ label: meta.label, desc: meta.desc });
+  const on = meta.specOn ?? (["admin", "work", ...(defaultCart ? ["cart"] : [])] as SpecScreen[]);
+  const toggle = (id: SpecScreen, v: boolean) =>
+    onChange({ specOn: SPEC_SCREENS.map((x) => x.id).filter((x) => (x === id ? v : on.includes(x))) });
+  return (
+    <div className="flex w-full flex-col gap-1.5 rounded-xl bg-teal-50/60 p-2.5 ring-1 ring-teal-100">
+      <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+        สเปคเรท (บรรทัดใต้เรทราคา · คั่นท่อนด้วย · · ว่าง = ไม่ขึ้น)
+        <input
+          value={meta.workSpec ?? ""}
+          onChange={(e) => onChange({ workSpec: e.target.value })}
+          placeholder="ว่าง = ไม่มีบรรทัดสเปคเรท"
+          className="w-full rounded-xl bg-white px-3 py-1.5 text-sm font-normal ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+        />
+      </label>
+      {auto && !meta.workSpec?.trim() && (
+        <button
+          type="button"
+          onClick={() => onChange({ workSpec: auto })}
+          className="self-start text-xs font-semibold text-teal-700 underline-offset-2 hover:underline"
+          title={auto}
+        >
+          ＋ เติมจากคำอธิบายเรท: {auto.length > 60 ? `${auto.slice(0, 60)}…` : auto}
+        </button>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+        <span className="font-semibold text-slate-500">โชว์ที่:</span>
+        {SPEC_SCREENS.map((x) => (
+          <label key={x.id} className="inline-flex cursor-pointer items-center gap-1">
+            <input type="checkbox" checked={on.includes(x.id)} onChange={(e) => toggle(x.id, e.target.checked)} className="accent-teal-600" />
+            {x.label}
+          </label>
+        ))}
+        {meta.specOn && (
+          <button type="button" onClick={() => onChange({ specOn: undefined })} className="text-teal-700 underline-offset-2 hover:underline">
+            ↺ ค่าเริ่มต้น
+          </button>
+        )}
+        {!meta.specOn && <span className="text-slate-400">(ค่าเริ่มต้น)</span>}
+      </div>
+    </div>
+  );
+}
+
 function PickRow<T extends string>({
   value,
   options,
@@ -4393,6 +4462,8 @@ export default function ProductEditor({ product }: { product: Product }) {
       const metaOf = (m: DraftRateMeta, fallbackLabel: string) => ({
         label: m.label.trim() || fallbackLabel,
         ...(m.desc.trim() ? { desc: m.desc.trim() } : {}),
+        ...(m.workSpec?.trim() ? { workSpec: m.workSpec.trim() } : {}),
+        ...(m.specOn ? { specOn: m.specOn } : {}),
         ...(Number(m.minQty) > 0 ? { minQty: Math.floor(Number(m.minQty)) } : {}),
         ...(Number(m.minPerDesign) > 0 ? { minPerDesign: Math.floor(Number(m.minPerDesign)) } : {}),
         ...(Number(m.extraDesignFee) > 0 ? { extraDesignFee: Number(m.extraDesignFee) } : {}),
@@ -6555,6 +6626,12 @@ export default function ProductEditor({ product }: { product: Product }) {
                       className="w-64 rounded-xl bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
                     />
                   </label>
+                  {/* 🏷 สเปคเรท — บรรทัดใต้ "เรทราคา" ในตะกร้า/หน้าออเดอร์/ใบงาน (เจ้าของร้านขอปรับเองได้ 3 ต.ค. 69) */}
+                  <RateSpecFields
+                    meta={activeMeta}
+                    defaultCart={!original?.hideRateSpecInCart && 1 + draft.extraRates.filter((r) => !r.dealerOnly).length > 1 && !/^\s*(เรท|ราคา)/.test(activeMeta.label)}
+                    onChange={patchActiveMeta}
+                  />
                   <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
                     สั่งรวมขั้นต่ำ ({draft.pricing.unit || "ชิ้น"})
                     <input

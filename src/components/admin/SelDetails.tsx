@@ -7,7 +7,7 @@
  * รายการแบบเดียวกันเป๊ะ (พนักงานสลับสองหน้านี้ทั้งวัน — 15 ก.ย. 69 ขอให้การ์ดรายการในใบเสนอราคา
  * "เหมือนหน้าคำสั่งซื้อ") จึงย้ายมาไว้ตรงกลาง ใช้ร่วมกันทั้งสองหน้า อย่าก๊อปโค้ดไปวางซ้ำ
  */
-import { HIDE_GENERIC_RATE, RATE_SPEC_LINE, RateSpecValue, foldSizeExtra, specEntries, specLabel, specValueLines, tidySpec, withRateSpec, withWorkSize } from "@/components/SpecLines";
+import { HIDE_GENERIC_RATE, RATE_SPEC_LINE, RateSpecValue, foldSizeExtra, keyByProductLabels, orderByProduct, specEntries, specLabel, specValueLines, tidySpec, withRateSpec, withWorkSize } from "@/components/SpecLines";
 
 /**
  * ข้อความรายละเอียดของรายการ — URL ยาวเหยียด (ลิงก์ไฟล์ต้นฉบับ) ทำให้อ่านไม่รู้เรื่อง
@@ -66,6 +66,7 @@ export function SelDetails({
   text,
   workSize,
   rateSpec,
+  order,
   production = false,
 }: {
   sel?: Record<string, string>;
@@ -74,6 +75,8 @@ export function SelDetails({
   workSize?: string;
   /** 🏷 สเปคงานของเรทที่เลือก (rateSpecOf) — ต่อใต้บรรทัดเรทราคา ("แบบที่ 1" = ไดคัทตามทรง ฯลฯ) */
   rateSpec?: string;
+  /** 📋 ลำดับกลุ่มตัวเลือกของสินค้า (productLineOrder) — เรียงบรรทัดแบบเดียวกับตะกร้า/หน้าสินค้า (3 ต.ค. 69) */
+  order?: string[];
   /**
    * 🎨 จอฝ่ายผลิต (หน้าออเดอร์แอดมิน) — ซ่อนเรทราคา (SEL_HIDE_PRODUCTION) + งานสแตนดี้ยุบเป็นแพทเทิร์นสั้น (compact)
    * ใบเสนอราคาไม่ส่ง = บรรทัดละหัวข้อครบเหมือนหน้าลูกค้า
@@ -83,9 +86,14 @@ export function SelDetails({
   // ออเดอร์เก่าไม่มีตัวเลือกแบบหัวข้อ/ค่า — กางจากข้อความรวมให้เป็นบรรทัดละหัวข้อเหมือนกัน
   // บวก "เพิ่มขนาด" เข้าบรรทัดขนาดให้เหมือนหน้าร้าน/ใบงาน — ทีมผลิตอ่านขนาดจริงได้เลย
   const entries = withRateSpec(
-    withWorkSize(
-      foldSizeExtra(tidySpec(specEntries(sel, text, production ? SEL_HIDE_PRODUCTION : SEL_HIDE), { compact: production })),
-      workSize,
+    orderByProduct(
+      withWorkSize(
+        foldSizeExtra(
+          tidySpec(keyByProductLabels(specEntries(sel, text, production ? SEL_HIDE_PRODUCTION : SEL_HIDE), order, production ? SEL_HIDE_PRODUCTION : SEL_HIDE), { compact: production }),
+        ),
+        workSize,
+      ),
+      order,
     ),
     rateSpec,
   );

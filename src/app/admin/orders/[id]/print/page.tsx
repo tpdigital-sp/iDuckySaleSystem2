@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
-import { artQtyOf, formatPrice, rateSpecOfLine } from "@/lib/products";
+import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
 import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
@@ -971,7 +971,9 @@ function OrderDocs({
                             compact
                             stripLinks
                             workSize={products[it.productId]?.workSize}
-                            rateSpec={rateSpecOfLine(products[it.productId === "special-item" ? SPECIAL_KEY(it.name) : it.productId], it.sel, it.selections)}
+                            rateSpec={rateSpecOfLine(products[it.productId === "special-item" ? SPECIAL_KEY(it.name) : it.productId], it.sel, it.selections, "work")}
+                            /* 📋 รายการพิเศษที่ผูกสินค้าได้เรียงตามกลุ่มของสินค้า · รายการหน้าร้านคงลำดับ tidySpec (เจ้าของร้านเลือก 3 ต.ค. 69) */
+                            order={it.productId === "special-item" && products[SPECIAL_KEY(it.name)] ? productLineOrder(products[SPECIAL_KEY(it.name)]) : undefined}
                             labelClassName="text-slate-900"
                             className="mt-0.5 text-xs leading-relaxed text-slate-600"
                           />

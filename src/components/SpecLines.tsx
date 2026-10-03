@@ -450,7 +450,8 @@ export const RATE_SPEC_LINE = "สเปคเรท";
 export function withRateSpec(entries: [string, string][], rateSpec?: string): [string, string][] {
   const spec = (rateSpec ?? "").trim();
   if (!spec) return entries;
-  const at = entries.findIndex(([k]) => k === RATE_LINE);
+  // รายการพิเศษพิมพ์เองไม่มีโคลอน — "เรทราคา ผ้าเชียร์ · พิมพ์ 1 ด้าน" เป็นแถวไร้หัวข้อ ก็เกาะใต้แถวนั้น
+  const at = entries.findIndex(([k, v]) => k === RATE_LINE || (!k && v.trimStart().startsWith(RATE_LINE)));
   const line: [string, string] = [RATE_SPEC_LINE, spec];
   return at < 0 ? [line, ...entries] : [...entries.slice(0, at + 1), line, ...entries.slice(at + 1)];
 }
@@ -796,8 +797,27 @@ export const stripSpecUrls = (v: string) =>
 /**
  * 📋 เรียงบรรทัดตามลำดับกลุ่มตัวเลือกของสินค้า (ดู productLineOrder ใน lib/products)
  * จับคู่ด้วยชื่อหัวข้อตรง ๆ ก่อน ไม่ตรงค่อยลองชื่อที่ตัดวงเล็บท้าย (specLabel) — บรรทัดที่ tidySpec ยุบมาแล้วยังใช้ชื่อกลุ่มแม่
- * หัวข้อที่ไม่อยู่ในลิสต์ (ลิงก์ลาย · จำนวนลาย · หมายเหตุ …) ไปต่อท้าย คงลำดับเดิมของ tidySpec (sort แบบ stable)
+ * หัวข้อที่ไม่อยู่ในลิสต์ (ลิงก์ลาย · จำนวนลาย · หมายเหตุ …) ไปต่อท้าย คงลำดับเดิมของ tidySpec (sort แบบ stable) · แถวไร้หัวข้อเกาะแถวก่อนหน้า
  */
+/**
+ * 🏷 แถวไร้หัวข้อของรายการพิมพ์เอง (ใบ FlowAccount: "ขนาด กว้าง 23.5 × ยาว 66.7 ซม." · "เรทราคา ผ้าเชียร์ · พิมพ์ 1 ด้าน")
+ * ขึ้นต้นด้วยชื่อกลุ่มของสินค้าที่ผูกได้ + เว้นวรรค → ใช้ชื่อกลุ่มเป็นหัวข้อ จะได้เรียงตามกลุ่มและตัวหนาเหมือนรายการหน้าร้าน
+ * (เจ้าของร้านทัก 3 ต.ค. 69 OD-261002-7187 "ไม่ได้เรียงตามกลุ่มตัวเลือกสินค้า") · ชื่อยาวสุดก่อน (กันชื่อสั้นตัดผิด)
+ */
+export function keyByProductLabels(entries: [string, string][], order?: string[], hide: string[] = []): [string, string][] {
+  if (!order?.length) return entries;
+  // + หัวข้อท้ายการ์ดที่ไม่ใช่กลุ่มตัวเลือก ("จำนวนลาย 1 ลาย") — ได้หัวข้อแล้วไปอยู่ท้ายตาม orderByProduct
+  const labels = [...new Set([...order, "จำนวนแต่ละลาย", "จำนวนลาย", "หมายเหตุ"])].filter((l) => l.trim().length >= 2).sort((a, b) => b.length - a.length);
+  return entries.map(([k, v]) => {
+    if (k) return [k, v];
+    const t = v.trimStart();
+    const l = labels.find((x) => t.startsWith(`${x} `) && t.length > x.length + 1);
+    return l ? [l, t.slice(l.length).trim()] : [k, v];
+  })
+    // ได้หัวข้อแล้วต้องเช็คซ่อนอีกรอบ — "เรทราคา เรทที่ 1 แบบคละดีเทล" ตอนไร้หัวข้อหลุดด่าน HIDE_GENERIC_RATE
+    .filter(([k, v]) => !k || !hiddenLine(hide, k, v)) as [string, string][];
+}
+
 export function orderByProduct(entries: [string, string][], order?: string[]): [string, string][] {
   if (!order?.length) return entries;
   const idx = (k: string) => {
@@ -806,7 +826,16 @@ export function orderByProduct(entries: [string, string][], order?: string[]): [
     const j = order.findIndex((l) => specLabel(l) === specLabel(k));
     return j >= 0 ? j : order.length;
   };
-  return entries.map((e, n) => ({ e, n, i: idx(e[0]) })).sort((a, b) => a.i - b.i || a.n - b.n).map((x) => x.e);
+  // แถวไร้หัวข้อ (ข้อความพิมพ์เอง "1 ด้าน (ด้านใต้)") เกาะแถวก่อนหน้า ไม่ใช่ตกไปท้าย — แถวแรกสุดคงอยู่บนสุด
+  let prev = -1;
+  return entries
+    .map((e, n) => {
+      const i = e[0] ? idx(e[0]) : prev;
+      prev = i;
+      return { e, n, i };
+    })
+    .sort((a, b) => a.i - b.i || a.n - b.n)
+    .map((x) => x.e);
 }
 
 export function SpecLines({
@@ -856,7 +885,7 @@ export function SpecLines({
   const entries = withRateSpec(orderByProduct(
     withWorkSize(
       foldSizeExtra(
-        tidySpec(specEntries(sel, text, hide), { compact })
+        tidySpec(keyByProductLabels(specEntries(sel, text, hide), order, hide ?? SPEC_HIDE), { compact })
           .map(([k, v]) => [k, stripLinks ? stripSpecUrls(v) : v] as [string, string])
           .filter(([, v]) => v),
       ),

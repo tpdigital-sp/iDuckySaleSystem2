@@ -23,7 +23,9 @@ export function parseSpecText(text: string): [string, string][] {
       } else if (head >= 0) {
         out[head][1] += ` · ${seg}`;
       } else {
+        // บรรทัดไม่มีหัวข้อ = 1 บรรทัดคงเป็น 1 แถว — "เรทราคา ผ้าเชียร์ · พิมพ์ 1 ด้าน" (ใบ FlowAccount) ไม่หั่นเป็น 2 แถว (3 ต.ค. 69)
         out.push(["", seg]);
+        head = out.length - 1;
       }
     }
   }

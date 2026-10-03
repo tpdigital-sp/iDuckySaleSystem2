@@ -1944,6 +1944,9 @@ export interface ShipOptionRule {
   shipTierMethodId?: string;
 }
 
+/** จอที่บรรทัดสเปคเรทไปขึ้น: ตะกร้าลูกค้า · หน้าออเดอร์หลังบ้าน · ใบงาน */
+export type SpecScreen = "cart" | "admin" | "work";
+
 /**
  * เรทราคา 1 แบบของสินค้า — สินค้าบางตัวมีหลายเรท (เช่น พิน: เรทคละดีเทล / เรทไม่คละดีเทล)
  * แต่ละเรทมีตารางขั้นบันไดของตัวเอง (ช่วงจำนวนคนละชุดได้) + เงื่อนไขการสั่ง
@@ -1954,6 +1957,13 @@ export interface PriceRate {
   label: string;
   /** คำอธิบายสั้น ๆ ใต้ชื่อ เช่น "อะคริลิคใส / ขาวขุ่น C-02 (เงา 2 ด้าน)" */
   desc?: string;
+  /**
+   * 🏷 สเปคเรท (บรรทัดใต้ "เรทราคา" ในตะกร้า/หน้าออเดอร์/ใบงาน) ที่เจ้าของร้านพิมพ์เอง — คั่นท่อนด้วย " · "
+   * ว่าง = ไม่มีบรรทัดสเปคเรท (เจ้าของร้านตั้งเป็นเคส ๆ · 3 ต.ค. 69) · desc ยังเป็นข้อความขายบนหน้าสินค้าเหมือนเดิม
+   */
+  workSpec?: string;
+  /** 🏷 จอที่โชว์สเปคเรท — ไม่ตั้ง = ค่าเริ่มต้น (ตะกร้าเฉพาะเรทที่โชว์ชื่อ · หลังบ้าน+ใบงานทุกเรท) · [] = ไม่โชว์ที่ไหนเลย */
+  specOn?: SpecScreen[];
   /** ยอดสั่งรวมขั้นต่ำของเรทนี้ เช่น เรท 2 ต้องสั่ง 50 ชิ้นขึ้นไป */
   minQty?: number;
   /**
@@ -5485,18 +5495,22 @@ export function productLineOrder(p: Product): string[] {
  * อ่านจากสินค้าตอนแสดง (ออเดอร์เก่าได้ด้วย) · ตัดท่อนที่เป็นเรื่องราคา/ขั้นต่ำ/คำโฆษณาออก เหลือแต่สเปคงาน
  * เรทตัวแทนใช้ desc ของเรท public แฝด (desc ตัวแทนเป็น "ราคาตัวแทนจำหน่าย")
  */
-export function rateSpecOf(p: Product | undefined, selections: Record<string, string> | undefined): string {
-  const label = selections?.[RATE_LABEL];
-  if (!p || !label) return "";
+export function specRateOf(p: Product | undefined, label: string | undefined): PriceRate | undefined {
+  if (!p || !label) return undefined;
   const rates = p.priceRates ?? [];
   const pub = publicRateLabelOf(label);
   const own = rates.find((r) => r.label === label);
   // เรทตัวแทนใช้ desc ของเรท public แฝด: ชื่อ (ตัด "(ตัวแทน)") → id "<เรทปกติ>-dealer" → สินค้าเรท public ตัวเดียว
   // สินค้าเรทเดียว ~199 ตัว ตั้งเรทตัวแทนชื่อ "เรทตัวแทนจำหน่าย" จับด้วยชื่อไม่ได้ — ตัวแทนเคยไม่ได้บรรทัดสเปคเลย (สแกน 3 ต.ค. 69)
   const pubs = rates.filter((r) => !r.dealerOnly);
-  const rate =
+  return (
     pubs.find((r) => r.label === pub) ??
-    (own?.dealerOnly ? (pubs.find((r) => own.id && r.id === own.id.replace(/-dealer$/, "")) ?? (pubs.length === 1 ? pubs[0] : undefined)) : own);
+    (own?.dealerOnly ? (pubs.find((r) => own.id && r.id === own.id.replace(/-dealer$/, "")) ?? (pubs.length === 1 ? pubs[0] : undefined)) : own)
+  );
+}
+
+/** ข้อความแนะนำสเปคเรทจาก desc — ปุ่ม "เติมจากคำอธิบายเรท" ในหน้าแก้สินค้า/หน้ารายงาน (ไม่ขึ้นเองบนจอไหน) */
+export function autoRateSpec(rate: Pick<PriceRate, "label" | "desc"> | undefined): string {
   return (rate?.desc ?? "")
     .split(/\s+[·—]\s+/)
     // ล้างคำขายในท่อนก่อนตัดสิน — "ฟรี! ไดคัทมุมมน + เคลือบ…" (โฟโต้การ์ด) ต้องเหลือ "ไดคัทมุมมน + เคลือบ…" ไม่ใช่หายทั้งท่อน
@@ -5507,6 +5521,28 @@ export function rateSpecOf(p: Product | undefined, selections: Record<string, st
     .filter((x) => !squashSpace(rate?.label ?? "").includes(squashSpace(x)))
     .join(" · ");
 }
+
+/**
+ * 🏷 สเปคงานของเรทที่เลือก สำหรับบรรทัด "สเปคเรท" — ชื่อเรทหลายสินค้าไม่บอกวิธีทำ
+ * ("สแตนดี้ตั้งโทรศัพท์ แบบที่ 1" = ไดคัทตามทรง · "แบบที่ 2" = ไดคัทสี่เหลี่ยมตาม Template) ข้อมูลอยู่ใน desc อย่างเดียว
+ * desc ไม่ถูกบันทึกลงออเดอร์ → กราฟฟิกไม่รู้ว่าต้องทำแบบไหน (พนักงานแจ้ง 3 ต.ค. 69 · OD-261001-6636)
+ * อ่านจากสินค้าตอนแสดง (ออเดอร์เก่าได้ด้วย) · ขึ้นเฉพาะเรทที่ตั้ง workSpec ไว้ (ไม่ตั้ง = ไม่มีบรรทัด)
+ */
+export function rateSpecOf(p: Product | undefined, selections: Record<string, string> | undefined): string {
+  // ⛔ ไม่ตัดจาก desc อัตโนมัติแล้ว — เจ้าของร้านสั่ง 3 ต.ค. 69 "มีแค่เท่าที่ฉันให้แก้ไข เป็นเคส ๆ ไป"
+  // (autoRateSpec เหลือเป็นข้อความแนะนำตอนกรอกในหน้าแก้สินค้า/หน้ารายงาน)
+  return specRateOf(p, selections?.[RATE_LABEL])?.workSpec?.trim() ?? "";
+}
+
+/** สเปคเรทของเรทนี้ขึ้นที่จอนี้ไหม — specOn ที่ตั้งเองชนะ · ไม่ตั้ง = ตะกร้าเฉพาะเรทที่โชว์ชื่อ (rateLineForCustomer) · หลังบ้าน/ใบงานทุกเรท */
+export function rateSpecShows(p: Product | undefined, selections: Record<string, string> | undefined, screen: SpecScreen): boolean {
+  const rate = specRateOf(p, selections?.[RATE_LABEL]);
+  if (!p || !rate) return false;
+  if (rate.specOn) return rate.specOn.includes(screen);
+  // ตะกร้า: ธงระดับสินค้า hideRateSpecInCart (หมวกแก๊ป — desc เป็นคำโฆษณา) ยังมีผลเมื่อเรทไม่ได้ตั้ง specOn เอง
+  return screen === "cart" ? !p.hideRateSpecInCart && rateLineForCustomer(p, selections ?? {}) : true;
+}
+
 const squashSpace = (s: string) => s.replace(/\s+/g, "");
 
 /**
@@ -5514,14 +5550,25 @@ const squashSpace = (s: string) => s.replace(/\s+/g, "");
  * (รายการพิเศษจาก FlowAccount: "เรทราคา ผ้าเชียร์ · พิมพ์ 1 ด้าน" ↔ เรทจริง "ผ้าเชียร์ · สกรีน 1 ด้าน")
  * เทียบแบบตัดช่องว่าง + ถือ พิมพ์ = สกรีน · ต้องเจอเรท public "ตัวเดียว" ถึงใช้ — กำกวม = ไม่ขึ้นบรรทัด
  */
-export function rateSpecOfLine(p: Product | undefined, selections: Record<string, string> | undefined, text?: string): string {
+export function rateSpecOfLine(
+  p: Product | undefined,
+  selections: Record<string, string> | undefined,
+  text?: string,
+  screen?: SpecScreen,
+): string {
   if (!p) return "";
-  if (selections?.[RATE_LABEL]) return rateSpecOf(p, selections);
+  const shown = (sel: Record<string, string>) => (!screen || rateSpecShows(p, sel, screen) ? rateSpecOf(p, sel) : "");
+  if (selections?.[RATE_LABEL]) return shown(selections);
   if (!text?.trim()) return "";
   const norm = (s: string) => s.replace(/พิมพ์/g, "สกรีน").replace(/\s+/g, "");
-  const t = norm(text);
+  // ดูบรรทัด "เรทราคา …" ก่อน — ทั้งข้อความมีชื่อเรทอื่นปนได้ ("แบบงานปัก" ↔ เรท "งานปัก" · "ชนิดกระดาษเนื้อพิเศษ" ↔ เรท "กระดาษเนื้อพิเศษ")
+  const rateLine = text.split(/\n+/).find((l) => l.trimStart().startsWith(RATE_LABEL));
+  const t = norm(rateLine ?? text);
   const hits = publicRates(p).filter((r) => t.includes(norm(r.label)));
-  return hits.length === 1 ? rateSpecOf(p, { [RATE_LABEL]: hits[0].label }) : "";
+  // ชื่อเรทซ้อนกัน ("งานปัก" ใน "งานปักชื่อ") — เลือกชื่อยาวสุดถ้ายาวกว่าตัวอื่นชัด ๆ
+  const best = [...hits].sort((a, b) => norm(b.label).length - norm(a.label).length);
+  const pick = best.length === 1 || (best.length > 1 && norm(best[0].label).length > norm(best[1].label).length && norm(best[0].label).includes(norm(best[1].label))) ? best[0] : undefined;
+  return pick ? shown({ [RATE_LABEL]: pick.label }) : "";
 }
 
 export function rateLineForCustomer(p: Product, selections: Record<string, string>): boolean {
