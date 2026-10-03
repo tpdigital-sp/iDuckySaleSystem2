@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { answerChat, type ChatProduct } from "@/lib/server/chat-answer";
+import { withFolders } from "@/lib/server/answer-folders";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -34,7 +35,9 @@ export async function GET(req: Request) {
       const d = await db.collection(HISTORY_COL).doc(id).get();
       if (!d.exists) return NextResponse.json({ error: "ไม่พบประวัติแชทนี้" }, { status: 404 });
       const x = d.data() ?? {};
-      return NextResponse.json({ id: d.id, adminName: x.adminName ?? "", messages: (x.messages ?? []) as Turn[] });
+      // 📁 path โฟลเดอร์คิดสดตอนเปิด ไม่บันทึกลงประวัติ — ย้าย/เปลี่ยนชื่อโฟลเดอร์แล้วประวัติเก่าก็ได้ path ใหม่
+      const messages = await Promise.all(((x.messages ?? []) as Turn[]).map(async (m) => (m.products?.length ? { ...m, products: await withFolders(m.products) } : m)));
+      return NextResponse.json({ id: d.id, adminName: x.adminName ?? "", messages });
     }
     // orderBy ฟิลด์เดียว ไม่ต้องสร้าง composite index
     const snap = await db.collection(HISTORY_COL).orderBy("lastActivity", "desc").limit(30).get();
@@ -85,7 +88,7 @@ export async function POST(req: Request) {
           role: (t.role === "bot" ? "bot" : "user") as Turn["role"],
           text: String(t.text).slice(0, 2000),
           timestamp: now,
-          ...(t.role === "bot" && Array.isArray(t.products) && t.products.length ? { products: t.products.slice(0, 6) } : {}),
+          ...(t.role === "bot" && Array.isArray(t.products) && t.products.length ? { products: t.products.slice(0, 6).map(({ folder: _f, folderWin: _w, ...p }) => p) } : {}),
           ...(t.role === "bot" && t.fromSite ? { fromSite: true } : {}),
         })),
         { role: "user" as const, text: message.slice(0, 2000), timestamp: now },
@@ -114,5 +117,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ...r.body, docId }, { status: r.status, headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ...r.body, products: await withFolders(r.body.products), docId }, { status: r.status, headers: { "Cache-Control": "no-store" } });
 }

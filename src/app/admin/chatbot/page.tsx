@@ -18,7 +18,7 @@ import { ChatbotTabs } from "./bot-ui";
  * ประวัติอยู่ซ้ายแบบ LINE OA ที่แอดมินคุ้น · แบ่งตามวัน + ค้น + ของฉัน/ทุกคน · มือถือพับเป็นปุ่ม
  */
 
-type Product = { name: string; url: string; image?: string };
+type Product = { name: string; url: string; image?: string; folder?: string; folderWin?: string };
 type Msg = { role: "user" | "bot"; text: string; at: string; err?: boolean; products?: Product[]; fromSite?: boolean };
 type Session = { id: string; adminName: string; summary: string; lastActivity: string; messageCount: number };
 
@@ -425,6 +425,7 @@ function Chatbot() {
                     </div>
 
                     <ProductPics products={m.products} />
+                    <ProductFolders products={m.products} />
 
                     <footer className="flex flex-wrap items-center gap-2 border-t px-3 py-2.5" style={{ borderColor: "var(--dk-hair)", background: "var(--dk-sky)" }}>
                       {!m.err && (
@@ -559,6 +560,71 @@ function ProductPics({ products }: { products?: Product[] }) {
           </span>
         </a>
       ))}
+    </div>
+  );
+}
+
+/**
+ * 📁 path โฟลเดอร์ "ข้อมูลตอบลูกค้า" บน NAS ของสินค้าในคำตอบ — แอดมิน WFH เปิดตามไปหาใบราคา/รูป (3 ต.ค. 69)
+ * พนักงานใช้ Windows → path แบบ \\192.168.1.100\… เป็นหลัก (วางในช่องที่อยู่ File Explorer) · path Mac เป็นรอง
+ * ดัชนีจาก scripts/answer-folders-index.mjs
+ */
+function ProductFolders({ products }: { products?: Product[] }) {
+  const [copied, setCopied] = useState("");
+  const list = (products ?? []).filter((p) => p.folder || p.folderWin).slice(0, 6);
+  if (!list.length) return null;
+  const copy = async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopied(path);
+      setTimeout(() => setCopied((c) => (c === path ? "" : c)), 1500);
+    } catch {
+      /* เบราว์เซอร์ไม่ให้คัดลอก — ยังลากคลุมข้อความเองได้ */
+    }
+  };
+  const CopyBtn = ({ path, label }: { path: string; label: string }) => (
+    <button
+      type="button"
+      onClick={() => copy(path)}
+      className="min-h-[32px] shrink-0 rounded-lg border bg-white px-2.5 text-[11.5px] font-bold"
+      style={{ borderColor: "var(--dk-quiet)", color: copied === path ? "#0a7a55" : "var(--dk-navy-soft)" }}
+    >
+      {copied === path ? "✓ คัดลอกแล้ว" : label}
+    </button>
+  );
+  return (
+    <div className="mx-4 mb-3 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dk-hair)", background: "var(--dk-sky)" }}>
+      <p className="text-[11.5px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+        📁 โฟลเดอร์ข้อมูลตอบลูกค้า{" "}
+        <span className="font-normal" style={{ color: "var(--dk-faint)" }}>
+          · Windows: คัดลอกแล้ววางในช่องที่อยู่ของ File Explorer (ต้องต่อเครือข่ายร้าน/VPN)
+        </span>
+      </p>
+      <ul className="mt-1.5 space-y-2">
+        {list.map((p) => {
+          const main = p.folderWin || p.folder!;
+          return (
+            <li key={p.url}>
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 break-all text-[12.5px] font-medium leading-snug select-all" style={{ color: "var(--dk-navy)" }} title={p.name}>
+                  {main}
+                </span>
+                <CopyBtn path={main} label="คัดลอก" />
+              </div>
+              {p.folderWin && p.folder && (
+                <div className="mt-0.5 flex items-center gap-2">
+                  <span className="min-w-0 flex-1 break-all text-[11px] leading-snug select-all" style={{ color: "var(--dk-faint)" }}>
+                    Mac: {p.folder}
+                  </span>
+                  <button type="button" onClick={() => copy(p.folder!)} className="shrink-0 text-[11px] font-semibold underline" style={{ color: copied === p.folder ? "#0a7a55" : "var(--dk-faint)" }}>
+                    {copied === p.folder ? "✓ คัดลอกแล้ว" : "คัดลอก (Mac)"}
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

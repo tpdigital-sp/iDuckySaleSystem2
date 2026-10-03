@@ -127,7 +127,7 @@ export type ChatBody = {
 };
 
 /** สินค้าที่คำตอบพูดถึง (ชื่อ/ลิงก์/ภาพปก) — หน้าแอดมินวาดแถวรูปใต้คำตอบแบบ chat.html เดิม */
-export type ChatProduct = { name: string; url: string; image?: string };
+export type ChatProduct = { name: string; url: string; image?: string; /** 📁 path โฟลเดอร์ข้อมูลตอบลูกค้า — เติมเฉพาะหน้า /admin/chatbot (answer-folders.ts) */ folder?: string; /** 🪟 path เดียวกันแบบ Windows (UNC ของ NAS) */ folderWin?: string };
 
 export type ChatResult = {
   status: number;
