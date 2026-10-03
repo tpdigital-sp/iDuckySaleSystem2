@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { formatPrice, orderUnitYield, resolveSelections, unitYieldOf, RATE_LABEL } from "@/lib/products";
+import { formatPrice, orderUnitYield, productLineOrder, resolveSelections, unitYieldOf, RATE_LABEL } from "@/lib/products";
+import { orderByProduct } from "@/components/SpecLines";
 import { getProductServer } from "@/lib/products-server";
 import { sanitizeSpecSelections } from "@/lib/price-link";
 import {
@@ -80,6 +81,19 @@ async function fallbackPieces(it: PriceLinkItem): Promise<PriceLinkPieces | unde
   }
 }
 
+/**
+ * 📋 ลำดับบรรทัดสเปค = ลำดับกลุ่มตัวเลือกบนหน้าสินค้า (ชุดเดียวกับตะกร้า · productLineOrder)
+ * lines แช่มาตอนสร้างใบตามลำดับเก่า — เรียงใหม่ตอนแสดง ใบเก่าได้ด้วย · โหลดสินค้าไม่ได้ = ลำดับเดิม
+ */
+async function lineOrderOf(it: PriceLinkItem): Promise<string[] | undefined> {
+  try {
+    const product = await getProductServer(it.productId);
+    return product ? productLineOrder(product) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** ตัวไล่อ่านลิงก์เพื่อทำพรีวิว (ไม่ใช่คน) */
 function isLinkPreviewBot(ua: string | null): boolean {
   if (!ua) return true; // ไม่บอกว่าเป็นใคร = ไม่ใช่เบราว์เซอร์คนทั่วไป ไม่ต้องนับ
@@ -96,9 +110,10 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
   //    นับด้วยจะกลายเป็น "ลูกค้าเปิดแล้ว" ตั้งแต่ยังไม่มีใครแตะ = ป้ายเตือนที่หน้าแอดมินใช้ไม่ได้เลย
   const items = priceLinkItems(link);
   const bundle = priceLinkIsBundle(link);
-  const [artFlags, pieces] = await Promise.all([
+  const [artFlags, pieces, orders] = await Promise.all([
     Promise.all(items.map((i) => productArtworkRequired(i.productId))),
     Promise.all(items.map(fallbackPieces)),
+    Promise.all(items.map(lineOrderOf)),
     isLinkPreviewBot((await headers()).get("user-agent")) ? Promise.resolve() : bumpPriceLinkOpened(link),
   ]);
 
@@ -173,7 +188,7 @@ export default async function PriceLinkPage({ params }: { params: Promise<{ code
 
         <PriceSheet
           code={link.code}
-          items={items.map((it, i) => ({ ...it, artRequired: artFlags[i], ...(pieces[i] ? { pieces: pieces[i] } : {}) }))}
+          items={items.map((it, i) => ({ ...it, lines: orderByProduct(it.lines, orders[i]), artRequired: artFlags[i], ...(pieces[i] ? { pieces: pieces[i] } : {}) }))}
           open={open}
           note={link.note}
           closedNote={closedNote}
