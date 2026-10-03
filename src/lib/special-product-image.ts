@@ -101,3 +101,16 @@ export function suggestImageProduct<T extends { id: string; name: string; slug?:
   }
   return best?.p;
 }
+
+/**
+ * 🏷 สินค้าร้านที่ "ชื่อตรงเป๊ะ" กับรายการพิเศษ — ไว้ดึงสเปคเรท (rateSpecOfLine) ให้จอฝ่ายผลิต
+ * รายการจากใบเสนอราคา FlowAccount เป็นข้อความพิมพ์เอง ไม่ผูกสินค้า → ไม่มีบรรทัดสเปคเรท
+ * (OD-261002-7187 "ผ้าเชียร์" · เรทราคา ผ้าเชียร์ · พิมพ์ 1 ด้าน — กราฟฟิกไม่รู้ว่าเย็บแบบไหน · 3 ต.ค. 69)
+ * เทียบชื่อเท่ากันทั้งชื่อเท่านั้น (ไม่เดาแบบขึ้นต้น/หัวชื่อ — เหตุผลเดียวกับภาพด้านบน) · ชื่อซ้ำหลายตัว = ไม่เลือก
+ */
+export function shopProductIdByName(rows: { id: string; name: string; hidden?: unknown }[], itemName: string): string | undefined {
+  const key = nameKey(itemName);
+  if (!key) return undefined;
+  const hits = rows.filter((r) => !r.hidden && nameKey(r.name ?? "") === key);
+  return hits.length === 1 ? hits[0].id : undefined;
+}

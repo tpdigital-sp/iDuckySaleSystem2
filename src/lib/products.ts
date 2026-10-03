@@ -5488,9 +5488,29 @@ export function rateSpecOf(p: Product | undefined, selections: Record<string, st
   const rate = rates.find((r) => !r.dealerOnly && r.label === pub) ?? rates.find((r) => r.label === label);
   return (rate?.desc ?? "")
     .split(/\s+[·—]\s+/)
-    .map((x) => x.trim())
-    .filter((x) => x && !/฿|บาท|\d\s*\.-|\+\s*\d|ราคา|ขั้นต่ำ|คละ|ฟรี|ขึ้นไป|เหมาะ|ตาราง|คิด|บวก|ถูก|อิสระ|เริ่มสั่ง|\d\s*-\s*\d+\s*(ชิ้น|อัน|พวง|ใบ)/.test(x))
+    // ล้างคำขายในท่อนก่อนตัดสิน — "ฟรี! ไดคัทมุมมน + เคลือบ…" (โฟโต้การ์ด) ต้องเหลือ "ไดคัทมุมมน + เคลือบ…" ไม่ใช่หายทั้งท่อน
+    // และตัดวลีท้าย "… เหมาะทำของขวัญ" / "… คละขนาดได้" / "… ราคาเบากว่า" ออก เหลือสเปคด้านหน้า (สแกนทั้งร้าน 3 ต.ค. 69)
+    .map((x) => x.replace(/\s*ฟรี!?\s*/g, " ").trim().replace(/(\S)\s+(เหมาะ|คละ|ราคา).*$/, "$1").trim())
+    .filter((x) => x && !/฿|บาท|\d\s*\.-|\+\s*\d|ราคา|ขั้นต่ำ|คละ|ฟรี|ขึ้นไป|เหมาะ|ตาราง|คิด|บวก|ถูก|อิสระ|เริ่มสั่ง|\d\s*-\s*\d+\s*(ชิ้น|อัน|พวง|ใบ|ชุด|เซ็ต|ตัว|แผ่น)/.test(x))
+    // ท่อนที่ชื่อเรทบอกอยู่แล้วไม่ต้องซ้ำ — "ผ้าเชียร์ · สกรีน 1 ด้าน" ตัด "สกรีน 1 ด้าน" ออก (เจ้าของร้านสั่ง 3 ต.ค. 69)
+    .filter((x) => !squashSpace(rate?.label ?? "").includes(squashSpace(x)))
     .join(" · ");
+}
+const squashSpace = (s: string) => s.replace(/\s+/g, "");
+
+/**
+ * 🏷 rateSpecOf ที่ถอยไปหาเรทจาก "ข้อความรายละเอียด" เมื่อรายการไม่มีค่าเรทแบบหัวข้อ
+ * (รายการพิเศษจาก FlowAccount: "เรทราคา ผ้าเชียร์ · พิมพ์ 1 ด้าน" ↔ เรทจริง "ผ้าเชียร์ · สกรีน 1 ด้าน")
+ * เทียบแบบตัดช่องว่าง + ถือ พิมพ์ = สกรีน · ต้องเจอเรท public "ตัวเดียว" ถึงใช้ — กำกวม = ไม่ขึ้นบรรทัด
+ */
+export function rateSpecOfLine(p: Product | undefined, selections: Record<string, string> | undefined, text?: string): string {
+  if (!p) return "";
+  if (selections?.[RATE_LABEL]) return rateSpecOf(p, selections);
+  if (!text?.trim()) return "";
+  const norm = (s: string) => s.replace(/พิมพ์/g, "สกรีน").replace(/\s+/g, "");
+  const t = norm(text);
+  const hits = publicRates(p).filter((r) => t.includes(norm(r.label)));
+  return hits.length === 1 ? rateSpecOf(p, { [RATE_LABEL]: hits[0].label }) : "";
 }
 
 export function rateLineForCustomer(p: Product, selections: Record<string, string>): boolean {

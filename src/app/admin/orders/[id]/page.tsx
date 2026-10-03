@@ -16,9 +16,9 @@ import { useParams, useRouter } from "next/navigation";
 import CameraScanner from "@/components/admin/CameraScanner";
 import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
 import { extractOrderId, trackingScanProblem } from "@/lib/scan-code";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, rateSpecOf, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, rateSpecOfLine, type Product } from "@/lib/products";
 import { imgVersion, versionedSrc } from "@/lib/img";
-import { specialImageProductId, type SpecialProduct } from "@/lib/special-product-image";
+import { shopProductIdByName, specialImageProductId, type SpecialProduct } from "@/lib/special-product-image";
 import ProductVisual from "@/components/ProductVisual";
 import { autoShipQuote } from "@/lib/shipping-auto";
 import {
@@ -1656,9 +1656,30 @@ export default function AdminOrderDetailPage() {
       ? it.picProductId ?? (specialCatalog ? specialImageProductId(specialCatalog, it.name) : undefined)
       : it.productId.split("#")[0] || undefined;
 
+  /**
+   * 🏷 รายการพิเศษที่ชื่อตรงกับสินค้าร้านเป๊ะ (ใบจาก FlowAccount "ผ้าเชียร์") — โหลดรายชื่อสินค้า (~35KB) เฉพาะใบที่มีรายการพิเศษ
+   * ไว้ดึงบรรทัดสเปคเรทให้กราฟฟิก (rateSpecOfLine) · ไม่ใช้กับภาพ (ภาพยังต้องผูกเองที่ /admin/special-products)
+   */
+  const [shopNames, setShopNames] = useState<{ id: string; name: string; hidden?: unknown }[]>();
+  const hasSpecial = (order?.items ?? []).some((it) => it.productId === "special-item");
+  useEffect(() => {
+    if (demo || !hasSpecial || shopNames) return;
+    let alive = true;
+    void fetchProductNamesLite()
+      .then((rows) => alive && setShopNames(rows.map((r) => ({ id: r.id, name: r.name, hidden: (r as { hidden?: unknown }).hidden }))))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [demo, hasSpecial, shopNames]);
+  /** สินค้าที่ใช้ดึงสเปคเรทของรายการนี้ — สินค้าร้าน = ตัวมันเอง · รายการพิเศษ = สินค้าชื่อตรงเป๊ะ */
+  const specProductIdOf = (it: OrderItem): string | undefined =>
+    it.productId === "special-item" ? (shopNames ? shopProductIdByName(shopNames, it.name) : undefined) : it.productId;
+
   const itemProductIds = [
     ...(order?.items ?? []).map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item"),
     ...(order?.items ?? []).filter((it) => it.productId === "special-item").map((it) => picProductIdOf(it) ?? ""),
+    ...(order?.items ?? []).filter((it) => it.productId === "special-item").map((it) => specProductIdOf(it) ?? ""),
   ]
     .filter((id, i, all) => id && all.indexOf(id) === i)
     .join("|");
@@ -5640,7 +5661,7 @@ export default function AdminOrderDetailPage() {
                       ) : (
                         <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
                           {/* 🎨 จอกราฟฟิก — ซ่อนเรทราคา + งานสแตนดี้ยุบบรรทัด (production) · หน้าลูกค้ายังบรรทัดละหัวข้อ */}
-                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} rateSpec={rateSpecOf(productOfItem(it.productId), it.sel)} production />
+                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} rateSpec={rateSpecOfLine(productOfItem(specProductIdOf(it) ?? ""), it.sel, it.selections)} production />
                           {mayEdit && (
                             <button
                               type="button"

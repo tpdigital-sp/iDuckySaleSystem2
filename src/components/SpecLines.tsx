@@ -460,7 +460,7 @@ export function withRateSpec(entries: [string, string][], rateSpec?: string): [s
  *   สเปคเรท: ขนาด 16x16cm
  *            · ฐาน 7.5cm · อะคริลิคใส (เท่านั้น)
  *              ไดคัทตามทรง
- * บรรทัด 1 = ขนาด · บรรทัด 2 = ที่เหลือ (ขึ้นต้น "· ") · บรรทัด 3 = วิธีตัด (ไดคัท…) แยกออกมาให้เห็นชัด
+ * บรรทัด 1 = ขนาด (ไม่มี = ท่อนแรก) · บรรทัด 2 = ที่เหลือ (ขึ้นต้น "· ") · บรรทัด 3 = วิธีตัด (ไดคัท…) แยกออกมาให้เห็นชัด
  */
 export function rateSpecGroups(spec: string): { size: string; rest: string; cut: string } {
   const segs = spec
@@ -470,11 +470,11 @@ export function rateSpecGroups(spec: string): { size: string; rest: string; cut:
     .filter(Boolean);
   const isSize = (x: string) => /^(ขนาด|สูง|กว้าง|ตัวหลัง|ตัวหน้า)/.test(x);
   const isCut = (x: string) => /^ไดคัท/.test(x);
-  return {
-    size: segs.filter(isSize).join(" · "),
-    rest: segs.filter((x) => !isSize(x) && !isCut(x)).join(" · "),
-    cut: segs.filter(isCut).join(" · "),
-  };
+  const others = segs.filter((x) => !isSize(x) && !isCut(x));
+  const size = segs.filter(isSize);
+  // ไม่มีท่อนขนาด = ท่อนแรกขึ้นบรรทัดหัวข้อแทน ที่เหลือบรรทัด 2 ขึ้นต้น "· " (ผ้าเชียร์: "ผ้า 1 ชิ้น" / "· เย็บโพ้งเก็บขอบรอบผืน")
+  const first = size.length ? size : others.splice(0, 1);
+  return { size: first.join(" · "), rest: others.join(" · "), cut: segs.filter(isCut).join(" · ") };
 }
 
 /** ค่าของบรรทัดสเปคเรท — บรรทัดต่อ ๆ ไปเยื้องตรงกับค่าบรรทัดแรก (inline-block ข้างหัวข้อ) */

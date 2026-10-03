@@ -7,7 +7,8 @@ import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
-import { artQtyOf, formatPrice, rateSpecOf } from "@/lib/products";
+import { artQtyOf, formatPrice, rateSpecOfLine } from "@/lib/products";
+import { shopProductIdByName } from "@/lib/special-product-image";
 import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -19,7 +20,7 @@ function fmtThaiDate(d?: string): string {
 }
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { shrinkImageForUpload } from "@/lib/image-shrink";
-import { fetchProductsByIds } from "@/lib/product-repo";
+import { fetchProductNamesLite, fetchProductsByIds } from "@/lib/product-repo";
 import { itemQtyText, itemUnitYield, orderQtyText } from "@/lib/item-yield";
 import type { Product } from "@/lib/products";
 import { publicOrigin } from "@/lib/shop-info";
@@ -34,6 +35,9 @@ import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } fro
 import { HIDE_GENERIC_RATE, SpecLines, specEntries, tidySpec } from "@/components/SpecLines";
 import { specLabel } from "@/lib/spec-text";
 import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginate";
+
+/** คีย์แฝงใน products ของรายการพิเศษที่ชื่อตรงกับสินค้าร้าน (ไม่ชน id จริง) */
+const SPECIAL_KEY = (name: string) => `special-item:${name}`;
 
 /**
  * ข้อความสั้นบนป้ายแปะกล่อง — เอาเฉพาะตัวเลือกสินค้า (ขนาด/สี/รุ่น)
@@ -167,8 +171,23 @@ export default function PrintOrderPage() {
     setOrders(picked);
     setLoading(false);
     const ids = Array.from(new Set(picked.flatMap((o) => o.items.map((it) => it.productId)).filter(Boolean)));
-    if (ids.length) {
-      void fetchProductsByIds(ids).then((ps) => setProducts(Object.fromEntries(ps.map((p) => [p.id, p]))));
+    // 🏷 รายการพิเศษชื่อตรงกับสินค้าร้านเป๊ะ (ใบจาก FlowAccount) — ผูกไว้ใต้คีย์ SPECIAL_KEY(ชื่อ) ให้ใบงานดึงสเปคเรทได้
+    const specialNames = Array.from(new Set(picked.flatMap((o) => o.items.filter((it) => it.productId === "special-item").map((it) => it.name))));
+    const alias = specialNames.length
+      ? await fetchProductNamesLite()
+          .then((rows) => {
+            const lite = rows.map((r) => ({ id: r.id, name: r.name, hidden: (r as { hidden?: unknown }).hidden }));
+            return specialNames.map((n) => [n, shopProductIdByName(lite, n)] as const).filter((x): x is readonly [string, string] => !!x[1]);
+          })
+          .catch(() => [] as (readonly [string, string])[])
+      : [];
+    const all = Array.from(new Set([...ids, ...alias.map(([, id]) => id)]));
+    if (all.length) {
+      void fetchProductsByIds(all).then((ps) => {
+        const byId: Record<string, Product> = Object.fromEntries(ps.map((p) => [p.id, p]));
+        alias.forEach(([n, id]) => byId[id] && (byId[SPECIAL_KEY(n)] = byId[id]));
+        setProducts(byId);
+      });
     }
   }, []);
 
@@ -952,7 +971,7 @@ function OrderDocs({
                             compact
                             stripLinks
                             workSize={products[it.productId]?.workSize}
-                            rateSpec={rateSpecOf(products[it.productId], it.sel)}
+                            rateSpec={rateSpecOfLine(products[it.productId === "special-item" ? SPECIAL_KEY(it.name) : it.productId], it.sel, it.selections)}
                             labelClassName="text-slate-900"
                             className="mt-0.5 text-xs leading-relaxed text-slate-600"
                           />
