@@ -134,3 +134,10 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 ## 3 ต.ค. 69 — คำถามขั้นต่ำตอบ "ขอเช็ก" (intent min_qty ไม่ผ่าน)
 - เว็บตอบขั้นต่ำถูก (`intent: "min_qty"`, kind info) แต่ทุกด่านกรองไว้แค่ price/spec/info/mix → agent ตอบ "ขอเช็กรายละเอียด" แทน
 - แก้: เว็บ `chat-answer.ts` siteVia + min_qty (deploy 044dbf6) · n8n ร่าง: LINE Build AI Request (site-first regex) + Site Price Flex (branch 1.5) + ChatBot PO Override1 เพิ่ม `min_qty`
+
+## 3 ต.ค. 69 (บ่าย) — บอทไม่ตอบคำถามคำนวณราคา (ข้อความหลายชิ้นติดกัน)
+- เคส 14:37: ลูกค้าพิมพ์คำถามยาว (พวงกุญแจอะคริลิคใส 9 แบบ 7×20 + 2×10 ราคา/ห่วง/กี่วัน) + ลิงก์ Drive 3 อัน + ไฟล์ zip 2 + "ตัวอย่างก็ประมาณนี้ค่ะ"
+- รอบที่มีคำถามครบ (ลิงก์ 1-2) AI คิด 31-36 วิ แล้วถูก Reply Gate ทิ้งเพราะมีข้อความใหม่กว่า · รอบใหม่กว่าเห็นแค่ข้อความตัวเอง เพราะ **Debounce เก็บ pending แค่ 30 วิ** ข้อความเก่าหลุดหน้าต่างไปแล้ว → คำถามหลักไม่ถูกตอบเลย
+- ลิงก์ 3 ค้างที่ **Read Price Links 133 วิ** (ไม่มี timeout) ก่อนเริ่มทำงาน · เว็บตีความลิงก์ Drive ล้วนเป็นคำถาม info
+- "ตัวอย่างก็ประมาณนี้ค่ะ" ถูกตอบ 2 ครั้ง: LINE ส่งซ้ำ (isRedelivery, webhookEventId/messageId เดิม) · ตัวกันซ้ำใน Parse LINE Event ใช้ static data ซึ่งหลายรอบที่ทำงานพร้อมกันเขียนทับกัน → กันไม่ได้
+- แก้ (ร่าง): Debounce pending 30 วิ → 10 นาที · กันซ้ำด้วย `recentMessageIds` (30 ตัวล่าสุด) ในห้องแชท Firestore ตอน Debounce · Read Price Links / Read Quick Setup / Read Memory timeout 6 วิ + retry 2 · Build AI Request ไม่ถามเว็บเมื่อข้อความมีแต่ลิงก์
