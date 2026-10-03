@@ -23,10 +23,11 @@ import type { CSSProperties, ReactNode } from "react";
 import "./dashboard.css";
 
 /** ครอบทั้งหน้า — พื้นเมชไล่สี + ดันขอบให้เต็มพื้นที่เนื้อหาของ AdminShell */
-export function PageShell({ children }: { children: ReactNode }) {
+/** wide = หน้าที่ต้องใช้พื้นที่เต็มจอ (ห้องแชทบอท) */
+export function PageShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return (
     <div className="dkb -mx-4 -my-6 min-h-[calc(100vh-1px)] px-4 py-6 md:-mx-8 md:-my-8 md:px-8 md:py-8">
-      <div className="mx-auto max-w-[1180px]">{children}</div>
+      <div className={`mx-auto ${wide ? "max-w-none" : "max-w-[1180px]"}`}>{children}</div>
     </div>
   );
 }

@@ -6,14 +6,13 @@ import { useCallback, useRef, useState } from "react";
 
 /**
  * 🤖 ชิ้นส่วนร่วมของหมวด Chatbot — แท็บสลับหน้า · เรียก API · ย่อรูป · toast
- * หน้า: ผู้ช่วยตอบแชท / คลังความรู้ / ตารางราคา / ลิงก์ราคา & รูป (ย้ายจาก AdminBuddy 3 ต.ค. 69)
+ * หน้า: ผู้ช่วยตอบแชท / คลังความรู้ / ตารางราคา (ย้ายจาก AdminBuddy 3 ต.ค. 69) · หน้าลิงก์ราคา & รูป เอาออกแล้ว 3 ต.ค. 69 (ภาพในคำตอบดึงภาพปกสินค้าบนเว็บเอง)
  */
 
 const TABS = [
   { href: "/admin/chatbot", label: "🤖 ผู้ช่วยตอบแชท" },
   { href: "/admin/chatbot/knowledge", label: "📚 คลังความรู้" },
   { href: "/admin/chatbot/pricing", label: "💰 ตารางราคา" },
-  { href: "/admin/chatbot/price-links", label: "🔗 ลิงก์ราคา & รูป" },
 ];
 
 /** แถบแท็บใต้หัวหน้า — สลับ 4 หน้าของบอทได้ในคลิกเดียว */

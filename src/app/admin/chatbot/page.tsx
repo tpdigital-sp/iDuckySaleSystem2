@@ -90,6 +90,20 @@ function Chatbot() {
   const [mine, setMine] = useState(true);
   /** มือถือ: แผงประวัติเปิดทับห้องแชท */
   const [histOpen, setHistOpen] = useState(false);
+  // 🖥 ซ่อนคอลัมน์ประวัติบนจอใหญ่ = ห้องแชทกว้างเต็ม (จำไว้ในเครื่อง)
+  const [histHidden, setHistHidden] = useState(false);
+  useEffect(() => {
+    try {
+      setHistHidden(localStorage.getItem("bot-hist-hidden") === "1");
+    } catch {}
+  }, []);
+  const toggleHist = () =>
+    setHistHidden((v) => {
+      try {
+        localStorage.setItem("bot-hist-hidden", v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
   const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const t0 = useRef(0);
@@ -305,13 +319,13 @@ function Chatbot() {
   );
 
   return (
-    <PageShell>
+    <PageShell wide>
       <PageHead group="🤖 Chatbot" title="ผู้ช่วยตอบแชท" sub="วางคำถามลูกค้า → ได้คำตอบจากราคาจริงบนเว็บ + คลังความรู้ร้าน → คัดลอกไปตอบใน LINE" />
       <ChatbotTabs />
 
-      <div className="relative mt-4 grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className={`relative mt-4 grid gap-3 ${histHidden ? "" : "lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)]"}`}>
         {/* ── ประวัติ (เดสก์ท็อป) ── */}
-        <aside className="hidden rounded-2xl border bg-white p-3 lg:block" style={{ borderColor: "var(--dk-hair)", height: "calc(100dvh - 240px)", minHeight: 480 }}>
+        <aside className={`hidden rounded-2xl border bg-white p-3 ${histHidden ? "" : "lg:block"}`} style={{ borderColor: "var(--dk-hair)", height: "calc(100dvh - 240px)", minHeight: 480 }}>
           {history}
         </aside>
 
@@ -339,6 +353,15 @@ function Chatbot() {
             >
               📜
             </button>
+            <button
+              type="button"
+              onClick={toggleHist}
+              className="hidden min-h-[40px] shrink-0 place-items-center rounded-xl px-3 text-[12.5px] font-bold lg:grid"
+              style={{ background: "var(--dk-sky)", color: "var(--dk-navy-soft)" }}
+              title={histHidden ? "แสดงประวัติแชท" : "ซ่อนประวัติแชท ให้ห้องแชทกว้างขึ้น"}
+            >
+              {histHidden ? "📜 ประวัติ" : "⇤ ซ่อนประวัติ"}
+            </button>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[14px] font-bold" style={{ color: "var(--dk-navy)" }}>
                 {title}
@@ -356,7 +379,7 @@ function Chatbot() {
 
           {/* ข้อความ */}
           <div ref={boxRef} className="flex-1 overflow-y-auto px-3 py-5 sm:px-6" style={{ background: "linear-gradient(180deg, var(--dk-sky), white 140px)" }}>
-            <div className="mx-auto max-w-[780px] space-y-5">
+            <div className="mx-auto max-w-[1500px] space-y-5">
               {msgs.length === 0 && !busy && (
                 <div className="py-10 text-center">
                   <p className="dkb-display text-[1.35rem]" style={{ color: "var(--dk-navy)" }}>
@@ -450,8 +473,14 @@ function Chatbot() {
 
           {/* ช่องพิมพ์ + คำถามด่วน */}
           <div className="border-t px-3 pb-3 pt-2 sm:px-4" style={{ borderColor: "var(--dk-hair)" }}>
-            <div className="mx-auto max-w-[780px]">
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-2">
+            <div className="mx-auto max-w-[1500px]">
+              {/* ซ่อนแถบเลื่อน (เจ้าของร้านไม่อยากเห็น) · ยังปัดได้ + ลูกล้อเมาส์เลื่อนแนวนอนแทน */}
+              <div
+                className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                onWheel={(e) => {
+                  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
+                }}
+              >
                 {QUICK.map((q) => (
                   <button
                     key={q}

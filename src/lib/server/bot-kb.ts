@@ -8,7 +8,7 @@ import { getChatFirestore } from "@/lib/server/firebase-admin";
  * 🤖 ข้อมูลของบอทแชท (ย้ายจาก AdminBuddy 3 ต.ค. 69) — ใช้ร่วม 3 หน้าในหมวด Chatbot
  *   · knowledge-base   คลังความรู้ (Q&A) ที่ n8n ดึงไปตอบลูกค้า → /admin/chatbot/knowledge
  *   · pricing          ตารางราคาข้อความ (quote-engine-n8n / invoice-inspector อ่านตรง) → /admin/chatbot/pricing
- *   · settings/price_links  ลิงก์ราคา + รูปตอบลูกค้า → /admin/chatbot/price-links
+ *   · settings/price_links  ลิงก์ราคา + รูปตอบลูกค้า — หน้าแก้ไขเอาออกแล้ว (3 ต.ค. 69) · ยังอ่านอยู่: บอท (chat-context) + ช่องผูกลิงก์ราคาในคลังความรู้ (GET /api/admin/chatbot/price-links)
  *
  * ทั้งหมดอยู่ Firestore ฐาน "ordersure" (โปรเจกต์ tpdigital-iducky) ชุดเดียวกับที่ AdminBuddy เขียน — ห้ามเปลี่ยนทรงข้อมูล
  * ระบบอื่นอ่านอยู่ (n8n quote-engine ต้องการ name/content เป็น string · บรรทัดราคา "ชื่อ: 1-10=245, ...")
