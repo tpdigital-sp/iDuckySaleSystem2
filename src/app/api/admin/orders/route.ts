@@ -435,10 +435,34 @@ type LoadedOrders =
   | { orders: Order[]; at: string; gen: number; error?: never }
   | { orders?: never; at?: never; gen?: never; error: { code?: string; message: string } };
 
-/** ออเดอร์ทุกใบ (ใหม่→เก่า · log ครบ) — ผ่านความจำก้อนข้างบน */
+/** โหลดทุกใบจากฐานใหม่ทั้งก้อน (~9 MB jsonb · 2–5 วิ) — คำขอที่มาพร้อมกันรอก้อนเดียวกัน ไม่ยิงซ้ำ */
+let fullInflight: Promise<LoadedOrders> | null = null;
+function loadFullOrders(sb: SB): Promise<LoadedOrders> {
+  if (fullInflight) return fullInflight;
+  fullInflight = (async (): Promise<LoadedOrders> => {
+    const at = new Date().toISOString();
+    const { data, error } = await sb.from("orders").select("data").order("created_at", { ascending: false });
+    if (error) return { error };
+    const orders = (data ?? []).map((r) => r.data as Order);
+    const gen = ++allGen;
+    allMemo = { orders, at, fullAt: Date.now(), gen };
+    return { orders, at, gen };
+  })().finally(() => {
+    fullInflight = null;
+  });
+  return fullInflight;
+}
+
+/**
+ * ออเดอร์ทุกใบ (ใหม่→เก่า · log ครบ) — ผ่านความจำก้อนข้างบน
+ *
+ * 🐢 3 ต.ค. 69 "เปิด /admin/orders ช้ามาก": เดิมพอความจำเกิน ALL_MEMO_TTL คำขอนั้นต้องรอโหลดเต็ม 2–5 วิ
+ * → ตอนนี้ปะ delta ตอบไปก่อน (ถูกต้องเท่าโพล &since=) แล้วค่อยโหลดเต็มเบื้องหลัง (stale-while-revalidate)
+ *   ความจำว่างจริง ๆ (instance ใหม่) เท่านั้นที่ต้องรอโหลดเต็ม
+ */
 async function loadAllOrders(sb: SB): Promise<LoadedOrders> {
   const memo = allMemo;
-  if (memo && Date.now() - memo.fullAt <= ALL_MEMO_TTL) {
+  if (memo) {
     const at = new Date().toISOString();
     const sinceIso = new Date(Date.parse(memo.at) - 60_000).toISOString(); // ถอย 60 วิ กันนาฬิกาเหลื่อมระหว่าง instance
     const [delta, ids] = await Promise.all([
@@ -463,18 +487,27 @@ async function loadAllOrders(sb: SB): Promise<LoadedOrders> {
         orders.push(o);
       }
       if (complete) {
-        allMemo = { orders, at, fullAt: memo.fullAt, gen: memo.gen };
+        // เทียบกับ allMemo ตัวปัจจุบัน — ระหว่างรอ delta อาจมีโหลดเต็มเบื้องหลังเขียนก้อนใหม่กว่าไว้แล้ว
+        if (allMemo === memo) allMemo = { orders, at, fullAt: memo.fullAt, gen: memo.gen };
+        // เกินอายุ → ตอบของที่ปะแล้วไปก่อน โหลดเต็มเบื้องหลัง (กันการแก้ฐานตรง ๆ ที่ไม่ขยับ savedAt ค้างยาว)
+        if (Date.now() - memo.fullAt > ALL_MEMO_TTL && !fullInflight) inBackground("orders full reload", loadFullOrders(sb));
         return { orders, at, gen: memo.gen };
       }
     }
   }
-  const at = new Date().toISOString();
-  const { data, error } = await sb.from("orders").select("data").order("created_at", { ascending: false });
+  return loadFullOrders(sb);
+}
+
+/**
+ * ⚡ หน้าแรกของ /admin/orders — เฉพาะ N ใบล่าสุด (คิวรี limit ตรง ไม่แตะทั้งตาราง)
+ * ให้หน้ารายการวาดแถวได้ทันที ระหว่างที่ก้อนเต็มยังโหลดอยู่ · ความจำอุ่นอยู่แล้ว = ตัดจากความจำเลย
+ */
+async function loadHeadOrders(sb: SB, n: number): Promise<LoadedOrders> {
+  const memo = allMemo;
+  if (memo && Date.now() - memo.fullAt <= ALL_MEMO_TTL) return { orders: memo.orders.slice(0, n), at: memo.at, gen: memo.gen };
+  const { data, error } = await sb.from("orders").select("data").order("created_at", { ascending: false }).limit(n);
   if (error) return { error };
-  const orders = (data ?? []).map((r) => r.data as Order);
-  const gen = ++allGen;
-  allMemo = { orders, at, fullAt: Date.now(), gen };
-  return { orders, at, gen };
+  return { orders: (data ?? []).map((r) => r.data as Order), at: new Date().toISOString(), gen: allGen };
 }
 
 /** ตารางยังไม่ถูกสร้าง → บอกให้รัน SQL (ไม่ถือเป็น error ร้ายแรง) */
@@ -497,6 +530,17 @@ export async function GET(req: Request) {
 
   // ── ขอทั้งตาราง (ทุกหน้ายกเว้นหน้ารายละเอียด) — ผ่านความจำก้อนเดียวกันหมด ──
   if (!wantId) {
+    // ⚡ ?list=1&head=N → เฉพาะ N ใบล่าสุด ไว้วาดหน้าแรกก่อน (ไม่มี at — หน้าเว็บห้ามใช้เป็นเข็มโพล)
+    const head = Number(url.searchParams.get("head"));
+    if (url.searchParams.get("list") === "1" && Number.isInteger(head) && head > 0) {
+      const got = await loadHeadOrders(sb, Math.min(head, 500));
+      if (got.error) {
+        if (isMissingTable(got.error)) return NextResponse.json({ orders: [], needsSetup: true });
+        return NextResponse.json({ error: got.error.message, orders: [] }, { status: 500 });
+      }
+      const slim = got.orders.map((o) => (o.log?.length ? { ...o, log: o.log.filter(listKeepsLog) } : o));
+      return NextResponse.json({ orders: slim, head: true });
+    }
     const got = await loadAllOrders(sb);
     if (got.error) {
       if (isMissingTable(got.error)) return NextResponse.json({ orders: [], needsSetup: true });

@@ -186,6 +186,8 @@ const RANGE_TEXT: Record<string, string> = {
 const DAY_MS = 86_400_000;
 /** จำนวนใบต่อหน้าในลิสต์ */
 const PAGE_SIZE = 20;
+/** ก้อนหัวตอนเปิดหน้าครั้งแรก — ~4 วันล่าสุด (ร้านมี ~30 ใบ/วัน) พอให้หน้าแรกของช่วง 7 วันครบ */
+const HEAD_N = 120;
 /** ขอบเขตเวลาของช่วงที่เลือก [เริ่ม, จบ] · ±Infinity = ไม่จำกัดด้านนั้น */
 function rangeBounds(key: DateKey, from: string, to: string): [number, number] {
   const t0 = new Date();
@@ -252,6 +254,8 @@ export default function AdminOrdersPage() {
    * โพลยังเดินต่อ (demo=false) → ฐานข้อมูลกลับมาเมื่อไรรายการขึ้นเองไม่ต้องรีเฟรช
    */
   const [loadErr, setLoadErr] = useState("");
+  /** โชว์แค่ก้อนหัว (HEAD_N ใบล่าสุด) อยู่ — ก้อนเต็มยังไม่มา ตัวเลข/ค้นหายังไม่ครบ */
+  const [partial, setPartial] = useState(false);
   /** เข็มโพล = เวลาเซิร์ฟเวอร์ของรอบล่าสุดที่ได้ครบ · ว่าง = ยังไม่เคยได้ก้อนเต็ม */
   const cursor = useRef(listCache?.at ?? "");
   /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
@@ -281,8 +285,11 @@ export default function AdminOrdersPage() {
     if (wantQ) setQ(wantQ);
 
     let dead = false;
+    let fullIn = false;
     const showAll = (r: Awaited<ReturnType<typeof fetchOrdersAdmin>>) => {
       if (dead) return;
+      fullIn = true;
+      setPartial(false);
       if (!r.ok) return setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
       setLoadErr("");
       cursor.current = r.at ?? "";
@@ -294,8 +301,18 @@ export default function AdminOrdersPage() {
     };
     // 🐢 โหมด list = log ถูกตัดเหลือเท่าที่ลิสต์ใช้ · รอบถัดไปโพลขอเฉพาะใบที่เปลี่ยน (ดู refresh)
     // มีของในความจำแล้ว (กลับมาหน้านี้) → ไม่ขอทั้งก้อนซ้ำ ขอเฉพาะใบที่เปลี่ยนตั้งแต่เข็มเดิม
+    // ⚡ เปิดครั้งแรก (3 ต.ค. 69): ก้อนเต็ม ~6 MB / 858 ใบ ใช้ 2–5 วิตอนเซิร์ฟเวอร์เย็น ทั้งที่จอแรกโชว์แค่ 20 ใบของ 7 วันล่าสุด
+    //    → ขอ HEAD_N ใบล่าสุดคู่ขนานไปด้วย มาก่อนก็วาดก่อน (ป้าย "กำลังโหลดใบที่เหลือ") ก้อนเต็มมาแล้วแทนที่ทั้งหมด
+    //    ก้อนหัวไม่ตั้งเข็มโพล ไม่ลงความจำ — ก้อนเต็มเท่านั้นที่เป็นของจริง
     if (listCache) void refreshRef.current();
-    else fetchOrdersAdmin({ list: {} }).then(showAll);
+    else {
+      fetchOrdersAdmin({ list: {} }).then(showAll);
+      fetchOrdersAdmin({ list: { head: HEAD_N } }).then((r) => {
+        if (dead || fullIn || !r.ok || r.orders.length === 0) return;
+        setRaw(r.orders);
+        setPartial(true);
+      });
+    }
     return () => {
       dead = true;
     };
@@ -310,6 +327,7 @@ export default function AdminOrdersPage() {
     if (r.at) cursor.current = r.at;
     if (!since) {
       if (r.orders.length === 0) return;
+      setPartial(false);
       const next = r.orders;
       return setRaw((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
     }
@@ -570,6 +588,11 @@ export default function AdminOrdersPage() {
                 </span>
               ) : demo ? (
                 <span style={{ color: "var(--dk-faint)" }}>ยังไม่มีออเดอร์จริง — แสดงตัวอย่างไว้ก่อน</span>
+              ) : partial ? (
+                <span className="inline-flex items-center gap-1.5" style={{ color: "var(--dk-faint)" }}>
+                  <span className="inline-block h-[7px] w-[7px] animate-pulse rounded-full" style={{ background: "var(--dk-mint)" }} />
+                  โชว์ {raw.length} ใบล่าสุดก่อน · กำลังโหลดใบที่เหลือ…
+                </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5" style={{ color: "var(--dk-mint-ink)" }}>
                   <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: "var(--dk-mint)" }} />

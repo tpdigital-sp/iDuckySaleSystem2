@@ -362,8 +362,9 @@ export async function fetchOrdersAdmin(opts?: {
   /**
    * 🐢 โหมดหน้ารายการ (/admin/orders) — log ถูกตัดเหลือเท่าที่ลิสต์ใช้ · ห้ามเอาก้อนนี้ไปบันทึกกลับ (log ไม่ครบ)
    *   since = เฉพาะใบที่บันทึกหลังเวลานี้ (คืน ids ทุกใบมาด้วย ไว้ตัดใบที่ถูกลบ)
+   *   head = เฉพาะ N ใบล่าสุด ไว้วาดหน้าแรกก่อนก้อนเต็มมาถึง (ไม่คืน at — ห้ามใช้เป็นเข็มโพล)
    */
-  list?: { since?: string };
+  list?: { since?: string; head?: number };
 }): Promise<{ orders: Order[]; needsSetup: boolean; ok: boolean; error?: string; at?: string; ids?: string[] }> {
   const plain = !opts?.lite && !opts?.list; // โหมดทั้งก้อน (ภาพรวม/คิวปริ้น/สแกน/บอร์ดกราฟฟิก/ตัวอย่าง/ใบงาน)
   try {
@@ -372,6 +373,7 @@ export async function fetchOrdersAdmin(opts?: {
     if (opts?.list) {
       qs.set("list", "1");
       if (opts.list.since) qs.set("since", opts.list.since);
+      if (opts.list.head) qs.set("head", String(opts.list.head));
     }
     // 🪶 ถืออยู่แล้ว → ถามเซิร์ฟเวอร์ก่อนว่าเปลี่ยนไหม (ไม่เปลี่ยน = ไม่ต้องส่ง 4 MB กลับมา)
     if (plain && fullCache) {
