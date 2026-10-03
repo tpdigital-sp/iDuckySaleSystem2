@@ -736,8 +736,9 @@ export default function CartPage() {
                           hide={[...SPEC_HIDE, CART_NOTE_LABEL, REUSE_ART_LABEL, ...(rateLineForCustomer(product, item.selections) ? [] : [RATE_LABEL]), ...(artCount > 0 ? ["จำนวนลาย", ART_QTY_LABEL, ART_BACK_QTY_LABEL] : [])]}
                           className="mt-1 text-xs t-soft"
                           /* 🏷 สเปคเรท ใต้บรรทัดเรท — "สแตนดาร์ด · สกรีน 2 ด้าน (เย็บประกบ)" ลูกค้าต้องเห็นว่า
-                             ผ้า 2 ชิ้นเย็บประกบกัน เก็บขอบด้วยด้ายขาว (เจ้าของร้านสั่ง 3 ต.ค. 69) · เฉพาะเรทที่โชว์ชื่อ (ชื่อทั่วไป "เรทที่ 1" ซ่อนทั้งคู่) */
-                          rateSpec={rateLineForCustomer(product, item.selections) ? rateSpecOf(product, item.selections) : undefined}
+                             ผ้า 2 ชิ้นเย็บประกบกัน เก็บขอบด้วยด้ายขาว (เจ้าของร้านสั่ง 3 ต.ค. 69) · เฉพาะเรทที่โชว์ชื่อ (ชื่อทั่วไป "เรทที่ 1" ซ่อนทั้งคู่)
+                             สินค้าที่ติดธง hideRateSpecInCart ไม่โชว์ (หมวกแก๊ป: คำอธิบายเรทเป็นคำโฆษณา · 3 ต.ค. 69) */
+                          rateSpec={!product?.hideRateSpecInCart && rateLineForCustomer(product, item.selections) ? rateSpecOf(product, item.selections) : undefined}
                           /* ป้าย +฿ ท้ายบรรทัดสเปค = "ค่าที่บวกเพิ่มจากราคาเรทจริง ๆ" เท่านั้น (เช่น ตะขอสปริง +฿8)
                              ตรงกับบรรทัดแจกแจงมุมขวาล่าง: ราคาเรท ฿45 + ตะขอ ฿8 = ฿53/ชิ้น
                              ⛔ ห้ามเอาส่วนต่างของ "แกนตารางเรท" (ความหนา/ขนาด/จำนวนด้านที่สกรีน) มาติดป้ายด้วย

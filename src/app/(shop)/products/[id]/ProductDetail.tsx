@@ -5318,7 +5318,6 @@ export default function ProductDetail({
                         </span>
                       )}
                     </span>
-                    {r.desc && <span className="mt-0.5 block pl-6 text-[11px] font-normal leading-snug text-stone-500">{r.desc}</span>}
                     {(r.minQty || r.minPerDesign) && (
                       <span className={`mt-0.5 block pl-6 text-[10px] font-semibold leading-snug ${locked ? "text-stone-400" : "text-teal-700"}`}>
                         {[
@@ -5336,6 +5335,12 @@ export default function ProductDetail({
             );
           })}
         </div>
+        {/* คำอธิบายเรท — โชว์เฉพาะเรทที่เลือกไว้ใต้รายการ (ใส่ในการ์ดทุกใบแล้วการ์ดสูงรก อ่านยาก) */}
+        {rate.desc && (
+          <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-200">
+            <span className="font-bold text-stone-700">ℹ️ {rate.label}:</span> {rate.desc}
+          </p>
+        )}
         {autoRateNote && (
           <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
             ✨ {autoRateNote}
@@ -6470,21 +6475,22 @@ export default function ProductDetail({
                   </>
                 ) : (
                   <>
-                    {" — "}สั่งเพิ่ม {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}นี้จะคิดรวมเป็นล็อตเดียว{" "}
+                    {/* ภาษาง่าย ๆ: นับรวมกับของในตะกร้าเพื่อคิดราคาขั้นบันได (เดิม "ล็อตเดียว 3 ใบ 2 ลาย" ลูกค้างง) */}
+                    {" — "}ระบบนับรวมกับ {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}ที่กำลังเลือกเป็น{" "}
                     <strong className="font-bold">
-                      {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} {lotPreview.totalDesigns.toLocaleString("th-TH")} ลาย
-                    </strong>
-                    {lotPreview.rateLabel ? <> · {lotPreview.rateLabel}</> : null}
+                      {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                    </strong>{" "}
+                    เพื่อคิดราคาตามจำนวนรวม
                     {lotPreview.unitPrice < unitPrice ? (
                       <>
-                        {" → "}สเปคนี้เหลือ{" "}
+                        {" → "}ราคาลดเหลือ{" "}
                         <strong className="font-bold">
                           {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}
                         </strong>{" "}
-                        <span className="text-stone-400 line-through">{formatPrice(unitPrice)}</span> (ราคาสุทธิคิดให้ในตะกร้า)
+                        <span className="text-stone-400 line-through">{formatPrice(unitPrice)}</span> (ลดให้ในตะกร้า)
                       </>
                     ) : (
-                      <> — ราคาต่อ{matrix?.unit ?? "ชิ้น"}คิดตามยอดรวมให้อัตโนมัติในตะกร้า</>
+                      <> — ตอนนี้ราคายังเท่าเดิม {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"} ยิ่งสั่งรวมเยอะยิ่งถูก</>
                     )}
                   </>
                 )}

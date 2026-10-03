@@ -885,7 +885,8 @@ export function SpecLines({
             </p>
           );
         }
-        const parts = specValueLines(v);
+        // ชื่อเรทมี " | " ในตัว ("พิมพ์ DTF | FLEX") — ห้ามตัดเป็นหลายบรรทัด
+        const parts = k === RATE_LINE ? [v] : specValueLines(v);
         return (
           <p key={`${k}-${i}`} className="break-words leading-snug">
             {k && <span className={`font-semibold ${labelClassName}`}>{specLabel(k)}:</span>}
