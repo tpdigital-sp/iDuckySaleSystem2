@@ -226,7 +226,7 @@ function LineCustomersInner() {
   if (fatal && !data) {
     return (
       <PageShell>
-        <PageHead group="ลูกค้า & การตลาด" title="ลูกค้า LINE" />
+        <PageHead group="🤖 Chatbot" title="ลูกค้า LINE" />
         <div className="mt-4">
           <Banner tone="hot" title="เปิดคลังแชทไม่ได้" detail={fatal} />
         </div>
@@ -242,7 +242,7 @@ function LineCustomersInner() {
   return (
     <PageShell>
       <PageHead
-        group="ลูกค้า & การตลาด"
+        group="🤖 Chatbot"
         title="ลูกค้า LINE"
         count={data && data.indexed >= 0 ? `${nf(data.indexed)} คน` : undefined}
         sub="คลังห้องแชทของบัญชีร้าน — ตั้งชื่อ/โน้ตประจำตัวลูกค้า และเลือกว่าใครให้บอทตอบ ใครให้แอดมินตอบเอง"
