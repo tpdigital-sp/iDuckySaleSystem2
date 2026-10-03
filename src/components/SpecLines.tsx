@@ -849,20 +849,21 @@ export function SpecLines({
   after?: ReactNode;
   /** 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — ไม่มีกลุ่มขนาดให้เลือกถึงจะขึ้นบรรทัดให้ */
   workSize?: string;
-  /** 🏷 สเปคงานของเรทที่เลือก (rateSpecOf) — จอฝ่ายผลิตส่งมา ต่อใต้บรรทัดเรทราคา */
+  /** 🏷 สเปคงานของเรทที่เลือก (rateSpecOf) — จอฝ่ายผลิต + ตะกร้า (เฉพาะเรทที่โชว์ชื่อ) ต่อใต้บรรทัดเรทราคา */
   rateSpec?: string;
 }) {
-  const entries = orderByProduct(
-    withRateSpec(withWorkSize(
+  // สเปคเรทแทรกหลังเรียงตามสินค้า — orderByProduct ส่งหัวข้อที่ไม่อยู่ในลิสต์ไปท้าย จะหลุดจากใต้บรรทัดเรทราคา
+  const entries = withRateSpec(orderByProduct(
+    withWorkSize(
       foldSizeExtra(
         tidySpec(specEntries(sel, text, hide), { compact })
           .map(([k, v]) => [k, stripLinks ? stripSpecUrls(v) : v] as [string, string])
           .filter(([, v]) => v),
       ),
       workSize,
-    ), rateSpec),
+    ),
     order,
-  );
+  ), rateSpec);
   if (!entries.length && !after) return null;
   const feeTag = (k: string) => {
     const fee = extras?.[k];
