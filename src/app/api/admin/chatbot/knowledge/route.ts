@@ -154,7 +154,7 @@ export async function POST(req: Request) {
       let ok = 0;
       for (let i = 0; i < docs.length; i++) {
         const x = docs[i].data();
-        if (!x) continue;
+        if (!x || x.type === "chat-review") continue; // รอตรวจ — ยังไม่ส่งเข้าบอท
         if (await pushKnowledge({ question: String(x.title ?? ""), answer: String(x.content ?? ""), type: String(x.type || "unknown") })) ok++;
         if (i < docs.length - 1) await new Promise((r) => setTimeout(r, 500)); // เว้นจังหวะแบบเดิม ไม่ให้ n8n ล้น
       }

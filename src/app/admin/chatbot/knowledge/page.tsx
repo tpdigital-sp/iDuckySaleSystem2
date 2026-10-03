@@ -146,7 +146,8 @@ function Knowledge() {
   }
 
   async function syncAll() {
-    const ids = (items ?? []).map((i) => i.id);
+    // 🔎 "จากแชท·รอตรวจ" ยังไม่ผ่านการตรวจ — ไม่ส่งเข้าบอทจนกว่าแอดมินจะกดแก้ไข→บันทึก (3 ต.ค. 69)
+    const ids = (items ?? []).filter((i) => i.type !== "chat-review").map((i) => i.id);
     if (!ids.length) return;
     const min = Math.ceil((ids.length * 0.9) / 60);
     if (!(await confirm({ icon: "🔄", title: `ส่งความรู้ทั้งหมด ${ids.length.toLocaleString()} รายการเข้าบอทใหม่?`, detail: `ใช้เมื่อเปลี่ยน index ของ Pinecone หรืออยาก sync ใหม่ทั้งหมด\nใช้เวลาราว ${min} นาที — เปิดหน้านี้ค้างไว้จนเสร็จ`, confirmLabel: "เริ่มซิงก์" }))) return;

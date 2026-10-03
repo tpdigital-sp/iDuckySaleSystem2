@@ -44,4 +44,8 @@ export const KB_TYPES: { key: string; label: string; tone: "coral" | "yolk" | "s
   { key: "paste-import", label: "วางเนื้อหา", tone: "lilac" },
   { key: "leader-answer", label: "หัวหน้าตอบ", tone: "sky" },
   { key: "pricing", label: "💰 ราคา", tone: "mint" },
+  // 3 ต.ค. 69 สรุปจากแชท LINE จริง 579,547 คู่ถาม-ตอบ (ม.ค. 67 – ต.ค. 69) · source "line-chat-261002"
+  { key: "chat-experience", label: "📈 จากแชทจริง", tone: "mint" },
+  // มีตัวเลขเฉพาะ (ขั้นต่ำ/วัน/จำนวน) จากแชทเก่า อาจไม่ตรงปัจจุบัน — ยังไม่ส่งให้บอท · กดแก้ไข→บันทึก = ส่งเข้าบอท
+  { key: "chat-review", label: "🔎 จากแชท·รอตรวจ", tone: "yolk" },
 ];
