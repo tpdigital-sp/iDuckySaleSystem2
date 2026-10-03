@@ -224,6 +224,12 @@ export async function DELETE(req: Request) {
     const paymentId = String(body.paymentId ?? "").trim();
     const p = findPayment(order, paymentId);
     if (!p) return NextResponse.json({ error: "ไม่พบสลิปใบเพิ่มนี้" }, { status: 404 });
+    // 💸 ใบที่ย้ายเงินโอนเกินมาจากใบอื่น — ไฟล์เป็นสลิปของใบต้นทาง ลบแล้วสลิปต้นทางหายด้วย + ยอดที่ย้ายมาหายกลางทาง
+    if (p.fromOrder)
+      return NextResponse.json(
+        { error: `ใบนี้คือเงินโอนเกินที่ย้ายมาจาก ${p.fromOrder} — ลบตรงนี้ไม่ได้ (สลิปเป็นของใบต้นทาง) แจ้งผู้ดูแลระบบถ้าย้ายผิด` },
+        { status: 409 }
+      );
     await sb.storage.from(BUCKET).remove([p.path]).catch(() => undefined);
     const credited = p.credited ?? 0;
     const paidAfter = credited > 0 ? Math.max(0, Math.round((paidSoFar(order) - credited) * 100) / 100) : order.paidTotal;

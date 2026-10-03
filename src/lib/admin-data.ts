@@ -992,6 +992,19 @@ export interface Order {
      * เงินไม่ได้เข้าร้าน — ห้ามนับยอด/ยืนยัน · หน้าออเดอร์ขึ้นกล่องแดง · ดู matchSlipReceiver ใน slipok.ts
      */
     wrongReceiver?: boolean;
+    /**
+     * 🤖 สิ่งที่ AI (Gemini) อ่านได้จากรูป — เฉพาะรูปที่ SlipOK อ่าน QR ไม่ได้ (K BIZ / รายงานธนาคาร / แคปรายการเดินบัญชี)
+     * ใช้ "เตือน" อย่างเดียว ห้ามเอาไปนับยอด (AI อ่านผิดได้) · ดู src/lib/server/slip-ocr.ts
+     */
+    ocr?: SlipOcr;
+    /** transRef ได้มาจาก AI อ่านรูป (ไม่ใช่ QR) — ยังใช้กันสลิปซ้ำแบบตีตกได้ เพราะเลขยาวไม่ซ้ำกันโดยบังเอิญ */
+    refFrom?: "ocr";
+    /** ⚠️ สลิปที่ยอด + วัน(+เวลา) โอนตรงกันในออเดอร์อื่น — "อาจซ้ำ" ให้แอดมินเปิดเทียบ (ไม่ตีตกเอง) */
+    lookalike?: SlipLookalike[];
+    /** ⚠️ เลขเอกสาร (QT…/INV…) ที่ลูกค้าใส่ในรายการโอน ไม่ตรงกับเลขบิลของใบนี้ */
+    docMismatch?: string;
+    /** ⚠️ บัญชีผู้รับที่ AI อ่านได้ ไม่ตรงบัญชีร้าน (แค่เตือน — ไม่ตั้ง wrongReceiver เพราะ AI อ่านผิดได้) */
+    ocrReceiverMismatch?: boolean;
   };
   /**
    * 💸 สลิปเพิ่มเติม (ใบที่ 2, 3, …) นอกช่องหลัก slipPath / deposit.balanceSlipPath
@@ -1000,6 +1013,11 @@ export interface Order {
    * ดู paymentEntries() ใน @/lib/payments ที่รวมทุกใบเป็นรายการเดียวไว้แสดงผล
    */
   payments?: OrderPayment[];
+  /**
+   * 💸 จัดการเงินโอนเกินแล้วเท่าไหร่ (3 ต.ค. 69) — คืนลูกค้า หรือย้ายไปนับเป็นยอดชำระของออเดอร์อื่น (ลูกค้าโอนรวม)
+   * ยอดค้างจัดการ = overpayOutstanding() ใน @/lib/payments (โอนเกินทั้งหมด − ผลรวม amount ในนี้)
+   */
+  overpayActions?: OverpayAction[];
   /**
    * 🧾 ค่าบริการเพิ่มที่เก็บทีหลัง (ค่าตัดภาพ · ค่าส่งเพิ่ม · ค่าเร่งงาน …) — ไม่ใช่สินค้า ไม่เข้าใบงานผลิต
    * บวกเข้า orderTotal ตรง ๆ (อยู่นอกฐานส่วนลด %) · ลูกค้าเห็นเป็นบรรทัดแยกใต้รายการสินค้าว่ายอดโตเพราะอะไร
@@ -2216,6 +2234,56 @@ export interface OrderPayment {
   accepted?: { by: string; at: string };
   /** ยอดที่ต้องโอนตอนแนบใบนี้ (บาท) — ไว้อ่านย้อนหลังว่าใบนี้ตั้งใจจ่ายส่วนไหน */
   expected?: number;
+  /** 💸 ใบนี้คือเงินโอนเกินที่ย้ายมาจากออเดอร์อื่น (ลูกค้าโอนรวม) — สลิปเป็นของใบต้นทาง ไม่มีเงินเข้าใหม่ */
+  fromOrder?: string;
+}
+
+/** 🤖 ข้อมูลที่ AI อ่านจากรูปสลิป/รายการโอน (ดู slipVerify.ocr) */
+export interface SlipOcr {
+  at: string;
+  /** slip = สลิปโอน · report = รายงานธุรกรรมธนาคาร · statement = แถวรายการเดินบัญชี · other = ไม่ใช่หลักฐานโอน */
+  kind?: "slip" | "report" | "statement" | "other";
+  amount?: number;
+  /** วันที่โอน ค.ศ. YYYY-MM-DD · เวลา HH:MM (ถ้ามีในรูป) */
+  date?: string;
+  time?: string;
+  /** เลขอ้างอิงธุรกรรมของธนาคาร (ยาว ≥ 14 ตัว · แถวรายการเดินบัญชีไม่เชื่อ) */
+  ref?: string;
+  /** เลขเอกสารที่ลูกค้าใส่เป็นอ้างอิง เช่น QT010774 */
+  docRef?: string;
+  payerName?: string;
+  payerAccount?: string;
+  receiverName?: string;
+  receiverAccount?: string;
+  bank?: string;
+}
+
+/** สลิปในออเดอร์อื่นที่หน้าตาเหมือนใบนี้ (ยอด/วันเวลาโอนตรงกัน) */
+export interface SlipLookalike {
+  orderId: string;
+  phase: "first" | "balance" | "extra";
+  paymentId?: string;
+  /** เหตุผลสั้น ๆ เช่น "ยอด 1,883.20 · 29 ก.ย. 69 14:02 ตรงกัน" */
+  why: string;
+  /** strong = เวลาโอนตรงกันถึงนาที / บัญชีผู้โอนหรือเลขเอกสารตรง · weak = ยอด+วันที่ตรงแต่ไม่มีเวลาให้เทียบ */
+  level: "strong" | "weak";
+}
+
+/** 💸 การจัดการเงินโอนเกินหนึ่งครั้ง (ดู Order.overpayActions) */
+export interface OverpayAction {
+  id: string;
+  at: string;
+  by: string;
+  /** refund = ร้านโอนคืนลูกค้าแล้ว · transfer = ย้ายไปนับเป็นยอดชำระของออเดอร์อื่น */
+  kind: "refund" | "transfer";
+  amount: number;
+  /** transfer: ออเดอร์ปลายทาง + id ใบเพิ่มที่สร้างในใบนั้น */
+  toOrderId?: string;
+  toPaymentId?: string;
+  /** refund: สลิปที่ร้านโอนคืน (path ใน payment-slips-private) · url = signed ชั่วคราว ห้ามเก็บลงฐาน */
+  slipPath?: string;
+  slipUrl?: string;
+  note?: string;
 }
 
 /** 🧾➕ บิลเพิ่มหนึ่งใบ (ดู Order.flowAccountExtras) — ตัวเลขตามเอกสาร FlowAccount ณ ตอนแนบ */

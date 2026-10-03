@@ -12,7 +12,7 @@ import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import { addOnDisplayName, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
-import { overpaidAmount, paymentEntries, resolveSlipPhase } from "@/lib/payments";
+import { overpayOutstanding, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
@@ -1060,8 +1060,8 @@ export default function CustomerOrderPage() {
               </li>
             ))}
           </ul>
-          {overpaidAmount(order) > 0 && (
-            <p className="mt-2 text-xs font-semibold t-ok">💚 โอนเกินมา {formatPrice(overpaidAmount(order))} — ทางร้านจะติดต่อคืนเงินหรือแปลงเป็นแต้มให้ครับ</p>
+          {overpayOutstanding(order) > 0 && (
+            <p className="mt-2 text-xs font-semibold t-ok">💚 โอนเกินมา {formatPrice(overpayOutstanding(order))} — ทางร้านจะติดต่อคืนเงินให้ครับ</p>
           )}
         </div>
       )}

@@ -1,4 +1,4 @@
-import { amountDueNow, orderBalance, orderTotal, paidSoFar, type Order, type OrderPayment } from "./admin-data";
+import { amountDueNow, orderBalance, orderTotal, paidSoFar, uncreditedReceived, type Order, type OrderPayment } from "./admin-data";
 
 /**
  * 💸 บัญชีรับเงินของออเดอร์ — มองสลิปทุกใบเป็นรายการเดียวกัน (ใช้ได้ทั้งฝั่งลูกค้า/แอดมิน/เซิร์ฟเวอร์)
@@ -130,7 +130,7 @@ export function paymentEntries(o: Order): PaymentEntry[] {
       phase: "extra",
       paymentId: p.id,
       // ชื่อใบสั้นบรรทัดเดียว — ยอดค้างตอนแนบไปอยู่บรรทัดรอง (ชื่อยาวทำให้แถวในหน้าออเดอร์บีบจนอ่านไม่ออก)
-      label: "โอนเพิ่ม",
+      label: p.fromOrder ? `ย้ายเงินโอนเกินจาก ${p.fromOrder}` : "โอนเพิ่ม",
       expected: p.expected ?? undefined,
       url: p.url,
       path: p.path,
@@ -155,6 +155,26 @@ export function hasPendingSlip(o: Order): boolean {
 export function overpaidAmount(o: Order): number {
   if (o.paidTotal == null) return 0;
   return Math.max(0, Math.round((paidSoFar(o) - orderTotal(o)) * 100) / 100);
+}
+
+/**
+ * 💸 เงินโอนเกินทั้งหมดของออเดอร์ (บาท) = เงินในสลิปที่ไม่ได้นับเข้ายอด (โอนเกินตอนแนบ) + ยอดชำระที่เกินบิล (บิลลดทีหลัง)
+ * ใบยกเลิกไม่นับ — คืนเงินใบยกเลิกเป็นอีกเรื่อง
+ */
+export function overpayGross(o: Order): number {
+  if (o.status === "ยกเลิก") return 0;
+  return Math.round((uncreditedReceived(o) + overpaidAmount(o)) * 100) / 100;
+}
+
+/** จัดการไปแล้ว (คืน/ย้าย) รวมกี่บาท */
+export function overpayHandled(o: Order): number {
+  return Math.round((o.overpayActions ?? []).reduce((s, a) => s + (a.amount > 0 ? a.amount : 0), 0) * 100) / 100;
+}
+
+/** 💸 เงินโอนเกินที่ยังไม่ได้คืน/ย้าย (บาท) — ต่ำกว่า 1 บาทถือว่าไม่มี (เศษสตางค์) */
+export function overpayOutstanding(o: Order): number {
+  const left = Math.round((overpayGross(o) - overpayHandled(o)) * 100) / 100;
+  return left >= 1 ? left : 0;
 }
 
 /** ค้นใบเพิ่มด้วย id */

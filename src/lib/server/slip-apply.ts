@@ -6,7 +6,8 @@ import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
 import { getProductServer } from "@/lib/products-server";
 import type { Product } from "@/lib/products";
-import { matchSlipAmount, verifySlipWithSlipOK, type ShopReceiverAccounts, type SlipVerifyResult } from "@/lib/server/slipok";
+import { matchSlipAmount, matchSlipReceiver, verifySlipWithSlipOK, type ShopReceiverAccounts, type SlipVerifyResult } from "@/lib/server/slipok";
+import { docRefMismatch, findSlipLookalikes, readSlipImage } from "@/lib/server/slip-ocr";
 import { assertSlipNotDuplicate, findSlipOwners } from "@/lib/server/slip-dedupe";
 import { balanceNetTransfer, notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 import { reportPaidToTP, syncPaidCompleteToTP } from "@/lib/server/tp-report";
@@ -16,6 +17,7 @@ import { awardPointsForOrder } from "@/lib/server/contact-points";
 import { updateOrder } from "@/lib/server/order-write";
 import { earlyPayBillReason } from "@/lib/server/order-early-pay";
 import { inBackground } from "@/lib/server/background";
+import { pushShopAlert } from "@/lib/server/line-alert";
 
 /**
  * ตรวจสลิปกับ SlipOK แล้ว "ลงผล" ให้ออเดอร์ — ใช้ร่วมกันทั้งทางลูกค้าแนบเอง (/api/orders/slip)
@@ -102,7 +104,23 @@ function verifyRecord(verify: SlipVerifyResult, now: string): Order["slipVerify"
     ...(verify.receiver ? { receiver: verify.receiver } : {}),
     ...(verify.receiverAccount ? { receiverAccount: verify.receiverAccount } : {}),
     ...(verify.wrongReceiver ? { wrongReceiver: true } : {}),
+    // 🤖 AI อ่านรูปสลิปไม่มี QR + คำเตือน "อาจซ้ำ" (ดู slip-ocr.ts)
+    ...(verify.ocr ? { ocr: verify.ocr } : {}),
+    ...(verify.refFrom ? { refFrom: verify.refFrom } : {}),
+    ...(verify.lookalike?.length ? { lookalike: verify.lookalike } : {}),
+    ...(verify.docMismatch ? { docMismatch: verify.docMismatch } : {}),
+    ...(verify.ocrReceiverMismatch ? { ocrReceiverMismatch: true } : {}),
   };
+}
+
+/** วัน/เวลาโอนแบบไทยจาก ISO ของ SlipOK — ไว้เทียบกับสลิปที่ AI อ่าน */
+function bkkWhen(iso: string | undefined): { date?: string; time?: string } {
+  if (!iso) return {};
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return {};
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d);
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return { date: `${g("year")}-${g("month")}-${g("day")}`, time: `${g("hour").replace("24", "00")}:${g("minute")}` };
 }
 
 /**
@@ -187,6 +205,7 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       // อ่านตั้งค่าไม่ได้ = ไม่ยอมรับส่วนต่าง ตกไปตรวจมือตามเดิม (fail-safe)
     }
   }
+  const slipOkStarted = Date.now();
   let verify = await verifySlipWithSlipOK(bytes, contentType, expected, orderTotal(order), order.wht, earlyPayAllowed, shopSettings);
 
   /**
@@ -209,6 +228,22 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
     }
   }
 
+  /**
+   * 🤖 สลิปที่ SlipOK อ่าน QR ไม่ได้ (K BIZ / รายงานธนาคาร / แคปรายการเดินบัญชี) → ให้ AI อ่านรูปแทน (slip-ocr.ts)
+   * เลขอ้างอิงธนาคารที่อ่านได้ (≥ 14 ตัว) ใช้เป็น transRef → ด่านชั้น 2 ข้างล่างตีตกสลิปซ้ำได้เหมือนเลขจาก QR
+   * ยอดที่ AI อ่านเก็บแยกที่ verify.ocr ห้ามนับเงิน — สลิปยังตก "รอแอดมินตรวจเอง" เหมือนเดิม
+   */
+  /*
+   * ⏱ งบเวลา: SlipOK ช้าได้ถึง 30 วิ + AI อีกหลายวิ = เสี่ยงชนเพดานเวลาของ serverless function
+   * (โดนฆ่ากลางทาง = ไฟล์ขึ้นบัคเก็ตแต่ออเดอร์ไม่ถูกบันทึก — แย่กว่าไม่อ่าน ดู [[iducky-slipok]])
+   * SlipOK ใช้ไปเกิน 8 วิ → ข้ามการอ่านรอบนี้ (สลิปยังตกรอตรวจตามเดิม · กด "ตรวจสลิปอีกครั้ง" ได้อ่านอีกรอบ)
+   */
+  const ocrBudgetMs = 8_000 - (Date.now() - slipOkStarted);
+  if (!verify.transRef && verify.status !== "pass" && ocrBudgetMs > 0) {
+    const ocr = await readSlipImage(bytes, contentType, undefined, Math.min(10_000, 18_000 - (Date.now() - slipOkStarted)));
+    if (ocr) verify = { ...verify, ocr, ...(ocr.ref ? { transRef: ocr.ref, refFrom: "ocr" as const } : {}) };
+  }
+
   // ── กันสลิปซ้ำชั้นที่ 2: เลขอ้างอิงธุรกรรมจาก QR ซ้ำกับออเดอร์อื่น/ใบอื่น แม้ไฟล์จะต่างกัน ──
   // (แคปหน้าจอใหม่/ครอป/บีบรูป ลายนิ้วมือไฟล์ไม่เหมือนเดิม แต่ธุรกรรมเดียวกัน) → ลบไฟล์ที่เพิ่งอัปทิ้ง แล้วโยน 409
   if (verify.transRef && !input.allowDuplicate) {
@@ -219,6 +254,39 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       if (!input.recheck) await sb.storage.from("payment-slips-private").remove([path]).catch(() => undefined);
       throw e;
     }
+  }
+
+  /**
+   * ⚠️ ชั้น 3 (เตือน ไม่ตีตก): สลิปในออเดอร์อื่นที่ยอด + วันโอน (+ เวลา) ตรงกัน — จับแคปหน้าจอใหม่ของสลิปไม่มี QR
+   * และสลิปมี QR ที่ลูกค้าเคยส่งเป็นภาพแคปไปอีกใบ · ลงที่ verify.lookalike ให้หน้าออเดอร์ขึ้นกล่องเตือน + แจ้งกลุ่มแอดมิน
+   */
+  // บัญชีร้านเอง (AI สลับช่องผู้โอน/ผู้รับได้) ห้ามใช้เป็น "บัญชีผู้โอนเดียวกัน" — ไม่งั้นทุกใบดูเหมือนคนเดียวกันหมด
+  const isShopAccount = (a?: string) => !!a && /\d{4}/.test(a) && matchSlipReceiver({ account: { value: a } }, shopSettings) === "match";
+  const probePayer = isShopAccount(verify.ocr?.payerAccount) ? undefined : verify.ocr?.payerAccount;
+  const probeAmount = verify.amount ?? verify.ocr?.amount;
+  const probeWhen = verify.transAt ? undefined : { date: verify.ocr?.date, time: verify.ocr?.time };
+  if (probeAmount && !input.allowDuplicate) {
+    const when = probeWhen ?? bkkWhen(verify.transAt);
+    if (when.date) {
+      const lookalike = await findSlipLookalikes(
+        sb,
+        { amount: probeAmount, date: when.date, time: when.time, payerAccount: probePayer, docRef: verify.ocr?.docRef },
+        { orderId: order.id, phase, paymentId: input.paymentId }
+      ).catch(() => []);
+      if (lookalike.length) verify = { ...verify, lookalike };
+    }
+  }
+  if (verify.ocr) {
+    const docMismatch = docRefMismatch(order, verify.ocr.docRef);
+    /*
+     * เตือนบัญชีผู้รับเฉพาะเมื่อ AI อ่าน "เลขบัญชี" ได้และไม่ตรงบัญชีร้าน — ไม่เทียบชื่อ (AI อ่านชื่อไทยเพี้ยนทีละตัว "ทีพีดีจิดอล")
+     * และ AI สลับช่องผู้โอน/ผู้รับได้ (ทดสอบ 3 ต.ค. 69 แถว KBANK ใส่บัญชีร้านเป็นผู้โอน) → บัญชีร้านโผล่ช่องไหนก็ถือว่าตรง
+     */
+    const rcv =
+      verify.ocr.receiverAccount && /\d{4}/.test(verify.ocr.receiverAccount) && !isShopAccount(verify.ocr.payerAccount)
+        ? matchSlipReceiver({ account: { value: verify.ocr.receiverAccount } }, shopSettings)
+        : "noReceiver";
+    verify = { ...verify, ...(docMismatch ? { docMismatch } : {}), ...(rcv === "mismatch" ? { ocrReceiverMismatch: true } : {}) };
   }
 
   /**
@@ -487,8 +555,57 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
       );
   }
 
+  // 🤖 ผลอ่านรูปด้วย AI + คำเตือน — ลงประวัติให้เห็นว่าเตือนอะไร (กล่องเตือนบนสลิปอยู่ที่ verify ของใบนั้น)
+  // วันที่แบบ พ.ศ. ให้ตรงกับที่ทีมคุยกัน (21/09/2569 09:09)
+  const thTime = (o?: { date?: string; time?: string }) =>
+    o?.date ? `${o.date.slice(8, 10)}/${o.date.slice(5, 7)}/${Number(o.date.slice(0, 4)) + 543}${o.time ? ` ${o.time}` : ""}` : "";
+  if (verify.ocr)
+    updated = withLog(
+      updated,
+      "AI อ่านสลิป",
+      "🤖 อ่านรูปสลิปที่ไม่มี QR",
+      [
+        verify.ocr.amount ? `ยอด ${thb(verify.ocr.amount)} บาท` : "",
+        thTime(verify.ocr) ? `โอน ${thTime(verify.ocr)}` : "",
+        verify.ocr.ref ? `อ้างอิง ${verify.ocr.ref}` : "",
+        verify.ocr.docRef ? `เลขเอกสาร ${verify.ocr.docRef}` : "",
+        verify.ocr.payerName ? `ผู้โอน ${verify.ocr.payerName}` : "",
+        "(AI อ่าน — เทียบกับรูปก่อนรับยอด)",
+      ].filter(Boolean).join(" · ")
+    );
+  if (verify.lookalike?.length)
+    updated = withLog(updated, "ระบบ", "⚠️ สลิปอาจซ้ำกับออเดอร์อื่น", verify.lookalike.map((l) => `${l.orderId}: ${l.why}`).join(" | "));
+  if (verify.docMismatch) updated = withLog(updated, "ระบบ", "⚠️ เลขอ้างอิงในสลิปไม่ตรงบิล", verify.docMismatch);
+  if (verify.ocrReceiverMismatch)
+    updated = withLog(updated, "ระบบ", "⚠️ บัญชีผู้รับในสลิปอาจไม่ใช่บัญชีร้าน", `AI อ่านได้: ${[verify.ocr?.receiverName, verify.ocr?.receiverAccount].filter(Boolean).join(" ")}`);
+
   const { error: saveErr } = await updateOrder(sb, updated);
   if (saveErr) throw new Error(saveErr.message);
+
+  // 📣 สลิปหน้าตาเหมือนใบในออเดอร์อื่น → การ์ดเข้าห้องเรื่องเงิน (เกิดน้อย ไม่เปลืองโควตา)
+  if (verify.lookalike?.length) {
+    const lk = verify.lookalike;
+    inBackground(
+      "slipLookalikeAlert",
+      pushShopAlert(
+        {
+          tone: "#D97706",
+          title: "⚠️ สลิปอาจซ้ำกับออเดอร์อื่น",
+          headline: "ยอดและวันเวลาโอนตรงกับสลิปที่แนบไว้แล้ว — เปิดเทียบก่อนรับยอด",
+          heroLabel: "ออเดอร์ที่แนบ",
+          hero: updated.id,
+          rows: [
+            { label: "ลูกค้า", value: `${updated.customer} · ${updated.phone}` },
+            { label: "อาจซ้ำกับ", value: lk.map((l) => l.orderId).join(", "), bold: true, color: "#B45309" },
+          ],
+          bullets: lk.map((l) => `${l.orderId}: ${l.why}`),
+          button: { label: "เปิดออเดอร์", uri: `https://iduckystore.com/admin/orders/${encodeURIComponent(updated.id)}` },
+          alt: `⚠️ สลิปอาจซ้ำ ${updated.id} ↔ ${lk.map((l) => l.orderId).join(", ")}`,
+        },
+        { money: true }
+      )
+    );
+  }
 
   // ── 3) ผลข้างเคียงหลังบันทึก ──
   const link = orderLink(origin, updated);
@@ -634,8 +751,13 @@ export async function acceptPaymentManually(a: {
   amount: number;
   who: string;
   origin: string;
+  /**
+   * 💸 ย้ายเงินโอนเกินมาจากออเดอร์อื่น (overpay transfer) — ไม่มีเงินเข้าบัญชีใหม่
+   * ห้ามเขียนเรคอร์ด msVerify (เงินก้อนนี้ลงเรคอร์ดของใบต้นทางไปแล้ว ไม่งั้นนับเงินเข้าซ้ำ) · ใช้ข้อความประวัติแทนของเดิม
+   */
+  moved?: { fromOrderId: string };
 }): Promise<Order> {
-  const { sb, order, paymentId, who, origin } = a;
+  const { sb, order, paymentId, who, origin, moved } = a;
   const amount = round2(Math.max(0, a.amount));
   const list = [...(order.payments ?? [])];
   const idx = list.findIndex((p) => p.id === paymentId);
@@ -650,7 +772,10 @@ export async function acceptPaymentManually(a: {
   let updated: Order = { ...order, payments: list, paidTotal: paidNow };
   const total = orderTotal(updated);
   const remain = round2(Math.max(0, total - paidNow));
-  const amountNote = `ยอด ${thb(amount)} บาท · แอดมินเทียบยอดเอง`;
+  const head = moved ? `💸 รับเงินโอนเกินที่ย้ายมาจาก ${moved.fromOrderId}` : "รับยอดสลิปใบเพิ่มเอง";
+  const amountNote = moved
+    ? `ยอด ${thb(amount)} บาท · ย้ายเงินโอนเกินมาจาก ${moved.fromOrderId} (ลูกค้าโอนรวม — ไม่มีเงินเข้าใหม่)`
+    : `ยอด ${thb(amount)} บาท · แอดมินเทียบยอดเอง`;
 
   let confirmedDeposit = false;
   let confirmedFull = false;
@@ -659,8 +784,8 @@ export async function acceptPaymentManually(a: {
     if (paidNow + 0.5 >= depositDue) {
       confirmedDeposit = true;
       updated = { ...updated, deposit: { ...updated.deposit, firstPaidAt: now }, status: waiting ? stageAfterPayment(updated) : updated.status, ...(waiting ? clearStageMemory : {}) };
-      updated = withLog(updated, who, "รับยอดสลิปใบเพิ่มเอง — ครบมัดจำ 50%", amountNote);
-    } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — มัดจำยังขาดอีก ${thb(round2(depositDue - paidNow))} บาท`, amountNote);
+      updated = withLog(updated, who, `${head} — ครบมัดจำ 50%`, amountNote);
+    } else updated = withLog(updated, who, `${head} — มัดจำยังขาดอีก ${thb(round2(depositDue - paidNow))} บาท`, amountNote);
   } else if (updated.deposit && !updated.deposit.settledAt) {
     if (remain <= 0.5) {
       confirmedFull = true;
@@ -671,13 +796,13 @@ export async function acceptPaymentManually(a: {
         deposit: { ...updated.deposit, settledAt: now },
         ...(waiting ? { status: stageAfterPayment(updated), ...clearStageMemory } : {}),
       };
-      updated = withLog(updated, who, "รับยอดสลิปใบเพิ่มเอง — ยอดคงเหลือครบแล้ว", amountNote);
-    } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — ยังขาดอีก ${thb(remain)} บาท`, amountNote);
+      updated = withLog(updated, who, `${head} — ยอดคงเหลือครบแล้ว`, amountNote);
+    } else updated = withLog(updated, who, `${head} — ยังขาดอีก ${thb(remain)} บาท`, amountNote);
   } else if (remain <= 0.5) {
     confirmedFull = true;
     updated = { ...updated, status: waiting ? stageAfterPayment(updated) : updated.status, ...clearStageMemory };
-    updated = withLog(updated, who, "รับยอดสลิปใบเพิ่มเอง — รับเงินครบแล้ว", amountNote);
-  } else updated = withLog(updated, who, `รับยอดสลิปใบเพิ่มเอง — ยังค้างอีก ${thb(remain)} บาท`, amountNote);
+    updated = withLog(updated, who, `${head} — รับเงินครบแล้ว`, amountNote);
+  } else updated = withLog(updated, who, `${head} — ยังค้างอีก ${thb(remain)} บาท`, amountNote);
 
   const { error } = await updateOrder(sb, updated);
   if (error) throw new Error(error.message);
@@ -687,6 +812,20 @@ export async function acceptPaymentManually(a: {
   // 🧷 เรคอร์ด msVerify รอให้เสร็จก่อนตอบ (เหตุผลเดียวกับ pendingTP ใน applySlipVerification)
   const pendingTP: Promise<unknown>[] = [];
   const tp = (note: string) => {
+    /*
+     * 💸 เงินที่ย้ายมา: ยังต้องมีเรคอร์ด (บอร์ด WIP กราฟฟิกขึ้นการ์ดจากเรคอร์ดหลัก) แต่บอกชัดว่าไม่ใช่เงินก้อนใหม่
+     * ใบที่ไม่เคยมีเงินเข้าเลย = เขียนเป็นเรคอร์ดหลัก (ไม่งั้นไม่มีการ์ด) · ใบที่มีเงินอยู่แล้ว = เรคอร์ดใบเพิ่มตามปกติ
+     * ⚠️ msDaily จะหาแถวโอนยอดนี้ไม่เจอ (เงินจริงอยู่ในสลิปของใบต้นทาง) — note บอกให้แอดมินรู้
+     */
+    if (moved) {
+      const movedNote = `💸 เงินโอนเกินย้ายมาจาก ${moved.fromOrderId} (สลิปเดียวกับใบนั้น ไม่มีเงินเข้าใหม่) · ${note}`;
+      pendingTP.push(
+        paidSoFar(order) > 0
+          ? reportPaidToTP(updated, adminName, { received: amount, noteSuffix: movedNote, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull })
+          : reportPaidToTP(updated, adminName, { received: amount, noteSuffix: movedNote, slipPath: list[idx].path, partial: !confirmedDeposit && !confirmedFull })
+      );
+      return;
+    }
     pendingTP.push(
       reportPaidToTP(updated, adminName, { received: amount, noteSuffix: note, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull })
     );

@@ -57,15 +57,19 @@ export async function findSlipOwners(sb: SupabaseClient, q: { hash?: string; tra
   if (ref) clauses.push(`data->slipVerify->>transRef.eq.${ref}`, `data->deposit->balanceVerify->>transRef.eq.${ref}`);
 
   // ช่องหลัก 2 ช่อง ค้นด้วย .or เดียว · ใบเพิ่ม (อาเรย์ jsonb) ต้องใช้ contains แยกคำขอ — ยิงขนานกัน
+  // ⚠️ ต้อง contains ที่คอลัมน์ data ทั้งก้อน ห้าม contains("data->payments", [...]) — supabase-js แปลงอาเรย์เป็น
+  //    รูปแบบอาเรย์ Postgres "{…}" แล้ว DB ตอบ "invalid input syntax for type json" → ตกไปเงียบ ๆ เหมือนไม่ซ้ำ
+  //    (สลิปไฟล์เดียวกันแนบใบเพิ่มได้ 2 ออเดอร์ OD-260929-3229 ↔ OD-260929-2180 · 2 ต.ค. 69)
   const mainQ = sb.from("orders").select("id,data").or(clauses.join(",")).limit(20);
   const extraQs = [
-    hash ? sb.from("orders").select("id,data").contains("data->payments", [{ hash }]).limit(20) : null,
-    ref ? sb.from("orders").select("id,data").contains("data->payments", [{ verify: { transRef: ref } }]).limit(20) : null,
+    hash ? sb.from("orders").select("id,data").contains("data", { payments: [{ hash }] }).limit(20) : null,
+    ref ? sb.from("orders").select("id,data").contains("data", { payments: [{ verify: { transRef: ref } }] }).limit(20) : null,
   ];
   const [main, ...extras] = await Promise.all([mainQ, ...extraQs.map((q) => q ?? Promise.resolve(null))]);
   // ค้นไม่ได้ (เช่น DB ล่ม) = ไม่ตีตกสลิปลูกค้า — ปล่อยผ่านไปตรวจตามปกติ ชั้นถัดไป (SlipOK log) ยังกันอยู่
   const rows = new Map<string, Row>();
   for (const res of [main, ...extras]) {
+    if (res?.error) console.error("[slip-dedupe] ค้นสลิปซ้ำไม่สำเร็จ:", res.error.message);
     if (!res || res.error || !res.data) continue;
     for (const r of res.data as Row[]) rows.set(r.id, r);
   }

@@ -4,6 +4,7 @@ import { shrinkImageFile } from "@/lib/shrink-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel } from "@/lib/gifts";
 import Link from "next/link";
+import OverpayBox from "./OverpayBox";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
@@ -973,7 +974,7 @@ function SlipVerifyNote({ v, order, credited, settled = true, onRecheck, recheck
             </span>
           )}
           {(v.over ?? 0) > 0 && (
-            <span className="mt-1 block text-amber-700">⚠️ โอนเกินยอดที่ต้องชำระ {formatPrice(v.over!)} — คืนลูกค้า หรือแปลงเป็นแต้ม</span>
+            <span className="mt-1 block text-amber-700">⚠️ โอนเกินยอดที่ต้องชำระ {formatPrice(v.over!)} — คืนลูกค้า หรือย้ายไปใช้กับออเดอร์อื่น ที่กล่อง 💸 ใต้สลิป</span>
           )}
         </>
       ) : partial ? (
@@ -1017,7 +1018,64 @@ function SlipVerifyNote({ v, order, credited, settled = true, onRecheck, recheck
           )}
         </>
       )}
+      <SlipAiNotes v={v} />
     </div>
+  );
+}
+
+/** วันที่ ค.ศ. YYYY-MM-DD → 21 ก.ย. 69 */
+const thShortDate = (d: string) =>
+  `${Number(d.slice(8, 10))} ${["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."][Number(d.slice(5, 7)) - 1] ?? ""} ${String(Number(d.slice(0, 4)) + 543).slice(2)}`;
+
+/**
+ * 🤖 สิ่งที่ AI อ่านจากรูปสลิปไม่มี QR + คำเตือน "อาจซ้ำ" / เลขเอกสารไม่ตรง / บัญชีผู้รับไม่ตรง (ดู slip-ocr.ts)
+ * คำเตือนอาจซ้ำ = จุดเด่นจุดเดียว (กรอบแดง ลิงก์ไปใบนั้น) · ผลอ่านของ AI ตัวเล็กสีเทา บอกชัดว่าต้องเทียบกับรูปเอง
+ */
+function SlipAiNotes({ v }: { v: NonNullable<Order["slipVerify"]> }) {
+  const o = v.ocr;
+  if (!o && !v.lookalike?.length && !v.docMismatch) return null;
+  return (
+    <>
+      {!!v.lookalike?.length && (
+        <span className="mt-1.5 block rounded-lg bg-white px-2.5 py-2 text-rose-800 ring-2 ring-rose-300">
+          <span className="block font-extrabold">⚠️ สลิปนี้อาจซ้ำกับออเดอร์อื่น — เปิดเทียบรูปก่อนรับยอด</span>
+          {v.lookalike.map((l) => (
+            <span key={`${l.orderId}-${l.phase}-${l.paymentId ?? ""}`} className="mt-0.5 block font-normal">
+              <Link href={`/admin/orders/${encodeURIComponent(l.orderId)}`} className="font-bold underline">
+                {l.orderId}
+              </Link>
+              {l.phase === "balance" ? " (งวดหลัง)" : l.phase === "extra" ? " (สลิปใบเพิ่ม)" : ""} · {l.why}
+              {l.level === "strong" ? " · น่าจะใบเดียวกัน" : ""}
+            </span>
+          ))}
+        </span>
+      )}
+      {v.docMismatch && <span className="mt-1 block font-bold text-rose-700">⚠️ {v.docMismatch}</span>}
+      {v.ocrReceiverMismatch && (
+        <span className="mt-1 block font-bold text-rose-700">⚠️ บัญชีผู้รับที่ AI อ่านได้ ไม่ตรงบัญชีร้าน — เปิดรูปเช็คว่าโอนเข้าบัญชีร้านจริง</span>
+      )}
+      {o && (
+        <span className="mt-1 block font-normal text-slate-600">
+          🤖 AI อ่านจากรูป:{" "}
+          {[
+            o.amount ? <b key="a" className="tabular-nums">{formatPrice(o.amount)}</b> : null,
+            o.date ? `โอน ${thShortDate(o.date)}${o.time ? ` ${o.time}` : ""}` : null,
+            o.ref ? `อ้างอิง ${o.ref}` : null,
+            o.docRef ? `เลขเอกสาร ${o.docRef}` : null,
+            o.payerName ? `ผู้โอน ${o.payerName}` : null,
+            o.receiverAccount ? `เข้าบัญชี ${o.receiverAccount}` : null,
+          ]
+            .filter(Boolean)
+            .map((x, i) => (
+              <span key={i}>
+                {i > 0 ? " · " : ""}
+                {x}
+              </span>
+            ))}{" "}
+          <span className="text-slate-400">(AI อ่านผิดได้ — เทียบกับรูปก่อนกดรับยอด)</span>
+        </span>
+      )}
+    </>
   );
 }
 
@@ -1703,7 +1761,7 @@ export default function AdminOrderDetailPage() {
         const ok = await askConfirm({
           icon: "🧾",
           title: "สลิปใบนี้ถูกใช้กับออเดอร์อื่นแล้ว",
-          detail: `${j.error ?? ""}\n\nแนบซ้ำเฉพาะกรณีลูกค้าโอนยอดรวมของหลายออเดอร์ในสลิปเดียว — ระบบจะบันทึกในประวัติว่าคุณยืนยันเอง`,
+          detail: `${j.error ?? ""}\n\n💡 ลูกค้าโอนรวมหลายออเดอร์: แนะนำให้ไปที่ใบต้นทาง (ใบที่สลิปผ่านแล้ว) กด “↪ ใช้กับออเดอร์อื่น” ในกล่อง 💸 เงินโอนเกิน — ยอดจะย้ายมาใบนี้เองโดยไม่ต้องแนบสลิปซ้ำ\n\nแนบซ้ำตรงนี้เฉพาะกรณีจำเป็นจริง ๆ — ระบบจะบันทึกในประวัติว่าคุณยืนยันเอง`,
           confirmLabel: "ยืนยันว่าโอนรวม แนบเลย",
           danger: true,
         });
@@ -8732,7 +8790,20 @@ export default function AdminOrderDetailPage() {
                           )}
                           {e.state === "accepted" && e.accepted && (
                             <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                              ✅ {e.accepted.by} รับยอด {formatPrice(e.credited ?? 0)} เอง (เทียบกับธนาคารแล้ว)
+                              {(() => {
+                                const from = e.paymentId ? order.payments?.find((p) => p.id === e.paymentId)?.fromOrder : undefined;
+                                return from ? (
+                                  <>
+                                    💸 {e.accepted.by} ย้ายเงินโอนเกิน {formatPrice(e.credited ?? 0)} มาจาก{" "}
+                                    <Link href={`/admin/orders/${encodeURIComponent(from)}`} className="underline">
+                                      {from}
+                                    </Link>{" "}
+                                    (ลูกค้าโอนรวม — สลิปเป็นของใบนั้น ไม่มีเงินเข้าใหม่)
+                                  </>
+                                ) : (
+                                  <>✅ {e.accepted.by} รับยอด {formatPrice(e.credited ?? 0)} เอง (เทียบกับธนาคารแล้ว)</>
+                                );
+                              })()}
                             </div>
                           )}
                           {/*
@@ -8855,7 +8926,7 @@ export default function AdminOrderDetailPage() {
                                   รับแล้ว {formatPrice(paid)} / ยอดบิล {formatPrice(orderTotal(order))}
                                 </span>
                               )}
-                              <span className="font-bold">{bal > 0 ? `ค้าง ${formatPrice(bal)}` : over > 0 ? `โอนเกิน ${formatPrice(over)} — คืน/แปลงเป็นแต้ม` : "✓ ครบแล้ว"}</span>
+                              <span className="font-bold">{bal > 0 ? `ค้าง ${formatPrice(bal)}` : over > 0 ? `โอนเกิน ${formatPrice(over)} — ดูกล่อง 💸 ด้านล่าง` : "✓ ครบแล้ว"}</span>
                               {whtCounted > 0 && (
                                 <span className="block w-full font-normal opacity-80">
                                   {formatPrice(whtCounted)} ไม่ใช่เงินที่ร้านได้รับ — เป็นภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ตามใบ 50 ทวิที่ลูกค้าส่งมาเก็บไว้ · เงินโอนเข้าบัญชีร้านจริง {formatPrice(cash)}
@@ -8874,6 +8945,8 @@ export default function AdminOrderDetailPage() {
                           {slipUploading ? "กำลังอัปโหลด…" : hasUnpaidBalance(order) ? `＋ แนบสลิปเพิ่ม (ค้าง ${formatPrice(amountDueNow(order))})` : "＋ แนบสลิปเพิ่ม (หลักฐานเพิ่มเติม)"}
                         </button>
                       )}
+                      {/* 💸 เงินโอนเกิน — คืนลูกค้า / ย้ายไปใช้กับออเดอร์อื่น (ลูกค้าโอนรวม) */}
+                      <OverpayBox order={order} mayMarkPaid={mayMarkPaid} onOrder={adoptOrder} />
                     </>
                   )}
                 </div>

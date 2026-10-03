@@ -7,7 +7,7 @@ const TTL = 3600;
 
 /**
  * เซ็นลิงก์สลิปทุกใบของออเดอร์ให้ดูรูปได้ (ชั่วคราว 1 ชม. — ห้ามเก็บลงฐาน)
- * ช่องแรก → slipUrl · งวดหลัง → deposit.balanceSlipUrl · ใบเพิ่ม → payments[].url
+ * ช่องแรก → slipUrl · งวดหลัง → deposit.balanceSlipUrl · ใบเพิ่ม → payments[].url · สลิปร้านโอนคืน → overpayActions[].slipUrl
  * ยิงขนานกันทั้งหมด — ใช้ทั้ง GET ?id= ของแอดมิน · SSR หน้าออเดอร์ · /api/orders/view ของลูกค้า · หลังแนบ/ตรวจซ้ำ
  */
 export async function signPaymentUrls(sb: SupabaseClient, order: Order): Promise<Order> {
@@ -22,6 +22,11 @@ export async function signPaymentUrls(sb: SupabaseClient, order: Order): Promise
     const list = order.payments.map((p) => ({ ...p }));
     out.payments = list;
     list.forEach((p, i) => jobs.push(sign(p.path).then((u) => void (u && (list[i] = { ...list[i], url: u })))));
+  }
+  if (order.overpayActions?.some((a) => a.slipPath)) {
+    const acts = order.overpayActions.map((a) => ({ ...a }));
+    out.overpayActions = acts;
+    acts.forEach((a, i) => a.slipPath && jobs.push(sign(a.slipPath).then((u) => void (u && (acts[i] = { ...acts[i], slipUrl: u })))));
   }
   await Promise.all(jobs);
   return out;

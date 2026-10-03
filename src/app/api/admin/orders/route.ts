@@ -236,7 +236,7 @@ function reconcileFullEdit(existing: Order, incoming: Order, clientSavedAt: stri
     ? incoming.gifts.map((g) => keepCustomerVerdict(existing.gifts?.find((x) => x.promoId === g.promoId), g, clientSavedAt))
     : incoming.gifts;
   // ฟิลด์ที่เซิร์ฟเวอร์เป็นเจ้าของ — หน้าจอแอดมินไม่รู้จัก ส่งก้อนกลับมาโดยไม่มี = ห้ามหาย
-  const withItems: Order = { ...incoming, items, ...(gifts ? { gifts } : {}), balanceNotified: existing.balanceNotified, balancePending: existing.balancePending, proofStage: existing.proofStage };
+  const withItems: Order = { ...incoming, items, ...(gifts ? { gifts } : {}), balanceNotified: existing.balanceNotified, balancePending: existing.balancePending, proofStage: existing.proofStage, overpayActions: existing.overpayActions };
   // 🧭 ช่องอื่นที่ไม่ได้แก้ → ของฐาน (items จัดการไปแล้วด้านบน จึงบอกว่า "แก้" เพื่อไม่ให้ทับซ้ำ)
   const { order: merged, restored } = applyChangedKeys(existing, withItems, changed ? new Set([...changed, "items"]) : null);
   // 💰 เงินเข้า/สลิปที่เกิดหลังจากหน้าจอนี้เห็นล่าสุด = หน้าจอยังไม่รู้ → คงของในฐาน (ดู keepServerMoney)

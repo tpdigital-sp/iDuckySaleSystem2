@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import type { Order } from "@/lib/admin-data";
+import { withLog, type Order } from "@/lib/admin-data";
 import { findPayment, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { applySlipVerification } from "@/lib/server/slip-apply";
-import { acquireSlipLock, assertSlipNotDuplicate, SlipDuplicateError, slipHashOf, type SlipOwner } from "@/lib/server/slip-dedupe";
+import {
+  acquireSlipLock,
+  assertSlipNotDuplicate,
+  describeSlipOwner,
+  SlipDuplicateError,
+  slipHashOf,
+  type SlipOwner,
+} from "@/lib/server/slip-dedupe";
+import { updateOrder } from "@/lib/server/order-write";
+import { pushShopAlert } from "@/lib/server/line-alert";
+import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
@@ -126,7 +136,7 @@ async function handle(req: Request) {
   try {
     await assertSlipNotDuplicate(sb, { hash }, self);
   } catch (e) {
-    if (e instanceof SlipDuplicateError) return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
+    if (e instanceof SlipDuplicateError) return duplicateResponse(sb, order, e, "ไฟล์เดียวกัน");
     throw e;
   }
 
@@ -158,7 +168,47 @@ async function handle(req: Request) {
     return NextResponse.json({ ok: true, verified: r.confirmed, partial: r.partial, phase, paymentId: r.paymentId });
   } catch (e) {
     // เลขอ้างอิงธุรกรรมซ้ำกับออเดอร์อื่น/ใบอื่น — ไฟล์ถูกลบไปแล้วใน applySlipVerification
-    if (e instanceof SlipDuplicateError) return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
+    if (e instanceof SlipDuplicateError) return duplicateResponse(sb, order, e, "เลขอ้างอิงธุรกรรมเดียวกัน");
     return NextResponse.json({ error: e instanceof Error ? e.message : "บันทึกสลิปไม่สำเร็จ" }, { status: 500 });
   }
+}
+
+const DUP_ACTION = "🚫 ลูกค้าแนบสลิปซ้ำ — ระบบไม่รับ";
+
+/**
+ * 🚫 สลิปซ้ำ → ตอบลูกค้า 409 เหมือนเดิม + บอกแอดมินว่าซ้ำกับออเดอร์ไหน
+ *
+ * เดิมตีตกเงียบ ๆ ฝั่งลูกค้าอย่างเดียว ไม่มีอะไรเก็บไว้ในออเดอร์ แอดมินไม่รู้เลยว่าลูกค้าพยายามแนบ
+ * (เคสที่เจอบ่อย: ลูกค้ามี 2 ออเดอร์ โอนรวมครั้งเดียว แล้วแนบสลิปเดียวกันทั้งสองใบ)
+ *   - ลงบันทึกในออเดอร์ที่แนบ → เห็นในประวัติหน้าออเดอร์ว่าซ้ำกับ OD-ไหน
+ *   - ส่งการ์ดเข้ากลุ่มแอดมิน (ห้องเรื่องเงิน) — กดซ้ำภายใน 30 นาทีไม่ส่งซ้ำ ประหยัดโควตา
+ * แอดมินเปิดสลิปของออเดอร์ต้นทางเทียบยอด ถ้าโอนรวมจริงแนบให้เองได้ที่หน้าออเดอร์ (ยืนยันแนบทั้งที่ซ้ำ)
+ */
+async function duplicateResponse(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, order: Order, e: SlipDuplicateError, how: string) {
+  const where = e.owners.map((o) => describeSlipOwner(o, e.self)).join(", ");
+  const recent = (order.log ?? []).some((l) => l.action === DUP_ACTION && Date.now() - Date.parse(l.at) < 30 * 60_000);
+  const report = async () => {
+    await updateOrder(sb, withLog(order, "ลูกค้า", DUP_ACTION, `ซ้ำกับ${where} (${how}) — ถ้าลูกค้าโอนรวมหลายออเดอร์: เปิดใบต้นทาง กด “↪ ใช้กับออเดอร์อื่น” ในกล่อง 💸 เงินโอนเกิน แล้วเลือกใบนี้`));
+    if (recent) return;
+    await pushShopAlert(
+      {
+        tone: "#DC2626",
+        title: "🚫 ลูกค้าแนบสลิปซ้ำ",
+        headline: "ระบบไม่รับสลิปนี้ — เช็คว่าลูกค้าโอนรวมหลายออเดอร์หรือส่งผิดใบ",
+        note: "โอนรวมจริง → เปิดใบต้นทาง กด “↪ ใช้กับออเดอร์อื่น” ในกล่อง 💸 เงินโอนเกิน",
+        heroLabel: "ออเดอร์ที่แนบ",
+        hero: order.id,
+        rows: [
+          { label: "ลูกค้า", value: `${order.customer} · ${order.phone}` },
+          { label: "ซ้ำกับ", value: where, bold: true, color: "#B91C1C" },
+          { label: "ตรวจจาก", value: how },
+        ],
+        button: { label: "เปิดออเดอร์", uri: `https://iduckystore.com/admin/orders/${encodeURIComponent(order.id)}` },
+        alt: `🚫 สลิปซ้ำ ${order.id} ซ้ำกับ ${where} · ${order.customer}`,
+      },
+      { money: true }
+    );
+  };
+  inBackground("slipDuplicateReport", report());
+  return NextResponse.json({ error: e.message, duplicate: true, owners: e.owners }, { status: 409 });
 }

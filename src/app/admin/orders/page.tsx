@@ -39,7 +39,7 @@ import {
   queueStageOf,
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin } from "@/lib/order-repo";
-import { paymentEntries } from "@/lib/payments";
+import { overpayOutstanding, paymentEntries } from "@/lib/payments";
 import { orderQtyText } from "@/lib/item-yield";
 import { parseThaiDate } from "@/lib/admin-dash";
 import { usePolling } from "@/lib/use-polling";
@@ -231,6 +231,7 @@ export default function AdminOrdersPage() {
   const [dept, setDept] = useState("all");
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [q, setQ] = useState("");
+  const [onlyOverpay, setOnlyOverpay] = useState(false); // 💸 เห็นเฉพาะใบที่มีเงินโอนเกินยังไม่ได้คืน/ย้าย (ทุกวันที่)
   const [onlyStock, setOnlyStock] = useState(false); // 🛒 เห็นเฉพาะใบที่ยังรอของเข้า (Order.needsPurchase ยังไม่กด "ของเข้าแล้ว")
   const [onlyDue, setOnlyDue] = useState(false); // เห็นเฉพาะออเดอร์ที่ยังเก็บเงินไม่ครบ (มัดจำ + ส่วนต่างที่ตีราคาเพิ่ม)
   const [dep, setDep] = useState<DepKey>("all"); // ขั้นของออเดอร์มัดจำ 50% — "โอนมัดจำแล้ว" คือใบที่เริ่มงานได้แต่ยังค้างครึ่งหลัง
@@ -256,7 +257,7 @@ export default function AdminOrdersPage() {
   /** หน้าที่ดูอยู่ (เริ่ม 0) — ลิสต์ยาวมากทำให้เลื่อนหาใบไม่เจอ จึงแบ่งทีละ PAGE_SIZE ใบ */
   const [page, setPage] = useState(0);
   // เปลี่ยนตัวกรองอะไรก็ตาม = กลับหน้าแรก ไม่งั้นค้างอยู่หน้า 3 ที่ชุดใหม่ไม่มี
-  useEffect(() => setPage(0), [dept, filter, q, onlyDue, onlyStock, dep, by, cust, dateKey, from, to]);
+  useEffect(() => setPage(0), [dept, filter, q, onlyDue, onlyStock, onlyOverpay, dep, by, cust, dateKey, from, to]);
 
   const can = useCan();
   const seesAll = can("orders.viewAll"); // ฝ่ายแพ็คเห็นเฉพาะคิวของตัวเอง
@@ -462,21 +463,25 @@ export default function AdminOrdersPage() {
     return { n: open.length, paid: open.filter((o) => o.status !== "รอชำระเงิน" && o.status !== "รอตรวจสอบ").length };
   }, [dated]);
 
+  // 💸 ใบที่ลูกค้าโอนเกินแล้วยังไม่ได้คืน/ย้ายไปใบอื่น — นับข้ามช่วงวันที่ (เงินค้างคืนต้องไม่หายเพราะใบเก่า)
+  const overpayCount = useMemo(() => orders.filter((o) => overpayOutstanding(o) > 0).length, [orders]);
+
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
   // กดชิปมัดจำ = ดูข้ามช่วงวันที่ (ให้จำนวนแถวตรงกับตัวเลขบนชิป) · ไม่ได้กด = ตามช่วงวันที่ตามปกติ
   // กดชิป "รอตรวจสอบ" ก็ข้ามวันที่ — สลิปที่รอคนตรวจต้องไม่หายเพราะใบเก่ากว่าช่วงที่เลือก (ดู counts)
-  const allDates = dep !== "all" || filter === "รอตรวจสอบ";
+  const allDates = dep !== "all" || filter === "รอตรวจสอบ" || onlyOverpay;
   const depBase = allDates ? orders : dated;
   const shown = depBase
     .filter(byMatch)
     .filter((o) => (onlyStock ? orderAwaitingStock(o) && o.status !== "ยกเลิก" : true))
+    .filter((o) => (onlyOverpay ? overpayOutstanding(o) > 0 : true))
     .filter((o) => (dep === "all" ? true : depStageOf(o) === dep))
     .filter((o) => (cust === "all" ? true : cust === "dealer" ? !!o.dealer : !o.dealer))
     .filter((o) => (onlyDue ? isDue(o) : true))
     // 💳 ใบที่เด้งกลับ "รอชำระเงิน" เพราะยอดโตระหว่างงานเดิน (reopenedFrom) ยังโผล่ในแท็บของแผนกเดิมด้วย — งานไม่หลุดจากสายตาฝ่ายผลิต/แพ็ค
     .filter((o) =>
-      onlyDue || onlyStock || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status) || activeDept.statuses.includes(queueStageOf(o))
+      onlyDue || onlyStock || onlyOverpay || dep !== "all" ? o.status !== "ยกเลิก" : activeDept.statuses.includes(o.status) || activeDept.statuses.includes(queueStageOf(o))
     )
     .filter((o) => (filter === "all" ? true : o.status === filter))
     .filter((o) => {
@@ -687,6 +692,19 @@ export default function AdminOrdersPage() {
               >
                 <i />
                 ค้างเก็บเงิน <b>{stats.dueCount}</b>
+              </button>
+            )}
+            {seesMoney && (overpayCount > 0 || onlyOverpay) && (
+              <button
+                type="button"
+                onClick={() => setOnlyOverpay((v) => !v)}
+                aria-pressed={onlyOverpay}
+                className="dkb-fchip"
+                style={onlyOverpay ? undefined : { background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
+                title="ลูกค้าโอนเกินแล้วยังไม่ได้บันทึกว่าคืนเงิน หรือย้ายไปใช้กับออเดอร์อื่น — ทุกวันที่ · จัดการที่กล่อง 💸 ในหน้าออเดอร์"
+              >
+                <i />
+                💸 ค้างคืนเงิน <b>{overpayCount}</b>
               </button>
             )}
             {(stockWait.n > 0 || onlyStock) && (
@@ -907,6 +925,7 @@ export default function AdminOrdersPage() {
             {dep === "all" && filter === "รอตรวจสอบ" && dateOn ? " · รอตรวจสอบ (ทุกวัน)" : ""}
             {cust !== "all" ? ` · ${CUST_LABEL[cust]}` : ""}
             {onlyStock ? " · 🛒 รอของเข้า" : ""}
+            {onlyOverpay ? " · 💸 ค้างคืนเงิน (ทุกวัน)" : ""}
           </span>
         </div>
 
@@ -1144,6 +1163,31 @@ function OrderRow({
               <i />
               {pendingSlip.state === "fail" ? "SlipOK ไม่ผ่าน" : "SlipOK ไม่ได้ตรวจ"}
               {pendingSlip.phase === "balance" ? " · งวดหลัง" : pendingSlip.phase === "extra" ? " · ใบเพิ่ม" : ""}
+            </span>
+          )}
+          {/* ⚠️ สลิปที่ระบบเตือนว่าอาจซ้ำกับออเดอร์อื่น (ยอด+วันเวลาโอนตรง) และยังไม่มีใครรับยอด — ไม่ตีตกเอง ให้คนเปิดเทียบ */}
+          {seesMoney &&
+            (() => {
+              const hit = paymentEntries(o).find((e) => e.verify?.lookalike?.length && e.state !== "pass" && e.state !== "accepted");
+              return hit ? (
+                <span
+                  className="dkb-tag"
+                  style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+                  title={`สลิป${hit.label} อาจซ้ำกับ ${hit.verify!.lookalike!.map((l) => l.orderId).join(", ")} — เปิดใบเทียบรูปก่อนรับยอด`}
+                >
+                  <i />
+                  ⚠️ สลิปอาจซ้ำ {hit.verify!.lookalike![0].orderId}
+                </span>
+              ) : null;
+            })()}
+          {seesMoney && overpayOutstanding(o) > 0 && (
+            <span
+              className="dkb-tag"
+              style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
+              title="ลูกค้าโอนเกิน — เปิดใบแล้วบันทึกที่กล่อง 💸 ว่าคืนเงินแล้ว หรือย้ายไปใช้กับออเดอร์อื่น"
+            >
+              <i />
+              💸 โอนเกิน {formatPrice(overpayOutstanding(o))}
             </span>
           )}
           {/* 🛒 รอของเข้า — แถบเต็มบรรทัดชุดเดียวกับคิวกราฟฟิก/คิวปริ้น */}

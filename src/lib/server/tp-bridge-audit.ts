@@ -117,6 +117,9 @@ export function expectedBridgeRecords(o: Order): TPBridgeRecord[] {
   for (const p of o.payments ?? []) {
     const credited = p.credited ?? 0;
     if (credited <= 0) continue;
+    // 💸 เงินโอนเกินที่ย้ายมาจากใบอื่น (fromOrder) — เขียนเรคอร์ดไว้แล้วตอนย้าย (บางใบเป็นเรคอร์ดหลัก ไม่ใช่ -<paymentId>)
+    // ห้ามเติมซ้ำที่นี่ · ยังนับใน extraPaid ด้านบนตั้งใจ — ใบที่ได้เงินจากการย้ายล้วน ๆ ต้องไม่ถูกเติมใบหลักซ้ำ
+    if (p.fromOrder) continue;
     out.push({
       docId: `${o.id}-${p.id}`,
       orderId: o.id,

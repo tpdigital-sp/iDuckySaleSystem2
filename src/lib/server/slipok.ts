@@ -1,5 +1,6 @@
 import "server-only";
 import { parseSlipTransAt } from "@/lib/slip-time";
+import type { SlipLookalike, SlipOcr } from "@/lib/admin-data";
 
 /**
  * ตรวจสลิปโอนเงินอัตโนมัติผ่าน SlipOK (slipok.com)
@@ -51,6 +52,12 @@ export interface SlipVerifyResult {
    * เคสต้นเรื่อง OD-260922-2240 (22 ก.ย. 69) ดู matchSlipReceiver
    */
   wrongReceiver?: boolean;
+  /** 🤖 ผลอ่านรูปด้วย AI + คำเตือน (เติมใน slip-apply — SlipOK ไม่ได้ส่งมา) */
+  ocr?: SlipOcr;
+  refFrom?: "ocr";
+  lookalike?: SlipLookalike[];
+  docMismatch?: string;
+  ocrReceiverMismatch?: boolean;
 }
 
 /** บัญชีรับเงินของร้าน (ตั้งใน /admin/payment · แถว __shop_payment__) ที่สลิปต้องโอนเข้า */
