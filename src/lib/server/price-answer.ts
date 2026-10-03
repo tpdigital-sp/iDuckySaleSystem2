@@ -7,7 +7,6 @@ import {
   mixFeePerUnit,
   mixTierFor,
   needsQuote,
-  productPath,
   RATE_LABEL,
   tierIndex,
   unitPriceFor,
@@ -129,13 +128,16 @@ function absImage(src: unknown): string | undefined {
 }
 
 /**
- * 🔗 ลิงก์สินค้าสำหรับบอท — slug ภาษาไทยกลายเป็น %E0%B8… ยาว 5 บรรทัดในไลน์ (เจ้าของร้านเห็น 23 ก.ย. 69)
- * หน้าสินค้าเปิดด้วย id ได้อยู่แล้ว → slug ที่ไม่ใช่ ASCII ใช้ id แทน (สั้น อ่านออก) · slug อังกฤษใช้ตามเดิม
+ * 🔗 ลิงก์สินค้าสำหรับบอท — ต้องตรงกับลิงก์หน้าร้านที่ตั้งในหลังบ้าน (productPath/slug)
+ * เดิม (23 ก.ย. 69) slug ไทยถูกเข้ารหัสเป็น %E0%B8… ยาว 5 บรรทัดในไลน์ เลยหนีไปใช้ id
+ * → ลิงก์บอทกลายเป็น /products/keyring-copy-copy ไม่ตรงกับที่ตั้งไว้ (3 ต.ค. 69)
+ * ตอนนี้: ใช้ slug เสมอ แต่คงตัวอักษรไทยไว้ตามจริง (เบราว์เซอร์/ไลน์เปิดได้ เหมือนลิงก์ Shopee)
+ * เข้ารหัสเฉพาะตัวที่ทำลิงก์ขาด (เว้นวรรค ? # % ฯลฯ)
  */
 function botUrl(p: { id: string; slug?: string }): string {
-  const slug = (p.slug ?? "").trim();
-  if (slug && /^[\x20-\x7e]+$/.test(slug)) return `${SITE_URL}${productPath(p)}`;
-  return `${SITE_URL}/products/${encodeURIComponent(p.id)}`;
+  const seg = (p.slug ?? "").trim() || p.id;
+  const path = encodeURIComponent(seg).replace(/(?:%E0%B8%[89AB][0-9A-F]|%E0%B9%[89AB][0-9A-F])+/g, (m) => decodeURIComponent(m));
+  return `${SITE_URL}/products/${path}`;
 }
 
 function refOf(it: Lite): ProductRef {
