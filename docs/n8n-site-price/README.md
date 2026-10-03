@@ -125,3 +125,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - หลักฐาน: execution 840881/840894 = LINE event เดียวกัน (webhookEventId 01M3VB2Q… `deliveryContext.isRedelivery: true` ทั้งคู่) ถูกส่งซ้ำห่างกัน 1 นาที · ทั้งสองรอบ Debounce Buffer ข้าม (debounceError "auth: 400" = สมัคร Firebase anonymous ทุกข้อความโดนโควตา) → Reply Gate ไม่ทำงาน → รอบแรก reply รอบสองใช้ Push (Fallback) → ลูกค้าเห็น 2 ชุด
 - แก้ **Parse LINE Event**: จำ webhookEventId ใน `$getWorkflowStaticData('global').seenEvents` 2 ชม. เห็นแล้ว = ทิ้ง (กันซ้ำโดยไม่พึ่ง Firebase)
 - แก้ **Debounce Buffer**: แคช idToken ใน static data 50 นาที (fbIdToken/fbIdTokenAt) · สมัครไม่ได้ให้ใช้ token เก่าที่อายุ < 55 นาทีก่อนจะข้าม debounce
+
+## 3 ต.ค. 69 — บอทตอบลูกค้านอกรายชื่ออนุญาต (fail-open) → ปิดประตูไว้ก่อน
+- วันนี้บอทตอบลูกค้านอก whitelist 5 คน (09:48–12:36) · 14 วันก่อนหน้า 0 · ทุกครั้งตรงกับ **Read Whitelist (HTTP · googleApi service account) timeout** ("The connection timed out") ~5% ของรัน (4/85 ช่วง 12:15–12:40) และรอ timeout นานจนบอทตอบช้า ~3 นาที
+- ต้นตอ: Parse LINE Event เริ่มที่ `whitelistEnabled = false` แล้วค่อยอ่านจาก Firestore → อ่านไม่ได้ = "ไม่ได้เปิดโหมดรายชื่อ" = ตอบทุกคน
+- แก้ (ร่าง 3 ต.ค.): Parse LINE Event อ่านสำเร็จ = จำ `lastWhitelist` ใน static data · อ่านไม่ได้ = ใช้ตัวที่จำไว้ · ไม่มีเลย = whitelistEnabled true + รายชื่อว่าง (เงียบกับทุกคน) · Read Whitelist `options.timeout` 6000 ms + retryOnFail 2 ครั้ง ห่าง 1 วิ · ทดสอบ logic 3 กรณีผ่าน
