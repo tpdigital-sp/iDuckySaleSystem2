@@ -54,6 +54,10 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/ratings", label: "ความพึงพอใจ", emoji: "💬", perm: "orders.viewAll", group: "ลูกค้า" },
   // 🤖 Chatbot — ย้ายหน้าแชท AI จาก AdminBuddy (chat.html พอร์ต 8765) เข้าหลังบ้าน 3 ต.ค. 69
   { href: "/admin/chatbot", label: "ผู้ช่วยตอบแชท (AI)", emoji: "🤖", perm: "orders.edit", group: "Chatbot" },
+  // 📚💰🔗 ย้ายจาก AdminBuddy knowledge/pricing/pricelinks.html 3 ต.ค. 69 — ข้อมูลที่บอทใช้ตอบ (Firestore ordersure)
+  { href: "/admin/chatbot/knowledge", label: "คลังความรู้บอท", emoji: "📚", perm: "orders.edit", group: "Chatbot" },
+  { href: "/admin/chatbot/pricing", label: "ตารางราคาบอท", emoji: "💰", perm: "orders.edit", group: "Chatbot" },
+  { href: "/admin/chatbot/price-links", label: "ลิงก์ราคา & รูป (บอท)", emoji: "🔗", perm: "orders.edit", group: "Chatbot" },
   // ย้ายมาจากหน้า AdminBuddy (พอร์ต 8765) 15 ก.ย. 69 — คลังแชท LINE + สวิตช์บอทรายคน · ย้ายจากหมวดลูกค้ามาหมวด Chatbot 3 ต.ค. 69 (URL เดิม)
   { href: "/admin/line-customers", label: "ลูกค้า LINE", emoji: "💬", perm: "orders.edit", group: "Chatbot" },
   // ⚙️ ร้าน & ระบบ

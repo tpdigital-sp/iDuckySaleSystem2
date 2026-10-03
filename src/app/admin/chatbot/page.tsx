@@ -5,6 +5,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { PageHead, PageShell, Tag } from "@/components/admin/ui";
 import { useActor } from "@/lib/perm-context";
 import { renderChatText } from "@/lib/shop-chat";
+import { ChatbotTabs } from "./bot-ui";
 
 /**
  * 🤖 ผู้ช่วยตอบแชท (AI) — ย้ายมาจาก AdminBuddy chat.html (localhost:8765) 3 ต.ค. 69
@@ -306,10 +307,11 @@ function Chatbot() {
   return (
     <PageShell>
       <PageHead group="🤖 Chatbot" title="ผู้ช่วยตอบแชท" sub="วางคำถามลูกค้า → ได้คำตอบจากราคาจริงบนเว็บ + คลังความรู้ร้าน → คัดลอกไปตอบใน LINE" />
+      <ChatbotTabs />
 
       <div className="relative mt-4 grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
         {/* ── ประวัติ (เดสก์ท็อป) ── */}
-        <aside className="hidden rounded-2xl border bg-white p-3 lg:block" style={{ borderColor: "var(--dk-hair)", height: "calc(100dvh - 190px)", minHeight: 480 }}>
+        <aside className="hidden rounded-2xl border bg-white p-3 lg:block" style={{ borderColor: "var(--dk-hair)", height: "calc(100dvh - 240px)", minHeight: 480 }}>
           {history}
         </aside>
 
@@ -324,7 +326,7 @@ function Chatbot() {
         {/* ── ห้องแชท ── */}
         <section
           className="flex flex-col overflow-hidden rounded-2xl border bg-white"
-          style={{ borderColor: "var(--dk-hair)", height: "calc(100dvh - 190px)", minHeight: 480 }}
+          style={{ borderColor: "var(--dk-hair)", height: "calc(100dvh - 240px)", minHeight: 480 }}
         >
           {/* หัวห้อง: เรื่องที่คุยอยู่ + ปุ่มรอง */}
           <div className="flex items-center gap-2 border-b px-3 py-2 sm:px-4" style={{ borderColor: "var(--dk-hair)" }}>
