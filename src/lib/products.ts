@@ -5485,7 +5485,13 @@ export function rateSpecOf(p: Product | undefined, selections: Record<string, st
   if (!p || !label) return "";
   const rates = p.priceRates ?? [];
   const pub = publicRateLabelOf(label);
-  const rate = rates.find((r) => !r.dealerOnly && r.label === pub) ?? rates.find((r) => r.label === label);
+  const own = rates.find((r) => r.label === label);
+  // เรทตัวแทนใช้ desc ของเรท public แฝด: ชื่อ (ตัด "(ตัวแทน)") → id "<เรทปกติ>-dealer" → สินค้าเรท public ตัวเดียว
+  // สินค้าเรทเดียว ~199 ตัว ตั้งเรทตัวแทนชื่อ "เรทตัวแทนจำหน่าย" จับด้วยชื่อไม่ได้ — ตัวแทนเคยไม่ได้บรรทัดสเปคเลย (สแกน 3 ต.ค. 69)
+  const pubs = rates.filter((r) => !r.dealerOnly);
+  const rate =
+    pubs.find((r) => r.label === pub) ??
+    (own?.dealerOnly ? (pubs.find((r) => own.id && r.id === own.id.replace(/-dealer$/, "")) ?? (pubs.length === 1 ? pubs[0] : undefined)) : own);
   return (rate?.desc ?? "")
     .split(/\s+[·—]\s+/)
     // ล้างคำขายในท่อนก่อนตัดสิน — "ฟรี! ไดคัทมุมมน + เคลือบ…" (โฟโต้การ์ด) ต้องเหลือ "ไดคัทมุมมน + เคลือบ…" ไม่ใช่หายทั้งท่อน
