@@ -16,7 +16,7 @@ import { useParams, useRouter } from "next/navigation";
 import CameraScanner from "@/components/admin/CameraScanner";
 import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
 import { extractOrderId, trackingScanProblem } from "@/lib/scan-code";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productPath, rateSpecOf, type Product } from "@/lib/products";
 import { imgVersion, versionedSrc } from "@/lib/img";
 import { specialImageProductId, type SpecialProduct } from "@/lib/special-product-image";
 import ProductVisual from "@/components/ProductVisual";
@@ -5640,7 +5640,7 @@ export default function AdminOrderDetailPage() {
                       ) : (
                         <div className={`mt-0.5 text-[11px] leading-snug text-slate-500 ${open ? "" : "line-clamp-2"}`}>
                           {/* 🎨 จอกราฟฟิก — ซ่อนเรทราคา + งานสแตนดี้ยุบบรรทัด (production) · หน้าลูกค้ายังบรรทัดละหัวข้อ */}
-                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} production />
+                          <SelDetails sel={it.sel} text={it.selections} workSize={productOfItem(it.productId)?.workSize} rateSpec={rateSpecOf(productOfItem(it.productId), it.sel)} production />
                           {mayEdit && (
                             <button
                               type="button"

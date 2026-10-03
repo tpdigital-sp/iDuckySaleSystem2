@@ -7,7 +7,7 @@
  * รายการแบบเดียวกันเป๊ะ (พนักงานสลับสองหน้านี้ทั้งวัน — 15 ก.ย. 69 ขอให้การ์ดรายการในใบเสนอราคา
  * "เหมือนหน้าคำสั่งซื้อ") จึงย้ายมาไว้ตรงกลาง ใช้ร่วมกันทั้งสองหน้า อย่าก๊อปโค้ดไปวางซ้ำ
  */
-import { HIDE_GENERIC_RATE, foldSizeExtra, specEntries, specLabel, specValueLines, tidySpec, withWorkSize } from "@/components/SpecLines";
+import { HIDE_GENERIC_RATE, RATE_SPEC_LINE, RateSpecValue, foldSizeExtra, specEntries, specLabel, specValueLines, tidySpec, withRateSpec, withWorkSize } from "@/components/SpecLines";
 
 /**
  * ข้อความรายละเอียดของรายการ — URL ยาวเหยียด (ลิงก์ไฟล์ต้นฉบับ) ทำให้อ่านไม่รู้เรื่อง
@@ -65,12 +65,15 @@ export function SelDetails({
   sel,
   text,
   workSize,
+  rateSpec,
   production = false,
 }: {
   sel?: Record<string, string>;
   text?: string;
   /** 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — สินค้าที่ไม่มีกลุ่มขนาดให้เลือก */
   workSize?: string;
+  /** 🏷 สเปคงานของเรทที่เลือก (rateSpecOf) — ต่อใต้บรรทัดเรทราคา ("แบบที่ 1" = ไดคัทตามทรง ฯลฯ) */
+  rateSpec?: string;
   /**
    * 🎨 จอฝ่ายผลิต (หน้าออเดอร์แอดมิน) — ซ่อนเรทราคา (SEL_HIDE_PRODUCTION) + งานสแตนดี้ยุบเป็นแพทเทิร์นสั้น (compact)
    * ใบเสนอราคาไม่ส่ง = บรรทัดละหัวข้อครบเหมือนหน้าลูกค้า
@@ -79,9 +82,12 @@ export function SelDetails({
 }) {
   // ออเดอร์เก่าไม่มีตัวเลือกแบบหัวข้อ/ค่า — กางจากข้อความรวมให้เป็นบรรทัดละหัวข้อเหมือนกัน
   // บวก "เพิ่มขนาด" เข้าบรรทัดขนาดให้เหมือนหน้าร้าน/ใบงาน — ทีมผลิตอ่านขนาดจริงได้เลย
-  const entries = withWorkSize(
-    foldSizeExtra(tidySpec(specEntries(sel, text, production ? SEL_HIDE_PRODUCTION : SEL_HIDE), { compact: production })),
-    workSize,
+  const entries = withRateSpec(
+    withWorkSize(
+      foldSizeExtra(tidySpec(specEntries(sel, text, production ? SEL_HIDE_PRODUCTION : SEL_HIDE), { compact: production })),
+      workSize,
+    ),
+    rateSpec,
   );
   if (!entries.length) {
     return <span className="text-slate-300">— ยังไม่มีรายละเอียด —</span>;
@@ -91,6 +97,13 @@ export function SelDetails({
       {entries.map(([k, v], i) => {
         const lines = selLines(v);
         const label = k ? <span className="font-semibold text-slate-700">{specLabel(k)}:</span> : null;
+        if (k === RATE_SPEC_LINE) {
+          return (
+            <p key={`${k}-${i}`}>
+              {label} <RateSpecValue spec={v} />
+            </p>
+          );
+        }
         if (k === SEL_SPEC) {
           return (
             <details key={k} className="group">

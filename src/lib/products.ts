@@ -5473,6 +5473,26 @@ export function productLineOrder(p: Product): string[] {
   return [...labels.slice(0, last + 1), RATE_LABEL, ...labels.slice(last + 1)];
 }
 
+/**
+ * 🏷 สเปคงานของเรทที่เลือก (จาก PriceRate.desc) สำหรับจอฝ่ายผลิต — ชื่อเรทหลายสินค้าไม่บอกวิธีทำ
+ * ("สแตนดี้ตั้งโทรศัพท์ แบบที่ 1" = ไดคัทตามทรง · "แบบที่ 2" = ไดคัทสี่เหลี่ยมตาม Template) ข้อมูลอยู่ใน desc อย่างเดียว
+ * desc ไม่ถูกบันทึกลงออเดอร์ → กราฟฟิกไม่รู้ว่าต้องทำแบบไหน (พนักงานแจ้ง 3 ต.ค. 69 · OD-261001-6636)
+ * อ่านจากสินค้าตอนแสดง (ออเดอร์เก่าได้ด้วย) · ตัดท่อนที่เป็นเรื่องราคา/ขั้นต่ำ/คำโฆษณาออก เหลือแต่สเปคงาน
+ * เรทตัวแทนใช้ desc ของเรท public แฝด (desc ตัวแทนเป็น "ราคาตัวแทนจำหน่าย")
+ */
+export function rateSpecOf(p: Product | undefined, selections: Record<string, string> | undefined): string {
+  const label = selections?.[RATE_LABEL];
+  if (!p || !label) return "";
+  const rates = p.priceRates ?? [];
+  const pub = publicRateLabelOf(label);
+  const rate = rates.find((r) => !r.dealerOnly && r.label === pub) ?? rates.find((r) => r.label === label);
+  return (rate?.desc ?? "")
+    .split(/\s+[·—]\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x && !/฿|บาท|\d\s*\.-|\+\s*\d|ราคา|ขั้นต่ำ|คละ|ฟรี|ขึ้นไป|เหมาะ|ตาราง|คิด|บวก|ถูก|อิสระ|เริ่มสั่ง|\d\s*-\s*\d+\s*(ชิ้น|อัน|พวง|ใบ)/.test(x))
+    .join(" · ");
+}
+
 export function rateLineForCustomer(p: Product, selections: Record<string, string>): boolean {
   const label = selections[RATE_LABEL];
   if (!label || publicRates(p).length < 2) return false;

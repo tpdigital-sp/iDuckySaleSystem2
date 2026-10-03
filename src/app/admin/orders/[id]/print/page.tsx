@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
-import { artQtyOf, formatPrice } from "@/lib/products";
+import { artQtyOf, formatPrice, rateSpecOf } from "@/lib/products";
 import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -952,6 +952,7 @@ function OrderDocs({
                             compact
                             stripLinks
                             workSize={products[it.productId]?.workSize}
+                            rateSpec={rateSpecOf(products[it.productId], it.sel)}
                             labelClassName="text-slate-900"
                             className="mt-0.5 text-xs leading-relaxed text-slate-600"
                           />

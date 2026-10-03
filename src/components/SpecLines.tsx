@@ -442,6 +442,59 @@ export function tidySpec(entries: [string, string][], opts?: { compact?: boolean
  * มีบรรทัดขนาดจากตัวเลือกอยู่แล้ว (ขนาดตัด / ขนาดไดคัท / ขนาดแต่ละลาย) = ของจริงชนะ ไม่เติมซ้ำ
  * วางไว้บรรทัดแรก — ขนาดเป็นสเปคที่ทีมผลิตมองหาก่อนเสมอ
  */
+/**
+ * 🏷 บรรทัด "สเปคเรท" (rateSpecOf ใน lib/products) — ต่อใต้บรรทัดเรทราคา · เรทถูกซ่อน (ชื่อทั่วไป) = ขึ้นบรรทัดแรก
+ * จอฝ่ายผลิตเท่านั้น (หน้าออเดอร์หลังบ้าน/ใบงาน) — ชื่อเรท "แบบที่ 1" ไม่บอกว่าไดคัทตามทรงหรือวางในเทมเพลต (OD-261001-6636)
+ */
+export const RATE_SPEC_LINE = "สเปคเรท";
+export function withRateSpec(entries: [string, string][], rateSpec?: string): [string, string][] {
+  const spec = (rateSpec ?? "").trim();
+  if (!spec) return entries;
+  const at = entries.findIndex(([k]) => k === RATE_LINE);
+  const line: [string, string] = [RATE_SPEC_LINE, spec];
+  return at < 0 ? [line, ...entries] : [...entries.slice(0, at + 1), line, ...entries.slice(at + 1)];
+}
+
+/**
+ * 🏷 จัดบรรทัดสเปคเรทตามแบบที่พนักงานกำหนด (3 ต.ค. 69):
+ *   สเปคเรท: ขนาด 16x16cm
+ *            · ฐาน 7.5cm · อะคริลิคใส (เท่านั้น)
+ *              ไดคัทตามทรง
+ * บรรทัด 1 = ขนาด · บรรทัด 2 = ที่เหลือ (ขึ้นต้น "· ") · บรรทัด 3 = วิธีตัด (ไดคัท…) แยกออกมาให้เห็นชัด
+ */
+export function rateSpecGroups(spec: string): { size: string; rest: string; cut: string } {
+  const segs = spec
+    .split(/\s+·\s+/)
+    .flatMap((x) => x.split(/\s+(?=ไดคัท)/))
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const isSize = (x: string) => /^(ขนาด|สูง|กว้าง|ตัวหลัง|ตัวหน้า)/.test(x);
+  const isCut = (x: string) => /^ไดคัท/.test(x);
+  return {
+    size: segs.filter(isSize).join(" · "),
+    rest: segs.filter((x) => !isSize(x) && !isCut(x)).join(" · "),
+    cut: segs.filter(isCut).join(" · "),
+  };
+}
+
+/** ค่าของบรรทัดสเปคเรท — บรรทัดต่อ ๆ ไปเยื้องตรงกับค่าบรรทัดแรก (inline-block ข้างหัวข้อ) */
+export function RateSpecValue({ spec }: { spec: string }) {
+  const { size, rest, cut } = rateSpecGroups(spec);
+  const restLead = !!size && !!rest; // "· " นำหน้าเมื่อมีบรรทัดขนาดอยู่ก่อน
+  return (
+    <span className="inline-block align-top">
+      {size && <span className="block">{size}</span>}
+      {rest && <span className="block">{restLead ? `· ${rest}` : rest}</span>}
+      {cut && (
+        <span className="block">
+          {restLead && <span className="invisible">· </span>}
+          {cut}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function withWorkSize(entries: [string, string][], workSize?: string): [string, string][] {
   const size = (workSize ?? "").trim();
   if (!size || entries.some(([k]) => /ขนาด|size/i.test(k))) return entries;
@@ -768,6 +821,7 @@ export function SpecLines({
   workSize,
   compact = false,
   order,
+  rateSpec,
 }: {
   sel?: Record<string, string>;
   text?: string;
@@ -795,16 +849,18 @@ export function SpecLines({
   after?: ReactNode;
   /** 📐 ขนาดงานตายตัวของสินค้า (Product.workSize) — ไม่มีกลุ่มขนาดให้เลือกถึงจะขึ้นบรรทัดให้ */
   workSize?: string;
+  /** 🏷 สเปคงานของเรทที่เลือก (rateSpecOf) — จอฝ่ายผลิตส่งมา ต่อใต้บรรทัดเรทราคา */
+  rateSpec?: string;
 }) {
   const entries = orderByProduct(
-    withWorkSize(
+    withRateSpec(withWorkSize(
       foldSizeExtra(
         tidySpec(specEntries(sel, text, hide), { compact })
           .map(([k, v]) => [k, stripLinks ? stripSpecUrls(v) : v] as [string, string])
           .filter(([, v]) => v),
       ),
       workSize,
-    ),
+    ), rateSpec),
     order,
   );
   if (!entries.length && !after) return null;
@@ -821,6 +877,13 @@ export function SpecLines({
   return (
     <div className={`space-y-0.5 ${className}`}>
       {entries.map(([k, v], i) => {
+        if (k === RATE_SPEC_LINE) {
+          return (
+            <p key={`${k}-${i}`} className="break-words leading-snug">
+              <span className={`font-semibold ${labelClassName}`}>{specLabel(k)}:</span> <RateSpecValue spec={v} />
+            </p>
+          );
+        }
         const parts = specValueLines(v);
         return (
           <p key={`${k}-${i}`} className="break-words leading-snug">
