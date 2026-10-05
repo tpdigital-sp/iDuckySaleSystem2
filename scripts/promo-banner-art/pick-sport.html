@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=IBM+Plex+Sans+Thai+Looped:wght@400;500;600&display=block" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<!-- 🛍 ป้ายสินค้าแนะนำ (1 ใบต่อ 1 สินค้า) — เจ้าของร้านสั่ง 5 ต.ค. 69 · ราคาเป็นตัวหนังสือในรูป เปลี่ยนราคาต้องวาดใหม่ -->
+<style>
+  .orb1{width:430px;height:430px;left:-140px;top:-170px;background:radial-gradient(circle at 38% 38%,#EEF8FF,#DCF0FD 58%,rgba(220,240,253,0))}
+  .orb2{width:470px;height:470px;right:-130px;bottom:-210px;background:radial-gradient(circle at 40% 40%,#FFF8E2,#FFF1CB 58%,rgba(255,255,255,0));opacity:.8}
+  .c1{width:110px;left:410px;top:20px;opacity:.5}
+  .c2{width:86px;right:18px;top:10px;opacity:.5}
+  .left{width:470px;flex:none;gap:13px}
+  .badge.tg{background:linear-gradient(135deg,#5AA8F0,#6C7FE6);color:#fff;box-shadow:0 6px 14px rgba(23,58,107,.16)}
+  h1{font-size:44px}
+  .pr{font-family:var(--display);font-weight:600;font-size:34px;color:var(--blue-deep);line-height:1}
+  .pr small{font-weight:500;font-size:18px;color:var(--navy-soft);margin-right:8px}
+  .main{position:absolute;right:56px;top:40px;width:500px;height:322px;padding:9px;rotate:1.5deg}
+  .main img,.sec img{width:100%;height:100%;object-fit:cover;display:block;border-radius:17px}
+  .main img{object-position:50% 30%} .sec img{object-position:50% 30%}
+  .sec{position:absolute;right:500px;bottom:26px;width:176px;height:176px;padding:7px;rotate:-5deg;border-radius:22px}
+  .sec img{border-radius:16px}
+  .star{position:absolute;width:22px}
+</style>
+<div class="bn">
+  <span class="orb orb1"></span><span class="orb orb2"></span>
+  <img class="cloud c1" src="../../public/landing/cloud.webp">
+  <img class="cloud c2" src="../../public/landing/cloud.webp">
+  <div class="bn-in">
+    <div class="left">
+      <span class="badge tg">✨ ทีม / รุ่น</span>
+      <h1>เสื้อกีฬา SPORT<br>พิมพ์ลายเต็มตัว</h1>
+      <p class="sub">ใส่ชื่อ-เบอร์ได้ทุกตัว ทำเสื้อทีม เสื้อรุ่น</p>
+      <span class="pr"><small>เริ่ม</small>฿180</span>
+      <span class="cta">สั่งเลย<span class="dot">→</span></span>
+    </div>
+  </div>
+  <div class="card main"><img src="https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/spotlight/sport-team-backs-v2.webp"></div>
+  <div class="card sec"><img src="https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/sport/4bd174ce-435a-4f12-bfae-aef6964e031a.jpg"></div>
+  <img class="star" src="../../public/landing/star.webp" style="right:520px;top:40px">
+  <img class="star" src="../../public/landing/star4.webp" style="right:26px;bottom:20px;width:18px">
+</div>
