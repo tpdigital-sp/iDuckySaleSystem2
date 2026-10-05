@@ -9,6 +9,7 @@ import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
 import FlowAccountExtraDocs from "@/components/admin/FlowAccountExtraDocs";
+import { itemHasWork, mergeDocItems } from "@/lib/doc-items-merge";
 import { CLAIM_STATUS_STYLES, type Claim } from "@/lib/claims";
 /** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
 const orderHref = (id: string) => `/admin/orders/${encodeURIComponent(id)}`;
@@ -2470,17 +2471,25 @@ export default function AdminOrderDetailPage() {
     // 📋 ดึงรายการตามเอกสารมาใส่ใบงานด้วย (ค่าส่ง/ส่วนลดตามใบไปพร้อมกัน — ยอดจะได้เท่าบิล FlowAccount)
     const docItems = taxForm.applyDocItems ? (taxForm.docItems ?? []) : [];
     const withItems = docItems.length > 0;
-    if (withItems && order.items.length) {
+    /**
+     * 🧩 ใบงานมีรายการอยู่แล้ว → อัปเดตรายการเดิมตามเอกสาร (เก็บลายลูกค้า/แบบงานกราฟฟิก/ผลอนุมัติไว้) ไม่ใช่สร้างใหม่ทั้งชุด
+     * (OD-261001-8513 · 5 ต.ค. 69: ลูกค้าสั่งเพิ่ม 1 บรรทัด ดึงรายการใหม่แล้วแบบงาน 21 รูปในรายการ 1–4 หายหมด) — ดู doc-items-merge.ts
+     */
+    const merged = mergeDocItems(order.items, docItems);
+    const lostWork = merged.dropped.filter(itemHasWork);
+    if (withItems && merged.dropped.length) {
       const ok = await askConfirm({
         icon: "📋",
-        title: `แทนที่รายการเดิม ${order.items.length} รายการ?`,
-        detail: `ใบงานจะเหลือ ${docItems.length} รายการตาม${taxForm.docTypeLabel ?? "เอกสาร"} ${taxForm.docNo ?? ""} — แบบงาน/ติ๊กของกราฟฟิกในรายการเดิมจะหายไปด้วย`,
-        confirmLabel: "แทนที่ตามเอกสาร",
-        danger: true,
+        title: `เอาออก ${merged.dropped.length} รายการที่ไม่มีใน${taxForm.docTypeLabel ?? "เอกสาร"}?`,
+        detail: `${merged.dropped.map((it) => `${it.name} ×${it.qty}`).join(" · ")}${
+          lostWork.length ? ` — ⚠️ ${lostWork.length} รายการนี้มีลาย/แบบงานของกราฟฟิกอยู่ จะหายไปด้วย` : ""
+        } (รายการที่ตรงกับเอกสาร ${merged.kept} รายการ คงแบบงานไว้)`,
+        confirmLabel: "เอาออกตามเอกสาร",
+        danger: lostWork.length > 0,
       });
       if (!ok) return;
     }
-    const items: OrderItem[] = docItems.map((it) => ({ productId: "special-item", name: it.name, selections: it.selections, qty: it.qty, unitPrice: it.unitPrice }));
+    const items: OrderItem[] = merged.items;
     const shipPatch =
       withItems && taxForm.docShip != null
         ? { shippingCost: taxForm.docShip, ...(isPickupOrder(order) || !taxForm.docShipLabel ? {} : { shippingLabel: taxForm.docShipLabel }) }
@@ -2542,6 +2551,8 @@ export default function AdminOrderDetailPage() {
           actor,
           "ดึงรายการตามเอกสาร FlowAccount",
           `${docItems.length} รายการจาก ${taxForm.docTypeLabel ?? "เอกสาร"} ${taxForm.docNo ?? ""}${
+            order.items.length ? ` (อัปเดตรายการเดิม ${merged.kept} · เพิ่มใหม่ ${merged.added}${merged.dropped.length ? ` · เอาออก ${merged.dropped.length}` : ""} — แบบงานเดิมคงไว้)` : ""
+          }${
             taxForm.docShip != null ? ` · ค่าส่ง ${formatPrice(taxForm.docShip)}` : ""
           }${discountPatch.adminDiscount ? ` · ส่วนลด ${formatPrice(taxForm.docDiscount!)}` : ""}`
         )
@@ -5240,9 +5251,18 @@ export default function AdminOrderDetailPage() {
                           {(taxForm.docDiscount ?? 0) > 0 ? ` · ส่วนลด ${formatPrice(taxForm.docDiscount!)}` : ""}
                           {(taxForm.docVat ?? 0) > 0 ? ` · VAT ${formatPrice(taxForm.docVat!)}` : ""}
                           {(taxForm.docWht ?? 0) > 0 ? ` · หัก ณ ที่จ่าย ${formatPrice(taxForm.docWht!)}` : ""})
-                          {order.items.length > 0 && (
-                            <span className="font-extrabold text-rose-700"> — ทับรายการเดิม {order.items.length} รายการ</span>
-                          )}
+                          {order.items.length > 0 &&
+                            (() => {
+                              // 🧩 จับคู่กับรายการเดิม — ตรงกัน = อัปเดตจำนวน/ราคา เก็บแบบงานไว้ · ไม่มีในเอกสาร = ถูกเอาออก
+                              const m = mergeDocItems(order.items, taxForm.docItems);
+                              return (
+                                <span className={m.dropped.some(itemHasWork) ? "font-extrabold text-rose-700" : "font-bold text-emerald-700"}>
+                                  {" "}
+                                  — อัปเดตรายการเดิม {m.kept} (แบบงานคงไว้){m.added ? ` · เพิ่มใหม่ ${m.added}` : ""}
+                                  {m.dropped.length ? ` · เอาออก ${m.dropped.length}` : ""}
+                                </span>
+                              );
+                            })()}
                         </span>
                       </label>
                       <ul className="mt-1 space-y-0.5 pl-6 text-[11px] text-slate-600">
