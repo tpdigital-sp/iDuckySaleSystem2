@@ -810,6 +810,12 @@ export interface OrderItem {
    */
   addedAt?: string;
   /**
+   * 🧾➕ รายการนี้มาจาก "บิลเพิ่ม" ใบไหน (docNo ใน Order.flowAccountExtras ที่ items > 0) — ยอดของรายการอยู่ในบิลเพิ่ม ไม่ใช่บิลหลัก
+   * ใช้กันตัวเทียบ/ดึงรายการตามบิลหลัก (FlowAccountSync · mergeDocItems · cron flowaccount-check) ไปนับหรือลบรายการนี้
+   * (OD-261005-7691 · 5 ต.ค. 69: ลูกค้าสั่งสติ๊กเกอร์เพิ่ม 2 แผ่นใน QT010828 · แนบบิลเพิ่มแล้วรายการไม่เข้าใบงาน)
+   */
+  extraDoc?: string;
+  /**
    * 🔑 รหัสประจำบรรทัด (สุ่มตอน checkout เฉพาะบรรทัดที่มี Add on) — ให้บรรทัด Add on ชี้กลับมาหาแม่ได้แน่นอน
    * ไม่ขึ้นกับลำดับ/ชื่อ (ย้ายลำดับ · ลบบรรทัด · แก้ชื่อ แล้วยังจับคู่ถูก) · ดู addOnParents
    */
@@ -1301,6 +1307,7 @@ export interface Order {
   /**
    * 🧾➕ "บิลเพิ่ม" — เอกสาร FlowAccount ใบที่ 2, 3 … ที่ร้านออกหลังบิลหลัก (ส่วนต่างเปลี่ยนสเปค/วัสดุ · ค่าใช้จ่ายเพิ่ม)
    * ยอดของใบพวกนี้ "ไม่เข้า" ฐานภาษีของบิลหลัก — เก็บผ่าน charges (ดู chargeId) เพื่อให้ยอดตามบิลหลัก (flowAccountGap) ยังตรง
+   * ยกเว้นใบที่เป็นสินค้าสั่งเพิ่ม (items > 0 · 5 ต.ค. 69) — ใส่เป็นรายการในใบงาน + บวก VAT เข้าออเดอร์ และ flowAccountBillTotal บวกยอดใบนั้นให้
    * ใช้บอกฝ่ายแพ็คว่ากล่องนี้ต้องมีใบกำกับกี่ใบ (taxInvoiceDocsOf) และบอกลูกค้าว่าส่วนต่างโอนตามใบไหน
    * (OD-260921-1879 · 24 ก.ย. 69: แก้วใส → ขาวขุ่น ออก QT010743 ส่วนต่าง 256.80 หลังบิลหลัก QT010703 จ่ายครบแล้ว)
    */
@@ -1700,7 +1707,22 @@ export function orderBankFee(o: Order): number {
  */
 export function flowAccountBillTotal(o: Order): number | null {
   const g = o.flowAccount?.grandTotal;
-  return typeof g === "number" && g > 0 ? Math.round(g * 100) / 100 : null;
+  return typeof g === "number" && g > 0 ? Math.round((g + extraDocItemsBill(o).total) * 100) / 100 : null;
+}
+
+/**
+ * 🧾➕ ยอดของ "บิลเพิ่ม" ที่ใส่เข้าใบงานเป็นรายการสินค้า (FlowAccountExtraDoc.items) — รวมทุกใบ
+ * ยอดพวกนี้อยู่ในรายการ/VAT/หัก ณ ที่จ่ายของออเดอร์แล้ว (ไม่ใช่ charges) → ตัวเทียบกับบิลหลักต้องหักออก/บวกเข้าให้ตรง
+ */
+export function extraDocItemsBill(o: Order): { total: number; vat: number; wht: number; ship: number } {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const xs = (o.flowAccountExtras ?? []).filter((x) => (x.items ?? 0) > 0);
+  return {
+    total: r2(xs.reduce((s, x) => s + (x.grandTotal ?? 0), 0)),
+    vat: r2(xs.reduce((s, x) => s + (x.vat ?? 0), 0)),
+    wht: r2(xs.reduce((s, x) => s + (x.wht ?? 0), 0)),
+    ship: r2(xs.reduce((s, x) => s + (x.ship ?? 0), 0)),
+  };
 }
 
 /**
@@ -1728,7 +1750,9 @@ export function flowAccountBillAmounts(o: Order): number[] {
   const fa = o.flowAccount;
   if (!fa) return [];
   const r2 = (n: number) => Math.round(n * 100) / 100;
-  return [fa.grandTotal, fa.net, fa.deposit?.amount, fa.deposit?.net]
+  const ex = extraDocItemsBill(o);
+  const withExtra = ex.total > 0 && fa.grandTotal ? [fa.grandTotal + ex.total, fa.grandTotal + ex.total - (fa.wht ?? 0) - ex.wht] : [];
+  return [fa.grandTotal, fa.net, fa.deposit?.amount, fa.deposit?.net, ...withExtra]
     .filter((n): n is number => typeof n === "number" && n > 0)
     .map(r2);
 }
@@ -2330,6 +2354,13 @@ export interface FlowAccountExtraDoc {
   lines?: string[];
   /** ค่าบริการเพิ่ม (Order.charges[].id) ที่คู่กับใบนี้ — ไม่มี = แนบไว้อ้างอิงเฉย ๆ ไม่ได้เก็บเงินผ่านใบนี้ */
   chargeId?: string;
+  /**
+   * จำนวนรายการในใบนี้ที่ใส่เข้าใบงานเป็น "รายการสินค้า" (OrderItem.extraDoc = docNo นี้) — มี = ยอดของใบนี้อยู่ในรายการ + VAT/หัก ณ ที่จ่ายของออเดอร์แล้ว
+   * (ไม่ใช่ charges) · ตัวเทียบยอดตามบิลจึงต้องบวกใบนี้เข้า "ยอดตามใบ" ด้วย (ดู flowAccountBillTotal / extraDocItemsBill)
+   */
+  items?: number;
+  /** บรรทัดค่าส่งในใบนี้ที่บวกเข้า Order.shippingCost ตอนใส่เป็นรายการ (บาท) */
+  ship?: number;
   by: string;
   at: string;
 }

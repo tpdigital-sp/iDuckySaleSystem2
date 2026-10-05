@@ -7,6 +7,7 @@ import {
   type FlowAccountExtraDoc,
   type Order,
   type OrderCharge,
+  type OrderItem,
 } from "@/lib/admin-data";
 import { orderNotice, type LineMessage } from "@/lib/server/notify";
 
@@ -50,6 +51,57 @@ export function applyCharge(order: Order, charge: OrderCharge, who: string, opts
     `ยอดรวม ${thb(totalBefore)} → ${thb(total)} บาท${updated.paidTotal != null ? ` · ค้าง ${thb(bal)} บาท` : ""}${charge.note ? ` · ${charge.note}` : ""}${docTxt}${
       reopen ? ` · กลับไปรอชำระเงิน (จำขั้น ${order.status} ไว้ เงินครบกลับเอง)` : ""
     }`
+  );
+  if (updated.paidTotal != null) updated = { ...updated, balanceNotified: { at: now, balance: bal } };
+  if (updated.balancePending) updated = { ...updated, balancePending: undefined };
+  return { order: updated, totalBefore, total, bal, reopen };
+}
+
+/**
+ * 🧾➕ บิลเพิ่มที่เป็น "สินค้าสั่งเพิ่ม" → ใส่บรรทัดในใบเป็นรายการในใบงาน (ไม่ใช่ค่าบริการเพิ่ม)
+ *
+ * ทำไม (OD-261005-7691 · 5 ต.ค. 69): ลูกค้าสั่งสติ๊กเกอร์สะท้อนแสงเพิ่ม 2 แผ่น ร้านออกใบเสนอราคาใบที่ 2 (QT010828)
+ * แนบบิลเพิ่มแล้วระบบเก็บแค่ยอดเงินเป็น charges — รายการไม่เข้าใบงาน กราฟฟิก/ฝ่ายผลิต/บอร์ด WIP ไม่รู้ว่ามีของต้องทำเพิ่ม
+ *
+ * รายการ = special-item ราคาตามใบ (ก่อน VAT) + extraDoc = เลขเอกสาร · addedAt ประทับที่ประตูเขียน → การ์ด WIP งานเพิ่ม
+ * ภาษี: บวก VAT/หัก ณ ที่จ่ายตามใบเข้ายอดของออเดอร์ (ผู้เรียกส่งยอดใหม่ → reconcileOrderTax ไม่คิดทับ)
+ * เด้งกลับรอชำระเงิน/จำยอดที่แจ้ง ใช้กติกาเดียวกับ applyCharge
+ * extra.items ต้องตั้งมาแล้ว (> 0) — flowAccountBillTotal จะบวกยอดใบนี้เข้ายอดตามบิล ป้าย "ไม่ตรงใบ" จึงไม่ขึ้น
+ */
+export function applyExtraDocItems(
+  order: Order,
+  extra: FlowAccountExtraDoc,
+  items: OrderItem[],
+  shipAdd: number,
+  tax: { vat: number; vatRate: number; wht: number; whtRate: number },
+  who: string
+): ChargeApplied {
+  const now = extra.at || new Date().toISOString();
+  const totalBefore = orderTotal(order);
+  const waiting = order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ";
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  let updated: Order = {
+    ...order,
+    items: [...order.items, ...items],
+    ...(shipAdd > 0 ? { shippingCost: r2((order.shippingCost ?? 0) + shipAdd) } : {}),
+    ...(tax.vat > 0 ? { vat: { rate: order.vat?.rate ?? tax.vatRate, amount: r2((order.vat?.amount ?? 0) + tax.vat) } } : {}),
+    ...(tax.wht > 0 ? { wht: { rate: order.wht?.rate ?? tax.whtRate, amount: r2((order.wht?.amount ?? 0) + tax.wht) } } : {}),
+    flowAccountExtras: [...(order.flowAccountExtras ?? []), extra],
+  };
+  if (updated.paidTotal == null && !waiting && !updated.deposit) updated = { ...updated, paidTotal: totalBefore };
+  const total = orderTotal(updated);
+  const bal = updated.paidTotal != null ? orderBalance(updated) : 0;
+  const reopen = !updated.deposit && !updated.claimOf && !waiting && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
+  if (reopen) updated = { ...updated, status: "รอชำระเงิน", reopenedFrom: order.reopenedFrom ?? order.status };
+  updated = withLog(
+    updated,
+    who,
+    `แนบบิลเพิ่ม ${extra.docTypeLabel} ${extra.docNo} — เพิ่ม ${items.length} รายการเข้าใบงาน`,
+    `${items.map((it) => `${it.name} ×${it.qty} @${thb(it.unitPrice)}`).join(" · ")}${shipAdd > 0 ? ` · ค่าส่ง +${thb(shipAdd)}` : ""}${
+      tax.vat > 0 ? ` · VAT +${thb(tax.vat)}` : ""
+    }${tax.wht > 0 ? ` · หัก ณ ที่จ่าย +${thb(tax.wht)}` : ""} · ยอดรวม ${thb(totalBefore)} → ${thb(total)} บาท${updated.paidTotal != null ? ` · ค้าง ${thb(bal)} บาท` : ""}${
+      reopen ? ` · กลับไปรอชำระเงิน (จำขั้น ${order.status} ไว้ เงินครบกลับเอง)` : ""
+    } · ${extra.url}`
   );
   if (updated.paidTotal != null) updated = { ...updated, balanceNotified: { at: now, balance: bal } };
   if (updated.balancePending) updated = { ...updated, balancePending: undefined };

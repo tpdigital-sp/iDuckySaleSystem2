@@ -4,16 +4,17 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { fetchFlowAccountDoc, parseFlowAccountUrl } from "@/lib/server/flowaccount";
-import { withLog, type FlowAccountExtraDoc, type Order, type OrderCharge } from "@/lib/admin-data";
+import { withLog, type FlowAccountExtraDoc, type Order, type OrderCharge, type OrderItem } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import { updateOrder } from "@/lib/server/order-write";
-import { applyCharge, chargeNotice, newChargeId } from "@/lib/server/order-charge";
+import { applyCharge, applyExtraDocItems, chargeNotice, newChargeId } from "@/lib/server/order-charge";
 import { inBackground } from "@/lib/server/background";
 
 export const runtime = "nodejs";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const SHIP_RE = /ค่าจัดส่ง|ค่าส่ง|ค่าขนส่ง|shipping|delivery/i;
 const thb = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\.00$/, "");
 
 /**
@@ -22,7 +23,9 @@ const thb = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2,
  * ทำไมต้องมี (OD-260921-1879 · 24 ก.ย. 69): ลูกค้าบิลบริษัทเปลี่ยนวัสดุระหว่างผลิต ร้านออก QT010743 เป็นส่วนต่าง
  * แต่ 1 ออเดอร์ผูกเอกสารได้ใบเดียว → พนักงานถาม "จะแนบ 2 บิลยังไง ฝ่ายแพ็คต้องรู้ด้วยว่ามี 2 บิล"
  *
- * POST { orderId, url, mode?: "charge" | "link" | "ref", chargeId?, label? }
+ * POST { orderId, url, mode?: "items" | "charge" | "link" | "ref", chargeId?, label? }
+ *   mode "items"  = สินค้าสั่งเพิ่ม (OD-261005-7691 · 5 ต.ค. 69) → บรรทัดในใบเข้าใบงานเป็นรายการ (extraDoc) ราคาตามใบ + VAT/หัก ณ ที่จ่ายตามใบ
+ *                   บรรทัดค่าส่งบวกเข้าค่าส่ง · เด้งกลับรอชำระเงิน + แจ้งไลน์เหมือน charge · ยอดตามบิล = บิลหลัก + ใบนี้ (flowAccountBillTotal)
  *   mode "charge" (ค่าเริ่มต้น) = อ่านยอดรวมทั้งสิ้นของใบมาเป็นค่าบริการเพิ่ม (นอกฐานภาษีบิลหลัก → ยอดตามบิลหลักยังตรง)
  *                                 + เด้งกลับรอชำระเงินตามกติกากลาง + แจ้งไลน์ลูกค้า (โอนตามใบนี้ ส่งสลิปในแชท)
  *   mode "link"   = ใบนี้เก็บเงินไปแล้วด้วยปุ่มเก็บเพิ่มก่อนหน้า → ผูกกับ charge เดิม (chargeId) ไม่คิดเงินซ้ำ ไม่แจ้งไลน์
@@ -41,7 +44,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { orderId?: string; url?: string; mode?: string; chargeId?: string; label?: string };
   const orderId = String(body.orderId ?? "").trim();
   const url = String(body.url ?? "").trim();
-  const mode = body.mode === "link" || body.mode === "ref" ? body.mode : "charge";
+  const mode = body.mode === "items" || body.mode === "link" || body.mode === "ref" ? body.mode : "charge";
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!parseFlowAccountUrl(url)) return NextResponse.json({ error: "วางลิงก์แชร์ของ FlowAccount (share.flowaccount.com/…) ก่อน" }, { status: 400 });
 
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
   if (doc.customer.taxId && order.taxInvoice?.taxId && doc.customer.taxId !== order.taxInvoice.taxId)
     return NextResponse.json({ error: `เลขผู้เสียภาษีในเอกสาร (${doc.customer.taxId}) ไม่ตรงกับใบนี้ (${order.taxInvoice.taxId}) — ลิงก์ผิดใบหรือเปล่า` }, { status: 409 });
   const grandTotal = r2(Number(doc.grandTotal ?? doc.net ?? 0));
-  if (mode === "charge" && !(grandTotal > 0)) return NextResponse.json({ error: "อ่านยอดรวมทั้งสิ้นของเอกสารไม่ได้ — ลองแนบแบบอ้างอิงแทน" }, { status: 422 });
+  if ((mode === "charge" || mode === "items") && !(grandTotal > 0)) return NextResponse.json({ error: "อ่านยอดรวมทั้งสิ้นของเอกสารไม่ได้ — ลองแนบแบบอ้างอิงแทน" }, { status: 422 });
 
   const now = new Date().toISOString();
   const lines = doc.items.slice(0, 6).map((it) => `${it.name}${it.qty ? ` ×${it.qty}` : ""}${it.unitPrice != null ? ` @${thb(it.unitPrice)}` : ""}`);
@@ -81,6 +84,38 @@ export async function POST(req: Request) {
     by: who,
     at: now,
   };
+
+  if (mode === "items") {
+    const ship = doc.items.filter((it) => SHIP_RE.test(it.name));
+    const work = doc.items.filter((it) => !SHIP_RE.test(it.name) && it.name.trim() && it.qty > 0);
+    if (!work.length) return NextResponse.json({ error: "ไม่พบรายการสินค้าในเอกสาร — ถ้าเป็นส่วนต่าง/ค่าใช้จ่ายเพิ่ม ให้เลือกแบบเก็บเพิ่มแทน" }, { status: 422 });
+    if ((doc.discount ?? 0) > 0) return NextResponse.json({ error: `เอกสารนี้มีส่วนลด ${thb(doc.discount!)} บาท — ใส่เป็นรายการไม่ได้ ให้เลือกแบบเก็บเพิ่มตามยอดรวมแทน` }, { status: 422 });
+    if (doc.deposit) return NextResponse.json({ error: "เอกสารมัดจำใส่เป็นรายการไม่ได้ — เลือกแบบเก็บเพิ่มหรืออ้างอิงแทน" }, { status: 422 });
+    // ภาษีต้องไปทางเดียวกับบิลหลัก — ไม่งั้นประตูเขียนออเดอร์คิด VAT/หักของทั้งใบใหม่ตามเรต ยอดเพี้ยนจากทั้งสองใบ
+    const docVat = r2(Number(doc.vat ?? 0));
+    const docWht = r2(Number(doc.wht ?? 0));
+    if (!!order.vat?.rate !== docVat > 0)
+      return NextResponse.json({ error: `ใบหลัก${order.vat?.rate ? "มี" : "ไม่มี"} VAT แต่ ${doc.docNo} ${docVat > 0 ? "มี" : "ไม่มี"} — ใส่เป็นรายการไม่ได้ ให้เลือกแบบเก็บเพิ่มแทน` }, { status: 422 });
+    if (!!order.wht?.rate !== docWht > 0)
+      return NextResponse.json({ error: `ใบหลัก${order.wht?.rate ? "มี" : "ไม่มี"}หัก ณ ที่จ่าย แต่ ${doc.docNo} ${docWht > 0 ? "มี" : "ไม่มี"} — ใส่เป็นรายการไม่ได้ ให้เลือกแบบเก็บเพิ่มแทน` }, { status: 422 });
+    const items: OrderItem[] = work.map((it) => ({
+      productId: "special-item",
+      name: it.name.trim(),
+      selections: (it.detail ?? "").trim(),
+      qty: Math.max(1, Math.round(it.qty)),
+      unitPrice: Math.max(0, r2(it.unitPrice)),
+      extraDoc: doc.docNo,
+    }));
+    const shipAdd = r2(ship.reduce((s, it) => s + (Number(it.amount) || 0), 0));
+    const withItems: FlowAccountExtraDoc = { ...extra, items: items.length, ...(shipAdd > 0 ? { ship: shipAdd } : {}) };
+    const applied = applyExtraDocItems(order, withItems, items, shipAdd, { vat: docVat, vatRate: doc.vatRate || 7, wht: docWht, whtRate: doc.whtRate || 3 }, who);
+    const { error } = await updateOrder(sb, applied.order, { prev: order, by: who });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const link = orderLink(new URL(req.url).origin, applied.order);
+    const note: OrderCharge = { id: "", label: `สั่งเพิ่มตาม${doc.docTypeLabel} ${doc.docNo}`, amount: grandTotal, by: who, at: now };
+    inBackground("notifyCustomerLogged", notifyCustomerLogged(sb, applied.order, chargeNotice(applied, note, link, withItems), `แจ้งบิลเพิ่ม ${doc.docNo} ${thb(grandTotal)} บาท`, "key"));
+    return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, applied.order), extra: withItems, reopen: applied.reopen });
+  }
 
   if (mode === "charge") {
     const label = String(body.label ?? "").trim().slice(0, 80) || `บิลเพิ่ม ${doc.docTypeLabel} ${doc.docNo}${lines[0] ? ` — ${lines[0]}` : ""}`.slice(0, 80);
@@ -128,6 +163,13 @@ export async function DELETE(req: Request) {
   const order = row.data as Order;
   const x = (order.flowAccountExtras ?? []).find((d) => d.docNo === docNo);
   if (!x) return NextResponse.json({ error: "ไม่พบบิลเพิ่มใบนี้" }, { status: 404 });
+  // ใบที่ใส่เป็นรายการ: ยอดของใบอยู่ในรายการ — ถอดใบแต่รายการยังอยู่ = ยอดในระบบเกินบิลหลักทันที ต้องลบรายการก่อน
+  const left = order.items.filter((it) => it.extraDoc === docNo);
+  if (left.length)
+    return NextResponse.json(
+      { error: `ใบนี้ใส่เป็นรายการในใบงานอยู่ ${left.length} รายการ (${left.map((it) => it.name).join(", ")}) — ลบรายการพวกนั้นก่อนแล้วค่อยถอดใบ` },
+      { status: 409 }
+    );
   const c = x.chargeId ? (order.charges ?? []).find((k) => k.id === x.chargeId) : undefined;
   const rest = (order.flowAccountExtras ?? []).filter((d) => d.docNo !== docNo);
   const updated = withLog(

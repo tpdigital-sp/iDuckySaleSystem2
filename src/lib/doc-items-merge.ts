@@ -37,7 +37,10 @@ export function itemHasWork(it: OrderItem): boolean {
   return !!(it.artworkUrls?.length || it.proofs?.length || it.proofUrl || it.reuseArt || it.proofStatus);
 }
 
-export function mergeDocItems(prev: OrderItem[], doc: DocItemLine[]): DocItemsMerge {
+export function mergeDocItems(all: OrderItem[], doc: DocItemLine[]): DocItemsMerge {
+  // 🧾➕ รายการจากบิลเพิ่ม (extraDoc) ไม่อยู่ในเอกสารหลัก — ไม่จับคู่ ไม่เอาออก ต่อท้ายไว้ตามเดิม (OD-261005-7691)
+  const prev = all.filter((it) => !it.extraDoc);
+  const extras = all.filter((it) => it.extraDoc);
   const match: (number | undefined)[] = doc.map(() => undefined);
   const used = new Set<number>();
   const pass = (same: (it: OrderItem, d: DocItemLine, oi: number, di: number) => boolean) => {
@@ -70,7 +73,7 @@ export function mergeDocItems(prev: OrderItem[], doc: DocItemLine[]): DocItemsMe
     };
   });
   return {
-    items,
+    items: [...items, ...extras],
     kept: match.filter((m) => m !== undefined).length,
     added: match.filter((m) => m === undefined).length,
     dropped: prev.filter((_it, i) => !used.has(i)),

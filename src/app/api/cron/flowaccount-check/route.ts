@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { ORDER_STATUSES, orderBilledTotal, orderWhtAmount, withLog, type Order } from "@/lib/admin-data";
+import { ORDER_STATUSES, extraDocItemsBill, orderBilledTotal, orderWhtAmount, withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { fetchFlowAccountDoc } from "@/lib/server/flowaccount";
 import { pushShopAlert } from "@/lib/server/line-alert";
@@ -105,7 +105,9 @@ export async function GET(req: Request) {
        *   mismatch = ตัวเลขที่ "ใช้คิดเงิน" ในใบ ยังไม่ตรงเอกสาร → ลูกค้าจะโอนคนละยอดกับที่ระบบรอ
        *   ไม่ mismatch = แอดมินแก้ตัวเลขตามใบด้วยมือไปแล้ว เหลือแค่ snapshot เก่า (flowAccount.net เพี้ยน → SlipOK เทียบผิด)
        */
-      const mismatch = !eq(docTotal, orderBilledTotal(o)) || !eq(docWht, orderWhtAmount(o));
+      // บิลเพิ่มที่ใส่เป็นรายการ (extraDoc) อยู่ในยอดของออเดอร์ด้วย — หักออกก่อนเทียบกับบิลหลัก
+      const ex = extraDocItemsBill(o);
+      const mismatch = !eq(docTotal, orderBilledTotal(o) - ex.total) || !eq(docWht, orderWhtAmount(o) - ex.wht);
 
       const was = `ยอดใบ ${thb(fa.grandTotal)}${(fa.wht ?? 0) > 0 ? ` · หัก ณ ที่จ่าย ${thb(fa.wht)}` : ""}`;
       const now = `ยอดใบ ${thb(docTotal)}${(docWht ?? 0) > 0 ? ` · หัก ณ ที่จ่าย ${thb(docWht)}` : ""}`;

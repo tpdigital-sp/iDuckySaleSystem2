@@ -65,6 +65,7 @@ import {
   orderPrintCount,
   lastReprintProof,
   orderBankFee,
+  extraDocItemsBill,
   flowAccountBillTotal,
   flowAccountGap,
   orderBilledTotal,
@@ -2591,9 +2592,11 @@ export default function AdminOrderDetailPage() {
       if (!ok) return;
     }
     const items: OrderItem[] = merged.items;
+    // 🧾➕ บิลเพิ่มที่ใส่เป็นรายการ (extraDoc) — ค่าส่ง/VAT/หัก ณ ที่จ่ายของใบนั้นอยู่ในออเดอร์ด้วย ดึงบิลหลักแล้วต้องบวกกลับ (OD-261005-7691)
+    const exBill = extraDocItemsBill(order);
     const shipPatch =
       withItems && taxForm.docShip != null
-        ? { shippingCost: taxForm.docShip, ...(isPickupOrder(order) || !taxForm.docShipLabel ? {} : { shippingLabel: taxForm.docShipLabel }) }
+        ? { shippingCost: Math.round((taxForm.docShip + exBill.ship) * 100) / 100, ...(isPickupOrder(order) || !taxForm.docShipLabel ? {} : { shippingLabel: taxForm.docShipLabel }) }
         : {};
     const discountPatch =
       withItems && (taxForm.docDiscount ?? 0) > 0 && !order.adminDiscount
@@ -2608,8 +2611,8 @@ export default function AdminOrderDetailPage() {
      */
     const taxPatch: Partial<Order> = withItems
       ? {
-          vat: docVat > 0 ? { rate: taxForm.docVatRate || 7, amount: docVat } : undefined,
-          ...(docWht > 0 ? { wht: { rate: taxForm.docWhtRate || 3, amount: docWht } } : {}),
+          vat: docVat + exBill.vat > 0 ? { rate: taxForm.docVatRate || 7, amount: Math.round((docVat + exBill.vat) * 100) / 100 } : undefined,
+          ...(docWht + exBill.wht > 0 ? { wht: { rate: taxForm.docWhtRate || 3, amount: Math.round((docWht + exBill.wht) * 100) / 100 } } : {}),
         }
       : withVat
         ? { vat: { rate: taxForm.docVatRate || 7, amount: docVat } }

@@ -7,18 +7,21 @@
  * แต่ออเดอร์ผูกเอกสารได้ใบเดียว → "จะแนบ 2 บิลยังไง ฝ่ายแพ็คต้องรู้ด้วยว่ามี 2 บิล"
  * วางลิงก์ใบที่ 2 → ระบบอ่านยอด เก็บเป็นค่าบริการเพิ่ม (นอกฐานภาษีบิลหลัก ยอดตามบิลหลักยังตรง) แจ้งไลน์ลูกค้าให้โอนตามใบนั้น
  * และทุกจอฝ่ายแพ็ค/ใบงาน/ใบปะหน้าขึ้นว่า "ใบกำกับภาษี 2 ใบ"
+ *
+ * 📦 แบบ "สินค้าสั่งเพิ่ม" (ค่าเริ่มต้น · OD-261005-7691 · 5 ต.ค. 69): ใบที่ 2 เป็นของที่ลูกค้าสั่งเพิ่ม ไม่ใช่ส่วนต่าง
+ * เดิมมีแต่แบบเก็บเงิน → รายการไม่เข้าใบงาน กราฟฟิก/ผลิตไม่รู้ว่ามีของต้องทำเพิ่ม · ตอนนี้บรรทัดในใบเข้าเป็นรายการ (extraDoc)
  */
 
 import { useState } from "react";
 import { formatPrice } from "@/lib/products";
 import { type FlowAccountExtraDoc, type Order } from "@/lib/admin-data";
 
-type Mode = "charge" | "link" | "ref";
+type Mode = "items" | "charge" | "link" | "ref";
 
 export default function FlowAccountExtraDocs({ order, mayEdit, onApply }: { order: Order; mayEdit: boolean; onApply: (next: Order) => void }) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
-  const [mode, setMode] = useState<Mode>("charge");
+  const [mode, setMode] = useState<Mode>("items");
   const [chargeId, setChargeId] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -42,7 +45,7 @@ export default function FlowAccountExtraDocs({ order, mayEdit, onApply }: { orde
       onApply(j.order);
       setOpen(false);
       setUrl("");
-      setMode("charge");
+      setMode("items");
       setChargeId("");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "แนบบิลเพิ่มไม่สำเร็จ");
@@ -86,7 +89,11 @@ export default function FlowAccountExtraDocs({ order, mayEdit, onApply }: { orde
               เปิดเอกสาร ↗
             </a>
             <span className="block font-normal text-slate-500">
-              {c ? `เก็บเพิ่มแล้ว: ${c.label} ${formatPrice(c.amount)}` : "แนบไว้อ้างอิง (ไม่ได้เก็บเงินผ่านใบนี้)"}
+              {(x.items ?? 0) > 0
+                ? `📦 เพิ่ม ${x.items} รายการเข้าใบงานแล้ว (ยอดรวมในรายการ + VAT ของใบนี้)`
+                : c
+                  ? `เก็บเพิ่มแล้ว: ${c.label} ${formatPrice(c.amount)}`
+                  : "แนบไว้อ้างอิง (ไม่ได้เก็บเงินผ่านใบนี้)"}
               {x.lines?.length ? ` · ${x.lines.slice(0, 2).join(" · ")}` : ""}
               {` · แนบโดย ${x.by}`}
               {mayEdit && (
@@ -110,7 +117,7 @@ export default function FlowAccountExtraDocs({ order, mayEdit, onApply }: { orde
       )}
       {mayEdit && open && (
         <div className="mt-1.5 rounded-lg border border-sky-200 bg-white p-2.5">
-          <p className="font-bold text-slate-700">🧾➕ แนบบิลเพิ่ม — วางลิงก์แชร์ของใบที่ 2 (ส่วนต่าง/ค่าใช้จ่ายเพิ่มที่ออกหลังบิลหลัก)</p>
+          <p className="font-bold text-slate-700">🧾➕ แนบบิลเพิ่ม — วางลิงก์แชร์ของใบที่ 2 (สินค้าสั่งเพิ่ม · ส่วนต่าง/ค่าใช้จ่ายเพิ่มที่ออกหลังบิลหลัก)</p>
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -119,10 +126,17 @@ export default function FlowAccountExtraDocs({ order, mayEdit, onApply }: { orde
           />
           <div className="mt-1.5 space-y-1">
             <label className="flex items-start gap-1.5">
+              <input type="radio" name="fa-extra-mode" checked={mode === "items"} onChange={() => setMode("items")} className="mt-0.5" />
+              <span>
+                <b>📦 สินค้าสั่งเพิ่ม — ใส่รายการในใบเข้าใบงาน + แจ้งลูกค้าทางไลน์</b>
+                <span className="block text-slate-500">รายการขึ้นในใบงาน/บอร์ดกราฟฟิก/ฝ่ายผลิต ราคา + VAT ตามใบ · มียอดค้างใบจะกลับไป &quot;รอชำระเงิน&quot;</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-1.5">
               <input type="radio" name="fa-extra-mode" checked={mode === "charge"} onChange={() => setMode("charge")} className="mt-0.5" />
               <span>
-                <b>เก็บเพิ่มตามยอดรวมในใบ + แจ้งลูกค้าทางไลน์</b>
-                <span className="block text-slate-500">ยอดตามบิลหลักไม่ขยับ (เก็บเป็นค่าบริการเพิ่ม) · มียอดค้างใบจะกลับไป &quot;รอชำระเงิน&quot; เงินครบกลับขั้นเดิมเอง</span>
+                <b>ส่วนต่าง/ค่าใช้จ่ายเพิ่ม — เก็บตามยอดรวมในใบ + แจ้งลูกค้าทางไลน์</b>
+                <span className="block text-slate-500">ไม่มีของต้องผลิตเพิ่ม (เช่น เปลี่ยนวัสดุ) · ยอดตามบิลหลักไม่ขยับ (เก็บเป็นค่าบริการเพิ่ม) · มียอดค้างใบจะกลับไป &quot;รอชำระเงิน&quot; เงินครบกลับขั้นเดิมเอง</span>
               </span>
             </label>
             {freeCharges.length > 0 && (

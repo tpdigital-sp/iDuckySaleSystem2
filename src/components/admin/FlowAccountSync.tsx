@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { formatPrice } from "@/lib/products";
-import { flowAccountBillTotal, flowAccountGap, orderBilledTotal, orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { extraDocItemsBill, flowAccountBillTotal, flowAccountGap, orderBilledTotal, orderTotal, withLog, type Order } from "@/lib/admin-data";
 import type { FADoc } from "./FlowAccountOrderDialog";
 import type { ShippingMethod } from "@/lib/shop-settings";
 import { isPickupOrder, normalizeShipLabel } from "@/lib/ship-label";
@@ -114,11 +114,14 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
     // ส่วนลด/VAT ตามเอกสาร — ไม่มีในเอกสาร = เอาออก
     if (d.discount && d.discount > 0) next.adminDiscount = { label: `ส่วนลดตามใบ ${d.docNo}`, amount: d.discount };
     else if (next.adminDiscount?.label?.startsWith("ส่วนลดตามใบ")) delete next.adminDiscount;
-    if (f.vat && f.vat > 0) next.vat = { rate: d.vatRate ?? 7, amount: f.vat };
+    // 🧾➕ บิลเพิ่มที่ใส่เป็นรายการ (extraDoc) — ภาษี/ค่าส่งของใบนั้นอยู่ในออเดอร์ด้วย ต้องบวกกลับ ไม่งั้นซิงก์บิลหลักแล้ว VAT ของใบที่ 2 หาย
+    const ex = extraDocItemsBill(order);
+    if (diff.docShipLabel && ex.ship > 0) next.shippingCost = Math.round(((next.shippingCost ?? 0) + ex.ship) * 100) / 100;
+    if ((f.vat ?? 0) + ex.vat > 0) next.vat = { rate: d.vatRate ?? order.vat?.rate ?? 7, amount: Math.round(((f.vat ?? 0) + ex.vat) * 100) / 100 };
     else delete next.vat;
     // หัก ณ ที่จ่ายตามเอกสาร — ไม่มีในเอกสาร = เอาออก (เหมือน VAT/ส่วนลด)
     // ปุ่มนี้แอดมินกดเอง และตารางข้างบนโชว์ให้เห็นก่อนแล้วว่าจะเปลี่ยนเป็นเท่าไร
-    if (f.wht && f.wht > 0) next.wht = { rate: d.whtRate ?? next.wht?.rate ?? 0, amount: f.wht };
+    if ((f.wht ?? 0) + ex.wht > 0) next.wht = { rate: d.whtRate ?? next.wht?.rate ?? 0, amount: Math.round(((f.wht ?? 0) + ex.wht) * 100) / 100 };
     else delete next.wht;
     next = withLog(next, actor, "ซิงก์ยอดจาก FlowAccount", `${d.docTypeLabel} ${d.docNo} · ยอดรวม ${orderTotal(next).toLocaleString("th-TH")} บาท${d.grandTotal != null ? ` (เอกสาร ${d.grandTotal.toLocaleString("th-TH")})` : ""}`);
     onApply(next);
@@ -127,7 +130,8 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
 
   const gap = flowAccountGap(order);
   // 🧾 ยอดหัก ณ ที่จ่ายที่จำไว้ตอนอ่านเอกสาร ไม่ตรงกับที่ใส่ในออเดอร์ = ลูกค้าจะโอนคนละยอดกับที่ระบบรอ
-  const faWht = order.flowAccount?.wht ?? 0;
+  // บิลหลัก + บิลเพิ่มที่ใส่เป็นรายการ (หัก ณ ที่จ่ายของใบนั้นบวกเข้าออเดอร์แล้ว)
+  const faWht = (order.flowAccount?.wht ?? 0) + extraDocItemsBill(order).wht;
   const whtGap = faWht > 0 || (order.wht?.amount ?? 0) > 0 ? Math.round((faWht - (order.wht?.amount ?? 0)) * 100) / 100 : 0;
 
   return (
@@ -264,7 +268,7 @@ function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Di
   const itemPatch: Record<number, { qty: number; unitPrice: number }> = {};
   const unmatched: string[] = [];
   for (const w of work) {
-    const idx = order.items.findIndex((it, i) => !used.has(i) && norm(it.name) === norm(w.name));
+    const idx = order.items.findIndex((it, i) => !used.has(i) && !it.extraDoc && norm(it.name) === norm(w.name));
     if (idx < 0) {
       unmatched.push(`${w.name} ×${w.qty}`);
       continue;
@@ -273,19 +277,21 @@ function buildDiff(order: Order, doc: FADoc, methods: ShippingMethod[] = []): Di
     itemPatch[idx] = { qty: w.qty, unitPrice: w.unitPrice };
   }
 
-  const nowSub = order.items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
+  // 🧾➕ รายการ/ภาษี/ค่าส่งที่มาจากบิลเพิ่ม (extraDoc) ไม่ได้อยู่ในใบนี้ — หักออกก่อนเทียบ
+  const ex = extraDocItemsBill(order);
+  const nowSub = order.items.filter((it) => !it.extraDoc).reduce((s, it) => s + it.qty * it.unitPrice, 0);
   const docSub = work.reduce((s, it) => s + it.qty * it.unitPrice, 0);
-  const nowShip = order.shippingCost ?? 0;
+  const nowShip = Math.round(((order.shippingCost ?? 0) - ex.ship) * 100) / 100;
   const nowDisc = order.adminDiscount?.amount ?? 0;
   const docDisc = doc.discount ?? 0;
-  const nowVat = order.vat?.amount ?? 0;
+  const nowVat = Math.round(((order.vat?.amount ?? 0) - ex.vat) * 100) / 100;
   const docVat = f.vat ?? 0;
   // 🧾 หัก ณ ที่จ่าย: อยู่ในเอกสารแต่ไม่ขยับ "รวมทั้งสิ้น" — เทียบแยกช่อง ไม่งั้นใบที่เพิ่ม/ถอดภาษีหักทีหลัง
   // จะขึ้นว่า "ตรงกัน" ทั้งที่ยอดที่ลูกค้าโอนจริงต่างกันทั้งก้อน (OD-260921-5230 · 22 ก.ย. 69)
-  const nowWht = order.wht?.amount ?? 0;
+  const nowWht = Math.round(((order.wht?.amount ?? 0) - ex.wht) * 100) / 100;
   const docWht = f.wht ?? 0;
   // ไม่นับค่าบริการเพิ่ม (charges) — เก็บทีหลังนอกบิล ไม่ได้อยู่ในเอกสาร
-  const nowTotal = orderBilledTotal(order);
+  const nowTotal = Math.round((orderBilledTotal(order) - ex.total) * 100) / 100;
   const docTotal = f.grandTotal ?? 0;
   const eq = (a: number, b: number) => Math.abs(a - b) < 0.01;
   const rows: Diff["rows"] = [
