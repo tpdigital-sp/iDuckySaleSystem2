@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  balanceNet,
   depositInstallments,
   orderBalance,
   orderNetTransfer,
@@ -335,9 +336,11 @@ export function balanceNetTransfer(o: Order, bal: number): { net: number; rateTx
     if (same(bal, inst.second)) return { net: inst.secondNet, rateTxt };
     if (same(bal, inst.first)) return { net: inst.firstNet, rateTxt };
     if (same(bal, inst.first + inst.second)) return { net: orderNetTransfer(o), rateTxt };
-    return null;
   }
-  return same(bal, orderTotal(o)) ? { net: orderNetTransfer(o), rateTxt } : null;
+  if (same(bal, orderTotal(o))) return { net: orderNetTransfer(o), rateTxt };
+  // ส่วนต่าง/โอนมาบางส่วนแล้ว — หักภาษีตามสัดส่วนยอดบิลที่ยังค้าง (OD-261001-8513)
+  const net = balanceNet(o, bal);
+  return net < bal - 0.005 ? { net, rateTxt } : null;
 }
 
 /**

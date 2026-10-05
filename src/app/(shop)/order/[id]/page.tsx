@@ -11,7 +11,7 @@ import { artQtyOf, formatPrice, type Product } from "@/lib/products";
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { addOnDisplayName, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { addOnDisplayName, balanceNet, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpayOutstanding, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -625,6 +625,8 @@ export default function CustomerOrderPage() {
     order.claimOf || order.claimReason ? [] : order.items.filter((it) => it.qty > 0 && it.unitPrice <= 0);
   const step = STEP_OF[order.status];
   const balance = orderBalance(order);
+  // 🧾 ลูกค้าหัก ณ ที่จ่าย: ยอดค้างตามบิลยังมีภาษีส่วนของมันปนอยู่ — ตัวเลขที่บอกให้โอนต้องหักออกแล้ว (OD-261001-8513)
+  const balanceToPay = balanceNet(order, balance);
   // ➗ ออเดอร์มัดจำที่หัก ณ ที่จ่าย: ยอดงวด (รวม VAT) กับเงินที่ต้องโอนจริงต่างกัน — โชว์คู่กันทุกจุดที่บอกยอดงวด
   const inst = depositInstallments(order);
   const whtRateTxt = order.wht?.rate ? ` ${order.wht.rate}%` : "";
@@ -847,7 +849,7 @@ export default function CustomerOrderPage() {
       {extraDocsDue && (
         <div className="ord-note mt-4 p-4">
           <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
-            💳 ยอดที่ต้องโอนเพิ่ม {formatPrice(balance)}
+            💳 ยอดที่ต้องโอนเพิ่ม {formatPrice(balanceToPay)}
           </p>
           <p className="mt-1 text-xs leading-relaxed">
             บิลหลักรับชำระแล้ว ✓ — ส่วนต่างที่เพิ่มมาออกเป็นเอกสารแยก โอนตามใบด้านล่างแล้วส่งสลิปมาในแชท LINE ได้เลย ไม่ต้องแนบสลิปในหน้านี้
@@ -937,7 +939,7 @@ export default function CustomerOrderPage() {
               : order.deposit && !order.deposit.settledAt
                 ? `ค้างชำระยอดคงเหลือ ${formatPrice(dueNow)}`
                 : paidSoFar(order) > 0
-                  ? `มียอดค้างชำระ ${formatPrice(dueNow)}`
+                  ? `มียอดค้างชำระ ${formatPrice(balanceNet(order, dueNow))}`
                   : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
           </p>
           {order.deposit && !order.deposit.firstPaidAt
@@ -2170,7 +2172,7 @@ export default function CustomerOrderPage() {
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span className="t-soft">ค้างชำระ</span>
-                  <span className="t-danger">{formatPrice(balance)}</span>
+                  <span className="t-danger">{formatPrice(balanceToPay)}</span>
                 </div>
               </div>
             )}

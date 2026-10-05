@@ -1761,6 +1761,28 @@ export function orderBalance(o: Order): number {
   return Math.max(0, orderTotal(o) - (o.paidTotal ?? 0));
 }
 
+/**
+ * 🧾 หัก ณ ที่จ่ายที่ "ตกอยู่ในยอดค้าง" `bal` (บาท) — ลูกค้านิติบุคคลจะหักส่วนนี้ออกตอนโอน ไม่ใช่เงินที่ต้องโอน
+ *
+ * paidTotal/orderBalance เป็นยอด "ตามบิล" (สลิปที่ผ่านพร้อมหัก ณ ที่จ่าย นับยอดเต็มของงวด) — ยอดค้างที่เหลือจึงยังมี
+ * ภาษีส่วนของมันปนอยู่ ต้องหักออกก่อนบอกลูกค้าว่าโอนเท่าไร
+ * (OD-261001-8513 · 5 ต.ค. 69: โอน 8,151 + หัก 235.13 = นับ 8,386.13 · สั่งเพิ่มแล้วบิลเป็น 9,890.55 หัก 277.31
+ *  ระบบบอกค้าง 1,504.42 ทั้งที่ต้องโอนจริง 9,613.24 − 8,151 = 1,462.24 — ส่วนต่าง 42.18 คือภาษีของยอดที่เพิ่ม)
+ * คิดตามสัดส่วนยอดบิลที่ยังไม่ได้รับ (กติกาเดียวกับ depositInstallments) · ค่าบริการเพิ่ม (charges) อยู่นอกบิล ไม่มีภาษีหัก
+ */
+export function balanceWhtShare(o: Order, bal: number = orderBalance(o)): number {
+  const wht = orderWhtAmount(o);
+  const billed = orderBilledTotal(o);
+  if (!(wht > 0) || !(billed > 0) || !(bal > 0)) return 0;
+  const billedOpen = Math.min(bal, Math.max(0, billed - (o.paidTotal ?? 0)));
+  return Math.min(wht, Math.round(((wht * billedOpen) / billed) * 100) / 100);
+}
+
+/** 💸 เงินที่ลูกค้าต้องโอนจริงสำหรับยอดค้าง `bal` = ยอดค้างตามบิล − หัก ณ ที่จ่ายส่วนของยอดนั้น */
+export function balanceNet(o: Order, bal: number = orderBalance(o)): number {
+  return Math.max(0, Math.round((bal - balanceWhtShare(o, bal)) * 100) / 100);
+}
+
 /** ลูกค้าคนเดียวกันไหม — customerId แม่นสุด ไม่มีค่อยใช้เบอร์/อีเมล */
 function sameCustomer(a: Order, b: Order): boolean {
   const phone = (a.phone ?? "").replace(/\D/g, "");

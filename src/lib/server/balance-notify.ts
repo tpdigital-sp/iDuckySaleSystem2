@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { orderBalance, orderTotal, withLog, type Order } from "@/lib/admin-data";
-import { notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
+import { balanceNetTransfer, notifyCustomerLogged, orderLink, orderNotice } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
 
 /**
@@ -30,6 +30,9 @@ export async function sendBalanceNotify(
   // เคยบอกยอดไปแล้วและตัวเลขเปลี่ยน → ต่อท้ายว่าแทนยอดไหน (ลูกค้าถือยอดเก่าจากไลน์อยู่)
   const instead = told != null && Math.abs(told - bal) > 0.5 ? ` (แทนยอด ${thb(told)} บาทที่แจ้งไว้ก่อนหน้า)` : "";
   const head = `💰 ยอดรวมทั้งบิล ${thb(total)} บาท · รับแล้ว ${thb(paid)} บาท`;
+  // 🧾 ลูกค้าหัก ณ ที่จ่าย: ยอดค้างตามบิลยังมีภาษีส่วนของมันปนอยู่ — ตัวเลขที่ให้โอนต้องหักออกแล้ว (OD-261001-8513)
+  const net = bal > 0.5 ? balanceNetTransfer(order, bal) : null;
+  const pay = net ? net.net : bal;
 
   // ยอดกลับมาไม่ค้างแล้วทั้งที่ไม่เคยบอกยอดไป = ไม่มีอะไรต้องแจ้ง (ปิดคิวเงียบ ๆ)
   if (bal <= 0.5 && told == null) {
@@ -48,10 +51,10 @@ export async function sendBalanceNotify(
           tone: bal > pend.from ? "balanceUp" : "balanceDown",
           head: bal > pend.from ? "มียอดเพิ่ม" : "ปรับยอดใหม่",
           headline: why,
-          hero: { label: "ยอดที่ต้องโอนเพิ่ม", value: `${thb(bal)} บาท` },
+          hero: { label: "ยอดที่ต้องโอนเพิ่ม", value: `${thb(pay)} บาท` },
           rows,
           note: `${instead ? `ยอดนี้แทนยอด ${thb(told!)} บาทที่แจ้งไว้ก่อนหน้าครับ\n` : ""}โอนแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ`,
-          alt: `🧾 ออเดอร์ ${order.id} ${bal > pend.from ? "มียอดเพิ่ม" : "ปรับยอดใหม่"}: ${why}\n${head}\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(bal)} บาท${instead}\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${link}`,
+          alt: `🧾 ออเดอร์ ${order.id} ${bal > pend.from ? "มียอดเพิ่ม" : "ปรับยอดใหม่"}: ${why}\n${head}\n💳 ยอดที่ต้องโอนเพิ่ม ${thb(pay)} บาท${instead}\nโอนแล้วแนบสลิปที่ลิงก์นี้ได้เลยครับ\n${link}`,
         })
       : orderNotice(order, link, {
           tone: "noMoreDue",
@@ -64,7 +67,7 @@ export async function sendBalanceNotify(
         });
 
   const what =
-    (bal > 0.5 ? `แจ้งยอดค้าง ${thb(bal)} บาท` : "แจ้งว่าไม่ต้องโอนเพิ่มแล้ว") +
+    (bal > 0.5 ? `แจ้งยอดค้าง ${thb(bal)} บาท${net ? ` · โอนจริง ${thb(pay)} บาท หลังหัก ณ ที่จ่าย` : ""}` : "แจ้งว่าไม่ต้องโอนเพิ่มแล้ว") +
     (told != null ? ` (เดิมแจ้ง ${thb(told)})` : "") +
     (opts?.auto ? " · อัตโนมัติ (ค้างในคิวเกินกำหนด)" : "");
   const r = await notifyCustomerLogged(sb, order, msg, what, "key");

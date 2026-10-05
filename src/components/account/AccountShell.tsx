@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { signOut } from "@/lib/customer-auth";
 import { clearMyOrders } from "@/lib/my-orders";
-import { ORDER_STEPS, STEP_OF, orderBalance, type Order } from "@/lib/admin-data";
+import { ORDER_STEPS, STEP_OF, balanceNet, type Order } from "@/lib/admin-data";
 import { isPickupOrder } from "@/lib/ship-label";
 import { formatPrice } from "@/lib/products";
 
@@ -228,7 +228,7 @@ export function stepLabel(i: number, o: Order): string {
 export function stepTime(i: number, o: Order): string {
   const cur = STEP_OF[o.status];
   if (i === 0) return o.date;
-  if (i === 1 && cur === 1) return orderBalance(o) > 0 ? `ค้างชำระ ${formatPrice(orderBalance(o))}` : "รอตรวจสอบ";
+  if (i === 1 && cur === 1) return balanceNet(o) > 0 ? `ค้างชำระ ${formatPrice(balanceNet(o))}` : "รอตรวจสอบ";
   if (i === 4 && o.tracking && !isPickupOrder(o))
     // 📮 ส่งหลายกล่อง — บอกจำนวนกล่อง เลขครบอยู่ในหน้าออเดอร์
     return `พัสดุ ${o.tracking}${(o.extraTrackings?.length ?? 0) > 0 ? ` (+ อีก ${o.extraTrackings!.length} กล่อง)` : ""}`;

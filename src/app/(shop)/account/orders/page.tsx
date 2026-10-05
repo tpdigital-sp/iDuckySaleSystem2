@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { orderBalance, orderTotal, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { balanceNet, orderTotal, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { itemQtyText } from "@/lib/item-yield";
 import { useCustomer } from "@/lib/customer-context";
 import { useReorder } from "@/lib/reorder";
@@ -65,7 +65,7 @@ export default function MyOrdersPage() {
     return c;
   }, [orders]);
   /** ยอดที่ยังค้างชำระรวมทุกออเดอร์ (ไม่นับที่ยกเลิก) */
-  const owedAll = useMemo(() => orders.reduce((s, o) => (o.status === "ยกเลิก" ? s : s + orderBalance(o)), 0), [orders]);
+  const owedAll = useMemo(() => orders.reduce((s, o) => (o.status === "ยกเลิก" ? s : s + balanceNet(o)), 0), [orders]);
 
   function showToast(t: string) {
     setToast(t);
@@ -167,7 +167,7 @@ export default function MyOrdersPage() {
 /** การ์ดออเดอร์ 1 ใบ */
 function OrderCard({ order: o, onReorder, canReorder }: { order: Order; onReorder: (o: Order) => void; canReorder: boolean }) {
   const [openItems, setOpenItems] = useState(false);
-  const owed = orderBalance(o);
+  const owed = balanceNet(o);
   const href = `/order/${encodeURIComponent(o.id)}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
   const rest = o.items.length - ITEM_PEEK;
   const items = openItems ? o.items : o.items.slice(0, ITEM_PEEK);

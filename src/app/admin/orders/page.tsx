@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
   amountDueNow,
+  balanceNet,
   depositInstallments,
   daysToUseBy,
   followUpQty,
@@ -112,10 +113,11 @@ const dueOf = (o: Order) => (o.deposit ? amountDueNow(o) : orderBalance(o));
 const dueNetOf = (o: Order) => {
   const due = dueOf(o);
   const inst = o.deposit ? depositInstallments(o) : null;
-  if (!inst || inst.wht <= 0) return due;
+  // ใบธรรมดา/ค้างไม่เต็มงวด: หักภาษีส่วนของยอดค้างตามสัดส่วน (OD-261001-8513 สั่งเพิ่มหลังโอน)
+  if (!inst || inst.wht <= 0) return balanceNet(o, due);
   if (!o.deposit!.firstPaidAt && Math.abs(due - inst.first) < 0.01) return inst.firstNet;
   if (o.deposit!.firstPaidAt && Math.abs(due - inst.second) < 0.01) return inst.secondNet;
-  return due;
+  return balanceNet(o, due);
 };
 /* ── ออเดอร์มัดจำ 50% ────────────────────────────────────────────
    เจ้าของร้าน/แอดมินถามบ่อยว่า "ใครโอนมัดจำเข้ามาแล้วบ้าง" — งวดแรกเข้า = เริ่มทำแบบ/ผลิตได้

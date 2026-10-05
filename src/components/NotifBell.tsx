@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { graphicWaitingItems, orderBalance, type Order } from "@/lib/admin-data";
+import { graphicWaitingItems, balanceNet, type Order } from "@/lib/admin-data";
 import { formatPrice } from "@/lib/products";
 import { useCustomer } from "@/lib/customer-context";
 import { fetchMyOrders, setOrdersOwner } from "@/lib/my-orders";
@@ -28,7 +28,7 @@ function buildNotifs(orders: Order[]): Notif[] {
   const out: Notif[] = [];
   for (const o of orders) {
     if (o.status === "ยกเลิก" || o.status === "เสร็จสิ้น") continue;
-    const bal = orderBalance(o);
+    const bal = balanceNet(o);
     if ((o.status === "รอชำระเงิน" || o.deposit) && bal > 0)
       out.push({ key: `pay:${o.id}`, ico: "💳", t1: `ออเดอร์ ${o.id} ค้างชำระ ${formatPrice(bal)}`, t2: o.date, href: orderHref(o) });
     const waiting = graphicWaitingItems(o).length;

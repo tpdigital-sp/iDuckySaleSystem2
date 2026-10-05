@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { graphicWaitingItems, orderBalance, STEP_OF, type Order } from "@/lib/admin-data";
+import { graphicWaitingItems, balanceNet, STEP_OF, type Order } from "@/lib/admin-data";
 import { fetchShopPayment, readStoredShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { BASE_TIER_ID, lockedTier, nextTier, paidSpend, tierForSpend, tierRenewalInfo, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
 import { useCustomer } from "@/lib/customer-context";
@@ -762,9 +762,9 @@ export default function AccountPage() {
                         >
                           ติดตามสถานะ <span className="dot acd-chev">▾</span>
                         </button>
-                        {orderBalance(latest) > 0 && latest.status !== "ยกเลิก" ? (
+                        {balanceNet(latest) > 0 && latest.status !== "ยกเลิก" ? (
                           <Link href={orderHref(latest)} className="btn btn-primary acd-btn-compact">
-                            ชำระเงิน {formatPrice(orderBalance(latest))} <span className="dot">→</span>
+                            ชำระเงิน {formatPrice(balanceNet(latest))} <span className="dot">→</span>
                           </Link>
                         ) : (
                           <Link href={orderHref(latest)} className="btn btn-primary acd-btn-compact">

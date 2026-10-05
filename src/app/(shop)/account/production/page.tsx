@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { orderBalance, STEP_OF, type Order } from "@/lib/admin-data";
+import { balanceNet, STEP_OF, type Order } from "@/lib/admin-data";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { AccountHead, AccountShell, OrderTracker, statusIcon } from "@/components/account/AccountShell";
 import { orderHref, useAccountOrders } from "@/components/account/useAccountOrders";
@@ -69,7 +69,7 @@ export default function ProductionPage() {
         <>
         <div className="acd-olist">
           {pager.slice.map((o) => {
-            const owed = orderBalance(o);
+            const owed = balanceNet(o);
             return (
               <article key={o.id} className="acd-ocard">
                 <div className="acd-ocard-top">

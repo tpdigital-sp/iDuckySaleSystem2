@@ -43,6 +43,7 @@ import {
   ORDER_STATUSES,
   adminDiscountAmount,
   amountDueNow,
+  balanceNet,
   hasUnpaidBalance,
   orderBalance,
   paidSoFar,
@@ -4597,7 +4598,17 @@ export default function AdminOrderDetailPage() {
                             };
                           })()
                         : order.paidTotal != null && total - order.paidTotal > 0
-                          ? { label: "ค้างส่วนต่าง", num: total - order.paidTotal, hot: true, sub: `ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(order.paidTotal)}` }
+                          ? (() => {
+                              // 🧾 หัก ณ ที่จ่าย: เลขใหญ่ = เงินที่ลูกค้าต้องโอนจริง (ภาษีส่วนของยอดค้างหักออกแล้ว · OD-261001-8513)
+                              const gross = total - order.paidTotal;
+                              const net = balanceNet(order, gross);
+                              return {
+                                label: "ค้างส่วนต่าง",
+                                num: net,
+                                hot: true,
+                                sub: `ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(order.paidTotal)}`,
+                              };
+                            })()
                           : {
                               label: "ยอดรวม",
                               num: total,
@@ -4675,7 +4686,7 @@ export default function AdminOrderDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200"
                 title="ยอดรวมเพิ่มขึ้นหลังรับเงินแล้ว — ลูกค้าต้องโอนส่วนต่าง · เงินครบระบบคืนขั้นเดิมให้เอง · คิวปริ้น/สถานีแพ็คยังเห็นใบนี้"
               >
-                💳 ค้างส่วนต่าง {formatPrice(orderBalance(order))} · เงินครบกลับไป &quot;{waitingForBalanceFrom(order)}&quot; เอง
+                💳 ค้างส่วนต่าง {formatPrice(balanceNet(order))} · เงินครบกลับไป &quot;{waitingForBalanceFrom(order)}&quot; เอง
               </span>
             )}
             {order.placedBy ? (
@@ -8045,7 +8056,7 @@ export default function AdminOrderDetailPage() {
                 <div className="mt-2.5 rounded-xl border-2 border-sky-400 bg-sky-50 px-3 py-2.5">
                   <p className="text-[13px] font-extrabold text-sky-900">💳 ยอดที่ต้องโอนเพิ่มยังไม่ได้แจ้งลูกค้า</p>
                   <p className="mt-0.5 text-[12px] leading-relaxed text-sky-900">
-                    ตอนนี้ค้าง <b className="tabular-nums">{formatPrice(orderBalance(order))}</b>
+                    ตอนนี้ค้าง <b className="tabular-nums">{formatPrice(balanceNet(order))}</b>
                     {order.balancePending.from > 0 && <> (เดิมแจ้งไว้ <span className="tabular-nums">{formatPrice(order.balancePending.from)}</span>)</>} — เพิ่ม/ลบ
                     รายการให้ครบก่อนได้เลย ยอดในคิวจะตามเอง · ลบจนยอดกลับเท่าเดิม = ไม่ต้องแจ้ง คิวหายเอง
                   </p>
@@ -8057,7 +8068,7 @@ export default function AdminOrderDetailPage() {
                         disabled={balanceNotifying}
                         className="min-h-11 rounded-lg bg-sky-600 px-3.5 py-2 text-[12px] font-bold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-60"
                       >
-                        {balanceNotifying ? "กำลังส่ง…" : `📣 แจ้งลูกค้าทางไลน์ (${formatPrice(orderBalance(order))})`}
+                        {balanceNotifying ? "กำลังส่ง…" : `📣 แจ้งลูกค้าทางไลน์ (${formatPrice(balanceNet(order))})`}
                       </button>
                       <button
                         type="button"
@@ -8157,7 +8168,7 @@ export default function AdminOrderDetailPage() {
                     ? "กำลังอัปโหลด…"
                     : slipDragOver
                       ? "🫳 วางรูปตรงนี้ได้เลย"
-                      : `📎 รอสลิปโอนเพิ่ม — ค้าง ${formatPrice(amountDueNow(order))} · ลูกค้าส่งมาทางแชท? แตะเลือกรูป หรือลากมาวาง`}
+                      : `📎 รอสลิปโอนเพิ่ม — ค้าง ${formatPrice(balanceNet(order, amountDueNow(order)))} · ลูกค้าส่งมาทางแชท? แตะเลือกรูป หรือลากมาวาง`}
                 </button>
               )}
 
@@ -8968,7 +8979,12 @@ export default function AdminOrderDetailPage() {
                                 bal > 0 ? "bg-rose-50 text-rose-800 ring-rose-200" : over > 0 ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-emerald-50 text-emerald-800 ring-emerald-200"
                               }`}
                             >
-                              {whtCounted > 0 ? (
+                              {orderWhtAmount(order) > 0 ? (
+                                /* 🧾 ลูกค้าหัก ณ ที่จ่าย: คุยด้วยยอดที่ต้องโอนจริงอย่างเดียว (ยอดโอนจริงทั้งบิล − โอนแล้ว = ค้าง) — เจ้าของร้านสั่ง 5 ต.ค. 69 */
+                                <span className="font-bold">
+                                  โอนแล้ว {formatPrice(cash)} / ยอดโอนจริง{whtRate ? ` (หัก ณ ที่จ่าย ${whtRate}%)` : ""} {formatPrice(orderNetTransfer(order))}
+                                </span>
+                              ) : whtCounted > 0 ? (
                                 <span className="font-bold">
                                   เงินเข้าจริง {formatPrice(cash)} + หัก ณ ที่จ่าย{whtRate ? ` ${whtRate}%` : ""} {formatPrice(whtCounted)} = {formatPrice(paid)} / ยอดบิล {formatPrice(orderTotal(order))}
                                 </span>
@@ -8977,8 +8993,8 @@ export default function AdminOrderDetailPage() {
                                   รับแล้ว {formatPrice(paid)} / ยอดบิล {formatPrice(orderTotal(order))}
                                 </span>
                               )}
-                              <span className="font-bold">{bal > 0 ? `ค้าง ${formatPrice(bal)}` : over > 0 ? `โอนเกิน ${formatPrice(over)} — ดูกล่อง 💸 ด้านล่าง` : "✓ ครบแล้ว"}</span>
-                              {whtCounted > 0 && (
+                              <span className="font-bold">{bal > 0 ? `ค้าง ${formatPrice(balanceNet(order, bal))}` : over > 0 ? `โอนเกิน ${formatPrice(over)} — ดูกล่อง 💸 ด้านล่าง` : "✓ ครบแล้ว"}</span>
+                              {whtCounted > 0 && !(orderWhtAmount(order) > 0) && (
                                 <span className="block w-full font-normal opacity-80">
                                   {formatPrice(whtCounted)} ไม่ใช่เงินที่ร้านได้รับ — เป็นภาษีที่ลูกค้าหักส่งสรรพากรแทนร้าน ตามใบ 50 ทวิที่ลูกค้าส่งมาเก็บไว้ · เงินโอนเข้าบัญชีร้านจริง {formatPrice(cash)}
                                 </span>
@@ -8993,7 +9009,7 @@ export default function AdminOrderDetailPage() {
                           disabled={slipUploading}
                           className="mt-2 w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50"
                         >
-                          {slipUploading ? "กำลังอัปโหลด…" : hasUnpaidBalance(order) ? `＋ แนบสลิปเพิ่ม (ค้าง ${formatPrice(amountDueNow(order))})` : "＋ แนบสลิปเพิ่ม (หลักฐานเพิ่มเติม)"}
+                          {slipUploading ? "กำลังอัปโหลด…" : hasUnpaidBalance(order) ? `＋ แนบสลิปเพิ่ม (ค้าง ${formatPrice(balanceNet(order, amountDueNow(order)))})` : "＋ แนบสลิปเพิ่ม (หลักฐานเพิ่มเติม)"}
                         </button>
                       )}
                       {/* 💸 เงินโอนเกิน — คืนลูกค้า / ย้ายไปใช้กับออเดอร์อื่น (ลูกค้าโอนรวม) */}
@@ -11731,7 +11747,8 @@ function AcceptPaymentModal({
 }) {
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const asText = (n: number) => (n % 1 ? n.toFixed(2) : String(n)); // ช่องกรอกโชว์ 46.90 ไม่ใช่ 46.89999999999998
-  const due = round2(Math.max(0, orderBalance(order)));
+  // 🧾 หัก ณ ที่จ่าย: ช่องนี้คือเงินเข้าจริง → เทียบกับยอดค้างหลังหักภาษี (เซิร์ฟเวอร์นับยอดตามบิลให้เองเมื่อโอนครบ)
+  const due = round2(Math.max(0, balanceNet(order)));
   const read = entry.verify?.amount != null ? round2(entry.verify.amount) : null; // ยอดที่ SlipOK อ่านได้ (ถ้าอ่านได้)
   const [raw, setRaw] = useState(asText(read ?? due));
 

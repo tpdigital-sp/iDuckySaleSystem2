@@ -32,6 +32,7 @@ import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import {
   amountDueNow,
+  balanceNet,
   daysToUseBy,
   lineChatOf,
   lineUserOf,
@@ -991,7 +992,7 @@ function Row({
           {seesMoney ? formatPrice(orderTotal(o)) : qtyText}
           {seesMoney && isDue(o) && (
             <small style={{ color: o.deposit?.firstPaidAt ? "var(--op-rose)" : "var(--op-violet)" }}>
-              {o.deposit?.firstPaidAt ? "ค้าง" : "มัดจำ"} {formatPrice(amountDueNow(o))}
+              {o.deposit?.firstPaidAt ? "ค้าง" : "มัดจำ"} {formatPrice(balanceNet(o, amountDueNow(o)))}
             </small>
           )}
         </span>

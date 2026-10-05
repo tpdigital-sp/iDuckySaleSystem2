@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/products";
-import { orderBalance, orderFullyPaid, orderTotal, STEP_OF, type Order } from "@/lib/admin-data";
+import { balanceNet, orderFullyPaid, orderTotal, STEP_OF, type Order } from "@/lib/admin-data";
 import { LINE_URL } from "@/components/LineButton";
 import { AccountHead, AccountShell, statusIcon } from "@/components/account/AccountShell";
 import { orderHref, useAccountOrders } from "@/components/account/useAccountOrders";
@@ -81,7 +81,7 @@ export default function ReceiptsPage() {
 /** แถวออเดอร์ 1 ใบ — จ่ายครบ = ปุ่มเปิดใบเสร็จ · ยังไม่ครบ = บอกยอดค้างพร้อมทางไปจ่าย */
 function ReceiptRow({ order: o }: { order: Order }) {
   const paid = orderFullyPaid(o);
-  const owed = orderBalance(o);
+  const owed = balanceNet(o);
   return (
     <article className="acd-ocard acd-rcp-row">
       <div className="acd-ocard-top">

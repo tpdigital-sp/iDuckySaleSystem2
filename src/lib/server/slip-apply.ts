@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { clearStageMemory, earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, parkForSlipReview, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, stageAfterPayment, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { balanceWhtShare, clearStageMemory, orderBalance, earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, parkForSlipReview, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, stageAfterPayment, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
@@ -767,15 +767,22 @@ export async function acceptPaymentManually(a: {
 
   const now = new Date().toISOString();
   const waiting = order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ";
-  list[idx] = { ...list[idx], credited: amount, accepted: { by: who, at: now } };
-  const paidNow = round2(paidSoFar(order) + amount);
+  /**
+   * 🧾 ลูกค้าหัก ณ ที่จ่าย: โอนมาเท่า "ยอดค้างหลังหักภาษี" พอดี = จ่ายครบงวด → นับเข้า paidTotal เป็นยอดตามบิล
+   * (paidTotal เป็นยอดตามบิล — นับแค่เงินที่เข้า ภาษีส่วนนั้นจะค้างเป็นหนี้ปลอมตลอดไป · OD-261001-8513)
+   */
+  const balNow = orderBalance(order);
+  const whtShare = moved ? 0 : balanceWhtShare(order, balNow);
+  const credit = whtShare > 0 && Math.abs(amount - (balNow - whtShare)) <= 0.5 ? round2(balNow) : amount;
+  list[idx] = { ...list[idx], credited: credit, accepted: { by: who, at: now } };
+  const paidNow = round2(paidSoFar(order) + credit);
   let updated: Order = { ...order, payments: list, paidTotal: paidNow };
   const total = orderTotal(updated);
   const remain = round2(Math.max(0, total - paidNow));
   const head = moved ? `💸 รับเงินโอนเกินที่ย้ายมาจาก ${moved.fromOrderId}` : "รับยอดสลิปใบเพิ่มเอง";
   const amountNote = moved
     ? `ยอด ${thb(amount)} บาท · ย้ายเงินโอนเกินมาจาก ${moved.fromOrderId} (ลูกค้าโอนรวม — ไม่มีเงินเข้าใหม่)`
-    : `ยอด ${thb(amount)} บาท · แอดมินเทียบยอดเอง`;
+    : `ยอด ${thb(amount)} บาท · แอดมินเทียบยอดเอง${credit > amount ? ` · หัก ณ ที่จ่าย ${thb(round2(credit - amount))} บาท (นับยอดตามบิล ${thb(credit)} บาท — รอใบ 50 ทวิจากลูกค้า)` : ""}`;
 
   let confirmedDeposit = false;
   let confirmedFull = false;
