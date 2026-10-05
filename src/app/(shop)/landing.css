@@ -2389,7 +2389,9 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
   box-shadow:0 26px 54px -26px rgba(44,129,196,.42),0 8px 22px -14px rgba(23,58,107,.14)}
 .dl .promo-rail::-webkit-scrollbar{display:none}
 /* ลูกศร ‹ › ใช้ปุ่ม .fresh-nav ชุดเดิม — ขยับมากึ่งกลางความสูงป้าย */
-.dl .promo-wrap{position:relative;--promo-r:var(--r-xl)}
+.dl .promo-wrap{position:relative;--promo-r:28px}
+/* 5 ต.ค. 69: มุมโค้ง 48px เดิมกินมุมภาพ + ลูกศรวางทับขอบภาพ → มุมเหลือ 28px · จอกว้างพอ (เหลือที่ข้างละ ≥70px) ย้ายลูกศรออกไปนอกป้าย */
+@media(min-width:1310px){.dl .promo-wrap .fresh-nav.prev{left:-64px}.dl .promo-wrap .fresh-nav.next{right:-64px}}
 .dl .promo-wrap .fresh-nav{top:50%}
 /* เส้นขาวบางทับขอบป้าย (ชุดเดียวกับแถบเมนู/การ์ดทั้งเว็บ) — ต้องเป็นชั้นบนสุด
    เพราะ inset box-shadow ของตัวราง จะโดนรูปป้ายทับจนมองไม่เห็น · กดทะลุไปที่ลิงก์/ลูกศรได้ */
@@ -2401,7 +2403,7 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 .dl .promo-img picture{display:block;width:100%}
 .dl .promo-img img{display:block;width:100%;height:auto}
 .dl a.promo-img picture img{transition:transform .5s ease,filter .3s ease}
-.dl a.promo-img:hover picture img{transform:scale(1.012);filter:brightness(1.03)}
+.dl a.promo-img:hover picture img{filter:brightness(1.03)}
 /* ✨ ชิ้นลูกเล่นขยับทับป้ายภาพ (BannerLayer) — ขยับด้วย transform/opacity ล้วน ไม่กระทบ layout · ลดการเคลื่อนไหว = นิ่งหมด */
 .dl .promo-img{position:relative;overflow:hidden}
 .dl .promo-fx{position:absolute;inset:0;pointer-events:none;line-height:0}
@@ -2452,52 +2454,51 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
 @keyframes promoNudge{0%,100%{transform:translateX(-3%)}50%{transform:translateX(5%)}}
 @keyframes promoShine{0%,62%{transform:translateX(-160%) skewX(-18deg)}88%,100%{transform:translateX(620%) skewX(-18deg)}}
 /* 🐣 ท่าขยับทั้งใบ (PromoBanner.motion · เลือกที่ /admin/banners) — ป้ายนิ่งสนิทดูเป็นรูปติดผนัง ขยับเบา ๆ แล้วน่ารักขึ้น
-   ขยับที่ <picture> ไม่ใช่ <img> (ซูมตอนชี้เมาส์เป็นของ img)
-   เคล็ดความน่ารักคือ "จังหวะ" ไม่ใช่ "ระยะ": ขึ้นเร็ว-ค้างนิด-ตกช้า · ย่อตัวก่อนกระโดด · สะบัดแล้วค่อย ๆ เบาลง
-   ระยะยังเบาเท่าเดิม (เลื่อน ~1% เอียง <1°) — ป้ายเต็มความกว้างจอ ขยับแรงกว่านี้ตัวหนังสือจะสั่นและกวนตา
-   ซูมพื้น 1.04–1.05 กันมุมโหว่ตอนเอียง/เลื่อน (สูตร: scale ≥ 1 + (กว้าง/สูง)×sin องศา + 2×ระยะเลื่อน)
-   ถูกตัดขอบราว 2% ต่อด้าน ยังอยู่ในระยะเว้นขอบ 60px ของสเปคไฟล์ (BANNER_SPEC) */
-.dl [class*=promo-mo-] picture{animation-iteration-count:infinite;animation-timing-function:ease-in-out;will-change:transform}
-.dl .promo-mo-float picture{animation-name:promoMoFloat;animation-duration:4.2s}
-.dl .promo-mo-sway picture{animation-name:promoMoSway;animation-duration:5.2s}
-.dl .promo-mo-breathe picture{animation-name:promoMoBreathe;animation-duration:4.4s}
-.dl .promo-mo-hop picture{animation-name:promoMoHop;animation-duration:5.4s}
-.dl .promo-mo-wiggle picture{animation-name:promoMoWiggle;animation-duration:6.4s}
-/* ลอยน้ำ: ลอยขึ้นเร็ว ค้างบนแป๊บ แล้วค่อย ๆ จมลงมาพักท้ายรอบ + เอียงสลับข้างนิดเดียวให้ดูมีน้ำหนัก */
+   ขยับ "ทั้งการ์ด" (.promo-wrap ตามป้ายที่อยู่บนจอ) ไม่ใช่ <picture> ข้างในกรอบ — 5 ต.ค. 69 เจ้าของร้านทัก "ภาพโดนตัดขอบ":
+   ของเดิมขยับรูปในกรอบที่ตัดขอบ ต้องซูม 1.045 กันมุมโหว่ตอนเอียง = ขอบรูปหายด้านละ ~2% (ตัวหนังสือชิดขอบในภาพโดนกิน)
+   ตอนนี้รูปโชว์ครบ 100% ไม่ซูม · การ์ดลอย/โยกทั้งใบพร้อมเงา (ระยะเป็น px เล็ก ๆ ตัวหนังสือไม่สั่น)
+   เคล็ดความน่ารักคือ "จังหวะ" ไม่ใช่ "ระยะ": ขึ้นเร็ว-ค้างนิด-ตกช้า · ย่อตัวก่อนกระโดด · สะบัดแล้วค่อย ๆ เบาลง */
+.dl .promo-wrap[class*=promo-mo-]{animation-iteration-count:infinite;animation-timing-function:ease-in-out;will-change:transform}
+.dl .promo-wrap.promo-mo-float{animation-name:promoMoFloat;animation-duration:4.2s}
+.dl .promo-wrap.promo-mo-sway{animation-name:promoMoSway;animation-duration:5.2s}
+.dl .promo-wrap.promo-mo-breathe{animation-name:promoMoBreathe;animation-duration:4.4s}
+.dl .promo-wrap.promo-mo-hop{animation-name:promoMoHop;animation-duration:5.4s}
+.dl .promo-wrap.promo-mo-wiggle{animation-name:promoMoWiggle;animation-duration:6.4s}
+/* ลอยน้ำ: ลอยขึ้นเร็ว ค้างบนแป๊บ แล้วค่อย ๆ จมลงมาพักท้ายรอบ + เอียงสลับข้างนิดเดียว */
 @keyframes promoMoFloat{
-  0%{transform:scale(1.045) translateY(1.05%) rotate(-.28deg);animation-timing-function:cubic-bezier(.22,.72,.32,1)}
-  42%{transform:scale(1.045) translateY(-1.15%) rotate(.3deg);animation-timing-function:cubic-bezier(.55,0,.68,.62)}
-  88%,100%{transform:scale(1.045) translateY(1.05%) rotate(-.28deg)}}
+  0%{transform:translateY(3px) rotate(-.12deg);animation-timing-function:cubic-bezier(.22,.72,.32,1)}
+  42%{transform:translateY(-4px) rotate(.12deg);animation-timing-function:cubic-bezier(.55,0,.68,.62)}
+  88%,100%{transform:translateY(3px) rotate(-.12deg)}}
 /* โยกตัวแบบเป็ดเดิน: เอียงพร้อมถ่ายน้ำหนักไปข้างนั้นนิดหน่อย แล้วค้างปลายทางสั้น ๆ ก่อนโยกกลับ */
 @keyframes promoMoSway{
-  0%,7%{transform:scale(1.045) rotate(-.68deg) translateX(-.32%)}
-  50%,57%{transform:scale(1.045) rotate(.68deg) translateX(.32%)}
-  100%{transform:scale(1.045) rotate(-.68deg) translateX(-.32%)}}
-/* หายใจแบบตัวนิ่ม (squash & stretch): กว้างขึ้น-เตี้ยลง สลับกับ สูงขึ้น-แคบลง ไม่ใช่ซูมเข้าออกเฉย ๆ */
+  0%,7%{transform:rotate(-.3deg) translateX(-3px)}
+  50%,57%{transform:rotate(.3deg) translateX(3px)}
+  100%{transform:rotate(-.3deg) translateX(-3px)}}
+/* หายใจแบบตัวนิ่ม (squash & stretch) เบา ๆ */
 @keyframes promoMoBreathe{
-  0%,100%{transform:scale(1.06,1.028)}
-  50%{transform:scale(1.032,1.062)}}
-/* เด้งดึ๋ง: นิ่งยาว → ย่อตัว → กระโดดยืดตัว → ลงพื้นย่ออีกที → เด้งเล็ก ๆ แล้วนิ่ง (จังหวะการ์ตูน) */
+  0%,100%{transform:scale(1.008,.994)}
+  50%{transform:scale(.994,1.01)}}
+/* เด้งดึ๋ง: นิ่งยาว → ย่อตัว → กระโดดยืดตัว → ลงพื้นย่ออีกที → เด้งเล็ก ๆ แล้วนิ่ง */
 @keyframes promoMoHop{
-  0%,58%{transform:scale(1.045) translateY(0)}
-  63%{transform:scale(1.062,1.024) translateY(.5%)}
-  71%{transform:scale(1.032,1.066) translateY(-2%)}
-  79%{transform:scale(1.058,1.028) translateY(.4%)}
-  86%{transform:scale(1.04,1.05) translateY(-.7%)}
-  93%,100%{transform:scale(1.045) translateY(0)}}
+  0%,58%{transform:none}
+  63%{transform:translateY(2px) scale(1.008,.99)}
+  71%{transform:translateY(-8px) scale(.996,1.012)}
+  79%{transform:translateY(1px) scale(1.006,.994)}
+  86%{transform:translateY(-3px)}
+  93%,100%{transform:none}}
 /* สะบัดตัวเรียกให้มอง: นิ่งไว้ก่อนแล้วสะบัดถี่ ๆ แรงลดลงเรื่อย ๆ จนหยุดเอง */
 @keyframes promoMoWiggle{
-  0%,70%,100%{transform:scale(1.05) rotate(0)}
-  74%{transform:scale(1.05) rotate(-.85deg)}
-  78%{transform:scale(1.05) rotate(.78deg)}
-  82%{transform:scale(1.05) rotate(-.5deg)}
-  86%{transform:scale(1.05) rotate(.3deg)}
-  90%{transform:scale(1.05) rotate(-.14deg)}
-  94%{transform:scale(1.05) rotate(0)}}
+  0%,70%,100%{transform:rotate(0)}
+  74%{transform:rotate(-.42deg)}
+  78%{transform:rotate(.38deg)}
+  82%{transform:rotate(-.25deg)}
+  86%{transform:rotate(.15deg)}
+  90%{transform:rotate(-.07deg)}
+  94%{transform:rotate(0)}}
 @media(min-width:641px){.dl .promo-fx-m{display:none}}
 @media(max-width:640px){.dl .promo-fx-d{display:none}}
 @media(prefers-reduced-motion:reduce){.dl .promo-fx :is(*,*::before,*::after){animation:none}
-.dl [class*=promo-mo-] picture{animation:none}
+.dl .promo-wrap[class*=promo-mo-]{animation:none}
 .dl :is(.promo-fx-ping,.promo-fx-rise,.promo-fx-blink,.promo-fx-tap,.promo-fx-shine){display:none}}
 .dl .promo-text{flex:1;display:flex;align-items:center;gap:16px;padding:20px 28px;min-height:96px;color:var(--navy);text-decoration:none;
   background:linear-gradient(100deg,#FFF6D9,#FFFBEF 38%,var(--sky-100))}
@@ -2516,7 +2517,7 @@ body.search-open .dl .nav-row-bottom a,body.search-open .dl .nav-row-bottom butt
   transition:width .3s ease,background .3s ease}
 .dl .promo-dots button.on::before{width:22px;background:var(--blue-deep)}
 @media(max-width:560px){.dl .promo-band{padding-bottom:22px}
-.dl .promo-wrap{--promo-r:26px}
+.dl .promo-wrap{--promo-r:18px}
 .dl .promo-text{flex-wrap:wrap;gap:10px 12px;padding:16px 18px}
 .dl .promo-ico{width:42px;height:42px;font-size:1.2rem}
 .dl .promo-msg{flex-basis:calc(100% - 54px)}

@@ -18,16 +18,16 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ART = path.join(HERE, "assets", "promo-banners");
 const ROW_ID = "__promo_banners__";
 const BUCKET = "product-images";
-const VER = "v1";
+const VER = "v1"; // รุ่นไฟล์ตั้งต้น · ใบไหนเปลี่ยนภาพใส่ ver ของใบนั้น (กันแคช CDN)
 const DRY = process.argv.includes("--dry");
 
 const PICKS = [
-  { id: "pick-sticker-solvent", title: "สติ๊กเกอร์ Solvent Premium เริ่ม ฿130", href: "/products/sticker-solvent", motion: "float" },
+  { id: "pick-sticker-solvent", title: "สติ๊กเกอร์ Solvent Premium เริ่ม ฿130", href: "/products/sticker-solvent", motion: "float", ver: "v6" }, // v6 = ภาพใหม่เจ้าของร้าน (รอบ 5 · ปุ่มสั่งเลยสีเหลือง → วงแหวนสีฟ้า) 5 ต.ค. 69
   { id: "pick-unisex", title: "เสื้อยืด UNISEX พิมพ์ลายเต็มตัว เริ่ม ฿180", href: "/products/unisex", motion: "sway" },
   { id: "pick-sport", title: "เสื้อกีฬา SPORT พิมพ์ลายเต็มตัว เริ่ม ฿180", href: "/products/sport", motion: "hop" },
 ];
 
-const FX = JSON.parse(await readFile(path.join(ART, `layers-picks-${VER}.json`), "utf8"));
+const FX = JSON.parse(await readFile(path.join(ART, "layers-picks-v1.json"), "utf8")); // ตำแหน่งปุ่มของภาพรุ่นล่าสุดแต่ละใบ
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
@@ -47,10 +47,10 @@ const cur = row?.data?.banners ?? { on: true, seconds: 6, items: [] };
 const others = (cur.items ?? []).filter((x) => !PICKS.some((p) => p.id === x.id));
 
 const front = [];
-for (const p of PICKS) {
+for (const { ver = VER, ...p } of PICKS) {
   const old = (cur.items ?? []).find((x) => x.id === p.id) ?? {};
-  const image = await upload(`${p.id}-d-${VER}.webp`);
-  const imageMobile = await upload(`${p.id}-m-${VER}.webp`);
+  const image = await upload(`${p.id}-d-${ver}.webp`);
+  const imageMobile = await upload(`${p.id}-m-${ver}.webp`);
   front.push({ ...old, ...p, image, imageMobile, layers: FX[p.id].d, layersMobile: FX[p.id].m, shine: true });
   console.log(`• ${p.id} — ${image}`);
 }

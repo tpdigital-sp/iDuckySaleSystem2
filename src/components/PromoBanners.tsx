@@ -78,10 +78,14 @@ export default function PromoBanners() {
 
   if (!items.length) return null;
 
+  // 🐣 ท่าขยับของป้ายที่อยู่บนจอ — ขยับ "ทั้งการ์ด" ไม่ใช่รูปข้างใน (5 ต.ค. 69 เจ้าของร้าน "ภาพโดนตัดขอบ":
+  // เดิมขยับ <picture> ในกรอบที่ตัดขอบ ต้องซูม 4.5% กันมุมโหว่ = ขอบรูปหายด้านละ ~2%) · การ์ดลอยทั้งใบ = เห็นรูปครบ 100%
+  const mo = items[at] ? bannerMotion(items[at]) : null;
+
   return (
     <section className="promo-band" aria-label="ประชาสัมพันธ์จากร้าน">
       <div className="wrap">
-        <div className="promo-wrap">
+        <div className={`promo-wrap${mo ? ` promo-mo-${mo}` : ""}`}>
           <div
             className="promo-rail"
             ref={railRef}
@@ -198,11 +202,9 @@ function Slide({ b, eager }: { b: PromoBanner; eager: boolean }) {
     );
   }
 
-  // 🐣 ท่าขยับทั้งใบ (ลอย/โยก/หายใจ/สะบัด) — ป้ายนิ่งสนิทดูเป็นรูปติดผนัง · ไม่ได้ตั้ง = ท่าเริ่มต้น
-  const mo = bannerMotion(b);
-
+  // ท่าขยับทั้งใบอยู่ที่ .promo-wrap (ดู PromoBanners) — ตัวรูปนิ่ง ไม่ซูม ไม่ตัดขอบ
   return (
-    <Wrap href={b.href} className={`promo-img${mo ? ` promo-mo-${mo}` : ""}`} label={b.title || undefined}>
+    <Wrap href={b.href} className="promo-img" label={b.title || undefined}>
       <picture>
         {/* ใช้ไฟล์ต้นฉบับทั้งมือถือและจอกว้าง (เจ้าของร้านสั่ง 21 ก.ย. 69 "ต้องการให้ภาพคมชัด")
             — ตัวย่อ /_next/image สูงสุด 1200px + q82 ทำให้ตัวหนังสือในป้ายเบลอบนจอ retina/มือถือ 3x
