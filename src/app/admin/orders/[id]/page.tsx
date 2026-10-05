@@ -1739,11 +1739,10 @@ export default function AdminOrderDetailPage() {
     it.productId === "special-item" ? (shopNames ? shopProductIdByName(shopNames, it.name) : undefined) : it.productId;
 
   /**
-   * 📋 รายการพิเศษที่ผูกสินค้าได้ = เรียงบรรทัดตามกลุ่มตัวเลือกของสินค้า (เรทราคา → สเปคเรท → ขนาด → ชนิดผ้า …)
-   * รายการหน้าร้านคงลำดับ tidySpec ที่กราฟฟิกใช้อยู่ (ขนาดก่อน · กระดาษก่อน · เรทท้าย) — เจ้าของร้านเลือก 3 ต.ค. 69
+   * 📋 เรียงบรรทัดตามกลุ่มตัวเลือกของสินค้าจากบนลงล่าง (ชุดเดียวกับตะกร้า/หน้าออเดอร์ลูกค้า · productLineOrder)
+   * รายการพิเศษที่ผูกสินค้าได้ใช้สินค้าชื่อตรงกัน · เดิม (3 ต.ค. 69) เฉพาะรายการพิเศษ — เจ้าของร้านสั่งให้ทุกรายการ 5 ต.ค. 69
    */
   const specialOrderOf = (it: OrderItem): string[] | undefined => {
-    if (it.productId !== "special-item") return undefined;
     const p = productOfItem(specProductIdOf(it) ?? "");
     return p ? productLineOrder(p) : undefined;
   };
