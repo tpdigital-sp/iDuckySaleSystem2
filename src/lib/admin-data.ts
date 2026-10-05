@@ -2571,12 +2571,13 @@ export interface PackGate {
    * 📋 แอดมินสั่งแบ่งส่งไว้ และรอบตามแผนยังไม่ได้ส่ง — ห้ามปิดทั้งใบ (ยิงเลขรอบสุดท้าย / แพ็คเสร็จมารับเอง)
    * ต้องส่งรอบนี้ทางปุ่ม "🚚 ส่งบางส่วน" ก่อน ไม่งั้นใบปิดเป็นจัดส่งแล้วทั้งที่ของที่เหลือยังไม่ได้ผลิต/ส่ง แล้วหลุดจากคิวปริ้น
    */
-  planPending: { round: number; qty: number } | null;
+  planPending: { round: number; qty: number; unproofed?: number } | null;
 }
 
 /** ข้อความเหตุผลของ PackGate.planPending — ใช้คำเดียวกันทุกจอ + ฝั่งเซิร์ฟเวอร์ */
 export const planPendingReason = (p: NonNullable<PackGate["planPending"]>) =>
-  `แอดมินสั่งแบ่งส่งไว้ — รอบที่ ${p.round}${p.qty ? ` (${p.qty.toLocaleString("th-TH")} ชิ้น)` : ""} ยังไม่ได้ส่ง ให้ใช้ปุ่ม “🚚 ส่งบางส่วน” ห้ามปิดทั้งใบ`;
+  `แอดมินสั่งแบ่งส่งไว้ — รอบที่ ${p.round}${p.qty ? ` (${p.qty.toLocaleString("th-TH")} ชิ้น)` : ""} ยังไม่ได้ส่ง ให้ใช้ปุ่ม “🚚 ส่งบางส่วน” ห้ามปิดทั้งใบ` +
+  (p.unproofed ? ` · ลูกค้าสั่งเกินรูปที่มีอีก ${p.unproofed.toLocaleString("th-TH")} ชิ้น (ลายที่ยังไม่อัป) = ไปรอบหลัง` : "");
 
 /** รายการที่ของยังไม่ถึงโต๊ะแพ็ค (สรุปจาก OrderItem.arrival) */
 export interface PackMissing {
@@ -2959,10 +2960,28 @@ export function hasAdminShipPlan(order: Order): boolean {
 }
 
 /**
+ * 📋 ชิ้นที่ลูกค้าสั่งแต่ "ยังไม่มีรูปแบบงานรองรับ" (ป้ายบนรูปรวมน้อยกว่าจำนวนที่สั่ง) — ของที่ยังต้องส่งรอบหลัง
+ * ทำไม (OD-260915-5055 · พนักงานแจ้ง 5 ต.ค. 69): สั่ง 50 แผ่น A3 (100 ชิ้น 2 ลาย) แอดมินตั้งแผนรอบ 1 = 50/100 ชิ้น
+ * แล้วกราฟฟิกเปลี่ยนรูปเป็นไฟล์ลายแรก 25A3 (50 ชิ้น) · ลายที่ 2 ยังไม่อัป → ระบบนับของทั้งใบจากรูป = 50
+ * → รอบ 1 กลายเป็น "ของที่เหลือทั้งหมด" = รอบสุดท้าย → ด่านแผนไม่ล็อก → ยิงเลขช่องปกติปิดทั้งใบ ทั้งที่ยังค้าง 25 A3
+ * นับเฉพาะรายการที่ป้ายบนรูปเทียบกับจำนวนที่สั่งได้ (หน่วยตรงกัน) · รูปเกินจำนวนสั่งไม่หักกลับ
+ */
+export function unproofedQty(order: Order): number {
+  let n = 0;
+  order.items.forEach((it) => {
+    const proofs = proofsOf(it);
+    if (!proofs.length) return;
+    const c = proofQtyCheck(it, proofs);
+    if (c.comparable && c.target > c.total) n += c.target - c.total;
+  });
+  return n;
+}
+
+/**
  * 📋 รอบตามแผนแบ่งส่งที่ "ยังไม่ได้ส่ง และไม่ใช่รอบสุดท้าย" → ห้ามปิดทั้งใบจนกว่าจะส่งรอบนี้ทางปุ่มส่งบางส่วน
  * รอบตามแผนที่เอาของที่เหลือไปทั้งหมด = รอบสุดท้าย (partialGate ให้ไปปิดใบทางปกติ) จึงไม่นับ · ใบปิดไปแล้วไม่นับ
  */
-export function pendingPlanRound(order: Order): { round: number; qty: number } | null {
+export function pendingPlanRound(order: Order): { round: number; qty: number; unproofed?: number } | null {
   if ((order.tracking ?? "").trim() || order.packedAt) return null;
   const next = nextPlannedRound(order);
   if (!next) return null;
@@ -2972,8 +2991,11 @@ export function pendingPlanRound(order: Order): { round: number; qty: number } |
   next.qty.forEach((q) => (qty += q));
   let remaining = 0;
   proofShipStates(order).forEach((st) => (remaining += st.remaining));
+  // ของที่ลูกค้าสั่งแต่ยังไม่มีรูป (ลายที่ยังไม่อัป) ก็ยังค้างรอบหลัง — ไม่งั้นรอบตามแผนจะถูกมองเป็นรอบสุดท้าย (OD-260915-5055)
+  const unproofed = unproofedQty(order);
+  remaining += unproofed;
   if (qty <= 0 || qty >= remaining) return null;
-  return { round: (order.shipments?.length ?? 0) + 1, qty };
+  return { round: (order.shipments?.length ?? 0) + 1, qty, ...(unproofed > 0 ? { unproofed } : {}) };
 }
 
 /** ใบที่ส่งไปแล้วบางส่วนแต่ยังไม่ปิด (ยังไม่ยิงเลขรอบสุดท้าย) */
@@ -3120,6 +3142,9 @@ export function partialGate(order: Order, sel: PartialSel): PartialGate {
   if (short.length) reasons.push(`ของไม่พอกับจำนวนที่จะส่งรอบนี้: ${short.join(", ")}`);
   if (unread.size) reasons.push(`ยืนยันอ่านรายละเอียด: ${[...unread].join(", ")}`);
   if (!(order.packPhotos && order.packPhotos.length > 0)) reasons.push("ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง");
+  // 📋 แอดมินสั่งแบ่งส่งไว้ + ลูกค้าสั่งมากกว่าที่มีรูป (ลายที่ยังไม่อัป) = ยังมีรอบหลัง ไม่ใช่รอบสุดท้าย (OD-260915-5055)
+  // ไม่มีแผน = ไม่นับ (ป้ายบนรูปขาดเพราะพิมพ์ผิด/ลูกค้าลดจำนวน ต้องไม่เปิดทางแบ่งส่งเอง)
+  if (hasAdminShipPlan(order)) remaining += unproofedQty(order);
   // เลือกครบทุกชิ้นที่เหลือ = รอบสุดท้าย ต้องยิงช่องเลขพัสดุปกติให้ใบปิด (สถานะจัดส่งแล้ว + ด่านเต็ม)
   const isLastRound = selQty > 0 && remaining > 0 && selQty >= remaining;
   // 🎁➗ ใบมัดจำที่ตั้งใจส่งตัวอย่างก่อน (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย) — รอบที่ไม่ใช่รอบสุดท้ายไม่ต้องรอครบ 100%
