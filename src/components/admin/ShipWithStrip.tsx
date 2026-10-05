@@ -302,9 +302,10 @@ export function ShipWithSuggest({
           ? "บิลแยกกันเหมือนเดิม · มารับเองทั้งคู่ = แพ็ครวม กดแพ็คเสร็จใบเดียว · อีกใบส่ง ปณ. = ใบนั้นเป็นใบหลัก ส่งกล่องเดียว"
           : "บิลแยกกันเหมือนเดิม ค่าส่งไม่เปลี่ยน · ผูกแล้วยิงเลขพัสดุที่ใบนี้ใบเดียว"}
       </p>
-      <ul className="mt-2 grid gap-1.5">
+      {/* grid-cols-1 = minmax(0,1fr) — คอลัมน์ auto โดนรายการสินค้ายาว (truncate) ดันกว้างจนแถวล้นกรอบ ปุ่มหลุดขวา (5 ต.ค. 69) */}
+      <ul className="mt-2 grid grid-cols-1 gap-1.5">
         {show.map((r) => (
-          <li key={r.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl bg-white/85 px-3 py-2">
+          <li key={r.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl bg-white/85 px-3 py-2">
             <div className="min-w-0 flex-1">
               <Link
                 href={`/admin/orders/${encodeURIComponent(r.id)}`}
@@ -432,9 +433,9 @@ export function ShipWithPicker({ order, onClose, onSaved }: { order: Order; onCl
                 )}
               </p>
             ))}
-          <ul className="grid gap-2">
+          <ul className="grid grid-cols-1 gap-2">
             {(rows ?? []).map((r) => (
-              <li key={r.id} className="rounded-xl px-3 py-2.5 ring-1 ring-slate-200">
+              <li key={r.id} className="min-w-0 rounded-xl px-3 py-2.5 ring-1 ring-slate-200">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[14px] font-extrabold tabular-nums text-slate-900">{r.id}</p>
