@@ -7,7 +7,7 @@ import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
-import { artQtyOf, formatPrice, type Product } from "@/lib/products";
+import { artQtyOf, formatPrice, productLineOrder, type Product } from "@/lib/products";
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
@@ -1666,6 +1666,8 @@ export default function CustomerOrderPage() {
                       after={itemPiecesLine(it, prodById[it.productId]) ? <p className="font-semibold t-blue">{itemPiecesLine(it, prodById[it.productId])}</p> : null}
                       /* 📐 สินค้าที่มีขนาดเดียว ไม่มีกลุ่มขนาดให้เลือก — เติมบรรทัดขนาดจากสินค้าให้เอง */
                       workSize={prodById[it.productId]?.workSize}
+                      /* 📋 เรียงบรรทัดตามลำดับกลุ่มตัวเลือกบนหน้าสินค้า — ชุดเดียวกับตะกร้า (เจ้าของร้าน 5 ต.ค. 69) */
+                      order={prodById[it.productId] ? productLineOrder(prodById[it.productId]) : undefined}
                     />
                     {/* 💬 ที่มาของราคาที่ร้านตีให้ (งานสั่งทำ) — บอกวิธีคิดตรง ๆ ไม่ต้องทักถาม */}
                     {it.quoteNote && (

@@ -11,7 +11,7 @@ import { resolveShipLabel } from "@/lib/ship-label";
 import { SpecLines } from "@/components/SpecLines";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import { itemQtyText } from "@/lib/item-yield";
-import type { Product } from "@/lib/products";
+import { productLineOrder, type Product } from "@/lib/products";
 
 /** ใบเสร็จ/ใบรับเงิน ที่ลูกค้าเปิด+พิมพ์เองได้ (ต้องมี key) */
 export default function CustomerReceiptPage() {
@@ -178,6 +178,7 @@ export default function CustomerReceiptPage() {
                       className="text-[11px] text-stone-400"
                       stripLinks
                       workSize={prodById[it.productId]?.workSize}
+                      order={prodById[it.productId] ? productLineOrder(prodById[it.productId]) : undefined}
                     />
                   </td>
                   {/* 🔢 งานเซ็ต/แผ่น — บอกหน่วยที่สั่งและชิ้นจริง ("17 เซ็ต · 102 ชิ้น") */}
