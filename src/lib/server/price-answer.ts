@@ -123,8 +123,9 @@ async function loadLite(): Promise<Lite[]> {
 function absImage(src: unknown): string | undefined {
   const s = typeof src === "string" ? src.trim() : "";
   if (!s || s.startsWith("data:")) return undefined;
-  if (/^https?:\/\//i.test(s)) return s;
-  return `${SITE_URL}${s.startsWith("/") ? "" : "/"}${s}`;
+  // รูปในโฟลเดอร์ชื่อไทย (product-images/products/<slug ไทย>/…) ต้องเข้ารหัสด้วย ไม่งั้น LINE Flex ปฏิเสธ (hero image URL)
+  if (/^https?:\/\//i.test(s)) return safeHref(s);
+  return safeHref(`${SITE_URL}${s.startsWith("/") ? "" : "/"}${s}`);
 }
 
 /**
@@ -140,11 +141,24 @@ function botUrl(p: { id: string; slug?: string }): string {
   return `${SITE_URL}/products/${path}`;
 }
 
+/**
+ * 🔗 ลิงก์สำหรับ "ปุ่ม/การ์ด/href" — เข้ารหัสอักษรไทยเป็น %E0… (ASCII ล้วน)
+ * botUrl() คงอักษรไทยดิบไว้แสดงในข้อความ (ตรงกับลิงก์ในหลังบ้าน · e62a2ad) แต่ LINE Flex ปฏิเสธ URI ที่มีอักษรไทย
+ * (400 "Invalid action URI" → ทั้ง reply และ push ล้ม บอทเงียบ · 5 ต.ค. 69 พวงกุญแจอะคริลิค) — ลิงก์เดียวกัน เบราว์เซอร์เปิดได้เหมือนกัน
+ */
+export function safeHref(u: string): string {
+  try {
+    return encodeURI(decodeURI(u));
+  } catch {
+    return encodeURI(u);
+  }
+}
+
 function refOf(it: Lite): ProductRef {
   return {
     id: it.id,
     name: it.name,
-    url: botUrl(it),
+    url: safeHref(botUrl(it)),
     image: it.imageSrc,
     category: it.category || undefined,
     priceMin: it.priceMin,
@@ -390,7 +404,7 @@ async function minTable(): Promise<MinRow[]> {
         return {
           id: String(r.id),
           name: String(r.name),
-          url: botUrl({ id: String(r.id), slug: (r as { slug?: string }).slug }),
+          url: safeHref(botUrl({ id: String(r.id), slug: (r as { slug?: string }).slug })),
           image: absImage((r as { imageSrc?: unknown }).imageSrc),
           min: hard || (mins.length === rates.length && mins.length ? Math.min(...mins) : 0),
           unit: rawRates[0]?.pricing?.unit || "ชิ้น",
@@ -1145,7 +1159,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
     kind: options > 1 ? "price-options" : "price",
     source: "web-price-engine",
     intent: qty ? "price_qty" : "price",
-    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...pr },
+    product: { id: p.id, name: p.name, url: safeHref(url), image: absImage(p.imageSrc), ...pr },
   };
 }
 
@@ -1205,7 +1219,7 @@ function spec(p: Product, query: string): PriceAnswer | null {
     kind: "info",
     source: "web-price-engine",
     intent: "spec",
-    product: { id: p.id, name: p.name, url: botUrl(p), image: absImage(p.imageSrc), ...priceRange(p) },
+    product: { id: p.id, name: p.name, url: safeHref(botUrl(p)), image: absImage(p.imageSrc), ...priceRange(p) },
   };
 }
 
@@ -1320,7 +1334,7 @@ function mixText(p: Product, query = ""): PriceAnswer | null {
     kind: "info",
     source: "web-price-engine",
     intent: "mix",
-    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...priceRange(p) },
+    product: { id: p.id, name: p.name, url: safeHref(url), image: absImage(p.imageSrc), ...priceRange(p) },
   };
 }
 
@@ -1456,7 +1470,7 @@ ${
     kind: "info",
     source: "web-page-info",
     intent: "info",
-    product: { id: p.id, name: p.name, url, image: absImage(p.imageSrc), ...priceRange(p) },
+    product: { id: p.id, name: p.name, url: safeHref(url), image: absImage(p.imageSrc), ...priceRange(p) },
   };
 }
 
