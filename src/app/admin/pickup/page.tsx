@@ -9,6 +9,7 @@
  * ใบที่ยังไม่โอน (รอชำระเงิน) ไม่เข้าหน้านี้ — API ตัดออกให้แล้ว
  * ตัวเลขข้างเมนู (AdminShell) = ใบ "แพ็คเสร็จ รอมารับ" → ของที่วางรออยู่หน้าร้าน
  * ปุ่ม "✓ ลูกค้ารับของแล้ว" = จดคนส่งมอบ/เวลา + ปิดงานเป็นเสร็จสิ้น (ใบค้างยอดกดไม่ได้ ต้องเก็บเงินในหน้าออเดอร์ก่อน)
+ * ปุ่ม "↩ ยังไม่ได้รับ" (กอง รับไปแล้ว) = ย้อนการกดข้างบน กลับไปรอมารับ (5 ต.ค. 69 · เดิมไม่มีทางย้อน ธงรับของค้าง)
  */
 
 import RequirePerm from "@/components/RequirePerm";
@@ -157,6 +158,30 @@ function PickupInner() {
     }
   }
 
+  /** ↩ กด "ลูกค้ารับของแล้ว" ผิดใบ/ลูกค้ายังไม่มาจริง → ใบกลับไปกอง "แพ็คเสร็จ รอมารับ" (ชุดรับพร้อมกันย้อนทั้งชุด) */
+  async function undoHandOver(r: PickupRow) {
+    if (busy) return;
+    if (!window.confirm(`ยกเลิก “ลูกค้ารับของแล้ว” ของ ${r.id} (${r.customer || "ไม่ระบุชื่อ"})?\nใบนี้จะกลับไปเป็น “แพ็คเสร็จ รอมารับ”${r.shipWith?.role === "main" ? " พร้อมใบที่รับพร้อมกัน" : ""} · ไม่ส่งไลน์ถึงลูกค้า`)) return;
+    setBusy(r.id);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/pickup", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r.id }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { row?: PickupRow; error?: string };
+      if (!res.ok || !j.row) {
+        setErr(j.error ?? "ย้อนไม่สำเร็จ — ลองใหม่อีกครั้ง");
+        return;
+      }
+      await load();
+      window.dispatchEvent(new Event("iducky:pickup-changed"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /** บล็อกวันที่ซ้ายสุดของแถว — ใบที่รับไปแล้วโชว์วันที่รับจริง */
   function dateBlock(r: PickupRow) {
     if (r.group === "done") {
@@ -244,6 +269,11 @@ function PickupInner() {
           {r.group === "ready" && mayHandOver && r.due <= 0 && r.shipWith?.role !== "rider" ? (
             <Btn small tone="navy" disabled={busy === r.id} onClick={() => void handOver(r)} title={r.shipWith ? "จดคนส่งมอบ/เวลา แล้วปิดงานทั้งชุดที่รับพร้อมกัน" : "จดคนส่งมอบ/เวลา แล้วปิดงานเป็นเสร็จสิ้น"}>
               {busy === r.id ? "กำลังบันทึก…" : r.shipWith ? "✓ รับของแล้วทั้งชุด" : "✓ ลูกค้ารับของแล้ว"}
+            </Btn>
+          ) : null}
+          {r.group === "done" && mayHandOver && r.pickedUpAt && r.shipWith?.role !== "rider" ? (
+            <Btn small disabled={busy === r.id} onClick={() => void undoHandOver(r)} title="กดรับของผิดใบ/ลูกค้ายังไม่ได้มารับ — ใบกลับไปรอมารับ">
+              {busy === r.id ? "กำลังบันทึก…" : "↩ ยังไม่ได้รับ"}
             </Btn>
           ) : null}
           <Btn small tone={r.group === "ready" && r.due > 0 ? "navy" : undefined} href={href}>

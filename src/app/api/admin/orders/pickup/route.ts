@@ -200,3 +200,53 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, row: toRow(saved, "done"), closed: riders.map((r) => r.id) });
 }
+
+/**
+ * ↩ DELETE { id } → ยกเลิก "ลูกค้ารับของแล้ว" (กดผิดใบ/ลูกค้ายังไม่ได้มารับจริง) — ใบกลับไปกอง "แพ็คเสร็จ รอมารับ"
+ *
+ * ทำไมต้องมี (5 ต.ค. 69 · OD-260922-3129): เดิมกดรับของแล้วไม่มีทางย้อน พนักงานเลยใช้เมนูเปลี่ยนสถานะดันกลับเอง
+ * ธง pickedUp ค้าง → ผูกส่งรวมกล่องขึ้น "ลูกค้ามารับของไปแล้ว" · ตอนนี้ประตูบันทึก (order-write clearStalePickup) ล้างให้ด้วยอีกชั้น
+ * สถานะกลับเป็น "จัดส่งแล้ว" (= แพ็คเสร็จ รอมารับ) เพราะกดรับของได้เฉพาะใบที่อยู่ขั้นนั้น · ไม่แจ้งไลน์ลูกค้า (ลูกค้ายังไม่ได้รับของ ไม่มีอะไรเปลี่ยนฝั่งเขา)
+ * 🏪📦 ชุดรับพร้อมกัน: ย้อนที่ใบหลัก = ย้อนใบตามที่ปิดไปพร้อมกันด้วย · กดที่ใบตาม = 409 ชี้ไปใบหลัก
+ */
+export async function DELETE(req: Request) {
+  const gate = await requirePerm(["orders.edit", "pack.ship"]);
+  if (gate.res) return gate.res;
+  const sb = getSupabaseAdmin();
+  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+  const body = (await req.json().catch(() => ({}))) as { id?: string };
+  const id = body.id?.trim();
+  if (!id) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
+
+  const { data } = await sb.from("orders").select("data").eq("id", id).maybeSingle();
+  const o = data?.data as Order | undefined;
+  if (!o) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
+  if (!o.pickedUp || o.status !== "เสร็จสิ้น") return NextResponse.json({ error: "ใบนี้ยังไม่ได้บันทึกว่าลูกค้ามารับของ — ไม่มีอะไรให้ย้อน" }, { status: 409 });
+  if (!isPickupOrder(o))
+    return NextResponse.json({ error: "ใบนี้เปลี่ยนเป็นส่งพัสดุไปแล้ว — เปลี่ยนสถานะในหน้าออเดอร์แทน (ระบบล้างบันทึกรับของให้เอง)" }, { status: 409 });
+  if (isShipRider(o))
+    return NextResponse.json({ error: `ใบนี้รับพร้อมกับ ${shipMainIdOf(o)} — กด “ยังไม่ได้รับ” ที่ใบ ${shipMainIdOf(o)} ใบเดียว ใบนี้จะย้อนให้เอง` }, { status: 409 });
+
+  const by = gate.actor.name?.trim() || gate.actor.username;
+  const was = `เดิมบันทึกรับของ ${o.pickedUp.at} โดย ${o.pickedUp.by}`;
+  const reopen = (x: Order, note: string) => {
+    const { pickedUp: _drop, ...rest } = x;
+    void _drop;
+    return withLog({ ...(rest as Order), status: "จัดส่งแล้ว" as OrderStatus }, by, "↩ ยกเลิก “ลูกค้ามารับของแล้ว” — กลับไปรอมารับ", note);
+  };
+
+  // ใบตามที่ปิดไปพร้อมใบหลัก (ชุดรับพร้อมกัน) — เฉพาะที่ยังเสร็จสิ้นด้วยการรับของอยู่
+  let riders: Order[] = [];
+  if (isShipMain(o)) {
+    const { data: rr } = await sb.from("orders").select("data").in("id", shipRiderIdsOf(o));
+    riders = (rr ?? []).map((r) => r.data as Order).filter((r) => isShipRider(r) && shipMainIdOf(r) === o.id && r.status === "เสร็จสิ้น" && !!r.pickedUp);
+  }
+
+  const { order: saved, error } = await updateOrder(sb, reopen(o, riders.length ? `${was} · ย้อนใบที่รับพร้อมกัน ${riders.map((r) => r.id).join(", ")} ด้วย` : was), { prev: o, by });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  for (const r of riders) {
+    const wr = await updateOrder(sb, reopen(r, `ย้อนตามใบหลัก ${o.id}`), { prev: r, by });
+    if (wr.error) console.error(`[orders/pickup] ย้อนใบรับพร้อมกัน ${r.id} ไม่สำเร็จ:`, wr.error.message);
+  }
+  return NextResponse.json({ ok: true, row: toRow(saved, "ready"), reopened: riders.map((r) => r.id) });
+}

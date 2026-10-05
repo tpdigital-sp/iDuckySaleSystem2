@@ -86,6 +86,25 @@ function stampAddedItems(prev: Order | null | undefined, next: Order, at: string
  * savedAt ตัวเดิม "ดูทันสมัย" ทั้งที่พลาดเรื่องเงินไปแล้ว ด่านกันหน้าจอค้าง (ดู reconcileFullEdit)
  * จึงมองไม่เห็นว่าหน้าจอนั้นเก่า — ลูกค้าโอนครบ แต่บันทึกจากหน้าจอค้างทับจนเงินหายทั้งใบ
  */
+/**
+ * 🏪 ธง "ลูกค้ามารับของแล้ว" (pickedUp) ต้องตายตามใบที่ถูกเปิดกลับ — ไม่งั้นค้างไปตลอดกาล
+ *
+ * เคสจริง (5 ต.ค. 69 · OD-260922-3129): กด "ลูกค้ารับของแล้ว" ไปก่อน (ปิดเป็นเสร็จสิ้น) → แอดมินดันสถานะกลับ "กำลังผลิต"
+ * แล้วเปลี่ยนเป็นส่ง EMS แต่ pickedUp ยังอยู่ → ผูกส่งรวมกล่องขึ้น "ส่งรวมไม่ได้ — ลูกค้ามารับของไปแล้ว"
+ * (ยังโผล่ในกอง "รับแล้ว" หน้า /admin/pickup ด้วย) · ไม่มีจุดไหนในระบบล้างธงนี้เลย
+ * วางที่ประตูเพราะเปิดใบกลับได้หลายทาง (เมนูเปลี่ยนสถานะ · ฟอร์มเต็ม · สลิปใบเพิ่ม) — ใบที่ยังเสร็จสิ้น/ยกเลิกอยู่ไม่แตะ
+ */
+function clearStalePickup(prev: Order | null | undefined, next: Order, by: string): Order {
+  if (!next.pickedUp || next.status === "เสร็จสิ้น" || next.status === "ยกเลิก") return next;
+  const { pickedUp, ...rest } = next;
+  return withLog(
+    rest as Order,
+    by,
+    "ล้างสถานะ \"ลูกค้ามารับของแล้ว\"",
+    `ใบถูกเปิดกลับเป็น "${next.status}"${prev?.status && prev.status !== next.status ? ` (จาก ${prev.status})` : ""} — เดิมบันทึกว่ารับของ ${pickedUp.at} โดย ${pickedUp.by}`
+  );
+}
+
 function stampSaved(o: Order): Order {
   return { ...o, savedAt: new Date().toISOString() };
 }
@@ -169,6 +188,7 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
    */
   const rush = await withAutoRush(prev, final, by);
   final = rush.order;
+  final = clearStalePickup(prev, final, by);
   // 🕒 ประทับเวลาบันทึกที่ประตู — ทางเข้าใหม่ได้ไปด้วยเอง ไม่ต้องจำว่าต้องเซ็ต savedAt เอง
   final = stampSaved(final);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);
