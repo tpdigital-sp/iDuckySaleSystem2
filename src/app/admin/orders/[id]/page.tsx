@@ -1467,6 +1467,12 @@ export default function AdminOrderDetailPage() {
     docSubtotal?: number;
     docNet?: number;
     docDate?: string;
+    /**
+     * ➗ เอกสารเป็นใบแจ้งหนี้มัดจำ / ใบยอดคงเหลือที่หักมัดจำแล้ว (FlowAccountDoc.deposit) — VAT/ยอดในใบเป็นของ "งวดเดียว"
+     * ใบงานต้องเป็นยอดงานเต็ม + โหมดมัดจำงวดแรกตามเอกสาร (OD-261002-8554 · 5 ต.ค. 69)
+     */
+    docDeposit?: { kind: "deposit" | "balance"; amount: number; amountBeforeVat: number; refDocNo?: string; docVat?: number; docGrandTotal?: number };
+    applyDocDeposit?: boolean;
   } | null>(null);
   const [taxFetching, setTaxFetching] = useState(false);
   const [artDropIdx, setArtDropIdx] = useState<number | null>(null);
@@ -2397,6 +2403,16 @@ export default function AdminOrderDetailPage() {
           grandTotal?: number;
           items?: { name: string; detail: string; qty: number; unitPrice: number; amount: number }[];
           customer?: { name?: string; taxId?: string; branch?: string; address?: string };
+          deposit?: {
+            kind: "deposit" | "balance";
+            refDocNo?: string;
+            amountBeforeVat: number;
+            amount: number;
+            fullSubtotal?: number;
+            fullVat?: number;
+            fullGrandTotal?: number;
+            fullWht?: number;
+          };
         };
         shipping?: ShippingMethod[];
       };
@@ -2405,7 +2421,18 @@ export default function AdminOrderDetailPage() {
         return;
       }
       const c = j.doc.customer ?? {};
-      const docVat = Number(j.doc.vat) || 0;
+      /**
+       * ➗ ใบมัดจำ/ใบยอดคงเหลือ: VAT + ยอดรวมในใบเป็นของงวดเดียว (BL002106: หักมัดจำ BL002105 13,350 ก่อน VAT → VAT 934.50 · รวม 14,284.50)
+       * เดิมเอา VAT งวดเดียวนั้นไปใส่ทั้งใบงาน → ยอดเต็มเพี้ยนเป็น 27,634.50 (ที่ถูก 28,569) และไม่เปิดโหมดมัดจำ
+       * → ใช้ "มูลค่างานเต็ม" ที่ตัวอ่านคิดไว้ (fullVat/fullGrandTotal/fullWht) แทน + เสนอเปิดโหมดมัดจำงวดแรกตามเอกสาร
+       * ใบมัดจำที่ไม่บอกมูลค่าเต็ม (fullVat ว่าง) = ไม่แตะ VAT เลย ดีกว่าตั้งผิด
+       */
+      const dep = j.doc.deposit && j.doc.deposit.amount > 0 ? j.doc.deposit : undefined;
+      const docVat = dep ? Number(dep.fullVat) || 0 : Number(j.doc.vat) || 0;
+      const docGrand = dep ? Number(dep.fullGrandTotal) || undefined : Number(j.doc.grandTotal) || undefined;
+      const docWhtAll = dep ? Number(dep.fullWht) || 0 : Number(j.doc.wht) || 0;
+      const docNetAll = dep ? (docGrand != null ? Math.round((docGrand - docWhtAll) * 100) / 100 : undefined) : Number(j.doc.net) || undefined;
+      const vatDiffers = docVat > 0 && (!order?.vat || Math.abs((order.vat.amount ?? 0) - docVat) >= 0.01);
       // บรรทัด "ค่าส่ง" ในเอกสารไม่ใช่งานผลิต — แยกไปเป็นค่าจัดส่งของออเดอร์ (ท่าเดียวกับกล่องสร้างออเดอร์จากลิงก์)
       const docLines = j.doc.items ?? [];
       const shipLines = docLines.filter((it) => DOC_SHIP_RE.test(it.name));
@@ -2424,7 +2451,8 @@ export default function AdminOrderDetailPage() {
               docTypeLabel: j.doc!.docTypeLabel,
               docVat: docVat > 0 ? docVat : undefined,
               docVatRate: Number(j.doc!.vatRate) || 7,
-              applyDocVat: docVat > 0 && !order?.vat,
+              // ใบมัดจำ: VAT ในใบงานที่ไม่ตรงยอดเต็มตามเอกสาร (เช่นเคยตั้งด้วย VAT งวดเดียว) เสนอแก้ให้ถูกด้วย
+              applyDocVat: dep ? vatDiffers : docVat > 0 && !order?.vat,
               docItems: workLines.map((it) => ({
                 name: it.name,
                 selections: it.detail ?? "",
@@ -2434,12 +2462,24 @@ export default function AdminOrderDetailPage() {
               docShip: shipLines.length ? docShip : undefined,
               docShipLabel: shipLines.length ? normalizeShipLabel(shipLines.map((it) => it.name).join(" · "), docShip, methods) : undefined,
               docDiscount: Number(j.doc!.discount) > 0 ? Number(j.doc!.discount) : undefined,
-              docGrandTotal: Number(j.doc!.grandTotal) || undefined,
-              docWht: Number(j.doc!.wht) > 0 ? Number(j.doc!.wht) : undefined,
+              docGrandTotal: docGrand,
+              docWht: docWhtAll > 0 ? docWhtAll : undefined,
               docWhtRate: Number(j.doc!.whtRate) || undefined,
-              docSubtotal: Number(j.doc!.subtotal) || undefined,
-              docNet: Number(j.doc!.net) || undefined,
+              docSubtotal: (dep ? Number(dep.fullSubtotal) : Number(j.doc!.subtotal)) || undefined,
+              docNet: docNetAll,
               docDate: j.doc!.date,
+              docDeposit: dep
+                ? {
+                    kind: dep.kind,
+                    amount: dep.amount,
+                    amountBeforeVat: dep.amountBeforeVat,
+                    refDocNo: dep.refDocNo,
+                    docVat: Number(j.doc!.vat) || undefined,
+                    docGrandTotal: Number(j.doc!.grandTotal) || undefined,
+                  }
+                : undefined,
+              // รับงวดแรกไปแล้ว = ยอดมัดจำผูกกับเงินที่รับจริง ห้ามเปลี่ยนจากกล่องนี้
+              applyDocDeposit: !!dep && !order?.deposit?.firstPaidAt,
               // ใบงานยังไม่มีรายการ = ตั้งใจจะดึงมาอยู่แล้ว · มีรายการอยู่แล้วไม่ติ๊กให้ (ทับของเดิมต้องตั้งใจกด)
               applyDocItems: workLines.length > 0 && !order?.items.length,
             }
@@ -2468,7 +2508,14 @@ export default function AdminOrderDetailPage() {
     };
     const docVat = taxForm.docVat ?? 0;
     const docWht = taxForm.docWht ?? 0;
-    const withVat = !!taxForm.applyDocVat && docVat > 0 && !order.vat;
+    const docDep = taxForm.docDeposit;
+    // ใบมัดจำ: ยอมแก้ VAT เดิมที่ไม่ตรงยอดเต็มได้ (ใบอื่นเปิด VAT ได้เฉพาะใบที่ยังไม่มี VAT เหมือนเดิม)
+    const withVat =
+      !!taxForm.applyDocVat && docVat > 0 && (!order.vat || (!!docDep && Math.abs((order.vat.amount ?? 0) - docVat) >= 0.01));
+    /** ➗ เปิด/แก้โหมดมัดจำตามเอกสาร — งวดแรก = ยอดมัดจำรวม VAT ในเอกสาร (ไม่ใช่ครึ่งหนึ่งที่ระบบปัดเอง) */
+    const withDeposit =
+      !!taxForm.applyDocDeposit && !!docDep && !order.deposit?.firstPaidAt && Math.abs((order.deposit?.amount ?? 0) - docDep.amount) >= 0.01;
+    const depositPatch: Partial<Order> = withDeposit ? { deposit: { ...order.deposit, amount: docDep!.amount } } : {};
     // 📋 ดึงรายการตามเอกสารมาใส่ใบงานด้วย (ค่าส่ง/ส่วนลดตามใบไปพร้อมกัน — ยอดจะได้เท่าบิล FlowAccount)
     const docItems = taxForm.applyDocItems ? (taxForm.docItems ?? []) : [];
     const withItems = docItems.length > 0;
@@ -2541,6 +2588,7 @@ export default function AdminOrderDetailPage() {
         taxInvoice,
         ...(withItems ? { items, ...shipPatch, ...discountPatch, ...faPatch } : {}),
         ...taxPatch,
+        ...depositPatch,
       },
       actor,
       order.taxInvoice ? "แก้ข้อมูลใบกำกับภาษี" : "ใส่ข้อมูลใบกำกับภาษี",
@@ -2561,7 +2609,7 @@ export default function AdminOrderDetailPage() {
     // ภาษีขยับจากของเดิม (เปิด VAT ครั้งแรก · หรือดึงรายการมาแล้วภาษีตามฉบับใหม่) — ต้องเห็นใน log ว่าเปลี่ยนจากเท่าไหร่
     const vatMoved = (taxPatch.vat?.amount ?? 0) !== (order.vat?.amount ?? 0);
     const whtMoved = (taxPatch.wht?.amount ?? order.wht?.amount ?? 0) !== (order.wht?.amount ?? 0);
-    const next =
+    const withTaxLog =
       vatMoved || whtMoved
         ? withLog(
             withItemsLog,
@@ -2572,11 +2620,21 @@ export default function AdminOrderDetailPage() {
             } → ยอดรวม ${formatPrice(orderTotal(withItemsLog))}`
           )
         : withItemsLog;
+    const next = withDeposit
+      ? withLog(
+          withTaxLog,
+          actor,
+          order.deposit ? "แก้ยอดมัดจำตามเอกสาร FlowAccount" : "เปิดโหมดมัดจำตามเอกสาร FlowAccount",
+          `${order.deposit ? `${formatPrice(order.deposit.amount)} → ` : ""}งวดแรก ${formatPrice(docDep!.amount)} (${
+            docDep!.kind === "balance" ? `หักมัดจำ${docDep!.refDocNo ? ` ${docDep!.refDocNo}` : ""} ใน` : "ใบแจ้งหนี้มัดจำ "
+          }${taxForm.docTypeLabel ?? "เอกสาร"} ${taxForm.docNo ?? ""}) จากยอดเต็ม ${formatPrice(orderTotal(withTaxLog))}`
+        )
+      : withTaxLog;
     // ยอดตามใบไม่ตรงกับที่คิดได้จากรายการ = แอดมินต้องรู้ก่อนแจ้งลูกค้า (ลิงก์แชร์อาจเป็นฉบับเก่า)
     const gap = taxForm.docGrandTotal != null && withItems ? Math.round((orderTotal(next) - taxForm.docGrandTotal) * 100) / 100 : 0;
     setTaxForm(null);
     // ยอดโต (เปิด VAT/ดึงรายการ) → รับก้อนจากเซิร์ฟเวอร์ (สถานะเด้งกลับรอชำระเงิน/paidTotal/แจ้งไลน์) · แค่ข้อมูลผู้ซื้อ = บันทึกธรรมดา
-    if (withVat || withItems || vatMoved || whtMoved) await applyOrderFromServer(next);
+    if (withVat || withItems || vatMoved || whtMoved || withDeposit) await applyOrderFromServer(next);
     else applyOrder(next);
     if (Math.abs(gap) >= 0.01)
       setErr(
@@ -5305,10 +5363,45 @@ export default function AdminOrderDetailPage() {
                       เอกสารนี้ไม่มีรายการสินค้า (ใบมัดจำ/ใบวางบิลมักเป็นแบบนี้) — ใส่รายการในใบงานเองด้านล่าง
                     </p>
                   )}
-                  {taxForm.docVat != null && taxForm.docVat > 0 && !order.vat && (
+                  {/* ➗ ใบมัดจำ/ใบยอดคงเหลือ — ยอดในใบเป็นงวดเดียว ใบงานต้องเป็นยอดเต็ม + โหมดมัดจำ (OD-261002-8554) */}
+                  {taxForm.docDeposit && (
+                    <div className="mt-1.5 rounded-lg bg-violet-50 px-2.5 py-2 text-[11px] ring-1 ring-violet-200">
+                      <p className="font-bold leading-snug text-violet-900">
+                        ➗ {taxForm.docDeposit.kind === "balance"
+                          ? `เอกสารนี้เป็นใบยอดคงเหลือ (หักมัดจำ${taxForm.docDeposit.refDocNo ? ` ${taxForm.docDeposit.refDocNo}` : ""} แล้ว)`
+                          : "เอกสารนี้เป็นใบแจ้งหนี้มัดจำ"}
+                        {taxForm.docDeposit.docGrandTotal != null ? ` · ยอดในใบ ${formatPrice(taxForm.docDeposit.docGrandTotal)}` : ""}
+                      </p>
+                      <p className="mt-0.5 leading-snug text-violet-800 tabular-nums">
+                        ใบงานใช้ยอดงานเต็ม{taxForm.docGrandTotal != null ? ` ${formatPrice(taxForm.docGrandTotal)}` : ""}
+                        {(taxForm.docVat ?? 0) > 0 ? ` (VAT เต็ม ${formatPrice(taxForm.docVat!)})` : " — เอกสารไม่บอกมูลค่าเต็ม VAT ไม่ถูกแตะ"} · งวดแรก{" "}
+                        {formatPrice(taxForm.docDeposit.amount)} · งวดหลังโอนก่อนจัดส่ง
+                      </p>
+                      {order.deposit?.firstPaidAt ? (
+                        <p className="mt-1 font-semibold text-violet-700">รับมัดจำงวดแรกแล้ว ({formatPrice(order.deposit.amount)}) — ยอดมัดจำไม่เปลี่ยนจากกล่องนี้</p>
+                      ) : (
+                        <label className="mt-1 flex items-center gap-2 font-bold text-violet-900">
+                          <input
+                            type="checkbox"
+                            className="size-4 shrink-0"
+                            checked={!!taxForm.applyDocDeposit}
+                            onChange={(e) => setTaxForm({ ...taxForm, applyDocDeposit: e.target.checked })}
+                          />
+                          {order.deposit
+                            ? `แก้ยอดมัดจำ ${formatPrice(order.deposit.amount)} → ${formatPrice(taxForm.docDeposit.amount)} ตามเอกสาร`
+                            : `เปิดโหมดมัดจำ งวดแรก ${formatPrice(taxForm.docDeposit.amount)} ตามเอกสาร`}
+                        </label>
+                      )}
+                    </div>
+                  )}
+                  {taxForm.docVat != null &&
+                    taxForm.docVat > 0 &&
+                    (!order.vat || (!!taxForm.docDeposit && Math.abs((order.vat.amount ?? 0) - taxForm.docVat) >= 0.01)) && (
                     <label className="mt-1.5 flex items-center gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
                       <input type="checkbox" checked={!!taxForm.applyDocVat} onChange={(e) => setTaxForm({ ...taxForm, applyDocVat: e.target.checked })} />
-                      เอกสารมี VAT {taxForm.docVatRate ?? 7}% = {formatPrice(taxForm.docVat)} — เปิด VAT ตามเอกสารพร้อมกัน (ยอดค้างขึ้น + แจ้งลูกค้าทางไลน์)
+                      {order.vat
+                        ? `VAT ในใบงาน ${formatPrice(order.vat.amount)} ไม่ตรงยอดเต็มตามเอกสาร — แก้เป็น ${formatPrice(taxForm.docVat)}`
+                        : `เอกสารมี VAT ${taxForm.docVatRate ?? 7}% = ${formatPrice(taxForm.docVat)} — เปิด VAT ตามเอกสารพร้อมกัน (ยอดค้างขึ้น + แจ้งลูกค้าทางไลน์)`}
                     </label>
                   )}
                   <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
