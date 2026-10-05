@@ -16,10 +16,10 @@ const TABS = [
 ];
 
 /** แถบแท็บใต้หัวหน้า — สลับ 4 หน้าของบอทได้ในคลิกเดียว */
-export function ChatbotTabs() {
+export function ChatbotTabs({ inHead }: { inHead?: boolean } = {}) {
   const path = usePathname();
   return (
-    <nav className="dkb-scroll mt-3 flex gap-1.5" aria-label="หน้าในหมวด Chatbot">
+    <nav className={`dkb-scroll flex gap-1.5 ${inHead ? "" : "mt-3"}`} aria-label="หน้าในหมวด Chatbot">
       {TABS.map((t) => {
         const on = path === t.href;
         return (

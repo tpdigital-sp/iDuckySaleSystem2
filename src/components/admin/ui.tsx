@@ -40,6 +40,7 @@ export function PageHead({
   sub,
   live,
   tools,
+  toolsTop,
 }: {
   group: string;
   title: string;
@@ -49,6 +50,8 @@ export function PageHead({
   /** แถบเล็กใต้ชื่อ เช่น "ออเดอร์จริง" (เขียว) หรือข้อความโหมดตัวอย่าง (เทา) */
   live?: { ok: boolean; text: string };
   tools?: ReactNode;
+  /** วาง tools ชิดบนขวา (ระดับเดียวกับชื่อหมวด) แทนชิดล่าง */
+  toolsTop?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4 px-1">
@@ -82,7 +85,7 @@ export function PageHead({
           </p>
         )}
       </div>
-      {tools && <div className="flex flex-1 flex-wrap items-center gap-2.5 sm:justify-end">{tools}</div>}
+      {tools && <div className={`flex flex-1 flex-wrap items-center gap-2.5 sm:justify-end ${toolsTop ? "self-start" : ""}`}>{tools}</div>}
     </div>
   );
 }

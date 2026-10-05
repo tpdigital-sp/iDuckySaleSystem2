@@ -88,22 +88,14 @@ function Chatbot() {
   const [histErr, setHistErr] = useState("");
   const [histQ, setHistQ] = useState("");
   const [mine, setMine] = useState(true);
-  /** มือถือ: แผงประวัติเปิดทับห้องแชท */
+  /** แผงประวัติ = ลิ้นชักเปิดทับห้องแชท (ทุกขนาดจอ · ห้องแชทกว้างเต็มเสมอ) */
   const [histOpen, setHistOpen] = useState(false);
-  // 🖥 ซ่อนคอลัมน์ประวัติบนจอใหญ่ = ห้องแชทกว้างเต็ม (จำไว้ในเครื่อง)
-  const [histHidden, setHistHidden] = useState(false);
   useEffect(() => {
-    try {
-      setHistHidden(localStorage.getItem("bot-hist-hidden") === "1");
-    } catch {}
-  }, []);
-  const toggleHist = () =>
-    setHistHidden((v) => {
-      try {
-        localStorage.setItem("bot-hist-hidden", v ? "0" : "1");
-      } catch {}
-      return !v;
-    });
+    if (!histOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setHistOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [histOpen]);
   const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const t0 = useRef(0);
@@ -320,18 +312,15 @@ function Chatbot() {
 
   return (
     <PageShell wide>
-      <PageHead group="🤖 Chatbot" title="ผู้ช่วยตอบแชท" sub="วางคำถามลูกค้า → ได้คำตอบจากราคาจริงบนเว็บ + คลังความรู้ร้าน → คัดลอกไปตอบใน LINE" />
-      <ChatbotTabs />
+      <PageHead group="🤖 Chatbot" title="ผู้ช่วยตอบแชท" sub="วางคำถามลูกค้า → ได้คำตอบจากราคาจริงบนเว็บ + คลังความรู้ร้าน → คัดลอกไปตอบใน LINE"
+        tools={<ChatbotTabs inHead />}
+        toolsTop
+      />
 
-      <div className={`relative mt-4 grid gap-3 ${histHidden ? "" : "lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)]"}`}>
-        {/* ── ประวัติ (เดสก์ท็อป) ── */}
-        <aside className={`hidden rounded-2xl border bg-white p-3 ${histHidden ? "" : "lg:block"}`} style={{ borderColor: "var(--dk-hair)", height: "calc(100dvh - 240px)", minHeight: 480 }}>
-          {history}
-        </aside>
-
-        {/* ── ประวัติ (มือถือ = แผ่นทับ) ── */}
+      <div className="relative mt-4">
+        {/* ── ประวัติ = ลิ้นชักทับ (กด 📜 ประวัติ เปิด · กดนอกแผง/Esc ปิด) ── */}
         {histOpen && (
-          <div className="fixed inset-0 z-[95] flex lg:hidden" role="dialog" aria-label="ประวัติแชท">
+          <div className="fixed inset-0 z-[95] flex" role="dialog" aria-label="ประวัติแชท">
             <div className="h-full w-[86%] max-w-[340px] bg-white p-3 shadow-2xl">{history}</div>
             <button type="button" aria-label="ปิดประวัติ" className="flex-1" style={{ background: "rgba(23,58,107,.35)" }} onClick={() => setHistOpen(false)} />
           </div>
@@ -347,20 +336,13 @@ function Chatbot() {
             <button
               type="button"
               onClick={() => setHistOpen(true)}
-              className="grid min-h-[44px] min-w-[44px] place-items-center rounded-xl text-[18px] lg:hidden"
-              style={{ background: "var(--dk-sky)" }}
-              aria-label="เปิดประวัติแชท"
-            >
-              📜
-            </button>
-            <button
-              type="button"
-              onClick={toggleHist}
-              className="hidden min-h-[40px] shrink-0 place-items-center rounded-xl px-3 text-[12.5px] font-bold lg:grid"
+              className="grid min-h-[44px] min-w-[44px] shrink-0 place-items-center rounded-xl px-2 text-[18px] font-bold sm:px-3 sm:text-[12.5px]"
               style={{ background: "var(--dk-sky)", color: "var(--dk-navy-soft)" }}
-              title={histHidden ? "แสดงประวัติแชท" : "ซ่อนประวัติแชท ให้ห้องแชทกว้างขึ้น"}
+              aria-label="เปิดประวัติแชท"
+              title="เปิดประวัติแชท"
             >
-              {histHidden ? "📜 ประวัติ" : "⇤ ซ่อนประวัติ"}
+              <span className="sm:hidden">📜</span>
+              <span className="hidden sm:inline">📜 ประวัติ</span>
             </button>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[14px] font-bold" style={{ color: "var(--dk-navy)" }}>
