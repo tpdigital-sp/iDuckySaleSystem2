@@ -20,8 +20,6 @@ export const catEnName = (name: string) => {
 };
 
 /** สีพาสเทลของการ์ดหมวดบนหน้าแรก — วนตามลำดับการ์ด (ไม่ผูก id) เพื่อให้ใบข้าง ๆ กันไม่ซ้ำสีเสมอ */
-export const HOME_TILE_ACCENTS = ["#BFE3FB", "#FFE9A8", "#FFD1DE", "#A9E5D2", "#D6CFFB", "#FFD8A8", "#AEE0F7", "#E3B8F5", "#BDEEDA", "#FFC2D6"];
-
 export const groupOf = (catId: string) => TAB_GROUPS.find((g) => g.cats.includes(catId))?.id ?? "goods";
 
 /** ไอคอนหมวด — ชุดใหม่ 13 ชิ้น (เจ้าของร้านส่งเป็นภาพรวมแผ่นเดียว 25 ก.ย. 69 → ตัดแยก+ลบพื้นตารางด้วย scripts/_tmp/cut-icons.mjs)

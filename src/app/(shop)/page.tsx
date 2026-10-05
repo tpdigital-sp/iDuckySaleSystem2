@@ -14,7 +14,7 @@ import PromoBanners from "@/components/PromoBanners";
 import Spotlight from "@/components/Spotlight";
 import { useAltImage } from "@/components/CardAltImage";
 import CardSkeleton from "@/components/CardSkeleton";
-import { CAT_ICON, catEnName, groupOf, HOME_TILE_ACCENTS, TAB_GROUPS } from "@/lib/cat-groups";
+import { CAT_ICON, catEnName, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
 import { SOCIAL_LINKS } from "@/components/SocialLinks";
 import { LINE_URL } from "@/components/LineButton";
 
@@ -426,7 +426,7 @@ export default function HomePage() {
                     className={`ctile${show ? " is-in" : " is-hide"}`}
                     href={href}
                     data-group={group}
-                    style={{ "--ct": HOME_TILE_ACCENTS[i % HOME_TILE_ACCENTS.length], animationDelay: `${(i % 10) * 45}ms` } as CSSProperties}
+                    style={{ animationDelay: `${(i % 10) * 45}ms` } as CSSProperties}
                   >
                     <span className="ct-plate">
                       {/* ชุดไอคอนที่เจ้าของร้านเลือก (CAT_ICON) มาก่อนรูปหมวดที่เคยอัปโหลดในหลังบ้าน — หมวดใหม่ที่ไม่มีในชุดค่อยใช้รูปจากฐาน/อีโมจิ */}
