@@ -136,7 +136,7 @@ async function handle(req: Request) {
   try {
     await assertSlipNotDuplicate(sb, { hash }, self);
   } catch (e) {
-    if (e instanceof SlipDuplicateError) return duplicateResponse(sb, order, e, "ไฟล์เดียวกัน");
+    if (e instanceof SlipDuplicateError) return duplicateResponse(sb, order, e, "ไฟล์เดียวกัน", { bytes, ext, contentType: file.type });
     throw e;
   }
 
@@ -168,12 +168,13 @@ async function handle(req: Request) {
     return NextResponse.json({ ok: true, verified: r.confirmed, partial: r.partial, phase, paymentId: r.paymentId });
   } catch (e) {
     // เลขอ้างอิงธุรกรรมซ้ำกับออเดอร์อื่น/ใบอื่น — ไฟล์ถูกลบไปแล้วใน applySlipVerification
-    if (e instanceof SlipDuplicateError) return duplicateResponse(sb, order, e, "เลขอ้างอิงธุรกรรมเดียวกัน");
+    if (e instanceof SlipDuplicateError) return duplicateResponse(sb, order, e, "เลขอ้างอิงธุรกรรมเดียวกัน", { bytes, ext, contentType: file.type });
     return NextResponse.json({ error: e instanceof Error ? e.message : "บันทึกสลิปไม่สำเร็จ" }, { status: 500 });
   }
 }
 
 const DUP_ACTION = "🚫 ลูกค้าแนบสลิปซ้ำ — ระบบไม่รับ";
+const DUP_IMAGE_CAP = 3;
 
 /**
  * 🚫 สลิปซ้ำ → ตอบลูกค้า 409 เหมือนเดิม + บอกแอดมินว่าซ้ำกับออเดอร์ไหน
@@ -183,12 +184,31 @@ const DUP_ACTION = "🚫 ลูกค้าแนบสลิปซ้ำ — �
  *   - ลงบันทึกในออเดอร์ที่แนบ → เห็นในประวัติหน้าออเดอร์ว่าซ้ำกับ OD-ไหน
  *   - ส่งการ์ดเข้ากลุ่มแอดมิน (ห้องเรื่องเงิน) — กดซ้ำภายใน 30 นาทีไม่ส่งซ้ำ ประหยัดโควตา
  * แอดมินเปิดสลิปของออเดอร์ต้นทางเทียบยอด ถ้าโอนรวมจริงแนบให้เองได้ที่หน้าออเดอร์ (ยืนยันแนบทั้งที่ซ้ำ)
+ *
+ * 🖼 เก็บรูปที่ลูกค้าแนบซ้ำไว้ในประวัติด้วย (log.imagePath · โฟลเดอร์ <ออเดอร์>/dup-…) — เดิมลบทิ้ง แอดมินเห็นแค่สลิปที่รับแล้ว
+ *   งงว่า "คนละสลิป ซ้ำยังไง" (8949 ↔ 6341 · 5 ต.ค. 69) · ไม่นับยอด ไม่อยู่ในรายการสลิป ไม่เข้าการค้นซ้ำ
+ *   เก็บสูงสุด DUP_IMAGE_CAP รูปต่อใบ — ลูกค้ากดรัว ๆ เกินนั้นลงประวัติอย่างเดียว (กันพื้นที่ storage บวม)
  */
-async function duplicateResponse(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, order: Order, e: SlipDuplicateError, how: string) {
+async function duplicateResponse(
+  sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  order: Order,
+  e: SlipDuplicateError,
+  how: string,
+  file: { bytes: Uint8Array; ext: string; contentType: string }
+) {
   const where = e.owners.map((o) => describeSlipOwner(o, e.self)).join(", ");
   const recent = (order.log ?? []).some((l) => l.action === DUP_ACTION && Date.now() - Date.parse(l.at) < 30 * 60_000);
   const report = async () => {
-    await updateOrder(sb, withLog(order, "ลูกค้า", DUP_ACTION, `ซ้ำกับ${where} (${how}) — ถ้าลูกค้าโอนรวมหลายออเดอร์: เปิดใบต้นทาง กด “↪ ใช้กับออเดอร์อื่น” ในกล่อง 💸 เงินโอนเกิน แล้วเลือกใบนี้`));
+    let imagePath: string | undefined;
+    if ((order.log ?? []).filter((l) => l.action === DUP_ACTION && l.imagePath).length < DUP_IMAGE_CAP) {
+      const path = `${order.id.replace(/[^a-z0-9_-]/gi, "") || "misc"}/dup-${randomUUID()}.${file.ext}`;
+      const { error } = await sb.storage.from(BUCKET).upload(path, file.bytes, { contentType: file.contentType, upsert: false });
+      if (error) console.error("[slip] เก็บรูปสลิปซ้ำไม่สำเร็จ", order.id, error.message);
+      else imagePath = path;
+    }
+    const logged = withLog(order, "ลูกค้า", DUP_ACTION, `ซ้ำกับ${where} (${how}) — ถ้าลูกค้าโอนรวมหลายออเดอร์: เปิดใบต้นทาง กด “↪ ใช้กับออเดอร์อื่น” ในกล่อง 💸 เงินโอนเกิน แล้วเลือกใบนี้`);
+    if (imagePath) logged.log!.at(-1)!.imagePath = imagePath;
+    await updateOrder(sb, logged);
     if (recent) return;
     await pushShopAlert(
       {

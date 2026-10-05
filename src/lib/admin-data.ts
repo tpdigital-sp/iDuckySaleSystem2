@@ -91,6 +91,10 @@ export interface LogEntry {
   action: string;
   /** รายละเอียดเพิ่มเติม เช่น ชื่อรายการ / คอมเมนต์ลูกค้า */
   detail?: string;
+  /** รูปประกอบใน bucket payment-slips-private — ตอนนี้ใช้กับสลิปที่ลูกค้าแนบซ้ำแล้วระบบไม่รับ (เก็บไว้ให้แอดมินดู ไม่นับยอด) */
+  imagePath?: string;
+  /** signed URL ชั่วคราวของ imagePath (signPaymentUrls เติมให้ · ห้ามเก็บลงฐาน) */
+  imageUrl?: string;
 }
 
 /**

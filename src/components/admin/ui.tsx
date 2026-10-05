@@ -675,7 +675,7 @@ export function CopyChip({ label, text }: { label: string; text: () => string })
 }
 
 /** ไทม์ไลน์ประวัติการทำงาน — 3 บรรทัดล่าสุดก่อน กดกางดูทั้งหมด */
-export function LogTimeline({ log, empty }: { log?: { by: string; action: string; detail?: string; at: string }[]; empty: string }) {
+export function LogTimeline({ log, empty }: { log?: { by: string; action: string; detail?: string; at: string; imageUrl?: string }[]; empty: string }) {
   const [open, setOpen] = useState(false);
   if (!log?.length) return <p className="mt-2 text-xs text-slate-400">{empty}</p>;
   return (
@@ -696,6 +696,12 @@ export function LogTimeline({ log, empty }: { log?: { by: string; action: string
                 {l.action}
               </p>
               {l.detail && <p className="text-xs text-slate-500">{l.detail}</p>}
+              {l.imageUrl && (
+                <a href={l.imageUrl} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม" className="mt-1.5 inline-block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={l.imageUrl} alt="รูปที่แนบ" className="h-24 w-auto rounded-lg object-cover ring-1 ring-slate-200 transition hover:ring-slate-400" />
+                </a>
+              )}
               <p className="text-[11px] text-slate-400">
                 {new Date(l.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
               </p>

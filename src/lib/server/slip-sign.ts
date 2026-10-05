@@ -28,6 +28,11 @@ export async function signPaymentUrls(sb: SupabaseClient, order: Order): Promise
     out.overpayActions = acts;
     acts.forEach((a, i) => a.slipPath && jobs.push(sign(a.slipPath).then((u) => void (u && (acts[i] = { ...acts[i], slipUrl: u })))));
   }
+  if (order.log?.some((l) => l.imagePath)) {
+    const log = order.log.map((l) => ({ ...l }));
+    out.log = log;
+    log.forEach((l, i) => l.imagePath && jobs.push(sign(l.imagePath).then((u) => void (u && (log[i] = { ...log[i], imageUrl: u })))));
+  }
   await Promise.all(jobs);
   return out;
 }
@@ -38,5 +43,6 @@ export function stripPaymentUrls(order: Order): Order {
   if (o.slipPath && o.slipUrl) o = { ...o, slipUrl: undefined };
   if (o.deposit?.balanceSlipUrl) o = { ...o, deposit: { ...o.deposit, balanceSlipUrl: undefined } };
   if (o.payments?.some((p) => p.url)) o = { ...o, payments: o.payments.map((p) => (p.url ? { ...p, url: undefined } : p)) };
+  if (o.log?.some((l) => l.imageUrl)) o = { ...o, log: o.log.map((l) => (l.imageUrl ? { ...l, imageUrl: undefined } : l)) };
   return o;
 }

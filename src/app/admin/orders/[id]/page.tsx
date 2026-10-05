@@ -937,6 +937,60 @@ function PerUnitSetter({
 /** ชื่อรายการเก็บเพิ่มที่ใช้บ่อย — กดเลือกแล้วแก้ต่อได้ */
 const CHARGE_PRESETS = ["ค่าตัดภาพ", "ค่าส่งเพิ่ม", "ค่าเร่งงาน", "ค่าแก้ไฟล์", "ค่าออกแบบ"];
 
+/** ตรงกับ DUP_ACTION ใน api/orders/slip/route.ts — บันทึกตอนลูกค้าแนบสลิปซ้ำแล้วระบบไม่รับ */
+const SLIP_DUP_ACTION = "🚫 ลูกค้าแนบสลิปซ้ำ — ระบบไม่รับ";
+
+/**
+ * 🚫 ลูกค้าพยายามแนบสลิปที่ใช้กับออเดอร์อื่นแล้ว — โชว์ในกล่องหลักฐานการโอนว่าซ้ำกับใบไหน (กดเปิดใบต้นทางได้)
+ * เดิมรู้ได้แค่จากการ์ดไลน์กลุ่มแอดมิน/ประวัติท้ายหน้า · ไฟล์ที่ซ้ำถูกลบไปแล้ว ไม่มีรูปให้ดู
+ * ซ่อนเองเมื่อมีสลิปใบใหม่เข้าใบนี้หลังเหตุการณ์ (เช่น ย้ายเงินโอนเกินจากใบต้นทางมาแล้ว)
+ */
+function SlipDupNotice({ order, entries }: { order: Order; entries: PaymentEntry[] }) {
+  const lastSlipAt = Math.max(0, ...entries.map((e) => (e.at ? Date.parse(e.at) || 0 : 0)));
+  const hits = (order.log ?? []).filter((l) => l.action === SLIP_DUP_ACTION && Date.parse(l.at) > lastSlipAt);
+  if (!hits.length) return null;
+  const last = hits[hits.length - 1];
+  const where = (last.detail ?? "").split(" — ")[0].replace(/^ซ้ำกับ/, "");
+  const how = where.match(/\(([^()]+)\)\s*$/)?.[1] ?? "";
+  const shots = [...new Set(hits.map((l) => l.imageUrl).filter((u): u is string => !!u))];
+  const ids = [...new Set(where.match(/OD-\d{6}-\d{4}/gi) ?? [])].filter((id) => id !== order.id);
+  return (
+    <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+      <p className="font-semibold">
+        🚫 ลูกค้าแนบสลิปซ้ำ — ระบบไม่รับ{hits.length > 1 ? ` (${hits.length} ครั้ง)` : ""} · {shortTime(last.at)}
+      </p>
+      <p className="mt-0.5">
+        ลูกค้าส่งสลิปที่ใช้จ่าย{" "}
+        {ids.length
+          ? ids.map((id, i) => (
+              <span key={id}>
+                {i > 0 && ", "}
+                <Link href={`/admin/orders/${encodeURIComponent(id)}`} className="font-bold underline underline-offset-2 hover:text-red-950">
+                  {id}
+                </Link>
+              </span>
+            ))
+          : <b>{where || "สลิปที่แนบไว้แล้ว"}</b>}
+        {" "}ไปแล้วมาแนบเป็นยอดของใบนี้{how && <span className="text-red-700/80"> · ตรวจจาก{how}</span>}
+      </p>
+      {shots.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {shots.map((u) => (
+            <a key={u} href={u} target="_blank" rel="noreferrer" title="เปิดรูปที่ลูกค้าแนบซ้ำ">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={u} alt="สลิปที่ลูกค้าแนบซ้ำ" className="h-20 w-auto rounded-lg object-cover ring-1 ring-red-200 hover:ring-red-400" />
+            </a>
+          ))}
+        </div>
+      )}
+      <p className="mt-0.5 text-xs text-red-700/80">
+        {shots.length ? "รูปนี้คือสลิปที่ลูกค้าแนบซ้ำ (ไม่นับยอด)" : "ไฟล์ที่ซ้ำระบบไม่ได้เก็บไว้"} — สลิปด้านล่างคือใบที่รับแล้ว ไม่ใช่ใบที่ซ้ำ · กดเลขออเดอร์เพื่อดูสลิปต้นทาง
+      </p>
+      <p className="mt-0.5 text-xs text-red-700/80">โอนรวมจริง → เปิดใบต้นทาง กด “↪ ใช้กับออเดอร์อื่น” ในกล่อง 💸 เงินโอนเกิน แล้วเลือกใบนี้</p>
+    </div>
+  );
+}
+
 /**
  * แถบผลตรวจสลิปอัตโนมัติ (SlipOK) — ใช้ซ้ำทุกใบ (ใบแรก/งวดหลัง/ใบเพิ่ม)
  * credited = ยอดที่ใบนี้นับเข้าออเดอร์แล้วทั้งที่ตรวจ "ไม่ผ่าน" (สลิปแท้แต่โอนขาด → รับบางส่วน)
@@ -8914,6 +8968,7 @@ export default function AdminOrderDetailPage() {
               return (
                 <div>
                   <GH t="green">🧾 หลักฐานการโอน{entries.length > 1 ? ` (${entries.length} ใบ)` : ""}</GH>
+                  <SlipDupNotice order={order} entries={entries} />
                   {!entries.length ? (
                     <div className={`mt-2 flex flex-wrap items-center gap-2 ${soft("green")}`}>
                       <p className="min-w-0 flex-1 text-sm text-slate-500">ยังไม่มีสลิปในออเดอร์นี้</p>
