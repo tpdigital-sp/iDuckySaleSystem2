@@ -87,6 +87,7 @@ import {
   proofKey,
   proofPackNeed,
   proofShipStates,
+  unproofedQty,
   roundSel,
   type ProofShipState,
   type PackArrival,
@@ -11412,6 +11413,13 @@ function ShipPlanModal({
               );
             })}
           </ul>
+        )}
+        {/* 📋 ชิ้นที่สั่งแต่ยังไม่มีรูปรองรับ (ลายที่ยังไม่อัป) — ไม่มีการ์ดให้ติ๊ก คนหน้างานเห็นแค่ "เหลือ 0" แล้วงง (OD-260915-5055 · 6 ต.ค. 69) */}
+        {unproofedQty(order) > 0 && (
+          <p className="mx-5 mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-700 ring-1 ring-rose-200">
+            <b>ยังค้างอีก {unproofedQty(order).toLocaleString("th-TH")} ชิ้นที่ยังไม่มีรูปแบบงาน</b> (ลายที่กราฟฟิกยังไม่อัป) — ต้องอัปรูปลายนั้นเข้าใบก่อนถึงจะติ๊กในนี้ได้
+            · ถ้าจะให้ของที่เหลือไปกับออเดอร์ใหม่ของลูกค้า ไม่ต้องตั้งแผน ใช้ 📦 ส่งรวมกล่อง ในช่องเลขพัสดุแทน
+          </p>
         )}
         {all && <p className="px-5 pt-3 text-xs font-bold text-rose-600">เลือกครบทุกชิ้นที่เหลือ = ส่งทีเดียวทั้งใบ ไม่ต้องตั้งแผน — เว้นของที่จะส่งรอบสุดท้ายไว้</p>}
         <div className="space-y-2 px-5 pt-3">
