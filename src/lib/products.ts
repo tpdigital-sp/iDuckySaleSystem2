@@ -842,8 +842,43 @@ export function perSheetFromTier(cfg: SheetYield, size: number): number | null {
   return null;
 }
 
+/**
+ * 📄 ขนาดกระดาษมาตรฐานที่ตัดชิดจากแผ่น A3 ได้ลงตัว (หั่นตรง ไม่ต้องเว้นช่องไฟ) — ชิ้นต่อแผ่น A3
+ * ตรงกับปุ่มขนาดสำเร็จ (piecesPerUnit) ของทุกสินค้า: A3 = 1 · A4 = 2 · A5 = 4 · A6 = 8 · A7 = 16
+ */
+const A3_STRAIGHT_CUTS: { w: number; h: number; per: number }[] = [
+  { w: 29.7, h: 42, per: 1 },
+  { w: 21, h: 29.7, per: 2 },
+  { w: 14.8, h: 21, per: 4 },
+  { w: 10.5, h: 14.8, per: 8 },
+  { w: 7.4, h: 10.5, per: 16 },
+];
+
+/**
+ * กรอกขนาด A4/A5/A6/A7 เป๊ะ ๆ บนแผ่น A3 = ร้านตัดชิดได้ตามจำนวนมาตรฐาน — null = ไม่ใช่ขนาดมาตรฐาน
+ * เจ้าของร้านทัก 6 ต.ค. 69 (แม่เหล็ก): กรอก 21 × 29.7 ได้ 1 ชิ้น/แผ่น A3 ทั้งที่ควรได้ 2
+ * (ตัวจัดวางไดคัทเว้น 5 มม. + หักขอบ 43.76 × 28.89 → A4 ลงได้แผ่นละชิ้นเดียว) · ยอม ± 1 มม. (14.85 ↔ 14.8)
+ */
+export function a3StraightCutCount(cfg: SheetYield, w: number, h: number): number | null {
+  if (!/A3/i.test(cfg.sheetName ?? "")) return null;
+  /*
+   * พื้นที่วางต้องเป็น A3 จริง (หักขอบไดคัทแล้วยังเกือบเต็ม 42 × 29.7) — แผ่นที่ชื่อ A3 แต่เล็กกว่า
+   * (วาชิ 28 × 40 · กระดาษรองหลัง 40.5 × 30.4) หั่น A4 ได้ไม่ถึง 2 ชิ้นจริง → นับตามผังเหมือนเดิม
+   */
+  if (Math.max(cfg.sheetW, cfg.sheetH) < 41.5 || Math.min(cfg.sheetW, cfg.sheetH) < 28.5) return null;
+  const near = (a: number, b: number) => Math.abs(a - b) <= 0.1 + 1e-9;
+  const lo = Math.min(w, h);
+  const hi = Math.max(w, h);
+  return A3_STRAIGHT_CUTS.find((s) => near(lo, s.w) && near(hi, s.h))?.per ?? null;
+}
+
 export function sheetFitCount(cfg: SheetYield, w: number, h: number, bound?: SheetBound): number {
   if (!(w > 0) || !(h > 0)) return 0;
+  // ขนาดกระดาษมาตรฐาน (ไม่เผื่อ addH — ชิ้นที่ต้องเผื่อพับ/ครอบไม่ใช่การหั่นแผ่นตรง ๆ)
+  if (!cfg.addH) {
+    const std = a3StraightCutCount(cfg, w, h);
+    if (std != null) return std;
+  }
   const itemH = h + (cfg.addH ?? 0);
   /*
    * ร้านตั้งตารางจำนวนต่อแผ่นเองไว้ (perSheetTiers) = ใช้เลขนั้น ไม่คำนวณจากการจัดวาง
@@ -914,6 +949,21 @@ export function sheetYieldByTable(
   const L = Math.max(w > 0 ? w : 0, h > 0 ? h : 0);
   if (!(L > 0)) return true; // ยังไม่กรอก — ข้อความตั้งต้นพูดถึงตารางไว้ก่อน
   return perSheetFromTier(cfg, L) != null; // จัตุรัสที่ไม่มีในตาราง = นับตามผังจริงเหมือนกัน
+}
+
+/** 📄 ขนาดที่กรอกตรงกับกระดาษมาตรฐาน (A4/A5/…) ที่ตัดชิดจาก A3 — ใช้เปลี่ยนข้อความที่มาของตัวเลข */
+export function sheetYieldStraightCut(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>
+): boolean {
+  const cfg = opt.sheetYield;
+  if (!cfg || cfg.addH || parseArtSize(selections[ART_SIZE_LABEL]).size) return false;
+  const pair = product.options.find((o) => o.label === cfg.pairLabel);
+  if (!pair) return false;
+  const w = Number(parseInputValue(pair, selections[pair.label]));
+  const h = Number(parseInputValue(opt, selections[opt.label]));
+  return w > 0 && h > 0 && a3StraightCutCount(cfg, w, h) != null;
 }
 
 /**

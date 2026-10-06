@@ -51,6 +51,7 @@ import {
   sheetFitCount,
   sheetBoundOf,
   sheetYieldByTable,
+  sheetYieldStraightCut,
   type ArtSize,
   orderUnitYield,
   ART_LABEL,
@@ -4010,6 +4011,8 @@ export default function ProductDetail({
                              * ข้อความที่ห้อยต้องตรงกับที่คิดจริง ไม่งั้นแอดมินเทียบกับตารางแล้วงงว่าทำไมไม่ตรง
                              */
                             const byTable = sheetYieldByTable(product, opt, effective);
+                            // 📄 กรอก A4/A5/A6 เป๊ะ = หั่นชิดจาก A3 ไม่ใช่ผังไดคัทเว้นช่องไฟ (ดู a3StraightCutCount)
+                            const straight = sheetYieldStraightCut(product, opt, effective);
                             return n >= 1 ? (
                               <p className="mt-1 text-[11px] font-bold text-teal-700">
                                 📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : longestOnly && byTable ? "ด้านยาวสุดเท่านี้ได้ประมาณ" : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ 1 {sheet}
@@ -4030,7 +4033,9 @@ export default function ProductDetail({
                                     </span>
                                   </>
                                 )}{" "}
-                                {byTable
+                                {straight
+                                  ? "(ขนาดกระดาษมาตรฐาน ตัดชิดจากแผ่น A3)"
+                                  : byTable
                                   ? "(ตามตารางของร้าน — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)"
                                   : `(จัดวางบนพื้นที่พิมพ์จริง${gapNote} — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)`}
                                 {/* 📏 เจ้าของร้านสั่ง 10 ก.ย. 69: งานกรอกด้านยาวสุดต้องระบุว่า "กราฟฟิกแจ้งตอนส่งแบบ" */}
