@@ -75,6 +75,8 @@ interface Item {
   packSize?: number;
   /** เวลาที่เซิร์ฟเวอร์เขียนล่าสุด — ฟอร์มแก้ไขใช้รู้ว่าข้อมูลที่ถืออยู่เก่ากว่าของจริงไหม */
   updatedAt?: string;
+  /** เวลาที่ SKU ถูกสร้าง — เรียง "เพิ่มล่าสุดก่อน" */
+  createdAt?: string;
   /** 🏭 ของใช้ในโรงงาน เบิกเองอย่างเดียว — ไม่ผูกสินค้า ไม่เตือน "ยังไม่ผูก" */
   manualOnly?: boolean;
   /** 🧩 วัสดุกลางตามตัวเลือก — มุมมองตามสินค้าจัดกลุ่มใต้ชื่อกลุ่มตัวเลือก (ประเภทอะคริลิค) ไม่ใช่ชื่อสินค้า · ยังผูก/ตัดตามตัวเลือกปกติ */
@@ -208,7 +210,7 @@ interface ProductLite {
   /** ลิงก์ตามชื่อของหน้าสินค้า (data.slug) — ใช้จับคู่ตอนวางลิงก์ */
   slug?: string;
 }
-type SortKey = "urgency" | "name" | "balance" | "daysLeft";
+type SortKey = "newest" | "urgency" | "name" | "balance" | "daysLeft";
 /**
  * ของที่ "ห้อย" อยู่ใต้ SKU หนึ่งตัวในตาราง — extra = ผูกแบบมีเงื่อนไขกับตัวเลือกเดียวกัน · bom = วัสดุแฝงของสินค้า
  * target มีเฉพาะ extra (ชี้ตัวเลือกที่เก็บลิงก์ไว้ ใช้ตอนถอด) — bom ขอบเขตเป็นทั้งสินค้า ถอดจากตรงนี้ไม่ได้
@@ -282,6 +284,8 @@ export default function StockPage() {
   const [dragOver, setDragOver] = useState<string | null>(null);
   /** ลำดับที่ลากจัด (sort) มาก่อน · ไม่มี sort = ท้ายสุด เรียงชื่อแบบตัวเลข (1 mm, 1.5 mm, 2 mm, 10 mm) */
   const bySort = (a: Item, b: Item) => (a.sort ?? 1e9) - (b.sort ?? 1e9) || a.name.localeCompare(b.name, "th", { numeric: true });
+  /** 🆕 สร้างล่าสุดขึ้นก่อน · เวลาเท่ากัน (สร้างทีละชุด) ใช้ลำดับเดิม */
+  const byNewest = (a: Item, b: Item) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "") || bySort(a, b);
   /** รูป + การเชื่อมกับสินค้าของแต่ละ SKU — โหลดแยกครั้งเดียว ไม่ตามรอบรีเฟรชยอด 20 วิ */
   const [images, setImages] = useState<Record<string, string>>({});
   const [usage, setUsage] = useState<Record<string, StockUsage[]>>({});
@@ -297,7 +301,22 @@ export default function StockPage() {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("ทุกหมวด");
   const [filter, setFilter] = useState<Filter>("ทั้งหมด");
-  const [sort, setSort] = useState<SortKey>("urgency");
+  /** ค่าเริ่มต้น "เพิ่มล่าสุดก่อน" (เจ้าของร้านขอ 6 ต.ค. 69 — รุ่นมือถือที่เพิ่งเพิ่มจมท้ายกลุ่มหาไม่เจอ) · จำที่เลือกไว้ในเครื่อง */
+  const [sort, setSort] = useState<SortKey>("newest");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("stock-sort");
+      if (v === "urgency" || v === "name" || v === "balance" || v === "daysLeft" || v === "newest") setSort(v);
+    } catch {}
+  }, []);
+  const pickSort = (v: SortKey) => {
+    setSort(v);
+    try {
+      localStorage.setItem("stock-sort", v);
+    } catch {}
+  };
+  /** ลำดับแถวในกลุ่ม — โหมด "เพิ่มล่าสุดก่อน" ใช้วันสร้าง · โหมดอื่นใช้ลำดับที่ลากจัดเอง */
+  const rowOrder = sort === "newest" ? byNewest : bySort;
   /** ตาราง 2 มุมมอง: แยกกลุ่มตามชื่อสินค้า (ค่าเริ่มต้น) / รายการรวมแบบเดิม */
   const [view, setView] = useState<"group" | "flat">("group");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -619,6 +638,7 @@ export default function StockPage() {
     return [...list].sort((a, b) => {
       const sa = stats.get(a.id);
       const sb = stats.get(b.id);
+      if (sort === "newest") return (b.createdAt ?? "").localeCompare(a.createdAt ?? "") || a.name.localeCompare(b.name, "th", { numeric: true });
       if (sort === "name") return a.name.localeCompare(b.name, "th");
       if (sort === "balance") return a.balance - b.balance;
       if (sort === "daysLeft") return (sa?.daysLeft ?? 1e9) - (sb?.daysLeft ?? 1e9);
@@ -1383,13 +1403,19 @@ export default function StockPage() {
       }
     }
     const needle = q.trim().toLowerCase();
-    const all = [...map.values()].sort((a, b) => a.kind - b.kind || a.title.localeCompare(b.title, "th"));
+    // 🆕 เพิ่มล่าสุดก่อน: กลุ่มที่มี SKU ใหม่สุดขึ้นบน (กลุ่มสินค้าหาย/ยังไม่รู้ใช้กับอะไร ยังอยู่ท้าย)
+    const newestOf = (g: G) => g.rows.reduce((m, r) => ((r.createdAt ?? "") > m ? (r.createdAt ?? "") : m), "");
+    const all = [...map.values()].sort((a, b) =>
+      sort === "newest"
+        ? Number(a.kind >= 2) - Number(b.kind >= 2) || newestOf(b).localeCompare(newestOf(a)) || a.title.localeCompare(b.title, "th")
+        : a.kind - b.kind || a.title.localeCompare(b.title, "th"),
+    );
     if (!needle) return all;
     // ขั้นเดียวกับ rows: มีตัวที่ตรงเอง → กลุ่มต้องมีตัวนั้น · ไม่มี → กลุ่มที่ชื่อตรง (ชื่อที่ตั้งหรือชื่อเดิม) หรือมีแถวตรงผ่านตระกูล/หมวด
     const direct = rows.some((r) => matchItemDirect(r, needle));
     const titleHit = (g: G) => g.title.toLowerCase().includes(needle) || !!g.originalTitle?.toLowerCase().includes(needle);
     return all.filter((g) => (direct ? g.rows.some((r) => matchItemDirect(r, needle)) : titleHit(g) || g.rows.some((r) => matchItem(r, needle))));
-  }, [rows, items, usage, live, suggest, products, q, groupTitles]);
+  }, [rows, items, usage, live, suggest, products, q, groupTitles, sort]);
   const grouped = view === "group" && linksReady;
   /**
    * กำลังค้น/กรองสถานะอยู่ = กางทุกกลุ่มให้เห็นผลเลย ไม่ต้องไล่กดเปิด
@@ -1684,7 +1710,8 @@ export default function StockPage() {
                     ))}
                   </select>
                   {/* เมนูกรอง "ตระกูล" ถอดออก 30 ก.ย. 69 (เจ้าของร้านขอ) — ตระกูลยังใช้จัดกลุ่ม "ใช้ร่วมหลายสินค้า" และเป็นช่องในลิ้นชักแก้ไข SKU ตามเดิม */}
-                  <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className={dkSelect} aria-label="เรียงลำดับ">
+                  <select value={sort} onChange={(e) => pickSort(e.target.value as SortKey)} className={dkSelect} aria-label="เรียงลำดับ">
+                    <option value="newest">เรียง: เพิ่มล่าสุดก่อน</option>
                     <option value="urgency">เรียง: มีปัญหาก่อน</option>
                     <option value="daysLeft">เรียง: จะหมดเร็วสุด</option>
                     <option value="balance">เรียง: คงเหลือน้อยสุด</option>
@@ -1856,7 +1883,8 @@ export default function StockPage() {
                   ) : (
                     <Tag tone="mint">พอใช้</Tag>
                   );
-                const canDrag = mayEdit && !nest;
+                // ↕ ลากจัดลำดับได้เฉพาะโหมดที่ใช้ลำดับลากจัด — โหมด "เพิ่มล่าสุดก่อน" เรียงตามวันสร้าง ลากไปก็ไม่เห็นผล
+                const canDrag = mayEdit && !nest && sort !== "newest";
                 /** กลุ่มที่แถวนี้กับแถวที่ลากมาอยู่ด้วยกัน — ไว้เรียงลำดับเฉพาะในกลุ่มนั้น */
                 const dropGroup = dragId && dragId !== it.id ? groups.find((g) => g.rows.some((r) => r.id === it.id) && g.rows.some((r) => r.id === dragId)) : undefined;
                 return (
@@ -2099,7 +2127,7 @@ export default function StockPage() {
                */
               const renderParts = (list0: Item[], groupTitle: string, productId?: string, optionLabel?: string) => {
                 // ↕ ลำดับที่ลากจัดมาก่อน (sort) · ที่เหลือเรียงชื่อแบบตัวเลข — ใช้กับทุกทางในกลุ่ม
-                let list = [...list0].sort(bySort);
+                let list = [...list0].sort(rowOrder);
                 // 🧩 กลุ่มวัสดุกลางตามตัวเลือก: แถวแม่ = ค่าตัวเลือก (สีพิเศษ) → ห้อย SKU ที่ตัดเมื่อเงื่อนไขตรง (สีอะคริลิค = C-01)
                 //    ค่าเดียว → SKU เดียวไม่มีเงื่อนไข = วาดแถว SKU ตรง ๆ ไม่ต้องมีแม่ซ้ำชื่อ · ไม่ใช่ "วัสดุแฝง" (ตัวนี้คือแผ่นหลักของแบบนั้นเอง)
                 if (optionLabel) {
@@ -2242,7 +2270,7 @@ export default function StockPage() {
                   const k = r.part?.trim() || OTHER;
                   (byPart.get(k) ?? byPart.set(k, []).get(k)!).push(r);
                 }
-                const numeric = bySort;
+                const numeric = rowOrder;
                 return [...byPart.entries()]
                   .sort(([a], [b]) => (a === OTHER ? 1 : b === OTHER ? -1 : a.localeCompare(b, "th")))
                   .map(([part, rs]) => {
