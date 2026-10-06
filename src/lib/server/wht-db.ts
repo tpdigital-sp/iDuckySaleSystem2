@@ -150,6 +150,7 @@ export async function importSalesRows(sb: SupabaseClient, rows: SalesReportRow[]
       refDoc: r.refDoc ?? r.refNo,
       depositRef: r.depositRef,
       faStatus: r.status,
+      ...(r.faId ? { faId: r.faId } : {}),
       ...(keepManual
         ? { orderIds: prev!.orderIds }
         : { orderIds: m.orderIds, matchedBy: m.matchedBy, lineOrderId: m.lineOrderId, hasLine: m.hasLine, groupKey: m.groupKey }),
@@ -185,21 +186,29 @@ export async function importSalesRows(sb: SupabaseClient, rows: SalesReportRow[]
 export async function refreshLineFlags(sb: SupabaseClient, certs: WhtCert[]): Promise<WhtCert[]> {
   const want = certs.filter((c) => c.lineOrderId && (c.lineTo || ["pending", "todo", "retro"].includes(whtStatusOf(c))));
   if (!want.length) return certs;
+  // 🐢→⚡ เช็คแค่ช่อง lineUserId ก่อน (ไม่กี่ KB) — เดิมโหลดออเดอร์เต็ม ~105 ใบ 1.6 MB ทุกครั้งที่เปิดเดือน (6 ต.ค. 69 เปิด ก.ย. ช้า 6–7 วิ)
   const ids = [...new Set(want.map((c) => c.lineOrderId!))];
-  const orders = new Map<string, Order>();
-  for (let i = 0; i < ids.length; i += 100) {
-    const { data } = await sb.from("orders").select("id,data").in("id", ids.slice(i, i + 100));
-    for (const r of data ?? []) orders.set(r.id as string, r.data as Order);
+  const lineOf = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await sb.from("orders").select("id,line:data->>lineUserId").in("id", ids.slice(i, i + 200));
+    for (const r of data ?? []) lineOf.set(r.id as string, (r.line as string) || "");
   }
   const DAY = 24 * 3600_000;
+  const old = (iso?: string) => !iso || Date.now() - new Date(iso).getTime() > DAY;
   const stale = want.filter((c) => {
-    const o = orders.get(c.lineOrderId!);
-    if (!o) return false;
-    if (!c.lineTo) return true;
-    if (o.lineUserId && o.lineUserId !== c.lineTo.id) return true;
-    return Date.now() - new Date(c.lineTo.at).getTime() > DAY;
+    if (!lineOf.has(c.lineOrderId!)) return false;
+    const bound = lineOf.get(c.lineOrderId!);
+    if (!c.lineTo) return !!bound || old(c.lineCheckedAt); // ยังไม่มีไลน์: เช็คใหม่เมื่อเพิ่งผูกที่ใบงาน หรือครบ 24 ชม.
+    if (bound && bound !== c.lineTo.id) return true;
+    return old(c.lineTo.at);
   });
   if (!stale.length) return certs;
+  const orders = new Map<string, Order>();
+  const need = [...new Set(stale.map((c) => c.lineOrderId!))];
+  for (let i = 0; i < need.length; i += 100) {
+    const { data } = await sb.from("orders").select("id,data").in("id", need.slice(i, i + 100));
+    for (const r of data ?? []) orders.set(r.id as string, r.data as Order);
+  }
 
   // ใบงานเดียวกันหลาย INV = ถาม LINE ครั้งเดียว
   const byOrder = new Map<string, Promise<WhtCert["lineTo"] | null>>();
@@ -222,8 +231,10 @@ export async function refreshLineFlags(sb: SupabaseClient, certs: WhtCert[]): Pr
   for (let i = 0; i < stale.length; i += 8) {
     await Promise.all(
       stale.slice(i, i + 8).map(async (c) => {
-        const lt = await resolve(orders.get(c.lineOrderId!)!);
-        const next: WhtCert = { ...c, hasLine: !!lt, groupKey: lt?.id ?? c.groupKey };
+        const o = orders.get(c.lineOrderId!);
+        if (!o) return;
+        const lt = await resolve(o);
+        const next: WhtCert = { ...c, hasLine: !!lt, groupKey: lt?.id ?? c.groupKey, lineCheckedAt: new Date().toISOString() };
         if (lt) next.lineTo = lt;
         else delete next.lineTo;
         await saveCert(sb, next);

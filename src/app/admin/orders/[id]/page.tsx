@@ -172,6 +172,8 @@ import ItemAdder from "@/components/admin/ItemAdder";
 import QuotePanel from "@/components/admin/QuotePanel";
 import Barcode from "@/components/Barcode";
 import { QRCodeSVG } from "qrcode.react";
+import OrderTaxInvoices from "@/components/admin/OrderTaxInvoices";
+import { FlowDocLinks } from "@/components/admin/FlowDocLinks";
 import { useActor, useCan, useIsAdministrator, usePermsReady, useRoleLabel } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
@@ -5232,11 +5234,15 @@ export default function AdminOrderDetailPage() {
                       📄 {order.flowAccount.docTypeLabel} FlowAccount {order.flowAccount.docNo}
                       {order.flowAccount.date ? ` · ${order.flowAccount.date}` : ""}
                       {" · "}
-                      <a href={order.flowAccount.url} target="_blank" rel="noreferrer" className="underline">
-                        เปิดเอกสาร ↗
-                      </a>
+                      <FlowDocLinks
+                        url={order.flowAccount.url}
+                        label={`${order.flowAccount.docTypeLabel} ${order.flowAccount.docNo}`}
+                        editUrl={seesMoney ? `/api/admin/fa-edit?no=${encodeURIComponent(order.flowAccount.docNo)}` : undefined}
+                      />
                     </p>
                   )}
+                  {/* 🧾 INV ที่ออกใน FlowAccount แล้ว — ดึงจาก wht_certs (cron ทุก 5 นาที) · เห็นเฉพาะคนเห็นยอดเงิน */}
+                  {(order.flowAccount || order.taxInvoice) && seesMoney && <OrderTaxInvoices orderId={order.id} />}
                   {order.flowAccount?.grandTotal != null && (
                     <p className={muted}>
                       ยอดตามใบ {formatPrice(order.flowAccount.grandTotal)}

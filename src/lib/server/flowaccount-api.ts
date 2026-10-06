@@ -30,6 +30,8 @@ export interface SalesReportRow {
   refNo?: string;
   depositRef?: string;
   status?: string;
+  /** recordId ของใบใน FlowAccount — ใช้ขอลิงก์แชร์เปิดดูเอกสาร */
+  faId?: number;
   /** หัก ณ ที่จ่าย — sure = จากการรับชำระจริง (รู้แน่ว่าหัก/ไม่หัก) · sure false = ยังไม่รับชำระ แต่ตั้งหักไว้ในใบ */
   wht?: { amount: number; rate: number; sure: boolean };
 }
@@ -106,6 +108,7 @@ async function get<T>(path: string): Promise<T> {
 }
 
 interface FaTaxInvoice {
+  recordId?: number | string;
   documentSerial: string;
   publishedOn: string;
   contactName?: string;
@@ -155,6 +158,7 @@ function toRow(x: FaTaxInvoice): SalesReportRow {
     total: num(x.grandTotal),
     refDoc: x.reference?.trim() || undefined,
     status: STATUS_TH[x.statusString ?? ""] ?? x.statusString,
+    faId: Number(x.recordId) || undefined,
     wht,
   };
 }
@@ -176,4 +180,67 @@ export async function fetchTaxInvoicesSince(fromMonth: string): Promise<SalesRep
 export async function fetchTaxInvoicesOfMonth(month: string): Promise<SalesReportRow[]> {
   const all = await fetchTaxInvoicesSince(month);
   return all.filter((r) => r.date.slice(0, 7) === month);
+}
+
+/** recordId ของใบจากเลข INV (กรณีใบเก่าที่ยังไม่ได้เก็บ faId) */
+export async function findTaxInvoiceId(serial: string): Promise<number | null> {
+  const filter = encodeURIComponent(JSON.stringify([{ columnName: "DocumentSerial", columnValue: serial, columnPredicateOperator: "And" }]).replace(/"/g, "'"));
+  const d = await get<{ list?: FaTaxInvoice[] }>(`/tax-invoices?currentPage=1&pageSize=5&filter=${filter}`);
+  const hit = (d?.list ?? []).find((x) => x.documentSerial === serial);
+  return hit ? Number(hit.recordId) || null : null;
+}
+
+/** 🔗 ลิงก์แชร์ใบกำกับภาษี/ใบเสร็จรับเงิน (share.flowaccount.com/inv/…) — เปิดดูได้โดยไม่ต้องล็อกอิน FlowAccount */
+export async function shareTaxInvoice(recordId: number): Promise<string> {
+  const t = await token();
+  const r = await fetch(`${t.base}/tax-invoices/sharedocument`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId: recordId, culture: "th" }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const j = (await r.json().catch(() => null)) as { status?: boolean; message?: string; data?: { link?: string } } | null;
+  const link = j?.data?.link;
+  if (!r.ok || !link || !/^https:\/\/share\.flowaccount\.com\//.test(link)) throw new Error(`ขอลิงก์เอกสารจาก FlowAccount ไม่ได้ (${r.status}${j?.message ? ` · ${j.message}` : ""})`);
+  return link;
+}
+
+/**
+ * ✏️ หน้าแก้ไขเอกสารในแอป FlowAccount — https://advance.flowaccount.com/N399315/business/<ชนิด>/<recordId>
+ * รูปแบบจากเจ้าของร้าน 6 ต.ค. 69 (quotations/42848673 = QT010808) · ชนิดอื่นเดาตามชื่อ endpoint ของ Open API
+ * ต้องล็อกอิน FlowAccount ในเบราว์เซอร์อยู่แล้ว (เราไม่ได้ล็อกอินแทน)
+ */
+export const FA_COMPANY_CODE = "N399315";
+const DOC_KIND: { prefix: RegExp; api: string }[] = [
+  { prefix: /^QT/i, api: "quotations" },
+  { prefix: /^BL/i, api: "billing-notes" },
+  { prefix: /^INV/i, api: "tax-invoices" },
+  { prefix: /^RE/i, api: "receipts" },
+  { prefix: /^CA/i, api: "cash-invoices" },
+];
+
+export function faKindOf(docNo: string): string | null {
+  return DOC_KIND.find((k) => k.prefix.test(docNo))?.api ?? null;
+}
+
+export function faEditUrl(kind: string, recordId: number): string {
+  return `https://advance.flowaccount.com/${FA_COMPANY_CODE}/business/${kind}/${recordId}`;
+}
+
+const idCache = new Map<string, number>();
+
+/** recordId จากเลขเอกสาร (QT/BL/INV/RE/CA…) — จำไว้ในหน่วยความจำ (เลขภายในไม่เปลี่ยน) */
+export async function findDocRecordId(docNo: string): Promise<{ kind: string; id: number } | null> {
+  const kind = faKindOf(docNo);
+  if (!kind) return null;
+  const key = docNo.toUpperCase();
+  const hit = idCache.get(key);
+  if (hit) return { kind, id: hit };
+  const filter = encodeURIComponent(JSON.stringify([{ columnName: "DocumentSerial", columnValue: key, columnPredicateOperator: "And" }]).replace(/"/g, "'"));
+  const d = await get<{ list?: FaTaxInvoice[] }>(`/${kind}?currentPage=1&pageSize=5&filter=${filter}`);
+  const row = (d?.list ?? []).find((x) => x.documentSerial?.toUpperCase() === key);
+  const id = row ? Number(row.recordId) : 0;
+  if (!id) return null;
+  idCache.set(key, id);
+  return { kind, id };
 }

@@ -33,6 +33,10 @@ export interface WhtCert {
   refDoc?: string;
   /** เอกสารอ้างอิงรับมัดจำ */
   depositRef?: string;
+  /** recordId ของใบใน FlowAccount (ได้ตอนดึงผ่าน API) */
+  faId?: number;
+  /** 🔗 ลิงก์แชร์เปิดดูใบกำกับภาษี/ใบเสร็จรับเงิน — ขอจาก FlowAccount ตอนกดครั้งแรกแล้วจำไว้ (/api/admin/wht/doc) */
+  faShareUrl?: string;
   /** สถานะในแอป FlowAccount เช่น รอเก็บเงิน · เก็บเงินแล้ว · ยกเลิก */
   faStatus?: string;
 
@@ -49,6 +53,8 @@ export interface WhtCert {
    * แคชไว้ (at) เช็คใหม่ทุก 24 ชม. หรือเมื่อ LINE ที่ผูกในใบงานเปลี่ยน
    */
   lineTo?: { id: string; name?: string; picture?: string; via: "bound" | "inherited" | "login"; at: string };
+  /** เช็ค LINE ล่าสุดเมื่อไหร่ (รวมกรณีหาไม่เจอ) — ไม่เจอแล้วไม่ต้องเช็คซ้ำทุกครั้งที่เปิดหน้า (รอ 24 ชม. หรือจนกว่าใบงานถูกผูก LINE) */
+  lineCheckedAt?: string;
   /** กลุ่มลูกค้าเดียวกัน — ใช้รวมใบเวลาโชว์/ทวง (LINE userId ถ้ารู้ ไม่งั้นเลขผู้เสียภาษี) */
   groupKey?: string;
 

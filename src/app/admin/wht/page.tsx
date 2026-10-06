@@ -143,7 +143,11 @@ function WhtInner() {
     }
   }, []);
   useEffect(() => {
-    void load();
+    // ลิงก์จากหน้าออเดอร์: /admin/wht?month=2026-10&q=INV007671 → เปิดเดือนนั้น + ค้นเลขใบให้เลย
+    const p = new URLSearchParams(window.location.search);
+    const m = p.get("month");
+    if (p.get("q")) setQ(p.get("q")!);
+    void load(m && /^\d{4}-\d{2}$/.test(m) ? m : undefined);
   }, [load]);
   busyRef.current = busy;
   // 🔁 ระบบดึงจาก FlowAccount เองทุก 5 นาที (cron wht-sync) → หน้าเว็บอ่านฐานใหม่ทุก 1 นาที (ไม่ยิง FlowAccount) · ข้ามรอบที่กำลังกดอะไรอยู่
@@ -621,6 +625,10 @@ function WhtInner() {
                 value={month}
                 onChange={(e) => {
                   setSel(new Set());
+                  setOpenId(null);
+                  // ล้างรายการเดิมทันที → ขึ้น "กำลังโหลด…" แทนการค้างเดือนเก่าไว้จนดูเหมือนกดไม่ติด
+                  setCerts(null);
+                  setMonth(e.target.value);
                   void load(e.target.value);
                 }}
                 className="h-11 rounded-full border border-slate-200 bg-white px-4 text-[14px]"
@@ -758,7 +766,7 @@ function WhtInner() {
 
       {certs === null ? (
         <div className="mt-6">
-          <Empty title="กำลังโหลด…" body="ดึงใบกำกับภาษีของเดือนล่าสุด" />
+          <Empty title="กำลังโหลด…" body={month ? `ใบกำกับภาษีเดือน${thMonth(month)}` : "ใบกำกับภาษีเดือนล่าสุด"} />
         </div>
       ) : all.length === 0 ? (
         <div className="mt-6">
@@ -962,11 +970,25 @@ function Detail({
         />
         <KV k="สถานะใน FlowAccount" v={c.faStatus ?? "—"} />
         <KV
-          k="เอกสารอ้างอิง"
+          k="ใบกำกับภาษี/ใบเสร็จรับเงิน"
           v={
-            [c.refDoc, c.depositRef && `มัดจำ ${c.depositRef}`]
-              .filter(Boolean)
-              .join(" · ") || "—"
+            <>
+              <a
+                href={`/api/admin/wht/doc?id=${encodeURIComponent(c.id)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold underline underline-offset-4"
+                style={{ color: "var(--dk-blue-deep)" }}
+                title="เปิดเอกสารใน FlowAccount (แท็บใหม่)"
+              >
+                {c.id} ↗
+              </a>
+              {(c.refDoc || c.depositRef) && (
+                <span className="block text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                  อ้างอิง {[c.refDoc, c.depositRef && `มัดจำ ${c.depositRef}`].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </>
           }
         />
         <KV

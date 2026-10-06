@@ -17,20 +17,28 @@ export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ certs: [], months: [] });
 
-  const { data: mrows, error: merr } = await sb.from(WHT_TABLE).select("month:data->>month");
-  if (merr) {
-    if (isMissingTable(merr)) return NextResponse.json({ certs: [], months: [], needsSetup: true });
-    return NextResponse.json({ error: merr.message, certs: [], months: [] }, { status: 500 });
-  }
-  const months = [...new Set((mrows ?? []).map((r) => String(r.month)))].filter((m) => /^\d{4}-\d{2}$/.test(m)).sort().reverse();
   const want = new URL(req.url).searchParams.get("month");
-  const month = want && /^\d{4}-\d{2}$/.test(want) ? want : months[0];
-  if (!month) return NextResponse.json({ certs: [], months, apiReady: await flowAccountApiReady(), lastSync: await lastSyncInfo(sb) });
+  const wantOk = want && /^\d{4}-\d{2}$/.test(want) ? want : null;
+  const certsOf = (m: string) => sb.from(WHT_TABLE).select("data").eq("data->>month", m).order("id", { ascending: false }).limit(2000);
+  // ⚡ อ่านพร้อมกัน: รายการเดือน · ใบของเดือนที่ขอ · เวลาดึงล่าสุด · รหัส FlowAccount พร้อมไหม (เดิมรอทีละอย่าง)
+  const [mres, first, lastSync, apiReady] = await Promise.all([
+    sb.from(WHT_TABLE).select("month:data->>month"),
+    wantOk ? certsOf(wantOk) : Promise.resolve(null),
+    lastSyncInfo(sb),
+    flowAccountApiReady(),
+  ]);
+  if (mres.error) {
+    if (isMissingTable(mres.error)) return NextResponse.json({ certs: [], months: [], needsSetup: true });
+    return NextResponse.json({ error: mres.error.message, certs: [], months: [] }, { status: 500 });
+  }
+  const months = [...new Set((mres.data ?? []).map((r) => String(r.month)))].filter((m) => /^\d{4}-\d{2}$/.test(m)).sort().reverse();
+  const month = wantOk ?? months[0];
+  if (!month) return NextResponse.json({ certs: [], months, apiReady, lastSync });
 
-  const { data, error } = await sb.from(WHT_TABLE).select("data").eq("data->>month", month).order("id", { ascending: false }).limit(2000);
+  const { data, error } = first ?? (await certsOf(month));
   if (error) return NextResponse.json({ error: error.message, certs: [], months }, { status: 500 });
   const certs = await withFileUrls(sb, await refreshLineFlags(sb, (data ?? []).map((r) => r.data as WhtCert)));
-  return NextResponse.json({ certs, months, month, apiReady: await flowAccountApiReady(), lastSync: await lastSyncInfo(sb) });
+  return NextResponse.json({ certs, months, month, apiReady, lastSync });
 }
 
 type Patch = {
