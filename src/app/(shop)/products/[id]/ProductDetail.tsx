@@ -363,6 +363,15 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
  */
 const CARDS_DENSE_FROM = 6;
 
+/**
+ * สีกล่อง selectedNote — ขึ้นต้นด้วย ⚠️ = คำเตือนจริงจัง (เช่น "ขนาดนี้ไม่มีซองให้" กระดาษรองหลัง) ใช้กล่องแดง
+ * อื่น ๆ คงกล่อง amber เดิม (ธีมร้านแมป amber เป็นฟ้าอ่อน · rose ไม่ถูกแมป จึงแดงจริง · 6 ต.ค. 69)
+ */
+function noteTone(note: string) {
+  return note.trimStart().startsWith("⚠️")
+    ? "bg-rose-50 font-semibold text-rose-700 ring-rose-300"
+    : "bg-amber-100/70 text-amber-900 ring-amber-200";
+}
 
 /**
  * note ของกลุ่มตัวเลือกที่มีคำเน้น `**คำ**` — โชว์คำนั้นหนา+สีชมพูบนพื้นไฮไลต์ให้ลูกค้าสะดุดตา
@@ -417,7 +426,9 @@ function noteEmphasis(note: string, trailing?: ReactNode) {
   const bullets = lead ? lines.slice(1) : lines;
   return (
     <span className="mt-1 flex flex-col gap-1.5 rounded-xl bg-stone-50 px-3 py-2.5 leading-relaxed ring-1 ring-stone-200/70">
-      {lead && <span className="font-semibold text-stone-600">{noteChips(lead)}</span>}
+      {lead && (
+        <span className={`font-semibold ${lead.startsWith("⚠️") ? "text-rose-600" : "text-stone-600"}`}>{noteChips(lead)}</span>
+      )}
       {bullets.map((line, i) =>
         line.startsWith("• ") ? (
           <span key={i} className="flex gap-1.5">
@@ -4924,7 +4935,7 @@ export default function ProductDetail({
                                   )}
                                   {/* 💬 ข้อความกำกับเฉพาะตอนถูกเลือก — เตือนเงื่อนไขของตัวที่เลือกอยู่ (เช่น ฝุ่นหมึกของไดคัทเข้าเนื้อ) */}
                                   {on && c.selectedNote && (
-                                    <span className="mt-1 block rounded-lg bg-amber-100/70 px-2 py-1 text-[11px] font-normal leading-snug text-amber-900 ring-1 ring-amber-200">
+                                    <span className={`mt-1 block rounded-lg px-2 py-1 text-[11px] font-normal leading-snug ring-1 ${noteTone(c.selectedNote)}`}>
                                       {noteEmphasis(c.selectedNote)}
                                     </span>
                                   )}
@@ -4996,7 +5007,7 @@ export default function ProductDetail({
                     (() => {
                       const sel = opt.choices.find((c) => c.name === effective[opt.label]);
                       return sel?.selectedNote ? (
-                        <p className="mt-1.5 rounded-xl bg-amber-100/70 px-3 py-2 text-[11px] leading-snug text-amber-900 ring-1 ring-amber-200">
+                        <p className={`mt-1.5 rounded-xl px-3 py-2 text-[11px] leading-snug ring-1 ${noteTone(sel.selectedNote)}`}>
                           {noteEmphasis(sel.selectedNote)}
                         </p>
                       ) : null;
