@@ -25,6 +25,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/print", label: "คิวปริ้น", emoji: "🖨", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/orders/scan", label: "แพ็ค–ส่ง", emoji: "📮", perm: "pack.ship", group: "งานขาย" },
   { href: "/admin/quotes", label: "ใบเสนอราคา", emoji: "📄", perm: "orders.edit", group: "งานขาย" },
+  // 🧾 ใบกำกับภาษี FlowAccount รายเดือน + สถานะใบหัก ณ ที่จ่าย 50 ทวิ + ทวงไลน์ (พนักงานบัญชีขอ 6 ต.ค. 69)
+  { href: "/admin/wht", label: "ใบหัก FlowAcc", emoji: "🧾", perm: "orders.money", group: "งานขาย" },
   { href: "/admin/price-links", label: "ลิงก์ราคา", emoji: "🔗", perm: "admin.access", group: "งานขาย" },
   { href: "/admin/reports", label: "รายงานยอดขาย", emoji: "📈", perm: "reports.view", group: "งานขาย" },
   // 🗂 ชั่วคราว (พนักงานขอ 30 ก.ย. 69): ใบที่เงินเข้าแล้วแต่ยังไม่ส่งของ เรียงตามวันจัดส่ง — ถอดได้เมื่อรายงานหลักครอบแล้ว

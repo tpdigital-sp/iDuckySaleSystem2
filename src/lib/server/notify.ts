@@ -142,7 +142,7 @@ export async function notifyLevelOf(sb: SupabaseClient, order: Order): Promise<N
   return inh.notifyLevel ?? "all";
 }
 
-async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "bound" | "inherited" } | null> {
+export async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ id: string; via: "login" | "bound" | "inherited" } | null> {
   // ลำดับ: สิ่งที่คนตั้งใจระบุ ชนะสิ่งที่ระบบเดาเอง
   // 1) พนักงานผูกไว้ในออเดอร์นี้ (ยืนยันกับ LINE แล้ว) — แม่นสุด
   if (order.lineUserId) return { id: order.lineUserId, via: "bound" };
@@ -624,7 +624,8 @@ export type NoticeTone =
   | "stockOk" // เช็คสต๊อกเรียบร้อย
   | "stockIn" // ของเข้าร้านแล้ว
   | "claimOpen" // รับเรื่องเคลม
-  | "claimUpdate"; // อัปเดตเรื่องเคลม
+  | "claimUpdate" // อัปเดตเรื่องเคลม
+  | "whtAsk"; // 🧾 ทวงใบหัก ณ ที่จ่าย (หน้า /admin/wht)
 
 export const NOTICE_HEX: Record<NoticeTone, string> = {
   balanceUp: "#C2410C",
@@ -649,6 +650,7 @@ export const NOTICE_HEX: Record<NoticeTone, string> = {
   stockIn: "#86198F",
   claimOpen: "#DB2777",
   claimUpdate: "#9D174D",
+  whtAsk: "#172554",
 };
 
 /** ทุกสีของการ์ดทั้งระบบ (สถานะ + แจ้งเตือน) — เทสจานสีอ่านจากตัวนี้ */
@@ -683,6 +685,8 @@ export interface NoticeCard {
   id: string;
   /** ยอดเงินก้อนเด่น — ตัวเลขที่ลูกค้าต้องเห็นก่อนอย่างอื่น */
   hero?: { label: string; value: string };
+  /** สีกล่องยอดเด่น [พื้น, ตัวอักษร] — ไม่ส่ง = คิดจากสีหัวการ์ด · ใช้เมื่ออยากให้ยอดเงินเด่นต่างจากหัว (การ์ดทวงใบหัก: กรมท่า + ทอง) */
+  heroColors?: [string, string];
   rows?: NoticeRow[];
   /** รายการย่อย (รายการที่ส่งรอบนี้ · ราคาที่ตีให้ · อื่น ๆ) */
   bullets?: string[];
@@ -703,21 +707,23 @@ export function noticeFlex(card: NoticeCard): LineMessage[] {
   const [noteBg, noteFg] = noteColors(card.tone);
   const body: unknown[] = [
     { type: "text", text: cut(card.headline, 300), size: "sm", color: "#334155", wrap: true },
-    { type: "text", text: cut(card.id, 60), size: "lg", weight: "bold", color: "#0F172A" },
+    { type: "text", text: cut(card.id, 60), size: "lg", weight: "bold", color: "#0F172A", wrap: true },
     { type: "separator", color: "#E2E8F0" },
   ];
-  if (card.hero)
+  if (card.hero) {
+    const [heroBg, heroFg] = card.heroColors ?? [noteBg, noteFg];
     body.push({
       type: "box",
       layout: "vertical",
-      backgroundColor: noteBg,
+      backgroundColor: heroBg,
       cornerRadius: "8px",
       paddingAll: "12px",
       contents: [
-        { type: "text", text: cut(card.hero.label, 60), size: "xs", color: noteFg },
-        { type: "text", text: cut(card.hero.value, 40), size: "xxl", weight: "bold", color: noteFg },
+        { type: "text", text: cut(card.hero.label, 60), size: "xs", color: heroFg },
+        { type: "text", text: cut(card.hero.value, 40), size: "xxl", weight: "bold", color: heroFg },
       ],
     });
+  }
   if (card.rows?.length)
     body.push({
       type: "box",
