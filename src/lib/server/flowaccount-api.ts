@@ -1,0 +1,179 @@
+import "server-only";
+import { getChatFirestore } from "@/lib/server/firebase-admin";
+
+/**
+ * 🔌 FlowAccount Open API (Client Credentials) — ดึงใบกำกับภาษีรายเดือนให้หน้า /admin/wht
+ *
+ * รหัส: env FLOWACCOUNT_CLIENT_ID · FLOWACCOUNT_CLIENT_SECRET · FLOWACCOUNT_API_BASE (ไม่ใส่ = production /v1 · sandbox = /test)
+ *   ไม่มีใน env → อ่าน Firestore settings/flowaccount-api (ฐาน ordersure — ที่เดียวกับคุกกี้ OA Manager)
+ *   ⚠️ เว็บจริงใช้ Firestore: env บน Netlify เต็มเพดาน Lambda 4KB แล้ว (3,982 bytes · 6 ต.ค. 69) ใส่รหัสเพิ่มไม่ได้
+ *   เปลี่ยนรหัส = แก้ .env.local แล้วรัน node scripts/flowaccount-creds-save.mjs
+ * token อายุ 24 ชม. → แคชในหน่วยความจำ (ฟังก์ชันเย็นแล้วขอใหม่ก็ไม่เป็นไร)
+ * เพดาน 100 คำขอ/นาที (ประกาศ 8 ก.ค. 69) → 1 เดือน ~165 ใบ = 2 หน้า · เจอ 429 พักแล้วลองใหม่
+ *
+ * ⭐ จุดที่ไฟล์ Excel รายงานยอดขายไม่มี: payments.withheldAmount/withheldPercentage = ลูกค้าหัก ณ ที่จ่ายตอนรับชำระ
+ *    (ทดสอบบัญชีจริง ก.ย. 69: หัก 69 · ไม่หัก 95 · ยกเลิก 1 — ยอดตรง 3% ของมูลค่าก่อน VAT ทุกใบ)
+ */
+
+/** ใบกำกับภาษี 1 ใบจาก FlowAccount (ทรงที่ importSalesRows ใช้) */
+export interface SalesReportRow {
+  docNo: string;
+  date: string;
+  company: string;
+  taxId?: string;
+  branch?: string;
+  /** มูลค่าก่อน VAT (totalWithoutVat — ตรงคอลัมน์ "มูลค่า" ในรายงานยอดขาย 165/165 ใบ) */
+  base: number;
+  vat: number;
+  total: number;
+  refDoc?: string;
+  refNo?: string;
+  depositRef?: string;
+  status?: string;
+  /** หัก ณ ที่จ่าย — sure = จากการรับชำระจริง (รู้แน่ว่าหัก/ไม่หัก) · sure false = ยังไม่รับชำระ แต่ตั้งหักไว้ในใบ */
+  wht?: { amount: number; rate: number; sure: boolean };
+}
+
+interface Creds {
+  clientId: string;
+  clientSecret: string;
+  base: string;
+}
+
+let credsCache: { at: number; creds: Creds | null } | null = null;
+
+/** รหัส FlowAccount — env ก่อน (เครื่อง dev) แล้วค่อย Firestore (เว็บจริง) · แคช 5 นาที */
+async function creds(): Promise<Creds | null> {
+  const envId = process.env.FLOWACCOUNT_CLIENT_ID;
+  const envSecret = process.env.FLOWACCOUNT_CLIENT_SECRET;
+  if (envId && envSecret) return { clientId: envId, clientSecret: envSecret, base: process.env.FLOWACCOUNT_API_BASE || "https://openapi.flowaccount.com/v1" };
+  if (credsCache && Date.now() - credsCache.at < 5 * 60_000) return credsCache.creds;
+  let c: Creds | null = null;
+  try {
+    const snap = await getChatFirestore()?.collection("settings").doc("flowaccount-api").get();
+    if (snap?.exists && snap.get("clientId") && snap.get("clientSecret"))
+      c = { clientId: String(snap.get("clientId")), clientSecret: String(snap.get("clientSecret")), base: String(snap.get("base") || "https://openapi.flowaccount.com/v1") };
+  } catch {
+    c = credsCache?.creds ?? null;
+  }
+  credsCache = { at: Date.now(), creds: c };
+  return c;
+}
+
+export async function flowAccountApiReady(): Promise<boolean> {
+  return !!(await creds());
+}
+
+const baseOf = (c: Creds) => c.base.replace(/\/+$/, "");
+
+let cached: { token: string; until: number; key: string } | null = null;
+
+async function token(): Promise<{ token: string; base: string }> {
+  const c = await creds();
+  if (!c) throw new Error("ยังไม่ได้ใส่รหัส FlowAccount Open API");
+  const base = baseOf(c);
+  const key = `${base}|${c.clientId}|${c.clientSecret.slice(-6)}`;
+  if (cached && cached.key === key && Date.now() < cached.until) return { token: cached.token, base };
+  const body = new URLSearchParams({ grant_type: "client_credentials", scope: "flowaccount-api", client_id: c.clientId, client_secret: c.clientSecret });
+  const r = await fetch(`${base}/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    signal: AbortSignal.timeout(15_000),
+  });
+  const j = (await r.json().catch(() => null)) as { access_token?: string; expires_in?: number; error?: string } | null;
+  if (!r.ok || !j?.access_token) throw new Error(`ขอ token FlowAccount ไม่ผ่าน (${r.status}${j?.error ? ` · ${j.error}` : ""}) — เช็ครหัส`);
+  cached = { token: j.access_token, until: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 300) * 1000, key };
+  return { token: j.access_token, base };
+}
+
+async function get<T>(path: string): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const t = await token();
+    const r = await fetch(`${t.base}${path}`, { headers: { Authorization: `Bearer ${t.token}` }, signal: AbortSignal.timeout(20_000) });
+    if (r.status === 429 && attempt < 3) {
+      await new Promise((ok) => setTimeout(ok, 2_000 * 2 ** attempt));
+      continue;
+    }
+    if (r.status === 401 && attempt === 0) {
+      cached = null; // token หมดอายุก่อนกำหนด → ขอใหม่ครั้งเดียว
+      continue;
+    }
+    const j = (await r.json().catch(() => null)) as { status?: boolean; message?: string; data?: unknown } | null;
+    if (!r.ok || j?.status === false) throw new Error(`FlowAccount ตอบ ${r.status}${j?.message ? ` · ${j.message}` : ""}`);
+    return j?.data as T;
+  }
+}
+
+interface FaTaxInvoice {
+  documentSerial: string;
+  publishedOn: string;
+  contactName?: string;
+  contactTaxId?: string;
+  contactBranch?: string;
+  totalWithoutVat?: string | number;
+  vatAmount?: string | number;
+  grandTotal?: string | number;
+  reference?: string;
+  statusString?: string;
+  documentWithholdingTaxAmount?: number | string;
+  documentWithholdingTaxPercentage?: number | string;
+  payments?: { withheldAmount?: string | number; withheldPercentage?: string | number; paymentDate?: string } | { withheldAmount?: string | number; withheldPercentage?: string | number }[] | null;
+}
+
+const num = (v: unknown) => {
+  const n = Number(v ?? 0);
+  return isFinite(n) ? n : 0;
+};
+
+/** สถานะใน FlowAccount → คำไทยแบบในแอป FlowAccount (หน้าเว็บ/กติกา "ยกเลิก" ใช้ชุดเดียวกัน) */
+const STATUS_TH: Record<string, string> = {
+  awaiting: "รอดำเนินการ",
+  approved: "อนุมัติแล้ว",
+  invoiceDelivered: "รอเก็บเงิน",
+  paid: "เก็บเงินแล้ว",
+  void: "ยกเลิก",
+};
+
+/** แถวจาก API → SalesReportRow + ข้อมูลหัก ณ ที่จ่ายจริงจากการรับชำระ */
+function toRow(x: FaTaxInvoice): SalesReportRow {
+  const pays = Array.isArray(x.payments) ? x.payments : x.payments ? [x.payments] : [];
+  const payWht = pays.reduce((s, p) => s + num(p.withheldAmount), 0);
+  const payPct = pays.map((p) => num(p.withheldPercentage)).find((n) => n > 0);
+  const docWht = num(x.documentWithholdingTaxAmount);
+  const paid = x.statusString === "paid";
+  // รับชำระแล้ว = รู้แน่ (หัก/ไม่หัก) · ยังไม่รับชำระแต่ตั้งหักไว้ในใบ = น่าจะหัก · นอกนั้นไม่รู้
+  const wht = paid ? { amount: payWht, rate: payPct ?? (payWht > 0 ? 3 : 0), sure: true } : docWht > 0 ? { amount: docWht, rate: num(x.documentWithholdingTaxPercentage) || 3, sure: false } : undefined;
+  return {
+    docNo: x.documentSerial.toUpperCase(),
+    date: (x.publishedOn ?? "").slice(0, 10),
+    company: (x.contactName ?? "").trim(),
+    taxId: x.contactTaxId?.trim() || undefined,
+    branch: x.contactBranch?.trim() || undefined,
+    base: num(x.totalWithoutVat),
+    vat: num(x.vatAmount),
+    total: num(x.grandTotal),
+    refDoc: x.reference?.trim() || undefined,
+    status: STATUS_TH[x.statusString ?? ""] ?? x.statusString,
+    wht,
+  };
+}
+
+/** ใบกำกับภาษีตั้งแต่ต้นเดือน fromMonth (YYYY-MM) ถึงล่าสุด — ไล่หน้าใหม่→เก่าจนเลยต้นเดือนนั้น (1 เดือน ~2 หน้า) */
+export async function fetchTaxInvoicesSince(fromMonth: string): Promise<SalesReportRow[]> {
+  const out: FaTaxInvoice[] = [];
+  const sort = encodeURIComponent("[{'name':'publishedOn','sortOrder':'desc'}]");
+  for (let page = 1; page <= 40; page++) {
+    const d = await get<{ list?: FaTaxInvoice[]; totalDocument?: number }>(`/tax-invoices?currentPage=${page}&pageSize=100&sortBy=${sort}`);
+    const list = d?.list ?? [];
+    out.push(...list.filter((x) => (x.publishedOn ?? "").slice(0, 7) >= fromMonth));
+    if (!list.length || list.some((x) => (x.publishedOn ?? "").slice(0, 7) < fromMonth)) break;
+  }
+  return out.map(toRow);
+}
+
+/** ใบกำกับภาษีทั้งเดือน (YYYY-MM) */
+export async function fetchTaxInvoicesOfMonth(month: string): Promise<SalesReportRow[]> {
+  const all = await fetchTaxInvoicesSince(month);
+  return all.filter((r) => r.date.slice(0, 7) === month);
+}

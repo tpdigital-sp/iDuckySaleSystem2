@@ -3,7 +3,7 @@
 /**
  * 🧾 ใบหัก ณ ที่จ่าย /admin/wht — เมนูกลุ่มงานขาย (พนักงานบัญชีขอ 6 ต.ค. 69)
  *
- * ทุกใบกำกับภาษี INV ของเดือน (นำเข้าจากไฟล์ "รายงานยอดขาย" FlowAccount) + สถานะใบหัก 50 ทวิ
+ * ทุกใบกำกับภาษี INV ของเดือน (ดึงจาก FlowAccount Open API อัตโนมัติทุก 5 นาที · หน้าเว็บรีเฟรชเองทุก 1 นาที) + สถานะใบหัก 50 ทวิ
  *   หัก · ยังไม่ส่งใบหัก → ปุ่ม 📣 ทวงทางไลน์ (1 ไลน์หลายใบ = ข้อความเดียวสรุปทุกเลข INV)
  *   หัก · ได้รับใบหักแล้ว (แนบรูป/PDF ได้)
  *   ไม่หัก → ลูกค้าขอหักย้อนหลัง: แนบใบหัก + เลขบัญชีโอนคืน → แนบสลิป = โอนคืนแล้ว
@@ -11,6 +11,7 @@
  */
 
 import RequirePerm from "@/components/RequirePerm";
+import { usePolling } from "@/lib/use-polling";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { shrinkImageForUpload } from "@/lib/image-shrink";
@@ -97,6 +98,7 @@ function WhtInner() {
   const [months, setMonths] = useState<string[]>([]);
   const [month, setMonth] = useState("");
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [apiReady, setApiReady] = useState(false);
   const [loadErr, setLoadErr] = useState("");
   const [filter, setFilter] = useState<Filter>("attn");
   const [q, setQ] = useState("");
@@ -105,7 +107,10 @@ function WhtInner() {
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const { confirm, dialog } = useConfirm();
-  const fileRef = useRef<HTMLInputElement>(null);
+  /** เดือนที่เปิดอยู่ + กำลังทำงานไหม — ให้ตัวรีเฟรชอัตโนมัติอ่านค่าล่าสุดโดยไม่ต้องสร้าง callback ใหม่ */
+  const monthRef = useRef("");
+  const busyRef = useRef("");
+  const [lastSync, setLastSync] = useState<{ at: string; by: string; error?: string } | null>(null);
   /** สำเนาของ kept (ประกาศด้านล่าง) ให้ shown อ่านได้ — แถวที่เพิ่งกดยังค้างในกองเดิม */
   const keptRef = useRef<Map<string, WhtStatus>>(new Map());
 
@@ -120,6 +125,8 @@ function WhtInner() {
         months?: string[];
         month?: string;
         needsSetup?: boolean;
+        apiReady?: boolean;
+        lastSync?: { at: string; by: string; error?: string } | null;
         error?: string;
       } | null;
       if (!r.ok) throw new Error(j?.error ?? `โหลดไม่สำเร็จ (${r.status})`);
@@ -127,6 +134,9 @@ function WhtInner() {
       setMonths(j?.months ?? []);
       setMonth(j?.month ?? "");
       setNeedsSetup(!!j?.needsSetup);
+      setApiReady(!!j?.apiReady);
+      setLastSync(j?.lastSync ?? null);
+      monthRef.current = j?.month ?? "";
     } catch (e) {
       setLoadErr((e as Error).message);
       setCerts((v) => v ?? []);
@@ -135,41 +145,47 @@ function WhtInner() {
   useEffect(() => {
     void load();
   }, [load]);
+  busyRef.current = busy;
+  // 🔁 ระบบดึงจาก FlowAccount เองทุก 5 นาที (cron wht-sync) → หน้าเว็บอ่านฐานใหม่ทุก 1 นาที (ไม่ยิง FlowAccount) · ข้ามรอบที่กำลังกดอะไรอยู่
+  usePolling(
+    () => {
+      if (!busyRef.current) void load(monthRef.current || undefined);
+    },
+    { intervalMs: 60_000 },
+  );
 
   const replace = (list: WhtCertView[]) =>
     setCerts((cur) =>
       (cur ?? []).map((c) => list.find((x) => x.id === c.id) ?? c),
     );
 
-  async function importFile(f: File) {
-    setBusy("import");
+  /** 🔄 ดึงใบกำกับทั้งเดือนจาก FlowAccount API — รู้หัก/ไม่หักจากการรับชำระ ไม่ต้องลากไฟล์ */
+  async function syncMonth(m: string) {
+    setBusy("sync");
     setMsg(null);
     try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const r = await fetch("/api/admin/wht/import", {
-        method: "POST",
-        body: fd,
-      });
+      const r = await fetch("/api/admin/wht/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: m }) });
       const j = (await r.json().catch(() => null)) as {
         error?: string;
         total?: number;
         added?: number;
         updated?: number;
         matched?: number;
-        months?: string[];
+        wht?: number;
+        noWht?: number;
       } | null;
-      if (!r.ok) throw new Error(j?.error ?? `นำเข้าไม่สำเร็จ (${r.status})`);
+      if (!r.ok) throw new Error(j?.error ?? `ดึงไม่สำเร็จ (${r.status})`);
       setMsg({
         ok: true,
-        text: `นำเข้า ${j?.total} ใบ (ใหม่ ${j?.added} · อัปเดต ${j?.updated}) · จับคู่ออเดอร์ได้ ${j?.matched} ใบ`,
+        text: j?.total
+          ? `ดึงจาก FlowAccount เดือน${thMonth(m)} ${j.total} ใบ (ใหม่ ${j.added} · อัปเดต ${j.updated}) · ลูกค้าหัก ${j.wht} · ไม่หัก ${j.noWht} (ตามที่บันทึกรับชำระ) · จับคู่ใบงานได้ ${j.matched}`
+          : `FlowAccount ยังไม่มีใบกำกับภาษีเดือน${thMonth(m)}`,
       });
-      await load(j?.months?.at(-1));
+      await load(m);
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     } finally {
       setBusy("");
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -301,6 +317,29 @@ function WhtInner() {
       setBusy("");
     }
   }
+
+  /** "· อัปเดตอัตโนมัติ · ล่าสุด 11:40 (3 นาทีที่แล้ว)" — ให้รู้ว่าข้อมูลสดแค่ไหน */
+  const syncNote = (() => {
+    if (!apiReady) return "";
+    if (lastSync?.error) return ` · ⚠️ ดึงล่าสุดไม่สำเร็จ: ${lastSync.error.slice(25, 120)}`;
+    if (!lastSync?.at) return " · อัปเดตจาก FlowAccount อัตโนมัติทุก 5 นาที";
+    const mins = Math.max(0, Math.round((Date.now() - new Date(lastSync.at).getTime()) / 60_000));
+    return ` · อัปเดตอัตโนมัติทุก 5 นาที · ล่าสุด ${thTime(lastSync.at)} (${mins < 1 ? "เมื่อสักครู่" : `${mins} นาทีที่แล้ว`})`;
+  })();
+
+  /** เดือนที่มีข้อมูลแล้ว + 6 เดือนล่าสุด (ดึงจาก FlowAccount ได้ทั้งที่ยังไม่เคยดึง) */
+  const monthOptions = useMemo(() => {
+    const set = new Set(months);
+    if (apiReady) {
+      const d = new Date();
+      for (let i = 0; i < 6; i++) {
+        const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
+        set.add(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`);
+      }
+    }
+    if (month) set.add(month);
+    return [...set].sort().reverse();
+  }, [months, apiReady, month]);
 
   const all = useMemo(() => certs ?? [], [certs]);
   const counts = useMemo(() => {
@@ -472,6 +511,11 @@ function WhtInner() {
                       </span>
                     )}
                     {c.certFiles?.length ? <span>📎 ใบหัก {c.certFiles.length} ไฟล์</span> : null}
+                    {c.faWht?.sure && st !== "void" && (
+                      <span title="หัก/ไม่หัก ตามที่บันทึกรับชำระใน FlowAccount" style={{ color: "var(--dk-mint-ink)" }}>
+                        ✓ {c.faWht.amount > 0 ? `หัก ${c.faWht.rate}%` : "ไม่หัก"} ตาม FlowAccount
+                      </span>
+                    )}
                   </>
                 }
               />
@@ -565,12 +609,14 @@ function WhtInner() {
         count={all.length ? `${all.length} ใบ` : undefined}
         sub={
           month
-            ? `ใบกำกับภาษี FlowAccount เดือน${thMonth(month)}`
-            : "นำเข้าไฟล์รายงานยอดขายจาก FlowAccount เพื่อเริ่ม"
+            ? `ใบกำกับภาษี FlowAccount เดือน${thMonth(month)}${syncNote}`
+            : apiReady
+              ? `ดึงจาก FlowAccount อัตโนมัติทุก 5 นาที${syncNote}`
+              : "ยังไม่ได้ใส่รหัส FlowAccount"
         }
         tools={
           <>
-            {months.length > 0 && (
+            {monthOptions.length > 0 && (
               <select
                 value={month}
                 onChange={(e) => {
@@ -580,31 +626,27 @@ function WhtInner() {
                 className="h-11 rounded-full border border-slate-200 bg-white px-4 text-[14px]"
                 aria-label="เลือกเดือน"
               >
-                {months.map((m) => (
+                {monthOptions.map((m) => (
                   <option key={m} value={m}>
                     {thMonth(m)}
+                    {months.includes(m) ? "" : " (ยังไม่ได้ดึง)"}
                   </option>
                 ))}
               </select>
             )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void importFile(f);
-              }}
-            />
-            <Btn
-              tone="yolk"
-              disabled={busy === "import"}
-              onClick={() => fileRef.current?.click()}
-              title="FlowAccount → รายงาน → รายงานยอดขาย → ส่งออก Excel"
-            >
-              {busy === "import" ? "กำลังนำเข้า…" : "📥 นำเข้าไฟล์ FlowAccount"}
-            </Btn>
+            {apiReady && (
+              <Btn
+                tone="yolk"
+                disabled={!!busy}
+                onClick={() => {
+                  const m = month || monthOptions[0];
+                  if (m) void syncMonth(m);
+                }}
+                title="ระบบดึงเองทุก 5 นาทีอยู่แล้ว — กดเมื่อเพิ่งออกใบ/บันทึกรับเงินใน FlowAccount แล้วอยากเห็นทันที"
+              >
+                {busy === "sync" ? "กำลังดึง…" : "🔄 ดึงตอนนี้"}
+              </Btn>
+            )}
           </>
         }
       />
@@ -722,7 +764,11 @@ function WhtInner() {
         <div className="mt-6">
           <Empty
             title="ยังไม่มีใบกำกับภาษี"
-            body='ส่งออกไฟล์จาก FlowAccount (รายงาน → รายงานยอดขาย → Excel) แล้วกด "📥 นำเข้าไฟล์ FlowAccount" ด้านบน'
+            body={
+              apiReady
+                ? `ยังไม่มีใบกำกับภาษีเดือน${month ? thMonth(month) : "นี้"} ใน FlowAccount — ระบบดึงให้เองทุก 5 นาที หรือกด "🔄 ดึงตอนนี้"`
+                : "ยังไม่ได้ใส่รหัส FlowAccount Open API — แจ้งผู้ดูแลระบบ"
+            }
           />
         </div>
       ) : (

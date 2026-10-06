@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Order } from "@/lib/admin-data";
 import { lineTargetOf, noticeFlex, notifyCustomerLogged } from "@/lib/server/notify";
-import type { SalesReportRow } from "@/lib/server/wht-xlsx";
+import { fetchTaxInvoicesOfMonth, fetchTaxInvoicesSince, type SalesReportRow } from "@/lib/server/flowaccount-api";
 import {
   WHT_PAYEE,
   WHT_RATE_DEFAULT,
@@ -113,7 +113,7 @@ function matcher(orders: OrderLite[]) {
   };
 }
 
-/** นำเข้าแถวจากไฟล์ — ใบเดิมอัปเดตเฉพาะข้อมูลจาก FlowAccount + ผลจับคู่ · ของที่พนักงานทำไว้ (หัก/ใบหัก/โอนคืน/ทวง) คงเดิม */
+/** บันทึกแถวที่ดึงจาก FlowAccount — ใบเดิมอัปเดตเฉพาะข้อมูลจาก FlowAccount + ผลจับคู่ · ของที่พนักงานทำไว้ (หัก/ใบหัก/โอนคืน/ทวง) คงเดิม */
 export async function importSalesRows(sb: SupabaseClient, rows: SalesReportRow[]): Promise<{ added: number; updated: number; matched: number; months: string[] }> {
   const orders = await loadOrdersLite(sb);
   const match = matcher(orders);
@@ -157,7 +157,17 @@ export async function importSalesRows(sb: SupabaseClient, rows: SalesReportRow[]
       rate: prev?.rate ?? WHT_RATE_DEFAULT,
       updatedAt: now,
     } as WhtCert;
-    if (!c.modeBy) c.mode = m.orderMode;
+    // แถวที่ไม่มีข้อมูลหัก (ยังไม่รับชำระ) = คงค่าจาก FlowAccount ที่ดึงไว้เดิม (c.faWht มาจาก prev)
+    if (r.wht) c.faWht = { ...r.wht, at: now };
+    const fa = c.faWht;
+    if (fa?.sure) {
+      // FlowAccount บันทึกรับชำระแล้ว = ข้อมูลบัญชีจริง ทับทั้งการเดาและที่พนักงานเลือกเอง
+      c.mode = fa.amount > 0 ? "wht" : "none";
+      c.modeBy = "FlowAccount";
+      if (fa.rate > 0) c.rate = fa.rate;
+    } else if (!c.modeBy) {
+      c.mode = fa && fa.amount > 0 ? "wht" : m.orderMode;
+    }
     return { id: c.id, data: c };
   });
   for (let i = 0; i < upserts.length; i += 200) {
@@ -359,4 +369,47 @@ export async function remindCerts(sb: SupabaseClient, certs: WhtCert[], by: stri
     }
   }
   return { sent, failed, updated, sentTo };
+}
+
+/** แถวพิเศษในตาราง wht_certs จำเวลาดึงล่าสุด (ไม่มี data.month → ไม่โผล่ในรายการเดือน) */
+const SYNC_ROW = "__sync__";
+
+export interface WhtSyncInfo {
+  at: string;
+  by: string;
+  months: string[];
+  total: number;
+  error?: string;
+}
+
+export async function lastSyncInfo(sb: SupabaseClient): Promise<WhtSyncInfo | null> {
+  const { data } = await sb.from(WHT_TABLE).select("data").eq("id", SYNC_ROW).maybeSingle();
+  return (data?.data as WhtSyncInfo) ?? null;
+}
+
+const ym = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+
+/**
+ * 🔄 ดึงจาก FlowAccount แล้วบันทึก — month ไม่ส่ง = เดือนนี้ + เดือนก่อน (ใบเดือนก่อนมักรับเงิน/บันทึกหักในเดือนถัดไป)
+ * ใช้ทั้ง cron ทุก 5 นาที (wht-sync) และปุ่ม "ดึงตอนนี้" บนหน้าเว็บ · FlowAccount ไม่มี webhook → นี่คือ "เกือบ realtime"
+ */
+export async function syncFromFlowAccount(sb: SupabaseClient, by: string, month?: string) {
+  const now = new Date(Date.now() + 7 * 3600_000); // เวลาไทย
+  const prev = ym(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)));
+  try {
+    const rows = month ? await fetchTaxInvoicesOfMonth(month) : await fetchTaxInvoicesSince(prev);
+    const r = rows.length ? await importSalesRows(sb, rows) : { added: 0, updated: 0, matched: 0, months: month ? [month] : [] };
+    const info: WhtSyncInfo = { at: new Date().toISOString(), by, months: month ? [month] : [prev, ym(now)], total: rows.length };
+    await sb.from(WHT_TABLE).upsert({ id: SYNC_ROW, data: info });
+    return {
+      ...r,
+      total: rows.length,
+      wht: rows.filter((x) => x.wht?.sure && x.wht.amount > 0).length,
+      noWht: rows.filter((x) => x.wht?.sure && !(x.wht.amount > 0)).length,
+    };
+  } catch (e) {
+    const prevInfo = await lastSyncInfo(sb).catch(() => null);
+    await sb.from(WHT_TABLE).upsert({ id: SYNC_ROW, data: { ...(prevInfo ?? { at: "", by, months: [], total: 0 }), error: `${new Date().toISOString()} ${(e as Error).message}` } });
+    throw e;
+  }
 }

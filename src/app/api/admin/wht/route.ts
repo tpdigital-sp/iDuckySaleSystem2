@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { WHT_BUCKET, WHT_TABLE, isMissingTable, loadCert, refreshLineFlags, relinkCert, saveCert, withFileUrls } from "@/lib/server/wht-db";
+import { WHT_BUCKET, WHT_TABLE, isMissingTable, lastSyncInfo, loadCert, refreshLineFlags, relinkCert, saveCert, withFileUrls } from "@/lib/server/wht-db";
+import { flowAccountApiReady } from "@/lib/server/flowaccount-api";
 import { WHT_RATE_DEFAULT, whtAmountOf, type WhtCert } from "@/lib/wht";
 
 export const runtime = "nodejs";
@@ -21,15 +22,15 @@ export async function GET(req: Request) {
     if (isMissingTable(merr)) return NextResponse.json({ certs: [], months: [], needsSetup: true });
     return NextResponse.json({ error: merr.message, certs: [], months: [] }, { status: 500 });
   }
-  const months = [...new Set((mrows ?? []).map((r) => String(r.month)))].filter(Boolean).sort().reverse();
+  const months = [...new Set((mrows ?? []).map((r) => String(r.month)))].filter((m) => /^\d{4}-\d{2}$/.test(m)).sort().reverse();
   const want = new URL(req.url).searchParams.get("month");
   const month = want && /^\d{4}-\d{2}$/.test(want) ? want : months[0];
-  if (!month) return NextResponse.json({ certs: [], months });
+  if (!month) return NextResponse.json({ certs: [], months, apiReady: await flowAccountApiReady(), lastSync: await lastSyncInfo(sb) });
 
   const { data, error } = await sb.from(WHT_TABLE).select("data").eq("data->>month", month).order("id", { ascending: false }).limit(2000);
   if (error) return NextResponse.json({ error: error.message, certs: [], months }, { status: 500 });
   const certs = await withFileUrls(sb, await refreshLineFlags(sb, (data ?? []).map((r) => r.data as WhtCert)));
-  return NextResponse.json({ certs, months, month });
+  return NextResponse.json({ certs, months, month, apiReady: await flowAccountApiReady(), lastSync: await lastSyncInfo(sb) });
 }
 
 type Patch = {

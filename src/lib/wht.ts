@@ -1,7 +1,8 @@
 /**
  * 🧾 ใบหัก ณ ที่จ่าย (50 ทวิ) ต่อใบกำกับภาษี FlowAccount — หน้า /admin/wht (เมนูงานขาย · พนักงานบัญชีขอ 6 ต.ค. 69)
  *
- * ต้นทาง: ไฟล์ "รายงานยอดขาย" (SalesReport_<เดือน>.xlsx) ที่ส่งออกจาก FlowAccount — 1 แถว = ใบกำกับภาษี INV… 1 ใบ
+ * ต้นทาง: FlowAccount Open API (server/flowaccount-api.ts) — cron wht-sync ดึงเดือนนี้+เดือนก่อนทุก 5 นาที · 1 แถว = ใบกำกับภาษี INV… 1 ใบ
+ * (6 ต.ค. 69 เลิกนำเข้าไฟล์ Excel แล้ว — เจ้าของร้านสั่ง)
  *   (ยังไม่มี Open API · ได้รหัสเมื่อไหร่ค่อยเปลี่ยนเป็นดึงเอง — โครงข้อมูลชุดนี้ใช้ต่อได้เลย)
  * ไฟล์ไม่มีคอลัมน์หัก ณ ที่จ่าย → หัก/ไม่หัก เดาจากออเดอร์ที่จับคู่ได้ (Order.wht) แล้วพนักงานแก้เองได้
  * ยอดหัก = 3% ของมูลค่าก่อน VAT (เจ้าของร้านยืนยัน "ตามปกติ")
@@ -53,9 +54,14 @@ export interface WhtCert {
 
   /** ใบงานอื่นของลูกค้าเดียวกันเคยหัก ณ ที่จ่าย — แนะนำ "หัก 3%" ตอนยังไม่ระบุ (ไม่ตั้งให้เอง) */
   hintWht?: boolean;
+  /**
+   * 🔌 หัก ณ ที่จ่ายตามที่บันทึกใน FlowAccount (ดึงผ่าน API) — sure = จากการรับชำระจริง → ตั้ง mode ให้เอง ทับการเดา
+   * ยอดหักใช้ตัวเลขนี้แทน 3% ของฐาน · ไม่มี = ยังไม่รู้ (ใบที่นำเข้าจาก Excel รุ่นแรก)
+   */
+  faWht?: { amount: number; rate: number; sure: boolean; at: string };
   /** wht = ลูกค้าหัก ณ ที่จ่าย · none = ไม่หัก · ไม่มีค่า = ยังไม่รู้ (พนักงานต้องเลือก) */
   mode?: "wht" | "none";
-  /** พนักงานเลือกเอง — นำเข้าไฟล์ซ้ำจะไม่เดาทับ */
+  /** พนักงานเลือกเอง หรือ "FlowAccount" (จากการรับชำระ) — ดึงซ้ำจะไม่เดาทับ (แต่ข้อมูลรับชำระจาก FlowAccount ทับได้) */
   modeBy?: string;
   rate: number;
 
@@ -113,7 +119,8 @@ export function whtStatusOf(c: WhtCert): WhtStatus {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /** ยอดหัก ณ ที่จ่ายของใบนี้ (3% ของมูลค่าก่อน VAT) */
-export function whtAmountOf(c: Pick<WhtCert, "base" | "rate">): number {
+export function whtAmountOf(c: Pick<WhtCert, "base" | "rate" | "faWht">): number {
+  if (c.faWht && c.faWht.amount > 0) return r2(c.faWht.amount);
   return r2((c.base * (c.rate || WHT_RATE_DEFAULT)) / 100);
 }
 
