@@ -3181,6 +3181,27 @@ export interface Product {
 }
 
 /**
+ * 📦 คำเตือนที่คนแพ็คต้องเห็น (โหมดแพ็ค) — priceNote ของสินค้า + selectedNote ที่ขึ้นต้นด้วย ⚠️ ของตัวเลือกที่สั่ง
+ * เช่น กระดาษเย็บบน "ไม่มีซองให้" · กระดาษรองหลังขนาดกำหนดเอง "ขนาดนี้ไม่มีซองให้" → คนแพ็คไม่ใส่ซองแถมผิด (6 ต.ค. 69)
+ */
+export function packWarningsOf(p: Product | undefined, sel: Record<string, string | undefined> | undefined): string[] {
+  if (!p) return [];
+  const clean = (s: string) => s.replace(/\*\*/g, "").replace(/^\s*⚠️\s*/, "").trim();
+  const out: string[] = [];
+  if (p.priceNote?.trim()) out.push(clean(p.priceNote));
+  for (const o of p.options ?? []) {
+    const v = sel?.[o.label];
+    if (!v) continue;
+    const picked = v.split(/\s*,\s*/);
+    for (const c of o.choices) {
+      if (!c.selectedNote?.trimStart().startsWith("⚠️")) continue;
+      if (c.name === v || picked.includes(c.name)) out.push(clean(c.selectedNote));
+    }
+  }
+  return [...new Set(out)].filter(Boolean);
+}
+
+/**
  * ตัวเลือกกำหนดเอง (custom) — ลูกค้าระบุขนาดเอง (กว้าง × ยาว) สำหรับงานสั่งทำ
  * คิดราคาพิเศษนอกเหนือจากตารางราคาปกติ:
  *  - mode "area"  = คิดอัตโนมัติจากพื้นที่ (baseFee + ตร.ม. × ratePerSqm, ไม่ต่ำกว่า minPrice)

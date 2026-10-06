@@ -17,7 +17,7 @@ import { useParams, useRouter } from "next/navigation";
 import CameraScanner from "@/components/admin/CameraScanner";
 import { PackNextToast, PackQueueStrip } from "@/components/admin/PackQueueStrip";
 import { extractOrderId, trackingScanProblem } from "@/lib/scan-code";
-import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, productLineOrder, productPath, rateSpecOfLine, type Product } from "@/lib/products";
+import { artQtyOf, artSizeOf, artSizeText, formatPrice, isRetailRateLine, packWarningsOf, productLineOrder, productPath, rateSpecOfLine, type Product } from "@/lib/products";
 import { imgVersion, versionedSrc } from "@/lib/img";
 import { shopProductIdByName, specialImageProductId, type SpecialProduct } from "@/lib/special-product-image";
 import ProductVisual from "@/components/ProductVisual";
@@ -4433,6 +4433,7 @@ export default function AdminOrderDetailPage() {
           onPhotoAdd={addPackPhotos}
           onPhotoDelete={deletePackPhoto}
           workSizeOf={(id) => productOfItem(id)?.workSize}
+          packWarningsOf={(it) => packWarningsOf(productOfItem(it.productId), it.sel)}
           gate={gate}
           onCheck={setPackCheck}
           onAck={toggleNoteAck}
@@ -10287,10 +10288,13 @@ function PackView({
   onPhotoAdd,
   onPhotoDelete,
   workSizeOf,
+  packWarningsOf,
 }: {
   order: Order;
   /** 📐 ขนาดงานตายตัวของสินค้า (สินค้าที่ไม่มีกลุ่มขนาดให้เลือก) — คนแพ็คเช็คของในกล่องกับขนาดที่สั่ง */
   workSizeOf: (productId: string) => string | undefined;
+  /** ⚠️ คำเตือนจากหน้าสินค้า (ไม่มีซองให้ ฯลฯ) — คนแพ็คต้องเห็นก่อนใส่ของแถมผิด */
+  packWarningsOf: (it: Order["items"][number]) => string[];
   gate: ReturnType<typeof packGate>;
   /** 🏪 ใบมารับเอง — ไม่มีพัสดุ ใช้ปุ่ม "แพ็คเสร็จ" แทนช่องเลขพัสดุ */
   pickup: boolean;
@@ -10539,6 +10543,13 @@ function PackView({
                   )}
                 </span>
               </div>
+
+              {/* ⚠️ คำเตือนจากหน้าสินค้า เช่น "ไม่มีซองให้" (กระดาษเย็บบน / กระดาษรองหลังขนาดกำหนดเอง) — ลูกค้าเห็นตอนสั่ง คนแพ็คต้องเห็นด้วย (6 ต.ค. 69) */}
+              {packWarningsOf(it).map((w) => (
+                <p key={w} className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-extrabold text-rose-700 ring-2 ring-rose-300">
+                  ⚠️ {w}
+                </p>
+              ))}
 
               {/* 📦 ของมาถึงโต๊ะแพ็คหรือยัง — ปักก่อนนับ: ของยังไม่มา/มาไม่ครบ = ออเดอร์ไปรอที่ขั้น "รอของ" ห้ามยิงเลข */}
               {/* มีรูปแบบงาน = ไม่ต้องมีกล่องนี้ — นับใต้รูปแล้วระบบปักให้เอง (แถบสถานะอยู่ใต้รูป) · ไม่มีรูปให้นับ = ยังต้องปักเอง */}
