@@ -21,7 +21,7 @@
  *
  * ไฟล์นี้ไม่มีโค้ดฝั่งเซิร์ฟเวอร์ — หน้าจอกับ API ใช้ตัวตัดสินชุดเดียวกัน
  */
-import { hasUnpaidBalance, packGate, partialShipSummary, pendingPlanRound, proofShipStates, withLog, type Order } from "./admin-data";
+import { hasUnpaidBalance, packGate, partialShipSummary, pendingPlanRound, proofShipStates, unproofedQty, withLog, type Order } from "./admin-data";
 import { isGenericShipLabel, isPickupOrder } from "./ship-label";
 
 export const isShipMain = (o: Pick<Order, "shipWith">) => o.shipWith?.role === "main" && o.shipWith.orders.length > 0;
@@ -80,9 +80,13 @@ export function cannotBeRider(o: Order): string {
   return "";
 }
 
-/** 🚚 จำนวนชิ้น (ตามป้ายบนรูปแบบงาน) ที่ยังไม่ได้ส่งออกไป — ใบที่ไม่เคยแบ่งส่ง = ทั้งใบ */
+/**
+ * 🚚 จำนวนชิ้นที่ยังไม่ได้ส่งออกไป — ใบที่ไม่เคยแบ่งส่ง = ทั้งใบ
+ * นับจากป้ายบนรูปแบบงาน + ชิ้นที่ลูกค้าสั่งแต่ยังไม่มีรูปรองรับ (ลายที่ยังไม่อัป · unproofedQty)
+ * ⚠️ OD-260915-5055 (6 ต.ค. 69): ส่งรอบ 1 ไป 25A3 ลายที่ 2 ยังไม่อัป → นับแค่จากรูป = 0 → "ของส่งออกไปครบทุกรอบแล้ว" ผูกส่งรวมกับใบใหม่ไม่ได้
+ */
 export function remainingToShip(o: Order): number {
-  let n = 0;
+  let n = unproofedQty(o);
   proofShipStates(o).forEach((st) => (n += st.remaining));
   return n;
 }
@@ -94,8 +98,11 @@ export function remainingToShip(o: Order): number {
 export function partialShipNote(o: Order): string {
   const s = partialShipSummary(o);
   if (!s || (o.tracking ?? "").trim()) return "";
-  const left = Math.max(0, s.total - s.shipped);
-  return `ส่งไปแล้ว ${s.rounds} รอบ (${s.shipped.toLocaleString("th-TH")}/${s.total.toLocaleString("th-TH")} ชิ้น) · เหลือ ${left.toLocaleString("th-TH")} ชิ้นไปกล่องรวม`;
+  // ลายที่ยังไม่อัปรูปก็ยังค้างส่ง (OD-260915-5055) — นับเข้าทั้งยอดรวมและที่เหลือ
+  const unproofed = unproofedQty(o);
+  const total = s.total + unproofed;
+  const left = Math.max(0, total - s.shipped);
+  return `ส่งไปแล้ว ${s.rounds} รอบ (${s.shipped.toLocaleString("th-TH")}/${total.toLocaleString("th-TH")} ชิ้น) · เหลือ ${left.toLocaleString("th-TH")} ชิ้นไปกล่องรวม${unproofed > 0 ? ` (ยังไม่อัปรูป ${unproofed.toLocaleString("th-TH")} ชิ้น)` : ""}`;
 }
 
 /**
