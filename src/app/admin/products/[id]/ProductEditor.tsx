@@ -407,6 +407,8 @@ type Draft = {
   studioOn: boolean;
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
+  /** 🔴 หมายเหตุสีแดงในกล่องราคาหน้าสินค้า */
+  priceNote: string;
   /** บังคับแนบลายก่อนสั่ง (ค่าเริ่มต้น = บังคับ) */
   artworkRequired: boolean;
   /** 💬 ต้องคุยลายกับแอดมินก่อนสั่ง (งานปัก/งานตีลาย) */
@@ -956,6 +958,7 @@ function toDraft(p: Product): Draft {
     templateIds: [...(p.templateIds ?? [])],
     studioOn: p.studioOff !== true,
     terms: p.terms ?? "",
+    priceNote: p.priceNote ?? "",
     artworkRequired: p.artworkRequired !== false,
     artworkConsult: !!p.artworkConsult?.enabled,
     artworkConsultNote: p.artworkConsult?.note ?? "",
@@ -4670,6 +4673,7 @@ export default function ProductEditor({ product }: { product: Product }) {
       templateIds: draft.templateIds.length ? [...draft.templateIds] : undefined,
       studioOff: draft.studioOn ? undefined : true, // undefined = เปิดปุ่มเริ่มสร้าง (ค่าเริ่มต้น)
       terms: draft.terms.trim() || undefined,
+      priceNote: draft.priceNote.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
       // 💬 คุยลายกับแอดมินก่อน — ปิดอยู่ = ไม่เก็บฟิลด์เลย (undefined = สั่งได้เลยตามปกติ)
       artworkConsult: draft.artworkConsult
@@ -5535,6 +5539,14 @@ export default function ProductEditor({ product }: { product: Product }) {
         <p className="mt-1.5 text-[11px] text-slate-400">
           {draft.terms.trim() ? `${draft.terms.trim().split("\n").filter(Boolean).length} บรรทัด · จะขึ้นในหน้าสินค้า` : "เว้นว่าง = ไม่แสดงกล่องนี้ในหน้าสินค้า"}
         </p>
+        <label className="mt-4 block text-xs font-bold text-rose-700">🔴 หมายเหตุสีแดงในกล่องราคา</label>
+        <p className="mt-0.5 text-[11px] text-slate-500">ขึ้นใต้ ฿ราคา / หน่วย ด้านขวาของหน้าสินค้า — ประโยคสั้น ๆ ที่ลูกค้าต้องเห็นก่อนสั่ง · เว้นว่าง = ไม่แสดง</p>
+        <input
+          value={draft.priceNote}
+          onChange={(e) => patch({ priceNote: e.target.value })}
+          placeholder="เช่น ⚠️ ราคานี้เฉพาะตัวการ์ด ไม่มีซองให้"
+          className={`${inputCls} mt-2 w-full`}
+        />
       </section>
 
       {/* ── 📐 เทมเพลตไฟล์งาน — ติ๊กเลือกจากคลังกลาง ลูกค้าโหลดได้จากหน้าสินค้า ── */}

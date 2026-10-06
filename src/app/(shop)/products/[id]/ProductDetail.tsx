@@ -6450,6 +6450,10 @@ export default function ProductDetail({
                 </>
               )}
             </div>
+            {/* 🔴 หมายเหตุในกล่องราคา (Product.priceNote) เช่น กระดาษเย็บบน "ไม่มีซองให้" */}
+            {product.priceNote?.trim() && (
+              <p className="mt-2 text-sm font-bold leading-relaxed text-red-600">{product.priceNote.trim()}</p>
+            )}
             {/* 🧮 สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) — บอกยอดชิ้นรวม + ย้ำว่าช่วงราคาคิดตามจำนวนหน่วยขาย */}
             {product.pieceCountLabel && unitPieceCountOf(product, effective) > 1 && !askQuote && (
               <p className="mt-1.5 text-xs leading-relaxed text-stone-500">
