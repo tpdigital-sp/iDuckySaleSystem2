@@ -1068,7 +1068,13 @@ export async function PATCH(req: Request) {
    * ตรวจจากส่วนต่างกับข้อมูลเดิม → บันทึกอย่างอื่นบนออเดอร์ที่ชำระแล้วยังทำได้ตามปกติ
    */
   if (!mayMarkPaid) {
-    const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว";
+    /**
+     * ↩️ ระบบดึงใบกลับขั้นเดิมเอง (restoredFromReopen) เพราะถอดรายการที่เพิ่ม/แก้ยอดลงจนเงินที่ยืนยันไว้แล้วพอ — ไม่ใช่การยืนยันเงินใหม่
+     * ยอดรับ (paidTotal) ต้องเท่าเดิมเป๊ะ ไม่งั้นยังนับเป็นการดันสถานะชำระแล้ว
+     * (OD-261002-4046 · 6 ต.ค. 69: เพิ่มรายการซ้ำแล้วลบตัวเดิม → ยอดกลับเท่าที่โอนมา → 403 "ยืนยันการรับเงินไม่ได้" พนักงานเห็นว่าลบไม่หาย)
+     */
+    const autoRestore = restoredFromReopen && toSave.paidTotal === existing.paidTotal;
+    const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && !autoRestore;
     const depositFirst = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
     const depositSettled = !!toSave.deposit?.settledAt && !existing.deposit?.settledAt;
     if (nowPaid || depositFirst || depositSettled)
