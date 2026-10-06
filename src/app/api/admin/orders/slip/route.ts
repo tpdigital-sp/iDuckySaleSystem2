@@ -10,6 +10,7 @@ import { acquireSlipLock, assertSlipNotDuplicate, SlipDuplicateError, slipHashOf
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { updateOrder } from "@/lib/server/order-write";
+import { voidSlipRecordInTP } from "@/lib/server/tp-report";
 
 export const runtime = "nodejs";
 
@@ -243,7 +244,9 @@ export async function DELETE(req: Request) {
     );
     const { error: e3 } = await updateOrder(sb, cleaned);
     if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
-    return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, cleaned) });
+    // 🗑 msVerify: เรคอร์ดของสลิปใบนี้ (doc <OD>-<paymentId>) หายตาม — ยอดถอยออกจากหลังบ้านแล้ว
+    const tpVoided = await voidSlipRecordInTP(`${orderId}-${paymentId}`, who, `แอดมินลบสลิปใบเพิ่มในหลังบ้าน iDucky (${who})`);
+    return NextResponse.json({ ok: true, tpVoided, order: await signPaymentUrls(sb, cleaned) });
   }
 
   // ── สลิป "งวดหลัง" ของออเดอร์มัดจำ — ลบเฉพาะไฟล์ใบนั้น ไม่ยุ่งกับสถานะ/ยอดที่รับแล้ว (ยกเว้นที่รับบางส่วนจากใบนี้) ──
@@ -269,7 +272,9 @@ export async function DELETE(req: Request) {
     );
     const { error: e2 } = await updateOrder(sb, cleaned);
     if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
-    return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, cleaned) });
+    // 🗑 msVerify: งวดหลังยังไม่ปิด = เงินของสลิปนี้ไม่นับแล้ว → เรคอร์ด -final หายตาม · ปิดงวดแล้ว (ยอดคงเดิม) ไม่แตะ
+    const tpVoided = settled ? false : await voidSlipRecordInTP(`${orderId}-final`, who, `แอดมินลบสลิปงวดหลังในหลังบ้าน iDucky (${who})`);
+    return NextResponse.json({ ok: true, tpVoided, order: await signPaymentUrls(sb, cleaned) });
   }
 
   if (!order.slipPath && !order.slipUrl) return NextResponse.json({ error: "ออเดอร์นี้ไม่มีสลิป" }, { status: 404 });
@@ -293,7 +298,11 @@ export async function DELETE(req: Request) {
     );
     const { error: e4 } = await updateOrder(sb, fileOnly);
     if (e4) return NextResponse.json({ error: e4.message }, { status: 500 });
-    return NextResponse.json({ ok: true, fileOnly: true, order: await signPaymentUrls(sb, fileOnly) });
+    // 🗑 msVerify: ยอดที่รับแล้วคงเดิม = เรคอร์ดยังต้องอยู่ให้จับคู่ · ยกเว้นสลิปโอนเข้าบัญชีอื่น (ไม่มีเงินเข้าจริง) → หายตาม
+    const tpVoided = wrong
+      ? await voidSlipRecordInTP(orderId, who, `แอดมินลบสลิปใบแรกในหลังบ้าน iDucky (${who}) — สลิปโอนเข้าบัญชีอื่น ${v?.receiver ?? ""}`.trim())
+      : false;
+    return NextResponse.json({ ok: true, fileOnly: true, tpVoided, order: await signPaymentUrls(sb, fileOnly) });
   }
 
   // ลบไฟล์จริงใน bucket (best-effort — path เก่าบางออเดอร์อาจไม่มี)
@@ -320,5 +329,7 @@ export async function DELETE(req: Request) {
   );
   const { error } = await updateOrder(sb, updated);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated) });
+  // 🗑 msVerify: ใบกลับเป็น รอชำระเงิน = เงินก้อนแรกถูกถอน → เรคอร์ดหลัก (doc = เลขออเดอร์) หายตาม · ใบเพิ่มที่ยังนับยอดอยู่คงไว้
+  const tpVoided = await voidSlipRecordInTP(orderId, who, `แอดมินลบสลิปในหลังบ้าน iDucky (${who}) — ออเดอร์กลับเป็น รอชำระเงิน`);
+  return NextResponse.json({ ok: true, tpVoided, order: await signPaymentUrls(sb, updated) });
 }

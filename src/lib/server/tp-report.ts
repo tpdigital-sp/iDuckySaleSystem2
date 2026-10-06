@@ -163,76 +163,134 @@ export async function reportPaidToTP(
     /* 🔢 งานเซ็ต/แผ่น — "×17" อ่านเป็น 17 ชิ้น ทั้งที่เป็น 17 เซ็ต (= 102 ชิ้น) · ใช้ข้อความชุดเดียวกับหน้าออเดอร์ */
     const itemSummary = itemSummaryOf(order);
 
-    await db
-      .collection(TP_PAID_COLLECTION)
-      .doc(`${order.id}${opts?.docSuffix ?? ""}`)
-      .create({
-        id: `iducky-${order.id}${opts?.docSuffix ?? ""}`,
-        orderId: order.id,
-        date: `${part("year")}-${part("month")}-${part("day")}`,
-        time: `${part("hour")}:${part("minute")}`,
-        customerName: order.customer,
-        phone: order.phone || "",
-        // 💵 เงินที่เข้าบัญชีจริงของงวดนี้ — ตัวเลขที่ต้องตรงกับแถวโอนของธนาคาร
-        slipAmount: money.received,
-        // ยอดบิลของงวดนี้ก่อนหัก ณ ที่จ่าย (หลังส่วนลด) — msVerify ใช้เทียบ ยอมส่วนต่าง = wht + fee / ส่วนลดโอนไว 5/10
-        // งวดมัดจำ/งวดหลัง/ใบเพิ่ม/รับบางส่วน = ยอดของ "ใบนี้" ไม่ใช่ทั้งบิล (ไม่งั้น msVerify ขึ้น "⚠ ต่าง")
-        orderTotal: money.bill,
-        // 📋 หัก ณ ที่จ่ายของงวดนี้ — msVerify ถือว่ายอดตรงเมื่อ orderTotal − wht − fee = ยอดที่ธนาคารเข้า
-        wht: money.wht,
-        // 💸 ค่าธรรมเนียมที่ธนาคารหักจากยอดโอน (0 = ไม่มี) — SMART/ข้ามธนาคารเข้าน้อยกว่ายอดโอนไม่กี่บาท
-        fee: money.fee,
-        // 💸 ชนิดเรคอร์ด: first = ใบหลัก · final = งวดหลังมัดจำ · extra = สลิปใบเพิ่ม (บอร์ด WIP ข้าม) · partial = ยังไม่ครบงวด
-        installment: isFinal ? "final" : opts?.extra ? "extra" : "first",
-        partial: !!opts?.partial,
-        earlyPay: orderEarlyPayAmount(order),
-        bank: "iDucky Store",
-        orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(order.id)}`,
-        note: opts?.noteSuffix ? `${opts.noteSuffix} · ${itemSummary}`.slice(0, 120) : itemSummary,
-        // 📦 รายการสินค้าแบบโครงสร้าง — msVerify/msDaily เอาไปใส่คอลัมน์ "รายการสินค้า" (note ถูกตัด 120 ตัวอักษร ใช้ parse ไม่ครบ)
-        items: order.items.map(tpItem),
-        // ➕ ของที่ลูกค้าสั่งเพิ่มเข้าใบเดิมและยังไม่มีแบบ — บอร์ด WIP ขึ้นการ์ด "สั่งเพิ่ม" ให้เมื่อเพิ่มหลังสร้างโฟลเดอร์แล้ว
-        newWorkItems: addedWorkItems(order),
-        // ข้อความหมายเหตุล้วน ๆ (ไม่ปนรายการสินค้า) เช่น "มัดจำ 50% งวดแรก" — ว่างได้
-        noteText: opts?.noteSuffix ?? "",
-        // สลิปโอน — msVerify เอาไปโชว์เป็นรูปย่อในตาราง (ลิงก์เซ็นอายุ 1 ปี · เก็บ path ไว้เซ็นใหม่ได้)
-        slipUrl: slip.slipUrl,
-        slipPath: slip.slipPath,
-        // เวลาที่เซ็นลิงก์สลิป = "ตอนนี้จริง ๆ" เสมอ (อายุ 1 ปีนับจากตรงนี้) — ไม่ใช่เวลารับเงินของเรคอร์ดที่เติมย้อนหลัง
-        slipSignedAt: new Date().toISOString(),
-        // 🎯 เลขอ้างอิงธุรกรรม (SlipOK transRef) — msVerify เอาไปเทียบตอนตรวจสลิปซ้ำ ("" = ไม่มี เช่น แอดมินยืนยันเอง)
-        slipRefNo: slipRefNoFor(order, isFinal, opts?.slipPath),
-        // 🕰️ เวลาโอนจริงบนสลิป (ISO จาก SlipOK) — msVerify แปลงเป็น slipDate/slipTime ให้ใบที่ดึงเข้าไป ตัวจับคู่จึงเช็ค "วัน+เวลา" ได้
-        //    เหมือนสลิปที่แอดมินอัปเอง ("" = ไม่มี → จับคู่ด้วยยอดอย่างเดียวเหมือนเดิม) · doc เก่า → scripts/backfill-tp-transat.mjs
-        slipTransAt: slipTransAtFor(order, isFinal, opts?.slipPath),
-        verifiedBy,
-        // 🧑‍💼 ใครทำใบสั่งซื้อ — ชื่อพนักงานที่ทำบิลให้ (สั่งแทน/งานพิเศษ/ใบเสนอราคา/FlowAccount/redo) · "" = ลูกค้าสั่งเองจากเว็บ
-        //    msVerify แท็บ 🛒 โชว์คอลัมน์ "ทำใบสั่งซื้อ" (ไม่มีฟิลด์นี้ = doc เก่า ยังไม่รู้ → scripts/backfill-tp-placedby.mjs)
-        placedBy: order.placedBy || "",
-        // 💬 LINE userId ของลูกค้า ("" = ยังไม่ผูก) — รายงาน "ตรวจคนทำใบสั่งซื้อ" (หน้า Reward ฝั่ง Admin) ใช้จับคู่ออเดอร์ ↔ งานลูกค้า
-        //    ชื่อบนเว็บเป็นชื่อจริง แต่งานลูกค้าเก็บชื่อ LINE → จับด้วยชื่อแทบไม่เจอ (17 ก.ย. 69: ไม่พบ 208/258 ใบ)
-        lineUserId: order.lineUserId || "",
-        // 🔥 งานเร่ง + วันที่ลูกค้าต้องใช้งาน — บอร์ด WIP กราฟฟิกเอาไปติดป้ายแดง/จัดคิว (แก้ทีหลังผ่าน syncRushToTP)
-        rush: !!order.rush,
-        useByDate: order.useByDate || "",
-        // 📦 ช่วงวันจัดส่ง (จาก–ถึง) — บอร์ด WIP โชว์คู่กับวันใช้งานบนป้ายงานเร่ง
-        shipDate: tpShipDate(order),
-        // 🛒 รอของเข้า / ต้องสั่งของ — บอร์ด WIP กราฟฟิกติดป้าย "รอของเข้า — ห้ามส่งผลิต" + ถามย้ำตอนอนุมัติ (แก้ทีหลังผ่าน syncStockWaitToTP)
-        stockWait: tpStockWait(order),
-        // 🧰 งานเคลม/ทำใหม่ฟรี — ไม่มีเงินเข้า (ยอด 0) แต่เป็น "งานจริง" ที่กราฟฟิกต้องทำ
-        //    บอร์ด WIP เอาไปติดป้าย 🧰 + เหตุผล · msVerify ไม่ดึงใบยอด 0 เข้าระบบบัญชีอยู่แล้ว (จับคู่ธนาคารไม่ได้)
-        ...(order.claimOf ? { claimOf: order.claimOf, claimReason: order.claimReason ?? "" } : {}),
-        paymentStatus: "ชำระแล้ว",
-        origin: "iducky",
-        createdAt: now.toISOString(),
-        // 🩹 เรคอร์ดที่เติมย้อนหลัง (ตอนยิงสดหลุดไป) — วัน/เวลาข้างบนคือเวลารับเงินจริง ไม่ใช่เวลาที่เติม
-        ...(healed ? { healedAt: new Date().toISOString() } : {}),
-      });
+    const ref = db.collection(TP_PAID_COLLECTION).doc(`${order.id}${opts?.docSuffix ?? ""}`);
+    const record = {
+      id: `iducky-${order.id}${opts?.docSuffix ?? ""}`,
+      orderId: order.id,
+      date: `${part("year")}-${part("month")}-${part("day")}`,
+      time: `${part("hour")}:${part("minute")}`,
+      customerName: order.customer,
+      phone: order.phone || "",
+      // 💵 เงินที่เข้าบัญชีจริงของงวดนี้ — ตัวเลขที่ต้องตรงกับแถวโอนของธนาคาร
+      slipAmount: money.received,
+      // ยอดบิลของงวดนี้ก่อนหัก ณ ที่จ่าย (หลังส่วนลด) — msVerify ใช้เทียบ ยอมส่วนต่าง = wht + fee / ส่วนลดโอนไว 5/10
+      // งวดมัดจำ/งวดหลัง/ใบเพิ่ม/รับบางส่วน = ยอดของ "ใบนี้" ไม่ใช่ทั้งบิล (ไม่งั้น msVerify ขึ้น "⚠ ต่าง")
+      orderTotal: money.bill,
+      // 📋 หัก ณ ที่จ่ายของงวดนี้ — msVerify ถือว่ายอดตรงเมื่อ orderTotal − wht − fee = ยอดที่ธนาคารเข้า
+      wht: money.wht,
+      // 💸 ค่าธรรมเนียมที่ธนาคารหักจากยอดโอน (0 = ไม่มี) — SMART/ข้ามธนาคารเข้าน้อยกว่ายอดโอนไม่กี่บาท
+      fee: money.fee,
+      // 💸 ชนิดเรคอร์ด: first = ใบหลัก · final = งวดหลังมัดจำ · extra = สลิปใบเพิ่ม (บอร์ด WIP ข้าม) · partial = ยังไม่ครบงวด
+      installment: isFinal ? "final" : opts?.extra ? "extra" : "first",
+      partial: !!opts?.partial,
+      earlyPay: orderEarlyPayAmount(order),
+      bank: "iDucky Store",
+      orderLink: `${SITE_URL}/admin/orders/${encodeURIComponent(order.id)}`,
+      note: opts?.noteSuffix ? `${opts.noteSuffix} · ${itemSummary}`.slice(0, 120) : itemSummary,
+      // 📦 รายการสินค้าแบบโครงสร้าง — msVerify/msDaily เอาไปใส่คอลัมน์ "รายการสินค้า" (note ถูกตัด 120 ตัวอักษร ใช้ parse ไม่ครบ)
+      items: order.items.map(tpItem),
+      // ➕ ของที่ลูกค้าสั่งเพิ่มเข้าใบเดิมและยังไม่มีแบบ — บอร์ด WIP ขึ้นการ์ด "สั่งเพิ่ม" ให้เมื่อเพิ่มหลังสร้างโฟลเดอร์แล้ว
+      newWorkItems: addedWorkItems(order),
+      // ข้อความหมายเหตุล้วน ๆ (ไม่ปนรายการสินค้า) เช่น "มัดจำ 50% งวดแรก" — ว่างได้
+      noteText: opts?.noteSuffix ?? "",
+      // สลิปโอน — msVerify เอาไปโชว์เป็นรูปย่อในตาราง (ลิงก์เซ็นอายุ 1 ปี · เก็บ path ไว้เซ็นใหม่ได้)
+      slipUrl: slip.slipUrl,
+      slipPath: slip.slipPath,
+      // เวลาที่เซ็นลิงก์สลิป = "ตอนนี้จริง ๆ" เสมอ (อายุ 1 ปีนับจากตรงนี้) — ไม่ใช่เวลารับเงินของเรคอร์ดที่เติมย้อนหลัง
+      slipSignedAt: new Date().toISOString(),
+      // 🎯 เลขอ้างอิงธุรกรรม (SlipOK transRef) — msVerify เอาไปเทียบตอนตรวจสลิปซ้ำ ("" = ไม่มี เช่น แอดมินยืนยันเอง)
+      slipRefNo: slipRefNoFor(order, isFinal, opts?.slipPath),
+      // 🕰️ เวลาโอนจริงบนสลิป (ISO จาก SlipOK) — msVerify แปลงเป็น slipDate/slipTime ให้ใบที่ดึงเข้าไป ตัวจับคู่จึงเช็ค "วัน+เวลา" ได้
+      //    เหมือนสลิปที่แอดมินอัปเอง ("" = ไม่มี → จับคู่ด้วยยอดอย่างเดียวเหมือนเดิม) · doc เก่า → scripts/backfill-tp-transat.mjs
+      slipTransAt: slipTransAtFor(order, isFinal, opts?.slipPath),
+      verifiedBy,
+      // 🧑‍💼 ใครทำใบสั่งซื้อ — ชื่อพนักงานที่ทำบิลให้ (สั่งแทน/งานพิเศษ/ใบเสนอราคา/FlowAccount/redo) · "" = ลูกค้าสั่งเองจากเว็บ
+      //    msVerify แท็บ 🛒 โชว์คอลัมน์ "ทำใบสั่งซื้อ" (ไม่มีฟิลด์นี้ = doc เก่า ยังไม่รู้ → scripts/backfill-tp-placedby.mjs)
+      placedBy: order.placedBy || "",
+      // 💬 LINE userId ของลูกค้า ("" = ยังไม่ผูก) — รายงาน "ตรวจคนทำใบสั่งซื้อ" (หน้า Reward ฝั่ง Admin) ใช้จับคู่ออเดอร์ ↔ งานลูกค้า
+      //    ชื่อบนเว็บเป็นชื่อจริง แต่งานลูกค้าเก็บชื่อ LINE → จับด้วยชื่อแทบไม่เจอ (17 ก.ย. 69: ไม่พบ 208/258 ใบ)
+      lineUserId: order.lineUserId || "",
+      // 🔥 งานเร่ง + วันที่ลูกค้าต้องใช้งาน — บอร์ด WIP กราฟฟิกเอาไปติดป้ายแดง/จัดคิว (แก้ทีหลังผ่าน syncRushToTP)
+      rush: !!order.rush,
+      useByDate: order.useByDate || "",
+      // 📦 ช่วงวันจัดส่ง (จาก–ถึง) — บอร์ด WIP โชว์คู่กับวันใช้งานบนป้ายงานเร่ง
+      shipDate: tpShipDate(order),
+      // 🛒 รอของเข้า / ต้องสั่งของ — บอร์ด WIP กราฟฟิกติดป้าย "รอของเข้า — ห้ามส่งผลิต" + ถามย้ำตอนอนุมัติ (แก้ทีหลังผ่าน syncStockWaitToTP)
+      stockWait: tpStockWait(order),
+      // 🧰 งานเคลม/ทำใหม่ฟรี — ไม่มีเงินเข้า (ยอด 0) แต่เป็น "งานจริง" ที่กราฟฟิกต้องทำ
+      //    บอร์ด WIP เอาไปติดป้าย 🧰 + เหตุผล · msVerify ไม่ดึงใบยอด 0 เข้าระบบบัญชีอยู่แล้ว (จับคู่ธนาคารไม่ได้)
+      ...(order.claimOf ? { claimOf: order.claimOf, claimReason: order.claimReason ?? "" } : {}),
+      paymentStatus: "ชำระแล้ว",
+      origin: "iducky",
+      createdAt: now.toISOString(),
+      // 🩹 เรคอร์ดที่เติมย้อนหลัง (ตอนยิงสดหลุดไป) — วัน/เวลาข้างบนคือเวลารับเงินจริง ไม่ใช่เวลาที่เติม
+      ...(healed ? { healedAt: new Date().toISOString() } : {}),
+    };
+    try {
+      await ref.create(record);
+    } catch (e) {
+      // 🗑 เรคอร์ดนี้ถูก void เพราะแอดมินลบสลิป (voidSlipRecordInTP) แล้วเงินก้อนใหม่เข้ามาใน doc id เดิม
+      //    → เขียนทับทั้งใบ (ไม่งั้น .create() ชนแล้วเงียบ msVerify ไม่เห็นยอดใหม่เลย) · void แบบอื่น (สคริปต์ซ่อม) ไม่แตะ
+      const code = (e as { code?: number | string })?.code;
+      if (code !== 6 && code !== "already-exists") throw e;
+      const snap = await ref.get();
+      if (snap.get("voided") !== true || snap.get("voidKind") !== "slip-deleted") return;
+      await ref.set({ ...record, revivedAt: new Date().toISOString(), revivedFrom: snap.get("voidedFrom") ?? null });
+    }
   } catch (e) {
     // already-exists (ยิงซ้ำ) = ปกติ · อย่างอื่น log ไว้ดู
     const code = (e as { code?: number | string })?.code;
     if (code !== 6 && code !== "already-exists")
       console.error("[tp-report] ส่งออเดอร์ไป msVerify ไม่สำเร็จ:", (e as Error)?.message);
+  }
+}
+
+/**
+ * 🗑 แอดมินลบสลิปในหลังบ้าน iDucky แล้วเงินก้อนนั้นถูกถอยออก → เรคอร์ดในหน้า msVerify ต้องหายตาม
+ * (เจ้าของร้านสั่ง 6 ต.ค. 69: "ถ้าออเดอร์มีการลบสลิป อยากให้มาลบที่หน้า msVerify ด้วย")
+ *
+ * ไม่ลบ doc ทิ้ง แต่ void (slipAmount 0 + voided:true) แบบเดียวกับ OD-260922-6100 เพราะ:
+ *  · หน้า msVerify รู้จัก voided อยู่แล้ว — แท็บ 🛒 ขึ้น "🚫 ถอนแล้ว" · สำเนาในแท็บ 🏪 (idk-…) ที่ยังไม่จับคู่ถูกทำเครื่องหมายยกเลิกให้เอง
+ *  · doc ยังอยู่ → ตัวเติมเรคอร์ดย้อนหลัง (tp-bridge-audit) ไม่สร้างคืน · เก็บยอดเดิมไว้ใน voidedFrom ดูย้อนหลังได้
+ *  · แนบสลิปใหม่แล้วเงินเข้า → reportPaidToTP เขียนทับใบที่ voidKind "slip-deleted" ให้เอง (msVerify ปลดยกเลิกเอง)
+ * ใบที่สำเนาฝั่ง Admin จับคู่กับรายการโอนไปแล้ว ฝั่งนั้นไม่แตะ (แค่ขึ้น "ถอนแล้ว (เคยจับคู่!)") — เงินในสมุดโอนแอดมินตัดสินเอง
+ * ไม่มี doc (ยังไม่เคยส่ง) / void ไปแล้ว = ข้ามเงียบ · ⏳ ผู้เรียกต้อง await (Netlify แช่เครื่องหลังตอบ)
+ * คืนค่า true เมื่อ void จริง
+ */
+export async function voidSlipRecordInTP(docId: string, by: string, reason: string): Promise<boolean> {
+  try {
+    const db = getFirestoreAdmin();
+    if (!db) return false;
+    const ref = db.collection(TP_PAID_COLLECTION).doc(docId);
+    const snap = await ref.get();
+    if (!snap.exists || snap.get("voided") === true) return false;
+    const at = new Date().toISOString();
+    await ref.update({
+      voidedFrom: {
+        slipAmount: snap.get("slipAmount") ?? 0,
+        orderTotal: snap.get("orderTotal") ?? 0,
+        wht: snap.get("wht") ?? 0,
+        fee: snap.get("fee") ?? 0,
+        slipRefNo: snap.get("slipRefNo") ?? "",
+        paymentStatus: snap.get("paymentStatus") ?? "",
+      },
+      slipAmount: 0,
+      orderTotal: 0,
+      wht: 0,
+      fee: 0,
+      slipRefNo: "",
+      slipUrl: "",
+      voided: true,
+      voidKind: "slip-deleted",
+      voidedAt: at,
+      voidedBy: by,
+      voidReason: reason,
+      paymentStatus: "ยกเลิก (ลบสลิป)",
+    });
+    return true;
+  } catch (e) {
+    console.error("[tp-report] void เรคอร์ด msVerify หลังลบสลิปไม่สำเร็จ:", (e as Error)?.message);
+    return false;
   }
 }
 
@@ -252,7 +310,11 @@ export async function syncPaidCompleteToTP(order: Order, verifiedBy: string, not
       return;
     }
     // 🚫 เรคอร์ดที่ถูก void (สลิปโอนผิดบัญชี — OD-260922-6100 24 ก.ย. 69) ห้ามปลดกลับเป็น "ชำระแล้ว" · ยอดจริงอยู่ที่ใบเพิ่ม
-    if (snap.get("voided") === true) return;
+    if (snap.get("voided") === true) {
+      // 🗑 void เพราะลบสลิป (voidSlipRecordInTP) แล้วเงินครบทางอื่น → reportPaidToTP เขียนทับให้ใหม่ทั้งใบ
+      if (snap.get("voidKind") === "slip-deleted") await reportPaidToTP(order, verifiedBy, { noteSuffix: note ?? "รับครบผ่านสลิปหลายใบ" });
+      return;
+    }
     await ref.set({ partial: false, paymentStatus: "ชำระแล้ว", paidCompleteAt: new Date().toISOString(), paidCompleteBy: verifiedBy }, { merge: true });
   } catch (e) {
     console.error("[tp-report] ปลดธงรับบางส่วนไม่สำเร็จ:", (e as Error)?.message);
