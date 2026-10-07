@@ -3,8 +3,8 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
-import { FA_KIND_LABEL, draftFor, netCollected, quotationBody, upgradeBody, type FaDocKind } from "@/lib/server/fa-create";
-import { bankAccounts, createDocument, findDocRecordId, flowAccountApiReady, receiveTransferPayment, shareDocument } from "@/lib/server/flowaccount-api";
+import { FA_KIND_LABEL, draftFor, netCollected, quotationBody, quotationUpdateBody, quotationUpdateDraft, upgradeBody, type FaDocKind } from "@/lib/server/fa-create";
+import { bankAccounts, createDocument, findDocRecordId, flowAccountApiReady, getDocument, receiveTransferPayment, shareDocument, updateDocument } from "@/lib/server/flowaccount-api";
 import { WHT_TABLE } from "@/lib/server/wht-db";
 import { bkkParts } from "@/lib/bangkok-time";
 
@@ -35,10 +35,11 @@ export async function POST(req: Request) {
   if (money.res) return money.res;
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const body = (await req.json().catch(() => null)) as { orderId?: string; kind?: FaDocKind; create?: boolean } | null;
+  const body = (await req.json().catch(() => null)) as { orderId?: string; kind?: FaDocKind | "qt-update"; create?: boolean } | null;
   const orderId = body?.orderId?.trim();
-  const kind = body?.kind ?? "qt";
   if (!orderId) return NextResponse.json({ error: "ไม่รู้ว่าออเดอร์ไหน" }, { status: 400 });
+  if (body?.kind === "qt-update") return updateQuotation(sb, orderId, !!body.create, gate.actor.name || gate.actor.username);
+  const kind = (body?.kind ?? "qt") as FaDocKind;
   if (!API_PATH[kind]) return NextResponse.json({ error: "ชนิดเอกสารไม่ถูกต้อง" }, { status: 400 });
 
   const load = async () => (await sb.from("orders").select("data").eq("id", orderId).maybeSingle()).data?.data as Order | undefined;
@@ -149,6 +150,76 @@ export async function POST(req: Request) {
       { error: created ? `สร้าง ${created.docNo} ใน FlowAccount แล้ว แต่${msg} — อย่ากดสร้างซ้ำ แจ้งผู้ดูแลให้ผูกใบนี้เข้าออเดอร์` : msg },
       { status: 502 }
     );
+  } finally {
+    busy.delete(lock);
+  }
+}
+
+/**
+ * 🔄 อัปเดตใบเสนอราคาเดิมใน FlowAccount ให้ตรงออเดอร์ (รายการ · ยอด · VAT · หัก ณ ที่จ่าย) — 7 ต.ค. 69
+ * แก้ได้เฉพาะ QT สถานะ "รออนุมัติ" (FlowAccount บังคับ) · คงวันที่ออกใบ/พนักงานขาย/เลขอ้างอิงเดิม
+ * ร่าง = before (ใบปัจจุบันใน FlowAccount) + after (ร่างจากออเดอร์) ให้เทียบก่อนกด
+ */
+async function updateQuotation(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, orderId: string, create: boolean, by: string) {
+  const order = (await sb.from("orders").select("data").eq("id", orderId).maybeSingle()).data?.data as Order | undefined;
+  if (!order) return NextResponse.json({ error: `ไม่พบออเดอร์ ${orderId}` }, { status: 404 });
+  const draft = quotationUpdateDraft(order);
+  let before: Awaited<ReturnType<typeof getDocument>> = null;
+  let recordId = 0;
+  if (draft.source && (await flowAccountApiReady())) {
+    try {
+      const hit = await findDocRecordId(draft.source.docNo);
+      if (!hit) draft.problems.push(`หา ${draft.source.docNo} ใน FlowAccount ไม่เจอ`);
+      else {
+        recordId = hit.id;
+        before = await getDocument("quotations", hit.id);
+        if (before && before.status !== "awaiting")
+          draft.problems.push(`${draft.source.docNo} ไม่ได้อยู่สถานะ "รออนุมัติ" (${before.status}) — FlowAccount ให้แก้ผ่าน API ได้เฉพาะใบรออนุมัติ ใช้ ✏️ แก้ไขในแอป FlowAccount แทน`);
+      }
+    } catch (e) {
+      draft.problems.push((e as Error).message);
+    }
+  }
+  if (!create) return NextResponse.json({ draft, before, label: "ใบเสนอราคา (อัปเดต)" });
+  if (draft.problems.length || !recordId) return NextResponse.json({ error: draft.problems.join(" · ") || "ไม่พบใบเสนอราคา", draft }, { status: 409 });
+
+  const lock = `${orderId}:qt-update`;
+  if (busy.has(lock)) return NextResponse.json({ error: "กำลังอัปเดตใบเสนอราคาอยู่ — รอสักครู่" }, { status: 409 });
+  busy.add(lock);
+  try {
+    const docBody = quotationUpdateBody(order, draft, before?.salesName || by, recordId);
+    if (before?.publishedOn) docBody.publishedOn = before.publishedOn;
+    if (before?.dueDate) docBody.dueDate = before.dueDate;
+    if (before?.reference) docBody.reference = before.reference;
+    await updateDocument("quotations", recordId, docBody);
+    const fresh = ((await sb.from("orders").select("data").eq("id", orderId).maybeSingle()).data?.data as Order | undefined) ?? order;
+    const net = Math.round((draft.grandTotal - (draft.wht?.amount ?? 0)) * 100) / 100;
+    let next: Order = fresh.flowAccount
+      ? {
+          ...fresh,
+          flowAccount: {
+            ...fresh.flowAccount,
+            subtotal: draft.afterDiscount,
+            vat: draft.vat,
+            grandTotal: draft.grandTotal,
+            wht: draft.wht?.amount,
+            net,
+            fetchedAt: new Date().toISOString(),
+            docChanged: undefined,
+          },
+        }
+      : fresh;
+    next = withLog(
+      next,
+      by,
+      "อัปเดตใบเสนอราคาใน FlowAccount",
+      `${draft.source!.docNo} · ${before ? `${baht(before.grandTotal)}${before.wht ? ` (หัก ${baht(before.wht)})` : ""} → ` : ""}${baht(draft.grandTotal)}${draft.wht ? ` (หัก ณ ที่จ่าย ${draft.wht.rate}% ${baht(draft.wht.amount)})` : " (ไม่หัก)"}`
+    );
+    const w = await updateOrder(sb, next, { prev: fresh, by });
+    if (w.error) throw new Error(`แก้ใน FlowAccount แล้ว แต่บันทึกออเดอร์ไม่สำเร็จ: ${w.error.message}`);
+    return NextResponse.json({ ok: true, docNo: draft.source!.docNo, order: w.order });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   } finally {
     busy.delete(lock);
   }

@@ -241,3 +241,53 @@ export function upgradeBody(o: Order, d: ReturnType<typeof draftFor>, kind: "bl"
 export function netCollected(d: QuotationDraft): number {
   return r2(d.grandTotal - (d.wht?.amount ?? 0));
 }
+
+/* ── 🔄 อัปเดตใบเสนอราคาเดิมให้ตรงออเดอร์ (7 ต.ค. 69) ─────────────────────────────────────── */
+
+/** ร่างอัปเดต QT — รายการ/ยอดล่าสุดของออเดอร์ (ไม่นับข้อห้าม "มีเอกสารหลักแล้ว" เพราะกำลังแก้ใบนั้นเอง) */
+export function quotationUpdateDraft(o: Order): QuotationDraft & { source?: { docNo: string; type: number } } {
+  const d = quotationDraft({ ...o, flowAccount: undefined, ...(o.taxInvoice ? { taxInvoice: { ...o.taxInvoice, docNo: undefined } } : {}) });
+  const main = mainDocOf(o);
+  const problems = d.problems.slice();
+  if (!main) problems.unshift("ยังไม่มีใบเสนอราคาใน FlowAccount — ออกใบเสนอราคาก่อน");
+  else if (main.docType !== "qt") problems.unshift(`เอกสารหลักเป็น ${main.docTypeLabel} ${main.docNo} — แก้ได้เฉพาะใบเสนอราคา`);
+  if ((o.faChain ?? []).length || (o.faInvoices ?? []).length) problems.push("ออกใบแจ้งหนี้/ใบกำกับต่อจากใบเสนอราคาแล้ว — แก้ในแอป FlowAccount");
+  if (o.deposit || o.flowAccount?.deposit) problems.push("ใบมัดจำ — แก้ในแอป FlowAccount");
+  return { ...d, problems, ...(main ? { source: { docNo: main.docNo, type: REF_TYPE.qt } } : {}) };
+}
+
+/**
+ * body ของ PUT /quotations/{id} — แบบภาษี/ส่วนลดแยกรายการ (UpdateInlineDocument) ตามที่ FlowAccount บังคับ
+ * ส่วนลดท้ายบิลย้ายไปเป็นส่วนลดของรายการที่ยอดสูงสุด (ยอดก่อน VAT/VAT/ยอดรวมเท่าเดิมทุกบาท)
+ */
+export function quotationUpdateBody(o: Order, d: QuotationDraft, salesName: string, recordId: number): Record<string, unknown> {
+  const body = quotationBody(o, d, salesName);
+  const lines = d.lines.map((l) => ({ ...l, discountAmount: 0 }));
+  if (d.discount > 0 && lines.length) {
+    const top = lines.reduce((a, b) => (b.total > a.total ? b : a));
+    top.discountAmount = d.discount;
+  }
+  return {
+    ...body,
+    documentStructureType: "UpdateInlineDocument",
+    recordId,
+    useInlineVat: true,
+    useInlineDiscount: true,
+    discountAmount: 0,
+    items: lines.map((l) => ({
+      type: 1,
+      name: l.name,
+      description: l.description,
+      quantity: l.quantity,
+      unitName: "",
+      pricePerUnit: l.pricePerUnit,
+      discountAmount: l.discountAmount,
+      discountType: 3,
+      vatRate: 7,
+      total: r2(l.total - l.discountAmount),
+    })),
+    documentShowWithholdingTax: !!d.wht,
+    documentWithholdingTaxPercentage: d.wht?.rate ?? 0,
+    documentWithholdingTaxAmount: d.wht?.amount ?? 0,
+  };
+}

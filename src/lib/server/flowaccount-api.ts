@@ -293,6 +293,61 @@ export async function receiveTransferPayment(
   if (!r.ok || j?.status === false) throw new Error(`บันทึกรับเงินไม่สำเร็จ (${r.status}${j?.message ? ` · ${j.message}` : ""})`);
 }
 
+/** 📄 อ่านเอกสาร 1 ใบ (GET /<kind>/<recordId>) — สถานะ + ยอด ไว้เทียบก่อนแก้ */
+export async function getDocument(
+  kind: string,
+  recordId: number
+): Promise<{
+  status: string;
+  docNo: string;
+  grandTotal: number;
+  vat: number;
+  wht: number;
+  publishedOn?: string;
+  dueDate?: string;
+  salesName?: string;
+  reference?: string;
+  items: { name: string; quantity: number; pricePerUnit: number; total: number }[];
+} | null> {
+  const d = await get<{ list?: Record<string, unknown>[] } & Record<string, unknown>>(`/${kind}/${recordId}`);
+  const x = (d?.list?.[0] ?? d) as Record<string, unknown> | undefined;
+  if (!x || !x.documentSerial) return null;
+  const items = ((x.items as Record<string, unknown>[] | undefined) ?? []).map((i) => ({
+    name: String(i.name ?? ""),
+    quantity: Number(i.quantity) || 0,
+    pricePerUnit: Number(i.pricePerUnit) || 0,
+    total: Number(i.total) || 0,
+  }));
+  return {
+    status: String(x.statusString ?? ""),
+    docNo: String(x.documentSerial),
+    grandTotal: Number(x.grandTotal) || 0,
+    vat: Number(x.vatAmount) || 0,
+    wht: Number(x.documentWithholdingTaxAmount) || 0,
+    ...(x.publishedOn ? { publishedOn: String(x.publishedOn).slice(0, 10) } : {}),
+    ...(x.dueDate ? { dueDate: String(x.dueDate).slice(0, 10) } : {}),
+    ...(x.salesName ? { salesName: String(x.salesName) } : {}),
+    ...(x.reference ? { reference: String(x.reference) } : {}),
+    items,
+  };
+}
+
+/**
+ * ✏️ แก้เอกสาร (PUT /<kind>/<recordId>) — FlowAccount แก้ได้เฉพาะใบสถานะ "รออนุมัติ" (awaiting)
+ * ⚠️ body ต้องเป็น UpdateInlineDocument (useInlineVat + useInlineDiscount = true) — ค่าอื่นตอบ "Invalid documentStructureType" (ทดสอบ sandbox 7 ต.ค. 69)
+ */
+export async function updateDocument(kind: string, recordId: number, body: Record<string, unknown>): Promise<void> {
+  const t = await token();
+  const r = await fetch(`${t.base}/${kind}/${recordId}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const j = (await r.json().catch(() => null)) as { status?: boolean; message?: string } | null;
+  if (!r.ok || j?.status === false) throw new Error(`FlowAccount ไม่รับการแก้ไข (${r.status}${j?.message ? ` · ${j.message}` : ""})`);
+}
+
 /** 🏦 บัญชีธนาคารรับเงินของร้านใน FlowAccount (ตอนนี้มีบัญชีเดียว: กสิกร บจก.ทีพีดิจิตอล …753328) */
 export async function bankAccounts(): Promise<{ id: number; number: string; name: string; bank: string }[]> {
   const d = await get<unknown>("/bank-accounts");

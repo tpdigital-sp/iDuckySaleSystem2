@@ -2395,6 +2395,58 @@ export default function AdminOrderDetailPage() {
   }
 
   /**
+   * 🔄 อัปเดตใบเสนอราคาเดิมใน FlowAccount ให้ตรงออเดอร์ (รายการ · ยอด · VAT · หัก ณ ที่จ่าย) — 7 ต.ค. 69
+   * เทียบใบปัจจุบัน → หลังอัปเดต ก่อนกด · FlowAccount แก้ได้เฉพาะใบ "รออนุมัติ" (ร่างบอกเหตุถ้าแก้ไม่ได้)
+   */
+  async function updateFaQuotation() {
+    if (!order || faQtBusy) return;
+    setFaQtBusy("qt");
+    try {
+      const post = (create: boolean) =>
+        fetch("/api/admin/orders/fa-doc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId: order.id, kind: "qt-update", create }) });
+      const r = await post(false);
+      const j = (await r.json().catch(() => null)) as {
+        draft?: { lines: { name: string; quantity: number; pricePerUnit: number; total: number }[]; discount: number; afterDiscount: number; vat: number; grandTotal: number; wht?: { rate: number; amount: number }; problems: string[]; source?: { docNo: string } };
+        before?: { grandTotal: number; vat: number; wht: number; items: { name: string; quantity: number; total: number }[] } | null;
+        error?: string;
+      } | null;
+      const d = j?.draft;
+      if (!r.ok || !d) throw new Error(j?.error ?? `อ่านร่างไม่สำเร็จ (${r.status})`);
+      if (d.problems.length) {
+        await askConfirm({ icon: "⚠️", title: "ยังอัปเดตใบเสนอราคาไม่ได้", detail: d.problems.map((p) => `• ${p}`).join("\n"), confirmLabel: "รับทราบ" });
+        return;
+      }
+      const b = j?.before;
+      const ok = await askConfirm({
+        icon: "🔄",
+        title: `อัปเดต ${d.source?.docNo ?? "ใบเสนอราคา"} ใน FlowAccount?`,
+        detail: [
+          "ใบปัจจุบันใน FlowAccount:",
+          b ? `   รวม ${formatPrice(b.grandTotal)} · VAT ${formatPrice(b.vat)} · ${b.wht ? `หัก ณ ที่จ่าย ${formatPrice(b.wht)}` : "ไม่หัก ณ ที่จ่าย"} · ${b.items.length} รายการ` : "   (อ่านไม่ได้)",
+          "",
+          "หลังอัปเดต (ตามออเดอร์):",
+          ...d.lines.map((l) => `   • ${l.name} × ${l.quantity} @ ${formatPrice(l.pricePerUnit)} = ${formatPrice(l.total)}`),
+          ...(d.discount > 0 ? [`   ส่วนลด −${formatPrice(d.discount)}`] : []),
+          `   รวม ${formatPrice(d.grandTotal)} · VAT ${formatPrice(d.vat)} · ${d.wht ? `หัก ณ ที่จ่าย ${d.wht.rate}% ${formatPrice(d.wht.amount)}` : "ไม่หัก ณ ที่จ่าย"}`,
+          "",
+          "แก้ใบเดิมในบัญชี FlowAccount จริง (เลขใบ/วันที่ออกใบคงเดิม)",
+        ].join("\n"),
+        confirmLabel: "อัปเดตใบเสนอราคา",
+      });
+      if (ok !== true) return;
+      const c = await post(true);
+      const cj = (await c.json().catch(() => null)) as { order?: Order; error?: string } | null;
+      if (!c.ok || !cj?.order) throw new Error(cj?.error ?? `อัปเดตไม่สำเร็จ (${c.status})`);
+      adoptFromServer(cj.order);
+      setOrder((cur) => (cur ? keepSlipUrls(cj.order!, cur) : cj.order!));
+    } catch (e) {
+      setErr(`⚠️ ${(e as Error).message}`);
+    } finally {
+      setFaQtBusy(null);
+    }
+  }
+
+  /**
    * 🗑 ลบบิลบริษัทออกทั้งชุด — ลูกค้าเปลี่ยนใจไม่เอาใบกำกับภาษีแล้ว (OD-260915-6489 · 16 ก.ย. 69)
    * ถอด: เอกสาร FlowAccount ที่ผูก · ข้อมูลผู้ซื้อในใบกำกับ · VAT/หัก ณ ที่จ่าย · ธงใส่ใบกำกับลงกล่อง
    * รายการสินค้า/ค่าส่ง/ส่วนลดคงเดิม (ราคาต่อชิ้นตามใบเป็นราคาก่อน VAT อยู่แล้ว = ราคาที่ลูกค้าจ่ายเมื่อไม่มีบิล)
@@ -5353,6 +5405,17 @@ export default function AdminOrderDetailPage() {
                   {/* เอกสารหลัก = flowAccount หรือ QT/BL ที่วางในฟอร์มข้อมูลใบกำกับ (taxInvoice.docNo) — ดู mainDocOf ใน fa-create.ts */}
                   {(order.flowAccount || order.taxInvoice?.docNo) && mayEdit && seesMoney && order.status !== "ยกเลิก" && !order.deposit && (
                     <p className="flex flex-wrap gap-1.5 pt-0.5">
+                      {(order.flowAccount ? order.flowAccount.docType === "qt" : /^QT/i.test(order.taxInvoice?.docNo ?? "")) && !(order.faChain ?? []).length && !(order.faInvoices ?? []).length && (
+                        <button
+                          type="button"
+                          onClick={() => void updateFaQuotation()}
+                          disabled={!!faQtBusy}
+                          className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-300 hover:bg-amber-50 disabled:opacity-50"
+                          title="ส่งรายการ/ยอด/VAT/หัก ณ ที่จ่ายล่าสุดของออเดอร์ไปแก้ใบเสนอราคาเดิม (เฉพาะใบสถานะรออนุมัติ)"
+                        >
+                          {faQtBusy === "qt" ? "⏳ กำลังอัปเดต…" : "🔄 อัปเดตใบเสนอราคาใน FlowAccount"}
+                        </button>
+                      )}
                       {(order.flowAccount ? order.flowAccount.docType === "qt" : /^QT/i.test(order.taxInvoice?.docNo ?? "")) && !(order.faChain ?? []).length && !(order.faInvoices ?? []).length && (
                         <button
                           type="button"
