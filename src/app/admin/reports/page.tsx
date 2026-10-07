@@ -239,12 +239,20 @@ function ReportsInner() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  /** ยังดึงจากตาราง orders ตรง ๆ (ยังไม่ได้สร้างวิว orders_lite) — โชว์ป้ายบอกวิธีแก้ให้เจ้าของร้าน */
+  const [slowPath, setSlowPath] = useState(false);
 
   const load = useCallback(async (from: string, to: string) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/reports?from=${from}&to=${to}`, { cache: "no-store" });
-      const j = (await res.json().catch(() => ({}))) as { report?: ReportData; error?: string; needsSetup?: boolean };
+      const j = (await res.json().catch(() => ({}))) as {
+        report?: ReportData;
+        error?: string;
+        needsSetup?: boolean;
+        via?: "view" | "pick";
+        cachedAt?: string;
+      };
       if (!res.ok) {
         setErr(j.error ?? `เซิร์ฟเวอร์ตอบ ${res.status}`);
         return;
@@ -255,7 +263,10 @@ function ReportsInner() {
       }
       setErr("");
       setData(j.report ?? null);
-      setUpdatedAt(new Date());
+      // เวลาที่ชุดข้อมูลถูกดึงจากฐานจริง (เซิร์ฟเวอร์จำไว้ได้ถึง 15 นาที) — ไม่ใช่เวลาที่หน้านี้กดขอ
+      const at = j.cachedAt ? new Date(j.cachedAt) : new Date();
+      setUpdatedAt(Number.isNaN(at.getTime()) ? new Date() : at);
+      setSlowPath(j.via === "pick");
     } catch {
       setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — เช็คอินเทอร์เน็ตแล้วลองใหม่");
     } finally {
@@ -351,6 +362,13 @@ function ReportsInner() {
             />
           </label>
         </div>
+      )}
+
+      {slowPath && (
+        <p className="mt-4 rounded-[20px] px-4 py-3 text-[13px]" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
+          ⏳ หน้านี้ยังดึงออเดอร์แบบเต็มก้อน (ช้ากว่าที่ควร 3–4 เท่า) — รันไฟล์ <code>supabase/orders-lite.sql</code> ใน Supabase → SQL Editor ครั้งเดียว
+          ระบบจะสลับไปใช้ทางเร็วเองภายใน 10 นาที ไม่ต้องแก้โค้ด/deploy ซ้ำ
+        </p>
       )}
 
       {err && !data && (

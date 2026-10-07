@@ -5,6 +5,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withQuoteLog, type Quote } from "@/lib/quotes";
 import { syncQuoteMemberTier } from "@/lib/server/quote-member-tier";
+import { pickKeys, QUOTE_LIST_KEYS } from "@/lib/server/orders-lite";
 
 export const runtime = "nodejs";
 
@@ -13,20 +14,28 @@ const TABLE = "quotes";
 const needsSetup = (msg?: string) =>
   !!msg && (/relation .* does not exist/i.test(msg) || /schema cache/i.test(msg) || /could not find the table/i.test(msg));
 
-/** รายการใบเสนอราคาทั้งหมด (ใหม่ → เก่า) */
-export async function GET() {
+/**
+ * รายการใบเสนอราคาทั้งหมด (ใหม่ → เก่า)
+ * `?lite=1` = ไม่เอา `log` (หน้ารายการไม่โชว์ประวัติ — log เป็น 1/4 ของก้อน) · หน้ารายละเอียดยังขอเต็ม
+ */
+export async function GET(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ quotes: [] });
 
-  const { data, error } = await sb.from(TABLE).select("data").order("created_at", { ascending: false });
+  const lite = new URL(req.url).searchParams.get("lite") === "1";
+  const { data, error } = await sb
+    .from(TABLE)
+    .select(lite ? pickKeys(QUOTE_LIST_KEYS) : "data")
+    .order("created_at", { ascending: false });
   if (error) {
     if (needsSetup(error.message)) return NextResponse.json({ quotes: [], needsSetup: true });
     return NextResponse.json({ error: error.message, quotes: [] }, { status: 500 });
   }
-  return NextResponse.json({ quotes: (data ?? []).map((r) => r.data as Quote) });
+  const quotes = (data ?? []).map((r) => (lite ? (r as unknown as Quote) : ((r as unknown as { data: Quote }).data)));
+  return NextResponse.json({ quotes });
 }
 
 /** สร้างใบเสนอราคาใหม่ (ว่าง ๆ แล้วไปกรอกในหน้ารายละเอียด) */

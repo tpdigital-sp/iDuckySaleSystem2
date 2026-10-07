@@ -74,7 +74,8 @@ function QuotesPageInner() {
   const [newErr, setNewErr] = useState("");
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/quotes", { cache: "no-store" });
+    // lite=1 → ไม่ขน log (ประวัติแก้) — หน้านี้ใช้แค่ชื่อ/สถานะ/ยอด
+    const res = await fetch("/api/admin/quotes?lite=1", { cache: "no-store" });
     const j = await res.json();
     setNeedsSetup(Boolean(j.needsSetup));
     setQuotes(j.quotes ?? []);

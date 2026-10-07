@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { fetchOrdersByStatus } from "@/lib/server/orders-lite";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { can } from "@/lib/permissions";
-import { orderTotal, proofsOf, type Order } from "@/lib/admin-data";
+import { orderTotal, proofsOf } from "@/lib/admin-data";
 import { isWipOrder, type WipOrder, type WipResponse } from "@/lib/wip-report";
 
 export const runtime = "nodejs";
@@ -30,19 +31,15 @@ export async function GET() {
 
   // ให้ Postgres กรองสถานะก่อน — ใบที่จบ/ยกเลิกเป็นส่วนใหญ่ของตาราง ไม่ต้องลากมา
   // (ใบที่เด้งกลับ "รอชำระเงิน" เพราะค้างส่วนต่าง มี reopenedFrom → ต้องเอามาด้วยแล้วค่อยคัดใน isWipOrder)
-  const { data, error } = await sb
-    .from("orders")
-    .select("data")
-    .in("data->>status", ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต", "รอชำระเงิน"])
-    .order("created_at", { ascending: false });
-  if (error) {
-    console.error("[orders/wip] ถามฐานไม่สำเร็จ:", error.message);
-    return NextResponse.json({ ok: false, error: error.message, orders: [] } satisfies WipResponse, { status: 500 });
+  // 🪶 ดึงแบบเบา (orders-lite.ts) — ของเดิม select("data") ขน log/รูปแพ็คมาด้วย 1.9 MB ทั้งที่ส่งต่อแค่ 0.6 MB
+  const res = await fetchOrdersByStatus(sb, ["ชำระแล้ว", "รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ", "กำลังผลิต", "รอชำระเงิน"]);
+  if (res.error) {
+    console.error("[orders/wip] ถามฐานไม่สำเร็จ:", res.error);
+    return NextResponse.json({ ok: false, error: res.error, orders: [] } satisfies WipResponse, { status: 500 });
   }
 
   const orders: WipOrder[] = [];
-  for (const r of data ?? []) {
-    const o = r.data as Order;
+  for (const o of res.rows) {
     if (!isWipOrder(o)) continue;
     orders.push({
       id: o.id,

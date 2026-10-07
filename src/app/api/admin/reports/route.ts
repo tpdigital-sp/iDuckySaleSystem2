@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderCostsInRange } from "@/lib/server/stock";
+import { reportInputs } from "@/lib/server/report-inputs";
 import { bkkParts } from "@/lib/bangkok-time";
 import { buildReport, previousRange, shiftDay } from "@/lib/reports";
-import type { Order } from "@/lib/admin-data";
-import type { Quote } from "@/lib/quotes";
 
 export const runtime = "nodejs";
 
@@ -20,36 +18,6 @@ const isYmd = (s: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.te
 const EDGE_DAYS = 10;
 /** ตัดสต๊อกตอน "เงินเข้า" ซึ่งห่างจากวันเปิดใบได้หลายวัน (ใบมัดจำ/ใบที่ลูกค้าโอนช้า) → เปิดหน้าต่างกว้างกว่ามาก */
 const COST_EDGE_DAYS = 60;
-const PAGE = 1000;
-
-/** ดึงทั้งตารางแบบแบ่งหน้า — PostgREST คืนสูงสุด 1000 แถวต่อครั้ง ถ้าไม่วนจะได้ยอดขายขาดแบบเงียบ ๆ */
-async function fetchRange<T>(
-  sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
-  table: string,
-  fromIso: string,
-  toIso: string
-): Promise<{ rows: T[]; needsSetup?: boolean; error?: string }> {
-  const rows: T[] = [];
-  for (let page = 0; page < 40; page++) {
-    const { data, error } = await sb
-      .from(table)
-      .select("data")
-      .gte("created_at", fromIso)
-      .lte("created_at", toIso)
-      .order("created_at", { ascending: false })
-      .range(page * PAGE, page * PAGE + PAGE - 1);
-    if (error) {
-      if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|does not exist/i.test(error.message))
-        return { rows: [], needsSetup: true };
-      return { rows: [], error: error.message };
-    }
-    const chunk = (data ?? []).map((r) => (r as { data: T }).data).filter(Boolean);
-    rows.push(...chunk);
-    if (chunk.length < PAGE) break;
-  }
-  return { rows };
-}
-
 /** วันนี้ตามเวลาไทยเป็น YYYY-MM-DD (เซิร์ฟเวอร์รันเป็น UTC — ห้ามใช้ toISOString ตรง ๆ) */
 function todayBkk(): string {
   const p = bkkParts();
@@ -61,8 +29,10 @@ function todayBkk(): string {
  * GET /api/admin/reports?from=2026-09-01&to=2026-09-15
  */
 export async function GET(req: Request) {
+  const t0 = Date.now();
   const gate = await requirePerm("reports.view");
   if (gate.res) return gate.res;
+  const tGate = Date.now() - t0;
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
@@ -79,21 +49,33 @@ export async function GET(req: Request) {
   const wideFrom = `${shiftDay(prev.from, -EDGE_DAYS)}T00:00:00+07:00`;
   const wideTo = `${shiftDay(to, EDGE_DAYS)}T23:59:59+07:00`;
 
-  const [ordersRes, quotesRes, costs] = await Promise.all([
-    fetchRange<Order>(sb, "orders", wideFrom, wideTo),
-    fetchRange<Quote>(sb, "quotes", wideFrom, wideTo),
-    orderCostsInRange(`${shiftDay(prev.from, -COST_EDGE_DAYS)}T00:00:00+07:00`, `${shiftDay(to, COST_EDGE_DAYS)}T23:59:59+07:00`),
-  ]);
+  // 🪶 ดึงแบบเบา (orders-lite.ts) — ของเดิม select("data") ขนทั้ง log/ลาย 9 MB ต่อการเปิดหน้า 1 ครั้ง = 5–7 วิ
+  // 🪶 วัตถุดิบมาจากความจำ (60 วิสด · 15 นาที stale-while-revalidate) — ดู report-inputs.ts · ?fresh=1 ข้ามความจำ
+  const inputs = await reportInputs(
+    sb,
+    {
+      wideFrom,
+      wideTo,
+      costFrom: `${shiftDay(prev.from, -COST_EDGE_DAYS)}T00:00:00+07:00`,
+      costTo: `${shiftDay(to, COST_EDGE_DAYS)}T23:59:59+07:00`,
+    },
+    { fresh: url.searchParams.get("fresh") === "1" }
+  );
+  if (inputs.needsSetup) return NextResponse.json({ needsSetup: true }, { status: 200 });
+  if (inputs.error) return NextResponse.json({ error: inputs.error }, { status: 500 });
 
-  if (ordersRes.needsSetup) return NextResponse.json({ needsSetup: true }, { status: 200 });
-  if (ordersRes.error) return NextResponse.json({ error: ordersRes.error }, { status: 500 });
-
-  const report = buildReport({
-    orders: ordersRes.rows,
-    quotes: quotesRes.rows,
-    costs,
-    from,
-    to,
+  const report = buildReport({ orders: inputs.orders, quotes: inputs.quotes, costs: inputs.costs, from, to });
+  const took = { gate: tGate, ...inputs.took, total: Date.now() - t0 };
+  if (!inputs.fromCache) console.log(`[reports] ${from}→${to} ${inputs.orders.length} ใบ ผ่าน ${inputs.via}`, took);
+  return NextResponse.json({
+    ok: true,
+    report,
+    today,
+    /** "view" = วิว orders_lite ทำงาน · "pick" = ยังหยิบจากตาราง orders ตรง ๆ (ช้ากว่า 3–4 เท่า) */
+    via: inputs.via,
+    /** เวลาที่ชุดข้อมูลนี้ถูกดึงจากฐาน (ISO) — หน้าจอโชว์ "ดึงเมื่อ" จากค่านี้ ไม่ใช่เวลาที่กด */
+    cachedAt: new Date(inputs.at).toISOString(),
+    fromCache: inputs.fromCache,
+    took,
   });
-  return NextResponse.json({ ok: true, report, today });
 }
