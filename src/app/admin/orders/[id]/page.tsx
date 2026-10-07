@@ -2,7 +2,7 @@
 
 import { shrinkImageFile } from "@/lib/shrink-image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairOptions, giftPairsOf } from "@/lib/gifts";
 import Link from "next/link";
 import OverpayBox from "./OverpayBox";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
@@ -160,6 +160,7 @@ import { btnSm, btnSmNeutral, card, faint, muted, shortTime } from "@/lib/admin-
 import { Banner, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
+import GiftPairPicker from "@/components/GiftPairPicker";
 import FollowUpModal, { type FollowUpForm } from "@/components/admin/FollowUpModal";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
@@ -1479,6 +1480,8 @@ export default function AdminOrderDetailPage() {
   const [giftArtDragOver, setGiftArtDragOver] = useState<string | null>(null);
   /** กำลังอัป "แบบงานของแถม" ให้ลูกค้าตรวจอยู่โปรไหน */
   const [giftProofBusy, setGiftProofBusy] = useState<string | null>(null);
+  /** 🔗 หน้าต่างจับคู่แบบของแถม ↔ แบบสินค้า (เปิดทีละรูป) */
+  const [giftPairPick, setGiftPairPick] = useState<{ promoId: string; url: string } | null>(null);
   /** สถานะที่รอเปลี่ยน "หลังแนบสลิปเสร็จ" — ตั้งตอนกด "แนบสลิปตอนนี้" ในกล่องเตือน */
   const pendingStatus = useRef<OrderStatus | null>(null);
   /**
@@ -4311,6 +4314,25 @@ export default function AdminOrderDetailPage() {
       return proofs.length ? { ...g, proofs } : { ...g, proofs: undefined, proofStatus: undefined, proofNote: undefined };
     });
     const next = withLog({ ...order, gifts }, actor, "ลบแบบของแถม", order.gifts?.find((g) => g.promoId === promoId)?.name);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** 🔗 จับคู่แบบของแถม (รองหลัง) กับแบบสินค้า — ฝ่ายแพ็คจะเห็นว่ารองหลังลายไหนใส่กับชิ้นไหน */
+  function setGiftProofPair(promoId: string, url: string, pairUrl: string) {
+    if (!order) return;
+    const gifts = (order.gifts ?? []).map((g) =>
+      g.promoId !== promoId
+        ? g
+        : {
+            ...g,
+            proofs: (g.proofs ?? []).map((p) => (p.url !== url ? p : { ...p, pairUrl: pairUrl || undefined, pairAt: new Date().toISOString() })),
+          }
+    );
+    const g = order.gifts?.find((x) => x.promoId === promoId);
+    const k = (g?.proofs ?? []).findIndex((p) => p.url === url);
+    const to = giftPairOptions(order.items).find((o) => o.url === pairUrl)?.label;
+    const next = withLog({ ...order, gifts }, actor, "จับคู่แบบของแถม", `🎁 ${g?.name ?? "ของแถม"} รูปที่ ${k + 1} → ${to ?? "ไม่ระบุ"}`);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
   }
@@ -7571,7 +7593,8 @@ export default function AdminOrderDetailPage() {
                       {(g.proofs ?? []).length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {(g.proofs ?? []).map((p, k) => (
-                            <span key={p.url} className="group relative block">
+                            <span key={p.url} className="flex flex-col gap-1">
+                            <span className="group relative block">
                               <button
                                 type="button"
                                 onClick={() => setLightbox({ src: p.url, alt: `แบบของแถม รูปที่ ${k + 1}`, caption: `ของแถม — ${g.name}` })}
@@ -7603,6 +7626,38 @@ export default function AdminOrderDetailPage() {
                                   ✕
                                 </button>
                               )}
+                            </span>
+                            {/* 🔗 รูปนี้ใส่คู่กับแบบสินค้ารูปไหน — ฝ่ายแพ็คเห็นคู่กันในกล่องของแถม (OD-261002-9236 · 7 ต.ค. 69) */}
+                            {/* 🔗 ใต้รูปเหลือปุ่มเดียว: จับคู่แล้วโชว์รูปคู่รูปเดียว · ยังไม่จับ = ปุ่มเหลือง → แตะเปิดหน้าต่างเลือกรูปใหญ่
+                                (เดิมเรียงรูปสินค้าทุกรูปใต้รองหลังทุกรูป ลายตาเมื่อมีหลายลาย · เจ้าของร้านทัก 7 ต.ค. 69) */}
+                            {giftPairOptions(order.items).length > 0 &&
+                              (() => {
+                                const pair = giftPairOptions(order.items).find((o) => o.url === p.pairUrl);
+                                const can = mayEdit || mayProof;
+                                return pair ? (
+                                  <button
+                                    type="button"
+                                    disabled={!can}
+                                    onClick={() => setGiftPairPick({ promoId: g.promoId, url: p.url })}
+                                    title={`ใส่คู่กับ ${pair.label}${pair.qty ? ` ×${pair.qty}` : ""} — แตะเพื่อเปลี่ยน`}
+                                    className="flex w-16 items-center gap-1 rounded-md bg-white p-0.5 ring-1 ring-violet-300 hover:ring-2 hover:ring-violet-500"
+                                  >
+                                    <span className="text-[10px] font-black text-violet-600">↔</span>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={pair.url} alt={pair.label} className="h-8 w-8 rounded object-contain" />
+                                    {pair.qty ? <span className="text-[9px] font-bold text-slate-600">×{pair.qty}</span> : null}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={!can}
+                                    onClick={() => setGiftPairPick({ promoId: g.promoId, url: p.url })}
+                                    className="w-16 rounded-md bg-amber-50 px-1 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-amber-300 hover:bg-amber-100 disabled:opacity-60"
+                                  >
+                                    🔗 จับคู่
+                                  </button>
+                                );
+                              })()}
                             </span>
                           ))}
                         </div>
@@ -9973,6 +10028,29 @@ export default function AdminOrderDetailPage() {
         }}
       />
       {confirmDialog}
+      {/* 🔗 หน้าต่างจับคู่แบบของแถม (ใช้ร่วมกับหน้าลูกค้า · แขวน body ผ่าน Portal) */}
+      {giftPairPick &&
+        (() => {
+          const g = order.gifts?.find((x) => x.promoId === giftPairPick.promoId);
+          const k = (g?.proofs ?? []).findIndex((p) => p.url === giftPairPick.url);
+          const cur = g?.proofs?.[k];
+          if (!g || !cur) return null;
+          return (
+            <GiftPairPicker
+              giftName={g.name}
+              proofUrl={cur.url}
+              proofIndex={k}
+              options={giftPairOptions(order.items)}
+              current={cur.pairUrl}
+              usedBy={(u) => (g.proofs ?? []).findIndex((p, j) => j !== k && p.pairUrl === u)}
+              onPick={(u) => {
+                setGiftProofPair(g.promoId, cur.url, u);
+                setGiftPairPick(null);
+              }}
+              onClose={() => setGiftPairPick(null)}
+            />
+          );
+        })()}
       {lightbox && (
         <ImageLightbox
           src={lightbox.src}
@@ -10997,6 +11075,9 @@ function PackView({
             <ul className="mt-1.5 space-y-2">
               {(order.gifts ?? []).map((g) => {
                 const pics = giftPackImages(g);
+                const dq = giftDesignQtys(g, order.items);
+                const pairs = giftPairsOf(g, order.items);
+                const unpaired = pics.length > 1 && pics[0].source === "proof" && pairs.some((x) => !x) && giftPairOptions(order.items).length > 0;
                 return (
                   <li key={g.promoId} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-100">
                     {giftLinesOf(g).map((ln, k) => (
@@ -11005,18 +11086,32 @@ function PackView({
                         <span className="shrink-0 text-lg font-black tabular-nums">×{ln.qty}</span>
                       </p>
                     ))}
-                    {giftArtLabel(g) && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">🎨 {giftArtLabel(g)}</p>}
+                    {/* มีแบบของแถมแล้ว → บรรทัด 🖼 ด้านล่างพอ ไม่ต้องขึ้นที่มาลาย (คนแพ็คเคยอ่าน "ใช้ลายเดียวกับสินค้า" แล้วงง · 7 ต.ค. 69) */}
+                    {giftArtLabel(g) && !giftProofLabel(g) && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">🎨 {giftArtLabel(g)}</p>}
                     {giftProofLabel(g) && <p className="mt-0.5 text-[11px] font-semibold text-slate-500">🖼 {giftProofLabel(g)}</p>}
+                    {giftDesignQtyLabel(dq) && <p className="mt-0.5 text-sm font-extrabold text-amber-800">🔢 {giftDesignQtyLabel(dq)}</p>}
+                    {unpaired && (
+                      <p className="mt-1 rounded-lg bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-800">
+                        ⚠️ กราฟฟิกยังไม่ได้จับคู่ว่ารองหลังรูปไหนใส่กับชิ้นไหน — แจ้งกราฟฟิกเลือก “🔗 คู่กับ” ใต้แบบของแถมในหน้าออเดอร์
+                      </p>
+                    )}
                     {pics.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {pics.map((x, k) => (
-                          <a key={`${x.url}-${k}`} href={x.url} target="_blank" rel="noreferrer" className="relative block">
+                          <div key={`${x.url}-${k}`} className={pairs[k] ? "rounded-xl bg-white p-1.5 ring-1 ring-amber-200" : ""}>
+                          <div className="flex items-center gap-1.5">
+                          <a href={x.url} target="_blank" rel="noreferrer" className="relative block">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={x.url}
                               alt={x.source === "proof" ? `แบบของแถม ${k + 1}` : `ลายของแถม ${k + 1}`}
                               className="h-24 w-24 rounded-lg bg-white object-contain ring-1 ring-slate-200"
                             />
+                            {dq?.sure && dq.qtys[k] ? (
+                              <span className="absolute right-1 top-1 rounded-md bg-slate-900 px-1.5 text-xs font-black tabular-nums text-white">
+                                ×{dq.qtys[k]}
+                              </span>
+                            ) : null}
                             {x.review && (
                               <span
                                 className={`absolute bottom-1 left-1 rounded px-1 text-[9px] font-bold text-white ${
@@ -11027,6 +11122,22 @@ function PackView({
                               </span>
                             )}
                           </a>
+                          {pairs[k] && (
+                            <>
+                              <span className="text-base font-black text-amber-600">↔</span>
+                              <a href={pairs[k]!.url} target="_blank" rel="noreferrer" className="block">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={pairs[k]!.url} alt={pairs[k]!.label} className="h-24 w-24 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
+                              </a>
+                            </>
+                          )}
+                          </div>
+                          {pairs[k] && (
+                            <p className="mt-1 text-center text-[11px] font-bold text-slate-700">
+                              รองหลังรูปที่ {k + 1} ใส่กับ {pairs[k]!.label}
+                            </p>
+                          )}
+                          </div>
                         ))}
                       </div>
                     )}

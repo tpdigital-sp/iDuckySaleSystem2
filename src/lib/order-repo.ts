@@ -273,6 +273,27 @@ export async function reviewGiftProof(
   }
 }
 
+/** 🔗 ลูกค้าจับคู่แบบของแถมรูปที่ proofIndex กับแบบสินค้า (pairUrl ว่าง = ยกเลิกคู่) */
+export async function pairGiftProof(
+  orderId: string,
+  key: string,
+  giftId: string,
+  proofIndex: number,
+  pairUrl: string
+): Promise<{ ok: boolean; order?: Order; error?: string }> {
+  try {
+    const res = await fetch("/api/orders/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, key, giftId, action: "pair", proofIndex, pairUrl }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true, order: data.order as Order } : { ok: false, error: data.error ?? "บันทึกคู่ไม่สำเร็จ" };
+  } catch {
+    return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
+  }
+}
+
 export async function uploadProof(
   orderId: string,
   itemIndex: number,

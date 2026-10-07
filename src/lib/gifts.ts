@@ -273,7 +273,12 @@ export function giftNeedsArtwork(promo: GiftPromo | null | undefined): boolean {
 export function giftArtLabel(g: OrderGift): string | null {
   if (!g.needArtwork) return null;
   const n = (g.artworkUrls ?? []).length;
-  return n > 0 ? `ลายเฉพาะของแถม ${n} รูป (ลูกค้าแนบมา)` : "ใช้ลายเดียวกับสินค้าที่สั่ง";
+  if (n > 0) return `ลายเฉพาะของแถม ${n} รูป (ลูกค้าแนบมา)`;
+  // 🖼 ร้านทำแบบของแถมแยกแล้ว (เช่น รองหลัง 2 ลาย) → "ใช้ลายเดียวกับสินค้า" ที่ลูกค้าเลือกตอนสั่งไม่จริงแล้ว ชวนคนแพ็คหยิบผิด
+  //    ยึดแบบของแถมเป็นหลัก (OD-261002-9236 · 7 ต.ค. 69)
+  const p = (g.proofs ?? []).filter((x) => x?.url).length;
+  if (p > 0) return `ลายตามแบบของแถม ${p} ลายที่ทำให้ (ดูรูปแบบของแถม)`;
+  return "ใช้ลายเดียวกับสินค้าที่สั่ง";
 }
 
 /**
@@ -284,10 +289,79 @@ export function giftArtLabel(g: OrderGift): string | null {
  *    และลูกค้าอนุมัติแล้ว → ฝ่ายแพ็คไม่เห็นรูปเลย ต้องไปเปิดหน้าออเดอร์เอง
  *    กติกาเดียวกับรายการสินค้า (coversOf/boxUnits): มีแบบใช้แบบ ไม่มีค่อยใช้ลายลูกค้า
  */
-export function giftPackImages(g: OrderGift): { url: string; source: "proof" | "artwork"; review?: "อนุมัติ" | "ขอแก้ไข" }[] {
+export function giftPackImages(g: OrderGift): { url: string; source: "proof" | "artwork"; review?: "อนุมัติ" | "ขอแก้ไข"; pairUrl?: string }[] {
   const proofs = (g.proofs ?? []).filter((p) => p?.url);
-  if (proofs.length) return proofs.map((p) => ({ url: p.url, source: "proof" as const, ...(p.review ? { review: p.review } : {}) }));
+  if (proofs.length)
+    return proofs.map((p) => ({ url: p.url, source: "proof" as const, ...(p.review ? { review: p.review } : {}), ...(p.pairUrl ? { pairUrl: p.pairUrl } : {}) }));
   return (g.artworkUrls ?? []).filter(Boolean).map((url) => ({ url, source: "artwork" as const }));
+}
+
+/**
+ * 🔢 จำนวนต่อลายของของแถม (รองหลัง) — แบบของแถมไม่มีช่องจำนวนเหมือนแบบสินค้า
+ *    ฝ่ายแพ็คเห็นรูป 2 ลาย ×60 แต่ไม่รู้ลายละเท่าไหร่ (OD-261002-9236 · 7 ต.ค. 69)
+ *    ลำดับ: แบบของแถมที่ใส่ qty ไว้เอง → ยืมจำนวนต่อลายของรายการสินค้าที่ใช้ลายชุดเดียวกัน
+ *    (จำนวนลายตรงกับรูปของแถม + ผลรวมเท่าจำนวนของแถมที่ได้จริง เท่านั้น — ไม่ตรงไม่เดา)
+ * sure = ผูกจำนวนกับรูปได้แน่ (qty ในแบบเอง หรือทุกลายเท่ากัน) · ไม่ sure = รู้แค่ชุดตัวเลขตามลำดับลายสินค้า
+ *    เพราะกราฟฟิกอาจอัปแบบของแถมคนละลำดับกับลายสินค้า (เคสนี้รูปแรกของแถม = ลายที่ 2 ของสินค้า)
+ */
+export type GiftPairItem = {
+  name: string;
+  artworkUrls?: string[];
+  artworkBackUrls?: string[];
+  artworkQty?: Record<string, number>;
+  proofs?: { url: string; qty?: number }[];
+};
+
+/** แบบ/ลายสินค้าที่ของแถมจับคู่ได้ — มีแบบใช้แบบ (เลข "รูปที่" ตรงกับหน้าแพ็ค) ไม่มีค่อยใช้ลายที่ลูกค้าแนบ */
+export function giftPairOptions(items: GiftPairItem[] | null | undefined): { url: string; label: string; qty?: number }[] {
+  const list = (items ?? []).filter((it) => (it.proofs ?? []).length || (it.artworkUrls ?? []).length);
+  return list.flatMap((it) => {
+    const name = list.length > 1 ? `${it.name} ` : "";
+    const proofs = (it.proofs ?? []).filter((p) => p?.url);
+    if (proofs.length) return proofs.map((p, k) => ({ url: p.url, label: `${name}รูปที่ ${k + 1}`, ...(num(p.qty) > 0 ? { qty: num(p.qty) } : {}) }));
+    return (it.artworkUrls ?? []).map((u, k) => ({ url: u, label: `${name}ลายที่ ${k + 1}`, ...(num(it.artworkQty?.[u]) > 0 ? { qty: num(it.artworkQty?.[u]) } : {}) }));
+  });
+}
+
+/** คู่ของรูปของแถมแต่ละรูป (ลำดับเดียวกับ giftPackImages) — null = รูปนั้นยังไม่ได้จับคู่ / คู่ถูกลบไปแล้ว */
+export function giftPairsOf(g: OrderGift, items: GiftPairItem[] | null | undefined): ({ url: string; label: string; qty?: number } | null)[] {
+  const opts = giftPairOptions(items);
+  return giftPackImages(g).map((x) => (x.pairUrl ? opts.find((o) => o.url === x.pairUrl) ?? null : null));
+}
+
+export function giftDesignQtys(
+  g: OrderGift,
+  items: GiftPairItem[] | null | undefined,
+): { qtys: number[]; sure: boolean } | null {
+  const pics = giftPackImages(g);
+  if (pics.length < 2) return null;
+  // 🔗 จับคู่ครบทุกรูปแล้ว → จำนวนตามแบบสินค้าที่คู่กัน (ชิ้นต่อชิ้น) ผูกกับรูปได้แน่
+  const pairs = giftPairsOf(g, items);
+  if (pairs.every((x) => x?.qty)) return { qtys: pairs.map((x) => x!.qty!), sure: true };
+  const own = (g.proofs ?? []).filter((p) => p?.url).map((p) => num(p.qty));
+  if (pics[0].source === "proof" && own.length === pics.length && own.every((q) => q > 0)) return { qtys: own, sure: true };
+  if ((g.artworkUrls ?? []).length) return null; // ลายเฉพาะของแถม — ไม่มีจำนวนต่อลายให้ยืม
+  const want = giftLinesOf(g)[0]?.qty ?? 0;
+  const fits = (l: number[]) => l.length === pics.length && l.every((q) => q > 0) && l.reduce((a, b) => a + b, 0) === want;
+  const found: number[][] = [];
+  for (const it of items ?? []) {
+    const fromProofs = (it.proofs ?? []).map((p) => num(p.qty)).filter((q) => q > 0);
+    const back = new Set(it.artworkBackUrls ?? []);
+    const fromArt = (it.artworkUrls ?? []).filter((u) => !back.has(u)).map((u) => num(it.artworkQty?.[u]));
+    const l = fits(fromProofs) ? fromProofs : fits(fromArt) ? fromArt : null;
+    if (l && !found.some((f) => f.join() === l.join())) found.push(l);
+  }
+  if (found.length !== 1) return null;
+  const qtys = found[0];
+  return { qtys, sure: qtys.every((q) => q === qtys[0]) };
+}
+
+/** ข้อความบรรทัดเดียวของ giftDesignQtys — "ลายละ 30 ชิ้น" / "ตามลายสินค้า: ลายที่ 1 × 40 · ลายที่ 2 × 20" */
+export function giftDesignQtyLabel(d: { qtys: number[]; sure: boolean } | null): string | null {
+  if (!d) return null;
+  if (d.qtys.every((q) => q === d.qtys[0])) return `ลายละ ${d.qtys[0]} ชิ้น (${d.qtys.length} ลาย)`;
+  const parts = d.qtys.map((q, i) => `${d.sure ? "แบบของแถมรูป" : "ลาย"}ที่ ${i + 1} × ${q}`).join(" · ");
+  return d.sure ? parts : `ตามลายสินค้า: ${parts} — เทียบลายให้ตรงก่อนใส่กล่อง`;
 }
 
 /** บรรทัดสถานะแบบของแถม (ใบงาน/หน้าแพ็ค) — null = ยังไม่มีแบบ */

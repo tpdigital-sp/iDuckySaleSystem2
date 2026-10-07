@@ -79,8 +79,13 @@ export function keepCustomerVerdict<T extends VerdictHolder>(cur: T | undefined,
   const out: T = { ...inc };
   const curByUrl = new Map((cur.proofs ?? []).map((p) => [p.url, p]));
   if (Array.isArray(inc.proofs)) {
-    out.proofs = inc.proofs.map((p) => {
-      const c = curByUrl.get(p.url);
+    out.proofs = inc.proofs.map((p0) => {
+      const c = curByUrl.get(p0.url);
+      // 🔗 คู่ของแบบของแถม: ลูกค้าจับคู่จากหน้าออเดอร์ได้ → หน้าจอแอดมินที่ค้างไว้ต้องไม่ทับคู่ที่ใหม่กว่า (7 ต.ค. 69)
+      const p =
+        c?.pairAt && (!p0.pairAt || c.pairAt > p0.pairAt) && c.pairUrl !== p0.pairUrl
+          ? { ...p0, pairUrl: c.pairUrl, pairAt: c.pairAt }
+          : p0;
       if (!c?.review) return p;
       const unseen = !p.review || (!!c.reviewAt && c.reviewAt > clientSavedAt);
       return unseen && (p.review !== c.review || p.reviewNote !== c.reviewNote)

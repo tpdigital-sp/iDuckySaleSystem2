@@ -3,7 +3,8 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useState } from "react";
-import { giftLinesOf, giftArtLabel } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPairOptions } from "@/lib/gifts";
+import GiftPairPicker from "@/components/GiftPairPicker";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import { useParams, useRouter } from "next/navigation";
@@ -13,7 +14,7 @@ import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import { addOnDisplayName, balanceNet, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpayOutstanding, paymentEntries, resolveSlipPhase } from "@/lib/payments";
-import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
+import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, pairGiftProof, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
 import { usePolling } from "@/lib/use-polling";
 import { appendLotLines, setAppendTarget } from "@/lib/append-order";
@@ -198,6 +199,8 @@ export default function CustomerOrderPage() {
   /* ขยายดูรูปของแถม — อ้างด้วย promoId+ตำแหน่ง (ไม่เก็บ src ตรง ๆ) ให้ปุ่มอนุมัติใน lightbox ใช้ข้อมูลล่าสุดเสมอ */
   const [giftLightbox, setGiftLightbox] = useState<{ promoId: string; kind: "art" | "proof"; idx: number } | null>(null);
   const [giftLbEdit, setGiftLbEdit] = useState(false);
+  /* 🔗 จับคู่แบบของแถม ↔ แบบสินค้า (ลูกค้ารู้ดีที่สุดว่ารองหลังลายไหนคู่กับชิ้นไหน · 7 ต.ค. 69) */
+  const [giftPairPick, setGiftPairPick] = useState<{ promoId: string; idx: number } | null>(null);
   const [giftLbNote, setGiftLbNote] = useState("");
   const [giftLbConfirm, setGiftLbConfirm] = useState(false);
   /* ขยายดูภาพของในกล่องก่อนปิด — เก็บตำแหน่งรูป (ไม่ใช่ src) ให้ปุ่มเลื่อนรูปใช้รายการล่าสุดเสมอ */
@@ -542,6 +545,19 @@ export default function CustomerOrderPage() {
     setGiftEditing(null);
     setGiftNote("");
     return true;
+  }
+
+  async function pairGift(promoId: string, idx: number, pairUrl: string) {
+    setActionErr("");
+    setGiftBusy(promoId);
+    const res = await pairGiftProof(orderId, orderKey, promoId, idx, pairUrl);
+    setGiftBusy(null);
+    if (!res.ok) {
+      setActionErr(res.error ?? "บันทึกคู่ไม่สำเร็จ");
+      return;
+    }
+    if (res.order) setOrder(res.order);
+    setGiftPairPick(null);
   }
 
   /**
@@ -1980,8 +1996,8 @@ export default function CustomerOrderPage() {
                       <>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {gProofs.map((p, j) => (
+                            <span key={`${p.url}-${j}`} className="flex w-24 flex-col gap-1">
                             <button
-                              key={`${p.url}-${j}`}
                               type="button"
                               onClick={() => setGiftLightbox({ promoId: g.promoId, kind: "proof", idx: j })}
                               className="w-24"
@@ -1999,6 +2015,33 @@ export default function CustomerOrderPage() {
                                 )}
                               </span>
                             </button>
+                            {/* 🔗 แบบของแถมหลายลาย → ลูกค้าบอกได้เองว่ารูปนี้ใส่คู่กับชิ้นไหน (ร้านแพ็คตามนี้) */}
+                            {gProofs.length > 1 &&
+                              giftPairOptions(order.items).length > 1 &&
+                              !(order.tracking ?? "").trim() &&
+                              (() => {
+                                const pair = giftPairOptions(order.items).find((o) => o.url === p.pairUrl);
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => setGiftPairPick({ promoId: g.promoId, idx: j })}
+                                    className={`flex items-center justify-center gap-1 rounded-lg px-1 py-1 text-[11px] font-bold ring-1 ${
+                                      pair ? "bg-white text-violet-700 ring-violet-300" : "bg-amber-50 text-amber-700 ring-amber-300"
+                                    }`}
+                                  >
+                                    {pair ? (
+                                      <>
+                                        ↔ {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={pair.url} alt={pair.label} className="h-6 w-6 rounded object-contain" />
+                                        {pair.qty ? `×${pair.qty}` : ""}
+                                      </>
+                                    ) : (
+                                      "🔗 คู่กับชิ้นไหน?"
+                                    )}
+                                  </button>
+                                );
+                              })()}
+                            </span>
                           ))}
                         </div>
                         <p className="mt-1.5 text-[11px] t-faint">แตะรูปเพื่อดูขนาดเต็ม</p>
@@ -2703,6 +2746,26 @@ export default function CustomerOrderPage() {
           );
         })()}
 
+      {/* 🔗 หน้าต่างจับคู่แบบของแถม ↔ แบบสินค้า */}
+      {giftPairPick &&
+        (() => {
+          const g = (order.gifts ?? []).find((x) => x.promoId === giftPairPick.promoId);
+          const cur = g?.proofs?.[giftPairPick.idx];
+          if (!g || !cur) return null;
+          return (
+            <GiftPairPicker
+              giftName={g.name}
+              proofUrl={cur.url}
+              proofIndex={giftPairPick.idx}
+              options={giftPairOptions(order.items)}
+              current={cur.pairUrl}
+              usedBy={(u) => (g.proofs ?? []).findIndex((p, j) => j !== giftPairPick.idx && p.pairUrl === u)}
+              busy={giftBusy === g.promoId}
+              onPick={(u) => void pairGift(g.promoId, giftPairPick.idx, u)}
+              onClose={() => setGiftPairPick(null)}
+            />
+          );
+        })()}
       {/* ขยายดูรูปของแถม — footer มีปุ่มอนุมัติ/ขอแก้เหมือน lightbox ของสินค้า (ตัดสินทั้งชุดของแถม) */}
       {giftLightbox &&
         (() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairsOf } from "@/lib/gifts";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -1509,24 +1509,41 @@ function OrderDocs({
                           🖼 {giftProofLabel(g)}
                         </span>
                       )}
+                      {giftDesignQtyLabel(giftDesignQtys(g, order.items)) && (
+                        <span className="mt-0.5 block pl-4 text-sm font-extrabold">🔢 {giftDesignQtyLabel(giftDesignQtys(g, order.items))}</span>
+                      )}
                       {(() => {
-                        const pics = giftPackImages(g).filter((x) => withProofs || x.source !== "proof");
+                        const all = giftPackImages(g);
+                        const dq = giftDesignQtys(g, order.items);
+                        const pairs = giftPairsOf(g, order.items);
+                        const pics = all.filter((x) => withProofs || x.source !== "proof");
                         if (!pics.length) return null;
                         return (
                           <span className="mt-1 flex flex-wrap gap-1.5 pl-4">
                             {pics.slice(0, 6).map((x, k) => (
-                              <span key={`${x.url}-${k}`} className="relative block">
+                              <span key={`${x.url}-${k}`} className="block">
+                              <span className="relative block">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={x.url}
                                   alt={x.source === "proof" ? `แบบของแถม ${k + 1}` : `ลายของแถม ${k + 1}`}
                                   className={`rounded border border-slate-300 ${x.source === "proof" ? "h-20 w-20 object-contain" : "h-14 w-14 object-cover"}`}
                                 />
+                                {dq?.sure && pics.length === all.length && dq.qtys[k] ? (
+                                  <span className="absolute right-0.5 top-0.5 rounded border border-black bg-white px-0.5 text-[10px] font-extrabold leading-tight text-black">
+                                    ×{dq.qtys[k]}
+                                  </span>
+                                ) : null}
                                 {x.review && (
                                   <span className="absolute bottom-0.5 left-0.5 rounded border border-black bg-white px-0.5 text-[9px] font-extrabold leading-tight text-black">
                                     {x.review === "อนุมัติ" ? "✓ อนุมัติ" : "✏ ขอแก้"}
                                   </span>
                                 )}
+                              </span>
+                              {/* 🔗 รองหลังรูปนี้ใส่กับแบบสินค้ารูปไหน (กราฟฟิกจับคู่ในหน้าออเดอร์ · 7 ต.ค. 69) */}
+                              {pics.length === all.length && pairs[k] && (
+                                <span className="block w-20 text-center text-[9px] font-extrabold leading-tight">↔ {pairs[k]!.label}</span>
+                              )}
                               </span>
                             ))}
                           </span>

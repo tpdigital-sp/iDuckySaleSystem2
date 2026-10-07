@@ -1,3 +1,4 @@
+import { giftPairOptions } from "@/lib/gifts";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofBlockers, proofsOf, withLog, withProofStage, type Order, type OrderStatus } from "@/lib/admin-data";
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
     action?: string;
     note?: string;
     proofIndex?: number;
+    pairUrl?: string;
   };
   try {
     body = await req.json();
@@ -48,7 +50,7 @@ export async function POST(req: Request) {
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
   if (!giftId && (!Number.isInteger(itemIndex) || itemIndex < 0))
     return NextResponse.json({ error: "ไม่ได้ระบุรายการสินค้า" }, { status: 400 });
-  if (action !== "approve" && action !== "request")
+  if (action !== "approve" && action !== "request" && !(action === "pair" && giftId))
     return NextResponse.json({ error: "คำสั่งไม่ถูกต้อง" }, { status: 400 });
   if (action === "request" && !note)
     return NextResponse.json({ error: "กรุณาระบุสิ่งที่ต้องการให้แก้ไข" }, { status: 400 });
@@ -67,6 +69,30 @@ export async function POST(req: Request) {
     if (!gift) return NextResponse.json({ error: "ไม่พบของแถมนี้ในออเดอร์" }, { status: 404 });
     if (!(gift.proofs ?? []).length) return NextResponse.json({ error: "ของแถมนี้ยังไม่มีแบบให้ตรวจ" }, { status: 409 });
     const now = new Date().toISOString();
+    // 🔗 ลูกค้าจับคู่แบบของแถมรูปนี้กับแบบสินค้า (ไม่แตะผลตรวจ/สถานะ) — รับเฉพาะ url ที่เป็นแบบ/ลายของรายการในใบนี้ (7 ต.ค. 69)
+    if (action === "pair") {
+      const target = gift.proofs?.[proofIndex ?? -1];
+      if (!target) return NextResponse.json({ error: "ไม่พบแบบของแถมรูปนี้" }, { status: 404 });
+      const pairUrl = (body.pairUrl ?? "").trim();
+      const opt = giftPairOptions(order.items).find((o) => o.url === pairUrl);
+      if (pairUrl && !opt) return NextResponse.json({ error: "ไม่พบแบบสินค้าที่เลือก" }, { status: 400 });
+      const paired = withLog(
+        {
+          ...order,
+          gifts: (order.gifts ?? []).map((g) =>
+            g.promoId !== giftId
+              ? g
+              : { ...g, proofs: (g.proofs ?? []).map((p, j) => (j !== proofIndex ? p : { ...p, pairUrl: pairUrl || undefined, pairAt: now })) }
+          ),
+        },
+        "ลูกค้า",
+        "จับคู่แบบของแถม",
+        `🎁 ${gift.name} รูปที่ ${(proofIndex ?? 0) + 1} → ${opt?.label ?? "ไม่ระบุ"}`
+      );
+      const { error: pairErr } = await updateOrder(sb, paired);
+      if (pairErr) return NextResponse.json({ error: pairErr.message }, { status: 500 });
+      return NextResponse.json({ ok: true, order: customerSafeOrder(paired) });
+    }
     const gifts = (order.gifts ?? []).map((g) =>
       g.promoId === giftId
         ? {
