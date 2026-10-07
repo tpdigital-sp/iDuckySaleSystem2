@@ -7,6 +7,7 @@
  * ทางเข้า: ลิ้นชัก SKU (เมนู ⋯ → พิมพ์ป้าย QR) · เมนู ⋯ หัวกลุ่ม (ทั้งกลุ่ม)
  * พิมพ์ด้วย window.print() จากเดสก์ท็อป/เบราว์เซอร์ปกติ — sidebar หลังบ้านซ่อนเองตอนพิมพ์ (print:hidden ใน AdminShell)
  * ไม่ส่ง ids = ทุกตัวที่นับสต๊อก (ไม่รวม "ไม่ต้องมี stock")
+ * ☑️ ติ๊กเลือกได้ว่าจะพิมพ์ใบไหน (เจ้าของร้านขอ 7 ต.ค. 69) — เปิดมาเลือกครบทุกใบ · ใบที่เอาติ๊กออกจางลงและไม่ถูกพิมพ์
  */
 
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -46,6 +47,15 @@ function LabelsInner() {
   const [err, setErr] = useState("");
   const [size, setSize] = useState<Size>("s");
   const [origin, setOrigin] = useState("");
+  /** ใบที่ "ไม่พิมพ์" (เอาติ๊กออก) — เก็บแบบตัดออก เปิดหน้ามาจึงเลือกครบทุกใบเหมือนเดิม */
+  const [skip, setSkip] = useState<Set<string>>(() => new Set());
+  const toggle = (id: string) =>
+    setSkip((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     setOrigin(publicOrigin());
@@ -64,6 +74,8 @@ function LabelsInner() {
     const by = new Map(all.map((i) => [i.id, i]));
     return ids.map((id) => by.get(id)).filter((x): x is Sku => !!x);
   }, [all, ids]);
+
+  const picked = rows.filter((r) => !skip.has(r.id)).length;
 
   const takeUrl = (id: string) =>
     `${origin}/admin/stock/take/${encodeURIComponent(id)}`;
@@ -84,6 +96,20 @@ function LabelsInner() {
                 {all ? `${fmtN(rows.length)} ป้าย` : ""}
               </span>
             </h1>
+            {rows.length > 0 && (
+              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                <span className="font-semibold text-slate-700">
+                  ☑️ เลือกพิมพ์ {fmtN(picked)}/{fmtN(rows.length)} ป้าย
+                </span>
+                <button type="button" onClick={() => setSkip(new Set())} className="text-sky-700 underline underline-offset-2 hover:text-sky-900">
+                  เลือกทั้งหมด
+                </button>
+                <button type="button" onClick={() => setSkip(new Set(rows.map((r) => r.id)))} className="text-sky-700 underline underline-offset-2 hover:text-sky-900">
+                  ไม่เลือกเลย
+                </button>
+                <span className="text-slate-400">กดที่ป้ายเพื่อเลือก/เอาออก</span>
+              </p>
+            )}
             <p className="text-xs text-slate-500">
               พนักงานสแกนป้ายด้วยกล้องมือถือ → เปิดหน้าเบิกของตัวนั้นทันที
               (ต้องล็อกอินหลังบ้านไว้ก่อน)
@@ -115,10 +141,10 @@ function LabelsInner() {
           <button
             type="button"
             onClick={() => window.print()}
-            disabled={!rows.length}
+            disabled={!picked}
             className="inline-flex min-h-[40px] items-center justify-center rounded-xl px-4 text-sm font-semibold bg-amber-500 text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
           >
-            🖨 พิมพ์
+            🖨 พิมพ์{rows.length ? ` ${fmtN(picked)} ป้าย` : ""}
           </button>
           <Link
             href="/admin/stock"
@@ -148,11 +174,26 @@ function LabelsInner() {
         <div
           className={`grid gap-3 print:gap-2 ${big ? "grid-cols-1 sm:grid-cols-2 print:grid-cols-2" : "grid-cols-2 sm:grid-cols-3 print:grid-cols-3"}`}
         >
-          {rows.map((it) => (
+          {rows.map((it) => {
+            const on = !skip.has(it.id);
+            return (
             <div
               key={it.id}
-              className={`flex items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white print:break-inside-avoid print:rounded-none ${big ? "p-4" : "p-3"}`}
+              role="checkbox"
+              aria-checked={on}
+              tabIndex={0}
+              onClick={() => toggle(it.id)}
+              onKeyDown={(e) => (e.key === " " || e.key === "Enter") && (e.preventDefault(), toggle(it.id))}
+              title={on ? "กดเพื่อไม่พิมพ์ป้ายนี้" : "กดเพื่อพิมพ์ป้ายนี้"}
+              className={`relative flex cursor-pointer items-center gap-3 rounded-xl border border-dashed bg-white transition print:cursor-auto print:break-inside-avoid print:rounded-none print:border-slate-300 print:opacity-100 ${big ? "p-4" : "p-3"} ${on ? "border-slate-300" : "border-slate-200 opacity-35 print:hidden"}`}
             >
+              {/* ☑️ ช่องติ๊ก — จอเท่านั้น ไม่พิมพ์ */}
+              <span
+                aria-hidden="true"
+                className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-md border-2 text-[12px] font-bold print:hidden ${on ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"}`}
+              >
+                {on ? "✓" : ""}
+              </span>
               <span
                 className="shrink-0 rounded-md bg-white"
                 aria-label={`QR เบิก ${it.name}`}
@@ -193,7 +234,8 @@ function LabelsInner() {
                 </span>
               </span>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </PageShell>

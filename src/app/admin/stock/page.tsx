@@ -368,6 +368,26 @@ export default function StockPage() {
   };
   /** ⧉ แถวที่เพิ่งทำซ้ำ — ไฮไลต์ชั่วครู่ให้เห็นว่าโผล่ตรงไหน */
   const [flashId, setFlashId] = useState<string | null>(null);
+  /**
+   * ☑️ ติ๊กเลือกหลายรายการ (เจ้าของร้านขอ 7 ต.ค. 69) → แถบล่างทำทีเดียว:
+   *   🛒 ไม่ทำสต็อก (= สั่งของอย่างเดียว: ไม่ตัดตอนขาย · ไม่รับเข้า/เบิก · ไม่เตือน แต่ยังสั่งของผ่าน TP ได้) · 🏷 พิมพ์ป้าย QR เฉพาะที่เลือก
+   */
+  const [sel, setSel] = useState<Set<string>>(() => new Set());
+  /** แถวที่ปุ่ม 🏭/🛒 กำลังบันทึก — กันกดซ้ำระหว่างรอ (ปุ่มเปลี่ยนสีทันทีแล้ว บันทึกตามหลัง) */
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
+  const markPending = (ids: string[], on: boolean) =>
+    setPendingIds((cur) => {
+      const next = new Set(cur);
+      for (const id of ids) (on ? next.add(id) : next.delete(id));
+      return next;
+    });
+  const toggleSel = (ids: string[], on?: boolean) =>
+    setSel((cur) => {
+      const next = new Set(cur);
+      const turnOn = on ?? ids.some((id) => !next.has(id));
+      for (const id of ids) (turnOn ? next.add(id) : next.delete(id));
+      return next;
+    });
   useEffect(() => {
     if (!flashId) return;
     const t = setTimeout(() => setFlashId(null), 4000);
@@ -454,6 +474,8 @@ export default function StockPage() {
       setLoading(false);
     }
   }, []);
+  /** การเชื่อมสินค้าโหลดไม่สำเร็จ (Supabase ล่ม/เน็ตหลุด) — มุมมองกลุ่มรอ linksReady อยู่ ต้องมีทางออกไปมุมมองรายการรวมแทน */
+  const [linksErr, setLinksErr] = useState("");
   const loadImages = useCallback(async (fresh = false) => {
     // fresh = เพิ่งแก้ข้อมูลไป ต้องข้ามแคช 60 วิ ของเซิร์ฟเวอร์
     const res = await fetch(fresh ? "/api/admin/stock/links?fresh=1" : "/api/admin/stock/links").catch(() => null);
@@ -470,8 +492,6 @@ export default function StockPage() {
     setLinksReady(true);
     warmWrite("stock:links", { images: j.images, usage: j.usage, suggest: j.suggest, products: j.products });
   }, []);
-  /** การเชื่อมสินค้าโหลดไม่สำเร็จ (Supabase ล่ม/เน็ตหลุด) — มุมมองกลุ่มรอ linksReady อยู่ ต้องมีทางออกไปมุมมองรายการรวมแทน */
-  const [linksErr, setLinksErr] = useState("");
   useEffect(() => {
     const w = warmRead<{ images: Record<string, string>; usage: Record<string, StockUsage[]>; suggest: Record<string, StockSuggest[]>; products: ProductLite[] }>("stock:links");
     if (w) {
@@ -1180,19 +1200,56 @@ export default function StockPage() {
     }
     setErr("");
     setOk("");
+    // ⚡ เปลี่ยนบนจอทันที แล้วค่อยบันทึกตามหลัง (เดิมรอเซิร์ฟเวอร์ตอบก่อน ปุ่มนิ่งจนดูเหมือนกดไม่ติด · 7 ต.ค. 69)
+    const ids = new Set(list.map((i) => i.id));
+    const before = new Map(list.map((i) => [i.id, i.orderOnly]));
+    setItems((prev) => prev.map((i) => (ids.has(i.id) ? { ...i, orderOnly: on || undefined } : i)));
+    markPending([...ids], true);
     const res = await fetch("/api/admin/stock/order-only", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: list.map((i) => i.id), on }),
-    });
-    const j = await res.json().catch(() => null);
-    if (!res.ok || !j?.ok) {
-      setErr(j?.error ?? "บันทึกไม่สำเร็จ");
+      body: JSON.stringify({ ids: [...ids], on }),
+    }).catch(() => null);
+    const j = res ? await res.json().catch(() => null) : null;
+    markPending([...ids], false);
+    if (!res?.ok || !j?.ok) {
+      setItems((prev) => prev.map((i) => (ids.has(i.id) ? { ...i, orderOnly: before.get(i.id) } : i))); // คืนค่าเดิม
+      setErr(j?.error ?? "บันทึกไม่สำเร็จ — คืนค่าเดิมแล้ว ลองใหม่อีกครั้ง");
       return;
     }
-    const ids = new Set(list.map((i) => i.id));
-    setItems((prev) => prev.map((i) => (ids.has(i.id) ? { ...i, orderOnly: on || undefined } : i)));
     setOk(on ? `ตั้ง “${label}” เป็นสั่งของอย่างเดียวแล้ว (${fmtN(list.length)} รายการ)` : `“${label}” กลับมานับสต๊อกแล้ว (${fmtN(list.length)} รายการ)`);
+  }
+
+  /**
+   * 🏭 เปิด/ปิด "เบิกเอง" ทีละตัว — ปุ่มในแถวรายการ (เจ้าของร้านขอ 7 ต.ค. 69)
+   * เปิด = ไม่ผูกสินค้า แต่ยังนับสต๊อก ยอดลดตอนพนักงานเบิก · ตัวที่ผูกสินค้าอยู่ ถามก่อน (เปิดแล้วจะถอดลิงก์ ตามแบบฟอร์มแก้ไข)
+   * ปิด = กลับเป็นวัสดุปกติ (ยังไม่ผูก → ไปผูกสินค้าในฟอร์มแก้ไข ตัดเองตอนลูกค้าชำระเงิน)
+   */
+  async function toggleManual(it: Item) {
+    const on = !it.manualOnly;
+    const linkedN = live[it.id]?.length ?? 0;
+    if (on && linkedN) {
+      const ok = await confirm({
+        icon: "🏭",
+        title: `“${it.name}” เปลี่ยนเป็นเบิกเอง?`,
+        detail: `ตัวนี้ผูกกับสินค้าอยู่ ${fmtN(linkedN)} จุด — เปลี่ยนเป็นเบิกเองจะถอดการผูกออก ขายแล้วจะไม่ตัดยอดอีก\nยอดจะลดตอนพนักงานเบิก (แท็บเบิกของ / สแกน QR) แทน`,
+        confirmLabel: "เปลี่ยนเป็นเบิกเอง",
+      });
+      if (ok !== true) return;
+    }
+    // ⚡ เปลี่ยนบนจอทันที · บันทึกแบบ defer = ไม่โหลดทั้งคลัง (0.75 MB) + การผูกสินค้า (~4 MB, ~1.7 วิ) ใหม่ทุกครั้งที่กด
+    //    (ต้นตอความช้า 7 ต.ค. 69 — saveItem ปกติโหลดทั้งสองก้อนใหม่ แล้ววาด 1,228 แถวซ้ำ 2–3 รอบ)
+    const prev = { manualOnly: it.manualOnly, productIds: it.productIds };
+    setItems((cur) => cur.map((i) => (i.id === it.id ? { ...i, manualOnly: on || undefined, ...(on ? { productIds: [] } : {}) } : i)));
+    markPending([it.id], true);
+    const saved = await saveItem({ id: it.id, name: it.name, unit: it.unit, category: it.category, family: it.family, manualOnly: on, ...(on ? { productIds: [] } : {}) }, { defer: true });
+    markPending([it.id], false);
+    if (!saved) {
+      setItems((cur) => cur.map((i) => (i.id === it.id ? { ...i, ...prev } : i))); // คืนค่าเดิม (saveItem ขึ้นข้อความ error ให้แล้ว)
+      return;
+    }
+    if (on && linkedN) void loadImages(true); // ถอดการผูกสินค้าจริง → ป้าย "ตัดเมื่อ…" ต้องอัปเดต (กรณีเดียวที่ต้องโหลดใหม่)
+    if (saved) setOk(on ? `“${it.name}” เป็นเบิกเองแล้ว — ยอดลดตอนพนักงานเบิก` : `“${it.name}” กลับเป็นวัสดุปกติแล้ว — ผูกสินค้าในหน้าแก้ไขเพื่อให้ตัดตอนลูกค้าชำระเงิน`);
   }
 
   async function markNoStock(list: Item[], on: boolean, label: string) {
@@ -2070,6 +2127,32 @@ export default function StockPage() {
                           ⠿
                         </span>
                       )}
+                      {/* ☑️ เลือกหลายรายการ — กดช่องนี้ไม่เปิดลิ้นชัก */}
+                      <span
+                        role="checkbox"
+                        aria-checked={sel.has(it.id)}
+                        aria-label={`เลือก ${it.name}`}
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSel([it.id]);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== " " && e.key !== "Enter") return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleSel([it.id]);
+                        }}
+                        className="-my-2 -ml-1 flex h-10 w-8 shrink-0 cursor-pointer items-center justify-center"
+                      >
+                        <span
+                          className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border-2 text-[11px] font-bold leading-none transition ${
+                            sel.has(it.id) ? "border-[var(--dk-blue-deep)] bg-[var(--dk-blue-deep)] text-white" : "border-slate-300 bg-white text-transparent group-hover:border-slate-400"
+                          }`}
+                        >
+                          ✓
+                        </span>
+                      </span>
                       <Thumb src={images[it.id]} name={it.name} size={nest ? 32 : 40} />
                       <span className="min-w-0 flex-1 basis-[12rem]">
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -2082,6 +2165,41 @@ export default function StockPage() {
                           {it.code && <span className="dkb-code">{it.code}</span>}
                           {!grouped && <span>{it.family ?? it.category ?? ""}</span>}
                         </span>
+                        {/*
+                         * 🏭 / 🛒 สลับประเภทวัสดุได้จากแถวเลย (เจ้าของร้านขอ 7 ต.ค. 69)
+                         *   🏭 เบิกเอง = ไม่ผูกสินค้า พนักงานตัดเอง (ยังนับสต๊อก) · 🛒 สั่งของอย่างเดียว = ไม่ต้องมี stock แต่ยังสั่งผ่าน TP ได้
+                         *   สีเข้ม = เปิดอยู่ · กดซ้ำ = ปิด · ไม่โชว์ในแถวที่ห้อยใต้ตัวอื่น (แถวลูก) และของ "ไม่ต้องมี stock"
+                         */}
+                        {mayEdit && !nest && !it.noStock && (
+                          <span className="mt-1.5 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              aria-pressed={!!it.manualOnly}
+                              aria-busy={pendingIds.has(it.id)}
+                              disabled={!!it.orderOnly || pendingIds.has(it.id)}
+                              onClick={() => void toggleManual(it)}
+                              title={it.orderOnly ? "ตัวนี้เป็นสั่งของอย่างเดียว (ไม่นับสต๊อก) — ปิด 🛒 ก่อน" : it.manualOnly ? "กดเพื่อกลับเป็นวัสดุปกติ (ผูกสินค้า ตัดตอนลูกค้าชำระเงิน)" : "ไม่ผูกสินค้า — พนักงานตัดเองตอนเบิก (ยังนับสต๊อก)"}
+                              className={`inline-flex min-h-[28px] items-center gap-1 rounded-full border px-2.5 text-[11.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                                it.manualOnly ? "border-[var(--dk-navy)] bg-[var(--dk-navy)] text-white" : "border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700"
+                              }`}
+                            >
+                              🏭 พนักงานตัดเอง{it.manualOnly ? " ✓" : ""}
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={!!it.orderOnly}
+                              aria-busy={pendingIds.has(it.id)}
+                              disabled={pendingIds.has(it.id)}
+                              onClick={() => void markOrderOnly([it], !it.orderOnly, it.name)}
+                              title={it.orderOnly ? "กดเพื่อกลับมานับสต๊อก" : "ไม่ต้องมี stock — ไม่นับ ไม่ตัด ของเข้าไม่รับเข้าคลัง แต่ยังสั่งผ่านระบบสั่งของ TP ได้"}
+                              className={`inline-flex min-h-[28px] items-center gap-1 rounded-full border px-2.5 text-[11.5px] font-semibold transition ${
+                                it.orderOnly ? "border-amber-600 bg-amber-500 text-white" : "border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700"
+                              } disabled:cursor-wait disabled:opacity-60`}
+                            >
+                              🛒 สั่งของอย่างเดียว{it.orderOnly ? " ✓" : ""}
+                            </button>
+                          </span>
+                        )}
                       </span>
                       {/* มือถือ: บรรทัด "ตัดเมื่อ…" เหลือไม่เกิน 2 บรรทัด (รายละเอียดเต็มอยู่ในลิ้นชัก) ไม่งั้นแถวเดียวสูงเกือบเต็มจอ */}
                       <span className={`w-full min-w-0 max-sm:line-clamp-2 max-sm:text-[12px] sm:w-72 sm:pl-0 ${nest ? "pl-[41px]" : "pl-[53px]"}`}>
@@ -2453,6 +2571,14 @@ export default function StockPage() {
               if (!grouped)
                 return (
                   <section className="dkb-g overflow-hidden">
+                    {view === "group" && linksErr && (
+                      <p className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                        ⚠️ {linksErr} — แสดงเป็นรายการรวมไปก่อน ·{" "}
+                        <button type="button" className="underline" onClick={() => void loadImages(true)}>
+                          ลองโหลดใหม่
+                        </button>
+                      </p>
+                    )}
                     <ul>{rows.map((r) => renderRow(r))}</ul>
                   </section>
                 );
@@ -2544,14 +2670,6 @@ export default function StockPage() {
                           : { icon: "🚫", label: "ไม่ต้องมี stock ทั้งกลุ่ม", danger: true, onClick: () => void markNoStock(g.rows, true, g.title) },
                       );
                       if (!untrackedView)
-                    {view === "group" && linksErr && (
-                      <p className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-                        ⚠️ {linksErr} — แสดงเป็นรายการรวมไปก่อน ·{" "}
-                        <button type="button" className="underline" onClick={() => void loadImages(true)}>
-                          ลองโหลดใหม่
-                        </button>
-                      </p>
-                    )}
                         menu.push(
                           g.rows.every((r) => r.orderOnly)
                             ? { icon: "↩", label: "เลิกสั่งของอย่างเดียวทั้งกลุ่ม", onClick: () => void markOrderOnly(g.rows, false, g.title) }
@@ -2579,6 +2697,38 @@ export default function StockPage() {
                           <span className={`w-3 text-[10px] transition ${open ? "rotate-90" : ""}`} style={{ color: "var(--dk-faint)" }} aria-hidden>
                             ▶
                           </span>
+                          {(() => {
+                            const gIds = g.rows.map((r) => r.id);
+                            const nOn = gIds.filter((id) => sel.has(id)).length;
+                            return (
+                              <span
+                                role="checkbox"
+                                aria-checked={nOn === 0 ? false : nOn === gIds.length ? true : "mixed"}
+                                aria-label={`เลือกทั้งกลุ่ม ${g.title}`}
+                                title="เลือก/เอาออกทั้งกลุ่ม"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSel(gIds, nOn !== gIds.length);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key !== " " && e.key !== "Enter") return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  toggleSel(gIds, nOn !== gIds.length);
+                                }}
+                                className="-my-2 flex h-11 w-7 shrink-0 cursor-pointer items-center justify-center"
+                              >
+                                <span
+                                  className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border-2 text-[11px] font-bold leading-none ${
+                                    nOn ? "border-[var(--dk-blue-deep)] bg-[var(--dk-blue-deep)] text-white" : "border-slate-300 bg-white text-transparent"
+                                  }`}
+                                >
+                                  {nOn && nOn < gIds.length ? "–" : "✓"}
+                                </span>
+                              </span>
+                            );
+                          })()}
                           {g.kind === 0 || g.img ? (
                             <Thumb src={g.img} name={g.title} size={44} />
                           ) : (
@@ -2943,6 +3093,96 @@ export default function StockPage() {
           }}
         />
       )}
+      {/* ☑️ แถบทำทีเดียวกับรายการที่ติ๊ก — ลอยล่างจอ โผล่เฉพาะตอนมีของถูกเลือก */}
+      {sel.size > 0 &&
+        (() => {
+          const picked = items.filter((i) => sel.has(i.id));
+          const toOrderOnly = picked.filter((i) => !i.orderOnly && !i.noStock);
+          const backToStock = picked.filter((i) => i.orderOnly);
+          /**
+           * 🏭 เบิกเอง (ของใช้ในโรงงาน) — ไม่ผูกสินค้าแต่ "ยังนับ/ตัดสต๊อก" ตอนพนักงานเบิก (แท็บเบิกของ · สแกน QR)
+           * เจ้าของร้านทัก 7 ต.ค. 69: วัสดุบางตัวไม่ผูกสินค้า แต่ต้องตัดสต๊อกด้วย → ต่างจาก "ไม่ทำสต็อก" ที่ไม่นับเลย
+           * ตั้งได้เฉพาะตัวที่ยังไม่ผูกสินค้า — ตัวที่ผูกอยู่ ตั้งแล้วจะถูกถอดลิงก์ (ฟอร์มแก้ไขทำแบบนั้น) จึงไม่ให้ทำจากแถบนี้
+           */
+          const toManual = picked.filter((i) => !i.manualOnly && !i.noStock && !i.orderOnly && !live[i.id]?.length);
+          const btn = "inline-flex min-h-[40px] items-center gap-1.5 rounded-xl px-3.5 text-[13px] font-semibold transition disabled:opacity-40";
+          return (
+            <div className="fixed inset-x-0 bottom-4 z-[60] flex justify-center px-3 print:hidden">
+              <div
+                role="toolbar"
+                aria-label="ทำกับรายการที่เลือก"
+                className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl px-3 py-2.5 shadow-[0_12px_32px_rgba(23,58,107,.28)]"
+                style={{ background: "var(--dk-navy)", color: "#fff" }}
+              >
+                <span className="px-1 text-[13px] font-bold">☑️ เลือก {fmtN(picked.length)} รายการ</span>
+                {mayEdit && linksReady && toManual.length > 0 && (
+                  <button
+                    type="button"
+                    className={`${btn} bg-white text-[var(--dk-navy)] hover:bg-amber-50`}
+                    title="ไม่ผูกสินค้า แต่ยังนับสต๊อก — ยอดลดตอนพนักงานเบิก (แท็บเบิกของ / สแกน QR) · ไม่ขึ้นเตือน “ยังไม่ผูก”"
+                    onClick={async () => {
+                      const ok = await confirm({
+                        icon: "🏭",
+                        title: `ตั้ง ${fmtN(toManual.length)} รายการเป็น “เบิกเอง”?`,
+                        detail: "ไม่ผูกกับสินค้า แต่ยังนับสต๊อก — ยอดลดตอนพนักงานเบิก (แท็บเบิกของ / สแกน QR ที่ชั้นวาง)\nไม่ตัดตามการขาย · ไม่ขึ้นเตือน “ยังไม่ผูก” · เปลี่ยนกลับได้ในหน้าแก้ไขของแต่ละตัว",
+                        confirmLabel: "ตั้งเป็นเบิกเอง",
+                      });
+                      if (ok !== true) return;
+                      let n = 0;
+                      for (const it of toManual) {
+                        const saved = await saveItem(
+                          { id: it.id, name: it.name, unit: it.unit, category: it.category, family: it.family, manualOnly: true, productIds: [] },
+                          { defer: true }
+                        );
+                        if (!saved) break;
+                        n++;
+                      }
+                      await load();
+                      if (n) setOk(`ตั้ง ${fmtN(n)} รายการเป็น “เบิกเอง” แล้ว — ยอดลดตอนพนักงานเบิก`);
+                      setSel(new Set());
+                    }}
+                  >
+                    🏭 เบิกเอง — ตัดสต็อกตอนเบิก ({fmtN(toManual.length)})
+                  </button>
+                )}
+                {mayEdit && toOrderOnly.length > 0 && (
+                  <button
+                    type="button"
+                    className={`${btn} bg-white text-[var(--dk-navy)] hover:bg-amber-50`}
+                    title="ไม่ตัดตอนขาย · ของเข้าไม่ต้องรับเข้าคลัง · ไม่เบิก · ไม่เตือน — แต่ยังสั่งของผ่านระบบสั่งของ TP ได้"
+                    onClick={async () => {
+                      await markOrderOnly(toOrderOnly, true, toOrderOnly.length === 1 ? toOrderOnly[0].name : "รายการที่เลือก");
+                      setSel(new Set());
+                    }}
+                  >
+                    🛒 ไม่ทำสต็อก ({fmtN(toOrderOnly.length)})
+                  </button>
+                )}
+                {mayEdit && backToStock.length > 0 && (
+                  <button
+                    type="button"
+                    className={`${btn} border border-white/40 text-white hover:bg-white/10`}
+                    onClick={async () => {
+                      await markOrderOnly(backToStock, false, backToStock.length === 1 ? backToStock[0].name : "รายการที่เลือก");
+                      setSel(new Set());
+                    }}
+                  >
+                    ↩ กลับมานับสต๊อก ({fmtN(backToStock.length)})
+                  </button>
+                )}
+                <a
+                  href={`/admin/stock/labels?ids=${picked.map((i) => encodeURIComponent(i.id)).join(",")}`}
+                  className={`${btn} border border-white/40 text-white hover:bg-white/10`}
+                >
+                  🏷 พิมพ์ป้าย QR ({fmtN(picked.length)})
+                </a>
+                <button type="button" className={`${btn} text-white/80 hover:text-white`} onClick={() => setSel(new Set())}>
+                  ✕ ล้าง
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       {dialog}
       {/* z สูงกว่าลิ้นชัก (121) และโมดัล — กดรูปในลิ้นชักแล้วต้องลอยขึ้นมาบนสุด */}
       {zoom && <ImageLightbox src={zoom.src} alt={zoom.alt} caption={zoom.alt} z={200} onClose={() => setZoom(null)} />}
