@@ -458,7 +458,7 @@ export default function ProductionFolderDrop({ onApplied }: { onApplied: () => v
           {res.unmatchedIds.length > 0 && (
             <div>
               <b style={{ color: "var(--dk-coral-deep)" }}>โฟลเดอร์ (ids) ที่หาออเดอร์ไม่เจอ {res.unmatchedIds.length}</b>
-              <span style={{ color: "var(--dk-faint)" }}> — เปิดใบนั้นแล้วกด “🏭 ติ๊กว่าส่งเข้าผลิตแล้ว” เอง</span>
+              <span style={{ color: "var(--dk-faint)" }}> — กด “🏭 ส่งผลิตแล้ว” ที่แถวใบนั้นในคิวปริ้นเอง</span>
               <ul className="mt-1 space-y-0.5">
                 {res.unmatchedIds.map((n) => (
                   <li key={n}>📁 {n}</li>

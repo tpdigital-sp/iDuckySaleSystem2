@@ -197,6 +197,9 @@ import HolidayDatePicker from "@/components/HolidayDatePicker";
 import { useShopHolidays } from "@/lib/use-shop-holidays";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 
+// 🏭 กล่อง "ส่งเข้าผลิต (คิวปริ้น)" หน้าออเดอร์ — ซ่อน (คิวปริ้นอ่านจากบอร์ด TP เอง · ใบพิเศษกดที่ /admin/print)
+const SHOW_PRODUCTION_SENT_BOX = false;
+
 /** ค่าในช่องเลือกวิธีส่งที่แปลว่า "ให้ระบบคิดให้" — ไม่ใช่ id ของวิธีส่งจริง */
 const AUTO_SHIP = "__auto__";
 
@@ -9058,8 +9061,9 @@ export default function AdminOrderDetailPage() {
                   </div>
                 )}
 
-                {/* 🏭 ส่งเข้าผลิตแล้ว — ติ๊กเองสำหรับใบที่ไม่ผ่านบอร์ดกราฟฟิก TP (ปกติคิวปริ้นอ่านจากการ์ดกราฟฟิกให้เอง) */}
-                {(can("orders.edit") || mayProof || can("pack.ship")) && (
+                {/* 🏭 ส่งเข้าผลิตแล้ว — ติ๊กเองสำหรับใบที่ไม่ผ่านบอร์ดกราฟฟิก TP (ปกติคิวปริ้นอ่านจากการ์ดกราฟฟิกให้เอง)
+                    ซ่อนไว้ (7 ต.ค. 69 เจ้าของร้านสั่ง — พนักงานไม่จำเป็นต้องกด) · ใบพิเศษไปกด "🏭 ส่งผลิตแล้ว" ที่ /admin/print แทน */}
+                {SHOW_PRODUCTION_SENT_BOX && (can("orders.edit") || mayProof || can("pack.ship")) && (
                   <div className={`rounded-xl border p-2.5 transition ${order.productionSent ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50/70"}`}>
                     <p className={`mb-1.5 text-xs font-bold ${order.productionSent ? "text-emerald-700" : "text-slate-600"}`}>🏭 ส่งเข้าผลิต (คิวปริ้น)</p>
                     <div className="flex flex-wrap items-center gap-2">
