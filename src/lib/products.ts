@@ -366,6 +366,15 @@ export interface ProductOption {
    */
   priceAsDriverTierShift?: number;
   /**
+   * 💰 +฿ ตายตัวของกลุ่มนี้ "ไม่เกินราคาช่องตารางเรท" — คิด +฿ ตามปกติ แล้วถ้าช่องตารางของตัวเลือกนั้น
+   * (มองเป็นแกน `driver` ณ ช่วงจำนวนเดียวกับราคาฐาน) ถูกกว่า ให้ใช้ราคาตาราง
+   * `pin` = แกนอื่นที่ล็อกค่าไว้ตอนเทียบ (ไม่ตามค่าของชิ้นหลัก) เช่น ติ่งห้อยเทียบกับช่อง "อะคริลิคใส · สกรีน 1 ด้าน"
+   * เพราะเนื้อสีพิเศษ/สกรีน 2 ด้านของติ่งบวกแยกในกลุ่มของมันเอง
+   * ใช้กับพวงกุญแจหลายชิ้น (เจ้าของร้าน 7 ต.ค. 69 · OD-261006-1474): ติ่ง 3cm ที่ 200 พวง +฿22 แต่ตาราง 3cm = 20 → คิด 20
+   * ช่องตารางไม่มี/เป็น 0 = ไม่เทียบ (คิด +฿ เดิม)
+   */
+  tableCap?: { driver: string; pin?: Record<string, string> };
+  /**
    * ค่าธรรมเนียม "ช่วงสั่งน้อย" ของกลุ่มนี้ — คิดเพิ่มต่อชิ้นเมื่อสั่งไม่เกินจำนวนที่กำหนด
    * เช่น พวงกุญแจ 3mm ช่วงปลีก 1-10 ชิ้น เลือกตะขอบวกชิ้นละ 10 บาท (ยกเว้นห่วงแถมฟรี Z1/Z2)
    * คิด "เพิ่มจาก" ราคาของตัวเลือกนั้นตามปกติ · ตัวเลือกใน freeChoices ไม่คิด
@@ -1848,7 +1857,10 @@ export function choiceBadgeOf(
     const used = picks.filter((p) => p.name !== choiceName).reduce((n, p) => n + p.qty, 0);
     if (used < free) return 0;
   }
-  return choiceExtraAtQty(opt, view, choiceName, qty);
+  const extra = choiceExtraAtQty(opt, view, choiceName, qty);
+  // tableCap (ติ่งห้อย) — ป้ายต้องเป็นเลขเดียวกับที่คิดเงิน (ตารางถูกกว่า = โชว์ราคาตาราง)
+  const cap = product ? tableCapOf(product, opt, view, choiceName, qty) : undefined;
+  return cap != null && cap < extra ? cap : extra;
 }
 
 export interface ProductImage {
@@ -5997,6 +6009,45 @@ export function priceAsDriverExtraOf(
   return cells?.length ? (cells[Math.min(ti, cells.length - 1)] ?? 0) : 0;
 }
 
+/**
+ * 💰 เพดานราคาจากตารางของกลุ่ม tableCap — ช่องตารางของตัวเลือก choiceName (เป็นแกน cap.driver
+ * + แกนที่ pin ไว้) ณ ช่วงจำนวน qty · ไม่มีเพดาน (ไม่ได้ตั้ง/ไม่มีช่อง/ราคา 0) = undefined
+ * qty ต้องเป็นเลขเดียวกับที่ใช้หาช่วงราคาฐาน (tierQtyFor)
+ */
+export function tableCapOf(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>,
+  choiceName: string,
+  qty: number
+): number | undefined {
+  const cap = opt.tableCap;
+  if (!cap?.driver || !choiceName) return undefined;
+  const m = activeMatrix(product, selections);
+  if (!m || !m.driverLabels.includes(cap.driver)) return undefined;
+  const view = { ...selections, [cap.driver]: choiceName };
+  for (const [axis, v] of Object.entries(cap.pin ?? {})) if (m.driverLabels.includes(axis)) view[axis] = v;
+  const cells = m.cells[priceMatrixKey(m, view)];
+  const v = cells?.length ? cells[Math.min(tierIndex(m, qty), cells.length - 1)] : undefined;
+  return typeof v === "number" && v > 0 ? v : undefined;
+}
+
+/**
+ * +฿ ของกลุ่มตัวเลือก (ไม่ใช่แกนตาราง) แบบเดียวกับที่ unitPriceFor คิดเงินจริง — groupAddOf + เพดาน tableCap
+ * feeQty = จำนวนที่ใช้คิด +฿ ของกลุ่ม (optionFeeQty) · tierQty = จำนวนที่ใช้หาช่วงราคาฐาน
+ */
+export function optionAddOf(
+  product: Product,
+  opt: ProductOption,
+  selections: Record<string, string>,
+  feeQty: number,
+  tierQty: number
+): number {
+  const add = groupAddOf(opt, selections, feeQty);
+  const cap = tableCapOf(product, opt, selections, selections[opt.label] ?? "", tierQty);
+  return cap != null && cap < add ? cap : add;
+}
+
 export function unitPriceParts(
   product: Product,
   selections: Record<string, string>,
@@ -6096,7 +6147,8 @@ export function unitPriceFor(
         note(opt.label, add);
         continue;
       }
-      const add = groupAddOf(opt, selections, feeQty);
+      // tableCap (ติ่งห้อย) — +฿ ตายตัวแต่ไม่เกินราคาช่องตารางของขนาดนั้น
+      const add = optionAddOf(product, opt, selections, feeQty, tierQty);
       base += add;
       note(opt.label, add);
     }

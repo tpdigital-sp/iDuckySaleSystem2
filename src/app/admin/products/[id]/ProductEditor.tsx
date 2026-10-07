@@ -148,6 +148,8 @@ type DraftOption = {
   priceAsDriverMinTier?: number;
   /** 💰 กลุ่ม priceAsDriver เลื่อนแถวราคาลงกี่ขั้นจากชิ้นหลัก (ติ่งห้อยถูกกว่า 1 ขั้น) — ส่งกลับเฉย ๆ ไม่งั้นหาย */
   priceAsDriverTierShift?: number;
+  /** 💰 +฿ ไม่เกินราคาช่องตาราง (ติ่งห้อยพวงหลายชิ้น) — ตั้งจากสคริปต์ ส่งกลับเฉย ๆ ไม่งั้นหาย */
+  tableCap?: { driver: string; pin?: Record<string, string> };
   /** ค่าธรรมเนียมช่วงสั่งน้อย เช่น ปลีก 1-10 ชิ้น เลือกตะขอ +10/ชิ้น (ยกเว้นบางตัวเลือก) */
   smallFee?: string;
   smallUpTo?: string;
@@ -498,6 +500,14 @@ function retargetGroupLabel(options: DraftOption[], oldLabel: string, newLabel: 
       n.priceAsDriverAlso = Object.fromEntries(
         Object.entries(n.priceAsDriverAlso).map(([axis, src]) => [hit(axis) ? newLabel : axis, hit(src) ? newLabel : src])
       );
+    if (n.tableCap)
+      n.tableCap = {
+        ...n.tableCap,
+        driver: hit(n.tableCap.driver) ? newLabel : n.tableCap.driver,
+        ...(n.tableCap.pin
+          ? { pin: Object.fromEntries(Object.entries(n.tableCap.pin).map(([axis, v]) => [hit(axis) ? newLabel : axis, v])) }
+          : {}),
+      };
     if (hit(n.defaultBy?.label)) n.defaultBy = { ...n.defaultBy!, label: newLabel };
     if (hit(n.labelBy?.label)) n.labelBy = { ...n.labelBy!, label: newLabel };
     if (hit(n.sheetYield?.pairLabel)) n.sheetYield = { ...n.sheetYield!, pairLabel: newLabel };
@@ -748,6 +758,7 @@ function toDraft(p: Product): Draft {
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(Number.isFinite(Number(o.priceAsDriverMinTier)) && Number(o.priceAsDriverMinTier) > 0 ? { priceAsDriverMinTier: Number(o.priceAsDriverMinTier) } : {}),
       ...(Number.isFinite(Number(o.priceAsDriverTierShift)) && Number(o.priceAsDriverTierShift) > 0 ? { priceAsDriverTierShift: Number(o.priceAsDriverTierShift) } : {}),
+      ...(o.tableCap?.driver ? { tableCap: { ...o.tableCap, ...(o.tableCap.pin ? { pin: { ...o.tableCap.pin } } : {}) } } : {}),
       ...(o.smallQtyFee
         ? {
             smallFee: String(o.smallQtyFee.fee),
@@ -1084,6 +1095,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.priceAsDriverAlso && Object.keys(o.priceAsDriverAlso).length ? { priceAsDriverAlso: { ...o.priceAsDriverAlso } } : {}),
       ...(Number.isFinite(Number(o.priceAsDriverMinTier)) && Number(o.priceAsDriverMinTier) > 0 ? { priceAsDriverMinTier: Number(o.priceAsDriverMinTier) } : {}),
       ...(Number.isFinite(Number(o.priceAsDriverTierShift)) && Number(o.priceAsDriverTierShift) > 0 ? { priceAsDriverTierShift: Number(o.priceAsDriverTierShift) } : {}),
+      ...(o.tableCap?.driver ? { tableCap: { ...o.tableCap, ...(o.tableCap.pin ? { pin: { ...o.tableCap.pin } } : {}) } } : {}),
       ...(Number.isFinite(Number(o.smallFee)) && Number(o.smallFee) !== 0 && String(o.smallFee ?? "").trim() !== "" && Number(o.smallUpTo) > 0
         ? {
             smallQtyFee: {

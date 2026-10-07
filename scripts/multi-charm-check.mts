@@ -32,7 +32,8 @@ const env = Object.fromEntries(
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 const { data: row, error } = await sb.from("products").select("data").eq("id", "keyring-multi-charm").single();
 if (error) throw error;
-const p = row.data as Product;
+// MC_FILE=<json> = ตรวจข้อมูลจากไฟล์ (ผลของสคริปต์ --out=) ก่อนเขียนลงฐานจริง
+const p = (process.env.MC_FILE ? JSON.parse(readFileSync(process.env.MC_FILE, "utf8")) : row.data) as Product;
 
 const COUNT = "จำนวนชิ้นใน 1 พวง";
 const HANG = "รูปแบบการห้อย";
@@ -160,9 +161,9 @@ const charm10 = unitPriceFor(p, resolveSelections(p, { ...baseSel, "ขนาด
 ok(`ตัวหลัก 5cm + ติ่งห้อย 2cm = ฿${charm2} · ติ่งห้อย 10cm = ฿${charm10} (ต่างกัน 80 = cm ละ 10)`, charm10 - charm2 === 80);
 const partsC = unitPriceParts(p, oneCharm2cm, 1);
 ok("ค่าติ่งห้อยแยกบรรทัดให้ลูกค้าเห็น (+฿20)", partsC.addOns.some((a) => a.label === SIZE2 && a.amount === 20));
-// เนื้อ/งานสกรีนของติ่งห้อยไม่บวกราคาแล้ว (เดิมบวกผ่านตารางเรท) — บันทึกไว้ให้เห็นชัดว่าตั้งใจ
+// 7 ก.ย. → 7 ต.ค. 69 (OD-261006-1474): ติ่งห้อยเนื้อสีพิเศษ +5 ต่อติ่ง (multi-charm-charm-table-cap.mjs --fee)
 const charmSpecial = unitPriceFor(p, resolveSelections(p, { ...oneCharm2cm, [TYPE2]: SPECIAL, "สีอะคริลิค ชิ้นที่ 2": "hologram-01" }), 1);
-ok(`ติ่งห้อยเลือกสีพิเศษ = ไม่บวกเพิ่ม (฿${charmSpecial})`, charmSpecial === unitPriceFor(p, oneCharm2cm, 1));
+ok(`ติ่งห้อยเลือกสีพิเศษ = +5 (฿${charmSpecial})`, charmSpecial === unitPriceFor(p, oneCharm2cm, 1) + 5);
 
 console.log("\n── ตะขอฟรีช่วง 1-10 พวง + ค่าสกรีนของติ่งห้อยตามขนาด (17 ก.ย. 69 — เจ้าของร้านทักจากภาพตะกร้า) ──");
 // ใบราคาจริง: พวงหลายชิ้นเริ่ม 120.- = ตัวหลักไม่เกิน 5cm 100.- (รวมตะขอ เลือกแบบไหนก็ได้) + ติ่งห้อย 2cm 20.-
@@ -231,6 +232,28 @@ ok("เลือกมากกว่า 10 ชิ้น → ชุดสเป�
 ok("เลือกมากกว่า 10 ชิ้น → รูปแบบการห้อยไม่โชว์", !optionVisible(group(HANG), selOver));
 ok("เลือก 3 ชิ้นตามปกติ → ไม่ติดตีราคา ราคายังคิดเองได้", !needsQuote(p, sel3) && unitPriceFor(p, sel3, 15) > 0);
 ok("ธงการ์ดหน้ารายการ quoteOption = true", (p as { quoteOption?: boolean }).quoteOption === true);
+
+console.log("\n── ติ่งห้อยใช้ราคาตารางเมื่อถูกกว่า + สีพิเศษ +5 (7 ต.ค. 69 — OD-261006-1474 ลูกค้าเก่าสั่งดีเทลเดิม) ──");
+ok("ขนาดชิ้นที่ 2-10 ตั้ง tableCap เทียบช่อง อะคริลิคใส · สกรีน 1 ด้าน",
+  Array.from({ length: 9 }, (_, i) => group(`ขนาดชิ้นที่ ${i + 2}`)).every(
+    (o) => o.tableCap?.driver === "ขนาดชิ้นที่ 1" && o.tableCap.pin?.[TYPE1] === "อะคริลิคใส"
+  ));
+// ใบเสนอราคาเดิม: ตัวหลัก 3cm สีฟ้า 25 + ติ่ง 3cm กลิตเตอร์รุ้ง (20+5) + ติ่ง 2cm สีเหลือง (12+5) = 67 · Z1 ฟรี
+const od1474 = {
+  ...resolveSelections(p, {
+    ความหนาอะคริลิค: "3mm", [COUNT]: "3 ชิ้น", [HANG]: "ห้อยด้านข้าง", รับตะขอไหม: "รับตะขอ", ตะขอ: "Z1 ห่วงกลม (สีเงิน)",
+    "ขนาดชิ้นที่ 1": "3cm", [TYPE1]: SPECIAL, "สีอะคริลิค ชิ้นที่ 1": "อะคริลิคสีฟ้า (B)", "งานสกรีน ชิ้นที่ 1": "สกรีน 1 ด้าน (บน)",
+    "ขนาดชิ้นที่ 2": "3cm", [TYPE2]: SPECIAL, "สีอะคริลิค ชิ้นที่ 2": "อะคริลิคกลิตเตอร์-รุ้ง", "งานสกรีน ชิ้นที่ 2": "สกรีน 1 ด้าน (บน)",
+    "ขนาดชิ้นที่ 3": "2cm", "ประเภทอะคริลิค ชิ้นที่ 3": SPECIAL, "สีอะคริลิค ชิ้นที่ 3": "อะคริลิคสีเหลือง (Y)", "งานสกรีน ชิ้นที่ 3": "สกรีน 1 ด้าน (บน)",
+  }),
+  [RATE_LABEL]: "เรทที่ 2 แบบไม่คละดีเทล",
+};
+const g1474 = unitPriceParts(p, od1474, 200);
+ok(`OD-261006-1474: เรท 2 · 200 พวง = ฿${g1474.total}/พวง (25 + 20+5 + 12+5) — ตรงใบเสนอราคาเดิม`, g1474.total === 67);
+ok("ติ่ง 3cm ที่ 200 พวง คิด ฿20 ตามตาราง (ไม่ใช่ +฿22)", g1474.addOns.some((a) => a.label === "ขนาดชิ้นที่ 2" && a.amount === 20));
+const retail2 = unitPriceParts(p, { ...oneCharm2cm }, 1);
+ok(`ปลีก 1 พวง ติ่ง 2cm ยังคิด ฿20 (ตารางปลีกแพงกว่า ไม่ใช้) → รวม ฿${retail2.total}`,
+  retail2.addOns.some((a) => a.label === SIZE2 && a.amount === 20));
 
 console.log("\n── 📐 กำหนดขนาดเองได้ทุกชิ้น (8 ก.ย. 69 — ตรรกะเดียวกับพวงกุญแจ sizeInput) ──");
 const CUSTOM = "📐 กำหนดขนาดเอง (ระบุ ก.×ส.)";

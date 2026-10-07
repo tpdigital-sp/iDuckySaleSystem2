@@ -92,6 +92,7 @@ import {
   resolveSelections,
   choiceBadgeOf,
   choiceExtraAtQty,
+  optionAddOf,
   optionFeeQty,
   extraTierBest,
   unitPieceCountOf,
@@ -5157,12 +5158,12 @@ export default function ProductDetail({
                       const from = opt.extraFromQty!.toLocaleString("th-TH");
                       if (!optionExtraApplies(opt, gQty)) {
                         // ช่วงปลีกบางกลุ่มคิดเพิ่มคนละเรท (extraBelow) — อย่าบอกว่า "รวมแล้ว" ทั้งที่ยังคิดเงิน
-                        const below = groupAddOf(opt, effective, gQty);
+                        const below = optionAddOf(product, opt, effective, gQty, feeQty);
                         if (opt.choices.some((c) => c.extraBelow)) {
                           // ช่วงเหมาสั่งน้อย (smallQtyFee) มีบรรทัด 💡 ของค่าเหมาบอกราคาอยู่แล้ว — ไม่ขึ้นซ้ำ
                           if (smallQtyFeeOf(opt, effective, gQty) > 0) return null;
                           // ราคาจริงเมื่อสั่งถึงเกณฑ์ — บอกตัวเลขตรง ๆ แทนคำว่า "เรทส่ง"
-                          const atFrom = groupAddOf(opt, effective, opt.extraFromQty!);
+                          const atFrom = optionAddOf(product, opt, effective, opt.extraFromQty!, opt.extraFromQty!);
                           if (below <= 0 && atFrom <= 0) return null;
                           return (
                             <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
@@ -5180,7 +5181,7 @@ export default function ProductDetail({
                           </p>
                         );
                       }
-                      const now = groupAddOf(opt, effective, gQty);
+                      const now = optionAddOf(product, opt, effective, gQty, feeQty);
                       return (
                         <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
                           💡 สั่งครบ {from} {unitTxt}แล้ว · {opt.label}
