@@ -133,7 +133,9 @@ export function quotationDraft(o: Order): QuotationDraft {
 }
 
 /** ร่าง → body ของ POST /quotations (Simple document · ภาษีแยกท้ายบิล) */
-export function quotationBody(o: Order, d: QuotationDraft, salesName: string): Record<string, unknown> {
+export const SALES_NAME = "พนักงาน";
+
+export function quotationBody(o: Order, d: QuotationDraft, _salesName?: string): Record<string, unknown> {
   const p = bkkParts(new Date());
   const today = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
   return {
@@ -148,7 +150,9 @@ export function quotationBody(o: Order, d: QuotationDraft, salesName: string): R
     dueDate: today,
     creditType: 1,
     creditDays: 0,
-    salesName: salesName.slice(0, 100) || "พนักงาน",
+    // ผู้ขาย = "พนักงาน" เสมอ แบบที่พนักงานออกมือใน FlowAccount (เจ้าของร้านสั่ง 7 ต.ค. 69 · ชื่อคนกดมีอีโมจิ เช่น "Pang 🐰" PDF ของ FlowAccount แสดงเป็น □)
+    // คนกดจริงอยู่ในประวัติออเดอร์แล้ว (withLog) · พารามิเตอร์ _salesName ไม่ใช้แล้ว (คงไว้ให้ผู้เรียกเดิม)
+    salesName: SALES_NAME,
     reference: o.id,
     internalNotes: `สร้างจากระบบ iDucky ออเดอร์ ${o.id}`,
     isVatInclusive: false,

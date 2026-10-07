@@ -187,7 +187,8 @@ async function updateQuotation(sb: NonNullable<ReturnType<typeof getSupabaseAdmi
   if (busy.has(lock)) return NextResponse.json({ error: "กำลังอัปเดตใบเสนอราคาอยู่ — รอสักครู่" }, { status: 409 });
   busy.add(lock);
   try {
-    const docBody = quotationUpdateBody(order, draft, before?.salesName || by, recordId);
+    // ผู้ขาย = "พนักงาน" (quotationBody) — ใบที่เคยออกเป็นชื่อคนกด (เช่น Pang 🐰) กดอัปเดตแล้วเปลี่ยนเป็น พนักงาน ด้วย
+    const docBody = quotationUpdateBody(order, draft, by, recordId);
     if (before?.publishedOn) docBody.publishedOn = before.publishedOn;
     if (before?.dueDate) docBody.dueDate = before.dueDate;
     if (before?.reference) docBody.reference = before.reference;
