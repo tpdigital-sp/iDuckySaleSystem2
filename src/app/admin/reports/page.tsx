@@ -13,7 +13,7 @@
  * ⚠️ ห้ามเขียน hex ตรง ๆ — ใช้ var(--dk-*) จาก dashboard.css เหมือนหน้าภาพรวม
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import { PageHead, PageShell, Stat, Stats } from "@/components/admin/ui";
@@ -28,12 +28,17 @@ function today(): string {
   return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
 }
 
-type PresetKey = "month" | "lastMonth" | "d7" | "d30" | "year" | "all" | "custom";
+type PresetKey = "today" | "month" | "lastMonth" | "d7" | "d30" | "year" | "all" | "custom";
 
 /** ฐานออเดอร์จริง (Supabase) เริ่มเก็บ 8 ก.ย. 69 — "ทั้งหมด" คือตั้งแต่เดือนนั้นถึงวันนี้ (ก่อนหน้านั้นไม่มีใบในฐาน) */
 const ALL_FROM = "2026-09-01";
 
+/**
+ * ปุ่มช่วงเวลา — เรียงจากช่วงสั้นไปยาว เจ้าของร้านเปิดจากมือถือถามว่า "วันนี้/เดือนนี้เป็นไง" บ่อยสุด
+ * จึงอยู่ซ้ายสุด (มือถือเห็นก่อนโดยไม่ต้องเลื่อน) · "เลือกวัน" กางช่องวันที่ต่อท้ายแถวเดียวกัน
+ */
 const PRESETS: { key: PresetKey; label: string }[] = [
+  { key: "today", label: "วันนี้" },
   { key: "month", label: "เดือนนี้" },
   { key: "lastMonth", label: "เดือนก่อน" },
   { key: "d7", label: "7 วัน" },
@@ -43,19 +48,47 @@ const PRESETS: { key: PresetKey; label: string }[] = [
   { key: "custom", label: "เลือกวัน" },
 ];
 
-/** ช่วงวันของแต่ละปุ่มลัด */
-function rangeOf(key: PresetKey): { from: string; to: string } {
+/** "2026-09" ของเดือนก่อนหน้าเดือนปัจจุบัน */
+function lastMonthKey(): string {
+  const [y, m] = today().split("-").map(Number);
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  return `${py}-${String(pm).padStart(2, "0")}`;
+}
+
+/** เดือนที่เลือกย้อนหลังได้: ตั้งแต่เดือนแรกที่มีใบในฐาน (ALL_FROM) ถึงเดือนก่อน · ล่าสุดอยู่ซ้ายสุด (ยังไม่รวมเดือนนี้ — มีปุ่มของมันเอง) */
+function pastMonths(): string[] {
+  const out: string[] = [];
+  const floor = ALL_FROM.slice(0, 7);
+  let cur = lastMonthKey();
+  while (cur >= floor && out.length < 36) {
+    out.push(cur);
+    const [y, m] = cur.split("-").map(Number);
+    cur = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  }
+  return out;
+}
+
+/** ช่วงวันทั้งเดือน "2026-09" → 1–30 ก.ย. (เดือนที่ยังไม่จบตัดที่วันนี้) */
+function monthRange(monthKey: string): { from: string; to: string } {
+  const [y, m] = monthKey.split("-").map(Number);
+  const nextFirst = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const end = shiftDay(nextFirst, -1);
+  const t = today();
+  return { from: `${monthKey}-01`, to: end > t ? t : end };
+}
+
+/** ช่วงวันของแต่ละปุ่มลัด · "เดือนก่อน" รับเดือนที่เลือกไว้ (ค่าเริ่มต้น = เดือนที่แล้ว) */
+function rangeOf(key: PresetKey, monthKey = lastMonthKey()): { from: string; to: string } {
   const t = today();
   const [y, m] = t.split("-").map(Number);
   switch (key) {
+    case "today":
+      return { from: t, to: t };
     case "all":
       return { from: ALL_FROM, to: t };
-    case "lastMonth": {
-      const py = m === 1 ? y - 1 : y;
-      const pm = m === 1 ? 12 : m - 1;
-      const first = `${py}-${String(pm).padStart(2, "0")}-01`;
-      return { from: first, to: shiftDay(`${y}-${String(m).padStart(2, "0")}-01`, -1) };
-    }
+    case "lastMonth":
+      return monthRange(monthKey);
     case "d7":
       return { from: shiftDay(t, -6), to: t };
     case "d30":
@@ -73,6 +106,22 @@ const TH_MONTH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค
 function thaiDay(key: string): string {
   const [y, m, d] = key.split("-").map(Number);
   return `${d} ${TH_MONTH[(m || 1) - 1]} ${(y || 0) + 543}`;
+}
+
+/** "ก.ย. 69" — ป้ายสั้นของเดือนบนปุ่ม */
+function thaiMonthShort(monthKey: string): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  return `${TH_MONTH[(m || 1) - 1]} ${String((y || 0) + 543).slice(-2)}`;
+}
+
+/** "1 – 7 ต.ค. 2569 (7 วัน)" · วันเดียวไม่เขียนซ้ำสองรอบ ("7 ต.ค. 2569 (วันนี้)") */
+function rangeLabel(from: string, to: string, days: number): string {
+  if (from === to) return `${thaiDay(from)}${from === today() ? " (วันนี้)" : ""}`;
+  const [fy, fm] = from.split("-");
+  const [ty, tm] = to.split("-");
+  const sameMonth = fy === ty && fm === tm;
+  const left = sameMonth ? String(Number(from.slice(8))) : thaiDay(from);
+  return `${left} – ${thaiDay(to)} (${days} วัน)`;
 }
 
 /** ยอดใหญ่ ๆ ในกล่องสถิติ — "฿1.24 ล้าน" อ่านจากระยะแขนได้ ส่วนเลขเต็มไปอยู่บรรทัดใบ้ */
@@ -241,6 +290,9 @@ function RankList({
 function ReportsInner() {
   const [preset, setPreset] = useState<PresetKey>("month");
   const [range, setRange] = useState(() => rangeOf("month"));
+  /** เดือนที่เลือกในปุ่ม "เดือนก่อน" (เจ้าของร้านขอเลือกเดือนย้อนหลังได้ 7 ต.ค. 69) */
+  const [monthKey, setMonthKey] = useState(lastMonthKey);
+  const months = useMemo(pastMonths, []);
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -286,8 +338,18 @@ function ReportsInner() {
 
   const pick = (key: PresetKey) => {
     setPreset(key);
-    if (key !== "custom") setRange(rangeOf(key));
+    if (key !== "custom") setRange(rangeOf(key, monthKey));
   };
+  const pickMonth = (k: string) => {
+    setMonthKey(k);
+    setRange(monthRange(k));
+  };
+
+  /** มือถือแถวปุ่มเลื่อนแนวนอน — ปุ่มที่เลือกอยู่ต้องไม่ซ่อนอยู่นอกขอบจอ */
+  const activeChip = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeChip.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [preset]);
 
   const t = data?.totals;
   const p = data?.prev;
@@ -319,56 +381,68 @@ function ReportsInner() {
         count={data ? `${data.totals.orders} ใบ` : undefined}
         sub={
           data && !loading
-            ? `${thaiDay(data.from)} – ${thaiDay(data.to)} (${data.days} วัน) · เทียบกับ ${thaiDay(data.prevFrom)} – ${thaiDay(data.prevTo)}`
-            : `${thaiDay(range.from)} – ${thaiDay(range.to)} (${days} วัน) · กำลังดึงข้อมูล…`
+            ? `${rangeLabel(data.from, data.to, data.days)} · เทียบกับ ${rangeLabel(data.prevFrom, data.prevTo, data.days)}`
+            : `${rangeLabel(range.from, range.to, days)} · กำลังดึงข้อมูล…`
         }
         live={
           updatedAt
             ? { ok: !err, text: err ? err : `ข้อมูลสด · ดึงเมื่อ ${updatedAt.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}` }
             : undefined
         }
-        tools={
-          <div className="dkb-scroll">
-            {PRESETS.map((x) => (
-              <button
-                key={x.key}
-                type="button"
-                onClick={() => pick(x.key)}
-                aria-pressed={preset === x.key}
-                className="dkb-tab"
-              >
-                {x.label}
+      />
+
+      {/* ── ช่วงเวลา: แถวเต็มความกว้างใต้หัวเรื่อง (เดิมอยู่มุมขวาของหัว → จอกลางพับ 2 แถวเบี้ยว · มือถือล้นขอบจอ) ── */}
+      <div className="dkb-g mt-4 px-3 py-2.5">
+        <div className="dkb-scroll items-center">
+          {PRESETS.map((x) => (
+            <button
+              key={x.key}
+              type="button"
+              onClick={() => pick(x.key)}
+              aria-pressed={preset === x.key}
+              className="dkb-tab"
+              ref={preset === x.key ? activeChip : undefined}
+            >
+              {x.label}
+              {x.key === "lastMonth" && <b>{thaiMonthShort(monthKey)}</b>}
+            </button>
+          ))}
+        </div>
+        {preset === "lastMonth" && (
+          <div className="dkb-scroll mt-2.5 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+            {months.map((k) => (
+              <button key={k} type="button" onClick={() => pickMonth(k)} aria-pressed={monthKey === k} className="dkb-fchip">
+                {thaiMonthShort(k)}
               </button>
             ))}
           </div>
-        }
-      />
-
-      {preset === "custom" && (
-        <div className="dkb-g mt-3 flex flex-wrap items-end gap-3 p-3">
-          <label className="flex items-center gap-2 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
-            ตั้งแต่
-            <input
-              type="date"
-              value={range.from}
-              max={range.to}
-              onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))}
-              className="dkb-dfield min-h-[44px] rounded-xl px-3 text-[13px]"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
-            ถึง
-            <input
-              type="date"
-              value={range.to}
-              min={range.from}
-              max={today()}
-              onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))}
-              className="dkb-dfield min-h-[44px] rounded-xl px-3 text-[13px]"
-            />
-          </label>
-        </div>
-      )}
+        )}
+        {preset === "custom" && (
+          <div className="mt-2.5 flex flex-wrap gap-2 border-t pt-2.5" style={{ borderColor: "var(--dk-hair)" }}>
+            <label className="dkb-dfield">
+              <span>ตั้งแต่</span>
+              <input
+                type="date"
+                value={range.from}
+                max={range.to}
+                onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))}
+                aria-label="วันเริ่มต้น"
+              />
+            </label>
+            <label className="dkb-dfield">
+              <span>ถึง</span>
+              <input
+                type="date"
+                value={range.to}
+                min={range.from}
+                max={today()}
+                onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))}
+                aria-label="วันสิ้นสุด"
+              />
+            </label>
+          </div>
+        )}
+      </div>
 
       {slowPath && (
         <p className="mt-4 rounded-[20px] px-4 py-3 text-[13px]" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
