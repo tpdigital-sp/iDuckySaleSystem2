@@ -1,4 +1,4 @@
-import { reconcileOrderTax, withLog, type Order, type OrderItem } from "@/lib/admin-data";
+import { reconcileOrderTax, withLog, type Order, type OrderItem, isPaidStatus } from "@/lib/admin-data";
 import { applyAutoRush, stampRushAlert } from "@/lib/rush-auto";
 import { earlyPayBillAdded, syncOrderEarlyPay } from "./order-early-pay";
 import { syncItemsToTP, syncRushToTP } from "./tp-report";
@@ -139,13 +139,23 @@ async function withAutoRush(
   return { order: s.order, turned: r.turned, alert: s.due };
 }
 
+/**
+ * 💰 ประทับเวลาที่ใบเข้าขั้น "ชำระแล้ว" ครั้งแรก (Order.paidAt) — รายงานยอดขายนับตามวันนี้ ไม่ใช่วันที่บนใบ
+ * ตั้งครั้งเดียว: ใบที่เคยมีแล้วไม่ทับ (ถอยกลับรอตรวจสอบแล้วกลับมาใหม่ = ยังวันเดิม) · ใบที่ยังไม่ชำระ/ยกเลิกไม่แตะ
+ * วางที่ประตูเพราะสถานะเข้าชำระแล้วได้หลายทาง (SlipOK · แอดมินยืนยัน · receiveDepositFirst · เมนูเปลี่ยนสถานะ · FlowAccount)
+ */
+function stampPaidAt(next: Order, at: string): Order {
+  if (next.paidAt || !isPaidStatus(next.status)) return next;
+  return { ...next, paidAt: at };
+}
+
 /** สร้างออเดอร์ใหม่ (insert) — ใบใหม่ = รายการเปลี่ยนเสมอ จึงคิดกฎตอนบันทึกให้ทุกครั้ง */
 export async function insertOrder(sb: SB, order: Order, by = "ระบบ"): Promise<WriteOrderResult> {
   // 🛒 ใบที่ติ๊ก "รอของเข้า" แล้วเกิดมาแบบจ่ายแล้วเลย (เช่น FlowAccount ที่ชำระแล้ว) → แจ้งให้สั่งของตั้งแต่ตอนสร้าง
   const np = stampNeedsPurchaseAlert(null, await syncOrderEarlyPay(sb, order, by));
   // 🔥 ใบเกิดมาพร้อมวันใช้งานกระชั้น (ลูกค้าสั่งเองแล้วเลือกวันชิด) → ติ๊กงานเร่งตั้งแต่ใบเกิด
   const rush = await withAutoRush(null, np.order, by);
-  const final = stampSaved(rush.order);
+  const final = stampSaved(stampPaidAt(rush.order, new Date().toISOString()));
   const { error } = await sb.from("orders").insert({ id: final.id, data: final });
   // 🛒 → 📦 ส่งเป็นคำขอในระบบสั่งของ TP + แจ้งไลน์ OrderTP ด้วย (เจ้าของร้านขอ 7 ต.ค. 69 — ดู tp-order-bridge.ts)
   if (!error && np.due) await Promise.all([alertNeedsPurchase(final), pushNeedsPurchaseToTP(final)]);
@@ -191,6 +201,7 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
   const rush = await withAutoRush(prev, final, by);
   final = rush.order;
   final = clearStalePickup(prev, final, by);
+  final = stampPaidAt(final, new Date().toISOString());
   // 🕒 ประทับเวลาบันทึกที่ประตู — ทางเข้าใหม่ได้ไปด้วยเอง ไม่ต้องจำว่าต้องเซ็ต savedAt เอง
   final = stampSaved(final);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);

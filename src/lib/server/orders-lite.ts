@@ -46,8 +46,8 @@ export const REPORT_ORDER_KEYS = [
   "slipVerify",
   "payments",
   "reopenedFrom",
-  /** paidStateOf → orderFullyPaid → hasUnpaidBalance อ่าน claimOf (ใบเคลมไม่มียอดค้าง) */
-  "claimOf",
+  /** 📅 วันที่เข้าขั้นชำระแล้ว — รายงานจัดกลุ่มใบชำระแล้วตามวันนี้ (reportDayKey) */
+  "paidAt",
 ] as const;
 
 /** รายการสินค้าในรายงานใช้แค่ชื่อ/จำนวน/ราคา/ส่วนลดต่อบรรทัด (วิว orders_lite ตัดเหลือเท่านี้) */
@@ -160,6 +160,11 @@ export async function fetchLiteRange<T>(
 /** วิว orders_lite ยังไม่มี → จำไว้ ไม่ต้องลองใหม่ทุกคำขอ (ลองซ้ำทุก 10 นาที เผื่อเพิ่งรัน SQL) */
 let liteViewMissingUntil = 0;
 const LITE_RETRY_MS = 10 * 60_000;
+
+/** เพิ่งรัน orders-lite.sql แล้วไม่อยากรอ 10 นาที — `?fresh=1` ที่หน้ารายงานเรียกตัวนี้ให้ลองวิวใหม่ทันที */
+export function retryLiteViewNow(): void {
+  liteViewMissingUntil = 0;
+}
 
 /**
  * 📈 ออเดอร์สำหรับหน้ารายงาน — ลองวิว orders_lite (data_report: ตัด log + ลาย/proofs ในรายการ) ก่อน

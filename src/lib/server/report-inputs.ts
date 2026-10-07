@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Order } from "@/lib/admin-data";
 import type { Quote } from "@/lib/quotes";
-import { fetchReportOrders, fetchReportQuotes } from "@/lib/server/orders-lite";
+import { fetchReportOrders, fetchReportQuotes, retryLiteViewNow } from "@/lib/server/orders-lite";
 import { orderCostsInRange } from "@/lib/server/stock";
 import { inBackground } from "@/lib/server/background";
 
@@ -95,6 +95,8 @@ export async function reportInputs(
   const key = `${w.wideFrom}|${w.wideTo}`;
   const s = snaps.get(key);
   const age = s ? Date.now() - s.at : Infinity;
+  // ขอสด = ให้ลองวิว orders_lite ใหม่ด้วย (ตัวจำ "วิวไม่มี" ค้าง 10 นาทีหลังเพิ่งรัน SQL)
+  if (opts.fresh) retryLiteViewNow();
   if (!opts.fresh && s && age < FRESH_MS) return { ...s, fromCache: true };
   if (!opts.fresh && s && age < STALE_MS) {
     inBackground(`report refresh ${key}`, loadOnce(sb, key, w));

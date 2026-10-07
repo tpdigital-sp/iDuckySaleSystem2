@@ -28,7 +28,10 @@ function today(): string {
   return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
 }
 
-type PresetKey = "month" | "lastMonth" | "d7" | "d30" | "year" | "custom";
+type PresetKey = "month" | "lastMonth" | "d7" | "d30" | "year" | "all" | "custom";
+
+/** ฐานออเดอร์จริง (Supabase) เริ่มเก็บ 8 ก.ย. 69 — "ทั้งหมด" คือตั้งแต่เดือนนั้นถึงวันนี้ (ก่อนหน้านั้นไม่มีใบในฐาน) */
+const ALL_FROM = "2026-09-01";
 
 const PRESETS: { key: PresetKey; label: string }[] = [
   { key: "month", label: "เดือนนี้" },
@@ -36,6 +39,7 @@ const PRESETS: { key: PresetKey; label: string }[] = [
   { key: "d7", label: "7 วัน" },
   { key: "d30", label: "30 วัน" },
   { key: "year", label: "ปีนี้" },
+  { key: "all", label: "ทั้งหมด" },
   { key: "custom", label: "เลือกวัน" },
 ];
 
@@ -44,6 +48,8 @@ function rangeOf(key: PresetKey): { from: string; to: string } {
   const t = today();
   const [y, m] = t.split("-").map(Number);
   switch (key) {
+    case "all":
+      return { from: ALL_FROM, to: t };
     case "lastMonth": {
       const py = m === 1 ? y - 1 : y;
       const pm = m === 1 ? 12 : m - 1;
@@ -106,7 +112,7 @@ function Bars({ data }: { data: ReportData }) {
   return (
     <section className="dkb-g p-4 sm:p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1">
-        <span className="dkb-h2 text-[15px]">ยอดขายราย{data.seriesUnit === "day" ? "วัน" : "เดือน"}</span>
+        <span className="dkb-h2 text-[15px]">ยอดชำระเงินราย{data.seriesUnit === "day" ? "วัน" : "เดือน"}</span>
         <span className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
           เฉลี่ย {formatPrice(Math.round(avg))}/{data.seriesUnit === "day" ? "วัน" : "เดือน"}
         </span>
@@ -141,7 +147,7 @@ function Bars({ data }: { data: ReportData }) {
 
       {best && best.revenue > 0 && (
         <p className="mt-2 px-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
-          สูงสุด {formatPrice(Math.round(best.revenue))} ({best.label} · {best.orders} ใบ) · ทั้งช่วง {data.totals.orders} ใบ
+          สูงสุด {formatPrice(Math.round(best.revenue))} ({best.label} · {best.orders} ใบ) · ทั้งช่วง {data.totals.paidOrders} ใบที่ชำระแล้ว
         </p>
       )}
     </section>
@@ -286,8 +292,8 @@ function ReportsInner() {
   const t = data?.totals;
   const p = data?.prev;
   const days = daysBetween(range.from, range.to);
-  /** เก็บเงินได้แล้วกี่ % ของยอดขายช่วงนี้ — วงแหวนของกล่องหัว */
-  const paidPct = t && t.revenue > 0 ? Math.round((t.paid / t.revenue) * 100) : 0;
+  /** ยอดสั่งซื้อช่วงนี้เป็นใบที่ชำระเงินแล้วกี่ % — วงแหวนของกล่องหัว (ที่เหลือคือใบที่ลูกค้ายังไม่โอน) */
+  const paidPct = t && t.revenue > 0 ? Math.round((t.paidRevenue / t.revenue) * 100) : 0;
   const margin = t && t.costedSaleBase > 0 ? Math.round((t.profit / t.costedSaleBase) * 100) : null;
   const costPct = t && t.saleBase > 0 ? Math.round((t.costedSaleBase / t.saleBase) * 100) : 0;
   const prevMargin = p && p.costedSaleBase > 0 ? Math.round((p.profit / p.costedSaleBase) * 100) : null;
@@ -404,19 +410,21 @@ function ReportsInner() {
                   <span className="dkb-num text-[1.05rem]">{paidPct}%</span>
                 </i>
               </span>
+              {/* 💰 ตัวเลขหัว = ใบที่ชำระเงินแล้วเท่านั้น (เจ้าของร้านขอ 7 ต.ค. 69) · ใบที่ยังไม่โอนอยู่การ์ดขวา */}
               <span className="min-w-0">
-                <span className="dkb-num block text-[1.75rem] leading-none">{short(t.revenue)}</span>
-                <span className="dkb-h2 mt-1 block text-[0.95rem]">ยอดขายช่วงนี้</span>
+                <span className="dkb-num block text-[1.75rem] leading-none">{short(t.paidRevenue)}</span>
+                <span className="dkb-h2 mt-1 block text-[0.95rem]">ยอดขายที่ชำระเงินแล้ว</span>
                 <span className="block text-[0.75rem]" style={{ color: "var(--dk-yolk-ink)" }}>
-                  {t.orders} ใบ · เฉลี่ย {formatPrice(Math.round(t.revenue / Math.max(1, t.orders)))}/ใบ · เก็บเงินแล้ว{" "}
+                  {t.paidOrders} ใบ · เฉลี่ย {formatPrice(Math.round(t.paidRevenue / Math.max(1, t.paidOrders)))}/ใบ · เงินเข้าแล้ว{" "}
                   {formatPrice(Math.round(t.paid))}
+                  {t.paidOutstanding > 0 ? ` · ค้างงวดหลัง ${formatPrice(Math.round(t.paidOutstanding))}` : ""}
                 </span>
                 <span className="mt-0.5 block text-[0.78rem] font-semibold" style={{ color: "var(--dk-yolk-ink)" }}>
-                  {deltaPct(t.revenue, p.revenue) === null
-                    ? "ช่วงก่อนไม่มียอดขายให้เทียบ"
-                    : `${deltaPct(t.revenue, p.revenue)! >= 0 ? "▲" : "▼"} ${Math.abs(
-                        deltaPct(t.revenue, p.revenue)!
-                      )}% จากช่วงก่อน (${short(p.revenue)} · ${p.orders} ใบ)`}
+                  {deltaPct(t.paidRevenue, p.paidRevenue) === null
+                    ? "ช่วงก่อนไม่มียอดชำระแล้วให้เทียบ"
+                    : `${deltaPct(t.paidRevenue, p.paidRevenue)! >= 0 ? "▲" : "▼"} ${Math.abs(
+                        deltaPct(t.paidRevenue, p.paidRevenue)!
+                      )}% จากช่วงก่อน (${short(p.paidRevenue)} · ${p.paidOrders} ใบ)`}
                 </span>
               </span>
             </div>
@@ -431,10 +439,14 @@ function ReportsInner() {
               wide
             />
             <Stat
-              label="ยังเก็บเงินไม่ได้"
-              value={short(t.outstanding)}
-              hint={t.outstanding > 0 ? `จาก ${t.orders} ใบในช่วงนี้` : "เก็บครบทุกใบ"}
-              tone={t.outstanding > 0 ? "due" : undefined}
+              label="ลูกค้ายังไม่ชำระเงิน"
+              value={short(t.unpaidValue)}
+              hint={
+                t.unpaidOrders > 0
+                  ? `${t.unpaidOrders} ใบ รอชำระ/รอตรวจสอบ · ${paidPct < 100 ? `${100 - paidPct}% ของยอดสั่งซื้อช่วงนี้` : ""}`.replace(/ · $/, "")
+                  : "ทุกใบในช่วงนี้ชำระแล้ว"
+              }
+              tone={t.unpaidOrders > 0 ? "due" : undefined}
               wide
             />
           </Stats>
@@ -497,20 +509,20 @@ function ReportsInner() {
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <RankList
               title="สินค้าขายดี"
-              note={`${data.products.length} จาก ${data.totalProducts} รายการ`}
+              note={`${data.products.length} จาก ${data.totalProducts} รายการ · เฉพาะใบที่ชำระเงินแล้ว`}
               rows={data.products}
               unitWord="ชิ้น"
               showMargin
               hrefOf={(r) => `/admin/orders?q=${encodeURIComponent(r.label)}`}
-              empty="ช่วงนี้ยังไม่มีรายการสินค้า"
+              empty="ช่วงนี้ยังไม่มีสินค้าในใบที่ชำระเงินแล้ว"
             />
             <RankList
               title="ลูกค้าที่ซื้อมากสุด"
-              note={`${data.customers.length} จาก ${data.totalCustomers} ราย`}
+              note={`${data.customers.length} จาก ${data.totalCustomers} ราย · เฉพาะใบที่ชำระเงินแล้ว`}
               rows={data.customers}
               unitWord="ชิ้น"
               hrefOf={(r) => `/admin/orders?q=${encodeURIComponent((r.sub ?? "").split(" · ")[0] || r.label)}`}
-              empty="ช่วงนี้ยังไม่มีลูกค้า"
+              empty="ช่วงนี้ยังไม่มีลูกค้าที่ชำระเงินแล้ว"
             />
           </div>
 
@@ -561,7 +573,7 @@ function ReportsInner() {
 
             {/* ── ช่องทาง + ใบเสนอราคา ── */}
             <div className="grid grid-cols-1 gap-4">
-              <RankList title="ออเดอร์มาทางไหน" rows={data.channels} unitWord="ชิ้น" empty="ช่วงนี้ยังไม่มีออเดอร์" />
+              <RankList title="ออเดอร์มาทางไหน" note="เฉพาะใบที่ชำระเงินแล้ว" rows={data.channels} unitWord="ชิ้น" empty="ช่วงนี้ยังไม่มีออเดอร์ที่ชำระเงินแล้ว" />
 
               <section className="dkb-g p-4 sm:p-5">
                 <div className="flex items-baseline justify-between gap-3 px-1">
@@ -595,7 +607,7 @@ function ReportsInner() {
           </div>
 
           <p className="mt-4 px-2 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-            นับตามวันที่บนใบสั่งซื้อ (ไม่ใช่วันที่เงินเข้า) · ใบยกเลิกไม่นับเป็นยอดขาย ·
+            ใบที่ชำระแล้ว (สถานะตั้งแต่ "ชำระแล้ว" ขึ้นไป) นับตามวันที่เงินเข้า ใบ ก.ย. ที่โอน ต.ค. จึงเป็นยอด ต.ค. · ใบรอชำระ/รอตรวจสอบนับตามวันที่บนใบ · ใบยกเลิกไม่นับ · กราฟและตารางอันดับนับเฉพาะใบที่ชำระแล้ว ·
             ต้นทุนอ่านจากประวัติตัดสต๊อก จึงใช้ราคาทุน ณ วันที่ขาย ไม่ใช่ราคาทุนวันนี้
           </p>
         </>

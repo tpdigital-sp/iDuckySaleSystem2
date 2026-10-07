@@ -12,7 +12,7 @@
  */
 import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { buildReport, orderDayKey, orderSaleBase, previousRange } from "../src/lib/reports";
+import { buildReport, inReportWindow, isPaidOrder, orderSaleBase, previousRange } from "../src/lib/reports";
 import { orderTotal, type Order } from "../src/lib/admin-data";
 import type { Quote } from "../src/lib/quotes";
 
@@ -63,10 +63,8 @@ console.log(`\n📅 ${from} – ${to}  (เทียบ ${prev.from} – ${prev.
 console.log(`ดึงมา ${orders.length} ใบ · ใบเสนอราคา ${quotes.length} ใบ\n`);
 
 // ── ต้นทุนสมมติ: ใส่ให้ครึ่งแรกของใบในช่วง (30% ของฐานคิดกำไร) ──
-const inRange = orders.filter((o) => {
-  const k = orderDayKey(o);
-  return k && k >= from && k <= to && o.status !== "ยกเลิก";
-});
+// ใบชำระแล้วเข้าช่วงตามวันเงินเข้า · ใบยังไม่ชำระตามวันที่บนใบ — กติกาเดียวกับเซิร์ฟเวอร์ (reportDayKey)
+const inRange = orders.filter((o) => inReportWindow(o, from, to) && o.status !== "ยกเลิก");
 const costs = new Map<string, number>();
 inRange.slice(0, Math.ceil(inRange.length / 2)).forEach((o) => {
   const c = Math.round(orderSaleBase(o) * 0.3);
@@ -92,7 +90,10 @@ const manual = inRange.reduce((s, o) => s + orderTotal(o), 0);
 check("ยอดขายรวม = บวกเองทีละใบ", Math.abs(manual - t.revenue) < 1, `${baht(manual)} vs ${baht(t.revenue)}`);
 check("จำนวนใบตรงกัน", inRange.length === t.orders, `${inRange.length} vs ${t.orders}`);
 const seriesSum = r.series.reduce((s, p) => s + p.revenue, 0);
-check("ผลรวมกราฟ = ยอดขาย", Math.abs(seriesSum - t.revenue) < 1, `${baht(seriesSum)}`);
+check("ผลรวมกราฟ = ยอดที่ชำระแล้ว", Math.abs(seriesSum - t.paidRevenue) < 1, `${baht(seriesSum)} vs ${baht(t.paidRevenue)}`);
+const manualPaid = inRange.filter(isPaidOrder).reduce((s, o) => s + orderTotal(o), 0);
+check("ยอดชำระแล้ว = บวกเองเฉพาะใบสถานะ ≥ ชำระแล้ว", Math.abs(manualPaid - t.paidRevenue) < 1, `${baht(manualPaid)} (${t.paidOrders} ใบ)`);
+check("ชำระแล้ว + ยังไม่ชำระ = ทุกใบ", t.paidOrders + t.unpaidOrders === t.orders && Math.abs(t.paidRevenue + t.unpaidValue - t.revenue) < 1);
 check("ใบยกเลิกไม่ถูกนับเป็นยอดขาย", !inRange.some((o) => o.status === "ยกเลิก"));
 check("กำไร = ยอดที่รู้ต้นทุน − ต้นทุน", Math.abs(t.costedSaleBase - t.cogs - t.profit) < 1, `${baht(t.profit)}`);
 check("นับเฉพาะใบที่มีต้นทุน", t.costedOrders === costs.size, `${t.costedOrders} ใบ จากที่ใส่ไว้ ${costs.size} ใบ`);

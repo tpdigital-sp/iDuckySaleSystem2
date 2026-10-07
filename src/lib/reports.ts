@@ -21,10 +21,12 @@ import {
   orderSubtotal,
   orderTotal,
   orderVatAmount,
+  isPaidStatus,
   paidSoFar,
   type Order,
 } from "./admin-data";
 import { dayKey, parseThaiDate } from "./admin-dash";
+import { bkkParts } from "./bangkok-time";
 import { quoteStatusOf, quoteTotal, type Quote } from "./quotes";
 
 /** ยาวเกินกี่วันถึงสรุปเป็นรายเดือนแทนรายวัน (2 เดือนเต็มยังอ่านเป็นแท่งรายวันไหว) */
@@ -49,8 +51,17 @@ export interface ReportTotals {
   discountTotal: number;
   /** เงินที่เก็บได้จริงแล้วของใบในช่วงนี้ */
   paid: number;
-  /** ยอดที่ยังเก็บไม่ได้ของใบในช่วงนี้ */
+  /** ยอดที่ยังเก็บไม่ได้ของใบในช่วงนี้ (รวมทั้งใบที่ยังไม่โอนเลย และงวดหลังของใบมัดจำ) */
   outstanding: number;
+  /** 💰 ใบที่ชำระเงินแล้ว (ดู isPaidOrder) — การ์ดหัวหน้ารายงานใช้ชุดนี้ ไม่ใช่ทุกใบ (เจ้าของร้านขอ 7 ต.ค. 69) */
+  paidOrders: number;
+  /** ยอดรวมทั้งบิลของใบที่ชำระเงินแล้ว */
+  paidRevenue: number;
+  /** ส่วนที่ใบชำระแล้วยังค้างอยู่ (งวดหลังของใบมัดจำ / ยอดโตหลังโอน) */
+  paidOutstanding: number;
+  /** ใบที่ลูกค้ายังไม่ชำระเงินเลย (รอชำระ/รอตรวจสอบ ไม่มียอดยืนยัน) */
+  unpaidOrders: number;
+  unpaidValue: number;
   /** ใบที่ถูกยกเลิกในช่วงนี้ (ไม่นับเป็นยอดขาย แต่ต้องรู้ว่าหลุดมือไปเท่าไหร่) */
   cancelled: number;
   cancelledValue: number;
@@ -115,6 +126,7 @@ export interface ReportData {
   prev: ReportTotals;
   seriesUnit: "day" | "month";
   series: ReportPoint[];
+  /** ตารางอันดับ 3 ชุดนี้นับเฉพาะใบที่เงินเข้าแล้ว (ดู isPaidOrder) */
   products: ReportRow[];
   customers: ReportRow[];
   channels: ReportRow[];
@@ -136,6 +148,28 @@ export function orderDayKey(o: { date?: string }): string | null {
 
 /** อยู่ในช่วง from..to ไหม (เทียบเป็นข้อความ YYYY-MM-DD — ไม่ต้องยุ่งกับโซนเวลาเลย) */
 const inRange = (key: string | null, from: string, to: string) => !!key && key >= from && key <= to;
+
+/** เวลา ISO (UTC) → คีย์วันตามเวลาไทย — paidAt ถูกประทับเป็น ISO ที่เซิร์ฟเวอร์ (Netlify = UTC) */
+function isoDayKeyBkk(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = bkkParts(d);
+  return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+}
+
+/**
+ * 📅 วันที่ใช้จัดกลุ่มใบในรายงาน (เจ้าของร้านกำหนด 7 ต.ค. 69)
+ *  · ใบที่ชำระแล้ว = วันที่เข้าขั้นชำระแล้ว (paidAt) — ใบ ก.ย. ที่โอน ต.ค. ต้องเป็นยอด ต.ค. ไม่ใช่ ก.ย.
+ *  · ใบที่ยังไม่ชำระ/ยกเลิก = วันที่บนใบ (ยังไม่มีวันเงินเข้า)
+ *  · ใบชำระแล้วที่ไม่มี paidAt (ใบเก่าก่อน backfill) ถอยไปใช้วันที่บนใบ — ห้ามหายจากรายงาน
+ */
+export function reportDayKey(o: Order): string | null {
+  if (isPaidOrder(o) && o.paidAt) return isoDayKeyBkk(o.paidAt) ?? orderDayKey(o);
+  return orderDayKey(o);
+}
+
+/** ใบนี้อยู่ในช่วงรายงาน from..to ไหม (ตามกติกา reportDayKey) — สคริปต์ตรวจใช้ตัวเดียวกับเซิร์ฟเวอร์ */
+export const inReportWindow = (o: Order, from: string, to: string) => inRange(reportDayKey(o), from, to);
 
 /** จำนวนวันในช่วง (รวมวันเริ่มและวันจบ) */
 export function daysBetween(from: string, to: string): number {
@@ -171,6 +205,11 @@ const emptyTotals = (): ReportTotals => ({
   discountTotal: 0,
   paid: 0,
   outstanding: 0,
+  paidOrders: 0,
+  paidRevenue: 0,
+  paidOutstanding: 0,
+  unpaidOrders: 0,
+  unpaidValue: 0,
   cancelled: 0,
   cancelledValue: 0,
   saleBase: 0,
@@ -212,6 +251,14 @@ export function sumTotals(orders: Order[], costs?: Map<string, number>): ReportT
     t.discountEarlyPay += orderEarlyPayAmount(o);
     t.paid += paid;
     t.outstanding += Math.max(0, total - paid);
+    if (isPaidOrder(o)) {
+      t.paidOrders += 1;
+      t.paidRevenue += total;
+      t.paidOutstanding += Math.max(0, total - paid);
+    } else {
+      t.unpaidOrders += 1;
+      t.unpaidValue += total;
+    }
 
     const base = orderSaleBase(o);
     t.saleBase += base;
@@ -238,7 +285,10 @@ function pointLabel(key: string, unit: "day" | "month"): string {
   return `${d} ${month}`;
 }
 
-/** กราฟยอดขายตามช่วงเวลา — เติมวัน/เดือนที่ขายไม่ได้เป็น 0 ด้วย ไม่งั้นกราฟโกหกว่าไม่มีวันเงียบ */
+/**
+ * กราฟยอดชำระเงินตามช่วงเวลา — เฉพาะใบที่ชำระแล้ว นับตามวันที่เงินเข้า (reportDayKey) ให้ตรงกับการ์ดหัว
+ * เติมวัน/เดือนที่ไม่มีเงินเข้าเป็น 0 ด้วย ไม่งั้นกราฟโกหกว่าไม่มีวันเงียบ
+ */
 export function buildSeries(
   orders: Order[],
   from: string,
@@ -248,8 +298,8 @@ export function buildSeries(
   const bucket = (key: string) => (unit === "month" ? key.slice(0, 7) : key);
   const acc = new Map<string, { revenue: number; orders: number }>();
   for (const o of orders) {
-    if (o.status === "ยกเลิก") continue;
-    const key = orderDayKey(o);
+    if (!isPaidOrder(o)) continue;
+    const key = reportDayKey(o);
     if (!key) continue;
     const b = bucket(key);
     const cur = acc.get(b) ?? { revenue: 0, orders: 0 };
@@ -289,6 +339,77 @@ export function isRealProductId(id: string | undefined): boolean {
 }
 
 /**
+ * 🏷️ ชื่อสินค้าแบบ "ไม่ติดสเปค" — ของสั่งพิเศษทุกตัวใช้รหัส special-item ร่วมกัน จึงต้องยึดชื่อ
+ * แต่แอดมินพิมพ์ชื่อติดสเปคต่อท้าย ("กระดาษอาร์ตมัน 300 แกรม // ไดคัทตามทรง (มุมมน)" vs "// ตัดตามขนาด")
+ * → สินค้าเดียวกันแตกเป็นหลายแถว แถวละ 1 ใบ (เจ้าของร้านทัก 7 ต.ค. 69 "แสดงต่อออเดอร์ ไม่ได้รวม")
+ * ตัดส่วนหลัง "//" และเครื่องหมายเน้น ** ทิ้ง · วงเล็บไม่ตัด เพราะบางทีคือชื่อรุ่นจริง ("Card Holder (ไม่รับสาย)")
+ */
+export function productBaseName(name: string | undefined): string {
+  return (name ?? "")
+    .split("//")[0]
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * คีย์จัดกลุ่มสินค้า — รหัสจริงยึดรหัส (ชื่อบนใบแก้ได้) · ของสั่งพิเศษยึดชื่อแบบไม่ติดสเปค ไม่สนตัวพิมพ์เล็ก/ใหญ่
+ * null = รายการพ่วงที่ระบบสร้างเอง (<สินค้า>#designfee ค่าคละลาย ฯลฯ) ไม่ใช่สินค้า ไม่ขึ้นอันดับ (ยอดยังอยู่ในยอดรวม)
+ */
+export function productGroupKey(it: Order["items"][number]): string | null {
+  if (isRealProductId(it.productId)) return it.productId;
+  if (it.productId?.includes("#")) return null;
+  const base = productBaseName(it.name) || it.productId || "(ไม่ระบุ)";
+  return `n:${base.toLowerCase()}`;
+}
+
+/** ชื่อที่โชว์ของแถว — รหัสจริงใช้ชื่อบนใบตามเดิม · กลุ่มที่ยึดชื่อใช้ชื่อไม่ติดสเปค */
+const productLabelOf = (it: Order["items"][number]) => (isRealProductId(it.productId) ? it.name : productBaseName(it.name) || it.name);
+
+/**
+ * 👤 รวมใบของลูกค้าคนเดียวกัน — ใบหนึ่งมี contactId อีกใบไม่มี (สั่งเองไม่ล็อกอิน) แต่เบอร์เดียวกัน
+ * เคยคิดคีย์ทีละใบ (contactId || customerId || เบอร์) → คนเดียวกันได้ 2 คีย์ แยกเป็น 2 แถว
+ * ตอนนี้ผูกทุกตัวระบุ (ผู้ติดต่อ/บัญชี/เบอร์) ของใบเดียวกันเป็นกลุ่มเดียว (union-find) แล้วค่อยนับ
+ * คืน Map<orderId, คีย์กลุ่ม> · เบอร์สั้นกว่า 9 หลัก ("0", "-") ไม่ใช่เบอร์ ห้ามใช้ผูก
+ */
+export function customerGroups(orders: Order[]): Map<string, string> {
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let r = k;
+    while (parent.get(r) !== undefined && parent.get(r) !== r) r = parent.get(r)!;
+    // บีบเส้นทาง
+    let c = k;
+    while (parent.get(c) !== undefined && parent.get(c) !== r) {
+      const n = parent.get(c)!;
+      parent.set(c, r);
+      c = n;
+    }
+    if (!parent.has(r)) parent.set(r, r);
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  };
+  const idsOf = (o: Order): string[] => {
+    const digits = (o.phone ?? "").replace(/\D/g, "");
+    return [o.contactId && `c:${o.contactId}`, o.customerId && `u:${o.customerId}`, digits.length >= 9 ? `p:${digits}` : ""].filter(Boolean) as string[];
+  };
+  for (const o of orders) {
+    const ids = idsOf(o);
+    for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+  }
+  const out = new Map<string, string>();
+  for (const o of orders) {
+    const ids = idsOf(o);
+    // ไม่มีตัวระบุเลย → ยึดชื่อ (พิมพ์ต่างกันก็คนละแถว ไม่มีทางรู้ดีกว่านี้) · ไม่มีชื่อ → ใบนั้นเป็นแถวของตัวเอง
+    out.set(o.id, ids.length ? find(ids[0]) : o.customer?.trim() ? `n:${o.customer.trim()}` : `o:${o.id}`);
+  }
+  return out;
+}
+
+/**
  * สินค้าขายดี — 1 แถว = 1 สินค้า (ยึด productId เพราะชื่อบนใบแก้ได้ · ของสั่งพิเศษยึดชื่อ ดู isRealProductId)
  * ยอดของแถว = ราคาบรรทัดหลังหักส่วนลดรายรายการ (ยังไม่หักส่วนลดท้ายบิล — เฉลี่ยลงรายบรรทัดไม่ได้อย่างซื่อสัตย์)
  */
@@ -300,11 +421,13 @@ export function topProducts(orders: Order[], costs?: Map<string, number>, limit 
     const base = orderSaleBase(o);
     const seen = new Set<string>();
     for (const it of o.items) {
-      const key = isRealProductId(it.productId) ? it.productId : it.name || it.productId || "(ไม่ระบุ)";
-      const row = acc.get(key) ?? { key, label: it.name, qty: 0, orders: 0, revenue: 0, cost: 0, costedRevenue: 0, costed: 0, names: new Map() };
+      const key = productGroupKey(it);
+      if (!key) continue;
+      const label = productLabelOf(it);
+      const row = acc.get(key) ?? { key, label, qty: 0, orders: 0, revenue: 0, cost: 0, costedRevenue: 0, costed: 0, names: new Map() };
       const line = money(it.qty * it.unitPrice - itemDiscountAmount(it));
       // ชื่อที่โชว์ = ชื่อที่ทำยอดได้มากสุดของรหัสนี้ (ไม่ใช่ชื่อของใบล่าสุด ซึ่งสุ่มตามลำดับข้อมูล)
-      if (it.name) row.names.set(it.name, (row.names.get(it.name) ?? 0) + line);
+      if (label) row.names.set(label, (row.names.get(label) ?? 0) + line);
       row.qty += it.qty;
       row.revenue += line;
       if (!seen.has(key)) {
@@ -335,17 +458,18 @@ export function topProducts(orders: Order[], costs?: Map<string, number>, limit 
 /** ลูกค้าที่ซื้อมากสุด — รวมใบของคนเดียวกันด้วยผู้ติดต่อ/บัญชี/เบอร์โทร (ชื่อสะกดต่างกันได้) */
 export function topCustomers(orders: Order[], limit = 12): ReportRow[] {
   const acc = new Map<string, ReportRow & { last: string }>();
+  const groups = customerGroups(orders.filter((o) => o.status !== "ยกเลิก"));
   for (const o of orders) {
     if (o.status === "ยกเลิก") continue;
     const digits = (o.phone ?? "").replace(/\D/g, "");
-    // เบอร์ที่กรอกไว้มั่ว ๆ ("0", "-") ไม่ใช่เบอร์ — ห้ามใช้จับกลุ่มและห้ามโชว์ใต้ชื่อ
+    // เบอร์ที่กรอกไว้มั่ว ๆ ("0", "-") ไม่ใช่เบอร์ — ห้ามโชว์ใต้ชื่อ
     const phone = digits.length >= 9 ? o.phone : "";
-    const key = o.contactId || o.customerId || (digits.length >= 9 ? digits : "") || o.customer || o.id;
+    const key = groups.get(o.id) ?? o.id;
     const row = acc.get(key) ?? { key, label: o.customer || "(ไม่ระบุชื่อ)", sub: phone, qty: 0, orders: 0, revenue: 0, last: "" };
     row.orders += 1;
     row.qty += o.items.reduce((s, i) => s + i.qty, 0);
     row.revenue += orderTotal(o);
-    const k = orderDayKey(o) ?? "";
+    const k = reportDayKey(o) ?? "";
     if (k > row.last) {
       row.last = k;
       row.label = o.customer || row.label;
@@ -380,6 +504,14 @@ export function byChannel(orders: Order[]): ReportRow[] {
     acc.set(key, row);
   }
   return [...acc.values()].map((r) => ({ ...r, revenue: money(r.revenue) })).sort((a, b) => b.revenue - a.revenue);
+}
+
+/**
+ * 💰 ใบนี้ "ชำระเงินแล้ว" ไหม — ดูสถานะอย่างเดียว: ทุกสถานะตั้งแต่ "ชำระแล้ว" ขึ้นไป (ชำระแล้ว→รอตรวจแบบ→…→เสร็จสิ้น)
+ * ไม่นับ รอชำระเงิน · รอตรวจสอบ · ยกเลิก (เจ้าของร้านกำหนด 7 ต.ค. 69 — ใบรอตรวจสอบที่นับยอดบางส่วนแล้วก็ยังไม่นับ จนกว่าสถานะจะเปลี่ยน)
+ */
+export function isPaidOrder(o: Order): boolean {
+  return isPaidStatus(o.status);
 }
 
 /** อัตราปิดใบเสนอราคา — นับตามวันที่ออกใบ */
@@ -420,14 +552,17 @@ export function buildReport(input: {
 }): ReportData {
   const { from, to, costs } = input;
   const prevR = previousRange(from, to);
-  const inWindow = (o: Order) => inRange(orderDayKey(o), from, to);
-  const cur = input.orders.filter(inWindow);
-  const prev = input.orders.filter((o) => inRange(orderDayKey(o), prevR.from, prevR.to));
+  // 📅 ใบชำระแล้วเข้าช่วงตามวันเงินเข้า · ใบยังไม่ชำระ/ยกเลิกตามวันที่บนใบ (ดู reportDayKey)
+  const cur = input.orders.filter((o) => inReportWindow(o, from, to));
+  const prev = input.orders.filter((o) => inReportWindow(o, prevR.from, prevR.to));
   const quotesCur = input.quotes.filter((q) => inRange(orderDayKey(q), from, to));
 
   const totals = sumTotals(cur, costs);
   const live = cur.filter((o) => o.status !== "ยกเลิก");
   const { unit, points } = buildSeries(cur, from, to);
+  // 💰 ตารางอันดับ (สินค้า/ลูกค้า/ช่องทาง) นับเฉพาะใบที่ชำระเงินแล้ว (เจ้าของร้านขอ 7 ต.ค. 69)
+  // ใบที่ยังรอโอนไม่ใช่ยอดที่ได้จริง — ขึ้นอันดับแล้วหลอกว่าขายดี · ยอดรวม/กราฟยังนับทุกใบ (มี paid/outstanding แยกอยู่แล้ว)
+  const paidCur = cur.filter(isPaidOrder);
 
   return {
     from,
@@ -439,16 +574,16 @@ export function buildReport(input: {
     prev: sumTotals(prev, costs),
     seriesUnit: unit,
     series: points,
-    products: topProducts(cur, costs),
-    customers: topCustomers(cur),
-    channels: byChannel(cur),
+    products: topProducts(paidCur, costs),
+    customers: topCustomers(paidCur),
+    channels: byChannel(paidCur),
     quotes: quoteStats(quotesCur),
     costGap: {
       orders: live.length - totals.costedOrders,
       revenue: money(totals.saleBase - totals.costedSaleBase),
     },
-    totalProducts: topProducts(cur, costs, Number.MAX_SAFE_INTEGER).length,
-    totalCustomers: topCustomers(cur, Number.MAX_SAFE_INTEGER).length,
+    totalProducts: topProducts(paidCur, costs, Number.MAX_SAFE_INTEGER).length,
+    totalCustomers: topCustomers(paidCur, Number.MAX_SAFE_INTEGER).length,
   };
 }
 
