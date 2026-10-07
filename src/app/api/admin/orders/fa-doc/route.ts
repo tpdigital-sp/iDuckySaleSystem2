@@ -124,6 +124,12 @@ export async function POST(req: Request) {
           { kind, docNo: doc.docNo, recordId: doc.recordId, ...(url ? { url } : {}), total: draft.grandTotal, at: now, by, ...(kind === "inv" ? { paid: !payErr } : {}) },
         ],
       };
+      // 🧾 ใบกำกับ → จดเลข INV ให้ป้ายฝ่ายแพ็คเห็นทันที (cron wht-sync จะจดซ้ำแบบเดียวกันทีหลัง)
+      if (kind === "inv")
+        next.faInvoices = [
+          ...(fresh.faInvoices ?? []).filter((x) => x.docNo !== doc.docNo),
+          { docNo: doc.docNo, ref: draft.source!.docNo, date: draft.paymentDate, total: draft.grandTotal },
+        ];
     }
     next = withLog(
       next,

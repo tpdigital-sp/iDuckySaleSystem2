@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Order } from "@/lib/admin-data";
+import { withLog, type Order } from "@/lib/admin-data";
+import { updateOrder } from "@/lib/server/order-write";
 import { lineTargetOf, noticeFlex, notifyCustomerLogged } from "@/lib/server/notify";
 import { fetchTaxInvoicesOfMonth, fetchTaxInvoicesSince, type SalesReportRow } from "@/lib/server/flowaccount-api";
 import {
@@ -388,6 +389,8 @@ export async function remindCerts(sb: SupabaseClient, certs: WhtCert[], by: stri
 const SYNC_ROW = "__sync__";
 
 export interface WhtSyncInfo {
+  /** จำนวนออเดอร์ที่อัปเดตเลข INV (faInvoices) รอบนี้ · -1 = ล้ม */
+  invoicesWritten?: number;
   at: string;
   by: string;
   months: string[];
@@ -412,7 +415,11 @@ export async function syncFromFlowAccount(sb: SupabaseClient, by: string, month?
   try {
     const rows = month ? await fetchTaxInvoicesOfMonth(month) : await fetchTaxInvoicesSince(prev);
     const r = rows.length ? await importSalesRows(sb, rows) : { added: 0, updated: 0, matched: 0, months: month ? [month] : [] };
-    const info: WhtSyncInfo = { at: new Date().toISOString(), by, months: month ? [month] : [prev, ym(now)], total: rows.length };
+    const invoicesWritten = await syncOrderInvoices(sb).catch((e) => {
+      console.error("[wht-sync] จดเลข INV ลงออเดอร์ไม่สำเร็จ", e);
+      return -1;
+    });
+    const info: WhtSyncInfo = { at: new Date().toISOString(), by, months: month ? [month] : [prev, ym(now)], total: rows.length, invoicesWritten };
     await sb.from(WHT_TABLE).upsert({ id: SYNC_ROW, data: info });
     return {
       ...r,
@@ -425,4 +432,58 @@ export async function syncFromFlowAccount(sb: SupabaseClient, by: string, month?
     await sb.from(WHT_TABLE).upsert({ id: SYNC_ROW, data: { ...(prevInfo ?? { at: "", by, months: [], total: 0 }), error: `${new Date().toISOString()} ${(e as Error).message}` } });
     throw e;
   }
+}
+
+/**
+ * 🧾 จดเลข INV ลงออเดอร์ (Order.faInvoices) ให้ฝ่ายแพ็ค/ใบปะหน้าเห็น "ใบกำกับภาษี INV…" แทนเลข QT/BL (7 ต.ค. 69)
+ * อ่านทั้งตาราง wht_certs (เล็ก ~ร้อยแถว/เดือน) — ใบเดือนเก่าที่หลุดรอบดึงแล้วไม่หายจากออเดอร์
+ * เฉพาะคู่ที่มั่นใจ: เลขอ้างอิง (ref) · ผูกเอง (manual) · เลขผู้เสียภาษี+ยอด (taxId) — ชื่อ+ยอด (name) ไม่จด กันเลขผิดบนกล่อง
+ * เขียนเฉพาะออเดอร์ที่ชุด INV เปลี่ยน (ผ่าน updateOrder) · ใบที่ยกเลิกใน FlowAccount ถอดออก
+ */
+export async function syncOrderInvoices(sb: SupabaseClient): Promise<number> {
+  const { data, error } = await sb
+    .from(WHT_TABLE)
+    .select("id,orderIds:data->orderIds,matchedBy:data->>matchedBy,faStatus:data->>faStatus,ref:data->>refDoc,date:data->>date,total:data->total");
+  if (error) throw new Error(error.message);
+  const want = new Map<string, NonNullable<Order["faInvoices"]>>();
+  for (const r of data ?? []) {
+    if (!/^[A-Z]+\d+$/.test(String(r.id)) || /ยกเลิก/.test(String(r.faStatus ?? ""))) continue;
+    if (!["ref", "manual", "taxId"].includes(String(r.matchedBy ?? ""))) continue;
+    for (const oid of (r.orderIds as string[] | null) ?? []) {
+      const list = want.get(oid) ?? [];
+      list.push({ docNo: String(r.id), ...(r.ref ? { ref: String(r.ref) } : {}), ...(r.date ? { date: String(r.date) } : {}), ...(r.total != null ? { total: Number(r.total) } : {}) });
+      want.set(oid, list);
+    }
+  }
+  // ออเดอร์ที่เคยมี faInvoices แต่ตอนนี้ไม่มีคู่แล้ว (ผูกใหม่/ใบถูกยกเลิก) ต้องถอดด้วย
+  const { data: had } = await sb.from("orders").select("id,inv:data->faInvoices").not("data->faInvoices", "is", null);
+  const cur = new Map<string, NonNullable<Order["faInvoices"]>>((had ?? []).map((r) => [String(r.id), (r.inv as Order["faInvoices"]) ?? []]));
+  const ids = [...new Set([...want.keys(), ...cur.keys()])];
+  if (!ids.length) return 0;
+  // ของปัจจุบันของออเดอร์ที่ต้องการ (แถวที่ยังไม่มี faInvoices ไม่โผล่ใน had)
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.filter((id) => !cur.has(id)).slice(i, i + 200);
+    if (!chunk.length) continue;
+    const { data: rows } = await sb.from("orders").select("id,inv:data->faInvoices").in("id", chunk);
+    for (const r of rows ?? []) cur.set(String(r.id), (r.inv as Order["faInvoices"]) ?? []);
+  }
+  const key = (l: NonNullable<Order["faInvoices"]>) =>
+    l
+      .map((x) => `${x.docNo}|${x.ref ?? ""}|${x.total ?? ""}`)
+      .sort()
+      .join(",");
+  let written = 0;
+  for (const id of ids) {
+    if (!cur.has(id)) continue; // ไม่มีออเดอร์นี้ในฐาน (ถูกลบ)
+    const next = (want.get(id) ?? []).sort((a, b) => a.docNo.localeCompare(b.docNo));
+    if (key(next) === key(cur.get(id) ?? [])) continue;
+    const { data: row } = await sb.from("orders").select("data").eq("id", id).maybeSingle();
+    const o = row?.data as Order | undefined;
+    if (!o) continue;
+    const added = next.filter((x) => !(o.faInvoices ?? []).some((y) => y.docNo === x.docNo)).map((x) => x.docNo);
+    const updated: Order = { ...o, ...(next.length ? { faInvoices: next } : { faInvoices: undefined }) };
+    const w = await updateOrder(sb, added.length ? withLog(updated, "ระบบ", "พบใบกำกับภาษีใน FlowAccount", added.join(", ")) : updated, { prev: o, by: "ระบบ" });
+    if (!w.error) written++;
+  }
+  return written;
 }

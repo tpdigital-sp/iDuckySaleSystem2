@@ -1120,13 +1120,18 @@ function OrderRow({
               งานเคลม
             </span>
           )}
-          {/* 🧾 FlowAcc — เอกสารล่าสุดในสาย QT → BL → INV (faChain ออกจากปุ่มหน้าออเดอร์) + บิลเพิ่ม · ขอใบกำกับแต่ยังไม่มีเอกสาร = เหลือง */}
+          {/* 🧾 FlowAcc — เอกสารล่าสุดในสาย QT → BL → INV (faChain ออกจากปุ่มหน้าออเดอร์) + บิลเพิ่ม · ขอใบกำกับแต่ยังไม่มีเอกสาร = เหลือง
+              ⚠️ เอกสารหลักอยู่ได้ 2 ที่: order.flowAccount (สร้างออเดอร์จากลิงก์ FlowAccount) หรือ taxInvoice.docNo (วางลิงก์ในฟอร์ม "ใส่ข้อมูลใบกำกับภาษี")
+              + INV ที่ออกในแอป FlowAccount เอง = faInvoices (cron wht-sync จดให้) — เดิมดูแค่ flowAccount/faChain → ขึ้น "ยังไม่ออก" ทั้งที่มี QT/INV แล้ว (OD-261006-2644 · 2449 · 7 ต.ค. 69) */}
           {(() => {
             const chain = o.faChain ?? [];
-            const inv = chain.filter((d) => d.kind === "inv").at(-1);
+            const found = [...(o.faInvoices ?? [])].sort((a, b) => a.docNo.localeCompare(b.docNo)).at(-1);
+            const inv = chain.filter((d) => d.kind === "inv").at(-1) ?? (found ? { docNo: found.docNo, paid: undefined as boolean | undefined } : undefined);
             const latest = inv ?? chain.filter((d) => d.kind === "bl").at(-1);
             const extras = o.flowAccountExtras?.length ?? 0;
-            if (!o.flowAccount && !latest) {
+            const mainDoc = o.flowAccount ? `${o.flowAccount.docTypeLabel} ${o.flowAccount.docNo}` : o.taxInvoice?.docNo ? `${o.taxInvoice.docTypeLabel ?? "เอกสาร"} ${o.taxInvoice.docNo}` : "";
+            const mainNo = o.flowAccount?.docNo ?? o.taxInvoice?.docNo;
+            if (!mainNo && !latest) {
               if (!o.taxInvoice || o.status === "ยกเลิก") return null;
               return (
                 <span
@@ -1140,8 +1145,9 @@ function OrderRow({
               );
             }
             const docs = [
-              o.flowAccount && `${o.flowAccount.docTypeLabel} ${o.flowAccount.docNo}`,
+              mainDoc,
               ...chain.map((d) => `${d.kind === "inv" ? "ใบกำกับภาษี/ใบเสร็จ" : "ใบแจ้งหนี้"} ${d.docNo}${d.kind === "inv" && d.paid === false ? " (ยังไม่ได้รับเงินใน FlowAccount)" : ""}`),
+              ...(o.faInvoices ?? []).filter((v) => !chain.some((d) => d.docNo === v.docNo)).map((v) => `ใบกำกับภาษี/ใบเสร็จ ${v.docNo}`),
               ...(o.flowAccountExtras ?? []).map((x) => `บิลเพิ่ม ${x.docNo}`),
             ].filter(Boolean);
             const unpaidInv = inv?.paid === false;
@@ -1158,7 +1164,7 @@ function OrderRow({
                 title={`เอกสาร FlowAccount: ${docs.join(" → ")}`}
               >
                 <i />
-                FlowAcc {latest?.docNo ?? o.flowAccount?.docNo}
+                FlowAcc {latest?.docNo ?? mainNo}
                 {extras ? ` +${extras}` : ""}
               </span>
             );

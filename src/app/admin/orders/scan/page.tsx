@@ -58,7 +58,7 @@ import {
   openFollowUp,
   orderNeedsTaxInvoiceInBox,
   queueStageOf,
-  taxInvoiceCountLabel,
+  taxInvoiceCountLabel, taxInvoiceDocNos,
   orderPrintCount,
   orderStatusLabel,
   ownsTrackingNumber,
@@ -99,6 +99,7 @@ function TaxTag({ o }: { o: Order }) {
   ) : (
     <Tag tone={(o.flowAccountExtras?.length ?? 0) > 0 ? "lilac" : "solid"} title="บิล FlowAccount/บิล VAT — พิมพ์ใบกำกับจาก FlowAccount ใส่กล่อง แล้วกดยืนยันในหน้าออเดอร์ (โหมดแพ็ค)">
       {(o.flowAccountExtras?.length ?? 0) > 0 ? "⚠️ " : ""}🧾 {taxInvoiceCountLabel(o)} ยังไม่ใส่กล่อง
+      {o.faInvoices?.length ? ` · ${taxInvoiceDocNos(o)}` : ""}
     </Tag>
   );
 }

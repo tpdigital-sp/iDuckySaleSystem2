@@ -21,6 +21,19 @@ import { foldSizeExtra, specEntries, specLabel, specValueLines, stripSpecUrls, t
  * เจ้าของร้านเลือก "ก. บวก VAT เพิ่ม 7%" → ใบต้องตรงยอดออเดอร์ทุกบาท: ต้องเปิด VAT 7% ในออเดอร์ก่อน (ปุ่มเดิม — จัดการยอดค้าง/แจ้งลูกค้าให้)
  */
 
+/**
+ * 📄 เอกสารหลักของออเดอร์ — order.flowAccount (สร้างออเดอร์จากลิงก์ FlowAccount)
+ * หรือ taxInvoice.docNo (วางลิงก์ QT/BL ในฟอร์ม "ใส่ข้อมูลใบกำกับภาษี" — OD-261006-2644 QT010830 · 7 ต.ค. 69)
+ * ต้องดูทั้ง 2 ที่ ไม่งั้นปุ่มออกใบเสนอราคาขึ้นทั้งที่มี QT แล้ว = QT ซ้ำใน FlowAccount
+ */
+export function mainDocOf(o: Order): { docNo: string; docType: string; docTypeLabel: string; grandTotal?: number; docChanged?: unknown } | null {
+  if (o.flowAccount) return o.flowAccount;
+  const no = o.taxInvoice?.docNo?.trim();
+  if (!no) return null;
+  const docType = /^QT/i.test(no) ? "qt" : /^BL/i.test(no) ? "bl" : /^INV/i.test(no) ? "inv" : "";
+  return { docNo: no, docType, docTypeLabel: o.taxInvoice?.docTypeLabel ?? "เอกสาร" };
+}
+
 export interface FaLine {
   name: string;
   description: string;
@@ -65,7 +78,8 @@ function itemDescription(item: Order["items"][number]): string {
 
 export function quotationDraft(o: Order): QuotationDraft {
   const problems: string[] = [];
-  if (o.flowAccount) problems.push(`ออเดอร์นี้ผูกเอกสาร FlowAccount ${o.flowAccount.docNo} แล้ว`);
+  const main0 = mainDocOf(o);
+  if (main0) problems.push(`ออเดอร์นี้ผูกเอกสาร FlowAccount ${main0.docNo} แล้ว`);
   if (!o.taxInvoice?.company) problems.push("ยังไม่ได้ใส่ข้อมูลใบกำกับภาษี (ชื่อบริษัท/เลขผู้เสียภาษี/ที่อยู่) — กด 🧾 ใส่ข้อมูลใบกำกับภาษี ก่อน");
   if (!(orderVatAmount(o) > 0)) problems.push("ยังไม่ได้เปิด VAT 7% — กด “＋ เปิด VAT 7%” ในกล่องยอดเงินก่อน (ยอดออเดอร์จะเท่ากับยอดในใบ)");
   if (o.status === "ยกเลิก") problems.push("ออเดอร์ถูกยกเลิกแล้ว");
@@ -169,8 +183,8 @@ export function upgradeSource(o: Order, kind: FaDocKind): { docNo: string; type:
     const bl = [...(o.faChain ?? [])].reverse().find((d) => d.kind === "bl");
     if (bl) return { docNo: bl.docNo, type: REF_TYPE.bl };
   }
-  const t = o.flowAccount?.docType;
-  if (o.flowAccount && t && REF_TYPE[t]) return { docNo: o.flowAccount.docNo, type: REF_TYPE[t] };
+  const m = mainDocOf(o);
+  if (m && REF_TYPE[m.docType]) return { docNo: m.docNo, type: REF_TYPE[m.docType] };
   return null;
 }
 
@@ -185,20 +199,23 @@ export function paymentDateOf(o: Order): string {
 /** ร่างใบแจ้งหนี้/ใบกำกับภาษี — รายการ/ยอดเหมือนใบเสนอราคา + เงื่อนไขของแต่ละขั้น */
 export function draftFor(o: Order, kind: FaDocKind): QuotationDraft & { source?: { docNo: string; type: number }; paymentDate?: string } {
   if (kind === "qt") return quotationDraft(o);
-  const base = quotationDraft({ ...o, flowAccount: undefined });
+  // ร่างรายการ/ยอดแบบใบเสนอราคา โดยไม่นับว่า "มีเอกสารหลักแล้ว" (ข้อห้ามนั้นใช้กับ QT อย่างเดียว)
+  const base = quotationDraft({ ...o, flowAccount: undefined, ...(o.taxInvoice ? { taxInvoice: { ...o.taxInvoice, docNo: undefined } } : {}) });
   const problems = base.problems.slice();
   const src = upgradeSource(o, kind);
-  if (!o.flowAccount) problems.unshift("ยังไม่มีเอกสาร FlowAccount หลัก — ออกใบเสนอราคาก่อน");
-  else if (!src) problems.push(`เอกสารหลัก ${o.flowAccount.docNo} อัปเกรดต่อไม่ได้ (ชนิด ${o.flowAccount.docTypeLabel})`);
+  const main = mainDocOf(o);
+  if (!main) problems.unshift("ยังไม่มีเอกสาร FlowAccount หลัก — ออกใบเสนอราคาก่อน");
+  else if (!src) problems.push(`เอกสารหลัก ${main.docNo} อัปเกรดต่อไม่ได้ (ชนิด ${main.docTypeLabel})`);
   if (o.deposit || o.flowAccount?.deposit) problems.push("ใบมัดจำ — ออกใบแจ้งหนี้/ใบกำกับใน FlowAccount เอง (ยังไม่รองรับมัดจำ)");
-  if (o.flowAccount?.grandTotal != null && Math.abs(o.flowAccount.grandTotal - base.grandTotal) > 0.05)
-    problems.push(`ยอดออเดอร์ (${base.grandTotal}) ไม่ตรง ${o.flowAccount.docTypeLabel} ${o.flowAccount.docNo} (${o.flowAccount.grandTotal}) — แก้ให้ตรงก่อน`);
-  if (o.flowAccount?.docChanged) problems.push(`${o.flowAccount.docNo} ถูกแก้ใน FlowAccount หลังเปิดออเดอร์ — กด 🔄 เทียบกับเอกสารล่าสุด ก่อน`);
+  if (main?.grandTotal != null && Math.abs(main.grandTotal - base.grandTotal) > 0.05)
+    problems.push(`ยอดออเดอร์ (${base.grandTotal}) ไม่ตรง ${main.docTypeLabel} ${main.docNo} (${main.grandTotal}) — แก้ให้ตรงก่อน`);
+  if (main?.docChanged) problems.push(`${main.docNo} ถูกแก้ใน FlowAccount หลังเปิดออเดอร์ — กด 🔄 เทียบกับเอกสารล่าสุด ก่อน`);
   const chain = o.faChain ?? [];
   if (kind === "bl") {
-    if (o.flowAccount && o.flowAccount.docType !== "qt") problems.push(`เอกสารหลักเป็น ${o.flowAccount.docTypeLabel} อยู่แล้ว — ไม่ต้องออกใบแจ้งหนี้`);
+    if (main && main.docType !== "qt") problems.push(`เอกสารหลักเป็น ${main.docTypeLabel} อยู่แล้ว — ไม่ต้องออกใบแจ้งหนี้`);
     if (chain.some((d) => d.kind === "bl")) problems.push(`ออกใบแจ้งหนี้แล้ว (${chain.find((d) => d.kind === "bl")!.docNo})`);
-    if (chain.some((d) => d.kind === "inv")) problems.push("ออกใบกำกับภาษีแล้ว — ไม่ต้องออกใบแจ้งหนี้");
+    if (chain.some((d) => d.kind === "inv") || (o.faInvoices ?? []).length)
+      problems.push(`ออกใบกำกับภาษีแล้ว (${[...chain.filter((d) => d.kind === "inv").map((d) => d.docNo), ...(o.faInvoices ?? []).map((v) => v.docNo)].filter((v, i, a) => a.indexOf(v) === i).join(", ")}) — ไม่ต้องออกใบแจ้งหนี้`);
   }
   if (kind === "inv") {
     if (chain.some((d) => d.kind === "inv")) problems.push(`ออกใบกำกับภาษี/ใบเสร็จรับเงินแล้ว (${chain.find((d) => d.kind === "inv")!.docNo})`);

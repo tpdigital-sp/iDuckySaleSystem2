@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, taxInvoiceDocOf, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -1388,7 +1388,7 @@ function OrderDocs({
                 )}
                 {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok &&
                   (() => {
-                    const doc = taxInvoiceDocOf(order);
+                    const doc = taxInvoiceDocsOf(order)[0]; // บิลหลัก — ออก INV แล้วได้เลข INV (faInvoices)
                     // 🧾➕ บิลเพิ่ม (ใบที่ 2 ขึ้นไป) ต้องบอกบนกระดาษว่ามีกี่ใบ เลขอะไรบ้าง — คนแพ็คจะได้พิมพ์ครบ
                     const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo);
                     const docTxt = docs.length > 1 ? docs.map((d) => `${d.label} ${d.docNo}${d.extra ? " (บิลเพิ่ม)" : ""}`).join(" + ") : doc.docNo ? `${doc.label} ${doc.docNo}` : "";

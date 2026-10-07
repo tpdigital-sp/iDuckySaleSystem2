@@ -1317,6 +1317,12 @@ export interface Order {
    * ออกจากปุ่มในกล่อง FlowAccount หน้าออเดอร์ (lib/server/fa-create.ts · 7 ต.ค. 69) · ยอดของใบพวกนี้ = ยอดเดียวกับเอกสารหลัก (อัปเกรดเอกสาร ไม่ใช่บิลเพิ่ม)
    * ⚠️ ไม่ใช่ flowAccountExtras (นั่นคือบิลเพิ่มยอดใหม่) · ใบหัก/การจับคู่ INV (wht-db matcher) อ่านเลขเอกสารจากที่นี่ด้วย
    */
+  /**
+   * 🧾 ใบกำกับภาษี/ใบเสร็จรับเงิน (INV) ที่ออกใน FlowAccount แล้วของใบงานนี้ — จดลงออเดอร์ให้ฝ่ายแพ็ค/ใบปะหน้าเห็นเลข INV (ไม่มีสิทธิ์ดูยอดเงิน)
+   * cron wht-sync (ทุก 5 นาที) เขียนจากตาราง wht_certs เฉพาะที่จับคู่มั่นใจ (เลขอ้างอิง · ผูกเอง · เลขผู้เสียภาษี+ยอด) + ปุ่มออกใบกำกับ (fa-doc)
+   * ref = เลขเอกสารที่ INV อ้างอิง (QT/BL) — taxInvoiceDocsOf ใช้แทนเลขบิลนั้นบนป้าย "ใส่ใบกำกับลงกล่อง" (7 ต.ค. 69)
+   */
+  faInvoices?: { docNo: string; ref?: string; date?: string; total?: number }[];
   faChain?: {
     kind: "bl" | "inv";
     docNo: string;
@@ -1365,11 +1371,33 @@ export function taxInvoiceDocOf(o: Order): { docNo?: string; url?: string; label
   return { label: "ใบกำกับภาษี", company: t?.company };
 }
 
-/** 🧾 เอกสารใบกำกับ "ทุกใบ" ที่ต้องไปกับกล่อง — บิลหลักก่อน แล้วตามด้วยบิลเพิ่ม (flowAccountExtras) ตามลำดับที่แนบ */
-export function taxInvoiceDocsOf(o: Order): { docNo?: string; url?: string; label: string; extra?: boolean; amount?: number }[] {
+/**
+ * 🧾 เอกสารใบกำกับ "ทุกใบ" ที่ต้องไปกับกล่อง — บิลหลักก่อน แล้วตามด้วยบิลเพิ่ม (flowAccountExtras) ตามลำดับที่แนบ
+ * บิลไหนออกใบกำกับภาษี (INV) แล้ว → โชว์เลข INV แทนเลข QT/BL (faInvoices · 7 ต.ค. 69) — ฝ่ายแพ็คหยิบใบที่ถูกใส่กล่อง
+ */
+export function taxInvoiceDocsOf(o: Order): { docNo?: string; url?: string; label: string; extra?: boolean; amount?: number; fromDoc?: string; company?: string }[] {
   const main = taxInvoiceDocOf(o);
   const extras = (o.flowAccountExtras ?? []).map((x) => ({ docNo: x.docNo, url: x.url, label: x.docTypeLabel, extra: true, amount: x.grandTotal }));
-  return [main, ...extras];
+  const bills: { docNo?: string; url?: string; label: string; extra?: boolean; amount?: number; fromDoc?: string; company?: string }[] = [main, ...extras];
+  const invs = [...(o.faInvoices ?? [])];
+  if (!invs.length) return bills;
+  // เลขที่ INV อาจอ้างถึงแทนบิลหลัก: ตัวบิลเอง + ใบแจ้งหนี้ที่ระบบออกต่อ (faChain)
+  const aliases = (b: (typeof bills)[number], i: number) =>
+    i === 0 ? [b.docNo, o.flowAccount?.docNo, ...(o.faChain ?? []).filter((d) => d.kind === "bl").map((d) => d.docNo)] : [b.docNo];
+  const out = bills.map((b, i) => {
+    const k = invs.findIndex((v) => v.ref && aliases(b, i).includes(v.ref));
+    if (k < 0) return b;
+    const v = invs.splice(k, 1)[0];
+    return { ...b, docNo: v.docNo, url: undefined, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", fromDoc: b.docNo, amount: v.total ?? b.amount };
+  });
+  // INV ที่บอกไม่ได้ว่าเป็นของบิลไหน (อ้างใบแจ้งหนี้ที่ออกในแอป FlowAccount เอง) — บิลที่ยังไม่มี INV เหลือใบเดียว = ใบนั้น
+  const open = out.map((b, i) => (b.fromDoc ? -1 : i)).filter((i) => i >= 0);
+  if (invs.length === 1 && open.length === 1) {
+    const b = out[open[0]];
+    out[open[0]] = { ...b, docNo: invs[0].docNo, url: undefined, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", fromDoc: b.docNo, amount: invs[0].total ?? b.amount };
+    invs.length = 0;
+  }
+  return [...out, ...invs.map((v) => ({ docNo: v.docNo, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", extra: true, amount: v.total }))];
 }
 
 /** 🧾 ป้ายสั้น "ใบกำกับภาษี" / "ใบกำกับภาษี 2 ใบ" — ใช้บนตราใบปะหน้า/ใบงาน/ด่านแพ็ค */

@@ -101,7 +101,6 @@ import {
   followUpRounds,
   openFollowUp,
   trackingBoxes,
-  taxInvoiceDocOf,
   taxInvoiceDocsOf,
   taxInvoiceCountLabel,
   taxInvoiceDocNos,
@@ -3760,7 +3759,7 @@ export default function AdminOrderDetailPage() {
   function toggleTaxInvoicePacked() {
     if (!order) return;
     const acked = !!order.taxInvoicePacked;
-    const doc = taxInvoiceDocOf(order);
+    const doc = taxInvoiceDocsOf(order)[0]; // บิลหลัก — ออก INV แล้วได้เลข INV (faInvoices)
     const next = withLog(
       { ...order, taxInvoicePacked: acked ? undefined : { by: actor, at: new Date().toISOString() } },
       actor,
@@ -5275,7 +5274,7 @@ export default function AdminOrderDetailPage() {
                       ? "📧 ใบกำกับส่ง E-tax/อีเมลแล้ว — ไม่ต้องแนบกล่อง"
                       : order.taxInvoicePacked
                         ? `✅ ใส่${taxInvoiceCountLabel(order)}ลงกล่องแล้ว · ${order.taxInvoicePacked.by} · ${shortTime(order.taxInvoicePacked.at)}`
-                        : `🧾 ต้องใส่${taxInvoiceCountLabel(order)}ลงกล่อง${order.flowAccountExtras?.length ? ` (${taxInvoiceDocNos(order)})` : ""} — ยังไม่ยืนยัน (กันยิงเลขพัสดุ)`}
+                        : `🧾 ต้องใส่${taxInvoiceCountLabel(order)}ลงกล่อง${order.flowAccountExtras?.length || order.faInvoices?.length ? ` (${taxInvoiceDocNos(order)})` : ""} — ยังไม่ยืนยัน (กันยิงเลขพัสดุ)`}
                     {mayEdit && (
                       <span className="ml-auto flex gap-1">
                         {order.taxInvoiceDelivery !== "email" && (
@@ -5329,9 +5328,10 @@ export default function AdminOrderDetailPage() {
                     <OrderTaxInvoices orderId={order.id} hideIds={(order.faChain ?? []).map((d) => d.docNo)} />
                   )}
                   {/* ปุ่มออกเอกสารขั้นถัดไป — ร่างบอกเงื่อนไขที่ยังขาด (ยังเก็บเงินไม่ครบ ฯลฯ) ตอนกด */}
-                  {order.flowAccount && mayEdit && seesMoney && order.status !== "ยกเลิก" && !order.deposit && (
+                  {/* เอกสารหลัก = flowAccount หรือ QT/BL ที่วางในฟอร์มข้อมูลใบกำกับ (taxInvoice.docNo) — ดู mainDocOf ใน fa-create.ts */}
+                  {(order.flowAccount || order.taxInvoice?.docNo) && mayEdit && seesMoney && order.status !== "ยกเลิก" && !order.deposit && (
                     <p className="flex flex-wrap gap-1.5 pt-0.5">
-                      {order.flowAccount.docType === "qt" && !(order.faChain ?? []).length && (
+                      {(order.flowAccount ? order.flowAccount.docType === "qt" : /^QT/i.test(order.taxInvoice?.docNo ?? "")) && !(order.faChain ?? []).length && !(order.faInvoices ?? []).length && (
                         <button
                           type="button"
                           onClick={() => void createFaDoc("bl")}
@@ -5341,7 +5341,7 @@ export default function AdminOrderDetailPage() {
                           {faQtBusy === "bl" ? "⏳ กำลังสร้าง…" : "📋 ออกใบแจ้งหนี้ใน FlowAccount"}
                         </button>
                       )}
-                      {!(order.faChain ?? []).some((d) => d.kind === "inv") && (
+                      {!(order.faChain ?? []).some((d) => d.kind === "inv") && !(order.faInvoices ?? []).length && (
                         <button
                           type="button"
                           onClick={() => void createFaDoc("inv")}
@@ -5439,7 +5439,7 @@ export default function AdminOrderDetailPage() {
                 </div>
               )}
               {/* 📄 ออกใบเสนอราคาใน FlowAccount จากออเดอร์นี้ — ต้องมีข้อมูลใบกำกับ + VAT 7% ก่อน (ร่างบอกว่าขาดอะไร) */}
-              {mayEdit && seesMoney && !order.flowAccount && order.status !== "ยกเลิก" && (
+              {mayEdit && seesMoney && !order.flowAccount && !order.taxInvoice?.docNo && order.status !== "ยกเลิก" && (
                 <button
                   type="button"
                   onClick={() => void createFaDoc("qt")}
@@ -10871,7 +10871,7 @@ function PackView({
       {orderHasTaxInvoice(order) && (
         <div className="px-3 pt-1">
           {(() => {
-            const doc = taxInvoiceDocOf(order);
+            const doc = taxInvoiceDocsOf(order)[0]; // บิลหลัก — ออก INV แล้วได้เลข INV (faInvoices)
             const byEmail = order.taxInvoiceDelivery === "email";
             const packed = !!order.taxInvoicePacked;
             // 🧾➕ มากกว่า 1 ใบ = โทนม่วงทึบ (เจ้าของร้านสั่ง 24 ก.ย. 69 ให้ต่างจากใบกำกับใบเดียว)
