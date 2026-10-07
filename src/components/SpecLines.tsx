@@ -275,7 +275,8 @@ function specRank(k: string): number {
   if (isSetCountLine(k)) return 0;
   if (isBaseLine(k)) return isSizeLine(k) ? 3 : 4;
   if (isSizeLine(k) || isCutLine(k)) return 0;
-  return isMaterialLine(k) ? 1 : 2;
+  // รองพื้นขาว = คุณสมบัติของวัสดุใส → ติดใต้บรรทัด "สี PET: PET สีใส" ไม่ไปลอยหลัง "มุม"
+  return isMaterialLine(k) || /รอง(พื้น)?(สี)?ขาว/.test(k) ? 1 : 2;
 }
 
 /**
@@ -291,14 +292,17 @@ function specRank(k: string): number {
  *   • บรรทัดการตัด (isCutLine) — "ไม่ไดคัท (เต็มแผ่น A3)" คือขนาดชิ้นงานที่สั่ง ไม่ใช่ของเสริมที่ไม่ได้ทำ
  *   • บรรทัดเจาะรู (isHoleLine) — "ไม่เจาะรู" คือรูปทรงชิ้นงาน ทีมผลิตต้องเห็นว่าห้ามเจาะ
  *   • บรรทัดเก็บขอบ (isEdgeLine) — "ไม่เย็บขอบ" ทีมผลิตต้องเห็นว่าส่งผ้าเปล่า ไม่ต้องเย็บ
+ *   • บรรทัดรองพื้นขาว (isWhiteBaseLine) — "ไม่รองพื้นขาว" บนวัสดุใส (PET สีใส) = พิมพ์โปร่งแสง ทีมผลิตต้องรู้
+ *     ว่าห้ามรองขาว ไม่ใช่ของเสริมที่ไม่ได้สั่ง (พนักงานขอ 7 ต.ค. 69 · โฟโต้การ์ด OD-261006-5463)
  *   • ข้อความที่ลูกค้า/แอดมินพิมพ์เอง ไม่ใช่ชื่อตัวเลือก — "หมายเหตุ: ไม่ตัดแบ่ง วางเรียงลงหลาได้เลย"
  *     และบรรทัดที่ไม่มีหัวข้อ (ออเดอร์เก่าที่กางจากข้อความรวม) — "ไม่รองขาวส่วน Backgrounds"
  */
+const isWhiteBaseLine = (k: string, v: string) => /รอง(พื้น)?(สี)?ขาว/.test(`${k} ${v}`);
 const pickedNone = (k: string, v: string) => {
   const t = v.trim();
   if (!/^ไม่/.test(t) || /^ไม่(เกิน|ต่ำกว่า|น้อยกว่า|จำกัด|เท่ากับ)/.test(t)) return false;
   if (!k.trim() || /หมายเหตุ|note/i.test(k)) return false;
-  if (isSizeLine(k) || isCoatingLine(k) || isCutLine(k) || isHoleLine(k, t) || isEdgeLine(k)) return false;
+  if (isSizeLine(k) || isCoatingLine(k) || isCutLine(k) || isHoleLine(k, t) || isEdgeLine(k) || isWhiteBaseLine(k, t)) return false;
   return !/\s·\s|\s\|\s/.test(t);
 };
 
