@@ -167,15 +167,16 @@ export default function NeedsPurchaseItemsEditor({
     <div className="mt-2" ref={boxRef}>
       <p className="mb-1 text-[11px] font-bold text-rose-700">
         ของที่ต้องสั่ง <span className="text-rose-600">*</span>{" "}
-        <span className="font-normal text-slate-500">(วัสดุที่ต้องซื้อจริง ไม่ใช่ชื่อสินค้าลูกค้า)</span>
+        <span className="font-normal text-slate-500">(วัสดุจริง ไม่ใช่ชื่อสินค้า)</span>
       </p>
 
       {/* ⛔ บังคับใส่ — ยังไม่ใส่ = ลูกค้าโอนแล้วระบบยังไม่ส่งเข้า TP (เจ้าของร้านสั่ง 7 ต.ค. 69) */}
+      {/* สีเหลืองอำพัน (ไม่ใช่แดง) — กล่องแม่เป็นโทนแดงอยู่แล้ว แดงซ้อนแดงอ่านยาก · เจ้าของร้านขอเปลี่ยนสี 7 ต.ค. 69 */}
       {saved.length === 0 && (
-        <p role="alert" className="mb-2 rounded-lg border border-rose-300 bg-white px-2.5 py-2 text-[11.5px] font-bold leading-relaxed text-rose-700">
+        <p role="alert" className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11.5px] font-bold leading-relaxed text-amber-900">
           {draft
-            ? "ใส่วัสดุที่ต้องสั่งอย่างน้อย 1 รายการ (ค้นหาจากคลังด้านล่าง หรือกดปุ่ม 💡 แนะนำ) แล้วกดปุ่ม 🛒 รอของเข้า ข้างล่างทีเดียว"
-            : "⚠️ ต้องใส่วัสดุที่ต้องสั่งอย่างน้อย 1 รายการ — ยังไม่ใส่ ระบบจะยังไม่ส่งคำขอเข้าระบบสั่งของ TP (ใส่ทีหลังได้ ระบบส่งให้ทันทีที่ใส่)"}
+            ? "ใส่ของที่ต้องสั่งอย่างน้อย 1 รายการ แล้วกดปุ่ม 🛒 ด้านล่าง"
+            : "⚠️ ยังไม่มีรายการ — ค้นหาวัสดุด้านล่างเพื่อเพิ่ม"}
         </p>
       )}
 
