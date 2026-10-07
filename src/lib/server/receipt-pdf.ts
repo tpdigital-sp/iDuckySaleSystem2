@@ -23,6 +23,7 @@ import {
 import { formatPrice, type Product } from "@/lib/products";
 import { resolveShipLabel } from "@/lib/ship-label";
 import { itemQtyText } from "@/lib/item-yield";
+import { politeName } from "@/lib/customer-name";
 import { foldSizeExtra, specEntries, specLabel, specValueLines, stripSpecUrls, tidySpec, withWorkSize } from "@/components/SpecLines";
 import type { ShippingMethod, ShopInfo } from "@/lib/settings-shared";
 import { drawThai, embedThaiFonts, thaiWidth, wrapThai, type ThaiFont, type ThaiFonts } from "./pdf-thai";
@@ -156,7 +157,7 @@ function drawContHead(c: Ctx, order: Order, shop: ShopInfo): void {
 function drawCustomer(c: Ctx, order: Order): void {
   text(c, "ลูกค้า", LEFT, { size: 7, color: FAINT });
   c.y -= 12;
-  text(c, order.customer || "—", LEFT, { font: c.f.bold, size: 10 });
+  text(c, politeName(order.customer) || "—", LEFT, { font: c.f.bold, size: 10 });
   c.y -= 11;
   if (order.phone) {
     text(c, order.phone, LEFT, { size: 8, color: SOFT });

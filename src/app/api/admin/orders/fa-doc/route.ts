@@ -191,7 +191,8 @@ async function updateQuotation(sb: NonNullable<ReturnType<typeof getSupabaseAdmi
     const docBody = quotationUpdateBody(order, draft, by, recordId);
     if (before?.publishedOn) docBody.publishedOn = before.publishedOn;
     if (before?.dueDate) docBody.dueDate = before.dueDate;
-    if (before?.reference) docBody.reference = before.reference;
+    // อ้างอิงที่ระบบเคยใส่เลข OD ไว้ = ล้างออก (เจ้าของร้านขอ 7 ต.ค. 69) · ที่พนักงานพิมพ์เองใน FlowAccount = คงไว้
+    if (before?.reference && before.reference !== order.id) docBody.reference = before.reference;
     await updateDocument("quotations", recordId, docBody);
     const fresh = ((await sb.from("orders").select("data").eq("id", orderId).maybeSingle()).data?.data as Order | undefined) ?? order;
     const net = Math.round((draft.grandTotal - (draft.wht?.amount ?? 0)) * 100) / 100;

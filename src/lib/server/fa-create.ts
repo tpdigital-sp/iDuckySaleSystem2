@@ -1,4 +1,5 @@
 import "server-only";
+import { politeName } from "@/lib/customer-name";
 import {
   orderChargesTotal,
   orderDiscountTotal,
@@ -124,7 +125,8 @@ export function quotationDraft(o: Order): QuotationDraft {
       taxId: t?.taxId?.replace(/\D/g, "") || undefined,
       branch: t?.branch || undefined,
       address: t?.address || o.address || undefined,
-      person: o.customer || undefined,
+      // 🙏 ช่อง "ผู้ติดต่อ" เติม "คุณ" (เจ้าของร้านขอ 7 ต.ค. 69) · contactName ด้านบนคงชื่อเดิม — FlowAccount ผูกสมุดผู้ติดต่อด้วยชื่อนั้น
+      person: politeName(o.customer) || undefined,
       phone: o.phone || undefined,
       email: o.email || undefined,
     },
@@ -153,7 +155,9 @@ export function quotationBody(o: Order, d: QuotationDraft, _salesName?: string):
     // ผู้ขาย = "พนักงาน" เสมอ แบบที่พนักงานออกมือใน FlowAccount (เจ้าของร้านสั่ง 7 ต.ค. 69 · ชื่อคนกดมีอีโมจิ เช่น "Pang 🐰" PDF ของ FlowAccount แสดงเป็น □)
     // คนกดจริงอยู่ในประวัติออเดอร์แล้ว (withLog) · พารามิเตอร์ _salesName ไม่ใช้แล้ว (คงไว้ให้ผู้เรียกเดิม)
     salesName: SALES_NAME,
-    reference: o.id,
+    // ไม่ใส่ reference (ช่อง "อ้างอิง" บนเอกสาร) — เจ้าของร้านขอเอาเลข OD ออก 7 ต.ค. 69 · เลข OD ยังอยู่ใน internalNotes (ลูกค้าไม่เห็น)
+    // ใบวางบิล/ใบกำกับ (upgradeBody) ยังอ้างเลขใบเสนอราคาเหมือนเดิม
+    reference: "",
     internalNotes: `สร้างจากระบบ iDucky ออเดอร์ ${o.id}`,
     isVatInclusive: false,
     isVat: true,

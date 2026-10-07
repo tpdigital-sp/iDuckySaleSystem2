@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { politeName } from "@/lib/customer-name";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/products";
 import { adminDiscountAmount, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, type Order } from "@/lib/admin-data";
@@ -152,7 +153,7 @@ export default function CustomerReceiptPage() {
           {/* ลูกค้า */}
           <div className="border-b border-stone-100 py-3">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ลูกค้า</p>
-            <p className="mt-0.5 text-sm font-bold text-stone-800">{order.customer}</p>
+            <p className="mt-0.5 text-sm font-bold text-stone-800">{politeName(order.customer)}</p>
             <p className="text-xs text-stone-500">{order.phone}</p>
             <p className="text-xs leading-snug text-stone-500">{order.address}</p>
           </div>

@@ -10,6 +10,7 @@ import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeli
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
 import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
 function fmtThaiDate(d?: string): string {
@@ -1274,7 +1275,7 @@ function OrderDocs({
                       <p className="mb-1 inline-block rounded border-2 border-slate-900 px-2 py-0.5 text-sm font-extrabold">📍 รอบที่ {to.round} ส่งที่อยู่นี้ (ไม่ใช่ที่อยู่ในใบ)</p>
                     )}
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
-                    <p className="mt-1 text-2xl font-extrabold leading-tight">{to.name}</p>
+                    <p className="mt-1 text-2xl font-extrabold leading-tight">{politeName(to.name)}</p>
                     <p className="mt-1 whitespace-pre-line text-lg leading-snug">{to.address}</p>
                     <p className="mt-2 text-xl font-bold tabular-nums">โทร. {to.phone}</p>
                   </>
@@ -1668,7 +1669,7 @@ function OrderDocs({
                     </div>
                     <div className="w-2/5 shrink-0 text-right">
                       <p className="text-base font-bold uppercase tracking-widest text-slate-400">ผู้รับ</p>
-                      <p className="break-words text-4xl font-extrabold leading-tight text-sky-700">{order.customer}</p>
+                      <p className="break-words text-4xl font-extrabold leading-tight text-sky-700">{politeName(order.customer)}</p>
                       {order.rush && <p className="mt-2 text-3xl font-extrabold text-rose-600">🔥 งานเร่ง</p>}
                     </div>
                   </div>
