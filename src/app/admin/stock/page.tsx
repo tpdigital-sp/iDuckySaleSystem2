@@ -583,6 +583,7 @@ export default function StockPage() {
     type Pick = { key: string; label: string; choice: string; optionIndex: number; always: string[]; extra: { id: string; cond?: string }[] };
     const out = new Map<string, { always: { id: string; per: number }[]; picks: Map<string, Pick> }>();
     const of = (pid: string) => out.get(pid) ?? out.set(pid, { always: [], picks: new Map() }).get(pid)!;
+    const alive = new Set(items.map((i) => i.id));
     for (const [id, us] of Object.entries(live)) {
       if (!alive.has(id)) continue; // ลบแล้ว/ไม่ต้องมี stock ไม่เอามาพูด
       for (const u of us) {
@@ -595,7 +596,6 @@ export default function StockPage() {
         const key = `${u.optionIndex}|${u.choice}`;
         const pk = r.picks.get(key) ?? r.picks.set(key, { key, label: u.label, choice: u.choice, optionIndex: u.optionIndex, always: [], extra: [] }).get(key)!;
         if (u.extra) pk.extra.push({ id, cond: u.cond });
-    const alive = new Set(items.map((i) => i.id));
         else pk.always.push(id);
       }
     }
