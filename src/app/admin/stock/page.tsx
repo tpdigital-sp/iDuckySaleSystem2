@@ -387,9 +387,8 @@ export default function StockPage() {
     const j = await res.json().catch(() => null);
     if (res.ok && j?.ok) setCatList(j.names ?? []);
   }, []);
-  useEffect(() => {
-    void loadCats();
-  }, [loadCats]);
+  // ⚡ ไม่โหลดตอนเปิดหน้า — GET /api/admin/stock ส่ง categories มาด้วยทุกรอบอยู่แล้ว (เส้นทาง /categories ลาก stockItems ทั้งคลังซ้ำอีกรอบแค่เพื่อนับ · 7 ต.ค. 69)
+  //    เรียก loadCats เฉพาะหลังเพิ่ม/เปลี่ยนชื่อ/ลบหมวดจากหน้าต่างจัดการหมวด
   const [addOpen, setAddOpen] = useState(false);
   /** สินค้าที่กำลังแยกสต๊อกตามตัวเลือก */
   const [splitFor, setSplitFor] = useState<{ id: string; name: string } | null>(null);
@@ -457,9 +456,13 @@ export default function StockPage() {
   }, []);
   const loadImages = useCallback(async (fresh = false) => {
     // fresh = เพิ่งแก้ข้อมูลไป ต้องข้ามแคช 60 วิ ของเซิร์ฟเวอร์
-    const res = await fetch(fresh ? "/api/admin/stock/links?fresh=1" : "/api/admin/stock/links");
-    const j = await res.json().catch(() => null);
-    if (!res.ok || !j?.ok) return;
+    const res = await fetch(fresh ? "/api/admin/stock/links?fresh=1" : "/api/admin/stock/links").catch(() => null);
+    const j = res ? await res.json().catch(() => null) : null;
+    if (!res?.ok || !j?.ok) {
+      setLinksErr(j?.error ?? "โหลดการเชื่อมสินค้าไม่สำเร็จ");
+      return;
+    }
+    setLinksErr("");
     setImages(j.images ?? {});
     setUsage(j.usage ?? {});
     setSuggest(j.suggest ?? {});
@@ -467,6 +470,8 @@ export default function StockPage() {
     setLinksReady(true);
     warmWrite("stock:links", { images: j.images, usage: j.usage, suggest: j.suggest, products: j.products });
   }, []);
+  /** การเชื่อมสินค้าโหลดไม่สำเร็จ (Supabase ล่ม/เน็ตหลุด) — มุมมองกลุ่มรอ linksReady อยู่ ต้องมีทางออกไปมุมมองรายการรวมแทน */
+  const [linksErr, setLinksErr] = useState("");
   useEffect(() => {
     const w = warmRead<{ images: Record<string, string>; usage: Record<string, StockUsage[]>; suggest: Record<string, StockSuggest[]>; products: ProductLite[] }>("stock:links");
     if (w) {
@@ -579,7 +584,7 @@ export default function StockPage() {
     const out = new Map<string, { always: { id: string; per: number }[]; picks: Map<string, Pick> }>();
     const of = (pid: string) => out.get(pid) ?? out.set(pid, { always: [], picks: new Map() }).get(pid)!;
     for (const [id, us] of Object.entries(live)) {
-      if (!items.some((i) => i.id === id)) continue; // ลบแล้ว/ไม่ต้องมี stock ไม่เอามาพูด
+      if (!alive.has(id)) continue; // ลบแล้ว/ไม่ต้องมี stock ไม่เอามาพูด
       for (const u of us) {
         if (u.kind === "preset") continue;
         if (u.kind === "product") {
@@ -590,6 +595,7 @@ export default function StockPage() {
         const key = `${u.optionIndex}|${u.choice}`;
         const pk = r.picks.get(key) ?? r.picks.set(key, { key, label: u.label, choice: u.choice, optionIndex: u.optionIndex, always: [], extra: [] }).get(key)!;
         if (u.extra) pk.extra.push({ id, cond: u.cond });
+    const alive = new Set(items.map((i) => i.id));
         else pk.always.push(id);
       }
     }
@@ -1943,8 +1949,9 @@ export default function StockPage() {
             </div>
           </div>
 
-          {loading ? (
-            <Empty title="กำลังโหลด…" body="ดึงยอดคงเหลือกับประวัติจากคลัง" />
+          {loading || (view === "group" && !linksReady && !linksErr) ? (
+            // ⚡ มุมมองกลุ่มรอการเชื่อมสินค้าด้วย — เดิมยอดมาก่อนก็วาด "รายการรวม" ทั้ง 2,400 แถวไปก่อน แล้วทิ้งทั้งหมดตอน links มา (จอค้างหลายวิ · 7 ต.ค. 69)
+            <Empty title="กำลังโหลด…" body={loading ? "ดึงยอดคงเหลือกับประวัติจากคลัง" : "จัดกลุ่มวัสดุตามสินค้าที่ผูกไว้"} />
           ) : rows.length === 0 ? (
             <div>
               <Empty
@@ -2537,6 +2544,14 @@ export default function StockPage() {
                           : { icon: "🚫", label: "ไม่ต้องมี stock ทั้งกลุ่ม", danger: true, onClick: () => void markNoStock(g.rows, true, g.title) },
                       );
                       if (!untrackedView)
+                    {view === "group" && linksErr && (
+                      <p className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                        ⚠️ {linksErr} — แสดงเป็นรายการรวมไปก่อน ·{" "}
+                        <button type="button" className="underline" onClick={() => void loadImages(true)}>
+                          ลองโหลดใหม่
+                        </button>
+                      </p>
+                    )}
                         menu.push(
                           g.rows.every((r) => r.orderOnly)
                             ? { icon: "↩", label: "เลิกสั่งของอย่างเดียวทั้งกลุ่ม", onClick: () => void markOrderOnly(g.rows, false, g.title) }

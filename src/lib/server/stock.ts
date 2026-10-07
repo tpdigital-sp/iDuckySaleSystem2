@@ -145,17 +145,33 @@ export function getStockDb(): Firestore | null {
   return getFirestoreAdmin();
 }
 
+/**
+ * 📚 อ่าน stockItems ทั้งคอลเลกชัน (2,400+ docs ≈ 1 MB · ~0.6 วิ) — คำขอที่ "มาพร้อมกัน" ใช้การอ่านเดียวร่วมกัน
+ * หน้า /admin/stock เปิดมายิง GET /api/admin/stock + /links (+ /categories เดิม) พร้อมกัน เดิมแต่ละเส้นทางลาก Firestore ซ้ำกันคนละรอบ
+ * (วัด 7 ต.ค. 69: อ่านซ้ำ 3 รอบพร้อมกัน ~1.9 วิ ต่อเส้นทาง) → เก็บเฉพาะ "คำสัญญาที่กำลังวิ่ง" ไม่มี TTL
+ * จบแล้วอ่านใหม่เสมอ — บันทึกแล้ว load() ถัดไปต้องเห็นของใหม่ทันที (กับดัก "ตั้งแพ็คแล้วไม่ขึ้น" 1 ต.ค. 69) · รวมตัวที่ลบแล้ว ให้คนเรียกกรอง active เอง
+ */
+let allItemsInflight: Promise<StockItem[]> | null = null;
+function readAllStockItems(db: Firestore): Promise<StockItem[]> {
+  if (!allItemsInflight)
+    allItemsInflight = db
+      .collection(STOCK_ITEMS)
+      .get()
+      .then((snap) => snap.docs.map((d) => d.data() as StockItem))
+      .finally(() => {
+        allItemsInflight = null;
+      });
+  return allItemsInflight;
+}
+
 export async function listStock(): Promise<{ items: StockItem[]; moves: (StockMove & { id: string })[] }> {
   const db = getStockDb();
   if (!db) return { items: [], moves: [] };
-  const [itemsSnap, movesSnap] = await Promise.all([
-    db.collection(STOCK_ITEMS).get(),
+  const [allItems, movesSnap] = await Promise.all([
+    readAllStockItems(db),
     db.collection(STOCK_MOVES).orderBy("at", "desc").limit(400).get(),
   ]);
-  const items = itemsSnap.docs
-    .map((d) => d.data() as StockItem)
-    .filter((i) => i.active !== false)
-    .sort((a, b) => a.name.localeCompare(b.name, "th"));
+  const items = allItems.filter((i) => i.active !== false).sort((a, b) => a.name.localeCompare(b.name, "th"));
   const moves = movesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as StockMove) }));
   return { items, moves };
 }
@@ -188,8 +204,7 @@ export async function listItemMoves(itemId: string, limit = 10): Promise<(StockM
 export async function listStockItems(): Promise<StockItem[]> {
   const db = getStockDb();
   if (!db) return [];
-  const snap = await db.collection(STOCK_ITEMS).get();
-  return snap.docs.map((d) => d.data() as StockItem).filter((i) => i.active !== false);
+  return (await readAllStockItems(db)).filter((i) => i.active !== false);
 }
 
 /**
