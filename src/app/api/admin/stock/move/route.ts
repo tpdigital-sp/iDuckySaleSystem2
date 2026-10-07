@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { addStockMove, type StockReason } from "@/lib/server/stock";
+import { addStockMove, getStockSettings, StockPausedError, type StockReason } from "@/lib/server/stock";
 
 export const runtime = "nodejs";
 
@@ -30,6 +30,9 @@ export async function POST(req: Request) {
   // ปรับยอดลด/เบิก ต้องมีเหตุผลกำกับเสมอ — ledger ต้องตอบได้ว่าของหายไปไหน
   if (qty < 0 && (body.reason === "อื่นๆ" || body.reason === "ปรับยอดนับจริง") && !body.note?.trim())
     return NextResponse.json({ error: "การปรับยอดลดต้องระบุหมายเหตุ (ของหายไปไหน)" }, { status: 400 });
+  // ⏸ คลังยังไม่เปิดใช้ (รอนับจริง) → เหลือแค่ "ปรับยอดนับจริง" ไว้ใส่ยอดจริงก่อนเปิด
+  if (body.reason !== "ปรับยอดนับจริง" && !(await getStockSettings(true)).live)
+    return NextResponse.json({ error: new StockPausedError().message, paused: true }, { status: 409 });
 
   try {
     const r = await addStockMove({

@@ -102,6 +102,12 @@ export interface StockItem {
    * ไม่เตือนต้องสั่ง ไม่นับมูลค่า ไม่ถูกตัดยอดตอนขาย (ไม่งั้นยอดติดลบไปเรื่อย ๆ โดยไม่มีความหมาย)
    */
   noStock?: boolean;
+  /**
+   * 🛒 สั่งของอย่างเดียว — มีไว้ให้เลือกในหน้า "สร้างคำขอสั่งของ" (TP stock-order) เท่านั้น
+   * ไม่ต้องรับเข้า/เบิก (ไม่โผล่ในหน้ารับเข้า/เบิกของ TP) · ไม่ถูกตัดตอนขาย · ไม่เตือนติดลบ/ต้องสั่ง · ไม่นับมูลค่า
+   * ต่างจาก noStock ที่ซ่อนจากทุกที่รวมหน้าสั่งของ (เจ้าของร้านขอ 7 ต.ค. 69)
+   */
+  orderOnly?: boolean;
   /** ลบ = ปิดการใช้งาน (active=false) เก็บเอกสารไว้ให้ ledger ยังอ้างถึงได้ · เวลาที่กดลบ */
   deletedAt?: string;
   deletedBy?: string;
@@ -329,6 +335,7 @@ export async function saveStockItem(input: Partial<StockItem> & { name: string; 
     unitCost: input.unitCost ?? cur?.unitCost,
     productIds: input.productIds ?? cur?.productIds ?? [],
     ...(cur?.noStock ? { noStock: true } : {}),
+    ...((input.orderOnly !== undefined ? input.orderOnly : cur?.orderOnly) ? { orderOnly: true } : {}),
     ...(cur?.bomFor && Object.keys(cur.bomFor).length ? { bomFor: cur.bomFor } : {}), // ตั้งจากเส้นทาง bom แยก — แก้ไข SKU ต้องไม่ล้าง
     ...(cur?.productQtyPer && Object.keys(cur.productQtyPer).length ? { productQtyPer: cur.productQtyPer } : {}), // เช่นกัน (ตั้งจาก /api/admin/stock/per)
     // ส่ง "" มา = ล้างชนิดของ · undefined = ไม่แตะ
@@ -451,6 +458,70 @@ export async function setProductPer(itemId: string, productId: string, per: numb
 }
 
 /** ตั้ง/ปลดธง "ไม่ต้องมีสต๊อก" ทีละหลายตัว (ปุ่มที่หัวกลุ่มสินค้ากดทีเดียวทั้งกลุ่ม) — คืนจำนวนที่เขียน */
+/** 🛒 ตั้ง/ปลด "สั่งของอย่างเดียว" หลายตัวทีเดียว (แบบเดียวกับ setNoStock) */
+export async function setOrderOnly(ids: string[], on: boolean): Promise<number> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const now = new Date().toISOString();
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 400) {
+    const batch = db.batch();
+    for (const id of ids.slice(i, i + 400)) {
+      batch.update(db.collection(STOCK_ITEMS).doc(id), { orderOnly: on ? true : FieldValue.delete(), updatedAt: now });
+      n++;
+    }
+    await batch.commit();
+  }
+  return n;
+}
+
+/**
+ * ⏸ สวิตช์ "เปิดใช้คลัง" ทั้งระบบ — stockMeta/settings (เจ้าของร้านขอ 7 ต.ค. 69: ยังไม่ได้นับของจริง
+ * ยอดในคลังไม่ตรง → หยุดทุกทางที่ขยับยอดไว้ก่อน จนกว่าจะนับเสร็จแล้วกดเปิด)
+ * ปิดอยู่ (live === false): ขายไม่ตัด · ยกเลิกไม่คืน · รับเข้า/เบิก (หน้าคลัง · QR · TP ทุกหน้า) ทำไม่ได้
+ *   ยกเว้น "ปรับยอดนับจริง" (ปุ่มนับ) กับรีเซ็ต — ไว้ใส่ยอดจริงระหว่างเตรียมเปิด
+ * ไม่มีเอกสาร = เปิดอยู่ (ระบบเดิมก่อนมีสวิตช์)
+ * liveAt = เวลาที่กดเปิดล่าสุด → ยกเลิกออเดอร์ที่ตัดไว้ "ก่อน" เปิดรอบนี้ไม่คืนยอด (ยอดตอนนั้นถูกนับจริงทับไปแล้ว)
+ * ⚠️ TP-Leader อ่านเอกสารเดียวกันจาก browser (TP-Emp/stock-move.html · stock-withdraw.html · goods-receipt-report.html)
+ */
+const SETTINGS_DOC = "settings";
+export interface StockSettings {
+  live: boolean;
+  liveAt?: string;
+  pausedAt?: string;
+  by?: string;
+}
+let settingsCache: { at: number; v: StockSettings } | null = null;
+export async function getStockSettings(fresh = false): Promise<StockSettings> {
+  if (!fresh && settingsCache && Date.now() - settingsCache.at < 15_000) return settingsCache.v;
+  const db = getStockDb();
+  if (!db) return { live: true };
+  const d = (await db.collection(STOCK_META).doc(SETTINGS_DOC).get()).data() as Partial<StockSettings> | undefined;
+  const v: StockSettings = { ...(d ?? {}), live: d?.live !== false };
+  settingsCache = { at: Date.now(), v };
+  return v;
+}
+export async function setStockLive(on: boolean, by: string): Promise<StockSettings> {
+  const db = getStockDb();
+  if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
+  const at = new Date().toISOString();
+  const cur = await getStockSettings(true);
+  const v: StockSettings = { ...cur, live: on, by, ...(on ? { liveAt: at } : { pausedAt: at }) };
+  await db.collection(STOCK_META).doc(SETTINGS_DOC).set(v);
+  settingsCache = { at: Date.now(), v };
+  return v;
+}
+/** โยน error เมื่อคลังปิดอยู่ — ใช้กับเส้นทางรับเข้า/เบิก (ปุ่มนับจริงไม่ต้องเรียก) */
+export async function assertStockLive(): Promise<void> {
+  if (!(await getStockSettings()).live) throw new StockPausedError();
+}
+export class StockPausedError extends Error {
+  constructor() {
+    super("คลังยังไม่เปิดใช้งาน (รอนับสต๊อกจริง) — ตอนนี้รับเข้า/เบิกไม่ได้ · ใส่ยอดจริงด้วยปุ่ม \"นับ\" ได้");
+  }
+}
+
 export async function setNoStock(ids: string[], on: boolean): Promise<number> {
   const db = getStockDb();
   if (!db) throw new Error("ยังไม่ได้ตั้งค่า Firebase");
@@ -655,14 +726,16 @@ export async function cutStockForOrder(order: Order): Promise<void> {
   try {
     const db = getStockDb();
     if (!db) return;
+    // ⏸ คลังยังไม่เปิดใช้ (รอนับจริง) → ไม่ตัด
+    if (!(await getStockSettings()).live) return;
     // เคยตัดออเดอร์นี้แล้ว → ข้าม (กันยิงซ้ำจาก SlipOK + แอดมินกดเปลี่ยนสถานะ)
     const dup = await db.collection(STOCK_MOVES).where("refOrderId", "==", order.id).where("reason", "==", "ขาย").limit(1).get();
     if (!dup.empty) return;
     const itemsSnap = await db.collection(STOCK_ITEMS).get();
     const allItems = itemsSnap.docs.map((d) => d.data() as StockItem);
-    const stockItems = allItems.filter((i) => i.active !== false && !i.noStock);
-    /** SKU ที่ตั้ง "ไม่ต้องมีสต๊อก" — ลิงก์จากตัวเลือกยังอยู่ แต่ไม่ตัดยอด */
-    const skip = new Set(allItems.filter((i) => i.noStock || i.active === false).map((i) => i.id));
+    const stockItems = allItems.filter((i) => i.active !== false && !i.noStock && !i.orderOnly);
+    /** SKU ที่ตั้ง "ไม่ต้องมีสต๊อก" / "สั่งของอย่างเดียว" — ลิงก์จากตัวเลือกยังอยู่ แต่ไม่ตัดยอด */
+    const skip = new Set(allItems.filter((i) => i.noStock || i.orderOnly || i.active === false).map((i) => i.id));
     const optionMap = await loadOptionStockMap([...new Set(order.items.map((i) => i.productId))]);
     for (const oi of order.items) {
       // 1) SKU ที่ผูกกับตัวสินค้าโดยตรง — ตัดทุกตัวที่ผูก (เดิม .find ตัดแค่ตัวแรก ผูก 2 ตัวอีกตัวไม่เคยขยับ)
@@ -728,8 +801,12 @@ export async function restoreStockForOrder(order: Order): Promise<void> {
       db.collection(STOCK_MOVES).where("refOrderId", "==", order.id).where("reason", "==", "คืน-ยกเลิก").limit(1).get(),
     ]);
     if (cuts.empty || !restores.empty) return;
+    // ⏸ คลังปิดอยู่ = ไม่คืน · ตัดไว้ก่อนเปิดคลังรอบนี้ = ไม่คืน (ยอดตอนนั้นถูกรีเซ็ต/นับจริงทับไปแล้ว คืนไปจะเกินของจริง)
+    const st = await getStockSettings();
+    if (!st.live) return;
     for (const d of cuts.docs) {
       const m = d.data() as StockMove;
+      if (st.liveAt && m.at < st.liveAt) continue;
       await addStockMove({
         itemId: m.itemId,
         qty: Math.abs(m.qty),

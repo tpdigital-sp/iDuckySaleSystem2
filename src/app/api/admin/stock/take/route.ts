@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
-import { addStockMove, getStockItem, listItemMoves, type StockReason } from "@/lib/server/stock";
+import { addStockMove, getStockItem, getStockSettings, listItemMoves, StockPausedError, type StockReason } from "@/lib/server/stock";
 
 export const runtime = "nodejs";
 
@@ -37,6 +37,8 @@ export async function POST(req: Request) {
   const qty = Math.trunc(Number(body.qty));
   if (!body.itemId || !Number.isFinite(qty) || qty <= 0) return NextResponse.json({ error: "ใส่จำนวนที่เบิกเป็นตัวเลขมากกว่า 0" }, { status: 400 });
   if (!TAKE_REASONS.includes(body.reason as StockReason)) return NextResponse.json({ error: "เหตุผลไม่ถูกต้อง" }, { status: 400 });
+  // ⏸ คลังยังไม่เปิดใช้ (รอนับจริง) → สแกนเบิกไม่ได้
+  if (!(await getStockSettings()).live) return NextResponse.json({ error: new StockPausedError().message, paused: true }, { status: 409 });
   try {
     const r = await addStockMove({
       itemId: body.itemId,

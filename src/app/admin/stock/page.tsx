@@ -70,6 +70,8 @@ interface Item {
   productQtyPer?: Record<string, number>;
   /** 🚫 ไม่ต้องมีสต๊อก — ไม่เตือน ไม่นับมูลค่า ไม่ตัดยอดตอนขาย (อยู่ในชิป "ไม่ต้องมี stock" กู้กลับได้) */
   noStock?: boolean;
+  /** 🛒 สั่งของอย่างเดียว — ขึ้นในหน้าสั่งของ TP แต่ไม่รับเข้า/เบิก ไม่ตัดตอนขาย ไม่เตือน (ดู StockItem.orderOnly) */
+  orderOnly?: boolean;
   /** 📦 หน่วยแพ็ค: 1 packUnit = packSize หน่วยฐาน (unit) · ยอดยังเป็นหน่วยฐาน หน้าจอแปลงให้ (ดู packText) */
   packUnit?: string;
   packSize?: number;
@@ -530,23 +532,25 @@ export default function StockPage() {
   /** ของที่นับสต๊อกจริง — ตัวเลขสรุป/ชิป/เตือน คิดจากชุดนี้ · ของ "ไม่ต้องมี stock" แยกไปอยู่ชิปของตัวเอง */
   const tracked = useMemo(() => items.filter((i) => !i.noStock), [items]);
   const untracked = useMemo(() => items.filter((i) => i.noStock), [items]);
-  const needOrder = useMemo(() => tracked.filter((i) => stats.get(i.id)?.level === "danger"), [tracked, stats]);
+  /** ของที่ "นับยอด" จริง — ตัด 🛒 สั่งของอย่างเดียว ออก (ยังโชว์ในรายการ แต่ไม่เตือน/ไม่นับมูลค่า/ไม่นับเป็นยังไม่ผูก) */
+  const counted = useMemo(() => tracked.filter((i) => !i.orderOnly), [tracked]);
+  const needOrder = useMemo(() => counted.filter((i) => stats.get(i.id)?.level === "danger"), [counted, stats]);
   /** 💰 มูลค่าของที่ค้างอยู่ในคลัง — นับเฉพาะ SKU ที่ใส่ทุนไว้ (บอกด้วยว่าใส่ไปกี่ตัวจากทั้งหมด) */
   const stockValue = useMemo(() => {
     let value = 0;
     let priced = 0;
-    for (const i of tracked) {
+    for (const i of counted) {
       if (!i.unitCost || i.unitCost <= 0) continue;
       priced += 1;
       value += Math.max(0, i.balance) * i.unitCost;
     }
     return { value, priced };
-  }, [tracked]);
-  const nearLow = useMemo(() => tracked.filter((i) => stats.get(i.id)?.level === "warn"), [tracked, stats]);
+  }, [counted]);
+  const nearLow = useMemo(() => counted.filter((i) => stats.get(i.id)?.level === "warn"), [counted, stats]);
   /** ⚠️ ยอดติดลบ = ขายตัดไปแล้วแต่ไม่เคยรับเข้า — ตัวเลขเชื่อไม่ได้จนกว่าจะนับจริง (30 ก.ย. 69 มี 37 ตัว) มาก่อนทุกสถานะ */
-  const negative = useMemo(() => tracked.filter((i) => i.balance < 0), [tracked]);
+  const negative = useMemo(() => counted.filter((i) => i.balance < 0), [counted]);
   /** ยังไม่ตั้งจุดสั่ง (และไม่มีสถิติให้เดา) = ระบบเตือน "ต้องสั่ง" ให้ไม่ได้ — ต้องบอกให้เห็น ไม่ใช่โชว์ "ต้องสั่ง 0" เฉย ๆ */
-  const unsetPoint = useMemo(() => tracked.filter((i) => stats.get(i.id)?.point == null), [tracked, stats]);
+  const unsetPoint = useMemo(() => counted.filter((i) => stats.get(i.id)?.point == null), [counted, stats]);
   const toReview = useMemo(() => tracked.filter((i) => i.needsReview), [tracked]);
   // "วัสดุแฝง" ต้องมีให้เลือกเสมอ — ตั้งชนิดนี้ = เข้าคลังวัสดุแฝงกลาง ทุกช่องเลือกวัสดุจะเสนอมันก่อน
   const allParts = useMemo(() => [...new Set([BOM_PART, ...(items.map((i) => i.part).filter(Boolean) as string[])])].sort((a, b) => a.localeCompare(b, "th")), [items]);
@@ -597,7 +601,7 @@ export default function StockPage() {
   const shortName = (id: string) => (nameOfId.get(id) ?? "?").replace(/\s*\([^()]*\)\s*$/, "");
 
   /** ยังไม่เชื่อมกับสินค้า/ตัวเลือกไหนเลย = ขายแล้วสต๊อกตัวนี้ไม่ขยับ */
-  const unlinked = useMemo(() => (linksReady ? tracked.filter((i) => !i.manualOnly && !live[i.id]?.length) : []), [tracked, live, linksReady]);
+  const unlinked = useMemo(() => (linksReady ? counted.filter((i) => !i.manualOnly && !live[i.id]?.length) : []), [counted, live, linksReady]);
   /** ของที่ควรผูกกับสินค้า (ตัดของใช้ในโรงงานที่เบิกเองอย่างเดียวออก) — ตัวหารของขั้น "ผูกวัสดุกับสินค้า" */
   const linkable = useMemo(() => tracked.filter((i) => !i.manualOnly), [tracked]);
 
@@ -1115,6 +1119,76 @@ export default function StockPage() {
    * ตั้ง/ปลด "ไม่ต้องมี stock" — ทีละตัว (ลิ้นชัก) หรือทั้งกลุ่มสินค้า (หัวกลุ่ม)
    * ตั้งแล้ว: ย้ายไปชิป "ไม่ต้องมี stock" · ไม่เตือนสั่ง · ไม่นับมูลค่า · ขายแล้วไม่ตัดยอด — กดกลับได้ทุกเมื่อ
    */
+  /**
+   * ⏸ สวิตช์ "เปิดใช้คลัง" ทั้งระบบ (stockMeta/settings) — ปิด = ขายไม่ตัด · รับเข้า/เบิกทุกหน้า (ที่นี่ · QR · TP) ทำไม่ได้
+   * เหลือปุ่ม "นับ" ไว้ใส่ยอดจริงก่อนเปิด (เจ้าของร้านขอ 7 ต.ค. 69 — ยังไม่ได้นับของจริง ยอดไม่ตรง)
+   */
+  const [stockLive, setStockLive] = useState<{ live: boolean; liveAt?: string; pausedAt?: string; by?: string } | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const r = await fetch("/api/admin/stock/live").then((x) => x.json()).catch(() => null);
+      if (r?.ok) setStockLive(r.settings);
+    })();
+  }, []);
+  const paused = stockLive?.live === false;
+  async function toggleLive(on: boolean) {
+    const ok = await confirm(
+      on
+        ? {
+            icon: "▶️",
+            title: "เปิดใช้คลังตอนนี้?",
+            detail: "ยอดที่เห็นตอนนี้จะเป็นยอดตั้งต้น — ตรวจให้แน่ใจว่านับของจริงครบแล้ว\nหลังเปิด: ขายหน้าเว็บตัดอัตโนมัติ · รับเข้า/เบิก (หน้านี้ · สแกน QR · TP) บันทึกได้\nออเดอร์ที่ตัดไว้ก่อนเปิด ถ้ายกเลิกทีหลังจะไม่คืนยอด (ยอดตอนนั้นถูกนับจริงทับไปแล้ว)",
+            confirmLabel: "เปิดใช้คลัง",
+          }
+        : {
+            icon: "⏸",
+            title: "ปิดคลังไว้ก่อน?",
+            detail: "ระหว่างปิด: ขายไม่ตัด · ยกเลิกไม่คืน · รับเข้า/เบิกทุกหน้าทำไม่ได้ · ใส่ยอดจริงด้วยปุ่ม \"นับ\" ได้ตามปกติ",
+            confirmLabel: "ปิดคลัง",
+          },
+    );
+    if (ok !== true) return;
+    setErr("");
+    setOk("");
+    const res = await fetch("/api/admin/stock/live", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ live: on }) });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "บันทึกไม่สำเร็จ");
+      return;
+    }
+    setStockLive(j.settings);
+    setOk(on ? "เปิดใช้คลังแล้ว — ยอดขยับตามการขาย/รับเข้า/เบิกตั้งแต่ตอนนี้" : "ปิดคลังแล้ว — ยอดหยุดขยับจนกว่าจะกดเปิด");
+  }
+
+  /** 🛒 ตั้ง/ปลด "สั่งของอย่างเดียว" */
+  async function markOrderOnly(list: Item[], on: boolean, label: string) {
+    if (!list.length) return;
+    if (on) {
+      const ok = await confirm({
+        icon: "🛒",
+        title: list.length === 1 ? `“${label}” สั่งของอย่างเดียว?` : `${label} — สั่งของอย่างเดียว ทั้ง ${fmtN(list.length)} รายการ?`,
+        detail: "ยังเลือกได้ในหน้าสร้างคำขอสั่งของ (TP) · แต่ไม่ขึ้นในหน้ารับเข้า/เบิก ไม่ตัดตอนขาย ไม่เตือนติดลบ/ต้องสั่ง ไม่นับมูลค่าคลัง\nกดกลับมานับสต๊อกได้ทุกเมื่อ",
+        confirmLabel: "สั่งของอย่างเดียว",
+      });
+      if (ok !== true) return;
+    }
+    setErr("");
+    setOk("");
+    const res = await fetch("/api/admin/stock/order-only", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: list.map((i) => i.id), on }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      setErr(j?.error ?? "บันทึกไม่สำเร็จ");
+      return;
+    }
+    const ids = new Set(list.map((i) => i.id));
+    setItems((prev) => prev.map((i) => (ids.has(i.id) ? { ...i, orderOnly: on || undefined } : i)));
+    setOk(on ? `ตั้ง “${label}” เป็นสั่งของอย่างเดียวแล้ว (${fmtN(list.length)} รายการ)` : `“${label}” กลับมานับสต๊อกแล้ว (${fmtN(list.length)} รายการ)`);
+  }
+
   async function markNoStock(list: Item[], on: boolean, label: string) {
     if (!list.length) return;
     if (on) {
@@ -1487,10 +1561,14 @@ export default function StockPage() {
           <>
             {mayEdit && (
               <>
-                <Btn tone="navy" onClick={() => setTab("รับเข้า")}>
-                  ＋ รับเข้า
-                </Btn>
-                <Btn onClick={() => setTab("เบิกของ")}>− เบิกของ</Btn>
+                {!paused && (
+                  <>
+                    <Btn tone="navy" onClick={() => setTab("รับเข้า")}>
+                      ＋ รับเข้า
+                    </Btn>
+                    <Btn onClick={() => setTab("เบิกของ")}>− เบิกของ</Btn>
+                  </>
+                )}
                 <Btn tone="yolk" onClick={() => setAddOpen(true)}>
                   เพิ่มวัสดุ
                 </Btn>
@@ -1531,6 +1609,31 @@ export default function StockPage() {
           </>
         }
       />
+      {/* ⏸ คลังปิดอยู่ (รอนับจริง) — บอกให้เห็นทุกครั้งที่เปิดหน้า · เจ้าของร้าน/คนแก้สต๊อกกดเปิดได้ตรงนี้ */}
+      {stockLive && (paused ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <span className="text-xl" aria-hidden>⏸</span>
+          <div className="min-w-0 flex-1 text-[13px] leading-relaxed">
+            <b className="text-[14px]">คลังยังไม่เปิดใช้ — รอนับสต๊อกจริง</b>
+            <br />
+            ขายหน้าเว็บไม่ตัดยอด · รับเข้า/เบิก (หน้านี้ · สแกน QR · TP) ทำไม่ได้ · ใส่ยอดจริงด้วยปุ่ม <b>นับ</b> ได้ตามปกติ
+            {stockLive.pausedAt && <span className="text-amber-700"> · ปิดเมื่อ {new Date(stockLive.pausedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}{stockLive.by ? ` โดย ${stockLive.by}` : ""}</span>}
+          </div>
+          {mayEdit && (
+            <Btn tone="navy" onClick={() => void toggleLive(true)}>
+              ▶️ นับเสร็จแล้ว เปิดใช้คลัง
+            </Btn>
+          )}
+        </div>
+      ) : (
+        isOwner && (
+          <div className="mb-3 flex justify-end">
+            <button type="button" onClick={() => void toggleLive(false)} className="text-[12px] text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline">
+              ⏸ ปิดคลังชั่วคราว (หยุดตัด/รับเข้า/เบิก)
+            </button>
+          </div>
+        )
+      ))}
 
       {/*
        * ── ต้องทำตอนนี้ — 4 กล่อง กดแล้วกรองรายการด้านล่าง (โครงใหม่ 30 ก.ย. 69) ──
@@ -1869,7 +1972,11 @@ export default function StockPage() {
                  * ป้ายสถานะแถว — ติดลบมาก่อนทุกอย่าง (ยอดเชื่อไม่ได้) · ยังไม่ตั้งจุดสั่ง = ระบบเตือนไม่ได้ ต้องบอกให้เห็น
                  * แยกกันด้วยพื้น/น้ำหนัก ไม่ใช่สีอย่างเดียว: ติดลบ = ทึบขาว · ต้องสั่ง = คอรัลอ่อน · พอใช้ = มินต์ · ยังไม่ตั้ง = โปร่ง
                  */
-                const pill =
+                const pill = it.orderOnly ? (
+                  <Tag tone="quiet" title="มีไว้สั่งของอย่างเดียว — ไม่รับเข้า/เบิก ไม่ตัดตอนขาย">
+                    🛒 สั่งของอย่างเดียว
+                  </Tag>
+                ) :
                   it.balance < 0 ? (
                     <Tag tone="solid">ติดลบ</Tag>
                   ) : level === "danger" ? (
@@ -2061,14 +2168,18 @@ export default function StockPage() {
                         )}
                         {mayEdit && (
                           <span className="hidden items-center gap-1 sm:flex sm:opacity-0 sm:transition sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
-                            {!it.noStock && (
+                            {!it.noStock && !it.orderOnly && (
                               <>
-                                <RowBtn title="รับเข้า" onClick={() => setBulkFor({ items: [it], title: it.name, mode: "in" })}>
-                                  ＋
-                                </RowBtn>
-                                <RowBtn title="เบิกออก" onClick={() => setBulkFor({ items: [it], title: it.name, mode: "out" })}>
-                                  −
-                                </RowBtn>
+                                {!paused && (
+                                  <>
+                                    <RowBtn title="รับเข้า" onClick={() => setBulkFor({ items: [it], title: it.name, mode: "in" })}>
+                                      ＋
+                                    </RowBtn>
+                                    <RowBtn title="เบิกออก" onClick={() => setBulkFor({ items: [it], title: it.name, mode: "out" })}>
+                                      −
+                                    </RowBtn>
+                                  </>
+                                )}
                                 <RowBtn title="นับจริง" onClick={() => setCountFor(it)} small>
                                   นับ
                                 </RowBtn>
@@ -2394,8 +2505,12 @@ export default function StockPage() {
                     const menu: MenuItem[] = [];
                     if (mayEdit && !untrackedView) {
                       menu.push({ head: "งานประจำ" });
-                      menu.push({ icon: "＋", label: `รับเข้าทั้งกลุ่ม (${fmtN(g.rows.length)})`, onClick: () => setBulkFor({ items: g.rows, title: g.title, mode: "in" }) });
-                      menu.push({ icon: "−", label: "เบิกออกทั้งกลุ่ม", onClick: () => setBulkFor({ items: g.rows, title: g.title, mode: "out" }) });
+                      // ⏸ คลังปิด = ไม่มีรับเข้า/เบิก · 🛒 ของสั่งอย่างเดียวไม่ต้องรับเข้า/เบิก
+                      const movable = g.rows.filter((r) => !r.orderOnly);
+                      if (!paused && movable.length) {
+                        menu.push({ icon: "＋", label: `รับเข้าทั้งกลุ่ม (${fmtN(movable.length)})`, onClick: () => setBulkFor({ items: movable, title: g.title, mode: "in" }) });
+                        menu.push({ icon: "−", label: "เบิกออกทั้งกลุ่ม", onClick: () => setBulkFor({ items: movable, title: g.title, mode: "out" }) });
+                      }
                       if (nReview > 0) menu.push({ icon: "✓", label: `ตรวจแล้วทั้งกลุ่ม (${nReview})`, onClick: () => void markReviewed(g.rows, g.title) });
                     }
                     if (mayEdit && (g.productId || g.key === "bom")) {
@@ -2421,6 +2536,12 @@ export default function StockPage() {
                           ? { icon: "↩", label: "กลับมานับสต๊อกทั้งกลุ่ม", onClick: () => void markNoStock(g.rows, false, g.title) }
                           : { icon: "🚫", label: "ไม่ต้องมี stock ทั้งกลุ่ม", danger: true, onClick: () => void markNoStock(g.rows, true, g.title) },
                       );
+                      if (!untrackedView)
+                        menu.push(
+                          g.rows.every((r) => r.orderOnly)
+                            ? { icon: "↩", label: "เลิกสั่งของอย่างเดียวทั้งกลุ่ม", onClick: () => void markOrderOnly(g.rows, false, g.title) }
+                            : { icon: "🛒", label: `สั่งของอย่างเดียวทั้งกลุ่ม (${fmtN(g.rows.filter((r) => !r.orderOnly).length)})`, onClick: () => void markOrderOnly(g.rows.filter((r) => !r.orderOnly), true, g.title) },
+                        );
                       // 🗑 ลบทั้งกลุ่ม — ล่างสุด แยกเส้นจากอันอื่น ถามยืนยันพร้อมจำนวน/ยอด/ลิงก์ก่อนเสมอ (กู้คืนได้จาก "ที่ลบไปแล้ว")
                       menu.push({ head: "" });
                       menu.push({ icon: "🗑", label: `ลบวัสดุทั้งกลุ่ม (${fmtN(g.rows.length)})…`, danger: true, onClick: () => void deleteItems(g.rows, g.title) });
@@ -2537,13 +2658,18 @@ export default function StockPage() {
       )}
 
       {/* ── รับเข้า / เบิกของ — หน้าเต็มในแท็บ (ปุ่มหัวหน้าก็พามาแท็บนี้) ── */}
-      {!formOpen && (tab === "รับเข้า" || tab === "เบิกของ") && (
+      {!formOpen && paused && (tab === "รับเข้า" || tab === "เบิกของ") && (
+        <p className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-6 text-center text-[13px] text-amber-900">
+          ⏸ คลังยังไม่เปิดใช้ — {tab}ไม่ได้จนกว่าจะกด “เปิดใช้คลัง” ด้านบน · ระหว่างนี้ใส่ยอดจริงด้วยปุ่ม <b>นับ</b> ในแต่ละแถว
+        </p>
+      )}
+      {!formOpen && !paused && (tab === "รับเข้า" || tab === "เบิกของ") && (
         <div className="mt-4">
-          {/* เสนอเฉพาะของที่นับสต๊อกจริง — รายการ "ไม่ต้องมีสต๊อก" (เช่น PL-PREMIUMBAG-* ที่นำเข้าจากไฟล์ราคา) เคยโผล่ให้เลือกแล้วเจ้าของร้านแยกไม่ออก (30 ก.ย. 69) */}
+          {/* เสนอเฉพาะของที่นับสต๊อกจริง — รายการ "ไม่ต้องมีสต๊อก" (เช่น PL-PREMIUMBAG-* ที่นำเข้าจากไฟล์ราคา) เคยโผล่ให้เลือกแล้วเจ้าของร้านแยกไม่ออก (30 ก.ย. 69) · 🛒 สั่งของอย่างเดียวก็ไม่เสนอ */}
             <MovePanel
               key={tab}
               mode={tab === "รับเข้า" ? "in" : "out"}
-              items={tracked}
+              items={counted}
               moves={moves}
               mayEdit={mayEdit}
               onSubmit={async (itemId, qty, reason, note, refId) => {
@@ -2597,6 +2723,8 @@ export default function StockPage() {
           onMove={(mode) => setBulkFor({ items: [openItem], title: openItem.name, mode })}
           onDelete={() => deleteItem(openItem)}
           onNoStock={(on) => markNoStock([openItem], on, openItem.name)}
+          onOrderOnly={(on) => void markOrderOnly([openItem], on, openItem.name)}
+          paused={paused}
           onReset={isOwner ? () => void resetItems([openItem], openItem.name) : undefined}
           onMoveCategory={mayEdit ? () => setMoveCatFor({ items: [openItem], title: openItem.name }) : undefined}
           onReviewed={() => markReviewed([openItem], openItem.name)}
@@ -3760,6 +3888,8 @@ function ItemDrawer({
   onMove,
   onDelete,
   onNoStock,
+  onOrderOnly,
+  paused,
   onReviewed,
   onReset,
   onMoveCategory,
@@ -3802,6 +3932,10 @@ function ItemDrawer({
   onMove: (mode: "in" | "out") => void;
   onDelete: () => void;
   onNoStock: (on: boolean) => void;
+  /** 🛒 ตั้ง/ปลด สั่งของอย่างเดียว */
+  onOrderOnly: (on: boolean) => void;
+  /** ⏸ คลังปิดอยู่ — ซ่อนปุ่มรับเข้า/เบิก เหลือนับจริง */
+  paused?: boolean;
   onReviewed: () => void;
   /** 🧹 รีเซ็ตยอดเป็น 0 — ส่งมาเฉพาะเจ้าของร้าน (ไม่ส่ง = ไม่มีปุ่ม) */
   onReset?: () => void;
@@ -4007,8 +4141,8 @@ function ItemDrawer({
 
           {/* งานประจำ 3 ปุ่ม ชุดเดียวกัน (เดิมดำ/ขาว/ฟ้า 3 สี) — รับเข้าเป็นปุ่มหลัก · สูง 48 กดด้วยนิ้วโป้ง */}
           {mayEdit && (
-            <div className={`mt-4 grid gap-2 ${item.noStock ? "grid-cols-1" : "grid-cols-3"}`}>
-              {!item.noStock && (
+            <div className={`mt-4 grid gap-2 ${item.noStock || item.orderOnly || paused ? "grid-cols-1" : "grid-cols-3"}`}>
+              {!item.noStock && !item.orderOnly && !paused && (
                 <>
                   <button
                     type="button"
@@ -4193,6 +4327,7 @@ function ItemDrawer({
                 const more: MenuItem[] = [];
                 // 🏷 ป้าย QR ชั้นวาง → สแกนแล้วเปิดหน้าเบิก /admin/stock/take/<id> (ของเบิกเองลืมกดเบิก = ยอดค้าง · 1 ต.ค. 69)
                 if (!item.noStock) more.push({ icon: "🏷", label: "พิมพ์ป้าย QR ชั้นวาง (สแกน = เบิก)", href: `/admin/stock/labels?ids=${encodeURIComponent(item.id)}` });
+                if (!item.noStock) more.push(item.orderOnly ? { icon: "↩", label: "เลิกสั่งของอย่างเดียว (กลับมานับสต๊อก)", onClick: () => onOrderOnly(false) } : { icon: "🛒", label: "สั่งของอย่างเดียว (ไม่รับเข้า/ไม่ตัด)", onClick: () => onOrderOnly(true) });
                 if (!item.noStock) more.push({ icon: "🚫", label: "ไม่ต้องมี stock", onClick: () => onNoStock(true) });
                 else more.push({ icon: "↩", label: "กลับมานับสต๊อก", onClick: () => onNoStock(false) });
                 // ขึ้นเสมอสำหรับเจ้าของร้าน (ซ่อนตอนยอด 0 แล้วหาไม่เจอ 30 ก.ย. 69) — ยอด 0 อยู่แล้วกดได้แต่ระบบบอกว่าไม่มีอะไรต้องล้าง
