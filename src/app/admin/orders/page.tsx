@@ -1120,16 +1120,49 @@ function OrderRow({
               งานเคลม
             </span>
           )}
-          {o.flowAccount && (
-            <span
-              className="dkb-tag"
-              style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }}
-              title={`สร้างจาก ${o.flowAccount.docTypeLabel} FlowAccount — บิลจริงออกที่ FlowAccount`}
-            >
-              <i />
-              FlowAccount {o.flowAccount.docNo}
-            </span>
-          )}
+          {/* 🧾 FlowAcc — เอกสารล่าสุดในสาย QT → BL → INV (faChain ออกจากปุ่มหน้าออเดอร์) + บิลเพิ่ม · ขอใบกำกับแต่ยังไม่มีเอกสาร = เหลือง */}
+          {(() => {
+            const chain = o.faChain ?? [];
+            const inv = chain.filter((d) => d.kind === "inv").at(-1);
+            const latest = inv ?? chain.filter((d) => d.kind === "bl").at(-1);
+            const extras = o.flowAccountExtras?.length ?? 0;
+            if (!o.flowAccount && !latest) {
+              if (!o.taxInvoice || o.status === "ยกเลิก") return null;
+              return (
+                <span
+                  className="dkb-tag"
+                  style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
+                  title={`ลูกค้าขอใบกำกับภาษี (${o.taxInvoice.company}) — ยังไม่มีเอกสาร FlowAccount ผูกกับใบนี้`}
+                >
+                  <i />
+                  FlowAcc ยังไม่ออก
+                </span>
+              );
+            }
+            const docs = [
+              o.flowAccount && `${o.flowAccount.docTypeLabel} ${o.flowAccount.docNo}`,
+              ...chain.map((d) => `${d.kind === "inv" ? "ใบกำกับภาษี/ใบเสร็จ" : "ใบแจ้งหนี้"} ${d.docNo}${d.kind === "inv" && d.paid === false ? " (ยังไม่ได้รับเงินใน FlowAccount)" : ""}`),
+              ...(o.flowAccountExtras ?? []).map((x) => `บิลเพิ่ม ${x.docNo}`),
+            ].filter(Boolean);
+            const unpaidInv = inv?.paid === false;
+            return (
+              <span
+                className="dkb-tag"
+                style={
+                  inv && !unpaidInv
+                    ? { background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }
+                    : unpaidInv
+                      ? { background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }
+                      : { background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }
+                }
+                title={`เอกสาร FlowAccount: ${docs.join(" → ")}`}
+              >
+                <i />
+                FlowAcc {latest?.docNo ?? o.flowAccount?.docNo}
+                {extras ? ` +${extras}` : ""}
+              </span>
+            );
+          })()}
           {o.reorderOf && (
             <span
               className="dkb-tag"
