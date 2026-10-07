@@ -1103,6 +1103,11 @@ export interface Order {
     by: string;
     at: string;
     note?: string;
+    /**
+     * 🧾 ของที่ต้องสั่งจริง (วัสดุ) — ไม่ใช่ชื่อสินค้าที่ลูกค้าสั่ง เช่น ลูกค้าสั่ง "ปลอกหมอนอิง" แต่ต้องสั่ง "ซิป 16"" (เจ้าของร้านขอ 7 ต.ค. 69)
+     * ส่งต่อเป็นคำขอในระบบสั่งของ TP + แจ้งไลน์ตอนลูกค้าโอน (tp-order-bridge.ts) · ว่าง = ใช้ชื่อสินค้าในออเดอร์แทน
+     */
+    items?: NeedsPurchaseItem[];
     arrivedAt?: string;
     arrivedBy?: string;
     /** เซิร์ฟเวอร์ประทับ: แจ้งเตือน "ลูกค้าโอนแล้ว ต้องสั่งของ" เข้ากลุ่มไลน์ร้านไปแล้วเมื่อไหร่ (กันแจ้งซ้ำ) */
@@ -1352,6 +1357,41 @@ export interface Order {
    * เจ้าของร้านแจ้ง 10 ก.ย. 69: บิล FlowAccount/บิล VAT พนักงานมักลืมพิมพ์ใบกำกับไปพร้อมใบปะหน้า
    */
   taxInvoicePacked?: { by: string; at: string };
+}
+
+/** 🧾 ของที่ต้องสั่ง 1 บรรทัด (Order.needsPurchase.items) */
+export type NeedsPurchaseItem = {
+  name: string;
+  qty?: number;
+  unit?: string;
+  /** เลือกมาจากคลังสต๊อก (/admin/stock · stockItems) — ว่าง = พิมพ์เอง ไม่มีในคลัง */
+  stockItemId?: string;
+};
+
+/** ล้างรายการของที่ต้องสั่งก่อนบันทึก/ส่งต่อ: ตัดช่องว่าง · ทิ้งบรรทัดไม่มีชื่อ · จำกัดความยาว/จำนวน */
+export function cleanNeedsPurchaseItems(list: unknown): NeedsPurchaseItem[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((r) => {
+      const x = (r ?? {}) as Partial<NeedsPurchaseItem>;
+      const name = String(x.name ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+      const qty = Number(x.qty);
+      const unit = String(x.unit ?? "").trim().slice(0, 20);
+      const sid = String(x.stockItemId ?? "").trim().slice(0, 100);
+      return {
+        name,
+        ...(Number.isFinite(qty) && qty > 0 ? { qty: Math.round(qty * 100) / 100 } : {}),
+        ...(unit ? { unit } : {}),
+        ...(sid ? { stockItemId: sid } : {}),
+      };
+    })
+    .filter((x) => x.name)
+    .slice(0, 30);
+}
+
+/** 'ซิป 16" ×50 เส้น' — ข้อความเดียวกันทุกที่ (หน้าออเดอร์ · คำขอ TP · ไลน์) */
+export function needsPurchaseItemText(i: NeedsPurchaseItem): string {
+  return `${i.name}${i.qty ? ` ×${i.qty.toLocaleString("th-TH")}${i.unit ? ` ${i.unit}` : ""}` : ""}`;
 }
 
 /** 🛒 ใบนี้ยังรอของเข้าอยู่ (ติ๊ก "ต้องสั่งของ" ไว้ และยังไม่มีใครกด "ของเข้าแล้ว") — ยังไม่ควรส่งเข้าผลิต */

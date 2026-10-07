@@ -1,4 +1,4 @@
-import { orderAwaitingStock, orderTotal, type Order } from "@/lib/admin-data";
+import { cleanNeedsPurchaseItems, needsPurchaseItemText, orderAwaitingStock, orderTotal, type Order } from "@/lib/admin-data";
 import { SITE_URL } from "@/lib/shop-info";
 
 /**
@@ -47,13 +47,19 @@ export function stampNeedsPurchaseAlert(prev: Order | null | undefined, next: Or
 export async function alertNeedsPurchase(o: Order): Promise<void> {
   const np = o.needsPurchase;
   if (!np) return;
-  const items = o.items.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`);
+  // 🧾 พนักงานระบุ "ของที่ต้องสั่ง" (วัสดุจริง) ไว้ = โชว์อันนั้นเป็นหลัก · สินค้าของลูกค้าย้ายไปเป็นข้อมูลอ้างอิง (7 ต.ค. 69)
+  const mats = cleanNeedsPurchaseItems(np.items).map(needsPurchaseItemText);
+  const prods = o.items.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`);
+  const items = mats.length ? mats : prods;
   // โหลดตัวส่งไลน์ตอนจะส่งจริง — line-alert เป็น server-only · สคริปต์ซ่อมข้อมูล (tsx) ที่ import ประตูเขียนออเดอร์ต้องไม่พังเพราะไฟล์นี้
   const { pushShopAlert } = await import("./line-alert");
   await pushShopAlert({
     tone: "#C9425F",
     title: "🛒 ลูกค้าโอนแล้ว — ต้องสั่งของ",
-    headline: "ใบนี้รอของเข้า สั่งของได้เลย · ของเข้าแล้วกด “ของเข้าแล้ว” ในหน้าออเดอร์ กราฟฟิกถึงจะส่งเข้าผลิต",
+    // ⛔ ยังไม่ระบุของที่ต้องสั่ง = คำขอยังไม่เข้า TP (tp-order-bridge.ts) → บอกแอดมินให้ไปกรอก
+    headline: mats.length
+      ? "ใบนี้รอของเข้า ส่งเข้าระบบสั่งของ TP แล้ว · ของเข้าแล้วกราฟฟิกถึงจะส่งเข้าผลิต"
+      : "⚠️ ยังไม่ได้ระบุ “ของที่ต้องสั่ง” — แอดมินกรอกในกล่อง 🛒 หน้าออเดอร์ก่อน ระบบถึงจะส่งเข้าระบบสั่งของ TP",
     heroLabel: "เลขออเดอร์",
     hero: o.id,
     rows: [
@@ -61,11 +67,12 @@ export async function alertNeedsPurchase(o: Order): Promise<void> {
       { label: "ยอดบิล", value: `${orderTotal(o).toLocaleString("th-TH")} บาท` },
       ...(o.useByDate ? [{ label: "วันใช้งาน", value: o.useByDate, bold: true }] : []),
       { label: "คนติ๊ก", value: np.by },
+      ...(mats.length ? [{ label: "สำหรับสินค้า", value: prods.join(", ").slice(0, 200) }] : []),
     ],
     bullets: items,
-    ...(np.note ? { note: `ต้องสั่ง: ${np.note}` } : {}),
+    ...(np.note ? { note: `${mats.length ? "หมายเหตุ" : "ต้องสั่ง"}: ${np.note}` } : {}),
     button: { label: "เปิดออเดอร์", uri: `${SITE_URL}/admin/orders/${encodeURIComponent(o.id)}` },
-    alt: `🛒 ${o.id} ลูกค้าโอนแล้ว ต้องสั่งของ${np.note ? ` — ${np.note}` : ""}`,
+    alt: `🛒 ${o.id} ลูกค้าโอนแล้ว ต้องสั่งของ${mats.length ? ` — ${mats.join(", ")}` : np.note ? ` — ${np.note}` : ""}`,
   });
 }
 

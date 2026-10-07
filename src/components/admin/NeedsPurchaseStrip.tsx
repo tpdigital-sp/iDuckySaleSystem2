@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { thaiDateTime } from "@/lib/bangkok-time";
-import type { Order } from "@/lib/admin-data";
+import { cleanNeedsPurchaseItems, needsPurchaseItemText, type Order } from "@/lib/admin-data";
 
 export default function NeedsPurchaseStrip({
   value,
@@ -32,6 +32,8 @@ export default function NeedsPurchaseStrip({
   onNote: (note: string) => void;
 }) {
   const [note, setNote] = useState(value.note ?? "");
+  // 🧾 ของที่ต้องสั่ง (กรอกในกล่อง 🛒 แถบขวา) — โชว์ตรงนี้ให้กราฟฟิก/ฝ่ายแพ็คเห็นด้วย
+  const mats = cleanNeedsPurchaseItems(value.items).map(needsPurchaseItemText);
 
   if (value.arrivedAt) {
     return (
@@ -76,24 +78,37 @@ export default function NeedsPurchaseStrip({
         )}
       </div>
 
+      <div className="mt-2.5">
+        <p className="mb-0.5 text-[11px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>
+          ของที่ต้องสั่ง
+        </p>
+        <p className="text-[13.5px] font-bold" style={{ color: mats.length ? "var(--dk-navy)" : "var(--dk-coral-ink)" }}>
+          {mats.length
+            ? mats.join(" · ")
+            : canManage
+              ? "⚠️ ยังไม่ได้ระบุ — ต้องใส่ในกล่อง “🛒 รอของเข้า” แถบขวา ระบบถึงจะส่งเข้าระบบสั่งของ TP"
+              : "⚠️ ยังไม่ได้ระบุ"}
+        </p>
+      </div>
+
       {canManage ? (
         <div className="mt-2.5">
           <p className="mb-1 text-[11px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>
-            ต้องสั่งอะไร
+            หมายเหตุถึงฝ่ายจัดซื้อ
           </p>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
             onBlur={() => note.trim() !== (value.note ?? "") && onNote(note.trim())}
             maxLength={200}
-            placeholder="เช่น แก้วเก็บความเย็น 20 oz สีดำ 50 ใบ · สั่งร้านไหน · ของเข้าประมาณวันไหน"
+            placeholder="เช่น สั่งร้านเดิม · ของต้องเข้าก่อนวันที่ 15 · ลูกค้าขอสีตามตัวอย่าง"
             className="w-full rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-[13px] text-slate-800 focus:border-rose-400 focus:outline-none"
           />
         </div>
       ) : (
         value.note && (
           <p className="mt-2 text-[13.5px] font-bold" style={{ color: "var(--dk-navy)" }}>
-            ต้องสั่ง: {value.note}
+            หมายเหตุ: {value.note}
           </p>
         )
       )}

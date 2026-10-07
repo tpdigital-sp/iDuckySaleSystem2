@@ -164,6 +164,7 @@ import GiftPairPicker from "@/components/GiftPairPicker";
 import FollowUpModal, { type FollowUpForm } from "@/components/admin/FollowUpModal";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
+import NeedsPurchaseItemsEditor from "@/components/admin/NeedsPurchaseItemsEditor";
 import ShipWithStrip, { ShipWithPicker, ShipWithSuggest, useShipWithLinked } from "@/components/admin/ShipWithStrip";
 import { alreadyShipped, isPickupShipSet, isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
@@ -9054,10 +9055,26 @@ export default function AdminOrderDetailPage() {
                         {order.needsPurchase
                           ? order.needsPurchase.arrivedAt
                             ? `ของเข้าแล้ว · ${order.needsPurchase.arrivedBy ?? ""}`
-                            : "กรอก “ต้องสั่งอะไร” ที่แถบบนสุดของหน้า · ลูกค้าโอนแล้วระบบแจ้งกลุ่มไลน์ร้านให้เอง"
+                            : "ระบุของที่ต้องสั่งด้านล่าง · ลูกค้าโอนแล้วระบบส่งเข้าระบบสั่งของ TP + แจ้งไลน์ให้เอง"
                           : "ของยังไม่มีในร้าน ต้องสั่งและรอของเข้าก่อนผลิต — กราฟฟิกจะเห็นแถบ “รอของเข้า” บนใบนี้"}
                       </span>
                     </div>
+                    {/* 🧾 ของที่ต้องสั่งจริง (วัสดุ) — ไม่ใช่ชื่อสินค้าลูกค้า เช่น ปลอกหมอนอิง → ซิป 16" (เจ้าของร้านขอ 7 ต.ค. 69) */}
+                    {order.needsPurchase && (
+                      <NeedsPurchaseItemsEditor
+                        items={order.needsPurchase.items}
+                        editable={!order.needsPurchase.arrivedAt}
+                        products={order.items.map((i) => ({ productId: i.productId, name: i.name, qty: i.qty }))}
+                        onSave={(items) =>
+                          order.needsPurchase &&
+                          saveNeedsPurchase(
+                            { ...order.needsPurchase, ...(items.length ? { items } : { items: undefined }) },
+                            "🧾 แก้ของที่ต้องสั่ง",
+                            items.map((i) => `${i.name}${i.qty ? ` ×${i.qty}${i.unit ? ` ${i.unit}` : ""}` : ""}`).join(", ") || "ล้างรายการ"
+                          )
+                        }
+                      />
+                    )}
                   </div>
                 )}
 

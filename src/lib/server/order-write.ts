@@ -4,6 +4,7 @@ import { earlyPayBillAdded, syncOrderEarlyPay } from "./order-early-pay";
 import { syncItemsToTP, syncRushToTP } from "./tp-report";
 import { closeClaimsForDeliveredRedo } from "./claims-db";
 import { alertNeedsPurchase, stampNeedsPurchaseAlert } from "./needs-purchase";
+import { pushNeedsPurchaseToTP, syncTPRequest } from "./tp-order-bridge";
 import { alertRushOrder } from "./rush-alert";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
@@ -146,7 +147,8 @@ export async function insertOrder(sb: SB, order: Order, by = "ระบบ"): Pr
   const rush = await withAutoRush(null, np.order, by);
   const final = stampSaved(rush.order);
   const { error } = await sb.from("orders").insert({ id: final.id, data: final });
-  if (!error && np.due) await alertNeedsPurchase(final);
+  // 🛒 → 📦 ส่งเป็นคำขอในระบบสั่งของ TP + แจ้งไลน์ OrderTP ด้วย (เจ้าของร้านขอ 7 ต.ค. 69 — ดู tp-order-bridge.ts)
+  if (!error && np.due) await Promise.all([alertNeedsPurchase(final), pushNeedsPurchaseToTP(final)]);
   if (!error && rush.alert) await alertRushOrder(final);
   return { order: final, error };
 }
@@ -192,7 +194,9 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
   // 🕒 ประทับเวลาบันทึกที่ประตู — ทางเข้าใหม่ได้ไปด้วยเอง ไม่ต้องจำว่าต้องเซ็ต savedAt เอง
   final = stampSaved(final);
   const { error } = await sb.from("orders").update({ data: final }).eq("id", final.id);
-  if (!error && np.due) await alertNeedsPurchase(final);
+  // 🛒 → 📦 เงินเข้า: ส่งเป็นคำขอในระบบสั่งของ TP + แจ้งไลน์ OrderTP ด้วย · แก้/ยกเลิกติ๊กทีหลัง: คำขอใน TP ตาม (tp-order-bridge.ts)
+  if (!error && np.due) await Promise.all([alertNeedsPurchase(final), pushNeedsPurchaseToTP(final)]);
+  if (!error && !np.due) await syncTPRequest(prev, final);
   // 🏭 ธงงานเร่งเพิ่งเปลี่ยนเอง → การ์ดบนบอร์ด WIP กราฟฟิกต้องเห็นด้วย (ปุ่มในหน้าออเดอร์ sync เองอยู่แล้ว)
   if (!error && rush.turned) await syncRushToTP(final);
   if (!error && rush.alert) await alertRushOrder(final);

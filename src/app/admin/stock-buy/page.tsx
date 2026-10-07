@@ -60,7 +60,10 @@ function StockBuyInner() {
   const by = useMemo(() => {
     const waiting = (rows ?? []).filter((r) => r.group === "waiting");
     // รอนานสุดขึ้นก่อน · งานเร่งนำ
-    const sort = (a: StockWaitRow, b: StockWaitRow) => Number(!!b.rush) - Number(!!a.rush) || (a.paidAlertAt ?? a.at).localeCompare(b.paidAlertAt ?? b.at);
+    // ⚠️ ยังไม่ใส่ "ของที่ต้องสั่ง" ขึ้นบนสุด (คำขอยังไม่เข้า TP — ต้องลงมือก่อน) → งานเร่ง → รอนานสุด
+    const noMat = (r: StockWaitRow) => Number(!r.materials?.length);
+    const sort = (a: StockWaitRow, b: StockWaitRow) =>
+      noMat(b) - noMat(a) || Number(!!b.rush) - Number(!!a.rush) || (a.paidAlertAt ?? a.at).localeCompare(b.paidAlertAt ?? b.at);
     return { paid: waiting.filter((r) => r.paid).sort(sort), unpaid: waiting.filter((r) => !r.paid).sort(sort) };
   }, [rows]);
   const shown = by[tab];
@@ -162,6 +165,11 @@ function StockBuyInner() {
                   tags={
                     <>
                       <StatusChip s={r.status} />
+                      {!r.materials?.length && (
+                        <Tag tone="solid" title="ใส่ของที่ต้องสั่งในกล่อง 🛒 หน้าออเดอร์ — ยังไม่ใส่ คำขอยังไม่เข้าระบบสั่งของ TP">
+                          ⚠️ ยังไม่ระบุของ
+                        </Tag>
+                      )}
                       {r.rush && <Tag tone="solid">งานเร่ง</Tag>}
                       {r.paid ? <Tag tone="coral">โอนแล้ว {baht(r.total)}</Tag> : <Tag tone="quiet">ยังไม่โอน {baht(r.total)}</Tag>}
                       {r.paid && days >= 3 && <Tag tone="yolk">รอมา {days} วัน</Tag>}
@@ -172,9 +180,14 @@ function StockBuyInner() {
                     <>
                       <span className="id">{r.id}</span>
                       {r.useByDate && <span className="hot">ใช้งาน {r.useByDate}</span>}
+                      {!!r.materials?.length && (
+                        <span title={r.materials.join(", ")}>
+                          <b>ต้องสั่ง:</b> {r.materials.join(", ")}
+                        </span>
+                      )}
                       {r.note && (
                         <span title={r.note}>
-                          <b>ต้องสั่ง:</b> {r.note}
+                          <b>หมายเหตุ:</b> {r.note}
                         </span>
                       )}
                       {r.items.slice(0, 3).map((t, i) => (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderAwaitingStock, orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { cleanNeedsPurchaseItems, needsPurchaseItemText, orderAwaitingStock, orderTotal, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { notifyStockArrived } from "@/lib/server/needs-purchase";
 import { syncStockWaitToTP } from "@/lib/server/tp-report";
@@ -44,6 +44,8 @@ export type StockWaitRow = {
   arrivedAt?: string;
   arrivedBy?: string;
   productionSent?: boolean;
+  /** 🧾 ของที่ต้องสั่ง (วัสดุ) ที่แอดมินใส่ไว้ — ว่าง = ยังไม่ใส่ (ติดป้ายแดง · คำขอยังไม่เข้า TP) */
+  materials?: string[];
 };
 
 const IN_PRODUCTION: OrderStatus[] = ["กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น"];
@@ -73,6 +75,7 @@ function toRow(o: Order, group: StockWaitRow["group"]): StockWaitRow {
     ...(np.arrivedAt ? { arrivedAt: np.arrivedAt } : {}),
     ...(np.arrivedBy ? { arrivedBy: np.arrivedBy } : {}),
     ...(o.productionSent ? { productionSent: true } : {}),
+    materials: cleanNeedsPurchaseItems(np.items).map(needsPurchaseItemText),
   };
 }
 
