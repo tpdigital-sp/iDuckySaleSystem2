@@ -120,6 +120,7 @@ import {
   proofsOf,
   STATUS_STYLES,
   withLog,
+  type NeedsPurchaseItem,
   NOTE_COLORS,
   NOTE_SIZES,
   NOTE_WEIGHTS,
@@ -1822,6 +1823,11 @@ export default function AdminOrderDetailPage() {
 
   // วิธีจัดส่งจากตั้งค่าร้าน — ให้แอดมินเลือกแล้วเติมค่าส่งอัตโนมัติ (ใช้ในออเดอร์งานพิเศษ/สั่งแทน)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]);
+  /**
+   * 🛒 ร่าง "ของที่ต้องสั่ง" ก่อนติ๊กรอของเข้า — เจ้าของร้านเคาะ 7 ต.ค. 69: ใส่รายการก่อน แล้วกดปุ่มรอของเข้าทีเดียว
+   * (ติ๊กก่อนแล้วค่อยใส่ = พนักงานลืมกลับมาใส่) · ยังไม่บันทึกลงออเดอร์จนกว่าจะกดปุ่ม · แจ้งไลน์/ส่ง TP ยังเกิดตอนสถานะเป็นชำระแล้วเหมือนเดิม
+   */
+  const [npDraft, setNpDraft] = useState<NeedsPurchaseItem[]>([]);
   /** โปรส่งฟรีเมื่อยอดถึง — ต้องใช้ตอนคิดค่าส่งอัตโนมัติให้ได้เลขเดียวกับหน้าตะกร้า (0 = ไม่มีโปร) */
   const [freeShipMin, setFreeShipMin] = useState(0);
   useEffect(() => {
@@ -9033,47 +9039,75 @@ export default function AdminOrderDetailPage() {
                   );
                 })()}
 
-                {/* 🛒 รอของเข้า / ต้องสั่งของ — แอดมินติ๊ก (ตอนสร้างคำสั่งซื้อ หรือทีหลังตรงนี้) · ติ๊กแล้วแถบใหญ่ขึ้นบนสุดของหน้า */}
+                {/* 🛒 รอของเข้า / ต้องสั่งของ — แอดมินติ๊ก (ตอนสร้างคำสั่งซื้อ หรือทีหลังตรงนี้) · ติ๊กแล้วแถบใหญ่ขึ้นบนสุดของหน้า
+                    ลำดับ (เจ้าของร้านเคาะ 7 ต.ค. 69): ใส่ "ของที่ต้องสั่ง" ก่อน → ปุ่มรอของเข้าถึงกดได้ → บันทึกทีเดียว · ลูกค้าโอนแล้วค่อยแจ้งไลน์/ส่ง TP */}
                 {mayEdit && (
                   <div className={`rounded-xl border p-2.5 transition ${order.needsPurchase ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-slate-50/70"}`}>
                     <p className={`mb-1.5 text-xs font-bold ${order.needsPurchase ? "text-rose-700" : "text-slate-600"}`}>🛒 รอของเข้า / ต้องสั่งของ</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          order.needsPurchase
-                            ? saveNeedsPurchase(undefined, "ยกเลิกติ๊กรอของเข้า")
-                            : saveNeedsPurchase({ by: actor, at: new Date().toISOString() }, "🛒 ติ๊กรอของเข้า — ต้องสั่งของก่อนผลิต")
-                        }
-                        className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                          order.needsPurchase ? "bg-rose-500 text-white shadow-sm hover:bg-rose-600" : "border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
-                        }`}
-                      >
-                        {order.needsPurchase ? "🛒 รอของเข้า (กดเพื่อยกเลิก)" : "🛒 ติ๊กว่าต้องสั่งของ"}
-                      </button>
-                      <span className="text-[11px] text-slate-500">
-                        {order.needsPurchase
-                          ? order.needsPurchase.arrivedAt
-                            ? `ของเข้าแล้ว · ${order.needsPurchase.arrivedBy ?? ""}`
-                            : "ระบุของที่ต้องสั่งด้านล่าง · ลูกค้าโอนแล้วระบบส่งเข้าระบบสั่งของ TP + แจ้งไลน์ให้เอง"
-                          : "ของยังไม่มีในร้าน ต้องสั่งและรอของเข้าก่อนผลิต — กราฟฟิกจะเห็นแถบ “รอของเข้า” บนใบนี้"}
-                      </span>
-                    </div>
-                    {/* 🧾 ของที่ต้องสั่งจริง (วัสดุ) — ไม่ใช่ชื่อสินค้าลูกค้า เช่น ปลอกหมอนอิง → ซิป 16" (เจ้าของร้านขอ 7 ต.ค. 69) */}
-                    {order.needsPurchase && (
-                      <NeedsPurchaseItemsEditor
-                        items={order.needsPurchase.items}
-                        editable={!order.needsPurchase.arrivedAt}
-                        products={order.items.map((i) => ({ productId: i.productId, name: i.name, qty: i.qty }))}
-                        onSave={(items) =>
-                          order.needsPurchase &&
-                          saveNeedsPurchase(
-                            { ...order.needsPurchase, ...(items.length ? { items } : { items: undefined }) },
-                            "🧾 แก้ของที่ต้องสั่ง",
-                            items.map((i) => `${i.name}${i.qty ? ` ×${i.qty}${i.unit ? ` ${i.unit}` : ""}` : ""}`).join(", ") || "ล้างรายการ"
-                          )
-                        }
-                      />
+                    {order.needsPurchase ? (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveNeedsPurchase(undefined, "ยกเลิกติ๊กรอของเข้า")}
+                            className="shrink-0 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-rose-600"
+                          >
+                            🛒 รอของเข้า (กดเพื่อยกเลิก)
+                          </button>
+                          <span className="text-[11px] text-slate-500">
+                            {order.needsPurchase.arrivedAt
+                              ? `ของเข้าแล้ว · ${order.needsPurchase.arrivedBy ?? ""}`
+                              : "ลูกค้าโอนแล้วระบบส่งรายการด้านล่างเข้าระบบสั่งของ TP + แจ้งไลน์ให้เอง · แก้รายการได้ตลอด"}
+                          </span>
+                        </div>
+                        {/* 🧾 ของที่ต้องสั่งจริง (วัสดุ) — ไม่ใช่ชื่อสินค้าลูกค้า เช่น ปลอกหมอนอิง → ซิป 16" (เจ้าของร้านขอ 7 ต.ค. 69) · แก้แล้วบันทึกทันที */}
+                        <NeedsPurchaseItemsEditor
+                          items={order.needsPurchase.items}
+                          editable={!order.needsPurchase.arrivedAt}
+                          products={order.items.map((i) => ({ productId: i.productId, name: i.name, qty: i.qty }))}
+                          onSave={(items) =>
+                            order.needsPurchase &&
+                            saveNeedsPurchase(
+                              { ...order.needsPurchase, ...(items.length ? { items } : { items: undefined }) },
+                              "🧾 แก้ของที่ต้องสั่ง",
+                              items.map((i) => `${i.name}${i.qty ? ` ×${i.qty}${i.unit ? ` ${i.unit}` : ""}` : ""}`).join(", ") || "ล้างรายการ"
+                            )
+                          }
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[11px] text-slate-500">
+                          ของยังไม่มีในร้าน ต้องสั่งและรอของเข้าก่อนผลิต — ใส่ของที่ต้องสั่งด้านล่าง แล้วกดปุ่ม 🛒 ทีเดียว · กราฟฟิกจะเห็นแถบ “รอของเข้า” บนใบนี้
+                        </p>
+                        {/* ร่างอยู่ในหน้าจอ (npDraft) — ยังไม่เขียนลงออเดอร์จนกว่าจะกดปุ่ม */}
+                        <NeedsPurchaseItemsEditor
+                          items={npDraft}
+                          editable
+                          draft
+                          products={order.items.map((i) => ({ productId: i.productId, name: i.name, qty: i.qty }))}
+                          onSave={setNpDraft}
+                        />
+                        <button
+                          type="button"
+                          disabled={npDraft.length === 0}
+                          title={npDraft.length === 0 ? "ใส่ของที่ต้องสั่งอย่างน้อย 1 รายการก่อน" : undefined}
+                          onClick={() => {
+                            if (!npDraft.length) return;
+                            saveNeedsPurchase(
+                              { by: actor, at: new Date().toISOString(), items: npDraft },
+                              "🛒 ติ๊กรอของเข้า — ต้องสั่งของก่อนผลิต",
+                              npDraft.map((i) => `${i.name}${i.qty ? ` ×${i.qty}${i.unit ? ` ${i.unit}` : ""}` : ""}`).join(", ")
+                            );
+                            setNpDraft([]);
+                          }}
+                          className={`mt-2 w-full rounded-lg px-3 py-2 text-xs font-bold transition ${
+                            npDraft.length ? "bg-rose-500 text-white shadow-sm hover:bg-rose-600" : "cursor-not-allowed border border-slate-200 bg-white text-slate-400"
+                          }`}
+                        >
+                          {npDraft.length ? `🛒 รอของเข้า / ต้องสั่งของ (${npDraft.length} รายการ)` : "🛒 รอของเข้า / ต้องสั่งของ — ใส่รายการก่อน"}
+                        </button>
+                      </>
                     )}
                   </div>
                 )}
