@@ -518,7 +518,15 @@ export interface Understanding {
   alternatives: ProductRef[];
   /** ไว้ดีบักด่านยึดสินค้าจากบทสนทนา (สินค้าที่คำถามเอ่ยถึงตรง ๆ / ชุดที่ยึดจากบริบท) */
   debug?: { qMentions: string[]; anchor: string[]; trace: string[] };
+  /** ถามเรื่อง "อุปกรณ์/ตัวเลือก" ของสินค้าที่คุยอยู่ (ตะขอ ห่วง ความหนา แพ็คเกจ…) → ตอบจากหน้าสินค้าตัวนั้น ไม่ใช่เมนูกลุ่ม (7 ต.ค. 69) */
+  attr?: boolean;
 }
+
+/** คำที่หมายถึง "อุปกรณ์/ตัวเลือก/ส่วนเสริม" ของสินค้า ไม่ใช่ชื่อสินค้า — "ร้านมีตะขอแบบไหนบ้าง" ≠ "พวงกุญแจมีแบบไหนบ้าง" */
+export const ATTR_RE =
+  /ตะขอ|ห่วง|โซ่|อะไหล่|จี้ห้อย|สายคล้อง|จุกยาง|ฐานตั้ง|ความหนา|หนากี่|หนาเท่าไหร่|แพ็คเกจ|แพ็คแยก|ซองใส|ถุงแก้ว|กล่องใส่|ฟิล์มกันรอย|รองพื้นขาว|เจาะรู/;
+/** ถามว่า "รวม … ไหม / ไม่รวม / เพิ่มเท่าไหร่ / มีแบบไหนบ้าง" — ต้องตอบจากรายละเอียดหน้าสินค้า ไม่ใช่ตารางราคาซ้ำ */
+export const INCLUDE_Q_RE = /รวม.{0,15}(ไหม|มั้ย|รึยัง|หรือยัง|หรือเปล่า|ด้วยไหม|ด้วยมั้ย|แล้วยัง)|ไม่รวม|บวกเพิ่ม|เพิ่มเท่าไหร่|คิดเพิ่ม|แบบไหนบ้าง|มีอะไรบ้าง|มีกี่แบบ|เท่าไหร่|ราคาเท่า/;
 
 /**
  * ✍️ คำสะกดผิดที่ลูกค้าพิมพ์บ่อย → คำที่ใช้ในชื่อสินค้า (28 ก.ย. 69: "อะคลิลิค" ทำให้จับ "แม่เหล็กอะคริลิค" ไม่เจอ)
@@ -673,6 +681,7 @@ ${list}
 กติกา:
 - ถ้าข้อความล่าสุดพูดต่อจากบริบท (เช่น "เอาแบบกันฝนค่ะ" หลังถาม "ที่ติดรถยนต์") ให้ใช้บริบทหาสินค้า แล้วตั้ง intent ตามสิ่งที่ถามจริง (price/spec) ไม่ใช่ followup
 - ลูกค้าอ้างลำดับ ("แบบที่ 2" "ตัวแรก" "อันสุดท้าย" "ตัวนั้น") = สินค้าลำดับนั้นในรายการที่แอดมินเสนอล่าสุด → products ใส่ตัวเดียว broad=false
+- ถาม "แบบไหนบ้าง/รวม…ไหม/เท่าไหร่" เรื่องอุปกรณ์หรือตัวเลือก (ตะขอ ห่วง โซ่ ความหนา สี ขนาด แพ็คเกจ) ของสินค้าที่คุยอยู่ = ถามรายละเอียดสินค้านั้น → intent knowledge, products = สินค้านั้นตัวเดียว (ห้ามตอบเป็นเมนูกลุ่มสินค้า)
 - ถาม "มีแบบไหนบ้าง / มีกี่แบบ / มีอะไรบ้าง" กับชื่อที่เป็น "กลุ่ม" (แม่เหล็กติดตู้เย็น · สแตนดี้ · พวงกุญแจ · โฟโต้การ์ด) → intent spec, products = ทุกสินค้าในรายการที่เป็นของกลุ่มเดียวกันจริง ๆ (เช่น แม่เหล็กติดตู้เย็น + แม่เหล็กอะคริลิค + กรอบรูปอะคริลิค แม่เหล็ก · ไม่เอาแม่เหล็กติดรถยนต์) broad=true แม้ชื่อตรงกับสินค้าตัวหนึ่งพอดี
 - products ต้องคัดลอกชื่อจากรายการตรงตัวอักษร เลือกเฉพาะที่ลูกค้าหมายถึงจริง ไม่ชัดเจน = [] · หมวดกว้าง (พวงกุญแจ/สแตนดี้) = ใส่ทุกตัวที่เข้าข่าย (สูงสุด 6) และ broad=true
 - ⚠️ ลูกค้าระบุ "ชนิด/วัสดุ/แบบ" เฉพาะที่ร้านไม่มีในรายการ (เช่น "พวงกุญแจหนังปัก" แต่ร้านมีแต่พวงกุญแจอะคริลิค/หมอน) → notInCatalog=true, requested="พวงกุญแจหนังปัก", products=[] และใส่ alternatives = สินค้าที่ใกล้เคียงที่สุด ไม่เกิน 3 (เช่น กระเป๋าใส่พวงกุญแจ งานปัก, อาร์มปัก) ห้ามยัดเมนูทั้งหมวดให้แทน
@@ -688,6 +697,7 @@ ${list}
     const raw = JSON.parse(text) as Partial<Omit<Understanding, "alternatives">> & { products?: unknown[]; alternatives?: unknown[] };
     const byName = new Map(items.map((it) => [norm(it.name), it]));
     let anchorDebug: { qMentions: string[]; anchor: string[]; trace: string[] } | undefined;
+    let attrQ = false;
     let picked = (Array.isArray(raw.products) ? raw.products : [])
       .map((n) => byName.get(norm(String(n))))
       .filter((it): it is Lite => !!it)
@@ -803,6 +813,24 @@ ${list}
           raw.broad = anchor.length > 1;
         }
       }
+      // 🔩 ถามเรื่องอุปกรณ์/ตัวเลือก ("ราคารวมตะขอรึยัง" "ร้านมีตะขอแบบไหนบ้าง") โดยไม่เอ่ยชื่อสินค้า → สินค้าตัวเดียวที่คุยล่าสุด
+      // ข้ามข้อความที่เป็นเมนูหลายสินค้า (บอทเคยตอบเมนูผิดไปแล้ว ห้ามยึดเมนูนั้นซ้ำ) · 7 ต.ค. 69 พวงกุญแจอะคริลิค 50 ชิ้น
+      // สินค้าที่ "ชื่อมีคำอุปกรณ์" (ตะขอแขวนผนัง/ตะขอแขวนสูญญากาศ) ไม่นับว่าเอ่ยถึง เว้นแต่ตรงแรง (≥60% ของชื่อ)
+      const realMentions = qMentions.filter((it) => !ATTR_RE.test(it.name) || lcsLen(norm(q), norm(it.name)) >= Math.ceil(norm(it.name).length * 0.6));
+      if (!realMentions.length && ATTR_RE.test(q)) {
+        let single: Lite | undefined;
+        for (let i = anchorMsgs.length - 1; i >= 0 && !single; i--) {
+          const t = top(anchorMsgs[i]);
+          if (t.length === 1) single = t[0];
+        }
+        if (!single && picked.length === 1) single = picked[0];
+        if (single) {
+          picked = [single];
+          raw.broad = false;
+          attrQ = true;
+          anchorDebug.trace.push(`attr→${single.name}`);
+        }
+      }
     }
     const qtyN = Number(raw.qty);
     /**
@@ -895,6 +923,7 @@ ${list}
       products: finalPicked.map((it) => it.name),
       ids: finalPicked.map((it) => it.id),
       debug: anchorDebug,
+      attr: attrQ || undefined,
       broad: !!raw.broad && finalPicked.length >= 2,
       qty: Number.isFinite(qtyN) && qtyN > 0 ? Math.round(qtyN) : null,
       standalone: String(raw.standalone ?? "").trim() || q,
@@ -1515,6 +1544,166 @@ export async function extraInfo(query: string, productId: string): Promise<strin
     .map((x) => norm(x.replace(/ค่ะ|คะ|ครับ|ไหม|มั้ย|หน่อย|ด้วย/g, "")))
     .filter((x) => x.length >= 4);
   return asked.some((a) => lcsLen(a, norm(text)) >= 4) ? text : "";
+}
+
+/** "ชิ้นละ 20 บาท" "อันละ 15" "งบ 20 บาท/ชิ้น" → 20 · ไม่มี = null */
+export function parseBudget(text: string): number | null {
+  const m =
+    /(?:ชิ้นละ|อันละ|ใบละ|ตัวละ|แผ่นละ|ผืนละ|เซ็ตละ|เซตละ|ละ)\s*(\d+(?:\.\d+)?)\s*(?:บาท|฿|-)?/.exec(text) ||
+    /งบ(?:ประมาณ)?(?:ต่อชิ้น)?\s*(\d+(?:\.\d+)?)\s*(?:บาท|฿)?\s*(?:\/|ต่อ)\s*(?:ชิ้น|อัน|ใบ)/.exec(text) ||
+    /(?:ไม่เกิน|ไม่เกินชิ้นละ)\s*(\d+(?:\.\d+)?)\s*(?:บาท|฿)/.exec(text);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isFinite(n) && n > 0 && n < 100000 ? n : null;
+}
+
+/**
+ * 💸 ลูกค้าบอกงบต่อชิ้น + จำนวน ("พวงกุญแจ 50 ชิ้น ชิ้นละ 20 บาท ทำได้ไหม") — เดิมได้แค่ตารางราคา ไม่ตอบว่าได้/ไม่ได้ (7 ต.ค. 69)
+ * คิดด้วยเครื่องคิดเงินเดียวกับตะกร้า (unitPriceAt) ทุกแบบของสินค้าที่เลือก → บอกว่าได้ไหม + แบบที่อยู่ในงบ + ค่าตะขอ/อะไหล่ที่ยังไม่รวม
+ */
+export async function budgetAnswer(ids: string[], qty: number, budget: number, query = ""): Promise<PriceAnswer | null> {
+  type Opt = { p: Product; rate: string; cfg: string; unit: number; unitName: string; minQty: number; named: boolean };
+  const prods = (await Promise.all(ids.slice(0, 4).map((id) => getProductServer(id).catch(() => undefined)))).filter((x): x is Product => !!x);
+  if (!prods.length) return null;
+  const opts: Opt[] = [];
+  const ladders: string[] = [];
+  for (const p of prods) {
+    for (const rate of ratesOf(p)) {
+      const m = rate.matrix;
+      if (!m?.cells) continue;
+      if (rate.minQty && qty < rate.minQty) continue; // ยังไม่ถึงขั้นต่ำของเรทนี้
+      const i = tierIndex(m, qty);
+      const keys = Object.keys(m.cells);
+      // ลูกค้าระบุแบบมา ("5cm" "สกรีน 2 ด้าน") → ตรวจงบเฉพาะแบบนั้นก่อน
+      const named = query ? new Set(pickColumns(keys, query)) : new Set<string>();
+      const narrowed = named.size > 0 && named.size < keys.length;
+      for (const key of keys) {
+        const unit = unitPriceAt(p, rate.label, m, key, qty) || m.cells[key]?.[i] || 0;
+        if (unit > 0) opts.push({ p, rate: rate.label.trim(), cfg: columnText(m, key), unit, unitName: m.unit || "ชิ้น", minQty: rate.minQty ?? 0, named: narrowed && named.has(key) });
+      }
+    }
+  }
+  if (!opts.length) return null;
+  opts.sort((a, b) => a.unit - b.unit);
+  const namedOpts = opts.filter((o) => o.named);
+  // ระบุแบบมาแต่แบบนั้นเกินงบ → บอกตรง ๆ ก่อน แล้วค่อยเสนอแบบที่อยู่ในงบ
+  let namedLine = "";
+  if (namedOpts.length && !namedOpts.some((o) => o.unit <= budget)) {
+    const c = namedOpts[0];
+    namedLine = `แบบที่ระบุ (${c.cfg}) สั่ง ${qty.toLocaleString()} ${c.unitName} ราคาต่ำสุด ${formatPrice(c.unit)}/${c.unitName} เกินงบ ${formatPrice(budget)}/${c.unitName} ค่ะ`;
+  }
+  const pool = namedOpts.length && namedOpts.some((o) => o.unit <= budget) ? namedOpts : opts;
+  const under = pool.filter((o) => o.unit <= budget);
+  const unitName = opts[0].unitName;
+  // ค่าตะขอ/อะไหล่ (กลุ่มตัวเลือกที่ชื่อมี "ตะขอ") — ราคาในตารางยังไม่รวม
+  const hookNote = (p: Product): string => {
+    const extras = (p.options ?? [])
+      .filter((o) => /ตะขอ/.test(String(o.label ?? "")))
+      .flatMap((o) => (o.choices ?? []).map((c) => Number(c.extra) || 0))
+      .filter((n) => n > 0);
+    if (!extras.length) return "";
+    const lo = Math.min(...extras);
+    const hi = Math.max(...extras);
+    return `ราคานี้ยังไม่รวมตะขอค่ะ ตะขอบวกเพิ่ม ${lo === hi ? formatPrice(lo) : `${formatPrice(lo)}–${formatPrice(hi)}`}/${unitName} ตามแบบที่เลือก`;
+  };
+  const lines: string[] = [];
+  let product = opts[0].p;
+  if (under.length) {
+    const seen = new Set<string>();
+    const picks = under.filter((o) => { const k = `${o.p.id}|${o.cfg}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    product = picks[0].p;
+    if (namedLine) lines.push(namedLine, `ถ้าปรับแบบ มีที่อยู่ในงบค่ะ`);
+    else lines.push(`ได้ค่ะ สั่ง ${qty.toLocaleString()} ${unitName} งบไม่เกิน ${formatPrice(budget)}/${unitName} มีแบบที่อยู่ในงบค่ะ`);
+    const byProd = new Map<string, Opt[]>();
+    for (const o of picks) byProd.set(o.p.id, [...(byProd.get(o.p.id) ?? []), o]);
+    for (const [, list] of [...byProd.entries()].slice(0, 2)) {
+      const o = list[0];
+      // ขนาดใหญ่สุดที่ยังไม่เกินงบ ("…ได้ถึง 4cm") — ลูกค้าอยากรู้ว่างบนี้ได้แค่ไหน ไม่ใช่รายการ 20 แบบ
+      const sizes = list.map((x) => Number(/(\d+(?:\.\d+)?)\s*cm/.exec(x.cfg)?.[1] ?? NaN)).filter((n) => Number.isFinite(n));
+      const maxSize = sizes.length ? Math.max(...sizes) : null;
+      lines.push(`• ${o.p.name}: ถูกสุด ${formatPrice(o.unit)}/${o.unitName} (${o.cfg} · รวม ${formatPrice(o.unit * qty)})`);
+      if (maxSize && maxSize > (sizes[0] ?? 0)) lines.push(`  ในงบนี้ทำได้ถึงขนาด ${maxSize}cm · รวม ${list.length} แบบที่ไม่เกินงบ`);
+      else if (list.length > 1) lines.push(`  รวม ${list.length} แบบที่ไม่เกินงบ`);
+    }
+    const hn = hookNote(product);
+    if (hn) lines.push(hn);
+  } else {
+    const c = opts[0];
+    lines.push(`สั่ง ${qty.toLocaleString()} ${unitName} ราคาต่ำสุดอยู่ที่ ${formatPrice(c.unit)}/${unitName} (${c.p.name} · ${c.cfg}) ยังเกินงบ ${formatPrice(budget)}/${unitName} ค่ะ`);
+    // สั่งเพิ่มถึงเท่าไหร่ถึงเข้างบ (ไล่ขั้นบันไดของแบบถูกสุด)
+    for (const rate of ratesOf(c.p)) {
+      const m = rate.matrix;
+      for (const key of Object.keys(m.cells ?? {})) {
+        if (columnText(m, key) !== c.cfg) continue;
+        const cells = m.cells[key] ?? [];
+        const j = cells.findIndex((v, k) => v > 0 && v <= budget && k > tierIndex(m, qty));
+        if (j >= 0) ladders.push(`ถ้าสั่ง ${tierText(m, j)} จะได้ ${formatPrice(cells[j])}/${unitName} ค่ะ`);
+      }
+    }
+    if (ladders.length) lines.push(ladders[0]);
+    const hn = hookNote(c.p);
+    if (hn) lines.push(hn);
+  }
+  const url = botUrl(product);
+  lines.push(`ดูครบทุกแบบ/สั่งได้ที่หน้าสินค้า\n${url}`);
+  return {
+    answer: lines.join("\n"),
+    kind: "price",
+    source: "web-price-engine+budget",
+    intent: "price_qty",
+    product: { id: product.id, name: product.name, url: safeHref(url), image: absImage(product.imageSrc), ...priceRange(product) },
+  };
+}
+
+/**
+ * 🪝 ถามเรื่องตะขอ ("ราคารวมตะขอไหม" "มีตะขอแบบไหนบ้าง เท่าไหร่") → ตอบจาก "ตัวเลือกตะขอ" ของสินค้าโดยตรง (7 ต.ค. 69)
+ * เดิมให้ AI อ่านหน้าสินค้า ตอบ 2 ครั้งได้คำตอบตรงข้ามกัน ("ยังไม่รวม" / "รวมแล้ว") — ราคาที่บอทแจ้งมาจากตารางราคา ซึ่งไม่รวมค่าตะขอที่เป็นตัวเลือกบวกเพิ่ม
+ */
+export async function hookAnswer(id: string, query: string): Promise<PriceAnswer | null> {
+  const p = await getProductServer(id).catch(() => undefined);
+  if (!p) return null;
+  const groups = (p.options ?? []).filter((o) => /ตะขอ/.test(String(o.label ?? "")) && (o.choices ?? []).length);
+  if (!groups.length) return null;
+  const extraOf = (c: { extra?: number; extraTiers?: { extra?: number }[] }) => Number(c.extraTiers?.length ? c.extraTiers[0]?.extra : c.extra) || 0;
+  const main = groups.find((g) => /^ตะขอ$/.test(groupLabel(g.label).trim())) ?? groups.find((g) => !/สี/.test(String(g.label))) ?? groups[0];
+  const subs = groups.filter((g) => g !== main && /สี/.test(String(g.label)));
+  const unit = (p.priceRates ?? []).find((r) => !r.dealerOnly)?.pricing?.unit || p.pricing?.unit || "ชิ้น";
+  const lines: string[] = [];
+  const wantsIncl = /รวม|ไม่รวม|รึยัง|หรือยัง/.test(query);
+  const wantsList = /แบบไหน|มีอะไร|กี่แบบ|เท่าไหร่|เท่าไร|ดูแบบ/.test(query) || !wantsIncl;
+  lines.push(`ราคาที่แจ้งไปเป็นราคาชิ้นงาน ยังไม่รวมตะขอค่ะ ตะขอคิดเพิ่มตามแบบที่เลือก`);
+  const addon = pageLinesAbout(p, /^ตะขอ.*(บาท|\+|฿)/, 1);
+  for (const l of addon) lines.push(`• ${l.replace(/^ตะขอ\/อะไหล่:\s*/, "ตะขอ/อะไหล่: ")}`);
+  if (!wantsList) {
+    const cheap = (main.choices ?? []).map((c) => ({ c, ex: extraOf(c) })).filter((x) => x.ex > 0).sort((a, b) => a.ex - b.ex);
+    if (cheap.length) lines.push(`ตะขอเริ่มต้น +${formatPrice(cheap[0].ex)}/${unit} (${cheap[0].c.name}) มีให้เลือก ${(main.choices ?? []).length} แบบ`);
+  }
+  if (wantsList) {
+    const cs = (main.choices ?? []).filter((c) => !/ไม่รับ|ไม่ใส่|ไม่เอา/.test(String(c.name)));
+    lines.push(`ตะขอที่มีให้เลือก (${cs.length} แบบ):`);
+    for (const c of cs.slice(0, 8)) {
+      const ex = extraOf(c);
+      lines.push(`• ${c.name}${ex ? ` +${formatPrice(ex)}/${unit}` : ""}`);
+    }
+    if (cs.length > 8) lines.push(`…และอีก ${cs.length - 8} แบบ`);
+    const subLine = subs
+      .map((g) => {
+        const ex = (g.choices ?? []).map(extraOf).filter((n) => n > 0);
+        if (!ex.length) return "";
+        const lo = Math.min(...ex), hi = Math.max(...ex);
+        return `${groupLabel(g.label).replace(/^สีตะขอ\s*/, "สี ")} ${lo === hi ? `+${formatPrice(lo)}` : `+${formatPrice(lo)}–${formatPrice(hi)}`}`;
+      })
+      .filter(Boolean);
+    if (subLine.length) lines.push(`ตะขอแบบมีสีให้เลือก: ${subLine.join(" · ")} /${unit}`);
+  }
+  const url = botUrl(p);
+  lines.push(`ดูรูปตะขอทุกแบบและเลือกได้ที่หน้าสินค้า\n${url}`);
+  return {
+    answer: lines.join("\n"),
+    kind: "info",
+    source: "web-hook-options",
+    intent: "info",
+    product: { id: p.id, name: p.name, url: safeHref(url), image: absImage(p.imageSrc), ...priceRange(p) },
+  };
 }
 
 /** คำถามความรู้เกี่ยวกับสินค้าที่ระบุ — อ่านจากหน้าสินค้าจริง · ไม่รู้สินค้า/ไม่มีข้อมูล = skip ให้ agent ตอบ */

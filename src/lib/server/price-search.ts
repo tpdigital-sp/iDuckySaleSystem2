@@ -12,6 +12,11 @@ import {
   isSpecIntent,
   parseQty,
   searchInfo,
+  budgetAnswer,
+  hookAnswer,
+  parseBudget,
+  ATTR_RE,
+  INCLUDE_Q_RE,
   extraInfo,
   EXTRA_ASK_RE,
   searchMinQty,
@@ -68,12 +73,19 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   const t0 = Date.now();
 
   // agent ฝั่ง n8n ส่งชื่อฟิลด์ไม่แน่นอนตามที่ LLM เลือกใส่ — รับให้ครบทุกชื่อที่เจอ
-  const query = fixTypos(
+  let query = fixTypos(
     String(body.query ?? body.message ?? body.text ?? body.q ?? "")
       .trim()
       .slice(0, 500),
   );
   if (!query) return { status: 400, body: { error: "ยังไม่ได้ส่งคำค้น" } };
+  // ↩️ "ตามนี้เลยค่ะ" (ลูกค้ากดตอบกลับข้อความเดิมของตัวเอง — LINE ไม่ส่งข้อความที่อ้างถึงมา) = ถามข้อความก่อนหน้าซ้ำ (7 ต.ค. 69)
+  if (/^(ตามนี้|ตามนั้น|ตามที่ถาม|ตามที่แจ้ง|ตามข้างบน|ตามที่ส่ง|อันนี้|แบบนี้)\s*(เลย|ค่ะ|คะ|ครับ|นะคะ|นะ|จ้า|\s)*$/.test(query) && Array.isArray(body.history)) {
+    const prev = [...(body.history as { role?: string; text?: string }[])]
+      .reverse()
+      .find((t) => t && !/assistant|bot|shop|admin/i.test(String(t.role ?? "")) && String(t.text ?? "").trim() && String(t.text).trim() !== query);
+    if (prev && String(prev.text).trim().length >= 6) query = fixTypos(String(prev.text).trim().slice(0, 500));
+  }
 
   const qtyRaw = Number(body.qty ?? body.quantity ?? 0);
   let qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : parseQty(query);
@@ -126,6 +138,16 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
         ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
         : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
       ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
+    } else if (u.ids.length >= 1 && (qty || u.qty) && parseBudget(query) && ["price", "spec", "other", "followup", "knowledge"].includes(u.intent)) {
+      // 💸 บอกงบต่อชิ้น + จำนวน → ได้ไหม + แบบที่อยู่ในงบ (เครื่องคิดเงินเดียวกับตะกร้า)
+      ans = await budgetAnswer(u.ids, (qty || u.qty) as number, parseBudget(query) as number, query);
+      if (!ans) ans = await searchPrice(searchQuery, { qty: qty || u.qty, allowFallback: body.noFallback !== true, rateHint: query, pick: { ids: u.ids, broad: u.broad } });
+    } else if (u.ids.length === 1 && (u.attr || (ATTR_RE.test(query) && INCLUDE_Q_RE.test(query) && !ATTR_RE.test(u.products[0] ?? "")))) {
+      // ⚠️ สินค้าที่ "ชื่อเป็นอุปกรณ์เอง" (ตะขอแขวนผนังอะคริลิค) ถามราคา = ราคาสินค้านั้น ไม่ใช่ค่าตะขอเสริม
+      // 🔩 อุปกรณ์/ตัวเลือก/รวมไหม ของสินค้าที่คุยอยู่ ("ราคารวมตะขอรึยัง" "ร้านมีตะขอแบบไหนบ้าง เท่าไหร่") → ตอบจากหน้าสินค้า ไม่ว่าจะมีจำนวนค้างในบทสนทนาหรือไม่
+      ans = /ตะขอ|ห่วง|โซ่/.test(query) ? await hookAnswer(u.ids[0], query) : null;
+      if (!ans || ans.kind === "skip") ans = await searchInfo(query, { ids: u.ids, broad: false });
+      if (ans.kind === "skip") ans = await searchSpec(query, { ids: u.ids, broad: false });
     } else if ((u.intent === "price" || u.intent === "spec") && u.ids.length && !u.broad && !(qty || u.qty) && /เคลือบ|ฟอยล์|2 ด้าน|สองด้าน|รองพื้น|เพิ่มเท่าไหร่|บวกเพิ่ม|บวกเท่าไหร่|ค่าเพิ่ม|add.?on|ของเสริม|ได้ไหม|ได้มั้ย|มีไหม|มีมั้ย|ด้วยไหม|ด้วยมั้ย|ใช่ไหม|ใช่มั้ย/i.test(query)) {
       // ถามเรื่อง "ส่วนเสริม/ทำได้ไหม" ของสินค้าที่รู้ตัว (เคลือบฟอยล์ได้ไหม เพิ่มเท่าไหร่ · พิมพ์ 2 ด้านเพิ่มเท่าไหร่)
       // → ตอบจากหน้าสินค้า (มีราคาเพิ่มระบุไว้) แทนการเทตารางราคาหลัก/รายการตัวเลือกทั้งหมด (LLM สลับ price/spec ไม่นิ่ง จึงรับทั้งคู่)
