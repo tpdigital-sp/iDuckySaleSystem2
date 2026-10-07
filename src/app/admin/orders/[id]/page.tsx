@@ -1145,6 +1145,7 @@ export default function AdminOrderDetailPage() {
   const orderId = decodeURIComponent(String(params?.id ?? ""));
 
   const [order, setOrder] = useState<Order | null>(null);
+  const [faQtBusy, setFaQtBusy] = useState<"qt" | "bl" | "inv" | null>(null); // 📄📋🧾 กำลังออกเอกสารใน FlowAccount
   /**
    * 🧭 ก้อนล่าสุดที่ "เซิร์ฟเวอร์ให้มา" (โหลด · โพล · ก้อนที่ตอบกลับหลังบันทึก) — ไว้เทียบว่าหน้านี้แก้ช่องไหนจริงตอนส่ง PATCH
    * (changedOrderKeys → header x-changed-keys) ช่องที่ไม่ได้แก้ เซิร์ฟเวอร์เอาจากฐานเสมอ หน้าจอที่เปิดค้างจึงทับงานคนอื่นไม่ได้
@@ -2322,6 +2323,73 @@ export default function AdminOrderDetailPage() {
     }
     adoptFromServer(r.order);
     if (r.order) setOrder((cur) => (cur ? keepSlipUrls(r.order!, cur) : r.order!));
+  }
+
+  /**
+   * 📄📋🧾 ออกเอกสารใน FlowAccount จากออเดอร์นี้ (6–7 ต.ค. 69) — ร่างให้ตรวจก่อน แล้วค่อยสร้างจริง
+   * qt = ใบเสนอราคา (ต้องมีข้อมูลใบกำกับ + VAT 7% ก่อน) · bl = ใบแจ้งหนี้ต่อจาก QT · inv = ใบกำกับภาษี/ใบเสร็จรับเงิน + รับเงินโอน (เก็บเงินครบแล้ว)
+   */
+  async function createFaDoc(kind: "qt" | "bl" | "inv") {
+    if (!order || faQtBusy) return;
+    setFaQtBusy(kind);
+    try {
+      const post = (create: boolean) =>
+        fetch("/api/admin/orders/fa-doc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId: order.id, kind, create }) });
+      const r = await post(false);
+      const j = (await r.json().catch(() => null)) as {
+        label?: string;
+        draft?: {
+          lines: { name: string; quantity: number; pricePerUnit: number; total: number }[];
+          discount: number;
+          afterDiscount: number;
+          vat: number;
+          grandTotal: number;
+          wht?: { rate: number; amount: number };
+          contact: { name: string; taxId?: string };
+          problems: string[];
+          source?: { docNo: string };
+          paymentDate?: string;
+        };
+        error?: string;
+      } | null;
+      const d = j?.draft;
+      const label = j?.label ?? "เอกสาร";
+      if (!r.ok || !d) throw new Error(j?.error ?? `อ่านร่างไม่สำเร็จ (${r.status})`);
+      if (d.problems.length) {
+        await askConfirm({ icon: "⚠️", title: `ยังออก${label}ไม่ได้`, detail: d.problems.map((p) => `• ${p}`).join("\n"), confirmLabel: "รับทราบ" });
+        return;
+      }
+      const net = Math.round((d.grandTotal - (d.wht?.amount ?? 0)) * 100) / 100;
+      const ok = await askConfirm({
+        icon: kind === "inv" ? "🧾" : kind === "bl" ? "📋" : "📄",
+        title: `ออก${label}ใน FlowAccount?`,
+        detail: [
+          `${d.contact.name}${d.contact.taxId ? ` · ${d.contact.taxId}` : ""}`,
+          ...(d.source ? [`ต่อจาก ${d.source.docNo}`] : []),
+          "",
+          ...d.lines.map((l) => `• ${l.name} × ${l.quantity} @ ${formatPrice(l.pricePerUnit)} = ${formatPrice(l.total)}`),
+          "",
+          ...(d.discount > 0 ? [`ส่วนลด −${formatPrice(d.discount)}`] : []),
+          `ก่อน VAT ${formatPrice(d.afterDiscount)} · VAT 7% ${formatPrice(d.vat)} · รวม ${formatPrice(d.grandTotal)}`,
+          ...(d.wht ? [`หัก ณ ที่จ่าย ${d.wht.rate}% ${formatPrice(d.wht.amount)}`] : []),
+          ...(kind === "inv" ? [`บันทึกรับเงินโอน ${formatPrice(net)} วันที่ ${d.paymentDate} เข้าบัญชีร้าน`] : []),
+          "",
+          "สร้างในบัญชี FlowAccount จริง — แก้/ยกเลิกทีหลังต้องทำใน FlowAccount",
+        ].join("\n"),
+        confirmLabel: `สร้าง${label}`,
+      });
+      if (ok !== true) return;
+      const c = await post(true);
+      const cj = (await c.json().catch(() => null)) as { order?: Order; docNo?: string; error?: string; warning?: string } | null;
+      if (!c.ok || !cj?.order) throw new Error(cj?.error ?? `สร้างไม่สำเร็จ (${c.status})`);
+      adoptFromServer(cj.order);
+      setOrder((cur) => (cur ? keepSlipUrls(cj.order!, cur) : cj.order!));
+      if (cj.warning) setErr(`⚠️ ${cj.warning}`);
+    } catch (e) {
+      setErr(`⚠️ ${(e as Error).message}`);
+    } finally {
+      setFaQtBusy(null);
+    }
   }
 
   /**
@@ -5242,7 +5310,50 @@ export default function AdminOrderDetailPage() {
                     </p>
                   )}
                   {/* 🧾 INV ที่ออกใน FlowAccount แล้ว — ดึงจาก wht_certs (cron ทุก 5 นาที) · เห็นเฉพาะคนเห็นยอดเงิน */}
-                  {(order.flowAccount || order.taxInvoice) && seesMoney && <OrderTaxInvoices orderId={order.id} />}
+                  {/* 📋🧾 ใบแจ้งหนี้/ใบกำกับที่ระบบออกต่อจากเอกสารหลัก (fa-doc) */}
+                  {(order.faChain ?? []).map((d) => (
+                    <p key={d.docNo} className="font-bold text-emerald-800">
+                      {d.kind === "inv" ? "🧾 ใบกำกับภาษี/ใบเสร็จรับเงิน" : "📋 ใบแจ้งหนี้"} {d.docNo} · {formatPrice(d.total)}
+                      {" · "}
+                      <FlowDocLinks
+                        url={d.url || `/api/admin/fa-edit?no=${encodeURIComponent(d.docNo)}`}
+                        editUrl={seesMoney ? `/api/admin/fa-edit?no=${encodeURIComponent(d.docNo)}` : undefined}
+                      />
+                      <span className="ml-1 font-normal text-slate-500">(ออกจากระบบ · {d.by})</span>
+                      {d.kind === "inv" && d.paid === false && (
+                        <span className="ml-1 font-normal text-rose-700">⚠️ ยังไม่บันทึกรับเงิน — กดรับชำระเงินใน FlowAccount</span>
+                      )}
+                    </p>
+                  ))}
+                  {(order.flowAccount || order.taxInvoice) && seesMoney && (
+                    <OrderTaxInvoices orderId={order.id} hideIds={(order.faChain ?? []).map((d) => d.docNo)} />
+                  )}
+                  {/* ปุ่มออกเอกสารขั้นถัดไป — ร่างบอกเงื่อนไขที่ยังขาด (ยังเก็บเงินไม่ครบ ฯลฯ) ตอนกด */}
+                  {order.flowAccount && mayEdit && seesMoney && order.status !== "ยกเลิก" && !order.deposit && (
+                    <p className="flex flex-wrap gap-1.5 pt-0.5">
+                      {order.flowAccount.docType === "qt" && !(order.faChain ?? []).length && (
+                        <button
+                          type="button"
+                          onClick={() => void createFaDoc("bl")}
+                          disabled={!!faQtBusy}
+                          className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 hover:bg-sky-50 disabled:opacity-50"
+                        >
+                          {faQtBusy === "bl" ? "⏳ กำลังสร้าง…" : "📋 ออกใบแจ้งหนี้ใน FlowAccount"}
+                        </button>
+                      )}
+                      {!(order.faChain ?? []).some((d) => d.kind === "inv") && (
+                        <button
+                          type="button"
+                          onClick={() => void createFaDoc("inv")}
+                          disabled={!!faQtBusy}
+                          className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-300 hover:bg-emerald-50 disabled:opacity-50"
+                          title="ออกเมื่อเก็บเงินครบแล้ว — บันทึกรับเงินโอนเข้าบัญชีร้านใน FlowAccount ให้ด้วย"
+                        >
+                          {faQtBusy === "inv" ? "⏳ กำลังสร้าง…" : "🧾 ออกใบกำกับภาษี/ใบเสร็จรับเงิน"}
+                        </button>
+                      )}
+                    </p>
+                  )}
                   {order.flowAccount?.grandTotal != null && (
                     <p className={muted}>
                       ยอดตามใบ {formatPrice(order.flowAccount.grandTotal)}
@@ -5326,6 +5437,18 @@ export default function AdminOrderDetailPage() {
                     </div>
                   )}
                 </div>
+              )}
+              {/* 📄 ออกใบเสนอราคาใน FlowAccount จากออเดอร์นี้ — ต้องมีข้อมูลใบกำกับ + VAT 7% ก่อน (ร่างบอกว่าขาดอะไร) */}
+              {mayEdit && seesMoney && !order.flowAccount && order.status !== "ยกเลิก" && (
+                <button
+                  type="button"
+                  onClick={() => void createFaDoc("qt")}
+                  disabled={!!faQtBusy}
+                  className="ml-1 mt-2 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50 disabled:opacity-50"
+                  title="สร้างใบเสนอราคาในบัญชี FlowAccount จากรายการ/ยอดในออเดอร์นี้ แล้วผูกเข้าออเดอร์ให้เอง"
+                >
+                  {faQtBusy === "qt" ? "⏳ กำลังสร้าง…" : "📄 ออกใบเสนอราคาใน FlowAccount"}
+                </button>
               )}
               {/* 🧾 ลูกค้าขอใบกำกับภาษีทีหลัง — ใส่ข้อมูลผู้ซื้อได้ที่นี่ (คู่กับปุ่ม "เปิด VAT 7%" ในกล่องยอดเงิน) */}
               {mayEdit && !order.flowAccount && !order.taxInvoice && !taxForm && order.status !== "ยกเลิก" && (

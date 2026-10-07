@@ -1313,6 +1313,22 @@ export interface Order {
    */
   flowAccountExtras?: FlowAccountExtraDoc[];
   /**
+   * 📋🧾 เอกสาร FlowAccount ที่ระบบออก "ต่อจาก" เอกสารหลัก (order.flowAccount) ผ่าน Open API — ใบแจ้งหนี้ (bl) · ใบกำกับภาษี/ใบเสร็จรับเงิน (inv)
+   * ออกจากปุ่มในกล่อง FlowAccount หน้าออเดอร์ (lib/server/fa-create.ts · 7 ต.ค. 69) · ยอดของใบพวกนี้ = ยอดเดียวกับเอกสารหลัก (อัปเกรดเอกสาร ไม่ใช่บิลเพิ่ม)
+   * ⚠️ ไม่ใช่ flowAccountExtras (นั่นคือบิลเพิ่มยอดใหม่) · ใบหัก/การจับคู่ INV (wht-db matcher) อ่านเลขเอกสารจากที่นี่ด้วย
+   */
+  faChain?: {
+    kind: "bl" | "inv";
+    docNo: string;
+    recordId: number;
+    url?: string;
+    total: number;
+    at: string;
+    by: string;
+    /** ใบกำกับ: บันทึกรับเงินใน FlowAccount สำเร็จไหม (false = ต้องไปกดรับชำระเงินใน FlowAccount เอง) */
+    paid?: boolean;
+  }[];
+  /**
    * 🧾 ใบกำกับภาษีส่งให้ลูกค้าทางไหน — เฉพาะใบที่มีใบกำกับ (flowAccount / taxInvoice / vat)
    * ไม่ระบุ = "box" ต้องใส่ใบกำกับลงกล่องไปกับของ → ขึ้นตราบนใบปะหน้า/ใบงาน + เป็นด่านก่อนยิงเลขพัสดุ
    * "email" = ส่งไฟล์ให้ลูกค้าแล้ว/ลูกค้าไม่ต้องการตัวจริง → ไม่ต้องแนบ ไม่ขึ้นป้าย ไม่กันยิงเลข

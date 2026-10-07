@@ -244,3 +244,75 @@ export async function findDocRecordId(docNo: string): Promise<{ kind: string; id
   idCache.set(key, id);
   return { kind, id };
 }
+
+/**
+ * ➕ สร้างเอกสาร — path: /quotations · /billing-notes · /tax-invoices/with-payment … (body = โครงที่ fa-create.ts สร้าง)
+ * คืน recordId + เลขเอกสาร · ⚠️ เขียนลงบัญชี FlowAccount จริง — ผู้เรียกต้องกันกดซ้ำเอง
+ */
+export async function createDocument(path: string, body: Record<string, unknown>): Promise<{ recordId: number; docNo: string }> {
+  const t = await token();
+  const r = await fetch(`${t.base}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const j = (await r.json().catch(() => null)) as { status?: boolean; message?: string; data?: { recordId?: number | string; documentSerial?: string } } | null;
+  const recordId = Number(j?.data?.recordId);
+  if (!r.ok || j?.status === false || !recordId || !j?.data?.documentSerial)
+    throw new Error(`FlowAccount ไม่รับเอกสาร (${r.status}${j?.message ? ` · ${j.message}` : ""})`);
+  return { recordId, docNo: String(j.data.documentSerial) };
+}
+
+/**
+ * 💵 บันทึกรับเงินโอนให้ใบกำกับภาษี/ใบเสร็จรับเงิน (POST /tax-invoices/{id}/payment) → สถานะ "เก็บเงินแล้ว"
+ * ใบต้องเป็น creditType 3 (เงินสด) — creditType 1/5 FlowAccount ตอบ "credit type is unable to receive payment" (ทดสอบ sandbox 7 ต.ค. 69)
+ * withheld… = ลูกค้าหัก ณ ที่จ่าย → หน้า ใบหัก FlowAcc รู้เองว่าหัก (payments.withheldAmount)
+ */
+export async function receiveTransferPayment(
+  recordId: number,
+  p: { date: string; collected: number; bankAccountId: number; whtRate?: number; whtAmount?: number; remarks?: string }
+): Promise<void> {
+  const t = await token();
+  const r = await fetch(`${t.base}/tax-invoices/${recordId}/payment`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      paymentStructureType: "PaymentReceivingTransfer",
+      documentId: recordId,
+      paymentMethod: 5,
+      paymentDate: p.date,
+      collected: p.collected,
+      bankAccountId: p.bankAccountId,
+      ...(p.whtAmount ? { withheldPercentage: p.whtRate ?? 3, withheldAmount: p.whtAmount } : {}),
+      ...(p.remarks ? { paymentRemarks: p.remarks } : {}),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const j = (await r.json().catch(() => null)) as { status?: boolean; message?: string } | null;
+  if (!r.ok || j?.status === false) throw new Error(`บันทึกรับเงินไม่สำเร็จ (${r.status}${j?.message ? ` · ${j.message}` : ""})`);
+}
+
+/** 🏦 บัญชีธนาคารรับเงินของร้านใน FlowAccount (ตอนนี้มีบัญชีเดียว: กสิกร บจก.ทีพีดิจิตอล …753328) */
+export async function bankAccounts(): Promise<{ id: number; number: string; name: string; bank: string }[]> {
+  const d = await get<unknown>("/bank-accounts");
+  const list = (Array.isArray(d) ? d : ((d as { list?: unknown[] })?.list ?? [])) as Record<string, unknown>[];
+  return list
+    .map((a) => ({ id: Number(a.bankAccountId), number: String(a.bankAccountNumber ?? ""), name: String(a.bankAccountName ?? ""), bank: String(a.bankName ?? "") }))
+    .filter((a) => a.id > 0);
+}
+
+/** 🔗 ลิงก์แชร์เอกสาร (ชนิดตาม API เช่น quotations / tax-invoices) */
+export async function shareDocument(kind: string, recordId: number): Promise<string> {
+  const t = await token();
+  const r = await fetch(`${t.base}/${kind}/sharedocument`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId: recordId, culture: "th" }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const j = (await r.json().catch(() => null)) as { data?: { link?: string }; message?: string } | null;
+  const link = j?.data?.link;
+  if (!r.ok || !link) throw new Error(`ขอลิงก์แชร์ไม่ได้ (${r.status}${j?.message ? ` · ${j.message}` : ""})`);
+  return link;
+}

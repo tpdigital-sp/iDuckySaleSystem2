@@ -30,6 +30,7 @@ interface OrderLite {
   fa?: Order["flowAccount"];
   ti?: Order["taxInvoice"];
   ex?: Order["flowAccountExtras"];
+  chain?: Order["faChain"];
   wht?: Order["wht"];
   line?: string;
   cust?: string;
@@ -41,7 +42,7 @@ async function loadOrdersLite(sb: SupabaseClient): Promise<OrderLite[]> {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await sb
       .from("orders")
-      .select("id,date:data->>date,fa:data->flowAccount,ti:data->taxInvoice,ex:data->flowAccountExtras,wht:data->wht,line:data->>lineUserId,cust:data->>customerId,name:data->customer->>name")
+      .select("id,date:data->>date,fa:data->flowAccount,ti:data->taxInvoice,ex:data->flowAccountExtras,chain:data->faChain,wht:data->wht,line:data->>lineUserId,cust:data->>customerId,name:data->customer->>name")
       .or("data->flowAccount.not.is.null,data->taxInvoice.not.is.null")
       .order("id", { ascending: true })
       .range(from, from + 999);
@@ -76,6 +77,7 @@ function matcher(orders: OrderLite[]) {
     add(o.fa?.deposit?.refDocNo, o);
     add(o.ti?.docNo, o);
     for (const x of o.ex ?? []) add(x.docNo, o);
+    for (const x of o.chain ?? []) add(x.docNo, o); // ใบแจ้งหนี้/ใบกำกับที่ระบบออกต่อจาก QT (fa-doc)
   }
   const amountHit = (o: OrderLite, total: number) => near(o.fa?.grandTotal, total) || (o.ex ?? []).some((x) => near(x.grandTotal, total));
   const hasLine = (o: OrderLite) => !!(o.line || o.cust);

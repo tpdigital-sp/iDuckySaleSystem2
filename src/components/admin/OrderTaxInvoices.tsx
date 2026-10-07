@@ -17,7 +17,7 @@ const dmy = (ymd: string) => {
 };
 const baht = (n: number) => `฿${n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function OrderTaxInvoices({ orderId, className }: { orderId: string; className?: string }) {
+export default function OrderTaxInvoices({ orderId, className, hideIds }: { orderId: string; className?: string; hideIds?: string[] }) {
   const [rows, setRows] = useState<OrderInvoiceRow[] | null>(null);
   useEffect(() => {
     let alive = true;
@@ -31,11 +31,14 @@ export default function OrderTaxInvoices({ orderId, className }: { orderId: stri
   }, [orderId]);
 
   if (rows === null) return null;
-  if (!rows.length)
+  // ใบที่ระบบออกเอง (order.faChain) แสดงแยกอยู่แล้ว — ไม่ซ้ำ
+  const shown = rows.filter((r) => !hideIds?.includes(r.id));
+  if (!shown.length && hideIds?.length) return null;
+  if (!shown.length)
     return <p className={`text-[12px] text-slate-500 ${className ?? ""}`}>🧾 ยังไม่ออกใบกำกับภาษี/ใบเสร็จรับเงินใน FlowAccount (ระบบเช็คให้ทุก 5 นาที)</p>;
   return (
     <div className={className}>
-      {rows.map((r) => (
+      {shown.map((r) => (
         <p key={r.id} className="font-bold text-emerald-800">
           🧾 ใบกำกับภาษี/ใบเสร็จรับเงิน {r.id} · {dmy(r.date)} · {baht(r.total)}
           {r.faStatus ? ` · ${r.faStatus}` : ""}
