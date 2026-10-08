@@ -294,3 +294,15 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - เว็บ (`quote()` → `askNext`, deploy แล้ว): ตารางราคาแรกที่ยังเหลือหลายแบบ → ไล่ driverLabels ที่ลูกค้ายังไม่ระบุ (ไม่อยู่ใน namedIdx และไม่พบค่าแบบย่อในข้อความ: "ใส" = อะคริลิคใส ตัดคำนำหน้า อะคริลิค/สกรีน/กระดาษ/…) → "• ความหนาอะคริลิค: 1mm / 2mm / 3mm" (≤6 ค่า) + "(ตัวเลือกเสริม สีอะคริลิค/สกรีนด้าน/เจาะรู เลือกเพิ่มได้ที่หน้าสินค้า)" + "ตอบมาได้เลยน้า หรือกดปุ่มในการ์ดเลือกเองก็ได้ค่ะ ✨" · สินค้าคอลัมน์เดียว / ระบุครบ = ไม่มี askNext · ส่งออกใน API เป็น `askNext`
 - n8n Site Price Flex (draft รอ publish พร้อมแก้ตัดข้อความ 40 ตัวอักษร): ฟองปิดหลังการ์ดราคา = `site.askNext` ถ้ามี ไม่งั้นประโยคเดิม
 - ตัวอย่าง "แผ่นอะคริลิค 20 ชิ้น 5 cm": การ์ดราคา + ฟอง "ขอรายละเอียดเพิ่มอีกนิดนะคะ จะได้คิดราคาเป๊ะ ๆ ให้ค่า 🥰 • ความหนาอะคริลิค: 1mm/2mm/3mm • งานสกรีน: 1 ด้าน (บน)/(ใต้)/2 ด้าน… • ประเภทอะคริลิค: ใส/ขาวขุ่น C-02/สีพิเศษ …" · "…5cm 1mm สกรีน 1 ด้าน ใส 20 ชิ้น" → ถามเฉพาะงานสกรีน (บน/ใต้ ยังกำกวม)
+
+## 8 ต.ค. 69 18:45 — โหมด "ลูกค้าใหม่ก่อน" + บันทึกแชทครบ + หน้า /admin/chatbot/chats (เจ้าของร้านขอ)
+- ข้อมูลที่มี: line-conversations 11,019 ห้องตั้งแต่ 7 พ.ค. 69 (~2,000 ห้อง/เดือน · 561 ห้องที่บอทเคยตอบ) · customer-tasks 16,234 (lineUserId 11,116) · ออเดอร์ผูกไอดี LINE (customer-profile) · whitelist enabled=true userIds 2 (ทดสอบ)
+- นิยามที่เจ้าของร้านเลือก: ใหม่ = ไม่เคยทักเลย → บอทตอบและตอบต่อเนื่อง (ติดธง) · เก่า = เงียบให้แอดมิน · เก็บแชทครบ + หน้าดู
+- settings/bot-whitelist เพิ่ม `mode: "new-only"`, `newSince: 2026-10-08T13:28:57Z` (ตั้งแล้ว — มีผลเมื่อ publish)
+- n8n LINE OA Bot (draft tab รอ publish):
+  - Parse LINE Event อ่าน mode/newSince → ส่ง `botMode, newSince`
+  - Build AI Request: (1) บันทึกขาเข้าทุกข้อความ → `line-conversations/{uid}/log` {role:user,text,at,type,messageId} (anonymous token ของ Debounce/static) ก่อนทุก return (ลูกค้าเก่าที่เงียบก็บันทึก) (2) `botScope`: ห้องไม่มีธง + mode new-only → createTime (จาก Read Memory PATCH response) ≥ newSince และ profOrders ≤ 0 → 'new' ไม่งั้น 'old' → PATCH botScope/botScopeAt (3) `newCustomerOk` เปิดประตูผ่าน whitelist (wlBlocked + welcome/return[])
+  - Reply Gate: `logReply()` บันทึกคำตอบที่ส่งจริง (ข้อความ + "[การ์ด] altText") ทั้งเส้นรูปและข้อความ
+  - ข้อจำกัด: แอดมินพิมพ์เองใน LINE ไม่เข้ามาที่ webhook → log มีแต่ลูกค้า+บอท · Debounce bypass (auth ล้ม) = ไม่บันทึกขาเข้า
+- เว็บ (deploy แล้ว): `GET /api/admin/chatbot/chats` (reports.view · list orderBy lastSeen/ค้น nameLower · ?id= detail + log ≤1000 + fallback messages) · หน้า `/admin/chatbot/chats` (แท็บ 💬 แชท LINE): ฟิลเตอร์ ทั้งหมด/ใหม่/เก่า · ค้นชื่อ · รีเฟรช 30 วิ · bubble ลูกค้า/บอท · ห้องเก่าก่อนมี log ใช้ messages 20 ตัว
+- ทดสอบ: anonymous token POST/DELETE `line-conversations/{uid}/log` ได้ (rules เปิด) · Read Memory response มี createTime (ห้องทดสอบ 2026-05-29)
