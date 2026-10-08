@@ -1295,6 +1295,21 @@ function groupLabel(label: string): string {
  * ก่อนหน้านี้ระบบส่งให้บอทแค่ตารางราคากับลิงก์ ไม่เคยส่งรายการตัวเลือกเลย
  * ลูกค้าถาม "สแตนดี้มีขนาดเท่าไหร่บ้าง" บอทจึงตอบช่วงราคากลับไป ทั้งที่เว็บมีขนาดครบ 28 แบบ
  */
+/** จัดชื่อตัวเลือกให้อ่านง่ายในไลน์: "40x60cm" → "40×60 cm" · "ทรงกลม 60cm" → "ทรงกลม 60 cm" (8 ต.ค. 69 17:05 เจ้าของร้าน "อยากให้ข้อความเรียงเรียบร้อยกว่านี้") */
+function prettyChoice(n: string): string {
+  return n
+    .trim()
+    .replace(/(\d)\s*[xX×]\s*(\d)/g, "$1×$2")
+    .replace(/(\d)\s*(cm|mm)\b/gi, (_m, d: string, u: string) => `${d} ${u.toLowerCase()}`)
+    .replace(/\s{2,}/g, " ");
+}
+/** รายการตัวเลือกแบบบรรทัดละตัว (เดิมต่อกันด้วย " · " บรรทัดเดียว ขึ้นไลน์แล้วตัดบรรทัดอ่านยาก) */
+function choiceLines(names: string[], max = 16): string {
+  const shown = names.slice(0, max).map((n) => `   - ${prettyChoice(n)}`);
+  if (names.length > max) shown.push(`   …และอีก ${names.length - max} แบบ`);
+  return shown.join("\n");
+}
+
 function spec(p: Product, query: string): PriceAnswer | null {
   const q = query.toLowerCase();
   const wantSize = /ขนาด|ไซ(ส์|ซ)|กี่ซม|กี่นิ้ว|ใหญ่|เล็ก|ทรง/.test(q);
@@ -1328,10 +1343,10 @@ function spec(p: Product, query: string): PriceAnswer | null {
       if (m.length) hits.push({ opt, choices: m });
     }
     if (hits.length) {
-      const lines = hits.slice(0, 3).map((h) => `• ${groupLabel(h.opt.label)}: ${h.choices.map((c) => c.name.trim()).slice(0, 8).join(" · ")}`);
+      const lines = hits.slice(0, 3).map((h) => `• ${groupLabel(h.opt.label)} (${h.choices.length} แบบ)\n${choiceLines(h.choices.map((c) => c.name), 8)}`);
       const img = hits.flatMap((h) => h.choices).map((c) => absImage(c.imageSrc)).find(Boolean);
       return {
-        answer: `${p.name}\n${lines.join("\n")}\n${botUrl(p)}`,
+        answer: `${p.name} มีแบบนี้ค่ะ\n${lines.join("\n")}\n\nสนใจแบบไหน กี่ชิ้นดีคะ เดี๋ยวคิดราคาให้เลยน้า 🥰\n${botUrl(p)}`,
         kind: "info",
         source: "web-price-engine",
         intent: "spec",
@@ -1350,15 +1365,13 @@ function spec(p: Product, query: string): PriceAnswer | null {
     seen.add(sig);
 
     const names = opt.choices.map((c) => c.name.trim()).filter(Boolean);
-    const shown = names.slice(0, 16).join(" · ");
-    const more = names.length > 16 ? ` …และอีก ${names.length - 16} แบบ` : "";
-    lines.push(`• ${groupLabel(opt.label)} (${names.length} แบบ): ${shown}${more}`);
+    lines.push(`• ${groupLabel(opt.label)} (${names.length} แบบ)\n${choiceLines(names)}`);
     if (lines.length >= 6) break;
   }
   if (!lines.length) return null;
 
   return {
-    answer: `${p.name}\n${lines.join("\n")}\n${botUrl(p)}`,
+    answer: `${p.name} มีให้เลือกดังนี้ค่ะ\n${lines.join("\n")}\n\nสนใจแบบไหน กี่ชิ้นดีคะ เดี๋ยวคิดราคาให้เลยน้า 🥰\n${botUrl(p)}`,
     kind: "info",
     source: "web-price-engine",
     intent: "spec",
