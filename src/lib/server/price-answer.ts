@@ -118,7 +118,7 @@ async function loadLite(): Promise<Lite[]> {
     .select(
       "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc, desc:data->>description, rates:data->priceRates, opts:data->options",
     );
-  const OPT_RE = /วัสดุ|กระดาษ|เนื้อ|ชนิด|ผิว|บัตร|ผ้า/;
+  const OPT_RE = /วัสดุ|กระดาษ|เนื้อ|ชนิด|ผิว|บัตร|ผ้า|ฟอยล์|เคลือบ|โฮโลแกรม/; // ฟอยล์/เคลือบ: ให้ตัววิเคราะห์รูปรู้ว่าสินค้าไหนเพิ่มฟอยล์โฮโลแกรมได้ (8 ต.ค. 69 15:24)
   const ratesOf = (v: unknown) =>
     Array.isArray(v)
       ? (v as { label?: unknown; desc?: unknown; dealerOnly?: unknown }[])
@@ -130,7 +130,7 @@ async function loadLite(): Promise<Lite[]> {
     Array.isArray(v)
       ? (v as { label?: unknown; choices?: unknown }[])
           .filter((o) => o && typeof o.label === "string" && OPT_RE.test(o.label) && Array.isArray(o.choices) && o.choices.length)
-          .slice(0, 2)
+          .slice(0, 3)
           .map((o) => ({
             label: String(o.label).trim(),
             choices: (o.choices as { name?: unknown }[]).map((c) => (c && typeof c.name === "string" ? c.name.trim().slice(0, 30) : "")).filter(Boolean).slice(0, 5),
