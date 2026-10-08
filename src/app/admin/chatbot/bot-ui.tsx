@@ -15,6 +15,8 @@ const TABS = [
   { href: "/admin/chatbot/pricing", label: "💰 ตารางราคา" },
   // 💸 แดชบอร์ดค่าใช้จ่าย AI สด (8 ต.ค. 69) — สิทธิ์ reports.view · คนที่ไม่มีสิทธิ์กดแล้วเจอหน้า "ไม่มีสิทธิ์" ของ RequirePerm
   { href: "/admin/chatbot/costs", label: "💸 ค่าใช้จ่าย" },
+  // 💬 แชท LINE ที่บอทเห็น + สถานะลูกค้าใหม่/เก่า (เจ้าของร้านขอ 8 ต.ค. 69 18:45) — สิทธิ์ reports.view
+  { href: "/admin/chatbot/chats", label: "💬 แชท LINE" },
 ];
 
 /** แถบแท็บใต้หัวหน้า — สลับ 4 หน้าของบอทได้ในคลิกเดียว */
