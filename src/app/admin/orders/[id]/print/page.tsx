@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairsOf } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairsOf, giftBumpLabel } from "@/lib/gifts";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -1496,6 +1496,13 @@ function OrderDocs({
                           ☐ {ln.label} × {ln.qty}
                         </span>
                       ))}
+                      {/* ➕ ลูกค้าสั่งเพิ่มหลังทำแบบ — คนผลิต/แพ็คต้องรู้ว่าจำนวนไม่ใช่ตอนแรก (OD-261006-8507 · 8 ต.ค. 69) */}
+                      {g.qtyBump && (
+                        <span className={`mt-0.5 block pl-4 text-sm font-extrabold ${g.qtyBump.ackAt ? "" : "rounded bg-slate-900 px-1 text-white"}`}>
+                          ⚠️ สั่งเพิ่ม: {giftBumpLabel(g)}
+                          {g.qtyBump.ackAt ? ` · ✅ ${g.qtyBump.ackBy ?? "กราฟฟิก"} รับทราบแล้ว` : " · ยังไม่มีกราฟฟิกรับทราบ"}
+                        </span>
+                      )}
                       {/* 🎨 ของแถมที่ต้องพิมพ์ลาย (เช่น รองหลัง) — กราฟฟิกต้องรู้ว่าใช้ลายไหน ไม่งั้นพิมพ์ผิด */}
                       {giftArtLabel(g) && (
                         <span className="mt-0.5 block pl-4 text-xs font-semibold text-slate-600">

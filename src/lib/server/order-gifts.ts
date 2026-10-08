@@ -32,7 +32,7 @@ export interface GiftSyncChange {
  */
 export async function syncOrderGifts(sb: Sb, order: Order): Promise<{ order: Order; changed: GiftSyncChange[] }> {
   if (order.dealer || order.claimOf) return { order, changed: [] };
-  const items = (order.items ?? []).filter((it) => !!it.productId && !it.productId.includes("#") && it.qty > 0);
+  const items = giftableItems(order);
   if (!items.length) return { order, changed: [] };
 
   const ids = [...new Set(items.map((i) => i.productId))];
@@ -43,7 +43,26 @@ export async function syncOrderGifts(sb: Sb, order: Order): Promise<{ order: Ord
   const promos = ((settRes.data?.data as { gifts?: GiftPromo[] } | undefined)?.gifts ?? []).filter((g) => g?.id);
   if (!promos.length) return { order, changed: [] };
   const cat = new Map(((prodRes.data ?? []) as { id: string; category: string | null }[]).map((r) => [String(r.id), String(r.category ?? "")]));
+  return applyGiftSync(order, promos, (id) => cat.get(id));
+}
 
+function giftableItems(order: Order) {
+  return (order.items ?? []).filter((it) => !!it.productId && !it.productId.includes("#") && it.qty > 0);
+}
+
+/**
+ * แกนคิดของแถมใหม่ (ไม่แตะฐานข้อมูล — เทส/สคริปต์เรียกตรงได้)
+ * @param now เวลาที่ใช้ประทับ qtyBump (เทสส่งค่าคงที่)
+ */
+export function applyGiftSync(
+  order: Order,
+  promos: GiftPromo[],
+  catOf: (productId: string) => string | undefined,
+  now: Date = new Date()
+): { order: Order; changed: GiftSyncChange[] } {
+  if (order.dealer || order.claimOf) return { order, changed: [] };
+  const items = giftableItems(order);
+  if (!items.length || !promos.length) return { order, changed: [] };
   const cur = [...(order.gifts ?? [])];
   const chosen: Record<string, string> = {};
   const art: Record<string, string[]> = {};
@@ -54,8 +73,9 @@ export async function syncOrderGifts(sb: Sb, order: Order): Promise<{ order: Ord
   const fresh = giftsToOrder(
     giftsFor(
       items.map((i) => ({ productId: i.productId, qty: i.qty, selections: i.sel })),
-      (id) => cat.get(id),
-      promos
+      catOf,
+      promos,
+      now.getTime()
     ),
     chosen,
     art
@@ -76,10 +96,22 @@ export async function syncOrderGifts(sb: Sb, order: Order): Promise<{ order: Ord
     void _p;
     void _f;
     void _n;
+    /**
+     * ➕ จำนวนเพิ่มหลังของแถมถูกคิดไว้แล้ว → ปักธงให้กราฟฟิกรับทราบ (แบบ/แผ่นที่จัดไว้ตามจำนวนเดิมต้องทำเพิ่ม)
+     * เพิ่มซ้ำก่อนรับทราบ = ยังเทียบกับจำนวนตอนแรกที่กราฟฟิกเห็น (from/was คงเดิม) ขยับแค่ to
+     */
+    const pending = old.qtyBump && !old.qtyBump.ackAt ? old.qtyBump : null;
+    const qtyBump = {
+      at: now.toISOString(),
+      from: pending?.from ?? old.qty,
+      to: g.qty,
+      was: pending?.was ?? { printedQty: old.printedQty, fallbackQty: old.fallbackQty },
+    };
     const next: OrderGift = {
       ...keep,
       qty: g.qty,
       ...(g.fallbackQty ? { printedQty: g.printedQty, fallbackQty: g.fallbackQty, fallbackName: g.fallbackName } : {}),
+      qtyBump,
     };
     cur[k] = next;
     changed.push({ name: g.name, from: old.qty, to: g.qty, note: giftSummary([next]) });

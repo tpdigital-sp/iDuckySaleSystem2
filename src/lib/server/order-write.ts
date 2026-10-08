@@ -39,6 +39,12 @@ export function itemsChanged(prev: Order | null | undefined, next: Order): boole
   return itemsFingerprint(prev) !== itemsFingerprint(next);
 }
 
+/** 🎁 ธงของแถมเพิ่ม (ปัก/รับทราบ) เปลี่ยน → การ์ดบอร์ด WIP ต้องเห็น (newWorkItems) */
+function giftBumpChanged(prev: Order | null | undefined, next: Order): boolean {
+  const fp = (o: Order | null | undefined) => (o?.gifts ?? []).map((g) => `${g.promoId}|${g.qtyBump?.at ?? ""}|${g.qtyBump?.to ?? ""}|${g.qtyBump?.ackAt ?? ""}`).join("¦");
+  return fp(prev) !== fp(next);
+}
+
 function itemsFingerprint(o: Order | null | undefined): string {
   return (o?.items ?? [])
     .map((i) => `${i.productId}|${i.qty}|${i.unitPrice}|${i.discount ?? 0}|${i.discountPct ?? 0}`)
@@ -178,7 +184,7 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
    * 🧾 ใบที่เพิ่ง "ออกบิลบริษัท" ในการบันทึกครั้งนี้ (ผูกเอกสาร FlowAccount · กรอกข้อมูลใบกำกับ · เปิด VAT)
    * ต้องคิดกฎใหม่ด้วย แม้รายการไม่เปลี่ยน — ส่วนลดโอนไวที่ได้ไปก่อนหน้าต้องหลุดออก (ยอดต้องตรงบิลที่ลูกค้าถือ)
    */
-  const changed = itemsChanged(prev, order) || earlyPayBillAdded(prev, order);
+  const changed = itemsChanged(prev, order) || earlyPayBillAdded(prev, order) || giftBumpChanged(prev, order);
   let final = changed ? await syncOrderEarlyPay(sb, order, by) : order;
   // ➕ ของที่เพิ่มเข้าใบเดิมทีหลัง — ประทับเวลาก่อนบันทึก (บอร์ด WIP กราฟฟิกใช้รู้ว่ามีงานเพิ่ม)
   final = stampAddedItems(prev, final, new Date().toISOString());

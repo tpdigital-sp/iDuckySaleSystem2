@@ -2,7 +2,7 @@
 
 import { shrinkImageFile } from "@/lib/shrink-image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairOptions, giftPairsOf } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairOptions, giftPairsOf, giftBumpLabel, giftBumpPending } from "@/lib/gifts";
 import Link from "next/link";
 import OverpayBox from "./OverpayBox";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
@@ -4357,6 +4357,8 @@ export default function AdminOrderDetailPage() {
               proofStatus: "รอตรวจ" as const,
               proofNote: undefined,
               proofUpdatedAt: at,
+              // ➕ อัปแบบใหม่หลังลูกค้าสั่งเพิ่ม = ทำเพิ่มแล้ว รับทราบธงจำนวนเพิ่มให้เอง
+              ...(g.qtyBump && !g.qtyBump.ackAt ? { qtyBump: { ...g.qtyBump, ackAt: at, ackBy: actor } } : {}),
             }
           : g
       );
@@ -4365,6 +4367,20 @@ export default function AdminOrderDetailPage() {
       if (!demo) void saveOrWarn(next);
       return next;
     });
+  }
+
+  /**
+   * ➕ กราฟฟิกรับทราบว่าของแถมต้องทำเพิ่ม (ลูกค้าสั่งเพิ่มหลังส่งแบบ) — ปลดธง qtyBump
+   * ธงนี้เซิร์ฟเวอร์ปักตอนสั่งเพิ่ม (server/order-gifts.ts) หน้าจอส่งได้แค่ ack · อัปแบบของแถมใหม่ = รับทราบให้เอง
+   */
+  function ackGiftBump(promoId: string) {
+    if (!order) return;
+    const at = new Date().toISOString();
+    const gifts = (order.gifts ?? []).map((g) => (g.promoId === promoId && g.qtyBump && !g.qtyBump.ackAt ? { ...g, qtyBump: { ...g.qtyBump, ackAt: at, ackBy: actor } } : g));
+    const g = order.gifts?.find((x) => x.promoId === promoId);
+    const next = withLog({ ...order, gifts }, actor, "รับทราบของแถมที่ต้องทำเพิ่ม", `🎁 ${g?.name ?? "ของแถม"} ${giftBumpLabel(g!) ?? ""}`);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
   }
 
   function removeGiftProof(promoId: string, url: string) {
@@ -7551,6 +7567,40 @@ export default function AdminOrderDetailPage() {
                   </div>
                   <span className="shrink-0 text-xs font-bold text-emerald-600">ฟรี</span>
                 </div>
+                {/* ➕ ลูกค้าสั่งเพิ่มหลังของแถมถูกคิด/ทำแบบแล้ว → จำนวนเพิ่ม กราฟฟิกต้องจัดแผ่น/ทำแบบเพิ่ม ไม่งั้นผลิตตามจำนวนเดิม
+                    (OD-261006-8507 · 8 ต.ค. 69: รองหลังส่งแบบไป 72 ใบ แล้วลูกค้าสั่งเพิ่มเป็น 96 ไม่มีใครรู้) · ค้างจนกดรับทราบ/อัปแบบใหม่ */}
+                {giftBumpPending(g) && (
+                  <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2.5">
+                    <p className="min-w-0 flex-1 text-xs font-bold text-amber-900">
+                      ⚠️ ลูกค้าสั่งเพิ่ม — ของแถมต้องทำเพิ่ม: <span className="tabular-nums">{giftBumpLabel(g)}</span>
+                      <span className="block text-[11px] font-semibold text-amber-700">
+                        {g.proofStatus === "อนุมัติ"
+                          ? "แบบเดิมลูกค้าอนุมัติแล้ว ใช้ลายเดิมได้ แค่จัดแผ่น/พิมพ์เพิ่มให้ครบ"
+                          : (g.proofs ?? []).length
+                            ? "แบบที่ส่งให้ลูกค้าตรวจคิดจากจำนวนเดิม — จัดแผ่นเพิ่มให้ครบ"
+                            : "ทำแบบตามจำนวนใหม่ (ไม่ใช่จำนวนตอนสั่งครั้งแรก)"}
+                        {" · "}
+                        {new Date(g.qtyBump!.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </p>
+                    {(mayEdit || mayProof) && (
+                      <button
+                        type="button"
+                        onClick={() => ackGiftBump(g.promoId)}
+                        title="กดเมื่อจัดแผ่น/ทำแบบของแถมเพิ่มครบตามจำนวนใหม่แล้ว — ด่านแพ็คถึงจะปิดกล่องได้"
+                        className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600"
+                      >
+                        ✅ กราฟฟิกรับทราบ ทำเพิ่มแล้ว
+                      </button>
+                    )}
+                  </div>
+                )}
+                {g.qtyBump?.ackAt && (
+                  <p className="border-t border-emerald-100 px-4 py-1.5 text-[11px] font-semibold text-emerald-700">
+                    ➕ สั่งเพิ่ม {giftBumpLabel(g)} · ✅ {g.qtyBump.ackBy ?? "กราฟฟิก"} รับทราบแล้ว{" "}
+                    {new Date(g.qtyBump.ackAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                )}
                 {/* 🎨 ลาย + 🖼 แบบงานของแถม — โครงเดียวกับการ์ดสินค้า (ซ้ายลายจากลูกค้า · ขวาแบบที่ส่งให้ตรวจ) */}
                 {(giftArtLabel(g) || mayEdit || mayProof) && (
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-emerald-100 px-4 py-3 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
@@ -10582,6 +10632,8 @@ function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: str
   uncountedByItem.forEach((idx, item) => out.push({ icon: "🔢", text: `ตรวจนับรูป: ${item} (รูปที่ ${idx.join(", ")})` }));
   gate.unread.forEach((n) => out.push({ icon: "📄", text: `ยืนยันอ่านรายละเอียด: ${n}` }));
   gate.unsampled.forEach((n) => out.push({ icon: "🎁", text: `ใส่งานตัวอย่างลงกล่อง: ${n}` }));
+  // 🎁 ของแถมสั่งเพิ่มแต่กราฟฟิกยังไม่รับทราบ — ของแถมในมืออาจเป็นจำนวนเดิม ห้ามปิดกล่อง
+  gate.giftBump.forEach((t) => out.push({ icon: "⚠️", text: `ของแถมสั่งเพิ่ม รอกราฟฟิกทำเพิ่ม/กดรับทราบ: ${t}` }));
   if (gate.noPhoto) out.push({ icon: "📸", text: "ถ่ายภาพของในกล่อง ก่อนปิดกล่อง" });
   if (gate.taxInvoiceUnpacked) out.push({ icon: "🧾", text: "ใส่ใบกำกับภาษีลงกล่อง (พิมพ์จาก FlowAccount)" });
   if (gate.unpaidBalance)

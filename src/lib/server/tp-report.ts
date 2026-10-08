@@ -1,4 +1,5 @@
 import "server-only";
+import { giftBumpLabel, giftBumpPending } from "@/lib/gifts";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
@@ -107,7 +108,25 @@ function itemSummaryOf(order: Order): string {
  * รายการที่ติ๊ก "ไม่ต้องทำแบบ" (ค่าบริการ/ยอดเพิ่ม) ไม่นับ — ไม่มีอะไรให้ออกแบบ (ดู proofMissing)
  */
 function addedWorkItems(order: Order) {
-  return order.items.filter((i) => i.addedAt && proofMissing(i)).map((i) => ({ ...tpItem(i), addedAt: i.addedAt }));
+  const items = order.items.filter((i) => i.addedAt && proofMissing(i)).map((i) => ({ ...tpItem(i), addedAt: i.addedAt }));
+  /**
+   * 🎁 ของแถมที่จำนวนเพิ่มหลังสั่งเพิ่ม (gifts[].qtyBump ยังไม่รับทราบ) = งานใหม่ของกราฟฟิกเหมือนกัน
+   * ต้องจัดแผ่น/ทำแบบรองหลังเพิ่ม ไม่งั้นผลิตตามจำนวนเดิม (OD-261006-8507 · 8 ต.ค. 69)
+   */
+  for (const g of order.gifts ?? []) {
+    const b = giftBumpPending(g);
+    if (!b) continue;
+    const more = Math.max(0, b.to - b.from);
+    items.push({
+      name: `🎁 ${g.name}${g.size ? ` (${g.size})` : ""} สั่งเพิ่ม ${b.from} → ${b.to} (${giftBumpLabel(g) ?? ""})`,
+      qty: more,
+      unit: "ชุด",
+      pieces: more,
+      piece: "ชุด",
+      addedAt: b.at,
+    });
+  }
+  return items;
 }
 
 export async function reportPaidToTP(

@@ -1404,6 +1404,9 @@ export default function ScanTrackingPage() {
                     · 📋 แอดมินสั่งแบ่งส่งไว้ — รอบที่ {blocked.gate.planPending.round} ยังไม่ได้ส่ง ให้เปิดใบแล้วกดปุ่มเหลือง “ส่งบางส่วน” (ห้ามปิดทั้งใบ)
                   </li>
                 )}
+                {blocked.gate.giftBump.map((t, k) => (
+                  <li key={`gb${k}`}>· 🎁 ของแถมสั่งเพิ่ม รอกราฟฟิกทำเพิ่ม/รับทราบ: {t}</li>
+                ))}
                 {blocked.gate.uncounted.length > 0 && <li>· ยังไม่ได้ตรวจนับของ {blocked.gate.uncounted.length} รูป</li>}
                 {blocked.gate.unread.length > 0 && <li>· ยังไม่ได้ยืนยันอ่านรายละเอียด {blocked.gate.unread.length} รายการ</li>}
                 {blocked.gate.unsampled.map((name, k) => (

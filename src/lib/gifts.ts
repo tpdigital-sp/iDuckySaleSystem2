@@ -221,6 +221,25 @@ export interface GiftResult {
   progress: number;
 }
 
+/**
+ * ➕ ลูกค้าสั่งเพิ่มหลังของแถมถูกคิด/ทำแบบไปแล้ว → จำนวนของแถมเพิ่ม กราฟฟิกต้องจัดแผ่น/ทำแบบเพิ่ม
+ * ค้างเตือนจนกว่ากราฟฟิกจะกดรับทราบ (ackAt) — หน้าออเดอร์ · ด่านแพ็ค · ใบงาน · การ์ดบอร์ด WIP เห็นหมด
+ * (OD-261006-8507 · 8 ต.ค. 69: รองหลังส่งแบบไปแล้ว 72 ใบ ลูกค้าสั่งเพิ่มเป็น 96 ไม่มีใครรู้ → ผลิตผิดจำนวนได้)
+ */
+export interface GiftQtyBump {
+  /** เวลาที่จำนวนเพิ่ม (ISO) */
+  at: string;
+  /** จำนวนชุดก่อนเพิ่ม (ครั้งแรกที่ยังไม่รับทราบ — เพิ่มซ้ำอีกรอบก็ยังเทียบกับตัวนี้) */
+  from: number;
+  /** จำนวนชุดหลังเพิ่ม */
+  to: number;
+  /** บรรทัดของจริงก่อนเพิ่ม (พิมพ์/ของแทน) ไว้บอกว่าต้องทำเพิ่มกี่ใบ */
+  was?: { printedQty?: number; fallbackQty?: number };
+  /** กราฟฟิกรับทราบ/ทำเพิ่มแล้ว */
+  ackAt?: string;
+  ackBy?: string;
+}
+
 /** ของแถมที่บันทึกลงออเดอร์ (ฝ่ายแพ็คใช้จัดของ) */
 export interface OrderGift {
   promoId: string;
@@ -254,6 +273,33 @@ export interface OrderGift {
   proofUpdatedAt?: string;
   /** เวลาที่ลูกค้าอนุมัติ/ขอแก้แบบของแถมล่าสุด (ISO) — ใช้กันหน้าจอค้างทับผลตรวจ เหมือน OrderItem.proofReviewedAt */
   proofReviewedAt?: string;
+  /** ➕ จำนวนเพิ่มหลังสั่งเพิ่ม — รอกราฟฟิกรับทราบ (ดู GiftQtyBump) */
+  qtyBump?: GiftQtyBump;
+}
+
+/** ของแถมชิ้นนี้มีจำนวนเพิ่มที่กราฟฟิกยังไม่รับทราบไหม */
+export function giftBumpPending(g: OrderGift | null | undefined): GiftQtyBump | null {
+  return g?.qtyBump && !g.qtyBump.ackAt ? g.qtyBump : null;
+}
+
+/**
+ * ข้อความบอกว่าต้องทำเพิ่มเท่าไร — "แพ็กเกจรองหลัง (7 × 7 cm) 72 → 96 ใบ (+24) · ซองใส-หลังขาว 8 → 4"
+ * เทียบบรรทัดของจริงก่อน/หลัง (giftLinesOf) ไม่ใช่แค่จำนวนชุด เพราะเศษแผ่นทำให้ของแทนลดได้
+ */
+export function giftBumpLabel(g: OrderGift): string | null {
+  const b = g.qtyBump;
+  if (!b) return null;
+  const before = giftLinesOf({ ...g, qty: b.from, printedQty: b.was?.printedQty, fallbackQty: b.was?.fallbackQty });
+  const after = giftLinesOf(g);
+  const labels = [...new Set([...before, ...after].map((l) => l.label))];
+  return labels
+    .map((label) => {
+      const a = before.find((l) => l.label === label)?.qty ?? 0;
+      const z = after.find((l) => l.label === label)?.qty ?? 0;
+      const d = z - a;
+      return `${label} ${a} → ${z}${d > 0 ? ` (+${d})` : ""}`;
+    })
+    .join(" · ");
 }
 
 /**

@@ -75,6 +75,7 @@ function gateReasons(g: PackGate): string {
     g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
     g.missing.length ? `ของยังไม่มา/ไม่ครบ ${g.missing.length} รายการ (${g.missing.map((m) => m.item).join(", ")})` : "",
     g.unsampled.length ? `ยังไม่ยืนยันใส่งานตัวอย่าง ${g.unsampled.length} รายการ` : "",
+    g.giftBump.length ? `ของแถมสั่งเพิ่ม รอกราฟฟิกทำเพิ่ม/รับทราบ (${g.giftBump.join(" · ")})` : "",
     g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
     g.unpaidBalance ? "ยังเก็บเงินไม่ครบ (ยอดคงเหลือมัดจำ / ส่วนต่างที่ตีราคาเพิ่ม)" : "",
   ]
@@ -362,6 +363,8 @@ function mergeProofFields(existing: Order, incoming: Order, clientSavedAt: strin
         proofStatus: inc.proofStatus,
         proofNote: inc.proofNote,
         proofUpdatedAt: inc.proofUpdatedAt ?? g.proofUpdatedAt,
+        // ➕ กราฟฟิกกด "รับทราบของแถมที่ต้องทำเพิ่ม" — ธงจำนวนเพิ่มเป็นของเซิร์ฟเวอร์ รับแค่ ack จากหน้าจอ
+        ...(g.qtyBump ? { qtyBump: { ...g.qtyBump, ...(inc.qtyBump?.ackAt ? { ackAt: inc.qtyBump.ackAt, ackBy: inc.qtyBump.ackBy } : {}) } } : {}),
       },
       clientSavedAt
     );

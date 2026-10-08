@@ -1,3 +1,4 @@
+import { giftBumpLabel, giftBumpPending } from "./gifts";
 import type { OrderGift } from "./gifts";
 import { isPickupOrder } from "./ship-label";
 import type { ClaimFault } from "./claims";
@@ -2705,6 +2706,8 @@ export interface PackGate {
   taxInvoiceUnpacked: boolean;
   /** 📦 รายการที่ฝ่ายแพ็คปักว่า "ของยังไม่มา / มาไม่ครบ" — ห้ามส่งจนกว่าจะกดมาครบ */
   missing: PackMissing[];
+  /** 🎁 ของแถมที่จำนวนเพิ่มหลังสั่งเพิ่ม และกราฟฟิกยังไม่รับทราบว่าทำเพิ่มแล้ว — ห้ามปิดกล่อง (ของแถมจะขาด) */
+  giftBump: string[];
   /**
    * 📋 แอดมินสั่งแบ่งส่งไว้ และรอบตามแผนยังไม่ได้ส่ง — ห้ามปิดทั้งใบ (ยิงเลขรอบสุดท้าย / แพ็คเสร็จมารับเอง)
    * ต้องส่งรอบนี้ทางปุ่ม "🚚 ส่งบางส่วน" ก่อน ไม่งั้นใบปิดเป็นจัดส่งแล้วทั้งที่ของที่เหลือยังไม่ได้ผลิต/ส่ง แล้วหลุดจากคิวปริ้น
@@ -3331,10 +3334,12 @@ export function packGate(order: Order): PackGate {
   const missing = packMissingOf(order);
   const taxInvoiceUnpacked = orderNeedsTaxInvoiceInBox(order) && !order.taxInvoicePacked;
   const planPending = pendingPlanRound(order);
+  const giftBump = (order.gifts ?? []).filter((g) => giftBumpPending(g)).map((g) => `${g.name}${g.size ? ` (${g.size})` : ""} — ${giftBumpLabel(g) ?? ""}`);
 
   return {
     ready:
       !planPending &&
+      !giftBump.length &&
       !uncounted.length &&
       !unread.length &&
       !short.length &&
@@ -3352,6 +3357,7 @@ export function packGate(order: Order): PackGate {
     missing,
     taxInvoiceUnpacked,
     planPending,
+    giftBump,
   };
 }
 
