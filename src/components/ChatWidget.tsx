@@ -17,6 +17,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   askShopBot,
+  ChatProductPics,
+  type ChatProduct,
   clock,
   GREETING,
   LINE_URL,
@@ -26,7 +28,7 @@ import {
   type ChatTextClasses,
 } from "@/lib/shop-chat";
 
-type Msg = { id: number; side: "in" | "out"; text: string; time: string };
+type Msg = { id: number; side: "in" | "out"; text: string; time: string; products?: ChatProduct[] };
 
 /** คลาสในบับเบิล — หน้าต่างนี้อยู่นอก .dl เลยใช้ Tailwind แทนคลาสของ landing.css */
 const TEXT_CLASSES: ChatTextClasses = {
@@ -110,7 +112,7 @@ export default function ChatWidget() {
     const history = msgs.map((m) => ({ side: m.side, text: m.text }));
     setMsgs((prev) => [...prev, { id: nextId.current++, side: "out", text: message, time: clock() }]);
     const reply = await askShopBot(message, sessionId.current, history);
-    setMsgs((prev) => [...prev, { id: nextId.current++, side: "in", text: reply, time: clock() }]);
+    setMsgs((prev) => [...prev, { id: nextId.current++, side: "in", text: reply.text, products: reply.products, time: clock() }]);
     setBusy(false);
     inputRef.current?.focus();
   }
@@ -220,6 +222,7 @@ export default function ChatWidget() {
                   }`}
                 >
                   {renderChatText(m.text, TEXT_CLASSES)}
+                  <ChatProductPics products={m.products} />
                 </div>
                 <time className="mt-0.5 px-1 text-[10px] text-slate-400">{m.time}</time>
               </div>

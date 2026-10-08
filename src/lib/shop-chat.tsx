@@ -59,8 +59,12 @@ export type ChatTurn = { side: "in" | "out"; text: string };
  */
 const HISTORY_TURNS = 8;
 
+/** สินค้าที่คำตอบพูดถึง — ชุดเดียวกับที่หน้า 🤖 /admin/chatbot วาดเป็นแถวรูปใต้คำตอบ (มาจาก answerChat) */
+export type ChatProduct = { name: string; url: string; image?: string };
+export type ShopBotReply = { text: string; products?: ChatProduct[] };
+
 /** ถามผู้ช่วยร้าน — คืนข้อความตอบเสมอ (ล้มเหลวก็คืนข้อความบอกทางออกให้ลูกค้า ไม่ throw) */
-export async function askShopBot(message: string, sessionId: string, history: ChatTurn[] = []): Promise<string> {
+export async function askShopBot(message: string, sessionId: string, history: ChatTurn[] = []): Promise<ShopBotReply> {
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -75,11 +79,11 @@ export async function askShopBot(message: string, sessionId: string, history: Ch
           .map((t) => ({ role: t.side === "out" ? "customer" : "shop", text: t.text.slice(0, 500) })),
       }),
     });
-    const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string };
-    if (res.ok && data.reply) return data.reply;
-    return data.error || "ตอนนี้ผู้ช่วยตอบไม่ได้ครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินดูแลต่อให้";
+    const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string; products?: ChatProduct[] };
+    if (res.ok && data.reply) return { text: data.reply, products: data.products };
+    return { text: data.error || "ตอนนี้ผู้ช่วยตอบไม่ได้ครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินดูแลต่อให้" };
   } catch {
-    return "เชื่อมต่อไม่ได้ครับ ลองใหม่อีกครั้ง หรือทักไลน์ร้านได้เลย";
+    return { text: "เชื่อมต่อไม่ได้ครับ ลองใหม่อีกครั้ง หรือทักไลน์ร้านได้เลย" };
   }
 }
 
@@ -140,4 +144,36 @@ export function renderChatText(text: string, cls: ChatTextClasses = LANDING_CLAS
         </span>
       );
     });
+}
+
+/**
+ * 🖼 แถวภาพสินค้าใต้คำตอบ (สูงสุด 4 ภาพ) — ล้อตาม ProductPics ของหน้า /admin/chatbot ให้ลูกค้าเห็นแบบเดียวกับแอดมิน
+ * ปุ่มลอย (แคบ) = 2 คอลัมน์ · กล่องหน้าแรก (กว้าง) = 4 คอลัมน์ ด้วย auto-fill
+ * ใช้ inline style เพราะกล่องหน้าแรกอยู่ใต้ landing.css ส่วนปุ่มลอยใช้ Tailwind — ชุดเดียววางได้ทั้งสองที่
+ */
+export function ChatProductPics({ products }: { products?: ChatProduct[] }) {
+  const pics = (products ?? []).filter((p) => p.image).slice(0, 4);
+  if (!pics.length) return null;
+  return (
+    <span style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(120px, 45%), 1fr))", gap: 6, marginTop: 8, maxWidth: 560 }}>
+      {pics.map((p) => (
+        <a
+          key={p.url}
+          href={p.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={p.name}
+          style={{ display: "block", overflow: "hidden", borderRadius: 10, border: "1px solid #E2F3FE", background: "#F2FAFF", textDecoration: "none" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- ภาพจาก CDN ของร้าน ขนาดต่างกัน ไม่ผ่าน next/image */}
+          <img src={p.image} alt={p.name} loading="lazy" style={{ display: "block", width: "100%", aspectRatio: "1 / 1", objectFit: "cover" }} />
+          <span
+            style={{ display: "block", padding: "3px 6px", fontSize: 11, fontWeight: 600, lineHeight: 1.35, color: "#173A6B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          >
+            {p.name}
+          </span>
+        </a>
+      ))}
+    </span>
+  );
 }

@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState } from "react";
-import { askShopBot, clock, GREETING, LINE_URL, QUICK, renderChatText, useChatSession } from "@/lib/shop-chat";
+import { askShopBot, ChatProductPics, clock, type ChatProduct, GREETING, LINE_URL, QUICK, renderChatText, useChatSession } from "@/lib/shop-chat";
 
 /**
  * หน้าจอแชทหน้าแรก — คุยได้จริง
@@ -16,7 +16,7 @@ import { askShopBot, clock, GREETING, LINE_URL, QUICK, renderChatText, useChatSe
  * ใช้ร่วมกับปุ่มแชทลอยทุกหน้า (ChatWidget) — ห้องแชทเดียวกัน คุยต่อเนื่องข้ามหน้าได้
  */
 
-type Msg = { id: number; side: "in" | "out"; text: string; step?: string; time: string };
+type Msg = { id: number; side: "in" | "out"; text: string; step?: string; time: string; products?: ChatProduct[] };
 
 const demoMessages = (catCount: number): Msg[] => [
   { id: 1, side: "out", text: "มีลายอยากทำพวงกุญแจอะค่ะ ต้องทำยังไงบ้าง", time: "10:24" },
@@ -62,7 +62,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
   }, [msgs, busy, live]);
 
   const push = (m: Omit<Msg, "id" | "time"> & { time?: string }) => {
-    const msg: Msg = { id: nextId.current++, time: m.time ?? clock(), side: m.side, text: m.text, step: m.step };
+    const msg: Msg = { id: nextId.current++, time: m.time ?? clock(), side: m.side, text: m.text, step: m.step, products: m.products };
     setMsgs((prev) => [...prev, msg]);
   };
 
@@ -90,7 +90,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
       sessionId.current,
       starting ? [] : msgs.map((m) => ({ side: m.side, text: m.text })),
     );
-    push({ side: "in", text: reply });
+    push({ side: "in", text: reply.text, products: reply.products });
     setBusy(false);
   }
 
@@ -127,6 +127,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
             <span className="mbub">
               {m.step && <b className="stepno">{m.step}</b>}
               {renderChatText(m.text)}
+              <ChatProductPics products={m.products} />
             </span>
             <time>{m.time}</time>
           </div>
