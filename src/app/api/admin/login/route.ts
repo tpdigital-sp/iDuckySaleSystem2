@@ -9,29 +9,50 @@ import {
 import { can, isKnownRole, WORK_STATUS_ACTIVE } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { SESSION_COOKIE, adminCookieOptions, createSessionToken } from "@/lib/server/admin-session";
+import { createHash } from "node:crypto";
+import type { Firestore } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 
 /**
  * 🔒 กันเดารหัสผ่านรัว ๆ (ตรวจความปลอดภัย 8 ต.ค. 69) — เดิมไม่มีด่านเลย ยิงได้ไม่จำกัด
- * นับ "ครั้งที่ผิด" ต่อ IP และต่อชื่อผู้ใช้ แยกกัน: เกินแล้วตอบ 429 จนกว่าจะพ้นช่วง
- * (ต่ออินสแตนซ์ของ serverless — กันไม่ได้ 100% แต่ทำให้สคริปต์เดาช้าลงหลายสิบเท่า · ล็อกอินสำเร็จ = ล้างตัวนับ)
+ * นับ "ครั้งที่ผิด" ต่อ IP และต่อชื่อผู้ใช้ แยกกัน: เกินแล้วตอบ 429 จนกว่าจะพ้นช่วง · ล็อกอินสำเร็จ = ล้างตัวนับของชื่อนั้น
+ *
+ * ⚠️ ต้องเก็บใน Firestore ไม่ใช่หน่วยความจำ — บน Netlify แต่ละคำขอตกคนละอินสแตนซ์ ตัวนับใน Map ไม่เคยถึงเพดาน
+ *    (ทดสอบบนเว็บจริง 8 ต.ค. 69: ยิงผิด 20 ครั้งติดได้ 401 ทุกครั้ง ไม่มี 429) · ใช้ฐานเดียวกับ employees2 อยู่แล้ว
+ *    คีย์เอกสาร = sha256 ของ "ip:…"/"user:…" (ชื่อผู้ใช้/IP มีอักขระที่ Firestore ไม่รับเป็น id ได้)
  */
-const FAILS = new Map<string, { n: number; until: number }>();
+const GUARD_COLLECTION = "iducky_login_guard";
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_PER_IP = 20;
 const MAX_PER_USER = 8;
 
-function failCount(key: string): number {
-  const cur = FAILS.get(key);
-  return cur && cur.until > Date.now() ? cur.n : 0;
+type GuardDoc = { n: number; until: number };
+const guardRef = (db: Firestore, key: string) =>
+  db.collection(GUARD_COLLECTION).doc(createHash("sha256").update(key).digest("hex").slice(0, 40));
+
+/** จำนวนครั้งที่ผิดในช่วงนี้ (อ่านไม่ได้ = ถือว่า 0 ไม่ขวางคนล็อกอิน) */
+async function failCount(db: Firestore, key: string): Promise<number> {
+  try {
+    const d = (await guardRef(db, key).get()).data() as GuardDoc | undefined;
+    return d && d.until > Date.now() ? d.n : 0;
+  } catch {
+    return 0;
+  }
 }
-function noteFail(key: string): void {
-  const now = Date.now();
-  const cur = FAILS.get(key);
-  if (!cur || cur.until < now) FAILS.set(key, { n: 1, until: now + WINDOW_MS });
-  else cur.n += 1;
-  if (FAILS.size > 1000) for (const [k, v] of FAILS) if (v.until < now) FAILS.delete(k);
+/** จดว่าผิดอีก 1 ครั้ง — เริ่มช่วงใหม่ถ้าช่วงเดิมหมดแล้ว */
+async function noteFail(db: Firestore, key: string): Promise<void> {
+  const ref = guardRef(db, key);
+  try {
+    await db.runTransaction(async (tx) => {
+      const d = (await tx.get(ref)).data() as GuardDoc | undefined;
+      const now = Date.now();
+      if (!d || d.until < now) tx.set(ref, { n: 1, until: now + WINDOW_MS, key });
+      else tx.update(ref, { n: (d.n ?? 0) + 1 });
+    });
+  } catch {
+    /* จดไม่ได้ก็ปล่อย — ไม่ให้ด่านนี้ทำให้ล็อกอินพัง */
+  }
 }
 
 export async function POST(req: Request) {
@@ -47,25 +68,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "กรอกชื่อผู้ใช้และรหัสผ่านให้ครบ" }, { status: 400 });
   }
 
+  const db = getFirestoreAdmin();
+  if (!db) {
+    return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase (ดู .env.local)" }, { status: 503 });
+  }
+
   const ip =
     req.headers.get("x-nf-client-connection-ip") ||
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "unknown";
   const ipKey = `ip:${ip}`;
   const userKey = `user:${loginKey(username)}`;
-  if (failCount(ipKey) >= MAX_PER_IP || failCount(userKey) >= MAX_PER_USER) {
+  const [ipFails, userFails] = await Promise.all([failCount(db, ipKey), failCount(db, userKey)]);
+  if (ipFails >= MAX_PER_IP || userFails >= MAX_PER_USER) {
     return NextResponse.json({ error: "ลองผิดหลายครั้งเกินไป — รอ 15 นาทีแล้วลองใหม่" }, { status: 429 });
   }
-  const failed = (res: NextResponse) => {
-    noteFail(ipKey);
-    noteFail(userKey);
+  const failed = async (res: NextResponse) => {
+    await Promise.all([noteFail(db, ipKey), noteFail(db, userKey)]);
     return res;
   };
-
-  const db = getFirestoreAdmin();
-  if (!db) {
-    return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase (ดู .env.local)" }, { status: 503 });
-  }
 
   // TP เก็บ username ได้หลากหลาย (มีวรรค/ตัวใหญ่/อีโมจิ) → จับคู่ด้วยชื่อ login ที่ normalize แล้ว
   type Emp = {
@@ -104,7 +125,7 @@ export async function POST(req: Request) {
     return failed(NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 }));
   }
   // รหัสถูก → ล้างตัวนับของชื่อนี้ (คนที่พิมพ์ผิดเองไม่ต้องรอครบ 15 นาที)
-  FAILS.delete(userKey);
+  await guardRef(db, userKey).delete().catch(() => undefined);
 
   /**
    * ตำแหน่ง/แผนกนี้มีสิทธิ์เข้าหลังบ้านไหม (ตามชุดสิทธิ์ที่แก้ได้ในตั้งค่าระบบ → แท็บบทบาท)
