@@ -196,10 +196,10 @@ export function upgradeSource(o: Order, kind: FaDocKind): { docNo: string; type:
   return null;
 }
 
-/** วันที่รับเงิน (YYYY-MM-DD เวลาไทย) — เวลาโอนบนสลิปใบล่าสุด · ไม่มี = เวลาแนบ · ไม่มีเลย = วันนี้ */
+/** วันที่รับเงิน (YYYY-MM-DD เวลาไทย) — เวลาโอนบนสลิปใบล่าสุด · ไม่มี = เวลาแนบ · ไม่มี = เวลาที่ใบเข้าขั้นชำระแล้ว (paidAt) · ไม่มีเลย = วันนี้ */
 export function paymentDateOf(o: Order): string {
   const times = [...(o.payments ?? []).map((p) => p.verify?.transAt || p.at), o.slipVerify?.transAt].filter((x): x is string => !!x).sort();
-  const at = times.at(-1);
+  const at = times.at(-1) || o.paidAt;
   const p = bkkParts(at ? new Date(at) : new Date());
   return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
 }
@@ -241,7 +241,11 @@ export function upgradeBody(o: Order, d: ReturnType<typeof draftFor>, kind: "bl"
   const body = quotationBody(o, d, salesName);
   body.documentReference = [{ recordId: sourceRecordId, referenceDocumentSerial: d.source!.docNo, referenceDocumentType: d.source!.type }];
   body.reference = d.source!.docNo;
-  if (kind === "inv") body.creditType = 3;
+  if (kind === "inv") {
+    body.creditType = 3;
+    // 🧾 วันที่ใบกำกับภาษี/ใบเสร็จ = วันที่โอนเงิน ไม่ใช่วันที่กดสร้าง (เจ้าของร้านแจ้ง OD-261006-2644 · 8 ต.ค. 69)
+    if (d.paymentDate) body.publishedOn = body.dueDate = d.paymentDate;
+  }
   return body;
 }
 

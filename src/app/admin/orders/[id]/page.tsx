@@ -2384,7 +2384,7 @@ export default function AdminOrderDetailPage() {
           ...(d.discount > 0 ? [`ส่วนลด −${formatPrice(d.discount)}`] : []),
           `ก่อน VAT ${formatPrice(d.afterDiscount)} · VAT 7% ${formatPrice(d.vat)} · รวม ${formatPrice(d.grandTotal)}`,
           ...(d.wht ? [`หัก ณ ที่จ่าย ${d.wht.rate}% ${formatPrice(d.wht.amount)}`] : []),
-          ...(kind === "inv" ? [`บันทึกรับเงินโอน ${formatPrice(net)} วันที่ ${d.paymentDate} เข้าบัญชีร้าน`] : []),
+          ...(kind === "inv" ? [`วันที่เอกสาร ${d.paymentDate} (วันโอนเงิน) · บันทึกรับเงินโอน ${formatPrice(net)} เข้าบัญชีร้าน`] : []),
           "",
           "สร้างในบัญชี FlowAccount จริง — แก้/ยกเลิกทีหลังต้องทำใน FlowAccount",
         ].join("\n"),
