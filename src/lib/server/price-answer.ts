@@ -900,7 +900,9 @@ ${list}
       const paperOnly = finalPicked.filter((it) => !/sticker|สติ๊กเกอร์|สติกเกอร์/i.test(it.name));
       // เลือกมาแต่สติ๊กเกอร์ (ประวัติลากไป) + ถามกระดาษสีทอง/เงิน/โฮโลแกรม/มุก → บังคับเป็น "กระดาษเนื้อพิเศษ"
       const special = /กระดาษ\s*(สี)?(ทอง|เงิน|โฮโลแกรม|มุก|stardream|เนื้อพิเศษ)/i.test(q) ? items.find((it) => it.name === "กระดาษเนื้อพิเศษ") : undefined;
-      finalPicked = paperOnly.length ? paperOnly : special ? [special] : finalPicked;
+      // ถามกระดาษพิเศษตรง ๆ และไม่ได้พ่วงสินค้าอื่น (เมนูมีกระดาษเนื้อพิเศษอยู่ หรือไม่เหลือกระดาษเลย) → ตัวเดียว ไม่กางเมนู 3 ตัว
+      if (special && (!paperOnly.length || paperOnly.some((it) => it.id === special.id))) finalPicked = [special];
+      else if (paperOnly.length) finalPicked = paperOnly;
     }
     // "หนัง" ต้องไม่ไปจับ "หนังสือ" (สมุด/ที่คั่นหนังสือเคยโผล่มาเป็นตัวใกล้เคียงของพวงกุญแจหนัง)
     const hasQual = (it: Lite, w: string) => {
@@ -1275,6 +1277,34 @@ function spec(p: Product, query: string): PriceAnswer | null {
     if (wantMaterial && /วัสดุ|เนื้อ|กระดาษ|ผ้า|หนา|ชนิด/.test(l)) return true;
     return false;
   };
+
+  // 🎯 8 ต.ค. 69 16:06 "ขอดูภาพกระดาษสีทองหน่อย" → เคยตอบกลุ่ม "พิมพ์รองสีขาว (2 แบบ)" เพราะจับคำ "สี" ไปโดนชื่อกลุ่ม
+  // ลูกค้าเอ่ยถึง "ตัวเลือก" ตัวใดตรง ๆ (กระดาษสีทอง / โฮโลแกรม / ผิวด้าน …) → ตอบเฉพาะตัวเลือกที่ตรง + ใช้รูปของตัวเลือกนั้นขึ้นการ์ด
+  {
+    const qn = norm(query);
+    const GENERIC = /^(กระดาษ|สี|แบบ|ขนาด|ผิว|ไม่|พิมพ์|เคลือบ|แกรม|ชนิด|เนื้อ|หนา|paper)$/i;
+    type Opt = NonNullable<Product["options"]>[number];
+    const hits: { opt: Opt; choices: Opt["choices"] }[] = [];
+    for (const opt of p.options ?? []) {
+      const m = (opt.choices ?? []).filter((c) =>
+        String(c.name || "")
+          .split(/[\s()/·,|]+/)
+          .some((f) => f.length >= 4 && !GENERIC.test(f) && qn.includes(norm(f))),
+      );
+      if (m.length) hits.push({ opt, choices: m });
+    }
+    if (hits.length) {
+      const lines = hits.slice(0, 3).map((h) => `• ${groupLabel(h.opt.label)}: ${h.choices.map((c) => c.name.trim()).slice(0, 8).join(" · ")}`);
+      const img = hits.flatMap((h) => h.choices).map((c) => absImage(c.imageSrc)).find(Boolean);
+      return {
+        answer: `${p.name}\n${lines.join("\n")}\n${botUrl(p)}`,
+        kind: "info",
+        source: "web-price-engine",
+        intent: "spec",
+        product: { id: p.id, name: p.name, url: safeHref(botUrl(p)), image: img ?? absImage(p.imageSrc), ...priceRange(p) },
+      };
+    }
+  }
 
   const seen = new Set<string>();
   const lines: string[] = [];
