@@ -1282,6 +1282,7 @@ function spec(p: Product, query: string): PriceAnswer | null {
   // ลูกค้าเอ่ยถึง "ตัวเลือก" ตัวใดตรง ๆ (กระดาษสีทอง / โฮโลแกรม / ผิวด้าน …) → ตอบเฉพาะตัวเลือกที่ตรง + ใช้รูปของตัวเลือกนั้นขึ้นการ์ด
   {
     const qn = norm(query);
+    const pn = norm(p.name); // เศษที่เป็นส่วนหนึ่งของชื่อสินค้าเอง ("กระดาษเนื้อ" ใน "กระดาษเนื้อพิเศษ") ไม่ใช่การชี้ตัวเลือก
     const GENERIC = /^(กระดาษ|สี|แบบ|ขนาด|ผิว|ไม่|พิมพ์|เคลือบ|แกรม|ชนิด|เนื้อ|หนา|paper)$/i;
     type Opt = NonNullable<Product["options"]>[number];
     const hits: { opt: Opt; choices: Opt["choices"] }[] = [];
@@ -1289,7 +1290,7 @@ function spec(p: Product, query: string): PriceAnswer | null {
       const m = (opt.choices ?? []).filter((c) =>
         String(c.name || "")
           .split(/[\s()/·,|]+/)
-          .some((f) => f.length >= 4 && !GENERIC.test(f) && qn.includes(norm(f))),
+          .some((f) => f.length >= 4 && !GENERIC.test(f) && !pn.includes(norm(f)) && qn.includes(norm(f))),
       );
       if (m.length) hits.push({ opt, choices: m });
     }
