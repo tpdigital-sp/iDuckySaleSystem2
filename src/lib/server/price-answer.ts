@@ -898,7 +898,9 @@ ${list}
     // → ลูกค้าพูดถึง "กระดาษ" โดยไม่พูดถึงสติ๊กเกอร์ = ตัดสินค้าสติ๊กเกอร์ทิ้ง (เหลือแต่ของที่เป็นกระดาษจริง)
     if (/กระดาษ/.test(q) && !/สติ๊กเกอร์|สติกเกอร์|sticker/i.test(q)) {
       const paperOnly = finalPicked.filter((it) => !/sticker|สติ๊กเกอร์|สติกเกอร์/i.test(it.name));
-      if (paperOnly.length) finalPicked = paperOnly;
+      // เลือกมาแต่สติ๊กเกอร์ (ประวัติลากไป) + ถามกระดาษสีทอง/เงิน/โฮโลแกรม/มุก → บังคับเป็น "กระดาษเนื้อพิเศษ"
+      const special = /กระดาษ\s*(สี)?(ทอง|เงิน|โฮโลแกรม|มุก|stardream|เนื้อพิเศษ)/i.test(q) ? items.find((it) => it.name === "กระดาษเนื้อพิเศษ") : undefined;
+      finalPicked = paperOnly.length ? paperOnly : special ? [special] : finalPicked;
     }
     // "หนัง" ต้องไม่ไปจับ "หนังสือ" (สมุด/ที่คั่นหนังสือเคยโผล่มาเป็นตัวใกล้เคียงของพวงกุญแจหนัง)
     const hasQual = (it: Lite, w: string) => {
