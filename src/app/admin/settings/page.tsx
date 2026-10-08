@@ -811,6 +811,8 @@ function AdminSettingsPageInner() {
         // เกณฑ์เลือกอัตโนมัติ — 0/ว่าง = ไม่ใช้ ตัดออกไม่ให้ค้างในฐาน
         ...(Number(s.minQty) > 0 ? { minQty: Math.floor(Number(s.minQty)) } : { minQty: undefined }),
         ...(Number(s.minSubtotal) > 0 ? { minSubtotal: Math.floor(Number(s.minSubtotal)) } : { minSubtotal: undefined }),
+        // ให้ลูกค้าเลือกได้เสมอ — เก็บเฉพาะตอนติ๊ก (ไม่ติ๊ก = วิธีที่มีเงื่อนไขซ่อนจนกว่าจะเข้าเงื่อนไข)
+        ...(s.alwaysShow ? { alwaysShow: true } : { alwaysShow: undefined }),
       }))
       .filter((s) => s.name);
 
@@ -1285,6 +1287,19 @@ function AdminSettingsPageInner() {
                         <span className="text-slate-400">
                           · เว้นว่าง = ไม่เด้ง · ยอดถึงเกณฑ์แต่ทั้งตะกร้ายังเป็นเรทปลีก (เช่น 1-10 ชิ้น) = ไม่เด้ง
                         </span>
+                        {((s.minQty ?? 0) > 0 || (s.minSubtotal ?? 0) > 0) && (
+                          <label className="flex w-full items-center gap-1.5 pt-1 text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={!!s.alwaysShow}
+                              onChange={(e) => patchShip(s.id, { alwaysShow: e.target.checked || undefined })}
+                            />
+                            ให้ลูกค้ากดเลือกเองได้เสมอ แม้ไม่เข้าเงื่อนไข
+                            <span className="text-slate-400">
+                              · ไม่ติ๊ก = ซ่อนจากหน้าตะกร้าจนกว่าระบบจะเด้งมาใช้เอง (กันลูกค้าปลีกกดกล่องแพงผิดแล้วต้องโอนคืน)
+                            </span>
+                          </label>
+                        )}
                       </div>
                     </div>
                   ))}

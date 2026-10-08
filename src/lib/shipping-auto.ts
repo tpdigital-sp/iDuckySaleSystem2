@@ -209,6 +209,24 @@ export function cartQtyShipFee(
   return { fee: lines.reduce((s, l) => s + l.fee, 0), lines, forceIds };
 }
 
+/** วิธีนี้ตั้งเกณฑ์เด้งอัตโนมัติไว้ไหม (จำนวนชิ้น/ยอด) */
+export function hasShipTrigger(m: ShippingMethod): boolean {
+  return (m.minQty ?? 0) > 0 || (m.minSubtotal ?? 0) > 0;
+}
+
+/**
+ * วิธีนี้ควร "โชว์ให้ลูกค้าเห็น" ในหน้าตะกร้าไหม
+ *
+ * กล่องใหญ่ที่ตั้งเงื่อนไขไว้ (เช่น EMS (100) ยอดถึง 2,000) มีไว้ให้ระบบเด้งมาใช้เองตอนของเยอะ
+ * ไม่ใช่ให้ลูกค้าปลีกกดเลือกเอง — เดิมโชว์ตลอด ลูกค้าสั่งเคสชิ้นเดียวก็กด 100 แล้วร้านต้องโอนคืน
+ * กติกา: มีเงื่อนไข + ไม่ได้ติ๊ก "ให้เลือกได้เสมอ" + ระบบไม่ได้เลือกวิธีนี้ให้ (ไม่เข้าเงื่อนไข/ไม่มีสินค้าบังคับ) = ซ่อน
+ * วิธีไม่มีเงื่อนไข (EMS 50 · มารับเอง) โชว์เสมอเหมือนเดิม
+ */
+export function shippingVisible(m: ShippingMethod, auto: AutoShipping): boolean {
+  if (!hasShipTrigger(m) || m.alwaysShow) return true;
+  return m.id === auto.id;
+}
+
 /** วิธีนี้เลือกได้ไหม เทียบกับขั้นต่ำที่ระบบคำนวณไว้ */
 export function shippingAllowed(m: ShippingMethod, methods: ShippingMethod[], auto: AutoShipping): boolean {
   if (!auto.floorId) return true;

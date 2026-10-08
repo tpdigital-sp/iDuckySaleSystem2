@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ART_SIZE_LABEL, REUSE_ART_LABEL, activeMatrix, activeRate, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, includedDesigns, lotShortfalls, mixRuleFor, needsStockCheck, orderUnitYield, perUnitCapacity, splitArtUrls, stockCheckRows } from "@/lib/products";
+import { ART_SIZE_LABEL, REUSE_ART_LABEL, activeMatrix, activeRate, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, includedDesigns, isRetailRateLine, lotShortfalls, mixRuleFor, needsStockCheck, orderUnitYield, perUnitCapacity, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { couponErrorText, type CouponError } from "@/lib/coupons";
 
 /** เหตุผลที่คูปองไม่ถูกตัดสิทธิ์ตอนกดสั่ง (จาก /api/orders) — เป็นภาษาคน ไว้บอกลูกค้าในข้อความสรุป */
@@ -48,7 +48,7 @@ import { addressProblem, cleanPhone, phoneProblem } from "@/lib/contact-validate
 import { clearUseByDate, readUseByDate } from "@/lib/use-by-date";
 import { shortThaiDay } from "@/lib/ship-date";
 import { publicOrigin } from "@/lib/shop-info";
-import { cartQtyShipFee, shipProfileOf } from "@/lib/shipping-auto";
+import { cartQtyShipFee, pickShipping, shipProfileOf, shippingVisible } from "@/lib/shipping-auto";
 import { LINE_URL } from "@/components/LineButton";
 import StockCheckNote from "@/components/StockCheckNote";
 
@@ -291,9 +291,28 @@ export default function CheckoutPage() {
     .map((id) => methods.find((m) => m.id === id))
     .filter(Boolean)
     .sort((a, b) => b!.price - a!.price)[0];
+  // 🙈 วิธีที่ "ซ่อน" ในตะกร้า (กล่องใหญ่มีเงื่อนไขแต่ออเดอร์นี้ไม่เข้า เช่น EMS (100) กับของชิ้นเดียว)
+  //    ค้างมาใน localStorage จากออเดอร์ก่อนได้ — หน้านี้ไม่มีปุ่มให้เปลี่ยน ต้องเด้งกลับเป็นกล่องที่ระบบเลือกเอง
+  //    (คิดชุดเดียวกับหน้าตะกร้า: retailOnly = ทั้งตะกร้ายังเรทปลีก ยอดถึงเกณฑ์ก็ไม่เด้งกล่องใหญ่)
+  const retailOnly = items.every((i) => {
+    const p = productOf(i.productId);
+    return !p || isRetailRateLine(p, i.selections, i.qty, i.merged?.rateLabel);
+  });
+  const autoShip = pickShipping(methods, {
+    totalQty,
+    subtotal,
+    retailOnly,
+    requiredIds: [
+      ...(items.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
+      ...qtyShipCalc.forceIds,
+    ],
+  });
+  const pickedMethod = shippingVisible(shippingMethod, autoShip)
+    ? shippingMethod
+    : (methods.find((m) => m.id === autoShip.id) ?? shippingMethod);
   // มารับเอง/ส่งฟรี (ราคา 0) = ไม่ใช่กล่องพัสดุ ห้ามยกระดับทับ (ตรงกับกติกาหน้าตะกร้า)
   const effectiveMethod =
-    forcedMethod && shippingMethod.price > 0 && forcedMethod.price > shippingMethod.price ? forcedMethod : shippingMethod;
+    forcedMethod && pickedMethod.price > 0 && forcedMethod.price > pickedMethod.price ? forcedMethod : pickedMethod;
 
   // 🚚 ค่ากล่องปกติถูกยกเว้น (ส่งฟรีตามยอด / สั่งเพิ่มในออเดอร์เดิม = จ่ายไปแล้วในออเดอร์แรก)
   // 📦 แต่ค่าส่งตามจำนวนของหนักยังคิดเสมอ — ต้นทุนกล่อง/น้ำหนักจริงที่โปรไม่ครอบคลุม

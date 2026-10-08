@@ -83,7 +83,7 @@ import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/app
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
 import { readReplaceMarker } from "@/lib/order-item-qty";
-import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed } from "@/lib/shipping-auto";
+import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed, shippingVisible } from "@/lib/shipping-auto";
 import { termLines } from "@/lib/term-lines";
 import { USE_BY_KEY, saveUseByDate } from "@/lib/use-by-date";
 
@@ -433,7 +433,8 @@ export default function CartPage() {
     // (เผลอทับตอนนี้ = "มารับเอง" ที่ลูกค้าเลือกไว้เด้งกลับเป็นส่งพัสดุทุกครั้งที่รีเฟรช)
     if (!shipLoaded || !methods.length || !auto.id || !pickedItems.length) return;
     const cur = methods.find((m) => m.id === shippingId);
-    if (!cur || !shippingAllowed(cur, methods, auto)) {
+    // 🙈 วิธีที่มีเงื่อนไขแต่ไม่เข้าเงื่อนไข (EMS (100) กับของชิ้นเดียว) ซ่อนไปแล้ว — ค้างมาจากออเดอร์ก่อน/localStorage ก็เด้งกลับ
+    if (!cur || !shippingAllowed(cur, methods, auto) || !shippingVisible(cur, auto)) {
       setShippingId(auto.id);
       return;
     }
@@ -460,9 +461,11 @@ export default function CartPage() {
 
   // 📦 มีค่าตามจำนวน → วิธีส่งที่ถูกกว่าค่านี้จ่ายเท่ากันหมด ยุบรวมเป็นแถวเดียวราคาตรงกับที่จ่ายจริง
   // (กันลูกค้างงว่าทำไมติ๊ก EMS 50 แต่โดนคิด 100) · วิธีที่แพงกว่า กับมารับเอง ยังแยกแถวปกติ
+  // 🙈 กล่องใหญ่ที่ตั้งเงื่อนไขไว้โชว์เฉพาะตอนระบบเด้งมาใช้เอง — ลูกค้าปลีกจะได้ไม่กด EMS (100) ผิดแล้วร้านต้องโอนคืน
+  const visibleMethods = methods.filter((m) => shippingVisible(m, auto));
   const shipRows: { id: string; name: string; price: number; note?: string; covers?: string[] }[] = (() => {
-    if (!qtyShipApplied) return methods;
-    const paid = methods.filter((m) => m.price > 0);
+    if (!qtyShipApplied) return visibleMethods;
+    const paid = visibleMethods.filter((m) => m.price > 0);
     // ค่ากล่องปกติถูกยกเว้นอยู่แล้ว (ส่งฟรี/ส่งรวมกล่องเดิม) → ทุกวิธีจ่ายเท่ากันหมด = ค่าของหนักอย่างเดียว
     const covered = methodFree ? paid : paid.filter((m) => m.price <= qtyShip.fee);
     const rows: { id: string; name: string; price: number; note?: string; covers?: string[] }[] = [];
@@ -480,7 +483,7 @@ export default function CartPage() {
       });
     }
     rows.push(...paid.filter((m) => !covered.includes(m)));
-    rows.push(...methods.filter((m) => m.price === 0));
+    rows.push(...visibleMethods.filter((m) => m.price === 0));
     return rows;
   })();
   const total = subtotal + shippingCost;
