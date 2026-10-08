@@ -16,7 +16,7 @@ grant update (full_name, phone) on public.profiles to authenticated;
 -- ── 2) products / option_presets: ไม่มีทางไหนในเว็บเขียนผ่าน anon key เลย (ทุกการเขียนผ่าน service role หลัง requirePerm) ──
 -- policy เขียนด้วย is_admin() จึงเป็นประตูที่ไม่มีใครใช้ แต่เปิดทิ้งไว้ = ความเสี่ยงข้อ 1 — ปิดถาวร
 drop policy if exists "products admin write" on public.products;
-drop policy if exists "option_presets admin write" on public.option_presets;
+-- (ตาราง option_presets ไม่มีในฐานจริง — ติดตั้งด้วย setup.sql · ถ้ามีค่อยรัน: drop policy if exists "option_presets admin write" on public.option_presets;)
 
 -- ── 3) products: แถวตั้งค่าระบบ (id ขึ้นต้น "__") เคยอ่านได้สาธารณะทั้งหมด ──────────────────
 -- รั่ว: __dealers__ (ทะเบียนตัวแทน+ใบสมัคร) · __user_perms__/__role_perms__ (ชื่อผู้ใช้พนักงาน+สิทธิ์)

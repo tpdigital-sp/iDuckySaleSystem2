@@ -12,7 +12,7 @@ grant update (full_name, phone) on public.profiles to authenticated;
 
 -- ปิดประตูเขียน products / option_presets ผ่าน anon ถาวร (ทุกการเขียนจริงผ่าน service role หลัง requirePerm อยู่แล้ว)
 drop policy if exists "products admin write" on public.products;
-drop policy if exists "option_presets admin write" on public.option_presets;
+-- (ตาราง option_presets ไม่มีในฐานจริง — ติดตั้งด้วย setup.sql · ถ้ามีค่อยรัน: drop policy if exists "option_presets admin write" on public.option_presets;)
 
 -- ── 2) ใบเสนอราคาอ่านได้สาธารณะทั้งตาราง (ชื่อ/เบอร์/ที่อยู่/อีเมล/key) ──
 drop policy if exists "quotes public read" on public.quotes;
@@ -20,5 +20,5 @@ drop policy if exists "quotes public read" on public.quotes;
 -- ── ตรวจผล: ควรเหลือ products = "products public read" อย่างเดียว · quotes = "quotes service write" อย่างเดียว ──
 select tablename, policyname, cmd
 from pg_policies
-where schemaname = 'public' and tablename in ('products', 'option_presets', 'quotes', 'profiles')
+where schemaname = 'public' and tablename in ('products', 'quotes', 'profiles')
 order by 1, 2;
