@@ -1474,6 +1474,14 @@ ${
     }
   }
   if (!out || /NOT_FOUND/.test(out)) return null;
+  // 🛡 โมเดลไม่ยอมตอบ NOT_FOUND แต่พูดว่า "หน้าสินค้าไม่ได้ระบุ…" แทน (LINE 8 ต.ค. 69 "100 ชิ้น ผลิตกี่วัน ทันวันที่ 20 ไหม")
+  // = ไม่รู้ → คืน null ให้ agent/แอดมินรับต่อ ลูกค้าไม่ควรได้ประโยคแข็ง ๆ ว่าไม่มีข้อมูล
+  // ตอบหลายเรื่องแล้วบางเรื่องไม่มีข้อมูล ("UV กันน้ำ · PP ไม่มีข้อมูล") → ตัดเฉพาะบรรทัดนั้น เหลือแต่ประโยคเกริ่น/ปิด = ไม่รู้ทั้งหมด
+  if (NO_INFO_RE.test(out)) {
+    const kept = out.split("\n").filter((l) => !NO_INFO_RE.test(l));
+    if (!kept.some((l) => l.trim().length >= 12 && !FILLER_LINE_RE.test(l.trim()))) return null;
+    out = kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
   // 🛡 ถาม "ส่งกี่วัน" แล้วหน้าสินค้ามีแต่ FAQ กว้าง ๆ ("หลังยืนยันชำระเงิน…จัดส่งทั่วไทย") = ไม่ได้ตอบ → ให้ agent/คลังความรู้ตอบแทน (1 ต.ค. 69)
   if (!extra) {
     const topics = EXTRA_TOPICS.filter((t) => t.ask.test(query));
@@ -1485,6 +1493,7 @@ ${
     .replace(/^\s*[*-]\s+/gm, "• ")
     .replace(/^#+\s*/gm, "")
     .replace(/^สวัสดีค่ะ\s*/m, "")
+    .replace(/^แอดมิน(ร้าน)?\s*iDucky\s*(ค่ะ|ครับ|นะคะ)?\s*\n+/i, "")
     .trim();
   const url = botUrl(p);
   return {
@@ -1514,6 +1523,10 @@ const EXTRA_TOPICS: { ask: RegExp; need: RegExp }[] = [
   { ask: /วัสดุอะไร|ทำจากอะไร|ต่างกันยังไง|ต่างกันอย่างไร|แบบไหนดี|แนะนำ|เหมาะกับ/i, need: /./ },
 ];
 export const EXTRA_ASK_RE = new RegExp(EXTRA_TOPICS.map((t) => t.ask.source).join("|"), "i");
+/** คำตอบที่จริง ๆ คือ "ไม่รู้" (หน้าสินค้าไม่มีเรื่องที่ถาม) — infoText ทิ้งแล้วให้ agent/แอดมินรับต่อ (8 ต.ค. 69) */
+export const NO_INFO_RE = /ไม่ได้ระบุ|ไม่มีระบุ|ไม่มีข้อมูล|ไม่พบข้อมูล|ยังไม่มีข้อมูล|ไม่ได้ให้ข้อมูล|ไม่มีรายละเอียด(เรื่อง|เกี่ยวกับ)|ไม่ทราบ|ไม่สามารถ(ตอบ|ยืนยัน|ระบุ)|ยืนยันไม่ได้|ตอบไม่ได้/;
+/** บรรทัดเกริ่น/ปิดที่ไม่มีเนื้อหา ("แอดมินร้าน iDucky ค่ะ" "หากต้องการทราบข้อมูลเพิ่มเติม สอบถามได้") */
+const FILLER_LINE_RE = /^(แอดมิน|หากต้องการ|หากมีข้อสงสัย|หากสนใจ|สอบถาม|ขอบคุณ|ยินดี|รายละเอียดเต็ม|https?:)/;
 const PRICEY_RE = /ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขั้นต่ำ|\d+\s*(ชิ้น|ใบ|อัน|แผ่น|ตัว|ดวง|เซ็ต)|มีแบบไหน|แบบไหนบ้าง|ขนาดไหน/i;
 export async function extraInfo(query: string, productId: string): Promise<string> {
   const full = await getProductServer(productId).catch(() => undefined);
