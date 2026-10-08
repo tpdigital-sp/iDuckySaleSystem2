@@ -49,6 +49,7 @@ import {
 } from "@/lib/permissions";
 import { btnPrimary, card, faint, muted } from "@/lib/admin-ui";
 import { SITE_URL } from "@/lib/shop-info";
+import { gtagIdsFrom } from "@/lib/settings-shared";
 import { PageHead, PageShell } from "@/components/admin/ui";
 
 /** โลโก้/สีประจำธนาคาร — จับจากชื่อที่พิมพ์อิสระ (พิมพ์ "กสิกร" ก็ขึ้นโลโก้เขียว K ให้เอง)
@@ -873,7 +874,7 @@ function AdminSettingsPageInner() {
         bingVerification: seo.bingVerification?.trim() || undefined,
         ga4Id: seo.ga4Id?.trim() || undefined,
         gtmId: seo.gtmId?.trim() || undefined,
-        noindex: !!seo.noindex,
+        noindex: false, // ถอดสวิตช์ปิด index ออกแล้ว — เว็บเปิดจริง ห้ามปิดทั้งเว็บ (8 ต.ค. 69)
       },
       boxFees: boxFees
         .map((f) => ({
@@ -2670,14 +2671,21 @@ function AdminSettingsPageInner() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">Google Analytics 4 (GA4)</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Google tag — Analytics (G-…) · Merchant Center (MC-…) · Ads (AW-…)</span>
                   <input
                     value={seo.ga4Id ?? ""}
                     onChange={(e) => patchSeo({ ga4Id: e.target.value })}
+                    onBlur={(e) => {
+                      // วางโค้ด <script> ทั้งก้อนจาก Google มาได้ → เหลือแค่รหัส "G-XXXX, MC-YYYY"
+                      const ids = gtagIdsFrom(e.target.value);
+                      if (e.target.value.trim() && ids.join(", ") !== e.target.value.trim()) patchSeo({ ga4Id: ids.join(", ") });
+                    }}
                     className={inputCls}
-                    placeholder="G-XXXXXXXXXX"
+                    placeholder="G-XXXXXXXXXX, MC-XXXXXXXX"
                   />
-                  <span className="mt-1 block text-[11px] text-slate-400">ใส่แล้วเว็บจะเก็บสถิติผู้เข้าชมให้อัตโนมัติ</span>
+                  <span className="mt-1 block text-[11px] text-slate-400">
+                    ใส่ได้หลายรหัสคั่นด้วยจุลภาค หรือวางโค้ดที่ Google ให้มาทั้งก้อนก็ได้ ระบบดึงรหัสให้เอง · ใส่แล้วเว็บเก็บสถิติ/ให้ Merchant Center ทดสอบเว็บผ่าน
+                  </span>
                 </label>
 
                 <label className="block">
@@ -2694,20 +2702,11 @@ function AdminSettingsPageInner() {
                 </label>
               </div>
 
-              <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl bg-rose-50/70 p-3 ring-1 ring-rose-100">
-                <input
-                  type="checkbox"
-                  checked={!!seo.noindex}
-                  onChange={(e) => patchSeo({ noindex: e.target.checked })}
-                  className="mt-0.5 h-4 w-4 accent-rose-500"
-                />
-                <span className="text-xs text-slate-700">
-                  <b className="text-rose-700">ปิดไม่ให้ Google เก็บทั้งเว็บ</b> (ใช้ตอนเว็บยังไม่พร้อมเปิดจริง) —
-                  ติ๊กแล้ว robots.txt จะห้ามทุกบอท และ sitemap จะว่าง{" "}
-                  <b>อย่าลืมเอาติ๊กออกตอนเปิดร้านจริง</b> ไม่งั้นเว็บจะไม่ขึ้นในผลค้นหาเลย
-                </span>
-              </label>
-
+              {/*
+               * ⛔ ช่องติ๊ก "ปิดไม่ให้ Google เก็บทั้งเว็บ" (seo.noindex) ถอดออกแล้ว — เจ้าของร้านสั่ง 8 ต.ค. 69
+               * เว็บเปิดขายจริงและต้องการติดหน้า Google ไม่ควรมีสวิตช์ที่เผลอติ๊กแล้วเว็บหายจากผลค้นหาทั้งเว็บ
+               * ค่าที่บันทึกจะถูกบังคับเป็น false เสมอ (ดู payload ใน save())
+               */}
               <div className="mt-4 rounded-xl bg-sky-50/70 p-3 text-xs leading-relaxed text-slate-600 ring-1 ring-sky-100">
                 <p className="font-bold text-sky-800">📖 ขั้นตอนเชื่อม Search Console (ครั้งเดียวจบ)</p>
                 <ol className="mt-1.5 list-decimal space-y-1 pl-4">
