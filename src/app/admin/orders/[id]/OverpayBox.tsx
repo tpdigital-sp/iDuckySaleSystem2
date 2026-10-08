@@ -11,8 +11,9 @@ import { formatPrice } from "@/lib/products";
  * โชว์เมื่อยังมีเงินโอนเกินค้างจัดการ หรือเคยจัดการไปแล้ว (ประวัติ)
  *   คืนเงินลูกค้าแล้ว   → บันทึกยอด + สลิปที่ร้านโอนคืน (ไม่บังคับ)
  *   ใช้กับออเดอร์อื่น   → ลูกค้าโอนรวม: ย้ายยอดไปนับเป็นเงินชำระของอีกใบ (ไม่ต้องแนบสลิปซ้ำ/รับยอดเองที่ใบนั้น)
+ *   ออกคูปองแทน        → ลูกค้าขอเก็บไว้ใช้ครั้งหน้า: ระบบสร้างคูปองลดเป็นบาทเท่ายอดให้เอง + ส่งรหัสทางไลน์ (8 ต.ค. 69)
  * เซิร์ฟเวอร์: /api/admin/orders/overpay
- * สิทธิ์ (เจ้าของร้านเคาะ 8 ต.ค. 69): คืนเงิน = mayRefund (orders.money แอดมินทุกคน — แอดมินเป็นคนโอนคืน)
+ * สิทธิ์ (เจ้าของร้านเคาะ 8 ต.ค. 69): คืนเงิน/ออกคูปอง = mayRefund (orders.money แอดมินทุกคน — แอดมินเป็นคนโอนคืน)
  *                                   ย้ายยอด = mayTransfer (orders.markPaid ยืนยันเงินเข้า — นับเป็นเงินเข้าของอีกใบ)
  */
 
@@ -33,7 +34,8 @@ const thDate = (iso: string) =>
 export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: { order: Order; mayRefund: boolean; mayTransfer: boolean; onOrder: (o: Order) => void }) {
   const left = overpayOutstanding(order);
   const acts = order.overpayActions ?? [];
-  const [mode, setMode] = useState<null | "refund" | "transfer">(null);
+  const [mode, setMode] = useState<null | "refund" | "transfer" | "coupon">(null);
+  const [lastCode, setLastCode] = useState(""); // รหัสคูปองที่เพิ่งออก — โชว์ให้ก๊อปส่งลูกค้าทันที
   const [raw, setRaw] = useState("");
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -61,7 +63,7 @@ export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: {
 
   if (left <= 0 && !acts.length) return null;
 
-  const open = (m: "refund" | "transfer") => {
+  const open = (m: "refund" | "transfer" | "coupon") => {
     setMode(m);
     setErr("");
     setNote("");
@@ -91,12 +93,13 @@ export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: {
       if (mode === "refund" && file) fd.append("file", file);
       if (mode === "transfer") fd.append("toOrderId", toId.trim().toUpperCase());
       const res = await fetch("/api/admin/orders/overpay", { method: "POST", body: fd });
-      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string; couponCode?: string };
       if (!res.ok || !j.order) {
         setErr(j.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
       onOrder(j.order);
+      setLastCode(j.couponCode ?? "");
       setMode(null);
       setCands(null);
     } finally {
@@ -129,6 +132,16 @@ export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: {
                     {a.toOrderId}
                   </Link>
                 </span>
+              ) : a.kind === "coupon" ? (
+                <span>
+                  🎟 ออกคูปองแทน{" "}
+                  <code className="rounded bg-teal-50 px-1 font-bold text-teal-800 ring-1 ring-teal-200">{a.couponCode}</code>
+                  {a.couponCode && (
+                    <button type="button" onClick={() => void navigator.clipboard?.writeText(a.couponCode!)} className="ml-1 text-sky-700 underline">
+                      ก๊อป
+                    </button>
+                  )}
+                </span>
               ) : (
                 <span>
                   ↩ คืนลูกค้าแล้ว
@@ -151,8 +164,19 @@ export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: {
         </ul>
       )}
 
+      {lastCode && !mode && (
+        <p className="mt-2 rounded-lg bg-teal-50 px-2.5 py-2 text-[11px] text-teal-900 ring-1 ring-teal-200">
+          🎟 ออกคูปอง <code className="font-extrabold">{lastCode}</code> แล้ว · ส่งรหัสให้ลูกค้าทางไลน์ถ้าผูกห้องแชทไว้ (ดูประวัติ) · ไม่ผูก = ก๊อปรหัสส่งเองในแชท
+        </p>
+      )}
+
       {left > 0 && !mode && (mayRefund || mayTransfer) && (
         <div className="mt-2 grid grid-cols-2 gap-2">
+          {mayRefund && (
+            <button type="button" onClick={() => open("coupon")} className="col-span-2 min-h-11 rounded-lg bg-teal-700 px-3 text-xs font-bold text-white hover:bg-teal-800">
+              🎟 ออกคูปองแทนคืนเงิน (ลูกค้าเก็บไว้ใช้ครั้งหน้า)
+            </button>
+          )}
           {mayTransfer ? (
             <button type="button" onClick={() => open("transfer")} className="min-h-11 rounded-lg bg-amber-600 px-3 text-xs font-bold text-white hover:bg-amber-700">
               ↪ ใช้กับออเดอร์อื่น
@@ -176,8 +200,19 @@ export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: {
       {mode && (
         <div className="mt-2 space-y-2 rounded-lg bg-white p-2.5 ring-1 ring-amber-200">
           <p className="text-xs font-extrabold text-slate-800">
-            {mode === "transfer" ? "↪ ย้ายเงินโอนเกินไปนับเป็นยอดชำระของออเดอร์อื่น (ลูกค้าโอนรวม)" : "↩ บันทึกว่าร้านโอนเงินคืนลูกค้าแล้ว"}
+            {mode === "transfer"
+              ? "↪ ย้ายเงินโอนเกินไปนับเป็นยอดชำระของออเดอร์อื่น (ลูกค้าโอนรวม)"
+              : mode === "coupon"
+                ? "🎟 ออกคูปองลดเป็นบาทเท่ายอดโอนเกิน แทนโอนคืน"
+                : "↩ บันทึกว่าร้านโอนเงินคืนลูกค้าแล้ว"}
           </p>
+          {mode === "coupon" && (
+            <p className="text-[11px] leading-snug text-slate-600">
+              ระบบสร้างคูปองใช้ครั้งเดียว ไม่หมดอายุ ให้เอง
+              {order.customerId ? " · ผูกกับบัญชี LINE ที่สั่งใบนี้ คนอื่นใช้ไม่ได้" : " · ใบนี้สั่งแบบไม่ล็อกอิน → ใครมีรหัสก็ใช้ได้ ส่งรหัสให้ลูกค้าคนเดียว"}
+              {" · "}ส่งรหัสทางไลน์ให้เองถ้าผูกห้องแชทไว้
+            </p>
+          )}
 
           {mode === "transfer" && (
             <div>
@@ -244,7 +279,7 @@ export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: {
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={mode === "refund" ? "หมายเหตุ เช่น โอนคืนเข้าพร้อมเพย์ลูกค้า" : "หมายเหตุ (ถ้ามี)"}
+            placeholder={mode === "refund" ? "หมายเหตุ เช่น โอนคืนเข้าพร้อมเพย์ลูกค้า" : mode === "coupon" ? "หมายเหตุ เช่น ลูกค้าขอเก็บไว้ใช้รอบหน้า" : "หมายเหตุ (ถ้ามี)"}
             className="min-h-11 w-full rounded-lg border border-slate-300 px-2.5 text-xs"
           />
 
@@ -259,7 +294,9 @@ export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: {
                 ? "กำลังบันทึก…"
                 : mode === "transfer"
                   ? `ย้าย ${formatPrice(amount)} ไป ${toId.trim().toUpperCase() || "…"}`
-                  : `บันทึกว่าคืน ${formatPrice(amount)} แล้ว`}
+                  : mode === "coupon"
+                    ? `ออกคูปองลด ${formatPrice(Math.round(amount))}`
+                    : `บันทึกว่าคืน ${formatPrice(amount)} แล้ว`}
             </button>
           </div>
         </div>

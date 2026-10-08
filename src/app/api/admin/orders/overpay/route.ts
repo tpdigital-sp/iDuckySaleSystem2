@@ -10,6 +10,10 @@ import { acceptPaymentManually } from "@/lib/server/slip-apply";
 import { acquireSlipLock } from "@/lib/server/slip-dedupe";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
 import { updateOrder } from "@/lib/server/order-write";
+import { randomCode, type Coupon } from "@/lib/coupons";
+import { inBackground } from "@/lib/server/background";
+import { noticeFlex, notifyCustomerLogged } from "@/lib/server/notify";
+import { SITE_URL } from "@/lib/shop-info";
 
 export const runtime = "nodejs";
 
@@ -22,10 +26,14 @@ export const runtime = "nodejs";
  *   GET  ?orderId=          → ยอดค้างจัดการ + ออเดอร์อื่นของลูกค้าคนเดียวกันที่ยังค้างชำระ (ตัวเลือกปลายทาง)
  *   POST multipart          → kind=refund  : amount · note? · file? (สลิปที่ร้านโอนคืน)
  *                             kind=transfer: amount · toOrderId · note?
+ *                             kind=coupon  : amount · note? → ออกคูปองลดเป็นบาทเท่ายอดให้ลูกค้า (แทนโอนคืน)
+ *
+ * coupon = แถวใหม่ในตาราง coupons (fixed · ใช้ครั้งเดียว · ผูกบัญชีถ้าใบนี้มี customerId · ไม่หมดอายุ)
+ * + การ์ดไลน์บอกรหัสให้ลูกค้า (ถ้าผูกห้องแชท) · ลูกค้าที่ไม่ล็อกอินใช้รหัสตอน checkout ได้ (คูปองใบเดี่ยวใช้ได้ทุกคน)
  *
  * transfer = สร้าง "ใบเพิ่ม" ในใบปลายทาง (fromOrder · ชี้สลิปของใบต้นทาง) แล้วนับยอดผ่าน acceptPaymentManually
  * (ครบแล้วยืนยันงวด/แจ้งลูกค้า/ตัดสต๊อกเหมือนรับยอดเอง) · เรคอร์ด msVerify ติดหมายเหตุ "ย้ายมาจาก OD-… ไม่มีเงินเข้าใหม่"
- * สิทธิ์: refund = orders.money (แอดมินทุกคน — แอดมินเป็นคนโอนคืน) · transfer + GET = orders.markPaid "ยืนยันเงินเข้า" (8 ต.ค. 69)
+ * สิทธิ์: refund/coupon = orders.money (แอดมินทุกคน — แอดมินเป็นคนโอนคืน/ออกคูปอง) · transfer + GET = orders.markPaid "ยืนยันเงินเข้า" (8 ต.ค. 69)
  */
 
 const BUCKET = "payment-slips-private";
@@ -93,7 +101,7 @@ export async function POST(req: Request) {
   const kind = String(form.get("kind") ?? "");
   const amount = round2(Number(form.get("amount")) || 0);
   const note = String(form.get("note") ?? "").trim().slice(0, 300) || undefined;
-  if (!orderId || (kind !== "refund" && kind !== "transfer")) return NextResponse.json({ error: "ข้อมูลไม่ครบ" }, { status: 400 });
+  if (!orderId || (kind !== "refund" && kind !== "transfer" && kind !== "coupon")) return NextResponse.json({ error: "ข้อมูลไม่ครบ" }, { status: 400 });
   if (kind === "transfer" && !can(gate.actor, "orders.markPaid", await loadRolePerms()))
     return NextResponse.json({ error: "ย้ายยอดไปใช้กับออเดอร์อื่น = ยืนยันเงินเข้าของใบนั้น — ต้องมีสิทธิ์ “ยืนยันเงินเข้า”" }, { status: 403 });
   if (!(amount > 0)) return NextResponse.json({ error: "ยอดต้องมากกว่า 0" }, { status: 400 });
@@ -142,6 +150,64 @@ export async function POST(req: Request) {
       const { error } = await updateOrder(sb, updated);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated) });
+    }
+
+    // ── coupon: ออกคูปองลดเป็นบาทเท่ายอดโอนเกิน แทนโอนคืน (ลูกค้าเลือกเก็บไว้ใช้ครั้งหน้า) ──
+    if (kind === "coupon") {
+      const amt = Math.round(amount); // คูปองเป็นบาทเต็ม — เศษสตางค์ปัดขึ้นให้ลูกค้า
+      const code = `RF-${randomCode(8)}`;
+      const coupon: Coupon = {
+        code,
+        type: "fixed",
+        value: Math.max(1, amt),
+        ...(order.customerId ? { assignedTo: order.customerId } : {}),
+        note: `คืนเงินโอนเกิน ${order.id} (${who})${note ? ` · ${note}` : ""}`,
+        uses: 0,
+        status: "active",
+        createdAt: now,
+      };
+      const { error: cErr } = await sb.from("coupons").insert({ code, data: coupon });
+      if (cErr) {
+        const missing = cErr.code === "42P01" || cErr.code === "PGRST205" || /schema cache|find the table/i.test(cErr.message);
+        return NextResponse.json({ error: missing ? "ยังไม่มีตาราง coupons — รัน supabase/coupons.sql ก่อน" : cErr.message }, { status: missing ? 503 : 500 });
+      }
+      action.couponCode = code;
+      const updated = withLog(
+        { ...order, overpayActions: [...(order.overpayActions ?? []), action] },
+        who,
+        "🎟 ออกคูปองแทนคืนเงินโอนเกิน",
+        `คูปอง ${code} ลด ${thb(coupon.value)} บาท${order.customerId ? " · ผูกบัญชีลูกค้า" : " · ใบนี้สั่งแบบไม่ล็อกอิน — ใครมีรหัสก็ใช้ได้ (ครั้งเดียว)"}${note ? ` · ${note}` : ""}` +
+          ` · เหลือโอนเกินที่ยังไม่จัดการ ${thb(round2(left - amount))} บาท`
+      );
+      const { error } = await updateOrder(sb, updated);
+      if (error) return NextResponse.json({ error: `ออกคูปอง ${code} แล้ว แต่บันทึกฝั่งใบนี้ไม่สำเร็จ: ${error.message}` }, { status: 500 });
+
+      // 🎴 บอกรหัสลูกค้าทางไลน์ (ผูกห้องแชทไว้ถึงจะถึง) — ส่งหลังตอบ ไม่ให้แอดมินรอ
+      inBackground(
+        "overpay-coupon-notify",
+        notifyCustomerLogged(
+          sb,
+          updated,
+          noticeFlex({
+            tone: "couponOut",
+            head: "คูปองส่วนลดจากยอดโอนเกิน",
+            headline: `ออเดอร์ ${order.id} โอนมาเกินยอดบิล ทางร้านออกเป็นคูปองไว้ให้ใช้ครั้งหน้าค่ะ`,
+            id: code,
+            hero: { label: "มูลค่าคูปอง", value: `${thb(coupon.value)} บาท` },
+            rows: [
+              { label: "ออเดอร์ต้นทาง", value: order.id },
+              { label: "วิธีใช้", value: "ใส่รหัสในช่องคูปองตอนสั่งซื้อ", bold: true },
+            ],
+            note: order.customerId
+              ? "คูปองผูกกับบัญชี LINE ที่ใช้สั่งออเดอร์นี้ · ใช้ได้ 1 ครั้ง ไม่มีวันหมดอายุ"
+              : "ใช้ได้ 1 ครั้ง ไม่มีวันหมดอายุ · เก็บรหัสไว้ อย่าส่งต่อให้คนอื่นนะคะ",
+            button: { label: "เลือกสินค้า", uri: `${SITE_URL}/products` },
+            alt: `🎟 คูปอง ${code} ลด ${thb(coupon.value)} บาท — คืนยอดโอนเกินจากออเดอร์ ${order.id} ใส่รหัสตอนสั่งซื้อครั้งหน้าได้เลยค่ะ`,
+          }),
+          `🎟 คูปอง ${code} แทนคืนเงินโอนเกิน ${thb(coupon.value)} บาท`
+        )
+      );
+      return NextResponse.json({ ok: true, order: await signPaymentUrls(sb, updated), couponCode: code });
     }
 
     // ── transfer: นับเป็นยอดชำระของออเดอร์ปลายทาง ──

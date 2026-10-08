@@ -625,7 +625,8 @@ export type NoticeTone =
   | "stockIn" // ของเข้าร้านแล้ว
   | "claimOpen" // รับเรื่องเคลม
   | "claimUpdate" // อัปเดตเรื่องเคลม
-  | "whtAsk"; // 🧾 ทวงใบหัก ณ ที่จ่าย (หน้า /admin/wht)
+  | "whtAsk" // 🧾 ทวงใบหัก ณ ที่จ่าย (หน้า /admin/wht)
+  | "couponOut"; // 🎟 ออกคูปองแทนคืนเงินโอนเกิน (กล่อง 💸 หน้าออเดอร์ · 8 ต.ค. 69)
 
 export const NOTICE_HEX: Record<NoticeTone, string> = {
   balanceUp: "#C2410C",
@@ -651,6 +652,7 @@ export const NOTICE_HEX: Record<NoticeTone, string> = {
   claimOpen: "#DB2777",
   claimUpdate: "#9D174D",
   whtAsk: "#172554",
+  couponOut: "#134E4A",
 };
 
 /** ทุกสีของการ์ดทั้งระบบ (สถานะ + แจ้งเตือน) — เทสจานสีอ่านจากตัวนี้ */

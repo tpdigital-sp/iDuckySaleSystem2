@@ -1081,6 +1081,14 @@ export default function CustomerOrderPage() {
           {overpayOutstanding(order) > 0 && (
             <p className="mt-2 text-xs font-semibold t-ok">💚 โอนเกินมา {formatPrice(overpayOutstanding(order))} — ทางร้านจะติดต่อคืนเงินให้ครับ</p>
           )}
+          {/* 🎟 ยอดโอนเกินที่ร้านออกเป็นคูปองให้ — ลูกค้าต้องเห็นรหัสที่นี่ด้วย (ไลน์อาจไม่ถึงถ้าไม่ได้ผูกห้องแชท) */}
+          {(order.overpayActions ?? [])
+            .filter((a) => a.kind === "coupon" && a.couponCode)
+            .map((a) => (
+              <p key={a.id} className="mt-2 text-xs font-semibold t-ok">
+                🎟 ยอดโอนเกิน {formatPrice(a.amount)} ออกเป็นคูปองให้แล้ว รหัส <code className="rounded bg-white/70 px-1 font-extrabold">{a.couponCode}</code> — ใส่ตอนสั่งซื้อครั้งหน้าได้เลยครับ
+              </p>
+            ))}
         </div>
       )}
     </>

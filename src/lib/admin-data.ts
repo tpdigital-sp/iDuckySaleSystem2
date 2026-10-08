@@ -2425,12 +2425,14 @@ export interface OverpayAction {
   id: string;
   at: string;
   by: string;
-  /** refund = ร้านโอนคืนลูกค้าแล้ว · transfer = ย้ายไปนับเป็นยอดชำระของออเดอร์อื่น */
-  kind: "refund" | "transfer";
+  /** refund = ร้านโอนคืนลูกค้าแล้ว · transfer = ย้ายไปนับเป็นยอดชำระของออเดอร์อื่น · coupon = ออกคูปองลดเป็นบาทให้ลูกค้าแทนคืนเงิน (8 ต.ค. 69) */
+  kind: "refund" | "transfer" | "coupon";
   amount: number;
   /** transfer: ออเดอร์ปลายทาง + id ใบเพิ่มที่สร้างในใบนั้น */
   toOrderId?: string;
   toPaymentId?: string;
+  /** coupon: รหัสคูปองที่ออกให้ (ตาราง coupons · ลดเป็นบาทเท่ายอด · ผูกบัญชีลูกค้าถ้าใบนี้ล็อกอิน) */
+  couponCode?: string;
   /** refund: สลิปที่ร้านโอนคืน (path ใน payment-slips-private) · url = signed ชั่วคราว ห้ามเก็บลงฐาน */
   slipPath?: string;
   slipUrl?: string;
