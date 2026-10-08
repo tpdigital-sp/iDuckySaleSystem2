@@ -143,10 +143,12 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   let pick: Pick | undefined;
   let ans: PriceAnswer | null = null;
 
-  if (IMG_REF_RE.test(query) && lastUserTurnHasImage(body.history)) {
+  // "รับทำงานแบบนี้ไหม" ที่ไม่เอ่ยชื่อสินค้าเลย (qMentions ว่าง) = อ้างถึงสิ่งที่เครื่องคิดราคาไม่เห็น (รูป/ข้อความที่ quote) — 8 ต.ค. 69 เจอซ้ำตอนรูปกับข้อความมาห่างกัน 5 วิ จนโน้ตรูปยังไม่ถูกบันทึก
+  const unseenRef = IMG_REF_RE.test(query) && /รับทำ|รับผลิต|ทำได้|ทำแบบนี้|มีไหม|มีมั้ย|มีแบบนี้/.test(query) && !!u && !(u.debug?.qMentions?.length) && !(qty || u.qty);
+  if ((IMG_REF_RE.test(query) && lastUserTurnHasImage(body.history)) || unseenRef) {
     // 🖼 8 ต.ค. 69 LINE: "รับทำงานแบบนี้ไหมคะ" 4 วิหลังส่งรูปป้าย PP Board — เครื่องคิดราคาไม่เห็นรูป เคยโยงไป "พวงกุญแจอะคริลิค" ที่คุยค้าง
     // แล้วตอบ "รับผลิตค่ะ" ทั้งที่ร้านไม่มีสินค้านั้น → ไม่ตอบ ให้ agent/แอดมินที่เห็นผลวิเคราะห์รูปตอบ
-    ans = { answer: "", kind: "skip", source: "refers-to-image", intent: "unknown" };
+    ans = { answer: "", kind: "skip", source: unseenRef ? "refers-to-unseen" : "refers-to-image", intent: "unknown" };
   } else if (u) {
     // ลูกค้าถามหาของที่ร้านไม่มี → บอกตรง ๆ + เสนอตัวใกล้เคียง (เจอจริง 23 ก.ย. 69: "พวงกุญแจหนังปัก" ได้เมนูพวงกุญแจอะคริลิค/หมอนกลับไป)
     // สินค้าฉบับร่างที่ "ชื่อตรงกับที่ลูกค้าเรียก" ต้องชนะตัวใกล้เคียงที่ AI หยิบมาแทน (พวงกุญแจหนังปัก → ร่าง "พวงกุญแจหนังปักลาย"
