@@ -30,6 +30,29 @@ import {
   type Understanding,
 } from "@/lib/server/price-answer";
 
+/** คำถามแบบถามเรื่องเฉพาะ (กี่ / อะไร / ได้ไหม / ใช่ไหม) — คู่กับ specCoversQuery */
+const SPECIFIC_Q_RE = /กี่|อะไร|ได้ไหม|ได้มั้ย|ใช่ไหม|ใช่มั้ย|หรือเปล่า|รึเปล่า|ไหม|มั้ย|ยังไง|อย่างไร/;
+/** ขอดูรายการตัวเลือกจริง ๆ ("มีขนาดไหนบ้าง" "มีสีอะไรบ้าง" "มีกี่แบบ") = รายการตัวเลือกคือคำตอบที่ถูก */
+const LIST_Q_RE = /บ้าง|มีกี่แบบ|กี่แบบ|ตัวเลือก|มีแบบไหน|แบบไหนดี|มีขนาด|มีสี|มีไซส์|ขนาดไหน|ไซส์ไหน/;
+/**
+ * รายการตัวเลือก ("• ขนาด (1 แบบ): 6×6 ซม. · …") ตอบคำถามนี้ไหม — ชื่อกลุ่มหรือค่าตัวเลือกต้องโผล่ในคำถาม
+ * "พิมพ์ 2 ด้านได้ไหม" → มีค่า "พิมพ์ 2 ด้าน" = ตอบ · "ใส่บัตรได้กี่อัน" → ไม่มีกลุ่มไหนเกี่ยว = ไม่ตอบ
+ */
+function specCoversQuery(query: string, answer: string): boolean {
+  const q = norm(query);
+  for (const line of answer.split("\n")) {
+    const m = /^\s*•\s*([^:(]+?)\s*(?:\(\d+\s*แบบ\))?\s*:\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const label = norm(m[1]);
+    if (label.length >= 2 && q.includes(label)) return true;
+    for (const v of m[2].split(/\s*·\s*/)) {
+      const nv = norm(v.replace(/….*$/, ""));
+      if (nv.length >= 3 && q.includes(nv)) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * 💰 แกนของ /api/pricing/search แยกออกมาเป็นฟังก์ชัน (1 ต.ค. 69) — ให้ /api/chat (แชทเว็บ) เรียกตรง ๆ ไม่ต้องยิง HTTP วนกลับมาเอง
  * route.ts เหลือแค่รับ request/กันยิงรัว/CORS แล้วเรียก priceSearch()
@@ -205,6 +228,12 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     ans = { answer: "", kind: "skip", source: "not-a-product-question", intent: "unknown" };
   }
 
+  // 🎯 ถามเรื่องเฉพาะที่ "รายการตัวเลือก" ไม่ได้ตอบ → อย่าเทรายการ ให้ agent/คลังความรู้/แอดมินรับต่อ (8 ต.ค. 69 เทียบแชทจริง)
+  // "Magsafe Wallet ใส่บัตรได้กี่อัน" "ไม่รับสายลดไหม" "เคลือบอะไรได้คะ" "มีซองแยกชิ้นไหม" เคยได้แค่ "• ขนาด (1 แบบ): …"
+  if (ans.intent === "spec" && SPECIFIC_Q_RE.test(query) && !LIST_Q_RE.test(query) && !specCoversQuery(query, ans.answer)) {
+    ans = { answer: "", kind: "skip", source: "spec-not-covering-question", intent: "unknown" };
+  }
+
   // 🧩 ตอบให้ครบทุกเรื่องที่ลูกค้าถาม (29 ก.ย. 69 "อยากได้ที่ติดรถยนต์ / มีแบบไหนบ้าง / เอาแบบกันฝน" → เดิมได้แต่ตารางราคา)
   // LINE รวมหลายข้อความด้วย " / " · ถ้ามีเรื่องคุณสมบัติ (กันน้ำ/กันฝน/…) หรือถามหลายท่อน และคำตอบหลักเป็นราคา/ตัวเลือกของสินค้าตัวเดียว
   // → ถามหน้าสินค้าอีกรอบเฉพาะส่วนที่เหลือ แล้วแปะไว้หัวคำตอบ (ไม่มีเรื่องอื่น = ไม่แปะ)
@@ -224,7 +253,7 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   const text =
     ans.answer ||
     (isPriceIntent(query)
-      ? "ยังไม่มีราคาของรายการนี้ในระบบ รบกวนถามแอดมินให้ตีราคาให้นะครับ"
+      ? "ยังไม่มีราคาของรายการนี้ในระบบ รบกวนถามแอดมินให้ตีราคาให้นะคะ"
       : "คำถามนี้ไม่ใช่คำถามราคา ไม่ต้องใช้ผลจากเครื่องมือนี้");
 
   const products: ProductRef[] = ans.products?.length ? ans.products : ans.product ? [ans.product] : [];
