@@ -894,6 +894,12 @@ ${list}
       t.replace(/ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขอเรท|เรท|ค่ะ|คะ|ครับ|หน่อย|ขอ|อยากได้|สนใจ|\?/g, "").replace(/\s+/g, " ").trim();
     let requested = cleanReq(String(raw.requested ?? "")) || cleanReq(q);
     let finalPicked = picked;
+    // 📄 8 ต.ค. 69 15:48 "ขอดูภาพกระดาษสีทอง" → LLM พ่วง "Sticker Gold | Silver | RoseGold" มาเป็นเมนู (บทสนทนาก่อนหน้าเคยพูดถึง) ทั้งที่กฎบอกแล้วว่า = กระดาษเนื้อพิเศษ
+    // → ลูกค้าพูดถึง "กระดาษ" โดยไม่พูดถึงสติ๊กเกอร์ = ตัดสินค้าสติ๊กเกอร์ทิ้ง (เหลือแต่ของที่เป็นกระดาษจริง)
+    if (/กระดาษ/.test(q) && !/สติ๊กเกอร์|สติกเกอร์|sticker/i.test(q)) {
+      const paperOnly = finalPicked.filter((it) => !/sticker|สติ๊กเกอร์|สติกเกอร์/i.test(it.name));
+      if (paperOnly.length) finalPicked = paperOnly;
+    }
     // "หนัง" ต้องไม่ไปจับ "หนังสือ" (สมุด/ที่คั่นหนังสือเคยโผล่มาเป็นตัวใกล้เคียงของพวงกุญแจหนัง)
     const hasQual = (it: Lite, w: string) => {
       const hay = `${it.name} ${it.desc ?? ""}`;
