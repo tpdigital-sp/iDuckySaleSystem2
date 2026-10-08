@@ -317,6 +317,8 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     found: ans.kind !== "skip" && !!ans.answer,
     // ส่วนที่ตอบเพิ่มนอกเหนือราคา/ตัวเลือก (กันน้ำ/ส่วนเสริม/ใช้ลายเอง) — แปะอยู่หัว answer แล้ว ให้ไว้เผื่อบอทปลายทางอยากแยกแสดง
     extra: ans.extra ?? null,
+    // ❓ ตัวเลือกที่ยังไม่ระบุ + ค่าที่เลือกได้ — บอท LINE ใช้เป็นประโยคถามต่อแทนประโยคปิดกลาง ๆ (8 ต.ค. 69 18:35)
+    askNext: ans.askNext ?? null,
     qty: qty ?? null,
     ...(product ? { product } : {}),
     products,

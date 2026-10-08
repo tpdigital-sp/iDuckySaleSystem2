@@ -74,6 +74,8 @@ export interface PriceAnswer {
   products?: ProductRef[];
   /** ส่วนที่ตอบเพิ่มนอกเหนือราคา/ตัวเลือก (extraInfo) */
   extra?: string;
+  /** ❓ ตัวเลือกที่ลูกค้ายังไม่ได้ระบุ (ทำให้ราคายังเป็นช่วง) พร้อมค่าที่เลือกได้ — ให้บอทถามต่อแทนประโยคปิดกลาง ๆ (8 ต.ค. 69 18:35) */
+  askNext?: string;
 }
 
 interface Lite {
@@ -1234,6 +1236,8 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
   const namedParts: string[] = [];
   const namedIdx = new Set<number>();
   const belowMin: string[] = [];
+  /** ตารางแรกที่คิดราคาได้ + ยังเหลือหลายแบบ → ไว้ประกอบคำถาม "ขอรายละเอียดเพิ่ม" */
+  let askFrom: { m: PriceMatrix; keys: string[] } | null = null;
   const stripNamed = (txt: string) => txt.split(" · ").filter((v) => !namedParts.some((n) => norm(n) === norm(v))).join(" · ") || txt;
   /** ขั้นบันได "ยิ่งสั่งเยอะยิ่งถูก" ของแบบถูกสุด — ใส่บรรทัดเดียวท้ายคำตอบ (เดิมกางครบทุกช่วงทุกเรท = 14 บรรทัด) */
   let ladder = "";
@@ -1262,6 +1266,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
       if (!shown.length) continue;
       printed++;
       options += shown.length;
+      if (!askFrom && shown.length > 1) askFrom = { m, keys: shown.map((x) => x.key) };
       const cap = narrow ? 1 : 3;
       // โครงใหม่ (18:26): [หัวเรทเมื่อมีหลายเรท] → แถว "ถูกสุด <แบบ> — ฿/หน่วย (รวม)" → แถว "แบบอื่น (ต่างกันที่…) : ช่วงราคา"
       // แถวขึ้นต้น "• … — …" การ์ดไลน์ (Site Price Flex) แปลงเป็น 2 คอลัมน์ · 【หัว】 = หัวข้อตัวหนา
@@ -1320,6 +1325,29 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
   if (allRates.length > rates.length) lines.push(`  (มีอีก ${allRates.length - rates.length} เรท ดูที่หน้าสินค้า)`);
   if (ladder) lines.push(ladder);
 
+  // ❓ เจ้าของร้าน 18:35: "ควรถามรายละเอียดลูกค้าให้ครบตามกลุ่มตัวเลือกสินค้าที่มี" — ราคายังเป็นช่วงเพราะลูกค้ายังไม่เลือก หนา/สกรีน/ประเภท
+  // → สร้างคำถามจากกลุ่มที่ยังไม่ระบุ (เฉพาะแกนราคา) พร้อมค่าที่เลือกได้จริงของสินค้านี้ (≤6 ค่า)
+  let askNext = "";
+  if (qty && askFrom) {
+    const { m, keys } = askFrom;
+    const groups: string[] = [];
+    (m.driverLabels ?? []).forEach((label, idx) => {
+      if (!label || namedIdx.has(idx)) return;
+      const vals = [...new Set(keys.map((k) => k.split("│")[idx] ?? "").filter(Boolean))];
+      if (vals.length < 2) return;
+      // ลูกค้าพิมพ์ค่าแบบย่อ ("ใส" = อะคริลิคใส) ที่ pickColumns จับไม่ได้ → ตัดคำนำหน้าที่ทุกค่าในกลุ่มมีเหมือนกัน (อะคริลิค…) แล้วเทียบ ถ้าเจอ = ระบุแล้ว ไม่ถาม
+      let prefix = vals[0];
+      for (const v of vals) { let i = 0; while (i < prefix.length && i < v.length && prefix[i] === v[i]) i++; prefix = prefix.slice(0, i); }
+      const specified = vals.some((v) => { const core = norm(v.slice(prefix.length)); return core.length >= 2 && qn.includes(core); });
+      if (specified) return;
+      groups.push(`• ${label.trim()}: ${vals.slice(0, 6).join(" / ")}${vals.length > 6 ? ` / …อีก ${vals.length - 6}` : ""}`);
+    });
+    if (groups.length) {
+      const extras = (p.options ?? []).filter((o) => o.choices?.length && !(m.driverLabels ?? []).some((d) => norm(d) === norm(o.label))).map((o) => groupLabel(o.label)).slice(0, 3);
+      askNext = `ขอรายละเอียดเพิ่มอีกนิดนะคะ จะได้คิดราคาเป๊ะ ๆ ให้ค่า 🥰\n${groups.join("\n")}${extras.length ? `\n(ตัวเลือกเสริม ${extras.join("/")} เลือกเพิ่มได้ที่หน้าสินค้า)` : ""}\nตอบมาได้เลยน้า หรือกดปุ่มในการ์ดเลือกเองก็ได้ค่ะ ✨`;
+    }
+  }
+
   const unit0 = rates[0].matrix.unit || "ชิ้น";
   const header = qty ? `${p.name}${namedParts.length ? ` ${namedParts.join(" ")}` : ""} — สั่ง ${qty.toLocaleString()} ${unit0}` : `${p.name} (ราคาต่อ ${unit0})`;
   const drivers = (rates[0].matrix.driverLabels ?? []).map((d) => d.trim()).filter(Boolean).slice(0, 4).join(" · ");
@@ -1336,6 +1364,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
     source: "web-price-engine",
     intent: qty ? "price_qty" : "price",
     product: { id: p.id, name: p.name, url: safeHref(url), image: absImage(p.imageSrc), ...pr },
+    ...(askNext ? { askNext } : {}),
   };
 }
 
