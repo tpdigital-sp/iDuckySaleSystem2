@@ -75,7 +75,7 @@ export const DEFAULT_SPOTLIGHT: Spotlight = {
   ctaHref: "/products",
   styles: [
     { productId: "new-mt2pl7cv-132", name: "กางเกง COMFY PANTS", desc: "ผ้าไหมอิตาลีนุ่มลื่น เอวยางยืด", tag: "ใส่สบาย", tagTone: "hot" },
-    { productId: "blanket-th", desc: "พิมพ์เต็มผืน ทำของขวัญ / แฟนคลับ", tag: "ของขวัญ", tagTone: "mint" },
+    { productId: "sticker-solvent", name: "สติ๊กเกอร์ Solvent Premium", desc: "เกรดแร็ปรถ ติดแน่น ทนน้ำ ทนแดด", tag: "ทนแดด", tagTone: "mint" },
     { productId: "unisex", desc: "ทรงมาตรฐาน ใส่ได้ทุกคน", tag: "พิมพ์เต็มตัว", tagTone: "new" },
     { productId: "sport", desc: "ใส่ชื่อ-เบอร์ได้ทุกตัว", tag: "ทีม / รุ่น", tagTone: "new", image: `${SPOT_IMG}sport-team-backs-v2.webp` },
   ],
