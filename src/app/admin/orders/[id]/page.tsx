@@ -9467,7 +9467,7 @@ export default function AdminOrderDetailPage() {
                         </button>
                       )}
                       {/* 💸 เงินโอนเกิน — คืนลูกค้า / ย้ายไปใช้กับออเดอร์อื่น (ลูกค้าโอนรวม) */}
-                      <OverpayBox order={order} mayMarkPaid={mayMarkPaid} onOrder={adoptOrder} />
+                      <OverpayBox order={order} mayRefund={seesMoney} mayTransfer={mayMarkPaid} onOrder={adoptOrder} />
                     </>
                   )}
                 </div>

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { requirePerm } from "@/lib/server/require-perm";
+import { can } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderBalance, orderTotal, withLog, type Order, type OrderPayment, type OverpayAction } from "@/lib/admin-data";
 import { newPaymentId, overpayOutstanding, paymentEntries } from "@/lib/payments";
@@ -23,7 +25,7 @@ export const runtime = "nodejs";
  *
  * transfer = สร้าง "ใบเพิ่ม" ในใบปลายทาง (fromOrder · ชี้สลิปของใบต้นทาง) แล้วนับยอดผ่าน acceptPaymentManually
  * (ครบแล้วยืนยันงวด/แจ้งลูกค้า/ตัดสต๊อกเหมือนรับยอดเอง) · เรคอร์ด msVerify ติดหมายเหตุ "ย้ายมาจาก OD-… ไม่มีเงินเข้าใหม่"
- * สิทธิ์เดียวกับ "ยืนยันเงินเข้า" (orders.markPaid)
+ * สิทธิ์: refund = orders.money (แอดมินทุกคน — แอดมินเป็นคนโอนคืน) · transfer + GET = orders.markPaid "ยืนยันเงินเข้า" (8 ต.ค. 69)
  */
 
 const BUCKET = "payment-slips-private";
@@ -59,6 +61,7 @@ async function candidatesFor(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>
 export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+  // ↪ รายชื่อใบปลายทางใช้กับ "ย้ายยอด" เท่านั้น → สิทธิ์ยืนยันเงินเข้า (ย้ายยอด = นับเป็นเงินเข้าของอีกใบ)
   const gate = await requirePerm("orders.markPaid");
   if (gate.res) return gate.res;
   const id = new URL(req.url).searchParams.get("orderId")?.trim() ?? "";
@@ -70,7 +73,13 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const gate = await requirePerm("orders.markPaid");
+  /**
+   * สิทธิ์แยกตามปุ่ม (เจ้าของร้านเคาะ 8 ต.ค. 69)
+   *   refund   → orders.money   : แอดมินทุกคน — คนโอนเงินคืนลูกค้าคือแอดมิน แค่บันทึกว่าคืนแล้ว ไม่มีเงินเข้าใหม่
+   *   transfer → orders.markPaid: ย้ายยอดไปนับเป็นเงินชำระของอีกใบ = ยืนยันเงินเข้า (ค่าเริ่มต้นเจ้าของร้านคนเดียว)
+   * เช็ค orders.money ก่อนเพื่อรู้ตัวคน แล้วค่อยคุมเข้มตาม kind หลังอ่านฟอร์ม
+   */
+  const gate = await requirePerm("orders.money");
   if (gate.res) return gate.res;
   const who = gate.actor.name?.trim() || gate.actor.username;
 
@@ -85,6 +94,8 @@ export async function POST(req: Request) {
   const amount = round2(Number(form.get("amount")) || 0);
   const note = String(form.get("note") ?? "").trim().slice(0, 300) || undefined;
   if (!orderId || (kind !== "refund" && kind !== "transfer")) return NextResponse.json({ error: "ข้อมูลไม่ครบ" }, { status: 400 });
+  if (kind === "transfer" && !can(gate.actor, "orders.markPaid", await loadRolePerms()))
+    return NextResponse.json({ error: "ย้ายยอดไปใช้กับออเดอร์อื่น = ยืนยันเงินเข้าของใบนั้น — ต้องมีสิทธิ์ “ยืนยันเงินเข้า”" }, { status: 403 });
   if (!(amount > 0)) return NextResponse.json({ error: "ยอดต้องมากกว่า 0" }, { status: 400 });
 
   const toOrderId = kind === "transfer" ? String(form.get("toOrderId") ?? "").trim().toUpperCase() : "";

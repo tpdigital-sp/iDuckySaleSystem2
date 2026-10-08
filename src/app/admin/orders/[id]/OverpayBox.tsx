@@ -11,7 +11,9 @@ import { formatPrice } from "@/lib/products";
  * โชว์เมื่อยังมีเงินโอนเกินค้างจัดการ หรือเคยจัดการไปแล้ว (ประวัติ)
  *   คืนเงินลูกค้าแล้ว   → บันทึกยอด + สลิปที่ร้านโอนคืน (ไม่บังคับ)
  *   ใช้กับออเดอร์อื่น   → ลูกค้าโอนรวม: ย้ายยอดไปนับเป็นเงินชำระของอีกใบ (ไม่ต้องแนบสลิปซ้ำ/รับยอดเองที่ใบนั้น)
- * เซิร์ฟเวอร์: /api/admin/orders/overpay (สิทธิ์ยืนยันเงินเข้า)
+ * เซิร์ฟเวอร์: /api/admin/orders/overpay
+ * สิทธิ์ (เจ้าของร้านเคาะ 8 ต.ค. 69): คืนเงิน = mayRefund (orders.money แอดมินทุกคน — แอดมินเป็นคนโอนคืน)
+ *                                   ย้ายยอด = mayTransfer (orders.markPaid ยืนยันเงินเข้า — นับเป็นเงินเข้าของอีกใบ)
  */
 
 interface Candidate {
@@ -28,7 +30,7 @@ const parseAmount = (raw: string) => round2(Number((raw || "").replace(/[^\d.]/g
 const thDate = (iso: string) =>
   new Date(iso).toLocaleString("th-TH", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-export default function OverpayBox({ order, mayMarkPaid, onOrder }: { order: Order; mayMarkPaid: boolean; onOrder: (o: Order) => void }) {
+export default function OverpayBox({ order, mayRefund, mayTransfer, onOrder }: { order: Order; mayRefund: boolean; mayTransfer: boolean; onOrder: (o: Order) => void }) {
   const left = overpayOutstanding(order);
   const acts = order.overpayActions ?? [];
   const [mode, setMode] = useState<null | "refund" | "transfer">(null);
@@ -149,19 +151,26 @@ export default function OverpayBox({ order, mayMarkPaid, onOrder }: { order: Ord
         </ul>
       )}
 
-      {left > 0 && !mode && (
-        mayMarkPaid ? (
-          <div className="mt-2 grid grid-cols-2 gap-2">
+      {left > 0 && !mode && (mayRefund || mayTransfer) && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {mayTransfer ? (
             <button type="button" onClick={() => open("transfer")} className="min-h-11 rounded-lg bg-amber-600 px-3 text-xs font-bold text-white hover:bg-amber-700">
               ↪ ใช้กับออเดอร์อื่น
             </button>
+          ) : (
+            <p className="self-center text-[11px] leading-snug text-amber-800" title="ย้ายยอดไปนับเป็นเงินชำระของอีกใบ = ยืนยันเงินเข้า">
+              ↪ ย้ายไปใบอื่น: เฉพาะคนที่มีสิทธิ์ “ยืนยันเงินเข้า”
+            </p>
+          )}
+          {mayRefund && (
             <button type="button" onClick={() => open("refund")} className="min-h-11 rounded-lg bg-white px-3 text-xs font-bold text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100">
               ↩ คืนเงินลูกค้าแล้ว
             </button>
-          </div>
-        ) : (
-          <p className="mt-2 text-[11px] text-amber-800">คนที่มีสิทธิ์ “ยืนยันเงินเข้า” เป็นคนบันทึกคืนเงิน/ย้ายยอดได้</p>
-        )
+          )}
+        </div>
+      )}
+      {left > 0 && !mode && !mayRefund && !mayTransfer && (
+        <p className="mt-2 text-[11px] text-amber-800">ฝ่ายแอดมินเป็นคนบันทึกคืนเงิน/ย้ายยอด</p>
       )}
 
       {mode && (
