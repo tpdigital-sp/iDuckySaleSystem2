@@ -628,6 +628,8 @@ export async function applySlipVerification(input: ApplySlipInput): Promise<Appl
         noteSuffix: `${note}${dedNote}`,
         partial,
         ...(phase === "extra" ? { docSuffix: `-${paymentId}`, slipPath: path, extra: true } : phase === "balance" ? { docSuffix: "-final" } : {}),
+        // 📋 ใบเพิ่มที่ลูกค้าหัก ณ ที่จ่าย — เรคอร์ดถือภาษีของใบนี้ด้วย (บิล = เงินเข้า + ภาษี)
+        ...(phase === "extra" && verify.deduction?.kind === "wht" ? { looseWht: verify.deduction.amount } : {}),
       })
     );
   };
@@ -834,7 +836,16 @@ export async function acceptPaymentManually(a: {
       return;
     }
     pendingTP.push(
-      reportPaidToTP(updated, adminName, { received: amount, noteSuffix: note, docSuffix: `-${paymentId}`, slipPath: list[idx].path, extra: true, partial: !confirmedDeposit && !confirmedFull })
+      reportPaidToTP(updated, adminName, {
+        received: amount,
+        noteSuffix: note,
+        docSuffix: `-${paymentId}`,
+        slipPath: list[idx].path,
+        extra: true,
+        partial: !confirmedDeposit && !confirmedFull,
+        // 📋 โอนเท่ายอดค้างหลังหักภาษีพอดี (credit = ยอดตามบิล) → ส่วนต่างคือหัก ณ ที่จ่าย ไม่ใช่เงินที่ขาด
+        ...(credit > amount ? { looseWht: round2(credit - amount) } : {}),
+      })
     );
   };
   if ((confirmedDeposit || confirmedFull) && paidSoFar(order) > 0) pendingTP.push(syncPaidCompleteToTP(updated, adminName));

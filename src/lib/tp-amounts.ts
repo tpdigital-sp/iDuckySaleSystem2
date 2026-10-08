@@ -39,14 +39,17 @@ export interface TPRecordAmounts {
 export function amountsForRecord(
   order: Order,
   isFinal: boolean,
-  opts?: { received?: number; extra?: boolean; partial?: boolean }
+  opts?: { received?: number; extra?: boolean; partial?: boolean; looseWht?: number }
 ): TPRecordAmounts {
   const dep = depositInstallments(order);
-  // สลิปใบเพิ่ม/รับบางส่วน = เงินก้อนที่โอนมาจริง ไม่มีบิลของตัวเอง และไม่มีการหัก ณ ที่จ่ายซ้อน
+  // สลิปใบเพิ่ม/รับบางส่วน = เงินก้อนที่โอนมาจริง ไม่มีบิลของตัวเอง
+  // 📋 ยกเว้นใบที่ปิดยอดค้างของลูกค้าหัก ณ ที่จ่าย — ผู้เรียกบอกภาษีส่วนของใบนี้มา (looseWht) → บิล = เงินเข้า + ภาษี
+  //    (OD-260911-8026 · 6 ต.ค. 69: งวดหลังรับเองเป็นใบเพิ่ม เรคอร์ดไม่มี wht → msVerify ไม่รู้ว่าเงินเข้าน้อยกว่าบิลเพราะภาษี)
   const loose = !!opts?.extra || !!opts?.partial;
-  const wht = loose ? 0 : isFinal ? dep?.secondWht ?? 0 : dep ? dep.firstWht : orderWhtAmount(order);
+  const looseWht = loose ? r2(Math.max(0, opts?.looseWht ?? 0)) : 0;
+  const wht = loose ? looseWht : isFinal ? dep?.secondWht ?? 0 : dep ? dep.firstWht : orderWhtAmount(order);
   const bill = loose
-    ? r2(opts?.received ?? 0)
+    ? r2((opts?.received ?? 0) + looseWht)
     : isFinal
       ? r2(dep?.second ?? opts?.received ?? 0)
       : dep
