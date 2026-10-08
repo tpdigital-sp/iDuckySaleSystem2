@@ -141,3 +141,10 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - ลิงก์ 3 ค้างที่ **Read Price Links 133 วิ** (ไม่มี timeout) ก่อนเริ่มทำงาน · เว็บตีความลิงก์ Drive ล้วนเป็นคำถาม info
 - "ตัวอย่างก็ประมาณนี้ค่ะ" ถูกตอบ 2 ครั้ง: LINE ส่งซ้ำ (isRedelivery, webhookEventId/messageId เดิม) · ตัวกันซ้ำใน Parse LINE Event ใช้ static data ซึ่งหลายรอบที่ทำงานพร้อมกันเขียนทับกัน → กันไม่ได้
 - แก้ (ร่าง): Debounce pending 30 วิ → 10 นาที · กันซ้ำด้วย `recentMessageIds` (30 ตัวล่าสุด) ในห้องแชท Firestore ตอน Debounce · Read Price Links / Read Quick Setup / Read Memory timeout 6 วิ + retry 2 · Build AI Request ไม่ถามเว็บเมื่อข้อความมีแต่ลิงก์
+
+## 8 ต.ค. 69 — AI Agent ของ ChatBot เปลี่ยนเป็น Claude Sonnet 5.5
+- เทียบ 10 โมเดล (คำถามจริง 9 ข้อ + แต่งเพิ่ม 3 ข้อ, tool เดียวกัน): Sonnet 5.5 = 23/24 · Gemini 3.8 Flash 20 · Gemini 3.5 Flash-Lite 18 · Haiku 5.5 16–18 · Gemini 2.5 Flash (เดิม) 10 — ตัวเดิมมักไม่เรียก tool แล้วแต่งข้อมูลเอง
+- ChatBot (Q9wMWpZsnQfSkpIT): โหนดใหม่ "Claude Sonnet 5.5" (lmChatAnthropic v1.5, model id `claude-sonnet-5-5`, credential "Anthropic account", thinkingMode **adaptive** effort low, maxTokens 8192) ต่อเข้า AI Agent1 — ⚠️ ห้ามปล่อย thinkingMode เป็น disabled (Sonnet 5.5 ตอบ 400) · โหนด "Google Gemini Chat Model" เดิมยังอยู่แต่ถอดสาย (rollback = ต่อสายกลับ)
+- โหนด website_knowledge / Vector Store Tool1 ยังใช้ Gemini เหมือนเดิม
+- PO Override1: (1) ทับด้วยข้อความ need-size ของ Fetch PO1 เฉพาะเมื่อถามราคา (`isPriceQ`) — เคยทับคำถามระยะเวลาผลิตด้วย "แผ่นอะคริลิค คิดราคาตามขนาด" (2) เอา `info` ออกจาก regex ที่ทับคำตอบ agent ด้วยข้อความเว็บ (ยังทับ not_in_catalog/draft_product/mix/spec/spec_menu/min_qty/price/price-options)
+- ค่าใช้จ่ายโดยประมาณ ~฿1.2/ข้อความที่ผ่าน AI Agent (เปิด prompt caching จะเหลือ ~฿0.4–0.5) · ความช้าหลักอยู่ที่ search_pricing1 (5–13 วิ) ไม่ใช่โมเดล

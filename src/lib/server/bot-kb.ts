@@ -5,6 +5,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { callGemini, geminiText } from "@/lib/server/ai-usage";
 import type { AiFeature } from "@/lib/ai-cost";
+import { modelFor, noThinking } from "@/lib/ai-models";
 
 /**
  * 🤖 ข้อมูลของบอทแชท (ย้ายจาก AdminBuddy 3 ต.ค. 69) — ใช้ร่วม 3 หน้าในหมวด Chatbot
@@ -77,15 +78,17 @@ export async function gemini(opts: {
   /** ชื่องานในบัญชีค่าใช้จ่าย (/admin/chatbot/costs) · ค่าเริ่มต้น = งาน AI คลังความรู้/ตารางราคา */
   feature?: AiFeature;
 }): Promise<string> {
-  const model = opts.model ?? "gemini-2.5-flash";
+  const feature = opts.feature ?? "kb_ai";
+  const model = opts.model ?? modelFor(feature === "n8n_chat" || feature === "n8n_pricing" ? "kb_ai" : feature);
   // 💸 ผ่าน callGemini ให้ลงบัญชีค่าใช้จ่ายเอง (8 ต.ค. 69) · ไม่มีคีย์ = โยน Error ข้อความไทยเหมือนเดิม
   const r = await callGemini({
-    feature: opts.feature ?? "kb_ai",
+    feature,
     model,
     body: {
       contents: opts.contents,
       ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
-      ...(opts.generationConfig ? { generationConfig: opts.generationConfig } : {}),
+      // 8 ต.ค. 69 kb_ai = 3.8 Flash ซึ่งคิดเองถ้าไม่สั่ง → กิน maxOutputTokens (คัดซ้ำตั้งไว้ 100) จนคำตอบขาด · ผู้เรียกตั้ง thinkingConfig เองได้
+      generationConfig: { ...noThinking(model), ...(opts.generationConfig ?? {}) },
     },
     // Netlify ตัดฟังก์ชันที่ 30 วิ — กันท้ายไว้ให้ตอบ error ทัน
     timeoutMs: opts.timeoutMs ?? 26_000,

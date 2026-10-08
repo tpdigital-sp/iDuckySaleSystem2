@@ -8,6 +8,7 @@ import {
   AI_FEATURES,
   featureLabel,
   fmtThb,
+  isLegacyModel,
   fmtTok,
   modelLabel,
   priceOf,
@@ -33,7 +34,8 @@ const POLL_MS = 10_000;
 const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 
 type LineQuota = { limit: number | null; used: number; left: number | null };
-type Data = AiDashboard & { line: LineQuota | null };
+type ModelCfg = { feature: string; model: string; legacy: boolean; priceIn: number; priceOut: number; override: boolean; external?: boolean };
+type Data = AiDashboard & { line: LineQuota | null; models: ModelCfg[] };
 type Range = "today" | "7d" | "month";
 
 export default function CostsPage() {
@@ -275,6 +277,8 @@ function Costs() {
             <MonthBox calc={calc} settings={data.settings} />
             <LineBox q={data.line} today={data.today} />
           </div>
+
+          <ConfiguredModels models={data.models ?? []} rate={calc.rate} scope={calc.scope} onPick={(f) => setPick((p) => (p === f ? "" : f))} pick={pick} />
 
           <Feed feed={feed} rate={calc.rate} pick={pick} onClear={() => setPick("")} fresh={fresh} />
         </>
@@ -532,7 +536,10 @@ function ModelBox({ byModel, rate, rangeLabel }: { byModel: Record<string, Bucke
           return (
             <div key={m.name} className="flex items-start justify-between gap-3">
               <span className="min-w-0">
-                <span className="block text-[13.5px] font-semibold">{modelLabel(m.name)}</span>
+                <span className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-semibold">
+                  {modelLabel(m.name)}
+                  {isLegacyModel(m.name) && <Tag tone="quiet" title="Google ขึ้นป้ายรุ่นเก่า (legacy) แล้ว ยังใช้ได้ ราคาเท่าเดิม">รุ่นเก่า</Tag>}
+                </span>
                 <span className="block text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
                   {m.calls.toLocaleString("th-TH")} ครั้ง · {fmtTok(m.inTok)} → {fmtTok(m.outTok + m.thinkTok)} · ${p.in}/${p.out} ต่อ 1M
                 </span>
@@ -613,6 +620,62 @@ function LineBox({ q, today }: { q: LineQuota | null; today: string }) {
           </p>
         </>
       )}
+    </section>
+  );
+}
+
+/* ── โมเดลที่แต่ละงานตั้งไว้ตอนนี้ (อ่านจาก lib/ai-models.ts ไม่ต้องรอมีคำขอ) ── */
+
+function ConfiguredModels({ models, rate, scope, pick, onPick }: { models: ModelCfg[]; rate: number; scope: Sum; pick: string; onPick: (f: string) => void }) {
+  const legacyCount = models.filter((m) => m.legacy).length;
+  const byModel = new Map<string, ModelCfg[]>();
+  for (const m of models) byModel.set(m.model, [...(byModel.get(m.model) ?? []), m]);
+  return (
+    <section className="dkb-g mt-4 p-4 sm:p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1">
+        <span className="dkb-h2 text-[15px]">โมเดลที่ตั้งไว้ตอนนี้</span>
+        <span className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+          {models.length} งาน · {byModel.size} รุ่น{legacyCount ? ` · ${legacyCount} งานยังใช้รุ่นเก่า` : " · ทุกงานเป็นรุ่นปัจจุบัน"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {[...byModel.entries()].map(([model, fs]) => {
+          const p = fs[0];
+          const used = fs.reduce((s, f) => s + (scope.byFeature[f.feature]?.costUsd ?? 0), 0);
+          return (
+            <div key={model} className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,.55)", boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="dkb-h2 text-[14.5px]">{modelLabel(model)}</span>
+                  {p.legacy ? (
+                    <Tag tone="yolk" title="Google ขึ้นป้ายรุ่นเก่า (legacy) แล้ว — ยังใช้ได้ ราคาเท่าเดิม แต่ควรวางแผนย้ายรุ่น">รุ่นเก่า (legacy)</Tag>
+                  ) : (
+                    <Tag tone="mint">รุ่นปัจจุบัน</Tag>
+                  )}
+                  {p.external && (
+                    <Tag tone="sky" title="ตั้งโมเดลไว้ใน n8n — เว็บแค่ส่งต่อคำถาม ไม่เห็นโทเคน ค่าใช้จ่ายจริงดูที่ console ของผู้ให้บริการ">ตั้งใน n8n</Tag>
+                  )}
+                </span>
+                <span className="dkb-num-sm text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
+                  ${p.priceIn} เข้า / ${p.priceOut} ออก ต่อ 1M · {p.external ? "จ่ายแยกนอกบัญชีนี้" : fmtThb(used * rate)}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {fs.map((f) => (
+                  <button key={f.feature} type="button" className="dkb-fchip" aria-pressed={pick === f.feature} onClick={() => onPick(f.feature)} title={f.override ? "ทับด้วย env UNDERSTAND_MODEL" : undefined}>
+                    <i />
+                    {featureLabel(f.feature)}
+                    {f.override && " ⚙"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 px-1 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+        ตั้งค่าอยู่ที่ไฟล์ lib/ai-models.ts ที่เดียวทั้งระบบ (โมเดลใน n8n ต้องแก้ใน n8n ด้วย) · ราคาตามหน้า pricing ของ Google / Anthropic (ตรวจ 8 ต.ค. 69) · กดชื่องานเพื่อกรองคำขอล่าสุด
+      </p>
     </section>
   );
 }

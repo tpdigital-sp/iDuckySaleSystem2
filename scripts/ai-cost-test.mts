@@ -3,7 +3,7 @@
  * รัน: npm run check:ai-cost
  */
 import assert from "node:assert/strict";
-import { costUsd, fmtThb, modelLabel, priceOf, tokensOf, MODEL_PRICES } from "../src/lib/ai-cost.ts";
+import { costUsd, fmtThb, isLegacyModel, modelLabel, priceOf, tokensOf, MODEL_PRICES } from "../src/lib/ai-cost.ts";
 
 // 1) นับโทเคนจาก usageMetadata — ค่าหาย/ติดลบ = 0 · cached ไม่เกิน input
 const t = tokensOf({ promptTokenCount: 1200, candidatesTokenCount: 300, thoughtsTokenCount: 50, cachedContentTokenCount: 200, totalTokenCount: 1550 });
@@ -16,12 +16,19 @@ assert.equal(tokensOf({ promptTokenCount: 10, candidatesTokenCount: 5 }).totalTo
 assert.equal(costUsd("gemini-2.5-flash-lite", { inTok: 1_000_000, outTok: 1_000_000, thinkTok: 0, cachedTok: 0, totalTok: 2_000_000 }), 0.5);
 // โทเคนคิดราคาเท่า output · cached คิดส่วนลด
 const flash = costUsd("gemini-2.5-flash", { inTok: 1000, outTok: 100, thinkTok: 100, cachedTok: 500, totalTok: 1200 });
-const expect = (500 * 0.3 + 500 * 0.075 + 200 * 2.5) / 1e6;
+const expect = (500 * 0.3 + 500 * 0.03 + 200 * 2.5) / 1e6;
 assert.ok(Math.abs(flash - expect) < 1e-9, `flash ${flash} ≠ ${expect}`);
 // 3) โมเดล preview/ชื่อยาว → หยิบตารางตัวที่เป็นคำนำหน้ายาวสุด · ไม่รู้จัก → เท่า 2.5 flash (ไม่ประเมินต่ำ)
 assert.equal(priceOf("gemini-2.5-flash-lite-preview-09-2025"), MODEL_PRICES["gemini-2.5-flash-lite"]);
 assert.equal(priceOf("models/gemini-2.5-pro"), MODEL_PRICES["gemini-2.5-pro"]);
-assert.equal(priceOf("gemini-9-ultra"), MODEL_PRICES["gemini-2.5-flash"]);
+assert.equal(priceOf("gemini-9-ultra"), MODEL_PRICES["gemini-3.5-flash"]);
+assert.equal(priceOf("gemini-3.1-pro-preview").out, 12, "3.1 Pro Preview → ราคา 3.1 Pro");
+// โปรโมชัน 3.x Flash หมด 1 ม.ค. 2027 → ราคาขึ้น
+assert.equal(priceOf("gemini-3.8-flash", new Date("2026-12-31T23:00:00+07:00")).out, 3.75);
+assert.equal(priceOf("gemini-3.8-flash", new Date("2027-01-01T07:00:00+07:00")).out, 7.5);
+assert.equal(isLegacyModel("gemini-2.5-flash"), true);
+assert.equal(isLegacyModel("gemini-3.5-flash-lite"), false);
+assert.equal(modelLabel("gemini-3.1-pro-preview"), "3.1 Pro Preview");
 // 4) n8n/ไม่มีโทเคน = 0
 assert.equal(costUsd("n8n", tokensOf(undefined)), 0);
 // 5) ป้าย

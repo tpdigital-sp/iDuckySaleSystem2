@@ -1,5 +1,6 @@
 import "server-only";
 import { callGemini } from "@/lib/server/ai-usage";
+import { modelFor } from "@/lib/ai-models";
 
 /**
  * ขั้น "วิเคราะห์คำถามลูกค้าก่อนตอบ" (Smart Preprocessing) — พอร์ตมาจาก parseCustomerMessage ของ
@@ -52,7 +53,7 @@ export function parsedProduct(parsed: ParsedMessage | null): string {
 /** วิเคราะห์นานกว่านี้ไม่คุ้ม — ปล่อยผ่านไปตอบแบบไม่มี hint ดีกว่าให้ลูกค้ารอ */
 const PARSE_TIMEOUT_MS = 6_000;
 
-const MODEL = "gemini-2.5-flash-lite";
+const MODEL = modelFor("chat_parse");
 
 const SYSTEM_PROMPT =
   "คุณคือตัวช่วยวิเคราะห์ข้อความลูกค้าของร้านพิมพ์ iDucky\n" +

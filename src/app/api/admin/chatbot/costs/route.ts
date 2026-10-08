@@ -3,6 +3,8 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { readAiDashboard, writeAiSettings, type AiCostSettings } from "@/lib/server/ai-usage";
 import { shopQuota, type LineQuota } from "@/lib/server/line-quota";
+import { AI_MODEL_BY_FEATURE, N8N_MODEL_BY_FEATURE, modelFor } from "@/lib/ai-models";
+import { isLegacyModel, priceOf } from "@/lib/ai-cost";
 
 export const runtime = "nodejs";
 export const maxDuration = 20;
@@ -28,7 +30,19 @@ export async function GET(req: Request) {
       // โควตา LINE แคช 5 นาทีในตัวอยู่แล้ว — ยิงทุก 10 วิไม่เปลืองคำขอ LINE
       shopQuota().catch((): LineQuota | null => null),
     ]);
-    return NextResponse.json({ ...dash, line }, { headers: { "Cache-Control": "no-store" } });
+    // โมเดลที่แต่ละงาน "ตั้งไว้ตอนนี้" (ไม่ต้องรอมีคำขอ) + ราคา + ป้ายรุ่นเก่า — ให้หน้าบอกได้ว่าระบบใช้รุ่นไหนอยู่
+    const models: { feature: string; model: string; legacy: boolean; priceIn: number; priceOut: number; override: boolean; external?: boolean }[] = (Object.keys(AI_MODEL_BY_FEATURE) as (keyof typeof AI_MODEL_BY_FEATURE)[]).map((feature) => {
+      const model = modelFor(feature);
+      const p = priceOf(model);
+      return { feature, model, legacy: isLegacyModel(model), priceIn: p.in, priceOut: p.out, override: feature === "price_understand" && !!process.env.UNDERSTAND_MODEL };
+    });
+    // โมเดลที่ตั้งใน n8n (เว็บแค่ส่งต่อ ไม่เห็นโทเคน — ค่าใช้จ่ายจ่ายแยกที่ผู้ให้บริการ) ให้หน้าบอกครบว่าบอทใช้อะไรอยู่
+    for (const [feature, model] of Object.entries(N8N_MODEL_BY_FEATURE)) {
+      if (!model) continue;
+      const p = priceOf(model);
+      models.push({ feature, model, legacy: isLegacyModel(model), priceIn: p.in, priceOut: p.out, override: false, external: true });
+    }
+    return NextResponse.json({ ...dash, line, models }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: `โหลดบัญชีค่าใช้จ่ายไม่ได้: ${(e as Error).message}` }, { status: 502 });
   }

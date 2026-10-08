@@ -3,6 +3,7 @@ import { getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { CHAT_COLLECTION, getChatFirestore } from "./firebase-admin";
 import { callGemini } from "./ai-usage";
+import { modelFor } from "@/lib/ai-models";
 import { getSupabaseAdmin } from "./supabase-admin";
 import { memberTierOfContact } from "./quote-member-tier";
 import { orderTotal, type Order } from "@/lib/admin-data";
@@ -92,7 +93,7 @@ ${lines}
   try {
     const r = await callGemini({
       feature: "customer_profile",
-      model: "gemini-2.5-flash-lite",
+      model: modelFor("customer_profile"),
       apiKey,
       body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 300, temperature: 0.2 } },
       timeoutMs: 9_000,

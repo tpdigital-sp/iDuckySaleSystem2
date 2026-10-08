@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Order, SlipLookalike, SlipOcr } from "@/lib/admin-data";
 import type { SlipOwner } from "@/lib/server/slip-dedupe";
 import { callGemini } from "@/lib/server/ai-usage";
+import { modelFor, noThinking } from "@/lib/ai-models";
 
 /**
  * 🤖 อ่านรูปสลิปที่ไม่มี QR ด้วย Gemini (3 ต.ค. 69)
@@ -17,7 +18,7 @@ import { callGemini } from "@/lib/server/ai-usage";
  * ⚠️ ห้ามเอายอดที่ AI อ่านไปนับเงิน — เก็บแยกไว้ที่ slipVerify.ocr เท่านั้น
  */
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = modelFor("slip_ocr");
 const OCR_TIMEOUT_MS = 15_000;
 
 const PROMPT = `รูปนี้คือหลักฐานการโอนเงินที่ลูกค้าส่งให้ร้าน (สลิปโอน / รายงานธุรกรรมธนาคาร / แถวรายการเดินบัญชี)
@@ -111,7 +112,7 @@ export async function readSlipImage(
       apiKey,
       body: {
         contents: [{ parts: [{ inline_data: { mime_type: contentType, data: Buffer.from(bytes).toString("base64") } }, { text: PROMPT }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 600, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
+        generationConfig: { temperature: 0, maxOutputTokens: 600, responseMimeType: "application/json", ...noThinking(MODEL) },
       },
       timeoutMs: Math.max(3_000, timeoutMs),
     });

@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { callGemini, recordN8nCall } from "@/lib/server/ai-usage";
+import { AI_MODEL_BY_FEATURE, PRICE_UNDERSTAND_FALLBACK, modelFor, noThinking } from "@/lib/ai-models";
 import { getProductServer } from "@/lib/products-server";
 import { SITE_URL } from "@/lib/shop-info";
 import {
@@ -586,14 +587,14 @@ function normHistory(history: unknown): HistoryTurn[] {
 }
 
 /**
- * 🧠 ข้อ 3 ของแผน (1 ต.ค. 69): ชั้นเข้าใจคำถามใช้โมเดลใหญ่ขึ้น — ค่าเริ่มต้น gemini-2.5-flash (ปิด thinking ให้เร็ว ~1-2 วิ)
- * ล้มเหลว/ช้าเกิน → ถอยไป flash-lite ตัวเดิม · ตั้งได้ด้วย env UNDERSTAND_MODEL · ทดสอบเทียบได้ด้วย body.understandModel
+ * 🧠 ข้อ 3 ของแผน (1 ต.ค. 69): ชั้นเข้าใจคำถามใช้โมเดลใหญ่ขึ้น — ตั้งที่ lib/ai-models.ts (8 ต.ค. 69 = gemini-3.5-flash-lite)
+ * ล้มเหลว/ช้าเกิน → ถอยไปโมเดลสำรอง · ตั้งได้ด้วย env UNDERSTAND_MODEL · ทดสอบเทียบได้ด้วย body.understandModel
  */
-export const UNDERSTAND_MODEL_DEFAULT = "gemini-2.5-flash";
-const UNDERSTAND_MODEL_FALLBACK = "gemini-2.5-flash-lite";
+export const UNDERSTAND_MODEL_DEFAULT = AI_MODEL_BY_FEATURE.price_understand;
+const UNDERSTAND_MODEL_FALLBACK = PRICE_UNDERSTAND_FALLBACK;
 async function geminiJson(apiKey: string, model: string, prompt: string, timeoutMs: number): Promise<string> {
-  // flash: ปิด thinking (เร็ว) · pro: ปิดไม่ได้ ให้คิดน้อยสุด 128 · flash-lite: ไม่มี thinking
-  const thinking = /pro/.test(model) ? { thinkingConfig: { thinkingBudget: 128 } } : /flash(?!-lite)/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {};
+  // flash: ปิด thinking (เร็ว) · pro: ปิดไม่ได้ ให้คิดน้อยสุด 128 · flash-lite: ไม่มี thinking (3.5 Flash-Lite ส่ง budget 0 = 400)
+  const thinking = /pro/.test(model) ? { thinkingConfig: { thinkingBudget: 128 } } : noThinking(model);
   const r = await callGemini({
     feature: "price_understand",
     model,
@@ -611,7 +612,7 @@ async function geminiJson(apiKey: string, model: string, prompt: string, timeout
   return text;
 }
 async function callUnderstandModel(apiKey: string, prompt: string, override?: string): Promise<string> {
-  const primary = (override || process.env.UNDERSTAND_MODEL || UNDERSTAND_MODEL_DEFAULT).trim();
+  const primary = (override || modelFor("price_understand")).trim();
   try {
     return await geminiJson(apiKey, primary, prompt, 9_000);
   } catch (e) {
@@ -988,7 +989,7 @@ ${hint}
   try {
     const r = await callGemini({
       feature: "price_pick",
-      model: "gemini-2.5-flash-lite",
+      model: modelFor("price_pick"),
       apiKey,
       body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 200, temperature: 0 } },
       timeoutMs: 7_000,
@@ -1460,7 +1461,7 @@ ${
     try {
       const r = await callGemini({
         feature: "price_info",
-        model: "gemini-2.5-flash-lite",
+        model: modelFor("price_info"),
         apiKey,
         body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 400, temperature: 0.2 } },
         timeoutMs: 9_000,
