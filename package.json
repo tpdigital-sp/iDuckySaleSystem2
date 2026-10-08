@@ -38,6 +38,7 @@
     "check:balance-notify": "tsx scripts/balance-notify-test.mts",
     "check:deposit-first": "tsx --tsconfig tsconfig.json scripts/deposit-first-status-test.mts",
     "check:lot-reprice": "tsx scripts/order-lot-reprice-test.mts",
+    "check:price-guard": "tsx scripts/order-price-guard-test.mts",
     "check:member-tier": "tsx --tsconfig tsconfig.json scripts/order-member-tier-test.mts",
     "check:coupon-admin": "tsx --tsconfig tsconfig.json scripts/order-coupon-admin-test.mts",
     "scan:lot-reprice": "node --conditions=react-server --import tsx scripts/order-lot-reprice-scan.mts",

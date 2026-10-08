@@ -5756,7 +5756,8 @@ export default function ProductDetail({
         <script
           key={i}
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }}
+          // escape "<" กัน </script> ในชื่อ/คำอธิบายสินค้าหลุดออกจากแท็กแล้วกลายเป็นสคริปต์
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj).replace(/</g, "\\u003c") }}
         />
       ))}
 

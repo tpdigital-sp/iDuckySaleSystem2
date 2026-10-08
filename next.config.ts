@@ -7,6 +7,30 @@ const nextConfig: NextConfig = {
    */
   distDir: process.env.NEXT_DIST_DIR || ".next",
   /**
+   * 🔒 Security headers ทุกหน้า (ตรวจความปลอดภัย 8 ต.ค. 69 — เดิมไม่มีเลย)
+   *  - X-Frame-Options SAMEORIGIN: กันเว็บอื่นฝังหน้าแอดมิน/หน้าชำระเงินของเราใน iframe (clickjacking)
+   *    หน้าเราเองฝังกันเอง (พรีวิววิดีโอใน /admin/nav ฝัง YouTube = ขาออก ไม่กระทบ)
+   *  - X-Content-Type-Options nosniff: เบราว์เซอร์ห้ามเดาชนิดไฟล์ (รูปที่อัปโหลดจะไม่ถูกตีความเป็นสคริปต์)
+   *  - Referrer-Policy: ลิงก์ออเดอร์ /order/[id]?key=… กดลิงก์ออกนอกเว็บแล้ว key ไม่ติดไปใน Referer
+   *  - Permissions-Policy: ปิด API เบราว์เซอร์ที่เว็บไม่ใช้ (กล้อง/ไมค์/ตำแหน่ง) ไม่ให้สคริปต์ฝังเรียก
+   *  - HSTS: เปิดแล้วเบราว์เซอร์จะไม่ยอมคุย http กับโดเมนนี้อีก (Netlify บังคับ https อยู่แล้ว)
+   *  ยังไม่ใส่ Content-Security-Policy — ต้องไล่ทุก script/iframe ภายนอก (GTM/GA/LINE/YouTube) ก่อน ไม่งั้นหน้าเว็บพังเงียบ
+   */
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+        ],
+      },
+    ];
+  },
+  /**
    * pdf.js ฝั่งเซิร์ฟเวอร์ (อ่านเอกสารจากลิงก์ FlowAccount — src/lib/server/flowaccount.ts)
    * ต้องโหลดจาก node_modules ตรง ๆ ไม่ให้ Turbopack/webpack มัดรวม ไม่งั้น fake worker ของมันหาไฟล์ไม่เจอ
    */

@@ -12,6 +12,28 @@ import { SESSION_COOKIE, adminCookieOptions, createSessionToken } from "@/lib/se
 
 export const runtime = "nodejs";
 
+/**
+ * 🔒 กันเดารหัสผ่านรัว ๆ (ตรวจความปลอดภัย 8 ต.ค. 69) — เดิมไม่มีด่านเลย ยิงได้ไม่จำกัด
+ * นับ "ครั้งที่ผิด" ต่อ IP และต่อชื่อผู้ใช้ แยกกัน: เกินแล้วตอบ 429 จนกว่าจะพ้นช่วง
+ * (ต่ออินสแตนซ์ของ serverless — กันไม่ได้ 100% แต่ทำให้สคริปต์เดาช้าลงหลายสิบเท่า · ล็อกอินสำเร็จ = ล้างตัวนับ)
+ */
+const FAILS = new Map<string, { n: number; until: number }>();
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_PER_IP = 20;
+const MAX_PER_USER = 8;
+
+function failCount(key: string): number {
+  const cur = FAILS.get(key);
+  return cur && cur.until > Date.now() ? cur.n : 0;
+}
+function noteFail(key: string): void {
+  const now = Date.now();
+  const cur = FAILS.get(key);
+  if (!cur || cur.until < now) FAILS.set(key, { n: 1, until: now + WINDOW_MS });
+  else cur.n += 1;
+  if (FAILS.size > 1000) for (const [k, v] of FAILS) if (v.until < now) FAILS.delete(k);
+}
+
 export async function POST(req: Request) {
   let body: { username?: string; password?: string };
   try {
@@ -24,6 +46,21 @@ export async function POST(req: Request) {
   if (!username || !password) {
     return NextResponse.json({ error: "กรอกชื่อผู้ใช้และรหัสผ่านให้ครบ" }, { status: 400 });
   }
+
+  const ip =
+    req.headers.get("x-nf-client-connection-ip") ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown";
+  const ipKey = `ip:${ip}`;
+  const userKey = `user:${loginKey(username)}`;
+  if (failCount(ipKey) >= MAX_PER_IP || failCount(userKey) >= MAX_PER_USER) {
+    return NextResponse.json({ error: "ลองผิดหลายครั้งเกินไป — รอ 15 นาทีแล้วลองใหม่" }, { status: 429 });
+  }
+  const failed = (res: NextResponse) => {
+    noteFail(ipKey);
+    noteFail(userKey);
+    return res;
+  };
 
   const db = getFirestoreAdmin();
   if (!db) {
@@ -51,7 +88,7 @@ export async function POST(req: Request) {
     .find((e) => loginKey(e.username ?? "") === wanted);
 
   if (!emp) {
-    return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
+    return failed(NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 }));
   }
 
   // ระงับ / ไม่ได้ทำงานอยู่ → เข้าไม่ได้ (allowlist: ต้องเป็น "working" เท่านั้น)
@@ -64,8 +101,10 @@ export async function POST(req: Request) {
   }
   // เทียบรหัสผ่าน (รองรับ PBKDF2 ของ TP ใหม่ / SHA-256 เดิม / plaintext ปนกัน)
   if (!(await verifyPassword(password, emp))) {
-    return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
+    return failed(NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 }));
   }
+  // รหัสถูก → ล้างตัวนับของชื่อนี้ (คนที่พิมพ์ผิดเองไม่ต้องรอครบ 15 นาที)
+  FAILS.delete(userKey);
 
   /**
    * ตำแหน่ง/แผนกนี้มีสิทธิ์เข้าหลังบ้านไหม (ตามชุดสิทธิ์ที่แก้ได้ในตั้งค่าระบบ → แท็บบทบาท)

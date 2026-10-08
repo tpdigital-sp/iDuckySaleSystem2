@@ -19,6 +19,8 @@ import { dealerRateOf, lotShortfalls, type Product } from "@/lib/products";
 import { isDealerUid } from "@/lib/server/dealers";
 import { loadDealerSender } from "@/lib/server/dealer-sender";
 import { cleanPhone, contactProblems } from "@/lib/contact-validate";
+import { cleanCustomerItems, priceMismatchMessage, shippingFloorProblem, underpricedLines } from "@/lib/server/order-price-guard";
+import type { ShopPayment } from "@/lib/shop-settings";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -64,8 +66,10 @@ export async function POST(req: Request) {
   // 📞📍 เบอร์จริง + ที่อยู่จริงเท่านั้น (ห้าม - + * / เลขมั่ว / ไม่มีรหัสไปรษณีย์) — กันยิงตรงข้ามหน้าเว็บ
   const contactBad = contactProblems({ phone: input.phone, address: input.address });
   if (contactBad.length) return NextResponse.json({ error: contactBad.join(" · ") }, { status: 400 });
-  if (!Array.isArray(input.items) || input.items.length === 0)
-    return NextResponse.json({ error: "ไม่มีรายการสินค้า" }, { status: 400 });
+  // 🚧 ตัวเลขต้องเป็นตัวเลขจริง + ตัดฟิลด์เรื่องเงินที่แอดมินเท่านั้นใส่ได้ (discount ฯลฯ) — ดู lib/server/order-price-guard.ts
+  const cleaned = cleanCustomerItems(input.items);
+  if (cleaned.error) return NextResponse.json({ error: cleaned.error }, { status: 400 });
+  input.items = cleaned.items;
 
   // สั่งแทนลูกค้า: เช็คว่าเป็นพนักงานจริง (อ้างชื่อเองจากหน้าเว็บไม่ได้) · ออเดอร์ไม่ผูกบัญชี/คูปอง/แต้ม
   let placedBy = "";
@@ -168,7 +172,19 @@ export async function POST(req: Request) {
     }
   }
 
+  /**
+   * 🚧 ราคาต่อชิ้น/ค่าส่งต้องไม่ต่ำกว่าที่ร้านคิดได้จากสินค้าฉบับปัจจุบัน (ตรวจความปลอดภัย 8 ต.ค. 69)
+   * เดิมเชื่อ unitPrice/shippingCost จากเบราว์เซอร์ทั้งหมด → ยิง API ตรงด้วยราคา ฿1 ได้
+   * พนักงานสั่งแทน (staffOrder) ตั้งราคาพิเศษได้ตามสิทธิ์ — ข้ามด่านนี้
+   */
   const subtotal = input.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  if (!input.staffOrder) {
+    const short = await underpricedLines(input.items, getProductServer);
+    if (short.length) return NextResponse.json({ error: priceMismatchMessage(short) }, { status: 400 });
+    const { data: shipSett } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
+    const shipErr = shippingFloorProblem(input.shippingCost, input.shipping, subtotal, (shipSett?.data as ShopPayment | undefined) ?? null);
+    if (shipErr) return NextResponse.json({ error: shipErr }, { status: 400 });
+  }
   const now = new Date();
   const id = orderNo(now);
   // ตัวแทนจำหน่าย: ผูกออเดอร์กับ uid ที่ยืนยันแล้ว (ไม่เชื่อค่าในบอดี้)

@@ -55,7 +55,8 @@ export default async function ArticlePage({ params }: Params) {
 
   return (
     <article className="mx-auto max-w-3xl px-4 pb-16 pt-8">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      {/* escape "<" กัน </script> ในชื่อ/คำโปรยหลุดออกจากแท็กแล้วกลายเป็นสคริปต์ (ท่าเดียวกับ admin/orders/[id]/layout.tsx) */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
 
       <nav className="text-xs text-stone-400">
         <Link href="/articles" className="hover:text-amber-600 hover:underline">

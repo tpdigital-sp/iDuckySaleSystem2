@@ -9,6 +9,11 @@ import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
 import { lotRepriceNote, repriceOrderLot } from "@/lib/order-lot-reprice";
 import { shippingUnset } from "@/lib/ship-label";
+import { cleanCustomerItems, priceMismatchMessage, shippingFloorProblem, underpricedLines } from "@/lib/server/order-price-guard";
+import type { ShopPayment } from "@/lib/shop-settings";
+
+// id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
+const SETTINGS_ROW = "__shop_payment__";
 
 export const runtime = "nodejs";
 
@@ -39,9 +44,11 @@ export async function POST(req: Request) {
   }
 
   const orderId = (body.orderId ?? "").trim();
-  const items = Array.isArray(body.items) ? body.items : [];
   if (!orderId) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
-  if (items.length === 0) return NextResponse.json({ error: "ไม่มีรายการสินค้า" }, { status: 400 });
+  // 🚧 ตัวเลขต้องเป็นตัวเลขจริง + ตัดฟิลด์เรื่องเงินที่แอดมินเท่านั้นใส่ได้ — ดู lib/server/order-price-guard.ts
+  const cleaned = cleanCustomerItems(body.items);
+  if (cleaned.error) return NextResponse.json({ error: cleaned.error }, { status: 400 });
+  const items = cleaned.items;
 
   const { data: row, error: readErr } = await sb.from("orders").select("data").eq("id", orderId).maybeSingle();
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
@@ -72,6 +79,13 @@ export async function POST(req: Request) {
     }
   }
 
+  /**
+   * 🚧 ราคาต่อชิ้นของที่เพิ่มต้องไม่ต่ำกว่าที่ร้านคิดได้ — คิดร่วมล็อตกับของเดิมในใบเหมือนตะกร้า (ตรวจความปลอดภัย 8 ต.ค. 69)
+   * เดิมเชื่อ unitPrice จากเบราว์เซอร์ → คนถือ key ออเดอร์ยิง API เพิ่มของราคา ฿1 เข้าใบได้
+   */
+  const short = await underpricedLines(items, getProductServer, order.items);
+  if (short.length) return NextResponse.json({ error: priceMismatchMessage(short) }, { status: 400 });
+
   // 📐 แช่จำนวนชิ้นต่อหน่วยให้ของที่สั่งเพิ่มเหมือนตอนสั่งครั้งแรก
   const merged = [...order.items, ...(await withUnitYield(items))];
 
@@ -85,6 +99,13 @@ export async function POST(req: Request) {
 
   // 🚚 ใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง → รับค่าส่งที่หน้าชำระเงินคิดไว้ (ชื่อวิธีส่ง + ตัวเลข) มาใส่ให้เป็นครั้งแรก
   const shipName = (body.shipping ?? "").trim().slice(0, 40);
+  if (shipName && shippingUnset(order)) {
+    // 🚧 ค่าส่งต้องไม่ต่ำกว่าราคาวิธีส่งที่เลือก (กติกาเดียวกับ /api/orders)
+    const { data: shipSett } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
+    const subtotalAll = merged.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+    const shipErr = shippingFloorProblem(body.shippingCost, shipName, subtotalAll, (shipSett?.data as ShopPayment | undefined) ?? null);
+    if (shipErr) return NextResponse.json({ error: shipErr }, { status: 400 });
+  }
   const shipPatch: Partial<Order> =
     shipName && shippingUnset(order)
       ? {
