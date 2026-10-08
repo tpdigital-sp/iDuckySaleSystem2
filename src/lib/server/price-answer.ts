@@ -698,7 +698,16 @@ export async function understand(
 
   const items = await catalog().catch(() => []);
   if (!items.length) return null;
-  const list = items.map((it) => `- ${it.name}`).join("\n");
+  // 📖 8 ต.ค. 69 16:33 เจ้าของร้าน: "ช่วยอ่านรายละเอียดในเว็บทั้งหมด จะได้หยิบมาตอบถูก ไม่มั่ว/สุ่ม" — เดิมส่งแค่ชื่อ 228 ชื่อ
+  // "สตก PP กันน้ำไหม" เลยเดาจากประวัติ (Case CARD / สติ๊กเกอร์ประกายรุ้ง) → แนบคำอธิบายสั้นต่อท้ายทุกชื่อ ให้เทียบวัสดุ/คุณสมบัติได้ (~+12k token แต่ prefix เดิมทุกครั้ง Gemini แคชให้)
+  // 🎯 ด่านหมวด: ลูกค้าเอ่ยชื่อหมวดชัด (สติ๊กเกอร์/พวงกุญแจ/กระดาษ/…) → ให้ LLM เลือกได้เฉพาะสินค้าในหมวดนั้น
+  // ("สติ๊กเกอร์ PET" เคยหลุดไป MOBILE PHONE HANGING/แม่เหล็ก เพราะคำอธิบายมี PET) · ไม่เอ่ยหมวด = รายการเต็มเหมือนเดิม (followup)
+  const CATS = ["สติ๊กเกอร์", "พวงกุญแจ", "สแตนดี้", "กระดาษ", "หมอน", "แม่เหล็ก", "เคส", "case", "กริ๊บต๊อก", "griptok", "โฟโต้การ์ด", "โปสการ์ด", "ถุงผ้า", "แท่งไฟ", "ผ้าห่ม", "กรอบรูป", "ป้าย", "การ์ด", "พัด", "หมวก", "เข็มกลัด", "กระจก", "สมุด", "แก้ว", "ตุ๊กตา", "เสื้อ", "ปฏิทิน", "ปฎิทิน", "โพลารอยด์", "ชิกิชิ", "สายคล้อง", "กระเป๋า"];
+  const qScope = norm(fixTypos(q));
+  const catsHit = CATS.filter((c) => qScope.includes(norm(c)));
+  const scoped = catsHit.length ? items.filter((it) => catsHit.some((c) => norm(it.name).includes(norm(c)))) : [];
+  const listItems = scoped.length ? scoped : items;
+  const list = listItems.map((it) => `- ${it.name}${it.desc ? ` — ${it.desc.replace(/\s+/g, " ").slice(0, 90)}` : ""}`).join("\n");
   const ctxText = turns.length
     ? turns.map((t) => `${t.role === "user" ? "ลูกค้า" : "แอดมิน"}: ${t.text.replace(/\n+/g, " ")}`).join("\n")
     : ctx.length
@@ -711,7 +720,7 @@ ${ctxText}
 
 ข้อความล่าสุด: "${q}"
 
-รายการสินค้าทั้งหมดในร้าน:
+รายการสินค้าทั้งหมดในร้าน (ชื่อ — คำอธิบายสั้น · ใช้คำอธิบายเทียบวัสดุ/คุณสมบัติ/การใช้งานด้วย ไม่ใช่แค่ชื่อ):
 ${list}
 
 ตอบ JSON:
@@ -737,6 +746,7 @@ ${list}
 - ลูกค้าพูดถึงที่ใช้งาน (รถยนต์ ตู้เย็น โต๊ะ) → เลือกสินค้าที่ชื่อมีคำนั้นก่อน · ชื่ออังกฤษให้จับตามความหมาย (ที่รองแก้ว = Coaster, แก้วเยติ = Tumbler)
 - ลูกค้าเรียก "ชื่อสินค้า" ตรงกับรายการ (เช่น Photocard/โฟโต้การ์ด ขายเป็นเซ็ต) ให้เลือกสินค้าชื่อนั้น แม้จะพ่วงวัสดุมาด้วย (Photocard กระดาษอาร์ตมัน 300 แกรม = "โฟโต้การ์ด" ไม่ใช่ "งานพิมพ์กระดาษอาร์ตมัน" ที่ขายเป็นแผ่น A3) — วัสดุเป็นแค่ตัวเลือกในสินค้านั้น
 - "กระดาษสีทอง/กระดาษสีเงิน/กระดาษโฮโลแกรม/กระดาษมุก/กระดาษ Stardream" ที่ไม่ได้พ่วงชื่อสินค้าอื่น = สินค้า "กระดาษเนื้อพิเศษ" (ขายเป็นแผ่น มีตัวเลือกชนิดกระดาษ) — ไม่ใช่ "Sticker Gold | Silver | RoseGold" (นั่นคือสติ๊กเกอร์เนื้อโลหะ) และไม่ใช่ "กระดาษเคลือบฟอยล์" (นั่นคือปั๊มฟอยล์บนกระดาษอาร์ตมัน) · ถ้าพ่วงชื่อสินค้ามา ("โปสการ์ดกระดาษสีทอง") ให้เลือกสินค้านั้น
+- ข้อความล่าสุดระบุ "วัสดุ/ชนิด/คุณสมบัติ" ชัด (PP, PET, PVC, อะคริลิค, กันน้ำ, เรืองแสง, โฮโลแกรม …) → เลือกสินค้าที่คำอธิบายตรงกับคำนั้น "จากข้อความล่าสุด" เป็นหลัก ห้ามยึดสินค้าจากประวัติที่ไม่มีคำนั้น (เช่น "สติ๊กเกอร์ PP กันน้ำไหม" หลังคุยสติ๊กเกอร์เรืองแสง = สติ๊กเกอร์ดิจิตอล (PP กันน้ำ) ไม่ใช่สติ๊กเกอร์เรืองแสง)
 - แต่ถ้าลูกค้าถามต่อจากบริบทว่า "แบบ X ด้วยไหม / X มีไหม" (X = วัสดุ เช่น อะคริลิค PET ไม้) ให้หาสินค้าในรายการที่เป็น "สินค้าเดิม + วัสดุ X" ก่อน เช่น คุยแม่เหล็กติดตู้เย็นอยู่แล้วถาม "แบบอะคริลิคมีไหม" → "แม่เหล็กอะคริลิค" (ถ้ามีในรายการ) ไม่ใช่ตอบสินค้าเดิมซ้ำ
 - qty = จำนวนชิ้นที่จะสั่งเท่านั้น (ห้ามนับขนาด 3cm / 300 แกรม / A3) ไม่มี = null
 - standalone = เขียนคำถามใหม่เป็นภาษาไทยสั้น ๆ ให้เข้าใจได้โดยไม่ต้องอ่านบริบท ใส่ชื่อสินค้าและจำนวนที่รู้`;
@@ -746,10 +756,21 @@ ${list}
     if (!text) return null;
     const raw = JSON.parse(text) as Partial<Omit<Understanding, "alternatives">> & { products?: unknown[]; alternatives?: unknown[] };
     const byName = new Map(items.map((it) => [norm(it.name), it]));
+    // 🔎 8 ต.ค. 69 ชื่อสินค้ามีเครื่องหมายคำพูด/วงเล็บ ("แท่งไฟ" (Light Stick)) LLM คัดลอกมาไม่ครบ → เทียบแบบตัดเครื่องหมาย แล้วค่อยเทียบขึ้นต้น
+    const strip = (t: string) => norm(t).replace(/["“”'()\[\]]/g, "");
+    const byStripped = new Map(items.map((it) => [strip(it.name), it]));
+    const lookup = (n: unknown): Lite | undefined => {
+      const key = norm(String(n ?? ""));
+      if (!key) return undefined;
+      const hit = byName.get(key) ?? byStripped.get(strip(String(n)));
+      if (hit) return hit;
+      const sk = strip(String(n));
+      return sk.length >= 3 ? items.find((it) => strip(it.name).startsWith(sk) || sk.startsWith(strip(it.name))) : undefined;
+    };
     let anchorDebug: { qMentions: string[]; anchor: string[]; trace: string[] } | undefined;
     let attrQ = false;
     let picked = (Array.isArray(raw.products) ? raw.products : [])
-      .map((n) => byName.get(norm(String(n))))
+      .map((n) => lookup(n))
       .filter((it): it is Lite => !!it)
       .slice(0, 6);
     const intents = ["price", "spec", "minqty", "mix", "knowledge", "order", "chitchat", "followup", "other"] as const;
@@ -760,7 +781,7 @@ ${list}
       intent = "mix";
     }
     const alts = (Array.isArray(raw.alternatives) ? raw.alternatives : [])
-      .map((n) => byName.get(norm(String(n))))
+      .map((n) => lookup(n))
       .filter((it): it is Lite => !!it)
       .slice(0, 3)
       .map(refOf);
