@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { catalogRefs, knowledgeItems, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
+import { catalogRefs, catalogSheet, knowledgeItems, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
 import { priceSearch } from "@/lib/server/price-search";
 import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
@@ -19,7 +19,7 @@ export const maxDuration = 30;
  * 23 ก.ย. 69 — เปิดให้บอทนอกเว็บใช้ลิงก์+รูปของเว็บจริง:
  *   · `product` / `products[]` มี `url` (หน้าสินค้า iduckystore.com) + `image` (ภาพปกสินค้า)
  *   · `links[]` / `images[]` = ชุดเดียวกันแบบแบน ๆ ให้ Code node ใน n8n หยิบง่าย
- *   · GET ?catalog=1 = รายชื่อสินค้าทั้งร้านพร้อมลิงก์/รูป/ช่วงราคา (AdminBuddy โหลดครั้งเดียวแทน price_links)
+ *   · GET ?catalog=1 = รายชื่อสินค้าทั้งร้านพร้อมลิงก์/รูป/ช่วงราคา (AdminBuddy โหลดครั้งเดียวแทน price_links) · &detail=1 เพิ่มคำอธิบาย/แบบ-วัสดุ/ตัวเลือก
  *   · CORS เปิด — chat.html ของ AdminBuddy (localhost:8765 / Netlify) เรียกจากเบราว์เซอร์ตรง ๆ
  *   · เดาประเภทคำถามให้: ขั้นต่ำ → searchMinQty · สเปก → searchSpec · อื่น ๆ → searchPrice
  *     (บังคับได้ด้วย `mode`: "price" | "spec" | "minqty")
@@ -73,7 +73,8 @@ export async function GET(req: Request) {
     );
   }
   if (u.searchParams.get("catalog")) {
-    const items = await catalogRefs();
+    // &detail=1 → แนบคำอธิบาย/แบบ-วัสดุ/ตัวเลือก (ความรู้สินค้าให้ตัววิเคราะห์รูปใน n8n · 8 ต.ค. 69)
+    const items = u.searchParams.get("detail") ? await catalogSheet() : await catalogRefs();
     return json({ site: "https://iduckystore.com", count: items.length, items }, { cache: "public, max-age=300" });
   }
   const q = (u.searchParams.get("q") ?? u.searchParams.get("query") ?? "").trim();

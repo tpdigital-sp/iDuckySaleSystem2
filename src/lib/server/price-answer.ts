@@ -87,6 +87,17 @@ interface Lite {
   /** ช่วงราคาที่เซิร์ฟเวอร์คำนวณไว้ตอนบันทึกสินค้า — ใช้ทำเมนูโดยไม่ต้องโหลดตารางเต็ม */
   priceMin?: number;
   priceMax?: number;
+  /** แบบ/เรทที่ลูกค้าเลือกได้ (ชื่อ + คำอธิบายวัสดุ) — ให้บอทวิเคราะห์รูปแยก "โปสการ์ดกระดาษโฮโลแกรม" กับ "โฟโต้การ์ด PVC" ออก (8 ต.ค. 69) */
+  rates?: { label: string; desc?: string }[];
+  /** ตัวเลือกที่บอกวัสดุ/ชนิด/ขนาด (ชื่อกลุ่ม + ตัวเลือกไม่เกิน 8) */
+  opts?: { label: string; choices: string[] }[];
+}
+
+/** ชุดความรู้สินค้าย่อ (ชื่อ + คำอธิบาย + แบบ/วัสดุ + ตัวเลือก) — `?catalog=1&detail=1` ให้ตัววิเคราะห์รูปใน n8n */
+export interface ProductSheet extends ProductRef {
+  desc?: string;
+  variants?: string[];
+  options?: string[];
 }
 
 let cache: { at: number; items: Lite[] } | null = null;
@@ -105,8 +116,26 @@ async function loadLite(): Promise<Lite[]> {
   const { data } = await sb
     .from("products")
     .select(
-      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc, desc:data->>description",
+      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc, desc:data->>description, rates:data->priceRates, opts:data->options",
     );
+  const OPT_RE = /วัสดุ|กระดาษ|เนื้อ|ชนิด|ผิว|บัตร|ผ้า/;
+  const ratesOf = (v: unknown) =>
+    Array.isArray(v)
+      ? (v as { label?: unknown; desc?: unknown; dealerOnly?: unknown }[])
+          .filter((x) => x && typeof x.label === "string" && x.label.trim() && !x.dealerOnly)
+          .slice(0, 8)
+          .map((x) => ({ label: String(x.label).trim(), desc: typeof x.desc === "string" && x.desc.trim() ? x.desc.replace(/\s+/g, " ").trim().slice(0, 60) : undefined }))
+      : undefined;
+  const optsOf = (v: unknown) =>
+    Array.isArray(v)
+      ? (v as { label?: unknown; choices?: unknown }[])
+          .filter((o) => o && typeof o.label === "string" && OPT_RE.test(o.label) && Array.isArray(o.choices) && o.choices.length)
+          .slice(0, 2)
+          .map((o) => ({
+            label: String(o.label).trim(),
+            choices: (o.choices as { name?: unknown }[]).map((c) => (c && typeof c.name === "string" ? c.name.trim().slice(0, 30) : "")).filter(Boolean).slice(0, 5),
+          }))
+      : undefined;
   return (data ?? [])
     .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden !== "true")
     .map((r) => ({
@@ -118,6 +147,8 @@ async function loadLite(): Promise<Lite[]> {
       category: String(r.category ?? ""),
       priceMin: r.priceMin ? Number(r.priceMin) : undefined,
       priceMax: r.priceMax ? Number(r.priceMax) : undefined,
+      rates: ratesOf(r.rates),
+      opts: optsOf(r.opts),
     }));
 }
 
@@ -174,6 +205,20 @@ function refOf(it: Lite): ProductRef {
  */
 export async function catalogRefs(): Promise<ProductRef[]> {
   return (await catalog().catch(() => [])).map(refOf);
+}
+
+/**
+ * 📖 แคตตาล็อกแบบมีความรู้สินค้า (คำอธิบาย + แบบ/วัสดุ + ตัวเลือก) — ตัววิเคราะห์รูปของบอท LINE เคยเห็นแค่ "ชื่อ" 228 ชื่อ
+ * เลยทายรูปโปสการ์ดกระดาษโฮโลแกรมเป็น "โฟโต้การ์ด PVC" (เจ้าของร้าน 8 ต.ค. 69 14:54: "อยากให้บอทศึกษาข้อมูลสินค้าทั้งหมดของร้านมากกว่านี้")
+ */
+export async function catalogSheet(): Promise<ProductSheet[]> {
+  return (await catalog().catch(() => [])).map((it) => {
+    // ตัดให้สั้น (ทั้งร้าน ~228 ตัว ต้องยัดเข้า prompt รูปทุกครั้ง — เต็ม ๆ 113k ตัวอักษร)
+    const desc = (it.desc ?? "").replace(/\s+/g, " ").trim().slice(0, 150) || undefined;
+    const variants = (it.rates ?? []).map((r) => (r.desc ? `${r.label}: ${r.desc}` : r.label));
+    const options = (it.opts ?? []).map((o) => `${o.label}: ${o.choices.join(" / ")}`);
+    return { ...refOf(it), desc, variants: variants.length ? variants : undefined, options: options.length ? options : undefined };
+  });
 }
 
 /**
