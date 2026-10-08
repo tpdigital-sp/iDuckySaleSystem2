@@ -1336,9 +1336,9 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
       const vals = [...new Set(keys.map((k) => k.split("│")[idx] ?? "").filter(Boolean))];
       if (vals.length < 2) return;
       // ลูกค้าพิมพ์ค่าแบบย่อ ("ใส" = อะคริลิคใส) ที่ pickColumns จับไม่ได้ → ตัดคำนำหน้าที่ทุกค่าในกลุ่มมีเหมือนกัน (อะคริลิค…) แล้วเทียบ ถ้าเจอ = ระบุแล้ว ไม่ถาม
-      let prefix = vals[0];
-      for (const v of vals) { let i = 0; while (i < prefix.length && i < v.length && prefix[i] === v[i]) i++; prefix = prefix.slice(0, i); }
-      const specified = vals.some((v) => { const core = norm(v.slice(prefix.length)); return core.length >= 2 && qn.includes(core); });
+      // ("อะคริลิคใส" → "ใส" · "สกรีน 1 ด้าน (บน)" → "1 ด้าน (บน)" ยังต้องมี บน/ใต้ ถึงจะถือว่าระบุ)
+      const core = (v: string) => norm(v.replace(/^(อะคริลิค|สกรีน|กระดาษ|เนื้อ|ผ้า|สี|แบบ|ขนาด)\s*/i, ""));
+      const specified = vals.some((v) => { const c = core(v); return c.length >= 2 && qn.includes(c); });
       if (specified) return;
       groups.push(`• ${label.trim()}: ${vals.slice(0, 6).join(" / ")}${vals.length > 6 ? ` / …อีก ${vals.length - 6}` : ""}`);
     });
