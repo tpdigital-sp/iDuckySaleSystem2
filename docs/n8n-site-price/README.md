@@ -274,3 +274,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - ต้นตอ: Site Price Flex แนบการ์ด/ตัดลิงก์เฉพาะเส้น "ผลเว็บ" หรือ `mentioned()` (ชื่อสินค้าในข้อความ) · เส้น imageRef (ตอบรวมรูป) ไม่มี guess จากรูป → ส่งข้อความผ่านไปทั้งลิงก์
 - แก้ (draft LINE OA Bot รอ publish): `urlProducts()` ดึง `iduckystore.com/products/<slug>` จากคำตอบ → เทียบ slug (decode) กับแคตตาล็อก → การ์ดสินค้าตัวนั้น · `stripUrls()` ตัดทั้งบรรทัดลิงก์ล้วนและลิงก์แทรกในประโยค · ใช้ใน: เส้น imageRef (ทั้งแบบมี guess และไม่มี) + ขั้น 2 (ลิงก์ชนะ mentioned) + cleanText
 - เทส helper กับข้อความจริง 17:36: slug "พวงกุญแจอะคริลิค-acrylic-keyring" → การ์ด "พวงกุญแจอะคริลิค" · ข้อความเหลือ "ได้เลยค่ะคุณลูกค้า 🥰 … อยากได้ขนาดไหน กี่ชิ้นดีคะ" ✅
+
+## 8 ต.ค. 69 17:45 — สินค้าใหม่ "Spinning Glow อะคริลิคหมุน มีไฟ/ไม่มีไฟ" (slug spinning-glow, id new-muzeb6rz-9639)
+- สถานะ: อยู่ใน Supabase ครบ (฿75–545, ตัวเลือก ไฟ LED/พวงกุญแจ-แม่เหล็ก/ขนาด 5–15 cm/แผ่นบน/โซ่/แม่เหล็กกี่จุด, รูป 9) แต่ `data.hidden=true` → ไม่อยู่ในแคตตาล็อก (228) บอทตอบแบบ draft_product "มีค่ะ ร้านรับทำ … แต่ราคายังไม่ขึ้นเว็บ"
+- เจ้าของร้านสั่ง "ปิดซ่อนให้" → PATCH hidden=false (service role) 17:50 + สั่งรัน Website Knowledge Sync (exec 887728 17:51–17:58 success) → 17:59 เจ้าของร้าน "ยังไม่ต้อง ราคายังผิด" → PATCH กลับ hidden=true ทันที · ระหว่างนั้นแคตตาล็อก prod ยังเป็น 228 ตลอด (แคช 5 นาที/CDN) → Pinecone ไม่ได้ Spinning Glow (sync อ่าน ?knowledge=1 ซึ่งใช้ catalog() ตัด hidden) · ลูกค้าไม่เคยเห็นสินค้านี้
+- วิธีเปิดจริงเมื่อราคาพร้อม: ปิดซ่อนในหลังบ้าน → บอทเห็นเองใน ~5 นาที (เว็บ) + ~10 นาที (แคช n8n siteSheet/siteCatalog) · Knowledge Sync 04:00 ทุกวัน หรือสั่งรันเอง (POST /rest/workflows/deZYeIG1mvxNagEW/run จาก browser session ใช้ได้)
