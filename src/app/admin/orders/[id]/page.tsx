@@ -7570,10 +7570,12 @@ export default function AdminOrderDetailPage() {
                 {/* ➕ ลูกค้าสั่งเพิ่มหลังของแถมถูกคิด/ทำแบบแล้ว → จำนวนเพิ่ม กราฟฟิกต้องจัดแผ่น/ทำแบบเพิ่ม ไม่งั้นผลิตตามจำนวนเดิม
                     (OD-261006-8507 · 8 ต.ค. 69: รองหลังส่งแบบไป 72 ใบ แล้วลูกค้าสั่งเพิ่มเป็น 96 ไม่มีใครรู้) · ค้างจนกดรับทราบ/อัปแบบใหม่ */}
                 {giftBumpPending(g) && (
-                  <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2.5">
-                    <p className="min-w-0 flex-1 text-xs font-bold text-amber-900">
-                      ⚠️ ลูกค้าสั่งเพิ่ม — ของแถมต้องทำเพิ่ม: <span className="tabular-nums">{giftBumpLabel(g)}</span>
-                      <span className="block text-[11px] font-semibold text-amber-700">
+                  <div className="flex flex-wrap items-center gap-2 border-t-2 border-rose-300 bg-rose-50 px-4 py-2.5 ring-1 ring-inset ring-rose-200">
+                    <p className="min-w-0 flex-1 text-sm font-bold text-slate-800">
+                      <span className="mr-1 inline-flex items-center rounded-md bg-rose-600 px-2 py-0.5 text-xs font-extrabold text-white">⚠️ ลูกค้าสั่งเพิ่ม</span>
+                      ของแถม<span className="font-extrabold text-rose-600">ต้องทำเพิ่ม</span>:{" "}
+                      <span className="tabular-nums font-extrabold text-rose-700">{giftBumpLabel(g)}</span>
+                      <span className="block text-[11px] font-semibold text-rose-800/80">
                         {g.proofStatus === "อนุมัติ"
                           ? "แบบเดิมลูกค้าอนุมัติแล้ว ใช้ลายเดิมได้ แค่จัดแผ่น/พิมพ์เพิ่มให้ครบ"
                           : (g.proofs ?? []).length
@@ -7588,7 +7590,7 @@ export default function AdminOrderDetailPage() {
                         type="button"
                         onClick={() => ackGiftBump(g.promoId)}
                         title="กดเมื่อจัดแผ่น/ทำแบบของแถมเพิ่มครบตามจำนวนใหม่แล้ว — ด่านแพ็คถึงจะปิดกล่องได้"
-                        className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600"
+                        className="shrink-0 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-rose-700"
                       >
                         ✅ กราฟฟิกรับทราบ ทำเพิ่มแล้ว
                       </button>
