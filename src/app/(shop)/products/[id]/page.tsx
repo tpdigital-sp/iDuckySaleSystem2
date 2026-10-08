@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { PRODUCTS } from "@/lib/products";
+import { productPath, PRODUCTS } from "@/lib/products";
 import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib/products-server";
 import { productAutoSeo } from "@/lib/auto-seo";
 import { withImageVersion } from "@/lib/img";
@@ -38,17 +38,21 @@ export async function generateMetadata({
   const auto = productAutoSeo(product);
   const title = product.seo?.title || auto.title;
   const description = product.seo?.description || product.description || auto.description;
+  // ที่อยู่ทางการของหน้านี้ = ลิงก์ตาม slug (ถ้ามี) — เปิดด้วย id เดิมก็ชี้มาที่เดียวกัน ไม่ถูกนับเป็นหน้าซ้ำ
+  const canonical = productPath(product);
   return {
     title,
     description,
     // ปิดการมองเห็นไว้ = ไม่ให้ Google เก็บ (เผื่อเคยถูกเก็บไว้ตอนยังเปิดอยู่)
     ...(product.hidden ? { robots: { index: false, follow: false } } : {}),
     keywords: product.seo?.keywords?.length ? product.seo.keywords : auto.keywords,
+    alternates: { canonical },
     openGraph: {
       title,
       description,
       type: "website",
-      ...(product.imageSrc ? { images: [{ url: product.imageSrc }] } : {}),
+      url: canonical,
+      ...(product.imageSrc ? { images: [{ url: product.imageSrc, alt: product.name }] } : {}),
     },
   };
 }

@@ -5,6 +5,7 @@ import ChatWidget from "@/components/ChatWidget";
 import CartFloat from "@/components/CartFloat";
 import AdminEditFabAuto from "@/components/AdminEditFabAuto";
 import NavProgress from "@/components/NavProgress";
+import SiteJsonLd from "@/components/SiteJsonLd";
 import { CartProvider } from "@/lib/cart-context";
 import { CustomerProvider } from "@/lib/customer-context";
 // ดีไซน์ใหม่ (หัวเว็บ/ท้ายเว็บ/หน้าแรก) — ครอบด้วยคลาส .dl เท่านั้น หน้าอื่นไม่ได้รับผล
@@ -15,6 +16,8 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
     <CustomerProvider>
       <CartProvider>
         <NavProgress />
+        {/* ข้อมูลโครงสร้างของร้าน (Organization/Store + WebSite) ให้ Google ทุกหน้าร้าน */}
+        <SiteJsonLd />
         <div className="dl dl-contents no-print">
           <Navbar />
         </div>

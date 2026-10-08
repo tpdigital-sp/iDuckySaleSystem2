@@ -48,6 +48,7 @@ import {
   type RolePermsMap,
 } from "@/lib/permissions";
 import { btnPrimary, card, faint, muted } from "@/lib/admin-ui";
+import { SITE_URL } from "@/lib/shop-info";
 import { PageHead, PageShell } from "@/components/admin/ui";
 
 /** โลโก้/สีประจำธนาคาร — จับจากชื่อที่พิมพ์อิสระ (พิมพ์ "กสิกร" ก็ขึ้นโลโก้เขียว K ให้เอง)
@@ -667,6 +668,18 @@ function AdminSettingsPageInner() {
   // ── Google & SEO (แอดมินเอารหัสจาก Search Console/Analytics มาวางเอง) ──
   const [seo, setSeo] = useState<SeoConfig>({});
   const patchSeo = (v: Partial<SeoConfig>) => setSeo((c) => ({ ...c, ...v }));
+  /** ฟีด Google Merchant Center — ปุ่มคัดลอก URL ไปวางใน Merchant Center */
+  const [copiedFeed, setCopiedFeed] = useState(false);
+  const feedUrl = `${SITE_URL}/feeds/google-merchant.xml`;
+  const copyFeed = async () => {
+    try {
+      await navigator.clipboard.writeText(feedUrl);
+      setCopiedFeed(true);
+      setTimeout(() => setCopiedFeed(false), 1800);
+    } catch {
+      window.prompt("คัดลอกลิงก์ฟีดนี้", feedUrl);
+    }
+  };
   const patchInfo = (patch: Partial<ShopInfo>) => {
     setInfo((v) => ({ ...v, ...patch }));
     touch();
@@ -2533,9 +2546,102 @@ function AdminSettingsPageInner() {
                     • <a className="font-semibold text-emerald-700 underline" href="/robots.txt" target="_blank" rel="noreferrer">/robots.txt</a>{" "}
                     — บอกบอทว่าเก็บอะไรได้ · ปิดหลังบ้าน/ตะกร้า/ข้อมูลลูกค้าไว้แล้ว และชี้ไปที่ sitemap
                   </li>
-                  <li>• ทุกหน้าสินค้ามี meta + FAQ + ข้อมูลโครงสร้าง (JSON-LD) ให้ Google/AI ดึงไปตอบอยู่แล้ว</li>
+                  <li>• ทุกหน้าสินค้ามี meta + FAQ + ข้อมูลโครงสร้าง (JSON-LD สินค้า · ช่วงราคา · เส้นทางหน้า) ให้ Google/AI ดึงไปตอบอยู่แล้ว</li>
+                  <li>• ทุกหน้ามีที่อยู่ทางการ (canonical) อันเดียว — เปิดสินค้าด้วย id หรือชื่อลิงก์ก็นับเป็นหน้าเดียวกัน ไม่โดนหักคะแนนหน้าซ้ำ</li>
+                  <li>• หน้าแรกบอก Google ว่าร้านคือใคร (ชื่อ · ที่อยู่ · เบอร์ · เวลาทำการ · โซเชียล) + หน้าหมวดแต่ละหมวดมีชื่อ/คำอธิบายของตัวเอง</li>
                 </ul>
               </div>
+
+              {/* ── สถานะการเชื่อม: อะไรยังไม่ได้ทำ ต้องเด่นกว่าที่เสร็จแล้ว ── */}
+              {(() => {
+                const rows: { label: string; done: boolean; doneText: string; todoText: string }[] = [
+                  {
+                    label: "Google Search Console",
+                    done: !!seo.googleVerification?.trim(),
+                    doneText: "วางโค้ดยืนยันแล้ว — เข้า Search Console ดูว่าสถานะ “ยืนยันแล้ว” และส่ง sitemap.xml หรือยัง",
+                    todoText: "ยังไม่ได้วางโค้ดยืนยัน → Google ยังไม่รู้ว่าเราเป็นเจ้าของเว็บ ขอให้เก็บหน้า/ดูคำค้นไม่ได้",
+                  },
+                  {
+                    label: "สถิติผู้เข้าชม (GA4 / GTM)",
+                    done: !!(seo.ga4Id?.trim() || seo.gtmId?.trim()),
+                    doneText: "ติดตั้งแล้ว — ดูยอดคนเข้า/มาจากไหนได้ใน Google Analytics",
+                    todoText: "ยังไม่ใส่รหัส → ไม่รู้ว่าลูกค้ามาจาก Google กี่คน คำไหนพาเข้ามา",
+                  },
+                ];
+                return (
+                  <div className="mt-4 rounded-xl border border-slate-200 p-3 text-xs">
+                    <p className="font-bold text-slate-800">📍 สถานะการเชื่อมของเว็บนี้</p>
+                    <ul className="mt-2 divide-y divide-slate-100">
+                      {rows.map((r) => (
+                        <li key={r.label} className="flex items-start gap-2.5 py-2">
+                          <span
+                            className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
+                              r.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-400 text-white ring-2 ring-amber-200"
+                            }`}
+                            aria-hidden
+                          >
+                            {r.done ? "✓" : "!"}
+                          </span>
+                          <span className="min-w-0">
+                            <span className={`block font-semibold ${r.done ? "text-slate-600" : "text-amber-900"}`}>{r.label}</span>
+                            <span className={`block ${r.done ? "text-slate-500" : "font-medium text-amber-800"}`}>
+                              {r.done ? r.doneText : r.todoText}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                      <li className="flex items-start gap-2.5 py-2">
+                        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-black text-sky-700" aria-hidden>
+                          🛍
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-700">Google Merchant Center — สินค้าทุกตัวขึ้นแท็บ “ช็อปปิ้ง” ฟรี</span>
+                          <span className="block text-slate-500">
+                            ฟีดพร้อมแล้ว อัปเดตเองทุก 1 ชม. · เอาลิงก์นี้ไปใส่ครั้งเดียวที่{" "}
+                            <a className="font-semibold text-sky-700 underline" href="https://merchants.google.com/" target="_blank" rel="noreferrer">
+                              Merchant Center
+                            </a>{" "}
+                            → สินค้า → ฟีด → <b>เพิ่มฟีด</b> → ดึงตามกำหนดเวลา
+                          </span>
+                          <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <code className="max-w-full truncate rounded-md bg-slate-100 px-2 py-1 text-[11px] text-slate-700">{feedUrl}</code>
+                            <button
+                              type="button"
+                              onClick={copyFeed}
+                              className="min-h-[36px] rounded-lg bg-slate-800 px-3 text-[11px] font-semibold text-white hover:bg-slate-700"
+                            >
+                              {copiedFeed ? "คัดลอกแล้ว ✓" : "📋 คัดลอกลิงก์ฟีด"}
+                            </button>
+                            <a
+                              className="min-h-[36px] rounded-lg px-2 text-[11px] font-semibold text-sky-700 underline leading-[36px]"
+                              href="/feeds/google-merchant.xml"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              เปิดดูฟีด
+                            </a>
+                          </span>
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5 py-2">
+                        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-black text-sky-700" aria-hidden>
+                          📍
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-slate-700">Google Business Profile — ร้านขึ้นแผนที่/แผงขวาเวลาค้นชื่อร้าน</span>
+                          <span className="block text-slate-500">
+                            ทำเองครั้งเดียวที่{" "}
+                            <a className="font-semibold text-sky-700 underline" href="https://business.google.com/" target="_blank" rel="noreferrer">
+                              business.google.com
+                            </a>{" "}
+                            ใส่ชื่อ/ที่อยู่/เบอร์ให้ตรงกับท้ายเว็บ แล้วใส่ลิงก์เว็บร้าน · เว็บมีข้อมูลร้านชุดเดียวกันฝังไว้ให้ Google จับคู่แล้ว
+                          </span>
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                );
+              })()}
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <label className="block">
@@ -2617,7 +2723,15 @@ function AdminSettingsPageInner() {
                   <li>
                     เมนู <b>Sitemaps</b> → ใส่ <b>sitemap.xml</b> → ส่ง (ทำครั้งเดียว Google จะมาดึงเองเรื่อย ๆ)
                   </li>
+                  <li>
+                    เพิ่งเพิ่มสินค้า/บทความสำคัญ อยากให้ขึ้นเร็ว: วางลิงก์หน้านั้นในช่องค้นหาบนสุดของ Search Console (<b>ตรวจสอบ URL</b>) →
+                    กด <b>ขอจัดทำดัชนี</b> · ปกติ Google มาเก็บเองใน 1–7 วัน
+                  </li>
                 </ol>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  ⏳ ติดหน้าแรกไม่ได้เกิดทันที — หลังยืนยันแล้ว Google ใช้เวลา 2–8 สัปดาห์กว่าอันดับจะนิ่ง ·
+                  ดูคำที่ลูกค้าค้นแล้วเจอร้านได้ที่เมนู <b>ประสิทธิภาพ</b> แล้วเอาคำนั้นมาปรับชื่อ/คำอธิบายสินค้า
+                </p>
               </div>
             </section>
           )}

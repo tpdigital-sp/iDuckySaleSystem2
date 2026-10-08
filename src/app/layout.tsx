@@ -47,6 +47,20 @@ export async function generateMetadata(): Promise<Metadata> {
       "ร้านพิมพ์สินค้าตามสั่ง (Print on Demand) แก้วน้ำ เสื้อยืด เคสมือถือ กรอบผ้าใบ กระเป๋าผ้า พิมพ์ลายของคุณเองได้ทุกชิ้น ส่งไวทั่วไทย",
     manifest: "/manifest.json",
     icons: { icon: "/icon.png", apple: "/icon.png" },
+    /**
+     * canonical "./" = ที่อยู่ของหน้าที่กำลังเปิดอยู่ (Next ต่อกับ metadataBase ให้ · ตัด query ทิ้ง)
+     * บอก Google ว่าหน้านี้มีที่อยู่ทางการอันเดียว — หน้าสินค้าตั้งทับเองเป็นลิงก์ตาม slug
+     * เพราะเปิดได้ทั้ง /products/<id> และ /products/<slug> (เดิมถูกมองเป็นหน้าซ้ำ 2 หน้า)
+     */
+    alternates: { canonical: "./" },
+    openGraph: {
+      type: "website",
+      siteName: "iDucky Prints Studio",
+      locale: "th_TH",
+      url: "./",
+      images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "iDucky Prints Studio" }],
+    },
+    twitter: { card: "summary_large_image" },
     ...(seo.noindex ? { robots: { index: false, follow: false } } : {}),
     verification: {
       ...(seo.googleVerification ? { google: seo.googleVerification } : {}),

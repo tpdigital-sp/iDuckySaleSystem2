@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
-import { createClient } from "@supabase/supabase-js";
 import { SITE_URL } from "@/lib/shop-info";
-import { productPath, PRODUCTS, type Product } from "@/lib/products";
-import { CATEGORIES } from "@/lib/products";
+import { productPath } from "@/lib/products";
+import { getCategoriesServer } from "@/lib/server/categories-server";
+import { listPublicProductsServer } from "@/lib/server/public-products";
 import { listArticlesServer } from "@/lib/server/articles-server";
 import { getSeoServer } from "@/lib/server/settings-server";
 
@@ -12,23 +12,6 @@ import { getSeoServer } from "@/lib/server/settings-server";
  * ปิดการเก็บข้อมูล (noindex) ไว้ = ส่ง sitemap เปล่า จะได้ไม่ชวนให้มาเก็บ
  */
 export const revalidate = 3600; // ทำใหม่ทุก 1 ชม. พอ — ไม่ต้องยิงฐานข้อมูลทุกคำขอ
-
-function serverClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
-}
-
-async function allProducts(): Promise<Product[]> {
-  const sb = serverClient();
-  if (!sb) return PRODUCTS;
-  const { data, error } = await sb.from("products").select("id,data").order("sort", { ascending: true });
-  if (error || !data) return PRODUCTS;
-  return (data as Array<{ id: string; data: Product }>)
-    .filter((r) => !String(r.id).startsWith("__")) // ตัดแถวตั้งค่า/คลัง/บทความออก
-    .map((r) => r.data)
-    .filter((p) => p?.id && p?.name && !p.hidden); // สินค้าที่ปิดการมองเห็น ไม่ส่งให้ Google เก็บ
-}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const seo = await getSeoServer();
@@ -43,14 +26,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/articles`, lastModified: now, changeFrequency: "weekly", priority: 0.5 },
   ];
 
-  const categoryPages: MetadataRoute.Sitemap = CATEGORIES.map((c) => ({
+  // 🗂️ หมวดจากฐาน (ชุดที่แอดมินจัด) ไม่ใช่ CATEGORIES ชุดเก่าในโค้ด · หมวดที่ซ่อนไม่ส่ง
+  const [products, articles, categories] = await Promise.all([
+    listPublicProductsServer(),
+    listArticlesServer().catch(() => []),
+    getCategoriesServer(),
+  ]);
+
+  const categoryPages: MetadataRoute.Sitemap = categories.filter((c) => !c.hidden).map((c) => ({
     url: `${SITE_URL}/products?category=${c.id}`,
     lastModified: now,
     changeFrequency: "weekly",
     priority: 0.7,
   }));
-
-  const [products, articles] = await Promise.all([allProducts(), listArticlesServer().catch(() => [])]);
 
   const productPages: MetadataRoute.Sitemap = products.map((p) => ({
     url: `${SITE_URL}${productPath(p)}`,

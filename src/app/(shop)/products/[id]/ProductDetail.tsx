@@ -1,6 +1,7 @@
 "use client";
 
 import { productAutoSeo } from "@/lib/auto-seo";
+import { SHOP, SITE_URL } from "@/lib/shop-info";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -3503,13 +3504,23 @@ export default function ProductDetail({
   const faqs = product.seo?.faqs?.length ? product.seo.faqs : productAutoSeo(product).faqs;
   const jsonLd = useMemo(() => {
     const range = priceRange(product);
+    // ที่อยู่ทางการของหน้า (ตาม slug) — ให้ตรงกับ canonical ใน <head> และฟีด Merchant Center
+    const pageUrl = `${SITE_URL}${productPath(product)}`;
+    // รูปจริงทุกรูปในแกลเลอรี (ตัด data: URL/ค่าว่าง) — Google ใช้รูปหลายรูปในผลค้นหาแบบมีรูป
+    const images = Array.from(
+      new Set([product.imageSrc, ...(product.images ?? []).map((i) => i.src)].filter((u): u is string => !!u && /^https?:\/\//i.test(u))),
+    ).slice(0, 8);
     const graph: Record<string, unknown>[] = [
       {
         "@context": "https://schema.org",
         "@type": "Product",
+        "@id": `${pageUrl}#product`,
         name: product.name,
         description: product.seo?.description || product.description,
-        ...(product.imageSrc ? { image: [product.imageSrc] } : {}),
+        url: pageUrl,
+        sku: product.id,
+        brand: { "@type": "Brand", name: SHOP.name },
+        ...(images.length ? { image: images } : {}),
         category: category.name,
         // ดาวจากรีวิวลูกค้าจริงมาก่อน — ไม่มีค่อยถอยไปใช้ rating ที่แอดมินตั้งมือ
         ...(reviewStats
@@ -3529,12 +3540,41 @@ export default function ProductDetail({
                 },
               }
             : {}),
-        offers: {
-          "@type": "Offer",
-          priceCurrency: "THB",
-          price: range.min,
-          availability: "https://schema.org/InStock",
-        },
+        // ราคาขั้นบันได → AggregateOffer (ช่วงราคา) · ราคาเดียว → Offer ธรรมดา
+        offers:
+          range.max > range.min
+            ? {
+                "@type": "AggregateOffer",
+                priceCurrency: "THB",
+                lowPrice: range.min,
+                highPrice: range.max,
+                offerCount: 1,
+                availability: "https://schema.org/InStock",
+                url: pageUrl,
+              }
+            : {
+                "@type": "Offer",
+                priceCurrency: "THB",
+                price: range.min,
+                availability: "https://schema.org/InStock",
+                url: pageUrl,
+              },
+      },
+      // เส้นทางหน้า (หน้าแรก › สินค้า › หมวด › สินค้านี้) — Google โชว์แทน URL ยาว ๆ ในผลค้นหา
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "หน้าแรก", item: `${SITE_URL}/` },
+          { "@type": "ListItem", position: 2, name: "สินค้าทั้งหมด", item: `${SITE_URL}/products` },
+          {
+            "@type": "ListItem",
+            position: 3,
+            name: category.name,
+            item: `${SITE_URL}/products?category=${encodeURIComponent(product.category)}`,
+          },
+          { "@type": "ListItem", position: 4, name: product.name, item: pageUrl },
+        ],
       },
     ];
     if (faqs.length > 0) {

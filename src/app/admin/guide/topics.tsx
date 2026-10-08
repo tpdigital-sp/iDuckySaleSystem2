@@ -4369,9 +4369,9 @@ export const TOPICS: Topic[] = [
     id: "google-seo",
     group: "setup",
     icon: "🔍",
-    title: "เชื่อมกับ Google (Search Console · Analytics · Sitemap)",
+    title: "เชื่อมกับ Google (Search Console · Analytics · Merchant Center · Sitemap)",
     roles: ["แอดมิน", "คอนเทนต์"],
-    keywords: "google search console gsc sitemap robots analytics ga4 gtm tag manager seo ยืนยันสิทธิ์ ดัชนี index",
+    keywords: "google search console gsc sitemap robots analytics ga4 gtm tag manager seo ยืนยันสิทธิ์ ดัชนี index merchant center ฟีด shopping ช็อปปิ้ง business profile แผนที่ canonical ติดหน้าแรก",
     body: (
       <>
         <p>
@@ -4419,6 +4419,45 @@ export const TOPICS: Topic[] = [
             <>
               <B>Google Tag Manager</B> — วางรหัส <Key>GTM-XXXXXXX</Key> · ใช้ GTM แล้ว<B>ไม่ต้องใส่ GA4 ซ้ำ</B>
               (ไปตั้ง GA4 ในตัว GTM แทน)
+            </>,
+          ]}
+        />
+
+        <p className="pt-1 text-[0.95rem] font-extrabold text-teal-800">🛍️ Google Merchant Center — สินค้าทุกตัวขึ้นแท็บ &ldquo;ช็อปปิ้ง&rdquo; ฟรี</p>
+        <Steps
+          items={[
+            <>
+              สมัคร <B>merchants.google.com</B> ด้วยบัญชี Google เดียวกับ Search Console (ยืนยันเว็บผ่านให้เองเลย)
+            </>,
+            <>
+              เมนู <B>สินค้า → ฟีด → เพิ่มฟีด</B> → เลือก <B>ดึงตามกำหนดเวลา</B> → วางลิงก์{" "}
+              <Key>/feeds/google-merchant.xml</Key> (มีปุ่ม <Key>📋 คัดลอกลิงก์ฟีด</Key> ที่หน้าตั้งค่า) · ตั้งดึงทุกวัน
+            </>,
+            <>
+              ฟีดสร้างสดจากฐานข้อมูล <Mark>เพิ่ม/ซ่อนสินค้าในหลังบ้าน = ฟีดเปลี่ยนเองใน 1 ชม.</Mark> · ราคาที่ส่ง = ราคาเริ่มต้นของสินค้า
+              · สินค้าที่<B>ไม่มีรูปจริง</B>หรือยังไม่มีราคาจะไม่ถูกส่ง
+            </>,
+          ]}
+        />
+
+        <p className="pt-1 text-[0.95rem] font-extrabold text-teal-800">📍 Google Business Profile — ค้นชื่อร้านแล้วขึ้นแผนที่/แผงขวา</p>
+        <p>
+          ทำเองครั้งเดียวที่ <B>business.google.com</B> ใส่ชื่อ/ที่อยู่/เบอร์<Mark>ให้ตรงกับท้ายเว็บทุกตัวอักษร</Mark> แล้วใส่ลิงก์เว็บร้าน
+          — เว็บฝังข้อมูลร้านชุดเดียวกัน (Organization/Store JSON-LD) ไว้ทุกหน้าให้ Google จับคู่แล้ว
+        </p>
+
+        <p className="pt-1 text-[0.95rem] font-extrabold text-teal-800">⏳ ทำไมยังไม่ติดหน้าแรก</p>
+        <Bullets
+          items={[
+            <>
+              หลังยืนยัน Google ใช้เวลา <B>2–8 สัปดาห์</B>กว่าอันดับจะนิ่ง · เพิ่งเพิ่มหน้าสำคัญ → <Key>ตรวจสอบ URL</Key> →{" "}
+              <Key>ขอจัดทำดัชนี</Key> ใน Search Console
+            </>,
+            <>
+              เมนู <B>ประสิทธิภาพ</B> บอกว่าลูกค้าค้นคำไหนแล้วเจอร้าน (และคำไหนเห็นแต่ไม่กด) → เอาคำนั้นมาใส่ชื่อ/คำอธิบาย/SEO ของสินค้า
+            </>,
+            <>
+              <B>บทความ</B> ที่ตอบคำถามลูกค้าจริง (เช่น &ldquo;สกรีนเสื้อ DTF ต่างกับ FLEX ยังไง&rdquo;) ดันอันดับได้ดีกว่าแก้ meta อย่างเดียว
             </>,
           ]}
         />
