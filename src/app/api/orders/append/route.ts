@@ -8,6 +8,7 @@ import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { updateOrder } from "@/lib/server/order-write";
 import { customerSafeOrder } from "@/lib/customer-order";
 import { lotRepriceNote, repriceOrderLot } from "@/lib/order-lot-reprice";
+import { giftSyncNote, syncOrderGifts } from "@/lib/server/order-gifts";
 import { shippingUnset } from "@/lib/ship-label";
 import { cleanCustomerItems, priceMismatchMessage, shippingFloorProblem, underpricedLines } from "@/lib/server/order-price-guard";
 import type { ShopPayment } from "@/lib/shop-settings";
@@ -97,6 +98,12 @@ export async function POST(req: Request) {
   const addedIdx = merged.map((_, i) => i).filter((i) => i >= order.items.length);
   const lot = await repriceOrderLot({ ...order, items: merged }, getProductServer, addedIdx);
 
+  /**
+   * 🎁 ของแถมตามจำนวนชิ้นต้องนับ "ทั้งใบ" — เดิมคิดครั้งเดียวตอนสั่งครั้งแรก ของที่สั่งเพิ่มเลยไม่ได้ของแถม
+   * (OD-261006-8507 · 8 ต.ค. 69: 80 → 100 ชิ้น แต่รองหลังค้าง 80) · เพิ่มอย่างเดียว คงลาย/แบบ/ผลตรวจเดิม · ดู server/order-gifts.ts
+   */
+  const gift = await syncOrderGifts(sb, lot.order);
+
   // 🚚 ใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง → รับค่าส่งที่หน้าชำระเงินคิดไว้ (ชื่อวิธีส่ง + ตัวเลข) มาใส่ให้เป็นครั้งแรก
   const shipName = (body.shipping ?? "").trim().slice(0, 40);
   if (shipName && shippingUnset(order)) {
@@ -119,7 +126,7 @@ export async function POST(req: Request) {
    * 🏅 ส่วนลดระดับสมาชิก — ใบที่ผูกผู้ติดต่อไว้ (พนักงานเปิดใบให้ทางไลน์) ต้องได้ % ของระดับตัวเองเหมือนสั่งเองจากเว็บ
    * คิดใหม่จากยอดสินค้าหลังเพิ่มรายการ · ใบที่แจ้งโอนแล้ว/มีส่วนลดที่ตกลงกันไว้ = ไม่แตะ (ดู lib/server/order-member-tier.ts)
    */
-  const priced = await syncOrderMemberTier(sb, { ...order, ...shipPatch, items: lot.order.items });
+  const priced = await syncOrderMemberTier(sb, { ...order, ...shipPatch, items: lot.order.items, ...(gift.changed.length ? { gifts: gift.order.gifts } : {}) });
 
   /**
    * ⚡ ส่วนลดโอนไว — คิดที่ประตูเขียนออเดอร์ (updateOrder → syncOrderEarlyPay) ที่เดียวทั้งระบบ
@@ -149,6 +156,7 @@ export async function POST(req: Request) {
   // 🧮 บอกให้ชัดว่าของเดิมถูกลดลงมาเท่ากับของใหม่เพราะยอดรวมเข้าเรทส่ง (ลูกค้า/แอดมินเห็นใน log ใบนี้)
   if (lot.changed.length)
     logged = withLog(logged, "ระบบ", "ปรับราคาต่อชิ้นให้เท่ากันทั้งบิล", `ยอดรวมทั้งใบเข้าเรทส่ง · ${lotRepriceNote(lot.changed)}`);
+  if (gift.changed.length) logged = withLog(logged, "ระบบ", "ปรับของแถมตามยอดรวมทั้งใบ", giftSyncNote(gift.changed));
 
   const { order: saved, error: saveErr } = await updateOrder(sb, logged, { prev: order, by: "ลูกค้า" });
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });

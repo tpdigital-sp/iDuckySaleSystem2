@@ -106,6 +106,79 @@ const units = (o: Order) => o.items.map((i) => i.unitPrice);
   eq("ใบเคลมไม่คิดเงิน — ไม่แตะ", units(r.order), [400, 350]);
 }
 
+// ── 🧮 สั่งเพิ่ม "ลายเดิม" บรรทัดเล็กไม่ถึงโควตาต่อลายของเรทส่งด้วยตัวเอง (OD-261006-8507 · 8 ต.ค. 69) ─
+/** พวงกุญแจจำลอง: เรท 1 คละได้ (ลายละ 5 · เกินจ่ายค่าคละ) · เรท 2 ขั้นต่ำ 50 ลายละ 25 (ไม่คละ) */
+const keyring: Product = {
+  id: "keyring",
+  name: "พวงกุญแจ",
+  price: 100,
+  category: "acrylic",
+  tierByDesign: true,
+  options: [
+    { label: "ขนาด", choices: [{ name: "5cm" }, { name: "4cm" }] },
+    { label: "จำนวนลาย", choices: [{ name: "1 ลาย" }, { name: "2 ลาย" }, { name: "3 ลาย" }] },
+  ],
+  priceRates: [
+    {
+      label: "เรทที่ 1 แบบคละดีเทล",
+      minPerDesign: 5,
+      extraDesignFee: 10,
+      freeMixBelowQty: 11,
+      pricing: {
+        driverLabels: ["ขนาด"],
+        tiers: [{ upTo: 10 }, { upTo: 29 }, { upTo: 49 }, { upTo: 199 }, { upTo: null }],
+        cells: { "5cm": [100, 69, 65, 60, 55], "4cm": [90, 59, 55, 50, 45] },
+      },
+    },
+    {
+      label: "เรทที่ 2 แบบไม่คละดีเทล",
+      minQty: 50,
+      minPerDesign: 25,
+      pricing: {
+        driverLabels: ["ขนาด"],
+        tiers: [{ upTo: 100 }, { upTo: 199 }, { upTo: null }],
+        cells: { "5cm": [55, 50, 45], "4cm": [45, 40, 35] },
+      },
+    },
+  ],
+} as unknown as Product;
+const loadK = async (id: string) => (id === keyring.id ? keyring : id === shawl.id ? shawl : undefined);
+const kline = (qty: number, designs: number, unitPrice: number, size = "5cm", added?: boolean): OrderItem =>
+  ({
+    productId: "keyring",
+    name: "พวงกุญแจ",
+    selections: "",
+    sel: { ขนาด: size, จำนวนลาย: `${designs} ลาย`, เรทราคา: qty >= 50 ? "เรทที่ 2 แบบไม่คละดีเทล" : "เรทที่ 1 แบบคละดีเทล" },
+    qty,
+    unitPrice,
+    ...(added ? { addedAt: "2026-10-08T08:28:53.292Z" } : {}),
+  }) as OrderItem;
+{
+  // เคสจริง: 80 ชิ้น 2 ลาย เรท 2 ฿55 + สั่งเพิ่ม 20 ชิ้น 1 ลาย (ตะกร้าคิดได้ ฿60 เรท 1) → 100 ชิ้น 3 ลาย ≥ ลายละ 25 เข้าเรท 2 ทั้งก้อน
+  const order = mk([kline(80, 2, 55), kline(20, 1, 60, "5cm", true)]);
+  const r = await repriceOrderLot(order, loadK, [1]);
+  eq("สั่งเพิ่มลายเดิม 20 ชิ้น เกาะเรท 2 กับ 80 ชิ้นเดิม → ฿55 เท่ากันทั้งบิล", units(r.order), [55, 55]);
+  eq("รายงานบรรทัดที่ลด", r.changed, [{ name: "พวงกุญแจ", from: 60, to: 55, qty: 20 }]);
+}
+{
+  // คนละขนาด = คนละดีเทล ไม่เกาะ (20 ชิ้น 1 ลาย 4cm ยังอยู่เรท 1 ที่ขั้น 50-199 ของยอดรวม = ฿50)
+  const order = mk([kline(80, 2, 55), kline(20, 1, 50, "4cm", true)]);
+  const r = await repriceOrderLot(order, loadK, [1]);
+  eq("สเปคต่างกัน (4cm) ไม่เกาะโควตาต่อลาย — คงเรท 1", units(r.order), [55, 50]);
+}
+{
+  // ตัวอย่างร้าน 25+25+10+5 (ลายละ 1): {25,25} เรท 2 · 10 → 60 < 75 ไม่เกาะ · 5 ก็ไม่เกาะ → อยู่เรท 1 ที่ยอดรวม 65 = ฿60
+  const order = mk([kline(25, 1, 55), kline(25, 1, 55), kline(10, 1, 60, "5cm", true), kline(5, 1, 60, "5cm", true)]);
+  const r = await repriceOrderLot(order, loadK, [2, 3]);
+  eq("25+25+10+5 ยังแบ่งกลุ่มเรทเหมือนเดิม", units(r.order), [55, 55, 60, 60]);
+}
+{
+  // ไม่มีบรรทัดที่เข้าเรท 2 ด้วยตัวเอง = ไม่มีใครให้เกาะ (20+20+20 ลายละ 1 รวม 60 ≥ 75? ไม่) → เรท 1 ขั้น 50-199 ฿60
+  const order = mk([kline(20, 1, 65), kline(20, 1, 65), kline(20, 1, 60, "5cm", true)]);
+  const r = await repriceOrderLot(order, loadK, [2]);
+  eq("ไม่มีบรรทัดหลักที่เข้าเรท 2 → กติกาเดิม", units(r.order), [60, 60, 60]);
+}
+
 // ── ไม่รู้ว่าบรรทัดไหนคือของใหม่ (เรียกโดยไม่ส่ง addedIdx) ───────────────────
 {
   const order = mk([line(10, 400), line(3, 350)]);

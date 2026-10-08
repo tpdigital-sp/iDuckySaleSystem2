@@ -6247,7 +6247,7 @@ export function isRetailRateLine(
  */
 function ratePoolsFor(
   p: Product,
-  entries: { qty: number; designs: number; perUnit?: number; rate?: PriceRate }[]
+  entries: { qty: number; designs: number; perUnit?: number; rate?: PriceRate; specKey?: string }[]
 ): (PriceRate | undefined)[] {
   const out: (PriceRate | undefined)[] = entries.map(() => undefined);
   // เรทตัวแทนจำหน่ายไม่เข้าการแบ่งกลุ่มอัตโนมัติ — บรรทัดตัวแทนถูกแยก pool ไว้ก่อนถึงตัวนี้
@@ -6286,6 +6286,33 @@ function ratePoolsFor(
             !!r.extraDesignFee ||
             piecesOfEntry(entries[i]) >= per * Math.max(1, entries[i].designs))
       );
+    /**
+     * 🧮 บรรทัดเล็กที่ "สเปคเดียวกัน" กับบรรทัดที่เข้าเรทนี้แล้ว ขอเกาะไปด้วย — เช็คโควตาต่อลายที่ยอดรวมของสเปคนั้น
+     * (ชิ้นรวม ≥ ลายละ N × ลายรวม) เหมือนลูกค้าสั่งมาเป็นบรรทัดเดียวตั้งแต่แรก
+     *
+     * เจอจริง 8 ต.ค. 69 (OD-261006-8507 · พวงกุญแจอะคริลิค 3mm 5cm): สั่ง 80 ชิ้น 2 ลาย เรท 2 (ลายละ 25) ฿55
+     * แล้วกด "สั่งเพิ่มในออเดอร์นี้" ลายเดิมอีก 20 ชิ้น → บรรทัด 20 ชิ้น 1 ลาย ไม่ถึงลายละ 25 ด้วยตัวเอง
+     * ตกไปเรท 1 ฿60 ทั้งที่ถ้าสั่งมาเป็นบรรทัดเดียว 100 ชิ้น 3 ลาย (100 ≥ 75) เข้าเรท 2 ได้ทั้งก้อน
+     * → การแยกบรรทัดต้องไม่ทำให้ราคาต่างจากสั่งรวมบรรทัดเดียว (เจ้าของร้าน: ราคาต่อชิ้นต้องเท่ากันทั้งบิล)
+     * - ต้องมีบรรทัดที่เข้าเรทด้วยตัวเองเป็นหลักก่อน (ไม่มี = ไม่มีใครให้เกาะ กติกาเดิม)
+     * - เกาะได้เฉพาะสเปคเดียวกันเป๊ะ (ไม่นับ เรท/จำนวนลาย/หมายเหตุ/ช่องต่อลาย — ดู lineSpecKey) ขนาด/วัสดุต่างกัน = คนละดีเทล ไม่เกาะ
+     * - ไล่จากบรรทัดใหญ่ไปเล็ก สะสมยอดไปเรื่อย ๆ (เกาะแล้วนับรวมเป็นก้อนเดียวกับบรรทัดถัดไป)
+     * - เรทที่คิดค่าคละเป็นเงินเข้าได้ทุกบรรทัดอยู่แล้ว ไม่เกี่ยวตรงนี้ · ตัวอย่างร้าน 25+25+10+5 (ลายละ 25) ยังเหมือนเดิม
+     *   ({25,25} 50 ชิ้น 2 ลาย + 10 → 60 < 75 ไม่เกาะ) · เข็มกลัด 80+30+10 ลายละ 1 → 120 ≥ 75 เกาะได้ = เท่าสั่งบรรทัดเดียว
+     */
+    if (per > 0 && !r.underMinPieceFee && !r.extraDesignFee && cand.length) {
+      const rest = entries
+        .map((_, i) => i)
+        .filter((i) => !taken[i] && !cand.includes(i) && entries[i].specKey !== undefined)
+        .sort((a, b) => entries[b].qty - entries[a].qty);
+      for (const i of rest) {
+        const mates = cand.filter((j) => entries[j].specKey === entries[i].specKey);
+        if (!mates.length) continue;
+        const pcs = mates.reduce((s, j) => s + piecesOfEntry(entries[j]), 0) + piecesOfEntry(entries[i]);
+        const designs = mates.reduce((s, j) => s + Math.max(1, entries[j].designs), 0) + Math.max(1, entries[i].designs);
+        if (pcs >= per * designs) cand.push(i);
+      }
+    }
     const candQty = cand.reduce((s, i) => s + entries[i].qty, 0);
     /**
      * ขั้นต่ำของเรท (minQty) เทียบกับ "ยอดที่ผลิตพร้อมกันจริง" = บรรทัดผู้เข้าเงื่อนไขรอบนี้
@@ -6326,6 +6353,30 @@ function usesFreeMixRetail(r: PriceRate | undefined, qty: number, designs: numbe
 /** ชิ้นจริงของบรรทัด = จำนวนหน่วยสั่ง × ชิ้นต่อหน่วย (perUnit — สินค้าขายเป็นเซ็ต) */
 function piecesOfEntry(e: { qty: number; perUnit?: number }): number {
   return e.qty * Math.max(1, e.perUnit ?? 1);
+}
+
+/**
+ * คีย์ "สเปคของบรรทัด" ไว้เทียบว่าสองบรรทัดคือของอย่างเดียวกัน (พิมพ์แผ่นเดียวกัน/ผลิตพร้อมกัน)
+ * ไม่นับ: ป้ายเรท (ระบบสลับให้เอง) · จำนวนลาย/ช่องต่อลาย (ลายของใครของมัน รวมกันตอนเช็คโควตา) · หมายเหตุ/ไฟล์ลาย
+ */
+const NON_SPEC_LABELS = new Set([
+  RATE_LABEL,
+  DESIGN_LABEL,
+  BACK_DESIGN_LABEL,
+  ART_QTY_LABEL,
+  ART_BACK_QTY_LABEL,
+  ART_SIZE_LABEL,
+  ART_LABEL,
+  ART_BACK_LABEL,
+  REUSE_ART_LABEL,
+  "หมายเหตุ",
+]);
+function lineSpecKey(selections: Record<string, string>): string {
+  return Object.keys(selections)
+    .filter((k) => !NON_SPEC_LABELS.has(k) && (selections[k] ?? "").trim())
+    .sort()
+    .map((k) => `${k}=${selections[k].trim()}`)
+    .join("|");
 }
 
 function lineMergeable(p: Product, selections: Record<string, string>, qty: number): boolean {
@@ -6527,6 +6578,8 @@ export function repriceCartGroups(
           perUnit: perUnitCapacity(p, lines[i].selections) ?? 1,
           // เรทที่บรรทัดนี้เลือกไว้ — สินค้าที่เรทเป็นแบบสินค้า (ไม่ใช่ขั้นบันไดจำนวน) ต้องคงเรทนี้
           rate: activeRate(p, lines[i].selections),
+          // สเปคของบรรทัด — บรรทัดเล็กสเปคเดียวกันขอเกาะโควตาต่อลายกับบรรทัดใหญ่ได้ (ดู ratePoolsFor)
+          specKey: lineSpecKey(lines[i].selections),
         }))
       );
       const byLabel = new Map<string, { rate: PriceRate; idxs: number[] }>();
