@@ -49,7 +49,6 @@ import {
 } from "@/lib/permissions";
 import { btnPrimary, card, faint, muted } from "@/lib/admin-ui";
 import { SITE_URL } from "@/lib/shop-info";
-import { gtagIdsFrom } from "@/lib/settings-shared";
 import { PageHead, PageShell } from "@/components/admin/ui";
 
 /** โลโก้/สีประจำธนาคาร — จับจากชื่อที่พิมพ์อิสระ (พิมพ์ "กสิกร" ก็ขึ้นโลโก้เขียว K ให้เอง)
@@ -2671,21 +2670,14 @@ function AdminSettingsPageInner() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">Google tag — Analytics (G-…) · Merchant Center (MC-…) · Ads (AW-…)</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Google Analytics 4 (GA4)</span>
                   <input
                     value={seo.ga4Id ?? ""}
                     onChange={(e) => patchSeo({ ga4Id: e.target.value })}
-                    onBlur={(e) => {
-                      // วางโค้ด <script> ทั้งก้อนจาก Google มาได้ → เหลือแค่รหัส "G-XXXX, MC-YYYY"
-                      const ids = gtagIdsFrom(e.target.value);
-                      if (e.target.value.trim() && ids.join(", ") !== e.target.value.trim()) patchSeo({ ga4Id: ids.join(", ") });
-                    }}
                     className={inputCls}
-                    placeholder="G-XXXXXXXXXX, MC-XXXXXXXX"
+                    placeholder="G-XXXXXXXXXX"
                   />
-                  <span className="mt-1 block text-[11px] text-slate-400">
-                    ใส่ได้หลายรหัสคั่นด้วยจุลภาค หรือวางโค้ดที่ Google ให้มาทั้งก้อนก็ได้ ระบบดึงรหัสให้เอง · ใส่แล้วเว็บเก็บสถิติ/ให้ Merchant Center ทดสอบเว็บผ่าน
-                  </span>
+                  <span className="mt-1 block text-[11px] text-slate-400">ใส่แล้วเว็บจะเก็บสถิติผู้เข้าชมให้อัตโนมัติ</span>
                 </label>
 
                 <label className="block">
