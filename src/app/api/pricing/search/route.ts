@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { catalogRefs, knowledgeItems, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
 import { priceSearch } from "@/lib/server/price-search";
+import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -31,7 +32,6 @@ export const maxDuration = 30;
 /** กันยิงรัว — 60 ครั้ง/นาที ต่อ IP (บอทเรียกถี่กว่าคนพิมพ์ จึงหลวมกว่าฝั่งแชท) */
 const RATE_MAX = 60;
 const RATE_WINDOW_MS = 60_000;
-const hits = new Map<string, number[]>();
 
 /** เปิดข้ามโดเมน — ปลายทางนี้เป็นสาธารณะอยู่แล้ว (ราคาเดียวกับหน้าสินค้า) ไม่มีข้อมูลลูกค้า */
 const CORS = {
@@ -41,20 +41,8 @@ const CORS = {
   "Access-Control-Max-Age": "86400",
 };
 
-function tooMany(ip: string) {
-  const now = Date.now();
-  const list = (hits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  list.push(now);
-  hits.set(ip, list);
-  if (hits.size > 500) for (const [k, v] of hits) if (!v.some((t) => now - t < RATE_WINDOW_MS)) hits.delete(k);
-  return list.length > RATE_MAX;
-}
-
-function clientIp(req: Request) {
-  return (req.headers.get("x-nf-client-connection-ip") || req.headers.get("x-forwarded-for") || "unknown")
-    .split(",")[0]
-    .trim();
-}
+// นับใน Firestore ข้ามอินสแตนซ์ (ดู lib/server/rate-limit.ts) — เดิม Map ในหน่วยความจำไม่เคยถึงเพดานบน Netlify
+const tooMany = (ip: string) => rateLimited(`pricing-search:${ip}`, RATE_MAX, RATE_WINDOW_MS);
 
 function json(body: unknown, init: { status?: number; cache?: string } = {}) {
   return NextResponse.json(body, {
@@ -105,7 +93,7 @@ export async function POST(req: Request) {
 
 /** ประเภทคำถาม — ขั้นต่ำก่อน (มีคำว่า "1 ชิ้น" ปนราคาได้) · สเปกเฉพาะเมื่อไม่ใช่คำถามเงิน */
 async function answer(req: Request, body: Record<string, unknown>) {
-  if (tooMany(clientIp(req))) return json({ error: "ถี่เกินไป" }, { status: 429 });
+  if (await tooMany(clientIp(req))) return json({ error: "ถี่เกินไป" }, { status: 429 });
   const r = await priceSearch(body);
   return json(r.body, { status: r.status });
 }

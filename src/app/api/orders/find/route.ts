@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, orderStatusLabel, type Order } from "@/lib/admin-data";
+import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -26,22 +27,16 @@ function cleanPhone(raw: string | undefined | null): string {
   return d;
 }
 
-/** กันยิงรัว — ต่อ IP ต่ออินสแตนซ์ (serverless แยกอินสแตนซ์ ไม่กันได้ 100% แต่พอกันสคริปต์เดารัว) */
-const HITS = new Map<string, { n: number; until: number }>();
+/**
+ * กันยิงรัว — นับใน Firestore ข้ามอินสแตนซ์ (ดู lib/server/rate-limit.ts · ตรวจความปลอดภัยรอบ 2 · 8 ต.ค. 69)
+ *  - ต่อ IP: 12 ครั้ง/10 นาที (เท่าเดิม แต่คราวนี้นับได้จริง)
+ *  - ต่อเบอร์โทร: 10 ครั้ง/ชั่วโมง — คนที่รู้เบอร์ลูกค้าแล้วไล่เดาเลขท้าย 4 หลักจากหลาย IP จะติดที่เบอร์แทน
+ *    (ลูกค้าจริงพิมพ์เลขผิดไม่ถึง 10 ครั้งใน 1 ชั่วโมงแน่นอน)
+ */
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_TRIES = 12;
-
-function tooMany(ip: string): boolean {
-  const now = Date.now();
-  const cur = HITS.get(ip);
-  if (!cur || cur.until < now) {
-    HITS.set(ip, { n: 1, until: now + WINDOW_MS });
-    if (HITS.size > 500) for (const [k, v] of HITS) if (v.until < now) HITS.delete(k);
-    return false;
-  }
-  cur.n += 1;
-  return cur.n > MAX_TRIES;
-}
+const PHONE_WINDOW_MS = 60 * 60 * 1000;
+const PHONE_MAX = 10;
 
 /** เลขออเดอร์ที่ลูกค้าพิมพ์มา → { full, tail } (รับทั้ง "OD-260921-1234", "260921-1234" และ "1234") */
 function parseOrderNo(raw: string): { full?: string; tail?: string } {
@@ -56,8 +51,9 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
-  if (tooMany(ip)) return NextResponse.json({ error: "ลองหลายครั้งเกินไป รอสัก 10 นาทีแล้วลองใหม่ หรือทักไลน์ร้านได้เลยครับ" }, { status: 429 });
+  const ip = clientIp(req);
+  const tooManyMsg = "ลองหลายครั้งเกินไป รอสัก 10 นาทีแล้วลองใหม่ หรือทักไลน์ร้านได้เลยครับ";
+  if (await rateLimited(`order-find:ip:${ip}`, MAX_TRIES, WINDOW_MS)) return NextResponse.json({ error: tooManyMsg }, { status: 429 });
 
   let input: { phone?: string; order?: string };
   try {
@@ -68,6 +64,7 @@ export async function POST(req: Request) {
 
   const digits = cleanPhone(input.phone);
   if (digits.length < 9) return NextResponse.json({ error: "กรอกเบอร์โทรที่ใช้ตอนสั่ง (ตัวเลข 9-10 หลัก)" }, { status: 400 });
+  if (await rateLimited(`order-find:phone:${digits}`, PHONE_MAX, PHONE_WINDOW_MS)) return NextResponse.json({ error: tooManyMsg }, { status: 429 });
   const { full, tail } = parseOrderNo(input.order ?? "");
   if (!full && !tail) return NextResponse.json({ error: "กรอกเลขออเดอร์ด้วยครับ (ใส่ 4 ตัวท้ายก็ได้)" }, { status: 400 });
 

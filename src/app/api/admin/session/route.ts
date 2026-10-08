@@ -10,12 +10,22 @@ import {
 import { ALL_PERMS, permsOf, roleLabel, ROLE_ADMINISTRATOR } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { extraPermsOf } from "@/lib/server/user-perms";
+import { staffStatusOf } from "@/lib/server/staff-status";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   const jar = await cookies();
-  const session = verifySessionToken(jar.get(SESSION_COOKIE)?.value);
+  let session = verifySessionToken(jar.get(SESSION_COOKIE)?.value);
+
+  // 👮 ถูกระงับ/พ้นสภาพแล้ว = ถือว่าไม่ได้ล็อกอิน (ลบคุกกี้ทิ้ง ไม่ต่ออายุให้) · ตำแหน่ง/แผนกใช้ค่าสดจากฐาน
+  const live = session ? await staffStatusOf(session.username) : null;
+  if (session && live && !live.active) {
+    jar.delete(SESSION_COOKIE);
+    session = null;
+  } else if (session && live) {
+    session = { ...session, name: live.name ?? session.name, role: live.role || session.role, department: live.department };
+  }
 
   const actor = session
     ? {

@@ -21,6 +21,7 @@ import { loadDealerSender } from "@/lib/server/dealer-sender";
 import { cleanPhone, contactProblems } from "@/lib/contact-validate";
 import { cleanCustomerItems, priceMismatchMessage, shippingFloorProblem, underpricedLines } from "@/lib/server/order-price-guard";
 import type { ShopPayment } from "@/lib/shop-settings";
+import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
 // id เรคอร์ดตั้งค่าร้าน (ตรงกับ SETTINGS_ID ใน shop-settings ซึ่งเป็น "use client")
 const SETTINGS_ROW = "__shop_payment__";
@@ -70,6 +71,11 @@ export async function POST(req: Request) {
   const cleaned = cleanCustomerItems(input.items);
   if (cleaned.error) return NextResponse.json({ error: cleaned.error }, { status: 400 });
   input.items = cleaned.items;
+
+  // 🚦 กันสคริปต์ยิงสร้างออเดอร์รัว ๆ (ทุกใบยิงไลน์แจ้งร้าน/กินโควตา LINE + ฐานบวม) — 30 ใบ/ชั่วโมง ต่อ IP
+  // พนักงานสั่งแทน (staffOrder) ไม่นับ — ร้านสั่งจาก IP เดียวกันทั้งวัน
+  if (!input.staffOrder && (await rateLimited(`order-create:${clientIp(req)}`, 30, 3600_000)))
+    return NextResponse.json({ error: "สั่งซื้อถี่เกินไป — รอสักครู่แล้วลองใหม่ หรือทักไลน์ร้านได้เลยครับ" }, { status: 429 });
 
   // สั่งแทนลูกค้า: เช็คว่าเป็นพนักงานจริง (อ้างชื่อเองจากหน้าเว็บไม่ได้) · ออเดอร์ไม่ผูกบัญชี/คูปอง/แต้ม
   let placedBy = "";

@@ -3,6 +3,7 @@ import { pushShopAlert } from "@/lib/server/line-alert";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { loadDealersDoc, saveDealersDoc } from "@/lib/server/dealers";
 import { cleanPhone, phoneProblem } from "@/lib/contact-validate";
+import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -20,23 +21,10 @@ export const runtime = "nodejs";
  * ส่งแล้วเด้งแจ้งเตือนเข้า LINE ร้าน (ช่องทางเดียวกับแจ้งออเดอร์สั่งเยอะ)
  */
 
-/** กันสแปมหยาบ ๆ ต่ออินสแตนซ์ — สร้างบัญชีจากฟอร์มนี้ได้ 3 ครั้ง/ไอพี/ชั่วโมง
- *  ⚠️ เป็น in-memory ของฟังก์ชัน serverless (คนละอินสแตนซ์ = คนละตัวนับ) กันมือสมัครเล่นได้ ไม่ใช่ของจริง */
-const signups = new Map<string, number[]>();
+/** กันสแปม — สร้างบัญชีจากฟอร์มนี้ได้ 3 ครั้ง/ไอพี/ชั่วโมง (นับใน Firestore ข้ามอินสแตนซ์ · ดู lib/server/rate-limit.ts) */
 const WINDOW = 60 * 60_000;
 const MAX_PER_IP = 3;
-function tooManySignups(ip: string): boolean {
-  if (!ip) return false;
-  const now = Date.now();
-  const hits = (signups.get(ip) ?? []).filter((t) => now - t < WINDOW);
-  if (hits.length >= MAX_PER_IP) {
-    signups.set(ip, hits);
-    return true;
-  }
-  hits.push(now);
-  signups.set(ip, hits);
-  return false;
-}
+const tooManySignups = (ip: string) => rateLimited(`dealer-signup:${ip}`, MAX_PER_IP, WINDOW);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -88,8 +76,8 @@ export async function POST(req: Request) {
     if (phoneErr) return NextResponse.json({ error: phoneErr }, { status: 400 });
     if (password.length < 6) return NextResponse.json({ error: "รหัสผ่านอย่างน้อย 6 ตัวอักษร" }, { status: 400 });
 
-    const ip = (req.headers.get("x-nf-client-connection-ip") || req.headers.get("x-forwarded-for") || "").split(",")[0].trim();
-    if (tooManySignups(ip)) {
+    const ip = clientIp(req);
+    if (await tooManySignups(ip)) {
       return NextResponse.json({ error: "สมัครถี่เกินไป พักสักครู่แล้วลองใหม่ หรือทักไลน์ร้านได้เลย" }, { status: 429 });
     }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -19,29 +20,16 @@ export const runtime = "nodejs";
  *          (เข้าด้วยปุ่ม LINE ได้เลย · ถ้าอยากตั้งรหัสผ่านก็ยังส่งลิงก์ให้ได้)
  */
 
-const HITS = new Map<string, { n: number; until: number }>();
+// 10 ครั้ง/10 นาที ต่อ IP — นับใน Firestore ข้ามอินสแตนซ์ (ดู lib/server/rate-limit.ts)
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_TRIES = 10;
-
-function tooMany(ip: string): boolean {
-  const now = Date.now();
-  const cur = HITS.get(ip);
-  if (!cur || cur.until < now) {
-    HITS.set(ip, { n: 1, until: now + WINDOW_MS });
-    if (HITS.size > 500) for (const [k, v] of HITS) if (v.until < now) HITS.delete(k);
-    return false;
-  }
-  cur.n += 1;
-  return cur.n > MAX_TRIES;
-}
 
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   // ตรวจไม่ได้ก็ไม่ขวาง — ให้หน้าเว็บส่งลิงก์ตามปกติ
   if (!sb) return NextResponse.json({ status: "unknown" });
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
-  if (tooMany(ip)) return NextResponse.json({ status: "unknown" });
+  if (await rateLimited(`reset-check:${clientIp(req)}`, MAX_TRIES, WINDOW_MS)) return NextResponse.json({ status: "unknown" });
 
   let email = "";
   try {

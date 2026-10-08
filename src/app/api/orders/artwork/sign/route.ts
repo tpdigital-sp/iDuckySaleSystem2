@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -23,29 +24,16 @@ const EXT: Record<string, string> = {
 };
 const MAX_BYTES = 15 * 1024 * 1024;
 
-// กันสแปมแบบเดียวกับเส้นอัปโหลดเดิม (ต่อ IP ต่อชั่วโมง)
-const hits = new Map<string, { n: number; until: number }>();
+// กันสแปม — 120 ตั๋ว/ชั่วโมง ต่อ IP (นับใน Firestore ข้ามอินสแตนซ์ · เดิม Map ในหน่วยความจำไม่เคยถึงเพดานบน Netlify)
 const LIMIT = 120;
-function overLimit(ip: string): boolean {
-  const now = Date.now();
-  const cur = hits.get(ip);
-  if (!cur || now > cur.until) {
-    hits.set(ip, { n: 1, until: now + 3600_000 });
-    return false;
-  }
-  cur.n += 1;
-  return cur.n > LIMIT;
-}
 
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  const ip =
-    req.headers.get("x-nf-client-connection-ip") ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "local";
-  if (overLimit(ip)) return NextResponse.json({ error: "อัปโหลดถี่เกินไป ลองใหม่ในอีกสักครู่" }, { status: 429 });
+  const ip = clientIp(req);
+  if (await rateLimited(`artwork-sign:${ip}`, LIMIT, 3600_000))
+    return NextResponse.json({ error: "อัปโหลดถี่เกินไป ลองใหม่ในอีกสักครู่" }, { status: 429 });
 
   const body = (await req.json().catch(() => null)) as { type?: string; size?: number } | null;
   const ext = EXT[String(body?.type ?? "")];

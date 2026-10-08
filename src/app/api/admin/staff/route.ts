@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { EMPLOYEE_COLLECTION, getFirestoreAdmin, loginKey } from "@/lib/server/firebase-admin";
+import { invalidateStaffStatus } from "@/lib/server/staff-status";
 import {
   can,
   DEFAULT_ROLE_PERMS,
@@ -155,5 +156,6 @@ export async function PATCH(req: Request) {
   }
 
   await ref.update(suspendOnly ? { iduckySuspended: body.suspended } : { role, department, workStatus });
+  invalidateStaffStatus(); // ให้การระงับ/เปลี่ยนตำแหน่งมีผลกับคำขอถัดไปทันที (อินสแตนซ์อื่นตามใน 60 วิ)
   return NextResponse.json({ ok: true });
 }

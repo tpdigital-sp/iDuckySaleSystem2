@@ -10,6 +10,7 @@ import {
   writePriceReply,
 } from "@/lib/server/chat-parse";
 import { SITE_URL } from "@/lib/shop-info";
+import { rateLimited } from "@/lib/server/rate-limit";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { recordN8nCall } from "@/lib/server/ai-usage";
 import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
@@ -85,19 +86,10 @@ function historyText(turns: { role?: string; text?: string }[] | undefined): str
 /** เผื่อ n8n คิดนาน — ยาวกว่านี้ฟังก์ชันบน Netlify จะโดนตัดก่อน */
 const TIMEOUT_MS = 25_000;
 
-/** กันสแปมแบบง่าย ๆ ในหน่วยความจำ (ต่อ instance) — 20 ข้อความ/5 นาที ต่อ IP */
+/** กันสแปม — 20 ข้อความ/5 นาที ต่อ IP (นับใน Firestore ข้ามอินสแตนซ์ · ดู lib/server/rate-limit.ts) */
 const RATE_MAX = 20;
 const RATE_WINDOW_MS = 5 * 60_000;
-const hits = new Map<string, number[]>();
-
-function tooMany(ip: string) {
-  const now = Date.now();
-  const list = (hits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  list.push(now);
-  hits.set(ip, list);
-  if (hits.size > 500) for (const [k, v] of hits) if (!v.some((t) => now - t < RATE_WINDOW_MS)) hits.delete(k);
-  return list.length > RATE_MAX;
-}
+const tooMany = (ip: string) => rateLimited(`chat:${ip}`, RATE_MAX, RATE_WINDOW_MS);
 
 /** n8n ตอบมาได้หลายทรง — ดึงข้อความออกมาให้ได้ทุกแบบ (ล้อตาม chat.html) */
 function pickReply(data: unknown): string {
@@ -176,7 +168,7 @@ export async function answerChat(
   // ไม่เคยเห็นเลย คำถามต่อเนื่องอย่าง "แล้ว 300 ชิ้นล่ะ" จึงกลายเป็นคำถามลอย ๆ ทุกครั้ง
   const convo = historyText(body.history);
 
-  if (!staff && tooMany(opts.ip))
+  if (!staff && (await tooMany(opts.ip)))
     return out(
       { error: "ส่งข้อความถี่เกินไปครับ พักสักครู่แล้วลองใหม่ หรือทักไลน์ร้านได้เลย" },
       { status: 429 },
