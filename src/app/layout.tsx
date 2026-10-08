@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { SITE_URL } from "@/lib/shop-info";
 import { getSeoServer } from "@/lib/server/settings-server";
+import { gtagIdsOf } from "@/lib/settings-shared";
 import { IBM_Plex_Sans_Thai_Looped, Mitr, Prompt } from "next/font/google";
 import "./globals.css";
 
@@ -75,16 +76,18 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const seo = await getSeoServer();
+  // รหัส Google tag ทุกตัวที่แอดมินใส่ไว้ (G-/MC-/AW-) — ว่าง = ไม่โหลดสคริปต์
+  const gtagIds = gtagIdsOf(seo);
   return (
     <html lang="th" className={`${prompt.variable} ${mitr.variable} ${looped.variable}`}>
       <body className="min-h-screen antialiased">
         {children}
-        {/* Google Analytics 4 — โหลดเฉพาะเมื่อแอดมินใส่รหัสไว้ (ไม่ใส่ = เว็บไม่โหลดสคริปต์นี้เลย) */}
-        {seo.ga4Id && (
+        {/* Google tag (GA4 G-… / Merchant Center MC-… / Ads AW-…) — โหลด gtag.js ครั้งเดียวด้วยรหัสแรก แล้ว config ทุกรหัส · ไม่ใส่ = ไม่โหลดสคริปต์เลย */}
+        {gtagIds.length > 0 && (
           <>
-            <Script src={`https://www.googletagmanager.com/gtag/js?id=${seo.ga4Id}`} strategy="afterInteractive" />
+            <Script src={`https://www.googletagmanager.com/gtag/js?id=${gtagIds[0]}`} strategy="afterInteractive" />
             <Script id="ga4-init" strategy="afterInteractive">
-              {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${seo.ga4Id}');`}
+              {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());${gtagIds.map((id) => `gtag('config','${id}');`).join("")}`}
             </Script>
           </>
         )}

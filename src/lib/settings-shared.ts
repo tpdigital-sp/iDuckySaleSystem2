@@ -19,12 +19,33 @@ export interface SeoConfig {
   googleVerification?: string;
   /** โค้ดยืนยันของ Bing Webmaster (meta msvalidate.01) */
   bingVerification?: string;
-  /** รหัสวัดผล Google Analytics 4 เช่น G-XXXXXXX */
+  /**
+   * รหัส Google tag — GA4 (G-…) · Merchant Center (MC-…) · Google Ads (AW-…) · Floodlight (DC-…)
+   * ใส่ได้หลายรหัสคั่นด้วยจุลภาค/ช่องว่าง หรือวางโค้ด <script> ทั้งก้อนจาก Google ก็ได้ (seoOf ดึงรหัสให้เอง)
+   * เก็บเป็นสตริงเดียว "G-XXXX, MC-YYYY" · เว็บโหลด gtag.js ครั้งเดียวแล้ว config ทุกรหัส
+   */
   ga4Id?: string;
   /** รหัส Google Tag Manager เช่น GTM-XXXXXXX */
   gtmId?: string;
   /** ปิดไม่ให้ Google เก็บทั้งเว็บ (ใช้ตอนเว็บยังไม่พร้อมเปิดจริง) */
   noindex?: boolean;
+}
+
+/** รหัส Google tag ที่รับได้ — G- (GA4) · MC- (Merchant Center) · AW- (Google Ads) · DC- (Floodlight) */
+const GTAG_ID_RE = /\b(G|MC|AW|DC)-[A-Z0-9]{4,}\b/g;
+
+/**
+ * ดึงรหัส Google tag จากข้อความที่แอดมินวาง — รับได้ทั้ง "G-XXXX" · "G-XXXX, MC-YYYY" · โค้ด <script> ทั้งก้อนจาก Google
+ * (gtag/js?id=MC-XXXX … gtag('config','MC-XXXX')) → คืนรายการไม่ซ้ำ เรียงตามที่พบ · ตัวพิมพ์ใหญ่
+ */
+export function gtagIdsFrom(raw: string | undefined): string[] {
+  const found = (raw ?? "").toUpperCase().match(GTAG_ID_RE) ?? [];
+  return Array.from(new Set(found));
+}
+
+/** รายการรหัส Google tag ที่ใช้จริง (จาก seoOf().ga4Id) — ว่าง = ไม่โหลดสคริปต์ */
+export function gtagIdsOf(seo: SeoConfig): string[] {
+  return gtagIdsFrom(seo.ga4Id);
 }
 
 /** ตั้งค่า Google/SEO ที่ใช้จริง — ตัดช่องว่างและตัดค่าที่ไม่ถูกรูปแบบทิ้ง */
@@ -33,12 +54,12 @@ export function seoOf(s: { seo?: SeoConfig } | null | undefined): SeoConfig {
   const t = (v?: string) => (typeof v === "string" ? v.trim() : "");
   // เผลอวางทั้งแท็ก <meta ...> มา → ดึงเฉพาะค่า content ให้เอง
   const contentOf = (v: string) => v.match(/content=["']([^"']+)["']/i)?.[1] ?? v;
-  const ga = t(c.ga4Id).toUpperCase();
+  const ga = gtagIdsFrom(t(c.ga4Id));
   const gtm = t(c.gtmId).toUpperCase();
   return {
     googleVerification: contentOf(t(c.googleVerification)) || undefined,
     bingVerification: contentOf(t(c.bingVerification)) || undefined,
-    ga4Id: /^G-[A-Z0-9]+$/.test(ga) ? ga : undefined,
+    ga4Id: ga.length ? ga.join(", ") : undefined,
     gtmId: /^GTM-[A-Z0-9]+$/.test(gtm) ? gtm : undefined,
     noindex: !!c.noindex,
   };

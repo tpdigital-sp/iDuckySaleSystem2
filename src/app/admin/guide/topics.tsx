@@ -4414,7 +4414,7 @@ export const TOPICS: Topic[] = [
         <Bullets
           items={[
             <>
-              <B>Google Analytics 4</B> — วางรหัส <Key>G-XXXXXXXXXX</Key> ระบบติดตั้งให้เอง
+              <B>Google tag</B> — วางรหัส <Key>G-XXXXXXXXXX</Key> (Analytics) หรือ <Key>MC-XXXXXXXX</Key> (Merchant Center) ใส่หลายรหัสคั่นจุลภาคได้ หรือวางโค้ดที่ Google ให้มาทั้งก้อน ระบบดึงรหัสและติดตั้งให้เอง
             </>,
             <>
               <B>Google Tag Manager</B> — วางรหัส <Key>GTM-XXXXXXX</Key> · ใช้ GTM แล้ว<B>ไม่ต้องใส่ GA4 ซ้ำ</B>
