@@ -587,7 +587,7 @@ function normHistory(history: unknown): HistoryTurn[] {
 }
 
 /**
- * 🧠 ข้อ 3 ของแผน (1 ต.ค. 69): ชั้นเข้าใจคำถามใช้โมเดลใหญ่ขึ้น — ตั้งที่ lib/ai-models.ts (8 ต.ค. 69 = gemini-3.8-flash ปิด thinking)
+ * 🧠 ข้อ 3 ของแผน (1 ต.ค. 69): ชั้นเข้าใจคำถามใช้โมเดลใหญ่ขึ้น — ตั้งที่ lib/ai-models.ts (8 ต.ค. 69 คง gemini-2.5-flash ปิด thinking — 3.x ตอบผิดกว่า)
  * ล้มเหลว/ช้าเกิน → ถอยไปโมเดลสำรอง · ตั้งได้ด้วย env UNDERSTAND_MODEL · ทดสอบเทียบได้ด้วย body.understandModel
  */
 export const UNDERSTAND_MODEL_DEFAULT = AI_MODEL_BY_FEATURE.price_understand;

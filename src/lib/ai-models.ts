@@ -7,8 +7,9 @@ import type { AiFeature } from "@/lib/ai-cost";
  * "งานไหนตั้งโมเดลอะไรอยู่" จนกว่าจะมีคำขอเข้ามา → รวมไว้ที่นี่ แดชบอร์ดอ่านตรงจากตารางนี้
  *
  * 8 ต.ค. 69 ย้ายจาก 2.5 (Google ขึ้นป้าย legacy) มารุ่นปัจจุบัน 3.x — เทียบ regression ชั้นเว็บ 22 เคสแล้ว:
- * - ชั้นเข้าใจคำถาม = 3.8 Flash (ปิด thinking) — ลอง 3.5 Flash-Lite ก่อน เร็วกว่า ~1 วิ แต่ "griptok magsafe 30 ชิ้น"
- *   ไปจับ Case Magsafe 2 ใน 3 ครั้งบนเว็บจริง · 3.8 Flash ถูก 4/4 · 3.5 Flash-Lite เหลือเป็นตัวสำรอง
+ * - ชั้นเข้าใจคำถาม = **คง 2.5 Flash ไว้ตั้งใจ** (legacy แต่ยังใช้ได้ ราคาเดิม) — ลองบนเว็บจริงซ้ำหลายรอบแล้ว 3.x แย่กว่า:
+ *   3.5 Flash-Lite จับ "griptok magsafe 30 ชิ้น" เป็น Case Magsafe 2/3 ครั้ง · 3.8 Flash ตอบ "สแตนดี๊ 5cm 30 อัน" เป็นเมนู 3/3
+ *   (ไม่บอกราคา) และช้ากว่า ~1-2 วิ · 2.5 Flash ถูกทุกเคส → ย้ายเมื่อ Google ประกาศวันปิด 2.5 แล้วค่อยเทียบรุ่นใหม่อีกที
  * - 3.5 Flash-Lite แทน 2.5 Flash-Lite งานย่อย (วิเคราะห์แชท · เลือกสินค้า · อ่านหน้าสินค้า · โปรไฟล์)
  * - 3.8 Flash สำหรับงานที่ต้องการความแม่น ไม่ต้องเร็ว (คลังความรู้ · อ่านสลิป) — ปิด thinking (noThinking)
  *   ⚠️ ราคาโปรฯ 3.8 Flash ขึ้น 2 เท่า 1 ม.ค. 2027 (lib/ai-cost.ts) ถึงตอนนั้นค่อยเทียบใหม่
@@ -19,7 +20,7 @@ export const AI_MODEL_BY_FEATURE: Record<Exclude<AiFeature, "n8n_chat" | "n8n_pr
   chat_parse: "gemini-3.5-flash-lite",
   chat_answer: "gemini-3.5-flash-lite",
   chat_price_reply: "gemini-3.5-flash-lite",
-  price_understand: "gemini-3.8-flash",
+  price_understand: "gemini-2.5-flash",
   price_pick: "gemini-3.5-flash-lite",
   price_info: "gemini-3.5-flash-lite",
   kb_ai: "gemini-3.8-flash",
