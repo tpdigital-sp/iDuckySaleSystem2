@@ -1227,6 +1227,14 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
   let printed = 0;
   let options = 0;
   let narrowed = false;
+  // 🎯 8 ต.ค. 69 18:26 "แผ่นอะคริลิค 20 ชิ้น 5 cm" — เจ้าของร้าน: "งง ไม่รู้ว่า 20 ชิ้น 5cm ราคาแสดงตรงไหน"
+  // เดิม: ช่วงราคาเป็นของ "ทุกขนาด" (฿15–169) · ตัวเลขจริงของ 5cm ซ่อนเป็นบรรทัดย่อย · เรทขั้นต่ำ 50 ชิ้นก็โชว์ทั้งที่สั่ง 20
+  // ใหม่: ส่วนที่ลูกค้าระบุ (5cm) ขึ้นหัว · บรรทัดแรก = แบบถูกสุดของ 5cm เป็นตัวเลขจริง · ช่วงราคาเฉพาะคอลัมน์ 5cm · เรทที่ยังไม่ถึงขั้นต่ำ = บอกสั้น ๆ ไม่คิดราคา
+  const qn = norm(query);
+  const namedParts: string[] = [];
+  const namedIdx = new Set<number>();
+  const belowMin: string[] = [];
+  const stripNamed = (txt: string) => txt.split(" · ").filter((v) => !namedParts.some((n) => norm(n) === norm(v))).join(" · ") || txt;
   /** ขั้นบันได "ยิ่งสั่งเยอะยิ่งถูก" ของแบบถูกสุด — ใส่บรรทัดเดียวท้ายคำตอบ (เดิมกางครบทุกช่วงทุกเรท = 14 บรรทัด) */
   let ladder = "";
 
@@ -1238,6 +1246,8 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
     const picked = pickColumns(all, query);
     const matched = picked.length < all.length;
     if (matched) narrowed = true;
+    if (matched && !namedParts.length) picked[0].split("│").forEach((v, idx) => { if (v && v.length >= 2 && qn.includes(norm(v))) { namedParts.push(v); namedIdx.add(idx); } });
+    if (qty && rate.minQty && qty < rate.minQty) { belowMin.push(`${rate.label.trim() || "เรทนี้"} ต้องสั่ง ${rate.minQty.toLocaleString()} ${unit} ขึ้นไป`); continue; }
     const head = rateHead(rate, unit);
     const range = (min: number, max: number) => (min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`);
 
@@ -1253,17 +1263,26 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
       printed++;
       options += shown.length;
       const cap = narrow ? 1 : 3;
+      // โครงใหม่ (18:26): [หัวเรทเมื่อมีหลายเรท] → แถว "ถูกสุด <แบบ> — ฿/หน่วย (รวม)" → แถว "แบบอื่น (ต่างกันที่…) : ช่วงราคา"
+      // แถวขึ้นต้น "• … — …" การ์ดไลน์ (Site Price Flex) แปลงเป็น 2 คอลัมน์ · 【หัว】 = หัวข้อตัวหนา
+      if (rates.length > 1) lines.push(`【${head}】`);
+      const otherDrivers = (m.driverLabels ?? []).map((d) => d.trim()).filter((d, idx) => d && !namedIdx.has(idx)).slice(0, 4).join("/") || "แบบ";
+      // สินค้าคอลัมน์เดียว (หมอนอุ่นมือ) ไม่มี "แบบ" ให้เทียบ → แถวเดียว "20 ใบ — ฿295/ใบ (รวม ฿5,900)" ไม่ต้องมีคำว่า ถูกสุด/ราคา
+      const row = (x: { key: string; unit: number }, tag = "") => `• ${all.length === 1 ? `${qty.toLocaleString()} ${unit}` : tag + stripNamed(columnText(m, x.key))} — ${formatPrice(x.unit)}/${unit} (รวม ${formatPrice(x.unit * qty)})`;
       if (matched && shown.length <= cap * 2) {
-        // ลูกค้าระบุแบบมาแล้ว → ตอบตัวเลขของแบบนั้นตรง ๆ
-        lines.push(`• ${head}`);
-        shown.slice(0, cap * 2).forEach((x) =>
-          lines.push(`  ${columnText(m, x.key)} = ${formatPrice(x.unit)}/${unit} (รวม ${formatPrice(x.unit * qty)})`),
-        );
+        // ลูกค้าระบุแบบมาจนเหลือไม่กี่แบบ → ตอบตัวเลขทุกแบบตรง ๆ
+        shown.slice(0, cap * 2).forEach((x) => lines.push(row(x)));
+      } else if (matched) {
+        // ระบุแบบมาแต่ยังมีหลายแบบย่อย (หนา/สกรีน/สี) → ถูกสุดเป็นตัวเลขจริง + ช่วงราคาเฉพาะแบบที่ระบุ (ไม่ใช่ทุกขนาด)
+        const min = shown[0].unit;
+        const max = shown[shown.length - 1].unit;
+        lines.push(row(shown[0], "ถูกสุด "));
+        if (max > min) lines.push(`• ${namedParts.join(" ")} แบบอื่น (${otherDrivers}): ${range(min, max)}/${unit}`);
       } else {
         const min = Math.min(...raw, shown[0].unit);
         const max = Math.max(...raw, shown[shown.length - 1].unit);
-        lines.push(`• ${head}: ${range(min, max)}/${unit}`);
-        lines.push(`  ถูกสุด ${columnText(m, shown[0].key)} = ${formatPrice(shown[0].unit)}/${unit} (รวม ${formatPrice(shown[0].unit * qty)})`);
+        lines.push(row(shown[0], "ถูกสุด "));
+        if (max > min) lines.push(`• แบบอื่น (${otherDrivers}): ${range(min, max)}/${unit}`);
       }
     } else {
       // ยังไม่บอกจำนวน → ต่อเรท 1 บรรทัดช่วงราคา (ลูกค้าถาม "มีแบบไหนบ้าง" อยากเห็นตัวเลือก ไม่ใช่ตารางขั้นบันได)
@@ -1297,11 +1316,12 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
   }
 
   if (!printed) return null;
+  if (belowMin.length) lines.push(`  (${belowMin.join(" · ")})`);
   if (allRates.length > rates.length) lines.push(`  (มีอีก ${allRates.length - rates.length} เรท ดูที่หน้าสินค้า)`);
   if (ladder) lines.push(ladder);
 
   const unit0 = rates[0].matrix.unit || "ชิ้น";
-  const header = qty ? `${p.name} — สั่ง ${qty.toLocaleString()} ${unit0}` : `${p.name} (ราคาต่อ ${unit0})`;
+  const header = qty ? `${p.name}${namedParts.length ? ` ${namedParts.join(" ")}` : ""} — สั่ง ${qty.toLocaleString()} ${unit0}` : `${p.name} (ราคาต่อ ${unit0})`;
   const drivers = (rates[0].matrix.driverLabels ?? []).map((d) => d.trim()).filter(Boolean).slice(0, 4).join(" · ");
   // ⚠️ ท้ายบรรทัดต้องจบในตัวเอง — บอท LINE ตัดบรรทัดลิงก์ทิ้ง (การ์ดมีปุ่มแล้ว) เคยเหลือ "…สั่งได้ที่" ค้างไว้
   const footer = qty
