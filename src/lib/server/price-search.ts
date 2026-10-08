@@ -30,6 +30,17 @@ import {
   type Understanding,
 } from "@/lib/server/price-answer";
 
+/** ข้อความที่อ้างถึง "รูป/ของในรูป" แทนการบอกชื่อสินค้า */
+const IMG_REF_RE = /แบบนี้|งานนี้|อันนี้|ตัวนี้|ตามรูป|ในรูป|ตามภาพ|ในภาพ|รูปนี้|ภาพนี้|ลายนี้|รูปที่ส่ง|ภาพที่ส่ง/;
+/** รอบล่าสุดของลูกค้าในประวัติ (ที่ LINE ส่งมา) คือการส่งรูป ("[ลูกค้าส่งรูปภาพ: …]" จาก Save Image Note) ภายใน 30 นาที */
+function lastUserTurnHasImage(history: unknown): boolean {
+  if (!Array.isArray(history)) return false;
+  const last = [...(history as { role?: string; text?: string; at?: unknown }[])].reverse().find((t) => t && !/assistant|bot|shop|admin/i.test(String(t.role ?? "")));
+  if (!last || !/ส่งรูปภาพ/.test(String(last.text ?? ""))) return false;
+  const at = Date.parse(String(last.at ?? ""));
+  return !Number.isFinite(at) || Date.now() - at < 30 * 60_000;
+}
+
 /** คำถามแบบถามเรื่องเฉพาะ (กี่ / อะไร / ได้ไหม / ใช่ไหม) — คู่กับ specCoversQuery */
 const SPECIFIC_Q_RE = /กี่|อะไร|ได้ไหม|ได้มั้ย|ใช่ไหม|ใช่มั้ย|หรือเปล่า|รึเปล่า|ไหม|มั้ย|มั๊ย|ยังไง|อย่างไร|\?/;
 /** ถามว่า "มี/รับทำ/ขาย X ไหม" = อยากเห็นว่ามีอะไรให้เลือก → เมนูกลุ่มสินค้าคือคำตอบที่ถูก */
@@ -132,7 +143,11 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   let pick: Pick | undefined;
   let ans: PriceAnswer | null = null;
 
-  if (u) {
+  if (IMG_REF_RE.test(query) && lastUserTurnHasImage(body.history)) {
+    // 🖼 8 ต.ค. 69 LINE: "รับทำงานแบบนี้ไหมคะ" 4 วิหลังส่งรูปป้าย PP Board — เครื่องคิดราคาไม่เห็นรูป เคยโยงไป "พวงกุญแจอะคริลิค" ที่คุยค้าง
+    // แล้วตอบ "รับผลิตค่ะ" ทั้งที่ร้านไม่มีสินค้านั้น → ไม่ตอบ ให้ agent/แอดมินที่เห็นผลวิเคราะห์รูปตอบ
+    ans = { answer: "", kind: "skip", source: "refers-to-image", intent: "unknown" };
+  } else if (u) {
     // ลูกค้าถามหาของที่ร้านไม่มี → บอกตรง ๆ + เสนอตัวใกล้เคียง (เจอจริง 23 ก.ย. 69: "พวงกุญแจหนังปัก" ได้เมนูพวงกุญแจอะคริลิค/หมอนกลับไป)
     // สินค้าฉบับร่างที่ "ชื่อตรงกับที่ลูกค้าเรียก" ต้องชนะตัวใกล้เคียงที่ AI หยิบมาแทน (พวงกุญแจหนังปัก → ร่าง "พวงกุญแจหนังปักลาย"
     // ไม่ใช่ "กระเป๋าใส่พวงกุญแจ งานปัก") — เทียบว่าชื่อร่างตรงคำลูกค้ามากกว่าชื่อสินค้าที่ AI เลือกไหม
