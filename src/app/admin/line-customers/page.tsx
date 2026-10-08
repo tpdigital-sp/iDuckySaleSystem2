@@ -683,6 +683,7 @@ function CustomerRow({
               <Tag key={t} tone="lilac" title="ป้ายที่พนักงานติดใน LINE OA Manager (ถอด/ติดที่ OA Manager)">{`🏷 ${t}`}</Tag>
             ))}
             {r.waiting && <Tag tone="solid">รอแอดมินตอบ</Tag>}
+            {r.isNew && <Tag tone="mint" title="ทักร้านครั้งแรกหลังเริ่มเก็บแชท (8 ต.ค. 69) และยังไม่มีออเดอร์ — เมื่อเปิดสิทธิ์บอทตอบ คนกลุ่มนี้จะได้บอทตอบก่อน">🆕 ลูกค้าใหม่</Tag>}
             {r.adminAlias && r.displayName && <Tag tone="quiet" title={`ชื่อใน LINE: ${r.displayName}`}>{`LINE: ${r.displayName}`}</Tag>}
             {r.chatUrl && r.chatFromOrder && <Tag tone="quiet" title="ลิงก์ที่พนักงานเคยวางไว้ในออเดอร์ของลูกค้ารายนี้">ลิงก์จากออเดอร์</Tag>}
           </>

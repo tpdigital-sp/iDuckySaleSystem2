@@ -61,6 +61,8 @@ export interface LineCustomerRow {
   waiting: boolean;
   /** เปิดให้บอทตอบคนนี้ */
   allowed: boolean;
+  /** 🆕 ลูกค้าใหม่ — ทักร้านครั้งแรกหลังเปิดโหมดเก็บแชท (settings/bot-whitelist.newSince) และไม่มีออเดอร์ (เจ้าของร้านขอ 8 ต.ค. 69: เปิดสิทธิ์บอทให้กลุ่มนี้ก่อนในอนาคต) */
+  isNew: boolean;
   /** ⏸ บอทถูกพักถึง (ISO) — null = ไม่ได้พัก */
   pausedUntil: string | null;
   /** รหัสในลิงก์ OA Manager (ตั้งเอง หรือเก็บตกจากลิงก์ในออเดอร์) */
@@ -89,7 +91,7 @@ export interface OaSummary {
 }
 
 export interface LineCustomersResponse {
-  master: { enabled: boolean; allowedCount: number };
+  master: { enabled: boolean; allowedCount: number; mode?: string; newSince?: string };
   rows: LineCustomerRow[];
   /** เข้าเงื่อนไขที่กรอง/ค้นอยู่ทั้งหมดกี่คน */
   total: number;
@@ -143,6 +145,7 @@ function oaOnlyRow(c: OaChat, oaOwnerId: string): LineCustomerRow {
     lastSeen: c.updatedAt,
     waiting: false,
     allowed: false,
+    isNew: false,
     pausedUntil: null,
     managerUserId: c.chatId,
     chatUrl: chatUrlOf(oaOwnerId, c.chatId),
@@ -203,6 +206,7 @@ export async function GET(req: Request) {
       lastSeen: r.lastSeen,
       waiting: isWaitingForAdmin(r),
       allowed: master.allowed.has(r.userId),
+      isNew: r.botScope === "new" || (!r.botScope && !!master.newSince && !!r.createdAt && r.createdAt >= master.newSince),
       pausedUntil: r.pausedUntil && new Date(r.pausedUntil).getTime() > Date.now() ? r.pausedUntil : null,
       managerUserId: chatIds[r.userId]?.id ?? null,
       chatUrl: chatUrlOf(oaOwnerId, chatIds[r.userId]?.id),
@@ -236,7 +240,7 @@ export async function GET(req: Request) {
       const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
       const safePage = Math.min(page, pages);
       const body: LineCustomersResponse = {
-        master: { enabled: master.enabled, allowedCount: master.allowed.size },
+        master: { enabled: master.enabled, allowedCount: master.allowed.size, mode: master.mode, newSince: master.newSince },
         rows: all.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
         total,
         counts: { all: -1, aiOn: -1, adminOnly: -1, followup: -1 },

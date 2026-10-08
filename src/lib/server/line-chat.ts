@@ -54,6 +54,10 @@ export interface ChatRow {
   needsHumanFollowup: boolean;
   /** ⏸ บอทถูกพักถึงเวลานี้ (ISO) — ตั้งจากลูกค้าพิมพ์ "ขอคุยแอดมิน" (60 นาที) หรือแอดมินกดพักในหน้าลูกค้า LINE */
   pausedUntil?: string;
+  /** 🆕 ธงจากบอท: 'new' = ทักครั้งแรกหลัง settings/bot-whitelist.newSince และไม่มีออเดอร์ · 'old' = ที่เหลือ · ว่าง = ยังไม่ได้ติด (8 ต.ค. 69) */
+  botScope?: string;
+  /** เวลาสร้างห้อง (ISO) — ห้องที่ยังไม่มีธง เทียบกับ newSince ได้ */
+  createdAt?: string;
   /** กุญแจค้นหาจากชื่อ LINE */
   key: string;
   /** กุญแจค้นหาจากชื่อที่แอดมินตั้ง */
@@ -127,6 +131,7 @@ const LIST_FIELDS = [
   "lastSeen",
   "needsHumanFollowup",
   "botPausedUntil",
+  "botScope",
 ] as const;
 
 /** เอกสาร 1 ใบ → 1 แถวในรายการ (ใช้ร่วมกันทั้งดัชนีเต็มและการดึงทีละหน้า) */
@@ -144,6 +149,8 @@ export function rowOfDoc(d: FirebaseFirestore.DocumentSnapshot): ChatRow {
     lastSeen: isoOf(d.get("lastSeen")),
     needsHumanFollowup: !!d.get("needsHumanFollowup"),
     pausedUntil: isoOf(d.get("botPausedUntil")),
+    botScope: ((d.get("botScope") as string) || "").trim() || undefined,
+    createdAt: d.createTime ? d.createTime.toDate().toISOString() : undefined,
     key: norm(displayName || "(ไม่มีชื่อ)"),
     aliasKey: adminAlias ? norm(adminAlias) : "",
   };
@@ -362,6 +369,10 @@ export function invalidateChatIndex(): void {
 }
 
 export interface Whitelist {
+  /** โหมดบอท: "" = รายชื่อทดสอบ · "log-only" = เก็บแชท+ติดธงใหม่ ไม่ตอบ · "new-only" = ตอบลูกค้าใหม่ (8 ต.ค. 69) */
+  mode?: string;
+  /** ISO — เริ่มนับลูกค้าใหม่ตั้งแต่เวลานี้ */
+  newSince?: string;
   /** เปิด = บอทตอบเฉพาะคนใน allowed · ปิด = บอทตอบทุกคน */
   enabled: boolean;
   allowed: Set<string>;
@@ -372,7 +383,7 @@ export async function loadWhitelist(db: FirebaseFirestore.Firestore): Promise<Wh
   const snap = await db.collection(WHITELIST_DOC.col).doc(WHITELIST_DOC.id).get();
   if (!snap.exists) return { enabled: false, allowed: new Set() };
   const ids = snap.get("userIds");
-  return { enabled: !!snap.get("enabled"), allowed: new Set(Array.isArray(ids) ? (ids as string[]) : []) };
+  return { enabled: !!snap.get("enabled"), allowed: new Set(Array.isArray(ids) ? (ids as string[]) : []), mode: String(snap.get("mode") ?? ""), newSince: isoOf(snap.get("newSince")) || undefined };
 }
 
 /** เลข OA ที่เอาไปประกอบลิงก์ chat.line.biz — ระบบแชทเป็นคนตั้งไว้ที่ settings/quick-setup */
