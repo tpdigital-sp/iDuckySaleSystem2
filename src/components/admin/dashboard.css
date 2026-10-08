@@ -1024,3 +1024,43 @@
 .dkb-swbox .tx { font-size: 0.88rem; }
 .dkb-swbox .tx small { display: block; margin-top: 1px; font-size: 0.72rem; color: var(--dk-navy-soft); }
 @media (prefers-reduced-motion: reduce) { .dkb-swbox { transition: none; } }
+
+/* ═══════════════════════════════════════════════════════════════
+   💸 แดชบอร์ดค่าใช้จ่าย AI — /admin/chatbot/costs (8 ต.ค. 69)
+   กราฟรายชั่วโมง "วันนี้ทับเมื่อวาน" · แถบสัดส่วน · แถวคำขอสดที่เพิ่งเข้ามาวาบสีเหลืองแล้วจางลง
+   ═══════════════════════════════════════════════════════════════ */
+.dkb-hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; align-items: end; height: 110px; }
+.dkb-hours > span { position: relative; height: 100%; display: block; }
+.dkb-hours > span > i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px 4px 2px 2px; min-height: 2px; }
+/* เมื่อวาน = เงาเทาอยู่หลัง · ต้องเงียบกว่าวันนี้เสมอ */
+.dkb-hours > span > i.y { background: var(--dk-quiet); }
+.dkb-hours > span > i.t { left: 2px; right: 2px; background: linear-gradient(180deg, var(--dk-yolk), var(--dk-yolk-deep)); }
+.dkb-hours > span[data-now="1"] > i.t { background: linear-gradient(180deg, #3f8fd0, var(--dk-navy)); }
+.dkb-hours > span[data-fail="1"] > i.t { background: linear-gradient(180deg, var(--dk-coral), var(--dk-coral-deep)); }
+.dkb-hours > span[data-now="1"]::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--dk-navy); }
+
+.dkb-share { height: 6px; border-radius: 3px; background: rgba(23, 58, 107, 0.08); overflow: hidden; }
+.dkb-share > i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--dk-yolk), var(--dk-yolk-deep)); }
+.dkb-share[data-tone="coral"] > i { background: linear-gradient(90deg, var(--dk-coral), var(--dk-coral-deep)); }
+.dkb-share[data-tone="navy"] > i { background: linear-gradient(90deg, var(--dk-blue), var(--dk-navy)); }
+
+.dkb-live { display: inline-flex; align-items: center; gap: 7px; font-size: 0.76rem; color: var(--dk-navy-soft); white-space: nowrap; }
+.dkb-live > i { width: 8px; height: 8px; border-radius: 50%; background: var(--dk-mint); animation: dkb-pulse 2s ease-out infinite; }
+.dkb-live[data-off="1"] > i { background: var(--dk-faint); animation: none; }
+.dkb-live[data-bad="1"] > i { background: var(--dk-coral-deep); animation: none; }
+@keyframes dkb-pulse { 0% { box-shadow: 0 0 0 0 rgba(95, 201, 168, 0.55); } 100% { box-shadow: 0 0 0 9px rgba(95, 201, 168, 0); } }
+
+.dkb-feed { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; width: 100%; padding: 8px 10px; border-radius: 12px; text-align: left; }
+.dkb-feed + .dkb-feed { box-shadow: 0 -1px 0 var(--dk-hair); }
+.dkb-feed[data-fail="1"] { background: var(--dk-coral-wash); }
+@keyframes dkb-new { 0% { background: var(--dk-yolk-wash); } 100% { background: transparent; } }
+.dkb-new { animation: dkb-new 2.6s ease-out; }
+
+.dkb-costrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 10px; align-items: center; width: 100%; padding: 9px 10px; border-radius: 14px; text-align: left; transition: background 0.15s ease; }
+.dkb-costrow:hover { background: rgba(255, 255, 255, 0.75); }
+.dkb-costrow[aria-pressed="true"] { background: var(--dk-sky); box-shadow: inset 0 0 0 1.5px var(--dk-blue); }
+.dkb-costrow + .dkb-costrow { box-shadow: 0 -1px 0 var(--dk-hair); }
+.dkb-costrow[aria-pressed="true"] + .dkb-costrow { box-shadow: none; }
+@media (min-width: 720px) { .dkb-costrow { grid-template-columns: minmax(0, 1.7fr) 0.55fr 0.95fr 0.55fr 0.8fr; } }
+
+@media (prefers-reduced-motion: reduce) { .dkb-new, .dkb-live > i { animation: none; } .dkb-costrow { transition: none; } }

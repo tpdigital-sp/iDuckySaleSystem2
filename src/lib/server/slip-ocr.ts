@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Order, SlipLookalike, SlipOcr } from "@/lib/admin-data";
 import type { SlipOwner } from "@/lib/server/slip-dedupe";
+import { callGemini } from "@/lib/server/ai-usage";
 
 /**
  * 🤖 อ่านรูปสลิปที่ไม่มี QR ด้วย Gemini (3 ต.ค. 69)
@@ -104,21 +105,21 @@ export async function readSlipImage(
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || bytes.length > 7 * 1024 * 1024) return null;
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const r = await callGemini({
+      feature: "slip_ocr",
+      model: MODEL,
+      apiKey,
+      body: {
         contents: [{ parts: [{ inline_data: { mime_type: contentType, data: Buffer.from(bytes).toString("base64") } }, { text: PROMPT }] }],
         generationConfig: { temperature: 0, maxOutputTokens: 600, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
-      }),
-      signal: AbortSignal.timeout(Math.max(3_000, timeoutMs)),
+      },
+      timeoutMs: Math.max(3_000, timeoutMs),
     });
-    if (!res.ok) {
-      console.error("[slip-ocr] Gemini ตอบ", res.status, (await res.text().catch(() => "")).slice(0, 200));
+    if (!r.ok) {
+      console.error("[slip-ocr] Gemini ตอบ", r.status, r.errorText.slice(0, 200));
       return null;
     }
-    const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    const text = (j.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```/g, "").trim();
+    const text = (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```/g, "").trim();
     if (!text) return null;
     const parsed = JSON.parse(text) as Record<string, unknown>;
     return parsed && typeof parsed === "object" ? normalizeOcr(parsed, new Date().toISOString(), attachedAt) : null;

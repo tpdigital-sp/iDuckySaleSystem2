@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { getStorage } from "firebase-admin/storage";
 import type { Firestore } from "firebase-admin/firestore";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
+import { callGemini, geminiText } from "@/lib/server/ai-usage";
+import type { AiFeature } from "@/lib/ai-cost";
 
 /**
  * 🤖 ข้อมูลของบอทแชท (ย้ายจาก AdminBuddy 3 ต.ค. 69) — ใช้ร่วม 3 หน้าในหมวด Chatbot
@@ -72,27 +74,24 @@ export async function gemini(opts: {
   contents: GeminiTurn[];
   generationConfig?: Record<string, unknown>;
   timeoutMs?: number;
+  /** ชื่องานในบัญชีค่าใช้จ่าย (/admin/chatbot/costs) · ค่าเริ่มต้น = งาน AI คลังความรู้/ตารางราคา */
+  feature?: AiFeature;
 }): Promise<string> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("ยังไม่ได้ตั้งค่า GEMINI_API_KEY บนเซิร์ฟเวอร์");
   const model = opts.model ?? "gemini-2.5-flash";
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  // 💸 ผ่าน callGemini ให้ลงบัญชีค่าใช้จ่ายเอง (8 ต.ค. 69) · ไม่มีคีย์ = โยน Error ข้อความไทยเหมือนเดิม
+  const r = await callGemini({
+    feature: opts.feature ?? "kb_ai",
+    model,
+    body: {
       contents: opts.contents,
       ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
       ...(opts.generationConfig ? { generationConfig: opts.generationConfig } : {}),
-    }),
+    },
     // Netlify ตัดฟังก์ชันที่ 30 วิ — กันท้ายไว้ให้ตอบ error ทัน
-    signal: AbortSignal.timeout(opts.timeoutMs ?? 26_000),
+    timeoutMs: opts.timeoutMs ?? 26_000,
   });
-  if (!res.ok) {
-    const err = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-    throw new Error(`AI ขัดข้อง: ${err?.error?.message || `HTTP ${res.status}`}`);
-  }
-  const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim();
+  if (!r.ok) throw new Error(`AI ขัดข้อง: ${r.json?.error?.message || `HTTP ${r.status}`}`);
+  const text = geminiText(r.json);
   if (!text) throw new Error("AI ไม่ตอบ — ลองใหม่อีกครั้ง");
   return text;
 }

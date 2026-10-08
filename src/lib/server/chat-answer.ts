@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/chat-parse";
 import { SITE_URL } from "@/lib/shop-info";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
+import { recordN8nCall } from "@/lib/server/ai-usage";
 import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
 import { priceSearch } from "@/lib/server/price-search";
 
@@ -347,6 +348,7 @@ export async function answerChat(
   }
 
   let reply = "";
+  const n8nAt = Date.now();
   try {
     const res = await fetch(WEBHOOK, {
       method: "POST",
@@ -385,8 +387,11 @@ export async function answerChat(
       const picked = pickReply(data);
       if (picked && !/error in workflow|internal error/i.test(picked)) reply = picked;
     }
-  } catch {
+    // 💸 นับครั้งที่ส่งต่อ n8n ลงบัญชีค่าใช้จ่าย (ไม่มีโทเคน · ไว้ดูสัดส่วนคำถามที่เว็บตอบเองไม่ได้)
+    recordN8nCall("n8n_chat", !!reply, Date.now() - n8nAt, reply ? undefined : res.ok ? "ตอบว่าง" : `HTTP ${res.status}`);
+  } catch (e) {
     /* n8n ช้าเกิน/ล่ม → ไปใช้ fallback ข้างล่าง */
+    recordN8nCall("n8n_chat", false, Date.now() - n8nAt, e instanceof Error ? e.name : "fetch");
   }
 
   // 🛟 n8n ไม่ตอบ/ตอบไม่ได้ → ตอบเองด้วย Gemini จาก context ที่ประกอบไว้ (แบบเดียวกับ fallback ของ chat.html)

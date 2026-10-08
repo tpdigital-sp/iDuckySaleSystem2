@@ -1,4 +1,5 @@
 import "server-only";
+import { callGemini } from "@/lib/server/ai-usage";
 
 /**
  * ขั้น "วิเคราะห์คำถามลูกค้าก่อนตอบ" (Smart Preprocessing) — พอร์ตมาจาก parseCustomerMessage ของ
@@ -123,23 +124,18 @@ export async function parseCustomerMessage(
   if (/^(สวัสดี|หวัดดี|ดีจ้า|ดีครับ|ดีค่ะ|hello|hi|ทดสอบ|เทส)[\sครับค่ะคะจ้า!.~]*$/i.test(trimmed)) return null;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${buildPrompt(msg, kbTitles, history)}` }] }],
-          generationConfig: { maxOutputTokens: 500, temperature: 0 },
-        }),
-        signal: AbortSignal.timeout(PARSE_TIMEOUT_MS),
+    const r = await callGemini({
+      feature: "chat_parse",
+      model: MODEL,
+      apiKey,
+      body: {
+        contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${buildPrompt(msg, kbTitles, history)}` }] }],
+        generationConfig: { maxOutputTokens: 500, temperature: 0 },
       },
-    );
-    if (!res.ok) return null;
-    const result = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "")
+      timeoutMs: PARSE_TIMEOUT_MS,
+    });
+    if (!r.ok) return null;
+    const text = (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "")
       .replace(/```json\n?/g, "")
       .replace(/```\n?/g, "")
       .trim();
@@ -182,23 +178,15 @@ ${knowledgeContext ?? ""}
 ${history ? `[บทสนทนาก่อนหน้า]\n${history}\n\n` : ""}คำถามลูกค้า: "${message}"`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1000, temperature: 0.4 },
-        }),
-        signal: AbortSignal.timeout(timeoutMs),
-      },
-    );
-    if (!res.ok) return null;
-    const result = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+    const r = await callGemini({
+      feature: "chat_answer",
+      model: MODEL,
+      apiKey,
+      body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 1000, temperature: 0.4 } },
+      timeoutMs,
+    });
+    if (!r.ok) return null;
+    const text = (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
     return text || null;
   } catch {
     return null;
@@ -302,21 +290,15 @@ ${message}
 ${priceText}`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1200, temperature: 0.3 },
-        }),
-        signal: AbortSignal.timeout(8_000),
-      },
-    );
-    if (!res.ok) return null;
-    const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+    const r = await callGemini({
+      feature: "chat_price_reply",
+      model: MODEL,
+      apiKey,
+      body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 1200, temperature: 0.3 } },
+      timeoutMs: 8_000,
+    });
+    if (!r.ok) return null;
+    const text = (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
     return text || null;
   } catch {
     return null;

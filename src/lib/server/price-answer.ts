@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
+import { callGemini, recordN8nCall } from "@/lib/server/ai-usage";
 import { getProductServer } from "@/lib/products-server";
 import { SITE_URL } from "@/lib/shop-info";
 import {
@@ -593,18 +594,18 @@ const UNDERSTAND_MODEL_FALLBACK = "gemini-2.5-flash-lite";
 async function geminiJson(apiKey: string, model: string, prompt: string, timeoutMs: number): Promise<string> {
   // flash: ปิด thinking (เร็ว) · pro: ปิดไม่ได้ ให้คิดน้อยสุด 128 · flash-lite: ไม่มี thinking
   const thinking = /pro/.test(model) ? { thinkingConfig: { thinkingBudget: 128 } } : /flash(?!-lite)/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {};
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const r = await callGemini({
+    feature: "price_understand",
+    model,
+    apiKey,
+    body: {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { maxOutputTokens: 500, temperature: 0, responseMimeType: "application/json", ...thinking },
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
+    },
+    timeoutMs,
   });
-  if (!res.ok) throw new Error(`${model} HTTP ${res.status}`);
-  const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
+  if (!r.ok) throw new Error(`${model} HTTP ${r.status}`);
+  const text = (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/```json\n?|```\n?/g, "").trim();
   if (!text) throw new Error(`${model} empty`);
   JSON.parse(text); // ต้องเป็น JSON ไม่งั้นให้ถอยไปโมเดลสำรอง
   return text;
@@ -985,21 +986,15 @@ ${hint}
 - ชื่อสินค้าบางตัวเป็นภาษาอังกฤษ แต่ลูกค้าเรียกภาษาไทย ให้จับคู่ตามความหมาย เช่น "ที่รองแก้ว" = Coaster, "แก้วเยติ" = Tumbler`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 200, temperature: 0 },
-        }),
-        signal: AbortSignal.timeout(7_000),
-      },
-    );
-    if (!res.ok) return null;
-    const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    const text = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "")
+    const r = await callGemini({
+      feature: "price_pick",
+      model: "gemini-2.5-flash-lite",
+      apiKey,
+      body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 200, temperature: 0 } },
+      timeoutMs: 7_000,
+    });
+    if (!r.ok) return null;
+    const text = (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "")
       .replace(/```json\n?/g, "")
       .replace(/```\n?/g, "")
       .trim();
@@ -1463,18 +1458,15 @@ ${
 ถ้าข้อมูลบนหน้าสินค้าไม่พอจะตอบคำถามนี้ ให้ตอบคำเดียวว่า NOT_FOUND`
 }`;
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 400, temperature: 0.2 } }),
-          signal: AbortSignal.timeout(9_000),
-        },
-      );
-      if (!res.ok) return null;
-      const result = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-      out = (result.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+      const r = await callGemini({
+        feature: "price_info",
+        model: "gemini-2.5-flash-lite",
+        apiKey,
+        body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 400, temperature: 0.2 } },
+        timeoutMs: 9_000,
+      });
+      if (!r.ok) return null;
+      out = (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
       if (out) infoCache.set(key, { at: Date.now(), text: out });
     } catch {
       return null;
@@ -1860,6 +1852,7 @@ async function menu(items: Lite[], mode: "price" | "spec" = "price", query = "")
 
 /** ส่งต่อไปสมองเดิมของ n8n — ใช้เมื่อเว็บตอบเองไม่ได้ (สินค้านอกแคตตาล็อก/คำถาม FAQ) */
 async function fallback(query: string, timeoutMs: number): Promise<PriceAnswer | null> {
+  const t0 = Date.now();
   try {
     const res = await fetch(N8N_PRICING, {
       method: "POST",
@@ -1867,6 +1860,7 @@ async function fallback(query: string, timeoutMs: number): Promise<PriceAnswer |
       body: JSON.stringify({ query }),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    recordN8nCall("n8n_pricing", res.ok, Date.now() - t0, res.ok ? undefined : `HTTP ${res.status}`);
     if (!res.ok) return null;
     const d = (await res.json()) as Record<string, unknown>;
     const text = ["answer", "result", "response", "text"].map((k) => d[k]).find((v) => typeof v === "string" && v.trim());

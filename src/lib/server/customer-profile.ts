@@ -2,6 +2,7 @@ import "server-only";
 import { getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { CHAT_COLLECTION, getChatFirestore } from "./firebase-admin";
+import { callGemini } from "./ai-usage";
 import { getSupabaseAdmin } from "./supabase-admin";
 import { memberTierOfContact } from "./quote-member-tier";
 import { orderTotal, type Order } from "@/lib/admin-data";
@@ -89,15 +90,15 @@ ${lines}
 เขียนภาษาไทย 2-4 บรรทัด ไม่เกิน 350 ตัวอักษร ไม่ใช้ markdown ครอบคลุม: สินค้า/งานที่สนใจหรือเคยถาม (ชื่อสินค้า จำนวน ขนาด วัสดุ ถ้ามี) · ลักษณะลูกค้า (บุคคล/ร้านค้า/องค์กร ถ้าบอกได้) · เรื่องที่ค้างคาหรือรอคำตอบ · ข้อควรระวัง (เคยไม่พอใจ/เร่งด่วน)
 ห้ามเดา ห้ามใส่สิ่งที่ไม่มีในแชท ถ้าแชทมีแต่ทักทาย ให้ตอบ "ยังไม่มีข้อมูลสำคัญ"`;
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 300, temperature: 0.2 } }),
-      signal: AbortSignal.timeout(9_000),
+    const r = await callGemini({
+      feature: "customer_profile",
+      model: "gemini-2.5-flash-lite",
+      apiKey,
+      body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 300, temperature: 0.2 } },
+      timeoutMs: 9_000,
     });
-    if (!res.ok) return "";
-    const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/\*\*?/g, "").trim().slice(0, 400);
+    if (!r.ok) return "";
+    return (r.json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "").replace(/\*\*?/g, "").trim().slice(0, 400);
   } catch {
     return "";
   }
