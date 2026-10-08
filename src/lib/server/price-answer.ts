@@ -207,6 +207,45 @@ export async function catalogRefs(): Promise<ProductRef[]> {
   return (await catalog().catch(() => [])).map(refOf);
 }
 
+/** "ไม่ถึง/ไม่เกิน/งบ 100 บาท" (เพดานราคาสินค้า ไม่ใช่งบต่อชิ้นแบบ parseBudget) → 100 · ไม่มี = null (8 ต.ค. 69 17:33 "แนะนำสินค้าที่ราคาไม่ถึง 100 บาทหน่อย") */
+export function parseBudgetCap(q: string): number | null {
+  const m = q.match(/(?:ไม่ถึง|ไม่เกิน|ต่ำกว่า|ถูกกว่า|งบ(?:ประมาณ)?|ราคาประมาณ|ราคาไม่เกิน)\s*(\d{1,3}(?:,\d{3})+|\d+)\s*(?:บาท|฿|บ\.)?/) ?? q.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*(?:บาท|฿)\s*(?:ลงมา|ลงไป|ลง)/);
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * 💸 แนะนำสินค้าตามงบ — เรียงจากราคาเริ่มต้นถูกสุด หยิบให้หลากหมวด (หมวดละ 1 ก่อน แล้วค่อยเติม) ไม่เกิน 8 ตัว
+ * ใช้ priceMin ที่เซิร์ฟเวอร์คำนวณไว้ (ราคาเริ่มต้นต่อหน่วยของสินค้านั้น — ชิ้น/แผ่น A3/เซ็ต ต่างกันไป จึงบอกว่า "เริ่มต้น")
+ */
+export async function budgetMenu(budget: number): Promise<PriceAnswer | null> {
+  const all = (await catalog().catch(() => [])).filter((it) => typeof it.priceMin === "number" && it.priceMin > 0 && it.priceMin <= budget).sort((a, b) => (a.priceMin ?? 0) - (b.priceMin ?? 0));
+  if (!all.length) return null;
+  const picked: Lite[] = [];
+  const seenCat = new Set<string>();
+  for (const it of all) {
+    if (picked.length >= 8) break;
+    if (seenCat.has(it.category)) continue;
+    seenCat.add(it.category);
+    picked.push(it);
+  }
+  for (const it of all) {
+    if (picked.length >= 8) break;
+    if (!picked.includes(it)) picked.push(it);
+  }
+  const refs = picked.map(refOf);
+  const lines = picked.map((it) => `• ${it.name} — เริ่มต้น ฿${(it.priceMin ?? 0).toLocaleString()}`);
+  return {
+    answer: `สินค้าที่ราคาเริ่มต้นไม่ถึง ฿${budget.toLocaleString()} มีหลายตัวเลยค่ะ 🥰\n${lines.join("\n")}\n\nสนใจตัวไหน บอกจำนวนได้เลยน้า เดี๋ยวคิดราคาให้ค่ะ ✨`,
+    kind: "info",
+    source: "budget-menu",
+    intent: "price_menu",
+    product: refs[0],
+    products: refs,
+  };
+}
+
 /**
  * 📖 แคตตาล็อกแบบมีความรู้สินค้า (คำอธิบาย + แบบ/วัสดุ + ตัวเลือก) — ตัววิเคราะห์รูปของบอท LINE เคยเห็นแค่ "ชื่อ" 228 ชื่อ
  * เลยทายรูปโปสการ์ดกระดาษโฮโลแกรมเป็น "โฟโต้การ์ด PVC" (เจ้าของร้าน 8 ต.ค. 69 14:54: "อยากให้บอทศึกษาข้อมูลสินค้าทั้งหมดของร้านมากกว่านี้")
@@ -247,8 +286,11 @@ export async function findDraftProduct(text: string): Promise<{ id: string; name
   const t = norm(text);
   if (t.length < 4) return null;
   let best: { id: string; name: string; score: number } | null = null;
+  // 🚫 8 ต.ค. 69 17:33 ร่างที่ยังไม่ตั้งชื่อ ("สินค้าใหม่") จับคำว่า "สินค้า" ใน "แนะนำสินค้าที่ราคาไม่ถึง 100 บาท" → ตอบ "รับทำ สินค้าใหม่" — ชื่อทั่วไป/ยังไม่ตั้ง ไม่นับ
+  const GENERIC_DRAFT = /^(สินค้า|สินค้าใหม่|ใหม่|new|test|ทดสอบ|draft|ร่าง|untitled|copy)$/i;
   for (const d of await drafts()) {
     const n = norm(d.name);
+    if (GENERIC_DRAFT.test(n) || n.replace(/สินค้า|ใหม่|copy|test/gi, "").length < 3) continue;
     const l = lcsLen(t, n);
     const ok = n.includes(t) || t.includes(n) || (l >= 6 && l >= n.length * 0.6);
     if (ok && (!best || l > best.score)) best = { ...d, score: l };

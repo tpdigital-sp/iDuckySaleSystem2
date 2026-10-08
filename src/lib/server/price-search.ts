@@ -1,7 +1,9 @@
 import "server-only";
 import {
   catalogRefs,
+  budgetMenu,
   findDraftProduct,
+  parseBudgetCap,
   fixTypos,
   knowledgeItems,
   lcsLen,
@@ -145,7 +147,12 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
 
   // "รับทำงานแบบนี้ไหม" ที่ไม่เอ่ยชื่อสินค้าเลย (qMentions ว่าง) = อ้างถึงสิ่งที่เครื่องคิดราคาไม่เห็น (รูป/ข้อความที่ quote) — 8 ต.ค. 69 เจอซ้ำตอนรูปกับข้อความมาห่างกัน 5 วิ จนโน้ตรูปยังไม่ถูกบันทึก
   const unseenRef = IMG_REF_RE.test(query) && /รับทำ|รับผลิต|ทำได้|ทำแบบนี้|มีไหม|มีมั้ย|มีแบบนี้/.test(query) && !!u && !(u.debug?.qMentions?.length) && !(qty || u.qty);
-  if ((IMG_REF_RE.test(query) && lastUserTurnHasImage(body.history)) || unseenRef) {
+  // 💸 8 ต.ค. 69 17:33 "แนะนำสินค้าที่ราคาไม่ถึง 100 บาทหน่อย" — ไม่เอ่ยสินค้า + บอกงบ → เมนูสินค้าตามงบ (เดิมไปจับร่าง "สินค้าใหม่")
+  const budget = !body.mode && (!u || !u.products.length) ? parseBudgetCap(query) : null;
+  const budgetAns = budget && /แนะนำ|อะไรบ้าง|มีอะไร|ตัวไหน|อะไรดี|แบบไหน|สินค้า|ของ|ถูก/.test(query) ? await budgetMenu(budget) : null;
+  if (budgetAns) {
+    ans = budgetAns;
+  } else if ((IMG_REF_RE.test(query) && lastUserTurnHasImage(body.history)) || unseenRef) {
     // 🖼 8 ต.ค. 69 LINE: "รับทำงานแบบนี้ไหมคะ" 4 วิหลังส่งรูปป้าย PP Board — เครื่องคิดราคาไม่เห็นรูป เคยโยงไป "พวงกุญแจอะคริลิค" ที่คุยค้าง
     // แล้วตอบ "รับผลิตค่ะ" ทั้งที่ร้านไม่มีสินค้านั้น → ไม่ตอบ ให้ agent/แอดมินที่เห็นผลวิเคราะห์รูปตอบ
     ans = { answer: "", kind: "skip", source: unseenRef ? "refers-to-unseen" : "refers-to-image", intent: "unknown" };
