@@ -1157,22 +1157,10 @@ function TagManager({ tags, onClose, onSaved, toast }: { tags: ChatTag[]; onClos
           const c = TAG_PALETTE[t.color];
           return (
             <div key={i} className="flex flex-wrap items-center gap-2 rounded-xl border p-2" style={{ borderColor: "var(--dk-hair)" }}>
-              <span className="relative">
+              <span>
                 <button type="button" onClick={() => setEmojiFor(emojiFor === i ? -1 : i)} aria-label="เลือกไอคอน" title="กดเพื่อเลือกไอคอน" className="grid h-10 w-12 place-items-center rounded-lg border text-lg" style={{ borderColor: emojiFor === i ? "var(--dk-navy)" : "var(--dk-hair)" }}>
                   {t.emoji || "🏷"}
                 </button>
-                {emojiFor === i ? (
-                  <div className="absolute left-0 top-11 z-20 w-[272px] rounded-xl border bg-white p-2 shadow-xl" style={{ borderColor: "var(--dk-hair)" }}>
-                    <div className="grid grid-cols-8 gap-1">
-                      {EMOJIS.map((em) => (
-                        <button key={em} type="button" onClick={() => { upd(i, { emoji: em }); setEmojiFor(-1); }} className="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-black/[0.06]" style={t.emoji === em ? { background: "var(--dk-sky, #E6F1FB)" } : undefined}>
-                          {em}
-                        </button>
-                      ))}
-                    </div>
-                    <input value={t.emoji} onChange={(e) => upd(i, { emoji: e.target.value.slice(0, 4) })} placeholder="หรือพิมพ์อีโมจิเอง" className="mt-2 h-9 w-full rounded-lg border px-2 text-center text-[14px]" style={{ borderColor: "var(--dk-hair)" }} />
-                  </div>
-                ) : null}
               </span>
               <input value={t.label} onChange={(e) => upd(i, { label: e.target.value.slice(0, 24) })} placeholder="ชื่อป้าย เช่น รอไฟล์ / รอโอน / ลูกค้าประจำ" aria-label="ชื่อป้าย" className="h-10 min-w-[160px] flex-1 rounded-lg border px-3 text-[14px]" style={{ borderColor: "var(--dk-hair)" }} />
               <div className="flex gap-1" role="radiogroup" aria-label="สี">
@@ -1186,6 +1174,18 @@ function TagManager({ tags, onClose, onSaved, toast }: { tags: ChatTag[]; onClos
                 <button type="button" onClick={() => move(i, 1)} aria-label="เลื่อนลง" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.05]">↓</button>
                 <button type="button" onClick={() => del(i)} aria-label="ลบป้าย" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.05]" style={{ color: "var(--dk-coral-ink)" }}>🗑</button>
               </span>
+              {emojiFor === i ? (
+                <div className="basis-full rounded-xl border p-2" style={{ borderColor: "var(--dk-hair)", background: "#F8FAFC" }}>
+                  <div className="flex flex-wrap gap-1">
+                    {EMOJIS.map((em) => (
+                      <button key={em} type="button" onClick={() => { upd(i, { emoji: em }); setEmojiFor(-1); }} className="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-black/[0.06]" style={t.emoji === em ? { background: "var(--dk-sky, #E6F1FB)", outline: "2px solid var(--dk-navy)" } : undefined}>
+                        {em}
+                      </button>
+                    ))}
+                    <input value={t.emoji} onChange={(e) => upd(i, { emoji: e.target.value.slice(0, 4) })} placeholder="พิมพ์เอง" aria-label="พิมพ์อีโมจิเอง" className="h-9 w-24 rounded-lg border px-2 text-center text-[14px]" style={{ borderColor: "var(--dk-hair)", background: "white" }} />
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
