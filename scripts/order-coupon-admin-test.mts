@@ -9,6 +9,7 @@
 import { orderTotal, type Order } from "../src/lib/admin-data";
 import type { Coupon } from "../src/lib/coupons";
 import { applyCouponToOrder, removeCouponFromOrder } from "../src/lib/server/order-coupon";
+import { syncOrderMemberTier } from "../src/lib/server/order-member-tier";
 
 /** ─── Supabase ปลอม: from().select().eq().maybeSingle() + from().update().eq()…select() พร้อม filter path data->>key ─── */
 type Row = { id?: string; code?: string; data: Record<string, unknown> };
@@ -117,6 +118,31 @@ seedCoupon({ code: "FIX500", value: 500 });
   const back = await removeCouponFromOrder(fakeSb, r.ok ? r.order : tierOrder, "แอดมิน");
   check("ถอดแล้วคืนสิทธิ์คูปอง (active · uses 0 · ไม่จำเลขใบ)", [couponNow("FIX500").status, couponNow("FIX500").uses, couponNow("FIX500").redeemedOrderId ?? null, couponNow("FIX500").redemptions?.length], ["active", 0, null, 0]);
   check("ส่วนลดระดับสมาชิกกลับมาเอง", back.ok && back.order.discount, { label: "สมาชิก Silver (5%)", amount: 276, tierId: "silver" });
+}
+
+// 5c) 💸 คูปองคืนเงินโอนเกิน (RF-) ฿100 บนใบระดับ Silver ฿276 → ลดซ้อน ไม่แข่งกัน (OD-261009-6584 · 9 ต.ค. 69)
+seedCoupon({ code: "RF-TEST0001", refundOf: "OD-OLD" });
+seedCoupon({ code: "RF-LEGACY01" }); // ใบที่ออกก่อนมีธง refundOf — ดูจากรหัส RF-
+{
+  const r = await applyCouponToOrder(fakeSb, tierOrder, "RF-TEST0001", "แอดมิน");
+  const stacked = { label: "สมาชิก Silver (5%) + คูปอง RF-TEST0001 (฿100)", amount: 376, tierId: "silver", couponCode: "RF-TEST0001", couponAmount: 100, couponLabel: "คูปอง RF-TEST0001 (฿100)" };
+  check("คูปองคืนเงินซ้อนระดับสมาชิก (276 + 100)", r.ok && r.order.discount, stacked);
+  check("ยอดรวมหักทั้งสองก้อน", r.ok && orderTotal(r.order), 5520 + 50 - 376);
+  check("คูปองคืนเงินถูกตัดสิทธิ์", couponNow("RF-TEST0001").status, "redeemed");
+  // บันทึกใบรอบถัดไป (คิดระดับใหม่) → ก้อนคูปองต้องไม่หาย
+  const again = r.ok ? await syncOrderMemberTier(fakeSb, r.order) : tierOrder;
+  check("คิดระดับใหม่แล้วคูปองคืนเงินยังอยู่", again.discount, stacked);
+  // ยกเลิกผูกผู้ติดต่อ → ระดับหาย เหลือคูปองคืนเงิน
+  const unlinked = r.ok ? await syncOrderMemberTier(fakeSb, { ...r.order, contactId: undefined }) : tierOrder;
+  check("ไม่ผูกผู้ติดต่อแล้ว → เหลือแค่คูปองคืนเงิน", unlinked.discount, { label: "คูปอง RF-TEST0001 (฿100)", amount: 100, couponCode: "RF-TEST0001", couponAmount: 100, couponLabel: "คูปอง RF-TEST0001 (฿100)" });
+  // ผูกกลับ → ระดับซ้อนกลับมา
+  check("ผูกผู้ติดต่อกลับ → ระดับซ้อนกลับมา", (await syncOrderMemberTier(fakeSb, { ...unlinked, contactId: "1" })).discount, stacked);
+  // ถอดคูปอง → คืนสิทธิ์ + เหลือระดับเดิม
+  const back = await removeCouponFromOrder(fakeSb, r.ok ? r.order : tierOrder, "แอดมิน");
+  check("ถอดคูปองคืนเงิน → เหลือระดับสมาชิก", back.ok && back.order.discount, { label: "สมาชิก Silver (5%)", amount: 276, tierId: "silver" });
+  check("ถอดแล้วคืนสิทธิ์คูปองคืนเงิน", couponNow("RF-TEST0001").status, "active");
+  const legacy = await applyCouponToOrder(fakeSb, tierOrder, "RF-LEGACY01", "แอดมิน");
+  check("ใบ RF- เก่าไม่มีธง → ซ้อนได้เหมือนกัน", legacy.ok && legacy.order.discount?.amount, 376);
 }
 
 // 6) ใบหลายสิทธิ์ (3 ครั้ง ใช้ไป 1) → ตัดเป็น 2 ยังไม่หมด · ถอดแล้วกลับเป็น 1 และชี้ใบก่อนหน้า

@@ -1202,8 +1202,10 @@ export interface Order {
    * ส่วนลด (ระดับสมาชิก หรือ คูปอง) คิดฝั่งเซิร์ฟเวอร์ตอนสร้างออเดอร์ — หักออกจากยอดรวม
    * tierId = ส่วนลดระดับสมาชิกที่เซิร์ฟเวอร์คิดจากผู้ติดต่อที่ผูกไว้ (contactId) → คิดใหม่ได้ทุกครั้งที่บันทึก
    * ไม่มี tierId = ตัวเลขที่ตกลงกับลูกค้าไปแล้ว (คูปอง/ใบเสนอราคา/ใบเก่า) ห้ามคิดทับ · ดู lib/server/order-member-tier.ts
+   * couponAmount = 💸 คูปองคืนเงินโอนเกิน (RF-) ที่ "ลดซ้อน" ระดับสมาชิก — รวมอยู่ใน amount แล้ว
+   *   (amount = ส่วนลดระดับ + couponAmount) · คิดระดับใหม่ต้องคงก้อนนี้ไว้ · ดู isRefundCredit ใน lib/coupons
    */
-  discount?: { label: string; amount: number; couponCode?: string; tierId?: string };
+  discount?: { label: string; amount: number; couponCode?: string; tierId?: string; couponAmount?: number; couponLabel?: string };
   /**
    * 📮 ผู้ส่งบนใบปะหน้า (ชื่อร้านตัวแทน) — ไม่ตั้ง = ข้อมูลร้านจากตั้งค่าระบบ · ดู senderOf ใน @/lib/order-sender
    */

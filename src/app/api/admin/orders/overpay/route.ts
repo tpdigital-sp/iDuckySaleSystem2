@@ -161,6 +161,7 @@ export async function POST(req: Request) {
         type: "fixed",
         value: Math.max(1, amt),
         ...(order.customerId ? { assignedTo: order.customerId } : {}),
+        refundOf: order.id,
         note: `คืนเงินโอนเกิน ${order.id} (${who})${note ? ` · ${note}` : ""}`,
         uses: 0,
         status: "active",

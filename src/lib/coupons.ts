@@ -13,6 +13,7 @@ export interface Coupon {
   assignedTo?: string; // customerId ที่เจาะจง — ไม่ตั้ง = ใครก็ได้ (ใช้ครั้งเดียว)
   excludeProducts?: string[]; // product id ที่ไม่ร่วมรายการ — ส่วนลด/ยอดขั้นต่ำคิดเฉพาะสินค้าที่ร่วม
   note?: string; // โน้ตให้แอดมิน (เช่น "แจกงานอีเวนต์")
+  refundOf?: string; // 💸 คูปองที่ออกแทนคืนเงินโอนเกินของออเดอร์นี้ (RF-xxxx) = เงินของลูกค้าเอง ลดซ้อนส่วนลดสมาชิกได้
   maxUses?: number; // ใช้ได้กี่ครั้ง — ไม่ตั้ง = 1 ครั้ง (ใบเก่าทั้งหมดเป็นแบบนี้)
   uses?: number; // ใช้ไปแล้วกี่ครั้ง — ไม่ตั้ง = ใบเก่า (ดูจาก status แทน)
   oncePerCustomer?: boolean; // ใบหลายสิทธิ์: 1 บัญชีใช้ได้ครั้งเดียว
@@ -115,6 +116,14 @@ export function validateCoupon(
 export function couponLabel(c: Pick<Coupon, "code" | "type" | "value">): string {
   return `คูปอง ${c.code} (${c.type === "percent" ? `${c.value}%` : `฿${c.value}`})`;
 }
+
+/**
+ * 💸 คูปองนี้คือ "เงินคืนจากยอดโอนเกิน" ไหม (ออกจากกล่องเงินโอนเกิน · รหัส RF-xxxx)
+ * เป็นเงินที่ลูกค้าจ่ายมาแล้ว ไม่ใช่โปรโมชัน → ต้องลดซ้อนส่วนลดระดับสมาชิกได้ ห้ามแข่งกันแบบคูปองทั่วไป
+ * (OD-261009-6584: Bronze −฿237 > RF-UUDVJ97T ฿100 → เดิมถูกปฏิเสธ "ระดับสมาชิกดีกว่า" · 9 ต.ค. 69)
+ * ใบที่ออกก่อนมีธง refundOf ดูจากรหัส RF- แทน
+ */
+export const isRefundCredit = (c: Pick<Coupon, "code" | "refundOf">) => !!c.refundOf || /^RF-/i.test(c.code);
 
 /** สุ่มโค้ดคูปอง — ตัวอักษร/เลขที่อ่านง่าย ไม่ปนตัวสับสน (0/O, 1/I) */
 export function randomCode(len = 8): string {

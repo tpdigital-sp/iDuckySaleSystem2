@@ -1503,6 +1503,7 @@ export default function AdminOrderDetailPage() {
   const [couponOpen, setCouponOpen] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [couponBusy, setCouponBusy] = useState(false);
+  const [couponErr, setCouponErr] = useState("");
   /** สลิปใบเพิ่มที่กำลังกด "รับยอดเอง" อยู่ (paymentId) */
   const [acceptBusy, setAcceptBusy] = useState<string | null>(null);
   /** 💰 กล่อง "รับยอดเอง" ที่เปิดอยู่ — สลิปใบเพิ่มที่แอดมินกำลังใส่ยอด (null = ปิด) */
@@ -2261,6 +2262,7 @@ export default function AdminOrderDetailPage() {
     }
     setCouponBusy(true);
     setErr("");
+    setCouponErr("");
     try {
       const res = await fetch("/api/admin/orders/coupon", {
         method: "POST",
@@ -2269,10 +2271,11 @@ export default function AdminOrderDetailPage() {
       });
       const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
       if (!res.ok || !j.order) {
-        setErr(j.error ?? "ใส่คูปองไม่สำเร็จ");
+        setCouponErr(j.error ?? "ใส่คูปองไม่สำเร็จ");
         return;
       }
       adoptOrder(keepSlipUrls(j.order, order));
+      setCouponErr("");
       setCouponOpen(false);
       setCouponCode("");
     } finally {
@@ -8024,12 +8027,24 @@ export default function AdminOrderDetailPage() {
                   {/* การ์ดยอดเงินโชว์ตัวเลขล้วน — แนบ/ลบลายของแถมทำที่การ์ดของแถมในโซนงานแบบด้านบน */}
                 </div>
               ))}
-              {order.discount && order.discount.amount > 0 && (
+              {order.discount && order.discount.amount > 0 && (() => {
+                const d = order.discount;
+                // 💸 คูปองคืนเงินโอนเกินลดซ้อนระดับสมาชิก → แยก 2 บรรทัดให้เห็นว่าแต่ละก้อนเท่าไร
+                const credit = d.tierId && d.couponAmount ? d.couponAmount : 0;
+                const tierLine = credit ? { label: d.couponLabel ? d.label.replace(` + ${d.couponLabel}`, "") : d.label, amount: d.amount - credit } : null;
+                return (
+                <>
+                {tierLine && (
+                  <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
+                    <span className="min-w-0">{tierLine.label}</span>
+                    <span className="shrink-0 tabular-nums">−{formatPrice(tierLine.amount)}</span>
+                  </div>
+                )}
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-emerald-600">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0">{order.discount.label}</span>
+                    <span className="min-w-0">{credit ? d.couponLabel : d.label}</span>
                     {/* 🎟️ คูปองที่แอดมินใส่ผิดใบ/ลูกค้าเปลี่ยนใจ — ถอดแล้วคืนสิทธิ์ให้คูปอง */}
-                    {order.discount.couponCode && mayEdit && seesMoney && order.status !== "ยกเลิก" && (
+                    {d.couponCode && mayEdit && seesMoney && order.status !== "ยกเลิก" && (
                       <button
                         type="button"
                         onClick={removeCoupon}
@@ -8041,12 +8056,15 @@ export default function AdminOrderDetailPage() {
                       </button>
                     )}
                   </span>
-                  <span className="shrink-0 tabular-nums">−{formatPrice(order.discount.amount)}</span>
+                  <span className="shrink-0 tabular-nums">−{formatPrice(credit || d.amount)}</span>
                 </div>
-              )}
+                </>
+                );
+              })()}
               {/* 🎟️ ใส่คูปองให้ลูกค้า — ลูกค้าได้คูปองมาแล้วแต่ให้แอดมินรวมยอด (ใบตัวแทน/ใบที่ใช้คูปองอยู่แล้ว/ใบยกเลิก ไม่มีช่องนี้) */}
               {mayEdit && seesMoney && !order.dealer && !order.discount?.couponCode && order.status !== "ยกเลิก" && (
                 couponOpen ? (
+                  <>
                   <form
                     className="mt-1.5 flex items-center gap-1.5 text-xs"
                     onSubmit={(e) => {
@@ -8076,6 +8094,7 @@ export default function AdminOrderDetailPage() {
                       onClick={() => {
                         setCouponOpen(false);
                         setCouponCode("");
+                        setCouponErr("");
                       }}
                       disabled={couponBusy}
                       className="shrink-0 rounded-md px-1.5 py-1 text-xs text-slate-400 hover:text-slate-600"
@@ -8083,6 +8102,9 @@ export default function AdminOrderDetailPage() {
                       ยกเลิก
                     </button>
                   </form>
+                  {/* เหตุผลที่ใส่ไม่ได้ต้องโผล่ตรงช่องนี้ — เดิมไปขึ้นแถบ err ด้านบนหน้า พนักงานไม่เห็น เลยนึกว่ากดแล้วเงียบ (6584 · 9 ต.ค. 69) */}
+                  {couponErr && <p className="mt-1 text-[11px] font-semibold text-rose-600">⚠️ {couponErr}</p>}
+                  </>
                 ) : (
                   <div className="mt-1.5">
                     <button

@@ -51,7 +51,8 @@ export function mayAutoMemberTier(o: Order): boolean {
   if (o.dealer || o.customerId || o.claimOf || o.flowAccount) return false;
   // เฉพาะใบที่ยังอยู่ขั้นเก็บเงิน (หรือยอดโตจนกำลังเด้งกลับไปรอชำระ) — เลยไปแล้ว (ผลิต/ส่ง/จบ/ยกเลิก) ยอดบิลปิดแล้ว
   if (!openForPricing(o)) return false;
-  if (o.discount && !o.discount.tierId) return false;
+  // ส่วนลดที่ไม่มีธง = ตัวเลขที่ตกลงไปแล้ว ห้ามแตะ · ยกเว้นคูปองคืนเงิน (couponAmount) ที่ซ้อนระดับได้
+  if (o.discount && !o.discount.tierId && !o.discount.couponAmount) return false;
   return true;
 }
 
@@ -63,12 +64,43 @@ export function memberTierMoneyIn(o: Order): boolean {
   return paidSoFar(o) > 0 || !!o.paidReportedAt || paymentEntries(o).length > 0;
 }
 
-/** เอาส่วนลดที่ระบบนี้เคยใส่ไว้ออก (ยกเลิกผูกผู้ติดต่อ/ตกระดับ → ส่วนลดต้องหายตาม) */
+/** ก้อนคูปองคืนเงินที่ซ้อนอยู่ใน discount (ไม่มี = 0) — ดู isRefundCredit */
+const creditOf = (d: Order["discount"]) => Math.max(0, d?.couponAmount ?? 0);
+
+/** discount ที่เหลือแค่คูปองคืนเงิน (ไม่มีก้อนนี้ = undefined) */
+function creditOnly(d: Order["discount"]): Order["discount"] {
+  if (!d || !creditOf(d)) return undefined;
+  const label = d.couponLabel || `คูปอง ${d.couponCode ?? ""}`.trim();
+  return { label, amount: creditOf(d), couponCode: d.couponCode, couponAmount: creditOf(d), couponLabel: label };
+}
+
+/**
+ * ส่วนลดระดับ + คูปองคืนเงินที่ซ้อนอยู่ (ถ้ามี) → ก้อน discount เดียว
+ * ใช้ทั้งตอนคิดระดับใหม่ และตอนใส่คูปองคืนเงินบนใบที่มีระดับอยู่ (order-coupon.ts)
+ */
+export function stackTierDiscount(tier: { label: string; amount: number; tierId: string }, prev: Order["discount"], base: number): NonNullable<Order["discount"]> {
+  const credit = creditOnly(prev);
+  if (!credit) return { label: tier.label, amount: tier.amount, tierId: tier.tierId };
+  return {
+    label: `${tier.label} + ${credit.label}`,
+    amount: Math.min(Math.max(0, base), tier.amount + credit.amount),
+    tierId: tier.tierId,
+    couponCode: credit.couponCode,
+    couponAmount: credit.amount,
+    couponLabel: credit.label,
+  };
+}
+
+/** ป้ายส่วนลดระดับล้วน (ตัดก้อนคูปองคืนเงินที่ซ้อนอยู่ออก) */
+export const tierPartLabel = (d: NonNullable<Order["discount"]>) => (creditOf(d) && d.couponLabel ? d.label.replace(` + ${d.couponLabel}`, "") : d.label);
+
+/** เอาส่วนลดที่ระบบนี้เคยใส่ไว้ออก (ยกเลิกผูกผู้ติดต่อ/ตกระดับ → ส่วนลดต้องหายตาม) · คูปองคืนเงินที่ซ้อนอยู่คงไว้ */
 function withoutOurs(o: Order): Order {
   if (!o.discount?.tierId) return o;
   const { discount: _drop, ...rest } = o;
   void _drop;
-  return rest;
+  const credit = creditOnly(o.discount);
+  return credit ? { ...rest, discount: credit } : rest;
 }
 
 /**
@@ -88,8 +120,9 @@ export async function syncOrderMemberTier(sb: SB, order: Order): Promise<Order> 
     const amount = tierDiscountAmount(base, tier.pct);
     if (amount <= 0) return moneyIn ? order : withoutOurs(order);
     const cur = order.discount;
-    if (cur?.tierId === tier.id && cur.amount === amount) return order;
-    const next = { ...order, discount: { label: memberTierLabel(tier.name, tier.pct), amount, tierId: tier.id } };
+    const discount = stackTierDiscount({ label: memberTierLabel(tier.name, tier.pct), amount, tierId: tier.id }, cur, base);
+    if (cur?.tierId === tier.id && cur.amount === discount.amount && cur.label === discount.label) return order;
+    const next = { ...order, discount };
     if (moneyIn && !mayApplyOnMoneyIn(order, next)) return order;
     return next;
   } catch {

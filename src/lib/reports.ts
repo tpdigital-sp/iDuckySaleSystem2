@@ -244,8 +244,10 @@ export function sumTotals(orders: Order[], costs?: Map<string, number>): ReportT
     // ส่วนลดก้อน discount ใช้ช่องเดียวกันทั้งคูปองและระดับสมาชิก — แยกด้วยว่ามีรหัสคูปองไหม
     const d = o.discount;
     if (d?.amount) {
-      if (d.couponCode) t.discountCoupon += d.amount;
-      else t.discountTier += d.amount;
+      // 💸 คูปองคืนเงินลดซ้อนระดับ (couponAmount) → แบ่งก้อนให้ถูกช่อง
+      const coupon = d.couponAmount ?? (d.couponCode ? d.amount : 0);
+      t.discountCoupon += coupon;
+      t.discountTier += d.amount - coupon;
     }
     t.discountAdmin += adminDiscountAmount(o) + orderItemDiscounts(o);
     t.discountEarlyPay += orderEarlyPayAmount(o);

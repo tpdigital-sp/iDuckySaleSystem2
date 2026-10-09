@@ -1,7 +1,7 @@
 import { orderItemDiscounts, orderSubtotal, orderTotal, withLog, type Order } from "@/lib/admin-data";
 import { overpaidAmount } from "@/lib/payments";
-import { couponErrorText, couponLabel, couponMaxUses, couponUses, validateCoupon, type Coupon } from "@/lib/coupons";
-import { memberTierMoneyIn, syncOrderMemberTier } from "./order-member-tier";
+import { couponErrorText, couponLabel, couponMaxUses, couponUses, isRefundCredit, validateCoupon, type Coupon } from "@/lib/coupons";
+import { memberTierMoneyIn, stackTierDiscount, syncOrderMemberTier, tierPartLabel } from "./order-member-tier";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
 type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -64,20 +64,29 @@ export async function applyCouponToOrder(sb: SB, order: Order, rawCode: string, 
   const asCustomer = await couponRedeemerOf(sb, order, c);
   const base = Math.max(0, orderSubtotal(order) - orderItemDiscounts(order));
   const items = order.items.map((i) => ({ productId: i.productId, qty: i.qty, unitPrice: i.unitPrice }));
-  const v = validateCoupon(c, asCustomer, base, nowMs, items);
+  const tier = order.discount?.tierId ? order.discount : undefined;
+  // 💸 คูปองคืนเงินโอนเกิน = เงินลูกค้าเอง → ลดซ้อนระดับสมาชิก (คิดบนยอดที่เหลือหลังหักระดับ) ไม่แข่งกัน
+  const credit = isRefundCredit(c);
+  const v = validateCoupon(c, asCustomer, credit && tier ? Math.max(0, base - tier.amount) : base, nowMs, items);
   if (!v.ok) return { ok: false, status: 409, error: couponErrorText(v.reason) };
   if (v.discount <= 0) return { ok: false, status: 409, error: "คูปองนี้ลดให้ใบนี้ไม่ได้ (ยอดเป็น 0)" };
 
-  // ระดับสมาชิกดีกว่า → ไม่เผาคูปอง (กติกาเดียวกับตอนลูกค้าสั่งเอง)
-  const tier = order.discount;
-  if (tier?.tierId && v.discount <= tier.amount)
+  // ระดับสมาชิกดีกว่า → ไม่เผาคูปอง (กติกาเดียวกับตอนลูกค้าสั่งเอง) · คูปองคืนเงินไม่เข้ากติกานี้
+  if (!credit && tier && v.discount <= tier.amount)
     return {
       ok: false,
       status: 409,
       error: `${tier.label} ลดให้ −฿${thb(tier.amount)} อยู่แล้ว มากกว่าหรือเท่ากับคูปองนี้ (−฿${thb(v.discount)}) — ไม่ตัดสิทธิ์คูปอง`,
     };
 
-  const next: Order = { ...order, discount: { label: couponLabel(c), amount: v.discount, couponCode: code } };
+  const label = couponLabel(c);
+  const creditPart = { label, amount: v.discount, couponCode: code, couponAmount: v.discount, couponLabel: label };
+  const discount: Order["discount"] = !credit
+    ? { label, amount: v.discount, couponCode: code }
+    : tier?.tierId
+      ? stackTierDiscount({ label: tier.label, amount: tier.amount, tierId: tier.tierId }, creditPart, base)
+      : creditPart;
+  const next: Order = { ...order, discount };
   if (memberTierMoneyIn(order) && overpaidAmount(next) > 0)
     return {
       ok: false,
@@ -101,7 +110,7 @@ export async function applyCouponToOrder(sb: SB, order: Order, rawCode: string, 
   const { data: upd } = await (typeof c.uses === "number" ? q.eq("data->>uses", String(c.uses)) : q).select("code");
   if (!upd || !upd.length) return { ok: false, status: 409, error: couponErrorText("used") };
 
-  const replaced = tier ? ` (แทน${tier.label} −฿${thb(tier.amount)})` : "";
+  const replaced = !tier ? "" : credit ? ` (ซ้อน${tier.label} −฿${thb(tier.amount)} · คูปองคืนเงินโอนเกิน)` : ` (แทน${tier.label} −฿${thb(tier.amount)})`;
   const updated = withLog(
     next,
     who,
@@ -121,7 +130,7 @@ export async function removeCouponFromOrder(sb: SB, order: Order, who: string): 
   const code = order.discount?.couponCode;
   if (!code || !order.discount) return { ok: false, status: 409, error: "ใบนี้ไม่ได้ใช้คูปอง" };
   if (order.status === "ยกเลิก") return { ok: false, status: 409, error: "ใบนี้ยกเลิกแล้ว" };
-  const amount = order.discount.amount;
+  const amount = order.discount.couponAmount ?? order.discount.amount;
 
   const { data: cRow } = await sb.from("coupons").select("data").eq("code", code).maybeSingle();
   const c = (cRow?.data as Coupon | undefined) ?? null;
@@ -152,14 +161,18 @@ export async function removeCouponFromOrder(sb: SB, order: Order, who: string): 
 
   const { discount: _drop, ...rest } = order;
   void _drop;
+  // คูปองคืนเงินที่ซ้อนระดับอยู่ → คงก้อนระดับไว้ (ใบที่มีเงินเข้าแล้ว sync ไม่เติมกลับให้)
+  const d = order.discount;
+  const keepTier: Order =
+    d.tierId && d.couponAmount ? { ...rest, discount: { label: tierPartLabel(d), amount: Math.max(0, d.amount - d.couponAmount), tierId: d.tierId } } : (rest as Order);
   // ส่วนลดระดับสมาชิกที่เคยถูกคูปองแทน → คิดกลับให้ตามผู้ติดต่อที่ผูก (ถ้าใบยังอยู่ขั้นเก็บเงิน)
-  const next = await syncOrderMemberTier(sb, rest as Order);
+  const next = await syncOrderMemberTier(sb, keepTier);
   const tierBack = next.discount?.tierId ? ` · ${next.discount.label} −฿${thb(next.discount.amount)} กลับมา` : "";
   const updated = withLog(
     next,
     who,
     "ถอดคูปองออกจากใบ",
-    `${order.discount.label} −฿${thb(amount)} · ${restoredNote}${tierBack} · ยอดรวม ฿${thb(orderTotal(order))} → ฿${thb(orderTotal(next))}`
+    `${order.discount.couponLabel ?? order.discount.label} −฿${thb(amount)} · ${restoredNote}${tierBack} · ยอดรวม ฿${thb(orderTotal(order))} → ฿${thb(orderTotal(next))}`
   );
   return { ok: true, order: updated, restored };
 }
