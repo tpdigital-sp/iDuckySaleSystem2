@@ -1071,6 +1071,19 @@ ${list}
         }
       }
     }
+    // 🎎 9 ต.ค. 69 10:54 "งานที่หัวมันดุ๊กดิ๊กได้" → LLM กางเมนู 4 ตัว (ดุ๊กดิ๊ก/สปริง/โยกเยก) ทั้งที่ "หัวดุ๊กดิ๊ก" = อะคริลิคดุ๊กดิ๊ก (DookDik) ตัวเดียว
+    // → คำว่า ดุ๊กดิ๊ก/หัวโยก/หัวสั่น/bobble = DookDik · "โยกเยก" ล้วน ๆ (ทั้งตัวโยก) = สแตนดี้โยกเยก · "สปริง" = สแตนดี้สปริง/จิ๋วติดสปริง (ให้เมนูเดิม)
+    {
+      const dook = items.find((it) => /^อะคริลิคดุ๊กดิ๊ก/.test(it.name));
+      const swing = items.find((it) => /^สแตนดี้โยกเยก/.test(it.name));
+      if (dook && /ดุ๊กดิ๊ก|ดุ้กดิ้ก|หัว(โยก|สั่น|ขยับ|กระดก)|bobble/i.test(q) && !/มอเตอร์|ถ่าน|อัตโนมัติ/.test(q)) {
+        notInCatalog = false; finalPicked = [dook];
+        if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = "spec";
+      } else if (swing && /โยกเยก|โยกไปมา|กระดก/.test(q) && !/หัว|สปริง|ดุ๊กดิ๊ก/.test(q)) {
+        notInCatalog = false; finalPicked = [swing];
+        if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = "spec";
+      }
+    }
     const u: Understanding = {
       notInCatalog,
       requested,
