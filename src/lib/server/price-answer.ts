@@ -1300,7 +1300,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
   const namedIdx = new Set<number>();
   const belowMin: string[] = [];
   /** ตารางแรกที่คิดราคาได้ + ยังเหลือหลายแบบ → ไว้ประกอบคำถาม "ขอรายละเอียดเพิ่ม" */
-  let askFrom: { m: PriceMatrix; keys: string[] } | null = null;
+  let askFrom: { m: PriceMatrix; keys: string[]; units: Map<string, number> } | null = null;
   const stripNamed = (txt: string) => txt.split(" · ").filter((v) => !namedParts.some((n) => norm(n) === norm(v))).join(" · ") || txt;
   /** ขั้นบันได "ยิ่งสั่งเยอะยิ่งถูก" ของแบบถูกสุด — ใส่บรรทัดเดียวท้ายคำตอบ (เดิมกางครบทุกช่วงทุกเรท = 14 บรรทัด) */
   let ladder = "";
@@ -1329,7 +1329,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
       if (!shown.length) continue;
       printed++;
       options += shown.length;
-      if (!askFrom && shown.length > 1) askFrom = { m, keys: shown.map((x) => x.key) };
+      if (!askFrom && shown.length > 1) askFrom = { m, keys: shown.map((x) => x.key), units: new Map(shown.map((x) => [x.key, x.unit])) };
       const cap = narrow ? 1 : 3;
       // โครงใหม่ (18:26): [หัวเรทเมื่อมีหลายเรท] → แถว "ถูกสุด <แบบ> — ฿/หน่วย (รวม)" → แถว "แบบอื่น (ต่างกันที่…) : ช่วงราคา"
       // แถวขึ้นต้น "• … — …" การ์ดไลน์ (Site Price Flex) แปลงเป็น 2 คอลัมน์ · 【หัว】 = หัวข้อตัวหนา
@@ -1390,10 +1390,13 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
 
   // ❓ เจ้าของร้าน 18:35: "ควรถามรายละเอียดลูกค้าให้ครบตามกลุ่มตัวเลือกสินค้าที่มี" — ราคายังเป็นช่วงเพราะลูกค้ายังไม่เลือก หนา/สกรีน/ประเภท
   // → สร้างคำถามจากกลุ่มที่ยังไม่ระบุ (เฉพาะแกนราคา) พร้อมค่าที่เลือกได้จริงของสินค้านี้ (≤6 ค่า)
+  // 🧾 9 ต.ค. 69 13:30 เจ้าของร้าน (แผ่นหินน้ำหอม 500 แผ่น): "รายละเอียดที่บอทขอ งง" — เดิมเป็น "• ถุงบรรจุ: ก / ข / ค / ง (ตัวเลือกเสริม ทรง/เนื้อผ้า/สีไหม …)"
+  // → ถามทีละกลุ่มเป็นข้อ 1. 2. 3. บรรทัดละแบบ + ราคาต่อหน่วยของแบบนั้นที่จำนวนนี้ (เลือกเสร็จ = รู้ราคาทันที) · ตัดวงเล็บตัวเลือกเสริมทิ้ง (ไม่เกี่ยวกับราคา ทำให้งง)
   let askNext = "";
   if (qty && askFrom) {
-    const { m, keys } = askFrom;
-    const groups: string[] = [];
+    const { m, keys, units } = askFrom;
+    const unit = m.unit || "ชิ้น";
+    const pending: { label: string; vals: string[]; idx: number }[] = [];
     (m.driverLabels ?? []).forEach((label, idx) => {
       if (!label || namedIdx.has(idx)) return;
       const vals = [...new Set(keys.map((k) => k.split("│")[idx] ?? "").filter(Boolean))];
@@ -1403,11 +1406,23 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
       const core = (v: string) => norm(v.replace(/^(อะคริลิค|สกรีน|กระดาษ|เนื้อ|ผ้า|สี|แบบ|ขนาด)\s*/i, ""));
       const specified = vals.some((v) => { const c = core(v); return c.length >= 2 && qn.includes(c); });
       if (specified) return;
-      groups.push(`• ${label.trim()}: ${vals.slice(0, 6).join(" / ")}${vals.length > 6 ? ` / …อีก ${vals.length - 6}` : ""}`);
+      pending.push({ label: label.trim(), vals, idx });
     });
-    if (groups.length) {
-      const extras = (p.options ?? []).filter((o) => o.choices?.length && !(m.driverLabels ?? []).some((d) => norm(d) === norm(o.label))).map((o) => groupLabel(o.label)).slice(0, 3);
-      askNext = `ขอรายละเอียดเพิ่มอีกนิดนะคะ จะได้คิดราคาเป๊ะ ๆ ให้ค่า 🥰\n${groups.join("\n")}${extras.length ? `\n(ตัวเลือกเสริม ${extras.join("/")} เลือกเพิ่มได้ที่หน้าสินค้า)` : ""}\nตอบมาได้เลยน้า หรือกดปุ่มในการ์ดเลือกเองก็ได้ค่ะ ✨`;
+    if (pending.length) {
+      const blocks: string[] = [];
+      let n = 0;
+      for (const g of pending) {
+        const rows = g.vals.slice(0, 8).map((v) => {
+          // ราคาของแบบนี้ที่จำนวนที่สั่ง: เหลือกลุ่มเดียว = ตัวเลขเป๊ะ · ยังมีกลุ่มอื่นค้าง = "เริ่ม ฿x" (ถูกสุดในแบบนี้)
+          const prices = keys.filter((k) => (k.split("│")[g.idx] ?? "") === v).map((k) => units.get(k) ?? 0).filter((x) => x > 0);
+          const min = prices.length ? Math.min(...prices) : 0;
+          const tag = !min ? "" : pending.length === 1 ? ` — ${formatPrice(min)}/${unit}` : ` — เริ่ม ${formatPrice(min)}/${unit}`;
+          return `${++n}. ${prettyChoice(v)}${tag}`;
+        });
+        if (g.vals.length > 8) rows.push(`   (มีอีก ${g.vals.length - 8} แบบ ดูที่หน้าสินค้า)`);
+        blocks.push(`${g.label} เลือกแบบไหนดีคะ\n${rows.join("\n")}`);
+      }
+      askNext = `ขอถามเพิ่ม ${pending.length} ข้อ จะได้คิดราคาเป๊ะ ๆ ให้ค่ะ 🥰\n${blocks.join("\n\n")}\nพิมพ์ตัวเลขหรือชื่อแบบตอบมาได้เลยค่ะ ✨`;
     }
   }
 
