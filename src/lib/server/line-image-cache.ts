@@ -20,7 +20,9 @@ export async function cacheLineImage(db: Firestore, uid: string, logId: string):
   const x = (snap.data() ?? {}) as Record<string, unknown>;
   const cached = String(x.imageUrl ?? "");
   if (/^https:\/\//.test(cached)) return { ok: true, url: cached, cached: true };
-  if (String(x.type ?? "") !== "image") return { ok: false, reason: "ข้อความนี้ไม่ใช่รูป", status: 400 };
+  const kind = String(x.type ?? "");
+  const isFile = kind === "file"; // 📎 19:50 ไฟล์งาน/วิดีโอ/เสียงที่ลูกค้าส่ง (Parse LINE Event บันทึก type file + fileName)
+  if (kind !== "image" && !isFile) return { ok: false, reason: "ข้อความนี้ไม่ใช่รูป/ไฟล์", status: 400 };
   if (x.imageExpired === true) return { ok: false, reason: "รูปหมดอายุใน LINE แล้ว", status: 404 };
   const mid = String(x.messageId ?? "").trim();
   if (!/^\d{6,30}$/.test(mid)) return { ok: false, reason: "ไม่มีรหัสรูปจาก LINE", status: 404 };
@@ -37,16 +39,18 @@ export async function cacheLineImage(db: Firestore, uid: string, logId: string):
     await ref.set({ imageExpired: true, imageExpiredReason: `line-${res.status}`, imageCheckedAt: new Date() }, { merge: true }).catch(() => {});
     return { ok: false, reason: res.status === 404 ? "รูปหมดอายุใน LINE แล้ว" : `LINE ตอบ ${res.status}`, status: 404 };
   }
-  const type = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0];
-  if (!type.startsWith("image/")) {
+  const type = (res.headers.get("content-type") ?? (isFile ? "application/octet-stream" : "image/jpeg")).split(";")[0];
+  if (!isFile && !type.startsWith("image/")) {
     await ref.set({ imageExpired: true, imageExpiredReason: `type-${type}` }, { merge: true }).catch(() => {});
     return { ok: false, reason: "ไม่ใช่ไฟล์รูป", status: 404 };
   }
   const buf = Buffer.from(await res.arrayBuffer());
   const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : type.includes("gif") ? "gif" : "jpg";
   try {
-    const img = await uploadImage(`chat-${uid}`, `line-${mid}.${ext}`, buf, type);
-    await ref.set({ imageUrl: img.url, imageCachedAt: new Date() }, { merge: true });
+    const fname = isFile ? String(x.fileName ?? "").trim() || `line-${mid}.bin` : `line-${mid}.${ext}`;
+    const img = await uploadImage(`chat-${uid}`, fname, buf, type);
+    // ไฟล์: เก็บเป็น imageUrl ช่องเดียวกัน (หน้าเว็บดูจาก type) + fileSize จริง
+    await ref.set({ imageUrl: img.url, imageCachedAt: new Date(), ...(isFile ? { fileSize: buf.length } : {}) }, { merge: true });
     return { ok: true, url: img.url, cached: false };
   } catch {
     return { ok: false, reason: "เก็บขึ้น Storage ไม่ได้", status: 502, buf, type };

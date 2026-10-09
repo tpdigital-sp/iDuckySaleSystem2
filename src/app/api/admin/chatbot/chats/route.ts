@@ -156,7 +156,12 @@ export async function GET(req: Request) {
         imageExpired: y.imageExpired === true && String(y.type ?? "") === "image" ? true : undefined,
         card: card ? { name: String(card.name ?? ""), url: String(card.url ?? "") } : undefined,
         cards: cards.length ? cards : undefined,
-        file: y.file && typeof y.file === "object" && (y.file as { url?: unknown }).url ? { url: String((y.file as { url: unknown }).url), name: String((y.file as { name?: unknown }).name ?? "ไฟล์"), size: Number((y.file as { size?: unknown }).size ?? 0) || 0 } : undefined,
+        file: y.file && typeof y.file === "object" && (y.file as { url?: unknown }).url
+          ? { url: String((y.file as { url: unknown }).url), name: String((y.file as { name?: unknown }).name ?? "ไฟล์"), size: Number((y.file as { size?: unknown }).size ?? 0) || 0 }
+          : String(y.type ?? "") === "file"
+            ? // 📎 ไฟล์จากลูกค้า (Parse LINE Event): url = ที่แคชแล้ว หรือให้หน้าเว็บดึงผ่าน /chats/image (route เดียวกัน รองรับ type file)
+              { url: y.imageUrl ? String(y.imageUrl) : "", name: String(y.fileName ?? "ไฟล์"), size: Number(y.fileSize ?? 0) || 0 }
+            : undefined,
       };
     });
     // ห้องเก่าก่อนมี log (8 ต.ค. 69) → ใช้ messages 20 ตัวล่าสุดที่บอทเก็บไว้

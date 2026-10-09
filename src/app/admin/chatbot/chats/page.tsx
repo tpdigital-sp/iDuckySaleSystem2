@@ -588,10 +588,10 @@ function Chats() {
                               </button>
                             );
                           })()}
-                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
+                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
                           {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
                           {m.file ? (
-                            <a href={m.file.url} target="_blank" rel="noreferrer" className="mt-1.5 flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-[13px]" style={{ border: "1px solid rgba(0,0,0,.08)" }}>
+                            <a href={m.file.url || (m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "#")} target="_blank" rel="noreferrer" className="mt-1.5 flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-[13px]" style={{ border: "1px solid rgba(0,0,0,.08)" }}>
                               <span className="text-xl">📎</span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-bold">{m.file.name}</span>
