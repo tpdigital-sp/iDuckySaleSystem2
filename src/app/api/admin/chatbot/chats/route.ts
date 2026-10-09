@@ -38,7 +38,8 @@ type Row = {
   adminNote: string;
   adminAlias: string;
 };
-type LogEntry = { role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; card?: { name: string; url: string } };
+type CardRef = { name: string; url: string; image?: string; price?: string };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[] };
 type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[] };
 
 function iso(v: unknown): string {
@@ -112,7 +113,12 @@ export async function GET(req: Request) {
     const log: LogEntry[] = logSnap.docs.map((e) => {
       const y = e.data() as Record<string, unknown>;
       const card = y.card && typeof y.card === "object" ? (y.card as { name?: unknown; url?: unknown }) : null;
+      // 🧾 การ์ดที่บอทส่ง (Reply Gate เขียน cards[] ตั้งแต่ 9 ต.ค. 69 17:40) → หน้าแชทวาดเป็นการ์ดสินค้าเหมือนใน LINE
+      const cards: CardRef[] = Array.isArray(y.cards)
+        ? (y.cards as Record<string, unknown>[]).filter((c) => c && typeof c === "object").map((c) => ({ name: String(c.name ?? ""), url: String(c.url ?? ""), image: c.image ? String(c.image) : undefined, price: c.price ? String(c.price) : undefined })).filter((c) => c.name || c.url)
+        : [];
       return {
+        id: e.id,
         role: String(y.role ?? ""),
         text: String(y.text ?? ""),
         at: iso(y.at),
@@ -120,7 +126,11 @@ export async function GET(req: Request) {
         mode: y.mode ? String(y.mode) : undefined,
         by: y.by ? String(y.by) : undefined,
         imageUrl: y.imageUrl ? String(y.imageUrl) : undefined,
+        // รูปจากลูกค้า: ยังไม่ได้ดึง → หน้าเว็บใช้ /api/admin/chatbot/chats/image?uid&log (ดึงจาก LINE แล้วแคชขึ้น Storage)
+        messageId: y.messageId ? String(y.messageId) : undefined,
+        imageExpired: y.imageExpired === true ? true : undefined,
         card: card ? { name: String(card.name ?? ""), url: String(card.url ?? "") } : undefined,
+        cards: cards.length ? cards : undefined,
       };
     });
     // ห้องเก่าก่อนมี log (8 ต.ค. 69) → ใช้ messages 20 ตัวล่าสุดที่บอทเก็บไว้

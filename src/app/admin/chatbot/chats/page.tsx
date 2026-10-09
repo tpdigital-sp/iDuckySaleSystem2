@@ -34,7 +34,8 @@ type Row = {
   adminNote: string;
   adminAlias: string;
 };
-type LogEntry = { role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; card?: { name: string; url: string } };
+type CardRef = { name: string; url: string; image?: string; price?: string };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[] };
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number };
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
@@ -520,18 +521,35 @@ function Chats() {
                                 : { background: "white", color: "#1F2937", borderRadius: "4px 18px 18px 18px", boxShadow: "0 1px 1px rgba(0,0,0,.05)" }
                           }
                         >
-                          {m.imageUrl ? (
-                            <button type="button" onClick={() => setLightbox({ url: m.imageUrl as string, name: `line-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} className="mb-1 block" title="กดเพื่อดูรูปใหญ่ / ดาวน์โหลด">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={m.imageUrl} alt="" className="max-h-64 rounded-lg transition hover:opacity-90" />
-                            </button>
-                          ) : null}
-                          {m.card ? (
-                            <a href={m.card.url} target="_blank" rel="noreferrer" className="mb-1 block rounded-lg border bg-white/70 px-2 py-1 text-[12.5px] underline" style={{ borderColor: "#A8DFB3" }}>
-                              🧾 การ์ดสินค้า: {m.card.name}
+                          {(() => {
+                            // 🖼 17:30 รูปจากลูกค้า: log มี messageId (ยังไม่มี imageUrl) → โหลดผ่าน API ที่ดึงจาก LINE แล้วแคช · รูปบอท/แอดมิน: imageUrl ตรง ๆ
+                            if (!ours && !m.imageUrl && m.imageExpired) return <span className="mb-1 block text-[12px] italic" style={{ color: "var(--dk-faint)" }}>🖼 รูปหมดอายุใน LINE แล้ว (ดูได้ใน OA Manager)</span>;
+                            const lazy = !ours && !m.imageUrl && m.messageId && m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "";
+                            const src = m.imageUrl || lazy;
+                            if (!src) return null;
+                            const fname = `line-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg`;
+                            return (
+                              <button type="button" onClick={() => setLightbox({ url: src, name: fname })} className="mb-1 block" title="กดเพื่อดูรูปใหญ่ / ดาวน์โหลด">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={src} alt="" loading="lazy" className="max-h-64 min-h-[48px] min-w-[48px] rounded-lg transition hover:opacity-90" />
+                              </button>
+                            );
+                          })()}
+                          {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
+                          {(m.cards?.length ? m.cards : m.card ? [{ name: m.card.name, url: m.card.url }] : []).map((c, ci) => (
+                            <a key={ci} href={c.url} target="_blank" rel="noreferrer" className="mb-2 block w-[220px] max-w-full overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+                              {c.image ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={c.image} alt="" className="aspect-[4/3] w-full object-cover" />
+                              ) : null}
+                              <div className="px-2.5 pb-2 pt-1.5">
+                                <p className="truncate text-[13px] font-bold" style={{ color: "#153B3F" }}>{c.name || "สินค้า"}</p>
+                                {c.price ? <p className="text-[12px]" style={{ color: "#A05A00" }}>{c.price}</p> : null}
+                                <span className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>ดูราคา / สั่งเลย</span>
+                              </div>
                             </a>
-                          ) : null}
-                          {m.text}
+                          ))}
+                          {m.cards?.length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.card ? m.text.replace(/^\(ส่งการ์ดสินค้า[^)]*\)$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
                         </div>
                         {!ours ? (
                           <span className="mb-0.5 shrink-0 text-[10px]" style={{ color: "var(--dk-faint)" }}>
