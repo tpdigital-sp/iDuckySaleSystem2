@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
 import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -248,18 +248,21 @@ export default function PrintOrderPage() {
   //    ปริ้นรวม: ใบที่ติดจะโชว์กล่องแดงบนจอแทนเอกสาร ไม่ติดไปในกระดาษ · ใบอื่นพิมพ์ต่อได้ตามปกติ
   const contactBadOf = (o: Order) => (cancelledOf(o) ? [] : orderContactProblems(o));   // ใบยกเลิกติดด่านยกเลิกอยู่แล้ว ไม่ต้องซ้อนป้าย
   const contactBadCount = orders.filter((o) => contactBadOf(o).length > 0).length;
+  // 🧾⛔ เงินครบแล้วแต่ยังไม่ออกใบเสร็จ (INV) ครบทุกบิล → ไม่ออกเอกสารใด ๆ (เจ้าของร้านสั่ง 9 ต.ค. 69 · ใบอยู่ในคิวได้ แต่กดพิมพ์ไม่ได้)
+  const noReceiptOf = (o: Order) => (cancelledOf(o) || contactBadOf(o).length ? [] : receiptsPending(o));
+  const noReceiptCount = orders.filter((o) => noReceiptOf(o).length > 0).length;
   // ⛔ แบบไม่ครบ — กันเฉพาะตอนพิมพ์ "ใบงาน" (ใบเสร็จ/ใบแปะกล่องอย่างเดียวไม่ติด) · ใบปะหน้ารอบถัดไปของใบแบ่งส่ง (?doc=label) ไม่ติด
   const blockersOf = (o: Order) => (docs.work && !labelOnly && !cancelledOf(o) ? printBlockers(o) : []);
-  const proofHeldOf = (o: Order) => !contactBadOf(o).length && blockersOf(o).length > 0 && !partialOk.has(o.id);
+  const proofHeldOf = (o: Order) => !contactBadOf(o).length && !noReceiptOf(o).length && blockersOf(o).length > 0 && !partialOk.has(o.id);
   const proofHeldCount = orders.filter(proofHeldOf).length;
-  const printableCount = orders.length - cancelledCount - contactBadCount - proofHeldCount;
+  const printableCount = orders.length - cancelledCount - contactBadCount - noReceiptCount - proofHeldCount;
   // ใบเสร็จติ๊กได้ก็ต่อเมื่อมีใบที่เก็บเงินครบอย่างน้อยหนึ่งใบ (ใบที่ไม่ครบจะไม่ออกใบเสร็จอยู่แล้ว)
   const chosen = (Object.keys(docs) as DocKey[]).filter((k) => docs[k] && !(k === "receipt" && !anyPaid));
 
   /** เอกสารที่ใบนี้ได้จริงในรอบนี้ — ใบที่ยังจ่ายไม่ครบไม่ออกใบเสร็จ */
   const docsForOf = (o: Order) => chosen.filter((k) => k !== "receipt" || orderFullyPaid(o));
   /** กดพิมพ์รอบนี้แล้วใบนี้มีกระดาษออกจริงไหม (ไม่ติดด่านเบอร์/ที่อยู่ · ไม่ติดด่านแบบไม่ครบ · มีเอกสารให้ออก) */
-  const willPrint = (o: Order) => !cancelledOf(o) && !contactBadOf(o).length && !proofHeldOf(o) && docsForOf(o).length > 0;
+  const willPrint = (o: Order) => !cancelledOf(o) && !contactBadOf(o).length && !noReceiptOf(o).length && !proofHeldOf(o) && docsForOf(o).length > 0;
   /**
    * ♻️🖨 ใบที่รอบนี้เป็น "ปริ้นซ้ำ" และยังไม่ได้แนบภาพฉีกใบเก่าทิ้ง — ต้องผ่านป๊อปอัพก่อนถึงพิมพ์ได้
    * ของออกสองรอบเริ่มจากใบเก่าที่ยังลอยอยู่ในไลน์ผลิต · เซิร์ฟเวอร์ (printed route) กันซ้ำอีกชั้น
@@ -290,6 +293,7 @@ export default function PrintOrderPage() {
       for (const o of orders) {
         if (cancelledOf(o)) continue; // 🚫 ใบยกเลิก — ไม่มีกระดาษออก ห้ามจดว่าปริ้นแล้ว
         if (contactBadOf(o).length) continue; // 📞📍 ใบที่ถูกกันไว้ไม่ได้พิมพ์อะไร — ห้ามจดว่าปริ้นแล้ว/เลื่อนสถานะ
+        if (noReceiptOf(o).length) continue; // 🧾 ยังไม่ออกใบเสร็จ — ไม่ได้พิมพ์อะไร
         if (proofHeldOf(o)) continue; // ⛔ แบบไม่ครบ ยังไม่ปลดล็อก — ไม่ได้พิมพ์อะไร
         const partial = blockersOf(o).length > 0; // ปลดล็อกแล้ว = ปริ้นเฉพาะที่พร้อม
         // ใบที่ยังไม่จ่ายครบไม่ออกใบเสร็จ — ประวัติต้องไม่บันทึกเกินจริง
@@ -318,6 +322,7 @@ export default function PrintOrderPage() {
       setOrders((list) =>
         list.map((o) => {
           if (contactBadOf(o).length) return o; // 📞📍 ใบที่ถูกกันไว้ — ไม่แตะ
+          if (noReceiptOf(o).length) return o; // 🧾 ยังไม่ออกใบเสร็จ — ไม่แตะ
           if (proofHeldOf(o)) return o; // ⛔ แบบไม่ครบ — ไม่แตะ
           // ⛔ ปริ้นเฉพาะที่พร้อม — ล็อกที่อยู่อย่างเดียว ไม่นับครั้ง/ไม่เลื่อนสถานะ (ตรงกับ printed route)
           if (blockersOf(o).length) return { ...o, printedAt: o.printedAt ?? now };
@@ -449,6 +454,13 @@ export default function PrintOrderPage() {
               : `🔒 ${contactBadOf(orders[0]).join(" · ")} — พิมพ์เอกสารไม่ได้ แก้ในหน้าออเดอร์ก่อน`}
           </span>
         )}
+        {noReceiptCount > 0 && (
+          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
+            {batch
+              ? `🧾 ${noReceiptCount} ใบ ยังไม่ออกใบเสร็จ — ใบนั้นพิมพ์ไม่ได้`
+              : `🧾 ยังไม่ออกใบเสร็จ ${noReceiptOf(orders[0]).join(", ")} — พิมพ์ไม่ได้`}
+          </span>
+        )}
         {proofHeldCount > 0 && (
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 ring-1 ring-rose-200">
             {batch ? `⛔ ${proofHeldCount} ใบ แบบงานยังไม่ครบ — ใบนั้นไม่ออกใบงาน` : "⛔ แบบงานยังไม่ครบทุกรายการ — ใบงานยังพิมพ์ไม่ได้"}
@@ -465,7 +477,7 @@ export default function PrintOrderPage() {
             runPrint();
           }}
           disabled={chosen.length === 0 || (!anyPaid && !docs.work) || printableCount === 0}
-          title={printableCount === 0 ? (cancelledCount > 0 && cancelledCount === orders.length ? "ออเดอร์ถูกยกเลิกแล้ว — พิมพ์เอกสารไม่ได้" : proofHeldCount > 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : "เบอร์โทร/ที่อยู่ไม่ครบ — แก้ในหน้าออเดอร์ก่อนจึงพิมพ์ได้") : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
+          title={printableCount === 0 ? (cancelledCount > 0 && cancelledCount === orders.length ? "ออเดอร์ถูกยกเลิกแล้ว — พิมพ์เอกสารไม่ได้" : proofHeldCount > 0 ? "แบบงานยังไม่ครบทุกรายการ — ดูกล่องแดงด้านล่าง" : noReceiptCount > 0 ? "ยังไม่ออกใบเสร็จครบทุกบิล — ดูกล่องแดงด้านล่าง" : "เบอร์โทร/ที่อยู่ไม่ครบ — แก้ในหน้าออเดอร์ก่อนจึงพิมพ์ได้") : anyPaid || docs.work ? undefined : "ใบเสร็จพิมพ์ได้เมื่อรับเงินครบ 100%"}
           className="ml-auto rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-40"
         >
           {batch ? `🖨️ พิมพ์ทั้ง ${orders.length} ใบ` : "🖨️ พิมพ์"}
@@ -485,6 +497,8 @@ export default function PrintOrderPage() {
           if (cancelledOf(o)) return <CancelledBlocked key={o.id} order={o} />;
           const bad = contactBadOf(o);
           if (bad.length) return <ContactBlocked key={o.id} order={o} problems={bad} />;
+          const noReceipt = noReceiptOf(o);
+          if (noReceipt.length) return <ReceiptBlocked key={o.id} order={o} pending={noReceipt} />;
           if (proofHeldOf(o))
             return (
               <ProofBlocked
@@ -674,6 +688,38 @@ function CancelledBlocked({ order }: { order: Order }) {
       <Link
         href={`/admin/orders/${encodeURIComponent(order.id)}`}
         className="mt-4 inline-block rounded-full bg-white px-5 py-2 text-sm font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-100"
+      >
+        เปิดหน้าออเดอร์ →
+      </Link>
+    </section>
+  );
+}
+
+/**
+ * 🧾⛔ เงินครบแล้วแต่ยังไม่ออกใบเสร็จ (INV) ครบทุกบิล — ไม่ออกเอกสารใด ๆ (เจ้าของร้านสั่ง 9 ต.ค. 69)
+ * เคสจริง: ลูกค้าสั่งเพิ่ม (บิลที่ 2) ยังไม่ออกใบเสร็จ แต่ใบงาน/ใบปะหน้าปริ้น → ของส่งไปพร้อมใบเสร็จใบเดียวที่ปริ้นซ้ำ 2 ชุด
+ */
+function ReceiptBlocked({ order, pending }: { order: Order; pending: string[] }) {
+  const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo);
+  return (
+    <section className="no-print rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center">
+      <p className="text-sm font-extrabold text-rose-700">
+        🧾 {order.id} · {order.customer || "ยังไม่ระบุชื่อ"} — ยังไม่ออกใบเสร็จ พิมพ์ใบงาน/ใบปะหน้าไม่ได้
+      </p>
+      <ul className="mx-auto mt-2 max-w-md space-y-1 text-left text-sm">
+        {docs.map((d) => (
+          <li key={d.docNo} className={`rounded-lg px-3 py-1.5 font-semibold ring-1 ${pending.includes(d.docNo!) ? "bg-white text-rose-700 ring-rose-300" : "bg-green-50 text-green-700 ring-green-200"}`}>
+            {pending.includes(d.docNo!) ? "✗" : "✓"} {d.extra ? "บิลเพิ่ม" : "บิลหลัก"} {d.fromDoc ? `${d.fromDoc} → ` : ""}{d.docNo}
+            {pending.includes(d.docNo!) ? " — ยังไม่ออกใบเสร็จ" : " — ออกใบเสร็จแล้ว"}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-slate-600">
+        ออก INV ใน FlowAccount แล้วระบบดึงเลขเข้าเองภายใน 5 นาที (หน้านี้รีเฟรชได้) · ถ้าออกแล้วแต่ยังติด ให้แอดมินกด “ออกใบเสร็จครบแล้ว” ในหน้าออเดอร์
+      </p>
+      <Link
+        href={`/admin/orders/${encodeURIComponent(order.id)}`}
+        className="mt-3 inline-block rounded-full bg-white px-4 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-100"
       >
         เปิดหน้าออเดอร์ →
       </Link>

@@ -25,6 +25,7 @@ export const AI_MODEL_BY_FEATURE: Record<Exclude<AiFeature, "n8n_chat" | "n8n_pr
   price_info: "gemini-3.5-flash-lite",
   kb_ai: "gemini-3.8-flash",
   slip_ocr: "gemini-3.8-flash",
+  receipt_ocr: "gemini-3.5-flash-lite",
   customer_profile: "gemini-3.5-flash-lite",
 };
 

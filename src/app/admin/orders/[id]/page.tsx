@@ -150,6 +150,7 @@ import {
   orderIdIn,
   reuseArtText,
   receiveDepositFirst,
+  receiptsPending,
 } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
 import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
@@ -3633,6 +3634,37 @@ export default function AdminOrderDetailPage() {
     adoptOrder(j.order);
   }
 
+  /** 📷🧾 ภาพใบเสร็จเลขที่ docNo ใส่กล่อง — AI อ่านเลขในภาพ ถ้าเป็นเลขของอีกใบ/ถ่ายซ้ำ เซิร์ฟเวอร์ตอบ 409 พร้อมเหตุผล */
+  async function addReceiptPhoto(docNo: string, file: File): Promise<string | null> {
+    if (!order) return "ไม่พบออเดอร์";
+    if (demo) return "โหมดเดโมถ่ายภาพใบเสร็จไม่ได้";
+    const fd = new FormData();
+    fd.append("orderId", order.id);
+    fd.append("docNo", docNo);
+    fd.append("file", await shrinkImageFile(file));
+    const res = await fetch("/api/admin/orders/receipt-photo", { method: "POST", body: fd, headers: packScanHeaders() });
+    const j = (await res.json().catch(() => null)) as { order?: Order; error?: string } | null;
+    if (!res.ok || !j?.order) return j?.error ?? `อัปโหลดภาพไม่สำเร็จ (รหัส ${res.status})`;
+    adoptOrder(j.order);
+    return null;
+  }
+
+  async function deleteReceiptPhoto(docNo: string) {
+    if (!order) return;
+    if (!(await askConfirm({ icon: "🧾", title: `ลบภาพใบเสร็จ ${docNo}?`, confirmLabel: "ลบรูป", danger: true }))) return;
+    const res = await fetch("/api/admin/orders/receipt-photo", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...packScanHeaders() },
+      body: JSON.stringify({ orderId: order.id, docNo }),
+    });
+    const j = (await res.json().catch(() => null)) as { order?: Order; error?: string } | null;
+    if (!res.ok || !j?.order) {
+      setErr(j?.error ?? "ลบภาพไม่สำเร็จ");
+      return;
+    }
+    adoptOrder(j.order);
+  }
+
   /** พนักงานแพ็คกดยืนยันว่าอ่านรายละเอียดของรายการแล้ว (กดซ้ำ = ยกเลิก) */
   function toggleNoteAck(itemIndex: number) {
     if (!order) return;
@@ -3830,6 +3862,20 @@ export default function AdminOrderDetailPage() {
       actor,
       acked ? `ยกเลิกยืนยันใส่${taxInvoiceCountLabel(order)}` : `ยืนยันใส่${taxInvoiceCountLabel(order)}ลงกล่องแล้ว`,
       taxInvoiceDocNos(order) || (doc.docNo ? `${doc.label} ${doc.docNo}` : undefined)
+    );
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** 🔓🧾 แอดมินยืนยันว่าออกใบเสร็จ (INV) ครบทุกบิลแล้ว — ปลดด่านปริ้นเมื่อระบบจับคู่ INV ไม่เจอ · กดซ้ำ = ยกเลิก */
+  function toggleReceiptsOk() {
+    if (!order) return;
+    const on = !order.receiptsOk;
+    const next = withLog(
+      { ...order, receiptsOk: on ? { by: actor, at: new Date().toISOString() } : undefined },
+      actor,
+      on ? "🔓🧾 ยืนยันออกใบเสร็จครบแล้ว (ปลดด่านปริ้น)" : "ยกเลิกยืนยันออกใบเสร็จครบ",
+      on ? `ระบบยังไม่เจอ INV ของ ${receiptsPending(order).join(", ")}` : undefined
     );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -4610,6 +4656,8 @@ export default function AdminOrderDetailPage() {
           onSampleClear={mayProof || mayEdit ? toggleSampleRequired : undefined}
           onTaxInvoiceAck={toggleTaxInvoicePacked}
           onTaxInvoiceDelivery={setTaxInvoiceDelivery}
+          onReceiptPhoto={addReceiptPhoto}
+          onReceiptPhotoDelete={deleteReceiptPhoto}
           onArrival={setArrival}
           onTrackingChange={(v) => setOrder((cur) => (cur ? { ...cur, tracking: v } : cur))}
           onTrackingSave={saveTracking}
@@ -5396,6 +5444,40 @@ export default function AdminOrderDetailPage() {
                       </span>
                     )}
                   </p>
+                  {/* 🧾⛔ เงินครบแต่ยังไม่ออกใบเสร็จ (INV) ครบทุกบิล → หน้าปริ้นล็อกทั้งใบ (9 ต.ค. 69) · แอดมินปลดเองได้ถ้าระบบจับคู่ INV ไม่เจอ */}
+                  {(receiptsPending(order).length > 0 || order.receiptsOk) && (
+                    <p
+                      className={`mb-1 flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 font-bold ${
+                        order.receiptsOk ? "bg-slate-100 text-slate-600" : "bg-rose-600 text-white"
+                      }`}
+                    >
+                      {order.receiptsOk
+                        ? `🔓 แอดมินยืนยันออกใบเสร็จครบแล้ว · ${order.receiptsOk.by} · ${shortTime(order.receiptsOk.at)}`
+                        : `⛔ ยังไม่ออกใบเสร็จ ${receiptsPending(order).join(", ")} — ปริ้นใบงาน/ใบปะหน้าไม่ได้ (ออก INV ใน FlowAccount แล้วระบบดึงเองใน 5 นาที)`}
+                      {mayEdit && (
+                        <button
+                          type="button"
+                          onClick={toggleReceiptsOk}
+                          className="ml-auto rounded-md border border-current px-2 py-0.5 text-[11px] font-bold"
+                          title="ใช้เมื่อออก INV ครบแล้วแต่ระบบจับคู่ไม่เจอ (เช่น INV ใบเดียวรวมหลายบิล)"
+                        >
+                          {order.receiptsOk ? "ยกเลิก" : "ออกใบเสร็จครบแล้ว"}
+                        </button>
+                      )}
+                    </p>
+                  )}
+                  {(order.receiptPhotos?.length ?? 0) > 0 && (
+                    <div className="mb-1 flex flex-wrap gap-1.5">
+                      {order.receiptPhotos!.map((ph) => (
+                        <a key={ph.docNo} href={ph.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 rounded-md bg-white px-1.5 py-1 ring-1 ring-sky-200" title={`ถ่ายโดย ${ph.by} · ${shortTime(ph.at)}${ph.read ? ` · AI อ่านได้ ${ph.read}` : ""}`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={ph.url} alt={ph.docNo} className="h-8 w-8 rounded object-cover" />
+                          <span className="font-mono text-[11px] font-bold">📷 {ph.docNo}</span>
+                          {ph.read && ph.read !== ph.docNo ? <span className="text-[10px] text-amber-600">⚠️ {ph.read}</span> : null}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {order.flowAccount && (
                     <p className="font-bold text-sky-800">
                       📄 {order.flowAccount.docTypeLabel} FlowAccount {order.flowAccount.docNo}
@@ -10637,7 +10719,10 @@ function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: str
   // 🎁 ของแถมสั่งเพิ่มแต่กราฟฟิกยังไม่รับทราบ — ของแถมในมืออาจเป็นจำนวนเดิม ห้ามปิดกล่อง
   gate.giftBump.forEach((t) => out.push({ icon: "⚠️", text: `ของแถมสั่งเพิ่ม รอกราฟฟิกทำเพิ่ม/กดรับทราบ: ${t}` }));
   if (gate.noPhoto) out.push({ icon: "📸", text: "ถ่ายภาพของในกล่อง ก่อนปิดกล่อง" });
-  if (gate.taxInvoiceUnpacked) out.push({ icon: "🧾", text: "ใส่ใบกำกับภาษีลงกล่อง (พิมพ์จาก FlowAccount)" });
+  if (gate.taxInvoiceUnpacked) {
+    const n = taxInvoiceDocsOf(order).filter((d) => d.docNo).length;
+    out.push({ icon: "🧾", text: n ? `ถ่ายรูปใบเสร็จใส่กล่องทีละใบ (${n} ใบ คนละเลขที่)` : "ใส่ใบกำกับภาษีลงกล่อง (พิมพ์จาก FlowAccount)" });
+  }
   if (gate.unpaidBalance)
     out.push({ icon: "💳", text: order.deposit ? "เก็บยอดคงเหลือ (มัดจำ) ให้ครบ" : "เก็บส่วนต่างที่ค้างให้ครบ" });
   return out;
@@ -10655,6 +10740,8 @@ function PackView({
   onSampleClear,
   onTaxInvoiceAck,
   onTaxInvoiceDelivery,
+  onReceiptPhoto,
+  onReceiptPhotoDelete,
   onArrival,
   onTrackingChange,
   onTrackingSave,
@@ -10699,6 +10786,9 @@ function PackView({
   onSampleClear?: (i: number) => void;
   onTaxInvoiceAck: () => void;
   onTaxInvoiceDelivery: (v: "box" | "email") => void;
+  /** 📷🧾 ถ่ายภาพใบเสร็จเลขที่นี้ใส่กล่อง — คืนข้อความผิดพลาด (AI อ่านได้เลขของอีกใบ ฯลฯ) หรือ null */
+  onReceiptPhoto: (docNo: string, file: File) => Promise<string | null>;
+  onReceiptPhotoDelete: (docNo: string) => void;
   onArrival: (i: number, patch: ArrivalPatch) => void;
   onTrackingChange: (v: string) => void;
   onTrackingSave: () => void;
@@ -11145,6 +11235,9 @@ function PackView({
                   </button>
                 </div>
               );
+            // 📷 บิลที่มีเลขเอกสาร = ถ่ายภาพใบเสร็จทีละใบตามเลขที่ (9 ต.ค. 69) — แทนปุ่มแตะยืนยันเดิม
+            if (taxInvoiceDocsOf(order).some((d) => d.docNo))
+              return <ReceiptPhotoBox order={order} onUpload={onReceiptPhoto} onDelete={onReceiptPhotoDelete} onEmail={() => onTaxInvoiceDelivery("email")} />;
             return (
               <div className={`rounded-2xl bg-white p-3 shadow-sm ${packed ? "ring-1 ring-green-200" : multi ? "ring-2 ring-violet-500" : "ring-2 ring-rose-300"}`}>
                 <button
@@ -13482,6 +13575,126 @@ function LineChatBox({
         ต้องได้ครบ 2 อย่าง: วาง <b>ลิงก์ห้องแชท</b> (chat.line.biz) แล้วแตะเลือกจากรายชื่อ หรือพิมพ์ <b>ชื่อ LINE</b> ค้นหาเพื่อผูก <b>userId</b>
       </p>
       {note}
+    </div>
+  );
+}
+
+/**
+ * 📷🧾 ถ่ายภาพใบเสร็จที่ใส่กล่อง "ทีละใบ ตามเลขที่" (โหมดแพ็ค) — เจ้าของร้านสั่ง 9 ต.ค. 69
+ * เคสจริง: ใบมี 2 บิล แต่ปริ้นใบเสร็จใบเดียวกันซ้ำ 2 ชุด → คนแพ็คนับได้ 2 ใบแล้วส่งไป
+ * แต่ละเลขที่มีช่องถ่ายของตัวเอง · AI อ่านเลขในภาพ ถ้าเป็นเลขของอีกใบ/ใบที่ถ่ายไปแล้ว = ไม่รับ
+ * ครบทุกช่อง → เซิร์ฟเวอร์ตั้ง taxInvoicePacked ให้ (ด่านยิงเลขพัสดุเดิม)
+ */
+function ReceiptPhotoBox({
+  order,
+  onUpload,
+  onDelete,
+  onEmail,
+}: {
+  order: Order;
+  onUpload: (docNo: string, file: File) => Promise<string | null>;
+  onDelete: (docNo: string) => void;
+  onEmail: () => void;
+}) {
+  const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo);
+  const photos = new Map((order.receiptPhotos ?? []).map((p) => [p.docNo, p]));
+  const left = docs.filter((d) => !photos.has(d.docNo!)).length;
+  const noReceipt = receiptsPending(order);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const done = left === 0;
+  const multi = docs.length > 1;
+
+  async function pick(docNo: string, f: File | undefined) {
+    if (!f) return;
+    setBusy(docNo);
+    setErrs((e) => ({ ...e, [docNo]: "" }));
+    const err = await onUpload(docNo, f);
+    if (err) setErrs((e) => ({ ...e, [docNo]: err }));
+    setBusy(null);
+  }
+
+  return (
+    <div className={`rounded-2xl bg-white p-3 shadow-sm ${done ? "ring-1 ring-green-200" : multi ? "ring-2 ring-violet-500" : "ring-2 ring-rose-300"}`}>
+      <div className={`rounded-xl px-3 py-3 ${done ? "bg-green-50" : multi ? "bg-violet-700" : "bg-rose-50"}`}>
+        <p className={`text-sm font-extrabold ${done ? "text-green-800" : multi ? "text-white" : "text-rose-700"}`}>
+          {done ? "✅" : multi ? "⚠️🧾" : "🧾"} ใส่ใบเสร็จ {docs.length} ใบ ลงกล่อง — ถ่ายรูปทีละใบ
+        </p>
+        <p className={`mt-0.5 text-[11px] font-bold ${done ? "text-green-700" : multi ? "text-violet-100" : "text-rose-600"}`}>
+          {done
+            ? `ถ่ายครบแล้ว · ยืนยันโดย ${order.taxInvoicePacked?.by ?? order.receiptPhotos?.at(-1)?.by ?? "—"}`
+            : multi
+              ? `${docs.length} ใบ = คนละเลขที่ ห้ามปริ้นใบเดิมซ้ำ · เช็คเลขบนกระดาษให้ตรงทุกช่อง (ยังขาด ${left} ใบ)`
+              : "ถ่ายให้เห็นเลขที่บนใบชัด ๆ ก่อนใส่กล่อง"}
+        </p>
+      </div>
+      {noReceipt.length > 0 && (
+        <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">
+          ⛔ ยังไม่ออกใบเสร็จ {noReceipt.join(", ")} — แจ้งแอดมินออกใบเสร็จก่อน ห้ามส่งของ
+        </p>
+      )}
+      <ul className="mt-2 space-y-2">
+        {docs.map((d, n) => {
+          const ph = photos.get(d.docNo!);
+          const e = errs[d.docNo!];
+          return (
+            <li key={d.docNo} className={`rounded-xl p-2 ring-1 ${ph ? "bg-green-50/60 ring-green-200" : "bg-slate-50 ring-slate-200"}`}>
+              <div className="flex items-center gap-2">
+                {ph ? (
+                  <a href={ph.url} target="_blank" rel="noreferrer" className="shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={ph.url} alt={`ใบเสร็จ ${d.docNo}`} className="h-14 w-14 rounded-lg object-cover ring-1 ring-slate-200" />
+                  </a>
+                ) : (
+                  <span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border-2 border-dashed border-slate-300 bg-white text-xl text-slate-400">{n + 1}</span>
+                )}
+                <span className="min-w-0 flex-1 text-xs">
+                  <span className="block text-[10px] font-bold text-slate-400">
+                    ใบที่ {n + 1} · {d.extra ? "บิลเพิ่ม" : "บิลหลัก"}{d.fromDoc ? ` (จาก ${d.fromDoc})` : ""}
+                  </span>
+                  <span className="block font-mono text-[15px] font-black tracking-wide text-slate-900">{d.docNo}</span>
+                  <span className="block text-[10px] text-slate-500">
+                    {ph
+                      ? `${ph.read ? (ph.read === d.docNo || ph.read === d.fromDoc ? `✓ AI อ่านเลขตรง` : `⚠️ AI อ่านได้ ${ph.read}`) : "AI อ่านเลขไม่ออก"} · ${ph.by}`
+                      : d.label}
+                  </span>
+                </span>
+                {ph && !(order.tracking ?? "").trim() && (
+                  <button type="button" onClick={() => onDelete(d.docNo!)} className="shrink-0 rounded-lg border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-500">
+                    ลบ
+                  </button>
+                )}
+                <label className={`shrink-0 cursor-pointer rounded-xl px-3 py-2.5 text-[11px] font-bold ${ph ? "border border-slate-300 text-slate-600" : "bg-sky-600 text-white"} ${busy ? "pointer-events-none opacity-50" : ""}`}>
+                  {busy === d.docNo ? "กำลังตรวจ…" : ph ? "ถ่ายใหม่" : "📷 ถ่ายใบนี้"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(ev) => {
+                      void pick(d.docNo!, ev.target.files?.[0]);
+                      ev.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {e && <p className="mt-1.5 rounded-lg bg-rose-100 px-2 py-1.5 text-[11px] font-bold text-rose-700">⛔ {e}</p>}
+            </li>
+          );
+        })}
+      </ul>
+      {!done && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={onEmail}
+            className="rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-bold text-slate-500"
+            title="ลูกค้ารับใบกำกับทางอีเมลแล้ว ไม่ต้องใส่ตัวจริงลงกล่อง"
+          >
+            ส่งอีเมลแล้ว ไม่ต้องแนบ
+          </button>
+        </div>
+      )}
     </div>
   );
 }

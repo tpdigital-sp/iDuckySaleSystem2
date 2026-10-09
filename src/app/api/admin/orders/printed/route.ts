@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderFullyPaid, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, reprintUnlock, sampleLabelOk, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { orderFullyPaid, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, reprintUnlock, sampleLabelOk, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink, statusFlex } from "@/lib/server/notify";
 import { updateOrder } from "@/lib/server/order-write";
 import { can } from "@/lib/permissions";
@@ -73,6 +73,14 @@ export async function POST(req: Request) {
   // 🚫 ใบยกเลิกห้ามจดว่าปริ้น/เลื่อนสถานะ/ปลดล็อกใด ๆ — กันทางเขียนอื่นนอกหน้าปริ้น (เจ้าของร้านสั่ง 28 ก.ย. 69 · OD-260924-1902)
   if (order.status === "ยกเลิก")
     return NextResponse.json({ ok: false, cancelled: true, error: "ออเดอร์นี้ถูกยกเลิกแล้ว — พิมพ์เอกสารไม่ได้" }, { status: 409 });
+
+  // 🧾⛔ บิลที่เก็บเงินครบแล้วแต่ยังไม่ออกใบเสร็จ (INV) — ห้ามปริ้นทุกเอกสาร (เจ้าของร้านสั่ง 9 ต.ค. 69 · ดู receiptsPending)
+  const noReceipt = receiptsPending(order);
+  if (noReceipt.length)
+    return NextResponse.json(
+      { ok: false, noReceipt, error: `ยังไม่ออกใบเสร็จ ${noReceipt.join(", ")} — ออก INV ใน FlowAccount ก่อน (ระบบดึงเข้าเองภายใน 5 นาที)` },
+      { status: 409 }
+    );
 
   const blockers = (body.docs ?? []).includes("work") ? printBlockers(order) : [];
   if (blockers.length) {

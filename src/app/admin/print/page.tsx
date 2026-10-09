@@ -26,7 +26,7 @@ import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipRider } from "@/lib/ship-with";
-import { daysToUseBy, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, receiptsPending, taxInvoiceDocsOf, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
@@ -528,6 +528,8 @@ function PrintRow({
   const held = printBlockers(o).map(proofBlockerLabel);
   /** 📞📍 เบอร์/ที่อยู่ไม่ผ่านด่าน = กดปริ้นไปก็ไม่มีกระดาษออก — ต้องเห็นตั้งแต่ในคิว ไม่ใช่ไปตันหน้าปริ้น (23 ก.ย. 69) */
   const contactBad = orderContactProblems(o);
+  /** 🧾 เงินครบแต่ยังไม่ออกใบเสร็จ (INV) ครบทุกบิล — อยู่ในคิวได้ แต่กดพิมพ์ไม่ได้ (เจ้าของร้านสั่ง 9 ต.ค. 69) */
+  const noReceipt = receiptsPending(o);
   const sent = isSent(o);
   const stage = !sent && printed === 0 ? graphicStage(card, cardsOk) : null;
   const nextRound = nextRoundOf(o); // 🚚 แบ่งส่งแล้วบางรอบ รอใบปะหน้ากล่องรอบถัดไป
@@ -608,6 +610,14 @@ function PrintRow({
             {contactBad.length > 0 && (
               <Tag tone="coral" title={`ใบนี้พิมพ์เอกสารไม่ได้ทั้งใบงาน/ใบปะหน้า/ใบเสร็จ:\n${contactBad.join("\n")}\n\nแก้ในหน้าออเดอร์ กล่อง 👤 ลูกค้า / จัดส่ง ก่อน`}>
                 🔒 {contactBad.join(" · ")} — ปริ้นไม่ได้
+              </Tag>
+            )}
+            {noReceipt.length > 0 && (
+              <Tag
+                tone="coral"
+                title={`เงินครบแล้วแต่ยังไม่ออกใบเสร็จ (INV) ของ ${noReceipt.join(", ")}\nใบนี้มี ${taxInvoiceDocsOf(o).filter((d) => d.docNo).length} บิล — ต้องออกใบเสร็จครบทุกบิลก่อนถึงพิมพ์ใบงาน/ใบปะหน้าได้\nออก INV ใน FlowAccount แล้วระบบดึงเข้าเองภายใน 5 นาที`}
+              >
+                🧾 ยังไม่ออกใบเสร็จ {noReceipt.join(", ")} — ปริ้นไม่ได้
               </Tag>
             )}
             {held.length > 0 && (

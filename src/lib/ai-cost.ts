@@ -107,6 +107,7 @@ export const AI_FEATURES = {
   price_info: { label: "อ่านหน้าสินค้าตอบความรู้", group: "เครื่องคิดราคา" },
   kb_ai: { label: "งาน AI คลังความรู้/ตารางราคา", group: "หลังบ้าน" },
   slip_ocr: { label: "อ่านสลิปไม่มี QR", group: "หลังบ้าน" },
+  receipt_ocr: { label: "อ่านเลขใบเสร็จที่แพ็คใส่กล่อง", group: "หลังบ้าน" },
   customer_profile: { label: "สรุปโปรไฟล์ลูกค้า LINE", group: "หลังบ้าน" },
   n8n_chat: { label: "ส่งต่อให้ n8n ตอบ (knowledge-chat)", group: "n8n" },
   n8n_pricing: { label: "ส่งต่อให้ n8n ค้นราคา", group: "n8n" },

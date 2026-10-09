@@ -63,6 +63,7 @@ import {
   type TrackingBox,
   REOPEN_FOR_BALANCE,
   receiveDepositFirst,
+  receiptPhotoPending,
 } from "@/lib/admin-data";
 import { inBackground } from "@/lib/server/background";
 
@@ -285,8 +286,10 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
   // 🏭 ติ๊ก "ส่งเข้าผลิตแล้ว" (คิวปริ้นแยกกอง) — ฝ่ายแพ็ค/น้องพิมพ์ติ๊กเองได้สำหรับใบที่ไม่ผ่านบอร์ดกราฟฟิก
   if ("productionSent" in incoming) merged.productionSent = incoming.productionSent;
   // 🧾 ยืนยันใส่ใบกำกับภาษีลงกล่อง + ทางส่งใบกำกับ (แนบกล่อง/อีเมล) — งานของโต๊ะแพ็ค
-  if ("taxInvoicePacked" in incoming) merged.taxInvoicePacked = incoming.taxInvoicePacked;
+  // 📷 บิลที่มีเลขเอกสาร = ต้องถ่ายภาพใบเสร็จครบทุกเลขที่ก่อน (receipt-photo route ตั้ง taxInvoicePacked ให้เอง) — ติ๊กตรงจากโต๊ะแพ็คไม่ผ่าน (9 ต.ค. 69)
   if ("taxInvoiceDelivery" in incoming) merged.taxInvoiceDelivery = incoming.taxInvoiceDelivery;
+  if ("taxInvoicePacked" in incoming && !(incoming.taxInvoicePacked && receiptPhotoPending(merged).length))
+    merged.taxInvoicePacked = incoming.taxInvoicePacked;
   // 🛒 รอของเข้า: ฝ่ายแพ็ค/ผลิตเป็นคนรับของ → กด "ของเข้าแล้ว" ได้อย่างเดียว (ติ๊ก/ยกเลิก/แก้โน้ต = งานแอดมิน)
   if (existing.needsPurchase && !existing.needsPurchase.arrivedAt && incoming.needsPurchase?.arrivedAt)
     merged.needsPurchase = { ...existing.needsPurchase, arrivedAt: incoming.needsPurchase.arrivedAt, arrivedBy: incoming.needsPurchase.arrivedBy };

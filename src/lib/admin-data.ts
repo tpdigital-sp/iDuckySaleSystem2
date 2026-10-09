@@ -1368,6 +1368,17 @@ export interface Order {
    * เจ้าของร้านแจ้ง 10 ก.ย. 69: บิล FlowAccount/บิล VAT พนักงานมักลืมพิมพ์ใบกำกับไปพร้อมใบปะหน้า
    */
   taxInvoicePacked?: { by: string; at: string };
+  /**
+   * 📷🧾 ภาพใบเสร็จ/ใบกำกับที่ใส่กล่อง "ทีละใบ ตามเลขที่" — เจ้าของร้านสั่ง 9 ต.ค. 69
+   * เคสจริง: ใบมี 2 บิล (สั่งเพิ่ม) แต่ปริ้นใบเสร็จใบเดียวกันซ้ำ 2 ชุด → คนแพ็คนับได้ "2 ใบ" แล้วส่งไป
+   * ต้องมีภาพครบทุกเลขที่ใน taxInvoiceDocsOf ระบบถึงตั้ง taxInvoicePacked ให้ (ดู receiptPhotoPending · /api/admin/orders/receipt-photo)
+   */
+  receiptPhotos?: ReceiptPhoto[];
+  /**
+   * 🔓🧾 แอดมินยืนยันเองว่าออกใบเสร็จ (INV) ครบทุกบิลแล้ว — ใช้เมื่อระบบจับคู่ INV จาก FlowAccount ไม่เจอ (เช่น INV ใบเดียวรวม 2 บิล)
+   * ปลดด่าน receiptsPending (ปริ้นใบงาน/ใบปะหน้า) — สิทธิ์ orders.edit เท่านั้น
+   */
+  receiptsOk?: { by: string; at: string };
 }
 
 /** 🧾 ของที่ต้องสั่ง 1 บรรทัด (Order.needsPurchase.items) */
@@ -1456,6 +1467,35 @@ export function taxInvoiceDocsOf(o: Order): { docNo?: string; url?: string; labe
     invs.length = 0;
   }
   return [...out, ...invs.map((v) => ({ docNo: v.docNo, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", extra: true, amount: v.total }))];
+}
+
+/** 🧾 เอกสารใบนี้เป็นใบเสร็จ/ใบกำกับแล้ว (ไม่ใช่ใบเสนอราคา/ใบวางบิลที่ยังรอออก INV) */
+const isReceiptDoc = (d: { docNo?: string; label: string; fromDoc?: string }) =>
+  !!d.fromDoc || /ใบกำกับ|ใบเสร็จ/.test(d.label) || /^(INV|RE|RT|IV)\d/i.test(d.docNo ?? "");
+
+/**
+ * 🧾⛔ บิล FlowAccount ที่ "ยังไม่ออกใบเสร็จ (INV)" ทั้งที่เก็บเงินครบแล้ว — ปริ้นใบงาน/ใบปะหน้าไม่ได้จนกว่าจะครบ (เจ้าของร้านสั่ง 9 ต.ค. 69)
+ * เคสจริง: ลูกค้าสั่งเพิ่ม (บิลที่ 2) ยังไม่ออกใบเสร็จ แต่งานปริ้น/แพ็คส่งไปแล้ว → ใบเสร็จไปไม่ครบ
+ * - เฉพาะใบที่ต้องใส่ใบกำกับลงกล่อง + เงินครบแล้ว (ใบมัดจำรอบตัวอย่างยังไม่ถึงเวลาออก INV — ไม่กัน)
+ * - INV ที่ออกใน FlowAccount ระบบดึงเข้าเองทุก 5 นาที (faInvoices · cron wht-sync) แล้วด่านหายเอง
+ * - จับคู่ไม่เจอ (INV ใบเดียวรวมหลายบิล ฯลฯ) → แอดมินกด "ออกใบเสร็จครบแล้ว" (receiptsOk)
+ * คืนเลขบิลที่ยังค้าง (ว่าง = ผ่าน)
+ */
+export function receiptsPending(o: Order): string[] {
+  if (o.receiptsOk || o.status === "ยกเลิก") return [];
+  if (!orderNeedsTaxInvoiceInBox(o) || !orderFullyPaid(o)) return [];
+  return taxInvoiceDocsOf(o)
+    .filter((d) => d.docNo && !isReceiptDoc(d))
+    .map((d) => d.docNo!);
+}
+
+/** 📷🧾 เลขที่ใบเสร็จที่ต้องถ่ายภาพใส่กล่อง แต่ยังไม่มีภาพ — ใบที่ไม่มีเลขเอกสารเลย (บิล VAT หน้าเว็บ) ไม่บังคับภาพ */
+export function receiptPhotoPending(o: Order): string[] {
+  if (!orderNeedsTaxInvoiceInBox(o)) return [];
+  const have = new Set((o.receiptPhotos ?? []).map((p) => p.docNo));
+  return taxInvoiceDocsOf(o)
+    .map((d) => d.docNo)
+    .filter((n): n is string => !!n && !have.has(n));
 }
 
 /** 🧾 ป้ายสั้น "ใบกำกับภาษี" / "ใบกำกับภาษี 2 ใบ" — ใช้บนตราใบปะหน้า/ใบงาน/ด่านแพ็ค */
@@ -2347,6 +2387,18 @@ export interface PackPhoto {
  * ♻️🖨 หลักฐาน "ฉีกใบเก่าทิ้งแล้ว" ก่อนปริ้นซ้ำหนึ่งรอบ (ดู Order.reprintPhotos)
  * printedBefore = ใบนี้ปริ้นไปแล้วกี่ครั้งตอนถ่ายรูป · usedAt = ใช้ปลดล็อกรอบปริ้นซ้ำไปแล้วเมื่อไหร่ (มีค่า = ใช้ซ้ำไม่ได้)
  */
+/** 📷🧾 ภาพใบเสร็จ 1 ใบที่ใส่กล่อง (ดู Order.receiptPhotos) */
+export interface ReceiptPhoto {
+  /** เลขที่เอกสารที่ภาพนี้ยืนยัน (เลขจาก taxInvoiceDocsOf — INV ถ้าออกแล้ว ไม่งั้น QT/BL) */
+  docNo: string;
+  url: string;
+  path?: string;
+  by: string;
+  at: string;
+  /** เลขเอกสารที่ AI อ่านได้จากภาพ (ไม่มี = อ่านไม่ออก/ไม่ได้อ่าน) */
+  read?: string;
+}
+
 export interface ReprintPhoto {
   url: string;
   /** path ใน storage (ใช้ตอนลบไฟล์จริง) */
