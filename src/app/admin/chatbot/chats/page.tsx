@@ -5,6 +5,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { Empty, SearchBox } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
 import { ago, botApi, uploadBotImage, useToast } from "../bot-ui";
+import { CUSTOMER_TAGS, type CustomerTag } from "@/lib/line-tags";
 
 /**
  * 💬 แชท LINE / ตอบลูกค้า — หน้าตาเลียนแบบ LINE OA Manager (เจ้าของร้าน 9 ต.ค. 69 16:05: "ออกแบบใหม่ เลียนแบบ LINE OA + รองรับตอบแชทบนมือถือ")
@@ -29,6 +30,9 @@ type Row = {
   botAllowed: boolean;
   pausedUntil: string;
   lastAdminAt: string;
+  adminTag: string;
+  adminNote: string;
+  adminAlias: string;
 };
 type LogEntry = { role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; card?: { name: string; url: string } };
 type Settings = { mode: string; newSince: string; enabled: boolean };
@@ -76,6 +80,19 @@ function Avatar({ src, size = 44 }: { src?: string; size?: number }) {
     <img src={src} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
   ) : (
     <div className="shrink-0 rounded-full" style={{ width: size, height: size, background: "var(--dk-hair)" }} />
+  );
+}
+
+const nameOf = (r: { adminAlias?: string; displayName?: string; id: string }) => r.adminAlias || r.displayName || r.id.slice(0, 10) + "…";
+const tagOf = (k: string) => CUSTOMER_TAGS.find((t) => t.key === k) ?? null;
+/** 🏷 ป้ายความเร่งด่วน — ชุดเดียวกับหน้า ลูกค้า LINE (CUSTOMER_TAGS) */
+function TagChip({ k }: { k: string }) {
+  const t = tagOf(k);
+  if (!t) return null;
+  return (
+    <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: t.wash, color: t.ink }}>
+      {t.dot} {t.label}
+    </span>
   );
 }
 
@@ -226,6 +243,45 @@ function Chats() {
     [toast],
   );
 
+  // 🏷📝 ป้าย + โน้ต (เจ้าของร้าน 9 ต.ค. 69 16:20 "ทำ note ติด tag ได้") — ฟิลด์เดียวกับหน้า ลูกค้า LINE (adminTag/adminNote) ผ่าน manage API
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  useEffect(() => {
+    setNoteOpen(false);
+    setNoteDraft(detail?.adminNote ?? "");
+  }, [sel, detail?.adminNote]);
+  const saveTag = useCallback(
+    async (id: string, tag: CustomerTag | "") => {
+      try {
+        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/line-customers/manage", { action: "tag", userId: id, tag });
+        toast(d.saved || "บันทึกป้ายแล้ว");
+        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, adminTag: tag } : x)));
+        setDetail((x) => (x && x.id === id ? { ...x, adminTag: tag } : x));
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      }
+    },
+    [toast],
+  );
+  const saveNote = useCallback(
+    async (id: string, note: string) => {
+      setNoteSaving(true);
+      try {
+        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/line-customers/manage", { action: "note", userId: id, adminNote: note });
+        toast(d.saved || "บันทึกโน้ตแล้ว");
+        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, adminNote: note } : x)));
+        setDetail((x) => (x && x.id === id ? { ...x, adminNote: note } : x));
+        setNoteOpen(false);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      } finally {
+        setNoteSaving(false);
+      }
+    },
+    [toast],
+  );
+
   const quotaLow = quota?.left !== null && quota?.left !== undefined && quota.left < 3000;
   const quotaOut = quota?.left !== null && quota?.left !== undefined && quota.left < 500;
   const quotaText = quota ? (quota.limit === null ? `ใช้ไป ${quota.used.toLocaleString()}` : `${quota.left?.toLocaleString()} / ${quota.limit.toLocaleString()}`) : "—";
@@ -314,7 +370,7 @@ function Chats() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
-                    <span className="min-w-0 flex-1 truncate text-[14.5px] font-bold">{r.displayName || r.id.slice(0, 10) + "…"}</span>
+                    <span className="min-w-0 flex-1 truncate text-[14.5px] font-bold">{nameOf(r)}</span>
                     <span className="shrink-0 text-[11px]" style={{ color: "var(--dk-faint)" }}>
                       {listTime(r.lastSeen)}
                     </span>
@@ -323,6 +379,8 @@ function Chats() {
                     {r.lastUserText || (r.messageCount ? `บอทคุย ${r.messageCount} ข้อความ` : "—")}
                   </p>
                   <div className="mt-0.5 flex flex-wrap gap-1">
+                    {r.adminTag ? <TagChip k={r.adminTag} /> : null}
+                    {r.adminNote ? <span className="text-[10.5px]" title={r.adminNote} style={{ color: "var(--dk-faint)" }}>📝</span> : null}
                     {r.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
                     {r.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
                     {r.pausedUntil ? <Chip tone="lilac">⏸ พักบอท</Chip> : null}
@@ -355,7 +413,8 @@ function Chats() {
               <Avatar src={detail?.pictureUrl} size={36} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="truncate text-[15px] font-bold">{detail?.displayName || sel}</span>
+                  <span className="truncate text-[15px] font-bold">{detail ? nameOf(detail) : sel}</span>
+                  {detail?.adminTag ? <TagChip k={detail.adminTag} /> : null}
                   {detail?.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
                   {detail?.pausedUntil ? <Chip tone="lilac">⏸ พักถึง {fmtTime(detail.pausedUntil)}</Chip> : detail?.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
                   {detail?.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
@@ -365,6 +424,11 @@ function Chats() {
                   {detail?.lastSeen ? ` · ล่าสุด ${ago(detail.lastSeen)}` : ""}
                 </p>
               </div>
+              {canReply && detail ? (
+                <IconBtn onClick={() => setNoteOpen((v) => !v)} title="ป้าย / โน้ตลูกค้าคนนี้" active={noteOpen}>
+                  📝
+                </IconBtn>
+              ) : null}
               {canReply && detail?.pausedUntil ? (
                 <IconBtn onClick={() => void wakeBot(detail.id)} title="ให้บอทกลับมาตอบคนนี้ทันที">
                   ▶
@@ -376,6 +440,56 @@ function Chats() {
                 </IconBtn>
               ) : null}
             </div>
+
+            {/* 🏷📝 แผงป้าย+โน้ต (ใต้หัวห้อง) — โน้ตที่บันทึกแล้วโชว์เป็นแถบเหลืองเสมอ */}
+            {detail && (noteOpen || detail.adminNote) ? (
+              <div className="border-b px-3 py-2 md:px-4" style={{ borderColor: "var(--dk-hair)", background: "#FFFBEA" }}>
+                {noteOpen ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[12px] font-bold" style={{ color: "#8A5A00" }}>ป้าย:</span>
+                      {CUSTOMER_TAGS.map((t) => (
+                        <button
+                          key={t.key}
+                          type="button"
+                          onClick={() => void saveTag(detail.id, detail.adminTag === t.key ? "" : t.key)}
+                          className="min-h-[30px] rounded-full px-2.5 text-[12px] font-bold transition"
+                          style={detail.adminTag === t.key ? { background: t.tone, color: "white" } : { background: t.wash, color: t.ink }}
+                        >
+                          {t.dot} {t.label}
+                        </button>
+                      ))}
+                      {detail.adminTag ? (
+                        <button type="button" onClick={() => void saveTag(detail.id, "")} className="text-[12px] underline" style={{ color: "var(--dk-faint)" }}>
+                          ถอดป้าย
+                        </button>
+                      ) : null}
+                    </div>
+                    <textarea
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      rows={2}
+                      placeholder="โน้ตภายใน (ลูกค้าไม่เห็น) เช่น ที่อยู่/งานที่คุยค้าง/ข้อควรระวัง"
+                      className="mt-2 w-full resize-y rounded-xl border px-3 py-2 text-[13.5px] outline-none"
+                      style={{ borderColor: "#F0D48A", background: "white" }}
+                    />
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <button type="button" onClick={() => void saveNote(detail.id, noteDraft.trim())} disabled={noteSaving} className="dkb-btn dkb-btn-navy dkb-btn-sm min-h-[36px]">
+                        {noteSaving ? "กำลังบันทึก…" : "บันทึกโน้ต"}
+                      </button>
+                      <button type="button" onClick={() => { setNoteOpen(false); setNoteDraft(detail.adminNote ?? ""); }} className="text-[13px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+                        ปิด
+                      </button>
+                      <span className="ml-auto text-[11px]" style={{ color: "var(--dk-faint)" }}>ป้าย/โน้ตชุดเดียวกับหน้า ลูกค้า LINE</span>
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => setNoteOpen(true)} className="w-full text-left text-[12.5px]" style={{ color: "#5B4300" }}>
+                    📝 {detail.adminNote}
+                  </button>
+                )}
+              </div>
+            ) : null}
 
             {/* ข้อความ */}
             <div ref={threadRef} className="flex-1 overflow-y-auto px-3 py-3 md:px-6" style={{ background: "#EEF2F7" }}>

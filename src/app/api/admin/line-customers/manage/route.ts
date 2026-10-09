@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
+import type { Perm } from "@/lib/permissions";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import type { ChatIdHit, ChatRow } from "@/lib/server/line-chat";
 import {
@@ -44,6 +45,8 @@ export const runtime = "nodejs";
 
 const PAGE_SIZE = 20;
 const PERM = "orders.edit";
+/** 9 ต.ค. 69 หน้าแชท (/admin/chatbot/chats) ใช้ toggle/pause/tag/note ด้วยสิทธิ์ chat.reply */
+const PERMS: Perm[] = [PERM, "chat.reply"];
 const NO_DB = () => NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firebase (FIREBASE_SERVICE_ACCOUNT_B64)" }, { status: 503 });
 
 export interface LineCustomerRow {
@@ -427,7 +430,7 @@ type Body = {
 };
 
 export async function POST(req: Request) {
-  const gate = await requirePerm(PERM);
+  const gate = await requirePerm(PERMS);
   if (gate.res) return gate.res;
   const db = getChatFirestore();
   if (!db) return NO_DB();
@@ -492,6 +495,16 @@ export async function POST(req: Request) {
           );
         patchChatRow(uid, { tag });
         return NextResponse.json({ ok: true, tag, saved: tag ? `ติดป้าย "${tagLabel(tag)}" แล้ว` : "เอาป้ายออกแล้ว" });
+      }
+
+      /* ── 📝 โน้ตอย่างเดียว (หน้าแชท 9 ต.ค. 69) — ไม่แตะชื่อ/รหัสห้อง (case edit ส่ง managerUrl ว่าง = ล้างรหัสห้องที่ตั้งทับ) ── */
+      case "note": {
+        const bad = needUid();
+        if (bad) return bad;
+        const note = (b.adminNote ?? "").trim().slice(0, 2000);
+        await db.collection(CHAT_COLLECTION).doc(uid).set({ adminNote: note, adminNoteBy: who, adminNoteAt: new Date().toISOString() }, { merge: true });
+        patchChatRow(uid, { adminNote: note });
+        return NextResponse.json({ ok: true, saved: note ? "บันทึกโน้ตแล้ว" : "ลบโน้ตแล้ว" });
       }
 
       /* ── แก้ชื่อที่ตั้งเอง + โน้ต + รหัสห้องแชทที่ตั้งทับ ── */

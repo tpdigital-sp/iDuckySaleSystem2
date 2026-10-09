@@ -33,6 +33,10 @@ type Row = {
   botAllowed: boolean;
   pausedUntil: string;
   lastAdminAt: string;
+  /** 🏷📝 ป้ายความเร่งด่วน (urgent/rush/normal) · โน้ตแอดมิน · ชื่อที่ตั้งเอง — ฟิลด์เดียวกับหน้า /admin/line-customers */
+  adminTag: string;
+  adminNote: string;
+  adminAlias: string;
 };
 type LogEntry = { role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; card?: { name: string; url: string } };
 type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[] };
@@ -78,6 +82,9 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     botAllowed: cfg.userIds.includes(id),
     pausedUntil: paused && paused > new Date().toISOString() ? paused : "",
     lastAdminAt: iso(x.lastAdminAt),
+    adminTag: String(x.adminTag ?? ""),
+    adminNote: String(x.adminNote ?? ""),
+    adminAlias: String(x.adminAlias ?? ""),
   };
 }
 
