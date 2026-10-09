@@ -815,12 +815,27 @@ function Composer({
           </div>
         </div>
       ) : null}
-      {image || card ? (
-        <div className="flex flex-wrap gap-2 px-3 pt-2">
+      {image || card || uploading ? (
+        <div className="flex flex-wrap items-start gap-2 px-3 pt-2">
+          {uploading && !image ? (
+            <span className="grid h-24 w-24 place-items-center rounded-xl text-[12px]" style={{ background: "#F1F5F9", color: "var(--dk-faint)" }}>
+              กำลังอัปรูป…
+            </span>
+          ) : null}
           {image ? (
-            <span className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px]" style={{ background: "#F1F5F9" }}>
-              🖼 {image.name.slice(0, 24)}
-              <button type="button" onClick={() => setImage(null)} aria-label="เอารูปออก" className="ml-1 font-bold">
+            // 🖼 16:50 เจ้าของร้าน "ให้เห็นเป็นภาพที่อัปโหลด" — พรีวิวรูปจริง 96px แทนชิปชื่อไฟล์ · กดรูปเปิดดูเต็ม · ✕ มุมขวาบนเอาออก
+            <span className="relative inline-block">
+              <a href={image.url} target="_blank" rel="noreferrer" title={image.name}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={image.url} alt={image.name} className="h-24 w-24 rounded-xl border object-cover" style={{ borderColor: "var(--dk-hair)", background: "#F1F5F9" }} />
+              </a>
+              <button
+                type="button"
+                onClick={() => setImage(null)}
+                aria-label="เอารูปออก"
+                className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full text-[12px] font-bold text-white shadow"
+                style={{ background: "var(--dk-navy)" }}
+              >
                 ✕
               </button>
             </span>
