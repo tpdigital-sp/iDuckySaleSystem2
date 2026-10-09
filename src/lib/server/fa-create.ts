@@ -269,35 +269,17 @@ export function quotationUpdateDraft(o: Order): QuotationDraft & { source?: { do
 }
 
 /**
- * body ของ PUT /quotations/{id} — แบบภาษี/ส่วนลดแยกรายการ (UpdateInlineDocument) ตามที่ FlowAccount บังคับ
- * ส่วนลดท้ายบิลย้ายไปเป็นส่วนลดของรายการที่ยอดสูงสุด (ยอดก่อน VAT/VAT/ยอดรวมเท่าเดิมทุกบาท)
+ * body ของ PUT /quotations/{id} — แบบ Simple (UpdateSimpleDocument) เหมือนตอนออกใบ: VAT 7% ท้ายบิล + ส่วนลดท้ายบิล
+ * ⚠️ เดิมส่ง UpdateInlineDocument (useInlineVat) → ใบที่กด 🔄 มีคอลัมน์ "ภาษี 7%" ต่อรายการ (QT010841) เจ้าของร้านไม่เอา (9 ต.ค. 69)
+ *    สเปก swagger developers.flowaccount.com/swagger.yml รองรับ UpdateSimpleDocument · ใบที่เป็น inline ไปแล้ว กด 🔄 อีกรอบ = กลับเป็นแบบ simple
  */
 export function quotationUpdateBody(o: Order, d: QuotationDraft, salesName: string, recordId: number): Record<string, unknown> {
-  const body = quotationBody(o, d, salesName);
-  const lines = d.lines.map((l) => ({ ...l, discountAmount: 0 }));
-  if (d.discount > 0 && lines.length) {
-    const top = lines.reduce((a, b) => (b.total > a.total ? b : a));
-    top.discountAmount = d.discount;
-  }
   return {
-    ...body,
-    documentStructureType: "UpdateInlineDocument",
+    ...quotationBody(o, d, salesName),
+    documentStructureType: "UpdateSimpleDocument",
     recordId,
-    useInlineVat: true,
-    useInlineDiscount: true,
-    discountAmount: 0,
-    items: lines.map((l) => ({
-      type: 1,
-      name: l.name,
-      description: l.description,
-      quantity: l.quantity,
-      unitName: "",
-      pricePerUnit: l.pricePerUnit,
-      discountAmount: l.discountAmount,
-      discountType: 3,
-      vatRate: 7,
-      total: r2(l.total - l.discountAmount),
-    })),
+    useInlineVat: false,
+    useInlineDiscount: false,
     documentShowWithholdingTax: !!d.wht,
     documentWithholdingTaxPercentage: d.wht?.rate ?? 0,
     documentWithholdingTaxAmount: d.wht?.amount ?? 0,

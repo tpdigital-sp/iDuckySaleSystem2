@@ -334,7 +334,7 @@ export async function getDocument(
 
 /**
  * ✏️ แก้เอกสาร (PUT /<kind>/<recordId>) — FlowAccount แก้ได้เฉพาะใบสถานะ "รออนุมัติ" (awaiting)
- * ⚠️ body ต้องเป็น UpdateInlineDocument (useInlineVat + useInlineDiscount = true) — ค่าอื่นตอบ "Invalid documentStructureType" (ทดสอบ sandbox 7 ต.ค. 69)
+ * body = UpdateSimpleDocument (VAT ท้ายบิล) หรือ UpdateInlineDocument (VAT ต่อรายการ) — ใบเสนอราคาของร้านใช้ simple (ดู quotationUpdateBody)
  */
 export async function updateDocument(kind: string, recordId: number, body: Record<string, unknown>): Promise<void> {
   const t = await token();
