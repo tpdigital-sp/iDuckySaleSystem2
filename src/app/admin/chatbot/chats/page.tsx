@@ -575,6 +575,7 @@ function Chats() {
                           {(() => {
                             // 🖼 17:30 รูปจากลูกค้า: log มี messageId (ยังไม่มี imageUrl) → โหลดผ่าน API ที่ดึงจาก LINE แล้วแคช · รูปบอท/แอดมิน: imageUrl ตรง ๆ
                             // 🐛 18:10 เคยขอรูปทุก entry ที่มี messageId (ข้อความตัวอักษรก็มี) → LINE 400 → ขึ้น "รูปหมดอายุ" ใต้ทุกข้อความ · ต้องเฉพาะ type image
+                            if (m.file) return null; // ไฟล์งาน: imageUrl = ที่เก็บไฟล์ ไม่ใช่รูป
                             const isCustImg = !ours && m.type === "image";
                             if (isCustImg && !m.imageUrl && m.imageExpired) return <span className="mb-1 block text-[12px] italic" style={{ color: "var(--dk-faint)" }}>🖼 รูปหมดอายุใน LINE แล้ว (ดูได้ใน OA Manager)</span>;
                             const lazy = isCustImg && !m.imageUrl && m.messageId && m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "";
@@ -590,15 +591,7 @@ function Chats() {
                           })()}
                           {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
                           {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
-                          {m.file ? (
-                            <a href={m.file.url || (m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "#")} target="_blank" rel="noreferrer" className="mt-1.5 flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-[13px]" style={{ border: "1px solid rgba(0,0,0,.08)" }}>
-                              <span className="text-xl">📎</span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate font-bold">{m.file.name}</span>
-                                <span className="text-[11px]" style={{ color: "var(--dk-faint)" }}>{m.file.size ? fmtSize(m.file.size) : "ไฟล์"} · กดเพื่อดาวน์โหลด</span>
-                              </span>
-                            </a>
-                          ) : null}
+                          {m.file ? <FileCard file={m.file} href={m.file.url || (m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "#")} archived={!!m.file.url} /> : null}
                           {cardsOf(m).length ? (
                           <CardCarousel>
                           {cardsOf(m).map((c, ci) => (
@@ -1301,5 +1294,30 @@ function CardCarousel({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </div>
+  );
+}
+
+
+/** 📎 การ์ดไฟล์แบบ LINE (เจ้าของร้าน 9 ต.ค. 69 20:20 "ให้หน้าตาเหมือนใน LINE"): กล่องไอคอนนามสกุล (Ai/Ps/PDF/ZIP…) · ชื่อไฟล์ · ขนาด · สถานะเก็บถาวร */
+function FileCard({ file, href, archived }: { file: { url: string; name: string; size: number }; href: string; archived: boolean }) {
+  const ext = (file.name.match(/\.([a-z0-9]{1,5})$/i)?.[1] ?? "").toLowerCase();
+  const ICON: Record<string, { label: string; color: string }> = {
+    ai: { label: "Ai", color: "#FF7C00" }, psd: { label: "Ps", color: "#31A8FF" }, pdf: { label: "PDF", color: "#E5322D" }, eps: { label: "EPS", color: "#FF7C00" }, svg: { label: "SVG", color: "#1F6F78" },
+    zip: { label: "ZIP", color: "#6B7280" }, rar: { label: "RAR", color: "#6B7280" }, "7z": { label: "7Z", color: "#6B7280" }, doc: { label: "W", color: "#2B579A" }, docx: { label: "W", color: "#2B579A" },
+    xls: { label: "X", color: "#217346" }, xlsx: { label: "X", color: "#217346" }, ppt: { label: "P", color: "#D24726" }, pptx: { label: "P", color: "#D24726" }, mp4: { label: "MP4", color: "#7C3AED" }, mov: { label: "MOV", color: "#7C3AED" },
+    jpg: { label: "JPG", color: "#0E7A3A" }, jpeg: { label: "JPG", color: "#0E7A3A" }, png: { label: "PNG", color: "#0E7A3A" }, txt: { label: "TXT", color: "#6B7280" }, csv: { label: "CSV", color: "#217346" },
+  };
+  const ic = ICON[ext] ?? { label: ext ? ext.toUpperCase().slice(0, 4) : "FILE", color: "#6B7280" };
+  return (
+    <a href={href} target="_blank" rel="noreferrer" title="กดเพื่อดาวน์โหลด" className="flex w-[280px] max-w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-left transition hover:bg-slate-50" style={{ border: "1px solid rgba(0,0,0,.08)" }}>
+      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg border bg-white text-[13px] font-extrabold" style={{ borderColor: "#E5E7EB", color: ic.color }}>
+        {ic.label}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-bold" style={{ color: "#1F2937" }}>{file.name}</span>
+        <span className="block text-[12px]" style={{ color: "#6B7280" }}>Size: {file.size ? fmtSize(file.size) : "—"}</span>
+        <span className="block text-[11.5px]" style={{ color: archived ? "#0E7A3A" : "#8A5A00" }}>{archived ? "เก็บถาวรแล้ว · กดเพื่อดาวน์โหลด" : "ยังไม่ได้เก็บ · กดเพื่อดึงจาก LINE"}</span>
+      </span>
+    </a>
   );
 }

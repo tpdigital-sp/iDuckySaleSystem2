@@ -407,3 +407,7 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - เว็บ (deploy): cacheLineImage รองรับ type file (เก็บชื่อไฟล์เดิม content-type ใด ๆ · imageUrl ช่องเดียวกัน + fileSize) · chats API ส่ง file{url,name,size} สำหรับ entry type file (url ว่าง = ยังไม่แคช → หน้าเว็บลิงก์ไป /chats/image ซึ่งดึง+แคช+302) · ฟองไฟล์ 📎 กดดาวน์โหลด
 - backfill 2 ไฟล์ทดสอบของเจ้าของร้าน (scratchpad backfill-files.mts) เป็น log type file ให้ดึงย้อนหลังได้ถ้า LINE ยังเก็บไว้
 - 20:00 ไฟล์ 14.2 MB ดึงจาก LINE เกิน 15 วิ → arrayBuffer โยน TimeoutError นอก try = 500 · แก้: ไฟล์ให้ 40 วิ + ครอบ try · route image/bot ตั้ง maxDuration 26 (เพดาน Netlify) · ทดสอบ 14.2 MB ใช้ 12 วิ ✅ (บน production ไฟล์ใหญ่กว่านี้อาจไม่ทัน 26 วิ → หน้าเว็บจะขึ้น "โหลดไฟล์ไม่ครบ" ให้ดูใน OA Manager) · 2 ไฟล์ทดสอบ backfill แล้วแคชครบ
+
+### 9 ต.ค. 69 20:25 — ฟองไฟล์ของลูกค้าเป็นการ์ดแบบ LINE
+- เดิม: รายการ type `file` มี `imageUrl` = ที่เก็บไฟล์ → บล็อกรูปวาด `<img>` เปล่า 48px เหนือการ์ด · แก้: บล็อกรูปข้ามเมื่อ `m.file` มีค่า
+- `FileCard` ในหน้า chats: กล่องไอคอนนามสกุล (Ai/Ps/PDF/ZIP/…) · ชื่อไฟล์ตัวหนา · `Size:` · สถานะ "เก็บถาวรแล้ว" หรือ "ยังไม่ได้เก็บ · กดเพื่อดึงจาก LINE" (ไฟล์ >4MB ที่ยังดึงไม่สำเร็จ)
