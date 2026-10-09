@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import { Empty, SearchBox } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
-import { ago, botApi, uploadBotImage, useToast } from "../bot-ui";
-import { CUSTOMER_TAGS, type CustomerTag } from "@/lib/line-tags";
+import { ago, botApi, Modal, uploadBotImage, useToast } from "../bot-ui";
+import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 
 /**
  * 💬 แชท LINE / ตอบลูกค้า — หน้าตาเลียนแบบ LINE OA Manager (เจ้าของร้าน 9 ต.ค. 69 16:05: "ออกแบบใหม่ เลียนแบบ LINE OA + รองรับตอบแชทบนมือถือ")
@@ -31,6 +31,7 @@ type Row = {
   pausedUntil: string;
   lastAdminAt: string;
   adminTag: string;
+  adminTags: string[];
   adminNote: string;
   adminAlias: string;
 };
@@ -85,14 +86,14 @@ function Avatar({ src, size = 44 }: { src?: string; size?: number }) {
 }
 
 const nameOf = (r: { adminAlias?: string; displayName?: string; id: string }) => r.adminAlias || r.displayName || r.id.slice(0, 10) + "…";
-const tagOf = (k: string) => CUSTOMER_TAGS.find((t) => t.key === k) ?? null;
-/** 🏷 ป้ายความเร่งด่วน — ชุดเดียวกับหน้า ลูกค้า LINE (CUSTOMER_TAGS) */
-function TagChip({ k }: { k: string }) {
-  const t = tagOf(k);
+/** 🏷 ป้ายลูกค้าจากแคตตาล็อก settings/chat-tags (หลายป้ายได้ · แก้ชื่อ/สี/เพิ่ม/ลบได้ที่ปุ่ม ⚙️ จัดการป้าย) */
+function TagChip({ k, tags }: { k: string; tags: ChatTag[] }) {
+  const t = tags.find((x) => x.key === k);
   if (!t) return null;
+  const c = TAG_PALETTE[t.color];
   return (
-    <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: t.wash, color: t.ink }}>
-      {t.dot} {t.label}
+    <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: c.wash, color: c.ink }}>
+      {t.emoji} {t.label}
     </span>
   );
 }
@@ -248,6 +249,12 @@ function Chats() {
   const [noteOpen, setNoteOpen] = useState(false);
   // 🔍 17:05 "กดขยายดูภาพใหญ่ + ดาวน์โหลดได้"
   const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
+  // 🏷 17:55 แคตตาล็อกป้าย (settings/chat-tags) + หน้าจัดการป้าย
+  const [tagCatalog, setTagCatalog] = useState<ChatTag[]>(DEFAULT_TAGS);
+  const [tagMgrOpen, setTagMgrOpen] = useState(false);
+  useEffect(() => {
+    botApi<{ items: ChatTag[] }>("/api/admin/chatbot/chats/tags").then((d) => setTagCatalog(d.items)).catch(() => {});
+  }, []);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
   // เปลี่ยนห้อง = ปิดแผง · โน้ตในฐานเปลี่ยน (บันทึก/โพล) = ซิงก์ร่าง แต่ไม่ปิดแผง
@@ -257,13 +264,13 @@ function Chats() {
   useEffect(() => {
     setNoteDraft(detail?.adminNote ?? "");
   }, [sel, detail?.adminNote]);
-  const saveTag = useCallback(
-    async (id: string, tag: CustomerTag | "") => {
+  const saveTags = useCallback(
+    async (id: string, tags: string[]) => {
       try {
-        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/line-customers/manage", { action: "tag", userId: id, tag });
+        const d = await botApi<{ ok: boolean; saved?: string; tags: string[] }>("/api/admin/line-customers/manage", { action: "tags", userId: id, tags });
         toast(d.saved || "บันทึกป้ายแล้ว");
-        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, adminTag: tag } : x)));
-        setDetail((x) => (x && x.id === id ? { ...x, adminTag: tag } : x));
+        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, adminTags: d.tags, adminTag: d.tags[0] ?? "" } : x)));
+        setDetail((x) => (x && x.id === id ? { ...x, adminTags: d.tags, adminTag: d.tags[0] ?? "" } : x));
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
       }
@@ -329,7 +336,7 @@ function Chats() {
     return () => window.removeEventListener("resize", measure);
   }, []);
   return (
-    <div ref={shellRef} className="-mx-4 -my-6 flex overflow-hidden md:-mx-8 md:-my-8" style={{ background: "#EEF2F7", color: "var(--dk-navy)", height: `calc(100dvh - ${topOffset}px)` }}>
+    <div ref={shellRef} className="dkb -mx-4 -my-6 flex overflow-hidden md:-mx-8 md:-my-8" style={{ background: "#EEF2F7", color: "var(--dk-navy)", height: `calc(100dvh - ${topOffset}px)` }}>
       {/* ───── รายชื่อห้อง (ซ้าย) — มือถือซ่อนเมื่อเปิดห้อง ───── */}
       <aside className={`${sel ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r bg-white md:w-[290px] lg:w-[310px]`} style={{ borderColor: "var(--dk-hair)" }}>
         <div className="flex items-center gap-2 px-3 pt-3">
@@ -409,7 +416,7 @@ function Chats() {
                     {r.lastUserText || (r.messageCount ? `บอทคุย ${r.messageCount} ข้อความ` : "—")}
                   </p>
                   <div className="mt-0.5 flex flex-wrap gap-1">
-                    {r.adminTag ? <TagChip k={r.adminTag} /> : null}
+                    {r.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
                     {r.adminNote ? <span className="text-[10.5px]" title={r.adminNote} style={{ color: "var(--dk-faint)" }}>📝</span> : null}
                     {r.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
                     {r.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
@@ -459,7 +466,7 @@ function Chats() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-[15px] font-bold">{detail ? nameOf(detail) : sel}</span>
-                  {detail?.adminTag ? <TagChip k={detail.adminTag} /> : null}
+                  {detail?.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
                   {detail?.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
                   {detail?.pausedUntil ? <Chip tone="lilac">⏸ พักถึง {fmtTime(detail.pausedUntil)}</Chip> : detail?.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
                   {detail?.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
@@ -589,13 +596,16 @@ function Chats() {
           setNoteDraft={setNoteDraft}
           noteSaving={noteSaving}
           onSaveNote={() => void saveNote(detail.id, noteDraft.trim())}
-          onTag={(t) => void saveTag(detail.id, t)}
+          tags={tagCatalog}
+          onTags={(ts) => void saveTags(detail.id, ts)}
+          onManageTags={() => setTagMgrOpen(true)}
           onToggle={() => void toggleBot(detail.id, !detail.botAllowed)}
           onWake={() => void wakeBot(detail.id)}
           onClose={() => setNoteOpen(false)}
         />
       ) : null}
       {lightbox ? <Lightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} toast={toast} /> : null}
+      {tagMgrOpen ? <TagManager tags={tagCatalog} onClose={() => setTagMgrOpen(false)} onSaved={(items) => setTagCatalog(items)} toast={toast} /> : null}
       {toastNode}
     </div>
   );
@@ -905,10 +915,10 @@ function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canTogg
 
 /** ℹ️ แผงข้อมูลลูกค้าด้านขวา — ชื่อ/รูป/ไอดี · สถานะบอท · ป้าย · โน้ตภายใน (ฟิลด์เดียวกับหน้า ลูกค้า LINE) */
 function InfoPanel({
-  detail, canReply, canToggle, noteDraft, setNoteDraft, noteSaving, onSaveNote, onTag, onToggle, onWake, onClose,
+  detail, canReply, canToggle, noteDraft, setNoteDraft, noteSaving, onSaveNote, tags, onTags, onManageTags, onToggle, onWake, onClose,
 }: {
   detail: Row; canReply: boolean; canToggle: boolean; noteDraft: string; setNoteDraft: (v: string) => void; noteSaving: boolean;
-  onSaveNote: () => void; onTag: (t: CustomerTag | "") => void; onToggle: () => void; onWake: () => void; onClose: () => void;
+  onSaveNote: () => void; tags: ChatTag[]; onTags: (ts: string[]) => void; onManageTags: () => void; onToggle: () => void; onWake: () => void; onClose: () => void;
 }) {
   const body = (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -922,7 +932,7 @@ function InfoPanel({
         {detail.adminAlias && detail.displayName ? <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>ชื่อ LINE: {detail.displayName}</p> : null}
         <p className="mt-1 break-all font-mono text-[10.5px]" style={{ color: "var(--dk-faint)" }}>{detail.id}</p>
         <div className="mt-2 flex flex-wrap justify-center gap-1">
-          {detail.adminTag ? <TagChip k={detail.adminTag} /> : null}
+          {detail.adminTags.map((k) => <TagChip key={k} k={k} tags={tags} />)}
           <Chip tone={detail.scope === "new" ? "mint" : "sky"}>{detail.scope === "new" ? "🆕 ลูกค้าใหม่" : "👤 ลูกค้าเก่า"}</Chip>
           {detail.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
         </div>
@@ -938,13 +948,24 @@ function InfoPanel({
         <BotPill detail={detail} canToggle={canToggle} onToggle={onToggle} onWake={onWake} />
       </div>
       <div className="mx-4 mt-3">
-        <p className="mb-1 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>ป้ายความเร่งด่วน</p>
-        <div className="flex flex-wrap gap-1.5">
-          {CUSTOMER_TAGS.map((t) => (
-            <button key={t.key} type="button" disabled={!canReply} onClick={() => onTag(detail.adminTag === t.key ? "" : t.key)} className="min-h-[32px] rounded-full px-2.5 text-[12px] font-bold transition" style={detail.adminTag === t.key ? { background: t.tone, color: "white" } : { background: t.wash, color: t.ink }}>
-              {t.dot} {t.label}
+        <div className="mb-1 flex items-center">
+          <p className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>ป้าย (ติดได้หลายอัน)</p>
+          {canReply ? (
+            <button type="button" onClick={onManageTags} className="ml-auto text-[11.5px] font-bold underline" style={{ color: "var(--dk-navy-soft)" }}>
+              ⚙️ จัดการป้าย
             </button>
-          ))}
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((t) => {
+            const on = detail.adminTags.includes(t.key);
+            const c = TAG_PALETTE[t.color];
+            return (
+              <button key={t.key} type="button" disabled={!canReply} onClick={() => onTags(on ? detail.adminTags.filter((k) => k !== t.key) : [...detail.adminTags, t.key])} className="min-h-[32px] rounded-full px-2.5 text-[12px] font-bold transition" style={on ? { background: c.tone, color: "white" } : { background: c.wash, color: c.ink }} aria-pressed={on}>
+                {on ? "✓ " : ""}{t.emoji} {t.label}
+              </button>
+            );
+          })}
         </div>
       </div>
       <div className="mx-4 mb-4 mt-3">
@@ -1012,5 +1033,74 @@ function Lightbox({ url, name, onClose, toast }: { url: string; name: string; on
         <img src={url} alt={name} className="max-h-full max-w-full rounded-lg object-contain" />
       </div>
     </div>
+  );
+}
+
+
+/** ⚙️ หน้าจัดการป้าย — แก้อีโมจิ/ชื่อ/สี เพิ่ม ลบ แล้วบันทึกทั้งชุดลง settings/chat-tags (ลบป้าย = ลูกค้าที่ติดอยู่จะไม่แสดงป้ายนั้น) */
+function TagManager({ tags, onClose, onSaved, toast }: { tags: ChatTag[]; onClose: () => void; onSaved: (items: ChatTag[]) => void; toast: (t: string, bad?: boolean) => void }) {
+  const [items, setItems] = useState<ChatTag[]>(tags.map((t) => ({ ...t })));
+  const [saving, setSaving] = useState(false);
+  const upd = (i: number, patch: Partial<ChatTag>) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const add = () => setItems((xs) => [...xs, { key: keyFromLabel("") + "-" + (xs.length + 1), label: "", emoji: "🏷", color: "sky" }]);
+  const del = (i: number) => {
+    const t = items[i];
+    if (t.label && !window.confirm(`ลบป้าย "${t.emoji} ${t.label}"? ลูกค้าที่ติดป้ายนี้อยู่จะไม่แสดงป้ายอีก`)) return;
+    setItems((xs) => xs.filter((_, j) => j !== i));
+  };
+  const move = (i: number, d: -1 | 1) => setItems((xs) => { const y = [...xs]; const j = i + d; if (j < 0 || j >= y.length) return xs; [y[i], y[j]] = [y[j], y[i]]; return y; });
+  const save = async () => {
+    const clean = items.map((t) => ({ ...t, label: t.label.trim(), emoji: t.emoji.trim() || "🏷" })).filter((t) => t.label);
+    if (!clean.length) return toast("ต้องมีป้ายอย่างน้อย 1 อัน", true);
+    setSaving(true);
+    try {
+      const d = await botApi<{ ok: boolean; items: ChatTag[]; saved?: string }>("/api/admin/chatbot/chats/tags", { items: clean });
+      onSaved(d.items);
+      toast(d.saved || "บันทึกแล้ว");
+      onClose();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal
+      title="⚙️ จัดการป้ายลูกค้า"
+      sub="ป้ายใช้ร่วมกันทุกห้องแชท · ติดได้หลายป้ายต่อคน · ลำดับที่ตั้งไว้ = ลำดับที่แสดง"
+      onClose={onClose}
+      foot={
+        <div className="flex w-full items-center gap-2">
+          <button type="button" onClick={add} className="dkb-btn dkb-btn-ghost dkb-btn-sm min-h-[40px]">＋ เพิ่มป้าย</button>
+          <span className="flex-1" />
+          <button type="button" onClick={onClose} className="dkb-btn dkb-btn-ghost dkb-btn-sm min-h-[40px]">ยกเลิก</button>
+          <button type="button" onClick={() => void save()} disabled={saving} className="dkb-btn dkb-btn-navy dkb-btn-sm min-h-[40px]">{saving ? "กำลังบันทึก…" : "บันทึก"}</button>
+        </div>
+      }
+    >
+      <div className="space-y-2">
+        {items.map((t, i) => {
+          const c = TAG_PALETTE[t.color];
+          return (
+            <div key={i} className="flex flex-wrap items-center gap-2 rounded-xl border p-2" style={{ borderColor: "var(--dk-hair)" }}>
+              <input value={t.emoji} onChange={(e) => upd(i, { emoji: e.target.value.slice(0, 4) })} aria-label="อีโมจิ" className="h-10 w-12 rounded-lg border text-center text-lg" style={{ borderColor: "var(--dk-hair)" }} />
+              <input value={t.label} onChange={(e) => upd(i, { label: e.target.value.slice(0, 24) })} placeholder="ชื่อป้าย เช่น รอไฟล์ / รอโอน / ลูกค้าประจำ" aria-label="ชื่อป้าย" className="h-10 min-w-[160px] flex-1 rounded-lg border px-3 text-[14px]" style={{ borderColor: "var(--dk-hair)" }} />
+              <div className="flex gap-1" role="radiogroup" aria-label="สี">
+                {TAG_COLORS.map((col) => (
+                  <button key={col} type="button" role="radio" aria-checked={t.color === col} title={TAG_PALETTE[col].name} onClick={() => upd(i, { color: col as TagColor })} className="h-7 w-7 rounded-full border-2" style={{ background: TAG_PALETTE[col].tone, borderColor: t.color === col ? "var(--dk-navy)" : "transparent", outline: t.color === col ? "2px solid white" : "none", outlineOffset: -4 }} />
+                ))}
+              </div>
+              <span className="rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: c.wash, color: c.ink }}>{t.emoji} {t.label || "ตัวอย่าง"}</span>
+              <span className="ml-auto flex gap-1">
+                <button type="button" onClick={() => move(i, -1)} aria-label="เลื่อนขึ้น" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.05]">↑</button>
+                <button type="button" onClick={() => move(i, 1)} aria-label="เลื่อนลง" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.05]">↓</button>
+                <button type="button" onClick={() => del(i)} aria-label="ลบป้าย" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.05]" style={{ color: "var(--dk-coral-ink)" }}>🗑</button>
+              </span>
+            </div>
+          );
+        })}
+        {!items.length ? <p className="text-sm" style={{ color: "var(--dk-faint)" }}>ยังไม่มีป้าย กด ＋ เพิ่มป้าย</p> : null}
+      </div>
+    </Modal>
   );
 }

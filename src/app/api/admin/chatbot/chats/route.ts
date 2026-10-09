@@ -35,6 +35,8 @@ type Row = {
   lastAdminAt: string;
   /** 🏷📝 ป้ายความเร่งด่วน (urgent/rush/normal) · โน้ตแอดมิน · ชื่อที่ตั้งเอง — ฟิลด์เดียวกับหน้า /admin/line-customers */
   adminTag: string;
+  /** 🏷 หลายป้าย — ไม่มีฟิลด์ (ข้อมูลเก่า) ใช้ [adminTag] */
+  adminTags: string[];
   adminNote: string;
   adminAlias: string;
 };
@@ -84,6 +86,7 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     pausedUntil: paused && paused > new Date().toISOString() ? paused : "",
     lastAdminAt: iso(x.lastAdminAt),
     adminTag: String(x.adminTag ?? ""),
+    adminTags: Array.isArray(x.adminTags) ? (x.adminTags as unknown[]).map(String).filter(Boolean) : x.adminTag ? [String(x.adminTag)] : [],
     adminNote: String(x.adminNote ?? ""),
     adminAlias: String(x.adminAlias ?? ""),
   };

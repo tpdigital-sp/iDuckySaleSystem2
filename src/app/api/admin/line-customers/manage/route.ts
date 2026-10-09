@@ -420,6 +420,8 @@ type Body = {
   minutes?: number;
   adminAlias?: string;
   adminNote?: string;
+  /** 🏷 หลายป้าย (หน้าแชท 9 ต.ค. 69) — key จาก settings/chat-tags */
+  tags?: string[];
   /** ลิงก์ OA Manager หรือ userId — ว่าง = ล้างค่าที่ตั้งทับไว้ */
   managerUrl?: string;
   /** ป้ายความเร่งด่วน — ค่าที่ไม่รู้จัก/ว่าง = ถอดป้าย */
@@ -495,6 +497,25 @@ export async function POST(req: Request) {
           );
         patchChatRow(uid, { tag });
         return NextResponse.json({ ok: true, tag, saved: tag ? `ติดป้าย "${tagLabel(tag)}" แล้ว` : "เอาป้ายออกแล้ว" });
+      }
+
+      /* ── 🏷 หลายป้าย (หน้าแชท 9 ต.ค. 69): adminTags[] + adminTag = ป้ายแรก (ให้หน้า ลูกค้า LINE/ตัวกรองเดิมยังทำงาน) ── */
+      case "tags": {
+        const bad = needUid();
+        if (bad) return bad;
+        const tags = [...new Set((Array.isArray(b.tags) ? b.tags : []).map((t) => String(t ?? "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "")).filter(Boolean))].slice(0, 10);
+        const first = tags[0] ?? "";
+        await db
+          .collection(CHAT_COLLECTION)
+          .doc(uid)
+          .set(
+            tags.length
+              ? { adminTags: tags, adminTag: first, adminTagBy: who, adminTagAt: new Date().toISOString() }
+              : { adminTags: FieldValue.delete(), adminTag: FieldValue.delete(), adminTagBy: FieldValue.delete(), adminTagAt: FieldValue.delete() },
+            { merge: true }
+          );
+        patchChatRow(uid, { tag: toCustomerTag(first) });
+        return NextResponse.json({ ok: true, tags, saved: tags.length ? `ติดป้าย ${tags.length} อันแล้ว` : "เอาป้ายออกหมดแล้ว" });
       }
 
       /* ── 📝 โน้ตอย่างเดียว (หน้าแชท 9 ต.ค. 69) — ไม่แตะชื่อ/รหัสห้อง (case edit ส่ง managerUrl ว่าง = ล้างรหัสห้องที่ตั้งทับ) ── */
