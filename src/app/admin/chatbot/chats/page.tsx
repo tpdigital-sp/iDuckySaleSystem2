@@ -55,6 +55,9 @@ function timeTh(iso: string): string {
 }
 
 export default function ChatsPage() {
+  // เข้าได้ด้วยสิทธิ์ใดสิทธิ์หนึ่ง: ตอบลูกค้า (chat.reply · เมนูหลักใช้ตัวนี้) หรือดูรายงาน (reports.view · ดูอย่างเดียว)
+  const can = useCan();
+  if (can("chat.reply")) return <Chats />;
   return (
     <RequirePerm perm="reports.view">
       <Chats />
