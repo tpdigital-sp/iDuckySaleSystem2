@@ -1050,6 +1050,27 @@ ${list}
         alts.splice(0, alts.length, ...merged.map(refOf));
       }
     }
+    // 🥇 9 ต.ค. 69 09:30 เจ้าของร้าน (เคสสแตมป์ทอง Eevee): LLM จับ "สติ๊กเกอร์เนื้อสีทอง" ไม่ได้เพราะชื่อสินค้าเป็นอังกฤษ "Sticker Gold | Silver | RoseGold"
+    // → สติ๊กเกอร์/สแตมป์ + เนื้อทอง/เงิน/โรสโกลด์/โลหะ/เมทัลลิก = Sticker Gold ตัวเดียว (เว้นถามกระดาษ)
+    {
+      const STK = /สติ๊กเกอร์|สติกเกอร์|sticker|สแตมป์/i;
+      const METAL = /เนื้อ\s*(สี)?(ทอง|เงิน)|สี(ทอง|เงิน)\b|โรสโกล|โลหะ|เมทัลลิก|metallic|\bgold\b|\bsilver\b|สแตมป์\s*(สี)?(ทอง|เงิน)/i;
+      const gold = items.find((it) => /^Sticker Gold/i.test(it.name));
+      if (gold && STK.test(q) && !/กระดาษ/.test(q)) {
+        if (/ฟอยล์|foil/i.test(q) && !METAL.test(q.replace(/ฟอยล์\s*(สี)?(ทอง|เงิน)/g, ""))) {
+          // 🚫 ร้านไม่มีเคลือบ/ปั๊มฟอยล์บนสติ๊กเกอร์ (KB: "งานเคลือบฟอยล์ทำบนสติ๊กเกอร์ได้ไหม → ไม่ได้ เฉพาะงานกระดาษ") → บอกตรง ๆ + เสนอ Sticker Gold
+          notInCatalog = true;
+          requested = "สติ๊กเกอร์เคลือบฟอยล์";
+          finalPicked = [];
+          alts.splice(0, alts.length, refOf(gold));
+          if (!["price", "spec", "minqty"].includes(intent)) intent = "spec"; // คำถาม "ทำได้ไหม" ถูกตีเป็น knowledge → ต้องเข้าเส้น not_in_catalog
+        } else if (METAL.test(q)) {
+          notInCatalog = false;
+          finalPicked = [gold];
+          if (intent === "other" || intent === "followup" || intent === "knowledge") intent = /ราคา|เท่าไหร่|เท่าไร|กี่บาท/.test(q) ? "price" : "spec";
+        }
+      }
+    }
     const u: Understanding = {
       notInCatalog,
       requested,

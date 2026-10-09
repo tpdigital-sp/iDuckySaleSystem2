@@ -183,7 +183,11 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
               : "";
         return `• ${a.name}${pr}\n  ${a.url}`;
       });
-      const text = alts.length
+      // 🚫 9 ต.ค. 69 ฟอยล์บนสติ๊กเกอร์ (ร้านไม่มี — ฟอยล์มีเฉพาะงานกระดาษ) → อธิบายให้ตรง + ชี้ Sticker Gold (เนื้อสติ๊กเกอร์โลหะ พิมพ์รองขาว) ที่ให้ลุคเดียวกัน
+      const foilOnSticker = /สติ๊กเกอร์เคลือบฟอยล์/.test(what);
+      const text = foilOnSticker
+        ? `สติ๊กเกอร์ของร้านยังไม่มีแบบเคลือบ/ปั๊มฟอยล์ค่ะ 🥺 (งานฟอยล์ทำได้เฉพาะงานกระดาษ) แต่ถ้าอยากได้ลุคขอบทอง/เงินเมทัลลิกแบบนั้น ร้านทำด้วย "Sticker Gold | Silver | RoseGold" ได้เลยน้า — เป็นเนื้อสติ๊กเกอร์โลหะ พิมพ์ลายพร้อมรองสีขาวใต้ลาย ส่วนที่เว้นไว้จะเป็นสีทอง/เงินเงา ๆ ค่ะ ✨\n${lines.join("\n")}\nสนใจกี่แผ่นดีคะ เดี๋ยวคิดราคาให้เลยค่า 🥰`
+        : alts.length
         ? `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ที่ใกล้เคียงกันมี:\n${lines.join("\n")}\nถ้าต้องการ "${what}" โดยเฉพาะ ทักแอดมินให้ตีราคาได้เลยค่ะ`
         : `ตอนนี้ร้านยังไม่มี "${what}" ค่ะ ถ้าต้องการงานลักษณะนี้ ทักแอดมินให้ตีราคาได้เลยค่ะ`;
       ans = { answer: text, kind: "info", source: "understood:not-in-catalog", intent: "not_in_catalog", product: alts[0], products: alts };
