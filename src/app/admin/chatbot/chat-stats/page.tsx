@@ -219,7 +219,7 @@ function Inner() {
 
   return (
     <PageShell>
-      <PageHead group="🤖 Chatbot" title="สถิติตอบแชท / ค่าคอมแชท" count={data ? `${rows.filter((r) => r.known).length} คน` : undefined} sub="นับข้อความและจำนวนลูกค้าที่พนักงานตอบ ต่อรอบบิล 26 → 25 · ฝั่งเว็บนับให้เอง · ฝั่ง LINE OA Manager โยน zip CSV เข้ามา" tools={<ChatbotTabs inHead />} toolsTop />
+      <PageHead group="🤖 Chatbot" title="สถิติตอบแชท" count={data ? `${rows.filter((r) => r.known).length} คน` : undefined} sub="นับข้อความและจำนวนลูกค้าที่พนักงานตอบ ต่อรอบบิล 26 → 25 · ฝั่งเว็บนับให้เอง · ฝั่ง LINE OA Manager โยน zip CSV เข้ามา" tools={<ChatbotTabs inHead />} toolsTop />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1">
         <label className="flex items-center gap-2 text-[13.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
