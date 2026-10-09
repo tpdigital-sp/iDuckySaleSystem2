@@ -321,3 +321,9 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - vision prompt (Load Catalog + สำเนา): กฎ "สติ๊กเกอร์เนื้อโลหะ (Sticker Gold)" = ขอบ/พื้นเมทัลลิกเรียบเงาไม่นูน + ลายพิมพ์ทับ (รองขาว) · ร้านไม่มีฟอยล์บนสติ๊กเกอร์ ห้ามเรียก "ขอบฟอยล์" → เทสรูปจริง 2 รอบ: material "สติ๊กเกอร์เนื้อโลหะสีทอง + พิมพ์สีทับ" / Sticker Gold / yes ✅ (draft LINE รอ publish)
 - ChatBot AI Agent1 systemMessage ต่อท้าย "📌 ข้อเท็จจริงร้าน" 3 ข้อ (ฟอยล์บนสติ๊กเกอร์ไม่มี→Sticker Gold · เนื้อทอง/สแตมป์ทอง=Sticker Gold · ไม่มีกระดาษสี→พิมพ์ทับโฮโลแกรม) ใช้ทับความรู้จากคลังถ้าขัดกัน (draft ChatBot รอ publish)
 - 💡 ข้อเสนอต่อเจ้าของร้าน: ตั้งชื่อไทยคู่ในชื่อสินค้า ("Sticker Gold | Silver | RoseGold (สติ๊กเกอร์เนื้อสีทอง/เงิน/โรสโกลด์)") จะช่วยทั้งลูกค้าค้นบนเว็บและบอทจับคู่ โดยไม่ต้องพึ่งกฎพิเศษ
+
+## 9 ต.ค. 69 09:58 — รูปสแตมป์ Eevee 2 รูป + "อันนี้สติกเกอร์อะไร" → บอทเงียบ (exec 890811/890812/890813 · ChatBot 890815 · pricing-search 890819)
+- ส่วนที่ถูกแล้ว: vision = "สติ๊กเกอร์เนื้อโลหะ (Sticker Gold) + พิมพ์สีทับ" canMake yes ✅ · 2 รอบรูปเงียบให้รอบข้อความตอบรวม ✅ · Claude ตอบถูกใน 15 วิ ("Sticker Gold | Silver | RoseGold เนื้อโลหะ…") ✅
+- ที่พัง: ChatBot ใช้ 74 วิ เพราะ **Fetch PO1 → /webhook/pricing-search ค้าง 59 วิ** (Site Price 4 วิ ไม่เจอ → IF useLegacy → "Search Pricing" legacy 54 วิ) → LINE "Call AI" timeout 50 วิ → node error → execution ล้ม ไม่มีคำตอบสำรอง → ลูกค้าได้ความเงียบ
+- แก้ (draft 2 workflow รอ publish): ChatBot Fetch PO1 timeout 12 วิ (+ continueRegularOutput) · LINE Call AI timeout 35 วิ + onError continueRegularOutput · Format Reply ตอบสำรองเมื่อ AI ไม่ตอบ: "ขอโทษนะคะคุณลูกค้า ระบบช้าแป๊บนึง 🥺 เดี๋ยวแอดมินเข้ามาตอบในแชทนี้ให้เลยค่า" (bailRe จับ "แอดมินเข้ามาตอบ" → แจ้งแอดมิน)
+- 🔍 ค้าง: legacy "Search Pricing" ใน pricing-search ช้า 54 วิ (น่าจะ Gemini spike ฝั่ง server เหมือน Analyze Image) — ยังไม่ได้ใส่ timeout ในตัวมันเอง
