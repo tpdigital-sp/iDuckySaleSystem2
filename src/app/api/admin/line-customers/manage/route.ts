@@ -521,6 +521,19 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, tags, saved: tags.length ? `ติดป้าย ${tags.length} อันแล้ว` : "เอาป้ายออกหมดแล้ว" });
       }
 
+      /* ── 👁 อ่านแล้ว (หน้าแชท 9 ต.ค. 69 18:45 "แจ้งว่าแชทไหนยังไม่ได้อ่าน") — เปิดห้องบนเว็บ = webReadAt ตอนนี้ · ยังไม่อ่าน = lastSeen > webReadAt และกิจกรรมล่าสุดไม่ใช่แอดมินตอบเอง ── */
+      /* ── ✓ อ่านทั้งหมด: settings/chat-read.allReadAt — ห้องที่ lastSeen ก่อนเวลานี้ถือว่าอ่านแล้ว (ไม่ต้องเขียน 400 เอกสาร) ── */
+      case "readAll": {
+        await db.collection("settings").doc("chat-read").set({ allReadAt: new Date(), allReadBy: who }, { merge: true });
+        return NextResponse.json({ ok: true, saved: "ทำเครื่องหมายอ่านแล้วทุกห้อง" });
+      }
+      case "read": {
+        const bad = needUid();
+        if (bad) return bad;
+        await db.collection(CHAT_COLLECTION).doc(uid).set({ webReadAt: new Date(), webReadBy: who }, { merge: true });
+        return NextResponse.json({ ok: true });
+      }
+
       /* ── 📝 หลายโน้ต (เจ้าของร้าน 9 ต.ค. 69 18:25 "เพิ่มได้หลาย note แต่ไม่เกิน 10") — adminNotes[{id,text,by,at}] · adminNote เดิม = โน้ตล่าสุด (หน้า ลูกค้า LINE ยังเห็น) ── */
       case "noteAdd":
       case "noteEdit":

@@ -33,6 +33,8 @@ type Row = {
   botAllowed: boolean;
   pausedUntil: string;
   lastAdminAt: string;
+  /** 🟢 ยังไม่ได้เปิดอ่านบนเว็บหลังลูกค้าทักล่าสุด (webReadAt < lastSeen และ lastAdminAt < lastSeen) */
+  unread: boolean;
   /** 🏷📝 ป้ายความเร่งด่วน (urgent/rush/normal) · โน้ตแอดมิน · ชื่อที่ตั้งเอง — ฟิลด์เดียวกับหน้า /admin/line-customers */
   adminTag: string;
   /** 🏷 หลายป้าย — ไม่มีฟิลด์ (ข้อมูลเก่า) ใช้ [adminTag] */
@@ -44,7 +46,7 @@ type Row = {
 };
 type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[] };
-type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[] };
+type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; allReadAt: string };
 
 function iso(v: unknown): string {
   if (!v) return "";
@@ -59,16 +61,29 @@ async function botSettings(db: Firestore): Promise<Settings> {
     const d = await db.collection("settings").doc("bot-whitelist").get();
     const x = d.data() ?? {};
     const ids = Array.isArray(x.userIds) ? (x.userIds as unknown[]).map((v) => String(v)) : [];
-    return { mode: String(x.mode ?? ""), newSince: iso(x.newSince), enabled: x.enabled === true, userIds: ids };
+    let allReadAt = "";
+    try {
+      const r = await db.collection("settings").doc("chat-read").get();
+      allReadAt = iso(r.data()?.allReadAt);
+    } catch {}
+    return { mode: String(x.mode ?? ""), newSince: iso(x.newSince), enabled: x.enabled === true, userIds: ids, allReadAt };
   } catch {
-    return { mode: "", newSince: "", enabled: false, userIds: [] };
+    return { mode: "", newSince: "", enabled: false, userIds: [], allReadAt: "" };
   }
 }
+
+const WAIT_MS = 48 * 3600_000;
 
 function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: Settings): Row {
   const botScope = String(x.botScope ?? "");
   const scope: Row["scope"] = botScope === "new" || botScope === "old" ? botScope : cfg.newSince && createdAt && createdAt >= cfg.newSince ? "new" : "old";
   const paused = iso(x.botPausedUntil);
+  const lastSeen = iso(x.lastSeen);
+  const readAt = [iso(x.webReadAt), cfg.allReadAt].filter(Boolean).sort().pop() ?? "";
+  const lastAdmin = iso(x.lastAdminAt);
+  // นับเฉพาะที่ทักใน 48 ชม. — ห้องเก่าก่อนมีระบบอ่านแล้ว (9 ต.ค. 69) ไม่ต้องขึ้น "ยังไม่อ่าน" ทั้ง 400 ห้อง
+  const recent = !!lastSeen && Date.now() - new Date(lastSeen).getTime() < WAIT_MS;
+  const unread = recent && (!readAt || readAt < lastSeen) && (!lastAdmin || lastAdmin < lastSeen);
   // พรีวิวบรรทัดสุดท้ายแบบ LINE: lastUserText (บอทเขียน) ว่างในหลายห้อง → ถอยไปใช้ข้อความท้ายสุดใน messages[] (ความจำบอท 20 ตัว)
   const msgs = Array.isArray(x.messages) ? (x.messages as { role?: unknown; text?: unknown }[]) : [];
   const lastMsg = msgs.length ? msgs[msgs.length - 1] : null;
@@ -77,7 +92,7 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     id,
     displayName: String(x.displayName ?? ""),
     pictureUrl: String(x.pictureUrl ?? ""),
-    lastSeen: iso(x.lastSeen),
+    lastSeen,
     createdAt,
     messageCount: Number(x.messageCount ?? 0) || 0,
     lastUserText: preview.replace(/\s+/g, " ").slice(0, 120),
@@ -86,7 +101,8 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     needsHumanFollowup: x.needsHumanFollowup === true,
     botAllowed: cfg.userIds.includes(id),
     pausedUntil: paused && paused > new Date().toISOString() ? paused : "",
-    lastAdminAt: iso(x.lastAdminAt),
+    lastAdminAt: lastAdmin,
+    unread,
     adminTag: String(x.adminTag ?? ""),
     adminTags: Array.isArray(x.adminTags) ? (x.adminTags as unknown[]).map(String).filter(Boolean) : x.adminTag ? [String(x.adminTag)] : [],
     adminNote: String(x.adminNote ?? ""),
@@ -99,7 +115,6 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
   };
 }
 
-const WAIT_MS = 48 * 3600_000;
 const isWaiting = (r: Row) => r.needsHumanFollowup && !!r.lastSeen && Date.now() - new Date(r.lastSeen).getTime() < WAIT_MS;
 
 export async function GET(req: Request) {
@@ -158,13 +173,16 @@ export async function GET(req: Request) {
     // ค้นชื่อ: nameLower ขึ้นต้นด้วย q (บอทเก็บ nameLower ไว้ตอน Save Profile)
     snap = await db.collection(COL).where("nameLower", ">=", q).where("nameLower", "<", `${q}`).limit(100).get();
   } else {
-    snap = await db.collection(COL).orderBy("lastSeen", "desc").limit(scope === "all" ? limit : Math.min(400, limit * 6)).get();
+    snap = await db.collection(COL).orderBy("lastSeen", "desc").limit(Math.min(400, limit * 6)).get();
   }
   let rows = snap.docs.map((d) => toRow(d.id, (d.data() ?? {}) as Record<string, unknown>, iso(d.createTime), cfg));
+  // ตัวนับบนชิป นับจากชุดที่โหลดมา (ล่าสุด ≤400 ห้อง) ก่อนกรอง/ตัด
+  const waitingCount = rows.filter(isWaiting).length;
+  const unreadCount = rows.filter((r) => r.unread).length;
   if (scope === "new" || scope === "old") rows = rows.filter((r) => r.scope === scope);
   if (scope === "waiting") rows = rows.filter(isWaiting);
+  if (scope === "unread") rows = rows.filter((r) => r.unread);
   rows.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
   rows = rows.slice(0, limit);
-  const waitingCount = rows.filter(isWaiting).length;
-  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount }, { headers: { "Cache-Control": "no-store" } });
 }

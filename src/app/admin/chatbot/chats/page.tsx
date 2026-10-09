@@ -30,6 +30,7 @@ type Row = {
   botAllowed: boolean;
   pausedUntil: string;
   lastAdminAt: string;
+  unread: boolean;
   adminTag: string;
   adminTags: string[];
   adminNote: string;
@@ -40,16 +41,17 @@ type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[] };
 type Settings = { mode: string; newSince: string; enabled: boolean };
-type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number };
+type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number };
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
 type Quota = { limit: number | null; used: number; left: number | null; at: string };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
 type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry; pausedUntil?: string | null; warn?: string };
-type Scope = "waiting" | "all" | "new" | "old";
+type Scope = "waiting" | "all" | "unread" | "new" | "old";
 
 const LINE_GREEN = "#06C755";
 const SCOPES: { key: Scope; label: string }[] = [
   { key: "all", label: "ทั้งหมด" },
+  { key: "unread", label: "🟢 ยังไม่อ่าน" },
   { key: "waiting", label: "🙋 รอแอดมิน" },
   { key: "new", label: "🆕 ใหม่" },
   { key: "old", label: "👤 เก่า" },
@@ -125,6 +127,7 @@ function Chats() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [waitingCount, setWaitingCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
@@ -133,7 +136,8 @@ function Chats() {
       const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}`);
       setRows(d.rows);
       setSettings(d.settings);
-      if (scope === "all") setWaitingCount(d.waitingCount);
+      setWaitingCount(d.waitingCount);
+      setUnreadCount(d.unreadCount);
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), true);
     } finally {
@@ -167,6 +171,13 @@ function Chats() {
     return () => clearInterval(t);
   }, [loadQuota]);
 
+  // 👁 18:45 เปิดห้อง/มีข้อความใหม่ขณะเปิดอยู่ = อ่านแล้ว (webReadAt) → จุดเขียวหาย ตัวนับลด
+  const markRead = useCallback((id: string) => {
+    setRows((rs) => rs.map((x) => (x.id === id && x.unread ? { ...x, unread: false } : x)));
+    setUnreadCount((n) => Math.max(0, n - (rows.find((x) => x.id === id)?.unread ? 1 : 0)));
+    void botApi("/api/admin/line-customers/manage", { action: "read", userId: id }).catch(() => {});
+  }, [rows]);
+
   const openRoom = useCallback(
     async (id: string, quiet = false) => {
       setSel(id);
@@ -194,6 +205,8 @@ function Chats() {
   useEffect(() => {
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
+    if (sel && thread.length) markRead(sel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
 
   const counts = useMemo(() => ({ newN: rows.filter((r) => r.scope === "new").length, oldN: rows.filter((r) => r.scope === "old").length }), [rows]);
@@ -393,7 +406,7 @@ function Chats() {
         </div>
         <div className="flex flex-wrap gap-1.5 px-3 py-2">
           {SCOPES.map((s) => {
-            const n = s.key === "waiting" ? waitingCount : s.key === "new" ? counts.newN : s.key === "old" ? counts.oldN : 0;
+            const n = s.key === "waiting" ? waitingCount : s.key === "unread" ? unreadCount : s.key === "new" ? counts.newN : s.key === "old" ? counts.oldN : 0;
             return (
               <button
                 key={s.key}
@@ -407,6 +420,11 @@ function Chats() {
               </button>
             );
           })}
+          {scope === "unread" && unreadCount ? (
+            <button type="button" onClick={() => { if (window.confirm(`ทำเครื่องหมายว่าอ่านแล้วทั้ง ${unreadCount} ห้อง?`)) void botApi<{ saved?: string }>("/api/admin/line-customers/manage", { action: "readAll" }).then((d) => { toast(d.saved || "เรียบร้อย"); void load(); }).catch((e) => toast(String(e), true)); }} className="min-h-[30px] rounded-full px-2.5 text-[12px] font-bold" style={{ background: "#C9F2D0", color: "#0E7A3A" }}>
+              ✓ อ่านทั้งหมด
+            </button>
+          ) : null}
         </div>
         <div className="flex-1 overflow-y-auto">
           {loading && !rows.length ? (
@@ -428,16 +446,16 @@ function Chats() {
               >
                 <div className="relative">
                   <Avatar src={r.pictureUrl} size={46} />
-                  {r.needsHumanFollowup ? <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: LINE_GREEN }} /> : null}
+                  {r.unread ? <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white" style={{ background: LINE_GREEN }} title="ยังไม่ได้อ่าน" /> : null}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 truncate text-[14.5px] font-bold">{nameOf(r)}</span>
-                    <span className="shrink-0 text-[11px]" style={{ color: "var(--dk-faint)" }}>
+                    <span className="shrink-0 text-[11px]" style={{ color: r.unread ? "#0E7A3A" : "var(--dk-faint)", fontWeight: r.unread ? 700 : 400 }}>
                       {listTime(r.lastSeen)}
                     </span>
                   </div>
-                  <p className="truncate text-[12.5px]" style={{ color: r.needsHumanFollowup ? "var(--dk-navy)" : "var(--dk-faint)", fontWeight: r.needsHumanFollowup ? 600 : 400 }}>
+                  <p className="truncate text-[12.5px]" style={{ color: r.unread ? "var(--dk-navy)" : "var(--dk-faint)", fontWeight: r.unread ? 700 : 400 }}>
                     {r.lastUserText || (r.messageCount ? `บอทคุย ${r.messageCount} ข้อความ` : "—")}
                   </p>
                   <div className="mt-0.5 flex flex-wrap gap-1">
@@ -449,6 +467,7 @@ function Chats() {
                     {r.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
                   </div>
                 </div>
+                {r.unread ? <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: LINE_GREEN }} aria-label="ยังไม่ได้อ่าน" /> : null}
               </button>
             ))
           )}
@@ -571,8 +590,10 @@ function Chats() {
                           })()}
                           {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
                           {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
+                          {cardsOf(m).length ? (
+                          <div className="mt-2 flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
                           {cardsOf(m).map((c, ci) => (
-                            <a key={ci} href={c.url} target="_blank" rel="noreferrer" className="mt-2 block w-[220px] max-w-full overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+                            <a key={ci} href={c.url} target="_blank" rel="noreferrer" className="block w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
                               {c.image ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={c.image} alt="" className="aspect-[4/3] w-full object-cover" />
@@ -584,6 +605,8 @@ function Chats() {
                               </div>
                             </a>
                           ))}
+                          </div>
+                          ) : null}
                         </div>
                         {!ours ? (
                           <span className="mb-0.5 shrink-0 text-[10px]" style={{ color: "var(--dk-faint)" }}>
