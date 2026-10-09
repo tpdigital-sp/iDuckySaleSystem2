@@ -13,16 +13,15 @@ import {
   type Placement,
   type SheetSpec,
 } from "@/lib/diecut-layout";
-import { Banner, Btn, PageHead, PageShell } from "@/components/admin/ui";
+import { Btn, PageHead, PageShell } from "@/components/admin/ui";
 
 /** ขนาดที่ใช้คำนวณเส้น (ยิ่งเล็กยิ่งไว) และขนาดรูปที่ฝังลงไฟล์ .ai */
 const TRACE_MAX = 1200;
 const EMBED_MAX = 2400;
-
-const inputCls =
-  "w-full rounded-xl bg-slate-50 px-3 py-2 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300";
-const smallInputCls =
-  "w-full rounded-lg bg-white px-2 py-1 text-[12px] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-300";
+/** สีเส้นตัดบนจอ = สีเดียวกับ CutContour ในไฟล์ (ไม่ใช่สีธีม) */
+const CUT_INK = "#e2007a";
+/** ไฮไลต์ชิ้นที่ชี้ในแผงเลเยอร์ */
+const HI_INK = "rgba(14,165,233,.85)";
 
 /** แผ่นสำเร็จรูป (มม. · แนวนอน) — "ไดคัทร้าน" = พื้นที่วางที่ใช้คิดราคาไดคัทหน้าร้าน */
 const SHEET_PRESETS = [
@@ -89,7 +88,7 @@ function DiecutLabInner() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [view, setView] = useState<"piece" | "sheet">("piece");
+  const [view, setView] = useState<"piece" | "sheet">("sheet");
 
   // ── ค่าตั้งเส้นตัด (ใช้ร่วมทุกลาย) ──
   const [offsetMm, setOffsetMm] = useState("2"); // ค่าที่ร้านใช้ประจำ
@@ -114,6 +113,10 @@ function DiecutLabInner() {
   const [sheetIdx, setSheetIdx] = useState(0);
 
   const [showAnchors, setShowAnchors] = useState(false);
+  // ── แผงเลเยอร์ (แบบ Illustrator/VectorCraft) — ซ่อนบนจอเท่านั้น ไฟล์ที่โหลดมีครบทั้ง 2 เลเยอร์เสมอ ──
+  const [layerArt, setLayerArt] = useState(true);
+  const [layerCut, setLayerCut] = useState(true);
+  const [hiPiece, setHiPiece] = useState<number | null>(null);
   const [results, setResults] = useState<Record<string, DiecutResult>>({});
   const previewRef = useRef<HTMLCanvasElement>(null);
 
@@ -293,12 +296,19 @@ function DiecutLabInner() {
       checker();
       ctx.setTransform(k, 0, 0, k, frame.artXMm * k, frame.artYMm * k);
       const art = artCanvases.get(sel.id);
-      if (art) ctx.drawImage(art, 0, 0, result.widthMm, result.heightMm);
+      if (art && layerArt) ctx.drawImage(art, 0, 0, result.widthMm, result.heightMm);
       // วาดจากเส้นโค้งชุดเดียวกับที่จะเขียนลงไฟล์ — เห็นบนจอยังไง ได้ไฟล์อย่างนั้น
-      ctx.strokeStyle = "#e2007a";
-      ctx.lineWidth = 1.5 / k;
       ctx.lineJoin = "round";
-      strokeCut(ctx, result);
+      if (hiPiece === 0) {
+        ctx.strokeStyle = HI_INK;
+        ctx.lineWidth = 5 / k;
+        strokeCut(ctx, result);
+      }
+      if (layerCut) {
+        ctx.strokeStyle = CUT_INK;
+        ctx.lineWidth = 1.5 / k;
+        strokeCut(ctx, result);
+      }
       // จุดแองเคอร์ (เหมือนที่จะเห็นตอนเปิดใน Illustrator)
       if (showAnchors) {
         ctx.fillStyle = "#0ea5e9";
@@ -334,20 +344,28 @@ function DiecutLabInner() {
       );
       ctx.setLineDash([]);
     }
-    for (const p of curSheet) {
+    curSheet.forEach((p, idx) => {
       const r = results[p.id];
-      if (!r) continue;
+      if (!r) return;
       const map = placementTransform(p, boxOf(r));
       const o = map({ x: 0, y: 0 });
       const ex = map({ x: 1, y: 0 });
       const ey = map({ x: 0, y: 1 });
       ctx.setTransform((ex.x - o.x) * k, (ex.y - o.y) * k, (ey.x - o.x) * k, (ey.y - o.y) * k, o.x * k, o.y * k);
       const art = artCanvases.get(p.id);
-      if (art) ctx.drawImage(art, 0, 0, r.widthMm, r.heightMm);
-      ctx.strokeStyle = "#e2007a";
-      ctx.lineWidth = 1 / k;
+      if (art && layerArt) ctx.drawImage(art, 0, 0, r.widthMm, r.heightMm);
       ctx.lineJoin = "round";
-      strokeCut(ctx, r);
+      // ชิ้นที่ชี้อยู่ในแผงเลเยอร์ — ขอบฟ้าหนารองใต้เส้นตัด
+      if (hiPiece === idx) {
+        ctx.strokeStyle = HI_INK;
+        ctx.lineWidth = 4 / k;
+        strokeCut(ctx, r);
+      }
+      if (layerCut) {
+        ctx.strokeStyle = CUT_INK;
+        ctx.lineWidth = 1 / k;
+        strokeCut(ctx, r);
+      }
       // ไฮไลต์ลายที่เลือกอยู่
       if (sel && p.id === sel.id && designs.length > 1) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -355,13 +373,13 @@ function DiecutLabInner() {
         ctx.lineWidth = 1;
         ctx.strokeRect(p.x * k + 0.5, p.y * k + 0.5, p.w * k, p.h * k);
       }
-    }
+    });
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.strokeStyle = "#cbd5e1";
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, cv.width - 1, cv.height - 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, sel, result, results, showAnchors, curSheet, artCanvases, sheetW, sheetH, marginX, marginY]);
+  }, [view, sel, result, results, showAnchors, curSheet, artCanvases, sheetW, sheetH, marginX, marginY, layerArt, layerCut, hiPiece]);
 
   const download = (blob: Blob, name: string) => {
     const url = URL.createObjectURL(blob);
@@ -453,8 +471,62 @@ function DiecutLabInner() {
     setMarginY(String(p.my));
     setSheetIdx(0);
   };
-
   const hasAny = designs.length > 0;
+  const totalPieces = layout ? layout.sheets.reduce((a, s) => a + s.length, 0) : 0;
+  const sheetCount = layout?.sheets.length ?? 0;
+  const curIdx = Math.min(sheetIdx, Math.max(0, sheetCount - 1));
+
+  /** กล่องวางไฟล์ — ใช้ทั้งตอนยังว่าง (ใหญ่) และตอนเพิ่มลาย (เล็ก) */
+  const dropZone = (big: boolean) => (
+    <label
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const fs = Array.from(e.dataTransfer.files ?? []);
+        if (fs.length) void loadFiles(fs);
+      }}
+      className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed text-center transition ${
+        big ? "min-h-[180px] px-4 py-8" : "min-h-[52px] px-3 py-2"
+      } ${dragOver ? "border-[color:var(--dk-blue)] bg-white/90" : "border-[color:var(--dk-sky-300)] bg-white/50 hover:bg-white/80"}`}
+    >
+      <input
+        type="file"
+        accept="image/png,image/webp"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const fs = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (fs.length) void loadFiles(fs);
+        }}
+      />
+      {big ? (
+        <>
+          <span className="dkb-h2 text-[1.2rem]" style={{ color: "var(--dk-navy)" }}>
+            {busy ? "กำลังเปิดไฟล์…" : "เลือกไฟล์ลาย หรือลากมาวางตรงนี้"}
+          </span>
+          <span className="mt-1.5 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+            PNG พื้นใส (ไล่พื้นหลังออกแล้ว) · เลือกหลายไฟล์พร้อมกันได้
+          </span>
+        </>
+      ) : (
+        <span className="text-[13px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+          {busy ? "กำลังเปิดไฟล์…" : "＋ เพิ่มลาย (เลือกหรือลากไฟล์มาวาง)"}
+        </span>
+      )}
+    </label>
+  );
+
+  const errBox = err && (
+    <p className="mt-3 rounded-[14px] px-3 py-2 text-[13px] font-semibold" style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}>
+      {err}
+    </p>
+  );
 
   return (
     <PageShell>
@@ -462,141 +534,53 @@ function DiecutLabInner() {
         group="สินค้า"
         title="เส้นไดคัท"
         count="ทดลอง"
-        sub="ทำเส้นตัดจากลายลูกค้า → จัดลงแผ่น → ไฟล์เข้าเครื่องตัด"
+        sub="ใส่ลายลูกค้า → ตั้งขนาด/จำนวน → โหลดไฟล์ .ai เข้าเครื่องตัด · ยังไม่ผูกกับออเดอร์"
       />
 
-      <div className="mt-4">
-        <Banner
-          tone="warm"
-          title="โหมดทดลอง"
-          detail="หน้านี้อยู่ในหลังบ้านอย่างเดียว ลูกค้าหน้าร้านยังไม่เห็นและยังไม่มีผลกับออเดอร์ใด ๆ"
-        />
-      </div>
+      {/* ── ยังไม่มีลาย: บอกขั้นตอนทั้งหมดก่อน ── */}
+      {!hasAny && (
+        <div className="dkb-g mt-4 p-4 sm:p-6">
+          {dropZone(true)}
+          {errBox}
+          <ol className="mt-5 grid gap-3 sm:grid-cols-3">
+            {(
+              [
+                ["ใส่ลาย", "PNG พื้นใส ระบบลากเส้นตัดรอบลายให้เอง"],
+                ["ตั้งขนาด + จำนวน", "บอกความกว้างงานจริง และจำนวนชิ้นต่อลาย"],
+                ["โหลดไฟล์ .ai", "ได้ลาย + เส้นตัด CutContour จัดลงแผ่นพร้อมตัด"],
+              ] as const
+            ).map(([t, d], i) => (
+              <li key={t} className="flex gap-3">
+                <StepNo n={i + 1} />
+                <span>
+                  <b className="block text-[14px]" style={{ color: "var(--dk-navy)" }}>{t}</b>
+                  <span className="text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>{d}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-        {/* ซ้าย: ลาย + ตัวอย่าง */}
-        <div className="dkb-g p-4">
-          <label
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              const fs = Array.from(e.dataTransfer.files ?? []);
-              if (fs.length) void loadFiles(fs);
-            }}
-            className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-5 text-center transition ${
-              dragOver ? "border-[color:var(--dk-blue)] bg-white/80" : "border-[color:var(--dk-sky-300)] bg-white/50 hover:bg-white/80"
-            }`}
-          >
-            <input
-              type="file"
-              accept="image/png,image/webp"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                const fs = Array.from(e.target.files ?? []);
-                e.target.value = "";
-                if (fs.length) void loadFiles(fs);
-              }}
-            />
-            <span className="dkb-h2 text-[0.98rem]">{hasAny ? "＋ เพิ่มลาย" : "เลือกไฟล์ลาย · หรือลากมาวางตรงนี้"}</span>
-            <span className="mt-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-              PNG พื้นใส (ไล่พื้นหลังออกแล้ว) · เลือกหลายไฟล์ได้ = วางหลายลายรวมแผ่นเดียว
-            </span>
-          </label>
-
-          {err && (
-            <p className="mt-3 rounded-[16px] px-3 py-2 text-[13px] font-semibold" style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}>
-              {err}
-            </p>
-          )}
-
-          {/* รายการลาย: ขนาด + จำนวนชิ้นบนแผ่น */}
-          {hasAny && (
-            <ul className="mt-3 space-y-1.5">
-              {designs.map((d) => {
-                const r = results[d.id];
-                const placed = layout?.placed[d.id];
-                const isSel = sel?.id === d.id;
-                const fit = r ? Math.max(gridFit(r.bounds.x1 - r.bounds.x0, r.bounds.y1 - r.bounds.y0, sheet), allowRotate ? gridFit(r.bounds.y1 - r.bounds.y0, r.bounds.x1 - r.bounds.x0, sheet) : 0) : 0;
-                return (
-                  <li
-                    key={d.id}
-                    onClick={() => setSelId(d.id)}
-                    className="flex cursor-pointer flex-wrap items-center gap-2 rounded-[14px] px-2 py-1.5 transition"
-                    style={{
-                      background: isSel ? "var(--dk-sky)" : "rgba(255,255,255,.55)",
-                      boxShadow: isSel ? "inset 0 0 0 1.5px var(--dk-blue)" : "inset 0 0 0 1px var(--dk-hair)",
-                    }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={d.thumb} alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" style={{ background: "#eef2f7" }} />
-                    <div className="min-w-[150px] flex-1">
-                      <div className="truncate text-[12.5px] font-bold" style={{ color: "var(--dk-navy)" }}>{d.name}</div>
-                      <div className="text-[11px]" style={{ color: "var(--dk-faint)" }}>
-                        {r ? `${(r.bounds.x1 - r.bounds.x0).toFixed(1)} × ${(r.bounds.y1 - r.bounds.y0).toFixed(1)} มม. (รวมเส้นตัด)` : "กำลังคำนวณ…"}
-                        {r && ` · เต็มแผ่นได้ ${fit} ชิ้น`}
-                      </div>
-                    </div>
-                    <label className="w-[74px] text-[10.5px] font-semibold text-slate-500" onClick={(e) => e.stopPropagation()}>
-                      กว้าง มม.
-                      <input value={d.widthMm} onChange={(e) => patchDesign(d.id, { widthMm: num(e.target.value) })} inputMode="decimal" className={smallInputCls} />
-                    </label>
-                    <label className="w-[74px] text-[10.5px] font-semibold text-slate-500" onClick={(e) => e.stopPropagation()}>
-                      จำนวน
-                      <input
-                        value={d.qty}
-                        onChange={(e) => patchDesign(d.id, { qty: e.target.value.replace(/\D/g, "") })}
-                        inputMode="numeric"
-                        placeholder="0"
-                        className={smallInputCls}
-                        title="0 = เติมที่ว่างที่เหลือบนแผ่น"
-                      />
-                    </label>
-                    <span className="w-[64px] text-right text-[11px] font-bold" style={{ color: placed ? "var(--dk-navy-soft)" : "var(--dk-coral-ink)" }}>
-                      {placed === undefined ? "" : Number(d.qty) > 0 ? `วาง ${placed}/${d.qty}` : `เติม ${placed}`}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeDesign(d.id);
-                      }}
-                      className="rounded-lg px-1.5 text-[15px] leading-none text-slate-400 hover:text-[color:var(--dk-coral-ink)]"
-                      title="เอาลายนี้ออก"
-                    >
-                      ×
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {hasAny && (
-            <p className="mt-1.5 text-[11px]" style={{ color: "var(--dk-faint)" }}>
-              จำนวน 0 = เติมที่ว่างที่เหลือบนแผ่น · ใส่ตัวเลข = วางเท่านั้นชิ้น (เกินแผ่นขึ้นแผ่นใหม่ให้เอง)
-            </p>
-          )}
-
-          {hasAny && (
-            <div className="mt-4">
+      {hasAny && (
+        <>
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+            {/* ── ซ้าย: ภาพตัวอย่าง (ของที่จะได้จริง) ── */}
+            <div className="dkb-g p-4 lg:sticky lg:top-4">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-xl p-0.5" style={{ background: "rgba(255,255,255,.6)", boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
                   {(
                     [
-                      ["piece", "ชิ้นเดียว"],
-                      ["sheet", "จัดลงแผ่น"],
+                      ["sheet", "ทั้งแผ่น"],
+                      ["piece", "ซูมทีละลาย"],
                     ] as const
                   ).map(([id, label]) => (
                     <button
                       key={id}
                       type="button"
                       onClick={() => setView(id)}
-                      className={`rounded-[10px] px-3 py-1 text-[12px] font-bold transition ${
+                      aria-pressed={view === id}
+                      className={`min-h-[40px] rounded-[10px] px-4 text-[13px] font-bold transition ${
                         view === id ? "bg-[color:var(--dk-navy)] text-white" : "text-[color:var(--dk-navy-soft)]"
                       }`}
                     >
@@ -604,286 +588,600 @@ function DiecutLabInner() {
                     </button>
                   ))}
                 </div>
-                {view === "piece" && (
-                  <>
-                    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                      <input type="checkbox" checked={showAnchors} onChange={(e) => setShowAnchors(e.target.checked)} className="h-3.5 w-3.5" style={{ accentColor: "var(--dk-blue-deep)" }} />
-                      โชว์จุดแองเคอร์
-                    </label>
-                    {result && (
-                      <span className="ml-auto text-[11.5px]" style={{ color: "var(--dk-navy-soft)" }}>
-                        งานจริง {result.widthMm.toFixed(1)} × {result.heightMm.toFixed(1)} มม. · เส้นสีบานเย็น = แนวตัด
-                      </span>
-                    )}
-                  </>
-                )}
                 {view === "sheet" && layout && (
-                  <span className="ml-auto text-[11.5px]" style={{ color: "var(--dk-navy-soft)" }}>
-                    แผ่นนี้ {curSheet.length} ชิ้น · ใช้พื้นที่ ~{usePct.toFixed(0)}% · ทั้งหมด {layout.sheets.length} แผ่น
+                  <div className="ml-auto flex items-baseline gap-3 tabular-nums" style={{ color: "var(--dk-navy)" }}>
+                    <span><b className="text-[1.15rem]">{totalPieces}</b> <small style={{ color: "var(--dk-faint)" }}>ชิ้น</small></span>
+                    <span><b className="text-[1.15rem]">{sheetCount}</b> <small style={{ color: "var(--dk-faint)" }}>แผ่น</small></span>
+                    <span><b className="text-[1.15rem]">{usePct.toFixed(0)}%</b> <small style={{ color: "var(--dk-faint)" }}>ใช้พื้นที่</small></span>
+                  </div>
+                )}
+                {view === "piece" && result && (
+                  <span className="ml-auto text-[12.5px] tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
+                    <b style={{ color: "var(--dk-navy)" }}>{sel?.name}</b> · งานจริง {result.widthMm.toFixed(1)} × {result.heightMm.toFixed(1)} มม.
                   </span>
                 )}
               </div>
 
-              {view === "sheet" && layout && layout.sheets.length > 1 && (
+              {view === "sheet" && sheetCount > 1 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {layout.sheets.map((s, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setSheetIdx(i)}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
-                        Math.min(sheetIdx, layout.sheets.length - 1) === i ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy-soft)] hover:bg-white"
-                      }`}
-                    >
+                  {layout!.sheets.map((s, i) => (
+                    <Choice key={i} on={curIdx === i} onClick={() => setSheetIdx(i)}>
                       แผ่น {i + 1} · {s.length} ชิ้น
-                    </button>
+                    </Choice>
                   ))}
                 </div>
               )}
 
-              <div className="mt-2 overflow-auto rounded-[18px]" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)", background: view === "sheet" ? "#e2e8f0" : undefined, padding: view === "sheet" ? 12 : 0 }}>
+              <div
+                className="mt-3 overflow-auto rounded-[18px]"
+                style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)", background: view === "sheet" ? "var(--dk-sky)" : undefined, padding: view === "sheet" ? 12 : 0 }}
+              >
                 <canvas ref={previewRef} className="mx-auto block h-auto max-w-full" style={view === "sheet" ? { boxShadow: "0 2px 10px rgba(15,23,42,.12)" } : undefined} />
               </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
+                <span className="inline-flex items-center gap-1.5">
+                  <i className="inline-block h-0.5 w-5 rounded" style={{ background: CUT_INK }} /> เส้นสีบานเย็น = แนวที่เครื่องจะตัด
+                </span>
+                {view === "piece" && (
+                  <label className="inline-flex cursor-pointer items-center gap-1.5">
+                    <input type="checkbox" checked={showAnchors} onChange={(e) => setShowAnchors(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
+                    โชว์จุดแองเคอร์
+                  </label>
+                )}
+                {view === "piece" && result && (
+                  <span className="tabular-nums">
+                    {result.pieces} ชิ้น{result.innerHoles > 0 ? ` · รูตัดทะลุ ${result.innerHoles}` : ""} · {result.anchors.toLocaleString("th-TH")} จุด
+                  </span>
+                )}
+              </div>
+
+              <LayersPanel
+                art={layerArt}
+                cut={layerCut}
+                onArt={() => setLayerArt(!layerArt)}
+                onCut={() => setLayerCut(!layerCut)}
+                hi={hiPiece}
+                onHi={setHiPiece}
+                items={
+                  view === "sheet"
+                    ? curSheet.map((p) => {
+                        const d = designs.find((x) => x.id === p.id);
+                        return { name: d?.name ?? "", thumb: d?.thumb ?? "", rot: p.rot, hole: !!results[p.id]?.hole };
+                      })
+                    : sel && result
+                      ? [{ name: sel.name, thumb: sel.thumb, rot: false, hole: !!result.hole }]
+                      : []
+                }
+              />
 
               {view === "piece" && result && result.warnings.length > 0 && (
                 <ul className="mt-3 space-y-1">
                   {result.warnings.map((warn, i) => (
-                    <li key={i} className="rounded-[14px] px-3 py-2 text-[12px] font-semibold" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
+                    <li key={i} className="rounded-[14px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
                       {warn}
                     </li>
                   ))}
                 </ul>
               )}
-              {view === "sheet" && layout && layout.tooBig.length > 0 && (
-                <p className="mt-3 rounded-[14px] px-3 py-2 text-[12px] font-semibold" style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}>
-                  ลายใหญ่กว่าพื้นที่วางของแผ่น (วางไม่ได้เลย):{" "}
-                  {layout.tooBig.map((id) => designs.find((d) => d.id === id)?.name).join(", ")}
+              {layout && layout.tooBig.length > 0 && (
+                <p className="mt-3 rounded-[14px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}>
+                  ลายใหญ่กว่าแผ่น วางไม่ได้: {layout.tooBig.map((id) => designs.find((d) => d.id === id)?.name).join(", ")} — ลดความกว้างลาย หรือเลือกแผ่นที่ใหญ่ขึ้น
                 </p>
               )}
             </div>
-          )}
-        </div>
 
-        {/* ขวา: ค่าตั้ง + ปุ่มโหลดไฟล์ */}
-        <div className="space-y-4">
-          {view === "sheet" && (
-            <div className="dkb-g p-4">
-              <h2 className="dkb-h2 text-[1.02rem]">แผ่นงาน</h2>
-              <div className="mt-3 grid grid-cols-2 gap-1.5">
-                {SHEET_PRESETS.map((p) => (
+            {/* ── ขวา: ทำตามลำดับ 1 → 2 → 3 ── */}
+            <div className="space-y-4">
+              <Step n={1} title="ลายที่จะตัด" note={`${designs.length} ลาย`}>
+                <ul className="space-y-2">
+                  {designs.map((d) => {
+                    const r = results[d.id];
+                    const placed = layout?.placed[d.id];
+                    const want = Number(d.qty) || 0;
+                    const isSel = sel?.id === d.id;
+                    const bw = r ? r.bounds.x1 - r.bounds.x0 : 0;
+                    const bh = r ? r.bounds.y1 - r.bounds.y0 : 0;
+                    const fit = r ? Math.max(gridFit(bw, bh, sheet), allowRotate ? gridFit(bh, bw, sheet) : 0) : 0;
+                    const short = want > 0 && placed !== undefined && placed < want;
+                    return (
+                      <li
+                        key={d.id}
+                        onClick={() => setSelId(d.id)}
+                        className="cursor-pointer rounded-[14px] p-2 transition"
+                        style={{
+                          background: isSel ? "var(--dk-sky)" : "rgba(255,255,255,.6)",
+                          boxShadow: isSel ? "inset 0 0 0 1.5px var(--dk-blue)" : "inset 0 0 0 1px var(--dk-hair)",
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={d.thumb} alt="" className="h-11 w-11 shrink-0 rounded-lg bg-white object-contain" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[13px] font-bold" style={{ color: "var(--dk-navy)" }}>{d.name}</div>
+                            <div className="text-[11.5px] tabular-nums" style={{ color: "var(--dk-faint)" }}>
+                              {r ? `${bw.toFixed(1)} × ${bh.toFixed(1)} มม. รวมเส้นตัด · เต็มแผ่นได้ ${fit} ชิ้น` : "กำลังคำนวณเส้น…"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeDesign(d.id);
+                            }}
+                            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[18px] leading-none hover:bg-white"
+                            style={{ color: "var(--dk-faint)" }}
+                            title="เอาลายนี้ออก"
+                            aria-label={`เอา ${d.name} ออก`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="mt-2 grid grid-cols-[1fr_1fr_auto] items-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          <NumBox label="กว้างงานจริง" unit="มม." value={d.widthMm} onChange={(v) => patchDesign(d.id, { widthMm: v })} />
+                          <NumBox
+                            label="จำนวน"
+                            unit="ชิ้น"
+                            int
+                            placeholder="เติมเต็ม"
+                            value={d.qty === "0" ? "" : d.qty}
+                            onChange={(v) => patchDesign(d.id, { qty: v || "0" })}
+                          />
+                          <span
+                            className="mb-1 min-w-[64px] rounded-lg px-2 py-1.5 text-center text-[12px] font-bold tabular-nums"
+                            style={
+                              placed === undefined
+                                ? { color: "var(--dk-faint)" }
+                                : short || placed === 0
+                                  ? { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }
+                                  : { background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }
+                            }
+                            title={want > 0 ? "วางได้ / ที่สั่ง" : "จำนวน 0 = เติมที่ว่างที่เหลือบนแผ่น"}
+                          >
+                            {placed === undefined ? "—" : want > 0 ? `${short ? "⚠ " : "✓ "}${placed}/${want}` : `✓ ${placed}`}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-2">{dropZone(false)}</div>
+                {errBox}
+                <p className="mt-2 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                  จำนวนว่าง = เติมที่ว่างที่เหลือให้เต็มแผ่น · ใส่ตัวเลข = วางเท่านั้นชิ้น เกินแผ่นขึ้นแผ่นใหม่ให้เอง
+                </p>
+              </Step>
+
+              <Step n={2} title="เส้นตัด" note="ใช้กับทุกลาย">
+                <div className="text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>ตัดเผื่อรอบลาย</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {["1", "1.5", "2", "3"].map((v) => (
+                    <Choice key={v} on={offsetMm === v} onClick={() => setOffsetMm(v)}>
+                      {v} มม.{v === "2" ? " (ร้าน)" : ""}
+                    </Choice>
+                  ))}
+                  <span className="w-[86px]">
+                    <NumBox value={offsetMm} unit="มม." onChange={setOffsetMm} />
+                  </span>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-bold" style={{ color: "var(--dk-navy)" }}>หูร้อยห่วง</span>
                   <button
-                    key={p.id}
                     type="button"
-                    onClick={() => applyPreset(p.id)}
-                    className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
-                      preset === p.id ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy-soft)] hover:bg-white"
+                    onClick={() => setRingOn(!ringOn)}
+                    aria-pressed={ringOn}
+                    className={`min-h-[40px] rounded-xl px-4 text-[13px] font-bold transition ${
+                      ringOn ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy-soft)] ring-1 ring-[color:var(--dk-hair)]"
                     }`}
                   >
-                    {p.label}
+                    {ringOn ? "มีหูร้อย ✓" : "ไม่มีหูร้อย"}
                   </button>
-                ))}
-              </div>
-              <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-                <label className="text-[11px] font-semibold text-slate-500">
-                  กว้างแผ่น (มม.)
-                  <input value={sheetW} onChange={(e) => { setSheetW(num(e.target.value)); setPreset("custom"); }} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSheetW(sheetH);
-                    setSheetH(sheetW);
-                    setMarginX(marginY);
-                    setMarginY(marginX);
-                  }}
-                  className="mb-1 rounded-lg bg-white/70 px-2 py-1.5 text-[13px] font-bold text-[color:var(--dk-navy-soft)] hover:bg-white"
-                  title="สลับแนวตั้ง/แนวนอน"
-                >
-                  ⇄
-                </button>
-                <label className="text-[11px] font-semibold text-slate-500">
-                  สูงแผ่น (มม.)
-                  <input value={sheetH} onChange={(e) => { setSheetH(num(e.target.value)); setPreset("custom"); }} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                </label>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <label className="text-[11px] font-semibold text-slate-500">
-                  ขอบซ้าย-ขวา
-                  <input value={marginX} onChange={(e) => setMarginX(num(e.target.value))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                </label>
-                <label className="text-[11px] font-semibold text-slate-500">
-                  ขอบบน-ล่าง
-                  <input value={marginY} onChange={(e) => setMarginY(num(e.target.value))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                </label>
-                <label className="text-[11px] font-semibold text-slate-500">
-                  ห่างกัน
-                  <input value={gap} onChange={(e) => setGap(num(e.target.value))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                </label>
-              </div>
-              <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-                หน่วย มม. · ห่างกัน = จากเส้นตัดถึงเส้นตัด (ร้านใช้ 2 มม.ขึ้นไป)
-              </p>
-              <label className="mt-3 flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
-                <input type="checkbox" checked={allowRotate} onChange={(e) => setAllowRotate(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
-                หมุน 90° ได้ถ้าวางได้มากกว่า
-              </label>
-            </div>
-          )}
-
-          <div className="dkb-g p-4">
-            <h2 className="dkb-h2 text-[1.02rem]">เส้นตัด</h2>
-            <label className="mt-3 block text-[11px] font-semibold text-slate-500">
-              ตัดเผื่อรอบลาย (มม.)
-              <input value={offsetMm} onChange={(e) => setOffsetMm(num(e.target.value))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-            </label>
-            <p className="mt-2 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-              ใช้กับทุกลาย · ค่าตัดเผื่อมาตรฐานของร้าน = 2 มม. · ความกว้างแต่ละลายตั้งในรายการลาย
-            </p>
-            <label className="mt-3 block text-[11px] font-semibold text-slate-500">
-              เก็บขอบให้เรียบ: {smoothMm} มม.
-              <input
-                type="range"
-                min={0}
-                max={5}
-                step={0.1}
-                value={smoothMm}
-                onChange={(e) => setSmoothMm(e.target.value)}
-                className="mt-1 w-full" style={{ accentColor: "var(--dk-blue-deep)" }}
-              />
-              <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-                0 = วิ่งตามหยักของลายเป๊ะ · ยิ่งมากยิ่งลื่น (กลืนร่องแคบ ๆ ระหว่างตัวอักษรให้เป็นเส้นเดียว)
-              </span>
-            </label>
-            <label className="mt-3 block text-[11px] font-semibold text-slate-500">
-              ความละเอียดเส้นโค้ง: ±{curveTol} มม.
-              <input
-                type="range"
-                min={0.03}
-                max={0.6}
-                step={0.01}
-                value={curveTol}
-                onChange={(e) => setCurveTol(e.target.value)}
-                className="mt-1 w-full" style={{ accentColor: "var(--dk-blue-deep)" }}
-              />
-              <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-                เส้นถูกแปลงเป็นโค้งเบซิเยร์แบบโปรแกรมตัด · น้อย = เกาะลายแน่นแต่จุดเยอะ · มาก = จุดน้อย เส้นลื่น แก้ต่อง่ายใน Illustrator
-              </span>
-            </label>
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-600">
-              <input type="checkbox" checked={fillHoles} onChange={(e) => setFillHoles(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
-              ปิดรูกลางลาย (ไม่ตัดทะลุช่องว่างในตัวอักษร)
-            </label>
-            <label className="mt-3 block text-[11px] font-semibold text-slate-500">
-              ความไวขอบลาย (alpha ≥ {alphaThreshold})
-              <input
-                type="range"
-                min={1}
-                max={200}
-                value={alphaThreshold}
-                onChange={(e) => setAlphaThreshold(e.target.value)}
-                className="mt-1 w-full" style={{ accentColor: "var(--dk-blue-deep)" }}
-              />
-              <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>ลายที่ขอบฟุ้ง/มีเงา ถ้าเส้นตัดกินเงามาด้วยให้เลื่อนไปทางขวา</span>
-            </label>
-          </div>
-
-          <div className="dkb-g p-4">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
-              <input type="checkbox" checked={ringOn} onChange={(e) => setRingOn(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
-              🔗 หูร้อยห่วง
-            </label>
-            {ringOn && (
-              <>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <label className="text-[11px] font-semibold text-slate-500">
-                    แท็บกลม (มม.)
-                    <input value={tabDia} onChange={(e) => setTabDia(num(e.target.value))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                  </label>
-                  <label className="text-[11px] font-semibold text-slate-500">
-                    รูเจาะ (มม.)
-                    <input value={ringDia} onChange={(e) => setRingDia(num(e.target.value))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                  </label>
-                  <label className="text-[11px] font-semibold text-slate-500">
-                    ซ้อนงาน (มม.)
-                    <input value={ringOverlap} onChange={(e) => setRingOverlap(num(e.target.value))} inputMode="decimal" className={`mt-1 ${inputCls}`} />
-                  </label>
                 </div>
-                <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-                  แท็บกลม = วงกลมยื่นออกจากตัวงานสำหรับร้อยห่วง (ใส่ 0 = ไม่ทำแท็บ เจาะรูบนตัวงานเลย) · ซ้อนงาน = ให้แท็บทับตัวงานกี่ มม. จะได้เป็นชิ้นเดียว
-                </p>
-                <div className="mt-3 grid grid-cols-3 gap-1.5">
-                  {(
-                    [
-                      ["left", "◀ ซ้าย"],
-                      ["top-center", "▲ บนกลาง"],
-                      ["right", "▶ ขวา"],
-                      ["top-left", "◤ ซ้ายบน"],
-                      ["top-right", "◥ ขวาบน"],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setRingPos(id)}
-                      className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
-                        ringPos === id ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy-soft)] hover:bg-white"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="dkb-g p-4">
-            <h2 className="dkb-h2 text-[1.02rem]">ไฟล์ส่งเข้าเครื่องตัด</h2>
-            <p className="mt-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-              ไฟล์ .ai เปิดใน Illustrator ได้เลย — ในไฟล์มีรูปลายขนาดจริง + เส้นตัดเป็นเวกเตอร์สี spot ชื่อ <b>CutContour</b>
-            </p>
-            {view === "piece" ? (
-              <>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Btn tone="yolk" onClick={downloadAi} disabled={!result || busy}>
-                    {busy ? "กำลังสร้าง…" : "ดาวน์โหลด .ai"}
-                  </Btn>
-                  <Btn onClick={downloadSvg} disabled={!result}>
-                    .svg (เส้นอย่างเดียว)
-                  </Btn>
-                </div>
-                {result && (
-                  <p className="mt-3 text-[11.5px]" style={{ color: "var(--dk-navy-soft)" }}>
-                    ชิ้นงาน {result.pieces} ชิ้น
-                    {result.innerHoles > 0 ? ` · รูตัดทะลุ ${result.innerHoles} รู` : ""} · จุดแองเคอร์{" "}
-                    {result.anchors.toLocaleString("th-TH")} จุด
-                    {result.hole ? " · มีหูร้อยห่วง" : ""}
-                  </p>
-                )}
-              </>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {sheetGroups.map((g) => (
-                  <div key={g.first} className="flex flex-wrap items-center gap-2">
-                    <Btn tone="yolk" onClick={() => downloadSheetAi(g.sheet, g.first + 1)} disabled={busy || !g.sheet.length}>
-                      {busy ? "กำลังสร้าง…" : `.ai แผ่น ${g.first + 1}${g.count > 1 ? `–${g.first + g.count}` : ""}`}
-                    </Btn>
-                    <span className="text-[11.5px]" style={{ color: "var(--dk-navy-soft)" }}>
-                      {g.sheet.length} ชิ้น{g.count > 1 ? ` · ใช้ไฟล์เดียวกัน ×${g.count} แผ่น` : ""}
+                {ringOn && (
+                  <div className="mt-2 flex items-center gap-3">
+                    <RingPicker pos={ringPos} onPick={setRingPos} />
+                    <span className="text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
+                      กดจุดรอบชิ้นงาน
+                      <br />
+                      เพื่อเลือกตำแหน่งหูร้อย
+                      <br />
+                      <b style={{ color: "var(--dk-navy)" }}>{RING_LABEL[ringPos]}</b>
                     </span>
                   </div>
-                ))}
-                {layout && (
-                  <p className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-                    ไฟล์ขนาดเท่าแผ่น {sheet.widthMm} × {sheet.heightMm} มม. · รวม {layout.sheets.reduce((a, s) => a + s.length, 0)} ชิ้น
+                )}
+
+                <More title="ปรับละเอียด (ไม่ต้องแตะก็ได้)">
+                  <Slider
+                    label={`เก็บขอบให้เรียบ: ${smoothMm} มม.`}
+                    min={0}
+                    max={5}
+                    step={0.1}
+                    value={smoothMm}
+                    onChange={setSmoothMm}
+                    hint="0 = วิ่งตามหยักลายเป๊ะ · มาก = ลื่น กลืนร่องแคบระหว่างตัวอักษร"
+                  />
+                  <Slider
+                    label={`ความละเอียดเส้นโค้ง: ±${curveTol} มม.`}
+                    min={0.03}
+                    max={0.6}
+                    step={0.01}
+                    value={curveTol}
+                    onChange={setCurveTol}
+                    hint="น้อย = เกาะลายแน่นแต่จุดเยอะ · มาก = จุดน้อย แก้ต่อใน Illustrator ง่าย"
+                  />
+                  <Slider
+                    label={`ความไวขอบลาย: alpha ≥ ${alphaThreshold}`}
+                    min={1}
+                    max={200}
+                    step={1}
+                    value={alphaThreshold}
+                    onChange={setAlphaThreshold}
+                    hint="ลายขอบฟุ้ง/มีเงา ถ้าเส้นตัดกินเงามาด้วย เลื่อนไปทางขวา"
+                  />
+                  <label className="flex cursor-pointer items-center gap-2 text-[12.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+                    <input type="checkbox" checked={fillHoles} onChange={(e) => setFillHoles(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
+                    ปิดรูกลางลาย (ไม่ตัดทะลุช่องในตัวอักษร)
+                  </label>
+                  {ringOn && (
+                    <>
+                      <div className="grid grid-cols-3 gap-2">
+                        <NumBox label="แท็บกลม" unit="มม." value={tabDia} onChange={setTabDia} />
+                        <NumBox label="รูเจาะ" unit="มม." value={ringDia} onChange={setRingDia} />
+                        <NumBox label="ซ้อนงาน" unit="มม." value={ringOverlap} onChange={setRingOverlap} />
+                      </div>
+                      <p className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                        แท็บกลม 0 = ไม่ทำแท็บ เจาะรูบนตัวงานเลย · ซ้อนงาน = แท็บทับตัวงานกี่ มม. ให้เป็นชิ้นเดียวกัน
+                      </p>
+                    </>
+                  )}
+                </More>
+              </Step>
+
+              <Step n={3} title="แผ่นงาน">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {SHEET_PRESETS.map((p) => (
+                    <Choice key={p.id} on={preset === p.id} onClick={() => applyPreset(p.id)}>
+                      {p.label}
+                    </Choice>
+                  ))}
+                </div>
+                {preset === "custom" && (
+                  <p className="mt-1.5 text-[12px] tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
+                    ขนาดกำหนดเอง {sheetW} × {sheetH} มม.
                   </p>
                 )}
-              </div>
-            )}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <NumBox label="ห่างกัน (เส้นตัด↔เส้นตัด)" unit="มม." value={gap} onChange={setGap} />
+                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 self-end rounded-xl px-2 text-[12.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+                    <input type="checkbox" checked={allowRotate} onChange={(e) => setAllowRotate(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
+                    หมุน 90° ถ้าวางได้มากกว่า
+                  </label>
+                </div>
+                <More title="กำหนดขนาดแผ่น / ขอบเอง">
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                    <NumBox label="กว้างแผ่น" unit="มม." value={sheetW} onChange={(v) => { setSheetW(v); setPreset("custom"); }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSheetW(sheetH);
+                        setSheetH(sheetW);
+                        setMarginX(marginY);
+                        setMarginY(marginX);
+                      }}
+                      className="mb-0.5 h-11 rounded-xl bg-white/70 px-3 text-[15px] font-bold ring-1 ring-[color:var(--dk-hair)] hover:bg-white"
+                      style={{ color: "var(--dk-navy-soft)" }}
+                      title="สลับแนวตั้ง/แนวนอน"
+                    >
+                      ⇄
+                    </button>
+                    <NumBox label="สูงแผ่น" unit="มม." value={sheetH} onChange={(v) => { setSheetH(v); setPreset("custom"); }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumBox label="ขอบซ้าย-ขวา" unit="มม." value={marginX} onChange={setMarginX} />
+                    <NumBox label="ขอบบน-ล่าง" unit="มม." value={marginY} onChange={setMarginY} />
+                  </div>
+                </More>
+              </Step>
+            </div>
           </div>
-        </div>
-      </div>
+
+          {/* ── แถบโหลดไฟล์ ติดล่างจอ — ปลายทางของทุกขั้น ── */}
+          <div className="dkb-g sticky bottom-3 z-20 mt-4 flex flex-wrap items-center gap-2 p-3" style={{ boxShadow: "0 10px 30px rgba(15,23,42,.16)" }}>
+            <div className="mr-auto flex min-w-0 items-center gap-3">
+              <StepNo n={4} />
+              <div className="min-w-0">
+                <b className="block text-[14px]" style={{ color: "var(--dk-navy)" }}>โหลดไฟล์เข้าเครื่องตัด</b>
+                <span className="hidden text-[11.5px] sm:block" style={{ color: "var(--dk-faint)" }}>
+                  .ai = ลายขนาดจริง + เส้นตัดสี spot <b>CutContour</b> · เปิดใน Illustrator/FineCut ได้เลย
+                </span>
+              </div>
+            </div>
+            {sheetGroups.map((g) => (
+              <Btn key={g.first} tone="yolk" onClick={() => downloadSheetAi(g.sheet, g.first + 1)} disabled={busy || !g.sheet.length}>
+                {busy
+                  ? "กำลังสร้าง…"
+                  : `⬇ .ai ${sheetGroups.length > 1 || g.count > 1 ? `แผ่น ${g.first + 1}${g.count > 1 ? `–${g.first + g.count}` : ""}` : "ทั้งแผ่น"} · ${g.sheet.length} ชิ้น${g.count > 1 ? ` ×${g.count}` : ""}`}
+              </Btn>
+            ))}
+            <div className="flex gap-2">
+              <Btn small onClick={downloadAi} disabled={!result || busy} title="ไฟล์ .ai ของลายที่เลือกอยู่ ชิ้นเดียว">
+                .ai ลายนี้ชิ้นเดียว
+              </Btn>
+              <Btn small onClick={downloadSvg} disabled={!result} title="เส้นตัดอย่างเดียว ไม่มีรูปลาย">
+                .svg เส้นอย่างเดียว
+              </Btn>
+            </div>
+          </div>
+        </>
+      )}
     </PageShell>
+  );
+}
+
+/** ไอคอนตา เปิด/ปิดเลเยอร์ */
+function Eye({ on }: { on: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+      {on ? <circle cx="12" cy="12" r="3" /> : <path d="M4 4l16 16" />}
+    </svg>
+  );
+}
+
+/**
+ * แผงเลเยอร์แบบ Illustrator/VectorCraft — ตรงกับเลเยอร์ในไฟล์ .ai ที่โหลด
+ * (CutContour อยู่บน: เส้นตัดทีละชิ้น · Art อยู่ล่าง: รูปลาย) · ชี้/คลิกแถว = ไฮไลต์ชิ้นบนแผ่น
+ */
+function LayersPanel({
+  art,
+  cut,
+  onArt,
+  onCut,
+  hi,
+  onHi,
+  items,
+}: {
+  art: boolean;
+  cut: boolean;
+  onArt: () => void;
+  onCut: () => void;
+  hi: number | null;
+  onHi: (i: number | null) => void;
+  items: { name: string; thumb: string; rot: boolean; hole: boolean }[];
+}) {
+  const [open, setOpen] = useState<{ cut: boolean; art: boolean }>({ cut: true, art: false });
+  const layers = [
+    { key: "cut" as const, name: "CutContour", color: CUT_INK, on: cut, toggle: onCut, kind: "<Path>", note: "เส้นตัด · สี spot" },
+    { key: "art" as const, name: "Art", color: "var(--dk-blue)", on: art, toggle: onArt, kind: "<Image>", note: "รูปลาย" },
+  ];
+  return (
+    <section className="mt-3 overflow-hidden rounded-[14px] bg-white/70" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
+      <div className="flex items-center gap-2 px-3 py-2">
+        <b className="text-[13px]" style={{ color: "var(--dk-navy)" }}>เลเยอร์</b>
+        <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+          เหมือนในไฟล์ .ai · ปิดตา = ซ่อนบนจออย่างเดียว ไฟล์ที่โหลดยังมีครบ
+        </span>
+      </div>
+      <ul onMouseLeave={() => onHi(null)}>
+        {layers.map((L) => (
+          <li key={L.key} style={{ borderTop: "1px solid var(--dk-hair)" }}>
+            <div className="flex min-h-[44px] items-center gap-1 pr-3" style={{ opacity: L.on ? 1 : 0.55 }}>
+              <button
+                type="button"
+                onClick={L.toggle}
+                aria-pressed={L.on}
+                aria-label={`${L.on ? "ซ่อน" : "แสดง"}เลเยอร์ ${L.name}`}
+                title={L.on ? "ซ่อนบนจอ" : "แสดง"}
+                className="grid h-11 w-11 shrink-0 place-items-center"
+                style={{ color: "var(--dk-navy-soft)" }}
+              >
+                <Eye on={L.on} />
+              </button>
+              <span className="h-6 w-1 shrink-0 rounded" style={{ background: L.color }} />
+              <button
+                type="button"
+                onClick={() => setOpen((o) => ({ ...o, [L.key]: !o[L.key] }))}
+                aria-expanded={open[L.key]}
+                className="flex min-h-[44px] flex-1 items-center gap-2 pl-1 text-left"
+              >
+                <span className="w-3 text-[11px] transition" style={{ color: "var(--dk-faint)", transform: open[L.key] ? "rotate(90deg)" : undefined }}>▸</span>
+                <b className="text-[13px]" style={{ color: "var(--dk-navy)" }}>{L.name}</b>
+                <span className="text-[11.5px]" style={{ color: "var(--dk-faint)" }}>{L.note}</span>
+                <span className="ml-auto text-[11.5px] tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>{items.length} ชิ้น</span>
+              </button>
+            </div>
+            {open[L.key] && (
+              <ul className="max-h-[220px] overflow-auto pb-1">
+                {items.map((it, i) => (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onMouseEnter={() => onHi(i)}
+                      onFocus={() => onHi(i)}
+                      onClick={() => onHi(hi === i ? null : i)}
+                      className="flex min-h-[36px] w-full items-center gap-2 py-1 pl-14 pr-3 text-left text-[12.5px] transition"
+                      style={{ background: hi === i ? "var(--dk-sky)" : undefined, color: "var(--dk-navy)", opacity: L.on ? 1 : 0.55 }}
+                    >
+                      {L.key === "art" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.thumb} alt="" className="h-7 w-7 shrink-0 rounded bg-white object-contain" style={{ transform: it.rot ? "rotate(90deg)" : undefined }} />
+                      ) : (
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white" style={{ boxShadow: `inset 0 0 0 1.5px ${CUT_INK}` }}>
+                          <span className="block h-3.5 w-3.5 rounded-[4px]" style={{ boxShadow: `inset 0 0 0 1.5px ${CUT_INK}` }} />
+                        </span>
+                      )}
+                      <span className="font-semibold">{L.kind}</span>
+                      <span className="tabular-nums" style={{ color: "var(--dk-faint)" }}>#{i + 1}</span>
+                      <span className="min-w-0 flex-1 truncate" style={{ color: "var(--dk-navy-soft)" }}>{it.name}</span>
+                      {it.rot && <span className="text-[11px]" style={{ color: "var(--dk-faint)" }}>หมุน 90°</span>}
+                      {L.key === "cut" && it.hole && <span className="text-[11px]" style={{ color: "var(--dk-faint)" }}>+ รูร้อย</span>}
+                    </button>
+                  </li>
+                ))}
+                {!items.length && <li className="py-2 pl-14 text-[12px]" style={{ color: "var(--dk-faint)" }}>ยังไม่มีชิ้นงาน</li>}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const RING_LABEL: Record<RingTab["position"], string> = {
+  left: "ซ้าย",
+  right: "ขวา",
+  "top-center": "บนกลาง",
+  "top-left": "มุมซ้ายบน",
+  "top-right": "มุมขวาบน",
+};
+
+/** เลขขั้นตอนในวงกลม */
+function StepNo({ n }: { n: number }) {
+  return (
+    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[14px] font-bold text-white" style={{ background: "var(--dk-navy)" }}>
+      {n}
+    </span>
+  );
+}
+
+/** การ์ดขั้นตอน — หัวเลข + ชื่อ */
+function Step({ n, title, note, children }: { n: number; title: string; note?: string; children: React.ReactNode }) {
+  return (
+    <section className="dkb-g p-4">
+      <div className="flex items-center gap-2.5">
+        <StepNo n={n} />
+        <h2 className="dkb-h2 text-[1.08rem]" style={{ color: "var(--dk-navy)" }}>{title}</h2>
+        {note && <span className="ml-auto text-[12px]" style={{ color: "var(--dk-faint)" }}>{note}</span>}
+      </div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+/** ปุ่มตัวเลือก (เลือกได้ทีละอัน) */
+function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={`min-h-[40px] rounded-xl px-3 text-[12.5px] font-semibold transition ${
+        on ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy-soft)] ring-1 ring-[color:var(--dk-hair)] hover:bg-white"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** ช่องตัวเลขสูง 44px + หน่วยต่อท้าย */
+function NumBox({
+  label,
+  unit,
+  value,
+  onChange,
+  int,
+  placeholder,
+}: {
+  label?: string;
+  unit?: string;
+  value: string;
+  onChange: (v: string) => void;
+  int?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block min-w-0">
+      {label && <span className="block truncate text-[11.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>{label}</span>}
+      <span className="mt-1 flex h-11 items-center rounded-xl bg-white ring-1 ring-slate-200 focus-within:ring-2 focus-within:ring-amber-300">
+        <input
+          value={value}
+          onChange={(e) => onChange(int ? e.target.value.replace(/\D/g, "") : num(e.target.value))}
+          inputMode={int ? "numeric" : "decimal"}
+          placeholder={placeholder}
+          className="w-full min-w-0 bg-transparent px-3 text-[15px] tabular-nums focus:outline-none"
+          style={{ color: "var(--dk-navy)" }}
+        />
+        {unit && <span className="shrink-0 pr-3 text-[12px]" style={{ color: "var(--dk-faint)" }}>{unit}</span>}
+      </span>
+    </label>
+  );
+}
+
+function Slider({
+  label,
+  hint,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  min: number;
+  max: number;
+  step: number;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block text-[12px] font-semibold tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
+      {label}
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 h-6 w-full" style={{ accentColor: "var(--dk-blue-deep)" }} />
+      <span className="block text-[11.5px] font-normal" style={{ color: "var(--dk-faint)" }}>{hint}</span>
+    </label>
+  );
+}
+
+/** ส่วนพับเก็บ — ของที่นาน ๆ แตะที */
+function More({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="group mt-4 rounded-xl" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-3 text-[12.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+        <span className="transition group-open:rotate-90">▸</span>
+        {title}
+      </summary>
+      <div className="space-y-3 px-3 pb-3">{children}</div>
+    </details>
+  );
+}
+
+/** เลือกตำแหน่งหูร้อยจากภาพ — จุดรอบชิ้นงาน */
+function RingPicker({ pos, onPick }: { pos: RingTab["position"]; onPick: (p: RingTab["position"]) => void }) {
+  const spots: [RingTab["position"], string][] = [
+    ["top-left", "left-0 top-0"],
+    ["top-center", "left-1/2 top-0 -translate-x-1/2"],
+    ["top-right", "right-0 top-0"],
+    ["left", "left-0 top-1/2 -translate-y-1/2"],
+    ["right", "right-0 top-1/2 -translate-y-1/2"],
+  ];
+  return (
+    <div className="relative h-[112px] w-[150px] shrink-0">
+      <div className="absolute inset-[18px] rounded-2xl" style={{ background: "var(--dk-sky)", boxShadow: "inset 0 0 0 1.5px var(--dk-sky-300)" }}>
+        <span className="grid h-full place-items-center text-[11px] font-semibold" style={{ color: "var(--dk-faint)" }}>ชิ้นงาน</span>
+      </div>
+      {spots.map(([id, cls]) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onPick(id)}
+          aria-pressed={pos === id}
+          aria-label={`หูร้อย${RING_LABEL[id]}`}
+          title={RING_LABEL[id]}
+          className={`absolute grid h-9 w-9 place-items-center rounded-full transition ${cls}`}
+          style={
+            pos === id
+              ? { background: "var(--dk-navy)", boxShadow: "0 0 0 3px var(--dk-sky)" }
+              : { background: "white", boxShadow: "inset 0 0 0 1.5px var(--dk-sky-300)" }
+          }
+        >
+          <span className="block h-2.5 w-2.5 rounded-full" style={{ background: pos === id ? "white" : "var(--dk-sky-300)" }} />
+        </button>
+      ))}
+    </div>
   );
 }
 
