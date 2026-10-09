@@ -1,6 +1,7 @@
 import "server-only";
 import type { Firestore } from "firebase-admin/firestore";
-import { uploadImage } from "@/lib/server/bot-kb";
+import { Readable } from "node:stream";
+import { uploadImage, uploadStream } from "@/lib/server/bot-kb";
 
 /**
  * 🖼 ดึงรูปที่ลูกค้าส่งใน LINE (log ขาเข้ามี messageId) จาก Messaging API → เก็บขึ้น Storage (chat-<uid>) → เขียน imageUrl กลับ log
@@ -12,7 +13,8 @@ export type CacheResult = { ok: true; url: string; cached: boolean } | { ok: fal
 
 const COL = "line-conversations";
 
-export async function cacheLineImage(db: Firestore, uid: string, logId: string): Promise<CacheResult> {
+/** opts.timeoutMs — เวลารวมดึง+เก็บ (ค่าเริ่มต้น รูป 15 วิ · ไฟล์ 40 วิ) · สคริปต์บนเครื่อง (scripts/cache-line-file.mts) ส่งค่าใหญ่ได้เพราะไม่ติดเพดาน Netlify 26 วิ */
+export async function cacheLineImage(db: Firestore, uid: string, logId: string, opts: { timeoutMs?: number } = {}): Promise<CacheResult> {
   if (!/^U[0-9a-f]{32}$/.test(uid) || !/^[A-Za-z0-9_-]{4,64}$/.test(logId)) return { ok: false, reason: "พารามิเตอร์ไม่ถูกต้อง", status: 400 };
   const ref = db.collection(COL).doc(uid).collection("log").doc(logId);
   const snap = await ref.get();
@@ -32,7 +34,7 @@ export async function cacheLineImage(db: Firestore, uid: string, logId: string):
   let res: Response;
   try {
     // ไฟล์งานใหญ่ (14 MB .ai) โหลดเกิน 15 วิ → เคย throw นอก try = 500 · ให้เวลาไฟล์ 40 วิ (Netlify maxDuration 26 — ไฟล์ใหญ่มากอาจไม่ทันบน production)
-    res = await fetch(`https://api-data.line.me/v2/bot/message/${mid}/content`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(isFile ? 40_000 : 15_000) });
+    res = await fetch(`https://api-data.line.me/v2/bot/message/${mid}/content`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(opts.timeoutMs ?? (isFile ? 40_000 : 15_000)) });
   } catch {
     return { ok: false, reason: "ดึงไฟล์จาก LINE ไม่ได้ (เน็ต/หมดเวลา)", status: 502 };
   }
@@ -44,6 +46,19 @@ export async function cacheLineImage(db: Firestore, uid: string, logId: string):
   if (!isFile && !type.startsWith("image/")) {
     await ref.set({ imageExpired: true, imageExpiredReason: `type-${type}` }, { merge: true }).catch(() => {});
     return { ok: false, reason: "ไม่ใช่ไฟล์รูป", status: 404 };
+  }
+  // 📎 ไฟล์งาน: สตรีม LINE → Storage ตรง ๆ (9 ต.ค. 69 20:40 — CARD - 4 ชิ้น.ai 111 MB เคยค้าง "ยังไม่ได้เก็บ" เพราะโหลดทั้งก้อนเข้า RAM ก่อนอัปแล้วไม่ทัน 26 วิ)
+  if (isFile && res.body) {
+    const fname = String(x.fileName ?? "").trim() || `line-${mid}.bin`;
+    const declared = Number(res.headers.get("content-length") ?? 0) || Number(x.fileSize ?? 0) || 0;
+    try {
+      const img = await uploadStream(`chat-${uid}`, fname, Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), type);
+      await ref.set({ imageUrl: img.url, imageCachedAt: new Date(), ...(declared ? { fileSize: declared } : {}) }, { merge: true });
+      return { ok: true, url: img.url, cached: false };
+    } catch (e) {
+      const aborted = /abort|timeout/i.test(String((e as Error)?.name ?? "") + String((e as Error)?.message ?? ""));
+      return { ok: false, reason: aborted ? "ไฟล์ใหญ่ เก็บไม่ทันเวลา (ลองใหม่ หรือดึงจากเครื่องด้วย npm run cache:line-file)" : "เก็บขึ้น Storage ไม่ได้", status: 502 };
+    }
   }
   let buf: Buffer;
   try {

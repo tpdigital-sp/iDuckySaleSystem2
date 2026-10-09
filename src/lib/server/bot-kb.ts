@@ -1,6 +1,8 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { getStorage } from "firebase-admin/storage";
+import { pipeline } from "node:stream/promises";
+import type { Readable } from "node:stream";
 import type { Firestore } from "firebase-admin/firestore";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { callGemini, geminiText } from "@/lib/server/ai-usage";
@@ -164,6 +166,25 @@ export type StoredImage = { url: string; storagePath: string };
  * อัปไฟล์ขึ้น Storage แล้วคืน URL แบบมี token (ทรงเดียวกับ getDownloadURL ของหน้าเดิม — เปิดได้โดยไม่ต้องล็อกอิน)
  * path: price-link-images/{linkId}/... (ลิงก์ราคา) · price-link-images/kb-{docId}/... (คลังความรู้) ตามของเดิม
  */
+/**
+ * 📎 อัปโหลดแบบสตรีม (ไฟล์ใหญ่จาก LINE เช่น .ai 100+ MB · 9 ต.ค. 69 20:40) — ไม่ต้องโหลดทั้งก้อนเข้า RAM และดาวน์โหลด/อัปโหลดทับซ้อนกัน
+ * ใช้ resumable upload ของ GCS (chunk) · ต้นทางสตรีมพังกลางทาง = pipeline โยน error ไฟล์ไม่ถูกเขียนครึ่งเดียว
+ */
+export async function uploadStream(folder: string, fileName: string, body: Readable, contentType: string): Promise<StoredImage> {
+  db();
+  const safeFolder = folder.replace(/[^\w\-ก-๙]/g, "_").slice(0, 60);
+  const safeName = fileName.replace(/[/\\?#%]/g, "_").slice(0, 100);
+  const storagePath = `price-link-images/${safeFolder}/${Date.now()}_${safeName}`;
+  const token = randomUUID();
+  const ws = getStorage()
+    .bucket(BUCKET)
+    .file(storagePath)
+    .createWriteStream({ contentType, metadata: { metadata: { firebaseStorageDownloadTokens: token } }, resumable: true });
+  await pipeline(body, ws);
+  const url = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`;
+  return { url, storagePath };
+}
+
 export async function uploadImage(folder: string, fileName: string, buf: Buffer, contentType: string): Promise<StoredImage> {
   db(); // ให้ initializeApp ทำงานก่อน
   const safeFolder = folder.replace(/[^\w\-ก-๙]/g, "_").slice(0, 60);

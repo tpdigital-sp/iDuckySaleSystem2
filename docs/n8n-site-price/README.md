@@ -411,3 +411,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 ### 9 ต.ค. 69 20:25 — ฟองไฟล์ของลูกค้าเป็นการ์ดแบบ LINE
 - เดิม: รายการ type `file` มี `imageUrl` = ที่เก็บไฟล์ → บล็อกรูปวาด `<img>` เปล่า 48px เหนือการ์ด · แก้: บล็อกรูปข้ามเมื่อ `m.file` มีค่า
 - `FileCard` ในหน้า chats: กล่องไอคอนนามสกุล (Ai/Ps/PDF/ZIP/…) · ชื่อไฟล์ตัวหนา · `Size:` · สถานะ "เก็บถาวรแล้ว" หรือ "ยังไม่ได้เก็บ · กดเพื่อดึงจาก LINE" (ไฟล์ >4MB ที่ยังดึงไม่สำเร็จ)
+
+### 9 ต.ค. 69 20:45 — ไฟล์ใหญ่จาก LINE ค้าง "ยังไม่ได้เก็บ" (CARD - 4 ชิ้น.ai 111 MB)
+- สาเหตุ: cacheLineImage โหลดทั้งก้อนเข้า RAM แล้วค่อยอัป → Netlify ตัดที่ 26 วิ ไม่ทัน (ไม่ติด imageExpired เพราะไม่ได้ผิดที่ LINE)
+- แก้: ไฟล์ (type file) สตรีม LINE → Storage ตรง (`uploadStream` ใน bot-kb.ts · resumable) · `cacheLineImage(db, uid, log, { timeoutMs })`
+- ไฟล์ 100 MB+ ก็ยังไม่ทัน 26 วิ (วัดจากเครื่องร้าน 116 MB = 77 วิ) → `npm run cache:line-file` ไล่รายการที่ยังไม่มี imageUrl ย้อนหลัง 14 วัน (หรือระบุ `U… <logId>`) · การ์ดในแชทขึ้น "ยังไม่ได้เก็บ · กดเพื่อดึงจาก LINE" = ให้รันสคริปต์นี้
