@@ -125,6 +125,31 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     if (prev && String(prev.text).trim().length >= 6) query = fixTypos(String(prev.text).trim().slice(0, 500));
   }
 
+  // 🔢 9 ต.ค. 69 13:55 คำถามขอรายละเอียดเป็นข้อ "1. ไม่ใส่ถุง — ฿85/แผ่น 2. ถุงผ้า 10×10 ซม. — ฿170/แผ่น" → ลูกค้าตอบ "2" / "ข้อ 2" / "เอา 2 ค่ะ"
+  // = เลือกข้อนั้น ไม่ใช่จำนวน 2 ชิ้น → หาบรรทัดข้อนั้นในข้อความล่าสุดของบอท + หัว "แผ่นหินน้ำหอม — สั่ง 500 แผ่น" แล้วประกอบคำถามใหม่
+  // ("แผ่นหินน้ำหอม ถุงผ้า 10x10 ซม. 500 แผ่น ราคาเท่าไหร่") · ข้อความบอทไม่มีรายการข้อ = ปล่อยเป็นจำนวนตามเดิม
+  // พิมพ์ชื่อแบบสั้น ๆ แทนเลข ("ถุงผ้า 11x13" "ถุงหูรูด") ก็จับกับบรรทัดข้อเดียวกัน — ไม่งั้น "ถุงผ้า" หลุดไปเมนูถุงผ้าแคนวาส
+  const numPick = query.match(/^(?:ข้อ|เอา|เลือก|แบบ|ขอ)?\s*(\d{1,2})\s*(?:ค่ะ|คะ|ครับ|นะคะ|เลย|จ้า|ค่า|\s)*$/);
+  const shortReply = query.length <= 40 && !/ราคา|เท่าไหร่|กี่บาท|\d{3,}/.test(query);
+  if ((numPick || shortReply) && Array.isArray(body.history)) {
+    const bot = [...(body.history as { role?: string; text?: string }[])]
+      .reverse()
+      .find((t) => t && /assistant|bot|shop|admin/i.test(String(t.role ?? "")) && /(^|\n)\s*1\.\s/.test(String(t.text ?? "")));
+    const botLines = String(bot?.text ?? "").split("\n").map((l) => l.trim());
+    const qn = norm(query.replace(/(เอา|เลือก|ขอ|แบบ|ค่ะ|คะ|ครับ|นะคะ|เลย|จ้า|ค่า)/g, ""));
+    const line = numPick
+      ? botLines.find((l) => new RegExp(`^${numPick[1]}\\.\\s+\\S`).test(l))
+      : qn.length >= 3
+        ? botLines.find((l) => /^\d{1,2}\.\s+\S/.test(l) && norm(l.replace(/^\d{1,2}\.\s+/, "").replace(/\s+—.*$/, "")).includes(qn))
+        : undefined;
+    if (line) {
+      // คืนค่าที่สวยงาม (10×10 ซม. · 3 mm) ให้ตรงกับค่าในตาราง (10x10 · 3mm) เพื่อให้ pickColumns จับคอลัมน์ได้
+      const choice = line.replace(/^\d{1,2}\.\s+/, "").replace(/\s+—.*$/, "").trim().replace(/×/g, "x").replace(/(\d)\s+(cm|mm)\b/gi, "$1$2");
+      const hm = botLines.map((l) => l.match(/^(.+?)\s+—\s+สั่ง\s+([\d,]+)\s+(\S+)/)).find(Boolean);
+      query = hm ? `${hm[1]} ${choice} ${hm[2]} ${hm[3]} ราคาเท่าไหร่` : `${choice} ราคาเท่าไหร่`;
+    }
+  }
+
   const qtyRaw = Number(body.qty ?? body.quantity ?? 0);
   let qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : parseQty(query);
 

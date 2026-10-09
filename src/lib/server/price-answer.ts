@@ -318,6 +318,7 @@ async function catalog(): Promise<Lite[]> {
 export function norm(s: string): string {
   return s
     .toLowerCase()
+    .replace(/×/g, "x") // 9 ต.ค. 69 ลูกค้า/การ์ดพิมพ์ "10×10" แต่ค่าในตารางเป็น "10x10" → ถือว่าเท่ากัน
     .replace(/[\s​]+/g, "")
     .replace(/[()[\]{}/,._+*'"|·–—-]/g, "");
 }
