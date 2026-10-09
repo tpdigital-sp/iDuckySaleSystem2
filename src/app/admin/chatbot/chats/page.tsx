@@ -245,10 +245,15 @@ function Chats() {
 
   // 🏷📝 ป้าย + โน้ต (เจ้าของร้าน 9 ต.ค. 69 16:20 "ทำ note ติด tag ได้") — ฟิลด์เดียวกับหน้า ลูกค้า LINE (adminTag/adminNote) ผ่าน manage API
   const [noteOpen, setNoteOpen] = useState(false);
+  // 🔍 17:05 "กดขยายดูภาพใหญ่ + ดาวน์โหลดได้"
+  const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
+  // เปลี่ยนห้อง = ปิดแผง · โน้ตในฐานเปลี่ยน (บันทึก/โพล) = ซิงก์ร่าง แต่ไม่ปิดแผง
   useEffect(() => {
     setNoteOpen(false);
+  }, [sel]);
+  useEffect(() => {
     setNoteDraft(detail?.adminNote ?? "");
   }, [sel, detail?.adminNote]);
   const saveTag = useCallback(
@@ -272,7 +277,6 @@ function Chats() {
         toast(d.saved || "บันทึกโน้ตแล้ว");
         setRows((rs) => rs.map((x) => (x.id === id ? { ...x, adminNote: note } : x)));
         setDetail((x) => (x && x.id === id ? { ...x, adminNote: note } : x));
-        setNoteOpen(false);
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
       } finally {
@@ -464,72 +468,14 @@ function Chats() {
                   {detail?.lastSeen ? ` · ล่าสุด ${ago(detail.lastSeen)}` : ""}
                 </p>
               </div>
-              {canReply && detail ? (
-                <IconBtn onClick={() => setNoteOpen((v) => !v)} title="ป้าย / โน้ตลูกค้าคนนี้" active={noteOpen}>
-                  📝
-                </IconBtn>
-              ) : null}
-              {canReply && detail?.pausedUntil ? (
-                <IconBtn onClick={() => void wakeBot(detail.id)} title="ให้บอทกลับมาตอบคนนี้ทันที">
-                  ▶
-                </IconBtn>
-              ) : null}
-              {can("orders.edit") && detail ? (
-                <IconBtn onClick={() => void toggleBot(detail.id, !detail.botAllowed)} title={detail.botAllowed ? "ปิดบอทคนนี้ — แอดมินตอบเอง" : "เปิดให้บอทตอบคนนี้"} active={detail.botAllowed}>
-                  🤖
+              {/* 🤖 17:05 เจ้าของร้าน "กดแล้วควรแสดงอะไรที่แตกต่าง" — สวิตช์เป็นเม็ดยาบอกสถานะชัด: เขียว "บอทตอบ: เปิด" / เทา "บอทตอบ: ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) */}
+              {detail ? <BotPill detail={detail} canToggle={can("orders.edit") || canReply} onToggle={() => void toggleBot(detail.id, !detail.botAllowed)} onWake={() => void wakeBot(detail.id)} /> : null}
+              {detail ? (
+                <IconBtn onClick={() => setNoteOpen((v) => !v)} title="ข้อมูลลูกค้า · ป้าย · โน้ต" active={noteOpen}>
+                  ℹ️
                 </IconBtn>
               ) : null}
             </div>
-
-            {/* 🏷📝 แผงป้าย+โน้ต (ใต้หัวห้อง) — โน้ตที่บันทึกแล้วโชว์เป็นแถบเหลืองเสมอ */}
-            {detail && (noteOpen || detail.adminNote) ? (
-              <div className="border-b px-3 py-2 md:px-4" style={{ borderColor: "var(--dk-hair)", background: "#FFFBEA" }}>
-                {noteOpen ? (
-                  <>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[12px] font-bold" style={{ color: "#8A5A00" }}>ป้าย:</span>
-                      {CUSTOMER_TAGS.map((t) => (
-                        <button
-                          key={t.key}
-                          type="button"
-                          onClick={() => void saveTag(detail.id, detail.adminTag === t.key ? "" : t.key)}
-                          className="min-h-[30px] rounded-full px-2.5 text-[12px] font-bold transition"
-                          style={detail.adminTag === t.key ? { background: t.tone, color: "white" } : { background: t.wash, color: t.ink }}
-                        >
-                          {t.dot} {t.label}
-                        </button>
-                      ))}
-                      {detail.adminTag ? (
-                        <button type="button" onClick={() => void saveTag(detail.id, "")} className="text-[12px] underline" style={{ color: "var(--dk-faint)" }}>
-                          ถอดป้าย
-                        </button>
-                      ) : null}
-                    </div>
-                    <textarea
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                      rows={2}
-                      placeholder="โน้ตภายใน (ลูกค้าไม่เห็น) เช่น ที่อยู่/งานที่คุยค้าง/ข้อควรระวัง"
-                      className="mt-2 w-full resize-y rounded-xl border px-3 py-2 text-[13.5px] outline-none"
-                      style={{ borderColor: "#F0D48A", background: "white" }}
-                    />
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <button type="button" onClick={() => void saveNote(detail.id, noteDraft.trim())} disabled={noteSaving} className="dkb-btn dkb-btn-navy dkb-btn-sm min-h-[36px]">
-                        {noteSaving ? "กำลังบันทึก…" : "บันทึกโน้ต"}
-                      </button>
-                      <button type="button" onClick={() => { setNoteOpen(false); setNoteDraft(detail.adminNote ?? ""); }} className="text-[13px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
-                        ปิด
-                      </button>
-                      <span className="ml-auto text-[11px]" style={{ color: "var(--dk-faint)" }}>ป้าย/โน้ตชุดเดียวกับหน้า ลูกค้า LINE</span>
-                    </div>
-                  </>
-                ) : (
-                  <button type="button" onClick={() => setNoteOpen(true)} className="w-full text-left text-[12.5px]" style={{ color: "#5B4300" }}>
-                    📝 {detail.adminNote}
-                  </button>
-                )}
-              </div>
-            ) : null}
 
             {/* ข้อความ */}
             <div ref={threadRef} className="flex-1 overflow-y-auto px-3 py-3 md:px-6" style={{ background: "#EEF2F7" }}>
@@ -575,8 +521,10 @@ function Chats() {
                           }
                         >
                           {m.imageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={m.imageUrl} alt="" className="mb-1 max-h-64 rounded-lg" />
+                            <button type="button" onClick={() => setLightbox({ url: m.imageUrl as string, name: `line-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} className="mb-1 block" title="กดเพื่อดูรูปใหญ่ / ดาวน์โหลด">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={m.imageUrl} alt="" className="max-h-64 rounded-lg transition hover:opacity-90" />
+                            </button>
                           ) : null}
                           {m.card ? (
                             <a href={m.card.url} target="_blank" rel="noreferrer" className="mb-1 block rounded-lg border bg-white/70 px-2 py-1 text-[12.5px] underline" style={{ borderColor: "#A8DFB3" }}>
@@ -612,6 +560,24 @@ function Chats() {
           </>
         )}
       </section>
+
+      {/* ℹ️ แผงข้อมูลลูกค้า (ขวา) — เจ้าของร้าน 17:05 "ต้องแสดงด้านขวามือ" เหมือน LINE OA Manager · เดสก์ท็อปเป็นคอลัมน์ที่ 3 · มือถือเป็นแผ่นเลื่อนเต็มจอ */}
+      {detail && noteOpen ? (
+        <InfoPanel
+          detail={detail}
+          canReply={canReply}
+          canToggle={can("orders.edit") || canReply}
+          noteDraft={noteDraft}
+          setNoteDraft={setNoteDraft}
+          noteSaving={noteSaving}
+          onSaveNote={() => void saveNote(detail.id, noteDraft.trim())}
+          onTag={(t) => void saveTag(detail.id, t)}
+          onToggle={() => void toggleBot(detail.id, !detail.botAllowed)}
+          onWake={() => void wakeBot(detail.id)}
+          onClose={() => setNoteOpen(false)}
+        />
+      ) : null}
+      {lightbox ? <Lightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} toast={toast} /> : null}
       {toastNode}
     </div>
   );
@@ -889,6 +855,144 @@ function Composer({
       <p className="px-3 pb-1.5 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>
         ส่งแล้วบอทพักให้คนนี้ 30 นาที (▶ ปลุกได้ที่หัวห้อง) · ข้อความจากหน้านี้นับโควตา LINE
       </p>
+    </div>
+  );
+}
+
+
+/** 🤖 สวิตช์บอทรายคนแบบอ่านสถานะออก (กดสลับ) — เขียว = บอทตอบ · เทา = ปิด (แอดมินตอบ) · ม่วง = พักชั่วคราว */
+function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canToggle: boolean; onToggle: () => void; onWake: () => void }) {
+  if (detail.pausedUntil) {
+    return (
+      <button type="button" onClick={onWake} disabled={!canToggle} title="บอทพักเพราะแอดมินตอบอยู่ — กดเพื่อปลุกให้ตอบต่อทันที" className="flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold transition active:scale-95" style={{ background: "var(--dk-lilac-wash, #EFE9FB)", color: "var(--dk-lilac-ink, #5B21B6)" }}>
+        ⏸ พักถึง {fmtTime(detail.pausedUntil)} <span className="rounded-full bg-white/70 px-1.5 text-[11px]">▶ ปลุก</span>
+      </button>
+    );
+  }
+  const on = detail.botAllowed;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={!canToggle}
+      title={on ? "บอทกำลังตอบคนนี้ — กดเพื่อปิด (แอดมินตอบเอง)" : "บอทไม่ตอบคนนี้ — กดเพื่อเปิดให้บอทตอบ"}
+      className="flex min-h-[36px] items-center gap-1.5 rounded-full pl-2 pr-3 text-[12.5px] font-bold transition active:scale-95"
+      style={on ? { background: "#C9F2D0", color: "#0E7A3A" } : { background: "#E5E7EB", color: "#4B5563" }}
+    >
+      <span className="grid h-6 w-6 place-items-center rounded-full text-[13px]" style={{ background: on ? LINE_GREEN : "#9CA3AF", color: "white" }}>🤖</span>
+      {on ? "บอทตอบ: เปิด" : "บอทตอบ: ปิด"}
+    </button>
+  );
+}
+
+/** ℹ️ แผงข้อมูลลูกค้าด้านขวา — ชื่อ/รูป/ไอดี · สถานะบอท · ป้าย · โน้ตภายใน (ฟิลด์เดียวกับหน้า ลูกค้า LINE) */
+function InfoPanel({
+  detail, canReply, canToggle, noteDraft, setNoteDraft, noteSaving, onSaveNote, onTag, onToggle, onWake, onClose,
+}: {
+  detail: Row; canReply: boolean; canToggle: boolean; noteDraft: string; setNoteDraft: (v: string) => void; noteSaving: boolean;
+  onSaveNote: () => void; onTag: (t: CustomerTag | "") => void; onToggle: () => void; onWake: () => void; onClose: () => void;
+}) {
+  const body = (
+    <div className="flex h-full flex-col overflow-y-auto">
+      <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--dk-hair)" }}>
+        <span className="text-[14px] font-extrabold">ข้อมูลลูกค้า</span>
+        <button type="button" onClick={onClose} aria-label="ปิด" className="ml-auto grid h-9 w-9 place-items-center rounded-full text-lg hover:bg-black/[0.05]">✕</button>
+      </div>
+      <div className="flex flex-col items-center px-4 pt-4 text-center">
+        <Avatar src={detail.pictureUrl} size={72} />
+        <p className="mt-2 text-[16px] font-extrabold">{nameOf(detail)}</p>
+        {detail.adminAlias && detail.displayName ? <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>ชื่อ LINE: {detail.displayName}</p> : null}
+        <p className="mt-1 break-all font-mono text-[10.5px]" style={{ color: "var(--dk-faint)" }}>{detail.id}</p>
+        <div className="mt-2 flex flex-wrap justify-center gap-1">
+          {detail.adminTag ? <TagChip k={detail.adminTag} /> : null}
+          <Chip tone={detail.scope === "new" ? "mint" : "sky"}>{detail.scope === "new" ? "🆕 ลูกค้าใหม่" : "👤 ลูกค้าเก่า"}</Chip>
+          {detail.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
+        </div>
+      </div>
+      <dl className="mx-4 mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-xl p-3 text-[12.5px]" style={{ background: "#F6F8FB" }}>
+        <dt style={{ color: "var(--dk-faint)" }}>ทักครั้งแรก</dt><dd>{detail.createdAt ? fmtDay(detail.createdAt) : "—"}</dd>
+        <dt style={{ color: "var(--dk-faint)" }}>ล่าสุด</dt><dd>{detail.lastSeen ? ago(detail.lastSeen) : "—"}</dd>
+        <dt style={{ color: "var(--dk-faint)" }}>บอทคุย</dt><dd>{detail.messageCount ? `${detail.messageCount} ข้อความ` : "—"}</dd>
+        <dt style={{ color: "var(--dk-faint)" }}>แอดมินตอบล่าสุด</dt><dd>{detail.lastAdminAt ? ago(detail.lastAdminAt) : "—"}</dd>
+      </dl>
+      <div className="mx-4 mt-3">
+        <p className="mb-1 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>บอท</p>
+        <BotPill detail={detail} canToggle={canToggle} onToggle={onToggle} onWake={onWake} />
+      </div>
+      <div className="mx-4 mt-3">
+        <p className="mb-1 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>ป้ายความเร่งด่วน</p>
+        <div className="flex flex-wrap gap-1.5">
+          {CUSTOMER_TAGS.map((t) => (
+            <button key={t.key} type="button" disabled={!canReply} onClick={() => onTag(detail.adminTag === t.key ? "" : t.key)} className="min-h-[32px] rounded-full px-2.5 text-[12px] font-bold transition" style={detail.adminTag === t.key ? { background: t.tone, color: "white" } : { background: t.wash, color: t.ink }}>
+              {t.dot} {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mx-4 mb-4 mt-3">
+        <p className="mb-1 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>โน้ตภายใน (ลูกค้าไม่เห็น)</p>
+        <textarea value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} disabled={!canReply} rows={5} placeholder="เช่น ที่อยู่ส่งของ / งานที่คุยค้าง / ข้อควรระวัง" className="w-full resize-y rounded-xl border px-3 py-2 text-[13.5px] outline-none" style={{ borderColor: "#F0D48A", background: "#FFFBEA" }} />
+        {canReply ? (
+          <button type="button" onClick={onSaveNote} disabled={noteSaving || noteDraft.trim() === (detail.adminNote ?? "")} className="dkb-btn dkb-btn-navy dkb-btn-sm mt-1.5 min-h-[36px] disabled:opacity-40">
+            {noteSaving ? "กำลังบันทึก…" : "บันทึกโน้ต"}
+          </button>
+        ) : null}
+        <p className="mt-2 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>ป้าย/โน้ตชุดเดียวกับหน้า ลูกค้า LINE</p>
+      </div>
+    </div>
+  );
+  return (
+    <>
+      <aside className="hidden w-[300px] shrink-0 border-l bg-white lg:block" style={{ borderColor: "var(--dk-hair)" }}>{body}</aside>
+      <div className="fixed inset-0 z-50 bg-white lg:hidden">{body}</div>
+    </>
+  );
+}
+
+/** 🔍 ดูรูปใหญ่ + ดาวน์โหลด — ESC/คลิกพื้นหลังปิด · ดาวน์โหลดผ่าน blob (Storage คนละโดเมน แค่ download attr ไม่พอ) */
+function Lightbox({ url, name, onClose, toast }: { url: string; name: string; onClose: () => void; toast: (t: string, bad?: boolean) => void }) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  const download = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const ext = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name.replace(/\.jpg$/, "") + "." + ext;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch {
+      window.open(url, "_blank", "noopener");
+      toast("ดาวน์โหลดตรงไม่ได้ เปิดรูปในแท็บใหม่ให้แทน", true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-[70] flex flex-col" style={{ background: "rgba(0,0,0,.88)" }} onClick={onClose} role="dialog" aria-modal="true" aria-label="ดูรูป">
+      <div className="flex items-center gap-2 px-3 py-2" onClick={(e) => e.stopPropagation()}>
+        <span className="truncate text-[13px] text-white/80">{name}</span>
+        <button type="button" onClick={() => void download()} disabled={busy} className="ml-auto rounded-full bg-white px-3.5 py-1.5 text-[13px] font-bold" style={{ color: "var(--dk-navy)" }}>
+          {busy ? "กำลังโหลด…" : "⬇ ดาวน์โหลด"}
+        </button>
+        <a href={url} target="_blank" rel="noreferrer" className="rounded-full bg-white/15 px-3.5 py-1.5 text-[13px] font-bold text-white">เปิดแท็บใหม่</a>
+        <button type="button" onClick={onClose} aria-label="ปิด" className="grid h-9 w-9 place-items-center rounded-full bg-white/15 text-lg text-white">✕</button>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center p-3" onClick={(e) => e.stopPropagation()}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt={name} className="max-h-full max-w-full rounded-lg object-contain" />
+      </div>
     </div>
   );
 }
