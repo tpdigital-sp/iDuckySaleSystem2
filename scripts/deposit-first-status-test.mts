@@ -3,7 +3,7 @@
  * (OD-260928-1506 · 30 ก.ย. 69) รัน: npm run check:deposit-first
  */
 import assert from "node:assert/strict";
-import { amountDueNow, hasUnpaidBalance, orderBalance, orderFullyPaid, orderStatusLabel, receiveDepositFirst, type Order } from "../src/lib/admin-data";
+import { amountDueNow, depositInstallments, hasUnpaidBalance, orderBalance, orderFullyPaid, orderStatusLabel, receiveDepositFirst, type Order } from "../src/lib/admin-data";
 
 const AT = "2026-09-30T05:51:52.042Z";
 const base = (over: Partial<Order> = {}): Order =>
@@ -85,5 +85,29 @@ const ok = (name: string) => console.log(`  ✓ ${++n} ${name}`);
   const o = receiveDepositFirst(base({ deposit: { amount: 99999 } }), AT);
   assert.equal(o.paidTotal, 30923);
   ok("มัดจำเกินบิล = ตัดที่ยอดบิล");
+}
+// 8) 💸 ลูกค้าโอนงวดแรกขาด (OD-261007-2540) → นับเท่าที่ได้ · ส่วนขาดยกไปงวด 2 · หัก ณ ที่จ่ายงวดแรกคงเดิม
+{
+  const b = base();
+  const before = depositInstallments(b)!;
+  const net = before.firstNet - 1313; // เงินเข้าจริงขาด 1,313
+  const o = receiveDepositFirst(b, AT, net + before.firstWht);
+  const inst = depositInstallments(o)!;
+  assert.equal(o.deposit?.firstShort, 1313);
+  assert.equal(o.deposit?.amount, 15461.5);
+  assert.equal(inst.firstWht, before.firstWht);
+  assert.equal(inst.firstNet, Math.round(net * 100) / 100);
+  assert.equal(inst.secondNet, Math.round((before.secondNet + 1313) * 100) / 100);
+  assert.equal(orderBalance(o), Math.round((before.second + 1313) * 100) / 100);
+  assert.equal(amountDueNow(o), orderBalance(o));
+  assert.equal(o.status, "ชำระแล้ว");
+  ok("โอนขาด = งวด 2 รับส่วนที่ขาดเพิ่ม");
+}
+// 9) กรอกยอดเท่า/เกินงวด → ไม่ติดธงขาด
+{
+  const o = receiveDepositFirst(base(), AT, 15461.5);
+  assert.equal(o.deposit?.firstShort, undefined);
+  assert.equal(o.paidTotal, 15461.5);
+  ok("กรอกครบ = ไม่มี firstShort");
 }
 console.log(`\n✅ deposit-first ผ่าน ${n} เคส`);

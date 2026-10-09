@@ -1484,6 +1484,8 @@ export default function AdminOrderDetailPage() {
   const [slipRechecking, setSlipRechecking] = useState(false);
   /** กำลังลากไฟล์ค้างอยู่เหนือช่องแนบสลิปงวดที่ 2 — ไว้ไฮไลต์ช่องรับ */
   const [slipDragOver, setSlipDragOver] = useState(false);
+  /** ➗💸 ลูกค้าโอนมัดจำงวดแรกขาด — ช่องกรอกยอดที่ได้รับจริง (null = ปิดช่อง) */
+  const [depShortInput, setDepShortInput] = useState<string | null>(null);
   const adminSlipInput = useRef<HTMLInputElement | null>(null);
   /** แนบลาย "ของแถม" แทนลูกค้า — promoId ที่กำลังอัปโหลด (null = ว่าง) */
   const [giftArtBusy, setGiftArtBusy] = useState<string | null>(null);
@@ -3527,9 +3529,20 @@ export default function AdminOrderDetailPage() {
     applyOrder(withLog({ ...order, deposit: undefined }, actor, "ยกเลิกโหมดมัดจำ 50%"));
   }
 
-  /** แอดมินตรวจสลิปมัดจำเองแล้วกดยืนยัน (กรณี SlipOK ไม่ผ่าน/โอนช่องทางอื่น) */
-  async function confirmDepositFirst() {
+  /**
+   * แอดมินตรวจสลิปมัดจำเองแล้วกดยืนยัน (กรณี SlipOK ไม่ผ่าน/โอนช่องทางอื่น)
+   * receivedNet = เงินที่เข้าบัญชีจริง (ลูกค้าโอนขาด) — ส่วนที่ขาดยกไปรวมงวดที่ 2 (OD-261007-2540)
+   */
+  async function confirmDepositFirst(receivedNet?: number) {
     if (!order?.deposit || order.deposit.firstPaidAt) return;
+    const instS = depositInstallments(order);
+    // เงินเข้าจริง → ยอดตามบิล: บวกภาษีที่ลูกค้าหักของงวดแรกคืน (ใบ 50 ทวิ ออกตามยอดงวดเต็ม)
+    const received = receivedNet != null && instS ? Math.round((receivedNet + instS.firstWht) * 100) / 100 : undefined;
+    const short = received != null && instS ? Math.round((instS.first - received) * 100) / 100 : 0;
+    if (receivedNet != null && (!(receivedNet > 0) || short < 0.01)) {
+      setErr(!(receivedNet > 0) ? "กรอกยอดที่ได้รับจริงก่อน" : "ยอดที่กรอกไม่น้อยกว่ายอดงวดแรก — กดปุ่มยืนยันรับมัดจำปกติได้เลย");
+      return;
+    }
     // ทางนี้ก็ดันสถานะเป็น "ชำระแล้ว" เหมือนกัน — ไม่มีสลิปต้องเตือนให้เห็นก่อน
     const noSlip = !order.slipPath && !order.slipUrl;
     // ➗ ลูกค้าหัก ณ ที่จ่าย → เงินเข้าจริงงวดแรกน้อยกว่ายอดมัดจำ (ส่วนต่างตามใบ 50 ทวิ) บอกไว้ในกล่องยืนยันจะได้เทียบเงินเข้าถูก
@@ -3538,8 +3551,14 @@ export default function AdminOrderDetailPage() {
     if (
       !(await askConfirm({
         icon: "💰",
-        title: `ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว?`,
+        title:
+          short > 0
+            ? `ยืนยันรับมัดจำ ${formatPrice(receivedNet!)} (ขาด ${formatPrice(short)})?`
+            : `ยืนยันว่าได้รับมัดจำ ${formatPrice(order.deposit.amount)} แล้ว?`,
         detail:
+          (short > 0
+            ? `ลูกค้าโอนขาด ${formatPrice(short)} จากที่ต้องโอน ${formatPrice(instS!.firstNet)} — ระบบเริ่มงานได้เลย และยกส่วนที่ขาดไปรวมงวดที่ 2\nงวดที่ 2 จะเป็น ${formatPrice(instS!.secondNet + short)}${instS!.wht > 0 ? " (โอนจริงหลังหัก ณ ที่จ่าย)" : ""}\n\n`
+            : "") +
           (noSlip
             ? '⚠️ ออเดอร์นี้ยังไม่มีสลิปแนบ — ถ้ามีสลิป ให้กดยกเลิกแล้วแนบที่ช่อง "🧾 หลักฐานการโอน" ก่อน\nยืนยันเลยก็ได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป'
             : "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย") + whtLine,
@@ -3552,12 +3571,15 @@ export default function AdminOrderDetailPage() {
     applyOrder(
       withLog(
         // ตัวเดียวกับที่เซิร์ฟเวอร์ใช้ตอนเมนูเปลี่ยนสถานะ — firstPaidAt · paidTotal = ยอดมัดจำ · ใบหน้าประตูการเงินไป "ชำระแล้ว"
-        receiveDepositFirst(order, now),
+        receiveDepositFirst(order, now, received),
         actor,
-        "ยืนยันรับมัดจำ 50%",
-        `ยอด ${order.deposit.amount} บาท${inst && inst.wht > 0 ? ` (โอนจริง ${inst.firstNet} หลังหัก ณ ที่จ่าย)` : ""}${noSlip ? " · ไม่มีสลิปแนบ" : ""}`
+        short > 0 ? "ยืนยันรับมัดจำ 50% (โอนขาด)" : "ยืนยันรับมัดจำ 50%",
+        short > 0
+          ? `ได้รับจริง ${receivedNet} บาท จากที่ต้องโอน ${instS!.firstNet} — ขาด ${short} บาท ยกไปรวมงวดที่ 2${noSlip ? " · ไม่มีสลิปแนบ" : ""}`
+          : `ยอด ${order.deposit.amount} บาท${inst && inst.wht > 0 ? ` (โอนจริง ${inst.firstNet} หลังหัก ณ ที่จ่าย)` : ""}${noSlip ? " · ไม่มีสลิปแนบ" : ""}`
       )
     );
+    setDepShortInput(null);
   }
 
   /** แอดมินยืนยันว่าเก็บยอดคงเหลือครบแล้ว — ปลดล็อกพิมพ์เอกสาร/ยิงเลขพัสดุ */
@@ -4946,7 +4968,7 @@ export default function AdminOrderDetailPage() {
                               label: hasWht && whole ? "ค้างงวดที่ 2 · โอนจริง" : "ค้างงวดที่ 2",
                               num: hasWht && whole ? inst!.secondNet : due,
                               hot: true,
-                              sub: `${whole ? grossNote(inst!.second) : ""}ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(dep.amount)}`,
+                              sub: `${whole ? grossNote(inst!.second) : ""}ยอดรวม ${formatPrice(total)} · รับแล้ว ${formatPrice(inst!.first)}`,
                             };
                           })()
                         : order.paidTotal != null && total - order.paidTotal > 0
@@ -8769,12 +8791,14 @@ export default function AdminOrderDetailPage() {
                    * งวดที่จบแล้วหุบเป็นบรรทัดเงียบสีจาง มี ✓ กับเวลารับเงินพอ (งานค้างเด่นกว่างานจบเสมอ)
                    */
                   const dep = order.deposit;
-                  const balance = Math.max(0, orderTotal(order) - dep.amount);
                   const phase: "first" | "balance" | "done" = !dep.firstPaidAt ? "first" : !dep.settledAt ? "balance" : "done";
                   // ➗ ลูกค้าหัก ณ ที่จ่าย: เลขใหญ่ของงวด = "โอนจริง" (เลขที่ต้องเทียบเงินเข้าบัญชี ตรงกับ "ยอดชำระ" ในใบของ FlowAccount)
                   // ยอดงวดรวม VAT + ยอดหักเป็นบรรทัดรอง — เจ้าของร้านสั่ง 11 ก.ย. 69 "โอนจริงมันควรเด่นชัด"
                   const inst = depositInstallments(order)!;
                   const hasWht = inst.wht > 0;
+                  // งวดที่ 2 = ยอดรวม − งวดแรกที่รับจริง (ลูกค้าโอนขาด → ส่วนที่ขาดรวมมาที่นี่ · dep.firstShort)
+                  const balance = inst.second;
+                  const short = dep.firstShort ?? 0;
                   const amountBlock = (gross: number, net: number, wht: number, hot: boolean, hotCls: string) => (
                     <div className="flex shrink-0 flex-col items-end">
                       <span className={hot ? hotCls : "text-xs font-bold tabular-nums text-slate-400"}>{formatPrice(hasWht ? net : gross)}</span>
@@ -8818,9 +8842,12 @@ export default function AdminOrderDetailPage() {
                           ) : (
                             dep.firstPaidAt && <p className="text-[10px] text-slate-400">{thDT(dep.firstPaidAt)}</p>
                           )}
+                          {short > 0 && (
+                            <p className="text-[10px] font-semibold text-amber-700">โอนขาด {formatPrice(short)} → ยกไปรวมงวดที่ 2</p>
+                          )}
                         </div>
                         {amountBlock(
-                          dep.amount,
+                          inst.first,
                           inst.firstNet,
                           inst.firstWht,
                           phase === "first",
@@ -8833,7 +8860,7 @@ export default function AdminOrderDetailPage() {
                       <div className={`flex items-center justify-between gap-3 px-3 ${phase === "balance" ? "py-2.5" : "py-2"}`}>
                         <div className="min-w-0">
                           <p className={phase === "balance" ? "text-[13px] font-bold text-rose-700" : rowQuiet}>
-                            งวดที่ 2 · อีก 50% หลัง{phase === "done" ? " ✓ รับแล้ว" : ""}
+                            งวดที่ 2 · อีก 50% หลัง{short > 0 ? ` + ส่วนที่ขาด ${formatPrice(short)}` : ""}{phase === "done" ? " ✓ รับแล้ว" : ""}
                           </p>
                           {phase === "balance" ? (
                             <p className="text-[10px] font-semibold text-rose-500">เก็บให้ครบก่อนจัดส่ง</p>
@@ -8937,7 +8964,23 @@ export default function AdminOrderDetailPage() {
                                 {mayMarkPaid && (
                                   <button
                                     type="button"
-                                    onClick={confirmDepositFirst}
+                                    onClick={() =>
+                                      setDepShortInput((v) =>
+                                        v != null ? null : order.slipVerify?.amount && order.slipVerify.amount < inst.firstNet ? String(order.slipVerify.amount) : ""
+                                      )
+                                    }
+                                    title="ลูกค้าโอนมาไม่ครบยอดงวดแรก — กรอกยอดที่ได้รับจริง ส่วนที่ขาดยกไปงวดที่ 2"
+                                    className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                                      depShortInput != null ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    โอนขาด?
+                                  </button>
+                                )}
+                                {mayMarkPaid && (
+                                  <button
+                                    type="button"
+                                    onClick={() => confirmDepositFirst()}
                                     className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700 active:scale-[.98]"
                                   >
                                     ยืนยันรับมัดจำ <span className="tabular-nums">{formatPrice(hasWht ? inst.firstNet : dep.amount)}</span>
@@ -8957,6 +9000,49 @@ export default function AdminOrderDetailPage() {
                               </button>
                             )}
                           </div>
+                          {/* 💸 ลูกค้าโอนงวดแรกขาด — กรอกเงินที่เข้าจริง ส่วนที่ขาดยกไปงวดที่ 2 (OD-261007-2540) */}
+                          {mayEdit && mayMarkPaid && phase === "first" && depShortInput != null && (() => {
+                            const got = Number(depShortInput.replace(/[,\s฿]/g, ""));
+                            const valid = depShortInput.trim() !== "" && Number.isFinite(got) && got > 0;
+                            const miss = valid ? Math.round((inst.firstNet - got) * 100) / 100 : 0;
+                            return (
+                              <div className="mt-2 rounded-lg bg-amber-50 p-2.5 ring-1 ring-amber-200">
+                                <label className="block text-[11px] font-bold text-amber-900">
+                                  ยอดที่ได้รับจริง{hasWht ? " (เงินเข้าบัญชี หลังหัก ณ ที่จ่าย)" : ""} — ต้องโอน {formatPrice(inst.firstNet)}
+                                </label>
+                                <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    autoFocus
+                                    value={depShortInput}
+                                    onChange={(e) => setDepShortInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && valid && miss >= 0.01) void confirmDepositFirst(got);
+                                      if (e.key === "Escape") setDepShortInput(null);
+                                    }}
+                                    placeholder="เช่น 63024"
+                                    className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-right text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-2 focus:ring-amber-300 sm:w-40"
+                                  />
+                                  <p className="flex-1 text-[11px] leading-snug text-amber-800">
+                                    {!valid
+                                      ? "ส่วนที่ขาดจะยกไปรวมงวดที่ 2 ให้เอง"
+                                      : miss < 0.01
+                                        ? "ไม่ได้ขาด — กดยืนยันรับมัดจำปกติได้เลย"
+                                        : <>ขาด <b className="tabular-nums">{formatPrice(miss)}</b> → งวดที่ 2 เป็น <b className="tabular-nums">{formatPrice((hasWht ? inst.secondNet : balance) + miss)}</b></>}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    disabled={!valid || miss < 0.01}
+                                    onClick={() => void confirmDepositFirst(got)}
+                                    className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-40"
+                                  >
+                                    ยืนยันรับ{valid ? ` ${formatPrice(got)}` : ""} · ยกส่วนขาดไปงวด 2
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {/* ไม่มีสิทธิ์ยืนยันเงินเข้า — บอกให้รู้ว่าต้องไปตามใคร ไม่ใช่ปุ่มหายเฉย ๆ */}
                           {mayEdit && !mayMarkPaid && (
                             <p className="mt-1.5 rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold leading-snug text-slate-500 ring-1 ring-slate-200">

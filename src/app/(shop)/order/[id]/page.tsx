@@ -2245,7 +2245,7 @@ export default function CustomerOrderPage() {
               <div className="ord-sub mt-2.5 space-y-1 p-2.5 text-xs">
                 <div className="flex justify-between font-semibold">
                   <span className="t-soft">มัดจำ 50% {order.deposit.firstPaidAt ? "· รับแล้ว ✓" : "· รอโอน"}</span>
-                  <span className={order.deposit.firstPaidAt ? "t-ok" : "t-danger"}>{formatPrice(order.deposit.amount)}</span>
+                  <span className={order.deposit.firstPaidAt ? "t-ok" : "t-danger"}>{formatPrice(inst?.first ?? order.deposit.amount)}</span>
                 </div>
                 {/*
                   ➗ หัก ณ ที่จ่าย: เงินโอนจริงของงวด (ตรงกับ "ยอดชำระ" ในใบของร้าน)
@@ -2263,7 +2263,8 @@ export default function CustomerOrderPage() {
                 <div className="flex justify-between font-semibold">
                   <span className="t-soft">ยอดคงเหลือ {order.deposit.settledAt ? "· ครบแล้ว ✓" : "· ชำระก่อนจัดส่ง"}</span>
                   <span className={order.deposit.settledAt ? "t-ok" : "t-danger"}>
-                    {formatPrice(Math.max(0, orderTotal(order) - order.deposit.amount))}
+                    {/* ลูกค้าโอนงวดแรกขาด → ส่วนที่ขาดรวมอยู่ในงวดนี้ (deposit.firstShort) */}
+                    {formatPrice(inst?.second ?? Math.max(0, orderTotal(order) - order.deposit.amount))}
                   </span>
                 </div>
                 {inst && inst.wht > 0 && (

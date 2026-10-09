@@ -1985,10 +1985,12 @@ export function depositInstallments(
   if (!o.deposit) return null;
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const total = orderTotal(o);
-  const first = r2(Math.min(total, Math.max(0, o.deposit.amount)));
-  const second = r2(Math.max(0, total - first));
+  const planned = r2(Math.min(total, Math.max(0, o.deposit.amount)));
   const wht = orderWhtAmount(o);
-  const firstWht = wht > 0 && total > 0 ? r2((wht * first) / total) : 0;
+  // หัก ณ ที่จ่ายงวดแรกคิดจากยอดตามแผน — ลูกค้าโอนขาด (firstShort) ภาษีส่วนนั้นไม่เปลี่ยน ส่วนที่ขาดไปเพิ่มเงินโอนงวดที่ 2 เต็ม ๆ
+  const firstWht = wht > 0 && total > 0 ? r2((wht * planned) / total) : 0;
+  const first = r2(Math.max(0, planned - Math.max(0, o.deposit.firstShort ?? 0)));
+  const second = r2(Math.max(0, total - first));
   const secondWht = r2(Math.max(0, wht - firstWht));
   return { first, second, wht, firstWht, secondWht, firstNet: r2(first - firstWht), secondNet: r2(second - secondWht) };
 }
@@ -2607,6 +2609,12 @@ export interface OrderDeposit {
   amount: number;
   /** งวดแรก (มัดจำ) ยืนยันแล้วเมื่อ (ISO) — มีค่า = เริ่มงานได้ */
   firstPaidAt?: string;
+  /**
+   * ➗💸 ลูกค้าโอนงวดแรกขาด — แอดมินกรอกยอดที่ได้รับจริงตอนยืนยัน ส่วนที่ขาด (บาท ตามบิล) ยกไปรวมงวดที่ 2
+   * amount ยังเป็นยอดงวดแรกตามแผน (หัก ณ ที่จ่ายของงวดแรกคิดจากยอดนี้ = ตรงใบ 50 ทวิ) · งวดแรกที่รับจริง = amount − firstShort
+   * (OD-261007-2540 · 9 ต.ค. 69: ต้องโอน 64,337 ลูกค้าโอนมา 63,024)
+   */
+  firstShort?: number;
   /** เก็บครบทั้งออเดอร์แล้วเมื่อ (ISO) — มีค่า = พิมพ์เอกสาร/ยิงเลขพัสดุได้ */
   settledAt?: string;
   /**
@@ -2728,14 +2736,22 @@ export function amountDueNow(o: Order): number {
  * ป้าย 50% แรกไม่ขึ้น · ดันกลับรอตรวจสอบแล้วเห็น "ค้าง 30,923 (เดิม 0)" เปิดคิวแจ้งยอดโอนเพิ่มผิด ๆ
  * ใบที่รับงวดแรกไปแล้ว (firstPaidAt มี) คืนใบเดิม — เรียกซ้ำไม่ทับเวลา/ยอด
  */
-export function receiveDepositFirst(o: Order, at: string): Order {
+export function receiveDepositFirst(o: Order, at: string, received?: number): Order {
   if (!o.deposit || o.deposit.firstPaidAt) return o;
   const first = Math.min(orderTotal(o), Math.max(0, o.deposit.amount));
+  /**
+   * 💸 received = ยอดงวดแรกที่ได้รับจริง (บาท ตามบิล รวมภาษีที่ลูกค้าหักไว้แล้ว) — น้อยกว่างวด = ลูกค้าโอนขาด
+   * จดส่วนที่ขาดไว้ที่ firstShort แล้วนับ paidTotal เท่าที่ได้จริง → งวดที่ 2 (ยอดรวม − paidTotal) โตตามเอง
+   */
+  // เคยนับยอดบางส่วนไว้แล้ว (credited) มากกว่าที่กรอก → ไม่ถอยลง
+  const got = received != null && Number.isFinite(received) ? Math.max(Math.round(Math.max(0, received) * 100) / 100, paidSoFar(o)) : first;
+  const short = Math.round(Math.max(0, first - got) * 100) / 100;
+  const counted = short >= 0.01 ? got : first;
   return {
     ...o,
-    deposit: { ...o.deposit, firstPaidAt: at },
+    deposit: { ...o.deposit, firstPaidAt: at, ...(short >= 0.01 ? { firstShort: short } : {}) },
     // เคยนับยอดบางส่วนไว้แล้ว (credited) และมากกว่ายอดมัดจำ → ไม่ถอยลง
-    paidTotal: Math.max(first, paidSoFar(o)),
+    paidTotal: Math.max(counted, paidSoFar(o)),
     status: awaitingPayment(o) ? "ชำระแล้ว" : o.status,
   };
 }
