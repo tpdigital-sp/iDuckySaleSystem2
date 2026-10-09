@@ -1384,6 +1384,30 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
     }
   }
 
+  // 🔢 9 ต.ค. 69 14:40 สั่งไม่ถึงขั้นต่ำทุกเรท ("กิ๊บติดผม 5 ชิ้น" ขั้นต่ำ 11) เคยคืน null → "ยังไม่มีราคาของรายการนี้" ทั้งที่รู้สาเหตุ
+  // → บอกขั้นต่ำตรง ๆ + ราคาถูกสุดที่จำนวนขั้นต่ำ ให้ลูกค้าตัดสินใจต่อได้
+  if (!printed && qty && belowMin.length) {
+    const r0 = rates.find((r) => r.minQty && qty < r.minQty);
+    if (r0) {
+      const m0 = r0.matrix;
+      const unitM = m0.unit || "ชิ้น";
+      const minQ = r0.minQty as number;
+      const keys0 = Object.keys(m0.cells).filter((k) => (m0.cells[k] ?? []).some((n) => n > 0));
+      const i0 = tierIndex(m0, minQ);
+      const best = keys0
+        .map((k) => ({ k, u: unitPriceAt(p, r0.label, m0, k, minQ) || m0.cells[k]?.[i0] || 0 }))
+        .filter((x) => x.u > 0)
+        .sort((a, b) => a.u - b.u)[0];
+      const priceLine = best ? ` ถ้าสั่ง ${minQ.toLocaleString()} ${unitM} ราคาเริ่ม ${formatPrice(best.u)}/${unitM} (รวม ${formatPrice(best.u * minQ)})` : "";
+      return {
+        answer: `${p.name} สั่ง ${qty.toLocaleString()} ${unitM} ยังไม่ถึงขั้นต่ำค่ะ 🥺 ${r0.label.trim() || "เรทนี้"} ต้องสั่ง ${minQ.toLocaleString()} ${unitM} ขึ้นไป${priceLine}\nดูครบทุกแบบ/สั่งได้ที่หน้าสินค้า\n${url}`,
+        kind: "info",
+        source: "web-price-engine",
+        intent: "min_qty",
+        product: { id: p.id, name: p.name, url: safeHref(url), image: absImage(p.imageSrc), ...priceRange(p) },
+      };
+    }
+  }
   if (!printed) return null;
   if (belowMin.length) lines.push(`  (${belowMin.join(" · ")})`);
   if (allRates.length > rates.length) lines.push(`  (มีอีก ${allRates.length - rates.length} เรท ดูที่หน้าสินค้า)`);

@@ -147,6 +147,13 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
       const choice = line.replace(/^\d{1,2}\.\s+/, "").replace(/\s+—.*$/, "").trim().replace(/×/g, "x").replace(/(\d)\s+(cm|mm)\b/gi, "$1$2");
       const hm = botLines.map((l) => l.match(/^(.+?)\s+—\s+สั่ง\s+([\d,]+)\s+(\S+)/)).find(Boolean);
       query = hm ? `${hm[1]} ${choice} ${hm[2]} ${hm[3]} ราคาเท่าไหร่` : `${choice} ราคาเท่าไหร่`;
+    } else if (numPick && Number(numPick[1]) > 0) {
+      // 🔢 14:35 เลขลอย ๆ "5" โดยไม่มีรายการข้อ แต่บอทเพิ่งตอบราคาสินค้าตัวหนึ่ง ("กิ๊บติดผมอะคริลิค (ราคาต่อ ชิ้น) … บอกจำนวนที่ต้องการได้เลย")
+      // → = จำนวน 5 ชิ้นของสินค้านั้น (เดิมเว็บตอบ unknown → ไป agent ช้า 30 วิ แล้วถามกลับ "5 cm หรือ 5 ชิ้น")
+      const lastBot = [...(body.history as { role?: string; text?: string }[])].reverse().find((t) => t && /assistant|bot|shop|admin/i.test(String(t.role ?? "")) && String(t.text ?? "").trim());
+      const lines = String(lastBot?.text ?? "").split("\n").map((l) => l.trim());
+      const pm = lines.map((l) => l.match(/^(.+?)\s+\(ราคาต่อ\s+(\S+)\)/) ?? l.match(/^(.+?)\s+—\s+สั่ง\s+[\d,]+\s+(\S+)/)).find(Boolean);
+      if (pm) query = `${pm[1]} ${numPick[1]} ${pm[2]} ราคาเท่าไหร่`;
     }
   }
 
