@@ -151,6 +151,11 @@ import {
   reuseArtText,
   receiveDepositFirst,
   receiptsPending,
+  receiptShippedRound,
+  receiptsShippedRound,
+  sampleShippedRound,
+  shipmentExtras,
+  nextRoundExtras,
 } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
 import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
@@ -3337,13 +3342,15 @@ export default function AdminOrderDetailPage() {
       ...(note.trim() ? { note: note.trim() } : {}),
       ...(shipTo ? { shipTo } : {}),
       ...(pickupRound ? { pickup: true as const } : {}),
+      // 🎁🧾 ตัวอย่าง/ใบเสร็จที่อยู่ในกล่องรอบนี้ — รอบหลังขึ้น "ส่งไปแล้วกับรอบที่ N" (เซิร์ฟเวอร์ประทับซ้ำให้ฝั่งแพ็ค)
+      ...shipmentExtras(order),
     };
     const qty = shipmentQty(sh);
     const next = withLog(
       { ...order, shipments: [...(order.shipments ?? []), sh] },
       actor,
       pickupRound ? "🏪 แพ็คเสร็จบางส่วน — รอลูกค้ามารับ" : "🚚 ส่งบางส่วน",
-      `รอบที่ ${round} · ${t} · ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}${sh.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(sh.shipTo)}` : ""}`
+      `รอบที่ ${round} · ${t} · ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${sh.note ? ` · ${sh.note}` : ""}${sh.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(sh.shipTo)}` : ""}${sh.samples?.length ? " · 🎁 ชิ้นงานตัวอย่างไปด้วย" : ""}${sh.receipts?.length ? ` · 🧾 ใบเสร็จ ${sh.receipts.join(", ")} ไปด้วย` : ""}`
     );
     setShipSel(new Map());
     setPartialOpen(false);
@@ -3384,7 +3391,14 @@ export default function AdminOrderDetailPage() {
    * 📋 แอดมินเพิ่ม/แก้รอบในแผนแบ่งส่ง (จากโมดัลเลือกรูป) + log · ฝ่ายแพ็คเห็นรูปพวกนี้ติดป้าย "ส่งก่อน" ทันที
    * editIndex = แก้รอบเดิม (เฉพาะรอบที่ยังไม่ส่ง — ส่งแล้วแก้ไม่ได้ · เจ้าของร้านสั่ง 16 ก.ย. 69) · แก้แล้วคำอนุมัติส่งตัวอย่างหลุด ต้องอนุมัติใหม่
    */
-  function savePlanRound(sel: Map<string, number>, note: string, dueDate: string, shipTo: ShipTo | undefined, editIndex: number | null = null) {
+  function savePlanRound(
+    sel: Map<string, number>,
+    note: string,
+    dueDate: string,
+    shipTo: ShipTo | undefined,
+    extras: { sample: boolean; receipt: boolean },
+    editIndex: number | null = null
+  ) {
     if (!order || !mayEdit || !sel.size) return;
     if (editIndex !== null && (!order.shipPlan?.[editIndex] || order.shipments?.[editIndex])) return;
     const states = proofShipStates(order);
@@ -3419,6 +3433,8 @@ export default function AdminOrderDetailPage() {
         : {}),
       // โฟลเดอร์ต้นทางของรอบตัวอย่างคงไว้ (หลักฐานว่ามาจากโฟลเดอร์ (…ตย)) · คำอนุมัติของเจ้าของร้านไม่ติดมา — ของเปลี่ยนต้องอนุมัติใหม่
       ...(prev?.sampleFolder ? { sampleFolder: prev.sampleFolder } : {}),
+      ...(extras.sample ? { withSample: true as const } : {}),
+      ...(extras.receipt ? { withReceipt: true as const } : {}),
     };
     const n = (editIndex ?? order.shipPlan?.length ?? 0) + 1;
     const qty = proofs.reduce((s, p) => s + (p.qty ?? 0), 0);
@@ -3430,7 +3446,7 @@ export default function AdminOrderDetailPage() {
         { ...order, shipPlan },
         actor,
         editIndex !== null ? "✏️ แก้ไขแผนแบ่งส่ง" : "📋 ระบุแผนแบ่งส่ง",
-        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(round.shipTo)}` : ""}${round.note ? ` · ${round.note}` : ""}${prev?.sampleApproved ? " · ⚠️ คำอนุมัติส่งตัวอย่างเดิมหลุด ต้องให้เจ้าของร้านอนุมัติใหม่" : ""}`
+        `รอบที่ ${n}: ${proofs.map((p) => `${p.itemName} รูปที่ ${p.proof + 1}${p.qty ? ` ${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""} ชิ้น` : ""}`).join(", ")}${qty ? ` · รวม ${qty} ชิ้น` : ""}${dueDate ? ` · ส่งภายใน ${dueDate}` : ""}${round.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(round.shipTo)}` : ""}${round.note ? ` · ${round.note}` : ""}${round.withSample ? " · 🎁 ส่งตัวอย่างไปด้วย" : ""}${round.withReceipt ? " · 🧾 ส่งใบเสร็จไปด้วย" : ""}${prev?.sampleApproved ? " · ⚠️ คำอนุมัติส่งตัวอย่างเดิมหลุด ต้องให้เจ้าของร้านอนุมัติใหม่" : ""}`
       )
     );
   }
@@ -9748,6 +9764,8 @@ export default function AdminOrderDetailPage() {
                             รอบที่ {n + 1}: {r.proofs.length} รูป{qty ? ` · รวม ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
                             {r.sampleFolder ? " · 🎁 จากโฟลเดอร์ตัวอย่าง" : ""}
                           </span>
+                          {r.withSample && <span className="rounded-full bg-violet-100 px-1.5 font-bold text-violet-700">🎁 ตัวอย่างไปด้วย</span>}
+                          {r.withReceipt && <span className="rounded-full bg-rose-100 px-1.5 font-bold text-rose-700">🧾 ใบเสร็จไปด้วย</span>}
                           {done ? (
                             <span className="font-bold text-green-700">✅ ส่งแล้ว {done.tracking}</span>
                           ) : (
@@ -10138,7 +10156,7 @@ export default function AdminOrderDetailPage() {
             setPlanOpen(false);
             setPlanEditIdx(null);
           }}
-          onSave={(sel, note, due, shipTo) => savePlanRound(sel, note, due, shipTo, planEditIdx)}
+          onSave={(sel, note, due, shipTo, extras) => savePlanRound(sel, note, due, shipTo, extras, planEditIdx)}
         />
       )}
       {/* 📦 เปิดรอบส่งตาม — ใบส่งออกไปแล้วแต่ของในกล่องไม่ครบ */}
@@ -10905,6 +10923,11 @@ function PackView({
                     {r.proofs.length > 1 && qty ? ` · รวม ${qty.toLocaleString("th-TH")} ชิ้น` : ""}
                     {r.dueDate ? ` · ส่งภายใน ${r.dueDate}` : ""}
                     {done ? ` · ${done.tracking}` : ""}
+                    {r.withSample || r.withReceipt ? (
+                      <span className={`block ${done ? "font-normal text-emerald-200" : "text-fuchsia-200"}`}>
+                        {done ? "ส่งไปแล้ว:" : "รอบนี้ต้องใส่ด้วย:"} {[r.withSample ? "🎁 ชิ้นงานตัวอย่าง" : "", r.withReceipt ? "🧾 ใบเสร็จ" : ""].filter(Boolean).join(" · ")}
+                      </span>
+                    ) : null}
                     {r.shipTo ? <span className="block font-normal text-sky-200">📍 ส่งไปที่: {shipToText(r.shipTo)}</span> : null}
                     {r.note ? <span className="block font-normal text-amber-100/80">📝 {r.note}</span> : null}
                   </li>
@@ -10979,8 +11002,18 @@ function PackView({
               key={`${it.productId}-${i}`}
               className={`rounded-2xl bg-white p-3 shadow-sm ${itemMissing ? "ring-2 ring-rose-400" : "ring-1 ring-slate-200"}`}
             >
+              {/* 🎁 ตัวอย่างไปกับรอบแบ่งส่งก่อนหน้าแล้ว — รอบนี้ไม่ต้องใส่ ไม่ต้องติ๊ก (พนักงานขอ 9 ต.ค. 69) */}
+              {it.sampleRequired && sampleShippedRound(order, i) !== null && (
+                <div className="mb-2 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-3 text-xs ring-1 ring-sky-200">
+                  <span className="text-lg">🚚</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-extrabold text-sky-800">ชิ้นงานตัวอย่างส่งไปแล้วกับรอบที่ {sampleShippedRound(order, i)}</span>
+                    <span className="text-sky-700">รอบนี้ไม่ต้องใส่ตัวอย่างซ้ำ</span>
+                  </span>
+                </div>
+              )}
               {/* งานตัวอย่าง — วางบนสุดให้สะดุดตาก่อนเริ่มแพ็ค · บังคับยืนยันก่อนยิงเลขพัสดุ */}
-              {it.sampleRequired && (
+              {it.sampleRequired && sampleShippedRound(order, i) === null && (
                 <div className="mb-2">
                   <button
                     type="button"
@@ -10999,6 +11032,9 @@ function PackView({
                           ? `ใส่แล้ว · ยืนยันโดย ${it.samplePacked.by}`
                           : "ใส่เรียบร้อยแล้วค่อยแตะยืนยันตรงนี้ — ยังไม่ยืนยัน ยิงเลขพัสดุไม่ได้"}
                       </span>
+                      {nextRoundExtras(order)?.sample && (
+                        <span className="mt-0.5 block font-extrabold text-violet-700">▶ แอดมินสั่งส่งตัวอย่างไปกับแบ่งส่งรอบที่ {nextRoundExtras(order)!.round}</span>
+                      )}
                     </span>
                   </button>
                   {/* ใบนี้ไม่มีชิ้นงานตัวอย่างจริง (ติ๊กมาผิด/หมายถึงขึ้นแบบในไฟล์) = เอาป้ายออกตรงนี้
@@ -11255,6 +11291,14 @@ function PackView({
                   >
                     ต้องแนบกล่อง
                   </button>
+                </div>
+              );
+            // 🚚 บิลไม่มีเลขเอกสาร: ใบกำกับไปกับรอบแบ่งส่งก่อนหน้าแล้ว = รอบนี้ไม่ต้องใส่
+            if (!taxInvoiceDocsOf(order).some((d) => d.docNo) && receiptsShippedRound(order) !== null)
+              return (
+                <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-3 text-xs shadow-sm ring-1 ring-sky-200">
+                  <span className="text-lg">🚚</span>
+                  <span className="font-extrabold text-sky-800">ใบกำกับภาษีส่งไปแล้วกับรอบที่ {receiptsShippedRound(order)} — รอบนี้ไม่ต้องใส่ซ้ำ</span>
                 </div>
               );
             // 📷 บิลที่มีเลขเอกสาร = ถ่ายภาพใบเสร็จทีละใบตามเลขที่ (9 ต.ค. 69) — แทนปุ่มแตะยืนยันเดิม
@@ -11798,9 +11842,14 @@ function ShipPlanModal({
   /** ✏️ แก้รอบเดิมในแผน (index) — null = เพิ่มรอบใหม่ · รอบที่แก้ไม่ถูกนับว่า "จองไว้แล้ว" และค่าเดิมถูกเติมให้ */
   editIndex?: number | null;
   onCancel: () => void;
-  onSave: (sel: Map<string, number>, note: string, dueDate: string, shipTo: ShipTo | undefined) => void;
+  onSave: (sel: Map<string, number>, note: string, dueDate: string, shipTo: ShipTo | undefined, extras: { sample: boolean; receipt: boolean }) => void;
 }) {
   const editing = editIndex !== null ? order.shipPlan?.[editIndex] : undefined;
+  /** 🎁🧾 ตัวอย่าง/ใบเสร็จไปกับรอบนี้ (พนักงานขอ 9 ต.ค. 69) — รอบนี้ฝ่ายแพ็คต้องใส่ก่อนยิง · รอบหลังขึ้น "ส่งไปแล้ว" */
+  const [withSample, setWithSample] = useState(!!editing?.withSample);
+  const [withReceipt, setWithReceipt] = useState(!!editing?.withReceipt);
+  const hasSample = order.items.some((it) => it.sampleRequired);
+  const needsReceipt = orderNeedsTaxInvoiceInBox(order);
   // คีย์รูป → จำนวนชิ้นที่จะส่งรอบนี้ (ติ๊กครั้งแรก = ที่เหลือทั้งหมด แล้วลดจำนวนได้ เช่น "ลายนี้ส่งก่อน 1 ชิ้น")
   const [sel, setSel] = useState<Map<string, number>>(() => (editing ? roundSel(order, editing.proofs) : new Map()));
   const [note, setNote] = useState(editing?.note ?? "");
@@ -11971,6 +12020,27 @@ function ShipPlanModal({
             placeholder="หมายเหตุถึงฝ่ายแพ็ค เช่น ลูกค้าขอ 1 ชิ้นก่อนไปเช็คงาน"
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none"
           />
+          {/* 🎁🧾 ของที่ต้องไปกับรอบนี้ด้วย — ฝ่ายแพ็คติดด่านจนกว่าจะติ๊กตัวอย่าง/ถ่ายรูปใบเสร็จ */}
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-violet-50 px-3 py-2 text-xs ring-1 ring-violet-200">
+            <input type="checkbox" checked={withSample} onChange={(e) => setWithSample(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600" />
+            <span>
+              <span className="block font-extrabold text-violet-800">🎁 ส่งชิ้นงานตัวอย่างไปกับรอบนี้</span>
+              <span className="text-slate-600">
+                {hasSample
+                  ? "ฝ่ายแพ็คต้องติ๊กใส่ตัวอย่างก่อนยิงรอบนี้ · รอบที่เหลือขึ้นว่า “ส่งตัวอย่างไปแล้ว” ไม่ต้องใส่ซ้ำ"
+                  : "⚠️ ใบนี้ยังไม่มีรายการที่ติ๊ก 🎁 มีชิ้นงานตัวอย่าง — ติ๊กที่รายการก่อน ไม่งั้นฝ่ายแพ็คยิงรอบนี้ไม่ได้"}
+              </span>
+            </span>
+          </label>
+          {needsReceipt && (
+            <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs ring-1 ring-rose-200">
+              <input type="checkbox" checked={withReceipt} onChange={(e) => setWithReceipt(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-rose-600" />
+              <span>
+                <span className="block font-extrabold text-rose-800">🧾 ส่งใบเสร็จไปกับรอบนี้ ({taxInvoiceCountLabel(order)})</span>
+                <span className="text-slate-600">ลูกค้าขอให้ใบเสร็จไปกับรอบนี้ (เช่นพร้อมงานตัวอย่าง) — ฝ่ายแพ็คต้องถ่ายรูปใบเสร็จก่อนยิง · รอบสุดท้ายขึ้นว่า “ส่งใบเสร็จไปแล้ว”</span>
+              </span>
+            </label>
+          )}
           {/* 📍 ที่อยู่เฉพาะรอบ — ไม่ต้องแก้ที่อยู่ใบไปมาระหว่างรอบ ใบปะหน้ารอบนี้ดึงจากตรงนี้ (labelShipTo) */}
           <label className={`flex items-start gap-2 rounded-xl px-3 py-2 text-xs ring-1 ${altAllowed ? "cursor-pointer bg-sky-50 ring-sky-200" : "cursor-not-allowed bg-slate-50 ring-slate-200"}`}>
             <input type="checkbox" checked={altTo} disabled={!altAllowed} onChange={(e) => setAltTo(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600 disabled:opacity-40" />
@@ -12015,10 +12085,10 @@ function ShipPlanModal({
           <button
             type="button"
             disabled={sel.size === 0 || all || !toOk}
-            onClick={() => onSave(sel, note, due, altTo ? to : undefined)}
+            onClick={() => onSave(sel, note, due, altTo ? to : undefined, { sample: withSample, receipt: withReceipt && needsReceipt })}
             className="w-full rounded-xl bg-amber-400 py-3 text-sm font-extrabold text-amber-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {editing ? "บันทึกการแก้ไข" : "บันทึกแผน"} รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}{altTo ? " · 📍 ที่อยู่อื่น" : ""}
+            {editing ? "บันทึกการแก้ไข" : "บันทึกแผน"} รอบที่ {n} — {sel.size} รูป{qty ? ` · ${qty.toLocaleString("th-TH")} ชิ้น` : ""}{altTo ? " · 📍 ที่อยู่อื่น" : ""}{withSample ? " · 🎁" : ""}{withReceipt && needsReceipt ? " · 🧾" : ""}
           </button>
           <button type="button" onClick={onCancel} className="w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
             ยกเลิก
@@ -13621,6 +13691,9 @@ function ReceiptPhotoBox({
   const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo);
   const photos = new Map((order.receiptPhotos ?? []).map((p) => [p.docNo, p]));
   const left = docs.filter((d) => !photos.has(d.docNo!)).length;
+  // 🚚 ใบเสร็จที่ไปกับรอบแบ่งส่งก่อนหน้าแล้ว (9 ต.ค. 69) — ครบทุกใบ = รอบนี้ไม่ต้องใส่
+  const shippedAll = receiptsShippedRound(order);
+  const ex = nextRoundExtras(order);
   const noReceipt = receiptsPending(order);
   const [busy, setBusy] = useState<string | null>(null);
   const [errs, setErrs] = useState<Record<string, string>>({});
@@ -13636,8 +13709,23 @@ function ReceiptPhotoBox({
     setBusy(null);
   }
 
+  if (shippedAll !== null)
+    return (
+      <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-sky-200">
+        <div className="flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-3 text-xs">
+          <span className="text-lg">🚚</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-extrabold text-sky-800">ใบเสร็จส่งไปแล้วกับรอบที่ {shippedAll}</span>
+            <span className="font-bold text-sky-700">{docs.map((d) => d.docNo).join(" + ")} — รอบนี้ไม่ต้องใส่ใบเสร็จซ้ำ</span>
+          </span>
+        </div>
+      </div>
+    );
   return (
     <div className={`rounded-2xl bg-white p-3 shadow-sm ${done ? "ring-1 ring-green-200" : multi ? "ring-2 ring-violet-500" : "ring-2 ring-rose-300"}`}>
+      {ex?.receipt && (
+        <p className="mb-2 rounded-lg bg-violet-100 px-3 py-1.5 text-[11px] font-extrabold text-violet-800">▶ แอดมินสั่งส่งใบเสร็จไปกับแบ่งส่งรอบที่ {ex.round} — ถ่ายรูปก่อนยิงรอบนี้</p>
+      )}
       <div className={`rounded-xl px-3 py-3 ${done ? "bg-green-50" : multi ? "bg-violet-700" : "bg-rose-50"}`}>
         <p className={`text-sm font-extrabold ${done ? "text-green-800" : multi ? "text-white" : "text-rose-700"}`}>
           {done ? "✅" : multi ? "⚠️🧾" : "🧾"} ใส่ใบเสร็จ {docs.length} ใบ ลงกล่อง — ถ่ายรูปทีละใบ
@@ -13659,6 +13747,7 @@ function ReceiptPhotoBox({
         {docs.map((d, n) => {
           const ph = photos.get(d.docNo!);
           const e = errs[d.docNo!];
+          const sentIn = receiptShippedRound(order, d.docNo!);
           return (
             <li key={d.docNo} className={`rounded-xl p-2 ring-1 ${ph ? "bg-green-50/60 ring-green-200" : "bg-slate-50 ring-slate-200"}`}>
               <div className="flex items-center gap-2">
@@ -13676,17 +13765,19 @@ function ReceiptPhotoBox({
                   </span>
                   <span className="block font-mono text-[15px] font-black tracking-wide text-slate-900">{d.docNo}</span>
                   <span className="block text-[10px] text-slate-500">
-                    {ph
-                      ? `${ph.read ? (ph.read === d.docNo || ph.read === d.fromDoc ? `✓ AI อ่านเลขตรง` : `⚠️ AI อ่านได้ ${ph.read}`) : "AI อ่านเลขไม่ออก"} · ${ph.by}`
-                      : d.label}
+                    {sentIn
+                      ? `🚚 ส่งไปแล้วกับรอบที่ ${sentIn}`
+                      : ph
+                        ? `${ph.read ? (ph.read === d.docNo || ph.read === d.fromDoc ? `✓ AI อ่านเลขตรง` : `⚠️ AI อ่านได้ ${ph.read}`) : "AI อ่านเลขไม่ออก"} · ${ph.by}`
+                        : d.label}
                   </span>
                 </span>
-                {ph && !(order.tracking ?? "").trim() && (
+                {ph && !sentIn && !(order.tracking ?? "").trim() && (
                   <button type="button" onClick={() => onDelete(d.docNo!)} className="shrink-0 rounded-lg border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-500">
                     ลบ
                   </button>
                 )}
-                <label className={`shrink-0 cursor-pointer rounded-xl px-3 py-2.5 text-[11px] font-bold ${ph ? "border border-slate-300 text-slate-600" : "bg-sky-600 text-white"} ${busy ? "pointer-events-none opacity-50" : ""}`}>
+                {!sentIn && <label className={`shrink-0 cursor-pointer rounded-xl px-3 py-2.5 text-[11px] font-bold ${ph ? "border border-slate-300 text-slate-600" : "bg-sky-600 text-white"} ${busy ? "pointer-events-none opacity-50" : ""}`}>
                   {busy === d.docNo ? "กำลังตรวจ…" : ph ? "ถ่ายใหม่" : "📷 ถ่ายใบนี้"}
                   <input
                     type="file"
@@ -13698,7 +13789,7 @@ function ReceiptPhotoBox({
                       ev.target.value = "";
                     }}
                   />
-                </label>
+                </label>}
               </div>
               {e && <p className="mt-1.5 rounded-lg bg-rose-100 px-2 py-1.5 text-[11px] font-bold text-rose-700">⛔ {e}</p>}
             </li>

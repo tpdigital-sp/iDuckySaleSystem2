@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
 import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -989,11 +989,15 @@ function OrderDocs({
                         <p className="font-bold">{addOnDisplayName(it)}</p>
                         {/* ♻️ ป้ายใช้ไฟล์เก่า และ 🎨 ภาพลายจากลูกค้า ไม่ขึ้นใบงานแล้ว (เจ้าของร้านสั่ง 11 ก.ย. 69) —
                             รูปแบบงานคอลัมน์ซ้ายคือของที่ต้องเช็ค · บรรทัด "ใช้ไฟล์เก่า:" ยังอยู่ในสเปคตามเดิม */}
-                        {it.sampleRequired && (
+                        {it.sampleRequired && (sampleShippedRound(order, i) !== null ? (
+                          <p className="mt-1 inline-block rounded border border-sky-600 px-2 py-0.5 text-sm font-bold text-sky-800">
+                            🚚 งานตัวอย่างส่งไปแล้วกับรอบที่ {sampleShippedRound(order, i)}
+                          </p>
+                        ) : (
                           <p className="mt-1 inline-block rounded border-2 border-red-600 px-2 py-0.5 text-sm font-extrabold" style={{ color: "#dc2626" }}>
                             🎁 มีงานตัวอย่าง — แนบใส่กล่องให้ลูกค้าด้วย
                           </p>
-                        )}
+                        ))}
                         {designLines(it).length > 0 ? (
                           <div className="mt-0.5 text-xs leading-relaxed text-slate-600">
                             {designLines(it).map((line, k) => (
@@ -1392,6 +1396,8 @@ function OrderDocs({
                         📋 แบ่งส่ง รอบที่ {n + 1} ส่งก่อน: {r.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""}` : ""}`).join(", ")}
                         {r.dueDate ? ` — ส่งภายใน ${r.dueDate}` : ""}
                         {r.shipTo ? ` · 📍 ส่งไปที่ ${shipToText(r.shipTo)}` : ""}
+                        {r.withSample ? " · 🎁 ใส่ชิ้นงานตัวอย่างไปด้วย" : ""}
+                        {r.withReceipt ? " · 🧾 ใส่ใบเสร็จไปด้วย" : ""}
                         {r.note ? ` · ${r.note}` : ""}
                       </p>
                     )
@@ -1401,6 +1407,8 @@ function OrderDocs({
                   <p key={`${sh.tracking}-${n}`} className="mt-0.5 text-[11px] font-bold text-sky-800">
                     🚚 แบ่งส่งแล้ว รอบที่ {n + 1}: <span className="font-mono">{sh.tracking}</span> —{" "}
                     {sh.proofs.map((p) => `${p.itemName ?? order.items[p.item]?.name ?? ""} รูปที่ ${p.proof + 1}${p.qty ? ` ×${p.qty}${p.ofQty && p.ofQty > p.qty ? `/${p.ofQty}` : ""}` : ""}`).join(", ")}
+                    {sh.samples?.length ? " · 🎁 ชิ้นงานตัวอย่างไปแล้ว" : ""}
+                    {sh.receipts?.length ? ` · 🧾 ใบเสร็จ ${sh.receipts.join(", ")} ไปแล้ว` : ""}
                   </p>
                 ))}
                 {order.useByDate && (
@@ -1415,14 +1423,20 @@ function OrderDocs({
                     {order.shipDate?.to && order.shipDate.to !== order.shipDate.from ? ` – ${fmtThaiDate(order.shipDate.to)}` : ""}
                   </p>
                 )}
-                {order.items.some((it) => it.sampleRequired) && (
+                {/* 🎁 ตัวอย่างที่ไปกับรอบแบ่งส่งก่อนหน้าแล้ว ไม่นับ — กระดาษต้องไม่สั่งให้ใส่ซ้ำ (9 ต.ค. 69) */}
+                {order.items.some((it, i) => it.sampleRequired && sampleShippedRound(order, i) === null) && (
                   <p className="mt-1.5 block w-fit rounded border-2 border-red-600 bg-white px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
-                    🎁 ออเดอร์นี้มีงานตัวอย่าง {order.items.filter((it) => it.sampleRequired).length} รายการ — ต้องแนบไปด้วย!
+                    🎁 ออเดอร์นี้มีงานตัวอย่าง {order.items.filter((it, i) => it.sampleRequired && sampleShippedRound(order, i) === null).length} รายการ — ต้องแนบไปด้วย!
+                  </p>
+                )}
+                {order.items.some((it, i) => it.sampleRequired && sampleShippedRound(order, i) !== null) && (
+                  <p className="mt-1.5 block w-fit rounded border border-sky-600 bg-white px-2 py-1 text-sm font-bold text-sky-800">
+                    🚚 ชิ้นงานตัวอย่างส่งไปแล้วกับแบ่งส่งรอบที่ {order.items.map((it, i) => (it.sampleRequired ? sampleShippedRound(order, i) : null)).filter(Boolean).join(", ")} — ไม่ต้องใส่ซ้ำ
                   </p>
                 )}
                 {/* 🧾 ใบกำกับภาษีต้องใส่กล่อง — บอกเลขเอกสารให้ไปพิมพ์จาก FlowAccount ได้ทันที */}
                 {/* รอบตัวอย่างของใบมัดจำ: ใบกำกับยังไม่ออก ไปกับกล่องล็อตหลัก */}
-                {orderNeedsTaxInvoiceInBox(order) && sampleRun?.ok && (
+                {orderNeedsTaxInvoiceInBox(order) && sampleRun?.ok && !nextRoundExtras(order)?.receipt && (
                   <p className="mt-1.5 block w-fit rounded border border-slate-400 bg-white px-2 py-1 text-sm font-bold text-slate-600">
                     🧾 กล่องตัวอย่างไม่ต้องใส่ใบกำกับภาษี — ใบกำกับไปกับล็อตหลักหลังเก็บยอดคงเหลือครบ
                   </p>
@@ -1433,7 +1447,13 @@ function OrderDocs({
                     📧 ใบกำกับภาษีส่ง E-tax/อีเมลให้ลูกค้าแล้ว — ไม่ต้องปริ้นใส่กล่อง
                   </p>
                 )}
-                {orderNeedsTaxInvoiceInBox(order) && !sampleRun?.ok &&
+                {/* 🚚 ใบเสร็จไปกับรอบแบ่งส่งก่อนหน้าครบแล้ว — รอบนี้ไม่ต้องใส่ (9 ต.ค. 69) */}
+                {orderNeedsTaxInvoiceInBox(order) && receiptsShippedRound(order) !== null && (
+                  <p className="mt-1.5 block w-fit rounded border border-sky-600 bg-white px-2 py-1 text-sm font-bold text-sky-800">
+                    🚚 ใบเสร็จ{taxInvoiceDocNos(order) ? ` ${taxInvoiceDocNos(order)}` : ""} ส่งไปแล้วกับแบ่งส่งรอบที่ {receiptsShippedRound(order)} — ไม่ต้องใส่ซ้ำ
+                  </p>
+                )}
+                {orderNeedsTaxInvoiceInBox(order) && (!sampleRun?.ok || !!nextRoundExtras(order)?.receipt) && receiptsShippedRound(order) === null &&
                   (() => {
                     const doc = taxInvoiceDocsOf(order)[0]; // บิลหลัก — ออก INV แล้วได้เลข INV (faInvoices)
                     // 🧾➕ บิลเพิ่ม (ใบที่ 2 ขึ้นไป) ต้องบอกบนกระดาษว่ามีกี่ใบ เลขอะไรบ้าง — คนแพ็คจะได้พิมพ์ครบ

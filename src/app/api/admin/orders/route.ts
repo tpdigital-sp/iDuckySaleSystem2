@@ -64,6 +64,7 @@ import {
   REOPEN_FOR_BALANCE,
   receiveDepositFirst,
   receiptPhotoPending,
+  shipmentExtras,
 } from "@/lib/admin-data";
 import { inBackground } from "@/lib/server/background";
 
@@ -304,7 +305,20 @@ function mergePackFields(existing: Order, incoming: Order, mayShip: boolean): Or
   // 📮 กล่องเพิ่ม (ใบเดียวส่งหลายกล่อง): ต่อท้ายได้ด้วยสิทธิ์ยิงเลขเดียวกัน · ของเดิมแก้/ลบไม่ได้ (งานแอดมิน)
   if (mayShip && Array.isArray(incoming.extraTrackings)) merged.extraTrackings = appendExtraTrackings(existing, incoming);
   // 🚚 แบ่งส่ง: รอบใหม่ต่อท้ายได้ (สิทธิ์ยิงเลขเดียวกัน) · รอบเดิมแตะไม่ได้ · สถานะใบไม่เปลี่ยน (ยังไม่ปิดจนกว่าจะยิงรอบสุดท้าย)
-  if (mayShip && Array.isArray(incoming.shipments)) merged.shipments = appendShipments(existing, incoming);
+  if (mayShip && Array.isArray(incoming.shipments)) {
+    // 🎁🧾 ตัวอย่าง/ใบเสร็จที่ไปกับรอบใหม่ = ประทับจากข้อมูลฝั่งเซิร์ฟเวอร์ (ไม่เชื่อค่าที่หน้าจอส่งมา · 9 ต.ค. 69)
+    const had = existing.shipments?.length ?? 0;
+    const all = appendShipments(existing, incoming) ?? [];
+    merged.shipments = all.length
+      ? all.map((sh, n) => {
+          if (n < had) return sh;
+          const { samples: _s, receipts: _r, ...rest } = sh;
+          void _s;
+          void _r;
+          return { ...rest, ...shipmentExtras({ ...merged, shipments: all.slice(0, n) }) };
+        })
+      : existing.shipments;
+  }
   // 🏪 มารับเอง: กด "แพ็คเสร็จ" แทนยิงเลขพัสดุ → จดคน/เวลา + สถานะจัดส่งแล้ว (= พร้อมรับ) · สิทธิ์เดียวกับยิงเลข
   if (mayShip && incoming.packedAt && !existing.packedAt && isPickupOrder(existing)) {
     merged.packedAt = incoming.packedAt;

@@ -143,6 +143,12 @@ export interface Shipment {
    * (17 ก.ย. 69 · OD-260911-5435: ใบมารับเองมีแผนแบ่งส่ง แต่ทางเดียวที่กดได้คือ "แพ็คเสร็จ" ซึ่งปิดทั้งใบ → รอบที่เหลือหลุดจากคิวปริ้น)
    */
   pickup?: true;
+  /**
+   * 🎁 ชิ้นงานตัวอย่างที่ไปกับรอบนี้ (ตำแหน่งใน order.items ที่ติ๊ก samplePacked ตอนยิงรอบ) — รอบหลังไม่ต้องใส่ซ้ำ (9 ต.ค. 69)
+   * 🧾 receipts = เลขที่ใบเสร็จ/ใบกำกับที่ถ่ายภาพใส่กล่องรอบนี้ ("ใบกำกับภาษี" = บิลที่ไม่มีเลขเอกสาร) · เซิร์ฟเวอร์ประทับให้ (shipmentExtras)
+   */
+  samples?: number[];
+  receipts?: string[];
 }
 
 /**
@@ -366,6 +372,12 @@ export interface ShipPlanRound {
    * (เจ้าของร้านทัก 16 ก.ย. 69 "ปริ้นไปแล้ว ทำไมที่อยู่ยังแสดง") · พิมพ์ซ้ำต้องให้เจ้าของร้านกด 🔁 อนุญาต (ล้างค่านี้ · คนอื่นล้าง = 403)
    */
   samplePrintedAt?: { by: string; at: string };
+  /**
+   * 🎁🧾 แอดมินสั่งให้ "ชิ้นงานตัวอย่าง" / "ใบเสร็จ" ไปกับรอบนี้ (พนักงานขอ 9 ต.ค. 69 — ลูกค้าบางคนให้ส่งใบเสร็จไปกับงานตัวอย่าง)
+   * รอบนี้ต้องติ๊กใส่ตัวอย่าง / ถ่ายภาพใบเสร็จก่อนยิงเลข (partialGate) · ยิงแล้วรอบหลังขึ้น "ส่งไปแล้วกับรอบที่ N" ไม่ถามซ้ำ
+   */
+  withSample?: true;
+  withReceipt?: true;
   /** ส่งภายในวันไหน (YYYY-MM-DD) — ขึ้นบนใบงาน/โหมดแพ็ค */
   dueDate?: string;
   note?: string;
@@ -1498,6 +1510,59 @@ export function receiptPhotoPending(o: Order): string[] {
   return taxInvoiceDocsOf(o)
     .map((d) => d.docNo)
     .filter((n): n is string => !!n && !have.has(n));
+}
+
+/** 🧾 คีย์ใบกำกับของบิลที่ไม่มีเลขเอกสาร (บิล VAT หน้าเว็บ) ใน Shipment.receipts */
+export const RECEIPT_NO_DOC = "ใบกำกับภาษี";
+
+/** 🎁 ชิ้นงานตัวอย่างของรายการนี้ไปกับรอบแบ่งส่งที่เท่าไร (1 = รอบแรก) · null = ยังไม่ได้ส่ง */
+export function sampleShippedRound(o: Order, itemIndex: number): number | null {
+  const n = (o.shipments ?? []).findIndex((sh) => sh.samples?.includes(itemIndex));
+  return n >= 0 ? n + 1 : null;
+}
+
+/** 🧾 ใบเสร็จเลขนี้ไปกับรอบแบ่งส่งที่เท่าไร · null = ยังไม่ได้ส่ง */
+export function receiptShippedRound(o: Order, docNo: string): number | null {
+  const n = (o.shipments ?? []).findIndex((sh) => sh.receipts?.includes(docNo));
+  return n >= 0 ? n + 1 : null;
+}
+
+/** 🧾 เลขที่ใบเสร็จที่ต้องไปกับกล่อง (บิลไม่มีเลข = RECEIPT_NO_DOC) */
+function receiptKeysOf(o: Order): string[] {
+  if (!orderNeedsTaxInvoiceInBox(o)) return [];
+  const nos = taxInvoiceDocsOf(o)
+    .map((d) => d.docNo)
+    .filter((n): n is string => !!n);
+  return nos.length ? nos : [RECEIPT_NO_DOC];
+}
+
+/** 🧾 ใบเสร็จทุกใบส่งไปกับรอบก่อนหน้าแล้ว → คืนรอบล่าสุดที่ส่ง (รอบนี้ไม่ต้องใส่) · null = ยังมีใบที่ต้องใส่ */
+export function receiptsShippedRound(o: Order): number | null {
+  const keys = receiptKeysOf(o);
+  if (!keys.length) return null;
+  const rounds = keys.map((k) => receiptShippedRound(o, k));
+  return rounds.every((r): r is number => r !== null) ? Math.max(...rounds) : null;
+}
+
+/**
+ * 🎁🧾 ของที่ "อยู่ในกล่องตอนนี้" แต่ยังไม่เคยไปกับรอบไหน — ประทับลง Shipment ตอนยิงรอบแบ่งส่ง
+ * ตัวอย่าง = ติ๊ก samplePacked แล้ว · ใบเสร็จ = ถ่ายภาพแล้ว (บิลไม่มีเลข = ติ๊ก taxInvoicePacked)
+ */
+export function shipmentExtras(o: Order): Pick<Shipment, "samples" | "receipts"> {
+  const samples = o.items.map((it, i) => (it.sampleRequired && it.samplePacked && sampleShippedRound(o, i) === null ? i : -1)).filter((i) => i >= 0);
+  const shot = new Set((o.receiptPhotos ?? []).map((p) => p.docNo));
+  const receipts = receiptKeysOf(o).filter(
+    (k) => receiptShippedRound(o, k) === null && (k === RECEIPT_NO_DOC ? !!o.taxInvoicePacked : shot.has(k))
+  );
+  return { ...(samples.length ? { samples } : {}), ...(receipts.length ? { receipts } : {}) };
+}
+
+/** 🎁🧾 แผนรอบที่กำลังจะยิง (รอบถัดจากที่ส่งไปแล้ว) สั่งให้ใส่ตัวอย่าง/ใบเสร็จไหม */
+export function nextRoundExtras(o: Order): { round: number; sample: boolean; receipt: boolean } | null {
+  const n = o.shipments?.length ?? 0;
+  const r = o.shipPlan?.[n];
+  if (!r || (!r.withSample && !r.withReceipt)) return null;
+  return { round: n + 1, sample: !!r.withSample, receipt: !!r.withReceipt };
 }
 
 /** 🧾 ป้ายสั้น "ใบกำกับภาษี" / "ใบกำกับภาษี 2 ใบ" — ใช้บนตราใบปะหน้า/ใบงาน/ด่านแพ็ค */
@@ -3363,6 +3428,20 @@ export function partialGate(order: Order, sel: PartialSel): PartialGate {
     reasons.push(
       `${SPLIT_WHOLE_HINT} (${leftReady.join(" · ")}) — ถ้าของทั้งใบไปกล่องเดียว อย่าใช้แบ่งส่ง ให้ยิงเลขที่ช่องเลขพัสดุด้านล่างเพื่อปิดใบ · ถ้าลูกค้าขอรับก่อนจริง ให้แอดมินระบุแผนแบ่งส่งก่อน`
     );
+  // 🎁🧾 แอดมินสั่งให้ตัวอย่าง/ใบเสร็จไปกับรอบนี้ (ShipPlanRound.withSample/withReceipt · 9 ต.ค. 69)
+  const ex = isLastRound ? null : nextRoundExtras(order);
+  if (ex?.sample) {
+    const req = order.items.map((it, i) => ({ it, i })).filter(({ it, i }) => it.sampleRequired && sampleShippedRound(order, i) === null);
+    if (!order.items.some((it) => it.sampleRequired)) reasons.push("🎁 แอดมินสั่งส่งชิ้นงานตัวอย่างไปกับรอบนี้ แต่ยังไม่มีรายการที่ติ๊ก 🎁 มีชิ้นงานตัวอย่าง — แจ้งแอดมิน/กราฟฟิก");
+    else if (req.some(({ it }) => !it.samplePacked))
+      reasons.push(`🎁 รอบนี้ต้องใส่ชิ้นงานตัวอย่างไปด้วย — ติ๊กยืนยันใส่ตัวอย่าง: ${req.filter(({ it }) => !it.samplePacked).map(({ it }) => it.name).join(", ")}`);
+  }
+  if (ex?.receipt && orderNeedsTaxInvoiceInBox(order)) {
+    const keys = receiptKeysOf(order).filter((k) => receiptShippedRound(order, k) === null);
+    const shot = new Set((order.receiptPhotos ?? []).map((p) => p.docNo));
+    const left = keys.filter((k) => (k === RECEIPT_NO_DOC ? !order.taxInvoicePacked : !shot.has(k)));
+    if (left.length) reasons.push(`🧾 รอบนี้ต้องส่งใบเสร็จไปด้วย — ${left[0] === RECEIPT_NO_DOC ? "ยืนยันใส่ใบกำกับภาษีลงกล่อง" : `ถ่ายรูปใบเสร็จ ${left.join(", ")}`}`);
+  }
   return { ready: reasons.length === 0, reasons, isLastRound, looksWhole };
 }
 
@@ -3374,9 +3453,9 @@ export function packGate(order: Order): PackGate {
 
   // 🎁 ชิ้นงานตัวอย่างที่ส่งไปแล้วในรอบแบ่งส่งก่อนหน้า (ใบมัดจำส่งตัวอย่างก่อน) = ไม่ต้องใส่กล่องรอบสุดท้ายซ้ำ
   const sampleWentEarlier = (order.shipments?.length ?? 0) > 0 && !!order.deposit && depositSampleRun({ ...order, tracking: "" })?.ok === true;
-  order.items.forEach((it) => {
+  order.items.forEach((it, idx) => {
     if (!it.noteAck && !addOnNothingToRead(it)) unread.push(it.name);
-    if (it.sampleRequired && !it.samplePacked && !sampleWentEarlier) unsampled.push(it.name);
+    if (it.sampleRequired && !it.samplePacked && !sampleWentEarlier && sampleShippedRound(order, idx) === null) unsampled.push(it.name);
     proofsOf(it).forEach((p, j) => {
       if (!p.pack) uncounted.push({ item: it.name, index: j + 1 });
       else if (p.pack.status === "ไม่ครบ") short.push({ item: it.name, got: p.pack.got ?? 0, need: p.qty });
@@ -3386,7 +3465,11 @@ export function packGate(order: Order): PackGate {
   const noPhoto = !(order.packPhotos && order.packPhotos.length > 0);
   const unpaidBalance = hasUnpaidBalance(order);
   const missing = packMissingOf(order);
-  const taxInvoiceUnpacked = orderNeedsTaxInvoiceInBox(order) && !order.taxInvoicePacked;
+  // 🧾 ใบเสร็จไปกับรอบแบ่งส่งก่อนหน้าครบแล้ว = รอบนี้ไม่ต้องใส่ · เริ่มถ่ายภาพแล้วแต่มีบิลใหม่เพิ่มมา = ต้องถ่ายใบใหม่ด้วย
+  const taxInvoiceUnpacked =
+    orderNeedsTaxInvoiceInBox(order) &&
+    receiptsShippedRound(order) === null &&
+    (!order.taxInvoicePacked || ((order.receiptPhotos?.length ?? 0) > 0 && receiptPhotoPending(order).length > 0));
   const planPending = pendingPlanRound(order);
   const giftBump = (order.gifts ?? []).filter((g) => giftBumpPending(g)).map((g) => `${g.name}${g.size ? ` (${g.size})` : ""} — ${giftBumpLabel(g) ?? ""}`);
 
