@@ -1075,9 +1075,16 @@ ${list}
     // → คำว่า ดุ๊กดิ๊ก/หัวโยก/หัวสั่น/bobble = DookDik · "โยกเยก" ล้วน ๆ (ทั้งตัวโยก) = สแตนดี้โยกเยก · "สปริง" = สแตนดี้สปริง/จิ๋วติดสปริง (ให้เมนูเดิม)
     {
       const dook = items.find((it) => /^อะคริลิคดุ๊กดิ๊ก/.test(it.name));
+      const swinger = items.find((it) => /^Acrylic Swinger/i.test(it.name)); // หัวดุ๊กดิ๊กอะคริลิค: สแตนดี้ตั้งโต๊ะ หัวโยกแกว่งอัตโนมัติ ใส่ถ่าน AAA
       const swing = items.find((it) => /^สแตนดี้โยกเยก/.test(it.name));
-      if (dook && /ดุ๊กดิ๊ก|ดุ้กดิ้ก|หัว(โยก|สั่น|ขยับ|กระดก)|bobble/i.test(q) && !/มอเตอร์|ถ่าน|อัตโนมัติ/.test(q)) {
-        notInCatalog = false; finalPicked = [dook];
+      if ((dook || swinger) && /ดุ๊กดิ๊ก|ดุ้กดิ้ก|หัว(โยก|สั่น|ขยับ|กระดก|แกว่ง)|bobble|swinger/i.test(q)) {
+        // เจ้าของร้าน 9 ต.ค. 69 11:00: "มันต้องมีสินค้าตัวนี้ (Acrylic Swinger Variety) เข้ามาให้เลือกด้วย"
+        // → ระบุ ถ่าน/มอเตอร์/อัตโนมัติ/สแตนดี้/ตั้งโต๊ะ = Swinger · ระบุ พวงกุญแจ/griptok/แม่เหล็ก = DookDik · ไม่ระบุ = ทั้งคู่ (เมนู 2 ตัว)
+        const wantMotor = /ถ่าน|มอเตอร์|อัตโนมัติ|แกว่ง|swinger|สแตนดี้|ตั้งโต๊ะ|ตั้งโชว์/i.test(q);
+        const wantSmall = /พวงกุญแจ|griptok|กริ๊บ|กริ๊ป|แม่เหล็ก/i.test(q);
+        const both = [swinger, dook].filter((x): x is Lite => !!x);
+        finalPicked = wantMotor && !wantSmall && swinger ? [swinger] : wantSmall && !wantMotor && dook ? [dook] : both;
+        notInCatalog = false;
         if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = "spec";
       } else if (swing && /โยกเยก|โยกไปมา|กระดก/.test(q) && !/หัว|สปริง|ดุ๊กดิ๊ก/.test(q)) {
         notInCatalog = false; finalPicked = [swing];

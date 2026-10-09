@@ -270,7 +270,9 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   }
   // เมนูกลุ่มสินค้าก็เหมือนกัน: "เคลือบได้แค่เคลือบเงาใช่ไหม" "ฐานเปลี่ยนลายได้ไหม" "สีแบบนี้เลยใช่มั้ย" เคยได้เมนูสติ๊กเกอร์/กริ๊บต๊อก/เสื้อ
   // (ยกเว้นถาม "มี/รับทำ X ไหม" ที่อยากเห็นตัวเลือกจริง ๆ · และเรื่องคุณสมบัติที่ extraInfo ด้านล่างตอบแปะหัวให้ เช่น "แบบที่ 2 กันน้ำไหม")
-  if (ans.intent === "spec_menu" && SPECIFIC_Q_RE.test(query) && !LIST_Q_RE.test(query) && !AVAIL_Q_RE.test(query) && !EXTRA_ASK_RE.test(query)) {
+  // 9 ต.ค. 69 11:00 "งานมันจะดุ๊กดิ๊กได้ โยกๆ ได้ เป็นงานอะไรคะ" → เมนู 2 ตัว (Swinger/DookDik) คือคำตอบที่ถูก — คำถาม "เป็นงานอะไร/คืออะไร" ให้คงเมนูไว้
+  const WHAT_IS_RE = /เป็นงานอะไร|คืองานอะไร|งานอะไร|คืออะไร|เรียกว่าอะไร|ตัวไหน/;
+  if (ans.intent === "spec_menu" && SPECIFIC_Q_RE.test(query) && !LIST_Q_RE.test(query) && !AVAIL_Q_RE.test(query) && !EXTRA_ASK_RE.test(query) && !WHAT_IS_RE.test(query)) {
     ans = { answer: "", kind: "skip", source: "menu-not-covering-question", intent: "unknown" };
   }
 
