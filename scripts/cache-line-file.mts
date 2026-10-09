@@ -13,12 +13,16 @@ const [uidArg, logArg] = process.argv.slice(2);
 const targets: { uid: string; id: string; name: string }[] = [];
 if (uidArg && logArg) targets.push({ uid: uidArg, id: logArg, name: logArg });
 else {
+  // ⚠️ collectionGroup("log") ไม่มี index → ไล่จากห้องที่มีความเคลื่อนไหว (lastSeen) แล้วอ่าน log ของห้องนั้น
   const since = new Date(Date.now() - 14 * 86400_000);
-  const q = await db.collectionGroup("log").where("at", ">=", since).orderBy("at", "desc").get();
-  for (const d of q.docs) {
-    const x = d.data();
-    if ((x.type !== "file" && x.type !== "image") || x.imageUrl || x.imageExpired === true || !x.messageId) continue;
-    targets.push({ uid: d.ref.parent.parent!.id, id: d.id, name: String(x.fileName ?? x.type) });
+  const rooms = await db.collection("line-conversations").where("lastSeen", ">=", since).get();
+  for (const r of rooms.docs) {
+    const q = await r.ref.collection("log").where("at", ">=", since).get();
+    for (const d of q.docs) {
+      const x = d.data();
+      if ((x.type !== "file" && x.type !== "image") || x.imageUrl || x.imageExpired === true || !x.messageId) continue;
+      targets.push({ uid: r.id, id: d.id, name: String(x.fileName ?? x.type) });
+    }
   }
 }
 console.log(`รายการที่ต้องดึง ${targets.length}`);
