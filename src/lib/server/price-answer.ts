@@ -1091,6 +1091,17 @@ ${list}
         if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = "spec";
       }
     }
+    // 🫧 9 ต.ค. 69 12:40 "ตัวจุ๊บ ดึงเข้า-ออก ติดใหม่ ย้ายตำแหน่งได้ไหม" → LLM จับ GRIPTOK PUSH-PULL (ชื่อไม่มีคำว่าจุ๊บ) แล้วตอบว่าย้ายไม่ได้/ทิ้งคราบกาว ❌
+    // ทั้งที่ "จุ๊บ/ตัวจุ๊บ" ในภาษาลูกค้า = สติ๊กเกอร์สูญญากาศ (แปะกระจก ลอกติดใหม่ได้) · พูดถึงตะขอ/แขวน = ตะขอแขวนสูญญากาศ · เอ่ย griptok/push-pull เอง = ปล่อยตามเดิม
+    {
+      const vac = items.find((it) => /^สติ๊กเกอร์สูญญากาศ/.test(it.name));
+      const hook = items.find((it) => /^ตะขอแขวนสูญญากาศ/.test(it.name));
+      if (vac && /จุ๊บ/.test(q) && !/griptok|กริ๊บ|กริ๊ป|push|ป๊อป|pop/i.test(q)) {
+        finalPicked = /ตะขอ|แขวน|hook/i.test(q) && hook ? [hook] : [vac];
+        notInCatalog = false;
+        if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = "spec";
+      }
+    }
     const u: Understanding = {
       notInCatalog,
       requested,
