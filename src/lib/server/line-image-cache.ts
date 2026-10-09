@@ -31,9 +31,10 @@ export async function cacheLineImage(db: Firestore, uid: string, logId: string):
 
   let res: Response;
   try {
-    res = await fetch(`https://api-data.line.me/v2/bot/message/${mid}/content`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
+    // ไฟล์งานใหญ่ (14 MB .ai) โหลดเกิน 15 วิ → เคย throw นอก try = 500 · ให้เวลาไฟล์ 40 วิ (Netlify maxDuration 26 — ไฟล์ใหญ่มากอาจไม่ทันบน production)
+    res = await fetch(`https://api-data.line.me/v2/bot/message/${mid}/content`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(isFile ? 40_000 : 15_000) });
   } catch {
-    return { ok: false, reason: "ดึงรูปจาก LINE ไม่ได้ (เน็ต)", status: 502 };
+    return { ok: false, reason: "ดึงไฟล์จาก LINE ไม่ได้ (เน็ต/หมดเวลา)", status: 502 };
   }
   if (!res.ok) {
     await ref.set({ imageExpired: true, imageExpiredReason: `line-${res.status}`, imageCheckedAt: new Date() }, { merge: true }).catch(() => {});
@@ -44,7 +45,12 @@ export async function cacheLineImage(db: Firestore, uid: string, logId: string):
     await ref.set({ imageExpired: true, imageExpiredReason: `type-${type}` }, { merge: true }).catch(() => {});
     return { ok: false, reason: "ไม่ใช่ไฟล์รูป", status: 404 };
   }
-  const buf = Buffer.from(await res.arrayBuffer());
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(await res.arrayBuffer());
+  } catch {
+    return { ok: false, reason: "โหลดไฟล์จาก LINE ไม่ครบ (หมดเวลา)", status: 502 };
+  }
   const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : type.includes("gif") ? "gif" : "jpg";
   try {
     const fname = isFile ? String(x.fileName ?? "").trim() || `line-${mid}.bin` : `line-${mid}.${ext}`;

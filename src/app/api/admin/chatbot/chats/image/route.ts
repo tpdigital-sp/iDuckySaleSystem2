@@ -3,6 +3,9 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { cacheLineImage } from "@/lib/server/line-image-cache";
 
+export const runtime = "nodejs";
+export const maxDuration = 26;
+
 /**
  * 🖼 รูปที่ลูกค้าส่งใน LINE สำหรับหน้าแชท — GET ?uid=U…&log=<logDocId> → 302 ไปยัง URL รูป (ใช้เป็น src ของ <img> ได้ตรง ๆ)
  *   ตรรกะดึง/แคชอยู่ที่ lib/server/line-image-cache.ts (บอท n8n ก็เรียกผ่าน /api/bot/line-image-cache ทันทีที่ลูกค้าส่ง)

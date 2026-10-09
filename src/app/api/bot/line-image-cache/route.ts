@@ -4,7 +4,7 @@ import { verifyBotToken } from "@/lib/server/customer-profile";
 import { cacheLineImage } from "@/lib/server/line-image-cache";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 26;
 
 /**
  * 🤖🖼 บอท n8n (Build AI Request) เรียกทันทีหลังบันทึก log รูปของลูกค้า → ดึงจาก LINE เก็บถาวรใน Storage ก่อน LINE จะลบ
