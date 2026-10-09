@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore, setBotPause, patchChatRow } from "@/lib/server/line-chat";
+import { inBackground } from "@/lib/server/background";
+import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
 
 /**
  * 💬 แอดมินตอบลูกค้า LINE จากหน้า /admin/chatbot/chats (เจ้าของร้านขอ 9 ต.ค. 69 15:20 — แบบผสม: ใช้กับเคสที่บอทส่งต่อ/ลูกค้าที่เปิดบอท
@@ -136,6 +138,8 @@ export async function POST(req: Request) {
       pausedUntil ? setBotPause(db, id, pausedUntil) : Promise.resolve(),
     ]);
     if (pausedUntil) patchChatRow(id, { pausedUntil: pausedUntil.toISOString() });
+    // 📊 สถิติตอบแชท/ค่าคอม: ซิงก์รอบปัจจุบันให้เองหลังตอบ (เจ้าของร้าน 9 ต.ค. 69 "ไม่ต้องกด 💾 บันทึกรอบนี้") — หน้าค่าคอมเดิมฟัง doc อยู่ ขยับเอง
+    inBackground("chat-stats sync", syncCurrentCycleSoon(db));
   } catch (e) {
     // ส่งถึงลูกค้าแล้ว แต่จดไม่ได้ — บอกให้รู้ ไม่ใช่โยน error ทั้งก้อน (ข้อความไปแล้ว ส่งซ้ำไม่ได้)
     return NextResponse.json({ ok: true, sent: true, logged: false, warn: `ส่งถึงลูกค้าแล้ว แต่บันทึกลงห้องแชทไม่ได้: ${(e as Error).message}` });

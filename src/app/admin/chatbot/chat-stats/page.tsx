@@ -153,7 +153,7 @@ function Inner() {
     if (!data) return;
     const msg = oa
       ? `บันทึกรอบ ${thDate(cycle.start)} – ${thDate(cycle.end)}: ฝั่งเว็บ ${data.web.senders.length} คน + จาก OA Manager ${oa.senders.length} ชื่อ${data.old ? `\n\n⚠️ รอบนี้เคยบันทึกจาก${data.old.version?.startsWith("iducky") ? "หน้านี้" : "หน้าค่าคอมเดิม"}เมื่อ ${fmtWhen(data.old.uploadedAt)} โดย ${data.old.uploadedBy} — จะเขียนทับ` : ""}`
-      : `บันทึกเฉพาะฝั่งเว็บของรอบ ${thDate(cycle.start)} – ${thDate(cycle.end)} (ยังไม่ได้อัปโหลด zip — ผล OA ที่เคยบันทึกไว้จะคงเดิม)`;
+      : `ซิงก์ฝั่งเว็บของรอบ ${thDate(cycle.start)} – ${thDate(cycle.end)} ตอนนี้ (ปกติซิงก์เองทุกครั้งที่ตอบอยู่แล้ว · ผล OA ที่เคยบันทึกไว้คงเดิม)`;
     if (!window.confirm(msg)) return;
     setSaving(true);
     try {
@@ -219,7 +219,7 @@ function Inner() {
 
   return (
     <PageShell>
-      <PageHead group="🤖 Chatbot" title="สถิติตอบแชท" count={data ? `${rows.filter((r) => r.known).length} คน` : undefined} sub="นับข้อความและจำนวนลูกค้าที่พนักงานตอบ ต่อรอบบิล 26 → 25 · ฝั่งเว็บนับให้เอง · ฝั่ง LINE OA Manager โยน zip CSV เข้ามา" tools={<ChatbotTabs inHead />} toolsTop />
+      <PageHead group="🤖 Chatbot" title="สถิติตอบแชท" count={data ? `${rows.filter((r) => r.known).length} คน` : undefined} sub="นับข้อความและจำนวนลูกค้าที่พนักงานตอบ ต่อรอบบิล 26 → 25 · ฝั่งเว็บซิงก์ให้หน้าค่าคอมเองทุกครั้งที่ตอบ · ฝั่ง LINE OA Manager โยน zip CSV แล้วกด 💾" tools={<ChatbotTabs inHead />} toolsTop />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1">
         <label className="flex items-center gap-2 text-[13.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
@@ -253,7 +253,7 @@ function Inner() {
             <Stat label="ตอบบนเว็บ (ข้อความ)" value={fmtInt(totalWeb)} hint={`${fmtInt(data.web.rooms)} ลูกค้า · ${data.web.senders.length} คน`} />
             <Stat label="ตอบใน OA Manager (ข้อความ)" value={oaSenders.length ? fmtInt(totalOa) : "—"} hint={oaSenders.length ? `${fmtInt(oa?.chats ?? data.saved?.oa?.chats ?? 0)} แชท · ${oaSource}` : "ยังไม่ได้อัปโหลด zip รอบนี้"} />
             <Stat label="ชื่อใน OA ที่ยังไม่จับคู่" value={fmtInt(unknownOa.length)} hint={unknownOa.length ? "เลือกพนักงานในตารางล่าง" : "ครบแล้ว"} tone={unknownOa.length ? "due" : undefined} />
-            <Stat label="บันทึกล่าสุด" value={data.saved ? fmtWhen(data.saved.savedAt) : "ยังไม่บันทึก"} hint={data.saved ? `โดย ${data.saved.savedBy}` : data.old ? `หน้าค่าคอมเดิมบันทึกเอง ${fmtWhen(data.old.uploadedAt)}` : "กด 💾 เมื่อข้อมูลครบ"} />
+            <Stat label="ซิงก์ให้หน้าค่าคอมล่าสุด" value={data.saved ? fmtWhen(data.saved.savedAt) : "ยังไม่เคย"} hint={data.saved ? (data.saved.savedBy === "auto" ? "อัตโนมัติหลังตอบจากเว็บ" : `โดย ${data.saved.savedBy}`) : data.old ? `หน้าค่าคอมเดิมบันทึกเอง ${fmtWhen(data.old.uploadedAt)}` : "จะซิงก์เองเมื่อมีคนตอบจากเว็บ"} />
           </Stats>
         </div>
       )}

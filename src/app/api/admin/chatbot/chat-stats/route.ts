@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
-import type { Firestore } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { EMPLOYEE_COLLECTION, getChatFirestore, getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { WORK_STATUS_ACTIVE } from "@/lib/permissions";
-import { cycleKey, cycleRange, feedConversation, finalizeSender, newAcc, type OaSummary, type SenderAcc, type SenderStats } from "@/lib/chat-stats";
+import { cycleKey, type OaSummary, type SenderStats } from "@/lib/chat-stats";
+import { OLD_COL, STATS_COL, syncChatStatsCycle, webStats } from "@/lib/server/chat-stats-sync";
 
 export const runtime = "nodejs";
 export const maxDuration = 26;
@@ -12,29 +12,16 @@ export const maxDuration = 26;
 /**
  * 📊 สถิติตอบแชทต่อพนักงาน ต่อรอบบิล 26→25 (เจ้าของร้าน 9 ต.ค. 69 21:20)
  *
- * GET  ?start=YYYY-MM-DD&end=YYYY-MM-DD → { web: SenderStats[] (จาก log ห้องแชทที่ตอบผ่านหน้า /admin/chatbot/chats · mode "web"),
- *        saved: doc รอบนี้ (ถ้าเคยบันทึก), alias: ชื่อใน OA → พนักงาน (doc เดียวกับหน้าค่าคอมเดิม), staff: ชื่อพนักงานที่ยังทำงาน }
- * POST { action:"save", start, end, oa?: OaSummary }  → บันทึก chatReplyStats/{รอบ} (เว็บ+OA) และเขียน storeChatCommissionChats/{รอบ}
- *        ในทรงที่ pages/commissionStoreChat.js (Admin_MyWebApp) อ่านอยู่ — senders = ผู้ส่งจาก OA + พนักงานที่ตอบบนเว็บ (source "web")
- *        จึงเอาไปคิดค่าคอมได้โดยไม่ต้องแก้หน้าเดิม · ไม่มี oa = เขียนเฉพาะฝั่งเว็บ (ยังไม่อัปโหลด zip)
+ * GET  ?start=YYYY-MM-DD&end=YYYY-MM-DD → { web (นับสดจาก log ห้องแชท mode "web"), saved (doc รอบนี้), alias (ชื่อ OA → พนักงาน · doc เดียวกับหน้าค่าคอมเดิม),
+ *        staff (พนักงานที่ยังทำงาน), old (doc ของหน้าค่าคอมเดิม) }
+ * POST { action:"save", start, end, oa?: OaSummary } → syncChatStatsCycle (ฝั่งเว็บนับใหม่ + ผล zip) · ฝั่งเว็บอย่างเดียวซิงก์เองหลังตอบทุกครั้งอยู่แล้ว (reply route)
  * POST { action:"alias", chatName, staffName }        → customer-tasks-config/store-chat-commission.chatAlias (""= ไม่ใช่พนักงาน · null = ลบ)
  *
  * ⚠️ ข้อความที่ส่งจากหน้าแชทของเราออกทาง Messaging API → ใน export ของ LINE ขึ้นเป็นผู้ส่ง "Unknown" (รวมกับบอท) ไม่เข้าใคร
  *    ดังนั้นสถิติฝั่งเว็บต้องนับจาก log ของเราเอง และไม่ซ้ำกับฝั่ง OA (Unknown ถูกตัดเป็นระบบอยู่แล้ว)
  */
-const ROOMS = "line-conversations";
-const STATS_COL = "chatReplyStats";
-const OLD_COL = "storeChatCommissionChats";
 const CONFIG = { col: "customer-tasks-config", doc: "store-chat-commission" };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-type LogRow = { role?: string; mode?: string; by?: string; text?: string; at?: { toDate?: () => Date } | Date | string };
-const toMs = (v: LogRow["at"]): number => {
-  if (!v) return 0;
-  if (v instanceof Date) return v.getTime();
-  if (typeof v === "string") return new Date(v).getTime() || 0;
-  return v.toDate?.()?.getTime() ?? 0;
-};
 
 /** พนักงานที่ยังทำงาน (employees2 ฐาน tp-fixflow) — ชื่อแสดง = ค่าเดียวกับที่ reply route เขียนลง log (by) */
 async function activeStaffNames(): Promise<string[]> {
@@ -49,37 +36,6 @@ async function activeStaffNames(): Promise<string[]> {
     if (n) out.add(n);
   }
   return [...out].sort((a, b) => a.localeCompare(b, "th"));
-}
-
-/** นับจาก log ห้องแชท: ห้องที่แอดมินเคยตอบตั้งแต่ต้นรอบ → อ่านข้อความในรอบ เรียงเวลา → ป้อนตัวสะสม (กติกาเดียวกับ CSV) */
-async function webStats(db: Firestore, start: string, end: string): Promise<{ senders: SenderStats[]; rooms: number; customerMsgs: number }> {
-  const { from, to } = cycleRange({ start, end });
-  const rooms = await db.collection(ROOMS).where("lastAdminAt", ">=", from).get();
-  const acc = new Map<string, SenderAcc>();
-  let customerMsgs = 0;
-  let roomsWithWeb = 0;
-  await Promise.all(
-    rooms.docs.map(async (r) => {
-      const q = await r.ref.collection("log").where("at", ">=", from).where("at", "<=", to).orderBy("at", "asc").get();
-      const msgs: { who: string; at: number; text: string }[] = [];
-      let hasWeb = false;
-      for (const d of q.docs) {
-        const x = d.data() as LogRow;
-        const at = toMs(x.at);
-        const text = String(x.text ?? "");
-        if (x.role === "user") msgs.push({ who: "cust", at, text });
-        else if (x.role === "admin" && x.mode === "web" && x.by) {
-          msgs.push({ who: String(x.by), at, text });
-          hasWeb = true;
-        } else msgs.push({ who: "sys", at, text }); // บอท (assistant) / แอดมินที่ไม่ใช่ทางเว็บ = ลูกค้าได้คำตอบแล้ว แต่ไม่นับให้ใคร
-      }
-      if (!hasWeb) return;
-      roomsWithWeb++;
-      customerMsgs += feedConversation(acc, r.id, msgs).customerMsgs;
-    })
-  );
-  const senders = [...acc.values()].map((a) => finalizeSender(a, "web")).sort((a, b) => b.replies - a.replies);
-  return { senders, rooms: roomsWithWeb, customerMsgs };
 }
 
 export async function GET(req: Request) {
@@ -109,7 +65,6 @@ export async function GET(req: Request) {
       staff,
       alias: ((cfgSnap.data() as { chatAlias?: Record<string, string> } | undefined)?.chatAlias ?? {}) as Record<string, string>,
       saved: saved ? { savedAt: ts(saved.savedAt), savedBy: saved.savedBy ?? "", oa: (saved.oa as OaSummary | null) ?? null, web: (saved.web as SenderStats[]) ?? [] } : null,
-      // หน้าค่าคอมเดิมเคยบันทึกรอบนี้จาก zip เองไหม (ถ้าเราเขียนทับจะบอกก่อน)
       old: old ? { uploadedAt: ts(old.uploadedAt), uploadedBy: old.uploadedBy ?? "", version: old.version ?? "", senders: Array.isArray(old.senders) ? old.senders.length : 0 } : null,
     },
     { headers: { "Cache-Control": "no-store" } }
@@ -130,7 +85,7 @@ const cleanSender = (s: SenderStats): SenderStats => ({
   avgLen: Number(s.avgLen) || 0,
   apology: Number(s.apology) || 0,
   nudges: Number(s.nudges) || 0,
-  source: s.source === "web" ? "web" : "oa",
+  source: "oa",
 });
 
 export async function POST(req: Request) {
@@ -160,8 +115,6 @@ export async function POST(req: Request) {
   const start = String(b.start ?? "");
   const end = String(b.end ?? "");
   if (!DATE_RE.test(start) || !DATE_RE.test(end) || end < start) return NextResponse.json({ error: "รอบบิลไม่ถูกต้อง" }, { status: 400 });
-  const key = cycleKey({ start, end });
-  const web = await webStats(db, start, end);
   const oaIn = b.oa && typeof b.oa === "object" ? b.oa : null;
   const oa: OaSummary | null = oaIn
     ? {
@@ -176,44 +129,9 @@ export async function POST(req: Request) {
         chats: Number(oaIn.chats) || 0,
         customerMsgs: Number(oaIn.customerMsgs) || 0,
         autoReplies: Number(oaIn.autoReplies) || 0,
-        senders: (Array.isArray(oaIn.senders) ? oaIn.senders : []).map((s) => cleanSender({ ...s, source: "oa" })).filter((s) => s.name).slice(0, 500),
+        senders: (Array.isArray(oaIn.senders) ? oaIn.senders : []).map(cleanSender).filter((s) => s.name).slice(0, 500),
       }
     : null;
-  const now = new Date();
-  // เขียนทับเฉพาะฝั่งที่มีข้อมูลใหม่ — ไม่มี zip รอบนี้ก็เก็บ OA เดิมไว้
-  const prev = await db.collection(STATS_COL).doc(key).get();
-  const prevOa = prev.exists ? ((prev.data() as { oa?: OaSummary | null }).oa ?? null) : null;
-  const oaFinal = oa ?? prevOa;
-  await db.collection(STATS_COL).doc(key).set({ start, end, web: web.senders, webRooms: web.rooms, webCustomerMsgs: web.customerMsgs, oa: oaFinal, savedAt: now, savedBy: who }, { merge: false });
-  // ทรงของหน้าค่าคอมเดิม (merge:false เหมือนที่หน้านั้นเขียนเอง) — senders รวมเว็บ · subcollection samples ของเดิม (ถ้ามี) ไม่ถูกแตะ
-  const senders = [...(oaFinal?.senders ?? []), ...web.senders];
-  await db
-    .collection(OLD_COL)
-    .doc(key)
-    .set(
-      {
-        startStr: start,
-        endStr: end,
-        fileName: oaFinal?.fileName ?? "",
-        fileSize: oaFinal?.fileSize ?? 0,
-        coverStart: oaFinal?.coverStart ?? "",
-        coverEnd: oaFinal?.coverEnd ?? "",
-        partial: oaFinal?.partial ?? false,
-        filesTotal: oaFinal?.filesTotal ?? 0,
-        filesRead: oaFinal?.filesRead ?? 0,
-        rowsRead: oaFinal?.rowsRead ?? 0,
-        chats: (oaFinal?.chats ?? 0) + web.rooms,
-        customerMsgs: (oaFinal?.customerMsgs ?? 0) + web.customerMsgs,
-        autoReplies: oaFinal?.autoReplies ?? 0,
-        senders,
-        uploadedAt: now,
-        uploadedBy: who,
-        version: "iducky-admin-chat-stats",
-        webIncluded: true,
-        webRooms: web.rooms,
-        samplesCount: 0,
-      },
-      { merge: false }
-    );
-  return NextResponse.json({ ok: true, key, web: web.senders, oa: oaFinal, savedAt: now.toISOString(), savedBy: who });
+  const r = await syncChatStatsCycle(db, { start, end }, who, oa);
+  return NextResponse.json({ ok: true, key: r.key, web: r.web.senders, oa: r.oa, savedAt: r.savedAt, savedBy: r.savedBy });
 }

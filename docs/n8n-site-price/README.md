@@ -424,3 +424,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - บันทึก (settings.manage) → `chatReplyStats/{start_end}` + เขียน `storeChatCommissionChats/{start_end}` ทรงเดิม senders = OA + เว็บ (source "web") → หน้าค่าคอมเดิมอ่านได้ไม่ต้องแก้ · ไม่มี zip = เก็บ OA เดิมไว้
 - จับคู่ชื่อ OA → พนักงาน: `customer-tasks-config/store-chat-commission.chatAlias` (doc เดียวกับหน้าเดิม) · ⚠️ ชื่อมีจุด (".zzsomp.") ต้อง update ด้วย FieldPath ไม่ใช่ set({merge})
 - ⚠️ collectionGroup("log") ไม่มี index → ไล่ทีละห้องเสมอ
+
+### 9 ต.ค. 69 22:10 — 🔄 ซิงก์สถิติตอบแชทให้หน้าค่าคอมเองหลังตอบทุกครั้ง
+- เจ้าของร้าน: "ไม่ต้องกด 💾 บันทึกรอบนี้ ได้ไหม" → reply route เรียก `syncCurrentCycleSoon` (inBackground) หลังบันทึก log · lib/server/chat-stats-sync.ts (ย้าย webStats/การเขียน 2 doc มาจาก route)
+- หน้าค่าคอมเดิมฟัง storeChatCommissionChats/{รอบ} ด้วย onSnapshot อยู่แล้ว (ensureChatSub) → ตัวเลขขยับบนจอเองไม่กี่วิหลังตอบ · คอลัมน์ใหม่ "ตอบผ่านเว็บ (คน)" ในหน้าเดิม (Admin_MyWebApp/pages/commissionStoreChat.js · sender.source === "web") แก้ 9 ต.ค. 69
+- ผล zip ไม่หาย: oa ใหม่ → chatReplyStats.oa เดิม → doc หน้าเดิม (oaFromOldDoc ตัด sender ที่ source web ออก) · uploadedAt/uploadedBy ของ zip เดิมคงไว้ถ้ารอบนี้ไม่มี zip ใหม่
