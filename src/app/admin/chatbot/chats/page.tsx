@@ -282,6 +282,31 @@ function Chats() {
     [toast],
   );
 
+  // 🖼 16:35 เจ้าของร้าน "ต้องการให้สามารถโยนภาพได้" — ลากรูปวางที่ไหนก็ได้ในห้อง (หรือ Ctrl/Cmd+V ในช่องพิมพ์) → Composer อัปแล้วแนบ
+  const [dropFile, setDropFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!canReply || !sel) return;
+    if (![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  };
+  const onDragLeave = () => {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (!canReply || !sel) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    const f = [...e.dataTransfer.files].find((x) => x.type.startsWith("image/"));
+    if (f) setDropFile(f);
+    else toast("รับเฉพาะไฟล์รูปภาพ (JPG/PNG)", true);
+  };
+
   const quotaLow = quota?.left !== null && quota?.left !== undefined && quota.left < 3000;
   const quotaOut = quota?.left !== null && quota?.left !== undefined && quota.left < 500;
   const quotaText = quota ? (quota.limit === null ? `ใช้ไป ${quota.used.toLocaleString()}` : `${quota.left?.toLocaleString()} / ${quota.limit.toLocaleString()}`) : "—";
@@ -301,7 +326,7 @@ function Chats() {
   return (
     <div ref={shellRef} className="-mx-4 -my-6 flex overflow-hidden md:-mx-8 md:-my-8" style={{ background: "#EEF2F7", color: "var(--dk-navy)", height: `calc(100dvh - ${topOffset}px)` }}>
       {/* ───── รายชื่อห้อง (ซ้าย) — มือถือซ่อนเมื่อเปิดห้อง ───── */}
-      <aside className={`${sel ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r bg-white md:w-[340px] lg:w-[380px]`} style={{ borderColor: "var(--dk-hair)" }}>
+      <aside className={`${sel ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r bg-white md:w-[290px] lg:w-[310px]`} style={{ borderColor: "var(--dk-hair)" }}>
         <div className="flex items-center gap-2 px-3 pt-3">
           <h1 className="text-[18px] font-extrabold">แชท LINE</h1>
           <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
@@ -329,7 +354,7 @@ function Chats() {
         <div className="px-3 pt-2">
           <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อลูกค้า…" />
         </div>
-        <div className="flex gap-1.5 overflow-x-auto px-3 py-2 [scrollbar-width:none]">
+        <div className="flex flex-wrap gap-1.5 px-3 py-2">
           {SCOPES.map((s) => {
             const n = s.key === "waiting" ? waitingCount : s.key === "new" ? counts.newN : s.key === "old" ? counts.oldN : 0;
             return (
@@ -337,7 +362,7 @@ function Chats() {
                 key={s.key}
                 type="button"
                 onClick={() => setScope(s.key)}
-                className="min-h-[32px] shrink-0 rounded-full px-3 text-[12.5px] font-bold transition"
+                className="min-h-[30px] rounded-full px-2.5 text-[12px] font-bold transition"
                 style={scope === s.key ? { background: "var(--dk-navy)", color: "white" } : { background: "#F1F5F9", color: "var(--dk-navy-soft)" }}
               >
                 {s.label}
@@ -394,7 +419,22 @@ function Chats() {
       </aside>
 
       {/* ───── ห้องสนทนา (ขวา) — มือถือเต็มจอเมื่อเปิดห้อง ───── */}
-      <section className={`${sel ? "flex" : "hidden md:flex"} min-w-0 flex-1 flex-col`}>
+      <section
+        className={`${sel ? "flex" : "hidden md:flex"} relative min-w-0 flex-1 flex-col`}
+        onDragEnter={onDragEnter}
+        onDragOver={(e) => {
+          if (canReply && sel) e.preventDefault();
+        }}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        {dragging ? (
+          <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center" style={{ background: "rgba(6,199,85,.12)", border: `3px dashed ${LINE_GREEN}` }}>
+            <div className="rounded-2xl bg-white px-5 py-3 text-[15px] font-bold shadow" style={{ color: "#0E7A3A" }}>
+              🖼 วางรูปตรงนี้เพื่อแนบส่งให้ลูกค้า
+            </div>
+          </div>
+        ) : null}
         {!sel ? (
           <div className="m-auto max-w-md p-6 text-center">
             <div className="text-5xl">💬</div>
@@ -563,7 +603,7 @@ function Chats() {
             </div>
 
             {canReply ? (
-              <Composer id={sel} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} />
+              <Composer id={sel} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} dropFile={dropFile} onDropConsumed={() => setDropFile(null)} />
             ) : (
               <p className="border-t bg-white px-4 py-3 text-[12px]" style={{ borderColor: "var(--dk-hair)", color: "var(--dk-faint)" }}>
                 บัญชีนี้ดูแชทได้อย่างเดียว — ตอบลูกค้าต้องมีสิทธิ์ "ตอบลูกค้า LINE" (ตั้งค่าระบบ → บทบาท)
@@ -607,7 +647,23 @@ function IconBtn({ onClick, title, active, children }: { onClick: () => void; ti
 }
 
 /** ช่องพิมพ์แบบ LINE: ติดขอบล่าง · ปุ่มรูป/การ์ดซ้าย · ปุ่มส่งเขียวกลมขวา · Enter ส่ง (Shift+Enter ขึ้นบรรทัด) · ปุ่มเลือกสินค้าเป็นแผ่นเลื่อนขึ้น */
-function Composer({ id, disabled, quotaLow, onSent, toast }: { id: string; disabled: boolean; quotaLow: boolean; onSent: (r: ReplyRes) => void; toast: (t: string, bad?: boolean) => void }) {
+function Composer({
+  id,
+  disabled,
+  quotaLow,
+  onSent,
+  toast,
+  dropFile,
+  onDropConsumed,
+}: {
+  id: string;
+  disabled: boolean;
+  quotaLow: boolean;
+  onSent: (r: ReplyRes) => void;
+  toast: (t: string, bad?: boolean) => void;
+  dropFile: File | null;
+  onDropConsumed: () => void;
+}) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<{ url: string; name: string } | null>(null);
   const [card, setCard] = useState<CatalogItem | null>(null);
@@ -668,6 +724,23 @@ function Composer({ id, disabled, quotaLow, onSent, toast }: { id: string; disab
       }
     },
     [id, toast],
+  );
+
+  // รูปที่ลากมาวาง/วางจากคลิปบอร์ด → อัปเหมือนกดปุ่ม 🖼
+  useEffect(() => {
+    if (!dropFile) return;
+    void onFile(dropFile);
+    onDropConsumed();
+  }, [dropFile, onFile, onDropConsumed]);
+  const onPaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const f = [...(e.clipboardData?.files ?? [])].find((x) => x.type.startsWith("image/"));
+      if (f) {
+        e.preventDefault();
+        void onFile(f);
+      }
+    },
+    [onFile],
   );
 
   const send = useCallback(async () => {
@@ -774,6 +847,7 @@ function Composer({ id, disabled, quotaLow, onSent, toast }: { id: string; disab
           ref={areaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onPaste={onPaste}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -781,7 +855,7 @@ function Composer({ id, disabled, quotaLow, onSent, toast }: { id: string; disab
             }
           }}
           rows={1}
-          placeholder={disabled ? "ส่งจากหน้านี้ไม่ได้ชั่วคราว (โควตา LINE)" : "พิมพ์ข้อความ…"}
+          placeholder={disabled ? "ส่งจากหน้านี้ไม่ได้ชั่วคราว (โควตา LINE)" : "พิมพ์ข้อความ… (ลากรูปมาวาง หรือ Ctrl+V ก็ได้)"}
           disabled={disabled || sending}
           className="min-h-[44px] flex-1 resize-none rounded-[22px] px-4 py-2.5 text-[15px] outline-none"
           style={{ background: "#F1F5F9", color: "var(--dk-navy)" }}
