@@ -33,8 +33,10 @@ type Row = {
   adminTag: string;
   adminTags: string[];
   adminNote: string;
+  adminNotes: NoteItem[];
   adminAlias: string;
 };
+type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[] };
 type Settings = { mode: string; newSince: string; enabled: boolean };
@@ -278,15 +280,12 @@ function Chats() {
   useEffect(() => {
     botApi<{ items: ChatTag[] }>("/api/admin/chatbot/chats/tags").then((d) => setTagCatalog(d.items)).catch(() => {});
   }, []);
-  const [noteDraft, setNoteDraft] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
   // เปลี่ยนห้อง = ปิดแผง · โน้ตในฐานเปลี่ยน (บันทึก/โพล) = ซิงก์ร่าง แต่ไม่ปิดแผง
   useEffect(() => {
     setNoteOpen(false);
   }, [sel]);
-  useEffect(() => {
-    setNoteDraft(detail?.adminNote ?? "");
-  }, [sel, detail?.adminNote]);
+
   const saveTags = useCallback(
     async (id: string, tags: string[]) => {
       try {
@@ -300,23 +299,26 @@ function Chats() {
     },
     [toast],
   );
-  const saveNote = useCallback(
-    async (id: string, note: string) => {
+  // 📝 18:25 หลายโน้ต ≤10 (noteAdd/noteEdit/noteDel) — ผลลัพธ์ notes[] ทั้งชุดจาก API
+  const noteAction = useCallback(
+    async (id: string, body: Record<string, unknown>) => {
       setNoteSaving(true);
       try {
-        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/line-customers/manage", { action: "note", userId: id, adminNote: note });
-        toast(d.saved || "บันทึกโน้ตแล้ว");
-        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, adminNote: note } : x)));
-        setDetail((x) => (x && x.id === id ? { ...x, adminNote: note } : x));
+        const d = await botApi<{ ok: boolean; notes: NoteItem[]; saved?: string }>("/api/admin/line-customers/manage", { userId: id, ...body });
+        toast(d.saved || "บันทึกแล้ว");
+        const latest = d.notes.length ? d.notes[d.notes.length - 1].text : "";
+        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, adminNotes: d.notes, adminNote: latest } : x)));
+        setDetail((x) => (x && x.id === id ? { ...x, adminNotes: d.notes, adminNote: latest } : x));
+        return true;
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
+        return false;
       } finally {
         setNoteSaving(false);
       }
     },
     [toast],
   );
-
   // 🖼 16:35 เจ้าของร้าน "ต้องการให้สามารถโยนภาพได้" — ลากรูปวางที่ไหนก็ได้ในห้อง (หรือ Ctrl/Cmd+V ในช่องพิมพ์) → Composer อัปแล้วแนบ
   const [dropFile, setDropFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -440,7 +442,7 @@ function Chats() {
                   </p>
                   <div className="mt-0.5 flex flex-wrap gap-1">
                     {r.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
-                    {r.adminNote ? <span className="text-[10.5px]" title={r.adminNote} style={{ color: "var(--dk-faint)" }}>📝</span> : null}
+                    {r.adminNotes.length ? <span className="text-[10.5px]" title={r.adminNotes.map((n) => n.text).join("\n")} style={{ color: "var(--dk-faint)" }}>📝{r.adminNotes.length > 1 ? r.adminNotes.length : ""}</span> : null}
                     {r.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
                     {r.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
                     {r.pausedUntil ? <Chip tone="lilac">⏸ พักบอท</Chip> : null}
@@ -617,10 +619,10 @@ function Chats() {
           detail={detail}
           canReply={canReply}
           canToggle={can("orders.edit") || canReply}
-          noteDraft={noteDraft}
-          setNoteDraft={setNoteDraft}
           noteSaving={noteSaving}
-          onSaveNote={() => void saveNote(detail.id, noteDraft.trim())}
+          onNoteAdd={(t) => noteAction(detail.id, { action: "noteAdd", text: t })}
+          onNoteEdit={(nid, t) => noteAction(detail.id, { action: "noteEdit", noteId: nid, text: t })}
+          onNoteDel={(nid) => noteAction(detail.id, { action: "noteDel", noteId: nid })}
           tags={tagCatalog}
           onTags={(ts) => void saveTags(detail.id, ts)}
           onManageTags={() => setTagMgrOpen(true)}
@@ -940,10 +942,10 @@ function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canTogg
 
 /** ℹ️ แผงข้อมูลลูกค้าด้านขวา — ชื่อ/รูป/ไอดี · สถานะบอท · ป้าย · โน้ตภายใน (ฟิลด์เดียวกับหน้า ลูกค้า LINE) */
 function InfoPanel({
-  detail, canReply, canToggle, noteDraft, setNoteDraft, noteSaving, onSaveNote, tags, onTags, onManageTags, onToggle, onWake, onClose,
+  detail, canReply, canToggle, noteSaving, onNoteAdd, onNoteEdit, onNoteDel, tags, onTags, onManageTags, onToggle, onWake, onClose,
 }: {
-  detail: Row; canReply: boolean; canToggle: boolean; noteDraft: string; setNoteDraft: (v: string) => void; noteSaving: boolean;
-  onSaveNote: () => void; tags: ChatTag[]; onTags: (ts: string[]) => void; onManageTags: () => void; onToggle: () => void; onWake: () => void; onClose: () => void;
+  detail: Row; canReply: boolean; canToggle: boolean; noteSaving: boolean;
+  onNoteAdd: (t: string) => Promise<boolean>; onNoteEdit: (id: string, t: string) => Promise<boolean>; onNoteDel: (id: string) => Promise<boolean>; tags: ChatTag[]; onTags: (ts: string[]) => void; onManageTags: () => void; onToggle: () => void; onWake: () => void; onClose: () => void;
 }) {
   const body = (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -994,13 +996,7 @@ function InfoPanel({
         </div>
       </div>
       <div className="mx-4 mb-4 mt-3">
-        <p className="mb-1 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>โน้ตภายใน (ลูกค้าไม่เห็น)</p>
-        <textarea value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} disabled={!canReply} rows={5} placeholder="เช่น ที่อยู่ส่งของ / งานที่คุยค้าง / ข้อควรระวัง" className="w-full resize-y rounded-xl border px-3 py-2 text-[13.5px] outline-none" style={{ borderColor: "#F0D48A", background: "#FFFBEA" }} />
-        {canReply ? (
-          <button type="button" onClick={onSaveNote} disabled={noteSaving || noteDraft.trim() === (detail.adminNote ?? "")} className="dkb-btn dkb-btn-navy dkb-btn-sm mt-1.5 min-h-[36px] disabled:opacity-40">
-            {noteSaving ? "กำลังบันทึก…" : "บันทึกโน้ต"}
-          </button>
-        ) : null}
+        <NotesBlock notes={detail.adminNotes} canReply={canReply} saving={noteSaving} onAdd={onNoteAdd} onEdit={onNoteEdit} onDel={onNoteDel} />
         <p className="mt-2 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>ป้าย/โน้ตชุดเดียวกับหน้า ลูกค้า LINE</p>
       </div>
     </div>
@@ -1128,4 +1124,63 @@ function TagManager({ tags, onClose, onSaved, toast }: { tags: ChatTag[]; onClos
       </div>
     </Modal>
   );
+}
+
+
+/** 📝 โน้ตภายในหลายรายการ (≤10) — รายการเรียงเก่า→ใหม่ แก้ในที่/ลบได้ · ช่องเพิ่มด้านล่าง */
+function NotesBlock({ notes, canReply, saving, onAdd, onEdit, onDel }: { notes: NoteItem[]; canReply: boolean; saving: boolean; onAdd: (t: string) => Promise<boolean>; onEdit: (id: string, t: string) => Promise<boolean>; onDel: (id: string) => Promise<boolean> }) {
+  const [draft, setDraft] = useState("");
+  const [editId, setEditId] = useState<string>("");
+  const [editText, setEditText] = useState("");
+  const full = notes.length >= 10;
+  return (
+    <>
+      <div className="mb-1 flex items-center">
+        <p className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>โน้ตภายใน (ลูกค้าไม่เห็น)</p>
+        <span className="ml-auto text-[11px]" style={{ color: full ? "var(--dk-coral-ink)" : "var(--dk-faint)" }}>{notes.length}/10</span>
+      </div>
+      <div className="space-y-1.5">
+        {notes.map((n) => (
+          <div key={n.id} className="rounded-xl px-3 py-2 text-[13px]" style={{ background: "#FFFBEA", border: "1px solid #F0D48A" }}>
+            {editId === n.id ? (
+              <>
+                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} className="w-full resize-y rounded-lg border bg-white px-2 py-1.5 text-[13px] outline-none" style={{ borderColor: "#F0D48A" }} />
+                <div className="mt-1 flex gap-2">
+                  <button type="button" disabled={saving || !editText.trim()} onClick={() => void onEdit(n.id, editText.trim()).then((ok) => ok && setEditId(""))} className="dkb-btn dkb-btn-navy dkb-btn-sm min-h-[32px]">บันทึก</button>
+                  <button type="button" onClick={() => setEditId("")} className="text-[12.5px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>ยกเลิก</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="whitespace-pre-wrap break-words">{n.text}</p>
+                <div className="mt-1 flex items-center gap-2 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>
+                  <span>{n.by || "แอดมิน"}{n.at ? ` · ${timeOrDay(n.at)}` : ""}</span>
+                  {canReply ? (
+                    <span className="ml-auto flex gap-2">
+                      <button type="button" onClick={() => { setEditId(n.id); setEditText(n.text); }} className="font-bold underline">แก้</button>
+                      <button type="button" onClick={() => { if (window.confirm("ลบโน้ตนี้?")) void onDel(n.id); }} className="font-bold underline" style={{ color: "var(--dk-coral-ink)" }}>ลบ</button>
+                    </span>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+        {!notes.length ? <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>ยังไม่มีโน้ต</p> : null}
+      </div>
+      {canReply ? (
+        <div className="mt-2">
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} disabled={full || saving} rows={2} placeholder={full ? "โน้ตเต็ม 10 รายการ — ลบอันเก่าก่อน" : "เพิ่มโน้ต เช่น ที่อยู่ส่งของ / งานที่คุยค้าง / ข้อควรระวัง"} className="w-full resize-y rounded-xl border px-3 py-2 text-[13.5px] outline-none disabled:opacity-60" style={{ borderColor: "#F0D48A", background: "#FFFBEA" }} />
+          <button type="button" onClick={() => void onAdd(draft.trim()).then((ok) => ok && setDraft(""))} disabled={saving || full || !draft.trim()} className="dkb-btn dkb-btn-navy dkb-btn-sm mt-1.5 min-h-[36px] disabled:opacity-40">
+            {saving ? "กำลังบันทึก…" : "＋ เพิ่มโน้ต"}
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+function timeOrDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }

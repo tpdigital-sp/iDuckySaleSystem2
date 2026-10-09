@@ -38,6 +38,8 @@ type Row = {
   /** 🏷 หลายป้าย — ไม่มีฟิลด์ (ข้อมูลเก่า) ใช้ [adminTag] */
   adminTags: string[];
   adminNote: string;
+  /** 📝 หลายโน้ต (≤10) — ข้อมูลเก่าที่มีแต่ adminNote → แปลงเป็น 1 รายการ */
+  adminNotes: { id: string; text: string; by: string; at: string }[];
   adminAlias: string;
 };
 type CardRef = { name: string; url: string; image?: string; price?: string };
@@ -88,6 +90,11 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     adminTag: String(x.adminTag ?? ""),
     adminTags: Array.isArray(x.adminTags) ? (x.adminTags as unknown[]).map(String).filter(Boolean) : x.adminTag ? [String(x.adminTag)] : [],
     adminNote: String(x.adminNote ?? ""),
+    adminNotes: Array.isArray(x.adminNotes)
+      ? (x.adminNotes as Record<string, unknown>[]).map((n) => ({ id: String(n.id ?? ""), text: String(n.text ?? ""), by: String(n.by ?? ""), at: String(n.at ?? "") })).filter((n) => n.id && n.text)
+      : x.adminNote
+        ? [{ id: "legacy", text: String(x.adminNote), by: String(x.adminNoteBy ?? ""), at: String(x.adminNoteAt ?? "") }]
+        : [],
     adminAlias: String(x.adminAlias ?? ""),
   };
 }

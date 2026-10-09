@@ -422,6 +422,9 @@ type Body = {
   adminNote?: string;
   /** 🏷 หลายป้าย (หน้าแชท 9 ต.ค. 69) — key จาก settings/chat-tags */
   tags?: string[];
+  /** 📝 หลายโน้ต (noteAdd/noteEdit/noteDel) */
+  text?: string;
+  noteId?: string;
   /** ลิงก์ OA Manager หรือ userId — ว่าง = ล้างค่าที่ตั้งทับไว้ */
   managerUrl?: string;
   /** ป้ายความเร่งด่วน — ค่าที่ไม่รู้จัก/ว่าง = ถอดป้าย */
@@ -516,6 +519,37 @@ export async function POST(req: Request) {
           );
         patchChatRow(uid, { tag: toCustomerTag(first) });
         return NextResponse.json({ ok: true, tags, saved: tags.length ? `ติดป้าย ${tags.length} อันแล้ว` : "เอาป้ายออกหมดแล้ว" });
+      }
+
+      /* ── 📝 หลายโน้ต (เจ้าของร้าน 9 ต.ค. 69 18:25 "เพิ่มได้หลาย note แต่ไม่เกิน 10") — adminNotes[{id,text,by,at}] · adminNote เดิม = โน้ตล่าสุด (หน้า ลูกค้า LINE ยังเห็น) ── */
+      case "noteAdd":
+      case "noteEdit":
+      case "noteDel": {
+        const bad = needUid();
+        if (bad) return bad;
+        const ref = db.collection(CHAT_COLLECTION).doc(uid);
+        const snap = await ref.get();
+        const cur = (snap.data()?.adminNotes as unknown) ?? [];
+        type N = { id: string; text: string; by: string; at: string };
+        let notes: N[] = Array.isArray(cur) ? (cur as Record<string, unknown>[]).map((n) => ({ id: String(n.id ?? ""), text: String(n.text ?? ""), by: String(n.by ?? ""), at: String(n.at ?? "") })).filter((n) => n.id && n.text) : [];
+        // โน้ตเดี่ยวของเดิม (ยังไม่มี adminNotes) → เป็นรายการแรก id "legacy" ให้แก้/ลบได้
+        const legacy = String(snap.data()?.adminNote ?? "").trim();
+        if (!Array.isArray(cur) && legacy) notes = [{ id: "legacy", text: legacy, by: String(snap.data()?.adminNoteBy ?? ""), at: String(snap.data()?.adminNoteAt ?? "") }];
+        const text = (b.text ?? "").trim().slice(0, 1000);
+        if (b.action === "noteAdd") {
+          if (!text) return NextResponse.json({ error: "ยังไม่ได้พิมพ์โน้ต" }, { status: 400 });
+          if (notes.length >= 10) return NextResponse.json({ error: "โน้ตเต็ม 10 รายการแล้ว — ลบอันเก่าก่อน" }, { status: 400 });
+          notes = [...notes, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text, by: who, at: new Date().toISOString() }];
+        } else if (b.action === "noteEdit") {
+          if (!text) return NextResponse.json({ error: "ยังไม่ได้พิมพ์โน้ต" }, { status: 400 });
+          notes = notes.map((n) => (n.id === b.noteId ? { ...n, text, by: who, at: new Date().toISOString() } : n));
+        } else {
+          notes = notes.filter((n) => n.id !== b.noteId);
+        }
+        const latest = notes.length ? notes[notes.length - 1].text : "";
+        await ref.set({ adminNotes: notes, adminNote: latest, adminNoteBy: who, adminNoteAt: new Date().toISOString() }, { merge: true });
+        patchChatRow(uid, { adminNote: latest });
+        return NextResponse.json({ ok: true, notes, saved: b.action === "noteDel" ? "ลบโน้ตแล้ว" : "บันทึกโน้ตแล้ว" });
       }
 
       /* ── 📝 โน้ตอย่างเดียว (หน้าแชท 9 ต.ค. 69) — ไม่แตะชื่อ/รหัสห้อง (case edit ส่ง managerUrl ว่าง = ล้างรหัสห้องที่ตั้งทับ) ── */
