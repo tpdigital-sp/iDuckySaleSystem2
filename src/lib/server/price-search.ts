@@ -261,7 +261,12 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   // 🎯 ถามเรื่องเฉพาะที่ "รายการตัวเลือก" ไม่ได้ตอบ → อย่าเทรายการ ให้ agent/คลังความรู้/แอดมินรับต่อ (8 ต.ค. 69 เทียบแชทจริง)
   // "Magsafe Wallet ใส่บัตรได้กี่อัน" "ไม่รับสายลดไหม" "เคลือบอะไรได้คะ" "มีซองแยกชิ้นไหม" เคยได้แค่ "• ขนาด (1 แบบ): …"
   if (ans.intent === "spec" && SPECIFIC_Q_RE.test(query) && !LIST_Q_RE.test(query) && !EXTRA_ASK_RE.test(query) && !specCoversQuery(query, ans.answer)) {
-    ans = { answer: "", kind: "skip", source: "spec-not-covering-question", intent: "unknown" };
+    // 9 ต.ค. 69 10:52 "งานมันจะดุ๊กดิ๊กได้ โยกๆ ได้ เป็นงานอะไรคะ" → รู้สินค้าแล้ว (อะคริลิคดุ๊กดิ๊ก) แต่คำถามคือ "คืออะไร/ทำได้ไหม" ไม่ใช่ตัวเลือก
+    // → ตอบด้วยข้อมูลหน้าสินค้า (searchInfo) ก่อนจะยอมเงียบ · ยังไม่มีข้อมูลค่อย skip ให้ agent
+    const ids = u?.ids ?? [];
+    const whatIs = /เป็นงานอะไร|คืองานอะไร|คืออะไร|งานอะไร|แบบไหน|ทำได้ไหม|ทำได้มั้ย|รับทำไหม|รับทำมั้ย|มีไหม|มีมั้ย/.test(query);
+    const info = ids.length === 1 && whatIs ? await searchInfo(u?.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids, broad: false }) : null;
+    ans = info && info.kind !== "skip" && info.answer ? { ...info, source: `${info.source}+spec-fallback` } : { answer: "", kind: "skip", source: "spec-not-covering-question", intent: "unknown" };
   }
   // เมนูกลุ่มสินค้าก็เหมือนกัน: "เคลือบได้แค่เคลือบเงาใช่ไหม" "ฐานเปลี่ยนลายได้ไหม" "สีแบบนี้เลยใช่มั้ย" เคยได้เมนูสติ๊กเกอร์/กริ๊บต๊อก/เสื้อ
   // (ยกเว้นถาม "มี/รับทำ X ไหม" ที่อยากเห็นตัวเลือกจริง ๆ · และเรื่องคุณสมบัติที่ extraInfo ด้านล่างตอบแปะหัวให้ เช่น "แบบที่ 2 กันน้ำไหม")
