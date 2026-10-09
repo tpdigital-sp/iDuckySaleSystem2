@@ -416,3 +416,11 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - สาเหตุ: cacheLineImage โหลดทั้งก้อนเข้า RAM แล้วค่อยอัป → Netlify ตัดที่ 26 วิ ไม่ทัน (ไม่ติด imageExpired เพราะไม่ได้ผิดที่ LINE)
 - แก้: ไฟล์ (type file) สตรีม LINE → Storage ตรง (`uploadStream` ใน bot-kb.ts · resumable) · `cacheLineImage(db, uid, log, { timeoutMs })`
 - ไฟล์ 100 MB+ ก็ยังไม่ทัน 26 วิ (วัดจากเครื่องร้าน 116 MB = 77 วิ) → `npm run cache:line-file` ไล่รายการที่ยังไม่มี imageUrl ย้อนหลัง 14 วัน (หรือระบุ `U… <logId>`) · การ์ดในแชทขึ้น "ยังไม่ได้เก็บ · กดเพื่อดึงจาก LINE" = ให้รันสคริปต์นี้
+
+### 9 ต.ค. 69 21:40 — 📊 /admin/chatbot/chat-stats สถิติตอบแชท / ค่าคอมแชท
+- เจ้าของร้าน: "ระบบสามารถดึงข้อมูลแชทที่พนักงานตอบในระบบนี้ได้ และสามารถ[นำเข้า]ไฟล์แชทจาก zip CSV ได้" (ต่อจากคำถามเรื่องหน้า commissionStoreChat.html ของ Admin_MyWebApp)
+- ฝั่งเว็บ: API GET นับจาก log ห้องแชท (role admin · mode web · by) ห้องที่ lastAdminAt ≥ ต้นรอบ → ข้อความ/ลูกค้า(ห้องไม่ซ้ำ)/เวลาตอบ/สุภาพ/ขอโทษ/ลูกค้าทวง — กติกาเดียวกับ finalizeSenderStats ของหน้าเดิม (lib/chat-stats.ts)
+- ฝั่ง OA Manager: อ่าน zip ในเบราว์เซอร์ (lib/zip-read.ts — central directory + DecompressionStream deflate-raw ไม่ใช้ไลบรารี · zip ใหญ่เกิน 4.5MB ของ Netlify) ส่งเฉพาะตัวเลขสรุป · "Unknown" = ระบบ/บอท/ข้อความจาก API (รวมที่ส่งจากเว็บ) ตัดทิ้ง จึงไม่นับซ้ำ
+- บันทึก (settings.manage) → `chatReplyStats/{start_end}` + เขียน `storeChatCommissionChats/{start_end}` ทรงเดิม senders = OA + เว็บ (source "web") → หน้าค่าคอมเดิมอ่านได้ไม่ต้องแก้ · ไม่มี zip = เก็บ OA เดิมไว้
+- จับคู่ชื่อ OA → พนักงาน: `customer-tasks-config/store-chat-commission.chatAlias` (doc เดียวกับหน้าเดิม) · ⚠️ ชื่อมีจุด (".zzsomp.") ต้อง update ด้วย FieldPath ไม่ใช่ set({merge})
+- ⚠️ collectionGroup("log") ไม่มี index → ไล่ทีละห้องเสมอ
