@@ -98,7 +98,9 @@ export type Perm =
    * สิทธิ์เดียวของฝ่ายผลิต — เห็นเฉพาะเลขที่/ชื่อลูกค้า/รายการ/วันส่ง ไม่เห็นเบอร์ ยอดเงิน หน้าออเดอร์ หรือเมนูอื่น
    * (ข้อมูลผ่าน /api/admin/orders/wip ซึ่งตัดฟิลด์ให้ตามสิทธิ์ · ไม่ใช่ /api/admin/orders)
    */
-  | "wip.view";
+  | "wip.view"
+  /** 💬 ตอบลูกค้า LINE จากหน้า /admin/chatbot/chats (ส่ง push ผ่าน Messaging API นับโควตา) + พัก/ปลุกบอทรายคน (9 ต.ค. 69) */
+  | "chat.reply";
 
 /** สิทธิ์ของพนักงานฝ่ายแอดมิน (ออฟฟิศ — ดูแลลูกค้า/ออเดอร์/งานแบบ) */
 const STAFF_ADMIN: Perm[] = [
@@ -116,6 +118,7 @@ const STAFF_ADMIN: Perm[] = [
   "coupons.manage",
   "dealers.manage",
   "staff.manage",
+  "chat.reply",
   // เปิดหน้า "ตั้งค่าระบบ" ให้ฝ่ายแอดมิน (14 ส.ค. 69) — แท็บอ่อนไหว (บัญชีรับเงิน/บทบาท/Google) ยังล็อกเฉพาะผู้ดูแลระบบในหน้า
   "settings.manage",
 ];
@@ -238,6 +241,7 @@ export const ALL_PERMS: Perm[] = [
   "staff.manage",
   "reports.view",
   "wip.view",
+  "chat.reply",
 ];
 
 /** คำอธิบายสิทธิ์แต่ละตัว (ไว้แสดงหน้าตั้งค่า → แท็บบทบาท) — จัดกลุ่มเพื่ออ่านง่าย */
@@ -284,6 +288,7 @@ export const PERM_INFO: { group: string; perms: { perm: Perm; label: string }[] 
       { perm: "settings.manage", label: "ตั้งค่าระบบ — ข้อมูลร้าน บัญชี ค่าส่ง ระดับสมาชิก คูปองต้อนรับ" },
       { perm: "staff.manage", label: "กำหนดบทบาท/แผนกให้พนักงาน (ตั้งระดับผู้ดูแลระบบได้เฉพาะผู้ดูแลระบบ)" },
       { perm: "reports.view", label: "ดูรายงานยอดขาย/กำไร — ยอดทั้งร้าน ส่วนลดที่จ่ายไป ต้นทุน ลูกค้ารายใหญ่" },
+      { perm: "chat.reply", label: "💬 ตอบลูกค้า LINE จากหน้าแชทบอท (ส่งผ่าน API นับโควตา LINE) + พัก/ปลุกบอทรายคน" },
     ],
   },
 ];

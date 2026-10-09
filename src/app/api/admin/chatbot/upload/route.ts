@@ -11,7 +11,8 @@ export const maxDuration = 30;
  * หน้าจอย่อรูปเหลือด้านยาว ≤1600px ก่อนส่ง — Netlify รับ body ได้ราว 4.5MB เท่านั้น
  */
 export async function POST(req: Request) {
-  const gate = await requirePerm("orders.edit");
+  // 9 ต.ค. 69 chat.reply = แนบรูปตอบลูกค้าจากหน้าแชท (โฟลเดอร์ chat-<userId>)
+  const gate = await requirePerm(["orders.edit", "chat.reply"]);
   if (gate.res) return gate.res;
   let form: FormData;
   try {
