@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import { Empty, SearchBox } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
-import { ago, botApi, Modal, uploadBotImage, useToast } from "../bot-ui";
+import { ago, botApi, Modal, uploadBotFile, uploadBotImage, useToast } from "../bot-ui";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 
 /**
@@ -39,7 +39,8 @@ type Row = {
 };
 type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[] };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number } };
+const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number };
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
@@ -352,9 +353,8 @@ function Chats() {
     e.preventDefault();
     dragDepth.current = 0;
     setDragging(false);
-    const f = [...e.dataTransfer.files].find((x) => x.type.startsWith("image/"));
+    const f = e.dataTransfer.files[0];
     if (f) setDropFile(f);
-    else toast("รับเฉพาะไฟล์รูปภาพ (JPG/PNG)", true);
   };
 
   const quotaLow = quota?.left !== null && quota?.left !== undefined && quota.left < 3000;
@@ -487,7 +487,7 @@ function Chats() {
         {dragging ? (
           <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center" style={{ background: "rgba(6,199,85,.12)", border: `3px dashed ${LINE_GREEN}` }}>
             <div className="rounded-2xl bg-white px-5 py-3 text-[15px] font-bold shadow" style={{ color: "#0E7A3A" }}>
-              🖼 วางรูปตรงนี้เพื่อแนบส่งให้ลูกค้า
+              📎 วางรูปหรือไฟล์งานตรงนี้เพื่อแนบส่งให้ลูกค้า
             </div>
           </div>
         ) : null}
@@ -588,8 +588,17 @@ function Chats() {
                               </button>
                             );
                           })()}
-                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
+                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
                           {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
+                          {m.file ? (
+                            <a href={m.file.url} target="_blank" rel="noreferrer" className="mt-1.5 flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-[13px]" style={{ border: "1px solid rgba(0,0,0,.08)" }}>
+                              <span className="text-xl">📎</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-bold">{m.file.name}</span>
+                                <span className="text-[11px]" style={{ color: "var(--dk-faint)" }}>{m.file.size ? fmtSize(m.file.size) : "ไฟล์"} · กดเพื่อดาวน์โหลด</span>
+                              </span>
+                            </a>
+                          ) : null}
                           {cardsOf(m).length ? (
                           <div className="mt-2 flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
                           {cardsOf(m).map((c, ci) => (
@@ -710,6 +719,7 @@ function Composer({
 }) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<{ url: string; name: string } | null>(null);
+  const [fileAtt, setFileAtt] = useState<{ url: string; name: string; size: number } | null>(null);
   const [card, setCard] = useState<CatalogItem | null>(null);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -722,6 +732,7 @@ function Composer({
   useEffect(() => {
     setText("");
     setImage(null);
+    setFileAtt(null);
     setCard(null);
     setPickOpen(false);
   }, [id]);
@@ -758,8 +769,14 @@ function Composer({
       if (!f) return;
       setUploading(true);
       try {
-        const up = await uploadBotImage(`chat-${id}`, f);
-        setImage({ url: up.url, name: f.name });
+        // 📎 19:00 รูป → ส่งเป็นรูป · ไฟล์งานอื่น (AI/PSD/PDF/ZIP …) → อัปแล้วส่งเป็นลิงก์ดาวน์โหลด (LINE API ส่งไฟล์ตรงไม่ได้)
+        if (f.type.startsWith("image/")) {
+          const up = await uploadBotImage(`chat-${id}`, f);
+          setImage({ url: up.url, name: f.name });
+        } else {
+          const up = await uploadBotFile(`chat-${id}`, f);
+          setFileAtt({ url: up.url, name: up.name, size: up.size });
+        }
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
       } finally {
@@ -778,7 +795,7 @@ function Composer({
   }, [dropFile, onFile, onDropConsumed]);
   const onPaste = useCallback(
     (e: React.ClipboardEvent) => {
-      const f = [...(e.clipboardData?.files ?? [])].find((x) => x.type.startsWith("image/"));
+      const f = (e.clipboardData?.files ?? [])[0];
       if (f) {
         e.preventDefault();
         void onFile(f);
@@ -789,7 +806,7 @@ function Composer({
 
   const send = useCallback(async () => {
     const t = text.trim();
-    if ((!t && !image && !card) || sending) return;
+    if ((!t && !image && !card && !fileAtt) || sending) return;
     setSending(true);
     try {
       const r = await botApi<ReplyRes>("/api/admin/chatbot/chats/reply", {
@@ -797,9 +814,11 @@ function Composer({
         text: t,
         imageUrl: image?.url ?? "",
         card: card ? { name: card.name, url: card.url, image: card.image, priceMin: card.priceMin, priceMax: card.priceMax } : undefined,
+        file: fileAtt ?? undefined,
       });
       setText("");
       setImage(null);
+      setFileAtt(null);
       setCard(null);
       onSent(r);
       areaRef.current?.focus();
@@ -808,9 +827,9 @@ function Composer({
     } finally {
       setSending(false);
     }
-  }, [text, image, card, sending, id, onSent, toast]);
+  }, [text, image, card, fileAtt, sending, id, onSent, toast]);
 
-  const canSend = !disabled && !sending && (!!text.trim() || !!image || !!card);
+  const canSend = !disabled && !sending && (!!text.trim() || !!image || !!card || !!fileAtt);
 
   return (
     <div className="border-t bg-white" style={{ borderColor: "var(--dk-hair)", paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -859,7 +878,7 @@ function Composer({
           </div>
         </div>
       ) : null}
-      {image || card || uploading ? (
+      {image || card || fileAtt || uploading ? (
         <div className="flex flex-wrap items-start gap-2 px-3 pt-2">
           {uploading && !image ? (
             <span className="grid h-24 w-24 place-items-center rounded-xl text-[12px]" style={{ background: "#F1F5F9", color: "var(--dk-faint)" }}>
@@ -884,6 +903,14 @@ function Composer({
               </button>
             </span>
           ) : null}
+          {fileAtt ? (
+            <span className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px]" style={{ background: "#F1F5F9" }} title={fileAtt.name}>
+              📎 {fileAtt.name.slice(0, 28)} · {fmtSize(fileAtt.size)}
+              <button type="button" onClick={() => setFileAtt(null)} aria-label="เอาไฟล์ออก" className="ml-1 font-bold">
+                ✕
+              </button>
+            </span>
+          ) : null}
           {card ? (
             <span className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px]" style={{ background: "#F1F5F9" }}>
               🧾 {card.name.slice(0, 30)}
@@ -895,9 +922,9 @@ function Composer({
         </div>
       ) : null}
       <div className="flex items-end gap-1.5 px-2 py-2">
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
-        <IconBtn onClick={() => fileRef.current?.click()} title="แนบรูป">
-          {uploading ? "…" : "🖼"}
+        <input ref={fileRef} type="file" accept="image/*,.pdf,.ai,.psd,.eps,.svg,.cdr,.tif,.tiff,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.mov" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
+        <IconBtn onClick={() => fileRef.current?.click()} title="แนบรูปหรือไฟล์งาน (AI/PSD/PDF/ZIP … ≤ 4 MB)">
+          {uploading ? "…" : "📎"}
         </IconBtn>
         <IconBtn onClick={() => void openPicker()} title="ส่งการ์ดสินค้า" active={pickOpen}>
           🧾
@@ -914,7 +941,7 @@ function Composer({
             }
           }}
           rows={1}
-          placeholder={disabled ? "ส่งจากหน้านี้ไม่ได้ชั่วคราว (โควตา LINE)" : "พิมพ์ข้อความ… (ลากรูปมาวาง หรือ Ctrl+V ก็ได้)"}
+          placeholder={disabled ? "ส่งจากหน้านี้ไม่ได้ชั่วคราว (โควตา LINE)" : "พิมพ์ข้อความ… (ลากรูป/ไฟล์มาวาง หรือ Ctrl+V ก็ได้)"}
           disabled={disabled || sending}
           className="min-h-[44px] flex-1 resize-none rounded-[22px] px-4 py-2.5 text-[15px] outline-none"
           style={{ background: "#F1F5F9", color: "var(--dk-navy)" }}

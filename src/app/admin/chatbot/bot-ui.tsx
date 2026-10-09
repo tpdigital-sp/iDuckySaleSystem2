@@ -90,6 +90,18 @@ export async function uploadBotImage(folder: string, file: File): Promise<{ url:
   return { url: d.url, storagePath: d.storagePath ?? "" };
 }
 
+/** 📎 อัปไฟล์งาน (ไม่ย่อ) ≤ 4MB → { url, name, size } — หน้าแชทส่งให้ลูกค้าเป็นลิงก์ */
+export async function uploadBotFile(folder: string, file: File): Promise<{ url: string; storagePath: string; name: string; size: number }> {
+  const fd = new FormData();
+  fd.append("folder", folder);
+  fd.append("kind", "file");
+  fd.append("file", file, file.name);
+  const res = await fetch("/api/admin/chatbot/upload", { method: "POST", body: fd });
+  const d = (await res.json().catch(() => null)) as { url?: string; storagePath?: string; name?: string; size?: number; error?: string } | null;
+  if (!res.ok || !d?.url) throw new Error(d?.error || (res.status === 413 ? "ไฟล์ใหญ่เกิน 4 MB" : `อัปไฟล์ไม่สำเร็จ (HTTP ${res.status})`));
+  return { url: d.url, storagePath: d.storagePath ?? "", name: d.name ?? file.name, size: d.size ?? file.size };
+}
+
 /** แถบแจ้งผลมุมล่าง — ok = เขียว · bad = แดง (ค้างนานกว่า) */
 export function useToast() {
   const [t, setT] = useState<{ text: string; bad?: boolean } | null>(null);

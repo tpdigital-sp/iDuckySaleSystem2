@@ -17,7 +17,9 @@ const COL = "line-conversations";
 const BRAND = "#1F6F78";
 
 type Card = { name?: string; url?: string; image?: string; priceMin?: number; priceMax?: number };
-type Body = { id?: string; text?: string; imageUrl?: string; card?: Card; pauseMinutes?: number };
+type FileAtt = { url?: string; name?: string; size?: number };
+type Body = { id?: string; text?: string; imageUrl?: string; card?: Card; file?: FileAtt; pauseMinutes?: number };
+const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 function priceText(c: Card): string {
   const a = Number(c.priceMin ?? 0);
@@ -75,12 +77,15 @@ export async function POST(req: Request) {
   const imageUrl = String(b.imageUrl ?? "").trim();
   const card = b.card && b.card.url && /^https:\/\/(www\.)?iduckystore\.com\//.test(String(b.card.url)) ? b.card : null;
   if (imageUrl && !/^https:\/\//.test(imageUrl)) return NextResponse.json({ error: "รูปต้องเป็นลิงก์ https" }, { status: 400 });
-  if (!text && !imageUrl && !card) return NextResponse.json({ error: "ยังไม่ได้พิมพ์ข้อความ" }, { status: 400 });
+  // 📎 ไฟล์งาน: LINE Messaging API ส่งข้อความชนิดไฟล์ไม่ได้ (ส่งได้แค่ใน OA Manager) → ส่งเป็นข้อความ + ลิงก์ดาวน์โหลด
+  const file = b.file && /^https:\/\//.test(String(b.file.url ?? "")) ? { url: String(b.file.url), name: String(b.file.name ?? "ไฟล์").slice(0, 120), size: Number(b.file.size ?? 0) || 0 } : null;
+  if (!text && !imageUrl && !card && !file) return NextResponse.json({ error: "ยังไม่ได้พิมพ์ข้อความ" }, { status: 400 });
 
   const messages: unknown[] = [];
   if (text) messages.push({ type: "text", text });
   if (imageUrl) messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
   if (card) messages.push(productFlex(card));
+  if (file) messages.push({ type: "text", text: `📎 ไฟล์: ${file.name}${file.size ? ` (${fmtSize(file.size)})` : ""}\nดาวน์โหลด: ${file.url}` });
 
   // 1) ส่งเข้า LINE — ตอบกลับทันทีไม่ได้ (reply token อายุ 1 นาที) จึงเป็น push เสมอ
   let res: Response;
@@ -114,9 +119,10 @@ export async function POST(req: Request) {
   const ref = db.collection(COL).doc(id);
   const entry = {
     role: "admin",
-    text: text || (imageUrl ? "(ส่งรูป)" : card ? `(ส่งการ์ดสินค้า ${card.name ?? ""})` : ""),
+    text: text || (imageUrl ? "(ส่งรูป)" : card ? `(ส่งการ์ดสินค้า ${card.name ?? ""})` : file ? `(ส่งไฟล์ ${file.name})` : ""),
     ...(imageUrl ? { imageUrl } : {}),
     ...(card ? { card: { name: card.name ?? "", url: card.url ?? "" } } : {}),
+    ...(file ? { file } : {}),
     at: now,
     by: who,
     mode: "web",
