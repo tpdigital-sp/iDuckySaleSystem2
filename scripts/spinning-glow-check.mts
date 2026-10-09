@@ -11,6 +11,8 @@ import {
   orderableSelections,
   choiceImage,
   priceRange,
+  designFeeFor,
+  DESIGN_LABEL,
   type Product,
 } from "../src/lib/products";
 
@@ -115,6 +117,13 @@ eq("แม่เหล็ก + ไม่มีไฟ → รูป", tail(choice
 const allImgs = p.options.flatMap((o) => [o.imageSrc, ...o.choices.flatMap((c) => [c.imageSrc, ...(c.imageWhen ?? []).map((w) => w.imageSrc)])]).filter(Boolean) as string[];
 eq("ภาพตัวเลือกทุกรูปอยู่ในแกลเลอรี", allImgs.every((u) => gallery.has(u)), true);
 
+// 🎨 คละลาย (จำนวนลายไม่ใช่กลุ่มตัวเลือก ต้องใส่หลัง resolveSelections ไม่งั้นถูกตัดทิ้ง): 11+ ขั้นต่ำลายละ 5 · ชิ้นในลายที่ไม่ถึง +10 · ช่วงปลีกฟรี
+eq("10 ชิ้น 4 ลาย = ฟรี", designFeeFor(p, { ...sel({}), [DESIGN_LABEL]: "4" }, 10), 0);
+eq("11 ชิ้น 4 ลาย (5+2+2+2) = 6 ชิ้น × 10", designFeeFor(p, { ...sel({}), [DESIGN_LABEL]: "4" }, 11), 60);
+eq("20 ชิ้น 4 ลาย = ครบ ฟรี", designFeeFor(p, { ...sel({}), [DESIGN_LABEL]: "4" }, 20), 0);
+eq("13 ชิ้น 2 ลาย = ฟรี", designFeeFor(p, { ...sel({}), [DESIGN_LABEL]: "2" }, 13), 0);
+eq("12 ชิ้น 3 ลาย (5+5+2) = 2 × 10", designFeeFor(p, { ...sel({}), [DESIGN_LABEL]: "3" }, 12), 20);
+eq("11 ชิ้น 1 ลาย ราคา/ชิ้นเรท 11-29", unitPriceFor(p, sel({}), 11), 163);
 // ช่วงราคาที่เก็บไว้ตรงกับที่ระบบคำนวณ
 const r = priceRange(p);
 eq("priceMin/priceMax", [p.priceMin, p.priceMax], [r.min, r.max]);
