@@ -376,3 +376,7 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - ต้นตอ: Build AI Request ถามเว็บเฉพาะข้อความ ≥ 4 ตัวอักษร → "5" ข้ามเว็บไป agent → Claude ถามกลับ "5 cm หรือ 5 ชิ้น" + ลิงก์ดิบ /products/กิ๊บติดผมอะคริลิค (slug สั้น ไม่ตรง catalog → ไม่เป็นการ์ด)
 - แก้ LINE (draft รอ Publish): shortNumReply ("5" "ข้อ 2" "50 ชิ้น") ถามเว็บก่อนเหมือนข้อความปกติ · urlProducts เทียบ slug ขึ้นต้น/ชื่อสินค้าด้วย
 - แก้เว็บ (deploy): เลขลอย ๆ ไม่มีรายการข้อ แต่บอทเพิ่งตอบราคาสินค้า "X (ราคาต่อ ชิ้น)" / "X — สั่ง N" → = จำนวนของ X · สั่งไม่ถึงขั้นต่ำทุกเรท (กิ๊บ 5 ชิ้น ขั้นต่ำ 11) เคยคืน "ยังไม่มีราคา" → ตอบ "ยังไม่ถึงขั้นต่ำค่ะ เรทที่ 1 ต้องสั่ง 11 ชิ้นขึ้นไป ถ้าสั่ง 11 ชิ้น ราคาเริ่ม ฿79/ชิ้น (รวม ฿869)" intent min_qty
+
+## 9 ต.ค. 69 14:55 — "megsafe wallet ใช้เวลาผลิตกี่วัน + พื้นมีสีอะไรบ้าง" → ฟองสำรอง "ระบบช้าแป๊บนึง" (LINE 893057 · ChatBot 893060)
+- ChatBot ใช้ 37 วิ: search_pricing (เว็บ) 18 วิ + Claude ตอบดีแล้ว + **Fetch PO1 timeout 12 วิ** (ถามเว็บซ้ำทั้งที่ LINE ถามไปแล้วได้ unknown) > Call AI 35 วิ → คำตอบดี ๆ ถูกทิ้ง
+- แก้ (draft รอ Publish ทั้ง 2): LINE Call AI ส่ง `siteChecked` (= Build AI Request ถามเว็บแล้ว) + timeout 42 วิ · ChatBot IF "ต้องถามเครื่องราคา?" = `!siteChecked && (priceQ || !img)` → ทราฟฟิกจาก LINE ไม่เรียก Fetch PO1 อีก (ประหยัด 7-12 วิ + ฿0.2/คำตอบ) · ผู้เรียกอื่น (AdminBuddy/เว็บแชท) ยังได้ PO override ตามเดิม
