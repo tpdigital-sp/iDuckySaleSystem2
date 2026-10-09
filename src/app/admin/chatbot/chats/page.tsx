@@ -600,10 +600,10 @@ function Chats() {
                             </a>
                           ) : null}
                           {cardsOf(m).length ? (
-                          <div className="mt-2 flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
+                          <CardCarousel>
                           {cardsOf(m).map((c, ci) => (
                             // 🔍 19:35 เจ้าของร้าน: กดรูปในการ์ดให้ขยายดูเหมือนรูปในแชท (lightbox) · ปุ่มล่างค่อยไปหน้าสินค้า
-                            <div key={ci} className="w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+                            <div key={ci} className="w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)", scrollSnapAlign: "start" }}>
                               {c.image ? (
                                 <button type="button" onClick={() => setLightbox({ url: c.image as string, name: `${c.name || "product"}.jpg` })} className="block w-full" title="กดเพื่อดูรูปใหญ่">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -617,7 +617,7 @@ function Chats() {
                               </div>
                             </div>
                           ))}
-                          </div>
+                          </CardCarousel>
                           ) : null}
                         </div>
                         {!ours ? (
@@ -1255,4 +1255,51 @@ function timeOrDay(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+
+/** 🎠 แถวการ์ดเลื่อนด้วยลูกศร ‹ › เหมือน LINE (เจ้าของร้าน 9 ต.ค. 69 20:10 "ปรับเป็นลูกศรในการเลื่อน") — ซ่อนแถบสกรอล · ลูกศรโผล่เฉพาะด้านที่เลื่อนได้ · ยังปัดนิ้ว/ล้อเมาส์ได้ */
+function CardCarousel({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [canL, setCanL] = useState(false);
+  const [canR, setCanR] = useState(false);
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setCanL(el.scrollLeft > 4);
+    setCanR(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+  useEffect(() => {
+    update();
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [update]);
+  const go = (dir: -1 | 1) => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(208, Math.floor(el.clientWidth * 0.8)), behavior: "smooth" });
+  };
+  const arrow = (dir: -1 | 1) => (
+    <button
+      type="button"
+      onClick={() => go(dir)}
+      aria-label={dir < 0 ? "เลื่อนซ้าย" : "เลื่อนขวา"}
+      className="absolute top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-xl text-white shadow-md transition active:scale-95"
+      style={{ [dir < 0 ? "left" : "right"]: 4, background: "rgba(23,58,107,.55)", backdropFilter: "blur(2px)" }}
+    >
+      {dir < 0 ? "‹" : "›"}
+    </button>
+  );
+  return (
+    <div className="relative mt-2">
+      {canL ? arrow(-1) : null}
+      {canR ? arrow(1) : null}
+      <div ref={ref} onScroll={update} className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ scrollSnapType: "x proximity" }}>
+        {children}
+      </div>
+    </div>
+  );
 }
