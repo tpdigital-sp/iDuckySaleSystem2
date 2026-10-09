@@ -602,17 +602,20 @@ function Chats() {
                           {cardsOf(m).length ? (
                           <div className="mt-2 flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
                           {cardsOf(m).map((c, ci) => (
-                            <a key={ci} href={c.url} target="_blank" rel="noreferrer" className="block w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+                            // 🔍 19:35 เจ้าของร้าน: กดรูปในการ์ดให้ขยายดูเหมือนรูปในแชท (lightbox) · ปุ่มล่างค่อยไปหน้าสินค้า
+                            <div key={ci} className="w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
                               {c.image ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={c.image} alt="" className="aspect-[4/3] w-full object-cover" />
+                                <button type="button" onClick={() => setLightbox({ url: c.image as string, name: `${c.name || "product"}.jpg` })} className="block w-full" title="กดเพื่อดูรูปใหญ่">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={c.image} alt={c.name} className="aspect-[4/3] w-full object-cover transition hover:opacity-90" />
+                                </button>
                               ) : null}
                               <div className="px-2.5 pb-2 pt-1.5">
                                 <p className="truncate text-[13px] font-bold" style={{ color: "#153B3F" }}>{c.name || "สินค้า"}</p>
                                 {c.price ? <p className="text-[12px]" style={{ color: "#A05A00" }}>{c.price}</p> : null}
-                                <span className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>ดูราคา / สั่งเลย</span>
+                                <a href={c.url} target="_blank" rel="noreferrer" className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>ดูราคา / สั่งเลย</a>
                               </div>
-                            </a>
+                            </div>
                           ))}
                           </div>
                           ) : null}
