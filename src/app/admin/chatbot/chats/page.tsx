@@ -1110,7 +1110,6 @@ function TagManager({ tags, onClose, onSaved, toast }: { tags: ChatTag[]; onClos
   const [saving, setSaving] = useState(false);
   // 🎨 19:15 เจ้าของร้าน "ให้เลือก icon ได้" — จานอีโมจิกดเลือก (พิมพ์เองก็ยังได้)
   const [emojiFor, setEmojiFor] = useState<number>(-1);
-  const EMOJIS = ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪", "🏷", "📌", "⭐", "🔥", "⚡", "✅", "❌", "⏳", "⏰", "📦", "🚚", "🧾", "💰", "💳", "🎨", "🖨", "📐", "🧵", "📞", "💬", "📝", "📎", "🎁", "🎉", "🛒", "👑", "💎", "🤝", "🔔", "⚠️", "❗", "❓", "🆕", "🙋", "🤖", "🐣"];
   const upd = (i: number, patch: Partial<ChatTag>) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const add = () => setItems((xs) => [...xs, { key: keyFromLabel("") + "-" + (xs.length + 1), label: "", emoji: "🏷", color: "sky" }]);
   const del = (i: number) => {
@@ -1171,14 +1170,25 @@ function TagManager({ tags, onClose, onSaved, toast }: { tags: ChatTag[]; onClos
                 <button type="button" onClick={() => del(i)} aria-label="ลบป้าย" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/[0.05]" style={{ color: "var(--dk-coral-ink)" }}>🗑</button>
               </span>
               {emojiFor === i ? (
-                <div className="basis-full rounded-xl border p-2" style={{ borderColor: "var(--dk-hair)", background: "#F8FAFC" }}>
-                  <div className="flex flex-wrap gap-1">
-                    {EMOJIS.map((em) => (
-                      <button key={em} type="button" onClick={() => { upd(i, { emoji: em }); setEmojiFor(-1); }} className="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-black/[0.06]" style={t.emoji === em ? { background: "var(--dk-sky, #E6F1FB)", outline: "2px solid var(--dk-navy)" } : undefined}>
-                        {em}
-                      </button>
+                <div className="basis-full rounded-xl border" style={{ borderColor: "var(--dk-hair)", background: "#F8FAFC" }}>
+                  <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--dk-hair)" }}>
+                    <span className="grid h-9 w-9 place-items-center rounded-lg bg-white text-xl" style={{ border: "1px solid var(--dk-hair)" }}>{t.emoji || "🏷"}</span>
+                    <input value={t.emoji} onChange={(e) => upd(i, { emoji: e.target.value.slice(0, 4) })} placeholder="พิมพ์อีโมจิเอง (⌃⌘Space / Win+.)" aria-label="พิมพ์อีโมจิเอง" className="h-9 min-w-0 flex-1 rounded-lg border px-2 text-[13px]" style={{ borderColor: "var(--dk-hair)", background: "white" }} />
+                    <button type="button" onClick={() => setEmojiFor(-1)} className="dkb-btn dkb-btn-sm">ปิด</button>
+                  </div>
+                  <div className="max-h-[300px] overflow-y-auto px-2 pb-2">
+                    {EMOJI_GROUPS.map((g) => (
+                      <div key={g.title}>
+                        <p className="mt-2 mb-1 px-1 text-[11.5px] font-bold" style={{ color: "var(--dk-faint)" }}>{g.title}</p>
+                        <div className="flex flex-wrap gap-0.5">
+                          {g.items.map((em) => (
+                            <button key={em} type="button" title={em} onClick={() => { upd(i, { emoji: em }); setEmojiFor(-1); }} className="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-black/[0.06]" style={t.emoji === em ? { background: "var(--dk-sky, #E6F1FB)", outline: "2px solid var(--dk-navy)" } : undefined}>
+                              {em}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
-                    <input value={t.emoji} onChange={(e) => upd(i, { emoji: e.target.value.slice(0, 4) })} placeholder="พิมพ์เอง" aria-label="พิมพ์อีโมจิเอง" className="h-9 w-24 rounded-lg border px-2 text-center text-[14px]" style={{ borderColor: "var(--dk-hair)", background: "white" }} />
                   </div>
                 </div>
               ) : null}
@@ -1297,6 +1307,20 @@ function CardCarousel({ children }: { children: React.ReactNode }) {
   );
 }
 
+
+/** 🎨 จานอีโมจิป้ายลูกค้า แบ่งหมวด (เจ้าของร้าน 9 ต.ค. 69 20:55 "อยากให้มีตัวเลือกได้เยอะกว่านี้" — เดิม 44 ตัวแถวเดียว) */
+const EMOJI_GROUPS: { title: string; items: string[] }[] = [
+  { title: "สี / สัญลักษณ์", items: ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "🟤", "⚫", "⚪", "🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "🟫", "⬛", "⬜", "🔶", "🔷", "🔸", "🔹", "💠", "🔘", "🏷", "📌", "📍", "⭐", "🌟", "✨", "🔥", "⚡", "✅", "☑️", "❌", "⭕", "🚫", "⛔", "❗", "❓", "‼️", "⚠️", "🆕", "🆗", "🆓", "🆙", "🔝", "🔛", "💯", "🔞", "♻️", "🔁", "🔄", "➡️", "⬅️", "⬆️", "⬇️", "↩️", "↪️", "🔃"] },
+  { title: "สถานะ / เวลา", items: ["⏳", "⌛", "⏰", "⏱", "⏲", "🕐", "🕓", "🕘", "📅", "📆", "🗓", "🔔", "🔕", "🚩", "🏁", "🎯", "🚦", "🛑", "💤", "🔒", "🔓", "🔑", "🗝", "📣", "📢", "🔊", "🔇", "👀", "🙈", "💡", "🧭", "⚙️", "🔧", "🔨", "🛠", "🧰", "🧲", "🔍", "🔎"] },
+  { title: "งานพิมพ์ / แบบ", items: ["🎨", "🖌", "🖍", "✏️", "✒️", "🖊", "🖋", "📐", "📏", "📎", "🖇", "📋", "📝", "📄", "📃", "📑", "🗂", "📁", "📂", "🗃", "🖨", "🖥", "💻", "🖱", "⌨️", "🖼", "🧵", "🪡", "🧶", "🧷", "✂️", "👕", "👚", "🧢", "🎽", "👜", "🛍", "🎒", "☂️", "🧩", "🪧", "🏷"] },
+  { title: "การเงิน / เอกสาร", items: ["💰", "💵", "💴", "💶", "💷", "💳", "🧾", "🪙", "💸", "💲", "🏦", "🏧", "📊", "📈", "📉", "🧮", "📇", "📰", "🗒", "📜", "📬", "📭", "📮", "✉️", "📧", "📨", "📩", "📤", "📥", "🗳"] },
+  { title: "ขนส่ง / แพ็ค", items: ["📦", "🚚", "🚛", "🛵", "🏍", "🚗", "🚐", "✈️", "🚀", "🛳", "🏪", "🏬", "🏠", "🏢", "🏭", "🗺", "🧳", "🛒", "🛍", "🎁", "🎀", "📫", "🔖", "🪪", "🪜"] },
+  { title: "คน / ลูกค้า", items: ["🙋", "🙋‍♀️", "🙋‍♂️", "🙇", "🙏", "👋", "👍", "👎", "👌", "✌️", "🤝", "👏", "🙌", "💪", "☝️", "👉", "👈", "✍️", "👤", "👥", "👑", "💎", "🥇", "🥈", "🥉", "🏆", "🎖", "🏅", "🤖", "👩‍💻", "👨‍💻", "👩‍🎨", "👨‍🎨", "👩‍🔧", "👨‍🔧", "🧑‍💼", "👮", "🕵️", "🧑‍🏫", "👶", "🧒", "👧", "🧑", "👩", "👨", "🧓"] },
+  { title: "อารมณ์", items: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🙂", "😉", "😊", "😍", "🥰", "😘", "😎", "🤩", "🥳", "🤔", "🤨", "😐", "😶", "🙄", "😏", "😬", "😴", "🤒", "🤕", "🤢", "🥴", "😵", "🤯", "😱", "😨", "😰", "😥", "😢", "😭", "😤", "😠", "😡", "🤬", "💀", "👻", "💩", "🤡", "👿", "😈", "🥺", "😇", "🤗", "🤫", "🤭", "💖", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "💕", "💞", "💓", "💗", "💝"] },
+  { title: "ของกิน / ธรรมชาติ", items: ["☕", "🧋", "🍵", "🥤", "🍺", "🍰", "🎂", "🍩", "🍪", "🍕", "🍔", "🍟", "🍜", "🍣", "🍎", "🍊", "🍋", "🍉", "🍓", "🥑", "🌶", "🌸", "🌺", "🌻", "🌹", "🌷", "🍀", "🌿", "🌱", "🌵", "🌈", "☀️", "🌤", "☁️", "🌧", "⛈", "❄️", "🌙", "🌊", "🔮"] },
+  { title: "สัตว์", items: ["🐣", "🐥", "🐤", "🦆", "🐔", "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐧", "🐦", "🦋", "🐝", "🐞", "🐢", "🐍", "🦄", "🐳", "🐬", "🐠", "🦀", "🦐", "🐙", "🦖", "🐲", "🐉"] },
+  { title: "ฉลอง / กีฬา / อื่น ๆ", items: ["🎉", "🎊", "🎈", "🎄", "🎃", "🎆", "🎇", "🪄", "🎵", "🎶", "🎤", "🎧", "🎬", "📷", "📸", "🎥", "📺", "📻", "🎮", "🕹", "🎲", "🧸", "🎪", "🎭", "🎟", "🎫", "⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏓", "🏸", "🥊", "🏊", "🚴", "🧘", "🏃", "🧗", "🛹", "🎳", "🥏", "🏹", "🪁"] },
+];
 
 /** 📎 การ์ดไฟล์แบบ LINE (เจ้าของร้าน 9 ต.ค. 69 20:20 "ให้หน้าตาเหมือนใน LINE"): กล่องไอคอนนามสกุล (Ai/Ps/PDF/ZIP…) · ชื่อไฟล์ · ขนาด · สถานะเก็บถาวร */
 function FileCard({ file, href, archived }: { file: { url: string; name: string; size: number }; href: string; archived: boolean }) {
