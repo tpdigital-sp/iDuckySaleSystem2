@@ -60,6 +60,10 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
   const botScope = String(x.botScope ?? "");
   const scope: Row["scope"] = botScope === "new" || botScope === "old" ? botScope : cfg.newSince && createdAt && createdAt >= cfg.newSince ? "new" : "old";
   const paused = iso(x.botPausedUntil);
+  // พรีวิวบรรทัดสุดท้ายแบบ LINE: lastUserText (บอทเขียน) ว่างในหลายห้อง → ถอยไปใช้ข้อความท้ายสุดใน messages[] (ความจำบอท 20 ตัว)
+  const msgs = Array.isArray(x.messages) ? (x.messages as { role?: unknown; text?: unknown }[]) : [];
+  const lastMsg = msgs.length ? msgs[msgs.length - 1] : null;
+  const preview = String(x.lastUserText ?? "") || (lastMsg ? `${String(lastMsg.role ?? "") === "user" ? "" : "ร้าน: "}${String(lastMsg.text ?? "")}` : "");
   return {
     id,
     displayName: String(x.displayName ?? ""),
@@ -67,7 +71,7 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     lastSeen: iso(x.lastSeen),
     createdAt,
     messageCount: Number(x.messageCount ?? 0) || 0,
-    lastUserText: String(x.lastUserText ?? ""),
+    lastUserText: preview.replace(/\s+/g, " ").slice(0, 120),
     scope,
     botScope,
     needsHumanFollowup: x.needsHumanFollowup === true,
