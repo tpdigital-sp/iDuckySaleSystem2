@@ -32,6 +32,8 @@ export async function GET(req: Request) {
   const snap = await ref.get();
   if (!snap.exists) return svgNote("ไม่พบข้อความนี้");
   const x = (snap.data() ?? {}) as Record<string, unknown>;
+  // 🐛 18:10 หน้าเว็บเคยขอรูปของข้อความตัวอักษรด้วย (มี messageId เหมือนกัน) → LINE 400 → ติด imageExpired ผิดตัว · กันที่นี่อีกชั้น
+  if (String(x.type ?? "") !== "image" && !x.imageUrl) return svgNote("ข้อความนี้ไม่ใช่รูป", 400);
   const cached = String(x.imageUrl ?? "");
   if (/^https:\/\//.test(cached)) return NextResponse.redirect(cached, 302);
   // เคยดึงแล้ว LINE ไม่ให้ (หมดอายุ/ไม่ใช่รูป) → จำไว้ ไม่ยิง LINE ซ้ำทุกครั้งที่เปิดห้อง

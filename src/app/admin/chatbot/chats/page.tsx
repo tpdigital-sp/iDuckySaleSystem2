@@ -251,6 +251,29 @@ function Chats() {
   const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   // 🏷 17:55 แคตตาล็อกป้าย (settings/chat-tags) + หน้าจัดการป้าย
   const [tagCatalog, setTagCatalog] = useState<ChatTag[]>(DEFAULT_TAGS);
+  // 🧾 18:15 การ์ดจากบรรทัด "[การ์ด] สินค้าที่ตรงกับรูป: โปสการ์ด" (log เก่าก่อน Reply Gate เขียน cards[]) → เทียบชื่อกับแคตตาล็อกเว็บแล้ววาดเป็นการ์ด
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  useEffect(() => {
+    fetch("/api/pricing/search?catalog=1", { cache: "no-store" }).then((r) => r.json()).then((d: { items?: CatalogItem[] }) => setCatalog(Array.isArray(d.items) ? d.items : [])).catch(() => {});
+  }, []);
+  const cardsOf = useCallback(
+    (m: LogEntry): CardRef[] => {
+      if (m.cards?.length) return m.cards;
+      if (m.card) return [{ name: m.card.name, url: m.card.url }];
+      if (!catalog.length) return [];
+      const out: CardRef[] = [];
+      for (const line of m.text.split("\n")) {
+        const mm = line.trim().match(/^\[การ์ด\]\s*[^:]*:\s*(.+)$/);
+        if (!mm) continue;
+        for (const nm of mm[1].split(/\s*,\s*/)) {
+          const it = catalog.find((c) => c.name === nm.trim());
+          if (it && !out.some((o) => o.url === it.url)) out.push({ name: it.name, url: it.url, image: it.image, price: it.priceMin && it.priceMax && it.priceMax > it.priceMin ? `฿${it.priceMin.toLocaleString()} – ${it.priceMax.toLocaleString()}` : it.priceMin ? `เริ่ม ฿${it.priceMin.toLocaleString()}` : undefined });
+        }
+      }
+      return out.slice(0, 6);
+    },
+    [catalog],
+  );
   const [tagMgrOpen, setTagMgrOpen] = useState(false);
   useEffect(() => {
     botApi<{ items: ChatTag[] }>("/api/admin/chatbot/chats/tags").then((d) => setTagCatalog(d.items)).catch(() => {});
@@ -530,8 +553,10 @@ function Chats() {
                         >
                           {(() => {
                             // 🖼 17:30 รูปจากลูกค้า: log มี messageId (ยังไม่มี imageUrl) → โหลดผ่าน API ที่ดึงจาก LINE แล้วแคช · รูปบอท/แอดมิน: imageUrl ตรง ๆ
-                            if (!ours && !m.imageUrl && m.imageExpired) return <span className="mb-1 block text-[12px] italic" style={{ color: "var(--dk-faint)" }}>🖼 รูปหมดอายุใน LINE แล้ว (ดูได้ใน OA Manager)</span>;
-                            const lazy = !ours && !m.imageUrl && m.messageId && m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "";
+                            // 🐛 18:10 เคยขอรูปทุก entry ที่มี messageId (ข้อความตัวอักษรก็มี) → LINE 400 → ขึ้น "รูปหมดอายุ" ใต้ทุกข้อความ · ต้องเฉพาะ type image
+                            const isCustImg = !ours && m.type === "image";
+                            if (isCustImg && !m.imageUrl && m.imageExpired) return <span className="mb-1 block text-[12px] italic" style={{ color: "var(--dk-faint)" }}>🖼 รูปหมดอายุใน LINE แล้ว (ดูได้ใน OA Manager)</span>;
+                            const lazy = isCustImg && !m.imageUrl && m.messageId && m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "";
                             const src = m.imageUrl || lazy;
                             if (!src) return null;
                             const fname = `line-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg`;
@@ -542,9 +567,10 @@ function Chats() {
                               </button>
                             );
                           })()}
+                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
                           {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
-                          {(m.cards?.length ? m.cards : m.card ? [{ name: m.card.name, url: m.card.url }] : []).map((c, ci) => (
-                            <a key={ci} href={c.url} target="_blank" rel="noreferrer" className="mb-2 block w-[220px] max-w-full overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+                          {cardsOf(m).map((c, ci) => (
+                            <a key={ci} href={c.url} target="_blank" rel="noreferrer" className="mt-2 block w-[220px] max-w-full overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
                               {c.image ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={c.image} alt="" className="aspect-[4/3] w-full object-cover" />
@@ -556,7 +582,6 @@ function Chats() {
                               </div>
                             </a>
                           ))}
-                          {m.cards?.length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.card ? m.text.replace(/^\(ส่งการ์ดสินค้า[^)]*\)$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
                         </div>
                         {!ours ? (
                           <span className="mb-0.5 shrink-0 text-[10px]" style={{ color: "var(--dk-faint)" }}>

@@ -131,7 +131,7 @@ export async function GET(req: Request) {
         imageUrl: y.imageUrl ? String(y.imageUrl) : undefined,
         // รูปจากลูกค้า: ยังไม่ได้ดึง → หน้าเว็บใช้ /api/admin/chatbot/chats/image?uid&log (ดึงจาก LINE แล้วแคชขึ้น Storage)
         messageId: y.messageId ? String(y.messageId) : undefined,
-        imageExpired: y.imageExpired === true ? true : undefined,
+        imageExpired: y.imageExpired === true && String(y.type ?? "") === "image" ? true : undefined,
         card: card ? { name: String(card.name ?? ""), url: String(card.url ?? "") } : undefined,
         cards: cards.length ? cards : undefined,
       };
