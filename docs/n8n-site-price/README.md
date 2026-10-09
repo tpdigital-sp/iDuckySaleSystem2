@@ -308,3 +308,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - ทดสอบ: anonymous token POST/DELETE `line-conversations/{uid}/log` ได้ (rules เปิด) · Read Memory response มี createTime (ห้องทดสอบ 2026-05-29)
 - 19:05 เจ้าของร้านปรับ: **บอทยังไม่ตอบ** จนกว่าจะเปิดสิทธิ์ — แค่เก็บแชท + ติด badge "ลูกค้าใหม่" ที่ /admin/line-customers → settings/bot-whitelist `mode: "log-only"` (newSince คงเดิม 2026-10-08T13:28:57Z) · Build AI Request ติดธง botScope ทั้ง 'new-only' และ 'log-only' แต่เปิดประตู (newCustomerOk) เฉพาะ 'new-only' · เว็บ: line-chat.ts ดึง botScope/createdAt + loadWhitelist อ่าน mode/newSince · manage route `isNew` · หน้า line-customers แสดง Tag mint "🆕 ลูกค้าใหม่" (deploy แล้ว)
 - 🔛 วิธีเปิดให้บอทตอบลูกค้าใหม่ในอนาคต: PATCH settings/bot-whitelist mode → "new-only" (ไม่ต้อง publish n8n อีก ถ้า draft นี้ publish แล้ว) · ลูกค้าที่ติดธง new ไว้ตั้งแต่โหมด log-only จะได้บอทตอบทันที
+
+## 9 ต.ค. 69 09:00 — publish แล้วแต่ webhook ยังรันเวอร์ชันเก่า (ไม่มีส่วนเก็บแชท/ติดธง) → ต้องปิด-เปิด Active
+- อาการ: เจ้าของร้าน Publish 20:36 (8 ต.ค.) · REST `/rest/workflows/:id` โชว์โค้ดใหม่ครบ + versionId == activeVersionId แต่ execution 890283 (08:53) `workflowData` snapshot ไม่มี LOG_URL/botMode (มี wrap160/askNext) → runtime ของ webhook ยังถือเวอร์ชันก่อนหน้า · Firestore ไม่มี botScope/log
+- แก้: PATCH `/rest/workflows/:id` {active:false} แล้ว {active:true} (02:01Z) → execution ถัดไป (02:02–02:03Z) ติดธง botScope='old' + เขียน log ขาเข้า/ขาออกครบ ✅ (ผู้ใช้ที่เห็นบอทตอบ = Uf472e27… อยู่ใน whitelist ทดสอบ ไม่ใช่หลุด)
+- 🔑 gotcha: หลัง Publish ให้เช็ก `execution.workflowData` ของ execution ใหม่ว่ามีโค้ดล่าสุดจริง — ถ้าไม่ ให้ toggle Active (UI หรือ PATCH)
