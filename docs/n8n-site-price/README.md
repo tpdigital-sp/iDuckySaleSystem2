@@ -327,3 +327,9 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - ที่พัง: ChatBot ใช้ 74 วิ เพราะ **Fetch PO1 → /webhook/pricing-search ค้าง 59 วิ** (Site Price 4 วิ ไม่เจอ → IF useLegacy → "Search Pricing" legacy 54 วิ) → LINE "Call AI" timeout 50 วิ → node error → execution ล้ม ไม่มีคำตอบสำรอง → ลูกค้าได้ความเงียบ
 - แก้ (draft 2 workflow รอ publish): ChatBot Fetch PO1 timeout 12 วิ (+ continueRegularOutput) · LINE Call AI timeout 35 วิ + onError continueRegularOutput · Format Reply ตอบสำรองเมื่อ AI ไม่ตอบ: "ขอโทษนะคะคุณลูกค้า ระบบช้าแป๊บนึง 🥺 เดี๋ยวแอดมินเข้ามาตอบในแชทนี้ให้เลยค่า" (bailRe จับ "แอดมินเข้ามาตอบ" → แจ้งแอดมิน)
 - 🔍 ค้าง: legacy "Search Pricing" ใน pricing-search ช้า 54 วิ (น่าจะ Gemini spike ฝั่ง server เหมือน Analyze Image) — ยังไม่ได้ใส่ timeout ในตัวมันเอง
+
+## 9 ต.ค. 69 10:10 — รูป 2 + ข้อความ → ตอบถูกฟองเดียว แล้วอีก 1 นาทีมีฟองรูปซ้ำ 2 ฟอง (exec 890927-929 รอบแรก · 890948/951/952 รอบซ้ำ)
+- รอบแรก (10:10:01-03): 2 รูปเงียบ · ข้อความตอบรวม "Sticker Gold | Silver | RoseGold เนื้อโลหะ พิมพ์รองขาว…" + การ์ด ✅ (Call AI 17.7 วิ หลังแก้ Fetch PO1 ไม่ค้าง)
+- รอบซ้ำ (10:11:04-08): LINE **redelivery** — event เดิมทั้ง 3 (webhookEventId/messageId เดิม, `deliveryContext.isRedelivery=true`) ถูกส่งมาอีกรอบ ~60 วิ · ข้อความถูกกันด้วย recentMessageIds (Debounce คืน 0) แต่ **รูปข้ามด่านกันซ้ำ** (early return ก่อน GET) → วิเคราะห์ใหม่ + gate ไม่เห็น pending (ข้อความถูกทิ้ง) → ส่งคำตอบรูป 2 ฟอง
+- LINE Webhook ตอบ 200 ทันทีอยู่แล้ว (responseMode onReceived) — redelivery น่าจะมาจาก n8n รับ request ช้าตอนโหลดสูง กันที่ต้นทางไม่ได้ 100% → ต้องกันซ้ำให้ครบทุกชนิด
+- แก้ (draft LINE รอ publish): Debounce Buffer — รูปผ่านด่าน recentMessageIds (GET + ถ้าซ้ำ return []) แล้ว PATCH recentMessageIds อย่างเดียว ก่อน `imagePass()` · auth/GET ล้ม → รูปยังผ่านแบบ imagePass (ไม่ไปเส้น bypass ของข้อความ)
