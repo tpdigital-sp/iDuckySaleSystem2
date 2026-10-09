@@ -1102,6 +1102,17 @@ ${list}
         if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = "spec";
       }
     }
+    // 🫧 9 ต.ค. 69 13:10 ด่านกำหนดสินค้าเอง (จุ๊บ/ดุ๊กดิ๊ก/Sticker Gold/PP/กระดาษ) เปลี่ยนสินค้าแล้ว แต่ standalone ที่ LLM เขียนยังเอ่ยสินค้าเดิม
+    // ("GRIPTOK PUSH-PULL ดึงเข้าออกติดใหม่ได้ไหม") → searchInfo อ่านหน้าสติ๊กเกอร์สูญญากาศด้วยคำถามเรื่อง Griptok แล้วตอบไม่ได้ → บอทเงียบ
+    // → ถ้า standalone เอ่ยชื่อสินค้าที่ไม่อยู่ในชุดที่เลือกแล้ว ให้ใช้ข้อความลูกค้าเดิมแทน
+    const guardChanged = finalPicked.length !== picked.length || finalPicked.some((f, i) => f.id !== picked[i]?.id);
+    const saRaw = String(raw.standalone ?? "").trim();
+    const saOff =
+      guardChanged && !!saRaw && items.some((it) => norm(it.name).length >= 4 && !finalPicked.some((f) => f.id === it.id) && norm(saRaw).includes(norm(it.name)));
+    // คำลูกค้า ("ตัวจุ๊บ") ไม่มีบนหน้าสินค้า → คนอ่านหน้า (searchInfo) ไม่รู้ว่าถามถึงอะไร ตอบ "ไม่พบ" → เติมชื่อสินค้าที่ด่านเลือกไว้นำหน้า
+    const saBase = (saOff ? "" : saRaw) || q;
+    const saFixed =
+      guardChanged && finalPicked.length === 1 && !norm(saBase).includes(norm(finalPicked[0].name)) ? `${finalPicked[0].name}: ${saBase}` : saBase;
     const u: Understanding = {
       notInCatalog,
       requested,
@@ -1113,7 +1124,7 @@ ${list}
       attr: attrQ || undefined,
       broad: !!raw.broad && finalPicked.length >= 2,
       qty: Number.isFinite(qtyN) && qtyN > 0 ? Math.round(qtyN) : null,
-      standalone: String(raw.standalone ?? "").trim() || q,
+      standalone: saFixed,
       confidence: Math.max(0, Math.min(1, Number(raw.confidence) || 0)),
     };
     understandCache.set(key, { at: Date.now(), u });
