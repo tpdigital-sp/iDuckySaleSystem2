@@ -15,6 +15,7 @@ import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { recordN8nCall } from "@/lib/server/ai-usage";
 import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
 import { priceSearch } from "@/lib/server/price-search";
+import { shopCalendarText } from "./shop-calendar";
 
 /**
  * 🧠 สมองแชทตัวเดียวของร้าน — ใช้ร่วม 2 ทาง (ย้ายออกจาก /api/chat 3 ต.ค. 69)
@@ -339,6 +340,11 @@ export async function answerChat(
     );
   }
 
+  // 📅 วันหยุด/เวลาทำการร้าน (ปฏิทิน TP + SHOP.hours) — เจ้าของร้าน 12 ต.ค. 69 · ถามเรื่องเวลา/วันหยุด = แปะใน message ด้วย (agent ให้น้ำหนัก message มากกว่า systemMessage)
+  const calendar = await Promise.race([shopCalendarText().catch(() => ""), new Promise<string>((r) => setTimeout(() => r(""), 1500))]);
+  const askTime = /เปิด|ปิด|วันหยุด|หยุด|เวลา|กี่โมง|ทำการ|เสาร์|อาทิตย์|พรุ่งนี้|วันไหน|ตอบ.*(เมื่อไหร่|ไหม)|ส่ง.*(วัน|เมื่อไหร่)/.test(message);
+  const calendarHint = calendar ? `\n\n[${calendar}]` : "";
+
   let reply = "";
   const n8nAt = Date.now();
   try {
@@ -349,7 +355,7 @@ export async function answerChat(
         // ฝัง "คำแนะนำระบบ" ต่อท้ายข้อความ (สั่งให้ค้นราคา/จับวัสดุ/แปลงเซ็ต) แบบเดียวกับ chat.html
         // priceFacts ต้องอยู่ใน message ไม่ใช่แค่ systemMessage — agent ของ n8n ให้น้ำหนัก message
         // มากกว่ามาก (ยัดไว้ใน systemMessage อย่างเดียว มันเมินแล้วไปหยิบราคาจาก tool ตัวเองแทน)
-        message: message + priceFacts + (ctx?.messageHint ?? ""),
+        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : ""),
         sessionId,
         userId: `${staff ? "admin" : "web"}-${sessionId}`,
         source: staff ? "adminbuddy" : "website",
@@ -358,7 +364,7 @@ export async function answerChat(
         // ⚠️ workflow ไม่ได้อ่าน knowledgeContext ที่ไหนเลย (ตรวจจาก system message ของ AI Agent1 แล้ว)
         // คลังความรู้ที่คัดมาจึงต้องต่อท้าย systemMessage ไม่งั้นส่งไปแล้วถูกทิ้งทั้งก้อน
         systemMessage:
-          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}` ||
+          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}` ||
           undefined,
         conversationHistory: convo || undefined,
         knowledgeContext: ctx?.knowledgeContext,
@@ -389,7 +395,7 @@ export async function answerChat(
   // 🛟 n8n ไม่ตอบ/ตอบไม่ได้ → ตอบเองด้วย Gemini จาก context ที่ประกอบไว้ (แบบเดียวกับ fallback ของ chat.html)
   // ลูกค้าได้คำตอบจากข้อมูลร้านจริงเสมอ ดีกว่าข้อความ "ผู้ช่วยตอบช้า" เปล่า ๆ
   if (!reply) {
-    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}`, ctx?.knowledgeContext, convo);
+    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}${calendar ? `\n${calendar}` : ""}`, ctx?.knowledgeContext, convo);
     if (direct) reply = direct;
   }
 

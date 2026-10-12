@@ -9,6 +9,7 @@ import { memberTierOfContact } from "./quote-member-tier";
 import { orderTotal, type Order } from "@/lib/admin-data";
 import type { Contact } from "@/lib/contacts";
 import { slowestActive, wipJobsForOrder } from "./wip-production";
+import { shopCalendarText } from "./shop-calendar";
 
 /**
  * 🧠 ความจำต่อลูกค้า (ข้อ 2 ของแผน "ฉลาดเหมือน Claude/ChatGPT" · 1 ต.ค. 69)
@@ -185,6 +186,8 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
 
   // 🏭 ขั้นผลิตจริงบนบอร์ด TP ของใบที่อยู่ช่วงผลิต (เจ้าของร้าน 12 ต.ค. 69 "ให้บอทตอบขั้นผลิตได้ถ้าลูกค้าถาม")
   //   จับคู่แบบชัวร์เท่านั้น (exactOnly) · ส่งแค่ชื่อขั้น ไม่มีชื่อพนักงาน/แผนก · ไม่เกิน 3 ใบ · เกิน 2.5 วิ = ข้ามไป (n8n ให้เวลา API นี้ 6 วิ)
+  // 📅 วันหยุด/เวลาทำการร้าน (ปฏิทิน TP) — เริ่มพร้อมกับอ่านบอร์ดผลิต ไม่ต่อคิวกัน (12 ต.ค. 69)
+  const calendarP = shopCalendarText().catch(() => "");
   const stageOf = new Map<string, string>();
   const inProd = activeOrders.filter((o) => o.status === "อนุมัติแบบ" || o.status === "กำลังผลิต").slice(0, 3);
   if (inProd.length) {
@@ -223,7 +226,9 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   const useful = !!summary && !/^ยังไม่มีข้อมูลสำคัญ/.test(summary) && noInfoCount < 2 && summary.length > 40;
   if (useful) lines.push(`จากแชทก่อนหน้า: ${summary}`);
 
-  const text = lines.join("\n").slice(0, 900);
+  // ข้อมูลลูกค้าตัดที่ 900 ตัวเหมือนเดิม แล้วต่อท้ายปฏิทินร้าน (~450 ตัว) — ไม่ให้ปฏิทินไปเบียดข้อมูลลูกค้า
+  const calendar = await Promise.race([calendarP, new Promise<string>((r) => setTimeout(() => r(""), 1500))]);
+  const text = [lines.join("\n").slice(0, 900), calendar].filter(Boolean).join("\n");
   // ⚡ แคชก้อนข้อความไว้ในห้องแชท (profile.text/textAt) — n8n Build AI Request อ่านจาก Read Memory ได้ทันที ไม่ต้องเรียก API ทุกข้อความ (1 ต.ค. 69)
   await db
     .collection(CHAT_COLLECTION)

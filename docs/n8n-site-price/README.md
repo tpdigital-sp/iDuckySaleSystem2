@@ -439,3 +439,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 ### 12 ต.ค. 69 — 🏭 บอทรู้ขั้นผลิตจริง
 - /api/bot/customer-profile (n8n Build AI Request เรียกทุกข้อความ · timeout 6 วิ) ต่อท้ายใบช่วงผลิตด้วย "(ขั้นผลิตตอนนี้: QC/แพ็ค)" หรือ "(ผลิตเสร็จทุกชิ้นแล้ว รอแพ็ค/ส่ง)" จาก wipJobsForOrder exactOnly · ไม่เกิน 3 ใบ · เกิน 2.5 วิข้าม
 - กติกาตอบแปะมากับข้อความโปรไฟล์เอง (ตอบตามขั้นในวงเล็บ · ห้ามเดาวันเสร็จ · ห้ามบอกชื่อพนักงาน) → ไม่ต้องแก้ systemMessage ใน n8n
+
+### 12 ต.ค. 69 — 📅 บอทรู้วันหยุด/เวลาทำการร้าน
+- lib/server/shop-calendar.ts `shopCalendarText()` = เวลาทำการจาก SHOP.hours (lib/shop-info.ts) + วันหยุดจากปฏิทิน TP (TP-Setting/holiday-settings.html → tp-fixflow `holidays` · loadShopHolidays ชุดเดียวกับคำนวณวันส่ง) → วันนี้เปิด/ปิด/ยังไม่ถึงเวลา/เลยเวลา · วันทำการถัดไป · วันหยุดพิเศษใน 45 วัน + กติกาตอบ
+- บอท LINE: ต่อท้ายข้อความ customer-profile (ข้อมูลลูกค้าตัด 900 ตัวเหมือนเดิม แล้วค่อยต่อปฏิทิน) · แชทเว็บ: ต่อ systemMessage + fallback และแปะใน message เมื่อถามเรื่องเวลา/วันหยุด (agent ให้น้ำหนัก message มากกว่า)
+- ไม่ต้องแก้ n8n · แก้วันหยุดที่ปฏิทิน TP / แก้เวลาทำการที่ shop-info.ts ที่เดียว
