@@ -14,6 +14,15 @@ import { cycleKey, cycleOf, cycleRange, feedConversation, finalizeSender, type O
 export const STATS_COL = "chatReplyStats";
 export const OLD_COL = "storeChatCommissionChats";
 const ROOMS = "line-conversations";
+/**
+ * 🧪 ห้อง LINE ทดสอบ (บัญชีเจ้าของร้าน + บัญชีทดสอบ) ไม่นับเป็นงานตอบลูกค้า — 12 ต.ค. 69 ข้อความทดสอบหน้าแชทเคยถูกนับเข้าค่าคอม
+ * ตั้งเพิ่มได้ที่ env CHAT_STATS_EXCLUDE_IDS (คั่นด้วย ,)
+ */
+const EXCLUDE_ROOMS = new Set(
+  ["U039af65557560216cc387aa8f15df0f5", "Uf472e2778df2909f9a99616fb8e3949f", ...String(process.env.CHAT_STATS_EXCLUDE_IDS ?? "").split(",")]
+    .map((x) => x.trim())
+    .filter(Boolean)
+);
 
 type LogRow = { role?: string; mode?: string; by?: string; text?: string; at?: { toDate?: () => Date } | Date | string };
 const toMs = (v: LogRow["at"]): number => {
@@ -33,7 +42,7 @@ export async function webStats(db: Firestore, start: string, end: string): Promi
   let customerMsgs = 0;
   let roomsWithWeb = 0;
   await Promise.all(
-    rooms.docs.map(async (r) => {
+    rooms.docs.filter((r) => !EXCLUDE_ROOMS.has(r.id)).map(async (r) => {
       const q = await r.ref.collection("log").where("at", ">=", from).where("at", "<=", to).orderBy("at", "asc").get();
       const msgs: { who: string; at: number; text: string }[] = [];
       let hasWeb = false;
