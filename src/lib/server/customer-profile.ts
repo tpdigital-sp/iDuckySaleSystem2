@@ -10,6 +10,7 @@ import { orderTotal, type Order } from "@/lib/admin-data";
 import type { Contact } from "@/lib/contacts";
 import { slowestActive, wipJobsForOrder } from "./wip-production";
 import { shopCalendarText } from "./shop-calendar";
+import { HANDOFF_RULE_TEXT } from "./bot-handoff";
 
 /**
  * 🧠 ความจำต่อลูกค้า (ข้อ 2 ของแผน "ฉลาดเหมือน Claude/ChatGPT" · 1 ต.ค. 69)
@@ -228,7 +229,7 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
 
   // ข้อมูลลูกค้าตัดที่ 900 ตัวเหมือนเดิม แล้วต่อท้ายปฏิทินร้าน (~450 ตัว) — ไม่ให้ปฏิทินไปเบียดข้อมูลลูกค้า
   const calendar = await Promise.race([calendarP, new Promise<string>((r) => setTimeout(() => r(""), 1500))]);
-  const text = [lines.join("\n").slice(0, 900), calendar].filter(Boolean).join("\n");
+  const text = [lines.join("\n").slice(0, 900), calendar, HANDOFF_RULE_TEXT].filter(Boolean).join("\n");
   // ⚡ แคชก้อนข้อความไว้ในห้องแชท (profile.text/textAt) — n8n Build AI Request อ่านจาก Read Memory ได้ทันที ไม่ต้องเรียก API ทุกข้อความ (1 ต.ค. 69)
   await db
     .collection(CHAT_COLLECTION)

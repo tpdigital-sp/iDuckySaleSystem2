@@ -16,6 +16,7 @@ import { recordN8nCall } from "@/lib/server/ai-usage";
 import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
 import { priceSearch } from "@/lib/server/price-search";
 import { shopCalendarText } from "./shop-calendar";
+import { HANDOFF_MSG_RE, HANDOFF_RULE_TEXT } from "./bot-handoff";
 
 /**
  * 🧠 สมองแชทตัวเดียวของร้าน — ใช้ร่วม 2 ทาง (ย้ายออกจาก /api/chat 3 ต.ค. 69)
@@ -216,7 +217,9 @@ export async function answerChat(
   // 🚨 ลูกค้าขอคุยคน / ไม่พอใจ / เคลมงาน / ตามออเดอร์ → ส่งต่อแอดมินทันที ไม่ต้องให้บอทดันต่อ
   // (เกณฑ์มาจากชั้นวิเคราะห์: escalate + เหตุผล) เรื่องพวกนี้บอทตอบเองแล้วยิ่งทำให้ลูกค้าหงุดหงิด
   const hardHandoff = !staff && /ขอคุยแอดมิน|เคลม|ติดตามออเดอร์/.test(parsed?.intent ?? "");
-  if (needsHuman(parsed) && hardHandoff) {
+  // 🙋 กติกาเจ้าของร้าน 12 ต.ค. 69: ขอส่วนลด/ต่อราคา · ไม่พอใจ · ในนามบริษัท · ขอคุยคน = ส่งต่อทันที (lib/server/bot-handoff.ts)
+  const ruleHandoff = !staff && HANDOFF_MSG_RE.test(message);
+  if ((needsHuman(parsed) && hardHandoff) || ruleHandoff) {
     // 🙋 แจ้ง Leader Inbox (Firestore ordersure/leader-tasks — ชุดเดียวกับที่บอท LINE ยิง) ไม่ต้องรอลูกค้าไปทักไลน์เอง (25 ก.ย. 69)
     try {
       const db = getChatFirestore();
@@ -364,7 +367,7 @@ export async function answerChat(
         // ⚠️ workflow ไม่ได้อ่าน knowledgeContext ที่ไหนเลย (ตรวจจาก system message ของ AI Agent1 แล้ว)
         // คลังความรู้ที่คัดมาจึงต้องต่อท้าย systemMessage ไม่งั้นส่งไปแล้วถูกทิ้งทั้งก้อน
         systemMessage:
-          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}` ||
+          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}\n${HANDOFF_RULE_TEXT}` ||
           undefined,
         conversationHistory: convo || undefined,
         knowledgeContext: ctx?.knowledgeContext,
