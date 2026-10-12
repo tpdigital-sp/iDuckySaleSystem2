@@ -4,6 +4,7 @@ import { productAutoSeo, startPriceOf, syncStartPrice } from "@/lib/auto-seo";
 import { SHOP, SITE_URL } from "@/lib/shop-info";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   activeMatrix,
@@ -660,6 +661,11 @@ export default function ProductDetail({
   const [qtyTouched, setQtyTouched] = useState(false);
   // 🔍 รูปที่กำลังเปิดดูขนาดใหญ่ (lightbox) — ว่าง = ปิดอยู่
   const [zoomSrc, setZoomSrc] = useState("");
+  /**
+   * 🖼 แผงเลือกจากรูป ของกลุ่มเมนู (dropdown) ที่ตัวเลือกส่วนใหญ่มีรูป — เก็บชื่อกลุ่มที่เปิดอยู่ ("" = ปิด)
+   * ตะขอ 31 แบบ / สีฐาน 44 สี: เดิมเห็นแค่ชื่อในเมนู (Z1, A, B…) รูปโผล่เฉพาะตัวที่เลือกแล้ว (12 ต.ค. 69)
+   */
+  const [pickerFor, setPickerFor] = useState("");
   /** 🎨 สีที่แตะล่าสุดของแต่ละกลุ่มสวอตช์ (คีย์ = ชื่อกลุ่ม) — โชว์แถบพรีวิวใหญ่ใต้ตาราง */
   const [swatchTap, setSwatchTap] = useState<Record<string, string>>({});
   /**
@@ -4897,6 +4903,92 @@ export default function ProductDetail({
                     </div>
                       );
                     })()}
+                    {/* 🖼 ตัวเลือกส่วนใหญ่มีรูป (≥ 6 ตัว · ≥ 60%) → ปุ่มเปิดแผงเลือกจากรูป · เมนูเดิมยังอยู่สำหรับคนที่รู้ชื่อแบบแล้ว */}
+                    {(() => {
+                      const vis = opt.choices.filter((c) => allowed.includes(c.name));
+                      const pics = vis.filter((c) => choiceImage(c, effective)).length;
+                      if (vis.length < 6 || pics < vis.length * 0.6) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setPickerFor(opt.label)}
+                          className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-[12px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-100"
+                        >
+                          🖼 เลือกจากรูป ({vis.length.toLocaleString("th-TH")} แบบ)
+                        </button>
+                      );
+                    })()}
+                    {pickerFor === opt.label &&
+                      typeof document !== "undefined" &&
+                      createPortal(
+                        <div
+                          className="fixed inset-0 z-[96] flex items-end justify-center bg-stone-900/50 backdrop-blur-sm sm:items-center sm:p-4"
+                          onClick={() => setPickerFor("")}
+                          role="dialog"
+                          aria-modal="true"
+                          aria-label={`เลือก${opt.label}จากรูป`}
+                        >
+                          <div
+                            className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-4 py-3">
+                              <p className="min-w-0 truncate text-[15px] font-extrabold text-stone-800">🖼 เลือก{opt.label}</p>
+                              <button
+                                type="button"
+                                onClick={() => setPickerFor("")}
+                                className="shrink-0 rounded-full px-3 py-1.5 text-sm font-bold text-stone-500 hover:bg-stone-100"
+                                aria-label="ปิด"
+                              >
+                                ✕ ปิด
+                              </button>
+                            </div>
+                            {/* ⚠️ เลื่อนที่กล่องนอก ไม่ใช่ที่ grid เอง — grid ใน flex คอลัมน์ที่ตั้ง overflow ถูกบีบแถวจนรูปเหลือเป็นแถบบาง ๆ ชื่อหาย */}
+                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                            <div className="grid auto-rows-max grid-cols-3 content-start gap-2 p-3 sm:grid-cols-4">
+                              {opt.choices
+                                .filter((c) => allowed.includes(c.name))
+                                .map((c) => {
+                                  const img = choiceImage(c, effective);
+                                  const on = effective[opt.label] === c.name;
+                                  const fee = choiceBadgeOf(opt, effective, c.name, feeQty, product);
+                                  return (
+                                    <button
+                                      key={c.name}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                                        jumpToImage(img);
+                                        setPickerFor("");
+                                      }}
+                                      aria-pressed={on}
+                                      className={`flex flex-col overflow-hidden rounded-2xl bg-white text-left ring-1 transition ${
+                                        on ? "ring-2 ring-amber-400" : "ring-stone-200 hover:ring-amber-300"
+                                      }`}
+                                    >
+                                      {img ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={img} alt={c.name} loading="lazy" className="aspect-square h-auto w-full shrink-0 bg-stone-50 object-cover" />
+                                      ) : (
+                                        <span className="grid aspect-square w-full place-items-center bg-stone-50 text-2xl" aria-hidden>
+                                          {product.emoji}
+                                        </span>
+                                      )}
+                                      <span className="px-2 pb-2 pt-1.5 text-[11.5px] font-semibold leading-snug text-stone-700">
+                                        {on && <span className="text-amber-600">✓ </span>}
+                                        {c.name}
+                                        {c.popular && <span className="text-teal-700"> · นิยม</span>}
+                                        {fee > 0 && <span className="block text-[11px] font-bold text-amber-600">+{formatPrice(fee)}</span>}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                            </div>
+                          </div>
+                        </div>,
+                        document.body,
+                      )}
                     {/* selectedNote ไม่ต้องวาดตรงนี้ — กล่องรวมท้ายกลุ่มวาดให้แล้ว (เคยขึ้นซ้ำ 2 กล่อง 14 ก.ย. 69) */}
                     </>
                   ) : opt.display === "cards" ? (
