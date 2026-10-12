@@ -63,7 +63,8 @@
     "check:line-quota": "tsx --conditions=react-server --env-file=.env.local scripts/line-quota-check.mts",
     "check:ship-with": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/ship-with-pickup-test.mts",
     "check:ai-cost": "tsx scripts/ai-cost-test.mts",
-    "cache:line-file": "node --conditions=react-server --env-file=.env.local --import tsx scripts/cache-line-file.mts"
+    "cache:line-file": "node --conditions=react-server --env-file=.env.local --import tsx scripts/cache-line-file.mts",
+    "wip:backfill-od": "node --conditions=react-server --env-file=.env.local --import tsx scripts/wip-backfill-order-id.mts"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",

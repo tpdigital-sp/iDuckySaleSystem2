@@ -429,3 +429,9 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - เจ้าของร้าน: "ไม่ต้องกด 💾 บันทึกรอบนี้ ได้ไหม" → reply route เรียก `syncCurrentCycleSoon` (inBackground) หลังบันทึก log · lib/server/chat-stats-sync.ts (ย้าย webStats/การเขียน 2 doc มาจาก route)
 - หน้าค่าคอมเดิมฟัง storeChatCommissionChats/{รอบ} ด้วย onSnapshot อยู่แล้ว (ensureChatSub) → ตัวเลขขยับบนจอเองไม่กี่วิหลังตอบ · คอลัมน์ใหม่ "ตอบผ่านเว็บ (คน)" ในหน้าเดิม (Admin_MyWebApp/pages/commissionStoreChat.js · sender.source === "web") แก้ 9 ต.ค. 69
 - ผล zip ไม่หาย: oa ใหม่ → chatReplyStats.oa เดิม → doc หน้าเดิม (oaFromOldDoc ตัด sender ที่ source web ออก) · uploadedAt/uploadedBy ของ zip เดิมคงไว้ถ้ารอบนี้ไม่มี zip ใหม่
+
+### 12 ต.ค. 69 — 🏭 เชื่อมบอร์ดผลิต TP (TP-Leader/TP-WIP) กับหน้าคำสั่งซื้อ (ขั้น 1+2)
+- ขั้น 1 (TP-Leader/TP-WIP/board-app.js · สำรอง _backup-board-app-20261012-iduckyid.js): ตอนนำเข้างานจากโฟลเดอร์ บอร์ดเทียบ folderName กับการ์ดกราฟฟิก wip_graphic_folders/iducky-<OD> (normFolder) → เก็บ `iduckyOrderId` ลงงาน + ป้าย 🛒 OD ลิงก์ไปหน้าออเดอร์ · ?v=20261012a ใน 4 หน้า · งานเก่า backfill ด้วย `npm run wip:backfill-od -- --apply`
+- ขั้น 2 (เว็บร้าน): lib/server/wip-production.ts อ่าน 4 ตาราง wip_*_jobs (ฐาน tp-fixflow) · GET /api/admin/orders/wip?id= · กล่อง 🏭 สถานะผลิต (ProductionWipBox) คอลัมน์ขวาหน้าออเดอร์ เหนือกล่อง LINE
+- ลำดับจับคู่: iduckyOrderId → folderName ตรงเป๊ะ (productionSent.folder + การ์ดกราฟฟิก) → เฉพาะไม่เจอเลย: สแกนงาน 45 วันเทียบ normFolder (บอร์ดกระดาษ active 2,400+ ใบ = ~4 วิ · ทางชัวร์ ~150ms)
+- URL บอร์ด: TP_LEADER_URL (ค่าเริ่มต้น https://tpdigital-performance.netlify.app) · ขั้น 3 (ดันสถานะกลับ/readyToShip) ยังไม่ทำ

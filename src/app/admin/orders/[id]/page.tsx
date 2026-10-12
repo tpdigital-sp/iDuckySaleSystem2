@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairOptions, giftPairsOf, giftBumpLabel, giftBumpPending } from "@/lib/gifts";
 import Link from "next/link";
 import OverpayBox from "./OverpayBox";
+import ProductionWipBox from "./ProductionWipBox";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
@@ -157,7 +158,7 @@ import {
   shipmentExtras,
   nextRoundExtras,
 } from "@/lib/admin-data";
-import { overpaidAmount, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
+import { overpaidAmount, overpayOutstanding, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
 import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
 import { fetchOrderAdmin, fetchOrdersAdmin, notifyBalanceDue, notifyProofReady, packScanHeaders, saveOrderAdminResult, setPackScanMode, uploadProof } from "@/lib/order-repo";
 import { BALANCE_AUTO_NOTIFY_MINUTES, balanceNotifyMinutesLeft } from "@/lib/balance-notify";
@@ -1045,8 +1046,9 @@ function SlipVerifyNote({ v, order, credited, settled = true, onRecheck, recheck
                   : ""}
             </span>
           )}
-          {(v.over ?? 0) > 0 && (
-            <span className="mt-1 block text-amber-700">⚠️ โอนเกินยอดที่ต้องชำระ {formatPrice(v.over!)} — คืนลูกค้า หรือย้ายไปใช้กับออเดอร์อื่น ที่กล่อง 💸 ใต้สลิป</span>
+          {/* v.over แช่ไว้ตอนตรวจ — ยอดบิลโตทีหลังแล้วหักจากส่วนเกินไปแล้ว (OD-261009-8219) ต้องโชว์ที่เหลือจริง ไม่งั้นบอกโอนเกินทั้งที่พอดี */}
+          {Math.min(v.over ?? 0, overpayOutstanding(order)) > 0 && (
+            <span className="mt-1 block text-amber-700">⚠️ โอนเกินยอดที่ต้องชำระ {formatPrice(Math.min(v.over!, overpayOutstanding(order)))} — คืนลูกค้า หรือย้ายไปใช้กับออเดอร์อื่น ที่กล่อง 💸 ใต้สลิป</span>
           )}
         </>
       ) : partial ? (
@@ -9072,6 +9074,9 @@ export default function AdminOrderDetailPage() {
 
         {/* ── ขวา: ข้อมูล ── */}
         <div className="space-y-4 border-t border-slate-200/70 bg-slate-50/50 px-4 py-5 lg:border-l lg:border-t-0">
+
+          {/* ── 🏭 สถานะผลิต: งานของใบนี้บนบอร์ด TP 4 แผนก (อ่านอย่างเดียว · 12 ต.ค. 69) ── */}
+          <ProductionWipBox orderId={order.id} status={order.status} hasFolder={!!order.productionSent?.folder} />
 
           {/* ── 💬 LINE ลูกค้า: ลิงก์ห้องแชท + userId ── */}
           <LineChatBox
