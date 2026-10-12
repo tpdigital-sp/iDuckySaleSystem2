@@ -1370,6 +1370,13 @@ function DiecutPageInner() {
   const [tab, setTabState] = useState<PageTab>("diecut");
   const [inbox, setInbox] = useState<File[]>([]);
   const takeInbox = useCallback(() => setInbox([]), []);
+  /** เปลี่ยนเลข = ล้างงานในแท็บนั้นทั้งหมด (ประกอบหน้าใหม่ · ชนิดงานที่จำไว้ในเครื่องยังอยู่) */
+  const [resetKey, setResetKey] = useState({ diecut: 0, cutout: 0 });
+  const resetTab = () => {
+    if (!window.confirm(`ล้างงานในแท็บ “${PAGE_TABS[tab].title}” แล้วเริ่มใหม่? ลาย/รูปที่ใส่และที่แก้ไว้จะหายทั้งหมด`)) return;
+    if (tab === "diecut") setInbox([]);
+    setResetKey((k) => ({ ...k, [tab]: k[tab] + 1 }));
+  };
 
   // เปิดลิงก์ /admin/diecut?tab=cutout = เข้าแท็บตัดภาพเลย
   useEffect(() => {
@@ -1399,18 +1406,24 @@ function DiecutPageInner() {
             : "ใส่ลาย → เลือกชนิดงาน + ขนาด → โหลดไฟล์ .ai เข้าเครื่องตัด (อะคริลิค · สติกเกอร์ · การ์ด/ฉลาก)"
         }
       />
-      <div className="mt-3">
-        <TabRow>
-          <Tab on={tab === "diecut"} onClick={() => setTab("diecut")} label="✂️ เส้นไดคัท" />
-          <Tab on={tab === "cutout"} onClick={() => setTab("cutout")} label="🖋 ตัดภาพ (pen tool)" />
-        </TabRow>
+      <div className="mt-3 flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <TabRow>
+            <Tab on={tab === "diecut"} onClick={() => setTab("diecut")} label="✂️ เส้นไดคัท" />
+            <Tab on={tab === "cutout"} onClick={() => setTab("cutout")} label="🖋 ตัดภาพ (pen tool)" />
+          </TabRow>
+        </div>
+        <Btn small onClick={resetTab} title="ล้างงานเก่าในแท็บนี้ แล้วเริ่มงานใหม่">
+          ↺ เริ่มงานใหม่
+        </Btn>
       </div>
       {/* เปิดค้างไว้ทั้งสองแท็บ สลับไปมาแล้วงานที่ทำอยู่ไม่หาย */}
       <div hidden={tab !== "diecut"}>
-        <DiecutLabInner inbox={inbox} onInboxTaken={takeInbox} />
+        <DiecutLabInner key={resetKey.diecut} inbox={inbox} onInboxTaken={takeInbox} />
       </div>
       <div hidden={tab !== "cutout"}>
         <CutoutTab
+          key={resetKey.cutout}
           onSendToDiecut={(f) => {
             setInbox([f]);
             setTab("diecut");
