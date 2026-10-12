@@ -1,4 +1,4 @@
-import { giftSummary, giftsFor, giftsToOrder, type GiftPromo, type OrderGift } from "@/lib/gifts";
+import { giftSummary, giftsFor, giftsToOrder, sanitizeGiftArtwork, type GiftPromo, type OrderGift } from "@/lib/gifts";
 import type { Order } from "@/lib/admin-data";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
@@ -27,10 +27,16 @@ export interface GiftSyncChange {
  * - โปรเดิมที่มีอยู่ในใบ: ปรับเฉพาะ "จำนวน" (qty/printedQty/fallbackQty) — ขนาดที่เลือก · ลายที่แนบ · แบบที่ส่งตรวจ ·
  *   ผลอนุมัติ คงไว้ทั้งหมด (ลายเดิม แค่พิมพ์เพิ่ม ไม่ต้องให้ลูกค้าอนุมัติใหม่)
  * - **เพิ่มอย่างเดียว ไม่ลด** — ของแถมที่แจ้งลูกค้าไปแล้วห้ามหายเอง (ใบที่ของถูกลบให้แอดมินดูเอง)
- * - โปรที่เพิ่งเข้าเงื่อนไขเพราะยอดรวมถึง → เพิ่มเป็นรายการใหม่ (ขนาดตัวแรกของโปร ยังไม่มีลาย)
+ * - โปรที่เพิ่งเข้าเงื่อนไขเพราะยอดรวมถึง → เพิ่มเป็นรายการใหม่ ใช้ขนาด/ลายที่เลือกในตะกร้า (`picked`)
+ *   ไม่ส่งมา/ไม่ตรงลิสต์ของแอดมิน = ขนาดตัวแรกของโปร
+ *   ⚠️ เดิมไม่รับ picked เลย → OD-261012-9950 (12 ต.ค. 69) พนักงานเลือก 9 × 9 ในตะกร้า แต่ใบขึ้น 7 × 7
  * - ตัวแทนจำหน่าย/ใบเคลม ไม่ได้ของแถม (กติกาเดียวกับ /api/orders)
  */
-export async function syncOrderGifts(sb: Sb, order: Order): Promise<{ order: Order; changed: GiftSyncChange[] }> {
+export async function syncOrderGifts(
+  sb: Sb,
+  order: Order,
+  picked?: GiftPicked
+): Promise<{ order: Order; changed: GiftSyncChange[] }> {
   if (order.dealer || order.claimOf) return { order, changed: [] };
   const items = giftableItems(order);
   if (!items.length) return { order, changed: [] };
@@ -43,7 +49,13 @@ export async function syncOrderGifts(sb: Sb, order: Order): Promise<{ order: Ord
   const promos = ((settRes.data?.data as { gifts?: GiftPromo[] } | undefined)?.gifts ?? []).filter((g) => g?.id);
   if (!promos.length) return { order, changed: [] };
   const cat = new Map(((prodRes.data ?? []) as { id: string; category: string | null }[]).map((r) => [String(r.id), String(r.category ?? "")]));
-  return applyGiftSync(order, promos, (id) => cat.get(id));
+  return applyGiftSync(order, promos, (id) => cat.get(id), new Date(), picked);
+}
+
+/** 📐🎨 ขนาด/ลายของแถมที่เลือกไว้ในตะกร้า (เหมือน giftSizes/giftArtwork ของ /api/orders) */
+export interface GiftPicked {
+  sizes?: Record<string, string> | null;
+  artwork?: Record<string, string[]> | null;
 }
 
 function giftableItems(order: Order) {
@@ -58,14 +70,18 @@ export function applyGiftSync(
   order: Order,
   promos: GiftPromo[],
   catOf: (productId: string) => string | undefined,
-  now: Date = new Date()
+  now: Date = new Date(),
+  picked?: GiftPicked
 ): { order: Order; changed: GiftSyncChange[] } {
   if (order.dealer || order.claimOf) return { order, changed: [] };
   const items = giftableItems(order);
   if (!items.length || !promos.length) return { order, changed: [] };
   const cur = [...(order.gifts ?? [])];
+  // ที่เลือกมาจากตะกร้าเป็นค่าตั้งต้น — โปรที่มีในใบอยู่แล้วใช้ของเดิมทับ (ห้ามเปลี่ยนขนาด/ลายที่ส่งตรวจไปแล้ว)
+  // giftsToOrder ตรวจขนาดกับลิสต์ของแอดมิน + คัดลายเฉพาะโปร needArtwork อีกชั้น
   const chosen: Record<string, string> = {};
-  const art: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(picked?.sizes ?? {})) if (typeof v === "string") chosen[k] = v;
+  const art: Record<string, string[]> = { ...sanitizeGiftArtwork(picked?.artwork ?? {}) };
   for (const g of cur) {
     if (g.size) chosen[g.promoId] = g.size;
     if (g.artworkUrls?.length) art[g.promoId] = g.artworkUrls;

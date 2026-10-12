@@ -599,7 +599,9 @@ export default function CheckoutPage() {
         appendTo.id,
         appendTo.key,
         orderItems,
-        appendNeedsShip ? { shipping: effectiveMethod.name, shippingCost } : undefined
+        appendNeedsShip ? { shipping: effectiveMethod.name, shippingCost } : undefined,
+        // 📐 ขนาด/ลายของแถมที่เลือกในตะกร้า — เดิมไม่ส่ง ใบเลยได้ขนาดแรกของโปร (OD-261012-9950 เลือก 9 × 9 ขึ้น 7 × 7)
+        { giftSizes: readGiftSizes(), giftArtwork: readGiftArtwork() }
       );
       setPlacing(false);
       if (!res.ok) {

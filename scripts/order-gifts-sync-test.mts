@@ -81,6 +81,16 @@ const gift80 = {
   const r = applyGiftSync(mk([item(30), item(20, true)]), promos, catOf, NOW);
   eq("เพิ่มของแถมใหม่ 50 ชุด (2 แผ่น = 48 + ซอง 2)", [r.order.gifts![0].qty, r.order.gifts![0].printedQty, r.order.gifts![0].fallbackQty, r.order.gifts![0].qtyBump], [50, 48, 2, undefined]);
 }
+// ── OD-261012-9950 (12 ต.ค. 69): เลือก 9 × 9 ในตะกร้า → ของแถมที่เพิ่งได้ตอนสั่งเพิ่มต้องเป็น 9 × 9 ────
+{
+  const picked = { sizes: { [promo.id]: "9 × 9 cm" }, artwork: { [promo.id]: ["https://x.test/x.png"] } };
+  const r = applyGiftSync(mk([item(30), item(20, true)]), promos, catOf, NOW, picked);
+  eq("ของแถมใหม่ใช้ขนาดที่เลือก (9×9 = 15/แผ่น → 45 + ซอง 5)", [r.order.gifts![0].size, r.order.gifts![0].printedQty, r.order.gifts![0].fallbackQty, r.order.gifts![0].artworkUrls], ["9 × 9 cm", 45, 5, ["https://x.test/x.png"]]);
+  const bad = applyGiftSync(mk([item(30), item(20, true)]), promos, catOf, NOW, { sizes: { [promo.id]: "99 × 99 cm" } });
+  eq("ขนาดที่ไม่มีในลิสต์ = ตัวแรก", bad.order.gifts![0].size, "7 × 7 cm");
+  const keep = applyGiftSync(mk([item(80), item(20, true)], { gifts: [gift80] }), promos, catOf, NOW, picked);
+  eq("ของแถมที่มีในใบแล้ว คงขนาด/ลายเดิม ไม่เปลี่ยนตามตะกร้า", [keep.order.gifts![0].size, keep.order.gifts![0].artworkUrls], ["7 × 7 cm", ["a.png", "b.png"]]);
+}
 
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} ข้อ (ผ่าน ${pass})\n\n${fails.join("\n\n")}\n` : `✅ ผ่านทั้ง ${pass} ข้อ`);
 process.exit(fails.length ? 1 : 0);

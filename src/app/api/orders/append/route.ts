@@ -37,7 +37,15 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { orderId?: string; key?: string; items?: OrderItem[]; shipping?: string; shippingCost?: number };
+  let body: {
+    orderId?: string;
+    key?: string;
+    items?: OrderItem[];
+    shipping?: string;
+    shippingCost?: number;
+    giftSizes?: Record<string, string>;
+    giftArtwork?: Record<string, string[]>;
+  };
   try {
     body = await req.json();
   } catch {
@@ -102,7 +110,8 @@ export async function POST(req: Request) {
    * 🎁 ของแถมตามจำนวนชิ้นต้องนับ "ทั้งใบ" — เดิมคิดครั้งเดียวตอนสั่งครั้งแรก ของที่สั่งเพิ่มเลยไม่ได้ของแถม
    * (OD-261006-8507 · 8 ต.ค. 69: 80 → 100 ชิ้น แต่รองหลังค้าง 80) · เพิ่มอย่างเดียว คงลาย/แบบ/ผลตรวจเดิม · ดู server/order-gifts.ts
    */
-  const gift = await syncOrderGifts(sb, lot.order);
+  // 📐 ขนาด/ลายของแถมที่เลือกในตะกร้า — ใช้กับโปรที่เพิ่งได้ในรอบนี้ (OD-261012-9950: เลือก 9 × 9 แต่ใบขึ้น 7 × 7)
+  const gift = await syncOrderGifts(sb, lot.order, { sizes: body.giftSizes, artwork: body.giftArtwork });
 
   // 🚚 ใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง → รับค่าส่งที่หน้าชำระเงินคิดไว้ (ชื่อวิธีส่ง + ตัวเลข) มาใส่ให้เป็นครั้งแรก
   const shipName = (body.shipping ?? "").trim().slice(0, 40);
