@@ -920,6 +920,8 @@ export default function ProductDetail({
   const [extraOpen, setExtraOpen] = useState<"art" | null>("art");
   // สินค้าที่บังคับแนบลาย → เปิดกล่องค้างไว้จนกว่าลูกค้าจะแตะปิดเอง
   const [artTouched, setArtTouched] = useState(false);
+  /** 🎨 สินค้าออกแบบบนเว็บได้: ลูกค้าเลือก "📎 แนบไฟล์ลาย" → กางกล่องแนบลายในกล่อง "ส่งลายยังไงดี?" */
+  const [artChoice, setArtChoice] = useState<"" | "file">("");
   /**
    * 🎨 ป้ายเตือน "ยังไม่ได้แนบลาย" ตอนกดเพิ่มลงตะกร้า
    * เดิมปุ่มถูก disabled ไว้ = แตะแล้วเงียบสนิท ไม่มีอะไรขยับเลย ลูกค้านึกว่าเว็บค้าง
@@ -3214,6 +3216,7 @@ export default function ProductDetail({
 
   /** เลื่อน+ไฮไลต์ไปที่กล่องแนบลาย (กางให้ด้วย) — ใช้จากเช็คลิสต์ "แผ่นนี้ต้องทำอะไรอีก" */
   const jumpToArt = () => {
+    setArtChoice("file"); // โหมดออกแบบบนเว็บ: กล่องแนบลายกางเฉพาะเมื่อเลือกทางแนบไฟล์
     setArtTouched(true);
     setExtraOpen("art");
     window.setTimeout(() => {
@@ -6153,6 +6156,59 @@ export default function ProductDetail({
     </>
   );
 
+  /**
+   * 🎨 "ส่งลายยังไงดี?" — สินค้าที่ผูกเทมเพลต (studioMode) วางต่อจากตัวเลือก ก่อนกล่องจำนวน (ลำดับเดียวกับพวงกุญแจ)
+   * เดิมอยู่ในกล่องจำนวน และกล่องแนบลายอยู่ใต้กล่องสั่งซื้อ → ลูกค้าเห็นจำนวนก่อนวิธีส่งลาย (เจ้าของร้านทัก 12 ต.ค. 69)
+   * 🎨 ออกแบบบนเว็บ = เปิดจอวางลาย · 📎 แนบไฟล์ลาย = กางกล่องแนบลาย (artSection) ในกล่องนี้เลย
+   */
+  // 📎 เลือกทางแนบไฟล์แล้ว → ปุ่มแนบไฟล์เป็นสีทึบ ปุ่มออกแบบถอยเป็นขอบ (เดิมปุ่มออกแบบทึบค้าง กดแนบไฟล์แล้วสีไม่เปลี่ยน · 12 ต.ค. 69)
+  const fileChosen = artProvided || artChoice === "file";
+  const artChoiceUI = studioMode ? (
+    <div id="art-choice" className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
+      <p className="mb-2 text-[13px] font-bold text-stone-700">
+        ส่งลายยังไงดี?{" "}
+        {!designDone && !artProvided && <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => openStudio(null)}
+          className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition hover:scale-[1.02] ${
+            designDone
+              ? "bg-sky-50 text-sky-800 ring-2 ring-sky-400"
+              : fileChosen
+                ? "bg-white text-sky-700 ring-2 ring-sky-200 hover:bg-sky-50"
+                : "bg-sky-600 text-white shadow-lg hover:bg-sky-700"
+          }`}
+        >
+          <span className="text-xl leading-none">🎨</span>
+          <span className="text-[13px] font-extrabold">
+            {designDone ? `✓ วางลายแล้ว ${placed.length.toLocaleString("th-TH")} ลาย` : "ออกแบบบนเว็บ"}
+          </span>
+          <span
+            className={`text-[10.5px] font-semibold leading-tight ${designDone ? "text-sky-700" : fileChosen ? "text-stone-500" : "text-sky-100"}`}
+          >
+            {designDone ? "แตะเพื่อเพิ่มลายอีกแบบ" : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={jumpToArt}
+          className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition hover:scale-[1.02] ${
+            fileChosen ? "bg-sky-600 text-white shadow-lg hover:bg-sky-700" : "bg-white text-sky-700 ring-2 ring-sky-200 hover:bg-sky-50"
+          }`}
+        >
+          <span className="text-xl leading-none">📎</span>
+          <span className="text-[13px] font-extrabold">{artProvided ? "✓ แนบไฟล์แล้ว" : "แนบไฟล์ลาย"}</span>
+          <span className={`text-[10.5px] font-semibold leading-tight ${fileChosen ? "text-sky-100" : "text-stone-500"}`}>
+            มีไฟล์อยู่แล้ว ร้านจัดวางให้
+          </span>
+        </button>
+      </div>
+      {(artChoice === "file" || artProvided) && artSection}
+    </div>
+  ) : null;
+
   return (
     <div className="homebg">
       {/* 🛒 ม่านระหว่าง "สั่งตามสเปคนี้" กำลังหย่อนลงตะกร้าให้ — ปิดเองเมื่อพาไปตะกร้าแล้ว หรือเมื่อสเปคติดด่านตรวจ */}
@@ -7320,6 +7376,7 @@ export default function ProductDetail({
           )}
 
           {!studioMode && artSection}
+          {artChoiceUI}
 
           {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
           <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
@@ -7665,38 +7722,15 @@ export default function ProductDetail({
 
                 {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า
                     (โหมดแอดมินก็เห็นปุ่มเดียวกัน แต่ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก) */}
-                {/* ลูกค้ายังไม่มีลาย = เลือก 1 ใน 2 ทาง: ออกแบบบนเว็บ หรือ แนบไฟล์ที่มีอยู่แล้ว
-                    (แนบแล้ว studioNeedsDesign ดับ ปุ่มกลายเป็นใส่ตะกร้าเอง) */}
-                {studioNeedsDesign && (
-                  <div className="basis-full">
-                    <p className="mb-1.5 text-[12px] font-bold text-stone-500">
-                      ส่งลายยังไงดี? <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openStudio(null)}
-                        className="flex flex-col items-center gap-0.5 rounded-2xl bg-sky-600 px-2 py-3 text-center text-white shadow-lg transition hover:scale-[1.02] hover:bg-sky-700"
-                      >
-                        <span className="text-xl leading-none">🎨</span>
-                        <span className="text-[13px] font-extrabold">ออกแบบบนเว็บ</span>
-                        <span className="text-[10.5px] font-semibold leading-tight text-sky-100">
-                          วางรูปบน{lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={jumpToArt}
-                        className="flex flex-col items-center gap-0.5 rounded-2xl bg-white px-2 py-3 text-center text-sky-700 ring-2 ring-sky-200 transition hover:scale-[1.02] hover:bg-sky-50"
-                      >
-                        <span className="text-xl leading-none">📎</span>
-                        <span className="text-[13px] font-extrabold">แนบไฟล์ลาย</span>
-                        <span className="text-[10.5px] font-semibold leading-tight text-stone-500">
-                          มีไฟล์อยู่แล้ว ร้านจัดวางให้
-                        </span>
-                      </button>
-                    </div>
-                  </div>
+                {/* โหมดออกแบบบนเว็บ: กล่อง "ส่งลายยังไงดี?" ย้ายขึ้นไปก่อนกล่องจำนวน (artChoiceUI) — ที่นี่เหลือปุ่มพากลับขึ้นไป */}
+                {studioMode && studioNeedsDesign && (
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("art-choice")?.scrollIntoView({ block: "center", behavior: "smooth" })}
+                    className="basis-full rounded-full bg-sky-50 px-4 py-3 text-[13px] font-bold text-sky-800 ring-2 ring-sky-200 transition hover:bg-sky-100"
+                  >
+                    ⬆ เลือกวิธีส่งลายด้านบนก่อน (ออกแบบบนเว็บ / แนบไฟล์)
+                  </button>
                 )}
                 {/* โหมดแอดมิน (สั่งแทนลูกค้า) — ปุ่มเริ่มสร้างเดี่ยว ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก */}
                 {studioOfferStaff && !studioNeedsDesign && (
@@ -8533,7 +8567,6 @@ export default function ProductDetail({
             </div>
           </div>
 
-          {studioMode && artSection}
 
         </div>
       </div>
@@ -8658,9 +8691,10 @@ export default function ProductDetail({
              ปุ่มเข้าหลังบ้านของทีมงาน (bottom 20px) · ครึ่งล่างปุ่ม LINE (bottom 78px) · เมนูล่างมือถือ (.bottom-nav z-90)
            อาการคือ "เห็นปุ่มแต่กดไม่ติด" ไม่มีอะไรฟ้องเลย — เจ้าของร้านแจ้ง 23 ก.ย. 69 (ปุ่มแก้ไขในหลังบ้าน)
            ป้ายเตือน "ยังไม่ได้แนบลาย" ข้างบนใช้ท่าเดียวกันนี้อยู่แล้ว */}
+      {/* 🎨 จอวางลายเปิดอยู่ = ซ่อนแถบนี้ — เดิมลอยทับแถบเครื่องมือล่างของจอวางลาย ปุ่ม "ออกแบบ" กดแล้วไม่มีอะไรเกิด (เปิดอยู่แล้ว · 12 ต.ค. 69) */}
       <div
         className={`pointer-events-none fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
-          showBuyBar ? "translate-y-0" : "translate-y-full"
+          showBuyBar && !studio && !slotStudio ? "translate-y-0" : "translate-y-full"
         }`}
       >
         <div className="pointer-events-auto mx-auto flex items-center gap-3 rounded-3xl border border-amber-200 bg-white/95 px-4 py-2.5 shadow-[0_14px_34px_-12px_rgba(23,58,107,0.35)] backdrop-blur lg:max-w-3xl lg:rounded-full lg:px-5 lg:py-3">
