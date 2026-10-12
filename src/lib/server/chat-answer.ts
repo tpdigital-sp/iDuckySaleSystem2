@@ -17,7 +17,8 @@ import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, sear
 import { priceSearch } from "@/lib/server/price-search";
 import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_MSG_RE, HANDOFF_RULE_TEXT } from "./bot-handoff";
-import { shopPaymentText } from "./shop-payment-text";
+import { bankCardUrl, shopPaymentText } from "./shop-payment-text";
+import { BANK_ASK_RE, BANK_CARD } from "@/lib/bank-card";
 
 /**
  * 🧠 สมองแชทตัวเดียวของร้าน — ใช้ร่วม 2 ทาง (ย้ายออกจาก /api/chat 3 ต.ค. 69)
@@ -156,7 +157,23 @@ async function productsOf(reply: string, fromSite: ProductRef[] | undefined): Pr
 /** ผลลัพธ์แบบเดียวกับ NextResponse.json เดิม — route เป็นคนห่อเป็น response เอง */
 const out = (body: ChatResult["body"], init: { status?: number } = {}): ChatResult => ({ status: init.status ?? 200, body });
 
-export async function answerChat(
+/** 🖼 ลูกค้าถามเรื่องบัญชี/ช่องทางโอน → แนบภาพบัญชีของร้านไปกับคำตอบ (เจ้าของร้าน 12 ต.ค. 69) · ภาพเก่าไม่ตรงเลขในตั้งค่า = ไม่แนบ */
+export async function answerChat(body: ChatBody, opts: { ip: string; staff?: boolean }): Promise<ChatResult> {
+  const r = await answerChatInner(body, opts);
+  const msg = String((body as { message?: unknown }).message ?? "");
+  if (r.status === 200 && (r.body as { reply?: string }).reply && BANK_ASK_RE.test(msg)) {
+    const url = await bankCardUrl().catch(() => null);
+    if (url) {
+      const b = r.body as Record<string, unknown>;
+      b.images = [{ url: url.replace(/\.jpg$/, ".webp"), alt: BANK_CARD.alt }];
+      // หน้าเว็บโชว์ภาพแล้ว — ตัดลิงก์ภาพในข้อความ (ลิงก์นั้นมีไว้ให้บอท LINE ที่แนบรูปเองไม่ได้)
+      b.reply = String(b.reply).replace(/[^\n]*https?:\/\/\S*bank-card\.(jpg|webp)\S*/g, "").replace(/\n{3,}/g, "\n\n").trim();
+    }
+  }
+  return r;
+}
+
+async function answerChatInner(
   body: ChatBody,
   opts: { ip: string; staff?: boolean },
 ): Promise<ChatResult> {

@@ -3,7 +3,9 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState } from "react";
-import { askShopBot, ChatProductPics, clock, type ChatProduct, GREETING, LINE_URL, QUICK, renderChatText, useChatSession } from "@/lib/shop-chat";
+import { askShopBot, ChatImages,
+  ChatProductPics, clock, type ChatImage,
+  type ChatProduct, GREETING, LINE_URL, QUICK, renderChatText, useChatSession } from "@/lib/shop-chat";
 
 /**
  * หน้าจอแชทหน้าแรก — คุยได้จริง
@@ -16,7 +18,7 @@ import { askShopBot, ChatProductPics, clock, type ChatProduct, GREETING, LINE_UR
  * ใช้ร่วมกับปุ่มแชทลอยทุกหน้า (ChatWidget) — ห้องแชทเดียวกัน คุยต่อเนื่องข้ามหน้าได้
  */
 
-type Msg = { id: number; side: "in" | "out"; text: string; step?: string; time: string; products?: ChatProduct[] };
+type Msg = { id: number; side: "in" | "out"; text: string; step?: string; time: string; products?: ChatProduct[]; images?: ChatImage[] };
 
 const demoMessages = (catCount: number): Msg[] => [
   { id: 1, side: "out", text: "มีลายอยากทำพวงกุญแจอะค่ะ ต้องทำยังไงบ้าง", time: "10:24" },
@@ -96,7 +98,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
       sessionId.current,
       starting ? [] : msgs.map((m) => ({ side: m.side, text: m.text })),
     );
-    push({ side: "in", text: reply.text, products: reply.products });
+    push({ side: "in", text: reply.text, products: reply.products, images: reply.images });
     setBusy(false);
   }
 
@@ -134,6 +136,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
               {m.step && <b className="stepno">{m.step}</b>}
               {renderChatText(m.text)}
               <ChatProductPics products={m.products} />
+              <ChatImages images={m.images} />
             </span>
             <time>{m.time}</time>
           </div>

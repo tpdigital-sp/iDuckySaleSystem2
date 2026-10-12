@@ -7,10 +7,11 @@
  */
 import { useState } from "react";
 import type { BankAccount } from "@/lib/shop-settings";
+import { BANK_CARD } from "@/lib/bank-card";
 
-const IMG = "/payment/bank-card.webp";
-/** เลขบัญชีที่อยู่ในภาพ — เปลี่ยนภาพใหม่ต้องแก้ตรงนี้ด้วย */
-const IMG_ACCOUNT_NO = "0278753328";
+const IMG = BANK_CARD.webp;
+/** เลขบัญชีที่อยู่ในภาพ — ค่ากลางอยู่ที่ lib/bank-card.ts (บอทใช้ร่วม) */
+const IMG_ACCOUNT_NO = BANK_CARD.accountNo;
 const digits = (s: string) => s.replace(/\D/g, "");
 
 async function pngBlob(): Promise<Blob | null> {

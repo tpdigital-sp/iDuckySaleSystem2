@@ -61,7 +61,8 @@ const HISTORY_TURNS = 8;
 
 /** สินค้าที่คำตอบพูดถึง — ชุดเดียวกับที่หน้า 🤖 /admin/chatbot วาดเป็นแถวรูปใต้คำตอบ (มาจาก answerChat) */
 export type ChatProduct = { name: string; url: string; image?: string };
-export type ShopBotReply = { text: string; products?: ChatProduct[] };
+export type ChatImage = { url: string; alt?: string };
+export type ShopBotReply = { text: string; products?: ChatProduct[]; images?: ChatImage[] };
 
 /** ถามผู้ช่วยร้าน — คืนข้อความตอบเสมอ (ล้มเหลวก็คืนข้อความบอกทางออกให้ลูกค้า ไม่ throw) */
 export async function askShopBot(message: string, sessionId: string, history: ChatTurn[] = []): Promise<ShopBotReply> {
@@ -79,8 +80,8 @@ export async function askShopBot(message: string, sessionId: string, history: Ch
           .map((t) => ({ role: t.side === "out" ? "customer" : "shop", text: t.text.slice(0, 500) })),
       }),
     });
-    const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string; products?: ChatProduct[] };
-    if (res.ok && data.reply) return { text: data.reply, products: data.products };
+    const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string; products?: ChatProduct[]; images?: ChatImage[] };
+    if (res.ok && data.reply) return { text: data.reply, products: data.products, images: data.images };
     return { text: data.error || "ตอนนี้ผู้ช่วยตอบไม่ได้ครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินดูแลต่อให้" };
   } catch {
     return { text: "เชื่อมต่อไม่ได้ครับ ลองใหม่อีกครั้ง หรือทักไลน์ร้านได้เลย" };
@@ -151,6 +152,21 @@ export function renderChatText(text: string, cls: ChatTextClasses = LANDING_CLAS
  * ปุ่มลอย (แคบ) = 2 คอลัมน์ · กล่องหน้าแรก (กว้าง) = 4 คอลัมน์ ด้วย auto-fill
  * ใช้ inline style เพราะกล่องหน้าแรกอยู่ใต้ landing.css ส่วนปุ่มลอยใช้ Tailwind — ชุดเดียววางได้ทั้งสองที่
  */
+/** 🖼 ภาพเต็มกว้างในคำตอบ (เช่น ภาพบัญชีรับโอน) — กดเปิดภาพใหญ่ได้ · ไม่ครอปเหมือนรูปสินค้า */
+export function ChatImages({ images }: { images?: ChatImage[] }) {
+  if (!images?.length) return null;
+  return (
+    <span style={{ display: "grid", gap: 6, marginTop: 8, maxWidth: 420 }}>
+      {images.slice(0, 2).map((im) => (
+        <a key={im.url} href={im.url} target="_blank" rel="noopener noreferrer" title={im.alt} style={{ display: "block", overflow: "hidden", borderRadius: 12, border: "1px solid #E2F3FE" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- ภาพนิ่งของร้านใน public */}
+          <img src={im.url} alt={im.alt ?? ""} loading="lazy" style={{ display: "block", width: "100%", height: "auto" }} />
+        </a>
+      ))}
+    </span>
+  );
+}
+
 export function ChatProductPics({ products }: { products?: ChatProduct[] }) {
   const pics = (products ?? []).filter((p) => p.image).slice(0, 4);
   if (!pics.length) return null;
