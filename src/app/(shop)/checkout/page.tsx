@@ -98,6 +98,14 @@ export default function CheckoutPage() {
   const { items: allItems, productOf, productGone, removeItem, lotExtras } = useCart();
   /** รายการที่ลูกค้าเอาติ๊กออกในหน้าตะกร้า — ไม่เอาเข้าออเดอร์รอบนี้ (ยังค้างในตะกร้าต่อ) */
   const [unpicked, setUnpicked] = useState<string[]>([]);
+  /**
+   * 📱 มือถือ: ปุ่มลอย LINE + ตะกร้าทับขอบขวาของชิปเลือกตำบล (ทดสอบสั่งจริง 12 ต.ค. 69)
+   * ใช้คลาสชุดเดียวกับหน้าเช็คออเดอร์/ตามหาออเดอร์ (landing.css body.order-page) — เหลือปุ่มแชท (ในแชทมีปุ่มไป LINE)
+   */
+  useEffect(() => {
+    document.body.classList.add("order-page");
+    return () => document.body.classList.remove("order-page");
+  }, []);
   useEffect(() => {
     setUnpicked(getUnpicked());
   }, []);

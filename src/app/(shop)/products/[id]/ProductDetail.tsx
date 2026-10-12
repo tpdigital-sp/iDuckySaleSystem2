@@ -8009,7 +8009,11 @@ export default function ProductDetail({
               )}
               {/* เพิ่งเพิ่มลงตะกร้าสำเร็จ (added) = เพิ่งล้าง artFiles ทิ้งเพื่อเตรียมรายการถัดไป
                   อย่าเด้งป้าย "ต้องแนบลาย" กลับมาทันที ไม่งั้นดูเหมือนระบบฟ้องทั้งที่เพิ่งสั่งสำเร็จ */}
-              {artBlocked && !added && (
+              {/* 🛒 มีสินค้านี้ในตะกร้าแล้ว (เพิ่งเพิ่มไป ฟอร์มรีเซ็ตรอชิ้นถัดไป) — ไม่ใช่ความผิดของลูกค้า
+                  ใช้ป้ายแนะนำสีฟ้าแทนป้ายแดง "ต้องแนบลาย" (ทดสอบสั่งจริง 12 ต.ค. 69: ดูเหมือนระบบฟ้องหลังสั่งสำเร็จ) */}
+              {artBlocked && !added && (() => {
+                const inCart = cartItems.some((i) => i.productId === product.id);
+                return (
                 <button
                   type="button"
                   onClick={() => {
@@ -8017,11 +8021,18 @@ export default function ProductDetail({
                     setExtraOpen("art");
                     document.getElementById("art-link")?.scrollIntoView({ block: "center", behavior: "smooth" });
                   }}
-                  className="mt-2 w-full rounded-xl bg-rose-50 px-3 py-2 text-left text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+                  className={`mt-2 w-full rounded-xl px-3 py-2 text-left text-xs font-bold ring-1 transition ${
+                    inCart
+                      ? "bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100"
+                      : "bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100"
+                  }`}
                 >
-                  🎨 ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์
+                  {inCart
+                    ? "➕ จะสั่งอีกชิ้นไหม? แนบลายของชิ้นใหม่ตรงนี้ · หรือไปยืนยันการสั่งซื้อได้เลย"
+                    : "🎨 ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์"}
                 </button>
-              )}
+                );
+              })()}
               {useCustom && customAsk ? (
                 <p className="mt-2 text-sm font-semibold text-sky-700">
                   💬 สั่งได้เลย — แอดมินจะตีราคา
