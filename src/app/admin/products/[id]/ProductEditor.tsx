@@ -195,6 +195,8 @@ type DraftOption = {
   noteImageSrc?: string;
   /** 💰 +฿ ของกลุ่มนี้คิดต่อลาย ไม่คูณจำนวนชิ้น */
   extraPerDesign?: boolean;
+  /** 🎁 กี่ตัวแรกของกลุ่มติ๊กหลายอย่างรวมในราคา (สีไหม 3 สีแรก) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
+  freeFirstN?: number;
   /** 📄 +฿ ของกลุ่มนี้คิดต่อแผ่นวัสดุ — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
   sheetFee?: { from: string; by?: string; unit?: string };
   /** ✍️ ช่องกรอกของงานปกติ (ไม่เข้ากล่อง 📐) — หน้าแก้ไขยังไม่มีช่องกรอก แต่ต้องส่งกลับ ไม่งั้นหาย */
@@ -702,6 +704,7 @@ function toDraft(p: Product): Draft {
       ...(o.imageSrc ? { imageSrc: o.imageSrc } : {}),
       ...(o.noteImageSrc ? { noteImageSrc: o.noteImageSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
+      ...(o.freeFirstN ? { freeFirstN: o.freeFirstN } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       ...(o.standardInput ? { standardInput: true } : {}),
       ...(o.inputFee ? { inputFee: o.inputFee } : {}),
@@ -1015,6 +1018,7 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
       ...(o.imageSrc ? { imageSrc: o.imageSrc } : {}),
       ...(o.noteImageSrc ? { noteImageSrc: o.noteImageSrc } : {}),
       ...(o.extraPerDesign ? { extraPerDesign: true } : {}),
+      ...(o.freeFirstN ? { freeFirstN: o.freeFirstN } : {}),
       ...(o.sheetFee ? { sheetFee: o.sheetFee } : {}),
       // ✍️📐 ช่องกรอกงานปกติ + สเปกจำนวนชิ้นต่อแผ่น — ไม่มีช่องกรอกในหน้าแก้ไข ต้องส่งกลับ ไม่งั้นหาย
       ...(o.standardInput ? { standardInput: true as const } : {}),

@@ -6400,7 +6400,11 @@ function lineSpecKey(selections: Record<string, string>): string {
 }
 
 function lineMergeable(p: Product, selections: Record<string, string>, qty: number): boolean {
-  if (p.areaPricing?.enabled) return false;
+  /**
+   * 📐 สินค้าคิดตามพื้นที่ (อาร์มปัก) รวมล็อตได้แล้ว — ขนาดต่างกันแต่ผลิตรอบเดียวกัน ขั้นราคา (5-30 / 31-100 …)
+   * ต้องดูยอดรวมทั้งล็อต · ราคาต่อชิ้นยังคิดจากกว้าง×ยาวของบรรทัดตัวเอง (areaPriceBreakdown ใช้ tier ของ lotQty)
+   * เดิมกันทิ้งทั้งสินค้า → OD-261012-4404 อาร์มปัก 12 ลาย ลายละ 5 (60 ชิ้น) ได้เรท 5-30 ทุกบรรทัด (12 ต.ค. 69)
+   */
   // ใช้ออปชั่นกำหนดเอง/ตีราคาจริงในบรรทัดนี้ (เลือกค่าไว้) = ราคาไม่อิงเรทตามจำนวน ไม่รวม
   // ยกเว้นโหมดที่ราคายังมาจากตารางเรทตามจำนวน (size = ระบุขนาดเฉย ๆ · longest = อิงด้านยาวสุด)
   // — บรรทัดพวกนี้เป็นงานล็อตเดียวกับบรรทัดปกติจริง ๆ ต้องรวมยอดหาเรทด้วย
@@ -6760,7 +6764,7 @@ export interface LotShortfall {
  * ต่อเนื้อ 1 ชนิด แต่ 3 แผ่นนั้นคละไดคัท 50%/100% และคละขนาดกันได้ (= คนละบรรทัด บรรทัดละ 1 แผ่น)
  * หน้าสินค้าจึงปล่อยให้กดเพิ่มทีละแผ่น แล้วมาเช็คยอดรวมตอนจะสั่งจริงแทน
  *
- * บรรทัดที่ไม่เข้าล็อต (งานตีราคา/กำหนดขนาดเอง/คิดตามพื้นที่) ไม่นับและไม่ถูกบล็อก
+ * บรรทัดที่ไม่เข้าล็อต (งานตีราคา/กำหนดขนาดเอง) ไม่นับและไม่ถูกบล็อก
  * ใช้ที่ตะกร้า · หน้าชำระเงิน · และ /api/orders (ฝั่งเซิร์ฟเวอร์ ห้ามเชื่อ client อย่างเดียว)
  */
 export function lotShortfalls(
@@ -6841,8 +6845,7 @@ export function lotPreviewFor(
   designs = 1
 ): LotPreview | undefined {
   if (qty < 1) return undefined;
-  // งานตีราคา/กำหนดเอง/คิดตามพื้นที่ = ไม่รวมล็อตเสมอ — ไม่มีอะไรให้บอก
-  if (product.areaPricing?.enabled) return undefined;
+  // งานตีราคา/กำหนดเอง = ไม่รวมล็อตเสมอ — ไม่มีอะไรให้บอก (คิดตามพื้นที่รวมได้ — ดู lineMergeable)
   if (product.custom?.enabled && (selections[product.custom.label] ?? "").trim()) return undefined;
   if (needsQuote(product, selections)) return undefined;
 
