@@ -5981,8 +5981,9 @@ export default function ProductDetail({
                 <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                   {artTotal > 0 ? `แนบแล้ว ${artTotal} รูป` : artLink.trim() ? "ใส่ลิงก์แล้ว" : "♻️ ใช้ไฟล์เก่า"}
                 </span>
-              ) : artRequired && !preArranged ? (
-                /* โหมดแอดมิน/ลิงก์ราคาไม่บังคับแนบ — ลายมาทางไลน์/อีเมลได้ */
+              ) : artRequired && !preArranged && !studioMode ? (
+                /* โหมดแอดมิน/ลิงก์ราคาไม่บังคับแนบ — ลายมาทางไลน์/อีเมลได้
+                   🎨 สินค้าออกแบบบนเว็บได้ (studioMode) ก็ไม่บังคับ — ลูกค้าเลือกออกแบบบนเว็บแทนได้ (เดิมขึ้น "จำเป็น *" ผิด · 12 ต.ค. 69) */
                 <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">จำเป็น *</span>
               ) : (
                 <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>
@@ -5990,7 +5991,7 @@ export default function ProductDetail({
             </span>
             <span className="block text-[11px] text-stone-400">
               {studioMode
-                ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องกดเริ่มสร้าง"
+                ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องออกแบบบนเว็บ"
                 : "อัปโหลดรูป หรือส่งลิงก์ / อีเมล"}
             </span>
           </span>
@@ -6473,7 +6474,7 @@ export default function ProductDetail({
               {/* แอดมินปิดปุ่ม "เริ่มสร้าง" ไว้ = ไม่ชวนให้กดปุ่มที่ไม่มีบนหน้า */}
               {!studioOff && (
                 <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
-                  วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 เริ่มสร้าง&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
+                  วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 ออกแบบบนเว็บ&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
                   ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
                 </p>
               )}
@@ -7664,7 +7665,41 @@ export default function ProductDetail({
 
                 {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า
                     (โหมดแอดมินก็เห็นปุ่มเดียวกัน แต่ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก) */}
-                {(studioNeedsDesign || studioOfferStaff) && (
+                {/* ลูกค้ายังไม่มีลาย = เลือก 1 ใน 2 ทาง: ออกแบบบนเว็บ หรือ แนบไฟล์ที่มีอยู่แล้ว
+                    (แนบแล้ว studioNeedsDesign ดับ ปุ่มกลายเป็นใส่ตะกร้าเอง) */}
+                {studioNeedsDesign && (
+                  <div className="basis-full">
+                    <p className="mb-1.5 text-[12px] font-bold text-stone-500">
+                      ส่งลายยังไงดี? <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openStudio(null)}
+                        className="flex flex-col items-center gap-0.5 rounded-2xl bg-sky-600 px-2 py-3 text-center text-white shadow-lg transition hover:scale-[1.02] hover:bg-sky-700"
+                      >
+                        <span className="text-xl leading-none">🎨</span>
+                        <span className="text-[13px] font-extrabold">ออกแบบบนเว็บ</span>
+                        <span className="text-[10.5px] font-semibold leading-tight text-sky-100">
+                          วางรูปบน{lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={jumpToArt}
+                        className="flex flex-col items-center gap-0.5 rounded-2xl bg-white px-2 py-3 text-center text-sky-700 ring-2 ring-sky-200 transition hover:scale-[1.02] hover:bg-sky-50"
+                      >
+                        <span className="text-xl leading-none">📎</span>
+                        <span className="text-[13px] font-extrabold">แนบไฟล์ลาย</span>
+                        <span className="text-[10.5px] font-semibold leading-tight text-stone-500">
+                          มีไฟล์อยู่แล้ว ร้านจัดวางให้
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {/* โหมดแอดมิน (สั่งแทนลูกค้า) — ปุ่มเริ่มสร้างเดี่ยว ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก */}
+                {studioOfferStaff && !studioNeedsDesign && (
                   <button
                     type="button"
                     onClick={() => openStudio(null)}
@@ -8666,9 +8701,18 @@ export default function ProductDetail({
             <button
               type="button"
               onClick={() => openStudio(null)}
-              className="ml-auto shrink-0 rounded-full bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-sky-700"
+              className="ml-auto shrink-0 rounded-full bg-sky-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-sky-700"
             >
-              🎨 เริ่มสร้าง
+              🎨 ออกแบบ
+            </button>
+          )}
+          {studioNeedsDesign && (
+            <button
+              type="button"
+              onClick={jumpToArt}
+              className="shrink-0 rounded-full bg-white px-3.5 py-3 text-sm font-bold text-sky-700 ring-2 ring-sky-200 transition hover:bg-sky-50"
+            >
+              📎 แนบไฟล์
             </button>
           )}
           {(!studioNeedsDesign || sheets.length > 0) && (
