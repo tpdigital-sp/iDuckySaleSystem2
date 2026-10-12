@@ -925,6 +925,11 @@ export default function ProductDetail({
    * กดปุ่มเทียบเมื่อไหร่ค่อยกางทุกคอลัมน์
    */
   const [priceAllCols, setPriceAllCols] = useState(false);
+  /**
+   * 📱 มือถือ: ตารางราคาพับไว้ เหลือบรรทัดสรุป "1-10 ชิ้น ฿80 → 500 ชิ้นขึ้นไป ฿12" (เจ้าของร้านอนุมัติ 12 ต.ค. 69)
+   * ตารางอยู่ "ก่อน" ตัวเลือก กินจอ ~440px ลูกค้าต้องเลื่อนผ่านก่อนถึงที่เลือกสเปค · จอ ≥ sm กางเหมือนเดิม
+   */
+  const [priceTableOpen, setPriceTableOpen] = useState(false);
   // 💬 งานที่ต้องคุยลายกับแอดมินก่อน (งานปัก/งานตีลาย) — ติ๊กยืนยันว่าคุยแล้ว + ชื่อไลน์ที่ใช้คุย
   const [consultOk, setConsultOk] = useState(false);
   const [consultRef, setConsultRef] = useState("");
@@ -6445,8 +6450,36 @@ export default function ProductDetail({
                 const addOn = unitAddOnBreakdown(product, sel, tierRep(ti)).reduce((n, f) => n + f.amount, 0);
                 return matrix.cells[col][ti] + addOn;
               };
+              // บรรทัดสรุปบนมือถือ — ราคาแถวแรก → แถวสุดท้ายของแบบที่เลือกอยู่ (คิดผ่าน shownPrice ตัวเดียวกับช่องตาราง)
+              const sumCol = only[0] ?? cols[0];
+              const lastTi = matrix.tiers.length - 1;
               return (
-                <div className="mt-2 overflow-hidden rounded-2xl ring-1 ring-stone-200">
+                <>
+                {sumCol && (
+                  <button
+                    type="button"
+                    onClick={() => setPriceTableOpen((v) => !v)}
+                    aria-expanded={priceTableOpen}
+                    className="mt-2 flex w-full items-center justify-between gap-2 rounded-2xl bg-white px-3.5 py-2.5 text-left text-[12.5px] ring-1 ring-stone-200 sm:hidden"
+                  >
+                    <span className="min-w-0 text-stone-600">
+                      {lastTi > 0 ? (
+                        <>
+                          {matrix.tiers[0].label} <b className="text-stone-800">{formatPrice(shownPrice(sumCol, 0))}</b>
+                          {" → "}
+                          {matrix.tiers[lastTi].label}{" "}
+                          <b className="text-amber-600">{formatPrice(shownPrice(sumCol, lastTi))}</b>
+                        </>
+                      ) : (
+                        <>
+                          {matrix.tiers[0].label} <b className="text-stone-800">{formatPrice(shownPrice(sumCol, 0))}</b>
+                        </>
+                      )}
+                    </span>
+                    <span className="shrink-0 font-bold text-sky-700">{priceTableOpen ? "ย่อ ▴" : "ดูตาราง ▾"}</span>
+                  </button>
+                )}
+                <div className={`mt-2 overflow-hidden rounded-2xl ring-1 ring-stone-200 ${priceTableOpen ? "" : "max-sm:hidden"}`}>
                   {manyCols && (
                     <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50 px-3 py-1.5">
                       <p className="text-[11px] text-stone-500">
@@ -6537,12 +6570,13 @@ export default function ProductDetail({
                   </table>
                   </div>
                 </div>
+                </>
               );
             })()}
           {/* 💡 ตารางบวกตัวเลือกเสริมที่เลือกอยู่เข้าไปในทุกช่องแล้ว (ดู shownPrice) — บรรทัดนี้บอกว่ามีอะไรรวมอยู่
             * จะได้ไม่งงว่าทำไมเลขไม่ตรงกับตารางหน้าราคาของร้าน (ผู้ใช้ทัก 2 ก.ย. 69 สองรอบ) */}
           {matrix && !askQuote && !(useCustom && !customUsesMatrix) && unitAddOnTotal > 0 && (
-            <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-100">
+            <p className={`mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-100 ${priceTableOpen ? "" : "max-sm:hidden"}`}>
               💡 ราคาในตารางรวมตัวเลือกเสริมที่เลือกอยู่ให้แล้ว —{" "}
               {unitAddOns.map((f, i) => (
                 <span key={`${f.label}-${i}`}>
@@ -6554,7 +6588,7 @@ export default function ProductDetail({
             </p>
           )}
           {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
-            <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+            <p className={`mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100 ${priceTableOpen ? "" : "max-sm:hidden"}`}>
               🎨 ราคานี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit}
               {/* สินค้าทั่วไป: ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
                   (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) — แต่สินค้า hardMinQty ขั้นต่ำเป็นของจริง */}
@@ -6569,11 +6603,12 @@ export default function ProductDetail({
         <div>
           <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
           {/* จุดเด่น */}
-          <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {/* 📱 มือถือ: รายการแน่นขึ้น (เดิมกล่องละ ~56px × 4 = ~240px) */}
+          <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
             {product.highlights.map((h) => (
               <li
                 key={h}
-                className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm text-stone-600 ring-1 ring-amber-100"
+                className="flex items-center gap-2 rounded-xl bg-white px-3 py-1.5 text-[13px] text-stone-600 ring-1 ring-amber-100 sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-sm"
               >
                 <span className="text-amber-500">✔</span> {h}
               </li>
