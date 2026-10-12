@@ -204,6 +204,7 @@ import { rushManualStamp } from "@/lib/rush-auto";
 import HolidayDatePicker from "@/components/HolidayDatePicker";
 import { useShopHolidays } from "@/lib/use-shop-holidays";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
+import { OrderAlertEditor, OrderAlertPopup } from "@/components/admin/OrderAlertPopup";
 
 // 🏭 กล่อง "ส่งเข้าผลิต (คิวปริ้น)" หน้าออเดอร์ — ซ่อน (คิวปริ้นอ่านจากบอร์ด TP เอง · ใบพิเศษกดที่ /admin/print)
 const SHOW_PRODUCTION_SENT_BOX = false;
@@ -2982,6 +2983,15 @@ export default function AdminOrderDetailPage() {
   }
 
   /** บันทึกหมายเหตุ (HTML) ของท้ายบิล หรือของรายการที่ index (itemIdx = null → ท้ายบิล) · commit = บันทึกลง DB */
+  /** 🔔 แจ้งเตือนเด้ง — เซิร์ฟเวอร์เขียนให้แล้ว (/api/admin/orders/alert) รับผลมาใส่จอ + savedAt/log ล่าสุด กันบันทึกครั้งถัดไปชนกัน */
+  function adoptAlert(r: { alertNote: Order["alertNote"] | null; savedAt?: string; log?: Order["log"] }) {
+    setOrder((cur) =>
+      cur
+        ? { ...cur, alertNote: r.alertNote ?? undefined, ...(r.savedAt ? { savedAt: r.savedAt } : {}), ...(r.log ? { log: r.log } : {}) }
+        : cur
+    );
+  }
+
   function setNote(itemIdx: number | null, html: string, commit: boolean) {
     setOrder((cur) => {
       if (!cur) return cur;
@@ -4643,6 +4653,7 @@ export default function AdminOrderDetailPage() {
             </button>
           </div>
         )}
+        <OrderAlertPopup orders={[order]} onChanged={(_, r) => adoptAlert(r)} />
         {skipGate && <SkipGateModal reasons={skipGate} onCancel={cancelSkipGate} onConfirm={confirmSkipGate} />}
         {/* 🛒 รอของเข้า — ฝ่ายแพ็ค/ผลิตเป็นคนรับของ กด "ของเข้าแล้ว" จากตรงนี้ได้ */}
         <div className="mx-auto max-w-[480px] px-3">
@@ -4814,6 +4825,7 @@ export default function AdminOrderDetailPage() {
 
   return (
     <PageShell>
+      <OrderAlertPopup orders={[order]} onChanged={(_, r) => adoptAlert(r)} />
       {blockers.length > 0 && (
         <div className="mb-4">
           <Banner tone="hot" title={`ต้องทำต่อ · ${blockers[0]}`} detail={nextStep ? `ขั้นถัดไปหลังเคลียร์แล้ว: ${nextStep}` : undefined} />
@@ -9425,7 +9437,11 @@ export default function AdminOrderDetailPage() {
                   />
                 </div>
 
-                <p className={`text-[11px] ${faint}`}>บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
+                <p className={`-mt-2 text-[11px] ${faint}`}>หมายเหตุท้ายบิล: บันทึกอัตโนมัติ · แสดงบนใบงานตอนปริ้น</p>
+
+                {/* 🔔 แจ้งเตือนเด้ง — popup ถึงแอดมิน/คนปริ้น/คนแพ็คทุกหน้า จนจัดส่งแล้วหรือกดปิด (12 ต.ค. 69)
+                    กล่องสีส้มแยกจากหมายเหตุท้ายบิล — อันนี้ไม่ลงกระดาษ แต่เด้งบนจอ */}
+                <OrderAlertEditor order={order} canEdit={mayEdit && !demo} onChanged={adoptAlert} />
               </div>
             </div>
           )}

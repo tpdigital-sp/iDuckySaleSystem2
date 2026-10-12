@@ -67,6 +67,7 @@ import {
   shipmentExtras,
 } from "@/lib/admin-data";
 import { inBackground } from "@/lib/server/background";
+import { keepServerAlert } from "@/lib/order-alert";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
 function gateReasons(g: PackGate): string {
@@ -888,6 +889,8 @@ export async function PATCH(req: Request) {
     void _sw;
     toSave = rest as Order;
   }
+  // 🔔 แจ้งเตือนเด้ง: ของเซิร์ฟเวอร์ (เขียนผ่าน /alert เท่านั้น) — หน้าจอที่เปิดค้างห้ามลบ/ทับข้อความหรือการกดปิดของคนอื่น
+  toSave = keepServerAlert(existing, toSave);
   // ✅ งานเสร็จพร้อมส่ง: ของเซิร์ฟเวอร์เช่นกัน (เขียนผ่าน /ready) — หน้าออเดอร์ที่เปิดค้างก่อนฝ่ายผลิตติ๊ก ห้ามลบ/ทับ
   if (existing.readyToShip) toSave = { ...toSave, readyToShip: existing.readyToShip };
   else if (toSave.readyToShip) {

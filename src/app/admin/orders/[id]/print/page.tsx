@@ -36,6 +36,7 @@ import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } fro
 import { HIDE_GENERIC_RATE, SpecLines, specEntries, tidySpec } from "@/components/SpecLines";
 import { specLabel } from "@/lib/spec-text";
 import { paginateRows, printedRowsOf, type PageRange } from "@/lib/print-paginate";
+import { OrderAlertPopup } from "@/components/admin/OrderAlertPopup";
 
 /** คีย์แฝงใน products ของรายการพิเศษที่ชื่อตรงกับสินค้าร้าน (ไม่ชน id จริง) */
 const SPECIAL_KEY = (name: string) => `special-item:${name}`;
@@ -369,6 +370,12 @@ export default function PrintOrderPage() {
           .keep { break-inside: avoid; }
         }
       `}</style>
+
+      {/* 🔔 แจ้งเตือนเด้งจากแอดมิน — เด้งก่อนปริ้น (ปริ้นรวมหลายใบ = ไล่ทีละใบ) · ไม่ติดลงกระดาษ */}
+      <OrderAlertPopup
+        orders={orders}
+        onChanged={(id, r) => setOrders((list) => list.map((x) => (x.id === id ? { ...x, alertNote: r.alertNote ?? undefined } : x)))}
+      />
 
       {/* ── แถบเครื่องมือ (ไม่พิมพ์ออกมา) ── */}
       <div className="no-print sticky top-0 z-10 mb-6 flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">

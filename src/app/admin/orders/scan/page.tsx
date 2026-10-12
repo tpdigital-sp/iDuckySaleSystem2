@@ -30,6 +30,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { publicOrigin } from "@/lib/shop-info";
 import StatusChip, { STATUS_TONE } from "@/components/admin/StatusChip";
 import CameraScanner from "@/components/admin/CameraScanner";
+import { OrderAlertPopup } from "@/components/admin/OrderAlertPopup";
 import { extractOrderId, looksLikeOrderId, trackingScanProblem } from "@/lib/scan-code";
 import { PACK_QUEUE_EVENT, loadPackQueue, packQueueLeft, packQueueNext, shortOrderId, startPackQueue, type PackQueueSource } from "@/lib/pack-queue";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
@@ -634,6 +635,18 @@ export default function ScanTrackingPage() {
         live={demo ? { ok: false, text: "โหมดตัวอย่าง — การบันทึกจะไม่ถูกเก็บถาวร" } : { ok: true, text: "ออเดอร์จริง" }}
         tools={<Btn href="/admin/orders">คำสั่งซื้อทั้งหมด</Btn>}
       />
+
+      {/* 🔔 ยิงเลขออเดอร์ที่แอดมินตั้งแจ้งเตือนไว้ = เด้งก่อนแพ็ค/ยิงเลขพัสดุ */}
+      {target && (
+        <OrderAlertPopup
+          orders={[target]}
+          onChanged={(id, r) => {
+            const patch = (x: Order) => (x.id === id ? { ...x, alertNote: r.alertNote ?? undefined } : x);
+            setTarget((t) => (t ? patch(t) : t));
+            setOrders((list) => list.map(patch));
+          }}
+        />
+      )}
 
       {/* ── กล่องยิง — ใหญ่สุดและอยู่บนสุดตลอด ยิงได้ไม่ว่ากำลังดูรายการไหน ── */}
       <form onSubmit={onSubmit} className="mt-4">

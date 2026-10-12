@@ -15,6 +15,22 @@ export type OrderStatus =
   | "เสร็จสิ้น"
   | "ยกเลิก";
 
+/** 🔔 แจ้งเตือนเด้งของออเดอร์ (Order.alertNote) */
+export type OrderAlertNote = {
+  text: string;
+  by: string;
+  at: string;
+  dismissedAt?: string;
+  dismissedBy?: string;
+};
+
+/** 🔔 แจ้งเตือนยังต้องเด้งอยู่ไหม — มีข้อความ · ยังไม่มีคนกดปิด · ใบยังไม่ส่ง/ปิด/ยกเลิก */
+export function orderAlertActive(o: Pick<Order, "alertNote" | "status"> | null | undefined): boolean {
+  const a = o?.alertNote;
+  if (!a?.text?.trim() || a.dismissedAt) return false;
+  return o!.status !== "จัดส่งแล้ว" && o!.status !== "เสร็จสิ้น" && o!.status !== "ยกเลิก";
+}
+
 /** 💰 สถานะที่ถือว่า "ชำระเงินแล้ว" = ทุกสถานะตั้งแต่ ชำระแล้ว ขึ้นไป (ไม่นับ รอชำระเงิน · รอตรวจสอบ · ยกเลิก) */
 export const isPaidStatus = (s: OrderStatus | string | undefined): boolean =>
   !!s && s !== "ยกเลิก" && s !== "รอชำระเงิน" && s !== "รอตรวจสอบ";
@@ -1148,6 +1164,12 @@ export interface Order {
   redoOrders?: string[];
   /** หมายเหตุท้ายบิล (แอดมินพิมพ์ลงใบงาน) — rich text HTML (สี/ขนาด/น้ำหนักต่อคำ) */
   billNote?: string;
+  /**
+   * 🔔 แจ้งเตือนเด้ง (popup) ถึงแอดมิน/คนปริ้น/คนแพ็ค — เด้งทุกครั้งที่เปิดหน้าออเดอร์ · หน้าปริ้น · โหมดแพ็ค · สถานีแพ็ค
+   * จนกว่าจะ "จัดส่งแล้ว/เสร็จสิ้น/ยกเลิก" หรือมีคนกด "ปิดแจ้งเตือน" (dismissedAt) · กด "รับทราบ" = ปิดแค่หน้านั้นรอบนั้น
+   * เจ้าของร้านขอ 12 ต.ค. 69 · เซิร์ฟเวอร์เป็นเจ้าของ เขียนผ่าน /api/admin/orders/alert เท่านั้น (PATCH ทั้งก้อนทับไม่ได้)
+   */
+  alertNote?: OrderAlertNote;
   /** กุญแจลับต่อออเดอร์ (สุ่มตอนสร้าง) — ใช้ยืนยันสิทธิ์ตอนแจ้งโอน/ดูแบบ (public endpoint) */
   key?: string;
   /**

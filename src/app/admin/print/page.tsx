@@ -26,7 +26,7 @@ import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipRider } from "@/lib/ship-with";
-import { daysToUseBy, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, receiptsPending, taxInvoiceDocsOf, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { daysToUseBy, orderAlertActive, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, receiptsPending, taxInvoiceDocsOf, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
@@ -596,6 +596,11 @@ function PrintRow({
               </Tag>
             )}
             {o.rush && <Tag tone="solid">งานเร่ง</Tag>}
+            {orderAlertActive(o) && (
+              <Tag tone="yolk" title={`แจ้งเตือนจากแอดมิน: ${o.alertNote!.text}`}>
+                🔔 มีแจ้งเตือน
+              </Tag>
+            )}
             {ship !== null && (
               <Tag tone={ship < 0 ? "coral" : ship <= DUE_SOON_DAYS ? "yolk" : "quiet"} title={`วันที่จัดส่ง ${o.shipDate?.from}${o.shipDate?.to && o.shipDate.to !== o.shipDate.from ? ` – ${o.shipDate.to}` : ""}`}>
                 {ship < 0 ? `เลยวันส่ง ${-ship} วัน` : ship === 0 ? "ส่งวันนี้" : ship === 1 ? "ส่งพรุ่งนี้" : `ส่ง ${shortThaiDay(o.shipDate!.from || o.shipDate!.to!)} (อีก ${ship} วัน)`}
