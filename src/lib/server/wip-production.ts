@@ -95,7 +95,8 @@ export async function folderCandidates(db: Firestore, orderId: string, productio
   return [...out];
 }
 
-export async function wipJobsForOrder(orderId: string, productionFolder?: string): Promise<{ jobs: WipJob[]; folders: string[] }> {
+/** opts.exactOnly = ข้ามรอบสแกนเทียบชื่อแบบตัดวงเล็บ (~4 วิ) — หน้าลูกค้าใช้ ต้องเร็วและไม่เดา */
+export async function wipJobsForOrder(orderId: string, productionFolder?: string, opts: { exactOnly?: boolean } = {}): Promise<{ jobs: WipJob[]; folders: string[] }> {
   const db = getFirestoreAdmin();
   if (!db) return { jobs: [], folders: [] };
   const folders = await folderCandidates(db, orderId, productionFolder);
@@ -128,7 +129,7 @@ export async function wipJobsForOrder(orderId: string, productionFolder?: string
   );
   // รอบ 2 (เฉพาะไม่เจอเลยทุกแผนก): งานที่สร้างก่อนบอร์ดติดเลข OD / ชื่อโฟลเดอร์ถูกเติมคำนำหน้า → เทียบแบบตัดวงเล็บ
   //   สแกนเฉพาะงาน 45 วันหลัง (บอร์ดกระดาษมีงาน active 2,400+ ใบ · 12 ต.ค. 69 เคยสแกนทุกแผนกทุกครั้ง = 9 วิ)
-  if (!seen.size && normSet.size) {
+  if (!seen.size && normSet.size && !opts.exactOnly) {
     const since = new Date(Date.now() - 45 * 86400_000);
     await Promise.all(
       WIP_DEPTS.map(async (dept) => {
@@ -190,4 +191,11 @@ export async function wipJobsForOrder(orderId: string, productionFolder?: string
   // งานที่ยังทำอยู่ก่อน · เร่งก่อน · แล้วเรียงตามเวลาสร้าง
   jobs.sort((a, b) => Number(a.status === "done") - Number(b.status === "done") || Number(b.isUrgent) - Number(a.isUrgent) || String(a.createdAt).localeCompare(String(b.createdAt)));
   return { jobs, folders };
+}
+
+/** งานที่ช้าที่สุด (สัดส่วนขั้นน้อยสุด) ของใบ = ตัวบอกว่า "ใบนี้ถึงไหน" · ไม่มีงานที่ยังทำ = null */
+export function slowestActive(jobs: WipJob[]): WipJob | null {
+  const active = jobs.filter((j) => j.status === "active");
+  if (!active.length) return null;
+  return [...active].sort((a, b) => a.stageIndex / (a.stageTotal || 1) - b.stageIndex / (b.stageTotal || 1) || String(a.enteredAt).localeCompare(String(b.enteredAt)))[0];
 }

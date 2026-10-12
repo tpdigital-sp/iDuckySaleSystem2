@@ -187,6 +187,24 @@ export default function CustomerOrderPage() {
   }, [order]);
   const [loadErr, setLoadErr] = useState("");
   const [loading, setLoading] = useState(true);
+  // 🏭 ขั้นบนบอร์ดผลิตของร้าน (เช่น "QC/แพ็ค") โชว์ใต้ขั้น "ผลิต" — เจ้าของร้าน 12 ต.ค. 69 · ได้แค่ชื่อขั้น ไม่มีข้อมูลภายใน
+  const [wipStage, setWipStage] = useState<{ stage: string | null; done: boolean } | null>(null);
+  useEffect(() => {
+    if (!order || !["อนุมัติแบบ", "กำลังผลิต"].includes(order.status)) {
+      setWipStage(null);
+      return;
+    }
+    let stop = false;
+    fetch(`/api/orders/wip-stage?id=${encodeURIComponent(order.id)}&key=${encodeURIComponent(orderKey)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { stage?: string | null; done?: boolean } | null) => {
+        if (!stop && j) setWipStage({ stage: j.stage ?? null, done: j.done === true });
+      })
+      .catch(() => {});
+    return () => {
+      stop = true;
+    };
+  }, [order?.id, order?.status, orderKey]);
 
   /* รายการที่กำลังพิมพ์ "ขอแก้ไข" อยู่ + ข้อความ */
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -1278,7 +1296,9 @@ export default function CustomerOrderPage() {
               // 🏪 มารับเอง: ขั้นสุดท้ายไม่ใช่รถส่งของ — ใช้ไอคอนร้าน และคำใต้ขั้นเป็น "รับของแล้ว"
               const pickupStep = pickup && i === STEPS.length - 1;
               const art = pickupStep ? null : STEP_ART[i];
-              const hint = pickupStep && order.status === "จัดส่งแล้ว" ? "พร้อมรับที่ร้าน" : STEP_HINT[order.status];
+              // 🏭 ขั้น "ผลิต": ใช้ชื่อขั้นจริงบนบอร์ดผลิตของร้าน (เช่น "QC/แพ็ค") ถ้ามี · ทุกงานเสร็จ = "เสร็จแล้ว รอส่ง"
+              const wipHint = i === 3 && wipStage ? (wipStage.done ? "เสร็จแล้ว รอส่ง" : wipStage.stage) : null;
+              const hint = pickupStep && order.status === "จัดส่งแล้ว" ? "พร้อมรับที่ร้าน" : (wipHint ?? STEP_HINT[order.status]);
               // 🚚 ยิงเลขพัสดุแล้ว = ของออกจากร้านแล้ว ขั้น "จัดส่ง" ถือว่าไปถึงแล้ว (เส้นเต็ม + จุดสว่าง)
               // ไม่ใช่ "กำลังรอทำ" เหมือนขั้นอื่น — เดิมเส้นก่อนถึงจัดส่งยังจาง ลูกค้าเห็นเป็นค้างอยู่ที่ผลิต
               const reached = now && order.status === "จัดส่งแล้ว";
