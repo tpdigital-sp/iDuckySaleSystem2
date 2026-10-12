@@ -176,6 +176,8 @@ import {
 } from "@/lib/design-templates";
 import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
+import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
+import { yearFromChoice } from "@/lib/calendar-card";
 import { useCart } from "@/lib/cart-context";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin } from "@/lib/auth";
@@ -909,12 +911,18 @@ export default function ProductDetail({
        * ยังเป็น "ลายเดียว = สินค้า 1 ชิ้น" · ไม่นับเป็นคนละลาย และไม่เข้าไปเพิ่มจำนวนใน artFiles
        */
       sides?: { name: string; artUrl: string; dpi: number }[];
+      /** 🗓 ปฏิทินโฟโต้การ์ด — ตั้งค่าทั้งหน้า/หลัง ไว้เปิดกลับมาแก้ (ไฟล์ด้านหลังอยู่ใน artBackFiles ตำแหน่งเดียวกัน) */
+      calState?: CalendarState;
+      /** 🗓 ไฟล์หน้าที่ 2 เป็นต้นไปของแบบนี้ (ด้านหลัง/หน้าเดือน) — รวมเป็น artBackFiles ตามลำดับแบบ */
+      calBackFiles?: ArtFile[];
     }[]
   >([]);
   /** กำลังแก้ไขลายที่เท่าไหร่ (null = สร้างลายใหม่) — กัน "แก้ไขแบบ" กลายเป็นเพิ่มลายซ้ำ */
   const [editIndex, setEditIndex] = useState<number | null>(null);
   /** เปิดจอวางรูปแบบมีช่อง (Theme) อยู่ไหม — เทมเพลตที่กำหนดช่องไว้จะใช้จอนี้แทน */
   const [slotStudio, setSlotStudio] = useState(false);
+  /** 🗓 เปิดจอสร้างปฏิทินโฟโต้การ์ดอยู่ไหม (สินค้าที่ตั้ง calendarStudio) */
+  const [calOpen, setCalOpen] = useState(false);
   // กล่อง "แนบลายของคุณ" กางไว้ตั้งแต่แรก — ลูกค้าเห็นช่องอัปโหลดทันที ไม่ต้องเดาว่าต้องกดเปิด
   // (ช่องหมายเหตุถึงร้านไม่ยุบแล้ว — กางไว้ตลอด ลูกค้าใช้บ่อย)
   const [extraOpen, setExtraOpen] = useState<"art" | null>("art");
@@ -1294,6 +1302,19 @@ export default function ProductDetail({
    * ยังไม่ได้เลือกพิมพ์ 2 ด้าน = ไม่มีช่องนี้ ไม่มีค่าคละด้านหลัง
    */
   const backOn = backDesignActive(product, effective);
+  /**
+   * 🗓 สินค้าปฏิทินโฟโต้การ์ด — ลายแต่ละแบบมี 2 ไฟล์เสมอ: หน้าปก (artFiles) + ปฏิทินด้านหลัง (artBackFiles ตำแหน่งเดียวกัน)
+   * ด้านหลังเป็นของที่ระบบสร้างให้ ไม่ใช่ "ลายด้านหลังที่คละ" — ไม่ผ่าน backDesign/ค่าคละด้านหลัง
+   */
+  const calMode = !!product.calendarStudio && product.studioOff !== true;
+  /** ช่องแนบลายแยกหน้า/หลัง — งานพิมพ์ 2 ด้าน หรือปฏิทินโฟโต้การ์ด (หน้าปก/ปฏิทิน) */
+  const artTwoSide = backOn || calMode;
+  const calYear = yearFromChoice(product.calendarStudio ? effective[product.calendarStudio.yearLabel] : undefined);
+  /** รูปแบบงานปฏิทินตามตัวเลือกที่เลือกอยู่ (แนว · รายปี/รายเดือน · จำนวนแผ่น) */
+  const calFormatKey =
+    product.calendarStudio?.formats?.find((f) =>
+      (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())),
+    )?.format ?? "card";
   /** กติกาค่าคละของด้านหลังโดยเฉพาะ (งานกระดาษ = ลายละ 5 บาท) — ไม่ตั้ง = ใช้ชุดเดียวกับด้านหน้า */
   const backMix = product.backDesign?.mixRule;
   const [backDesigns, setBackDesigns] = useState(1);
@@ -1333,13 +1354,13 @@ export default function ProductDetail({
   }, [artBackFiles.length, maxDesigns]);
   // สลับกลับไปพิมพ์ 1 ด้าน = รูปด้านหลังไม่มีที่ไป — ทิ้งพร้อมคืน blob (ไม่ให้ติดไปกับตะกร้าเงียบ ๆ)
   useEffect(() => {
-    if (backOn) return;
+    if (backOn || calMode) return;
     setArtBackFiles((cur) => {
       if (!cur.length) return cur;
       cur.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
       return [];
     });
-  }, [backOn]);
+  }, [backOn, calMode]);
   /** รูปลายที่แนบทั้งหมดที่จะติดไปกับรายการ (หน้า + หลังเฉพาะตอนพิมพ์ 2 ด้าน) — ใช้โชว์ตัวเลขรวมตามหัวกล่อง/แถบล่าง */
   const artTotal = artFiles.length + (backOn ? artBackFiles.length : 0);
   /**
@@ -2346,8 +2367,8 @@ export default function ProductDetail({
     /** 🔢 ด้านนี้โชว์ช่องจำนวนต่อลายไหม — หน้า/หลังนับแยกกัน (หลัง 3 ลาย หน้า 1 ลาย = หลังมีช่อง หน้าไม่มี) */
     const qtyMode = back ? artBackQtyMode : artQtyMode;
     return (
-      <div className={backOn ? `mt-2 rounded-xl p-2.5 ring-1 ${back ? "bg-violet-50/60 ring-violet-200" : "bg-white/80 ring-sky-200"}` : ""}>
-        {backOn && (
+      <div className={artTwoSide ? `mt-2 rounded-xl p-2.5 ring-1 ${back ? "bg-violet-50/60 ring-violet-200" : "bg-white/80 ring-sky-200"}` : ""}>
+        {artTwoSide && (
           <p className="flex flex-wrap items-center gap-1.5 text-xs font-extrabold text-stone-700">
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${back ? "bg-violet-600 text-white" : "bg-sky-600 text-white"}`}>
               {back ? "🔄 ด้านหลัง" : "🖼 ด้านหน้า"}
@@ -2368,7 +2389,7 @@ export default function ProductDetail({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={f.preview ?? f.url}
-                    alt={backOn ? `${f.name} (${sideWord})` : f.name}
+                    alt={artTwoSide ? `${f.name} (${sideWord})` : f.name}
                     className={`h-20 w-20 rounded-xl object-cover ring-1 ${back ? "ring-violet-200" : "ring-sky-200"}`}
                   />
                   {/* ⛔ ป้ายแดงขอบล่างของรูป: ลายนี้ใหญ่เกินแผ่น (คละขนาด) — อยู่ในกรอบรูป ไม่ทับช่องขนาดข้างล่าง */}
@@ -2385,7 +2406,7 @@ export default function ProductDetail({
                     setFiles((cur) => cur.filter((_, j) => j !== i));
                   }}
                   className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow"
-                  aria-label={backOn ? `ลบภาพนี้ (${sideWord})` : "ลบภาพนี้"}
+                  aria-label={artTwoSide ? `ลบภาพนี้ (${sideWord})` : "ลบภาพนี้"}
                 >
                   ✕
                 </button>
@@ -2412,7 +2433,7 @@ export default function ProductDetail({
                       value={f.qty ?? ""}
                       placeholder="กี่ชิ้น"
                       onChange={(e) => setArtQty(side, i, e.target.value === "" ? undefined : Number(e.target.value))}
-                      aria-label={`จำนวนชิ้นของลายที่ ${i + 1}${backOn ? ` (${sideWord})` : ""}`}
+                      aria-label={`จำนวนชิ้นของลายที่ ${i + 1}${artTwoSide ? ` (${sideWord})` : ""}`}
                       className={`w-full min-w-0 bg-transparent text-right text-[11px] font-bold outline-none placeholder:font-normal placeholder:text-stone-300 ${
                         back ? "text-violet-900" : "text-sky-900"
                       }`}
@@ -2517,8 +2538,8 @@ export default function ProductDetail({
           const leftN = files.length - filled;
           const fmt = (n: number) => n.toLocaleString("th-TH");
           // งาน 2 ด้าน: วงเล็บบอกด้านต่อท้ายคำว่า "ลาย" — "ระบุจำนวนแต่ละลาย (ด้านหลัง) ได้ใต้รูป" · งานด้านเดียวข้อความเดิม
-          const sideTag = backOn ? ` (${sideWord}) ` : "";
-          const sideLbl = backOn ? `ลาย (${sideWord}) ` : "";
+          const sideTag = artTwoSide ? ` (${sideWord}) ` : "";
+          const sideLbl = artTwoSide ? `ลาย (${sideWord}) ` : "";
           const shareEven = () => {
             // แบ่งเท่า ๆ กัน — เศษที่เหลือใส่ลายแรก ๆ ทีละชิ้น (10 ชิ้น 3 ลาย → 4 · 3 · 3)
             const cnt = files.length;
@@ -2604,21 +2625,21 @@ export default function ProductDetail({
             /* ครบเพดานแล้ว — ยังกดได้ ถ้ากดแล้วเลือกไฟล์เพิ่มจะมีป๊อปอัพถามให้เพิ่มจำนวนลายก่อน */
             <>
               <span className="text-xs font-extrabold text-amber-700">
-                ✅ {backOn ? `${sideWord}ครบ` : "ครบ"} {limit!.toLocaleString("th-TH")} รูปตาม
+                ✅ {artTwoSide ? `${sideWord}ครบ` : "ครบ"} {limit!.toLocaleString("th-TH")} รูปตาม
                 {cap != null ? "ที่ระบุคละไว้แล้ว" : `เพดานคละของราคานี้แล้ว`}
               </span>
               <span className="text-[10px] font-normal text-amber-600">
                 {cap != null
                   ? "อยากแนบเพิ่ม กด + ที่ช่อง “คละกี่ลาย” (ข้างช่องจำนวน) ก่อนนะครับ · หรือลบรูปเดิมออกแล้วแนบใหม่"
-                  : `จำนวน ${qty.toLocaleString("th-TH")} ${unit} ${backOn ? `${sideWord}` : ""}คละได้ ${limit!.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ต้องเพิ่มจำนวนสั่ง`}
+                  : `จำนวน ${qty.toLocaleString("th-TH")} ${unit} ${artTwoSide ? `${sideWord}` : ""}คละได้ ${limit!.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ต้องเพิ่มจำนวนสั่ง`}
               </span>
             </>
           ) : dragHere ? (
-            <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย{backOn ? ` (${sideWord})` : ""}</span>
+            <span className="text-sm font-extrabold text-sky-700">⬇️ ปล่อยไฟล์ตรงนี้ได้เลย{artTwoSide ? ` (${sideWord})` : ""}</span>
           ) : (
             <>
               <span className="text-xs font-extrabold text-sky-700">
-                🖼️ {backOn ? `แนบลาย${sideWord} · ` : ""}แตะเลือกไฟล์ · ลากมาวาง{backOn ? "" : " · ⌘/Ctrl+V"}
+                🖼️ {artTwoSide ? `แนบลาย${sideWord} · ` : ""}แตะเลือกไฟล์ · ลากมาวาง{artTwoSide ? "" : " · ⌘/Ctrl+V"}
               </span>
               <span className="text-[10px] font-normal text-stone-400">
                 JPG / PNG / WEBP · ไม่เกิน 15MB ·{" "}
@@ -2702,12 +2723,22 @@ export default function ProductDetail({
    * โหมดออกแบบบนเว็บ — ข้ามขั้นตอน "แนบลายของคุณ" ไปเลย
    * โหมดแอดมิน (สั่งแทนลูกค้า) ปิดโหมดนี้: หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลายบนเว็บก่อน
    */
-  const studioMode = !!studioTarget && !staffOrdering;
+  const studioMode = (!!studioTarget || calMode) && !staffOrdering;
   // (ดูคำอธิบาย noPageDropRef ด้านบน) — อัปเดตค่าให้ตัวรับ drop/paste ระดับหน้าเว็บใช้
   useEffect(() => {
     noPageDropRef.current = !!studio || studioMode;
   }, [studio, studioMode]);
   const designDone = placed.length > 0;
+  /** 🗓 แบบปฏิทินแรกที่ปีไม่ตรงกับตัวเลือกปีตอนนี้ (-1 = ตรงหมด) */
+  const calYearStale = calMode
+    ? placed.findIndex((p) => p.calState && (p.calState.back.year !== calYear || p.calState.format !== calFormatKey))
+    : -1;
+  /** 🗓 ไฟล์หน้าที่ 2+ ของทุกแบบ → ช่องลายด้านหลัง (เรียงตามแบบ) — ตามรายการแบบเสมอ ลบ/แก้แบบแล้วตามเอง */
+  useEffect(() => {
+    if (!calMode || !placed.some((p) => p.calState)) return;
+    setArtBackFiles(placed.flatMap((p) => p.calBackFiles ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calMode, placed]);
 
   /**
    * 📐 ไฟล์เทมเพลตทั้งหมดที่โหลดได้ตอนนี้ — คลี่ "ชุดเทมเพลต → ไฟล์" ให้เป็นรายการเดียว
@@ -2767,6 +2798,11 @@ export default function ProductDetail({
   const tplShown = !tplCollapsible || tplOpen ? tplItems : tplItems.filter((f) => f.matched);
 
   function openStudio(index: number | null = null) {
+    if (calMode) {
+      setEditIndex(index);
+      setCalOpen(true);
+      return;
+    }
     if (!studioTarget) return;
     setEditIndex(index);
     // เทมเพลตกำหนดช่องไว้ (หน้าไหนก็ได้) → ใช้จอวางรูปทีละช่อง (สติกเกอร์หลายดวง · photobooth strip)
@@ -2790,6 +2826,8 @@ export default function ProductDetail({
     const gone = artFiles[index];
     if (gone?.preview) URL.revokeObjectURL(gone.preview);
     setArtFiles((cur) => cur.filter((_, i) => i !== index));
+    // 🗓 ปฏิทิน: ลบแบบสุดท้ายออก = ล้างไฟล์หน้าอื่นด้วย (effect ด้านบนไม่ทำงานตอนไม่มีแบบเหลือ)
+    if (calMode && placed.length === 1) setArtBackFiles([]);
     setPlaced((cur) => cur.filter((_, i) => i !== index));
   }
 
@@ -2933,6 +2971,70 @@ export default function ProductDetail({
     } catch (e) {
       setArtErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
       throw e;
+    } finally {
+      setArtBusy(false);
+    }
+  }
+
+  /**
+   * 🗓 ผลจากจอปฏิทินโฟโต้การ์ด — หน้าปกเข้าช่องลายด้านหน้า (นับเป็น 1 ลาย) · ปฏิทินเข้าช่องด้านหลังตำแหน่งเดียวกัน
+   * ทีมผลิตเห็นป้ายหน้า/หลังบนไฟล์ในออเดอร์ตามระบบเดิม (artworkBackUrls)
+   */
+  async function applyCalendar(r: CalendarResult) {
+    setArtErr("");
+    setArtBusy(true);
+    try {
+      /**
+       * อัปทุกหน้า (ทีละ 3 ไฟล์ — งาน 26 หน้าบนมือถือยิงพร้อมกันหมดหลุดง่าย)
+       * หน้าแรก = ลายด้านหน้า (นับเป็น 1 ลาย) · หน้าที่เหลือ = ช่องลายด้านหลังตามลำดับหน้า
+       */
+      const urls: string[] = new Array(r.pages.length);
+      for (let i = 0; i < r.pages.length; i += 3)
+        await Promise.all(r.pages.slice(i, i + 3).map(async (p, j) => (urls[i + j] = await uploadOne(p.file))));
+      // ต้นฉบับ (ไม่นับเป็นลาย) — อัปไม่ขึ้นก็ยังสั่งได้ ไฟล์ที่ประกอบแล้วพิมพ์ได้เลย
+      const sourceUrls: string[] = [];
+      for (const f of r.sources) {
+        try {
+          sourceUrls.push(await uploadOne(f));
+        } catch {
+          /* ข้าม */
+        }
+      }
+      const dims = await Promise.all(
+        r.pages.map(async (p) => {
+          try {
+            const bm = await createImageBitmap(p.file);
+            const d = { w: bm.width, h: bm.height };
+            bm.close();
+            return d;
+          } catch {
+            return { w: 0, h: 0 };
+          }
+        }),
+      );
+      const files = r.pages.map((p, i) => ({ url: urls[i], name: p.file.name, ...dims[i] }));
+      const entry = {
+        summary: r.summary,
+        head: r.head,
+        dpi: r.dpi,
+        spec: r.spec,
+        sourceUrl: sourceUrls.join(" "),
+        artUrl: files[0].url,
+        calState: r.state,
+        calBackFiles: files.slice(1),
+      };
+      if (editIndex !== null) {
+        setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? files[0] : x)));
+        setPlaced((cur) => cur.map((x, i) => (i === editIndex ? { ...entry, qty: x.qty } : x)));
+      } else {
+        setArtFiles((cur) => [...cur, files[0]]);
+        setPlaced((cur) => [...cur, { ...entry, qty: 1 }]);
+      }
+      setEditIndex(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง";
+      setArtErr(msg);
+      throw new Error(msg);
     } finally {
       setArtBusy(false);
     }
@@ -3110,7 +3212,7 @@ export default function ProductDetail({
    * โหมดแอดมิน (สั่งแทนลูกค้า) ก็ต้องมีปุ่มเริ่มสร้างหน้าตาเดียวกับที่ลูกค้าเห็น
    * — ต่างกันแค่ "ไม่บังคับ" วางลายก่อน (ปุ่มเพิ่มลงตะกร้ายังกดได้เลย ลายมาทางไลน์อยู่แล้ว)
    */
-  const studioOfferStaff = staffOrdering && !!studioTarget && !designDone;
+  const studioOfferStaff = staffOrdering && (!!studioTarget || calMode) && !designDone;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
   const artBlocked = studioMode || preArranged ? false : artRequired && !artProvided;
@@ -3273,6 +3375,11 @@ export default function ProductDetail({
       openStudio();
       return false;
     }
+    // 🗓 เปลี่ยนปีทีหลังสร้างแบบ = ปฏิทินด้านหลังยังเป็นปีเก่า → เปิดแบบที่ไม่ตรงให้แก้ก่อน
+    if (calYearStale >= 0) {
+      openStudio(calYearStale);
+      return false;
+    }
     // ✍️ ช่องที่ให้ลูกค้ากรอกต้องครบและอยู่ในเกณฑ์ก่อน
     // ⚠️ ต้องตรวจ "ก่อน" แนบลาย — ช่องกรอกอยู่เหนือกล่องแนบลายบนหน้าจอ ไล่จากบนลงล่างถึงจะไม่งง
     //    (เคยตรวจแนบลายก่อน ปุ่มบนฟ้อง "แนบลายก่อน" ส่วนปุ่ม ➕ ฟ้อง "กรอกจำนวนจุดไดคัท" คนละเรื่องกัน)
@@ -3352,7 +3459,7 @@ export default function ProductDetail({
     if (reuseOld) extra[REUSE_ART_LABEL] = reuseFrom.trim() || REUSE_ART_DEFAULT;
     if (artFiles.length) extra[ART_LABEL] = artFiles.map((f) => f.url).join(" | ");
     // งานพิมพ์ 2 ด้าน — ภาพลายด้านหลังไปอีกคีย์ (ลูกค้าระบุแล้วว่าลายไหนพิมพ์ด้านไหน)
-    if (backOn && artBackFiles.length) extra[ART_BACK_LABEL] = artBackFiles.map((f) => f.url).join(" | ");
+    if ((backOn || calMode) && artBackFiles.length) extra[ART_BACK_LABEL] = artBackFiles.map((f) => f.url).join(" | ");
     /**
      * 🔢 จำนวนชิ้นของแต่ละลาย (ลูกค้าระบุเองใต้รูปที่แนบ — ไม่บังคับ)
      * ลายเดียว = ทั้งหมดอยู่แล้ว ไม่ต้องจด · ลายที่วางบนเทมเพลตมีจำนวนของตัวเองใน PLACEMENT_LABEL แล้ว ไม่จดซ้ำ
@@ -6079,14 +6186,14 @@ export default function ProductDetail({
               จำนวนลายของแต่ละด้านนับตามรูปในช่องนั้น (ด้านหลังเดิมนับไม่ได้เลย เพดานแนบจับแต่ด้านหน้า)
               งานด้านเดียวมีช่องเดียวเหมือนเดิม
             */}
-            {backOn && (
+            {artTwoSide && (
               <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
                 งานพิมพ์ 2 ด้าน — แนบลายแยกช่อง <b>ด้านหน้า</b> และ <b>ด้านหลัง</b> · จำนวนลายแต่ละด้านนับตามรูปในช่องนั้น
                 (ด้านหลังใช้ลายเดียวกันทั้งหมด = แนบรูปเดียว)
               </p>
             )}
             {artZone("front")}
-            {backOn && artZone("back")}
+            {artTwoSide && artZone("back")}
             {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
 
             {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
@@ -6181,14 +6288,22 @@ export default function ProductDetail({
                 : "bg-sky-600 text-white shadow-lg hover:bg-sky-700"
           }`}
         >
-          <span className="text-xl leading-none">🎨</span>
+          <span className="text-xl leading-none">{calMode ? "🗓" : "🎨"}</span>
           <span className="text-[13px] font-extrabold">
-            {designDone ? `✓ วางลายแล้ว ${placed.length.toLocaleString("th-TH")} ลาย` : "ออกแบบบนเว็บ"}
+            {designDone
+              ? `✓ ${calMode ? "สร้างแล้ว" : "วางลายแล้ว"} ${placed.length.toLocaleString("th-TH")} ลาย`
+              : calMode
+                ? "สร้างปฏิทินบนเว็บ"
+                : "ออกแบบบนเว็บ"}
           </span>
           <span
             className={`text-[10.5px] font-semibold leading-tight ${designDone ? "text-sky-700" : fileChosen ? "text-stone-500" : "text-sky-100"}`}
           >
-            {designDone ? "แตะเพื่อเพิ่มลายอีกแบบ" : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
+            {designDone
+              ? "แตะเพื่อเพิ่มลายอีกแบบ"
+              : calMode
+                ? "ใส่รูปหน้าปก ปฏิทินด้านหลังสร้างให้เอง"
+                : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
           </span>
         </button>
         <button
@@ -7977,7 +8092,20 @@ export default function ProductDetail({
                     {placed.map((d, i) => (
                       <div key={i} className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-sky-100">
                         {/* งานหลายด้าน = โชว์ทุกด้าน จะได้เห็นว่าใส่ครบแล้วจริง */}
-                        {(d.sides?.length ? d.sides : d.artUrl ? [{ name: "", artUrl: d.artUrl, dpi: d.dpi }] : []).map((sd, k) => (
+                        {(d.calState
+                          ? // 🗓 ปฏิทิน: หน้าปก + ปฏิทินด้านหลัง (ไฟล์หลังอยู่ใน artBackFiles ตำแหน่งเดียวกัน)
+                            [
+                              { name: "หน้าปก", artUrl: d.artUrl, dpi: d.dpi },
+                              ...(d.calBackFiles?.[0]
+                                ? [{ name: (d.calBackFiles.length > 1 ? `+${d.calBackFiles.length} หน้า` : "ปฏิทิน"), artUrl: d.calBackFiles[0].url, dpi: d.dpi }]
+                                : []),
+                            ]
+                          : d.sides?.length
+                            ? d.sides
+                            : d.artUrl
+                              ? [{ name: "", artUrl: d.artUrl, dpi: d.dpi }]
+                              : []
+                        ).map((sd, k) => (
                           <span key={k} className="shrink-0 text-center">
                             <img
                               src={sd.artUrl}
@@ -7990,6 +8118,16 @@ export default function ProductDetail({
                         <span className="min-w-0 flex-1">
                           <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
                           <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
+                          {d.calState && d.calState.back.year !== calYear && (
+                            <span className="block text-[10px] font-bold text-rose-600">
+                              ⚠️ ปฏิทินเป็นปี {d.calState.back.year} — กด ✏️ เพื่อเปลี่ยนเป็นปี {calYear}
+                            </span>
+                          )}
+                          {d.calState && d.calState.back.year === calYear && d.calState.format !== calFormatKey && (
+                            <span className="block text-[10px] font-bold text-rose-600">
+                              ⚠️ แบบนี้ทำไว้ก่อนเปลี่ยนตัวเลือก — กด ✏️ เพื่อจัดรูปใหม่ให้ตรงรูปแบบที่เลือก
+                            </span>
+                          )}
                         </span>
                         {/* จำนวนของลายนี้ — ทีมผลิตอ่านจากตรงนี้ว่าลายไหนกี่ชิ้น */}
                         <span className="flex shrink-0 items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
@@ -9089,6 +9227,22 @@ export default function ProductDetail({
           onApply={applySlots}
         />
       ) : null}
+
+      {/* 🗓 จอสร้างปฏิทินโฟโต้การ์ด */}
+      {calOpen && (
+        <CalendarStudio
+          open
+          onClose={() => {
+            setCalOpen(false);
+            setEditIndex(null);
+          }}
+          title={product.name}
+          format={calFormatKey}
+          year={calYear}
+          initial={editIndex !== null ? placed[editIndex]?.calState : undefined}
+          onApply={applyCalendar}
+        />
+      )}
 
       {/* 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลตด้านบน */}
       {studio && (
