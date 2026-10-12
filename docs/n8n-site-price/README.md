@@ -482,3 +482,7 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - PERSONA (ส่ง n8n) · ตัวตอบสำรอง (chat-parse answerFromContext) · ข้อความตายตัวใน chat-answer · GREETING (shop-chat) · บับเบิลตัวอย่างหน้าแรก (HomeChat) → แอดมินผู้หญิง "ค่ะ/นะคะ" ห้าม markdown
 - กันหลุด: answerChat แปลง "…ไหมครับ"→"…คะ" · "ครับ"→"ค่ะ" · ตัด **ตัวหนา** (ยกเว้นโหมดแอดมิน)
 - ตั้งค่า › ของแถมฟรี: note แพ็กเกจรองหลัง "การ์ดรองหลังลายร้าน" → "การ์ดรองหลังลายของคุณ" (แก้ในฐานข้อมูลตรง)
+
+### 12 ต.ค. 69 — 🏦🖼 บอท LINE ส่งภาพบัญชีเป็นรูป (ร่าง n8n รอ Publish)
+- LINE OA Bot › Reply Gate (หลังบรรทัด const j): ถ้าข้อความตอบมีลิงก์ https://iduckystore.com/payment/bank-card.jpg → ตัดลิงก์ออกจากข้อความ + ต่อท้าย image message (originalContentUrl/previewImageUrl = jpg) · ≤5 ข้อความ · logReply บันทึกเป็น "[รูป] ภาพบัญชีรับโอนของร้าน"
+- บันทึกเป็นฉบับร่าง versionId 6bb8424f (activeVersionId ยังเป็น 5771fd96) — เจ้าของร้านต้องกด Publish
