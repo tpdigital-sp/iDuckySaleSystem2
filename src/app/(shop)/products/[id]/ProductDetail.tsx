@@ -2619,13 +2619,10 @@ export default function ProductDetail({
                 🖼️ {backOn ? `แนบลาย${sideWord} · ` : ""}แตะเลือกไฟล์ · ลากมาวาง{backOn ? "" : " · ⌘/Ctrl+V"}
               </span>
               <span className="text-[10px] font-normal text-stone-400">
-                JPG / PNG / WEBP ·{" "}
-                {cap != null
-                  ? `ระบุคละไว้ ${cap.toLocaleString("th-TH")} ลาย แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
-                  : limit != null
-                    ? `${backOn ? sideWord : "ราคานี้"}คละได้ ${limit.toLocaleString("th-TH")} ลาย แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
-                    : "ใส่ได้ไม่จำกัดจำนวน"}{" "}
-                · ไฟล์ละไม่เกิน 15MB
+                JPG / PNG / WEBP · ไม่เกิน 15MB ·{" "}
+                {cap != null || limit != null
+                  ? `แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
+                  : "ไม่จำกัดจำนวน"}
               </span>
             </>
           )}
@@ -5994,7 +5991,7 @@ export default function ProductDetail({
             <span className="block text-[11px] text-stone-400">
               {studioMode
                 ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องกดเริ่มสร้าง"
-                : "อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล"}
+                : "อัปโหลดรูป หรือส่งลิงก์ / อีเมล"}
             </span>
           </span>
           <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
@@ -6041,9 +6038,9 @@ export default function ProductDetail({
                 className="mt-0.5 h-4 w-4 accent-amber-600"
               />
               <span className="min-w-0 flex-1">
-                <span className="font-bold">♻️ เคยสั่งลายนี้กับร้านแล้ว — ใช้ไฟล์เก่า ไม่ต้องอัปใหม่</span>
+                <span className="font-bold">♻️ เคยสั่งลายนี้แล้ว — ใช้ไฟล์เดิม</span>
                 <span className={`block text-[11px] leading-relaxed ${reuseOld ? "text-amber-900" : "text-stone-400"}`}>
-                  ทีมงานจะหยิบไฟล์จากออเดอร์ก่อนให้ · ใส่เลขออเดอร์เดิม (OD-…) ถ้าจำได้ จะได้หาเจอไวขึ้น
+                  ร้านหยิบไฟล์จากออเดอร์เก่าให้ · มีเลข OD เดิมใส่ไว้ หาเจอไวขึ้น
                 </span>
                 {reuseOld && (
                   <input
@@ -6070,7 +6067,7 @@ export default function ProductDetail({
               </p>
             </div>
             <p className="ml-7 mt-0.5 text-[11px] leading-relaxed text-stone-400">
-              เก็บไฟล์ตามต้นฉบับ ไม่บีบอัด · ไม่แน่ใจว่าชัดพอไหม ไม่ต้องห่วง — กราฟฟิกเช็คให้และส่งแบบให้ตรวจก่อนผลิตทุกงาน
+              ไม่บีบอัดไฟล์ · กราฟฟิกเช็คและส่งแบบให้ตรวจก่อนผลิตทุกงาน
             </p>
 
             {/*
@@ -6092,8 +6089,8 @@ export default function ProductDetail({
             <div className="mt-3.5 flex items-center gap-2">
               <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">2</span>
               <label htmlFor="art-link" className="text-xs font-bold text-stone-700">
-                หรือส่งเป็นลิงก์ / อีเมล{" "}
-                <span className="font-normal text-stone-500">— ไม่บังคับ เหมาะกับไฟล์ใหญ่เกิน 15MB หรือไฟล์ AI / PSD / PDF</span>
+                หรือส่งลิงก์ / อีเมล{" "}
+                <span className="font-normal text-stone-500">— สำหรับไฟล์เกิน 15MB หรือ AI / PSD / PDF</span>
               </label>
             </div>
             <input
@@ -6107,11 +6104,11 @@ export default function ProductDetail({
                 setArtTouched(true);
                 setExtraOpen("art");
               }}
-              placeholder="เช่น https://drive.google.com/…  หรือ  yourmail@gmail.com"
+              placeholder="วางลิงก์ไฟล์ หรืออีเมลที่ส่งไฟล์"
               className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
             />
             <p className="mt-1 text-[10px] leading-relaxed text-stone-400">
-              Google Drive / Dropbox / OneDrive หรืออีเมลที่ส่งไฟล์ไว้ — เราดึงไฟล์ต้นฉบับไปใช้ผลิต
+              รองรับ Google Drive / Dropbox / OneDrive
             </p>
           </div>
         </div>}
@@ -6128,7 +6125,7 @@ export default function ProductDetail({
               <span className="block text-sm font-bold text-stone-700">
                 หมายเหตุถึงร้าน <span className="font-semibold text-stone-400">(ไม่บังคับ)</span>
               </span>
-              <span className="block text-[11px] text-stone-400">สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม</span>
+              <span className="block text-[11px] text-stone-400">สี · ข้อความบนงาน · รายละเอียดอื่น</span>
             </span>
           </label>
           <textarea
@@ -6136,7 +6133,7 @@ export default function ProductDetail({
             value={note}
             onChange={(e) => setNote(e.target.value.slice(0, 500))}
             rows={3}
-            placeholder="พิมพ์สิ่งที่อยากบอกร้านได้เลย — เช่น อยากได้สีเข้มกว่าในภาพ · ใส่ชื่อ “iDucky” ใต้โลโก้"
+            placeholder="เช่น สีเข้มกว่าในภาพ · ใส่ชื่อ “iDucky” ใต้โลโก้"
             className="mt-2 w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm leading-relaxed text-stone-700 ring-1 ring-amber-200 transition placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
           />
           {/* ตัวนับโผล่เมื่อเริ่มพิมพ์ · ใกล้เต็มเปลี่ยนเป็นแดงเตือนก่อนโดนตัดที่ 500
@@ -7384,8 +7381,8 @@ export default function ProductDetail({
                 </div>
                 <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
                   {adminMode
-                    ? "🧑‍💼 สั่งแทนลูกค้า — หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลาย/แนบไฟล์ (ติ๊ก “สั่งแทนลูกค้า” อีกทีตอนชำระเงิน)"
-                    : "👤 เห็นหน้าเหมือนลูกค้าทุกอย่าง — สลับเป็นแอดมินเมื่อจะสั่งแทนลูกค้า"}
+                    ? "🧑‍💼 สั่งแทนลูกค้า — ไม่ต้องแนบลาย (ตอนชำระเงินติ๊ก “สั่งแทนลูกค้า” ด้วย)"
+                    : "👤 เห็นเหมือนลูกค้า — สลับเป็นแอดมินเมื่อสั่งแทน"}
                 </p>
 
                 {/* 🔗 ส่งราคานี้ให้ลูกค้า — คัดลอกสเปค+ราคา+ลิงก์ที่ติ๊กไว้ให้แล้ว ไปวางในไลน์ได้เลย
@@ -7411,9 +7408,7 @@ export default function ProductDetail({
                     ) : null}
                   </div>
                   <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
-                    วางในไลน์แล้วเด้งเป็นการ์ดราคาให้เอง (สเปค+ราคาอยู่ในการ์ด ไม่ต้องพิมพ์ซ้ำ) ·
-                    ลูกค้ากดเข้าไปสั่งตามสเปคนี้ได้เลย · ยืนราคา 7 วัน ·
-                    ดูว่าลูกค้าเปิดหรือยังที่{" "}
+                    วางในไลน์ = การ์ดสเปค+ราคา ลูกค้ากดสั่งต่อได้เลย · ยืนราคา 7 วัน · ดูว่าเปิดหรือยังที่{" "}
                     <Link href="/admin/price-links" className="font-bold underline">
                       ลิงก์ราคา
                     </Link>
@@ -7464,9 +7459,8 @@ export default function ProductDetail({
                     <p className="mt-1 px-1 text-[11px] font-bold text-sky-900">{bundleMsg}</p>
                   )}
                   <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
-                    ลูกค้าสั่งหลายอย่างในงานเดียว — กด <b>เพิ่มเข้าใบรวม</b> ที่สินค้าแต่ละตัว (ติ๊กสเปคให้ครบก่อน)
-                    แล้วกด <b>คัดลอกลิงก์ใบรวม</b> ทีเดียวตอนจบ ได้ลิงก์เดียวที่ลูกค้ากดสั่งครบทั้งใบ ·
-                    ต้องมีอย่างน้อย 2 รายการ · ใบรวมค้างไว้ได้ 1 วัน
+                    หลายสินค้าในลิงก์เดียว: ติ๊กสเปค → <b>เพิ่มเข้าใบรวม</b> ทีละตัว → <b>คัดลอกลิงก์ใบรวม</b> ·
+                    อย่างน้อย 2 รายการ · เก็บไว้ 1 วัน
                   </p>
                 </div>
               </div>
@@ -7828,7 +7822,7 @@ export default function ProductDetail({
                   <p className="text-[12px] font-extrabold text-emerald-800">
                     🛒 ในตะกร้าแล้ว {cartItems.length.toLocaleString("th-TH")} รายการ
                     <span className="block text-[11px] font-semibold text-emerald-700">
-                      ยังไม่เป็นออเดอร์จนกว่าจะกด “ยืนยันการสั่งซื้อ” ในตะกร้า
+                      ยังไม่ได้สั่ง จนกว่าจะกดยืนยันในตะกร้า
                     </span>
                   </p>
                   <Link
@@ -8028,8 +8022,8 @@ export default function ProductDetail({
                   }`}
                 >
                   {inCart
-                    ? "➕ จะสั่งอีกชิ้นไหม? แนบลายของชิ้นใหม่ตรงนี้ · หรือไปยืนยันการสั่งซื้อได้เลย"
-                    : "🎨 ต้องแนบลายก่อนสั่ง — แตะเพื่ออัปโหลดรูป หรือใส่ลิงก์"}
+                    ? "➕ สั่งอีกชิ้น? แนบลายชิ้นใหม่ตรงนี้ · หรือไปยืนยันการสั่งซื้อ"
+                    : "🎨 แนบลายก่อนสั่ง — แตะเพื่ออัปโหลด"}
                 </button>
                 );
               })()}
@@ -8199,7 +8193,7 @@ export default function ProductDetail({
                   </div>
                   {!designsSet && (
                     <p className={`mt-1 text-[10px] font-bold leading-snug ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
-                      👉 กด + / − หรือแตะที่ตัวเลขเพื่อระบุจำนวนลายที่จะคละ — แนบรูปลายแล้วระบบจะนับให้อัตโนมัติ
+                      👉 กด +/− หรือแตะตัวเลขเพื่อระบุ · แนบรูปแล้วระบบนับให้เอง
                     </p>
                   )}
                   {mixRule ? (
@@ -8250,13 +8244,13 @@ export default function ProductDetail({
                             </p>
                           ) : designs <= 1 ? (
                             <p>
-                              💡 ลายเดียวไม่มีค่าคละ · ค่าคละคิดจาก<strong className="font-bold">จำนวนลายต่อ 1 {unit}</strong> —
+                              💡 ลายเดียวไม่มีค่าคละ ·
                               {mt.baseFee > 0
                                 ? // โควตาเหมาคลุมแค่ 2 ลาย = ช่วง "2–2" ซึ่งอ่านแล้วงง — เขียนเป็นเลขเดียว
                                   ` คละ ${
                                     mt.includedDesigns <= 2 ? "2" : `2–${mt.includedDesigns.toLocaleString("th-TH")}`
-                                  } ลาย/${unit} = ${formatPrice(mt.baseFee)}/${unit}`
-                                : ` เกิน ${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit}`}
+                                  } ลาย/${unit} +${formatPrice(mt.baseFee)}/${unit}`
+                                : ` คิดเมื่อเกิน ${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit}`}
                               {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""}
                             </p>
                           ) : over <= 0 ? (
