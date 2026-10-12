@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { earlyPayAmount, earlyPayOf, type EarlyPayDiscount } from "../src/lib/early-pay";
-import { earlyPayBaseOf, earlyPayBillAdded, earlyPaySkipReason, syncOrderEarlyPay } from "../src/lib/server/order-early-pay";
+import { dropEarlyPayForBill, earlyPayBaseOf, earlyPayBillAdded, earlyPaySkipReason, syncOrderEarlyPay } from "../src/lib/server/order-early-pay";
 import { itemsChanged } from "../src/lib/server/order-write";
 import type { Order } from "../src/lib/admin-data";
 import type { Product } from "../src/lib/products";
@@ -130,8 +130,22 @@ const DROP: { name: string; order: Order; want: number }[] = [
   { name: "ได้ส่วนลดแล้วผูกบิล FlowAccount → เอาออก", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, flowAccount: FA }), want: 0 },
   { name: "ได้ส่วนลดแล้วกรอกใบกำกับภาษี → เอาออก", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, taxInvoice: { company: "บริษัท ทดสอบ จำกัด", address: "กรุงเทพ" } }), want: 0 },
   { name: "ออกบิลแต่ลูกค้าแจ้งโอนแล้ว → คงส่วนลดเดิม", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, flowAccount: FA, paidReportedAt: new Date().toISOString() }), want: 5 },
-  { name: "ออกบิลแต่มีเงินเข้าแล้ว → คงส่วนลดเดิม", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, flowAccount: FA, paidTotal: 305 }), want: 5 },
+  { name: "ออกบิลแต่มีเงินเข้าแล้ว → คงส่วนลดเดิม", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, flowAccount: FA, paidTotal: 305 }), want: 5 },  // OD-261012-9565: บิลบริษัทยังไม่มีเงินเข้า แต่ติ๊กไม่รับไว้ → เอาออกทั้งก้อน (หน้าลิงก์ลูกค้าไม่ขึ้นบรรทัดขีดฆ่า)
+  { name: "บิล VAT + ติ๊กไม่รับไว้ ยังไม่มีเงินเข้า → เอาออกทั้งก้อน", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: { ...EP5, waivedAt: new Date().toISOString() }, taxInvoice: { company: "บริษัท ทดสอบ จำกัด", address: "กรุงเทพ" }, vat: { rate: 7, amount: 18.2 } }), want: 0 },
+  { name: "บิล FlowAccount + ติ๊กไม่รับ + มีเงินเข้าแล้ว → คงไว้", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: { ...EP5, waivedAt: new Date().toISOString() }, flowAccount: FA, paidTotal: 310 }), want: 5 },
 ];
+
+/** 🖥 หน้าจอเปิดค้างส่ง earlyPay ก้อนเก่ากลับมา (ใบมีบิลอยู่แล้ว รายการไม่เปลี่ยน) — ประตูตัดทุกการบันทึก (OD-261012-9565) */
+const STALE: { name: string; order: Order; want: boolean }[] = [
+  { name: "ใบมีใบกำกับแล้ว หน้าจอส่ง earlyPay กลับมา → ตัด", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5, taxInvoice: { company: "บริษัท ทดสอบ จำกัด", address: "กรุงเทพ" } }), want: false },
+  { name: "ใบธรรมดา → ไม่แตะ", order: base({ items: [line("calendar-desk", 1, 260)], earlyPay: EP5 }), want: true },
+];
+for (const t of STALE) {
+  const got = !!dropEarlyPayForBill(t.order, "เทสต์").earlyPay;
+  const ok = got === t.want;
+  if (!ok) fail++;
+  console.log(`${ok ? "✓" : "✗"} [หน้าจอค้าง] ${t.name}${ok ? "" : `  (ได้ ${got})`}`);
+}
 
 /** ประตูต้องเรียกกฎใหม่ตอน "เพิ่งออกบิล" ด้วย แม้รายการไม่ขยับ */
 const BILLED: { name: string; a: Order; b: Order; want: boolean }[] = [
@@ -160,6 +174,6 @@ for (const c of CASES) {
   if (!ok) fail++;
   console.log(`${ok ? "✓" : "✗"} ${c.name}${ok ? "" : `  (ได้ ${got} · ควรได้ ${c.want})`}`);
 }
-const total = CASES.length + TOUCH.length + BILLED.length + DROP.length;
+const total = CASES.length + TOUCH.length + BILLED.length + DROP.length + STALE.length;
 console.log(fail ? `\n❌ ตก ${fail}/${total} เคส` : `\n✅ ผ่านครบ ${total} เคส`);
 process.exit(fail ? 1 : 0);

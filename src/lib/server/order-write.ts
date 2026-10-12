@@ -1,6 +1,6 @@
 import { reconcileOrderTax, withLog, type Order, type OrderItem, isPaidStatus } from "@/lib/admin-data";
 import { applyAutoRush, stampRushAlert } from "@/lib/rush-auto";
-import { earlyPayBillAdded, syncOrderEarlyPay } from "./order-early-pay";
+import { dropEarlyPayForBill, earlyPayBillAdded, syncOrderEarlyPay } from "./order-early-pay";
 import { syncItemsToTP, syncRushToTP } from "./tp-report";
 import { closeClaimsForDeliveredRedo } from "./claims-db";
 import { alertNeedsPurchase, stampNeedsPurchaseAlert } from "./needs-purchase";
@@ -186,6 +186,8 @@ export async function updateOrder(sb: SB, order: Order, opts?: { prev?: Order | 
    */
   const changed = itemsChanged(prev, order) || earlyPayBillAdded(prev, order) || giftBumpChanged(prev, order);
   let final = changed ? await syncOrderEarlyPay(sb, order, by) : order;
+  // 🧾 บิลบริษัทห้ามมีส่วนลดโอนไว "ทุกการบันทึก" — หน้าแอดมินที่เปิดค้างส่ง earlyPay ก้อนเก่ากลับมาได้แม้รายการไม่เปลี่ยน (OD-261012-9565)
+  final = dropEarlyPayForBill(final, by);
   // ➕ ของที่เพิ่มเข้าใบเดิมทีหลัง — ประทับเวลาก่อนบันทึก (บอร์ด WIP กราฟฟิกใช้รู้ว่ามีงานเพิ่ม)
   final = stampAddedItems(prev, final, new Date().toISOString());
   /**

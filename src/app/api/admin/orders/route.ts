@@ -8,7 +8,7 @@ import { can, canPack, PACK_SCAN_HEADER, ROLE_ADMINISTRATOR } from "@/lib/permis
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { insertOrder, itemsChanged, updateOrder } from "@/lib/server/order-write";
-import { syncOrderEarlyPay } from "@/lib/server/order-early-pay";
+import { dropEarlyPayForBill, syncOrderEarlyPay } from "@/lib/server/order-early-pay";
 import { needsPurchaseStamp, notifyStockArrived } from "@/lib/server/needs-purchase";
 import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
@@ -952,6 +952,8 @@ export async function PATCH(req: Request) {
    */
   if (mayEditFull && itemsChanged(existing, toSave))
     toSave = await syncOrderEarlyPay(sb, toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
+  // 🧾 บิลบริษัท: หน้าจอเปิดค้างส่ง earlyPay ที่เซิร์ฟเวอร์เอาออกไปแล้วกลับมา → ตัดก่อนคิด VAT (OD-261012-9565 VAT คิดจากยอดที่ลด ฿5)
+  toSave = dropEarlyPayForBill(toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
 
   /**
    * 🧾 ฐานภาษีขยับในคำขอนี้ (แก้รายการ/ค่าส่ง/ส่วนลด) → VAT + หัก ณ ที่จ่าย คิดใหม่ตามเรต

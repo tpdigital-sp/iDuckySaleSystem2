@@ -164,18 +164,23 @@ export async function syncOrderEarlyPay(sb: SB, order: Order, by = "ระบบ
  *
  * ⚠️ ไม่แตะใบที่มีเงินเข้า/แจ้งโอนแล้ว — ลูกค้าโอนตามตัวเลขที่เว็บบอกตอนนั้น ตัดทีหลัง = ค้าง ฿5/฿10 ปลอมแล้วไลน์ไปทวง
  *    (กฎเดียวกับ earlyPayState "superseded" · ใบแบบนั้นแอดมินติ๊ก "ลูกค้าไม่รับส่วนลด" เองในหน้าออเดอร์ได้)
- * ⚠️ ไม่แตะใบที่ติ๊กไม่รับส่วนลดไว้แล้ว — ตัวเลขนั้นตกลงกับลูกค้าไปแล้ว
+ * ✅ ใบที่ติ๊กไม่รับไว้ (ยังไม่มีเงินเข้า) ก็เอาออกด้วย — ยอดไม่ขยับ (waived = 0 อยู่แล้ว) แต่หน้าลิงก์ลูกค้าจะไม่ขึ้นบรรทัดขีดฆ่า
+ *    "⚡ ส่วนลดโอนไว (ไม่ใช้ส่วนลดนี้ตามที่แจ้ง)" บนบิลบริษัทที่ไม่เคยมีสิทธิ์ได้ส่วนลดนี้ตั้งแต่แรก (OD-261012-9565)
+ *
+ * export ไว้ให้ประตูเขียนออเดอร์เรียก "ทุกครั้ง" (ไม่ใช่แค่ตอนรายการเปลี่ยน) — หน้าแอดมินที่เปิดค้างส่ง earlyPay ก้อนเก่ากลับมาได้
+ * (OD-261012-9565: เซิร์ฟเวอร์เอาออกตอนกรอกใบกำกับ 07:33:07 → 10 วิถัดมากด "เปิด VAT" หน้าจอส่ง earlyPay เดิมกลับมา
+ *  → VAT คิดจากยอดที่ลด ฿5 · ออก QT 272.85 ผิด · พนักงานต้องติ๊กไม่รับเอง แล้วหน้าลิงก์ลูกค้าขึ้นบรรทัดขีดฆ่า)
  */
-function dropEarlyPayForBill(order: Order, by: string): Order {
+export function dropEarlyPayForBill(order: Order, by: string): Order {
   const bill = earlyPayBillReason(order);
   const cur = order.earlyPay;
-  if (!bill || !cur || !(cur.amount > 0) || cur.waivedAt || earlyPayMoneyIn(order)) return order;
+  if (!bill || !cur || earlyPayMoneyIn(order)) return order;
   const { earlyPay: _drop, ...rest } = order;
   void _drop;
   return withLog(
     rest,
     by,
     "เอาส่วนลดโอนไวออก",
-    `${bill} — ยอดต้องตรงเอกสารที่ออกให้ลูกค้า · ส่วนลดเดิม ${cur.amount.toLocaleString("th-TH")} บาท`
+    `${bill} — ยอดต้องตรงเอกสารที่ออกให้ลูกค้า · ส่วนลดเดิม ${cur.amount.toLocaleString("th-TH")} บาท${cur.waivedAt ? " (ติ๊กไม่รับไว้แล้ว)" : ""}`
   );
 }
