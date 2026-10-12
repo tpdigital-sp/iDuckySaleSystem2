@@ -6,6 +6,7 @@ import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQt
 import Link from "next/link";
 import OverpayBox from "./OverpayBox";
 import ProductionWipBox from "./ProductionWipBox";
+import WipStatusLine from "./WipStatusLine";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
@@ -5065,6 +5066,8 @@ export default function AdminOrderDetailPage() {
                 </span>
               )}
             </div>
+            {/* 🏭 ขั้นปัจจุบันบนบอร์ดผลิต TP ใต้ป้ายสถานะ (เจ้าของร้าน 12 ต.ค. 69 "อยากให้มันแจ้งที่สถานะด้วย") — แสดงอย่างเดียว */}
+            <WipStatusLine orderId={order.id} />
             {/* ใครสร้างใบนี้ — ใต้ป้ายสถานะ ให้เห็นทันทีตั้งแต่หัวหน้า (เจ้าของร้านขอ 16 ก.ย. 69)
                 พนักงานทำให้ (สั่งแทนที่ตะกร้า · งานพิเศษ · แปลงจากใบเสนอราคา/FlowAccount · redo) = ป้ายทึบ + ชื่อคนทำ
                 ลูกค้ากดสั่งเองจากหน้าเว็บ = ป้ายจาง ๆ · คำเดียวกับหน้ารายการออเดอร์ (dkb-by) จะได้ไม่งงข้ามหน้า */}

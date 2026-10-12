@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { WipJob } from "@/lib/server/wip-production";
+import { useState } from "react";
+import { useWipJobs } from "./useWipJobs";
 
 /**
  * 🏭 กล่อง "สถานะผลิต" หน้าออเดอร์ — งานของใบนี้บนบอร์ดผลิต TP (4 แผนก) อ่านอย่างเดียว (12 ต.ค. 69)
  *   โชว์ต่องาน: แผนก · ไฟล์/โฟลเดอร์ · ขั้นปัจจุบัน + ความคืบหน้า · เข้าขั้นนี้เมื่อไหร่ ใคร · เสร็จแล้ว · ปุ่มเปิดการ์ดบนบอร์ด
  *   ไม่พบงาน = ผลิตยังไม่รับเข้าบอร์ด (หรือชื่อโฟลเดอร์ไม่ตรง) — บอกตรง ๆ ไม่เดา
  */
-type Resp = { jobs: WipJob[]; folders: string[]; tp: string; error?: string };
 const SHOW_FOR = new Set(["อนุมัติแบบ", "กำลังผลิต", "จัดส่งแล้ว", "เสร็จสิ้น", "ชำระแล้ว", "ชำระแล้ว (รอผลิต)"]);
 
 const ago = (isoStr: string | null) => {
@@ -23,31 +22,9 @@ const ago = (isoStr: string | null) => {
 const thDate = (isoStr: string | null) => (isoStr ? new Date(isoStr).toLocaleDateString("th-TH", { day: "numeric", month: "short" }) : "");
 
 export default function ProductionWipBox({ orderId, status, hasFolder }: { orderId: string; status: string; hasFolder: boolean }) {
-  const [data, setData] = useState<Resp | null>(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { data, err, loading, reload } = useWipJobs(orderId);
   const [open, setOpen] = useState(false);
   const relevant = SHOW_FOR.has(status) || hasFolder;
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr("");
-    try {
-      const res = await fetch(`/api/admin/orders/wip?id=${encodeURIComponent(orderId)}`, { cache: "no-store" });
-      const j = (await res.json().catch(() => null)) as Resp | null;
-      if (!res.ok || !j) throw new Error(j?.error || `HTTP ${res.status}`);
-      setData(j);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId]);
-
-  // ดูบอร์ดทุกครั้งที่เปิดใบ (~0.15 วิ) — ใบที่สถานะยังไม่ถึงผลิตแต่ผลิตรับงานไปแล้วก็เห็น · ไม่เกี่ยวและไม่มีงาน = ไม่โชว์กล่อง
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   if (!relevant && !data?.jobs.length) return null;
   const jobs = data?.jobs ?? [];
@@ -56,13 +33,13 @@ export default function ProductionWipBox({ orderId, status, hasFolder }: { order
   const headline = loading && !data ? "กำลังดูบอร์ด…" : !jobs.length ? "ยังไม่พบงานบนบอร์ดผลิต" : active.length ? `${active.length} งานกำลังทำ${done.length ? ` · เสร็จแล้ว ${done.length}` : ""}` : `เสร็จแล้วทั้ง ${done.length} งาน`;
 
   return (
-    <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+    <section id="production-wip-box" className="scroll-mt-24 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[13px] font-extrabold text-slate-800">🏭 สถานะผลิต (บอร์ด TP)</p>
           <p className="mt-0.5 text-[12px] text-slate-500">{headline}</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50" title="ดูบอร์ดใหม่">
+        <button type="button" onClick={() => void reload()} disabled={loading} className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50" title="ดูบอร์ดใหม่">
           {loading ? "…" : "↻"}
         </button>
       </div>
