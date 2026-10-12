@@ -44,9 +44,10 @@ export default function ProductionWipBox({ orderId, status, hasFolder }: { order
     }
   }, [orderId]);
 
+  // ดูบอร์ดทุกครั้งที่เปิดใบ (~0.15 วิ) — ใบที่สถานะยังไม่ถึงผลิตแต่ผลิตรับงานไปแล้วก็เห็น · ไม่เกี่ยวและไม่มีงาน = ไม่โชว์กล่อง
   useEffect(() => {
-    if (relevant) void load();
-  }, [relevant, load]);
+    void load();
+  }, [load]);
 
   if (!relevant && !data?.jobs.length) return null;
   const jobs = data?.jobs ?? [];
