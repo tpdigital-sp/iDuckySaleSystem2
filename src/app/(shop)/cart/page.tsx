@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LINE_URL } from "@/components/LineButton";
@@ -26,6 +26,7 @@ import {
   qtyFromAreaOf,
   RATE_LABEL,
   rateLineForCustomer,
+  rateShopLabel,
   rateSpecOf,
   rateSpecShows,
   productLineOrder,
@@ -100,6 +101,20 @@ export default function CartPage() {
   // 🤝 ตัวแทนจำหน่าย — ไม่ได้ของแถม และบรรทัดเรทตัวแทนไม่สลับเรทอัตโนมัติ
   const { isDealer } = useCustomer();
   const router = useRouter();
+  /** 📱 ปุ่ม "ยืนยันการสั่งซื้อ" ตัวจริงหลุดจอ → โชว์แถบยืนยันติดล่างจอ (ดูท้ายหน้า) */
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const [showBar, setShowBar] = useState(false);
+  useEffect(() => {
+    const el = confirmRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setShowBar(!e.isIntersecting && e.boundingClientRect.top > 0));
+    io.observe(el);
+    return () => io.disconnect();
+  });
+  useEffect(() => {
+    document.body.classList.toggle("cartbar-on", showBar);
+    return () => document.body.classList.remove("cartbar-on");
+  }, [showBar]);
   // สั่งเป็นออเดอร์ใหม่ หรือเพิ่มเข้าออเดอร์เดิม (ลูกค้ากดมาจากหน้าออเดอร์)
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
   /** รายการที่ลูกค้าเอาติ๊กออก (คีย์ของ cart item) — ที่เหลือ = สั่งรอบนี้ · ของที่เพิ่งหยิบเข้ามาถือว่าเลือกไว้เสมอ */
@@ -884,7 +899,11 @@ export default function CartPage() {
                         <strong className="t-blue">
                           รวม {item.merged.totalQty.toLocaleString("th-TH")} ชิ้น {item.merged.totalDesigns.toLocaleString("th-TH")} ลาย
                         </strong>
-                        {item.merged.rateLabel ? <> · {item.merged.rateLabel}</> : null} จึงได้ราคาต่อชิ้นนี้
+                        {/* 🗣 ชื่อเรทแบบคำง่าย (เดิมขึ้น "เรทที่ 1 แบบคละดีเทล") · ชื่อทั่วไป "เรทที่ 1" ไม่บอกอะไร = ไม่โชว์ (12 ต.ค. 69) */}
+                        {item.merged.rateLabel && !/^\s*เรทที่\s*\d+\s*$/.test(item.merged.rateLabel) ? (
+                          <> · {rateShopLabel({ label: item.merged.rateLabel })}</>
+                        ) : null}{" "}
+                        จึงได้ราคาต่อชิ้นนี้
                       </p>
                     )}
                     {/* ร้านรับสั่งขั้นต่ำ 1 ชิ้นทุกสินค้า — ลดต่ำกว่าขั้นต่ำของเรทได้ ระบบสลับเรทให้เอง */}
@@ -1145,7 +1164,9 @@ export default function CartPage() {
               </div>
             )}
 
-            {!freeShipping && remainForFree > 0 && (
+            {/* 🚚 ยอดส่งฟรีร้านสูง (฿50,000) — ตะกร้า ฿1,375 ขึ้น "ซื้อเพิ่มอีก ฿48,625" แถบแทบว่าง ไม่ชวนซื้อ กลับดูไกลเกิน
+                โชว์เมื่อยอดถึงครึ่งทางแล้ว (12 ต.ค. 69) */}
+            {!freeShipping && remainForFree > 0 && freeMin > 0 && subtotal >= freeMin / 2 && (
               <div className="ord-note warn mt-3 px-4 py-3 text-xs leading-relaxed">
                 🚚 ซื้อเพิ่มอีก <strong>{formatPrice(remainForFree)}</strong> รับส่งฟรีเลย!
                 <div className="ord-bar">
@@ -1401,6 +1422,7 @@ export default function CartPage() {
             {/* 📦 สั่งจำนวนมาก → เตือนให้เช็คสต๊อกก่อนกดยืนยัน (ไม่บล็อกการสั่ง) */}
             <StockCheckNote rows={stockRows} className="mt-4" />
             <button
+              ref={confirmRef}
               type="button"
               onClick={() => router.push("/checkout")}
               disabled={pickedItems.length === 0 || shortLots.length > 0}
@@ -1417,6 +1439,31 @@ export default function CartPage() {
           </aside>
         </div>
       </div>
+      {/*
+        📱 แถบยืนยันติดล่างจอ (มือถือ/แท็บเล็ต) — ปุ่มจริงอยู่ท้ายหน้า ตะกร้า 2 รายการก็ยาว ~5 จอ (12 ต.ค. 69)
+        โชว์เมื่อปุ่มจริงหลุดจอ · กติกาเดียวกับปุ่มจริง (disabled เหมือนกัน) · วางเหนือเมนูล่าง
+        body.cartbar-on → landing.css ดันปุ่มแชท/LINE ขึ้นไม่ให้ทับแถบ
+      */}
+      {showBar && (
+        <div className="pointer-events-none fixed inset-x-0 z-[89] px-3 min-[1001px]:hidden" style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}>
+          <div className="pointer-events-auto mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-white/95 px-4 py-2.5 shadow-[0_10px_28px_-10px_rgba(23,58,107,0.45)] ring-1 ring-sky-100 backdrop-blur">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[11px] t-soft">
+                {pickedItems.length.toLocaleString("th-TH")} รายการ · ยอดชำระ
+              </p>
+              <p className="text-base font-semibold t-blue">{formatPrice(total)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push("/checkout")}
+              disabled={pickedItems.length === 0 || shortLots.length > 0}
+              className="ord-btn yolk shrink-0 px-5 py-2.5 text-sm"
+            >
+              ✅ ยืนยันสั่งซื้อ
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

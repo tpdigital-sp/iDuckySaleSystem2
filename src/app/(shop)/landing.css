@@ -5622,6 +5622,13 @@ to{opacity:1;transform:none}}
   .dl .fresh-card .card-body h3{-webkit-line-clamp:3}
 }
 
+/* 📱 ตะกร้า: แถบยืนยันติดล่างจอ (body.cartbar-on โดย cart/page.tsx) อยู่ช่วง ~88–150px จากขอบล่าง
+   → ดันปุ่ม LINE/แชท/ตะกร้าลอย ขึ้นเหนือแถบ ไม่ให้ทับปุ่มยืนยัน (12 ต.ค. 69) */
+@media(max-width:1000px){
+  body.cartbar-on .fabx-line,body.cartbar-on .dl .fabx-line{bottom:calc(166px + env(safe-area-inset-bottom,0px)) !important}
+  body.cartbar-on .fabx-bot,body.cartbar-on .dl .fabx-bot{bottom:calc(230px + env(safe-area-inset-bottom,0px)) !important}
+}
+
 /* ═══════ หน้าสมาชิก (/member) — prefix .mbr- · ยืม .dlr-hero/.dlr-perks/.dlr-steps ของหน้าตัวแทน ═══════
    ตรา/สีระดับ = ชุดเดียวกับหน้าบัญชี (@/lib/tier-art) ส่งมาเป็นตัวแปร --ra (อ่อน) / --rb (เข้ม) */
 .dl .mbr-hero{grid-template-columns:1.1fr .9fr}

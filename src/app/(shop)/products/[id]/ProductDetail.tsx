@@ -88,6 +88,7 @@ import {
   priceRange,
   publicRates,
   rateShopLabel,
+  shopText,
   shopWords,
   qtyFromAreaOf,
   PRODUCTS,
@@ -701,12 +702,14 @@ export default function ProductDetail({
   }, [product, isDealer]);
   const zoomList = useMemo(() => {
     // ช่องที่เป็นคลิปไม่เข้าลิสต์ซูม — กดขยายแล้วจะได้ภาพนิ่ง (โปสเตอร์) เฉย ๆ ทั้งที่ตั้งใจดูคลิป
-    const srcs = galleryImages.map((img, i) =>
+    // เลื่อนในจอขยายเฉพาะรูปของสินค้า — ภาพประจำตัวเลือก (ตะขอ 30+ แบบ) ไม่ต้องให้ปัดผ่าน (ดูตัวนับในแกลเลอรี)
+    const own = product.images.length > 0 ? Math.min(product.images.length, galleryImages.length) : galleryImages.length;
+    const srcs = galleryImages.slice(0, own).map((img, i) =>
       img.videoSrc ? undefined : img.src ?? (i === 0 ? product.imageSrc : undefined)
     );
     if (!srcs.length && product.imageSrc) srcs.push(product.imageSrc);
     return srcs.filter((s): s is string => !!s);
-  }, [galleryImages, product.imageSrc]);
+  }, [galleryImages, product.imageSrc, product.images.length]);
   /**
    * 🖼 ตัวเลือก/เรทที่มีภาพประจำตัว — กดเลือกแล้วสลับแกลเลอรีไปที่ภาพนั้น
    * (ภาพที่ไม่มีในแกลเลอรีเลยก็แค่ไม่สลับ ภาพย่อบนปุ่มยังโชว์ตามปกติ)
@@ -6134,12 +6137,26 @@ export default function ProductDetail({
             const at = Math.min(imageIndex, gallery.length - 1);
             const shown = gallery[at];
             /**
+             * 🖼 รูปของสินค้าเอง = ช่วงแรกของแกลเลอรี (product.images) · ที่เหลือคือภาพประจำตัวเลือก/เรท
+             * ที่เติมไว้ให้ "กดเลือกแล้วภาพใหญ่สลับตาม" (jumpToImage) — ไม่ใช่รูปให้เลื่อนดู
+             * เดิมลูกศร/ตัวนับ/แถบรูปย่อ นับรวมหมด: พวงกุญแจอะคริลิครูปจริง 10 แต่ขึ้น "1/148"
+             * ลูกค้าปัดเจอรูปตะขอทีละอัน 138 รูป (12 ต.ค. 69) → เลื่อน/นับ/รูปย่อ เฉพาะรูปของสินค้า
+             * สินค้าที่ไม่มีรูปของตัวเองเลย = ใช้ทั้งแกลเลอรีแบบเดิม
+             */
+            const own = product.images.length > 0 ? Math.min(product.images.length, gallery.length) : gallery.length;
+            const onOption = at >= own;
+            /**
              * เลื่อนรูปแบบวน — อยู่รูปสุดท้ายกดขวาต่อได้เลย ไม่ต้องย้อนกลับทีละรูป
              * คิดจากค่าก่อนหน้าใน setState (ไม่ใช่ at ที่ค้างอยู่ในรอบ render นี้)
              * ไม่งั้นกดรัว ๆ หลายทีก่อน render รอบใหม่ จะขยับแค่ทีเดียว
+             * กำลังดูภาพประจำตัวเลือกอยู่ → ลูกศรพากลับเข้ารูปของสินค้า (ขวา = รูปแรก · ซ้าย = รูปสุดท้าย)
              */
             const step = (d: number) =>
-              setImageIndex((i) => (gallery.length + Math.min(i, gallery.length - 1) + d) % gallery.length);
+              setImageIndex((i) => {
+                const cur = Math.min(i, gallery.length - 1);
+                if (cur >= own) return d > 0 ? 0 : own - 1;
+                return (own + cur + d) % own;
+              });
             return (
           <div className="lg:sticky lg:top-24">
             {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
@@ -6196,7 +6213,7 @@ export default function ProductDetail({
                   visual
                 );
               })()}
-              {gallery.length > 1 && (
+              {(own > 1 || onOption) && (
                 <>
                   {([
                     { d: -1, side: "prev", glyph: "‹", label: "ดูรูปก่อนหน้า" },
@@ -6213,14 +6230,12 @@ export default function ProductDetail({
                     </button>
                   ))}
                   {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
-                  <span className="pgal-count">
-                    {at + 1}/{gallery.length}
-                  </span>
+                  <span className="pgal-count">{onOption ? "ภาพตัวเลือก" : `${at + 1}/${own}`}</span>
                 </>
               )}
             </div>
             {/* แถบรูปย่อ — เลื่อนทีละชุดด้วยปุ่มลูกศร (ดู GalleryThumbs) */}
-            <GalleryThumbs gallery={gallery} at={at} onPick={setImageIndex} coverSrc={product.imageSrc} />
+            <GalleryThumbs gallery={gallery.slice(0, own)} at={onOption ? -1 : at} onPick={setImageIndex} coverSrc={product.imageSrc} />
             {shown.label && (
               <p className="pgal-cap">
                 มุมมอง: <b>{shown.label}</b>
@@ -8420,14 +8435,18 @@ export default function ProductDetail({
                         : "bg-[var(--sky-50)] text-[var(--navy-soft)] ring-1 ring-[var(--sky-100)] hover:bg-[var(--sky-100)] hover:text-[var(--navy)]"
                     }`}
                   >
-                    {t.title}
+                    {shopText(t.title)}
                   </button>
                 );
               })}
             </div>
           </div>
           <div className="ptab-panel">
-            <ProductTabText tab={product.tabs![Math.min(tabIndex, product.tabs!.length - 1)]} />
+            {/* 🗣 ข้อความแท็บที่แอดมินเขียนเอง — แปลงศัพท์ร้าน (เรทที่ 1/ดีเทล) เป็นคำง่ายตอนแสดง (shopText) ข้อมูลเดิมไม่แตะ */}
+            {(() => {
+              const t = product.tabs![Math.min(tabIndex, product.tabs!.length - 1)];
+              return <ProductTabText tab={{ ...t, title: shopText(t.title), text: shopText(t.text), ...(t.html ? { html: shopText(t.html) } : {}) }} />;
+            })()}
           </div>
         </section>
       )}
