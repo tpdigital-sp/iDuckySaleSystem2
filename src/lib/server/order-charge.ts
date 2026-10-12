@@ -10,6 +10,7 @@ import {
   type OrderItem,
 } from "@/lib/admin-data";
 import { orderNotice, type LineMessage } from "@/lib/server/notify";
+import { absorbSurplusIntoBalance } from "@/lib/payments";
 
 const thb = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\.00$/, "");
 
@@ -38,6 +39,8 @@ export function applyCharge(order: Order, charge: OrderCharge, who: string, opts
   let updated: Order = { ...order, charges: [...(order.charges ?? []), charge] };
   if (opts?.extraDoc) updated = { ...updated, flowAccountExtras: [...(updated.flowAccountExtras ?? []), { ...opts.extraDoc, chargeId: charge.id }] };
   if (updated.paidTotal == null && !waiting && !updated.deposit) updated = { ...updated, paidTotal: totalBefore };
+  // 💸 ลูกค้าโอนเกินมาก่อนแล้ว (ส่วนเกินยังไม่ได้คืน/ย้าย) → หักยอดที่เพิ่มจากเงินก้อนนั้นก่อน ไม่เด้งทวงซ้ำ (OD-261009-8219)
+  updated = absorbSurplusIntoBalance(updated, who).order;
   const total = orderTotal(updated);
   const bal = updated.paidTotal != null ? orderBalance(updated) : 0;
   // ใบที่พักอยู่ "รอตรวจสอบ" (สลิปรอคนตรวจ · parkForSlipReview) ไม่เด้งซ้ำ — ไม่งั้น reopenedFrom ถูกทับเป็น "รอตรวจสอบ"
@@ -89,6 +92,8 @@ export function applyExtraDocItems(
     flowAccountExtras: [...(order.flowAccountExtras ?? []), extra],
   };
   if (updated.paidTotal == null && !waiting && !updated.deposit) updated = { ...updated, paidTotal: totalBefore };
+  // 💸 ลูกค้าโอนเกินมาก่อนแล้ว (ส่วนเกินยังไม่ได้คืน/ย้าย) → หักยอดที่เพิ่มจากเงินก้อนนั้นก่อน ไม่เด้งทวงซ้ำ (OD-261009-8219)
+  updated = absorbSurplusIntoBalance(updated, who).order;
   const total = orderTotal(updated);
   const bal = updated.paidTotal != null ? orderBalance(updated) : 0;
   const reopen = !updated.deposit && !updated.claimOf && !waiting && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
@@ -124,6 +129,19 @@ export function chargeNotice(applied: ChargeApplied, charge: OrderCharge, link: 
       : "โอนแล้วส่งสลิปมาในแชทนี้ได้เลยครับ (ใบนี้ชำระตามเอกสารของร้าน)"
     : "โอนแล้วแนบสลิปในหน้าออเดอร์ได้เลยครับ";
   const button = doc ? { label: `เปิด${doc.docTypeLabel}`, uri: doc.url } : undefined;
+  // เงินโอนเกินที่ลูกค้าโอนมาก่อนหักยอดเพิ่มครบแล้ว (absorbSurplusIntoBalance) — ห้ามบอก "โอนเพิ่ม 0 บาท"
+  const coveredBySurplus = order.paidTotal != null && bal <= 0;
+  if (coveredBySurplus)
+    return orderNotice(order, link, {
+      tone: "charge",
+      head: "มีค่าบริการเพิ่ม",
+      headline: `${charge.label} ${thb(charge.amount)} บาท — หักจากยอดที่โอนเกินมาแล้ว ไม่ต้องโอนเพิ่มครับ`,
+      rows: [
+        { label: "ยอดรวมทั้งบิล", value: `${thb(total)} บาท` },
+        { label: "รับแล้ว", value: `${thb(order.paidTotal ?? 0)} บาท`, bold: true },
+      ],
+      alt: `🧾 ออเดอร์ ${order.id} มีค่าบริการเพิ่ม: ${charge.label} ${thb(charge.amount)} บาท — หักจากยอดที่โอนเกินมาแล้ว ไม่ต้องโอนเพิ่มครับ\n${link}`,
+    });
   return orderNotice(order, link, {
     tone: "charge",
     head: "มีค่าบริการเพิ่ม",

@@ -1,4 +1,4 @@
-import { amountDueNow, orderBalance, orderTotal, paidSoFar, uncreditedReceived, type Order, type OrderPayment } from "./admin-data";
+import { amountDueNow, orderBalance, orderTotal, paidSoFar, uncreditedReceived, withLog, type Order, type OrderPayment } from "./admin-data";
 
 /**
  * 💸 บัญชีรับเงินของออเดอร์ — มองสลิปทุกใบเป็นรายการเดียวกัน (ใช้ได้ทั้งฝั่งลูกค้า/แอดมิน/เซิร์ฟเวอร์)
@@ -175,6 +175,39 @@ export function overpayHandled(o: Order): number {
 export function overpayOutstanding(o: Order): number {
   const left = Math.round((overpayGross(o) - overpayHandled(o)) * 100) / 100;
   return left >= 1 ? left : 0;
+}
+
+/**
+ * 💸→🧾 เงินโอนเกินที่ "ลอยอยู่" (สลิปผ่านแต่ไม่ได้นับเข้า paidTotal และยังไม่ได้คืน/ย้าย/ออกคูปอง) พอจ่ายยอดค้างได้เท่าไร (บาท)
+ * — 0 = ไม่มีเงินให้หัก · ใช้ตอนยอดบิลโตหลังรับเงิน: หักจากเงินที่ลูกค้าโอนมาแล้วก่อน ค่อยทวงส่วนที่ยังขาด
+ *
+ * ทำไมต้องมี (OD-261009-8219 · 9 ต.ค. 69): ลูกค้าโอน 4,530 รวมค่าตัดภาพ ฿30 ที่แอดมินยังไม่ได้ใส่ (บิลตอนนั้น 4,500)
+ * SlipOK ผ่าน นับ paidTotal 4,500 จด "โอนเกิน 30" · แอดมินเพิ่มรายการค่าตัดภาพ ฿30 → บิล 4,530 → ระบบเด้งกลับ
+ * "รอชำระเงิน ค้าง 30" + กล่อง 💸 "โอนเกิน 30" พร้อมกัน ทั้งที่เงินเข้าครบพอดี
+ * ใบมัดจำมีงวดของตัวเอง ไม่แตะ (ปล่อยให้แอดมินใช้กล่อง 💸 เอง)
+ */
+export function surplusForBalance(o: Order): number {
+  if (o.status === "ยกเลิก" || o.claimOf || o.deposit || o.paidTotal == null) return 0;
+  const bal = orderBalance(o);
+  if (bal <= 0) return 0;
+  // คืน/ย้าย/ออกคูปองไปแล้วเท่าไร ต้องหักออก — เงินก้อนนั้นออกจากร้านไปแล้ว
+  const free = Math.round((uncreditedReceived(o) - overpayHandled(o)) * 100) / 100;
+  if (free <= 0) return 0;
+  return Math.round(Math.min(bal, free) * 100) / 100;
+}
+
+/** หักยอดค้างด้วยเงินโอนเกินที่ลอยอยู่ (surplusForBalance) — คืน credit 0 = ไม่แตะออเดอร์ */
+export function absorbSurplusIntoBalance(o: Order, who: string): { order: Order; credit: number } {
+  const credit = surplusForBalance(o);
+  if (credit <= 0) return { order: o, credit: 0 };
+  const paid = Math.round(((o.paidTotal ?? 0) + credit) * 100) / 100;
+  const order = withLog(
+    { ...o, paidTotal: paid },
+    who,
+    "นับเงินที่โอนเกินไว้เข้ายอดที่เพิ่ม",
+    `ลูกค้าโอนเกินมาก่อนแล้ว ${credit.toLocaleString("th-TH")} บาท — หักยอดที่เพิ่มให้ ไม่ต้องโอนซ้ำ · รับแล้ว ${paid.toLocaleString("th-TH")} จาก ${orderTotal(o).toLocaleString("th-TH")} บาท`
+  );
+  return { order, credit };
 }
 
 /** ค้นใบเพิ่มด้วย id */

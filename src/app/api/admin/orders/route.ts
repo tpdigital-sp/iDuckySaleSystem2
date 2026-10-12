@@ -67,6 +67,7 @@ import {
   shipmentExtras,
 } from "@/lib/admin-data";
 import { inBackground } from "@/lib/server/background";
+import { absorbSurplusIntoBalance } from "@/lib/payments";
 import { keepServerAlert } from "@/lib/order-alert";
 
 /** สรุปเหตุผลที่ด่านตรวจยังไม่ผ่าน (ไว้โชว์/ลง log) */
@@ -1037,6 +1038,18 @@ export async function PATCH(req: Request) {
     );
   }
 
+  /**
+   * 💸→🧾 ยอดบิลโตหลังรับเงิน แต่ลูกค้าโอนเกินมาก่อนแล้ว (สลิปผ่าน ส่วนเกินยังไม่ได้คืน/ย้าย) → หักจากเงินก้อนนั้นก่อน
+   * ⚠️ ต้องอยู่ "ก่อน" บล็อกเด้งกลับรอชำระเงิน — ไม่งั้นใบที่เงินครบเด้งไปค้าง ฿x พร้อมกล่อง 💸 โอนเกิน ฿x (OD-261009-8219 · 9 ต.ค. 69)
+   * ใบที่ค้างแบบนี้อยู่แล้ว บันทึกอะไรครั้งถัดไปก็หายเอง (restoredFromReopen ด้านล่างพากลับขั้นเดิม)
+   */
+  let surplusCredit = 0;
+  if (mayEditFull) {
+    const r = absorbSurplusIntoBalance(toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
+    toSave = r.order;
+    surplusCredit = r.credit;
+  }
+
   // แอดมินเปลี่ยนสถานะเองในคำขอนี้ → ล้างสถานะที่จำไว้ก่อนเด้ง (ไม่ให้เด้งกลับไปทับสิ่งที่แอดมินตั้งใจ)
   if (mayEditFull && toSave.status !== existing.status && toSave.reopenedFrom) toSave = { ...toSave, reopenedFrom: undefined };
 
@@ -1096,7 +1109,9 @@ export async function PATCH(req: Request) {
      * ยอดรับ (paidTotal) ต้องเท่าเดิมเป๊ะ ไม่งั้นยังนับเป็นการดันสถานะชำระแล้ว
      * (OD-261002-4046 · 6 ต.ค. 69: เพิ่มรายการซ้ำแล้วลบตัวเดิม → ยอดกลับเท่าที่โอนมา → 403 "ยืนยันการรับเงินไม่ได้" พนักงานเห็นว่าลบไม่หาย)
      */
-    const autoRestore = restoredFromReopen && toSave.paidTotal === existing.paidTotal;
+    // + เงินโอนเกินที่สลิปยืนยันไว้แล้ว (surplusCredit) ก็ไม่ใช่เงินใหม่ — หักยอดเพิ่มแล้วครบ = กลับขั้นเดิมได้
+    const autoRestore =
+      restoredFromReopen && Math.abs((toSave.paidTotal ?? 0) - ((existing.paidTotal ?? 0) + surplusCredit)) < 0.005;
     const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && !autoRestore;
     const depositFirst = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
     const depositSettled = !!toSave.deposit?.settledAt && !existing.deposit?.settledAt;
