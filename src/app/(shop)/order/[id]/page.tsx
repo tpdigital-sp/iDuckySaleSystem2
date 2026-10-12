@@ -21,7 +21,7 @@ import { appendLotLines, setAppendTarget } from "@/lib/append-order";
 import { rememberOrderLink } from "@/lib/my-order-links";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
-import { SpecLines } from "@/components/SpecLines";
+import { HIDE_GENERIC_RATE, SPEC_HIDE, SpecLines } from "@/components/SpecLines";
 import { AddOnBreakdown, addOnLineViews, itemUnitExtras } from "@/components/AddOnLines";
 import { LINE_URL } from "@/components/LineButton";
 import SenderForm from "@/components/SenderForm";
@@ -992,6 +992,13 @@ export default function CustomerOrderPage() {
                   ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(paidSoFar(order))} จาก ${formatPrice(orderTotal(order))})`
                   : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
           </p>
+          {/* ⚡ ส่วนลดโอนไวยังอยู่ในเวลา — บอกตรงกล่องโอน (เดิมอยู่แค่ในสรุปยอดท้ายหน้า ลูกค้าทักไลน์ก่อนตามขั้น 1 แล้วเลยเวลา · 12 ต.ค. 69) */}
+          {earlyPayState(order, nowTick) === "active" && order.earlyPay && (
+            <p className="ord-note ok mt-2 px-3 py-2 text-xs font-semibold leading-relaxed">
+              ⚡ ยอดนี้หัก{order.earlyPay.label.replace(/^[^\p{L}]+/u, "")} {formatPrice(order.earlyPay.amount)} แล้ว — โอนและแนบสลิปภายใน{" "}
+              <strong>{Math.max(1, Math.ceil(earlyPayMsLeft(order, nowTick) / 60_000))} นาที</strong> ไม่งั้นส่วนลดนี้จะหายไปเอง
+            </p>
+          )}
           <PayAccounts payment={payment} />
           <label
             onDragOver={(e) => e.preventDefault()}
@@ -1702,6 +1709,9 @@ export default function CustomerOrderPage() {
                       sel={it.sel}
                       text={it.selections}
                       className="mt-1 text-xs t-soft"
+                      /* 🗣 ชื่อเรทแบบทั่วไป ("เรทราคา: เรทที่ 1 แบบคละดีเทล") ไม่บอกอะไรลูกค้า — ซ่อนแบบเดียวกับตะกร้า
+                         ชื่อที่เป็นวิธีทำงาน (พิมพ์ DTF/งานปัก) ยังโชว์ (12 ต.ค. 69) */
+                      hide={[...SPEC_HIDE, HIDE_GENERIC_RATE]}
                       stripLinks
                       /* 💵 ป้าย +฿N/ชิ้น ท้ายบรรทัดที่บวกเพิ่มจากราคาเรท (เคลือบ/พิมพ์ 2 ด้าน/ตะขอ) — เหมือนตะกร้า (เจ้าของร้าน 29 ก.ย. 69) */
                       extras={itemUnitExtras(it, prodById[it.productId])}

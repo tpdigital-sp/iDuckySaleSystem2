@@ -64,6 +64,8 @@ interface Placed {
    * หน้านี้จะไม่โชว์เลขบัญชี/ปุ่มแนบสลิป จนกว่าแอดมินจะใส่ราคาครบ (กติกาเดียวกับหน้า /order/[id])
    */
   pending: string[];
+  /** ⚡ ส่วนลดโอนไวที่หักไว้ในยอดนี้ + กรอบเวลา (เก็บตอนกดสั่ง — หลังสั่งตะกร้าว่าง earlyPay คิดใหม่ได้ 0) */
+  earlyPay?: { amount: number; window: string };
 }
 
 
@@ -692,6 +694,7 @@ export default function CheckoutPage() {
       key: res.key,
       // งานที่แอดมินต้องตีราคาก่อน (เข้ามาที่ ฿0) — ยังโอนไม่ได้จนกว่าจะได้ราคาครบ
       pending: orderItems.filter((it) => it.qty > 0 && it.unitPrice <= 0).map((it) => `${it.name} ×${itemQtyText(it, productOf(it.productId))}`),
+      ...(earlyPay > 0 ? { earlyPay: { amount: earlyPay, window: earlyPayWindowText(earlyPayOf(payment)) ?? "" } } : {}),
     });
     // เอาเฉพาะรายการที่สั่งไปออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งรอบหน้า
     items.forEach((it) => removeItem(it.key));
@@ -810,6 +813,13 @@ export default function CheckoutPage() {
               </>
             )}
           </p>
+          {/* ⚡ ส่วนลดโอนไว — หน้านี้เดิมไม่บอกเลย ลูกค้าทำขั้น 1 (ทักไลน์) ก่อนแล้วเลยเวลา ส่วนลดหาย (12 ต.ค. 69) */}
+          {!awaitingQuote && placed.earlyPay && (
+            <p className="mx-auto mt-2 max-w-xs rounded-xl bg-amber-50 px-3 py-1.5 text-[12px] font-semibold leading-relaxed text-amber-800 ring-1 ring-amber-200">
+              ⚡ หักส่วนลดโอนไว {formatPrice(placed.earlyPay.amount)} แล้ว
+              {placed.earlyPay.window ? ` — โอนและแนบสลิปภายใน ${placed.earlyPay.window}` : ""} ไม่งั้นส่วนลดจะหายไปเอง
+            </p>
+          )}
           <button
             type="button"
             onClick={() => {
