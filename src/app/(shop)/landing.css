@@ -5569,3 +5569,33 @@ to{opacity:1;transform:none}}
   body.buy-page .fabx-line,body.buy-page .dl .fabx-line{display:none !important}
   body.buy-page .fabx-bot,body.buy-page .dl .fabx-bot{bottom:calc(112px + env(safe-area-inset-bottom,0px)) !important}
 }
+
+/* ---------------------------------------------------------------------------
+   📱 หน้ารายการสินค้า/หน้าหมวด (มือถือ ≤ 760px) — ให้สินค้าแถวแรกโผล่ตั้งแต่จอแรก (เจ้าของร้านอนุมัติ 12 ต.ค. 69)
+   เดิมจอแรกมีแต่ ป้าย + หัวข้อ + คำโปรย + ป้ายนับ + ช่องค้นหา + ช่องเรียง (เต็มบรรทัด) + ชิปหมวด 3 แถว
+   → ซ่อนป้าย/คำโปรย · ป้ายนับต่อท้ายหัวข้อ · ค้นหา+เรียงบรรทัดเดียว สูง 44px
+   · ชิปหมวดแถวเดียวเลื่อนซ้าย-ขวา (ปุ่ม "ดูหมวดทั้งหมด" ไม่โผล่เอง เพราะไม่ล้นแนวตั้งแล้ว)
+   ชิปที่เลือกอยู่ถูกเลื่อนมากลางแถวโดย ProductListing.tsx (ต้องมี position:relative ให้ offsetLeft อิงแถวชิป)
+   ⚠️ ต้องอยู่ท้ายไฟล์ ทับกฎ .plist-* ด้านบนที่ specificity เท่ากัน
+   --------------------------------------------------------------------------- */
+@media(max-width:760px){
+  .dl .plist-head{align-items:center;gap:8px 10px;margin-bottom:12px}
+  .dl .plist-head .kicker,.dl .plist-head p{display:none}
+  .dl .plist-head h1{margin-top:0;font-size:1.45rem}
+  .dl .plist-count{padding:5px 12px;font-size:.76rem}
+  .dl .plist-bar{flex-wrap:nowrap;gap:8px;margin-bottom:10px}
+  .dl .plist-search{flex:1 1 auto}
+  .dl .plist-search>i{width:30px;height:30px;left:7px;font-size:.82rem}
+  .dl .plist-search input{height:44px;padding:0 12px 0 44px;font-size:.86rem}
+  .dl .plist-sort,.dl .plist-sort select{width:auto}
+  .dl .plist-sort select{height:44px;max-width:132px;padding:0 30px 0 14px;font-size:.8rem}
+  .dl .plist-sort::after{right:13px}
+  .dl .plist-cats,.dl .plist-cats.is-clamped{position:relative;flex-wrap:nowrap;justify-content:flex-start;
+    overflow-x:auto;max-height:none;margin:0 -20px 6px;padding:4px 20px 10px;scroll-padding-inline:20px;
+    -webkit-mask-image:none;mask-image:none;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .dl .plist-cats::-webkit-scrollbar{display:none}
+  .dl .plist-cat{padding:8px 14px;font-size:.84rem}
+  .dl .plist-cats-more{display:none !important}
+  /* การ์ดในราง "ลองดู/มาใหม่" หน้าแรก: ชื่อยาวโดนตัดเหลือ "กางเกง COMFY…" → ให้ 3 บรรทัด */
+  .dl .fresh-card .card-body h3{-webkit-line-clamp:3}
+}

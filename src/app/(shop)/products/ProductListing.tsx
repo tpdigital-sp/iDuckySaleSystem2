@@ -232,6 +232,30 @@ export default function ProductListing() {
 
   const visible = useMemo(() => filtered.slice(0, shown), [filtered, shown]);
 
+  /** หมวดที่กรองอยู่ (null = ดูทุกหมวด) — ใช้ตั้งหัวข้อหน้าเป็นชื่อหมวด */
+  const headCat = category === "all" ? null : (cats.find((c) => c.id === category) ?? null);
+
+  /** จอมือถือ (≤ 760px ชุดเดียวกับ CSS) — ช่องเรียงลำดับใช้ข้อความสั้น */
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 760px)");
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  /**
+   * 📱 มือถือ: ชิปหมวดเป็นแถวเดียวเลื่อนซ้าย-ขวา (landing.css) — ชิปที่เลือกอยู่ต้องโผล่ในจอ
+   * เลื่อนเฉพาะแถวชิป (scrollLeft) ห้ามใช้ scrollIntoView เพราะจะพาทั้งหน้าเลื่อนตามไปด้วย
+   */
+  useEffect(() => {
+    const row = catsRef.current;
+    const on = row?.querySelector<HTMLElement>(".plist-cat.on");
+    if (!row || !on || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2, behavior: "smooth" });
+  }, [category, activeCat, loading, narrow]);
+
   function selectCategory(id: string) {
     router.replace(id === "all" ? "/products" : `/products?category=${id}`, {
       scroll: false,
@@ -270,8 +294,17 @@ export default function ProductListing() {
               <span className="kicker kicker-yolk">
                 <i className="folder">🛍️</i>เลือกซื้อสินค้า
               </span>
+              {/* เลือกหมวดอยู่ = หัวข้อเป็นชื่อหมวด (เดิมขึ้น "สินค้าทั้งหมด" ทุกกรณี ทั้งที่กรองเหลือหมวดเดียว · 12 ต.ค. 69) */}
               <h1>
-                สินค้า<em>ทั้งหมด</em>
+                {headCat ? (
+                  <>
+                    {headCat.emoji} <em>{catShortName(headCat.name)}</em>
+                  </>
+                ) : (
+                  <>
+                    สินค้า<em>ทั้งหมด</em>
+                  </>
+                )}
               </h1>
               <p>ทุกชิ้นพิมพ์ลายของคุณเองได้ — เลือกหมวด ค้นหา หรือเรียงราคาได้เลย</p>
             </div>
@@ -300,10 +333,11 @@ export default function ProductListing() {
               />
             </label>
             <div className="plist-sort">
+              {/* มือถือ: ช่องเรียงอยู่บรรทัดเดียวกับช่องค้นหา — ตัดคำนำ "เรียงตาม:" ให้สั้นพอ (คำนำยังอยู่ใน aria-label) */}
               <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="เรียงลำดับสินค้า">
                 {SORTS.map((s) => (
                   <option key={s.id} value={s.id}>
-                    เรียงตาม: {s.label}
+                    {narrow ? s.label : `เรียงตาม: ${s.label}`}
                   </option>
                 ))}
               </select>
