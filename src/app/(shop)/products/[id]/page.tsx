@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { productPath, PRODUCTS } from "@/lib/products";
 import { getProductServer, getProductTemplates, getRelatedProducts } from "@/lib/products-server";
-import { productAutoSeo } from "@/lib/auto-seo";
+import { productAutoSeo, startPriceOf, syncStartPrice } from "@/lib/auto-seo";
 import { withImageVersion } from "@/lib/img";
 import { fetchProductReviewStats } from "@/lib/server/reviews-db";
 import { getCategoryServer } from "@/lib/server/categories-server";
@@ -36,8 +36,10 @@ export async function generateMetadata({
   if (!product) return { title: "ไม่พบสินค้า" };
   // แอดมินยังไม่เขียน SEO เอง → ระบบเขียนให้อัตโนมัติจากข้อมูลสินค้า (ทุกสินค้ามี meta ครบเสมอ)
   const auto = productAutoSeo(product);
-  const title = product.seo?.title || auto.title;
-  const description = product.seo?.description || product.description || auto.description;
+  // ตัวเลข "เริ่มต้น N บาท" ใน SEO ที่บันทึกไว้ → ราคาจริงตอนนี้ (ชุดเดียวกับการ์ดหน้ารายการ)
+  const start = startPriceOf(product);
+  const title = syncStartPrice(product.seo?.title, start) || auto.title;
+  const description = syncStartPrice(product.seo?.description, start) || product.description || auto.description;
   // ที่อยู่ทางการของหน้านี้ = ลิงก์ตาม slug (ถ้ามี) — เปิดด้วย id เดิมก็ชี้มาที่เดียวกัน ไม่ถูกนับเป็นหน้าซ้ำ
   const canonical = productPath(product);
   return {

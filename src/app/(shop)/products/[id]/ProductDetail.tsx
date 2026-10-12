@@ -1,6 +1,6 @@
 "use client";
 
-import { productAutoSeo } from "@/lib/auto-seo";
+import { productAutoSeo, startPriceOf, syncStartPrice } from "@/lib/auto-seo";
 import { SHOP, SITE_URL } from "@/lib/shop-info";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -2127,6 +2127,16 @@ export default function ProductDetail({
     }
   }
 
+  /**
+   * 📱 หน้าสินค้าบนมือถือ: ปุ่มลอยบังจอเกือบ 1 ใน 3 (เมนูล่าง + แถบราคา + ตะกร้า/บอท/LINE + ป้าย "ทักเราได้เลยนะ")
+   * → ติดคลาส buy-page ที่ <body> ให้ landing.css ซ่อนเมนูล่าง/ตะกร้าลอย/LINE ลอย เหลือปุ่มแชทปุ่มเดียว (ในแชทมีปุ่มไป LINE)
+   * แถบราคาติดล่างจึงลงไปชิดขอบจอได้ (เดิมเว้น 84px ให้เมนูล่าง) — เจ้าของร้านอนุมัติ 12 ต.ค. 69 · จอคอมไม่เปลี่ยน
+   */
+  useEffect(() => {
+    document.body.classList.add("buy-page");
+    return () => document.body.classList.remove("buy-page");
+  }, []);
+
   // แถบซื้อลอยล่างจอ: โชว์เมื่อกล่องสั่งซื้อหลักหลุดจอไปแล้ว
   useEffect(() => {
     const el = orderBoxRef.current;
@@ -2581,7 +2591,7 @@ export default function ProductDetail({
               </span>
               <span className="text-[10px] font-normal text-amber-600">
                 {cap != null
-                  ? "อยากแนบเพิ่ม กด + เพิ่ม “คละกี่ลาย” ด้านบนก่อนนะครับ · หรือลบรูปเดิมออกแล้วแนบใหม่"
+                  ? "อยากแนบเพิ่ม กด + ที่ช่อง “คละกี่ลาย” (ข้างช่องจำนวน) ก่อนนะครับ · หรือลบรูปเดิมออกแล้วแนบใหม่"
                   : `จำนวน ${qty.toLocaleString("th-TH")} ${unit} ${backOn ? `${sideWord}` : ""}คละได้ ${limit!.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ต้องเพิ่มจำนวนสั่ง`}
               </span>
             </>
@@ -3501,7 +3511,12 @@ export default function ProductDetail({
 
   // ── SEO/AEO: FAQ + structured data (JSON-LD) ให้ Google/AI ดึงไปตอบ ──
   // ไม่มี FAQ ที่แอดมินเขียนเอง → ใช้ชุดที่ระบบเขียนให้อัตโนมัติ (ทุกสินค้ามี AEO เสมอ)
-  const faqs = product.seo?.faqs?.length ? product.seo.faqs : productAutoSeo(product).faqs;
+  // คำถาม FAQ ที่บันทึกไว้มี "เริ่มต้น N บาท" ค้างราคาเก่า → ปรับเป็นราคาเริ่มต้นจริงตอนนี้ (ตรงกับการ์ด/กล่องราคา)
+  const faqs = useMemo(() => {
+    if (!product.seo?.faqs?.length) return productAutoSeo(product).faqs;
+    const start = startPriceOf(product);
+    return product.seo.faqs.map((f) => ({ ...f, q: syncStartPrice(f.q, start), a: syncStartPrice(f.a, start) }));
+  }, [product]);
   const jsonLd = useMemo(() => {
     const range = priceRange(product);
     // ที่อยู่ทางการของหน้า (ตาม slug) — ให้ตรงกับ canonical ใน <head> และฟีด Merchant Center
@@ -3531,7 +3546,8 @@ export default function ProductDetail({
                 reviewCount: reviewStats.count,
               },
             }
-          : product.rating
+          : // ยังขายไม่ได้ = ไม่มีใครให้ดาว — ห้ามแต่ง "5 ดาว จาก 1 รีวิว" ให้ Google (ผิดกติกา structured data)
+            product.rating && product.sold > 0
             ? {
                 aggregateRating: {
                   "@type": "AggregateRating",
@@ -5755,6 +5771,287 @@ export default function ProductDetail({
   /** ขั้นที่ต้องทำ "ตอนนี้" — ขั้นแรกที่ยังไม่เสร็จ */
   const ctaStepNow = ctaStepsLeft[0] ?? null;
 
+  /**
+   * 🎨 กล่อง "คุยลายกับแอดมิน" + "แนบลายของคุณ" + หมายเหตุถึงร้าน
+   * วางไว้ "ก่อน" กล่องสั่งซื้อ (จำนวน+ปุ่มเพิ่มลงตะกร้า) — ลำดับเดียวกับแถบ "เลือกสเปค › แนบลาย › ระบุจำนวนลาย"
+   * เดิมอยู่ใต้ปุ่ม: ลูกค้าเจอปุ่ม 🔒 ล็อกก่อน แล้วต้องเลื่อนหาช่องแนบลายเอง (เจ้าของร้านสั่งแก้ 12 ต.ค. 69)
+   * ⚠️ โหมดออกแบบบนเว็บ (studioMode) ยังวางไว้ใต้กล่องสั่งซื้อเหมือนเดิม — ตรงนั้นแนบลายไม่บังคับ
+   *    ปุ่มแรกคือ "🎨 เริ่มสร้าง" ในกล่องสั่งซื้อ ห้ามมีของไม่บังคับมาคั่นระหว่างตัวเลือกกับปุ่ม
+   */
+  const artSection = (
+    <>
+      {/*
+        ═══ เพิ่มเติม (ไม่บังคับ) — ยุบไว้ ไม่ให้บังปุ่มซื้อ · โยนรูปลงหน้าไหนก็เปิดให้เอง ═══
+        สินค้าที่ออกแบบบนเว็บได้ (มีเทมเพลต) ข้ามช่อง "แนบลายของคุณ" ไปเลย —
+        ลายมาจากแบบที่ลูกค้าวางเองในจอสร้างงาน ไม่ต้องให้อัปไฟล์ซ้ำอีกทาง
+      */}
+      {/*
+        ═══ 💬 คุยลายกับแอดมินก่อนสั่ง — งานปัก/งานตีลาย ═══
+        งานที่ต้องเห็นแบบตรงกันก่อนเริ่มผลิต (ปักต้องแปลงไฟล์/ตีลายให้ดูก่อน)
+        ทักไลน์ → คุยจบ → ติ๊กยืนยัน → ถึงจะกดสั่งได้ (แอดมินตั้งเป็น "แค่แนะนำ" ก็ได้)
+        อยู่เหนือกล่องแนบลาย เพราะเป็นขั้นตอนแรกของงานประเภทนี้
+      */}
+      {consult && !studioMode && (
+        <div
+          id="consult-box"
+          className={`mt-4 rounded-3xl p-4 ring-1 transition ${
+            consultOk
+              ? "bg-emerald-50/70 ring-emerald-300"
+              : consultWarn
+                ? "bg-rose-50 ring-2 ring-rose-300"
+                : "bg-emerald-50/60 ring-emerald-200"
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-lg leading-none">💬</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-stone-700">
+                คุยลายกับแอดมินก่อนสั่ง
+                {consultOk ? (
+                  <span className="ml-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">คุยแล้ว ✓</span>
+                ) : consultGate ? (
+                  <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">ต้องคุยก่อน *</span>
+                ) : (
+                  <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">แนะนำ</span>
+                )}
+              </p>
+              <p className="mt-1 text-[12px] leading-relaxed text-stone-600">{consult.note?.trim() || CONSULT_NOTE_DEFAULT}</p>
+            </div>
+          </div>
+
+          <a
+            href={LINE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+          >
+            💬 ทักไลน์ส่งลายให้แอดมินดู
+          </a>
+
+          <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-2xl bg-white/80 p-3 ring-1 ring-emerald-200">
+            <input
+              type="checkbox"
+              checked={consultOk}
+              onChange={(e) => {
+                setConsultOk(e.target.checked);
+                if (e.target.checked) setConsultWarn(false);
+              }}
+              className="mt-0.5 h-4 w-4 accent-emerald-500"
+            />
+            <span className="text-xs">
+              <span className="block font-bold text-stone-700">คุยกับแอดมินเรียบร้อยแล้ว — ตกลงลายกันแล้ว</span>
+              <span className="block text-stone-500">ติ๊กช่องนี้แล้วกดสั่งได้เลย ทางร้านจะเริ่มงานตามลายที่ตกลงกันไว้</span>
+            </span>
+          </label>
+
+          {consultOk && (
+            <input
+              type="text"
+              value={consultRef}
+              onChange={(e) => setConsultRef(e.target.value.slice(0, 120))}
+              placeholder="ชื่อไลน์ที่ใช้คุย / เลขอ้างอิงที่แอดมินให้ไว้ (ไม่บังคับ)"
+              className="mt-2 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            />
+          )}
+
+          {consultWarn && !consultOk && (
+            <p className="mt-2 text-[11px] font-bold text-rose-600">
+              ⚠️ งานนี้ต้องคุยลายกับแอดมินก่อนนะครับ — ทักไลน์คุยให้จบ แล้วกลับมาติ๊กช่องด้านบน
+            </p>
+          )}
+        </div>
+      )}
+
+      <div id="art-box" className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
+        <button
+          type="button"
+          onClick={() => {
+            setArtTouched(true);
+            setExtraOpen((o) => (o === "art" ? null : "art"));
+          }}
+          aria-expanded={extraOpen === "art"}
+          className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-sky-50/60"
+        >
+          <span className="text-lg leading-none">🎨</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-stone-700">
+              {/* สั่งหลายแผ่น: บอกให้ชัดว่าลายนี้เป็นของแผ่นไหน — แต่ละแผ่นใช้ลายของตัวเอง */}
+              {lotMinScope ? `แนบลายของ${lotWord}ที่ ${(sheets.length + 1).toLocaleString("th-TH")}` : "แนบลายของคุณ"}
+              {artProvided ? (
+                <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  {artTotal > 0 ? `แนบแล้ว ${artTotal} รูป` : artLink.trim() ? "ใส่ลิงก์แล้ว" : "♻️ ใช้ไฟล์เก่า"}
+                </span>
+              ) : artRequired && !preArranged ? (
+                /* โหมดแอดมิน/ลิงก์ราคาไม่บังคับแนบ — ลายมาทางไลน์/อีเมลได้ */
+                <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">จำเป็น *</span>
+              ) : (
+                <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>
+              )}
+            </span>
+            <span className="block text-[11px] text-stone-400">
+              {studioMode
+                ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องกดเริ่มสร้าง"
+                : "อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล"}
+            </span>
+          </span>
+          <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
+        </button>
+        {(extraOpen === "art" || (artBlocked && !artTouched)) && <div className="px-4 pb-4">
+          {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setArtDrag(true);
+            }}
+            onDragLeave={(e) => {
+              // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setArtDrag(false);
+                setArtDragSide(null);
+              }
+            }}
+            onDrop={(e) => {
+              // ปล่อยนอกช่องของด้าน = ถือเป็นด้านหน้า (งาน 2 ด้านต้องปล่อยลงช่อง "ด้านหลัง" เองถึงจะเข้าด้านหลัง)
+              e.preventDefault();
+              setArtDrag(false);
+              setArtDragSide(null);
+              void uploadArtwork(e.dataTransfer.files);
+            }}
+            className={`mt-3 rounded-2xl p-3.5 transition ${
+              artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
+            }`}
+          >
+            {/* ♻️ เคยสั่งลายนี้กับร้านแล้ว — ติ๊กแล้วไม่ต้องอัปซ้ำ ร้านหยิบไฟล์จากออเดอร์ก่อน (ยังส่งแบบให้ตรวจก่อนผลิตเหมือนเดิม) */}
+            <label
+              className={`mb-3 flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-xs ring-1 transition ${
+                reuseOld ? "bg-amber-400 text-amber-950 ring-amber-400" : "bg-white text-stone-600 ring-amber-200 hover:ring-amber-400"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={reuseOld}
+                onChange={(e) => {
+                  setReuseOld(e.target.checked);
+                  setArtTouched(true);
+                  setExtraOpen("art");
+                }}
+                className="mt-0.5 h-4 w-4 accent-amber-600"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="font-bold">♻️ เคยสั่งลายนี้กับร้านแล้ว — ใช้ไฟล์เก่า ไม่ต้องอัปใหม่</span>
+                <span className={`block text-[11px] leading-relaxed ${reuseOld ? "text-amber-900" : "text-stone-400"}`}>
+                  ทีมงานจะหยิบไฟล์จากออเดอร์ก่อนให้ · ใส่เลขออเดอร์เดิม (OD-…) ถ้าจำได้ จะได้หาเจอไวขึ้น
+                </span>
+                {reuseOld && (
+                  <input
+                    type="text"
+                    value={reuseFrom}
+                    onChange={(e) => setReuseFrom(e.target.value.slice(0, 220))}
+                    onClick={(e) => e.preventDefault()}
+                    placeholder="เลขออเดอร์เดิม เช่น OD-260801-1234 · หรือบอกว่าลายไหน (ไม่บังคับ)"
+                    aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
+                    className="mt-2 w-full rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 placeholder:font-normal placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                )}
+              </span>
+            </label>
+
+            {/* 1) อัปโหลดภาพ — หัวข้อใหญ่ซ้ำกับแถบพับด้านบน จึงตัดออก เข้าเรื่องเป็นขั้นตอนเลย */}
+            <div className="flex items-center gap-2">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">1</span>
+              {/* 🎨 เดิม "อัปโหลดภาพตัวอย่าง — ใช้เป็นแนวทางให้กราฟฟิก" คู่กับข้อ 2 "ลิงก์ไฟล์งานจริง (แนะนำ)"
+                  ลูกค้าอ่านแล้วเข้าใจว่ารูปที่อัปผลิตไม่ได้ ต้องไปหาลิงก์ Drive มาใส่อีก (12 ต.ค. 69)
+                  ความจริง: เก็บไฟล์ตามต้นฉบับไม่บีบอัด (api/orders/artwork) + กราฟฟิกส่งแบบให้ตรวจก่อนผลิตทุกงาน */}
+              <p className="text-xs font-bold text-stone-700">
+                อัปโหลดไฟล์ลาย <span className="font-normal text-stone-500">— ไฟล์ชัดใช้ผลิตได้เลย</span>
+              </p>
+            </div>
+            <p className="ml-7 mt-0.5 text-[11px] leading-relaxed text-stone-400">
+              เก็บไฟล์ตามต้นฉบับ ไม่บีบอัด · ไม่แน่ใจว่าชัดพอไหม ไม่ต้องห่วง — กราฟฟิกเช็คให้และส่งแบบให้ตรวจก่อนผลิตทุกงาน
+            </p>
+
+            {/*
+              🔄 งานพิมพ์ 2 ด้าน = 2 ช่องแยก "ด้านหน้า" / "ด้านหลัง" — ลูกค้าระบุเองว่าลายไหนพิมพ์ด้านไหน
+              จำนวนลายของแต่ละด้านนับตามรูปในช่องนั้น (ด้านหลังเดิมนับไม่ได้เลย เพดานแนบจับแต่ด้านหน้า)
+              งานด้านเดียวมีช่องเดียวเหมือนเดิม
+            */}
+            {backOn && (
+              <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                งานพิมพ์ 2 ด้าน — แนบลายแยกช่อง <b>ด้านหน้า</b> และ <b>ด้านหลัง</b> · จำนวนลายแต่ละด้านนับตามรูปในช่องนั้น
+                (ด้านหลังใช้ลายเดียวกันทั้งหมด = แนบรูปเดียว)
+              </p>
+            )}
+            {artZone("front")}
+            {backOn && artZone("back")}
+            {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
+
+            {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
+            <div className="mt-3.5 flex items-center gap-2">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">2</span>
+              <label htmlFor="art-link" className="text-xs font-bold text-stone-700">
+                หรือส่งเป็นลิงก์ / อีเมล{" "}
+                <span className="font-normal text-stone-500">— ไม่บังคับ เหมาะกับไฟล์ใหญ่เกิน 15MB หรือไฟล์ AI / PSD / PDF</span>
+              </label>
+            </div>
+            <input
+              id="art-link"
+              type="text"
+              value={artLink}
+              onChange={(e) => {
+                setArtLink(e.target.value.slice(0, 500));
+                // ⚠️ กล่องนี้กางอัตโนมัติตอน artBlocked — พอพิมพ์ลิงก์ครบ artBlocked เป็น false
+                //    กล่องจะหุบทันทีต่อหน้าลูกค้า เหมือนสิ่งที่พิมพ์หายไป · ตรึงให้เปิดค้างไว้
+                setArtTouched(true);
+                setExtraOpen("art");
+              }}
+              placeholder="เช่น https://drive.google.com/…  หรือ  yourmail@gmail.com"
+              className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
+            />
+            <p className="mt-1 text-[10px] leading-relaxed text-stone-400">
+              Google Drive / Dropbox / OneDrive หรืออีเมลที่ส่งไฟล์ไว้ — เราดึงไฟล์ต้นฉบับไปใช้ผลิต
+            </p>
+          </div>
+        </div>}
+
+        {/*
+          หมายเหตุถึงร้าน — กางไว้ตลอด ไม่ต้องกดเปิด
+          เดิมเป็นแถบพับที่หัวข้อเขียน "หมายเหตุถึงร้าน" ซ้ำกับป้ายในช่องอีกที
+          ลูกค้าพิมพ์ช่องนี้บ่อย (สี/ข้อความบนงาน) ซ่อนไว้แล้วหาไม่เจอ → เหลือหัวข้อเดียว ช่องพร้อมพิมพ์เลย
+        */}
+        <div className="border-t border-stone-100 px-4 py-3.5">
+          <label htmlFor="order-note" className="flex cursor-text items-center gap-2">
+            <span className="text-lg leading-none">📝</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-stone-700">
+                หมายเหตุถึงร้าน <span className="font-semibold text-stone-400">(ไม่บังคับ)</span>
+              </span>
+              <span className="block text-[11px] text-stone-400">สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม</span>
+            </span>
+          </label>
+          <textarea
+            id="order-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value.slice(0, 500))}
+            rows={3}
+            placeholder="พิมพ์สิ่งที่อยากบอกร้านได้เลย — เช่น อยากได้สีเข้มกว่าในภาพ · ใส่ชื่อ “iDucky” ใต้โลโก้"
+            className="mt-2 w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm leading-relaxed text-stone-700 ring-1 ring-amber-200 transition placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
+          />
+          {/* ตัวนับโผล่เมื่อเริ่มพิมพ์ · ใกล้เต็มเปลี่ยนเป็นแดงเตือนก่อนโดนตัดที่ 500
+              (ใช้ rose ไม่ใช่ amber — amber ถูกรีแมปเป็นฟ้าแบรนด์ใน globals.css แล้ว ไม่อ่านเป็นคำเตือน) */}
+          {note.length > 0 && (
+            <p
+              className={`mt-1 text-right text-[11px] tabular-nums ${
+                note.length >= 450 ? "font-bold text-rose-500" : "text-stone-400"
+              }`}
+            >
+              {note.length}/500
+            </p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="homebg">
       {/* 🛒 ม่านระหว่าง "สั่งตามสเปคนี้" กำลังหย่อนลงตะกร้าให้ — ปิดเองเมื่อพาไปตะกร้าแล้ว หรือเมื่อสเปคติดด่านตรวจ */}
@@ -5935,11 +6232,14 @@ export default function ProductDetail({
           <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">
             {product.name}
           </h1>
-          <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
-            <span>⭐ {product.rating}</span>
-            <span>·</span>
-            <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
-          </div>
+          {/* ยังขายไม่ได้ = ไม่โชว์ "⭐ 5 · ขายแล้ว 0" — ดูไม่น่าเชื่อ (เจ้าของร้านอนุมัติ 12 ต.ค. 69) */}
+          {product.sold > 0 && (
+            <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
+              <span>⭐ {product.rating}</span>
+              <span>·</span>
+              <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
+            </div>
+          )}
 
           <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
 
@@ -6594,7 +6894,14 @@ export default function ProductDetail({
             ) : /* ตารางช่วงเดียว (ทุกจำนวนราคาเดียว) ไม่ได้ "ยิ่งสั่งเยอะยิ่งถูก" — ตกไปใช้ข้อความตามตัวเลือกด้านล่าง */
             matrix && matrix.tiers.length > 1 ? (
               <p className="mt-1 text-xs text-stone-400">
-                💡 เรทราคา {formatMatrixPriceRange(product, matrix)} ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
+                {/* 🏷 ช่วงราคาต้องเป็นตัวเลขเดียวกับการ์ดหน้ารายการ/ชื่อหน้า (priceRange) — เดิมโชว์เฉพาะเรทที่เลือก
+                    การ์ด "฿6 – ฿200" แต่ในหน้า "฿10 – ฿200" ลูกค้าไม่รู้จะเชื่ออันไหน (12 ต.ค. 69)
+                    ⚠️ ใช้ช่วงรวมได้เฉพาะเมื่อทุกเรทหน่วยเดียวกัน (ดู formatMatrixPriceRange) · ตัวแทนเห็นเรทตัวเองเหมือนเดิม */}
+                💡 ราคา{" "}
+                {!dealerMode && publicRates(product).every((r) => r.pricing.unit === matrix.unit)
+                  ? formatPriceRange(product)
+                  : formatMatrixPriceRange(product, matrix)}{" "}
+                ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
               </p>
             ) : (
               priceRange(product).max > priceRange(product).min && (
@@ -6867,6 +7174,8 @@ export default function ProductDetail({
               />
             </div>
           )}
+
+          {!studioMode && artSection}
 
           {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
           <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
@@ -8030,268 +8339,7 @@ export default function ProductDetail({
             </div>
           </div>
 
-          {/*
-            ═══ เพิ่มเติม (ไม่บังคับ) — ยุบไว้ ไม่ให้บังปุ่มซื้อ · โยนรูปลงหน้าไหนก็เปิดให้เอง ═══
-            สินค้าที่ออกแบบบนเว็บได้ (มีเทมเพลต) ข้ามช่อง "แนบลายของคุณ" ไปเลย —
-            ลายมาจากแบบที่ลูกค้าวางเองในจอสร้างงาน ไม่ต้องให้อัปไฟล์ซ้ำอีกทาง
-          */}
-          {/*
-            ═══ 💬 คุยลายกับแอดมินก่อนสั่ง — งานปัก/งานตีลาย ═══
-            งานที่ต้องเห็นแบบตรงกันก่อนเริ่มผลิต (ปักต้องแปลงไฟล์/ตีลายให้ดูก่อน)
-            ทักไลน์ → คุยจบ → ติ๊กยืนยัน → ถึงจะกดสั่งได้ (แอดมินตั้งเป็น "แค่แนะนำ" ก็ได้)
-            อยู่เหนือกล่องแนบลาย เพราะเป็นขั้นตอนแรกของงานประเภทนี้
-          */}
-          {consult && !studioMode && (
-            <div
-              id="consult-box"
-              className={`mt-4 rounded-3xl p-4 ring-1 transition ${
-                consultOk
-                  ? "bg-emerald-50/70 ring-emerald-300"
-                  : consultWarn
-                    ? "bg-rose-50 ring-2 ring-rose-300"
-                    : "bg-emerald-50/60 ring-emerald-200"
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                <span className="text-lg leading-none">💬</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-stone-700">
-                    คุยลายกับแอดมินก่อนสั่ง
-                    {consultOk ? (
-                      <span className="ml-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">คุยแล้ว ✓</span>
-                    ) : consultGate ? (
-                      <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">ต้องคุยก่อน *</span>
-                    ) : (
-                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">แนะนำ</span>
-                    )}
-                  </p>
-                  <p className="mt-1 text-[12px] leading-relaxed text-stone-600">{consult.note?.trim() || CONSULT_NOTE_DEFAULT}</p>
-                </div>
-              </div>
-
-              <a
-                href={LINE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
-              >
-                💬 ทักไลน์ส่งลายให้แอดมินดู
-              </a>
-
-              <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-2xl bg-white/80 p-3 ring-1 ring-emerald-200">
-                <input
-                  type="checkbox"
-                  checked={consultOk}
-                  onChange={(e) => {
-                    setConsultOk(e.target.checked);
-                    if (e.target.checked) setConsultWarn(false);
-                  }}
-                  className="mt-0.5 h-4 w-4 accent-emerald-500"
-                />
-                <span className="text-xs">
-                  <span className="block font-bold text-stone-700">คุยกับแอดมินเรียบร้อยแล้ว — ตกลงลายกันแล้ว</span>
-                  <span className="block text-stone-500">ติ๊กช่องนี้แล้วกดสั่งได้เลย ทางร้านจะเริ่มงานตามลายที่ตกลงกันไว้</span>
-                </span>
-              </label>
-
-              {consultOk && (
-                <input
-                  type="text"
-                  value={consultRef}
-                  onChange={(e) => setConsultRef(e.target.value.slice(0, 120))}
-                  placeholder="ชื่อไลน์ที่ใช้คุย / เลขอ้างอิงที่แอดมินให้ไว้ (ไม่บังคับ)"
-                  className="mt-2 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                />
-              )}
-
-              {consultWarn && !consultOk && (
-                <p className="mt-2 text-[11px] font-bold text-rose-600">
-                  ⚠️ งานนี้ต้องคุยลายกับแอดมินก่อนนะครับ — ทักไลน์คุยให้จบ แล้วกลับมาติ๊กช่องด้านบน
-                </p>
-              )}
-            </div>
-          )}
-
-          <div id="art-box" className="mt-4 overflow-hidden rounded-3xl bg-white ring-1 ring-stone-200">
-            <button
-              type="button"
-              onClick={() => {
-                setArtTouched(true);
-                setExtraOpen((o) => (o === "art" ? null : "art"));
-              }}
-              aria-expanded={extraOpen === "art"}
-              className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-sky-50/60"
-            >
-              <span className="text-lg leading-none">🎨</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold text-stone-700">
-                  {/* สั่งหลายแผ่น: บอกให้ชัดว่าลายนี้เป็นของแผ่นไหน — แต่ละแผ่นใช้ลายของตัวเอง */}
-                  {lotMinScope ? `แนบลายของ${lotWord}ที่ ${(sheets.length + 1).toLocaleString("th-TH")}` : "แนบลายของคุณ"}
-                  {artProvided ? (
-                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                      {artTotal > 0 ? `แนบแล้ว ${artTotal} รูป` : artLink.trim() ? "ใส่ลิงก์แล้ว" : "♻️ ใช้ไฟล์เก่า"}
-                    </span>
-                  ) : artRequired && !preArranged ? (
-                    /* โหมดแอดมิน/ลิงก์ราคาไม่บังคับแนบ — ลายมาทางไลน์/อีเมลได้ */
-                    <span className="ml-2 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">จำเป็น *</span>
-                  ) : (
-                    <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">แนะนำ</span>
-                  )}
-                </span>
-                <span className="block text-[11px] text-stone-400">
-                  {studioMode
-                    ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องกดเริ่มสร้าง"
-                    : "อัปโหลดรูป (ลากมาวางได้) · หรือแนบลิงก์ไฟล์ / อีเมล"}
-                </span>
-              </span>
-              <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
-            </button>
-            {(extraOpen === "art" || (artBlocked && !artTouched)) && <div className="px-4 pb-4">
-              {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setArtDrag(true);
-                }}
-                onDragLeave={(e) => {
-                  // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                    setArtDrag(false);
-                    setArtDragSide(null);
-                  }
-                }}
-                onDrop={(e) => {
-                  // ปล่อยนอกช่องของด้าน = ถือเป็นด้านหน้า (งาน 2 ด้านต้องปล่อยลงช่อง "ด้านหลัง" เองถึงจะเข้าด้านหลัง)
-                  e.preventDefault();
-                  setArtDrag(false);
-                  setArtDragSide(null);
-                  void uploadArtwork(e.dataTransfer.files);
-                }}
-                className={`mt-3 rounded-2xl p-3.5 transition ${
-                  artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
-                }`}
-              >
-                {/* ♻️ เคยสั่งลายนี้กับร้านแล้ว — ติ๊กแล้วไม่ต้องอัปซ้ำ ร้านหยิบไฟล์จากออเดอร์ก่อน (ยังส่งแบบให้ตรวจก่อนผลิตเหมือนเดิม) */}
-                <label
-                  className={`mb-3 flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-xs ring-1 transition ${
-                    reuseOld ? "bg-amber-400 text-amber-950 ring-amber-400" : "bg-white text-stone-600 ring-amber-200 hover:ring-amber-400"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={reuseOld}
-                    onChange={(e) => {
-                      setReuseOld(e.target.checked);
-                      setArtTouched(true);
-                      setExtraOpen("art");
-                    }}
-                    className="mt-0.5 h-4 w-4 accent-amber-600"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="font-bold">♻️ เคยสั่งลายนี้กับร้านแล้ว — ใช้ไฟล์เก่า ไม่ต้องอัปใหม่</span>
-                    <span className={`block text-[11px] leading-relaxed ${reuseOld ? "text-amber-900" : "text-stone-400"}`}>
-                      ทีมงานจะหยิบไฟล์จากออเดอร์ก่อนให้ · ใส่เลขออเดอร์เดิม (OD-…) ถ้าจำได้ จะได้หาเจอไวขึ้น
-                    </span>
-                    {reuseOld && (
-                      <input
-                        type="text"
-                        value={reuseFrom}
-                        onChange={(e) => setReuseFrom(e.target.value.slice(0, 220))}
-                        onClick={(e) => e.preventDefault()}
-                        placeholder="เลขออเดอร์เดิม เช่น OD-260801-1234 · หรือบอกว่าลายไหน (ไม่บังคับ)"
-                        aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
-                        className="mt-2 w-full rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 placeholder:font-normal placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      />
-                    )}
-                  </span>
-                </label>
-
-                {/* 1) อัปโหลดภาพ — หัวข้อใหญ่ซ้ำกับแถบพับด้านบน จึงตัดออก เข้าเรื่องเป็นขั้นตอนเลย */}
-                <div className="flex items-center gap-2">
-                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">1</span>
-                  <p className="text-xs font-bold text-stone-700">
-                    อัปโหลดภาพตัวอย่าง <span className="font-normal text-stone-400">— ใช้เป็นแนวทางให้กราฟฟิก</span>
-                  </p>
-                </div>
-
-                {/*
-                  🔄 งานพิมพ์ 2 ด้าน = 2 ช่องแยก "ด้านหน้า" / "ด้านหลัง" — ลูกค้าระบุเองว่าลายไหนพิมพ์ด้านไหน
-                  จำนวนลายของแต่ละด้านนับตามรูปในช่องนั้น (ด้านหลังเดิมนับไม่ได้เลย เพดานแนบจับแต่ด้านหน้า)
-                  งานด้านเดียวมีช่องเดียวเหมือนเดิม
-                */}
-                {backOn && (
-                  <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                    งานพิมพ์ 2 ด้าน — แนบลายแยกช่อง <b>ด้านหน้า</b> และ <b>ด้านหลัง</b> · จำนวนลายแต่ละด้านนับตามรูปในช่องนั้น
-                    (ด้านหลังใช้ลายเดียวกันทั้งหมด = แนบรูปเดียว)
-                  </p>
-                )}
-                {artZone("front")}
-                {backOn && artZone("back")}
-                {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
-
-                {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
-                <div className="mt-3.5 flex items-center gap-2">
-                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">2</span>
-                  <label htmlFor="art-link" className="text-xs font-bold text-stone-700">
-                    ลิงก์ไฟล์งานจริง / อีเมล <span className="font-semibold text-sky-700">(แนะนำ — ได้ไฟล์คุณภาพเต็ม)</span>
-                  </label>
-                </div>
-                <input
-                  id="art-link"
-                  type="text"
-                  value={artLink}
-                  onChange={(e) => {
-                    setArtLink(e.target.value.slice(0, 500));
-                    // ⚠️ กล่องนี้กางอัตโนมัติตอน artBlocked — พอพิมพ์ลิงก์ครบ artBlocked เป็น false
-                    //    กล่องจะหุบทันทีต่อหน้าลูกค้า เหมือนสิ่งที่พิมพ์หายไป · ตรึงให้เปิดค้างไว้
-                    setArtTouched(true);
-                    setExtraOpen("art");
-                  }}
-                  placeholder="เช่น https://drive.google.com/…  หรือ  yourmail@gmail.com"
-                  className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
-                />
-                <p className="mt-1 text-[10px] leading-relaxed text-stone-400">
-                  Google Drive / Dropbox / OneDrive หรืออีเมลที่ส่งไฟล์ไว้ — เราดึงไฟล์ต้นฉบับไปใช้ผลิต
-                </p>
-              </div>
-            </div>}
-
-            {/*
-              หมายเหตุถึงร้าน — กางไว้ตลอด ไม่ต้องกดเปิด
-              เดิมเป็นแถบพับที่หัวข้อเขียน "หมายเหตุถึงร้าน" ซ้ำกับป้ายในช่องอีกที
-              ลูกค้าพิมพ์ช่องนี้บ่อย (สี/ข้อความบนงาน) ซ่อนไว้แล้วหาไม่เจอ → เหลือหัวข้อเดียว ช่องพร้อมพิมพ์เลย
-            */}
-            <div className="border-t border-stone-100 px-4 py-3.5">
-              <label htmlFor="order-note" className="flex cursor-text items-center gap-2">
-                <span className="text-lg leading-none">📝</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold text-stone-700">
-                    หมายเหตุถึงร้าน <span className="font-semibold text-stone-400">(ไม่บังคับ)</span>
-                  </span>
-                  <span className="block text-[11px] text-stone-400">สีที่ต้องการ · ข้อความที่อยากให้ใส่ · รายละเอียดเพิ่มเติม</span>
-                </span>
-              </label>
-              <textarea
-                id="order-note"
-                value={note}
-                onChange={(e) => setNote(e.target.value.slice(0, 500))}
-                rows={3}
-                placeholder="พิมพ์สิ่งที่อยากบอกร้านได้เลย — เช่น อยากได้สีเข้มกว่าในภาพ · ใส่ชื่อ “iDucky” ใต้โลโก้"
-                className="mt-2 w-full resize-y rounded-2xl bg-white px-4 py-2.5 text-sm leading-relaxed text-stone-700 ring-1 ring-amber-200 transition placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
-              />
-              {/* ตัวนับโผล่เมื่อเริ่มพิมพ์ · ใกล้เต็มเปลี่ยนเป็นแดงเตือนก่อนโดนตัดที่ 500
-                  (ใช้ rose ไม่ใช่ amber — amber ถูกรีแมปเป็นฟ้าแบรนด์ใน globals.css แล้ว ไม่อ่านเป็นคำเตือน) */}
-              {note.length > 0 && (
-                <p
-                  className={`mt-1 text-right text-[11px] tabular-nums ${
-                    note.length >= 450 ? "font-bold text-rose-500" : "text-stone-400"
-                  }`}
-                >
-                  {note.length}/500
-                </p>
-              )}
-            </div>
-          </div>
+          {studioMode && artSection}
 
         </div>
       </div>
@@ -8371,7 +8419,7 @@ export default function ProductDetail({
         <div
           role="alert"
           aria-live="assertive"
-          className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3 max-[1000px]:pb-[calc(168px+env(safe-area-inset-bottom,0px))] min-[1001px]:pb-[96px] lg:px-6"
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3 max-[1000px]:pb-[calc(96px+env(safe-area-inset-bottom,0px))] min-[1001px]:pb-[96px] lg:px-6"
         >
           <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-2.5 rounded-2xl bg-rose-600 px-3.5 py-3 text-white shadow-[0_18px_40px_-12px_rgba(190,18,60,0.65)]">
             <span aria-hidden className="text-lg leading-none">🎨</span>
@@ -8413,7 +8461,7 @@ export default function ProductDetail({
            อาการคือ "เห็นปุ่มแต่กดไม่ติด" ไม่มีอะไรฟ้องเลย — เจ้าของร้านแจ้ง 23 ก.ย. 69 (ปุ่มแก้ไขในหลังบ้าน)
            ป้ายเตือน "ยังไม่ได้แนบลาย" ข้างบนใช้ท่าเดียวกันนี้อยู่แล้ว */}
       <div
-        className={`pointer-events-none fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(84px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
+        className={`pointer-events-none fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
           showBuyBar ? "translate-y-0" : "translate-y-full"
         }`}
       >
@@ -8601,14 +8649,31 @@ export default function ProductDetail({
                     ✅ เพิ่มเป็น {want.toLocaleString("th-TH")} ลาย แล้วแนบรูปที่เหลือ
                   </button>
                 ) : (
-                  /* เพดานเรทไม่พอ — ยังยอมให้แนบได้ (ทางร้านนับลายจริงจากไฟล์แล้วทักยืนยัน) */
-                  <button
-                    type="button"
-                    onClick={() => attach(want)}
-                    className="rounded-2xl bg-white px-4 py-2.5 text-sm font-extrabold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
-                  >
-                    แนบต่อไปเลย — ให้แอดมินทักยืนยันก่อนเริ่มงาน
-                  </button>
+                  <>
+                    {/* 🛒 กล่องแนบลายอยู่ "ก่อน" ช่องจำนวนแล้ว (12 ต.ค. 69) — ลูกค้าแนบ 5 ลายตอนจำนวนยังเป็น 1 จะชนเพดานนี้บ่อย
+                        แนบให้ครบทุกไฟล์ แล้วพาลงไปช่องจำนวนให้เพิ่มเอง (เพดานคละขึ้นกับเรท/ขั้นต่ำต่อลาย คิดเลขแทนไม่ได้) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        attach(want);
+                        setTimeout(
+                          () => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                          150,
+                        );
+                      }}
+                      className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
+                    >
+                      ✅ แนบครบ {want.toLocaleString("th-TH")} รูป แล้วไปเพิ่มจำนวนสั่ง
+                    </button>
+                    {/* เพดานเรทไม่พอ — ยังยอมให้แนบได้ (ทางร้านนับลายจริงจากไฟล์แล้วทักยืนยัน) */}
+                    <button
+                      type="button"
+                      onClick={() => attach(want)}
+                      className="rounded-2xl bg-white px-4 py-2.5 text-sm font-extrabold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
+                    >
+                      แนบต่อไปเลย — ให้แอดมินทักยืนยันก่อนเริ่มงาน
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"

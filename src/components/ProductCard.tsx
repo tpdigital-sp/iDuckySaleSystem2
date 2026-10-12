@@ -60,9 +60,12 @@ export default function ProductCard({ product, category: fromDb }: { product: Pr
               </span>
             )}
           </div>
-          <span className="text-[11px] text-stone-400">
-            ⭐ {product.rating} · ขายแล้ว {product.sold.toLocaleString("th-TH")}
-          </span>
+          {/* ยังขายไม่ได้ = ไม่โชว์ "⭐ 5 · ขายแล้ว 0" — ดูไม่น่าเชื่อ (เจ้าของร้านอนุมัติ 12 ต.ค. 69) */}
+          {product.sold > 0 && (
+            <span className="text-[11px] text-stone-400">
+              ⭐ {product.rating} · ขายแล้ว {product.sold.toLocaleString("th-TH")}
+            </span>
+          )}
         </div>
       </div>
     </Link>

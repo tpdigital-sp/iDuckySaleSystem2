@@ -60,9 +60,12 @@ export default function ShopProductCard({ product: p, category }: { product: Pro
         <h3>{p.name}</h3>
         <div className="meta">
           <span className="price">{formatPriceLabel(p)}</span>
-          <span className="stars">
-            ⭐ {p.rating} · ขายแล้ว {p.sold.toLocaleString("th-TH")}
-          </span>
+          {/* ยังขายไม่ได้ = ไม่โชว์ "⭐ 5 · ขายแล้ว 0" — ดูไม่น่าเชื่อ (เจ้าของร้านอนุมัติ 12 ต.ค. 69) */}
+          {p.sold > 0 && (
+            <span className="stars">
+              ⭐ {p.rating} · ขายแล้ว {p.sold.toLocaleString("th-TH")}
+            </span>
+          )}
         </div>
         <span className="add">เลือกลาย</span>
       </div>

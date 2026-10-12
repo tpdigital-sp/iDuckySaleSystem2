@@ -292,8 +292,14 @@ export default function ChatWidget() {
 
           <p className="border-t border-[#E2F3FE] bg-white px-3 pb-2.5 pt-2 text-center text-[10.5px] leading-snug text-slate-500">
             ตอบอัตโนมัติด้วยผู้ช่วย AI ของร้าน · อยากคุยกับแอดมินตัวจริง{" "}
-            <a href={LINE_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#06C755] underline underline-offset-2">
-              ทักไลน์ได้เลย
+            {/* หน้าสินค้าบนมือถือซ่อนปุ่ม LINE ลอยแล้ว (body.buy-page) — ทางไป LINE เหลือที่นี่ ต้องเห็นเป็นปุ่มชัด ๆ */}
+            <a
+              href={LINE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[#06C755] px-3 py-1.5 text-[11.5px] font-bold text-white no-underline transition hover:brightness-95"
+            >
+              💬 ทักไลน์คุยกับแอดมิน
             </a>
           </p>
         </div>

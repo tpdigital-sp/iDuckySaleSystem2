@@ -1,4 +1,4 @@
-import { CATEGORIES, type Product } from "@/lib/products";
+import { CATEGORIES, priceRange, type Product } from "@/lib/products";
 
 /**
  * เขียน SEO/AEO อัตโนมัติจากข้อมูลสินค้า (ชื่อ/หมวด/ราคา/ตัวเลือก/จุดเด่น)
@@ -220,7 +220,27 @@ export function autoSeoOf(p: AutoSeoInput, variant = 0): AutoSeo {
   return { title, description, keywords, faqs };
 }
 
+/**
+ * 🏷 ราคาเริ่มต้นที่โชว์ลูกค้า = ราคาต่ำสุดจริงของตารางราคา (priceRange — ชุดเดียวกับการ์ดหน้ารายการ)
+ * ไม่ใช่ช่อง "ราคา" ตั้งต้น (p.price) — พวงกุญแจอะคริลิค p.price = 80 แต่การ์ดขึ้น ฿6 → ชื่อหน้า "เริ่มต้น 80 บาท" (12 ต.ค. 69)
+ */
+export function startPriceOf(p: Product): number {
+  const { min } = priceRange(p);
+  return min > 0 ? min : Number(p.price) || 0;
+}
+
+/**
+ * แก้ตัวเลขใน "เริ่มต้น N บาท" / "เริ่มต้นชิ้นละ N บาท" ของ SEO ที่บันทึกไว้ให้ตรงราคาจริงตอนนี้
+ * (ข้อความ SEO เขียนครั้งเดียวตอนบันทึก — ราคาเปลี่ยนทีหลังตัวเลขในชื่อหน้า/คำถาม FAQ ค้างของเก่า)
+ */
+export function syncStartPrice(text: string, min: number): string;
+export function syncStartPrice(text: string | undefined, min: number): string | undefined;
+export function syncStartPrice(text: string | undefined, min: number): string | undefined {
+  if (!text || !(min > 0)) return text;
+  return text.replace(/(เริ่มต้น(?:ชิ้นละ)?\s*)[\d,]+(\.\d+)?(\s*บาท)/g, (_m, a: string, _d, b: string) => `${a}${min.toLocaleString("en-US")}${b}`);
+}
+
 /** สะดวกเรียกจาก Product เต็มตัว (หน้าเว็บจริง) */
 export function productAutoSeo(p: Product): AutoSeo {
-  return autoSeoOf({ name: p.name, price: p.price, categoryId: p.category, options: p.options, highlights: p.highlights });
+  return autoSeoOf({ name: p.name, price: startPriceOf(p), categoryId: p.category, options: p.options, highlights: p.highlights });
 }

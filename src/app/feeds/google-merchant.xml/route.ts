@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { SHOP, SITE_URL } from "@/lib/shop-info";
 import { priceRange, productPath, type Product } from "@/lib/products";
-import { productAutoSeo } from "@/lib/auto-seo";
+import { productAutoSeo, syncStartPrice } from "@/lib/auto-seo";
 import { getCategoriesServer } from "@/lib/server/categories-server";
 import { listPublicProductsServer } from "@/lib/server/public-products";
 import { getSeoServer } from "@/lib/server/settings-server";
@@ -44,9 +44,9 @@ function itemXml(p: Product, categoryName: string): string | null {
   const { min } = priceRange(p);
   if (!(min > 0)) return null;
   const auto = productAutoSeo(p);
-  const title = clip(p.seo?.title || auto.title || p.name, 150);
+  const title = clip(syncStartPrice(p.seo?.title, min) || auto.title || p.name, 150);
   const description = clip(
-    (p.seo?.description || p.description || auto.description || p.name).replace(/\s+/g, " ").trim(),
+    (syncStartPrice(p.seo?.description, min) || p.description || auto.description || p.name).replace(/\s+/g, " ").trim(),
     5000,
   );
   const link = `${SITE_URL}${productPath(p)}`;
