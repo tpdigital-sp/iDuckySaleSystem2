@@ -11,7 +11,7 @@ import type { Contact } from "@/lib/contacts";
 import { slowestActive, wipJobsForOrder } from "./wip-production";
 import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_RULE_TEXT } from "./bot-handoff";
-import { shopPaymentText } from "./shop-payment-text";
+import { shopGiftText, shopPaymentText } from "./shop-payment-text";
 import { inBackground } from "./background";
 
 /**
@@ -121,6 +121,7 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   const left = (budget: number) => Math.max(200, Math.min(budget, 4500 - (Date.now() - t0))); // งบเวลาที่เหลือ (รวมไม่เกิน ~4.5 วิ)
   const calendarP = shopCalendarText().catch(() => "");
   const paymentP = shopPaymentText().catch(() => ""); // 🏦 บัญชีรับโอนจากหลังบ้าน
+  const giftP = shopGiftText().catch(() => ""); // 🎁 โปรของแถมที่เปิดอยู่
   const snap = await db.collection(CHAT_COLLECTION).doc(userId).get();
   const doc = (snap.exists ? snap.data() : {}) as Record<string, unknown>;
   const name = String(doc.adminAlias ?? doc.displayName ?? "").trim();
@@ -236,7 +237,8 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   // ข้อมูลลูกค้าตัดที่ 900 ตัวเหมือนเดิม แล้วต่อท้ายปฏิทินร้าน (~450 ตัว) — ไม่ให้ปฏิทินไปเบียดข้อมูลลูกค้า
   const calendar = await Promise.race([calendarP, new Promise<string>((r) => setTimeout(() => r(""), left(1500)))]);
   const payment = await Promise.race([paymentP, new Promise<string>((r) => setTimeout(() => r(""), left(1500)))]);
-  const text = [lines.join("\n").slice(0, 900), calendar, payment, HANDOFF_RULE_TEXT].filter(Boolean).join("\n");
+  const gift = await Promise.race([giftP, new Promise<string>((r) => setTimeout(() => r(""), left(1000)))]);
+  const text = [lines.join("\n").slice(0, 900), calendar, payment, gift, HANDOFF_RULE_TEXT].filter(Boolean).join("\n");
   // ⚡ แคชก้อนข้อความไว้ในห้องแชท (profile.text/textAt) — n8n Build AI Request อ่านจาก Read Memory ได้ทันที ไม่ต้องเรียก API ทุกข้อความ (1 ต.ค. 69)
   inBackground("customer-profile cache", db.collection(CHAT_COLLECTION).doc(userId).set({ profile: { text, textAt: new Date().toISOString() } }, { merge: true }));
   return {

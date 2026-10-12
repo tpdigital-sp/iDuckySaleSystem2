@@ -464,3 +464,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - แชทเว็บ: ถามเรื่องบัญชี/ช่องทางโอน (BANK_ASK_RE) → ตอบพร้อม images[] ภาพเต็มกว้าง (ChatImages ใน shop-chat.tsx) และตัดลิงก์ภาพออกจากข้อความ
 - บอท LINE: ข้อความบัญชีกำชับให้แนบลิงก์ https://iduckystore.com/payment/bank-card.jpg ท้ายคำตอบ (ส่งเป็นรูปจริงต้องแก้ n8n ให้มี image message)
 - /api/bot/customer-profile: เกิน 4.5 วิ ตอบด้วย profile.text ที่แคชไว้ + สร้างใหม่เบื้องหลัง (เว็บจริงวัด ~4 วิ · cold start หลัง deploy 13 วิ)
+
+### 12 ต.ค. 69 — 🎁 บอทรู้โปรของแถม (สดจากหลังบ้าน)
+- shopGiftText() ใน lib/server/shop-payment-text.ts อ่าน __shop_payment__.gifts (active) + ชื่อสินค้าที่ร่วม (แคช 5 นาที) → ต่อท้าย customer-profile + systemMessage แชทเว็บ (+ message เมื่อถามเรื่องแถม)
+- ถามของแถม/โปร: price-search ตอบ found:false intent gift (LINE/แชทเว็บส่งต่อ AI) · แชทเว็บข้ามตัวคิดราคา/สเปค/ขั้นต่ำของตัวเอง — เดิมตอบจากหน้าสินค้า (พวงกุญแจ "24 ชิ้นขึ้นไปได้แพ็คเกจฟรี +6") และขนาดของ "กระดาษรองหลัง" ที่ขายแยก 9 แบบ
+- ⚠️ หน้าสินค้าพวงกุญแจอะคริลิคยังเขียนโปรแบบเก่า (24/30/36…) ไม่ตรงหลังบ้าน (ทุก 1 ชิ้นได้ 1 ชุด) · ⚠️ "กระดาษรองหลัง 7x7 100 ใบ" ตัวคิดราคาตีเป็น 100 แผ่น A3

@@ -117,6 +117,10 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
       .slice(0, 500),
   );
   if (!query) return { status: 400, body: { error: "ยังไม่ได้ส่งคำค้น" } };
+  // 🎁 ถามเรื่องของแถม/โปร (12 ต.ค. 69) → ไม่ตอบจากหน้าสินค้า (ข้อความโปรในหน้าสินค้าบางตัวเก่าไม่ตรงหลังบ้าน เช่น "24 ชิ้นขึ้นไปได้แพ็คเกจฟรี")
+  //   ตอบ found:false ให้ LINE (Build AI Request) และแชทเว็บส่งต่อ AI ที่ได้ข้อมูลโปรสดจากหลังบ้าน (shopGiftText) แทน
+  if (/ของแถม|แถม(อะไร|ไหม|มั้ย|ฟรี|ด้วย)|ได้แถม|แพ็?[กค]เกจ(รองหลัง|ฟรี)|โปร(โมชั่น)?\s*(อะไร|ไหม|มั้ย|ตอนนี้)/.test(query))
+    return { status: 200, body: { found: false, intent: "gift", kind: "skip", answer: "", text: "", result: "", response: "", mode: "gift" } };
   // ↩️ "ตามนี้เลยค่ะ" (ลูกค้ากดตอบกลับข้อความเดิมของตัวเอง — LINE ไม่ส่งข้อความที่อ้างถึงมา) = ถามข้อความก่อนหน้าซ้ำ (7 ต.ค. 69)
   if (/^(ตามนี้|ตามนั้น|ตามที่ถาม|ตามที่แจ้ง|ตามข้างบน|ตามที่ส่ง|อันนี้|แบบนี้)\s*(เลย|ค่ะ|คะ|ครับ|นะคะ|นะ|จ้า|\s)*$/.test(query) && Array.isArray(body.history)) {
     const prev = [...(body.history as { role?: string; text?: string }[])]

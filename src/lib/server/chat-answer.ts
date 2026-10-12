@@ -17,7 +17,7 @@ import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, sear
 import { priceSearch } from "@/lib/server/price-search";
 import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_MSG_RE, HANDOFF_RULE_TEXT } from "./bot-handoff";
-import { bankCardUrl, shopPaymentText } from "./shop-payment-text";
+import { bankCardUrl, shopGiftText, shopPaymentText } from "./shop-payment-text";
 import { BANK_ASK_RE, BANK_CARD } from "@/lib/bank-card";
 
 /**
@@ -283,7 +283,11 @@ async function answerChatInner(
   let priceFacts = "";
   /** ตารางราคาดิบที่เว็บคิดเอง — ใช้ตอบลูกค้าตรง ๆ โดยไม่ต้องพึ่ง agent */
   let priceText = "";
-  if (siteVia) {
+  // 🎁 ถามของแถม/โปร (12 ต.ค. 69) → ข้ามตัวคิดราคา/สเปคหน้าสินค้าทั้งหมด (เคยตอบขนาดของ "กระดาษรองหลัง" ที่ขายแยก 9 แบบ แทนของแถม 4 ขนาด) ให้ AI ตอบจากข้อมูลโปรสดในหลังบ้าน
+  const giftQ = /ของแถม|แถม(อะไร|ไหม|มั้ย|ฟรี|ด้วย)|ได้แถม|แพ็?[กค]เกจ(รองหลัง|ฟรี)|โปร(โมชั่น)?\s*(อะไร|ไหม|มั้ย|ตอนนี้)/.test(message);
+  if (giftQ) {
+    /* ไม่ใช้ราคา/สเปคจากหน้าสินค้า */
+  } else if (siteVia) {
     priceText = String(siteBody?.answer ?? "");
     priceFacts =
       "\n[ราคาจริงจากระบบเว็บร้าน - ตัวเลขชุดนี้คือราคาที่ลูกค้าจะจ่ายจริงตอนกดสั่งบนเว็บ ให้ยึดชุดนี้ก่อนผลจาก search_pricing เสมอ]\n" +
@@ -309,7 +313,7 @@ async function answerChatInner(
   // เดิมปล่อยให้ n8n ตอบ แล้วมันตอบว่า "ส่วนใหญ่ไม่มีขั้นต่ำ สั่ง 1 ชิ้นได้" ซึ่งตรงข้ามกับของจริง
   // (143 จาก 213 รายการมีขั้นต่ำ ส่วนใหญ่ 11 ชิ้น) — ลูกค้าเชื่อแล้วมาสั่งจะเจอปัญหาหน้างาน
   let minText = "";
-  if (!priceText && !opener && isMinQtyIntent(message)) {
+  if (!giftQ && !priceText && !opener && isMinQtyIntent(message)) {
     const found = await searchMinQty(`${message} ${parsed?.search_query ?? ""}`.trim()).catch(() => null);
     if (found?.answer) minText = found.answer;
   }
@@ -318,7 +322,7 @@ async function answerChatInner(
   // ลูกค้าเจอจริง: ถาม "สแตนดี้โยกเยก มีขนาดเท่าไหร่" แล้วบอทตอบ "ไม่มีขนาดระบุไว้ในข้อมูล"
   // ทั้งที่หน้าสินค้ามีให้เลือกครบ — เพราะเราส่งให้บอทแค่ตารางราคากับลิงก์ ไม่เคยส่งตัวเลือกเลย
   let specText = "";
-  if (!priceText && !minText && !opener && isSpecIntent(message)) {
+  if (!giftQ && !priceText && !minText && !opener && isSpecIntent(message)) {
     const found = await searchSpec(`${message} ${parsed?.search_query ?? ""}`.trim()).catch(() => null);
     if (found?.answer) specText = found.answer;
   }
@@ -367,6 +371,8 @@ async function answerChatInner(
   const calendarHint = calendar ? `\n\n[${calendar}]` : "";
   // 🏦 บัญชีรับโอน (หลังบ้าน /admin/payment) — ถามเรื่องบัญชี/โอน = แปะใน message ด้วย
   const payment = await shopPaymentText().catch(() => "");
+  const gift = await shopGiftText().catch(() => ""); // 🎁 โปรของแถม (หลังบ้าน › ของแถมฟรี)
+  const askGift = /แถม|รองหลัง|โปร(โมชั่น)?|ซองใส|ฟรีอะไร/.test(message);
   const askPay = /บัญชี|เลขบัญชี|โอน(ที่|เข้า|ยังไง|ได้)|พร้อมเพย์|ชำระ(ยังไง|ทาง)/.test(message);
 
   let reply = "";
@@ -379,7 +385,7 @@ async function answerChatInner(
         // ฝัง "คำแนะนำระบบ" ต่อท้ายข้อความ (สั่งให้ค้นราคา/จับวัสดุ/แปลงเซ็ต) แบบเดียวกับ chat.html
         // priceFacts ต้องอยู่ใน message ไม่ใช่แค่ systemMessage — agent ของ n8n ให้น้ำหนัก message
         // มากกว่ามาก (ยัดไว้ใน systemMessage อย่างเดียว มันเมินแล้วไปหยิบราคาจาก tool ตัวเองแทน)
-        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : "") + (askPay && payment ? `\n\n[${payment}]` : ""),
+        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : "") + (askPay && payment ? `\n\n[${payment}]` : "") + (askGift && gift ? `\n\n[${gift}]` : ""),
         sessionId,
         userId: `${staff ? "admin" : "web"}-${sessionId}`,
         source: staff ? "adminbuddy" : "website",
@@ -388,7 +394,7 @@ async function answerChatInner(
         // ⚠️ workflow ไม่ได้อ่าน knowledgeContext ที่ไหนเลย (ตรวจจาก system message ของ AI Agent1 แล้ว)
         // คลังความรู้ที่คัดมาจึงต้องต่อท้าย systemMessage ไม่งั้นส่งไปแล้วถูกทิ้งทั้งก้อน
         systemMessage:
-          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}\n${HANDOFF_RULE_TEXT}` ||
+          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}\n${HANDOFF_RULE_TEXT}` ||
           undefined,
         conversationHistory: convo || undefined,
         knowledgeContext: ctx?.knowledgeContext,
