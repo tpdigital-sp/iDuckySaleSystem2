@@ -43,6 +43,7 @@ import {
   ownsTrackingNumber,
   applyFollowUpShipped,
   followUpQty,
+  returnedTrackingsOf,
   openFollowUp,
   packGate,
   partialGate,
@@ -783,6 +784,23 @@ export async function PATCH(req: Request) {
     .map((t) => ({ t, why: trackingScanProblem(t) }))
     .filter((x) => x.why);
   if (badTracks.length) return NextResponse.json({ error: `${badTracks[0].why} (${badTracks[0].t})` }, { status: 400 });
+  /**
+   * ↩ เลขที่ถอดไปเพราะของตีกลับ (POST /api/admin/orders/unship) ห้ามกลับเข้ามา — หน้าออเดอร์ที่เปิดค้างไว้ก่อนถอด
+   * ยังถือเลขเดิมอยู่ กดบันทึกทีเดียวใบจะกลับเป็น "จัดส่งแล้ว" ด้วยกล่องที่ไม่ได้ออกจากร้าน
+   */
+  const returnedTracks = returnedTrackingsOf(existing);
+  const reusedTrack = returnedTracks.size
+    ? [
+        wantsTracking ? order.tracking!.trim() : "",
+        ...newExtraTrackingsOf(existing, order).map((b) => b.tracking.trim()),
+        ...newShipmentsOf(existing, order).map((s) => s.tracking.trim()),
+      ].find((t) => t && returnedTracks.has(t))
+    : undefined;
+  if (reusedTrack)
+    return NextResponse.json(
+      { error: `เลข ${reusedTrack} ถูกยกเลิกไปแล้ว (ของตีกลับ) — กด ↻ โหลดหน้าใหม่ แล้วยิงเลขของกล่องใหม่` },
+      { status: 409 }
+    );
 
   /**
    * 📦 ส่งรวมกล่อง (lib/ship-with.ts) — ใบตามยิงเลขเองไม่ได้ (ของอยู่ในกล่องใบหลัก ยิงที่ใบหลักแล้วเลขลงมาเอง)
@@ -1273,6 +1291,8 @@ export async function PATCH(req: Request) {
    * (แอดมินเท่านั้น · กติกาเจ้าของร้าน 24 ก.ย. 69) ก้อนจากหน้าจอไหนส่งมาก็ไม่รับ กันหน้าค้างลบรอบทิ้ง
    */
   toSave = { ...toSave, followUp: existing.followUp };
+  // ↩ ประวัติของตีกลับ — เขียนได้ทางเดียวคือ POST /api/admin/orders/unship
+  toSave = { ...toSave, returned: existing.returned };
   /**
    * 📦 ปิดรอบส่งตามให้เอง เมื่อคำขอนี้ยิง "กล่องเพิ่ม" มา — คนแพ็คทำท่าเดิมทุกอย่าง (＋ เพิ่มเป็นกล่องที่ N)
    * ไม่ต้องมีปุ่มพิเศษที่โต๊ะแพ็ค/สถานี · กล่องแรกที่เพิ่งยิงในคำขอนี้ = กล่องส่งตาม

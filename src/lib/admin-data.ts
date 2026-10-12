@@ -299,6 +299,45 @@ export function canOpenFollowUp(order: Order): { ok: boolean; reason: string } {
 }
 
 /**
+ * ↩ กล่องที่ยิงเลขไปแล้วแต่ของกลับมาร้าน (เคส OD-260929-7393 12 ต.ค. 69: ต้องส่ง 10 ที่อยู่ ฝ่ายแพ็คส่งรวมกล่องเดียว ไปเอาของคืนมาแล้ว)
+ * ต่างจาก "ส่งตามให้" (FollowUpRound) ตรงที่ของ**ทั้งกล่อง**กลับมา ใบต้องเปิดใหม่ให้แพ็ค/แบ่งส่ง/ยิงเลขได้อีกรอบ
+ * → ถอดเลขพัสดุ (ช่องหลัก + กล่องเพิ่ม) + แพ็คเสร็จ ออก · สถานะกลับ "กำลังผลิต" · เลขเดิมเก็บไว้ที่นี่ ห้ามยิงซ้ำ
+ * ไม่แตะรอบแบ่งส่งที่ส่งไปแล้ว (shipments) · ไม่ยิงไลน์ลูกค้า (แอดมินคุยในแชทเอง)
+ */
+export interface ReturnedShipment {
+  /** เลขพัสดุที่ถอดออก (ช่องหลักก่อน ตามด้วยกล่องเพิ่ม) */
+  trackings: string[];
+  /** ทำไมของกลับมา (แอดมินพิมพ์) */
+  reason: string;
+  /** สถานะก่อนถอด */
+  statusWas: OrderStatus;
+  by: string;
+  at: string;
+}
+
+/** ↩ ถอดการส่งได้ไหม — ใบต้องยิงเลขพัสดุไปแล้ว (ใบมารับเอง/ส่งรวมกล่อง เช็คต่อที่ route) */
+export function canUnship(order: Order): { ok: boolean; reason: string } {
+  if (order.status === "ยกเลิก") return { ok: false, reason: "ใบนี้ยกเลิกแล้ว" };
+  if (!(order.tracking ?? "").trim()) return { ok: false, reason: "ใบนี้ยังไม่มีเลขพัสดุ — ไม่มีอะไรให้ถอด" };
+  if (order.pickedUp) return { ok: false, reason: "ลูกค้ารับของไปแล้ว" };
+  if ((order.shipWith?.orders?.length ?? 0) > 0)
+    return { ok: false, reason: "ใบนี้ส่งรวมกล่องกับใบอื่น — ยกเลิกการผูกส่งรวมก่อน" };
+  const open = openFollowUp(order);
+  if (open) return { ok: false, reason: `มีรอบส่งตามค้างอยู่ (รอบที่ ${open.no}) — ยกเลิกรอบนั้นก่อน` };
+  return { ok: true, reason: "" };
+}
+
+/** ↩ เลขพัสดุทุกตัวที่เคยถอดเพราะของตีกลับ — PATCH ห้ามรับเลขพวกนี้กลับเข้ามา (หน้าค้างบันทึกทับ) */
+export function returnedTrackingsOf(order: Pick<Order, "returned">): Set<string> {
+  return new Set((order.returned ?? []).flatMap((r) => r.trackings.map((t) => t.trim())).filter(Boolean));
+}
+
+/** ↩ ใบที่ถอดการส่งแล้ว รอแพ็คส่งใหม่ (ยังไม่ยิงเลขใหม่) — คิวปริ้นโชว์ปุ่มใบปะหน้ารอบถัดไปให้ */
+export function awaitingReship(order: Order): boolean {
+  return (order.returned?.length ?? 0) > 0 && !(order.tracking ?? "").trim() && !order.packedAt && order.status !== "ยกเลิก";
+}
+
+/**
  * 📦 ปิดรอบส่งตามด้วยเลขกล่องที่เพิ่งยิง — คืนฟิลด์ที่ต้องเขียนกลับ (null = ใบนี้ไม่มีรอบค้าง ไม่ต้องทำอะไร)
  * เรียกที่ประตูเขียนออเดอร์ (PATCH /api/admin/orders) เมื่อคำขอนั้นมีกล่องเพิ่ม — คนแพ็คทำท่าเดิมทุกอย่าง
  * ⚠️ ไม่แตะสถานะใบ ไม่แตะ shipments (ใบปิดไปแล้ว รอบนี้ไม่ใช่การแบ่งส่ง)
@@ -932,6 +971,11 @@ export interface Order {
    * แอดมินเปิดรอบเท่านั้น (mergePackFields ไม่รับ) · เขียนผ่าน POST /api/admin/orders/follow-up
    */
   followUp?: FollowUpRound[];
+  /**
+   * ↩ ของตีกลับ / ยกเลิกการส่ง — กล่องที่ยิงเลขไปแล้วแต่ของกลับมาที่ร้าน (ส่งผิด/ตีกลับ) ต้องแพ็คส่งใหม่
+   * เขียนผ่าน POST /api/admin/orders/unship เท่านั้น (PATCH คงค่าในฐานไว้เสมอ) · ดู ReturnedShipment
+   */
+  returned?: ReturnedShipment[];
   /** 📋 แผนแบ่งส่งที่แอดมินระบุ (รูปไหนส่งก่อน รอบไหน) — ฝ่ายแพ็คทำตาม แก้ไม่ได้ (mergePackFields ไม่รับ) */
   shipPlan?: ShipPlanRound[];
   /** โหมดมัดจำ 50% — ลูกค้าโอนงวดแรกก่อนเริ่มงาน เก็บส่วนที่เหลือให้ครบก่อนพิมพ์เอกสาร/ส่งของ */

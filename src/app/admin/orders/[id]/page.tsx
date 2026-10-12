@@ -99,6 +99,7 @@ import {
   orderAwaitingStock,
   ownsTrackingNumber,
   canOpenFollowUp,
+  canUnship,
   followUpQty,
   followUpRounds,
   openFollowUp,
@@ -1625,6 +1626,9 @@ export default function AdminOrderDetailPage() {
   /** 📦 โมดัลเปิดรอบ "ส่งตามให้" (ใบส่งไปแล้วแต่ของในกล่องไม่ครบ) + สถานะกำลังยิง API */
   const [followOpen, setFollowOpen] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  /** ↩ ของตีกลับ / ยกเลิกการส่ง — null = ปิดอยู่ · string = ช่องสาเหตุที่กำลังพิมพ์ */
+  const [unshipReason, setUnshipReason] = useState<string | null>(null);
+  const [unshipBusy, setUnshipBusy] = useState(false);
   // 📋 โมดัลแอดมินระบุแผนแบ่งส่ง (รูปไหนส่งก่อน)
   const [planOpen, setPlanOpen] = useState(false);
   /** ✏️ รอบในแผนแบ่งส่งที่กำลังแก้ (null = เพิ่มรอบใหม่) — แก้ได้เฉพาะรอบที่ยังไม่ส่ง */
@@ -3086,6 +3090,53 @@ export default function AdminOrderDetailPage() {
       if (j.claimWarn) setErr(`⚠️ ${j.claimWarn}`);
     } finally {
       setFollowBusy(false);
+    }
+  }
+
+  /**
+   * ↩ ของตีกลับ / ยกเลิกการส่ง — ยิงเลขไปแล้วแต่ของกลับมาร้าน (ดู POST /api/admin/orders/unship)
+   * ถอดเลขพัสดุ + แพ็คเสร็จ · สถานะกลับกำลังผลิต → ตั้งแผนแบ่งส่ง/แพ็คใหม่/ยิงเลขใหม่ได้ (เคส OD-260929-7393 12 ต.ค. 69)
+   */
+  async function unshipOrder() {
+    if (!order || unshipBusy) return;
+    const reason = (unshipReason ?? "").trim();
+    if (!reason) {
+      setErr("พิมพ์สาเหตุก่อนว่าทำไมของถึงกลับมา");
+      return;
+    }
+    if (demo) {
+      setErr("โหมดตัวอย่างยกเลิกการส่งไม่ได้");
+      return;
+    }
+    const tracks = [order.tracking ?? "", ...(order.extraTrackings ?? []).map((b) => b.tracking)].filter((t) => t.trim());
+    if (
+      !(await askConfirm({
+        icon: "↩",
+        title: "ของกลับมาที่ร้านแล้ว — ยกเลิกการส่ง?",
+        detail: `เลขพัสดุ ${tracks.join(", ")} จะถูกยกเลิก (ยิงซ้ำไม่ได้ · ยังดูได้ในประวัติ)\nสถานะกลับเป็น "กำลังผลิต" ให้แพ็คใหม่ / ตั้งแผนแบ่งส่ง แล้วยิงเลขกล่องใหม่\nไม่แจ้งลูกค้าทางไลน์ — คุยในแชทเอง`,
+        confirmLabel: "ยกเลิกการส่ง",
+        danger: true,
+      }))
+    )
+      return;
+    setUnshipBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/unship", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, reason }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+      if (!res.ok || !j.order) {
+        setErr(j.error ?? "ยกเลิกการส่งไม่สำเร็จ");
+        return;
+      }
+      trackingRef.current = "";
+      adoptOrder(j.order);
+      setUnshipReason(null);
+    } finally {
+      setUnshipBusy(false);
     }
   }
 
@@ -9759,6 +9810,74 @@ export default function AdminOrderDetailPage() {
           <div>
             <GH t="orange">📮 เลขพัสดุ</GH>
             <div className={`mt-2 ${soft("orange")}`}>
+              {/* ↩ ของตีกลับ / ยกเลิกการส่ง — ของทั้งกล่องกลับมาร้าน ต้องแพ็คส่งใหม่ (คนละเรื่องกับส่งตามให้ ที่ของไปแล้วบางส่วน) */}
+              {(() => {
+                const history = order.returned ?? [];
+                const gate = canUnship(order);
+                const may = mayEdit && gate.ok && !isPickupOrder(order);
+                if (!history.length && !may) return null;
+                return (
+                  <div className="mb-2 rounded-xl bg-rose-50 px-3 py-2 ring-1 ring-rose-200">
+                    <div className="flex flex-col gap-1.5">
+                      {/* ยังไม่เคยตีกลับ = มีแต่ปุ่ม (หัวข้อซ้ำกับปุ่ม ช่องแคบแล้วตัวหนังสือตกบรรทัด) */}
+                      {(history.length > 0 || unshipReason !== null) && (
+                        <p className="text-[11px] font-bold text-rose-900">↩ ของตีกลับ {history.length ? `· ${history.length} ครั้ง` : ""}</p>
+                      )}
+                      {may && unshipReason === null && (
+                        <button
+                          type="button"
+                          onClick={() => setUnshipReason("")}
+                          className="w-full rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-extrabold text-rose-700 ring-1 ring-rose-300 hover:bg-rose-100"
+                        >
+                          ↩ ของตีกลับ / ยกเลิกการส่ง
+                        </button>
+                      )}
+                    </div>
+                    {may && unshipReason !== null && (
+                      <div className="mt-1.5 space-y-1.5 rounded-lg bg-white px-2.5 py-2 text-[11px] ring-1 ring-rose-100">
+                        <p className="text-slate-600">ใช้เมื่อของทั้งกล่องกลับมาที่ร้านแล้ว — เลขพัสดุเดิมจะถูกยกเลิก ใบกลับไป &quot;กำลังผลิต&quot; ให้แพ็คใหม่ / ตั้งแผนแบ่งส่ง แล้วยิงเลขกล่องใหม่</p>
+                        <div className="flex flex-wrap gap-1">
+                          {["ส่งผิดที่อยู่ — ต้องแบ่งส่งหลายที่อยู่", "พัสดุตีกลับ (ไม่มีผู้รับ)", "แพ็คผิด ไปเอาของคืนมา"].map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => setUnshipReason(c)}
+                              className={`rounded-full px-2 py-0.5 ring-1 ${unshipReason === c ? "bg-rose-600 text-white ring-rose-600" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"}`}
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          value={unshipReason}
+                          onChange={(e) => setUnshipReason(e.target.value)}
+                          placeholder="สาเหตุที่ของกลับมา (จำเป็น)"
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px]"
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button type="button" onClick={() => setUnshipReason(null)} className="rounded-lg px-2.5 py-1 font-bold text-slate-500 hover:bg-slate-100">
+                            ปิด
+                          </button>
+                          <button
+                            type="button"
+                            disabled={unshipBusy || !unshipReason.trim()}
+                            onClick={() => void unshipOrder()}
+                            className="rounded-lg bg-rose-600 px-2.5 py-1 font-extrabold text-white hover:bg-rose-700 disabled:opacity-40"
+                          >
+                            {unshipBusy ? "กำลังบันทึก…" : "↩ ยกเลิกการส่ง"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {history.map((r, n) => (
+                      <p key={`ret-${n}`} className="mt-1 text-[11px] text-slate-600">
+                        <span className="font-bold text-slate-700 line-through decoration-rose-400">{r.trackings.join(", ")}</span> · {r.reason} · {r.by}{" "}
+                        {new Date(r.at).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+                      </p>
+                    ))}
+                  </div>
+                );
+              })()}
               {/*
                 📦 ส่งตามให้ — ใบส่งออกไปแล้วแต่ของในกล่องไม่ครบ (พนักงานแจ้ง 24 ก.ย. 69)
                 คนละเรื่องกับแผนแบ่งส่งด้านล่าง (นั่นคือใบที่ยังไม่ปิด) · ใบนี้ปิดแล้ว สถานะไม่ย้อนกลับ

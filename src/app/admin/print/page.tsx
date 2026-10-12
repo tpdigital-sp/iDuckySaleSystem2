@@ -26,7 +26,7 @@ import RequirePerm from "@/components/RequirePerm";
 import ProductionFolderDrop from "@/components/admin/ProductionFolderDrop";
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipRider } from "@/lib/ship-with";
-import { daysToUseBy, orderAlertActive, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, receiptsPending, taxInvoiceDocsOf, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { awaitingReship, daysToUseBy, orderAlertActive, followUpQty, isPartiallyShipped, labelShipTo, openFollowUp, lastPrintInfo, nextPlannedRound, orderAwaitingStock, orderFullyPaid, printBlockers, receiptsPending, taxInvoiceDocsOf, proofBlockerLabel, queueStageOf, waitingForBalanceFrom, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { fetchOrdersAdmin, saveOrderAdminResult } from "@/lib/order-repo";
 import { orderQtyText } from "@/lib/item-yield";
@@ -83,7 +83,8 @@ const followUpWaiting = (o: Order): { no: number; qty: number } | null => {
 
 // 📦 ใบตามของชุดส่งรวมไม่มีใบปะหน้าของตัวเอง (ที่เหลือไปกล่องใบหลัก) — ไม่เข้ากอง "รอปริ้นใบปะหน้ารอบถัดไป"
 const nextRoundOf = (o: Order): { round: number; lastRound: boolean } | null =>
-  isPartiallyShipped(o) && !isShipRider(o) ? { round: (o.shipments?.length ?? 0) + 1, lastRound: !nextPlannedRound(o) } : null;
+  // ↩ ใบของตีกลับ (ถอดเลขแล้ว รอแพ็คใหม่) ปริ้นใบงานไปแล้ว — ต้องได้ใบปะหน้ากล่องใหม่ตามที่อยู่ของแผนแบ่งส่งรอบถัดไป
+  (isPartiallyShipped(o) || awaitingReship(o)) && !isShipRider(o) ? { round: (o.shipments?.length ?? 0) + 1, lastRound: !nextPlannedRound(o) } : null;
 const isSent = (o: Order) => !!o.productionSent;
 /** ผลิตอยู่แล้วแต่ยังไม่มีใบงาน — ของร้อนที่สุดในคิว ต้องปริ้นตามให้ทัน */
 // ⚠️ ดูขั้นงานผ่าน queueStageOf: ใบที่เด้งกลับ "รอชำระเงิน" เพราะยอดโตระหว่างผลิต (reopenedFrom) ยังอยู่ในคิว (24 ก.ย. 69)
@@ -569,9 +570,9 @@ function PrintRow({
             {nextRound && (
               <Tag
                 tone="yolk"
-                title={`ส่งไปแล้ว ${o.shipments!.length} รอบ (${o.shipments!.map((s) => s.tracking).join(", ")}) — กล่องรอบที่ ${nextRound.round} ต้องมีใบปะหน้าใหม่${nextRound.lastRound ? " · รอบนี้คือรอบสุดท้าย ยิงเลขที่ช่องเลขพัสดุปกติ" : ""}`}
+                title={`${o.shipments?.length ? `ส่งไปแล้ว ${o.shipments.length} รอบ (${o.shipments.map((s) => s.tracking).join(", ")})` : "↩ ของตีกลับ ถอดเลขเดิมแล้ว"} — กล่องรอบที่ ${nextRound.round} ต้องมีใบปะหน้าใหม่${nextRound.lastRound ? " · รอบนี้คือรอบสุดท้าย ยิงเลขที่ช่องเลขพัสดุปกติ" : ""}`}
               >
-                🚚 ส่งแล้ว {o.shipments!.length} รอบ · รอใบปะหน้ารอบที่ {nextRound.round}{nextRound.lastRound ? " (สุดท้าย)" : ""}
+                {o.shipments?.length ? `🚚 ส่งแล้ว ${o.shipments.length} รอบ` : "↩ ของตีกลับ"} · รอใบปะหน้ารอบที่ {nextRound.round}{nextRound.lastRound ? " (สุดท้าย)" : ""}
               </Tag>
             )}
             {followUp && (
