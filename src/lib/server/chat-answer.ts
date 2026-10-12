@@ -425,7 +425,8 @@ async function answerChatInner(
   // 🛟 n8n ไม่ตอบ/ตอบไม่ได้ → ตอบเองด้วย Gemini จาก context ที่ประกอบไว้ (แบบเดียวกับ fallback ของ chat.html)
   // ลูกค้าได้คำตอบจากข้อมูลร้านจริงเสมอ ดีกว่าข้อความ "ผู้ช่วยตอบช้า" เปล่า ๆ
   if (!reply) {
-    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}${calendar ? `\n${calendar}` : ""}`, ctx?.knowledgeContext, convo);
+    // ตัวตอบสำรอง (n8n ช้า/ล่ม) ต้องได้ข้อมูลร้านชุดเดียวกับ n8n — เคยตอบ "ยังไม่มีข้อมูลโปรของแถม" เพราะไม่ได้ส่ง gift มา (12 ต.ค. 69)
+    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}\n${HANDOFF_RULE_TEXT}`, ctx?.knowledgeContext, convo);
     if (direct) reply = direct;
   }
 

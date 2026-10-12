@@ -50,7 +50,7 @@ export async function shopPaymentText(): Promise<string> {
 type GiftCfg = {
   name?: string; note?: string; active?: boolean; minQty?: number; step?: number; giveQty?: number; maxPerOrder?: number; value?: number;
   condition?: string; sizeLabel?: string; productIds?: string[]; categories?: string[];
-  sizes?: { label?: string; perSheet?: number; note?: string }[]; partial?: { name?: string; minFill?: number };
+  sizes?: { label?: string; perSheet?: number; note?: string }[]; partial?: { name?: string; minFill?: number }; needArtwork?: boolean; giftProductId?: string;
 };
 let giftCache: { at: number; text: string } | null = null;
 
@@ -71,23 +71,37 @@ export async function shopGiftText(): Promise<string> {
       const { data: rows } = await sb.from("products").select("id,data").in("id", ids);
       for (const r of rows ?? []) names.set(String(r.id), String((r.data as { name?: string }).name ?? r.id).trim());
     }
+    // 12 ต.ค. 69 เจ้าของร้าน: "สั่งตั้งแต่ 24 ชิ้นขึ้นไป ฟรีแพ็คเกจ ลายของลูกค้า · สั่ง 30 ชิ้น ได้แพ็กเกจรองหลัง 24 ชุด ส่วนที่เหลือได้ซองหน้าใส-หลังขาว"
+    //   = ตรงกับตะกร้า (lib/gifts.ts): ของแถมพิมพ์เป็นแผ่น A3 ได้เต็มแผ่นเท่าไหร่ได้เท่านั้น เศษไม่ถึง partial.minFill ของแผ่น = ของแทน
     const parts = gifts.map((g) => {
       const products = (g.productIds ?? []).map((id) => names.get(id)).filter(Boolean);
+      const sizes = (g.sizes ?? []).filter((s) => s.label);
+      const sheetMode = sizes.some((s) => Number(s.perSheet) > 0) && !!g.partial?.name;
+      const artwork = g.needArtwork ?? !!g.giftProductId;
+      const what = artwork ? "ซองใส + การ์ดรองหลังพิมพ์ลายของลูกค้า (ใช้ลายเดียวกับสินค้าที่สั่ง หรือแนบลายอื่นในตะกร้าได้)" : g.note || "";
+      const head = `${g.name}${what ? ` = ${what}` : ""}${Number(g.value) > 0 ? ` มูลค่า ฿${g.value}/ชุด` : ""}`;
+      const who = products.length ? `สินค้าที่ร่วม: ${products.join(", ")}` : g.categories?.length ? `หมวดที่ร่วม: ${g.categories.join(", ")}` : "";
+      const cond = g.condition ? `เงื่อนไข: ${g.condition}` : "";
+      if (sheetMode) {
+        const full = Number(g.partial?.minFill) >= 1;
+        const first = sizes.find((s) => Number(s.perSheet) > 0)!;
+        const per = Number(first.perSheet);
+        const ex = per + Math.max(1, Math.round(per / 4));
+        return [
+          head,
+          who,
+          cond,
+          `การ์ดรองหลังพิมพ์เป็นแผ่น A3 ได้ตามจำนวนเต็มแผ่น${full ? "" : " (เศษถึงครึ่งแผ่นพิมพ์ให้อีกแผ่น)"} ชิ้นที่เหลือ${full ? "ไม่เต็มแผ่น" : "ไม่ถึงครึ่งแผ่น"}ได้ "${g.partial!.name}" แทน`,
+          `ขนาดรองหลังให้เลือกในตะกร้า (มีแค่ ${sizes.length} ขนาดนี้): ${sizes.map((s, i) => `${s.label} = ${s.perSheet} ใบ/แผ่น${i === 0 ? " (ค่าเริ่มต้น)" : ""}`).join(" · ")}`,
+          `ตัวอย่างขนาด ${first.label}: สั่งตั้งแต่ ${per} ชิ้นขึ้นไปได้แพ็กเกจรองหลัง · สั่ง ${ex} ชิ้น = แพ็กเกจรองหลัง ${per} ชุด + "${g.partial!.name}" ${ex - per} ชิ้น · สั่งไม่ถึง ${per} ชิ้น = ได้ "${g.partial!.name}" ทุกชิ้น`,
+        ].filter(Boolean).join(" · ");
+      }
       const min = Math.max(1, Number(g.minQty) || 1);
       const step = Math.max(1, Number(g.step) || min);
       const give = Math.max(1, Number(g.giveQty) || 1);
       const rule = min === 1 && step === 1 ? `ทุก 1 ชิ้นได้ ${give} ชุด` : `สั่งครบ ${min} ชิ้นได้ ${give} ชุด และทุก ${step} ชิ้นถัดไปได้เพิ่มอีก ${give}`;
-      const cap = Number(g.maxPerOrder) > 0 ? ` (สูงสุด ${g.maxPerOrder} ชุด/ออเดอร์)` : " ไม่จำกัด";
-      const sizes = (g.sizes ?? []).filter((s) => s.label).map((s, i) => `${s.label}${s.perSheet ? ` (${s.perSheet} ใบ/แผ่น A3)` : ""}${i === 0 ? " ค่าเริ่มต้น" : ""}`);
-      const fill = Number(g.partial?.minFill) >= 1 ? "ไม่เต็มแผ่น" : "ไม่ถึงครึ่งแผ่น";
-      return [
-        `${g.name}${g.note ? ` (${g.note})` : ""}${Number(g.value) > 0 ? ` มูลค่า ฿${g.value}/ชุด` : ""}`,
-        products.length ? `สินค้าที่ร่วม: ${products.join(", ")}` : g.categories?.length ? `หมวดที่ร่วม: ${g.categories.join(", ")}` : "",
-        `${rule}${cap}`,
-        g.condition ? `เงื่อนไข: ${g.condition}` : "",
-        sizes.length ? `เลือก${g.sizeLabel || "ขนาด"}ในตะกร้าได้: ${sizes.join(" · ")} (ของแถมมีแค่ ${sizes.length} ขนาดนี้เท่านั้น — ไม่ใช่ขนาดของสินค้าที่ขายแยก)` : "",
-        g.partial?.name && sizes.length ? `ของแถมพิมพ์เป็นแผ่น A3 ชิ้นที่เหลือ${fill}ได้ "${g.partial.name}" แทน` : "",
-      ].filter(Boolean).join(" · ");
+      const cap = Number(g.maxPerOrder) > 0 ? ` (สูงสุด ${g.maxPerOrder} ชุด/ออเดอร์)` : "";
+      return [head, who, `${rule}${cap}`, cond, sizes.length ? `เลือก${g.sizeLabel || "ขนาด"}ในตะกร้าได้: ${sizes.map((s) => s.label).join(" · ")}` : ""].filter(Boolean).join(" · ");
     });
     const text = `🎁 โปรของแถมที่เปิดอยู่ (ข้อมูลจริงจากระบบ · ระบบใส่ของแถมให้เองในตะกร้า): ${parts.join(" || ")} · ลูกค้าถามเรื่องของแถม/โปร ตอบตามนี้ ห้ามสัญญาของแถมอื่น`;
     giftCache = { at: Date.now(), text };
