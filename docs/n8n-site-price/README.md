@@ -486,3 +486,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 ### 12 ต.ค. 69 — 🏦🖼 บอท LINE ส่งภาพบัญชีเป็นรูป (ร่าง n8n รอ Publish)
 - LINE OA Bot › Reply Gate (หลังบรรทัด const j): ถ้าข้อความตอบมีลิงก์ https://iduckystore.com/payment/bank-card.jpg → ตัดลิงก์ออกจากข้อความ + ต่อท้าย image message (originalContentUrl/previewImageUrl = jpg) · ≤5 ข้อความ · logReply บันทึกเป็น "[รูป] ภาพบัญชีรับโอนของร้าน"
 - บันทึกเป็นฉบับร่าง versionId 6bb8424f (activeVersionId ยังเป็น 5771fd96) — เจ้าของร้านต้องกด Publish
+
+### 12 ต.ค. 69 — 🧾 แชทหน้าเว็บเช็คออเดอร์ได้เท่าบอท LINE
+- lib/server/bot-orders.ts: describeOrdersForBot (เลข·วันที่·รายการ·สถานะ·ขั้นผลิตจริง·ยอด·เลขพัสดุ) ใช้ร่วม customer-profile (LINE) + chat-answer (เว็บ) · LINE ได้เลขพัสดุเพิ่มด้วย
+- เว็บยืนยันตัวตน 3 ทาง (lookupWebOrders): ลิงก์ออเดอร์ในเครื่อง id+กุญแจ (my-order-links → askShopBot ส่ง myOrders) · ล็อกอิน (authToken) · เลข OD + เบอร์ที่ใช้สั่ง (อ่านเฉพาะข้อความลูกค้า · rate limit IP 12/10 นาที เบอร์ 10/ชม. เท่า /order/find) · ยืนยันไม่ได้ = ขอเบอร์ ห้ามบอกข้อมูล
+- ติดตามออเดอร์ไม่ hard-handoff แล้ว · พิมพ์เบอร์ตามคำขอ (หลังมี OD ในบทสนทนา) ไม่นับเป็นคำทักทาย · คำถามออเดอร์ข้ามตัวคิดราคา

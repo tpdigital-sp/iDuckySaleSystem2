@@ -19,6 +19,7 @@ import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_MSG_RE, HANDOFF_RULE_TEXT } from "./bot-handoff";
 import { bankCardUrl, shopGiftText, shopPaymentText } from "./shop-payment-text";
 import { BANK_ASK_RE, BANK_CARD } from "@/lib/bank-card";
+import { lookupWebOrders, ORDER_Q_RE, webOrderContext } from "./bot-orders";
 
 /**
  * 🧠 สมองแชทตัวเดียวของร้าน — ใช้ร่วม 2 ทาง (ย้ายออกจาก /api/chat 3 ต.ค. 69)
@@ -121,6 +122,10 @@ export type ChatBody = {
   sessionId?: string;
   debug?: boolean;
   history?: { role?: string; text?: string }[];
+  /** 🧾 ลิงก์ออเดอร์ที่เคยเปิดในเครื่องนี้ (id + กุญแจลับ) — ใช้ยืนยันว่าเป็นเจ้าของออเดอร์ (12 ต.ค. 69) */
+  myOrders?: { id?: string; key?: string }[];
+  /** 🔐 access token ของลูกค้าที่ล็อกอิน (Supabase) */
+  authToken?: string;
 };
 
 /** สินค้าที่คำตอบพูดถึง (ชื่อ/ลิงก์/ภาพปก) — หน้าแอดมินวาดแถวรูปใต้คำตอบแบบ chat.html เดิม */
@@ -223,7 +228,9 @@ async function answerChatInner(
       ? String(siteBody.intent)
       : "";
   /** ยังไม่ได้ถามอะไรจริง — ห้ามเดาว่าถามเรื่องเดิมต่อ (ดู isOpener) */
-  const opener = isOpener(message) || isGreeting(parsed);
+  // 📱 พิมพ์แต่เบอร์โทรหลังคุยเรื่องเลข OD = ยืนยันตัวตนตามที่บอทขอ ไม่ใช่คำทักทาย (12 ต.ค. 69)
+  const phoneFollow = /^[\d\s+-]{9,15}$/.test(message.trim()) && /OD-\d{6}-\d{4}/i.test(convo);
+  const opener = !phoneFollow && (isOpener(message) || isGreeting(parsed));
 
   /**
    * ข้อความที่ยังไม่ได้ถามอะไร → ตอบเองสั้น ๆ ทันที ไม่ส่งไป n8n
@@ -244,7 +251,8 @@ async function answerChatInner(
 
   // 🚨 ลูกค้าขอคุยคน / ไม่พอใจ / เคลมงาน / ตามออเดอร์ → ส่งต่อแอดมินทันที ไม่ต้องให้บอทดันต่อ
   // (เกณฑ์มาจากชั้นวิเคราะห์: escalate + เหตุผล) เรื่องพวกนี้บอทตอบเองแล้วยิ่งทำให้ลูกค้าหงุดหงิด
-  const hardHandoff = !staff && /ขอคุยแอดมิน|เคลม|ติดตามออเดอร์/.test(parsed?.intent ?? "");
+  // 🧾 12 ต.ค. 69 ติดตามออเดอร์ไม่ส่งต่อแอดมินแล้ว — แชทเว็บตอบจากข้อมูลจริงเหมือนบอท LINE (ต้องยืนยันตัวตนก่อน · ดู orderCtx ด้านล่าง)
+  const hardHandoff = !staff && /ขอคุยแอดมิน|เคลม/.test(parsed?.intent ?? "");
   // 🙋 กติกาเจ้าของร้าน 12 ต.ค. 69: ขอส่วนลด/ต่อราคา · ไม่พอใจ · ในนามบริษัท · ขอคุยคน = ส่งต่อทันที (lib/server/bot-handoff.ts)
   const ruleHandoff = !staff && HANDOFF_MSG_RE.test(message);
   if ((needsHuman(parsed) && hardHandoff) || ruleHandoff) {
@@ -294,7 +302,13 @@ async function answerChatInner(
   /** ตารางราคาดิบที่เว็บคิดเอง — ใช้ตอบลูกค้าตรง ๆ โดยไม่ต้องพึ่ง agent */
   let priceText = "";
   // 🎁 ถามของแถม/โปร (12 ต.ค. 69) → ข้ามตัวคิดราคา/สเปคหน้าสินค้าทั้งหมด (เคยตอบขนาดของ "กระดาษรองหลัง" ที่ขายแยก 9 แบบ แทนของแถม 4 ขนาด) ให้ AI ตอบจากข้อมูลโปรสดในหลังบ้าน
-  const giftQ = /ของแถม|แถม(อะไร|ไหม|มั้ย|ฟรี|ด้วย)|ได้แถม|แพ็?[กค]เกจ(รองหลัง|ฟรี)|โปร(โมชั่น)?\s*(อะไร|ไหม|มั้ย|ตอนนี้)/.test(message);
+  // 🧾 ถามเรื่องออเดอร์ (หรือพิมพ์เบอร์ตามที่บอทขอ หลังมีเลข OD ในบทสนทนา) → หาออเดอร์ที่ยืนยันตัวตนได้ · ข้ามตัวคิดราคา
+  const orderQ = !staff && (ORDER_Q_RE.test(message) || phoneFollow);
+  // เลข OD/เบอร์อ่านจากข้อความฝั่งลูกค้าเท่านั้น (ไม่หยิบเบอร์ร้านที่ผู้ช่วยเคยพิมพ์)
+  const customerHist = (body.history ?? []).filter((t) => t && t.role !== "shop" && typeof t.text === "string").slice(-8).map((t) => String(t.text)).join("\n");
+  const orderLk = orderQ ? await lookupWebOrders({ message, history: customerHist, myOrders: body.myOrders, authToken: body.authToken, ip: opts.ip }).catch(() => null) : null;
+  const orderCtx = orderLk ? await webOrderContext(orderLk, true).catch(() => "") : "";
+  const giftQ = orderQ || /ของแถม|แถม(อะไร|ไหม|มั้ย|ฟรี|ด้วย)|ได้แถม|แพ็?[กค]เกจ(รองหลัง|ฟรี)|โปร(โมชั่น)?\s*(อะไร|ไหม|มั้ย|ตอนนี้)/.test(message);
   if (giftQ) {
     /* ไม่ใช้ราคา/สเปคจากหน้าสินค้า */
   } else if (siteVia) {
@@ -395,7 +409,7 @@ async function answerChatInner(
         // ฝัง "คำแนะนำระบบ" ต่อท้ายข้อความ (สั่งให้ค้นราคา/จับวัสดุ/แปลงเซ็ต) แบบเดียวกับ chat.html
         // priceFacts ต้องอยู่ใน message ไม่ใช่แค่ systemMessage — agent ของ n8n ให้น้ำหนัก message
         // มากกว่ามาก (ยัดไว้ใน systemMessage อย่างเดียว มันเมินแล้วไปหยิบราคาจาก tool ตัวเองแทน)
-        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : "") + (askPay && payment ? `\n\n[${payment}]` : "") + (askGift && gift ? `\n\n[${gift}]` : ""),
+        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : "") + (askPay && payment ? `\n\n[${payment}]` : "") + (askGift && gift ? `\n\n[${gift}]` : "") + (orderCtx ? `\n\n[${orderCtx}]` : ""),
         sessionId,
         userId: `${staff ? "admin" : "web"}-${sessionId}`,
         source: staff ? "adminbuddy" : "website",
@@ -404,7 +418,7 @@ async function answerChatInner(
         // ⚠️ workflow ไม่ได้อ่าน knowledgeContext ที่ไหนเลย (ตรวจจาก system message ของ AI Agent1 แล้ว)
         // คลังความรู้ที่คัดมาจึงต้องต่อท้าย systemMessage ไม่งั้นส่งไปแล้วถูกทิ้งทั้งก้อน
         systemMessage:
-          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}\n${HANDOFF_RULE_TEXT}` ||
+          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}${orderCtx ? `\n${orderCtx}` : ""}\n${HANDOFF_RULE_TEXT}` ||
           undefined,
         conversationHistory: convo || undefined,
         knowledgeContext: ctx?.knowledgeContext,
@@ -436,7 +450,7 @@ async function answerChatInner(
   // ลูกค้าได้คำตอบจากข้อมูลร้านจริงเสมอ ดีกว่าข้อความ "ผู้ช่วยตอบช้า" เปล่า ๆ
   if (!reply) {
     // ตัวตอบสำรอง (n8n ช้า/ล่ม) ต้องได้ข้อมูลร้านชุดเดียวกับ n8n — เคยตอบ "ยังไม่มีข้อมูลโปรของแถม" เพราะไม่ได้ส่ง gift มา (12 ต.ค. 69)
-    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}\n${HANDOFF_RULE_TEXT}`, ctx?.knowledgeContext, convo);
+    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}${orderCtx ? `\n${orderCtx}` : ""}\n${HANDOFF_RULE_TEXT}`, ctx?.knowledgeContext, convo);
     if (direct) reply = direct;
   }
 

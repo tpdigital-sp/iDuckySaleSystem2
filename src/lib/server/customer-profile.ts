@@ -8,7 +8,7 @@ import { getSupabaseAdmin } from "./supabase-admin";
 import { memberTierOfContact } from "./quote-member-tier";
 import { orderTotal, type Order } from "@/lib/admin-data";
 import type { Contact } from "@/lib/contacts";
-import { slowestActive, wipJobsForOrder } from "./wip-production";
+import { describeOrdersForBot } from "./bot-orders";
 import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_RULE_TEXT } from "./bot-handoff";
 import { shopGiftText, shopPaymentText } from "./shop-payment-text";
@@ -194,27 +194,8 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
     );
   }
 
-  // 🏭 ขั้นผลิตจริงบนบอร์ด TP ของใบที่อยู่ช่วงผลิต (เจ้าของร้าน 12 ต.ค. 69 "ให้บอทตอบขั้นผลิตได้ถ้าลูกค้าถาม")
-  //   จับคู่แบบชัวร์เท่านั้น (exactOnly) · ส่งแค่ชื่อขั้น ไม่มีชื่อพนักงาน/แผนก · ไม่เกิน 3 ใบ · เกิน 2.5 วิ = ข้ามไป (n8n ให้เวลา API นี้ 6 วิ)
-  const stageOf = new Map<string, string>();
-  const inProd = activeOrders.filter((o) => o.status === "อนุมัติแบบ" || o.status === "กำลังผลิต").slice(0, 3);
-  if (inProd.length) {
-    const work = Promise.all(
-      inProd.map(async (o) => {
-        try {
-          const { jobs } = await wipJobsForOrder(o.id, o.productionSent?.folder, { exactOnly: true });
-          const live = jobs.filter((j) => j.status !== "archived");
-          if (!live.length) return;
-          const slow = slowestActive(live);
-          stageOf.set(o.id, slow ? `ขั้นผลิตตอนนี้: ${slow.stage}` : "ผลิตเสร็จทุกชิ้นแล้ว รอแพ็ค/ส่ง");
-        } catch {
-          /* อ่านบอร์ดไม่ได้ = ไม่บอกขั้น */
-        }
-      })
-    );
-    await Promise.race([work, new Promise((r) => setTimeout(r, left(2500)))]);
-  }
-  const withStage = (o: Order) => (stageOf.has(o.id) ? ` (${stageOf.get(o.id)})` : "");
+  // 🧾 บรรทัดออเดอร์ (สถานะ · ขั้นผลิตจริง · เลขพัสดุ) — โมดูลเดียวกับแชทหน้าเว็บ (lib/server/bot-orders.ts · 12 ต.ค. 69)
+  const { lines: orderLines, stageOf } = await describeOrdersForBot(orders, { max: 3, stageBudgetMs: left(2500) });
 
   // 3) ข้อความสำหรับพรอมป์ต
   const head: string[] = [];
@@ -222,13 +203,7 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   head.push(orders.length ? `ลูกค้าเก่า ${orders.length} ออเดอร์` : "ยังไม่เคยสั่งซื้อ (ตามข้อมูลที่ผูกไว้)");
   if (dealer) head.push("ตัวแทนจำหน่าย (ได้ราคาตัวแทน ไม่ได้ส่วนลด/ของแถมอื่น)");
   else if (tier) head.push(`ระดับสมาชิก ${tier.name} (ส่วนลด ${tier.pct}%)`);
-  const lines = [head.join(" · ")];
-  for (const o of orders.slice(0, 3)) {
-    lines.push(`• ${o.id} (${thDate(o.date)}) ${itemsText(o)} — ${o.status}${withStage(o)} ฿${orderTotal(o).toLocaleString()}`);
-  }
-  if (activeOrders.length) lines.push(`มีออเดอร์ที่ยังไม่จบ ${activeOrders.length} ใบ: ${activeOrders.map((o) => `${o.id} ${o.status}${withStage(o)}`).join(", ")}`);
-  // กติกาตอบเรื่องขั้นผลิต แปะมากับข้อมูล (ไม่ต้องแก้คำสั่งบอทใน n8n) — มีเฉพาะตอนมีขั้นให้บอก
-  if (stageOf.size) lines.push("ถ้าลูกค้าถามว่างานถึงไหน: ตอบตามขั้นผลิตในวงเล็บได้เลย (เป็นข้อมูลจริงจากฝ่ายผลิต) · ห้ามเดาวัน/เวลาเสร็จ · ห้ามบอกชื่อพนักงาน");
+  const lines = [head.join(" · "), ...orderLines];
   // สรุปที่บอกแต่ว่า "ยังไม่มีข้อมูล…" ทุกประโยค = ไม่มีประโยชน์ ไม่แปะ
   const noInfoCount = (summary.match(/ไม่มีข้อมูล|ไม่ได้ระบุ|ไม่มีข้อควรระวัง/g) ?? []).length;
   const useful = !!summary && !/^ยังไม่มีข้อมูลสำคัญ/.test(summary) && noInfoCount < 2 && summary.length > 40;

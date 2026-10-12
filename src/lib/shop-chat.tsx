@@ -9,6 +9,8 @@
  */
 
 import { useEffect, useRef } from "react";
+import { readOrderLinks } from "./my-order-links";
+import { getAccessToken } from "./customer-auth";
 
 /** ลิงก์ LINE ร้าน — /line เลือกปลายทางตามอุปกรณ์ให้ (ดู src/app/line/route.ts) */
 export const LINE_URL = "/line";
@@ -67,6 +69,15 @@ export type ShopBotReply = { text: string; products?: ChatProduct[]; images?: Ch
 /** ถามผู้ช่วยร้าน — คืนข้อความตอบเสมอ (ล้มเหลวก็คืนข้อความบอกทางออกให้ลูกค้า ไม่ throw) */
 export async function askShopBot(message: string, sessionId: string, history: ChatTurn[] = []): Promise<ShopBotReply> {
   try {
+    // 🧾 ให้ผู้ช่วยรู้ออเดอร์ของคนนี้เหมือนบอท LINE (12 ต.ค. 69): ลิงก์ออเดอร์ที่เคยเปิดในเครื่อง (id+กุญแจ) + token ถ้าล็อกอิน
+    //   ส่งไปเว็บร้านของเราเองเท่านั้น (ชุดเดียวกับที่หน้า /order/find ใช้) · เซิร์ฟเวอร์ใช้เฉพาะตอนถามเรื่องออเดอร์
+    let myOrders: { id: string; key?: string }[] = [];
+    try {
+      myOrders = readOrderLinks().slice(0, 10).map((l) => ({ id: l.id, key: l.key }));
+    } catch {
+      /* ไม่มี localStorage */
+    }
+    const authToken = await getAccessToken().catch(() => null);
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -78,6 +89,8 @@ export async function askShopBot(message: string, sessionId: string, history: Ch
           .filter((t) => t.text && t.text !== GREETING)
           .slice(-HISTORY_TURNS)
           .map((t) => ({ role: t.side === "out" ? "customer" : "shop", text: t.text.slice(0, 500) })),
+        ...(myOrders.length ? { myOrders } : {}),
+        ...(authToken ? { authToken } : {}),
       }),
     });
     const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string; products?: ChatProduct[]; images?: ChatImage[] };
