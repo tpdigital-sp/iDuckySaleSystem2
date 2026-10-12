@@ -8,8 +8,8 @@ import { getArticleServer } from "@/lib/server/articles-server";
 export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: "วิธีสั่งซื้อ",
-  description: "ขั้นตอนการสั่งซื้อสินค้าพิมพ์ลายตามสั่งจาก iDucky Prints Studio ทีละขั้นตอน ง่ายมาก",
+  title: "คู่มือลูกค้า — วิธีสั่งซื้อ & สมาชิก",
+  description: "วิธีสั่งซื้อสินค้าพิมพ์ลายตามสั่งจาก iDucky Prints Studio ทีละขั้นตอน + สิทธิ์สมาชิก ระดับสมาชิก และส่วนลดสะสมยอด",
 };
 
 const STEPS = [
@@ -89,7 +89,11 @@ const FAQS = [
   },
   {
     q: "ต้องสมัครสมาชิกไหม?",
-    a: "ไม่ต้องก็สั่งได้ · แต่ถ้าสมัครหรือล็อกอินด้วย LINE จะเก็บประวัติออเดอร์ให้ กดสั่งซ้ำได้ง่าย และได้ส่วนลดตามระดับสมาชิก",
+    a: "ไม่ต้องก็สั่งได้ · แต่ถ้าล็อกอินด้วย LINE ก่อนสั่ง ยอดซื้อจะถูกนับสะสมขึ้นระดับสมาชิก ได้ส่วนลดอัตโนมัติ ใช้คูปองได้ และเห็นประวัติออเดอร์ทุกใบ — ดูรายละเอียดที่หน้า “สมาชิก”",
+  },
+  {
+    q: "สั่งไปแล้วตอนไม่ได้ล็อกอิน ยอดจะนับเข้าระดับสมาชิกไหม?",
+    a: "ออเดอร์ที่สั่งตอนไม่ได้ล็อกอินจะไม่ได้ส่วนลดสมาชิก/คูปองในใบนั้น · ถ้าอยากให้ยอดเก่ามานับรวมกับบัญชี ทักแอดมินทางไลน์พร้อมเลขออเดอร์ได้เลย ครั้งหน้าแนะนำให้ล็อกอินก่อนกดสั่ง",
   },
   {
     q: "แก้ที่อยู่จัดส่งได้ถึงเมื่อไหร่?",
@@ -135,7 +139,7 @@ export default async function HowToOrderPage() {
           <div className="hto-hero">
             <div className="hto-hero-txt">
               <span className="kicker kicker-yolk">
-                <i className="folder">📖</i>คู่มือการสั่งซื้อ
+                <i className="folder">📖</i>คู่มือลูกค้า · สั่งซื้อ &amp; สมาชิก
               </span>
               <h1>
                 สั่งซื้อ<em>ง่าย ๆ</em>
@@ -151,7 +155,7 @@ export default async function HowToOrderPage() {
                 <span className="hto-fact yolk">
                   <FreeShipNote />
                 </span>
-                <span className="hto-fact mint">ไม่ต้องสมัครสมาชิกก็สั่งได้</span>
+                <a className="hto-fact mint" href="/member">ไม่สมัครก็สั่งได้ · สมาชิกได้ส่วนลด</a>
               </div>
               <div className="hto-hero-btns">
                 <Link className="btn btn-yolk" href="/products">
@@ -270,6 +274,20 @@ export default async function HowToOrderPage() {
           </div>
         </section>
       </div>
+
+      {/* ── สมาชิก — รายละเอียดเต็มย้ายไปหน้า /member แล้ว ตรงนี้เหลือแถบชวนกดไปดู ── */}
+      <section className="hto-sec hto-mbr-sec" id="member" style={{ scrollMarginTop: 100 }}>
+        <Link className="hto-mbr" href="/member">
+          <span className="hto-mbr-ico" aria-hidden="true">🏅</span>
+          <span className="hto-mbr-txt">
+            <b>ล็อกอินก่อนสั่งคุ้มกว่า — สมาชิก iDucky</b>
+            <span>สมัครฟรีด้วย LINE · ยอดซื้อสะสมขึ้นระดับ ได้ส่วนลดอัตโนมัติทุกบิล · ใช้คูปองได้ · ดูประวัติออเดอร์ครบ</span>
+          </span>
+          <span className="btn btn-yolk">
+            ดูสิทธิ์สมาชิก <span className="dot">→</span>
+          </span>
+        </Link>
+      </section>
 
       {/* ── คำถามที่พบบ่อย ── */}
       <section className="hto-sec" id="faq" style={{ scrollMarginTop: 100 }}>

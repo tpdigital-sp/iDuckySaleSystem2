@@ -303,7 +303,13 @@ export default function Navbar() {
               {catLink && <NavCatMenu label={catLink.label} href={catLink.href} />}
               <div className="menu" id="menu">
                 {menuLinks.map((l) => (
-                  <Link key={l.id} href={l.href} className={pathname === l.href ? "on" : undefined}>
+                  // ลิงก์หน้าสมาชิกเป็นพิลล์สีทองเด่นกว่าเมนูอื่น (เจ้าของร้านขอ 12 ต.ค. 69)
+                  <Link
+                    key={l.id}
+                    href={l.href}
+                    className={[pathname === l.href ? "on" : "", l.href === "/member" ? "nav-member" : ""].filter(Boolean).join(" ") || undefined}
+                  >
+                    {l.href === "/member" && <i aria-hidden="true">🏅</i>}
                     {l.label}
                   </Link>
                 ))}

@@ -192,6 +192,11 @@ export default function MobileNav({ open, onClose, logo }: { open: boolean; onCl
                 <b>ทำไมต้องเรา</b>
                 <span>→</span>
               </Link>
+              <Link href="/member" onClick={onClose}>
+                <i>🏅</i>
+                <b>สมาชิก · ยิ่งสั่งยิ่งลด</b>
+                <span>→</span>
+              </Link>
               <Link href="/dealer" onClick={onClose}>
                 <i>🤝</i>
                 <b>สมัครตัวแทน</b>

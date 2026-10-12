@@ -162,6 +162,14 @@
 .dl .menu>a:not(.on)::after,.dl .menu>.nav-drop>.nav-drop-trigger::after{content:"";position:absolute;left:50%;bottom:2px;width:0;height:4px;border-radius:9px;
   background:var(--sky-300);translate:-50% 0;transition:width .28s cubic-bezier(.34,1.56,.64,1)}
 .dl .menu>a:not(.on):hover::after,.dl .menu>.nav-drop>.nav-drop-trigger:hover::after{width:18px}
+/* 🏅 เมนูหน้าสมาชิก — พิลล์ทองเด่นกว่าเมนูอื่น */
+.dl .menu>a.nav-member{display:inline-flex;align-items:center;gap:6px;color:#6B4A05;font-weight:500;
+  background:linear-gradient(120deg,#FFE58A,#FFD045 55%,#F6B91F);box-shadow:0 6px 16px rgba(215,154,21,.32),inset 0 1px 0 rgba(255,255,255,.7)}
+.dl .menu>a.nav-member i{font-style:normal;font-size:1.02em;line-height:1}
+.dl .menu>a.nav-member::before{background:rgba(255,255,255,.35)}
+.dl .menu>a.nav-member::after{display:none}
+.dl .menu>a.nav-member:hover{color:#4F3600}
+.dl .menu>a.nav-member.on{outline:2px solid #fff;outline-offset:-4px}
 /* ---- Nav mega-menu: "สินค้าและบริการ" — การ์ดลอยโค้งมนแบบเดียวกับ nav-in และปุ่มอื่นๆ ในเว็บ
    แท็บกลุ่มหมวดหมู่แบบ pill สี พาสเทล ให้เข้ากับโทนความน่ารักของแบรนด์ ---- */
 .dl .nav-drop{position:static}
@@ -2847,6 +2855,20 @@ to{opacity:1;transform:none}}
   transition:transform .28s cubic-bezier(.34,1.56,.64,1),background .25s ease,color .25s ease}
 .dl .hto-faq details[open] summary i{transform:rotate(90deg);background:var(--yolk);color:var(--navy)}
 .dl .hto-faq details p{margin-top:10px;padding-left:37px;font-size:.87rem;line-height:1.85;color:var(--navy-soft)}
+
+/* --- แถบชวนไปหน้าสมาชิก (/member) --- */
+.dl .hto-sec.hto-mbr-sec{padding:44px 0 4px}
+.dl .hto-mbr{width:min(100% - 40px,var(--wrap));margin:0 auto;display:flex;align-items:center;gap:18px;
+  padding:20px 24px;border-radius:var(--r-l);color:#fff;text-decoration:none;
+  background:linear-gradient(120deg,#5b2ec0,#4a54d6 45%,#3b7ae4);border:2px solid rgba(255,255,255,.6);
+  box-shadow:0 18px 36px rgba(74,84,214,.28);transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.dl .hto-mbr:hover{transform:translateY(-4px)}
+.dl .hto-mbr-ico{font-size:2.4rem;line-height:1;flex:none}
+.dl .hto-mbr-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.dl .hto-mbr-txt b{font-family:var(--display);font-weight:500;font-size:1.15rem}
+.dl .hto-mbr-txt span{font-size:.86rem;line-height:1.7;opacity:.9}
+.dl .hto-mbr .btn{flex:none}
+@media(max-width:700px){.dl .hto-mbr{flex-direction:column;text-align:center}}
 
 /* ระยะหัว-ท้ายของแต่ละโซน */
 .dl .hto-sec{padding:56px 0 60px}
@@ -5599,3 +5621,104 @@ to{opacity:1;transform:none}}
   /* การ์ดในราง "ลองดู/มาใหม่" หน้าแรก: ชื่อยาวโดนตัดเหลือ "กางเกง COMFY…" → ให้ 3 บรรทัด */
   .dl .fresh-card .card-body h3{-webkit-line-clamp:3}
 }
+
+/* ═══════ หน้าสมาชิก (/member) — prefix .mbr- · ยืม .dlr-hero/.dlr-perks/.dlr-steps ของหน้าตัวแทน ═══════
+   ตรา/สีระดับ = ชุดเดียวกับหน้าบัญชี (@/lib/tier-art) ส่งมาเป็นตัวแปร --ra (อ่อน) / --rb (เข้ม) */
+.dl .mbr-hero{grid-template-columns:1.1fr .9fr}
+.dl .mbr-line-btn{box-shadow:0 10px 24px rgba(215,154,21,.35)}
+.dl .mbr-medal{display:block;width:100%;height:auto;object-fit:contain}
+.dl .mbr-medal-base{display:grid;place-items:center;aspect-ratio:1;border-radius:30%;font-size:2.4rem;line-height:1;
+  background:linear-gradient(150deg,#F1F5F9,#CBD5E1);box-shadow:inset 0 2px 6px rgba(255,255,255,.9)}
+
+/* บัตรสมาชิก — พื้นไล่สีระดับ ตราลอยมุมขวา */
+.dl .mbr-show{display:flex;flex-direction:column;align-items:center;gap:18px;min-width:0}
+.dl .mbr-card{position:relative;overflow:hidden;width:min(100%,380px);aspect-ratio:1.58;border-radius:26px;padding:22px 24px;
+  color:#fff;background:linear-gradient(135deg,var(--ra),var(--rb));
+  border:2px solid rgba(255,255,255,.7);box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 26px 50px -12px color-mix(in srgb,var(--rb) 70%,transparent);
+  display:grid;grid-template-columns:1fr auto;grid-template-rows:auto 1fr auto;column-gap:10px;
+  animation:mbrIn .55s cubic-bezier(.34,1.56,.64,1) both}
+.dl .mbr-card.dark{color:#243B57}
+.dl .mbr-card,.dl .mbr-card-info{text-align:left;align-items:flex-start}
+@keyframes mbrIn{from{opacity:0;transform:translateY(14px) scale(.96) rotate(-2deg)}to{opacity:1;transform:none}}
+.dl .mbr-card::before{content:"";position:absolute;width:70%;aspect-ratio:1;right:-18%;top:-30%;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(255,255,255,.55),rgba(255,255,255,0))}
+.dl .mbr-shine{position:absolute;top:-40%;bottom:-40%;left:-60%;width:40%;pointer-events:none;
+  background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.45),rgba(255,255,255,0));
+  transform:rotate(18deg);animation:mbrShine 4.5s ease-in-out infinite}
+@keyframes mbrShine{0%,55%{left:-60%}100%{left:130%}}
+.dl .mbr-card-top{grid-column:1/-1;position:relative;display:flex;align-items:center;gap:8px}
+.dl .mbr-card-brand{font-family:var(--display);font-size:.72rem;letter-spacing:.22em;opacity:.85}
+.dl .mbr-card-mine{margin-left:auto;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.85);color:#243B57;
+  font-family:var(--display);font-size:.7rem}
+.dl .mbr-card-medal{grid-column:2;grid-row:2/4;align-self:center;width:clamp(96px,30vw,138px);position:relative;
+  filter:drop-shadow(0 10px 16px rgba(0,0,0,.18));animation:mbrBob 5s ease-in-out infinite}
+@keyframes mbrBob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-6px) rotate(2deg)}}
+.dl .mbr-card-info{grid-column:1;grid-row:2;align-self:end;position:relative;display:flex;flex-direction:column;gap:2px;min-width:0}
+.dl .mbr-card-info b{font-family:var(--display);font-weight:600;font-size:clamp(1.6rem,4vw,2.1rem);line-height:1.1}
+.dl .mbr-card-info span{font-size:.82rem;opacity:.9}
+.dl .mbr-card-off{grid-column:1;grid-row:3;position:relative;align-self:end;margin-top:10px;display:inline-flex;align-items:baseline;gap:8px;
+  justify-self:start;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.28);backdrop-filter:blur(4px)}
+.dl .mbr-card.dark .mbr-card-off{background:rgba(255,255,255,.55)}
+.dl .mbr-card-off small{font-size:.74rem;opacity:.9}
+.dl .mbr-card-off b{font-family:var(--display);font-weight:600;font-size:1.3rem;line-height:1}
+/* แถวตราสลับระดับ */
+.dl .mbr-pick{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.dl .mbr-pick button{width:52px;height:52px;padding:6px;border-radius:16px;cursor:pointer;background:#fff;border:2px solid #fff;
+  box-shadow:var(--shadow-s);transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease,border-color .25s ease}
+.dl .mbr-pick button:hover{transform:translateY(-3px)}
+.dl .mbr-pick button.on{border-color:var(--rb);box-shadow:0 8px 18px -4px color-mix(in srgb,var(--rb) 60%,transparent);transform:translateY(-3px) scale(1.06)}
+.dl .mbr-pick button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.dl .mbr-card,.dl .mbr-shine,.dl .mbr-card-medal{animation:none}}
+@media(max-width:860px){
+  .dl .mbr-hero{grid-template-columns:1fr}
+  .dl .mbr-show{order:-1}
+}
+
+/* เส้นทางระดับ — ตราเรียงบนรางเส้นประ (จอใหญ่) · ลิสต์แนวตั้ง (มือถือ) */
+.dl .mbr-band{padding:56px 0 64px}
+.dl .mbr-path{position:relative;width:min(100% - 40px,var(--wrap));margin:0 auto;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;transition:opacity .3s ease}
+.dl .mbr-path.is-loading{opacity:.55}
+.dl .mbr-path::before{content:"";position:absolute;left:8%;right:8%;top:62px;border-top:3px dashed var(--sky-300);z-index:0}
+.dl .mbr-stop{list-style:none;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px}
+.dl .mbr-stop-medal{position:relative;width:124px;height:124px;display:grid;place-items:center;border-radius:50%;
+  background:radial-gradient(circle at 50% 40%,#fff 0 52%,color-mix(in srgb,var(--ra) 55%,#fff) 53% 100%);
+  border:3px solid #fff;box-shadow:0 14px 26px -8px color-mix(in srgb,var(--rb) 55%,transparent);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.dl .mbr-stop:hover .mbr-stop-medal{transform:translateY(-6px) rotate(-4deg)}
+.dl .mbr-stop-medal .mbr-medal{width:96px}
+.dl .mbr-stop-medal .mbr-medal-base{width:72px;font-size:2rem}
+.dl .mbr-stop-txt{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;
+  background:#fff;border:2px solid #fff;border-radius:var(--r-m);padding:14px 10px;box-shadow:var(--shadow-s);
+  border-top:4px solid var(--rb)}
+.dl .mbr-stop-txt b{font-family:var(--display);font-weight:500;font-size:1.08rem;color:var(--navy)}
+.dl .mbr-stop-min{font-size:.8rem;color:var(--navy-soft)}
+.dl .mbr-stop-off{padding:4px 12px;border-radius:999px;font-family:var(--display);font-size:.9rem;white-space:nowrap;
+  background:color-mix(in srgb,var(--ra) 35%,#fff);color:color-mix(in srgb,var(--rb) 70%,#1a2b40)}
+.dl .mbr-stop.is-base .mbr-stop-off{background:#F1F5F9;color:#64748b;font-size:.78rem}
+.dl .mbr-stop.is-mine .mbr-stop-medal{outline:3px solid var(--yolk);outline-offset:3px}
+.dl .mbr-mine{position:absolute;top:-12px;left:50%;transform:translateX(-50%);z-index:2;white-space:nowrap;
+  background:var(--yolk);color:var(--navy);font-family:var(--display);font-size:.7rem;padding:3px 10px;border-radius:999px;
+  box-shadow:0 4px 10px rgba(215,154,21,.3)}
+@media(max-width:700px){
+  .dl .mbr-path{grid-template-columns:1fr;gap:12px}
+  .dl .mbr-path::before{left:51px;right:auto;top:40px;bottom:40px;border-top:0;border-left:3px dashed var(--sky-300)}
+  .dl .mbr-stop{flex-direction:row;text-align:left;gap:14px}
+  .dl .mbr-stop-medal{width:82px;height:82px;flex:none;margin-left:10px}
+  .dl .mbr-stop-medal .mbr-medal{width:64px}
+  .dl .mbr-stop-medal .mbr-medal-base{width:50px;font-size:1.5rem}
+  .dl .mbr-stop-txt{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;text-align:left;
+    border-top-width:2px;border-left:4px solid var(--rb);padding:12px 14px}
+  .dl .mbr-stop-txt b{flex-basis:100%}
+}
+
+/* กติกาขึ้น/รักษาระดับ — 4 ใบ */
+.dl .mbr-sec{padding-bottom:20px}
+.dl .mbr-rules{width:min(100% - 40px,var(--wrap));margin:34px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:720px){.dl .mbr-rules{grid-template-columns:1fr}}
+.dl .mbr-rule{display:flex;gap:14px;align-items:flex-start;background:#fff;border:2px solid #fff;border-radius:var(--r-m);
+  padding:18px 20px;box-shadow:var(--shadow-s)}
+.dl .mbr-rule i{flex:none;width:46px;height:46px;border-radius:15px;display:grid;place-items:center;font-style:normal;font-size:1.35rem;
+  background:linear-gradient(150deg,#FFF3CE,#fff 70%)}
+.dl .mbr-rule b{font-family:var(--display);font-weight:500;font-size:1rem;color:var(--navy)}
+.dl .mbr-rule p{margin-top:4px;font-size:.86rem;line-height:1.8;color:var(--navy-soft)}

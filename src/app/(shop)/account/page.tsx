@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/products";
 import { graphicWaitingItems, balanceNet, STEP_OF, type Order } from "@/lib/admin-data";
 import { fetchShopPayment, readStoredShopPayment, tiersConfigOf } from "@/lib/shop-settings";
 import { BASE_TIER_ID, lockedTier, nextTier, paidSpend, tierForSpend, tierRenewalInfo, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
+import { tierRing, medalArt, DARK_TEXT_TIERS } from "@/lib/tier-art";
 import { useCustomer } from "@/lib/customer-context";
 import { getAccessToken, signOut, updateProfile } from "@/lib/customer-auth";
 import type { OrderSender } from "@/lib/admin-data";
@@ -26,37 +27,8 @@ import { AccountSideNav, MenuIco, MobileLogout, OrderTracker, statusIcon, type I
 /** ลิงก์เปิดหน้าเช็คออเดอร์ (ต้องมี key ถึงเปิดได้) */
 const orderHref = (o: Order, sub = "") => `/order/${encodeURIComponent(o.id)}${sub}${o.key ? `?key=${encodeURIComponent(o.key)}` : ""}`;
 
-/** สีกรอบรูป/ป้าย/การ์ด ตามระดับ — คีย์ด้วย id ระดับ (ไม่ตรงมาตรฐาน → วนตามลำดับ) */
-const RING: Record<string, [string, string]> = {
-  bronze: ["#F2A97C", "#C4703F"],
-  silver: ["#D3E6FB", "#8FA6CC"],
-  gold: ["#FFD879", "#E8A22E"],
-  platinum: ["#7EE8C0", "#1C9B74"],
-  diamond: ["#8ED6FF", "#B49AF0"],
-};
-const RING_ORDER = Object.keys(RING);
-function ringOf(tier: Tier | null, index: number): [string, string] {
-  if (!tier) return ["#57B6E8", "#2C81C4"];
-  if (tier.id === BASE_TIER_ID) return ["#CBD5E1", "#94A3B8"]; // ระดับเริ่มต้น (ยังไม่ถึง Bronze) = เทากลาง
-  return RING[tier.id] ?? RING[RING_ORDER[index % RING_ORDER.length]];
-}
-/** ระดับที่ตัวหนังสือบนพื้นสีอ่านยากถ้าเป็นขาว → ใช้กรมท่า */
-const DARK_TEXT_TIERS = new Set(["silver", "gold", BASE_TIER_ID]);
-
-/** ตราระดับ (ภาพจริงจากไฟล์ต้นแบบ) — ครบทั้ง 5 ระดับ */
-const MEDAL_ART = ["bronze", "silver", "gold", "platinum", "diamond"] as const;
-const MEDAL_ID: Record<string, (typeof MEDAL_ART)[number]> = {
-  bronze: "bronze",
-  silver: "silver",
-  gold: "gold",
-  platinum: "platinum",
-  diamond: "diamond",
-};
-/** ชื่อไฟล์ตราของระดับ — ไม่รู้จัก id ก็เดาจากลำดับ */
-function medalArt(tier: Tier | null, index: number): (typeof MEDAL_ART)[number] | null {
-  if (!tier || tier.id === BASE_TIER_ID) return null; // ระดับเริ่มต้นไม่มีตรา ใช้อีโมจิ
-  return MEDAL_ID[tier.id] ?? MEDAL_ART[Math.min(index, MEDAL_ART.length - 1)];
-}
+// สี/ตราระดับย้ายไป @/lib/tier-art (ใช้ร่วมกับหน้า /member)
+const ringOf = tierRing;
 
 /** ธีมสีโปรไฟล์ = สีของระดับที่เป็นอยู่จริง (สวิตช์เปิด/ปิด — เปิดไว้เป็นค่าเริ่มต้น) */
 const THEME_TEXT: Record<string, string> = { [BASE_TIER_ID]: "#243B57", bronze: "#fff", silver: "#243B57", gold: "#5A3B08", platinum: "#fff", diamond: "#fff" };
