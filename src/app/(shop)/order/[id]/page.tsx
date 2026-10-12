@@ -22,6 +22,7 @@ import { rememberOrderLink } from "@/lib/my-order-links";
 import ImageLightbox from "@/components/ImageLightbox";
 import Portal from "@/components/Portal";
 import { HIDE_GENERIC_RATE, SPEC_HIDE, SpecLines } from "@/components/SpecLines";
+import PromptPayQR from "@/components/PromptPayQR";
 import { AddOnBreakdown, addOnLineViews, itemUnitExtras } from "@/components/AddOnLines";
 import { LINE_URL } from "@/components/LineButton";
 import SenderForm from "@/components/SenderForm";
@@ -91,7 +92,7 @@ function TrackCopy({ tracking, big }: { tracking: string; big?: boolean }) {
 }
 
 /** 🏦 การ์ดบัญชีร้าน/พร้อมเพย์ + ปุ่มคัดลอก — วางในกล่องรอชำระเงิน/ค้างชำระ (null = ยังโหลด/ร้านยังไม่ตั้งบัญชี) */
-function PayAccounts({ payment }: { payment: ShopPayment | null }) {
+function PayAccounts({ payment, amount, orderId }: { payment: ShopPayment | null; amount?: number; orderId?: string }) {
   const [copied, setCopied] = useState("");
   if (!payment) return null;
   const banks = payment.banks.filter((b) => b.accountNo?.trim());
@@ -105,6 +106,10 @@ function PayAccounts({ payment }: { payment: ShopPayment | null }) {
   return (
     <div className="mt-3 space-y-2">
       <p className="text-xs font-bold">💳 โอนมาที่บัญชีร้าน</p>
+      {/* 📱 QR พร้อมเพย์ใส่ยอด — สแกนจ่ายได้เลย ไม่ต้องพิมพ์เลขบัญชี/ยอดเอง (12 ต.ค. 69) */}
+      {pp && typeof amount === "number" && (
+        <PromptPayQR promptpay={pp} name={payment.promptpayName} amount={amount} fileName={orderId} />
+      )}
       {banks.map((b) => (
         <AccountRow
           key={b.id}
@@ -1007,7 +1012,20 @@ export default function CustomerOrderPage() {
               <strong>{Math.max(1, Math.ceil(earlyPayMsLeft(order, nowTick) / 60_000))} นาที</strong> ไม่งั้นส่วนลดนี้จะหายไปเอง
             </p>
           )}
-          <PayAccounts payment={payment} />
+          <PayAccounts
+            payment={payment}
+            orderId={order.id}
+            /* ยอดเดียวกับหัวกล่อง "รอชำระเงิน/ค้างชำระ" ด้านบน — QR ใส่ยอดนี้ให้ */
+            amount={
+              order.deposit && !order.deposit.firstPaidAt
+                ? dueNow
+                : order.deposit && !order.deposit.settledAt
+                  ? dueNow
+                  : paidSoFar(order) > 0
+                    ? balanceNet(order, dueNow)
+                    : orderTotal(order)
+            }
+          />
           <label
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {

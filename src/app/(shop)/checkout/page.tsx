@@ -51,6 +51,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingVisible } from "@/lib/shipping-auto";
 import { LINE_URL } from "@/components/LineButton";
 import StockCheckNote from "@/components/StockCheckNote";
+import PromptPayQR from "@/components/PromptPayQR";
 import PostcodeHelper from "@/components/PostcodeHelper";
 
 interface Placed {
@@ -803,7 +804,52 @@ export default function CheckoutPage() {
      */
     const awaitingQuote = placed.pending.length > 0;
     const showPay = hasPayment(payment) && !awaitingQuote;
-    const stepSlip = showPay ? 3 : 2;
+    const stepSlip = 2; // ปกติ: ① โอน ② สลิป ③ ไลน์ · ร้านไม่ได้ตั้งบัญชี: ① ไลน์ ② สลิป
+    /**
+     * 💬 ขั้นทักไลน์ — เดิมเป็นขั้นที่ 1 ก่อนโอน (ตั้งใจให้คุยลายจบก่อนจ่าย ไม่ต้องคืนเงิน/โอนเพิ่มทีหลัง)
+     * 12 ต.ค. 69 เจ้าของร้านอนุมัติสลับเป็น ① โอน (QR พร้อมเพย์) ② แนบสลิป ③ ทักไลน์ — ลูกค้าที่ทักก่อนแล้วรอแอดมินตอบ
+     * เลยเวลาส่วนลดโอนไว 1 ชม. · ลายยังแก้ได้จนพอใจก่อนเข้าผลิต (ส่งแบบให้ตรวจทุกงาน)
+     * ใบที่รอตีราคา (ยังโอนไม่ได้) / ร้านไม่ได้ตั้งบัญชี = ทักไลน์เป็นขั้นแรกเหมือนเดิม
+     */
+    const payFirst = showPay;
+    const lineStep = (n: number) => (
+          <div className="mt-4 rounded-2xl bg-[#06C755]/10 p-5 ring-2 ring-[#06C755]/40">
+            <p className="text-base font-extrabold text-emerald-900">
+              <span className="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-[#06C755] text-xs text-white">{n}</span>
+              {payFirst ? "ทักไลน์ยืนยันลาย/แบบงานกับร้าน" : "ทักไลน์คุยออเดอร์กับร้านก่อนนะครับ"}
+            </p>
+            {payFirst && (
+              <p className="mt-1 text-xs font-semibold text-emerald-800">
+                โอนก่อนแล้วค่อยทักก็ได้ — ไม่ต้องรอแอดมินตอบ ส่วนลดโอนไวจะได้ไม่หลุด · ลายแก้ได้จนกว่าจะพอใจก่อนเข้าผลิต
+              </p>
+            )}
+            <ul className="mt-2 space-y-1 pl-1 text-xs leading-relaxed text-stone-600">
+              <li>• ยืนยันลาย/แบบงานกับแอดมินก่อนเข้าผลิต — มีอะไรต้องแก้จะได้แก้ทัน</li>
+              <li>• เช็คคิวผลิตกับวันที่ได้รับของจริง</li>
+              <li>• ติดปัญหาตรงไหน ทักในแชทนี้ได้ตลอด (อ้างอิงเลข {placed.id})</li>
+            </ul>
+
+            <button
+              type="button"
+              onClick={() => contactShop(placed.text)}
+              className="mt-3 w-full rounded-full bg-[#06C755] px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.01] hover:brightness-95"
+            >
+              💬 ทักไลน์ร้าน — คุยรายละเอียดออเดอร์
+            </button>
+
+            {lineOpened ? (
+              <p className="mt-2 rounded-xl bg-white px-3 py-2 text-center text-[11px] font-bold leading-relaxed text-emerald-700 ring-1 ring-emerald-200">
+                ✓ คัดลอกรายละเอียดออเดอร์ให้แล้ว — วาง (Ctrl/⌘+V) ส่งในแชทร้านได้เลย
+                <br />
+                <span className="font-semibold text-stone-500">ถ้าหน้าต่างไลน์ไม่เปิด กดปุ่มเขียวซ้ำอีกครั้งได้</span>
+              </p>
+            ) : (
+              <p className="mt-2 text-center text-[11px] text-stone-500">
+                กดแล้วระบบคัดลอกรายละเอียดออเดอร์ให้อัตโนมัติ — วางส่งในแชทได้เลย
+              </p>
+            )}
+          </div>
+    );
     return (
       <div className="mx-auto max-w-2xl px-4 py-10">
         <div className="rounded-2xl bg-emerald-50/70 p-6 text-center ring-1 ring-emerald-200">
@@ -858,54 +904,21 @@ export default function CheckoutPage() {
           </p>
         </div>
 
-        {/*
-          ═══ ① ทักไลน์คุยออเดอร์ — ขั้นตอนแรกหลังสั่ง ═══
-          วางไว้ "ก่อน" บัญชีธนาคาร ตั้งใจให้คุยจบก่อนโอน — ออเดอร์ที่ต้องแก้ลาย/แก้จำนวน
-          จะได้แก้ตั้งแต่ยังไม่โอน (ไม่ต้องมาคืนเงิน/โอนเพิ่มทีหลัง)
-          โหมดแอดมินสั่งแทนไม่ต้องโชว์ — คุยกับลูกค้าอยู่แล้ว
-        */}
-        {numbered && (
-          <div className="mt-4 rounded-2xl bg-[#06C755]/10 p-5 ring-2 ring-[#06C755]/40">
-            <p className="text-base font-extrabold text-emerald-900">
-              <span className="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-[#06C755] text-xs text-white">1</span>
-              ทักไลน์คุยออเดอร์กับร้านก่อนนะครับ
-            </p>
-            <ul className="mt-2 space-y-1 pl-1 text-xs leading-relaxed text-stone-600">
-              <li>• ยืนยันลาย/แบบงานกับแอดมินก่อนเข้าผลิต — มีอะไรต้องแก้จะได้แก้ทัน</li>
-              <li>• เช็คคิวผลิตกับวันที่ได้รับของจริง</li>
-              <li>• ติดปัญหาตรงไหน ทักในแชทนี้ได้ตลอด (อ้างอิงเลข {placed.id})</li>
-            </ul>
-
-            <button
-              type="button"
-              onClick={() => contactShop(placed.text)}
-              className="mt-3 w-full rounded-full bg-[#06C755] px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:scale-[1.01] hover:brightness-95"
-            >
-              💬 ทักไลน์ร้าน — คุยรายละเอียดออเดอร์
-            </button>
-
-            {lineOpened ? (
-              <p className="mt-2 rounded-xl bg-white px-3 py-2 text-center text-[11px] font-bold leading-relaxed text-emerald-700 ring-1 ring-emerald-200">
-                ✓ คัดลอกรายละเอียดออเดอร์ให้แล้ว — วาง (Ctrl/⌘+V) ส่งในแชทร้านได้เลย
-                <br />
-                <span className="font-semibold text-stone-500">ถ้าหน้าต่างไลน์ไม่เปิด กดปุ่มเขียวซ้ำอีกครั้งได้</span>
-              </p>
-            ) : (
-              <p className="mt-2 text-center text-[11px] text-stone-500">
-                กดแล้วระบบคัดลอกรายละเอียดออเดอร์ให้อัตโนมัติ — วางส่งในแชทได้เลย
-              </p>
-            )}
-          </div>
-        )}
+        {/* ① ทักไลน์ — ขึ้นก่อนเฉพาะใบที่ยังโอนไม่ได้ (รอตีราคา/ร้านไม่ได้ตั้งบัญชี) · ปกติไปอยู่ท้ายสุด (lineStep ด้านบน) */}
+        {numbered && !payFirst && lineStep(1)}
 
         {showPay && (
           <div className="mt-4 space-y-2">
             <p className="text-sm font-bold text-stone-700">
               {numbered && (
-                <span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-stone-300 text-[11px] text-white">2</span>
+                <span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-stone-300 text-[11px] text-white">1</span>
               )}
               💳 โอนมาที่บัญชีร้าน
             </p>
+            {/* 📱 QR พร้อมเพย์ใส่ยอด — สแกนจ่ายได้เลย (12 ต.ค. 69) */}
+            {payment.promptpay?.trim() && (
+              <PromptPayQR promptpay={payment.promptpay} name={payment.promptpayName} amount={placed.total} fileName={placed.id} />
+            )}
             {payment.banks.filter((b) => b.accountNo?.trim()).map((b) => (
               <div key={b.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
                 <div>
@@ -1056,6 +1069,9 @@ export default function CheckoutPage() {
             </div>
           </div>
           ))}
+
+        {/* ③ ทักไลน์ยืนยันลาย — ปกติเป็นขั้นสุดท้าย หลังโอน+แนบสลิป */}
+        {numbered && payFirst && lineStep(3)}
 
         <Link href="/products" className="mt-4 block text-center text-sm font-semibold text-stone-400 hover:text-stone-600">← เลือกซื้อสินค้าต่อ</Link>
       </div>
