@@ -2221,6 +2221,36 @@ async function fallback(query: string, timeoutMs: number): Promise<PriceAnswer |
  * ตอบคำถามราคาหนึ่งข้อ — ลองตอบจากตารางราคาจริงของเว็บก่อน ไม่ได้ค่อยส่งต่อ n8n
  * `allowFallback: false` ใช้ตอนอยากรู้ว่าเว็บตอบเองได้ไหมล้วน ๆ (เทียบผลก่อนสลับระบบ)
  */
+/**
+ * 📐 ลูกค้านับเป็น "ใบ/ชิ้น" แต่สินค้าคิดราคาเป็น "แผ่น A3" (เจ้าของร้าน 12 ต.ค. 69 "ราคากระดาษรองหลังคิดหน่วยผิด แก้ไขได้เลย")
+ *   เดิม "กระดาษรองหลัง 7x7 100 ใบ" = 100 แผ่น A3 ฿4,500 · จริง 7×7 ได้ 24 ใบ/แผ่น → ใช้ 5 แผ่น ฿225
+ *   ใช้ piecesPerUnit ของขนาดที่ลูกค้าพิมพ์มา (ตัวเลขเดียวกับป้าย "ได้ 24 ใบ / แผ่น A3" หน้าสินค้า) · ไม่ระบุขนาด/ขนาดไม่มีจำนวนต่อแผ่น = ไม่แปลง
+ */
+function piecesToSheets(product: Product, q: string): { pieces: number; sheets: number; per: number; size: string; unit: string; query: string } | null {
+  const unit = String((product as { pricing?: { unit?: string } }).pricing?.unit ?? "");
+  if (!/แผ่น/.test(unit)) return null;
+  const m = /(\d[\d,]*)\s*(ใบ|ชิ้น|ดวง|อัน|การ์ด|ตัว)/.exec(q);
+  if (!m) return null;
+  const pieces = Number(m[1].replace(/,/g, ""));
+  if (!(pieces > 0)) return null;
+  const dims = (t: string) => {
+    const d = /(\d+(?:\.\d+)?)\s*(?:cm|ซม\.?)?\s*[x×*]\s*(\d+(?:\.\d+)?)/i.exec(t);
+    return d ? [Number(d[1]), Number(d[2])].sort((a, b) => a - b).join("x") : "";
+  };
+  const want = dims(q);
+  if (!want) return null;
+  for (const opt of product.options ?? []) {
+    for (const c of opt.choices ?? []) {
+      const per = Number((c as { piecesPerUnit?: number }).piecesPerUnit) || 0;
+      if (per > 0 && dims(c.name) === want) {
+        const sheets = Math.ceil(pieces / per);
+        return { pieces, sheets, per, size: c.name, unit, query: q.replace(m[0], `${sheets} ${unit}`) };
+      }
+    }
+  }
+  return null;
+}
+
 export async function searchPrice(
   query: string,
   opts: { qty?: number | null; allowFallback?: boolean; timeoutMs?: number; pick?: Pick; rateHint?: string } = {},
@@ -2237,7 +2267,12 @@ export async function searchPrice(
   for (const item of items.slice(0, 3)) {
     const full = await getProductServer(item.id).catch(() => undefined);
     if (!full) continue;
-    const ans = quote(full, q, qty, items.length > 1, opts.rateHint);
+    const conv = piecesToSheets(full, q);
+    const ans = conv ? quote(full, conv.query, conv.sheets, items.length > 1, opts.rateHint) : quote(full, q, qty, items.length > 1, opts.rateHint);
+    if (ans && conv) {
+      const got = conv.sheets * conv.per;
+      ans.answer = `📐 ${conv.pieces.toLocaleString()} ใบ ขนาด ${conv.size} (ได้ ${conv.per} ใบ/${conv.unit}) = ใช้ ${conv.sheets.toLocaleString()} ${conv.unit}${got > conv.pieces ? ` (ได้จริง ${got.toLocaleString()} ใบ)` : ""}\n${ans.answer}`;
+    }
     if (ans) found.push(ans);
   }
   if (found.length === 1) return found[0];
