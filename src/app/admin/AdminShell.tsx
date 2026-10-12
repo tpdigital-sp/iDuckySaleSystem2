@@ -220,13 +220,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       setLogoBusy(false);
     }
   }
-  /** ไอคอนโลโก้ — รูปที่ตั้งไว้ หรือเป็ด 🦆 เดิม */
+  /** ไอคอนโลโก้ — รูปที่ตั้งไว้ หรือโลโก้เป็ดวงกลม /landing/admin-logo-duck.png */
   const logoIcon = (size: string, rounded: string) =>
     adminLogo ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={adminLogo} alt="โลโก้หลังบ้าน" className={`${size} shrink-0 ${rounded} bg-white object-cover shadow-sm ring-1 ring-white/30`} />
     ) : (
-      <span className={`flex ${size} shrink-0 items-center justify-center ${rounded} bg-[var(--color-ducky)] text-xl shadow-sm`}>🦆</span>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/landing/admin-logo-duck.png" alt="iDucky" className={`${size} shrink-0 rounded-full object-contain`} />
     );
 
   /**
@@ -851,7 +852,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 />
                 {logoIcon("h-9 w-9", "rounded-xl")}
                 <span
-                  className={`absolute inset-0 ${logoBusy ? "grid" : "hidden group-hover/logo:grid"} place-items-center rounded-xl bg-slate-900/50 text-xs text-white`}
+                  className={`absolute inset-0 ${logoBusy ? "grid" : "hidden group-hover/logo:grid"} place-items-center ${adminLogo ? "rounded-xl" : "rounded-full"} bg-slate-900/50 text-xs text-white`}
                 >
                   {logoBusy ? "⏳" : "📤"}
                 </span>
