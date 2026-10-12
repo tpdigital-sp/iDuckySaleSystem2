@@ -2,7 +2,7 @@
 
 import RequirePerm from "@/components/RequirePerm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildDiecut, exportFrame, toSvgPath, type DiecutResult, type RingTab } from "@/lib/diecut";
+import { bleedImage, buildDiecut, exportFrame, toSvgPath, type DiecutResult, type DiecutSettings, type RingTab } from "@/lib/diecut";
 import { buildAiFile, buildSheetAiFile } from "@/lib/diecut-ai";
 import {
   gridFit,
@@ -13,11 +13,15 @@ import {
   type Placement,
   type SheetSpec,
 } from "@/lib/diecut-layout";
-import { Btn, PageHead, PageShell } from "@/components/admin/ui";
+import { Btn, PageHead, PageShell, Tab, TabRow } from "@/components/admin/ui";
+import { Choice, More, Slider, Step, StepNo } from "./parts";
+import CutoutTab from "./CutoutTab";
 
 /** ขนาดที่ใช้คำนวณเส้น (ยิ่งเล็กยิ่งไว) และขนาดรูปที่ฝังลงไฟล์ .ai */
 const TRACE_MAX = 1200;
 const EMBED_MAX = 2400;
+/** มุมมอง "ทั้งแผ่น" (จัดหลายชิ้นลงแผ่น) — ปิดไว้ก่อน ร้านยังใช้ทีละลาย (12 ต.ค. 69) · เปิด = true กลับมาครบ */
+const SHEET_ON = false;
 /** สีเส้นตัดบนจอ = สีเดียวกับ CutContour ในไฟล์ (ไม่ใช่สีธีม) */
 const CUT_INK = "#e2007a";
 /** ไฮไลต์ชิ้นที่ชี้ในแผงเลเยอร์ */
@@ -31,9 +35,40 @@ const SHEET_PRESETS = [
   { id: "4x6", label: "4×6 นิ้ว", w: 152.4, h: 101.6, mx: 3, my: 3 },
 ] as const;
 
-/** ย่อรูปลงแคนวาสตามด้านยาวสุดที่กำหนด แล้วอ่านพิกเซลออกมา */
-function toImageData(bmp: ImageBitmap, maxSide: number) {
-  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+type Shape = NonNullable<DiecutSettings["shape"]>;
+
+/**
+ * ชนิดงาน — กดทีเดียวตั้งค่าเส้นตัด/แผ่นให้ตรงงานนั้น (ปรับต่อเองได้ทุกช่อง)
+ * gap = ระยะเส้นตัด↔เส้นตัด · bleed = ตัดตก (ระบายสีขอบลายออก) สำหรับงานที่ตัดชิดลาย
+ */
+const PROFILES: {
+  id: string;
+  label: string;
+  note: string;
+  shape: Shape;
+  offset: string;
+  smooth: string;
+  corner: string;
+  ring: boolean;
+  bleed: string;
+  gap: string;
+  sheet: string;
+}[] = [
+  { id: "keychain", label: "🔑 พวงกุญแจอะคริลิค", note: "ตามรูป เผื่อ 2 มม. + หูร้อย", shape: "contour", offset: "2", smooth: "1.2", corner: "0", ring: true, bleed: "0", gap: "2", sheet: "shop" },
+  { id: "acrylic", label: "🧲 อะคริลิคไม่มีหู", note: "แม่เหล็ก · ป้าย · สแตนดี้", shape: "contour", offset: "2", smooth: "1.5", corner: "0", ring: false, bleed: "0", gap: "2", sheet: "shop" },
+  { id: "sticker", label: "🏷 สติกเกอร์ไดคัท ขอบขาว", note: "ตามรูป เผื่อ 1.5 มม.", shape: "contour", offset: "1.5", smooth: "1", corner: "0", ring: false, bleed: "0", gap: "3", sheet: "a3" },
+  // เข้าเนื้อ = เส้นตัดอยู่ในลาย 1 มม. → ตัดคลาดก็ยังโดนเนื้อลาย ไม่มีขอบขาวแลบ (ไม่ต้องใช้ตัดตก)
+  { id: "inset", label: "✂️ สติกเกอร์ไดคัท เข้าเนื้อ", note: "ตัดเข้าในลาย 1 มม. · ไม่มีขอบขาว", shape: "contour", offset: "-1", smooth: "0.8", corner: "0", ring: false, bleed: "0", gap: "2", sheet: "a3" },
+  { id: "card", label: "▭ การ์ด/ฉลาก/ที่คั่น", note: "สี่เหลี่ยมมุมมน 3 มม.", shape: "rect", offset: "0", smooth: "0", corner: "3", ring: false, bleed: "2", gap: "4", sheet: "a3" },
+  { id: "round", label: "◯ วงกลม/วงรี", note: "ฉลากกลม · เข็มกลัด", shape: "ellipse", offset: "0", smooth: "0", corner: "0", ring: false, bleed: "2", gap: "4", sheet: "a3" },
+];
+const PROFILE_KEY = "diecut.profile";
+
+const SHAPE_LABEL: Record<Shape, string> = { contour: "ตามรูปลาย", rect: "สี่เหลี่ยม", ellipse: "วงกลม/วงรี" };
+
+/** ย่อ/ขยายรูปลงแคนวาสตามด้านยาวสุดที่กำหนด แล้วอ่านพิกเซลออกมา (maxUp = ขยายรูปเล็กได้กี่เท่า) */
+function toImageData(bmp: ImageBitmap, maxSide: number, maxUp = 1) {
+  const scale = Math.min(maxUp, maxSide / Math.max(bmp.width, bmp.height));
   const w = Math.max(1, Math.round(bmp.width * scale));
   const h = Math.max(1, Math.round(bmp.height * scale));
   const cv = document.createElement("canvas");
@@ -41,6 +76,7 @@ function toImageData(bmp: ImageBitmap, maxSide: number) {
   cv.height = h;
   const ctx = cv.getContext("2d", { willReadFrequently: true })!;
   ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(bmp, 0, 0, w, h);
   return ctx.getImageData(0, 0, w, h);
 }
@@ -61,9 +97,60 @@ interface Design {
 }
 
 const num = (v: string) => v.replace(/[^\d.]/g, "");
+/** ตัวเลขติดลบได้ (ค่าตัดเผื่อของรูปทรงสำเร็จ = ตัดเข้าในขอบไฟล์) */
+const signedNum = (v: string) => v.replace(/[^\d.-]/g, "").replace(/(?!^)-/g, "");
 
 /** กรอบชิ้นงาน = กรอบเส้นตัด (รวมหูร้อย) · ใช้วัดระยะห่างระหว่างชิ้นจากเส้นตัดถึงเส้นตัด */
 const boxOf = (r: DiecutResult): PieceBox => r.bounds;
+
+/** พิกเซลที่อยู่ในเส้นตัด (ที่ความละเอียดรูปฝัง) — ตัดตกห้ามระบายทับส่วนนี้ */
+function cutInside(r: DiecutResult, w: number, h: number, pxPerMm: number): Uint8Array {
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext("2d", { willReadFrequently: true })!;
+  ctx.setTransform(pxPerMm, 0, 0, pxPerMm, 0, 0);
+  ctx.beginPath();
+  for (const c of r.curves) {
+    ctx.moveTo(c.start.x, c.start.y);
+    for (const s of c.segs) ctx.bezierCurveTo(s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.to.x, s.to.y);
+    ctx.closePath();
+  }
+  ctx.fill("evenodd");
+  const a = ctx.getImageData(0, 0, w, h).data;
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = a[i * 4 + 3] >= 128 ? 1 : 0;
+  return out;
+}
+
+/** วาดรูปลายเฉพาะส่วนที่อยู่ในเส้นตัด · outsideAlpha > 0 = ส่วนนอกเส้น (ตัดตก) โชว์จาง ๆ */
+function drawArtClipped(ctx: CanvasRenderingContext2D, art: HTMLCanvasElement, r: DiecutResult, outsideAlpha: number) {
+  if (outsideAlpha > 0) {
+    ctx.save();
+    ctx.globalAlpha = outsideAlpha;
+    ctx.drawImage(art, 0, 0, r.widthMm, r.heightMm);
+    ctx.restore();
+  }
+  if (!r.curves.length) {
+    ctx.drawImage(art, 0, 0, r.widthMm, r.heightMm);
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  for (const c of r.curves) {
+    ctx.moveTo(c.start.x, c.start.y);
+    for (const s of c.segs) ctx.bezierCurveTo(s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.to.x, s.to.y);
+    ctx.closePath();
+  }
+  // รูร้อยห่วงเจาะทะลุ — ไม่มีลาย
+  if (r.hole) {
+    ctx.moveTo(r.hole.cx + r.hole.r, r.hole.cy);
+    ctx.arc(r.hole.cx, r.hole.cy, r.hole.r, 0, Math.PI * 2);
+  }
+  ctx.clip("evenodd");
+  ctx.drawImage(art, 0, 0, r.widthMm, r.heightMm);
+  ctx.restore();
+}
 
 /** วาดเส้นตัดของลายหนึ่งชิ้นลงแคนวาส (พิกัดมม. ของลาย ผ่าน transform ที่ตั้งไว้แล้ว) */
 function strokeCut(ctx: CanvasRenderingContext2D, r: DiecutResult) {
@@ -82,13 +169,25 @@ function strokeCut(ctx: CanvasRenderingContext2D, r: DiecutResult) {
   }
 }
 
-function DiecutLabInner() {
+/** ลายที่ส่งมาจากแท็บ "ตัดภาพ" — แท็บนี้รับไปเปิดเหมือนลากไฟล์มาวาง */
+function DiecutLabInner({ inbox, onInboxTaken }: { inbox: File[]; onInboxTaken: () => void }) {
   const [designs, setDesigns] = useState<Design[]>([]);
   const [selId, setSelId] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [view, setView] = useState<"piece" | "sheet">("sheet");
+  const [view, setView] = useState<"piece" | "sheet">(SHEET_ON ? "sheet" : "piece");
+  /** กว้างของกรอบตัวอย่าง (px CSS) — วาดแคนวาสเท่าจอจริง × devicePixelRatio ไม่ให้เส้นแตก */
+  const [boxW, setBoxW] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setBoxW(el.clientWidth));
+    ro.observe(el);
+    setBoxW(el.clientWidth);
+    return () => ro.disconnect();
+  }, [designs.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps -- กรอบเกิดตอนมีลายแรก
 
   // ── ค่าตั้งเส้นตัด (ใช้ร่วมทุกลาย) ──
   const [offsetMm, setOffsetMm] = useState("2"); // ค่าที่ร้านใช้ประจำ
@@ -101,6 +200,10 @@ function DiecutLabInner() {
   const [ringDia, setRingDia] = useState("4");
   const [ringOverlap, setRingOverlap] = useState("2.5");
   const [ringPos, setRingPos] = useState<RingTab["position"]>("left");
+  const [shape, setShape] = useState<Shape>("contour");
+  const [cornerMm, setCornerMm] = useState("3");
+  const [bleedMm, setBleedMm] = useState("0");
+  const [profileId, setProfileId] = useState("keychain");
 
   // ── ค่าตั้งแผ่น (จัดวางหลายชิ้น) ──
   const [preset, setPreset] = useState<string>("shop");
@@ -118,6 +221,8 @@ function DiecutLabInner() {
   const [layerCut, setLayerCut] = useState(true);
   const [hiPiece, setHiPiece] = useState<number | null>(null);
   const [results, setResults] = useState<Record<string, DiecutResult>>({});
+  /** รูปลายที่เติมตัดตกแล้ว (ไม่มี = ใช้รูปเดิม) — ใช้ทั้งบนจอและในไฟล์ .ai */
+  const [bled, setBled] = useState<Record<string, ImageData>>({});
   const previewRef = useRef<HTMLCanvasElement>(null);
 
   const sel = designs.find((d) => d.id === selId) ?? designs[0];
@@ -125,9 +230,9 @@ function DiecutLabInner() {
 
   const loadFiles = useCallback(async (files: File[]) => {
     setErr("");
-    const ok = files.filter((f) => /^image\/(png|webp)$/.test(f.type));
+    const ok = files.filter((f) => /^image\/(png|webp|jpeg)$/.test(f.type));
     if (ok.length < files.length) {
-      setErr("ไฟล์ลายต้องเป็น PNG (หรือ WEBP) ที่พื้นหลังโปร่งใส — JPG ไม่มีพื้นใส ตัดขอบไม่ได้");
+      setErr("รับเฉพาะไฟล์รูป PNG / WEBP / JPG");
     }
     if (!ok.length) return;
     setBusy(true);
@@ -143,7 +248,7 @@ function DiecutLabInner() {
         added.push({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           name: f.name,
-          trace: toImageData(bmp, TRACE_MAX),
+          trace: toImageData(bmp, TRACE_MAX, 3), // รูปเล็กขยายก่อนคำนวณ เส้นจะละเอียดขึ้น
           embed: toImageData(bmp, EMBED_MAX),
           natural: { w: bmp.width, h: bmp.height },
           widthMm: "50",
@@ -165,6 +270,12 @@ function DiecutLabInner() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!inbox.length) return;
+    onInboxTaken();
+    void loadFiles(inbox);
+  }, [inbox, onInboxTaken, loadFiles]);
+
   const patchDesign = (id: string, p: Partial<Design>) =>
     setDesigns((prev) => prev.map((d) => (d.id === id ? { ...d, ...p } : d)));
   const removeDesign = (id: string) => {
@@ -175,6 +286,11 @@ function DiecutLabInner() {
       return next;
     });
   };
+
+  // ตัดตกยื่นเลยเส้นตัดได้ไม่เกินครึ่งระยะห่าง — ไม่งั้นสีลายหนึ่งไปทับชิ้นข้าง ๆ บนแผ่น
+  const bleedWant = Math.max(0, Number(bleedMm) || 0);
+  const bleedCap = Math.max(0, Number(offsetMm) || 0) + (Number(gap) || 0) / 2;
+  const bleedEff = Math.min(bleedWant, bleedCap);
 
   // คำนวณเส้นใหม่ทุกครั้งที่ลาย/ค่าตั้งเปลี่ยน (ทุกลาย — แผ่นต้องใช้ขนาดเส้นตัดของทุกลาย)
   const widthKey = designs.map((d) => `${d.id}:${d.widthMm}`).join("|");
@@ -194,6 +310,7 @@ function DiecutLabInner() {
         : undefined;
       const oMm = Number(offsetMm);
       const next: Record<string, DiecutResult> = {};
+      const nextBled: Record<string, ImageData> = {};
       for (const d of designs) {
         const wMm = Number(d.widthMm);
         if (!(wMm > 0)) continue;
@@ -206,15 +323,22 @@ function DiecutLabInner() {
             curveTolMm: Number(curveTol) || 0.15,
             fillHoles,
             alphaThreshold: Number(alphaThreshold) || 128,
+            shape,
+            cornerMm: Number(cornerMm) || 0,
           },
           ring
         );
+        if (bleedEff > 0) {
+          const pxPerMm = d.embed.width / wMm;
+          nextBled[d.id] = bleedImage(d.embed, bleedEff * pxPerMm, cutInside(next[d.id], d.embed.width, d.embed.height, pxPerMm));
+        }
       }
       setResults(next);
+      setBled(nextBled);
     }, 150); // หน่วงสั้น ๆ กันคำนวณรัวตอนลากสไลเดอร์
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- widthKey แทน designs (เปลี่ยนจำนวนชิ้นไม่ต้องคำนวณเส้นใหม่)
-  }, [widthKey, offsetMm, smoothMm, curveTol, fillHoles, alphaThreshold, ringOn, tabDia, ringDia, ringOverlap, ringPos]);
+  }, [widthKey, offsetMm, smoothMm, curveTol, fillHoles, alphaThreshold, ringOn, tabDia, ringDia, ringOverlap, ringPos, shape, cornerMm, bleedEff]);
 
   // ── จัดลงแผ่น ──
   const sheet: SheetSpec = {
@@ -264,11 +388,11 @@ function DiecutLabInner() {
       const c = document.createElement("canvas");
       c.width = d.embed.width;
       c.height = d.embed.height;
-      c.getContext("2d")!.putImageData(d.embed, 0, 0);
+      c.getContext("2d")!.putImageData(bled[d.id] ?? d.embed, 0, 0);
       m.set(d.id, c);
     }
     return m;
-  }, [designs.map((d) => d.id).join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [designs.map((d) => d.id).join("|"), bled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // วาดตัวอย่าง
   useEffect(() => {
@@ -276,7 +400,7 @@ function DiecutLabInner() {
     if (!cv) return;
     const ctx = cv.getContext("2d")!;
     const checker = () => {
-      const sq = 10;
+      const sq = Math.round(10 * Math.min(3, window.devicePixelRatio || 1));
       for (let y = 0; y < cv.height; y += sq)
         for (let x = 0; x < cv.width; x += sq) {
           ctx.fillStyle = ((x / sq + y / sq) & 1) === 0 ? "#f8fafc" : "#eef2f7";
@@ -288,25 +412,32 @@ function DiecutLabInner() {
       if (!sel || !result) return;
       // กรอบตัวอย่าง = กรอบไฟล์ส่งออก (เส้นตัด/แท็บหูร้อยล้นออกนอกลายได้ ต้องเห็นครบ)
       const frame = exportFrame(result, 3);
-      // ขยายให้เต็มกรอบตัวอย่างเสมอ (งานจริงมักเล็กแค่ 5 ซม. — ถ้าวาดเท่าขนาดจริงจะจิ๋วจนดูไม่ออก)
-      const k = Math.min(24, 640 / Math.max(frame.pageWidthMm, frame.pageHeightMm));
+      // ขยายให้เต็มกรอบตัวอย่างเสมอ (งานจริงมักเล็กแค่ 5 ซม.) · วาดที่ความละเอียดจอจริง (Retina ×2) เส้นถึงคม
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const availW = Math.max(240, boxW || 640);
+      const availH = Math.max(320, Math.round(window.innerHeight * 0.68));
+      const cssK = Math.min(availW / frame.pageWidthMm, availH / frame.pageHeightMm);
+      const k = cssK * dpr;
       cv.width = Math.round(frame.pageWidthMm * k);
       cv.height = Math.round(frame.pageHeightMm * k);
+      cv.style.width = `${Math.round(frame.pageWidthMm * cssK)}px`;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       checker();
       ctx.setTransform(k, 0, 0, k, frame.artXMm * k, frame.artYMm * k);
       const art = artCanvases.get(sel.id);
-      if (art && layerArt) ctx.drawImage(art, 0, 0, result.widthMm, result.heightMm);
+      // ซูมทีละลาย: ส่วนที่จะถูกตัดทิ้ง (ตัดตก) โชว์จาง ๆ ให้รู้ว่ามี · ในเส้นตัดโชว์เต็ม
+      ctx.imageSmoothingQuality = "high";
+      if (art && layerArt) drawArtClipped(ctx, art, result, bled[sel.id] ? 0.22 : 0);
       // วาดจากเส้นโค้งชุดเดียวกับที่จะเขียนลงไฟล์ — เห็นบนจอยังไง ได้ไฟล์อย่างนั้น
       ctx.lineJoin = "round";
-      if (hiPiece === 0) {
-        ctx.strokeStyle = HI_INK;
-        ctx.lineWidth = 5 / k;
-        strokeCut(ctx, result);
-      }
+      ctx.lineCap = "round";
       if (layerCut) {
+        // ขอบขาวรองใต้เส้น — เส้นตัดเด่นทั้งบนลายสีเข้มและพื้นตาราง
+        ctx.strokeStyle = "rgba(255,255,255,.95)";
+        ctx.lineWidth = (4.5 * dpr) / k;
+        strokeCut(ctx, result);
         ctx.strokeStyle = CUT_INK;
-        ctx.lineWidth = 1.5 / k;
+        ctx.lineWidth = (2 * dpr) / k;
         strokeCut(ctx, result);
       }
       // จุดแองเคอร์ (เหมือนที่จะเห็นตอนเปิดใน Illustrator)
@@ -315,7 +446,7 @@ function DiecutLabInner() {
         for (const c of result.curves)
           for (const s of c.segs) {
             ctx.beginPath();
-            ctx.arc(s.to.x, s.to.y, 2.2 / k, 0, Math.PI * 2);
+            ctx.arc(s.to.x, s.to.y, (3 * dpr) / k, 0, Math.PI * 2);
             ctx.fill();
           }
       }
@@ -324,6 +455,7 @@ function DiecutLabInner() {
     }
 
     // ── มุมมองแผ่น ──
+    cv.style.width = "";
     if (!(sheet.widthMm > 0 && sheet.heightMm > 0)) return;
     const k = Math.min(4, 760 / sheet.widthMm, 560 / sheet.heightMm);
     cv.width = Math.round(sheet.widthMm * k);
@@ -353,7 +485,8 @@ function DiecutLabInner() {
       const ey = map({ x: 0, y: 1 });
       ctx.setTransform((ex.x - o.x) * k, (ex.y - o.y) * k, (ey.x - o.x) * k, (ey.y - o.y) * k, o.x * k, o.y * k);
       const art = artCanvases.get(p.id);
-      if (art && layerArt) ctx.drawImage(art, 0, 0, r.widthMm, r.heightMm);
+      // ทั้งแผ่น: โชว์เฉพาะในเส้นตัด = หน้าตางานหลังตัดจริง (ตัดตกยังอยู่ในไฟล์ .ai)
+      if (art && layerArt) drawArtClipped(ctx, art, r, 0);
       ctx.lineJoin = "round";
       // ชิ้นที่ชี้อยู่ในแผงเลเยอร์ — ขอบฟ้าหนารองใต้เส้นตัด
       if (hiPiece === idx) {
@@ -379,7 +512,7 @@ function DiecutLabInner() {
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, cv.width - 1, cv.height - 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, sel, result, results, showAnchors, curSheet, artCanvases, sheetW, sheetH, marginX, marginY, layerArt, layerCut, hiPiece]);
+  }, [view, boxW, sel, result, results, showAnchors, curSheet, artCanvases, sheetW, sheetH, marginX, marginY, layerArt, layerCut, hiPiece]);
 
   const download = (blob: Blob, name: string) => {
     const url = URL.createObjectURL(blob);
@@ -397,7 +530,7 @@ function DiecutLabInner() {
     setBusy(true);
     try {
       const blob = await buildAiFile({
-        rgba: sel.embed.data,
+        rgba: (bled[sel.id] ?? sel.embed).data,
         pxWidth: sel.embed.width,
         pxHeight: sel.embed.height,
         widthMm: result.widthMm,
@@ -436,7 +569,7 @@ function DiecutLabInner() {
         const d = designs.find((x) => x.id === id)!;
         const r = results[id];
         return {
-          rgba: d.embed.data,
+          rgba: (bled[id] ?? d.embed).data,
           pxWidth: d.embed.width,
           pxHeight: d.embed.height,
           widthMm: r.widthMm,
@@ -460,6 +593,59 @@ function DiecutLabInner() {
       setBusy(false);
     }
   }
+
+  const applyProfile = (id: string, remember = true) => {
+    const p = PROFILES.find((x) => x.id === id);
+    if (!p) return;
+    setProfileId(id);
+    setShape(p.shape);
+    setOffsetMm(p.offset);
+    setSmoothMm(p.smooth);
+    setCornerMm(p.corner);
+    setRingOn(p.ring);
+    setBleedMm(p.bleed);
+    setGap(p.gap);
+    setFillHoles(true);
+    applyPreset(p.sheet);
+    if (remember) {
+      try {
+        localStorage.setItem(PROFILE_KEY, id);
+      } catch {}
+    }
+  };
+  // จำชนิดงานล่าสุดไว้ในเครื่อง (ร้านทำงานชนิดเดิมซ้ำ ๆ)
+  useEffect(() => {
+    let id: string | null = null;
+    try {
+      id = localStorage.getItem(PROFILE_KEY);
+    } catch {}
+    if (id && id !== "keychain") applyProfile(id, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const profilePicker = (
+    <Step n={2} title="ชนิดงาน" note="กดแล้วตั้งเส้นตัดให้เอง">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-2">
+        {PROFILES.map((p) => {
+          const on = profileId === p.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => applyProfile(p.id)}
+              aria-pressed={on}
+              className={`min-h-[52px] rounded-xl px-3 py-1.5 text-left transition ${
+                on ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy)] ring-1 ring-[color:var(--dk-hair)] hover:bg-white"
+              }`}
+            >
+              <b className="block text-[12.5px] leading-tight">{p.label}</b>
+              <span className="block text-[11px] leading-tight" style={{ opacity: on ? 0.8 : 0.65 }}>{p.note}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Step>
+  );
 
   const applyPreset = (id: string) => {
     setPreset(id);
@@ -496,7 +682,7 @@ function DiecutLabInner() {
     >
       <input
         type="file"
-        accept="image/png,image/webp"
+        accept="image/png,image/webp,image/jpeg"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -511,7 +697,7 @@ function DiecutLabInner() {
             {busy ? "กำลังเปิดไฟล์…" : "เลือกไฟล์ลาย หรือลากมาวางตรงนี้"}
           </span>
           <span className="mt-1.5 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
-            PNG พื้นใส (ไล่พื้นหลังออกแล้ว) · เลือกหลายไฟล์พร้อมกันได้
+            PNG พื้นใส (ตัดตามรูป) หรือ JPG (ตัดสี่เหลี่ยม/วงกลม) · เลือกหลายไฟล์พร้อมกันได้
           </span>
         </>
       ) : (
@@ -529,25 +715,20 @@ function DiecutLabInner() {
   );
 
   return (
-    <PageShell>
-      <PageHead
-        group="สินค้า"
-        title="เส้นไดคัท"
-        count="ทดลอง"
-        sub="ใส่ลายลูกค้า → ตั้งขนาด/จำนวน → โหลดไฟล์ .ai เข้าเครื่องตัด · ยังไม่ผูกกับออเดอร์"
-      />
+    <>
 
       {/* ── ยังไม่มีลาย: บอกขั้นตอนทั้งหมดก่อน ── */}
       {!hasAny && (
-        <div className="dkb-g mt-4 p-4 sm:p-6">
+        <div className="mt-4 space-y-4">
+        <div className="dkb-g p-4 sm:p-6">
           {dropZone(true)}
           {errBox}
           <ol className="mt-5 grid gap-3 sm:grid-cols-3">
             {(
               [
-                ["ใส่ลาย", "PNG พื้นใส ระบบลากเส้นตัดรอบลายให้เอง"],
-                ["ตั้งขนาด + จำนวน", "บอกความกว้างงานจริง และจำนวนชิ้นต่อลาย"],
-                ["โหลดไฟล์ .ai", "ได้ลาย + เส้นตัด CutContour จัดลงแผ่นพร้อมตัด"],
+                ["ใส่ลาย", "PNG พื้นใส = ตัดตามรูปลาย · รูปทึบ/JPG = ตัดสี่เหลี่ยม/วงกลม"],
+                ["เลือกชนิดงาน + ขนาด", "พวงกุญแจ / สติกเกอร์ / การ์ด… แล้วใส่ความกว้างงานจริง"],
+                ["โหลดไฟล์ .ai", "ได้ลาย + เส้นตัด CutContour เปิดใน Illustrator/FineCut ได้เลย"],
               ] as const
             ).map(([t, d], i) => (
               <li key={t} className="flex gap-3">
@@ -560,6 +741,7 @@ function DiecutLabInner() {
             ))}
           </ol>
         </div>
+        </div>
       )}
 
       {hasAny && (
@@ -568,7 +750,7 @@ function DiecutLabInner() {
             {/* ── ซ้าย: ภาพตัวอย่าง (ของที่จะได้จริง) ── */}
             <div className="dkb-g p-4 lg:sticky lg:top-4">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-xl p-0.5" style={{ background: "rgba(255,255,255,.6)", boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
+                {SHEET_ON && <div className="inline-flex rounded-xl p-0.5" style={{ background: "rgba(255,255,255,.6)", boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
                   {(
                     [
                       ["sheet", "ทั้งแผ่น"],
@@ -587,7 +769,7 @@ function DiecutLabInner() {
                       {label}
                     </button>
                   ))}
-                </div>
+                </div>}
                 {view === "sheet" && layout && (
                   <div className="ml-auto flex items-baseline gap-3 tabular-nums" style={{ color: "var(--dk-navy)" }}>
                     <span><b className="text-[1.15rem]">{totalPieces}</b> <small style={{ color: "var(--dk-faint)" }}>ชิ้น</small></span>
@@ -596,9 +778,16 @@ function DiecutLabInner() {
                   </div>
                 )}
                 {view === "piece" && result && (
-                  <span className="ml-auto text-[12.5px] tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
-                    <b style={{ color: "var(--dk-navy)" }}>{sel?.name}</b> · งานจริง {result.widthMm.toFixed(1)} × {result.heightMm.toFixed(1)} มม.
-                  </span>
+                  <div className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <b className="min-w-0 truncate text-[14px]" style={{ color: "var(--dk-navy)" }}>{sel?.name}</b>
+                    <span className="ml-auto text-[13px] tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
+                      ขนาดชิ้นรวมเส้นตัด{" "}
+                      <b className="text-[1.05rem]" style={{ color: "var(--dk-navy)" }}>
+                        {(result.bounds.x1 - result.bounds.x0).toFixed(1)} × {(result.bounds.y1 - result.bounds.y0).toFixed(1)}
+                      </b>{" "}
+                      มม.
+                    </span>
+                  </div>
                 )}
               </div>
 
@@ -613,30 +802,42 @@ function DiecutLabInner() {
               )}
 
               <div
+                ref={boxRef}
                 className="mt-3 overflow-auto rounded-[18px]"
                 style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)", background: view === "sheet" ? "var(--dk-sky)" : undefined, padding: view === "sheet" ? 12 : 0 }}
               >
-                <canvas ref={previewRef} className="mx-auto block h-auto max-w-full" style={view === "sheet" ? { boxShadow: "0 2px 10px rgba(15,23,42,.12)" } : undefined} />
+                <canvas ref={previewRef} className={`mx-auto block max-w-full ${view === "sheet" ? "h-auto" : ""}`} style={view === "sheet" ? { boxShadow: "0 2px 10px rgba(15,23,42,.12)" } : undefined} />
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]" style={{ color: "var(--dk-navy-soft)" }}>
                 <span className="inline-flex items-center gap-1.5">
                   <i className="inline-block h-0.5 w-5 rounded" style={{ background: CUT_INK }} /> เส้นสีบานเย็น = แนวที่เครื่องจะตัด
                 </span>
+                {view === "piece" && sel && bled[sel.id] && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <i className="inline-block h-3 w-5 rounded" style={{ background: "rgba(109,40,217,.22)" }} /> สีจางนอกเส้น = ตัดตก (พิมพ์เผื่อ แล้วโดนตัดทิ้ง)
+                  </span>
+                )}
                 {view === "piece" && (
-                  <label className="inline-flex cursor-pointer items-center gap-1.5">
+                  <label className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5">
+                    <input type="checkbox" checked={!layerArt} onChange={(e) => setLayerArt(!e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
+                    ดูเส้นตัดอย่างเดียว
+                  </label>
+                )}
+                {view === "piece" && (
+                  <label className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5">
                     <input type="checkbox" checked={showAnchors} onChange={(e) => setShowAnchors(e.target.checked)} className="h-4 w-4" style={{ accentColor: "var(--dk-blue-deep)" }} />
                     โชว์จุดแองเคอร์
                   </label>
                 )}
                 {view === "piece" && result && (
-                  <span className="tabular-nums">
+                  <span className="ml-auto tabular-nums" style={{ color: "var(--dk-faint)" }}>
                     {result.pieces} ชิ้น{result.innerHoles > 0 ? ` · รูตัดทะลุ ${result.innerHoles}` : ""} · {result.anchors.toLocaleString("th-TH")} จุด
                   </span>
                 )}
               </div>
 
-              <LayersPanel
+              {view === "sheet" && <LayersPanel
                 art={layerArt}
                 cut={layerCut}
                 onArt={() => setLayerArt(!layerArt)}
@@ -653,7 +854,7 @@ function DiecutLabInner() {
                       ? [{ name: sel.name, thumb: sel.thumb, rot: false, hole: !!result.hole }]
                       : []
                 }
-              />
+              />}
 
               {view === "piece" && result && result.warnings.length > 0 && (
                 <ul className="mt-3 space-y-1">
@@ -673,7 +874,7 @@ function DiecutLabInner() {
 
             {/* ── ขวา: ทำตามลำดับ 1 → 2 → 3 ── */}
             <div className="space-y-4">
-              <Step n={1} title="ลายที่จะตัด" note={`${designs.length} ลาย`}>
+              <Step n={1} title="ลาย + ขนาดจริง" note={designs.length > 1 ? `${designs.length} ลาย · กดเลือกดูทีละลาย` : undefined}>
                 <ul className="space-y-2">
                   {designs.map((d) => {
                     const r = results[d.id];
@@ -700,7 +901,7 @@ function DiecutLabInner() {
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-[13px] font-bold" style={{ color: "var(--dk-navy)" }}>{d.name}</div>
                             <div className="text-[11.5px] tabular-nums" style={{ color: "var(--dk-faint)" }}>
-                              {r ? `${bw.toFixed(1)} × ${bh.toFixed(1)} มม. รวมเส้นตัด · เต็มแผ่นได้ ${fit} ชิ้น` : "กำลังคำนวณเส้น…"}
+                              {r ? `${bw.toFixed(1)} × ${bh.toFixed(1)} มม. รวมเส้นตัด${SHEET_ON ? ` · เต็มแผ่นได้ ${fit} ชิ้น` : ""}` : "กำลังคำนวณเส้น…"}
                             </div>
                           </div>
                           <button
@@ -717,7 +918,12 @@ function DiecutLabInner() {
                             ×
                           </button>
                         </div>
-                        <div className="mt-2 grid grid-cols-[1fr_1fr_auto] items-end gap-2" onClick={(e) => e.stopPropagation()}>
+                        {!SHEET_ON && (
+                          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                            <NumBox label="ลายกว้างจริง (ไม่รวมขอบเผื่อ)" unit="มม." value={d.widthMm} onChange={(v) => patchDesign(d.id, { widthMm: v })} />
+                          </div>
+                        )}
+                        {SHEET_ON && <div className="mt-2 grid grid-cols-[1fr_1fr_auto] items-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <NumBox label="กว้างงานจริง" unit="มม." value={d.widthMm} onChange={(v) => patchDesign(d.id, { widthMm: v })} />
                           <NumBox
                             label="จำนวน"
@@ -740,31 +946,34 @@ function DiecutLabInner() {
                           >
                             {placed === undefined ? "—" : want > 0 ? `${short ? "⚠ " : "✓ "}${placed}/${want}` : `✓ ${placed}`}
                           </span>
-                        </div>
+                        </div>}
                       </li>
                     );
                   })}
                 </ul>
                 <div className="mt-2">{dropZone(false)}</div>
                 {errBox}
-                <p className="mt-2 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                {SHEET_ON && <p className="mt-2 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
                   จำนวนว่าง = เติมที่ว่างที่เหลือให้เต็มแผ่น · ใส่ตัวเลข = วางเท่านั้นชิ้น เกินแผ่นขึ้นแผ่นใหม่ให้เอง
-                </p>
+                </p>}
               </Step>
 
-              <Step n={2} title="เส้นตัด" note="ใช้กับทุกลาย">
-                <div className="text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>ตัดเผื่อรอบลาย</div>
+              {profilePicker}
+
+              <Step n={3} title="ปรับเส้นตัด" note={designs.length > 1 ? "ใช้กับทุกลาย" : "ไม่ต้องแตะก็ได้"}>
+                <div className="text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+                  {shape === "contour" ? "ระยะเส้นตัดจากขอบลาย (ติดลบ = ตัดเข้าในลาย)" : "ขยายจากขอบลาย (ติดลบ = ตัดเข้าในขอบไฟล์)"}
+                </div>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  {["1", "1.5", "2", "3"].map((v) => (
+                  {(shape === "contour" ? ["-1", "0", "1", "1.5", "2", "3"] : ["-2", "-1", "0", "1", "2"]).map((v) => (
                     <Choice key={v} on={offsetMm === v} onClick={() => setOffsetMm(v)}>
-                      {v} มม.{v === "2" ? " (ร้าน)" : ""}
+                      {v} มม.
                     </Choice>
                   ))}
                   <span className="w-[86px]">
-                    <NumBox value={offsetMm} unit="มม." onChange={setOffsetMm} />
+                    <NumBox value={offsetMm} unit="มม." signed onChange={setOffsetMm} />
                   </span>
                 </div>
-
                 <div className="mt-4 flex items-center justify-between gap-2">
                   <span className="text-[13px] font-bold" style={{ color: "var(--dk-navy)" }}>หูร้อยห่วง</span>
                   <button
@@ -791,8 +1000,43 @@ function DiecutLabInner() {
                   </div>
                 )}
 
-                <More title="ปรับละเอียด (ไม่ต้องแตะก็ได้)">
-                  <Slider
+                <More title="รูปทรง · ตัดตก · ความละเอียดเส้น">
+                <div className="text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>รูปทรง</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {(Object.keys(SHAPE_LABEL) as Shape[]).map((v) => (
+                    <Choice key={v} on={shape === v} onClick={() => setShape(v)}>
+                      {SHAPE_LABEL[v]}
+                    </Choice>
+                  ))}
+                  {shape === "rect" && (
+                    <span className="w-[120px]">
+                      <NumBox value={cornerMm} unit="มม. มุมมน" onChange={setCornerMm} />
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-4 text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>ตัดตก (ระบายสีขอบลายออก)</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {["0", "1", "2", "3"].map((v) => (
+                    <Choice key={v} on={bleedMm === v} onClick={() => setBleedMm(v)}>
+                      {v === "0" ? "ไม่ใส่" : `${v} มม.`}
+                    </Choice>
+                  ))}
+                  <span className="w-[86px]">
+                    <NumBox value={bleedMm} unit="มม." onChange={setBleedMm} />
+                  </span>
+                </div>
+                <p className="mt-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                  งานตัดชิดลาย (กระดาษ/สติกเกอร์) เครื่องตัดคลาด ±0.5–2 มม. ใส่ตัดตกกันขอบขาวแลบ · ระบายได้เฉพาะส่วนโปร่งใสในไฟล์
+                  {bleedWant > bleedEff && (
+                    <b style={{ color: "var(--dk-yolk-ink)" }}>
+                      {" "}
+                      · ใช้ได้แค่ {bleedEff.toFixed(1)} มม. (เกินนี้สีจะล้นไปทับชิ้นข้าง ๆ — เพิ่มระยะห่างบนแผ่นถ้าอยากได้มากกว่า)
+                    </b>
+                  )}
+                </p>
+
+                  {shape === "contour" && <Slider
                     label={`เก็บขอบให้เรียบ: ${smoothMm} มม.`}
                     min={0}
                     max={5}
@@ -800,7 +1044,7 @@ function DiecutLabInner() {
                     value={smoothMm}
                     onChange={setSmoothMm}
                     hint="0 = วิ่งตามหยักลายเป๊ะ · มาก = ลื่น กลืนร่องแคบระหว่างตัวอักษร"
-                  />
+                  />}
                   <Slider
                     label={`ความละเอียดเส้นโค้ง: ±${curveTol} มม.`}
                     min={0.03}
@@ -838,7 +1082,7 @@ function DiecutLabInner() {
                 </More>
               </Step>
 
-              <Step n={3} title="แผ่นงาน">
+              {SHEET_ON && <Step n={4} title="แผ่นงาน">
                 <div className="grid grid-cols-2 gap-1.5">
                   {SHEET_PRESETS.map((p) => (
                     <Choice key={p.id} on={preset === p.id} onClick={() => applyPreset(p.id)}>
@@ -882,14 +1126,14 @@ function DiecutLabInner() {
                     <NumBox label="ขอบบน-ล่าง" unit="มม." value={marginY} onChange={setMarginY} />
                   </div>
                 </More>
-              </Step>
+              </Step>}
             </div>
           </div>
 
           {/* ── แถบโหลดไฟล์ ติดล่างจอ — ปลายทางของทุกขั้น ── */}
           <div className="dkb-g sticky bottom-3 z-20 mt-4 flex flex-wrap items-center gap-2 p-3" style={{ boxShadow: "0 10px 30px rgba(15,23,42,.16)" }}>
             <div className="mr-auto flex min-w-0 items-center gap-3">
-              <StepNo n={4} />
+              <StepNo n={SHEET_ON ? 5 : 4} />
               <div className="min-w-0">
                 <b className="block text-[14px]" style={{ color: "var(--dk-navy)" }}>โหลดไฟล์เข้าเครื่องตัด</b>
                 <span className="hidden text-[11.5px] sm:block" style={{ color: "var(--dk-faint)" }}>
@@ -897,7 +1141,12 @@ function DiecutLabInner() {
                 </span>
               </div>
             </div>
-            {sheetGroups.map((g) => (
+            {!SHEET_ON && (
+              <Btn tone="yolk" onClick={downloadAi} disabled={!result || busy}>
+                {busy ? "กำลังสร้าง…" : `⬇ โหลด .ai${designs.length > 1 ? ` · ${sel?.name ?? ""}` : ""}`}
+              </Btn>
+            )}
+            {SHEET_ON && sheetGroups.map((g) => (
               <Btn key={g.first} tone="yolk" onClick={() => downloadSheetAi(g.sheet, g.first + 1)} disabled={busy || !g.sheet.length}>
                 {busy
                   ? "กำลังสร้าง…"
@@ -905,9 +1154,9 @@ function DiecutLabInner() {
               </Btn>
             ))}
             <div className="flex gap-2">
-              <Btn small onClick={downloadAi} disabled={!result || busy} title="ไฟล์ .ai ของลายที่เลือกอยู่ ชิ้นเดียว">
+              {SHEET_ON && <Btn small onClick={downloadAi} disabled={!result || busy} title="ไฟล์ .ai ของลายที่เลือกอยู่ ชิ้นเดียว">
                 .ai ลายนี้ชิ้นเดียว
-              </Btn>
+              </Btn>}
               <Btn small onClick={downloadSvg} disabled={!result} title="เส้นตัดอย่างเดียว ไม่มีรูปลาย">
                 .svg เส้นอย่างเดียว
               </Btn>
@@ -915,7 +1164,7 @@ function DiecutLabInner() {
           </div>
         </>
       )}
-    </PageShell>
+    </>
   );
 }
 
@@ -1037,45 +1286,6 @@ const RING_LABEL: Record<RingTab["position"], string> = {
   "top-right": "มุมขวาบน",
 };
 
-/** เลขขั้นตอนในวงกลม */
-function StepNo({ n }: { n: number }) {
-  return (
-    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[14px] font-bold text-white" style={{ background: "var(--dk-navy)" }}>
-      {n}
-    </span>
-  );
-}
-
-/** การ์ดขั้นตอน — หัวเลข + ชื่อ */
-function Step({ n, title, note, children }: { n: number; title: string; note?: string; children: React.ReactNode }) {
-  return (
-    <section className="dkb-g p-4">
-      <div className="flex items-center gap-2.5">
-        <StepNo n={n} />
-        <h2 className="dkb-h2 text-[1.08rem]" style={{ color: "var(--dk-navy)" }}>{title}</h2>
-        {note && <span className="ml-auto text-[12px]" style={{ color: "var(--dk-faint)" }}>{note}</span>}
-      </div>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
-
-/** ปุ่มตัวเลือก (เลือกได้ทีละอัน) */
-function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      className={`min-h-[40px] rounded-xl px-3 text-[12.5px] font-semibold transition ${
-        on ? "bg-[color:var(--dk-navy)] text-white" : "bg-white/70 text-[color:var(--dk-navy-soft)] ring-1 ring-[color:var(--dk-hair)] hover:bg-white"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 /** ช่องตัวเลขสูง 44px + หน่วยต่อท้าย */
 function NumBox({
   label,
@@ -1084,6 +1294,7 @@ function NumBox({
   onChange,
   int,
   placeholder,
+  signed,
 }: {
   label?: string;
   unit?: string;
@@ -1091,6 +1302,8 @@ function NumBox({
   onChange: (v: string) => void;
   int?: boolean;
   placeholder?: string;
+  /** รับค่าติดลบ */
+  signed?: boolean;
 }) {
   return (
     <label className="block min-w-0">
@@ -1098,7 +1311,7 @@ function NumBox({
       <span className="mt-1 flex h-11 items-center rounded-xl bg-white ring-1 ring-slate-200 focus-within:ring-2 focus-within:ring-amber-300">
         <input
           value={value}
-          onChange={(e) => onChange(int ? e.target.value.replace(/\D/g, "") : num(e.target.value))}
+          onChange={(e) => onChange(int ? e.target.value.replace(/\D/g, "") : signed ? signedNum(e.target.value) : num(e.target.value))}
           inputMode={int ? "numeric" : "decimal"}
           placeholder={placeholder}
           className="w-full min-w-0 bg-transparent px-3 text-[15px] tabular-nums focus:outline-none"
@@ -1107,45 +1320,6 @@ function NumBox({
         {unit && <span className="shrink-0 pr-3 text-[12px]" style={{ color: "var(--dk-faint)" }}>{unit}</span>}
       </span>
     </label>
-  );
-}
-
-function Slider({
-  label,
-  hint,
-  min,
-  max,
-  step,
-  value,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  min: number;
-  max: number;
-  step: number;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label className="block text-[12px] font-semibold tabular-nums" style={{ color: "var(--dk-navy-soft)" }}>
-      {label}
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 h-6 w-full" style={{ accentColor: "var(--dk-blue-deep)" }} />
-      <span className="block text-[11.5px] font-normal" style={{ color: "var(--dk-faint)" }}>{hint}</span>
-    </label>
-  );
-}
-
-/** ส่วนพับเก็บ — ของที่นาน ๆ แตะที */
-function More({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <details className="group mt-4 rounded-xl" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-3 text-[12.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
-        <span className="transition group-open:rotate-90">▸</span>
-        {title}
-      </summary>
-      <div className="space-y-3 px-3 pb-3">{children}</div>
-    </details>
   );
 }
 
@@ -1185,10 +1359,72 @@ function RingPicker({ pos, onPick }: { pos: RingTab["position"]; onPick: (p: Rin
   );
 }
 
+/** แท็บย่อยของหน้า — ชื่อใน URL (?tab=) + ชื่อบนแท็บเบราว์เซอร์ */
+const PAGE_TABS = {
+  diecut: { query: "", title: "เส้นไดคัท" },
+  cutout: { query: "cutout", title: "ตัดภาพ (pen tool)" },
+} as const;
+type PageTab = keyof typeof PAGE_TABS;
+
+function DiecutPageInner() {
+  const [tab, setTabState] = useState<PageTab>("diecut");
+  const [inbox, setInbox] = useState<File[]>([]);
+  const takeInbox = useCallback(() => setInbox([]), []);
+
+  // เปิดลิงก์ /admin/diecut?tab=cutout = เข้าแท็บตัดภาพเลย
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === PAGE_TABS.cutout.query) setTabState("cutout");
+  }, []);
+  // ชื่อบนแท็บเบราว์เซอร์บอกว่าอยู่แท็บไหน (เปิดหลายแท็บพร้อมกันแยกออก)
+  useEffect(() => {
+    document.title = `${PAGE_TABS[tab].title} | หลังบ้าน iDucky`;
+  }, [tab]);
+  /** สลับแท็บ + เขียนลง URL (ก๊อปลิงก์ไปให้คนอื่นแล้วเปิดแท็บเดียวกัน · ไม่เพิ่มประวัติย้อนกลับ) */
+  const setTab = useCallback((t: PageTab) => {
+    setTabState(t);
+    const u = new URL(window.location.href);
+    if (PAGE_TABS[t].query) u.searchParams.set("tab", PAGE_TABS[t].query);
+    else u.searchParams.delete("tab");
+    window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+  }, []);
+  return (
+    <PageShell>
+      <PageHead
+        group="สินค้า"
+        title={tab === "cutout" ? "ตัดภาพ" : "เส้นไดคัท"}
+        count="ทดลอง"
+        sub={
+          tab === "cutout"
+            ? "ใส่รูป → AI/สีพื้นแยกวัตถุ → เกลาขอบเป็นเส้นโค้งคมแบบ pen tool → โหลด PNG พื้นใส หรือส่งไปทำเส้นไดคัทต่อ"
+            : "ใส่ลาย → เลือกชนิดงาน + ขนาด → โหลดไฟล์ .ai เข้าเครื่องตัด (อะคริลิค · สติกเกอร์ · การ์ด/ฉลาก)"
+        }
+      />
+      <div className="mt-3">
+        <TabRow>
+          <Tab on={tab === "diecut"} onClick={() => setTab("diecut")} label="✂️ เส้นไดคัท" />
+          <Tab on={tab === "cutout"} onClick={() => setTab("cutout")} label="🖋 ตัดภาพ (pen tool)" />
+        </TabRow>
+      </div>
+      {/* เปิดค้างไว้ทั้งสองแท็บ สลับไปมาแล้วงานที่ทำอยู่ไม่หาย */}
+      <div hidden={tab !== "diecut"}>
+        <DiecutLabInner inbox={inbox} onInboxTaken={takeInbox} />
+      </div>
+      <div hidden={tab !== "cutout"}>
+        <CutoutTab
+          onSendToDiecut={(f) => {
+            setInbox([f]);
+            setTab("diecut");
+          }}
+        />
+      </div>
+    </PageShell>
+  );
+}
+
 export default function DiecutLabPage() {
   return (
     <RequirePerm perm="products.manage">
-      <DiecutLabInner />
+      <DiecutPageInner />
     </RequirePerm>
   );
 }

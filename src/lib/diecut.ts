@@ -1,14 +1,15 @@
 /**
  * สร้าง "เส้นไดคัท" จากลายที่ลูกค้าส่งมา (PNG พื้นใส) — คำนวณล้วน ๆ ไม่แตะ DOM
  *
- * ขั้นตอน: alpha → มาสก์ → ขยายออกตามค่าตัดเผื่อ (mm) → เก็บขอบให้เรียบ → ปิดรูใน (ถ้าเลือก)
- *          → ไล่เส้นขอบเป็นรูปหลายเหลี่ยม → ลบมุมบันได → แปลงเป็นมิลลิเมตร
- *          → ฟิตเป็นเส้นโค้งเบซิเยร์ (แบบโปรแกรมตัดสติกเกอร์ทำ) = จุดแองเคอร์น้อย แก้ต่อง่าย
+ * ขั้นตอน: alpha → มาสก์ → สนามระยะ (distance field) → ตัดที่ระดับ = ค่าตัดเผื่อ (เก็บขอบบนสนามเดียวกัน)
+ *          → marching squares ระดับทศนิยม → ฟิตเบซิเยร์ (แบบโปรแกรมตัดสติกเกอร์ทำ) = จุดแองเคอร์น้อย แก้ต่อง่าย
+ *          หรือรูปทรงสำเร็จ (สี่เหลี่ยมมุมมน/วงกลม-วงรี) รอบลาย สำหรับการ์ด/ฉลาก/ที่คั่น/งานรูปทึบ
  *
  * หน่วยภายในทั้งหมดเป็น "พิกเซลของภาพ" (x ขวา · y ลง) แล้วค่อยคูณ mmPerPx ตอนท้าย
  */
 
-import { fitClosedCurve, type CubicSeg } from "./bezier-fit";
+import { type CubicSeg } from "./bezier-fit";
+import { fitLoop, isoContours } from "./cutout";
 
 export interface DiecutSettings {
   /** ตัดเผื่อรอบลาย (มม.) — ค่าที่ร้านใช้ประจำคือ 2 */
@@ -29,6 +30,13 @@ export interface DiecutSettings {
    * น้อย = เกาะลายแน่น จุดแองเคอร์เยอะ · มาก = เส้นลื่น จุดน้อย แก้ต่อง่าย (แนะนำ 0.1–0.25)
    */
   curveTolMm: number;
+  /**
+   * รูปทรงเส้นตัด — contour = ตามรูปลาย (พวงกุญแจ/สติกเกอร์ไดคัท) · rect = สี่เหลี่ยม (การ์ด/ฉลาก/ที่คั่น)
+   * · ellipse = วงกลม/วงรี · rect/ellipse ล้อมกรอบลาย (รูปทึบ = ทั้งภาพ) แล้วขยาย/หดตาม offsetMm (ติดลบได้)
+   */
+  shape?: "contour" | "rect" | "ellipse";
+  /** รัศมีมุมมนของ rect (มม.) */
+  cornerMm?: number;
 }
 
 /** หูร้อยห่วงแบบ "แท็บกลม" ยื่นออกจากตัวงาน (แบบพวงกุญแจอะคริลิคทั่วไป) */
@@ -118,35 +126,52 @@ function distanceSq(mask: Uint8Array, w: number, h: number): Float64Array {
   return out;
 }
 
-/** ขยายมาสก์ออกรอบทิศทาง r พิกเซล (ขอบโค้งมนเหมือนดอกกัดจริง) */
-export function dilate(mask: Uint8Array, w: number, h: number, rPx: number): Uint8Array {
-  if (rPx <= 0) return mask.slice();
-  const d2 = distanceSq(mask, w, h);
-  const rr = rPx * rPx;
-  const out = new Uint8Array(w * h);
-  for (let i = 0; i < out.length; i++) out[i] = d2[i] <= rr ? 1 : 0;
-  return out;
-}
-
-/** หดมาสก์เข้า r พิกเซล (= ขยายพื้นหลังแล้วกลับด้าน) */
-export function erode(mask: Uint8Array, w: number, h: number, rPx: number): Uint8Array {
-  if (rPx <= 0) return mask.slice();
+/**
+ * สนามระยะแบบมีเครื่องหมาย (พิกเซล): บวก = อยู่นอกมาสก์ห่างขอบเท่านี้ · ลบ = อยู่ในมาสก์ลึกเท่านี้
+ * ศูนย์อยู่ตรงขอบพิกเซลพอดี — เส้นระดับใดก็ได้ของสนามนี้คือ "เส้นขยาย/หดขอบ" ที่โค้งกลมจริง ไม่ใช่ขั้นบันได
+ */
+function signedField(mask: Uint8Array, w: number, h: number): Float32Array {
+  const dOut = distanceSq(mask, w, h);
   const inv = new Uint8Array(w * h);
   for (let i = 0; i < inv.length; i++) inv[i] = mask[i] ? 0 : 1;
-  const grown = dilate(inv, w, h, rPx);
-  const out = new Uint8Array(w * h);
-  for (let i = 0; i < out.length; i++) out[i] = grown[i] ? 0 : 1;
+  const dIn = distanceSq(inv, w, h);
+  const out = new Float32Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = mask[i] ? 0.5 - Math.sqrt(dIn[i]) : Math.sqrt(dOut[i]) - 0.5;
   return out;
 }
 
-/**
- * เก็บขอบให้เรียบ — ปิดร่อง/รอยหยักที่แคบกว่า r ก่อน (closing) แล้วปาดติ่งเล็ก ๆ ทิ้ง (opening)
- * ผลคือเส้นลื่นแบบไดคัทงานจริง ไม่วิ่งตามหยักของลายทุกจุด
- */
-export function smoothMask(mask: Uint8Array, w: number, h: number, rPx: number): Uint8Array {
-  if (rPx <= 0) return mask;
-  const closed = erode(dilate(mask, w, h, rPx), w, h, rPx);
-  return dilate(erode(closed, w, h, rPx), w, h, rPx);
+/** เบลอกล่อง 2 รอบ (≈ เกาส์เซียน) บนสนามทศนิยม — ลบรอยหยักระดับพิกเซลที่ยังเหลือ */
+function blurField(src: Float32Array, w: number, h: number, rad: number): Float32Array {
+  if (rad < 1) return src;
+  const a = Float32Array.from(src);
+  const b = new Float32Array(w * h);
+  const win = rad * 2 + 1;
+  const pass = (from: Float32Array, to: Float32Array, horiz: boolean) => {
+    const n = horiz ? w : h;
+    const lines = horiz ? h : w;
+    for (let l = 0; l < lines; l++) {
+      const idx = (i: number) => (horiz ? l * w + i : i * w + l);
+      const at = (i: number) => from[idx(i < 0 ? 0 : i >= n ? n - 1 : i)];
+      let sum = 0;
+      for (let i = -rad; i <= rad; i++) sum += at(i);
+      for (let i = 0; i < n; i++) {
+        to[idx(i)] = sum / win;
+        sum += at(i + rad + 1) - at(i - rad);
+      }
+    }
+  };
+  for (let k = 0; k < 2; k++) {
+    pass(a, b, true);
+    pass(b, a, false);
+  }
+  return a;
+}
+
+/** min แบบลบมุม (polynomial smooth-min) — ใช้ต่อแท็บหูร้อยเข้ากับตัวงานให้รอยต่อโค้งรับกัน ไม่เป็นซอกหัก */
+function smin(a: number, b: number, k: number): number {
+  if (k <= 0) return Math.min(a, b);
+  const hh = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.min(a, b) - hh * hh * k * 0.25;
 }
 
 /** ปิดรูที่ไม่ติดขอบภาพ (พื้นหลังที่ถูกลายล้อมไว้) = ไม่ตัดทะลุกลางงาน */
@@ -183,98 +208,7 @@ export function fillEnclosedHoles(mask: Uint8Array, w: number, h: number): Uint8
 
 type Pt = { x: number; y: number };
 
-/**
- * ไล่เส้นขอบของมาสก์ → รูปปิดหลายวง (หน่วยพิกเซล)
- * เก็บ "ขอบของพิกเซล" ทีละด้าน แล้วต่อกันเป็นวง — ได้ขอบแบบขั้นบันได ค่อยไปลบมุมทีหลัง
- */
-export function traceContours(mask: Uint8Array, w: number, h: number): Pt[][] {
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : mask[y * w + x]);
-  const key = (x: number, y: number) => y * (w + 1) + x;
-  /** จุดเริ่ม → ปลายทางที่ยังไม่ได้เดิน */
-  const edges = new Map<number, Pt[]>();
-  const add = (a: Pt, b: Pt) => {
-    const k = key(a.x, a.y);
-    const list = edges.get(k);
-    if (list) list.push(b);
-    else edges.set(k, [b]);
-  };
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!at(x, y)) continue;
-      // เดินตามเข็มนาฬิกาในระบบพิกัด y ลง (ลายอยู่ด้านขวาของทิศเดิน)
-      if (!at(x, y - 1)) add({ x, y }, { x: x + 1, y });
-      if (!at(x + 1, y)) add({ x: x + 1, y }, { x: x + 1, y: y + 1 });
-      if (!at(x, y + 1)) add({ x: x + 1, y: y + 1 }, { x, y: y + 1 });
-      if (!at(x - 1, y)) add({ x, y: y + 1 }, { x, y });
-    }
-  }
-  const loops: Pt[][] = [];
-  for (const [startKey, list] of edges) {
-    while (list.length) {
-      const start: Pt = { x: startKey % (w + 1), y: Math.floor(startKey / (w + 1)) };
-      const loop: Pt[] = [start];
-      let cur = list.pop()!;
-      let guard = 0;
-      while ((cur.x !== start.x || cur.y !== start.y) && guard++ < 4 * w * h) {
-        loop.push(cur);
-        const nexts = edges.get(key(cur.x, cur.y));
-        if (!nexts || !nexts.length) break; // ขอบขาด (ไม่ควรเกิด) — ทิ้งวงนี้
-        cur = nexts.pop()!;
-      }
-      if (loop.length > 7) loops.push(loop);
-    }
-  }
-  return loops;
-}
-
-/** ลบมุมขั้นบันไดให้เส้นลื่นขึ้น (Chaikin) */
-export function smoothLoop(pts: Pt[], rounds = 2): Pt[] {
-  let cur = pts;
-  for (let r = 0; r < rounds; r++) {
-    const next: Pt[] = [];
-    for (let i = 0; i < cur.length; i++) {
-      const a = cur[i];
-      const b = cur[(i + 1) % cur.length];
-      next.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
-      next.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
-    }
-    cur = next;
-  }
-  return cur;
-}
-
-/** ลดจำนวนจุดโดยรูปทรงยังเหมือนเดิม (Ramer–Douglas–Peucker) */
-export function simplifyLoop(pts: Pt[], eps: number): Pt[] {
-  if (pts.length < 4) return pts;
-  const keep = new Uint8Array(pts.length);
-  keep[0] = 1;
-  keep[pts.length - 1] = 1;
-  const stack: [number, number][] = [[0, pts.length - 1]];
-  while (stack.length) {
-    const [i0, i1] = stack.pop()!;
-    const a = pts[i0];
-    const b = pts[i1];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    let far = -1;
-    let best = eps;
-    for (let i = i0 + 1; i < i1; i++) {
-      const d = Math.abs((pts[i].x - a.x) * dy - (pts[i].y - a.y) * dx) / len;
-      if (d > best) {
-        best = d;
-        far = i;
-      }
-    }
-    if (far > 0) {
-      keep[far] = 1;
-      stack.push([i0, far], [far, i1]);
-    }
-  }
-  return pts.filter((_, i) => keep[i]);
-}
-
-/** พื้นที่แบบมีเครื่องหมาย — เครื่องหมายบอกว่าเป็นเส้นรอบนอกหรือรูใน (ทิศเดินตรงข้ามกัน) */
+/** พื้นที่แบบมีเครื่องหมาย — เครื่องหมายบอกทิศการเดินของเส้น */
 function signedArea(pts: Pt[]): number {
   let a = 0;
   for (let i = 0; i < pts.length; i++) {
@@ -290,13 +224,42 @@ function areaOf(pts: Pt[]): number {
   return Math.abs(signedArea(pts));
 }
 
+/** จุดอยู่ในรูปปิดไหม (ray casting) */
+function insidePoly(p: Pt, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** กรอบสี่เหลี่ยมที่ล้อมส่วนที่เป็นลายไว้ (หน่วยพิกเซล · x1/y1 = ขอบขวา/ล่างของพิกเซลสุดท้าย) */
+function bboxOfMask(m: Uint8Array, w: number, h: number) {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      if (m[y * w + x]) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+  return { x0, y0, x1: x1 + 1, y1: y1 + 1 };
+}
+
 /**
  * คำนวณเส้นไดคัททั้งชุดจาก ImageData ของลาย
+ *
+ * วิธีแบบโปรแกรมตัด (FineCut ฯลฯ): ไม่ไล่ขอบพิกเซลเป็นขั้นบันไดแล้วค่อยลบมุม แต่สร้าง "สนามระยะ" จากลาย
+ * แล้วตัดที่ระดับ = ค่าตัดเผื่อ ด้วย marching squares ระดับทศนิยม → เส้นโค้งกลมเนียนตั้งแต่ต้น
+ * เก็บขอบ (ปิดร่อง + ปาดติ่ง) ทำบนสนามระยะเหมือนกัน · ฟิตเบซิเยร์ทีละช่วงระหว่างซอกหัก (ซอกคมไม่โดนลบมน)
  *
  * ทำงานบนผืนที่ "เผื่อขอบ" ไว้รอบภาพ เพราะเส้นตัดต้องล้นออกนอกลายเสมอ
  * (ลายที่ชิดขอบไฟล์จะได้เส้นครบ ไม่โดนตัดหัวท้าย) พิกัดที่คืนออกไปจึงติดลบได้
  *
- * @param img ภาพลาย (ควรเป็น PNG พื้นใส) · ขนาดที่ส่งเข้ามาคือขนาดที่ใช้คำนวณ
+ * @param img ภาพลาย · ขนาดที่ส่งเข้ามาคือขนาดที่ใช้คำนวณ
  */
 export function buildDiecut(
   img: { data: Uint8ClampedArray; width: number; height: number },
@@ -307,9 +270,11 @@ export function buildDiecut(
   const mmPerPx = s.widthMm / w0;
   const warnings: string[] = [];
   const px = (mm: number) => mm / mmPerPx;
+  const shape = s.shape ?? "contour";
 
-  if (!hasAlpha(img.data)) {
-    warnings.push("ลายนี้ไม่มีพื้นใส (ทั้งภาพทึบ) — เส้นไดคัทจะออกมาเป็นกรอบสี่เหลี่ยม ต้องไล่พื้นหลังออกก่อน");
+  const opaque = !hasAlpha(img.data);
+  if (opaque && shape === "contour") {
+    warnings.push("ลายนี้ไม่มีพื้นใส (ทั้งภาพทึบ) — เส้นตามรูปลายจะออกมาเป็นกรอบสี่เหลี่ยม · เลือกรูปทรง “สี่เหลี่ยม/วงกลม” หรือไล่พื้นหลังในแท็บตัดภาพก่อน");
   }
   const dpi = 25.4 / mmPerPx;
   if (dpi < 150) {
@@ -333,23 +298,10 @@ export function buildDiecut(
   };
   if (inkPx === 0) return emptyResult;
 
-  /** กรอบสี่เหลี่ยมที่ล้อมส่วนที่เป็นลายไว้ (หน่วยพิกเซล) */
-  const bboxOfMask = (m: Uint8Array, w: number, h: number) => {
-    let x0 = w, y0 = h, x1 = -1, y1 = -1;
-    for (let y = 0; y < h; y++)
-      for (let x = 0; x < w; x++)
-        if (m[y * w + x]) {
-          if (x < x0) x0 = x;
-          if (x > x1) x1 = x;
-          if (y < y0) y0 = y;
-          if (y > y1) y1 = y;
-        }
-    return { x0, y0, x1, y1 };
-  };
   // ลายกินพื้นที่เกือบเต็มกรอบ = น่าจะติดพื้นหลัง/เงาฟุ้งมาด้วย (เส้นตัดจะออกมาเป็นกล่อง)
   const bb = bboxOfMask(src, w0, h0);
-  const fill = inkPx / Math.max(1, (bb.x1 - bb.x0 + 1) * (bb.y1 - bb.y0 + 1));
-  if (fill > 0.9) {
+  const fill = inkPx / Math.max(1, (bb.x1 - bb.x0) * (bb.y1 - bb.y0));
+  if (shape === "contour" && !opaque && fill > 0.9) {
     warnings.push(
       "ลายเต็มกรอบเกือบทั้งผืน — ถ้าไฟล์มีเงา/แสงฟุ้งจาง ๆ ระบบจะนับเป็นลายด้วย ทำให้เส้นตัดออกมาเป็นกล่อง · ลองเลื่อน “ความไวขอบลาย” ไปทางขวา"
     );
@@ -357,19 +309,69 @@ export function buildDiecut(
 
   // เผื่อขอบผืนคำนวณให้พอกับ ตัดเผื่อ + เก็บขอบ + แท็บหูร้อย
   const tabPx = ring && ring.tabDiameterMm > 0 ? px(ring.tabDiameterMm) : 0;
-  const pad = Math.ceil(px(s.offsetMm) + px(s.smoothMm) * 2 + tabPx + 4);
+  const offPx = px(s.offsetMm);
+  const smoothPx = shape === "contour" ? px(Math.max(0, s.smoothMm)) : 0;
+  const pad = Math.ceil(Math.max(0, offPx) + smoothPx * 2 + tabPx + 6);
   const w = w0 + pad * 2;
   const h = h0 + pad * 2;
-  let mask: Uint8Array = new Uint8Array(w * h);
-  for (let y = 0; y < h0; y++) for (let x = 0; x < w0; x++) if (src[y * w0 + x]) mask[(y + pad) * w + (x + pad)] = 1;
+  let ink: Uint8Array = new Uint8Array(w * h);
+  for (let y = 0; y < h0; y++) for (let x = 0; x < w0; x++) if (src[y * w0 + x]) ink[(y + pad) * w + (x + pad)] = 1;
 
-  mask = dilate(mask, w, h, px(s.offsetMm));
-  mask = smoothMask(mask, w, h, px(s.smoothMm));
+  /** สนามสุดท้าย: ≤ 0 = เนื้องาน (ในเส้นตัด) */
+  let field: Float32Array;
+  let blurRad = 0;
+  if (shape === "contour") {
+    if (s.fillHoles) ink = fillEnclosedHoles(ink, w, h);
+    const sd = signedField(ink, w, h);
+    if (smoothPx >= 0.75) {
+      // closing แล้ว opening ด้วยจานรัศมี r บนสนามระยะ: ขยาย (ตัดเผื่อ+r) → หด 2r → ขยาย r
+      const grown = new Uint8Array(w * h);
+      for (let i = 0; i < grown.length; i++) grown[i] = sd[i] <= offPx + smoothPx ? 1 : 0;
+      const sdG = signedField(grown, w, h);
+      const core = new Uint8Array(w * h);
+      for (let i = 0; i < core.length; i++) core[i] = sdG[i] <= -2 * smoothPx ? 1 : 0;
+      field = signedField(core, w, h);
+      for (let i = 0; i < field.length; i++) field[i] -= smoothPx;
+    } else {
+      field = sd;
+      for (let i = 0; i < field.length; i++) field[i] -= offPx;
+    }
+    // เกลาเศษหยักระดับพิกเซลที่เหลือ (~0.05 มม. · อย่างน้อย 1 พิกเซล)
+    blurRad = Math.max(1, Math.min(3, Math.round(px(0.05))));
+    field = blurField(field, w, h, blurRad);
+  } else {
+    // รูปทรงสำเร็จ: กรอบอ้างอิง = กรอบลาย (PNG พื้นใส) หรือทั้งภาพ (รูปทึบ) แล้วขยาย/หดตามค่าตัดเผื่อ
+    const ref = opaque ? { x0: 0, y0: 0, x1: w0, y1: h0 } : bb;
+    const cx = (ref.x0 + ref.x1) / 2 + pad;
+    const cy = (ref.y0 + ref.y1) / 2 + pad;
+    const hx = Math.max(1, (ref.x1 - ref.x0) / 2 + offPx);
+    const hy = Math.max(1, (ref.y1 - ref.y0) / 2 + offPx);
+    field = new Float32Array(w * h);
+    if (shape === "rect") {
+      const r = Math.min(px(Math.max(0, s.cornerMm ?? 0)), hx, hy);
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const qx = Math.abs(x + 0.5 - cx) - (hx - r);
+          const qy = Math.abs(y + 0.5 - cy) - (hy - r);
+          field[y * w + x] = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+        }
+    } else {
+      const m = Math.min(hx, hy);
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const ex = (x + 0.5 - cx) / hx;
+          const ey = (y + 0.5 - cy) / hy;
+          field[y * w + x] = (Math.hypot(ex, ey) - 1) * m;
+        }
+    }
+  }
 
-  // แท็บหูร้อยห่วง: วงกลมยื่นออกจากขอบงาน ซ้อนทับไว้นิดหน่อยให้เป็นชิ้นเดียวกัน
+  // แท็บหูร้อยห่วง: วงกลมยื่นออกจากขอบงาน ซ้อนทับไว้นิดหน่อยให้เป็นชิ้นเดียวกัน · รอยต่อลบมุมโค้งรับ
   let hole: DiecutResult["hole"];
   if (ring && ring.holeDiameterMm > 0) {
-    const b = bboxOfMask(mask, w, h);
+    const body = new Uint8Array(w * h);
+    for (let i = 0; i < body.length; i++) body[i] = field[i] <= 0 ? 1 : 0;
+    const b = bboxOfMask(body, w, h);
     const tabR = tabPx / 2;
     const overlap = px(ring.overlapMm);
     let cx: number;
@@ -389,19 +391,18 @@ export function buildDiecut(
             : (b.x0 + b.x1) / 2;
       // ไล่หาขอบบนของงานตรงคอลัมน์นั้น แล้ววางแท็บให้ซ้อนลงมา
       let top = b.y0;
-      const col = Math.round(cx);
-      for (let y = 0; y < h; y++) if (mask[y * w + col]) { top = y; break; }
+      const col = Math.min(w - 1, Math.max(0, Math.round(cx)));
+      for (let y = 0; y < h; y++) if (body[y * w + col]) { top = y; break; }
       cy = top - tabR + overlap;
     }
     if (tabR > 0) {
-      const r2 = tabR * tabR;
-      const yA = Math.max(0, Math.floor(cy - tabR));
-      const yB = Math.min(h - 1, Math.ceil(cy + tabR));
-      const xA = Math.max(0, Math.floor(cx - tabR));
-      const xB = Math.min(w - 1, Math.ceil(cx + tabR));
-      for (let y = yA; y <= yB; y++)
-        for (let x = xA; x <= xB; x++)
-          if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2) mask[y * w + x] = 1;
+      const k = px(1.2); // รัศมีลบมุมตรงรอยต่อแท็บ
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          const dc = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) - tabR;
+          if (dc < field[i] + k) field[i] = smin(field[i], dc, k);
+        }
     }
     hole = { cx: (cx - pad) * mmPerPx, cy: (cy - pad) * mmPerPx, r: ring.holeDiameterMm / 2 };
     if (tabPx > 0 && ring.tabDiameterMm < ring.holeDiameterMm + 4) {
@@ -409,21 +410,28 @@ export function buildDiecut(
     }
   }
 
-  if (s.fillHoles) mask = fillEnclosedHoles(mask, w, h);
+  if (s.fillHoles) {
+    const body = new Uint8Array(w * h);
+    for (let i = 0; i < body.length; i++) body[i] = field[i] <= 0 ? 1 : 0;
+    const filled = fillEnclosedHoles(body, w, h);
+    for (let i = 0; i < field.length; i++) if (filled[i] && !body[i]) field[i] = -1;
+  }
 
-  // ทิ้งเศษเล็กกว่า 1 ตร.มม. (จุดฝุ่น/ขอบลายที่หลุดมา) แล้วเกลาเส้น
-  const minArea = 1 / (mmPerPx * mmPerPx);
-  const paths = traceContours(mask, w, h)
-    .filter((loop) => areaOf(loop) >= minArea)
-    .map((loop) => simplifyLoop(smoothLoop(loop, 3), 0.4))
-    .map((loop) => loop.map((q) => ({ x: (q.x - pad) * mmPerPx, y: (q.y - pad) * mmPerPx })));
+  // ไล่เส้นที่ระดับ 0 (กลับเครื่องหมาย: isoContours ถือว่า "ค่า ≥ ระดับ" คือด้านใน)
+  const neg = new Float32Array(field.length);
+  for (let i = 0; i < neg.length; i++) neg[i] = -field[i];
+  const minArea = 1 / (mmPerPx * mmPerPx); // ทิ้งเศษเล็กกว่า 1 ตร.มม.
+  const loops = isoContours(neg, w, h, 0, -1e4).filter((l) => areaOf(l) >= minArea);
+  if (!loops.length) return { ...emptyResult, warnings };
 
-  if (!paths.length) return { ...emptyResult, warnings };
-
-  // แยก "เส้นรอบชิ้นงาน" ออกจาก "รูตรงกลาง" ด้วยทิศการเดินของเส้น (ตรงข้ามกันเสมอ)
-  const outerSign = Math.sign(signedArea(paths.reduce((a, b) => (areaOf(a) >= areaOf(b) ? a : b))));
-  const pieces = paths.filter((q) => Math.sign(signedArea(q)) === outerSign).length;
-  const innerHoles = paths.length - pieces;
+  // แยก "เส้นรอบชิ้นงาน" ออกจาก "รูตรงกลาง" — รูคือวงที่ถูกวงอื่นล้อมเป็นจำนวนคี่
+  const isHole = loops.map((l, i) => {
+    let depth = 0;
+    for (let j = 0; j < loops.length; j++) if (j !== i && areaOf(loops[j]) > areaOf(l) && insidePoly(l[0], loops[j])) depth++;
+    return depth % 2 === 1;
+  });
+  const pieces = isHole.filter((x) => !x).length;
+  const innerHoles = loops.length - pieces;
   if (pieces > 1) {
     warnings.push(`ลายนี้แยกเป็น ${pieces} ชิ้นที่ไม่ติดกัน — ถ้าต้องการชิ้นเดียวให้เพิ่มค่าตัดเผื่อ/ค่าเก็บขอบ หรือแก้ลายให้เชื่อมกัน`);
   }
@@ -431,19 +439,193 @@ export function buildDiecut(
     warnings.push(`มีรูตัดทะลุกลางงาน ${innerHoles} รู — ไม่ต้องการให้ตัดทะลุ ให้ติ๊ก “ปิดรูกลางลาย”`);
   }
 
-  // ฟิตเป็นเส้นโค้ง — นี่คือของที่เขียนลงไฟล์จริง (paths เก็บไว้วัด/วาดตัวอย่าง)
-  const curves = paths.map((loop) => ({ start: loop[0], segs: fitClosedCurve(loop, Math.max(0.01, s.curveTolMm)) }));
+  // รูปทรงสำเร็จที่ไม่มีแท็บ = เขียนเรขาคณิตตรง ๆ (เส้นตรงเป๊ะ · โค้งวงกลมจริง) ไม่ต้องฟิต
+  if (shape !== "contour" && !(ring && tabPx > 0) && pieces === 1 && innerHoles === 0) {
+    const ref = opaque ? { x0: 0, y0: 0, x1: w0, y1: h0 } : bb;
+    const box = {
+      x0: ref.x0 * mmPerPx - s.offsetMm,
+      y0: ref.y0 * mmPerPx - s.offsetMm,
+      x1: ref.x1 * mmPerPx + s.offsetMm,
+      y1: ref.y1 * mmPerPx + s.offsetMm,
+    };
+    if (box.x1 - box.x0 > 0.5 && box.y1 - box.y0 > 0.5) {
+      const c = shapeCurve(shape, box, Math.max(0, s.cornerMm ?? 0));
+      const pts = [c.start, ...c.segs.map((sg) => sg.to)];
+      const bounds = {
+        x0: Math.min(box.x0, hole ? hole.cx - hole.r : Infinity),
+        y0: Math.min(box.y0, hole ? hole.cy - hole.r : Infinity),
+        x1: Math.max(box.x1, hole ? hole.cx + hole.r : -Infinity),
+        y1: Math.max(box.y1, hole ? hole.cy + hole.r : -Infinity),
+      };
+      return { paths: [pts], curves: [c], anchors: c.segs.length, hole, widthMm: s.widthMm, heightMm: h0 * mmPerPx, mmPerPx, pieces: 1, innerHoles: 0, bounds, warnings };
+    }
+  }
+
+  // ฟิตเป็นเส้นโค้ง (หน่วยพิกเซล) — เก็บมุมคมเฉพาะ "ซอก" ของเนื้องาน (ส่วนนูนของเส้นตัดเผื่อโค้งกลมเสมอ)
+  // ยกเว้นสี่เหลี่ยมมุมฉากที่มุมนูนคมจริง
+  const sharpConvex = shape === "rect" && !((s.cornerMm ?? 0) > 0);
+  // รูปทรงสำเร็จ + แท็บ: ฟิตแน่นขึ้น ด้านตรงจะได้ไม่เป็นลอน
+  const tolPx = Math.max(0.3, px(Math.max(0.01, shape === "contour" ? s.curveTolMm : Math.min(s.curveTolMm, 0.05))));
+  const toMm = (q: Pt): Pt => ({ x: (q.x - pad) * mmPerPx, y: (q.y - pad) * mmPerPx });
+  const paths: Pt[][] = [];
+  const curves: DiecutResult["curves"] = [];
+  loops.forEach((l, i) => {
+    const dir = Math.sign(signedArea(l));
+    // turn ทางเดียวกับวง = นูนเมื่อมองจากด้านในวง · รู = เนื้องานอยู่ด้านนอกวง จึงกลับกัน
+    const concave = (turn: number) => (isHole[i] ? turn * dir > 0 : turn * dir < 0);
+    const fit = fitLoop(l, tolPx, 30, blurRad, sharpConvex ? undefined : concave);
+    curves.push({
+      start: toMm(fit.start),
+      segs: fit.segs.map((sg) => ({ c1: toMm(sg.c1), c2: toMm(sg.c2), to: toMm(sg.to) })),
+    });
+    paths.push(l.map(toMm));
+  });
   const anchors = curves.reduce((n, c) => n + c.segs.length, 0);
 
-  const all = paths.flat();
-  const bounds = {
-    x0: Math.min(...all.map((q) => q.x), hole ? hole.cx - hole.r : Infinity),
-    y0: Math.min(...all.map((q) => q.y), hole ? hole.cy - hole.r : Infinity),
-    x1: Math.max(...all.map((q) => q.x), hole ? hole.cx + hole.r : -Infinity),
-    y1: Math.max(...all.map((q) => q.y), hole ? hole.cy + hole.r : -Infinity),
-  };
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of paths) for (const q of p) {
+    if (q.x < x0) x0 = q.x;
+    if (q.x > x1) x1 = q.x;
+    if (q.y < y0) y0 = q.y;
+    if (q.y > y1) y1 = q.y;
+  }
+  if (hole) {
+    x0 = Math.min(x0, hole.cx - hole.r);
+    y0 = Math.min(y0, hole.cy - hole.r);
+    x1 = Math.max(x1, hole.cx + hole.r);
+    y1 = Math.max(y1, hole.cy + hole.r);
+  }
 
-  return { paths, curves, anchors, hole, widthMm: s.widthMm, heightMm: h0 * mmPerPx, mmPerPx, pieces, innerHoles, bounds, warnings };
+  return { paths, curves, anchors, hole, widthMm: s.widthMm, heightMm: h0 * mmPerPx, mmPerPx, pieces, innerHoles, bounds: { x0, y0, x1, y1 }, warnings };
+}
+
+/** เส้นสี่เหลี่ยม(มุมมน)/วงรี ที่แม่นตามเรขาคณิต — มุมมนใช้ค่า kappa ของวงกลม (แบบที่ Illustrator วาด) */
+function shapeCurve(
+  shape: "rect" | "ellipse",
+  b: { x0: number; y0: number; x1: number; y1: number },
+  cornerMm: number
+): { start: Pt; segs: CubicSeg[] } {
+  const K = 0.5522847498;
+  const line = (p: Pt, q: Pt): CubicSeg => ({
+    c1: { x: p.x + (q.x - p.x) / 3, y: p.y + (q.y - p.y) / 3 },
+    c2: { x: p.x + ((q.x - p.x) * 2) / 3, y: p.y + ((q.y - p.y) * 2) / 3 },
+    to: q,
+  });
+  if (shape === "ellipse") {
+    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+    const rx = (b.x1 - b.x0) / 2, ry = (b.y1 - b.y0) / 2;
+    return {
+      start: { x: cx + rx, y: cy },
+      segs: [
+        { c1: { x: cx + rx, y: cy + ry * K }, c2: { x: cx + rx * K, y: cy + ry }, to: { x: cx, y: cy + ry } },
+        { c1: { x: cx - rx * K, y: cy + ry }, c2: { x: cx - rx, y: cy + ry * K }, to: { x: cx - rx, y: cy } },
+        { c1: { x: cx - rx, y: cy - ry * K }, c2: { x: cx - rx * K, y: cy - ry }, to: { x: cx, y: cy - ry } },
+        { c1: { x: cx + rx * K, y: cy - ry }, c2: { x: cx + rx, y: cy - ry * K }, to: { x: cx + rx, y: cy } },
+      ],
+    };
+  }
+  const r = Math.min(cornerMm, (b.x1 - b.x0) / 2, (b.y1 - b.y0) / 2);
+  if (r < 0.01) {
+    const p = [{ x: b.x0, y: b.y0 }, { x: b.x1, y: b.y0 }, { x: b.x1, y: b.y1 }, { x: b.x0, y: b.y1 }];
+    return { start: p[0], segs: [line(p[0], p[1]), line(p[1], p[2]), line(p[2], p[3]), line(p[3], p[0])] };
+  }
+  const k = r * K;
+  const segs: CubicSeg[] = [];
+  let cur: Pt = { x: b.x0 + r, y: b.y0 };
+  const to = (q: Pt) => {
+    if (Math.hypot(q.x - cur.x, q.y - cur.y) > 1e-6) segs.push(line(cur, q));
+    cur = q;
+  };
+  const arc = (c1: Pt, c2: Pt, q: Pt) => {
+    segs.push({ c1, c2, to: q });
+    cur = q;
+  };
+  to({ x: b.x1 - r, y: b.y0 });
+  arc({ x: b.x1 - r + k, y: b.y0 }, { x: b.x1, y: b.y0 + r - k }, { x: b.x1, y: b.y0 + r });
+  to({ x: b.x1, y: b.y1 - r });
+  arc({ x: b.x1, y: b.y1 - r + k }, { x: b.x1 - r + k, y: b.y1 }, { x: b.x1 - r, y: b.y1 });
+  to({ x: b.x0 + r, y: b.y1 });
+  arc({ x: b.x0 + r - k, y: b.y1 }, { x: b.x0, y: b.y1 - r + k }, { x: b.x0, y: b.y1 - r });
+  to({ x: b.x0, y: b.y0 + r });
+  arc({ x: b.x0, y: b.y0 + r - k }, { x: b.x0 + r - k, y: b.y0 }, { x: b.x0 + r, y: b.y0 });
+  return { start: { x: b.x0 + r, y: b.y0 }, segs };
+}
+
+/**
+ * เติม "ตัดตก" (bleed) ให้รูปลาย — ระบายสีขอบลายออกไปในส่วนโปร่งใสรอบ ๆ rPx พิกเซล
+ * งานกระดาษ/สติกเกอร์ที่ตัดชิดลาย เครื่องตัดคลาด ±0.5–2 มม. ถ้าไม่มีตัดตกจะเห็นขอบขาวแลบ
+ * (ขยายได้แค่ในกรอบไฟล์ — ลายที่ชิดขอบไฟล์ ด้านนั้นจะไม่ได้ตัดตก)
+ * keep = พิกเซลที่ห้ามแตะ (ด้านในเส้นตัด — ช่องว่างระหว่างตัวอักษร/พื้นการ์ดต้องคงเดิม ระบายเฉพาะส่วนที่โดนตัดทิ้ง)
+ */
+export function bleedImage(img: ImageData, rPx: number, keep?: Uint8Array): ImageData {
+  const { width: w, height: h, data } = img;
+  if (rPx < 0.5) return img;
+  const INF = 1e20;
+  // ระยะในแนวตั้งถึงพิกเซลทึบที่ใกล้สุดในคอลัมน์เดียวกัน (+ แถวของมัน)
+  const gy = new Float64Array(w * h);
+  const srcRow = new Int32Array(w * h).fill(-1);
+  const solid = (i: number) => data[i * 4 + 3] >= 250;
+  for (let x = 0; x < w; x++) {
+    let last = -1;
+    for (let y = 0; y < h; y++) {
+      if (solid(y * w + x)) last = y;
+      srcRow[y * w + x] = last;
+      gy[y * w + x] = last < 0 ? INF : y - last;
+    }
+    last = -1;
+    for (let y = h - 1; y >= 0; y--) {
+      if (solid(y * w + x)) last = y;
+      if (last >= 0 && last - y < gy[y * w + x]) {
+        gy[y * w + x] = last - y;
+        srcRow[y * w + x] = last;
+      }
+    }
+  }
+  // แนวนอน: lower envelope ของพาราโบลา (Felzenszwalb) จำว่าใครชนะ
+  const out = new ImageData(new Uint8ClampedArray(data), w, h);
+  const o = out.data;
+  const f = new Float64Array(w);
+  const v = new Int32Array(w);
+  const z = new Float64Array(w + 1);
+  const r2 = rPx * rPx;
+  for (let y = 0; y < h; y++) {
+    let any = false;
+    for (let x = 0; x < w; x++) {
+      const g = gy[y * w + x];
+      f[x] = g >= INF ? INF : g * g;
+      if (g < INF) any = true;
+    }
+    if (!any) continue;
+    let k = 0;
+    v[0] = 0;
+    z[0] = -INF;
+    z[1] = INF;
+    for (let q = 1; q < w; q++) {
+      let sv = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (sv <= z[k]) {
+        k--;
+        sv = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      }
+      k++;
+      v[k] = q;
+      z[k] = sv;
+      z[k + 1] = INF;
+    }
+    k = 0;
+    for (let x = 0; x < w; x++) {
+      while (z[k + 1] < x) k++;
+      const sx = v[k];
+      const d2 = (x - sx) * (x - sx) + f[sx];
+      const i = y * w + x;
+      const a = data[i * 4 + 3];
+      if (a >= 250 || d2 > r2 || f[sx] >= INF || keep?.[i]) continue;
+      const si = (srcRow[y * w + sx] * w + sx) * 4;
+      // ทับใต้ขอบลายเดิม (ขอบ anti-alias ไม่มีฮาโลขาว)
+      for (let c = 0; c < 3; c++) o[i * 4 + c] = (data[i * 4 + c] * a + data[si + c] * (255 - a)) / 255;
+      o[i * 4 + 3] = 255;
+    }
+  }
+  return out;
 }
 
 /**
