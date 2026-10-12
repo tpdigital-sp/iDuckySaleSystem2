@@ -14,7 +14,7 @@ import { useEffect, useRef } from "react";
 export const LINE_URL = "/line";
 
 export const GREETING =
-  "สวัสดีครับ 👋 ผมผู้ช่วยของ iDucky Prints ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยครับ พิมพ์มาได้เลย เดี๋ยวตอบให้ทันที";
+  "สวัสดีค่ะ 👋 ผู้ช่วยของ iDucky Prints ยินดีให้บริการค่ะ ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยนะคะ พิมพ์มาได้เลย เดี๋ยวตอบให้ทันทีค่ะ";
 
 /** ปุ่มตอบเร็ว — เขียนเป็น "คำถาม" ให้รู้ว่ากดแล้วถามจริง ไม่ใช่ป้ายโฆษณา */
 export const QUICK: { icon: string; label: string; ask: string }[] = [
@@ -82,9 +82,9 @@ export async function askShopBot(message: string, sessionId: string, history: Ch
     });
     const data = (await res.json().catch(() => ({}))) as { reply?: string; error?: string; products?: ChatProduct[]; images?: ChatImage[] };
     if (res.ok && data.reply) return { text: data.reply, products: data.products, images: data.images };
-    return { text: data.error || "ตอนนี้ผู้ช่วยตอบไม่ได้ครับ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินดูแลต่อให้" };
+    return { text: data.error || "ตอนนี้ผู้ช่วยตอบไม่ได้ค่ะ ทักไลน์ร้านได้เลย เดี๋ยวแอดมินดูแลต่อให้" };
   } catch {
-    return { text: "เชื่อมต่อไม่ได้ครับ ลองใหม่อีกครั้ง หรือทักไลน์ร้านได้เลย" };
+    return { text: "เชื่อมต่อไม่ได้ค่ะ ลองใหม่อีกครั้ง หรือทักไลน์ร้านได้เลย" };
   }
 }
 
