@@ -177,7 +177,7 @@ import {
 import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
-import { yearFromChoice } from "@/lib/calendar-card";
+import { rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { useCart } from "@/lib/cart-context";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin } from "@/lib/auth";
@@ -610,7 +610,9 @@ export default function ProductDetail({
   related?: Product[];
   category?: ShopCategory;
 }) {
-  const [product, setProduct] = useState<Product>(initialProduct);
+  const [productBase, setProduct] = useState<Product>(initialProduct);
+  /** 🗓 สินค้าปฏิทิน: กลุ่มปีปฏิทินเลื่อนตามปีปัจจุบัน (5 ปี · dropdown) — ดู rollCalendarYears */
+  const product = useMemo(() => rollCalendarYears(productBase), [productBase]);
   /**
    * ชื่อหมวดบน breadcrumb/ป้ายหัวสินค้าต้องตรงกับหมวดจริงในหลังบ้าน
    * ชุด CATEGORIES ในโค้ดเป็นของออกแบบเก่า (fabric = "ผ้า / หมอน / ผ้าห่ม") ใช้เป็นตัวสำรองเท่านั้น
@@ -822,7 +824,7 @@ export default function ProductDetail({
   const [bundleCodes, setBundleCodes] = useState<string[]>([]);
   const [bundleMsg, setBundleMsg] = useState("");
   const [selections, setSelections] = useState<Record<string, string>>(() =>
-    initialSelections(initialProduct)
+    initialSelections(rollCalendarYears(initialProduct))
   );
   /**
    * 🎨 เมนูเลื่อนแบบวาดเอง (กลุ่มที่มีตัวเลือกตั้งสี เช่น ครึ่ง A4/A5/A6 สีเขียว) — label ของกลุ่มที่กางอยู่
@@ -970,7 +972,7 @@ export default function ProductDetail({
       if (!active) return;
       if (m) {
         setProduct(m);
-        setSelections(initialSelections(m));
+        setSelections(initialSelections(rollCalendarYears(m)));
         setImageIndex(0);
       }
       // ปักธงเสมอ (โหลดไม่ได้ก็ถือว่าจบ) — ลิงก์ราคารออยู่ ต้องได้ติ๊กค่าหลังจากนี้
@@ -6302,7 +6304,7 @@ export default function ProductDetail({
             {designDone
               ? "แตะเพื่อเพิ่มลายอีกแบบ"
               : calMode
-                ? "ใส่รูปหน้าปก ปฏิทินด้านหลังสร้างให้เอง"
+                ? "ใส่รูปของคุณ ตารางปฏิทินสร้างให้เอง"
                 : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
           </span>
         </button>

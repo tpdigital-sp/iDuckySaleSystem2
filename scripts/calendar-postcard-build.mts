@@ -12,6 +12,9 @@
  *   (อาร์ต 300 เคลือบ 90/70/65/60/55/50/45 = ขั้นแรกตรงต้นทางพอดี) · รายเดือน +10 · พิมพ์ 2 ด้าน +20 ตามต้นทาง
  *   ตารางราคา/เรทตัวแทน/ค่าคละ/กลุ่มกระดาษ+เคลือบ/กฎ ยกจาก postcard-th สด ๆ (เฉพาะกระดาษที่ต้นทางขาย ไม่เอา Eggshell)
  *   จอสร้างปฏิทิน: Product.calendarStudio.formats → postcard-year1/year2/month × L/P (lib/calendar-card)
+ * 12 ต.ค. 69 (รอบ 2): แยกเป็น 2 กลุ่ม — "แบบปฏิทิน" รายปี 8 ใบ / รายเดือน 13 ใบ (+10) × "พิมพ์" 1 ด้าน / 2 ด้าน (+20)
+ *   รายเดือน 2 ด้าน (ใหม่ ต้นทางไม่มี) = ใบละรูปด้านหน้า + ตารางเดือนด้านหลัง · หลังปก = ภาพรวมทั้งปี (+10+20)
+ *   รูปการ์ดตัวเลือก = scripts/assets/calendar-samples (สร้างด้วย scripts/calendar-samples.mts)
  * รันซ้ำได้: เขียนทับทั้งก้อน แต่คงยอดขาย/รีวิว/สถานะเผยแพร่ของเดิมไว้
  */
 import { readFileSync } from "node:fs";
@@ -25,6 +28,7 @@ import {
   type Product,
   type ProductOption,
 } from "../src/lib/products";
+import { rollCalendarYears } from "../src/lib/calendar-card";
 
 const WRITE = process.argv.includes("--write");
 const env = Object.fromEntries(
@@ -54,9 +58,11 @@ const TYPE = "แบบปฏิทิน";
 const ORI = "แนวโปสการ์ด";
 const YEAR = "ปีปฏิทิน";
 
-const T_Y1 = "รายปี · พิมพ์ 1 ด้าน (8 ใบ/ชุด)";
-const T_Y2 = "รายปี · พิมพ์ 2 ด้าน (8 ใบ/ชุด)";
+const SIDE = "พิมพ์";
+const T_Y = "รายปี (8 ใบ/ชุด)";
 const T_M = "รายเดือน (13 ใบ/ชุด)";
+const S1 = "พิมพ์ 1 ด้าน";
+const S2 = "พิมพ์ 2 ด้าน";
 const Y2_FEE = 20;
 const M_FEE = 10;
 
@@ -109,6 +115,22 @@ for (const [name, from] of PHOTOS) {
   }
   gallery.push(url(file));
 }
+/** ภาพตัวอย่างตัวเลือก (วาดจากตัววาดปฏิทินจริง) */
+const sample = async (name: string): Promise<string> => {
+  const file = `opt-${name}-${V}.jpg`;
+  if (WRITE) {
+    const buf = readFileSync(new URL(`./assets/calendar-samples/${name}.jpg`, import.meta.url));
+    const up = await sb.storage.from("product-images").upload(`products/${ID}/${file}`, buf, { contentType: "image/jpeg", upsert: true });
+    if (up.error) die(`อัป ${file}: ${up.error.message}`);
+  }
+  return url(file);
+};
+const IMG = {
+  year: await sample("postcard-type-year"),
+  month: await sample("postcard-type-month"),
+  s1: await sample("postcard-side-1"),
+  s2: await sample("postcard-side-2"),
+};
 
 /* ── 3. ตัวเลือก ── */
 const OPTIONS: ProductOption[] = [
@@ -117,18 +139,27 @@ const OPTIONS: ProductOption[] = [
     display: "cards",
     section: "1. แบบปฏิทิน",
     choices: [
-      { name: T_Y1, desc: "รูปของคุณ + ปฏิทินทั้งปี ในหน้าเดียวกัน", imageSrc: gallery[0] },
-      { name: T_Y2, desc: "หน้า = รูปของคุณ · หลัง = ปฏิทินทั้งปี", extra: Y2_FEE, imageSrc: gallery[1] },
-      { name: T_M, desc: "ปก + 12 เดือน · รูปด้านบน ตารางเดือนด้านล่าง", extra: M_FEE, imageSrc: gallery[2] },
+      { name: T_Y, desc: "8 ใบเหมือนกัน · ทุกใบมีปฏิทินครบ 12 เดือน", imageSrc: IMG.year },
+      { name: T_M, desc: "ปก 1 ใบ + เดือนละ 1 ใบ (12 เดือน)", extra: M_FEE, imageSrc: IMG.month },
+    ],
+  },
+  {
+    label: SIDE,
+    display: "cards",
+    section: "1. แบบปฏิทิน",
+    choices: [
+      { name: S1, desc: "รูป + ปฏิทิน อยู่ด้านเดียวกัน · ด้านหลังว่าง", imageSrc: IMG.s1 },
+      { name: S2, desc: "ด้านหน้า = รูปเต็มใบ · ด้านหลัง = ปฏิทิน", extra: Y2_FEE, imageSrc: IMG.s2 },
     ],
   },
   ori,
   {
     label: YEAR,
-    display: "cards",
+    display: "dropdown",
     section: "1. แบบปฏิทิน",
     note: "ปฏิทินสร้างตามปีที่เลือก (เริ่มเดือนมกราคม)",
-    choices: [{ name: "ปี ค.ศ. 2026 (พ.ศ. 2569)" }, { name: "ปี ค.ศ. 2027 (พ.ศ. 2570)" }],
+    // หน้าร้านเลื่อนปีเองทุกปี (rollCalendarYears) — ในฐานเก็บชุดปัจจุบันไว้ให้หลังบ้านเห็นตรงกัน
+    choices: rollCalendarYears({ calendarStudio: { yearLabel: YEAR }, options: [{ label: YEAR, choices: [] }] } as unknown as Product).options[0].choices,
   },
   paper,
   coat,
@@ -162,7 +193,7 @@ for (const r0 of src.rules ?? []) {
   r.when = { ...r.when, choice: choices[0], choices };
   RULES.push(r);
 }
-// รายเดือนไม่มีแบบ 2 ด้าน — ไม่มีกฎเพิ่ม (แบบปฏิทินเป็นกลุ่มเดียวกันอยู่แล้ว)
+// แบบปฏิทิน × พิมพ์ ใช้ได้ทุกคู่ — ไม่มีกฎเพิ่ม
 
 /* ── 6. ประกอบ ── */
 const { data: oldRow } = await sb.from("products").select("data").eq("id", ID).maybeSingle();
@@ -171,9 +202,15 @@ const art = pricing.cells["กระดาษอาร์ตมัน 300 แก
 const formats = (["L", "P"] as const).flatMap((o) => {
   const oname = o === "L" ? "แนวนอน" : "แนวตั้ง";
   return [
-    { format: `postcard-year1-${o}`, when: [{ label: TYPE, choices: [T_Y1] }, { label: ORI, choices: [oname] }] },
-    { format: `postcard-year2-${o}`, when: [{ label: TYPE, choices: [T_Y2] }, { label: ORI, choices: [oname] }] },
-    { format: `postcard-month-${o}`, when: [{ label: TYPE, choices: [T_M] }, { label: ORI, choices: [oname] }] },
+    ...([
+      ["postcard-year1", T_Y, S1],
+      ["postcard-year2", T_Y, S2],
+      ["postcard-month", T_M, S1],
+      ["postcard-month2", T_M, S2],
+    ] as const).map(([f, t, side]) => ({
+      format: `${f}-${o}`,
+      when: [{ label: TYPE, choices: [t] }, { label: SIDE, choices: [side] }, { label: ORI, choices: [oname] }],
+    })),
   ];
 });
 
@@ -193,12 +230,12 @@ const product = {
   imageSrc: gallery[0],
   images: gallery.map((s) => ({ src: s, emoji: "🗓", label: "", gradient: "from-sky-100 to-amber-100" })),
   description:
-    `โปสการ์ดปฏิทินขนาด 4×6 นิ้ว เลือกได้ทั้งปฏิทินรายปี (8 ใบ/ชุด พิมพ์ 1 หรือ 2 ด้าน) และรายเดือน (13 ใบ/ชุด) ` +
+    `โปสการ์ดปฏิทินขนาด 4×6 นิ้ว เลือกได้ทั้งปฏิทินรายปี (8 ใบ/ชุด) และรายเดือน (13 ใบ/ชุด) พิมพ์ 1 หรือ 2 ด้าน ` +
     `สร้างบนเว็บได้เลย ใส่รูป เลือกภาษา สี ฟอนต์ ไฮไลต์วันหยุดไทย และใส่วันสำคัญของคุณเองได้ ` +
     `กระดาษอาร์ตมัน 300 แกรม หรือกระดาษเนื้อพิเศษ เริ่มต้นชุดละ ${Math.min(...art)} บาท`,
   highlights: [
     "ขนาด 4×6 นิ้ว · แนวนอน/แนวตั้ง",
-    `รายปี 8 ใบ/ชุด (พิมพ์ 2 ด้าน +${Y2_FEE}) · รายเดือน 13 ใบ/ชุด (+${M_FEE})`,
+    `รายปี 8 ใบ/ชุด · รายเดือน 13 ใบ/ชุด (+${M_FEE}) · พิมพ์ 1 ด้าน หรือ 2 ด้าน (+${Y2_FEE})`,
     "🗓 สร้างปฏิทินบนเว็บได้เลย — เลือกปี ภาษา สี ฟอนต์ วันหยุดไทย + วันสำคัญของคุณ",
     "กระดาษอาร์ตมัน 300 แกรม · Canvas · 100 Pound · E-Photo · Extra · Stardream",
     `ยิ่งสั่งเยอะยิ่งถูก — เริ่มต้น ${Math.min(...art)} บาท/ชุด`,
@@ -214,9 +251,10 @@ const product = {
       title: "รายละเอียดเพิ่มเติม",
       text:
         "• ขนาด 4×6 นิ้ว · เลือกแนวนอนหรือแนวตั้ง\n" +
-        "• รายปี · พิมพ์ 1 ด้าน: รูปของคุณ + ปฏิทินทั้งปีในหน้าเดียว — 8 ใบ/ชุด\n" +
-        `• รายปี · พิมพ์ 2 ด้าน: หน้ารูป หลังปฏิทินทั้งปี — 8 ใบ/ชุด (+${Y2_FEE} บาท/ชุด)\n` +
-        `• รายเดือน: ปก + 12 เดือน (รูปด้านบน ตารางเดือนด้านล่าง) — 13 ใบ/ชุด (+${M_FEE} บาท/ชุด)\n` +
+        "• รายปี 8 ใบ/ชุด: ทุกใบมีปฏิทินครบ 12 เดือน\n" +
+        `• รายเดือน 13 ใบ/ชุด: ปก + เดือนละใบ (+${M_FEE} บาท/ชุด)\n` +
+        "• พิมพ์ 1 ด้าน: รูปของคุณ + ตารางปฏิทินอยู่ด้านเดียวกัน\n" +
+        `• พิมพ์ 2 ด้าน: ด้านหน้ารูปเต็มใบ ด้านหลังตารางปฏิทิน (+${Y2_FEE} บาท/ชุด) · รายเดือน 2 ด้าน หลังปก = ภาพรวมทั้งปี\n` +
         "• กดปุ่ม 🗓 สร้างปฏิทินบนเว็บ — ใส่รูป (รูปเดียวทั้งชุด หรือแยกรูปรายเดือน) เพิ่มข้อความ เลือกภาษา ฟอนต์ สี\n" +
         "• ไฮไลต์วันหยุดนักขัตฤกษ์ไทย + สีวันอาทิตย์ · ใส่วันสำคัญของคุณเองเป็นวงกลมสีบนวันนั้น\n" +
         "• กระดาษเนื้อพิเศษ (Canvas / 100 Pound / E-Photo / Extra / Stardream) เคลือบไม่ได้\n" +
@@ -229,7 +267,7 @@ const product = {
     faqs: [
       {
         q: "โปสการ์ดปฏิทิน ราคาเท่าไหร่?",
-        a: `กระดาษอาร์ตมัน 300 แกรม เคลือบเงา/ด้าน ${art.join(" / ")} บาท/ชุด (ตามจำนวนชุด) · รายปีพิมพ์ 2 ด้าน +${Y2_FEE} · รายเดือน 13 ใบ +${M_FEE}`,
+        a: `กระดาษอาร์ตมัน 300 แกรม เคลือบเงา/ด้าน ${art.join(" / ")} บาท/ชุด (ตามจำนวนชุด) · พิมพ์ 2 ด้าน +${Y2_FEE} · รายเดือน 13 ใบ +${M_FEE}`,
       },
       {
         q: "รายปีกับรายเดือนต่างกันยังไง?",

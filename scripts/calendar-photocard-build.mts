@@ -15,6 +15,8 @@
  *   - ค่าคละลายแบบโฟโต้การ์ด (mixRule ยกมาสด) · เรทตัวแทน (ขั้นแรก −10% ขั้นอื่น −5% สูตรเดียวกับโฟโต้การ์ด)
  *   - Eggshell ไม่ใส่ (เลิกขายแล้ว — ดูโน้ต discontinued options)
  *
+ * 12 ต.ค. 69 (รอบ 2): เพิ่มกลุ่ม "พิมพ์" 1 ด้าน (รูป + ปฏิทินหน้าเดียว · format card1) / 2 ด้าน (+10 ตามโฟโต้การ์ด · format card)
+ *   รูปการ์ดตัวเลือก = scripts/assets/calendar-samples (สร้างด้วย scripts/calendar-samples.mts)
  * กระดาษ/รูปการ์ดยกจากกลุ่มของ photocard-digital สด ๆ (ชื่อเนื้อชุดเดียวกัน ภาพชุดเดียวกัน ไม่ก๊อปไฟล์)
  * รันซ้ำได้: เขียนทับทั้งก้อน แต่คงยอดขาย/รีวิว/สถานะเผยแพร่ของเดิมไว้
  */
@@ -30,6 +32,7 @@ import {
   type ProductOption,
   type ProductOptionChoice,
 } from "../src/lib/products";
+import { rollCalendarYears } from "../src/lib/calendar-card";
 
 const WRITE = process.argv.includes("--write");
 const env = Object.fromEntries(
@@ -60,6 +63,11 @@ const RATE_SPECIAL = "กระดาษเนื้อพิเศษ";
 const RATE_STAR = "กระดาษ Stardream";
 const COAT = "เคลือบ (เฉพาะด้านหน้า)";
 const SPECIAL_FEE = 30;
+const SIDE = "พิมพ์";
+const S1 = "พิมพ์ 1 ด้าน";
+const S2 = "พิมพ์ 2 ด้าน";
+/** พิมพ์ 2 ด้าน บวกเท่าโฟโต้การ์ดธรรมดา (photocard-digital "พิมพ์กี่ด้าน" +10) */
+const S2_FEE = 10;
 
 /** ราคาขั้นแรก = ต้นทาง · ขั้นถัดไปลดเท่าโฟโต้การ์ด (130→95→90→85) */
 const STEPS = [0, -35, -40, -45];
@@ -138,6 +146,18 @@ for (const [name, from] of PHOTOS) {
   }
   gallery.push(url(file));
 }
+/** ภาพตัวอย่างตัวเลือก (วาดจากตัววาดปฏิทินจริง) */
+const sample = async (name: string): Promise<string> => {
+  const file = `opt-${name}-${V}.jpg`;
+  if (WRITE) {
+    const buf = readFileSync(new URL(`./assets/calendar-samples/${name}.jpg`, import.meta.url));
+    const up = await sb.storage.from("product-images").upload(`products/${ID}/${file}`, buf, { contentType: "image/jpeg", upsert: true });
+    if (up.error) die(`อัป ${file}: ${up.error.message}`);
+  }
+  return url(file);
+};
+const IMG_S1 = await sample("photocard-side-1");
+const IMG_S2 = await sample("photocard-side-2");
 
 /* ── 3. ตัวเลือก ── */
 const sizeImg = grp("ขนาดตัด").choices[0]?.imageSrc;
@@ -149,20 +169,27 @@ const OPTIONS: ProductOption[] = [
     choices: [
       {
         name: "5.5 × 8.5 ซม. (20 ใบ/ชุด)",
-        desc: "หน้าปก = รูปของคุณ · ด้านหลัง = ปฏิทิน 12 เดือน",
+        desc: "รูปของคุณ + ปฏิทิน 12 เดือน",
         ...(sizeImg ? { imageSrc: sizeImg } : {}),
       },
     ],
   },
   {
-    label: YEAR_LABEL,
+    label: SIDE,
     display: "cards",
     section: "1. ขนาด + ปีปฏิทิน",
-    note: "ปฏิทินด้านหลังสร้างตามปีที่เลือก (เริ่มเดือนมกราคม)",
     choices: [
-      { name: "ปี ค.ศ. 2026 (พ.ศ. 2569)" },
-      { name: "ปี ค.ศ. 2027 (พ.ศ. 2570)" },
+      { name: S1, desc: "รูป + ปฏิทินทั้งปี อยู่ด้านเดียวกัน · ด้านหลังว่าง", imageSrc: IMG_S1 },
+      { name: S2, desc: "ด้านหน้า = รูปเต็มใบ · ด้านหลัง = ปฏิทินทั้งปี", extra: S2_FEE, imageSrc: IMG_S2 },
     ],
+  },
+  {
+    label: YEAR_LABEL,
+    display: "dropdown",
+    section: "1. ขนาด + ปีปฏิทิน",
+    note: "ปฏิทินสร้างตามปีที่เลือก (เริ่มเดือนมกราคม)",
+    // หน้าร้านเลื่อนปีเองทุกปี (rollCalendarYears) — ในฐานเก็บชุดปัจจุบันไว้ให้หลังบ้านเห็นตรงกัน
+    choices: rollCalendarYears({ calendarStudio: { yearLabel: YEAR_LABEL }, options: [{ label: YEAR_LABEL, choices: [] }] } as unknown as Product).options[0].choices,
   },
   {
     label: "ชนิดกระดาษเนื้อพิเศษ",
@@ -247,11 +274,12 @@ const product = {
   imageSrc: gallery[0],
   images: gallery.map((s) => ({ src: s, emoji: "🗓", label: "", gradient: "from-sky-100 to-teal-100" })),
   description:
-    `ปฏิทินโฟโต้การ์ดขนาดพกพา 5.5×8.5 ซม. ชุดละ 20 ใบ หน้าปกเป็นรูปของคุณ ด้านหลังเป็นปฏิทินทั้งปี 12 เดือน ` +
+    `ปฏิทินโฟโต้การ์ดขนาดพกพา 5.5×8.5 ซม. ชุดละ 20 ใบ รูปของคุณคู่ปฏิทินทั้งปี 12 เดือน พิมพ์ 1 ด้าน (รูป + ปฏิทินหน้าเดียว) หรือ 2 ด้าน (หน้ารูป หลังปฏิทิน) ` +
     `สร้างบนเว็บได้เลย ใส่รูป เลือกสีและฟอนต์ ไฮไลต์วันหยุดไทย และใส่วันสำคัญของคุณเองได้ ` +
     `พิมพ์ระบบดิจิทัล กระดาษอาร์ตเกาหลี 300 แกรม หรือกระดาษเนื้อพิเศษ เริ่มต้นชุดละ ${P(RATE_ART)[3]} บาท`,
   highlights: [
-    "1 ชุด = 20 ใบ · ขนาด 5.5×8.5 ซม. · หน้าปกรูปของคุณ + ปฏิทินทั้งปีด้านหลัง",
+    "1 ชุด = 20 ใบ · ขนาด 5.5×8.5 ซม. · รูปของคุณ + ปฏิทินทั้งปี",
+    `พิมพ์ 1 ด้าน (รูป + ปฏิทินหน้าเดียว) หรือ 2 ด้าน (หน้ารูป หลังปฏิทิน +${S2_FEE} บาท)`,
     "🗓 สร้างปฏิทินบนเว็บได้เลย — เลือกปี ภาษา สี ฟอนต์ วันหยุดไทย + วันสำคัญของคุณ",
     `กระดาษอาร์ตเกาหลี 300 แกรม · กระดาษเนื้อพิเศษ (Canvas / 100 Pond / E-Photo / Extra White) · Stardream`,
     `เคลือบเงา/ด้านฟรี · เคลือบพิเศษ (กลิตเตอร์ / ทราย / โฮโลแกรม) +${SPECIAL_FEE} บาท`,
@@ -262,7 +290,7 @@ const product = {
   priceRates,
   pricing: matrix(P(RATE_ART)),
   mixRule: structuredClone(src.mixRule),
-  calendarStudio: { yearLabel: YEAR_LABEL },
+  calendarStudio: { yearLabel: YEAR_LABEL, formats: [{ format: "card1", when: [{ label: SIDE, choices: [S1] }] }, { format: "card" }] },
   // ตัวเลือกเรทราคา (ชนิดกระดาษ) ขึ้นต่อจากกลุ่มปี — ลำดับเดียวกับโฟโต้การ์ด (ขนาด → เรท → เนื้อ → เคลือบ)
   rateAfterOption: YEAR_LABEL,
   tabs: [
@@ -270,7 +298,8 @@ const product = {
       title: "รายละเอียดเพิ่มเติม",
       text:
         "• 1 ชุด มี 20 ใบ · ขนาด 5.5×8.5 ซม. (85×55 มม.)\n" +
-        "• หน้าปก = รูปของคุณ · ด้านหลัง = ปฏิทิน 12 เดือนของปีที่เลือก\n" +
+        "• พิมพ์ 1 ด้าน: รูปของคุณด้านบน + ปฏิทิน 12 เดือนด้านล่าง ในหน้าเดียวกัน\n" +
+        `• พิมพ์ 2 ด้าน: ด้านหน้ารูปเต็มใบ · ด้านหลังปฏิทิน 12 เดือน (+${S2_FEE} บาท/ชุด)\n` +
         "• กดปุ่ม 🗓 สร้างปฏิทินบนเว็บ — ใส่รูปหน้าปก เพิ่มข้อความ เลือกภาษา (ไทย/อังกฤษ) วันเริ่มสัปดาห์ ฟอนต์ และสี\n" +
         "• ไฮไลต์วันหยุดนักขัตฤกษ์ไทย + สีวันอาทิตย์ · ใส่วันสำคัญของคุณเอง (วันเกิด วันครบรอบ) เป็นวงกลมสีบนวันนั้น\n" +
         `• เคลือบเงา/ด้าน ฟรี · เคลือบพิเศษ บวกเพิ่ม ${SPECIAL_FEE} บาท/ชุด (เคลือบเฉพาะด้านหน้า)\n` +
@@ -290,11 +319,11 @@ const product = {
       },
       {
         q: "ต้องทำไฟล์ปฏิทินเองไหม?",
-        a: "ไม่ต้อง — กดสร้างปฏิทินบนหน้าเว็บ ใส่รูปหน้าปก ระบบสร้างปฏิทินทั้งปีด้านหลังให้เอง เลือกภาษา สี ฟอนต์ ไฮไลต์วันหยุดไทย และใส่วันสำคัญของคุณได้",
+        a: "ไม่ต้อง — กดสร้างปฏิทินบนหน้าเว็บ ใส่รูป ระบบสร้างปฏิทินทั้งปีให้เอง เลือกภาษา สี ฟอนต์ ไฮไลต์วันหยุดไทย และใส่วันสำคัญของคุณได้",
       },
       {
         q: "เลือกปีได้ปีไหนบ้าง?",
-        a: "ปี ค.ศ. 2026 (พ.ศ. 2569) และ ปี ค.ศ. 2027 (พ.ศ. 2570) — ปฏิทินเริ่มเดือนมกราคม",
+        a: "เลือกได้ 5 ปี นับจากปีปัจจุบัน (เช่น ค.ศ. 2026–2030 / พ.ศ. 2569–2573) — ปฏิทินเริ่มเดือนมกราคม",
       },
     ],
   },

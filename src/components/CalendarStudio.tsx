@@ -24,6 +24,7 @@ import {
   defaultBack,
   defaultText,
   defaultTitle,
+  isAutoTitle,
   drawPage,
   ensureFonts,
   fmtH,
@@ -100,6 +101,8 @@ export default function CalendarStudio({ open, onClose, title, format, year, ini
   const W = fmtW(fmt);
   const H = fmtH(fmt);
   const sameFormat = initial?.format === fmt.key;
+  /** รูปแบบที่หัวข้อเป็นตัวบาง ("Calendar 2026") */
+  const lightTitle = fmt.pages.some((p) => p.light);
 
   const [pageIdx, setPageIdx] = useState(0);
   const page = fmt.pages[Math.min(pageIdx, fmt.pages.length - 1)];
@@ -116,12 +119,14 @@ export default function CalendarStudio({ open, onClose, title, format, year, ini
     return { bg: initial?.design.bg ?? "#ffffff", text: null, photos: {} };
   });
   const [back, setBack] = useState<CalBack>(() => {
-    const b = initial?.back ?? defaultBack(year);
-    if (b.year !== year) {
-      const auto = b.title === defaultTitle(b.year, b.lang);
-      return { ...b, year, title: auto ? defaultTitle(year, b.lang) : b.title };
-    }
-    return b;
+    /**
+     * แบบหน้าร้านเดิม (light): ฟอนต์ Montserrat + แดงเฉพาะวันอาทิตย์ (ภาพต้นแบบไม่ไฮไลต์วันหยุด) — ลูกค้าเปิดเองได้
+     * ใช้เฉพาะตอนเริ่มแบบใหม่ แบบที่เปิดมาแก้คงค่าที่ลูกค้าตั้งไว้
+     */
+    const b = initial?.back ?? (lightTitle ? { ...defaultBack(year), font: "montserrat", holidayOn: false } : defaultBack(year));
+    // หัวข้ออัตโนมัติ → ตามปีปัจจุบันและแบบตัวอักษรของรูปแบบงาน (แบบตัวบาง = "Calendar 2026")
+    if (isAutoTitle(b.title, b.year, b.lang)) return { ...b, year, title: defaultTitle(year, b.lang, lightTitle) };
+    return b.year !== year ? { ...b, year } : b;
   });
   const [srcs, setSrcs] = useState<Src[]>([]);
   const [busy, setBusy] = useState("");
@@ -570,7 +575,7 @@ export default function CalendarStudio({ open, onClose, title, format, year, ini
               />
               {!srcs.length && page.photo && (
                 <label
-                  className="absolute flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed border-sky-300 bg-white/75 text-center"
+                  className="absolute flex cursor-pointer flex-col items-center justify-center gap-1 bg-[#b8b8b8] text-center text-white transition hover:bg-[#adadad]"
                   style={{
                     left: `${(page.photo.x / W) * 100}%`,
                     top: `${(page.photo.y / H) * 100}%`,
@@ -578,9 +583,10 @@ export default function CalendarStudio({ open, onClose, title, format, year, ini
                     height: `${(page.photo.h / H) * 100}%`,
                   }}
                 >
-                  <span className="text-3xl">🖼</span>
-                  <span className="text-sm font-extrabold text-sky-700">เลือกรูปหน้าปก</span>
-                  <span className="px-3 text-[11px] text-stone-500">แตะเพื่อเลือก · ลากรูปมาวาง · ⌘/Ctrl+V</span>
+                  {/* ช่องรูปว่าง = สีเทาแบบโปรแกรมหน้าร้านเดิม (บนจอเท่านั้น ไฟล์พิมพ์ต้องมีรูปก่อนกดใช้แบบ) */}
+                  <span className="text-sm font-bold">เลือกรูป / ลากรูปมาวาง</span>
+                  <span className="text-2xl leading-none">🖼</span>
+                  <span className="px-3 text-[10.5px] text-white/85">แตะเพื่อเลือก · ⌘/Ctrl+V</span>
                   <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => void addPhoto(e.target.files?.[0])} />
                 </label>
               )}
@@ -806,7 +812,7 @@ export default function CalendarStudio({ open, onClose, title, format, year, ini
                           setBack((b) => ({
                             ...b,
                             lang: lang as CalBack["lang"],
-                            title: b.title === defaultTitle(b.year, b.lang) ? defaultTitle(b.year, lang as CalBack["lang"]) : b.title,
+                            title: isAutoTitle(b.title, b.year, b.lang) ? defaultTitle(b.year, lang as CalBack["lang"], lightTitle) : b.title,
                           }))
                         }
                       />
