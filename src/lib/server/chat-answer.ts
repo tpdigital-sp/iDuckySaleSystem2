@@ -17,6 +17,7 @@ import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, sear
 import { priceSearch } from "@/lib/server/price-search";
 import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_MSG_RE, HANDOFF_RULE_TEXT } from "./bot-handoff";
+import { shopPaymentText } from "./shop-payment-text";
 
 /**
  * 🧠 สมองแชทตัวเดียวของร้าน — ใช้ร่วม 2 ทาง (ย้ายออกจาก /api/chat 3 ต.ค. 69)
@@ -347,6 +348,9 @@ export async function answerChat(
   const calendar = await Promise.race([shopCalendarText().catch(() => ""), new Promise<string>((r) => setTimeout(() => r(""), 1500))]);
   const askTime = /เปิด|ปิด|วันหยุด|หยุด|เวลา|กี่โมง|ทำการ|เสาร์|อาทิตย์|พรุ่งนี้|วันไหน|ตอบ.*(เมื่อไหร่|ไหม)|ส่ง.*(วัน|เมื่อไหร่)/.test(message);
   const calendarHint = calendar ? `\n\n[${calendar}]` : "";
+  // 🏦 บัญชีรับโอน (หลังบ้าน /admin/payment) — ถามเรื่องบัญชี/โอน = แปะใน message ด้วย
+  const payment = await shopPaymentText().catch(() => "");
+  const askPay = /บัญชี|เลขบัญชี|โอน(ที่|เข้า|ยังไง|ได้)|พร้อมเพย์|ชำระ(ยังไง|ทาง)/.test(message);
 
   let reply = "";
   const n8nAt = Date.now();
@@ -358,7 +362,7 @@ export async function answerChat(
         // ฝัง "คำแนะนำระบบ" ต่อท้ายข้อความ (สั่งให้ค้นราคา/จับวัสดุ/แปลงเซ็ต) แบบเดียวกับ chat.html
         // priceFacts ต้องอยู่ใน message ไม่ใช่แค่ systemMessage — agent ของ n8n ให้น้ำหนัก message
         // มากกว่ามาก (ยัดไว้ใน systemMessage อย่างเดียว มันเมินแล้วไปหยิบราคาจาก tool ตัวเองแทน)
-        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : ""),
+        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : "") + (askPay && payment ? `\n\n[${payment}]` : ""),
         sessionId,
         userId: `${staff ? "admin" : "web"}-${sessionId}`,
         source: staff ? "adminbuddy" : "website",
@@ -367,7 +371,7 @@ export async function answerChat(
         // ⚠️ workflow ไม่ได้อ่าน knowledgeContext ที่ไหนเลย (ตรวจจาก system message ของ AI Agent1 แล้ว)
         // คลังความรู้ที่คัดมาจึงต้องต่อท้าย systemMessage ไม่งั้นส่งไปแล้วถูกทิ้งทั้งก้อน
         systemMessage:
-          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}\n${HANDOFF_RULE_TEXT}` ||
+          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}\n${HANDOFF_RULE_TEXT}` ||
           undefined,
         conversationHistory: convo || undefined,
         knowledgeContext: ctx?.knowledgeContext,
