@@ -6,8 +6,10 @@
  *    ไม่งั้นราคาหล่นไป product.price เงียบ ๆ
  * 2) กำหนดขนาดเองได้ + บอกจำนวนใบที่ได้ต่อ 1 แผ่น A3 (แพทเทิร์นเดียวกับ Sticker-PP-Digital):
  *    ตัวเลือก "📐 กำหนดขนาดเอง" + ช่องกรอกกว้าง/สูง (standardInput) + sheetYield บนช่องสูง
- *    สเปคแผ่น 40.5 × 30.4 gap 0.8 ได้จาก grid-search ให้ตรงตารางร้าน (20/12/14/12/6/5/4 ใบ)
- *    — ชุดที่ "ไม่เคยบอกเกินจริง" สักขนาด (ตรงเป๊ะ 5/7 · ต่ำกว่าตาราง 1 ใบที่ 7.5×10 และ 14×20.5)
+ *    สเปคแผ่น = ชีทไดคัทมาตรฐาน 43.76 × 28.89 เว้น 0.5 (ตัวเดียวกับกระดาษอื่น + /admin/diecut)
+ *    ⚠️ เดิม 40.5 × 30.4 gap 0.8 (grid-search ให้ตรงตารางขนาดสำเร็จ) → พนักงานทัก 12 ต.ค. 69
+ *    8 × 12 หน้าเว็บบอก 9 แต่เครื่องคำนวณไดคัทได้ 10 · กระดาษตัวอื่นตรงหมด → เปลี่ยนเป็นชีทมาตรฐาน
+ *    (scripts/backing-sheet-yield-standard.mjs) · ขนาดสำเร็จยังใช้ piecesPerUnit ตามตารางร้าน
  *    capDesigns บนช่องสูง = เพดานจำนวนลายของขนาดที่กรอกเอง (เท่าจำนวนใบที่ตัดได้จริง)
  * 3) คละลาย: ขั้นต่ำ 1 ลาย/แผ่น A3 · ลายที่เกินจำนวนแผ่นคิดเพิ่มลายละ 5 บาท
  *    = mixRule { baseFee 0, includedDesigns 1, extraFee 5 } (เดิม 2 ลาย/แผ่น เหมาแผ่นละ 10)
@@ -97,10 +99,10 @@ if (!opts.some((o) => o.label === W_LABEL)) {
       capDesigns: true,
       showWhen,
       input: { kind: "number", unit: "ซม.", min: 3, max: 40, placeholder: "เช่น 12" },
-      sheetYield: { pairLabel: W_LABEL, sheetW: 40.5, sheetH: 30.4, gap: 0.8, sheetName: SHEET },
+      sheetYield: { pairLabel: W_LABEL, sheetW: 43.76, sheetH: 28.89, gap: 0.5, sheetName: SHEET },
     }
   );
-  log.push(`เพิ่มช่องกรอก "${W_LABEL}" / "${H_LABEL}" (sheetYield 40.5×30.4 gap 0.8)`);
+  log.push(`เพิ่มช่องกรอก "${W_LABEL}" / "${H_LABEL}" (sheetYield 43.76×28.89 gap 0.5)`);
 }
 
 /* ตัวเลือกขนาดสำเร็จ — โชว์ "ได้ N ใบ / แผ่น A3" (perUnit เดิมเป็นเพดานลาย ไม่ได้โชว์) */
