@@ -843,6 +843,22 @@ export default function CartPage() {
                     })()}
                     {/* 📝 หมายเหตุของลูกค้า — เก็บลง selections["หมายเหตุ"] (ธรรมเนียมเดียวกับที่แอดมินพิมพ์เอง)
                         จึงติดไปกับออเดอร์/ใบงาน/โหมดแพ็คผ่าน SpecLines โดยไม่ต้องแก้จออื่น */}
+                    {/*
+                      📱 "ใช้ไฟล์เก่า" + "หมายเหตุ" พับไว้ใต้บรรทัดเดียว — เดิมกางทุกรายการ ตะกร้า 2 รายการยาวเกือบ 5 จอ (12 ต.ค. 69)
+                      มีค่าอยู่แล้ว (ติ๊กใช้ไฟล์เก่า/พิมพ์หมายเหตุไว้) = กางให้ตั้งแต่แรก · เปิดครั้งแรกตอน mount เท่านั้น
+                      (ห้ามผูก open กับค่า ไม่งั้นลบหมายเหตุจนว่างแล้วกล่องหุบต่อหน้าลูกค้า)
+                    */}
+                    <details
+                      className="cart-more mt-2"
+                      ref={(el) => {
+                        if (!el || el.dataset.init) return;
+                        el.dataset.init = "1";
+                        if ((item.selections[REUSE_ART_LABEL] ?? "").trim() || (item.selections[CART_NOTE_LABEL] ?? "").trim()) el.open = true;
+                      }}
+                    >
+                      <summary className="cursor-pointer select-none text-[11.5px] font-semibold t-blue">
+                        ✏️ หมายเหตุ / ใช้ไฟล์เก่า <span className="font-normal t-faint">(ไม่บังคับ)</span>
+                      </summary>
                     {/* ♻️ ใช้ไฟล์เก่า — เผื่อลูกค้าลืมติ๊กที่หน้าสินค้า · เก็บลง selections["ใช้ไฟล์เก่า"] (checkout แกะเป็น reuseArt ให้กราฟฟิก) */}
                     {(() => {
                       const raw = item.selections[REUSE_ART_LABEL] ?? "";
@@ -891,6 +907,7 @@ export default function CartPage() {
                         aria-label={`หมายเหตุของ ${product.name}`}
                       />
                     </label>
+                    </details>
                     {/* 🧮 บรรทัดนี้ถูกคิดรวมกับบรรทัดอื่นในล็อตเดียวกัน เพื่อให้ได้เรทตามจำนวนรวม (เช่น 25+25 = 50 ชิ้น 2 ลาย)
                         สเปคต่างกันก็รวมได้ (ตะขอคนละแบบ/สีอะคริลิคคนละสี) — ราคาฐานเท่ากัน ต่างกันแค่ค่าตัวเลือก */}
                     {item.merged && (
@@ -1319,7 +1336,19 @@ export default function CartPage() {
                     มีกำหนดใช้ (อีเวนต์ · วันเกิด · ออกบูธ) ระบุไว้ได้เลย{" "}
                     <strong className="t-blue">ทางร้านจะเช็คคิวและยืนยันว่าทันไหมก่อนเริ่มผลิต</strong>
                   </p>
-                  <ul className="mt-2.5 space-y-1.5 text-[11.5px] leading-relaxed">
+                  {/* 📱 ข้อความเตือน 3 กล่องพับไว้ (เดิมกางเต็มเกือบ 1 จอ ทั้งที่ช่องนี้ไม่บังคับ · 12 ต.ค. 69)
+                      ตะกร้าจำนวนเยอะ (bigQty) = คำเตือน "ทักเช็คคิวก่อน" ต้องเห็นเลย ไม่พับ */}
+                  {bigQty && (
+                    <p className="ord-note danger mt-2.5 px-3 py-2 text-[11.5px] leading-relaxed">
+                      📦 <strong>สั่งจำนวนเยอะ ต้องสอบถามคิวก่อนสั่ง</strong> — ตะกร้านี้{" "}
+                      <strong>{totalQty.toLocaleString("th-TH")} ชิ้น</strong> รบกวนทักเช็คคิวก่อนกดสั่งนะครับ
+                    </p>
+                  )}
+                  <details className="mt-2">
+                    <summary className="cursor-pointer select-none text-[11.5px] font-semibold t-blue">
+                      ℹ️ เผื่อเวลา · เช็คคิว <span className="font-normal t-faint">(กดอ่าน)</span>
+                    </summary>
+                  <ul className="mt-2 space-y-1.5 text-[11.5px] leading-relaxed">
                     <li className="ord-note info px-3 py-2">
                       🗓️ <strong>เผื่อเวลาไว้หน่อย</strong> — อย่าระบุวันกระชั้นเกินไป งานต้องตรวจแบบ → ผลิต → ส่ง
                       (ขนส่งไม่วิ่งเสาร์-อาทิตย์/วันหยุด)
@@ -1339,6 +1368,7 @@ export default function CartPage() {
                       💬 <strong>ทัก LINE เช็คคิวก่อน</strong> — บอกวันใช้ + จำนวน + สินค้า ทางร้านตอบทันทีว่าทันไหม
                     </li>
                   </ul>
+                  </details>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {/* ปฏิทินของร้านเอง — วันหยุดร้านตัวแดง · วันที่กระชั้นเกินคิวผลิตกดไม่ติด (เจ้าของร้านสั่ง 17 ก.ย. 69) */}
                     <HolidayDatePicker

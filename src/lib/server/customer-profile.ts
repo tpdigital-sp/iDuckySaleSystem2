@@ -12,6 +12,7 @@ import { slowestActive, wipJobsForOrder } from "./wip-production";
 import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_RULE_TEXT } from "./bot-handoff";
 import { shopPaymentText } from "./shop-payment-text";
+import { inBackground } from "./background";
 
 /**
  * 🧠 ความจำต่อลูกค้า (ข้อ 2 ของแผน "ฉลาดเหมือน Claude/ChatGPT" · 1 ต.ค. 69)
@@ -114,6 +115,12 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   const sb = getSupabaseAdmin();
   if (!db || !userId) return null;
 
+  // ⏱ n8n ให้เวลา API นี้ 6 วิ (เกิน = บอทไม่มีข้อมูลลูกค้าเลยทั้งก้อน) · บนเว็บจริงเคยวัดได้ 2.2–5.9 วิ (12 ต.ค. 69)
+  //   → งานที่ไม่ขึ้นกับลูกค้า (ปฏิทิน/บัญชีร้าน) เริ่มตั้งแต่บรรทัดแรก · สรุปแชทด้วย AI + เขียนแคช ย้ายไปทำเบื้องหลัง
+  const t0 = Date.now();
+  const left = (budget: number) => Math.max(200, Math.min(budget, 4500 - (Date.now() - t0))); // งบเวลาที่เหลือ (รวมไม่เกิน ~4.5 วิ)
+  const calendarP = shopCalendarText().catch(() => "");
+  const paymentP = shopPaymentText().catch(() => ""); // 🏦 บัญชีรับโอนจากหลังบ้าน
   const snap = await db.collection(CHAT_COLLECTION).doc(userId).get();
   const doc = (snap.exists ? snap.data() : {}) as Record<string, unknown>;
   const name = String(doc.adminAlias ?? doc.displayName ?? "").trim();
@@ -173,24 +180,21 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   let summary = cached.summary ?? "";
   let refreshed = false;
   // แชทสั้นมาก (ทักทาย 1-2 คำ) สรุปไปก็ได้แต่ "ยังไม่มีข้อมูล" — ไม่เสียค่า LLM
+  // สรุปเก่า/ยังไม่มี → ใช้ของที่มีไปก่อน แล้วสรุปใหม่เบื้องหลังให้ข้อความถัดไป (เดิมรอ AI ในคำขอนี้ 2-4 วิ จนเฉียดเพดาน 6 วิของ n8n)
   if (stale && messageCount >= 4) {
-    const fresh = await summarizeChat(name, turns);
-    if (fresh) {
-      summary = fresh;
-      refreshed = true;
-      await db
-        .collection(CHAT_COLLECTION)
-        .doc(userId)
-        .set({ profile: { summary, updatedAt: new Date().toISOString(), msgCount: messageCount } }, { merge: true })
-        .catch(() => undefined);
-    }
+    refreshed = true;
+    inBackground(
+      "customer-profile summary",
+      summarizeChat(name, turns).then((fresh) =>
+        fresh
+          ? db.collection(CHAT_COLLECTION).doc(userId).set({ profile: { summary: fresh, updatedAt: new Date().toISOString(), msgCount: messageCount } }, { merge: true })
+          : undefined
+      )
+    );
   }
 
   // 🏭 ขั้นผลิตจริงบนบอร์ด TP ของใบที่อยู่ช่วงผลิต (เจ้าของร้าน 12 ต.ค. 69 "ให้บอทตอบขั้นผลิตได้ถ้าลูกค้าถาม")
   //   จับคู่แบบชัวร์เท่านั้น (exactOnly) · ส่งแค่ชื่อขั้น ไม่มีชื่อพนักงาน/แผนก · ไม่เกิน 3 ใบ · เกิน 2.5 วิ = ข้ามไป (n8n ให้เวลา API นี้ 6 วิ)
-  // 📅 วันหยุด/เวลาทำการร้าน (ปฏิทิน TP) — เริ่มพร้อมกับอ่านบอร์ดผลิต ไม่ต่อคิวกัน (12 ต.ค. 69)
-  const calendarP = shopCalendarText().catch(() => "");
-  const paymentP = shopPaymentText().catch(() => ""); // 🏦 บัญชีรับโอนจากหลังบ้าน (12 ต.ค. 69)
   const stageOf = new Map<string, string>();
   const inProd = activeOrders.filter((o) => o.status === "อนุมัติแบบ" || o.status === "กำลังผลิต").slice(0, 3);
   if (inProd.length) {
@@ -207,7 +211,7 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
         }
       })
     );
-    await Promise.race([work, new Promise((r) => setTimeout(r, 2500))]);
+    await Promise.race([work, new Promise((r) => setTimeout(r, left(2500)))]);
   }
   const withStage = (o: Order) => (stageOf.has(o.id) ? ` (${stageOf.get(o.id)})` : "");
 
@@ -230,15 +234,11 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   if (useful) lines.push(`จากแชทก่อนหน้า: ${summary}`);
 
   // ข้อมูลลูกค้าตัดที่ 900 ตัวเหมือนเดิม แล้วต่อท้ายปฏิทินร้าน (~450 ตัว) — ไม่ให้ปฏิทินไปเบียดข้อมูลลูกค้า
-  const calendar = await Promise.race([calendarP, new Promise<string>((r) => setTimeout(() => r(""), 1500))]);
-  const payment = await Promise.race([paymentP, new Promise<string>((r) => setTimeout(() => r(""), 1500))]);
+  const calendar = await Promise.race([calendarP, new Promise<string>((r) => setTimeout(() => r(""), left(1500)))]);
+  const payment = await Promise.race([paymentP, new Promise<string>((r) => setTimeout(() => r(""), left(1500)))]);
   const text = [lines.join("\n").slice(0, 900), calendar, payment, HANDOFF_RULE_TEXT].filter(Boolean).join("\n");
   // ⚡ แคชก้อนข้อความไว้ในห้องแชท (profile.text/textAt) — n8n Build AI Request อ่านจาก Read Memory ได้ทันที ไม่ต้องเรียก API ทุกข้อความ (1 ต.ค. 69)
-  await db
-    .collection(CHAT_COLLECTION)
-    .doc(userId)
-    .set({ profile: { text, textAt: new Date().toISOString() } }, { merge: true })
-    .catch(() => undefined);
+  inBackground("customer-profile cache", db.collection(CHAT_COLLECTION).doc(userId).set({ profile: { text, textAt: new Date().toISOString() } }, { merge: true }));
   return {
     userId,
     name,

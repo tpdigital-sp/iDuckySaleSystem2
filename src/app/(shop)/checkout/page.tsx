@@ -1104,18 +1104,20 @@ export default function CheckoutPage() {
       )}
 
       <div className={`mt-5 space-y-3 ${appendTo ? "hidden" : ""}`}>
+        {/* 📱 autoComplete: มือถือ/LINE เสนอเติม ชื่อ · เบอร์ · ที่อยู่ ที่เคยบันทึกไว้ (เดิมไม่มี ต้องพิมพ์เองทุกครั้ง · 12 ต.ค. 69)
+            เบอร์ใช้ tel-national = ได้ 0812345678 ไม่ใช่ +66 ที่ช่องนี้ตัดเหลือแต่ตัวเลขผิดรูป */}
         <div>
           <label className="mb-1 block text-sm font-bold text-stone-700">{staffMode ? "ชื่อผู้รับ (ลูกค้า)" : "ชื่อผู้รับ"}</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อ-นามสกุล" className={inputCls} />
+          <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="ชื่อ-นามสกุล" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-bold text-stone-700">เบอร์โทร</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} inputMode="tel" placeholder="0812345678 (ตัวเลขเท่านั้น)" className={inputCls} />
+          <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} type="tel" inputMode="tel" autoComplete="tel-national" placeholder="0812345678 (ตัวเลขเท่านั้น)" className={inputCls} />
           {phone && phoneProblem(phone) && <p className="mt-1 text-xs font-medium text-rose-600">{phoneProblem(phone)}</p>}
         </div>
         <div>
           <label className="mb-1 block text-sm font-bold text-stone-700">ที่อยู่จัดส่ง</label>
-          <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} placeholder="บ้านเลขที่ · หมู่บ้าน/อาคาร · ซอย · ถนน" className={`${inputCls} resize-y`} />
+          <textarea value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="street-address" rows={3} placeholder="บ้านเลขที่ · หมู่บ้าน/อาคาร · ซอย · ถนน" className={`${inputCls} resize-y`} />
           {/* 📮 รหัสไปรษณีย์ → เลือกตำบล → เติม "ต.… อ.… จ.… 12345" ต่อท้ายช่องที่อยู่ (ยังเก็บเป็นข้อความก้อนเดียว) */}
           <PostcodeHelper address={address} setAddress={setAddress} inputCls={inputCls} />
           {address && addressProblem(address) && <p className="mt-1 text-xs font-medium text-rose-600">{addressProblem(address)}</p>}
