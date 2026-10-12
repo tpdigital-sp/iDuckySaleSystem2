@@ -435,3 +435,7 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - ขั้น 2 (เว็บร้าน): lib/server/wip-production.ts อ่าน 4 ตาราง wip_*_jobs (ฐาน tp-fixflow) · GET /api/admin/orders/wip?id= · กล่อง 🏭 สถานะผลิต (ProductionWipBox) คอลัมน์ขวาหน้าออเดอร์ เหนือกล่อง LINE
 - ลำดับจับคู่: iduckyOrderId → folderName ตรงเป๊ะ (productionSent.folder + การ์ดกราฟฟิก) → เฉพาะไม่เจอเลย: สแกนงาน 45 วันเทียบ normFolder (บอร์ดกระดาษ active 2,400+ ใบ = ~4 วิ · ทางชัวร์ ~150ms)
 - URL บอร์ด: TP_LEADER_URL (ค่าเริ่มต้น https://tpdigital-performance.netlify.app) · ขั้น 3 (ดันสถานะกลับ/readyToShip) ยังไม่ทำ
+
+### 12 ต.ค. 69 — 🏭 บอทรู้ขั้นผลิตจริง
+- /api/bot/customer-profile (n8n Build AI Request เรียกทุกข้อความ · timeout 6 วิ) ต่อท้ายใบช่วงผลิตด้วย "(ขั้นผลิตตอนนี้: QC/แพ็ค)" หรือ "(ผลิตเสร็จทุกชิ้นแล้ว รอแพ็ค/ส่ง)" จาก wipJobsForOrder exactOnly · ไม่เกิน 3 ใบ · เกิน 2.5 วิข้าม
+- กติกาตอบแปะมากับข้อความโปรไฟล์เอง (ตอบตามขั้นในวงเล็บ · ห้ามเดาวันเสร็จ · ห้ามบอกชื่อพนักงาน) → ไม่ต้องแก้ systemMessage ใน n8n
