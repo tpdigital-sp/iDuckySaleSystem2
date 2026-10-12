@@ -163,7 +163,7 @@ export default async function HowToOrderPage() {
               </div>
             </div>
             <div className="hto-hero-art">
-              <span className="hto-bub b1">เลือก → แนบลาย → โอน 🐥</span>
+              <span className="hto-bub hto-b1">เลือก → แนบลาย → โอน 🐥</span>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/landing/duck-hug.webp" alt="" aria-hidden="true" />
             </div>
@@ -183,6 +183,37 @@ export default async function HowToOrderPage() {
                 ทางร้าน<b>เริ่มจัดทำงานหลังได้รับเงินแล้วเท่านั้น</b> — ยังไม่โอน งานจะยังไม่เข้าคิว
               </li>
             </ul>
+          </div>
+
+          {/* 🎬 วิดีโอสาธิตการสั่งซื้อบนมือถือ (อัดจากหน้าเว็บจริง · ขั้น 1–5 · ไม่ได้สร้างออเดอร์จริง · เสียงบรรยาย Gemini TTS) */}
+          <div className="hto-demo" id="demo">
+            <div className="hto-demo-txt">
+              <span className="kicker kicker-mint">
+                <i>🎬</i>วิดีโอสาธิต
+              </span>
+              <h2>
+                ดูให้เห็นภาพ<em>ใน 2 นาที</em>
+              </h2>
+              <p>สั่งพวงกุญแจอะคริลิคบนมือถือจริง ตั้งแต่เลือกสินค้าจนแนบสลิป · 🔊 มีเสียงบรรยาย</p>
+              <ul>
+                <li>เลือกขนาด / งานสกรีน — ราคาขยับให้เห็นทันที</li>
+                <li>แนบลายของคุณ แล้วกดเพิ่มลงตะกร้า</li>
+                <li>ตรวจตะกร้า เลือกวิธีจัดส่ง</li>
+                <li>กรอกชื่อ เบอร์โทร ที่อยู่ แล้วยืนยันสั่งซื้อ</li>
+                <li>โอนเงิน แล้วแนบสลิปในหน้าออเดอร์</li>
+              </ul>
+            </div>
+            <div className="hto-demo-phone">
+              <video
+                src="/how-to/order-demo.mp4"
+                poster="/how-to/order-demo-poster.jpg"
+                controls
+                playsInline
+                preload="none"
+                width={720}
+                height={1558}
+              />
+            </div>
           </div>
 
           {/* 7 ขั้นตอน — ไทม์ไลน์สลับซ้าย-ขวา อ่านไล่ลงมาได้เป็นจังหวะ */}
