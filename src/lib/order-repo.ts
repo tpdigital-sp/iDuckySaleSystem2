@@ -6,6 +6,7 @@ import type { Order } from "./admin-data";
 import { getAccessToken } from "./customer-auth";
 import { PACK_SCAN_HEADER } from "./permissions";
 import { shrinkImageForUpload } from "@/lib/image-shrink";
+import { readReplaceMarker } from "./order-item-qty";
 
 export interface CreateOrderInput {
   customerName: string;
@@ -91,10 +92,20 @@ export async function appendToOrder(
   gift?: Pick<CreateOrderInput, "giftSizes" | "giftArtwork">
 ): Promise<{ ok: boolean; owed?: number; error?: string }> {
   try {
+    /**
+     * 🛠 มาจากปุ่ม "แก้ตัวเลือก (หน้าร้าน)" = ของใหม่จะ "แทน" รายการเดิม (หน้าออเดอร์ถอดบรรทัดเดิมทีหลัง)
+     * บอกเซิร์ฟเวอร์ว่าบรรทัดไหนกำลังถูกแทน ไม่งั้นช่วงที่ของเก่า+ของใหม่อยู่คู่กันจะนับจำนวนซ้ำ → ได้ของแถมผิด
+     * (OD-261012-5632 · 12 ต.ค. 69: พวงกุญแจ 10 ชิ้น แก้ตัวเลือก 9 ชิ้น → นับ 19 ได้รองหลังฟรี 19 ทั้งที่ไม่เข้าเงื่อนไข)
+     */
+    const m = readReplaceMarker();
+    const replacing =
+      m && (m.kind ?? "order") === "order" && m.orderId === orderId
+        ? { index: m.index, productId: m.productId, name: m.name, qty: m.qty }
+        : undefined;
     const res = await fetch("/api/orders/append", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, key, items, ...(ship ?? {}), ...(gift ?? {}) }),
+      body: JSON.stringify({ orderId, key, items, ...(ship ?? {}), ...(gift ?? {}), ...(replacing ? { replacing } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, owed: data.owed } : { ok: false, error: data.error ?? "สั่งเพิ่มไม่สำเร็จ" };

@@ -4467,6 +4467,22 @@ export default function AdminOrderDetailPage() {
     });
   }
 
+  /**
+   * 🗑 เอาของแถมออกจากออเดอร์ — ระบบคิดของแถม "เพิ่มอย่างเดียว ไม่ลดเอง" (กันของที่แจ้งลูกค้าแล้วหายเงียบ)
+   * เลยต้องให้แอดมินถอดเองได้: ลูกค้าไม่รับ · ลบรายการจนไม่เข้าเงื่อนไขแล้ว (พนักงานแจ้ง 12 ต.ค. 69 · OD-261012-5632) · ลง log
+   */
+  function removeGift(promoId: string) {
+    if (!order) return;
+    const g = order.gifts?.find((x) => x.promoId === promoId);
+    if (!g) return;
+    const what = giftLinesOf(g).map((ln) => `${ln.label} ×${ln.qty}`).join(" + ");
+    if (!window.confirm(`เอาของแถม "${g.name}${g.size ? ` (${g.size})` : ""}" ออกจากออเดอร์นี้?\n\n${what}\n\nลาย/แบบของแถมที่แนบไว้จะหายไปด้วย · ระบบจะไม่ใส่กลับเอง เว้นแต่ลูกค้าสั่งเพิ่มจนเข้าเงื่อนไขอีกครั้ง`)) return;
+    const gifts = (order.gifts ?? []).filter((x) => x.promoId !== promoId);
+    const next = withLog({ ...order, gifts }, actor, "เอาของแถมออก", `🎁 ${g.name}${g.size ? ` (${g.size})` : ""} — ${what}`);
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
   function removeGiftArtwork(promoId: string, url: string) {
     if (!order) return;
     const gifts = (order.gifts ?? []).map((g) =>
@@ -7757,6 +7773,16 @@ export default function AdminOrderDetailPage() {
                     </p>
                   </div>
                   <span className="shrink-0 text-xs font-bold text-emerald-600">ฟรี</span>
+                  {mayEdit && (
+                    <button
+                      type="button"
+                      onClick={() => removeGift(g.promoId)}
+                      title="เอาของแถมนี้ออกจากออเดอร์ (ลูกค้าไม่รับ / รายการไม่เข้าเงื่อนไขแล้ว) — ระบบไม่ลดของแถมให้เอง"
+                      className="shrink-0 rounded-lg px-2 py-1 text-xs font-bold text-rose-500 ring-1 ring-rose-200 transition hover:bg-rose-50 hover:text-rose-700"
+                    >
+                      ✕ เอาออก
+                    </button>
+                  )}
                 </div>
                 {/* ➕ ลูกค้าสั่งเพิ่มหลังของแถมถูกคิด/ทำแบบแล้ว → จำนวนเพิ่ม กราฟฟิกต้องจัดแผ่น/ทำแบบเพิ่ม ไม่งั้นผลิตตามจำนวนเดิม
                     (OD-261006-8507 · 8 ต.ค. 69: รองหลังส่งแบบไป 72 ใบ แล้วลูกค้าสั่งเพิ่มเป็น 96 ไม่มีใครรู้) · ค้างจนกดรับทราบ/อัปแบบใหม่ */}

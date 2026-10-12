@@ -45,6 +45,8 @@ export async function POST(req: Request) {
     shippingCost?: number;
     giftSizes?: Record<string, string>;
     giftArtwork?: Record<string, string[]>;
+    /** 🛠 บรรทัดเดิมที่ของใหม่มาแทน (ปุ่ม "แก้ตัวเลือก (หน้าร้าน)") — หน้าออเดอร์จะถอดออกทีหลัง */
+    replacing?: { index?: number; productId?: string; name?: string; qty?: number };
   };
   try {
     body = await req.json();
@@ -111,7 +113,17 @@ export async function POST(req: Request) {
    * (OD-261006-8507 · 8 ต.ค. 69: 80 → 100 ชิ้น แต่รองหลังค้าง 80) · เพิ่มอย่างเดียว คงลาย/แบบ/ผลตรวจเดิม · ดู server/order-gifts.ts
    */
   // 📐 ขนาด/ลายของแถมที่เลือกในตะกร้า — ใช้กับโปรที่เพิ่งได้ในรอบนี้ (OD-261012-9950: เลือก 9 × 9 แต่ใบขึ้น 7 × 7)
-  const gift = await syncOrderGifts(sb, lot.order, { sizes: body.giftSizes, artwork: body.giftArtwork });
+  /**
+   * 🛠 แก้ตัวเลือกจากหน้าร้าน = ของใหม่แทนบรรทัดเดิม → นับของแถมโดยไม่รวมบรรทัดที่กำลังถูกแทน
+   * (OD-261012-5632 · 12 ต.ค. 69: 10 ชิ้นแก้ตัวเลือก 9 ชิ้น → เดิมนับ 19 ได้รองหลังฟรี 19 · ของแถมเพิ่มอย่างเดียว ถอดบรรทัดเก่าแล้วก็ไม่ลด)
+   * เช็คว่าบรรทัดยังตรงกับที่หน้าจอส่งมาจริง (สินค้า/ชื่อ/จำนวน) ไม่ตรง = นับทั้งใบเหมือนเดิม
+   */
+  const rp = body.replacing;
+  const rIdx = typeof rp?.index === "number" ? rp.index : -1;
+  const rOld = rIdx >= 0 && rIdx < order.items.length ? order.items[rIdx] : null;
+  const skipIdx = rOld && rOld.productId === rp?.productId && rOld.name === rp?.name && rOld.qty === rp?.qty ? rIdx : -1;
+  const giftBase = skipIdx >= 0 ? { ...lot.order, items: lot.order.items.filter((_, i) => i !== skipIdx) } : lot.order;
+  const gift = await syncOrderGifts(sb, giftBase, { sizes: body.giftSizes, artwork: body.giftArtwork });
 
   // 🚚 ใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง → รับค่าส่งที่หน้าชำระเงินคิดไว้ (ชื่อวิธีส่ง + ตัวเลข) มาใส่ให้เป็นครั้งแรก
   const shipName = (body.shipping ?? "").trim().slice(0, 40);
