@@ -49,6 +49,7 @@ import {
 } from "@/lib/permissions";
 import { btnPrimary, card, faint, muted } from "@/lib/admin-ui";
 import { SITE_URL } from "@/lib/shop-info";
+import BankCardImage from "@/components/admin/BankCardImage";
 import { gtagIdsFrom } from "@/lib/settings-shared";
 import { PageHead, PageShell } from "@/components/admin/ui";
 
@@ -554,6 +555,7 @@ function AdminSettingsPageInner() {
   const [promptpay, setPromptpay] = useState("");
   const [promptpayName, setPromptpayName] = useState("");
   const [note, setNote] = useState("");
+  const [bankImgOpen, setBankImgOpen] = useState(false);
 
   // ── จัดส่ง ──
   const [shipping, setShipping] = useState<ShippingMethod[]>([]);
@@ -1064,6 +1066,21 @@ function AdminSettingsPageInner() {
 
           {/* ══════ ชำระเงิน ══════ */}
           {tab === "pay" && (
+            <>
+            {/* 🖼 ภาพเลขบัญชีส่งลูกค้า — อยู่นอก fieldset ให้พนักงานที่ดูอย่างเดียวก็กดได้ */}
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-white/80 px-5 py-3 shadow-sm ring-1 ring-slate-200">
+              <p className="text-xs text-slate-500">ต้องส่งเลขบัญชีให้ลูกค้าในแชท? กดเปิดภาพแล้วคัดลอก/ดาวน์โหลดได้เลย</p>
+              <button
+                type="button"
+                onClick={() => setBankImgOpen(true)}
+                className="shrink-0 rounded-full bg-[#4A9BB5] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#3E8AA3]"
+              >
+                🖼 ภาพบัญชีส่งลูกค้า
+              </button>
+            </div>
+            {bankImgOpen && (
+              <BankCardImage banks={banks} onClose={() => setBankImgOpen(false)} />
+            )}
             <fieldset disabled={!isAdmin} className={`space-y-4 ${!isAdmin ? "opacity-95" : ""}`}>
               {!isAdmin && (
                 <p className="rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
@@ -1209,6 +1226,7 @@ function AdminSettingsPageInner() {
                 </section>
               </div>
           </fieldset>
+            </>
           )}
 
           {/* ══════ การจัดส่ง ══════ */}
