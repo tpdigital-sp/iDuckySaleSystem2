@@ -12,7 +12,8 @@
  * 🎨 ตรา+สีระดับ = ชุดเดียวกับหน้า /account (@/lib/tier-art · ภาพ /account/rank) — ห้ามใช้อีโมจิ 🥉🥈 แทนตรา
  * ระดับของคนที่ล็อกอินอยู่อ่านจาก localStorage "ducky_acc_tier" ที่หน้า /account จดไว้ (แบบเดียวกับ Navbar)
  *
- * ภาษาเดียวกับหน้าแรก/หน้าตัวแทน — ยืม .dlr-hero/.dlr-perks/.dlr-steps/.hto-faq/.chat-cta · ของเฉพาะหน้า prefix .mbr-
+ * โครง (รื้อ 12 ต.ค. 69 ให้อ่านง่าย): ฮีโร่+3 ขั้น → ตารางยอดสะสม→ส่วนลด+ตัวอย่างเป็นบาท → ต้องรู้ 4 ข้อ → FAQ
+ * ภาษาเดียวกับหน้าแรก/หน้าตัวแทน — ยืม .dlr-hero/.hto-faq/.chat-cta · ของเฉพาะหน้า prefix .mbr-
  * ⚠️ ห้ามใช้คลาส Tailwind — `.dl *{margin:0;padding:0}` ล้างทิ้งหมด
  */
 
@@ -25,45 +26,19 @@ import { tierRing, medalArt, medalSrc, DARK_TEXT_TIERS } from "@/lib/tier-art";
 import { formatPrice } from "@/lib/products";
 import { LINE_URL } from "@/components/LineButton";
 
-const PERKS = [
-  {
-    ico: "🏅",
-    tone: "t-yolk",
-    title: "ส่วนลดตามระดับ ทุกบิล",
-    desc: "ยอดซื้อสะสมถึงเกณฑ์ ระบบขึ้นระดับให้เอง แล้วหักส่วนลด % ให้อัตโนมัติทุกออเดอร์ ไม่ต้องใส่โค้ด",
-  },
-  {
-    ico: "🎟️",
-    tone: "t-lilac",
-    title: "ใช้คูปองส่วนลดได้",
-    desc: "คูปองที่ร้านแจกผูกกับบัญชีของคุณ — ต้องล็อกอินก่อนสั่งถึงจะใช้ได้",
-  },
-  {
-    ico: "📋",
-    tone: "t-sky",
-    title: "ประวัติออเดอร์ครบในที่เดียว",
-    desc: "ไม่ต้องเก็บลิงก์ออเดอร์เอง เปิดหน้าบัญชีก็เห็นทุกใบ ตามสถานะ เปิดใบเสร็จ และกดสั่งซ้ำได้ง่าย",
-  },
-  {
-    ico: "💚",
-    tone: "t-mint",
-    title: "ล็อกอินด้วย LINE กดเดียว",
-    desc: "ไม่ต้องตั้งรหัสผ่าน ไม่มีค่าสมัคร ไม่มีค่ารายปี — สมัครแล้วเป็นสมาชิกทันที",
-  },
+/** 3 ขั้นสั้น ๆ ในฮีโร่ — อ่านจบในบรรทัดเดียว */
+const FLOW = [
+  { n: 1, t: "ล็อกอินด้วย LINE", d: "ฟรี ไม่ต้องตั้งรหัส" },
+  { n: 2, t: "สั่ง + โอนตามปกติ", d: "1 บาท = 1 แต้ม" },
+  { n: 3, t: "แต้มถึงเกณฑ์ ลดให้เอง", d: "ทุกบิลต่อจากนั้น" },
 ];
 
-const STEPS = [
-  { ico: "guide", title: "ล็อกอินด้วย LINE", desc: "กดปุ่มล็อกอิน เลือกบัญชี LINE ของคุณ เป็นสมาชิกได้ทันที ฟรี" },
-  { ico: "pay", title: "สั่งซื้อ + โอนตามปกติ", desc: "ล็อกอินค้างไว้ก่อนกดสั่งซื้อ — ยอดที่ชำระแล้วทุกบาทนับเป็นแต้มสะสม" },
-  { ico: "proof", title: "ขึ้นระดับอัตโนมัติ", desc: "แต้มถึงเกณฑ์เมื่อไหร่ ขึ้นระดับทันที บิลถัดไปได้ส่วนลดเลย ไม่ต้องแจ้งร้าน" },
-];
-
-/** กติกาขึ้น/รักษาระดับ — ตรงกับโมเดล status-lock ใน @/lib/tiers */
-const RULES = [
-  { ico: "🪙", t: "1 บาท = 1 แต้ม", d: "นับจากออเดอร์ที่ชำระเงินแล้ว แต้มใช้นับระดับอย่างเดียว แลกเป็นของ/เงินสดไม่ได้" },
-  { ico: "🚀", t: "ขึ้นระดับทันที", d: "แต้มถึงเกณฑ์เมื่อไหร่ขึ้นทันที ออเดอร์ก้อนใหญ่ข้ามได้หลายขั้น แล้วใช้ระดับใหม่ได้ยาว 1 ปีเต็ม" },
-  { ico: "🔁", t: "ครบปี ต่ออายุง่าย", d: "ครบ 1 ปี ถ้ายอดในปีนั้นถึงเกณฑ์ระดับเดิม = อยู่ต่ออีกปี · ไม่ถึงก็ลดลงแค่ 1 ขั้น ไม่ร่วงหายทีเดียว" },
-  { ico: "🤝", t: "คูปองกับส่วนลดสมาชิก", d: "ใส่คูปองด้วย ระบบเลือกอันที่คุ้มกว่าให้เอง — คูปองที่ไม่ได้ใช้ยังเก็บไว้ใช้ครั้งหน้าได้" },
+/** สิ่งที่ต้องรู้ — ข้อแรกสำคัญสุด (ลูกค้าพลาดบ่อย) ติดสีเตือน · กติกาตรงกับโมเดล status-lock ใน @/lib/tiers */
+const KNOW = [
+  { ico: "⚠️", warn: true, t: "ล็อกอินก่อนกดสั่งซื้อทุกครั้ง", d: "ใบที่สั่งตอนไม่ได้ล็อกอิน จะไม่ได้ส่วนลดสมาชิก และใช้คูปองไม่ได้" },
+  { ico: "🪙", t: "1 บาท = 1 แต้ม", d: "นับจากออเดอร์ที่ชำระแล้ว แต้มใช้นับระดับอย่างเดียว แลกเป็นของหรือเงินสดไม่ได้" },
+  { ico: "📅", t: "ขึ้นระดับแล้ว อยู่ยาว 1 ปี", d: "ครบปีถ้ายอดในปีนั้นถึงเกณฑ์ = อยู่ต่อ · ไม่ถึงก็ลดลงแค่ 1 ขั้น ไม่ร่วงหายทีเดียว" },
+  { ico: "🎟️", t: "มีคูปองด้วย? เลือกที่คุ้มกว่าให้เอง", d: "ระบบเทียบคูปองกับส่วนลดสมาชิกให้ คูปองที่ไม่ได้ใช้ยังเก็บไว้ใช้ครั้งหน้าได้" },
 ];
 
 const FAQS = [
@@ -160,9 +135,13 @@ export default function MemberClient() {
   const card = tiers.find((t) => t.id === shown) ?? mine ?? top;
   const cardDark = DARK_TEXT_TIERS.has(card.id);
 
+  /** ตัวอย่างคิดเงินจริง — ใช้ระดับกลางตาราง ให้เห็นภาพว่าลดเป็นบาทเท่าไหร่ */
+  const eg = ranked[Math.min(1, ranked.length - 1)] ?? null;
+  const EG_BILL = 2000;
+
   return (
     <div className="dl dl-page dlr-page mbr-page">
-      {/* ── ฮีโร่: ข้อความซ้าย + บัตรสมาชิก (ตราจริง) ขวา ── */}
+      {/* ── ฮีโร่: หัวเรื่อง + 3 ขั้นสั้น ๆ ซ้าย · บัตรสมาชิก (ตราจริง) ขวา ── */}
       <div className="top-stack dlr-stack mbr-stack">
         <img className="bg-cloud dlr-c1" src="/landing/cloud.webp" alt="" aria-hidden="true" />
         <img className="bg-cloud dlr-c2" src="/landing/cloud.webp" alt="" aria-hidden="true" />
@@ -171,26 +150,29 @@ export default function MemberClient() {
           <div className="dlr-hero mbr-hero">
             <div className="dlr-hero-txt">
               <span className="kicker kicker-yolk">
-                <i className="folder">👑</i>iDucky Member Club
+                <i className="folder">👑</i>iDucky Member Club · สมัครฟรี
               </span>
               <h1>
-                ยิ่งสั่ง <em>ยิ่งลด</em>
+                ยิ่งซื้อสะสม <em>ยิ่งได้ลด</em>
                 <br />
                 สูงสุด <span className="yolk-underline">{maxPct}% ทุกบิล</span>
               </h1>
-              <p className="dlr-lead">
-                ล็อกอินด้วย LINE ก่อนสั่ง — ยอดซื้อทุกบาทนับเป็นแต้ม <b>ขึ้นระดับเองอัตโนมัติ</b> แล้วได้ส่วนลด
-                ทุกออเดอร์ต่อจากนั้น ไม่ต้องใส่โค้ด ไม่ต้องทักแอดมิน
-              </p>
-              <div className="dlr-facts">
-                <span className="dlr-fact">สมัครฟรี ไม่มีค่ารายปี</span>
-                <span className="dlr-fact yolk">ลดอัตโนมัติทุกบิล</span>
-                <span className="dlr-fact mint">ขึ้นระดับแล้วอยู่ยาว 1 ปี</span>
-              </div>
+              <p className="dlr-lead">ไม่ต้องใส่โค้ด ไม่ต้องทักแอดมิน — ล็อกอินไว้ตอนสั่ง ระบบนับยอดและหักส่วนลดให้เอง</p>
+
+              <ol className="mbr-flow" aria-label="เป็นสมาชิกใน 3 ขั้น">
+                {FLOW.map((f) => (
+                  <li key={f.n}>
+                    <span className="mbr-flow-n">{f.n}</span>
+                    <b>{f.t}</b>
+                    <small>{f.d}</small>
+                  </li>
+                ))}
+              </ol>
+
               <div className="dlr-hero-btns">
                 {customer ? (
                   <Link className="btn btn-yolk" href="/account">
-                    ดูระดับของฉัน <span className="dot">→</span>
+                    ดูระดับและยอดสะสมของฉัน <span className="dot">→</span>
                   </Link>
                 ) : (
                   <Link className="btn btn-yolk mbr-line-btn" href="/account/login">
@@ -198,7 +180,7 @@ export default function MemberClient() {
                   </Link>
                 )}
                 <a className="btn btn-ghost" href="#tiers">
-                  ดูทุกระดับ <span className="dot">↓</span>
+                  ซื้อเท่าไหร่ ลดเท่าไหร่? <span className="dot">↓</span>
                 </a>
               </div>
               {customer && (
@@ -247,82 +229,85 @@ export default function MemberClient() {
               </div>
             </div>
           </div>
-
-          <div className="dlr-perks">
-            {PERKS.map((p) => (
-              <div className="dlr-perk" key={p.title}>
-                <i className={p.tone}>{p.ico}</i>
-                <b>{p.title}</b>
-                <p>{p.desc}</p>
-              </div>
-            ))}
-          </div>
         </section>
       </div>
 
-      {/* ── เส้นทางระดับ — ตราจริงเรียงบนราง ยอดสะสมใต้ตรา ── */}
+      {/* ── ตารางระดับ: ยอดสะสม → ส่วนลด (เรียงเป็นบันได อ่านซ้ายไปขวาบรรทัดเดียว) ── */}
       <div className="combo-band mbr-band" id="tiers" style={{ scrollMarginTop: 90 }}>
         <div className="cb-bg" aria-hidden="true" />
         <section className="wrap">
           <div className="head">
             <span className="kicker kicker-mint">
-              <i className="chat-ico">📈</i>เส้นทางสมาชิก
+              <i className="chat-ico">📈</i>ตารางระดับสมาชิก
             </span>
             <h2>
-              {tiers.length} ระดับ <em>ยิ่งสะสม ยิ่งคุ้ม</em>
+              ซื้อสะสมเท่าไหร่ <em>ได้ลดเท่าไหร่</em>
             </h2>
-            <p>
-              นับแต้มจากยอดที่ชำระแล้ว <b>1 บาท = 1 แต้ม</b> · ส่วนลดหักจากยอดสินค้าให้อัตโนมัติตอนสั่ง
-            </p>
+            <p>นับยอดจากออเดอร์ที่ชำระแล้ว · ส่วนลดหักจากค่าสินค้าให้อัตโนมัติตอนสั่ง</p>
           </div>
-          <ol className={`mbr-path${ready ? "" : " is-loading"}`}>
+
+          <div className={`mbr-ladder${ready ? "" : " is-loading"}`} role="table" aria-label="ระดับสมาชิก ยอดสะสม และส่วนลด">
+            <div className="mbr-row mbr-row-head" role="row">
+              <span role="columnheader">ระดับ</span>
+              <span role="columnheader">ยอดซื้อสะสม</span>
+              <span role="columnheader">ส่วนลดทุกบิล</span>
+            </div>
             {tiers.map((t, i) => {
               const isMine = mine?.id === t.id;
               return (
-                <li key={t.id} className={`mbr-stop${isMine ? " is-mine" : ""}${t.discountPct > 0 ? "" : " is-base"}`} style={ringVars(t, i)}>
-                  <div className="mbr-stop-medal">
-                    {isMine && <span className="mbr-mine">ระดับของคุณ</span>}
-                    <Medal tier={t} index={i} />
-                  </div>
-                  <div className="mbr-stop-txt">
+                <div
+                  key={t.id}
+                  role="row"
+                  className={`mbr-row${isMine ? " is-mine" : ""}${t.discountPct > 0 ? "" : " is-base"}`}
+                  style={ringVars(t, i)}
+                >
+                  <span className="mbr-row-tier" role="cell">
+                    <span className="mbr-row-medal">
+                      <Medal tier={t} index={i} size="ico" />
+                    </span>
                     <b>{t.name}</b>
-                    <span className="mbr-stop-min">{t.minSpend > 0 ? `${formatPrice(t.minSpend)}+` : "เริ่มต้น ฟรี"}</span>
-                    <span className="mbr-stop-off">{t.discountPct > 0 ? `ลด ${t.discountPct}%` : "ยังไม่มีส่วนลด"}</span>
-                  </div>
-                </li>
+                    {isMine && <span className="mbr-mine">ระดับของคุณ</span>}
+                  </span>
+                  <span className="mbr-row-min" role="cell">
+                    {t.minSpend > 0 ? (
+                      <>
+                        <small>ครบ</small> {formatPrice(t.minSpend)}
+                      </>
+                    ) : (
+                      "แค่ล็อกอิน"
+                    )}
+                  </span>
+                  <span className="mbr-row-off" role="cell">
+                    {t.discountPct > 0 ? <b>{t.discountPct}%</b> : <small>ยังไม่มีส่วนลด</small>}
+                  </span>
+                </div>
               );
             })}
-          </ol>
+          </div>
+
+          {eg && (
+            <p className="mbr-eg">
+              <span className="mbr-eg-tag">ตัวอย่าง</span>
+              ยอดสะสมครบ <b>{formatPrice(eg.minSpend)}</b> → เป็น <b>{eg.name}</b> → บิลถัดไปค่าสินค้า{" "}
+              <b>{formatPrice(EG_BILL)}</b> ลดให้ทันที <b className="t-off">{formatPrice((EG_BILL * eg.discountPct) / 100)}</b>
+            </p>
+          )}
         </section>
       </div>
 
-      {/* ── 3 ขั้นตอน + กติกา ── */}
+      {/* ── สิ่งที่ต้องรู้ 4 ข้อ (ข้อแรกเตือน) + สิทธิ์อื่นของสมาชิก ── */}
       <section className="dlr-sec mbr-sec">
         <div className="head">
           <span className="kicker kicker-yolk">
-            <i>✨</i>เริ่มได้ใน 1 นาที
+            <i>📌</i>อ่านจบใน 30 วินาที
           </span>
           <h2>
-            เป็นสมาชิก<em>ง่ายมาก</em>
+            ต้องรู้แค่<em>4 ข้อ</em>
           </h2>
         </div>
-        <ol className="dlr-steps">
-          {STEPS.map((s, i) => (
-            <li className="dlr-step" key={s.title}>
-              <span className="dlr-node">{i + 1}</span>
-              <span className="dlr-ico">
-                <img src={`/how-to/${s.ico}.webp`} alt="" aria-hidden="true" />
-              </span>
-              <span className="stepno">ขั้นที่ {i + 1}</span>
-              <h3>{s.title}</h3>
-              <p>{s.desc}</p>
-            </li>
-          ))}
-        </ol>
-
         <div className="mbr-rules">
-          {RULES.map((r) => (
-            <div className="mbr-rule" key={r.t}>
+          {KNOW.map((r) => (
+            <div className={`mbr-rule${r.warn ? " warn" : ""}`} key={r.t}>
               <i>{r.ico}</i>
               <div>
                 <b>{r.t}</b>
@@ -331,6 +316,9 @@ export default function MemberClient() {
             </div>
           ))}
         </div>
+        <p className="mbr-also">
+          <b>สมาชิกได้อีก:</b> ใช้คูปองที่ร้านแจกได้ · เห็นประวัติออเดอร์ทุกใบในหน้า “บัญชีของฉัน” ไม่ต้องเก็บลิงก์เอง · กดสั่งซ้ำได้ง่าย
+        </p>
       </section>
 
       {/* ── คำถามที่พบบ่อย ── */}
@@ -359,8 +347,8 @@ export default function MemberClient() {
       <div className="hto-cta-wrap">
         <div className="chat-cta">
           <div className="cc-text">
-            <h3>{customer ? "พร้อมสั่งแล้ว ส่วนลดรออยู่" : "สมัครฟรีวันนี้ เริ่มสะสมแต้มบิลแรก"}</h3>
-            <p>ล็อกอินค้างไว้ตอนสั่ง ระบบนับแต้มและหักส่วนลดให้เองทุกครั้ง</p>
+            <h3>{customer ? "พร้อมสั่งแล้ว ส่วนลดรออยู่" : "สมัครฟรีวันนี้ เริ่มสะสมยอดตั้งแต่บิลแรก"}</h3>
+            <p>ล็อกอินค้างไว้ตอนสั่ง ระบบนับยอดและหักส่วนลดให้เองทุกครั้ง</p>
           </div>
           <div className="cc-btns">
             {customer ? (
