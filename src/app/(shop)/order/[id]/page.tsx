@@ -180,6 +180,14 @@ export default function CustomerOrderPage() {
   const [order, setOrder] = useState<Order | null>(null);
   // ⏳ นาฬิกานับถอยหลังส่วนลดโอนไว — เดินเฉพาะตอนยังอยู่ในเวลา พอหมดเวลาหน้าจอคิดยอดใหม่เอง (ยอดโอน/QR ตามไปด้วย)
   const [nowTick, setNowTick] = useState(() => Date.now());
+  /**
+   * 📱 หน้าเช็คออเดอร์บนมือถือ: ปุ่มลอยตะกร้า/แชท/LINE 3 ปุ่มซ้อนทับรายละเอียดรายการ (12 ต.ค. 69)
+   * หน้านี้มีปุ่ม "💬 ทักไลน์ร้าน" ใหญ่ของตัวเองแล้ว + สั่งเสร็จแล้วตะกร้าลอยไม่จำเป็น → body.order-page ให้ landing.css ซ่อน
+   */
+  useEffect(() => {
+    document.body.classList.add("order-page");
+    return () => document.body.classList.remove("order-page");
+  }, []);
   useEffect(() => {
     if (!order || earlyPayState(order) !== "active") return;
     const t = setInterval(() => setNowTick(Date.now()), 15_000);

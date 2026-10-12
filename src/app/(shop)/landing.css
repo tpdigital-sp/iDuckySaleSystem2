@@ -5729,3 +5729,11 @@ to{opacity:1;transform:none}}
   background:linear-gradient(150deg,#FFF3CE,#fff 70%)}
 .dl .mbr-rule b{font-family:var(--display);font-weight:500;font-size:1rem;color:var(--navy)}
 .dl .mbr-rule p{margin-top:4px;font-size:.86rem;line-height:1.8;color:var(--navy-soft)}
+
+/* 📱 หน้าเช็คออเดอร์ (body.order-page โดย order/[id]/page.tsx) — ปุ่มลอยทับรายการสินค้า (12 ต.ค. 69)
+   หน้านี้มีปุ่ม "ทักไลน์ร้าน" ของตัวเอง → ซ่อน LINE ลอย + ตะกร้าลอย เหลือปุ่มแชท ย้ายลงช่องเดิมของ LINE */
+@media(max-width:1000px){
+  body.order-page .fabx-cart,body.order-page .dl .fabx-cart,
+  body.order-page .fabx-line,body.order-page .dl .fabx-line{display:none !important}
+  body.order-page .fabx-bot,body.order-page .dl .fabx-bot{bottom:calc(100px + env(safe-area-inset-bottom,0px)) !important}
+}
