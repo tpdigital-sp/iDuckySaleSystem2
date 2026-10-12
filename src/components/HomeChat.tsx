@@ -54,6 +54,12 @@ export default function HomeChat({ catCount }: { catCount: number }) {
   const nextId = useRef(100);
   const sessionId = useChatSession();
 
+  // จำนวนหมวดมาทีหลัง (หน้าแรกโหลดหมวดจากฐานหลังเฟรมแรก) — บทสนทนาตัวอย่างต้องตามเลขใหม่
+  // เดิมค้างเลขของเฟรมแรก: หัวหน้าแรก "13 หมวด" แต่แชทตัวอย่าง "กว่า 18 หมวด" (12 ต.ค. 69) · คุยจริงอยู่ = ไม่แตะ
+  useEffect(() => {
+    if (!live) setMsgs(demoMessages(catCount));
+  }, [catCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // เลื่อนลงล่างสุดเมื่อมีข้อความใหม่ (เฉพาะตอนคุยจริง จะได้ไม่กระตุกตอนเข้าหน้าแรก)
   useEffect(() => {
     if (!live) return;

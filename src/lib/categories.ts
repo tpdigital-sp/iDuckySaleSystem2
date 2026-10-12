@@ -20,7 +20,8 @@ export interface ShopCategory {
 }
 
 /**
- * ค่าเริ่มต้นก่อนโหลด/เมื่อฐานว่าง = snapshot ของหมวดจริงในฐาน ณ 14 ส.ค. 2569 (18 หมวด)
+ * ค่าเริ่มต้นก่อนโหลด/เมื่อฐานว่าง = snapshot ของหมวดจริงในฐาน ณ 12 ต.ค. 2569 (13 หมวด · เดิม 14 ส.ค. 18 หมวด)
+ * — snapshot เก่าทำให้หน้าแรกเฟรมแรกขึ้น "18 หมวด" + เมนูหมวดชุดเก่า แล้วเด้งเป็น 13 (และแชทตัวอย่างค้าง 18)
  *
  * ⚠️ เดิม map มาจาก CATEGORIES ใน products.ts (ชุดออกแบบเก่า 15 หมวด) ทำให้เฟรมแรก
  * ของหน้าแรกขึ้น "15 หมวด" แล้วค่อยเด้งเป็น 18 หลังโหลดเสร็จ — snapshot นี้แก้อาการแว้บ
@@ -28,24 +29,19 @@ export interface ShopCategory {
  * ควรอัปเดต snapshot นี้ตาม (ไม่อัปเดตก็แค่เฟรมแรกเพี้ยนชั่วครู่ ไม่พัง)
  */
 export const DEFAULT_CATEGORIES: ShopCategory[] = [
-  { id: "acrylic", name: "พวงกุญแจ / อะคริลิค", nameEn: "Acrylic", emoji: "🔑", gradient: "from-sky-200 to-cyan-300", description: "พวงกุญแจอะคริลิค Jibbitz บัคเคิ้ล เขย่า แจกัน กิ๊บ และงานอะคริลิคทั่วไป" },
-  { id: "standee", name: "สแตนดี้", nameEn: "Standee", emoji: "🧍", gradient: "from-indigo-200 to-blue-300", description: "สแตนดี้อะคริลิคทุกแบบ ตั้งโต๊ะ จิ๋ว ตั้งมือถือ ฐานเพลง โยกเยก หมุน" },
-  { id: "light", name: "สแตนดี้ฐานไฟ / LIGHT", nameEn: "Light", emoji: "💡", gradient: "from-blue-200 to-indigo-300", description: "สแตนดี้ฐานไฟ กล่องไฟ แท่งไฟ งานเรืองแสง" },
-  { id: "phone-gadget", name: "เคสมือถือ / แก็ดเจ็ต", nameEn: "Phone & Gadget", emoji: "📱", gradient: "from-slate-200 to-blue-200", description: "เคสมือถือ Airpods สายคล้อง Griptok Magsafe นาฬิกา Power Bank" },
-  { id: "cat-mssijpgu", name: "ซองใส่บัตร / สายคล้อง", nameEn: "", emoji: "🪪", gradient: "from-amber-100 to-amber-200", description: "" },
-  { id: "sticker-paper", name: "สติ๊กเกอร์ / กระดาษ", nameEn: "Sticker & Paper", emoji: "🏷️", gradient: "from-sky-200 to-blue-200", description: "สติกเกอร์ Die-Cut งานกระดาษ พิมพ์ตามสั่ง" },
-  { id: "card-photo", name: "Photocard / Postcard / Shikishi", nameEn: "Card & Photo", emoji: "🎴", gradient: "from-pink-200 to-rose-200", description: "โฟโต้การ์ด ชิกิชิ Card Board Name Tag ที่คั่นหนังสือ" },
-  { id: "banner", name: "โปสเตอร์ / Banner / ป้าย", nameEn: "Banner & Poster", emoji: "📢", gradient: "from-amber-200 to-yellow-200", description: "โปสเตอร์แขวนผนัง ป้าย Banner ไวนิล ผ้าเชียร์ สโลแกน" },
-  { id: "bag", name: "กระเป๋า", nameEn: "Bag", emoji: "👜", gradient: "from-emerald-200 to-teal-200", description: "กระเป๋าผ้าดิบ กระเป๋าโฮโล Laptop Bag Candybag" },
-  { id: "apparel", name: "เสื้อผ้า / หมวก / ร่ม", nameEn: "Apparel", emoji: "👕", gradient: "from-green-200 to-emerald-300", description: "เสื้อสกรีน/ปัก หมวก ร่ม ปลอกคอ/เสื้อสัตว์เลี้ยง" },
-  { id: "fabric", name: "ผ้า / หมอน / ผ้าห่ม", nameEn: "Fabric", emoji: "🧶", gradient: "from-emerald-200 to-teal-300", description: "ปลอกหมอน ผ้าห่ม ผ้าขนหนู ยางรัดผม ผ้าหลา" },
-  { id: "mirror-magnet", name: "กระจก / แม่เหล็ก", nameEn: "Mirror & Magnet", emoji: "🪞", gradient: "from-cyan-200 to-teal-200", description: "กระจกอะคริลิค แม่เหล็กติดตู้เย็น เข็มกลัด" },
-  { id: "calendar-frame", name: "กรอบรูป", nameEn: "Calendar & Frame", emoji: "🖼️", gradient: "from-orange-200 to-amber-200", description: "ปฏิทิน กรอบรูป Canvas Frame" },
-  { id: "home", name: "ของแต่งบ้าน / แก้ว / เมาส์แพด", nameEn: "Home", emoji: "🏠", gradient: "from-teal-200 to-cyan-200", description: "แก้วน้ำ แผ่นรองแก้ว เมาส์แพด พรมเช็ดเท้า ฟองน้ำ" },
-  { id: "gifts", name: "ของขวัญ / ปัก / ตุ๊กตา", nameEn: "Gifts", emoji: "🧸", gradient: "from-rose-200 to-pink-300", description: "อาร์มปัก ตุ๊กตาปัก ของขวัญชิ้นเล็ก" },
-  { id: "cat-msrdpxqn", name: "สมุด / ปฏิทิน", nameEn: "", emoji: "🏷️", gradient: "from-amber-100 to-amber-200", description: "" },
+  { id: "acrylic", name: "Keychain & Acrylic — พวงกุญแจ / งานอะคริลิค", nameEn: "Acrylic", emoji: "🔑", gradient: "from-sky-200 to-cyan-300", description: "พวงกุญแจอะคริลิค Jibbitz บัคเคิ้ล เขย่า แจกัน กิ๊บ และงานอะคริลิคทั่วไป", image: "https://upvigfvxloelzevwneof.supabase.co/storage/v1/object/public/product-images/products/categories/3206ab9e-c013-47a0-9da6-7f1595e2b6aa.png" },
+  { id: "standee", name: "Acrylic & Collectibles — สแตนดี้ / ของสะสม", nameEn: "Standee", emoji: "🧍", gradient: "from-indigo-200 to-blue-300", description: "สแตนดี้อะคริลิคทุกแบบ ตั้งโต๊ะ จิ๋ว ตั้งมือถือ ฐานเพลง โยกเยก หมุน" },
+  { id: "phone-gadget", name: "Phone & Gadget — เคส / ของใช้มือถือ", nameEn: "Phone & Gadget", emoji: "📱", gradient: "from-slate-200 to-blue-200", description: "เคสมือถือ Airpods สายคล้อง Griptok Magsafe นาฬิกา Power Bank" },
+  { id: "cat-mssijpgu", name: "Card Holder & Lanyard — ซองใส่บัตร / สายคล้อง", nameEn: "", emoji: "🪪", gradient: "from-amber-100 to-amber-200", description: "" },
+  { id: "sticker-paper", name: "Paper Goods — สติ๊กเกอร์ / กระดาษ / โปสการ์ด", nameEn: "Sticker & Paper", emoji: "🏷️", gradient: "from-sky-200 to-blue-200", description: "สติกเกอร์ Die-Cut งานกระดาษ พิมพ์ตามสั่ง" },
+  { id: "banner", name: "Posters & Banners— โปสเตอร์ / ป้ายเชียร์", nameEn: "Banner & Poster", emoji: "📢", gradient: "from-amber-200 to-yellow-200", description: "โปสเตอร์แขวนผนัง ป้าย Banner ไวนิล ผ้าเชียร์ สโลแกน" },
+  { id: "cat-mt2bpoyj", name: "Fashion — เสื้อ / กางเกง / ยางรัดผม", nameEn: "", emoji: "🏷️", gradient: "from-amber-100 to-amber-200", description: "" },
+  { id: "fabric", name: "Home & Living — เครื่องนอน / ของตกแต่งงานผ้า", nameEn: "Fabric", emoji: "🧶", gradient: "from-emerald-200 to-teal-300", description: "ปลอกหมอน ผ้าห่ม ผ้าขนหนู ยางรัดผม ผ้าหลา" },
+  { id: "gifts", name: "Gift & Set — เซ็ตของขวัญ / ของแจก / ตุ๊กตา", nameEn: "Gifts", emoji: "🧸", gradient: "from-rose-200 to-pink-300", description: "อาร์มปัก ตุ๊กตาปัก ของขวัญชิ้นเล็ก" },
+  { id: "cat-msrdpxqn", name: "Stationery & Office — สมุด / ปฏิทิน /เครื่องเขียน", nameEn: "", emoji: "🏷️", gradient: "from-amber-100 to-amber-200", description: "" },
+  { id: "apparel", name: "Daily Goods — ของใช้ / แก้ว / กระจก", nameEn: "Apparel", emoji: "👕", gradient: "from-green-200 to-emerald-300", description: "เสื้อสกรีน/ปัก หมวก ร่ม ปลอกคอ/เสื้อสัตว์เลี้ยง" },
+  { id: "bag", name: "Bags & Wallets  — กระเป๋า", nameEn: "Bag", emoji: "👜", gradient: "from-emerald-200 to-teal-200", description: "กระเป๋าผ้าดิบ กระเป๋าโฮโล Laptop Bag Candybag" },
   { id: "cat-mssnwupp", name: "สัตว์เลี้ยง", nameEn: "", emoji: "🐶", gradient: "from-amber-100 to-amber-200", description: "" },
-  { id: "cat-mssj6ytb", name: "อื่นๆ", nameEn: "", emoji: "✨", gradient: "from-amber-100 to-amber-200", description: "" },
 ];
 
 /**
