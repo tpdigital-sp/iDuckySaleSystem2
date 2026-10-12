@@ -3,8 +3,9 @@
 /* eslint-disable @next/next/no-img-element */
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/products";
-import { forgetOrderLink, orderLinkHref, readOrderLinks, type OrderLink } from "@/lib/my-order-links";
+import { forgetOrderLink, orderLinkHref, readOrderLinks, rememberOrderLink, type OrderLink } from "@/lib/my-order-links";
 import { LINE_URL } from "@/components/LineButton";
 
 /*
@@ -45,8 +46,17 @@ export default function FindOrderPage() {
   const [err, setErr] = useState("");
   const [found, setFound] = useState<Found[] | null>(null);
 
+  const router = useRouter();
   // localStorage อ่านได้เฉพาะฝั่งเบราว์เซอร์ — อ่านหลัง mount กัน hydration ไม่ตรง
   useEffect(() => setMine(readOrderLinks()), []);
+  /**
+   * 📱 มือถือ: ปุ่มลอยตะกร้า/แชท/LINE + ป้าย "ทักเราได้เลยนะ" ทับช่องกรอกและปุ่มค้นหา (12 ต.ค. 69)
+   * หน้านี้มีปุ่ม "ทักไลน์ร้าน" ของตัวเอง → ใช้คลาสชุดเดียวกับหน้าเช็คออเดอร์ (landing.css body.order-page)
+   */
+  useEffect(() => {
+    document.body.classList.add("order-page");
+    return () => document.body.classList.remove("order-page");
+  }, []);
 
   async function search() {
     setErr("");
@@ -65,7 +75,16 @@ export default function FindOrderPage() {
     if (!res) return setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ลองใหม่อีกครั้งครับ");
     const j = (await res.json().catch(() => ({}))) as { orders?: Found[]; error?: string };
     if (!res.ok) return setErr(j.error ?? "ค้นหาไม่สำเร็จ");
-    setFound(j.orders ?? []);
+    const list = j.orders ?? [];
+    if (!list.length) return setErr("ไม่พบออเดอร์ที่ตรงกับเบอร์โทร + เลขออเดอร์นี้ครับ — ลองเช็คเลขอีกที หรือทักไลน์ร้านได้เลย");
+    // จำลิงก์ไว้ในเครื่อง — ครั้งหน้าเข้าหน้านี้เจอใน "ออเดอร์ในเครื่องนี้" ไม่ต้องค้นซ้ำ
+    for (const o of list) rememberOrderLink({ id: o.id, key: o.key, total: o.total });
+    // เจอใบเดียว = พาเข้าออเดอร์เลย (เดิมการ์ดผลลัพธ์อยู่ใต้ปุ่ม หลุดจอมือถือ ลูกค้านึกว่ากดแล้วไม่มีอะไรเกิดขึ้น)
+    if (list.length === 1) {
+      router.push(orderLinkHref(list[0]));
+      return;
+    }
+    setFound(list);
   }
 
   function forget(id: string) {
@@ -135,7 +154,9 @@ export default function FindOrderPage() {
                 className="auth-input"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value.replace(/[^\d\-+ ]/g, ""))}
+                type="tel"
                 inputMode="tel"
+                autoComplete="tel-national"
                 placeholder="เบอร์โทรที่ใช้ตอนสั่ง *"
                 aria-label="เบอร์โทรที่ใช้ตอนสั่ง"
               />
