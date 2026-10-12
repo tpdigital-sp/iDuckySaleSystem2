@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Order } from "@/lib/admin-data";
 import { itemQtyText } from "@/lib/item-yield";
-import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, isOpenClaim, type Claim, type ClaimStatus } from "@/lib/claims";
+import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, withinClaimWindow, isOpenClaim, type Claim, type ClaimStatus } from "@/lib/claims";
 import { createClaim, fetchMyClaims, sendClaimMessage, uploadClaimPhoto } from "@/lib/claims-repo";
 import { LINE_URL } from "@/components/LineButton";
 import { AccountHead, AccountShell } from "@/components/account/AccountShell";
@@ -61,8 +61,7 @@ export default function ClaimsPage() {
     const busy = new Set((claims ?? []).filter(isOpenClaim).map((c) => c.orderId));
     return (orders ?? []).filter((o) => {
       if (!["จัดส่งแล้ว", "เสร็จสิ้น"].includes(o.status) || busy.has(o.id)) return false;
-      const t = shippedAtOf(o);
-      return !t || Date.now() - t <= CLAIM_WINDOW_DAYS * 86400_000;
+      return withinClaimWindow(shippedAtOf(o));
     });
   }, [orders, claims]);
 
@@ -295,7 +294,7 @@ function NewClaimModal({ claimable, onClose, onDone }: { claimable: Order[]; onC
         {claimable.length === 0 ? (
           <>
             <p className="acd-modal-sub">
-              ไม่มีออเดอร์ที่ยื่นเคลมในระบบได้ตอนนี้ (ยื่นได้เฉพาะออเดอร์ที่จัดส่งแล้วภายใน {CLAIM_WINDOW_DAYS} วัน และไม่มีเคลมค้างอยู่)
+              ไม่มีออเดอร์ที่ยื่นเคลมในระบบได้ตอนนี้ (ยื่นได้เฉพาะออเดอร์ที่จัดส่งแล้ว ภายใน {CLAIM_WINDOW_DAYS} วันหลังได้รับสินค้า และไม่มีเคลมค้างอยู่)
               — แต่ทักแอดมินทาง LINE ให้ช่วยดูได้เสมอครับ
             </p>
             <div className="acd-modal-actions">

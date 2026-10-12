@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { pushShopAlert } from "@/lib/server/line-alert";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { bearerUser, CLAIM_PHOTO_PATH_RE, findOpenClaimByOrder, insertClaim, isMissingTable, newClaimId } from "@/lib/server/claims-db";
-import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, type Claim } from "@/lib/claims";
+import { CLAIM_TYPES, CLAIM_WINDOW_DAYS, withinClaimWindow, type Claim } from "@/lib/claims";
 import type { Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
@@ -54,9 +54,9 @@ export async function POST(req: Request) {
   if (!["จัดส่งแล้ว", "เสร็จสิ้น"].includes(order.status))
     return NextResponse.json({ error: "ยื่นเคลมได้เมื่อออเดอร์จัดส่งแล้ว — ถ้างานยังไม่ถึงมือแต่มีปัญหา ทักแอดมินทาง LINE ได้เลย" }, { status: 400 });
   const shippedAt = shippedAtOf(order);
-  if (shippedAt && Date.now() - shippedAt > CLAIM_WINDOW_DAYS * 86400_000)
+  if (!withinClaimWindow(shippedAt))
     return NextResponse.json(
-      { error: `ออเดอร์นี้จัดส่งเกิน ${CLAIM_WINDOW_DAYS} วันแล้ว — ยื่นเคลมในระบบไม่ได้ แต่ทักแอดมินทาง LINE ให้ช่วยดูได้ครับ` },
+      { error: `ออเดอร์นี้เลยกำหนดเคลม ${CLAIM_WINDOW_DAYS} วันหลังได้รับสินค้าแล้ว — ยื่นเคลมในระบบไม่ได้ แต่ทักแอดมินทาง LINE ให้ช่วยดูได้ครับ` },
       { status: 400 },
     );
 

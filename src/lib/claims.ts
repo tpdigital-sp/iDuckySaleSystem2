@@ -32,6 +32,17 @@ export const CLAIM_CHANNELS = ["LINE", "โทร", "หน้าร้าน", 
 /** ยื่นเคลมได้ภายในกี่วันหลังจัดส่ง (ตกลงกับทางร้าน 20 ส.ค. 2569) — เกินแล้วให้ทักแอดมินทาง LINE แทน */
 export const CLAIM_WINDOW_DAYS = 7;
 
+/**
+ * เจ้าของร้าน 12 ต.ค. 69: เคลม 7 วัน "นับจากวันที่ได้รับสินค้า" — ระบบรู้แค่วันจัดส่ง ไม่รู้วันของถึงมือ
+ * จึงเผื่อเวลาขนส่งอีก CLAIM_DELIVERY_GRACE_DAYS วัน (แอดมินยังตรวจวันรับจริงจากคลิป/เลขพัสดุเอง)
+ */
+export const CLAIM_DELIVERY_GRACE_DAYS = 3;
+
+/** ยังยื่นเคลมในระบบได้ไหม — นับจากวันจัดส่ง + เวลาขนส่ง (ไม่มีวันจัดส่ง = ได้) */
+export function withinClaimWindow(shippedAt: number | null | undefined, now = Date.now()): boolean {
+  return !shippedAt || now - shippedAt <= (CLAIM_WINDOW_DAYS + CLAIM_DELIVERY_GRACE_DAYS) * 86400_000;
+}
+
 export interface ClaimMessage {
   by: "customer" | "admin";
   /** ชื่อคนตอบฝั่งร้าน (ฝั่งลูกค้าไม่ต้องมี) */

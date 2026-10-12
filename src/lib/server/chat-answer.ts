@@ -16,6 +16,7 @@ import { recordN8nCall } from "@/lib/server/ai-usage";
 import { catalogRefs, isMinQtyIntent, isSpecIntent, parseQty, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
 import { priceSearch } from "@/lib/server/price-search";
 import { shopCalendarText } from "./shop-calendar";
+import { shopContactText } from "@/lib/shop-info";
 import { HANDOFF_MSG_RE, HANDOFF_RULE_TEXT } from "./bot-handoff";
 import { bankCardUrl, shopGiftText, shopPaymentText } from "./shop-payment-text";
 import { BANK_ASK_RE, BANK_CARD } from "@/lib/bank-card";
@@ -43,10 +44,14 @@ const WEBHOOK = process.env.CHAT_WEBHOOK_URL || "https://n8n.iduckybot.com/webho
  * 12 ต.ค. 69 เจ้าของร้าน: แชทหน้าเว็บ "ลงท้าย ค่ะ" เหมือนบอท LINE (เดิมเป็นแอดมินผู้ชาย "ครับ")
  * คำลงท้ายต้องตรงกับ GREETING ใน lib/shop-chat และข้อความตายตัวทุกจุดในไฟล์นี้ — ไม่งั้นลูกค้าเห็นเปลี่ยนกลางบทสนทนา
  */
+/** ถามนโยบาย/ช่องทางติดต่อ ไม่ใช่ราคา (12 ต.ค. 69 ชุด 3) */
+const POLICY_Q_RE = /ค่า(บล็อก|บล๊อก|บล็อค|เพลท|เพลต|แม่พิมพ์)|ฟอนต์|font|ส่งไฟล์|ส่ง(งาน|ภาพ|รูป)ทาง|อีเมล|เมลร้าน|e-?mail|ตัวแทน|สมัคร(ใหม่|ตัวแทน)|เบอร์(โทร|ติดต่อ|ร้าน)|ขอเบอร์|โลเค|location|แผนที่|ที่อยู่ร้าน|ร้านอยู่(ที่)?ไหน|เคลม|ซัก(เครื่อง|มือ|ได้)|สีตก|ทำแบบ.{0,10}ก่อน|ลายมาให้ดู/i;
+
 const PERSONA =
   "คุณคือ 'ผู้ช่วย iDucky' แอดมินผู้หญิงของร้าน iDucky Prints Studio (รับพิมพ์/ผลิตสินค้าตามสั่ง) " +
   "กำลังตอบลูกค้าทางแชทหน้าเว็บร้าน ตอบสุภาพ เป็นกันเอง กระชับ ลงท้ายด้วย 'ค่ะ/นะคะ' เสมอ " +
-  "ห้ามลงท้ายด้วย 'ครับ' ห้ามใช้ markdown (* ** #) ใช้ • นำหน้ารายการ ตอบจากข้อมูลจริงของร้านเท่านั้น ห้ามเดาราคาที่ไม่มีในข้อมูล";
+  "ห้ามลงท้ายด้วย 'ครับ' ห้ามใช้ markdown (* ** #) ใช้ • นำหน้ารายการ ตอบจากข้อมูลจริงของร้านเท่านั้น ห้ามเดาราคาที่ไม่มีในข้อมูล " +
+  "ถ้าลูกค้าพิมพ์ภาษาอื่น (เช่น อังกฤษ) ให้ตอบเป็นภาษาเดียวกับลูกค้า (เจ้าของร้าน 12 ต.ค. 69)";
 
 /**
  * ข้อความ "เกริ่นนำ" ที่ยังไม่ได้ถามอะไรจริง — สวัสดี / สอบถามหน่อย / รบกวนถามหน่อย
@@ -174,7 +179,12 @@ export async function answerChat(body: ChatBody, opts: { ip: string; staff?: boo
       .replace(/ครับผม/g, "ค่ะ")
       .replace(/ครับ/g, "ค่ะ")
       .replace(/\*\*([^*\n]+)\*\*/g, "$1")
-      .replace(/^\s*\*\s+/gm, "• ");
+      .replace(/^\s*\*\s+/gm, "• ")
+      .replace(/(ตอบกลับนะคะ\s*🙏)\s*ค่ะ/g, "$1");
+    // 🌐 ตอบภาษาอังกฤษ (ลูกค้าพิมพ์อังกฤษ) → ตัด "ค่ะ/นะคะ" ที่ workflow เติมท้ายประโยคอังกฤษ (",ค่ะ") · ประโยคส่งต่อภาษาไทยคงเดิม
+    const thaiN = (b.reply.match(/[฀-๿]/g) ?? []).length;
+    const latinN = (b.reply.match(/[A-Za-z]/g) ?? []).length;
+    if (latinN > thaiN * 2) b.reply = b.reply.replace(/([A-Za-z0-9.!?)'"])\s*,?\s*(นะคะ|ค่ะ|คะ)(?=[\s.!?]|$)/g, "$1");
   }
   if (r.status === 200 && (r.body as { reply?: string }).reply && BANK_ASK_RE.test(msg)) {
     const url = await bankCardUrl().catch(() => null);
@@ -308,7 +318,9 @@ async function answerChatInner(
   const customerHist = (body.history ?? []).filter((t) => t && t.role !== "shop" && typeof t.text === "string").slice(-8).map((t) => String(t.text)).join("\n");
   const orderLk = orderQ ? await lookupWebOrders({ message, history: customerHist, myOrders: body.myOrders, authToken: body.authToken, ip: opts.ip }).catch(() => null) : null;
   const orderCtx = orderLk ? await webOrderContext(orderLk, true).catch(() => "") : "";
-  const giftQ = orderQ || /ของแถม|แถม(อะไร|ไหม|มั้ย|ฟรี|ด้วย)|ได้แถม|แพ็?[กค]เกจ(รองหลัง|ฟรี)|โปร(โมชั่น)?\s*(อะไร|ไหม|มั้ย|ตอนนี้)/.test(message);
+  // 📇 คำถามนโยบาย/ติดต่อ (ค่าบล็อก · ฟอนต์ · ส่งไฟล์ · ตัวแทน · เบอร์/แผนที่ · เคลม · ซักผ้า) → ข้ามตัวคิดราคาเหมือนกัน (เคยตอบ "ค่าบล็อก" ด้วยการถามชื่อสินค้า)
+  const policyQ = !staff && POLICY_Q_RE.test(message);
+  const giftQ = orderQ || policyQ || /ของแถม|แถม(อะไร|ไหม|มั้ย|ฟรี|ด้วย)|ได้แถม|แพ็?[กค]เกจ(รองหลัง|ฟรี)|โปร(โมชั่น)?\s*(อะไร|ไหม|มั้ย|ตอนนี้)/.test(message);
   if (giftQ) {
     /* ไม่ใช้ราคา/สเปคจากหน้าสินค้า */
   } else if (siteVia) {
@@ -397,6 +409,12 @@ async function answerChatInner(
   const payment = await shopPaymentText().catch(() => "");
   const gift = await shopGiftText().catch(() => ""); // 🎁 โปรของแถม (หลังบ้าน › ของแถมฟรี)
   const askGift = /แถม|รองหลัง|โปร(โมชั่น)?|ซองใส|ฟรีอะไร/.test(message);
+  const contact = shopContactText(); // 📇 เบอร์/อีเมล/แผนที่/ส่งไฟล์/ตัวแทน
+  // 🌐 ลูกค้าพิมพ์อังกฤษ (เจ้าของร้าน 12 ต.ค. 69: ตอบตามภาษาลูกค้า) — workflow เอียงไปภาษาไทย ต้องสั่งใน message ตรง ๆ
+  const enQ = (message.match(/[A-Za-z]/g) ?? []).length > 2 * (message.match(/[฀-๿]/g) ?? []).length;
+  const enHint = enQ
+    ? "\n\n[The customer wrote in English. Reply entirely in English (no Thai particles). Lead time: design starts after the order is paid, 1-3 working days; production 1-2 working days after design approval (resin/Griptok 2-3). Thailand shipping only.]"
+    : "";
   const askPay = /บัญชี|เลขบัญชี|โอน(ที่|เข้า|ยังไง|ได้)|พร้อมเพย์|ชำระ(ยังไง|ทาง)/.test(message);
 
   let reply = "";
@@ -409,7 +427,7 @@ async function answerChatInner(
         // ฝัง "คำแนะนำระบบ" ต่อท้ายข้อความ (สั่งให้ค้นราคา/จับวัสดุ/แปลงเซ็ต) แบบเดียวกับ chat.html
         // priceFacts ต้องอยู่ใน message ไม่ใช่แค่ systemMessage — agent ของ n8n ให้น้ำหนัก message
         // มากกว่ามาก (ยัดไว้ใน systemMessage อย่างเดียว มันเมินแล้วไปหยิบราคาจาก tool ตัวเองแทน)
-        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : "") + (askPay && payment ? `\n\n[${payment}]` : "") + (askGift && gift ? `\n\n[${gift}]` : "") + (orderCtx ? `\n\n[${orderCtx}]` : ""),
+        message: message + priceFacts + (ctx?.messageHint ?? "") + (askTime ? calendarHint : "") + (askPay && payment ? `\n\n[${payment}]` : "") + (askGift && gift ? `\n\n[${gift}]` : "") + (policyQ ? `\n\n[${contact}]` : "") + enHint + (orderCtx ? `\n\n[${orderCtx}]` : ""),
         sessionId,
         userId: `${staff ? "admin" : "web"}-${sessionId}`,
         source: staff ? "adminbuddy" : "website",
@@ -418,7 +436,7 @@ async function answerChatInner(
         // ⚠️ workflow ไม่ได้อ่าน knowledgeContext ที่ไหนเลย (ตรวจจาก system message ของ AI Agent1 แล้ว)
         // คลังความรู้ที่คัดมาจึงต้องต่อท้าย systemMessage ไม่งั้นส่งไปแล้วถูกทิ้งทั้งก้อน
         systemMessage:
-          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}${orderCtx ? `\n${orderCtx}` : ""}\n${HANDOFF_RULE_TEXT}` ||
+          `${priceFacts}${ctx?.systemMessage ?? ""}${ctx?.knowledgeContext ? `\n${ctx.knowledgeContext}` : ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}\n${contact}${orderCtx ? `\n${orderCtx}` : ""}\n${HANDOFF_RULE_TEXT}` ||
           undefined,
         conversationHistory: convo || undefined,
         knowledgeContext: ctx?.knowledgeContext,
@@ -450,7 +468,7 @@ async function answerChatInner(
   // ลูกค้าได้คำตอบจากข้อมูลร้านจริงเสมอ ดีกว่าข้อความ "ผู้ช่วยตอบช้า" เปล่า ๆ
   if (!reply) {
     // ตัวตอบสำรอง (n8n ช้า/ล่ม) ต้องได้ข้อมูลร้านชุดเดียวกับ n8n — เคยตอบ "ยังไม่มีข้อมูลโปรของแถม" เพราะไม่ได้ส่ง gift มา (12 ต.ค. 69)
-    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}${orderCtx ? `\n${orderCtx}` : ""}\n${HANDOFF_RULE_TEXT}`, ctx?.knowledgeContext, convo);
+    const direct = await answerFromContext(message, `${priceFacts}${ctx?.systemMessage ?? ""}${calendar ? `\n${calendar}` : ""}${payment ? `\n${payment}` : ""}${gift ? `\n${gift}` : ""}\n${contact}${orderCtx ? `\n${orderCtx}` : ""}\n${HANDOFF_RULE_TEXT}`, ctx?.knowledgeContext, convo);
     if (direct) reply = direct;
   }
 

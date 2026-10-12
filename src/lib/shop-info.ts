@@ -15,6 +15,25 @@ export const SHOP = {
 /** ที่อยู่ร้านแบบบรรทัดเดียว (ใช้บนใบปะหน้าพัสดุ) */
 export const shopAddressOneLine = [SHOP.legalName, ...SHOP.addressLines].join(" ");
 
+/** อีเมลร้าน (รับไฟล์งานด้วย) — ตรงกับหน้าเกี่ยวกับเรา/LegalPage */
+export const SHOP_EMAIL = "iduckyshop03@gmail.com";
+
+/** ลิงก์ Google Maps ของร้าน (ค้นจากที่อยู่ แบบเดียวกับหน้าเกี่ยวกับเรา) */
+export const SHOP_MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shopAddressOneLine)}`;
+
+/**
+ * 📇 ข้อมูลติดต่อ/ช่องทางที่บอทตอบลูกค้าได้เลย (เจ้าของร้าน 12 ต.ค. 69 ชุด 3)
+ * ใช้ทั้งแชทเว็บ (chat-answer) และบอท LINE (customer-profile) — แก้ที่นี่ที่เดียว
+ */
+export function shopContactText(): string {
+  return [
+    `📇 ข้อมูลติดต่อร้าน (ตอบลูกค้าได้เลย): โทร ${SHOP.phone} · อีเมล ${SHOP_EMAIL} · ที่อยู่ ${shopAddressOneLine} · แผนที่ ${SHOP_MAPS_URL}`,
+    `ส่งไฟล์งาน: แชร์ลิงก์ Google Drive ในแชท หรือส่งอีเมล ${SHOP_EMAIL} ได้ทั้ง 2 ทาง (.AI .PSD .PNG พื้นหลังใส) · ทำเส้นไดคัทมาเองหรือให้ร้านทำก็ได้ · ใช้ฟอนต์ของลูกค้าได้`,
+    "สั่งซื้อ: ให้สั่งบนเว็บ iduckystore.com ก่อน แล้วแจ้งเลขออเดอร์ในแชท · ไม่มีค่าบล็อก (งานพิมพ์ดิจิทัล) · ร้านเริ่มทำแบบหลังสั่งซื้อและโอนเงินแล้ว",
+    "ตัวแทนจำหน่าย: ตัวแทนจากระบบเก่าต้องสมัครใหม่ที่ iduckystore.com/dealer (ล็อกอินก่อน รอร้านอนุมัติ)",
+  ].join("\n");
+}
+
 /** ที่อยู่เว็บจริง — ตั้ง NEXT_PUBLIC_SITE_URL ทับได้ถ้าย้ายโดเมน */
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://iduckystore.com").replace(/\/+$/, "");
 

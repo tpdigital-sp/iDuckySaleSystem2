@@ -11,6 +11,7 @@ import type { Contact } from "@/lib/contacts";
 import { describeOrdersForBot } from "./bot-orders";
 import { shopCalendarText } from "./shop-calendar";
 import { HANDOFF_RULE_TEXT } from "./bot-handoff";
+import { shopContactText } from "@/lib/shop-info";
 import { shopGiftText, shopPaymentText } from "./shop-payment-text";
 import { inBackground } from "./background";
 
@@ -213,7 +214,7 @@ export async function buildCustomerProfile(userId: string): Promise<CustomerProf
   const calendar = await Promise.race([calendarP, new Promise<string>((r) => setTimeout(() => r(""), left(1500)))]);
   const payment = await Promise.race([paymentP, new Promise<string>((r) => setTimeout(() => r(""), left(1500)))]);
   const gift = await Promise.race([giftP, new Promise<string>((r) => setTimeout(() => r(""), left(1000)))]);
-  const text = [lines.join("\n").slice(0, 900), calendar, payment, gift, HANDOFF_RULE_TEXT].filter(Boolean).join("\n");
+  const text = [lines.join("\n").slice(0, 900), calendar, payment, gift, shopContactText(), HANDOFF_RULE_TEXT].filter(Boolean).join("\n");
   // ⚡ แคชก้อนข้อความไว้ในห้องแชท (profile.text/textAt) — n8n Build AI Request อ่านจาก Read Memory ได้ทันที ไม่ต้องเรียก API ทุกข้อความ (1 ต.ค. 69)
   inBackground("customer-profile cache", db.collection(CHAT_COLLECTION).doc(userId).set({ profile: { text, textAt: new Date().toISOString() } }, { merge: true }));
   return {
