@@ -5659,6 +5659,26 @@ export function rateSpecOfLine(
   return pick ? shown({ [RATE_LABEL]: pick.label }) : "";
 }
 
+/**
+ * 🗣 คำศัพท์ร้านที่ลูกค้าอ่านไม่เข้าใจ → คำง่าย — ใช้ "ตอนแสดงบนหน้าร้าน" เท่านั้น (เจ้าของร้านอนุมัติ 12 ต.ค. 69)
+ * ⚠️ ห้ามเอาไปเขียนทับ label/selections — ตะกร้า · ออเดอร์ · รวมล็อต · ใบงาน จับคู่เรทด้วยชื่อเดิม
+ * "ดีเทล" (ลาย/ขนาด/อะไหล่ที่ต่างกัน) → "แบบ"
+ */
+export function shopWords(text: string): string {
+  return text.replace(/ดีเทล/g, "แบบ");
+}
+
+/**
+ * ชื่อเรทที่ลูกค้าเห็นบนหน้าสินค้า — "เรทที่ 1 แบบคละดีเทล" / "เรทที่ 2 แบบไม่คละดีเทล" (17 สินค้า: พวงกุญแจ/แผ่นอะคริลิค/สแตนดี้)
+ * เป็น "ราคาปกติ (คละลายได้)" / "ราคาส่ง (สั่งจำนวนมาก)" · ชื่ออื่นแค่แปลงคำว่า ดีเทล
+ */
+export function rateShopLabel(r: Pick<PriceRate, "label">): string {
+  const l = r.label.trim();
+  if (/ไม่\s*คละ\s*ดีเทล/.test(l)) return "ราคาส่ง (สั่งจำนวนมาก)";
+  if (/คละ\s*ดีเทล/.test(l)) return "ราคาปกติ (คละลายได้)";
+  return shopWords(l);
+}
+
 export function rateLineForCustomer(p: Product, selections: Record<string, string>): boolean {
   const label = selections[RATE_LABEL];
   if (!label || publicRates(p).length < 2) return false;

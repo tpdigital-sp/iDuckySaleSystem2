@@ -87,6 +87,8 @@ import {
   priceMatrixKey,
   priceRange,
   publicRates,
+  rateShopLabel,
+  shopWords,
   qtyFromAreaOf,
   PRODUCTS,
   RATE_LABEL,
@@ -1662,7 +1664,7 @@ export default function ProductDetail({
         if (alt && alt.label !== rate.label) {
           setRateLabel(alt.label);
           setAutoRateNote(
-            `สลับเป็น “${alt.label}” ให้อัตโนมัติ — ลายที่แนบ ${needDesigns} ลาย เกินที่เรทเดิมคละได้`
+            `สลับเป็น “${rateShopLabel(alt)}” ให้อัตโนมัติ — ลายที่แนบ ${needDesigns} ลาย เกินที่แบบราคาเดิมคละได้`
           );
           return;
         }
@@ -2587,7 +2589,7 @@ export default function ProductDetail({
             <>
               <span className="text-xs font-extrabold text-amber-700">
                 ✅ {backOn ? `${sideWord}ครบ` : "ครบ"} {limit!.toLocaleString("th-TH")} รูปตาม
-                {cap != null ? "ที่ระบุคละไว้แล้ว" : `เพดานคละของเรทนี้แล้ว`}
+                {cap != null ? "ที่ระบุคละไว้แล้ว" : `เพดานคละของราคานี้แล้ว`}
               </span>
               <span className="text-[10px] font-normal text-amber-600">
                 {cap != null
@@ -2607,7 +2609,7 @@ export default function ProductDetail({
                 {cap != null
                   ? `ระบุคละไว้ ${cap.toLocaleString("th-TH")} ลาย แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
                   : limit != null
-                    ? `${backOn ? sideWord : "เรทนี้"}คละได้ ${limit.toLocaleString("th-TH")} ลาย แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
+                    ? `${backOn ? sideWord : "ราคานี้"}คละได้ ${limit.toLocaleString("th-TH")} ลาย แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
                     : "ใส่ได้ไม่จำกัดจำนวน"}{" "}
                 · ไฟล์ละไม่เกิน 15MB
               </span>
@@ -5329,7 +5331,8 @@ export default function ProductDetail({
     rates.length > 1 && rate ? (
       <div className={`mt-5 ${useCustom ? "pointer-events-none select-none opacity-40" : ""}`} aria-disabled={useCustom}>
         <span className="mb-1.5 block text-[13px] font-bold text-stone-700">
-          {RATE_LABEL}: <span className="font-semibold text-amber-600">{rate.label}</span>
+          {/* 🗣 ชื่อเรทแบบคำง่าย (rateShopLabel) — ข้อมูล/ตะกร้ายังใช้ rate.label เดิม · หัวข้อ "เรทราคา" → "แบบราคา" (12 ต.ค. 69) */}
+          แบบราคา: <span className="font-semibold text-amber-600">{rateShopLabel(rate)}</span>
         </span>
         <div className="grid gap-1.5">
           {rates.map((r) => {
@@ -5384,7 +5387,7 @@ export default function ProductDetail({
                       <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}>
                         {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
                       </span>
-                      {r.label}
+                      {rateShopLabel(r)}
                       {locked && (
                         <span className="rounded-full bg-stone-200/70 px-1.5 py-px text-[10px] font-bold text-stone-500">
                           {sheets.length > 0 ? `🔒 กำลังสั่งหลาย${lotWord}` : `🔒 ต้องสั่ง ${need.toLocaleString("th-TH")}+`}
@@ -5411,7 +5414,7 @@ export default function ProductDetail({
         {/* คำอธิบายเรท — โชว์เฉพาะเรทที่เลือกไว้ใต้รายการ (ใส่ในการ์ดทุกใบแล้วการ์ดสูงรก อ่านยาก) */}
         {rate.desc && (
           <p className="mt-2 rounded-xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-200">
-            <span className="font-bold text-stone-700">ℹ️ {rate.label}:</span> {rate.desc}
+            <span className="font-bold text-stone-700">ℹ️ {rateShopLabel(rate)}:</span> {shopWords(rate.desc)}
           </p>
         )}
         {autoRateNote && (
@@ -5678,7 +5681,7 @@ export default function ProductDetail({
                 }
               : belowMinQty
                 ? {
-                    long: `⚠ เรทนี้เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${ctaUnit}`,
+                    long: `⚠ ราคานี้เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${ctaUnit}`,
                     short: `⚠ เริ่มขายที่ ${rateMinQty.toLocaleString("th-TH")} ${ctaUnit}`,
                   }
                 : needDesignsChoice && !designsOk
@@ -6399,7 +6402,8 @@ export default function ProductDetail({
           )}
           <p className="text-sm font-bold text-stone-700">
             💰 ราคาต่อหน่วยตามจำนวน
-            {rate && <span className="ml-1 font-semibold text-teal-700">· {rate.label}</span>}
+            {/* เรทเดียว = ชื่อเรท ("เรทที่ 1") ไม่ช่วยลูกค้า — โชว์เฉพาะสินค้าที่มีให้เลือกหลายเรท */}
+            {rate && rates.length > 1 && <span className="ml-1 font-semibold text-teal-700">· {rateShopLabel(rate)}</span>}
           </p>
           {/* ตารางราคาขั้นบันได (rate card) — หลายคอลัมน์ = โชว์ทีละแบบตามที่เลือกอยู่ (กดเทียบทุกแบบได้) */}
           {matrix &&
@@ -6455,7 +6459,7 @@ export default function ProductDetail({
                         onClick={() => setPriceAllCols((v) => !v)}
                         className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
                       >
-                        {cols.length > 1 ? "แสดงเฉพาะแบบที่เลือก" : `⇄ เทียบทุกแบบ (${allKeys.length})`}
+                        {cols.length > 1 ? "แสดงเฉพาะแบบที่เลือก" : "⇄ ดูราคาแบบอื่น ๆ"}
                       </button>
                     </div>
                   )}
@@ -6551,13 +6555,13 @@ export default function ProductDetail({
           )}
           {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
             <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
-              🎨 เรทนี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit}
+              🎨 ราคานี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit}
               {/* สินค้าทั่วไป: ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
                   (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) — แต่สินค้า hardMinQty ขั้นต่ำเป็นของจริง */}
               {rate.minQty && rate.minQty > 1
                 ? product.hardMinQty
                   ? ` · สั่งขั้นต่ำ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป`
-                  : ` · เรทนี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
+                  : ` · ราคานี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
                 : ""}
             </p>
           )}
@@ -8195,7 +8199,7 @@ export default function ProductDetail({
                       const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
                       return (
                         <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                          💡 คละ {designs.toLocaleString("th-TH")} ลาย เกินโควตาเรทนี้ (รวมในราคา {included.toLocaleString("th-TH")} ลาย ·
+                          💡 คละ {designs.toLocaleString("th-TH")} ลาย เกินโควตาของราคานี้ (รวมในราคา {included.toLocaleString("th-TH")} ลาย ·
                           ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — ราคาจึงคิดตามชิ้นต่อลาย:
                           ตกลายละ {perDesign.toLocaleString("th-TH")} {unit} → ใช้เรท{" "}
                           <strong className="font-bold">
@@ -8218,7 +8222,7 @@ export default function ProductDetail({
                           <strong className="font-bold">
                             &ldquo;{tierLabel || `${perDesign.toLocaleString("th-TH")} ${unit}`}&rdquo;
                           </strong>
-                          {rate?.label ? ` ของ${rate.label}` : ""}
+                          {rate?.label && rates.length > 1 ? ` ของ${rateShopLabel(rate)}` : ""}
                           {designs > 1 ? " — อยากได้ราคาถูกลง ลองลดจำนวนลาย หรือเพิ่มจำนวนสั่งดูนะครับ" : ""}
                         </p>
                       );
@@ -8226,13 +8230,21 @@ export default function ProductDetail({
                   ) : freeMix && rate?.minPerDesign ? (
                     <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
                       {/* เพดานลาย = จำนวน "ชิ้น" ไม่ใช่จำนวนหน่วยสั่ง — สินค้าขายเป็นเซ็ต (เซ็ตละ N ชิ้น) คละได้ตามชิ้น */}
-                      ✨ ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย)
+                      {/* 🗣 เดิม "ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด 1 ลาย)" อ่านแล้วขัดกันเอง
+                          (สั่ง 1 ชิ้น = คละได้ 1 ลาย) → แยกเป็นช่วงจำนวนให้ชัด (เจ้าของร้านอนุมัติ 12 ต.ค. 69) */}
+                      ✨ {rate.freeMixBelowQty && rate.freeMixBelowQty > 2
+                        ? `สั่ง 1–${(rate.freeMixBelowQty - 1).toLocaleString("th-TH")} ${pieceUnit}: `
+                        : ""}
+                      คละลายได้ทุก{pieceUnit} ไม่คิดเพิ่ม
+                      {maxDesigns === 1
+                        ? ` (ตอนนี้ 1 ${pieceUnit} = 1 ลาย)`
+                        : ` (ตอนนี้คละได้ถึง ${maxDesigns.toLocaleString("th-TH")} ลาย)`}
                       {rate.freeMixBelowQty
-                        ? ` · สั่งตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${pieceUnit}ขึ้นไป ขั้นต่ำลายละ ${rate.minPerDesign.toLocaleString("th-TH")}` +
+                        ? ` · ตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${pieceUnit}: ลายละอย่างน้อย ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit}` +
                           (rate.underMinPieceFee
-                            ? ` (ไม่ถึงคิดส่วนต่าง${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)})`
+                            ? ` (ลายที่ไม่ถึง คิดเพิ่ม${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)})`
                             : rate.extraDesignFee
-                            ? ` (คละเกินโควตาได้ ลายละ +${formatPrice(rate.extraDesignFee)})`
+                            ? ` (ลายเกินคิดเพิ่มลายละ +${formatPrice(rate.extraDesignFee)})`
                             : "")
                         : ""}
                     </p>
@@ -8257,7 +8269,7 @@ export default function ProductDetail({
                     (designs >= maxDesigns ? (
                       <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
                         ⚠️ แนบภาพลายมา {artFiles.length} รูป แต่จำนวน {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}{" "}
-                        เรทนี้คละได้สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย —
+                        ราคานี้คละได้สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย —
                         ถ้าเป็นลายคนละแบบ เพิ่มจำนวนสั่งเพื่อคละได้มากขึ้น (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)
                       </p>
                     ) : (
@@ -8594,7 +8606,7 @@ export default function ProductDetail({
                     ) : (
                       <>
                         {/* งาน 2 ด้าน: บอกให้ชัดว่าเป็นเพดานของด้านไหน — ด้านหลังก็ใช้เพดานคละของเรทชุดเดียวกัน */}
-                        {backSide ? "ลายด้านหลัง — " : ""}สั่ง {qty.toLocaleString("th-TH")} {unit} เรทนี้คละได้สูงสุด{" "}
+                        {backSide ? "ลายด้านหลัง — " : ""}สั่ง {qty.toLocaleString("th-TH")} {unit} ราคานี้คละได้สูงสุด{" "}
                         <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย{backSide ? "ต่อด้าน" : ""}</strong>
                       </>
                     )}{" "}
@@ -8703,7 +8715,7 @@ export default function ProductDetail({
             onClick={() => setRateLock(null)}
             role="dialog"
             aria-modal="true"
-            aria-label={`${rateLock.label} ยังใช้ไม่ได้`}
+            aria-label={`${rateShopLabel(rateLock)} ยังใช้ไม่ได้`}
           >
             <div
               className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200"
@@ -8715,10 +8727,10 @@ export default function ProductDetail({
                 </span>
                 <div className="min-w-0 flex-1">
                   <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">
-                    “{rateLock.label}” ยังใช้ไม่ได้ตอนนี้
+                    “{rateShopLabel(rateLock)}” ยังใช้ไม่ได้ตอนนี้
                   </h3>
                   <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
-                    เรทนี้ต้องสั่งรวมอย่างน้อย{" "}
+                    แบบราคานี้ต้องสั่งรวมอย่างน้อย{" "}
                     <strong className="text-stone-800">
                       {need.toLocaleString("th-TH")} {unit}
                     </strong>{" "}
@@ -8743,7 +8755,7 @@ export default function ProductDetail({
 
               {save > 0 && (
                 <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
-                  ✨ สั่งครบ {need.toLocaleString("th-TH")} {unit} จะได้ {formatPrice(atNeed)}/{unit} — ถูกกว่าเรทที่ใช้อยู่{" "}
+                  ✨ สั่งครบ {need.toLocaleString("th-TH")} {unit} จะได้ {formatPrice(atNeed)}/{unit} — ถูกกว่าราคาที่ใช้อยู่{" "}
                   {formatPrice(save)}/{unit}
                 </p>
               )}
@@ -8762,14 +8774,14 @@ export default function ProductDetail({
                   }}
                   className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
                 >
-                  ปรับเป็น {need.toLocaleString("th-TH")} {unit} แล้วใช้เรทนี้
+                  ปรับเป็น {need.toLocaleString("th-TH")} {unit} แล้วใช้ราคานี้
                 </button>
                 <button
                   type="button"
                   onClick={() => setRateLock(null)}
                   className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
                 >
-                  ไว้ก่อน ใช้เรทเดิม
+                  ไว้ก่อน ใช้ราคาเดิม
                 </button>
               </div>
             </div>

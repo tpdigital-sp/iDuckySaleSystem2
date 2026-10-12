@@ -51,6 +51,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingVisible } from "@/lib/shipping-auto";
 import { LINE_URL } from "@/components/LineButton";
 import StockCheckNote from "@/components/StockCheckNote";
+import PostcodeHelper from "@/components/PostcodeHelper";
 
 interface Placed {
   id: string;
@@ -1114,7 +1115,9 @@ export default function CheckoutPage() {
         </div>
         <div>
           <label className="mb-1 block text-sm font-bold text-stone-700">ที่อยู่จัดส่ง</label>
-          <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} placeholder="บ้านเลขที่ · ถนน · ตำบล/อำเภอ · จังหวัด · รหัสไปรษณีย์" className={`${inputCls} resize-y`} />
+          <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} placeholder="บ้านเลขที่ · หมู่บ้าน/อาคาร · ซอย · ถนน" className={`${inputCls} resize-y`} />
+          {/* 📮 รหัสไปรษณีย์ → เลือกตำบล → เติม "ต.… อ.… จ.… 12345" ต่อท้ายช่องที่อยู่ (ยังเก็บเป็นข้อความก้อนเดียว) */}
+          <PostcodeHelper address={address} setAddress={setAddress} inputCls={inputCls} />
           {address && addressProblem(address) && <p className="mt-1 text-xs font-medium text-rose-600">{addressProblem(address)}</p>}
         </div>
       </div>
