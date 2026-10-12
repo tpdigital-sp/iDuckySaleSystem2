@@ -12,7 +12,7 @@ export const runtime = "nodejs";
  * เคสแรก OD-260929-7393 (12 ต.ค. 69): ต้องส่ง 10 ที่อยู่ ฝ่ายแพ็คส่งรวมกล่องเดียว → ไปเอาของคืนมา ต้องตั้งแผนแบ่งส่งใหม่
  * แต่กล่อง 📋 แผนแบ่งส่งซ่อนทันทีที่ใบมีเลขพัสดุ และหน้าจอไม่มีทางถอดเลขหลัก
  *
- * ทำอะไร: ถอดเลขช่องหลัก + กล่องเพิ่ม + แพ็คเสร็จ · สถานะกลับ "กำลังผลิต" · เก็บเลขเดิมใน Order.returned (ห้ามยิงซ้ำ)
+ * ทำอะไร: ถอดเลขช่องหลัก + กล่องเพิ่ม + แพ็คเสร็จ + ภาพก่อนปิดกล่อง (ย้ายเก็บในประวัติ) · สถานะกลับ "กำลังผลิต" · เก็บเลขเดิมใน Order.returned (ห้ามยิงซ้ำ)
  * ⚠️ ไม่แตะรอบแบ่งส่งที่ส่งไปแล้ว (shipments) · ไม่แจ้งไลน์ลูกค้า (ใช้ updateOrder ตรง ไม่ผ่าน PATCH) — แอดมินคุยในแชทเอง
  * แอดมินเท่านั้น (orders.edit) — ฝ่ายแพ็คไม่มีปุ่มนี้
  */
@@ -44,7 +44,15 @@ export async function POST(req: Request) {
 
   const by = gate.actor.name?.trim() || gate.actor.username;
   const trackings = [order.tracking ?? "", ...(order.extraTrackings ?? []).map((b) => b.tracking)].map((t) => t.trim()).filter(Boolean);
-  const record: ReturnedShipment = { trackings, reason, statusWas: order.status, by, at: new Date().toISOString() };
+  const record: ReturnedShipment = {
+    trackings,
+    reason,
+    statusWas: order.status,
+    by,
+    at: new Date().toISOString(),
+    // 📸 ภาพกล่องเก่าย้ายมาเก็บที่นี่ — ค้างใน packPhotos = ด่านแพ็ค "ต้องมีภาพก่อนปิดกล่อง" ผ่านด้วยภาพกล่องที่ตีกลับ
+    ...(order.packPhotos?.length ? { packPhotos: order.packPhotos } : {}),
+  };
   // ใบเสร็จสิ้น/จัดส่งแล้ว → กลับไปขั้นก่อนส่ง · ใบที่สถานะไม่ใช่ขั้นส่ง (แก้มือมาแล้ว) คงไว้
   const status: OrderStatus = order.status === "จัดส่งแล้ว" || order.status === "เสร็จสิ้น" ? "กำลังผลิต" : order.status;
 
@@ -54,6 +62,9 @@ export async function POST(req: Request) {
       tracking: undefined,
       extraTrackings: undefined,
       packedAt: undefined,
+      packPhotos: undefined,
+      // 🧾 ใบเสร็จ/ใบกำกับกลับมากับกล่อง — ต้องใส่กล่องใหม่อีกรอบ
+      taxInvoicePacked: undefined,
       status,
       returned: [...(order.returned ?? []), record],
     },

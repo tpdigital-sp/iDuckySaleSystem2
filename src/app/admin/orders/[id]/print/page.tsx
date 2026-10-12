@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
 import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -933,10 +933,27 @@ function OrderDocs({
   /* 🚚 ใบที่แบ่งส่งไปแล้ว — ใต้รูปต้องบอก "เหลือกี่ชิ้น" ไม่ใช่จำนวนเต็ม (เจ้าของร้านแจ้ง 23 ก.ย. 69)
      ปริ้นใบงานรอบ 2 แล้วยังขึ้นจำนวนเต็ม = คนแพ็คหยิบซ้ำของที่ส่งไปแล้ว */
   const shipStates = proofShipStates(order);
+  /**
+   * 📦 ใบงานของ "กล่องรอบถัดไป" (ใบที่แบ่งส่งไปแล้วบางรอบ หรือของตีกลับรอแพ็คใหม่) — โชว์เฉพาะรูปที่ไปกับกล่องนี้
+   * เคส OD-260929-7393 12 ต.ค. 69: ปริ้นใบปะหน้ารอบที่ 1 (1 ลาย) แต่ใบงานขึ้นครบ 12 รูป คนแพ็คไม่รู้ว่าหยิบอันไหน
+   * ใบงานรอบแรกของใบปกติ (ยังไม่เคยส่ง) = ใบผลิต ต้องเห็นครบทุกรูปเหมือนเดิม
+   */
+  const roundPrint =
+    !(order.tracking ?? "").trim() && !order.packedAt && ((order.shipments?.length ?? 0) > 0 || awaitingReship(order));
+  const roundPlan = roundPrint ? nextPlannedRound(order) : null;
+  /** null = โชว์ทุกรูป · Map = เฉพาะรูปในกล่องนี้ → จำนวนที่ใส่ */
+  const boxSel: Map<string, number> | null = !roundPrint
+    ? null
+    : roundPlan
+      ? roundPlan.qty
+      : new Map([...shipStates].filter(([, st]) => st.remaining > 0).map(([k, st]) => [k, st.remaining] as const));
+  const boxRound = (order.shipments?.length ?? 0) + 1;
 
   /** แถวรายการหนึ่งแถว — ใช้ทั้งหน้า 1 และหน้าต่อ · i = ลำดับจริงในออเดอร์ (เลขหน้าตารางต้องต่อเนื่องข้ามหน้า) */
   const renderRow = (it: Order["items"][number], i: number) => {
                   const proofs = proofsOf(it);
+                  // 📦 กล่องรอบถัดไป: เฉพาะรูปที่ไปกับกล่องนี้ (j = ลำดับจริงของรูป ใช้กับ proofKey)
+                  const shown = proofs.map((p, j) => [p, j] as const).filter(([, j]) => !boxSel || boxSel.has(proofKey(i, j)));
                   /* 🔢 จำนวนที่ต้องทำ — งานเซ็ต/แผ่นบอกชิ้นจริงใต้จำนวนที่สั่ง ("17 เซ็ต / = 102 ชิ้น")
                      เดิมใบงานไม่มีช่องจำนวนเลย รายการที่ยังไม่มีแบบก็ไม่รู้ว่าต้องทำกี่ชิ้น (เจ้าของร้านสั่ง 15 ก.ย. 69) */
                   const y = itemUnitYield(it, products[it.productId]);
@@ -946,10 +963,12 @@ function OrderDocs({
                       <td className="py-3 pr-4">
                         {!withProofs ? (
                           <span className="text-xs text-slate-400">—</span>
+                        ) : proofs.length > 0 && boxSel && !shown.length ? (
+                          <p className="text-xs font-bold text-slate-500">— ไม่มีของรายการนี้ในกล่องรอบที่ {boxRound}</p>
                         ) : proofs.length > 0 ? (
-                          /* โชว์รูปแบบงานครบทุกรูป — เรียงต่อกัน (ขึ้นบรรทัดใหม่อัตโนมัติ) */
+                          /* โชว์รูปแบบงานครบทุกรูป — เรียงต่อกัน (ขึ้นบรรทัดใหม่อัตโนมัติ) · กล่องรอบถัดไป = เฉพาะรูปในกล่อง */
                           <div className="flex flex-wrap gap-1.5">
-                            {proofs.map((p, j) => (
+                            {shown.map(([p, j]) => (
                               <div key={`${p.url}-${j}`} className="w-20">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
@@ -958,7 +977,11 @@ function OrderDocs({
                                   className="h-20 w-20 rounded border border-slate-300 object-contain"
                                 />
                                 {/* ใต้รูปเขียนแค่จำนวน (เจ้าของร้านสั่ง 11 ก.ย. 69) — ชื่อไฟล์/หมายเหตุแบบยาวรกกระดาษ คนแพ็คนับจากตัวเลขอย่างเดียว */}
-                                {p.qty
+                                {boxSel ? (
+                                  <p className="mt-0.5 rounded border border-black px-0.5 text-[10px] font-extrabold leading-tight text-black">
+                                    รูปที่ {j + 1} · ใส่ {boxSel.get(proofKey(i, j))} {proofUnit(p)}
+                                  </p>
+                                ) : p.qty
                                   ? (() => {
                                       const st = shipStates.get(proofKey(i, j));
                                       if (st && st.shipped > 0 && st.remaining > 0)
@@ -1394,6 +1417,12 @@ function OrderDocs({
                       ห้ามส่งล็อตหลัก/ของทั้งใบ จนกว่าแอดมินยืนยันรับยอดคงเหลือครบ · ยิงเลขรอบตัวอย่างที่ปุ่ม "ส่งบางส่วน" ไม่ใช่ช่องเลขพัสดุปกติ
                     </p>
                   </div>
+                )}
+                {boxSel && (
+                  <p className="mt-1.5 block w-fit rounded border-[3px] border-black bg-white px-2 py-1 text-base font-extrabold text-black">
+                    📦 กล่องรอบที่ {boxRound}{roundPlan ? "" : " (รอบสุดท้าย)"} — ใส่เฉพาะรูปในตารางด้านล่าง {[...boxSel.values()].reduce((a, b) => a + b, 0)} ชิ้น
+                    {awaitingReship(order) ? " · ↩ ของตีกลับ ส่งใหม่" : ""}
+                  </p>
                 )}
                 {/* 📋 แผนแบ่งส่งจากแอดมิน — บอกคนแพ็คตั้งแต่ใบงานว่ารูปไหนต้องออกก่อน */}
                 {!(order.tracking ?? "").trim() &&
