@@ -1,4 +1,4 @@
-import { amountDueNow, orderBalance, orderTotal, paidSoFar, uncreditedReceived, withLog, type Order, type OrderPayment } from "./admin-data";
+import { amountDueNow, orderBalance, orderTotal, orderWhtAmount, paidSoFar, uncreditedReceived, withLog, type Order, type OrderPayment } from "./admin-data";
 
 /**
  * 💸 บัญชีรับเงินของออเดอร์ — มองสลิปทุกใบเป็นรายการเดียวกัน (ใช้ได้ทั้งฝั่งลูกค้า/แอดมิน/เซิร์ฟเวอร์)
@@ -151,10 +151,26 @@ export function hasPendingSlip(o: Order): boolean {
   return paymentEntries(o).some((e) => e.state === "fail" || e.state === "pending");
 }
 
-/** จ่ายเกินยอดบิลอยู่กี่บาท (เครดิตที่ต้องคืน/แปลงเป็นแต้ม) — 0 = ไม่เกิน */
+/**
+ * หัก ณ ที่จ่ายที่ "นับเป็นจ่ายแล้ว" ตอนรับสลิป (deduction wht) แต่บิลตอนนี้หักน้อยกว่านั้น (บาท) — ไม่ใช่เงินที่เข้าบัญชีจริง
+ * OD-261009-3166 (13 ต.ค. 69): โอน 12,220 + หัก 352.50 = paidTotal 12,572.50 · บิลลดเหลือ 535 (หัก 15)
+ * → เดิมขึ้นโอนเกิน 12,037.50 (นับหัก 337.50 ที่ไม่มีแล้วเป็นเงิน) ที่ถูกคือ 12,220 − 520 = 11,700
+ */
+function whtCreditExcess(o: Order): number {
+  let wht = 0;
+  const add = (v: Order["slipVerify"] | undefined) => {
+    if (v?.deduction?.kind === "wht" && v.deduction.amount > 0) wht += v.deduction.amount;
+  };
+  add(o.slipVerify);
+  add(o.deposit?.balanceVerify);
+  for (const p of o.payments ?? []) add(p.verify);
+  return Math.max(0, Math.round((wht - orderWhtAmount(o)) * 100) / 100);
+}
+
+/** จ่ายเกินยอดบิลอยู่กี่บาท (เครดิตที่ต้องคืน/แปลงเป็นแต้ม) — 0 = ไม่เกิน · ตัดหัก ณ ที่จ่ายที่บิลไม่หักแล้วออก (เงินจริงเท่านั้น) */
 export function overpaidAmount(o: Order): number {
   if (o.paidTotal == null) return 0;
-  return Math.max(0, Math.round((paidSoFar(o) - orderTotal(o)) * 100) / 100);
+  return Math.max(0, Math.round((paidSoFar(o) - whtCreditExcess(o) - orderTotal(o)) * 100) / 100);
 }
 
 /**
