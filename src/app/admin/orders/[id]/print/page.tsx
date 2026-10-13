@@ -29,7 +29,7 @@ import { fetchShopPayment, shippingOf, shopInfoOf, type ShippingMethod, type Sho
 import { senderOf } from "@/lib/order-sender";
 import { orderContactProblems } from "@/lib/contact-validate";
 import { isPickupOrder, resolveShipLabel } from "@/lib/ship-label";
-import { isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
+import { isShipRider, noteShipMentions, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { useActor, useCan } from "@/lib/perm-context";
 import { PACK_SCAN_PARAM } from "@/lib/permissions";
 import { parsePrintFrame, PLACEMENT_LABEL, PLACEMENT_SPEC_LABEL, sheetsFor } from "@/lib/design-templates";
@@ -1092,6 +1092,8 @@ function OrderDocs({
   // 📦 ส่งรวมกล่อง (lib/ship-with.ts): ใบตาม = ไม่มีใบปะหน้า (shipRiderOf = เลขใบหลัก) · ใบหลัก = ตราฝั่งใบงานว่าต้องใส่ของใบไหนเพิ่ม
   const shipRiderOf = isShipRider(order) ? shipMainIdOf(order) : "";
   const shipRidersIn = (order.tracking ?? "").trim() ? [] : shipRiderIdsOf(order);
+  // 📝 โน้ตบอก "ส่งพร้อม OD-…" แต่ไม่ได้ผูกส่งรวมในระบบ (OD-261005-3015 → 3129 ค้างร้าน 9 ต.ค. 69) — ตราแดงให้คนแพ็คเห็นบนส่วนใบปะหน้า
+  const noteShipIds = (order.tracking ?? "").trim() ? [] : noteShipMentions(order);
   // 🏪 ชุดรับพร้อมกัน (มารับเองทั้งคู่): ตราต้องพูดเรื่อง "แพ็ครวม รอลูกค้ามารับ" ไม่ใช่กล่อง/เลขพัสดุ
   const pickupSet = isPickupOrder(order) && (!!shipRiderOf || shipRidersIn.length > 0);
   // 📮 ผู้ส่งบนกล่อง — ใบฝากส่งของตัวแทนตั้งชื่อร้านตัวเองไว้ (order.sender) ที่เหลือใช้ข้อมูลร้าน
@@ -1399,6 +1401,11 @@ function OrderDocs({
                     {pickupSet
                       ? `🏪 ลูกค้ามารับพร้อมกัน — แพ็ครวมของ ${shipRidersIn.join(", ")} ด้วย · เช็คให้ครบก่อนกดแพ็คเสร็จ (กดที่ใบนี้ใบเดียว)`
                       : `📦 กล่องนี้ต้องใส่ของ ${shipRidersIn.join(", ")} ไปด้วย — เช็คให้ครบก่อนปิดกล่อง · ยิงเลขพัสดุใบนี้ใบเดียว`}
+                  </p>
+                )}
+                {noteShipIds.length > 0 && (
+                  <p className="mt-1.5 block w-fit rounded border-[3px] border-red-600 bg-red-50 px-2 py-1 text-base font-extrabold" style={{ color: "#dc2626" }}>
+                    ⚠️ โน้ตบอกส่งพร้อม {noteShipIds.join(", ")} — หาของใบนั้นมาใส่กล่องนี้ด้วย · ยังไม่ได้ผูกส่งรวมในระบบ ถามแอดมินก่อนปิดกล่อง
                   </p>
                 )}
                 {/* 🤝 ใบตัวแทนที่ยังไม่ได้ตั้งผู้ส่ง — กล่องจะขึ้นชื่อร้านเรา คนปริ้นต้องรู้ก่อนแปะ */}

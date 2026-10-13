@@ -175,7 +175,7 @@ import FollowUpModal, { type FollowUpForm } from "@/components/admin/FollowUpMod
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import NeedsPurchaseStrip from "@/components/admin/NeedsPurchaseStrip";
 import NeedsPurchaseItemsEditor from "@/components/admin/NeedsPurchaseItemsEditor";
-import ShipWithStrip, { ShipWithPicker, ShipWithSuggest, useShipWithLinked } from "@/components/admin/ShipWithStrip";
+import ShipWithStrip, { ShipWithNoteWarn, ShipWithPicker, ShipWithSuggest, useShipWithLinked } from "@/components/admin/ShipWithStrip";
 import { alreadyShipped, isPickupShipSet, isShipRider, shipMainIdOf } from "@/lib/ship-with";
 import PackCheckPanel from "@/components/PackCheckPanel";
 import ArrivalPicker, { arrivalSummary, fmtExpected, waitingDays, type ArrivalPatch } from "@/components/admin/ArrivalPicker";
@@ -4728,6 +4728,7 @@ export default function AdminOrderDetailPage() {
         {/* 🛒 รอของเข้า — ฝ่ายแพ็ค/ผลิตเป็นคนรับของ กด "ของเข้าแล้ว" จากตรงนี้ได้ */}
         <div className="mx-auto max-w-[480px] px-3">
           <ShipWithStrip order={order} linked={shipLinked} canManage={mayEdit} packMode onSaved={adoptOrder} />
+          <ShipWithNoteWarn order={order} canManage={mayEdit} packMode onSaved={adoptOrder} />
           {order.needsPurchase && order.status !== "ยกเลิก" && (
             <NeedsPurchaseStrip
               key={order.needsPurchase.at}
@@ -4904,6 +4905,7 @@ export default function AdminOrderDetailPage() {
 
       {/* 📦 ส่งรวมกล่องกับออเดอร์อื่น — ใบตาม "ห้ามส่งแยก" ต้องเห็นก่อนอย่างอื่น */}
       <ShipWithStrip order={order} linked={shipLinked} canManage={mayEdit} onSaved={adoptOrder} />
+      <ShipWithNoteWarn order={order} canManage={mayEdit} onSaved={adoptOrder} />
       {shipPick && <ShipWithPicker order={order} onClose={() => setShipPick(false)} onSaved={adoptOrder} />}
       {/* 🛒 รอของเข้า — กราฟฟิกต้องเห็นก่อนอย่างอื่นว่าใบนี้ยังห้ามส่งเข้าผลิต */}
       {order.needsPurchase && order.status !== "ยกเลิก" && (

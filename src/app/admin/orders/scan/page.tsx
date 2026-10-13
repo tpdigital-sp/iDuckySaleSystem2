@@ -77,6 +77,7 @@ import {
 } from "@/lib/admin-data";
 import { fetchOrdersAdmin, saveOrderAdmin } from "@/lib/order-repo";
 import { isPickupOrder } from "@/lib/ship-label";
+import { noteShipMentions } from "@/lib/ship-with";
 import { fetchWorkSizes } from "@/lib/product-repo";
 import { itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { useActor } from "@/lib/perm-context";
@@ -570,6 +571,16 @@ export default function ScanTrackingPage() {
       }
       setBoxAsk({ order: target, tracking: v });
       setMsg(null);
+      return;
+    }
+    // 📝 โน้ตบอก "ส่งพร้อม OD-…" แต่ไม่ได้ผูกส่งรวม — ยิงเลขแล้วของอีกใบค้างร้าน (OD-261005-3015 → 3129 · 9 ต.ค. 69) ต้องถามก่อน
+    const noteIds = noteShipMentions(target);
+    if (
+      noteIds.length &&
+      !window.confirm(`⚠️ ${target.id} มีโน้ตให้ส่งพร้อม ${noteIds.join(", ")} แต่ยังไม่ได้ผูกส่งรวมในระบบ\n\nของใบนั้นใส่กล่องนี้ครบแล้วใช่ไหม? (แนะนำให้แอดมินกด "📦 ผูกส่งรวม" ที่หน้าออเดอร์ก่อน)\n\nOK = ยิงเลขต่อ · Cancel = หยุดก่อน`)
+    ) {
+      setMsg({ kind: "err", text: `ยังไม่บันทึก — ${target.id} มีโน้ตให้ส่งพร้อม ${noteIds.join(", ")} · ผูกส่งรวมที่หน้าออเดอร์ก่อน` });
+      if (!viaCamera) setTimeout(focusInput, 50);
       return;
     }
     await commitScan(target, v, "main");

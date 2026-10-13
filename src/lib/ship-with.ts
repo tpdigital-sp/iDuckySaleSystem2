@@ -176,6 +176,26 @@ export function buildShipLink(main: Order, rider: Order, by: string, at: string)
   return { nextMain, nextRider };
 }
 
+/**
+ * 📝 โน้ตบอก "ส่งพร้อม OD-…" แต่ยังไม่ได้ผูกส่งรวมในระบบ — คืนเลขออเดอร์ที่โน้ตพูดถึง ([] = ไม่มี)
+ *
+ * เคสจริง OD-261005-3015 (5 ต.ค. 69): แอดมินพิมพ์ใน billNote ว่า "ออเดอร์ OD-260922-3129 ส่งพร้อมกัน" แทนกดปุ่มส่งรวมกล่อง
+ * → ใบเก่าไม่มีอะไรบอกเลย · ใบปะหน้าไม่มีตราแดง · หน้ายิงเลขพัสดุไม่เตือน → ส่งใบใหม่ไปใบเดียว ของใบเก่าค้างร้าน ลูกค้าไม่ได้ของทันใช้
+ * อ่านจาก billNote / หมายเหตุลูกค้า / แจ้งเตือนเด้ง — ต้องมีคำว่าส่งพร้อม/ส่งรวม/รวมกล่อง/พร้อมกัน/แพ็ครวม ด้วย
+ * (โน้ตแค่อ้างเลขใบเก่า เช่น "ลายเดียวกับ OD-…" ไม่นับ) · ใบที่ผูกกันอยู่แล้วตัดออก
+ */
+export function noteShipMentions(o: Pick<Order, "id" | "billNote" | "note" | "alertNote" | "shipWith">): string[] {
+  const text = [o.billNote, o.note, o.alertNote?.text]
+    .filter(Boolean)
+    .join("\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ");
+  if (!/ส่งพร้อม|ส่งรวม|รวมกล่อง|กล่องเดียว|พร้อมกัน|แพ็ครวม|รับพร้อม/.test(text)) return [];
+  const linked = new Set([o.id, ...(o.shipWith?.orders ?? [])].map((x) => x.toUpperCase()));
+  const ids = (text.match(/OD-?\d{6}-?\d{4}/gi) ?? []).map((x) => x.toUpperCase().replace(/^OD-?(\d{6})-?(\d{4})$/, "OD-$1-$2"));
+  return [...new Set(ids)].filter((x) => !linked.has(x));
+}
+
 /** แถวสรุปของใบที่ผูกกัน/ใบที่เลือกผูกได้ — API ship-with ตอบรูปนี้ */
 export type ShipWithRow = {
   id: string;

@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { Order } from "@/lib/admin-data";
 import { isPickupOrder } from "@/lib/ship-label";
-import { isPickupShipSet, isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
+import { isPickupShipSet, isShipMain, isShipRider, noteShipMentions, shipMainIdOf, shipRiderIdsOf, type ShipWithRow } from "@/lib/ship-with";
 
 type Saved = { main: Order | null; rider: Order | null };
 
@@ -55,6 +55,67 @@ export function useShipWithLinked(order: Pick<Order, "id" | "shipWith" | "savedA
     };
   }, [id, key]);
   return rows;
+}
+
+/**
+ * 📝 โน้ตบอก "ส่งพร้อม OD-…" แต่ยังไม่ได้ผูกส่งรวม (noteShipMentions) — แถบแดง + ปุ่มผูกให้เลย
+ * เคส OD-261005-3015 → 3129 (9 ต.ค. 69): พิมพ์ในหมายเหตุบิลอย่างเดียว ใบเก่าไม่รู้ตัว ส่งใบใหม่ไปใบเดียว ของใบเก่าค้างร้าน
+ * ผูกจริงแล้ว = ใบปะหน้ามีตรา · ใบตามยิงเลขแยกไม่ได้ · ยิงเลขใบหลักลงให้ใบตามเอง
+ */
+export function ShipWithNoteWarn({ order, canManage, packMode, onSaved }: { order: Order; canManage: boolean; packMode?: boolean; onSaved: (o: Order) => void }) {
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  if ((order.tracking ?? "").trim() || order.status === "ยกเลิก" || order.status === "เสร็จสิ้น") return null;
+  const ids = noteShipMentions(order);
+  if (!ids.length) return null;
+
+  async function link(other: string) {
+    if (!window.confirm(`ผูกส่งรวมกล่อง ${order.id} กับ ${other}?\nบิลยังแยกกัน ค่าส่งไม่เปลี่ยน · ระบบเลือกใบหลักให้ · ระบบแจ้งลูกค้าทางไลน์`)) return;
+    setBusy(other);
+    setErr("");
+    const r = await call("POST", { mainId: order.id, riderId: other });
+    setBusy("");
+    if (r.error) return setErr(r.error);
+    const mine = r.main?.id === order.id ? r.main : r.rider?.id === order.id ? r.rider : null;
+    if (mine) onSaved(mine);
+  }
+
+  return (
+    <div className="dkb-g mb-4 p-3" style={{ background: "var(--dk-coral-wash)", borderLeft: "6px solid var(--dk-coral-ink)" }}>
+      <p className="text-[14px] font-extrabold leading-snug" style={{ color: "var(--dk-coral-ink)" }}>
+        ⚠️ โน้ตบอกให้ส่งพร้อม {ids.join(", ")} แต่ยังไม่ได้ผูกส่งรวมในระบบ
+      </p>
+      <p className="mt-0.5 text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+        ไม่ผูก = ใบปะหน้าไม่มีตรา · อีกใบไม่รู้ตัว · ยิงเลขใบนี้แล้วของอีกใบค้างร้าน
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {ids.map((id) => (
+          <span key={id} className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/admin/orders/${encodeURIComponent(id)}${packMode ? "?pack=1" : ""}`}
+              className="text-[13px] font-extrabold tabular-nums underline underline-offset-2"
+              style={{ color: "var(--dk-navy)" }}
+            >
+              {id}
+            </Link>
+            {canManage && (
+              <button
+                type="button"
+                disabled={!!busy}
+                onClick={() => link(id)}
+                className="min-h-[40px] rounded-xl px-3 text-[13px] font-extrabold text-white disabled:opacity-50"
+                style={{ background: "var(--dk-coral-ink)" }}
+              >
+                {busy === id ? "กำลังผูก…" : "📦 ผูกส่งรวม"}
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+      {!canManage && <p className="mt-1.5 text-[12px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>แจ้งแอดมินให้ผูกก่อนปิดกล่อง/ยิงเลข</p>}
+      {err && <p className="mt-1.5 text-[12px] font-bold" style={{ color: "var(--dk-coral-ink)" }}>{err}</p>}
+    </div>
+  );
 }
 
 export default function ShipWithStrip({
