@@ -209,6 +209,13 @@ export interface CalDesign {
   custom?: number[];
   /** 🎨 รูปแบบการพิมพ์ "คละลาย" (ชุดหลายใบ) — ทุกใบออกแบบแยกได้ · ไม่ตั้ง = ลายเดียว (ทุกใบเหมือนใบแรก) */
   mix?: boolean;
+  /**
+   * 🚫 หน้าที่ยังไม่ได้ใส่รูป = ว่าง ไม่ยืมรูปหน้าปก — งานหลายหน้า (ปฏิทินรายเดือน/ตั้งโต๊ะ) ที่เปิดแบบใหม่ตั้งแต่ 13 ต.ค. 69
+   * (ผู้ใช้แจ้งบั๊ค "ลากภาพใส่หน้าปก ระบบใส่ภาพให้ทุกหน้าเอง") · แบบเก่าที่ไม่มีธงนี้ยังยืมรูปปกเหมือนเดิม
+   */
+  noBorrow?: boolean;
+  /** 📮 หน้าด้านหลังที่ลูกค้าลบลายโปสการ์ดออก (key หน้า) — ไม่อยู่ในนี้ = มีลายโปสการ์ด */
+  postOff?: string[];
 }
 
 /**
@@ -265,7 +272,8 @@ export interface Rect {
   h: number;
 }
 
-export type PageKind = "photo" | "year" | "photo-year" | "photo-month" | "month";
+/** postback = ด้านหลังลายโปสการ์ด (ช่องแสตมป์ · To/address · From · รหัสไปรษณีย์) วาดตายตัวเป็นพื้นหลัง — drawPostBack */
+export type PageKind = "photo" | "year" | "photo-year" | "photo-month" | "month" | "postback";
 
 export interface CalPage {
   key: string;
@@ -463,6 +471,29 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
           { key: "back", name: "ด้านหลัง (ปฏิทิน)", kind: "year", grid: fr.inner },
         ],
       };
+    /**
+     * 📮 พิมพ์ 2 ด้าน "ด้านหลังเป็นลาย Postcard" (ผู้ใช้สั่ง 13 ต.ค. 69): ด้านหน้า = เหมือนพิมพ์ 1 ด้าน (รูป + ปฏิทิน)
+     * ด้านหลัง = ลายโปสการ์ดตายตัว (drawPostBack) · ใบละ 2 หน้าเรียงคู่ (หน้า · หลัง)
+     */
+    if (key.startsWith("postcard-yearpb") || key.startsWith("postcard-monthpb")) {
+      const month = key.startsWith("postcard-monthpb");
+      const fronts = calFormat(`postcard-${month ? "month" : "year1"}-${L ? "L" : "P"}`).pages;
+      // ช่องรูปเต็มใบ = ลูกค้าใส่ลายของตัวเองทับลายโปสการ์ดได้ (ไม่ยืมรูปหน้าปก · ว่าง = ไม่โชว์ช่องเทา) — ผู้ใช้สั่ง 13 ต.ค. 69
+      const pb = (p: CalPage): CalPage => ({ key: `pb-${p.key}`, name: "ด้านหลัง (ลายโปสการ์ด)", kind: "postback", photo: fr.full });
+      return {
+        key,
+        name: `โปสการ์ดปฏิทิน${month ? "รายเดือน" : "รายปี"} 4×6" ${ori} · ${month ? "13 ใบ · " : ""}พิมพ์ 2 ด้าน (หลังลายโปสการ์ด)`,
+        trimW: w,
+        trimH: h,
+        bleed: 2,
+        safe: 4,
+        dpi: 300,
+        ...(month ? {} : { cards: 8 }),
+        perCard: 2,
+        note: `${month ? "13 ใบ 26 หน้า" : "ใบละ 2 หน้า"} — หน้าคี่ = ด้านหน้า (รูป + ปฏิทิน) · หน้าคู่ = ด้านหลังลายโปสการ์ด`,
+        pages: fronts.flatMap((p) => [month ? p : { ...p, name: "ด้านหน้า (รูป + ปฏิทิน)" }, pb(p)]),
+      };
+    }
     if (key.startsWith("postcard-month2"))
       // 2 ด้าน: ใบละ 2 หน้าเรียงคู่กัน (หน้าคี่ = ด้านหน้า · หน้าคู่ = ด้านหลังของใบเดียวกัน)
       return {
@@ -799,9 +830,12 @@ export interface ImgRef {
 export function photoOf(page: CalPage, d: CalDesign, imgs: (ImgRef | null)[]): { img: ImgRef; pl: CalPlacement } | null {
   if (!page.photo) return null;
   const own = d.photos[page.key];
+  // 📮 ด้านหลังลายโปสการ์ด: มีแต่ลายที่ลูกค้าใส่เอง ไม่ยืมรูปหน้าปก
+  if (page.kind === "postback") return own && own.src >= 0 && imgs[own.src] ? { img: imgs[own.src]!, pl: own.pl } : null;
   // src < 0 = ลูกค้ากดลบรูปช่องนี้ → ว่าง (ไม่ยืมรูปหน้าปก)
   if (own && own.src < 0) return null;
   if (own && imgs[own.src]) return { img: imgs[own.src]!, pl: own.pl };
+  if (d.noBorrow) return null;
   // ไม่มีรูปของตัวเอง = ยืมรูปช่องรูปหน้าปก (รูปแรกที่ลงช่องรูป) — ไม่ยืมรูปจากกรอบรูปอิสระ
   // (เดิมยืม "รูปแรกที่อัป" → ใส่รูปด้านหลังแล้วหน้าปกได้รูปนั้นไปด้วยเอง · 13 ต.ค. 69)
   const first = slotSrc(d, imgs);
@@ -811,7 +845,8 @@ export function photoOf(page: CalPage, d: CalDesign, imgs: (ImgRef | null)[]): {
 
 /** รูปตั้งต้นของช่องรูป = รูปของช่องรูปแรกที่มีรูป (-1 = ยังไม่มีช่องไหนมีรูป) */
 export function slotSrc(d: CalDesign, imgs: (ImgRef | null)[]): number {
-  for (const ph of Object.values(d.photos)) if (imgs[ph.src]) return ph.src;
+  // ลายที่ใส่ด้านหลังโปสการ์ด (pb-*) ไม่ใช่รูปหน้าปก
+  for (const [key, ph] of Object.entries(d.photos)) if (!/(^|:)pb-/.test(key) && imgs[ph.src]) return ph.src;
   return -1;
 }
 
@@ -1229,13 +1264,15 @@ export function drawPage(
   if (!only || only === LAYER_BG) {
     ctx.fillStyle = bgOf(page, d, b);
     ctx.fillRect(0, 0, W * k, H * k);
+    if (page.kind === "postback" && !d.postOff?.includes(pageKey)) drawPostBack(ctx, k, f);
   }
   // 🗂 วาดตามลำดับชั้นที่ลูกค้าจัด (ล่าง → บน) — รูปหลัก · ปฏิทิน · ชิ้นส่วน สลับบน/ล่างกันได้
   const drawSlot = () => {
     if (page.photo) {
       const ph = photoOf(page, d, imgs);
       const r = page.photo;
-      if (page.kind !== "photo") {
+      // ด้านหลังลายโปสการ์ด: ช่องว่าง = เห็นลายโปสการ์ด (ไม่ปูพื้นทับ)
+      if (page.kind !== "photo" && page.kind !== "postback") {
         ctx.fillStyle = d.bg || "#ffffff";
         ctx.fillRect(r.x * k, r.y * k, r.w * k, r.h * k);
       }
@@ -1264,7 +1301,7 @@ export function drawPage(
           ctx.stroke();
           ctx.restore();
         }
-      } else if (opts.preview) {
+      } else if (opts.preview && page.kind !== "postback") {
         // ช่องรูปที่ยังว่าง = สีเทา + "Drag here" (บนจอเท่านั้น) — วาดในแคนวาสใต้ชิ้นส่วน กรอบรูป/ข้อความที่วางทับจึงยังเห็นและกดได้
         ctx.fillStyle = "#b8b8b8";
         ctx.fillRect(r.x * k, r.y * k, r.w * k, r.h * k);
@@ -1316,6 +1353,48 @@ export function drawPage(
 
 /** ชั้นพื้น / ของแบบเก่านอกลำดับชั้น (ขอบบาง · ข้อความหน้าปกกล่องเดียว) — ใช้กับ drawPage({ only }) */
 export const LAYER_BG = "@bg";
+
+/**
+ * 📮 ด้านหลังลายโปสการ์ด (ตามภาพที่ผู้ใช้ส่ง 13 ต.ค. 69 — 1800×1200 px = ใบ 6×4 นิ้วไม่รวมตัดตก)
+ * ซ้าย = From · เส้นจุดกั้นกลาง · ขวา = ช่องแสตมป์ · To / address 5 เส้น · ช่องรหัสไปรษณีย์ 5 ช่อง
+ * ใบแนวตั้งหมุนลาย 90° (หลังโปสการ์ดเป็นแนวนอนเสมอ) · ฟอนต์ Poppins (CAL_FONTS "poppins" — โหลดก่อนวาดไฟล์จริง)
+ */
+export function drawPostBack(ctx: CanvasRenderingContext2D, k: number, f: CalFormat) {
+  const portrait = f.trimH > f.trimW;
+  const LW = Math.max(f.trimW, f.trimH);
+  const u = (LW / 1800) * k; // 1 px ของภาพต้นแบบ → พิกเซลแคนวาส
+  ctx.save();
+  if (portrait) {
+    ctx.translate((f.bleed + f.trimW) * k, f.bleed * k);
+    ctx.rotate(Math.PI / 2);
+  } else ctx.translate(f.bleed * k, f.bleed * k);
+  ctx.strokeStyle = "#111111";
+  ctx.fillStyle = "#111111";
+  ctx.lineWidth = 2.2 * u;
+  const line = (x0: number, y: number, x1: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x0 * u, y * u);
+    ctx.lineTo(x1 * u, y * u);
+    ctx.stroke();
+  };
+  // เส้นจุดกั้นกลาง
+  for (let y = 128; y <= 1076; y += 18.95) {
+    ctx.beginPath();
+    ctx.arc(884 * u, y * u, 3.2 * u, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeRect(1492 * u, 118 * u, 191 * u, 229 * u); // ช่องแสตมป์
+  for (const y of [498, 590, 682, 773, 864]) line(968, y, 1683);
+  line(118, 1031, 831);
+  for (let i = 0; i < 5; i++) ctx.strokeRect((1086 + i * 102) * u, 950 * u, 72 * u, 81 * u); // รหัสไปรษณีย์
+  ctx.font = `400 ${36 * u}px ${fontFamilyOf("poppins")}`;
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.fillText("To:", 980 * u, 476 * u);
+  ctx.fillText("address:", 980 * u, 570 * u);
+  ctx.fillText("From:", 118 * u, 998 * u);
+  ctx.restore();
+}
 export const LAYER_LEGACY = "@legacy";
 
 /** สีพื้นของหน้า (หน้าที่มีรูปใช้สีพื้นหน้าปก · หน้าตารางล้วนใช้สีพื้นปฏิทิน) */
@@ -1372,8 +1451,22 @@ function placeholder(ctx: CanvasRenderingContext2D, k: number, x: number, y: num
  * ⚠️ เดิมนับเฉพาะรูปที่วางอยู่ในใบ → รูปที่ถูกเปลี่ยนออก/ยังไม่ได้วาง หลุดจากการนับ ป้าย "คละ 4 ลาย" แต่คลังมี 6 รูป
  * ไม่เกินจำนวนใบที่แยกแบบ · ยังไม่มีรูป = 1 · photos ไม่ส่งมา (แบบเก่า) = นับรูปที่ใช้จริงแทน
  */
-export function calDesignCount(d: CalDesign | undefined, photos?: number): number {
-  if (!d || !(d.mix || d.custom?.length)) return 1;
+export function calDesignCount(d: CalDesign | undefined, photos?: number, format?: string): number {
+  if (!d) return 1;
+  /**
+   * 🖼 งานหลายหน้า (ปฏิทินรายเดือน/ตั้งโต๊ะ — ไม่ใช่ชุดหลายใบ) = นับลายตามรูปที่ใช้จริงทุกหน้า (ผู้ใช้สั่ง 13 ต.ค. 69
+   * "เกิน 4 ลาย คิดเพิ่มลายละ 5 บาท เหมือนปฏิทินโฟโต้การ์ด" — ค่าคละตาม mixRule ของสินค้า) · หน้าที่ยืมรูปปกไม่นับเพิ่ม
+   */
+  if (format) {
+    const f = calFormat(format);
+    if ((f.cards ?? 1) <= 1 && f.pages.filter((p) => p.photo).length > 1) {
+      const used = new Set<number>();
+      for (const o of Object.values(d.photos)) if (o.src >= 0) used.add(o.src);
+      for (const e of d.elements ?? []) if (e.kind === "photo" && e.src != null && e.src >= 0) used.add(e.src);
+      return Math.max(1, used.size);
+    }
+  }
+  if (!(d.mix || d.custom?.length)) return 1;
   let n = photos;
   if (n == null) {
     const used = new Set<number>();

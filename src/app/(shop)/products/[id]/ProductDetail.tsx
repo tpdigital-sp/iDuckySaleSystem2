@@ -142,12 +142,7 @@ import { LINE_URL } from "@/components/LineButton";
 import StockCheckNote from "@/components/StockCheckNote";
 import { useCustomer } from "@/lib/customer-context";
 import { foldSizeExtra, specEntries, tidySpec } from "@/components/SpecLines";
-import {
-  addToPriceLinkBasket,
-  clearPriceLinkBasket,
-  readPriceLinkBasket,
-  PRICE_LINK_MAX_ITEMS,
-} from "@/lib/price-links";
+import { addToPriceLinkBasket, clearPriceLinkBasket, readPriceLinkBasket, PRICE_LINK_MAX_ITEMS } from "@/lib/price-links";
 import {
   hasPriceLinkBundle,
   priceLinkUrl,
@@ -278,11 +273,7 @@ function ProductTabText({ tab }: { tab: ProductTab }) {
         : "w-full sm:max-w-[calc((100%-0.75rem)/2)] lg:max-w-[calc((100%-1.5rem)/3)]";
   // จัดวางรูปในแถว — ชิดซ้าย / กึ่งกลาง / ชิดขวา
   const align =
-    (tab.imageAlign ?? (size === "lg" ? "center" : "left")) === "center"
-      ? "justify-center"
-      : tab.imageAlign === "right"
-        ? "justify-end"
-        : "justify-start";
+    (tab.imageAlign ?? (size === "lg" ? "center" : "left")) === "center" ? "justify-center" : tab.imageAlign === "right" ? "justify-end" : "justify-start";
   const gallery = images.length > 0 && (
     // เว้นช่องจากข้อความเฉพาะตอนมีข้อความ — แท็บที่มีแต่รูปจะได้ห่างขอบการ์ดเท่ากันทุกด้าน
     <div className={`flex flex-wrap gap-3 ${align} ${!hasText ? "" : tab.imagePos === "top" ? "pb-3" : "pt-3"}`}>
@@ -381,9 +372,7 @@ const CARDS_DENSE_FROM = 6;
  * อื่น ๆ คงกล่อง amber เดิม (ธีมร้านแมป amber เป็นฟ้าอ่อน · rose ไม่ถูกแมป จึงแดงจริง · 6 ต.ค. 69)
  */
 function noteTone(note: string) {
-  return note.trimStart().startsWith("⚠️")
-    ? "bg-rose-50 font-semibold text-rose-700 ring-rose-300"
-    : "bg-amber-100/70 text-amber-900 ring-amber-200";
+  return note.trimStart().startsWith("⚠️") ? "bg-rose-50 font-semibold text-rose-700 ring-rose-300" : "bg-amber-100/70 text-amber-900 ring-amber-200";
 }
 
 /**
@@ -407,7 +396,7 @@ function noteChips(line: string) {
       </strong>
     ) : (
       part
-    )
+    ),
   );
 }
 
@@ -422,7 +411,10 @@ function noteChips(line: string) {
  * ไม่ห้อยต่อท้ายประโยคจนดูหลุด (เจ้าของร้านทัก 14 ก.ย. 69) · แบบบรรทัดเดียวยังต่อท้ายในบรรทัดเหมือนเดิม
  */
 function noteEmphasis(note: string, trailing?: ReactNode) {
-  const lines = note.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = note
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length <= 1 && !lines[0]?.startsWith("• ")) {
     const body = noteChips(lines[0] ?? note);
     return trailing ? (
@@ -439,18 +431,18 @@ function noteEmphasis(note: string, trailing?: ReactNode) {
   const bullets = lead ? lines.slice(1) : lines;
   return (
     <span className="mt-1 flex flex-col gap-1.5 rounded-xl bg-stone-50 px-3 py-2.5 leading-relaxed ring-1 ring-stone-200/70">
-      {lead && (
-        <span className={`font-semibold ${lead.startsWith("⚠️") ? "text-rose-600" : "text-stone-600"}`}>{noteChips(lead)}</span>
-      )}
+      {lead && <span className={`font-semibold ${lead.startsWith("⚠️") ? "text-rose-600" : "text-stone-600"}`}>{noteChips(lead)}</span>}
       {bullets.map((line, i) =>
         line.startsWith("• ") ? (
           <span key={i} className="flex gap-1.5">
-            <span aria-hidden className="mt-px text-sky-400">•</span>
+            <span aria-hidden className="mt-px text-sky-400">
+              •
+            </span>
             <span className="flex-1">{noteChips(line.slice(2))}</span>
           </span>
         ) : (
           <span key={i}>{noteChips(line)}</span>
-        )
+        ),
       )}
       {trailing && <span className="flex flex-wrap gap-1.5 pt-0.5">{trailing}</span>}
     </span>
@@ -462,9 +454,7 @@ function noteEmphasis(note: string, trailing?: ReactNode) {
  * กลุ่ม "ติ๊กได้หลายอย่าง" เริ่มที่ยังไม่ติ๊กอะไรเลย (ของเสริม ไม่ควรบวกเงินให้เอง)
  */
 function initialSelections(p: Product): Record<string, string> {
-  const base = Object.fromEntries(
-    p.options.map((o) => [o.label, isMultiOption(o) ? "" : (o.choices[0]?.name ?? "")])
-  );
+  const base = Object.fromEntries(p.options.map((o) => [o.label, isMultiOption(o) ? "" : (o.choices[0]?.name ?? "")]));
   // 📐 สินค้าที่ไม่มีขนาดมาตรฐาน (mtoAlways) — ติ๊ก "สั่งทำ" ให้ตั้งแต่แรก ช่องกรอกจะได้กางรอเลย
   return p.mtoAlways ? { ...base, [MTO_LABEL]: MTO_ON } : base;
 }
@@ -533,8 +523,7 @@ function GalleryThumbs({
     const box = el.getBoundingClientRect();
     const thumb = kid.getBoundingClientRect();
     // เลื่อนเท่าที่จำเป็น (เหมือน inline:"nearest") + เผื่อขอบ 8px ให้เห็นว่ายังมีรูปถัดไป
-    const delta =
-      thumb.left < box.left ? thumb.left - box.left - 8 : thumb.right > box.right ? thumb.right - box.right + 8 : 0;
+    const delta = thumb.left < box.left ? thumb.left - box.left - 8 : thumb.right > box.right ? thumb.right - box.right + 8 : 0;
     if (!delta) return;
     el.scrollBy({ left: delta, behavior: "smooth" });
   }, [at]);
@@ -574,21 +563,17 @@ function GalleryThumbs({
           </button>
         ))}
       </div>
-      {([
-        { d: -1, side: "prev", glyph: "‹", label: "ดูรูปย่อชุดก่อนหน้า", on: edge.left },
-        { d: 1, side: "next", glyph: "›", label: "ดูรูปย่อชุดถัดไป", on: edge.right },
-      ] as const).map((b) =>
+      {(
+        [
+          { d: -1, side: "prev", glyph: "‹", label: "ดูรูปย่อชุดก่อนหน้า", on: edge.left },
+          { d: 1, side: "next", glyph: "›", label: "ดูรูปย่อชุดถัดไป", on: edge.right },
+        ] as const
+      ).map((b) =>
         b.on ? (
-          <button
-            key={b.side}
-            type="button"
-            onClick={() => page(b.d)}
-            aria-label={b.label}
-            className={`pgal-snav ${b.side}`}
-          >
+          <button key={b.side} type="button" onClick={() => page(b.d)} aria-label={b.label} className={`pgal-snav ${b.side}`}>
             {b.glyph}
           </button>
-        ) : null
+        ) : null,
       )}
     </div>
   );
@@ -622,10 +607,7 @@ export default function ProductDetail({
    * ชุด CATEGORIES ในโค้ดเป็นของออกแบบเก่า (fabric = "ผ้า / หมอน / ผ้าห่ม") ใช้เป็นตัวสำรองเท่านั้น
    * — เว็บจริงส่งหมวดจากฐานมาทางพร็อพ · ตกไปตัวสำรองเมื่อสินค้าถูกย้ายหมวดฝั่งเบราว์เซอร์/ฐานล่ม
    */
-  const category =
-    categoryFromServer && categoryFromServer.id === product.category
-      ? categoryFromServer
-      : getCategory(product.category);
+  const category = categoryFromServer && categoryFromServer.id === product.category ? categoryFromServer : getCategory(product.category);
   /** ชื่อที่ลูกค้าเห็น = ครึ่งไทยของชื่อหมวด (ชุดเดียวกับชิปหมวดในหน้ารายการสินค้า) */
   const catName = catShortName(category.name);
   const { addItem, removeItem, items: cartItems, productOf, lotExtras } = useCart();
@@ -650,10 +632,8 @@ export default function ProductDetail({
     // ขั้นต่ำต่อออเดอร์ของเรทแรก (hardMinQty) เช่น สติ๊กเกอร์ UV เริ่มขายที่ 3 แผ่น A3
     // — ยกเว้นเรทที่นับขั้นต่ำทั้งล็อต (minQtyScope: "lot") เริ่มที่ 1 แผ่น แล้วบอกขั้นต่ำไว้ข้างช่องจำนวนแทน
     //   (ลูกค้าส่วนใหญ่จะกด ➕ เพิ่มอีกแผ่น ทีละแผ่นอยู่แล้ว เริ่มที่ 3 เลยไม่ตรงกับวิธีสั่งจริง)
-    initialProduct.hardMinQty && initialProduct.priceRates?.[0]?.minQtyScope !== "lot"
-      ? (initialProduct.priceRates?.[0]?.minQty ?? 1)
-      : 1,
-    1
+    initialProduct.hardMinQty && initialProduct.priceRates?.[0]?.minQtyScope !== "lot" ? (initialProduct.priceRates?.[0]?.minQty ?? 1) : 1,
+    1,
   );
   const [qty, setQty] = useState(initialQty);
   /**
@@ -718,9 +698,7 @@ export default function ProductDetail({
     // ช่องที่เป็นคลิปไม่เข้าลิสต์ซูม — กดขยายแล้วจะได้ภาพนิ่ง (โปสเตอร์) เฉย ๆ ทั้งที่ตั้งใจดูคลิป
     // เลื่อนในจอขยายเฉพาะรูปของสินค้า — ภาพประจำตัวเลือก (ตะขอ 30+ แบบ) ไม่ต้องให้ปัดผ่าน (ดูตัวนับในแกลเลอรี)
     const own = product.images.length > 0 ? Math.min(product.images.length, galleryImages.length) : galleryImages.length;
-    const srcs = galleryImages.slice(0, own).map((img, i) =>
-      img.videoSrc ? undefined : img.src ?? (i === 0 ? product.imageSrc : undefined)
-    );
+    const srcs = galleryImages.slice(0, own).map((img, i) => (img.videoSrc ? undefined : (img.src ?? (i === 0 ? product.imageSrc : undefined))));
     if (!srcs.length && product.imageSrc) srcs.push(product.imageSrc);
     return srcs.filter((s): s is string => !!s);
   }, [galleryImages, product.imageSrc, product.images.length]);
@@ -732,7 +710,7 @@ export default function ProductDetail({
     if (!src) return;
     const i = galleryImages.findIndex(
       // จับคู่ได้ทั้งรูปนิ่งและคลิป — ตัวเลือกที่มีคลิปส่ง videoSrc มา จะเด้งไปช่องคลิปนั้นเล่นเลย
-      (im, idx) => (im.src ?? (idx === 0 ? product.imageSrc : undefined)) === src || im.videoSrc === src
+      (im, idx) => (im.src ?? (idx === 0 ? product.imageSrc : undefined)) === src || im.videoSrc === src,
     );
     if (i >= 0) setImageIndex(i);
   };
@@ -792,8 +770,7 @@ export default function ProductDetail({
    * แต่ "ไม่เอาไปวาดอะไร" จนกว่าจะติ๊กค่าให้เสร็จ — ฝั่งเซิร์ฟเวอร์ไม่มี window จะได้ไม่ hydrate ไม่ตรง
    */
   const priceLinkRef = useRef<PriceLinkSpec | null | undefined>(undefined);
-  if (priceLinkRef.current === undefined)
-    priceLinkRef.current = typeof window === "undefined" ? null : readPriceLink(window.location.search);
+  if (priceLinkRef.current === undefined) priceLinkRef.current = typeof window === "undefined" ? null : readPriceLink(window.location.search);
   /** ติ๊กค่าจากลิงก์ราคาให้เรียบร้อยแล้ว — โชว์แถบบอกลูกค้าว่าร้านจัดสเปคไว้ให้ */
   const [fromPriceLink, setFromPriceLink] = useState(false);
   /**
@@ -829,9 +806,7 @@ export default function ProductDetail({
   /** 🧺 ใบรวมที่แอดมินกำลังสะสม (โค้ดใบเดี่ยว) — ข้ามหน้าสินค้าได้ เก็บในเครื่อง */
   const [bundleCodes, setBundleCodes] = useState<string[]>([]);
   const [bundleMsg, setBundleMsg] = useState("");
-  const [selections, setSelections] = useState<Record<string, string>>(() =>
-    initialSelections(rollCalendarYears(initialProduct))
-  );
+  const [selections, setSelections] = useState<Record<string, string>>(() => initialSelections(rollCalendarYears(initialProduct)));
   /**
    * 🎨 เมนูเลื่อนแบบวาดเอง (กลุ่มที่มีตัวเลือกตั้งสี เช่น ครึ่ง A4/A5/A6 สีเขียว) — label ของกลุ่มที่กางอยู่
    * เหตุที่ไม่ใช้ <select>: ป๊อปอัปของ <select> บน macOS (Safari/Chrome) และ iOS เป็นของระบบ ทาสี <option> ไม่ติด
@@ -866,7 +841,18 @@ export default function ProductDetail({
    * qty = จำนวนชิ้นของลายนี้ที่ลูกค้าระบุเอง (ไม่ระบุ = undefined) — ดู ART_QTY_LABEL (ด้านหลังเก็บใน ART_BACK_QTY_LABEL)
    * size = ขนาดชิ้นงานของลายนี้ (คละหลายขนาดใน 1 แผ่น — ดู ART_SIZE_LABEL) · sizeRaw = ข้อความที่พิมพ์ค้างอยู่ในช่อง
    */
-  type ArtFile = { url: string; name: string; w: number; h: number; hash?: string; preview?: string; qty?: number; size?: ArtSize; sizeRaw?: string; sizeErr?: string };
+  type ArtFile = {
+    url: string;
+    name: string;
+    w: number;
+    h: number;
+    hash?: string;
+    preview?: string;
+    qty?: number;
+    size?: ArtSize;
+    sizeRaw?: string;
+    sizeErr?: string;
+  };
   /** ด้านของภาพลาย — งานพิมพ์ 2 ด้านแยกช่องแนบ "ด้านหน้า"/"ด้านหลัง" (งานด้านเดียวมีแต่ front) */
   type ArtSide = "front" | "back";
   const [artFiles, setArtFiles] = useState<ArtFile[]>([]);
@@ -998,10 +984,7 @@ export default function ProductDetail({
   // ── หลายเรทราคา (เช่น พิน: คละดีเทล / ไม่คละดีเทล) ──
   // ตัวแทนจำหน่าย + สินค้ามีเรทตัวแทน = เห็น "เฉพาะ" เรทตัวแทน (ได้ราคาตัวแทนอย่างเดียว)
   // คนอื่นเห็นเฉพาะเรท public — ทุกอย่างข้างล่าง (เลือกเรท/auto-pick/แผงเลือก/ตาราง) เดินตามลิสต์นี้เอง
-  const rates = useMemo(
-    () => (dealerMode ? dealerRates : publicRates(product)),
-    [product, dealerMode, dealerRates]
-  );
+  const rates = useMemo(() => (dealerMode ? dealerRates : publicRates(product)), [product, dealerMode, dealerRates]);
   const [rateLabel, setRateLabel] = useState("");
   // ลูกค้ากดเลือกเรทเอง = หยุดสลับอัตโนมัติ (เช่น ตั้งใจอยู่เรท 1 เพื่อคละดีเทล)
   const [rateTouched, setRateTouched] = useState(false);
@@ -1025,10 +1008,7 @@ export default function ProductDetail({
   // ปรับตามกฎเงื่อนไขเสมอ เช่น กระดาษที่เคลือบไม่ได้ → เคลือบถูกบังคับเป็น "ไม่เคลือบ"
   // ส่งเรทที่เลือกอยู่เข้าไปด้วย — ตัวเลือกที่ไม่มีราคาในเรทนี้จะได้ไม่ถูกเลือกค้างไว้
   // (ตัวที่ไม่มีราคาถูกซ่อนจากเมนูด้านล่างอยู่แล้ว หัวข้อกับเมนูต้องตรงกัน)
-  const resolved = useMemo(
-    () => resolveSelections(product, rate ? { ...selections, [RATE_LABEL]: rate.label } : selections),
-    [product, selections, rate]
-  );
+  const resolved = useMemo(() => resolveSelections(product, rate ? { ...selections, [RATE_LABEL]: rate.label } : selections), [product, selections, rate]);
 
   // เรทที่เลือกติดไปกับ selections → ตะกร้า/ออเดอร์เห็นเป็น "เรทราคา: …" และคิดราคาตามเรทนั้น
   // (จำนวนลายเติมทีหลังตรง effectiveWithDesigns — ต้องประกาศ designs ก่อน)
@@ -1053,7 +1033,10 @@ export default function ProductDetail({
           ? // กรอกช่องไหนก็ได้ช่องเดียว (กว้างหรือสูง) = ด้านยาวสุด
             { w: Math.max(mw, mh), h: Math.max(mw, mh), longest: true }
           : undefined;
-    return formatArtSize(artFiles.map((f) => f.size ?? main), yOpt.input?.unit ?? "ซม.");
+    return formatArtSize(
+      artFiles.map((f) => f.size ?? main),
+      yOpt.input?.unit ?? "ซม.",
+    );
   }, [artFiles, placed.length, product, resolved]);
   const effective = useMemo(() => {
     const base: Record<string, string> = rate ? { ...resolved, [RATE_LABEL]: rate.label } : { ...resolved };
@@ -1093,9 +1076,7 @@ export default function ProductDetail({
     }
     const wantW = formatInputValue(pair, String(big.size.w));
     const wantH = formatInputValue(yOpt, String(big.size.h));
-    setSelections((sel) =>
-      sel[pair.label] === wantW && sel[yOpt.label] === wantH ? sel : { ...sel, [pair.label]: wantW, [yOpt.label]: wantH },
-    );
+    setSelections((sel) => (sel[pair.label] === wantW && sel[yOpt.label] === wantH ? sel : { ...sel, [pair.label]: wantW, [yOpt.label]: wantH }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artSizeKey, placed.length, product]);
   const rateMinQty = rate?.minQty ?? 1;
@@ -1162,9 +1143,7 @@ export default function ProductDetail({
    */
   useEffect(() => {
     if (product.hardMinQty || useCustom || rates.length === 0 || qty >= rateMinQty) return;
-    const fit = [...rates]
-      .filter((r) => (r.minQty ?? 1) <= qty)
-      .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+    const fit = [...rates].filter((r) => (r.minQty ?? 1) <= qty).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
     if (fit && fit.label !== rate?.label) setRateLabel(fit.label);
   }, [qty, rateMinQty, useCustom, rates, rate, product.hardMinQty]);
 
@@ -1228,10 +1207,7 @@ export default function ProductDetail({
    * ยังอย่างน้อย 99 เสมอ — สินค้าที่ไม่ได้ตั้ง "1 หน่วยได้กี่ชิ้น" ไว้ต้องคละได้ไม่น้อยกว่าเดิม
    * (unitYield.unit ไม่ใช่ null = ตัวเลขเป็น "ต่อแผ่นวัสดุ" คนละหน่วยกับที่สั่ง คูณตรง ๆ ไม่ได้)
    */
-  const freeMixCap = Math.max(
-    99,
-    unitYield && unitYield.unit == null && unitYield.per > 0 ? unitYield.per * Math.max(1, qty) : qty
-  );
+  const freeMixCap = Math.max(99, unitYield && unitYield.unit == null && unitYield.per > 0 ? unitYield.per * Math.max(1, qty) : qty);
   // ลายที่รวมในราคาตามจำนวนที่สั่ง · เรทที่เปิด extraDesignFee คละเกินได้ (จ่ายเพิ่มต่อลาย ไม่เกินจำนวนชิ้น)
   // ส่ง unitCap ไปด้วยเสมอ — สินค้าขายเป็นเซ็ต โควตาช่วงคละอิสระต้องนับเป็นชิ้น ไม่ใช่จำนวนเซ็ต
   const included = rate?.minPerDesign ? includedDesigns(rate, pieceQty, unitCap ?? 1) : 0;
@@ -1253,8 +1229,7 @@ export default function ProductDetail({
   // เพดานจากจำนวนชิ้นที่ใส่ได้จริง ทับกติกาอื่นเสมอ — ใส่ไม่ลงแผ่นก็ผลิตไม่ได้
   const maxDesigns = maxDesignsRaw > 0 ? Math.max(1, Math.min(maxDesignsRaw, capByPieces)) : maxDesignsRaw;
   /** เพดานแนบรูปที่ใช้จริง — จำนวนที่ลูกค้าระบุเอง แต่ไม่เกินเพดานคละของเรท · null = ไม่จำกัด */
-  const artCap =
-    designsCap == null ? null : maxDesigns > 0 ? Math.max(1, Math.min(designsCap, maxDesigns)) : Math.max(1, designsCap);
+  const artCap = designsCap == null ? null : maxDesigns > 0 ? Math.max(1, Math.min(designsCap, maxDesigns)) : Math.max(1, designsCap);
   /**
    * เพดานแนบรูปที่บังคับจริง — ที่ลูกค้าระบุเองมาก่อน · ไม่ได้ระบุก็ใช้เพดานคละของเรท
    * (แนบเกินเพดานเรท = ลายที่ผลิตไม่ได้ตามจำนวนที่สั่ง ต้องถามก่อน ไม่ปล่อยผ่านเงียบ ๆ)
@@ -1293,7 +1268,7 @@ export default function ProductDetail({
    */
   const calDesigns =
     product.calendarStudio && product.studioOff !== true && placed.some((p) => p.calState)
-      ? placed.reduce((s, p) => s + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length) : 1), 0)
+      ? placed.reduce((s, p) => s + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length, p.calState.format) : 1), 0)
       : 0;
   const autoDesignCount = calDesigns || artFiles.length;
   /** จำนวนรูปลายรอบก่อน — ใช้จับว่า "จำนวนรูปเพิ่งเปลี่ยน" (แนบเพิ่ม/ลบออก) ไม่ใช่แค่ re-render */
@@ -1339,9 +1314,7 @@ export default function ProductDetail({
     .map((c) => ({ name: c.name, year: yearFromChoice(c.name) }));
   /** รูปแบบงานปฏิทินตามตัวเลือกที่เลือกอยู่ (แนว · รายปี/รายเดือน · จำนวนแผ่น) */
   const calFormatKey =
-    product.calendarStudio?.formats?.find((f) =>
-      (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())),
-    )?.format ?? "card";
+    product.calendarStudio?.formats?.find((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))?.format ?? "card";
   /** กติกาค่าคละของด้านหลังโดยเฉพาะ (งานกระดาษ = ลายละ 5 บาท) — ไม่ตั้ง = ใช้ชุดเดียวกับด้านหน้า */
   const backMix = product.backDesign?.mixRule;
   const [backDesigns, setBackDesigns] = useState(1);
@@ -1359,7 +1332,7 @@ export default function ProductDetail({
   /** จำนวนลายด้านหลังที่จะติดไปกับราคา/ตะกร้า — ไม่ได้พิมพ์ 2 ด้าน = ไม่ใส่เลย */
   const backSel = useMemo<Record<string, string>>(
     () => (backOn ? ({ [BACK_DESIGN_LABEL]: `${backDesigns} ลาย` } as Record<string, string>) : {}),
-    [backOn, backDesigns]
+    [backOn, backDesigns],
   );
   /**
    * เพดานแนบรูป "ด้านหลัง" = เพดานคละของเรท (ชุดเดียวกับที่ล็อกช่อง "ด้านหลังคละกี่ลาย") · null = ไม่จำกัด
@@ -1445,9 +1418,7 @@ export default function ProductDetail({
      */
     const arts = sanitizeSpecArts(link.a);
     if (arts.length) {
-      setArtFiles(
-        arts.map((url) => ({ url, name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"), w: 0, h: 0 }))
-      );
+      setArtFiles(arts.map((url) => ({ url, name: decodeURIComponent(url.split("/").pop() ?? "ลายที่แนบ"), w: 0, h: 0 })));
       setLinkArtCount(arts.length);
     }
     setFromPriceLink(true);
@@ -1463,10 +1434,7 @@ export default function ProductDetail({
    */
   useEffect(() => {
     if (!fromPriceLink) return;
-    const t = setTimeout(
-      () => (bulkBoxRef.current ?? orderBoxRef.current)?.scrollIntoView({ behavior: "smooth", block: "center" }),
-      350,
-    );
+    const t = setTimeout(() => (bulkBoxRef.current ?? orderBoxRef.current)?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
     return () => clearTimeout(t);
   }, [fromPriceLink]);
 
@@ -1606,7 +1574,7 @@ export default function ProductDetail({
             ...(qtys.get(i) ? { qty: qtys.get(i) } : {}),
             ...(sz ? { size: sz, sizeRaw: sz.longest ? `${Math.max(sz.w, sz.h)}` : `${sz.w}x${sz.h}` } : {}),
           };
-        })
+        }),
       );
     }
     // 🔄 ลายด้านหลังของงานพิมพ์ 2 ด้าน — กลับเข้าช่องด้านหลังของตัวเอง ไม่ปนกับด้านหน้า
@@ -1620,7 +1588,7 @@ export default function ProductDetail({
           w: 0,
           h: 0,
           ...(backQtys.get(i) ? { qty: backQtys.get(i) } : {}),
-        }))
+        })),
       );
     }
     const consultVal = src[CONSULT_LABEL] ?? "";
@@ -1656,9 +1624,7 @@ export default function ProductDetail({
       })();
     }
     editCarryRef.current = {
-      keys: Object.fromEntries(
-        Object.entries(src).filter(([k]) => k === PLACEMENT_LABEL || k === PLACEMENT_SPEC_LABEL || k === "ภาพลายแต่ละด้าน")
-      ),
+      keys: Object.fromEntries(Object.entries(src).filter(([k]) => k === PLACEMENT_LABEL || k === PLACEMENT_SPEC_LABEL || k === "ภาพลายแต่ละด้าน")),
       arts,
     };
     setEditing(true);
@@ -1699,7 +1665,7 @@ export default function ProductDetail({
       (rate?.minPerDesign || tierByDesign || mixRule) && designs >= 1
         ? ({ ...effective, ...backSel, [DESIGN_LABEL]: `${designs} ลาย` } as Record<string, string>)
         : ({ ...effective, ...backSel } as Record<string, string>),
-    [effective, backSel, rate, tierByDesign, mixRule, designs]
+    [effective, backSel, rate, tierByDesign, mixRule, designs],
   );
 
   // ✨ เลือกเรทให้อัตโนมัติจากจำนวน + จำนวนลาย
@@ -1757,14 +1723,10 @@ export default function ProductDetail({
         return;
       }
       if (rate && !fitsDesigns(rate)) {
-        const alt = (qualified.length ? qualified : rates)
-          .filter(fitsDesigns)
-          .sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
+        const alt = (qualified.length ? qualified : rates).filter(fitsDesigns).sort((a, b) => (b.minQty ?? 1) - (a.minQty ?? 1))[0];
         if (alt && alt.label !== rate.label) {
           setRateLabel(alt.label);
-          setAutoRateNote(
-            `สลับเป็น “${rateShopLabel(alt)}” ให้อัตโนมัติ — ลายที่แนบ ${needDesigns} ลาย เกินที่แบบราคาเดิมคละได้`
-          );
+          setAutoRateNote(`สลับเป็น “${rateShopLabel(alt)}” ให้อัตโนมัติ — ลายที่แนบ ${needDesigns} ลาย เกินที่แบบราคาเดิมคละได้`);
           return;
         }
       }
@@ -1775,7 +1737,8 @@ export default function ProductDetail({
   }, [qty, pieceQty, rates, rateTouched, designs, designsTouched, autoDesignCount, rate, effective, unitCap]);
 
   const custom = product.custom?.enabled ? product.custom : null;
-  const cW = parseFloat(customW), cH = parseFloat(customH);
+  const cW = parseFloat(customW),
+    cH = parseFloat(customH);
   /** โหมด "คุยกับแอดมิน" ไม่ต้องกรอกขนาด — โหมดอื่นต้องกรอกกว้าง×ยาวให้ครบ */
   const customChat = custom?.mode === "chat";
   /** โหมดที่ยังไม่รู้ราคาตอนสั่ง (แอดมินตีให้ทีหลัง) */
@@ -1799,14 +1762,11 @@ export default function ProductDetail({
     if (!useCustom || custom?.mode !== "longest" || !(cW > 0 && cH > 0)) return effectiveWithDesigns;
     return { ...effectiveWithDesigns, [custom.label]: `${cW}×${cH} ${custom.unit}` };
   }, [effectiveWithDesigns, useCustom, custom, cW, cH]);
-  const baseUnitPrice = useMemo(
-    () => unitPriceFor(product, pricingSelections, qty),
-    [product, pricingSelections, qty]
-  );
+  const baseUnitPrice = useMemo(() => unitPriceFor(product, pricingSelections, qty), [product, pricingSelections, qty]);
   /** ที่มาของราคาโหมด longest — เอาไว้กางให้ลูกค้าเห็นว่าคิดจากแถวไหน + ส่วนเกินกี่บาท */
   const longestPlan = useMemo(
     () => (useCustom && custom?.mode === "longest" ? longestSizePlan(product, pricingSelections) : null),
-    [product, pricingSelections, useCustom, custom]
+    [product, pricingSelections, useCustom, custom],
   );
   // โหมด size/longest ราคายังคิดจากตารางปกติ · โหมดอื่นใช้ราคาของงานกำหนดเอง
   const unitPrice = useCustom && !customUsesMatrix ? customPrice : baseUnitPrice;
@@ -1822,7 +1782,7 @@ export default function ProductDetail({
         ? undefined
         : // โหมดสั่งเพิ่ม: ของในออเดอร์เดิมร่วมล็อตด้วย (lotExtras) — ราคาที่เห็นตรงกับตะกร้า
           lotPreviewFor(product, [...cartItems, ...lotExtras], pricingSelections, qty, designs),
-    [product, cartItems, lotExtras, pricingSelections, qty, designs, useCustom, customUsesMatrix]
+    [product, cartItems, lotExtras, pricingSelections, qty, designs, useCustom, customUsesMatrix],
   );
 
   /**
@@ -1837,7 +1797,7 @@ export default function ProductDetail({
    */
   const lotLockedLabels = useMemo(
     () => (sheets.length && lotMinScope ? (product.lotKeyOptions ?? []) : []),
-    [sheets.length, lotMinScope, product.lotKeyOptions]
+    [sheets.length, lotMinScope, product.lotKeyOptions],
   );
   /** สรุปสเปคของแผ่นที่พักไว้เป็นข้อความสั้น ๆ (ตัดกลุ่มที่ล็อกร่วมกันทั้งออเดอร์ออก ไม่ต้องซ้ำทุกแถว) */
   const sheetSpecText = useCallback(
@@ -1848,11 +1808,11 @@ export default function ProductDetail({
             !(product.lotKeyOptions ?? []).includes(o.label) &&
             // กลุ่มที่ถูกซ่อนตามเงื่อนไข (เช่น "ผิวเนื้อขาว" ตอนเลือกเนื้อใส) ไม่ใช่สเปคของแผ่นนี้
             optionActive(o, sel) &&
-            (sel[o.label] ?? "").trim()
+            (sel[o.label] ?? "").trim(),
         )
         .map((o) => sel[o.label])
         .join(" · "),
-    [product.options, product.lotKeyOptions]
+    [product.options, product.lotKeyOptions],
   );
   /** ค่าของกลุ่มที่แยกล็อต (เช่น เนื้อสติ๊กเกอร์ที่เลือกอยู่) — ใช้บอกลูกค้าว่านับรวมกับอะไร */
   const lotGroupName = useMemo(
@@ -1861,7 +1821,7 @@ export default function ProductDetail({
         .map((l) => pricingSelections[l]?.trim())
         .filter(Boolean)
         .join(" · "),
-    [product.lotKeyOptions, pricingSelections]
+    [product.lotKeyOptions, pricingSelections],
   );
 
   /**
@@ -1884,7 +1844,7 @@ export default function ProductDetail({
         // เก็บชื่อกลุ่มไว้ด้วย — ปุ่มสั่งจะได้บอกตรง ๆ ว่าติดช่องไหน และพาเลื่อนไปหาช่องนั้นได้
         .map((o) => ({ label: o.label, msg: inputError(o, effective[o.label], effective, product) }))
         .filter((e): e is { label: string; msg: string } => !!e.msg),
-    [product, effective]
+    [product, effective],
   );
   /**
    * ช่องที่ "กรอกแล้วแต่ผิดเกณฑ์" (เช่น จุดไดคัทเกินเพดานของขนาดที่เลือก) — ต่างจากช่องที่ยังไม่ได้กรอก
@@ -1929,10 +1889,7 @@ export default function ProductDetail({
    * null = ยังไม่รู้ หรือคูณไม่ได้เพราะหน่วยที่นับไม่ใช่หน่วยขาย
    * (เรทที่ขายเป็น ตร.ม. แต่ตัวเลขนับต่อแผ่น A3 — 1 ตร.ม. ไม่ใช่ 1 แผ่น)
    */
-  const yieldTotal =
-    unitYield && unitYield.per > 0 && (unitYield.unit == null || unitYield.unit === (matrix?.unit ?? ""))
-      ? unitYield.per * qty
-      : null;
+  const yieldTotal = unitYield && unitYield.per > 0 && (unitYield.unit == null || unitYield.unit === (matrix?.unit ?? "")) ? unitYield.per * qty : null;
 
   // ตัวเลือกที่แอดมินล้างราคาทิ้งในเรทนี้ (ไม่ขาย) → ถ้าลูกค้าค้างอยู่ที่ตัวนั้น สลับให้เป็นตัวแรกที่ขาย
   useEffect(() => {
@@ -1992,10 +1949,7 @@ export default function ProductDetail({
    * จำนวนที่ใช้เทียบ "ช่วงราคา" — สินค้าคิดเรทตามชิ้นต่อลายจะเป็น ⌊จำนวน ÷ ลาย⌋
    * ป้าย +฿ และข้อความค่าธรรมเนียมช่วงปลีกต้องอิงตัวเลขเดียวกับที่คิดราคาจริง (ดู unitPriceFor)
    */
-  const feeQty = useMemo(
-    () => tierQtyFor(product, effectiveWithDesigns, qty),
-    [product, effectiveWithDesigns, qty]
-  );
+  const feeQty = useMemo(() => tierQtyFor(product, effectiveWithDesigns, qty), [product, effectiveWithDesigns, qty]);
 
   /**
    * 🧮 จำนวนที่ใช้เทียบขั้น +฿ ของกลุ่มหนึ่ง — เท่ากับ feeQty ทุกกลุ่ม
@@ -2022,10 +1976,7 @@ export default function ProductDetail({
    * ไม่บอกไว้ ลูกค้าเห็นแค่ "฿110 / แผ่น A3" แล้วไม่รู้ว่ามีค่าอะไรรวมอยู่ข้างในบ้าง
    * (คนละก้อนกับ feeLines ที่บวกท้ายบิล — อันนี้แค่กางให้ดู ไม่บวกซ้ำ)
    */
-  const unitAddOns = useMemo(
-    () => unitAddOnBreakdown(product, effectiveWithDesigns, feeQty),
-    [product, effectiveWithDesigns, feeQty]
-  );
+  const unitAddOns = useMemo(() => unitAddOnBreakdown(product, effectiveWithDesigns, feeQty), [product, effectiveWithDesigns, feeQty]);
   const unitAddOnTotal = unitAddOns.reduce((n, f) => n + f.amount, 0);
 
   /**
@@ -2041,14 +1992,15 @@ export default function ProductDetail({
   // ถามตอนเบราว์เซอร์ว่างแล้ว — ปุ่มนี้ไม่เร่งด่วน ลูกค้าทั่วไปไม่ควรต้องรอคำขอนี้ตอนเปิดหน้า
   useEffect(() => {
     const idle = window.requestIdleCallback?.bind(window) ?? ((fn: () => void) => setTimeout(fn, 1200));
-    const id = idle(() =>
-      void canAccessAdmin().then((ok) => {
-        setIsAdmin(ok);
-        // 🗂 เจ้าของร้าน = เห็นปุ่มโหลด/แนบ .ai แยกเลเยอร์ในจอสร้างปฏิทิน (ช่วงทดสอบ)
-        if (ok) void getAdminSession().then((s) => setIsOwner(!!s.isAdministrator));
-        // คืนค่าโหมดที่เลือกไว้ล่าสุด (เฉพาะพนักงาน — ลูกค้าทั่วไปไม่มีทางเปิดโหมดนี้ได้)
-        if (ok && typeof localStorage !== "undefined" && localStorage.getItem(ADMIN_MODE_KEY) === "1") setAdminMode(true);
-      }),
+    const id = idle(
+      () =>
+        void canAccessAdmin().then((ok) => {
+          setIsAdmin(ok);
+          // 🗂 เจ้าของร้าน = เห็นปุ่มโหลด/แนบ .ai แยกเลเยอร์ในจอสร้างปฏิทิน (ช่วงทดสอบ)
+          if (ok) void getAdminSession().then((s) => setIsOwner(!!s.isAdministrator));
+          // คืนค่าโหมดที่เลือกไว้ล่าสุด (เฉพาะพนักงาน — ลูกค้าทั่วไปไม่มีทางเปิดโหมดนี้ได้)
+          if (ok && typeof localStorage !== "undefined" && localStorage.getItem(ADMIN_MODE_KEY) === "1") setAdminMode(true);
+        }),
     );
     return () => window.cancelIdleCallback?.(id as number);
   }, []);
@@ -2067,14 +2019,10 @@ export default function ProductDetail({
       ...(rate ? { r: rate.label } : {}),
       ...(needDesignsChoice ? { d: designs } : {}),
       ...(backOn ? { b: backDesigns } : {}),
-      ...(useCustom && custom?.enabled && customW.trim() && customH.trim()
-        ? { c: { w: customW.trim(), h: customH.trim() } }
-        : {}),
+      ...(useCustom && custom?.enabled && customW.trim() && customH.trim() ? { c: { w: customW.trim(), h: customH.trim() } } : {}),
     };
     // บรรทัดโชว์บนลิงก์ราคา — บวก "เพิ่มขนาด" เข้าบรรทัดขนาดเหมือนตะกร้า/ออเดอร์ (ค่าจริงอยู่ใน spec.s)
-    const lines = foldSizeExtra(
-      tidySpec(specEntries(orderableSelections(product, pricingSelections, effective)) as [string, string][])
-    );
+    const lines = foldSizeExtra(tidySpec(specEntries(orderableSelections(product, pricingSelections, effective)) as [string, string][]));
     // งานที่แอดมินต้องตีราคาเอง — อย่าโชว์ตัวเลข ฿0 ที่ไหนทั้งนั้น ลูกค้าอ่านว่าฟรี
     const askPrice = askQuote || (useCustom && customAsk);
     /*
@@ -2183,7 +2131,7 @@ export default function ProductDetail({
           ? next.includes(code)
             ? "รายการนี้อยู่ในใบรวมอยู่แล้ว"
             : `ใบรวมเต็มแล้ว (สูงสุด ${PRICE_LINK_MAX_ITEMS} รายการ)`
-          : `เพิ่มแล้ว — ใบรวมมี ${next.length} รายการ`
+          : `เพิ่มแล้ว — ใบรวมมี ${next.length} รายการ`,
       );
     } catch {
       setBundleMsg("เพิ่มไม่สำเร็จ — เช็คเน็ตแล้วลองใหม่");
@@ -2393,11 +2341,7 @@ export default function ProductDetail({
          */
         const preview = URL.createObjectURL(f);
         // กันซ้ำอีกชั้นตอนบันทึกจริง — เผื่อวางรูปเดิมรัว ๆ ระหว่างไฟล์แรกยังอัปโหลดไม่เสร็จ
-        setFiles((cur) =>
-          hash && cur.some((x) => x.hash === hash)
-            ? cur
-            : [...cur, { url, name: f.name, ...dim, preview, ...(hash ? { hash } : {}) }]
-        );
+        setFiles((cur) => (hash && cur.some((x) => x.hash === hash) ? cur : [...cur, { url, name: f.name, ...dim, preview, ...(hash ? { hash } : {}) }]));
         count += 1;
         // อัปโหลดสำเร็จแล้ว artBlocked เป็น false — ตรึงกล่องให้เปิดค้าง ไม่ให้หุบหนีรูปที่เพิ่งแนบ
         setArtTouched(true);
@@ -2438,7 +2382,9 @@ export default function ProductDetail({
               {back ? "🔄 ด้านหลัง" : "🖼 ด้านหน้า"}
             </span>
             {files.length > 0 ? (
-              <span className="text-[11px] font-bold text-emerald-700">แนบแล้ว {files.length.toLocaleString("th-TH")} รูป = {files.length.toLocaleString("th-TH")} ลาย</span>
+              <span className="text-[11px] font-bold text-emerald-700">
+                แนบแล้ว {files.length.toLocaleString("th-TH")} รูป = {files.length.toLocaleString("th-TH")} ลาย
+              </span>
             ) : (
               <span className="text-[11px] font-normal text-stone-400">{back ? "ยังไม่แนบ — ถือว่าด้านหลังใช้ลายเดียวกันทั้งหมด" : "ยังไม่แนบ"}</span>
             )}
@@ -2475,7 +2421,9 @@ export default function ProductDetail({
                   ✕
                 </button>
                 {f.w > 0 && (
-                  <p className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}>
+                  <p
+                    className={`mt-0.5 w-20 text-center text-[9px] leading-tight ${Math.max(f.w, f.h) < 1500 ? "font-bold text-amber-600" : "text-stone-400"}`}
+                  >
                     {f.w}×{f.h}
                     {Math.max(f.w, f.h) < 1500 ? " · ภาพเล็ก" : ""}
                   </p>
@@ -2537,11 +2485,7 @@ export default function ProductDetail({
                             : "กxส"
                       }
                       onChange={(e) => setArtSize(i, e.target.value)}
-                      aria-label={
-                        artLongestOnly
-                          ? `ด้านยาวสุดของลายที่ ${i + 1} (${artSizeUnit})`
-                          : `ขนาดของลายที่ ${i + 1} (กว้าง x สูง ${artSizeUnit})`
-                      }
+                      aria-label={artLongestOnly ? `ด้านยาวสุดของลายที่ ${i + 1} (${artSizeUnit})` : `ขนาดของลายที่ ${i + 1} (กว้าง x สูง ${artSizeUnit})`}
                       className="w-full min-w-0 bg-transparent text-right text-[11px] font-bold text-teal-900 outline-none placeholder:font-normal placeholder:text-stone-300"
                     />
                   </label>
@@ -2553,104 +2497,113 @@ export default function ProductDetail({
 
         {/* 📐 สรุปคละขนาด — ระบุ กว้าง×สูง ใต้รูปแต่ละลาย (ผู้ใช้สั่ง 9 ก.ย. 69: เคสคละขนาดเกิดบ่อย)
             ไม่บังคับ ไม่บล็อกปุ่มสั่ง · ลายที่ไม่ระบุใช้ขนาดหลัก · ตัวเลขชิ้น/แผ่นคิดลายละเท่า ๆ กัน (sheetYieldCount) */}
-        {!back && artSizeMode && (() => {
-          const fmt = (n: number) => n.toLocaleString("th-TH");
-          const bad = artFiles.map((f, k) => (f.sizeErr ? `ลายที่ ${k + 1}: ${f.sizeErr}` : "")).filter(Boolean);
-          const sizedN = artFiles.filter((f) => f.size).length;
-          const sheet = artSizeOpt?.sheetYield?.sheetName ?? "แผ่น";
-          const mainTxt = mainArtSize ? artSizeText(mainArtSize, artSizeUnit) : "";
-          const alert = artSizeAlert;
-          // ⛔ แดง = ลายใหญ่เกินแผ่น / แผ่นที่สั่งใส่ไม่ครบทุกลาย · เหลือง = พิมพ์ผิด/เกินช่วง · เขียว = ปกติ
-          const red = !!alert && (alert.tooBig.length > 0 || alert.short);
-          const tone = red
-            ? "bg-rose-50 text-rose-800 ring-2 ring-rose-300"
-            : bad.length
-              ? "bg-amber-50 text-amber-800 ring-amber-200"
-              : sizedN > 0
-                ? "bg-teal-50 text-teal-800 ring-teal-200"
-                : "bg-white text-stone-500 ring-stone-200";
-          const text = red && alert!.tooBig.length
-            ? `⛔ ${alert!.tooBig.map((k) => `ลายที่ ${k + 1} (${artFiles[k].size ? artSizeText(artFiles[k].size!, artSizeUnit) : mainTxt})`).join(", ")} ใหญ่เกิน 1 ${sheet} — วางลงแผ่นไม่ได้ ลดขนาดหรือทักแชทเช็คกับแอดมินก่อนนะครับ`
-            : red
-              ? `⛔ ${fmt(artFiles.length)} ลายขนาดนี้รวมกันเกิน 1 ${sheet} — สั่งอยู่ ${fmt(alert!.available!)} ${sheet} ได้แค่ ${fmt(artSizeMixedPer ?? 0)} ชิ้น ไม่ครบทุกลาย ต้องสั่งอย่างน้อย ${fmt(alert!.needSheets!)} ${sheet} (หรือลดขนาดลาย)`
+        {!back &&
+          artSizeMode &&
+          (() => {
+            const fmt = (n: number) => n.toLocaleString("th-TH");
+            const bad = artFiles.map((f, k) => (f.sizeErr ? `ลายที่ ${k + 1}: ${f.sizeErr}` : "")).filter(Boolean);
+            const sizedN = artFiles.filter((f) => f.size).length;
+            const sheet = artSizeOpt?.sheetYield?.sheetName ?? "แผ่น";
+            const mainTxt = mainArtSize ? artSizeText(mainArtSize, artSizeUnit) : "";
+            const alert = artSizeAlert;
+            // ⛔ แดง = ลายใหญ่เกินแผ่น / แผ่นที่สั่งใส่ไม่ครบทุกลาย · เหลือง = พิมพ์ผิด/เกินช่วง · เขียว = ปกติ
+            const red = !!alert && (alert.tooBig.length > 0 || alert.short);
+            const tone = red
+              ? "bg-rose-50 text-rose-800 ring-2 ring-rose-300"
               : bad.length
-                ? `⚠️ ${bad.join(" · ")}`
-                : sizedN === 0
-              ? `📐 ลายคนละขนาด? ระบุ${artLongestOnly ? "ด้านยาวสุด" : " กว้าง x สูง "}ใต้รูปแต่ละลายได้ (ไม่ระบุ = ทุกลายใช้ขนาด${mainTxt ? ` ${mainTxt}` : "หลัก"})`
-              : `📐 คละ ${fmt(sizedN)} ขนาด${
-                  sizedN < artFiles.length ? ` (อีก ${fmt(artFiles.length - sizedN)} ลายใช้ขนาดหลัก${mainTxt ? ` ${mainTxt}` : ""})` : ""
-                }${
-                  artSizeMixedPer == null
-                    ? ""
-                    : artSizeMixedPer > 0
-                      ? ` — ได้ประมาณ ${fmt(artSizeMixedPer)} ชิ้น ต่อ 1 ${sheet} (คิดลายละเท่า ๆ กัน · ตัวเลขคร่าว ๆ${artLongestOnly ? ` · ${LONGEST_ONLY_NOTE}` : ""})`
-                      : ` — มีลายใหญ่เกิน 1 ${sheet} รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ`
-                }`;
-          // ป้ายแดงขึ้นก่อน แต่ช่องที่พิมพ์ผิด/เกินช่วงยังต้องบอกด้วย (ไม่งั้นลูกค้าแก้ป้ายแดงเสร็จแล้วเพิ่งเจออีกอัน)
-          const tail = red && bad.length ? ` · ⚠️ ${bad.join(" · ")}` : "";
-          return <div className={`mt-2 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>{text}{tail}</div>;
-        })()}
+                ? "bg-amber-50 text-amber-800 ring-amber-200"
+                : sizedN > 0
+                  ? "bg-teal-50 text-teal-800 ring-teal-200"
+                  : "bg-white text-stone-500 ring-stone-200";
+            const text =
+              red && alert!.tooBig.length
+                ? `⛔ ${alert!.tooBig.map((k) => `ลายที่ ${k + 1} (${artFiles[k].size ? artSizeText(artFiles[k].size!, artSizeUnit) : mainTxt})`).join(", ")} ใหญ่เกิน 1 ${sheet} — วางลงแผ่นไม่ได้ ลดขนาดหรือทักแชทเช็คกับแอดมินก่อนนะครับ`
+                : red
+                  ? `⛔ ${fmt(artFiles.length)} ลายขนาดนี้รวมกันเกิน 1 ${sheet} — สั่งอยู่ ${fmt(alert!.available!)} ${sheet} ได้แค่ ${fmt(artSizeMixedPer ?? 0)} ชิ้น ไม่ครบทุกลาย ต้องสั่งอย่างน้อย ${fmt(alert!.needSheets!)} ${sheet} (หรือลดขนาดลาย)`
+                  : bad.length
+                    ? `⚠️ ${bad.join(" · ")}`
+                    : sizedN === 0
+                      ? `📐 ลายคนละขนาด? ระบุ${artLongestOnly ? "ด้านยาวสุด" : " กว้าง x สูง "}ใต้รูปแต่ละลายได้ (ไม่ระบุ = ทุกลายใช้ขนาด${mainTxt ? ` ${mainTxt}` : "หลัก"})`
+                      : `📐 คละ ${fmt(sizedN)} ขนาด${
+                          sizedN < artFiles.length ? ` (อีก ${fmt(artFiles.length - sizedN)} ลายใช้ขนาดหลัก${mainTxt ? ` ${mainTxt}` : ""})` : ""
+                        }${
+                          artSizeMixedPer == null
+                            ? ""
+                            : artSizeMixedPer > 0
+                              ? ` — ได้ประมาณ ${fmt(artSizeMixedPer)} ชิ้น ต่อ 1 ${sheet} (คิดลายละเท่า ๆ กัน · ตัวเลขคร่าว ๆ${artLongestOnly ? ` · ${LONGEST_ONLY_NOTE}` : ""})`
+                              : ` — มีลายใหญ่เกิน 1 ${sheet} รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ`
+                        }`;
+            // ป้ายแดงขึ้นก่อน แต่ช่องที่พิมพ์ผิด/เกินช่วงยังต้องบอกด้วย (ไม่งั้นลูกค้าแก้ป้ายแดงเสร็จแล้วเพิ่งเจออีกอัน)
+            const tail = red && bad.length ? ` · ⚠️ ${bad.join(" · ")}` : "";
+            return (
+              <div className={`mt-2 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>
+                {text}
+                {tail}
+              </div>
+            );
+          })()}
 
         {/* 🔢 สรุปจำนวนต่อลาย — เทียบกับจำนวนที่สั่ง (ผู้ใช้สั่ง 8 ก.ย. 69: "สั่ง 10 ชิ้น คละ 3 ลาย ลายละกี่ชิ้น")
             ไม่บังคับ ไม่บล็อกปุ่มสั่ง — แค่บอกให้เห็นว่ารวมครบ/ยังขาด/เกิน แอดมินจะได้ไม่ต้องทักถาม
             งาน 2 ด้าน: แต่ละด้านสรุปของตัวเอง ทุกชิ้นมีทั้งหน้าและหลัง → ยอดด้านหลังก็ต้องรวมเท่าจำนวนที่สั่ง (ไม่ใช่บวกกับด้านหน้า) */}
-        {qtyMode && (() => {
-          const qUnit = artPieces.word;
-          const total = artPieces.total;
-          const filled = files.filter((f) => f.qty && f.qty > 0).length;
-          const sum = files.reduce((a, f) => a + (f.qty ?? 0), 0);
-          const leftN = files.length - filled;
-          const fmt = (n: number) => n.toLocaleString("th-TH");
-          // งาน 2 ด้าน: วงเล็บบอกด้านต่อท้ายคำว่า "ลาย" — "ระบุจำนวนแต่ละลาย (ด้านหลัง) ได้ใต้รูป" · งานด้านเดียวข้อความเดิม
-          const sideTag = artTwoSide ? ` (${sideWord}) ` : "";
-          const sideLbl = artTwoSide ? `ลาย (${sideWord}) ` : "";
-          const shareEven = () => {
-            // แบ่งเท่า ๆ กัน — เศษที่เหลือใส่ลายแรก ๆ ทีละชิ้น (10 ชิ้น 3 ลาย → 4 · 3 · 3)
-            const cnt = files.length;
-            const base = Math.floor(total / cnt);
-            const rest = total - base * cnt;
-            setFiles((cur) => cur.map((f, k) => ({ ...f, qty: Math.max(1, base + (k < rest ? 1 : 0)) })));
-          };
-          const tone =
-            filled === 0
-              ? "bg-white text-stone-500 ring-stone-200"
-              : leftN > 0
-                ? back
-                  ? "bg-white text-violet-800 ring-violet-200"
-                  : "bg-white text-sky-800 ring-sky-200"
-                : sum === total
-                  ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                  : "bg-red-50 text-red-700 ring-red-200"; // ยอดรวมไม่ตรงจำนวนสั่ง → ตัวแดง (เจ้าของร้านขอ 9 ก.ย. 69 เดิมเหลืองอำพันมองผ่าน)
-          const mismatch = filled > 0 && leftN === 0 && sum !== total;
-          return (
-            <div className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>
-              <span className="min-w-0 flex-1">
-                {filled === 0
-                  ? `🔢 ระบุจำนวนแต่ละลาย${sideTag}ได้ใต้รูป (ไม่บังคับ) — สั่งทั้งหมด ${fmt(total)} ${qUnit} คละ ${fmt(files.length)} ลาย${sideTag.trimEnd()}`
-                  : leftN > 0
-                    ? `🔢 ${sideLbl}ระบุแล้ว ${fmt(sum)} จาก ${fmt(total)} ${qUnit} — เหลืออีก ${fmt(leftN)} ลายที่ยังไม่ระบุ`
-                    : sum === total
-                      ? `✓ ${sideLbl}ระบุครบ ${fmt(sum)} ${qUnit} ตรงกับจำนวนที่สั่ง`
-                      : `⚠️ ${sideLbl}รวม ${fmt(sum)} ${qUnit} แต่สั่งทั้งหมด ${fmt(total)} ${qUnit} — ปรับตัวเลขให้ตรงกัน (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)`}
-              </span>
-              {total >= files.length && (filled === 0 || sum !== total) && (
-                <button
-                  type="button"
-                  onClick={shareEven}
-                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold transition ${
-                    mismatch
-                      ? "bg-red-100 text-red-800 hover:bg-red-200"
-                      : back
-                        ? "bg-violet-100 text-violet-800 hover:bg-violet-200"
-                        : "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                  }`}
-                >
-                  แบ่งเท่า ๆ กัน
-                </button>
-              )}
-            </div>
-          );
-        })()}
+        {qtyMode &&
+          (() => {
+            const qUnit = artPieces.word;
+            const total = artPieces.total;
+            const filled = files.filter((f) => f.qty && f.qty > 0).length;
+            const sum = files.reduce((a, f) => a + (f.qty ?? 0), 0);
+            const leftN = files.length - filled;
+            const fmt = (n: number) => n.toLocaleString("th-TH");
+            // งาน 2 ด้าน: วงเล็บบอกด้านต่อท้ายคำว่า "ลาย" — "ระบุจำนวนแต่ละลาย (ด้านหลัง) ได้ใต้รูป" · งานด้านเดียวข้อความเดิม
+            const sideTag = artTwoSide ? ` (${sideWord}) ` : "";
+            const sideLbl = artTwoSide ? `ลาย (${sideWord}) ` : "";
+            const shareEven = () => {
+              // แบ่งเท่า ๆ กัน — เศษที่เหลือใส่ลายแรก ๆ ทีละชิ้น (10 ชิ้น 3 ลาย → 4 · 3 · 3)
+              const cnt = files.length;
+              const base = Math.floor(total / cnt);
+              const rest = total - base * cnt;
+              setFiles((cur) => cur.map((f, k) => ({ ...f, qty: Math.max(1, base + (k < rest ? 1 : 0)) })));
+            };
+            const tone =
+              filled === 0
+                ? "bg-white text-stone-500 ring-stone-200"
+                : leftN > 0
+                  ? back
+                    ? "bg-white text-violet-800 ring-violet-200"
+                    : "bg-white text-sky-800 ring-sky-200"
+                  : sum === total
+                    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                    : "bg-red-50 text-red-700 ring-red-200"; // ยอดรวมไม่ตรงจำนวนสั่ง → ตัวแดง (เจ้าของร้านขอ 9 ก.ย. 69 เดิมเหลืองอำพันมองผ่าน)
+            const mismatch = filled > 0 && leftN === 0 && sum !== total;
+            return (
+              <div className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[11px] font-semibold leading-relaxed ring-1 ${tone}`}>
+                <span className="min-w-0 flex-1">
+                  {filled === 0
+                    ? `🔢 ระบุจำนวนแต่ละลาย${sideTag}ได้ใต้รูป (ไม่บังคับ) — สั่งทั้งหมด ${fmt(total)} ${qUnit} คละ ${fmt(files.length)} ลาย${sideTag.trimEnd()}`
+                    : leftN > 0
+                      ? `🔢 ${sideLbl}ระบุแล้ว ${fmt(sum)} จาก ${fmt(total)} ${qUnit} — เหลืออีก ${fmt(leftN)} ลายที่ยังไม่ระบุ`
+                      : sum === total
+                        ? `✓ ${sideLbl}ระบุครบ ${fmt(sum)} ${qUnit} ตรงกับจำนวนที่สั่ง`
+                        : `⚠️ ${sideLbl}รวม ${fmt(sum)} ${qUnit} แต่สั่งทั้งหมด ${fmt(total)} ${qUnit} — ปรับตัวเลขให้ตรงกัน (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)`}
+                </span>
+                {total >= files.length && (filled === 0 || sum !== total) && (
+                  <button
+                    type="button"
+                    onClick={shareEven}
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold transition ${
+                      mismatch
+                        ? "bg-red-100 text-red-800 hover:bg-red-200"
+                        : back
+                          ? "bg-violet-100 text-violet-800 hover:bg-violet-200"
+                          : "bg-sky-100 text-sky-800 hover:bg-sky-200"
+                    }`}
+                  >
+                    แบ่งเท่า ๆ กัน
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
         {files.some((f) => f.w > 0 && Math.max(f.w, f.h) < 1500) && (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-700 ring-1 ring-amber-200">
@@ -2706,10 +2659,7 @@ export default function ProductDetail({
                 🖼️ {artTwoSide ? `แนบลาย${sideWord} · ` : ""}แตะเลือกไฟล์ · ลากมาวาง{artTwoSide ? "" : " · ⌘/Ctrl+V"}
               </span>
               <span className="text-[10px] font-normal text-stone-400">
-                JPG / PNG / WEBP · ไม่เกิน 15MB ·{" "}
-                {cap != null || limit != null
-                  ? `แนบได้อีก ${left.toLocaleString("th-TH")} รูป`
-                  : "ไม่จำกัดจำนวน"}
+                JPG / PNG / WEBP · ไม่เกิน 15MB · {cap != null || limit != null ? `แนบได้อีก ${left.toLocaleString("th-TH")} รูป` : "ไม่จำกัดจำนวน"}
               </span>
             </>
           )}
@@ -2794,9 +2744,7 @@ export default function ProductDetail({
   }, [studio, studioMode]);
   const designDone = placed.length > 0;
   /** 🗓 แบบปฏิทินแรกที่ปีไม่ตรงกับตัวเลือกปีตอนนี้ (-1 = ตรงหมด) */
-  const calYearStale = calMode
-    ? placed.findIndex((p) => p.calState && (p.calState.back.year !== calYear || p.calState.format !== calFormatKey))
-    : -1;
+  const calYearStale = calMode ? placed.findIndex((p) => p.calState && (p.calState.back.year !== calYear || p.calState.format !== calFormatKey)) : -1;
   /** 🗓 ไฟล์หน้าที่ 2+ ของทุกแบบ → ช่องลายด้านหลัง (เรียงตามแบบ) — ตามรายการแบบเสมอ ลบ/แก้แบบแล้วตามเอง */
   useEffect(() => {
     if (!calMode || !placed.some((p) => p.calState)) return;
@@ -2939,11 +2887,11 @@ export default function ProductDetail({
           ? !within(artSizePair, parsed.w)
             ? `ยาวสุด ${parsed.w} เกินที่รับ ${lim(artSizePair)} ${artSizeUnit}`
             : undefined
-        : !within(artSizePair, parsed.w)
-          ? `กว้าง ${parsed.w} เกินที่รับ ${lim(artSizePair)} ${artSizeUnit}`
-          : !within(artSizeOpt, parsed.h)
-            ? `สูง ${parsed.h} เกินที่รับ ${lim(artSizeOpt)} ${artSizeUnit}`
-            : undefined;
+          : !within(artSizePair, parsed.w)
+            ? `กว้าง ${parsed.w} เกินที่รับ ${lim(artSizePair)} ${artSizeUnit}`
+            : !within(artSizeOpt, parsed.h)
+              ? `สูง ${parsed.h} เกินที่รับ ${lim(artSizeOpt)} ${artSizeUnit}`
+              : undefined;
     const ok = !!parsed && !sizeErr;
     setArtFiles((cur) => cur.map((f, i) => (i === index ? { ...f, sizeRaw: cleaned, size: ok ? parsed! : undefined, sizeErr } : f)));
   }
@@ -2958,9 +2906,7 @@ export default function ProductDetail({
    * (กดรัว ๆ แล้วอ่านค่าจากตัวแปรที่เรนเดอร์ไว้ จะได้ค่าเก่า → กดสิบทีขึ้นแค่ทีเดียว)
    */
   function bumpDesignQty(index: number, delta: number) {
-    setPlaced((cur) =>
-      cur.map((p, i) => (i === index ? { ...p, qty: Math.max(1, Math.min(9999, p.qty + delta)) } : p)),
-    );
+    setPlaced((cur) => cur.map((p, i) => (i === index ? { ...p, qty: Math.max(1, Math.min(9999, p.qty + delta)) } : p)));
   }
 
   /** จำนวนรวมของทุกลาย = จำนวนที่สั่งจริง */
@@ -2970,10 +2916,7 @@ export default function ProductDetail({
    * ลูกค้าเลือกงานหลายด้าน/หลายเลเยอร์อยู่ไหม (เช่น "สกรีน 2 ด้าน")
    * — ต้องเตือนให้ชัด เพราะถ้าเข้าใจว่า "เพิ่มลาย = ด้านหลัง" จำนวนที่สั่งจะกลายเป็นสองเท่า
    */
-  const multiSide = useMemo(
-    () => Object.values(effective).some((v) => /([2-9]|\d\d+)\s?ด้าน|สองด้าน|หลายด้าน|เลเยอร์/.test(String(v ?? ""))),
-    [effective],
-  );
+  const multiSide = useMemo(() => Object.values(effective).some((v) => /([2-9]|\d\d+)\s?ด้าน|สองด้าน|หลายด้าน|เลเยอร์/.test(String(v ?? ""))), [effective]);
 
   // โหมดออกแบบบนเว็บ: จำนวนที่สั่ง = ผลรวมจำนวนของทุกลาย (ลูกค้าปรับที่ลายแต่ละอัน)
   useEffect(() => {
@@ -3071,8 +3014,7 @@ export default function ProductDetail({
        * หน้าแรก = ลายด้านหน้า (นับเป็น 1 ลาย) · หน้าที่เหลือ = ช่องลายด้านหลังตามลำดับหน้า
        */
       const urls: string[] = new Array(r.pages.length);
-      for (let i = 0; i < r.pages.length; i += 3)
-        await Promise.all(r.pages.slice(i, i + 3).map(async (p, j) => (urls[i + j] = await uploadOne(p.file))));
+      for (let i = 0; i < r.pages.length; i += 3) await Promise.all(r.pages.slice(i, i + 3).map(async (p, j) => (urls[i + j] = await uploadOne(p.file))));
       // ต้นฉบับ (ไม่นับเป็นลาย) — อัปไม่ขึ้นก็ยังสั่งได้ ไฟล์ที่ประกอบแล้วพิมพ์ได้เลย
       // ลำดับตรงกับ r.sources เสมอ ("" = อัปไม่ขึ้น) — ใช้เปิดแบบเดิมกลับมาแก้จากตะกร้า (cal-edit-store)
       const sourceUrls: string[] = [];
@@ -3244,12 +3186,9 @@ export default function ProductDetail({
    * 📐 คละหลายขนาดใน 1 แผ่น — กลุ่มกว้าง×สูงที่นับชิ้น/แผ่น (sheetYield) ที่แสดงอยู่ตอนนี้
    * มี = สินค้านี้แบ่งแผ่น/ไดคัทตามขนาด → แนบ ≥2 ลายแล้วระบุขนาดใต้รูปแต่ละลายได้ (ดู ART_SIZE_LABEL)
    */
-  const artSizeOpt = useMemo(
-    () => product.options.find((o) => o.sheetYield && optionVisible(o, effective)) ?? null,
-    [product, effective],
-  );
+  const artSizeOpt = useMemo(() => product.options.find((o) => o.sheetYield && optionVisible(o, effective)) ?? null, [product, effective]);
   const artSizePair = useMemo(
-    () => (artSizeOpt ? product.options.find((o) => o.label === artSizeOpt.sheetYield!.pairLabel) ?? null : null),
+    () => (artSizeOpt ? (product.options.find((o) => o.label === artSizeOpt.sheetYield!.pairLabel) ?? null) : null),
     [product, artSizeOpt],
   );
   const artSizeMode = artQtyMode && !!artSizeOpt && !!artSizePair;
@@ -3300,9 +3239,7 @@ export default function ProductDetail({
    */
   const artPieces = useMemo(() => {
     const y = orderUnitYield(product, effective);
-    return y && y.per > 1
-      ? { total: y.per * qty, word: y.piece }
-      : { total: qty, word: matrix?.unit ?? "ชิ้น" };
+    return y && y.per > 1 ? { total: y.per * qty, word: y.piece } : { total: qty, word: matrix?.unit ?? "ชิ้น" };
   }, [product, effective, qty, matrix?.unit]);
   /**
    * 🎨 โหมดออกแบบบนเว็บ "ยังต้องวางลายอยู่ไหม"
@@ -3326,12 +3263,9 @@ export default function ProductDetail({
    * ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
    * มีของพักไว้แล้ว (sheets) = ปุ่มเปลี่ยนเป็น "สั่งของที่เก็บไว้" ไม่ล็อก
    */
-  const orderBlocked =
-    !sheets.length &&
-    ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty);
+  const orderBlocked = !sheets.length && ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin || belowMinQty);
   /** ปุ่มในแถบล่าง — เงื่อนไขเดิมของแถบนั้น (ไม่นับ belowMinQty) */
-  const barBlocked =
-    !sheets.length && ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin);
+  const barBlocked = !sheets.length && ((useCustom && !customValid) || !!customSizeErr || artBlocked || inputErrors.length > 0 || belowMin);
 
   /**
    * 🎨 สินค้าที่นับขั้นต่ำทั้งล็อต (และสินค้าโหมดหย่อนลงตะกร้าทันที): **ไม่ถามจำนวนลาย** —
@@ -3346,22 +3280,13 @@ export default function ProductDetail({
    */
   const designsOk = designsSet || ((!!lotMinRate || lotToCart) && artProvided);
 
-
   /**
    * แผ่นที่กำลังตั้งค่าอยู่ "พร้อมสั่งแล้ว" ไหม — ใช้ตัดสินว่าจะนับรวมในรอบนี้ไหม
    * ⚠️ สำคัญกับโหมดสั่งหลายแผ่น: พอพักสเปคแล้วระบบล้างลาย/หมายเหตุทิ้ง (แผ่นถัดไปแนบของตัวเอง)
    *    แผ่นที่ค้างอยู่จึงยังไม่ครบ — ถ้าไม่แยกเคสนี้ ลูกค้าที่พักครบ 3 แผ่นแล้วจะกดสั่งไม่ได้เลย
    */
   const currentReady =
-    !(
-      (useCustom && !customValid) ||
-      !!customSizeErr ||
-      artBlocked ||
-      consultBlocked ||
-      inputErrors.length > 0 ||
-      belowMin ||
-      belowMinQty
-    ) &&
+    !((useCustom && !customValid) || !!customSizeErr || artBlocked || consultBlocked || inputErrors.length > 0 || belowMin || belowMinQty) &&
     !(needDesignsChoice && !designsOk) &&
     !studioNeedsDesign;
   /** ค่าล่าสุดสำหรับ effect "สั่งตามสเปคนี้" (อ่านตอน timeout ยิง ไม่ใช่ตอนตั้ง) */
@@ -3406,8 +3331,7 @@ export default function ProductDetail({
     return Math.max(0, rateMinQty - ((lotPreview?.cartQty ?? 0) + lotAddingQty));
   }, [lotMinScope, useCustom, rateMinQty, lotPreview, lotAddingQty]);
   /** ครบขั้นต่ำได้ "เพราะนับรวมของในตะกร้า" — ลำพังที่กดสั่งรอบนี้ยังไม่ถึง */
-  const lotMetWithCart =
-    lotMinScope && rateMinQty > 1 && lotShortNeed === 0 && lotAddingQty < rateMinQty && (lotPreview?.cartQty ?? 0) > 0;
+  const lotMetWithCart = lotMinScope && rateMinQty > 1 && lotShortNeed === 0 && lotAddingQty < rateMinQty && (lotPreview?.cartQty ?? 0) > 0;
   /**
    * 📦 ยังไม่ถึงขั้นต่ำของรอบผลิต — **เตือน ไม่ห้าม** (ผู้ใช้สั่ง 31 ส.ค. 69)
    *
@@ -3418,7 +3342,6 @@ export default function ProductDetail({
    * ⚠️ ประวัติ: 30 ส.ค. เคยล็อกปุ่มเพิ่มลงตะกร้าไว้ แล้วผู้ใช้ให้เปลี่ยนเป็นเตือนแทน
    */
   const belowLotMin = lotShortNeed > 0;
-
 
   /** เลื่อน+ไฮไลต์ไปที่กล่องแนบลาย (กางให้ด้วย) — ใช้จากเช็คลิสต์ "แผ่นนี้ต้องทำอะไรอีก" */
   const jumpToArt = () => {
@@ -3569,26 +3492,29 @@ export default function ProductDetail({
      * ลายเดียว = ทั้งหมดอยู่แล้ว ไม่ต้องจด · ลายที่วางบนเทมเพลตมีจำนวนของตัวเองใน PLACEMENT_LABEL แล้ว ไม่จดซ้ำ
      */
     if (artFiles.length > 1 && !placed.length) {
-      const artQtyText = formatArtQty(artFiles.map((f) => f.qty), artPieces.word);
+      const artQtyText = formatArtQty(
+        artFiles.map((f) => f.qty),
+        artPieces.word,
+      );
       if (artQtyText) extra[ART_QTY_LABEL] = artQtyText;
     }
     // 🔄 ด้านหลังจดแยกคีย์ "ลายที่ N" นับใหม่ภายในชุดหลัง (checkout จับคู่กับ url ด้านหลังผ่าน artQtyFromSel)
     if (backOn && artBackFiles.length > 1 && !placed.length) {
-      const backQtyText = formatArtQty(artBackFiles.map((f) => f.qty), artPieces.word);
+      const backQtyText = formatArtQty(
+        artBackFiles.map((f) => f.qty),
+        artPieces.word,
+      );
       if (backQtyText) extra[ART_BACK_QTY_LABEL] = backQtyText;
     }
     // งานหลายด้าน — ภาพของแต่ละด้าน (ไม่นับเป็นลายเพิ่ม แค่แนบให้กราฟฟิกครบ)
-    const sideArts = placed.flatMap((d, i) =>
-      (d.sides ?? []).map((sd) => `${placed.length > 1 ? `ลายที่ ${i + 1} ` : ""}${sd.name}: ${sd.artUrl}`),
-    );
+    const sideArts = placed.flatMap((d, i) => (d.sides ?? []).map((sd) => `${placed.length > 1 ? `ลายที่ ${i + 1} ` : ""}${sd.name}: ${sd.artUrl}`));
     if (sideArts.length) extra["ภาพลายแต่ละด้าน"] = sideArts.join(" | ");
     // ลายที่วางบนเทมเพลตผ่านหน้าเว็บ — สรุปให้ลูกค้าอ่าน + ตัวเลขให้ทีมผลิตวางในไฟล์จริง
     if (placed.length) {
       const many = placed.length > 1;
       // ยุบส่วนที่ซ้ำกันทุกลาย (ชื่อแบบ+ขนาด) ไว้ครั้งเดียว — ลูกค้าเห็นบรรทัดสั้น ๆ ในออเดอร์
       extra[PLACEMENT_LABEL] = many
-        ? `${placed.length} ลาย · ${placed[0].head} · ` +
-          placed.map((p, i) => `ลายที่ ${i + 1} × ${p.qty} ชิ้น (${p.dpi} DPI)`).join(" · ")
+        ? `${placed.length} ลาย · ${placed[0].head} · ` + placed.map((p, i) => `ลายที่ ${i + 1} × ${p.qty} ชิ้น (${p.dpi} DPI)`).join(" · ")
         : `${placed[0].head} · ${placed[0].dpi} DPI`;
       extra[PLACEMENT_SPEC_LABEL] = placed
         .map(
@@ -3619,18 +3545,14 @@ export default function ProductDetail({
       if (!custom || !customValid || customSizeErr) return null; // ต้องกรอกขนาดให้ครบ + ไม่เกินที่รับผลิตได้
       // เก็บขนาดที่ระบุลง selections (เป็น key ของตะกร้า + ใช้คิดราคาซ้ำ)
       // + กลุ่มตัวเลือกที่แอดมินเปิดให้เลือกต่อได้ (keepOptions) ติดไปกับออเดอร์ด้วย
-      const kept = Object.fromEntries(
-        Object.entries(effective).filter(([k]) => customKeepsOption(custom, k))
-      );
+      const kept = Object.fromEntries(Object.entries(effective).filter(([k]) => customKeepsOption(custom, k)));
       const customValue = customChat ? "คุยรายละเอียดกับแอดมิน" : `${cW}×${cH} ${custom.unit}`;
       return { ...kept, [custom.label]: customValue, ...extra };
     }
     // กลุ่มที่ถูกซ่อน (showWhen ไม่ตรง) หรือกลุ่มงานสั่งทำที่ลูกค้าไม่ได้ติ๊ก — ไม่ต้องติดไปกับตะกร้า/ออเดอร์
     // (กลุ่มที่เป็นแกนตารางราคาตัดทิ้งไม่ได้ orderableSelections สลับให้เป็น "ไม่รับ/ไม่ทำ" แทน)
     // ค่าว่าง = กลุ่มติ๊กหลายอย่างที่ลูกค้าไม่ได้ติ๊กอะไรเลย — ไม่ต้องโชว์เป็นบรรทัดเปล่าในตะกร้า/ออเดอร์
-    const shown = Object.fromEntries(
-      Object.entries(orderableSelections(product, effectiveWithDesigns, effective)).filter(([, v]) => v !== "")
-    );
+    const shown = Object.fromEntries(Object.entries(orderableSelections(product, effectiveWithDesigns, effective)).filter(([, v]) => v !== ""));
     return { ...shown, ...extra };
   }
 
@@ -3666,8 +3588,7 @@ export default function ProductDetail({
      * (ลบลายทิ้งไปแล้วยังหิ้วต่อ = ใบงานอ้างถึงรูปที่ไม่ได้แนบมา) · วางลายใหม่เอง ค่าใหม่ทับอยู่แล้ว
      */
     const carry = editKey ? editCarryRef.current : null;
-    const artsIntact =
-      !!carry && carry.arts.length > 0 && carry.arts.every((u) => artFiles.some((f) => f.url === u));
+    const artsIntact = !!carry && carry.arts.length > 0 && carry.arts.every((u) => artFiles.some((f) => f.url === u));
     const line = selections && carry && artsIntact ? { ...carry.keys, ...selections } : selections;
     if (line) {
       // 🗓 จำแบบปฏิทินของบรรทัดนี้ — กด ✏️ แก้ไขในตะกร้าแล้วเปิดจอสร้างปฏิทินแบบเดิมต่อได้
@@ -3865,25 +3786,17 @@ export default function ProductDetail({
    * "side" = ช่องข้าง ๆ แผงสั่งซื้อ (คอลัมน์ซ้าย) · ไม่ระบุ = ใต้แผงสั่งซื้อเต็มความกว้าง
    * หัวข้อ "รายละเอียดสินค้า …" ขึ้นครั้งเดียวที่โซนแรกที่มีเนื้อหา
    */
-  const bodyOf = (zone: "side" | "wide") =>
-    (product.body ?? []).filter((b) => (b.slot ?? "wide") === zone);
+  const bodyOf = (zone: "side" | "wide") => (product.body ?? []).filter((b) => (b.slot ?? "wide") === zone);
   const detailsSection = (zone: "side" | "wide", mtCls: string) => {
     const sections = bodyOf(zone);
     if (sections.length === 0) return null;
     const withHeading = zone === "side" || bodyOf("side").length === 0;
     return (
       <section className={mtCls}>
-        {withHeading && (
-          <h2 className="text-center text-2xl font-extrabold text-amber-950">
-            รายละเอียดสินค้า {product.name}
-          </h2>
-        )}
+        {withHeading && <h2 className="text-center text-2xl font-extrabold text-amber-950">รายละเอียดสินค้า {product.name}</h2>}
         <div className={`space-y-12 ${withHeading ? "mt-8" : ""}`}>
           {sections.map((sec, i) => (
-            <div
-              key={`${sec.heading}-${i}`}
-              className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}
-            >
+            <div key={`${sec.heading}-${i}`} className={`grid items-center gap-6 md:gap-10 ${sec.image ? "md:grid-cols-2" : ""}`}>
               {sec.image &&
                 (sec.image.src ? (
                   // รูปจริง: โชว์เต็มสัดส่วนไม่ครอป + กดเพื่อดูขนาดใหญ่
@@ -3911,15 +3824,11 @@ export default function ProductDetail({
                     gradient={sec.image.gradient}
                     alt={sec.image.label || sec.heading}
                     size="text-[6rem]"
-                    className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${
-                      sec.align === "right" ? "md:order-2" : ""
-                    }`}
+                    className={`aspect-[4/3] w-full rounded-[2rem] shadow-sm ${sec.align === "right" ? "md:order-2" : ""}`}
                   />
                 ))}
               <div className={`text-center ${sec.align === "right" ? "md:order-1" : ""}`}>
-                {sec.heading && (
-                  <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>
-                )}
+                {sec.heading && <h3 className="text-xl font-extrabold text-amber-600">{sec.heading}</h3>}
                 {/* เนื้อหาแบบจัดรูปแบบจากหลังบ้าน (ผ่าน sanitize ฝั่งเซิร์ฟเวอร์ตอนบันทึก) — ไม่มีค่อยใช้ข้อความธรรมดาแบบเดิม
                     เนื้อหา HTML ที่ออกแบบมาเป็นกล่อง/ตาราง กินเต็มความกว้างที่มี (ไม่ตีกรอบ max-w-lg เหมือนข้อความเปล่า)
                     มีรูปประกอบคู่กัน = อยู่ในครึ่งคอลัมน์อยู่แล้ว จึงเต็มแค่ครึ่งนั้น */}
@@ -3937,13 +3846,11 @@ export default function ProductDetail({
                         </p>
                       ) : (
                         <p key={j}>{line}</p>
-                      )
+                      ),
                     )}
                   </div>
                 )}
-                {sec.image?.label && (
-                  <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>
-                )}
+                {sec.image?.label && <p className="mt-2 text-xs text-stone-400">({sec.image.label})</p>}
               </div>
             </div>
           ))}
@@ -3987,1114 +3894,975 @@ export default function ProductDetail({
    * (กลุ่มเดียวกันโผล่แค่ที่เดียว ตัดสินด้วย isMadeToOrderOpt)
    */
   function optionGroupUI(opt: ProductOption, framed = true) {
-              // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
-              const customLocked = useCustom && !customKeepsOption(custom, opt.label);
-              /**
-               * 🔒 กลุ่มที่ล็อกไว้ทั้งออเดอร์ระหว่าง "สั่งหลายแผ่นในครั้งเดียว" (เช่น เนื้อสติ๊กเกอร์)
-               * เปลี่ยนกลางคันแล้วแผ่นที่พักไว้จะกลายเป็นคนละล็อต สั่งรวมกันไม่ได้ — ล้างรายการก่อนถึงจะเปลี่ยนได้
-               */
-              const lotLocked = lotLockedLabels.includes(opt.label);
-              // 🧩 อยู่ในกรอบชุด (opt.section) = หัวชุดบอกอยู่แล้วว่าชิ้นไหน ตัดส่วนท้ายซ้ำออกจากชื่อกลุ่ม
-              // ("ขนาดชิ้นที่ 2" → "ขนาด") · ชื่อเต็มยังใช้ที่อื่นทั้งหมด (ตะกร้า/ออเดอร์/ปุ่มพาไปช่องที่ติด)
-              const heading = groupHeading(opt);
-              const allowedByRules = allowedChoices(product, effective, opt.label);
-              // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
-              const byRate = matrix
-                ? allowedByRules.filter((n) => isSizeInputChoice(opt, n) || matrixChoiceAvailable(matrix, opt.label, n))
-                : allowedByRules;
-              const allowed = byRate.length > 0 ? byRate : allowedByRules;
-              const multi = isMultiOption(opt);
-              // ✍️ ช่องกรอก — ลูกค้าพิมพ์ค่าเอง (ไม่มีรายการให้เลือก จึงไม่มีการล็อก/ไม่มีป้าย +฿)
-              const isInput = isInputOption(opt);
-              // กลุ่มติ๊กหลายอย่างไม่ล็อกอัตโนมัติ — เหลือตัวเลือกเดียวก็ยังต้องให้ติ๊ก/ไม่ติ๊กเองได้
-              // กลุ่มที่แอดมินตั้งไว้ตัวเลือกเดียวตั้งแต่ต้น ไม่ได้ "ถูกกำหนดอัตโนมัติ" จากตัวเลือกอื่น
-              // (เช่น ขนาดตัดที่มีแบบเดียว) — โชว์เป็นปุ่มปกติที่เลือกไว้แล้ว ไม่ใช่ป้ายล็อก 🔒
-              const locked = !multi && !isInput && allowed.length === 1 && opt.choices.length > 1;
-              const picks: MultiPick[] = multi ? selectedPicks(opt, effective) : [];
-              const picked = picks.map((p) => p.name);
-              // กลุ่มนี้มีตัวเลือกที่ระบุจำนวนได้ไหม (เช่น เพิ่มสาย 2 เส้น) — +฿ ของตัวนั้นคูณตามจำนวน
-              const withQty = anyChoiceQty(opt);
-              /** เขียนตัวเลือกที่ติ๊กกลับลง selections — เรียงตามลำดับตัวเลือกในกลุ่มเสมอ */
-              const writePicks = (make: (cur: MultiPick[]) => MultiPick[]) =>
-                setSelections((s) => ({ ...s, [opt.label]: joinMultiPicks(make(selectedPicks(opt, s))) }));
-              /**
-               * ติ๊กเปิด/ปิดตัวเลือกหนึ่งในกลุ่ม multi
-               * ตัวที่อยู่ "ชุดเลือกได้อย่างเดียว" เดียวกัน (choice.exclusiveWith) จะถูกติ๊กออกให้
-               * เช่น กระเป๋าเล็กด้านใน ไม่สกรีน/สกรีน = ของชิ้นเดียวกัน สั่งพร้อมกันไม่ได้
-               */
-              const togglePick = (name: string, on: boolean) => {
-                const tag = exclusiveTag(opt, name);
-                writePicks((cur) =>
-                  // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
-                  opt.choices
-                    .filter((x) =>
-                      x.name === name
-                        ? !on
-                        : cur.some((p) => p.name === x.name) && !(!on && tag && exclusiveTag(opt, x.name) === tag)
-                    )
-                    .map((x) => ({ name: x.name, qty: cur.find((p) => p.name === x.name)?.qty ?? 1 }))
-                );
-              };
-              const setChoiceQty = (name: string, n: number) =>
-                writePicks((cur) =>
-                  cur.map((p) =>
-                    p.name === name ? { ...p, qty: Math.min(choiceQtyMax(opt, name), Math.max(1, n)) } : p
-                  )
-                );
-              /**
-               * 🔽 กลุ่มของเสริมที่ปิดไว้ก่อน (collapsible) — ปิดอยู่โชว์แค่แถวสวิตช์บรรทัดเดียว
-               * ปิดกลับ = เด้งค่ากลับตัวเลือกแรก (ตัวไม่คิดเงิน) ลูกค้าจะได้ไม่ค้างค่าที่มองไม่เห็น
-               * กลุ่มติ๊กหลายอย่าง (multi) ปิดกลับ = ล้างที่ติ๊กทั้งหมด (ไม่ติ๊ก = ไม่คิดเงินอยู่แล้ว)
-               */
-              const addOn = !!opt.collapsible && !isInput;
-              const addOnOpen = !!openAddOns[opt.label];
-              const addOnFirst = opt.choices[0]?.name ?? "";
-              const toggleAddOn = () => {
-                const next = !addOnOpen;
-                // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก/ล้างที่ติ๊ก กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
-                if (!next) setSelections((sel) => ({ ...sel, [opt.label]: multi ? "" : addOnFirst }));
-                // เปิดสวิตช์ = สลับภาพใหญ่ไปที่ภาพตัวอย่างของกลุ่ม
-                // (แถวสวิตช์กดได้ทั้งแถว จะซ้อนปุ่มกดรูปแยกอีกปุ่มในปุ่มเดียวกันไม่ได้)
-                else jumpToImage(opt.imageSrc);
-                setOpenAddOns((s) => ({ ...s, [opt.label]: next }));
-              };
-              return (
-                <div
-                  key={opt.label}
-                  data-opt-group={opt.label}
-                  className={
-                    (customLocked || lotLocked ? "pointer-events-none select-none opacity-40" : "") +
-                    // กลุ่มของเสริม: ใส่กรอบให้เห็นว่าเป็นก้อนที่เปิด-ปิดได้ แยกจากตัวเลือกหลักที่ต้องเลือกอยู่แล้ว
-                    // ✍️ กลุ่มช่องกรอก: ใส่กรอบด้วย — ใต้ช่องมีทั้ง hint/เกณฑ์ที่รับ/ค่าบริการ/บรรทัดเตือน
-                    // เรียงแบนติดกันหลายช่อง (กว้าง+ยาว) ลูกค้าแยกไม่ออกว่าบรรทัดไหนของช่องไหน
-                    // framed=false = ผู้เรียกใส่กรอบครอบให้แล้ว (ช่องกรอกที่ต่อกันมาอยู่กรอบเดียวกัน
-                    // · กล่อง 📐 งานสั่งทำ) — ใส่ซ้ำจะได้กรอบซ้อนกรอบ
-                    (addOn || (isInput && framed) ? " rounded-2xl bg-white/60 p-2.5 ring-1 ring-stone-200" : "")
-                  }
-                  aria-disabled={customLocked || lotLocked || undefined}
-                >
-                  {/* 🔒 ล็อกไว้ทั้งออเดอร์ระหว่างสั่งหลายแผ่น — บอกเหตุผลตรงจุด ไม่ให้ลูกค้างงว่ากดไม่ได้ทำไม */}
-                  {lotLocked && (
-                    <p className="mb-1 text-[11px] font-bold text-amber-700">
-                      🔒 ล็อกไว้ทั้งออเดอร์ — ทุก{lotWord}ต้องเป็น{opt.label}เดียวกัน
-                    </p>
-                  )}
-                  {/* 🔽 ของเสริมที่ปิดไว้ก่อน — แถวสวิตช์บรรทัดเดียว กดแล้วค่อยกางตัวเลือกออกมา */}
-                  {addOn ? (
-                    <button
-                      type="button"
-                      onClick={toggleAddOn}
-                      aria-expanded={addOnOpen}
-                      className="flex w-full items-center gap-2.5 py-1 text-left"
-                    >
-                      <span
-                        className={`relative h-6 w-11 shrink-0 rounded-full transition ${addOnOpen ? "bg-amber-400" : "bg-stone-300"}`}
-                      >
-                        <span
-                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${addOnOpen ? "left-[22px]" : "left-0.5"}`}
-                        />
-                      </span>
-                      {/* 🖼 ภาพตัวอย่างของกลุ่ม — ปิดอยู่เห็นแค่บรรทัดเดียว ภาพช่วยให้รู้ว่าของเสริมนี้หน้าตายังไง */}
-                      {opt.imageSrc && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={opt.imageSrc}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-stone-200"
-                        />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[13px] font-bold text-stone-700">
-                          {heading}
-                          {addOnOpen && (multi ? picks.length > 0 : effective[opt.label] !== addOnFirst) && (
-                            <span className="ml-1.5 font-semibold text-amber-600">
-                              {multi
-                                ? picks
-                                    .map((p) => {
-                                      const u = choiceQtyUnit(opt, p.name);
-                                      return formatMultiPick(p.name, p.qty) + (u && p.qty > 1 ? ` ${u}` : "");
-                                    })
-                                    .join(", ")
-                                : effective[opt.label]}
-                            </span>
-                          )}
-                        </span>
-                        {!addOnOpen && (
-                          <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">
-                            {/* ปิดอยู่ = ยังไม่คิดเงิน บอกช่วงราคาไว้ให้ตัดสินใจว่าจะเปิดดูไหม
+    // ล็อกกลุ่มนี้เพราะใช้ขนาดกำหนดเองอยู่ และแอดมินไม่ได้เปิดให้เลือกต่อ
+    const customLocked = useCustom && !customKeepsOption(custom, opt.label);
+    /**
+     * 🔒 กลุ่มที่ล็อกไว้ทั้งออเดอร์ระหว่าง "สั่งหลายแผ่นในครั้งเดียว" (เช่น เนื้อสติ๊กเกอร์)
+     * เปลี่ยนกลางคันแล้วแผ่นที่พักไว้จะกลายเป็นคนละล็อต สั่งรวมกันไม่ได้ — ล้างรายการก่อนถึงจะเปลี่ยนได้
+     */
+    const lotLocked = lotLockedLabels.includes(opt.label);
+    // 🧩 อยู่ในกรอบชุด (opt.section) = หัวชุดบอกอยู่แล้วว่าชิ้นไหน ตัดส่วนท้ายซ้ำออกจากชื่อกลุ่ม
+    // ("ขนาดชิ้นที่ 2" → "ขนาด") · ชื่อเต็มยังใช้ที่อื่นทั้งหมด (ตะกร้า/ออเดอร์/ปุ่มพาไปช่องที่ติด)
+    const heading = groupHeading(opt);
+    const allowedByRules = allowedChoices(product, effective, opt.label);
+    // ตัดตัวที่ไม่มีราคาขายในเรทที่เลือกอยู่ (แอดมินล้างแถวทิ้ง) — ตัดหมดแล้วคงชุดเดิมไว้กันหน้าพัง
+    const byRate = matrix ? allowedByRules.filter((n) => isSizeInputChoice(opt, n) || matrixChoiceAvailable(matrix, opt.label, n)) : allowedByRules;
+    const allowed = byRate.length > 0 ? byRate : allowedByRules;
+    const multi = isMultiOption(opt);
+    // ✍️ ช่องกรอก — ลูกค้าพิมพ์ค่าเอง (ไม่มีรายการให้เลือก จึงไม่มีการล็อก/ไม่มีป้าย +฿)
+    const isInput = isInputOption(opt);
+    // กลุ่มติ๊กหลายอย่างไม่ล็อกอัตโนมัติ — เหลือตัวเลือกเดียวก็ยังต้องให้ติ๊ก/ไม่ติ๊กเองได้
+    // กลุ่มที่แอดมินตั้งไว้ตัวเลือกเดียวตั้งแต่ต้น ไม่ได้ "ถูกกำหนดอัตโนมัติ" จากตัวเลือกอื่น
+    // (เช่น ขนาดตัดที่มีแบบเดียว) — โชว์เป็นปุ่มปกติที่เลือกไว้แล้ว ไม่ใช่ป้ายล็อก 🔒
+    const locked = !multi && !isInput && allowed.length === 1 && opt.choices.length > 1;
+    const picks: MultiPick[] = multi ? selectedPicks(opt, effective) : [];
+    const picked = picks.map((p) => p.name);
+    // กลุ่มนี้มีตัวเลือกที่ระบุจำนวนได้ไหม (เช่น เพิ่มสาย 2 เส้น) — +฿ ของตัวนั้นคูณตามจำนวน
+    const withQty = anyChoiceQty(opt);
+    /** เขียนตัวเลือกที่ติ๊กกลับลง selections — เรียงตามลำดับตัวเลือกในกลุ่มเสมอ */
+    const writePicks = (make: (cur: MultiPick[]) => MultiPick[]) => setSelections((s) => ({ ...s, [opt.label]: joinMultiPicks(make(selectedPicks(opt, s))) }));
+    /**
+     * ติ๊กเปิด/ปิดตัวเลือกหนึ่งในกลุ่ม multi
+     * ตัวที่อยู่ "ชุดเลือกได้อย่างเดียว" เดียวกัน (choice.exclusiveWith) จะถูกติ๊กออกให้
+     * เช่น กระเป๋าเล็กด้านใน ไม่สกรีน/สกรีน = ของชิ้นเดียวกัน สั่งพร้อมกันไม่ได้
+     */
+    const togglePick = (name: string, on: boolean) => {
+      const tag = exclusiveTag(opt, name);
+      writePicks((cur) =>
+        // เก็บตามลำดับตัวเลือกในกลุ่มเสมอ — ติ๊กสลับไปมาแล้วข้อความ (และ key ตะกร้า) ไม่เปลี่ยนตาม
+        opt.choices
+          .filter((x) => (x.name === name ? !on : cur.some((p) => p.name === x.name) && !(!on && tag && exclusiveTag(opt, x.name) === tag)))
+          .map((x) => ({ name: x.name, qty: cur.find((p) => p.name === x.name)?.qty ?? 1 })),
+      );
+    };
+    const setChoiceQty = (name: string, n: number) =>
+      writePicks((cur) => cur.map((p) => (p.name === name ? { ...p, qty: Math.min(choiceQtyMax(opt, name), Math.max(1, n)) } : p)));
+    /**
+     * 🔽 กลุ่มของเสริมที่ปิดไว้ก่อน (collapsible) — ปิดอยู่โชว์แค่แถวสวิตช์บรรทัดเดียว
+     * ปิดกลับ = เด้งค่ากลับตัวเลือกแรก (ตัวไม่คิดเงิน) ลูกค้าจะได้ไม่ค้างค่าที่มองไม่เห็น
+     * กลุ่มติ๊กหลายอย่าง (multi) ปิดกลับ = ล้างที่ติ๊กทั้งหมด (ไม่ติ๊ก = ไม่คิดเงินอยู่แล้ว)
+     */
+    const addOn = !!opt.collapsible && !isInput;
+    const addOnOpen = !!openAddOns[opt.label];
+    const addOnFirst = opt.choices[0]?.name ?? "";
+    const toggleAddOn = () => {
+      const next = !addOnOpen;
+      // ปิดสวิตช์ = เด้งกลับตัวเลือกแรก/ล้างที่ติ๊ก กันค่าค้างที่ลูกค้ามองไม่เห็นแล้วโดนคิดเงิน
+      if (!next) setSelections((sel) => ({ ...sel, [opt.label]: multi ? "" : addOnFirst }));
+      // เปิดสวิตช์ = สลับภาพใหญ่ไปที่ภาพตัวอย่างของกลุ่ม
+      // (แถวสวิตช์กดได้ทั้งแถว จะซ้อนปุ่มกดรูปแยกอีกปุ่มในปุ่มเดียวกันไม่ได้)
+      else jumpToImage(opt.imageSrc);
+      setOpenAddOns((s) => ({ ...s, [opt.label]: next }));
+    };
+    return (
+      <div
+        key={opt.label}
+        data-opt-group={opt.label}
+        className={
+          (customLocked || lotLocked ? "pointer-events-none select-none opacity-40" : "") +
+          // กลุ่มของเสริม: ใส่กรอบให้เห็นว่าเป็นก้อนที่เปิด-ปิดได้ แยกจากตัวเลือกหลักที่ต้องเลือกอยู่แล้ว
+          // ✍️ กลุ่มช่องกรอก: ใส่กรอบด้วย — ใต้ช่องมีทั้ง hint/เกณฑ์ที่รับ/ค่าบริการ/บรรทัดเตือน
+          // เรียงแบนติดกันหลายช่อง (กว้าง+ยาว) ลูกค้าแยกไม่ออกว่าบรรทัดไหนของช่องไหน
+          // framed=false = ผู้เรียกใส่กรอบครอบให้แล้ว (ช่องกรอกที่ต่อกันมาอยู่กรอบเดียวกัน
+          // · กล่อง 📐 งานสั่งทำ) — ใส่ซ้ำจะได้กรอบซ้อนกรอบ
+          (addOn || (isInput && framed) ? " rounded-2xl bg-white/60 p-2.5 ring-1 ring-stone-200" : "")
+        }
+        aria-disabled={customLocked || lotLocked || undefined}
+      >
+        {/* 🔒 ล็อกไว้ทั้งออเดอร์ระหว่างสั่งหลายแผ่น — บอกเหตุผลตรงจุด ไม่ให้ลูกค้างงว่ากดไม่ได้ทำไม */}
+        {lotLocked && (
+          <p className="mb-1 text-[11px] font-bold text-amber-700">
+            🔒 ล็อกไว้ทั้งออเดอร์ — ทุก{lotWord}ต้องเป็น{opt.label}เดียวกัน
+          </p>
+        )}
+        {/* 🔽 ของเสริมที่ปิดไว้ก่อน — แถวสวิตช์บรรทัดเดียว กดแล้วค่อยกางตัวเลือกออกมา */}
+        {addOn ? (
+          <button type="button" onClick={toggleAddOn} aria-expanded={addOnOpen} className="flex w-full items-center gap-2.5 py-1 text-left">
+            <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${addOnOpen ? "bg-amber-400" : "bg-stone-300"}`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${addOnOpen ? "left-[22px]" : "left-0.5"}`} />
+            </span>
+            {/* 🖼 ภาพตัวอย่างของกลุ่ม — ปิดอยู่เห็นแค่บรรทัดเดียว ภาพช่วยให้รู้ว่าของเสริมนี้หน้าตายังไง */}
+            {opt.imageSrc && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={opt.imageSrc} alt="" loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-stone-200" />
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-bold text-stone-700">
+                {heading}
+                {addOnOpen && (multi ? picks.length > 0 : effective[opt.label] !== addOnFirst) && (
+                  <span className="ml-1.5 font-semibold text-amber-600">
+                    {multi
+                      ? picks
+                          .map((p) => {
+                            const u = choiceQtyUnit(opt, p.name);
+                            return formatMultiPick(p.name, p.qty) + (u && p.qty > 1 ? ` ${u}` : "");
+                          })
+                          .join(", ")
+                      : effective[opt.label]}
+                  </span>
+                )}
+              </span>
+              {!addOnOpen && (
+                <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">
+                  {/* ปิดอยู่ = ยังไม่คิดเงิน บอกช่วงราคาไว้ให้ตัดสินใจว่าจะเปิดดูไหม
                                 คิดด้วย groupAddOf ทีละตัวเลือก = ยอดที่คิดจริงถ้าเลือกตัวนั้นที่จำนวนนี้
                                 (ไม่บอกเลขเรทส่งให้คนสั่งช่วงปลีกอ่าน · กลุ่มที่มีค่าเหมาช่วงสั่งน้อยก็ได้เลขเหมา
                                 ไม่ใช่เลขเรทที่ยังไม่ถึง) */}
-                            {(() => {
-                              const fees = opt.choices
-                                .map((c) => groupAddOf(opt, { ...effective, [opt.label]: c.name }, feeQtyOf(opt)))
-                                .filter((n) => n > 0)
-                                .sort((a, b) => a - b);
-                              return fees.length
-                                ? `ไม่ใช้ก็ข้ามได้ · เปิดแล้วเริ่ม +${formatPrice(fees[0])}`
-                                : "ไม่ใช้ก็ข้ามได้ · แตะเพื่อดูตัวเลือก";
-                            })()}
-                          </span>
-                        )}
-                      </span>
-                      <span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[11px] font-bold text-stone-500">
-                        {addOnOpen ? "ปิด" : "เปิด"}
-                      </span>
-                    </button>
-                  ) : (
-                  <span className="mb-1 block text-[13px] font-bold text-stone-700">
-                    {/* 🖼 ภาพตัวอย่างของกลุ่ม — กดดูเต็มจอ (ชื่อกลุ่มอย่างเดียวบางทีนึกภาพไม่ออก) */}
-                    {opt.imageSrc && (
-                      <button
-                        type="button"
-                        onClick={() => jumpToImage(opt.imageSrc)}
-                        aria-label={`ดูภาพตัวอย่างของ ${opt.label} ในภาพใหญ่`}
-                        className="mr-2 inline-block align-middle"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={opt.imageSrc}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="h-11 w-11 rounded-xl object-cover ring-1 ring-stone-200 transition hover:ring-amber-300"
-                        />
-                      </button>
-                    )}
-                    {heading}:{" "}
-                    <span
-                      className={
-                        (multi && !picked.length) || (isInput && !effective[opt.label])
-                          ? "font-semibold text-stone-400"
-                          : "font-semibold text-amber-600"
-                      }
-                    >
-                      {multi
-                        ? picks.length
-                          ? picks
-                              .map((p) => {
-                                // ตัวเลือกที่จำนวนคือ "ขนาด" (เช่น เซนละ) ต่อหน่วยให้ด้วย จะได้อ่านออกว่ากี่เซนติเมตร
-                                const u = choiceQtyUnit(opt, p.name);
-                                return formatMultiPick(p.name, p.qty) + (u && p.qty > 1 ? ` ${u}` : "");
-                              })
-                              .join(", ")
-                          : // 🏷 กลุ่มที่ตั้ง "ค่าตอนไม่ติ๊ก" ไว้ (เช่น ไม่เกิน A4) โชว์ค่านั้นแทน — ตรงกับที่ตะกร้า/ออเดอร์จะบันทึก
-                            opt.noneLabel || "ไม่เลือก"
-                        : isInput
-                          ? effective[opt.label] || "ยังไม่ได้กรอก"
-                          : effective[opt.label]}
-                    </span>
-                    {multi && (
-                      <span className="ml-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-100">
-                        ☑ เลือกได้หลายอย่าง{withQty ? " · ระบุจำนวนได้" : ""}
-                      </span>
-                    )}
-                    {/* 🎁 กลุ่มที่ให้ฟรี N ตัวแรก — บอกยอดที่เหลือสด ๆ ลูกค้าจะได้รู้ว่าอีกกี่ตัวถึงเริ่มคิดเงิน */}
-                    {multi && (opt.freeFirstN ?? 0) > 0 && (
-                      <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-100">
-                        {(() => {
-                          const used = picks.reduce((n, p) => n + p.qty, 0);
-                          const left = Math.max(0, (opt.freeFirstN ?? 0) - used);
-                          return left > 0
-                            ? `🎁 เลือกได้อีก ${left} ตัวโดยไม่คิดเพิ่ม`
-                            : `🎁 ครบ ${opt.freeFirstN} ตัวที่รวมในราคาแล้ว — ตัวถัดไปคิดเพิ่ม`;
-                        })()}
-                      </span>
-                    )}
-                    {isInput &&
-                      (() => {
-                        /*
-                         * 📏 คู่ "กรอกด้านยาวสุดช่องเดียวพอ" — ป้ายขยับตามที่ลูกค้ากรอกจริง (เกณฑ์เดียวกับ inputError):
-                         * ยังไม่กรอกทั้งคู่ = บอกว่าช่องไหนก็ได้ · กรอกแล้วช่องหนึ่ง = อีกช่องขึ้น "ไม่บังคับ"
-                         */
-                        const pair = longestOnlyPair(product, opt);
-                        let tag = opt.input?.required === false ? "ไม่บังคับ" : "";
-                        if (pair) {
-                          const other = pair.longest === opt ? pair.other : pair.longest;
-                          const mine = parseInputValue(opt, effective[opt.label]);
-                          const theirs = parseInputValue(other, effective[other.label]);
-                          tag =
-                            !mine && !theirs
-                              ? "กรอกช่องเดียวพอ กว้างหรือสูงก็ได้"
-                              : !mine && !inputError(opt, effective[opt.label], effective, product)
-                                ? "ไม่บังคับ"
-                                : "";
-                        }
-                        return tag ? (
-                          <span className="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">
-                            {tag}
-                          </span>
-                        ) : null;
-                      })()}
-                  </span>
-                  )}
-                  {/* กลุ่มของเสริมที่ปิดสวิตช์อยู่ — ไม่กางอะไรต่อ (หน้าจะได้สั้น เหลือแค่แถวสวิตช์) */}
-                  {(!addOn || addOnOpen) && (
-                  <div className={addOn ? "mt-2 border-t border-stone-100 pt-2" : undefined}>
-                  {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
-                  {opt.note && (
-                    <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">
-                      {noteEmphasis(
-                        opt.note,
-                        /* 👀 รูปตัวอย่างประกอบ note — กดเปิดดูเต็มจอทันที ไม่ต้องไล่หาในแท็บ
+                  {(() => {
+                    const fees = opt.choices
+                      .map((c) => groupAddOf(opt, { ...effective, [opt.label]: c.name }, feeQtyOf(opt)))
+                      .filter((n) => n > 0)
+                      .sort((a, b) => a - b);
+                    return fees.length ? `ไม่ใช้ก็ข้ามได้ · เปิดแล้วเริ่ม +${formatPrice(fees[0])}` : "ไม่ใช้ก็ข้ามได้ · แตะเพื่อดูตัวเลือก";
+                  })()}
+                </span>
+              )}
+            </span>
+            <span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[11px] font-bold text-stone-500">{addOnOpen ? "ปิด" : "เปิด"}</span>
+          </button>
+        ) : (
+          <span className="mb-1 block text-[13px] font-bold text-stone-700">
+            {/* 🖼 ภาพตัวอย่างของกลุ่ม — กดดูเต็มจอ (ชื่อกลุ่มอย่างเดียวบางทีนึกภาพไม่ออก) */}
+            {opt.imageSrc && (
+              <button
+                type="button"
+                onClick={() => jumpToImage(opt.imageSrc)}
+                aria-label={`ดูภาพตัวอย่างของ ${opt.label} ในภาพใหญ่`}
+                className="mr-2 inline-block align-middle"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={opt.imageSrc}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-11 w-11 rounded-xl object-cover ring-1 ring-stone-200 transition hover:ring-amber-300"
+                />
+              </button>
+            )}
+            {heading}:{" "}
+            <span className={(multi && !picked.length) || (isInput && !effective[opt.label]) ? "font-semibold text-stone-400" : "font-semibold text-amber-600"}>
+              {multi
+                ? picks.length
+                  ? picks
+                      .map((p) => {
+                        // ตัวเลือกที่จำนวนคือ "ขนาด" (เช่น เซนละ) ต่อหน่วยให้ด้วย จะได้อ่านออกว่ากี่เซนติเมตร
+                        const u = choiceQtyUnit(opt, p.name);
+                        return formatMultiPick(p.name, p.qty) + (u && p.qty > 1 ? ` ${u}` : "");
+                      })
+                      .join(", ")
+                  : // 🏷 กลุ่มที่ตั้ง "ค่าตอนไม่ติ๊ก" ไว้ (เช่น ไม่เกิน A4) โชว์ค่านั้นแทน — ตรงกับที่ตะกร้า/ออเดอร์จะบันทึก
+                    opt.noneLabel || "ไม่เลือก"
+                : isInput
+                  ? effective[opt.label] || "ยังไม่ได้กรอก"
+                  : effective[opt.label]}
+            </span>
+            {multi && (
+              <span className="ml-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-100">
+                ☑ เลือกได้หลายอย่าง{withQty ? " · ระบุจำนวนได้" : ""}
+              </span>
+            )}
+            {/* 🎁 กลุ่มที่ให้ฟรี N ตัวแรก — บอกยอดที่เหลือสด ๆ ลูกค้าจะได้รู้ว่าอีกกี่ตัวถึงเริ่มคิดเงิน */}
+            {multi && (opt.freeFirstN ?? 0) > 0 && (
+              <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-100">
+                {(() => {
+                  const used = picks.reduce((n, p) => n + p.qty, 0);
+                  const left = Math.max(0, (opt.freeFirstN ?? 0) - used);
+                  return left > 0 ? `🎁 เลือกได้อีก ${left} ตัวโดยไม่คิดเพิ่ม` : `🎁 ครบ ${opt.freeFirstN} ตัวที่รวมในราคาแล้ว — ตัวถัดไปคิดเพิ่ม`;
+                })()}
+              </span>
+            )}
+            {isInput &&
+              (() => {
+                /*
+                 * 📏 คู่ "กรอกด้านยาวสุดช่องเดียวพอ" — ป้ายขยับตามที่ลูกค้ากรอกจริง (เกณฑ์เดียวกับ inputError):
+                 * ยังไม่กรอกทั้งคู่ = บอกว่าช่องไหนก็ได้ · กรอกแล้วช่องหนึ่ง = อีกช่องขึ้น "ไม่บังคับ"
+                 */
+                const pair = longestOnlyPair(product, opt);
+                let tag = opt.input?.required === false ? "ไม่บังคับ" : "";
+                if (pair) {
+                  const other = pair.longest === opt ? pair.other : pair.longest;
+                  const mine = parseInputValue(opt, effective[opt.label]);
+                  const theirs = parseInputValue(other, effective[other.label]);
+                  tag =
+                    !mine && !theirs
+                      ? "กรอกช่องเดียวพอ กว้างหรือสูงก็ได้"
+                      : !mine && !inputError(opt, effective[opt.label], effective, product)
+                        ? "ไม่บังคับ"
+                        : "";
+                }
+                return tag ? <span className="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-500">{tag}</span> : null;
+              })()}
+          </span>
+        )}
+        {/* กลุ่มของเสริมที่ปิดสวิตช์อยู่ — ไม่กางอะไรต่อ (หน้าจะได้สั้น เหลือแค่แถวสวิตช์) */}
+        {(!addOn || addOnOpen) && (
+          <div className={addOn ? "mt-2 border-t border-stone-100 pt-2" : undefined}>
+            {/* 📝 สเปกที่ลูกค้าเลือกไม่ได้ แต่ควรรู้ตอนกำลังเลือก (เช่น ชนิดกระดาษที่ใช้) */}
+            {opt.note && (
+              <span className="mb-1.5 block text-[11px] leading-snug text-stone-500">
+                {noteEmphasis(
+                  opt.note,
+                  /* 👀 รูปตัวอย่างประกอบ note — กดเปิดดูเต็มจอทันที ไม่ต้องไล่หาในแท็บ
                            (กลุ่มช่องกรอกย้ายปุ่มไปไว้ที่ hint ใต้ช่อง — ไม่ขึ้นซ้ำสองที่) */
-                        opt.noteImageSrc && !isInput ? (
+                  opt.noteImageSrc && !isInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setZoomSrc(opt.noteImageSrc!)}
+                      className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                    >
+                      👀 กดดูรูปตัวอย่าง
+                    </button>
+                  ) : null,
+                )}
+              </span>
+            )}
+            {isInput ? (
+              (() => {
+                const cfg = opt.input;
+                const raw = parseInputValue(opt, effective[opt.label]);
+                const err = inputError(opt, effective[opt.label], effective, product);
+                // เขียนกลับลง selections พร้อมหน่วย ("2.5" + "ซม." → "2.5 ซม.")
+                const write = (v: string) => setSelections((sel) => ({ ...sel, [opt.label]: formatInputValue(opt, v) }));
+                const clean = (v: string) => (cfg?.kind === "number" ? v.replace(/[^\d.]/g, "") : v.slice(0, cfg?.maxLength ?? INPUT_MAX_LEN));
+                return (
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {cfg?.kind === "textarea" ? (
+                        <textarea
+                          value={raw}
+                          onChange={(e) => write(clean(e.target.value))}
+                          placeholder={cfg.placeholder}
+                          rows={3}
+                          aria-label={opt.label}
+                          className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          inputMode={cfg?.kind === "number" ? "decimal" : "text"}
+                          value={raw}
+                          onChange={(e) => write(clean(e.target.value))}
+                          placeholder={cfg?.placeholder}
+                          aria-label={opt.label}
+                          className={`rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                            cfg?.kind === "number" ? "w-28" : "w-full"
+                          }`}
+                        />
+                      )}
+                      {cfg?.unit && <span className="text-xs font-semibold text-stone-500">{cfg.unit}</span>}
+                    </div>
+                    {cfg?.hint && (
+                      <p className="mt-1 text-[11px] text-stone-500">
+                        {cfg.hint}
+                        {/* 👀 รูปตัวอย่างของกลุ่มช่องกรอก (เช่น วิธีนับจุดไดคัท) — กดเปิดดูเต็มจอทันที */}
+                        {opt.noteImageSrc && (
                           <button
                             type="button"
                             onClick={() => setZoomSrc(opt.noteImageSrc!)}
-                            className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                            className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
                           >
                             👀 กดดูรูปตัวอย่าง
                           </button>
-                        ) : null
-                      )}
-                    </span>
-                  )}
-                  {isInput ? (
-                    (() => {
-                      const cfg = opt.input;
-                      const raw = parseInputValue(opt, effective[opt.label]);
-                      const err = inputError(opt, effective[opt.label], effective, product);
-                      // เขียนกลับลง selections พร้อมหน่วย ("2.5" + "ซม." → "2.5 ซม.")
-                      const write = (v: string) =>
-                        setSelections((sel) => ({ ...sel, [opt.label]: formatInputValue(opt, v) }));
-                      const clean = (v: string) =>
-                        cfg?.kind === "number" ? v.replace(/[^\d.]/g, "") : v.slice(0, cfg?.maxLength ?? INPUT_MAX_LEN);
-                      return (
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {cfg?.kind === "textarea" ? (
-                              <textarea
-                                value={raw}
-                                onChange={(e) => write(clean(e.target.value))}
-                                placeholder={cfg.placeholder}
-                                rows={3}
-                                aria-label={opt.label}
-                                className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                inputMode={cfg?.kind === "number" ? "decimal" : "text"}
-                                value={raw}
-                                onChange={(e) => write(clean(e.target.value))}
-                                placeholder={cfg?.placeholder}
-                                aria-label={opt.label}
-                                className={`rounded-xl bg-white px-3 py-2 text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
-                                  cfg?.kind === "number" ? "w-28" : "w-full"
-                                }`}
-                              />
-                            )}
-                            {cfg?.unit && <span className="text-xs font-semibold text-stone-500">{cfg.unit}</span>}
-                          </div>
-                          {cfg?.hint && (
-                            <p className="mt-1 text-[11px] text-stone-500">
-                              {cfg.hint}
-                              {/* 👀 รูปตัวอย่างของกลุ่มช่องกรอก (เช่น วิธีนับจุดไดคัท) — กดเปิดดูเต็มจอทันที */}
-                              {opt.noteImageSrc && (
-                                <button
-                                  type="button"
-                                  onClick={() => setZoomSrc(opt.noteImageSrc!)}
-                                  className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 align-middle text-[10px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                                >
-                                  👀 กดดูรูปตัวอย่าง
-                                </button>
-                              )}
-                            </p>
-                          )}
-                          {/* 📐 จำนวนชิ้นโดยประมาณต่อแผ่น — คำนวณสดจากกว้าง×สูงที่กรอก (ดู sheetYield) */}
-                          {(() => {
-                            const n = sheetYieldCount(product, opt, effective);
-                            if (n == null) return null;
-                            const sheet = opt.sheetYield?.sheetName ?? "แผ่น";
-                            const gap = opt.sheetYield?.gap ?? 0;
-                            // gap เก็บหน่วยเดียวกับช่องกรอก (ซม.) — บอกลูกค้าเป็น มม. อ่านง่ายกว่า
-                            const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
-                            // 📐 คละหลายขนาด (ระบุใต้รูปแต่ละลาย) — ตัวเลขนี้คิดจากทุกขนาดแล้ว ไม่ใช่ขนาดหลักอย่างเดียว
-                            const mixedN = parseArtSize(effective[ART_SIZE_LABEL]).size;
-                            // 📏 กรอกด้านยาวสุดด้านเดียว — ต้องบอกว่ากราฟฟิกแจ้งจำนวนจริงตอนส่งแบบ
-                            const longestOnly = opt.sheetYield?.longestOnly === true;
-                            /*
-                             * กรอกครบสองด้านแล้วเลขมาจากการจัดวางจริง ไม่ใช่ตารางร้าน (ดู sheetYieldByTable)
-                             * ข้อความที่ห้อยต้องตรงกับที่คิดจริง ไม่งั้นแอดมินเทียบกับตารางแล้วงงว่าทำไมไม่ตรง
-                             */
-                            const byTable = sheetYieldByTable(product, opt, effective);
-                            // 📄 กรอก A4/A5/A6 เป๊ะ = หั่นชิดจาก A3 ไม่ใช่ผังไดคัทเว้นช่องไฟ (ดู a3StraightCutCount)
-                            const straight = sheetYieldStraightCut(product, opt, effective);
-                            return n >= 1 ? (
-                              <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : longestOnly && byTable ? "ด้านยาวสุดเท่านี้ได้ประมาณ" : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ 1 {sheet}
-                                {/*
-                                  * คูณจำนวนที่สั่งให้เลย · เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.)
-                                  * กางตัวคูณให้เห็นด้วย ไม่งั้นลูกค้าคิดตามไม่ได้ว่าเลขมาจากไหน
-                                  */}
-                                {yieldTotal != null && (
-                                  <>
-                                    {unitYield?.via
-                                      ? ` = ${unitYield.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 ${
-                                          matrix?.unit ?? sheet
-                                        } (${unitYield.via.sheets} ${sheet} ต่อ 1 ${matrix?.unit ?? sheet})`
-                                      : ""}{" "}
-                                    · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? sheet} ={" "}
-                                    <span className="font-extrabold text-teal-900">
-                                      ได้ประมาณ {yieldTotal.toLocaleString("th-TH")} ชิ้น
-                                    </span>
-                                  </>
-                                )}{" "}
-                                {straight
-                                  ? "(ขนาดกระดาษมาตรฐาน ตัดชิดจากแผ่น A3)"
-                                  : byTable
-                                  ? "(ตามตารางของร้าน — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)"
-                                  : `(จัดวางบนพื้นที่พิมพ์จริง${gapNote} — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)`}
-                                {/* 📏 เจ้าของร้านสั่ง 10 ก.ย. 69: งานกรอกด้านยาวสุดต้องระบุว่า "กราฟฟิกแจ้งตอนส่งแบบ" */}
-                                {longestOnly && <span className="block font-extrabold text-teal-900">🎨 {LONGEST_ONLY_NOTE}</span>}
-                                {/* แนบหลายลายแล้วแต่ยังไม่ระบุขนาดรายลาย — ชี้ทางไปช่องใต้รูป (คละหลายขนาดใน 1 แผ่นได้) */}
-                                {artFiles.length > 1 && !placed.length && !mixedN && (
-                                  <span className="font-semibold text-teal-600">
-                                    {" "}
-                                    · ลายคนละขนาด? ระบุ{longestOnly ? "ด้านยาวสุด" : " กว้าง x สูง "}ใต้รูปแต่ละลายในกล่องแนบลายได้เลย
-                                  </span>
-                                )}
-                                {/* ⛔ แผ่นที่สั่งใส่ไม่ครบทุกลาย — เตือนซ้ำตรงช่องขนาดหลักด้วย (ลูกค้ามองจุดนี้ก่อน) */}
-                                {artSizeAlert?.short && (
-                                  <span className="block font-bold text-rose-600">
-                                    ⛔ {artFiles.length} ลายขนาดนี้รวมกันเกิน 1 {sheet} — ต้องสั่งอย่างน้อย {artSizeAlert.needSheets} {sheet} ถึงจะครบทุกลาย
-                                  </span>
-                                )}
-                              </p>
-                            ) : (
-                              <p className="mt-1 text-[11px] font-bold text-rose-600">
-                                ⚠ ขนาดนี้ใหญ่เกิน 1 {sheet} — รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ
-                              </p>
-                            );
-                          })()}
+                        )}
+                      </p>
+                    )}
+                    {/* 📐 จำนวนชิ้นโดยประมาณต่อแผ่น — คำนวณสดจากกว้าง×สูงที่กรอก (ดู sheetYield) */}
+                    {(() => {
+                      const n = sheetYieldCount(product, opt, effective);
+                      if (n == null) return null;
+                      const sheet = opt.sheetYield?.sheetName ?? "แผ่น";
+                      const gap = opt.sheetYield?.gap ?? 0;
+                      // gap เก็บหน่วยเดียวกับช่องกรอก (ซม.) — บอกลูกค้าเป็น มม. อ่านง่ายกว่า
+                      const gapNote = gap > 0 ? ` เว้นระยะระหว่างชิ้น ${Math.round(gap * 10)} มม.` : "";
+                      // 📐 คละหลายขนาด (ระบุใต้รูปแต่ละลาย) — ตัวเลขนี้คิดจากทุกขนาดแล้ว ไม่ใช่ขนาดหลักอย่างเดียว
+                      const mixedN = parseArtSize(effective[ART_SIZE_LABEL]).size;
+                      // 📏 กรอกด้านยาวสุดด้านเดียว — ต้องบอกว่ากราฟฟิกแจ้งจำนวนจริงตอนส่งแบบ
+                      const longestOnly = opt.sheetYield?.longestOnly === true;
+                      /*
+                       * กรอกครบสองด้านแล้วเลขมาจากการจัดวางจริง ไม่ใช่ตารางร้าน (ดู sheetYieldByTable)
+                       * ข้อความที่ห้อยต้องตรงกับที่คิดจริง ไม่งั้นแอดมินเทียบกับตารางแล้วงงว่าทำไมไม่ตรง
+                       */
+                      const byTable = sheetYieldByTable(product, opt, effective);
+                      // 📄 กรอก A4/A5/A6 เป๊ะ = หั่นชิดจาก A3 ไม่ใช่ผังไดคัทเว้นช่องไฟ (ดู a3StraightCutCount)
+                      const straight = sheetYieldStraightCut(product, opt, effective);
+                      return n >= 1 ? (
+                        <p className="mt-1 text-[11px] font-bold text-teal-700">
+                          📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : longestOnly && byTable ? "ด้านยาวสุดเท่านี้ได้ประมาณ" : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ
+                          1 {sheet}
                           {/*
-                            * ✂️ ช่อง "จำนวนชิ้นที่ต้องการ" — ค่าตัด/เย็บขอบคิดตามจำนวนนี้ ไม่ใช่เต็มหน่วยขาย
-                            * (ผ้าแขวนผนัง: 1 หลาตัดได้ 6 ชิ้น แต่สั่งตัดแค่ 2 = จ่ายค่าตัด/เย็บ 2 ชิ้น)
-                            * ดู SizeFee.piecesLabel · ไม่กรอก = คิดเต็มตามที่ตัดได้เหมือนเดิม
-                            */}
-                          {(() => {
-                            const cfg = product.options
-                              .flatMap((o) => o.choices)
-                              .find((c) => c.sizeFee?.piecesLabel === opt.label && c.sizeFee?.perPiece)?.sizeFee;
-                            if (!cfg) return null;
-                            const sheet =
-                              product.options.find((o) => o.sheetYield)?.sheetYield?.sheetName ??
-                              matrix?.unit ??
-                              "หน่วย";
-                            const max = sizeFeeMaxPieces(cfg, effective);
-                            if (max == null)
-                              return (
-                                <p className="mt-1 text-[11px] text-stone-400">
-                                  กรอกขนาดชิ้นงานด้านบนก่อน แล้วระบบจะบอกว่า 1 {sheet} ตัดได้กี่ชิ้น
-                                </p>
-                              );
-                            const typed = Number(parseInputValue(opt, effective[opt.label]));
-                            const filled = Number.isFinite(typed) && typed > 0;
-                            const used = filled ? Math.min(Math.max(1, Math.floor(typed)), max) : max;
-                            const total = used * Math.max(1, qty);
-                            return (
-                              <p
-                                className={`mt-1 text-[11px] font-bold ${
-                                  filled && typed > max ? "text-rose-600" : "text-teal-700"
-                                }`}
-                              >
-                                {filled && typed > max
-                                  ? `⚠ 1 ${sheet} ตัดได้สูงสุด ${max} ชิ้น — คิดค่าตัด/เย็บขอบที่ ${max} ชิ้น`
-                                  : `✂️ คิดค่าตัด/เย็บขอบ ${used} ชิ้น ต่อ 1 ${sheet}${
-                                      filled ? "" : ` (ไม่กรอก = ตัดเต็ม ${max} ชิ้น)`
-                                    }`}
-                                {qty > 1 && (
-                                  <span className="font-normal text-stone-500">
-                                    {" "}
-                                    · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? sheet} ={" "}
-                                    {total.toLocaleString("th-TH")} ชิ้น
-                                  </span>
-                                )}
-                              </p>
-                            );
-                          })()}
-                          {/* 📐 กำหนดขนาดเองในกลุ่มแกนราคา — บอกว่าราคาไปเกาะแถวไหน / ต้องรอแอดมินตีราคา */}
-                          {(() => {
-                            // บรรทัดสรุปอยู่ใต้ช่องสุดท้ายของคู่ — สินค้าที่กรอกด้านเดียวก็คือช่องด้านยาวสุดเอง
-                            const owner = product.options.find(
-                              (o) => o.sizeInput && (o.sizeInput.heightLabel ?? o.sizeInput.widthLabel) === opt.label
-                            );
-                            if (!owner) return null;
-                            // ระบุกลุ่มเจ้าของ — สินค้าที่มีหลายกลุ่มกำหนดขนาดเอง (พวงหลายชิ้น) ต้องได้แผนของชิ้นตัวเอง
-                            const plan = sizeInputPlan(product, effective, owner.label);
-                            if (!plan || !plan.filled) return null;
-                            const u = plan.unit ? ` ${plan.unit}` : "";
-                            return plan.quote ? (
-                              <p className="mt-1 text-[11px] font-bold text-sky-700">
-                                💬 {sizeInputText(plan)} ใหญ่กว่าตารางราคา — กดสั่งไว้ได้เลย แล้วแอดมินตีราคาให้ทีหลัง
-                              </p>
-                            ) : (
-                              <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                📐 {sizeInputText(plan)} →{" "}
-                                {owner.sizeInput?.match === "both"
-                                  ? "คิดราคาเท่าขนาดมาตรฐานที่ครอบได้ คือ"
-                                  : "คิดราคาตามด้านที่ยาวที่สุด เกาะแถว"}{" "}
-                                <span className="font-extrabold text-teal-900">{plan.choice}</span>
-                                {/* 📈 ใหญ่กว่าแถวสุดท้าย = ฐานแถวใหญ่สุด + ส่วนเกินต่อหน่วย (กางที่มาให้เห็น) */}
-                                {plan.overCm > 0 && (
-                                  <>
-                                    {" "}
-                                    + เกินอีก {plan.overCm}
-                                    {u} ={" "}
-                                    <span className="font-extrabold text-teal-900">
-                                      +฿{plan.overFee.toLocaleString("th-TH")}/ชิ้น
-                                    </span>
-                                  </>
-                                )}
-                              </p>
-                            );
-                          })()}
-                          {/* 💰 ค่าบริการที่คิดจากค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — กางที่มาให้เห็น ไม่งั้นราคาขยับเงียบ ๆ */}
-                          {(() => {
-                            if (!opt.inputFee) return null;
-                            const n = Number(parseInputValue(opt, effective[opt.label]));
-                            // ⚠️ ต้องใช้ effectiveWithDesigns + feeQty ชุดเดียวกับที่คิดราคาจริง (unitPriceFor)
-                            // ไม่งั้นบรรทัดนี้จะบอกว่าคิดเงิน ทั้งที่ราคาจริงยกเว้นให้แล้ว (หรือกลับกัน)
-                            const fee = inputFeeOf(opt, effectiveWithDesigns, feeQty);
-                            const rate = inputFeeRateOf(opt.inputFee, effective);
-                            const quota = inputFeeQuotaOf(opt.inputFee, effective);
-                            const waived = inputFeeWaived(opt.inputFee, effectiveWithDesigns, feeQty);
-                            const freeFrom = opt.inputFee.freeFromQtyPerDesign;
-                            const freeFromUnit = opt.inputFee.freeFromQtyUnit ?? matrix?.unit ?? "ชิ้น";
-                            // 🎁 ยังไม่ได้กรอก — บอกโควตาของขนาดที่เลือกอยู่ล่วงหน้าเลย (เช่น A7 ฟรี 12 จุด)
-                            // ลูกค้าจะได้รู้เพดานก่อนพิมพ์ ไม่ใช่พิมพ์แล้วเพิ่งเห็นว่าโดนคิดเพิ่ม
-                            if (!Number.isFinite(n) || n <= 0) {
-                              if (!(rate > 0 && quota > 0)) return null;
-                              if (waived)
-                                return (
-                                  <p className="mt-1 text-[11px] font-bold text-emerald-600">
-                                    🎁 จำนวนที่สั่งถึงเกณฑ์ {freeFrom?.toLocaleString("th-TH")} {freeFromUnit} ต่อลายแล้ว —{" "}
-                                    {cfg?.unit ?? "หน่วย"}ที่เกินโควตาไม่คิดเงิน
-                                    {(() => {
-                                      const hardMax = inputMaxOf(opt, effective);
-                                      return hardMax != null ? (
-                                        <span className="font-bold text-rose-600">
-                                          {" "}
-                                          · รับไม่เกิน {hardMax.toLocaleString("th-TH")} {cfg?.unit ?? ""}
-                                        </span>
-                                      ) : null;
-                                    })()}
-                                  </p>
-                                );
-                              // ชื่อขนาดที่ทำให้ได้โควตานี้ (เช่น "A7") — หาไม่เจอ (ขนาดกำหนดเอง) ก็ไม่ใส่ชื่อ
-                              const src = (opt.inputFee.rates ?? []).find(
-                                (r) => r.free != null && r.when.choices.includes(effective[r.when.label])
-                              );
-                              return (
-                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
-                                  {/* "(รวมในราคา)" ซ้ำกับคำว่า "ฟรี/ได้สูงสุด" · เพดานรับงานมีบรรทัด "รับ 1–N" ใต้ช่องกรอกอยู่แล้ว */}
-                                  🎁 {src ? `ขนาด ${effective[src.when.label]} ` : "ขนาดที่เลือก"}ฟรี{" "}
-                                  {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} — เกินจากนั้น
-                                  {cfg?.unit ?? "หน่วย"}ละ {formatPrice(rate)} / {matrix?.unit ?? "ชิ้น"}
-                                </p>
-                              );
-                            }
-                            // 🎁 มีโควตาฟรีและยังไม่เกิน — บอกให้ชัดว่าไม่คิดเพิ่ม (เงียบไปลูกค้าจะไม่แน่ใจ)
-                            if (!fee) {
-                              // ฟรีเพราะสั่งถึงเกณฑ์ (ทั้งที่เกินโควตา) — ต้องบอกเหตุผลจริง
-                              // ไม่งั้นขึ้นว่า "อยู่ในโควตา" ทั้งที่กรอกเกินโควตาไปแล้ว ลูกค้าจะงง
-                              if (waived && n > quota)
-                                return (
-                                  <p className="mt-1 rounded-xl bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-emerald-700 ring-1 ring-emerald-200">
-                                    🎁 เกินโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} อยู่{" "}
-                                    {(n - quota).toLocaleString("th-TH")} {cfg?.unit ?? ""} — แต่สั่งถึง{" "}
-                                    {freeFrom?.toLocaleString("th-TH")} {freeFromUnit} ต่อลายแล้ว{" "}
-                                    <span className="font-extrabold text-emerald-800">ฟรีค่า{cfg?.unit ?? "ส่วนเกิน"}</span>
-                                  </p>
-                                );
-                              return quota > 0 ? (
-                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
-                                  ✓ อยู่ในโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ที่รวมในราคา — ไม่คิดเพิ่ม
-                                </p>
-                              ) : null;
-                            }
-                            // ⚠ เกินโควตา = เตือนแดง (คิดเงินเพิ่มจากที่เห็นในตาราง ต้องสะดุดตา ไม่ใช่บรรทัดข้อมูลเฉย ๆ)
-                            // กรอกเกินไม่ได้ผิด แค่ต้องรู้ตัวว่ากำลังจ่ายเพิ่ม — ลดจำนวนลงให้อยู่ในโควตาก็หายไปเอง
-                            return quota > 0 ? (
-                              <p className="mt-1 rounded-xl bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-rose-700 ring-1 ring-rose-200">
-                                ⚠ เกินโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ของขนาดที่เลือก อยู่{" "}
-                                {(n - quota).toLocaleString("th-TH")} {cfg?.unit ?? ""} × {formatPrice(rate)} ={" "}
-                                <span className="font-extrabold text-rose-800">+{formatPrice(fee)}</span> ต่อ
-                                {matrix?.unit ?? "ชิ้น"}
-                              </p>
-                            ) : (
-                              <p className="mt-1 text-[11px] font-bold text-teal-700">
-                                💰 {n.toLocaleString("th-TH")} {cfg?.unit ?? ""} × {formatPrice(rate)} ={" "}
-                                <span className="font-extrabold text-teal-900">+{formatPrice(fee)}</span> ต่อ
-                                {matrix?.unit ?? "ชิ้น"}
-                              </p>
-                            );
-                          })()}
-                          {/* เกณฑ์ที่รับได้ — บอกไว้ก่อนพิมพ์ ดีกว่าให้พิมพ์เสร็จแล้วค่อยขึ้นแดง */}
-                          {(() => {
-                            // เพดานของช่องนี้อาจขึ้นกับตัวเลือกอื่น (จุดไดคัท: A7 รับ 20 จุด · A4 รับ 180)
-                            const hardMax = inputMaxOf(opt, effective);
-                            return cfg?.kind === "number" && (cfg.min != null || hardMax != null) ? (
-                              <p className="mt-0.5 text-[11px] text-stone-400">
-                                รับ {cfg.min != null ? cfg.min : "0"}
-                                {hardMax != null ? `–${hardMax}` : " ขึ้นไป"} {cfg.unit ?? ""}
-                              </p>
-                            ) : null;
-                          })()}
-                          {/*
-                           * 📏 ค่าบริการตามขนาดที่กรอก (sizeFee) — กางตรงช่องกรอกเลย
-                           * ค่าบริการนี้อ่านจาก "คู่ช่อง กว้าง×ยาว" จึงไม่ใช่ของช่องใดช่องหนึ่ง — โชว์ใต้ช่องท้าย
-                           * ของคู่ (heightLabel) ตอนกรอกครบแล้ว · ป้าย +฿ บนการ์ดตัวเลือกอยู่คนละที่กับ
-                           * ช่องกรอก ลูกค้าพิมพ์เลขแล้วต้องเลื่อนขึ้นไปดู ไม่งั้นไม่รู้ว่าจ่ายเพิ่มเท่าไหร่
+                           * คูณจำนวนที่สั่งให้เลย · เรทที่ขายเป็นหน่วยใหญ่กว่าแผ่น (ตร.ม.)
+                           * กางตัวคูณให้เห็นด้วย ไม่งั้นลูกค้าคิดตามไม่ได้ว่าเลขมาจากไหน
                            */}
-                          {(() => {
-                            /*
-                             * ⚠️ ช่องขนาดช่องเดียวมี sizeFee เกาะได้ "หลายตัว" พร้อมกัน — สแตนดี้หลายชิ้น
-                             * (new-mt1dwpc1-6773) ผูกทั้งงานสกรีนและสีอะคริลิคไว้กับ "ขนาดชิ้นที่ 2" ตัวเดียว
-                             * ต้องรวมทุกตัวที่เลือกอยู่ ไม่ใช่หยิบตัวแรก ไม่งั้นยอดที่โชว์ต่ำกว่าที่จ่ายจริง
-                             */
-                            const owners = (product.options ?? [])
-                              .flatMap((o) =>
-                                (o.choices ?? []).map((c) => ({
-                                  o,
-                                  c,
-                                  // จำนวนที่ลูกค้าระบุของตัวเลือกนี้ (กลุ่มติ๊กหลายอย่าง+ระบุจำนวน เช่น ตัวน้อยเขย่า ×3)
-                                  // — ค่าบริการตามขนาดคิดต่อตัว จึงต้องคูณจำนวนเหมือนที่ groupExtraAtQty คิดจริง
-                                  n: selectedPicks(o, effective).find((p) => p.name === c.name)?.qty ?? 0,
-                                }))
-                              )
-                              .filter(
-                                ({ c, n }) =>
-                                  // 💬 กางใต้ "ทั้งสองช่อง" ของคู่กว้าง×สูง — ลูกค้าพิมพ์ช่องบนเสร็จแล้วสายตาอยู่ตรงนั้น
-                                  // ถ้าโชว์แต่ช่องล่างช่องเดียว คนที่กรอกช่องบนก่อนจะไม่เห็นราคาเลย
-                                  (c.sizeFee?.heightLabel === opt.label || c.sizeFee?.widthLabel === opt.label) && n > 0
-                              );
-                            if (!owners.length) return null;
-                            const cf = owners[0].c.sizeFee!;
-                            const num = (v: string | undefined) => {
-                              const n = parseFloat(String(v ?? "").replace(/[^\d.]/g, ""));
-                              return Number.isFinite(n) && n > 0 ? n : null;
-                            };
-                            const w = num(effective[cf.widthLabel]);
-                            const h = num(effective[cf.heightLabel]);
-                            // ยังกรอกไม่ครบ = บอกเพดานที่รวมในราคาไว้ก่อน (ขั้นสุดท้ายที่ยังฟรี)
-                            // ตัวที่เกาะอยู่หลายตัวอาจให้โควตาไม่เท่ากัน — ตรงกันหมดถึงจะกล้าบอกตัวเลข
-                            if (w == null || h == null) {
-                              /*
-                               * 💰 กรอกไปแล้วช่องเดียว = คิดให้ดูก่อนจากด้านที่กรอกแล้ว (ราคาขึ้นตาม "ด้านยาวสุด"
-                               * อีกช่องจึงมีแต่ทำให้แพงขึ้น ไม่มีทางถูกลง) — ลูกค้าจะได้รู้ราคาตั้งแต่พิมพ์ช่องแรก
-                               * ⚠️ เฉพาะค่าบริการที่คิดชิ้นเดียว — ตัวที่คูณจำนวนชิ้นจากการจัดวาง (perPiece)
-                               *    ต้องรู้ทั้งกว้างและยาวถึงจะรู้ว่าตัดได้กี่ชิ้น เดาไปก่อนจะเป็นตัวเลขหลอก
-                               */
-                              const one = w ?? h;
-                              const guess = owners.every(({ c }) => !c.sizeFee!.perPiece)
-                                ? owners
-                                    .map(({ c, n }) =>
-                                      one == null
-                                        ? 0
-                                        : ((sizeFeeBreakdownOf(c.sizeFee!, {
-                                            ...effective,
-                                            [c.sizeFee!.widthLabel]: String(one),
-                                            [c.sizeFee!.heightLabel]: String(one),
-                                          })?.fee ?? 0) *
-                                          n)
-                                    )
-                                    .reduce((s, f) => s + f, 0)
-                                : 0;
-                              if (one != null && guess > 0)
-                                return (
-                                  <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
-                                    💰 ด้านที่กรอกแล้ว {one} {cfg?.unit ?? ""} ={" "}
-                                    <span className="font-extrabold text-teal-900">+{formatPrice(guess)}</span> ต่อ
-                                    {matrix?.unit ?? "ชิ้น"}
-                                    <span className="font-normal text-stone-500">
-                                      {" "}
-                                      — กรอกอีกช่องให้ครบ ถ้าอีกด้านยาวกว่าจะคิดตามด้านนั้น
-                                    </span>
-                                  </p>
-                                );
-                              const frees = owners.map(({ c }) => [...c.sizeFee!.tiers].filter((t) => !t.fee).pop()?.upTo);
-                              const freeUpTo = frees.every((f) => f != null && f === frees[0]) ? frees[0] : null;
-                              return freeUpTo != null ? (
-                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
-                                  🎁 ถึง {freeUpTo} {cfg?.unit ?? ""} รวมในราคาแล้ว — กรอกครบทั้งสองช่องแล้วจะคิดส่วนเกินให้
-                                </p>
-                              ) : null;
-                            }
-                            const longest = Math.max(w, h);
-                            const parts = owners
-                              .map(({ o, c, n }) => ({
-                                name: c.name,
-                                n,
-                                qtyUnit: choiceQtyUnit(o, c.name) || "ชิ้น",
-                                bd: sizeFeeBreakdownOf(c.sizeFee!, effective),
-                              }))
-                              .filter(
-                                (p): p is { name: string; n: number; qtyUnit: string; bd: NonNullable<typeof p.bd> } =>
-                                  p.bd != null
-                              );
-                            const total = parts.reduce((s, p) => s + p.bd.fee * p.n, 0);
-                            if (!total)
-                              return (
-                                <p className="mt-1 text-[11px] font-bold text-emerald-600">
-                                  ✓ ด้านยาวสุด {longest} {cfg?.unit ?? ""} — รวมในราคาแล้ว ไม่คิดเพิ่ม
-                                </p>
-                              );
-                            const solo = parts.length === 1 ? parts[0] : null;
-                            return (
-                              <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
-                                💰 ด้านยาวสุด {longest} {cfg?.unit ?? ""} ={" "}
-                                <span className="font-extrabold text-teal-900">+{formatPrice(total)}</span> ต่อ
-                                {matrix?.unit ?? "ชิ้น"}
-                                {solo && solo.bd.pieces > 1 && (
-                                  // ที่มาของยอด: ชิ้นละ × จำนวนชิ้นต่อหน่วยขาย (เช่น โพ้งขอบ ฿10 × 8 ชิ้น)
-                                  <span className="font-normal text-stone-500">
-                                    {" "}
-                                    ({formatPrice(solo.bd.perPiece)} × {solo.bd.pieces} ชิ้น)
-                                  </span>
-                                )}
-                                {solo && solo.bd.pieces === 1 && solo.n > 1 && (
-                                  // ระบุจำนวนได้ (ตัวน้อยเขย่า ×3) — ค่าขนาดคิดต่อตัว บอกที่มาให้ชัด
-                                  <span className="font-normal text-stone-500">
-                                    {" "}
-                                    ({formatPrice(solo.bd.fee)} × {solo.n} {solo.qtyUnit})
-                                  </span>
-                                )}
-                                {parts.length > 1 && (
-                                  // เกาะหลายตัว = กางว่ามาจากตัวเลือกไหนบ้าง ไม่งั้นลูกค้าไล่ที่มาไม่ถูก
-                                  <span className="font-normal text-stone-500">
-                                    {" "}
-                                    ({parts
-                                      .map(
-                                        (p) =>
-                                          `${p.name} ${formatPrice(p.bd.fee * p.n)}${p.n > 1 ? ` (×${p.n})` : ""}`
-                                      )
-                                      .join(" · ")})
-                                  </span>
-                                )}
-                              </p>
-                            );
-                          })()}
-                          {/* เตือนเฉพาะตอนพิมพ์ผิด — ยังไม่ได้กรอกไม่ต้องขึ้นแดงใส่หน้าลูกค้าตั้งแต่เปิดหน้า */}
-                          {err && (
-                            <p
-                              className={`mt-1 text-[11px] font-bold ${
-                                raw === "" ? "text-amber-600" : "text-rose-600"
-                              }`}
-                            >
-                              {raw === "" ? "✍️" : "⚠"} {err}
-                            </p>
+                          {yieldTotal != null && (
+                            <>
+                              {unitYield?.via
+                                ? ` = ${unitYield.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 ${
+                                    matrix?.unit ?? sheet
+                                  } (${unitYield.via.sheets} ${sheet} ต่อ 1 ${matrix?.unit ?? sheet})`
+                                : ""}{" "}
+                              · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? sheet} ={" "}
+                              <span className="font-extrabold text-teal-900">ได้ประมาณ {yieldTotal.toLocaleString("th-TH")} ชิ้น</span>
+                            </>
+                          )}{" "}
+                          {straight
+                            ? "(ขนาดกระดาษมาตรฐาน ตัดชิดจากแผ่น A3)"
+                            : byTable
+                              ? "(ตามตารางของร้าน — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)"
+                              : `(จัดวางบนพื้นที่พิมพ์จริง${gapNote} — ตัวเลขคร่าว ๆ จำนวนจริงขึ้นกับรูปทรงลาย)`}
+                          {/* 📏 เจ้าของร้านสั่ง 10 ก.ย. 69: งานกรอกด้านยาวสุดต้องระบุว่า "กราฟฟิกแจ้งตอนส่งแบบ" */}
+                          {longestOnly && <span className="block font-extrabold text-teal-900">🎨 {LONGEST_ONLY_NOTE}</span>}
+                          {/* แนบหลายลายแล้วแต่ยังไม่ระบุขนาดรายลาย — ชี้ทางไปช่องใต้รูป (คละหลายขนาดใน 1 แผ่นได้) */}
+                          {artFiles.length > 1 && !placed.length && !mixedN && (
+                            <span className="font-semibold text-teal-600">
+                              {" "}
+                              · ลายคนละขนาด? ระบุ{longestOnly ? "ด้านยาวสุด" : " กว้าง x สูง "}ใต้รูปแต่ละลายในกล่องแนบลายได้เลย
+                            </span>
                           )}
-                        </div>
+                          {/* ⛔ แผ่นที่สั่งใส่ไม่ครบทุกลาย — เตือนซ้ำตรงช่องขนาดหลักด้วย (ลูกค้ามองจุดนี้ก่อน) */}
+                          {artSizeAlert?.short && (
+                            <span className="block font-bold text-rose-600">
+                              ⛔ {artFiles.length} ลายขนาดนี้รวมกันเกิน 1 {sheet} — ต้องสั่งอย่างน้อย {artSizeAlert.needSheets} {sheet} ถึงจะครบทุกลาย
+                            </span>
+                          )}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] font-bold text-rose-600">⚠ ขนาดนี้ใหญ่เกิน 1 {sheet} — รบกวนทักแชทเช็คกับแอดมินก่อนนะครับ</p>
                       );
-                    })()
-                  ) : multi && opt.swatchGrid ? (
-                    /*
-                     * 🎨 ตารางสวอตช์สี — ตัวเลือกเยอะ (เช่น สีไหม 80 เบอร์) ปุ่ม pill ปกติจะยาวทั้งหน้า
-                     * วงกลมสี + เลขใต้ เรียง 8 ต่อแถวในกล่องสูงคงที่เลื่อนได้ · กดสลับติ๊กเหมือน multi ปกติ
-                     * ไม่เรียก jumpToImage — ชิปไม่อยู่ในแกลเลอรี (ดู galleryImages)
-                     * ใต้ตารางมีแถบพรีวิวใหญ่ของสีที่แตะล่าสุด + ปุ่มเปิดตารางสีเต็ม (chartSrc)
-                     */
-                    <>
-                    <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(3rem,1fr))] gap-1 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
-                      {opt.choices
-                        .filter((c) => allowed.includes(c.name))
-                        .map((c) => {
-                          const on = picked.includes(c.name);
-                          const short = c.name.split(" ")[0];
+                    })()}
+                    {/*
+                     * ✂️ ช่อง "จำนวนชิ้นที่ต้องการ" — ค่าตัด/เย็บขอบคิดตามจำนวนนี้ ไม่ใช่เต็มหน่วยขาย
+                     * (ผ้าแขวนผนัง: 1 หลาตัดได้ 6 ชิ้น แต่สั่งตัดแค่ 2 = จ่ายค่าตัด/เย็บ 2 ชิ้น)
+                     * ดู SizeFee.piecesLabel · ไม่กรอก = คิดเต็มตามที่ตัดได้เหมือนเดิม
+                     */}
+                    {(() => {
+                      const cfg = product.options.flatMap((o) => o.choices).find((c) => c.sizeFee?.piecesLabel === opt.label && c.sizeFee?.perPiece)?.sizeFee;
+                      if (!cfg) return null;
+                      const sheet = product.options.find((o) => o.sheetYield)?.sheetYield?.sheetName ?? matrix?.unit ?? "หน่วย";
+                      const max = sizeFeeMaxPieces(cfg, effective);
+                      if (max == null)
+                        return <p className="mt-1 text-[11px] text-stone-400">กรอกขนาดชิ้นงานด้านบนก่อน แล้วระบบจะบอกว่า 1 {sheet} ตัดได้กี่ชิ้น</p>;
+                      const typed = Number(parseInputValue(opt, effective[opt.label]));
+                      const filled = Number.isFinite(typed) && typed > 0;
+                      const used = filled ? Math.min(Math.max(1, Math.floor(typed)), max) : max;
+                      const total = used * Math.max(1, qty);
+                      return (
+                        <p className={`mt-1 text-[11px] font-bold ${filled && typed > max ? "text-rose-600" : "text-teal-700"}`}>
+                          {filled && typed > max
+                            ? `⚠ 1 ${sheet} ตัดได้สูงสุด ${max} ชิ้น — คิดค่าตัด/เย็บขอบที่ ${max} ชิ้น`
+                            : `✂️ คิดค่าตัด/เย็บขอบ ${used} ชิ้น ต่อ 1 ${sheet}${filled ? "" : ` (ไม่กรอก = ตัดเต็ม ${max} ชิ้น)`}`}
+                          {qty > 1 && (
+                            <span className="font-normal text-stone-500">
+                              {" "}
+                              · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? sheet} = {total.toLocaleString("th-TH")} ชิ้น
+                            </span>
+                          )}
+                        </p>
+                      );
+                    })()}
+                    {/* 📐 กำหนดขนาดเองในกลุ่มแกนราคา — บอกว่าราคาไปเกาะแถวไหน / ต้องรอแอดมินตีราคา */}
+                    {(() => {
+                      // บรรทัดสรุปอยู่ใต้ช่องสุดท้ายของคู่ — สินค้าที่กรอกด้านเดียวก็คือช่องด้านยาวสุดเอง
+                      const owner = product.options.find((o) => o.sizeInput && (o.sizeInput.heightLabel ?? o.sizeInput.widthLabel) === opt.label);
+                      if (!owner) return null;
+                      // ระบุกลุ่มเจ้าของ — สินค้าที่มีหลายกลุ่มกำหนดขนาดเอง (พวงหลายชิ้น) ต้องได้แผนของชิ้นตัวเอง
+                      const plan = sizeInputPlan(product, effective, owner.label);
+                      if (!plan || !plan.filled) return null;
+                      const u = plan.unit ? ` ${plan.unit}` : "";
+                      return plan.quote ? (
+                        <p className="mt-1 text-[11px] font-bold text-sky-700">
+                          💬 {sizeInputText(plan)} ใหญ่กว่าตารางราคา — กดสั่งไว้ได้เลย แล้วแอดมินตีราคาให้ทีหลัง
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] font-bold text-teal-700">
+                          📐 {sizeInputText(plan)} →{" "}
+                          {owner.sizeInput?.match === "both" ? "คิดราคาเท่าขนาดมาตรฐานที่ครอบได้ คือ" : "คิดราคาตามด้านที่ยาวที่สุด เกาะแถว"}{" "}
+                          <span className="font-extrabold text-teal-900">{plan.choice}</span>
+                          {/* 📈 ใหญ่กว่าแถวสุดท้าย = ฐานแถวใหญ่สุด + ส่วนเกินต่อหน่วย (กางที่มาให้เห็น) */}
+                          {plan.overCm > 0 && (
+                            <>
+                              {" "}
+                              + เกินอีก {plan.overCm}
+                              {u} = <span className="font-extrabold text-teal-900">+฿{plan.overFee.toLocaleString("th-TH")}/ชิ้น</span>
+                            </>
+                          )}
+                        </p>
+                      );
+                    })()}
+                    {/* 💰 ค่าบริการที่คิดจากค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — กางที่มาให้เห็น ไม่งั้นราคาขยับเงียบ ๆ */}
+                    {(() => {
+                      if (!opt.inputFee) return null;
+                      const n = Number(parseInputValue(opt, effective[opt.label]));
+                      // ⚠️ ต้องใช้ effectiveWithDesigns + feeQty ชุดเดียวกับที่คิดราคาจริง (unitPriceFor)
+                      // ไม่งั้นบรรทัดนี้จะบอกว่าคิดเงิน ทั้งที่ราคาจริงยกเว้นให้แล้ว (หรือกลับกัน)
+                      const fee = inputFeeOf(opt, effectiveWithDesigns, feeQty);
+                      const rate = inputFeeRateOf(opt.inputFee, effective);
+                      const quota = inputFeeQuotaOf(opt.inputFee, effective);
+                      const waived = inputFeeWaived(opt.inputFee, effectiveWithDesigns, feeQty);
+                      const freeFrom = opt.inputFee.freeFromQtyPerDesign;
+                      const freeFromUnit = opt.inputFee.freeFromQtyUnit ?? matrix?.unit ?? "ชิ้น";
+                      // 🎁 ยังไม่ได้กรอก — บอกโควตาของขนาดที่เลือกอยู่ล่วงหน้าเลย (เช่น A7 ฟรี 12 จุด)
+                      // ลูกค้าจะได้รู้เพดานก่อนพิมพ์ ไม่ใช่พิมพ์แล้วเพิ่งเห็นว่าโดนคิดเพิ่ม
+                      if (!Number.isFinite(n) || n <= 0) {
+                        if (!(rate > 0 && quota > 0)) return null;
+                        if (waived)
                           return (
-                            <button
-                              key={c.name}
-                              type="button"
-                              role="checkbox"
-                              aria-checked={on}
-                              title={c.name}
-                              onClick={() => {
-                                togglePick(c.name, on);
-                                setSwatchTap((m) => ({ ...m, [opt.label]: c.name }));
-                              }}
-                              className={`flex flex-col items-center gap-0.5 rounded-xl p-1 transition ${
-                                on ? "bg-amber-400/90 shadow" : "hover:bg-amber-50"
-                              }`}
-                            >
-                              <span className="relative">
-                                {c.imageSrc ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={c.imageSrc}
-                                    alt={c.name}
-                                    className={`h-9 w-9 rounded-full object-cover ${
-                                      on ? "ring-2 ring-white" : "ring-1 ring-black/10"
-                                    }`}
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-[10px] text-stone-400 ring-1 ring-black/10">
-                                    ?
+                            <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                              🎁 จำนวนที่สั่งถึงเกณฑ์ {freeFrom?.toLocaleString("th-TH")} {freeFromUnit} ต่อลายแล้ว — {cfg?.unit ?? "หน่วย"}
+                              ที่เกินโควตาไม่คิดเงิน
+                              {(() => {
+                                const hardMax = inputMaxOf(opt, effective);
+                                return hardMax != null ? (
+                                  <span className="font-bold text-rose-600">
+                                    {" "}
+                                    · รับไม่เกิน {hardMax.toLocaleString("th-TH")} {cfg?.unit ?? ""}
                                   </span>
-                                )}
-                                {on && (
-                                  <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-teal-600 text-[9px] font-black text-white ring-2 ring-white">
-                                    ✓
-                                  </span>
-                                )}
-                              </span>
-                              <span
-                                className={`text-[10px] font-bold leading-none ${on ? "text-white" : "text-stone-500"}`}
-                              >
-                                {short}
-                              </span>
-                            </button>
+                                ) : null;
+                              })()}
+                            </p>
                           );
-                        })}
-    </div>
-                      {/* 🔍 ดูรูปใหญ่: แถบพรีวิวสีที่แตะล่าสุด + ปุ่มเปิดตารางสีเต็มใน lightbox */}
-                      {(() => {
-                        const tapName = swatchTap[opt.label] ?? picked[picked.length - 1];
-                        const tap = opt.choices.find((c) => c.name === tapName);
+                        // ชื่อขนาดที่ทำให้ได้โควตานี้ (เช่น "A7") — หาไม่เจอ (ขนาดกำหนดเอง) ก็ไม่ใส่ชื่อ
+                        const src = (opt.inputFee.rates ?? []).find((r) => r.free != null && r.when.choices.includes(effective[r.when.label]));
                         return (
-                          <div className="mt-1.5 flex items-center gap-2">
-                            {tap?.imageSrc && (
+                          <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                            {/* "(รวมในราคา)" ซ้ำกับคำว่า "ฟรี/ได้สูงสุด" · เพดานรับงานมีบรรทัด "รับ 1–N" ใต้ช่องกรอกอยู่แล้ว */}
+                            🎁 {src ? `ขนาด ${effective[src.when.label]} ` : "ขนาดที่เลือก"}ฟรี {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} — เกินจากนั้น
+                            {cfg?.unit ?? "หน่วย"}ละ {formatPrice(rate)} / {matrix?.unit ?? "ชิ้น"}
+                          </p>
+                        );
+                      }
+                      // 🎁 มีโควตาฟรีและยังไม่เกิน — บอกให้ชัดว่าไม่คิดเพิ่ม (เงียบไปลูกค้าจะไม่แน่ใจ)
+                      if (!fee) {
+                        // ฟรีเพราะสั่งถึงเกณฑ์ (ทั้งที่เกินโควตา) — ต้องบอกเหตุผลจริง
+                        // ไม่งั้นขึ้นว่า "อยู่ในโควตา" ทั้งที่กรอกเกินโควตาไปแล้ว ลูกค้าจะงง
+                        if (waived && n > quota)
+                          return (
+                            <p className="mt-1 rounded-xl bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-emerald-700 ring-1 ring-emerald-200">
+                              🎁 เกินโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""} อยู่ {(n - quota).toLocaleString("th-TH")} {cfg?.unit ?? ""} —
+                              แต่สั่งถึง {freeFrom?.toLocaleString("th-TH")} {freeFromUnit} ต่อลายแล้ว{" "}
+                              <span className="font-extrabold text-emerald-800">ฟรีค่า{cfg?.unit ?? "ส่วนเกิน"}</span>
+                            </p>
+                          );
+                        return quota > 0 ? (
+                          <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                            ✓ อยู่ในโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ที่รวมในราคา — ไม่คิดเพิ่ม
+                          </p>
+                        ) : null;
+                      }
+                      // ⚠ เกินโควตา = เตือนแดง (คิดเงินเพิ่มจากที่เห็นในตาราง ต้องสะดุดตา ไม่ใช่บรรทัดข้อมูลเฉย ๆ)
+                      // กรอกเกินไม่ได้ผิด แค่ต้องรู้ตัวว่ากำลังจ่ายเพิ่ม — ลดจำนวนลงให้อยู่ในโควตาก็หายไปเอง
+                      return quota > 0 ? (
+                        <p className="mt-1 rounded-xl bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-rose-700 ring-1 ring-rose-200">
+                          ⚠ เกินโควตา {quota.toLocaleString("th-TH")} {cfg?.unit ?? ""}ของขนาดที่เลือก อยู่ {(n - quota).toLocaleString("th-TH")}{" "}
+                          {cfg?.unit ?? ""} × {formatPrice(rate)} = <span className="font-extrabold text-rose-800">+{formatPrice(fee)}</span> ต่อ
+                          {matrix?.unit ?? "ชิ้น"}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] font-bold text-teal-700">
+                          💰 {n.toLocaleString("th-TH")} {cfg?.unit ?? ""} × {formatPrice(rate)} ={" "}
+                          <span className="font-extrabold text-teal-900">+{formatPrice(fee)}</span> ต่อ
+                          {matrix?.unit ?? "ชิ้น"}
+                        </p>
+                      );
+                    })()}
+                    {/* เกณฑ์ที่รับได้ — บอกไว้ก่อนพิมพ์ ดีกว่าให้พิมพ์เสร็จแล้วค่อยขึ้นแดง */}
+                    {(() => {
+                      // เพดานของช่องนี้อาจขึ้นกับตัวเลือกอื่น (จุดไดคัท: A7 รับ 20 จุด · A4 รับ 180)
+                      const hardMax = inputMaxOf(opt, effective);
+                      return cfg?.kind === "number" && (cfg.min != null || hardMax != null) ? (
+                        <p className="mt-0.5 text-[11px] text-stone-400">
+                          รับ {cfg.min != null ? cfg.min : "0"}
+                          {hardMax != null ? `–${hardMax}` : " ขึ้นไป"} {cfg.unit ?? ""}
+                        </p>
+                      ) : null;
+                    })()}
+                    {/*
+                     * 📏 ค่าบริการตามขนาดที่กรอก (sizeFee) — กางตรงช่องกรอกเลย
+                     * ค่าบริการนี้อ่านจาก "คู่ช่อง กว้าง×ยาว" จึงไม่ใช่ของช่องใดช่องหนึ่ง — โชว์ใต้ช่องท้าย
+                     * ของคู่ (heightLabel) ตอนกรอกครบแล้ว · ป้าย +฿ บนการ์ดตัวเลือกอยู่คนละที่กับ
+                     * ช่องกรอก ลูกค้าพิมพ์เลขแล้วต้องเลื่อนขึ้นไปดู ไม่งั้นไม่รู้ว่าจ่ายเพิ่มเท่าไหร่
+                     */}
+                    {(() => {
+                      /*
+                       * ⚠️ ช่องขนาดช่องเดียวมี sizeFee เกาะได้ "หลายตัว" พร้อมกัน — สแตนดี้หลายชิ้น
+                       * (new-mt1dwpc1-6773) ผูกทั้งงานสกรีนและสีอะคริลิคไว้กับ "ขนาดชิ้นที่ 2" ตัวเดียว
+                       * ต้องรวมทุกตัวที่เลือกอยู่ ไม่ใช่หยิบตัวแรก ไม่งั้นยอดที่โชว์ต่ำกว่าที่จ่ายจริง
+                       */
+                      const owners = (product.options ?? [])
+                        .flatMap((o) =>
+                          (o.choices ?? []).map((c) => ({
+                            o,
+                            c,
+                            // จำนวนที่ลูกค้าระบุของตัวเลือกนี้ (กลุ่มติ๊กหลายอย่าง+ระบุจำนวน เช่น ตัวน้อยเขย่า ×3)
+                            // — ค่าบริการตามขนาดคิดต่อตัว จึงต้องคูณจำนวนเหมือนที่ groupExtraAtQty คิดจริง
+                            n: selectedPicks(o, effective).find((p) => p.name === c.name)?.qty ?? 0,
+                          })),
+                        )
+                        .filter(
+                          ({ c, n }) =>
+                            // 💬 กางใต้ "ทั้งสองช่อง" ของคู่กว้าง×สูง — ลูกค้าพิมพ์ช่องบนเสร็จแล้วสายตาอยู่ตรงนั้น
+                            // ถ้าโชว์แต่ช่องล่างช่องเดียว คนที่กรอกช่องบนก่อนจะไม่เห็นราคาเลย
+                            (c.sizeFee?.heightLabel === opt.label || c.sizeFee?.widthLabel === opt.label) && n > 0,
+                        );
+                      if (!owners.length) return null;
+                      const cf = owners[0].c.sizeFee!;
+                      const num = (v: string | undefined) => {
+                        const n = parseFloat(String(v ?? "").replace(/[^\d.]/g, ""));
+                        return Number.isFinite(n) && n > 0 ? n : null;
+                      };
+                      const w = num(effective[cf.widthLabel]);
+                      const h = num(effective[cf.heightLabel]);
+                      // ยังกรอกไม่ครบ = บอกเพดานที่รวมในราคาไว้ก่อน (ขั้นสุดท้ายที่ยังฟรี)
+                      // ตัวที่เกาะอยู่หลายตัวอาจให้โควตาไม่เท่ากัน — ตรงกันหมดถึงจะกล้าบอกตัวเลข
+                      if (w == null || h == null) {
+                        /*
+                         * 💰 กรอกไปแล้วช่องเดียว = คิดให้ดูก่อนจากด้านที่กรอกแล้ว (ราคาขึ้นตาม "ด้านยาวสุด"
+                         * อีกช่องจึงมีแต่ทำให้แพงขึ้น ไม่มีทางถูกลง) — ลูกค้าจะได้รู้ราคาตั้งแต่พิมพ์ช่องแรก
+                         * ⚠️ เฉพาะค่าบริการที่คิดชิ้นเดียว — ตัวที่คูณจำนวนชิ้นจากการจัดวาง (perPiece)
+                         *    ต้องรู้ทั้งกว้างและยาวถึงจะรู้ว่าตัดได้กี่ชิ้น เดาไปก่อนจะเป็นตัวเลขหลอก
+                         */
+                        const one = w ?? h;
+                        const guess = owners.every(({ c }) => !c.sizeFee!.perPiece)
+                          ? owners
+                              .map(({ c, n }) =>
+                                one == null
+                                  ? 0
+                                  : (sizeFeeBreakdownOf(c.sizeFee!, {
+                                      ...effective,
+                                      [c.sizeFee!.widthLabel]: String(one),
+                                      [c.sizeFee!.heightLabel]: String(one),
+                                    })?.fee ?? 0) * n,
+                              )
+                              .reduce((s, f) => s + f, 0)
+                          : 0;
+                        if (one != null && guess > 0)
+                          return (
+                            <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
+                              💰 ด้านที่กรอกแล้ว {one} {cfg?.unit ?? ""} = <span className="font-extrabold text-teal-900">+{formatPrice(guess)}</span> ต่อ
+                              {matrix?.unit ?? "ชิ้น"}
+                              <span className="font-normal text-stone-500"> — กรอกอีกช่องให้ครบ ถ้าอีกด้านยาวกว่าจะคิดตามด้านนั้น</span>
+                            </p>
+                          );
+                        const frees = owners.map(({ c }) => [...c.sizeFee!.tiers].filter((t) => !t.fee).pop()?.upTo);
+                        const freeUpTo = frees.every((f) => f != null && f === frees[0]) ? frees[0] : null;
+                        return freeUpTo != null ? (
+                          <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                            🎁 ถึง {freeUpTo} {cfg?.unit ?? ""} รวมในราคาแล้ว — กรอกครบทั้งสองช่องแล้วจะคิดส่วนเกินให้
+                          </p>
+                        ) : null;
+                      }
+                      const longest = Math.max(w, h);
+                      const parts = owners
+                        .map(({ o, c, n }) => ({
+                          name: c.name,
+                          n,
+                          qtyUnit: choiceQtyUnit(o, c.name) || "ชิ้น",
+                          bd: sizeFeeBreakdownOf(c.sizeFee!, effective),
+                        }))
+                        .filter((p): p is { name: string; n: number; qtyUnit: string; bd: NonNullable<typeof p.bd> } => p.bd != null);
+                      const total = parts.reduce((s, p) => s + p.bd.fee * p.n, 0);
+                      if (!total)
+                        return (
+                          <p className="mt-1 text-[11px] font-bold text-emerald-600">
+                            ✓ ด้านยาวสุด {longest} {cfg?.unit ?? ""} — รวมในราคาแล้ว ไม่คิดเพิ่ม
+                          </p>
+                        );
+                      const solo = parts.length === 1 ? parts[0] : null;
+                      return (
+                        <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
+                          💰 ด้านยาวสุด {longest} {cfg?.unit ?? ""} = <span className="font-extrabold text-teal-900">+{formatPrice(total)}</span> ต่อ
+                          {matrix?.unit ?? "ชิ้น"}
+                          {solo && solo.bd.pieces > 1 && (
+                            // ที่มาของยอด: ชิ้นละ × จำนวนชิ้นต่อหน่วยขาย (เช่น โพ้งขอบ ฿10 × 8 ชิ้น)
+                            <span className="font-normal text-stone-500">
+                              {" "}
+                              ({formatPrice(solo.bd.perPiece)} × {solo.bd.pieces} ชิ้น)
+                            </span>
+                          )}
+                          {solo && solo.bd.pieces === 1 && solo.n > 1 && (
+                            // ระบุจำนวนได้ (ตัวน้อยเขย่า ×3) — ค่าขนาดคิดต่อตัว บอกที่มาให้ชัด
+                            <span className="font-normal text-stone-500">
+                              {" "}
+                              ({formatPrice(solo.bd.fee)} × {solo.n} {solo.qtyUnit})
+                            </span>
+                          )}
+                          {parts.length > 1 && (
+                            // เกาะหลายตัว = กางว่ามาจากตัวเลือกไหนบ้าง ไม่งั้นลูกค้าไล่ที่มาไม่ถูก
+                            <span className="font-normal text-stone-500">
+                              {" "}
+                              ({parts.map((p) => `${p.name} ${formatPrice(p.bd.fee * p.n)}${p.n > 1 ? ` (×${p.n})` : ""}`).join(" · ")})
+                            </span>
+                          )}
+                        </p>
+                      );
+                    })()}
+                    {/* เตือนเฉพาะตอนพิมพ์ผิด — ยังไม่ได้กรอกไม่ต้องขึ้นแดงใส่หน้าลูกค้าตั้งแต่เปิดหน้า */}
+                    {err && (
+                      <p className={`mt-1 text-[11px] font-bold ${raw === "" ? "text-amber-600" : "text-rose-600"}`}>
+                        {raw === "" ? "✍️" : "⚠"} {err}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()
+            ) : multi && opt.swatchGrid ? (
+              /*
+               * 🎨 ตารางสวอตช์สี — ตัวเลือกเยอะ (เช่น สีไหม 80 เบอร์) ปุ่ม pill ปกติจะยาวทั้งหน้า
+               * วงกลมสี + เลขใต้ เรียง 8 ต่อแถวในกล่องสูงคงที่เลื่อนได้ · กดสลับติ๊กเหมือน multi ปกติ
+               * ไม่เรียก jumpToImage — ชิปไม่อยู่ในแกลเลอรี (ดู galleryImages)
+               * ใต้ตารางมีแถบพรีวิวใหญ่ของสีที่แตะล่าสุด + ปุ่มเปิดตารางสีเต็ม (chartSrc)
+               */
+              <>
+                <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(3rem,1fr))] gap-1 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
+                  {opt.choices
+                    .filter((c) => allowed.includes(c.name))
+                    .map((c) => {
+                      const on = picked.includes(c.name);
+                      const short = c.name.split(" ")[0];
+                      return (
+                        <button
+                          key={c.name}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={on}
+                          title={c.name}
+                          onClick={() => {
+                            togglePick(c.name, on);
+                            setSwatchTap((m) => ({ ...m, [opt.label]: c.name }));
+                          }}
+                          className={`flex flex-col items-center gap-0.5 rounded-xl p-1 transition ${on ? "bg-amber-400/90 shadow" : "hover:bg-amber-50"}`}
+                        >
+                          <span className="relative">
+                            {c.imageSrc ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
-                                src={tap.imageSrc}
-                                alt={tap.name}
-                                className="h-12 min-w-0 flex-1 rounded-xl object-cover ring-1 ring-black/10"
+                                src={c.imageSrc}
+                                alt={c.name}
+                                className={`h-9 w-9 rounded-full object-cover ${on ? "ring-2 ring-white" : "ring-1 ring-black/10"}`}
+                                loading="lazy"
                               />
+                            ) : (
+                              <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-[10px] text-stone-400 ring-1 ring-black/10">
+                                ?
+                              </span>
                             )}
-                            {tap && (
-                              <span className="shrink-0 text-[12px] font-bold text-stone-600">{tap.name}</span>
+                            {on && (
+                              <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-teal-600 text-[9px] font-black text-white ring-2 ring-white">
+                                ✓
+                              </span>
                             )}
-                            {opt.chartSrc && (
-                              <button
-                                type="button"
-                                onClick={() => setZoomSrc(opt.chartSrc!)}
-                                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                              >
-                                🔍 ดูตารางสีเต็ม
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {/* 💡 กติกาคิดต่อลาย + แนะนำแยกรายการต่อลาย (โชว์เฉพาะกลุ่มที่ตั้ง extraPerDesign) */}
-                      {opt.extraPerDesign && (
-                        <p className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 ring-1 ring-amber-100">
-                          💡 สีที่เกินโควตาคิดเพิ่ม <span className="font-bold">ต่อลาย</span> (ไม่คูณจำนวนชิ้น) ·
-                          แนะนำ <span className="font-bold">1 ลาย ต่อ 1 รายการสั่งซื้อ</span> — มีหลายลาย
-                          กดเพิ่มลงตะกร้าแยกทีละลาย เพื่อเลือกสีไหมของแต่ละลายได้ถูกต้อง
-                        </p>
+                          </span>
+                          <span className={`text-[10px] font-bold leading-none ${on ? "text-white" : "text-stone-500"}`}>{short}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+                {/* 🔍 ดูรูปใหญ่: แถบพรีวิวสีที่แตะล่าสุด + ปุ่มเปิดตารางสีเต็มใน lightbox */}
+                {(() => {
+                  const tapName = swatchTap[opt.label] ?? picked[picked.length - 1];
+                  const tap = opt.choices.find((c) => c.name === tapName);
+                  return (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      {tap?.imageSrc && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={tap.imageSrc} alt={tap.name} className="h-12 min-w-0 flex-1 rounded-xl object-cover ring-1 ring-black/10" />
                       )}
-                    </>
-                  ) : multi ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {opt.choices
-                        .filter((c) => allowed.includes(c.name))
-                        .map((c) => {
-                          const on = picked.includes(c.name);
-                          const cQty = picks.find((p) => p.name === c.name)?.qty ?? 1;
-                          const unitAdd = choiceBadgeOf(opt, effective, c.name, feeQty, product);
-                          // ตัวเลือกนี้ระบุจำนวนได้ไหม — ตั้งแยกทีละตัวในหลังบ้าน
-                          const cWithQty = hasChoiceQty(opt, c.name);
-                          const cQtyMax = choiceQtyMax(opt, c.name);
-                          // หน่วยของจำนวน (เช่น "ซม.") — ตัวเลือกที่คิดตามขนาดจะได้ไม่ต้องเดาว่าเลขนี้คืออะไร
-                          const cQtyUnit = choiceQtyUnit(opt, c.name);
-                          return (
-                            <span key={c.name} className="inline-flex items-center gap-1">
-                              <button
-                                type="button"
-                                role="checkbox"
-                                aria-checked={on}
-                                onClick={() => {
-                                  togglePick(c.name, on);
-                                  if (!on) jumpToImage(c.imageSrc); // ติ๊กเปิด = โชว์ภาพแบบนั้น (ติ๊กออกไม่ต้อง)
-                                }}
-                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
-                                  on
-                                    ? "bg-amber-400 text-white shadow"
-                                    : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
-                                }`}
-                              >
-                                <span
-                                  className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none ${
-                                    on ? "border-white bg-white/25 text-white" : "border-stone-300 text-transparent"
-                                  }`}
-                                  aria-hidden
-                                >
-                                  ✓
-                                </span>
-                                {/* ภาพประจำตัวเลือก (ถ้ามี) */}
-                                {c.imageSrc && (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={c.imageSrc}
-                                    alt={c.name}
-                                    className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10"
-                                    loading="lazy"
-                                  />
-                                )}
-                                {c.name}
-                                {unitAdd > 0 ? ` +${formatPrice(unitAdd)}` : ""}
-                              </button>
-                              {/* ช่องจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น) — โผล่เมื่อติ๊กแล้วเท่านั้น */}
-                              {cWithQty && on && (
-                                <span className="inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-0.5 ring-1 ring-amber-200">
-                                  <button
-                                    type="button"
-                                    onClick={() => setChoiceQty(c.name, cQty - 1)}
-                                    disabled={cQty <= 1}
-                                    aria-label={`ลดจำนวน ${c.name}`}
-                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
-                                  >
-                                    −
-                                  </button>
-                                  <input
-                                    value={cQty}
-                                    onChange={(e) => {
-                                      const n = Number(e.target.value.replace(/\D/g, ""));
-                                      if (n >= 1) setChoiceQty(c.name, n);
-                                    }}
-                                    inputMode="numeric"
-                                    aria-label={`จำนวน ${c.name}${cQtyUnit ? ` (${cQtyUnit})` : ""}`}
-                                    className="w-8 bg-transparent text-center text-[13px] font-extrabold text-amber-700 outline-none"
-                                  />
-                                  {cQtyUnit && (
-                                    <span className="pr-0.5 text-[11px] font-bold text-amber-700">{cQtyUnit}</span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => setChoiceQty(c.name, cQty + 1)}
-                                    disabled={cQty >= cQtyMax}
-                                    aria-label={`เพิ่มจำนวน ${c.name}`}
-                                    className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
-                                  >
-                                    ＋
-                                  </button>
-                                </span>
-                              )}
-                              {/* จำนวนมากกว่า 1 บอกยอดรวมของตัวนี้ไปเลย จะได้ไม่ต้องคูณเอง */}
-                              {cWithQty && on && cQty > 1 && unitAdd > 0 && (
-                                <span className="text-[11px] font-bold text-amber-700">
-                                  {cQtyUnit ? `${cQty} ${cQtyUnit} ` : ""}= +{formatPrice(unitAdd * cQty)}
-                                </span>
-                              )}
-                            </span>
-                          );
-                        })}
+                      {tap && <span className="shrink-0 text-[12px] font-bold text-stone-600">{tap.name}</span>}
+                      {opt.chartSrc && (
+                        <button
+                          type="button"
+                          onClick={() => setZoomSrc(opt.chartSrc!)}
+                          className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                        >
+                          🔍 ดูตารางสีเต็ม
+                        </button>
+                      )}
                     </div>
-                  ) : locked ? (
-                    <div>
-                      <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-[13px] font-semibold text-stone-500 ring-1 ring-stone-200">
-                        🔒 {effective[opt.label]}
+                  );
+                })()}
+                {/* 💡 กติกาคิดต่อลาย + แนะนำแยกรายการต่อลาย (โชว์เฉพาะกลุ่มที่ตั้ง extraPerDesign) */}
+                {opt.extraPerDesign && (
+                  <p className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 ring-1 ring-amber-100">
+                    💡 สีที่เกินโควตาคิดเพิ่ม <span className="font-bold">ต่อลาย</span> (ไม่คูณจำนวนชิ้น) · แนะนำ{" "}
+                    <span className="font-bold">1 ลาย ต่อ 1 รายการสั่งซื้อ</span> — มีหลายลาย กดเพิ่มลงตะกร้าแยกทีละลาย เพื่อเลือกสีไหมของแต่ละลายได้ถูกต้อง
+                  </p>
+                )}
+              </>
+            ) : multi ? (
+              <div className="flex flex-wrap gap-1.5">
+                {opt.choices
+                  .filter((c) => allowed.includes(c.name))
+                  .map((c) => {
+                    const on = picked.includes(c.name);
+                    const cQty = picks.find((p) => p.name === c.name)?.qty ?? 1;
+                    const unitAdd = choiceBadgeOf(opt, effective, c.name, feeQty, product);
+                    // ตัวเลือกนี้ระบุจำนวนได้ไหม — ตั้งแยกทีละตัวในหลังบ้าน
+                    const cWithQty = hasChoiceQty(opt, c.name);
+                    const cQtyMax = choiceQtyMax(opt, c.name);
+                    // หน่วยของจำนวน (เช่น "ซม.") — ตัวเลือกที่คิดตามขนาดจะได้ไม่ต้องเดาว่าเลขนี้คืออะไร
+                    const cQtyUnit = choiceQtyUnit(opt, c.name);
+                    return (
+                      <span key={c.name} className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={on}
+                          onClick={() => {
+                            togglePick(c.name, on);
+                            if (!on) jumpToImage(c.imageSrc); // ติ๊กเปิด = โชว์ภาพแบบนั้น (ติ๊กออกไม่ต้อง)
+                          }}
+                          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
+                            on ? "bg-amber-400 text-white shadow" : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
+                          }`}
+                        >
+                          <span
+                            className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none ${
+                              on ? "border-white bg-white/25 text-white" : "border-stone-300 text-transparent"
+                            }`}
+                            aria-hidden
+                          >
+                            ✓
+                          </span>
+                          {/* ภาพประจำตัวเลือก (ถ้ามี) */}
+                          {c.imageSrc && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={c.imageSrc} alt={c.name} className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10" loading="lazy" />
+                          )}
+                          {c.name}
+                          {unitAdd > 0 ? ` +${formatPrice(unitAdd)}` : ""}
+                        </button>
+                        {/* ช่องจำนวนของตัวเลือกนี้ (เช่น เพิ่มสาย 2 เส้น) — โผล่เมื่อติ๊กแล้วเท่านั้น */}
+                        {cWithQty && on && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-0.5 ring-1 ring-amber-200">
+                            <button
+                              type="button"
+                              onClick={() => setChoiceQty(c.name, cQty - 1)}
+                              disabled={cQty <= 1}
+                              aria-label={`ลดจำนวน ${c.name}`}
+                              className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
+                            >
+                              −
+                            </button>
+                            <input
+                              value={cQty}
+                              onChange={(e) => {
+                                const n = Number(e.target.value.replace(/\D/g, ""));
+                                if (n >= 1) setChoiceQty(c.name, n);
+                              }}
+                              inputMode="numeric"
+                              aria-label={`จำนวน ${c.name}${cQtyUnit ? ` (${cQtyUnit})` : ""}`}
+                              className="w-8 bg-transparent text-center text-[13px] font-extrabold text-amber-700 outline-none"
+                            />
+                            {cQtyUnit && <span className="pr-0.5 text-[11px] font-bold text-amber-700">{cQtyUnit}</span>}
+                            <button
+                              type="button"
+                              onClick={() => setChoiceQty(c.name, cQty + 1)}
+                              disabled={cQty >= cQtyMax}
+                              aria-label={`เพิ่มจำนวน ${c.name}`}
+                              className="grid h-6 w-6 place-items-center rounded-full text-[13px] font-extrabold text-stone-500 hover:bg-amber-50 disabled:text-stone-300 disabled:hover:bg-transparent"
+                            >
+                              ＋
+                            </button>
+                          </span>
+                        )}
+                        {/* จำนวนมากกว่า 1 บอกยอดรวมของตัวนี้ไปเลย จะได้ไม่ต้องคูณเอง */}
+                        {cWithQty && on && cQty > 1 && unitAdd > 0 && (
+                          <span className="text-[11px] font-bold text-amber-700">
+                            {cQtyUnit ? `${cQty} ${cQtyUnit} ` : ""}= +{formatPrice(unitAdd * cQty)}
+                          </span>
+                        )}
                       </span>
-                      <p className="mt-1.5 text-[11px] text-stone-400">
-                        ตัวเลือกนี้ถูกกำหนดอัตโนมัติตามตัวเลือกอื่นที่คุณเลือก เพื่อป้องกันการสั่งผิด
-                      </p>
+                    );
+                  })}
+              </div>
+            ) : locked ? (
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-[13px] font-semibold text-stone-500 ring-1 ring-stone-200">
+                  🔒 {effective[opt.label]}
+                </span>
+                <p className="mt-1.5 text-[11px] text-stone-400">ตัวเลือกนี้ถูกกำหนดอัตโนมัติตามตัวเลือกอื่นที่คุณเลือก เพื่อป้องกันการสั่งผิด</p>
+              </div>
+            ) : opt.sampleGrid ? (
+              /*
+               * ✍️ ตารางแถบตัวอย่าง (เลือกได้อย่างเดียว) — กลุ่มที่ "หน้าตาของตัวอย่าง" คือสาระ
+               * เช่น ฟอนต์ปัก 26 แบบ: เมนูเลื่อนเห็นแค่รหัส E1/T1 ลูกค้าเดาลายมือไม่ออก
+               * รูปประจำตัวเลือก = ทั้งบรรทัดตัวอย่าง (แถบยาว) — ในตารางครอปโชว์ครึ่งซ้าย
+               * (object-left) ให้ตัวโตพอเห็นทรง แล้วโชว์เต็มบรรทัดของแบบที่เลือกใต้ตาราง
+               * ไม่เรียก jumpToImage — แถบตัวอย่างไม่อยู่ในแกลเลอรี (ดู galleryImages)
+               */
+              <>
+                <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-1.5 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
+                  {opt.choices
+                    .filter((c) => allowed.includes(c.name))
+                    .map((c) => {
+                      const on = effective[opt.label] === c.name;
+                      const short = c.name.split(" ")[0];
+                      return (
+                        <button
+                          key={c.name}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          title={c.name}
+                          onClick={() => setSelections((s) => ({ ...s, [opt.label]: c.name }))}
+                          className={`flex flex-col items-stretch gap-1 rounded-xl p-1 transition ${on ? "bg-amber-400/90 shadow" : "hover:bg-amber-50"}`}
+                        >
+                          {c.imageSrc ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={c.imageSrc}
+                              alt={c.name}
+                              className={`h-9 w-full rounded-lg bg-white object-cover object-left ${on ? "ring-2 ring-white" : "ring-1 ring-black/10"}`}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="grid h-9 w-full place-items-center rounded-lg bg-stone-100 text-[10px] text-stone-400 ring-1 ring-black/10">
+                              ?
+                            </span>
+                          )}
+                          <span className={`truncate text-[10px] font-bold leading-none ${on ? "text-white" : "text-stone-500"}`}>{short}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+                {/* 🔍 แถบเต็มบรรทัดของแบบที่เลือกอยู่ (กดดูเต็มจอได้ — ในแผงแคบตัวเล็ก) + ชาร์ตเต็ม */}
+                {(() => {
+                  const sel = opt.choices.find((c) => c.name === effective[opt.label]);
+                  return (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      {sel?.imageSrc && (
+                        <button type="button" onClick={() => setZoomSrc(sel.imageSrc!)} title={`ดูตัวอย่าง ${sel.name} เต็มจอ`} className="min-w-0 flex-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={sel.imageSrc} alt={sel.name} className="h-11 w-full rounded-xl bg-white object-contain p-1 ring-1 ring-black/10" />
+                        </button>
+                      )}
+                      {sel && <span className="shrink-0 text-[12px] font-bold text-stone-600">{sel.name}</span>}
+                      {opt.chartSrc && (
+                        <button
+                          type="button"
+                          onClick={() => setZoomSrc(opt.chartSrc!)}
+                          className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                        >
+                          🔍 ดูชาร์ตเต็ม
+                        </button>
+                      )}
                     </div>
-                  ) : opt.sampleGrid ? (
-                    /*
-                     * ✍️ ตารางแถบตัวอย่าง (เลือกได้อย่างเดียว) — กลุ่มที่ "หน้าตาของตัวอย่าง" คือสาระ
-                     * เช่น ฟอนต์ปัก 26 แบบ: เมนูเลื่อนเห็นแค่รหัส E1/T1 ลูกค้าเดาลายมือไม่ออก
-                     * รูปประจำตัวเลือก = ทั้งบรรทัดตัวอย่าง (แถบยาว) — ในตารางครอปโชว์ครึ่งซ้าย
-                     * (object-left) ให้ตัวโตพอเห็นทรง แล้วโชว์เต็มบรรทัดของแบบที่เลือกใต้ตาราง
-                     * ไม่เรียก jumpToImage — แถบตัวอย่างไม่อยู่ในแกลเลอรี (ดู galleryImages)
-                     */
-                    <>
-                      <div className="grid max-h-72 grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-1.5 overflow-y-auto rounded-2xl bg-white/70 p-2 ring-1 ring-amber-100">
-                        {opt.choices
-                          .filter((c) => allowed.includes(c.name))
-                          .map((c) => {
-                            const on = effective[opt.label] === c.name;
-                            const short = c.name.split(" ")[0];
-                            return (
-                              <button
-                                key={c.name}
-                                type="button"
-                                role="radio"
-                                aria-checked={on}
-                                title={c.name}
-                                onClick={() => setSelections((s) => ({ ...s, [opt.label]: c.name }))}
-                                className={`flex flex-col items-stretch gap-1 rounded-xl p-1 transition ${
-                                  on ? "bg-amber-400/90 shadow" : "hover:bg-amber-50"
-                                }`}
-                              >
-                                {c.imageSrc ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={c.imageSrc}
-                                    alt={c.name}
-                                    className={`h-9 w-full rounded-lg bg-white object-cover object-left ${
-                                      on ? "ring-2 ring-white" : "ring-1 ring-black/10"
-                                    }`}
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <span className="grid h-9 w-full place-items-center rounded-lg bg-stone-100 text-[10px] text-stone-400 ring-1 ring-black/10">
-                                    ?
-                                  </span>
-                                )}
-                                <span
-                                  className={`truncate text-[10px] font-bold leading-none ${on ? "text-white" : "text-stone-500"}`}
-                                >
-                                  {short}
-                                </span>
-                              </button>
-                            );
-                          })}
-                      </div>
-                      {/* 🔍 แถบเต็มบรรทัดของแบบที่เลือกอยู่ (กดดูเต็มจอได้ — ในแผงแคบตัวเล็ก) + ชาร์ตเต็ม */}
-                      {(() => {
-                        const sel = opt.choices.find((c) => c.name === effective[opt.label]);
-                        return (
-                          <div className="mt-1.5 flex items-center gap-2">
-                            {sel?.imageSrc && (
-                              <button
-                                type="button"
-                                onClick={() => setZoomSrc(sel.imageSrc!)}
-                                title={`ดูตัวอย่าง ${sel.name} เต็มจอ`}
-                                className="min-w-0 flex-1"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={sel.imageSrc}
-                                  alt={sel.name}
-                                  className="h-11 w-full rounded-xl bg-white object-contain p-1 ring-1 ring-black/10"
-                                />
-                              </button>
-                            )}
-                            {sel && <span className="shrink-0 text-[12px] font-bold text-stone-600">{sel.name}</span>}
-                            {opt.chartSrc && (
-                              <button
-                                type="button"
-                                onClick={() => setZoomSrc(opt.chartSrc!)}
-                                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                              >
-                                🔍 ดูชาร์ตเต็ม
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </>
-                  ) : opt.display === "dropdown" && opt.choices.some((c) => c.color) ? (
-                    /* 🎨 เมนูเลื่อนวาดเอง — ใช้เฉพาะกลุ่มที่มีตัวเลือกตั้งสี (ดู openDd) หน้าตา/ข้อความในรายการเหมือน <select> เดิม
+                  );
+                })()}
+              </>
+            ) : opt.display === "dropdown" && opt.choices.some((c) => c.color) ? (
+              /* 🎨 เมนูเลื่อนวาดเอง — ใช้เฉพาะกลุ่มที่มีตัวเลือกตั้งสี (ดู openDd) หน้าตา/ข้อความในรายการเหมือน <select> เดิม
                        รายการลอยเหนือเนื้อหาด้วย absolute (ตรวจแล้วไม่มี overflow ตัด) · ปิดเมื่อโฟกัสหลุดออกนอกกล่อง / กด Esc */
-                    (() => {
-                      const list = opt.choices.filter((c) => allowed.includes(c.name));
-                      const cur = opt.choices.find((c) => c.name === effective[opt.label]);
-                      /* ป้ายยาว ๆ (badge) ไม่เอาต่อท้ายชื่อบรรทัดเดียว — ขนาดตัดของสติ๊กเกอร์
+              (() => {
+                const list = opt.choices.filter((c) => allowed.includes(c.name));
+                const cur = opt.choices.find((c) => c.name === effective[opt.label]);
+                /* ป้ายยาว ๆ (badge) ไม่เอาต่อท้ายชื่อบรรทัดเดียว — ขนาดตัดของสติ๊กเกอร์
                          "A3 (ได้ 1 ชิ้น / แผ่น A3 · ไดคัทฟรี 200 จุด (สูงสุด 500))" ยาวจนโดนตัดหายทั้งท่อน
                          → ชื่อ + ค่าบริการอยู่บรรทัดแรก · badge ลงบรรทัดที่ 2 ตัวเล็กสีจาง (14 ก.ย. 69) */
-                      const feeOf = (c: ProductOptionChoice) => {
-                        const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
-                        return add > 0 ? `+${formatPrice(add)}` : "";
-                      };
-                      const subOf = (c: ProductOptionChoice) =>
-                        [c.popular ? "นิยม" : "", c.badge ?? ""].filter(Boolean).join(" · ");
-                      const labelOf = (c: ProductOptionChoice) =>
-                        [c.name, subOf(c) && `(${subOf(c)})`, feeOf(c)].filter(Boolean).join(" ");
-                      const open = openDd === opt.label;
-                      const curImg = cur ? choiceImage(cur, effective) : undefined;
-                      return (
-                        <>
-                        {/* รูปอยู่ "ในกรอบเดียวกัน" กับชื่อ — เดิมลอยอยู่นอกกล่องเหมือนของคนละชิ้น (14 ก.ย. 69) */}
-                        <div
-                          className="relative w-full"
-                          onBlur={(e) => {
-                            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpenDd((o) => (o === opt.label ? null : o));
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") setOpenDd(null);
-                          }}
-                        >
-                          <button
-                            type="button"
-                            aria-haspopup="listbox"
-                            aria-expanded={open}
-                            aria-label={opt.label}
-                            onClick={() => setOpenDd((o) => (o === opt.label ? null : opt.label))}
-                            className={`flex w-full items-center gap-2 rounded-xl bg-white text-left text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 transition hover:ring-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
-                              curImg ? "p-1.5 pr-3" : "px-3 py-2"
-                            }`}
-                            style={cur?.color ? { color: cur.color } : undefined}
-                          >
-                            {curImg && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={curImg} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-white object-cover ring-1 ring-stone-200" />
-                            )}
-                            {/* ปุ่มที่ปิดอยู่ = บรรทัดเดียว: ชื่อ · ป้ายตัวเล็ก · ลูกศร (ผู้ใช้สั่ง 14 ก.ย. 69)
+                const feeOf = (c: ProductOptionChoice) => {
+                  const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
+                  return add > 0 ? `+${formatPrice(add)}` : "";
+                };
+                const subOf = (c: ProductOptionChoice) => [c.popular ? "นิยม" : "", c.badge ?? ""].filter(Boolean).join(" · ");
+                const labelOf = (c: ProductOptionChoice) => [c.name, subOf(c) && `(${subOf(c)})`, feeOf(c)].filter(Boolean).join(" ");
+                const open = openDd === opt.label;
+                const curImg = cur ? choiceImage(cur, effective) : undefined;
+                return (
+                  <>
+                    {/* รูปอยู่ "ในกรอบเดียวกัน" กับชื่อ — เดิมลอยอยู่นอกกล่องเหมือนของคนละชิ้น (14 ก.ย. 69) */}
+                    <div
+                      className="relative w-full"
+                      onBlur={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpenDd((o) => (o === opt.label ? null : o));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setOpenDd(null);
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-haspopup="listbox"
+                        aria-expanded={open}
+                        aria-label={opt.label}
+                        onClick={() => setOpenDd((o) => (o === opt.label ? null : opt.label))}
+                        className={`flex w-full items-center gap-2 rounded-xl bg-white text-left text-[13px] font-semibold text-stone-700 ring-1 ring-amber-200 transition hover:ring-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                          curImg ? "p-1.5 pr-3" : "px-3 py-2"
+                        }`}
+                        style={cur?.color ? { color: cur.color } : undefined}
+                      >
+                        {curImg && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={curImg} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-white object-cover ring-1 ring-stone-200" />
+                        )}
+                        {/* ปุ่มที่ปิดอยู่ = บรรทัดเดียว: ชื่อ · ป้ายตัวเล็ก · ลูกศร (ผู้ใช้สั่ง 14 ก.ย. 69)
                                 ชื่อไม่ตัด (สั้นอยู่แล้ว) · ป้ายยาวเกินค่อยตัดท้าย */}
-                            <span className="shrink-0">{cur ? cur.name : "— เลือก —"}</span>
-                            {cur && feeOf(cur) && (
-                              <span className="shrink-0 text-[12px] font-bold text-amber-700">{feeOf(cur)}</span>
-                            )}
-                            {cur && subOf(cur) && (
-                              <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-stone-500">{subOf(cur)}</span>
-                            )}
-                            <span className="ml-auto shrink-0 pl-1 text-[10px] text-stone-400">{open ? "▲" : "▼"}</span>
-                          </button>
-                          {open && (
-                            <ul
-                              role="listbox"
-                              aria-label={opt.label}
-                              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[32rem] overflow-auto rounded-xl bg-white p-1 text-[13px] shadow-lg ring-1 ring-stone-200"
-                            >
-                              {list.map((c) => {
-                                const on = c.name === effective[opt.label];
-                                const img = choiceImage(c, effective);
-                                return (
-                                  <li key={c.name} role="option" aria-selected={on}>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                                        jumpToImage(img);
-                                        setOpenDd(null);
-                                      }}
-                                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-amber-50 ${on ? "bg-amber-50 font-bold" : "font-medium"}`}
-                                      style={c.color ? { color: c.color } : undefined}
-                                      title={labelOf(c)}
-                                    >
-                                      {/* รูปในรายการด้วย — ภาพผังแบ่งแผ่นบอกความต่างได้ไวกว่าอ่านตัวเลข */}
-                                      {img && (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={img} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-md bg-white object-cover ring-1 ring-stone-200" />
-                                      )}
-                                      <span className="min-w-0 flex-1">
-                                        <span className="flex items-baseline gap-1.5">
-                                          <span>{c.name}</span>
-                                          {feeOf(c) && <span className="text-[12px] font-bold text-amber-700">{feeOf(c)}</span>}
-                                        </span>
-                                        {subOf(c) && (
-                                          <span className="mt-0.5 block text-[11px] font-normal leading-snug text-stone-500">{subOf(c)}</span>
-                                        )}
-                                      </span>
-                                      <span className="w-3 shrink-0 text-[11px] text-teal-600">{on ? "✓" : ""}</span>
-                                    </button>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-                        {/* selectedNote ไม่ต้องวาดตรงนี้ — กล่องรวมท้ายกลุ่มวาดให้แล้ว (เคยขึ้นซ้ำ 2 กล่อง 14 ก.ย. 69) */}
-                        </>
-                      );
-                    })()
-                  ) : opt.display === "dropdown" ? (
-                    <>
-                    {/* ภาพประจำตัวเลือกที่เลือกอยู่ — <select> ใส่รูปในรายการไม่ได้ จึงวางไว้ "ในกรอบเดียวกัน" ข้าง ๆ
+                        <span className="shrink-0">{cur ? cur.name : "— เลือก —"}</span>
+                        {cur && feeOf(cur) && <span className="shrink-0 text-[12px] font-bold text-amber-700">{feeOf(cur)}</span>}
+                        {cur && subOf(cur) && <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-stone-500">{subOf(cur)}</span>}
+                        <span className="ml-auto shrink-0 pl-1 text-[10px] text-stone-400">{open ? "▲" : "▼"}</span>
+                      </button>
+                      {open && (
+                        <ul
+                          role="listbox"
+                          aria-label={opt.label}
+                          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[32rem] overflow-auto rounded-xl bg-white p-1 text-[13px] shadow-lg ring-1 ring-stone-200"
+                        >
+                          {list.map((c) => {
+                            const on = c.name === effective[opt.label];
+                            const img = choiceImage(c, effective);
+                            return (
+                              <li key={c.name} role="option" aria-selected={on}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                                    jumpToImage(img);
+                                    setOpenDd(null);
+                                  }}
+                                  className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-amber-50 ${on ? "bg-amber-50 font-bold" : "font-medium"}`}
+                                  style={c.color ? { color: c.color } : undefined}
+                                  title={labelOf(c)}
+                                >
+                                  {/* รูปในรายการด้วย — ภาพผังแบ่งแผ่นบอกความต่างได้ไวกว่าอ่านตัวเลข */}
+                                  {img && (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={img}
+                                      alt=""
+                                      loading="lazy"
+                                      className="h-10 w-10 shrink-0 rounded-md bg-white object-cover ring-1 ring-stone-200"
+                                    />
+                                  )}
+                                  <span className="min-w-0 flex-1">
+                                    <span className="flex items-baseline gap-1.5">
+                                      <span>{c.name}</span>
+                                      {feeOf(c) && <span className="text-[12px] font-bold text-amber-700">{feeOf(c)}</span>}
+                                    </span>
+                                    {subOf(c) && <span className="mt-0.5 block text-[11px] font-normal leading-snug text-stone-500">{subOf(c)}</span>}
+                                  </span>
+                                  <span className="w-3 shrink-0 text-[11px] text-teal-600">{on ? "✓" : ""}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                    {/* selectedNote ไม่ต้องวาดตรงนี้ — กล่องรวมท้ายกลุ่มวาดให้แล้ว (เคยขึ้นซ้ำ 2 กล่อง 14 ก.ย. 69) */}
+                  </>
+                );
+              })()
+            ) : opt.display === "dropdown" ? (
+              <>
+                {/* ภาพประจำตัวเลือกที่เลือกอยู่ — <select> ใส่รูปในรายการไม่ได้ จึงวางไว้ "ในกรอบเดียวกัน" ข้าง ๆ
                         (สินค้าอย่างเคสมือถือ 20+ รุ่น ใช้เมนูเลื่อนดีกว่าปุ่ม แต่ยังต้องเห็นหน้าตาแบบที่เลือก)
                         กรอบครอบทั้งรูป+เมนู ให้เป็นของชิ้นเดียว — เดิมรูปลอยอยู่นอกกล่อง (14 ก.ย. 69) */}
-                    {(() => {
-                      const selImg = (() => {
-                        const selC = opt.choices.find((c) => c.name === effective[opt.label]);
-                        return selC ? choiceImage(selC, effective) : undefined;
-                      })();
-                      return (
+                {(() => {
+                  const selImg = (() => {
+                    const selC = opt.choices.find((c) => c.name === effective[opt.label]);
+                    return selC ? choiceImage(selC, effective) : undefined;
+                  })();
+                  return (
                     <div
                       className={`flex items-center rounded-xl bg-white ring-1 ring-amber-200 focus-within:ring-2 focus-within:ring-amber-300 ${
                         selImg ? "gap-2.5 p-1.5" : ""
@@ -5102,520 +4870,510 @@ export default function ProductDetail({
                     >
                       {selImg && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={selImg}
-                          alt=""
-                          className="h-12 w-12 shrink-0 rounded-lg bg-white object-cover ring-1 ring-stone-200"
-                        />
+                        <img src={selImg} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-white object-cover ring-1 ring-stone-200" />
                       )}
-                    <select
-                      value={effective[opt.label]}
-                      onChange={(e) => {
-                        setSelections((s) => ({ ...s, [opt.label]: e.target.value }));
-                        {
-                          const picked = opt.choices.find((c) => c.name === e.target.value);
-                          jumpToImage(picked ? choiceImage(picked, effective) : undefined);
-                        }
-                      }}
-                      className={`w-full min-w-0 rounded-xl bg-transparent py-2 text-[13px] font-semibold text-stone-700 focus:outline-none ${
-                        selImg ? "pl-0.5 pr-2" : "px-3"
-                      }`}
-                      // 🎨 ตัวเลือกที่ตั้งสีไว้ (ครึ่ง A4/A5/A6 สีเขียว) — ตอนถูกเลือกให้ตัวเมนูเป็นสีนั้นด้วย จะได้เห็นตั้งแต่ยังไม่กาง
-                      style={(() => { const col = opt.choices.find((c) => c.name === effective[opt.label])?.color; return col ? { color: col } : undefined; })()}
-                      aria-label={opt.label}
-                    >
-                      {opt.choices
-                        .filter((c) => allowed.includes(c.name))
-                        .map((c) => (
-                          <option key={c.name} value={c.name} style={c.color ? { color: c.color } : undefined}>
-                            {c.name}
-                            {c.popular ? " (นิยม)" : ""}
-                            {c.badge ? ` (${c.badge})` : ""}
-                            {choiceBadgeOf(opt, effective, c.name, feeQty, product) > 0
-                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty, product))}`
-                              : ""}
-                          </option>
-                        ))}
-                    </select>
+                      <select
+                        value={effective[opt.label]}
+                        onChange={(e) => {
+                          setSelections((s) => ({ ...s, [opt.label]: e.target.value }));
+                          {
+                            const picked = opt.choices.find((c) => c.name === e.target.value);
+                            jumpToImage(picked ? choiceImage(picked, effective) : undefined);
+                          }
+                        }}
+                        className={`w-full min-w-0 rounded-xl bg-transparent py-2 text-[13px] font-semibold text-stone-700 focus:outline-none ${
+                          selImg ? "pl-0.5 pr-2" : "px-3"
+                        }`}
+                        // 🎨 ตัวเลือกที่ตั้งสีไว้ (ครึ่ง A4/A5/A6 สีเขียว) — ตอนถูกเลือกให้ตัวเมนูเป็นสีนั้นด้วย จะได้เห็นตั้งแต่ยังไม่กาง
+                        style={(() => {
+                          const col = opt.choices.find((c) => c.name === effective[opt.label])?.color;
+                          return col ? { color: col } : undefined;
+                        })()}
+                        aria-label={opt.label}
+                      >
+                        {opt.choices
+                          .filter((c) => allowed.includes(c.name))
+                          .map((c) => (
+                            <option key={c.name} value={c.name} style={c.color ? { color: c.color } : undefined}>
+                              {c.name}
+                              {c.popular ? " (นิยม)" : ""}
+                              {c.badge ? ` (${c.badge})` : ""}
+                              {choiceBadgeOf(opt, effective, c.name, feeQty, product) > 0
+                                ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty, product))}`
+                                : ""}
+                            </option>
+                          ))}
+                      </select>
                     </div>
-                      );
-                    })()}
-                    {/* 🖼 ตัวเลือกส่วนใหญ่มีรูป (≥ 6 ตัว · ≥ 60%) → ปุ่มเปิดแผงเลือกจากรูป · เมนูเดิมยังอยู่สำหรับคนที่รู้ชื่อแบบแล้ว */}
-                    {(() => {
-                      const vis = opt.choices.filter((c) => allowed.includes(c.name));
-                      const pics = vis.filter((c) => choiceImage(c, effective)).length;
-                      if (vis.length < 6 || pics < vis.length * 0.6) return null;
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => setPickerFor(opt.label)}
-                          className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-[12px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-100"
-                        >
-                          🖼 เลือกจากรูป ({vis.length.toLocaleString("th-TH")} แบบ)
-                        </button>
-                      );
-                    })()}
-                    {pickerFor === opt.label &&
-                      typeof document !== "undefined" &&
-                      createPortal(
-                        <div
-                          className="fixed inset-0 z-[96] flex items-end justify-center bg-stone-900/50 backdrop-blur-sm sm:items-center sm:p-4"
-                          onClick={() => setPickerFor("")}
-                          role="dialog"
-                          aria-modal="true"
-                          aria-label={`เลือก${opt.label}จากรูป`}
-                        >
-                          <div
-                            className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
-                            onClick={(e) => e.stopPropagation()}
+                  );
+                })()}
+                {/* 🖼 ตัวเลือกส่วนใหญ่มีรูป (≥ 6 ตัว · ≥ 60%) → ปุ่มเปิดแผงเลือกจากรูป · เมนูเดิมยังอยู่สำหรับคนที่รู้ชื่อแบบแล้ว */}
+                {(() => {
+                  const vis = opt.choices.filter((c) => allowed.includes(c.name));
+                  const pics = vis.filter((c) => choiceImage(c, effective)).length;
+                  if (vis.length < 6 || pics < vis.length * 0.6) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setPickerFor(opt.label)}
+                      className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-[12px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-100"
+                    >
+                      🖼 เลือกจากรูป ({vis.length.toLocaleString("th-TH")} แบบ)
+                    </button>
+                  );
+                })()}
+                {pickerFor === opt.label &&
+                  typeof document !== "undefined" &&
+                  createPortal(
+                    <div
+                      className="fixed inset-0 z-[96] flex items-end justify-center bg-stone-900/50 backdrop-blur-sm sm:items-center sm:p-4"
+                      onClick={() => setPickerFor("")}
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label={`เลือก${opt.label}จากรูป`}
+                    >
+                      <div
+                        className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-4 py-3">
+                          <p className="min-w-0 truncate text-[15px] font-extrabold text-stone-800">🖼 เลือก{opt.label}</p>
+                          <button
+                            type="button"
+                            onClick={() => setPickerFor("")}
+                            className="shrink-0 rounded-full px-3 py-1.5 text-sm font-bold text-stone-500 hover:bg-stone-100"
+                            aria-label="ปิด"
                           >
-                            <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-4 py-3">
-                              <p className="min-w-0 truncate text-[15px] font-extrabold text-stone-800">🖼 เลือก{opt.label}</p>
-                              <button
-                                type="button"
-                                onClick={() => setPickerFor("")}
-                                className="shrink-0 rounded-full px-3 py-1.5 text-sm font-bold text-stone-500 hover:bg-stone-100"
-                                aria-label="ปิด"
-                              >
-                                ✕ ปิด
-                              </button>
-                            </div>
-                            {/* ⚠️ เลื่อนที่กล่องนอก ไม่ใช่ที่ grid เอง — grid ใน flex คอลัมน์ที่ตั้ง overflow ถูกบีบแถวจนรูปเหลือเป็นแถบบาง ๆ ชื่อหาย */}
-                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                            <div className="grid auto-rows-max grid-cols-3 content-start gap-2 p-3 sm:grid-cols-4">
-                              {opt.choices
-                                .filter((c) => allowed.includes(c.name))
-                                .map((c) => {
-                                  const img = choiceImage(c, effective);
-                                  const on = effective[opt.label] === c.name;
-                                  const fee = choiceBadgeOf(opt, effective, c.name, feeQty, product);
-                                  return (
-                                    <button
-                                      key={c.name}
-                                      type="button"
-                                      onClick={() => {
-                                        setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                                        jumpToImage(img);
-                                        setPickerFor("");
-                                      }}
-                                      aria-pressed={on}
-                                      className={`flex flex-col overflow-hidden rounded-2xl bg-white text-left ring-1 transition ${
-                                        on ? "ring-2 ring-amber-400" : "ring-stone-200 hover:ring-amber-300"
-                                      }`}
-                                    >
-                                      {img ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={img} alt={c.name} loading="lazy" className="aspect-square h-auto w-full shrink-0 bg-stone-50 object-cover" />
-                                      ) : (
-                                        <span className="grid aspect-square w-full place-items-center bg-stone-50 text-2xl" aria-hidden>
-                                          {product.emoji}
-                                        </span>
-                                      )}
-                                      <span className="px-2 pb-2 pt-1.5 text-[11.5px] font-semibold leading-snug text-stone-700">
-                                        {on && <span className="text-amber-600">✓ </span>}
-                                        {c.name}
-                                        {c.popular && <span className="text-teal-700"> · นิยม</span>}
-                                        {fee > 0 && <span className="block text-[11px] font-bold text-amber-600">+{formatPrice(fee)}</span>}
+                            ✕ ปิด
+                          </button>
+                        </div>
+                        {/* ⚠️ เลื่อนที่กล่องนอก ไม่ใช่ที่ grid เอง — grid ใน flex คอลัมน์ที่ตั้ง overflow ถูกบีบแถวจนรูปเหลือเป็นแถบบาง ๆ ชื่อหาย */}
+                        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                          <div className="grid auto-rows-max grid-cols-3 content-start gap-2 p-3 sm:grid-cols-4">
+                            {opt.choices
+                              .filter((c) => allowed.includes(c.name))
+                              .map((c) => {
+                                const img = choiceImage(c, effective);
+                                const on = effective[opt.label] === c.name;
+                                const fee = choiceBadgeOf(opt, effective, c.name, feeQty, product);
+                                return (
+                                  <button
+                                    key={c.name}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                                      jumpToImage(img);
+                                      setPickerFor("");
+                                    }}
+                                    aria-pressed={on}
+                                    className={`flex flex-col overflow-hidden rounded-2xl bg-white text-left ring-1 transition ${
+                                      on ? "ring-2 ring-amber-400" : "ring-stone-200 hover:ring-amber-300"
+                                    }`}
+                                  >
+                                    {img ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={img} alt={c.name} loading="lazy" className="aspect-square h-auto w-full shrink-0 bg-stone-50 object-cover" />
+                                    ) : (
+                                      <span className="grid aspect-square w-full place-items-center bg-stone-50 text-2xl" aria-hidden>
+                                        {product.emoji}
                                       </span>
-                                    </button>
-                                  );
-                                })}
-                            </div>
-                            </div>
+                                    )}
+                                    <span className="px-2 pb-2 pt-1.5 text-[11.5px] font-semibold leading-snug text-stone-700">
+                                      {on && <span className="text-amber-600">✓ </span>}
+                                      {c.name}
+                                      {c.popular && <span className="text-teal-700"> · นิยม</span>}
+                                      {fee > 0 && <span className="block text-[11px] font-bold text-amber-600">+{formatPrice(fee)}</span>}
+                                    </span>
+                                  </button>
+                                );
+                              })}
                           </div>
-                        </div>,
-                        document.body,
-                      )}
-                    {/* selectedNote ไม่ต้องวาดตรงนี้ — กล่องรวมท้ายกลุ่มวาดให้แล้ว (เคยขึ้นซ้ำ 2 กล่อง 14 ก.ย. 69) */}
-                    </>
-                  ) : opt.display === "cards" ? (
-                    /* การ์ดแนวตั้งหน้าตาเดียวกับแผงเลือกเรทราคา — รูปใหญ่ + วิทยุ + ชื่อ + คำอธิบาย
+                        </div>
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+                {/* selectedNote ไม่ต้องวาดตรงนี้ — กล่องรวมท้ายกลุ่มวาดให้แล้ว (เคยขึ้นซ้ำ 2 กล่อง 14 ก.ย. 69) */}
+              </>
+            ) : opt.display === "cards" ? (
+              /* การ์ดแนวตั้งหน้าตาเดียวกับแผงเลือกเรทราคา — รูปใหญ่ + วิทยุ + ชื่อ + คำอธิบาย
                        รูป 80px (เดิม 48px — ผู้ใช้ทัก 4 ก.ย. 69 ว่าเล็กจนดูไม่ออกว่าเป็นรูปอะไร)
                        ภาพตัวเลือกเป็นจัตุรัส 900×900 ลงกล่องจัตุรัส object-cover จึงเห็นเต็มใบ ไม่ถูกครอป —
                        กล่องใหญ่ขึ้นเท่าไหร่ = เห็นชัดขึ้นเท่านั้น (แผงเรทราคาด้านล่างขยายคู่กันให้หน้าตาเหมือนเดิม)
                        (กลุ่ม "แบบ/ชนิด/เนื้อ" ที่หน้าตาต่างกันชัด ๆ ผู้ใช้สั่งใช้ทรงนี้ 25 ส.ค. 69)
                        กลุ่มที่ตัวเลือกเยอะ (ลายฟิล์ม 10 ลาย) เรียง 2 คอลัมน์แบบกระชับ ไม่งั้นหน้ายาวจนต้องเลื่อนหา */
-                    (() => {
-                      const cardList = opt.choices.filter((c) => allowed.includes(c.name));
-                      const dense = cardList.length >= CARDS_DENSE_FROM;
+              (() => {
+                const cardList = opt.choices.filter((c) => allowed.includes(c.name));
+                const dense = cardList.length >= CARDS_DENSE_FROM;
+                return (
+                  <div className={dense ? "grid grid-cols-2 gap-1.5" : "grid gap-1.5"}>
+                    {cardList.map((c) => {
+                      const on = effective[opt.label] === c.name;
+                      const cImg = choiceImage(c, effective);
+                      const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
+                      // 📏 กางที่มาของค่าบริการตามขนาด (เช่น โพ้งขอบ ฿10 × 8 ชิ้น = ฿80)
+                      // ใช้ view เดียวกับ choiceBadgeOf (สมมติว่าเลือกตัวนี้) ตัวเลขจะได้ตรงกับป้าย +฿ เสมอ
+                      const feeBd = c.sizeFee ? sizeFeeBreakdownOf(c.sizeFee, { ...effective, [opt.label]: c.name }) : null;
                       return (
-                    <div className={dense ? "grid grid-cols-2 gap-1.5" : "grid gap-1.5"}>
-                      {cardList
-                        .map((c) => {
-                          const on = effective[opt.label] === c.name;
-                          const cImg = choiceImage(c, effective);
-                          const add = choiceBadgeOf(opt, effective, c.name, feeQty, product);
-                          // 📏 กางที่มาของค่าบริการตามขนาด (เช่น โพ้งขอบ ฿10 × 8 ชิ้น = ฿80)
-                          // ใช้ view เดียวกับ choiceBadgeOf (สมมติว่าเลือกตัวนี้) ตัวเลขจะได้ตรงกับป้าย +฿ เสมอ
-                          const feeBd = c.sizeFee
-                            ? sizeFeeBreakdownOf(c.sizeFee, { ...effective, [opt.label]: c.name })
-                            : null;
-                          return (
-                            <button
-                              key={c.name}
-                              type="button"
-                              onClick={() => {
-                                setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                                jumpToImage(c.videoSrc ?? cImg);
-                              }}
-                              className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
-                                on
-                                  ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
-                                  : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
-                              }`}
-                            >
-                              <span className="flex items-center gap-2">
-                                {c.videoSrc ? (
-                                  // 🎬 ตัวเลือกที่มีคลิป — การ์ดเล่นคลิปวนเงียบ ๆ แทนภาพนิ่ง (imageSrc เป็นโปสเตอร์ระหว่างโหลด)
-                                  // ref เขี่ยให้เล่นเอง: การ์ดถูก SSR มาตั้งแต่แรก จังหวะ autoplay ของเบราว์เซอร์
-                                  // ผ่านไปก่อน hydration เสร็จ (คลิปในแกลเลอรีไม่เจอเพราะ mount ทีหลังตอนกดสลับ)
-                                  <video
-                                    data-card-clip
-                                    src={c.videoSrc}
-                                    poster={cImg}
-                                    autoPlay
-                                    muted
-                                    loop
-                                    playsInline
-                                    ref={(el) => {
-                                      if (el && el.paused) {
-                                        el.muted = true;
-                                        el.play().catch(() => {});
-                                      }
-                                    }}
-                                    className={`${dense ? "h-12 w-12" : "h-20 w-20"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
-                                  />
-                                ) : cImg ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={cImg}
-                                    alt={c.name}
-                                    className={`${dense ? "h-12 w-12" : "h-20 w-20"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
-                                    loading="lazy"
-                                  />
-                                ) : null}
-                                <span className="min-w-0 flex-1">
-                                  <span className={`flex flex-wrap items-center ${dense ? "gap-1" : "gap-2"}`}>
-                                    {/* ทรงกระชับ: ตัวที่เลือกอยู่มีวงแหวนเหลืองรอบการ์ดบอกอยู่แล้ว วิทยุจึงตัดทิ้งได้ */}
-                                    {!dense && (
-                                      <span
-                                        className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}
-                                      >
-                                        {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
-                                      </span>
-                                    )}
-                                    {c.name}
-                                    {c.popular && (
-                                      <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
-                                        นิยม
-                                      </span>
-                                    )}
-                                    {c.badge && (
-                                      <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white ring-1 ring-emerald-600">
-                                        {c.badge}
-                                      </span>
-                                    )}
-                                    {add > 0 && (
-                                      <span className="text-[12px] font-bold text-amber-700">
-                                        +{formatPrice(add)}
-                                        {feeBd && feeBd.pieces > 1 && add === feeBd.fee && (
-                                          // ที่มาของยอด: ชิ้นละ × จำนวนชิ้นต่อหลา (โชว์เฉพาะตอนคูณจริง)
-                                          <span className="font-normal text-stone-500">
-                                            {" "}
-                                            (฿{feeBd.perPiece} × {feeBd.pieces} ชิ้น)
-                                          </span>
-                                        )}
+                        <button
+                          key={c.name}
+                          type="button"
+                          onClick={() => {
+                            setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                            jumpToImage(c.videoSrc ?? cImg);
+                          }}
+                          className={`rounded-xl px-3 py-2 text-left text-[13px] transition ${
+                            on
+                              ? "bg-amber-50 font-bold text-amber-900 ring-2 ring-amber-400"
+                              : "bg-white text-stone-600 ring-1 ring-stone-200 hover:ring-amber-300"
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            {c.videoSrc ? (
+                              // 🎬 ตัวเลือกที่มีคลิป — การ์ดเล่นคลิปวนเงียบ ๆ แทนภาพนิ่ง (imageSrc เป็นโปสเตอร์ระหว่างโหลด)
+                              // ref เขี่ยให้เล่นเอง: การ์ดถูก SSR มาตั้งแต่แรก จังหวะ autoplay ของเบราว์เซอร์
+                              // ผ่านไปก่อน hydration เสร็จ (คลิปในแกลเลอรีไม่เจอเพราะ mount ทีหลังตอนกดสลับ)
+                              <video
+                                data-card-clip
+                                src={c.videoSrc}
+                                poster={cImg}
+                                autoPlay
+                                muted
+                                loop
+                                playsInline
+                                ref={(el) => {
+                                  if (el && el.paused) {
+                                    el.muted = true;
+                                    el.play().catch(() => {});
+                                  }
+                                }}
+                                className={`${dense ? "h-12 w-12" : "h-20 w-20"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
+                              />
+                            ) : cImg ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={cImg}
+                                alt={c.name}
+                                className={`${dense ? "h-12 w-12" : "h-20 w-20"} shrink-0 rounded-lg object-cover ring-1 ring-stone-200`}
+                                loading="lazy"
+                              />
+                            ) : null}
+                            <span className="min-w-0 flex-1">
+                              <span className={`flex flex-wrap items-center ${dense ? "gap-1" : "gap-2"}`}>
+                                {/* ทรงกระชับ: ตัวที่เลือกอยู่มีวงแหวนเหลืองรอบการ์ดบอกอยู่แล้ว วิทยุจึงตัดทิ้งได้ */}
+                                {!dense && (
+                                  <span
+                                    className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? "border-amber-500" : "border-stone-300"}`}
+                                  >
+                                    {on && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                                  </span>
+                                )}
+                                {c.name}
+                                {c.popular && (
+                                  <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">นิยม</span>
+                                )}
+                                {c.badge && (
+                                  <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white ring-1 ring-emerald-600">
+                                    {c.badge}
+                                  </span>
+                                )}
+                                {add > 0 && (
+                                  <span className="text-[12px] font-bold text-amber-700">
+                                    +{formatPrice(add)}
+                                    {feeBd && feeBd.pieces > 1 && add === feeBd.fee && (
+                                      // ที่มาของยอด: ชิ้นละ × จำนวนชิ้นต่อหลา (โชว์เฉพาะตอนคูณจริง)
+                                      <span className="font-normal text-stone-500">
+                                        {" "}
+                                        (฿{feeBd.perPiece} × {feeBd.pieces} ชิ้น)
                                       </span>
                                     )}
                                   </span>
-                                  {/* pre-line: desc ที่เขียนแยกบรรทัด (เช่น จำนวน A3 ของแต่ละจำนวนแผ่น) จะได้ขึ้นบรรทัดจริง */}
-                                  {c.desc && !dense && (
-                                    <span className="mt-0.5 block whitespace-pre-line pl-6 text-[11px] font-normal leading-snug text-stone-500">
-                                      {c.desc}
-                                    </span>
-                                  )}
-                                  {/* 💬 ข้อความกำกับเฉพาะตอนถูกเลือก — เตือนเงื่อนไขของตัวที่เลือกอยู่ (เช่น ฝุ่นหมึกของไดคัทเข้าเนื้อ) */}
-                                  {on && c.selectedNote && (
-                                    <span className={`mt-1 block rounded-lg px-2 py-1 text-[11px] font-normal leading-snug ring-1 ${noteTone(c.selectedNote)}`}>
-                                      {noteEmphasis(c.selectedNote)}
-                                    </span>
-                                  )}
+                                )}
+                              </span>
+                              {/* pre-line: desc ที่เขียนแยกบรรทัด (เช่น จำนวน A3 ของแต่ละจำนวนแผ่น) จะได้ขึ้นบรรทัดจริง */}
+                              {c.desc && !dense && (
+                                <span className="mt-0.5 block whitespace-pre-line pl-6 text-[11px] font-normal leading-snug text-stone-500">{c.desc}</span>
+                              )}
+                              {/* 💬 ข้อความกำกับเฉพาะตอนถูกเลือก — เตือนเงื่อนไขของตัวที่เลือกอยู่ (เช่น ฝุ่นหมึกของไดคัทเข้าเนื้อ) */}
+                              {on && c.selectedNote && (
+                                <span className={`mt-1 block rounded-lg px-2 py-1 text-[11px] font-normal leading-snug ring-1 ${noteTone(c.selectedNote)}`}>
+                                  {noteEmphasis(c.selectedNote)}
                                 </span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                    </div>
+                              )}
+                            </span>
+                          </span>
+                        </button>
                       );
-                    })()
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {opt.choices
-                        .filter((c) => allowed.includes(c.name))
-                        .map((c) => (
-                          <button
-                            key={c.name}
-                            type="button"
-                            onClick={() => {
-                              setSelections((s) => ({ ...s, [opt.label]: c.name }));
-                              jumpToImage(choiceImage(c, effective));
-                            }}
-                            className={`inline-flex items-center gap-1.5 rounded-full py-1.5 text-[13px] font-semibold transition ${
-                              choiceImage(c, effective) ? "pl-1.5 pr-3" : "px-3"
-                            } ${
-                              effective[opt.label] === c.name
-                                ? "bg-amber-400 text-white shadow"
-                                : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
-                            }`}
-                          >
-                            {/* ภาพประจำตัวเลือก (ถ้ามี) — เห็นหน้าตาแบบนั้น ๆ ก่อนเลือก */}
-                            {choiceImage(c, effective) && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={choiceImage(c, effective)}
-                                alt={c.name}
-                                className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10"
-                                loading="lazy"
-                              />
-                            )}
-                            {c.name}
-                            {/* ป้าย "นิยม" — เหลืองเป็ดคู่กับฟ้าแบรนด์ อ่านออกทั้งบนปุ่มที่เลือกอยู่และปุ่มเปล่า */}
-                            {c.popular && (
-                              <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
-                                นิยม
-                              </span>
-                            )}
-                            {/* ป้ายอิสระที่แอดมินพิมพ์เอง เช่น "ฟรี!" — เขียวเพื่อไม่ให้ชนกับป้าย "นิยม" */}
-                            {c.badge && (
-                              <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white ring-1 ring-emerald-600">
-                                {c.badge}
-                              </span>
-                            )}
-                            {choiceBadgeOf(opt, effective, c.name, feeQty, product) > 0
-                              ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty, product))}`
-                              : ""}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                  {/*
-                    * 💬 ข้อความกำกับของตัวที่เลือกอยู่ (choice.selectedNote) สำหรับกลุ่มที่ไม่ใช่การ์ด
-                    * — การ์ดโชว์ในตัวการ์ดเองแล้ว · pills/dropdown ไม่มีพื้นที่ในปุ่ม/เมนู จึงขึ้นเป็นกล่องใต้กลุ่มแทน
-                    */}
-                  {!multi &&
-                    !isInput &&
-                    opt.display !== "cards" &&
-                    (() => {
-                      const sel = opt.choices.find((c) => c.name === effective[opt.label]);
-                      return sel?.selectedNote ? (
-                        <p className={`mt-1.5 rounded-xl px-3 py-2 text-[11px] leading-snug ring-1 ${noteTone(sel.selectedNote)}`}>
-                          {noteEmphasis(sel.selectedNote)}
-                        </p>
-                      ) : null;
-                    })()}
-                  {/* บอกให้ชัดว่าป้ายนี้แปลว่าอะไร — ขึ้นครั้งเดียวทั้งหน้า ที่กลุ่มแรกที่มีป้าย "นิยม" */}
-                  {(() => {
-                    if (popularLegendShown) return false;
-                    popularLegendShown = opt.choices.some((c) => c.popular && allowed.includes(c.name));
-                    return popularLegendShown;
-                  })() && (
-                    <p className="mt-1 text-[11px] font-semibold text-stone-500">
-                      <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">
-                        นิยม
-                      </span>{" "}
-                      = แบบที่ลูกค้าสั่งบ่อยที่สุด (ทางร้านแนะนำ)
-                    </p>
-                  )}
-                  {/*
-                    * 📐 งานแบ่งแผ่น — เลือกขนาดตัดแล้วสรุปว่าจำนวนที่สั่งอยู่ตอนนี้ได้งานกี่ชิ้น
-                    * (ป้ายบนปุ่มบอกแค่ "ต่อ 1 หน่วย" ลูกค้าต้องคูณเอง — คูณให้เลยตรงนี้)
-                    */}
-                  {unitYield && !unitYield.approx && unitYield.optLabel === opt.label && yieldTotal != null &&
-                    /* สั่ง 1 หน่วย + ป้ายใต้ชื่อบอกจำนวนเท่ากันอยู่แล้ว = พูดซ้ำคำต่อคำ ("ได้ 1 ชิ้น / แผ่น A3"
-                       กับ "ขนาดตัด A3 = ได้ 1 ชิ้น") — ข้ามไป · สั่งหลายหน่วยยังต้องขึ้น เพราะคูณให้ดู */
-                    !(qty === 1 &&
-                      new RegExp(`ได้\\s*${yieldTotal.toLocaleString("th-TH")}\\s*ชิ้น`)
-                        .test(String(opt.choices.find((c) => c.name === effective[opt.label])?.badge ?? ""))) && (
-                    <p className="mt-1.5 rounded-xl bg-teal-50 px-3 py-2 text-[11px] leading-relaxed text-teal-800 ring-1 ring-teal-100">
-                      {/* สั่ง 1 หน่วย: "ได้ 2 ชิ้น ต่อ 1 แผ่น A3 · สั่ง 1 แผ่น A3 = ได้ 2 ชิ้น" คือประโยคเดียวกันสองรอบ
-                          เหลือท่อนเดียวพอ · สั่งหลายหน่วยค่อยกางให้เห็นที่มาของยอดรวม */}
-                      📐 {unitYield.label} <span className="font-bold">{unitYield.size}</span>
-                      {qty > 1 ? (
-                        <>
-                          {" "}
-                          ได้ <span className="font-bold">{unitYield.per.toLocaleString("th-TH")} ชิ้น</span> ต่อ 1{" "}
-                          {matrix?.unit ?? "ชิ้น"} · สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ={" "}
-                        </>
-                      ) : (
-                        " = "
-                      )}
-                      <span className="font-extrabold text-teal-900">
-                        ได้ {yieldTotal.toLocaleString("th-TH")} ชิ้น
-                      </span>
-                    </p>
-                  )}
-                  {/* 📄 ค่าธรรมเนียมที่คิดต่อแผ่นวัสดุ — กางเลขให้เห็นว่าทำไมสั่งเกินโควตาแผ่นแล้วราคาขยับ
-                    * โชว์เฉพาะตอนเลือกแบบที่คิดเงินจริง (เคลือบ/ฟอยล์แบบมีค่าวัสดุ) — เลือก "ไม่เคลือบ" ไม่ต้องขึ้น */}
-                  {opt.sheetFee && (() => {
-                    const fee = groupExtraOf(opt, effective);
-                    if (fee <= 0) return null;
-                    const per = perSheetOf(product, opt, effective);
-                    const sheetsPer = sheetsPerUnitOf(product, opt, effective);
-                    const sheets = sheetCountOf(product, opt, effective, qty);
-                    const sheetUnit = opt.sheetFee!.unit ?? "แผ่น";
-                    const unit = matrix?.unit ?? "ชิ้น";
-                    return (
-                      <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                        📄 {opt.label}แบบที่คิดเงิน คิดเป็น<span className="font-bold">ค่าวัสดุต่อ{sheetUnit}</span> ไม่ใช่ต่อ{unit} —
-                        {/* งานที่ 1 ชิ้นกินหลายแผ่น (ปฏิทิน 1 เล่ม = 4 A3) พูดกลับด้าน ไม่งั้นอ่านแล้วเหมือนคิดน้อยกว่าจริง */}
-                        {sheetsPer > 1 ? (
-                          <>
-                            {" "}ตอนนี้ 1 {unit} ใช้{" "}
-                            <span className="font-bold">{sheetsPer.toLocaleString("th-TH")} {sheetUnit}</span>
-                          </>
-                        ) : (
-                          <>
-                            {" "}ตอนนี้ 1 {sheetUnit} ได้{" "}
-                            <span className="font-bold">{per.toLocaleString("th-TH")} {unit}</span>
-                          </>
-                        )}
-                        {" "}· สั่ง {qty.toLocaleString("th-TH")} {unit} = {sheets.toLocaleString("th-TH")} {sheetUnit} ={" "}
-                        <span className="font-bold text-amber-700">{formatPrice(fee * sheets)}</span>
-                        {sheets > 1 ? ` (${sheets}×${formatPrice(fee)})` : ""}
-                      </p>
-                    );
-                  })()}
-                  {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
-                  {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQtyOf(opt)) > 0 && (
-                    <p className="mt-1 text-[11px] font-semibold text-teal-700">
-                      💡 {opt.label}ที่เลือกไว้ รวม +{formatPrice(groupAddOf(opt, effective, feeQtyOf(opt)))} ต่อ
-                      {matrix?.unit ?? "ชิ้น"} (คิดตามจำนวนที่ระบุ)
-                    </p>
-                  )}
-                  {/* ค่าธรรมเนียมช่วงสั่งน้อย — บอกทั้งตอนอยู่ในช่วง (คิดเหมา) และตอนพ้นช่วงแล้ว (คิดตามตัวเลือก) */}
-                  {opt.smallQtyFee != null && opt.smallQtyFee.upToQty > 0 && (() => {
-                    const s = opt.smallQtyFee!;
-                    const gQty = feeQtyOf(opt);
-                    const fee = smallQtyFeeOf(opt, effective, gQty);
-                    const unit = matrix?.unit ?? "ชิ้น";
-                    // สินค้าที่คิดเรทตามชิ้นต่อลาย ช่วงราคานับ "ต่อลาย" ไม่ใช่ยอดรวม — ต้องบอกให้ตรง
-                    const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
-                    const unitTxt = tierUnitWord(perDesign, opt);
-                    const inRange = gQty <= s.upToQty;
-                    const exempt = (s.freeChoices ?? []).join(" / ");
-                    // กลุ่มที่มีเรทปลีก/ส่งด้วย (extraFromQty + extraBelow) — พ้นช่วงเหมาแล้ว
-                    // ให้บรรทัด 💡 ของเรทเป็นคนบอกราคาแทน จะได้ไม่ขึ้นซ้อนกันสองบรรทัด
-                    const tiered = (opt.extraFromQty ?? 0) > 0 && opt.choices.some((c) => c.extraBelow);
-                    if (inRange && fee !== 0) {
-                      return (
-                        <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                          {fee < 0 ? "🎉" : "💡"} ช่วง 1-{s.upToQty.toLocaleString("th-TH")} {unitTxt} · {opt.label}
-                          {fee < 0
-                            ? `ลดให้ ${formatPrice(-fee)}/${unit}`
-                            : withQty
-                              ? // กลุ่มที่ระบุจำนวนได้ — ค่าเหมาคิดต่อชิ้นที่ติ๊ก ไม่ใช่ต่อกลุ่ม (ยอดรวมอยู่บรรทัด 💡 ด้านบน)
-                                `คิดเหมาชิ้นละ ${formatPrice(fee)} × จำนวนที่ระบุ`
-                              : `คิดเหมา ${formatPrice(fee)}/${unit}`}
-                          {exempt ? ` (ยกเว้น ${exempt})` : ""}
-                        </p>
-                      );
-                    }
-                    if (inRange) {
-                      // อยู่ในช่วงแต่ตัวที่เลือกได้รับยกเว้น (เช่น ห่วงแถม) — คิดราคาตัวเลือกตามปกติ
-                      // ตัวที่เลือกไม่มีราคาอยู่แล้ว (เช่น "ไม่เพิ่ม") = ไม่มีอะไรต้องบอก ไม่ขึ้นบรรทัดรก
-                      if (groupAddOf(opt, effective, gQty) <= 0) return null;
-                      return (
-                        <p className="mt-1 text-[11px] font-semibold text-stone-500">
-                          💡 {opt.label}ที่เลือกอยู่ไม่คิดค่าเหมาช่วง 1-{s.upToQty.toLocaleString("th-TH")} {unitTxt}
-                        </p>
-                      );
-                    }
-                    if (tiered) return null;
-                    // พ้นช่วงเหมาแล้ว — บอกราคาที่คิดจริงตอนนี้
-                    const now = groupAddOf(opt, effective, gQty);
-                    return (
-                      <p className="mt-1 text-[11px] font-semibold text-teal-700">
-                        💡 สั่งตั้งแต่ {(s.upToQty + 1).toLocaleString("th-TH")} {unitTxt}ขึ้นไปไม่มีค่าเหมา ·{" "}
-                        {opt.label}{now > 0 ? ` +${formatPrice(now)}/${unit}` : "ไม่คิดเพิ่ม"}
-                      </p>
-                    );
-                  })()}
-                  {/* กลุ่มที่ตั้งเกณฑ์ +฿ ไว้ — บอกทั้งตอนต่ำกว่าเกณฑ์ (รวมในราคาแล้ว) และตอนถึงเกณฑ์ (คิดเพิ่มเท่าไร) */}
-                  {!locked &&
-                    opt.extraFromQty != null &&
-                    opt.extraFromQty > 0 &&
-                    opt.choices.some((c) => c.extra) &&
-                    (() => {
-                      const unit = matrix?.unit ?? "ชิ้น";
-                      const gQty = feeQtyOf(opt);
-                      const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
-                      const unitTxt = tierUnitWord(perDesign, opt);
-                      const from = opt.extraFromQty!.toLocaleString("th-TH");
-                      if (!optionExtraApplies(opt, gQty)) {
-                        // ช่วงปลีกบางกลุ่มคิดเพิ่มคนละเรท (extraBelow) — อย่าบอกว่า "รวมแล้ว" ทั้งที่ยังคิดเงิน
-                        const below = optionAddOf(product, opt, effective, gQty, feeQty);
-                        if (opt.choices.some((c) => c.extraBelow)) {
-                          // ช่วงเหมาสั่งน้อย (smallQtyFee) มีบรรทัด 💡 ของค่าเหมาบอกราคาอยู่แล้ว — ไม่ขึ้นซ้ำ
-                          if (smallQtyFeeOf(opt, effective, gQty) > 0) return null;
-                          // ราคาจริงเมื่อสั่งถึงเกณฑ์ — บอกตัวเลขตรง ๆ แทนคำว่า "เรทส่ง"
-                          const atFrom = optionAddOf(product, opt, effective, opt.extraFromQty!, opt.extraFromQty!);
-                          if (below <= 0 && atFrom <= 0) return null;
-                          return (
-                            <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
-                              💡 จำนวนนี้{opt.label} {below > 0 ? `+${formatPrice(below)}/${unit}` : "ไม่คิดเพิ่ม"} · ครบ{" "}
-                              {from} {unitTxt}
-                              {atFrom > 0
-                                ? ` ${atFrom < below ? "เหลือ" : "คิด"} +${formatPrice(atFrom)}/${unit}`
-                                : "ไม่คิดเพิ่ม"}
-                            </p>
-                          );
-                        }
-                        return (
-                          <p className="mt-1.5 text-[11px] text-stone-400">
-                            💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {from} {unitTxt}ขึ้นไปคิดเพิ่มตามตัวเลือก
-                          </p>
-                        );
-                      }
-                      const now = optionAddOf(product, opt, effective, gQty, feeQty);
-                      return (
-                        <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
-                          💡 สั่งครบ {from} {unitTxt}แล้ว · {opt.label}
-                          {now > 0 ? ` +${formatPrice(now)}/${unit}` : "ไม่คิดเพิ่ม"}
-                        </p>
-                      );
-                    })()}
-                  {/* 💰 กลุ่มที่ +฿ ถูกลงตามจำนวน (extraTiers) — บอกราคาที่คิดจริงตอนนี้ + ขั้นที่ถูกที่สุด
-                    * เช่น FLEX ผ้าเชียร์: สั่ง 15 ผืน คิด +฿245/ผืน · สั่งครบ 500 ผืน เหลือ +฿230/ผืน */}
-                  {!locked &&
-                    (() => {
-                      const cur = opt.choices.find(
-                        (c) => c.extraTiers?.length && (multi ? picked.includes(c.name) : effective[opt.label] === c.name)
-                      );
-                      const now = cur ? choiceExtraAtQty(opt, effective, cur.name, feeQtyOf(opt)) : 0;
-                      if (!cur || now <= 0) return null;
-                      // กลุ่มที่มีเรทปลีก/ส่งอยู่แล้ว (extraFromQty + extraBelow) บอกราคาไปแล้วในบรรทัดด้านบน
-                      // — ไม่ขึ้นซ้อนกันสองบรรทัด (ตัวน้อยเขย่า: แถวมาตรฐานใช้ extraBelow · แถวกำหนดขนาดเองใช้ตาราง)
-                      if ((opt.extraFromQty ?? 0) > 0 && opt.choices.some((c) => c.extraBelow)) return null;
-                      const unit = matrix?.unit ?? "ชิ้น";
-                      // ขั้นของตารางเทียบกับ feeQty ตรง ๆ — หารด้วยจำนวนลายเฉพาะสินค้าที่คิดเรทต่อลายเท่านั้น
-                      const unitTxt = tierUnitWord(tierByDesign, opt);
-                      const best = extraTierBest(cur);
-                      // ⚠️ ราคาขั้นถูกสุดต้องคิดผ่านฟังก์ชันจริง ไม่ใช่เลขดิบในตาราง — ตัวเลือกที่มี
-                      // ค่าบริการตามขนาด (sizeFee) จะได้ไม่บอกราคาขาดไปเท่าค่าขนาด
-                      const bestNow = best ? choiceExtraAtQty(opt, effective, cur.name, best.fromQty) : 0;
-                      return (
-                        <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
-                          💡 {opt.label}ถูกลงตามจำนวนที่สั่ง · จำนวนนี้คิด +{formatPrice(now)}/{unit}
-                          {best && bestNow < now
-                            ? ` · สั่งครบ ${best.fromQty.toLocaleString("th-TH")} ${unitTxt}ขึ้นไป เหลือ +${formatPrice(bestNow)}/${unit}`
-                            : ""}
-                        </p>
-                      );
-                    })()}
+                    })}
                   </div>
+                );
+              })()
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {opt.choices
+                  .filter((c) => allowed.includes(c.name))
+                  .map((c) => (
+                    <button
+                      key={c.name}
+                      type="button"
+                      onClick={() => {
+                        setSelections((s) => ({ ...s, [opt.label]: c.name }));
+                        jumpToImage(choiceImage(c, effective));
+                      }}
+                      className={`inline-flex items-center gap-1.5 rounded-full py-1.5 text-[13px] font-semibold transition ${
+                        choiceImage(c, effective) ? "pl-1.5 pr-3" : "px-3"
+                      } ${
+                        effective[opt.label] === c.name ? "bg-amber-400 text-white shadow" : "bg-white text-stone-600 ring-1 ring-amber-200 hover:bg-amber-50"
+                      }`}
+                    >
+                      {/* ภาพประจำตัวเลือก (ถ้ามี) — เห็นหน้าตาแบบนั้น ๆ ก่อนเลือก */}
+                      {choiceImage(c, effective) && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={choiceImage(c, effective)}
+                          alt={c.name}
+                          className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-black/10"
+                          loading="lazy"
+                        />
+                      )}
+                      {c.name}
+                      {/* ป้าย "นิยม" — เหลืองเป็ดคู่กับฟ้าแบรนด์ อ่านออกทั้งบนปุ่มที่เลือกอยู่และปุ่มเปล่า */}
+                      {c.popular && (
+                        <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">นิยม</span>
+                      )}
+                      {/* ป้ายอิสระที่แอดมินพิมพ์เอง เช่น "ฟรี!" — เขียวเพื่อไม่ให้ชนกับป้าย "นิยม" */}
+                      {c.badge && (
+                        <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white ring-1 ring-emerald-600">{c.badge}</span>
+                      )}
+                      {choiceBadgeOf(opt, effective, c.name, feeQty, product) > 0
+                        ? ` +${formatPrice(choiceBadgeOf(opt, effective, c.name, feeQty, product))}`
+                        : ""}
+                    </button>
+                  ))}
+              </div>
+            )}
+            {/*
+             * 💬 ข้อความกำกับของตัวที่เลือกอยู่ (choice.selectedNote) สำหรับกลุ่มที่ไม่ใช่การ์ด
+             * — การ์ดโชว์ในตัวการ์ดเองแล้ว · pills/dropdown ไม่มีพื้นที่ในปุ่ม/เมนู จึงขึ้นเป็นกล่องใต้กลุ่มแทน
+             */}
+            {!multi &&
+              !isInput &&
+              opt.display !== "cards" &&
+              (() => {
+                const sel = opt.choices.find((c) => c.name === effective[opt.label]);
+                return sel?.selectedNote ? (
+                  <p className={`mt-1.5 rounded-xl px-3 py-2 text-[11px] leading-snug ring-1 ${noteTone(sel.selectedNote)}`}>
+                    {noteEmphasis(sel.selectedNote)}
+                  </p>
+                ) : null;
+              })()}
+            {/* บอกให้ชัดว่าป้ายนี้แปลว่าอะไร — ขึ้นครั้งเดียวทั้งหน้า ที่กลุ่มแรกที่มีป้าย "นิยม" */}
+            {(() => {
+              if (popularLegendShown) return false;
+              popularLegendShown = opt.choices.some((c) => c.popular && allowed.includes(c.name));
+              return popularLegendShown;
+            })() && (
+              <p className="mt-1 text-[11px] font-semibold text-stone-500">
+                <span className="rounded-full bg-ducky px-1.5 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-ducky-dark">นิยม</span> =
+                แบบที่ลูกค้าสั่งบ่อยที่สุด (ทางร้านแนะนำ)
+              </p>
+            )}
+            {/*
+             * 📐 งานแบ่งแผ่น — เลือกขนาดตัดแล้วสรุปว่าจำนวนที่สั่งอยู่ตอนนี้ได้งานกี่ชิ้น
+             * (ป้ายบนปุ่มบอกแค่ "ต่อ 1 หน่วย" ลูกค้าต้องคูณเอง — คูณให้เลยตรงนี้)
+             */}
+            {unitYield &&
+              !unitYield.approx &&
+              unitYield.optLabel === opt.label &&
+              yieldTotal != null &&
+              /* สั่ง 1 หน่วย + ป้ายใต้ชื่อบอกจำนวนเท่ากันอยู่แล้ว = พูดซ้ำคำต่อคำ ("ได้ 1 ชิ้น / แผ่น A3"
+                       กับ "ขนาดตัด A3 = ได้ 1 ชิ้น") — ข้ามไป · สั่งหลายหน่วยยังต้องขึ้น เพราะคูณให้ดู */
+              !(
+                qty === 1 &&
+                new RegExp(`ได้\\s*${yieldTotal.toLocaleString("th-TH")}\\s*ชิ้น`).test(
+                  String(opt.choices.find((c) => c.name === effective[opt.label])?.badge ?? ""),
+                )
+              ) && (
+                <p className="mt-1.5 rounded-xl bg-teal-50 px-3 py-2 text-[11px] leading-relaxed text-teal-800 ring-1 ring-teal-100">
+                  {/* สั่ง 1 หน่วย: "ได้ 2 ชิ้น ต่อ 1 แผ่น A3 · สั่ง 1 แผ่น A3 = ได้ 2 ชิ้น" คือประโยคเดียวกันสองรอบ
+                          เหลือท่อนเดียวพอ · สั่งหลายหน่วยค่อยกางให้เห็นที่มาของยอดรวม */}
+                  📐 {unitYield.label} <span className="font-bold">{unitYield.size}</span>
+                  {qty > 1 ? (
+                    <>
+                      {" "}
+                      ได้ <span className="font-bold">{unitYield.per.toLocaleString("th-TH")} ชิ้น</span> ต่อ 1 {matrix?.unit ?? "ชิ้น"} · สั่ง{" "}
+                      {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ={" "}
+                    </>
+                  ) : (
+                    " = "
                   )}
-                </div>
-              );
+                  <span className="font-extrabold text-teal-900">ได้ {yieldTotal.toLocaleString("th-TH")} ชิ้น</span>
+                </p>
+              )}
+            {/* 📄 ค่าธรรมเนียมที่คิดต่อแผ่นวัสดุ — กางเลขให้เห็นว่าทำไมสั่งเกินโควตาแผ่นแล้วราคาขยับ
+             * โชว์เฉพาะตอนเลือกแบบที่คิดเงินจริง (เคลือบ/ฟอยล์แบบมีค่าวัสดุ) — เลือก "ไม่เคลือบ" ไม่ต้องขึ้น */}
+            {opt.sheetFee &&
+              (() => {
+                const fee = groupExtraOf(opt, effective);
+                if (fee <= 0) return null;
+                const per = perSheetOf(product, opt, effective);
+                const sheetsPer = sheetsPerUnitOf(product, opt, effective);
+                const sheets = sheetCountOf(product, opt, effective, qty);
+                const sheetUnit = opt.sheetFee!.unit ?? "แผ่น";
+                const unit = matrix?.unit ?? "ชิ้น";
+                return (
+                  <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                    📄 {opt.label}แบบที่คิดเงิน คิดเป็น<span className="font-bold">ค่าวัสดุต่อ{sheetUnit}</span> ไม่ใช่ต่อ{unit} —
+                    {/* งานที่ 1 ชิ้นกินหลายแผ่น (ปฏิทิน 1 เล่ม = 4 A3) พูดกลับด้าน ไม่งั้นอ่านแล้วเหมือนคิดน้อยกว่าจริง */}
+                    {sheetsPer > 1 ? (
+                      <>
+                        {" "}
+                        ตอนนี้ 1 {unit} ใช้{" "}
+                        <span className="font-bold">
+                          {sheetsPer.toLocaleString("th-TH")} {sheetUnit}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {" "}
+                        ตอนนี้ 1 {sheetUnit} ได้{" "}
+                        <span className="font-bold">
+                          {per.toLocaleString("th-TH")} {unit}
+                        </span>
+                      </>
+                    )}{" "}
+                    · สั่ง {qty.toLocaleString("th-TH")} {unit} = {sheets.toLocaleString("th-TH")} {sheetUnit} ={" "}
+                    <span className="font-bold text-amber-700">{formatPrice(fee * sheets)}</span>
+                    {sheets > 1 ? ` (${sheets}×${formatPrice(fee)})` : ""}
+                  </p>
+                );
+              })()}
+            {/* กลุ่มที่ระบุจำนวนได้ — สรุปยอดรวมของทั้งกลุ่มหลังคูณจำนวนแล้ว */}
+            {withQty && picks.length > 0 && groupAddOf(opt, effective, feeQtyOf(opt)) > 0 && (
+              <p className="mt-1 text-[11px] font-semibold text-teal-700">
+                💡 {opt.label}ที่เลือกไว้ รวม +{formatPrice(groupAddOf(opt, effective, feeQtyOf(opt)))} ต่อ
+                {matrix?.unit ?? "ชิ้น"} (คิดตามจำนวนที่ระบุ)
+              </p>
+            )}
+            {/* ค่าธรรมเนียมช่วงสั่งน้อย — บอกทั้งตอนอยู่ในช่วง (คิดเหมา) และตอนพ้นช่วงแล้ว (คิดตามตัวเลือก) */}
+            {opt.smallQtyFee != null &&
+              opt.smallQtyFee.upToQty > 0 &&
+              (() => {
+                const s = opt.smallQtyFee!;
+                const gQty = feeQtyOf(opt);
+                const fee = smallQtyFeeOf(opt, effective, gQty);
+                const unit = matrix?.unit ?? "ชิ้น";
+                // สินค้าที่คิดเรทตามชิ้นต่อลาย ช่วงราคานับ "ต่อลาย" ไม่ใช่ยอดรวม — ต้องบอกให้ตรง
+                const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
+                const unitTxt = tierUnitWord(perDesign, opt);
+                const inRange = gQty <= s.upToQty;
+                const exempt = (s.freeChoices ?? []).join(" / ");
+                // กลุ่มที่มีเรทปลีก/ส่งด้วย (extraFromQty + extraBelow) — พ้นช่วงเหมาแล้ว
+                // ให้บรรทัด 💡 ของเรทเป็นคนบอกราคาแทน จะได้ไม่ขึ้นซ้อนกันสองบรรทัด
+                const tiered = (opt.extraFromQty ?? 0) > 0 && opt.choices.some((c) => c.extraBelow);
+                if (inRange && fee !== 0) {
+                  return (
+                    <p className={`mt-1 text-[11px] font-semibold ${fee < 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                      {fee < 0 ? "🎉" : "💡"} ช่วง 1-{s.upToQty.toLocaleString("th-TH")} {unitTxt} · {opt.label}
+                      {fee < 0
+                        ? `ลดให้ ${formatPrice(-fee)}/${unit}`
+                        : withQty
+                          ? // กลุ่มที่ระบุจำนวนได้ — ค่าเหมาคิดต่อชิ้นที่ติ๊ก ไม่ใช่ต่อกลุ่ม (ยอดรวมอยู่บรรทัด 💡 ด้านบน)
+                            `คิดเหมาชิ้นละ ${formatPrice(fee)} × จำนวนที่ระบุ`
+                          : `คิดเหมา ${formatPrice(fee)}/${unit}`}
+                      {exempt ? ` (ยกเว้น ${exempt})` : ""}
+                    </p>
+                  );
+                }
+                if (inRange) {
+                  // อยู่ในช่วงแต่ตัวที่เลือกได้รับยกเว้น (เช่น ห่วงแถม) — คิดราคาตัวเลือกตามปกติ
+                  // ตัวที่เลือกไม่มีราคาอยู่แล้ว (เช่น "ไม่เพิ่ม") = ไม่มีอะไรต้องบอก ไม่ขึ้นบรรทัดรก
+                  if (groupAddOf(opt, effective, gQty) <= 0) return null;
+                  return (
+                    <p className="mt-1 text-[11px] font-semibold text-stone-500">
+                      💡 {opt.label}ที่เลือกอยู่ไม่คิดค่าเหมาช่วง 1-{s.upToQty.toLocaleString("th-TH")} {unitTxt}
+                    </p>
+                  );
+                }
+                if (tiered) return null;
+                // พ้นช่วงเหมาแล้ว — บอกราคาที่คิดจริงตอนนี้
+                const now = groupAddOf(opt, effective, gQty);
+                return (
+                  <p className="mt-1 text-[11px] font-semibold text-teal-700">
+                    💡 สั่งตั้งแต่ {(s.upToQty + 1).toLocaleString("th-TH")} {unitTxt}ขึ้นไปไม่มีค่าเหมา · {opt.label}
+                    {now > 0 ? ` +${formatPrice(now)}/${unit}` : "ไม่คิดเพิ่ม"}
+                  </p>
+                );
+              })()}
+            {/* กลุ่มที่ตั้งเกณฑ์ +฿ ไว้ — บอกทั้งตอนต่ำกว่าเกณฑ์ (รวมในราคาแล้ว) และตอนถึงเกณฑ์ (คิดเพิ่มเท่าไร) */}
+            {!locked &&
+              opt.extraFromQty != null &&
+              opt.extraFromQty > 0 &&
+              opt.choices.some((c) => c.extra) &&
+              (() => {
+                const unit = matrix?.unit ?? "ชิ้น";
+                const gQty = feeQtyOf(opt);
+                const perDesign = tierByDesign || (rate?.minPerDesign ?? 0) > 0;
+                const unitTxt = tierUnitWord(perDesign, opt);
+                const from = opt.extraFromQty!.toLocaleString("th-TH");
+                if (!optionExtraApplies(opt, gQty)) {
+                  // ช่วงปลีกบางกลุ่มคิดเพิ่มคนละเรท (extraBelow) — อย่าบอกว่า "รวมแล้ว" ทั้งที่ยังคิดเงิน
+                  const below = optionAddOf(product, opt, effective, gQty, feeQty);
+                  if (opt.choices.some((c) => c.extraBelow)) {
+                    // ช่วงเหมาสั่งน้อย (smallQtyFee) มีบรรทัด 💡 ของค่าเหมาบอกราคาอยู่แล้ว — ไม่ขึ้นซ้ำ
+                    if (smallQtyFeeOf(opt, effective, gQty) > 0) return null;
+                    // ราคาจริงเมื่อสั่งถึงเกณฑ์ — บอกตัวเลขตรง ๆ แทนคำว่า "เรทส่ง"
+                    const atFrom = optionAddOf(product, opt, effective, opt.extraFromQty!, opt.extraFromQty!);
+                    if (below <= 0 && atFrom <= 0) return null;
+                    return (
+                      <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
+                        💡 จำนวนนี้{opt.label} {below > 0 ? `+${formatPrice(below)}/${unit}` : "ไม่คิดเพิ่ม"} · ครบ {from} {unitTxt}
+                        {atFrom > 0 ? ` ${atFrom < below ? "เหลือ" : "คิด"} +${formatPrice(atFrom)}/${unit}` : "ไม่คิดเพิ่ม"}
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="mt-1.5 text-[11px] text-stone-400">
+                      💡 จำนวนนี้ราคารวม{opt.label}แล้ว · สั่งตั้งแต่ {from} {unitTxt}ขึ้นไปคิดเพิ่มตามตัวเลือก
+                    </p>
+                  );
+                }
+                const now = optionAddOf(product, opt, effective, gQty, feeQty);
+                return (
+                  <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
+                    💡 สั่งครบ {from} {unitTxt}แล้ว · {opt.label}
+                    {now > 0 ? ` +${formatPrice(now)}/${unit}` : "ไม่คิดเพิ่ม"}
+                  </p>
+                );
+              })()}
+            {/* 💰 กลุ่มที่ +฿ ถูกลงตามจำนวน (extraTiers) — บอกราคาที่คิดจริงตอนนี้ + ขั้นที่ถูกที่สุด
+             * เช่น FLEX ผ้าเชียร์: สั่ง 15 ผืน คิด +฿245/ผืน · สั่งครบ 500 ผืน เหลือ +฿230/ผืน */}
+            {!locked &&
+              (() => {
+                const cur = opt.choices.find((c) => c.extraTiers?.length && (multi ? picked.includes(c.name) : effective[opt.label] === c.name));
+                const now = cur ? choiceExtraAtQty(opt, effective, cur.name, feeQtyOf(opt)) : 0;
+                if (!cur || now <= 0) return null;
+                // กลุ่มที่มีเรทปลีก/ส่งอยู่แล้ว (extraFromQty + extraBelow) บอกราคาไปแล้วในบรรทัดด้านบน
+                // — ไม่ขึ้นซ้อนกันสองบรรทัด (ตัวน้อยเขย่า: แถวมาตรฐานใช้ extraBelow · แถวกำหนดขนาดเองใช้ตาราง)
+                if ((opt.extraFromQty ?? 0) > 0 && opt.choices.some((c) => c.extraBelow)) return null;
+                const unit = matrix?.unit ?? "ชิ้น";
+                // ขั้นของตารางเทียบกับ feeQty ตรง ๆ — หารด้วยจำนวนลายเฉพาะสินค้าที่คิดเรทต่อลายเท่านั้น
+                const unitTxt = tierUnitWord(tierByDesign, opt);
+                const best = extraTierBest(cur);
+                // ⚠️ ราคาขั้นถูกสุดต้องคิดผ่านฟังก์ชันจริง ไม่ใช่เลขดิบในตาราง — ตัวเลือกที่มี
+                // ค่าบริการตามขนาด (sizeFee) จะได้ไม่บอกราคาขาดไปเท่าค่าขนาด
+                const bestNow = best ? choiceExtraAtQty(opt, effective, cur.name, best.fromQty) : 0;
+                return (
+                  <p className="mt-1.5 text-[11px] font-semibold text-teal-700">
+                    💡 {opt.label}ถูกลงตามจำนวนที่สั่ง · จำนวนนี้คิด +{formatPrice(now)}/{unit}
+                    {best && bestNow < now ? ` · สั่งครบ ${best.fromQty.toLocaleString("th-TH")} ${unitTxt}ขึ้นไป เหลือ +${formatPrice(bestNow)}/${unit}` : ""}
+                  </p>
+                );
+              })()}
+          </div>
+        )}
+      </div>
+    );
   }
 
   /**
@@ -5755,9 +5513,7 @@ export default function ProductDetail({
           </p>
         )}
         {autoRateNote && (
-          <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
-            ✨ {autoRateNote}
-          </p>
+          <p className="mt-2 rounded-xl bg-teal-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">✨ {autoRateNote}</p>
         )}
       </div>
     ) : null;
@@ -5773,8 +5529,7 @@ export default function ProductDetail({
    * (ตารางราคายังโชว์ตามเดิม ลูกค้าเห็นเรททั้งสองคอลัมน์อยู่แล้ว)
    */
   const areaOn = product.areaPricing?.enabled === true;
-  const areaDriver = (opt: ProductOption) =>
-    areaOn && (matrix?.driverLabels ?? []).includes(opt.label);
+  const areaDriver = (opt: ProductOption) => areaOn && (matrix?.driverLabels ?? []).includes(opt.label);
   /** กลุ่มตัวเลือกที่แสดงให้ลูกค้าเลือกอยู่ตอนนี้ (เรียงตามที่ตั้งไว้) */
   /**
    * มุมมองสำหรับ "ตัดสินว่ากลุ่มไหนควรโชว์" — กลุ่มของเสริมแบบติ๊กหลายอย่างที่ "เปิดสวิตช์ไว้"
@@ -5793,9 +5548,7 @@ export default function ProductDetail({
     }
     return view;
   }, [effective, openAddOns, product.options]);
-  const visibleOptions = product.options.filter(
-    (opt) => !isMadeToOrderOption(opt) && optionVisible(opt, visibilityView) && !areaDriver(opt)
-  );
+  const visibleOptions = product.options.filter((opt) => !isMadeToOrderOption(opt) && optionVisible(opt, visibilityView) && !areaDriver(opt));
   /**
    * 🧩 จับกลุ่มที่อยู่ "ชุดเดียวกัน" (ProductOption.section) และต่อกันมา ให้เรนเดอร์ในกรอบเดียว
    * กลุ่มที่ไม่ได้ตั้งชุดไว้ ยังเรียงเรียบ ๆ ทีละกลุ่มเหมือนเดิม (สินค้าเดิมทั้งเว็บไม่กระทบ)
@@ -5836,18 +5589,13 @@ export default function ProductDetail({
     let last = at;
     while (
       last + 1 < visibleOptions.length &&
-      [visibleOptions[last + 1].showWhen?.label, visibleOptions[last + 1].showWhenAlso?.label].includes(
-        product.rateAfterOption
-      )
+      [visibleOptions[last + 1].showWhen?.label, visibleOptions[last + 1].showWhenAlso?.label].includes(product.rateAfterOption)
     )
       last++;
     return last;
   })();
   /** วิธีคิดราคาจากขนาดที่ลูกค้ากรอก (null = ยังกรอกไม่ครบ) — โชว์ให้ลูกค้าเห็นว่าราคามาจากไหน */
-  const areaBreakdown = useMemo(
-    () => areaPriceBreakdown(product, effective, qty),
-    [product, effective, qty]
-  );
+  const areaBreakdown = useMemo(() => areaPriceBreakdown(product, effective, qty), [product, effective, qty]);
 
   /**
    * 📐 กล่องงานสั่งทำมาก่อนกลุ่มตัวเลือกไหม — ยึดลำดับที่แอดมินเรียงกลุ่มไว้
@@ -5896,8 +5644,7 @@ export default function ProductDetail({
                 setSelections((sel) => {
                   const next: Record<string, string> = { ...sel, [MTO_LABEL]: e.target.checked ? MTO_ON : "" };
                   // เอาติ๊กออก = ล้างค่าที่กรอกไว้ด้วย ไม่งั้นค่าเก่าค้างแล้วติดไปกับออเดอร์
-                  if (!e.target.checked)
-                    for (const o of product.options) if (isMadeToOrderOption(o)) next[o.label] = "";
+                  if (!e.target.checked) for (const o of product.options) if (isMadeToOrderOption(o)) next[o.label] = "";
                   return next;
                 })
               }
@@ -5906,25 +5653,21 @@ export default function ProductDetail({
             <span>
               <span className="text-sm font-bold text-stone-700">📐 ต้องการสั่งทำ — กำหนดขนาด/รายละเอียดเอง</span>
               <span className="mt-0.5 block text-[11px] leading-relaxed text-stone-500">
-                ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้
-                แล้วแอดมินจะตีราคาให้
+                ไม่ติ๊ก = ใช้ขนาดมาตรฐานของแบบนี้ ราคาตามตารางปกติ · ติ๊กแล้วระบุขนาดที่ต้องการได้ แล้วแอดมินจะตีราคาให้
               </span>
             </span>
           </label>
         )}
         {mtoOn && (
           <>
-            <div className="mt-3 space-y-3 border-t border-dashed border-sky-200 pt-3">
-              {mtoVisible.map((opt) => optionGroupUI(opt, false))}
-            </div>
+            <div className="mt-3 space-y-3 border-t border-dashed border-sky-200 pt-3">{mtoVisible.map((opt) => optionGroupUI(opt, false))}</div>
           </>
         )}
         {/* 📐 โชว์วิธีคิดราคาจากขนาดที่กรอก — ลูกค้าเห็นเองว่าราคามาจากไหน ไม่ต้องทักถามแอดมิน */}
         {mtoOn && areaBreakdown && (
           <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
             <p className="text-xs font-bold text-sky-800">
-              🧮 พื้นที่ลาย {areaBreakdown.width} × {areaBreakdown.height} ={" "}
-              {Math.round(areaBreakdown.area * 100) / 100} ตร.ซม.
+              🧮 พื้นที่ลาย {areaBreakdown.width} × {areaBreakdown.height} = {Math.round(areaBreakdown.area * 100) / 100} ตร.ซม.
             </p>
             <ul className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed text-stone-600">
               <li>
@@ -5932,25 +5675,26 @@ export default function ProductDetail({
               </li>
               {areaBreakdown.extraArea > 0 && (
                 <li>
-                  · อีก {Math.round(areaBreakdown.extraArea * 100) / 100} ตร.ซม. ×{" "}
-                  {formatPrice(areaBreakdown.stepPrice)} = {formatPrice(areaBreakdown.extraPrice)}
+                  · อีก {Math.round(areaBreakdown.extraArea * 100) / 100} ตร.ซม. × {formatPrice(areaBreakdown.stepPrice)} ={" "}
+                  {formatPrice(areaBreakdown.extraPrice)}
                 </li>
               )}
               <li className="font-bold text-stone-700">
                 · รวม {formatPrice(areaBreakdown.unitPrice)} / ชิ้น
-                {qty > 1 && <> × {qty} ชิ้น = {formatPrice(areaBreakdown.unitPrice * qty)}</>}
+                {qty > 1 && (
+                  <>
+                    {" "}
+                    × {qty} ชิ้น = {formatPrice(areaBreakdown.unitPrice * qty)}
+                  </>
+                )}
               </li>
             </ul>
-            <p className="mt-1.5 text-[10px] text-stone-400">
-              เรทเปลี่ยนตามช่วงจำนวนที่สั่ง — สั่งเยอะขึ้น ราคาต่อชิ้นลดเองอัตโนมัติ
-            </p>
+            <p className="mt-1.5 text-[10px] text-stone-400">เรทเปลี่ยนตามช่วงจำนวนที่สั่ง — สั่งเยอะขึ้น ราคาต่อชิ้นลดเองอัตโนมัติ</p>
           </div>
         )}
         {mtoOn && askQuote && (
           <div className="mt-3 border-t border-dashed border-sky-200 pt-3">
-            <p className="text-xs font-bold text-sky-800">
-              💬 อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย
-            </p>
+            <p className="text-xs font-bold text-sky-800">💬 อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย</p>
             <a
               href={LINE_URL}
               target="_blank"
@@ -6075,8 +5819,7 @@ export default function ProductDetail({
         document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
       },
     });
-  if (artRequired && !preArranged && !studioMode)
-    ctaSteps.push({ key: "art", icon: "🎨", label: "แนบลาย", done: artProvided, jump: jumpToArt });
+  if (artRequired && !preArranged && !studioMode) ctaSteps.push({ key: "art", icon: "🎨", label: "แนบลาย", done: artProvided, jump: jumpToArt });
   if (needDesignsChoice)
     ctaSteps.push({
       key: "designs",
@@ -6135,11 +5878,7 @@ export default function ProductDetail({
         <div
           id="consult-box"
           className={`mt-4 rounded-3xl p-4 ring-1 transition ${
-            consultOk
-              ? "bg-emerald-50/70 ring-emerald-300"
-              : consultWarn
-                ? "bg-rose-50 ring-2 ring-rose-300"
-                : "bg-emerald-50/60 ring-emerald-200"
+            consultOk ? "bg-emerald-50/70 ring-emerald-300" : consultWarn ? "bg-rose-50 ring-2 ring-rose-300" : "bg-emerald-50/60 ring-emerald-200"
           }`}
         >
           <div className="flex items-start gap-2">
@@ -6195,9 +5934,7 @@ export default function ProductDetail({
           )}
 
           {consultWarn && !consultOk && (
-            <p className="mt-2 text-[11px] font-bold text-rose-600">
-              ⚠️ งานนี้ต้องคุยลายกับแอดมินก่อนนะครับ — ทักไลน์คุยให้จบ แล้วกลับมาติ๊กช่องด้านบน
-            </p>
+            <p className="mt-2 text-[11px] font-bold text-rose-600">⚠️ งานนี้ต้องคุยลายกับแอดมินก่อนนะครับ — ทักไลน์คุยให้จบ แล้วกลับมาติ๊กช่องด้านบน</p>
           )}
         </div>
       )}
@@ -6230,129 +5967,122 @@ export default function ProductDetail({
               )}
             </span>
             <span className="block text-[11px] text-stone-400">
-              {studioMode
-                ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องออกแบบบนเว็บ"
-                : "อัปโหลดรูป หรือส่งลิงก์ / อีเมล"}
+              {studioMode ? "ทำไฟล์ลายมาเองแล้ว? ส่งไฟล์ตรงนี้ได้เลย ไม่ต้องออกแบบบนเว็บ" : "อัปโหลดรูป หรือส่งลิงก์ / อีเมล"}
             </span>
           </span>
           <span className={`shrink-0 text-stone-400 transition ${extraOpen === "art" ? "rotate-180" : ""}`}>⌄</span>
         </button>
-        {(extraOpen === "art" || (artBlocked && !artTouched)) && <div className="px-4 pb-4">
-          {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setArtDrag(true);
-            }}
-            onDragLeave={(e) => {
-              // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        {(extraOpen === "art" || (artBlocked && !artTouched)) && (
+          <div className="px-4 pb-4">
+            {/* ── ลายของลูกค้า: อัปโหลดภาพตัวอย่าง + ลิงก์ไฟล์ต้นฉบับ ── */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setArtDrag(true);
+              }}
+              onDragLeave={(e) => {
+                // ออกจากกล่องจริง ๆ เท่านั้น (ไม่ใช่แค่ย้ายข้ามลูกใน)
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setArtDrag(false);
+                  setArtDragSide(null);
+                }
+              }}
+              onDrop={(e) => {
+                // ปล่อยนอกช่องของด้าน = ถือเป็นด้านหน้า (งาน 2 ด้านต้องปล่อยลงช่อง "ด้านหลัง" เองถึงจะเข้าด้านหลัง)
+                e.preventDefault();
                 setArtDrag(false);
                 setArtDragSide(null);
-              }
-            }}
-            onDrop={(e) => {
-              // ปล่อยนอกช่องของด้าน = ถือเป็นด้านหน้า (งาน 2 ด้านต้องปล่อยลงช่อง "ด้านหลัง" เองถึงจะเข้าด้านหลัง)
-              e.preventDefault();
-              setArtDrag(false);
-              setArtDragSide(null);
-              void uploadArtwork(e.dataTransfer.files);
-            }}
-            className={`mt-3 rounded-2xl p-3.5 transition ${
-              artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"
-            }`}
-          >
-            {/* ♻️ เคยสั่งลายนี้กับร้านแล้ว — ติ๊กแล้วไม่ต้องอัปซ้ำ ร้านหยิบไฟล์จากออเดอร์ก่อน (ยังส่งแบบให้ตรวจก่อนผลิตเหมือนเดิม) */}
-            <label
-              className={`mb-3 flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-xs ring-1 transition ${
-                reuseOld ? "bg-amber-400 text-amber-950 ring-amber-400" : "bg-white text-stone-600 ring-amber-200 hover:ring-amber-400"
-              }`}
+                void uploadArtwork(e.dataTransfer.files);
+              }}
+              className={`mt-3 rounded-2xl p-3.5 transition ${artDrag ? "bg-sky-100 ring-2 ring-dashed ring-sky-400" : "bg-sky-50/70 ring-1 ring-sky-200"}`}
             >
-              <input
-                type="checkbox"
-                checked={reuseOld}
-                onChange={(e) => {
-                  setReuseOld(e.target.checked);
-                  setArtTouched(true);
-                  setExtraOpen("art");
-                }}
-                className="mt-0.5 h-4 w-4 accent-amber-600"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="font-bold">♻️ เคยสั่งลายนี้แล้ว — ใช้ไฟล์เดิม</span>
-                <span className={`block text-[11px] leading-relaxed ${reuseOld ? "text-amber-900" : "text-stone-400"}`}>
-                  ร้านหยิบไฟล์จากออเดอร์เก่าให้ · มีเลข OD เดิมใส่ไว้ หาเจอไวขึ้น
+              {/* ♻️ เคยสั่งลายนี้กับร้านแล้ว — ติ๊กแล้วไม่ต้องอัปซ้ำ ร้านหยิบไฟล์จากออเดอร์ก่อน (ยังส่งแบบให้ตรวจก่อนผลิตเหมือนเดิม) */}
+              <label
+                className={`mb-3 flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-xs ring-1 transition ${
+                  reuseOld ? "bg-amber-400 text-amber-950 ring-amber-400" : "bg-white text-stone-600 ring-amber-200 hover:ring-amber-400"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={reuseOld}
+                  onChange={(e) => {
+                    setReuseOld(e.target.checked);
+                    setArtTouched(true);
+                    setExtraOpen("art");
+                  }}
+                  className="mt-0.5 h-4 w-4 accent-amber-600"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="font-bold">♻️ เคยสั่งลายนี้แล้ว — ใช้ไฟล์เดิม</span>
+                  <span className={`block text-[11px] leading-relaxed ${reuseOld ? "text-amber-900" : "text-stone-400"}`}>
+                    ร้านหยิบไฟล์จากออเดอร์เก่าให้ · มีเลข OD เดิมใส่ไว้ หาเจอไวขึ้น
+                  </span>
+                  {reuseOld && (
+                    <input
+                      type="text"
+                      value={reuseFrom}
+                      onChange={(e) => setReuseFrom(e.target.value.slice(0, 220))}
+                      onClick={(e) => e.preventDefault()}
+                      placeholder="เลขออเดอร์เดิม เช่น OD-260801-1234 · หรือบอกว่าลายไหน (ไม่บังคับ)"
+                      aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
+                      className="mt-2 w-full rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 placeholder:font-normal placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  )}
                 </span>
-                {reuseOld && (
-                  <input
-                    type="text"
-                    value={reuseFrom}
-                    onChange={(e) => setReuseFrom(e.target.value.slice(0, 220))}
-                    onClick={(e) => e.preventDefault()}
-                    placeholder="เลขออเดอร์เดิม เช่น OD-260801-1234 · หรือบอกว่าลายไหน (ไม่บังคับ)"
-                    aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
-                    className="mt-2 w-full rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 placeholder:font-normal placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                )}
-              </span>
-            </label>
+              </label>
 
-            {/* 1) อัปโหลดภาพ — หัวข้อใหญ่ซ้ำกับแถบพับด้านบน จึงตัดออก เข้าเรื่องเป็นขั้นตอนเลย */}
-            <div className="flex items-center gap-2">
-              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">1</span>
-              {/* 🎨 เดิม "อัปโหลดภาพตัวอย่าง — ใช้เป็นแนวทางให้กราฟฟิก" คู่กับข้อ 2 "ลิงก์ไฟล์งานจริง (แนะนำ)"
+              {/* 1) อัปโหลดภาพ — หัวข้อใหญ่ซ้ำกับแถบพับด้านบน จึงตัดออก เข้าเรื่องเป็นขั้นตอนเลย */}
+              <div className="flex items-center gap-2">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">1</span>
+                {/* 🎨 เดิม "อัปโหลดภาพตัวอย่าง — ใช้เป็นแนวทางให้กราฟฟิก" คู่กับข้อ 2 "ลิงก์ไฟล์งานจริง (แนะนำ)"
                   ลูกค้าอ่านแล้วเข้าใจว่ารูปที่อัปผลิตไม่ได้ ต้องไปหาลิงก์ Drive มาใส่อีก (12 ต.ค. 69)
                   ความจริง: เก็บไฟล์ตามต้นฉบับไม่บีบอัด (api/orders/artwork) + กราฟฟิกส่งแบบให้ตรวจก่อนผลิตทุกงาน */}
-              <p className="text-xs font-bold text-stone-700">
-                อัปโหลดไฟล์ลาย <span className="font-normal text-stone-500">— ไฟล์ชัดใช้ผลิตได้เลย</span>
-              </p>
-            </div>
-            <p className="ml-7 mt-0.5 text-[11px] leading-relaxed text-stone-400">
-              ไม่บีบอัดไฟล์ · กราฟฟิกเช็คและส่งแบบให้ตรวจก่อนผลิตทุกงาน
-            </p>
+                <p className="text-xs font-bold text-stone-700">
+                  อัปโหลดไฟล์ลาย <span className="font-normal text-stone-500">— ไฟล์ชัดใช้ผลิตได้เลย</span>
+                </p>
+              </div>
+              <p className="ml-7 mt-0.5 text-[11px] leading-relaxed text-stone-400">ไม่บีบอัดไฟล์ · กราฟฟิกเช็คและส่งแบบให้ตรวจก่อนผลิตทุกงาน</p>
 
-            {/*
+              {/*
               🔄 งานพิมพ์ 2 ด้าน = 2 ช่องแยก "ด้านหน้า" / "ด้านหลัง" — ลูกค้าระบุเองว่าลายไหนพิมพ์ด้านไหน
               จำนวนลายของแต่ละด้านนับตามรูปในช่องนั้น (ด้านหลังเดิมนับไม่ได้เลย เพดานแนบจับแต่ด้านหน้า)
               งานด้านเดียวมีช่องเดียวเหมือนเดิม
             */}
-            {artTwoSide && (
-              <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                งานพิมพ์ 2 ด้าน — แนบลายแยกช่อง <b>ด้านหน้า</b> และ <b>ด้านหลัง</b> · จำนวนลายแต่ละด้านนับตามรูปในช่องนั้น
-                (ด้านหลังใช้ลายเดียวกันทั้งหมด = แนบรูปเดียว)
-              </p>
-            )}
-            {artZone("front")}
-            {artTwoSide && artZone("back")}
-            {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
+              {artTwoSide && (
+                <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                  งานพิมพ์ 2 ด้าน — แนบลายแยกช่อง <b>ด้านหน้า</b> และ <b>ด้านหลัง</b> · จำนวนลายแต่ละด้านนับตามรูปในช่องนั้น (ด้านหลังใช้ลายเดียวกันทั้งหมด =
+                  แนบรูปเดียว)
+                </p>
+              )}
+              {artZone("front")}
+              {artTwoSide && artZone("back")}
+              {artErr && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">⚠️ {artErr}</p>}
 
-            {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
-            <div className="mt-3.5 flex items-center gap-2">
-              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">2</span>
-              <label htmlFor="art-link" className="text-xs font-bold text-stone-700">
-                หรือส่งลิงก์ / อีเมล{" "}
-                <span className="font-normal text-stone-500">— สำหรับไฟล์เกิน 15MB หรือ AI / PSD / PDF</span>
-              </label>
+              {/* 2) ลิงก์ไฟล์ต้นฉบับ */}
+              <div className="mt-3.5 flex items-center gap-2">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-sky-600 text-[11px] font-bold text-white">2</span>
+                <label htmlFor="art-link" className="text-xs font-bold text-stone-700">
+                  หรือส่งลิงก์ / อีเมล <span className="font-normal text-stone-500">— สำหรับไฟล์เกิน 15MB หรือ AI / PSD / PDF</span>
+                </label>
+              </div>
+              <input
+                id="art-link"
+                type="text"
+                value={artLink}
+                onChange={(e) => {
+                  setArtLink(e.target.value.slice(0, 500));
+                  // ⚠️ กล่องนี้กางอัตโนมัติตอน artBlocked — พอพิมพ์ลิงก์ครบ artBlocked เป็น false
+                  //    กล่องจะหุบทันทีต่อหน้าลูกค้า เหมือนสิ่งที่พิมพ์หายไป · ตรึงให้เปิดค้างไว้
+                  setArtTouched(true);
+                  setExtraOpen("art");
+                }}
+                placeholder="วางลิงก์ไฟล์ หรืออีเมลที่ส่งไฟล์"
+                className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
+              />
+              <p className="mt-1 text-[10px] leading-relaxed text-stone-400">รองรับ Google Drive / Dropbox / OneDrive</p>
             </div>
-            <input
-              id="art-link"
-              type="text"
-              value={artLink}
-              onChange={(e) => {
-                setArtLink(e.target.value.slice(0, 500));
-                // ⚠️ กล่องนี้กางอัตโนมัติตอน artBlocked — พอพิมพ์ลิงก์ครบ artBlocked เป็น false
-                //    กล่องจะหุบทันทีต่อหน้าลูกค้า เหมือนสิ่งที่พิมพ์หายไป · ตรึงให้เปิดค้างไว้
-                setArtTouched(true);
-                setExtraOpen("art");
-              }}
-              placeholder="วางลิงก์ไฟล์ หรืออีเมลที่ส่งไฟล์"
-              className="mt-1.5 w-full rounded-xl bg-white px-3.5 py-2 text-sm text-stone-700 ring-1 ring-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-300"
-            />
-            <p className="mt-1 text-[10px] leading-relaxed text-stone-400">
-              รองรับ Google Drive / Dropbox / OneDrive
-            </p>
           </div>
-        </div>}
+        )}
 
         {/*
           หมายเหตุถึงร้าน — กางไว้ตลอด ไม่ต้องกดเปิด
@@ -6380,13 +6110,7 @@ export default function ProductDetail({
           {/* ตัวนับโผล่เมื่อเริ่มพิมพ์ · ใกล้เต็มเปลี่ยนเป็นแดงเตือนก่อนโดนตัดที่ 500
               (ใช้ rose ไม่ใช่ amber — amber ถูกรีแมปเป็นฟ้าแบรนด์ใน globals.css แล้ว ไม่อ่านเป็นคำเตือน) */}
           {note.length > 0 && (
-            <p
-              className={`mt-1 text-right text-[11px] tabular-nums ${
-                note.length >= 450 ? "font-bold text-rose-500" : "text-stone-400"
-              }`}
-            >
-              {note.length}/500
-            </p>
+            <p className={`mt-1 text-right text-[11px] tabular-nums ${note.length >= 450 ? "font-bold text-rose-500" : "text-stone-400"}`}>{note.length}/500</p>
           )}
         </div>
       </div>
@@ -6403,8 +6127,7 @@ export default function ProductDetail({
   const artChoiceUI = studioMode ? (
     <div id="art-choice" className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
       <p className="mb-2 text-[13px] font-bold text-stone-700">
-        ส่งลายยังไงดี?{" "}
-        {!designDone && !artProvided && <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>}
+        ส่งลายยังไงดี? {!designDone && !artProvided && <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>}
       </p>
       <div className="grid grid-cols-2 gap-2">
         <button
@@ -6427,9 +6150,7 @@ export default function ProductDetail({
                 ? "สร้างปฏิทินบนเว็บ"
                 : "ออกแบบบนเว็บ"}
           </span>
-          <span
-            className={`text-[10.5px] font-semibold leading-tight ${designDone ? "text-sky-700" : fileChosen ? "text-stone-500" : "text-sky-100"}`}
-          >
+          <span className={`text-[10.5px] font-semibold leading-tight ${designDone ? "text-sky-700" : fileChosen ? "text-stone-500" : "text-sky-100"}`}>
             {designDone
               ? calMode && placed[placed.length - 1]?.calState
                 ? "✏️ แตะเพื่อแก้แบบที่สร้างไว้"
@@ -6448,9 +6169,7 @@ export default function ProductDetail({
         >
           <span className="text-xl leading-none">📎</span>
           <span className="text-[13px] font-extrabold">{artProvided ? "✓ แนบไฟล์แล้ว" : "แนบไฟล์ลาย"}</span>
-          <span className={`text-[10.5px] font-semibold leading-tight ${fileChosen ? "text-sky-100" : "text-stone-500"}`}>
-            มีไฟล์อยู่แล้ว ร้านจัดวางให้
-          </span>
+          <span className={`text-[10.5px] font-semibold leading-tight ${fileChosen ? "text-sky-100" : "text-stone-500"}`}>มีไฟล์อยู่แล้ว ร้านจัดวางให้</span>
         </button>
       </div>
       {(artChoice === "file" || artProvided) && artSection}
@@ -6461,11 +6180,7 @@ export default function ProductDetail({
     <div className="homebg">
       {/* 🛒 ม่านระหว่าง "สั่งตามสเปคนี้" กำลังหย่อนลงตะกร้าให้ — ปิดเองเมื่อพาไปตะกร้าแล้ว หรือเมื่อสเปคติดด่านตรวจ */}
       {autoAdding && (
-        <div
-          className="fixed inset-0 z-[120] grid place-items-center bg-white/80 backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-        >
+        <div className="fixed inset-0 z-[120] grid place-items-center bg-white/80 backdrop-blur-sm" role="status" aria-live="polite">
           <div className="rounded-3xl bg-white px-8 py-6 text-center shadow-xl ring-1 ring-stone-200">
             <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-amber-200 border-t-amber-500" />
             <p className="mt-3 text-sm font-extrabold text-stone-800">🛒 กำลังใส่ตะกร้าตามสเปคที่ร้านจัดให้…</p>
@@ -6485,2941 +6200,2897 @@ export default function ProductDetail({
         <img className="c4" src="/landing/cloud.webp" alt="" />
       </div>
       <div className="homebg-in mx-auto max-w-6xl px-4 pt-6">
-      {/* แผ่นขาวรองเนื้อหา — เหลือฟ้า+เมฆเป็นกรอบรอบนอก */}
-      <div className="homebg-sheet">
-      {/* สินค้าที่ปิดการมองเห็นไว้ — ลูกค้าเปิดไม่ได้ (404) หน้านี้เห็นเฉพาะทีมงานที่ล็อกอิน */}
-      {preview && (
-        <div className="mb-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
-          🚫 สินค้านี้ <span className="underline">ปิดการมองเห็น</span> อยู่ — ลูกค้าไม่เห็นในหน้ารายการ/ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ
-          <span className="font-semibold"> (คุณเห็นหน้านี้เพราะล็อกอินหลังบ้านอยู่)</span>
-        </div>
-      )}
-      {jsonLd.map((obj, i) => (
-        <script
-          key={i}
-          type="application/ld+json"
-          // escape "<" กัน </script> ในชื่อ/คำอธิบายสินค้าหลุดออกจากแท็กแล้วกลายเป็นสคริปต์
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(obj).replace(/</g, "\\u003c") }}
-        />
-      ))}
+        {/* แผ่นขาวรองเนื้อหา — เหลือฟ้า+เมฆเป็นกรอบรอบนอก */}
+        <div className="homebg-sheet">
+          {/* สินค้าที่ปิดการมองเห็นไว้ — ลูกค้าเปิดไม่ได้ (404) หน้านี้เห็นเฉพาะทีมงานที่ล็อกอิน */}
+          {preview && (
+            <div className="mb-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
+              🚫 สินค้านี้ <span className="underline">ปิดการมองเห็น</span> อยู่ — ลูกค้าไม่เห็นในหน้ารายการ/ค้นหา และเปิดลิงก์ตรงก็ไม่เจอ
+              <span className="font-semibold"> (คุณเห็นหน้านี้เพราะล็อกอินหลังบ้านอยู่)</span>
+            </div>
+          )}
+          {jsonLd.map((obj, i) => (
+            <script
+              key={i}
+              type="application/ld+json"
+              // escape "<" กัน </script> ในชื่อ/คำอธิบายสินค้าหลุดออกจากแท็กแล้วกลายเป็นสคริปต์
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(obj).replace(/</g, "\\u003c") }}
+            />
+          ))}
 
-      {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
-      {/* breadcrumb */}
-      <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
-        <Link href="/" className="shrink-0 hover:text-amber-600">หน้าแรก</Link>
-        <span className="shrink-0">›</span>
-        <Link href={`/products?category=${category.id}`} className="shrink-0 hover:text-amber-600">
-          {catName}
-        </Link>
-        <span className="shrink-0">›</span>
-        <span className="truncate text-stone-600">{product.name}</span>
-      </nav>
+          {/* ปุ่มลัดไปแก้ไขสินค้านี้ในหลังบ้าน (เฉพาะแอดมิน) */}
+          {/* breadcrumb */}
+          <nav className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-[11px] text-stone-400">
+            <Link href="/" className="shrink-0 hover:text-amber-600">
+              หน้าแรก
+            </Link>
+            <span className="shrink-0">›</span>
+            <Link href={`/products?category=${category.id}`} className="shrink-0 hover:text-amber-600">
+              {catName}
+            </Link>
+            <span className="shrink-0">›</span>
+            <span className="truncate text-stone-600">{product.name}</span>
+          </nav>
 
-      {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ)
+          {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ)
            ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
            แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
-      {/* grid-cols-1 = minmax(0,1fr) — มือถือคอลัมน์ไม่ขยายตามข้อความยาวที่ไม่ตัดบรรทัด (แถว "✓ แบบพร้อมผลิต" เคยดันหน้ากว้าง 557px บนจอ 375 → จอสร้างปฏิทินเลื่อนเพี้ยน · 13 ต.ค. 69) */}
-      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
-        <div className="grid min-w-0 gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
-        {/* ── ซ้าย: รูปสินค้า ── */}
-        <div className="min-w-0">
-          {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
+          {/* grid-cols-1 = minmax(0,1fr) — มือถือคอลัมน์ไม่ขยายตามข้อความยาวที่ไม่ตัดบรรทัด (แถว "✓ แบบพร้อมผลิต" เคยดันหน้ากว้าง 557px บนจอ 375 → จอสร้างปฏิทินเลื่อนเพี้ยน · 13 ต.ค. 69) */}
+          <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+            <div className="grid min-w-0 gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
+              {/* ── ซ้าย: รูปสินค้า ── */}
+              <div className="min-w-0">
+                {/* รูปสินค้า — ติดหนึบตอนเลื่อนอ่านตัวเลือกยาว ๆ (จอใหญ่)
               สินค้าที่ยังไม่ใส่รูปเลย = ใช้อีโมจิ+พื้นสีของสินค้าแทน (กันหน้าพังตอนแอดมินเพิ่งสร้างสินค้า) */}
-          {(() => {
-            const gallery = galleryImages.length
-              ? galleryImages
-              : [{ emoji: product.emoji, gradient: product.gradient, label: "" }];
-            const at = Math.min(imageIndex, gallery.length - 1);
-            const shown = gallery[at];
-            /**
-             * 🖼 รูปของสินค้าเอง = ช่วงแรกของแกลเลอรี (product.images) · ที่เหลือคือภาพประจำตัวเลือก/เรท
-             * ที่เติมไว้ให้ "กดเลือกแล้วภาพใหญ่สลับตาม" (jumpToImage) — ไม่ใช่รูปให้เลื่อนดู
-             * เดิมลูกศร/ตัวนับ/แถบรูปย่อ นับรวมหมด: พวงกุญแจอะคริลิครูปจริง 10 แต่ขึ้น "1/148"
-             * ลูกค้าปัดเจอรูปตะขอทีละอัน 138 รูป (12 ต.ค. 69) → เลื่อน/นับ/รูปย่อ เฉพาะรูปของสินค้า
-             * สินค้าที่ไม่มีรูปของตัวเองเลย = ใช้ทั้งแกลเลอรีแบบเดิม
-             */
-            const own = product.images.length > 0 ? Math.min(product.images.length, gallery.length) : gallery.length;
-            const onOption = at >= own;
-            /**
-             * เลื่อนรูปแบบวน — อยู่รูปสุดท้ายกดขวาต่อได้เลย ไม่ต้องย้อนกลับทีละรูป
-             * คิดจากค่าก่อนหน้าใน setState (ไม่ใช่ at ที่ค้างอยู่ในรอบ render นี้)
-             * ไม่งั้นกดรัว ๆ หลายทีก่อน render รอบใหม่ จะขยับแค่ทีเดียว
-             * กำลังดูภาพประจำตัวเลือกอยู่ → ลูกศรพากลับเข้ารูปของสินค้า (ขวา = รูปแรก · ซ้าย = รูปสุดท้าย)
-             */
-            const step = (d: number) =>
-              setImageIndex((i) => {
-                const cur = Math.min(i, gallery.length - 1);
-                if (cur >= own) return d > 0 ? 0 : own - 1;
-                return (own + cur + d) % own;
-              });
-            return (
-          <div className="lg:sticky lg:top-24">
-            {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
-            <div className="pgal-wrap group relative">
-              {(() => {
-                const shownSrc = shown.src ?? (at === 0 ? product.imageSrc : undefined);
-                /**
-                 * ช่องที่เป็นคลิป — เล่นในกรอบเดียวกับรูป (โปสเตอร์คือ src ของช่องนั้น)
-                 * คลิปงานจริงของร้านเป็นแนวตั้ง กรอบเป็นจัตุรัส จึงใช้ object-contain บนพื้นเข้ม
-                 * ไม่ให้ครอปหัว-ท้ายทิ้ง · ปิดเสียงไว้ก่อนเพื่อให้เบราว์เซอร์ยอมเล่นเองตอนกดสลับมา
-                 */
-                if (shown.videoSrc)
+                {(() => {
+                  const gallery = galleryImages.length ? galleryImages : [{ emoji: product.emoji, gradient: product.gradient, label: "" }];
+                  const at = Math.min(imageIndex, gallery.length - 1);
+                  const shown = gallery[at];
+                  /**
+                   * 🖼 รูปของสินค้าเอง = ช่วงแรกของแกลเลอรี (product.images) · ที่เหลือคือภาพประจำตัวเลือก/เรท
+                   * ที่เติมไว้ให้ "กดเลือกแล้วภาพใหญ่สลับตาม" (jumpToImage) — ไม่ใช่รูปให้เลื่อนดู
+                   * เดิมลูกศร/ตัวนับ/แถบรูปย่อ นับรวมหมด: พวงกุญแจอะคริลิครูปจริง 10 แต่ขึ้น "1/148"
+                   * ลูกค้าปัดเจอรูปตะขอทีละอัน 138 รูป (12 ต.ค. 69) → เลื่อน/นับ/รูปย่อ เฉพาะรูปของสินค้า
+                   * สินค้าที่ไม่มีรูปของตัวเองเลย = ใช้ทั้งแกลเลอรีแบบเดิม
+                   */
+                  const own = product.images.length > 0 ? Math.min(product.images.length, gallery.length) : gallery.length;
+                  const onOption = at >= own;
+                  /**
+                   * เลื่อนรูปแบบวน — อยู่รูปสุดท้ายกดขวาต่อได้เลย ไม่ต้องย้อนกลับทีละรูป
+                   * คิดจากค่าก่อนหน้าใน setState (ไม่ใช่ at ที่ค้างอยู่ในรอบ render นี้)
+                   * ไม่งั้นกดรัว ๆ หลายทีก่อน render รอบใหม่ จะขยับแค่ทีเดียว
+                   * กำลังดูภาพประจำตัวเลือกอยู่ → ลูกศรพากลับเข้ารูปของสินค้า (ขวา = รูปแรก · ซ้าย = รูปสุดท้าย)
+                   */
+                  const step = (d: number) =>
+                    setImageIndex((i) => {
+                      const cur = Math.min(i, gallery.length - 1);
+                      if (cur >= own) return d > 0 ? 0 : own - 1;
+                      return (own + cur + d) % own;
+                    });
                   return (
-                    <video
-                      key={shown.videoSrc}
-                      src={shown.videoSrc}
-                      poster={shownSrc}
-                      controls
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      preload="metadata"
-                      aria-label={`${product.name} — ${shown.label}`}
-                      className="pgal-main aspect-square w-full bg-[#0E2545] object-contain"
-                    />
-                  );
-                const visual = (
-                  <ProductVisual
-                    emoji={shown.emoji}
-                    gradient={shown.gradient}
-                    src={shownSrc}
-                    alt={`${product.name} — ${shown.label}`}
-                    size="text-[8rem]"
-                    eager
-                    className="pgal-main aspect-square w-full"
-                  />
-                );
-                // มีไฟล์รูปจริงเท่านั้นถึงกดขยายได้ (สินค้าอีโมจิล้วนไม่มีอะไรให้ซูม)
-                return shownSrc ? (
-                  <button
-                    type="button"
-                    onClick={() => setZoomSrc(shownSrc)}
-                    aria-label="ดูรูปขนาดใหญ่"
-                    className="block w-full cursor-zoom-in"
-                  >
-                    {visual}
-                    {/* บอกว่ากดรูปแล้วขยายได้ — เดิมไม่มีอะไรบอก ลูกค้าไม่รู้ว่ากดได้ */}
-                    <span className="pgal-zoom" aria-hidden="true">
-                      ⤢ กดเพื่อขยาย
-                    </span>
-                  </button>
-                ) : (
-                  visual
-                );
-              })()}
-              {(own > 1 || onOption) && (
-                <>
-                  {([
-                    { d: -1, side: "prev", glyph: "‹", label: "ดูรูปก่อนหน้า" },
-                    { d: 1, side: "next", glyph: "›", label: "ดูรูปถัดไป" },
-                  ] as const).map((a) => (
-                    <button
-                      key={a.label}
-                      type="button"
-                      onClick={() => step(a.d)}
-                      aria-label={a.label}
-                      className={`pgal-nav ${a.side}`}
-                    >
-                      {a.glyph}
-                    </button>
-                  ))}
-                  {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
-                  <span className="pgal-count">{onOption ? "ภาพตัวเลือก" : `${at + 1}/${own}`}</span>
-                </>
-              )}
-            </div>
-            {/* แถบรูปย่อ — เลื่อนทีละชุดด้วยปุ่มลูกศร (ดู GalleryThumbs) */}
-            <GalleryThumbs gallery={gallery.slice(0, own)} at={onOption ? -1 : at} onPick={setImageIndex} coverSrc={product.imageSrc} />
-            {shown.label && (
-              <p className="pgal-cap">
-                มุมมอง: <b>{shown.label}</b>
-              </p>
-            )}
-          </div>
-            );
-          })()}
-        </div>
-
-        {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
-        {/* min-w-0: เป็น grid item ที่ min-width:auto ถ้าไม่ปลด เนื้อหายาว ๆ จะดันคอลัมน์กว้างเกินจอมือถือ */}
-        <div className="min-w-0">
-          <span className="text-xs font-semibold text-amber-500">
-            {category.emoji} {catName}
-          </span>
-          <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">
-            {product.name}
-          </h1>
-          {/* ยังขายไม่ได้ = ไม่โชว์ "⭐ 5 · ขายแล้ว 0" — ดูไม่น่าเชื่อ (เจ้าของร้านอนุมัติ 12 ต.ค. 69) */}
-          {product.sold > 0 && (
-            <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
-              <span>⭐ {product.rating}</span>
-              <span>·</span>
-              <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
-            </div>
-          )}
-
-          <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
-
-          {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
-          {product.terms?.trim() && (
-            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
-              <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
-                <span className="text-base leading-none">⚠️</span>
-                <p className="text-xs font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
-              </div>
-              <ul className="space-y-2 px-4 py-3">
-                {termLines(product.terms).map((t, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
-                    <span className="whitespace-pre-line text-[11px] font-medium leading-relaxed text-rose-950">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
-          {tplItems.length > 0 && (
-            <div className="mt-4 overflow-hidden rounded-2xl border-2 border-sky-200 bg-sky-50/60 shadow-sm">
-              {/* หัวกล่อง = ปุ่มพับ/กางเมื่อมีเทมเพลตหลายรุ่น (ไม่กี่ไฟล์ = กางไว้เฉย ๆ ไม่ต้องกด) */}
-              {(() => {
-                const head = (
-                  <>
-                    <span className="text-base leading-none">📐</span>
-                    <p className="min-w-0 flex-1 text-left text-xs font-extrabold tracking-tight text-white">
-                      {studioMode ? "ไฟล์เทมเพลต — สำหรับคนที่ทำแบบเองในโปรแกรม" : "เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย"}
-                    </p>
-                    {tplCollapsible && (
-                      <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
-                        {tplItems.length} แบบ
-                      </span>
-                    )}
-                  </>
-                );
-                return tplCollapsible ? (
-                  <button
-                    type="button"
-                    onClick={() => setTplOpen((v) => !v)}
-                    aria-expanded={tplOpen}
-                    className="flex w-full items-center gap-2 bg-sky-600 px-4 py-2 text-left transition hover:bg-sky-700"
-                  >
-                    {head}
-                    <span className={`shrink-0 text-[10px] text-white transition ${tplOpen ? "rotate-180" : ""}`}>▼</span>
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">{head}</div>
-                );
-              })()}
-
-              {/* ยุบอยู่แล้วยังไม่มีรายการที่ตรงกับตัวเลือก → บอกสั้น ๆ ว่ากดดูได้ (ไม่กินที่) */}
-              {tplCollapsible && !tplOpen && tplShown.length === 0 ? (
-                <p className="px-4 py-2.5 text-[11px] font-semibold text-sky-800">
-                  มีไฟล์เทมเพลต {tplItems.length} แบบให้โหลด — กดที่แถบด้านบนเพื่อดูทั้งหมด
-                </p>
-              ) : (
-                <ul className="grid grid-cols-2 gap-2 px-3 py-3 sm:grid-cols-3">
-                  {tplShown.map((f) => (
-                    <li
-                      key={f.key}
-                      className={`flex flex-col rounded-xl bg-white p-2 ring-1 ${
-                        f.matched ? "ring-2 ring-sky-400" : "ring-sky-100"
-                      }`}
-                    >
-                      {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
-                      {f.preview ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={f.preview}
-                          alt={`ตัวอย่างเทมเพลต ${f.name}${f.choice ? ` ${f.choice}` : ""}`}
-                          className="mx-auto h-14 w-full rounded-lg bg-white object-contain"
-                        />
-                      ) : (
-                        <span className="grid h-14 w-full place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
+                    <div className="lg:sticky lg:top-24">
+                      {/* group + relative: ปุ่มลูกศรซ่อนไว้ โผล่ตอนเอาเมาส์ชี้รูป (จอเล็กไม่มี hover จึงโชว์ค้างไว้) */}
+                      <div className="pgal-wrap group relative">
+                        {(() => {
+                          const shownSrc = shown.src ?? (at === 0 ? product.imageSrc : undefined);
+                          /**
+                           * ช่องที่เป็นคลิป — เล่นในกรอบเดียวกับรูป (โปสเตอร์คือ src ของช่องนั้น)
+                           * คลิปงานจริงของร้านเป็นแนวตั้ง กรอบเป็นจัตุรัส จึงใช้ object-contain บนพื้นเข้ม
+                           * ไม่ให้ครอปหัว-ท้ายทิ้ง · ปิดเสียงไว้ก่อนเพื่อให้เบราว์เซอร์ยอมเล่นเองตอนกดสลับมา
+                           */
+                          if (shown.videoSrc)
+                            return (
+                              <video
+                                key={shown.videoSrc}
+                                src={shown.videoSrc}
+                                poster={shownSrc}
+                                controls
+                                autoPlay
+                                muted
+                                loop
+                                playsInline
+                                preload="metadata"
+                                aria-label={`${product.name} — ${shown.label}`}
+                                className="pgal-main aspect-square w-full bg-[#0E2545] object-contain"
+                              />
+                            );
+                          const visual = (
+                            <ProductVisual
+                              emoji={shown.emoji}
+                              gradient={shown.gradient}
+                              src={shownSrc}
+                              alt={`${product.name} — ${shown.label}`}
+                              size="text-[8rem]"
+                              eager
+                              className="pgal-main aspect-square w-full"
+                            />
+                          );
+                          // มีไฟล์รูปจริงเท่านั้นถึงกดขยายได้ (สินค้าอีโมจิล้วนไม่มีอะไรให้ซูม)
+                          return shownSrc ? (
+                            <button type="button" onClick={() => setZoomSrc(shownSrc)} aria-label="ดูรูปขนาดใหญ่" className="block w-full cursor-zoom-in">
+                              {visual}
+                              {/* บอกว่ากดรูปแล้วขยายได้ — เดิมไม่มีอะไรบอก ลูกค้าไม่รู้ว่ากดได้ */}
+                              <span className="pgal-zoom" aria-hidden="true">
+                                ⤢ กดเพื่อขยาย
+                              </span>
+                            </button>
+                          ) : (
+                            visual
+                          );
+                        })()}
+                        {(own > 1 || onOption) && (
+                          <>
+                            {(
+                              [
+                                { d: -1, side: "prev", glyph: "‹", label: "ดูรูปก่อนหน้า" },
+                                { d: 1, side: "next", glyph: "›", label: "ดูรูปถัดไป" },
+                              ] as const
+                            ).map((a) => (
+                              <button key={a.label} type="button" onClick={() => step(a.d)} aria-label={a.label} className={`pgal-nav ${a.side}`}>
+                                {a.glyph}
+                              </button>
+                            ))}
+                            {/* บอกว่าดูอยู่รูปที่เท่าไหร่จากทั้งหมด — โผล่พร้อมลูกศร */}
+                            <span className="pgal-count">{onOption ? "ภาพตัวเลือก" : `${at + 1}/${own}`}</span>
+                          </>
+                        )}
+                      </div>
+                      {/* แถบรูปย่อ — เลื่อนทีละชุดด้วยปุ่มลูกศร (ดู GalleryThumbs) */}
+                      <GalleryThumbs gallery={gallery.slice(0, own)} at={onOption ? -1 : at} onPick={setImageIndex} coverSrc={product.imageSrc} />
+                      {shown.label && (
+                        <p className="pgal-cap">
+                          มุมมอง: <b>{shown.label}</b>
+                        </p>
                       )}
-                      <span className="mt-1 block truncate text-[12px] font-bold text-stone-800" title={f.name}>
-                        {f.name}
-                        {f.choice && <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>}
-                      </span>
-                      {f.note && <span className="block truncate text-[10px] text-stone-500">{f.note}</span>}
-                      <span className="block truncate text-[10px] text-stone-400">
-                        {f.outside ? "เปิดลิงก์ไฟล์" : f.fileName || "ไฟล์เทมเพลต"}
-                        {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
-                      </span>
-                      {f.matched && (
-                        <span className="mt-0.5 block text-[10px] font-bold text-sky-700">✓ ตรงกับที่คุณเลือก</span>
-                      )}
-                      {f.anyNote && <span className="mt-0.5 block text-[10px] text-stone-400">{f.anyNote}</span>}
-                      {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
-                      <a
-                        href={f.href}
-                        {...(f.outside
-                          ? { target: "_blank", rel: "noopener noreferrer" }
-                          : { download: f.fileName || "" })}
-                        className="mt-1.5 rounded-full bg-sky-600 px-2 py-1.5 text-center text-[11px] font-bold text-white shadow transition hover:bg-sky-700"
-                      >
-                        {f.outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* ยุบได้และกางอยู่ → ปุ่มพับกลับที่ท้ายรายการ (ไม่ต้องเลื่อนขึ้นไปหาหัวกล่อง) */}
-              {tplCollapsible && tplOpen && (
-                <button
-                  type="button"
-                  onClick={() => setTplOpen(false)}
-                  className="mx-3 mb-2 block rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                >
-                  ▲ ย่อรายการเทมเพลต
-                </button>
-              )}
-
-              {/* แอดมินปิดปุ่ม "เริ่มสร้าง" ไว้ = ไม่ชวนให้กดปุ่มที่ไม่มีบนหน้า */}
-              {!studioOff && (
-                <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
-                  วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 ออกแบบบนเว็บ&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
-                  ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500">
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🖼️ ส่งแบบให้ตรวจ<br />ก่อนผลิตทุกงาน</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">✅ แก้แบบได้<br />จนกว่าจะพอใจ</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">🚚 ส่งไว<br />ทั่วไทย</li>
-            <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">💬 ทักไลน์<br />ปรึกษาฟรี</li>
-          </ul>
-        </div>
-
-      {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
-      <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
-        <div className="relative">
-          {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
-              (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
-          {useCustom && !customUsesMatrix && (
-            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
-              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
-                📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
-              </p>
-            </div>
-          )}
-          {/* งานสั่งทำ (แบบที่แอดมินตั้งให้ตีราคา) — ตารางนี้ไม่ใช่ราคาของงานนี้ คลุมไว้กันเข้าใจผิด */}
-          {askQuote && !useCustom && (
-            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
-              <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
-                💬 งานสั่งทำ — ราคาไม่อิงตารางนี้ แอดมินตีราคาให้
-              </p>
-            </div>
-          )}
-          <p className="text-sm font-bold text-stone-700">
-            💰 ราคาต่อหน่วยตามจำนวน
-            {/* เรทเดียว = ชื่อเรท ("เรทที่ 1") ไม่ช่วยลูกค้า — โชว์เฉพาะสินค้าที่มีให้เลือกหลายเรท */}
-            {rate && rates.length > 1 && <span className="ml-1 font-semibold text-teal-700">· {rateShopLabel(rate)}</span>}
-          </p>
-          {/* ตารางราคาขั้นบันได (rate card) — หลายคอลัมน์ = โชว์ทีละแบบตามที่เลือกอยู่ (กดเทียบทุกแบบได้) */}
-          {matrix &&
-            (() => {
-              const allKeys = Object.keys(matrix.cells);
-              /**
-               * 📐 กำหนดขนาดเองในกลุ่มแกนราคา — ตัวเลือกนี้ไม่มีคอลัมน์ของตัวเองในตาราง
-               * ต้องเกาะแถวเดียวกับที่ใช้คิดเงิน (12.5 → คอลัมน์ 12cm) ไม่งั้น selectedKey หาไม่เจอ
-               * แล้วตารางกางทั้งหมดแทนที่จะโชว์แบบที่เลือกอยู่
-               */
-              const selectedKey = priceMatrixKey(matrix, applySizeInputPlans(product, effective).selections);
-              const manyCols = allKeys.length > 1;
-              const only = allKeys.filter((k) => k === selectedKey);
-              // ตัวเลือกที่เลือกอยู่ไม่มีราคาในตาราง (แอดมินเว้นช่องไว้) → กางทั้งหมดแทนตารางเปล่า
-              // ยกเว้นตอน "รอแอดมินตีราคา" (เช่น กำหนดขนาดเองเกินตาราง) — มี overlay คลุมอยู่แล้ว
-              // กางทั้ง 258 คอลัมน์ข้างหลังมีแต่ทำให้ตารางยืดเปล่า ๆ
-              const cols =
-                !manyCols || priceAllCols ? allKeys : only.length ? only : askQuote ? [allKeys[0]] : allKeys;
-              /**
-               * ราคาที่โชว์ = ช่องตาราง + ตัวเลือกเสริมที่เลือกอยู่ของช่วงจำนวนแถวนั้น (เช่น ค่าฐานสแตนดี้)
-               * — โชว์ช่องตารางดิบแล้วไม่เท่ากับ "ราคา/ชิ้น" ในกล่องราคา ลูกค้านึกว่าเว็บคิดเงินผิด
-               *   (ผู้ใช้ทัก 2 ก.ย. 69 สองรอบ — รอบแรกใส่แค่หมายเหตุใต้ตาราง ยังไม่พอ)
-               * จำนวนตัวแทนของแถว: แถวที่เลือกอยู่ใช้ feeQty จริง (ตรงกับกล่องราคาแม้ +฿ เปลี่ยนกลางช่วง)
-               * แถวแรกของเรทขั้นต่ำสูง (เช่น ไม่คละดีเทล 50+) ใช้ minQty ของเรท ไม่ใช่ 1 — ไม่งั้นได้ +฿ ฝั่งปลีก
-               * คอลัมน์เทียบทุกแบบ: ทับค่าแกนตารางตามคอลัมน์ก่อนคิด กัน +฿ ที่ผูกกับขนาด (sizeFee) หยิบขนาดผิด
-               */
-              const tierRep = (ti: number) => {
-                if (ti === currentTier) return feeQty;
-                if (ti === 0)
-                  return rate?.minQty && rate.minQty <= (matrix.tiers[0].upTo ?? Infinity) ? rate.minQty : 1;
-                return (matrix.tiers[ti - 1].upTo ?? 0) + 1;
-              };
-              const shownPrice = (col: string, ti: number) => {
-                const sel = { ...effectiveWithDesigns };
-                col.split("│").forEach((v, i) => {
-                  const l = matrix.driverLabels[i];
-                  if (l) sel[l] = v;
-                });
-                const addOn = unitAddOnBreakdown(product, sel, tierRep(ti)).reduce((n, f) => n + f.amount, 0);
-                return matrix.cells[col][ti] + addOn;
-              };
-              // บรรทัดสรุปบนมือถือ — ราคาแถวแรก → แถวสุดท้ายของแบบที่เลือกอยู่ (คิดผ่าน shownPrice ตัวเดียวกับช่องตาราง)
-              const sumCol = only[0] ?? cols[0];
-              const lastTi = matrix.tiers.length - 1;
-              return (
-                <>
-                {sumCol && (
-                  <button
-                    type="button"
-                    onClick={() => setPriceTableOpen((v) => !v)}
-                    aria-expanded={priceTableOpen}
-                    className="mt-2 flex w-full items-center justify-between gap-2 rounded-2xl bg-white px-3.5 py-2.5 text-left text-[12.5px] ring-1 ring-stone-200 sm:hidden"
-                  >
-                    <span className="min-w-0 text-stone-600">
-                      {lastTi > 0 ? (
-                        <>
-                          {matrix.tiers[0].label} <b className="text-stone-800">{formatPrice(shownPrice(sumCol, 0))}</b>
-                          {" → "}
-                          {matrix.tiers[lastTi].label}{" "}
-                          <b className="text-amber-600">{formatPrice(shownPrice(sumCol, lastTi))}</b>
-                        </>
-                      ) : (
-                        <>
-                          {matrix.tiers[0].label} <b className="text-stone-800">{formatPrice(shownPrice(sumCol, 0))}</b>
-                        </>
-                      )}
-                    </span>
-                    <span className="shrink-0 font-bold text-sky-700">{priceTableOpen ? "ย่อ ▴" : "ดูตาราง ▾"}</span>
-                  </button>
-                )}
-                <div className={`mt-2 overflow-hidden rounded-2xl ring-1 ring-stone-200 ${priceTableOpen ? "" : "max-sm:hidden"}`}>
-                  {manyCols && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50 px-3 py-1.5">
-                      <p className="text-[11px] text-stone-500">
-                        {cols.length > 1
-                          ? `💡 เทียบราคาทั้ง ${allKeys.length} แบบ`
-                          : `💡 ราคาของ “${shortComboParts(selectedKey).join(" · ")}” — เปลี่ยนตัวเลือกด้านบนเพื่อดูแบบอื่น`}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setPriceAllCols((v) => !v)}
-                        className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                      >
-                        {cols.length > 1 ? "แสดงเฉพาะแบบที่เลือก" : "⇄ ดูราคาแบบอื่น ๆ"}
-                      </button>
                     </div>
-                  )}
-                  <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-sky-100 text-sky-900">
-                        <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({matrix.unit})</th>
-                        {/* ชื่อคู่ตัวเลือกยาวมาก (4 กลุ่ม) — แยกบรรทัดละส่วนและย่อคำในวงเล็บ ให้หัวตารางไม่ยืดจนล้น */}
-                        {cols.map((col) => (
-                          <th
-                            key={col}
-                            title={col.split("│").join(" · ")}
-                            /**
-                             * หลายคอลัมน์ = ชิดซ้าย เพื่อให้ขีดนำหน้าแต่ละบรรทัดเรียงตรงกัน (ตรงกลางจะดูรุ่งริ่ง)
-                             * คอลัมน์เดียว = จัดกลางให้ตรงกับตัวเลขในช่อง (ไม่งั้นหัวตารางเยื้องไปคนละทางกับราคา)
-                             */
-                            className={`px-3 py-2 font-bold leading-tight ${cols.length === 1 ? "text-center" : "text-left"}`}
-                          >
-                            {/* ตารางคอลัมน์เดียวหัวจะว่าง — ใช้ชื่อที่แอดมินตั้ง (colLabel) แทน เช่น "กรอบเขย่า" */}
-                            {(shortComboParts(col).length
-                              ? shortComboParts(col)
-                              : matrix.colLabel
-                                ? [matrix.colLabel]
-                                : []
-                            ).map((part, i) => (
-                              <span key={i} className="block whitespace-nowrap">
-                                {cols.length > 1 && <span className="mr-1 text-sky-400">•</span>}
-                                {part}
-                              </span>
-                            ))}
-                          </th>
-                        ))}
-                        {/* 📝 คอลัมน์หมายเหตุต่อช่วงจำนวน (เช่น ค่าตัวน้อยเขย่าต่อตัวของแต่ละช่วง) */}
-                        {matrix.noteCol && (
-                          <th className="px-3 py-2 text-center font-bold leading-tight">
-                            {matrix.noteCol.label.split("\n").map((part, i) => (
-                              <span key={i} className="block whitespace-nowrap">
-                                {part}
-                              </span>
-                            ))}
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {matrix.tiers.map((tier, ti) => {
-                        const active = ti === currentTier;
-                        return (
-                          <tr
-                            key={tier.label}
-                            className={active ? "bg-stone-100 font-bold text-stone-900" : "odd:bg-white even:bg-stone-50"}
-                          >
-                            <td className="whitespace-nowrap px-3 py-2">
-                              {active && "▶ "}
-                              {tier.label}
-                            </td>
-                            {cols.map((col) => {
-                              const isChosen = active && selectedKey === col;
-                              return (
-                                <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
-                                  {formatPrice(shownPrice(col, ti))}
-                                </td>
-                              );
-                            })}
-                            {matrix.noteCol && (
-                              <td className={`whitespace-nowrap px-3 py-2 text-center ${active ? "" : "text-stone-500"}`}>
-                                {matrix.noteCol.values[ti] ?? ""}
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  </div>
-                </div>
-                </>
-              );
-            })()}
-          {/* 💡 ตารางบวกตัวเลือกเสริมที่เลือกอยู่เข้าไปในทุกช่องแล้ว (ดู shownPrice) — บรรทัดนี้บอกว่ามีอะไรรวมอยู่
-            * จะได้ไม่งงว่าทำไมเลขไม่ตรงกับตารางหน้าราคาของร้าน (ผู้ใช้ทัก 2 ก.ย. 69 สองรอบ) */}
-          {matrix && !askQuote && !(useCustom && !customUsesMatrix) && unitAddOnTotal > 0 && (
-            <p className={`mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-100 ${priceTableOpen ? "" : "max-sm:hidden"}`}>
-              💡 ราคาในตารางรวมตัวเลือกเสริมที่เลือกอยู่ให้แล้ว —{" "}
-              {unitAddOns.map((f, i) => (
-                <span key={`${f.label}-${i}`}>
-                  {i > 0 ? " + " : ""}
-                  <strong className="font-bold">{f.label}</strong> {formatPrice(f.amount)}
-                </span>
-              ))}
-              /{matrix.unit} ตามช่วงจำนวนของแต่ละแถว
-            </p>
-          )}
-          {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
-            <p className={`mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100 ${priceTableOpen ? "" : "max-sm:hidden"}`}>
-              🎨 ราคานี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit}
-              {/* สินค้าทั่วไป: ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
-                  (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) — แต่สินค้า hardMinQty ขั้นต่ำเป็นของจริง */}
-              {rate.minQty && rate.minQty > 1
-                ? product.hardMinQty
-                  ? ` · สั่งขั้นต่ำ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป`
-                  : ` · ราคานี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
-                : ""}
-            </p>
-          )}
-        </div>
-        <div>
-          <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
-          {/* จุดเด่น */}
-          {/* 📱 มือถือ: รายการแน่นขึ้น (เดิมกล่องละ ~56px × 4 = ~240px) */}
-          <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
-            {product.highlights.map((h) => (
-              <li
-                key={h}
-                className="flex items-center gap-2 rounded-xl bg-white px-3 py-1.5 text-[13px] text-stone-600 ring-1 ring-amber-100 sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-sm"
-              >
-                <span className="text-amber-500">✔</span> {h}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {/**
-        * 📦 การ์ด "วิธีสั่งสินค้านี้" — เฉพาะสินค้าที่ขั้นต่ำนับทั้งล็อต (minQtyScope: "lot")
-        * เกิดจากพื้นที่ว่างยาว ๆ ฝั่งซ้ายตรงข้ามแผงสั่งซื้อ + ลูกค้าไม่เข้าใจว่าคละอะไรได้บ้าง
-        * ตัวเลข/ชื่อกลุ่มดึงจากข้อมูลสินค้าจริง ไม่ฮาร์ดโค้ดชื่อสติ๊กเกอร์
-        */}
-      {lotMinRate && (
-        <section className="sm:col-span-2">
-          {/* โครงเดียวกับกล่อง "⚠️ ข้อควรทราบก่อนสั่ง" ของหน้านี้ — แถบหัวสีทึบ + กรอบ border-2 สีอ่อน
-              (ระบบดีไซน์หน้าสินค้าไม่ใช้ gradient เลย ใช้สีทึบ + ริง/กรอบอ่อนล้วน) */}
-          <div className="overflow-hidden rounded-2xl border-2 border-amber-200 bg-white shadow-sm">
-            {/**
-              * แถบหัว — ตามภาษาสีของหน้าแรก (landing.css)
-              * ⚠️ หน้าแรก "ไม่ใช้บล็อกสีเข้มขนาดใหญ่" เลย — --navy ใช้แค่ปุ่มเล็ก (.btn-primary) กับตัวหนังสือ
-              *    ส่วนพื้นของแถบ/เซ็กชันใหญ่เป็นฟ้าอ่อนไล่ลง (.top-stack)
-              *      linear-gradient(168deg, --sky-200 → --sky-100 → --sky-50)
-              *    เดิมทำเป็นพื้น navy เข้มตัวหนังสือขาว = สลับบทบาทสีผิด และเข้มเกินหน้าอื่น
-              * โทเคนที่ใช้: sky-200 #C6E8FB · sky-100 #E2F3FE · sky-50 #F2FAFF
-              *              navy #173A6B (หัวข้อ) · navy-soft #4A6A96 (ตัวรอง) · yolk #FFD447 (เน้น)
-              * เขียน hex ตรงเพราะตัวแปรเหล่านี้อยู่ใต้ :root ของ landing.css ที่ครอบด้วย .dl
-              */}
-            <div
-              className="relative overflow-hidden px-4 py-4 sm:px-5"
-              style={{ background: "linear-gradient(168deg,#C6E8FB 0%,#E2F3FE 42%,#F2FAFF 100%)" }}
-            >
-              <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/50" />
-              <span aria-hidden className="pointer-events-none absolute -bottom-14 right-24 h-28 w-28 rounded-full bg-white/35" />
-              <div className="relative flex items-start gap-3">
-                <span
-                  className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-2xl"
-                  style={{ background: "#fff", boxShadow: "0 2px 8px rgba(44,129,196,.16)" }}
-                >
-                  📦
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[15px] font-extrabold leading-snug" style={{ color: "#173A6B" }}>
-                    สั่งขั้นต่ำ{" "}
-                    <span
-                      className="inline-block rounded-lg px-1.5 py-0.5"
-                      style={{ background: "#FFD447", color: "#173A6B" }}
-                    >
-                      {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
-                    </span>
-                    {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""}
-                  </p>
-                  <p className="mt-1.5 text-[12.5px] font-semibold leading-relaxed" style={{ color: "#4A6A96" }}>
-                    <strong style={{ color: "#173A6B" }}>
-                      ไม่ต้องสั่งเหมือนกันทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
-                    </strong>{" "}
-                    — แต่ละแผ่นเลือกไดคัทและขนาดของตัวเองได้
-                  </p>
-                </div>
+                  );
+                })()}
               </div>
-            </div>
 
-            <div className="p-4 sm:p-5">
-              {/* ── ภาพประกอบ: 3 แผ่นคนละแบบ แยกสีให้เห็นชัดว่าเป็นคนละสเปค ── */}
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {[
-                  { n: 1, title: "ไดคัท 50%", sub: "ขนาดตัด A4", art: "half", box: "bg-sky-50 ring-sky-200", pill: "bg-sky-500", ink: "text-sky-900", fill: "#bae6fd", line: "#0284c7" },
-                  { n: 2, title: "ไดคัท 100%", sub: "ไดคัท 5×5 ซม.", art: "dots", box: "bg-emerald-50 ring-emerald-200", pill: "bg-emerald-500", ink: "text-emerald-900", fill: "#a7f3d0", line: "#059669" },
-                  { n: 3, title: "ไดคัท 50%", sub: "ขนาดตัด A6", art: "grid", box: "bg-violet-50 ring-violet-200", pill: "bg-violet-500", ink: "text-violet-900", fill: "#ddd6fe", line: "#7c3aed" },
-                ].map((sh) => (
-                  <div key={sh.n} className={`rounded-2xl p-2 text-center ring-1 sm:p-2.5 ${sh.box}`}>
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10.5px] font-extrabold text-white ${sh.pill}`}>
-                      แผ่นที่ {sh.n}
-                    </span>
-                    <svg viewBox="0 0 60 42" className="mx-auto mt-1.5 w-full max-w-[110px]" role="img" aria-label={`ตัวอย่างแผ่นที่ ${sh.n}`}>
-                      <rect x="1" y="1" width="58" height="40" rx="3" fill="#fff" stroke={sh.line} strokeWidth="1.5" opacity="0.9" />
-                      {sh.art === "half" && (
+              {/* ── กลาง: ชื่อ · รายละเอียด · ข้อควรทราบ ── */}
+              {/* min-w-0: เป็น grid item ที่ min-width:auto ถ้าไม่ปลด เนื้อหายาว ๆ จะดันคอลัมน์กว้างเกินจอมือถือ */}
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-amber-500">
+                  {category.emoji} {catName}
+                </span>
+                <h1 className="mt-1 text-base font-extrabold leading-snug text-stone-900 md:text-xl">{product.name}</h1>
+                {/* ยังขายไม่ได้ = ไม่โชว์ "⭐ 5 · ขายแล้ว 0" — ดูไม่น่าเชื่อ (เจ้าของร้านอนุมัติ 12 ต.ค. 69) */}
+                {product.sold > 0 && (
+                  <div className="mt-2 flex items-center gap-3 text-sm text-stone-500">
+                    <span>⭐ {product.rating}</span>
+                    <span>·</span>
+                    <span>ขายแล้ว {product.sold.toLocaleString("th-TH")} ชิ้น</span>
+                  </div>
+                )}
+
+                <p className="mt-3 text-[13px] leading-relaxed text-stone-600">{product.description}</p>
+
+                {/* ═══ ข้อควรทราบ / เงื่อนไขงาน — อ่านก่อนสั่ง (แอดมินตั้งต่อสินค้าในหลังบ้าน) ═══ */}
+                {product.terms?.trim() && (
+                  <div className="mt-4 overflow-hidden rounded-2xl border-2 border-rose-200 bg-rose-50/60 shadow-sm">
+                    <div className="flex items-center gap-2 bg-rose-500 px-4 py-2">
+                      <span className="text-base leading-none">⚠️</span>
+                      <p className="text-xs font-extrabold tracking-tight text-white">ข้อควรทราบก่อนสั่ง — รบกวนอ่านก่อนนะครับ</p>
+                    </div>
+                    <ul className="space-y-2 px-4 py-3">
+                      {termLines(product.terms).map((t, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="mt-[3px] shrink-0 text-[9px] leading-none text-rose-500">🔴</span>
+                          <span className="whitespace-pre-line text-[11px] font-medium leading-relaxed text-rose-950">{t}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* ═══ 📐 เทมเพลตไฟล์งาน — โหลดไปวางลายก่อนส่งกลับมาให้ร้าน (ไม่ต้องล็อกอิน) ═══ */}
+                {tplItems.length > 0 && (
+                  <div className="mt-4 overflow-hidden rounded-2xl border-2 border-sky-200 bg-sky-50/60 shadow-sm">
+                    {/* หัวกล่อง = ปุ่มพับ/กางเมื่อมีเทมเพลตหลายรุ่น (ไม่กี่ไฟล์ = กางไว้เฉย ๆ ไม่ต้องกด) */}
+                    {(() => {
+                      const head = (
                         <>
-                          <rect x="6" y="6" width="22" height="30" rx="2" fill={sh.fill} />
-                          <rect x="32" y="6" width="22" height="30" rx="2" fill={sh.fill} />
-                          <line x1="30" y1="4" x2="30" y2="38" stroke={sh.line} strokeWidth="1.2" strokeDasharray="2 2" />
+                          <span className="text-base leading-none">📐</span>
+                          <p className="min-w-0 flex-1 text-left text-xs font-extrabold tracking-tight text-white">
+                            {studioMode ? "ไฟล์เทมเพลต — สำหรับคนที่ทำแบบเองในโปรแกรม" : "เทมเพลตไฟล์งาน — โหลดไปวางลายได้เลย"}
+                          </p>
+                          {tplCollapsible && (
+                            <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">{tplItems.length} แบบ</span>
+                          )}
                         </>
-                      )}
-                      {sh.art === "dots" &&
-                        [8, 21, 34, 47].map((x) =>
-                          [14, 28].map((y) => (
-                            <circle key={`${x}-${y}`} cx={x} cy={y} r="5.4" fill={sh.fill} stroke={sh.line} strokeWidth="1.1" strokeDasharray="1.6 1.6" />
-                          ))
-                        )}
-                      {sh.art === "grid" &&
-                        [0, 1, 2, 3].map((c) =>
-                          [0, 1].map((r) => (
-                            <rect key={`${c}-${r}`} x={5 + c * 13} y={6 + r * 16} width="11" height="14" rx="1.5" fill={sh.fill} stroke={sh.line} strokeWidth="0.8" />
-                          ))
-                        )}
-                    </svg>
-                    <p className={`mt-1.5 text-[11.5px] font-extrabold leading-tight ${sh.ink}`}>{sh.title}</p>
-                    <p className="text-[11px] font-semibold leading-tight text-stone-400">{sh.sub}</p>
-                  </div>
-                ))}
-              </div>
-              {product.lotKeyOptions?.length ? (
-                <p className="mt-2.5 flex items-center justify-center gap-2 rounded-2xl bg-yellow-50 px-3 py-2.5 text-center text-[12px] font-bold leading-relaxed text-amber-950 ring-1 ring-yellow-300">
-                  <span className="text-base leading-none">🔒</span>
-                  <span>
-                    แต่ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit} ต้องเป็น
-                    <strong className="mx-1 rounded-md bg-yellow-300 px-1.5 py-0.5">{product.lotKeyOptions[0]}ชนิดเดียวกัน</strong>
-                    เพราะพิมพ์รอบเดียวกัน
-                  </span>
-                </p>
-              ) : null}
-
-              {/* ── อะไรต่างกันได้ / อะไรทำไม่ได้ ── */}
-              <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
-                <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
-                  <p className="flex items-center gap-2 text-[12.5px] font-extrabold text-emerald-800">
-                    <span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-[13px] text-white">✓</span>
-                    แต่ละแผ่นต่างกันได้
-                  </p>
-                  <ul className="mt-2 grid gap-1.5 text-[12px] font-semibold leading-relaxed text-emerald-900">
-                    <li>🔀 <strong>แบบไดคัท</strong> — 50% กับ 100% ปนกันในออเดอร์เดียวได้</li>
-                    <li>📐 <strong>ขนาด</strong> — แต่ละแผ่นคนละขนาดได้</li>
-                    <li>🖼 <strong>ลาย</strong> — แต่ละแผ่นใช้ลายของตัวเอง</li>
-                  </ul>
-                </div>
-                <div className="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-200">
-                  <p className="flex items-center gap-2 text-[12.5px] font-extrabold text-rose-700">
-                    <span className="grid h-6 w-6 place-items-center rounded-full bg-rose-500 text-[13px] text-white">✕</span>
-                    ทำไม่ได้
-                  </p>
-                  <ul className="mt-2 grid gap-1.5 text-[12px] font-semibold leading-relaxed text-rose-900">
-                    {product.lotKeyOptions?.length ? (
-                      <li>
-                        🎞 <strong>{product.lotKeyOptions[0]}</strong> — ต้องชนิดเดียวกันทั้งออเดอร์
-                        <br />
-                        <span className="text-rose-500">
-                          อยากได้ 2 ชนิด = สั่งชนิดละ {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")}{" "}
-                          {lotMinRate.pricing.unit}
-                        </span>
-                      </li>
-                    ) : null}
-                    <li>
-                      🧾 <strong>ยืนยันคำสั่งซื้อทั้งที่ยังไม่ครบ</strong>
-                      <br />
-                      <span className="text-rose-500">
-                        เพิ่มลงตะกร้าได้เลย แต่กด “ยืนยันการสั่งซื้อ” ไม่ได้จนกว่าจะครบ{" "}
-                        {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* ── 3 ขั้นตอนสั่ง ── */}
-              <p className="mt-4 flex items-center gap-2 text-[13px] font-extrabold text-stone-700">
-                <span className="text-base leading-none">🛒</span> สั่งยังไง — ทำ 3 สเต็ป
-              </p>
-              <ol className="mt-2 grid gap-2">
-                {[
-                  {
-                    t: `ตั้งค่า${lotWord}แรก แล้วกด “🛒 เพิ่มลงตะกร้า”`,
-                    d: "เลือกแบบไดคัท · ขนาด · จำนวน แล้วอัปโหลดภาพลาย (อัปกี่รูป = กี่ลาย)",
-                    tone: "bg-sky-50 ring-sky-200",
-                    pill: "bg-sky-500",
-                  },
-                  {
-                    t: `อยากได้อีก${lotWord} — เปลี่ยนตัวเลือกแล้วกดเพิ่มอีกครั้ง`,
-                    d: `แต่ละ${lotWord}เป็นคนละรายการในตะกร้า แนบลายของตัวเองได้ · ราคาคิดจากยอดรวมทุก${lotWord} ยิ่งเยอะยิ่งถูก`,
-                    tone: "bg-emerald-50 ring-emerald-200",
-                    pill: "bg-emerald-500",
-                  },
-                  {
-                    t: `ครบ ${(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} ${lotMinRate.pricing.unit} แล้วไปที่ตะกร้า กด “✅ ยืนยันการสั่งซื้อ”`,
-                    d: "ยังไม่ครบจะกดยืนยันไม่ได้ — ตะกร้าจะบอกว่าขาดอีกเท่าไหร่ พร้อมปุ่มพากลับมาเลือกเพิ่ม",
-                    tone: "bg-violet-50 ring-violet-200",
-                    pill: "bg-violet-500",
-                  },
-                ].map((st, i) => (
-                  <li key={st.t} className={`flex gap-2.5 rounded-2xl px-3 py-2.5 ring-1 ${st.tone}`}>
-                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white ${st.pill}`}>
-                      {i + 1}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[12.5px] font-extrabold leading-snug text-stone-800">{st.t}</span>
-                      <span className="block text-[12px] font-semibold leading-relaxed text-stone-500">{st.d}</span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-              <div className="mt-2.5 grid gap-1.5 rounded-xl bg-stone-50 px-3 py-2 text-[11.5px] font-semibold leading-relaxed text-stone-500">
-                <p>
-                  💡 อยากได้ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}{" "}
-                  เหมือนกันหมด ก็กดจำนวนเป็น {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} แล้วเพิ่มลงตะกร้าครั้งเดียวจบ
-                </p>
-                <p>
-                  🛒 ไม่ต้องสั่งครบในรอบเดียว — <strong>เพิ่มลงตะกร้าไว้ก่อนได้</strong> แล้วค่อยกลับมาเติมทีหลัง
-                  ระบบนับรวมกับที่อยู่ในตะกร้าแล้วให้ (ขอเป็น{product.lotKeyOptions?.[0] ?? "สเปคหลัก"}เดียวกัน)
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* รายละเอียดสินค้า โซน "ข้างแผงสั่งซื้อ" — ท่อนที่แอดมินตั้ง slot: side ไว้ */}
-      {bodyOf("side").length > 0 && (
-        <div className="sm:col-span-2">{detailsSection("side", "mt-2")}</div>
-      )}
-        </div>
-
-        {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
-        <div className="min-w-0 lg:col-span-4 lg:sticky lg:top-24">
-          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
-            <div className="mt-4 flex items-baseline gap-2">
-              {useCustom && customAsk ? (
-                // ขนาดกำหนดเอง (โหมดตีราคา/คุยกับแอดมิน) — ไม่โชว์ ฿0 ให้งง
-                <span className="text-xl font-extrabold text-sky-700">
-                  {customChat ? "💬 คุยรายละเอียดกับแอดมิน" : "💬 รอแอดมินตีราคา"}
-                </span>
-              ) : askQuote ? (
-                // งานสั่งทำตามตัวเลือกที่เลือก — ราคายังไม่มี ไม่โชว์ ฿0 ให้งง
-                <span className="text-xl font-extrabold text-sky-700">💬 รอแอดมินตีราคา</span>
-              ) : (
-                <>
-                  <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
-                  {matrix ? (
-                    <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
-                  ) : (
-                    product.oldPrice && (
-                      <span className="text-base text-stone-400 line-through">
-                        {formatPrice(product.oldPrice)}
-                      </span>
-                    )
-                  )}
-                </>
-              )}
-            </div>
-            {/* 🔴 หมายเหตุในกล่องราคา (Product.priceNote) เช่น กระดาษเย็บบน "ไม่มีซองให้" */}
-            {product.priceNote?.trim() && (
-              <p className="mt-2 text-sm font-bold leading-relaxed text-red-600">{product.priceNote.trim()}</p>
-            )}
-            {/* 🧮 สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) — บอกยอดชิ้นรวม + ย้ำว่าช่วงราคาคิดตามจำนวนหน่วยขาย */}
-            {product.pieceCountLabel && unitPieceCountOf(product, effective) > 1 && !askQuote && (
-              <p className="mt-1.5 text-xs leading-relaxed text-stone-500">
-                🧮 {matrix?.unit ?? "พวง"}ละ {unitPieceCountOf(product, effective)} ชิ้น ×{" "}
-                {qty.toLocaleString("th-TH")} {matrix?.unit ?? "พวง"} ={" "}
-                <strong className="font-bold text-stone-600">
-                  {(unitPieceCountOf(product, effective) * qty).toLocaleString("th-TH")} ชิ้นรวม
-                </strong>{" "}
-                — ช่วงราคาคิดตามจำนวน{matrix?.unit ?? "พวง"}ที่สั่ง
-              </p>
-            )}
-            {/* 🧮 มีสินค้านี้ในตะกร้าแล้ว — บอกก่อนกดสั่งว่าจะรวมล็อตคิดเรทตามยอดรวม */}
-            {lotPreview && !askQuote && (
-              <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800 ring-1 ring-emerald-100">
-                🧮 <strong className="font-bold">ในตะกร้ามีสินค้านี้อยู่แล้ว {lotPreview.cartQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}</strong>
-                {lotPreview.retailLine ? (
-                  // จำนวนที่เลือกยังอยู่ช่วงราคาปลีกคละอิสระ — บรรทัดนี้คิดแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
-                  <>
-                    {" — "}จำนวน 1-{((lotPreview.mergeFromQty ?? 1) - 1).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}เป็นราคาปลีก คิดแยก
-                    {" · "}สั่งตั้งแต่ <strong className="font-bold">{(lotPreview.mergeFromQty ?? 1).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}ขึ้นไป</strong>
-                    จะคิดรวมล็อตกับตะกร้า (รวม {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ≈{" "}
-                    <strong className="font-bold">{formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}</strong>)
-                  </>
-                ) : (
-                  <>
-                    {/* ภาษาง่าย ๆ: นับรวมกับของในตะกร้าเพื่อคิดราคาขั้นบันได (เดิม "ล็อตเดียว 3 ใบ 2 ลาย" ลูกค้างง) */}
-                    {" — "}ระบบนับรวมกับ {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}ที่กำลังเลือกเป็น{" "}
-                    <strong className="font-bold">
-                      {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-                    </strong>{" "}
-                    เพื่อคิดราคาตามจำนวนรวม
-                    {lotPreview.unitPrice < unitPrice ? (
-                      <>
-                        {" → "}ราคาลดเหลือ{" "}
-                        <strong className="font-bold">
-                          {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}
-                        </strong>{" "}
-                        <span className="text-stone-400 line-through">{formatPrice(unitPrice)}</span> (ลดให้ในตะกร้า)
-                      </>
-                    ) : (
-                      <> — ตอนนี้ราคายังเท่าเดิม {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"} ยิ่งสั่งรวมเยอะยิ่งถูก</>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-            {askQuote && !useCustom ? (
-              <div className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                <p>
-                  💬 <strong className="font-bold">งานสั่งทำ — สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> กรอกรายละเอียดให้ครบ
-                  แล้วกดสั่ง จากนั้นส่งลิงก์ออเดอร์ให้แอดมินทางไลน์เพื่อตีราคา แล้วหน้าแจ้งโอนถึงจะเปิดให้โอน
-                </p>
-                <a
-                  href={LINE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
-                >
-                  💬 ทักไลน์สอบถามราคาก่อน
-                </a>
-              </div>
-            ) : useCustom ? (
-              customAsk ? (
-                // สั้น ๆ: สั่งเลย → copy ลิงก์ออเดอร์ส่งแอดมินให้ใส่ราคา → ค่อยโอน
-                <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
-                  {customChat ? "💬 " : "📐 "}
-                  <strong className="font-bold">สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> — หลังสั่งเสร็จ
-                  กด <strong className="font-bold">คัดลอก (copy) ลิงก์ออเดอร์ส่งให้แอดมินทางไลน์</strong>{" "}
-                  เพื่อให้ใส่ราคาก่อน แล้วหน้าแจ้งโอนถึงจะเปิดให้โอนได้
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-sky-700">
-                  {custom?.mode === "longest"
-                    ? "📐 กำหนดขนาดเองอยู่ — ราคาคิดจากด้านที่ยาวที่สุด ตามตารางเรทปกติ"
-                    : customUsesMatrix
-                      ? "📐 ระบุขนาดเองอยู่ — ราคายังคิดตามตารางเรทปกติ"
-                      : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
-                </p>
-              )
-            ) : /* ตารางช่วงเดียว (ทุกจำนวนราคาเดียว) ไม่ได้ "ยิ่งสั่งเยอะยิ่งถูก" — ตกไปใช้ข้อความตามตัวเลือกด้านล่าง */
-            matrix && matrix.tiers.length > 1 ? (
-              <p className="mt-1 text-xs text-stone-400">
-                {/* 🏷 ช่วงราคาต้องเป็นตัวเลขเดียวกับการ์ดหน้ารายการ/ชื่อหน้า (priceRange) — เดิมโชว์เฉพาะเรทที่เลือก
-                    การ์ด "฿6 – ฿200" แต่ในหน้า "฿10 – ฿200" ลูกค้าไม่รู้จะเชื่ออันไหน (12 ต.ค. 69)
-                    ⚠️ ใช้ช่วงรวมได้เฉพาะเมื่อทุกเรทหน่วยเดียวกัน (ดู formatMatrixPriceRange) · ตัวแทนเห็นเรทตัวเองเหมือนเดิม */}
-                💡 ราคา{" "}
-                {!dealerMode && publicRates(product).every((r) => r.pricing.unit === matrix.unit)
-                  ? formatPriceRange(product)
-                  : formatMatrixPriceRange(product, matrix)}{" "}
-                ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
-              </p>
-            ) : (
-              priceRange(product).max > priceRange(product).min && (
-                <p className="mt-1 text-xs text-stone-400">
-                  💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก
-                </p>
-              )
-            )}
-            {dealerMode && (
-              <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-200">
-                🤝 ราคาตัวแทนจำหน่าย — ไม่ร่วมส่วนลด/คูปอง/ของแถม
-              </p>
-            )}
-          </div>
-
-          {/* เลือกเรทราคา — ค่าเริ่มต้นอยู่เหนือกลุ่มตัวเลือก
-              (rateAfterOption = แทรกใต้กลุ่มที่ระบุ · rateAfterOptions = ใต้กลุ่มทั้งหมด) */}
-          {!product.rateAfterOptions && ratePickerAfterIdx < 0 && ratePickerUI}
-
-          {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข)
-              ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
-          {useCustom && (
-            <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
-              📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;
-              {custom?.mode === "longest"
-                ? " — ราคาอิงด้านที่ยาวที่สุด ตามตารางเรทปกติ"
-                : customUsesMatrix
-                  ? ""
-                  : " — ราคาไม่อิงตารางเรทปกติ"}
-              {/* ไล่ชื่อจากกลุ่มจริงของสินค้า ไม่ใช่จาก keepOptions ตรง ๆ — ชื่อที่ค้างอยู่แต่ไม่มีกลุ่มแล้วจะได้ไม่โผล่ */}
-              {(() => {
-                const kept = product.options.filter((o) => customKeepsOption(custom, o.label)).map((o) => o.label);
-                return kept.length
-                  ? ` · ยังเลือก ${kept.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้`
-                  : " ตัวเลือกด้านล่างถูกปิดไว้";
-              })()}{" "}
-              (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
-            </p>
-          )}
-          {/**
-            * 📄 หัว "แผ่นที่ N" — โชว์ตั้งแต่แผ่นแรกเลย ไม่ใช่เฉพาะตอนกด ➕ แล้ว
-            * เพราะหัวใจของความเข้าใจคือ "ตัวเลขนี้เปลี่ยนจาก 1 เป็น 2" ตอนกดปุ่ม —
-            * ถ้าโชว์เฉพาะหลังกด ลูกค้าจะไม่รู้ว่าฟอร์มข้างล่างคือของแผ่นไหน
-            */}
-          {lotMinScope && !designDone && lotDone > 0 && (
-            <div
-              id="sheet-head"
-              className={`mt-4 rounded-2xl px-3.5 py-2.5 ring-1 ${
-                lotDone ? "bg-emerald-50 ring-emerald-200" : "bg-stone-50 ring-stone-200"
-              }`}
-            >
-              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className={`text-[15px] font-extrabold ${lotDone ? "text-emerald-800" : "text-stone-800"}`}>
-                  {lotEmoji} {lotWord}ที่ {(lotDone + 1).toLocaleString("th-TH")}
-                </span>
-                {lotDone > 0 && (
-                  <span className="text-[12px] font-bold text-emerald-700">
-                    · {lotWord}ที่ 1{lotDone > 1 ? `–${lotDone}` : ""}{" "}
-                    {lotToCart ? "อยู่ในตะกร้าแล้ว" : "เก็บไว้แล้ว"} ✓
-                  </span>
-                )}
-              </p>
-              {/* ⛔ ไม่ต้องมีบรรทัด "ยังขาด …" ตรงนี้ — ปุ่ม ➕/🛒 แถวปุ่มสั่งบอกอยู่แล้วว่าติดตรงไหน
-                  (ผู้ใช้สั่งเอาออก 30 ส.ค. 69 — ซ้ำซ้อน อ่านสองที่) */}
-              {lotLockedLabels.length > 0 && (
-                <p className="mt-1 text-[11px] font-bold text-emerald-700">
-                  🔒 {lotLockedLabels.join(" · ")} ล็อกไว้แล้ว — ทุก{lotWord}ในออเดอร์นี้ต้องเป็นแบบเดียวกัน
-                </p>
-              )}
-            </div>
-          )}
-          {mtoFirst && mtoBoxUI()}
-          <div id="opt-groups" className="mt-4 space-y-3">
-            {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก)
-                🧩 กลุ่มที่ตั้ง "ชุดตัวเลือก" (section) ชื่อเดียวกันและอยู่ติดกัน → ใส่กรอบเดียวมีหัวชุด
-                (สินค้าหลายชิ้นต่อหน่วยมีกลุ่มหน้าตาซ้ำกันทุกชิ้น เรียงแบนแล้วลูกค้าแยกไม่ออกว่าอันไหนของชิ้นไหน) */}
-            {optionBlocks.map((blk) => (
-              <Fragment key={`blk-${blk.section ?? blk.items[0].opt.label}`}>
-                {blk.section ? (
-                  (() => {
-                    /* 🧩 ชุดตัวเลือก = กรอบเดียวที่กด "หัวชุด" หุบ/กางได้ (สินค้าหลายชิ้นมีได้ถึง 10 ชุด
-                       กางหมดพร้อมกันแล้วเลื่อนหาชิ้นที่จะแก้ไม่เจอ) · หุบไว้ยังอ่านค่าที่เลือกได้ทุกกลุ่ม
-                       ⚠️ หุบ = ซ่อนการแสดงผลเท่านั้น ค่าที่เลือกไว้ยังคิดราคา/ติดไปกับตะกร้าตามเดิม */
-                    const sec = blk.section as string;
-                    const closed = !!closedSections[sec];
-                    const summary = blk.items.map(({ opt }) => effective[opt.label]).filter(Boolean).join(" · ");
-                    return (
-                      <section className="rounded-2xl bg-white p-3 ring-1 ring-stone-200">
+                      );
+                      return tplCollapsible ? (
                         <button
                           type="button"
-                          onClick={() => setClosedSections((cur) => ({ ...cur, [sec]: !closed }))}
-                          aria-expanded={!closed}
-                          className={`flex min-h-[44px] w-full items-center gap-2 text-left ${
-                            closed ? "" : "mb-2.5 border-b border-dashed border-stone-200 pb-2"
-                          }`}
+                          onClick={() => setTplOpen((v) => !v)}
+                          aria-expanded={tplOpen}
+                          className="flex w-full items-center gap-2 bg-sky-600 px-4 py-2 text-left transition hover:bg-sky-700"
                         >
-                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-stone-800 text-[11px] font-bold tabular-nums text-white">
-                            {sec.match(/\d+/)?.[0] ?? "•"}
-                          </span>
-                          <span className="shrink-0 text-[13px] font-bold text-stone-700">{sec}</span>
-                          {closed && summary && (
-                            <span className="min-w-0 flex-1 truncate text-[11px] text-stone-500">{summary}</span>
-                          )}
-                          <span className="ml-auto shrink-0 pl-1 text-[11px] font-semibold text-stone-400">
-                            {closed ? "กาง ▾" : "หุบ ▴"}
-                          </span>
+                          {head}
+                          <span className={`shrink-0 text-[10px] text-white transition ${tplOpen ? "rotate-180" : ""}`}>▼</span>
                         </button>
-                        {/* ✍️ ชุดที่มีแต่ช่องกรอก (กว้าง+สูง) — กรอบชุดครอบให้แล้ว ไม่ต้องมีกรอบซ้อนอีกชั้น
-                            คั่นด้วยเส้นประเหมือนช่องกรอกที่ต่อกันมานอกชุด (ชุดที่ปนปุ่มยังใส่กรอบตามเดิม) */}
-                        {!closed &&
-                          (blk.items.every(({ opt }) => isInputOption(opt)) ? (
-                            <div className="divide-y divide-dashed divide-stone-200 [&>*:not(:last-child)]:pb-3 [&>*+*]:pt-3">
-                              {blk.items.map(({ opt }) => optionGroupUI(opt, false))}
+                      ) : (
+                        <div className="flex items-center gap-2 bg-sky-600 px-4 py-2">{head}</div>
+                      );
+                    })()}
+
+                    {/* ยุบอยู่แล้วยังไม่มีรายการที่ตรงกับตัวเลือก → บอกสั้น ๆ ว่ากดดูได้ (ไม่กินที่) */}
+                    {tplCollapsible && !tplOpen && tplShown.length === 0 ? (
+                      <p className="px-4 py-2.5 text-[11px] font-semibold text-sky-800">
+                        มีไฟล์เทมเพลต {tplItems.length} แบบให้โหลด — กดที่แถบด้านบนเพื่อดูทั้งหมด
+                      </p>
+                    ) : (
+                      <ul className="grid grid-cols-2 gap-2 px-3 py-3 sm:grid-cols-3">
+                        {tplShown.map((f) => (
+                          <li key={f.key} className={`flex flex-col rounded-xl bg-white p-2 ring-1 ${f.matched ? "ring-2 ring-sky-400" : "ring-sky-100"}`}>
+                            {/* รูปของไฟล์นั้นมาก่อน (แต่ละรุ่นหน้าตาไม่เหมือนกัน) ไม่มีค่อยใช้รูปปกของชุด */}
+                            {f.preview ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={f.preview}
+                                alt={`ตัวอย่างเทมเพลต ${f.name}${f.choice ? ` ${f.choice}` : ""}`}
+                                className="mx-auto h-14 w-full rounded-lg bg-white object-contain"
+                              />
+                            ) : (
+                              <span className="grid h-14 w-full place-items-center rounded-lg bg-sky-50 text-xl">📐</span>
+                            )}
+                            <span className="mt-1 block truncate text-[12px] font-bold text-stone-800" title={f.name}>
+                              {f.name}
+                              {f.choice && <span className="ml-1 font-semibold text-sky-700">· {f.choice}</span>}
+                            </span>
+                            {f.note && <span className="block truncate text-[10px] text-stone-500">{f.note}</span>}
+                            <span className="block truncate text-[10px] text-stone-400">
+                              {f.outside ? "เปิดลิงก์ไฟล์" : f.fileName || "ไฟล์เทมเพลต"}
+                              {f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
+                            </span>
+                            {f.matched && <span className="mt-0.5 block text-[10px] font-bold text-sky-700">✓ ตรงกับที่คุณเลือก</span>}
+                            {f.anyNote && <span className="mt-0.5 block text-[10px] text-stone-400">{f.anyNote}</span>}
+                            {/* ที่นี่มีแค่ปุ่มโหลดไฟล์ — การวางลายบนเว็บใช้ปุ่ม "เริ่มสร้าง" ในกล่องสั่งซื้อ */}
+                            <a
+                              href={f.href}
+                              {...(f.outside ? { target: "_blank", rel: "noopener noreferrer" } : { download: f.fileName || "" })}
+                              className="mt-1.5 rounded-full bg-sky-600 px-2 py-1.5 text-center text-[11px] font-bold text-white shadow transition hover:bg-sky-700"
+                            >
+                              {f.outside ? "🔗 เปิดลิงก์" : "⬇️ ดาวน์โหลด"}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {/* ยุบได้และกางอยู่ → ปุ่มพับกลับที่ท้ายรายการ (ไม่ต้องเลื่อนขึ้นไปหาหัวกล่อง) */}
+                    {tplCollapsible && tplOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setTplOpen(false)}
+                        className="mx-3 mb-2 block rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                      >
+                        ▲ ย่อรายการเทมเพลต
+                      </button>
+                    )}
+
+                    {/* แอดมินปิดปุ่ม "เริ่มสร้าง" ไว้ = ไม่ชวนให้กดปุ่มที่ไม่มีบนหน้า */}
+                    {!studioOff && (
+                      <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
+                        วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 ออกแบบบนเว็บ&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
+                        ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* ═══ ความมั่นใจก่อนกดสั่ง ═══ */}
+                <ul className="mt-4 grid grid-cols-2 gap-2 text-[11px] font-semibold text-stone-500">
+                  <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">
+                    🖼️ ส่งแบบให้ตรวจ
+                    <br />
+                    ก่อนผลิตทุกงาน
+                  </li>
+                  <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">
+                    ✅ แก้แบบได้
+                    <br />
+                    จนกว่าจะพอใจ
+                  </li>
+                  <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">
+                    🚚 ส่งไว
+                    <br />
+                    ทั่วไทย
+                  </li>
+                  <li className="rounded-xl bg-white px-2.5 py-2 text-center ring-1 ring-stone-100">
+                    💬 ทักไลน์
+                    <br />
+                    ปรึกษาฟรี
+                  </li>
+                </ul>
+              </div>
+
+              {/* ═══ ข้อมูลประกอบ — ไหลต่อจากรูป/รายละเอียด (เดิมอยู่ท้ายหน้า ทำให้ตรงนี้เป็นช่องขาว) ═══ */}
+              <div className="grid gap-6 sm:col-span-2 lg:grid-cols-2">
+                <div className="relative">
+                  {/* ใช้ขนาดกำหนดเองอยู่ — คลุมตารางไว้ กันเข้าใจผิดว่าราคาอิงเรทขนาดปกติ
+              (โหมด "ระบุขนาด" ไม่ต้องคลุม เพราะราคายังคิดจากตารางนี้จริง ๆ) */}
+                  {useCustom && !customUsesMatrix && (
+                    <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+                      <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
+                        📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตารางนี้
+                      </p>
+                    </div>
+                  )}
+                  {/* งานสั่งทำ (แบบที่แอดมินตั้งให้ตีราคา) — ตารางนี้ไม่ใช่ราคาของงานนี้ คลุมไว้กันเข้าใจผิด */}
+                  {askQuote && !useCustom && (
+                    <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/70">
+                      <p className="rounded-full bg-sky-600 px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
+                        💬 งานสั่งทำ — ราคาไม่อิงตารางนี้ แอดมินตีราคาให้
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-sm font-bold text-stone-700">
+                    💰 ราคาต่อหน่วยตามจำนวน
+                    {/* เรทเดียว = ชื่อเรท ("เรทที่ 1") ไม่ช่วยลูกค้า — โชว์เฉพาะสินค้าที่มีให้เลือกหลายเรท */}
+                    {rate && rates.length > 1 && <span className="ml-1 font-semibold text-teal-700">· {rateShopLabel(rate)}</span>}
+                  </p>
+                  {/* ตารางราคาขั้นบันได (rate card) — หลายคอลัมน์ = โชว์ทีละแบบตามที่เลือกอยู่ (กดเทียบทุกแบบได้) */}
+                  {matrix &&
+                    (() => {
+                      const allKeys = Object.keys(matrix.cells);
+                      /**
+                       * 📐 กำหนดขนาดเองในกลุ่มแกนราคา — ตัวเลือกนี้ไม่มีคอลัมน์ของตัวเองในตาราง
+                       * ต้องเกาะแถวเดียวกับที่ใช้คิดเงิน (12.5 → คอลัมน์ 12cm) ไม่งั้น selectedKey หาไม่เจอ
+                       * แล้วตารางกางทั้งหมดแทนที่จะโชว์แบบที่เลือกอยู่
+                       */
+                      const selectedKey = priceMatrixKey(matrix, applySizeInputPlans(product, effective).selections);
+                      const manyCols = allKeys.length > 1;
+                      const only = allKeys.filter((k) => k === selectedKey);
+                      // ตัวเลือกที่เลือกอยู่ไม่มีราคาในตาราง (แอดมินเว้นช่องไว้) → กางทั้งหมดแทนตารางเปล่า
+                      // ยกเว้นตอน "รอแอดมินตีราคา" (เช่น กำหนดขนาดเองเกินตาราง) — มี overlay คลุมอยู่แล้ว
+                      // กางทั้ง 258 คอลัมน์ข้างหลังมีแต่ทำให้ตารางยืดเปล่า ๆ
+                      const cols = !manyCols || priceAllCols ? allKeys : only.length ? only : askQuote ? [allKeys[0]] : allKeys;
+                      /**
+                       * ราคาที่โชว์ = ช่องตาราง + ตัวเลือกเสริมที่เลือกอยู่ของช่วงจำนวนแถวนั้น (เช่น ค่าฐานสแตนดี้)
+                       * — โชว์ช่องตารางดิบแล้วไม่เท่ากับ "ราคา/ชิ้น" ในกล่องราคา ลูกค้านึกว่าเว็บคิดเงินผิด
+                       *   (ผู้ใช้ทัก 2 ก.ย. 69 สองรอบ — รอบแรกใส่แค่หมายเหตุใต้ตาราง ยังไม่พอ)
+                       * จำนวนตัวแทนของแถว: แถวที่เลือกอยู่ใช้ feeQty จริง (ตรงกับกล่องราคาแม้ +฿ เปลี่ยนกลางช่วง)
+                       * แถวแรกของเรทขั้นต่ำสูง (เช่น ไม่คละดีเทล 50+) ใช้ minQty ของเรท ไม่ใช่ 1 — ไม่งั้นได้ +฿ ฝั่งปลีก
+                       * คอลัมน์เทียบทุกแบบ: ทับค่าแกนตารางตามคอลัมน์ก่อนคิด กัน +฿ ที่ผูกกับขนาด (sizeFee) หยิบขนาดผิด
+                       */
+                      const tierRep = (ti: number) => {
+                        if (ti === currentTier) return feeQty;
+                        if (ti === 0) return rate?.minQty && rate.minQty <= (matrix.tiers[0].upTo ?? Infinity) ? rate.minQty : 1;
+                        return (matrix.tiers[ti - 1].upTo ?? 0) + 1;
+                      };
+                      const shownPrice = (col: string, ti: number) => {
+                        const sel = { ...effectiveWithDesigns };
+                        col.split("│").forEach((v, i) => {
+                          const l = matrix.driverLabels[i];
+                          if (l) sel[l] = v;
+                        });
+                        const addOn = unitAddOnBreakdown(product, sel, tierRep(ti)).reduce((n, f) => n + f.amount, 0);
+                        return matrix.cells[col][ti] + addOn;
+                      };
+                      // บรรทัดสรุปบนมือถือ — ราคาแถวแรก → แถวสุดท้ายของแบบที่เลือกอยู่ (คิดผ่าน shownPrice ตัวเดียวกับช่องตาราง)
+                      const sumCol = only[0] ?? cols[0];
+                      const lastTi = matrix.tiers.length - 1;
+                      return (
+                        <>
+                          {sumCol && (
+                            <button
+                              type="button"
+                              onClick={() => setPriceTableOpen((v) => !v)}
+                              aria-expanded={priceTableOpen}
+                              className="mt-2 flex w-full items-center justify-between gap-2 rounded-2xl bg-white px-3.5 py-2.5 text-left text-[12.5px] ring-1 ring-stone-200 sm:hidden"
+                            >
+                              <span className="min-w-0 text-stone-600">
+                                {lastTi > 0 ? (
+                                  <>
+                                    {matrix.tiers[0].label} <b className="text-stone-800">{formatPrice(shownPrice(sumCol, 0))}</b>
+                                    {" → "}
+                                    {matrix.tiers[lastTi].label} <b className="text-amber-600">{formatPrice(shownPrice(sumCol, lastTi))}</b>
+                                  </>
+                                ) : (
+                                  <>
+                                    {matrix.tiers[0].label} <b className="text-stone-800">{formatPrice(shownPrice(sumCol, 0))}</b>
+                                  </>
+                                )}
+                              </span>
+                              <span className="shrink-0 font-bold text-sky-700">{priceTableOpen ? "ย่อ ▴" : "ดูตาราง ▾"}</span>
+                            </button>
+                          )}
+                          <div className={`mt-2 overflow-hidden rounded-2xl ring-1 ring-stone-200 ${priceTableOpen ? "" : "max-sm:hidden"}`}>
+                            {manyCols && (
+                              <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-50 px-3 py-1.5">
+                                <p className="text-[11px] text-stone-500">
+                                  {cols.length > 1
+                                    ? `💡 เทียบราคาทั้ง ${allKeys.length} แบบ`
+                                    : `💡 ราคาของ “${shortComboParts(selectedKey).join(" · ")}” — เปลี่ยนตัวเลือกด้านบนเพื่อดูแบบอื่น`}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setPriceAllCols((v) => !v)}
+                                  className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                                >
+                                  {cols.length > 1 ? "แสดงเฉพาะแบบที่เลือก" : "⇄ ดูราคาแบบอื่น ๆ"}
+                                </button>
+                              </div>
+                            )}
+                            <div className="overflow-x-auto">
+                              <table className="w-full border-collapse text-xs">
+                                <thead>
+                                  <tr className="bg-sky-100 text-sky-900">
+                                    <th className="whitespace-nowrap px-3 py-2 text-left font-bold">จำนวน ({matrix.unit})</th>
+                                    {/* ชื่อคู่ตัวเลือกยาวมาก (4 กลุ่ม) — แยกบรรทัดละส่วนและย่อคำในวงเล็บ ให้หัวตารางไม่ยืดจนล้น */}
+                                    {cols.map((col) => (
+                                      <th
+                                        key={col}
+                                        title={col.split("│").join(" · ")}
+                                        /**
+                                         * หลายคอลัมน์ = ชิดซ้าย เพื่อให้ขีดนำหน้าแต่ละบรรทัดเรียงตรงกัน (ตรงกลางจะดูรุ่งริ่ง)
+                                         * คอลัมน์เดียว = จัดกลางให้ตรงกับตัวเลขในช่อง (ไม่งั้นหัวตารางเยื้องไปคนละทางกับราคา)
+                                         */
+                                        className={`px-3 py-2 font-bold leading-tight ${cols.length === 1 ? "text-center" : "text-left"}`}
+                                      >
+                                        {/* ตารางคอลัมน์เดียวหัวจะว่าง — ใช้ชื่อที่แอดมินตั้ง (colLabel) แทน เช่น "กรอบเขย่า" */}
+                                        {(shortComboParts(col).length ? shortComboParts(col) : matrix.colLabel ? [matrix.colLabel] : []).map((part, i) => (
+                                          <span key={i} className="block whitespace-nowrap">
+                                            {cols.length > 1 && <span className="mr-1 text-sky-400">•</span>}
+                                            {part}
+                                          </span>
+                                        ))}
+                                      </th>
+                                    ))}
+                                    {/* 📝 คอลัมน์หมายเหตุต่อช่วงจำนวน (เช่น ค่าตัวน้อยเขย่าต่อตัวของแต่ละช่วง) */}
+                                    {matrix.noteCol && (
+                                      <th className="px-3 py-2 text-center font-bold leading-tight">
+                                        {matrix.noteCol.label.split("\n").map((part, i) => (
+                                          <span key={i} className="block whitespace-nowrap">
+                                            {part}
+                                          </span>
+                                        ))}
+                                      </th>
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {matrix.tiers.map((tier, ti) => {
+                                    const active = ti === currentTier;
+                                    return (
+                                      <tr key={tier.label} className={active ? "bg-stone-100 font-bold text-stone-900" : "odd:bg-white even:bg-stone-50"}>
+                                        <td className="whitespace-nowrap px-3 py-2">
+                                          {active && "▶ "}
+                                          {tier.label}
+                                        </td>
+                                        {cols.map((col) => {
+                                          const isChosen = active && selectedKey === col;
+                                          return (
+                                            <td key={col} className={`px-3 py-2 text-center ${isChosen ? "text-amber-700" : ""}`}>
+                                              {formatPrice(shownPrice(col, ti))}
+                                            </td>
+                                          );
+                                        })}
+                                        {matrix.noteCol && (
+                                          <td className={`whitespace-nowrap px-3 py-2 text-center ${active ? "" : "text-stone-500"}`}>
+                                            {matrix.noteCol.values[ti] ?? ""}
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
-                          ) : (
-                            <div className="space-y-3">{blk.items.map(({ opt }) => optionGroupUI(opt))}</div>
-                          ))}
-                      </section>
-                    );
-                  })()
-                ) : blk.inputs ? (
-                  /* ✍️ ช่องกรอกที่ต่อกันมา — กรอบเดียวครอบทั้งชุด คั่นแต่ละช่องด้วยเส้นประ */
-                  <div className="rounded-2xl bg-white/60 p-2.5 ring-1 ring-stone-200">
-                    <div className="divide-y divide-dashed divide-stone-200 [&>*:not(:last-child)]:pb-3 [&>*+*]:pt-3">
-                      {blk.items.map(({ opt }) => optionGroupUI(opt, false))}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  {/* 💡 ตารางบวกตัวเลือกเสริมที่เลือกอยู่เข้าไปในทุกช่องแล้ว (ดู shownPrice) — บรรทัดนี้บอกว่ามีอะไรรวมอยู่
+                   * จะได้ไม่งงว่าทำไมเลขไม่ตรงกับตารางหน้าราคาของร้าน (ผู้ใช้ทัก 2 ก.ย. 69 สองรอบ) */}
+                  {matrix && !askQuote && !(useCustom && !customUsesMatrix) && unitAddOnTotal > 0 && (
+                    <p
+                      className={`mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-100 ${priceTableOpen ? "" : "max-sm:hidden"}`}
+                    >
+                      💡 ราคาในตารางรวมตัวเลือกเสริมที่เลือกอยู่ให้แล้ว —{" "}
+                      {unitAddOns.map((f, i) => (
+                        <span key={`${f.label}-${i}`}>
+                          {i > 0 ? " + " : ""}
+                          <strong className="font-bold">{f.label}</strong> {formatPrice(f.amount)}
+                        </span>
+                      ))}
+                      /{matrix.unit} ตามช่วงจำนวนของแต่ละแถว
+                    </p>
+                  )}
+                  {rate?.minPerDesign != null && rate.minPerDesign > 0 && (
+                    <p
+                      className={`mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-800 ring-1 ring-sky-100 ${priceTableOpen ? "" : "max-sm:hidden"}`}
+                    >
+                      🎨 ราคานี้คละลายขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit}
+                      {/* สินค้าทั่วไป: ตัวเลขนี้คือ "เรทนี้เริ่มใช้ที่เท่าไหร่" ไม่ใช่ห้ามสั่งน้อยกว่า
+                  (สั่งน้อยกว่านี้ระบบสลับไปเรทที่ถูกต้องให้เอง) — แต่สินค้า hardMinQty ขั้นต่ำเป็นของจริง */}
+                      {rate.minQty && rate.minQty > 1
+                        ? product.hardMinQty
+                          ? ` · สั่งขั้นต่ำ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป`
+                          : ` · ราคานี้เริ่มใช้ที่ ${rate.minQty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}ขึ้นไป (สั่งน้อยกว่านี้ได้ ระบบคิดราคาตามช่วงจำนวนให้)`
+                        : ""}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-stone-700">✨ จุดเด่นของงานนี้</p>
+                  {/* จุดเด่น */}
+                  {/* 📱 มือถือ: รายการแน่นขึ้น (เดิมกล่องละ ~56px × 4 = ~240px) */}
+                  <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
+                    {product.highlights.map((h) => (
+                      <li
+                        key={h}
+                        className="flex items-center gap-2 rounded-xl bg-white px-3 py-1.5 text-[13px] text-stone-600 ring-1 ring-amber-100 sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-sm"
+                      >
+                        <span className="text-amber-500">✔</span> {h}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/**
+               * 📦 การ์ด "วิธีสั่งสินค้านี้" — เฉพาะสินค้าที่ขั้นต่ำนับทั้งล็อต (minQtyScope: "lot")
+               * เกิดจากพื้นที่ว่างยาว ๆ ฝั่งซ้ายตรงข้ามแผงสั่งซื้อ + ลูกค้าไม่เข้าใจว่าคละอะไรได้บ้าง
+               * ตัวเลข/ชื่อกลุ่มดึงจากข้อมูลสินค้าจริง ไม่ฮาร์ดโค้ดชื่อสติ๊กเกอร์
+               */}
+              {lotMinRate && (
+                <section className="sm:col-span-2">
+                  {/* โครงเดียวกับกล่อง "⚠️ ข้อควรทราบก่อนสั่ง" ของหน้านี้ — แถบหัวสีทึบ + กรอบ border-2 สีอ่อน
+              (ระบบดีไซน์หน้าสินค้าไม่ใช้ gradient เลย ใช้สีทึบ + ริง/กรอบอ่อนล้วน) */}
+                  <div className="overflow-hidden rounded-2xl border-2 border-amber-200 bg-white shadow-sm">
+                    {/**
+                     * แถบหัว — ตามภาษาสีของหน้าแรก (landing.css)
+                     * ⚠️ หน้าแรก "ไม่ใช้บล็อกสีเข้มขนาดใหญ่" เลย — --navy ใช้แค่ปุ่มเล็ก (.btn-primary) กับตัวหนังสือ
+                     *    ส่วนพื้นของแถบ/เซ็กชันใหญ่เป็นฟ้าอ่อนไล่ลง (.top-stack)
+                     *      linear-gradient(168deg, --sky-200 → --sky-100 → --sky-50)
+                     *    เดิมทำเป็นพื้น navy เข้มตัวหนังสือขาว = สลับบทบาทสีผิด และเข้มเกินหน้าอื่น
+                     * โทเคนที่ใช้: sky-200 #C6E8FB · sky-100 #E2F3FE · sky-50 #F2FAFF
+                     *              navy #173A6B (หัวข้อ) · navy-soft #4A6A96 (ตัวรอง) · yolk #FFD447 (เน้น)
+                     * เขียน hex ตรงเพราะตัวแปรเหล่านี้อยู่ใต้ :root ของ landing.css ที่ครอบด้วย .dl
+                     */}
+                    <div
+                      className="relative overflow-hidden px-4 py-4 sm:px-5"
+                      style={{ background: "linear-gradient(168deg,#C6E8FB 0%,#E2F3FE 42%,#F2FAFF 100%)" }}
+                    >
+                      <span aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/50" />
+                      <span aria-hidden className="pointer-events-none absolute -bottom-14 right-24 h-28 w-28 rounded-full bg-white/35" />
+                      <div className="relative flex items-start gap-3">
+                        <span
+                          className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-2xl"
+                          style={{ background: "#fff", boxShadow: "0 2px 8px rgba(44,129,196,.16)" }}
+                        >
+                          📦
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[15px] font-extrabold leading-snug" style={{ color: "#173A6B" }}>
+                            สั่งขั้นต่ำ{" "}
+                            <span className="inline-block rounded-lg px-1.5 py-0.5" style={{ background: "#FFD447", color: "#173A6B" }}>
+                              {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
+                            </span>
+                            {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""}
+                          </p>
+                          <p className="mt-1.5 text-[12.5px] font-semibold leading-relaxed" style={{ color: "#4A6A96" }}>
+                            <strong style={{ color: "#173A6B" }}>
+                              ไม่ต้องสั่งเหมือนกันทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
+                            </strong>{" "}
+                            — แต่ละแผ่นเลือกไดคัทและขนาดของตัวเองได้
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 sm:p-5">
+                      {/* ── ภาพประกอบ: 3 แผ่นคนละแบบ แยกสีให้เห็นชัดว่าเป็นคนละสเปค ── */}
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                        {[
+                          {
+                            n: 1,
+                            title: "ไดคัท 50%",
+                            sub: "ขนาดตัด A4",
+                            art: "half",
+                            box: "bg-sky-50 ring-sky-200",
+                            pill: "bg-sky-500",
+                            ink: "text-sky-900",
+                            fill: "#bae6fd",
+                            line: "#0284c7",
+                          },
+                          {
+                            n: 2,
+                            title: "ไดคัท 100%",
+                            sub: "ไดคัท 5×5 ซม.",
+                            art: "dots",
+                            box: "bg-emerald-50 ring-emerald-200",
+                            pill: "bg-emerald-500",
+                            ink: "text-emerald-900",
+                            fill: "#a7f3d0",
+                            line: "#059669",
+                          },
+                          {
+                            n: 3,
+                            title: "ไดคัท 50%",
+                            sub: "ขนาดตัด A6",
+                            art: "grid",
+                            box: "bg-violet-50 ring-violet-200",
+                            pill: "bg-violet-500",
+                            ink: "text-violet-900",
+                            fill: "#ddd6fe",
+                            line: "#7c3aed",
+                          },
+                        ].map((sh) => (
+                          <div key={sh.n} className={`rounded-2xl p-2 text-center ring-1 sm:p-2.5 ${sh.box}`}>
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10.5px] font-extrabold text-white ${sh.pill}`}>แผ่นที่ {sh.n}</span>
+                            <svg viewBox="0 0 60 42" className="mx-auto mt-1.5 w-full max-w-[110px]" role="img" aria-label={`ตัวอย่างแผ่นที่ ${sh.n}`}>
+                              <rect x="1" y="1" width="58" height="40" rx="3" fill="#fff" stroke={sh.line} strokeWidth="1.5" opacity="0.9" />
+                              {sh.art === "half" && (
+                                <>
+                                  <rect x="6" y="6" width="22" height="30" rx="2" fill={sh.fill} />
+                                  <rect x="32" y="6" width="22" height="30" rx="2" fill={sh.fill} />
+                                  <line x1="30" y1="4" x2="30" y2="38" stroke={sh.line} strokeWidth="1.2" strokeDasharray="2 2" />
+                                </>
+                              )}
+                              {sh.art === "dots" &&
+                                [8, 21, 34, 47].map((x) =>
+                                  [14, 28].map((y) => (
+                                    <circle
+                                      key={`${x}-${y}`}
+                                      cx={x}
+                                      cy={y}
+                                      r="5.4"
+                                      fill={sh.fill}
+                                      stroke={sh.line}
+                                      strokeWidth="1.1"
+                                      strokeDasharray="1.6 1.6"
+                                    />
+                                  )),
+                                )}
+                              {sh.art === "grid" &&
+                                [0, 1, 2, 3].map((c) =>
+                                  [0, 1].map((r) => (
+                                    <rect
+                                      key={`${c}-${r}`}
+                                      x={5 + c * 13}
+                                      y={6 + r * 16}
+                                      width="11"
+                                      height="14"
+                                      rx="1.5"
+                                      fill={sh.fill}
+                                      stroke={sh.line}
+                                      strokeWidth="0.8"
+                                    />
+                                  )),
+                                )}
+                            </svg>
+                            <p className={`mt-1.5 text-[11.5px] font-extrabold leading-tight ${sh.ink}`}>{sh.title}</p>
+                            <p className="text-[11px] font-semibold leading-tight text-stone-400">{sh.sub}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {product.lotKeyOptions?.length ? (
+                        <p className="mt-2.5 flex items-center justify-center gap-2 rounded-2xl bg-yellow-50 px-3 py-2.5 text-center text-[12px] font-bold leading-relaxed text-amber-950 ring-1 ring-yellow-300">
+                          <span className="text-base leading-none">🔒</span>
+                          <span>
+                            แต่ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit} ต้องเป็น
+                            <strong className="mx-1 rounded-md bg-yellow-300 px-1.5 py-0.5">{product.lotKeyOptions[0]}ชนิดเดียวกัน</strong>
+                            เพราะพิมพ์รอบเดียวกัน
+                          </span>
+                        </p>
+                      ) : null}
+
+                      {/* ── อะไรต่างกันได้ / อะไรทำไม่ได้ ── */}
+                      <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                        <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+                          <p className="flex items-center gap-2 text-[12.5px] font-extrabold text-emerald-800">
+                            <span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-[13px] text-white">✓</span>
+                            แต่ละแผ่นต่างกันได้
+                          </p>
+                          <ul className="mt-2 grid gap-1.5 text-[12px] font-semibold leading-relaxed text-emerald-900">
+                            <li>
+                              🔀 <strong>แบบไดคัท</strong> — 50% กับ 100% ปนกันในออเดอร์เดียวได้
+                            </li>
+                            <li>
+                              📐 <strong>ขนาด</strong> — แต่ละแผ่นคนละขนาดได้
+                            </li>
+                            <li>
+                              🖼 <strong>ลาย</strong> — แต่ละแผ่นใช้ลายของตัวเอง
+                            </li>
+                          </ul>
+                        </div>
+                        <div className="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-200">
+                          <p className="flex items-center gap-2 text-[12.5px] font-extrabold text-rose-700">
+                            <span className="grid h-6 w-6 place-items-center rounded-full bg-rose-500 text-[13px] text-white">✕</span>
+                            ทำไม่ได้
+                          </p>
+                          <ul className="mt-2 grid gap-1.5 text-[12px] font-semibold leading-relaxed text-rose-900">
+                            {product.lotKeyOptions?.length ? (
+                              <li>
+                                🎞 <strong>{product.lotKeyOptions[0]}</strong> — ต้องชนิดเดียวกันทั้งออเดอร์
+                                <br />
+                                <span className="text-rose-500">
+                                  อยากได้ 2 ชนิด = สั่งชนิดละ {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit}
+                                </span>
+                              </li>
+                            ) : null}
+                            <li>
+                              🧾 <strong>ยืนยันคำสั่งซื้อทั้งที่ยังไม่ครบ</strong>
+                              <br />
+                              <span className="text-rose-500">
+                                เพิ่มลงตะกร้าได้เลย แต่กด “ยืนยันการสั่งซื้อ” ไม่ได้จนกว่าจะครบ {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")}{" "}
+                                {lotMinRate.pricing.unit}
+                              </span>
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* ── 3 ขั้นตอนสั่ง ── */}
+                      <p className="mt-4 flex items-center gap-2 text-[13px] font-extrabold text-stone-700">
+                        <span className="text-base leading-none">🛒</span> สั่งยังไง — ทำ 3 สเต็ป
+                      </p>
+                      <ol className="mt-2 grid gap-2">
+                        {[
+                          {
+                            t: `ตั้งค่า${lotWord}แรก แล้วกด “🛒 เพิ่มลงตะกร้า”`,
+                            d: "เลือกแบบไดคัท · ขนาด · จำนวน แล้วอัปโหลดภาพลาย (อัปกี่รูป = กี่ลาย)",
+                            tone: "bg-sky-50 ring-sky-200",
+                            pill: "bg-sky-500",
+                          },
+                          {
+                            t: `อยากได้อีก${lotWord} — เปลี่ยนตัวเลือกแล้วกดเพิ่มอีกครั้ง`,
+                            d: `แต่ละ${lotWord}เป็นคนละรายการในตะกร้า แนบลายของตัวเองได้ · ราคาคิดจากยอดรวมทุก${lotWord} ยิ่งเยอะยิ่งถูก`,
+                            tone: "bg-emerald-50 ring-emerald-200",
+                            pill: "bg-emerald-500",
+                          },
+                          {
+                            t: `ครบ ${(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} ${lotMinRate.pricing.unit} แล้วไปที่ตะกร้า กด “✅ ยืนยันการสั่งซื้อ”`,
+                            d: "ยังไม่ครบจะกดยืนยันไม่ได้ — ตะกร้าจะบอกว่าขาดอีกเท่าไหร่ พร้อมปุ่มพากลับมาเลือกเพิ่ม",
+                            tone: "bg-violet-50 ring-violet-200",
+                            pill: "bg-violet-500",
+                          },
+                        ].map((st, i) => (
+                          <li key={st.t} className={`flex gap-2.5 rounded-2xl px-3 py-2.5 ring-1 ${st.tone}`}>
+                            <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-white ${st.pill}`}>
+                              {i + 1}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-[12.5px] font-extrabold leading-snug text-stone-800">{st.t}</span>
+                              <span className="block text-[12px] font-semibold leading-relaxed text-stone-500">{st.d}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                      <div className="mt-2.5 grid gap-1.5 rounded-xl bg-stone-50 px-3 py-2 text-[11.5px] font-semibold leading-relaxed text-stone-500">
+                        <p>
+                          💡 อยากได้ทั้ง {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} {lotMinRate.pricing.unit} เหมือนกันหมด ก็กดจำนวนเป็น{" "}
+                          {(lotMinRate.minQty ?? 1).toLocaleString("th-TH")} แล้วเพิ่มลงตะกร้าครั้งเดียวจบ
+                        </p>
+                        <p>
+                          🛒 ไม่ต้องสั่งครบในรอบเดียว — <strong>เพิ่มลงตะกร้าไว้ก่อนได้</strong> แล้วค่อยกลับมาเติมทีหลัง ระบบนับรวมกับที่อยู่ในตะกร้าแล้วให้
+                          (ขอเป็น{product.lotKeyOptions?.[0] ?? "สเปคหลัก"}เดียวกัน)
+                        </p>
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  blk.items.map(({ opt }) => optionGroupUI(opt))
-                )}
-                {/* 💬 เลือกตัวเลือกที่ต้องคุยกับแอดมิน = บอกตรงนั้นเลย (กล่องยืนยันตัวจริงอยู่ท้ายหน้า) */}
-                {blk.items.some(({ opt }) => consultTriggers.includes(opt.label)) && consultInlineUI}
-                {/* แผงเรทแทรกกลางกลุ่มตัวเลือก — กลุ่มที่อยู่ถัดไปถึงจะขึ้นกับเรทที่เพิ่งเลือกได้ */}
-                {blk.items.some(({ i }) => i === ratePickerAfterIdx) && ratePickerUI}
-              </Fragment>
-            ))}
-          </div>
-
-          {/* สินค้าที่ให้เลือกของก่อน แล้วค่อยเลือกวิธีขาย — แผงเรทมาต่อท้ายกลุ่มตัวเลือก */}
-          {product.rateAfterOptions && ratePickerAfterIdx < 0 && ratePickerUI}
-
-          {/* 📐 กล่องงานสั่งทำ — ปกติต่อท้ายกลุ่มตัวเลือก (mtoFirst = ยกขึ้นไปไว้ก่อนแล้ว) */}
-          {!mtoFirst && mtoBoxUI()}
-
-          {/* งานกำหนดขนาดเอง แบบเดิม (custom) — ช่องกว้าง × ยาว ชุดเดียว */}
-          {custom && (
-            <div className="mt-5 rounded-2xl bg-amber-50/60 p-4 ring-1 ring-amber-200">
-              <label className="flex cursor-pointer items-center gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={useCustom}
-                  onChange={(e) => setUseCustom(e.target.checked)}
-                  className="h-4 w-4 accent-amber-500"
-                />
-                <span className="text-sm font-bold text-stone-700">📐 {custom.label}</span>
-              </label>
-              {custom.note && <p className="mt-1.5 pl-7 text-[11px] text-stone-500">{custom.note}</p>}
-              {useCustom && customChat && (
-                // โหมดคุยกับแอดมิน — ไม่มีอะไรให้กรอก มีแค่ทางลัดไปแชท
-                <div className="mt-3 pl-7">
-                  <p className="text-sm text-sky-800">
-                    💬 งานแบบนี้ขอคุยรายละเอียดกับแอดมินก่อนนะครับ — แจ้งขนาด/แบบที่ต้องการทางไลน์ได้เลย
-                  </p>
-                  <a
-                    href={LINE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
-                  >
-                    💬 ทักไลน์คุยกับแอดมิน
-                  </a>
-                  <p className="mt-1.5 text-[11px] text-stone-500">
-                    หรือกดสั่งไว้ก่อนก็ได้ — แอดมินจะตีราคาให้หลังคุยกันเสร็จ
-                  </p>
-                </div>
+                </section>
               )}
-              {useCustom && !customChat && (
-                <div className="mt-3 pl-7">
-                  <div className="flex flex-wrap items-end gap-2">
-                    <label className="text-xs font-semibold text-stone-600">
-                      กว้าง
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={customW}
-                        onChange={(e) => setCustomW(e.target.value.replace(/[^\d.]/g, ""))}
-                        placeholder="0"
-                        className="mt-1 block w-24 rounded-xl bg-white px-3 py-2 text-sm font-semibold ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                      />
-                    </label>
-                    <span className="pb-2 text-stone-400">×</span>
-                    <label className="text-xs font-semibold text-stone-600">
-                      ยาว
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={customH}
-                        onChange={(e) => setCustomH(e.target.value.replace(/[^\d.]/g, ""))}
-                        placeholder="0"
-                        className="mt-1 block w-24 rounded-xl bg-white px-3 py-2 text-sm font-semibold ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                      />
-                    </label>
-                    <span className="pb-2 text-xs font-semibold text-stone-500">{custom.unit}</span>
-                  </div>
-                  <p className="mt-2 text-sm">
-                    {!customValid ? (
-                      <span className="text-stone-400">
-                        {customUsesMatrix ? "กรอกกว้าง × ยาว ที่ต้องการ" : "กรอกกว้าง × ยาว เพื่อคิดราคา"}
-                      </span>
-                    ) : customSizeErr ? (
-                      <span className="font-semibold text-rose-600">⚠️ {customSizeErr} — ปรับขนาดก่อนถึงจะสั่งได้</span>
-                    ) : custom.mode === "longest" && longestPlan ? (
-                      <span className="text-stone-600">
-                        📐 {cW}×{cH} {custom.unit} → คิดราคาตามด้านที่ยาวที่สุด{" "}
-                        <span className="font-bold">
-                          {longestPlan.overCm > 0
-                            ? `${longestPlan.choice} + ${longestPlan.overCm} ${custom.unit}`
-                            : longestPlan.choice}
-                        </span>{" "}
-                        = <span className="font-extrabold text-amber-600">{formatPrice(unitPrice)}</span> / ชิ้น
-                        {longestPlan.overCm > 0 && (
-                          <span className="text-stone-400">
-                            {" "}
-                            (ฐาน {longestPlan.choice} + ส่วนเกิน {longestPlan.overCm} × {formatPrice(longestPlan.overRate)})
-                          </span>
-                        )}
-                      </span>
-                    ) : custom.mode === "size" ? (
-                      <span className="text-stone-600">
-                        📐 ระบุขนาด <span className="font-bold">{cW}×{cH} {custom.unit}</span> — ราคาคิดตามตารางราคาปกติ
-                      </span>
-                    ) : custom.mode === "area" ? (
+
+              {/* รายละเอียดสินค้า โซน "ข้างแผงสั่งซื้อ" — ท่อนที่แอดมินตั้ง slot: side ไว้ */}
+              {bodyOf("side").length > 0 && <div className="sm:col-span-2">{detailsSection("side", "mt-2")}</div>}
+            </div>
+
+            {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
+            <div className="min-w-0 lg:col-span-4 lg:sticky lg:top-24">
+              <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
+                <div className="mt-4 flex items-baseline gap-2">
+                  {useCustom && customAsk ? (
+                    // ขนาดกำหนดเอง (โหมดตีราคา/คุยกับแอดมิน) — ไม่โชว์ ฿0 ให้งง
+                    <span className="text-xl font-extrabold text-sky-700">{customChat ? "💬 คุยรายละเอียดกับแอดมิน" : "💬 รอแอดมินตีราคา"}</span>
+                  ) : askQuote ? (
+                    // งานสั่งทำตามตัวเลือกที่เลือก — ราคายังไม่มี ไม่โชว์ ฿0 ให้งง
+                    <span className="text-xl font-extrabold text-sky-700">💬 รอแอดมินตีราคา</span>
+                  ) : (
+                    <>
+                      <span className="text-2xl font-extrabold text-amber-600">{formatPrice(unitPrice)}</span>
+                      {matrix ? (
+                        <span className="text-sm font-semibold text-stone-500">/ {matrix.unit}</span>
+                      ) : (
+                        product.oldPrice && <span className="text-base text-stone-400 line-through">{formatPrice(product.oldPrice)}</span>
+                      )}
+                    </>
+                  )}
+                </div>
+                {/* 🔴 หมายเหตุในกล่องราคา (Product.priceNote) เช่น กระดาษเย็บบน "ไม่มีซองให้" */}
+                {product.priceNote?.trim() && <p className="mt-2 text-sm font-bold leading-relaxed text-red-600">{product.priceNote.trim()}</p>}
+                {/* 🧮 สินค้าหลายชิ้นต่อหน่วย (พวงละหลายชิ้น) — บอกยอดชิ้นรวม + ย้ำว่าช่วงราคาคิดตามจำนวนหน่วยขาย */}
+                {product.pieceCountLabel && unitPieceCountOf(product, effective) > 1 && !askQuote && (
+                  <p className="mt-1.5 text-xs leading-relaxed text-stone-500">
+                    🧮 {matrix?.unit ?? "พวง"}ละ {unitPieceCountOf(product, effective)} ชิ้น × {qty.toLocaleString("th-TH")} {matrix?.unit ?? "พวง"} ={" "}
+                    <strong className="font-bold text-stone-600">{(unitPieceCountOf(product, effective) * qty).toLocaleString("th-TH")} ชิ้นรวม</strong> —
+                    ช่วงราคาคิดตามจำนวน{matrix?.unit ?? "พวง"}ที่สั่ง
+                  </p>
+                )}
+                {/* 🧮 มีสินค้านี้ในตะกร้าแล้ว — บอกก่อนกดสั่งว่าจะรวมล็อตคิดเรทตามยอดรวม */}
+                {lotPreview && !askQuote && (
+                  <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800 ring-1 ring-emerald-100">
+                    🧮{" "}
+                    <strong className="font-bold">
+                      ในตะกร้ามีสินค้านี้อยู่แล้ว {lotPreview.cartQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                    </strong>
+                    {lotPreview.retailLine ? (
+                      // จำนวนที่เลือกยังอยู่ช่วงราคาปลีกคละอิสระ — บรรทัดนี้คิดแยก แต่บอกเกณฑ์เริ่มรวมให้รู้
                       <>
-                        ราคา/ชิ้น <span className="font-extrabold text-amber-600">{formatPrice(customPrice)}</span>
-                        <span className="text-stone-400"> · {cW}×{cH} {custom.unit}</span>
+                        {" — "}จำนวน 1-{((lotPreview.mergeFromQty ?? 1) - 1).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}เป็นราคาปลีก คิดแยก
+                        {" · "}สั่งตั้งแต่{" "}
+                        <strong className="font-bold">
+                          {(lotPreview.mergeFromQty ?? 1).toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}ขึ้นไป
+                        </strong>
+                        จะคิดรวมล็อตกับตะกร้า (รวม {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ≈{" "}
+                        <strong className="font-bold">
+                          {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}
+                        </strong>
+                        )
                       </>
                     ) : (
-                      <span className="font-semibold text-amber-600">💬 สอบถามราคา — แอดมินจะตีราคาให้หลังสั่ง</span>
+                      <>
+                        {/* ภาษาง่าย ๆ: นับรวมกับของในตะกร้าเพื่อคิดราคาขั้นบันได (เดิม "ล็อตเดียว 3 ใบ 2 ลาย" ลูกค้างง) */}
+                        {" — "}ระบบนับรวมกับ {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}ที่กำลังเลือกเป็น{" "}
+                        <strong className="font-bold">
+                          {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                        </strong>{" "}
+                        เพื่อคิดราคาตามจำนวนรวม
+                        {lotPreview.unitPrice < unitPrice ? (
+                          <>
+                            {" → "}ราคาลดเหลือ{" "}
+                            <strong className="font-bold">
+                              {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}
+                            </strong>{" "}
+                            <span className="text-stone-400 line-through">{formatPrice(unitPrice)}</span> (ลดให้ในตะกร้า)
+                          </>
+                        ) : (
+                          <>
+                            {" "}
+                            — ตอนนี้ราคายังเท่าเดิม {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"} ยิ่งสั่งรวมเยอะยิ่งถูก
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                {askQuote && !useCustom ? (
+                  <div className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                    <p>
+                      💬 <strong className="font-bold">งานสั่งทำ — สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> กรอกรายละเอียดให้ครบ แล้วกดสั่ง
+                      จากนั้นส่งลิงก์ออเดอร์ให้แอดมินทางไลน์เพื่อตีราคา แล้วหน้าแจ้งโอนถึงจะเปิดให้โอน
+                    </p>
+                    <a
+                      href={LINE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                    >
+                      💬 ทักไลน์สอบถามราคาก่อน
+                    </a>
+                  </div>
+                ) : useCustom ? (
+                  customAsk ? (
+                    // สั้น ๆ: สั่งเลย → copy ลิงก์ออเดอร์ส่งแอดมินให้ใส่ราคา → ค่อยโอน
+                    <p className="mt-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 ring-1 ring-sky-100">
+                      {customChat ? "💬 " : "📐 "}
+                      <strong className="font-bold">สั่งเข้ามาได้เลย ยังไม่ต้องโอน</strong> — หลังสั่งเสร็จ กด{" "}
+                      <strong className="font-bold">คัดลอก (copy) ลิงก์ออเดอร์ส่งให้แอดมินทางไลน์</strong> เพื่อให้ใส่ราคาก่อน แล้วหน้าแจ้งโอนถึงจะเปิดให้โอนได้
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-sky-700">
+                      {custom?.mode === "longest"
+                        ? "📐 กำหนดขนาดเองอยู่ — ราคาคิดจากด้านที่ยาวที่สุด ตามตารางเรทปกติ"
+                        : customUsesMatrix
+                          ? "📐 ระบุขนาดเองอยู่ — ราคายังคิดตามตารางเรทปกติ"
+                          : "📐 ใช้ขนาดกำหนดเองอยู่ — ราคาไม่อิงตัวเลือก/ตารางเรทปกติ"}
+                    </p>
+                  )
+                ) : /* ตารางช่วงเดียว (ทุกจำนวนราคาเดียว) ไม่ได้ "ยิ่งสั่งเยอะยิ่งถูก" — ตกไปใช้ข้อความตามตัวเลือกด้านล่าง */
+                matrix && matrix.tiers.length > 1 ? (
+                  <p className="mt-1 text-xs text-stone-400">
+                    {/* 🏷 ช่วงราคาต้องเป็นตัวเลขเดียวกับการ์ดหน้ารายการ/ชื่อหน้า (priceRange) — เดิมโชว์เฉพาะเรทที่เลือก
+                    การ์ด "฿6 – ฿200" แต่ในหน้า "฿10 – ฿200" ลูกค้าไม่รู้จะเชื่ออันไหน (12 ต.ค. 69)
+                    ⚠️ ใช้ช่วงรวมได้เฉพาะเมื่อทุกเรทหน่วยเดียวกัน (ดู formatMatrixPriceRange) · ตัวแทนเห็นเรทตัวเองเหมือนเดิม */}
+                    💡 ราคา{" "}
+                    {!dealerMode && publicRates(product).every((r) => r.pricing.unit === matrix.unit)
+                      ? formatPriceRange(product)
+                      : formatMatrixPriceRange(product, matrix)}{" "}
+                    ต่อ{matrix.unit} — ยิ่งสั่งเยอะ ยิ่งถูก (ราคาปรับตามจำนวน)
+                  </p>
+                ) : (
+                  priceRange(product).max > priceRange(product).min && (
+                    <p className="mt-1 text-xs text-stone-400">💡 เรทราคา {formatPriceRange(product)} ขึ้นกับตัวเลือกที่เลือก</p>
+                  )
+                )}
+                {dealerMode && (
+                  <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-200">
+                    🤝 ราคาตัวแทนจำหน่าย — ไม่ร่วมส่วนลด/คูปอง/ของแถม
+                  </p>
+                )}
+              </div>
+
+              {/* เลือกเรทราคา — ค่าเริ่มต้นอยู่เหนือกลุ่มตัวเลือก
+              (rateAfterOption = แทรกใต้กลุ่มที่ระบุ · rateAfterOptions = ใต้กลุ่มทั้งหมด) */}
+              {!product.rateAfterOptions && ratePickerAfterIdx < 0 && ratePickerUI}
+
+              {/* ตัวเลือกสินค้า (กรอง/ล็อกตามกฎเงื่อนไข)
+              ใช้ขนาดกำหนดเองอยู่ = ปิดเฉพาะกลุ่มที่แอดมินไม่ได้ตั้งให้ "ยังเลือกได้" (custom.keepOptions) */}
+              {useCustom && (
+                <p className="mt-5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-sky-800 ring-1 ring-sky-200">
+                  📐 กำลังใช้ &ldquo;{custom?.label ?? "กำหนดขนาดเอง"}&rdquo;
+                  {custom?.mode === "longest" ? " — ราคาอิงด้านที่ยาวที่สุด ตามตารางเรทปกติ" : customUsesMatrix ? "" : " — ราคาไม่อิงตารางเรทปกติ"}
+                  {/* ไล่ชื่อจากกลุ่มจริงของสินค้า ไม่ใช่จาก keepOptions ตรง ๆ — ชื่อที่ค้างอยู่แต่ไม่มีกลุ่มแล้วจะได้ไม่โผล่ */}
+                  {(() => {
+                    const kept = product.options.filter((o) => customKeepsOption(custom, o.label)).map((o) => o.label);
+                    return kept.length ? ` · ยังเลือก ${kept.join(" / ")} ได้ตามปกติ ส่วนกลุ่มอื่นถูกปิดไว้` : " ตัวเลือกด้านล่างถูกปิดไว้";
+                  })()}{" "}
+                  (เอาติ๊กออกเพื่อกลับมาเลือกทั้งหมด)
+                </p>
+              )}
+              {/**
+               * 📄 หัว "แผ่นที่ N" — โชว์ตั้งแต่แผ่นแรกเลย ไม่ใช่เฉพาะตอนกด ➕ แล้ว
+               * เพราะหัวใจของความเข้าใจคือ "ตัวเลขนี้เปลี่ยนจาก 1 เป็น 2" ตอนกดปุ่ม —
+               * ถ้าโชว์เฉพาะหลังกด ลูกค้าจะไม่รู้ว่าฟอร์มข้างล่างคือของแผ่นไหน
+               */}
+              {lotMinScope && !designDone && lotDone > 0 && (
+                <div
+                  id="sheet-head"
+                  className={`mt-4 rounded-2xl px-3.5 py-2.5 ring-1 ${lotDone ? "bg-emerald-50 ring-emerald-200" : "bg-stone-50 ring-stone-200"}`}
+                >
+                  <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className={`text-[15px] font-extrabold ${lotDone ? "text-emerald-800" : "text-stone-800"}`}>
+                      {lotEmoji} {lotWord}ที่ {(lotDone + 1).toLocaleString("th-TH")}
+                    </span>
+                    {lotDone > 0 && (
+                      <span className="text-[12px] font-bold text-emerald-700">
+                        · {lotWord}ที่ 1{lotDone > 1 ? `–${lotDone}` : ""} {lotToCart ? "อยู่ในตะกร้าแล้ว" : "เก็บไว้แล้ว"} ✓
+                      </span>
                     )}
                   </p>
-                  {/* งานตีราคา: ลูกค้าส่วนใหญ่อยากรู้ราคาก่อนกดสั่ง — เปิดทางทักไลน์ไว้ตรงนี้เลย */}
-                  {custom.mode === "quote" && (
-                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  {/* ⛔ ไม่ต้องมีบรรทัด "ยังขาด …" ตรงนี้ — ปุ่ม ➕/🛒 แถวปุ่มสั่งบอกอยู่แล้วว่าติดตรงไหน
+                  (ผู้ใช้สั่งเอาออก 30 ส.ค. 69 — ซ้ำซ้อน อ่านสองที่) */}
+                  {lotLockedLabels.length > 0 && (
+                    <p className="mt-1 text-[11px] font-bold text-emerald-700">
+                      🔒 {lotLockedLabels.join(" · ")} ล็อกไว้แล้ว — ทุก{lotWord}ในออเดอร์นี้ต้องเป็นแบบเดียวกัน
+                    </p>
+                  )}
+                </div>
+              )}
+              {mtoFirst && mtoBoxUI()}
+              <div id="opt-groups" className="mt-4 space-y-3">
+                {/* กลุ่มที่ตั้ง "แสดงเมื่อ" ไว้ และเงื่อนไขยังไม่ตรง → ไม่ต้องโชว์ (เช่น สีตะขอของแบบที่ไม่ได้เลือก)
+                🧩 กลุ่มที่ตั้ง "ชุดตัวเลือก" (section) ชื่อเดียวกันและอยู่ติดกัน → ใส่กรอบเดียวมีหัวชุด
+                (สินค้าหลายชิ้นต่อหน่วยมีกลุ่มหน้าตาซ้ำกันทุกชิ้น เรียงแบนแล้วลูกค้าแยกไม่ออกว่าอันไหนของชิ้นไหน) */}
+                {optionBlocks.map((blk) => (
+                  <Fragment key={`blk-${blk.section ?? blk.items[0].opt.label}`}>
+                    {blk.section ? (
+                      (() => {
+                        /* 🧩 ชุดตัวเลือก = กรอบเดียวที่กด "หัวชุด" หุบ/กางได้ (สินค้าหลายชิ้นมีได้ถึง 10 ชุด
+                       กางหมดพร้อมกันแล้วเลื่อนหาชิ้นที่จะแก้ไม่เจอ) · หุบไว้ยังอ่านค่าที่เลือกได้ทุกกลุ่ม
+                       ⚠️ หุบ = ซ่อนการแสดงผลเท่านั้น ค่าที่เลือกไว้ยังคิดราคา/ติดไปกับตะกร้าตามเดิม */
+                        const sec = blk.section as string;
+                        const closed = !!closedSections[sec];
+                        const summary = blk.items
+                          .map(({ opt }) => effective[opt.label])
+                          .filter(Boolean)
+                          .join(" · ");
+                        return (
+                          <section className="rounded-2xl bg-white p-3 ring-1 ring-stone-200">
+                            <button
+                              type="button"
+                              onClick={() => setClosedSections((cur) => ({ ...cur, [sec]: !closed }))}
+                              aria-expanded={!closed}
+                              className={`flex min-h-[44px] w-full items-center gap-2 text-left ${
+                                closed ? "" : "mb-2.5 border-b border-dashed border-stone-200 pb-2"
+                              }`}
+                            >
+                              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-stone-800 text-[11px] font-bold tabular-nums text-white">
+                                {sec.match(/\d+/)?.[0] ?? "•"}
+                              </span>
+                              <span className="shrink-0 text-[13px] font-bold text-stone-700">{sec}</span>
+                              {closed && summary && <span className="min-w-0 flex-1 truncate text-[11px] text-stone-500">{summary}</span>}
+                              <span className="ml-auto shrink-0 pl-1 text-[11px] font-semibold text-stone-400">{closed ? "กาง ▾" : "หุบ ▴"}</span>
+                            </button>
+                            {/* ✍️ ชุดที่มีแต่ช่องกรอก (กว้าง+สูง) — กรอบชุดครอบให้แล้ว ไม่ต้องมีกรอบซ้อนอีกชั้น
+                            คั่นด้วยเส้นประเหมือนช่องกรอกที่ต่อกันมานอกชุด (ชุดที่ปนปุ่มยังใส่กรอบตามเดิม) */}
+                            {!closed &&
+                              (blk.items.every(({ opt }) => isInputOption(opt)) ? (
+                                <div className="divide-y divide-dashed divide-stone-200 [&>*:not(:last-child)]:pb-3 [&>*+*]:pt-3">
+                                  {blk.items.map(({ opt }) => optionGroupUI(opt, false))}
+                                </div>
+                              ) : (
+                                <div className="space-y-3">{blk.items.map(({ opt }) => optionGroupUI(opt))}</div>
+                              ))}
+                          </section>
+                        );
+                      })()
+                    ) : blk.inputs ? (
+                      /* ✍️ ช่องกรอกที่ต่อกันมา — กรอบเดียวครอบทั้งชุด คั่นแต่ละช่องด้วยเส้นประ */
+                      <div className="rounded-2xl bg-white/60 p-2.5 ring-1 ring-stone-200">
+                        <div className="divide-y divide-dashed divide-stone-200 [&>*:not(:last-child)]:pb-3 [&>*+*]:pt-3">
+                          {blk.items.map(({ opt }) => optionGroupUI(opt, false))}
+                        </div>
+                      </div>
+                    ) : (
+                      blk.items.map(({ opt }) => optionGroupUI(opt))
+                    )}
+                    {/* 💬 เลือกตัวเลือกที่ต้องคุยกับแอดมิน = บอกตรงนั้นเลย (กล่องยืนยันตัวจริงอยู่ท้ายหน้า) */}
+                    {blk.items.some(({ opt }) => consultTriggers.includes(opt.label)) && consultInlineUI}
+                    {/* แผงเรทแทรกกลางกลุ่มตัวเลือก — กลุ่มที่อยู่ถัดไปถึงจะขึ้นกับเรทที่เพิ่งเลือกได้ */}
+                    {blk.items.some(({ i }) => i === ratePickerAfterIdx) && ratePickerUI}
+                  </Fragment>
+                ))}
+              </div>
+
+              {/* สินค้าที่ให้เลือกของก่อน แล้วค่อยเลือกวิธีขาย — แผงเรทมาต่อท้ายกลุ่มตัวเลือก */}
+              {product.rateAfterOptions && ratePickerAfterIdx < 0 && ratePickerUI}
+
+              {/* 📐 กล่องงานสั่งทำ — ปกติต่อท้ายกลุ่มตัวเลือก (mtoFirst = ยกขึ้นไปไว้ก่อนแล้ว) */}
+              {!mtoFirst && mtoBoxUI()}
+
+              {/* งานกำหนดขนาดเอง แบบเดิม (custom) — ช่องกว้าง × ยาว ชุดเดียว */}
+              {custom && (
+                <div className="mt-5 rounded-2xl bg-amber-50/60 p-4 ring-1 ring-amber-200">
+                  <label className="flex cursor-pointer items-center gap-2.5">
+                    <input type="checkbox" checked={useCustom} onChange={(e) => setUseCustom(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+                    <span className="text-sm font-bold text-stone-700">📐 {custom.label}</span>
+                  </label>
+                  {custom.note && <p className="mt-1.5 pl-7 text-[11px] text-stone-500">{custom.note}</p>}
+                  {useCustom && customChat && (
+                    // โหมดคุยกับแอดมิน — ไม่มีอะไรให้กรอก มีแค่ทางลัดไปแชท
+                    <div className="mt-3 pl-7">
+                      <p className="text-sm text-sky-800">💬 งานแบบนี้ขอคุยรายละเอียดกับแอดมินก่อนนะครับ — แจ้งขนาด/แบบที่ต้องการทางไลน์ได้เลย</p>
                       <a
                         href={LINE_URL}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
                       >
-                        💬 ทักไลน์สอบถามราคา
+                        💬 ทักไลน์คุยกับแอดมิน
                       </a>
-                      <span className="text-[11px] text-stone-500">
-                        {customValid
-                          ? `ส่งขนาด ${cW}×${cH} ${custom.unit} ให้แอดมินดูก่อนได้`
-                          : "อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย"}
-                      </span>
+                      <p className="mt-1.5 text-[11px] text-stone-500">หรือกดสั่งไว้ก่อนก็ได้ — แอดมินจะตีราคาให้หลังคุยกันเสร็จ</p>
+                    </div>
+                  )}
+                  {useCustom && !customChat && (
+                    <div className="mt-3 pl-7">
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="text-xs font-semibold text-stone-600">
+                          กว้าง
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={customW}
+                            onChange={(e) => setCustomW(e.target.value.replace(/[^\d.]/g, ""))}
+                            placeholder="0"
+                            className="mt-1 block w-24 rounded-xl bg-white px-3 py-2 text-sm font-semibold ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                          />
+                        </label>
+                        <span className="pb-2 text-stone-400">×</span>
+                        <label className="text-xs font-semibold text-stone-600">
+                          ยาว
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={customH}
+                            onChange={(e) => setCustomH(e.target.value.replace(/[^\d.]/g, ""))}
+                            placeholder="0"
+                            className="mt-1 block w-24 rounded-xl bg-white px-3 py-2 text-sm font-semibold ring-1 ring-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                          />
+                        </label>
+                        <span className="pb-2 text-xs font-semibold text-stone-500">{custom.unit}</span>
+                      </div>
+                      <p className="mt-2 text-sm">
+                        {!customValid ? (
+                          <span className="text-stone-400">{customUsesMatrix ? "กรอกกว้าง × ยาว ที่ต้องการ" : "กรอกกว้าง × ยาว เพื่อคิดราคา"}</span>
+                        ) : customSizeErr ? (
+                          <span className="font-semibold text-rose-600">⚠️ {customSizeErr} — ปรับขนาดก่อนถึงจะสั่งได้</span>
+                        ) : custom.mode === "longest" && longestPlan ? (
+                          <span className="text-stone-600">
+                            📐 {cW}×{cH} {custom.unit} → คิดราคาตามด้านที่ยาวที่สุด{" "}
+                            <span className="font-bold">
+                              {longestPlan.overCm > 0 ? `${longestPlan.choice} + ${longestPlan.overCm} ${custom.unit}` : longestPlan.choice}
+                            </span>{" "}
+                            = <span className="font-extrabold text-amber-600">{formatPrice(unitPrice)}</span> / ชิ้น
+                            {longestPlan.overCm > 0 && (
+                              <span className="text-stone-400">
+                                {" "}
+                                (ฐาน {longestPlan.choice} + ส่วนเกิน {longestPlan.overCm} × {formatPrice(longestPlan.overRate)})
+                              </span>
+                            )}
+                          </span>
+                        ) : custom.mode === "size" ? (
+                          <span className="text-stone-600">
+                            📐 ระบุขนาด{" "}
+                            <span className="font-bold">
+                              {cW}×{cH} {custom.unit}
+                            </span>{" "}
+                            — ราคาคิดตามตารางราคาปกติ
+                          </span>
+                        ) : custom.mode === "area" ? (
+                          <>
+                            ราคา/ชิ้น <span className="font-extrabold text-amber-600">{formatPrice(customPrice)}</span>
+                            <span className="text-stone-400">
+                              {" "}
+                              · {cW}×{cH} {custom.unit}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-semibold text-amber-600">💬 สอบถามราคา — แอดมินจะตีราคาให้หลังสั่ง</span>
+                        )}
+                      </p>
+                      {/* งานตีราคา: ลูกค้าส่วนใหญ่อยากรู้ราคาก่อนกดสั่ง — เปิดทางทักไลน์ไว้ตรงนี้เลย */}
+                      {custom.mode === "quote" && (
+                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                          <a
+                            href={LINE_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[#06C755] px-4 py-2 text-xs font-bold text-white transition hover:brightness-95"
+                          >
+                            💬 ทักไลน์สอบถามราคา
+                          </a>
+                          <span className="text-[11px] text-stone-500">
+                            {customValid ? `ส่งขนาด ${cW}×${cH} ${custom.unit} ให้แอดมินดูก่อนได้` : "อยากรู้ราคาก่อนสั่ง ทักมาถามได้เลย"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ═══ สั่งจำนวนมาก → ชวนเช็คสต๊อกก่อน (ไม่บล็อกการสั่ง) ═══ */}
-          {bulkAsk && (
-            <div ref={bulkBoxRef}>
-              <StockCheckNote
-                className="mt-5"
-                title={`📦 สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ`}
-              />
-            </div>
-          )}
-
-          {!studioMode && artSection}
-          {artChoiceUI}
-
-          {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
-          <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
-            {/* ✏️ มาจากปุ่ม "แก้ไข" ในตะกร้า — ต้องบอกให้ชัดว่ากดบันทึกแล้วทับบรรทัดเดิม ไม่ใช่เพิ่มใบใหม่ */}
-            {editing && (
-              <div className="mb-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
-                <p className="text-[12px] font-extrabold text-sky-900">✏️ กำลังแก้ไขรายการในตะกร้า</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-sky-800">
-                  ตัวเลือก จำนวน และลายที่แนบไว้ ถูกติ๊กกลับมาให้แล้ว — ปรับตรงไหนก็ได้ แล้วกด “💾 บันทึกการแก้ไข”
-                  ระบบจะแทนที่บรรทัดเดิมในตะกร้าให้ (ไม่เพิ่มเป็นรายการใหม่)
-                </p>
-                <Link href="/cart" className="mt-1.5 inline-block text-[11px] font-bold text-sky-700 underline">
-                  ← ยกเลิก กลับไปตะกร้าโดยไม่แก้
-                </Link>
-              </div>
-            )}
-            {/* 🧾 เปิดมาจากลิงก์ราคาที่ร้านส่งให้ — บอกลูกค้าว่าของที่ติ๊กไว้มาจากไหน จะได้ไม่นึกว่าเว็บสุ่มมาให้ */}
-            {fromPriceLink && (
-              <div className="mb-3 rounded-2xl bg-amber-50 p-2.5 ring-1 ring-amber-200">
-                <p className="text-[12px] font-extrabold text-amber-900">🧾 ราคานี้ทางร้านจัดสเปคไว้ให้แล้ว</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
-                  ตัวเลือกกับจำนวนถูกติ๊กไว้ตามที่คุยกันไว้ — กดเพิ่มลงตะกร้าได้เลย หรือปรับเปลี่ยนเองก็ได้ ราคาจะขยับตามให้อัตโนมัติ
-                </p>
-                {/* วางลายไว้ตั้งแต่บนการ์ดราคา — บอกให้รู้ว่าไฟล์ตามมาแล้ว จะได้ไม่แนบซ้ำ */}
-                {linkArtCount > 0 && (
-                  <p className="mt-1 text-[11px] font-extrabold text-emerald-700">
-                    🎨 ลายที่คุณวางไว้บนใบราคา {linkArtCount} รูป แนบมาให้แล้ว — ดูได้ที่กล่อง “แนบลายของคุณ”
-                  </p>
-                )}
-              </div>
-            )}
-            {/* ═══ สลับโหมดสั่งของ (เห็นเฉพาะพนักงานที่ล็อกอินหลังบ้าน) ═══
-                 โหมดลูกค้า = เห็นหน้าเหมือนลูกค้าเป๊ะ ๆ · โหมดแอดมิน = สั่งแทนลูกค้า ข้ามขั้นวางลาย */}
-            {isAdmin && (
-              <div className="mb-3 rounded-2xl bg-sky-50 p-2 ring-1 ring-sky-200">
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0 px-1 text-[11px] font-extrabold text-sky-900">โหมดสั่งของ</span>
-                  <div className="ml-auto flex rounded-full bg-white p-0.5 ring-1 ring-sky-200">
-                    <button
-                      type="button"
-                      onClick={() => switchAdminMode(false)}
-                      aria-pressed={!adminMode}
-                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                        adminMode ? "text-stone-500 hover:bg-sky-50" : "bg-sky-600 text-white"
-                      }`}
-                    >
-                      👤 ลูกค้า
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => switchAdminMode(true)}
-                      aria-pressed={adminMode}
-                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                        adminMode ? "bg-sky-600 text-white" : "text-stone-500 hover:bg-sky-50"
-                      }`}
-                    >
-                      🧑‍💼 แอดมิน
-                    </button>
-                  </div>
+              {/* ═══ สั่งจำนวนมาก → ชวนเช็คสต๊อกก่อน (ไม่บล็อกการสั่ง) ═══ */}
+              {bulkAsk && (
+                <div ref={bulkBoxRef}>
+                  <StockCheckNote
+                    className="mt-5"
+                    title={`📦 สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} — รบกวนเช็คสต๊อกกับแอดมินก่อนนะครับ`}
+                  />
                 </div>
-                <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
-                  {adminMode
-                    ? "🧑‍💼 สั่งแทนลูกค้า — ไม่ต้องแนบลาย (ตอนชำระเงินติ๊ก “สั่งแทนลูกค้า” ด้วย)"
-                    : "👤 เห็นเหมือนลูกค้า — สลับเป็นแอดมินเมื่อสั่งแทน"}
-                </p>
+              )}
 
-                {/* 🔗 ส่งราคานี้ให้ลูกค้า — คัดลอกสเปค+ราคา+ลิงก์ที่ติ๊กไว้ให้แล้ว ไปวางในไลน์ได้เลย
-                     (แทนการ screenshot: ลูกค้ากดเข้าไปสั่งต่อได้ทันที ไม่ต้องเลือกตัวเลือกเองใหม่) */}
-                <div className="mt-2 border-t border-sky-200 pt-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void copyPriceLink()}
-                      disabled={priceBusy}
-                      className="rounded-full bg-sky-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
-                    >
-                      {priceBusy ? "⏳ กำลังสร้างลิงก์…" : "🔗 คัดลอกลิงก์ราคา"}
-                    </button>
-                    {priceCopied === "err" ? (
-                      <span className="text-[11px] font-bold text-rose-600">คัดลอกไม่ได้ — กดค้างเลือกคัดลอกเอง</span>
-                    ) : priceCopied === "long" ? (
-                      <span className="text-[11px] font-bold text-amber-700">
-                        ✓ คัดลอกแล้ว (ลิงก์ยาว — ยังไม่ได้รัน price-links.sql)
-                      </span>
-                    ) : priceCopied ? (
-                      <span className="text-[11px] font-bold text-emerald-600">✓ คัดลอกแล้ว วางในไลน์ได้เลย</span>
-                    ) : null}
-                  </div>
-                  <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
-                    วางในไลน์ = การ์ดสเปค+ราคา ลูกค้ากดสั่งต่อได้เลย · ยืนราคา 7 วัน · ดูว่าเปิดหรือยังที่{" "}
-                    <Link href="/admin/price-links" className="font-bold underline">
-                      ลิงก์ราคา
+              {!studioMode && artSection}
+              {artChoiceUI}
+
+              {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
+              <div ref={orderBoxRef} className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
+                {/* ✏️ มาจากปุ่ม "แก้ไข" ในตะกร้า — ต้องบอกให้ชัดว่ากดบันทึกแล้วทับบรรทัดเดิม ไม่ใช่เพิ่มใบใหม่ */}
+                {editing && (
+                  <div className="mb-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
+                    <p className="text-[12px] font-extrabold text-sky-900">✏️ กำลังแก้ไขรายการในตะกร้า</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-sky-800">
+                      ตัวเลือก จำนวน และลายที่แนบไว้ ถูกติ๊กกลับมาให้แล้ว — ปรับตรงไหนก็ได้ แล้วกด “💾 บันทึกการแก้ไข” ระบบจะแทนที่บรรทัดเดิมในตะกร้าให้
+                      (ไม่เพิ่มเป็นรายการใหม่)
+                    </p>
+                    <Link href="/cart" className="mt-1.5 inline-block text-[11px] font-bold text-sky-700 underline">
+                      ← ยกเลิก กลับไปตะกร้าโดยไม่แก้
                     </Link>
-                  </p>
-                </div>
-
-                {/* 🧺 ใบรวม — ลูกค้าคนเดียวสั่งหลายอย่าง: กด "เพิ่มเข้าใบรวม" ที่สินค้าแต่ละตัว
-                     แล้วคัดลอกลิงก์เดียวตอนจบ (ใบรวมติดตัวข้ามหน้าสินค้า เก็บไว้ในเครื่อง 1 วัน) */}
-                <div className="mt-2 border-t border-sky-200 pt-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void addToBundle()}
-                      disabled={priceBusy}
-                      className="rounded-full bg-white px-3.5 py-1.5 text-[11px] font-bold text-sky-800 ring-1 ring-sky-300 transition hover:bg-sky-100 disabled:opacity-50"
-                    >
-                      ➕ เพิ่มเข้าใบรวม
-                    </button>
-                    {bundleCodes.length > 0 && (
-                      <>
-                        <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[11px] font-extrabold text-white">
-                          🧺 ใบรวม {bundleCodes.length} รายการ
-                        </span>
+                  </div>
+                )}
+                {/* 🧾 เปิดมาจากลิงก์ราคาที่ร้านส่งให้ — บอกลูกค้าว่าของที่ติ๊กไว้มาจากไหน จะได้ไม่นึกว่าเว็บสุ่มมาให้ */}
+                {fromPriceLink && (
+                  <div className="mb-3 rounded-2xl bg-amber-50 p-2.5 ring-1 ring-amber-200">
+                    <p className="text-[12px] font-extrabold text-amber-900">🧾 ราคานี้ทางร้านจัดสเปคไว้ให้แล้ว</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
+                      ตัวเลือกกับจำนวนถูกติ๊กไว้ตามที่คุยกันไว้ — กดเพิ่มลงตะกร้าได้เลย หรือปรับเปลี่ยนเองก็ได้ ราคาจะขยับตามให้อัตโนมัติ
+                    </p>
+                    {/* วางลายไว้ตั้งแต่บนการ์ดราคา — บอกให้รู้ว่าไฟล์ตามมาแล้ว จะได้ไม่แนบซ้ำ */}
+                    {linkArtCount > 0 && (
+                      <p className="mt-1 text-[11px] font-extrabold text-emerald-700">
+                        🎨 ลายที่คุณวางไว้บนใบราคา {linkArtCount} รูป แนบมาให้แล้ว — ดูได้ที่กล่อง “แนบลายของคุณ”
+                      </p>
+                    )}
+                  </div>
+                )}
+                {/* ═══ สลับโหมดสั่งของ (เห็นเฉพาะพนักงานที่ล็อกอินหลังบ้าน) ═══
+                 โหมดลูกค้า = เห็นหน้าเหมือนลูกค้าเป๊ะ ๆ · โหมดแอดมิน = สั่งแทนลูกค้า ข้ามขั้นวางลาย */}
+                {isAdmin && (
+                  <div className="mb-3 rounded-2xl bg-sky-50 p-2 ring-1 ring-sky-200">
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 px-1 text-[11px] font-extrabold text-sky-900">โหมดสั่งของ</span>
+                      <div className="ml-auto flex rounded-full bg-white p-0.5 ring-1 ring-sky-200">
                         <button
                           type="button"
-                          onClick={() => void copyBundleLink()}
-                          disabled={priceBusy || bundleCodes.length < 2}
-                          className="rounded-full bg-sky-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-40"
-                          title={bundleCodes.length < 2 ? "ต้องมีอย่างน้อย 2 รายการถึงจะรวมได้" : undefined}
+                          onClick={() => switchAdminMode(false)}
+                          aria-pressed={!adminMode}
+                          className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                            adminMode ? "text-stone-500 hover:bg-sky-50" : "bg-sky-600 text-white"
+                          }`}
                         >
-                          📤 คัดลอกลิงก์ใบรวม
+                          👤 ลูกค้า
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => switchAdminMode(true)}
+                          aria-pressed={adminMode}
+                          className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                            adminMode ? "bg-sky-600 text-white" : "text-stone-500 hover:bg-sky-50"
+                          }`}
+                        >
+                          🧑‍💼 แอดมิน
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
+                      {adminMode
+                        ? "🧑‍💼 สั่งแทนลูกค้า — ไม่ต้องแนบลาย (ตอนชำระเงินติ๊ก “สั่งแทนลูกค้า” ด้วย)"
+                        : "👤 เห็นเหมือนลูกค้า — สลับเป็นแอดมินเมื่อสั่งแทน"}
+                    </p>
+
+                    {/* 🔗 ส่งราคานี้ให้ลูกค้า — คัดลอกสเปค+ราคา+ลิงก์ที่ติ๊กไว้ให้แล้ว ไปวางในไลน์ได้เลย
+                     (แทนการ screenshot: ลูกค้ากดเข้าไปสั่งต่อได้ทันที ไม่ต้องเลือกตัวเลือกเองใหม่) */}
+                    <div className="mt-2 border-t border-sky-200 pt-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => void copyPriceLink()}
+                          disabled={priceBusy}
+                          className="rounded-full bg-sky-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                        >
+                          {priceBusy ? "⏳ กำลังสร้างลิงก์…" : "🔗 คัดลอกลิงก์ราคา"}
+                        </button>
+                        {priceCopied === "err" ? (
+                          <span className="text-[11px] font-bold text-rose-600">คัดลอกไม่ได้ — กดค้างเลือกคัดลอกเอง</span>
+                        ) : priceCopied === "long" ? (
+                          <span className="text-[11px] font-bold text-amber-700">✓ คัดลอกแล้ว (ลิงก์ยาว — ยังไม่ได้รัน price-links.sql)</span>
+                        ) : priceCopied ? (
+                          <span className="text-[11px] font-bold text-emerald-600">✓ คัดลอกแล้ว วางในไลน์ได้เลย</span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
+                        วางในไลน์ = การ์ดสเปค+ราคา ลูกค้ากดสั่งต่อได้เลย · ยืนราคา 7 วัน · ดูว่าเปิดหรือยังที่{" "}
+                        <Link href="/admin/price-links" className="font-bold underline">
+                          ลิงก์ราคา
+                        </Link>
+                      </p>
+                    </div>
+
+                    {/* 🧺 ใบรวม — ลูกค้าคนเดียวสั่งหลายอย่าง: กด "เพิ่มเข้าใบรวม" ที่สินค้าแต่ละตัว
+                     แล้วคัดลอกลิงก์เดียวตอนจบ (ใบรวมติดตัวข้ามหน้าสินค้า เก็บไว้ในเครื่อง 1 วัน) */}
+                    <div className="mt-2 border-t border-sky-200 pt-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => void addToBundle()}
+                          disabled={priceBusy}
+                          className="rounded-full bg-white px-3.5 py-1.5 text-[11px] font-bold text-sky-800 ring-1 ring-sky-300 transition hover:bg-sky-100 disabled:opacity-50"
+                        >
+                          ➕ เพิ่มเข้าใบรวม
+                        </button>
+                        {bundleCodes.length > 0 && (
+                          <>
+                            <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[11px] font-extrabold text-white">
+                              🧺 ใบรวม {bundleCodes.length} รายการ
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void copyBundleLink()}
+                              disabled={priceBusy || bundleCodes.length < 2}
+                              className="rounded-full bg-sky-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-40"
+                              title={bundleCodes.length < 2 ? "ต้องมีอย่างน้อย 2 รายการถึงจะรวมได้" : undefined}
+                            >
+                              📤 คัดลอกลิงก์ใบรวม
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                clearPriceLinkBasket();
+                                setBundleCodes([]);
+                                setBundleMsg("ล้างใบรวมแล้ว");
+                              }}
+                              className="rounded-full px-2 py-1 text-[11px] font-bold text-stone-500 underline"
+                            >
+                              ล้าง
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {bundleMsg && <p className="mt-1 px-1 text-[11px] font-bold text-sky-900">{bundleMsg}</p>}
+                      <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
+                        หลายสินค้าในลิงก์เดียว: ติ๊กสเปค → <b>เพิ่มเข้าใบรวม</b> ทีละตัว → <b>คัดลอกลิงก์ใบรวม</b> · อย่างน้อย 2 รายการ · เก็บไว้ 1 วัน
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/**
+                 * 🛒 โหมดหย่อนลงตะกร้าทันที — ของที่ใส่ไปแล้วอยู่ในตะกร้า ไม่ได้ค้างในหน้านี้
+                 * สรุปสั้น ๆ ว่าใส่ไปกี่{lotWord}/กี่ชิ้นแล้ว พร้อมทางไปแก้จำนวนที่ตะกร้า
+                 */}
+                {lotToCart && cartLot.lines > 0 && !designDone && (
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
+                    <p className="text-[12.5px] font-extrabold text-emerald-800">
+                      🛒 ในตะกร้าแล้ว {cartLot.lines.toLocaleString("th-TH")} {lotWord} · รวม {cartLot.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                      <span className="block text-[11px] font-semibold text-emerald-700">ราคาขั้นบันไดคิดจากยอดรวมในตะกร้า — เพิ่ม{lotWord}ต่อได้เรื่อย ๆ</span>
+                    </p>
+                    <Link
+                      href="/cart"
+                      className="shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[11.5px] font-bold text-emerald-700 ring-1 ring-emerald-300 transition hover:bg-emerald-100"
+                    >
+                      ดู/แก้จำนวนในตะกร้า →
+                    </Link>
+                  </div>
+                )}
+
+                {/**
+                 * 📄 รายการแผ่นที่จะสั่งรอบนี้ — พูดเป็น "แผ่นที่ 1 / 2 / 3" ให้ตรงกับหัวฟอร์มด้านบน
+                 * ลูกค้าจะได้เชื่อมได้ว่า "ที่กำลังกรอกอยู่ = แผ่นสุดท้ายในลิสต์นี้"
+                 */}
+                {sheetRoll && (
+                  <div className="mb-3 rounded-2xl bg-white p-3 ring-1 ring-amber-200">
+                    <p className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px] font-extrabold text-stone-800">
+                      <span>
+                        {lotEmoji} {lotWord}ที่จะสั่งรอบนี้
+                      </span>
+                      <span className={lotShortNeed > 0 ? "text-amber-700" : "text-emerald-700"}>
+                        รวม {sheetRoll.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                        {rateMinQty > 1 && (lotShortNeed > 0 ? ` · ขาดอีก ${lotShortNeed.toLocaleString("th-TH")}` : ` · ครบขั้นต่ำแล้ว ✓`)}
+                      </span>
+                    </p>
+                    <ul className="mt-2 grid gap-1.5">
+                      {sheets.map((sh, i) => (
+                        <li key={sh.id} className="flex items-center gap-2 rounded-xl bg-emerald-50 px-2.5 py-1.5 text-[12px] ring-1 ring-emerald-100">
+                          <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-extrabold text-white">{i + 1}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-bold text-stone-800">{sheetSpecText(sh.selections) || "ตามตัวเลือกที่เลือก"}</span>
+                            <span className="block text-[11px] font-semibold text-stone-500">
+                              {sh.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} × {formatPrice(sheetRoll.rows[i].unitPrice)}
+                              {sheetRoll.rows[i].extraFee > 0 && <> + ค่าคละลาย {formatPrice(sheetRoll.rows[i].extraFee)}</>}
+                              {/* ลายของแผ่นนี้ — ยืนยันให้เห็นว่าแต่ละแผ่นมีลายของตัวเองแล้ว */}
+                              {(() => {
+                                // นับรวมทั้ง 2 ด้าน — งานพิมพ์ 2 ด้านเก็บลายด้านหลังไว้อีกคีย์
+                                const imgs = parseArtUrls(sh.selections[ART_LABEL]).length + parseArtUrls(sh.selections[ART_BACK_LABEL]).length;
+                                const link = (sh.selections["ลิงก์ไฟล์ลาย/อีเมล"] ?? "").trim();
+                                if (!imgs && !link) return null;
+                                return <span className="ml-1.5 text-emerald-700">· 🖼 {imgs ? `ลาย ${imgs.toLocaleString("th-TH")} รูป` : "ลายทางลิงก์"}</span>;
+                              })()}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSheets((cur) => [...cur, { ...sh, id: `${sh.id}-c${cur.length}` }])}
+                            className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
+                            aria-label={`สั่ง${lotWord}ที่ ${i + 1} ซ้ำอีก${lotWord}`}
+                          >
+                            ⧉ ซ้ำ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSheets((cur) => cur.filter((x) => x.id !== sh.id))}
+                            className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                            aria-label={`เอา${lotWord}ที่ ${i + 1} ออก`}
+                          >
+                            ✕
+                          </button>
+                        </li>
+                      ))}
+                      {/* แผ่นที่กำลังกรอกอยู่ตอนนี้ = แถวสุดท้าย · ยังกรอกไม่ครบก็บอกตรง ๆ ว่ายังไม่นับ */}
+                      <li
+                        className={`flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-[12px] ring-1 ${
+                          sheetRoll.withCurrent ? "bg-amber-50 ring-amber-200" : "bg-stone-50 ring-stone-200"
+                        }`}
+                      >
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-extrabold text-white ${
+                            sheetRoll.withCurrent ? "bg-amber-500" : "bg-stone-300"
+                          }`}
+                        >
+                          {sheets.length + 1}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className={`block font-bold ${sheetRoll.withCurrent ? "text-amber-900" : "text-stone-500"}`}>
+                            {sheetSpecText(pricingSelections) || "ตามตัวเลือกที่เลือก"}
+                          </span>
+                          <span className={`block text-[11px] font-semibold ${sheetRoll.withCurrent ? "text-amber-700" : "text-stone-400"}`}>
+                            {sheetRoll.withCurrent
+                              ? `${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} · ⬆ กำลังกรอก${lotWord}นี้อยู่`
+                              : `⬆ กำลังกรอก${lotWord}นี้อยู่ — ยังไม่ครบ เลยยังไม่นับรวม`}
+                          </span>
+                        </span>
+                      </li>
+                    </ul>
+                    <p className="mt-2 flex items-center justify-between text-[13px] font-extrabold text-stone-800">
+                      <span>รวมรอบนี้</span>
+                      <span className="text-amber-600">{formatPrice(sheetRoll.total)}</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSheets([])}
+                      className="mt-1.5 text-[11px] font-bold text-stone-400 underline decoration-stone-300 underline-offset-4 transition hover:text-stone-600"
+                    >
+                      ↺ เริ่มใหม่ทั้งหมด (ปลดล็อก{(product.lotKeyOptions ?? []).join(" · ") || "ตัวเลือกหลัก"})
+                    </button>
+                  </div>
+                )}
+
+                {/* จำนวน + เพิ่มลงตะกร้า */}
+                <div>
+                  {matrix && !designDone && (
+                    <label className="mb-1 flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-bold text-stone-700">
+                      <span>จำนวน ({matrix.unit})</span>
+                      {/* กำกับขั้นต่ำไว้ตรงนี้ เพราะช่องจำนวนเริ่มที่ 1 แล้ว ต้องบอกตั้งแต่ก่อนกด */}
+                      {lotMinScope && rateMinQty > 1 && (
+                        <span className="text-[11.5px] font-bold text-amber-700">
+                          · สั่งขั้นต่ำ {rateMinQty.toLocaleString("th-TH")} {matrix.unit}
+                          {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""}
+                        </span>
+                      )}
+                    </label>
+                  )}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* มีลายแล้ว = คุมจำนวนที่ลายแต่ละอันแทน (กันตัวเลขสองที่ไม่ตรงกัน) */}
+                    {!designDone && (
+                      <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
+                        <button
+                          type="button"
+                          // ลดได้ถึง 1 เสมอ — ถ้าต่ำกว่าขั้นต่ำของเรทที่เลือกไว้ ระบบจะสลับลงเรทที่เหมาะเอง
+                          // (สินค้าที่ตั้ง hardMinQty ลดได้แค่ถึงขั้นต่ำจริงของเรท เช่น 3 แผ่น A3)
+                          onClick={() => {
+                            if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
+                            setQtyTouched(true);
+                            setQty((q) => Math.max(qtyFloor, q - 1));
+                          }}
+                          aria-disabled={areaQty != null || qty <= qtyFloor}
+                          className={`h-10 w-10 rounded-l-full text-base font-bold ${areaQty != null ? "cursor-not-allowed text-stone-300" : "text-stone-600 hover:bg-amber-50"}`}
+                          aria-label="ลดจำนวน"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={qtyText}
+                          readOnly={areaQty != null}
+                          onChange={(e) => {
+                            if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
+                            // ปล่อยให้ลบจนว่างได้ระหว่างพิมพ์ (เดิมยัด 1 กลับทันที ลบแล้วพิมพ์ใหม่ไม่ได้)
+                            setQtyTouched(true);
+                            const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
+                            setQtyText(raw);
+                            const n = parseInt(raw, 10);
+                            if (Number.isFinite(n) && n > 0) setQty(Math.min(n, 99999));
+                          }}
+                          // พิมพ์ต่ำกว่าขั้นต่ำได้ระหว่างแก้ — ออกจากช่องแล้วค่อยดันขึ้นให้ถึงขั้นต่ำ
+                          onBlur={() => {
+                            if (areaQty != null) return;
+                            const fixed = Math.max(qtyFloor, qty);
+                            setQty(fixed);
+                            setQtyText(String(fixed));
+                          }}
+                          className="w-14 bg-transparent text-center text-sm font-bold focus:outline-none"
+                          aria-label="จำนวน"
+                        />
                         <button
                           type="button"
                           onClick={() => {
-                            clearPriceLinkBasket();
-                            setBundleCodes([]);
-                            setBundleMsg("ล้างใบรวมแล้ว");
+                            if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
+                            setQtyTouched(true);
+                            setQty((q) => Math.min(matrix ? 99999 : 99, q + 1));
                           }}
-                          className="rounded-full px-2 py-1 text-[11px] font-bold text-stone-500 underline"
+                          aria-disabled={areaQty != null}
+                          className={`h-10 w-10 rounded-r-full text-base font-bold ${areaQty != null ? "cursor-not-allowed text-stone-300" : "text-stone-600 hover:bg-amber-50"}`}
+                          aria-label="เพิ่มจำนวน"
                         >
-                          ล้าง
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {bundleMsg && (
-                    <p className="mt-1 px-1 text-[11px] font-bold text-sky-900">{bundleMsg}</p>
-                  )}
-                  <p className="mt-1.5 px-1 text-[10.5px] leading-relaxed text-sky-800">
-                    หลายสินค้าในลิงก์เดียว: ติ๊กสเปค → <b>เพิ่มเข้าใบรวม</b> ทีละตัว → <b>คัดลอกลิงก์ใบรวม</b> ·
-                    อย่างน้อย 2 รายการ · เก็บไว้ 1 วัน
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/**
-              * 🛒 โหมดหย่อนลงตะกร้าทันที — ของที่ใส่ไปแล้วอยู่ในตะกร้า ไม่ได้ค้างในหน้านี้
-              * สรุปสั้น ๆ ว่าใส่ไปกี่{lotWord}/กี่ชิ้นแล้ว พร้อมทางไปแก้จำนวนที่ตะกร้า
-              */}
-            {lotToCart && cartLot.lines > 0 && !designDone && (
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
-                <p className="text-[12.5px] font-extrabold text-emerald-800">
-                  🛒 ในตะกร้าแล้ว {cartLot.lines.toLocaleString("th-TH")} {lotWord} · รวม{" "}
-                  {cartLot.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-                  <span className="block text-[11px] font-semibold text-emerald-700">
-                    ราคาขั้นบันไดคิดจากยอดรวมในตะกร้า — เพิ่ม{lotWord}ต่อได้เรื่อย ๆ
-                  </span>
-                </p>
-                <Link
-                  href="/cart"
-                  className="shrink-0 rounded-full bg-white px-3.5 py-1.5 text-[11.5px] font-bold text-emerald-700 ring-1 ring-emerald-300 transition hover:bg-emerald-100"
-                >
-                  ดู/แก้จำนวนในตะกร้า →
-                </Link>
-              </div>
-            )}
-
-            {/**
-              * 📄 รายการแผ่นที่จะสั่งรอบนี้ — พูดเป็น "แผ่นที่ 1 / 2 / 3" ให้ตรงกับหัวฟอร์มด้านบน
-              * ลูกค้าจะได้เชื่อมได้ว่า "ที่กำลังกรอกอยู่ = แผ่นสุดท้ายในลิสต์นี้"
-              */}
-            {sheetRoll && (
-              <div className="mb-3 rounded-2xl bg-white p-3 ring-1 ring-amber-200">
-                <p className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px] font-extrabold text-stone-800">
-                  <span>{lotEmoji} {lotWord}ที่จะสั่งรอบนี้</span>
-                  <span className={lotShortNeed > 0 ? "text-amber-700" : "text-emerald-700"}>
-                    รวม {sheetRoll.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-                    {rateMinQty > 1 &&
-                      (lotShortNeed > 0
-                        ? ` · ขาดอีก ${lotShortNeed.toLocaleString("th-TH")}`
-                        : ` · ครบขั้นต่ำแล้ว ✓`)}
-                  </span>
-                </p>
-                <ul className="mt-2 grid gap-1.5">
-                  {sheets.map((sh, i) => (
-                    <li key={sh.id} className="flex items-center gap-2 rounded-xl bg-emerald-50 px-2.5 py-1.5 text-[12px] ring-1 ring-emerald-100">
-                      <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-extrabold text-white">
-                        {i + 1}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-bold text-stone-800">
-                          {sheetSpecText(sh.selections) || "ตามตัวเลือกที่เลือก"}
-                        </span>
-                        <span className="block text-[11px] font-semibold text-stone-500">
-                          {sh.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ×{" "}
-                          {formatPrice(sheetRoll.rows[i].unitPrice)}
-                          {sheetRoll.rows[i].extraFee > 0 && <> + ค่าคละลาย {formatPrice(sheetRoll.rows[i].extraFee)}</>}
-                          {/* ลายของแผ่นนี้ — ยืนยันให้เห็นว่าแต่ละแผ่นมีลายของตัวเองแล้ว */}
-                          {(() => {
-                            // นับรวมทั้ง 2 ด้าน — งานพิมพ์ 2 ด้านเก็บลายด้านหลังไว้อีกคีย์
-                            const imgs = parseArtUrls(sh.selections[ART_LABEL]).length + parseArtUrls(sh.selections[ART_BACK_LABEL]).length;
-                            const link = (sh.selections["ลิงก์ไฟล์ลาย/อีเมล"] ?? "").trim();
-                            if (!imgs && !link) return null;
-                            return (
-                              <span className="ml-1.5 text-emerald-700">
-                                · 🖼 {imgs ? `ลาย ${imgs.toLocaleString("th-TH")} รูป` : "ลายทางลิงก์"}
-                              </span>
-                            );
-                          })()}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSheets((cur) => [...cur, { ...sh, id: `${sh.id}-c${cur.length}` }])}
-                        className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 transition hover:bg-sky-50"
-                        aria-label={`สั่ง${lotWord}ที่ ${i + 1} ซ้ำอีก${lotWord}`}
-                      >
-                        ⧉ ซ้ำ
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSheets((cur) => cur.filter((x) => x.id !== sh.id))}
-                        className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
-                        aria-label={`เอา${lotWord}ที่ ${i + 1} ออก`}
-                      >
-                        ✕
-                      </button>
-                    </li>
-                  ))}
-                  {/* แผ่นที่กำลังกรอกอยู่ตอนนี้ = แถวสุดท้าย · ยังกรอกไม่ครบก็บอกตรง ๆ ว่ายังไม่นับ */}
-                  <li
-                    className={`flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-[12px] ring-1 ${
-                      sheetRoll.withCurrent ? "bg-amber-50 ring-amber-200" : "bg-stone-50 ring-stone-200"
-                    }`}
-                  >
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-extrabold text-white ${
-                        sheetRoll.withCurrent ? "bg-amber-500" : "bg-stone-300"
-                      }`}
-                    >
-                      {sheets.length + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block font-bold ${sheetRoll.withCurrent ? "text-amber-900" : "text-stone-500"}`}>
-                        {sheetSpecText(pricingSelections) || "ตามตัวเลือกที่เลือก"}
-                      </span>
-                      <span className={`block text-[11px] font-semibold ${sheetRoll.withCurrent ? "text-amber-700" : "text-stone-400"}`}>
-                        {sheetRoll.withCurrent
-                          ? `${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} · ⬆ กำลังกรอก${lotWord}นี้อยู่`
-                          : `⬆ กำลังกรอก${lotWord}นี้อยู่ — ยังไม่ครบ เลยยังไม่นับรวม`}
-                      </span>
-                    </span>
-                  </li>
-                </ul>
-                <p className="mt-2 flex items-center justify-between text-[13px] font-extrabold text-stone-800">
-                  <span>รวมรอบนี้</span>
-                  <span className="text-amber-600">{formatPrice(sheetRoll.total)}</span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setSheets([])}
-                  className="mt-1.5 text-[11px] font-bold text-stone-400 underline decoration-stone-300 underline-offset-4 transition hover:text-stone-600"
-                >
-                  ↺ เริ่มใหม่ทั้งหมด (ปลดล็อก{(product.lotKeyOptions ?? []).join(" · ") || "ตัวเลือกหลัก"})
-                </button>
-              </div>
-            )}
-
-            {/* จำนวน + เพิ่มลงตะกร้า */}
-            <div>
-              {matrix && !designDone && (
-                <label className="mb-1 flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-bold text-stone-700">
-                  <span>จำนวน ({matrix.unit})</span>
-                  {/* กำกับขั้นต่ำไว้ตรงนี้ เพราะช่องจำนวนเริ่มที่ 1 แล้ว ต้องบอกตั้งแต่ก่อนกด */}
-                  {lotMinScope && rateMinQty > 1 && (
-                    <span className="text-[11.5px] font-bold text-amber-700">
-                      · สั่งขั้นต่ำ {rateMinQty.toLocaleString("th-TH")} {matrix.unit}
-                      {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""}
-                    </span>
-                  )}
-                </label>
-              )}
-              <div className="flex flex-wrap items-center gap-3">
-                {/* มีลายแล้ว = คุมจำนวนที่ลายแต่ละอันแทน (กันตัวเลขสองที่ไม่ตรงกัน) */}
-                {!designDone && (
-                <div className="flex items-center rounded-full bg-white ring-1 ring-amber-200">
-                  <button
-                    type="button"
-                    // ลดได้ถึง 1 เสมอ — ถ้าต่ำกว่าขั้นต่ำของเรทที่เลือกไว้ ระบบจะสลับลงเรทที่เหมาะเอง
-                    // (สินค้าที่ตั้ง hardMinQty ลดได้แค่ถึงขั้นต่ำจริงของเรท เช่น 3 แผ่น A3)
-                    onClick={() => {
-                      if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
-                      setQtyTouched(true);
-                      setQty((q) => Math.max(qtyFloor, q - 1));
-                    }}
-                    aria-disabled={areaQty != null || qty <= qtyFloor}
-                    className={`h-10 w-10 rounded-l-full text-base font-bold ${areaQty != null ? "cursor-not-allowed text-stone-300" : "text-stone-600 hover:bg-amber-50"}`}
-                    aria-label="ลดจำนวน"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={qtyText}
-                    readOnly={areaQty != null}
-                    onChange={(e) => {
-                      if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
-                      // ปล่อยให้ลบจนว่างได้ระหว่างพิมพ์ (เดิมยัด 1 กลับทันที ลบแล้วพิมพ์ใหม่ไม่ได้)
-                      setQtyTouched(true);
-                      const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
-                      setQtyText(raw);
-                      const n = parseInt(raw, 10);
-                      if (Number.isFinite(n) && n > 0) setQty(Math.min(n, 99999));
-                    }}
-                    // พิมพ์ต่ำกว่าขั้นต่ำได้ระหว่างแก้ — ออกจากช่องแล้วค่อยดันขึ้นให้ถึงขั้นต่ำ
-                    onBlur={() => {
-                      if (areaQty != null) return;
-                      const fixed = Math.max(qtyFloor, qty);
-                      setQty(fixed);
-                      setQtyText(String(fixed));
-                    }}
-                    className="w-14 bg-transparent text-center text-sm font-bold focus:outline-none"
-                    aria-label="จำนวน"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (areaQty != null) return; // 📐 จำนวนล็อกตามขนาดที่กรอก
-                      setQtyTouched(true);
-                      setQty((q) => Math.min(matrix ? 99999 : 99, q + 1));
-                    }}
-                    aria-disabled={areaQty != null}
-                    className={`h-10 w-10 rounded-r-full text-base font-bold ${areaQty != null ? "cursor-not-allowed text-stone-300" : "text-stone-600 hover:bg-amber-50"}`}
-                    aria-label="เพิ่มจำนวน"
-                  >
-                    +
-                  </button>
-                </div>
-                )}
-
-                {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า
-                    (โหมดแอดมินก็เห็นปุ่มเดียวกัน แต่ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก) */}
-                {/* โหมดออกแบบบนเว็บ: กล่อง "ส่งลายยังไงดี?" ย้ายขึ้นไปก่อนกล่องจำนวน (artChoiceUI) — ที่นี่เหลือปุ่มพากลับขึ้นไป */}
-                {studioMode && studioNeedsDesign && (
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById("art-choice")?.scrollIntoView({ block: "center", behavior: "smooth" })}
-                    className="basis-full rounded-full bg-sky-50 px-4 py-3 text-[13px] font-bold text-sky-800 ring-2 ring-sky-200 transition hover:bg-sky-100"
-                  >
-                    ⬆ เลือกวิธีส่งลายด้านบนก่อน (ออกแบบบนเว็บ / แนบไฟล์)
-                  </button>
-                )}
-                {/* โหมดแอดมิน (สั่งแทนลูกค้า) — ปุ่มเริ่มสร้างเดี่ยว ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก */}
-                {studioOfferStaff && !studioNeedsDesign && (
-                  <button
-                    type="button"
-                    onClick={() => openStudio(null)}
-                    className="flex-1 rounded-full bg-sky-600 px-5 py-3 text-[13px] font-bold text-white shadow-lg transition hover:scale-105 hover:bg-sky-700 sm:flex-none sm:px-8"
-                  >
-                    🎨 เริ่มสร้าง — วางลาย{lotDone > 0 ? `บน${lotWord}นี้` : "บนสินค้า"}
-                  </button>
-                )}
-                {/**
-                  * ปุ่มสั่ง — โผล่เมื่อวางลายเสร็จแล้ว หรือ (โหมดสั่งหลายสเปค) มีของพักไว้แล้ว
-                  * ⚠️ ที่ต้องโผล่คู่กับ "เริ่มสร้าง": พักรุ่นที่ 1 ไว้แล้วระบบล้างลายทิ้งเพื่อรับรุ่นถัดไป
-                  *    ถ้าไม่มีปุ่มนี้ ลูกค้าที่พอแล้วจะไม่มีทางสั่งของที่เก็บไว้ นอกจากวางลายรุ่นถัดไปให้จบก่อน
-                  */}
-                {/* ═══ 🎯 เหลืออีกกี่ขั้นถึงจะสั่งได้ — แถบเหลืองเป็ดเหนือปุ่มสั่ง ═══
-                    โผล่เฉพาะตอนยังติดด่าน · ขั้นที่ทำแล้วขีดฆ่า ขั้นที่ต้องทำตอนนี้เป็นปุ่มขาวกดแล้วพาไปเลย */}
-                {ctaStuck && ctaStepNow && (
-                  <div className="basis-full rounded-2xl bg-ducky px-3.5 py-2 text-amber-950">
-                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px] font-bold">
-                      <span className="font-extrabold">
-                        🎯 เหลืออีก {ctaStepsLeft.length.toLocaleString("th-TH")} ขั้นถึงจะสั่งได้
-                      </span>
-                      {ctaSteps.map((st, i) => (
-                        <span key={st.key} className="inline-flex items-center gap-1.5">
-                          {i > 0 && <span className="opacity-40">›</span>}
-                          {st.done ? (
-                            <span className="opacity-50">✓ {st.label}</span>
-                          ) : st.key === ctaStepNow.key ? (
-                            <button
-                              type="button"
-                              onClick={st.jump}
-                              className="rounded-full bg-white px-2.5 py-1 font-extrabold text-amber-950 shadow-sm transition hover:bg-stone-50"
-                            >
-                              {st.icon} {st.label} →
-                            </button>
-                          ) : (
-                            <span className="opacity-60">
-                              {st.icon} {st.label}
-                            </span>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(!studioNeedsDesign || sheets.length > 0) && (
-                  <button
-                    type="button"
-                    onClick={() => handleAdd()}
-                    // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
-                    // ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
-                    disabled={orderBlocked && !artBlocked}
-                    // ⚠️ ตอนกดไม่ได้ห้ามใช้ opacity-40 ตัวขาว — บนพื้นฟ้าอ่อนกลายเป็นตัวขาวจางอ่านไม่ออก ทั้งที่ข้อความบนปุ่ม
-                    //    คือ "เหตุผลที่กดไม่ได้" ที่ลูกค้าต้องอ่าน → ใช้แผ่นฟ้าจางทึบ ตัวน้ำเงินเข้ม ขอบฟ้าแทน (9 ก.ย. 69)
-                    // 🛒 กินเต็มบรรทัดของตัวเอง (basis-full) — เดิมแชร์บรรทัดกับช่องจำนวนแล้วเหลือความกว้างไม่ถึงครึ่งแผง
-                    //    ลูกค้ากวาดตาหาปุ่มสั่งไม่เจอ (ไลน์ 20 ก.ย. 69)
-                    // เหตุผลที่ยังกดไม่ได้ไปอยู่บนแถบ "เหลืออีกกี่ขั้น" เหนือปุ่มแล้ว — ในปุ่มเหลือแค่ชื่อปุ่ม
-                    className={`basis-full rounded-full px-5 py-3.5 text-center text-sm font-extrabold transition sm:px-8 ${
-                      added
-                        ? "bg-emerald-500 text-white shadow-lg"
-                        : orderBlocked
-                          ? blockedBtnTone
-                          : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:scale-[1.01] hover:bg-amber-500 hover:shadow-xl"
-                    }`}
-                  >
-                    {added ? (
-                      editing ? "✓ บันทึกแล้ว!" : "✓ เพิ่มลงตะกร้าแล้ว!"
-                    ) : (
-                      <>
-                        {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ — เหตุผลที่ยังกดไม่ได้ห้ามมาแทนที่ (ดู ctaTitle/ctaStuck) */}
-                        <span className="block">{lockTitle(ctaTitle)}</span>
-                        {/* ครบขั้นต่ำเพราะรวมกับของในตะกร้า — ต้องพูดออกมา ไม่ให้ดูเหมือนขั้นต่ำไม่ทำงาน */}
-                        {lotMetWithCart && (
-                          <span className="mt-0.5 block text-[11px] font-bold opacity-90">
-                            ✓ รวมกับในตะกร้าเป็น{" "}
-                            {((lotPreview?.cartQty ?? 0) + lotAddingQty).toLocaleString("th-TH")} {ctaUnit} —
-                            ครบขั้นต่ำแล้ว
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </button>
-                )}
-
-                {/* ➕ สั่งหลายสเปคในครั้งเดียว — พักสเปคนี้ไว้ แล้วตั้งค่าอันถัดไปต่อ (ยังไม่ลงตะกร้า)
-                  * โผล่เฉพาะสินค้าที่เปิดโหมดล็อต — สินค้าอื่นสเปคเดียวจบ ไม่ต้องมีปุ่มนี้มากวน
-                  * ⛔ สินค้าที่เปิด lotToCart (เคสมือถือ) ไม่มีปุ่มนี้ — ปุ่ม "🛒 เพิ่มลงตะกร้า" ทำงานเดียวกันเป๊ะ
-                  *    (กดแล้วรุ่นนั้นลงตะกร้า ฟอร์มพร้อมรับรุ่นถัดไป) มีสองปุ่มทำเรื่องเดียวกันแค่ชวนงง
-                  *    — ผู้ใช้สั่งเอาออก 31 ส.ค. 69
-                  * สินค้าที่ออกแบบบนเว็บได้ ต้องวางลายให้เสร็จก่อน ปุ่มถึงจะโผล่ */}
-                {lotMinScope && !lotToCart && !studioNeedsDesign && (
-                  <button
-                    type="button"
-                    onClick={stageSheet}
-                    className={`shrink-0 rounded-full px-4 py-2.5 text-[12px] font-bold ring-1 transition ${
-                      staged
-                        ? "bg-emerald-500 text-white ring-emerald-500"
-                        : sheetTodoLeft.length
-                          ? "bg-white text-stone-500 ring-stone-200 hover:bg-stone-50"
-                          : "bg-white text-amber-700 ring-amber-300 hover:bg-amber-50"
-                    }`}
-                  >
-                    {/* ⚠️ ชื่อปุ่มต้องอยู่เสมอ — เคยเอาข้อความเตือนไปแทนที่ชื่อ แล้วลูกค้าหาปุ่มไม่เจอ
-                        เหตุผลที่กดไม่ได้ไปอยู่บรรทัดที่สองในปุ่มแทน */}
-                    {staged ? (
-                      `✓ เก็บ${lotWord}ที่ ${lotDone.toLocaleString("th-TH")} แล้ว — ตั้งค่า${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ต่อ`
-                    ) : (
-                      // ⛔ ไม่ต้องมีบรรทัดเตือนซ้ำตรงนี้ — ปุ่มสั่งหลักข้าง ๆ บอกอยู่แล้วว่าติดตรงไหน
-                      //    และมีปุ่ม "👆 ไปที่…/ไปแนบลาย" พาไปให้ด้วย (ผู้ใช้สั่งเอาออก 31 ส.ค. 69)
-                      `➕ เพิ่มอีก${lotWord} (คนละแบบ)`
-                    )}
-                  </button>
-                )}
-
-                {/* ติดช่องกรอก — พาไปที่ช่องนั้นเลย (ปุ่มสั่งกดไม่ได้ ลูกค้าจะได้ไม่ต้องไล่หาเอง) */}
-                {(inputHardError || (inputErrors.length > 0 && !artBlocked && !consultBlocked)) && (
-                  <button
-                    type="button"
-                    onClick={jumpToInputError}
-                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-50"
-                  >
-                    👆 ไปที่ “{(inputHardError ?? inputErrors[0]).label}”
-                  </button>
-                )}
-                {/* ติดที่ยังไม่แนบลาย — เดิมบอกแค่ "แนบลายก่อน" แต่ไม่มีทางไป ลูกค้าต้องไล่หากล่องเอง
-                    (ปุ่ม ➕ มีตัวพาไปอยู่แล้ว ปุ่มสั่งหลักควรมีเหมือนกัน) */}
-                {artBlocked && !inputHardError && !consultBlocked && (
-                  <button
-                    type="button"
-                    onClick={jumpToArt}
-                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-50"
-                  >
-                    👆 ไปแนบลาย
-                  </button>
-                )}
-                {(belowMin || belowMinQty) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const need = belowMin ? hardMinNeed : rateMinQty;
-                      setQty(need);
-                      setQtyText(String(need));
-                    }}
-                    className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
-                  >
-                    ปรับเป็น {(belowMin ? hardMinNeed : rateMinQty).toLocaleString("th-TH")}{" "}
-                    {belowMin ? "ชิ้น" : (matrix?.unit ?? "ชิ้น")}
-                  </button>
-                )}
-              </div>
-              {/* 🧾 มีของอยู่ในตะกร้าแล้ว — ชี้ทางไป "ยืนยันการสั่งซื้อ" ให้ชัด
-                   ของในตะกร้ายังไม่ใช่ออเดอร์ · ลูกค้าเคยติ๊กสเปคครบแล้วไม่รู้ว่าต้องกดอะไรต่อ (ไลน์ 20 ก.ย. 69)
-                   โหมดหย่อนลงตะกร้าทันทีมีกล่องสรุปของตัวเองอยู่แล้ว ไม่ต้องซ้ำ */}
-              {cartItems.length > 0 && !editing && !(lotToCart && cartLot.lines > 0) && (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
-                  <p className="text-[12px] font-extrabold text-emerald-800">
-                    🛒 ในตะกร้าแล้ว {cartItems.length.toLocaleString("th-TH")} รายการ
-                    <span className="block text-[11px] font-semibold text-emerald-700">
-                      ยังไม่ได้สั่ง จนกว่าจะกดยืนยันในตะกร้า
-                    </span>
-                  </p>
-                  <Link
-                    href="/cart"
-                    className="shrink-0 rounded-full bg-emerald-600 px-4 py-2 text-[11.5px] font-extrabold text-white shadow-sm transition hover:bg-emerald-700"
-                  >
-                    ✅ ไปยืนยันการสั่งซื้อ →
-                  </Link>
-                </div>
-              )}
-
-              {/* 📦 ขั้นต่ำแบบนับทั้งล็อต — เพิ่มลงตะกร้าได้ตั้งแต่ชิ้นแรก แค่เตือน
-                  ประตูจริงอยู่ที่ปุ่ม "ยืนยันการสั่งซื้อ" ในตะกร้า (ผู้ใช้สั่ง 31 ส.ค. 69) */}
-              {lotShortNeed > 0 && !designDone && (
-                <div className="mt-2 rounded-2xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900 ring-1 ring-amber-200">
-                  <p className="font-extrabold">
-                    📦 ขั้นต่ำ {rateMinQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-                    {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""} · ยังขาดอีก{" "}
-                    {lotShortNeed.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-                  </p>
-                  {/* บอกให้ชัดว่า "เพิ่มได้ แต่ยังยืนยันไม่ได้" ไม่งั้นลูกค้าไปตกใจตอนกดยืนยันในตะกร้า */}
-                  <p className="mt-1 font-semibold">
-                    เพิ่มลงตะกร้าได้เลย แล้วค่อยเติมให้ครบ —{" "}
-                    <strong className="text-rose-600">ยังกด “ยืนยันการสั่งซื้อ” ไม่ได้จนกว่าจะครบ</strong>
-                  </p>
-                </div>
-              )}
-
-              {/* 🎁 สินค้านี้ร่วมโปรของแถม — ป้าย+ความคืบหน้า (อัปเดตเองหลังกดเพิ่มลงตะกร้า) */}
-              <GiftPromoBadge product={product} />
-              {/* 📐 สินค้าขายเป็นพื้นที่ — กางวิธีคิดให้เห็น: ขนาดที่กรอก → (ดันขั้นต่ำต่อด้าน) → พื้นที่ → ปัดขึ้นเต็มหน่วยขาย */}
-              {areaQty != null && !designDone && (
-                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">
-                  📐 ขนาด {areaQty.width.toLocaleString("th-TH")}×{areaQty.height.toLocaleString("th-TH")} ซม.
-                  {/* ด้านที่สั้นกว่าขั้นต่ำถูกดันขึ้น — โชว์ขนาดที่ใช้คิดเงินให้ลูกค้าเห็นที่มา (เช่น 50×200 → คิด 100×200) */}
-                  {(areaQty.billedWidth !== areaQty.width || areaQty.billedHeight !== areaQty.height) && (
-                    <> → คิดขั้นต่ำด้านละ {(product.qtyFromArea!.minSide ?? 0).toLocaleString("th-TH")} ซม. ={" "}
-                    {areaQty.billedWidth.toLocaleString("th-TH")}×{areaQty.billedHeight.toLocaleString("th-TH")} ซม.</>
-                  )}{" "}
-                  = {(Math.round(areaQty.area * 100) / 100).toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."} →{" "}
-                  <span className="text-[13px] font-extrabold">
-                    คิด {areaQty.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."}
-                  </span>
-                  <span className="font-semibold text-teal-700"> (ปัดขึ้นเต็ม {matrix?.unit ?? "ตร.ม."} — จำนวนล็อกตามขนาดที่กรอก)</span>
-                </p>
-              )}
-              {/*
-                * 📐 สรุปงานแบ่งแผ่น/ไดคัทตามขนาด — ลูกค้าสั่งเป็น "แผ่น A3" แต่อยากรู้ว่าได้งานกี่ชิ้น
-                * (สั่ง 10 แผ่น A3 ขนาดตัด A5 = 40 ชิ้น) · ไม่โชว์ตอนวางลายเอง เพราะจำนวนคุมที่ลายแต่ละอัน
-                */}
-              {yieldTotal != null && !designDone && (
-                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">
-                  📐 สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} · {unitYield!.label}{" "}
-                  {unitYield!.size} ={" "}
-                  <span className="text-[13px] font-extrabold">
-                    ได้{unitYield!.approx ? "ประมาณ " : " "}
-                    {yieldTotal.toLocaleString("th-TH")} ชิ้น
-                  </span>
-                  {/* สั่ง 1 หน่วย: "(2 ชิ้น ต่อ 1 แผ่น A3)" ซ้ำกับ "= ได้ 2 ชิ้น" ที่อยู่หน้ามันเป๊ะ — ตัดทิ้ง */}
-                  <span className={`font-semibold text-teal-700 ${qty <= 1 && !unitYield!.via ? "hidden" : ""}`}>
-                    {" "}
-                    ({unitYield!.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 {matrix?.unit ?? "ชิ้น"}
-                    {/* เรทตารางเมตร: กางตัวคูณให้เห็นว่า 320 ชิ้น/ตร.ม. มาจาก 40 ชิ้น/แผ่น × 8 แผ่น */}
-                    {unitYield!.via
-                      ? ` = ${unitYield!.via.perSheet.toLocaleString("th-TH")} ชิ้น ต่อ 1 ${
-                          unitYield!.via.sheetName
-                        } × ${unitYield!.via.sheets} ${unitYield!.via.sheetName}`
-                      : ""}
-                    {unitYield!.approx ? " — จำนวนจริงขึ้นกับรูปทรงลาย" : ""})
-                  </span>
-                  {/* 📏 งานกรอกด้านยาวสุดด้านเดียว — เจ้าของร้านสั่ง 10 ก.ย. 69 ให้ระบุว่ากราฟฟิกแจ้งตอนส่งแบบ */}
-                  {unitYield!.note && <span className="block font-extrabold">🎨 {unitYield!.note}</span>}
-                </p>
-              )}
-              {/* แบบที่ลูกค้าวางเอง — สั่งหลายลายในรายการเดียวได้ กำหนดจำนวนแยกแต่ละลาย */}
-              {designDone && (
-                <div className="mt-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
-                  <p className="mb-2 flex items-center gap-2 px-1 text-[12px] font-extrabold text-sky-900">
-                    ✓ แบบพร้อมผลิต {placed.length} ลาย
-                    <span className="font-bold text-sky-700">· รวม {designTotalQty.toLocaleString("th-TH")} ชิ้น</span>
-                  </p>
-                  <div className="space-y-1.5">
-                    {placed.map((d, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-sky-100">
-                        {/* งานหลายด้าน = โชว์ทุกด้าน จะได้เห็นว่าใส่ครบแล้วจริง */}
-                        {(d.calState
-                          ? // 🗓 ปฏิทิน: หน้าปก + ปฏิทินด้านหลัง (ไฟล์หลังอยู่ใน artBackFiles ตำแหน่งเดียวกัน)
-                            [
-                              { name: "หน้าปก", artUrl: d.artUrl, dpi: d.dpi },
-                              ...(d.calBackFiles?.[0]
-                                ? [{ name: (d.calBackFiles.length > 1 ? `+${d.calBackFiles.length} หน้า` : "ปฏิทิน"), artUrl: d.calBackFiles[0].url, dpi: d.dpi }]
-                                : []),
-                            ]
-                          : d.sides?.length
-                            ? d.sides
-                            : d.artUrl
-                              ? [{ name: "", artUrl: d.artUrl, dpi: d.dpi }]
-                              : []
-                        ).map((sd, k) => (
-                          <span key={k} className="shrink-0 text-center">
-                            <img
-                              src={sd.artUrl}
-                              alt={sd.name || `แบบที่ ${i + 1}`}
-                              className="h-12 w-12 rounded-lg object-cover ring-1 ring-sky-200"
-                            />
-                            {sd.name && <span className="mt-0.5 block text-[9px] font-bold text-stone-400">{sd.name}</span>}
-                          </span>
-                        ))}
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
-                          <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
-                          {d.calState && d.calState.back.year !== calYear && (
-                            <span className="block text-[10px] font-bold text-rose-600">
-                              ⚠️ ปฏิทินเป็นปี {d.calState.back.year} — กด ✏️ เพื่อเปลี่ยนเป็นปี {calYear}
-                            </span>
-                          )}
-                          {d.calState && d.calState.back.year === calYear && d.calState.format !== calFormatKey && (
-                            <span className="block text-[10px] font-bold text-rose-600">
-                              ⚠️ แบบนี้ทำไว้ก่อนเปลี่ยนตัวเลือก — กด ✏️ เพื่อจัดรูปใหม่ให้ตรงรูปแบบที่เลือก
-                            </span>
-                          )}
-                        </span>
-                        {/* จำนวนของลายนี้ — ทีมผลิตอ่านจากตรงนี้ว่าลายไหนกี่ชิ้น */}
-                        <span className="flex shrink-0 items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
-                          <button
-                            type="button"
-                            onClick={() => bumpDesignQty(i, -1)}
-                            className="h-8 w-8 rounded-l-full text-sm font-bold text-stone-600 hover:bg-amber-100"
-                            aria-label={`ลดจำนวนลายที่ ${i + 1}`}
-                          >
-                            −
-                          </button>
-                          <input
-                            value={d.qty}
-                            onChange={(e) => setDesignQty(i, parseInt(e.target.value.replace(/\D/g, ""), 10) || 1)}
-                            inputMode="numeric"
-                            className="w-9 bg-transparent text-center text-xs font-bold focus:outline-none"
-                            aria-label={`จำนวนลายที่ ${i + 1}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => bumpDesignQty(i, 1)}
-                            className="h-8 w-8 rounded-r-full text-sm font-bold text-stone-600 hover:bg-amber-100"
-                            aria-label={`เพิ่มจำนวนลายที่ ${i + 1}`}
-                          >
-                            +
-                          </button>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => openStudio(i)}
-                          title="แก้ไขแบบนี้"
-                          className="shrink-0 rounded-full bg-white px-2 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-100"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeDesign(i)}
-                          title="ลบลายนี้"
-                          className="shrink-0 rounded-full px-2 py-1.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
-                        >
-                          ✕
+                          +
                         </button>
                       </div>
-                    ))}
+                    )}
+
+                    {/* โหมดออกแบบบนเว็บ: ปุ่มแรกคือ "เริ่มสร้าง" · วางลายเสร็จแล้วค่อยกลายเป็นปุ่มใส่ตะกร้า
+                    (โหมดแอดมินก็เห็นปุ่มเดียวกัน แต่ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก) */}
+                    {/* โหมดออกแบบบนเว็บ: กล่อง "ส่งลายยังไงดี?" ย้ายขึ้นไปก่อนกล่องจำนวน (artChoiceUI) — ที่นี่เหลือปุ่มพากลับขึ้นไป */}
+                    {studioMode && studioNeedsDesign && (
+                      <button
+                        type="button"
+                        onClick={() => document.getElementById("art-choice")?.scrollIntoView({ block: "center", behavior: "smooth" })}
+                        className="basis-full rounded-full bg-sky-50 px-4 py-3 text-[13px] font-bold text-sky-800 ring-2 ring-sky-200 transition hover:bg-sky-100"
+                      >
+                        ⬆ เลือกวิธีส่งลายด้านบนก่อน (ออกแบบบนเว็บ / แนบไฟล์)
+                      </button>
+                    )}
+                    {/* โหมดแอดมิน (สั่งแทนลูกค้า) — ปุ่มเริ่มสร้างเดี่ยว ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก */}
+                    {studioOfferStaff && !studioNeedsDesign && (
+                      <button
+                        type="button"
+                        onClick={() => openStudio(null)}
+                        className="flex-1 rounded-full bg-sky-600 px-5 py-3 text-[13px] font-bold text-white shadow-lg transition hover:scale-105 hover:bg-sky-700 sm:flex-none sm:px-8"
+                      >
+                        🎨 เริ่มสร้าง — วางลาย{lotDone > 0 ? `บน${lotWord}นี้` : "บนสินค้า"}
+                      </button>
+                    )}
+                    {/**
+                     * ปุ่มสั่ง — โผล่เมื่อวางลายเสร็จแล้ว หรือ (โหมดสั่งหลายสเปค) มีของพักไว้แล้ว
+                     * ⚠️ ที่ต้องโผล่คู่กับ "เริ่มสร้าง": พักรุ่นที่ 1 ไว้แล้วระบบล้างลายทิ้งเพื่อรับรุ่นถัดไป
+                     *    ถ้าไม่มีปุ่มนี้ ลูกค้าที่พอแล้วจะไม่มีทางสั่งของที่เก็บไว้ นอกจากวางลายรุ่นถัดไปให้จบก่อน
+                     */}
+                    {/* ═══ 🎯 เหลืออีกกี่ขั้นถึงจะสั่งได้ — แถบเหลืองเป็ดเหนือปุ่มสั่ง ═══
+                    โผล่เฉพาะตอนยังติดด่าน · ขั้นที่ทำแล้วขีดฆ่า ขั้นที่ต้องทำตอนนี้เป็นปุ่มขาวกดแล้วพาไปเลย */}
+                    {ctaStuck && ctaStepNow && (
+                      <div className="basis-full rounded-2xl bg-ducky px-3.5 py-2 text-amber-950">
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px] font-bold">
+                          <span className="font-extrabold">🎯 เหลืออีก {ctaStepsLeft.length.toLocaleString("th-TH")} ขั้นถึงจะสั่งได้</span>
+                          {ctaSteps.map((st, i) => (
+                            <span key={st.key} className="inline-flex items-center gap-1.5">
+                              {i > 0 && <span className="opacity-40">›</span>}
+                              {st.done ? (
+                                <span className="opacity-50">✓ {st.label}</span>
+                              ) : st.key === ctaStepNow.key ? (
+                                <button
+                                  type="button"
+                                  onClick={st.jump}
+                                  className="rounded-full bg-white px-2.5 py-1 font-extrabold text-amber-950 shadow-sm transition hover:bg-stone-50"
+                                >
+                                  {st.icon} {st.label} →
+                                </button>
+                              ) : (
+                                <span className="opacity-60">
+                                  {st.icon} {st.label}
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(!studioNeedsDesign || sheets.length > 0) && (
+                      <button
+                        type="button"
+                        onClick={() => handleAdd()}
+                        // ขนาดกำหนดเอง = ราคาไม่อิงเรทปกติ → ไม่ติดขั้นต่ำของเรทด้วย (สั่งกี่ชิ้นก็ได้ แอดมินตีราคาตามจริง)
+                        // ยังไม่ถึงขั้นต่ำรอบผลิต = ยังเพิ่มลงตะกร้าได้ (แค่เตือน) · ไปบล็อกที่ปุ่มยืนยันในตะกร้าแทน
+                        disabled={orderBlocked && !artBlocked}
+                        // ⚠️ ตอนกดไม่ได้ห้ามใช้ opacity-40 ตัวขาว — บนพื้นฟ้าอ่อนกลายเป็นตัวขาวจางอ่านไม่ออก ทั้งที่ข้อความบนปุ่ม
+                        //    คือ "เหตุผลที่กดไม่ได้" ที่ลูกค้าต้องอ่าน → ใช้แผ่นฟ้าจางทึบ ตัวน้ำเงินเข้ม ขอบฟ้าแทน (9 ก.ย. 69)
+                        // 🛒 กินเต็มบรรทัดของตัวเอง (basis-full) — เดิมแชร์บรรทัดกับช่องจำนวนแล้วเหลือความกว้างไม่ถึงครึ่งแผง
+                        //    ลูกค้ากวาดตาหาปุ่มสั่งไม่เจอ (ไลน์ 20 ก.ย. 69)
+                        // เหตุผลที่ยังกดไม่ได้ไปอยู่บนแถบ "เหลืออีกกี่ขั้น" เหนือปุ่มแล้ว — ในปุ่มเหลือแค่ชื่อปุ่ม
+                        className={`basis-full rounded-full px-5 py-3.5 text-center text-sm font-extrabold transition sm:px-8 ${
+                          added
+                            ? "bg-emerald-500 text-white shadow-lg"
+                            : orderBlocked
+                              ? blockedBtnTone
+                              : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:scale-[1.01] hover:bg-amber-500 hover:shadow-xl"
+                        }`}
+                      >
+                        {added ? (
+                          editing ? (
+                            "✓ บันทึกแล้ว!"
+                          ) : (
+                            "✓ เพิ่มลงตะกร้าแล้ว!"
+                          )
+                        ) : (
+                          <>
+                            {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ — เหตุผลที่ยังกดไม่ได้ห้ามมาแทนที่ (ดู ctaTitle/ctaStuck) */}
+                            <span className="block">{lockTitle(ctaTitle)}</span>
+                            {/* ครบขั้นต่ำเพราะรวมกับของในตะกร้า — ต้องพูดออกมา ไม่ให้ดูเหมือนขั้นต่ำไม่ทำงาน */}
+                            {lotMetWithCart && (
+                              <span className="mt-0.5 block text-[11px] font-bold opacity-90">
+                                ✓ รวมกับในตะกร้าเป็น {((lotPreview?.cartQty ?? 0) + lotAddingQty).toLocaleString("th-TH")} {ctaUnit} — ครบขั้นต่ำแล้ว
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* ➕ สั่งหลายสเปคในครั้งเดียว — พักสเปคนี้ไว้ แล้วตั้งค่าอันถัดไปต่อ (ยังไม่ลงตะกร้า)
+                     * โผล่เฉพาะสินค้าที่เปิดโหมดล็อต — สินค้าอื่นสเปคเดียวจบ ไม่ต้องมีปุ่มนี้มากวน
+                     * ⛔ สินค้าที่เปิด lotToCart (เคสมือถือ) ไม่มีปุ่มนี้ — ปุ่ม "🛒 เพิ่มลงตะกร้า" ทำงานเดียวกันเป๊ะ
+                     *    (กดแล้วรุ่นนั้นลงตะกร้า ฟอร์มพร้อมรับรุ่นถัดไป) มีสองปุ่มทำเรื่องเดียวกันแค่ชวนงง
+                     *    — ผู้ใช้สั่งเอาออก 31 ส.ค. 69
+                     * สินค้าที่ออกแบบบนเว็บได้ ต้องวางลายให้เสร็จก่อน ปุ่มถึงจะโผล่ */}
+                    {lotMinScope && !lotToCart && !studioNeedsDesign && (
+                      <button
+                        type="button"
+                        onClick={stageSheet}
+                        className={`shrink-0 rounded-full px-4 py-2.5 text-[12px] font-bold ring-1 transition ${
+                          staged
+                            ? "bg-emerald-500 text-white ring-emerald-500"
+                            : sheetTodoLeft.length
+                              ? "bg-white text-stone-500 ring-stone-200 hover:bg-stone-50"
+                              : "bg-white text-amber-700 ring-amber-300 hover:bg-amber-50"
+                        }`}
+                      >
+                        {/* ⚠️ ชื่อปุ่มต้องอยู่เสมอ — เคยเอาข้อความเตือนไปแทนที่ชื่อ แล้วลูกค้าหาปุ่มไม่เจอ
+                        เหตุผลที่กดไม่ได้ไปอยู่บรรทัดที่สองในปุ่มแทน */}
+                        {staged
+                          ? `✓ เก็บ${lotWord}ที่ ${lotDone.toLocaleString("th-TH")} แล้ว — ตั้งค่า${lotWord}ที่ ${(lotDone + 1).toLocaleString("th-TH")} ต่อ`
+                          : // ⛔ ไม่ต้องมีบรรทัดเตือนซ้ำตรงนี้ — ปุ่มสั่งหลักข้าง ๆ บอกอยู่แล้วว่าติดตรงไหน
+                            //    และมีปุ่ม "👆 ไปที่…/ไปแนบลาย" พาไปให้ด้วย (ผู้ใช้สั่งเอาออก 31 ส.ค. 69)
+                            `➕ เพิ่มอีก${lotWord} (คนละแบบ)`}
+                      </button>
+                    )}
+
+                    {/* ติดช่องกรอก — พาไปที่ช่องนั้นเลย (ปุ่มสั่งกดไม่ได้ ลูกค้าจะได้ไม่ต้องไล่หาเอง) */}
+                    {(inputHardError || (inputErrors.length > 0 && !artBlocked && !consultBlocked)) && (
+                      <button
+                        type="button"
+                        onClick={jumpToInputError}
+                        className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-50"
+                      >
+                        👆 ไปที่ “{(inputHardError ?? inputErrors[0]).label}”
+                      </button>
+                    )}
+                    {/* ติดที่ยังไม่แนบลาย — เดิมบอกแค่ "แนบลายก่อน" แต่ไม่มีทางไป ลูกค้าต้องไล่หากล่องเอง
+                    (ปุ่ม ➕ มีตัวพาไปอยู่แล้ว ปุ่มสั่งหลักควรมีเหมือนกัน) */}
+                    {artBlocked && !inputHardError && !consultBlocked && (
+                      <button
+                        type="button"
+                        onClick={jumpToArt}
+                        className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-rose-700 ring-1 ring-rose-300 transition hover:bg-rose-50"
+                      >
+                        👆 ไปแนบลาย
+                      </button>
+                    )}
+                    {(belowMin || belowMinQty) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const need = belowMin ? hardMinNeed : rateMinQty;
+                          setQty(need);
+                          setQtyText(String(need));
+                        }}
+                        className="shrink-0 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
+                      >
+                        ปรับเป็น {(belowMin ? hardMinNeed : rateMinQty).toLocaleString("th-TH")} {belowMin ? "ชิ้น" : (matrix?.unit ?? "ชิ้น")}
+                      </button>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openStudio(null)}
-                    className="mt-2 w-full rounded-xl border-2 border-dashed border-sky-300 bg-white px-3 py-2 text-[12px] font-bold text-sky-700 transition hover:bg-sky-100"
-                  >
-                    ＋ เพิ่มลายอีกแบบ — เป็นสินค้าชิ้นใหม่ ไม่ใช่ด้านหลัง
-                  </button>
+                  {/* 🧾 มีของอยู่ในตะกร้าแล้ว — ชี้ทางไป "ยืนยันการสั่งซื้อ" ให้ชัด
+                   ของในตะกร้ายังไม่ใช่ออเดอร์ · ลูกค้าเคยติ๊กสเปคครบแล้วไม่รู้ว่าต้องกดอะไรต่อ (ไลน์ 20 ก.ย. 69)
+                   โหมดหย่อนลงตะกร้าทันทีมีกล่องสรุปของตัวเองอยู่แล้ว ไม่ต้องซ้ำ */}
+                  {cartItems.length > 0 && !editing && !(lotToCart && cartLot.lines > 0) && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
+                      <p className="text-[12px] font-extrabold text-emerald-800">
+                        🛒 ในตะกร้าแล้ว {cartItems.length.toLocaleString("th-TH")} รายการ
+                        <span className="block text-[11px] font-semibold text-emerald-700">ยังไม่ได้สั่ง จนกว่าจะกดยืนยันในตะกร้า</span>
+                      </p>
+                      <Link
+                        href="/cart"
+                        className="shrink-0 rounded-full bg-emerald-600 px-4 py-2 text-[11.5px] font-extrabold text-white shadow-sm transition hover:bg-emerald-700"
+                      >
+                        ✅ ไปยืนยันการสั่งซื้อ →
+                      </Link>
+                    </div>
+                  )}
+
+                  {/* 📦 ขั้นต่ำแบบนับทั้งล็อต — เพิ่มลงตะกร้าได้ตั้งแต่ชิ้นแรก แค่เตือน
+                  ประตูจริงอยู่ที่ปุ่ม "ยืนยันการสั่งซื้อ" ในตะกร้า (ผู้ใช้สั่ง 31 ส.ค. 69) */}
+                  {lotShortNeed > 0 && !designDone && (
+                    <div className="mt-2 rounded-2xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900 ring-1 ring-amber-200">
+                      <p className="font-extrabold">
+                        📦 ขั้นต่ำ {rateMinQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                        {product.lotKeyOptions?.length ? ` ต่อ${product.lotKeyOptions[0]} 1 แบบ` : ""} · ยังขาดอีก {lotShortNeed.toLocaleString("th-TH")}{" "}
+                        {matrix?.unit ?? "ชิ้น"}
+                      </p>
+                      {/* บอกให้ชัดว่า "เพิ่มได้ แต่ยังยืนยันไม่ได้" ไม่งั้นลูกค้าไปตกใจตอนกดยืนยันในตะกร้า */}
+                      <p className="mt-1 font-semibold">
+                        เพิ่มลงตะกร้าได้เลย แล้วค่อยเติมให้ครบ — <strong className="text-rose-600">ยังกด “ยืนยันการสั่งซื้อ” ไม่ได้จนกว่าจะครบ</strong>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 🎁 สินค้านี้ร่วมโปรของแถม — ป้าย+ความคืบหน้า (อัปเดตเองหลังกดเพิ่มลงตะกร้า) */}
+                  <GiftPromoBadge product={product} />
+                  {/* 📐 สินค้าขายเป็นพื้นที่ — กางวิธีคิดให้เห็น: ขนาดที่กรอก → (ดันขั้นต่ำต่อด้าน) → พื้นที่ → ปัดขึ้นเต็มหน่วยขาย */}
+                  {areaQty != null && !designDone && (
+                    <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">
+                      📐 ขนาด {areaQty.width.toLocaleString("th-TH")}×{areaQty.height.toLocaleString("th-TH")} ซม.
+                      {/* ด้านที่สั้นกว่าขั้นต่ำถูกดันขึ้น — โชว์ขนาดที่ใช้คิดเงินให้ลูกค้าเห็นที่มา (เช่น 50×200 → คิด 100×200) */}
+                      {(areaQty.billedWidth !== areaQty.width || areaQty.billedHeight !== areaQty.height) && (
+                        <>
+                          {" "}
+                          → คิดขั้นต่ำด้านละ {(product.qtyFromArea!.minSide ?? 0).toLocaleString("th-TH")} ซม. = {areaQty.billedWidth.toLocaleString("th-TH")}×
+                          {areaQty.billedHeight.toLocaleString("th-TH")} ซม.
+                        </>
+                      )}{" "}
+                      = {(Math.round(areaQty.area * 100) / 100).toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."} →{" "}
+                      <span className="text-[13px] font-extrabold">
+                        คิด {areaQty.qty.toLocaleString("th-TH")} {matrix?.unit ?? "ตร.ม."}
+                      </span>
+                      <span className="font-semibold text-teal-700"> (ปัดขึ้นเต็ม {matrix?.unit ?? "ตร.ม."} — จำนวนล็อกตามขนาดที่กรอก)</span>
+                    </p>
+                  )}
                   {/*
+                   * 📐 สรุปงานแบ่งแผ่น/ไดคัทตามขนาด — ลูกค้าสั่งเป็น "แผ่น A3" แต่อยากรู้ว่าได้งานกี่ชิ้น
+                   * (สั่ง 10 แผ่น A3 ขนาดตัด A5 = 40 ชิ้น) · ไม่โชว์ตอนวางลายเอง เพราะจำนวนคุมที่ลายแต่ละอัน
+                   */}
+                  {yieldTotal != null && !designDone && (
+                    <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-900 ring-1 ring-teal-200">
+                      📐 สั่ง {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} · {unitYield!.label} {unitYield!.size} ={" "}
+                      <span className="text-[13px] font-extrabold">
+                        ได้{unitYield!.approx ? "ประมาณ " : " "}
+                        {yieldTotal.toLocaleString("th-TH")} ชิ้น
+                      </span>
+                      {/* สั่ง 1 หน่วย: "(2 ชิ้น ต่อ 1 แผ่น A3)" ซ้ำกับ "= ได้ 2 ชิ้น" ที่อยู่หน้ามันเป๊ะ — ตัดทิ้ง */}
+                      <span className={`font-semibold text-teal-700 ${qty <= 1 && !unitYield!.via ? "hidden" : ""}`}>
+                        {" "}
+                        ({unitYield!.per.toLocaleString("th-TH")} ชิ้น ต่อ 1 {matrix?.unit ?? "ชิ้น"}
+                        {/* เรทตารางเมตร: กางตัวคูณให้เห็นว่า 320 ชิ้น/ตร.ม. มาจาก 40 ชิ้น/แผ่น × 8 แผ่น */}
+                        {unitYield!.via
+                          ? ` = ${unitYield!.via.perSheet.toLocaleString("th-TH")} ชิ้น ต่อ 1 ${
+                              unitYield!.via.sheetName
+                            } × ${unitYield!.via.sheets} ${unitYield!.via.sheetName}`
+                          : ""}
+                        {unitYield!.approx ? " — จำนวนจริงขึ้นกับรูปทรงลาย" : ""})
+                      </span>
+                      {/* 📏 งานกรอกด้านยาวสุดด้านเดียว — เจ้าของร้านสั่ง 10 ก.ย. 69 ให้ระบุว่ากราฟฟิกแจ้งตอนส่งแบบ */}
+                      {unitYield!.note && <span className="block font-extrabold">🎨 {unitYield!.note}</span>}
+                    </p>
+                  )}
+                  {/* แบบที่ลูกค้าวางเอง — สั่งหลายลายในรายการเดียวได้ กำหนดจำนวนแยกแต่ละลาย */}
+                  {designDone && (
+                    <div className="mt-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
+                      <p className="mb-2 flex items-center gap-2 px-1 text-[12px] font-extrabold text-sky-900">
+                        ✓ แบบพร้อมผลิต {placed.length} ลาย
+                        <span className="font-bold text-sky-700">· รวม {designTotalQty.toLocaleString("th-TH")} ชิ้น</span>
+                      </p>
+                      <div className="space-y-1.5">
+                        {placed.map((d, i) => (
+                          <div key={i} className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-sky-100">
+                            {/* งานหลายด้าน = โชว์ทุกด้าน จะได้เห็นว่าใส่ครบแล้วจริง */}
+                            {(d.calState
+                              ? // 🗓 ปฏิทิน: หน้าปก + ปฏิทินด้านหลัง (ไฟล์หลังอยู่ใน artBackFiles ตำแหน่งเดียวกัน)
+                                [
+                                  { name: "หน้าปก", artUrl: d.artUrl, dpi: d.dpi },
+                                  ...(d.calBackFiles?.[0]
+                                    ? [
+                                        {
+                                          name: d.calBackFiles.length > 1 ? `+${d.calBackFiles.length} หน้า` : "ปฏิทิน",
+                                          artUrl: d.calBackFiles[0].url,
+                                          dpi: d.dpi,
+                                        },
+                                      ]
+                                    : []),
+                                ]
+                              : d.sides?.length
+                                ? d.sides
+                                : d.artUrl
+                                  ? [{ name: "", artUrl: d.artUrl, dpi: d.dpi }]
+                                  : []
+                            ).map((sd, k) => (
+                              <span key={k} className="shrink-0 text-center">
+                                <img src={sd.artUrl} alt={sd.name || `แบบที่ ${i + 1}`} className="h-12 w-12 rounded-lg object-cover ring-1 ring-sky-200" />
+                                {sd.name && <span className="mt-0.5 block text-[9px] font-bold text-stone-400">{sd.name}</span>}
+                              </span>
+                            ))}
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
+                              <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
+                              {d.calState && d.calState.back.year !== calYear && (
+                                <span className="block text-[10px] font-bold text-rose-600">
+                                  ⚠️ ปฏิทินเป็นปี {d.calState.back.year} — กด ✏️ เพื่อเปลี่ยนเป็นปี {calYear}
+                                </span>
+                              )}
+                              {d.calState && d.calState.back.year === calYear && d.calState.format !== calFormatKey && (
+                                <span className="block text-[10px] font-bold text-rose-600">
+                                  ⚠️ แบบนี้ทำไว้ก่อนเปลี่ยนตัวเลือก — กด ✏️ เพื่อจัดรูปใหม่ให้ตรงรูปแบบที่เลือก
+                                </span>
+                              )}
+                            </span>
+                            {/* จำนวนของลายนี้ — ทีมผลิตอ่านจากตรงนี้ว่าลายไหนกี่ชิ้น */}
+                            <span className="flex shrink-0 items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
+                              <button
+                                type="button"
+                                onClick={() => bumpDesignQty(i, -1)}
+                                className="h-8 w-8 rounded-l-full text-sm font-bold text-stone-600 hover:bg-amber-100"
+                                aria-label={`ลดจำนวนลายที่ ${i + 1}`}
+                              >
+                                −
+                              </button>
+                              <input
+                                value={d.qty}
+                                onChange={(e) => setDesignQty(i, parseInt(e.target.value.replace(/\D/g, ""), 10) || 1)}
+                                inputMode="numeric"
+                                className="w-9 bg-transparent text-center text-xs font-bold focus:outline-none"
+                                aria-label={`จำนวนลายที่ ${i + 1}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => bumpDesignQty(i, 1)}
+                                className="h-8 w-8 rounded-r-full text-sm font-bold text-stone-600 hover:bg-amber-100"
+                                aria-label={`เพิ่มจำนวนลายที่ ${i + 1}`}
+                              >
+                                +
+                              </button>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openStudio(i)}
+                              title="แก้ไขแบบนี้"
+                              className="shrink-0 rounded-full bg-white px-2 py-1.5 text-[11px] font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-100"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeDesign(i)}
+                              title="ลบลายนี้"
+                              className="shrink-0 rounded-full px-2 py-1.5 text-[11px] font-bold text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openStudio(null)}
+                        className="mt-2 w-full rounded-xl border-2 border-dashed border-sky-300 bg-white px-3 py-2 text-[12px] font-bold text-sky-700 transition hover:bg-sky-100"
+                      >
+                        ＋ เพิ่มลายอีกแบบ — เป็นสินค้าชิ้นใหม่ ไม่ใช่ด้านหลัง
+                      </button>
+                      {/*
                     กันเข้าใจผิดที่แพงที่สุดของหน้านี้ — จำนวนที่สั่ง = ผลรวมของทุกลาย
                     ลูกค้าที่คิดว่า "ลายที่ 2 คือด้านหลัง" จะได้ของมาสองเท่าโดยไม่รู้ตัว
                   */}
-                  <p className="mt-1.5 px-1 text-[11px] leading-relaxed text-stone-500">
-                    แต่ละลาย = สินค้าคนละชิ้น จำนวนที่สั่งคือผลรวมของทุกลาย
-                    {multiSide && (
-                      <span className="mt-1 block font-bold text-amber-700">
-                        ⚠️ งานหลายด้านที่เลือกไว้ ให้ใส่ทุกด้านอยู่ใน “ลายเดียวกัน” (ช่องด้านหน้า/ด้านหลังในจอวางลาย)
-                        ถ้าแยกเป็นคนละลาย จำนวนที่ผลิตจะกลายเป็นสองเท่า
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
-              {consultBlocked && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setConsultWarn(true);
-                    document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
-                  }}
-                  className="mt-2 w-full rounded-xl bg-emerald-50 px-3 py-2 text-left text-xs font-bold text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
-                >
-                  💬 งานนี้ต้องคุยลายกับแอดมินก่อน — แตะเพื่อไปที่ขั้นตอนทักไลน์
-                </button>
-              )}
-              {/* เพิ่งเพิ่มลงตะกร้าสำเร็จ (added) = เพิ่งล้าง artFiles ทิ้งเพื่อเตรียมรายการถัดไป
-                  อย่าเด้งป้าย "ต้องแนบลาย" กลับมาทันที ไม่งั้นดูเหมือนระบบฟ้องทั้งที่เพิ่งสั่งสำเร็จ */}
-              {/* 🛒 มีสินค้านี้ในตะกร้าแล้ว (เพิ่งเพิ่มไป ฟอร์มรีเซ็ตรอชิ้นถัดไป) — ไม่ใช่ความผิดของลูกค้า
-                  ใช้ป้ายแนะนำสีฟ้าแทนป้ายแดง "ต้องแนบลาย" (ทดสอบสั่งจริง 12 ต.ค. 69: ดูเหมือนระบบฟ้องหลังสั่งสำเร็จ) */}
-              {artBlocked && !added && (() => {
-                const inCart = cartItems.some((i) => i.productId === product.id);
-                return (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setArtTouched(false);
-                    setExtraOpen("art");
-                    document.getElementById("art-link")?.scrollIntoView({ block: "center", behavior: "smooth" });
-                  }}
-                  className={`mt-2 w-full rounded-xl px-3 py-2 text-left text-xs font-bold ring-1 transition ${
-                    inCart
-                      ? "bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100"
-                      : "bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100"
-                  }`}
-                >
-                  {inCart
-                    ? "➕ สั่งอีกชิ้น? แนบลายชิ้นใหม่ตรงนี้ · หรือไปยืนยันการสั่งซื้อ"
-                    : "🎨 แนบลายก่อนสั่ง — แตะเพื่ออัปโหลด"}
-                </button>
-                );
-              })()}
-              {useCustom && customAsk ? (
-                <p className="mt-2 text-sm font-semibold text-sky-700">
-                  💬 สั่งได้เลย — แอดมินจะตีราคา
-                  {customChat ? "ให้หลังคุยรายละเอียด" : `ขนาด ${customValid ? `${cW}×${cH} ${custom!.unit}` : "ที่ระบุ"} ให้หลังสั่ง`}
-                  {" · "}
-                  <a
-                    href={LINE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-bold text-[#06C755] underline decoration-dotted underline-offset-2 hover:brightness-90"
-                  >
-                    หรือทักไลน์ถามราคาก่อน
-                  </a>
-                </p>
-              ) : askQuote ? (
-                <p className="mt-2 text-sm font-semibold text-sky-700">
-                  💬 สั่งได้เลย — แอดมินจะตีราคาให้หลังเห็นรายละเอียดที่กรอก
-                  {" · "}
-                  <a
-                    href={LINE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-bold text-[#06C755] underline decoration-dotted underline-offset-2 hover:brightness-90"
-                  >
-                    หรือทักไลน์ถามราคาก่อน
-                  </a>
-                </p>
-              ) : matrix ? (
-                <>
-                  <p className="mt-2 text-sm text-stone-500">
-                    {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
-                    {designFee > 0 && <> + Add on {formatPrice(designFee)}</>} ={" "}
-                    <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
-                  </p>
-                  {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน
-                    * ⚠️ ต้องเขียนให้ชัดว่า "ไม่ต้องบวกเพิ่ม" — เขียนแบบ "รวม Add on ฿20 × 15 = ฿300" เฉย ๆ
-                    *    ลูกค้าอ่านแล้วนึกว่ายอดข้างบนยังไม่ได้นับ Add on (ผู้ใช้ทัก 1 ก.ย. 69)
-                    * เขียนเป็นประโยคเดียว "ราคานี้รวม X ฿n/ชิ้น (= ฿N ใน q ชิ้น) ไว้แล้ว ไม่ต้องบวกเพิ่ม"
-                    * — ของเดิมบอกยอดรวมก่อนแล้วค่อยแจกแจง ทำให้พูดซ้ำสองรอบและมีวลี "ยอดด้านบน" ที่ไม่รู้ว่ายอดไหน
-                    *   (ผู้ใช้เลือกสำนวนนี้ 2 ก.ย. 69) */}
-                  {unitAddOnTotal > 0 && (
-                    <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
-                      ราคานี้รวม{" "}
-                      {unitAddOns.map((f, i) => (
-                        <span key={`${f.label}-${i}`}>
-                          {i > 0 ? " + " : ""}
-                          <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
-                        </span>
-                      ))}
-                      {/* หลายรายการ = ปิดท้ายด้วยยอดรวมต่อหน่วย ไม่งั้นลูกค้าต้องบวกเลขเอง */}
-                      {unitAddOns.length > 1 && (
-                        <> = <strong className="font-bold text-stone-600">{formatPrice(unitAddOnTotal)}</strong></>
-                      )}
-                      /{matrix.unit}
-                      {/* สั่งหลายหน่วย = กางยอดรวมให้เทียบกับยอดจริงด้านบนได้ */}
-                      {qty > 1 && (
-                        <>
-                          {" "}
-                          (= {formatPrice(unitAddOnTotal * qty)} ใน {qty.toLocaleString("th-TH")} {matrix.unit})
-                        </>
-                      )}{" "}
-                      ไว้แล้ว ไม่ต้องบวกเพิ่ม
-                    </p>
-                  )}
-                  {/* แจกแจงค่าเพิ่มสั้น ๆ — ลูกค้าจะได้รู้ว่ายอดที่บวกมาเป็นค่าอะไร ไม่ต้องเดา */}
-                  {designFee > 0 && feeLines.length > 0 && (
-                    <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
-                      Add on ={" "}
-                      {feeLines.map((f, i) => (
-                        <span key={`${f.label}-${i}`}>
-                          {i > 0 ? " + " : ""}
-                          <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
-                          {f.note ? ` (${f.note})` : ""}
-                        </span>
-                      ))}
-                    </p>
-                  )}
-                </>
-              ) : null}
-              {/* จำนวนลายที่คละ — ต้องระบุก่อนสั่ง (แตะปุ่ม/พิมพ์เลข หรือแนบรูปให้ระบบนับอัตโนมัติ) */}
-              {needDesignsChoice && (
-                <div
-                  id="designs-box"
-                  className={`mt-2 rounded-xl px-3 py-2.5 ring-2 transition ${
-                    designsSet
-                      ? "bg-teal-50 ring-teal-200"
-                      : designsWarn
-                        ? "bg-rose-50 ring-rose-400"
-                        : "bg-amber-50 ring-amber-300"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13px] font-extrabold text-teal-900">🎨 คละกี่ลาย:</span>
-                    {!designsSet && (
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold text-white ${designsWarn ? "bg-rose-500" : "bg-amber-500"}`}
-                      >
-                        ต้องระบุก่อนสั่ง *
-                      </span>
-                    )}
-                    <div className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-teal-200">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDesignsTouched(true);
-                          setDesignsDraft(null);
-                          // ⚠️ ต้องเป็น updater ทั้งคู่ — กดรัว ๆ 2 ที React รวมเป็นรอบเดียว
-                          //    ถ้าอ่านค่า designs ตรง ๆ จะได้เลขเดิมทั้งสองครั้ง (กด + 2 ที ได้ 2 ไม่ใช่ 3)
-                          setDesigns((d) => Math.max(1, d - 1));
-                          // ระบุเอง = ตั้งเพดานแนบรูปตามเลขนี้ด้วย (แนบได้เท่าที่บอกว่าจะคละ)
-                          setDesignsCap((c) => Math.max(1, (c ?? designs) - 1));
-                        }}
-                        disabled={designsSet && designs <= 1}
-                        className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
-                        aria-label="ลดจำนวนลาย"
-                      >
-                        −
-                      </button>
-                      {/* พิมพ์เลขเองได้ — ระหว่างพิมพ์ปล่อยช่องว่างได้ (ลบทิ้งแล้วพิมพ์ใหม่) ออกจากช่องค่อยปรับเป็นค่าที่ใช้จริง */}
-                      <input
-                        value={designsDraft ?? String(designs)}
-                        onChange={(e) => {
-                          setDesignsTouched(true);
-                          const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
-                          setDesignsDraft(raw);
-                          const n = parseInt(raw, 10);
-                          if (Number.isFinite(n) && n >= 1) {
-                            const next = Math.min(n, Math.max(1, maxDesigns));
-                            setDesigns(next);
-                            setDesignsCap(next);
-                          }
-                        }}
-                        onBlur={() => setDesignsDraft(null)}
-                        onFocus={(e) => {
-                          // แตะที่ตัวเลขก็นับเป็น "ระบุแล้ว" — ลูกค้าลายเดียวยืนยันได้โดยไม่ต้องกดปุ่ม
-                          setDesignsTouched(true);
-                          e.target.select();
-                        }}
-                        inputMode="numeric"
-                        aria-label="จำนวนลายที่คละ (พิมพ์เลขได้)"
-                        className="w-12 bg-transparent text-center text-sm font-extrabold text-teal-900 outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDesignsTouched(true);
-                          setDesignsDraft(null);
-                          setDesigns((d) => Math.min(maxDesigns, d + 1));
-                          setDesignsCap((c) => Math.min(maxDesigns, (c ?? designs) + 1));
-                        }}
-                        disabled={designs >= maxDesigns}
-                        className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
-                        aria-label="เพิ่มจำนวนลาย"
-                      >
-                        +
-                      </button>
+                      <p className="mt-1.5 px-1 text-[11px] leading-relaxed text-stone-500">
+                        แต่ละลาย = สินค้าคนละชิ้น จำนวนที่สั่งคือผลรวมของทุกลาย
+                        {multiSide && (
+                          <span className="mt-1 block font-bold text-amber-700">
+                            ⚠️ งานหลายด้านที่เลือกไว้ ให้ใส่ทุกด้านอยู่ใน “ลายเดียวกัน” (ช่องด้านหน้า/ด้านหลังในจอวางลาย) ถ้าแยกเป็นคนละลาย
+                            จำนวนที่ผลิตจะกลายเป็นสองเท่า
+                          </span>
+                        )}
+                      </p>
                     </div>
-                    {artFiles.length > 0 && designs === artFiles.length && (
-                      <span className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700" title="นับตามรูปลายที่แนบ — กด +/− เพื่อปรับเอง">
-                        ✨ นับตามรูปที่แนบ
-                      </span>
-                    )}
-                    {/* ไม่ต้องมีป้าย +฿ ตรงนี้ — บรรทัดสรุปด้านบนกับคำอธิบายใต้กล่องบอกยอดค่าคละอยู่แล้ว */}
-                  </div>
-                  {!designsSet && (
-                    <p className={`mt-1 text-[10px] font-bold leading-snug ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
-                      👉 กด +/− หรือแตะตัวเลขเพื่อระบุ · แนบรูปแล้วระบบนับให้เอง
-                    </p>
                   )}
-                  {mixRule ? (
-                    /* กติกาคละแบบคิดต่อหน่วย — กางให้เห็นว่าคิดยังไง ลูกค้าจะได้ตัดสินใจเองได้ว่าคุ้มไหม */
+                  {consultBlocked && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConsultWarn(true);
+                        document.getElementById("consult-box")?.scrollIntoView({ block: "center", behavior: "smooth" });
+                      }}
+                      className="mt-2 w-full rounded-xl bg-emerald-50 px-3 py-2 text-left text-xs font-bold text-emerald-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+                    >
+                      💬 งานนี้ต้องคุยลายกับแอดมินก่อน — แตะเพื่อไปที่ขั้นตอนทักไลน์
+                    </button>
+                  )}
+                  {/* เพิ่งเพิ่มลงตะกร้าสำเร็จ (added) = เพิ่งล้าง artFiles ทิ้งเพื่อเตรียมรายการถัดไป
+                  อย่าเด้งป้าย "ต้องแนบลาย" กลับมาทันที ไม่งั้นดูเหมือนระบบฟ้องทั้งที่เพิ่งสั่งสำเร็จ */}
+                  {/* 🛒 มีสินค้านี้ในตะกร้าแล้ว (เพิ่งเพิ่มไป ฟอร์มรีเซ็ตรอชิ้นถัดไป) — ไม่ใช่ความผิดของลูกค้า
+                  ใช้ป้ายแนะนำสีฟ้าแทนป้ายแดง "ต้องแนบลาย" (ทดสอบสั่งจริง 12 ต.ค. 69: ดูเหมือนระบบฟ้องหลังสั่งสำเร็จ) */}
+                  {artBlocked &&
+                    !added &&
                     (() => {
-                      const unit = matrix?.unit ?? "ชิ้น";
-                      const mt = mixTierFor(mixRule, qty);
-                      const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
-                      /*
+                      const inCart = cartItems.some((i) => i.productId === product.id);
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setArtTouched(false);
+                            setExtraOpen("art");
+                            document.getElementById("art-link")?.scrollIntoView({ block: "center", behavior: "smooth" });
+                          }}
+                          className={`mt-2 w-full rounded-xl px-3 py-2 text-left text-xs font-bold ring-1 transition ${
+                            inCart ? "bg-sky-50 text-sky-800 ring-sky-200 hover:bg-sky-100" : "bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100"
+                          }`}
+                        >
+                          {inCart ? "➕ สั่งอีกชิ้น? แนบลายชิ้นใหม่ตรงนี้ · หรือไปยืนยันการสั่งซื้อ" : "🎨 แนบลายก่อนสั่ง — แตะเพื่ออัปโหลด"}
+                        </button>
+                      );
+                    })()}
+                  {useCustom && customAsk ? (
+                    <p className="mt-2 text-sm font-semibold text-sky-700">
+                      💬 สั่งได้เลย — แอดมินจะตีราคา
+                      {customChat ? "ให้หลังคุยรายละเอียด" : `ขนาด ${customValid ? `${cW}×${cH} ${custom!.unit}` : "ที่ระบุ"} ให้หลังสั่ง`}
+                      {" · "}
+                      <a
+                        href={LINE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-[#06C755] underline decoration-dotted underline-offset-2 hover:brightness-90"
+                      >
+                        หรือทักไลน์ถามราคาก่อน
+                      </a>
+                    </p>
+                  ) : askQuote ? (
+                    <p className="mt-2 text-sm font-semibold text-sky-700">
+                      💬 สั่งได้เลย — แอดมินจะตีราคาให้หลังเห็นรายละเอียดที่กรอก
+                      {" · "}
+                      <a
+                        href={LINE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-[#06C755] underline decoration-dotted underline-offset-2 hover:brightness-90"
+                      >
+                        หรือทักไลน์ถามราคาก่อน
+                      </a>
+                    </p>
+                  ) : matrix ? (
+                    <>
+                      <p className="mt-2 text-sm text-stone-500">
+                        {formatPrice(unitPrice)} / {matrix.unit} × {qty.toLocaleString("th-TH")}
+                        {designFee > 0 && <> + Add on {formatPrice(designFee)}</>} ={" "}
+                        <span className="font-extrabold text-amber-600">{formatPrice(unitPrice * qty + designFee)}</span>
+                      </p>
+                      {/* Add on ที่รวมอยู่ในราคาต่อหน่วยแล้ว — บอกว่าราคาต่อหน่วยที่เห็นมีอะไรบวกอยู่ข้างใน
+                       * ⚠️ ต้องเขียนให้ชัดว่า "ไม่ต้องบวกเพิ่ม" — เขียนแบบ "รวม Add on ฿20 × 15 = ฿300" เฉย ๆ
+                       *    ลูกค้าอ่านแล้วนึกว่ายอดข้างบนยังไม่ได้นับ Add on (ผู้ใช้ทัก 1 ก.ย. 69)
+                       * เขียนเป็นประโยคเดียว "ราคานี้รวม X ฿n/ชิ้น (= ฿N ใน q ชิ้น) ไว้แล้ว ไม่ต้องบวกเพิ่ม"
+                       * — ของเดิมบอกยอดรวมก่อนแล้วค่อยแจกแจง ทำให้พูดซ้ำสองรอบและมีวลี "ยอดด้านบน" ที่ไม่รู้ว่ายอดไหน
+                       *   (ผู้ใช้เลือกสำนวนนี้ 2 ก.ย. 69) */}
+                      {unitAddOnTotal > 0 && (
+                        <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
+                          ราคานี้รวม{" "}
+                          {unitAddOns.map((f, i) => (
+                            <span key={`${f.label}-${i}`}>
+                              {i > 0 ? " + " : ""}
+                              <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
+                            </span>
+                          ))}
+                          {/* หลายรายการ = ปิดท้ายด้วยยอดรวมต่อหน่วย ไม่งั้นลูกค้าต้องบวกเลขเอง */}
+                          {unitAddOns.length > 1 && (
+                            <>
+                              {" "}
+                              = <strong className="font-bold text-stone-600">{formatPrice(unitAddOnTotal)}</strong>
+                            </>
+                          )}
+                          /{matrix.unit}
+                          {/* สั่งหลายหน่วย = กางยอดรวมให้เทียบกับยอดจริงด้านบนได้ */}
+                          {qty > 1 && (
+                            <>
+                              {" "}
+                              (= {formatPrice(unitAddOnTotal * qty)} ใน {qty.toLocaleString("th-TH")} {matrix.unit})
+                            </>
+                          )}{" "}
+                          ไว้แล้ว ไม่ต้องบวกเพิ่ม
+                        </p>
+                      )}
+                      {/* แจกแจงค่าเพิ่มสั้น ๆ — ลูกค้าจะได้รู้ว่ายอดที่บวกมาเป็นค่าอะไร ไม่ต้องเดา */}
+                      {designFee > 0 && feeLines.length > 0 && (
+                        <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
+                          Add on ={" "}
+                          {feeLines.map((f, i) => (
+                            <span key={`${f.label}-${i}`}>
+                              {i > 0 ? " + " : ""}
+                              <strong className="font-bold text-stone-600">{f.label}</strong> {formatPrice(f.amount)}
+                              {f.note ? ` (${f.note})` : ""}
+                            </span>
+                          ))}
+                        </p>
+                      )}
+                    </>
+                  ) : null}
+                  {/* จำนวนลายที่คละ — ต้องระบุก่อนสั่ง (แตะปุ่ม/พิมพ์เลข หรือแนบรูปให้ระบบนับอัตโนมัติ) */}
+                  {needDesignsChoice && (
+                    <div
+                      id="designs-box"
+                      className={`mt-2 rounded-xl px-3 py-2.5 ring-2 transition ${
+                        designsSet ? "bg-teal-50 ring-teal-200" : designsWarn ? "bg-rose-50 ring-rose-400" : "bg-amber-50 ring-amber-300"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[13px] font-extrabold text-teal-900">🎨 คละกี่ลาย:</span>
+                        {!designsSet && (
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold text-white ${designsWarn ? "bg-rose-500" : "bg-amber-500"}`}>
+                            ต้องระบุก่อนสั่ง *
+                          </span>
+                        )}
+                        <div className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-teal-200">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDesignsTouched(true);
+                              setDesignsDraft(null);
+                              // ⚠️ ต้องเป็น updater ทั้งคู่ — กดรัว ๆ 2 ที React รวมเป็นรอบเดียว
+                              //    ถ้าอ่านค่า designs ตรง ๆ จะได้เลขเดิมทั้งสองครั้ง (กด + 2 ที ได้ 2 ไม่ใช่ 3)
+                              setDesigns((d) => Math.max(1, d - 1));
+                              // ระบุเอง = ตั้งเพดานแนบรูปตามเลขนี้ด้วย (แนบได้เท่าที่บอกว่าจะคละ)
+                              setDesignsCap((c) => Math.max(1, (c ?? designs) - 1));
+                            }}
+                            disabled={designsSet && designs <= 1}
+                            className="h-8 w-8 rounded-l-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                            aria-label="ลดจำนวนลาย"
+                          >
+                            −
+                          </button>
+                          {/* พิมพ์เลขเองได้ — ระหว่างพิมพ์ปล่อยช่องว่างได้ (ลบทิ้งแล้วพิมพ์ใหม่) ออกจากช่องค่อยปรับเป็นค่าที่ใช้จริง */}
+                          <input
+                            value={designsDraft ?? String(designs)}
+                            onChange={(e) => {
+                              setDesignsTouched(true);
+                              const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
+                              setDesignsDraft(raw);
+                              const n = parseInt(raw, 10);
+                              if (Number.isFinite(n) && n >= 1) {
+                                const next = Math.min(n, Math.max(1, maxDesigns));
+                                setDesigns(next);
+                                setDesignsCap(next);
+                              }
+                            }}
+                            onBlur={() => setDesignsDraft(null)}
+                            onFocus={(e) => {
+                              // แตะที่ตัวเลขก็นับเป็น "ระบุแล้ว" — ลูกค้าลายเดียวยืนยันได้โดยไม่ต้องกดปุ่ม
+                              setDesignsTouched(true);
+                              e.target.select();
+                            }}
+                            inputMode="numeric"
+                            aria-label="จำนวนลายที่คละ (พิมพ์เลขได้)"
+                            className="w-12 bg-transparent text-center text-sm font-extrabold text-teal-900 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDesignsTouched(true);
+                              setDesignsDraft(null);
+                              setDesigns((d) => Math.min(maxDesigns, d + 1));
+                              setDesignsCap((c) => Math.min(maxDesigns, (c ?? designs) + 1));
+                            }}
+                            disabled={designs >= maxDesigns}
+                            className="h-8 w-8 rounded-r-full text-sm font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-30"
+                            aria-label="เพิ่มจำนวนลาย"
+                          >
+                            +
+                          </button>
+                        </div>
+                        {artFiles.length > 0 && designs === artFiles.length && (
+                          <span
+                            className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700"
+                            title="นับตามรูปลายที่แนบ — กด +/− เพื่อปรับเอง"
+                          >
+                            ✨ นับตามรูปที่แนบ
+                          </span>
+                        )}
+                        {/* ไม่ต้องมีป้าย +฿ ตรงนี้ — บรรทัดสรุปด้านบนกับคำอธิบายใต้กล่องบอกยอดค่าคละอยู่แล้ว */}
+                      </div>
+                      {!designsSet && (
+                        <p className={`mt-1 text-[10px] font-bold leading-snug ${designsWarn ? "text-rose-600" : "text-amber-700"}`}>
+                          👉 กด +/− หรือแตะตัวเลขเพื่อระบุ · แนบรูปแล้วระบบนับให้เอง
+                        </p>
+                      )}
+                      {mixRule ? (
+                        /* กติกาคละแบบคิดต่อหน่วย — กางให้เห็นว่าคิดยังไง ลูกค้าจะได้ตัดสินใจเองได้ว่าคุ้มไหม */
+                        (() => {
+                          const unit = matrix?.unit ?? "ชิ้น";
+                          const mt = mixTierFor(mixRule, qty);
+                          const capped = Number.isFinite(mixMaxDesigns(mixRule, qty));
+                          /*
                         🎨 2 ต.ค. 69: ลายละ 1 แผ่น (ลาย ≤ แผ่น) ไม่ถือว่าคละ = ฿0 · เกินจำนวนแผ่นค่อยคิดเฉพาะลายที่ต้องลงแผ่นเดียวกัน
                         (พนักงานทดสอบ "2 แผ่น 2 ลาย ลายละ 1 A3 ต้องไม่มีค่าคละ" — กติกา 29 ก.ย. เคยนับจำนวนลายอย่างเดียวจึงโดน ฿5)
                         กระจายลายด้วยตัวเดียวกับที่คิดเงิน (mixSpread) — ยอดกางต้องตรงยอดเก็บ
                       */
-                      const total = designFee;
-                      const safeQty = Math.max(1, qty);
-                      const spread = mixSpread(mixRule, designs, safeQty);
-                      const groups = [...new Set(spread)]
-                        .sort((a, b) => b - a)
-                        .map((n) => ({ n, units: spread.filter((x) => x === n).length, fee: mixUnitFee(mixRule, n, qty) }));
-                      /* กติกาแบบง่าย = ไม่มีค่าเหมา + ลายแรกฟรี → ราคา = ลายที่เกินจำนวนแผ่น × ลายละ ตรง ๆ */
-                      const simple = mt.baseFee === 0 && mt.includedDesigns === 1;
-                      const over = Math.max(0, designs - safeQty);
-                      return (
-                        <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
-                          {/* เพดานจากจำนวนชิ้นที่ใส่ได้จริงต่อแผ่น — บอกเหตุผลไว้ ไม่งั้นลูกค้างงว่าทำไมกด + ไม่ขึ้น */}
-                          {unitCap ? (
-                            <p className="text-teal-700">
-                              📐 ขนาดที่เลือกได้ <strong className="font-bold">{unitCap.toLocaleString("th-TH")} ชิ้น</strong> ต่อ 1{" "}
-                              {unit} — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
-                              <strong className="font-bold">{capByPieces.toLocaleString("th-TH")} ลาย</strong>
-                              {designs >= capByPieces ? " (ตอนนี้เต็มแล้ว — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนแผ่นหรือลดขนาด)" : ""}
-                            </p>
-                          ) : null}
-                          {simple ? (
-                            <p>
-                              💡 ลายละ 1 {unit} ไม่คิดค่าคละ (สั่ง {safeQty.toLocaleString("th-TH")} {unit} คละได้{" "}
-                              {safeQty.toLocaleString("th-TH")} ลายฟรี) · ลายที่เกินจำนวน{unit}คิดลายละ {formatPrice(mt.extraFee)}
-                              {over > 0 ? (
-                                <>
-                                  {" "}
-                                  — ตอนนี้เกิน <strong className="font-bold">{over.toLocaleString("th-TH")} ลาย</strong> ={" "}
-                                  {over.toLocaleString("th-TH")}×{formatPrice(mt.extraFee)} ={" "}
-                                  <strong className="font-bold text-amber-700">{formatPrice(total)}</strong>
-                                </>
+                          const total = designFee;
+                          const safeQty = Math.max(1, qty);
+                          const spread = mixSpread(mixRule, designs, safeQty);
+                          const groups = [...new Set(spread)]
+                            .sort((a, b) => b - a)
+                            .map((n) => ({ n, units: spread.filter((x) => x === n).length, fee: mixUnitFee(mixRule, n, qty) }));
+                          /* กติกาแบบง่าย = ไม่มีค่าเหมา + ลายแรกฟรี → ราคา = ลายที่เกินจำนวนแผ่น × ลายละ ตรง ๆ */
+                          const simple = mt.baseFee === 0 && mt.includedDesigns === 1;
+                          const over = Math.max(0, designs - safeQty);
+                          return (
+                            <div className="mt-1 space-y-1 text-[11px] leading-relaxed text-teal-800">
+                              {/* เพดานจากจำนวนชิ้นที่ใส่ได้จริงต่อแผ่น — บอกเหตุผลไว้ ไม่งั้นลูกค้างงว่าทำไมกด + ไม่ขึ้น */}
+                              {unitCap ? (
+                                <p className="text-teal-700">
+                                  📐 ขนาดที่เลือกได้ <strong className="font-bold">{unitCap.toLocaleString("th-TH")} ชิ้น</strong> ต่อ 1 {unit} — สั่ง{" "}
+                                  {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
+                                  <strong className="font-bold">{capByPieces.toLocaleString("th-TH")} ลาย</strong>
+                                  {designs >= capByPieces ? " (ตอนนี้เต็มแล้ว — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนแผ่นหรือลดขนาด)" : ""}
+                                </p>
+                              ) : null}
+                              {simple ? (
+                                <p>
+                                  💡 ลายละ 1 {unit} ไม่คิดค่าคละ (สั่ง {safeQty.toLocaleString("th-TH")} {unit} คละได้ {safeQty.toLocaleString("th-TH")} ลายฟรี)
+                                  · ลายที่เกินจำนวน{unit}คิดลายละ {formatPrice(mt.extraFee)}
+                                  {over > 0 ? (
+                                    <>
+                                      {" "}
+                                      — ตอนนี้เกิน <strong className="font-bold">{over.toLocaleString("th-TH")} ลาย</strong> = {over.toLocaleString("th-TH")}×
+                                      {formatPrice(mt.extraFee)} = <strong className="font-bold text-amber-700">{formatPrice(total)}</strong>
+                                    </>
+                                  ) : (
+                                    <> — ตอนนี้ยังไม่เกิน จึงไม่มีค่าคละ</>
+                                  )}
+                                </p>
+                              ) : designs <= 1 ? (
+                                <p>
+                                  💡 ลายเดียวไม่มีค่าคละ ·
+                                  {mt.baseFee > 0
+                                    ? // โควตาเหมาคลุมแค่ 2 ลาย = ช่วง "2–2" ซึ่งอ่านแล้วงง — เขียนเป็นเลขเดียว
+                                      ` คละ ${
+                                        mt.includedDesigns <= 2 ? "2" : `2–${mt.includedDesigns.toLocaleString("th-TH")}`
+                                      } ลาย/${unit} +${formatPrice(mt.baseFee)}/${unit}`
+                                    : ` คิดเมื่อเกิน ${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit}`}
+                                  {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""}
+                                </p>
+                              ) : over <= 0 ? (
+                                <p>
+                                  ✅ คละ {designs.toLocaleString("th-TH")} ลาย บน {safeQty.toLocaleString("th-TH")} {unit} = ลายละ 1 {unit}
+                                  ไม่มี{unit}ไหนต้องคละ → <strong className="font-bold text-emerald-700">ไม่มีค่าคละ</strong>
+                                </p>
                               ) : (
-                                <> — ตอนนี้ยังไม่เกิน จึงไม่มีค่าคละ</>
+                                <>
+                                  <p>
+                                    🎨 คละ {designs.toLocaleString("th-TH")} ลาย บน {safeQty.toLocaleString("th-TH")} {unit} → เกินจำนวน{unit}{" "}
+                                    <strong className="font-bold">{over.toLocaleString("th-TH")} ลาย</strong> ต้องลง{unit}เดียวกัน ={" "}
+                                    <strong className="font-bold">{groups.map((g) => `${g.units} ${unit} × ${g.n} ลาย`).join(" + ")}</strong>
+                                  </p>
+                                  <p>
+                                    {groups.map((g) => `${g.units}×${formatPrice(g.fee)}`).join(" + ")} ={" "}
+                                    <strong className="font-bold text-amber-700">{formatPrice(total)}</strong>
+                                  </p>
+                                  <p className="text-teal-700">
+                                    {mt.baseFee > 0
+                                      ? `${unit}ที่คละ ${mt.includedDesigns <= 2 ? "2" : `2–${mt.includedDesigns.toLocaleString("th-TH")}`} ลาย = ${formatPrice(mt.baseFee)}`
+                                      : `${unit}ที่คละ ลายแรกฟรี`}
+                                    {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""} · คิดเฉพาะรายการนี้ ไม่รวมกับรายการอื่นในตะกร้า
+                                  </p>
+                                </>
                               )}
+                              {(() => {
+                                // จำนวนแรกที่เริ่มบังคับ 1 ลาย/หน่วย — อ่านจากตารางถ้ามี ไม่มีก็ใช้ค่าเดี่ยวแบบเดิม
+                                const onePerFrom =
+                                  (mixRule.tiers ?? []).filter((t) => t.onePerUnit).sort((a, b) => a.fromQty - b.fromQty)[0]?.fromQty ??
+                                  mixRule.onePerUnitFromQty;
+                                if (capped)
+                                  return (
+                                    <p className="text-teal-700">
+                                      📐 สั่งตั้งแต่ {onePerFrom?.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}— สั่ง{" "}
+                                      {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
+                                      <strong className="font-bold">{qty.toLocaleString("th-TH")} ลาย</strong>
+                                    </p>
+                                  );
+                                if (onePerFrom)
+                                  return (
+                                    <p className="text-teal-700">
+                                      ✨ ช่วงนี้คละได้อิสระ หลายลายอยู่บน{unit}เดียวกันได้ · ตั้งแต่ {onePerFrom.toLocaleString("th-TH")} {unit}ขึ้นไป
+                                      ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
+                                    </p>
+                                  );
+                                return null;
+                              })()}
+                            </div>
+                          );
+                        })()
+                      ) : rate?.underMinPieceFee && rate.minPerDesign && !freeMix && designs > included ? (
+                        // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — ราคายังคิดเรทยอดรวม บอกที่มาของค่าคละตรง ๆ
+                        (() => {
+                          const unit = matrix?.unit ?? "ชิ้น";
+                          const under = underMinPieces(qty, designs, rate.minPerDesign);
+                          return (
+                            <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                              💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละ {designs.toLocaleString("th-TH")} ลาย — จะมี {under.toLocaleString("th-TH")}{" "}
+                              {unit}ที่อยู่ในลายที่ไม่ถึงลายละ {rate.minPerDesign.toLocaleString("th-TH")} {unit} คิดส่วนต่าง{unit}ละ{" "}
+                              {formatPrice(rate.underMinPieceFee)} = <strong className="font-bold">+{formatPrice(under * rate.underMinPieceFee)}</strong> ·
+                              ราคาต่อ{unit}ยังคิดเรทตามยอดรวมเหมือนเดิม
                             </p>
-                          ) : designs <= 1 ? (
-                            <p>
-                              💡 ลายเดียวไม่มีค่าคละ ·
-                              {mt.baseFee > 0
-                                ? // โควตาเหมาคลุมแค่ 2 ลาย = ช่วง "2–2" ซึ่งอ่านแล้วงง — เขียนเป็นเลขเดียว
-                                  ` คละ ${
-                                    mt.includedDesigns <= 2 ? "2" : `2–${mt.includedDesigns.toLocaleString("th-TH")}`
-                                  } ลาย/${unit} +${formatPrice(mt.baseFee)}/${unit}`
-                                : ` คิดเมื่อเกิน ${mt.includedDesigns.toLocaleString("th-TH")} ลาย/${unit}`}
-                              {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""}
+                          );
+                        })()
+                      ) : rate?.extraDesignFee && rate.minPerDesign && !freeMix && designs > included ? (
+                        // กติกา "คละเกินโควตา คิดลายละ N" — ราคาต่อชิ้นยังคิดเรทยอดรวม บอกที่มาของค่าคละตรง ๆ
+                        (() => {
+                          const unit = matrix?.unit ?? "ชิ้น";
+                          const over = designs - included;
+                          return (
+                            <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                              💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละได้ฟรี {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ{" "}
+                              {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — เลือก {designs.toLocaleString("th-TH")} ลาย เกินมา{" "}
+                              {over.toLocaleString("th-TH")} ลาย คิดลายละ {formatPrice(rate.extraDesignFee)} ={" "}
+                              <strong className="font-bold">+{formatPrice(over * rate.extraDesignFee)}</strong> · ราคาต่อ{unit}ยังคิดเรทตามยอดรวมเหมือนเดิม
                             </p>
-                          ) : over <= 0 ? (
-                            <p>
-                              ✅ คละ {designs.toLocaleString("th-TH")} ลาย บน {safeQty.toLocaleString("th-TH")} {unit} = ลายละ 1 {unit}
-                              ไม่มี{unit}ไหนต้องคละ → <strong className="font-bold text-emerald-700">ไม่มีค่าคละ</strong>
+                          );
+                        })()
+                      ) : tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
+                        // คละเกินโควตาของเรท — ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย (บอกลูกค้าตรง ๆ ว่าจ่ายเรทไหน)
+                        (() => {
+                          const unit = matrix?.unit ?? "ชิ้น";
+                          const perDesign = Math.max(1, Math.floor(qty / Math.max(1, designs)));
+                          const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
+                          return (
+                            <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                              💡 คละ {designs.toLocaleString("th-TH")} ลาย เกินโควตาของราคานี้ (รวมในราคา {included.toLocaleString("th-TH")} ลาย · ขั้นต่ำลายละ{" "}
+                              {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — ราคาจึงคิดตามชิ้นต่อลาย: ตกลายละ {perDesign.toLocaleString("th-TH")} {unit}{" "}
+                              → ใช้เรท <strong className="font-bold">&ldquo;{tierLabel || `${perDesign.toLocaleString("th-TH")} ${unit}`}&rdquo;</strong> ·
+                              ลดเหลือ {included.toLocaleString("th-TH")} ลาย (หรือเพิ่มจำนวนสั่ง) เมื่อไหร่ กลับไปเรทยอดรวมทันที
                             </p>
-                          ) : (
-                            <>
-                              <p>
-                                🎨 คละ {designs.toLocaleString("th-TH")} ลาย บน {safeQty.toLocaleString("th-TH")} {unit} → เกินจำนวน{unit}{" "}
-                                <strong className="font-bold">{over.toLocaleString("th-TH")} ลาย</strong> ต้องลง{unit}เดียวกัน ={" "}
-                                <strong className="font-bold">
-                                  {groups.map((g) => `${g.units} ${unit} × ${g.n} ลาย`).join(" + ")}
-                                </strong>
-                              </p>
-                              <p>
-                                {groups
-                                  .map((g) => `${g.units}×${formatPrice(g.fee)}`)
-                                  .join(" + ")}{" "}
-                                = <strong className="font-bold text-amber-700">{formatPrice(total)}</strong>
-                              </p>
-                              <p className="text-teal-700">
-                                {mt.baseFee > 0
-                                  ? `${unit}ที่คละ ${mt.includedDesigns <= 2 ? "2" : `2–${mt.includedDesigns.toLocaleString("th-TH")}`} ลาย = ${formatPrice(mt.baseFee)}`
-                                  : `${unit}ที่คละ ลายแรกฟรี`}
-                                {mt.extraFee > 0 ? ` · เกินจากนั้นลายละ ${formatPrice(mt.extraFee)}` : ""} · คิดเฉพาะรายการนี้ ไม่รวมกับรายการอื่นในตะกร้า
-                              </p>
-                            </>
-                          )}
-                          {(() => {
-                            // จำนวนแรกที่เริ่มบังคับ 1 ลาย/หน่วย — อ่านจากตารางถ้ามี ไม่มีก็ใช้ค่าเดี่ยวแบบเดิม
-                            const onePerFrom =
-                              (mixRule.tiers ?? []).filter((t) => t.onePerUnit).sort((a, b) => a.fromQty - b.fromQty)[0]
-                                ?.fromQty ?? mixRule.onePerUnitFromQty;
-                            if (capped)
-                              return (
-                                <p className="text-teal-700">
-                                  📐 สั่งตั้งแต่ {onePerFrom?.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
-                                  — สั่ง {qty.toLocaleString("th-TH")} {unit} จึงคละได้สูงสุด{" "}
-                                  <strong className="font-bold">{qty.toLocaleString("th-TH")} ลาย</strong>
-                                </p>
-                              );
-                            if (onePerFrom)
-                              return (
-                                <p className="text-teal-700">
-                                  ✨ ช่วงนี้คละได้อิสระ หลายลายอยู่บน{unit}เดียวกันได้ · ตั้งแต่{" "}
-                                  {onePerFrom.toLocaleString("th-TH")} {unit}ขึ้นไป ต้องมีอย่างน้อย 1 ลายต่อ 1 {unit}
-                                </p>
-                              );
-                            return null;
-                          })()}
-                        </div>
-                      );
-                    })()
-                  ) : rate?.underMinPieceFee && rate.minPerDesign && !freeMix && designs > included ? (
-                    // กติกา "คละไม่ถึงขั้นต่ำ คิดส่วนต่างชิ้นละ N" (เคสมือถือ) — ราคายังคิดเรทยอดรวม บอกที่มาของค่าคละตรง ๆ
-                    (() => {
-                      const unit = matrix?.unit ?? "ชิ้น";
-                      const under = underMinPieces(qty, designs, rate.minPerDesign);
-                      return (
+                          );
+                        })()
+                      ) : tierByDesign && !rate?.minPerDesign ? (
+                        // สินค้าคิดเรทตามชิ้นต่อลาย — โชว์วิธีคิด + เรียกชื่อเรท/ช่วงตามที่แอดมินตั้งไว้ในตารางราคา
+                        (() => {
+                          const unit = matrix?.unit ?? "ชิ้น";
+                          const perDesign = Math.max(1, Math.floor(qty / Math.max(1, designs)));
+                          const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
+                          return (
+                            <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                              💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละ {designs.toLocaleString("th-TH")} ลาย = ตกลายละ{" "}
+                              {perDesign.toLocaleString("th-TH")} {unit} ราคาจึงคิดตามเรท{" "}
+                              <strong className="font-bold">&ldquo;{tierLabel || `${perDesign.toLocaleString("th-TH")} ${unit}`}&rdquo;</strong>
+                              {rate?.label && rates.length > 1 ? ` ของ${rateShopLabel(rate)}` : ""}
+                              {designs > 1 ? " — อยากได้ราคาถูกลง ลองลดจำนวนลาย หรือเพิ่มจำนวนสั่งดูนะครับ" : ""}
+                            </p>
+                          );
+                        })()
+                      ) : freeMix && rate?.minPerDesign ? (
                         <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                          💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละ {designs.toLocaleString("th-TH")} ลาย — จะมี{" "}
-                          {under.toLocaleString("th-TH")} {unit}ที่อยู่ในลายที่ไม่ถึงลายละ{" "}
-                          {rate.minPerDesign.toLocaleString("th-TH")} {unit} คิดส่วนต่าง{unit}ละ{" "}
-                          {formatPrice(rate.underMinPieceFee)} ={" "}
-                          <strong className="font-bold">+{formatPrice(under * rate.underMinPieceFee)}</strong> ·
-                          ราคาต่อ{unit}ยังคิดเรทตามยอดรวมเหมือนเดิม
-                        </p>
-                      );
-                    })()
-                  ) : rate?.extraDesignFee && rate.minPerDesign && !freeMix && designs > included ? (
-                    // กติกา "คละเกินโควตา คิดลายละ N" — ราคาต่อชิ้นยังคิดเรทยอดรวม บอกที่มาของค่าคละตรง ๆ
-                    (() => {
-                      const unit = matrix?.unit ?? "ชิ้น";
-                      const over = designs - included;
-                      return (
-                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                          💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละได้ฟรี {included.toLocaleString("th-TH")} ลาย
-                          (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — เลือก{" "}
-                          {designs.toLocaleString("th-TH")} ลาย เกินมา {over.toLocaleString("th-TH")} ลาย คิดลายละ{" "}
-                          {formatPrice(rate.extraDesignFee)} ={" "}
-                          <strong className="font-bold">+{formatPrice(over * rate.extraDesignFee)}</strong> ·
-                          ราคาต่อ{unit}ยังคิดเรทตามยอดรวมเหมือนเดิม
-                        </p>
-                      );
-                    })()
-                  ) : tierByDesign && rate?.minPerDesign && !freeMix && designs > included ? (
-                    // คละเกินโควตาของเรท — ไม่บล็อก แต่ราคาตกไปคิดตามชิ้นต่อลาย (บอกลูกค้าตรง ๆ ว่าจ่ายเรทไหน)
-                    (() => {
-                      const unit = matrix?.unit ?? "ชิ้น";
-                      const perDesign = Math.max(1, Math.floor(qty / Math.max(1, designs)));
-                      const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
-                      return (
-                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                          💡 คละ {designs.toLocaleString("th-TH")} ลาย เกินโควตาของราคานี้ (รวมในราคา {included.toLocaleString("th-TH")} ลาย ·
-                          ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {unit}) — ราคาจึงคิดตามชิ้นต่อลาย:
-                          ตกลายละ {perDesign.toLocaleString("th-TH")} {unit} → ใช้เรท{" "}
-                          <strong className="font-bold">
-                            &ldquo;{tierLabel || `${perDesign.toLocaleString("th-TH")} ${unit}`}&rdquo;
-                          </strong>{" "}
-                          · ลดเหลือ {included.toLocaleString("th-TH")} ลาย (หรือเพิ่มจำนวนสั่ง) เมื่อไหร่ กลับไปเรทยอดรวมทันที
-                        </p>
-                      );
-                    })()
-                  ) : tierByDesign && !rate?.minPerDesign ? (
-                    // สินค้าคิดเรทตามชิ้นต่อลาย — โชว์วิธีคิด + เรียกชื่อเรท/ช่วงตามที่แอดมินตั้งไว้ในตารางราคา
-                    (() => {
-                      const unit = matrix?.unit ?? "ชิ้น";
-                      const perDesign = Math.max(1, Math.floor(qty / Math.max(1, designs)));
-                      const tierLabel = matrix ? matrix.tiers[tierIndex(matrix, perDesign)]?.label?.trim() : "";
-                      return (
-                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                          💡 สั่ง {qty.toLocaleString("th-TH")} {unit} คละ {designs.toLocaleString("th-TH")} ลาย
-                          = ตกลายละ {perDesign.toLocaleString("th-TH")} {unit} ราคาจึงคิดตามเรท{" "}
-                          <strong className="font-bold">
-                            &ldquo;{tierLabel || `${perDesign.toLocaleString("th-TH")} ${unit}`}&rdquo;
-                          </strong>
-                          {rate?.label && rates.length > 1 ? ` ของ${rateShopLabel(rate)}` : ""}
-                          {designs > 1 ? " — อยากได้ราคาถูกลง ลองลดจำนวนลาย หรือเพิ่มจำนวนสั่งดูนะครับ" : ""}
-                        </p>
-                      );
-                    })()
-                  ) : freeMix && rate?.minPerDesign ? (
-                    <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                      {/* เพดานลาย = จำนวน "ชิ้น" ไม่ใช่จำนวนหน่วยสั่ง — สินค้าขายเป็นเซ็ต (เซ็ตละ N ชิ้น) คละได้ตามชิ้น */}
-                      {/* 🗣 เดิม "ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด 1 ลาย)" อ่านแล้วขัดกันเอง
+                          {/* เพดานลาย = จำนวน "ชิ้น" ไม่ใช่จำนวนหน่วยสั่ง — สินค้าขายเป็นเซ็ต (เซ็ตละ N ชิ้น) คละได้ตามชิ้น */}
+                          {/* 🗣 เดิม "ช่วงราคาปลีกคละลายได้อิสระ — ลายละกี่ชิ้นก็ได้ ไม่คิดเพิ่ม (สูงสุด 1 ลาย)" อ่านแล้วขัดกันเอง
                           (สั่ง 1 ชิ้น = คละได้ 1 ลาย) → แยกเป็นช่วงจำนวนให้ชัด (เจ้าของร้านอนุมัติ 12 ต.ค. 69) */}
-                      ✨ {rate.freeMixBelowQty && rate.freeMixBelowQty > 2
-                        ? `สั่ง 1–${(rate.freeMixBelowQty - 1).toLocaleString("th-TH")} ${pieceUnit}: `
-                        : ""}
-                      คละลายได้ทุก{pieceUnit} ไม่คิดเพิ่ม
-                      {maxDesigns === 1
-                        ? ` (ตอนนี้ 1 ${pieceUnit} = 1 ลาย)`
-                        : ` (ตอนนี้คละได้ถึง ${maxDesigns.toLocaleString("th-TH")} ลาย)`}
-                      {rate.freeMixBelowQty
-                        ? ` · ตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${pieceUnit}: ลายละอย่างน้อย ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit}` +
-                          (rate.underMinPieceFee
-                            ? ` (ลายที่ไม่ถึง คิดเพิ่ม${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)})`
+                          ✨{" "}
+                          {rate.freeMixBelowQty && rate.freeMixBelowQty > 2
+                            ? `สั่ง 1–${(rate.freeMixBelowQty - 1).toLocaleString("th-TH")} ${pieceUnit}: `
+                            : ""}
+                          คละลายได้ทุก{pieceUnit} ไม่คิดเพิ่ม
+                          {maxDesigns === 1 ? ` (ตอนนี้ 1 ${pieceUnit} = 1 ลาย)` : ` (ตอนนี้คละได้ถึง ${maxDesigns.toLocaleString("th-TH")} ลาย)`}
+                          {rate.freeMixBelowQty
+                            ? ` · ตั้งแต่ ${rate.freeMixBelowQty.toLocaleString("th-TH")} ${pieceUnit}: ลายละอย่างน้อย ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit}` +
+                              (rate.underMinPieceFee
+                                ? ` (ลายที่ไม่ถึง คิดเพิ่ม${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)})`
+                                : rate.extraDesignFee
+                                  ? ` (ลายเกินคิดเพิ่มลายละ +${formatPrice(rate.extraDesignFee)})`
+                                  : "")
+                            : ""}
+                        </p>
+                      ) : rate?.minPerDesign ? (
+                        <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
+                          รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit})
+                          {rate.underMinPieceFee
+                            ? /* กติกาเคสมือถือ — คละไม่ถึงขั้นต่ำได้ จ่ายส่วนต่างต่อชิ้นแทน */
+                              ` · ลายไหนไม่ถึงลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit} คิดส่วนต่าง${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)}`
                             : rate.extraDesignFee
-                            ? ` (ลายเกินคิดเพิ่มลายละ +${formatPrice(rate.extraDesignFee)})`
-                            : "")
-                        : ""}
-                    </p>
-                  ) : rate?.minPerDesign ? (
-                  <p className="mt-1 text-[11px] leading-relaxed text-teal-800">
-                    รวมในราคา {included.toLocaleString("th-TH")} ลาย (ขั้นต่ำลายละ {rate.minPerDesign.toLocaleString("th-TH")} {pieceUnit})
-                    {rate.underMinPieceFee
-                      ? /* กติกาเคสมือถือ — คละไม่ถึงขั้นต่ำได้ จ่ายส่วนต่างต่อชิ้นแทน */
-                        ` · ลายไหนไม่ถึงลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit} คิดส่วนต่าง${pieceUnit}ละ +${formatPrice(rate.underMinPieceFee)}`
-                      : rate.extraDesignFee
-                      ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
-                      : hardMaxDesigns
-                        ? /* โควตาล็อกไว้ — บอกเพดานตรง ๆ ว่าคละได้ถึงไหน และต้องทำยังไงถึงจะคละได้มากกว่านี้ */
-                          ` · สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คละได้สูงสุด ${maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนสั่ง (เพิ่มลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit})`
-                        : tierByDesign
-                          ? " · คละเกินได้เลย — ราคาจะปรับเป็นเรทตามชิ้นต่อลาย"
-                          : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
-                  </p>
-                  ) : null}
-                  {/* แนบภาพลายมากกว่าจำนวนลายที่นับไว้ → เตือน (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}
-                  {artFiles.length > designs &&
-                    (designs >= maxDesigns ? (
-                      <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
-                        ⚠️ แนบภาพลายมา {artFiles.length} รูป แต่จำนวน {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}{" "}
-                        ราคานี้คละได้สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย —
-                        ถ้าเป็นลายคนละแบบ เพิ่มจำนวนสั่งเพื่อคละได้มากขึ้น (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)
-                      </p>
-                    ) : (
-                      <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
-                        ⚠️ คุณแนบภาพลายมา {artFiles.length} รูป แต่เลือกคละ {designs} ลาย —
-                        ถ้าเป็นลายคนละแบบ กด + เพิ่ม &ldquo;คละกี่ลาย&rdquo; ให้ตรงด้วยนะครับ
-                        (ทางร้านนับจำนวนลายจริงจากไฟล์ ถ้าไม่ตรงแอดมินจะทักยืนยันก่อนเริ่มงาน)
-                      </p>
-                    ))}
-                </div>
-              )}
-              {/*
+                              ? ` · คละเกินได้ ลายละ +${formatPrice(rate.extraDesignFee)}`
+                              : hardMaxDesigns
+                                ? /* โควตาล็อกไว้ — บอกเพดานตรง ๆ ว่าคละได้ถึงไหน และต้องทำยังไงถึงจะคละได้มากกว่านี้ */
+                                  ` · สั่ง ${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} คละได้สูงสุด ${maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละมากกว่านี้ ต้องเพิ่มจำนวนสั่ง (เพิ่มลายละ ${rate.minPerDesign.toLocaleString("th-TH")} ${pieceUnit})`
+                                : tierByDesign
+                                  ? " · คละเกินได้เลย — ราคาจะปรับเป็นเรทตามชิ้นต่อลาย"
+                                  : " · เพิ่มลายได้ด้วยการเพิ่มจำนวนสั่ง"}
+                        </p>
+                      ) : null}
+                      {/* แนบภาพลายมากกว่าจำนวนลายที่นับไว้ → เตือน (ราคา/เงื่อนไขคิดตามจำนวนลาย) */}
+                      {artFiles.length > designs &&
+                        (designs >= maxDesigns ? (
+                          <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
+                            ⚠️ แนบภาพลายมา {artFiles.length} รูป แต่จำนวน {qty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} ราคานี้คละได้สูงสุด{" "}
+                            {maxDesigns.toLocaleString("th-TH")} ลาย — ถ้าเป็นลายคนละแบบ เพิ่มจำนวนสั่งเพื่อคละได้มากขึ้น (หรือแอดมินจะทักยืนยันก่อนเริ่มงาน)
+                          </p>
+                        ) : (
+                          <p className="mt-1.5 rounded-xl bg-amber-100/80 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-900 ring-1 ring-amber-300">
+                            ⚠️ คุณแนบภาพลายมา {artFiles.length} รูป แต่เลือกคละ {designs} ลาย — ถ้าเป็นลายคนละแบบ กด + เพิ่ม &ldquo;คละกี่ลาย&rdquo;
+                            ให้ตรงด้วยนะครับ (ทางร้านนับจำนวนลายจริงจากไฟล์ ถ้าไม่ตรงแอดมินจะทักยืนยันก่อนเริ่มงาน)
+                          </p>
+                        ))}
+                    </div>
+                  )}
+                  {/*
                 🔄 คละกี่ลาย "ด้านหลัง" — งานพิมพ์ 2 ด้าน (สินค้าที่ตั้ง backDesign ไว้)
                 ใช้กติกา/เพดานชุดเดียวกับด้านหน้าเป๊ะ ๆ แค่คิดค่าคละเพิ่มอีกชุด
                 ไม่บังคับให้ระบุ — ปกติด้านหลังใช้ลายเดียวกันทั้งหมด (= 1 ลาย ไม่มีค่าคละ)
               */}
-              {needDesignsChoice && backOn && (
-                <div id="back-designs-box" className="mt-2 rounded-xl bg-sky-50 px-3 py-2.5 ring-2 ring-sky-200">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13px] font-extrabold text-sky-900">🔄 ด้านหลังคละกี่ลาย:</span>
-                    <div className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-sky-200">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBackDesignsDraft(null);
-                          setBackDesigns((d) => Math.max(1, d - 1));
-                        }}
-                        disabled={backDesigns <= 1}
-                        className="h-8 w-8 rounded-l-full text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-30"
-                        aria-label="ลดจำนวนลายด้านหลัง"
-                      >
-                        −
-                      </button>
-                      <input
-                        value={backDesignsDraft ?? String(backDesigns)}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
-                          setBackDesignsDraft(raw);
-                          const n = parseInt(raw, 10);
-                          if (Number.isFinite(n) && n >= 1) setBackDesigns(Math.min(n, Math.max(1, maxDesigns)));
-                        }}
-                        onBlur={() => setBackDesignsDraft(null)}
-                        onFocus={(e) => e.target.select()}
-                        inputMode="numeric"
-                        aria-label="จำนวนลายที่คละด้านหลัง (พิมพ์เลขได้)"
-                        className="w-12 bg-transparent text-center text-sm font-extrabold text-sky-900 outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBackDesignsDraft(null);
-                          setBackDesigns((d) => Math.min(maxDesigns, d + 1));
-                        }}
-                        disabled={backDesigns >= maxDesigns}
-                        className="h-8 w-8 rounded-r-full text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-30"
-                        aria-label="เพิ่มจำนวนลายด้านหลัง"
-                      >
-                        +
-                      </button>
+                  {needDesignsChoice && backOn && (
+                    <div id="back-designs-box" className="mt-2 rounded-xl bg-sky-50 px-3 py-2.5 ring-2 ring-sky-200">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[13px] font-extrabold text-sky-900">🔄 ด้านหลังคละกี่ลาย:</span>
+                        <div className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-sky-200">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBackDesignsDraft(null);
+                              setBackDesigns((d) => Math.max(1, d - 1));
+                            }}
+                            disabled={backDesigns <= 1}
+                            className="h-8 w-8 rounded-l-full text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-30"
+                            aria-label="ลดจำนวนลายด้านหลัง"
+                          >
+                            −
+                          </button>
+                          <input
+                            value={backDesignsDraft ?? String(backDesigns)}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, "").slice(0, 5);
+                              setBackDesignsDraft(raw);
+                              const n = parseInt(raw, 10);
+                              if (Number.isFinite(n) && n >= 1) setBackDesigns(Math.min(n, Math.max(1, maxDesigns)));
+                            }}
+                            onBlur={() => setBackDesignsDraft(null)}
+                            onFocus={(e) => e.target.select()}
+                            inputMode="numeric"
+                            aria-label="จำนวนลายที่คละด้านหลัง (พิมพ์เลขได้)"
+                            className="w-12 bg-transparent text-center text-sm font-extrabold text-sky-900 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBackDesignsDraft(null);
+                              setBackDesigns((d) => Math.min(maxDesigns, d + 1));
+                            }}
+                            disabled={backDesigns >= maxDesigns}
+                            className="h-8 w-8 rounded-r-full text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-30"
+                            aria-label="เพิ่มจำนวนลายด้านหลัง"
+                          >
+                            +
+                          </button>
+                        </div>
+                        {/* ไม่ติดป้าย +฿ ตรงนี้ — บรรทัด "Add on = …" ด้านบนกางยอดค่าคละหน้า/หลังให้แล้ว (เหมือนกล่องด้านหน้า) */}
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
+                        {backMix
+                          ? /* ด้านหลังมีกติกาของตัวเอง (ลายละ N บาท) — บอกราคาตรง ๆ ไม่ต้องให้ลูกค้าไปเทียบกับด้านหน้า */
+                            (() => {
+                              const t = mixTierFor(backMix, Math.max(1, qty));
+                              const free = Math.max(1, t.includedDesigns);
+                              return `ด้านหลังคิดค่าคละแยกจากด้านหน้าอีกชุดหนึ่ง — ${
+                                free > 1 ? `คละ ${free.toLocaleString("th-TH")} ลายแรก ${formatPrice(t.baseFee)} · ลายถัดไป` : "ลายแรกไม่คิด · ลายถัดไป"
+                              }ลายละ ${formatPrice(t.extraFee)} · `;
+                            })()
+                          : "ด้านหลังใช้เงื่อนไขคละลายชุดเดียวกับด้านหน้า — คิดค่าคละแยกอีกชุดหนึ่ง · "}
+                        หลังเป็นลายเดียวกันทั้งหมดปล่อยไว้ที่ 1 ลาย (ไม่มีค่าคละ) · หลังเป็นคนละลายกี่แบบ กด + ให้ตรงด้วยนะครับ
+                      </p>
                     </div>
-                    {/* ไม่ติดป้าย +฿ ตรงนี้ — บรรทัด "Add on = …" ด้านบนกางยอดค่าคละหน้า/หลังให้แล้ว (เหมือนกล่องด้านหน้า) */}
-                  </div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
-                    {backMix
-                      ? /* ด้านหลังมีกติกาของตัวเอง (ลายละ N บาท) — บอกราคาตรง ๆ ไม่ต้องให้ลูกค้าไปเทียบกับด้านหน้า */
-                        (() => {
-                          const t = mixTierFor(backMix, Math.max(1, qty));
-                          const free = Math.max(1, t.includedDesigns);
-                          return `ด้านหลังคิดค่าคละแยกจากด้านหน้าอีกชุดหนึ่ง — ${
-                            free > 1 ? `คละ ${free.toLocaleString("th-TH")} ลายแรก ${formatPrice(t.baseFee)} · ลายถัดไป` : "ลายแรกไม่คิด · ลายถัดไป"
-                          }ลายละ ${formatPrice(t.extraFee)} · `;
-                        })()
-                      : "ด้านหลังใช้เงื่อนไขคละลายชุดเดียวกับด้านหน้า — คิดค่าคละแยกอีกชุดหนึ่ง · "}
-                    หลังเป็นลายเดียวกันทั้งหมดปล่อยไว้ที่ 1 ลาย (ไม่มีค่าคละ) ·
-                    หลังเป็นคนละลายกี่แบบ กด + ให้ตรงด้วยนะครับ
-                  </p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
+          {/* รายละเอียดสินค้า โซน "ด้านล่าง" — เต็มความกว้าง (ค่าเริ่มต้นของทุกท่อนที่ไม่ได้ตั้ง slot) */}
+          {detailsSection("wide", "mt-16")}
 
-        </div>
-      </div>
-
-      {/* รายละเอียดสินค้า โซน "ด้านล่าง" — เต็มความกว้าง (ค่าเริ่มต้นของทุกท่อนที่ไม่ได้ตั้ง slot) */}
-      {detailsSection("wide", "mt-16")}
-
-      {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
-      {(product.tabs?.length ?? 0) > 0 && (
-        <section className="mt-14">
-          {/* ป้ายหัวโซน + แท็บเม็ดยา — โทน/ฟอนต์ชุดเดียวกับหน้าแรกและหน้าบัญชี (.acd-ttab) */}
-          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-3">
-            {/* ป้ายหัวโซน — เดิมเป็นเม็ดยาสีกรมท่า ไปยืนคู่กับแท็บที่เลือกอยู่
+          {/* ═══ แท็บข้อมูลสินค้า — รายละเอียดเพิ่มเติม / วิธีสั่งงาน / การรับประกัน (แบบหน้า pricelist เว็บเดิม) ═══ */}
+          {(product.tabs?.length ?? 0) > 0 && (
+            <section className="mt-14">
+              {/* ป้ายหัวโซน + แท็บเม็ดยา — โทน/ฟอนต์ชุดเดียวกับหน้าแรกและหน้าบัญชี (.acd-ttab) */}
+              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-3">
+                {/* ป้ายหัวโซน — เดิมเป็นเม็ดยาสีกรมท่า ไปยืนคู่กับแท็บที่เลือกอยู่
                 เลยดูเหมือนมีแท็บถูกเลือก 2 อัน */}
-            <span className="ptab-secname">
-              <i aria-hidden="true">📋</i>ข้อมูลสินค้าเพิ่มเติม
-            </span>
-            <div className="flex gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
-              {product.tabs!.map((t, i) => {
-                const on = i === Math.min(tabIndex, product.tabs!.length - 1);
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    role="tab"
-                    onClick={() => setTabIndex(i)}
-                    aria-selected={on}
-                    className={`whitespace-nowrap rounded-full px-[18px] py-2 font-display text-[.88rem] transition duration-200 ${
-                      on
-                        ? "bg-[var(--blue-deep)] text-white shadow-[0_6px_14px_rgba(44,129,196,.28)]"
-                        : "bg-[var(--sky-50)] text-[var(--navy-soft)] ring-1 ring-[var(--sky-100)] hover:bg-[var(--sky-100)] hover:text-[var(--navy)]"
-                    }`}
-                  >
-                    {shopText(t.title)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="ptab-panel">
-            {/* 🗣 ข้อความแท็บที่แอดมินเขียนเอง — แปลงศัพท์ร้าน (เรทที่ 1/ดีเทล) เป็นคำง่ายตอนแสดง (shopText) ข้อมูลเดิมไม่แตะ */}
-            {(() => {
-              const t = product.tabs![Math.min(tabIndex, product.tabs!.length - 1)];
-              return <ProductTabText tab={{ ...t, title: shopText(t.title), text: shopText(t.text), ...(t.html ? { html: shopText(t.html) } : {}) }} />;
-            })()}
-          </div>
-        </section>
-      )}
+                <span className="ptab-secname">
+                  <i aria-hidden="true">📋</i>ข้อมูลสินค้าเพิ่มเติม
+                </span>
+                <div className="flex gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
+                  {product.tabs!.map((t, i) => {
+                    const on = i === Math.min(tabIndex, product.tabs!.length - 1);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        role="tab"
+                        onClick={() => setTabIndex(i)}
+                        aria-selected={on}
+                        className={`whitespace-nowrap rounded-full px-[18px] py-2 font-display text-[.88rem] transition duration-200 ${
+                          on
+                            ? "bg-[var(--blue-deep)] text-white shadow-[0_6px_14px_rgba(44,129,196,.28)]"
+                            : "bg-[var(--sky-50)] text-[var(--navy-soft)] ring-1 ring-[var(--sky-100)] hover:bg-[var(--sky-100)] hover:text-[var(--navy)]"
+                        }`}
+                      >
+                        {shopText(t.title)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="ptab-panel">
+                {/* 🗣 ข้อความแท็บที่แอดมินเขียนเอง — แปลงศัพท์ร้าน (เรทที่ 1/ดีเทล) เป็นคำง่ายตอนแสดง (shopText) ข้อมูลเดิมไม่แตะ */}
+                {(() => {
+                  const t = product.tabs![Math.min(tabIndex, product.tabs!.length - 1)];
+                  return <ProductTabText tab={{ ...t, title: shopText(t.title), text: shopText(t.text), ...(t.html ? { html: shopText(t.html) } : {}) }} />;
+                })()}
+              </div>
+            </section>
+          )}
 
-      {/* คำถามที่พบบ่อย (AEO) */}
-      {faqs.length > 0 && (
-        <section className="mt-14">
-          <h2 className="mb-5 text-xl font-extrabold text-amber-950">❓ คำถามที่พบบ่อย</h2>
-          <div className="space-y-3">
-            {faqs.map((f, i) => (
-              <details key={i} className="group rounded-2xl border border-amber-100 bg-white p-4 open:shadow-sm">
-                <summary className="flex cursor-pointer list-none items-center justify-between font-bold text-amber-950">
-                  {f.q}
-                  <span className="ml-3 text-amber-400 transition group-open:rotate-45">＋</span>
-                </summary>
-                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-600">{f.a}</p>
-              </details>
-            ))}
-          </div>
-        </section>
-      )}
+          {/* คำถามที่พบบ่อย (AEO) */}
+          {faqs.length > 0 && (
+            <section className="mt-14">
+              <h2 className="mb-5 text-xl font-extrabold text-amber-950">❓ คำถามที่พบบ่อย</h2>
+              <div className="space-y-3">
+                {faqs.map((f, i) => (
+                  <details key={i} className="group rounded-2xl border border-amber-100 bg-white p-4 open:shadow-sm">
+                    <summary className="flex cursor-pointer list-none items-center justify-between font-bold text-amber-950">
+                      {f.q}
+                      <span className="ml-3 text-amber-400 transition group-open:rotate-45">＋</span>
+                    </summary>
+                    <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-600">{f.a}</p>
+                  </details>
+                ))}
+              </div>
+            </section>
+          )}
 
-      {/* สินค้าใกล้เคียง — แถบเลื่อนซ้าย-ขวา ดูได้มากกว่าที่จอแสดงพอดี */}
-      {related.length > 0 && (
-        <RelatedCarousel
-          title={`${category.emoji} สินค้าอื่นในหมวด ${catName}`}
-          products={related}
-          category={categoryFromServer}
-        />
-      )}
+          {/* สินค้าใกล้เคียง — แถบเลื่อนซ้าย-ขวา ดูได้มากกว่าที่จอแสดงพอดี */}
+          {related.length > 0 && <RelatedCarousel title={`${category.emoji} สินค้าอื่นในหมวด ${catName}`} products={related} category={categoryFromServer} />}
 
-      {/* ═══ 🎨 ป้ายเตือน "ยังไม่ได้แนบลาย" — เด้งตอนกดเพิ่มลงตะกร้าทั้งที่ยังไม่มีรูป ═══
+          {/* ═══ 🎨 ป้ายเตือน "ยังไม่ได้แนบลาย" — เด้งตอนกดเพิ่มลงตะกร้าทั้งที่ยังไม่มีรูป ═══
            ลอยเหนือแถบซื้อ (z-91) และเหนือเมนูล่างมือถือ (.bottom-nav z-90) ไม่งั้นจมอยู่ใต้แถบ มองไม่เห็น
            ระยะห่างจากขอบล่างแยกตามจอ: มือถือมีเมนูล่าง (~84px) + แถบซื้อ · เดสก์ท็อปมีแถบซื้ออย่างเดียว */}
-      {artToast && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3 max-[1000px]:pb-[calc(96px+env(safe-area-inset-bottom,0px))] min-[1001px]:pb-[96px] lg:px-6"
-        >
-          <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-2.5 rounded-2xl bg-rose-600 px-3.5 py-3 text-white shadow-[0_18px_40px_-12px_rgba(190,18,60,0.65)]">
-            <span aria-hidden className="text-lg leading-none">🎨</span>
-            <p className="min-w-0 flex-1 text-[12.5px] font-bold leading-snug">
-              ยังไม่ได้แนบลาย — อัปโหลดรูป หรือใส่ลิงก์ไฟล์ก่อน ถึงจะใส่ตะกร้าได้
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setArtToast(false);
-                jumpToArt();
-              }}
-              className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12px] font-extrabold text-rose-700 transition hover:bg-rose-50"
+          {artToast && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="pointer-events-none fixed inset-x-0 bottom-0 z-[95] px-3 max-[1000px]:pb-[calc(96px+env(safe-area-inset-bottom,0px))] min-[1001px]:pb-[96px] lg:px-6"
             >
-              👆 ไปแนบลาย
-            </button>
-            <button
-              type="button"
-              onClick={() => setArtToast(false)}
-              aria-label="ปิดป้ายเตือน"
-              className="shrink-0 px-1 text-sm font-bold opacity-80 transition hover:opacity-100"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
+              <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-2.5 rounded-2xl bg-rose-600 px-3.5 py-3 text-white shadow-[0_18px_40px_-12px_rgba(190,18,60,0.65)]">
+                <span aria-hidden className="text-lg leading-none">
+                  🎨
+                </span>
+                <p className="min-w-0 flex-1 text-[12.5px] font-bold leading-snug">ยังไม่ได้แนบลาย — อัปโหลดรูป หรือใส่ลิงก์ไฟล์ก่อน ถึงจะใส่ตะกร้าได้</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArtToast(false);
+                    jumpToArt();
+                  }}
+                  className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12px] font-extrabold text-rose-700 transition hover:bg-rose-50"
+                >
+                  👆 ไปแนบลาย
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setArtToast(false)}
+                  aria-label="ปิดป้ายเตือน"
+                  className="shrink-0 px-1 text-sm font-bold opacity-80 transition hover:opacity-100"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
-      {/* ═══ แถบซื้อลอยล่างจอ — ราคาปัจจุบัน + ปุ่มสั่ง ไม่ต้องเลื่อนกลับขึ้นไป ═══
+          {/* ═══ แถบซื้อลอยล่างจอ — ราคาปัจจุบัน + ปุ่มสั่ง ไม่ต้องเลื่อนกลับขึ้นไป ═══
            💻 เดสก์ท็อปเห็นด้วย (เดิม lg:hidden): แผงสั่งซื้อฝั่งขวายาวกว่าจอ ปุ่มสั่งเลื่อนพ้นตาไปแล้ว
               ลูกค้าไล่ติ๊กตัวเลือกลงมาเรื่อย ๆ จนหาปุ่มเข้าตะกร้าไม่เจอ (ไลน์ 20 ก.ย. 69)
               — บนจอใหญ่เป็นแคปซูลลอยกลางจอ ไม่บังปุ่มแชท/ไลน์ที่มุมขวาล่าง */}
-      {/* ⚠️ ต้องลอยเหนือแถบเมนูล่าง (.bottom-nav ใน landing.css: z-90 · สูง ~71px · ลอยห่างขอบ 10px + safe-area)
+          {/* ⚠️ ต้องลอยเหนือแถบเมนูล่าง (.bottom-nav ใน landing.css: z-90 · สูง ~71px · ลอยห่างขอบ 10px + safe-area)
            เดิมแถบซื้ออยู่ z-40 ชิดขอบล่าง = จมอยู่ใต้เมนูล่างทั้งแถบ มือถือจึงไม่เห็นปุ่มสั่งเลยสักที */}
-      {/* ⚠️ กรอบนอกต้อง pointer-events-none — แคปซูลข้างในค่อยรับคลิก (pointer-events-auto)
+          {/* ⚠️ กรอบนอกต้อง pointer-events-none — แคปซูลข้างในค่อยรับคลิก (pointer-events-auto)
            กรอบนี้เต็มความกว้างจอและสูงเท่าแคปซูล+ช่องไฟ (จอคอม ~113px · มือถือ ~173px เพราะเว้นที่ให้เมนูล่าง)
            พื้นที่ว่างรอบแคปซูลใสมองไม่เห็น แต่ถ้ารับคลิกอยู่จะ "กินคลิก" ทุกอย่างที่ลอยต่ำกว่า z-91 ทั้งแถบ:
              ปุ่มเข้าหลังบ้านของทีมงาน (bottom 20px) · ครึ่งล่างปุ่ม LINE (bottom 78px) · เมนูล่างมือถือ (.bottom-nav z-90)
            อาการคือ "เห็นปุ่มแต่กดไม่ติด" ไม่มีอะไรฟ้องเลย — เจ้าของร้านแจ้ง 23 ก.ย. 69 (ปุ่มแก้ไขในหลังบ้าน)
            ป้ายเตือน "ยังไม่ได้แนบลาย" ข้างบนใช้ท่าเดียวกันนี้อยู่แล้ว */}
-      {/* 🎨 จอวางลายเปิดอยู่ = ซ่อนแถบนี้ — เดิมลอยทับแถบเครื่องมือล่างของจอวางลาย ปุ่ม "ออกแบบ" กดแล้วไม่มีอะไรเกิด (เปิดอยู่แล้ว · 12 ต.ค. 69) */}
-      <div
-        className={`pointer-events-none fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
-          showBuyBar && !studio && !slotStudio ? "translate-y-0" : "translate-y-full"
-        }`}
-      >
-        <div className="pointer-events-auto mx-auto flex items-center gap-3 rounded-3xl border border-amber-200 bg-white/95 px-4 py-2.5 shadow-[0_14px_34px_-12px_rgba(23,58,107,0.35)] backdrop-blur lg:max-w-3xl lg:rounded-full lg:px-5 lg:py-3">
-          <div className="min-w-0">
-            <p className="truncate text-[11px] text-stone-400">
-              {/* 📦 สั่งหลายแผ่นในครั้งเดียว — แถบล่างมือถือบอกยอดรวมทั้งรอบ ไม่ใช่แค่แผ่นที่กำลังตั้งค่า */}
-              {sheetRoll
-                ? `${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} · ${(sheets.length + 1).toLocaleString("th-TH")} รายการ`
-                : `${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`}
-              {artTotal > 0 ? ` · แนบลาย ${artTotal} รูป` : ""}
-            </p>
-            {askQuote || (useCustom && customAsk) ? (
-              <p className="text-sm font-extrabold leading-tight text-sky-700">💬 รอแอดมินตีราคา</p>
-            ) : (
-              <>
-                <p className="text-lg font-extrabold leading-tight text-amber-600">
-                  {formatPrice(sheetRoll ? sheetRoll.total : unitPrice * qty + designFee)}
+          {/* 🎨 จอวางลายเปิดอยู่ = ซ่อนแถบนี้ — เดิมลอยทับแถบเครื่องมือล่างของจอวางลาย ปุ่ม "ออกแบบ" กดแล้วไม่มีอะไรเกิด (เปิดอยู่แล้ว · 12 ต.ค. 69) */}
+          <div
+            className={`pointer-events-none fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
+              showBuyBar && !studio && !slotStudio ? "translate-y-0" : "translate-y-full"
+            }`}
+          >
+            <div className="pointer-events-auto mx-auto flex items-center gap-3 rounded-3xl border border-amber-200 bg-white/95 px-4 py-2.5 shadow-[0_14px_34px_-12px_rgba(23,58,107,0.35)] backdrop-blur lg:max-w-3xl lg:rounded-full lg:px-5 lg:py-3">
+              <div className="min-w-0">
+                <p className="truncate text-[11px] text-stone-400">
+                  {/* 📦 สั่งหลายแผ่นในครั้งเดียว — แถบล่างมือถือบอกยอดรวมทั้งรอบ ไม่ใช่แค่แผ่นที่กำลังตั้งค่า */}
+                  {sheetRoll
+                    ? `${sheetRoll.qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"} · ${(sheets.length + 1).toLocaleString("th-TH")} รายการ`
+                    : `${qty.toLocaleString("th-TH")} ${matrix?.unit ?? "ชิ้น"}`}
+                  {artTotal > 0 ? ` · แนบลาย ${artTotal} รูป` : ""}
                 </p>
-                {/* 📦 ยังไม่ครบขั้นต่ำของรอบผลิต — บอกตรงแถบล่างด้วย ลูกค้ามือถือไม่ต้องเลื่อนหา */}
-                {lotShortNeed > 0 && (
-                  <p className="truncate text-[10px] font-bold text-amber-700">
-                    📦 ขาดอีก {lotShortNeed.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} — เพิ่มได้ แต่ยังยืนยันคำสั่งซื้อไม่ได้
-                  </p>
+                {askQuote || (useCustom && customAsk) ? (
+                  <p className="text-sm font-extrabold leading-tight text-sky-700">💬 รอแอดมินตีราคา</p>
+                ) : (
+                  <>
+                    <p className="text-lg font-extrabold leading-tight text-amber-600">
+                      {formatPrice(sheetRoll ? sheetRoll.total : unitPrice * qty + designFee)}
+                    </p>
+                    {/* 📦 ยังไม่ครบขั้นต่ำของรอบผลิต — บอกตรงแถบล่างด้วย ลูกค้ามือถือไม่ต้องเลื่อนหา */}
+                    {lotShortNeed > 0 && (
+                      <p className="truncate text-[10px] font-bold text-amber-700">
+                        📦 ขาดอีก {lotShortNeed.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"} — เพิ่มได้ แต่ยังยืนยันคำสั่งซื้อไม่ได้
+                      </p>
+                    )}
+                    {/* 🧮 แถบล่างมือถือ — บอกสั้น ๆ ว่าจะรวมล็อตกับของในตะกร้า (ช่วงปลีกยังไม่รวม ไม่ต้องโชว์) */}
+                    {lotPreview && !lotPreview.retailLine && (
+                      <p className="truncate text-[10px] font-semibold text-emerald-700">
+                        🧮 รวมกับในตะกร้าเป็น {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
+                        {lotPreview.unitPrice < unitPrice && (
+                          <>
+                            {" "}
+                            → {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </>
                 )}
-                {/* 🧮 แถบล่างมือถือ — บอกสั้น ๆ ว่าจะรวมล็อตกับของในตะกร้า (ช่วงปลีกยังไม่รวม ไม่ต้องโชว์) */}
-                {lotPreview && !lotPreview.retailLine && (
-                  <p className="truncate text-[10px] font-semibold text-emerald-700">
-                    🧮 รวมกับในตะกร้าเป็น {lotPreview.combinedQty.toLocaleString("th-TH")} {matrix?.unit ?? "ชิ้น"}
-                    {lotPreview.unitPrice < unitPrice && <> → {formatPrice(lotPreview.unitPrice)}/{matrix?.unit ?? "ชิ้น"}</>}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-          {/* แถบล่างมือถือ — ยังไม่วางลาย = ปุ่มเริ่มสร้าง · มีสเปคพักไว้แล้วก็ต้องสั่งของที่เก็บไว้ได้ด้วย
+              </div>
+              {/* แถบล่างมือถือ — ยังไม่วางลาย = ปุ่มเริ่มสร้าง · มีสเปคพักไว้แล้วก็ต้องสั่งของที่เก็บไว้ได้ด้วย
               (โหมดแอดมินก็มีปุ่มนี้ แต่ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก) */}
-          {(studioNeedsDesign || studioOfferStaff) && (
-            <button
-              type="button"
-              onClick={() => openStudio(null)}
-              className="ml-auto shrink-0 rounded-full bg-sky-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-sky-700"
-            >
-              🎨 ออกแบบ
-            </button>
-          )}
-          {studioNeedsDesign && (
-            <button
-              type="button"
-              onClick={jumpToArt}
-              className="shrink-0 rounded-full bg-white px-3.5 py-3 text-sm font-bold text-sky-700 ring-2 ring-sky-200 transition hover:bg-sky-50"
-            >
-              📎 แนบไฟล์
-            </button>
-          )}
-          {(!studioNeedsDesign || sheets.length > 0) && (
-            <div className="ml-auto flex shrink-0 flex-col items-stretch gap-1">
-            {/* 🎯 แถบขั้นตอนแบบย่อ — พื้นที่แคบ บอกแค่ "เหลือกี่ขั้น + ขั้นที่ต้องทำตอนนี้" (กดแล้วพาไปเหมือนกัน) */}
-            {ctaStuck && ctaStepNow && !added && (
-              <button
-                type="button"
-                onClick={ctaStepNow.jump}
-                className="truncate rounded-xl bg-ducky px-2.5 py-1 text-[10.5px] font-extrabold text-amber-950"
-              >
-                เหลืออีก {ctaStepsLeft.length.toLocaleString("th-TH")} ขั้น · {ctaStepNow.icon} {ctaStepNow.label} →
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => handleAdd()}
-              disabled={barBlocked && !artBlocked}
-              className={`rounded-full px-6 py-2.5 text-center text-sm font-extrabold transition ${
-                added
-                  ? "bg-emerald-500 text-white shadow-lg"
-                  : barBlocked
-                    ? blockedBtnTone
-                    : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:bg-amber-500"
-              }`}
-            >
-              {added ? (
-                "✓ เพิ่มแล้ว!"
-              ) : (
-                <>
-                  {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ เหตุผลที่ยังกดไม่ได้ต่อท้ายข้างล่าง (ห้ามเอามาแทนชื่อ) */}
-                  <span className="block">{lockTitle(ctaTitleShort)}</span>
-                </>
+              {(studioNeedsDesign || studioOfferStaff) && (
+                <button
+                  type="button"
+                  onClick={() => openStudio(null)}
+                  className="ml-auto shrink-0 rounded-full bg-sky-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-sky-700"
+                >
+                  🎨 ออกแบบ
+                </button>
               )}
-            </button>
+              {studioNeedsDesign && (
+                <button
+                  type="button"
+                  onClick={jumpToArt}
+                  className="shrink-0 rounded-full bg-white px-3.5 py-3 text-sm font-bold text-sky-700 ring-2 ring-sky-200 transition hover:bg-sky-50"
+                >
+                  📎 แนบไฟล์
+                </button>
+              )}
+              {(!studioNeedsDesign || sheets.length > 0) && (
+                <div className="ml-auto flex shrink-0 flex-col items-stretch gap-1">
+                  {/* 🎯 แถบขั้นตอนแบบย่อ — พื้นที่แคบ บอกแค่ "เหลือกี่ขั้น + ขั้นที่ต้องทำตอนนี้" (กดแล้วพาไปเหมือนกัน) */}
+                  {ctaStuck && ctaStepNow && !added && (
+                    <button
+                      type="button"
+                      onClick={ctaStepNow.jump}
+                      className="truncate rounded-xl bg-ducky px-2.5 py-1 text-[10.5px] font-extrabold text-amber-950"
+                    >
+                      เหลืออีก {ctaStepsLeft.length.toLocaleString("th-TH")} ขั้น · {ctaStepNow.icon} {ctaStepNow.label} →
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleAdd()}
+                    disabled={barBlocked && !artBlocked}
+                    className={`rounded-full px-6 py-2.5 text-center text-sm font-extrabold transition ${
+                      added
+                        ? "bg-emerald-500 text-white shadow-lg"
+                        : barBlocked
+                          ? blockedBtnTone
+                          : "bg-amber-400 text-white shadow-lg ring-2 ring-amber-200 hover:bg-amber-500"
+                    }`}
+                  >
+                    {added ? (
+                      "✓ เพิ่มแล้ว!"
+                    ) : (
+                      <>
+                        {/* ⚠️ ชื่อปุ่มอยู่บรรทัดแรกเสมอ เหตุผลที่ยังกดไม่ได้ต่อท้ายข้างล่าง (ห้ามเอามาแทนชื่อ) */}
+                        <span className="block">{lockTitle(ctaTitleShort)}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
-      {/* กันแถบลอยบังเนื้อหาท้ายหน้า (แถบมีทั้งมือถือและเดสก์ท็อป) */}
-      <div className="h-20 lg:h-24" aria-hidden />
+          </div>
+          {/* กันแถบลอยบังเนื้อหาท้ายหน้า (แถบมีทั้งมือถือและเดสก์ท็อป) */}
+          <div className="h-20 lg:h-24" aria-hidden />
 
-      {/*
+          {/*
         🔔 แนบรูปเกิน "จำนวนลายที่กำหนดไว้" — ถามให้ชัดตรงนี้ ไม่ข้ามไฟล์เงียบ ๆ
         ไฟล์ที่ยังไม่ได้แนบถูกอุ้มไว้ใน artOver.pending → กดเพิ่มจำนวนลายแล้วแนบต่อได้ทันที
       */}
-      {artOver && (() => {
-        const over = artOver;
-        const want = over.limit + over.pending.length;
-        const unit = matrix?.unit ?? "ชิ้น";
-        /** เพิ่มจำนวนลายให้ครบทุกไฟล์ได้ไหม — เกินเพดานคละของเรทที่จำนวนสั่งตอนนี้ก็เพิ่มไม่ได้ */
-        const canRaise = maxDesigns <= 0 || want <= maxDesigns;
-        const names = over.pending.slice(0, 3).map((f) => f.name);
-        const backSide = over.side === "back";
-        const attach = (capTo: number) => {
-          setArtOver(null);
-          void uploadArtwork(over.pending, capTo, over.side);
-        };
-        return (
-          <div
-            className="fixed inset-0 z-[95] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
-            onClick={() => setArtOver(null)}
-            role="dialog"
-            aria-modal="true"
-            aria-label="แนบรูปเกินจำนวนลายที่กำหนดไว้"
-          >
-            <div
-              className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-xl ring-1 ring-amber-200">
-                  ⚠️
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">
-                    แนบเกินจำนวนลายที่กำหนดไว้
-                  </h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
-                    {over.byCap ? (
-                      <>
-                        คุณระบุ “คละกี่ลาย” ไว้ที่{" "}
-                        <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย</strong> จึงแนบรูปได้{" "}
-                        {over.limit.toLocaleString("th-TH")} รูป
-                      </>
-                    ) : (
-                      <>
-                        {/* งาน 2 ด้าน: บอกให้ชัดว่าเป็นเพดานของด้านไหน — ด้านหลังก็ใช้เพดานคละของเรทชุดเดียวกัน */}
-                        {backSide ? "ลายด้านหลัง — " : ""}สั่ง {qty.toLocaleString("th-TH")} {unit} ราคานี้คละได้สูงสุด{" "}
-                        <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย{backSide ? "ต่อด้าน" : ""}</strong>
-                      </>
-                    )}{" "}
-                    — ยังมีอีก{" "}
-                    <strong className="text-amber-700">{over.pending.length.toLocaleString("th-TH")} ไฟล์</strong>{" "}
-                    ที่ยังไม่ได้แนบ
-                  </p>
+          {artOver &&
+            (() => {
+              const over = artOver;
+              const want = over.limit + over.pending.length;
+              const unit = matrix?.unit ?? "ชิ้น";
+              /** เพิ่มจำนวนลายให้ครบทุกไฟล์ได้ไหม — เกินเพดานคละของเรทที่จำนวนสั่งตอนนี้ก็เพิ่มไม่ได้ */
+              const canRaise = maxDesigns <= 0 || want <= maxDesigns;
+              const names = over.pending.slice(0, 3).map((f) => f.name);
+              const backSide = over.side === "back";
+              const attach = (capTo: number) => {
+                setArtOver(null);
+                void uploadArtwork(over.pending, capTo, over.side);
+              };
+              return (
+                <div
+                  className="fixed inset-0 z-[95] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
+                  onClick={() => setArtOver(null)}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="แนบรูปเกินจำนวนลายที่กำหนดไว้"
+                >
+                  <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-start gap-3">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-xl ring-1 ring-amber-200">⚠️</span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">แนบเกินจำนวนลายที่กำหนดไว้</h3>
+                        <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
+                          {over.byCap ? (
+                            <>
+                              คุณระบุ “คละกี่ลาย” ไว้ที่ <strong className="text-stone-800">{over.limit.toLocaleString("th-TH")} ลาย</strong> จึงแนบรูปได้{" "}
+                              {over.limit.toLocaleString("th-TH")} รูป
+                            </>
+                          ) : (
+                            <>
+                              {/* งาน 2 ด้าน: บอกให้ชัดว่าเป็นเพดานของด้านไหน — ด้านหลังก็ใช้เพดานคละของเรทชุดเดียวกัน */}
+                              {backSide ? "ลายด้านหลัง — " : ""}สั่ง {qty.toLocaleString("th-TH")} {unit} ราคานี้คละได้สูงสุด{" "}
+                              <strong className="text-stone-800">
+                                {over.limit.toLocaleString("th-TH")} ลาย{backSide ? "ต่อด้าน" : ""}
+                              </strong>
+                            </>
+                          )}{" "}
+                          — ยังมีอีก <strong className="text-amber-700">{over.pending.length.toLocaleString("th-TH")} ไฟล์</strong> ที่ยังไม่ได้แนบ
+                        </p>
+                      </div>
+                    </div>
+
+                    <ul className="mt-3 space-y-1 rounded-2xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-100">
+                      {names.map((n) => (
+                        <li key={n} className="truncate">
+                          📄 {n}
+                        </li>
+                      ))}
+                      {over.pending.length > names.length && (
+                        <li className="text-stone-400">· และอีก {(over.pending.length - names.length).toLocaleString("th-TH")} ไฟล์</li>
+                      )}
+                    </ul>
+
+                    {!canRaise && (
+                      <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-amber-800 ring-1 ring-amber-100">
+                        จำนวน {qty.toLocaleString("th-TH")} {unit} ที่สั่ง เพิ่มจำนวนลายได้สูงสุด {maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละ{" "}
+                        {want.toLocaleString("th-TH")} ลาย ต้องเพิ่มจำนวนสั่งก่อนนะครับ
+                      </p>
+                    )}
+
+                    <div className="mt-4 grid gap-2">
+                      {canRaise ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (backSide) {
+                              // ด้านหลังไม่มีเพดานที่ลูกค้าระบุเอง — แค่ดันจำนวนลายด้านหลังขึ้นแล้วแนบต่อ
+                              setBackDesignsDraft(null);
+                              setBackDesigns(want);
+                              attach(want);
+                              return;
+                            }
+                            setDesignsTouched(true);
+                            setDesignsDraft(null);
+                            setDesigns(want);
+                            setDesignsCap(want);
+                            attach(want);
+                          }}
+                          className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
+                        >
+                          ✅ เพิ่มเป็น {want.toLocaleString("th-TH")} ลาย แล้วแนบรูปที่เหลือ
+                        </button>
+                      ) : (
+                        <>
+                          {/* 🛒 กล่องแนบลายอยู่ "ก่อน" ช่องจำนวนแล้ว (12 ต.ค. 69) — ลูกค้าแนบ 5 ลายตอนจำนวนยังเป็น 1 จะชนเพดานนี้บ่อย
+                        แนบให้ครบทุกไฟล์ แล้วพาลงไปช่องจำนวนให้เพิ่มเอง (เพดานคละขึ้นกับเรท/ขั้นต่ำต่อลาย คิดเลขแทนไม่ได้) */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              attach(want);
+                              setTimeout(() => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+                            }}
+                            className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
+                          >
+                            ✅ แนบครบ {want.toLocaleString("th-TH")} รูป แล้วไปเพิ่มจำนวนสั่ง
+                          </button>
+                          {/* เพดานเรทไม่พอ — ยังยอมให้แนบได้ (ทางร้านนับลายจริงจากไฟล์แล้วทักยืนยัน) */}
+                          <button
+                            type="button"
+                            onClick={() => attach(want)}
+                            className="rounded-2xl bg-white px-4 py-2.5 text-sm font-extrabold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
+                          >
+                            แนบต่อไปเลย — ให้แอดมินทักยืนยันก่อนเริ่มงาน
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setArtOver(null)}
+                        className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
+                      >
+                        ไม่เพิ่ม แนบเท่านี้พอ
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              );
+            })()}
 
-              <ul className="mt-3 space-y-1 rounded-2xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-100">
-                {names.map((n) => (
-                  <li key={n} className="truncate">
-                    📄 {n}
-                  </li>
-                ))}
-                {over.pending.length > names.length && (
-                  <li className="text-stone-400">
-                    · และอีก {(over.pending.length - names.length).toLocaleString("th-TH")} ไฟล์
-                  </li>
-                )}
-              </ul>
+          {/* 🔒 เรทนี้ยังใช้ไม่ได้ — บอกเหตุผล + ปรับจำนวนให้ถึงขั้นต่ำในคลิกเดียว */}
+          {rateLock &&
+            (() => {
+              const need = rateLock.minQty ?? 1;
+              const unit = rateLock.pricing.unit;
+              const short = Math.max(0, need - qty);
+              // ราคาต่อหน่วย "ถ้าสั่งครบขั้นต่ำ" ของเรทที่กด เทียบกับเรทที่ใช้อยู่ตอนนี้ (ที่จำนวนเดียวกัน)
+              const atNeed = unitPriceFor(product, { ...effective, [RATE_LABEL]: rateLock.label }, need);
+              const curAtNeed = rate ? unitPriceFor(product, { ...effective, [RATE_LABEL]: rate.label }, need) : 0;
+              const save = atNeed > 0 && curAtNeed > atNeed ? curAtNeed - atNeed : 0;
+              return (
+                <div
+                  className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
+                  onClick={() => setRateLock(null)}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={`${rateShopLabel(rateLock)} ยังใช้ไม่ได้`}
+                >
+                  <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-start gap-3">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-xl ring-1 ring-amber-200">🔒</span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">“{rateShopLabel(rateLock)}” ยังใช้ไม่ได้ตอนนี้</h3>
+                        <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
+                          แบบราคานี้ต้องสั่งรวมอย่างน้อย{" "}
+                          <strong className="text-stone-800">
+                            {need.toLocaleString("th-TH")} {unit}
+                          </strong>{" "}
+                          — ตอนนี้คุณสั่ง {qty.toLocaleString("th-TH")} {unit}
+                          {short > 0 && (
+                            <>
+                              {" "}
+                              ยังขาดอีก{" "}
+                              <strong className="text-amber-700">
+                                {short.toLocaleString("th-TH")} {unit}
+                              </strong>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
 
-              {!canRaise && (
-                <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-amber-800 ring-1 ring-amber-100">
-                  จำนวน {qty.toLocaleString("th-TH")} {unit} ที่สั่ง เพิ่มจำนวนลายได้สูงสุด{" "}
-                  {maxDesigns.toLocaleString("th-TH")} ลาย — อยากคละ {want.toLocaleString("th-TH")} ลาย
-                  ต้องเพิ่มจำนวนสั่งก่อนนะครับ
-                </p>
-              )}
+                    {rateLock.desc && (
+                      <p className="mt-3 rounded-2xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-100">{rateLock.desc}</p>
+                    )}
 
-              <div className="mt-4 grid gap-2">
-                {canRaise ? (
+                    {save > 0 && (
+                      <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
+                        ✨ สั่งครบ {need.toLocaleString("th-TH")} {unit} จะได้ {formatPrice(atNeed)}/{unit} — ถูกกว่าราคาที่ใช้อยู่ {formatPrice(save)}/{unit}
+                      </p>
+                    )}
+
+                    <div className="mt-4 grid gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQty(need);
+                          setQtyText(String(need));
+                          setRateTouched(true);
+                          setRateLabel(rateLock.label);
+                          setAutoRateNote("");
+                          jumpToImage(rateLock.imageSrc);
+                          setRateLock(null);
+                        }}
+                        className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
+                      >
+                        ปรับเป็น {need.toLocaleString("th-TH")} {unit} แล้วใช้ราคานี้
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRateLock(null)}
+                        className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
+                      >
+                        ไว้ก่อน ใช้ราคาเดิม
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+          {/* 🔍 ดูรูปขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก · ลูกศรซ้ายขวาเลื่อนรูป) */}
+          {zoomSrc &&
+            (() => {
+              const zi = zoomList.indexOf(zoomSrc);
+              const canFlip = zi !== -1 && zoomList.length > 1;
+              return (
+                <div
+                  className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+                  onClick={() => setZoomSrc("")}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="ดูรูปขนาดใหญ่"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={zoomSrc} alt="" className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl" onClick={(e) => e.stopPropagation()} />
+                  {canFlip && (
+                    <>
+                      {(
+                        [
+                          { d: -1, side: "left-3", glyph: "‹", label: "ดูรูปก่อนหน้า" },
+                          { d: 1, side: "right-3", glyph: "›", label: "ดูรูปถัดไป" },
+                        ] as const
+                      ).map((a) => (
+                        <button
+                          key={a.label}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            zoomStep(a.d);
+                          }}
+                          aria-label={a.label}
+                          className={`absolute ${a.side} top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/90 pb-1 text-3xl font-bold leading-none text-stone-600 shadow-lg transition hover:bg-white hover:text-amber-600`}
+                        >
+                          {a.glyph}
+                        </button>
+                      ))}
+                      <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold tabular-nums text-stone-700 shadow-lg">
+                        {zi + 1}/{zoomList.length}
+                      </span>
+                    </>
+                  )}
                   <button
                     type="button"
-                    onClick={() => {
-                      if (backSide) {
-                        // ด้านหลังไม่มีเพดานที่ลูกค้าระบุเอง — แค่ดันจำนวนลายด้านหลังขึ้นแล้วแนบต่อ
-                        setBackDesignsDraft(null);
-                        setBackDesigns(want);
-                        attach(want);
-                        return;
-                      }
-                      setDesignsTouched(true);
-                      setDesignsDraft(null);
-                      setDesigns(want);
-                      setDesignsCap(want);
-                      attach(want);
-                    }}
-                    className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
+                    onClick={() => setZoomSrc("")}
+                    className="absolute right-4 top-4 rounded-full bg-white/90 px-4 py-2 text-sm font-bold text-stone-700 shadow-lg transition hover:bg-white"
                   >
-                    ✅ เพิ่มเป็น {want.toLocaleString("th-TH")} ลาย แล้วแนบรูปที่เหลือ
+                    ✕ ปิด
                   </button>
-                ) : (
-                  <>
-                    {/* 🛒 กล่องแนบลายอยู่ "ก่อน" ช่องจำนวนแล้ว (12 ต.ค. 69) — ลูกค้าแนบ 5 ลายตอนจำนวนยังเป็น 1 จะชนเพดานนี้บ่อย
-                        แนบให้ครบทุกไฟล์ แล้วพาลงไปช่องจำนวนให้เพิ่มเอง (เพดานคละขึ้นกับเรท/ขั้นต่ำต่อลาย คิดเลขแทนไม่ได้) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        attach(want);
-                        setTimeout(
-                          () => orderBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
-                          150,
-                        );
-                      }}
-                      className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
-                    >
-                      ✅ แนบครบ {want.toLocaleString("th-TH")} รูป แล้วไปเพิ่มจำนวนสั่ง
-                    </button>
-                    {/* เพดานเรทไม่พอ — ยังยอมให้แนบได้ (ทางร้านนับลายจริงจากไฟล์แล้วทักยืนยัน) */}
-                    <button
-                      type="button"
-                      onClick={() => attach(want)}
-                      className="rounded-2xl bg-white px-4 py-2.5 text-sm font-extrabold text-amber-700 ring-1 ring-amber-300 transition hover:bg-amber-50"
-                    >
-                      แนบต่อไปเลย — ให้แอดมินทักยืนยันก่อนเริ่มงาน
-                    </button>
-                  </>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setArtOver(null)}
-                  className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
-                >
-                  ไม่เพิ่ม แนบเท่านี้พอ
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 🔒 เรทนี้ยังใช้ไม่ได้ — บอกเหตุผล + ปรับจำนวนให้ถึงขั้นต่ำในคลิกเดียว */}
-      {rateLock && (() => {
-        const need = rateLock.minQty ?? 1;
-        const unit = rateLock.pricing.unit;
-        const short = Math.max(0, need - qty);
-        // ราคาต่อหน่วย "ถ้าสั่งครบขั้นต่ำ" ของเรทที่กด เทียบกับเรทที่ใช้อยู่ตอนนี้ (ที่จำนวนเดียวกัน)
-        const atNeed = unitPriceFor(product, { ...effective, [RATE_LABEL]: rateLock.label }, need);
-        const curAtNeed = rate ? unitPriceFor(product, { ...effective, [RATE_LABEL]: rate.label }, need) : 0;
-        const save = atNeed > 0 && curAtNeed > atNeed ? curAtNeed - atNeed : 0;
-        return (
-          <div
-            className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
-            onClick={() => setRateLock(null)}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${rateShopLabel(rateLock)} ยังใช้ไม่ได้`}
-          >
-            <div
-              className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-stone-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-xl ring-1 ring-amber-200">
-                  🔒
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-[15px] font-extrabold leading-snug text-stone-800">
-                    “{rateShopLabel(rateLock)}” ยังใช้ไม่ได้ตอนนี้
-                  </h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
-                    แบบราคานี้ต้องสั่งรวมอย่างน้อย{" "}
-                    <strong className="text-stone-800">
-                      {need.toLocaleString("th-TH")} {unit}
-                    </strong>{" "}
-                    — ตอนนี้คุณสั่ง {qty.toLocaleString("th-TH")} {unit}
-                    {short > 0 && (
-                      <>
-                        {" "}ยังขาดอีก{" "}
-                        <strong className="text-amber-700">
-                          {short.toLocaleString("th-TH")} {unit}
-                        </strong>
-                      </>
-                    )}
-                  </p>
                 </div>
-              </div>
+              );
+            })()}
 
-              {rateLock.desc && (
-                <p className="mt-3 rounded-2xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-100">
-                  {rateLock.desc}
-                </p>
-              )}
+          {/* 🧩 จอวางรูปแบบมีช่อง (Theme) — ใช้เมื่อเทมเพลตกำหนดช่องไว้ */}
+          {slotStudio && studioTarget?.anySlots ? (
+            <SlotStudio
+              open
+              onClose={() => {
+                setSlotStudio(false);
+                setEditIndex(null);
+              }}
+              title={studioTarget.title}
+              sides={studioTarget.sides}
+              requireAll={studioTarget.slotsRequired}
+              perSheet={studioTarget.perSheet}
+              initial={editIndex !== null ? placed[editIndex]?.slotShots : undefined}
+              uploadSource={uploadOne}
+              onApply={applySlots}
+            />
+          ) : null}
 
-              {save > 0 && (
-                <p className="mt-2 rounded-2xl bg-teal-50 px-3 py-2 text-[12px] font-bold leading-relaxed text-teal-800 ring-1 ring-teal-100">
-                  ✨ สั่งครบ {need.toLocaleString("th-TH")} {unit} จะได้ {formatPrice(atNeed)}/{unit} — ถูกกว่าราคาที่ใช้อยู่{" "}
-                  {formatPrice(save)}/{unit}
-                </p>
-              )}
-
-              <div className="mt-4 grid gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQty(need);
-                    setQtyText(String(need));
-                    setRateTouched(true);
-                    setRateLabel(rateLock.label);
-                    setAutoRateNote("");
-                    jumpToImage(rateLock.imageSrc);
-                    setRateLock(null);
-                  }}
-                  className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600"
-                >
-                  ปรับเป็น {need.toLocaleString("th-TH")} {unit} แล้วใช้ราคานี้
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRateLock(null)}
-                  className="rounded-2xl px-4 py-2 text-sm font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
-                >
-                  ไว้ก่อน ใช้ราคาเดิม
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 🔍 ดูรูปขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก · ลูกศรซ้ายขวาเลื่อนรูป) */}
-      {zoomSrc && (() => {
-        const zi = zoomList.indexOf(zoomSrc);
-        const canFlip = zi !== -1 && zoomList.length > 1;
-        return (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
-          onClick={() => setZoomSrc("")}
-          role="dialog"
-          aria-modal="true"
-          aria-label="ดูรูปขนาดใหญ่"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={zoomSrc}
-            alt=""
-            className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-          {canFlip && (
-            <>
-              {([
-                { d: -1, side: "left-3", glyph: "‹", label: "ดูรูปก่อนหน้า" },
-                { d: 1, side: "right-3", glyph: "›", label: "ดูรูปถัดไป" },
-              ] as const).map((a) => (
-                <button
-                  key={a.label}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    zoomStep(a.d);
-                  }}
-                  aria-label={a.label}
-                  className={`absolute ${a.side} top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/90 pb-1 text-3xl font-bold leading-none text-stone-600 shadow-lg transition hover:bg-white hover:text-amber-600`}
-                >
-                  {a.glyph}
-                </button>
-              ))}
-              <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold tabular-nums text-stone-700 shadow-lg">
-                {zi + 1}/{zoomList.length}
-              </span>
-            </>
+          {/* 🗓 จอสร้างปฏิทินโฟโต้การ์ด */}
+          {calOpen && (
+            <CalendarStudio
+              open
+              onClose={() => {
+                setCalOpen(false);
+                setEditIndex(null);
+              }}
+              title={product.name}
+              format={calFormatKey}
+              year={calYear}
+              years={calYearChoices.map((c) => c.year)}
+              mixFee={(n) => {
+                // ค่าคละลายรวมของรายการนี้ ถ้าแบบที่กำลังทำมี n ลาย (รวมลายของแบบอื่นที่วางไว้แล้ว ยกเว้นตัวที่กำลังแก้)
+                const others = placed.reduce(
+                  (sum, p, i) =>
+                    i === editIndex ? sum : sum + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length, p.calState.format) : 1),
+                  0,
+                );
+                const feeAt = (k: number) => designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, k)} ลาย` }, qty);
+                return feeAt(others + n) - feeAt(1);
+              }}
+              qty={qty}
+              unit={matrix?.unit ?? "ชุด"}
+              price={(n) => {
+                // 💰 ราคารวมรายการนี้ถ้าแบบที่กำลังทำมี n ลาย — โชว์บนแถบบนของจอสร้างปฏิทิน
+                const others = placed.reduce(
+                  (sum, p, i) =>
+                    i === editIndex ? sum : sum + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length, p.calState.format) : 1),
+                  0,
+                );
+                return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
+              }}
+              aiExport={isOwner}
+              onOrder={async () => {
+                // 🛒 ใส่ตะกร้าจากจอสร้างปฏิทิน: แบบถูกแนบแล้ว (applyCalendar) → รอหน้าเรนเดอร์ค่าใหม่ แล้วใช้ปุ่มเพิ่มลงตะกร้าตัวเดิม
+                await new Promise((r) => setTimeout(r, 80));
+                if (handleAddRef.current() && !editing) router.push("/cart");
+              }}
+              guide={calGuide}
+              square={/แหลม/.test(effective["มุม"] ?? "")}
+              onYear={(y) => {
+                const c = calYearChoices.find((x) => x.year === y);
+                if (c && product.calendarStudio) setSelections((s) => ({ ...s, [product.calendarStudio!.yearLabel]: c.name }));
+              }}
+              initial={editIndex !== null ? placed[editIndex]?.calState : undefined}
+              onApply={applyCalendar}
+            />
           )}
-          <button
-            type="button"
-            onClick={() => setZoomSrc("")}
-            className="absolute right-4 top-4 rounded-full bg-white/90 px-4 py-2 text-sm font-bold text-stone-700 shadow-lg transition hover:bg-white"
-          >
-            ✕ ปิด
-          </button>
+
+          {/* 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลตด้านบน */}
+          {studio && (
+            <TemplateStudio
+              open
+              onClose={() => setStudio(null)}
+              title={studio.title}
+              frame={studio.frame}
+              guideUrl={studio.guideUrl}
+              skinUrl={studio.skinUrl}
+              tplUrl={studio.tplUrl}
+              perSheet={studio.perSheet}
+              initial={studio.initial}
+              onApply={applyStudio}
+            />
+          )}
         </div>
-        );
-      })()}
-
-      {/* 🧩 จอวางรูปแบบมีช่อง (Theme) — ใช้เมื่อเทมเพลตกำหนดช่องไว้ */}
-      {slotStudio && studioTarget?.anySlots ? (
-        <SlotStudio
-          open
-          onClose={() => {
-            setSlotStudio(false);
-            setEditIndex(null);
-          }}
-          title={studioTarget.title}
-          sides={studioTarget.sides}
-          requireAll={studioTarget.slotsRequired}
-          perSheet={studioTarget.perSheet}
-          initial={editIndex !== null ? placed[editIndex]?.slotShots : undefined}
-          uploadSource={uploadOne}
-          onApply={applySlots}
-        />
-      ) : null}
-
-      {/* 🗓 จอสร้างปฏิทินโฟโต้การ์ด */}
-      {calOpen && (
-        <CalendarStudio
-          open
-          onClose={() => {
-            setCalOpen(false);
-            setEditIndex(null);
-          }}
-          title={product.name}
-          format={calFormatKey}
-          year={calYear}
-          years={calYearChoices.map((c) => c.year)}
-          mixFee={(n) => {
-            // ค่าคละลายรวมของรายการนี้ ถ้าแบบที่กำลังทำมี n ลาย (รวมลายของแบบอื่นที่วางไว้แล้ว ยกเว้นตัวที่กำลังแก้)
-            const others = placed.reduce((sum, p, i) => (i === editIndex ? sum : sum + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length) : 1)), 0);
-            const feeAt = (k: number) => designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, k)} ลาย` }, qty);
-            return feeAt(others + n) - feeAt(1);
-          }}
-          qty={qty}
-          unit={matrix?.unit ?? "ชุด"}
-          price={(n) => {
-            // 💰 ราคารวมรายการนี้ถ้าแบบที่กำลังทำมี n ลาย — โชว์บนแถบบนของจอสร้างปฏิทิน
-            const others = placed.reduce((sum, p, i) => (i === editIndex ? sum : sum + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length) : 1)), 0);
-            return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
-          }}
-          aiExport={isOwner}
-          onOrder={async () => {
-            // 🛒 ใส่ตะกร้าจากจอสร้างปฏิทิน: แบบถูกแนบแล้ว (applyCalendar) → รอหน้าเรนเดอร์ค่าใหม่ แล้วใช้ปุ่มเพิ่มลงตะกร้าตัวเดิม
-            await new Promise((r) => setTimeout(r, 80));
-            if (handleAddRef.current() && !editing) router.push("/cart");
-          }}
-          guide={calGuide}
-          square={/แหลม/.test(effective["มุม"] ?? "")}
-          onYear={(y) => {
-            const c = calYearChoices.find((x) => x.year === y);
-            if (c && product.calendarStudio) setSelections((s) => ({ ...s, [product.calendarStudio!.yearLabel]: c.name }));
-          }}
-          initial={editIndex !== null ? placed[editIndex]?.calState : undefined}
-          onApply={applyCalendar}
-        />
-      )}
-
-      {/* 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลตด้านบน */}
-      {studio && (
-        <TemplateStudio
-          open
-          onClose={() => setStudio(null)}
-          title={studio.title}
-          frame={studio.frame}
-          guideUrl={studio.guideUrl}
-          skinUrl={studio.skinUrl}
-          tplUrl={studio.tplUrl}
-          perSheet={studio.perSheet}
-          initial={studio.initial}
-          onApply={applyStudio}
-        />
-      )}
-      </div>
       </div>
     </div>
   );
@@ -9462,9 +9133,7 @@ function RelatedCarousel({ title, products, category }: { title: string; product
     <section className="mt-14">
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 className="text-xl font-extrabold text-amber-950">{title}</h2>
-        {products.length > 2 && (
-          <span className="shrink-0 text-xs font-semibold text-stone-400 md:hidden">เลื่อนดูเพิ่ม →</span>
-        )}
+        {products.length > 2 && <span className="shrink-0 text-xs font-semibold text-stone-400 md:hidden">เลื่อนดูเพิ่ม →</span>}
       </div>
       <div className="relative">
         <div

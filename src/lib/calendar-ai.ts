@@ -16,7 +16,19 @@
  */
 
 import { PDFDocument, PDFHexString, PDFName, PDFOperator, PDFOperatorNames, PDFRef, rgb } from "pdf-lib";
-import { calLayersOf, drawPage, fmtH, fmtW, LAYER_BG, type CalBack, type CalDesign, type CalFormat, type CalPage, type ImgRef } from "@/lib/calendar-card";
+import {
+  calLayersOf,
+  drawPage,
+  drawPostBack,
+  fmtH,
+  fmtW,
+  LAYER_BG,
+  type CalBack,
+  type CalDesign,
+  type CalFormat,
+  type CalPage,
+  type ImgRef,
+} from "@/lib/calendar-card";
 
 export const CUTOUT_PY = "http://localhost:8777";
 const PT = 72 / 25.4;
@@ -62,6 +74,18 @@ export async function renderAiPages(input: {
     for (const L of calLayersOf(fmt, page, design, imgs)) {
       if (L.id === LAYER_BG) {
         bg = (page.kind === "photo" ? design.bg : back.bg) || "#ffffff";
+        // 📮 ด้านหลังลายโปสการ์ด = เลเยอร์ของตัวเอง (พื้นหลังเป็นสีเวกเตอร์ ลายจะหายถ้าไม่แยกออกมา)
+        if (page.kind === "postback" && !design.postOff?.includes(page.key)) {
+          const cv = document.createElement("canvas");
+          cv.width = cw;
+          cv.height = ch;
+          const ctx = cv.getContext("2d");
+          if (ctx) {
+            drawPostBack(ctx, k, fmt);
+            const png = await new Promise<Blob | null>((r) => cv.toBlob(r, "image/png"));
+            if (png) layers.push({ name: "ลายโปสการ์ด", png, x: 0, y: 0, w: W, h: H });
+          }
+        }
         continue;
       }
       const cv = document.createElement("canvas");

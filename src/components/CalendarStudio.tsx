@@ -25,7 +25,6 @@ import {
   calFormat,
   cardKey,
   coverPlacement,
-  containPlacement,
   defaultBack,
   defaultText,
   defaultTitle,
@@ -377,6 +376,8 @@ export default function CalendarStudio({
         ? initial.design
         : // รูปแบบงานเปลี่ยน (เช่นสลับแนว) — ตำแหน่งรูป/ชิ้นส่วนเดิมใช้ไม่ได้ เริ่มวางใหม่ แต่รูปที่อัปไว้ยังอยู่
           { bg: initial?.design.bg ?? "#ffffff", text: null, photos: {} };
+    // งานหลายหน้า (รายเดือน/ตั้งโต๊ะ) แบบใหม่ = แต่ละหน้าใส่รูปเอง ไม่ยืมรูปหน้าปกให้ทุกหน้า (บั๊คที่ผู้ใช้แจ้ง 13 ต.ค. 69)
+    if (!(initial && sameFormat) && (fmt.cards ?? 1) <= 1 && fmt.pages.filter((p) => p.photo).length > 1) d = { ...d, noBorrow: true };
     if (d.text && textPage)
       d = {
         ...d,
@@ -540,7 +541,7 @@ export default function CalendarStudio({
   } | null>(null);
   /** ค่าคละลายตามจำนวนลายของแบบนี้ (ลายเดียว = 1 · คละลาย = ทุกใบที่ออกแบบแยก) */
   const libCount = srcs.filter((x) => !x.removed).length;
-  const designN = calDesignCount(design, libCount);
+  const designN = calDesignCount(design, libCount, fmt.key);
   /** รูปในคลังที่ยังไม่ได้วางลงใบไหน (นับเป็นลายแต่ไม่ได้พิมพ์) */
   const unusedSrcs = srcs
     .map((x, i) => (x.removed ? -1 : i))
@@ -612,6 +613,8 @@ export default function CalendarStudio({
   const holidays = useMemo(() => holidaysOf(back.year), [back.year]);
   /** หน้าแรกที่มีช่องรูป (ตามรูปแบบงาน) = หน้าปก — รูปของหน้านี้คือรูปตั้งต้นของทุกหน้า */
   const coverPage = fmt.pages.find((p) => p.photo);
+  /** รูปที่หน้าว่างยืมมาวาง (รูปหน้าปก) — แบบที่ไม่ยืม (noBorrow) = ไม่มี */
+  const fallbackSrc = design.noBorrow ? -1 : slotSrc(design, imgs);
   const elements = useMemo(() => design.elements ?? [], [design.elements]);
   const pageEls = elements.filter((e) => e.page === basePage.key);
   const selEl = elements.find((e) => e.id === sel && e.page === basePage.key) ?? null;
@@ -620,7 +623,8 @@ export default function CalendarStudio({
   useEffect(() => {
     setSel(null);
     setGridSel(false);
-    setTool((t) => (t === "photo" && !page.photo ? "calendar" : t === "shape" || t === "text" ? null : t));
+    // 📮 หลังลายโปสการ์ดไม่มีรูป/ตาราง — ไม่เปิดแผงปฏิทิน
+    setTool((t) => (t === "photo" && !page.photo ? (page.kind === "postback" ? null : "calendar") : t === "shape" || t === "text" ? null : t));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basePage.key]);
 
@@ -630,8 +634,10 @@ export default function CalendarStudio({
       back.font,
       ...Object.values(back.parts ?? {}).map((x) => x?.font ?? back.font),
       ...elements.filter((e) => e.kind === "text").map((e) => e.font ?? "prompt"),
+      // 📮 ด้านหลังลายโปสการ์ดใช้ Poppins
+      ...(fmt.pages.some((p) => p.kind === "postback") ? ["poppins"] : []),
     ],
-    [back.font, back.parts, elements],
+    [back.font, back.parts, elements, fmt],
   );
   useEffect(() => {
     if (!open) return;
@@ -1246,6 +1252,34 @@ export default function CalendarStudio({
     });
   }
 
+  /**
+   * ⤢ ช่องรูปหลัก: หดช่องให้พอดีรูป (เหมือนกรอบรูป fitFrame · ผู้ใช้สั่ง 13 ต.ค. 69 "ช่องรูปหลักต้องเหมือนปฏิทินโฟโต้การ์ด")
+   * สัดส่วนเท่ารูป · ไม่ใหญ่กว่าช่องเดิม · จุดกลางเดิม · รูปเต็มช่องใหม่พอดี — กดซ้ำ = กลับเป็นช่องเดิม
+   * เดิมช่องหลักใช้ "รูปพอดีช่องเหลือที่ว่าง" (containPlacement) ต่างจากกรอบรูป
+   */
+  const slotPrev = useRef(new Map<string, { x: number; y: number; w: number; h: number } | null>());
+  function fitSlot() {
+    const r = page.photo;
+    const own = design.photos[basePage.key];
+    const img = own && own.src >= 0 ? srcs[own.src] : srcs[fallbackSrc];
+    const src = own && own.src >= 0 ? own.src : fallbackSrc;
+    if (!r || !img || src < 0) return;
+    const key = basePage.key;
+    if (slotFitted) {
+      const prev = slotPrev.current.get(key);
+      slotPrev.current.delete(key);
+      setSlot(prev ?? undefined);
+      return;
+    }
+    const sc = Math.min(r.w / img.w, r.h / img.h);
+    const nr = { x: r.x + (r.w - img.w * sc) / 2, y: r.y + (r.h - img.h * sc) / 2, w: img.w * sc, h: img.h * sc };
+    slotPrev.current.set(key, design.slots?.[key] ?? null);
+    setDesign((d) => ({
+      ...d,
+      slots: { ...(d.slots ?? {}), [key]: nr },
+      photos: { ...d.photos, [key]: { ...(own && own.src >= 0 ? own : {}), src, pl: coverPlacement(nr, img) } },
+    }));
+  }
   function scalePl(pl: CalPlacement, f: number): CalPlacement {
     const r = page.photo!;
     const min = (Math.max(r.w, r.h) / Math.max(pl.wMm, pl.hMm)) * pl.wMm * 0.2;
@@ -1533,7 +1567,7 @@ export default function CalendarStudio({
           ay: top ? sr.y + sr.h : sr.y,
           axis: hi < 4 ? "xy" : hi < 6 ? "y" : "x",
           r0: { ...sr },
-          keep: cur ? ((design.photos[basePage.key]?.src ?? -1) >= 0 ? design.photos[basePage.key] : { src: slotSrc(design, imgs), pl: cur.pl }) : undefined,
+          keep: cur ? ((design.photos[basePage.key]?.src ?? -1) >= 0 ? design.photos[basePage.key] : { src: fallbackSrc, pl: cur.pl }) : undefined,
         };
         return;
       }
@@ -1648,6 +1682,11 @@ export default function CalendarStudio({
     }
     setGridSel(false);
     setSlotFocus(!!(page.photo && inRect(p, page.photo)));
+    // 📮 แตะลายโปสการ์ด (ยังไม่มีลายของลูกค้า) = เลือกลาย → ลบ/เปลี่ยนเป็นลายตัวเองจากแถบด้านบน (ไม่เปิดหน้าต่างเลือกไฟล์ทันที · ผู้ใช้แจ้ง 13 ต.ค. 69)
+    if (!cur && page.kind === "postback" && postOnHere && page.photo && inRect(p, page.photo)) {
+      setTool("photo");
+      return;
+    }
     if (!cur && page.photo && inRect(p, page.photo)) {
       // แตะช่องรูปที่ยังว่าง = เลือกรูปใส่ช่องนี้เลย
       pointers.current.delete(e.pointerId);
@@ -1660,7 +1699,7 @@ export default function CalendarStudio({
       drag.current = {
         kind: "slot-move",
         r0: { ...page.photo },
-        keep: ownP && ownP.src >= 0 ? ownP : { src: slotSrc(design, imgs), pl: cur.pl },
+        keep: ownP && ownP.src >= 0 ? ownP : { src: fallbackSrc, pl: cur.pl },
         x: p.x,
         y: p.y,
       };
@@ -1899,7 +1938,9 @@ export default function CalendarStudio({
 
   const cur = photoOf(page, design, imgs);
   const own = design.photos[basePage.key];
-  const curSrc = own ? srcs[own.src] : srcs[slotSrc(design, imgs)];
+  const curSrc = own ? srcs[own.src] : srcs[fallbackSrc];
+  /** ช่องรูปหลักหดพอดีรูปอยู่ (กด ⤢ แล้ว) */
+  const slotFitted = !!page.photo && !!curSrc && slotPrev.current.has(basePage.key) && Math.abs(page.photo.w / page.photo.h - curSrc.w / curSrc.h) < 0.01;
   const zoomPct = cur && page.photo && curSrc ? Math.round((cur.pl.wMm / coverPlacement(page.photo, curSrc).wMm) * 100) : 100;
   const dpi = cur && curSrc ? Math.round(curSrc.w / (cur.pl.wMm / 25.4)) : 0;
   const covers = cur && page.photo ? placementCovers(cur.pl, page.photo) : true;
@@ -1943,7 +1984,7 @@ export default function CalendarStudio({
       };
       if (id === LAYER_SLOT) {
         const own = design.photos[page.key];
-        return <span className={`${box} bg-stone-100`}>{pic(own ? own.src : slotSrc(design, imgs))}</span>;
+        return <span className={`${box} bg-stone-100`}>{pic(own ? own.src : fallbackSrc)}</span>;
       }
       if (id === LAYER_GRID)
         return (
@@ -2142,6 +2183,45 @@ export default function CalendarStudio({
   }
 
   /** 🗑 ลบรูปในช่องรูปหลักของหน้านี้ → ช่องว่าง "Drag here" (src -1 = ว่างโดยตั้งใจ ไม่ยืมรูปหน้าปก) */
+  /** 📮 ลายโปสการ์ดของหน้านี้ยังอยู่ไหม · เลือกอยู่ไหม (แตะแล้วมีกรอบฟ้า) */
+  const postOnHere = basePage.kind === "postback" && !(design.postOff ?? []).includes(basePage.key);
+  const postSelected = postOnHere && slotFocus && !sel && !cur;
+  function setPostOff(keys: string[], off: boolean) {
+    setDesign((d) => {
+      const set = new Set(d.postOff ?? []);
+      for (const k of keys)
+        if (off) set.add(k);
+        else set.delete(k);
+      return { ...d, postOff: [...set] };
+    });
+    if (off) setSlotFocus(false);
+  }
+  /** 📮 แถบเหนือลายโปสการ์ดที่เลือก: ใส่ลายของคุณแทน · ลบลาย */
+  function renderPostBar() {
+    if (!postSelected || !page.photo) return null;
+    const cssW = canvasRef.current?.clientWidth ?? 0;
+    const cssH = canvasRef.current?.clientHeight ?? 0;
+    if (!cssW) return null;
+    const { left } = barPos(page.photo, cssW, cssH);
+    const top = Math.max(-8, (page.photo.y / H) * cssH - 56);
+    return (
+      <div {...barWrap(left, top)} onPointerDown={(e) => e.stopPropagation()}>
+        <div ref={barRef} className="flex items-center gap-1 rounded-2xl bg-white px-1.5 py-1 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200">
+          <span className="px-1.5 text-[11px] font-extrabold text-stone-600">📮 ลายโปสการ์ด</span>
+          <button
+            type="button"
+            onClick={() => slotInputRef.current?.click()}
+            className="rounded-xl px-2.5 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-50"
+          >
+            🖼 ใส่ลายของคุณแทน
+          </button>
+          <BarBtn title="ลบลายโปสการ์ด (ปุ่ม Delete)" danger onClick={() => setPostOff([basePage.key], true)}>
+            <Ico n="trash" />
+          </BarBtn>
+        </div>
+      </div>
+    );
+  }
   function removeSlotPhoto() {
     if (!cur) return;
     const key = basePage.key;
@@ -2165,7 +2245,8 @@ export default function CalendarStudio({
             : sel || gridSel || slotFocus
               ? () => (setSel(null), setGridSel(false), setSlotFocus(false))
               : null;
-  slotDelRef.current = !locked && tool === "photo" && slotFocus && !sel && cur ? removeSlotPhoto : null;
+  slotDelRef.current =
+    !locked && tool === "photo" && slotFocus && !sel ? (cur ? removeSlotPhoto : postSelected ? () => setPostOff([basePage.key], true) : null) : null;
 
   function addEvent(): boolean {
     const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(evDate);
@@ -2344,6 +2425,16 @@ export default function CalendarStudio({
       setErr("ช่องรูปหน้าปกยังว่าง — แตะช่องสีเทาเพื่อเลือกรูป หรือลากรูปมาวาง");
       return;
     }
+    // หน้าไม่ยืมรูปปก (รายเดือน/ตั้งโต๊ะแบบใหม่) — หน้าที่ยังไม่ใส่รูปจะพิมพ์ออกมาเป็นช่องว่าง
+    if (design.noBorrow) {
+      const empty = printPages.find((v) => v.page.kind !== "postback" && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      if (empty) {
+        setPageIdx(vpages.indexOf(empty));
+        setTool("photo");
+        setErr(`${vname(empty)} ยังไม่มีรูป — แตะช่องสีเทาเพื่อเลือกรูป หรือลากรูปจากคลังด้านซ้ายมาวาง`);
+        return;
+      }
+    }
     // คละลาย: ค่าคละนับจากรูปในคลัง — รูปที่ไม่ได้วางลงใบไหนไม่ได้พิมพ์แต่ยังนับ → ถามให้ลบออกก่อน
     if (mixMode && unusedSrcs.length) {
       const list = unusedSrcs;
@@ -2358,7 +2449,7 @@ export default function CalendarStudio({
     }
     // คละลาย: ทุกใบต้องมีรูปของตัวเอง (ใบไหนว่างจะพิมพ์ออกมาเป็นช่องว่าง)
     if (mixMode) {
-      const empty = printPages.find((v) => lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      const empty = printPages.find((v) => v.page.kind !== "postback" && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
       if (empty) {
         setPageIdx(vpages.indexOf(empty));
         setTool("photo");
@@ -2409,7 +2500,7 @@ export default function CalendarStudio({
         .map(({ page: p }) => {
           const c = photoOf(lay(p), design, imgs);
           const o = design.photos[p.key];
-          const s = o ? srcs[o.src] : srcs[slotSrc(design, imgs)];
+          const s = o ? srcs[o.src] : srcs[fallbackSrc];
           return c && s ? Math.round(s.w / (c.pl.wMm / 25.4)) : Infinity;
         })
         .concat(
@@ -3191,15 +3282,6 @@ export default function CalendarStudio({
     const frImg = fr && fr.src != null ? srcs[fr.src] : undefined;
     const has = fr ? !!frImg : true;
     const zoomNow = fr ? Math.round((fr.zoom ?? 1) * 100) : zoomPct;
-    /**
-     * ช่องรูปหลักอยู่โหมด "พอดีช่อง" ไหม (⤢ แบบ Printbox — เห็นทั้งรูป ตรงกลางช่อง)
-     * ผู้ใช้ส่งภาพ Printbox 13 ต.ค. 69 "Fit the image within the photo slot" — เดิมช่องหลักกดได้แค่เต็มช่อง (รูปเต็มอยู่แล้ว = ไม่เปลี่ยน)
-     */
-    const slotContain = (() => {
-      if (fr || !cur || !page.photo || !curSrc) return false;
-      const c = containPlacement(page.photo, curSrc);
-      return Math.abs(cur.pl.wMm - c.wMm) < 0.05 && Math.abs(cur.pl.cxMm - c.cxMm) < 0.05 && Math.abs(cur.pl.cyMm - c.cyMm) < 0.05;
-    })();
     /** กรอบรูปซูมออกได้ถึงพอดีกรอบทั้งรูป (เดิมล็อก 100% = เต็มกรอบเสมอ) */
     const frMin = fr && frImg ? Math.round(containZoom(fr, frImg) * 100) : 100;
     const setZoom = (v: number) => {
@@ -3286,16 +3368,12 @@ export default function CalendarStudio({
                     ? frameFitted(fr, frImg)
                       ? "กลับเป็นกรอบขนาดเดิม"
                       : "หดกรอบให้พอดีรูป (เห็นทั้งรูป)"
-                    : slotContain
-                      ? "กลับเป็นรูปเต็มช่อง"
-                      : "ปรับรูปให้พอดีช่อง (เห็นทั้งรูป)"
+                    : slotFitted
+                      ? "กลับเป็นช่องขนาดเดิม"
+                      : "หดช่องให้พอดีรูป (เห็นทั้งรูป)"
                 }
-                on={fr ? frameFitted(fr, frImg) : slotContain}
-                onClick={() =>
-                  fr
-                    ? fitFrame(fr)
-                    : curSrc && page.photo && editPl(() => (slotContain ? coverPlacement(page.photo!, curSrc) : containPlacement(page.photo!, curSrc)))
-                }
+                on={fr ? frameFitted(fr, frImg) : slotFitted}
+                onClick={() => (fr ? fitFrame(fr) : fitSlot())}
               >
                 <Ico n="fit" />
               </BarBtn>
@@ -3759,6 +3837,18 @@ export default function CalendarStudio({
                 <span className="text-[10.5px] font-bold">{feeNow > 0 ? `ค่าคละ +${formatBaht(feeNow)}` : "ไม่มีค่าคละ"}</span>
               </button>
             )}
+            {copies === 1 && fmt.pages.filter((p) => p.photo).length > 1 && (
+              // 🖼 งานหลายหน้า: นับลายตามรูปที่ใช้ทุกหน้า → ค่าคละตามกติกาสินค้า (13 ต.ค. 69)
+              <span
+                title="นับลายตามจำนวนรูปที่ใช้ทุกหน้า · ค่าคละตามเงื่อนไขของสินค้า"
+                className={`hidden flex-col items-end rounded-xl px-2.5 py-1 text-right leading-tight ring-1 sm:flex ${
+                  feeNow > 0 ? "bg-amber-50 text-amber-900 ring-amber-200" : "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                }`}
+              >
+                <span className="text-[11px] font-extrabold">🖼 ใช้ {designN} รูป</span>
+                <span className="text-[10.5px] font-bold">{feeNow > 0 ? `ค่าคละ +${formatBaht(feeNow)}` : "ไม่มีค่าคละ"}</span>
+              </span>
+            )}
             {aiExport && (
               <button
                 type="button"
@@ -3846,7 +3936,7 @@ export default function CalendarStudio({
               const fr = selEl?.kind === "photo" ? selEl : null;
               const frImg = fr && fr.src != null ? srcs[fr.src] : undefined;
               const slotOn = !fr && !!page.photo;
-              const activeSrc = fr ? fr.src : slotOn ? (own ? own.src : slotSrc(design, imgs)) : undefined;
+              const activeSrc = fr ? fr.src : slotOn ? (own ? own.src : fallbackSrc) : undefined;
               const chip = (on: boolean) =>
                 `rounded-full px-2.5 py-1 text-[11px] font-bold transition ${on ? "bg-sky-600 text-white shadow-sm" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50"}`;
               /**
@@ -3854,9 +3944,49 @@ export default function CalendarStudio({
                * เดิมเป็นกล่องใหญ่อยู่ใต้ภาพ ต้องเลื่อนลงหาถึงจะเจอปุ่มอัปรูป/＋ กรอบ
                * แถว 1 = ใส่ลงช่องไหน · แถว 2 = ＋ เพิ่มรูป + รูปที่อัปไว้ (ปัดซ้าย-ขวา · แตะ = ใส่ทันที)
                */
+              /**
+               * 📮 ด้านหลังลายโปสการ์ด (ผู้ใช้สั่ง 13 ต.ค. 69 "ลูกค้าใส่ลายตัวเองได้ หรือลบลาย postcard ออกได้")
+               * ใส่ลายเอง = ลงช่องรูปเต็มใบ (ทับลายโปสการ์ด · ปรับความทึบให้เห็นเส้นลอดได้) · ลบลาย = CalDesign.postOff
+               */
+              const postKeys = [...new Set(vpages.filter((v) => v.page.kind === "postback").map((v) => resolve(v).key))];
+              const postHere = basePage.kind === "postback";
+              const postOn = !(design.postOff ?? []).includes(basePage.key);
+              const setPost = (keys: string[], on: boolean) =>
+                setDesign((d) => {
+                  const off = new Set(d.postOff ?? []);
+                  for (const k of keys)
+                    if (on) off.delete(k);
+                    else off.add(k);
+                  return { ...d, postOff: [...off] };
+                });
+              const postBox = postHere ? (
+                <div className="space-y-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-200">
+                  <p className="font-extrabold">📮 ด้านหลัง {postOn ? "· มีลายโปสการ์ด" : "· ลบลายโปสการ์ดแล้ว"}</p>
+                  <p className="text-amber-800">ใส่ลายของคุณเองได้ — แตะด้านหลัง หรือลากรูปมาวาง (เต็มใบ ทับลายโปสการ์ด)</p>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPost([basePage.key], !postOn)}
+                      className="rounded-full bg-white px-2.5 py-1 font-bold text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
+                    >
+                      {postOn ? "🗑 ลบลายโปสการ์ด" : "↺ ใส่ลายโปสการ์ดกลับ"}
+                    </button>
+                    {postKeys.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setPost(postKeys, !postOn)}
+                        className="rounded-full bg-white px-2.5 py-1 font-bold text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
+                      >
+                        {postOn ? `ลบทุกใบ (${postKeys.length})` : `ใส่กลับทุกใบ (${postKeys.length})`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : null;
               if (narrow)
                 return (
                   <div className="order-[-1] w-full shrink-0 space-y-1.5 border-b border-stone-100 bg-white px-2 py-2">
+                    {postBox}
                     {copies > 1 && vcur.card > 0 && (
                       <div className="flex items-center justify-between gap-2 rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] ring-1 ring-sky-100">
                         <span className="font-bold text-sky-900">ใบที่ {vcur.card + 1} · แยกแบบเอง</span>
@@ -3949,6 +4079,7 @@ export default function CalendarStudio({
                       </button>
                     </div>
                   )}
+                  {postBox}
                   <p className="text-xs font-extrabold text-stone-700">รูปของคุณ</p>
                   <div>
                     <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-stone-400">ใส่รูปลง</p>
@@ -4119,6 +4250,7 @@ export default function CalendarStudio({
                 style={{ aspectRatio: `${W} / ${H}` }}
               />
               {!locked && tool === "photo" && renderPhotoBar()}
+              {!locked && tool === "photo" && renderPostBar()}
               {!locked && tool === "text" && renderTextBar()}
               {!locked && tool === "shape" && renderShapeBar()}
               {renderSelOverlay()}

@@ -13,6 +13,8 @@ import { calFormat, coverPlacement, defaultBack, defaultText, drawPage, fmtW, fm
 const require = createRequire(process.argv[2] + "/");
 const { createCanvas, GlobalFonts } = require("@napi-rs/canvas");
 GlobalFonts.registerFromPath("/System/Library/Fonts/Supplemental/SukhumvitSet.ttc", "Kanit");
+// ลายหลังโปสการ์ดใช้ Poppins (บนเว็บ) — ในเครื่องใช้ Avenir Next แทน
+GlobalFonts.registerFromPath("/System/Library/Fonts/Avenir Next.ttc", "Poppins");
 const OUT = process.argv[3];
 mkdirSync(OUT, { recursive: true });
 const YEAR = 2027;
@@ -51,7 +53,7 @@ function page(fmtKey: string, idx: number, k: number, hue = 200) {
   if (p.kind !== "photo" || idx > 0) d.text = idx === 0 ? d.text : null;
   const img = scene(hue);
   // ใส่รูปลงช่องตรง ๆ — ช่องว่างไม่ยืมรูปแล้ว (photoOf/slotSrc 13 ต.ค. 69) ไม่ใส่ = การ์ดตัวอย่างไม่มีรูป
-  if (p.photo) d.photos = { [p.key]: { src: 0, pl: coverPlacement(p.photo, img) } };
+  if (p.photo && p.kind !== "postback") d.photos = { [p.key]: { src: 0, pl: coverPlacement(p.photo, img) } };
   const c = createCanvas(Math.round(fmtW(f) * k), Math.round(fmtH(f) * k));
   drawPage(c.getContext("2d"), k, f, p, d, b, [img]);
   // ตัดขอบตัดตกออก = หน้าตาหลังตัดจริง
@@ -108,6 +110,15 @@ const save = (c: any, name: string) => writeFileSync(`${OUT}/${name}.jpg`, c.toB
   label(x, "ด้านหน้า", 285, 790); label(x, "ด้านหลัง", 715, 790);
   badge(x, "พิมพ์ 2 ด้าน · หน้ารูป หลังปฏิทิน");
   save(c, "postcard-side-2");
+}
+{
+  // 📮 พิมพ์ 2 ด้าน หลังลายโปสการ์ด (13 ต.ค. 69) — หน้า = รูป + ปฏิทิน · หลัง = ลายโปสการ์ด (แนวนอนให้เห็นลายชัด)
+  const { c, x } = board();
+  put(x, page("postcard-yearpb-L", 0, 6), 300, 300, 520, -3);
+  put(x, page("postcard-yearpb-L", 1, 6), 700, 640, 520, 3);
+  label(x, "ด้านหน้า", 300, 510); label(x, "ด้านหลัง", 700, 852);
+  badge(x, "พิมพ์ 2 ด้าน · หลังเป็นลายโปสการ์ด");
+  save(c, "postcard-side-pb");
 }
 /* ── โปสการ์ด: รายปี 8 ใบ / รายเดือน 13 ใบ ── */
 {
