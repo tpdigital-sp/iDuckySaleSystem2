@@ -143,6 +143,20 @@ export function cartItemKey(productId: string, selections: Record<string, string
   return [productId, ...parts].join("|");
 }
 
+/**
+ * 🔗 รหัสสั้นของบรรทัดตะกร้า (~7 ตัว) ใช้ในลิงก์ ✏️ แก้ไข ?edit=<รหัส> แทนคีย์เต็ม
+ * (คีย์เต็ม = ทุกตัวเลือก + URL ไฟล์ทุกไฟล์ → ลิงก์ยาวหลายพันตัวอักษร · ผู้ใช้ขอให้สั้นลง 13 ต.ค. 69)
+ * หน้าสินค้าหาบรรทัดในตะกร้าที่รหัสตรงกัน · ลิงก์เก่าที่เป็นคีย์เต็มยังใช้ได้
+ */
+export function cartEditToken(key: string): string {
+  let h = 0x811c9dc5; // FNV-1a 32-bit
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
 interface CartContextValue {
   items: CartItem[];
   totalQty: number;

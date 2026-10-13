@@ -181,7 +181,7 @@ import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } 
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
 import { calDesignCount, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
-import { cartItemKey, useCart } from "@/lib/cart-context";
+import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import { fetchSources, loadCalEdit, saveCalEdit } from "@/lib/cal-edit-store";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin, getAdminSession } from "@/lib/auth";
@@ -1519,11 +1519,20 @@ export default function ProductDetail({
   const editLoadDone = useRef(false);
   useEffect(() => {
     if (!productReady || editLoadDone.current) return;
-    const key = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("edit");
-    if (!key) return;
-    editKeyRef.current = key;
-    const line = cartItems.find((i) => i.key === key && i.productId === product.id);
+    const param = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("edit");
+    if (!param) return;
+    // ?edit= เป็นรหัสสั้น (cartEditToken) — ลิงก์เก่าที่เป็นคีย์เต็มยังใช้ได้
+    const line = cartItems.find((i) => i.productId === product.id && (i.key === param || cartEditToken(i.key) === param));
     if (!line) return; // ตะกร้ายังไม่ hydrate (หรือบรรทัดถูกลบไปแล้ว) — ยังไม่ปักธง รอรอบหน้า
+    const key = line.key;
+    editKeyRef.current = key;
+    // ลิงก์เก่า (คีย์เต็มยาวหลายพันตัว) → ย่อแถบที่อยู่เป็นรหัสสั้นเลย ไม่ต้องโหลดหน้าใหม่ (ผู้ใช้แจ้ง 13 ต.ค. 69 "ลิงก์ยังยาว")
+    const short = cartEditToken(key);
+    if (param !== short) {
+      const u = new URL(window.location.href);
+      u.searchParams.set("edit", short);
+      window.history.replaceState(window.history.state, "", u.pathname + u.search + u.hash);
+    }
     editLoadDone.current = true;
     const src = line.selections;
 

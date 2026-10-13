@@ -73,7 +73,7 @@ import {
 } from "@/lib/gifts";
 import GiftPanel from "@/components/GiftPanel";
 import GiftArtworkPicker from "@/components/GiftArtworkPicker";
-import { CART_NOTE_LABEL, useCart } from "@/lib/cart-context";
+import { CART_NOTE_LABEL, cartEditToken, useCart } from "@/lib/cart-context";
 import { useCustomer } from "@/lib/customer-context";
 import { PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import BoxFeeTag from "@/components/BoxFeeTag";
@@ -704,7 +704,7 @@ export default function CartPage() {
                         {/* ✏️ แก้สเปคเดิม — เปิดหน้าสินค้าพร้อมติ๊กของเดิมกลับมาให้ครบ (รวมลายที่แนบ)
                             แล้วกดบันทึกทับบรรทัดนี้ · เดิมลูกค้าต้องลบทิ้งแล้วเลือกใหม่ตั้งแต่ต้น ลายก็หายไปด้วย */}
                         <Link
-                          href={`${productPath(product)}?edit=${encodeURIComponent(item.key)}`}
+                          href={`${productPath(product)}?edit=${cartEditToken(item.key)}`}
                           className="ord-btn quiet sm shrink-0"
                           style={{ padding: "5px 10px", fontSize: ".72rem" }}
                           aria-label={`แก้ไขสเปคของ ${product.name}`}

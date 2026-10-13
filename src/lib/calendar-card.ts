@@ -17,16 +17,59 @@ import { THAI_HOLIDAYS } from "@/lib/ship-date";
 import { bkkParts } from "@/lib/bangkok-time";
 import type { Product } from "@/lib/products";
 
-/** ฟอนต์ที่ให้เลือก — 3 ตัวแรกเว็บโหลดอยู่แล้ว (next/font) ที่เหลือโหลดจาก Google Fonts ตอนเปิดจอ */
-export const CAL_FONTS: { key: string; name: string; css: string; google?: string }[] = [
-  { key: "prompt", name: "Prompt", css: "var(--font-prompt)" },
-  { key: "mitr", name: "Mitr", css: "var(--font-mitr)" },
-  { key: "looped", name: "IBM Plex Looped", css: "var(--font-looped)" },
-  { key: "kanit", name: "Kanit", css: "'Kanit'", google: "Kanit:wght@400;600;700" },
-  { key: "sarabun", name: "Sarabun", css: "'Sarabun'", google: "Sarabun:wght@400;700" },
-  { key: "montserrat", name: "Montserrat", css: "'Montserrat'", google: "Montserrat:wght@400;500;600;700" },
-  { key: "itim", name: "Itim (ลายมือ)", css: "'Itim'", google: "Itim" },
-  { key: "pattaya", name: "Pattaya", css: "'Pattaya'", google: "Pattaya" },
+/**
+ * ฟอนต์ที่ให้เลือก — 3 ตัวแรกเว็บโหลดอยู่แล้ว (next/font) ที่เหลือโหลดจาก Google Fonts ตอนเปิดจอ
+ * group = หมวดในรายการเลือก (optgroup) · เพิ่มเป็น 45 ตัว 13 ต.ค. 69 (ผู้ใช้ขอ "เพิ่มฟอนต์ให้เลือกเยอะกว่านี้") — ทุกตัวเช็ค Google Fonts ตอบ 200 แล้ว
+ * ⚠️ ห้ามเปลี่ยน key ของตัวเดิม (แบบที่บันทึกไว้อ้างด้วย key)
+ */
+export const CAL_FONTS: { key: string; name: string; css: string; google?: string; group: string }[] = [
+  { key: "prompt", name: "Prompt", css: "var(--font-prompt)", group: "ไทย · ทันสมัย" },
+  { key: "mitr", name: "Mitr", css: "var(--font-mitr)", group: "ไทย · ทันสมัย" },
+  { key: "looped", name: "IBM Plex Looped", css: "var(--font-looped)", group: "ไทย · ทันสมัย" },
+  { key: "kanit", name: "Kanit", css: "'Kanit'", google: "Kanit:wght@400;600;700", group: "ไทย · ทันสมัย" },
+  { key: "sarabun", name: "Sarabun", css: "'Sarabun'", google: "Sarabun:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "notosansthai", name: "Noto Sans Thai", css: "'Noto Sans Thai'", google: "Noto+Sans+Thai:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "anuphan", name: "Anuphan", css: "'Anuphan'", google: "Anuphan:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "plexthai", name: "IBM Plex Sans Thai", css: "'IBM Plex Sans Thai'", google: "IBM+Plex+Sans+Thai:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "baijamjuree", name: "Bai Jamjuree", css: "'Bai Jamjuree'", google: "Bai+Jamjuree:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "chakrapetch", name: "Chakra Petch", css: "'Chakra Petch'", google: "Chakra+Petch:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "k2d", name: "K2D", css: "'K2D'", google: "K2D:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "krub", name: "Krub", css: "'Krub'", google: "Krub:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "niramit", name: "Niramit", css: "'Niramit'", google: "Niramit:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "athiti", name: "Athiti", css: "'Athiti'", google: "Athiti:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "fahkwang", name: "Fahkwang", css: "'Fahkwang'", google: "Fahkwang:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "thasadith", name: "Thasadith", css: "'Thasadith'", google: "Thasadith:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "notolooped", name: "Noto Sans Thai Looped", css: "'Noto Sans Thai Looped'", google: "Noto+Sans+Thai+Looped:wght@400;700", group: "ไทย · ทันสมัย" },
+  { key: "taviraj", name: "Taviraj", css: "'Taviraj'", google: "Taviraj:wght@400;700", group: "ไทย · มีหัว/ทางการ" },
+  { key: "trirong", name: "Trirong", css: "'Trirong'", google: "Trirong:wght@400;700", group: "ไทย · มีหัว/ทางการ" },
+  { key: "pridi", name: "Pridi", css: "'Pridi'", google: "Pridi:wght@400;700", group: "ไทย · มีหัว/ทางการ" },
+  { key: "notoserifthai", name: "Noto Serif Thai", css: "'Noto Serif Thai'", google: "Noto+Serif+Thai:wght@400;700", group: "ไทย · มีหัว/ทางการ" },
+  { key: "itim", name: "Itim (ลายมือ)", css: "'Itim (ลายมือ)'", google: "Itim", group: "ไทย · ลายมือ/น่ารัก" },
+  { key: "mali", name: "Mali", css: "'Mali'", google: "Mali:wght@400;700", group: "ไทย · ลายมือ/น่ารัก" },
+  { key: "sriracha", name: "Sriracha", css: "'Sriracha'", google: "Sriracha", group: "ไทย · ลายมือ/น่ารัก" },
+  { key: "kodchasan", name: "Kodchasan", css: "'Kodchasan'", google: "Kodchasan:wght@400;700", group: "ไทย · ลายมือ/น่ารัก" },
+  { key: "charm", name: "Charm", css: "'Charm'", google: "Charm:wght@400;700", group: "ไทย · ลายมือ/น่ารัก" },
+  { key: "charmonman", name: "Charmonman", css: "'Charmonman'", google: "Charmonman:wght@400;700", group: "ไทย · ลายมือ/น่ารัก" },
+  { key: "pattaya", name: "Pattaya", css: "'Pattaya'", google: "Pattaya", group: "ไทย · ตัวเด่น" },
+  { key: "chonburi", name: "Chonburi", css: "'Chonburi'", google: "Chonburi", group: "ไทย · ตัวเด่น" },
+  { key: "srisakdi", name: "Srisakdi", css: "'Srisakdi'", google: "Srisakdi:wght@400;700", group: "ไทย · ตัวเด่น" },
+  { key: "montserrat", name: "Montserrat", css: "'Montserrat'", google: "Montserrat:wght@400;500;600;700", group: "อังกฤษ" },
+  { key: "poppins", name: "Poppins", css: "'Poppins'", google: "Poppins:wght@400;700", group: "อังกฤษ" },
+  { key: "nunito", name: "Nunito", css: "'Nunito'", google: "Nunito:wght@400;700", group: "อังกฤษ" },
+  { key: "quicksand", name: "Quicksand", css: "'Quicksand'", google: "Quicksand:wght@400;700", group: "อังกฤษ" },
+  { key: "raleway", name: "Raleway", css: "'Raleway'", google: "Raleway:wght@400;700", group: "อังกฤษ" },
+  { key: "oswald", name: "Oswald", css: "'Oswald'", google: "Oswald:wght@400;700", group: "อังกฤษ" },
+  { key: "bebas", name: "Bebas Neue", css: "'Bebas Neue'", google: "Bebas+Neue", group: "อังกฤษ" },
+  { key: "fredoka", name: "Fredoka", css: "'Fredoka'", google: "Fredoka:wght@400;700", group: "อังกฤษ" },
+  { key: "comfortaa", name: "Comfortaa", css: "'Comfortaa'", google: "Comfortaa:wght@400;700", group: "อังกฤษ" },
+  { key: "playfair", name: "Playfair Display", css: "'Playfair Display'", google: "Playfair+Display:wght@400;700", group: "อังกฤษ" },
+  { key: "lora", name: "Lora", css: "'Lora'", google: "Lora:wght@400;700", group: "อังกฤษ" },
+  { key: "dancing", name: "Dancing Script", css: "'Dancing Script'", google: "Dancing+Script:wght@400;700", group: "อังกฤษ · ลายมือ" },
+  { key: "pacifico", name: "Pacifico", css: "'Pacifico'", google: "Pacifico", group: "อังกฤษ · ลายมือ" },
+  { key: "greatvibes", name: "Great Vibes", css: "'Great Vibes'", google: "Great+Vibes", group: "อังกฤษ · ลายมือ" },
+  { key: "caveat", name: "Caveat", css: "'Caveat'", google: "Caveat:wght@400;700", group: "อังกฤษ · ลายมือ" },
+  { key: "lobster", name: "Lobster", css: "'Lobster'", google: "Lobster", group: "อังกฤษ · ลายมือ" },
+  { key: "satisfy", name: "Satisfy", css: "'Satisfy'", google: "Satisfy", group: "อังกฤษ · ลายมือ" },
 ];
 
 export type CalLang = "en" | "th";
@@ -680,11 +723,14 @@ let googleLinked = false;
 export function linkGoogleFonts(): void {
   if (googleLinked || typeof document === "undefined") return;
   googleLinked = true;
-  const fams = CAL_FONTS.filter((f) => f.google).map((f) => `family=${f.google!.replace(/ /g, "+")}`);
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = `https://fonts.googleapis.com/css2?${fams.join("&")}&display=swap`;
-  document.head.appendChild(link);
+  // ลิงก์ละฟอนต์ — ฟอนต์ตัวไหนชื่อผิด/Google ตอบ 400 ไม่ลากทั้งชุดล่มตาม (ไฟล์ฟอนต์จริงโหลดเฉพาะตัวที่ใช้)
+  for (const f of CAL_FONTS) {
+    if (!f.google) continue;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${f.google.replace(/ /g, "+")}&display=swap`;
+    document.head.appendChild(link);
+  }
 }
 
 /** รอให้ฟอนต์ที่จะใช้พร้อมก่อนวาดไฟล์จริง (กันไฟล์ส่งพิมพ์ออกมาเป็นฟอนต์สำรอง) */

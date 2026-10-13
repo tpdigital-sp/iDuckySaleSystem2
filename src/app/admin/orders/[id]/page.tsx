@@ -33,7 +33,7 @@ import {
   readReplaceMarker,
   writeReplaceMarker,
 } from "@/lib/order-item-qty";
-import { cartItemKey } from "@/lib/cart-context";
+import { cartEditToken, cartItemKey } from "@/lib/cart-context";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { PROOF_AUTO_NOTIFY_MINUTES, lastProofNotify, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
 import { fetchProductNamesLite, fetchProductsByIds } from "@/lib/product-repo";
@@ -4132,7 +4132,7 @@ export default function AdminOrderDetailPage() {
       setErr("⚠️ เปิดโหมดแก้ไขไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
       return;
     }
-    window.open(`${productPath(p)}?edit=${encodeURIComponent(cartItemKey(it.productId, cartSelectionsOf(it)))}`, "_blank", "noopener");
+    window.open(`${productPath(p)}?edit=${cartEditToken(cartItemKey(it.productId, cartSelectionsOf(it)))}`, "_blank", "noopener");
   }
 
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */

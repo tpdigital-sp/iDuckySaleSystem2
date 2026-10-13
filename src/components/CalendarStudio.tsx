@@ -2603,11 +2603,7 @@ export default function CalendarStudio({
                   aria-label={`ฟอนต์${r.label}`}
                 >
                   <option value="">ตามฟอนต์ปฏิทิน</option>
-                  {CAL_FONTS.map((f) => (
-                    <option key={f.key} value={f.key}>
-                      {f.name}
-                    </option>
-                  ))}
+                  <FontOptions />
                 </select>
                 <div className="flex overflow-hidden rounded-lg ring-1 ring-stone-200">
                   <button type="button" title="ตัวหนา" onClick={() => setPart(r.k, { bold: !bold })} className={segBtn(bold)}>
@@ -3082,11 +3078,7 @@ export default function CalendarStudio({
               className={`${box} w-36 cursor-pointer`}
               aria-label="ฟอนต์"
             >
-              {CAL_FONTS.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.name}
-                </option>
-              ))}
+              <FontOptions />
             </select>
             <select
               value={pt}
@@ -5170,14 +5162,28 @@ function Colors({ value, onChange, allowNone, exclude = [] }: { value: string; o
   );
 }
 
+/** รายการฟอนต์แบ่งหมวด (optgroup ตาม CAL_FONTS.group) — ใช้ทุกช่องเลือกฟอนต์ในจอ */
+function FontOptions() {
+  const groups = [...new Set(CAL_FONTS.map((f) => f.group))];
+  return (
+    <>
+      {groups.map((g) => (
+        <optgroup key={g} label={g}>
+          {CAL_FONTS.filter((f) => f.group === g).map((f) => (
+            <option key={f.key} value={f.key}>
+              {f.name}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  );
+}
+
 function FontSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-sm">
-      {CAL_FONTS.map((f) => (
-        <option key={f.key} value={f.key}>
-          ฟอนต์ {f.name}
-        </option>
-      ))}
+      <FontOptions />
     </select>
   );
 }

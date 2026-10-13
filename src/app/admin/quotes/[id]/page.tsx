@@ -28,7 +28,7 @@ import {
   readReplaceMarker,
   writeReplaceMarker,
 } from "@/lib/order-item-qty";
-import { cartItemKey } from "@/lib/cart-context";
+import { cartEditToken, cartItemKey } from "@/lib/cart-context";
 import {
   QUOTE_STYLES,
   awaitingOrder,
@@ -336,7 +336,7 @@ function QuoteDetailInner() {
       setErr("⚠️ เปิดโหมดแก้ไขไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
       return;
     }
-    window.open(`${productPath(p)}?edit=${encodeURIComponent(cartItemKey(it.productId, cartSelectionsOf(it)))}`, "_blank", "noopener");
+    window.open(`${productPath(p)}?edit=${cartEditToken(cartItemKey(it.productId, cartSelectionsOf(it)))}`, "_blank", "noopener");
   }
 
   /* ของใหม่จากหน้าร้านเข้าใบแล้ว → หิ้วภาพลาย/หมายเหตุจากรายการเดิมไปให้ แล้วถอดรายการเดิมออก (เหมือนตะกร้าตอนบันทึกแก้ไข) */
