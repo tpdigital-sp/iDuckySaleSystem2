@@ -6524,8 +6524,10 @@ export default function AdminOrderDetailPage() {
                       ) : (
                         <span className="text-[11px] font-bold text-amber-600">รอตีราคา</span>
                       )}
-                      {/* ส่วนลดเฉพาะรายการนี้ — เลือกได้ทั้งบาทและ % (บันทึกตอนออกจากช่อง พร้อมลง log) */}
-                      {mayEdit && seesMoney && (discOpen[i] || itemDiscountAmount(it) > 0) ? (
+                      {/* ส่วนลดเฉพาะรายการนี้ — เลือกได้ทั้งบาทและ % (บันทึกตอนออกจากช่อง พร้อมลง log)
+                          🔒 ล็อกกติกาเดียวกับจำนวน/ราคา (mayChangeQty): ลูกค้าโอนแล้วห้ามขยับยอด — OD-261009-3166 (13 ต.ค. 69)
+                          จำนวนแก้ไม่ได้เลยไปใส่ "ลด ฿11,250" แทน → บิลเหลือ ฿535 ทั้งที่สลิป/INV ฿12,572.50 กลายเป็นโอนเกิน ฿12,037.50 */}
+                      {mayChangeQty(it) && seesMoney && (discOpen[i] || itemDiscountAmount(it) > 0) ? (
                         <span className="mt-1 flex items-center justify-end gap-1 text-[11px] font-semibold text-rose-500">
                           ลด
                           <input
@@ -6595,7 +6597,10 @@ export default function AdminOrderDetailPage() {
                           )}
                         </span>
                       ) : itemDiscountAmount(it) > 0 && seesMoney ? (
-                        <span className="mt-0.5 block text-[11px] font-semibold text-rose-500">
+                        <span
+                          className="mt-0.5 block text-[11px] font-semibold text-rose-500"
+                          title={mayEdit ? "ลูกค้าโอนเงินเข้ามาแล้ว — แก้ส่วนลดไม่ได้ กันยอดในบิลไม่ตรงกับสลิป/ใบกำกับ" : undefined}
+                        >
                           ลด{(it.discountPct ?? 0) > 0 ? ` ${it.discountPct}%` : ""} −{formatPrice(itemDiscountAmount(it))}
                         </span>
                       ) : null}
@@ -6608,7 +6613,7 @@ export default function AdminOrderDetailPage() {
                         <span className="mt-0.5 block text-[10px] font-bold text-rose-500">
                           ลดแล้ว −{formatPrice(itemDiscountAmount(it))}
                         </span>
-                      ) : mayEdit && seesMoney && !discOpen[i] ? (
+                      ) : mayChangeQty(it) && seesMoney && !discOpen[i] ? (
                         <button
                           type="button"
                           onClick={() => setDiscOpen((cur) => ({ ...cur, [i]: true }))}
