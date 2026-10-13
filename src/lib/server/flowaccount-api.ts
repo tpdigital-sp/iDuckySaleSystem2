@@ -308,6 +308,8 @@ export async function getDocument(
   salesName?: string;
   reference?: string;
   items: { name: string; quantity: number; pricePerUnit: number; total: number }[];
+  /** เอกสารที่อัปเกรดต่อจากใบนี้ (QT → BL → INV) — รวมใบที่พนักงานออกเองในแอป FlowAccount */
+  referencedToMe: { docNo: string; recordId: number; docType: number }[];
 } | null> {
   const d = await get<{ list?: Record<string, unknown>[] } & Record<string, unknown>>(`/${kind}/${recordId}`);
   const x = (d?.list?.[0] ?? d) as Record<string, unknown> | undefined;
@@ -329,6 +331,9 @@ export async function getDocument(
     ...(x.salesName ? { salesName: String(x.salesName) } : {}),
     ...(x.reference ? { reference: String(x.reference) } : {}),
     items,
+    referencedToMe: ((x.referencedToMe as Record<string, unknown>[] | undefined) ?? [])
+      .map((r) => ({ docNo: String(r.documentSerial ?? ""), recordId: Number(r.documentId) || 0, docType: Number(r.documentType) || 0 }))
+      .filter((r) => r.docNo && r.recordId),
   };
 }
 

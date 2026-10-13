@@ -5627,7 +5627,7 @@ export default function AdminOrderDetailPage() {
                         url={d.url || `/api/admin/fa-edit?no=${encodeURIComponent(d.docNo)}`}
                         editUrl={seesMoney ? `/api/admin/fa-edit?no=${encodeURIComponent(d.docNo)}` : undefined}
                       />
-                      <span className="ml-1 font-normal text-slate-500">(ออกจากระบบ · {d.by})</span>
+                      <span className="ml-1 font-normal text-slate-500">{d.manual ? "(ออกในแอป FlowAccount)" : `(ออกจากระบบ · ${d.by})`}</span>
                       {d.kind === "inv" && d.paid === false && (
                         <span className="ml-1 font-normal text-rose-700">⚠️ ยังไม่บันทึกรับเงิน — กดรับชำระเงินใน FlowAccount</span>
                       )}

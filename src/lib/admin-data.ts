@@ -1440,6 +1440,8 @@ export interface Order {
     by: string;
     /** ใบกำกับ: บันทึกรับเงินใน FlowAccount สำเร็จไหม (false = ต้องไปกดรับชำระเงินใน FlowAccount เอง) */
     paid?: boolean;
+    /** พนักงานออกเองในแอป FlowAccount (ระบบเจอผ่าน referencedToMe ของเอกสารต้นทาง แล้วผูกให้) — OD-261009-4225 BL002116 */
+    manual?: boolean;
   }[];
   /**
    * 🧾 ใบกำกับภาษีส่งให้ลูกค้าทางไหน — เฉพาะใบที่มีใบกำกับ (flowAccount / taxInvoice / vat)

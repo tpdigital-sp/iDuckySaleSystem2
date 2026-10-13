@@ -3,7 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
-import { FA_KIND_LABEL, draftFor, netCollected, quotationBody, quotationUpdateBody, quotationUpdateDraft, upgradeBody, type FaDocKind } from "@/lib/server/fa-create";
+import { FA_KIND_LABEL, draftFor, mainDocOf, netCollected, quotationBody, quotationUpdateBody, quotationUpdateDraft, upgradeBody, type FaDocKind } from "@/lib/server/fa-create";
 import { bankAccounts, createDocument, findDocRecordId, flowAccountApiReady, getDocument, receiveTransferPayment, shareDocument, updateDocument } from "@/lib/server/flowaccount-api";
 import { WHT_TABLE } from "@/lib/server/wht-db";
 import { bkkParts } from "@/lib/bangkok-time";
@@ -43,8 +43,9 @@ export async function POST(req: Request) {
   if (!API_PATH[kind]) return NextResponse.json({ error: "ชนิดเอกสารไม่ถูกต้อง" }, { status: 400 });
 
   const load = async () => (await sb.from("orders").select("data").eq("id", orderId).maybeSingle()).data?.data as Order | undefined;
-  const order = await load();
+  let order = await load();
   if (!order) return NextResponse.json({ error: `ไม่พบออเดอร์ ${orderId}` }, { status: 404 });
+  if (kind !== "qt") order = await adoptManualChain(sb, order, gate.actor.name || gate.actor.username);
   const draft = draftFor(order, kind);
   if (kind === "inv") {
     // ใบกำกับที่พนักงานออกมือใน FlowAccount แล้ว (cron wht-sync จับคู่ไว้) → ไม่ออกซ้ำ
@@ -152,6 +153,70 @@ export async function POST(req: Request) {
     );
   } finally {
     busy.delete(lock);
+  }
+}
+
+const KIND_OF_TYPE: Record<number, { kind: "bl" | "inv"; api: string }> = {
+  5: { kind: "bl", api: "billing-notes" },
+  7: { kind: "inv", api: "tax-invoices" },
+};
+
+/**
+ * 🔗 ใบแจ้งหนี้/ใบกำกับที่พนักงานออกเองในแอป FlowAccount ต่อจากเอกสารหลัก → ผูกเข้า faChain ก่อนร่าง (13 ต.ค. 69)
+ * เดิมระบบไม่รู้จักใบที่ออกมือ → 🧾 ออกใบกำกับ อัปเกรดจาก QT ที่ถูกแปลงเป็น BL ไปแล้ว FlowAccount ปฏิเสธ
+ * (OD-261009-4225: QT010864 → BL002116 ออกในแอป 12 ต.ค. · ปุ่ม 📋 ออกใบแจ้งหนี้ยังโชว์ด้วย)
+ * ไล่ referencedToMe ของเอกสารหลัก → BL → INV (ข้ามใบยกเลิก) · อ่าน FlowAccount ไม่ได้ = ใช้ออเดอร์เดิม (ร่างทำงานแบบเก่า)
+ */
+async function adoptManualChain(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, order: Order, by: string): Promise<Order> {
+  const main = mainDocOf(order);
+  if (!main || !(await flowAccountApiReady())) return order;
+  try {
+    const known = new Set([main.docNo, ...(order.faChain ?? []).map((d) => d.docNo)].map((n) => n.toUpperCase()));
+    const found: NonNullable<Order["faChain"]> = [];
+    let cur = await findDocRecordId(main.docNo);
+    for (let hop = 0; cur && hop < 3; hop++) {
+      const doc = await getDocument(cur.kind, cur.id);
+      let next: { kind: string; id: number } | null = null;
+      for (const ref of doc?.referencedToMe ?? []) {
+        const t = KIND_OF_TYPE[ref.docType];
+        if (!t) continue;
+        const child = await getDocument(t.api, ref.recordId);
+        if (!child || child.status === "void") continue;
+        if (!known.has(ref.docNo.toUpperCase())) {
+          known.add(ref.docNo.toUpperCase());
+          const url = await shareDocument(t.api, ref.recordId).catch(() => "");
+          found.push({
+            kind: t.kind,
+            docNo: ref.docNo,
+            recordId: ref.recordId,
+            ...(url ? { url } : {}),
+            total: child.grandTotal,
+            at: new Date().toISOString(),
+            by: "FlowAccount",
+            manual: true,
+            ...(t.kind === "inv" ? { paid: child.status === "paid" } : {}),
+          });
+        }
+        next = { kind: t.api, id: ref.recordId };
+        if (t.kind === "inv") break;
+      }
+      cur = next;
+    }
+    if (!found.length) return order;
+    const fresh = ((await sb.from("orders").select("data").eq("id", order.id).maybeSingle()).data?.data as Order | undefined) ?? order;
+    const have = new Set((fresh.faChain ?? []).map((d) => d.docNo.toUpperCase()));
+    const add = found.filter((d) => !have.has(d.docNo.toUpperCase()));
+    if (!add.length) return fresh;
+    const next = withLog(
+      { ...fresh, faChain: [...(fresh.faChain ?? []), ...add] },
+      by,
+      "ผูกเอกสารที่ออกในแอป FlowAccount",
+      `${add.map((d) => `${FA_KIND_LABEL[d.kind]} ${d.docNo}`).join(" · ")} (ต่อจาก ${main.docNo})`
+    );
+    const w = await updateOrder(sb, next, { prev: fresh, by });
+    return w.error ? next : (w.order ?? next);
+  } catch {
+    return order;
   }
 }
 
