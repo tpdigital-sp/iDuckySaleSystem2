@@ -316,6 +316,11 @@ export interface CalFormat {
    * ไฟล์ส่งพิมพ์ยังเป็นสี่เหลี่ยมเต็มตัดตก (เครื่องตัดมุมเอง)
    */
   cornerR?: number;
+  /**
+   * 🕳 เว้นขอบบน (มม. จากขอบผืนรวมตัดตก) ไม่ให้ตาราง/หัวเดือนเข้าไป — ปฏิทินตั้งโต๊ะมีรูเจาะห่วงด้านบน
+   * (ผู้ใช้แจ้ง 13 ต.ค. 69 "AUGUST 2026 ชนรูเจาะ") · รูปเต็มใบยังเลยขึ้นไปได้ (รูเจาะทะลุรูปอยู่แล้ว) · layPage บังคับให้
+   */
+  topClear?: number;
 }
 
 /** หน้าของใบที่ i (0 = ใบแรก ใช้ key เดิม · ใบอื่นที่แยกออกแบบ = "c{i}:key") */
@@ -377,7 +382,9 @@ const monthsPages = (fr: ReturnType<typeof frame>, mode: "combined" | "separate"
 
 /** หน้าตามเลย์เอาต์ที่เลือก + ช่องรูปหลักที่ลูกค้าปรับขนาดเอง (design.slots) — ใช้ทั้งตอนวาดและบนจอ */
 export function layPage(f: CalFormat, page: CalPage, d: Pick<CalDesign, "layouts" | "slots">): CalPage {
-  const p = pageWithLayout(f, page, d.layouts?.[page.key]);
+  let p = pageWithLayout(f, page, d.layouts?.[page.key]);
+  // 🕳 ตาราง/หัวเดือนห้ามขึ้นไปทับแถบรูเจาะ (topClear)
+  if (f.topClear && p.grid && p.grid.y < f.topClear) p = { ...p, grid: { ...p.grid, y: f.topClear, h: p.grid.h - (f.topClear - p.grid.y) } };
   const s = p.photo ? d.slots?.[page.key] : undefined;
   return s ? { ...p, photo: s } : p;
 }
@@ -409,6 +416,29 @@ export function gridOf(page: CalPage, d: Pick<CalDesign, "grids">): Rect | undef
 const CARD_R = 3;
 /** ตัดตกโฟโต้การ์ด (มม.) — ชุดเดียวกับเทมเพลต scripts/photocard-template-build.mts (PAD) */
 const CARD_BLEED = 2.5;
+
+const cmText = (mm: number) => String(Math.round(mm) / 10);
+
+/**
+ * 📐 ขนาดผืนหลังเพิ่มขนาด (ผ้าแคนวาส 40x85 ซม. + กลุ่ม "เพิ่มขนาด ด้านกว้าง/ด้านสูง (นิ้ว)") — null = ไม่ได้เพิ่ม
+ * ขนาดตั้งต้นอ่านจากตัวเลือก "ขนาด" (เช่น "40x85 ซม.") · 1 นิ้ว = 2.54 ซม. · ใช้ทั้งหน้าสินค้า (สรุปขนาดใหม่) และจอสร้างปฏิทิน
+ */
+export function canvasSizeOf(sel: Record<string, string | undefined>): { baseW: number; baseH: number; addW: number; addH: number; w: number; h: number } | null {
+  const base = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*ซม/.exec(sel["ขนาด"] ?? "");
+  if (!base) return null;
+  const num = (re: RegExp) => {
+    const k = Object.keys(sel).find((x) => re.test(x));
+    const n = k ? parseFloat(String(sel[k] ?? "")) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const addW = num(/^เพิ่มขนาด ด้านกว้าง/);
+  const addH = num(/^เพิ่มขนาด ด้านสูง/);
+  if (!addW && !addH) return null;
+  const baseW = Number(base[1]);
+  const baseH = Number(base[2]);
+  const r = (v: number) => Math.round(v * 10) / 10;
+  return { baseW, baseH, addW, addH, w: r(baseW + addW * 2.54), h: r(baseH + addH * 2.54) };
+}
 
 /** เส้นตัด (มีมุมมนถ้ารูปแบบตั้ง cornerR) เป็น path — ใช้วาดไกด์/ตัดรูปย่อ */
 export function trimPath(ctx: CanvasRenderingContext2D, k: number, f: CalFormat) {
@@ -539,6 +569,8 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
       safe: 5,
       dpi: 300,
       note: separate ? "14 แผ่น 28 หน้า — พิมพ์ 26 หน้า หลังปก/หลังแผ่นสุดท้ายว่าง" : "8 แผ่น 16 หน้า — พิมพ์ 14 หน้า หลังปก/หลังแผ่นสุดท้ายว่าง",
+      // รูเจาะในเทมเพลต Calendar 6x8/8x6 อยู่ 5.3–9.3 มม. จากขอบอาร์ตบอร์ด (+0.7 เมื่อวางบนผืนนี้) → ตารางเริ่มต่ำกว่า 14 มม.
+      topClear: 14,
       pages: [
         { key: "cover", name: "ปก", kind: "photo", photo: fr.full, text: true },
         ...monthsPages(fr, separate ? "separate" : "combined"),
@@ -547,15 +579,20 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
     };
   }
   // ── ปฏิทินผ้าแคนวาส 40×85 ซม. (แนวตั้ง แขวนผนัง) ──
-  if (key === "canvas") {
-    const fr = frame(400, 850, 10, 25);
+  if (key === "canvas" || key.startsWith("canvas@")) {
+    // 📐 "canvas@<กว้าง>x<สูง>" (มม.) = ลูกค้าเพิ่มขนาดจากมาตรฐาน (canvasSizeOf · ผู้ใช้สั่ง 13 ต.ค. 69)
+    const m = /^canvas@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
+    const cw = m ? Number(m[1]) : 400;
+    const chh = m ? Number(m[2]) : 850;
+    const fr = frame(cw, chh, 10, 25);
     const top = 70; // เผื่อหัวผืนสำหรับไม้แขวน/หมุด
-    const photo = { x: fr.s, y: top, w: fr.W - fr.s * 2, h: 360 };
+    // ช่องรูปโตตามผืน (ไม่เกินสัดส่วนด้านใดด้านหนึ่ง) · ตารางกินที่เหลือ
+    const photo = { x: fr.s, y: top, w: fr.W - fr.s * 2, h: 360 * Math.min(cw / 400, chh / 850) };
     return {
       key,
-      name: "ปฏิทินผ้าแคนวาส 40×85 ซม.",
-      trimW: 400,
-      trimH: 850,
+      name: `ปฏิทินผ้าแคนวาส ${cmText(cw)}×${cmText(chh)} ซม.`,
+      trimW: cw,
+      trimH: chh,
       bleed: 10,
       safe: 25,
       dpi: 150,

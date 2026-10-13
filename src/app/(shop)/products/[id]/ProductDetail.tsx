@@ -175,7 +175,7 @@ import {
 import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
-import { calDesignCount, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
+import { calDesignCount, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import { fetchSources, loadCalEdit, saveCalEdit } from "@/lib/cal-edit-store";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
@@ -1313,8 +1313,11 @@ export default function ProductDetail({
     .filter((c) => /\d{4}/.test(c.name))
     .map((c) => ({ name: c.name, year: yearFromChoice(c.name) }));
   /** รูปแบบงานปฏิทินตามตัวเลือกที่เลือกอยู่ (แนว · รายปี/รายเดือน · จำนวนแผ่น) */
-  const calFormatKey =
+  /** 📐 ผ้าแคนวาสที่เพิ่มขนาด → ขนาดผืนใหม่ (สรุปใต้ช่องกรอก + จอสร้างปฏิทินใช้ขนาดนี้) */
+  const grown = canvasSizeOf(effective);
+  const calFormatKey0 =
     product.calendarStudio?.formats?.find((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))?.format ?? "card";
+  const calFormatKey = calFormatKey0 === "canvas" && grown ? `canvas@${Math.round(grown.w * 10)}x${Math.round(grown.h * 10)}` : calFormatKey0;
   /** กติกาค่าคละของด้านหลังโดยเฉพาะ (งานกระดาษ = ลายละ 5 บาท) — ไม่ตั้ง = ใช้ชุดเดียวกับด้านหน้า */
   const backMix = product.backDesign?.mixRule;
   const [backDesigns, setBackDesigns] = useState(1);
@@ -4289,6 +4292,20 @@ export default function ProductDetail({
                         </p>
                       );
                     })()}
+                    {/* 📐 สรุปขนาดใหม่หลังเพิ่มขนาด (ผู้ใช้สั่ง 13 ต.ค. 69) — ใต้ช่องกรอกด้านสูง (ช่องสุดท้ายของกลุ่ม) */}
+                    {grown && /^เพิ่มขนาด ด้านสูง/.test(opt.label) && (
+                      <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[12px] font-bold leading-snug text-sky-900 ring-1 ring-sky-200">
+                        📐 ขนาดใหม่:{" "}
+                        <span className="text-[14px] font-extrabold">
+                          {grown.w} × {grown.h} ซม.
+                        </span>
+                        <span className="block text-[11px] font-semibold text-sky-700">
+                          มาตรฐาน {grown.baseW}×{grown.baseH} ซม.
+                          {grown.addW ? ` · กว้าง +${grown.addW} นิ้ว (+${Math.round(grown.addW * 25.4) / 10} ซม.)` : ""}
+                          {grown.addH ? ` · สูง +${grown.addH} นิ้ว (+${Math.round(grown.addH * 25.4) / 10} ซม.)` : ""}
+                        </span>
+                      </p>
+                    )}
                     {/* 💰 ค่าบริการที่คิดจากค่าที่กรอก (เช่น เพิ่มขนาดนิ้วละ 15) — กางที่มาให้เห็น ไม่งั้นราคาขยับเงียบ ๆ */}
                     {(() => {
                       if (!opt.inputFee) return null;
