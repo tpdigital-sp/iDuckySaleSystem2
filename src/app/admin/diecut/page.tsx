@@ -16,6 +16,7 @@ import {
 import { Btn, PageHead, PageShell, Tab, TabRow } from "@/components/admin/ui";
 import { Choice, More, Slider, Step, StepNo } from "./parts";
 import CutoutTab from "./CutoutTab";
+import PyCutoutTab, { type PyCutoutHandle } from "./PyCutoutTab";
 
 /** ขนาดที่ใช้คำนวณเส้น (ยิ่งเล็กยิ่งไว) และขนาดรูปที่ฝังลงไฟล์ .ai */
 const TRACE_MAX = 1200;
@@ -1363,6 +1364,7 @@ function RingPicker({ pos, onPick }: { pos: RingTab["position"]; onPick: (p: Rin
 const PAGE_TABS = {
   diecut: { query: "", title: "เส้นไดคัท" },
   cutout: { query: "cutout", title: "ตัดภาพ (pen tool)" },
+  bg: { query: "bg", title: "ตัดพื้นหลัง AI" },
 } as const;
 type PageTab = keyof typeof PAGE_TABS;
 
@@ -1371,16 +1373,89 @@ function DiecutPageInner() {
   const [inbox, setInbox] = useState<File[]>([]);
   const takeInbox = useCallback(() => setInbox([]), []);
   /** เปลี่ยนเลข = ล้างงานในแท็บนั้นทั้งหมด (ประกอบหน้าใหม่ · ชนิดงานที่จำไว้ในเครื่องยังอยู่) */
-  const [resetKey, setResetKey] = useState({ diecut: 0, cutout: 0 });
+  const [resetKey, setResetKey] = useState({ diecut: 0, cutout: 0, bg: 0 });
+  const pyRef = useRef<PyCutoutHandle>(null);
+  /** รูปที่ลาก/วางมาบนแท็บตัดภาพ */
+  const [cutIn, setCutIn] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  /** ลากรูปมาวางตรงไหนก็ได้ / วาง (⌘V) = เปลี่ยนรูปแทนของเดิมเลย ไม่ต้องกดเริ่มใหม่ */
+  const replaceWith = useCallback((files: File[]) => {
+    const imgs = files.filter((f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name));
+    // แท็บตัดพื้นหลัง AI: ส่งเข้าโปรแกรม Python ในกรอบ (ใส่ได้หลายรูป = เพิ่ม ไม่แทน) · รับไฟล์ .ai/.pdf ด้วย
+    if (tabRef.current === "bg") {
+      const all = files.filter((f) => imgs.includes(f) || /\.(ai|pdf)$/i.test(f.name) || f.type === "application/pdf");
+      if (all.length) pyRef.current?.addFiles(all);
+      return;
+    }
+    if (!imgs.length) return;
+    if (tabRef.current === "cutout") {
+      setCutIn(imgs[0]);
+      setResetKey((k) => ({ ...k, cutout: k.cutout + 1 }));
+    } else {
+      setInbox(imgs);
+      setResetKey((k) => ({ ...k, diecut: k.diecut + 1 }));
+    }
+  }, []);
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth++;
+      setDragging(true);
+    };
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth) setDragging(false);
+    };
+    const over = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault(); // ไม่งั้นเบราว์เซอร์เปิดไฟล์ทับหน้า
+    };
+    const drop = (e: DragEvent) => {
+      depth = 0;
+      setDragging(false);
+      // กล่องวางไฟล์ในแท็บจัดการเองแล้ว (เช่น "＋ เพิ่มลาย" = เพิ่ม ไม่แทน)
+      if (!hasFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      replaceWith(Array.from(e.dataTransfer?.files ?? []));
+    };
+    const paste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("input, textarea, [contenteditable]")) return;
+      const fs = Array.from(e.clipboardData?.files ?? []);
+      if (!fs.length) return;
+      e.preventDefault();
+      replaceWith(fs);
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    window.addEventListener("paste", paste);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+      window.removeEventListener("paste", paste);
+    };
+  }, [replaceWith]);
+
   const resetTab = () => {
     if (!window.confirm(`ล้างงานในแท็บ “${PAGE_TABS[tab].title}” แล้วเริ่มใหม่? ลาย/รูปที่ใส่และที่แก้ไว้จะหายทั้งหมด`)) return;
     if (tab === "diecut") setInbox([]);
+    else if (tab === "cutout") setCutIn(null);
     setResetKey((k) => ({ ...k, [tab]: k[tab] + 1 }));
   };
 
   // เปิดลิงก์ /admin/diecut?tab=cutout = เข้าแท็บตัดภาพเลย
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === PAGE_TABS.cutout.query) setTabState("cutout");
+    const q = new URLSearchParams(window.location.search).get("tab");
+    const hit = (Object.keys(PAGE_TABS) as PageTab[]).find((k) => q && PAGE_TABS[k].query === q);
+    if (hit) setTabState(hit);
   }, []);
   // ชื่อบนแท็บเบราว์เซอร์บอกว่าอยู่แท็บไหน (เปิดหลายแท็บพร้อมกันแยกออก)
   useEffect(() => {
@@ -1398,10 +1473,12 @@ function DiecutPageInner() {
     <PageShell>
       <PageHead
         group="สินค้า"
-        title={tab === "cutout" ? "ตัดภาพ" : "เส้นไดคัท"}
+        title={tab === "cutout" ? "ตัดภาพ" : tab === "bg" ? "ตัดพื้นหลัง AI" : "เส้นไดคัท"}
         count="ทดลอง"
         sub={
-          tab === "cutout"
+          tab === "bg"
+            ? "ใส่ได้หลายรูป → AI ตัดพื้นหลังบนเครื่องร้าน → ตั้งระยะเว้น/สีขอบ/ขนาดงาน → โหลด .ai (เส้น CutContour) / PNG / SVG / zip ทั้งหมด"
+            : tab === "cutout"
             ? "ใส่รูป → AI/สีพื้นแยกวัตถุ → เกลาขอบเป็นเส้นโค้งคมแบบ pen tool → โหลด PNG พื้นใส หรือส่งไปทำเส้นไดคัทต่อ"
             : "ใส่ลาย → เลือกชนิดงาน + ขนาด → โหลดไฟล์ .ai เข้าเครื่องตัด (อะคริลิค · สติกเกอร์ · การ์ด/ฉลาก)"
         }
@@ -1411,24 +1488,36 @@ function DiecutPageInner() {
           <TabRow>
             <Tab on={tab === "diecut"} onClick={() => setTab("diecut")} label="✂️ เส้นไดคัท" />
             <Tab on={tab === "cutout"} onClick={() => setTab("cutout")} label="🖋 ตัดภาพ (pen tool)" />
+            <Tab on={tab === "bg"} onClick={() => setTab("bg")} label="🪄 ตัดพื้นหลัง AI" />
           </TabRow>
         </div>
         <Btn small onClick={resetTab} title="ล้างงานเก่าในแท็บนี้ แล้วเริ่มงานใหม่">
           ↺ เริ่มงานใหม่
         </Btn>
       </div>
-      {/* เปิดค้างไว้ทั้งสองแท็บ สลับไปมาแล้วงานที่ทำอยู่ไม่หาย */}
+      {dragging && (
+        <div className="pointer-events-none fixed inset-3 z-50 grid place-items-center rounded-3xl border-4 border-dashed" style={{ borderColor: "var(--dk-blue)", background: "rgba(255,255,255,.75)" }}>
+          <p className="rounded-2xl px-6 py-4 text-center text-[1.15rem] font-bold shadow-lg" style={{ background: "var(--dk-navy)", color: "#fff" }}>
+            {tab === "bg" ? "ปล่อยเพื่อเพิ่มรูป" : `ปล่อยเพื่อ${tab === "cutout" ? "เปลี่ยนรูป" : "เปลี่ยนลาย"} (แทนของเดิม)`}
+          </p>
+        </div>
+      )}
+      {/* เปิดค้างไว้ทุกแท็บ สลับไปมาแล้วงานที่ทำอยู่ไม่หาย */}
       <div hidden={tab !== "diecut"}>
         <DiecutLabInner key={resetKey.diecut} inbox={inbox} onInboxTaken={takeInbox} />
       </div>
       <div hidden={tab !== "cutout"}>
         <CutoutTab
           key={resetKey.cutout}
+          inbox={cutIn}
           onSendToDiecut={(f) => {
             setInbox([f]);
             setTab("diecut");
           }}
         />
+      </div>
+      <div hidden={tab !== "bg"}>
+        <PyCutoutTab key={resetKey.bg} ref={pyRef} active={tab === "bg"} />
       </div>
     </PageShell>
   );

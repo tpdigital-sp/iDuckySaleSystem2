@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ทำเส้นไดคัท</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=IBM+Plex+Sans+Thai+Looped:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* โทนเดียวกับหน้า landing (src/app/(shop)/landing.css) — ฟ้า/น้ำเงิน/กรมท่า + เหลืองเป็ด · ห้ามใส่ hex ตรง ๆ นอก :root */
+  :root{
+    --sky-50:#F2FAFF; --sky-100:#E2F3FE; --sky-200:#C6E8FB; --sky-300:#9CD8F6;
+    --blue:#57B6E8; --blue-deep:#2C81C4;
+    --navy:#173A6B; --navy-soft:#4A6A96; --navy-faint:#7E95B5;
+    --yolk:#FFD447; --yolk-deep:#FFB627; --yolk-soft:#FFF0BC; --yolk-line:#F2D27A;
+    --white:#fff; --black:#000; --line:#D9E8F3;
+    --ok:#1E8A5A; --ok-soft:#E3F6EC; --ok-line:#A9DCC0;
+    --warn:#A15C00; --warn-soft:#FFF1D6; --warn-line:#F1CF8E;
+    --err:#C2362F; --err-soft:#FDECEA; --err-line:#F0C3BD;
+    --cut:#E5288E; --stage-dark:#22314A; --check-a:#E8F1F8; --check-b:#FBFDFF;
+    --shadow-s:0 1px 0 rgba(255,255,255,.7) inset,0 8px 18px rgba(44,129,196,.12),0 2px 5px rgba(23,58,107,.08);
+    --shadow-m:0 18px 36px rgba(44,129,196,.16),0 6px 14px rgba(23,58,107,.10);
+    --ring:0 0 0 3px rgba(87,182,232,.35);
+    --r-s:10px; --r-m:14px; --r-l:22px;
+    --display:'Mitr',system-ui,sans-serif;
+    --body:'IBM Plex Sans Thai Looped','Sukhumvit Set','Thonburi',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{height:100%;margin:0}
+  body{font-family:var(--body);color:var(--navy);-webkit-font-smoothing:antialiased;
+    background:linear-gradient(172deg,var(--sky-100) 0%,var(--sky-50) 22%,var(--white) 60%);
+    display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto minmax(0,1fr);height:100vh}
+  button,input,select{font:inherit;color:inherit}
+  :focus-visible{outline:none;box-shadow:var(--ring)}
+  h1,h2,h3{font-family:var(--display);font-weight:500;margin:0}
+  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--sky-200);border-top-color:var(--blue-deep);border-radius:50%;animation:r .7s linear infinite;flex:none}
+  @keyframes r{to{transform:rotate(360deg)}}
+
+  /* ---------- หัว ---------- */
+  header{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.78);backdrop-filter:blur(8px);flex-wrap:wrap}
+  .logo{width:30px;height:30px;border-radius:50%;background:var(--yolk);box-shadow:inset -4px -4px 0 var(--yolk-deep);flex:none}
+  header h1{font-size:17px;white-space:nowrap}
+  .steps{display:flex;gap:6px}
+  .step{display:flex;align-items:center;gap:7px;padding:5px 12px 5px 6px;border-radius:999px;font-size:13px;color:var(--navy-faint);background:var(--white);border:1px solid var(--line);white-space:nowrap}
+  .step i{font-style:normal;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-size:12px;background:var(--sky-100);color:var(--navy-soft)}
+  .step.on{color:var(--navy);border-color:var(--blue);font-weight:600}
+  .step.on i{background:var(--blue-deep);color:var(--white)}
+  .step.done i{background:var(--ok);color:var(--white)}
+  #status{margin-left:auto;font-size:13px;color:var(--navy-soft);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .hbtn{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--white);font-size:13px;cursor:pointer;color:var(--navy)}
+  .hbtn:hover{border-color:var(--blue-deep);background:var(--sky-50)}
+  .hbtn.primary{background:var(--navy);border-color:var(--navy);color:var(--white);font-weight:600}
+  .hbtn.primary:hover{background:var(--blue-deep);border-color:var(--blue-deep)}
+  .hbtn[disabled]{opacity:.4;pointer-events:none}
+  body.embedded header h1,body.embedded .logo{display:none}
+
+  /* ---------- กลาง ---------- */
+  #center{display:flex;flex-direction:column;min-width:0;min-height:0}
+  #toolbar{display:flex;gap:8px;align-items:center;padding:12px 16px;flex-wrap:wrap}
+  .tl{font-size:11.5px;color:var(--navy-faint);margin:0 2px 0 6px}
+  .tl:first-child{margin-left:0}
+  .seg,.zoom{display:inline-flex;background:var(--white);border:1px solid var(--line);border-radius:999px;padding:3px;box-shadow:var(--shadow-s)}
+  .seg button,.zoom button{border:0;background:none;min-height:32px;padding:0 13px;border-radius:999px;font-size:13px;color:var(--navy-soft);cursor:pointer;white-space:nowrap}
+  .seg button:hover,.zoom button:hover{background:var(--sky-50)}
+  .seg button.on{background:var(--navy);color:var(--white)}
+  .zoom button{min-width:34px;padding:0 9px;font-size:15px;color:var(--navy)}
+  .zoom #zpct{min-width:60px;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--navy-soft)}
+  .chk{font-size:13px;display:inline-flex;align-items:center;gap:7px;color:var(--navy-soft);cursor:pointer}
+  .chk input{width:17px;height:17px;accent-color:var(--blue-deep);margin:0;flex:none}
+  #toolbar .chk{margin-left:auto}
+  #stage{flex:1;margin:0 16px;border-radius:var(--r-l);position:relative;overflow:hidden;display:grid;place-items:center;border:1px solid var(--line);box-shadow:var(--shadow-s);min-height:0}
+  #stage.checker{background:repeating-conic-gradient(var(--check-a) 0 25%,var(--check-b) 0 50%) 0 0/22px 22px}
+  #stage.dark{background:var(--stage-dark)}
+  #stage.light{background:var(--white)}
+  #stage.zoomed{cursor:grab}
+  #stage.panning{cursor:grabbing}
+  /* ขนาดรูปคิดใน fit() — กรอบกับรูปต้องเป็นกล่องเดียวกันเป๊ะ ไม่งั้นเส้นตัด (overlay) จะหดไม่ตรงรูป (เพี้ยน ~2-3% 12 ต.ค. 69) */
+  #frame{position:relative;display:none;transform-origin:0 0;will-change:transform}
+  #frame img{display:block}
+  #overlay,#wover,#eover{position:absolute;inset:0;pointer-events:none}
+  #eover svg{width:100%;height:100%;display:block}
+  #frame.editing #pv{cursor:crosshair}
+  /* แก้เฉพาะจุด (＋ มน / − ชิด) */
+  #editMode{display:flex}
+  #editMode button{flex:1}
+  #editMode button.plus.on{background:var(--ok)}
+  #editMode button.minus.on{background:var(--err)}
+  .etrow{display:flex;gap:6px;align-items:center;margin-top:8px}
+  .etrow .field{width:92px}
+  /* รองขาว (White) — ฟ้าโปร่งให้เห็นว่าพิมพ์ขาวตรงไหน */
+  #wover svg{width:100%;height:100%;display:block}
+  #wover path{fill:rgba(0,190,255,.35)!important;stroke:rgba(0,150,220,.9)!important;stroke-width:1px!important;vector-effect:non-scaling-stroke}
+  #overlay svg{width:100%;height:100%;display:block}
+  #overlay path{stroke:var(--cut)!important;stroke-width:.8px!important;vector-effect:non-scaling-stroke}
+  #empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--navy-soft);font-size:13.5px;line-height:1.6;padding:34px 40px;border:2px dashed var(--sky-300);border-radius:var(--r-l);background:rgba(255,255,255,.85);cursor:pointer;max-width:440px}
+  #empty:hover{border-color:var(--blue-deep)}
+  #empty svg{color:var(--blue-deep)}
+  #empty h3{font-size:19px;color:var(--navy)}
+  #empty .types{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+  #empty .types span{font-size:11.5px;padding:2px 9px;border-radius:999px;background:var(--sky-100);color:var(--navy-soft)}
+  #busy{position:absolute;top:12px;right:12px;background:var(--white);border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:12px;display:none;align-items:center;gap:6px;box-shadow:var(--shadow-s);z-index:3}
+  #infobar{display:flex;gap:6px 16px;flex-wrap:wrap;align-items:center;padding:8px 18px;font-size:13px;color:var(--navy-soft);min-height:38px}
+  #infobar b{color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums}
+  #infobar .w{color:var(--err);font-weight:600}
+  #infobar .x{color:var(--navy)}
+
+  /* แถบรูปใต้ภาพ */
+  #strip{display:flex;gap:8px;align-items:stretch;padding:0 16px 14px;min-width:0}
+  #drop{flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;min-height:64px;border:2px dashed var(--sky-300);border-radius:var(--r-m);background:var(--white);color:var(--blue-deep);cursor:pointer;transition:.15s;font-size:11.5px;line-height:1.35}
+  #drop span{color:var(--navy-faint)}
+  #drop b{display:block;font-family:var(--display);font-weight:500;font-size:14px;color:var(--navy)}
+  #drop:hover,#drop.over{border-color:var(--blue-deep);background:var(--sky-50)}
+  #filters{flex:none;display:flex;flex-direction:column;gap:3px;justify-content:center}
+  #filters button{border:1px solid var(--line);background:var(--white);border-radius:8px;min-height:19px;padding:0 9px;font-size:11.5px;cursor:pointer;color:var(--navy-soft);text-align:left}
+  #filters button.on{background:var(--navy);color:var(--white);border-color:var(--navy)}
+  #list{flex:1;min-width:0;overflow-x:auto;display:flex;gap:8px;padding:1px 2px 4px}
+  .item{flex:none;width:232px;display:flex;gap:9px;align-items:center;padding:7px;border-radius:var(--r-m);cursor:pointer;border:1.5px solid var(--line);background:rgba(255,255,255,.78);min-height:64px}
+  .item:hover{background:var(--white)}
+  .item.sel{background:var(--white);border-color:var(--blue-deep);box-shadow:var(--shadow-s)}
+  .item img{width:46px;height:46px;object-fit:cover;border-radius:8px;background:var(--sky-100);flex:none}
+  .item .meta{min-width:0;flex:1}
+  .item .n{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .s{display:flex;gap:4px;margin-top:3px;align-items:center;overflow:hidden;white-space:nowrap}
+  .tag{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:600;background:var(--sky-50);color:var(--navy-soft);border:1px solid var(--sky-200);white-space:nowrap}
+  .tag.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
+  .tag.warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+  .tag.bad{background:var(--err-soft);color:var(--err);border-color:var(--err-line)}
+
+  /* ---------- ขวา ---------- */
+  #right{border-left:1px solid var(--line);background:rgba(255,255,255,.7);display:flex;flex-direction:column;min-height:0}
+  #settings{flex:1;overflow:auto;padding:14px 14px 8px;display:flex;flex-direction:column;gap:10px}
+  #right.off .ctlwrap,#right.off #dl{opacity:.38;pointer-events:none}
+  .ctlwrap{display:flex;flex-direction:column;gap:10px}
+  .sec{background:var(--white);border:1px solid var(--line);border-radius:var(--r-m);padding:14px;box-shadow:var(--shadow-s)}
+  .sec>h2,.sec>summary{font-size:14.5px;display:flex;align-items:center;gap:8px;margin-bottom:12px;color:var(--navy)}
+  .sec>h2 em,.sec>summary em{font-style:normal;font-family:var(--body);font-size:11.5px;color:var(--navy-faint);font-weight:400;margin-left:auto}
+  details.sec>summary{cursor:pointer;list-style:none;margin:0;font-family:var(--display);font-weight:500}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--navy-soft);border-bottom:2px solid var(--navy-soft);transform:rotate(45deg);margin-left:8px;transition:.15s;flex:none}
+  details.sec[open]>summary{margin-bottom:12px}
+  details.sec[open]>summary::after{transform:rotate(225deg)}
+  .ctl{margin-bottom:14px}
+  .ctl:last-child{margin-bottom:0}
+  .ctl>label{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:500;margin-bottom:6px}
+  .ctl>label span{color:var(--navy-soft);font-variant-numeric:tabular-nums;font-weight:400;font-size:12.5px}
+  small,.hint{display:block;color:var(--navy-faint);font-size:11.5px;margin-top:5px;line-height:1.5}
+  input[type=range]{width:100%;accent-color:var(--blue-deep);height:28px;margin:0}
+  select{width:100%;font-size:14px;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--white)}
+  .field{position:relative}
+  .field input{width:100%;font-size:15px;min-height:40px;padding:8px 34px 8px 10px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--white);font-variant-numeric:tabular-nums}
+  .field em{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-style:normal;font-size:12px;color:var(--navy-faint);pointer-events:none}
+  .field input:focus,select:focus{border-color:var(--blue-deep);box-shadow:var(--ring);outline:none}
+  .size{display:flex;align-items:flex-end;gap:8px}
+  .size>div:not(.x){flex:1}
+  .size .lbl{font-size:12px;color:var(--navy-soft);display:block;margin-bottom:4px}
+  .size .x{padding-bottom:11px;color:var(--navy-faint)}
+  .numrow{display:flex;gap:10px;align-items:center}
+  .numrow input[type=range]{flex:1}
+  .numrow .field{width:96px;flex:none}
+  .disabled{opacity:.38;pointer-events:none}
+  /* สินค้า */
+  .pf{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;margin-top:10px}
+  .pf .full{grid-column:1/-1}
+  .pf .lbl{font-size:12px;color:var(--navy-soft);display:block;margin-bottom:4px}
+  .pf select{font-size:13.5px;min-height:38px;padding:6px 8px}
+  .pf .field input{font-size:14px;min-height:38px;padding:6px 34px 6px 9px}
+  .pf .chk{color:var(--navy);font-weight:500}
+  #saveProduct{margin-top:10px}
+  /* วัสดุ */
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{position:relative;border:1px solid var(--line);background:var(--white);border-radius:var(--r-s);padding:7px 11px;min-height:44px;font-size:13px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;line-height:1.25}
+  .chip small{font-size:11px;margin:0}
+  .chip:hover{border-color:var(--blue-deep)}
+  .chip.on{border-color:var(--navy);background:var(--sky-50);box-shadow:inset 0 0 0 1px var(--navy)}
+  .chip .del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:1px solid var(--line);background:var(--white);font-size:12px;line-height:18px;text-align:center;display:none;color:var(--navy-soft)}
+  .chip:hover .del{display:block}
+  .chip.add{border-style:dashed;color:var(--blue-deep);font-weight:500}
+  /* รูปร่าง */
+  .shapes{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+  .shapes button{border:1px solid var(--line);background:var(--white);border-radius:var(--r-s);min-height:52px;padding:6px 2px 5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10.5px;color:var(--navy-soft)}
+  .shapes button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .shapes button:hover{border-color:var(--blue-deep)}
+  .shapes button.on{border-color:var(--navy);background:var(--sky-50);color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
+  /* สี */
+  .colors{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .sw{width:32px;height:32px;border-radius:50%;border:2px solid var(--line);cursor:pointer;flex:none}
+  .sw.on{box-shadow:0 0 0 2px var(--white),0 0 0 4px var(--navy)}
+  .sw.white{background:var(--white)} .sw.black{background:var(--black)}
+  .sw.none{background:repeating-conic-gradient(var(--check-a) 0 25%,var(--white) 0 50%) 0 0/10px 10px;position:relative}
+  .sw.none::after{content:"";position:absolute;left:50%;top:3px;bottom:3px;width:2px;background:var(--err);transform:translateX(-50%) rotate(45deg)}
+  input[type=color]{width:36px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--white);padding:2px;cursor:pointer}
+  .cname{font-size:12px;color:var(--navy-soft);font-variant-numeric:tabular-nums}
+  /* เส้นจากไฟล์ลูกค้า */
+  #filecut_box{background:var(--yolk-soft);border:1.5px solid var(--yolk-line);border-radius:var(--r-m);padding:12px 14px}
+  #filecut_box .chk{color:var(--navy);font-weight:600;align-items:flex-start;line-height:1.45}
+  #filecut_box .chk input{margin-top:2px}
+  /* AI ตรวจ */
+  .rev{border:1.5px solid var(--line);border-radius:var(--r-m);padding:12px 14px;background:var(--white);box-shadow:var(--shadow-s)}
+  .rev.ok{border-color:var(--ok-line);background:var(--ok-soft)}
+  .rev.warn{border-color:var(--warn-line);background:var(--warn-soft)}
+  .rev.bad{border-color:var(--err-line);background:var(--err-soft)}
+  .rev .head{display:flex;align-items:center;gap:8px;font-family:var(--display);font-weight:500;font-size:14.5px}
+  .rev.ok .head{color:var(--ok)} .rev.warn .head{color:var(--warn)} .rev.bad .head{color:var(--err)}
+  .rev p{margin:6px 0 0;font-size:12.5px;line-height:1.55}
+  .rev ul{margin:6px 0 0;padding-left:18px;font-size:12.5px;line-height:1.55}
+  .rev .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .sbtn{border:1px solid var(--line);background:var(--white);border-radius:var(--r-s);min-height:36px;padding:0 12px;font-size:12.5px;cursor:pointer}
+  .sbtn:hover{border-color:var(--blue-deep)}
+  .sbtn.dark{background:var(--navy);color:var(--white);border-color:var(--navy)}
+  .sbtn.dark:hover{background:var(--blue-deep);border-color:var(--blue-deep)}
+  /* ปุ่ม */
+  .btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:44px;padding:9px 10px;border-radius:var(--r-s);border:1px solid var(--line);background:var(--white);font-size:13px;color:var(--navy);cursor:pointer;text-decoration:none;text-align:center;line-height:1.3}
+  .btn:hover{border-color:var(--blue-deep);background:var(--sky-50)}
+  .btn.primary{background:var(--navy);border-color:var(--navy);color:var(--white);font-family:var(--display);font-weight:500;font-size:15px;min-height:50px}
+  .btn.primary:hover{background:var(--blue-deep);border-color:var(--blue-deep)}
+  .btn[aria-disabled=true]{opacity:.38;pointer-events:none}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  #dl{border-top:1px solid var(--line);padding:12px 14px 14px;background:var(--white);display:flex;flex-direction:column;gap:7px}
+  #dl h2{font-size:14.5px;display:flex;align-items:center}
+  #dl .zrow{display:flex;gap:8px;align-items:center}
+  #dl .zrow .btn{flex:1}
+
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:var(--white);padding:11px 18px;border-radius:var(--r-s);font-size:13px;display:none;z-index:20;max-width:80vw;box-shadow:var(--shadow-m)}
+  #stale{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:19;background:var(--err);color:var(--white);padding:10px 18px;border-radius:var(--r-m);font-size:13.5px;font-weight:600;box-shadow:var(--shadow-m);max-width:92vw;text-align:center;line-height:1.5}
+  #stale span{font-weight:400}
+  dialog{border:0;border-radius:var(--r-l);padding:22px;width:min(440px,92vw);box-shadow:var(--shadow-m);color:var(--navy);font-family:var(--body)}
+  dialog::backdrop{background:rgba(23,58,107,.35)}
+  dialog h3{font-size:18px;margin-bottom:6px}
+  dialog p{margin:0 0 14px;font-size:13px;color:var(--navy-soft);line-height:1.55}
+  dialog .ctl input{width:100%;font-size:14px;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-s)}
+  dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+
+  @media (max-height: 760px){ #dl .hint{display:none} }
+  @media (max-width: 1150px){ body{grid-template-columns:minmax(0,1fr) 310px} .step b{display:none} }
+  @media (max-width: 900px){
+    body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;height:auto}
+    .steps{order:5;width:100%;flex-wrap:nowrap} .step{flex:1;justify-content:center;font-size:12px}
+    #center{min-height:80vh}
+    #toolbar{padding:10px 14px} #toolbar .chk{margin-left:0}
+    #stage{margin:0 14px;min-height:50vh}
+    #strip{padding:0 14px 14px}
+    #right{border-left:0;border-top:1px solid var(--line)}
+    #settings{overflow:visible}
+    #dl{position:sticky;bottom:0;box-shadow:0 -8px 20px rgba(23,58,107,.08)}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo" aria-hidden="true"></div>
+  <h1>ทำเส้นไดคัท</h1>
+  <div class="steps">
+    <div class="step on" data-s="1"><i>1</i>ใส่รูป<b>&nbsp;/ ไฟล์ .ai</b></div>
+    <div class="step" data-s="2"><i>2</i>ปรับเส้นตัด</div>
+    <div class="step" data-s="3"><i>3</i>ตรวจ + ดาวน์โหลด</div>
+  </div>
+  <div id="status"></div>
+  <button class="hbtn primary" id="reviewAll" disabled>✓ ตรวจทุกรูปด้วย AI</button>
+  <button class="hbtn" id="openCfg" title="ตั้งค่า AI ตรวจงาน">⚙︎ ตั้งค่า</button>
+</header>
+
+<main id="center">
+  <div id="toolbar">
+    <span class="tl">พื้น</span>
+    <div class="seg" id="bgsel">
+      <button data-b="checker" class="on">โปร่งใส</button>
+      <button data-b="dark">เข้ม</button>
+      <button data-b="light">ขาว</button>
+    </div>
+    <div class="zoom" title="ซูม: ลูกกลิ้งเมาส์/บีบนิ้วบนแทร็กแพด · ลากเพื่อเลื่อน · ดับเบิลคลิก = พอดีจอ">
+      <button id="zout" aria-label="ซูมออก">−</button>
+      <button id="zpct" title="พอดีจอ">100%</button>
+      <button id="zin" aria-label="ซูมเข้า">+</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="showline" checked> แสดงเส้นตัด</label>
+    <label class="chk" style="margin-left:0"><input type="checkbox" id="showwhite" checked> แสดงรองขาว</label>
+  </div>
+  <div id="stage" class="checker">
+    <div id="empty" role="button" tabindex="0">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L6 21"/></svg>
+      <h3>ลากรูปมาวางตรงนี้</h3>
+      <div>ระบบเลือกวิธีหาขอบงานให้เอง (ขอบโปร่งใส · ลบสีพื้น · AI) แล้วสร้างเส้นตัด<br>ไฟล์ .ai ที่มีเลเยอร์เส้นตัด จะใช้เส้นของลูกค้าตรง ๆ</div>
+      <div class="types"><span>JPG</span><span>PNG</span><span>WEBP</span><span>.ai</span><span>.pdf</span></div>
+    </div>
+    <div id="frame"><img id="pv" alt="" draggable="false"><div id="wover"></div><div id="overlay"></div><div id="eover"></div></div>
+    <div id="busy"><span class="spin"></span><span id="busyText">กำลังปรับ…</span></div>
+  </div>
+  <div id="infobar"></div>
+  <div id="strip">
+    <div id="drop" role="button" tabindex="0" title="ลากมาวาง · คลิกเลือก · หรือ ⌘V · ใส่ได้หลายรูป · รับ .ai / .pdf">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span><b>เพิ่มรูป</b>รูป / .ai / .pdf</span>
+    </div>
+    <input id="file" type="file" accept="image/*,.ai,.pdf,application/pdf,application/postscript" multiple hidden>
+    <div id="filters">
+      <button data-f="all" class="on">ทั้งหมด</button>
+      <button data-f="review">ต้องดู</button>
+      <button data-f="pass">ผ่าน</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</main>
+
+<aside id="right" class="off">
+  <div id="settings">
+    <div id="revbox"></div>
+    <div id="filecut_box" hidden>
+      <label class="chk"><input type="checkbox" id="filecut"><span>ใช้เส้นตัดจากไฟล์ลูกค้า · <span id="filecut_n"></span> เส้น</span></label>
+      <small>เส้นตามเลเยอร์ไดคัทที่ลูกค้าวาดมาเป๊ะ · ค่าเส้นตัดด้านล่างไม่มีผลตอนติ๊กอยู่ · เอาติ๊กออก = สร้างเส้นใหม่จากรูปทรงลาย</small>
+    </div>
+    <div class="ctlwrap">
+      <section class="sec">
+        <h2>สินค้า <em>ตั้งค่าเส้นตัดตามชนิดงาน</em></h2>
+        <select id="product" aria-label="สินค้า"></select>
+        <div id="prodFields"></div>
+        <button class="sbtn" id="saveProduct">บันทึกเป็นค่าเริ่มต้นของสินค้านี้</button>
+      </section>
+
+      <section class="sec" id="sizeSec">
+        <h2>ขนาดชิ้นงาน (หลังตัด) <em>เว้นว่าง = ตามไฟล์</em></h2>
+        <div class="size">
+          <div><span class="lbl">กว้าง</span><div class="field"><input type="number" id="size_w" min="0.1" step="0.1" placeholder="อัตโนมัติ" inputmode="decimal"><em>ซม.</em></div></div>
+          <div class="x">×</div>
+          <div><span class="lbl">สูง</span><div class="field"><input type="number" id="size_h" min="0.1" step="0.1" placeholder="อัตโนมัติ" inputmode="decimal"><em>ซม.</em></div></div>
+        </div>
+        <small>พิมพ์ช่องเดียว อีกช่องคำนวณตามสัดส่วน · ไม่รวมติ่ง/ขาเสียบ/ฐาน</small>
+      </section>
+
+      <section class="sec" id="cutsec">
+        <h2>เส้นตัด</h2>
+        <div class="ctl">
+          <label>หาขอบงาน</label>
+          <select id="method">
+            <option value="auto">อัตโนมัติ</option>
+            <option value="ai">AI ตัดพื้นหลัง</option>
+            <option value="alpha">ใช้ขอบโปร่งใสจากไฟล์ (PNG/.ai)</option>
+            <option value="solid">ลบสีพื้นเรียบ</option>
+            <option value="none">ไม่ตัดพื้นหลัง (ใช้ทั้งใบ)</option>
+          </select>
+          <small id="methodHint"></small>
+        </div>
+        <div class="ctl">
+          <label>รูปร่าง</label>
+          <div class="shapes" id="shapes">
+            <button data-s="contour" title="ตามทรงวัตถุ"><svg viewBox="0 0 24 24"><path d="M6 15c-2-4 1-9 5-9 2 0 3 2 5 2s3 2 3 5-3 6-7 6-5-1-6-4z"/></svg>ตามทรง</button>
+            <button data-s="rect" title="สี่เหลี่ยม"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg>เหลี่ยม</button>
+            <button data-s="rounded" title="สี่เหลี่ยมมุมมน"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="4"/></svg>มุมมน</button>
+            <button data-s="circle" title="วงกลม"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>วงกลม</button>
+            <button data-s="ellipse" title="วงรี"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="6"/></svg>วงรี</button>
+          </div>
+        </div>
+        <div class="ctl" id="radiusCtl" hidden>
+          <label>ความมนของมุม</label>
+          <div class="field" style="width:120px"><input type="number" id="radius_mm" min="0" step="0.5" inputmode="decimal"><em>มม.</em></div>
+        </div>
+        <div class="ctl">
+          <label>ระยะเส้นตัด</label>
+          <div class="numrow">
+            <input type="range" id="offset_r" min="-5" max="10" step="0.1" aria-label="ระยะเส้นตัด (มม.)">
+            <div class="field"><input type="number" id="offset_mm" min="-20" max="50" step="0.1" inputmode="decimal" aria-label="ระยะเส้นตัด (มม.)"><em>มม.</em></div>
+          </div>
+          <small id="offsetHint">ติดลบ = ตัดเข้าเนื้อ · 0 = ชิดขอบ · บวก = เผื่อขอบ</small>
+        </div>
+      </section>
+
+      <details class="sec" id="strokeSec">
+        <summary>ขอบรอบรูป (Stroke) <em id="strokeSum">ไม่มี</em></summary>
+        <div class="ctl">
+          <label>ความหนาขอบ</label>
+          <div class="numrow">
+            <input type="range" id="stroke_r" min="0" max="10" step="0.1" aria-label="ความหนาขอบ (มม.)">
+            <div class="field"><input type="number" id="stroke_mm" min="0" max="50" step="0.1" inputmode="decimal" aria-label="ความหนาขอบ (มม.)"><em>มม.</em></div>
+          </div>
+          <small>ขอบสีทึบรอบรูป (เฉพาะรูปร่างตามทรง) · ระยะเส้นตัดนับต่อจากขอบนี้</small>
+        </div>
+        <div class="ctl">
+          <label>สีขอบ</label>
+          <div class="colors">
+            <div class="sw white" data-k="#ffffff" title="ขาว"></div>
+            <div class="sw black" data-k="#000000" title="ดำ"></div>
+            <input type="color" id="strokePick" value="#ffffff" title="เลือกสีเอง">
+            <span class="cname" id="strokeName"></span>
+          </div>
+        </div>
+      </details>
+
+      <details class="sec">
+        <summary>ตั้งค่าขั้นสูง <em>ปกติไม่ต้องแตะ</em></summary>
+        <div class="ctl">
+          <label>ถมร่องแคบ <span id="v_bridge"></span></label>
+          <input type="range" id="bridge" min="0" max="2.5" step="0.1">
+          <small>ยิ่งมาก เส้นตามทรงยิ่งมน มีดวิ่งง่าย</small>
+        </div>
+        <div class="ctl" id="edittools" hidden>
+          <label>แก้เฉพาะจุด</label>
+          <div class="seg" id="editMode">
+            <button data-m="0" class="on">ปิด</button>
+            <button data-m="1" class="plus" title="จิ้มตรงที่อยากให้เส้นมน/ถมร่อง">＋ มน</button>
+            <button data-m="-1" class="minus" title="จิ้มตรงที่อยากให้เส้นวิ่งชิดตามซอกงาน">− ชิด</button>
+          </div>
+          <div class="numrow" style="margin-top:10px">
+            <span class="hint" style="margin:0;flex:1">ความมนของจุด ＋</span>
+            <input type="range" id="plus_r" min="0.5" max="15" step="0.5" style="flex:1.4">
+            <div class="field" style="width:84px"><input type="number" id="plus_mm" min="0.5" max="30" step="0.5" inputmode="decimal"><em>มม.</em></div>
+          </div>
+          <div class="etrow">
+            <span class="hint" style="margin:0">ขนาดแปรง</span>
+            <div class="field" title="ขนาดแปรง"><input type="number" id="brush" min="0.5" max="30" step="0.5" value="3"><em>มม.</em></div>
+            <button class="sbtn" id="undoEdit" title="ย้อนจุดล่าสุด">↶ ย้อน</button>
+            <button class="sbtn" id="clearEdits">ล้าง</button>
+          </div>
+          <small>เลือก ＋ หรือ − แล้วจิ้มบนภาพตรงจุดที่ต้องการ · ความมนยิ่งมาก ร่องยิ่งถูกถมโค้งกว้าง · ขนาดแปรง = พื้นที่ที่แก้ · Esc = ปิด</small>
+        </div>
+        <div class="ctl"><label class="chk" style="color:var(--navy);font-weight:500"><input type="checkbox" id="holes"> เว้นรูด้านใน (ไม่ถม)</label></div>
+        <div class="ctl">
+          <label>ความโค้งของเส้น <span id="v_smooth"></span></label>
+          <input type="range" id="smooth" min="0" max="1.33" step="0.05">
+          <small>น้อย = มุมคม (โลโก้) · มาก = โค้งมน</small>
+        </div>
+        <div class="ctl">
+          <label>หดขอบตัด halo <span id="v_shrink"></span></label>
+          <input type="range" id="shrink" min="0" max="6" step="1">
+        </div>
+        <div class="ctl">
+          <label>ความละเอียด (ถ้าไม่กำหนดขนาด) <span id="v_dpi"></span></label>
+          <input type="range" id="dpi" min="150" max="600" step="50">
+          <small>ไฟล์ .ai/.pdf ใช้ขนาดจริงจากไฟล์</small>
+        </div>
+      </details>
+
+      <button class="btn" id="applyAll">ใช้ค่านี้กับทุกรูป</button>
+    </div>
+  </div>
+
+  <div id="dl">
+    <h2>ดาวน์โหลด</h2>
+    <!-- ขึ้นเฉพาะเครื่องที่มี Adobe Illustrator — แอพสั่ง Illustrator แปลงเป็น .ai แท้ แยกเลเยอร์ Artwork / CutContour -->
+    <label class="chk" id="layeredRow" style="color:var(--navy);font-weight:500" hidden><input type="checkbox" id="layered"> แยกเลเยอร์เส้นตัด (ใช้ Illustrator ในเครื่อง)</label>
+    <a class="btn primary" id="dl_ai" aria-disabled="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>
+      ไฟล์ .ai เข้าเครื่องตัด
+    </a>
+    <div class="grid2">
+      <a class="btn" id="dl_png" aria-disabled="true">PNG</a>
+      <a class="btn" id="dl_svg" aria-disabled="true">เส้นตัด SVG</a>
+    </div>
+    <div class="zrow">
+      <button class="btn" id="dl_zip" aria-disabled="true">ทุกรูป (.zip)</button>
+      <label class="chk"><input type="checkbox" id="zipPassOnly"> เฉพาะที่ผ่าน</label>
+    </div>
+    <small class="hint">ใน .zip มี .ai, PNG, SVG ทุกรูป + รายการงาน.csv (สินค้า ขนาด ความยาวเส้นตัด สถานะตรวจ) · ใน .ai เส้นตัดเป็นสีพิเศษ Cut100 / Cut50 รองขาวเป็นสี White</small>
+  </div>
+</aside>
+
+<dialog id="cfg">
+  <h3>ตั้งค่า AI</h3>
+  <p style="margin-top:-2px"><b>AI ตรวจงาน</b> · ใช้ Claude API ตรวจผลก่อนผลิต คีย์เก็บไว้ในเครื่องนี้เท่านั้น (ไฟล์ config.json ในโฟลเดอร์ tools/cutout-py)</p>
+  <div class="ctl"><label>Anthropic API key</label><input type="password" id="cfgKey" placeholder="sk-ant-..." autocomplete="off"></div>
+  <div class="ctl"><label>โมเดล</label><input type="text" id="cfgModel"></div>
+  <label class="chk" style="color:var(--navy)"><input type="checkbox" id="cfgAuto"> ตรวจอัตโนมัติทุกครั้งที่เพิ่มรูป</label>
+  <h3 style="font-size:15px;margin-top:18px">AI ตัดพื้นหลัง (รุ่นหลัก)</h3>
+  <p>ใช้กับทุกรูปที่ไม่ได้เลือกรุ่นเอง · รุ่นใหม่ครั้งแรกจะดาวน์โหลดก่อน อาจใช้เวลาสักครู่</p>
+  <div class="ctl"><select id="cfgAi"></select></div>
+  <div class="ctl" id="cfgAiCustomRow" hidden><label>ชื่อรุ่น (จาก rembg)</label><input type="text" id="cfgAiCustom" list="aiAllList" placeholder="เช่น birefnet-hrsod"><datalist id="aiAllList"></datalist></div>
+  <div class="acts">
+    <button class="sbtn" id="cfgCancel">ยกเลิก</button>
+    <button class="sbtn dark" id="cfgSave">บันทึก</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+<div id="stale" hidden>
+  ⚠️ โปรแกรมมีอัปเดต แต่ยังรันโค้ดเก่าอยู่ — ค่าใหม่บางอย่างจะไม่มีผล<br>
+  <span>ปิดหน้าต่าง Terminal ของโปรแกรมนี้ แล้วดับเบิลคลิก tools/cutout-py/start.command ใหม่</span>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = v => (Math.round(v*10)/10).toString();
+const cm = mm => (Math.round(mm*10)/100).toString();   // มม. -> ซม. (ละเอียด 0.01)
+const METHOD_TH = {alpha:'ขอบโปร่งใส', solid:'ลบสีพื้น', ai:'AI ตัด', none:'ทั้งใบ', file:'เส้นจากไฟล์'};
+const SHAPE_TH = {contour:'ตามทรง', rect:'สี่เหลี่ยม', rounded:'มุมมน', circle:'วงกลม', ellipse:'วงรี', file:'ตามไฟล์ลูกค้า'};
+const store = (k, v) => { try{ if(v===undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); }catch(e){ return null; } };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// ฝังในหลังบ้าน (iframe) = หัวเรื่องซ้ำกับหน้าแม่ ซ่อนไว้
+try{ if(window.self!==window.top) document.body.classList.add('embedded'); }catch(e){ document.body.classList.add('embedded'); }
+
+// ---------------- products (สูตรสินค้าจาก products.py) ----------------
+let PRODUCTS = [], PAPER = {};
+const prodById = id => PRODUCTS.find(x => x.id===id) || PRODUCTS[0];
+const prodShort = id => { const pr = PRODUCTS.find(x=>x.id===id); return pr ? pr.name.replace(/\s*\(.*\)$/,'') : id; };
+async function loadProducts(){
+  try{ const j = await (await fetch('/products')).json(); PRODUCTS = j.products; PAPER = j.paper; }catch(e){}
+  const sel = $('#product'); sel.innerHTML = '';
+  const groups = {};
+  PRODUCTS.forEach(pr => { (groups[pr.group] = groups[pr.group] || []).push(pr); });
+  Object.entries(groups).forEach(([g, list]) => {
+    const og = document.createElement('optgroup'); og.label = g;
+    list.forEach(pr => { const o = document.createElement('option'); o.value = pr.id; o.textContent = pr.name; og.appendChild(o); });
+    sel.appendChild(og);
+  });
+  const og = document.createElement('optgroup'); og.label = 'สติกเกอร์';
+  const o = document.createElement('option'); o.disabled = true; o.textContent = 'แผ่นสติกเกอร์ไดคัท 50 (ขั้นถัดไป)'; og.appendChild(o);
+  sel.appendChild(og);
+}
+
+// ---------------- per-image state ----------------
+const BASE = {method:'auto', shape:'contour', radius_mm:3, offset_mm:0, fill:'none', extend:false, bleed_mm:1,
+              bridge:1, holes:false, smooth:1, shrink:1, size_axis:'', size_mm:0, dpi:300,
+              product:'custom', cut_type:'Cut100', white:'none', white_choke_mm:0.1,
+              hole:false, hole_mm:1.5, ring_mm:2, hole_gap_mm:1.5, hole_x_mm:0, hole_style:'circle', stand:false, tab_w_mm:0, tab_h_mm:6, base_d_mm:25,
+              thick_mm:3, slot_clear_mm:0.1, paper:'', fixed_w_mm:0, fixed_h_mm:0,
+              stroke_mm:0, stroke:'#ffffff', filecut:true, ai_model:'', edits:[], plus_mm:3};
+// ช่องเติมสี/ยืดสีขอบถูกถอดจากหน้าจอ → ไม่ให้ค่าค้างจากเครื่องมีผล · จุดแก้/รุ่น AI เป็นของแต่ละรูป ไม่ใช่ค่าเริ่มต้น
+let defaults = Object.assign({}, BASE, store('cut-defaults') || {}, {fill:'none', ai_model:'', edits:[]});
+const items = [];   // {id,name,thumb,state,msg,detect,filecut,p,res,rev}
+let current = null, filter = 'all', last = null, seq = 0;
+let cfg = {has_key:false, model:'', auto: store('cut-autoreview') ?? true, illustrator:false, ai_model:'', ai_models:[], ai_all:[]};
+const fileCutOn = it => !!(it && it.filecut && it.p.filecut);
+
+// ---------------- list ----------------
+function revTag(it){
+  const r = it.rev;
+  if(!r) return '';
+  if(r.state==='running') return '<span class="tag"><span class="spin"></span>AI ตรวจ</span>';
+  if(r.state==='stale') return '<span class="tag">ค่าเปลี่ยน ยังไม่ตรวจ</span>';
+  if(r.state==='error') return '<span class="tag bad">✕ ตรวจไม่ได้</span>';
+  if(r.state==='approved') return '<span class="tag ok">✓ ผ่าน (คน)</span>';
+  if(r.verdict==='pass') return '<span class="tag ok">✓ ผ่าน</span>';
+  if(r.verdict==='review') return '<span class="tag warn">⚠ ต้องดู</span>';
+  return '';
+}
+const isPass = it => !!it.rev && (it.rev.state==='approved' || (it.rev.state==='done' && it.rev.verdict==='pass'));
+const needsLook = it => it.state==='err' || (!!it.rev && ((it.rev.state==='done' && it.rev.verdict==='review') || it.rev.state==='error'))
+                     || (!!it.res && it.res.warnings && it.res.warnings.length>0 && !isPass(it));
+
+function drawList(){
+  const L = $('#list'); L.innerHTML = '';
+  items.filter(it => filter==='all' || (filter==='pass' ? isPass(it) : needsLook(it))).forEach(it => {
+    const d = document.createElement('div');
+    d.className = 'item' + (it===current ? ' sel' : '');
+    let s;
+    if(it.state==='busy') s = `<span class="tag"><span class="spin"></span>${esc(it.msg)}</span>`;
+    else if(it.state==='err') s = `<span class="tag bad">✕ ${esc(it.msg)}</span>`;
+    else if(fileCutOn(it)) s = `<span class="tag ok">✂ เส้นจากไฟล์</span>` + revTag(it);
+    else {
+      const m = it.p.method==='auto' ? it.detect.method : it.p.method;
+      s = `<span class="tag">${METHOD_TH[m]}</span><span class="tag">${SHAPE_TH[it.p.shape]}</span>`
+        + (it.p.product && it.p.product!=='custom' ? `<span class="tag">${esc(prodShort(it.p.product))}</span>` : '') + revTag(it);
+    }
+    d.innerHTML = `<img src="${it.thumb||''}" alt=""><div class="meta"><div class="n"></div><div class="s">${s}</div></div>`;
+    d.querySelector('.n').textContent = it.name;
+    d.title = it.name;
+    d.onclick = () => { if(it.state==='ok') select(it); };
+    L.appendChild(d);
+  });
+  const ok = items.filter(i=>i.state==='ok');
+  const busy = items.filter(i=>i.state==='busy').length;
+  const pass = items.filter(isPass).length, look = items.filter(needsLook).length;
+  $('#status').textContent = busy ? `กำลังเตรียม ${busy} รูป…` : (ok.length ? `${ok.length} รูป · ผ่าน ${pass} · ต้องดู ${look}` : '');
+  $('#reviewAll').disabled = !ok.length;
+  steps(); updateLinks();
+}
+document.querySelectorAll('#filters button').forEach(b => b.onclick = () => {
+  filter = b.dataset.f; document.querySelectorAll('#filters button').forEach(x=>x.classList.toggle('on', x===b)); drawList(); });
+// ขั้นตอนบนหัว: ยังไม่มีรูป = 1 · มีรูปพร้อม = 2-3
+function steps(){
+  const ready = items.some(i=>i.state==='ok');
+  document.querySelectorAll('.step').forEach(el => { const n=+el.dataset.s;
+    el.classList.toggle('done', ready && n===1); el.classList.toggle('on', ready ? n>=2 : n===1); });
+}
+
+// ---------------- adding images ----------------
+const drop = $('#drop'), file = $('#file');
+drop.onclick = () => file.click();
+$('#empty').onclick = () => file.click();
+[drop, $('#empty')].forEach(el => el.onkeydown = e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); file.click(); } });
+file.onchange = () => { addFiles(file.files); file.value=''; };
+['dragenter','dragover'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); if(t==='drop'||e.target===drop) drop.classList.remove('over'); }));
+document.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+document.addEventListener('paste', e => { const f=[...e.clipboardData.files]; if(f.length) addFiles(f); });
+// ฝังอยู่ในหลังบ้าน iDucky: หน้าแม่ส่งรูปที่ลากวางนอกกรอบมาให้
+window.addEventListener('message', e => { if(e.data && e.data.type==='cutout-add-files' && e.data.files) addFiles(e.data.files); });
+// ไฟล์ .ai/.pdf — เบราว์เซอร์วาดตัวอย่างเองไม่ได้ รอรูปย่อจากเซิร์ฟเวอร์
+const isVec = f => /\.(ai|pdf)$/i.test(f.name||'') || f.type==='application/pdf' || f.type==='application/postscript';
+
+let upQueue = Promise.resolve();
+function addFiles(list){
+  [...list].filter(f => f.type.startsWith('image/') || isVec(f)).forEach(f => {
+    const it = {id:null, name:f.name||'image.png', thumb:isVec(f)?'':URL.createObjectURL(f), state:'busy', msg:'รอคิว',
+                p:Object.assign({}, defaults, {method:'auto'}), rev:null, res:null};
+    items.push(it); drawList();
+    upQueue = upQueue.then(() => upload(it, f));
+  });
+}
+async function upload(it, f){
+  it.msg = isVec(f) ? 'อ่านไฟล์…' : 'กำลังเตรียม…'; drawList();
+  try{
+    const r = await fetch('/upload?name='+encodeURIComponent(it.name), {method:'POST', body:f});
+    const j = await r.json(); if(!r.ok) throw new Error(j.error);
+    // ไฟล์ .ai/.pdf หลายหน้า = หลายรายการ (หน้าแรกใช้แถวเดิม หน้าถัดไปแทรกต่อท้าย)
+    const made = j.items.map((x, k) => {
+      const t = k===0 ? it : {rev:null, res:null, p:Object.assign({}, defaults, {method:'auto'})};
+      Object.assign(t, {id:x.id, name:x.name, detect:x.detect, filecut:x.filecut||0, state:'ok', msg:''});
+      if(x.thumb) t.thumb = x.thumb;
+      if(k>0) items.splice(items.indexOf(it)+k, 0, t);
+      return t;
+    });
+    if(j.items[0] && j.items[0].hidden) toast('ซ่อนเลเยอร์ '+j.items[0].hidden.join(', ')+' ให้แล้ว (ไม่นับเป็นลาย)');
+    if(!current) select(it);
+    if(cfg.has_key && cfg.auto) made.forEach(queueReview);
+  }catch(err){ it.state='err'; it.msg = err.message || 'ผิดพลาด'; }
+  drawList();
+}
+
+// ---------------- panel <-> state ----------------
+function bindPanel(){
+  const p = current ? current.p : defaults;
+  $('#right').classList.toggle('off', !current);
+  const fc = fileCutOn(current);
+  $('#filecut_box').hidden = !(current && current.filecut);
+  $('#filecut').checked = !!p.filecut;
+  if(current && current.filecut) $('#filecut_n').textContent = current.filecut;
+  ['#cutsec','#strokeSec'].forEach(s => $(s).classList.toggle('disabled', fc));
+  $('#method').value = p.method;
+  const det = current && current.detect;
+  $('#methodHint').textContent = p.method==='auto' && det ? `เลือกให้: ${METHOD_TH[det.method]} — ${det.reason}` : '';
+  document.querySelectorAll('#shapes button').forEach(b => b.classList.toggle('on', b.dataset.s===p.shape));
+  $('#radiusCtl').hidden = p.shape!=='rounded';
+  setIfIdle('#radius_mm', p.radius_mm);
+  setIfIdle('#offset_mm', fmt(p.offset_mm));
+  $('#offset_r').value = Math.max(-5, Math.min(10, p.offset_mm));
+  $('#offsetHint').textContent = p.offset_mm<0 ? `ตัดเข้าเนื้อ ${fmt(-p.offset_mm)} มม.` : p.offset_mm>0 ? `เผื่อขอบ ${fmt(p.offset_mm)} มม. จากขอบงาน` : 'เส้นตัดชิดขอบงานพอดี';
+  setIfIdle('#stroke_mm', fmt(p.stroke_mm));
+  $('#stroke_r').value = Math.min(10, p.stroke_mm);
+  document.querySelectorAll('.sw[data-k]').forEach(el => el.classList.toggle('on', el.dataset.k===p.stroke));
+  $('#strokePick').value = p.stroke; $('#strokeName').textContent = p.stroke;
+  $('#strokeSum').textContent = p.stroke_mm>0 ? `${fmt(p.stroke_mm)} มม. · ${p.stroke}` : 'ไม่มี';
+  if(p.stroke_mm>0 && !$('#strokeSec').dataset.touched) $('#strokeSec').open = true;
+  ['bridge','smooth','shrink','dpi'].forEach(k => $('#'+k).value = p[k]);
+  $('#v_bridge').textContent = (+p.bridge).toFixed(1); $('#v_smooth').textContent = (+p.smooth).toFixed(2);
+  $('#v_shrink').textContent = p.shrink+' px'; $('#v_dpi').textContent = p.dpi+' dpi';
+  $('#holes').checked = p.holes;
+  setIfIdle('#plus_mm', p.plus_mm ?? 3); $('#plus_r').value = Math.min(15, p.plus_mm ?? 3);
+  drawProduct(); sizeFields();
+}
+$('#strokeSec').addEventListener('toggle', () => { $('#strokeSec').dataset.touched = '1'; });
+function setIfIdle(sel, v){ if(document.activeElement !== $(sel)) $(sel).value = v; }
+function sizeFields(){
+  const p = current ? current.p : defaults, r = current && current.res;
+  const w = $('#size_w'), h = $('#size_h');
+  if(p.size_mm>0 && r){
+    // ช่องที่พิมพ์เองแสดงค่าที่พิมพ์ อีกช่องแสดงค่าที่คำนวณได้
+    if(document.activeElement!==w) w.value = p.size_axis==='w' ? cm(p.size_mm) : cm(r.cut_w_mm);
+    if(document.activeElement!==h) h.value = p.size_axis==='h' ? cm(p.size_mm) : cm(r.cut_h_mm);
+  } else if(!p.size_mm){
+    if(document.activeElement!==w) w.value=''; if(document.activeElement!==h) h.value='';
+  }
+}
+
+function edit(changes, rerender=true){
+  if(!current) return;
+  Object.assign(current.p, changes);
+  // ค่าที่เปลี่ยนจะเป็นค่าเริ่มต้นของรูปถัดไปด้วย (ยกเว้นวิธีหาขอบ)
+  const {method, edits, ...rest} = current.p; defaults = Object.assign({}, defaults, rest); store('cut-defaults', defaults);
+  if(current.rev && current.rev.state!=='running') current.rev = {state:'stale'};
+  bindPanel(); drawList(); drawReview();
+  if(rerender) schedule();
+}
+$('#method').onchange = e => edit({method:e.target.value});
+$('#filecut').onchange = e => edit({filecut:e.target.checked});
+document.querySelectorAll('#shapes button').forEach(b => b.onclick = () => edit({shape:b.dataset.s}));
+$('#radius_mm').oninput = e => { const v=parseFloat(e.target.value); if(isFinite(v)&&v>=0) edit({radius_mm:v}); };
+$('#offset_r').oninput = e => edit({offset_mm:+e.target.value});
+$('#offset_mm').oninput = e => { const v=parseFloat(e.target.value); if(isFinite(v)) edit({offset_mm:v}); };
+$('#offset_mm').onblur = bindPanel;
+$('#stroke_r').oninput = e => edit({stroke_mm:+e.target.value});
+$('#stroke_mm').oninput = e => { const v=parseFloat(e.target.value); if(isFinite(v)&&v>=0) edit({stroke_mm:v}); };
+$('#stroke_mm').onblur = bindPanel;
+document.querySelectorAll('.sw[data-k]').forEach(el => el.onclick = () => edit({stroke:el.dataset.k}));
+$('#strokePick').oninput = e => edit({stroke:e.target.value});
+['bridge','smooth','shrink','dpi'].forEach(k => $('#'+k).oninput = e => edit({[k]:+e.target.value}));
+$('#holes').onchange = e => edit({holes:e.target.checked});
+$('#size_w').oninput = e => { const v=parseFloat(e.target.value);
+  edit(isFinite(v)&&v>0 ? {size_axis:'w', size_mm:v*10} : {size_axis:'', size_mm:0}); if(!(v>0)) $('#size_h').value=''; };
+$('#size_h').oninput = e => { const v=parseFloat(e.target.value);
+  edit(isFinite(v)&&v>0 ? {size_axis:'h', size_mm:v*10} : {size_axis:'', size_mm:0}); if(!(v>0)) $('#size_w').value=''; };
+[$('#size_w'),$('#size_h')].forEach(x => x.onblur = sizeFields);
+
+$('#applyAll').onclick = () => {
+  if(!current) return;
+  const {method, edits, ...rest} = current.p;
+  items.filter(i => i!==current && i.state==='ok').forEach(i => {
+    Object.assign(i.p, JSON.parse(JSON.stringify(rest)));
+    if(i.rev && i.rev.state!=='running') i.rev = {state:'stale'};
+  });
+  drawList(); toast('ใช้ค่านี้กับทุกรูปแล้ว (วิธีหาขอบงานของแต่ละรูปคงเดิม)');
+};
+
+// ---------------- product panel ----------------
+let fieldsKind = null;
+function drawProduct(){
+  const p = current ? current.p : defaults;
+  const pr = prodById(p.product);
+  if(!pr) return;
+  $('#product').value = pr.id;
+  $('#sizeSec').hidden = pr.kind==='paper';
+  if(fieldsKind !== pr.kind){ fieldsKind = pr.kind; buildFields(pr.kind); }
+  document.querySelectorAll('#prodFields [data-k]').forEach(el => {
+    const k = el.dataset.k;
+    if(el.type==='checkbox') el.checked = !!p[k];
+    else if(document.activeElement!==el) el.value = (el.tagName==='SELECT') ? String(p[k]) : p[k];
+  });
+  const custom = $('#prodFields .paperCustom');
+  if(custom) custom.style.display = p.paper==='custom' ? 'contents' : 'none';
+  $('#saveProduct').hidden = pr.id==='custom';
+}
+function buildFields(kind){
+  const num = (k, label, unit='มม.', step='0.1', cls='', neg=false) => `<div class="${cls}"><span class="lbl">${label}</span><div class="field"><input type="number" data-k="${k}" step="${step}" ${neg?'':'min="0"'} inputmode="decimal"><em>${unit}</em></div></div>`;
+  const sel = (k, label, opts, cls='') => `<div class="${cls}"><span class="lbl">${label}</span><select data-k="${k}">${opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></div>`;
+  let h = '';
+  h += sel('cut_type','ชนิดเส้นตัด',[['Cut100','Cut100 (ตัดขาด)'],['Cut50','Cut50 (ตัดครึ่ง)']]);
+  h += sel('white','รองขาว',[['none','ไม่มี'],['full','เต็มรูปทรง']]);
+  if(kind==='keychain'){
+    h += `<label class="chk full"><input type="checkbox" data-k="hole"> มีรูห่วง (ติ่งด้านบน)</label>`;
+    h += num('hole_mm','ขนาดรู (Ø)') + num('ring_mm','เนื้อรอบรู');
+    h += num('hole_gap_mm','ระยะรูห่างจากงาน') + num('hole_x_mm','เลื่อนรู ซ้าย(−)/ขวา(+)','มม.','0.5','',true);
+  }
+  if(kind==='standee'){
+    h += num('tab_w_mm','ขาเสียบกว้าง (0 = อัตโนมัติ)') + num('tab_h_mm','ขาเสียบยาว');
+    h += num('base_d_mm','ฐานลึก') + num('thick_mm','ความหนาแผ่น (= ร่อง)');
+  }
+  if(kind==='paper'){
+    h += sel('paper','ขนาดกระดาษ', [...Object.keys(PAPER).map(k=>[k, `${k} (${PAPER[k][0]}×${PAPER[k][1]} มม.)`]), ['custom','กำหนดเอง']], 'full');
+    h += `<div class="paperCustom full" style="display:contents">` + num('fixed_w_mm','กว้าง') + num('fixed_h_mm','สูง') + `</div>`;
+  }
+  $('#prodFields').innerHTML = `<div class="pf">${h}</div>`;
+  $('#prodFields').querySelectorAll('[data-k]').forEach(el => {
+    const k = el.dataset.k;
+    el.addEventListener(el.tagName==='SELECT' || el.type==='checkbox' ? 'change' : 'input', () => {
+      if(el.type==='checkbox') return edit({[k]: el.checked});
+      if(el.tagName==='SELECT'){
+        if(k==='paper'){
+          if(el.value==='custom') return edit({paper:'custom'});
+          const [w,h] = PAPER[el.value]; return edit({paper:el.value, fixed_w_mm:w, fixed_h_mm:h});
+        }
+        return edit({[k]: el.value});
+      }
+      const v = parseFloat(el.value); if(isFinite(v) && (v>=0 || el.min!=='0')) edit({[k]: v});
+    });
+  });
+}
+$('#product').onchange = e => {
+  const pr = prodById(e.target.value);
+  edit(Object.assign(JSON.parse(JSON.stringify(pr.p)), {product: pr.id}));
+};
+$('#saveProduct').onclick = async () => {
+  if(!current) return;
+  const pr = prodById(current.p.product);
+  if(!confirm(`บันทึกค่าปัจจุบันเป็นค่าเริ่มต้นของ "${pr.name}" ?`)) return;
+  try{
+    const j = await (await fetch('/products', {method:'POST', body:JSON.stringify({id:pr.id, p:current.p})})).json();
+    if(j.products){ PRODUCTS = j.products; toast('บันทึกค่าเริ่มต้นของสินค้าแล้ว'); } else toast(j.error || 'บันทึกไม่ได้');
+  }catch(err){ toast('บันทึกไม่ได้'); }
+};
+
+// ---------------- preview ----------------
+let timer;
+function schedule(){ clearTimeout(timer); timer = setTimeout(renderCurrent, 250); updateLinks(); }
+function select(it){ if(it!==current) zreset(); current = it; last = null; $('#eover').innerHTML=''; bindPanel(); drawList(); drawReview(); renderCurrent(); }
+
+async function renderCurrent(){
+  if(!current || current.state!=='ok') return;
+  const it = current, my = ++seq;
+  $('#busy').style.display='flex';
+  if(!$('#busyText').textContent.startsWith('AI รุ่น')) $('#busyText').textContent='กำลังปรับ…';
+  try{
+    const r = await fetch('/render', {method:'POST', body:JSON.stringify({id:it.id, p:it.p})});
+    const j = await r.json(); if(!r.ok) throw new Error(j.error);
+    it.res = j;
+    $('#stale').hidden = !j.stale;
+    if(my!==seq || it!==current) return;
+    last = j; show(); sizeFields(); drawList();
+  }catch(err){ toast(err.message); $('#infobar').innerHTML = `<span class="w">${esc(err.message)}</span>`; }
+  finally{ if(my===seq){ $('#busy').style.display='none'; $('#busyText').textContent=''; } }
+}
+function show(){
+  if(!last) return;
+  $('#pv').src = last.art;
+  $('#overlay').innerHTML = $('#showline').checked ? last.cut_svg : '';
+  $('#wover').innerHTML = $('#showwhite').checked && last.white_svg ? last.white_svg : '';
+  document.querySelectorAll('#overlay svg, #wover svg').forEach(svg => { svg.removeAttribute('width'); svg.removeAttribute('height'); svg.setAttribute('preserveAspectRatio','none'); });
+  drawEdits();
+  $('#empty').style.display='none'; $('#frame').style.display='block';
+  let t = `<span>ชิ้นงาน <b>${cm(last.cut_w_mm)} × ${cm(last.cut_h_mm)} ซม.</b></span>`
+        + `<span>เส้นตัดยาว <b>${fmt(last.cut_len_mm/10)} ซม.</b></span>`
+        + `<span><b>${Math.round(last.dpi)}</b> dpi</span>`
+        + `<span>${last.filecut ? `เส้นจากไฟล์ลูกค้า · ${last.filecut} เส้น` : `${METHOD_TH[last.method]}${last.ai_model ? ' ('+esc(last.ai_model)+')' : ''} · ${SHAPE_TH[last.shape]}`} · ${last.cut_type||'Cut100'}</span>`;
+  (last.extras||[]).filter(x => !last.filecut).forEach(x => t += `<span class="x">${esc(x)}</span>`);
+  (last.warnings||[]).forEach(w => t += `<span class="w">⚠ ${esc(w)}</span>`);
+  $('#infobar').innerHTML = t;
+}
+$('#bgsel').onclick = e => { const b=e.target.dataset.b; if(!b) return;
+  [...$('#bgsel').children].forEach(x=>x.classList.toggle('on',x.dataset.b===b));
+  const st=$('#stage'); st.classList.remove('checker','dark','light'); st.classList.add(b); };
+$('#showline').onchange = show;
+$('#showwhite').onchange = show;
+
+// ---------------- แก้เฉพาะจุด (＋ มน / − ชิด) ----------------
+let editMode = 0;
+function editsAllowed(){ return current && last && last.shape==='contour' && last.map; }
+function drawEdits(){
+  const ok = editsAllowed();
+  $('#edittools').hidden = !ok;
+  if(!ok && editMode){ setEditMode(0); }
+  const eo = $('#eover');
+  if(!ok || !current.p.edits || !current.p.edits.length){ eo.innerHTML=''; return; }
+  const m = last.map, k = last.dpp/25.4;
+  eo.innerHTML = `<svg viewBox="0 0 ${last.w} ${last.h}" preserveAspectRatio="none">` + current.p.edits.map(([fx,fy,r,sg]) =>
+    `<circle cx="${fx*m.W0+m.dx}" cy="${fy*m.H0+m.dy}" r="${r*k}" fill="${sg>0?'rgba(30,138,90,.18)':'rgba(194,54,47,.18)'}" stroke="${sg>0?'var(--ok)':'var(--err)'}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
+  ).join('') + '</svg>';
+}
+function setEditMode(mo){
+  editMode = mo;
+  [...$('#editMode').children].forEach(b => b.classList.toggle('on', +b.dataset.m===mo));
+  $('#frame').classList.toggle('editing', !!mo);
+}
+$('#editMode').onclick = e => { const m = e.target.dataset.m; if(m!==undefined) setEditMode(+m); };
+$('#pv').addEventListener('click', e => {
+  if(!editMode || !editsAllowed()) return;
+  const rc = $('#pv').getBoundingClientRect();   // รวมการซูมแล้ว (transform)
+  const ax = (e.clientX - rc.left) * last.w / rc.width, ay = (e.clientY - rc.top) * last.h / rc.height;
+  const m = last.map;
+  const r = Math.max(0.5, parseFloat($('#brush').value) || 3);
+  edit({edits: [...(current.p.edits||[]), [(ax-m.dx)/m.W0, (ay-m.dy)/m.H0, r, editMode]]});
+  drawEdits();
+});
+$('#plus_r').oninput = e => edit({plus_mm: +e.target.value});
+$('#plus_mm').oninput = e => { const v=parseFloat(e.target.value); if(isFinite(v) && v>=0.5) edit({plus_mm: v}); };
+$('#plus_mm').onblur = bindPanel;
+$('#undoEdit').onclick = () => { if(current && current.p.edits && current.p.edits.length){ edit({edits: current.p.edits.slice(0,-1)}); drawEdits(); } };
+$('#clearEdits').onclick = () => { if(current && current.p.edits && current.p.edits.length && confirm('ล้างจุดแก้ทั้งหมดของรูปนี้?')){ edit({edits: []}); drawEdits(); } };
+document.addEventListener('keydown', e => { if(e.key==='Escape') setEditMode(0); });
+
+// ---------------- fit / zoom / pan ----------------
+// รูปพอดีพื้นที่แสดง (เว้นขอบ 20px) — กำหนดกว้าง/สูงเป็น px ตรง ๆ ให้กรอบ เส้นตัด และรูป ขนาดเท่ากันเสมอ
+function fit(){
+  const img=$('#pv'), st=$('#stage');
+  if(!img.naturalWidth) return;
+  const k=Math.min((st.clientWidth-40)/img.naturalWidth, (st.clientHeight-40)/img.naturalHeight);
+  if(!(k>0)) return;
+  img.style.width=Math.floor(img.naturalWidth*k)+'px';
+  img.style.height=Math.floor(img.naturalHeight*k)+'px';
+}
+$('#pv').addEventListener('load', fit);
+const Z = {k:1, x:0, y:0}, ZMIN = 1, ZMAX = 12;
+function applyZoom(){
+  const fr=$('#frame'), st=$('#stage');
+  if(Z.k<=ZMIN){ Z.k=1; Z.x=0; Z.y=0; }
+  else { // ไม่ให้เลื่อนจนรูปหลุดจอหมด
+    const w=fr.offsetWidth*Z.k, h=fr.offsetHeight*Z.k, L=fr.offsetLeft, T=fr.offsetTop;
+    Z.x=Math.min(st.clientWidth-L-60, Math.max(60-L-w, Z.x));
+    Z.y=Math.min(st.clientHeight-T-60, Math.max(60-T-h, Z.y));
+  }
+  fr.style.transform = Z.k===1 ? '' : `translate(${Z.x}px,${Z.y}px) scale(${Z.k})`;
+  st.classList.toggle('zoomed', Z.k>1);
+  $('#zpct').textContent = Math.round(Z.k*100)+'%';
+}
+function zoomTo(k, cx, cy){
+  const fr=$('#frame'), r=$('#stage').getBoundingClientRect();
+  if(cx===undefined){ cx=r.left+r.width/2; cy=r.top+r.height/2; }
+  const mx=cx-r.left-fr.offsetLeft, my=cy-r.top-fr.offsetTop;
+  const k2=Math.min(ZMAX, Math.max(ZMIN, k));
+  const ux=(mx-Z.x)/Z.k, uy=(my-Z.y)/Z.k;
+  Z.x=mx-ux*k2; Z.y=my-uy*k2; Z.k=k2; applyZoom();
+}
+const zreset = () => { Z.k=1; applyZoom(); };
+// พื้นที่แสดงเปลี่ยนขนาด (ย่อหน้าต่าง · แถบรูปโผล่) = จัดรูปใหม่
+if(window.ResizeObserver) new ResizeObserver(() => { fit(); if(Z.k>1) applyZoom(); }).observe($('#stage'));
+else window.addEventListener('resize', fit);
+$('#zin').onclick = () => zoomTo(Z.k*1.5);
+$('#zout').onclick = () => zoomTo(Z.k/1.5);
+$('#zpct').onclick = zreset;
+$('#stage').addEventListener('wheel', e => {
+  if($('#frame').style.display!=='block') return;
+  e.preventDefault();
+  zoomTo(Z.k*Math.exp(-e.deltaY*(e.ctrlKey?0.01:0.0015)), e.clientX, e.clientY); // ctrlKey = บีบนิ้วบนแทร็กแพด
+}, {passive:false});
+$('#stage').addEventListener('dblclick', zreset);
+// ลากรูปพรีวิว = เลื่อนจอ ไม่ใช่ลากไฟล์ (เดิมเบราว์เซอร์ลากรูปออกมาแล้วตัวรับไฟล์เพิ่มเป็นรูปใหม่ซ้ำ)
+$('#stage').addEventListener('dragstart', e => e.preventDefault());
+let pan=null;
+$('#stage').addEventListener('pointerdown', e => {
+  if(Z.k<=1 || e.button!==0 || editMode) return;   // โหมดแก้จุด: คลิก = จิ้ม ไม่ใช่เลื่อนจอ
+  pan={x:e.clientX-Z.x, y:e.clientY-Z.y}; $('#stage').classList.add('panning');
+  $('#stage').setPointerCapture(e.pointerId);
+});
+$('#stage').addEventListener('pointermove', e => { if(!pan) return; Z.x=e.clientX-pan.x; Z.y=e.clientY-pan.y; applyZoom(); });
+const endPan = () => { pan=null; $('#stage').classList.remove('panning'); };
+$('#stage').addEventListener('pointerup', endPan);
+$('#stage').addEventListener('pointercancel', endPan);
+document.addEventListener('keydown', e => {
+  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || $('#cfg').open) return;
+  if(e.key==='+'||e.key==='=') zoomTo(Z.k*1.5);
+  else if(e.key==='-') zoomTo(Z.k/1.5);
+  else if(e.key==='0') zreset();
+});
+
+// ---------------- AI review ----------------
+const revQueue = []; let revRunning = 0;
+function queueReview(it){
+  if(!cfg.has_key){ openCfg(); return; }
+  it.rev = {state:'running'}; drawList(); if(it===current) drawReview();
+  revQueue.push(it); pumpReview();
+}
+function pumpReview(){
+  while(revRunning < 2 && revQueue.length){
+    const it = revQueue.shift(); revRunning++;
+    const sent = JSON.stringify(it.p);
+    fetch('/review', {method:'POST', body:JSON.stringify({id:it.id, p:it.p})})
+      .then(r => r.json().then(j => { if(!r.ok) throw new Error(j.error); return j; }))
+      .then(j => { it.rev = JSON.stringify(it.p)===sent ? Object.assign({state:'done'}, j) : {state:'stale'}; })
+      .catch(err => { it.rev = {state:'error', error:err.message}; })
+      .finally(() => { revRunning--; drawList(); if(it===current) drawReview(); pumpReview(); });
+  }
+}
+$('#reviewAll').onclick = () => {
+  if(!cfg.has_key){ openCfg(); return; }
+  const todo = items.filter(i => i.state==='ok' && !(i.rev && ['running','approved','done'].includes(i.rev.state)));
+  if(!todo.length){ toast('ทุกรูปตรวจแล้ว'); return; }
+  todo.forEach(queueReview);
+};
+
+function drawReview(){
+  const box = $('#revbox'), it = current;
+  if(!it){ box.innerHTML=''; return; }
+  const r = it.rev;
+  const btn = (id, label, cls='sbtn') => `<button class="${cls}" data-a="${id}">${label}</button>`;
+  let html;
+  if(!r){
+    html = `<div class="rev"><div class="head">ยังไม่ได้ตรวจ</div><p>ให้ AI ดูผลก่อนส่งผลิต หรือดูเองแล้วกดให้ผ่าน</p><div class="acts">${btn('check','ตรวจด้วย AI','sbtn dark')}${btn('approve','ดูแล้ว ให้ผ่าน')}</div></div>`;
+  }else if(r.state==='running'){
+    html = `<div class="rev"><div class="head"><span class="spin"></span> AI กำลังตรวจ…</div></div>`;
+  }else if(r.state==='stale'){
+    html = `<div class="rev"><div class="head">ค่าเปลี่ยน ยังไม่ได้ตรวจใหม่</div><div class="acts">${btn('check','ตรวจอีกครั้ง','sbtn dark')}${btn('approve','ดูแล้ว ให้ผ่าน')}</div></div>`;
+  }else if(r.state==='error'){
+    html = `<div class="rev bad"><div class="head">✕ ตรวจไม่ได้</div><p>${esc(r.error)}</p><div class="acts">${btn('check','ลองใหม่','sbtn dark')}${btn('approve','ดูแล้ว ให้ผ่าน')}</div></div>`;
+  }else if(r.state==='approved'){
+    html = `<div class="rev ok"><div class="head">✓ ผ่าน (อนุมัติโดยคน)</div><div class="acts">${btn('check','ให้ AI ตรวจ')}${btn('unapprove','ยกเลิก')}</div></div>`;
+  }else{
+    const ok = r.verdict==='pass', sug = r.suggest || {};
+    const sugText = [sug.method ? `หาขอบงาน: ${METHOD_TH[sug.method]}` : '', sug.shape ? `รูปร่าง: ${SHAPE_TH[sug.shape]}` : ''].filter(Boolean).join(' · ');
+    html = `<div class="rev ${ok?'ok':'warn'}"><div class="head">${ok?'✓ AI ตรวจแล้ว ผ่าน':'⚠ ต้องให้คนดู'}</div>`
+      + (r.summary ? `<p>${esc(r.summary)}</p>` : '')
+      + (r.issues && r.issues.length ? `<ul>${r.issues.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>` : '')
+      + (sugText ? `<p><b>AI แนะนำ:</b> ${esc(sugText)}</p>` : '')
+      + `<div class="acts">${sugText?btn('apply','ใช้คำแนะนำ','sbtn dark'):''}${ok?'':btn('approve','ดูแล้ว ให้ผ่าน')}${btn('check','ตรวจใหม่')}</div></div>`;
+  }
+  box.innerHTML = html;
+  box.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+    const a = b.dataset.a;
+    if(a==='check') queueReview(it);
+    if(a==='approve'){ it.rev = {state:'approved'}; drawList(); drawReview(); }
+    if(a==='unapprove'){ it.rev = null; drawList(); drawReview(); }
+    if(a==='apply'){ const s = r.suggest||{}, ch = {}; if(s.method) ch.method=s.method; if(s.shape) ch.shape=s.shape;
+      if(fileCutOn(it)) ch.filecut = false;
+      edit(ch); setTimeout(() => queueReview(it), 600); }
+  });
+}
+
+// ---------------- downloads ----------------
+const layeredOn = () => cfg.illustrator && $('#layered').checked;
+$('#layered').onchange = e => { store('cut-layered', e.target.checked); updateLinks(); };
+// ดาวน์โหลดผ่าน fetch (แสดงสถานะรอ) — ใช้ตอนต้องรอ Illustrator / ทำ zip
+async function fetchDownload(url, opts, name, label){
+  $('#busy').style.display='flex'; $('#busyText').textContent = label;
+  try{
+    const r = await fetch(url, opts);
+    if(!r.ok){ let m = 'ดาวน์โหลดไม่สำเร็จ'; try{ m = (await r.json()).error; }catch(e){} throw new Error(m); }
+    let fname = name;
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/); if(m) fname = decodeURIComponent(m[1]);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = fname; a.click();
+  }catch(err){ toast(err.message); }
+  finally{ $('#busy').style.display='none'; }
+}
+$('#dl_ai').onclick = e => {
+  if(!layeredOn() || !current || current.state!=='ok') return;   // ไม่แยกเลเยอร์ = ลิงก์ปกติ
+  e.preventDefault();
+  fetchDownload($('#dl_ai').href, {}, 'file.ai', 'Illustrator กำลังแยกเลเยอร์…');
+};
+function updateLinks(){
+  const ok = current && current.state==='ok';
+  const set = (id, kind) => { const a=$(id);
+    a.href = ok ? `/download?id=${current.id}&kind=${kind}&p=${encodeURIComponent(JSON.stringify(current.p))}` + (kind==='ai' && layeredOn() ? '&layered=1' : '') : '#';
+    a.setAttribute('aria-disabled', ok?'false':'true'); };
+  set('#dl_ai','ai'); set('#dl_png','png'); set('#dl_svg','svg');
+  const passOnly = $('#zipPassOnly').checked;
+  const zipItems = items.filter(i => i.state==='ok' && (!passOnly || isPass(i)));
+  $('#dl_zip').setAttribute('aria-disabled', zipItems.length ? 'false' : 'true');
+  $('#dl_zip').textContent = `${passOnly?'รูปที่ผ่าน':'ทุกรูป'} (.zip)` + (zipItems.length ? ` · ${zipItems.length}` : '');
+}
+$('#zipPassOnly').onchange = updateLinks;
+$('#dl_zip').onclick = () => {
+  const sel = items.filter(i => i.state==='ok' && (!$('#zipPassOnly').checked || isPass(i)));
+  if(!sel.length) return;
+  const body = {layered: layeredOn(), items: sel.map(i => ({id:i.id, p:i.p, status: isPass(i)?'ผ่าน':(needsLook(i)?'ต้องดู':'ยังไม่ตรวจ')}))};
+  fetchDownload('/zip', {method:'POST', body:JSON.stringify(body)}, 'cutline-' + new Date().toISOString().slice(0,10) + '.zip',
+    layeredOn() ? `Illustrator กำลังแยกเลเยอร์ ${sel.length} รูป…` : `กำลังทำไฟล์ ${sel.length} รูป…`);
+};
+
+// ---------------- AI model pickers ----------------
+function fillAiSelects(){
+  $('#cfgAi').innerHTML = cfg.ai_models.map(([n,d]) => `<option value="${n}">${n} — ${esc(d)}</option>`).join('') + '<option value="__custom">อื่นๆ (พิมพ์ชื่อรุ่นเอง)</option>';
+  $('#aiAllList').innerHTML = cfg.ai_all.map(n => `<option value="${n}">`).join('');
+}
+$('#cfgAi').onchange = e => { $('#cfgAiCustomRow').hidden = e.target.value!=='__custom'; };
+
+// ---------------- config ----------------
+async function loadCfg(){
+  try{ const j = await (await fetch('/config')).json(); cfg.has_key = j.has_key; cfg.model = j.model; cfg.illustrator = !!j.illustrator;
+    cfg.ai_model = j.ai_model; cfg.ai_models = j.ai_models || []; cfg.ai_all = j.ai_all || []; }catch(e){}
+  fillAiSelects();
+  $('#layeredRow').hidden = !cfg.illustrator;
+  $('#layered').checked = cfg.illustrator && (store('cut-layered') ?? true);
+  updateLinks();
+  $('#openCfg').textContent = '⚙︎ ตั้งค่า AI';
+}
+function openCfg(){
+  $('#cfgKey').value=''; $('#cfgKey').placeholder = cfg.has_key ? 'ตั้งค่าแล้ว (เว้นว่างถ้าไม่เปลี่ยน)' : 'sk-ant-...';
+  $('#cfgModel').value = cfg.model; $('#cfgAuto').checked = cfg.auto;
+  const known = cfg.ai_models.some(m => m[0]===cfg.ai_model);
+  $('#cfgAi').value = known ? cfg.ai_model : '__custom';
+  $('#cfgAiCustomRow').hidden = known; $('#cfgAiCustom').value = known ? '' : cfg.ai_model;
+  $('#cfg').showModal();
+}
+$('#openCfg').onclick = openCfg;
+$('#cfgCancel').onclick = () => $('#cfg').close();
+$('#cfgSave').onclick = async () => {
+  const body = {model: $('#cfgModel').value.trim()};
+  const ai = $('#cfgAi').value==='__custom' ? $('#cfgAiCustom').value.trim() : $('#cfgAi').value;
+  if(ai) body.ai_model = ai;
+  if($('#cfgKey').value.trim()) body.api_key = $('#cfgKey').value.trim();
+  const prevAi = cfg.ai_model;
+  try{ const j = await (await fetch('/config', {method:'POST', body:JSON.stringify(body)})).json();
+    if(j.error){ toast(j.error); return; }
+    cfg.has_key = j.has_key; cfg.model = j.model; cfg.ai_model = j.ai_model; }catch(e){ toast('บันทึกไม่ได้'); return; }
+  if(cfg.ai_model !== prevAi){   // เปลี่ยนรุ่น AI = ผลตรวจเดิมใช้ไม่ได้ + ตัดใหม่
+    items.forEach(i => { if(i.rev && i.rev.state!=='running' && !i.p.ai_model) i.rev = {state:'stale'}; });
+    $('#busyText').textContent = 'AI รุ่นนี้กำลังตัด… (ใช้ครั้งแรกต้องดาวน์โหลดก่อน)';
+    renderCurrent();
+  }
+  cfg.auto = $('#cfgAuto').checked; store('cut-autoreview', cfg.auto);
+  $('#cfg').close(); loadCfg(); toast('บันทึกแล้ว' + (cfg.has_key ? '' : ' (ยังไม่มี API key สำหรับ AI ตรวจงาน)'));
+};
+
+function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',3800); }
+
+// เปิดหน้ามาก็เช็คเลยว่าเซิร์ฟเวอร์รันโค้ดล่าสุดไหม
+fetch('/health').then(r=>r.json()).then(j=>{ $('#stale').hidden = !j.stale; }).catch(()=>{});
+loadCfg(); loadProducts().then(() => { bindPanel(); drawList(); });
+</script>
+</body>
+</html>

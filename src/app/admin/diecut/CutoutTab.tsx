@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "@/components/admin/ui";
 import {
+  boxBlur,
   buildCutout,
   cutoutSvgPath,
   hasTransparency,
@@ -25,7 +26,6 @@ import {
 import { aiMask, aiMaskInBox } from "@/lib/cutout-ai";
 import { samMask, samPrepare, type SamBox, type SamImage, type SamPoint } from "@/lib/cutout-sam";
 import {
-  anchorCount,
   clonePaths,
   curvesToPaths,
   hitTest,
@@ -56,9 +56,11 @@ const DROP_RGBA: [number, number, number, number] = [239, 68, 68, 120];
 const HIT_PX = 9;
 const UNDO_MAX = 15;
 
+type TapMode = "drop" | "add" | "only";
 type Source = "sam" | "ai" | "color" | "alpha";
-/** tapDrop/tapAdd = แตะชิ้นไหน AI ลบ/เอาคืนทั้งชิ้น (โหมดง่าย) */
-type Tool = "tapDrop" | "tapAdd" | "pick" | "box" | "keep" | "erase" | "edit" | "pen" | "view";
+/** tapDrop/tapAdd = แตะชิ้นไหน AI ลบ/เอาคืนทั้งชิ้น · tapOnly = แตะ/ครอบส่วนไหน เก็บไว้แค่ส่วนนั้น (โหมดง่าย) */
+type Tool = "tapDrop" | "tapAdd" | "tapOnly" |
+  "pick" | "box" | "keep" | "erase" | "edit" | "pen" | "view";
 type Bg = "checker" | "white" | "black";
 
 interface Pic {
@@ -78,7 +80,7 @@ interface Snap {
   box: SamBox | null;
 }
 
-export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File) => void }) {
+export default function CutoutTab({ onSendToDiecut, inbox }: { onSendToDiecut: (f: File) => void; inbox?: File | null }) {
   const [pic, setPic] = useState<Pic | null>(null);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -107,22 +109,8 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
 
   // ── แตะลบ/แตะเอาคืน: จำการแตะล่าสุดไว้ เปลี่ยนขนาดชิ้นที่ AI เลือกได้โดยไม่ต้องแตะใหม่ ──
-  const lastTap = useRef<{ pt: SamPoint; add: boolean; base: Uint8Array | null } | null>(null);
-  const [tapInfo, setTapInfo] = useState<{ picked: number; add: boolean } | null>(null);
-  /** โหมดละเอียด = เครื่องมือ pen tool + ค่าเกลาเส้น (คนทั่วไปไม่ต้องเห็น) */
-  const [pro, setProState] = useState(false);
-  useEffect(() => {
-    try {
-      setProState(localStorage.getItem("cutout.pro") === "1");
-    } catch {}
-  }, []);
-  const setPro = (v: boolean) => {
-    setProState(v);
-    try {
-      localStorage.setItem("cutout.pro", v ? "1" : "0");
-    } catch {}
-  };
-
+  const lastTap = useRef<{ pts: SamPoint[]; box: SamBox | null; mode: TapMode; base: Uint8Array | null; masks?: Uint8Array[]; scores?: number[] } | null>(null);
+  const [tapInfo, setTapInfo] = useState<{ picked: number; mode: TapMode; none: boolean; onBg?: boolean } | null>(null);
   // ── ย้อน ──
   const undoRef = useRef<Snap[]>([]);
   const [undoCount, setUndoCount] = useState(0);
@@ -145,6 +133,9 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
   const [zoom, setZoom] = useState(1);
   const [cropTight, setCropTight] = useState(true);
   const [padPx, setPadPx] = useState("0");
+  /** ขอบรอบรูป (Stroke) — ความหนาเป็นพิกเซลของรูปต้นฉบับ · "0" = ไม่มี */
+  const [strokeW, setStrokeW] = useState("0");
+  const [strokeColor, setStrokeColor] = useState("#ffffff");
 
   const [result, setResult] = useState<CutoutResult | null>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -231,7 +222,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
       setZoom(1);
       lastTap.current = null;
       setTapInfo(null);
-      setTool("tapDrop");
+      setTool("tapOnly");
       if (transparent) {
         // PNG ที่ไล่พื้นมาแล้ว แต่ขอบยังหยัก/ฟุ้ง → เกลาขอบใหม่จากช่องโปร่งเลย
         maskRef.current = maskFromAlphaChannel(work.data);
@@ -264,6 +255,14 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
     }
   };
 
+  // รูปที่ลาก/วางมาบนหน้า (หน้าแม่ประกอบแท็บนี้ใหม่พร้อมรูป) → เปิดเลย · ref กัน dev เรียกซ้ำ
+  const inboxTaken = useRef<File | null>(null);
+  useEffect(() => {
+    if (!inbox || inboxTaken.current === inbox) return;
+    inboxTaken.current = inbox;
+    void openFile(inbox);
+  }, [inbox]); // eslint-disable-line react-hooks/exhaustive-deps -- เปิดครั้งเดียวต่อไฟล์
+
   /* ───────── คลิกเลือก (SAM) ───────── */
 
   /** มาสก์ถูกแก้ทางอื่นแล้ว — ปุ่มเปลี่ยนขนาดชิ้นของการแตะล่าสุดใช้ไม่ได้ */
@@ -289,27 +288,172 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
 
   /**
    * แตะลบ/แตะเอาคืน: AI หาชิ้นที่แตะ แล้วหักออกจาก (หรือรวมเข้า) มาสก์เดิม
-   * size = ขนาดชิ้น (0 ใหญ่ … 2 เล็ก) · "best" = ให้ AI เลือก
+   * size = ขนาดชิ้น (0 ใหญ่ … 2 เล็ก) · "auto" = ชิ้นเล็กสุดที่เปลี่ยนภาพจริง ไม่กินเกินครึ่งของที่เก็บไว้
+   * (ทดสอบรูปคน: แตะต่างหู "คะแนนสูงสุด" ของ AI = ทั้งตัวคน → ลบหมด · ชิ้นเล็กได้ต่างหูพอดี)
    */
-  async function applyTap(size: number | "best") {
+  async function applyTap(size: number | "auto") {
     const t = lastTap.current;
     if (!pic || !t) return;
     const seq = ++samSeq.current;
     setErr("");
     try {
-      const si = await getSam();
-      if (seq !== samSeq.current) return;
-      const r = await samMask(si, [{ ...t.pt, keep: true }], null, size);
-      if (seq !== samSeq.current) return;
-      const n = r.mask.length;
-      const out = new Uint8Array(n);
-      for (let i = 0; i < n; i++) {
-        const b = t.base ? t.base[i] : t.add ? 0 : 255;
-        out[i] = t.add ? Math.max(b, r.mask[i]) : Math.min(b, 255 - r.mask[i]);
+      if (!t.masks) {
+        const si = await getSam();
+        if (seq !== samSeq.current) return;
+        setBusy(t.mode === "add" ? "AI กำลังหาชิ้นที่แตะเพื่อเอาคืน…" : t.mode === "only" ? "AI กำลังหาส่วนที่จะเก็บไว้…" : "AI กำลังหาชิ้นที่แตะเพื่อลบ…");
+        let pts = t.pts;
+        if (t.box && !pts.length) {
+          // กรอบอย่างเดียว AI ชอบเลือก "ผม" แทน "หัว" (หน้าเป็นจุด ๆ) → ชี้กลางกรอบด้วยถ้ากลางกรอบเป็นของที่เก็บไว้
+          const c = { x: (t.box.x0 + t.box.x1) / 2, y: (t.box.y0 + t.box.y1) / 2, keep: true };
+          const v = t.base ? t.base[Math.round(c.y) * pic.work.width + Math.round(c.x)] : 255;
+          if (v >= 128) pts = [c];
+          // ของที่ต่อออกไปนอกกรอบ (คอ/ไหล่ใต้กรอบหัว) = ชี้ว่า "ไม่เอา" → AI แยกตามแนวคาง ไม่ใช่ตัดตรงตามขอบกรอบ
+          const W = pic.work.width;
+          const H = pic.work.height;
+          const gap = Math.max(3, 0.02 * Math.max(W, H));
+          const b = t.box;
+          const outside = [
+            { x: (b.x0 + b.x1) / 2, y: b.y1 + gap },
+            { x: (b.x0 + b.x1) / 2, y: b.y0 - gap },
+            { x: b.x0 - gap, y: (b.y0 + b.y1) / 2 },
+            { x: b.x1 + gap, y: (b.y0 + b.y1) / 2 },
+          ];
+          for (const o of outside) {
+            if (o.x < 0 || o.y < 0 || o.x >= W || o.y >= H) continue;
+            const ov = t.base ? t.base[Math.round(o.y) * W + Math.round(o.x)] : 0;
+            if (ov >= 128) pts = [...pts, { ...o, keep: false }];
+          }
+        }
+        const r = await samMask(si, pts, t.box, 0, true);
+        if (seq !== samSeq.current) return;
+        t.masks = r.masks!;
+        t.scores = r.scores;
       }
-      maskRef.current = out;
+      const n = t.masks[0].length;
+      // เก็บแค่ส่วนนี้: อุดรอยแหว่งเล็ก ๆ ที่ขอบชิ้นของ AI ก่อน (ครอบหัวแล้วขมับแหว่ง) — ตัดกับของที่เก็บไว้อยู่ดี ไม่ล้นไปพื้นหลัง
+      const closed = new Map<Uint8Array, Uint8Array>();
+      const smoothSeg = (seg: Uint8Array) => {
+        if (t.mode !== "only") return seg;
+        let c = closed.get(seg);
+        if (!c) {
+          c = closeMask(seg, pic.work.width, pic.work.height, Math.max(2, 0.015 * Math.max(pic.work.width, pic.work.height)));
+          closed.set(seg, c);
+        }
+        return c;
+      };
+      const combine = (rawSeg: Uint8Array) => {
+        const seg = smoothSeg(rawSeg);
+        const out = new Uint8Array(n);
+        let changed = 0;
+        let kept = 0;
+        for (let i = 0; i < n; i++) {
+          const b = t.base ? t.base[i] : t.mode === "add" ? 0 : 255;
+          out[i] = t.mode === "add" ? Math.max(b, seg[i]) : t.mode === "only" ? Math.min(b, seg[i]) : Math.min(b, 255 - seg[i]);
+          if (b >= 128) kept++;
+          if ((b >= 128) !== (out[i] >= 128)) changed++;
+        }
+        return { out, changed, kept };
+      };
+      let pickI = typeof size === "number" ? size : -1;
+      let res = pickI >= 0 ? combine(t.masks[pickI]) : null;
+      if (!res && t.mode === "only") {
+        const w = pic.work.width;
+        const at = (m: Uint8Array | null, p: SamPoint) => (m ? m[Math.round(p.y) * w + Math.round(p.x)] : 255);
+        // แตะบนพื้นหลังที่ลบไปแล้ว = ไม่ทำอะไร (เดิมได้ "ชิ้นพื้นหลัง ∩ ตัวคน" = เหลือแค่เศษขอบผม แดงทั้งรูป · ผู้ใช้เจอ 12 ต.ค. 69)
+        if (!t.box && t.pts.some((p) => at(t.base, p) < 128)) {
+          maskRef.current = t.base;
+          undoRef.current.pop();
+          setUndoCount(undoRef.current.length);
+          lastTap.current = t.pts.length > 1 ? { ...t, pts: t.pts.slice(0, -1), masks: undefined } : null;
+          setTapInfo({ picked: -1, mode: "only", none: true, onBg: true });
+          setMaskVer((v) => v + 1);
+          return;
+        }
+        const all = t.masks.map((m, i) => {
+          const c = combine(m);
+          let area = 0;
+          for (let j = 0; j < n; j++) if (m[j] >= 128) area++;
+          return { i, c, left: c.kept - c.changed, area };
+        });
+        // ชิ้นที่ใช้ได้ = ส่วนใหญ่ทับของที่เก็บไว้ (ไม่ใช่ชิ้นพื้นหลัง) และเหลือพอเป็นชิ้นงาน (ไม่ใช่แค่ติ่งคอ)
+        const ok = all.filter((x) => x.left >= x.area * 0.5 && x.left >= Math.max(n * 0.015, x.c.kept * 0.05));
+        let ch: (typeof all)[number] | undefined;
+        if (t.box) {
+          // กรอบ: เลือกชิ้นที่ทับ "ของที่เก็บไว้ในกรอบ" มากสุด (IoU) · AI พลาด (ทับไม่ถึงครึ่ง) = ตัดตามกรอบไปเลย
+          // (ผู้ใช้ครอบหัว 12 ต.ค. 69: คะแนน AI สูงสุด = ผมอย่างเดียว หน้าแดงเป็นจุด ๆ)
+          const bx = t.box;
+          const inBox = new Uint8Array(n);
+          let tA = 0;
+          for (let y = Math.max(0, Math.floor(bx.y0)); y < Math.min(pic.work.height, Math.ceil(bx.y1)); y++)
+            for (let x = Math.max(0, Math.floor(bx.x0)); x < Math.min(w, Math.ceil(bx.x1)); x++) {
+              const j = y * w + x;
+              if ((t.base ? t.base[j] : 255) >= 128) {
+                inBox[j] = 255;
+                tA++;
+              }
+            }
+          let bestI = -1;
+          let bestIou = 0;
+          t.masks.forEach((m, i) => {
+            let inter = 0;
+            let uni = tA;
+            for (let j = 0; j < n; j++) {
+              if (m[j] < 128) continue;
+              if (inBox[j]) inter++;
+              else uni++;
+            }
+            const iou = uni ? inter / uni : 0;
+            if (iou > bestIou) {
+              bestIou = iou;
+              bestI = i;
+            }
+          });
+          if (bestI >= 0 && bestIou >= 0.5) ch = all[bestI];
+          else {
+            pickI = -1;
+            res = combine(inBox);
+          }
+        } else if (t.pts.length > 1) {
+          // หลายจุด = ชิ้นเล็กสุดที่ครอบทุกจุดที่แตะ ("คะแนนสูงสุด" มักเป็นทั้งตัว)
+          ch = [...ok].reverse().find((x) => t.pts.every((p) => at(t.masks![x.i], p) >= 128)) ?? all[0];
+        } else {
+          // จุดเดียว = กลางก่อน (แตะหน้า → หน้า) · กลางเล็กไป → ใหญ่ → เล็ก
+          ch = [1, 0, 2].map((i) => ok.find((x) => x.i === i)).find(Boolean) ?? all[0];
+        }
+        if (ch) {
+          pickI = ch.i;
+          res = ch.c;
+        }
+        if (t.box && res) {
+          // AI ล้นออกนอกกรอบ (ครอบถึงปกเสื้อ → ได้ทั้งตัว) → ไม่เก็บอะไรที่ไม่ได้ครอบ (เผื่อขอบ 3%)
+          const pad = Math.max(4, 0.03 * Math.max(w, pic.work.height));
+          const x0 = t.box.x0 - pad, x1 = t.box.x1 + pad, y0 = t.box.y0 - pad, y1 = t.box.y1 + pad;
+          for (let j = 0; j < n; j++) {
+            const x = j % w;
+            const y = (j - x) / w;
+            if (x < x0 || x > x1 || y < y0 || y > y1) res.out[j] = 0;
+          }
+        }
+      }
+      if (!res) {
+        const minPx = Math.max(30, n * 0.0005);
+        // เล็ก → ใหญ่: เอาชิ้นแรกที่เปลี่ยนภาพจริง (ลบ: ไม่เกินครึ่งของที่เก็บไว้)
+        for (let i = t.masks.length - 1; i >= 0; i--) {
+          const c = combine(t.masks[i]);
+          if (c.changed < minPx) continue;
+          if (t.mode === "drop" && c.changed > c.kept * 0.5 && i > 0) continue;
+          pickI = i;
+          res = c;
+          break;
+        }
+        if (!res) {
+          pickI = t.masks.length - 1;
+          res = combine(t.masks[pickI]);
+        }
+      }
+      maskRef.current = res.out;
       setSource((s) => s ?? "sam");
-      setTapInfo({ picked: r.picked, add: t.add });
+      setTapInfo({ picked: pickI, mode: t.mode, none: t.mode === "only" ? res.kept - res.changed < 30 : res.changed < 30 });
       setMaskVer((v) => v + 1);
     } catch (e) {
       console.error(e);
@@ -471,7 +615,6 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [manual, manualVer, result]
   );
-  const anchors = manual ? anchorCount(manual) : (result?.anchors ?? 0);
   const ready = curves.length > 0 && !!bounds;
 
   /** เปลี่ยนเครื่องมือ — เข้าโหมดเส้นครั้งแรกแปลงเส้นอัตโนมัติเป็นเส้นแก้ได้ · ออกจากปากกากลางคัน = ปิดเส้น */
@@ -487,6 +630,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
       maskRef.current = new Uint8Array(pic.work.width * pic.work.height).fill(255);
       setMaskVer((v) => v + 1);
     }
+    if (t !== tool) forgetTap(); // เปลี่ยนเครื่องมือ = แตะครั้งต่อไปเริ่มชุดใหม่
     setSel(null);
     setTool(t);
   };
@@ -523,7 +667,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
   const viewW = pic ? Math.round(Math.min(fitW, pic.work.width * 2) * zoom) : 0;
   const viewH = pic ? Math.round((viewW * pic.work.height) / pic.work.width) : 0;
   /** โหมดที่ต้องเห็นรูปเต็มพร้อมสีแดงทับส่วนที่ตัดทิ้ง */
-  const maskView = tool === "tapDrop" || tool === "tapAdd" || tool === "pick" || tool === "box" || tool === "keep" || tool === "erase";
+  const maskView = tool === "tapDrop" || tool === "tapAdd" || tool === "tapOnly" || tool === "pick" || tool === "box" || tool === "keep" || tool === "erase";
   const vectorView = tool === "edit" || tool === "pen";
 
   /** ชั้นสีแดงทับส่วนที่จะตัดทิ้ง (ขนาด work) — แปรงวาดทับตรงนี้ระหว่างลาก */
@@ -592,6 +736,16 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
         ctx.drawImage(pic.bmp, 0, 0, viewW, viewH);
         ctx.globalAlpha = 1;
       }
+      const sw = (Number(strokeW) || 0) * pic.scale * kView;
+      if (pathView && sw > 0 && tool === "view") {
+        // Stroke = ทาสีเต็มรูปทรง + เส้นหนา 2 เท่าแบบมุมมน → ได้ขอบยื่นออกเท่ากันรอบตัว (ในรูก็มีขอบ)
+        ctx.fillStyle = strokeColor;
+        ctx.fill(pathView, "evenodd");
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = sw * 2;
+        ctx.lineJoin = "round";
+        ctx.stroke(pathView);
+      }
       if (pathView) {
         ctx.save();
         ctx.clip(pathView, "evenodd");
@@ -599,7 +753,8 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
         ctx.restore();
       }
     }
-    if (pathView && (showPath || maskView || vectorView)) {
+    const stroked = tool === "view" && (Number(strokeW) || 0) > 0;
+    if (pathView && ((showPath && !stroked) || maskView || vectorView)) {
       ctx.lineJoin = "round";
       ctx.strokeStyle = "rgba(255,255,255,.85)";
       ctx.lineWidth = 3;
@@ -682,8 +837,8 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
     }
 
     // จุดเอา/ไม่เอา + กรอบ
-    if (tool === "pick" || tool === "box") {
-      const bx = dragBox ?? box;
+    if (tool === "pick" || tool === "box" || tool === "tapOnly") {
+      const bx = dragBox ?? (tool === "tapOnly" ? (busy ? lastTap.current?.box : null) : box);
       if (bx) {
         ctx.setLineDash([6, 4]);
         ctx.strokeStyle = "#ffffff";
@@ -713,6 +868,19 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
       }
     }
 
+    // จุดที่เพิ่งแตะ — ระหว่าง AI ทำงานให้เห็นว่ารับแตะแล้ว
+    const lt = lastTap.current;
+    const lp = lt?.pts[lt.pts.length - 1];
+    if (lt && lp && busy && (tool === "tapDrop" || tool === "tapAdd" || tool === "tapOnly")) {
+      ctx.beginPath();
+      ctx.arc(lp.x * k, lp.y * k, 10, 0, Math.PI * 2);
+      ctx.fillStyle = lt.mode === "drop" ? DROP_INK : KEEP_INK;
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
     // วงแปรง — เห็นก่อนป้ายว่าจะโดนแค่ไหน
     if (hover && (tool === "keep" || tool === "erase")) {
       const rr = (Number(brush) || 20) / 2;
@@ -725,7 +893,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
-  }, [pic, viewW, viewH, bg, kView, maskView, vectorView, pathView, showPath, showAnchors, curves, tool, sel, hover, points, box, dragBox, brush]);
+  }, [pic, viewW, viewH, bg, kView, maskView, vectorView, pathView, showPath, showAnchors, curves, tool, sel, hover, points, box, dragBox, brush, busy, strokeW, strokeColor]);
 
   useEffect(() => {
     rebuildOverlay();
@@ -745,6 +913,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
   const gesture = useRef<
     | { kind: "brush"; last: { x: number; y: number } | null }
     | { kind: "box"; x0: number; y0: number; cur: SamBox }
+    | { kind: "onlyBox"; x0: number; y0: number; cur: SamBox }
     | { kind: "node" | "hin" | "hout"; pi: number; ni: number; moved: boolean }
     | { kind: "penDrag"; pi: number; ni: number }
     | null
@@ -792,7 +961,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
   };
 
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!pic || tool === "view" || busy) return;
+    if (!pic || tool === "view" || busy) return; // ระหว่างรอ มีป้ายบอกทับบนรูปอยู่แล้ว
     e.preventDefault();
     (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
     const { x, y, k } = toWork(e);
@@ -802,8 +971,14 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
       if (!dropManual()) return;
       pushUndo();
       const add = tool === "tapAdd" ? !(e.shiftKey || e.altKey) : e.shiftKey || e.altKey;
-      lastTap.current = { pt: { x, y, keep: true }, add, base: maskRef.current ? Uint8Array.from(maskRef.current) : null };
-      void applyTap("best");
+      lastTap.current = { pts: [{ x, y, keep: true }], box: null, mode: add ? "add" : "drop", base: maskRef.current ? Uint8Array.from(maskRef.current) : null };
+      void applyTap("auto");
+      return;
+    }
+    if (tool === "tapOnly") {
+      // แตะ = จุด · ลาก = กรอบ (ตัดสินตอนปล่อยนิ้ว)
+      const b0 = { x0: x, y0: y, x1: x, y1: y };
+      gesture.current = { kind: "onlyBox", x0: x, y0: y, cur: b0 };
       return;
     }
     if (tool === "pick") {
@@ -879,7 +1054,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
     if (tool === "pen" || tool === "keep" || tool === "erase") setHover({ x, y });
     if (!g) return;
     if (g.kind === "brush") paintAt(x, y, k);
-    else if (g.kind === "box") {
+    else if (g.kind === "box" || g.kind === "onlyBox") {
       g.cur = { x0: Math.min(g.x0, x), y0: Math.min(g.y0, y), x1: Math.max(g.x0, x), y1: Math.max(g.y0, y) };
       setDragBox(g.cur);
     }
@@ -912,6 +1087,21 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
       const b = g.cur; // อ่านจาก gesture (state อาจยังไม่อัปเดตถ้าปล่อยนิ้วเร็ว)
       setDragBox(null);
       if (b && b.x1 - b.x0 > 6 && b.y1 - b.y0 > 6) setSelection(points, b, "auto");
+    }
+    if (g.kind === "onlyBox") {
+      const b = g.cur;
+      setDragBox(null);
+      if (!dropManual()) return;
+      pushUndo();
+      const isBox = b.x1 - b.x0 > 12 && b.y1 - b.y0 > 12;
+      const prev = lastTap.current;
+      const pt = { x: g.x0, y: g.y0, keep: true };
+      // แตะต่อจากการแตะ "เอาแค่ส่วนนี้" ครั้งก่อน = เพิ่มจุดเข้าชุดเดิม (แตะหน้า แล้วแตะผม = ได้ทั้งหัว)
+      lastTap.current =
+        !isBox && prev?.mode === "only" && !prev.box
+          ? { pts: [...prev.pts, pt], box: null, mode: "only", base: prev.base }
+          : { pts: isBox ? [] : [pt], box: isBox ? b : null, mode: "only", base: maskRef.current ? Uint8Array.from(maskRef.current) : null };
+      void applyTap("auto");
     }
   };
 
@@ -951,7 +1141,8 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
     if (!pic || !bounds || !curves.length) return null;
     const lim = Math.min(1, EXPORT_MAX / Math.max(pic.bmp.width, pic.bmp.height));
     const k = (1 / pic.scale) * lim; // พิกเซล work → พิกเซลไฟล์
-    const pad = Math.max(0, Number(padPx) || 0);
+    const sw = Math.max(0, Number(strokeW) || 0) * lim; // ความหนาขอบ (พิกเซลไฟล์)
+    const pad = Math.max(0, Number(padPx) || 0) + Math.ceil(sw);
     const b = bounds;
     const ox = cropTight ? Math.floor(b.x0 * k) - pad : 0;
     const oy = cropTight ? Math.floor(b.y0 * k) - pad : 0;
@@ -962,7 +1153,16 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
     cv.height = Math.max(1, H);
     const ctx = cv.getContext("2d")!;
     ctx.imageSmoothingQuality = "high";
-    ctx.clip(new Path2D(cutoutSvgPath(curves, k, -ox, -oy)), "evenodd");
+    const path = new Path2D(cutoutSvgPath(curves, k, -ox, -oy));
+    if (sw > 0) {
+      ctx.fillStyle = strokeColor;
+      ctx.fill(path, "evenodd");
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = sw * 2;
+      ctx.lineJoin = "round";
+      ctx.stroke(path);
+    }
+    ctx.clip(path, "evenodd");
     ctx.drawImage(pic.bmp, -ox, -oy, pic.bmp.width * lim, pic.bmp.height * lim);
     return await new Promise((res) => cv.toBlob((bl) => res(bl), "image/png"));
   }
@@ -1095,6 +1295,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
   const TOOL_HINT: Record<Tool, string> = {
     tapDrop: "แตะตรงที่ยังติดมา (พื้นหลัง/ของที่ไม่เอา) → AI ลบทั้งชิ้นให้ · สีแดง = ส่วนที่ถูกลบ",
     tapAdd: "แตะตรงที่โดนลบไปผิด → AI เอาคืนทั้งชิ้น",
+    tapOnly: "ลากกรอบรอบส่วนที่จะเอา (เช่น ครอบหัว) → ที่เหลือลบหมด · หรือแตะบนส่วนนั้น",
     pick: pickKeep
       ? "เริ่มเลือกใหม่: คลิกบนสิ่งที่จะเอา (จุดเขียว) · Shift+คลิก = ไม่เอา (จุดแดง) · คลิกจุดเดิม = ลบจุด"
       : "คลิกตรงส่วนที่ไม่เอา (จุดแดง) · Shift+คลิก = ส่วนที่เอา",
@@ -1118,19 +1319,12 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
           </b>
           <span className="text-[12px] tabular-nums" style={{ color: "var(--dk-faint)" }}>
             {pic.bmp.width}×{pic.bmp.height} px
-            {pro && ready && ` · ${anchors} จุดแองเคอร์ · ${curves.length} เส้น`}
-            {manual && " · แก้เส้นเอง"}
-          </span>
+                      </span>
         </div>
 
-        {/* แถบเครื่องมือหลัก — ลบ/เอาคืน ด้วยการแตะ หรือระบาย */}
+        {/* แถบเครื่องมือหลัก — ผู้ใช้ขอเหลือแค่ "เอาแค่ส่วนนี้" (แตะลบ/เอาคืน/ระบาย ถอดออก 12 ต.ค. 69 "ใช้ยาก") */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <ToolBtn on={tool === "tapDrop"} tone="drop" onClick={() => pickTool("tapDrop")}>👆 แตะเพื่อลบ</ToolBtn>
-          <ToolBtn on={tool === "tapAdd"} tone="keep" onClick={() => pickTool("tapAdd")}>👆 แตะเพื่อเอาคืน</ToolBtn>
-          <span className="mx-0.5 h-6 w-px" style={{ background: "var(--dk-hair)" }} />
-          <ToolBtn on={tool === "erase"} tone="drop" onClick={() => pickTool("erase")}>🧽 ระบายลบ</ToolBtn>
-          <ToolBtn on={tool === "keep"} tone="keep" onClick={() => pickTool("keep")}>🖌 ระบายคืน</ToolBtn>
-          <span className="mx-0.5 h-6 w-px" style={{ background: "var(--dk-hair)" }} />
+          <ToolBtn on={tool === "tapOnly"} tone="keep" onClick={() => pickTool("tapOnly")}>🎯 เอาแค่ส่วนนี้</ToolBtn>
           <ToolBtn on={tool === "view"} onClick={() => pickTool("view")}>👁 ดูผล</ToolBtn>
           <button
             type="button"
@@ -1151,24 +1345,30 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
             ))}
           </span>
         </div>
-        {pro && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <span className="text-[12px] font-semibold" style={{ color: "var(--dk-faint)" }}>โหมดละเอียด</span>
-            <Choice on={tool === "pick"} onClick={() => pickTool("pick")}>🎯 เลือกใหม่ด้วยจุด</Choice>
-            <Choice on={tool === "box"} onClick={() => pickTool("box")}>⬚ ลากกรอบ</Choice>
-            <Choice on={tool === "edit"} onClick={() => pickTool("edit")}>✒️ แก้จุดเส้น</Choice>
-            <Choice on={tool === "pen"} onClick={() => pickTool("pen")}>🖊 วาดเส้นเอง</Choice>
-          </div>
-        )}
-
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2" style={{ background: "var(--dk-sky)" }}>
           <span className="min-w-0 flex-1 text-[12.5px] font-semibold" style={{ color: "var(--dk-navy)" }}>
-            {TOOL_HINT[tool]}
+            {(tool === "tapDrop" || tool === "tapAdd" || tool === "tapOnly") && tapInfo
+              ? tapInfo.mode === "only"
+                ? tapInfo.onBg
+                  ? "ตรงที่แตะเป็นพื้นหลังที่ลบไปแล้ว (สีแดง) — แตะบนตัวคน/ของ หรือลากกรอบรอบส่วนที่จะเอา"
+                  : tapInfo.none
+                  ? "ไม่เหลืออะไรเลย — ลองเลือกขนาดใหญ่ขึ้น หรือ ↶ ย้อน แล้วลากกรอบรอบส่วนที่จะเอา"
+                  : lastTap.current && !lastTap.current.box
+                    ? "เก็บไว้แค่ส่วนนี้แล้ว ✓ · ขาดตรงไหน แตะเพิ่มตรงนั้น (เช่น ผม) · หรือลากกรอบรอบส่วนที่จะเอา"
+                    : "เก็บไว้แค่ส่วนนี้แล้ว ✓ · ได้มากไป/น้อยไป เลือกขนาด →"
+                : tapInfo.none
+                ? tapInfo.mode === "add"
+                  ? "ตรงที่แตะไม่ได้ถูกลบอยู่แล้ว — แตะบนส่วนที่เป็นสีแดง"
+                  : "ตรงที่แตะถูกลบอยู่แล้ว (สีแดง) — แตะบนส่วนที่ยังไม่แดง"
+                : tapInfo.mode === "add"
+                  ? "เอาคืนแล้ว ✓ · เอาคืนมากไป/น้อยไป เลือกขนาด →"
+                  : "ลบแล้ว ✓ · ลบมากไป/น้อยไป เลือกขนาด →"
+              : TOOL_HINT[tool]}
           </span>
-          {(tool === "tapDrop" || tool === "tapAdd") && tapInfo && lastTap.current && (
+          {(tool === "tapDrop" || tool === "tapAdd" || tool === "tapOnly") && tapInfo && lastTap.current && (
             <span className="flex flex-wrap items-center gap-1">
               <span className="text-[12px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
-                {tapInfo.add ? "ชิ้นที่เอาคืน" : "ชิ้นที่ลบ"}
+                {tapInfo.mode === "add" ? "ชิ้นที่เอาคืน" : tapInfo.mode === "only" ? "ส่วนที่เก็บ" : "ชิ้นที่ลบ"}
               </span>
               {(["ใหญ่", "กลาง", "เล็ก"] as const).map((l, i) => (
                 <Choice key={l} on={tapInfo.picked === i} onClick={() => void applyTap(i)}>
@@ -1234,7 +1434,19 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
           )}
         </div>
 
-        <div ref={wrapRef} className="mt-3 max-h-[72vh] overflow-auto rounded-xl" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
+        <div className="relative mt-3">
+        {/* สถานะทับบนรูป — โหลด AI ครั้งแรกนาน ถ้าอยู่ใต้รูปจะดูเหมือนแตะแล้วไม่เกิดอะไร */}
+        {(busy || err) && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+            <p
+              className="rounded-xl px-4 py-2.5 text-center text-[13.5px] font-bold shadow-lg"
+              style={busy ? { background: "var(--dk-navy)", color: "#fff" } : { background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+            >
+              {busy ? `⏳ ${busy}` : err}
+            </p>
+          </div>
+        )}
+        <div ref={wrapRef} className="max-h-[72vh] overflow-auto rounded-xl" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
           <canvas
             ref={cvRef}
             style={{
@@ -1251,6 +1463,7 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
             onPointerLeave={() => setHover(null)}
           />
         </div>
+        </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-[12px] font-semibold" style={{ color: "var(--dk-faint)" }}>พื้นตรวจขอบ</span>
@@ -1264,12 +1477,6 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
             <input type="checkbox" checked={showAnchors} onChange={(e) => setShowAnchors(e.target.checked)} /> จุดแองเคอร์
           </label>
         </div>
-        {busy && (
-          <p className="mt-2 rounded-xl px-3 py-2 text-[13px] font-semibold" style={{ background: "var(--dk-sky)", color: "var(--dk-navy)" }}>
-            ⏳ {busy}
-          </p>
-        )}
-        {errBox}
       </section>
 
       {/* ── แผงคุม ── */}
@@ -1318,82 +1525,45 @@ export default function CutoutTab({ onSendToDiecut }: { onSendToDiecut: (f: File
 
         <Step n={2} title="แก้ตรงที่ยังไม่ถูก">
           <ul className="grid gap-1.5 text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
-            <li><b style={{ color: "var(--dk-navy)" }}>ยังมีของเกิน</b> → กด 👆 แตะเพื่อลบ แล้วแตะบนชิ้นนั้น</li>
-            <li><b style={{ color: "var(--dk-navy)" }}>โดนลบไปผิด</b> → กด 👆 แตะเพื่อเอาคืน แล้วแตะตรงนั้น</li>
-            <li><b style={{ color: "var(--dk-navy)" }}>AI กินเยอะ/น้อยไป</b> → กด ใหญ่ / กลาง / เล็ก ข้างคำแนะนำ</li>
-            <li><b style={{ color: "var(--dk-navy)" }}>จุดเล็ก ๆ แตะไม่ติด</b> → 🧽 ระบายลบ / 🖌 ระบายคืน (ซูม 2× ช่วยได้)</li>
+            <li><b style={{ color: "var(--dk-navy)" }}>อยากได้แค่บางส่วน (เช่น แค่หัว)</b> → กด 🎯 เอาแค่ส่วนนี้ แล้วลากกรอบรอบส่วนนั้น (หรือแตะ เช่น แตะหน้า แล้วแตะผม)</li>
+            <li><b style={{ color: "var(--dk-navy)" }}>ได้มากไป/น้อยไป</b> → กด ใหญ่ / กลาง / เล็ก ข้างคำแนะนำ</li>
             <li><b style={{ color: "var(--dk-navy)" }}>พลาด</b> → ↶ ย้อน (⌘Z)</li>
           </ul>
           <Slider label={`หดขอบเข้า ${inset} px`} hint="มีขอบขาว/ขอบพื้นหลังติดรอบวัตถุ ให้เพิ่ม" min={0} max={8} step={1} value={inset} onChange={setInset} />
-          <label className="mt-3 flex min-h-[44px] items-center gap-2 rounded-xl px-3 text-[13px] font-semibold ring-1 ring-[color:var(--dk-hair)]" style={{ color: "var(--dk-navy)" }}>
-            <input type="checkbox" checked={pro} onChange={(e) => {
-              setPro(e.target.checked);
-              if (!e.target.checked && (tool === "pick" || tool === "box" || tool === "edit" || tool === "pen")) pickTool("tapDrop");
-            }} />
-            🛠 โหมดละเอียด (pen tool · ปรับเส้น)
-          </label>
-          {pro && (
-            <div className="mt-3 space-y-3">
-              {source === "sam" && samInfo && points.length === 1 && !box && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[12px] font-semibold" style={{ color: "var(--dk-faint)" }}>ขนาดที่เลือก</span>
-                {(["ทั้งชิ้น", "กลาง", "ส่วนย่อย"] as const).map((l, i) => (
-                  <Choice
-                    key={l}
-                    on={samInfo.picked === i}
-                    onClick={() => {
-                      setPickSize(i);
-                      void runSam(points, box, i);
-                    }}
-                  >
-                    {l}
-                  </Choice>
-                ))}
-              </div>
-            )}
-              {(points.length > 0 || !!box) && (
-                <Btn small onClick={() => setSelection([], null, "auto")} disabled={!!busy}>
-                  ล้างจุด/กรอบ
-                </Btn>
-              )}
-          {manual ? (
-            <div className="grid gap-2">
-              <p className="rounded-xl px-3 py-2 text-[12.5px] font-semibold" style={{ background: "var(--dk-sky)", color: "var(--dk-navy)" }}>
-                กำลังใช้เส้นที่แก้จุดเอง — ค่าเกลาขอบด้านล่างจะไม่มีผลจนกว่าจะกลับไปใช้เส้นอัตโนมัติ
-              </p>
-              <Btn small onClick={backToAuto}>
-                ↺ กลับไปใช้เส้นอัตโนมัติ
-              </Btn>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <Slider label={`หดขอบเข้า ${inset} px`} hint="กันขอบพื้นหลังติดมา (ขอบขาว/ขอบดำรอบวัตถุ)" min={0} max={8} step={1} value={inset} onChange={setInset} />
-              <Slider label={`ความลื่นของเส้น ${tol}`} hint="น้อย = เกาะขอบแน่น จุดเยอะ · มาก = เส้นลื่น จุดน้อย แบบลากมือ" min={0.3} max={4} step={0.1} value={tol} onChange={setTol} />
-              <label className="flex min-h-[40px] items-center gap-2 text-[13px] font-semibold" style={{ color: "var(--dk-navy)" }}>
-                <input type="checkbox" checked={corners} onChange={(e) => setCorners(e.target.checked)} />
-                เก็บมุมแหลม (ขอบกล่อง/ปลายแหลม)
-              </label>
-              {corners && (
-                <Slider label={`มุมที่ถือว่าหัก ≥ ${cornerDeg}°`} hint="น้อย = เจอมุมง่าย · มาก = โค้งเกือบหมด" min={25} max={120} step={5} value={cornerDeg} onChange={setCornerDeg} />
-              )}
-              <label className="flex min-h-[40px] items-center gap-2 text-[13px] font-semibold" style={{ color: "var(--dk-navy)" }}>
-                <input type="checkbox" checked={fillHoles} onChange={(e) => setFillHoles(e.target.checked)} />
-                ปิดรูกลางวัตถุ (ไม่ตัดทะลุ)
-              </label>
-              <More title="ตั้งค่าละเอียด">
-                <Slider label={`ลบรอยหยัก ${smooth} px`} hint="ขอบมาสก์ขรุขระ (ขน/ผม/JPG แตก) ให้เพิ่ม" min={0} max={6} step={1} value={smooth} onChange={setSmooth} />
-                <Slider label={`ระดับขอบ ${level}`} hint="ขอบโปร่งครึ่ง ๆ: มาก = เส้นเข้าในวัตถุ · น้อย = ออกนอก" min={30} max={225} step={1} value={level} onChange={setLevel} />
-              </More>
-            </div>
-          )}
-            </div>
-          )}
         </Step>
 
         <section className="dkb-g p-4">
           <div className="flex items-center gap-2.5">
             <StepNo n={3} />
             <h2 className="dkb-h2 text-[1.08rem]" style={{ color: "var(--dk-navy)" }}>เอาไปใช้</h2>
+          </div>
+          <div className="mt-3 rounded-xl p-3" style={{ boxShadow: "inset 0 0 0 1px var(--dk-hair)" }}>
+            <Slider
+              label={Number(strokeW) > 0 ? `ขอบรอบรูป (Stroke) หนา ${strokeW} px` : "ขอบรอบรูป (Stroke) — ไม่มี"}
+              hint="เช่น ขอบขาวแบบสติกเกอร์ · เลื่อนแล้วดูผลบนรูปได้ทันที"
+              min={0}
+              max={Math.max(10, Math.round(Math.max(pic.bmp.width, pic.bmp.height) * 0.06))}
+              step={1}
+              value={strokeW}
+              onChange={(v) => {
+                setStrokeW(v);
+                if (tool !== "view") pickTool("view");
+              }}
+            />
+            {Number(strokeW) > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[12px] font-semibold" style={{ color: "var(--dk-faint)" }}>สีขอบ</span>
+                <Choice on={strokeColor === "#ffffff"} onClick={() => setStrokeColor("#ffffff")}>⬜ ขาว</Choice>
+                <Choice on={strokeColor === "#000000"} onClick={() => setStrokeColor("#000000")}>⬛ ดำ</Choice>
+                <label className="flex min-h-[40px] items-center gap-1.5 rounded-xl px-2 text-[12.5px] font-semibold ring-1 ring-[color:var(--dk-hair)]" style={{ color: "var(--dk-navy-soft)" }}>
+                  <input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="h-7 w-8 cursor-pointer border-0 bg-transparent p-0" />
+                  สีอื่น
+                </label>
+                <button type="button" onClick={() => setStrokeW("0")} className="ml-auto min-h-[40px] px-2 text-[12.5px] font-semibold underline" style={{ color: "var(--dk-navy-soft)" }}>
+                  เอาขอบออก
+                </button>
+              </div>
+            )}
           </div>
           <label className="mt-3 flex min-h-[40px] items-center gap-2 text-[13px] font-semibold" style={{ color: "var(--dk-navy)" }}>
             <input type="checkbox" checked={cropTight} onChange={(e) => setCropTight(e.target.checked)} />
@@ -1481,4 +1651,14 @@ function ToolBtn({ on, tone, onClick, children }: { on: boolean; tone?: "drop" |
       {children}
     </button>
   );
+}
+
+/** ปิดรอยแหว่ง/รูเล็กกว่า ~r พิกเซล (ขยายแล้วหด ด้วย box blur — เร็วพอสำหรับภาพ 2048²) */
+function closeMask(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const grow = boxBlur(m, w, h, r);
+  for (let i = 0; i < grow.length; i++) grow[i] = grow[i] > 24 ? 255 : 0;
+  const shrink = boxBlur(grow, w, h, r);
+  const out = new Uint8Array(m.length);
+  for (let i = 0; i < out.length; i++) out[i] = Math.max(m[i], shrink[i] >= 250 ? 255 : 0);
+  return out;
 }

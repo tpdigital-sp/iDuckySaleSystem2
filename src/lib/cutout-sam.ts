@@ -97,8 +97,9 @@ export async function samMask(
   si: SamImage,
   points: SamPoint[],
   box: SamBox | null,
-  pick: number | "best"
-): Promise<{ mask: Uint8Array; scores: number[]; picked: number; areas: number[] }> {
+  pick: number | "best",
+  all = false
+): Promise<{ mask: Uint8Array; scores: number[]; picked: number; areas: number[]; masks?: Uint8Array[] }> {
   const { model, processor } = await loading!;
   const opts: Record<string, unknown> = {};
   if (points.length) {
@@ -126,11 +127,19 @@ export async function samMask(
   let ch: number;
   if (pick === "best") ch = scores.indexOf(Math.max(...scores));
   else ch = order[Math.min(pick, order.length - 1)];
-  const mask = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    const v = m.data[ch * n + i];
-    mask[i] = Math.round(255 / (1 + Math.exp(-v * 4))); // ×4 = ขอบคมขึ้นนิดแต่ยังนุ่มพอไล่เส้นละเอียดกว่าพิกเซล
-  }
-  return { mask, scores: order.map((i) => scores[i]), picked: order.indexOf(ch), areas: order.map((i) => areas[i]) };
+  const toMask = (c: number) => {
+    const out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) out[i] = Math.round(255 / (1 + Math.exp(-m.data[c * n + i] * 4))); // ×4 = ขอบคมขึ้นนิดแต่ยังนุ่มพอไล่เส้นละเอียดกว่าพิกเซล
+    return out;
+  };
+  const mask = toMask(ch);
+  return {
+    mask,
+    scores: order.map((i) => scores[i]),
+    picked: order.indexOf(ch),
+    areas: order.map((i) => areas[i]),
+    // ทุกขนาด (ใหญ่ → เล็ก) — ให้ผู้เรียกเลือกเองตามบริบทได้โดยไม่ต้องถอดใหม่
+    masks: all ? order.map((i) => (i === ch ? mask : toMask(i))) : undefined,
+  };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
