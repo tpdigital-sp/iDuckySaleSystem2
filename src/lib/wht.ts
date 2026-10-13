@@ -59,6 +59,8 @@ export interface WhtCert {
    */
   lineUserId?: string;
   lineBound?: { at: string; by: string };
+  /** 💬 ลิงก์ห้องแชท OA Manager (chat.line.biz/…/chat/…) — ปุ่มเปิดแชท · ⚠️ รหัสท้ายลิงก์ไม่ใช่ userId ส่งข้อความด้วยไม่ได้ */
+  lineChatUrl?: string;
   /** เช็ค LINE ล่าสุดเมื่อไหร่ (รวมกรณีหาไม่เจอ) — ไม่เจอแล้วไม่ต้องเช็คซ้ำทุกครั้งที่เปิดหน้า (รอ 24 ชม. หรือจนกว่าใบงานถูกผูก LINE) */
   lineCheckedAt?: string;
   /** กลุ่มลูกค้าเดียวกัน — ใช้รวมใบเวลาโชว์/ทวง (LINE userId ถ้ารู้ ไม่งั้นเลขผู้เสียภาษี) */

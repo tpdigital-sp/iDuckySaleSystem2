@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { fetchLineProfile, lineTargetOf, noticeFlex, notifyCustomer, notifyCustomerLogged } from "@/lib/server/notify";
+import { CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
+import { chatIdInUrl, chatUrlOf, loadChatIds, loadOaOwnerId, setOverride } from "@/lib/server/line-chat";
 import { fetchTaxInvoicesOfMonth, fetchTaxInvoicesSince, type SalesReportRow } from "@/lib/server/flowaccount-api";
 import {
   WHT_PAYEE,
@@ -347,14 +349,62 @@ export async function bindCertLine(sb: SupabaseClient, c: WhtCert, userId: strin
   if (!prof) return { error: "LINE นี้ส่งข้อความไม่ได้ (ลูกค้ายังไม่ได้เป็นเพื่อนกับ OA ร้าน หรือรหัสผิด)" };
   const now = new Date().toISOString();
   const lineTo: WhtCert["lineTo"] = { id: userId, via: "wht", at: now, name: prof.name.slice(0, 60), ...(prof.picture ? { picture: prof.picture } : {}) };
-  const bind = (x: WhtCert): WhtCert => ({ ...x, lineUserId: userId, lineBound: { at: now, by }, lineTo, hasLine: true, groupKey: userId });
+  const chatUrl = c.lineChatUrl || (await knownChatUrl(userId));
+  const bind = (x: WhtCert): WhtCert => ({ ...x, lineUserId: userId, lineBound: { at: now, by }, lineTo, hasLine: true, groupKey: userId, ...(chatUrl && !x.lineChatUrl ? { lineChatUrl: chatUrl } : {}) });
   const out = [bind(c)];
   for (const x of await sameCustomerCerts(sb, c)) if (!x.lineUserId && !x.lineTo) out.push(bind(x));
   for (const x of out) {
     const err = await saveCert(sb, x);
     if (err) return { error: err };
   }
+  if (c.lineChatUrl) await rememberChatPair(userId, c.lineChatUrl, by);
   return { certs: out };
+}
+
+/** ลิงก์ห้องแชทของ LINE นี้ที่ระบบรู้อยู่แล้ว (ตารางจับคู่ + ลิงก์ที่เคยวางในออเดอร์) */
+async function knownChatUrl(userId: string): Promise<string | undefined> {
+  const db = getChatFirestore();
+  if (!db) return undefined;
+  try {
+    const [ids, oa] = await Promise.all([loadChatIds(db), loadOaOwnerId(db)]);
+    return chatUrlOf(oa, ids[userId]?.id) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 💬 ลิงก์ห้องแชทที่วางมา → ใครคือเจ้าของห้อง (ถ้าเคยจับคู่ไว้ที่ไหนสักที่) · null = ยังไม่รู้ ให้พนักงานเลือกเอง
+ * ⚠️ รหัสท้ายลิงก์ไม่ใช่ userId — แปลผ่านตารางจับคู่เท่านั้น ห้ามเอาไปส่งข้อความตรง ๆ
+ */
+export async function chatLinkOwner(url: string): Promise<{ userId: string; name: string; picture?: string } | null> {
+  const chatId = chatIdInUrl(url)?.toLowerCase();
+  const db = getChatFirestore();
+  if (!chatId || !db) return null;
+  try {
+    const ids = await loadChatIds(db); // แคช 5 นาที (ดึงสดทั้งตาราง ~10 วิ)
+    const uid = Object.keys(ids).find((k) => ids[k].id.toLowerCase() === chatId);
+    const p = uid ? await fetchLineProfile(uid) : null;
+    return uid && p ? { userId: uid, name: p.name, picture: p.picture } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** ผูกแล้ว → จำว่า "ลิงก์ห้องนี้ = คนนี้" (ตารางเดียวกับหน้าออเดอร์/AdminBuddy) · มีคู่เดิมอยู่แล้วไม่ทับ */
+async function rememberChatPair(userId: string, url: string, by: string): Promise<void> {
+  const chatId = chatIdInUrl(url);
+  const db = getChatFirestore();
+  if (!chatId || !db) return;
+  try {
+    const ref = db.collection(CHAT_OVERRIDE_COLLECTION).doc(userId);
+    const d = await ref.get();
+    if (d.exists && d.get("managerUserId")) return;
+    await ref.set({ managerUserId: chatId, managerUserIdBy: by, managerUserIdAt: new Date().toISOString(), source: "iducky-wht" }, { merge: true });
+    setOverride(userId, chatId);
+  } catch {
+    /* จำไม่ได้ก็แค่ครั้งหน้าต้องเลือกเอง */
+  }
 }
 
 export async function loadCert(sb: SupabaseClient, id: string): Promise<WhtCert | null> {

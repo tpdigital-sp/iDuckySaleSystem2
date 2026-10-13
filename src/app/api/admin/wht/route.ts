@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { WHT_BUCKET, WHT_TABLE, bindCertLine, isMissingTable, lastSyncInfo, loadCert, refreshLineFlags, relinkCert, saveCert, withFileUrls } from "@/lib/server/wht-db";
+import { WHT_BUCKET, WHT_TABLE, bindCertLine, chatLinkOwner, isMissingTable, lastSyncInfo, loadCert, refreshLineFlags, relinkCert, saveCert, withFileUrls } from "@/lib/server/wht-db";
 import { flowAccountApiReady } from "@/lib/server/flowaccount-api";
 import { lineUserIdFrom } from "@/lib/server/notify";
 import { WHT_RATE_DEFAULT, whtAmountOf, type WhtCert } from "@/lib/wht";
@@ -53,6 +53,8 @@ type Patch = {
   removeFile?: string;
   /** 🔗 ผูก LINE ตรงที่ใบหัก (userId U…) · null = ยกเลิกผูก */
   lineUserId?: string | null;
+  /** 💬 ลิงก์ห้องแชท OA Manager · null = ลบลิงก์ */
+  chatLink?: string | null;
 };
 
 const s = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : undefined);
@@ -72,6 +74,19 @@ export async function PATCH(req: Request) {
   const now = new Date().toISOString();
   let c: WhtCert = { ...cur };
 
+  if (body.chatLink !== undefined) {
+    const url = body.chatLink === null ? "" : body.chatLink.trim();
+    if (url && !/^https:\/\/chat\.line\.biz\/[^/\s]+\/chat\/[^/\s]+/i.test(url))
+      return NextResponse.json({ error: "ต้องเป็นลิงก์ห้องแชทจาก LINE OA Manager (https://chat.line.biz/…/chat/…)" }, { status: 400 });
+    if (url) c.lineChatUrl = url.slice(0, 300);
+    else delete c.lineChatUrl;
+    const err = await saveCert(sb, c);
+    if (err) return NextResponse.json({ error: err }, { status: 500 });
+    // ยังไม่ได้ผูก LINE → เดาเจ้าของห้องจากตารางจับคู่ ให้พนักงานกดยืนยัน (ไม่ผูกเอง กันผิดคน)
+    const suggest = url && !c.lineUserId ? await chatLinkOwner(url) : null;
+    const [view] = await withFileUrls(sb, [c]);
+    return NextResponse.json({ cert: view, ...(suggest ? { suggest } : {}) });
+  }
   if (body.lineUserId !== undefined) {
     const uid = body.lineUserId === null ? null : lineUserIdFrom(body.lineUserId);
     if (body.lineUserId !== null && !uid) return NextResponse.json({ error: "รหัส LINE ไม่ถูกต้อง — เลือกจากรายชื่อแชท" }, { status: 400 });

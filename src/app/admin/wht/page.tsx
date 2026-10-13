@@ -193,7 +193,7 @@ function WhtInner() {
     }
   }
 
-  async function patch(id: string, body: Record<string, unknown>) {
+  async function patch(id: string, body: Record<string, unknown>): Promise<PatchResult> {
     setBusy(id);
     setMsg(null);
     try {
@@ -206,13 +206,15 @@ function WhtInner() {
         cert?: WhtCertView;
         /** ใบอื่นของลูกค้าเดียวกันที่ผูก LINE ตามไปด้วย */
         also?: WhtCertView[];
+        /** วางลิงก์ห้องแชทแล้วระบบรู้ว่าเป็นของใคร (รอยืนยัน) */
+        suggest?: LineHit;
         error?: string;
       } | null;
       if (!r.ok || !j?.cert)
         throw new Error(j?.error ?? `บันทึกไม่สำเร็จ (${r.status})`);
       replace([j.cert, ...(j.also ?? [])]);
       if (j.also?.length) setMsg({ ok: true, text: `ผูก LINE ให้ใบอื่นของลูกค้าเดียวกันด้วย ${j.also.length} ใบ: ${j.also.map((x) => x.id).join(", ")}` });
-      return true;
+      return j;
     } catch (e) {
       setMsg({ ok: false, text: `${id}: ${(e as Error).message}` });
       return false;
@@ -569,6 +571,7 @@ function WhtInner() {
               )}
               {st === "pending" && (
                 <>
+                  {c.lineChatUrl && <ChatLinkBtn url={c.lineChatUrl} label="💬 แชท" />}
                   <Btn small disabled={rowBusy} onClick={() => quick(c, { received: true })} title="กดเมื่อลูกค้าส่งใบหักมาแล้ว — สถานะจะเปลี่ยนเป็น “ได้รับใบหักแล้ว”">
                     บันทึกว่าได้รับใบหัก
                   </Btn>
@@ -893,7 +896,7 @@ function Detail({
 }: {
   c: WhtCertView;
   busy: boolean;
-  patch: (id: string, body: Record<string, unknown>) => Promise<boolean>;
+  patch: (id: string, body: Record<string, unknown>) => Promise<PatchResult>;
   attach: (id: string, kind: "cert" | "slip", f: File) => Promise<void>;
 }) {
   const st = whtStatusOf(c);
@@ -1337,6 +1340,9 @@ const LINE_VIA: Record<string, string> = {
 };
 
 type LineHit = { userId: string; name: string; picture?: string; lastSeen?: string };
+/** false = บันทึกไม่สำเร็จ (ข้อความ error ขึ้นแถบบนแล้ว) */
+type PatchResult = false | { cert?: WhtCertView; also?: WhtCertView[]; suggest?: LineHit };
+const CHAT_LINK_RE = /^https?:\/\/chat\.line\.biz\//i;
 
 /**
  * 🔗 ผูก LINE ลูกค้าที่ใบหัก — ค้นจากคลังแชท LINE ของร้าน (ตัวเดียวกับหน้าออเดอร์ /api/admin/line-customers)
@@ -1349,20 +1355,25 @@ function LineBind({
 }: {
   c: WhtCertView;
   busy: boolean;
-  patch: (id: string, body: Record<string, unknown>) => Promise<boolean>;
+  patch: (id: string, body: Record<string, unknown>) => Promise<PatchResult>;
 }) {
   const [editing, setEditing] = useState(!c.lineTo);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<LineHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState<LineHit | null>(null);
+  /** คนที่ระบบรู้จากลิงก์ห้องแชทที่วาง (เคยจับคู่ไว้) */
+  const [fromLink, setFromLink] = useState(false);
+  const [note, setNote] = useState("");
   const [err, setErr] = useState("");
+  const isLink = CHAT_LINK_RE.test(q.trim());
   const { confirm, dialog } = useConfirm();
 
   useEffect(() => setEditing(!c.lineTo), [c.lineTo]);
   useEffect(() => {
-    if (!editing) return;
+    if (!editing || CHAT_LINK_RE.test(q.trim())) return;
     setPicked(null);
+    setFromLink(false);
     setLoading(true);
     const t = setTimeout(async () => {
       try {
@@ -1381,10 +1392,26 @@ function LineBind({
     return () => clearTimeout(t);
   }, [q, editing]);
 
+  /** 💬 วางลิงก์ห้องแชท → เก็บเป็นปุ่มเปิดแชท + ถ้ารู้ว่าห้องนี้ของใคร เสนอให้กดยืนยัน */
+  async function saveLink() {
+    const r = await patch(c.id, { chatLink: q.trim() });
+    if (!r) return;
+    setQ("");
+    if (r.suggest) {
+      setPicked(r.suggest);
+      setFromLink(true);
+      setNote("");
+    } else if (!c.lineUserId) {
+      setNote("เก็บลิงก์แชทแล้ว — ระบบยังไม่รู้ว่าห้องนี้ของใคร (ลิงก์ใช้ส่งข้อความเองไม่ได้) · เลือกชื่อลูกค้าจากรายชื่อด้านล่าง คนที่เพิ่งเปิดแชทมักอยู่บนสุด ผูกครั้งเดียวครั้งหน้าระบบจำเอง");
+    } else setNote("เก็บลิงก์แชทแล้ว");
+  }
+
   async function bind(h: LineHit) {
     if (await patch(c.id, { lineUserId: h.userId })) {
       setQ("");
       setPicked(null);
+      setFromLink(false);
+      setNote("");
     }
   }
 
@@ -1428,10 +1455,25 @@ function LineBind({
           </>
         ) : (
           <span className="text-[13px]" style={{ color: "var(--dk-coral-ink)" }}>
-            ยังไม่มี — เลือกจากรายชื่อแชทด้านล่าง ผูกแล้วทวงได้เลย (ใบอื่นของลูกค้าเดียวกันผูกตามให้)
+            ยังไม่มี — เลือกจากรายชื่อแชท หรือวางลิงก์ห้องแชท ผูกแล้วทวงได้เลย (ใบอื่นของลูกค้าเดียวกันผูกตามให้)
           </span>
         )}
       </div>
+      {c.lineChatUrl && (
+        <div className="flex flex-wrap items-center gap-2">
+          <ChatLinkBtn url={c.lineChatUrl} label="💬 เปิดแชทลูกค้า ↗" />
+          <Btn
+            small
+            disabled={busy}
+            onClick={async () => {
+              if (await confirm({ icon: "💬", title: "ลบลิงก์ห้องแชทของใบนี้?", detail: "LINE ที่ผูกไว้ยังอยู่ ลบแค่ปุ่มเปิดแชท", confirmLabel: "ลบลิงก์", danger: true }))
+                void patch(c.id, { chatLink: null });
+            }}
+          >
+            ✕ ลบลิงก์
+          </Btn>
+        </div>
+      )}
 
       {editing && (
         <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -1439,16 +1481,26 @@ function LineBind({
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="พิมพ์ชื่อ LINE ลูกค้า (ไม่ใช่ชื่อบริษัท) · เว้นว่าง = คนที่คุยล่าสุด"
+              placeholder="พิมพ์ชื่อ LINE ลูกค้า หรือวางลิงก์ห้องแชท chat.line.biz · เว้นว่าง = คนที่คุยล่าสุด"
               className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-[14px]"
               aria-label="ค้นหาชื่อ LINE ลูกค้า"
             />
+            {isLink && (
+              <Btn small tone="navy" disabled={busy} onClick={() => void saveLink()}>
+                {busy ? "กำลังบันทึก…" : "บันทึกลิงก์แชท"}
+              </Btn>
+            )}
             {c.lineTo && (
               <Btn small onClick={() => setEditing(false)}>
                 ปิด
               </Btn>
             )}
           </div>
+          {note && (
+            <p className="mt-2 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+              {note}
+            </p>
+          )}
           <p className="mt-1.5 text-[12px]" style={{ color: "var(--dk-faint)" }}>
             หาไม่เจอ? ทักลูกค้าในแชท OA ก่อน 1 ข้อความ แล้วล้างช่องค้นหา — ห้องนั้นจะขึ้นบนสุด
           </p>
@@ -1463,17 +1515,24 @@ function LineBind({
               <span className="min-w-0 flex-1">
                 <b className="block truncate">{picked.name}</b>
                 <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
-                  ทวงใบหัก {c.company} จะส่งเข้า LINE นี้
+                  {fromLink ? "เจ้าของห้องแชทนี้ (เคยจับคู่ไว้) · " : ""}ทวงใบหัก {c.company} จะส่งเข้า LINE นี้
                 </span>
               </span>
               <Btn small tone="navy" disabled={busy} onClick={() => void bind(picked)}>
                 {busy ? "กำลังผูก…" : "ผูก LINE นี้"}
               </Btn>
-              <Btn small disabled={busy} onClick={() => setPicked(null)}>
+              <Btn
+                small
+                disabled={busy}
+                onClick={() => {
+                  setPicked(null);
+                  setFromLink(false);
+                }}
+              >
                 ไม่ใช่
               </Btn>
             </div>
-          ) : (
+          ) : isLink ? null : (
             <div className="mt-2 grid gap-1 sm:grid-cols-2">
               {loading && !hits && <span className="text-[13px]" style={{ color: "var(--dk-faint)" }}>กำลังโหลดรายชื่อแชท…</span>}
               {hits?.length === 0 && !loading && !err && (
@@ -1504,6 +1563,15 @@ function LineBind({
       )}
       {dialog}
     </div>
+  );
+}
+
+/** 💬 ปุ่มเปิดห้องแชท OA Manager แท็บใหม่ (Btn href = Link ภายในเว็บ เปิดแท็บเดิม) */
+function ChatLinkBtn({ url, label }: { url: string; label: string }) {
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="dkb-btn dkb-btn-ghost dkb-btn-sm" title="เปิดห้องแชทลูกค้าใน LINE OA Manager (แท็บใหม่)">
+      {label}
+    </a>
   );
 }
 
