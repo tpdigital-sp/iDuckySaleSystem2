@@ -7,6 +7,7 @@
  * รายการแบบเดียวกันเป๊ะ (พนักงานสลับสองหน้านี้ทั้งวัน — 15 ก.ย. 69 ขอให้การ์ดรายการในใบเสนอราคา
  * "เหมือนหน้าคำสั่งซื้อ") จึงย้ายมาไว้ตรงกลาง ใช้ร่วมกันทั้งสองหน้า อย่าก๊อปโค้ดไปวางซ้ำ
  */
+import { stripCalAi } from "@/lib/design-templates";
 import { HIDE_GENERIC_RATE, RATE_SPEC_LINE, RateSpecValue, foldSizeExtra, keyByProductLabels, orderByProduct, specEntries, specLabel, specValueLines, tidySpec, withRateSpec, withWorkSize } from "@/components/SpecLines";
 
 /**
@@ -121,7 +122,8 @@ export function SelDetails({
               <div className="mt-0.5 space-y-0.5 border-l-2 border-slate-100 pl-2">
                 {lines.map((x, n) => (
                   <p key={n}>
-                    <SelText text={x} />
+                    {/* 🗂 ลิงก์ .ai แยกเลเยอร์ = เฉพาะเจ้าของร้าน (ปุ่มแยกในหน้าออเดอร์) — ตัดออกจากข้อความทีมงาน */}
+                    <SelText text={stripCalAi(x)} />
                   </p>
                 ))}
               </div>

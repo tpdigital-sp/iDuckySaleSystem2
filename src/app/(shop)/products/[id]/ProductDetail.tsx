@@ -170,6 +170,8 @@ import {
   slotsOf,
   PLACEMENT_LABEL,
   PLACEMENT_SPEC_LABEL,
+  CAL_AI_TAG,
+  CAL_PDF_TAG,
   templateFrame,
   type DesignTemplate,
   type TemplateFrame,
@@ -179,9 +181,10 @@ import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } 
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
 import { calDesignCount, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
-import { useCart } from "@/lib/cart-context";
+import { cartItemKey, useCart } from "@/lib/cart-context";
+import { fetchSources, loadCalEdit, saveCalEdit } from "@/lib/cal-edit-store";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
-import { canAccessAdmin } from "@/lib/auth";
+import { canAccessAdmin, getAdminSession } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
@@ -779,6 +782,8 @@ export default function ProductDetail({
    * (ลายมาทางไลน์/อีเมลอยู่แล้ว กราฟฟิกจัดไฟล์เอง) · จำค่าไว้ข้ามหน้า จะได้ไม่ต้องกดใหม่ทุกสินค้า
    */
   const [adminMode, setAdminMode] = useState(false);
+  /** 🗂 เจ้าของร้าน (role Administrator) — ทดสอบไฟล์ .ai แยกเลเยอร์ของปฏิทิน (ผู้ใช้สั่ง 13 ต.ค. 69 · สั่งปิดเมื่อทดสอบเสร็จ) */
+  const [isOwner, setIsOwner] = useState(false);
   /** พนักงานเปิดโหมดแอดมินอยู่ไหม — เช็คสิทธิ์ควบเสมอ ลูกค้าทั่วไปจะไม่มีทางเข้าโหมดนี้ */
   const staffOrdering = isAdmin && adminMode;
   /**
@@ -918,6 +923,12 @@ export default function ProductDetail({
       calState?: CalendarState;
       /** 🗓 ไฟล์หน้าที่ 2 เป็นต้นไปของแบบนี้ (ด้านหลัง/หน้าเดือน) — รวมเป็น artBackFiles ตามลำดับแบบ */
       calBackFiles?: ArtFile[];
+      /** 🗂 ไฟล์ .ai แยกเลเยอร์ (เฉพาะเจ้าของร้านสั่ง — ช่วงทดสอบ) */
+      aiUrl?: string;
+      /** 🖨 .pdf ชิ้นงาน (เฉพาะเจ้าของร้านสั่ง — ช่วงทดสอบ) */
+      pdfUrl?: string;
+      /** 🗓 URL รูปต้นฉบับตามลำดับ calState.sources — จำแบบไว้ให้แก้จากตะกร้าได้ */
+      sourceUrls?: string[];
     }[]
   >([]);
   /** กำลังแก้ไขลายที่เท่าไหร่ (null = สร้างลายใหม่) — กัน "แก้ไขแบบ" กลายเป็นเพิ่มลายซ้ำ */
@@ -1609,6 +1620,32 @@ export default function ProductDetail({
       const ref = consultVal.split("·")[1]?.trim();
       if (ref) setConsultRef(ref);
     }
+    // 🗓 แบบปฏิทินที่ออกแบบไว้ (จำไว้ตอนใส่ตะกร้า) — ดึงรูปต้นฉบับกลับมา แล้วเปิดแก้ในจอสร้างปฏิทินได้เหมือนเดิม
+    const savedCal = loadCalEdit(key);
+    if (savedCal?.length) {
+      void (async () => {
+        const restored = [];
+        for (const d of savedCal) {
+          const files = d.sourceUrls.length ? await fetchSources(d.sourceUrls) : [];
+          if (!files) continue; // รูปต้นฉบับหาย — ใช้ไฟล์ที่ประกอบแล้วอย่างเดียว (แนบไว้ใน artFiles แล้ว)
+          restored.push({
+            summary: d.summary,
+            head: d.head,
+            dpi: d.dpi,
+            spec: d.spec,
+            sourceUrl: d.sourceUrls.filter(Boolean).join(" "),
+            sourceUrls: d.sourceUrls,
+            artUrl: d.artUrl,
+            calState: { format: d.format, design: d.design, back: d.back, sources: files },
+            calBackFiles: d.calBackFiles,
+            qty: d.qty,
+            aiUrl: d.aiUrl,
+            pdfUrl: d.pdfUrl,
+          });
+        }
+        if (restored.length === savedCal.length) setPlaced(restored);
+      })();
+    }
     editCarryRef.current = {
       keys: Object.fromEntries(
         Object.entries(src).filter(([k]) => k === PLACEMENT_LABEL || k === PLACEMENT_SPEC_LABEL || k === "ภาพลายแต่ละด้าน")
@@ -1998,6 +2035,8 @@ export default function ProductDetail({
     const id = idle(() =>
       void canAccessAdmin().then((ok) => {
         setIsAdmin(ok);
+        // 🗂 เจ้าของร้าน = เห็นปุ่มโหลด/แนบ .ai แยกเลเยอร์ในจอสร้างปฏิทิน (ช่วงทดสอบ)
+        if (ok) void getAdminSession().then((s) => setIsOwner(!!s.isAdministrator));
         // คืนค่าโหมดที่เลือกไว้ล่าสุด (เฉพาะพนักงาน — ลูกค้าทั่วไปไม่มีทางเปิดโหมดนี้ได้)
         if (ok && typeof localStorage !== "undefined" && localStorage.getItem(ADMIN_MODE_KEY) === "1") setAdminMode(true);
       }),
@@ -3026,12 +3065,13 @@ export default function ProductDetail({
       for (let i = 0; i < r.pages.length; i += 3)
         await Promise.all(r.pages.slice(i, i + 3).map(async (p, j) => (urls[i + j] = await uploadOne(p.file))));
       // ต้นฉบับ (ไม่นับเป็นลาย) — อัปไม่ขึ้นก็ยังสั่งได้ ไฟล์ที่ประกอบแล้วพิมพ์ได้เลย
+      // ลำดับตรงกับ r.sources เสมอ ("" = อัปไม่ขึ้น) — ใช้เปิดแบบเดิมกลับมาแก้จากตะกร้า (cal-edit-store)
       const sourceUrls: string[] = [];
       for (const f of r.sources) {
         try {
           sourceUrls.push(await uploadOne(f));
         } catch {
-          /* ข้าม */
+          sourceUrls.push("");
         }
       }
       const dims = await Promise.all(
@@ -3047,12 +3087,33 @@ export default function ProductDetail({
         }),
       );
       const files = r.pages.map((p, i) => ({ url: urls[i], name: p.file.name, ...dims[i] }));
+      // 🗂 .ai แยกเลเยอร์ (เจ้าของร้าน) — ทางอัปของเจ้าของเท่านั้น · อัปไม่ขึ้นไม่ขวางการสั่ง
+      const ownerUpload = async (f?: File): Promise<string | undefined> => {
+        if (!f) return undefined;
+        try {
+          const fd = new FormData();
+          fd.append("file", f);
+          const res = await fetch("/api/admin/calendar-ai", { method: "POST", body: fd });
+          const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+          if (res.ok && j?.url) return j.url;
+          console.warn("calendar owner file upload", f.name, j?.error ?? res.status);
+        } catch (e) {
+          console.warn("calendar owner file upload", f.name, e);
+        }
+        return undefined;
+      };
+      const aiUrl = await ownerUpload(r.ai);
+      // 🖨 .pdf ชิ้นงาน 1 ชิ้น/หน้า + เส้นไดคัท (โปรแกรมจัดวาง 8002) — เจ้าของร้านเท่านั้น เหมือน .ai
+      const pdfUrl = await ownerUpload(r.pdf);
       const entry = {
+        aiUrl,
+        pdfUrl,
         summary: r.summary,
         head: r.head,
         dpi: r.dpi,
         spec: r.spec,
-        sourceUrl: sourceUrls.join(" "),
+        sourceUrl: sourceUrls.filter(Boolean).join(" "),
+        sourceUrls,
         artUrl: files[0].url,
         calState: r.state,
         calBackFiles: files.slice(1),
@@ -3524,7 +3585,9 @@ export default function ProductDetail({
         .map(
           (p, i) =>
             `${many ? `ลายที่ ${i + 1} × ${p.qty} ชิ้น — ` : ""}${p.spec}` +
-            (p.sourceUrl ? ` · ต้นฉบับ: ${p.sourceUrl}` : ""),
+            (p.sourceUrl ? ` · ต้นฉบับ: ${p.sourceUrl}` : "") +
+            (p.aiUrl ? `${CAL_AI_TAG}${p.aiUrl}` : "") +
+            (p.pdfUrl ? `${CAL_PDF_TAG}${p.pdfUrl}` : ""),
         )
         .join(" | ");
     }
@@ -3597,7 +3660,31 @@ export default function ProductDetail({
     const artsIntact =
       !!carry && carry.arts.length > 0 && carry.arts.every((u) => artFiles.some((f) => f.url === u));
     const line = selections && carry && artsIntact ? { ...carry.keys, ...selections } : selections;
-    if (line) addItem(product.id, line, qty, product);
+    if (line) {
+      // 🗓 จำแบบปฏิทินของบรรทัดนี้ — กด ✏️ แก้ไขในตะกร้าแล้วเปิดจอสร้างปฏิทินแบบเดิมต่อได้
+      if (placed.some((p) => p.calState))
+        saveCalEdit(
+          cartItemKey(product.id, line),
+          placed
+            .filter((p) => p.calState)
+            .map((p) => ({
+              format: p.calState!.format,
+              design: p.calState!.design,
+              back: p.calState!.back,
+              sourceUrls: p.sourceUrls ?? [],
+              summary: p.summary,
+              head: p.head,
+              dpi: p.dpi,
+              spec: p.spec,
+              artUrl: p.artUrl,
+              calBackFiles: p.calBackFiles,
+              qty: p.qty,
+              aiUrl: p.aiUrl,
+              pdfUrl: p.pdfUrl,
+            })),
+        );
+      addItem(product.id, line, qty, product);
+    }
     setSheets([]);
     // แก้เสร็จแล้วพากลับตะกร้าเลย — ลูกค้ามาจากตะกร้า ไม่ได้ตั้งใจสั่งเพิ่มอีกใบ
     if (editKey) {
@@ -6313,7 +6400,8 @@ export default function ProductDetail({
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => openStudio(null)}
+          // 🗓 ปฏิทินที่สร้างไว้แล้ว = แตะเพื่อแก้แบบเดิม (เพิ่มลายใหม่ใช้ปุ่ม "＋ เพิ่มลายอีกแบบ" ด้านล่าง)
+          onClick={() => openStudio(calMode && designDone && placed[placed.length - 1]?.calState ? placed.length - 1 : null)}
           className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition hover:scale-[1.02] ${
             designDone
               ? "bg-sky-50 text-sky-800 ring-2 ring-sky-400"
@@ -6334,7 +6422,9 @@ export default function ProductDetail({
             className={`text-[10.5px] font-semibold leading-tight ${designDone ? "text-sky-700" : fileChosen ? "text-stone-500" : "text-sky-100"}`}
           >
             {designDone
-              ? "แตะเพื่อเพิ่มลายอีกแบบ"
+              ? calMode && placed[placed.length - 1]?.calState
+                ? "✏️ แตะเพื่อแก้แบบที่สร้างไว้"
+                : "แตะเพื่อเพิ่มลายอีกแบบ"
               : calMode
                 ? "ใส่รูปของคุณ ตารางปฏิทินสร้างให้เอง"
                 : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
@@ -6419,7 +6509,8 @@ export default function ProductDetail({
       {/* ═══ โครง 3 คอลัมน์: รูป | รายละเอียด | แผงสั่งซื้อ (ติดหนึบ)
            ฝั่งซ้าย (รูป+รายละเอียด) เป็นบล็อกเดียวกัน — ข้อมูลประกอบจึงไหลต่อขึ้นมาเติมได้
            แทนที่จะทิ้งช่องขาวยาว ๆ ไว้ข้างแผงสั่งซื้อ ═══ */}
-      <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+      {/* grid-cols-1 = minmax(0,1fr) — มือถือคอลัมน์ไม่ขยายตามข้อความยาวที่ไม่ตัดบรรทัด (แถว "✓ แบบพร้อมผลิต" เคยดันหน้ากว้าง 557px บนจอ 375 → จอสร้างปฏิทินเลื่อนเพี้ยน · 13 ต.ค. 69) */}
+      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
         <div className="grid min-w-0 gap-6 sm:grid-cols-2 sm:items-start lg:col-span-8 lg:gap-8">
         {/* ── ซ้าย: รูปสินค้า ── */}
         <div className="min-w-0">
@@ -7130,7 +7221,7 @@ export default function ProductDetail({
         </div>
 
         {/* ── ขวา: แผงสั่งซื้อ ติดหนึบตอนเลื่อน ── */}
-        <div className="lg:col-span-4 lg:sticky lg:top-24">
+        <div className="min-w-0 lg:col-span-4 lg:sticky lg:top-24">
           <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
             <p className="text-[11px] font-bold uppercase tracking-widest text-stone-400">ราคา</p>
             <div className="mt-4 flex items-baseline gap-2">
@@ -9287,6 +9378,7 @@ export default function ProductDetail({
             const others = placed.reduce((sum, p, i) => (i === editIndex ? sum : sum + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length) : 1)), 0);
             return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
           }}
+          aiExport={isOwner}
           onOrder={async () => {
             // 🛒 ใส่ตะกร้าจากจอสร้างปฏิทิน: แบบถูกแนบแล้ว (applyCalendar) → รอหน้าเรนเดอร์ค่าใหม่ แล้วใช้ปุ่มเพิ่มลงตะกร้าตัวเดิม
             await new Promise((r) => setTimeout(r, 80));

@@ -343,10 +343,32 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(n) or b"{}")
 
+    # 🗓 จอสร้างปฏิทินบนเว็บ (localhost:3016 / เว็บจริง) เรียกข้ามโดเมน — ต้องตอบ CORS เอง
+    CORS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Private-Network": "true"}
+
+    def do_OPTIONS(self):
+        self.send(204, b"", "text/plain", {**self.CORS, "Access-Control-Allow-Methods": "GET, POST",
+                                           "Access-Control-Allow-Headers": "content-type"})
+
+    def calendar_ai(self):
+        """POST /calendar-ai — ชั้นของปฏิทินจากเว็บ (PNG ทีละชั้น) → .ai แท้แยกเลเยอร์ (Illustrator ในเครื่อง)"""
+        try:
+            j = self.body_json()
+            data = illustrator.calendar_ai(j)
+            name = (str(j.get("title") or "calendar") + ".ai").replace("/", "-")
+            return self.send(200, data, "application/postscript",
+                             {**self.CORS, "Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+        except Exception as ex:
+            body = json.dumps({"error": str(ex)}, ensure_ascii=False).encode()
+            return self.send(500, body, "application/json; charset=utf-8", self.CORS)
+
     @guard
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
+        if u.path == "/calendar-ai":  # เว็บเช็คก่อนว่าใช้ Illustrator ได้ไหม
+            body = json.dumps({"ok": True, "illustrator": illustrator.available()}).encode()
+            return self.send(200, body, "application/json", self.CORS)
         if u.path == "/health":  # หน้าหลังบ้านเช็คว่าเปิดเซิร์ฟเวอร์อยู่ไหม + รันโค้ดล่าสุดหรือยัง
             body = json.dumps({"ok": bool(SESSIONS), "stale": code_stale()}).encode()
             return self.send(200, body, "application/json", {"Access-Control-Allow-Origin": "*"})
@@ -374,6 +396,8 @@ class Handler(BaseHTTPRequestHandler):
     @guard
     def do_POST(self):
         u = urlparse(self.path)
+        if u.path == "/calendar-ai":
+            return self.calendar_ai()
         if u.path == "/upload":
             n = int(self.headers.get("Content-Length", 0))
             data = self.rfile.read(n)

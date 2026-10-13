@@ -429,6 +429,30 @@ export const PLACEMENT_LABEL = "วางบนเทมเพลต";
 export const PLACEMENT_SPEC_LABEL = "ตำแหน่งลาย (ทีมผลิต)";
 
 /**
+ * 🗂 ไฟล์ .ai แยกเลเยอร์ของปฏิทินที่ออกแบบบนเว็บ — ต่อท้ายพิกัดทีมผลิตของแต่ละลาย " · ไฟล์ .ai เลเยอร์: <url>"
+ * ช่วงทดสอบ (ผู้ใช้สั่ง 13 ต.ค. 69): ทำเฉพาะตอนเจ้าของร้านสั่ง · หน้าออเดอร์โชว์ปุ่มโหลดเฉพาะเจ้าของ (isOwner)
+ * จอทีมงาน (SelDetails) ตัดลิงก์นี้ออกจากข้อความด้วย stripCalAi
+ */
+export const CAL_AI_TAG = " · ไฟล์ .ai เลเยอร์: ";
+/** 🖨 ไฟล์ .pdf ชิ้นงานไฟล์เดียว (ทีละชิ้น: หน้า · หลัง · เส้นไดคัท) โยนเข้าโปรแกรมจัดวาง localhost:8002 — แท็กคู่กัน กติกาเดียวกับ .ai */
+export const CAL_PDF_TAG = " · ไฟล์ .pdf ชิ้นงาน: ";
+const tagUrl = (spec: string, tag: string): string | null => {
+  const i = spec.indexOf(tag);
+  return i < 0 ? null : (spec.slice(i + tag.length).match(/^\S+/)?.[0] ?? null);
+};
+export const calAiUrlOf = (spec: string): string | null => tagUrl(spec, CAL_AI_TAG);
+export const calPdfUrlOf = (spec: string): string | null => tagUrl(spec, CAL_PDF_TAG);
+/** ตัดลิงก์ไฟล์ของเจ้าของ (.ai / .pdf) ออกจากข้อความที่ทีมงานเห็น */
+export const stripCalAi = (spec: string): string => {
+  let out = spec;
+  for (const tag of [CAL_AI_TAG, CAL_PDF_TAG]) {
+    const i = out.indexOf(tag);
+    if (i >= 0) out = out.slice(0, i) + out.slice(i + tag.length).replace(/^\S+/, "");
+  }
+  return out;
+};
+
+/**
  * โทเคนขนาดกรอบงานที่ต่อท้ายบรรทัดของทีมผลิต เช่น "[ai:230x190]"
  * หลังบ้านอ่านค่านี้ไปตั้งขนาดหน้าไฟล์ .ai ให้ตรงงานจริงตอนกดดาวน์โหลด
  */

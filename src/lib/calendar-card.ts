@@ -111,8 +111,14 @@ export interface CalPhoto {
   opacity?: number;
   stroke?: string;
   strokeW?: number;
+  /** ความทึบของเส้นขอบ 0–1 (แถบขอบแบบ Printbox) */
+  strokeA?: number;
   radius?: number;
   filter?: string;
+  /** ปรับแสง/คอนทราสต์/ความอิ่มสี เป็น % (100 = เดิม) — แผงเอฟเฟกต์แบบ Printbox */
+  bright?: number;
+  contrast?: number;
+  sat?: number;
 }
 
 /** ✨ เอฟเฟกต์รูป (ปุ่มไม้กายสิทธิ์) — key เก็บในแบบ · css = canvas filter (ไฟล์พิมพ์ใช้ตัวเดียวกัน) */
@@ -126,6 +132,15 @@ export const CAL_FILTERS: { key: string; name: string; css: string }[] = [
   { key: "cool", name: "โทนเย็น", css: "hue-rotate(-12deg) saturate(1.1)" },
 ];
 export const filterCss = (key?: string) => CAL_FILTERS.find((f) => f.key === (key ?? ""))?.css ?? "none";
+/** ฟิลเตอร์รวมของรูป (เอฟเฟกต์สำเร็จรูป + ปรับแสง/คอนทราสต์/อิ่มสี) — "none" = ไม่ต้องตั้ง ctx.filter */
+export function photoFilterCss(st?: { filter?: string; bright?: number; contrast?: number; sat?: number }): string {
+  if (!st) return "none";
+  const parts = [st.filter ? filterCss(st.filter) : "none"].filter((x) => x !== "none");
+  if (st.bright != null && st.bright !== 100) parts.push(`brightness(${st.bright}%)`);
+  if (st.contrast != null && st.contrast !== 100) parts.push(`contrast(${st.contrast}%)`);
+  if (st.sat != null && st.sat !== 100) parts.push(`saturate(${st.sat}%)`);
+  return parts.length ? parts.join(" ") : "none";
+}
 
 /** สิ่งที่ลูกค้าวางเองในแบบนี้ (รูปรายหน้า + ข้อความหน้าปก + สีพื้น) */
 export interface CalDesign {
@@ -173,6 +188,8 @@ export interface CalElement {
   strokeW: number;
   /** มุมมนของสี่เหลี่ยม (มม.) */
   radius?: number;
+  /** ความทึบของเส้นขอบ 0–1 */
+  strokeA?: number;
   /** ความทึบ 0–1 */
   opacity?: number;
   text?: string;
@@ -193,6 +210,9 @@ export interface CalElement {
   flipX?: boolean;
   /** ✨ เอฟเฟกต์รูป (CAL_FILTERS) */
   filter?: string;
+  bright?: number;
+  contrast?: number;
+  sat?: number;
 }
 
 export interface Rect {
@@ -698,6 +718,12 @@ export function coverPlacement(r: Rect, img: { w: number; h: number }): CalPlace
   return { cxMm: r.x + r.w / 2, cyMm: r.y + r.h / 2, wMm: img.w * s, hMm: img.h * s, rotDeg: 0 };
 }
 
+/** รูปพอดีช่องทั้งรูป (เห็นทั้งรูป อาจเหลือขอบ) — ปุ่ม ⤢ ช่องรูปหลักแบบ Printbox "Fit the image within the photo slot" */
+export function containPlacement(r: Rect, img: { w: number; h: number }): CalPlacement {
+  const s = Math.min(r.w / img.w, r.h / img.h);
+  return { cxMm: r.x + r.w / 2, cyMm: r.y + r.h / 2, wMm: img.w * s, hMm: img.h * s, rotDeg: 0 };
+}
+
 /** รูปคลุมช่องเต็มไหม (คิดการหมุนด้วย) */
 export function placementCovers(pl: CalPlacement, r: Rect): boolean {
   const a = (-pl.rotDeg * Math.PI) / 180;
@@ -1052,9 +1078,16 @@ export function elementBox(ctx: CanvasRenderingContext2D, e: CalElement): Rect {
   return { x: e.x - e.w / 2, y: e.y - e.h / 2, w: e.w, h: e.h };
 }
 
+/** ซูมต่ำสุดของกรอบรูป = รูปพอดีกรอบทั้งรูป (contain) เทียบกับเต็มกรอบ (cover = 1) */
+export function containZoom(e: { w: number; h: number }, img: { w: number; h: number }): number {
+  const cover = Math.max(e.w / img.w, e.h / img.h);
+  return cover > 0 ? Math.min(e.w / img.w, e.h / img.h) / cover : 1;
+}
+
 /** ขนาดรูปที่วางจริงในกรอบรูปอิสระ (มม.) — ใช้คิด DPI */
 export function elementPhotoSize(e: CalElement, img: { w: number; h: number }): { w: number; h: number } {
-  const s = Math.max(e.w / img.w, e.h / img.h) * Math.max(1, e.zoom ?? 1);
+  // zoom 1 = รูปเต็มกรอบ (cover) · ต่ำกว่า 1 ได้ถึง "พอดีกรอบเห็นทั้งรูป" (containZoom) — ปุ่ม ⤢ แบบ Printbox (13 ต.ค. 69)
+  const s = Math.max(e.w / img.w, e.h / img.h) * Math.max(containZoom(e, img), e.zoom ?? 1);
   return { w: img.w * s, h: img.h * s };
 }
 
@@ -1079,7 +1112,8 @@ export function drawElement(ctx: CanvasRenderingContext2D, k: number, e: CalElem
       const cx = e.x + ((sz.w - e.w) / 2) * (e.ox ?? 0);
       const cy = e.y + ((sz.h - e.h) / 2) * (e.oy ?? 0);
       ctx.imageSmoothingQuality = "high";
-      if (e.filter) ctx.filter = filterCss(e.filter);
+      const fc = photoFilterCss(e);
+      if (fc !== "none") ctx.filter = fc;
       if (e.flipX) {
         // กลับด้านรอบจุดกึ่งกลางรูป
         ctx.translate(cx * k, 0);
@@ -1095,6 +1129,7 @@ export function drawElement(ctx: CanvasRenderingContext2D, k: number, e: CalElem
     ctx.restore();
     if (e.stroke && e.strokeW > 0) {
       roundRect(ctx, x, y, e.w * k, e.h * k, (e.radius ?? 0) * k);
+      ctx.globalAlpha = (e.opacity ?? 1) * (e.strokeA ?? 1);
       ctx.strokeStyle = e.stroke;
       ctx.lineWidth = e.strokeW * k;
       ctx.stroke();
@@ -1132,16 +1167,23 @@ export function drawPage(
   b: CalBack,
   imgs: (ImgRef | null)[],
   /** preview = วาดบนจอ (กรอบรูปว่างโชว์ "Drag here" สีเทา) · ไม่ตั้ง = ไฟล์ส่งพิมพ์ (กรอบว่างไม่พิมพ์) */
-  opts: { preview?: boolean } = {},
+  /**
+   * only = วาดชั้นเดียว (ไฟล์ .ai แยกเลเยอร์ · ดู calLayersOf) — "@bg" พื้น · "@slot" รูปหลัก · "@grid" ปฏิทิน · "@legacy" ข้อความแบบเก่า · id ชิ้นส่วน
+   * ไม่ตั้ง = วาดทุกชั้นรวมกัน (ไฟล์พิมพ์/จอ)
+   */
+  opts: { preview?: boolean; only?: string } = {},
 ): void {
   const W = fmtW(f);
   const H = fmtH(f);
   const pageKey = page.key;
   page = layPage(f, page, d);
+  const only = opts.only;
   ctx.save();
   // พื้น: หน้าที่มีรูปใช้สีพื้นหน้าปก · หน้าตารางล้วนใช้สีพื้นปฏิทิน
-  ctx.fillStyle = (page.kind === "photo" ? d.bg : b.bg) || "#ffffff";
-  ctx.fillRect(0, 0, W * k, H * k);
+  if (!only || only === LAYER_BG) {
+    ctx.fillStyle = bgOf(page, d, b);
+    ctx.fillRect(0, 0, W * k, H * k);
+  }
   // 🗂 วาดตามลำดับชั้นที่ลูกค้าจัด (ล่าง → บน) — รูปหลัก · ปฏิทิน · ชิ้นส่วน สลับบน/ล่างกันได้
   const drawSlot = () => {
     if (page.photo) {
@@ -1159,7 +1201,8 @@ export function drawPage(
         roundRect(ctx, r.x * k, r.y * k, r.w * k, r.h * k, (st?.radius ?? 0) * k);
         ctx.clip();
         ctx.globalAlpha = st?.opacity ?? 1;
-        if (st?.filter) ctx.filter = filterCss(st.filter);
+        const fc = photoFilterCss(st);
+        if (fc !== "none") ctx.filter = fc;
         ctx.translate(ph.pl.cxMm * k, ph.pl.cyMm * k);
         ctx.rotate((ph.pl.rotDeg * Math.PI) / 180);
         if (st?.flipX) ctx.scale(-1, 1);
@@ -1169,6 +1212,7 @@ export function drawPage(
         if (st?.stroke && (st.strokeW ?? 0) > 0) {
           ctx.save();
           roundRect(ctx, r.x * k, r.y * k, r.w * k, r.h * k, (st.radius ?? 0) * k);
+          ctx.globalAlpha = st.strokeA ?? 1;
           ctx.strokeStyle = st.stroke;
           ctx.lineWidth = st.strokeW! * k;
           ctx.stroke();
@@ -1199,6 +1243,7 @@ export function drawPage(
   };
   const els = new Map((d.elements ?? []).filter((e) => e.page === pageKey).map((e) => [e.id, e]));
   for (const id of orderOf(page, d)) {
+    if (only && id !== only) continue;
     if (id === LAYER_SLOT) drawSlot();
     else if (id === LAYER_GRID) drawGrid();
     else {
@@ -1211,7 +1256,7 @@ export function drawPage(
     }
   }
   // ขอบบางของแบบหน้าร้านเดิม (โปสการ์ดรายปี) — ไม่มีตาราง/อยู่นอกลำดับชั้น ก็ยังวาด
-  if (!page.grid && page.border) {
+  if (!page.grid && page.border && (!only || only === LAYER_LEGACY)) {
     const r = page.border;
     ctx.strokeStyle = b.ink;
     ctx.globalAlpha = 0.75;
@@ -1219,8 +1264,44 @@ export function drawPage(
     ctx.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
     ctx.globalAlpha = 1;
   }
-  if (page.text && d.text) drawText(ctx, k, d.text);
+  if (page.text && d.text && (!only || only === LAYER_LEGACY)) drawText(ctx, k, d.text);
   ctx.restore();
+}
+
+/** ชั้นพื้น / ของแบบเก่านอกลำดับชั้น (ขอบบาง · ข้อความหน้าปกกล่องเดียว) — ใช้กับ drawPage({ only }) */
+export const LAYER_BG = "@bg";
+export const LAYER_LEGACY = "@legacy";
+
+/** สีพื้นของหน้า (หน้าที่มีรูปใช้สีพื้นหน้าปก · หน้าตารางล้วนใช้สีพื้นปฏิทิน) */
+export function bgOf(page: CalPage, d: CalDesign, b: CalBack): string {
+  return (page.kind === "photo" ? d.bg : b.bg) || "#ffffff";
+}
+
+/**
+ * 🗂 รายชื่อชั้นของหน้า ล่าง → บน (ไฟล์ .ai แยกเลเยอร์) — ชื่อไทยตรงกับหน้าต่าง Layers ของจอ
+ * กรอบรูปที่ยังว่างไม่นับ (ไม่พิมพ์)
+ */
+export function calLayersOf(f: CalFormat, page: CalPage, d: CalDesign, imgs: (ImgRef | null)[]): { id: string; name: string }[] {
+  const lp = layPage(f, page, d);
+  const els = (d.elements ?? []).filter((e) => e.page === page.key);
+  const frames = els.filter((e) => e.kind === "photo");
+  const out: { id: string; name: string }[] = [{ id: LAYER_BG, name: "พื้นหลัง" }];
+  for (const id of orderOf(lp, d)) {
+    if (id === LAYER_SLOT) {
+      if (photoOf(lp, d, imgs)) out.push({ id, name: "รูปหลัก" });
+    } else if (id === LAYER_GRID) out.push({ id, name: "ปฏิทิน" });
+    else {
+      const e = els.find((x) => x.id === id);
+      if (!e) continue;
+      if (e.kind === "photo") {
+        if (e.src != null && imgs[e.src]) out.push({ id, name: `กรอบรูป ${frames.indexOf(e) + 1}` });
+      } else if (e.kind === "text") {
+        if (e.text?.trim()) out.push({ id, name: `ข้อความ “${e.text.trim().replace(/\s+/g, " ").slice(0, 24)}”` });
+      } else out.push({ id, name: e.kind === "ellipse" ? "วงกลม" : "สี่เหลี่ยม" });
+    }
+  }
+  if ((!lp.grid && lp.border) || (lp.text && d.text)) out.push({ id: LAYER_LEGACY, name: "ข้อความ/ขอบ" });
+  return out;
 }
 
 /** ขนาดตัวอักษร "Drag here" (มม.) — เล็กพอดีช่อง ไม่ใหญ่เกินบนงานชิ้นใหญ่ (13 ต.ค. 69 ผู้ใช้ขอให้ย่อ) */

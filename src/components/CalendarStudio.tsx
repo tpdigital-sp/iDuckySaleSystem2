@@ -25,6 +25,7 @@ import {
   calFormat,
   cardKey,
   coverPlacement,
+  containPlacement,
   defaultBack,
   defaultText,
   defaultTitle,
@@ -32,6 +33,8 @@ import {
   drawPage,
   elementBox,
   elementPhotoSize,
+  containZoom,
+  photoFilterCss,
   ensureFonts,
   fmtH,
   fmtW,
@@ -64,6 +67,8 @@ import {
   type ImgRef,
 } from "@/lib/calendar-card";
 import { printFrameToken } from "@/lib/design-templates";
+import { buildCalendarAi, renderAiPages } from "@/lib/calendar-ai";
+import { buildPieceFiles, type PieceDesign } from "@/lib/calendar-impose";
 
 export interface CalendarState {
   format: string;
@@ -81,6 +86,11 @@ export interface CalendarResult {
   head: string;
   summary: string;
   spec: string;
+  /** 🗂 ไฟล์ .ai แยกเลเยอร์ (เฉพาะเจ้าของร้านช่วงทดสอบ — prop aiExport) */
+  ai?: File;
+  aiNote?: string;
+  /** 🖨 .pdf ชิ้นงาน 1 ชิ้น/หน้า + เส้นไดคัท (สำหรับโปรแกรมจัดวาง localhost:8002) — เฉพาะเจ้าของร้านช่วงทดสอบ */
+  pdf?: File;
 }
 
 interface Props {
@@ -102,6 +112,11 @@ interface Props {
   unit?: string;
   /** 💰 ราคารวมรายการนี้ถ้าแบบนี้มี n ลาย (ราคาตามสเปค × จำนวน + ค่าคละ) — โชว์บนปุ่มใส่ตะกร้า */
   price?: (designs: number) => number;
+  /**
+   * 🗂 เจ้าของร้าน (ช่วงทดสอบ ผู้ใช้สั่ง 13 ต.ค. 69 "เฉพาะสิทธิ์เจ้าของ ทดสอบเสร็จจะสั่งปิด")
+   * = ปุ่มโหลด .ai แยกเลเยอร์บนแถบบน + แนบ .ai ไปกับออเดอร์ (CalendarResult.ai)
+   */
+  aiExport?: boolean;
   /** 🛒 ใส่ตะกร้าเลย — เรียกหลัง onApply แนบแบบเสร็จ (หน้าสินค้ากดเพิ่มลงตะกร้าให้) */
   onOrder?: () => void | Promise<void>;
   /**
@@ -304,6 +319,7 @@ export default function CalendarStudio({
   unit,
   price,
   onOrder,
+  aiExport,
   guide,
   square,
   initial,
@@ -423,6 +439,55 @@ export default function CalendarStudio({
   const [pop, setPop] = useState<"" | "opacity" | "border" | "layer" | "fill" | "filter" | "tcolor" | "tstyle" | "talign">("");
   /** 🗂 หน้าต่างลำดับชั้น (ปุ่ม Layers แถบขวา) */
   const [layersOpen, setLayersOpen] = useState(false);
+  /** แถวรูปตัวอย่างเอฟเฟกต์ (ปุ่ม ‹ › เลื่อน) */
+  const filterRowRef = useRef<HTMLDivElement>(null);
+  /** 📱 จอแคบ (มือถือ < 640px) — แถบเครื่องมือติดล่างจอแทนลอยเหนือรูป (ดู barWrap) */
+  const [winW, setWinW] = useState(() => (typeof window === "undefined" ? 1024 : window.innerWidth));
+  useEffect(() => {
+    const r = () => setWinW(window.innerWidth);
+    window.addEventListener("resize", r);
+    return () => window.removeEventListener("resize", r);
+  }, []);
+  const narrow = winW < 640;
+  /**
+   * ที่วางแถบเครื่องมือลอย — จอกว้าง = ลอยเหนือ/ใต้ชิ้นที่เลือก · มือถือ = ติดล่างจอเต็มกว้าง เลื่อนซ้าย-ขวาได้
+   * (ทดสอบบนมือถือ 13 ต.ค. 69: แถบลอยกว้างกว่าจอ ปุ่มขอบ/เอฟเฟกต์/ลบ ตกขอบขวากดไม่ได้)
+   * เมนูย่อยของแถบ (เอฟเฟกต์/ขอบ) ขึ้นเหนือแถบ (flex-col-reverse)
+   */
+  const barWrap = (left: number, top: number): { className: string; style?: React.CSSProperties } =>
+    narrow
+      ? { className: "fixed inset-x-0 bottom-0 z-[80] flex flex-col-reverse gap-2 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-1" }
+      : { className: "absolute z-20 w-max -translate-x-1/2", style: { left, top } };
+  /**
+   * ⤢ กรอบรูป: หดกรอบให้พอดีรูป (สัดส่วนเท่ารูป · ไม่ใหญ่กว่ากรอบเดิม · จุดกลางเดิม) = เห็นทั้งรูปไม่มีที่ว่าง เหมือนช่องรูปหลัก
+   * กดซ้ำ = กลับเป็นกรอบขนาดเดิม (รูปเต็มกรอบ)
+   * ประวัติ 13 ต.ค. 69: รีเซ็ตซูม (ไม่เปลี่ยน) → ขยายกรอบเต็มการ์ด (ผิด) → รูปพอดีกรอบมีที่ว่าง → ผู้ใช้เลือก "หดกรอบให้พอดีรูป"
+   */
+  const fitPrev = useRef(new Map<string, { w: number; h: number; zoom?: number; ox?: number; oy?: number }>());
+  const frameFitted = (fr: CalElement, img?: { w: number; h: number }) =>
+    !!img && Math.abs(fr.w / fr.h - img.w / img.h) < 0.01 && Math.abs((fr.zoom ?? 1) - 1) < 0.01 && fitPrev.current.has(fr.id);
+  function fitFrame(fr: CalElement) {
+    const img = fr.src != null ? srcs[fr.src] : undefined;
+    if (!img) return;
+    const prev = fitPrev.current.get(fr.id);
+    if (prev && frameFitted(fr, img)) {
+      fitPrev.current.delete(fr.id);
+      patchEl(fr.id, { w: prev.w, h: prev.h, zoom: prev.zoom ?? 1, ox: prev.ox ?? 0, oy: prev.oy ?? 0 });
+      return;
+    }
+    const s = Math.min(fr.w / img.w, fr.h / img.h);
+    fitPrev.current.set(fr.id, { w: fr.w, h: fr.h, zoom: fr.zoom, ox: fr.ox, oy: fr.oy });
+    patchEl(fr.id, { w: img.w * s, h: img.h * s, zoom: 1, ox: 0, oy: 0 });
+  }
+  /** ยกเลิกการเลือกทุกอย่าง (ชิ้นส่วน · ช่องรูปหลัก · ตารางปฏิทิน · เมนูย่อย) */
+  function clearSelection() {
+    setSel(null);
+    setSlotFocus(false);
+    setGridSel(false);
+    setPop("");
+  }
+  /** แถบขอบ: กางแถวเลือกสีขอบ (กดช่องสี) */
+  const [borderColor, setBorderColor] = useState(false);
   /** ขนาดพื้นที่เวที — ภาพปฏิทินขยายเต็มพื้นที่ตามจอ */
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
@@ -1032,14 +1097,14 @@ export default function CalendarStudio({
   }
 
   /** ทำซ้ำชิ้นที่เลือก (เหลื่อมลงขวานิดหน่อย) */
-  /** 🗑 ลบรูปออกจากคลัง — ช่องรูป/กรอบที่ใช้รูปนี้กลายเป็นช่องว่าง (Undo เอาตำแหน่งกลับได้ แต่ต้องใส่รูปใหม่) */
+  /** 🗑 ลบรูปออกจากคลัง — กรอบรูปที่ใช้รูปนี้ถูกลบทิ้งไปด้วย · ช่องรูปหลักกลายเป็นช่องว่าง (Undo เอากลับได้) */
   function removeSrc(i: number) {
     const used = Object.values(design.photos).some((o) => o.src === i) || (design.elements ?? []).some((e) => e.kind === "photo" && e.src === i);
     if (used)
       return setAsk({
         icon: "🗑",
         title: "ลบรูปนี้?",
-        body: "รูปนี้ใช้อยู่ในแบบ — ลบแล้วช่องรูปที่ใช้รูปนี้จะว่าง",
+        body: "รูปนี้ใช้อยู่ในแบบ — ลบแล้วกรอบรูปที่ใช้รูปนี้จะถูกลบไปด้วย (ช่องรูปหลักจะว่าง)",
         ok: "ลบรูป",
         danger: true,
         run: () => dropSrc(i),
@@ -1052,8 +1117,10 @@ export default function CalendarStudio({
     setDesign((d) => ({
       ...d,
       photos: Object.fromEntries(Object.entries(d.photos).map(([k, o]) => [k, o.src === i ? { ...o, src: -1 } : o])),
-      elements: (d.elements ?? []).map((e) => (e.kind === "photo" && e.src === i ? { ...e, src: undefined, zoom: 1, ox: 0, oy: 0 } : e)),
+      // กรอบรูปอิสระที่ใช้รูปนี้ = ลบทั้งกรอบ (เดิมเหลือกรอบว่าง "Drag here" ค้างบนการ์ด · ผู้ใช้แจ้ง 13 ต.ค. 69)
+      elements: (d.elements ?? []).filter((e) => !(e.kind === "photo" && e.src === i)),
     }));
+    if (selEl?.kind === "photo" && selEl.src === i) setSel(null);
   }
 
   function duplicateEl(id: string) {
@@ -1102,6 +1169,7 @@ export default function CalendarStudio({
   function putIntoTarget(i: number) {
     const s0 = srcs[i];
     if (!s0) return;
+    setTool("photo"); // ใส่รูปจากคลัง = แถบเครื่องมือรูปขึ้นให้ปรับต่อได้เลย
     if (selEl?.kind === "photo") patchEl(selEl.id, { src: i, zoom: 1, ox: 0, oy: 0 });
     else if (page.photo) pickPhoto(i);
     else addFreePhoto(i, s0);
@@ -1110,6 +1178,7 @@ export default function CalendarStudio({
     const list = files.filter((f) => f.type.startsWith("image/"));
     if (!list.length) return setErr("ใช้ได้เฉพาะไฟล์รูป (JPG / PNG / WEBP)");
     const [first, ...rest] = list;
+    setTool("photo");
     if (selEl?.kind === "photo") await fillFrame(selEl.id, first);
     else await addPhoto(first, !page.photo);
     // ไฟล์ที่เหลือ (เลือก/ลากมาหลายรูป) = กรอบใหม่คนละกรอบ
@@ -1303,60 +1372,16 @@ export default function CalendarStudio({
     // เลือกช่องรูปหลักอยู่ = กรอบฟ้ารอบช่อง (คู่กับแถบเครื่องมือลอยใต้ช่อง)
     if (!se && slotFocus && page.photo && tool === "photo") {
       // 🖼 ช่องรูปหลักที่เลือก แบบ Printbox — กรอบ + จุดจับ 8 จุด (ปรับขนาดช่อง) + วงกลมลูกศรกลางรูป (ลากเลื่อนรูป)
+      // กรอบฟ้า + จุดจับวาดเป็น HTML ทับแคนวาส (renderSelOverlay) — ช่องชิดขอบการ์ดจะได้ไม่โดนตัดครึ่งวง
       const r = page.photo;
-      ctx.setLineDash([]);
-      ctx.strokeStyle = "rgba(2,132,199,.95)";
-      ctx.lineWidth = 1.5 * dpr;
-      ctx.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
-      ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = "rgba(120,113,108,.9)";
-      ctx.lineWidth = 1.2 * dpr;
-      handlesOf(r, 0).forEach(([hx, hy]) => {
-        ctx.beginPath();
-        ctx.arc(hx * k, hy * k, 6 * dpr, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      });
       if (photoOf(page, design, imgs)) drawPanIcon(ctx, (r.x + r.w / 2) * k, (r.y + r.h / 2) * k, dpr);
     }
     const gr = gridOf(page, design);
     if (!se && gridSel && gr) {
-      // 📅 ตารางปฏิทินที่เลือก — กรอบฟ้า + จุดจับ 8 จุด (ลากย้าย · จับจุดย่อ-ขยาย)
-      const p = Math.min(W, H) * 0.012;
-      ctx.setLineDash([]);
-      ctx.strokeStyle = "rgba(2,132,199,.95)";
-      ctx.lineWidth = 1.5 * dpr;
-      ctx.strokeRect((gr.x - p) * k, (gr.y - p) * k, (gr.w + p * 2) * k, (gr.h + p * 2) * k);
-      ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = "rgba(120,113,108,.9)";
-      ctx.lineWidth = 1.2 * dpr;
-      handlesOf(gr, p).forEach(([hx, hy]) => {
-        ctx.beginPath();
-        ctx.arc(hx * k, hy * k, 6 * dpr, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      });
+      // 📅 ตารางปฏิทินที่เลือก — กรอบฟ้า + จุดจับ 8 จุด วาดเป็น HTML (renderSelOverlay)
     }
     if (se) {
-      const r = elementBox(ctx, se);
-      const p = Math.min(W, H) * 0.012;
-      ctx.setLineDash([]);
-      ctx.strokeStyle = "rgba(2,132,199,.95)";
-      ctx.lineWidth = 1.5 * dpr;
-      ctx.strokeRect((r.x - p) * k, (r.y - p) * k, (r.w + p * 2) * k, (r.h + p * 2) * k);
-      // จุดจับ 8 จุด (มุม = ย่อ-ขยายสองแกน · กลางขอบ = แกนเดียว) — ข้อความใช้แค่ 4 มุม
-      const hs = 6 * dpr;
-      ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = "rgba(120,113,108,.9)";
-      ctx.lineWidth = 1.2 * dpr;
-      handlesOf(r, p)
-        .slice(0, se.kind === "text" ? 4 : 8)
-        .forEach(([hx, hy]) => {
-          ctx.beginPath();
-          ctx.arc(hx * k, hy * k, hs, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        });
+      // กรอบฟ้า + จุดจับ (ข้อความ 4 มุม · อื่น ๆ 8 จุด) วาดเป็น HTML (renderSelOverlay)
       if (se.kind === "photo" && se.src != null && imgs[se.src]) drawPanIcon(ctx, se.x * k, se.y * k, dpr);
     }
     ctx.restore();
@@ -1731,7 +1756,21 @@ export default function CalendarStudio({
         r.h = h;
         r.y = p.y >= d.ay ? d.ay : d.ay - h;
       }
-      setSlot(r, d.keep);
+      // มุม = รูปย่อ-ขยายตามช่อง (แบบ Printbox) · กลางขอบ = ครอปเพิ่ม-ลด รูปคงขนาด
+      if (d.axis === "xy" && d.keep) {
+        const pl = d.keep.pl;
+        const f = Math.max(r.w / d.r0.w, r.h / d.r0.h);
+        setSlot(r, {
+          ...d.keep,
+          pl: {
+            ...pl,
+            cxMm: r.x + (pl.cxMm - d.r0.x) * (r.w / d.r0.w),
+            cyMm: r.y + (pl.cyMm - d.r0.y) * (r.h / d.r0.h),
+            wMm: pl.wMm * f,
+            hMm: pl.hMm * f,
+          },
+        });
+      } else setSlot(r, d.keep);
       return;
     }
     if (d.kind === "grid-resize") {
@@ -1769,15 +1808,16 @@ export default function CalendarStudio({
         });
       } else {
         // 🖼 กรอบรูปมีรูป: ย่อ-ขยายแค่กรอบ รูปคงขนาด+ตำแหน่งเดิม (ขยายรูปเฉพาะตอนกรอบใหญ่กว่ารูป)
+        // มุม = รูปขยาย/ย่อตามกรอบ (zoom/ox/oy เดิม = สัดส่วนเดิมในกรอบ) · กลางขอบ = ครอปเพิ่ม-ลด รูปคงขนาด
         const keepImg = (patch: Partial<CalElement>): Partial<CalElement> => {
           const im = d.img;
-          if (!im) return patch;
+          if (!im || d.axis === "xy") return patch;
           const w = patch.w ?? el.w;
           const h = patch.h ?? el.h;
           const x = patch.x ?? el.x;
           const y = patch.y ?? el.y;
           const base = Math.max(w / im.iw, h / im.ih);
-          const zoom = Math.max(1, im.s / base);
+          const zoom = Math.max(Math.min(w / im.iw, h / im.ih) / base, im.s / base);
           const sw = im.iw * base * zoom;
           const sh = im.ih * base * zoom;
           return {
@@ -1834,7 +1874,7 @@ export default function CalendarStudio({
       if (fr) {
         e.preventDefault();
         patchEl(fr.id, {
-          zoom: clamp((fr.zoom ?? 1) * (e.deltaY < 0 ? 1.06 : 1 / 1.06), 1, 4),
+          zoom: clamp((fr.zoom ?? 1) * (e.deltaY < 0 ? 1.06 : 1 / 1.06), containZoom(fr, imgs[fr.src!]!), 4),
         });
         return;
       }
@@ -1999,6 +2039,58 @@ export default function CalendarStudio({
     );
   }
 
+  /**
+   * 🔵 กรอบเลือก + จุดจับ 8 จุด เป็น HTML ทับแคนวาส (ไม่รับเมาส์ — แคนวาสจับเอง)
+   * วาดในแคนวาสแล้วจุดที่ขอบการ์ดโดนตัดครึ่งวง (ผู้ใช้แจ้ง 13 ต.ค. 69) · HTML ล้นขอบการ์ดออกไปได้เต็มวง
+   */
+  function renderSelOverlay() {
+    if (locked) return null;
+    const ctx = canvasRef.current?.getContext("2d");
+    const pad = Math.min(W, H) * 0.012;
+    let r: Rect | undefined;
+    let p = 0;
+    let n = 8;
+    if (selEl && ctx) {
+      r = elementBox(ctx, selEl);
+      p = pad;
+      n = selEl.kind === "text" ? 4 : 8;
+    } else if (slotFocus && page.photo && tool === "photo") r = page.photo;
+    else if (gridSel) {
+      r = gridOf(page, design);
+      p = pad;
+    }
+    if (!r) return null;
+    const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+    type PE = React.PointerEvent<HTMLCanvasElement>;
+    const handlePointer = {
+      down: (e: React.PointerEvent<HTMLSpanElement>) => onPointerDown(e as unknown as PE),
+      move: (e: React.PointerEvent<HTMLSpanElement>) => onPointerMove(e as unknown as PE),
+      up: (e: React.PointerEvent<HTMLSpanElement>) => onPointerUp(e as unknown as PE),
+    };
+    return (
+      <div className="pointer-events-none absolute inset-0 z-10" aria-hidden>
+        <div
+          className="absolute border-[1.5px] border-sky-600/95"
+          style={{ left: pct(r.x - p, W), top: pct(r.y - p, H), width: pct(r.w + p * 2, W), height: pct(r.h + p * 2, H) }}
+        />
+        {handlesOf(r, p)
+          .slice(0, n)
+          .map(([hx, hy], i) => (
+            // จุดที่ล้นออกนอกการ์ด แคนวาสจับไม่ถึง → จุดรับเมาส์เองแล้วส่งต่อให้ตัวจับลากของแคนวาส (พิกัดคิดจาก clientX/Y เหมือนกัน)
+            <span
+              key={i}
+              onPointerDown={handlePointer.down}
+              onPointerMove={handlePointer.move}
+              onPointerUp={handlePointer.up}
+              onPointerCancel={handlePointer.up}
+              className="pointer-events-auto absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 touch-none rounded-full border-[1.5px] border-stone-500 bg-white shadow-sm"
+              style={{ left: pct(hx, W), top: pct(hy, H), cursor: HANDLE_CURSOR[i] }}
+            />
+          ))}
+      </div>
+    );
+  }
+
   /** 🗂 หน้าต่าง Layers (ปุ่มแถบขวา) — เรียงชั้นของหน้านี้ */
   function renderLayersPopup() {
     const curId = sel && pageEls.some((e) => e.id === sel) ? sel : gridSel ? LAYER_GRID : slotFocus ? LAYER_SLOT : null;
@@ -2021,10 +2113,10 @@ export default function CalendarStudio({
     const top = below + 44 > cssH ? Math.max(4, (gr.y / H) * cssH - 56) : below;
     const changed = !!design.grids?.[page.key];
     return (
-      <div className="absolute z-20 w-max -translate-x-1/2" style={{ left, top }} onPointerDown={(e) => e.stopPropagation()}>
+      <div {...barWrap(left, top)} onPointerDown={(e) => e.stopPropagation()}>
         <div
           ref={barRef}
-          className="flex items-center gap-1 rounded-2xl bg-white px-2 py-1 text-xs font-bold text-stone-700 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200"
+          className={`flex items-center gap-1 rounded-2xl bg-white px-2 py-1 text-xs font-bold text-stone-700 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 ${narrow ? "mx-auto flex-wrap justify-center" : ""}`}
         >
           <span className="px-1 text-[11px] text-stone-400">📅 ปฏิทิน · ลากย้าย · จับจุดย่อ-ขยาย</span>
           <button
@@ -2146,6 +2238,102 @@ export default function CalendarStudio({
     setTool(null);
   }
 
+  /** 🗂 ประกอบ .ai แยกเลเยอร์ของทุกหน้าที่จะพิมพ์ (ชั้นเรียงตามหน้าต่าง Layers) */
+  async function makeAi(): Promise<{ file: File; note: string; real: boolean }> {
+    await ensureFonts(fontKeys);
+    const pages = await renderAiPages({
+      fmt,
+      pages: printPages.map((v) => ({ name: vname(v).replace(/^\d+\. /, ""), page: v.page })),
+      design,
+      back,
+      imgs,
+    });
+    const stem = `${title}-ปฏิทิน${back.year}`.replace(/[\/:*?"<>|]/g, "-").slice(0, 60);
+    const r = await buildCalendarAi(pages, stem);
+    return { file: new File([r.blob], `${stem}${r.real ? "" : "-pdf"}.ai`, { type: "application/postscript" }), note: r.note, real: r.real };
+  }
+
+  /** 🖨 ไฟล์ชิ้นงาน .pdf — งานการ์ดชุด (โฟโต้การ์ด) ที่โปรแกรมจัดวางรับ (ปฏิทินแบบอื่นยังไม่ทำ) */
+  const imposeOk = fmt.key.startsWith("card");
+
+  /**
+   * 🖨 ไฟล์ชิ้นงานสำหรับโปรแกรมจัดวาง (localhost:8002 Smart Imposition Pro) — ดู calendar-impose.ts
+   * ไฟล์เดียว: ทีละชิ้น ด้านหน้า · ด้านหลัง · เส้นไดคัท (ผู้ใช้สั่ง "รวมอยู่ใน 1 ไฟล์" + "เส้นไดคัทตามจำนวนชิ้นงาน")
+   * จำนวนต่อลาย = จำนวนใบของลายนั้น × จำนวนชุดที่สั่ง (ใส่ไว้ในชื่อไฟล์ "= N ชิ้น")
+   */
+  async function makePdf(): Promise<{ file: File; note: string }> {
+    await ensureFonts(fontKeys);
+    const sets = Math.max(1, qty ?? 1);
+    const groups = [{ card: 0, count: (copies - custom.length) * sets }, ...[...custom].sort((a, b) => a - b).map((c) => ({ card: c, count: sets }))].filter(
+      (g) => g.count > 0,
+    );
+    const designs: PieceDesign[] = [];
+    for (const g of groups) {
+      const files: File[] = [];
+      for (const v of vpages.filter((x) => x.card === g.card)) {
+        const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, v.page, design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
+        if (!f) throw new Error(`ประกอบ ${vname(v)} ไม่สำเร็จ`);
+        files.push(f);
+      }
+      designs.push({ front: files[0], back: files[1], count: g.count });
+    }
+    const duplex = fmt.pages.length > 1;
+    const r = await buildPieceFiles({
+      designs,
+      wMm: W,
+      hMm: H,
+      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0 },
+      name: `${title} ปี ${back.year}`,
+      duplex,
+    });
+    const total = r.counts.reduce((n, c) => n + c, 0);
+    return {
+      file: r.file,
+      note:
+        `ไฟล์เดียว ${r.pages} หน้า · ${total} ชิ้น (${copies} ใบ × ${Math.max(1, qty ?? 1)} ชุด) · ` +
+        `เรียงทีละชิ้น ${duplex ? "ด้านหน้า · ด้านหลัง · เส้นไดคัท" : "ชิ้นงาน · เส้นไดคัท"} — สำหรับโปรแกรมจัดวาง localhost:8002`,
+    };
+  }
+
+  async function downloadPdf() {
+    if (busy) return;
+    setErr("");
+    try {
+      setBusy("กำลังทำไฟล์ .pdf ชิ้นงาน…");
+      const r = await makePdf();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(r.file);
+      a.download = r.file.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setAsk({ icon: "🖨", title: "โหลดไฟล์ .pdf ชิ้นงานแล้ว", body: r.note, ok: "ตกลง", run: () => {} });
+    } catch (e) {
+      setErr(e instanceof Error ? `ทำไฟล์ .pdf ไม่สำเร็จ: ${e.message}` : "ทำไฟล์ .pdf ไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /** ⬇ ปุ่มทดสอบของเจ้าของร้าน — โหลด .ai ลงเครื่องเลย ไม่แนบออเดอร์ */
+  async function downloadAi() {
+    if (busy) return;
+    setErr("");
+    try {
+      setBusy("กำลังทำไฟล์ .ai…");
+      const r = await makeAi();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(r.file);
+      a.download = r.file.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setAsk({ icon: r.real ? "✅" : "ℹ️", title: "โหลดไฟล์ .ai แล้ว", body: r.note, ok: "ตกลง", run: () => {} });
+    } catch (e) {
+      setErr(e instanceof Error ? `ทำไฟล์ .ai ไม่สำเร็จ: ${e.message}` : "ทำไฟล์ .ai ไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function apply(force = false) {
     if (busy) return;
     // มีช่องรูปแต่ยังไม่มีช่องไหนใส่รูป = ยังสั่งไม่ได้ (ช่องจะพิมพ์ออกมาว่าง)
@@ -2257,8 +2445,31 @@ export default function CalendarStudio({
         photos: Object.fromEntries(Object.entries(design.photos).map(([k, o]) => [k, { ...o, src: remap.get(o.src) ?? -1 }])),
         elements: (design.elements ?? []).map((e) => (e.src == null ? e : { ...e, src: remap.get(e.src) })),
       };
+      // 🗂 เจ้าของร้าน (ทดสอบ): แนบ .ai แยกเลเยอร์ไปกับออเดอร์ด้วย — ทำไม่ได้ก็ยังสั่งต่อได้ (ไฟล์พิมพ์ครบแล้ว)
+      let ai: { file: File; note: string } | undefined;
+      if (aiExport) {
+        setBusy("กำลังทำไฟล์ .ai…");
+        try {
+          ai = await makeAi();
+        } catch (e) {
+          ai = undefined;
+          console.warn("calendar .ai", e);
+        }
+      }
+      let pdf: File | undefined;
+      if (aiExport && imposeOk) {
+        setBusy("กำลังทำไฟล์ .pdf ชิ้นงาน…");
+        try {
+          pdf = (await makePdf()).file;
+        } catch (e) {
+          console.warn("calendar .pdf", e);
+        }
+      }
       setBusy("กำลังอัปโหลด…");
       await onApply({
+        pdf,
+        ai: ai?.file,
+        aiNote: ai?.note,
         pages: out,
         sources: kept,
         state: { format: fmt.key, design: savedDesign, back, sources: kept },
@@ -2688,7 +2899,7 @@ export default function CalendarStudio({
     const { left, top } = barPos({ x: se.x - se.w / 2, y: se.y - se.h / 2, w: se.w, h: se.h }, cssW, cssH);
     const sep = <span className="mx-0.5 h-6 w-px shrink-0 bg-stone-200" />;
     return (
-      <div className="absolute z-20 w-max -translate-x-1/2" style={{ left, top }} onPointerDown={(e) => e.stopPropagation()}>
+      <div {...barWrap(left, top)} onPointerDown={(e) => e.stopPropagation()}>
         {pop && (
           <div className="absolute bottom-full left-1/2 mb-2 w-64 -translate-x-1/2 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-stone-200">
             {pop === "fill" && (
@@ -2747,7 +2958,9 @@ export default function CalendarStudio({
         )}
         <div
           ref={barRef}
-          className="flex max-w-[calc(100vw-24px)] items-center gap-0.5 overflow-x-auto rounded-2xl bg-white px-1.5 py-1 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 [scrollbar-width:none]"
+          className={`flex max-w-[calc(100vw-24px)] items-center gap-0.5 rounded-2xl bg-white px-1.5 py-1 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 [scrollbar-width:none] ${
+            narrow ? "mx-auto flex-wrap justify-center" : ""
+          }`}
         >
           <BarBtn title="สีพื้น" on={pop === "fill"} onClick={() => setPop((v) => (v === "fill" ? "" : "fill"))}>
             <span
@@ -2835,8 +3048,8 @@ export default function CalendarStudio({
     );
     const caret = <span className="text-[10px] text-stone-400">▾</span>;
     return (
-      <div className="absolute z-20 w-max -translate-x-1/2" style={{ left, top }} onPointerDown={(e) => e.stopPropagation()}>
-        <div ref={barRef} className="max-w-[calc(100vw-24px)] space-y-1.5">
+      <div {...barWrap(left, top)} onPointerDown={(e) => e.stopPropagation()}>
+        <div ref={barRef} className={narrow ? "flex flex-col gap-1.5" : "max-w-[calc(100vw-24px)] space-y-1.5"}>
           <div className="flex items-center gap-1.5 rounded-2xl bg-white px-1.5 py-1.5 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200">
             <BarBtn title="ข้อความก่อนหน้า" disabled={texts.length < 2} onClick={() => go(-1)}>
               ‹
@@ -2858,7 +3071,11 @@ export default function CalendarStudio({
               ›
             </BarBtn>
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto rounded-2xl bg-white px-1.5 py-1.5 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 [scrollbar-width:none]">
+          <div
+            className={`flex items-center gap-1.5 rounded-2xl bg-white px-1.5 py-1.5 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 [scrollbar-width:none] ${
+              narrow ? "flex-wrap justify-center" : ""
+            }`}
+          >
             <select
               value={te.font ?? "prompt"}
               onChange={(e) => patchEl(te.id, { font: e.target.value })}
@@ -2916,7 +3133,7 @@ export default function CalendarStudio({
             </button>
           </div>
           {pop && (pop === "tcolor" || pop === "tstyle" || pop === "talign") && (
-            <div className="mx-auto w-max max-w-full space-y-2 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-stone-200">
+            <div className={`space-y-2 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-stone-200 ${narrow ? "order-first w-full" : "mx-auto w-max max-w-full"}`}>
               {pop === "tcolor" && (
                 <>
                   <p className="text-[11px] font-bold text-stone-500">สีตัวอักษร</p>
@@ -2982,16 +3199,39 @@ export default function CalendarStudio({
     const frImg = fr && fr.src != null ? srcs[fr.src] : undefined;
     const has = fr ? !!frImg : true;
     const zoomNow = fr ? Math.round((fr.zoom ?? 1) * 100) : zoomPct;
+    /**
+     * ช่องรูปหลักอยู่โหมด "พอดีช่อง" ไหม (⤢ แบบ Printbox — เห็นทั้งรูป ตรงกลางช่อง)
+     * ผู้ใช้ส่งภาพ Printbox 13 ต.ค. 69 "Fit the image within the photo slot" — เดิมช่องหลักกดได้แค่เต็มช่อง (รูปเต็มอยู่แล้ว = ไม่เปลี่ยน)
+     */
+    const slotContain = (() => {
+      if (fr || !cur || !page.photo || !curSrc) return false;
+      const c = containPlacement(page.photo, curSrc);
+      return Math.abs(cur.pl.wMm - c.wMm) < 0.05 && Math.abs(cur.pl.cxMm - c.cxMm) < 0.05 && Math.abs(cur.pl.cyMm - c.cyMm) < 0.05;
+    })();
+    /** กรอบรูปซูมออกได้ถึงพอดีกรอบทั้งรูป (เดิมล็อก 100% = เต็มกรอบเสมอ) */
+    const frMin = fr && frImg ? Math.round(containZoom(fr, frImg) * 100) : 100;
     const setZoom = (v: number) => {
-      if (fr) patchEl(fr.id, { zoom: clamp(v, 100, 400) / 100 });
+      if (fr) patchEl(fr.id, { zoom: clamp(v, frMin, 400) / 100 });
       else editPl((pl) => scalePl(pl, clamp(v, 20, 400) / Math.max(1, zoomPct)));
     };
     const dpiNow = fr ? (frImg ? Math.round(frImg.w / (elementPhotoSize(fr, frImg).w / 25.4)) : 0) : dpi;
     // ค่าแต่งรูปของสิ่งที่เลือก (กรอบรูปอิสระ หรือรูปช่องหลักของหน้านี้)
     const ownSt = design.photos[basePage.key];
     const st = fr ?? (ownSt && ownSt.src >= 0 ? ownSt : undefined);
-    const setSt = (patch: { opacity?: number; stroke?: string; strokeW?: number; radius?: number; filter?: string; flipX?: boolean }) =>
-      fr ? patchEl(fr.id, patch) : editSlot(patch);
+    const setSt = (patch: {
+      opacity?: number;
+      stroke?: string;
+      strokeW?: number;
+      radius?: number;
+      strokeA?: number;
+      filter?: string;
+      flipX?: boolean;
+      bright?: number;
+      contrast?: number;
+      sat?: number;
+    }) => (fr ? patchEl(fr.id, patch) : editSlot(patch));
+    const opNow = Math.round((st?.opacity ?? 1) * 100);
+    const thumbUrl = fr ? frImg?.url : curSrc?.url;
     const sep = <span className="mx-0.5 h-6 w-px shrink-0 bg-stone-200" />;
     const replace = (
       <input
@@ -3007,10 +3247,12 @@ export default function CalendarStudio({
     );
     const togglePop = (k: typeof pop) => setPop((v) => (v === k ? "" : k));
     return (
-      <div className="absolute z-20 w-max -translate-x-1/2" style={{ left, top }} onPointerDown={(e) => e.stopPropagation()}>
+      <div {...barWrap(left, top)} onPointerDown={(e) => e.stopPropagation()}>
         <div
           ref={barRef}
-          className="flex max-w-[calc(100vw-24px)] items-center gap-0.5 overflow-x-auto rounded-2xl bg-white px-1.5 py-1 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 [scrollbar-width:none]"
+          className={`flex max-w-[calc(100vw-24px)] items-center gap-0.5 rounded-2xl bg-white px-1.5 py-1 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 [scrollbar-width:none] ${
+            narrow ? "mx-auto flex-wrap justify-center" : ""
+          }`}
         >
           {fr && frImg && (
             <BarBtn title="เอารูปออกจากกรอบ" onClick={() => patchEl(fr.id, { src: undefined, zoom: 1, ox: 0, oy: 0 })}>
@@ -3031,21 +3273,37 @@ export default function CalendarStudio({
               <Ico n="imageOff" />
             </BarBtn>
           )}
-          <label className={barBtn} title={fr && !frImg ? "ใส่รูป" : "เปลี่ยนรูป"}>
-            <Ico n="replace" />
-            {replace}
-          </label>
+          {/* กรอบยังว่าง = ปุ่มใส่รูป (เปลี่ยนรูปทีหลัง: ลากรูปจากคลังมาวาง / แผงซ้าย "เปลี่ยนรูปในกรอบนี้") */}
+          {!has && (
+            <label className={barBtn} title="ใส่รูป">
+              <Ico n="replace" />
+              {replace}
+            </label>
+          )}
           {has && (
             <>
               <BarBtn title="ซูมเข้า" onClick={() => setZoom(zoomNow + 10)}>
                 <Ico n="zoomIn" />
               </BarBtn>
-              <BarBtn title="ซูมออก" disabled={fr ? zoomNow <= 100 : zoomNow <= 20} onClick={() => setZoom(zoomNow - 10)}>
+              <BarBtn title="ซูมออก" disabled={fr ? zoomNow <= frMin : zoomNow <= 20} onClick={() => setZoom(zoomNow - 10)}>
                 <Ico n="zoomOut" />
               </BarBtn>
               <BarBtn
-                title={fr ? "รูปเต็มกรอบ" : "รูปเต็มช่อง"}
-                onClick={() => (fr ? patchEl(fr.id, { zoom: 1, ox: 0, oy: 0 }) : curSrc && page.photo && editPl(() => coverPlacement(page.photo!, curSrc)))}
+                title={
+                  fr
+                    ? frameFitted(fr, frImg)
+                      ? "กลับเป็นกรอบขนาดเดิม"
+                      : "หดกรอบให้พอดีรูป (เห็นทั้งรูป)"
+                    : slotContain
+                      ? "กลับเป็นรูปเต็มช่อง"
+                      : "ปรับรูปให้พอดีช่อง (เห็นทั้งรูป)"
+                }
+                on={fr ? frameFitted(fr, frImg) : slotContain}
+                onClick={() =>
+                  fr
+                    ? fitFrame(fr)
+                    : curSrc && page.photo && editPl(() => (slotContain ? coverPlacement(page.photo!, curSrc) : containPlacement(page.photo!, curSrc)))
+                }
               >
                 <Ico n="fit" />
               </BarBtn>
@@ -3064,55 +3322,71 @@ export default function CalendarStudio({
               <BarBtn title="กลับด้านซ้าย-ขวา" on={!!st?.flipX} onClick={() => setSt({ flipX: !st?.flipX })}>
                 <Ico n="flip" />
               </BarBtn>
-              <BarBtn title="ความโปร่ง" on={pop === "opacity"} onClick={() => togglePop("opacity")}>
-                <Ico n="opacity" />
-              </BarBtn>
-              {sep}
-              <div className="flex shrink-0 items-center rounded-xl ring-1 ring-stone-200">
-                <button type="button" onClick={() => setZoom(zoomNow - 10)} className="px-1.5 py-1 text-stone-500 hover:text-stone-800" aria-label="ซูมออก">
+              {/* ความทึบ (ลายตาราง = โปร่งใส) − 100% + ในกล่องเดียวแบบ Printbox */}
+              <div className="mx-1 flex shrink-0 items-center rounded-xl ring-1 ring-stone-200">
+                <BarBtn title="ความโปร่ง" on={pop === "opacity"} onClick={() => togglePop("opacity")}>
+                  <Ico n="opacity" />
+                </BarBtn>
+                <button
+                  type="button"
+                  onClick={() => setSt({ opacity: clamp(opNow - 10, 10, 100) / 100 })}
+                  disabled={opNow <= 10}
+                  className="grid h-10 w-8 place-items-center text-xl text-stone-500 hover:text-stone-800 disabled:opacity-30"
+                  aria-label="โปร่งขึ้น"
+                >
                   −
                 </button>
-                <span className="w-11 text-center text-[11px] font-bold tabular-nums text-stone-700">{zoomNow}%</span>
-                <button type="button" onClick={() => setZoom(zoomNow + 10)} className="px-1.5 py-1 text-stone-500 hover:text-stone-800" aria-label="ซูมเข้า">
+                <span className="w-12 text-center text-sm font-semibold tabular-nums text-stone-800">{opNow}%</span>
+                <button
+                  type="button"
+                  onClick={() => setSt({ opacity: clamp(opNow + 10, 10, 100) / 100 })}
+                  disabled={opNow >= 100}
+                  className="grid h-10 w-8 place-items-center text-xl text-stone-500 hover:text-stone-800 disabled:opacity-30"
+                  aria-label="ทึบขึ้น"
+                >
                   ＋
                 </button>
               </div>
-              {sep}
               <BarBtn title={fr ? "ขอบและมุมมน" : "ขอบ · มุมมน · ขนาดช่อง"} on={pop === "border"} onClick={() => togglePop("border")}>
                 <Ico n="border" />
               </BarBtn>
-              <BarBtn title="เอฟเฟกต์รูป" on={pop === "filter" || !!st?.filter} onClick={() => togglePop("filter")}>
+              <BarBtn title="เอฟเฟกต์ · ปรับแสงสี" on={pop === "filter" || photoFilterCss(st) !== "none"} onClick={() => togglePop("filter")}>
                 <Ico n="magic" />
               </BarBtn>
             </>
           )}
+          <BarBtn title="ลำดับชั้น (Layers)" onClick={() => setLayersOpen(true)}>
+            <Ico n="layers" />
+          </BarBtn>
           {fr && (
-            <>
-              <BarBtn title="ทำซ้ำ" onClick={() => duplicateEl(fr.id)}>
-                <Ico n="copy" />
-              </BarBtn>
-              <BarBtn title="ลบกรอบ (ปุ่ม Delete)" danger onClick={() => removeEl(fr.id)}>
-                <Ico n="trash" />
-              </BarBtn>
-            </>
+            <BarBtn title="ลบกรอบ (ปุ่ม Delete)" danger onClick={() => removeEl(fr.id)}>
+              <Ico n="trash" />
+            </BarBtn>
           )}
           {slot && (
             <BarBtn title="ลบรูป (ปุ่ม Delete)" danger onClick={removeSlotPhoto}>
               <Ico n="trash" />
             </BarBtn>
           )}
-          {dpiNow > 0 && (
+          {/* ความคมชัด — เตือนเฉพาะตอนต่ำ (แถบหลักหน้าตาเหมือน Printbox) */}
+          {dpiNow > 0 && dpiNow < DPI_WARN && (
             <span
-              title="ความคมชัดตอนพิมพ์"
-              className={`ml-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${dpiNow < DPI_WARN ? "bg-amber-100 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}
+              title="ความคมชัดตอนพิมพ์ต่ำ — รูปอาจแตก"
+              className="ml-0.5 shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800"
             >
-              {dpiNow < DPI_WARN ? "⚠" : "✓"} {dpiNow}dpi
+              ⚠ {dpiNow}dpi
             </span>
           )}
         </div>
         {/* เมนูย่อย — กางลงใต้แถบ */}
         {pop && (
-          <div className="absolute left-1/2 top-full mt-2 w-64 -translate-x-1/2 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-stone-200">
+          <div
+            className={
+              narrow
+                ? "max-h-[45vh] w-full overflow-y-auto rounded-2xl bg-white p-3 shadow-xl ring-1 ring-stone-200"
+                : `absolute left-1/2 top-full mt-2 -translate-x-1/2 rounded-2xl bg-white shadow-xl ring-1 ring-stone-200 ${pop === "filter" ? "w-[min(600px,calc(100vw-24px))] p-4" : pop === "border" ? "w-max max-w-[calc(100vw-24px)] p-2" : "w-64 p-3"}`
+            }
+          >
             {pop === "opacity" && (
               <ValueSlider
                 label="ทึบ"
@@ -3124,51 +3398,153 @@ export default function CalendarStudio({
               />
             )}
             {pop === "border" && (
+              // 🖼 แถบขอบแบบ Printbox: [ความทึบขอบ − % +] [สี − หนา +] [มุมมน − n +] ล้างมุมมน · ล้างขอบ
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-10 shrink-0 text-[11px] font-bold text-stone-500">ขอบ</span>
-                  <MiniColors value={st?.stroke ?? ""} onChange={(stroke) => setSt({ stroke, strokeW: st?.strokeW || Math.min(W, H) * 0.012 })} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Stepper
+                    icon={<Ico n="opacity" />}
+                    title="ความทึบของขอบ"
+                    value={`${Math.round((st?.strokeA ?? 1) * 100)}%`}
+                    disabled={!st?.stroke}
+                    onMinus={() => setSt({ strokeA: clamp(Math.round(((st?.strokeA ?? 1) - 0.1) * 10) / 10, 0.1, 1) })}
+                    onPlus={() => setSt({ strokeA: clamp(Math.round(((st?.strokeA ?? 1) + 0.1) * 10) / 10, 0.1, 1) })}
+                  />
+                  <Stepper
+                    icon={
+                      <button
+                        type="button"
+                        title="สีขอบ"
+                        onClick={() => setBorderColor((v) => !v)}
+                        className={`h-7 w-7 rounded-md ring-1 ${st?.stroke ? "ring-stone-300" : "bg-[repeating-conic-gradient(#d6d3d1_0_25%,#fff_0_50%)] bg-[length:8px_8px] ring-stone-300"} ${borderColor ? "outline outline-2 outline-offset-1 outline-sky-500" : ""}`}
+                        style={st?.stroke ? { background: st.stroke } : undefined}
+                      />
+                    }
+                    title="ความหนาขอบ"
+                    value={String(st?.stroke ? Math.max(1, Math.round((st.strokeW ?? 0) / BORDER_STEP)) : 0)}
+                    onMinus={() => st?.stroke && setSt({ strokeW: Math.max(1, Math.round((st.strokeW ?? 0) / BORDER_STEP) - 1) * BORDER_STEP })}
+                    onPlus={() =>
+                      setSt(
+                        st?.stroke
+                          ? { strokeW: Math.min(40, Math.round((st.strokeW ?? 0) / BORDER_STEP) + 1) * BORDER_STEP }
+                          : { stroke: "#1c1917", strokeW: 4 * BORDER_STEP },
+                      )
+                    }
+                  />
+                  <Stepper
+                    icon={<span className="grid h-7 w-7 place-items-center rounded-lg border-2 border-stone-700 text-[10px]" style={{ borderRadius: 9 }} />}
+                    title="มุมมน"
+                    value={String(Math.round(st?.radius ?? 0))}
+                    onMinus={() => setSt({ radius: Math.max(0, Math.round(st?.radius ?? 0) - 1) })}
+                    onPlus={() => setSt({ radius: Math.min(Math.round(Math.min(W, H) / 2), Math.round(st?.radius ?? 0) + 1) })}
+                  />
+                  <button
+                    type="button"
+                    disabled={!(st?.radius ?? 0)}
+                    onClick={() => setSt({ radius: 0 })}
+                    className="h-11 rounded-xl bg-stone-100 px-4 text-sm font-bold text-stone-700 hover:bg-stone-200 disabled:text-stone-300 disabled:hover:bg-stone-100"
+                  >
+                    ล้างมุมมน
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!st?.stroke}
+                    onClick={() => {
+                      setSt({ stroke: "", strokeW: 0, strokeA: undefined });
+                      setBorderColor(false);
+                    }}
+                    className="h-11 rounded-xl bg-[#8fc9d4] px-4 text-sm font-bold text-white hover:bg-[#7bbcc8] disabled:opacity-50"
+                  >
+                    ล้างขอบ
+                  </button>
                 </div>
-                {st?.stroke && (
-                  <ValueSlider
-                    label="หนา"
-                    min={2}
-                    max={Math.round(Math.min(W, H) * 0.4)}
-                    value={Math.round((st.strokeW ?? 0) * 10)}
-                    suffix=""
-                    onChange={(v) => setSt({ strokeW: v / 10 })}
+                {borderColor && (
+                  <MiniColors
+                    value={st?.stroke ?? ""}
+                    onChange={(stroke) => setSt(stroke ? { stroke, strokeW: st?.strokeW || 4 * BORDER_STEP } : { stroke: "", strokeW: 0 })}
                   />
                 )}
-                <ValueSlider
-                  label="มุมมน"
-                  min={0}
-                  max={Math.round(Math.min(W, H) * 2.5)}
-                  value={Math.round((st?.radius ?? 0) * 10)}
-                  suffix=""
-                  onChange={(v) => setSt({ radius: v / 10 })}
-                />
                 {slot && design.slots?.[page.key] && (
-                  <button type="button" onClick={() => setSlot(undefined)} className={`${toolBtn} w-full`}>
+                  <button type="button" onClick={() => setSlot(undefined)} className="text-xs font-bold text-sky-700 hover:underline">
                     ↺ ช่องรูปขนาดเดิม (ตามเลย์เอาต์)
                   </button>
                 )}
               </div>
             )}
             {pop === "filter" && (
-              <div className="grid grid-cols-4 gap-1.5">
-                {CAL_FILTERS.map((f) => (
+              <div className="space-y-3">
+                {(
+                  [
+                    ["bright", "ความสว่าง", "sun"],
+                    ["contrast", "คอนทราสต์", "contrast"],
+                    ["sat", "ความอิ่มสี", "drop"],
+                  ] as const
+                ).map(([k, label, ic]) => {
+                  const v = st?.[k] ?? 100;
+                  return (
+                    <div key={k} className="flex items-center gap-3">
+                      <AdjIco n={ic} />
+                      <span className="w-20 shrink-0 text-sm text-stone-700">{label}:</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={200}
+                        value={v}
+                        onChange={(e) => setSt({ [k]: Number(e.target.value) })}
+                        className="h-1 flex-1 cursor-pointer appearance-none rounded-full accent-sky-500"
+                        style={{ background: `linear-gradient(to right, #7cc4d4 ${v / 2}%, #f0eeec ${v / 2}%)` }}
+                        aria-label={label}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSt({ [k]: undefined })}
+                        disabled={v === 100}
+                        title="ค่าเดิม"
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lg text-stone-600 hover:bg-stone-100 disabled:opacity-30"
+                      >
+                        ↻
+                      </button>
+                    </div>
+                  );
+                })}
+                <div className="relative flex items-center gap-1">
                   <button
-                    key={f.key || "none"}
                     type="button"
-                    onClick={() => setSt({ filter: f.key || undefined })}
-                    className={`flex flex-col items-center gap-1 rounded-xl p-1 text-[10px] font-bold transition ${
-                      (st?.filter ?? "") === f.key ? "bg-sky-50 text-sky-800 ring-2 ring-sky-400" : "text-stone-600 hover:bg-stone-50"
-                    }`}
+                    onClick={() => filterRowRef.current?.scrollBy({ left: -240, behavior: "smooth" })}
+                    className="grid h-9 w-7 shrink-0 place-items-center text-xl text-stone-600 hover:text-stone-900"
+                    aria-label="เลื่อนซ้าย"
                   >
-                    <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-300 via-rose-400 to-sky-500" style={{ filter: f.css }} />
-                    {f.name}
+                    ‹
                   </button>
-                ))}
+                  <div ref={filterRowRef} className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none]">
+                    {CAL_FILTERS.map((f) => {
+                      const on = (st?.filter ?? "") === f.key;
+                      return (
+                        <button
+                          key={f.key || "none"}
+                          type="button"
+                          onClick={() => setSt({ filter: f.key || undefined })}
+                          className={`flex w-[84px] shrink-0 flex-col items-center gap-1 rounded-lg p-1 text-xs transition ${on ? "bg-sky-50 text-sky-600" : "text-stone-700 hover:bg-stone-50"}`}
+                        >
+                          {thumbUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumbUrl} alt="" className="h-[68px] w-[76px] object-cover" style={{ filter: f.css }} />
+                          ) : (
+                            <span className="h-[68px] w-[76px] bg-gradient-to-br from-amber-300 via-rose-400 to-sky-500" style={{ filter: f.css }} />
+                          )}
+                          {f.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => filterRowRef.current?.scrollBy({ left: 240, behavior: "smooth" })}
+                    className="grid h-9 w-7 shrink-0 place-items-center text-xl text-stone-600 hover:text-stone-900"
+                    aria-label="เลื่อนขวา"
+                  >
+                    ›
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -3243,7 +3619,8 @@ export default function CalendarStudio({
             <HeadBtn label="Redo" title="ทำซ้ำ (⌘/Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}>
               <HIco n="redo" />
             </HeadBtn>
-            <div className="relative">
+            {/* 📱 จอแคบ: ซ่อน History/Project — แถบบนต้องเหลือที่ให้ปุ่มใส่ตะกร้า/ปิด (เดิมล้นขอบจอ กดสั่งไม่ได้) */}
+            <div className="relative hidden sm:block">
               <HeadBtn
                 label="History"
                 title="ประวัติการแก้ไข"
@@ -3296,7 +3673,7 @@ export default function CalendarStudio({
                   );
                 })()}
             </div>
-            <div className="relative">
+            <div className="relative hidden sm:block">
               <HeadBtn label="Project" title="ข้อมูลงาน" on={headPop === "project"} onClick={() => setHeadPop((v) => (v === "project" ? "" : "project"))}>
                 <HIco n="project" />
               </HeadBtn>
@@ -3382,12 +3759,34 @@ export default function CalendarStudio({
                 type="button"
                 onClick={() => setAskMode(true)}
                 title="รูปแบบการพิมพ์ · ค่าคละลาย"
-                className={`flex flex-col items-end rounded-xl px-2.5 py-1 text-right leading-tight ring-1 transition hover:brightness-95 ${
+                className={`hidden flex-col items-end rounded-xl px-2.5 py-1 text-right leading-tight ring-1 transition hover:brightness-95 sm:flex ${
                   feeNow > 0 ? "bg-amber-50 text-amber-900 ring-amber-200" : "bg-emerald-50 text-emerald-800 ring-emerald-200"
                 }`}
               >
                 <span className="text-[11px] font-extrabold">{mixMode ? `🎨 คละ ${designN} ลาย (${designN} รูป)` : "🖼 ลายเดียว"}</span>
                 <span className="text-[10.5px] font-bold">{feeNow > 0 ? `ค่าคละ +${formatBaht(feeNow)}` : "ไม่มีค่าคละ"}</span>
+              </button>
+            )}
+            {aiExport && (
+              <button
+                type="button"
+                onClick={() => void downloadAi()}
+                disabled={!!busy}
+                title="เฉพาะเจ้าของร้าน (ทดสอบ) — โหลดไฟล์ .ai แยกเลเยอร์ตามลำดับชั้นที่จัด"
+                className="hidden rounded-full bg-amber-50 px-3 py-2.5 text-xs font-extrabold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100 disabled:opacity-60 sm:inline-block"
+              >
+                ⬇ .ai
+              </button>
+            )}
+            {aiExport && imposeOk && (
+              <button
+                type="button"
+                onClick={() => void downloadPdf()}
+                disabled={!!busy}
+                title="เฉพาะเจ้าของร้าน (ทดสอบ) — .pdf ไฟล์เดียว: ทีละชิ้น ด้านหน้า · ด้านหลัง · เส้นไดคัท สำหรับโปรแกรมจัดวาง localhost:8002"
+                className="hidden rounded-full bg-amber-50 px-3 py-2.5 text-xs font-extrabold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100 disabled:opacity-60 sm:inline-block"
+              >
+                ⬇ .pdf
               </button>
             )}
             <button
@@ -3400,7 +3799,7 @@ export default function CalendarStudio({
               title="บันทึกแบบแล้วกลับไปหน้าสินค้า (ยังไม่ใส่ตะกร้า)"
               className={
                 onOrder
-                  ? "rounded-full px-3 py-2.5 text-sm font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+                  ? "hidden rounded-full px-3 py-2.5 text-sm font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-block sm:px-4"
                   : "rounded-full bg-sky-600 px-4 py-2.5 text-sm font-extrabold text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6"
               }
             >
@@ -3415,7 +3814,7 @@ export default function CalendarStudio({
                 }}
                 disabled={!!busy}
                 title="บันทึกแบบแล้วใส่ตะกร้าเลย"
-                className="flex flex-col items-center rounded-2xl bg-sky-600 px-4 py-1.5 leading-tight text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
+                className="flex flex-col items-center rounded-2xl bg-sky-600 px-3 py-1.5 leading-tight text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
               >
                 <span className="text-sm font-extrabold">{busy || "🛒 ใส่ตะกร้า"}</span>
                 {!busy && price && (
@@ -3447,9 +3846,9 @@ export default function CalendarStudio({
         {headPop && <div className="fixed inset-0 z-30" onClick={() => setHeadPop("")} aria-hidden="true" />}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
-          {/* 📚 คลังรูป (ซ้าย แบบ Printbox) — เลือกที่จะใส่ · อัป/ลากรูป · รูปที่อัปไว้ (แตะ = ใส่ · ลากไปวางบนภาพได้) */}
+          {/* 📚 คลังรูป (ซ้าย แบบ Printbox) — เลือกที่จะใส่ · อัป/ลากรูป · รูปที่อัปไว้ (แตะ = ใส่ · ลากไปวางบนภาพได้)
+              โชว์ตลอด ไม่ต้องกด Photo ก่อน (ผู้ใช้แจ้ง 13 ต.ค. 69 — เดิมผูกกับ tool === "photo" หน้าอื่น/เครื่องมืออื่นคลังหาย) */}
           {!locked &&
-            tool === "photo" &&
             (() => {
               const frames = pageEls.filter((e) => e.kind === "photo");
               const fr = selEl?.kind === "photo" ? selEl : null;
@@ -3458,6 +3857,96 @@ export default function CalendarStudio({
               const activeSrc = fr ? fr.src : slotOn ? (own ? own.src : slotSrc(design, imgs)) : undefined;
               const chip = (on: boolean) =>
                 `rounded-full px-2.5 py-1 text-[11px] font-bold transition ${on ? "bg-sky-600 text-white shadow-sm" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50"}`;
+              /**
+               * 📱 มือถือ: คลังรูปเป็นแถบบาง ๆ "ใต้แถบเครื่องมือ เหนือภาพ" (ผู้ใช้สั่ง 13 ต.ค. 69 ให้ออกแบบตำแหน่งใหม่)
+               * เดิมเป็นกล่องใหญ่อยู่ใต้ภาพ ต้องเลื่อนลงหาถึงจะเจอปุ่มอัปรูป/＋ กรอบ
+               * แถว 1 = ใส่ลงช่องไหน · แถว 2 = ＋ เพิ่มรูป + รูปที่อัปไว้ (ปัดซ้าย-ขวา · แตะ = ใส่ทันที)
+               */
+              if (narrow)
+                return (
+                  <div className="order-[-1] w-full shrink-0 space-y-1.5 border-b border-stone-100 bg-white px-2 py-2">
+                    {copies > 1 && vcur.card > 0 && (
+                      <div className="flex items-center justify-between gap-2 rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] ring-1 ring-sky-100">
+                        <span className="font-bold text-sky-900">ใบที่ {vcur.card + 1} · แยกแบบเอง</span>
+                        <button type="button" onClick={() => resetCard(vcur.card)} className="font-bold text-stone-500">
+                          ↺ เหมือนใบที่ 1
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+                      <span className="shrink-0 pr-0.5 text-[11px] font-bold text-stone-500">ใส่ลง:</span>
+                      {page.photo && (
+                        <button type="button" onClick={() => setSel(null)} className={`shrink-0 ${chip(slotOn)}`}>
+                          ช่องรูปหลัก
+                        </button>
+                      )}
+                      {frames.map((e, n) => (
+                        <button key={e.id} type="button" onClick={() => setSel(e.id)} className={`shrink-0 ${chip(fr?.id === e.id)}`}>
+                          กรอบ {n + 1}
+                          {e.src == null || !srcs[e.src] ? " · ว่าง" : ""}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addEmptyFrame}
+                        className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200 hover:bg-sky-50"
+                      >
+                        ＋ กรอบ
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 overflow-x-auto pb-0.5 pt-1 [scrollbar-width:none]">
+                      <label className="flex h-16 w-16 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-sky-300 bg-sky-50 text-center text-sky-700">
+                        <span className="text-lg font-bold leading-none">＋</span>
+                        <span className="mt-0.5 text-[10px] font-extrabold leading-tight">
+                          {fr ? (frImg ? "เปลี่ยนรูป" : "ใส่รูป") : cur ? "เพิ่มรูป" : "ใส่รูป"}
+                        </span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = [...(e.target.files ?? [])];
+                            e.target.value = "";
+                            void uploadToTarget(files);
+                          }}
+                        />
+                      </label>
+                      {srcs.map((s0, i) =>
+                        s0.removed ? null : (
+                          <div key={s0.url} className="relative shrink-0 pr-1 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => putIntoTarget(i)}
+                              className={`block h-16 w-16 overflow-hidden rounded-xl ring-2 transition ${activeSrc === i ? "ring-sky-500" : "ring-stone-200"}`}
+                              aria-label={`ใส่รูปที่ ${i + 1}`}
+                            >
+                              <img src={s0.url} alt="" className="block h-full w-full object-cover" draggable={false} />
+                            </button>
+                            <button
+                              type="button"
+                              title="ลบรูปนี้"
+                              aria-label="ลบรูปนี้"
+                              onClick={() => removeSrc(i)}
+                              className="absolute right-0 top-0 grid h-5 w-5 place-items-center rounded-full bg-white text-[10px] font-bold text-stone-500 shadow ring-1 ring-stone-200"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ),
+                      )}
+                      {!srcs.some((x) => !x.removed) && (
+                        <span className="text-[11px] leading-snug text-stone-400">อัปรูปได้หลายรูปพร้อมกัน แล้วแตะรูปเพื่อใส่</span>
+                      )}
+                    </div>
+                    {mixMode && (
+                      <p className="rounded-lg bg-amber-50 px-2 py-1 text-[10.5px] leading-snug text-amber-800">
+                        คละลายนับจากรูปในคลัง: {libCount} รูป = คละ {designN} ลาย
+                        {unusedSrcs.length ? ` · ยังไม่ได้ใช้ ${unusedSrcs.length} รูป (กด ✕ ลบได้)` : ""}
+                      </p>
+                    )}
+                  </div>
+                );
               return (
                 <aside className="order-1 w-full shrink-0 space-y-3 border-t border-stone-100 bg-stone-50/60 p-3 sm:order-none sm:w-60 sm:overflow-y-auto sm:border-r sm:border-t-0">
                   {copies > 1 && vcur.card > 0 && (
@@ -3586,7 +4075,15 @@ export default function CalendarStudio({
           {/* เวที */}
           <div
             ref={stageRef}
-            className={`relative flex min-h-0 min-w-0 shrink-0 flex-col items-center justify-center gap-2 p-3 transition sm:flex-1 sm:p-5 ${dropOn ? "bg-sky-50" : "bg-stone-100"}`}
+            className={`relative flex min-h-0 min-w-0 shrink-0 flex-col items-center justify-center gap-2 p-3 transition sm:flex-1 sm:p-5 ${dropOn ? "bg-sky-50" : "bg-stone-100"} ${
+              narrow && (sel || slotFocus || gridSel) ? "pb-32" : ""
+            }`}
+            // 🖱 คลิกพื้นว่างรอบการ์ด = ยกเลิกการเลือก (กรอบฟ้า/แถบเครื่องมือหาย) — เดิมไม่มีตัวรับคลิกตรงนี้ กรอบฟ้าค้าง (ผู้ใช้แจ้ง 13 ต.ค. 69)
+            // เฉพาะคลิกโดนพื้นเวทีเอง/ข้อความใต้การ์ด — แถบเครื่องมือ/จุดจับ/การ์ดมีตัวจับของตัวเอง
+            onPointerDown={(e) => {
+              const t = e.target as HTMLElement;
+              if (t === e.currentTarget || t.dataset.stageBlank !== undefined) clearSelection();
+            }}
             onDragOver={(e) => {
               if (!e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes("text/x-cal-src")) return;
               e.preventDefault();
@@ -3632,6 +4129,7 @@ export default function CalendarStudio({
               {!locked && tool === "photo" && renderPhotoBar()}
               {!locked && tool === "text" && renderTextBar()}
               {!locked && tool === "shape" && renderShapeBar()}
+              {renderSelOverlay()}
               {!locked && renderGridBar()}
               {locked && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/35">
@@ -3665,7 +4163,7 @@ export default function CalendarStudio({
             {tool === "events" && renderEventsPopup()}
             {tool === "settings" && draft && renderSettingsPopup(draft)}
             {layersOpen && renderLayersPopup()}
-            <p className="text-center text-[10.5px] leading-tight text-stone-400">
+            <p data-stage-blank className="text-center text-[10.5px] leading-tight text-stone-400">
               <span className="text-rose-500">{guideImg ? "—" : "- - -"}</span> เส้นตัด
               {guideImg && guide?.name ? ` · 📐 เทมเพลต ${guide.name}` : ""}
               {fmt.note ? ` · ${fmt.note}` : ""}
@@ -4101,7 +4599,7 @@ function HeadBtn({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`flex min-w-[52px] flex-col items-center gap-0.5 rounded-xl px-2 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
+      className={`flex min-w-[40px] flex-col items-center gap-0.5 rounded-xl px-1.5 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 sm:min-w-[52px] sm:px-2 ${
         on ? "bg-sky-50 text-sky-700" : "text-stone-600 hover:bg-stone-100"
       }`}
     >
@@ -4290,7 +4788,62 @@ function RowSwitch({
 }
 
 const barBtn =
-  "grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-xl text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-30";
+  "grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-30";
+
+/** ความหนาขอบ 1 ขั้น (มม.) — แถบขอบโชว์เป็นเลขขั้น 1, 2, 3 … แบบ Printbox (ค่าเริ่ม 4 = 1 มม.) */
+const BORDER_STEP = 0.25;
+
+/** กล่อง [ไอคอน − ค่า +] ของแถบขอบ */
+function Stepper({
+  icon,
+  title,
+  value,
+  onMinus,
+  onPlus,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  value: string;
+  onMinus: () => void;
+  onPlus: () => void;
+  disabled?: boolean;
+}) {
+  const b = "grid h-9 w-8 place-items-center text-xl text-stone-500 hover:text-stone-800 disabled:opacity-30";
+  return (
+    <div title={title} className={`flex h-11 items-center gap-0.5 rounded-xl px-1.5 ring-1 ring-stone-200 ${disabled ? "opacity-40" : ""}`}>
+      <span className="grid h-9 w-9 place-items-center">{icon}</span>
+      <button type="button" disabled={disabled} onClick={onMinus} className={b} aria-label={`${title} ลด`}>
+        −
+      </button>
+      <span className="w-11 text-center text-sm font-semibold tabular-nums text-stone-800">{value}</span>
+      <button type="button" disabled={disabled} onClick={onPlus} className={b} aria-label={`${title} เพิ่ม`}>
+        ＋
+      </button>
+    </div>
+  );
+}
+
+/** ไอคอนแถวปรับแสงสี (ความสว่าง · คอนทราสต์ · ความอิ่มสี) */
+function AdjIco({ n }: { n: "sun" | "contrast" | "drop" }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0 text-stone-700" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden>
+      {n === "sun" ? (
+        <>
+          <circle cx="12" cy="12" r="4.5" />
+          <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" />
+        </>
+      ) : n === "contrast" ? (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" />
+        </>
+      ) : (
+        <path d="M12 3c3.5 4.5 6 7.8 6 11a6 6 0 0 1-12 0c0-3.2 2.5-6.5 6-11z" />
+      )}
+    </svg>
+  );
+}
 
 function BarBtn({
   title,
@@ -4307,17 +4860,26 @@ function BarBtn({
   on?: boolean;
   children: React.ReactNode;
 }) {
+  // 💬 ป้ายบอกชื่อปุ่มแบบ Printbox (ป้ายดำมุมมน + หาง) แทน title ของเบราว์เซอร์ที่เด้งช้า/ตัวเล็ก (ผู้ใช้ขอ 13 ต.ค. 69)
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={`${barBtn} ${on ? "bg-sky-50 text-sky-700" : ""} ${danger ? "hover:bg-rose-50 hover:text-rose-600" : ""}`}
-    >
-      {children}
-    </button>
+    <span className="group/tip relative inline-flex shrink-0">
+      <button
+        type="button"
+        aria-label={title}
+        disabled={disabled}
+        onClick={onClick}
+        className={`${barBtn} ${on ? "bg-sky-50 text-sky-600" : ""} ${danger ? "hover:bg-rose-50 hover:text-rose-600" : ""}`}
+      >
+        {children}
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-stone-700 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity delay-150 group-hover/tip:opacity-100 sm:block"
+      >
+        <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-stone-700" />
+        {title}
+      </span>
+    </span>
   );
 }
 

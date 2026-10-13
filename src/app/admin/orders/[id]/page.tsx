@@ -191,7 +191,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
 import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shippingUnset } from "@/lib/ship-label";
-import { parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import { calAiUrlOf, calPdfUrlOf, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
@@ -6901,6 +6901,36 @@ export default function AdminOrderDetailPage() {
 
                             {/* 🔢 ยอดรวมจำนวนต่อลายเทียบกับที่สั่ง — เห็นทันทีว่าลูกค้าระบุครบ/ขาด/เกิน */}
                             <ArtQtySummary it={it} />
+
+                            {/* 🗂 .ai แยกเลเยอร์ของปฏิทินที่ออกแบบบนเว็บ — เฉพาะเจ้าของร้าน (ช่วงทดสอบ 13 ต.ค. 69) */}
+                            {isOwner &&
+                              specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
+                                <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 ring-1 ring-amber-200">
+                                  <span className="text-[11px] font-bold text-amber-900">🗂 ไฟล์ของเจ้าของ (ทดสอบ):</span>
+                                  {specs.flatMap((sp, n) =>
+                                    (
+                                      [
+                                        [calAiUrlOf(sp), ".ai เลเยอร์", "เลเยอร์.ai"],
+                                        [calPdfUrlOf(sp), "ไฟล์ชิ้นงาน (โปรแกรมจัดวาง)", /\.zip(\?|$)/i.test(calPdfUrlOf(sp) ?? "") ? "ชิ้นงาน.zip" : "ชิ้นงาน.pdf"],
+                                      ] as const
+                                    ).map(([u, label, suffix]) =>
+                                      u ? (
+                                        <a
+                                          key={`${n}-${suffix}`}
+                                          href={u}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          download={`${order.id}-item${i + 1}${specs.length > 1 ? `-ลาย${n + 1}` : ""}-${suffix}`}
+                                          className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100"
+                                        >
+                                          ⬇ {specs.length > 1 ? `ลายที่ ${n + 1} ` : ""}
+                                          {label}
+                                        </a>
+                                      ) : null,
+                                    ),
+                                  )}
+                                </div>
+                              )}
 
                             {/* ── ไฟล์พร้อมพิมพ์ — แสดงเป็นรายการพร้อมชื่อไฟล์ ── */}
                             {ready.length > 0 && (

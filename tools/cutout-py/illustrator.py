@@ -146,3 +146,119 @@ def layered(ai_files: list[bytes], timeout: int = 600) -> list[bytes]:
                 raise RuntimeError(f"Illustrator แปลงไฟล์ที่ {i + 1} ไม่ได้: {st[4:]}")
             out.append(Path(dst).read_bytes())
         return out
+
+
+# ───────────────────────── ปฏิทินจากจอสร้างปฏิทินบนเว็บ ─────────────────────────
+# เว็บวาดแต่ละชั้นเป็น PNG พื้นใสมาให้ (เรียงล่าง → บน ตามที่ลูกค้าจัด) → สร้างเอกสารใหม่
+# วางทีละชั้นลงเลเยอร์ชื่อเดียวกับหน้าจอ · พื้นหลังเป็นสี่เหลี่ยมเวกเตอร์ · เส้นตัด CutContour บนสุด (ล็อก)
+# หลายหน้า/หลายใบ = หลายอาร์ตบอร์ดเรียงซ้าย→ขวา แต่ละใบเป็นเลเยอร์แม่ มีเลเยอร์ลูกตามลำดับ
+JSX_CALENDAR = r"""
+(function(){
+  var job = __JOB__, PT = 72/25.4, GAP = 10*PT;
+  var old = app.userInteractionLevel;
+  app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
+  var doc = null;
+  try{
+    var p0 = job.pages[0];
+    doc = app.documents.add(DocumentColorSpace.RGB, p0.wMm*PT, p0.hMm*PT);
+    var base = doc.layers[0], R0 = doc.artboards[0].artboardRect, left = R0[0], top = R0[1];
+    var spot = null;
+    function cutColor(){
+      if(!spot){
+        try{ spot = doc.spots.getByName("CutContour"); }catch(e){
+          spot = doc.spots.add(); spot.name = "CutContour";
+          var c = new CMYKColor(); c.cyan=0; c.magenta=100; c.yellow=0; c.black=0;
+          spot.color = c; spot.colorType = ColorModel.SPOT;
+        }
+      }
+      var sc = new SpotColor(); sc.spot = spot; sc.tint = 100; return sc;
+    }
+    for(var i=0;i<job.pages.length;i++){
+      var pg = job.pages[i], W = pg.wMm*PT, H = pg.hMm*PT, L = left, T = top;
+      if(i>0) doc.artboards.add([L, T, L+W, T-H]);
+      doc.artboards[i].name = pg.name;
+      var parent = null;
+      if(job.pages.length>1){ parent = doc.layers.add(); parent.name = pg.name; }
+      var addLayer = function(name){ var ly = parent ? parent.layers.add() : doc.layers.add(); ly.name = name; return ly; };
+      var bl = addLayer("พื้นหลัง");
+      var rect = bl.pathItems.rectangle(T, L, W, H);
+      var col = new RGBColor(); col.red = pg.bg[0]; col.green = pg.bg[1]; col.blue = pg.bg[2];
+      rect.stroked = false; rect.filled = true; rect.fillColor = col;
+      for(var j=0;j<pg.layers.length;j++){
+        var it = pg.layers[j], ly = addLayer(it.name), pi = ly.placedItems.add();
+        pi.file = new File(it.path);
+        pi.width = it.w*PT; pi.height = it.h*PT;
+        pi.position = [L + it.x*PT, T - it.y*PT];
+        pi.embed();
+      }
+      var c = pg.cut, cl = addLayer("เส้นตัด (CutContour)");
+      var path = c.r > 0 ? cl.pathItems.roundedRectangle(T - c.y*PT, L + c.x*PT, c.w*PT, c.h*PT, c.r*PT, c.r*PT)
+                         : cl.pathItems.rectangle(T - c.y*PT, L + c.x*PT, c.w*PT, c.h*PT);
+      path.filled = false; path.stroked = true; path.strokeWidth = 0.25; path.strokeColor = cutColor();
+      cl.locked = true;
+      left = L + W + GAP;
+    }
+    if(base.pageItems.length===0 && base.layers.length===0 && doc.layers.length>1) base.remove();
+    var o = new IllustratorSaveOptions(); o.pdfCompatible = true;
+    doc.saveAs(new File(job.out), o);
+    doc.close(SaveOptions.DONOTSAVECHANGES);
+    app.userInteractionLevel = old;
+    return "OK";
+  }catch(e){
+    app.userInteractionLevel = old;
+    try{ if(doc) doc.close(SaveOptions.DONOTSAVECHANGES); }catch(e2){}
+    return "ERR:" + e.message + " (line " + e.line + ")";
+  }
+})();
+"""
+
+
+def _hex_rgb(h: str) -> list:
+    h = (h or "#ffffff").lstrip("#")
+    if len(h) != 6:
+        h = "ffffff"
+    return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+
+
+def calendar_ai(job: dict, timeout: int = 600) -> bytes:
+    """job = {title, pages:[{name, wMm, hMm, bg, cut:{x,y,w,h,r}, layers:[{name, png(base64), x,y,w,h}]}]} -> .ai แท้"""
+    import base64
+    if not available():
+        raise RuntimeError("ไม่พบ Adobe Illustrator ในเครื่องนี้")
+    pages = job.get("pages") or []
+    if not pages:
+        raise RuntimeError("ไม่มีหน้าให้สร้าง")
+    with _LOCK, tempfile.TemporaryDirectory(prefix="calai_") as tmp:
+        tmp = Path(tmp)
+        jpages = []
+        for i, pg in enumerate(pages):
+            layers = []
+            for j, ly in enumerate(pg.get("layers") or []):
+                f = tmp / f"p{i}_l{j}.png"
+                f.write_bytes(base64.b64decode(ly["png"]))
+                layers.append({"name": str(ly.get("name") or f"ชั้น {j + 1}"), "path": str(f),
+                               "x": float(ly["x"]), "y": float(ly["y"]), "w": float(ly["w"]), "h": float(ly["h"])})
+            cut = pg.get("cut") or {}
+            jpages.append({"name": str(pg.get("name") or f"หน้า {i + 1}"), "wMm": float(pg["wMm"]), "hMm": float(pg["hMm"]),
+                           "bg": _hex_rgb(pg.get("bg")), "layers": layers,
+                           "cut": {k: float(cut.get(k, 0)) for k in ("x", "y", "w", "h", "r")}})
+        out = tmp / "calendar.ai"
+        jsx = JSX_CALENDAR.replace("__JOB__", json.dumps({"pages": jpages, "out": str(out)}, ensure_ascii=False))
+        (tmp / "run.jsx").write_text(jsx, encoding="utf-8")
+        scpt = (f'with timeout of {timeout} seconds\n'
+                f'  tell application id "{BUNDLE_ID}"\n'
+                f'    do javascript (read POSIX file "{tmp / "run.jsx"}" as «class utf8»)\n'
+                f'  end tell\n'
+                f'end timeout\n')
+        (tmp / "run.applescript").write_text(scpt, encoding="utf-8")
+        r = subprocess.run(["osascript", str(tmp / "run.applescript")], capture_output=True, text=True, timeout=timeout + 30)
+        if r.returncode != 0:
+            err = r.stderr.strip()
+            if "-1743" in err or "Not authorized" in err:
+                raise RuntimeError("macOS ยังไม่อนุญาตให้ควบคุม Illustrator: ไปที่ System Settings > "
+                                   "Privacy & Security > Automation แล้วเปิดสิทธิ์ Terminal → Adobe Illustrator")
+            raise RuntimeError(f"สั่ง Illustrator ไม่สำเร็จ: {err[:300]}")
+        st = r.stdout.strip()
+        if not st.startswith("OK") or not out.exists():
+            raise RuntimeError(f"Illustrator สร้างไฟล์ไม่ได้: {st[4:] or st}")
+        return out.read_bytes()
