@@ -419,12 +419,13 @@ export async function saveCert(sb: SupabaseClient, c: WhtCert): Promise<string |
 
 /** เซ็น URL ไฟล์ (1 ชม.) ให้หน้าเว็บเปิดดูได้ */
 export async function withFileUrls(sb: SupabaseClient, certs: WhtCert[]): Promise<WhtCertView[]> {
-  const paths = certs.flatMap((c) => [...(c.certFiles ?? []), ...(c.refundSlips ?? [])]);
+  const filesOf = (c: WhtCert) => [...(c.certFiles ?? []), ...(c.refundSlips ?? []), ...(c.topUpSlips ?? [])];
+  const paths = certs.flatMap(filesOf);
   if (!paths.length) return certs;
   const { data } = await sb.storage.from(WHT_BUCKET).createSignedUrls(paths, 3600);
   const url = new Map((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl]));
   return certs.map((c) => {
-    const own = [...(c.certFiles ?? []), ...(c.refundSlips ?? [])].filter((p) => url.has(p));
+    const own = filesOf(c).filter((p) => url.has(p));
     return own.length ? { ...c, files: Object.fromEntries(own.map((p) => [p, url.get(p)!])) } : c;
   });
 }

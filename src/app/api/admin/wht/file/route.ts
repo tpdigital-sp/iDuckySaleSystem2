@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { loadCert, saveCert, uploadWhtFile, withFileUrls } from "@/lib/server/wht-db";
+import { whtAmountOf } from "@/lib/wht";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,7 @@ const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "
 
 /**
  * 📎 แนบไฟล์ — kind=cert ใบหัก ณ ที่จ่าย (แนบแล้ว = ได้รับใบหักแล้วให้เอง) · kind=slip สลิปโอนคืน (แนบแล้ว = โอนคืนแล้ว)
+ * kind=topup สลิปที่ลูกค้าโอนค่าหัก ณ ที่จ่ายมาแทนใบหัก (แนบแล้ว = ตั้งโอนแทน + ปิดเรื่องให้เอง)
  * รูปย่อฝั่งเบราว์เซอร์ก่อนส่ง (Netlify รับ body ~4.5MB)
  */
 export async function POST(req: Request) {
@@ -19,13 +21,15 @@ export async function POST(req: Request) {
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
   const id = String(form?.get("id") ?? "");
-  const kind = form?.get("kind") === "slip" ? "slip" : "cert";
+  const k = form?.get("kind");
+  const kind = k === "slip" ? "slip" : k === "topup" ? "topup" : "cert";
   if (!(file instanceof File)) return NextResponse.json({ error: "ไม่มีไฟล์" }, { status: 400 });
   const ext = EXT[file.type];
   if (!ext) return NextResponse.json({ error: "รองรับเฉพาะรูป JPG/PNG/WEBP หรือ PDF" }, { status: 400 });
   if (file.size > 4 * 1024 * 1024) return NextResponse.json({ error: "ไฟล์ใหญ่เกิน 4MB" }, { status: 400 });
   const cur = await loadCert(sb, id);
   if (!cur) return NextResponse.json({ error: `ไม่พบใบ ${id}` }, { status: 404 });
+  if (kind === "topup" && cur.retro) return NextResponse.json({ error: "ใบนี้ตั้งหักย้อนหลังอยู่ — ยกเลิกหักย้อนหลังก่อน" }, { status: 400 });
   if (kind === "slip" && !cur.retro) return NextResponse.json({ error: "ตั้งหักย้อนหลังก่อนแนบสลิปโอนคืน" }, { status: 400 });
 
   const up = await uploadWhtFile(sb, cur.id, new Uint8Array(await file.arrayBuffer()), file.type, ext);
@@ -41,6 +45,10 @@ export async function POST(req: Request) {
       c.received ??= { at: now, by };
       if (!c.mode) Object.assign(c, { mode: "wht", modeBy: by });
     }
+  } else if (kind === "topup") {
+    c.topUpSlips = [...(c.topUpSlips ?? []), up.path];
+    c.topUp ??= { at: now, by, amount: whtAmountOf(c) };
+    delete c.received;
   } else {
     c.refundSlips = [...(c.refundSlips ?? []), up.path];
     c.retro = { ...c.retro!, refundedAt: c.retro!.refundedAt ?? now, refundedBy: c.retro!.refundedBy ?? by };

@@ -97,6 +97,14 @@ export interface WhtCert {
   };
   refundSlips?: string[];
 
+  /**
+   * 💸 ลูกค้าหักตอนจ่าย แต่ไม่ส่งใบหัก — โอนค่าหัก ณ ที่จ่ายมาให้แทน (= สุดท้ายไม่หัก) (13 ต.ค. 69)
+   * amount = ยอดที่ลูกค้าโอนเพิ่ม (ปกติเท่ายอดหัก) · สลิปอยู่ topUpSlips · แนบสลิปแล้ว = ปิดเรื่อง
+   * ชนะ mode เสมอ — FlowAccount ยังบันทึกว่าหักตอนรับชำระ ดึงซ้ำทับ mode ได้แต่สถานะยังเป็นโอนแทน
+   */
+  topUp?: { at: string; by: string; amount: number };
+  topUpSlips?: string[];
+
   /** ประวัติการทวงทางไลน์ */
   /** ประวัติการทวงทางไลน์ · to = ชื่อ LINE ของผู้รับ (ข้อความจาก API ไม่โผล่ในห้องแชท OA Manager — ใช้ยืนยันว่าส่งถึงใคร) */
   reminders?: { at: string; by: string; ok: boolean; reason?: string; to?: string }[];
@@ -110,7 +118,7 @@ export interface WhtCertView extends WhtCert {
   files?: Record<string, string>;
 }
 
-export type WhtStatus = "todo" | "pending" | "received" | "retro" | "refunded" | "none" | "void";
+export type WhtStatus = "todo" | "pending" | "received" | "retro" | "refunded" | "topup" | "topupDone" | "none" | "void";
 
 export const WHT_STATUS_LABEL: Record<WhtStatus, string> = {
   todo: "ยังไม่ระบุ หัก/ไม่หัก",
@@ -118,6 +126,8 @@ export const WHT_STATUS_LABEL: Record<WhtStatus, string> = {
   received: "หัก · ได้รับใบหักแล้ว",
   retro: "หักย้อนหลัง · รอโอนคืน",
   refunded: "หักย้อนหลัง · โอนคืนแล้ว",
+  topup: "โอนค่าหักแทน · รอแนบสลิป",
+  topupDone: "ไม่หัก · โอนค่าหักมาแทนแล้ว",
   none: "ไม่หัก",
   void: "ยกเลิกใน FlowAccount",
 };
@@ -125,6 +135,7 @@ export const WHT_STATUS_LABEL: Record<WhtStatus, string> = {
 export function whtStatusOf(c: WhtCert): WhtStatus {
   if (/ยกเลิก/.test(c.faStatus ?? "")) return "void";
   if (c.retro) return c.retro.refundedAt ? "refunded" : "retro";
+  if (c.topUp) return c.topUpSlips?.length ? "topupDone" : "topup";
   if (!c.mode) return "todo";
   if (c.mode === "none") return "none";
   return c.received ? "received" : "pending";

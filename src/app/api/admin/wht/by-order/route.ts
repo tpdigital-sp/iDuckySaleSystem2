@@ -44,7 +44,7 @@ export async function GET(req: Request) {
         total: c.total,
         faStatus: c.faStatus,
         status: st,
-        ...(c.mode === "wht" || c.retro ? { wht: { amount: c.retro?.amount ?? whtAmountOf(c), label: WHT_STATUS_LABEL[st], done: st === "received" || st === "refunded" } } : {}),
+        ...(c.mode === "wht" || c.retro || c.topUp ? { wht: { amount: c.retro?.amount ?? c.topUp?.amount ?? whtAmountOf(c), label: WHT_STATUS_LABEL[st], done: st === "received" || st === "refunded" || st === "topupDone" } } : {}),
         guessed: c.matchedBy === "taxId" || c.matchedBy === "name",
       };
     });

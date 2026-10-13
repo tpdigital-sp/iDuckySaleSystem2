@@ -51,6 +51,8 @@ type Patch = {
   note?: string;
   orderId?: string;
   removeFile?: string;
+  /** 💸 ลูกค้าโอนค่าหัก ณ ที่จ่ายมาแทนใบหัก · null = ยกเลิก */
+  topUp?: { amount?: number } | null;
   /** 🔗 ผูก LINE ตรงที่ใบหัก (userId U…) · null = ยกเลิกผูก */
   lineUserId?: string | null;
   /** 💬 ลิงก์ห้องแชท OA Manager · null = ลบลิงก์ */
@@ -133,6 +135,17 @@ export async function PATCH(req: Request) {
       c.retro = rest;
     }
   }
+  if (body.topUp !== undefined) {
+    if (body.topUp === null) {
+      if (c.topUpSlips?.length) return NextResponse.json({ error: "แนบสลิปไว้แล้ว — ลบสลิปออกก่อนถึงจะยกเลิกได้" }, { status: 409 });
+      delete c.topUp;
+    } else {
+      if (c.retro) return NextResponse.json({ error: "ใบนี้ตั้งหักย้อนหลังอยู่ — ยกเลิกหักย้อนหลังก่อน" }, { status: 409 });
+      const amount = Number(body.topUp.amount);
+      c.topUp = { ...(c.topUp ?? { at: now, by }), amount: isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : (c.topUp?.amount ?? whtAmountOf(c)) };
+      delete c.received; // ไม่ได้ใบหักแล้ว — โอนเงินมาแทน
+    }
+  }
   if (body.note !== undefined) c.note = s(body.note, 500) || undefined;
   if (body.orderId) {
     const r = await relinkCert(sb, c, body.orderId.trim().toUpperCase());
@@ -143,6 +156,7 @@ export async function PATCH(req: Request) {
     const p = body.removeFile;
     c.certFiles = (c.certFiles ?? []).filter((x) => x !== p);
     c.refundSlips = (c.refundSlips ?? []).filter((x) => x !== p);
+    c.topUpSlips = (c.topUpSlips ?? []).filter((x) => x !== p);
     await sb.storage.from(WHT_BUCKET).remove([p]);
   }
 

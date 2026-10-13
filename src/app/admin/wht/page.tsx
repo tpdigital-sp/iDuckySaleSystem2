@@ -63,12 +63,17 @@ const thTime = (iso?: string) => {
     : "";
 };
 
+/** cert = ใบหัก · slip = สลิปร้านโอนคืน (หักย้อนหลัง) · topup = สลิปลูกค้าโอนค่าหักมาแทนใบหัก */
+type FileKind = "cert" | "slip" | "topup";
+
 const TAG: Record<WhtStatus, "coral" | "yolk" | "lilac" | "mint" | "quiet"> = {
   pending: "coral",
   todo: "yolk",
   retro: "lilac",
   received: "mint",
   refunded: "mint",
+  topup: "yolk",
+  topupDone: "mint",
   none: "quiet",
   void: "quiet",
 };
@@ -78,17 +83,21 @@ const BAR: Record<WhtStatus, string> = {
   retro: "var(--dk-lilac)",
   received: "var(--dk-mint)",
   refunded: "var(--dk-mint)",
+  topup: "var(--dk-yolk)",
+  topupDone: "var(--dk-mint)",
   none: "var(--dk-faint)",
   void: "var(--dk-faint)",
 };
-/** ใบที่ต้องลงมือ: ยังไม่รู้ว่าหักไหม · หักแล้วยังไม่ได้ใบหัก · หักย้อนหลังที่ยังไม่โอนคืน */
-const ATTN: WhtStatus[] = ["todo", "pending", "retro"];
+/** ใบที่ต้องลงมือ: ยังไม่รู้ว่าหักไหม · หักแล้วยังไม่ได้ใบหัก · หักย้อนหลังที่ยังไม่โอนคืน · โอนค่าหักแทนที่ยังไม่แนบสลิป */
+const ATTN: WhtStatus[] = ["todo", "pending", "retro", "topup"];
 const ORDER: WhtStatus[] = [
   "pending",
   "todo",
   "retro",
+  "topup",
   "received",
   "refunded",
+  "topupDone",
   "none",
   "void",
 ];
@@ -223,7 +232,7 @@ function WhtInner() {
     }
   }
 
-  async function attach(id: string, kind: "cert" | "slip", f: File) {
+  async function attach(id: string, kind: FileKind, f: File) {
     setBusy(id);
     setMsg(null);
     try {
@@ -440,6 +449,12 @@ function WhtInner() {
 
   const rowFile = useRef<HTMLInputElement>(null);
   const [rowFileId, setRowFileId] = useState("");
+  const [rowFileKind, setRowFileKind] = useState<FileKind>("cert");
+  const pickRowFile = (id: string, kind: FileKind) => {
+    setRowFileId(id);
+    setRowFileKind(kind);
+    rowFile.current?.click();
+  };
 
   const selectable = (c: WhtCertView) => ["pending", "todo"].includes(whtStatusOf(c));
   const selected = shown.filter((c) => sel.has(c.id));
@@ -551,7 +566,7 @@ function WhtInner() {
                   small
                   disabled={rowBusy}
                   title="กดผิด — ย้อนกลับเป็นสถานะเดิม"
-                  onClick={() => void patch(c.id, before === "todo" ? { mode: null, received: false } : { received: false })}
+                  onClick={() => void patch(c.id, before === "todo" ? { mode: null, received: false, topUp: null } : { received: false, topUp: null })}
                 >
                   ↩ เลิกทำ
                 </Btn>
@@ -567,11 +582,27 @@ function WhtInner() {
                   <Btn small disabled={rowBusy} onClick={() => quick(c, { mode: "none" })} title="ลูกค้าโอนเต็มยอด ไม่ต้องตามใบหัก">
                     ไม่หัก
                   </Btn>
+                  <Btn small disabled={rowBusy} onClick={() => quick(c, { topUp: {} })} title="ลูกค้าหักไว้ตอนจ่าย แต่โอนค่าหัก ณ ที่จ่ายมาให้แทนใบหัก — เลือกแล้วแนบสลิปต่อ">
+                    ไม่หัก (โอนค่าหักมาแทน)
+                  </Btn>
+                </>
+              )}
+              {st === "topup" && (
+                <>
+                  <span className="w-full text-right text-[11.5px]" style={{ color: "var(--dk-yolk-ink)" }}>
+                    โอนแทน {baht(c.topUp!.amount)} · รอสลิป
+                  </span>
+                  <Btn small tone="navy" disabled={rowBusy} onClick={() => pickRowFile(c.id, "topup")}>
+                    📎 แนบสลิปโอน
+                  </Btn>
                 </>
               )}
               {st === "pending" && (
                 <>
                   {c.lineChatUrl && <ChatLinkBtn url={c.lineChatUrl} label="💬 แชท" />}
+                  <Btn small disabled={rowBusy} onClick={() => quick(c, { topUp: {} })} title="ลูกค้าไม่ส่งใบหัก แต่โอนค่าหัก ณ ที่จ่ายมาให้แทน — เลือกแล้วแนบสลิปต่อ">
+                    💸 โอนค่าหักมาแทน
+                  </Btn>
                   <Btn small disabled={rowBusy} onClick={() => quick(c, { received: true })} title="กดเมื่อลูกค้าส่งใบหักมาแล้ว — สถานะจะเปลี่ยนเป็น “ได้รับใบหักแล้ว”">
                     บันทึกว่าได้รับใบหัก
                   </Btn>
@@ -579,10 +610,7 @@ function WhtInner() {
                     small
                     disabled={rowBusy}
                     title="แนบรูป/PDF ใบหัก — แนบแล้วติ๊กได้รับให้เอง"
-                    onClick={() => {
-                      setRowFileId(c.id);
-                      rowFile.current?.click();
-                    }}
+                    onClick={() => pickRowFile(c.id, "cert")}
                   >
                     📎 แนบใบหัก
                   </Btn>
@@ -752,7 +780,7 @@ function WhtInner() {
               on={filter === "attn"}
               onClick={() => setFilter("attn")}
               label="ต้องจัดการ"
-              count={counts.todo + counts.pending + counts.retro}
+              count={counts.todo + counts.pending + counts.retro + counts.topup}
             />
             {ORDER.map((s) => (
               <FChip
@@ -877,7 +905,7 @@ function WhtInner() {
           const f = e.target.files?.[0];
           if (f && rowFileId) {
             keep([rowFileId]);
-            void attach(rowFileId, "cert", f);
+            void attach(rowFileId, rowFileKind, f);
           }
           e.target.value = "";
         }}
@@ -897,7 +925,7 @@ function Detail({
   c: WhtCertView;
   busy: boolean;
   patch: (id: string, body: Record<string, unknown>) => Promise<PatchResult>;
-  attach: (id: string, kind: "cert" | "slip", f: File) => Promise<void>;
+  attach: (id: string, kind: FileKind, f: File) => Promise<void>;
 }) {
   const st = whtStatusOf(c);
   const amt = whtAmountOf(c);
@@ -1043,19 +1071,27 @@ function Detail({
           <span className="mr-1 font-semibold">ลูกค้า:</span>
           <Btn
             small
-            tone={c.mode === "wht" ? "navy" : "ghost"}
+            tone={c.mode === "wht" && !c.topUp ? "navy" : "ghost"}
             disabled={busy}
-            onClick={() => void patch(c.id, { mode: "wht" })}
+            onClick={() => void patch(c.id, { mode: "wht", ...(c.topUp ? { topUp: null } : {}) })}
           >
             หัก ณ ที่จ่าย {c.rate}%
           </Btn>
           <Btn
             small
-            tone={c.mode === "none" ? "navy" : "ghost"}
+            tone={c.mode === "none" && !c.topUp ? "navy" : "ghost"}
             disabled={busy}
-            onClick={() => void patch(c.id, { mode: "none", received: false })}
+            onClick={() => void patch(c.id, { mode: "none", received: false, ...(c.topUp ? { topUp: null } : {}) })}
           >
             ไม่หัก
+          </Btn>
+          <Btn
+            small
+            tone={c.topUp ? "navy" : "ghost"}
+            disabled={busy || !!c.topUp}
+            onClick={() => void patch(c.id, { topUp: {} })}
+          >
+            ไม่หัก (โอนค่าหักมาแทน)
           </Btn>
           {c.modeBy && (
             <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
@@ -1066,7 +1102,7 @@ function Detail({
       )}
 
       {/* ใบหัก (กรณีหักตอนจ่าย) */}
-      {c.mode === "wht" && !c.retro && (
+      {c.mode === "wht" && !c.retro && !c.topUp && (
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex min-h-11 cursor-pointer items-center gap-2 font-semibold">
             <input
@@ -1100,8 +1136,11 @@ function Detail({
         </div>
       )}
 
+      {/* 💸 โอนค่าหักมาแทนใบหัก */}
+      {c.topUp && <TopUpBox c={c} busy={busy} patch={patch} attach={attach} files={files} />}
+
       {/* หักย้อนหลัง */}
-      {(c.mode === "none" || c.retro) && st !== "void" && (
+      {(c.mode === "none" || c.retro) && !c.topUp && st !== "void" && (
         <div
           className="rounded-xl p-3"
           style={{ background: "var(--dk-lilac-wash)" }}
@@ -1562,6 +1601,75 @@ function LineBind({
         </div>
       )}
       {dialog}
+    </div>
+  );
+}
+
+/** 💸 ลูกค้าโอนค่าหัก ณ ที่จ่ายมาแทนใบหัก — ยอดที่โอน + สลิป (แนบสลิปแล้ว = ปิดเรื่อง) */
+function TopUpBox({
+  c,
+  busy,
+  patch,
+  attach,
+  files,
+}: {
+  c: WhtCertView;
+  busy: boolean;
+  patch: (id: string, body: Record<string, unknown>) => Promise<PatchResult>;
+  attach: (id: string, kind: FileKind, f: File) => Promise<void>;
+  files: (paths?: string[]) => React.ReactNode;
+}) {
+  const t = c.topUp!;
+  const [amount, setAmount] = useState(String(t.amount));
+  useEffect(() => setAmount(String(t.amount)), [t.amount]);
+  const slipInput = useRef<HTMLInputElement>(null);
+  const done = !!c.topUpSlips?.length;
+  const changed = Number(amount) > 0 && Number(amount) !== t.amount;
+  return (
+    <div className="space-y-3 rounded-xl p-3" style={{ background: done ? "var(--dk-mint-wash)" : "var(--dk-yolk-wash)" }}>
+      <p className="font-semibold" style={{ color: done ? "var(--dk-mint-ink)" : "var(--dk-yolk-ink)" }}>
+        💸 ไม่หัก — ลูกค้าโอนค่าหัก ณ ที่จ่ายมาให้แทนใบหัก {done ? "· แนบสลิปแล้ว ✓" : "· รอแนบสลิป"}
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label>
+          <span className="mb-1 block text-[12px]">ยอดที่ลูกค้าโอนมา (บาท)</span>
+          <input
+            className="h-11 w-40 rounded-xl border border-slate-200 bg-white px-3 text-[14px] tabular-nums"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+        {changed && (
+          <Btn small tone="navy" disabled={busy} onClick={() => void patch(c.id, { topUp: { amount: Number(amount) } })}>
+            บันทึกยอด
+          </Btn>
+        )}
+        <span className="pb-3 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+          ยอดหัก {c.rate}% = {baht(whtAmountOf(c))} · ตั้งโดย {t.by} · {thTime(t.at)}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {files(c.topUpSlips)}
+        <input
+          ref={slipInput}
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.[0]) void attach(c.id, "topup", e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
+        <Btn small tone={done ? "ghost" : "navy"} disabled={busy} onClick={() => slipInput.current?.click()}>
+          📎 {done ? "แนบสลิปเพิ่ม" : "แนบสลิปที่ลูกค้าโอน"}
+        </Btn>
+        {!done && (
+          <Btn small disabled={busy} onClick={() => void patch(c.id, { topUp: null })} title="เลือกผิด — กลับไปสถานะเดิม (หัก/ไม่หัก)">
+            ↩ ยกเลิก
+          </Btn>
+        )}
+      </div>
     </div>
   );
 }
