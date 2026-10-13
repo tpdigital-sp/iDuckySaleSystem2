@@ -24,7 +24,7 @@ export const CAL_FONTS: { key: string; name: string; css: string; google?: strin
   { key: "looped", name: "IBM Plex Looped", css: "var(--font-looped)" },
   { key: "kanit", name: "Kanit", css: "'Kanit'", google: "Kanit:wght@400;600;700" },
   { key: "sarabun", name: "Sarabun", css: "'Sarabun'", google: "Sarabun:wght@400;700" },
-  { key: "montserrat", name: "Montserrat", css: "'Montserrat'", google: "Montserrat:wght@500;700" },
+  { key: "montserrat", name: "Montserrat", css: "'Montserrat'", google: "Montserrat:wght@400;500;600;700" },
   { key: "itim", name: "Itim (ลายมือ)", css: "'Itim'", google: "Itim" },
   { key: "pattaya", name: "Pattaya", css: "'Pattaya'", google: "Pattaya" },
 ];
@@ -54,7 +54,25 @@ export interface CalBack {
   holidayOn: boolean;
   holidayColor: string;
   events: CalEvent[];
+  /** ตัวอักษรแยกส่วน (หน้าต่าง Calendar settings แบบ Printbox) — ไม่ตั้ง = ค่าเดิมของแบบ */
+  parts?: Partial<Record<CalPartKey, CalPart>>;
 }
+
+/** ส่วนของตารางปฏิทินที่ปรับตัวอักษรแยกได้: ชื่อเดือน · หัวข้อปี · ชื่อวัน · ตัวเลขวันที่ */
+export type CalPartKey = "month" | "title" | "week" | "day";
+export interface CalPart {
+  /** ว่าง = ใช้ฟอนต์ปฏิทิน (b.font) */
+  font?: string;
+  /** ว่าง = น้ำหนักเดิมของแบบ */
+  bold?: boolean;
+  italic?: boolean;
+  /** ตัวคูณขนาดจากขนาดอัตโนมัติ (1 = เดิม) */
+  scale?: number;
+  align?: "left" | "center" | "right";
+  /** ว่าง = สีเดิม (ชื่อเดือน/หัวข้อ = accent · ชื่อวัน/ตัวเลข = ink) */
+  color?: string;
+}
+export const CAL_PART_KEYS: CalPartKey[] = ["month", "title", "week", "day"];
 
 /** ข้อความทับรูปหน้าปก */
 export interface CalText {
@@ -69,6 +87,10 @@ export interface CalText {
   xMm: number;
   yMm: number;
   bold: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  /** จัดชิดของบรรทัดในกล่อง (หลายบรรทัด) — ค่าเดิม = กึ่งกลาง */
+  align?: "left" | "center" | "right";
 }
 
 /** ตำแหน่งรูป (จุดกึ่งกลาง + ขนาดที่วาง + มุมหมุน) นับจากมุมซ้ายบนของผืนรวมตัดตก (มม.) */
@@ -84,14 +106,93 @@ export interface CalPlacement {
 export interface CalPhoto {
   src: number;
   pl: CalPlacement;
+  /** แต่งรูปช่องหลักแบบ Printbox (13 ต.ค. 69) — กลับด้าน · ความทึบ · ขอบ · มุมมน · เอฟเฟกต์ */
+  flipX?: boolean;
+  opacity?: number;
+  stroke?: string;
+  strokeW?: number;
+  radius?: number;
+  filter?: string;
 }
+
+/** ✨ เอฟเฟกต์รูป (ปุ่มไม้กายสิทธิ์) — key เก็บในแบบ · css = canvas filter (ไฟล์พิมพ์ใช้ตัวเดียวกัน) */
+export const CAL_FILTERS: { key: string; name: string; css: string }[] = [
+  { key: "", name: "ปกติ", css: "none" },
+  { key: "bw", name: "ขาวดำ", css: "grayscale(1)" },
+  { key: "sepia", name: "ซีเปีย", css: "sepia(0.85)" },
+  { key: "vivid", name: "สดใส", css: "saturate(1.5) contrast(1.08)" },
+  { key: "soft", name: "ละมุน", css: "saturate(0.8) brightness(1.06) contrast(0.92)" },
+  { key: "vintage", name: "วินเทจ", css: "sepia(0.35) saturate(0.85) contrast(1.05) brightness(1.03)" },
+  { key: "cool", name: "โทนเย็น", css: "hue-rotate(-12deg) saturate(1.1)" },
+];
+export const filterCss = (key?: string) => CAL_FILTERS.find((f) => f.key === (key ?? ""))?.css ?? "none";
 
 /** สิ่งที่ลูกค้าวางเองในแบบนี้ (รูปรายหน้า + ข้อความหน้าปก + สีพื้น) */
 export interface CalDesign {
   bg: string;
+  /** ข้อความหน้าปกแบบเก่า (กล่องเดียว) — จอใหม่แปลงเป็น elements ตอนเปิด · ยังวาดให้เพื่อแบบ/สคริปต์เดิม */
   text: CalText | null;
   /** key = page.key · หน้าที่ไม่มีรูปของตัวเอง = ใช้รูปหน้าปก (รูปแรก) วางเต็มช่องให้อัตโนมัติ */
   photos: Record<string, CalPhoto>;
+  /** ✏️ ชิ้นส่วนที่ลูกค้าวางเอง (ข้อความหลายกล่อง · สี่เหลี่ยม · วงรี) ทุกหน้า — วาดทับบนสุด เรียงตามลำดับ */
+  elements?: CalElement[];
+  /** 🔁 เลย์เอาต์ที่เลือกต่อหน้า (key = page.key · ไม่มี = ตามรูปแบบงาน) — ดู layoutsOf */
+  layouts?: Record<string, string>;
+  /**
+   * 🗂 ลำดับชั้นของหน้า (ล่าง → บน · key = หน้า) — "@slot" = รูปช่องหลัก · "@grid" = ตารางปฏิทิน · ที่เหลือ = id ชิ้นส่วน
+   * ไม่มี/ไม่ครบ = ค่าเริ่มต้น (รูปหลัก → ปฏิทิน → ชิ้นส่วนตามลำดับที่เพิ่ม) — ดู orderOf (13 ต.ค. 69)
+   */
+  order?: Record<string, string[]>;
+  /** 🖼 ขนาด/ตำแหน่งช่องรูปหลักที่ลูกค้าลากจุดจับปรับเอง (มม. · key = หน้า) — ไม่มี = ตามเลย์เอาต์ (13 ต.ค. 69) */
+  slots?: Record<string, Rect>;
+  /** 📅 ตำแหน่ง/ขนาดตารางปฏิทินที่ลูกค้าลากปรับเอง (มม. · key = หน้า) — ไม่มี = ตามเลย์เอาต์ (13 ต.ค. 69) */
+  grids?: Record<string, Rect>;
+  /** 🃏 ใบที่แยกออกแบบเอง (ลำดับ 1.. ของ CalFormat.cards) — ข้อมูลอยู่ใต้ key "c{i}:page" · ใบที่ไม่อยู่ในนี้ = เหมือนใบแรก */
+  custom?: number[];
+  /** 🎨 รูปแบบการพิมพ์ "คละลาย" (ชุดหลายใบ) — ทุกใบออกแบบแยกได้ · ไม่ตั้ง = ลายเดียว (ทุกใบเหมือนใบแรก) */
+  mix?: boolean;
+}
+
+/**
+ * ✏️ ชิ้นส่วนบนหน้า (ปุ่ม Text / Rectangle / Ellipse แบบโปรแกรม Printbox)
+ * x,y = จุดกึ่งกลาง (มม. บนผืนรวมตัดตก) · w,h = ขนาดรูปทรง (ข้อความคิดขนาดจากตัวอักษรเอง)
+ * fill = สีพื้นรูปทรง / สีตัวอักษร · stroke = สีขอบ / ขอบตัวอักษร ("" = ไม่มี)
+ */
+export interface CalElement {
+  id: string;
+  page: string;
+  /** photo = กรอบรูปอิสระ (ปุ่ม Photo แบบ Printbox) วางหน้าไหนก็ได้ ไม่ขึ้นกับช่องรูปประจำหน้า */
+  kind: "text" | "rect" | "ellipse" | "photo";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rot: number;
+  fill: string;
+  stroke: string;
+  strokeW: number;
+  /** มุมมนของสี่เหลี่ยม (มม.) */
+  radius?: number;
+  /** ความทึบ 0–1 */
+  opacity?: number;
+  text?: string;
+  font?: string;
+  size?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: "left" | "center" | "right";
+  /** กรอบรูป: ลำดับรูปในคลังรูปของแบบ · รูปเต็มกรอบเสมอ (cover) แล้วซูม/เลื่อนในกรอบได้ */
+  src?: number;
+  /** ซูมในกรอบ (1 = พอดีเต็มกรอบ) */
+  zoom?: number;
+  /** เลื่อนรูปในกรอบ −1…1 (ส่วนที่ล้นกรอบ) */
+  ox?: number;
+  oy?: number;
+  /** กลับด้านรูปซ้าย-ขวา (กระจก) */
+  flipX?: boolean;
+  /** ✨ เอฟเฟกต์รูป (CAL_FILTERS) */
+  filter?: string;
 }
 
 export interface Rect {
@@ -132,19 +233,28 @@ export interface CalFormat {
   pages: CalPage[];
   /** ใบสั้น ๆ ให้ทีมผลิต เช่น "8 แผ่น · หน้า 15-16 ว่าง" */
   note?: string;
+  /**
+   * 🃏 จำนวนใบต่อชุดที่ "หน้าตาเหมือนกัน" (โปสการ์ดรายปี 8 · โฟโต้การ์ด 20) — ลูกค้าแยกออกแบบรายใบได้ (CalDesign.custom)
+   * ไม่ตั้ง = 1 (ทุกหน้าใน pages เป็นของชิ้นเดียว เช่นปฏิทินตั้งโต๊ะ/รายเดือน)
+   */
+  cards?: number;
+  /** กี่หน้าต่อ 1 ใบ (พิมพ์ 2 ด้าน = 2) — ใช้จัดกลุ่มแถบรูปย่อเป็น "ใบที่ N" · ไม่ตั้ง = เรียกเป็นหน้า (ปฏิทินตั้งโต๊ะ) */
+  perCard?: number;
+  /**
+   * มุมมนของเส้นตัด (มม.) — โฟโต้การ์ดตัดมุมมน: บนจอวาดเส้นตัดโค้ง + ลายทแยงตรงตัดตก (แบบ Printbox) · รูปย่อตัดมุมให้เห็นทรงจริง
+   * ไฟล์ส่งพิมพ์ยังเป็นสี่เหลี่ยมเต็มตัดตก (เครื่องตัดมุมเอง)
+   */
+  cornerR?: number;
 }
+
+/** หน้าของใบที่ i (0 = ใบแรก ใช้ key เดิม · ใบอื่นที่แยกออกแบบ = "c{i}:key") */
+export const cardKey = (i: number, key: string) => (i ? `c${i}:${key}` : key);
 
 export const fmtW = (f: CalFormat) => f.trimW + f.bleed * 2;
 export const fmtH = (f: CalFormat) => f.trimH + f.bleed * 2;
 
-const MONTHS_EN = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-const MONTHS_TH = [
-  "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
-  "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
-];
+const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 const MONTHS_TH_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const DAYS_EN = ["S", "M", "T", "W", "T", "F", "S"];
 const DAYS_EN_LONG = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -194,13 +304,54 @@ const monthsPages = (fr: ReturnType<typeof frame>, mode: "combined" | "separate"
   return out;
 };
 
+/** หน้าตามเลย์เอาต์ที่เลือก + ช่องรูปหลักที่ลูกค้าปรับขนาดเอง (design.slots) — ใช้ทั้งตอนวาดและบนจอ */
+export function layPage(f: CalFormat, page: CalPage, d: Pick<CalDesign, "layouts" | "slots">): CalPage {
+  const p = pageWithLayout(f, page, d.layouts?.[page.key]);
+  const s = p.photo ? d.slots?.[page.key] : undefined;
+  return s ? { ...p, photo: s } : p;
+}
+
+/** id ชั้นพิเศษใน CalDesign.order */
+export const LAYER_SLOT = "@slot";
+export const LAYER_GRID = "@grid";
+
+/**
+ * 🗂 ลำดับชั้นของหน้า (ล่าง → บน) — ที่ลูกค้าจัดไว้ (design.order) + ของที่ยังไม่อยู่ในรายการต่อท้ายตามค่าเริ่มต้น
+ * ตัดของที่ไม่มีแล้ว (ชิ้นส่วนที่ลบ / หน้าที่ไม่มีช่องรูปหรือตาราง) · page = หน้าหลังจัดเลย์เอาต์แล้ว
+ */
+export function orderOf(page: CalPage, d: Pick<CalDesign, "order" | "elements">): string[] {
+  const ids = [
+    ...(page.photo ? [LAYER_SLOT] : []),
+    ...(page.grid ? [LAYER_GRID] : []),
+    ...(d.elements ?? []).filter((e) => e.page === page.key).map((e) => e.id),
+  ];
+  const saved = (d.order?.[page.key] ?? []).filter((id) => ids.includes(id));
+  return [...saved, ...ids.filter((id) => !saved.includes(id))];
+}
+
+/** ตารางปฏิทินของหน้านี้ — ที่ลูกค้าลากปรับเอง (design.grids) มาก่อน ไม่มีใช้ตามเลย์เอาต์ */
+export function gridOf(page: CalPage, d: Pick<CalDesign, "grids">): Rect | undefined {
+  return page.grid ? (d.grids?.[page.key] ?? page.grid) : undefined;
+}
+
+/** มุมมนโฟโต้การ์ด (มม.) — วัดจากจอหน้าร้านเดิม (Printbox Calendar_Photocard ~3 มม.) */
+const CARD_R = 3;
+/** ตัดตกโฟโต้การ์ด (มม.) — ชุดเดียวกับเทมเพลต scripts/photocard-template-build.mts (PAD) */
+const CARD_BLEED = 2.5;
+
+/** เส้นตัด (มีมุมมนถ้ารูปแบบตั้ง cornerR) เป็น path — ใช้วาดไกด์/ตัดรูปย่อ */
+export function trimPath(ctx: CanvasRenderingContext2D, k: number, f: CalFormat) {
+  const b = f.bleed * k;
+  ctx.roundRect(b, b, f.trimW * k, f.trimH * k, (f.cornerR ?? 0) * k);
+}
+
 /**
  * รูปแบบงานทั้งหมด — key ตั้งใน Product.calendarStudio.formats
- *   card (2 ด้าน) · card1 (1 ด้าน) · postcard-year1-{L|P} · postcard-year2-{L|P}
+ *   card / card-L (2 ด้าน) · card1 / card1-L (1 ด้าน · -L = แนวนอน) · postcard-year1-{L|P} · postcard-year2-{L|P}
  *   postcard-month-{L|P} (1 ด้าน) · postcard-month2-{L|P} (2 ด้าน)
  *   desktop14-{L|P} (8 แผ่น) · desktop26-{L|P} (14 แผ่น) · canvas
  */
-export function calFormat(key: string): CalFormat {
+export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat {
   const L = key.endsWith("-L");
   // ── โปสการ์ด 4×6 นิ้ว ──
   if (key.startsWith("postcard-")) {
@@ -221,13 +372,29 @@ export function calFormat(key: string): CalFormat {
         ? { x: photo.x + photo.w + 4, y: inner.y, w: inner.x + inner.w - (photo.x + photo.w + 4), h: inner.h }
         : { x: inner.x, y: photo.y + photo.h + 4, w: inner.w, h: inner.y + inner.h - (photo.y + photo.h + 4) };
       return {
-        key, name: `โปสการ์ดปฏิทินรายปี 4×6" ${ori} · พิมพ์ 1 ด้าน`, trimW: w, trimH: h, bleed: 2, safe: 4, dpi: 300,
+        key,
+        name: `โปสการ์ดปฏิทินรายปี 4×6" ${ori} · พิมพ์ 1 ด้าน`,
+        trimW: w,
+        trimH: h,
+        bleed: 2,
+        safe: 4,
+        dpi: 300,
+        cards: 8,
+        perCard: 1,
         pages: [{ key: "front", name: "หน้าเดียว", kind: "photo-year", text: true, photo, grid, border, light: true }],
       };
     }
     if (key.startsWith("postcard-year2"))
       return {
-        key, name: `โปสการ์ดปฏิทินรายปี 4×6" ${ori} · พิมพ์ 2 ด้าน`, trimW: w, trimH: h, bleed: 2, safe: 4, dpi: 300,
+        key,
+        name: `โปสการ์ดปฏิทินรายปี 4×6" ${ori} · พิมพ์ 2 ด้าน`,
+        trimW: w,
+        trimH: h,
+        bleed: 2,
+        safe: 4,
+        dpi: 300,
+        cards: 8,
+        perCard: 2,
         pages: [
           { key: "front", name: "ด้านหน้า (รูป)", kind: "photo", photo: fr.full, text: true },
           { key: "back", name: "ด้านหลัง (ปฏิทิน)", kind: "year", grid: fr.inner },
@@ -236,7 +403,14 @@ export function calFormat(key: string): CalFormat {
     if (key.startsWith("postcard-month2"))
       // 2 ด้าน: ใบละ 2 หน้าเรียงคู่กัน (หน้าคี่ = ด้านหน้า · หน้าคู่ = ด้านหลังของใบเดียวกัน)
       return {
-        key, name: `โปสการ์ดปฏิทินรายเดือน 4×6" ${ori} · 13 ใบ · พิมพ์ 2 ด้าน`, trimW: w, trimH: h, bleed: 2, safe: 4, dpi: 300,
+        key,
+        name: `โปสการ์ดปฏิทินรายเดือน 4×6" ${ori} · 13 ใบ · พิมพ์ 2 ด้าน`,
+        trimW: w,
+        trimH: h,
+        bleed: 2,
+        safe: 4,
+        dpi: 300,
+        perCard: 2,
         note: "13 ใบ 26 หน้า — หน้าคี่ = ด้านหน้า (รูป) · หน้าคู่ = ด้านหลังของใบเดียวกัน (ตาราง)",
         pages: [
           { key: "cover", name: "ปก (รูป)", kind: "photo", photo: fr.full, text: true },
@@ -245,7 +419,14 @@ export function calFormat(key: string): CalFormat {
         ],
       };
     return {
-      key, name: `โปสการ์ดปฏิทินรายเดือน 4×6" ${ori} · 13 ใบ · พิมพ์ 1 ด้าน`, trimW: w, trimH: h, bleed: 2, safe: 4, dpi: 300,
+      key,
+      name: `โปสการ์ดปฏิทินรายเดือน 4×6" ${ori} · 13 ใบ · พิมพ์ 1 ด้าน`,
+      trimW: w,
+      trimH: h,
+      bleed: 2,
+      safe: 4,
+      dpi: 300,
+      perCard: 1,
       pages: [{ key: "cover", name: "ปก", kind: "photo", photo: fr.full, text: true }, ...monthsPages(fr, "combined")],
     };
   }
@@ -258,7 +439,11 @@ export function calFormat(key: string): CalFormat {
     return {
       key,
       name: `ปฏิทินตั้งโต๊ะ 6×8" ${ori} · ${separate ? "14 แผ่น (รูป/ตารางแยกหน้า)" : "8 แผ่น"}`,
-      trimW: w, trimH: h, bleed: 2, safe: 5, dpi: 300,
+      trimW: w,
+      trimH: h,
+      bleed: 2,
+      safe: 5,
+      dpi: 300,
       note: separate ? "14 แผ่น 28 หน้า — พิมพ์ 26 หน้า หลังปก/หลังแผ่นสุดท้ายว่าง" : "8 แผ่น 16 หน้า — พิมพ์ 14 หน้า หลังปก/หลังแผ่นสุดท้ายว่าง",
       pages: [
         { key: "cover", name: "ปก", kind: "photo", photo: fr.full, text: true },
@@ -273,25 +458,61 @@ export function calFormat(key: string): CalFormat {
     const top = 70; // เผื่อหัวผืนสำหรับไม้แขวน/หมุด
     const photo = { x: fr.s, y: top, w: fr.W - fr.s * 2, h: 360 };
     return {
-      key, name: "ปฏิทินผ้าแคนวาส 40×85 ซม.", trimW: 400, trimH: 850, bleed: 10, safe: 25, dpi: 150,
+      key,
+      name: "ปฏิทินผ้าแคนวาส 40×85 ซม.",
+      trimW: 400,
+      trimH: 850,
+      bleed: 10,
+      safe: 25,
+      dpi: 150,
       note: "หัวผืน 6 ซม. เว้นไว้สำหรับไม้แขวน",
       pages: [
         {
-          key: "front", name: "ผืนปฏิทิน", kind: "photo-year", text: true, photo,
+          key: "front",
+          name: "ผืนปฏิทิน",
+          kind: "photo-year",
+          text: true,
+          photo,
           grid: { x: fr.s, y: top + photo.h + 20, w: fr.W - fr.s * 2, h: fr.H - fr.s - (top + photo.h + 20) },
         },
       ],
     };
   }
   // ── โฟโต้การ์ด 5.5×8.5 ซม. (ค่าเริ่มต้น) — ตัดตกเท่าไฟล์เทมเพลต Photocard 300g (57.1×87.1) ──
-  const fr = frame(55, 85, 1.05, 3);
-  if (key === "card1")
+  // แนวนอน (-L) = 8.5×5.5 ซม. (เพิ่ม 13 ต.ค. 69) · key เดิม card/card1 = แนวตั้ง (ออเดอร์เก่ายังเปิดแก้ได้)
+  const [cw, ch] = L ? [85, 55] : [55, 85];
+  // ตัดตก 2.5 มม. = มาตรฐานไฟล์ผลิตจริงของร้าน (วัดจากงานโฮโลแกรม 597 ชิ้น: ลาย 60×90 รอบเส้นตัด 55×85 · 13 ต.ค. 69)
+  // เดิม 1.05 มม. ยกจากเทมเพลต Photocard 300g เก่า (57.1×87.1) — ภาพเลยเส้นตัดน้อยกว่าที่ผลิตจริงใช้
+  // opts.bleed = ตัดตกตามเทมเพลตที่อัปเข้าระบบ (จอปฏิทินอ่านจากอาร์ตบอร์ดของไฟล์ที่ตรงสเปค) · ไม่ส่ง = มาตรฐาน
+  const cb = opts.bleed && opts.bleed > 0 ? opts.bleed : CARD_BLEED;
+  const fr = frame(cw, ch, cb, 3);
+  const cOri = L ? "แนวนอน" : "แนวตั้ง";
+  const cSize = L ? "8.5×5.5" : "5.5×8.5";
+  if (key.startsWith("card1"))
     return {
-      key, name: "ปฏิทินโฟโต้การ์ด 5.5×8.5 ซม. · พิมพ์ 1 ด้าน", trimW: 55, trimH: 85, bleed: 1.05, safe: 3, dpi: 300,
+      key: L ? "card1-L" : "card1",
+      name: `ปฏิทินโฟโต้การ์ด ${cSize} ซม. ${cOri} · พิมพ์ 1 ด้าน`,
+      trimW: cw,
+      trimH: ch,
+      bleed: cb,
+      safe: 3,
+      dpi: 300,
+      cards: 20,
+      perCard: 1,
+      cornerR: CARD_R,
       pages: [{ key: "front", name: "หน้าเดียว (รูป + ปฏิทิน)", kind: "photo-year", text: true, ...split(fr, 0.5, 2) }],
     };
   return {
-    key: "card", name: "ปฏิทินโฟโต้การ์ด 5.5×8.5 ซม. · พิมพ์ 2 ด้าน", trimW: 55, trimH: 85, bleed: 1.05, safe: 3, dpi: 300,
+    key: L ? "card-L" : "card",
+    name: `ปฏิทินโฟโต้การ์ด ${cSize} ซม. ${cOri} · พิมพ์ 2 ด้าน`,
+    trimW: cw,
+    trimH: ch,
+    bleed: cb,
+    safe: 3,
+    dpi: 300,
+    cards: 20,
+    perCard: 2,
+    cornerR: CARD_R,
     pages: [
       { key: "front", name: "หน้าปก", kind: "photo", photo: fr.full, text: true },
       { key: "back", name: "ด้านหลัง (ปฏิทิน)", kind: "year", grid: fr.inner },
@@ -375,10 +596,7 @@ export function rollCalendarYears(p: Product, now: Date = new Date()): Product {
     const y = start + i;
     return opt.choices.find((c) => /\d{4}/.test(c.name) && yearFromChoice(c.name) === y) ?? { name: `ปี ค.ศ. ${y} (พ.ศ. ${y + 543})` };
   });
-  const same =
-    opt.display === "dropdown" &&
-    choices.length === opt.choices.length &&
-    choices.every((c, i) => c === opt.choices[i]);
+  const same = opt.display === "dropdown" && choices.length === opt.choices.length && choices.every((c, i) => c === opt.choices[i]);
   if (same) return p;
   const options = p.options.slice();
   options[idx] = { ...opt, display: "dropdown", choices };
@@ -455,7 +673,7 @@ export async function ensureFonts(keys: string[]): Promise<void> {
   await Promise.all(
     [...new Set(keys)].flatMap((k) => {
       const fam = fontFamilyOf(k);
-      return ["400", "700"].map((w) => document.fonts.load(`${w} 20px ${fam}`, "ปฏิทิน2026").catch(() => []));
+      return ["400", "500", "600", "700"].map((w) => document.fonts.load(`${w} 20px ${fam}`, "ปฏิทิน2026").catch(() => []));
     }),
   );
 }
@@ -466,7 +684,7 @@ export async function ensureFonts(keys: string[]): Promise<void> {
 export function textBox(ctx: CanvasRenderingContext2D, t: CalText): Rect {
   // วัดที่ขนาดใหญ่แล้วหารกลับ — ฟอนต์ขนาด 1–7 px วัดตรง ๆ ได้ค่าปัดเศษเพี้ยน
   ctx.save();
-  ctx.font = `${t.bold ? 700 : 400} ${t.sizeMm * 20}px ${fontFamilyOf(t.font)}`;
+  ctx.font = `${t.italic ? "italic " : ""}${t.bold ? 700 : 400} ${t.sizeMm * 20}px ${fontFamilyOf(t.font)}`;
   const lines = t.value.split("\n");
   const w = Math.max(...lines.map((l) => ctx.measureText(l).width / 20), t.sizeMm);
   ctx.restore();
@@ -509,31 +727,78 @@ export interface ImgRef {
 export function photoOf(page: CalPage, d: CalDesign, imgs: (ImgRef | null)[]): { img: ImgRef; pl: CalPlacement } | null {
   if (!page.photo) return null;
   const own = d.photos[page.key];
+  // src < 0 = ลูกค้ากดลบรูปช่องนี้ → ว่าง (ไม่ยืมรูปหน้าปก)
+  if (own && own.src < 0) return null;
   if (own && imgs[own.src]) return { img: imgs[own.src]!, pl: own.pl };
-  const first = imgs.findIndex(Boolean);
+  // ไม่มีรูปของตัวเอง = ยืมรูปช่องรูปหน้าปก (รูปแรกที่ลงช่องรูป) — ไม่ยืมรูปจากกรอบรูปอิสระ
+  // (เดิมยืม "รูปแรกที่อัป" → ใส่รูปด้านหลังแล้วหน้าปกได้รูปนั้นไปด้วยเอง · 13 ต.ค. 69)
+  const first = slotSrc(d, imgs);
   if (first < 0) return null;
   return { img: imgs[first]!, pl: coverPlacement(page.photo, imgs[first]!) };
 }
 
+/** รูปตั้งต้นของช่องรูป = รูปของช่องรูปแรกที่มีรูป (-1 = ยังไม่มีช่องไหนมีรูป) */
+export function slotSrc(d: CalDesign, imgs: (ImgRef | null)[]): number {
+  for (const ph of Object.values(d.photos)) if (imgs[ph.src]) return ph.src;
+  return -1;
+}
+
 function drawText(ctx: CanvasRenderingContext2D, k: number, t: CalText) {
   if (!t.value.trim()) return;
-  ctx.font = `${t.bold ? 700 : 400} ${t.sizeMm * k}px ${fontFamilyOf(t.font)}`;
-  ctx.textAlign = "center";
+  ctx.font = `${t.italic ? "italic " : ""}${t.bold ? 700 : 400} ${t.sizeMm * k}px ${fontFamilyOf(t.font)}`;
+  const align = t.align ?? "center";
+  ctx.textAlign = align;
   ctx.textBaseline = "middle";
   const lines = t.value.split("\n");
   const lh = t.sizeMm * 1.25;
   const top = t.yMm - (lines.length * lh) / 2 + lh / 2;
+  // กล่องกว้างเท่าบรรทัดยาวสุด — ชิดซ้าย/ขวาวัดจากขอบกล่อง (กึ่งกลาง = จุดกลางเดิม)
+  const boxW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  const x = align === "left" ? t.xMm * k - boxW / 2 : align === "right" ? t.xMm * k + boxW / 2 : t.xMm * k;
   lines.forEach((line, i) => {
     const y = (top + i * lh) * k;
     if (t.stroke) {
       ctx.lineJoin = "round";
       ctx.lineWidth = Math.max(0.25, t.sizeMm * 0.16) * k;
       ctx.strokeStyle = t.stroke;
-      ctx.strokeText(line, t.xMm * k, y);
+      ctx.strokeText(line, x, y);
     }
     ctx.fillStyle = t.color;
-    ctx.fillText(line, t.xMm * k, y);
+    ctx.fillText(line, x, y);
+    if (t.underline && line.trim()) {
+      // ขีดเส้นใต้ ใต้ตัวอักษรแต่ละบรรทัด (canvas ไม่มี text-decoration)
+      const lw = ctx.measureText(line).width;
+      const x0 = align === "left" ? x : align === "right" ? x - lw : x - lw / 2;
+      ctx.fillRect(x0, y + t.sizeMm * 0.5 * k, lw, Math.max(0.15, t.sizeMm * 0.07) * k);
+    }
   });
+}
+
+/** ค่าตัวอักษรของส่วนหนึ่ง — รวมค่าที่ลูกค้าปรับกับค่าเดิมของแบบ */
+function partOf(b: CalBack, key: CalPartKey, k: number, defWeight: number, defColor: string) {
+  const p = b.parts?.[key] ?? {};
+  const fam = fontFamilyOf(p.font || b.font);
+  const weight = p.bold === undefined ? defWeight : p.bold ? 700 : 400;
+  const it = p.italic ? "italic " : "";
+  return {
+    fam,
+    weight,
+    bold: p.bold,
+    scale: Math.min(2.5, Math.max(0.4, p.scale ?? 1)),
+    align: p.align ?? "center",
+    color: p.color || defColor,
+    font: (sizeMm: number, w = weight) => `${it}${w} ${sizeMm * k}px ${fam}`,
+  };
+}
+
+/**
+ * จุดกึ่งกลางข้อความตามการจัดชิด — ในช่องกว้าง w ที่กึ่งกลาง cx (เว้นขอบ pad)
+ * ต้องตั้ง ctx.font ก่อนเรียก (วัดความกว้างข้อความ) · วาดด้วย textAlign center เสมอ
+ */
+function alignedCenter(ctx: CanvasRenderingContext2D, k: number, text: string, cx: number, w: number, align: CalPart["align"], pad = 0): number {
+  if (!align || align === "center") return cx;
+  const tw = ctx.measureText(text).width / k;
+  return align === "left" ? cx - w / 2 + pad + tw / 2 : cx + w / 2 - pad - tw / 2;
 }
 
 interface GridCtx {
@@ -549,11 +814,17 @@ interface GridCtx {
 }
 
 /** ตัวเลขวันในช่อง — วงกลมวันสำคัญ / สีวันหยุด / สีวันอาทิตย์ */
-function dayNum(g: GridCtx, m: number, d: number, col: number, x: number, y: number, size: number, r: number, labelW = 0) {
+function dayNum(g: GridCtx, m: number, d: number, col: number, x: number, y: number, size: number, r: number, labelW = 0, colW = 0) {
   const { ctx, k, b } = g;
   const key = `${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const e = g.ev.get(key);
-  let color = b.ink;
+  const pt = partOf(b, "day", k, 400, b.ink);
+  size *= pt.scale;
+  const wt = pt.bold ? 700 : g.light ? (e ? 600 : 500) : e || g.hol[key] ? 700 : 400;
+  ctx.font = pt.font(size, wt);
+  // จัดชิดซ้าย/ขวาในช่องวัน — วงกลมวันสำคัญย้ายตามตัวเลข
+  if (colW) x = alignedCenter(ctx, k, String(d), x, colW, pt.align, colW * 0.12);
+  let color = pt.color;
   if (b.sundayOn && g.order[col] === 0) color = b.sundayColor;
   if (g.hol[key]) color = b.holidayColor;
   if (e) {
@@ -564,7 +835,7 @@ function dayNum(g: GridCtx, m: number, d: number, col: number, x: number, y: num
     color = "#ffffff";
   }
   ctx.fillStyle = color;
-  ctx.font = `${g.light ? (e ? 600 : 500) : e || g.hol[key] ? 700 : 400} ${size * k}px ${g.fam}`;
+  ctx.font = pt.font(size, wt);
   ctx.fillText(String(d), x * k, (y + size * 0.04) * k);
   // หน้าเดือนเดี่ยวมีที่พอ — เขียนชื่อวันสำคัญ/วันหยุดเล็ก ๆ ใต้ตัวเลข
   // ย่อฟอนต์ให้พอดีช่อง (ไม่ต่ำกว่า 70%) แล้วค่อยตัดท้าย — ไม่ให้ล้นไปทับวันข้าง ๆ
@@ -608,26 +879,26 @@ function miniMonth(g: GridCtx, m: number, cx: number, cy: number, cellW: number,
   const wkH = cellH * (light ? 0.143 : 0.115);
   const rowH = (cellH - nameH - wkH) / 6;
   const colW = cellW / 7;
-  const numSize = light ? Math.min(rowH * 0.9, colW * 0.66) : Math.min(rowH * 0.72, colW * 0.62);
-  const nameSize = light
-    ? Math.min(rowH * (b.lang === "th" ? 0.95 : 1.02), cellW * 0.16)
-    : Math.min(nameH * (b.lang === "th" ? 0.67 : 0.63), cellW * 0.13);
-  const wkSize = light
-    ? Math.min(rowH * (b.lang === "th" ? 0.72 : 0.8), colW * 0.62)
-    : Math.min(wkH * (b.lang === "th" ? 0.55 : 0.6), colW * 0.6);
-  ctx.fillStyle = b.accent;
-  ctx.font = `${light ? 600 : 700} ${nameSize * k}px ${g.fam}`;
-  ctx.fillText(monthName(m, b.lang), (cx + cellW / 2) * k, (cy + nameH / 2) * k);
-  ctx.font = `${light ? 500 : 700} ${wkSize * k}px ${g.fam}`;
+  const numSize = light ? Math.min(rowH * 0.86, colW * 0.56) : Math.min(rowH * 0.72, colW * 0.62);
+  const nameSize = light ? Math.min(rowH * (b.lang === "th" ? 0.95 : 1.02), cellW * 0.16) : Math.min(nameH * (b.lang === "th" ? 0.67 : 0.63), cellW * 0.13);
+  const wkSize = light ? Math.min(rowH * (b.lang === "th" ? 0.72 : 0.8), colW * 0.54) : Math.min(wkH * (b.lang === "th" ? 0.55 : 0.6), colW * 0.6);
+  const pm = partOf(b, "month", k, light ? 600 : 700, b.accent);
+  const mName = monthName(m, b.lang);
+  ctx.fillStyle = pm.color;
+  ctx.font = pm.font(nameSize * pm.scale);
+  ctx.fillText(mName, alignedCenter(ctx, k, mName, cx + cellW / 2, cellW, pm.align, colW * 0.12) * k, (cy + nameH / 2) * k);
+  const pw = partOf(b, "week", k, light ? 500 : 700, b.ink);
+  ctx.font = pw.font(wkSize * pw.scale);
   const days = b.lang === "th" ? DAYS_TH : DAYS_EN;
   g.order.forEach((wd, i) => {
-    ctx.fillStyle = b.sundayOn && wd === 0 ? b.sundayColor : b.ink;
-    ctx.fillText(days[wd], (cx + colW * (i + 0.5)) * k, (cy + nameH + wkH / 2) * k);
+    ctx.fillStyle = b.sundayOn && wd === 0 ? b.sundayColor : pw.color;
+    const c = cx + colW * (i + 0.5);
+    ctx.fillText(days[wd], alignedCenter(ctx, k, days[wd], c, colW, pw.align, colW * 0.12) * k, (cy + nameH + wkH / 2) * k);
   });
   monthGrid(b.year, m, b.weekStart).forEach((row, r) =>
     row.forEach((d, i) => {
       if (!d) return;
-      dayNum(g, m, d, i, cx + colW * (i + 0.5), cy + nameH + wkH + rowH * (r + 0.5), numSize, Math.min(colW, rowH) * 0.5);
+      dayNum(g, m, d, i, cx + colW * (i + 0.5), cy + nameH + wkH + rowH * (r + 0.5), numSize, Math.min(colW, rowH) * 0.5, 0, colW);
     }),
   );
 }
@@ -640,14 +911,14 @@ function drawYear(ctx: CanvasRenderingContext2D, k: number, b: CalBack, r: Rect,
   // แบบตัวบาง: หัวข้อใหญ่กว่า (≈14% ของพื้นที่) ตามหน้าร้านเดิม
   const titleH = b.title.trim() ? Math.min(r.h * (light ? 0.13 : 0.108), r.w * 0.17) : 0;
   if (titleH) {
-    const wt = light ? 400 : 700;
-    let size = titleH * (light ? 0.68 : 0.61);
-    ctx.font = `${wt} ${size * k}px ${g.fam}`;
+    const pt = partOf(b, "title", k, light ? 400 : 700, b.accent);
+    let size = titleH * (light ? 0.68 : 0.61) * pt.scale;
+    ctx.font = pt.font(size);
     const w = ctx.measureText(b.title).width / k;
     if (w > r.w * 0.95) size *= (r.w * 0.95) / w;
-    ctx.font = `${wt} ${size * k}px ${g.fam}`;
-    ctx.fillStyle = b.accent;
-    ctx.fillText(b.title, (r.x + r.w / 2) * k, (r.y + titleH / 2 - titleH * 0.05) * k);
+    ctx.font = pt.font(size);
+    ctx.fillStyle = pt.color;
+    ctx.fillText(b.title, alignedCenter(ctx, k, b.title, r.x + r.w / 2, r.w, pt.align) * k, (r.y + titleH / 2 - titleH * 0.05) * k);
   }
   const aspect = r.w / (r.h - titleH);
   const [cols, rows] = aspect > 2.2 ? [6, 2] : aspect > 1.05 ? [4, 3] : [3, 4];
@@ -657,8 +928,7 @@ function drawYear(ctx: CanvasRenderingContext2D, k: number, b: CalBack, r: Rect,
   const cellH0 = (r.h - titleH) / rows;
   const gapY = cellH0 * 0.09;
   const cellH = (r.h - titleH - gapY * (rows - 1)) / rows;
-  for (let m = 0; m < 12; m++)
-    miniMonth(g, m, r.x + (m % cols) * (cellW + gapX), r.y + titleH + Math.floor(m / cols) * (cellH + gapY), cellW, cellH, light);
+  for (let m = 0; m < 12; m++) miniMonth(g, m, r.x + (m % cols) * (cellW + gapX), r.y + titleH + Math.floor(m / cols) * (cellH + gapY), cellW, cellH, light);
 }
 
 /** ตารางเดือนเดียว (หน้ารายเดือน) */
@@ -669,23 +939,26 @@ function drawMonth(ctx: CanvasRenderingContext2D, k: number, b: CalBack, r: Rect
   const headH = Math.min(r.h * 0.2, r.w * 0.12);
   const yearTxt = b.lang === "th" ? String(b.year + 543) : String(b.year);
   const head = `${b.lang === "th" ? monthName(m, "th") : monthName(m, "en").toUpperCase()} ${yearTxt}`;
-  let size = headH * 0.58;
-  ctx.font = `700 ${size * k}px ${g.fam}`;
+  const pm = partOf(b, "month", k, 700, b.accent);
+  let size = headH * 0.58 * pm.scale;
+  ctx.font = pm.font(size);
   const w = ctx.measureText(head).width / k;
   if (w > r.w) size *= r.w / w;
-  ctx.font = `700 ${size * k}px ${g.fam}`;
-  ctx.fillStyle = b.accent;
-  ctx.fillText(head, (r.x + r.w / 2) * k, (r.y + headH / 2) * k);
+  ctx.font = pm.font(size);
+  ctx.fillStyle = pm.color;
+  ctx.fillText(head, alignedCenter(ctx, k, head, r.x + r.w / 2, r.w, pm.align, r.w * 0.015) * k, (r.y + headH / 2) * k);
 
   const grid = monthGrid(b.year, m, b.weekStart);
   const wkH = Math.min((r.h - headH) * 0.12, r.w * 0.05);
   const rowH = (r.h - headH - wkH) / 6;
   const colW = r.w / 7;
   const days = b.lang === "th" ? DAYS_TH : DAYS_EN_LONG;
-  ctx.font = `700 ${Math.min(wkH * 0.55, colW * 0.3) * k}px ${g.fam}`;
+  const pw = partOf(b, "week", k, 700, b.ink);
+  ctx.font = pw.font(Math.min(wkH * 0.55, colW * 0.3) * pw.scale);
   g.order.forEach((wd, i) => {
-    ctx.fillStyle = b.sundayOn && wd === 0 ? b.sundayColor : b.ink;
-    ctx.fillText(days[wd], (r.x + colW * (i + 0.5)) * k, (r.y + headH + wkH / 2) * k);
+    ctx.fillStyle = b.sundayOn && wd === 0 ? b.sundayColor : pw.color;
+    const c = r.x + colW * (i + 0.5);
+    ctx.fillText(days[wd], alignedCenter(ctx, k, days[wd], c, colW, pw.align, colW * 0.08) * k, (r.y + headH + wkH / 2) * k);
   });
   const numSize = Math.min(rowH * 0.5, colW * 0.42);
   const showLabel = rowH > 7;
@@ -693,13 +966,162 @@ function drawMonth(ctx: CanvasRenderingContext2D, k: number, b: CalBack, r: Rect
     row.forEach((d, i) => {
       if (!d) return;
       const cy = r.y + headH + wkH + rowH * (ri + (showLabel ? 0.4 : 0.5));
-      dayNum(g, m, d, i, r.x + colW * (i + 0.5), cy, numSize, Math.min(colW, rowH) * 0.36, showLabel ? colW * 0.94 : 0);
+      dayNum(g, m, d, i, r.x + colW * (i + 0.5), cy, numSize, Math.min(colW, rowH) * 0.36, showLabel ? colW * 0.94 : 0, colW);
     }),
   );
 }
 
+/* ─────────────────────────── เลย์เอาต์ต่อหน้า (ปุ่ม Layout) ─────────────────────────── */
+
+/** ตัวเลือกเลย์เอาต์ของหน้านี้ — หน้า "รูป+ตาราง" สลับข้าง/ตารางล้วน · หน้ารูปล้วน เต็มใบ/มีขอบขาว */
+export function layoutsOf(f: CalFormat, page: CalPage): { key: string; name: string }[] {
+  const L = fmtW(f) > fmtH(f);
+  if (page.photo && page.grid)
+    return [
+      { key: "", name: L ? "รูปซ้าย · ปฏิทินขวา" : "รูปบน · ปฏิทินล่าง" },
+      { key: "swap", name: L ? "ปฏิทินซ้าย · รูปขวา" : "ปฏิทินบน · รูปล่าง" },
+      { key: "nophoto", name: "ปฏิทินล้วน (ไม่มีรูป)" },
+    ];
+  if (page.photo)
+    return [
+      { key: "", name: "รูปเต็มใบ" },
+      { key: "inset", name: "รูปมีขอบขาว" },
+    ];
+  return [];
+}
+
+/** หน้าเดิม + เลย์เอาต์ที่ลูกค้าเลือก → ช่องรูป/ตารางใหม่ (ค่าที่ไม่รู้จัก = เหมือนเดิม) */
+export function pageWithLayout(f: CalFormat, page: CalPage, variant?: string): CalPage {
+  if (!variant) return page;
+  const W = fmtW(f);
+  const H = fmtH(f);
+  const s = f.bleed + f.safe;
+  const safe = { x: s, y: s, w: W - s * 2, h: H - s * 2 };
+  if (page.photo && page.grid) {
+    const ph = page.photo;
+    const g = page.grid;
+    if (variant === "nophoto") {
+      // ตารางกินพื้นที่ทั้งหมดในเขตที่ใช้อยู่ (ไม่ล้นเขตปลอดภัย)
+      const x0 = Math.max(Math.min(ph.x, g.x), safe.x);
+      const y0 = Math.max(Math.min(ph.y, g.y), safe.y);
+      const x1 = Math.min(Math.max(ph.x + ph.w, g.x + g.w), safe.x + safe.w);
+      const y1 = Math.min(Math.max(ph.y + ph.h, g.y + g.h), safe.y + safe.h);
+      return { ...page, photo: undefined, grid: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+    }
+    if (variant === "swap") {
+      const L = W > H;
+      const flip = (r: Rect): Rect => (L ? { ...r, x: W - r.x - r.w } : { ...r, y: H - r.y - r.h });
+      return { ...page, photo: flip(ph), grid: flip(g) };
+    }
+  }
+  if (page.photo && !page.grid && variant === "inset") return { ...page, photo: safe };
+  return page;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+/** ข้อความในชิ้นส่วน → รูปแบบเดียวกับข้อความหน้าปก (ใช้ตัววาด/วัดชุดเดียวกัน) */
+export function elementText(e: CalElement): CalText {
+  return {
+    value: e.text ?? "",
+    font: e.font ?? "prompt",
+    color: e.fill,
+    stroke: e.stroke,
+    sizeMm: e.size ?? 6,
+    xMm: e.x,
+    yMm: e.y,
+    bold: !!e.bold,
+    italic: !!e.italic,
+    underline: !!e.underline,
+    align: e.align,
+  };
+}
+
+/** กรอบของชิ้นส่วน (มม.) ไม่คิดการหมุน — ใช้จับลาก/วาดกรอบเลือก */
+export function elementBox(ctx: CanvasRenderingContext2D, e: CalElement): Rect {
+  if (e.kind === "text") return textBox(ctx, elementText(e));
+  return { x: e.x - e.w / 2, y: e.y - e.h / 2, w: e.w, h: e.h };
+}
+
+/** ขนาดรูปที่วางจริงในกรอบรูปอิสระ (มม.) — ใช้คิด DPI */
+export function elementPhotoSize(e: CalElement, img: { w: number; h: number }): { w: number; h: number } {
+  const s = Math.max(e.w / img.w, e.h / img.h) * Math.max(1, e.zoom ?? 1);
+  return { w: img.w * s, h: img.h * s };
+}
+
+export function drawElement(ctx: CanvasRenderingContext2D, k: number, e: CalElement, imgs: (ImgRef | null)[] = []): void {
+  ctx.save();
+  ctx.globalAlpha = e.opacity ?? 1;
+  if (e.rot) {
+    ctx.translate(e.x * k, e.y * k);
+    ctx.rotate((e.rot * Math.PI) / 180);
+    ctx.translate(-e.x * k, -e.y * k);
+  }
+  if (e.kind === "text") drawText(ctx, k, elementText(e));
+  else if (e.kind === "photo") {
+    const x = (e.x - e.w / 2) * k;
+    const y = (e.y - e.h / 2) * k;
+    const img = e.src != null ? imgs[e.src] : null;
+    ctx.save();
+    roundRect(ctx, x, y, e.w * k, e.h * k, (e.radius ?? 0) * k);
+    ctx.clip();
+    if (img) {
+      const sz = elementPhotoSize(e, img);
+      const cx = e.x + ((sz.w - e.w) / 2) * (e.ox ?? 0);
+      const cy = e.y + ((sz.h - e.h) / 2) * (e.oy ?? 0);
+      ctx.imageSmoothingQuality = "high";
+      if (e.filter) ctx.filter = filterCss(e.filter);
+      if (e.flipX) {
+        // กลับด้านรอบจุดกึ่งกลางรูป
+        ctx.translate(cx * k, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-cx * k, 0);
+      }
+      ctx.drawImage(img.el, (cx - sz.w / 2) * k, (cy - sz.h / 2) * k, sz.w * k, sz.h * k);
+    } else {
+      // กรอบรูปว่าง = ฟ้าอมเขียวแบบ Printbox (ไม่กลืนกับช่องรูปประจำหน้าที่เป็นสีเทา) — ไฟล์พิมพ์ข้ามกรอบว่างอยู่แล้ว
+      ctx.fillStyle = "#9fc4cc";
+      ctx.fillRect(x, y, e.w * k, e.h * k);
+    }
+    ctx.restore();
+    if (e.stroke && e.strokeW > 0) {
+      roundRect(ctx, x, y, e.w * k, e.h * k, (e.radius ?? 0) * k);
+      ctx.strokeStyle = e.stroke;
+      ctx.lineWidth = e.strokeW * k;
+      ctx.stroke();
+    }
+  } else {
+    const x = (e.x - e.w / 2) * k;
+    const y = (e.y - e.h / 2) * k;
+    if (e.kind === "ellipse") {
+      ctx.beginPath();
+      ctx.ellipse(e.x * k, e.y * k, (e.w / 2) * k, (e.h / 2) * k, 0, 0, Math.PI * 2);
+    } else roundRect(ctx, x, y, e.w * k, e.h * k, (e.radius ?? 0) * k);
+    if (e.fill) {
+      ctx.fillStyle = e.fill;
+      ctx.fill();
+    }
+    if (e.stroke && e.strokeW > 0) {
+      ctx.strokeStyle = e.stroke;
+      ctx.lineWidth = e.strokeW * k;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 /**
  * 🖨 วาดหน้าหนึ่งของปฏิทินทั้งผืน (รวมตัดตก) · k = พิกเซลต่อมิลลิเมตร
+ * page = หน้าตามรูปแบบงาน — เลย์เอาต์ที่ลูกค้าเลือก (d.layouts) ใส่ให้เองข้างใน
  */
 export function drawPage(
   ctx: CanvasRenderingContext2D,
@@ -709,37 +1131,87 @@ export function drawPage(
   d: CalDesign,
   b: CalBack,
   imgs: (ImgRef | null)[],
+  /** preview = วาดบนจอ (กรอบรูปว่างโชว์ "Drag here" สีเทา) · ไม่ตั้ง = ไฟล์ส่งพิมพ์ (กรอบว่างไม่พิมพ์) */
+  opts: { preview?: boolean } = {},
 ): void {
   const W = fmtW(f);
   const H = fmtH(f);
+  const pageKey = page.key;
+  page = layPage(f, page, d);
   ctx.save();
   // พื้น: หน้าที่มีรูปใช้สีพื้นหน้าปก · หน้าตารางล้วนใช้สีพื้นปฏิทิน
   ctx.fillStyle = (page.kind === "photo" ? d.bg : b.bg) || "#ffffff";
   ctx.fillRect(0, 0, W * k, H * k);
-  if (page.photo) {
-    const ph = photoOf(page, d, imgs);
-    const r = page.photo;
-    if (page.kind !== "photo") {
-      ctx.fillStyle = d.bg || "#ffffff";
-      ctx.fillRect(r.x * k, r.y * k, r.w * k, r.h * k);
+  // 🗂 วาดตามลำดับชั้นที่ลูกค้าจัด (ล่าง → บน) — รูปหลัก · ปฏิทิน · ชิ้นส่วน สลับบน/ล่างกันได้
+  const drawSlot = () => {
+    if (page.photo) {
+      const ph = photoOf(page, d, imgs);
+      const r = page.photo;
+      if (page.kind !== "photo") {
+        ctx.fillStyle = d.bg || "#ffffff";
+        ctx.fillRect(r.x * k, r.y * k, r.w * k, r.h * k);
+      }
+      if (ph) {
+        // แต่งรูปช่องหลัก (มุมมน · ความทึบ · เอฟเฟกต์ · กลับด้าน · ขอบ) — ของหน้านั้นเอง ไม่ยืมจากหน้าปก
+        const own = d.photos[page.key];
+        const st = own && own.src >= 0 ? own : undefined;
+        ctx.save();
+        roundRect(ctx, r.x * k, r.y * k, r.w * k, r.h * k, (st?.radius ?? 0) * k);
+        ctx.clip();
+        ctx.globalAlpha = st?.opacity ?? 1;
+        if (st?.filter) ctx.filter = filterCss(st.filter);
+        ctx.translate(ph.pl.cxMm * k, ph.pl.cyMm * k);
+        ctx.rotate((ph.pl.rotDeg * Math.PI) / 180);
+        if (st?.flipX) ctx.scale(-1, 1);
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(ph.img.el, (-ph.pl.wMm / 2) * k, (-ph.pl.hMm / 2) * k, ph.pl.wMm * k, ph.pl.hMm * k);
+        ctx.restore();
+        if (st?.stroke && (st.strokeW ?? 0) > 0) {
+          ctx.save();
+          roundRect(ctx, r.x * k, r.y * k, r.w * k, r.h * k, (st.radius ?? 0) * k);
+          ctx.strokeStyle = st.stroke;
+          ctx.lineWidth = st.strokeW! * k;
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (opts.preview) {
+        // ช่องรูปที่ยังว่าง = สีเทา + "Drag here" (บนจอเท่านั้น) — วาดในแคนวาสใต้ชิ้นส่วน กรอบรูป/ข้อความที่วางทับจึงยังเห็นและกดได้
+        ctx.fillStyle = "#b8b8b8";
+        ctx.fillRect(r.x * k, r.y * k, r.w * k, r.h * k);
+        placeholder(ctx, k, r.x + r.w / 2, r.y + r.h / 2, phSize(r.w, r.h));
+      }
     }
-    if (ph) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(r.x * k, r.y * k, r.w * k, r.h * k);
-      ctx.clip();
-      ctx.translate(ph.pl.cxMm * k, ph.pl.cyMm * k);
-      ctx.rotate((ph.pl.rotDeg * Math.PI) / 180);
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(ph.img.el, (-ph.pl.wMm / 2) * k, (-ph.pl.hMm / 2) * k, ph.pl.wMm * k, ph.pl.hMm * k);
-      ctx.restore();
+  };
+  const drawGrid = () => {
+    const grid = gridOf(page, d);
+    if (grid) {
+      if (page.kind === "year" || page.kind === "photo-year") drawYear(ctx, k, b, grid, page.light);
+      else if (page.month != null) drawMonth(ctx, k, b, grid, page.month);
+    }
+    if (page.border) {
+      const r = page.border;
+      ctx.strokeStyle = b.ink;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 0.3 * k;
+      ctx.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
+      ctx.globalAlpha = 1;
+    }
+  };
+  const els = new Map((d.elements ?? []).filter((e) => e.page === pageKey).map((e) => [e.id, e]));
+  for (const id of orderOf(page, d)) {
+    if (id === LAYER_SLOT) drawSlot();
+    else if (id === LAYER_GRID) drawGrid();
+    else {
+      const e = els.get(id);
+      if (!e) continue;
+      const empty = e.kind === "photo" && (e.src == null || !imgs[e.src]);
+      if (empty && !opts.preview) continue; // กรอบรูปที่ยังไม่ใส่รูป ไม่พิมพ์ออกไปเป็นสี่เหลี่ยมเทา
+      drawElement(ctx, k, e, imgs);
+      if (empty) placeholder(ctx, k, e.x, e.y, phSize(e.w, e.h));
     }
   }
-  if (page.grid) {
-    if (page.kind === "year" || page.kind === "photo-year") drawYear(ctx, k, b, page.grid, page.light);
-    else if (page.month != null) drawMonth(ctx, k, b, page.grid, page.month);
-  }
-  if (page.border) {
+  // ขอบบางของแบบหน้าร้านเดิม (โปสการ์ดรายปี) — ไม่มีตาราง/อยู่นอกลำดับชั้น ก็ยังวาด
+  if (!page.grid && page.border) {
     const r = page.border;
     ctx.strokeStyle = b.ink;
     ctx.globalAlpha = 0.75;
@@ -749,6 +1221,40 @@ export function drawPage(
   }
   if (page.text && d.text) drawText(ctx, k, d.text);
   ctx.restore();
+}
+
+/** ขนาดตัวอักษร "Drag here" (มม.) — เล็กพอดีช่อง ไม่ใหญ่เกินบนงานชิ้นใหญ่ (13 ต.ค. 69 ผู้ใช้ขอให้ย่อ) */
+const phSize = (w: number, h: number) => Math.min(6, Math.max(1.8, Math.min(w, h) * 0.045));
+
+/** ป้าย "Drag here" แบบโปรแกรมหน้าร้านเดิม (ช่องรูป/กรอบรูปที่ยังว่าง · บนจอเท่านั้น) */
+function placeholder(ctx: CanvasRenderingContext2D, k: number, x: number, y: number, size: number) {
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,.95)";
+  ctx.font = `600 ${size * k}px ${fontFamilyOf("prompt")}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Drag here", x * k, (y - size * 0.6) * k);
+  ctx.font = `400 ${size * 1.4 * k}px sans-serif`;
+  ctx.fillText("🖼", x * k, (y + size * 1.1) * k);
+  ctx.restore();
+}
+
+/**
+ * 🎨 จำนวนลายของแบบปฏิทิน 1 ชุด (ใช้คิดค่าคละลายตามกติกาสินค้า)
+ * ลายเดียว = 1 · คละลาย = จำนวนรูปที่อัปไว้ในคลังของแบบนี้ (ผู้ใช้สั่ง 13 ต.ค. 69 "คำนวณจากรูปที่อัปไว้")
+ * ⚠️ เดิมนับเฉพาะรูปที่วางอยู่ในใบ → รูปที่ถูกเปลี่ยนออก/ยังไม่ได้วาง หลุดจากการนับ ป้าย "คละ 4 ลาย" แต่คลังมี 6 รูป
+ * ไม่เกินจำนวนใบที่แยกแบบ · ยังไม่มีรูป = 1 · photos ไม่ส่งมา (แบบเก่า) = นับรูปที่ใช้จริงแทน
+ */
+export function calDesignCount(d: CalDesign | undefined, photos?: number): number {
+  if (!d || !(d.mix || d.custom?.length)) return 1;
+  let n = photos;
+  if (n == null) {
+    const used = new Set<number>();
+    for (const o of Object.values(d.photos)) if (o.src >= 0) used.add(o.src);
+    for (const e of d.elements ?? []) if (e.kind === "photo" && e.src != null && e.src >= 0) used.add(e.src);
+    n = used.size;
+  }
+  return Math.max(1, Math.min(n, (d.custom?.length ?? 0) + 1));
 }
 
 /** สรุปตั้งค่าเป็นข้อความเดียว — ติดไปกับออเดอร์ให้ทีมผลิตตรวจ/ทำไฟล์ซ้ำได้ */
@@ -761,6 +1267,7 @@ export function backSpec(b: CalBack): string {
     `ฟอนต์ ${(CAL_FONTS.find((f) => f.key === b.font) ?? CAL_FONTS[0]).name}`,
     b.holidayOn ? `วันหยุดไทย ${b.holidayColor}` : "ไม่ไฮไลต์วันหยุด",
     b.sundayOn ? `วันอาทิตย์ ${b.sundayColor}` : "",
+    b.parts && Object.values(b.parts).some((x) => x && Object.keys(x).length) ? "ปรับตัวอักษรแยกส่วน" : "",
   ];
   if (b.events.length)
     parts.push(

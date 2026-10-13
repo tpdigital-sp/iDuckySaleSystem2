@@ -34,6 +34,16 @@ export interface TemplateFile {
    * ว่าง = ไฟล์กลาง ใช้ได้กับทุกตัวเลือก (โชว์เมื่อไม่มีไฟล์ที่ตรงรุ่นกว่า)
    */
   choice?: string;
+  /**
+   * ค่าตัวเลือกเพิ่มเติมที่ใช้ไฟล์นี้ด้วย (กลุ่มเดียวกับ choice) — ไฟล์เดียวใช้ได้หลายค่า
+   * เช่น เทมเพลตโฟโต้การ์ดไฟล์เดียวใช้กับกระดาษ 9 ชนิด (13 ต.ค. 69) · ไม่ต้องอัปไฟล์ซ้ำ 9 แถว
+   */
+  choices?: string[];
+  /**
+   * ใช้ไฟล์นี้เฉพาะเมื่อกลุ่มตัวเลือก "อีกกลุ่ม" เลือกค่าเหล่านี้ เช่น { label: "แนวการ์ด", choices: ["แนวนอน"] }
+   * ไม่ตั้ง = ใช้ได้ทุกค่าของกลุ่มอื่น · ใช้แยกไฟล์แนวตั้ง/แนวนอนของกระดาษเดียวกัน
+   */
+  when?: TemplateWhen | TemplateWhen[];
   /** ไฟล์ที่อัปเข้าระบบ (Supabase Storage) */
   fileUrl?: string;
   fileName?: string;
@@ -65,6 +75,18 @@ export interface TemplateFile {
    * ลูกค้าจะได้กระดานแยกกันคนละแท็บ แต่ยังนับเป็นสินค้าชิ้นเดียว ไม่ใช่คนละลาย
    */
   side?: string;
+}
+
+/** เงื่อนไขกลุ่มตัวเลือกอื่นของไฟล์ (เช่น แนวการ์ด = แนวนอน · มุม = มุมแหลม) */
+export interface TemplateWhen {
+  label: string;
+  choices: string[];
+}
+
+/** เงื่อนไขของไฟล์เป็นรายการ (ข้อมูลเก่าเก็บเป็นอันเดียว) · ตัดอันที่ยังไม่ได้เลือกค่าทิ้ง */
+export function whenList(f: TemplateFile): TemplateWhen[] {
+  const w = f.when;
+  return (Array.isArray(w) ? w : w ? [w] : []).filter((x) => x?.label && x.choices?.length);
 }
 
 export interface DesignTemplate {
@@ -281,14 +303,43 @@ export function filesForSelections(
   selections: Record<string, string> = {},
   o: { includeEmpty?: boolean } = {}
 ): TemplateFile[] {
-  const files = o.includeEmpty ? templateFiles(t) : templateFiles(t).filter(fileReady);
+  // เงื่อนไขกลุ่มอื่น (เช่น แนวการ์ด) ไม่ตรง = ไม่ใช่ไฟล์ของสเปคนี้ ตัดทิ้งก่อนเลย
+  const files = (o.includeEmpty ? templateFiles(t) : templateFiles(t).filter(fileReady)).filter((f) => fileWhenOk(f, selections));
   const label = t.optionLabel?.trim();
-  if (!label) return files;
+  if (!label) return preferWhen(files);
   const chosen = (selections[label] ?? "").trim();
-  const exact = chosen ? files.filter((f) => (f.choice ?? "").trim() === chosen) : [];
-  if (exact.length) return exact;
+  const exact = chosen ? files.filter((f) => fileChoices(f).includes(chosen)) : [];
+  if (exact.length) return preferWhen(exact);
   // ไม่มีไฟล์ของค่าที่เลือก → ไฟล์กลางที่ไม่ได้ระบุค่า (ถ้ามี)
-  return files.filter((f) => !(f.choice ?? "").trim());
+  return preferWhen(files.filter((f) => !fileChoices(f).length));
+}
+
+/**
+ * ไฟล์ที่ตั้งเงื่อนไขกลุ่มอื่น (when) และตรง = เจาะจงกว่า → ใช้แทนไฟล์ทั่วไปของค่าเดียวกัน
+ * (ไฟล์แนวตั้งไม่ตั้ง when = ค่าเริ่มต้น · ไฟล์แนวนอนตั้ง when แนวนอน → เลือกแนวนอนได้ไฟล์แนวนอนไฟล์เดียว
+ *  ไม่งั้นได้ 2 ไฟล์แล้วหน้าสินค้าเข้าใจว่าเป็นงานหน้า-หลัง)
+ */
+function preferWhen(files: TemplateFile[]): TemplateFile[] {
+  // เงื่อนไขตรงมากข้อสุดเจาะจงสุด — แนวนอน+มุมแหลม (2 ข้อ) ชนะ แนวนอนอย่างเดียว (1) ชนะ ไฟล์ทั่วไป (0)
+  const best = Math.max(0, ...files.map((f) => whenList(f).length));
+  return files.filter((f) => whenList(f).length === best);
+}
+
+/** ค่าตัวเลือกทั้งหมดที่ไฟล์นี้ใช้ได้ (choice + choices) · ว่าง = ไฟล์กลาง */
+export function fileChoices(f: TemplateFile): string[] {
+  return [...new Set([f.choice, ...(f.choices ?? [])].map((c) => (c ?? "").trim()).filter(Boolean))];
+}
+
+/** เงื่อนไขกลุ่มอื่นของไฟล์ (when) ตรงกับที่เลือกอยู่ไหม — ไม่ตั้ง = ผ่าน */
+export function fileWhenOk(f: TemplateFile, selections: Record<string, string> = {}): boolean {
+  return whenList(f).every((w) => w.choices.includes((selections[w.label] ?? "").trim()));
+}
+
+/** ชื่อค่าที่โชว์คู่ไฟล์ — ตรงค่าที่ลูกค้าเลือกอยู่ก่อน (ไฟล์หลายค่า) + เงื่อนไขกลุ่มอื่น เช่น "Canvas · แนวนอน" */
+export function fileChoiceLabel(f: TemplateFile, chosen = ""): string {
+  const list = fileChoices(f);
+  const c = chosen && list.includes(chosen) ? chosen : list.length > 1 ? `${list[0]} +${list.length - 1}` : (list[0] ?? "");
+  return [c, ...whenList(f).map((w) => w.choices.join("/"))].filter(Boolean).join(" · ");
 }
 
 /**

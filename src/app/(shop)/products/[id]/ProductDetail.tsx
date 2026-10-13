@@ -161,6 +161,7 @@ import {
 import {
   fileHref,
   filesForSelections,
+  fileChoiceLabel,
   formatFileSize,
   isMultiSide,
   previewOf,
@@ -177,7 +178,7 @@ import {
 import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
-import { rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
+import { calDesignCount, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { useCart } from "@/lib/cart-context";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin } from "@/lib/auth";
@@ -1275,8 +1276,17 @@ export default function ProductDetail({
     setQty((q) => Math.max(q, artFiles.length));
   }, [artFiles.length, tierByDesign]);
 
+  /**
+   * 🗓 จำนวนลายที่นับอัตโนมัติ — ปกติ = จำนวนรูปที่แนบ
+   * ปฏิทินที่สร้างบนเว็บ "คละลาย" = แต่ละใบในชุดที่ออกแบบไม่เหมือนกันนับเป็น 1 ลาย (ค่าคละตามกติกาสินค้า)
+   */
+  const calDesigns =
+    product.calendarStudio && product.studioOff !== true && placed.some((p) => p.calState)
+      ? placed.reduce((s, p) => s + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length) : 1), 0)
+      : 0;
+  const autoDesignCount = calDesigns || artFiles.length;
   /** จำนวนรูปลายรอบก่อน — ใช้จับว่า "จำนวนรูปเพิ่งเปลี่ยน" (แนบเพิ่ม/ลบออก) ไม่ใช่แค่ re-render */
-  const artCountRef = useRef(artFiles.length);
+  const artCountRef = useRef(autoDesignCount);
   /**
    * ✨ นับจำนวนลายอัตโนมัติตามรูปลายที่แนบ — ทางร้านนับลายจริงจากไฟล์ ตัวเลขจึงต้องตรงกับรูปเสมอ
    *
@@ -1287,7 +1297,7 @@ export default function ProductDetail({
    */
   useEffect(() => {
     if (maxDesigns < 1) return;
-    const n = artFiles.length;
+    const n = autoDesignCount;
     const artChanged = n !== artCountRef.current;
     artCountRef.current = n;
     // ระบุเองแล้วและจำนวนรูปไม่ได้ขยับ = เคารพเลขที่ลูกค้ากดไว้ (แค่ re-render จากตัวเลือก/จำนวน)
@@ -1297,7 +1307,7 @@ export default function ProductDetail({
       if (next !== d) setDesignsDraft(null); // ค่าเปลี่ยนเพราะนับรูป — ล้างข้อความค้างในช่องให้โชว์ค่าจริง
       return next;
     });
-  }, [artFiles.length, maxDesigns, designsTouched]);
+  }, [autoDesignCount, maxDesigns, designsTouched]);
   /**
    * 🔄 คละลาย "ด้านหลัง" — งานพิมพ์ 2 ด้านที่สินค้าตั้ง backDesign ไว้ (งานกระดาษ)
    * ใช้กติกาชุดเดียวกับด้านหน้า (เพดาน/ค่าคละเท่ากัน) แค่แยกเป็นอีกช่องแล้วคิดเงินอีกชุด
@@ -1312,6 +1322,10 @@ export default function ProductDetail({
   /** ช่องแนบลายแยกหน้า/หลัง — งานพิมพ์ 2 ด้าน หรือปฏิทินโฟโต้การ์ด (หน้าปก/ปฏิทิน) */
   const artTwoSide = backOn || calMode;
   const calYear = yearFromChoice(product.calendarStudio ? effective[product.calendarStudio.yearLabel] : undefined);
+  /** ปีที่เลือกได้ในจอปฏิทิน (หน้าต่าง Settings) = ตัวเลือก "ปีปฏิทิน" ของสินค้า */
+  const calYearChoices = (product.options.find((o) => o.label === product.calendarStudio?.yearLabel)?.choices ?? [])
+    .filter((c) => /\d{4}/.test(c.name))
+    .map((c) => ({ name: c.name, year: yearFromChoice(c.name) }));
   /** รูปแบบงานปฏิทินตามตัวเลือกที่เลือกอยู่ (แนว · รายปี/รายเดือน · จำนวนแผ่น) */
   const calFormatKey =
     product.calendarStudio?.formats?.find((f) =>
@@ -1652,7 +1666,7 @@ export default function ProductDetail({
     if (rates.length < 2) return;
     // หน่วงสั้น ๆ กันเด้งเรทกลางคันตอนกำลังพิมพ์จำนวน (เช่น จะพิมพ์ 150 แต่ผ่านค่า 1 ก่อน)
     const t = setTimeout(() => {
-      const needDesigns = designsTouched ? designs : Math.max(artFiles.length, 1);
+      const needDesigns = designsTouched ? designs : Math.max(autoDesignCount, 1);
       const fitsDesigns = (r: (typeof rates)[number]) => {
         if (!r.minPerDesign) return true;
         return maxDesignsFor(r, pieceQty, unitCap ?? 1) >= needDesigns;
@@ -1712,7 +1726,7 @@ export default function ProductDetail({
       if (rate && fitsDesigns(rate) && rates.every(fitsDesigns)) setAutoRateNote("");
     }, 450);
     return () => clearTimeout(t);
-  }, [qty, pieceQty, rates, rateTouched, designs, designsTouched, artFiles.length, rate, effective, unitCap]);
+  }, [qty, pieceQty, rates, rateTouched, designs, designsTouched, autoDesignCount, rate, effective, unitCap]);
 
   const custom = product.custom?.enabled ? product.custom : null;
   const cW = parseFloat(customW), cH = parseFloat(customH);
@@ -2686,7 +2700,7 @@ export default function ProductDetail({
        */
       const picked = filesForSelections(t, effective, { includeEmpty: true });
       const usable = picked
-        .map((f) => ({ f, fr: templateFrame(t, f, f.choice || chosen) }))
+        .map((f) => ({ f, fr: templateFrame(t, f, chosen || f.choice) }))
         .filter((x): x is { f: (typeof picked)[number]; fr: NonNullable<typeof x.fr> } => !!x.fr);
       if (!usable.length) continue;
 
@@ -2695,7 +2709,7 @@ export default function ProductDetail({
       const chosenFiles = multi ? usable : [usable[0]];
       const first = chosenFiles[0];
       return {
-        title: `${t.name}${first.f.choice ? ` · ${first.f.choice}` : ""}`,
+        title: `${t.name}${fileChoiceLabel(first.f, chosen) ? ` · ${fileChoiceLabel(first.f, chosen)}` : ""}`,
         frame: first.fr,
         guideUrl: previewOf(t, first.f),
         skinUrl: skinOf(t, first.f),
@@ -2766,6 +2780,23 @@ export default function ProductDetail({
     const stem = parts[0].replace(/\S+$/, "").trim(); // "iPhone 13" → "iPhone"
     return [name, parts[0], ...parts.slice(1).map((p) => (stem ? `${stem} ${p}` : p))];
   };
+  /**
+   * 🗓 เทมเพลตของสเปคที่เลือก (กระดาษ + แนว) → เป็นไกด์บนจอสร้างปฏิทิน — กรอบการ์ดของวัสดุนั้นจริง ๆ
+   * (ผู้ใช้สั่ง 13 ต.ค. 69 "ใช้เทมเพลต photocard ตามวัสดุกระดาษที่เลือก") · ไฟล์ต้องมีรูปตัวอย่าง + ขนาดอาร์ตบอร์ด
+   */
+  const calGuide = (() => {
+    if (!calMode) return undefined;
+    for (const t of templates) {
+      const files = filesForSelections(t, effective);
+      const name = (f: (typeof files)[number]) => (f.fileName ?? t.name).replace(/\.[^.]+$/, "");
+      // ไฟล์ที่มีหลายช่อง (โฮโลแกรม หน้า/หลัง) ตั้ง skin = กรอบการ์ดใบเดียว → ใช้อันนั้นปูเต็มผืน
+      const sk = files.find((x) => x.skinUrl);
+      if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk) };
+      const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
+      if (f) return { url: f.previewUrl!, wMm: f.widthMm!, hMm: f.heightMm!, name: name(f) };
+    }
+    return undefined;
+  })();
   const tplItems = templates
     .flatMap((t) => {
       const optLabel = t.optionLabel?.trim();
@@ -2779,16 +2810,17 @@ export default function ProductDetail({
             href,
             outside: !f.fileUrl,
             name: t.name,
-            choice: f.choice ?? "",
+            choice: fileChoiceLabel(f, chosen),
             note: t.note ?? "",
             preview: f.previewUrl || t.previewUrl || "",
             fileName: f.fileName ?? "",
             fileSize: f.fileSize ?? 0,
             /** ไม่มีไฟล์ตรงค่าที่เลือก → ที่ให้โหลดเป็นไฟล์กลาง บอกลูกค้าตรง ๆ */
-            anyNote: optLabel && chosen && !f.choice ? `ใช้ได้ทุก${optLabel}` : "",
-            matched: tplAliases(`${t.name} ${f.choice ?? ""}`.trim()).some((a) =>
-              pickedValues.includes(norm(a))
-            ),
+            anyNote: optLabel && chosen && !fileChoiceLabel(f) ? `ใช้ได้ทุก${optLabel}` : "",
+            // ไฟล์ที่ผูกค่าที่เลือกอยู่ (รวมไฟล์หลายค่า) = ตรงสเปค ขึ้นก่อนเสมอ
+            matched:
+              (!!chosen && fileChoiceLabel(f, chosen).startsWith(chosen)) ||
+              tplAliases(`${t.name} ${f.choice ?? ""}`.trim()).some((a) => pickedValues.includes(norm(a))),
           },
         ];
       });
@@ -9241,6 +9273,31 @@ export default function ProductDetail({
           title={product.name}
           format={calFormatKey}
           year={calYear}
+          years={calYearChoices.map((c) => c.year)}
+          mixFee={(n) => {
+            // ค่าคละลายรวมของรายการนี้ ถ้าแบบที่กำลังทำมี n ลาย (รวมลายของแบบอื่นที่วางไว้แล้ว ยกเว้นตัวที่กำลังแก้)
+            const others = placed.reduce((sum, p, i) => (i === editIndex ? sum : sum + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length) : 1)), 0);
+            const feeAt = (k: number) => designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, k)} ลาย` }, qty);
+            return feeAt(others + n) - feeAt(1);
+          }}
+          qty={qty}
+          unit={matrix?.unit ?? "ชุด"}
+          price={(n) => {
+            // 💰 ราคารวมรายการนี้ถ้าแบบที่กำลังทำมี n ลาย — โชว์บนแถบบนของจอสร้างปฏิทิน
+            const others = placed.reduce((sum, p, i) => (i === editIndex ? sum : sum + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length) : 1)), 0);
+            return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
+          }}
+          onOrder={async () => {
+            // 🛒 ใส่ตะกร้าจากจอสร้างปฏิทิน: แบบถูกแนบแล้ว (applyCalendar) → รอหน้าเรนเดอร์ค่าใหม่ แล้วใช้ปุ่มเพิ่มลงตะกร้าตัวเดิม
+            await new Promise((r) => setTimeout(r, 80));
+            if (handleAddRef.current() && !editing) router.push("/cart");
+          }}
+          guide={calGuide}
+          square={/แหลม/.test(effective["มุม"] ?? "")}
+          onYear={(y) => {
+            const c = calYearChoices.find((x) => x.year === y);
+            if (c && product.calendarStudio) setSelections((s) => ({ ...s, [product.calendarStudio!.yearLabel]: c.name }));
+          }}
           initial={editIndex !== null ? placed[editIndex]?.calState : undefined}
           onApply={applyCalendar}
         />

@@ -16,8 +16,10 @@
  *   - Eggshell ไม่ใส่ (เลิกขายแล้ว — ดูโน้ต discontinued options)
  *
  * 12 ต.ค. 69 (รอบ 2): เพิ่มกลุ่ม "พิมพ์" 1 ด้าน (รูป + ปฏิทินหน้าเดียว · format card1) / 2 ด้าน (+10 ตามโฟโต้การ์ด · format card)
+ * 13 ต.ค. 69: เพิ่มกลุ่ม "แนวการ์ด" แนวตั้ง/แนวนอน (ราคาเท่ากัน · แนวนอน = format card-L / card1-L)
  *   รูปการ์ดตัวเลือก = scripts/assets/calendar-samples (สร้างด้วย scripts/calendar-samples.mts)
  * กระดาษ/รูปการ์ดยกจากกลุ่มของ photocard-digital สด ๆ (ชื่อเนื้อชุดเดียวกัน ภาพชุดเดียวกัน ไม่ก๊อปไฟล์)
+ * ⚠️ 13 ต.ค. 69: เรียงกลุ่มใหม่ + อาร์ต 350/400 แกรม ทำด้วย calendar-photocard-paper.mts — รันสคริปต์นี้เมื่อไหร่ ต้องรันตัวนั้นต่อท้าย
  * รันซ้ำได้: เขียนทับทั้งก้อน แต่คงยอดขาย/รีวิว/สถานะเผยแพร่ของเดิมไว้
  */
 import { readFileSync } from "node:fs";
@@ -66,8 +68,19 @@ const SPECIAL_FEE = 30;
 const SIDE = "พิมพ์";
 const S1 = "พิมพ์ 1 ด้าน";
 const S2 = "พิมพ์ 2 ด้าน";
+/** แนวการ์ด (13 ต.ค. 69) — ราคาเท่ากัน · แนวนอน = 8.5×5.5 ซม. (format card-L / card1-L) */
+const ORI = "แนวการ์ด";
+const OP = "แนวตั้ง";
+const OL = "แนวนอน";
 /** พิมพ์ 2 ด้าน บวกเท่าโฟโต้การ์ดธรรมดา (photocard-digital "พิมพ์กี่ด้าน" +10) */
 const S2_FEE = 10;
+/** รูปแบบจอปฏิทินตามตัวเลือก (เจอตัวแรกที่ตรง) — ชุดเดียวกับ calendar-photocard-orientation.mts */
+const CAL_FORMATS = [
+  { format: "card1-L", when: [{ label: SIDE, choices: [S1] }, { label: ORI, choices: [OL] }] },
+  { format: "card1", when: [{ label: SIDE, choices: [S1] }] },
+  { format: "card-L", when: [{ label: ORI, choices: [OL] }] },
+  { format: "card" },
+];
 
 /** ราคาขั้นแรก = ต้นทาง · ขั้นถัดไปลดเท่าโฟโต้การ์ด (130→95→90→85) */
 const STEPS = [0, -35, -40, -45];
@@ -158,6 +171,8 @@ const sample = async (name: string): Promise<string> => {
 };
 const IMG_S1 = await sample("photocard-side-1");
 const IMG_S2 = await sample("photocard-side-2");
+const IMG_OP = await sample("photocard-ori-P");
+const IMG_OL = await sample("photocard-ori-L");
 
 /* ── 3. ตัวเลือก ── */
 const sizeImg = grp("ขนาดตัด").choices[0]?.imageSrc;
@@ -181,6 +196,16 @@ const OPTIONS: ProductOption[] = [
     choices: [
       { name: S1, desc: "รูป + ปฏิทินทั้งปี อยู่ด้านเดียวกัน · ด้านหลังว่าง", imageSrc: IMG_S1 },
       { name: S2, desc: "ด้านหน้า = รูปเต็มใบ · ด้านหลัง = ปฏิทินทั้งปี", extra: S2_FEE, imageSrc: IMG_S2 },
+    ],
+  },
+  {
+    label: ORI,
+    display: "cards",
+    section: "1. ขนาด + ปีปฏิทิน",
+    note: "ราคาเท่ากันทั้งสองแนว",
+    choices: [
+      { name: OP, desc: "5.5 × 8.5 ซม. (ตั้ง)", imageSrc: IMG_OP },
+      { name: OL, desc: "8.5 × 5.5 ซม. (นอน)", imageSrc: IMG_OL },
     ],
   },
   {
@@ -290,7 +315,7 @@ const product = {
   priceRates,
   pricing: matrix(P(RATE_ART)),
   mixRule: structuredClone(src.mixRule),
-  calendarStudio: { yearLabel: YEAR_LABEL, formats: [{ format: "card1", when: [{ label: SIDE, choices: [S1] }] }, { format: "card" }] },
+  calendarStudio: { yearLabel: YEAR_LABEL, formats: CAL_FORMATS },
   // ตัวเลือกเรทราคา (ชนิดกระดาษ) ขึ้นต่อจากกลุ่มปี — ลำดับเดียวกับโฟโต้การ์ด (ขนาด → เรท → เนื้อ → เคลือบ)
   rateAfterOption: YEAR_LABEL,
   tabs: [

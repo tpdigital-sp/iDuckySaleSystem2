@@ -9,7 +9,7 @@
  */
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { calFormat, defaultBack, defaultText, drawPage, fmtW, fmtH, type CalDesign, type ImgRef } from "../src/lib/calendar-card";
+import { calFormat, coverPlacement, defaultBack, defaultText, drawPage, fmtW, fmtH, type CalDesign, type ImgRef } from "../src/lib/calendar-card";
 const require = createRequire(process.argv[2] + "/");
 const { createCanvas, GlobalFonts } = require("@napi-rs/canvas");
 GlobalFonts.registerFromPath("/System/Library/Fonts/Supplemental/SukhumvitSet.ttc", "Kanit");
@@ -49,8 +49,11 @@ function page(fmtKey: string, idx: number, k: number, hue = 200) {
   const b = { ...defaultBack(YEAR), font: "kanit", accent: "#0f766e" };
   const d: CalDesign = { bg: "#ffffff", text: { ...defaultText(YEAR, f), font: "kanit" }, photos: {} };
   if (p.kind !== "photo" || idx > 0) d.text = idx === 0 ? d.text : null;
+  const img = scene(hue);
+  // ใส่รูปลงช่องตรง ๆ — ช่องว่างไม่ยืมรูปแล้ว (photoOf/slotSrc 13 ต.ค. 69) ไม่ใส่ = การ์ดตัวอย่างไม่มีรูป
+  if (p.photo) d.photos = { [p.key]: { src: 0, pl: coverPlacement(p.photo, img) } };
   const c = createCanvas(Math.round(fmtW(f) * k), Math.round(fmtH(f) * k));
-  drawPage(c.getContext("2d"), k, f, p, d, b, [scene(hue)]);
+  drawPage(c.getContext("2d"), k, f, p, d, b, [img]);
   // ตัดขอบตัดตกออก = หน้าตาหลังตัดจริง
   const bl = f.bleed * k;
   const t = createCanvas(Math.round(f.trimW * k), Math.round(f.trimH * k));
@@ -136,5 +139,18 @@ const save = (c: any, name: string) => writeFileSync(`${OUT}/${name}.jpg`, c.toB
   label(x, "ด้านหน้า", 290, 820); label(x, "ด้านหลัง", 710, 820);
   badge(x, "พิมพ์ 2 ด้าน · หน้ารูป หลังปฏิทิน");
   save(c, "photocard-side-2");
+}
+/* ── โฟโต้การ์ด: แนวตั้ง / แนวนอน (13 ต.ค. 69) — หน้าเดียว (รูป + ปฏิทิน) ให้เห็นทรงชัด ── */
+{
+  const { c, x } = board();
+  put(x, page("card1", 0, 14, 200), S / 2, 440, 400);
+  badge(x, "แนวตั้ง · 5.5 × 8.5 ซม.");
+  save(c, "photocard-ori-P");
+}
+{
+  const { c, x } = board();
+  put(x, page("card1-L", 0, 14, 200), S / 2, 440, 720);
+  badge(x, "แนวนอน · 8.5 × 5.5 ซม.");
+  save(c, "photocard-ori-L");
 }
 console.log("ok", OUT);

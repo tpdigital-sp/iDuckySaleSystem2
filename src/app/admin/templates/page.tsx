@@ -24,6 +24,8 @@ import {
   TEMPLATE_MAX_MB,
   type DesignTemplate,
   type TemplateFile,
+  type TemplateWhen,
+  whenList,
   type TemplateSlot,
 } from "@/lib/design-templates";
 import {
@@ -512,7 +514,8 @@ function AdminTemplatesInner() {
       );
       return;
     }
-    const firstTemplate = ids.length === 0;
+    // 🗓 สินค้าปฏิทิน (จอสร้างปฏิทินบนเว็บ) — studioOff ปิดจอปฏิทินไปด้วย ห้ามตั้งให้เอง (13 ต.ค. 69)
+    const firstTemplate = ids.length === 0 && !p.calendarStudio;
     const res = await persistProduct(
       { ...p, templateIds: [...ids, t.id], ...(firstTemplate ? { studioOff: true } : {}) },
       p.savedAt
@@ -2082,6 +2085,15 @@ function AdminTemplatesInner() {
                             >
                               ✕
                             </button>
+                            {label && (
+                              <FileMatchRow
+                                f={f}
+                                label={label}
+                                groupChoices={groupChoices}
+                                groups={prodGroups}
+                                onPatch={(patchF) => patchFile(t.id, f.id, patchF)}
+                              />
+                            )}
                           </div>
                           );
                         })}
@@ -2860,5 +2872,113 @@ export default function AdminTemplatesPage() {
     <RequirePerm perm="products.manage">
       <AdminTemplatesInner />
     </RequirePerm>
+  );
+}
+
+/**
+ * 🔗 ไฟล์เดียวใช้ได้หลายค่า + เงื่อนไขกลุ่มอื่น (13 ต.ค. 69 · เทมเพลตโฟโต้การ์ด)
+ * — "ใช้กับเพิ่ม": ค่าอื่นในกลุ่มเดียวกันที่ใช้ไฟล์นี้ด้วย (choices)
+ * — "เฉพาะเมื่อ": ใช้ไฟล์นี้เฉพาะตอนกลุ่มอื่นเลือกค่าที่กำหนด เช่น แนวการ์ด = แนวนอน (when)
+ */
+function FileMatchRow({
+  f,
+  label,
+  groupChoices,
+  groups,
+  onPatch,
+}: {
+  f: TemplateFile;
+  label: string;
+  groupChoices: string[];
+  groups: { label: string; choices: string[] }[];
+  onPatch: (p: Partial<TemplateFile>) => void;
+}) {
+  const extra = f.choices ?? [];
+  const addable = groupChoices.filter((c) => c !== f.choice && !extra.includes(c));
+  const others = groups.filter((g) => g.label !== label);
+  const conds = whenList(f);
+  const setConds = (list: TemplateWhen[]) => onPatch({ when: list.length ? list : undefined });
+  const chip = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold";
+  return (
+    <div className="flex basis-full flex-wrap items-center gap-1.5 pl-1 text-[11px] text-slate-500">
+      <span className="font-bold text-slate-600">ใช้กับเพิ่ม:</span>
+      {extra.map((c) => (
+        <span key={c} className={`${chip} bg-sky-50 text-sky-800 ring-1 ring-sky-200`}>
+          {c}
+          <button type="button" onClick={() => onPatch({ choices: extra.filter((x) => x !== c).length ? extra.filter((x) => x !== c) : undefined })} className="text-sky-400 hover:text-rose-600" aria-label={`เอา ${c} ออก`}>
+            ✕
+          </button>
+        </span>
+      ))}
+      {addable.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => e.target.value && onPatch({ choices: [...extra, e.target.value] })}
+          className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px]"
+          aria-label={`เพิ่ม${label}ที่ใช้ไฟล์นี้`}
+        >
+          <option value="">＋ เพิ่ม{label}</option>
+          {addable.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      )}
+      {others.length > 0 && (
+        <>
+          <span className="ml-2 font-bold text-slate-600">เฉพาะเมื่อ:</span>
+          {!conds.length && <span className="text-slate-400">ทุกสเปค</span>}
+          {conds.map((w, wi) => {
+            const wChoices = others.find((g) => g.label === w.label)?.choices ?? w.choices;
+            return (
+              <span key={w.label} className="inline-flex flex-wrap items-center gap-1 rounded-lg bg-amber-50/60 px-1.5 py-0.5 ring-1 ring-amber-200">
+                <span className="font-bold text-amber-900">{w.label}:</span>
+                {wChoices.map((c) => {
+                  const on = w.choices.includes(c);
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() =>
+                        setConds(conds.map((x, i) => (i === wi ? { ...x, choices: on ? x.choices.filter((y) => y !== c) : [...x.choices, c] } : x)).filter((x) => x.choices.length))
+                      }
+                      className={`${chip} ring-1 ${on ? "bg-amber-100 text-amber-900 ring-amber-300" : "bg-white text-slate-500 ring-slate-200"}`}
+                    >
+                      {on ? "✓ " : ""}
+                      {c}
+                    </button>
+                  );
+                })}
+                <button type="button" onClick={() => setConds(conds.filter((_, i) => i !== wi))} className="text-amber-400 hover:text-rose-600" aria-label={`ลบเงื่อนไข ${w.label}`}>
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+          {others.some((g) => !conds.some((w) => w.label === g.label)) && (
+            <select
+              value=""
+              onChange={(e) => {
+                const g = others.find((x) => x.label === e.target.value);
+                // เพิ่มเงื่อนไขพร้อมค่าแรก (เงื่อนไขว่างไม่มีผล) — กดสลับค่าได้ทีหลัง
+                if (g?.choices.length) setConds([...conds, { label: g.label, choices: [g.choices[0]] }]);
+              }}
+              className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px]"
+              aria-label="เพิ่มเงื่อนไข"
+            >
+              <option value="">＋ เงื่อนไข</option>
+              {others
+                .filter((g) => !conds.some((w) => w.label === g.label))
+                .map((g) => (
+                  <option key={g.label} value={g.label}>
+                    {g.label}
+                  </option>
+                ))}
+            </select>
+          )}
+        </>
+      )}
+    </div>
   );
 }
