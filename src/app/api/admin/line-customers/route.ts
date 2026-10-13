@@ -28,7 +28,8 @@ type Row = { userId: string; name: string; picture?: string; lastSeen?: string }
 let lastAutoFreshAt = 0;
 
 export async function GET(req: Request) {
-  const gate = await requirePerm("orders.edit");
+  // orders.money = ฝ่ายบัญชีผูก LINE ลูกค้าที่หน้าใบหัก ณ ที่จ่าย (/admin/wht)
+  const gate = await requirePerm(["orders.edit", "orders.money"]);
   if (gate.res) return gate.res;
 
   const db = getChatFirestore();

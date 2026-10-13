@@ -204,11 +204,14 @@ function WhtInner() {
       });
       const j = (await r.json().catch(() => null)) as {
         cert?: WhtCertView;
+        /** ใบอื่นของลูกค้าเดียวกันที่ผูก LINE ตามไปด้วย */
+        also?: WhtCertView[];
         error?: string;
       } | null;
       if (!r.ok || !j?.cert)
         throw new Error(j?.error ?? `บันทึกไม่สำเร็จ (${r.status})`);
-      replace([j.cert]);
+      replace([j.cert, ...(j.also ?? [])]);
+      if (j.also?.length) setMsg({ ok: true, text: `ผูก LINE ให้ใบอื่นของลูกค้าเดียวกันด้วย ${j.also.length} ใบ: ${j.also.map((x) => x.id).join(", ")}` });
       return true;
     } catch (e) {
       setMsg({ ok: false, text: `${id}: ${(e as Error).message}` });
@@ -503,8 +506,8 @@ function WhtInner() {
                       <LineChip to={c.lineTo} />
                     ) : (
                       st === "pending" && (
-                        <Tag tone="quiet" title={c.lineOrderId ? `ผูก LINE ที่หน้าออเดอร์ ${c.lineOrderId} แล้วกลับมาทวงได้เลย` : "ไม่มีใบงานในระบบ — ผูกใบงานเองในรายละเอียด"}>
-                          {c.lineOrderId ? `ยังไม่มีไลน์ · ผูกที่ ${c.lineOrderId}` : "ยังไม่มีไลน์"}
+                        <Tag tone="quiet" title="กด 🔗 ผูก LINE ทางขวา เลือกลูกค้าจากรายชื่อแชทแล้วทวงได้เลย">
+                          ยังไม่มีไลน์
                         </Tag>
                       )
                     )}
@@ -580,9 +583,13 @@ function WhtInner() {
                   >
                     📎 แนบใบหัก
                   </Btn>
-                  {canRemind(c) && (
+                  {canRemind(c) ? (
                     <Btn small tone="navy" disabled={!!busy} onClick={() => void remind([c.id])}>
                       📣 ทวง
+                    </Btn>
+                  ) : (
+                    <Btn small tone="navy" disabled={rowBusy} onClick={() => setOpenId(c.id)} title="เลือก LINE ลูกค้าจากรายชื่อแชท — ผูกแล้วปุ่ม 📣 ทวง จะขึ้น">
+                      🔗 ผูก LINE
                     </Btn>
                   )}
                 </>
@@ -1024,6 +1031,9 @@ function Detail({
         />
       </div>
 
+      {/* 🔗 LINE ลูกค้า — ผูกตรงที่ใบหัก (ใช้ได้แม้ไม่มีใบงานในระบบ) */}
+      {st !== "void" && <LineBind c={c} busy={busy} patch={patch} />}
+
       {/* หัก / ไม่หัก */}
       {!c.retro && st !== "void" && (
         <div className="flex flex-wrap items-center gap-2">
@@ -1323,7 +1333,179 @@ const LINE_VIA: Record<string, string> = {
   bound: "พนักงานผูกไว้ที่ใบงาน",
   inherited: "จำจากออเดอร์เก่าของลูกค้าคนเดียวกัน",
   login: "บัญชี LINE ที่ลูกค้าใช้ล็อกอินตอนสั่ง",
+  wht: "พนักงานผูกไว้ที่หน้าใบหัก",
 };
+
+type LineHit = { userId: string; name: string; picture?: string; lastSeen?: string };
+
+/**
+ * 🔗 ผูก LINE ลูกค้าที่ใบหัก — ค้นจากคลังแชท LINE ของร้าน (ตัวเดียวกับหน้าออเดอร์ /api/admin/line-customers)
+ * ไม่พิมพ์ = คนที่คุยล่าสุด (ทักลูกค้าในแชทก่อน ห้องจะขึ้นบนสุด) · เลือกแล้วต้องกดยืนยัน กันแตะพลาดส่งผิดคน
+ */
+function LineBind({
+  c,
+  busy,
+  patch,
+}: {
+  c: WhtCertView;
+  busy: boolean;
+  patch: (id: string, body: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(!c.lineTo);
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<LineHit[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [picked, setPicked] = useState<LineHit | null>(null);
+  const [err, setErr] = useState("");
+  const { confirm, dialog } = useConfirm();
+
+  useEffect(() => setEditing(!c.lineTo), [c.lineTo]);
+  useEffect(() => {
+    if (!editing) return;
+    setPicked(null);
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q.trim())}`, { cache: "no-store" });
+        const j = (await r.json().catch(() => null)) as { customers?: LineHit[]; error?: string } | null;
+        if (!r.ok) throw new Error(j?.error ?? `ค้นไม่สำเร็จ (${r.status})`);
+        setHits(j?.customers ?? []);
+        setErr("");
+      } catch (e) {
+        setErr((e as Error).message);
+        setHits([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q, editing]);
+
+  async function bind(h: LineHit) {
+    if (await patch(c.id, { lineUserId: h.userId })) {
+      setQ("");
+      setPicked(null);
+    }
+  }
+
+  const avatar = (pic: string | undefined, size: number) =>
+    pic ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={pic} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} referrerPolicy="no-referrer" />
+    ) : (
+      <span className="grid shrink-0 place-items-center rounded-full text-[12px] font-bold text-white" style={{ width: size, height: size, background: "var(--dk-mint-ink)" }}>
+        L
+      </span>
+    );
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 font-semibold">LINE ลูกค้า:</span>
+        {c.lineTo ? (
+          <>
+            <LineChip to={c.lineTo} />
+            <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+              {c.lineUserId && c.lineBound ? `ผูกที่ใบหักโดย ${c.lineBound.by} · ${thTime(c.lineBound.at)}` : LINE_VIA[c.lineTo.via]}
+            </span>
+            {!editing && (
+              <Btn small disabled={busy} onClick={() => setEditing(true)} title="ส่งผิดคน / อยากส่งเข้า LINE อื่น">
+                เปลี่ยนคน
+              </Btn>
+            )}
+            {c.lineUserId && (
+              <Btn
+                small
+                disabled={busy}
+                onClick={async () => {
+                  if (await confirm({ icon: "🔗", title: "ยกเลิกผูก LINE ที่ใบหักนี้?", detail: `${c.id} จะกลับไปใช้ LINE จากใบงาน (ถ้ามี)`, confirmLabel: "ยกเลิกผูก", danger: true }))
+                    void patch(c.id, { lineUserId: null });
+                }}
+              >
+                ✕ ยกเลิกผูก
+              </Btn>
+            )}
+          </>
+        ) : (
+          <span className="text-[13px]" style={{ color: "var(--dk-coral-ink)" }}>
+            ยังไม่มี — เลือกจากรายชื่อแชทด้านล่าง ผูกแล้วทวงได้เลย (ใบอื่นของลูกค้าเดียวกันผูกตามให้)
+          </span>
+        )}
+      </div>
+
+      {editing && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="flex gap-2">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="พิมพ์ชื่อ LINE ลูกค้า (ไม่ใช่ชื่อบริษัท) · เว้นว่าง = คนที่คุยล่าสุด"
+              className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-[14px]"
+              aria-label="ค้นหาชื่อ LINE ลูกค้า"
+            />
+            {c.lineTo && (
+              <Btn small onClick={() => setEditing(false)}>
+                ปิด
+              </Btn>
+            )}
+          </div>
+          <p className="mt-1.5 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+            หาไม่เจอ? ทักลูกค้าในแชท OA ก่อน 1 ข้อความ แล้วล้างช่องค้นหา — ห้องนั้นจะขึ้นบนสุด
+          </p>
+          {err && (
+            <p className="mt-2 text-[13px]" style={{ color: "var(--dk-coral-ink)" }}>
+              {err}
+            </p>
+          )}
+          {picked ? (
+            <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl p-3" style={{ background: "var(--dk-mint-wash)" }}>
+              {avatar(picked.picture, 44)}
+              <span className="min-w-0 flex-1">
+                <b className="block truncate">{picked.name}</b>
+                <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                  ทวงใบหัก {c.company} จะส่งเข้า LINE นี้
+                </span>
+              </span>
+              <Btn small tone="navy" disabled={busy} onClick={() => void bind(picked)}>
+                {busy ? "กำลังผูก…" : "ผูก LINE นี้"}
+              </Btn>
+              <Btn small disabled={busy} onClick={() => setPicked(null)}>
+                ไม่ใช่
+              </Btn>
+            </div>
+          ) : (
+            <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              {loading && !hits && <span className="text-[13px]" style={{ color: "var(--dk-faint)" }}>กำลังโหลดรายชื่อแชท…</span>}
+              {hits?.length === 0 && !loading && !err && (
+                <span className="text-[13px]" style={{ color: "var(--dk-faint)" }}>
+                  ไม่เจอชื่อ “{q}” ในแชท LINE ร้าน — ลองพิมพ์สั้นลง หรือทักลูกค้าในแชทก่อน
+                </span>
+              )}
+              {hits?.map((h) => (
+                <button
+                  key={h.userId}
+                  type="button"
+                  onClick={() => setPicked(h)}
+                  className="flex min-h-11 items-center gap-2 rounded-xl px-2 py-1.5 text-left hover:bg-slate-50"
+                  style={{ opacity: loading ? 0.6 : 1 }}
+                >
+                  {avatar(h.picture, 32)}
+                  <span className="min-w-0 flex-1 truncate text-[14px]">{h.name}</span>
+                  {h.lastSeen && (
+                    <span className="shrink-0 text-[11.5px] tabular-nums" style={{ color: "var(--dk-faint)" }}>
+                      {thTime(h.lastSeen)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {dialog}
+    </div>
+  );
+}
 
 /** 💬 LINE ที่การ์ดทวงจะไปถึง — รูป+ชื่อ ให้พนักงานเห็นก่อนกดทวงว่าส่งเข้าใคร */
 function LineChip({ to }: { to: NonNullable<WhtCertView["lineTo"]> }) {
@@ -1342,7 +1524,7 @@ function LineChip({ to }: { to: NonNullable<WhtCertView["lineTo"]> }) {
         </span>
       )}
       <span className="truncate">LINE {to.name ?? "ลูกค้า"}</span>
-      {to.via !== "bound" && <span className="font-normal">· {to.via === "login" ? "ล็อกอิน" : "ออเดอร์เก่า"}</span>}
+      {(to.via === "login" || to.via === "inherited") && <span className="font-normal">· {to.via === "login" ? "ล็อกอิน" : "ออเดอร์เก่า"}</span>}
     </span>
   );
 }

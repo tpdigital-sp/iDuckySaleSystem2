@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { WHT_BUCKET, WHT_TABLE, isMissingTable, lastSyncInfo, loadCert, refreshLineFlags, relinkCert, saveCert, withFileUrls } from "@/lib/server/wht-db";
+import { WHT_BUCKET, WHT_TABLE, bindCertLine, isMissingTable, lastSyncInfo, loadCert, refreshLineFlags, relinkCert, saveCert, withFileUrls } from "@/lib/server/wht-db";
 import { flowAccountApiReady } from "@/lib/server/flowaccount-api";
+import { lineUserIdFrom } from "@/lib/server/notify";
 import { WHT_RATE_DEFAULT, whtAmountOf, type WhtCert } from "@/lib/wht";
 
 export const runtime = "nodejs";
@@ -50,6 +51,8 @@ type Patch = {
   note?: string;
   orderId?: string;
   removeFile?: string;
+  /** 🔗 ผูก LINE ตรงที่ใบหัก (userId U…) · null = ยกเลิกผูก */
+  lineUserId?: string | null;
 };
 
 const s = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : undefined);
@@ -68,6 +71,15 @@ export async function PATCH(req: Request) {
   const by = gate.actor.name || gate.actor.username;
   const now = new Date().toISOString();
   let c: WhtCert = { ...cur };
+
+  if (body.lineUserId !== undefined) {
+    const uid = body.lineUserId === null ? null : lineUserIdFrom(body.lineUserId);
+    if (body.lineUserId !== null && !uid) return NextResponse.json({ error: "รหัส LINE ไม่ถูกต้อง — เลือกจากรายชื่อแชท" }, { status: 400 });
+    const r = await bindCertLine(sb, c, uid, by);
+    if ("error" in r) return NextResponse.json({ error: r.error }, { status: 400 });
+    const [view, ...also] = await withFileUrls(sb, r.certs);
+    return NextResponse.json({ cert: view, also });
+  }
 
   if (body.mode !== undefined) {
     if (body.mode === null) {

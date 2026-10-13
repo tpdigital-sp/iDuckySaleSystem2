@@ -52,7 +52,13 @@ export interface WhtCert {
    * via: bound = พนักงานผูกที่ใบงาน · inherited = จำจากออเดอร์เก่า · login = บัญชีที่ล็อกอินตอนสั่ง
    * แคชไว้ (at) เช็คใหม่ทุก 24 ชม. หรือเมื่อ LINE ที่ผูกในใบงานเปลี่ยน
    */
-  lineTo?: { id: string; name?: string; picture?: string; via: "bound" | "inherited" | "login"; at: string };
+  lineTo?: { id: string; name?: string; picture?: string; via: "bound" | "inherited" | "login" | "wht"; at: string };
+  /**
+   * 🔗 LINE ที่พนักงานผูกตรงที่ใบหัก (13 ต.ค. 69) — ใบที่ไม่มีใบงานในระบบ (เปิดใน FlowAccount ตรง) ก็ทวงได้
+   * ชนะ LINE จากใบงานเสมอ · ใบใหม่ของลูกค้าเดียวกัน (เลขผู้เสียภาษี/ชื่อ) จำไปใช้เองตอนดึงจาก FlowAccount
+   */
+  lineUserId?: string;
+  lineBound?: { at: string; by: string };
   /** เช็ค LINE ล่าสุดเมื่อไหร่ (รวมกรณีหาไม่เจอ) — ไม่เจอแล้วไม่ต้องเช็คซ้ำทุกครั้งที่เปิดหน้า (รอ 24 ชม. หรือจนกว่าใบงานถูกผูก LINE) */
   lineCheckedAt?: string;
   /** กลุ่มลูกค้าเดียวกัน — ใช้รวมใบเวลาโชว์/ทวง (LINE userId ถ้ารู้ ไม่งั้นเลขผู้เสียภาษี) */
@@ -130,9 +136,9 @@ export function whtAmountOf(c: Pick<WhtCert, "base" | "rate" | "faWht">): number
   return r2((c.base * (c.rate || WHT_RATE_DEFAULT)) / 100);
 }
 
-/** ปุ่มทวงกดได้ไหม — เฉพาะใบที่หักแล้วยังไม่ส่งใบหัก + ใบงานมีไลน์ลูกค้า */
+/** ปุ่มทวงกดได้ไหม — เฉพาะใบที่หักแล้วยังไม่ส่งใบหัก + ผูก LINE ที่ใบหัก หรือใบงานมีไลน์ลูกค้า */
 export function canRemind(c: WhtCert): boolean {
-  return whtStatusOf(c) === "pending" && !!c.lineOrderId && !!c.hasLine;
+  return whtStatusOf(c) === "pending" && (!!c.lineUserId || (!!c.lineOrderId && !!c.hasLine));
 }
 
 /** ชื่อบริษัทแบบตัดคำนำหน้า/ช่องว่าง — ใช้เทียบชื่อจากไฟล์ FlowAccount กับชื่อในออเดอร์ */

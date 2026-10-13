@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
-import { lineTargetOf, noticeFlex, notifyCustomerLogged } from "@/lib/server/notify";
+import { fetchLineProfile, lineTargetOf, noticeFlex, notifyCustomer, notifyCustomerLogged } from "@/lib/server/notify";
 import { fetchTaxInvoicesOfMonth, fetchTaxInvoicesSince, type SalesReportRow } from "@/lib/server/flowaccount-api";
 import {
   WHT_PAYEE,
@@ -127,6 +127,7 @@ export async function importSalesRows(sb: SupabaseClient, rows: SalesReportRow[]
     if (error) throw Object.assign(new Error(error.message), { code: error.code });
     for (const d of data ?? []) existing.set((d.data as WhtCert).id, d.data as WhtCert);
   }
+  const remembered = await boundLinesByCustomer(sb);
   const now = new Date().toISOString();
   let added = 0;
   let matched = 0;
@@ -161,6 +162,14 @@ export async function importSalesRows(sb: SupabaseClient, rows: SalesReportRow[]
       rate: prev?.rate ?? WHT_RATE_DEFAULT,
       updatedAt: now,
     } as WhtCert;
+    // 🔗 LINE ที่ผูกตรงที่ใบหัก ชนะผลจับคู่ใบงาน · ใบใหม่ไม่มีไลน์จากใบงาน → จำจากใบหักใบอื่นของลูกค้าเดียวกัน
+    const own = c.lineUserId ? { id: c.lineUserId, lineTo: c.lineTo } : !c.hasLine ? remembered(r.taxId, r.company) : null;
+    if (own) {
+      c.lineUserId = own.id;
+      if (own.lineTo) c.lineTo = own.lineTo;
+      c.hasLine = true;
+      c.groupKey = own.id;
+    }
     // แถวที่ไม่มีข้อมูลหัก (ยังไม่รับชำระ) = คงค่าจาก FlowAccount ที่ดึงไว้เดิม (c.faWht มาจาก prev)
     if (r.wht) c.faWht = { ...r.wht, at: now };
     const fa = c.faWht;
@@ -187,7 +196,8 @@ export async function importSalesRows(sb: SupabaseClient, rows: SalesReportRow[]
  * ข้ามใบที่ไม่ต้องทวงแล้ว (ได้รับใบหัก/ไม่หัก/ยกเลิก) ที่ยังไม่เคยเช็ค — ลดคำขอไป LINE
  */
 export async function refreshLineFlags(sb: SupabaseClient, certs: WhtCert[]): Promise<WhtCert[]> {
-  const want = certs.filter((c) => c.lineOrderId && (c.lineTo || ["pending", "todo", "retro"].includes(whtStatusOf(c))));
+  // ผูก LINE ตรงที่ใบหักแล้ว = ไม่ต้องดูใบงาน
+  const want = certs.filter((c) => !c.lineUserId && c.lineOrderId && (c.lineTo || ["pending", "todo", "retro"].includes(whtStatusOf(c))));
   if (!want.length) return certs;
   // 🐢→⚡ เช็คแค่ช่อง lineUserId ก่อน (ไม่กี่ KB) — เดิมโหลดออเดอร์เต็ม ~105 ใบ 1.6 MB ทุกครั้งที่เปิดเดือน (6 ต.ค. 69 เปิด ก.ย. ช้า 6–7 วิ)
   const ids = [...new Set(want.map((c) => c.lineOrderId!))];
@@ -280,6 +290,73 @@ export async function relinkCert(sb: SupabaseClient, c: WhtCert, orderId: string
   };
 }
 
+/**
+ * ใบหักที่ผูก LINE ตรงไว้แล้ว → หาจากเลขผู้เสียภาษี (ก่อน) หรือชื่อบริษัท
+ * ลูกค้าเดียวกันผูกไว้ 2 LINE คนละคน = ไม่เดา (คืน null)
+ */
+async function boundLinesByCustomer(sb: SupabaseClient) {
+  const { data } = await sb
+    .from(WHT_TABLE)
+    .select("line:data->>lineUserId,lineTo:data->lineTo,taxId:data->>taxId,company:data->>company")
+    .not("data->>lineUserId", "is", null);
+  type Hit = { id: string; lineTo?: WhtCert["lineTo"] };
+  const byKey = new Map<string, Hit | null>();
+  const put = (k: string, h: Hit) => {
+    if (!byKey.has(k)) byKey.set(k, h);
+    else if (byKey.get(k)?.id !== h.id) byKey.set(k, null);
+  };
+  for (const r of data ?? []) {
+    const h: Hit = { id: String(r.line), lineTo: (r.lineTo as WhtCert["lineTo"]) ?? undefined };
+    const tax = String(r.taxId ?? "").replace(/\D/g, "");
+    if (tax) put(`tax:${tax}`, h);
+    const nm = normCompany(String(r.company ?? ""));
+    if (nm) put(`name:${nm}`, h);
+  }
+  return (taxId?: string, company?: string): Hit | null => {
+    const tax = (taxId ?? "").replace(/\D/g, "");
+    if (tax && byKey.has(`tax:${tax}`)) return byKey.get(`tax:${tax}`) ?? null;
+    const nm = normCompany(company);
+    return nm ? (byKey.get(`name:${nm}`) ?? null) : null;
+  };
+}
+
+/** ใบหักของลูกค้าเดียวกัน (เลขผู้เสียภาษี → ไม่มีค่อยใช้ชื่อบริษัท) */
+async function sameCustomerCerts(sb: SupabaseClient, c: WhtCert): Promise<WhtCert[]> {
+  const tax = (c.taxId ?? "").replace(/\D/g, "");
+  const q = sb.from(WHT_TABLE).select("data").neq("id", c.id).limit(500);
+  const { data } = tax ? await q.eq("data->>taxId", c.taxId!) : await q.eq("data->>company", c.company);
+  const nm = normCompany(c.company);
+  return (data ?? []).map((r) => r.data as WhtCert).filter((x) => (tax ? (x.taxId ?? "").replace(/\D/g, "") === tax : normCompany(x.company) === nm));
+}
+
+/**
+ * 🔗 ผูก LINE ตรงที่ใบหัก (ใบที่ไม่มีใบงาน/ใบงานไม่มีไลน์) — ยืนยันกับ LINE ก่อน (ต้องเป็นเพื่อน OA)
+ * ใบอื่นของลูกค้าเดียวกันที่ยังไม่มีไลน์ ผูกตามให้ด้วย · userId = null → ยกเลิกผูก (ใบนี้ใบเดียว)
+ */
+export async function bindCertLine(sb: SupabaseClient, c: WhtCert, userId: string | null, by: string): Promise<{ certs: WhtCert[] } | { error: string }> {
+  if (!userId) {
+    const next: WhtCert = { ...c, hasLine: false, groupKey: c.taxId ? `tax:${c.taxId}` : `name:${normCompany(c.company)}` };
+    delete next.lineUserId;
+    delete next.lineBound;
+    delete next.lineTo;
+    delete next.lineCheckedAt; // ให้ refreshLineFlags กลับไปดูไลน์จากใบงานใหม่
+    const err = await saveCert(sb, next);
+    return err ? { error: err } : { certs: [next] };
+  }
+  const prof = await fetchLineProfile(userId);
+  if (!prof) return { error: "LINE นี้ส่งข้อความไม่ได้ (ลูกค้ายังไม่ได้เป็นเพื่อนกับ OA ร้าน หรือรหัสผิด)" };
+  const now = new Date().toISOString();
+  const lineTo: WhtCert["lineTo"] = { id: userId, via: "wht", at: now, name: prof.name.slice(0, 60), ...(prof.picture ? { picture: prof.picture } : {}) };
+  const bind = (x: WhtCert): WhtCert => ({ ...x, lineUserId: userId, lineBound: { at: now, by }, lineTo, hasLine: true, groupKey: userId });
+  const out = [bind(c)];
+  for (const x of await sameCustomerCerts(sb, c)) if (!x.lineUserId && !x.lineTo) out.push(bind(x));
+  for (const x of out) {
+    const err = await saveCert(sb, x);
+    if (err) return { error: err };
+  }
+  return { certs: out };
+}
+
 export async function loadCert(sb: SupabaseClient, id: string): Promise<WhtCert | null> {
   const { data } = await sb.from(WHT_TABLE).select("data").eq("id", id).maybeSingle();
   return (data?.data as WhtCert) ?? null;
@@ -344,25 +421,28 @@ async function lineDisplayName(userId: string): Promise<string | undefined> {
  * ส่งผ่านออเดอร์ (notifyCustomerLogged → ลงประวัติออเดอร์ + เคารพที่ลูกค้าปิดรับแจ้งเตือน)
  */
 export async function remindCerts(sb: SupabaseClient, certs: WhtCert[], by: string): Promise<{ sent: number; failed: { ids: string[]; reason: string }[]; updated: WhtCert[]; sentTo: string[] }> {
-  const ready = certs.filter((c) => whtStatusOf(c) === "pending" && c.lineOrderId);
-  const orderIds = [...new Set(ready.map((c) => c.lineOrderId!))];
+  const ready = certs.filter((c) => whtStatusOf(c) === "pending" && (c.lineUserId || c.lineOrderId));
+  const orderIds = [...new Set(ready.flatMap((c) => (c.lineOrderId ? [c.lineOrderId] : [])))];
   const orders = new Map<string, Order>();
   for (let i = 0; i < orderIds.length; i += 100) {
     const { data } = await sb.from("orders").select("id,data").in("id", orderIds.slice(i, i + 100));
     for (const r of data ?? []) orders.set(r.id as string, r.data as Order);
   }
-  const groups = new Map<string, { order: Order; certs: WhtCert[]; lineId: string }>();
+  /** order = ใบงานที่ลงประวัติได้ (ไลน์ตรงกัน) · ไม่มี = ส่งตรงหา LINE ที่ผูกที่ใบหัก */
+  const groups = new Map<string, { order?: Order; certs: WhtCert[]; lineId: string }>();
   const failed: { ids: string[]; reason: string }[] = [];
   for (const c of ready) {
-    const o = orders.get(c.lineOrderId!);
+    const o = c.lineOrderId ? orders.get(c.lineOrderId) : undefined;
     const target = o ? await lineTargetOf(sb, o) : null;
-    if (!o || !target) {
+    const lineId = c.lineUserId || target?.id;
+    if (!lineId) {
       failed.push({ ids: [c.id], reason: "ยังไม่ได้ผูก LINE ของลูกค้า" });
       continue;
     }
-    const g = groups.get(target.id) ?? { order: o, certs: [], lineId: target.id };
+    const g = groups.get(lineId) ?? { certs: [], lineId };
+    if (!g.order && o && target?.id === lineId) g.order = o;
     g.certs.push(c);
-    groups.set(target.id, g);
+    groups.set(lineId, g);
   }
   const now = new Date().toISOString();
   const updated: WhtCert[] = [];
@@ -370,7 +450,11 @@ export async function remindCerts(sb: SupabaseClient, certs: WhtCert[], by: stri
   let sent = 0;
   for (const g of groups.values()) {
     const ids = g.certs.map((c) => c.id);
-    const r = await notifyCustomerLogged(sb, g.order, whtAskCard(g.certs), `ทวงใบหัก ณ ที่จ่าย ${ids.join(", ")}`);
+    const card = whtAskCard(g.certs);
+    const r = g.order
+      ? await notifyCustomerLogged(sb, g.order, card, `ทวงใบหัก ณ ที่จ่าย ${ids.join(", ")}`)
+      : // ไม่มีใบงาน → ส่งตรง (ใบหลอกที่มีแค่ lineUserId · lineTargetOf คืนตัวที่ผูกทันที) ประวัติเก็บที่ใบหัก
+        await notifyCustomer(sb, { id: ids[0], lineUserId: g.lineId } as Order, card);
     if (r.ok) sent++;
     else failed.push({ ids, reason: r.reason ?? "ส่งไม่สำเร็จ" });
     const to = r.ok ? await lineDisplayName(g.lineId) : undefined;
