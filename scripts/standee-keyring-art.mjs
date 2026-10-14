@@ -375,6 +375,7 @@ async function optionArt() {
     const cx = W / 2;
     const cy = 350;
     if (kind === "round") return `<ellipse cx="${cx}" cy="${cy}" rx="150" ry="46" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="3"/>`;
+    if (kind === "oval") return `<ellipse cx="${cx}" cy="${cy}" rx="210" ry="40" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="3"/>`;
     if (kind === "square")
       return `<rect x="${cx - 150}" y="${cy - 46}" width="300" height="92" rx="10" fill="${GLASS}" stroke="${GLASS_EDGE}" stroke-width="3"/>`;
     return `<path d="M${cx - 152} ${cy + 12} q22 -58 74 -40 q18 -50 78 -34 q56 -34 92 14 q46 -6 40 44 q-8 40 -60 40 h-172 q-58 0 -52 -44 z"
@@ -383,6 +384,7 @@ async function optionArt() {
   for (const [name, kind, label, note, fee] of [
     ["baseshape-round", "round", "ฐานทรงกลม", "ทรงมาตรฐาน", "ไม่บวกเพิ่ม"],
     ["baseshape-square", "square", "ฐานทรงสี่เหลี่ยม", "ทรงมาตรฐาน", "ไม่บวกเพิ่ม"],
+    ["baseshape-oval", "oval", "ฐานทรงวงรี", "ทรงมาตรฐาน", "ไม่บวกเพิ่ม"],
     ["baseshape-special", "special", "ฐานทรงพิเศษ", "ไดคัทตามทรงที่ออกแบบ", "1-10 ชิ้น +10 · 11 ชิ้นขึ้นไป +5 บาท/ชิ้น"],
   ]) {
     const body = `
