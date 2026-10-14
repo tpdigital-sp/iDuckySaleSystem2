@@ -27,6 +27,7 @@ export const AI_MODEL_BY_FEATURE: Record<Exclude<AiFeature, "n8n_chat" | "n8n_pr
   slip_ocr: "gemini-3.8-flash",
   receipt_ocr: "gemini-3.5-flash-lite",
   customer_profile: "gemini-3.5-flash-lite",
+  chat_urgency: "gemini-3.5-flash-lite",
 };
 
 /** โมเดลสำรองของชั้นเข้าใจคำถามราคา เมื่อตัวหลักล้ม/ช้าเกิน */

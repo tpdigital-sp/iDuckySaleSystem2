@@ -13521,7 +13521,7 @@ function LineChatBox({
             title="เปิดห้องแชทในระบบ — ตอบจากที่นี่นับโควตาข้อความ LINE"
             className="inline-flex items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
           >
-            💬 เปิดแชท
+            💬 เปิดแชทในระบบ
           </a>
           {chat && (
             <a

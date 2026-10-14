@@ -36,6 +36,8 @@ type Row = {
   draftPending?: boolean;
   adminTag: string;
   adminTags: string[];
+  /** 🤖 ป้ายระดับที่ AI ติดให้ + เหตุผล */
+  aiTag?: { key: string; reason: string; at: string };
   adminNote: string;
   adminNotes: NoteItem[];
   adminAlias: string;
@@ -53,6 +55,8 @@ type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry;
 type Scope = "waiting" | "all" | "unread" | "draft" | "new" | "old";
 
 const LINE_GREEN = "#06C755";
+/** ป้ายระดับที่ AI ติดให้ (ตรงกับ URGENCY_KEYS ใน lib/server/chat-urgency.ts) */
+const AI_LEVELS = ["urgent", "rush", "normal"];
 const SCOPES: { key: Scope; label: string }[] = [
   { key: "all", label: "ทั้งหมด" },
   { key: "unread", label: "🟢 ยังไม่อ่าน" },
@@ -410,6 +414,28 @@ function Chats() {
         setDetail((x) => (x && x.id === id ? { ...x, adminTags: d.tags, adminTag: d.tags[0] ?? "" } : x));
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
+      }
+    },
+    [toast],
+  );
+  // 🤖 ให้ AI ประเมินความเร่งด่วนห้องนี้ใหม่ (api chats/urgency → lib/server/chat-urgency.ts) — ป้ายระดับอยู่หน้าสุด ป้ายอื่นคงเดิม
+  const [aiBusy, setAiBusy] = useState(false);
+  const aiRetag = useCallback(
+    async (id: string) => {
+      setAiBusy(true);
+      try {
+        const d = await botApi<{ ok: boolean; key: string; reason: string }>("/api/admin/chatbot/chats/urgency", { id });
+        const apply = (x: Row): Row => {
+          const tags = [d.key, ...x.adminTags.filter((t) => !AI_LEVELS.includes(t))].slice(0, 10);
+          return { ...x, adminTags: tags, adminTag: d.key, aiTag: { key: d.key, reason: d.reason, at: new Date().toISOString() } };
+        };
+        setRows((rs) => rs.map((x) => (x.id === id ? apply(x) : x)));
+        setDetail((x) => (x && x.id === id ? { ...x, ...apply(x) } : x));
+        toast(`🤖 AI ประเมินแล้ว${d.reason ? ` — ${d.reason}` : ""}`);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      } finally {
+        setAiBusy(false);
       }
     },
     [toast],
@@ -805,6 +831,8 @@ function Chats() {
           tags={tagCatalog}
           onTags={(ts) => void saveTags(detail.id, ts)}
           onManageTags={() => setTagMgrOpen(true)}
+          aiBusy={aiBusy}
+          onAiRetag={() => void aiRetag(detail.id)}
           onToggle={() => void toggleBot(detail.id, !detail.botAllowed)}
           onWake={() => void wakeBot(detail.id)}
           onClose={() => setNoteOpen(false)}
@@ -868,7 +896,7 @@ function NoticeCard({ entry }: { entry: LogEntry }) {
 
 type ChatOrder = {
   id: string; date: string; customer: string; status: string; statusLabel: string; total: number; balance: number; tracking?: string;
-  link: "bound" | "login" | "other" | "none"; otherName?: string;
+  link: "bound" | "login" | "other" | "none"; otherName?: string; why?: string;
 };
 const baht = (n: number) => `฿${n.toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
 
@@ -893,6 +921,8 @@ function OrdersBlock({
   const [q, setQ] = useState("");
   const [found, setFound] = useState<ChatOrder | null>(null);
   const [busy, setBusy] = useState("");
+  // ✨ ใบที่น่าจะใช่ (เลข OD/เบอร์ที่ลูกค้าพิมพ์ในแชท) + ใบใหม่ 2 วันที่ยังไม่ผูก — เด้งเองตอนเปิดแผง ไม่ต้องพิมพ์เลข
+  const [sug, setSug] = useState<{ matched: ChatOrder[]; recent: ChatOrder[] } | null>(null);
 
   const load = useCallback(async () => {
     setErr("");
@@ -904,12 +934,29 @@ function OrdersBlock({
       setOrders([]);
     }
   }, [uid]);
+  const loadSug = useCallback(async () => {
+    if (!canEdit) return;
+    try {
+      setSug(await botApi<{ matched: ChatOrder[]; recent: ChatOrder[] }>(`/api/admin/chatbot/chats/orders?uid=${encodeURIComponent(uid)}&suggest=1`));
+    } catch {
+      setSug({ matched: [], recent: [] });
+    }
+  }, [uid, canEdit]);
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadSug();
+  }, [load, loadSug]);
 
-  const lookup = async () => {
-    const t = q.trim();
+  // พิมพ์เลขครบ (OD-261014-5697 / 261014-5697 / 2610145697) = หาเองทันที ไม่ต้องกดปุ่ม
+  useEffect(() => {
+    if (!/^(OD[\s-]*)?\d{6}[\s-]?\d{4}$/i.test(q.trim())) return;
+    const t = setTimeout(() => void lookup(q), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  const lookup = async (raw: string = q) => {
+    const t = raw.trim().replace(/^OD[\s-]*/i, "").replace(/^(\d{6})[\s-]?(\d{4})$/, "$1-$2");
     if (!t) return;
     setBusy("lookup");
     setFound(null);
@@ -949,7 +996,7 @@ function OrdersBlock({
       toast(j.resent ? `🔗 ผูก ${o.id} แล้ว · ส่งการ์ดสถานะล่าสุดที่พลาดไปให้ลูกค้าแล้ว` : `🔗 ผูก ${o.id} กับห้องนี้แล้ว`);
       setFound(null);
       setQ("");
-      await load();
+      await Promise.all([load(), loadSug()]);
       if (j.resent) onSent();
     } catch {
       toast("ต่อเซิร์ฟเวอร์ไม่ได้", true);
@@ -998,6 +1045,7 @@ function OrdersBlock({
       <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
         {o.date} · {o.customer}
       </p>
+      {o.why ? <p className="mt-0.5 text-[11px] font-bold" style={{ color: "#8A5A00" }}>✨ {o.why}</p> : null}
       <p className="mt-0.5 text-[12px]">
         {baht(o.total)}
         {o.balance > 0 ? <span className="ml-1.5 font-bold" style={{ color: "#B91C1C" }}>ค้าง {baht(o.balance)}</span> : null}
@@ -1046,6 +1094,20 @@ function OrdersBlock({
           ยังไม่มีออเดอร์ที่ผูกกับ LINE นี้
         </p>
       )}
+      {canEdit && sug?.matched.length ? (
+        <div className="mt-2 rounded-xl p-2" style={{ background: "#FFF8E6", border: "1px solid #F0D48A" }}>
+          <p className="mb-1 text-[11.5px] font-bold" style={{ color: "#8A5A00" }}>✨ น่าจะเป็นของลูกค้านี้ — กดผูกได้เลย</p>
+          <ul className="flex flex-col gap-1.5">{sug.matched.map((o) => row(o, true))}</ul>
+        </div>
+      ) : null}
+      {canEdit && sug?.recent.length ? (
+        <details className="mt-2">
+          <summary className="cursor-pointer select-none text-[11.5px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+            🆕 ใบใหม่ 2 วันที่ยังไม่ผูก LINE ({sug.recent.length})
+          </summary>
+          <ul className="mt-1.5 flex max-h-[300px] flex-col gap-1.5 overflow-y-auto">{sug.recent.map((o) => row(o, true))}</ul>
+        </details>
+      ) : null}
       {canEdit ? (
         <div className="mt-2">
           <div className="flex gap-1.5">
@@ -1056,13 +1118,13 @@ function OrdersBlock({
                 setFound(null);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void lookup();
+                if (e.key === "Enter") void lookup(q);
               }}
               placeholder="ผูกออเดอร์: OD-261014-5697"
               className="min-h-[34px] min-w-0 flex-1 rounded-lg border px-2.5 text-[12.5px]"
               style={{ borderColor: "var(--dk-hair)" }}
             />
-            <button type="button" disabled={!q.trim() || busy === "lookup"} onClick={() => void lookup()} className="min-h-[34px] shrink-0 rounded-lg px-3 text-[12px] font-bold text-white disabled:opacity-50" style={{ background: "var(--dk-navy)" }}>
+            <button type="button" disabled={!q.trim() || busy === "lookup"} onClick={() => void lookup(q)} className="min-h-[34px] shrink-0 rounded-lg px-3 text-[12px] font-bold text-white disabled:opacity-50" style={{ background: "var(--dk-navy)" }}>
               {busy === "lookup" ? "…" : "หา"}
             </button>
           </div>
@@ -1463,9 +1525,9 @@ function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canTogg
 
 /** ℹ️ แผงข้อมูลลูกค้าด้านขวา — ชื่อ/รูป/ไอดี · สถานะบอท · ป้าย · โน้ตภายใน (ฟิลด์เดียวกับหน้า ลูกค้า LINE) */
 function InfoPanel({
-  detail, canReply, canToggle, noteSaving, onNoteAdd, onNoteEdit, onNoteDel, tags, onTags, onManageTags, onToggle, onWake, onClose, orders,
+  detail, canReply, canToggle, noteSaving, onNoteAdd, onNoteEdit, onNoteDel, tags, onTags, onManageTags, onToggle, onWake, onClose, orders, aiBusy, onAiRetag,
 }: {
-  detail: Row; canReply: boolean; canToggle: boolean; noteSaving: boolean; orders: React.ReactNode;
+  detail: Row; canReply: boolean; canToggle: boolean; noteSaving: boolean; orders: React.ReactNode; aiBusy: boolean; onAiRetag: () => void;
   onNoteAdd: (t: string) => Promise<boolean>; onNoteEdit: (id: string, t: string) => Promise<boolean>; onNoteDel: (id: string) => Promise<boolean>; tags: ChatTag[]; onTags: (ts: string[]) => void; onManageTags: () => void; onToggle: () => void; onWake: () => void; onClose: () => void;
 }) {
   const body = (
@@ -1515,6 +1577,27 @@ function InfoPanel({
               </button>
             );
           })}
+        </div>
+        {/* 🤖 AI ติดป้ายระดับให้เอง (cron ทุก 5 นาที) — โชว์เหตุผล · แอดมินกดป้ายเองหลังลูกค้าพิมพ์ล่าสุด = AI ไม่ทับ */}
+        <div className="mt-1.5 flex items-start gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px]" style={{ background: "#F6F8FB", color: "var(--dk-navy-soft)" }}>
+          <span className="min-w-0 flex-1 leading-snug">
+            {detail.aiTag?.key && detail.adminTags.includes(detail.aiTag.key) ? (
+              <>
+                🤖 AI: <b>{tags.find((t) => t.key === detail.aiTag!.key)?.label ?? detail.aiTag.key}</b>
+                {detail.aiTag.reason ? ` — ${detail.aiTag.reason}` : ""}
+                {detail.aiTag.at ? <span style={{ color: "var(--dk-faint)" }}> · {ago(detail.aiTag.at)}</span> : null}
+              </>
+            ) : detail.aiTag?.key ? (
+              <span style={{ color: "var(--dk-faint)" }}>🤖 แอดมินเลือกป้ายเองแล้ว — AI จะประเมินใหม่เมื่อลูกค้าพิมพ์มา</span>
+            ) : (
+              <span style={{ color: "var(--dk-faint)" }}>🤖 AI ติดป้ายความเร่งด่วนให้เองเมื่อลูกค้าพิมพ์มา</span>
+            )}
+          </span>
+          {canReply ? (
+            <button type="button" disabled={aiBusy} onClick={onAiRetag} className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold underline disabled:opacity-50" style={{ color: "var(--dk-navy-soft)" }}>
+              {aiBusy ? "กำลังประเมิน…" : "ประเมินใหม่"}
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="mx-4 mb-4 mt-3">

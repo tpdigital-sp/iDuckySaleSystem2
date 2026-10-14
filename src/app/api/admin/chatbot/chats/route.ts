@@ -43,6 +43,8 @@ type Row = {
   adminTag: string;
   /** 🏷 หลายป้าย — ไม่มีฟิลด์ (ข้อมูลเก่า) ใช้ [adminTag] */
   adminTags: string[];
+  /** 🤖 ป้ายระดับที่ AI ติดให้ (lib/server/chat-urgency.ts) */
+  aiTag?: { key: string; reason: string; at: string };
   adminNote: string;
   /** 📝 หลายโน้ต (≤10) — ข้อมูลเก่าที่มีแต่ adminNote → แปลงเป็น 1 รายการ */
   adminNotes: { id: string; text: string; by: string; at: string }[];
@@ -112,6 +114,10 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     draftPending: !!iso(x.draftPendingAt),
     adminTag: String(x.adminTag ?? ""),
     adminTags: Array.isArray(x.adminTags) ? (x.adminTags as unknown[]).map(String).filter(Boolean) : x.adminTag ? [String(x.adminTag)] : [],
+    aiTag:
+      x.aiTag && typeof x.aiTag === "object"
+        ? { key: String((x.aiTag as Record<string, unknown>).key ?? ""), reason: String((x.aiTag as Record<string, unknown>).reason ?? ""), at: String((x.aiTag as Record<string, unknown>).at ?? "") }
+        : undefined,
     adminNote: String(x.adminNote ?? ""),
     adminNotes: Array.isArray(x.adminNotes)
       ? (x.adminNotes as Record<string, unknown>[]).map((n) => ({ id: String(n.id ?? ""), text: String(n.text ?? ""), by: String(n.by ?? ""), at: String(n.at ?? "") })).filter((n) => n.id && n.text)
