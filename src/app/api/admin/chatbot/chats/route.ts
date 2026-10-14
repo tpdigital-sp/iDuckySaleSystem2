@@ -4,6 +4,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { loadChatIndex, norm, core } from "@/lib/server/line-chat";
+import { loadChatTags } from "@/lib/server/chat-tags-store";
 
 /**
  * 💬 แชท LINE ที่บอทเห็น — อ่านจาก Firestore `ordersure/line-conversations` (บอท n8n เขียน)
@@ -199,6 +200,8 @@ export async function GET(req: Request) {
   const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));
   const scope = (u.searchParams.get("scope") ?? "all").trim();
   const q = (u.searchParams.get("q") ?? "").trim().toLowerCase();
+  // 🏷 กรองตามป้าย (14 ต.ค. 69) — ถามฐานตรงด้วย array-contains (ไม่ใช่แค่ 400 ห้องล่าสุด) · ไม่ต้องมีดัชนีผสมเพราะไม่ orderBy
+  const tag = (u.searchParams.get("tag") ?? "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
   // 🐢 14 ต.ค. 69 "หน้าแชทโหลดช้ามาก": เดิมอ่านห้องเต็ม 400 ห้อง ~1.4 MB ทุกครั้ง (และซ้ำทุก 30 วิ) — 1.1 MB เป็น `profile` (สรุปลูกค้าของบอท)
   // ที่รายชื่อไม่ได้ใช้ → อ่านเฉพาะช่องที่ toRow ใช้ (วัดตรง: 2.9 วิ → 0.24 วิ) · หน้าห้อง (?id=) ยังอ่านเต็มเหมือนเดิม
   const LIST_FIELDS = [
@@ -225,6 +228,8 @@ export async function GET(req: Request) {
     const docs = ids.length ? await db.getAll(...ids.map((id) => db.collection(COL).doc(id)), { fieldMask: LIST_FIELDS }) : [];
     const order = new Map(ids.map((id, n) => [id, n]));
     snap = { docs: docs.filter((d) => d.exists).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)) };
+  } else if (tag) {
+    snap = await db.collection(COL).where("adminTags", "array-contains", tag).limit(300).select(...LIST_FIELDS).get();
   } else {
     snap = await db.collection(COL).orderBy("lastSeen", "desc").limit(Math.min(400, limit * 6)).select(...LIST_FIELDS).get();
   }
@@ -237,8 +242,26 @@ export async function GET(req: Request) {
   if (scope === "waiting") rows = rows.filter(isWaiting);
   if (scope === "unread") rows = rows.filter((r) => r.unread);
   if (scope === "draft") rows = rows.filter((r) => r.draftPending);
+  if (tag && q) rows = rows.filter((r) => r.adminTags.includes(tag));
   // ค้นหา: คงลำดับ "ชื่อขึ้นต้นด้วยคำค้นก่อน" ที่จัดไว้ (ดัชนีเรียงคนคุยล่าสุดมาแล้ว)
   if (!q) rows.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
   rows = rows.slice(0, limit);
-  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount }, { headers: { "Cache-Control": "no-store" } });
+  const tagCounts = await countByTag(db);
+  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount, tagCounts }, { headers: { "Cache-Control": "no-store" } });
+}
+
+/** 🏷 จำนวนห้องต่อป้าย (นับทั้งคลังด้วย count() — 1 read ต่อ 1,000 ห้อง) · แคช 60 วิ เพราะหน้าแชทรีเฟรชรายชื่อทุก 30 วิ */
+let tagCountCache: { at: number; counts: Record<string, number> } | null = null;
+async function countByTag(db: Firestore): Promise<Record<string, number>> {
+  if (tagCountCache && Date.now() - tagCountCache.at < 60_000) return tagCountCache.counts;
+  try {
+    const tags = await loadChatTags();
+    const pairs = await Promise.all(
+      tags.map(async (t) => [t.key, (await db.collection(COL).where("adminTags", "array-contains", t.key).count().get()).data().count] as const)
+    );
+    tagCountCache = { at: Date.now(), counts: Object.fromEntries(pairs) };
+    return tagCountCache.counts;
+  } catch {
+    return tagCountCache?.counts ?? {};
+  }
 }

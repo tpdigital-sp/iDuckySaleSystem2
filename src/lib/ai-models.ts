@@ -35,10 +35,13 @@ export const PRICE_UNDERSTAND_FALLBACK = "gemini-3.5-flash-lite";
 
 /**
  * โมเดลที่ตั้งไว้ใน n8n (ไม่ได้เรียกจากเว็บ — แก้ใน n8n แล้วต้องมาแก้ตรงนี้ด้วยให้แดชบอร์ดตรง)
- * n8n_chat = AI Agent1 ของ workflow ChatBot (knowledge-chat) · เปลี่ยนจาก Gemini 2.5 Flash 8 ต.ค. 69 (เทียบ 10 โมเดล Sonnet 5.5 ดีสุด)
+ * n8n_chat = AI Agent1 ของ workflow ChatBot (knowledge-chat)
+ *   · 8 ต.ค. 69 Gemini 2.5 Flash → Claude Sonnet 5.5 (เทียบ 10 โมเดล Sonnet ดีสุด · 2.5 Flash ไม่ยอมเรียก tool)
+ *   · 14 ต.ค. 69 Claude Sonnet 5.5 → Gemini 3.8 Flash (เจ้าของร้านเลือก · เทียบแชทจริง 30 เคส คุณภาพสูสี ถูกกว่า ~4.5 เท่า
+ *     แต่ยืนยันสเปก/นโยบายเองบ่อยกว่า) — โหนด "Claude Sonnet 5.5" ยังอยู่ ถอดสายไว้ rollback = ต่อสายกลับเข้า AI Agent1
  */
 export const N8N_MODEL_BY_FEATURE: Partial<Record<Extract<AiFeature, "n8n_chat" | "n8n_pricing">, string>> = {
-  n8n_chat: "claude-sonnet-5-5",
+  n8n_chat: "gemini-3.8-flash",
 };
 
 /** โมเดลที่ใช้จริงของงานนั้น (รวม env override) */

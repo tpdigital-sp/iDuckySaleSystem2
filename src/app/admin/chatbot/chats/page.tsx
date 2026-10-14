@@ -47,7 +47,7 @@ type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean } };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
-type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number };
+type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number> };
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
 type Quota = { limit: number | null; used: number; left: number | null; at: string };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
@@ -57,13 +57,14 @@ type Scope = "waiting" | "all" | "unread" | "draft" | "new" | "old";
 const LINE_GREEN = "#06C755";
 /** ป้ายระดับที่ AI ติดให้ (ตรงกับ URGENCY_KEYS ใน lib/server/chat-urgency.ts) */
 const AI_LEVELS = ["urgent", "rush", "normal"];
-const SCOPES: { key: Scope; label: string }[] = [
-  { key: "all", label: "ทั้งหมด" },
-  { key: "unread", label: "🟢 ยังไม่อ่าน" },
-  { key: "draft", label: "📝 ร่างรอส่ง" },
-  { key: "waiting", label: "🙋 รอแอดมิน" },
-  { key: "new", label: "🆕 ใหม่" },
-  { key: "old", label: "👤 เก่า" },
+// ลำดับ = งานที่ต้องลงมือก่อน (รอแอดมิน · ร่างรอส่ง) แล้วค่อยมุมมองทั่วไป
+const SCOPES: { key: Scope; label: string; icon: string }[] = [
+  { key: "all", label: "ทั้งหมด", icon: "💬" },
+  { key: "waiting", label: "รอแอดมิน", icon: "🙋" },
+  { key: "draft", label: "ร่างรอส่ง", icon: "📝" },
+  { key: "unread", label: "ยังไม่อ่าน", icon: "🟢" },
+  { key: "new", label: "ลูกค้าใหม่", icon: "🆕" },
+  { key: "old", label: "ลูกค้าเก่า", icon: "👤" },
 ];
 
 const fmtTime = (iso: string) => {
@@ -130,6 +131,9 @@ function Chats() {
   const [rows, setRows] = useState<Row[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [scope, setScope] = useState<Scope>("all");
+  // 🏷 กรองตามป้าย (เลือกได้ทีละป้าย · ใช้ร่วมกับชิปขอบเขตด้านบนได้) — จำนวนนับจากทั้งคลังฝั่งเซิร์ฟเวอร์
+  const [tagFilter, setTagFilter] = useState("");
+  const [tagCounts, setTagCounts] = useState<Record<string, number>>({});
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [sel, setSel] = useState<string>("");
@@ -148,19 +152,20 @@ function Chats() {
     const my = ++loadSeq.current;
     setLoading(true);
     try {
-      const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}`);
+      const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`);
       if (my !== loadSeq.current) return;
       setRows(d.rows);
       setSettings(d.settings);
       setWaitingCount(d.waitingCount);
       setUnreadCount(d.unreadCount);
       setDraftCount(d.draftCount ?? 0);
+      setTagCounts(d.tagCounts ?? {});
     } catch (e) {
       if (my === loadSeq.current) toast(e instanceof Error ? e.message : String(e), true);
     } finally {
       if (my === loadSeq.current) setLoading(false);
     }
-  }, [scope, q, toast]);
+  }, [scope, q, tagFilter, toast]);
 
   useEffect(() => {
     const t = setTimeout(() => void load(), q ? 350 : 0);
@@ -173,6 +178,24 @@ function Chats() {
     if (/^U[0-9a-f]{32}$/.test(id)) void openRoom(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 🔗 แถบที่อยู่ตามห้องที่เปิดอยู่เสมอ (เจ้าของร้าน 14 ต.ค. 69 "อยากส่งลิงก์แชทลูกค้าคนนั้นให้พนักงานคนอื่นเปิดดูตรง ๆ")
+  //   replaceState ไม่ใช่ push — สลับห้องไปมาไม่ทำให้ปุ่มย้อนกลับของเบราว์เซอร์ต้องกดหลายสิบครั้ง
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (sel) url.searchParams.set("id", sel);
+    else url.searchParams.delete("id");
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url.href);
+  }, [sel]);
+  const copyRoomLink = useCallback(async () => {
+    if (!sel) return;
+    const link = `${window.location.origin}/admin/chatbot/chats?id=${sel}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast("🔗 คัดลอกลิงก์ห้องนี้แล้ว — ส่งให้พนักงานคนอื่นเปิดได้เลย");
+    } catch {
+      window.prompt("คัดลอกลิงก์นี้", link);
+    }
+  }, [sel, toast]);
 
   // รีเฟรชรายการทุก 30 วิ (แชทเข้าตลอด) — เฉพาะตอนไม่ได้ค้นหา
   useEffect(() => {
@@ -233,7 +256,6 @@ function Chats() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
 
-  const counts = useMemo(() => ({ newN: rows.filter((r) => r.scope === "new").length, oldN: rows.filter((r) => r.scope === "old").length }), [rows]);
   const modeText = !settings
     ? ""
     : settings.mode === "draft"
@@ -549,28 +571,60 @@ function Chats() {
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-1.5 px-3 py-2">
-          {SCOPES.map((s) => {
-            const n = s.key === "waiting" ? waitingCount : s.key === "unread" ? unreadCount : s.key === "draft" ? draftCount : s.key === "new" ? counts.newN : s.key === "old" ? counts.oldN : 0;
-            return (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => setScope(s.key)}
-                className="min-h-[30px] rounded-full px-2.5 text-[12px] font-bold transition"
-                style={scope === s.key ? { background: "var(--dk-navy)", color: "white" } : { background: "#F1F5F9", color: "var(--dk-navy-soft)" }}
-              >
-                {s.label}
-                {n ? ` ${n}` : ""}
-              </button>
-            );
-          })}
-          {scope === "unread" && unreadCount ? (
-            <button type="button" onClick={() => { if (window.confirm(`ทำเครื่องหมายว่าอ่านแล้วทั้ง ${unreadCount} ห้อง?`)) void botApi<{ saved?: string }>("/api/admin/line-customers/manage", { action: "readAll" }).then((d) => { toast(d.saved || "เรียบร้อย"); void load(); }).catch((e) => toast(String(e), true)); }} className="min-h-[30px] rounded-full px-2.5 text-[12px] font-bold" style={{ background: "#C9F2D0", color: "#0E7A3A" }}>
-              ✓ อ่านทั้งหมด
-            </button>
-          ) : null}
+        {/* ── ตัวกรอง (14 ต.ค. 69 เจ้าของร้าน "ดูรก" → "เป็น dropdown ดีกว่าไหม"): 2 dropdown ในแถวเดียว ──
+             แถบรายชื่อบนจอจริงแคบ แท็บ/ชิปโดนตัด · ใช้ <select> ของเครื่อง (มือถือขึ้นรายการเลือกใหญ่ กดง่าย)
+             งานที่ต้องลงมือ (รอแอดมิน) ยังเห็นตลอดเป็นตัวเลขแดงบน dropdown "ดู" ไม่ต้องเปิดเมนู */}
+        <div className="flex items-center gap-2 px-3 py-2">
+          <FilterMenu
+            id="chat-scope"
+            label="ดู"
+            value={scope}
+            active={scope !== "all"}
+            onChange={(v) => setScope(v as Scope)}
+            options={SCOPES.map((s) => ({
+              value: s.key,
+              label: s.label,
+              icon: s.icon,
+              count: s.key === "waiting" ? waitingCount : s.key === "unread" ? unreadCount : s.key === "draft" ? draftCount : undefined,
+              urgent: s.key === "waiting" || s.key === "draft",
+            }))}
+            // 🟢 ยังไม่อ่าน (เจ้าของร้าน 14 ต.ค. 69 "ต้องแสดงจำนวนที่ยังไม่ได้อ่าน") — สีเขียวแบบ LINE · รอแอดมิน/ร่างรอส่ง ดูในเมนู
+            badge={unreadCount ? { n: unreadCount, title: `ยังไม่อ่าน ${unreadCount} ห้อง — เลือก "ยังไม่อ่าน" ในเมนูนี้`, bg: "var(--dk-mint-ink)" } : undefined}
+          />
+          <FilterMenu
+            id="chat-tag"
+            label="ป้าย"
+            value={tagFilter}
+            active={!!tagFilter}
+            onChange={setTagFilter}
+            options={[
+              { value: "", label: "ทุกป้าย", icon: "🏷" },
+              ...tagCatalog.map((t) => ({ value: t.key, label: t.label, icon: t.emoji, count: tagCounts[t.key], tone: TAG_PALETTE[t.color] })),
+            ]}
+          />
         </div>
+        {scope === "unread" && unreadCount && !tagFilter ? (
+          <div className="flex justify-end px-3 pb-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                void confirm({ icon: "✓", title: `ทำเครื่องหมายว่าอ่านแล้วทั้ง ${unreadCount} ห้อง?`, confirmLabel: "อ่านแล้วทั้งหมด" }).then((ok) => {
+                  if (ok !== true) return;
+                  void botApi<{ saved?: string }>("/api/admin/line-customers/manage", { action: "readAll" })
+                    .then((d) => {
+                      toast(d.saved || "เรียบร้อย");
+                      void load();
+                    })
+                    .catch((e) => toast(String(e), true));
+                })
+              }
+              className="min-h-[32px] px-1.5 text-[12px] font-bold underline"
+              style={{ color: "var(--dk-mint-ink)" }}
+            >
+              อ่านแล้วทั้งหมด
+            </button>
+          </div>
+        ) : null}
         <div className="flex-1 overflow-y-auto">
           {loading && !rows.length ? (
             <p className="p-4 text-sm" style={{ color: "var(--dk-faint)" }}>
@@ -578,7 +632,7 @@ function Chats() {
             </p>
           ) : !rows.length ? (
             <div className="p-4">
-              <Empty title={scope === "waiting" ? "ไม่มีห้องที่รอแอดมิน" : "ยังไม่มีห้องแชท"} body={q ? "ไม่พบชื่อนี้ — ค้นได้ทั้งชื่อ LINE ชื่อที่แอดมินตั้ง และ userId (ส่วนใดของชื่อก็ได้)" : "เมื่อลูกค้าทักมา ห้องจะขึ้นที่นี่"} />
+              <Empty title={tagFilter ? `ไม่มีห้องที่ติดป้าย "${tagCatalog.find((t) => t.key === tagFilter)?.label ?? tagFilter}"${scope !== "all" ? " ในตัวกรองนี้" : ""}` : scope === "waiting" ? "ไม่มีห้องที่รอแอดมิน" : "ยังไม่มีห้องแชท"} body={q ? "ไม่พบชื่อนี้ — ค้นได้ทั้งชื่อ LINE ชื่อที่แอดมินตั้ง และ userId (ส่วนใดของชื่อก็ได้)" : "เมื่อลูกค้าทักมา ห้องจะขึ้นที่นี่"} />
             </div>
           ) : (
             rows.map((r) => (
@@ -600,7 +654,8 @@ function Chats() {
                       {listTime(r.lastSeen)}
                     </span>
                   </div>
-                  <p className="truncate text-[12.5px]" style={{ color: r.unread ? "var(--dk-navy)" : "var(--dk-faint)", fontWeight: r.unread ? 700 : 400 }}>
+                  {/* ข้อความล่าสุดตัวบางเสมอ (เจ้าของร้าน 14 ต.ค. 69) — ยังไม่อ่านบอกด้วยสีเข้ม + จุดเขียว + เวลาสีเขียวแทน */}
+                  <p className="truncate text-[12.5px]" style={{ color: r.unread ? "var(--dk-navy-soft)" : "var(--dk-faint)", fontWeight: 400 }}>
                     {r.lastUserText || (r.messageCount ? `บอทคุย ${r.messageCount} ข้อความ` : "—")}
                   </p>
                   <div className="mt-0.5 flex flex-wrap gap-1">
@@ -668,6 +723,11 @@ function Chats() {
               </div>
               {/* 🤖 17:05 เจ้าของร้าน "กดแล้วควรแสดงอะไรที่แตกต่าง" — สวิตช์เป็นเม็ดยาบอกสถานะชัด: เขียว "บอทตอบ: เปิด" / เทา "บอทตอบ: ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) */}
               {detail ? <BotPill detail={detail} canToggle={can("orders.edit") || canReply} onToggle={() => void toggleBot(detail.id, !detail.botAllowed)} onWake={() => void wakeBot(detail.id)} /> : null}
+              {detail ? (
+                <IconBtn onClick={() => void copyRoomLink()} title="คัดลอกลิงก์ห้องแชทนี้ (ส่งให้พนักงานคนอื่นเปิดดูได้)">
+                  🔗
+                </IconBtn>
+              ) : null}
               {detail ? (
                 <IconBtn onClick={() => setNoteOpen((v) => !v)} title="ข้อมูลลูกค้า · ออเดอร์ · ป้าย · โน้ต" active={noteOpen}>
                   ℹ️
@@ -1132,6 +1192,149 @@ function OrdersBlock({
         </div>
       ) : null}
     </div>
+  );
+}
+
+type MenuOpt = { value: string; label: string; icon?: string; count?: number; urgent?: boolean; tone?: { wash: string; ink: string; tone: string } };
+
+/**
+ * 🔽 เมนูตัวกรองในแถบรายชื่อแชท (14 ต.ค. 69 เจ้าของร้าน: ฟอนต์ใหญ่ไป · อยากมีไอคอน · ป้ายต้องเป็นสี/ไอคอนตามป้ายจริง)
+ * เมนูของเครื่อง (<select>) แต่งฟอนต์/สีไม่ได้ → ทำเอง: ปุ่ม + รายการลอย (position fixed กันโดนกรอบแถบรายชื่อตัด)
+ * ป้าย (tone) วาดเหมือน TagChip ในห้อง · งานที่ต้องลงมือ (urgent) ตัวเลขพื้นทึบ · ปิดด้วยคลิกข้างนอก/Esc · ลูกศรขึ้นลงเลือกได้
+ */
+function FilterMenu({
+  id, label, value, options, onChange, active, badge,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: MenuOpt[];
+  onChange: (v: string) => void;
+  active: boolean;
+  badge?: { n: number; title: string; bg: string };
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [hi, setHi] = useState(0);
+  const btn = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const cur = options.find((o) => o.value === value) ?? options[0];
+
+  const show = () => {
+    const r = btn.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = Math.max(r.width, 220);
+    setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - width - 8), width });
+    setHi(Math.max(0, options.findIndex((o) => o.value === value)));
+    setOpen(true);
+  };
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+    btn.current?.focus();
+  };
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => {
+      if (!list.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+      else if (e.key === "ArrowDown") (e.preventDefault(), setHi((h) => Math.min(options.length - 1, h + 1)));
+      else if (e.key === "ArrowUp") (e.preventDefault(), setHi((h) => Math.max(0, h - 1)));
+      else if (e.key === "Enter") (e.preventDefault(), pick(options[hi]?.value ?? value));
+    };
+    const close = () => setOpen(false);
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("keydown", key);
+      window.removeEventListener("resize", close);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, hi, options, value]);
+
+  const t = active ? cur.tone : undefined;
+  return (
+    <>
+      <button
+        ref={btn}
+        id={id}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => (open ? setOpen(false) : show())}
+        title={badge?.title}
+        className="flex min-h-[40px] min-w-0 flex-1 items-center gap-1.5 rounded-xl border px-2.5 text-left transition"
+        style={{ borderColor: t ? t.tone : active ? "var(--dk-navy)" : "var(--dk-hair)", background: t ? t.wash : active ? "#F1F5F9" : "white" }}
+      >
+        <span className="shrink-0 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+          {label}
+        </span>
+        {cur.icon ? <span aria-hidden="true" className="shrink-0 text-[13px] leading-none">{cur.icon}</span> : null}
+        <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: t ? t.ink : "var(--dk-navy)", fontWeight: active ? 700 : 500 }}>
+          {cur.label}
+        </span>
+        {badge ? (
+          <span className="shrink-0 rounded-full px-1.5 text-[11px] font-bold leading-[18px] text-white tabular-nums" style={{ background: badge.bg }}>
+            {badge.n.toLocaleString()}
+          </span>
+        ) : null}
+        <span aria-hidden="true" className="shrink-0 text-[9px]" style={{ color: "var(--dk-navy-soft)", transform: open ? "rotate(180deg)" : undefined }}>
+          ▼
+        </span>
+      </button>
+      {open && pos ? (
+        <div
+          ref={list}
+          role="listbox"
+          aria-labelledby={id}
+          className="fixed z-[60] overflow-hidden rounded-xl border bg-white py-1 shadow-lg"
+          style={{ top: pos.top, left: pos.left, width: pos.width, borderColor: "var(--dk-hair)" }}
+        >
+          {options.map((o, i) => {
+            const on = o.value === value;
+            return (
+              <button
+                key={o.value || "_all"}
+                type="button"
+                role="option"
+                aria-selected={on}
+                onMouseEnter={() => setHi(i)}
+                onClick={() => pick(o.value)}
+                className="flex min-h-[36px] w-full items-center gap-2 px-2.5 text-left text-[13px]"
+                style={{ background: i === hi ? "#F1F5F9" : undefined }}
+              >
+                <span aria-hidden="true" className="w-3.5 shrink-0 text-[12px]" style={{ color: "var(--dk-navy)" }}>
+                  {on ? "✓" : ""}
+                </span>
+                {o.tone ? (
+                  // ป้าย: วาดแบบเดียวกับป้ายในห้อง (พื้น/ตัวอักษรตามสีป้าย + อีโมจิ)
+                  <span className="min-w-0 truncate rounded-full px-2 py-[2px] text-[12.5px] font-bold" style={{ background: o.tone.wash, color: o.tone.ink }}>
+                    {o.icon} {o.label}
+                  </span>
+                ) : (
+                  <span className="min-w-0 truncate" style={{ color: "var(--dk-navy)", fontWeight: on ? 700 : 500 }}>
+                    {o.icon ? <span aria-hidden="true" className="mr-1.5">{o.icon}</span> : null}
+                    {o.label}
+                  </span>
+                )}
+                {o.count ? (
+                  <span
+                    className="ml-auto shrink-0 rounded-full px-1.5 text-[11px] font-bold leading-[18px] tabular-nums"
+                    style={o.urgent ? { background: o.value === "waiting" ? "var(--dk-coral-ink)" : "var(--dk-yolk-ink)", color: "white" } : { color: "var(--dk-faint)" }}
+                  >
+                    {o.count.toLocaleString()}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </>
   );
 }
 

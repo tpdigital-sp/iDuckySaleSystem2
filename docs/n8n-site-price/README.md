@@ -491,3 +491,8 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - lib/server/bot-orders.ts: describeOrdersForBot (เลข·วันที่·รายการ·สถานะ·ขั้นผลิตจริง·ยอด·เลขพัสดุ) ใช้ร่วม customer-profile (LINE) + chat-answer (เว็บ) · LINE ได้เลขพัสดุเพิ่มด้วย
 - เว็บยืนยันตัวตน 3 ทาง (lookupWebOrders): ลิงก์ออเดอร์ในเครื่อง id+กุญแจ (my-order-links → askShopBot ส่ง myOrders) · ล็อกอิน (authToken) · เลข OD + เบอร์ที่ใช้สั่ง (อ่านเฉพาะข้อความลูกค้า · rate limit IP 12/10 นาที เบอร์ 10/ชม. เท่า /order/find) · ยืนยันไม่ได้ = ขอเบอร์ ห้ามบอกข้อมูล
 - ติดตามออเดอร์ไม่ hard-handoff แล้ว · พิมพ์เบอร์ตามคำขอ (หลังมี OD ในบทสนทนา) ไม่นับเป็นคำทักทาย · คำถามออเดอร์ข้ามตัวคิดราคา
+
+## 14 ต.ค. 69 — AI Agent ของ ChatBot เปลี่ยนเป็น Gemini 3.8 Flash
+- ChatBot (Q9wMWpZsnQfSkpIT): โหนด "Google Gemini Chat Model" (lmChatGoogleGemini v1, `modelName: models/gemini-3.8-flash`, maxOutputTokens 8192, temperature 0.4, cred "Google Gemini(PaLM) Api account") ต่อเข้า AI Agent1 · โหนด "Claude Sonnet 5.5" ยังอยู่แต่ถอดสาย (rollback = ต่อสายกลับ) · published version 6762eb9e
+- เหตุผล: เทียบแชท LINE จริง 30 เคส (กรรมการ Claude Opus 5.5 + Gemini 3.8 ปิดชื่อ) คุณภาพสูสี ค่าใช้จ่าย ~฿0.33 vs ~฿1.47/ข้อความ · ข้อควรระวัง Gemini ยืนยันสเปก/นโยบายเองบ่อยกว่า (โหมดร่างช่วยกรอง แต่แชทหน้าเว็บส่งตรง)
+- ⚠️ ราคา Gemini 3.8 Flash ขึ้น 2 เท่า 1 ม.ค. 2027
