@@ -2607,11 +2607,9 @@ export default function CalendarStudio({
       n = selEl.kind === "text" ? 4 : 8;
     } else if (slotFocus && page.photo && tool === "photo") {
       // ✂️ ไดคัท: กรอบรอบรูปที่วาง (ไม่ใช่ช่องทั้งผืน) และไม่มีจุดจับ (ย่อ/ขยายด้วยซูม/บีบนิ้ว)
-      const ph = fmt.diecut ? photoOf(page, design, imgs) : null;
-      if (ph) {
-        r = { x: ph.pl.cxMm - ph.pl.wMm / 2, y: ph.pl.cyMm - ph.pl.hMm / 2, w: ph.pl.wMm, h: ph.pl.hMm };
-        n = 0;
-      } else r = page.photo;
+      // ✂️ ไดคัท: ไม่วาดกรอบฟ้า/จุดจับเลย (ผู้ใช้สั่ง 14 ต.ค. 69 "ไม่ควรมี") — เหลือวงลูกศร ✥ กลางรูปพอ
+      if (fmt.diecut) return null;
+      r = page.photo;
     } else if (gridSel) {
       r = gridOf(page, design);
       p = pad;
@@ -5684,8 +5682,9 @@ export default function CalendarStudio({
           </div>
         </div>
 
+        {/* ✂️ ไดคัท = หน้าเดียวเสมอ ไม่มีแถบรูปย่อ (บนมือถือแถบเครื่องมือลอยทับจนเลื่อนไม่ถึง · 14 ต.ค. 69) */}
         {/* รูปย่อทุกหน้า (แบบ Printbox — หน้าเดียวก็โชว์ ให้เห็นภาพรวมทั้งใบ) */}
-        {
+        {!fmt.diecut && (
           <div className="flex shrink-0 items-end gap-2 overflow-x-auto border-t border-stone-200 bg-stone-50 px-3 py-2 [scrollbar-width:thin]">
             {copies > 1 && (
               <div className="sticky left-0 z-10 flex shrink-0 flex-col justify-center gap-1 self-stretch bg-stone-50 pr-2">
@@ -5813,7 +5812,7 @@ export default function CalendarStudio({
               ),
             )}
           </div>
-        }
+        )}
 
         {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmt.name} onClose={() => setFlip3d(null)} />}
         {askMode && (
