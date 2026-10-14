@@ -2887,6 +2887,15 @@ export default function AdminOrderDetailPage() {
 
   function persist() {
     if (!order || demo) return;
+    /**
+     * 🪪 ล้างทั้งชื่อและเบอร์ทิ้ง = เปลี่ยนตัวลูกค้า → ปลดผู้ติดต่อเดิมด้วย
+     * OD-261002-6439: สร้างใบโดยเลือกการ์ด ฐิติมา ไว้ แล้วล้างชื่อ/เบอร์พิมพ์ลูกค้าคนใหม่ทับ — การ์ดเดิมยังผูกค้าง แต้ม 820 เข้าผิดคน
+     */
+    const noName = !order.customer.trim() || order.customer === "ยังไม่ระบุชื่อ";
+    if (order.contactId && noName && !order.phone.replace(/\D/g, "")) {
+      applyOrder({ ...order, contactId: undefined });
+      return;
+    }
     void saveOrWarn(order);
   }
 
@@ -5471,7 +5480,20 @@ export default function AdminOrderDetailPage() {
                   {/* แถวลงมือทำต่อ — คัดลอกไปตอบ LINE/จ่าหน้า · โทรหาลูกค้า · สถานะการผูกผู้ติดต่อ */}
                   <div className="flex flex-wrap items-center gap-1.5">
                     {order.contactId ? (
-                      <ContactChip contactId={order.contactId} onUnlink={() => applyOrder({ ...order, contactId: undefined })} />
+                      <>
+                        <ContactChip
+                          contactId={order.contactId}
+                          orderPhone={order.phone}
+                          onUnlink={() => applyOrder({ ...order, contactId: undefined })}
+                        />
+                        {/* ⚠️ เบอร์ในใบไม่ตรงการ์ดที่ผูก → ชวนย้ายไปการ์ดของเบอร์นี้ (แต้มที่บวกไปแล้วย้ายตามให้เอง · OD-261002-6439) */}
+                        <ContactSuggestChip
+                          phone={order.phone}
+                          exceptId={order.contactId}
+                          mismatchOnly
+                          onPick={(c) => applyOrder({ ...order, contactId: c.id })}
+                        />
+                      </>
                     ) : (
                       <>
                         {/* 🪪 เบอร์ตรงกับคนในคลัง → ชวนผูกก่อนลูกค้าโอน (ผูกหลังโอนแล้ว ส่วนลดระดับคิดย้อนไม่ได้ · OD-261014-3893) */}

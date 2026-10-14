@@ -6,6 +6,7 @@ import { Empty, SearchBox } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
 import { ago, botApi, Modal, uploadBotFile, uploadBotImage, useToast } from "../bot-ui";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { BANK_CARD } from "@/lib/bank-card";
 import SavedReplyPicker from "./SavedReplyPicker";
 import { realignEmojis, type Emoji } from "../saved-replies/shared";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
@@ -112,6 +113,15 @@ function TagChip({ k, tags }: { k: string; tags: ChatTag[] }) {
       {t.emoji} {t.label}
     </span>
   );
+}
+
+/** 🏦 บอทส่งภาพบัญชีรับโอน (Reply Gate ต่อท้าย image message) แต่ log จดแค่บรรทัด "[รูป] ภาพบัญชีรับโอนของร้าน" ไม่มี imageUrl
+ *  → หน้าแชทวาดภาพจริงแทนบรรทัดนั้น (ภาพตายตัวใน lib/bank-card · 14 ต.ค. 69 เจ้าของร้าน "ภาพไม่แสดง") */
+const BANK_IMG_LINE = /^\[รูป\]\s*ภาพบัญชีรับโอน/;
+function splitBankImgs(text: string): { text: string; n: number } {
+  const lines = text.split("\n");
+  const keep = lines.filter((l) => !BANK_IMG_LINE.test(l.trim()));
+  return { text: keep.join("\n").trimEnd(), n: lines.length - keep.length };
 }
 
 export default function ChatsPage() {
@@ -852,7 +862,15 @@ function Chats() {
                               </button>
                             );
                           })()}
-                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : m.text}
+                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : ours ? splitBankImgs(m.text).text : m.text}
+                          {ours && splitBankImgs(m.text).n
+                            ? Array.from({ length: splitBankImgs(m.text).n }, (_, bi) => (
+                                <button key={bi} type="button" onClick={() => setLightbox({ url: BANK_CARD.jpg, name: "bank-card.jpg" })} className="mb-1 block" title="ภาพบัญชีรับโอนที่บอทส่งให้ลูกค้า · กดเพื่อดูรูปใหญ่">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={BANK_CARD.webp} alt={BANK_CARD.alt} loading="lazy" className="max-h-64 rounded-lg transition hover:opacity-90" />
+                                </button>
+                              ))
+                            : null}
                           {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
                           {m.file ? <FileCard file={m.file} href={m.file.url || (m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "#")} archived={!!m.file.url} /> : null}
                           {cardsOf(m).length ? (

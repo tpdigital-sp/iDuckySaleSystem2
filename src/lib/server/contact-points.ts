@@ -27,12 +27,13 @@ function nowThai(): string {
 }
 
 type ContactRow = { id: string; data: Contact };
+type Sb = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
 /**
  * หาผู้ติดต่อของออเดอร์ — ผูกไว้ (contactId) ใช้ตัวนั้น
  * ไม่ผูก → จับคู่จากเบอร์โทร ต้องเจอ "คนเดียวเท่านั้น" ถึงใช้ (เจอหลายคน = ไม่เดา กันแต้มเข้าผิดคน)
  */
-async function contactForOrder(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, order: Order): Promise<ContactRow | null> {
+async function contactForOrder(sb: Sb, order: Order): Promise<ContactRow | null> {
   if (order.contactId) {
     const { data } = await sb.from("contacts").select("id,data").eq("id", order.contactId).maybeSingle();
     return (data as ContactRow | null) ?? null;
@@ -45,7 +46,48 @@ async function contactForOrder(sb: NonNullable<ReturnType<typeof getSupabaseAdmi
   return rows.length === 1 ? rows[0] : null;
 }
 
-/** ออเดอร์ชำระครบ → บวกแต้มให้ผู้ติดต่อ (idempotent ต่อออเดอร์) — fire-and-forget */
+type AwardRow = { id: string; contact_id: string; point: number };
+
+/**
+ * แถว "บวกแต้ม" ของออเดอร์นี้ที่ยังไม่ถูกคืน (ทุกการ์ด) — id รูปแบบ `<contactId>:od:<orderId>` หรือ `…:<n>` (บวกซ้ำหลังย้ายกลับ)
+ * แถวคืนแต้มคือ `<award id>:คืน`
+ */
+async function activeAwards(sb: Sb, orderId: string): Promise<AwardRow[]> {
+  const { data } = await sb.from("contact_points").select("id,contact_id,data").like("id", `%:od:${orderId}%`);
+  const rows = (data ?? []) as { id: string; contact_id: string; data: { point?: number; orderId?: string } }[];
+  const revoked = new Set(rows.filter((r) => r.id.endsWith(":คืน")).map((r) => r.id.slice(0, -":คืน".length)));
+  return rows
+    .filter((r) => !r.id.endsWith(":คืน") && !revoked.has(r.id) && (r.data?.orderId ?? orderId) === orderId)
+    .map((r) => ({ id: r.id, contact_id: String(r.contact_id), point: Number(r.data?.point) || 0 }));
+}
+
+/** ถอนแต้มของแถวบวกแต้มหนึ่งแถว (ลงแถว `:คืน` + ลด point/ระดับของการ์ดนั้น) */
+async function revokeAward(sb: Sb, award: AwardRow, orderId: string, note: string): Promise<void> {
+  if (award.point <= 0) return;
+  const { error: insErr } = await sb.from("contact_points").insert({
+    id: `${award.id}:คืน`,
+    contact_id: award.contact_id,
+    data: { at: nowThai(), action: "ลบคะแนนสะสม", point: -award.point, orderId, note },
+  });
+  if (insErr) return; // คืนไปแล้ว (แข่งกันเข้า)
+  const { data } = await sb.from("contacts").select("id,data").eq("id", award.contact_id).maybeSingle();
+  const contact = (data as ContactRow | null)?.data;
+  if (!contact) return;
+  const point = round2(Math.max(0, (Number(contact.point) || 0) - award.point));
+  const tiers = await loadTiers(sb);
+  const next = applyRevoke(ensureSeeded(contact, tiers), award.point, tiers);
+  await sb.from("contacts").update({ data: { ...contact, point, tierLevel: next.levelId, tierAnchor: next.anchor, tierCycleSpend: next.cycleSpend } }).eq("id", award.contact_id);
+}
+
+/**
+ * ออเดอร์ชำระครบ → บวกแต้มให้ผู้ติดต่อ (idempotent ต่อออเดอร์) — fire-and-forget
+ *
+ * 🔁 ใบที่เคยบวกแต้มให้ "การ์ดอื่น" ไปแล้ว:
+ *   - ใบผูก contactId ไว้ (แอดมินเลือกเอง/เปลี่ยนผู้ติดต่อ) → ย้ายแต้มจากการ์ดเดิมมาการ์ดนี้
+ *     (OD-261002-6439 · 14 ต.ค. 69: ใบสร้างโดยเลือกการ์ด ฐิติมา ไว้ แล้วพิมพ์ชื่อ/เบอร์ลูกค้าคนใหม่ทับ → แต้ม 820 เข้าผิดคน
+ *      มาเปลี่ยนผู้ติดต่อทีหลังก็ไม่ย้าย เพราะเดิมเจอแถวของการ์ดอื่นแล้วข้ามเงียบ)
+ *   - ใบไม่ผูก (จับคู่จากเบอร์เอา) → ไม่แตะ ไม่เดาย้ายเอง
+ */
 export async function awardPointsForOrder(order: Order): Promise<void> {
   try {
     const sb = getSupabaseAdmin();
@@ -56,13 +98,22 @@ export async function awardPointsForOrder(order: Order): Promise<void> {
     const hit = await contactForOrder(sb, order);
     if (!hit) return;
 
-    const logId = `${hit.id}:od:${order.id}`;
-    // เคยบวกออเดอร์นี้แล้ว → ข้าม (SlipOK + แอดมินกดเปลี่ยนสถานะ ยิงมาซ้ำได้)
-    const { data: dup } = await sb.from("contact_points").select("id").eq("id", logId).maybeSingle();
-    if (dup) return;
-    // เคยบวกให้ "การ์ดอื่น" ไปแล้ว (จับคู่จากเบอร์ก่อนผูก แล้วมาผูกทีหลังคนละการ์ด) → ไม่บวกซ้ำ
-    const { data: other } = await sb.from("contact_points").select("id").like("id", `%:od:${order.id}`).limit(1);
-    if (other?.length) return;
+    const active = await activeAwards(sb, order.id);
+    if (active.some((a) => a.contact_id === hit.id)) return; // การ์ดนี้ได้ไปแล้ว
+    if (active.length) {
+      if (!order.contactId) return;
+      for (const a of active) await revokeAward(sb, a, order.id, `ย้ายแต้มไปผู้ติดต่อ #${hit.id} (เปลี่ยนผู้ติดต่อของออเดอร์)`);
+    }
+
+    // id ตายตัวต่อออเดอร์ = กันบวกซ้ำตอน SlipOK + แอดมินกดพร้อมกัน · เคยบวกแล้วถูกคืน (ย้ายออกแล้วย้ายกลับ) → ต่อท้ายเลข
+    let logId = `${hit.id}:od:${order.id}`;
+    const { data: used } = await sb.from("contact_points").select("id").like("id", `${logId}%`);
+    const taken = new Set(((used ?? []) as { id: string }[]).map((r) => r.id));
+    if (taken.has(logId)) {
+      let n = 2;
+      while (taken.has(`${logId}:${n}`)) n++;
+      logId = `${logId}:${n}`;
+    }
     const { error: insErr } = await sb.from("contact_points").insert({
       id: logId,
       contact_id: hit.id,
@@ -88,37 +139,15 @@ export async function awardPointsForOrder(order: Order): Promise<void> {
   }
 }
 
-/** ออเดอร์ถูกยกเลิก → คืนแต้มที่เคยบวกจากออเดอร์นี้ (idempotent) — fire-and-forget */
+/**
+ * ออเดอร์ถูกยกเลิก → คืนแต้มที่เคยบวกจากออเดอร์นี้ (idempotent) — fire-and-forget
+ * หาจากแถวที่บวกไว้จริง ไม่ใช่จากผู้ติดต่อปัจจุบัน — ผูกการ์ดเปลี่ยนไปหลังบวกแล้ว ก็ยังคืนถูกการ์ด
+ */
 export async function revokePointsForOrder(order: Order): Promise<void> {
   try {
     const sb = getSupabaseAdmin();
     if (!sb) return;
-    const hit = await contactForOrder(sb, order);
-    if (!hit) return;
-
-    const awardId = `${hit.id}:od:${order.id}`;
-    const revokeId = `${awardId}:คืน`;
-    const [{ data: award }, { data: revoked }] = await Promise.all([
-      sb.from("contact_points").select("data").eq("id", awardId).maybeSingle(),
-      sb.from("contact_points").select("id").eq("id", revokeId).maybeSingle(),
-    ]);
-    if (!award || revoked) return; // ไม่เคยบวก หรือคืนไปแล้ว
-    const amount = Number((award.data as { point?: number }).point) || 0;
-    if (amount <= 0) return;
-
-    const { error: insErr } = await sb.from("contact_points").insert({
-      id: revokeId,
-      contact_id: hit.id,
-      data: { at: nowThai(), action: "ลบคะแนนสะสม", point: -amount, orderId: order.id, note: "ยกเลิกออเดอร์ — คืนแต้มที่บวกไว้" },
-    });
-    if (insErr) return;
-
-    const contact = hit.data;
-    const point = round2(Math.max(0, (Number(contact.point) || 0) - amount));
-    const tiers = await loadTiers(sb);
-    const seeded = ensureSeeded(contact, tiers);
-    const next = applyRevoke(seeded, amount, tiers);
-    await sb.from("contacts").update({ data: { ...contact, point, tierLevel: next.levelId, tierAnchor: next.anchor, tierCycleSpend: next.cycleSpend } }).eq("id", hit.id);
+    for (const a of await activeAwards(sb, order.id)) await revokeAward(sb, a, order.id, "ยกเลิกออเดอร์ — คืนแต้มที่บวกไว้");
   } catch {
     /* fire-and-forget */
   }

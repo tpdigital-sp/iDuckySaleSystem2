@@ -137,7 +137,7 @@ export function CustomerContactInput({
  * 🪪 ป้ายผู้ติดต่อที่ออเดอร์ผูกอยู่ — ดึงชื่อ/แต้มจริงมาโชว์ ให้แอดมินเห็นทันทีว่าแต้มจะเข้าใคร
  * ดึงไม่สำเร็จ (เน็ตสะดุด/รายชื่อถูกลบ) โชว์รหัสไว้ก่อน ไม่ปล่อยป้ายหาย
  */
-export function ContactChip({ contactId, onUnlink }: { contactId: string; onUnlink: () => void }) {
+export function ContactChip({ contactId, orderPhone, onUnlink }: { contactId: string; orderPhone?: string; onUnlink: () => void }) {
   const [c, setC] = useState<Contact | null>(null);
   useEffect(() => {
     let dead = false;
@@ -156,12 +156,24 @@ export function ContactChip({ contactId, onUnlink }: { contactId: string; onUnli
       dead = true;
     };
   }, [contactId]);
+  /**
+   * ⚠️ เบอร์ในใบไม่ตรงเบอร์ของการ์ดที่ผูก — มักเป็นการ์ดค้างจากตอนสร้างใบแล้วพิมพ์ลูกค้าคนใหม่ทับ (OD-261002-6439 แต้มเข้าผิดคน)
+   * ไม่ปลดให้เอง: ใบบริษัทอาจผูกการ์ดบริษัทแต่ส่งถึงพนักงานคนละเบอร์ได้ — แค่ทำให้เห็นชัด
+   */
+  const op = (orderPhone ?? "").replace(/\D/g, "");
+  const cp = (c?.phone ?? "").replace(/\D/g, "");
+  const mismatch = op.length >= 9 && cp.length >= 9 && op !== cp;
   return (
     <span
-      className="inline-flex min-h-[30px] items-center gap-1.5 rounded-full bg-emerald-50 px-3 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200"
-      title={`ผูกผู้ติดต่อ #${contactId} — ชำระครบแล้วแต้มเข้าคนนี้`}
+      className={`inline-flex min-h-[30px] items-center gap-1.5 rounded-full px-3 text-[11px] font-bold ring-1 ${mismatch ? "bg-rose-50 text-rose-700 ring-rose-300" : "bg-emerald-50 text-emerald-700 ring-emerald-200"}`}
+      title={
+        mismatch
+          ? `การ์ด #${contactId} เบอร์ ${formatPhone(cp)} ไม่ตรงเบอร์ในใบ ${formatPhone(op)} — ถ้าเป็นคนละคน กด ✕ หรือเลือกการ์ดที่ถูก ไม่งั้นแต้มเข้าการ์ดนี้`
+          : `ผูกผู้ติดต่อ #${contactId} — ชำระครบแล้วแต้มเข้าคนนี้`
+      }
     >
-      🪪 {c ? c.name || `#${contactId}` : `#${contactId}`}
+      {mismatch ? "⚠️" : "🪪"} {c ? c.name || `#${contactId}` : `#${contactId}`}
+      {mismatch && <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] text-rose-600">เบอร์การ์ด {formatPhone(cp)} ≠ ใบนี้</span>}
       {c && (
         <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] tabular-nums text-emerald-600">
           {c.point.toLocaleString("th-TH")} แต้ม
@@ -171,7 +183,7 @@ export function ContactChip({ contactId, onUnlink }: { contactId: string; onUnli
       <button
         type="button"
         onClick={onUnlink}
-        className="rounded-full px-1 text-emerald-500 transition hover:bg-emerald-100 hover:text-emerald-800"
+        className={`rounded-full px-1 transition ${mismatch ? "text-rose-500 hover:bg-rose-100 hover:text-rose-800" : "text-emerald-500 hover:bg-emerald-100 hover:text-emerald-800"}`}
         title="ยกเลิกการผูกผู้ติดต่อ"
         aria-label="ยกเลิกการผูกผู้ติดต่อ"
       >
@@ -191,7 +203,19 @@ const placeholderContact = (c: Contact) => !/[ก-๙A-Za-z0-9]{2,}/.test(c.name
  * โดยใบไม่รู้ว่าเป็นสมาชิก · มาผูกทีหลังตอนจ่ายแล้ว ระบบคิดส่วนลดย้อนให้ไม่ได้ (กันโอนเกิน) และแต้มก็ไม่เข้า
  * → เห็นตั้งแต่ใส่เบอร์ กดเดียวผูกได้เลย (ไม่ผูกให้เอง — เบอร์เดียวกันอาจเป็นคนละคนในบริษัทเดียวกัน)
  */
-export function ContactSuggestChip({ phone, onPick }: { phone: string; onPick: (c: Contact) => void }) {
+export function ContactSuggestChip({
+  phone,
+  onPick,
+  exceptId,
+  mismatchOnly,
+}: {
+  phone: string;
+  onPick: (c: Contact) => void;
+  /** การ์ดที่ผูกอยู่แล้ว — ไม่ชวนซ้ำ */
+  exceptId?: string;
+  /** ชวนเฉพาะเมื่อการ์ดที่ผูก (exceptId) ไม่ได้เป็นเจ้าของเบอร์นี้ — ใบที่ผูกถูกแล้วไม่ต้องรก */
+  mismatchOnly?: boolean;
+}) {
   const digits = phone.replace(/\D/g, "");
   const [hits, setHits] = useState<Contact[]>([]);
   useEffect(() => {
@@ -203,8 +227,13 @@ export function ContactSuggestChip({ phone, onPick }: { phone: string; onPick: (
         const res = await fetch(`/api/admin/contacts?q=${encodeURIComponent(digits)}&limit=10`);
         const j = (await res.json().catch(() => ({}))) as { contacts?: Contact[] };
         const same = (j.contacts ?? []).filter((c) => (c.phone ?? "").replace(/\D/g, "") === digits);
-        const real = same.filter((c) => !placeholderContact(c));
-        if (!dead) setHits((real.length ? real : same).sort((a, b) => (b.point || 0) - (a.point || 0)).slice(0, 2));
+        if (mismatchOnly && same.some((c) => c.id === exceptId)) {
+          if (!dead) setHits([]);
+          return;
+        }
+        const others = same.filter((c) => c.id !== exceptId);
+        const real = others.filter((c) => !placeholderContact(c));
+        if (!dead) setHits((real.length ? real : others).sort((a, b) => (b.point || 0) - (a.point || 0)).slice(0, 2));
       } catch {
         /* ไม่เจอ = ไม่ชวน */
       }
@@ -213,7 +242,7 @@ export function ContactSuggestChip({ phone, onPick }: { phone: string; onPick: (
       dead = true;
       clearTimeout(t);
     };
-  }, [digits]);
+  }, [digits, exceptId, mismatchOnly]);
   if (!hits.length) return null;
   return (
     <>
@@ -232,7 +261,7 @@ export function ContactSuggestChip({ phone, onPick }: { phone: string; onPick: (
           {c.tierLevel && c.tierLevel !== "member" && (
             <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] capitalize text-amber-700">{c.tierLevel}</span>
           )}
-          <span className="text-amber-600">· กดผูก</span>
+          <span className="text-amber-600">· {exceptId ? "กดย้ายมาการ์ดนี้" : "กดผูก"}</span>
         </button>
       ))}
     </>

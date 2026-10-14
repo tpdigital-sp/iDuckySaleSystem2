@@ -939,6 +939,15 @@ export async function PATCH(req: Request) {
    * หน้าจอไม่มีช่องนี้ให้แก้ จึงไม่ต้องกลัวทับของที่แอดมินตั้งใจ — ส่วนลดที่ไม่มีธง tierId ตัวช่วยไม่แตะอยู่แล้ว
    */
   if (mayEditFull) {
+    // 🪪 ผูก/เปลี่ยน/ปลดผู้ติดต่อ = เปลี่ยนว่าแต้มเข้าใคร — เดิมไม่ลงประวัติเลย ไล่ย้อนไม่ได้ว่าใครผูกการ์ดผิด (OD-261002-6439)
+    if ((toSave.contactId ?? "") !== (existing.contactId ?? "")) {
+      const who = actor.name?.trim() || actor.username;
+      toSave = !toSave.contactId
+        ? withLog(toSave, who, "ยกเลิกผูกผู้ติดต่อ", `#${existing.contactId}`)
+        : existing.contactId
+          ? withLog(toSave, who, "เปลี่ยนผู้ติดต่อ", `#${existing.contactId} → #${toSave.contactId}${isPaidStatus(toSave.status) ? " · ย้ายแต้มของใบนี้ตาม" : ""}`)
+          : withLog(toSave, who, "ผูกผู้ติดต่อ", `#${toSave.contactId}`);
+    }
     const beforeTier = toSave.discount;
     toSave = await syncOrderMemberTier(sb, toSave);
     if ((beforeTier?.tierId ?? "") !== (toSave.discount?.tierId ?? "") || (beforeTier?.amount ?? 0) !== (toSave.discount?.amount ?? 0)) {
@@ -1377,6 +1386,7 @@ export async function PATCH(req: Request) {
   if (mayEditFull) inBackground("syncCustomerToTP", syncCustomerToTP(existing, toSave));
   // 🪪 ผูกผู้ติดต่อทีหลังบนใบที่จ่ายครบแล้ว → แต้มต้องเข้าด้วย (เดิมบวกเฉพาะจังหวะเปลี่ยนสถานะ — ใบที่จับคู่เบอร์ไม่ได้ เพราะเบอร์ซ้ำ 2 การ์ด
   //    จึงไม่ได้แต้มเลย · OD-261014-3893) · awardPointsForOrder กันบวกซ้ำต่อออเดอร์เอง
+  //    เปลี่ยนจากการ์ดหนึ่งไปอีกการ์ด → ย้ายแต้มที่บวกไว้ตามมาด้วย (OD-261002-6439)
   if (mayEditFull && toSave.contactId && toSave.contactId !== existing.contactId && isPaidStatus(toSave.status) && (!toSave.deposit || toSave.deposit.settledAt))
     inBackground("awardPointsForOrder", awardPointsForOrder(toSave));
   // ยอดของเรคอร์ดสะพานทั้งสองใบ (งวดแรก + งวดหลัง) — ต่างกันเมื่อไหร่แปลว่าต้องยิงอัปเดตไป msVerify
