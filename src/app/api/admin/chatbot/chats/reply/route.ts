@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore, setBotPause, patchChatRow } from "@/lib/server/line-chat";
 import { inBackground } from "@/lib/server/background";
+import { classifyRoom } from "@/lib/server/chat-urgency";
 import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
 import { closePendingDrafts } from "@/lib/server/bot-drafts";
 
@@ -143,6 +144,8 @@ export async function POST(req: Request) {
     inBackground("chat-stats sync", syncCurrentCycleSoon(db));
     // 📝 แอดมินพิมพ์ตอบเองแล้ว → ร่างของบอทที่ค้างในห้องนี้ไม่ต้องส่ง (โหมดร่าง 13 ต.ค. 69)
     inBackground("close bot drafts", closePendingDrafts(db, id, who));
+    // 🤖🏷 ร้านเพิ่งตอบ → ให้ AI ประเมินป้ายความเร่งด่วนใหม่ทันที (ตอบครบแล้ว 🔴 ลดเป็น 🟢 ไม่ต้องรอลูกค้าพิมพ์มาอีก)
+    inBackground("chat urgency", classifyRoom(id));
   } catch (e) {
     // ส่งถึงลูกค้าแล้ว แต่จดไม่ได้ — บอกให้รู้ ไม่ใช่โยน error ทั้งก้อน (ข้อความไปแล้ว ส่งซ้ำไม่ได้)
     return NextResponse.json({ ok: true, sent: true, logged: false, warn: `ส่งถึงลูกค้าแล้ว แต่บันทึกลงห้องแชทไม่ได้: ${(e as Error).message}` });

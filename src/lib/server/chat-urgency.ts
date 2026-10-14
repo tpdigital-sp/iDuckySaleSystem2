@@ -11,7 +11,9 @@ import { patchChatRow } from "@/lib/server/line-chat";
  *   ใส่ระดับเดียวไว้หน้าสุดของ adminTags · ป้ายอื่น (รอไฟล์ ฯลฯ) คงเดิม
  * - เก็บเหตุผลที่ `aiTag` { key, reason, at, msgAt } — หน้าแชทโชว์ "🤖 AI: …"
  * - ⛔ ไม่ทับแอดมิน: แอดมินติดป้ายเองหลังข้อความลูกค้าล่าสุด = เคารพ ไม่แตะ จนกว่าลูกค้าจะพิมพ์มาใหม่
- * - ข้อความลูกค้าล่าสุดเดิมกับที่เคยประเมินแล้ว = ข้าม (ไม่เรียก AI ซ้ำ)
+ * - ประเมินใหม่เมื่อมีความเคลื่อนไหวหลังรอบก่อน: ลูกค้าพิมพ์มาใหม่ **หรือร้านตอบแล้ว** (14 ต.ค. 69 แก้ "🔴 ค้างหลังแอดมินตอบ")
+ *   ร้านตอบครบ + ลูกค้าไม่ได้ถามต่อ = ลดเป็น 🟢 ตามเกณฑ์ในพรอมป์ต · ไม่มีอะไรใหม่ = ข้าม (ไม่เรียก AI ซ้ำ)
+ *   ⚠️ ตอบใน LINE OA Manager ระบบมองไม่เห็น (LINE ไม่ส่ง webhook) — ห้องนั้นต้องเปลี่ยนป้ายเอง
  * รันจาก cron /api/cron/chat-urgency (ทุก 5 นาที) + ปุ่ม 🤖 ประเมินใหม่ ในแผง ℹ️ (force)
  */
 export const URGENCY_KEYS = ["urgent", "rush", "normal"] as const;
@@ -33,7 +35,7 @@ const ms = (v: unknown): number => {
 const thaiNow = () =>
   new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-function promptOf(lines: string): string {
+export function promptOf(lines: string): string {
   return `คุณช่วยแอดมินร้านพิมพ์/ผลิตของพรีเมียม iDucky จัดลำดับว่าห้องแชท LINE ไหนควรตอบก่อน
 ตอนนี้: ${thaiNow()}
 
@@ -66,11 +68,15 @@ export async function classifyRoom(uid: string, o: { force?: boolean; dry?: bool
     .reverse();
   const lastCust = [...log].reverse().find((r) => r.role === "user");
   if (!lastCust) return { uid, skipped: "no-customer-message" };
+  // ความเคลื่อนไหวล่าสุดที่นับ = ลูกค้าพิมพ์ หรือร้านตอบ (แอดมินจากเว็บ · บอท/ร่างที่ส่งแล้ว) — การ์ดระบบไม่นับ
+  const lastAct = [...log].reverse().find((r) => r.role === "user" || r.role === "admin" || r.role === "assistant") ?? lastCust;
 
   const tags = Array.isArray(x.adminTags) ? (x.adminTags as unknown[]).map(String) : x.adminTag ? [String(x.adminTag)] : [];
   const prev = tags.find((t) => (URGENCY_KEYS as readonly string[]).includes(t));
-  const ai = (x.aiTag ?? null) as { key?: string; msgAt?: number } | null;
-  if (!o.force && ai?.msgAt === lastCust.at) return { uid, skipped: "already", prev };
+  const ai = (x.aiTag ?? null) as { key?: string; msgAt?: number; actAt?: number } | null;
+  // รอบก่อนประเมินถึงตรงไหน (ห้องที่ประเมินก่อนมี actAt = ถึงข้อความลูกค้าล่าสุด)
+  const doneUpTo = ai?.actAt ?? ai?.msgAt;
+  if (!o.force && doneUpTo !== undefined && doneUpTo >= lastAct.at) return { uid, skipped: "already", prev };
   // แอดมินติดป้ายเองหลังข้อความลูกค้าล่าสุด → ไม่ทับ
   const manualAt = x.adminTagBy && x.adminTagBy !== AI_BY ? ms(x.adminTagAt) : 0;
   if ((o.respectAdmin ?? true) && manualAt > lastCust.at && prev) return { uid, skipped: "admin-set", prev };
@@ -118,7 +124,7 @@ export async function classifyRoom(uid: string, o: { force?: boolean; dry?: bool
   const changed = prev !== level || tags[0] !== level;
   await ref.set(
     {
-      aiTag: { key: level, reason, at: now.toISOString(), msgAt: lastCust.at, model },
+      aiTag: { key: level, reason, at: now.toISOString(), msgAt: lastCust.at, actAt: lastAct.at, model },
       ...(changed ? { adminTags: next, adminTag: level, adminTagBy: AI_BY, adminTagAt: now.toISOString() } : {}),
     },
     { merge: true }

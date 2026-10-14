@@ -349,7 +349,8 @@ export default function CalendarStudio({
   const tplBleed = useMemo(() => {
     if (!guide || guide.fill || !guide.wMm || !guide.hMm) return undefined;
     const f0 = calFormat(format);
-    if (f0.cornerR == null) return undefined;
+    // โฟโต้การ์ด + โปสการ์ด 4×6 (ขนาดตายตัว · 14 ต.ค. 69 เพิ่มโปสการ์ด: เทมเพลต 2 ด้านตัดตก 1/2.5 มม.)
+    if (f0.cornerR == null && !f0.key.startsWith("postcard-")) return undefined;
     const b = ((guide.wMm - f0.trimW) / 2 + (guide.hMm - f0.trimH) / 2) / 2;
     return b >= 0.5 && b <= 6 ? Math.round(b * 20) / 20 : undefined;
   }, [format, guide]);

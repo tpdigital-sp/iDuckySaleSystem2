@@ -484,14 +484,20 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
   // ── โปสการ์ด 4×6 นิ้ว ──
   if (key.startsWith("postcard-")) {
     const [w, h] = L ? [6 * IN, 4 * IN] : [4 * IN, 6 * IN];
-    const fr = frame(w, h, 2, 4);
+    /**
+     * ตัดตก = ของเทมเพลตที่ลูกค้าเลือก (opts.bleed · จอสร้างปฏิทินคิดจากอาร์ตบอร์ดไฟล์) ไม่มี = 2 มม.
+     * 14 ต.ค. 69 ผู้ใช้แจ้ง "ในระบบไม่เหมือนเทมเพลต": ไฟล์ 2 ด้านอาร์ตมัน ตัดตก 1 มม. / holo 2.5 มม. แต่โปสการ์ดตายตัว 2 มม.
+     * → ผืนใหญ่กว่ารูปเทมเพลต เห็นแถบขาวรอบใบ + เส้นตัดแดงของไฟล์ไม่ทับเส้นตัดของจอ (เส้นซ้อน)
+     */
+    const pb0 = opts.bleed ?? 2;
+    const fr = frame(w, h, pb0, 4);
     const ori = L ? "แนวนอน" : "แนวตั้ง";
     if (key.startsWith("postcard-year1")) {
       /**
        * แบบหน้าร้านเดิม (ผู้ใช้ส่งภาพ 12 ต.ค. 69): ขอบขาวรอบใบ + เส้นกรอบบาง · รูปไม่ชนขอบกระดาษ
        * แนวนอน = รูปซ้าย ~46% · แนวตั้ง = รูปบน ~46% · หัวข้อ "Calendar 2026" ตัวบาง
        */
-      const b0 = 2; // ตัดตก
+      const b0 = pb0; // ตัดตก
       const border = { x: b0 + 2, y: b0 + 2, w: w - 4, h: h - 4 };
       const m = 4.4; // ขอบขาวจากเส้นตัดถึงรูป/ตาราง
       const inner = { x: b0 + m, y: b0 + m, w: w - m * 2, h: h - m * 2 };
@@ -504,7 +510,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
         name: `โปสการ์ดปฏิทินรายปี 4×6" ${ori} · พิมพ์ 1 ด้าน`,
         trimW: w,
         trimH: h,
-        bleed: 2,
+        bleed: pb0,
         safe: 4,
         dpi: 300,
         cards: 8,
@@ -518,7 +524,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
         name: `โปสการ์ดปฏิทินรายปี 4×6" ${ori} · พิมพ์ 2 ด้าน`,
         trimW: w,
         trimH: h,
-        bleed: 2,
+        bleed: pb0,
         safe: 4,
         dpi: 300,
         cards: 8,
@@ -534,7 +540,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
      */
     if (key.startsWith("postcard-yearpb") || key.startsWith("postcard-monthpb")) {
       const month = key.startsWith("postcard-monthpb");
-      const fronts = calFormat(`postcard-${month ? "month" : "year1"}-${L ? "L" : "P"}`).pages;
+      const fronts = calFormat(`postcard-${month ? "month" : "year1"}-${L ? "L" : "P"}`, opts).pages;
       // ช่องรูปเต็มใบ = ลูกค้าใส่ลายของตัวเองทับลายโปสการ์ดได้ (ไม่ยืมรูปหน้าปก · ว่าง = ไม่โชว์ช่องเทา) — ผู้ใช้สั่ง 13 ต.ค. 69
       const pb = (p: CalPage): CalPage => ({ key: `pb-${p.key}`, name: "ด้านหลัง (ลายโปสการ์ด)", kind: "postback", photo: fr.full });
       return {
@@ -542,7 +548,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
         name: `โปสการ์ดปฏิทิน${month ? "รายเดือน" : "รายปี"} 4×6" ${ori} · ${month ? "13 ใบ · " : ""}พิมพ์ 2 ด้าน (หลังลายโปสการ์ด)`,
         trimW: w,
         trimH: h,
-        bleed: 2,
+        bleed: pb0,
         safe: 4,
         dpi: 300,
         ...(month ? {} : { cards: 8 }),
@@ -558,7 +564,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
         name: `โปสการ์ดปฏิทินรายเดือน 4×6" ${ori} · 13 ใบ · พิมพ์ 2 ด้าน`,
         trimW: w,
         trimH: h,
-        bleed: 2,
+        bleed: pb0,
         safe: 4,
         dpi: 300,
         perCard: 2,
@@ -574,7 +580,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
       name: `โปสการ์ดปฏิทินรายเดือน 4×6" ${ori} · 13 ใบ · พิมพ์ 1 ด้าน`,
       trimW: w,
       trimH: h,
-      bleed: 2,
+      bleed: pb0,
       safe: 4,
       dpi: 300,
       perCard: 1,

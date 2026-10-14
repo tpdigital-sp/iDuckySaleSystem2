@@ -4,6 +4,7 @@ import { getChatFirestore } from "@/lib/server/line-chat";
 import { sendBotDraft, discardBotDraft } from "@/lib/server/bot-drafts";
 import { openLearningFromDraft } from "@/lib/server/bot-learning";
 import { inBackground } from "@/lib/server/background";
+import { classifyRoom } from "@/lib/server/chat-urgency";
 import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
 
 export const runtime = "nodejs";
@@ -60,6 +61,8 @@ export async function POST(req: Request) {
     const r = await sendBotDraft(db, id, logId, { text: typeof b.text === "string" ? b.text : undefined, who, token });
     if (!r.ok) return NextResponse.json({ error: r.error, quota: r.quota }, { status: r.status });
     inBackground("chat-stats sync", syncCurrentCycleSoon(db));
+    // 🤖🏷 ร้านเพิ่งตอบ → ให้ AI ประเมินป้ายความเร่งด่วนใหม่ทันที (ตอบครบแล้ว 🔴 ลดเป็น 🟢 ไม่ต้องรอลูกค้าพิมพ์มาอีก)
+    inBackground("chat urgency", classifyRoom(id));
     return NextResponse.json({ ok: true, sent: true, entry: r.entry });
   }
   return NextResponse.json({ error: "action ไม่ถูกต้อง" }, { status: 400 });
