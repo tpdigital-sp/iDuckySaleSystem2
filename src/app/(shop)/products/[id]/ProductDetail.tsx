@@ -175,7 +175,7 @@ import {
 import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
 import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
-import { calDesignCount, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
+import { calDesignCount, calFormat, calHasGrid, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import { fetchSources, loadCalEdit, saveCalEdit } from "@/lib/cal-edit-store";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
@@ -1305,8 +1305,6 @@ export default function ProductDetail({
    * ด้านหลังเป็นของที่ระบบสร้างให้ ไม่ใช่ "ลายด้านหลังที่คละ" — ไม่ผ่าน backDesign/ค่าคละด้านหลัง
    */
   const calMode = !!product.calendarStudio && product.studioOff !== true;
-  /** ช่องแนบลายแยกหน้า/หลัง — งานพิมพ์ 2 ด้าน หรือปฏิทินโฟโต้การ์ด (หน้าปก/ปฏิทิน) */
-  const artTwoSide = backOn || calMode;
   const calYear = yearFromChoice(product.calendarStudio ? effective[product.calendarStudio.yearLabel] : undefined);
   /** ปีที่เลือกได้ในจอปฏิทิน (หน้าต่าง Settings) = ตัวเลือก "ปีปฏิทิน" ของสินค้า */
   const calYearChoices = (product.options.find((o) => o.label === product.calendarStudio?.yearLabel)?.choices ?? [])
@@ -1317,6 +1315,10 @@ export default function ProductDetail({
   const grown = canvasSizeOf(effective);
   const calFormatKey0 =
     product.calendarStudio?.formats?.find((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))?.format ?? "card";
+  /** 🎨 จอสร้างแบบไม่มีปฏิทิน (แผ่นรองเมาส์ · format pad@…) — ข้อความ/ปุ่มพูดว่า "ออกแบบ" ไม่ใช่ "ปฏิทิน" */
+  const calNoGrid = calMode && !calHasGrid(calFormat(calFormatKey0));
+  /** ช่องแนบลายแยกหน้า/หลัง — งานพิมพ์ 2 ด้าน หรือปฏิทินโฟโต้การ์ด (หน้าปก/ปฏิทิน) · งานออกแบบล้วน 1 หน้า = ช่องเดียว */
+  const artTwoSide = backOn || (calMode && !calNoGrid);
   const calFormatKey = calFormatKey0 === "canvas" && grown ? `canvas@${Math.round(grown.w * 10)}x${Math.round(grown.h * 10)}` : calFormatKey0;
   /** กติกาค่าคละของด้านหลังโดยเฉพาะ (งานกระดาษ = ลายละ 5 บาท) — ไม่ตั้ง = ใช้ชุดเดียวกับด้านหน้า */
   const backMix = product.backDesign?.mixRule;
@@ -2747,7 +2749,7 @@ export default function ProductDetail({
   }, [studio, studioMode]);
   const designDone = placed.length > 0;
   /** 🗓 แบบปฏิทินแรกที่ปีไม่ตรงกับตัวเลือกปีตอนนี้ (-1 = ตรงหมด) */
-  const calYearStale = calMode ? placed.findIndex((p) => p.calState && (p.calState.back.year !== calYear || p.calState.format !== calFormatKey)) : -1;
+  const calYearStale = calMode ? placed.findIndex((p) => p.calState && ((!calNoGrid && p.calState.back.year !== calYear) || p.calState.format !== calFormatKey)) : -1;
   /** 🗓 ไฟล์หน้าที่ 2+ ของทุกแบบ → ช่องลายด้านหลัง (เรียงตามแบบ) — ตามรายการแบบเสมอ ลบ/แก้แบบแล้วตามเอง */
   useEffect(() => {
     if (!calMode || !placed.some((p) => p.calState)) return;
@@ -6159,11 +6161,11 @@ export default function ProductDetail({
                 : "bg-sky-600 text-white shadow-lg hover:bg-sky-700"
           }`}
         >
-          <span className="text-xl leading-none">{calMode ? "🗓" : "🎨"}</span>
+          <span className="text-xl leading-none">{calMode && !calNoGrid ? "🗓" : "🎨"}</span>
           <span className="text-[13px] font-extrabold">
             {designDone
-              ? `✓ ${calMode ? "สร้างแล้ว" : "วางลายแล้ว"} ${placed.length.toLocaleString("th-TH")} ลาย`
-              : calMode
+              ? `✓ ${calMode ? (calNoGrid ? "ออกแบบแล้ว" : "สร้างแล้ว") : "วางลายแล้ว"} ${placed.length.toLocaleString("th-TH")} ลาย`
+              : calMode && !calNoGrid
                 ? "สร้างปฏิทินบนเว็บ"
                 : "ออกแบบบนเว็บ"}
           </span>
@@ -6173,7 +6175,9 @@ export default function ProductDetail({
                 ? "✏️ แตะเพื่อแก้แบบที่สร้างไว้"
                 : "แตะเพื่อเพิ่มลายอีกแบบ"
               : calMode
-                ? "ใส่รูปของคุณ ตารางปฏิทินสร้างให้เอง"
+                ? calNoGrid
+                  ? "ใส่รูป ข้อความ กรอบรูป จัดวางเองบนเว็บ"
+                  : "ใส่รูปของคุณ ตารางปฏิทินสร้างให้เอง"
                 : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
           </span>
         </button>
@@ -7953,7 +7957,7 @@ export default function ProductDetail({
                             {(d.calState
                               ? // 🗓 ปฏิทิน: หน้าปก + ปฏิทินด้านหลัง (ไฟล์หลังอยู่ใน artBackFiles ตำแหน่งเดียวกัน)
                                 [
-                                  { name: "หน้าปก", artUrl: d.artUrl, dpi: d.dpi },
+                                  { name: calNoGrid ? "" : "หน้าปก", artUrl: d.artUrl, dpi: d.dpi },
                                   ...(d.calBackFiles?.[0]
                                     ? [
                                         {
@@ -7978,12 +7982,12 @@ export default function ProductDetail({
                             <span className="min-w-0 flex-1">
                               <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
                               <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
-                              {d.calState && d.calState.back.year !== calYear && (
+                              {d.calState && !calNoGrid && d.calState.back.year !== calYear && (
                                 <span className="block text-[10px] font-bold text-rose-600">
                                   ⚠️ ปฏิทินเป็นปี {d.calState.back.year} — กด ✏️ เพื่อเปลี่ยนเป็นปี {calYear}
                                 </span>
                               )}
-                              {d.calState && d.calState.back.year === calYear && d.calState.format !== calFormatKey && (
+                              {d.calState && (calNoGrid || d.calState.back.year === calYear) && d.calState.format !== calFormatKey && (
                                 <span className="block text-[10px] font-bold text-rose-600">
                                   ⚠️ แบบนี้ทำไว้ก่อนเปลี่ยนตัวเลือก — กด ✏️ เพื่อจัดรูปใหม่ให้ตรงรูปแบบที่เลือก
                                 </span>

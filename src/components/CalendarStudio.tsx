@@ -23,6 +23,7 @@ import {
   CAL_FONTS,
   backSpec,
   calFormat,
+  calHasGrid,
   cardKey,
   coverPlacement,
   defaultBack,
@@ -148,7 +149,17 @@ type Src = {
   removed?: boolean;
 };
 
-const DPI_WARN = 150;
+/**
+ * 🔍 ระดับความคมชัดตอนพิมพ์ (ผู้ใช้ขอ 14 ต.ค. 69 "เช็คคุณภาพรูปว่าคมชัดไหม") — เทียบกับ DPI ที่งานนั้นพิมพ์จริง (fmt.dpi)
+ * งาน 300 DPI: ≥240 ดีมาก · ≥150 ดี · ≥100 พอใช้ · ต่ำกว่า = รูปอาจแตก (งานผืนใหญ่ 150 DPI ลดตามสัดส่วน)
+ */
+function qualityOf(dpi: number, target: number) {
+  const r = dpi / Math.max(1, target);
+  if (r >= 0.8) return { lv: 3, label: "คมชัดดีมาก", tone: "bg-emerald-50 text-emerald-700 ring-emerald-200", bar: "bg-emerald-500" } as const;
+  if (r >= 0.5) return { lv: 2, label: "คมชัดดี", tone: "bg-sky-50 text-sky-700 ring-sky-200", bar: "bg-sky-500" } as const;
+  if (r >= 0.33) return { lv: 1, label: "พอใช้ อาจไม่คมนัก", tone: "bg-amber-50 text-amber-800 ring-amber-200", bar: "bg-amber-500" } as const;
+  return { lv: 0, label: "ต่ำ รูปอาจแตก", tone: "bg-rose-50 text-rose-700 ring-rose-200", bar: "bg-rose-500" } as const;
+}
 const SWATCHES = ["#ffffff", "#1c1917", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0d9488", "#2563eb", "#7c3aed", "#db2777"];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -356,6 +367,8 @@ export default function CalendarStudio({
    * ใบที่ 2+ ที่ยังไม่ได้แยกออกแบบ = เหมือนใบที่ 1 (ล็อกไว้ กด "ออกแบบใบนี้แยก" ก่อนถึงแก้ได้)
    */
   const copies = Math.max(1, fmt.cards ?? 1);
+  /** 🎨 งานออกแบบล้วน (ไม่มีตารางปฏิทิน เช่น แผ่นรองเมาส์) — ซ่อนเครื่องมือ/ข้อความเรื่องปฏิทินทั้งหมด (14 ต.ค. 69) */
+  const noCal = !calHasGrid(fmt);
   const vpages = useMemo(
     () =>
       Array.from({ length: copies }, (_, card) =>
@@ -625,7 +638,7 @@ export default function CalendarStudio({
     setSel(null);
     setGridSel(false);
     // 📮 หลังลายโปสการ์ดไม่มีรูป/ตาราง — ไม่เปิดแผงปฏิทิน
-    setTool((t) => (t === "photo" && !page.photo ? (page.kind === "postback" ? null : "calendar") : t === "shape" || t === "text" ? null : t));
+    setTool((t) => (t === "photo" && !page.photo ? (page.kind === "postback" || noCal ? null : "calendar") : t === "shape" || t === "text" ? null : t));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basePage.key]);
 
@@ -2508,7 +2521,22 @@ export default function CalendarStudio({
     }
   }
 
-  async function apply(force = false) {
+  /** DPI ต่ำสุดของหน้านั้น (ช่องรูปหลัก + กรอบรูป) · ไม่มีรูป = Infinity */
+  function pageMinDpi(p: CalPage): number {
+    const lp = lay(p);
+    const c = photoOf(lp, design, imgs);
+    const o = design.photos[p.key];
+    const sv = o && o.src >= 0 ? srcs[o.src] : srcs[fallbackSrc];
+    const list = [
+      c && sv ? Math.round(sv.w / (c.pl.wMm / 25.4)) : Infinity,
+      ...elements
+        .filter((e) => e.page === p.key && e.kind === "photo" && e.src != null && srcs[e.src])
+        .map((e) => Math.round(srcs[e.src!].w / (elementPhotoSize(e, srcs[e.src!]).w / 25.4))),
+    ];
+    return Math.min(...list);
+  }
+
+  async function apply(force = false, lowOk = false) {
     if (busy) return;
     // มีช่องรูปแต่ยังไม่มีช่องไหนใส่รูป = ยังสั่งไม่ได้ (ช่องจะพิมพ์ออกมาว่าง)
     const needsPhoto = printPages.some((v) => lay(v.page).photo);
@@ -2560,6 +2588,31 @@ export default function CalendarStudio({
       if (gaps.length) {
         setPageIdx(vpages.indexOf(gaps[0]));
         setGapAsk(gaps.map(vname));
+        return;
+      }
+    }
+    // 🔍 รูปความคมชัดต่ำ (รูปอาจแตก) — บอกก่อนส่งพิมพ์ ให้เลือกกลับไปแก้หรือใช้ต่อ
+    if (!lowOk) {
+      const lows = printPages.filter((v) => {
+        const d = pageMinDpi(v.page);
+        return Number.isFinite(d) && qualityOf(d, fmt.dpi).lv === 0;
+      });
+      if (lows.length) {
+        setGapAsk(null);
+        setPageIdx(vpages.indexOf(lows[0]));
+        setTool("photo");
+        setAsk({
+          icon: "🔍",
+          title: `รูป ${lows.length} หน้าความคมชัดต่ำ`,
+          body:
+            `${lows
+              .slice(0, 6)
+              .map((v) => `${vname(v)} (${pageMinDpi(v.page)} DPI)`)
+              .join(" · ")}${lows.length > 6 ? " …" : ""} — ` +
+            `พิมพ์ออกมาอาจแตก/เบลอ แนะนำใช้รูปไฟล์ใหญ่ขึ้น หรือย่อรูปให้เล็กลง (งานนี้พิมพ์ ${fmt.dpi} DPI)`,
+          ok: "ใช้แบบนี้ต่อ",
+          run: () => void apply(true, true),
+        });
         return;
       }
     }
@@ -2658,8 +2711,8 @@ export default function CalendarStudio({
         sources: kept,
         state: { format: fmt.key, design: savedDesign, back, sources: kept },
         dpi: minDpi,
-        head: `${fmt.name} · ปี ${back.year}`,
-        summary: `${title} · ปฏิทินปี ${back.year} · ${copies > 1 ? `${copies} ใบ (${custom.length ? `คละลาย ${designN} รูป` : "เหมือนกันทุกใบ"})` : `${fmt.pages.length} หน้า`}${minDpi ? ` · ${minDpi} DPI` : ""}`,
+        head: noCal ? fmt.name : `${fmt.name} · ปี ${back.year}`,
+        summary: `${title} · ${noCal ? fmt.name : `ปฏิทินปี ${back.year}`} · ${copies > 1 ? `${copies} ใบ (${custom.length ? `คละลาย ${designN} รูป` : "เหมือนกันทุกใบ"})` : `${fmt.pages.length} หน้า`}${minDpi ? ` · ${minDpi} DPI` : ""}`,
         spec:
           `${fmt.name} · กรอบ ${n(W)}×${n(H)}mm (งานจริง ${n(fmt.trimW)}×${n(fmt.trimH)} + ตัดตก ${fmt.bleed}) · ไฟล์ ${fmt.dpi} DPI · ` +
           `${printPages.length} ไฟล์: ${printPages.map((v, i) => `${i + 1}.${vname(v).replace(/^\d+\. /, "")}`).join(" ")}` +
@@ -2670,7 +2723,7 @@ export default function CalendarStudio({
           `${minDpi ? ` · ความคมชัดต่ำสุด ${minDpi} DPI` : ""}` +
           `${texts.length ? ` · ข้อความ ${texts.length} กล่อง: ${texts.map((e) => `"${e.text!.trim().replace(/\n/g, " ")}"`).join(", ")}` : ""}` +
           `${shapes ? ` · รูปทรง ${shapes} ชิ้น` : ""}${freePhotos ? ` · กรอบรูปอิสระ ${freePhotos} กรอบ` : ""}${layoutNote ? ` · เลย์เอาต์: ${layoutNote}` : ""} · ` +
-          `ปฏิทิน: ${backSpec(back)} ` +
+          (noCal ? "" : `ปฏิทิน: ${backSpec(back)} `) +
           printFrameToken(W, H),
       });
       onClose();
@@ -3531,15 +3584,30 @@ export default function CalendarStudio({
               <Ico n="trash" />
             </BarBtn>
           )}
-          {/* ความคมชัด — เตือนเฉพาะตอนต่ำ (แถบหลักหน้าตาเหมือน Printbox) */}
-          {dpiNow > 0 && dpiNow < DPI_WARN && (
-            <span
-              title="ความคมชัดตอนพิมพ์ต่ำ — รูปอาจแตก"
-              className="ml-0.5 shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800"
-            >
-              ⚠ {dpiNow}dpi
-            </span>
-          )}
+          {/* 🔍 ความคมชัดของรูปที่เลือก — โชว์ตลอด (สัญญาณ 4 ขีด + คำ · ชี้ดูรายละเอียด) */}
+          {dpiNow > 0 &&
+            (() => {
+              const q = qualityOf(dpiNow, fmt.dpi);
+              return (
+                <span className="group/tip relative ml-1 inline-flex shrink-0">
+                  <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${q.tone}`}>
+                    <span className="flex items-end gap-[2px]" aria-hidden>
+                      {[0, 1, 2, 3].map((i) => (
+                        <span key={i} className={`w-[3px] rounded-sm ${i <= q.lv ? q.bar : "bg-stone-300"}`} style={{ height: 4 + i * 3 }} />
+                      ))}
+                    </span>
+                    {q.label}
+                  </span>
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute right-0 top-full z-30 mt-2 hidden w-60 rounded-lg bg-stone-700 px-3 py-2 text-xs font-medium leading-relaxed text-white opacity-0 shadow-lg transition-opacity delay-150 group-hover/tip:opacity-100 sm:block"
+                  >
+                    ความคมชัดตอนพิมพ์ {dpiNow} DPI (งานนี้พิมพ์ {fmt.dpi} DPI)
+                    {q.lv <= 1 ? " — รูปเล็กไปสำหรับขนาดนี้ ใช้รูปไฟล์ใหญ่ขึ้น หรือย่อรูปลง" : " — พิมพ์ออกมาชัด"}
+                  </span>
+                </span>
+              );
+            })()}
         </div>
         {/* เมนูย่อย — กางลงใต้แถบ */}
         {pop && (
@@ -3747,9 +3815,14 @@ export default function CalendarStudio({
       disabled: !layouts.length,
     },
     // Rectangle / Ellipse ถอดออกจากแถบ (ผู้ใช้สั่ง 13 ต.ค. 69) — รูปทรงในแบบเก่ายังวาด/แตะแก้ได้ตามเดิม
-    { key: "calendar", icon: "A̲", label: "Calendar", on: tool === "calendar" },
-    { key: "events", icon: "📅", label: "Events", on: tool === "events" },
-    { key: "settings", icon: "⚙", label: "Settings", on: tool === "settings" },
+    // งานออกแบบล้วน (ไม่มีปฏิทิน) = ไม่มีเครื่องมือปฏิทิน/วันสำคัญ/ตั้งค่าปฏิทิน
+    ...(noCal
+      ? []
+      : [
+          { key: "calendar" as const, icon: "A̲", label: "Calendar", on: tool === "calendar" },
+          { key: "events" as const, icon: "📅", label: "Events", on: tool === "events" },
+          { key: "settings" as const, icon: "⚙", label: "Settings", on: tool === "settings" },
+        ]),
     { key: "layers", icon: "🗂", label: "Layers", on: layersOpen },
   ];
   function onTool(k: (typeof TOOLS)[number]["key"]) {
@@ -3846,8 +3919,8 @@ export default function CalendarStudio({
                   <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
                     <dt className="text-stone-400">รูปแบบ</dt>
                     <dd className="text-stone-700">{fmt.name}</dd>
-                    <dt className="text-stone-400">ปีปฏิทิน</dt>
-                    <dd className="text-stone-700">
+                    <dt className={`text-stone-400 ${noCal ? "hidden" : ""}`}>ปีปฏิทิน</dt>
+                    <dd className={`text-stone-700 ${noCal ? "hidden" : ""}`}>
                       {back.year} (พ.ศ. {back.year + 543}) — เปลี่ยนที่หน้าสินค้า
                     </dd>
                     <dt className="text-stone-400">จำนวน</dt>
@@ -3876,7 +3949,7 @@ export default function CalendarStudio({
                         setTool("calendar");
                         setHeadPop("");
                       }}
-                      className={toolBtn}
+                      className={`${toolBtn} ${noCal ? "hidden" : ""}`}
                     >
                       🗓 ตั้งค่าปฏิทิน
                     </button>
@@ -3911,9 +3984,10 @@ export default function CalendarStudio({
             </div>
           </div>
           <div className="hidden min-w-0 flex-1 text-center md:block">
-            <p className="truncate text-sm font-extrabold text-stone-800">🗓 สร้างปฏิทิน</p>
+            <p className="truncate text-sm font-extrabold text-stone-800">{noCal ? "🎨 ออกแบบ" : "🗓 สร้างปฏิทิน"}</p>
             <p className="truncate text-[11px] text-stone-500">
-              {title} · {fmt.name} · ปี {back.year} · {copies > 1 ? `${copies} ใบ/ชุด` : `${fmt.pages.length} หน้า`}
+              {title} · {fmt.name}
+              {noCal ? "" : ` · ปี ${back.year}`} · {copies > 1 ? `${copies} ใบ/ชุด` : `${fmt.pages.length} หน้า`}
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
@@ -4615,6 +4689,20 @@ export default function CalendarStudio({
                   {v.card > 0 && custom.includes(v.card) && (
                     <span className="absolute right-1 top-1 rounded-full bg-sky-600 px-1.5 text-[9px] font-bold text-white">แยกแบบ</span>
                   )}
+                  {/* 🔍 หน้านี้มีรูปคมชัดต่ำ/พอใช้ — เตือนบนภาพย่อ */}
+                  {(() => {
+                    const d = pageMinDpi(resolve(v));
+                    if (!Number.isFinite(d)) return null;
+                    const q = qualityOf(d, fmt.dpi);
+                    return q.lv <= 1 ? (
+                      <span
+                        title={`ความคมชัด ${q.label} (${d} DPI)`}
+                        className={`absolute left-1 top-1 rounded-full px-1.5 text-[9px] font-extrabold text-white shadow ${q.lv === 0 ? "bg-rose-500" : "bg-amber-500"}`}
+                      >
+                        {q.lv === 0 ? "⚠ รูปแตก" : "⚠ ไม่คม"}
+                      </span>
+                    ) : null;
+                  })()}
                   <span className={`max-w-[120px] truncate text-[10.5px] ${i === pageIdx ? "font-extrabold text-stone-800" : "font-semibold text-stone-500"}`}>
                     {vname(v)}
                     {copies === 1 && (design.photos[v.page.key]?.src ?? -1) >= 0 && v.j !== coverIdx ? " 🖼" : ""}

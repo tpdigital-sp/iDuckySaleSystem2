@@ -216,6 +216,8 @@ export interface CalDesign {
   noBorrow?: boolean;
   /** 📮 หน้าด้านหลังที่ลูกค้าลบลายโปสการ์ดออก (key หน้า) — ไม่อยู่ในนี้ = มีลายโปสการ์ด */
   postOff?: string[];
+  /** 📅 หน้าที่ลูกค้าลบตารางปฏิทินออก (key หน้า · 14 ต.ค. 69) — ไม่อยู่ในนี้ = มีตารางตามเลย์เอาต์ */
+  gridOff?: string[];
 }
 
 /**
@@ -384,6 +386,11 @@ const monthsPages = (fr: ReturnType<typeof frame>, mode: "combined" | "separate"
   return out;
 };
 
+/** มีตารางปฏิทินไหม — ไม่มี (งานออกแบบล้วน เช่น แผ่นรองเมาส์) = ซ่อนเครื่องมือ/ข้อความเรื่องปฏิทิน */
+export function calHasGrid(f: CalFormat): boolean {
+  return f.pages.some((p) => p.grid);
+}
+
 /** สลับคู่ [รูป, ตาราง] → [ตาราง, รูป] (ปฏิทินตั้งโต๊ะ 14 แผ่น: หน้าแผ่น = ตาราง) */
 const swapPairs = (ps: CalPage[]): CalPage[] => ps.flatMap((p, i) => (i % 2 ? [] : [ps[i + 1], p]));
 
@@ -404,19 +411,20 @@ export const LAYER_GRID = "@grid";
  * 🗂 ลำดับชั้นของหน้า (ล่าง → บน) — ที่ลูกค้าจัดไว้ (design.order) + ของที่ยังไม่อยู่ในรายการต่อท้ายตามค่าเริ่มต้น
  * ตัดของที่ไม่มีแล้ว (ชิ้นส่วนที่ลบ / หน้าที่ไม่มีช่องรูปหรือตาราง) · page = หน้าหลังจัดเลย์เอาต์แล้ว
  */
-export function orderOf(page: CalPage, d: Pick<CalDesign, "order" | "elements">): string[] {
+export function orderOf(page: CalPage, d: Pick<CalDesign, "order" | "elements" | "gridOff">): string[] {
   const ids = [
     ...(page.photo ? [LAYER_SLOT] : []),
-    ...(page.grid ? [LAYER_GRID] : []),
+    ...(page.grid && !d.gridOff?.includes(page.key) ? [LAYER_GRID] : []),
     ...(d.elements ?? []).filter((e) => e.page === page.key).map((e) => e.id),
   ];
   const saved = (d.order?.[page.key] ?? []).filter((id) => ids.includes(id));
   return [...saved, ...ids.filter((id) => !saved.includes(id))];
 }
 
-/** ตารางปฏิทินของหน้านี้ — ที่ลูกค้าลากปรับเอง (design.grids) มาก่อน ไม่มีใช้ตามเลย์เอาต์ */
-export function gridOf(page: CalPage, d: Pick<CalDesign, "grids">): Rect | undefined {
-  return page.grid ? (d.grids?.[page.key] ?? page.grid) : undefined;
+/** ตารางปฏิทินของหน้านี้ — ที่ลูกค้าลากปรับเอง (design.grids) มาก่อน ไม่มีใช้ตามเลย์เอาต์ · ลบออกแล้ว (gridOff) = ไม่มี */
+export function gridOf(page: CalPage, d: Pick<CalDesign, "grids" | "gridOff">): Rect | undefined {
+  if (!page.grid || d.gridOff?.includes(page.key)) return undefined;
+  return d.grids?.[page.key] ?? page.grid;
 }
 
 /** มุมมนโฟโต้การ์ด (มม.) — วัดจากจอหน้าร้านเดิม (Printbox Calendar_Photocard ~3 มม.) */
@@ -605,6 +613,27 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
     };
   }
   // ── ปฏิทินผ้าแคนวาส 40×85 ซม. (แนวตั้ง แขวนผนัง) ──
+  /**
+   * 🎨 งานออกแบบล้วน ไม่มีปฏิทิน (ผู้ใช้สั่ง 14 ต.ค. 69 — แผ่นรองเมาส์ "เหมือนสินค้าปฏิทิน แต่ไม่ต้องมีปฏิทิน")
+   * "pad@<กว้าง>x<สูง>" (มม. งานจริง) = 1 หน้ารูปเต็มผืน · ตัดตก 5 มม. · งานใหญ่ (>30 ซม.) ไฟล์ 150 DPI กันแคนวาสมือถือเกินเพดาน
+   * จอสร้างดูจาก "ไม่มีหน้าไหนมีตาราง" → ซ่อนเครื่องมือปฏิทิน/ปี (calHasGrid)
+   */
+  if (key.startsWith("pad@")) {
+    const m = /^pad@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
+    const pw = m ? Number(m[1]) : 210;
+    const ph = m ? Number(m[2]) : 180;
+    const fr = frame(pw, ph, 5, 6);
+    return {
+      key,
+      name: `แผ่นรองเมาส์ ${cmText(pw)}×${cmText(ph)} ซม.`,
+      trimW: pw,
+      trimH: ph,
+      bleed: 5,
+      safe: 6,
+      dpi: Math.max(pw, ph) > 300 ? 150 : 300,
+      pages: [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
+    };
+  }
   if (key === "canvas" || key.startsWith("canvas@")) {
     // 📐 "canvas@<กว้าง>x<สูง>" (มม.) = ลูกค้าเพิ่มขนาดจากมาตรฐาน (canvasSizeOf · ผู้ใช้สั่ง 13 ต.ค. 69)
     const m = /^canvas@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
