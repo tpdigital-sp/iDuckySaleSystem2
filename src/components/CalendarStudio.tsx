@@ -68,6 +68,7 @@ import {
 import { printFrameToken } from "@/lib/design-templates";
 import { buildCalendarAi, renderAiPages } from "@/lib/calendar-ai";
 import { buildPieceFiles, type PieceDesign } from "@/lib/calendar-impose";
+import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 
 export interface CalendarState {
   format: string;
@@ -1947,13 +1948,32 @@ export default function CalendarStudio({
   const isCover = coverPage?.key === basePage.key;
   const layouts = layoutsOf(fmt, basePage);
 
-  /** 📅 ตั้งตำแหน่ง/ขนาดตารางปฏิทินของหน้านี้ (ไม่ส่ง = กลับตามเลย์เอาต์) */
-  function setGrid(r?: { x: number; y: number; w: number; h: number }) {
-    const key = page.key;
+  /**
+   * 📅 หน้าตารางเดือนที่ปรับไปพร้อมกันได้ (ผู้ใช้สั่ง 14 ต.ค. 69 "เลือกได้ว่าจะปรับทั้ง 12 เดือน หรือแค่หน้านั้น")
+   * = หน้าเดือนชนิดเดียวกันที่ใช้เลย์เอาต์เดียวกับหน้านี้ (สลับข้างคนละแบบ ตำแหน่งตั้งต้นต่างกัน ไม่ลากไปด้วย)
+   */
+  const gridPeers = useMemo(() => {
+    if (basePage.month == null || !basePage.grid) return [] as string[];
+    const lay0 = design.layouts?.[basePage.key] ?? "";
+    return [
+      ...new Set(
+        vpages
+          .filter((v) => v.base.month != null && v.base.kind === basePage.kind && v.base.grid)
+          .map((v) => resolve(v).key)
+          .filter((k) => (design.layouts?.[k] ?? "") === lay0),
+      ),
+    ];
+  }, [basePage, vpages, resolve, design.layouts]);
+  /** ปรับตารางทุกเดือน (true) หรือเฉพาะหน้านี้ — จำไว้ตลอดที่เปิดจอ */
+  const [gridAll, setGridAll] = useState(false);
+  /** 📅 ตั้งตำแหน่ง/ขนาดตารางปฏิทินของหน้านี้ — หรือทุกเดือน (gridAll) · ไม่ส่ง = กลับตามเลย์เอาต์ */
+  function setGrid(r?: { x: number; y: number; w: number; h: number }, all = gridAll) {
+    const keys = all && gridPeers.length > 1 ? gridPeers : [page.key];
     setDesign((d) => {
       const grids = { ...(d.grids ?? {}) };
-      if (r) grids[key] = r;
-      else delete grids[key];
+      for (const key of keys)
+        if (r) grids[key] = { ...r };
+        else delete grids[key];
       return { ...d, grids: Object.keys(grids).length ? grids : undefined };
     });
   }
@@ -2143,6 +2163,41 @@ export default function CalendarStudio({
   }
 
   /** 📅 แถบเครื่องมือใต้ตารางปฏิทินที่เลือก — จัดกึ่งกลาง · ขนาดเดิม */
+  /**
+   * 🧊 ดูแบบ 3D (ปฏิทินตั้งโต๊ะ — หน้าที่มี sheet) · วาดทุกหน้าจากตัววาดจริง (ตัดตัดตกออก) เป็นรูปเล็ก แล้วจับคู่หน้า/หลังตามแผ่น
+   * (ผู้ใช้สั่ง 14 ต.ค. 69)
+   */
+  const hasSheets = copies === 1 && fmt.pages.some((p) => p.sheet);
+  const [flip3d, setFlip3d] = useState<FlipSheet[] | "loading" | null>(null);
+  async function open3d() {
+    setFlip3d("loading");
+    try {
+      await ensureFonts(fontKeys);
+      const k = 1200 / Math.max(fmt.trimW, fmt.trimH); // ซูมได้ถึง 3 เท่าในจอ 3D — วาดละเอียดพอไม่แตก
+      const shot = (p: CalPage) => {
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(fmt.trimW * k);
+        cv.height = Math.round(fmt.trimH * k);
+        const ctx = cv.getContext("2d");
+        if (!ctx) return undefined;
+        ctx.translate(-fmt.bleed * k, -fmt.bleed * k);
+        drawPage(ctx, k, fmt, p, design, back, imgs, { preview: true });
+        return cv.toDataURL("image/jpeg", 0.85);
+      };
+      const n = Math.max(...fmt.pages.map((p) => p.sheet?.n ?? 0));
+      const out: FlipSheet[] = [];
+      for (let i = 1; i <= n; i++) {
+        const f = fmt.pages.find((p) => p.sheet?.n === i && p.sheet.side === "front");
+        const b = fmt.pages.find((p) => p.sheet?.n === i && p.sheet.side === "back");
+        out.push({ front: f && shot(f), back: b && shot(b), frontName: f?.name ?? "ว่าง", backName: b?.name ?? "ว่าง" });
+      }
+      setFlip3d(out);
+    } catch {
+      setFlip3d(null);
+      setErr("เตรียมภาพ 3D ไม่สำเร็จ — ลองใหม่อีกครั้ง");
+    }
+  }
+
   function renderGridBar() {
     const gr = gridOf(page, design);
     if (!gridSel || !gr || selEl) return null;
@@ -2157,26 +2212,62 @@ export default function CalendarStudio({
       <div {...barWrap(left, top)} onPointerDown={(e) => e.stopPropagation()}>
         <div
           ref={barRef}
-          className={`flex items-center gap-1 rounded-2xl bg-white px-2 py-1 text-xs font-bold text-stone-700 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 ${narrow ? "mx-auto flex-wrap justify-center" : ""}`}
+          className={`flex items-center gap-1 rounded-2xl bg-white px-1.5 py-1 text-xs font-bold text-stone-700 shadow-[0_6px_24px_rgba(28,25,23,.18)] ring-1 ring-stone-200 ${narrow ? "mx-auto flex-wrap justify-center" : ""}`}
         >
-          <span className="px-1 text-[11px] text-stone-400">📅 ปฏิทิน · ลากย้าย · จับจุดย่อ-ขยาย</span>
-          <button
-            type="button"
-            onClick={() => setGrid({ ...gr, x: (W - gr.w) / 2 })}
-            className="rounded-lg px-2 py-1.5 hover:bg-stone-100"
-            title="จัดกึ่งกลางแนวนอน"
+          {/* 🎨 แถบตารางปฏิทิน (ผู้ใช้ขอออกแบบใหม่ 14 ต.ค. 69) — หัวสั้น · สวิตช์ใช้กับหน้าไหน · ปุ่มไอคอนพร้อมป้ายบอก แบบแถบรูป */}
+          <span
+            className="flex shrink-0 items-center gap-1.5 pl-1.5 pr-1 text-[12px] font-extrabold text-stone-700"
+            title="ลากเพื่อย้าย · จับจุดวงกลมเพื่อย่อ-ขยาย"
           >
-            ↔ กึ่งกลาง
-          </button>
-          <button
-            type="button"
-            disabled={!changed}
-            onClick={() => setGrid(undefined)}
-            className="rounded-lg px-2 py-1.5 hover:bg-stone-100 disabled:opacity-30"
-            title="กลับขนาด/ตำแหน่งตามเลย์เอาต์"
-          >
-            ↺ ขนาดเดิม
-          </button>
+            <span className="grid h-6 w-6 place-items-center rounded-lg bg-sky-50 text-[13px]">📅</span>
+            ตารางปฏิทิน
+          </span>
+          {gridPeers.length > 1 && (
+            <>
+              <span className="mx-0.5 h-6 w-px shrink-0 bg-stone-200" />
+              {/* ปรับเฉพาะหน้านี้ / ทุกเดือน — เลือก "ทุกเดือน" = ก๊อปตำแหน่ง/ขนาดของหน้านี้ไปทุกเดือนทันที */}
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span className="hidden pl-1 text-[11px] font-semibold text-stone-400 sm:inline">ปรับ</span>
+                <span className="flex items-center rounded-full bg-stone-100 p-0.5 ring-1 ring-stone-200/70" role="radiogroup" aria-label="ปรับตารางหน้าไหน">
+                  {[
+                    { all: false, label: "หน้านี้", hint: "ย้าย/ย่อ-ขยายเฉพาะหน้านี้" },
+                    { all: true, label: "ทุกเดือน", hint: `ทั้ง ${gridPeers.length} เดือนไปพร้อมกัน` },
+                  ].map((o) => (
+                    <button
+                      key={o.label}
+                      type="button"
+                      role="radio"
+                      aria-checked={gridAll === o.all}
+                      title={o.hint}
+                      onClick={() => {
+                        setGridAll(o.all);
+                        if (o.all) setGrid(design.grids?.[page.key], true);
+                      }}
+                      className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] transition ${
+                        gridAll === o.all ? "bg-sky-600 text-white shadow-sm" : "text-stone-500 hover:text-stone-800"
+                      }`}
+                    >
+                      {o.label}
+                      {o.all && (
+                        <span
+                          className={`rounded-full px-1.5 text-[10px] font-extrabold ${gridAll === o.all ? "bg-white/25 text-white" : "bg-stone-200 text-stone-500"}`}
+                        >
+                          {gridPeers.length}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </span>
+              </span>
+            </>
+          )}
+          <span className="mx-0.5 h-6 w-px shrink-0 bg-stone-200" />
+          <BarBtn title="จัดกึ่งกลางแนวนอน" onClick={() => setGrid({ ...gr, x: (W - gr.w) / 2 })}>
+            <Ico n="center" />
+          </BarBtn>
+          <BarBtn title="กลับขนาด/ตำแหน่งเดิม" disabled={!changed} onClick={() => setGrid(undefined)}>
+            <Ico n="reset" />
+          </BarBtn>
         </div>
       </div>
     );
@@ -2232,19 +2323,21 @@ export default function CalendarStudio({
     }));
     setSlotFocus(false);
   }
-  overlayRef.current = ask
-    ? () => setAsk(null)
-    : layersOpen
-      ? () => setLayersOpen(false)
-      : askMode && !askModeFirst.current
-        ? () => setAskMode(false)
-        : tool === "calendar" || tool === "events" || tool === "settings"
-          ? () => setTool(null)
-          : pop || headPop
-            ? () => (setPop(""), setHeadPop(""))
-            : sel || gridSel || slotFocus
-              ? () => (setSel(null), setGridSel(false), setSlotFocus(false))
-              : null;
+  overlayRef.current = Array.isArray(flip3d)
+    ? () => setFlip3d(null)
+    : ask
+      ? () => setAsk(null)
+      : layersOpen
+        ? () => setLayersOpen(false)
+        : askMode && !askModeFirst.current
+          ? () => setAskMode(false)
+          : tool === "calendar" || tool === "events" || tool === "settings"
+            ? () => setTool(null)
+            : pop || headPop
+              ? () => (setPop(""), setHeadPop(""))
+              : sel || gridSel || slotFocus
+                ? () => (setSel(null), setGridSel(false), setSlotFocus(false))
+                : null;
   slotDelRef.current =
     !locked && tool === "photo" && slotFocus && !sel ? (cur ? removeSlotPhoto : postSelected ? () => setPostOff([basePage.key], true) : null) : null;
 
@@ -2427,7 +2520,7 @@ export default function CalendarStudio({
     }
     // หน้าไม่ยืมรูปปก (รายเดือน/ตั้งโต๊ะแบบใหม่) — หน้าที่ยังไม่ใส่รูปจะพิมพ์ออกมาเป็นช่องว่าง
     if (design.noBorrow) {
-      const empty = printPages.find((v) => v.page.kind !== "postback" && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      const empty = printPages.find((v) => v.page.kind !== "postback" && !v.page.optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
       if (empty) {
         setPageIdx(vpages.indexOf(empty));
         setTool("photo");
@@ -2449,7 +2542,7 @@ export default function CalendarStudio({
     }
     // คละลาย: ทุกใบต้องมีรูปของตัวเอง (ใบไหนว่างจะพิมพ์ออกมาเป็นช่องว่าง)
     if (mixMode) {
-      const empty = printPages.find((v) => v.page.kind !== "postback" && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      const empty = printPages.find((v) => v.page.kind !== "postback" && !v.page.optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
       if (empty) {
         setPageIdx(vpages.indexOf(empty));
         setTool("photo");
@@ -3824,6 +3917,23 @@ export default function CalendarStudio({
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
+            {hasSheets && (
+              <button
+                type="button"
+                onClick={() => void open3d()}
+                disabled={flip3d === "loading"}
+                title="ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"
+                // ✨ ให้เด่น (ผู้ใช้ขอ 14 ต.ค. 69) — ไล่สีม่วง-ชมพู ตัวขาว เงา + จุดกะพริบ "ใหม่"
+                className="relative flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2.5 text-xs font-extrabold text-white shadow-[0_4px_14px_rgba(139,92,246,.45)] ring-2 ring-white transition hover:scale-[1.03] hover:shadow-[0_6px_20px_rgba(139,92,246,.55)] disabled:opacity-70"
+              >
+                <span className="text-sm leading-none">🧊</span>
+                {flip3d === "loading" ? "กำลังเตรียม…" : "ดูแบบ 3D"}
+                <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-75" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-400 ring-2 ring-white" />
+                </span>
+              </button>
+            )}
             {copies > 1 && (
               <button
                 type="button"
@@ -4482,7 +4592,11 @@ export default function CalendarStudio({
                   onClick={() => setPageIdx(i)}
                   className={`relative flex shrink-0 flex-col items-center gap-1 ${
                     // เว้นช่องระหว่างใบ (ใบละหลายหน้า) ให้เห็นว่าหน้าไหนเป็นของใบเดียวกัน
-                    (fmt.perCard ?? 1) > 1 && i > 0 && i % (fmt.perCard ?? 1) === 0 ? "ml-3" : ""
+                    ((fmt.perCard ?? 1) > 1 && i > 0 && i % (fmt.perCard ?? 1) === 0) ||
+                    // 📄 ปฏิทินตั้งโต๊ะ: เว้นช่องเมื่อขึ้นแผ่นใหม่ — เห็นว่าหน้าไหนอยู่แผ่นเดียวกัน
+                    (v.base.sheet && i > 0 && vpages[i - 1]?.base.sheet && vpages[i - 1].base.sheet!.n !== v.base.sheet.n)
+                      ? "ml-3"
+                      : ""
                   }`}
                   title={vname(v)}
                 >
@@ -4506,12 +4620,23 @@ export default function CalendarStudio({
                     {copies === 1 && (design.photos[v.page.key]?.src ?? -1) >= 0 && v.j !== coverIdx ? " 🖼" : ""}
                     {!mixMode && copies > 1 ? ` × ${copies} ใบ` : ""}
                   </span>
+                  {/* 📄 แผ่นที่ · ด้านหน้า/หลัง (ปฏิทินตั้งโต๊ะพิมพ์หน้า-หลัง) */}
+                  {v.base.sheet && (
+                    <span
+                      className={`-mt-0.5 rounded-full px-1.5 text-[9.5px] font-bold leading-4 ${
+                        v.base.sheet.side === "front" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-800"
+                      }`}
+                    >
+                      แผ่น {v.base.sheet.n} · {v.base.sheet.side === "front" ? "ด้านหน้า" : "ด้านหลัง"}
+                    </span>
+                  )}
                 </button>
               ),
             )}
           </div>
         }
 
+        {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmt.name} onClose={() => setFlip3d(null)} />}
         {askMode && (
           <div className="absolute inset-0 z-[70] flex items-center justify-center bg-stone-900/45 p-4">
             <div className="relative w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
@@ -5011,11 +5136,33 @@ function BarBtn({
 function Ico({
   n,
 }: {
-  n: "imageOff" | "replace" | "zoomIn" | "zoomOut" | "fit" | "rotL" | "rotR" | "flip" | "opacity" | "border" | "copy" | "layers" | "trash" | "center" | "magic";
+  n:
+    | "imageOff"
+    | "replace"
+    | "zoomIn"
+    | "zoomOut"
+    | "fit"
+    | "rotL"
+    | "rotR"
+    | "flip"
+    | "opacity"
+    | "border"
+    | "copy"
+    | "layers"
+    | "trash"
+    | "center"
+    | "magic"
+    | "reset";
 }) {
   const P: Record<typeof n, React.ReactNode> = {
     magic: <path d="m4 20 11-11M15 9l2 2M14 4v2M19 9h2M17.5 5.5 19 4M9 5V3M5 9H3M7 7 5.5 5.5" />,
     center: <path d="M12 3v18M8 8l-4 4 4 4M16 8l4 4-4 4" />,
+    reset: (
+      <>
+        <rect x="8" y="8" width="12" height="12" rx="1.5" strokeDasharray="2.5 2" />
+        <path d="M4 12a8 8 0 0 1 8-8h1M10 2l3 2-3 2" />
+      </>
+    ),
     imageOff: (
       <>
         <rect x="3" y="4" width="15" height="13" rx="2" />

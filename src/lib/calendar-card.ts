@@ -290,6 +290,10 @@ export interface CalPage {
   border?: Rect;
   /** หัวข้อปฏิทินตัวบาง "Calendar 2026" + ตัวย่อวันไม่หนา (แบบหน้าร้านเดิม) */
   light?: boolean;
+  /** 📄 อยู่แผ่นที่เท่าไหร่ ด้านไหน (ปฏิทินตั้งโต๊ะพิมพ์หน้า-หลัง · ผู้ใช้ขอ 14 ต.ค. 69 ให้บอกว่าเดือนไหนหน้า/หลัง) */
+  sheet?: { n: number; side: "front" | "back" };
+  /** ช่องรูปไม่บังคับ — ว่างได้ (พิมพ์เป็นพื้นขาว/สีพื้น) เช่น หลังปก/หลังแผ่นสุดท้ายของปฏิทินตั้งโต๊ะ */
+  optional?: boolean;
 }
 
 export interface CalFormat {
@@ -380,6 +384,9 @@ const monthsPages = (fr: ReturnType<typeof frame>, mode: "combined" | "separate"
   return out;
 };
 
+/** สลับคู่ [รูป, ตาราง] → [ตาราง, รูป] (ปฏิทินตั้งโต๊ะ 14 แผ่น: หน้าแผ่น = ตาราง) */
+const swapPairs = (ps: CalPage[]): CalPage[] => ps.flatMap((p, i) => (i % 2 ? [] : [ps[i + 1], p]));
+
 /** หน้าตามเลย์เอาต์ที่เลือก + ช่องรูปหลักที่ลูกค้าปรับขนาดเอง (design.slots) — ใช้ทั้งตอนวาดและบนจอ */
 export function layPage(f: CalFormat, page: CalPage, d: Pick<CalDesign, "layouts" | "slots">): CalPage {
   let p = pageWithLayout(f, page, d.layouts?.[page.key]);
@@ -423,7 +430,9 @@ const cmText = (mm: number) => String(Math.round(mm) / 10);
  * 📐 ขนาดผืนหลังเพิ่มขนาด (ผ้าแคนวาส 40x85 ซม. + กลุ่ม "เพิ่มขนาด ด้านกว้าง/ด้านสูง (นิ้ว)") — null = ไม่ได้เพิ่ม
  * ขนาดตั้งต้นอ่านจากตัวเลือก "ขนาด" (เช่น "40x85 ซม.") · 1 นิ้ว = 2.54 ซม. · ใช้ทั้งหน้าสินค้า (สรุปขนาดใหม่) และจอสร้างปฏิทิน
  */
-export function canvasSizeOf(sel: Record<string, string | undefined>): { baseW: number; baseH: number; addW: number; addH: number; w: number; h: number } | null {
+export function canvasSizeOf(
+  sel: Record<string, string | undefined>,
+): { baseW: number; baseH: number; addW: number; addH: number; w: number; h: number } | null {
   const base = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*ซม/.exec(sel["ขนาด"] ?? "");
   if (!base) return null;
   const num = (re: RegExp) => {
@@ -568,14 +577,31 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
       bleed: 2,
       safe: 5,
       dpi: 300,
-      note: separate ? "14 แผ่น 28 หน้า — พิมพ์ 26 หน้า หลังปก/หลังแผ่นสุดท้ายว่าง" : "8 แผ่น 16 หน้า — พิมพ์ 14 หน้า หลังปก/หลังแผ่นสุดท้ายว่าง",
+      note: separate
+        ? "14 แผ่น 28 หน้า — แต่ละเดือน 1 แผ่น (หน้า = ตาราง · หลัง = รูป) · หลังปก/หลังแผ่นสุดท้ายใส่รูปได้ (ไม่บังคับ)"
+        : "8 แผ่น 16 หน้า — แผ่นละ 2 เดือน (หน้า/หลัง) · หลังปก/หลังแผ่นสุดท้ายใส่รูปได้ (ไม่บังคับ)",
       // รูเจาะในเทมเพลต Calendar 6x8/8x6 อยู่ 5.3–9.3 มม. จากขอบอาร์ตบอร์ด (+0.7 เมื่อวางบนผืนนี้) → ตารางเริ่มต่ำกว่า 14 มม.
       topClear: 14,
       pages: [
         { key: "cover", name: "ปก", kind: "photo", photo: fr.full, text: true },
-        ...monthsPages(fr, separate ? "separate" : "combined"),
+        // หลังปก + หลังแผ่นสุดท้าย ออกแบบได้ (ผู้ใช้สั่ง 14 ต.ค. 69 "ปกต้องมีด้านหลังด้วย · แผ่นสุดท้ายต้องมีด้านหลัง") · ไม่ใส่ = ขาว
+        { key: "coverBack", name: "หลังปก", kind: "photo", photo: fr.full, optional: true },
+        // 14 แผ่น: แต่ละเดือน ด้านหน้า = ตาราง · ด้านหลัง = รูป (ผู้ใช้สั่ง 14 ต.ค. 69) → เรียงตาราง ก่อนรูป
+        ...(separate ? swapPairs(monthsPages(fr, "separate")) : monthsPages(fr, "combined")),
         { key: "year", name: "ภาพรวมทั้งปี", kind: "year", grid: fr.inner },
-      ],
+        { key: "yearBack", name: "หลังภาพรวมทั้งปี", kind: "photo", photo: fr.full, optional: true },
+      ].map((p, i, all): CalPage => {
+        /**
+         * 📄 แผ่น/ด้าน (ตามโน้ตงานผลิต: หลังปก + หลังแผ่นสุดท้ายว่าง)
+         * 8 แผ่น: ปก = แผ่น 1 หน้า · ม.ค./ก.พ. = แผ่น 2 หน้า/หลัง … พ.ย./ธ.ค. = แผ่น 7 · ภาพรวมทั้งปี = แผ่น 8 หน้า
+         * 14 แผ่น: ปก = แผ่น 1 · แต่ละเดือน = 1 แผ่น (หน้า = ตาราง · หลัง = รูป) · ภาพรวมทั้งปี = แผ่น 14
+         */
+        const last = separate ? 14 : 8;
+        if (i <= 1) return { ...p, sheet: { n: 1, side: i ? "back" : "front" } } as CalPage;
+        if (i >= all.length - 2) return { ...p, sheet: { n: last, side: i === all.length - 1 ? "back" : "front" } } as CalPage;
+        const j = i - 2;
+        return { ...p, sheet: { n: 2 + Math.floor(j / 2), side: j % 2 ? "back" : "front" } } as CalPage;
+      }),
     };
   }
   // ── ปฏิทินผ้าแคนวาส 40×85 ซม. (แนวตั้ง แขวนผนัง) ──
@@ -1094,7 +1120,10 @@ function drawMonth(ctx: CanvasRenderingContext2D, k: number, b: CalBack, r: Rect
 
   const grid = monthGrid(b.year, m, b.weekStart);
   const wkH = Math.min((r.h - headH) * 0.12, r.w * 0.05);
-  const rowH = (r.h - headH - wkH) / 6;
+  // แถวเท่าจำนวนสัปดาห์จริงของเดือน (4–6) — กรอบตารางพอดีวันที่สุดท้าย ไม่เหลือแถวว่างท้าย (ผู้ใช้แจ้ง 14 ต.ค. 69)
+  // ขนาดตัวเลขยังคิดจาก 6 แถว = ทุกเดือนตัวเลขเท่ากัน
+  const rowH = (r.h - headH - wkH) / grid.length;
+  const rowH6 = (r.h - headH - wkH) / 6;
   const colW = r.w / 7;
   const days = b.lang === "th" ? DAYS_TH : DAYS_EN_LONG;
   const pw = partOf(b, "week", k, 700, b.ink);
@@ -1104,8 +1133,8 @@ function drawMonth(ctx: CanvasRenderingContext2D, k: number, b: CalBack, r: Rect
     const c = r.x + colW * (i + 0.5);
     ctx.fillText(days[wd], alignedCenter(ctx, k, days[wd], c, colW, pw.align, colW * 0.08) * k, (r.y + headH + wkH / 2) * k);
   });
-  const numSize = Math.min(rowH * 0.5, colW * 0.42);
-  const showLabel = rowH > 7;
+  const numSize = Math.min(rowH6 * 0.5, colW * 0.42);
+  const showLabel = rowH6 > 7;
   grid.forEach((row, ri) =>
     row.forEach((d, i) => {
       if (!d) return;
@@ -1340,8 +1369,7 @@ export function drawPage(
         }
       } else if (opts.preview && page.kind !== "postback") {
         // ช่องรูปที่ยังว่าง = สีเทา + "Drag here" (บนจอเท่านั้น) — วาดในแคนวาสใต้ชิ้นส่วน กรอบรูป/ข้อความที่วางทับจึงยังเห็นและกดได้
-        ctx.fillStyle = "#b8b8b8";
-        ctx.fillRect(r.x * k, r.y * k, r.w * k, r.h * k);
+        emptySlotBox(ctx, k, r);
         placeholder(ctx, k, r.x + r.w / 2, r.y + r.h / 2, phSize(r.w, r.h));
       }
     }
@@ -1470,15 +1498,78 @@ export function calLayersOf(f: CalFormat, page: CalPage, d: CalDesign, imgs: (Im
 const phSize = (w: number, h: number) => Math.min(6, Math.max(1.8, Math.min(w, h) * 0.045));
 
 /** ป้าย "Drag here" แบบโปรแกรมหน้าร้านเดิม (ช่องรูป/กรอบรูปที่ยังว่าง · บนจอเท่านั้น) */
+/**
+ * 🖼 ช่องรูปที่ยังว่าง (บนจอเท่านั้น · ผู้ใช้ขอออกแบบใหม่ 14 ต.ค. 69 — เดิมเทาทึบ + "Drag here" + อีโมจิกรอบรูป)
+ * พื้นเทาฟ้าไล่เฉด · ตรงกลาง = วงกลมขาวไอคอนรูปภาพ (วาดเส้นเอง ไม่พึ่งอีโมจิของเครื่อง) + คำไทย
+ */
+function emptySlotBox(ctx: CanvasRenderingContext2D, k: number, r: Rect) {
+  ctx.save();
+  const g = ctx.createLinearGradient(r.x * k, r.y * k, r.x * k, (r.y + r.h) * k);
+  g.addColorStop(0, "#eef2f7");
+  g.addColorStop(1, "#dfe6ee");
+  ctx.fillStyle = g;
+  ctx.fillRect(r.x * k, r.y * k, r.w * k, r.h * k);
+  // ไม่มีเส้นประในช่อง (ผู้ใช้สั่งเอาออก 14 ต.ค. 69 — สับสนกับเส้นตัด/ขอบปลอดภัย และทับแถวรูเจาะ)
+  ctx.restore();
+}
+
 function placeholder(ctx: CanvasRenderingContext2D, k: number, x: number, y: number, size: number) {
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,.95)";
-  ctx.font = `600 ${size * k}px ${fontFamilyOf("prompt")}`;
+  const R = size * 1.55; // วงกลมไอคอน
+  const cy = y - size * 1.1;
+  // วงกลมขาว + เงาอ่อน
+  ctx.shadowColor = "rgba(15,23,42,.14)";
+  ctx.shadowBlur = size * 0.6 * k;
+  ctx.shadowOffsetY = size * 0.12 * k;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(x * k, cy * k, R * k, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  // ไอคอนรูปภาพ (กรอบมุมมน · ภูเขา · ดวงอาทิตย์) สีฟ้า
+  const s = R * 0.95;
+  ctx.strokeStyle = "#0284c7";
+  ctx.fillStyle = "#0284c7";
+  ctx.lineWidth = Math.max(1, s * 0.09 * k);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  roundRect(ctx, (x - s * 0.55) * k, (cy - s * 0.42) * k, s * 1.1 * k, s * 0.84 * k, s * 0.14 * k);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo((x - s * 0.55) * k, (cy + s * 0.3) * k);
+  ctx.lineTo((x - s * 0.2) * k, (cy - s * 0.02) * k);
+  ctx.lineTo((x + s * 0.08) * k, (cy + s * 0.24) * k);
+  ctx.lineTo((x + s * 0.25) * k, (cy + s * 0.1) * k);
+  ctx.lineTo((x + s * 0.55) * k, (cy + s * 0.38) * k);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc((x + s * 0.24) * k, (cy - s * 0.17) * k, s * 0.09 * k, 0, Math.PI * 2);
+  ctx.fill();
+  // ป้าย ＋ มุมขวาล่างของวงกลม
+  const px = x + R * 0.72;
+  const py = cy + R * 0.72;
+  const pr = R * 0.36;
+  ctx.fillStyle = "#0284c7";
+  ctx.beginPath();
+  ctx.arc(px * k, py * k, pr * k, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = Math.max(1, pr * 0.28 * k);
+  ctx.beginPath();
+  ctx.moveTo((px - pr * 0.45) * k, py * k);
+  ctx.lineTo((px + pr * 0.45) * k, py * k);
+  ctx.moveTo(px * k, (py - pr * 0.45) * k);
+  ctx.lineTo(px * k, (py + pr * 0.45) * k);
+  ctx.stroke();
+  // ข้อความ
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Drag here", x * k, (y - size * 0.6) * k);
-  ctx.font = `400 ${size * 1.4 * k}px sans-serif`;
-  ctx.fillText("🖼", x * k, (y + size * 1.1) * k);
+  ctx.fillStyle = "#334155";
+  ctx.font = `600 ${size * 0.85 * k}px ${fontFamilyOf("prompt")}`;
+  ctx.fillText("ลากรูปมาวางที่นี่", x * k, (cy + R + size * 1.15) * k);
+  ctx.fillStyle = "#64748b";
+  ctx.font = `400 ${size * 0.6 * k}px ${fontFamilyOf("prompt")}`;
+  ctx.fillText("หรือแตะเพื่อเลือกรูป", x * k, (cy + R + size * 2.15) * k);
   ctx.restore();
 }
 
