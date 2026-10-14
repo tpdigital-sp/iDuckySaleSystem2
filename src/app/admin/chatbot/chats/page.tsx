@@ -533,7 +533,21 @@ function Chats() {
       {/* ───── รายชื่อห้อง (ซ้าย) — มือถือซ่อนเมื่อเปิดห้อง ───── */}
       <aside className={`${sel ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r bg-white md:w-[290px] lg:w-[310px]`} style={{ borderColor: "var(--dk-hair)" }}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-3">
-          <h1 className="text-[18px] font-extrabold">แชท LINE</h1>
+          {/* กดหัวข้อ = ปิดห้องที่เปิดอยู่ กลับหน้า "เลือกห้องแชททางซ้าย" (เจ้าของร้าน 14 ต.ค. 69) · แถบที่อยู่ล้าง ?id= ตาม sel เอง */}
+          <h1 className="text-[18px] font-extrabold">
+            <button
+              type="button"
+              onClick={() => {
+                setSel("");
+                setDetail(null);
+                setNoteOpen(false);
+              }}
+              title="กลับหน้าเลือกห้องแชท"
+              className="rounded-md transition hover:opacity-70"
+            >
+              แชท LINE
+            </button>
+          </h1>
           <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
             {rows.length ? `${rows.length} ห้อง` : ""}
           </span>
