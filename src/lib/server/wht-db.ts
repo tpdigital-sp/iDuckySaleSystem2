@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { selectAllRows } from "@/lib/server/select-all";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { fetchLineProfile, lineTargetOf, noticeFlex, notifyCustomer, notifyCustomerLogged } from "@/lib/server/notify";
@@ -591,7 +592,9 @@ export async function syncOrderInvoices(sb: SupabaseClient): Promise<number> {
     }
   }
   // ออเดอร์ที่เคยมี faInvoices แต่ตอนนี้ไม่มีคู่แล้ว (ผูกใหม่/ใบถูกยกเลิก) ต้องถอดด้วย
-  const { data: had } = await sb.from("orders").select("id,inv:data->faInvoices").not("data->faInvoices", "is", null);
+  const { data: had } = await selectAllRows<{ id: string; inv: unknown }>((a, b) =>
+    sb.from("orders").select("id,inv:data->faInvoices").not("data->faInvoices", "is", null).order("id").range(a, b)
+  );
   const cur = new Map<string, NonNullable<Order["faInvoices"]>>((had ?? []).map((r) => [String(r.id), (r.inv as Order["faInvoices"]) ?? []]));
   const ids = [...new Set([...want.keys(), ...cur.keys()])];
   if (!ids.length) return 0;

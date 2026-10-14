@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { selectAllRows } from "@/lib/server/select-all";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { proofsOf, type Order } from "@/lib/admin-data";
@@ -22,7 +23,9 @@ export async function GET(req: Request) {
   const onlyClosed = url.searchParams.get("closed") !== "0";
   const cutoff = Date.now() - days * 86400_000;
 
-  const { data: rows, error } = await sb.from("orders").select("id,data,created_at");
+  const { data: rows, error } = await selectAllRows<{ id: string; data: unknown; created_at: string | null }>((a, b) =>
+    sb.from("orders").select("id,data,created_at").order("id").range(a, b)
+  );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const CLOSED = new Set<string>(CLEANUP_CLOSED_STATUSES);

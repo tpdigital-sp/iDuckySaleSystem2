@@ -1,5 +1,6 @@
 import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
+import { selectAllRows } from "@/lib/server/select-all";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { toCustomerTag, type CustomerTag } from "@/lib/line-tags";
@@ -293,11 +294,16 @@ async function loadOrderChatIds(fresh = false): Promise<Record<string, string>> 
   const sb = getSupabaseAdmin();
   if (sb) {
     try {
-      const { data } = await sb
-        .from("orders")
-        .select("lineChatUrl:data->>lineChatUrl,lineUserId:data->>lineUserId")
-        .not("data->>lineChatUrl", "is", null)
-        .not("data->>lineUserId", "is", null);
+      const { data } = await selectAllRows<{ lineChatUrl?: string; lineUserId?: string }>((a, b) =>
+        sb
+          .from("orders")
+          .select("lineChatUrl:data->>lineChatUrl,lineUserId:data->>lineUserId")
+          .not("data->>lineChatUrl", "is", null)
+          .not("data->>lineUserId", "is", null)
+          .order("created_at")
+          .order("id")
+          .range(a, b)
+      );
       for (const r of (data ?? []) as { lineChatUrl?: string; lineUserId?: string }[]) {
         const id = chatIdInUrl(r.lineChatUrl ?? "");
         if (id && r.lineUserId) map[r.lineUserId] = id; // ใบใหม่กว่าอยู่ท้ายรายการ = ทับของเก่าให้เอง

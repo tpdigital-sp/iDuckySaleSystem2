@@ -488,6 +488,8 @@ export default function AdminOrdersPage() {
 
   const kw = q.trim().toLowerCase();
   const digits = kw.replace(/\D/g, "");
+  // เลขออเดอร์พิมพ์/วางมาไม่มีขีด (OD-2609114363 · od2609114363) ต้องเจอ OD-260911-4363 — เทียบแบบตัดขีด/ช่องว่างทิ้ง
+  const kwFlat = kw.replace(/[^a-z0-9]/g, "");
   // กดชิปมัดจำ = ดูข้ามช่วงวันที่ (ให้จำนวนแถวตรงกับตัวเลขบนชิป) · ไม่ได้กด = ตามช่วงวันที่ตามปกติ
   // กดชิป "รอตรวจสอบ" ก็ข้ามวันที่ — สลิปที่รอคนตรวจต้องไม่หายเพราะใบเก่ากว่าช่วงที่เลือก (ดู counts)
   const allDates = dep !== "all" || filter === "รอตรวจสอบ" || onlyOverpay;
@@ -507,6 +509,7 @@ export default function AdminOrdersPage() {
     .filter((o) => {
       if (!kw) return true;
       if (o.id.toLowerCase().includes(kw) || o.customer.toLowerCase().includes(kw)) return true;
+      if (kwFlat.length >= 4 && o.id.toLowerCase().replace(/[^a-z0-9]/g, "").includes(kwFlat)) return true;
       // พิมพ์ชื่อพนักงาน = เห็นเฉพาะใบที่คนนั้นสั่งแทนลูกค้า
       if ((o.placedBy ?? "").toLowerCase().includes(kw)) return true;
       // เลขเอกสาร FlowAccount (QT010529) / ชื่อบริษัทในใบกำกับ — ลูกค้านิติบุคคลมักอ้างเลขนี้

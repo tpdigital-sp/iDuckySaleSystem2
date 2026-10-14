@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { selectAllRows } from "@/lib/server/select-all";
 import { trackingScanProblem } from "@/lib/scan-code";
 import { withArtQtyMap } from "@/lib/edit-selections";
 import { bkkYmd, thaiDateTime } from "@/lib/bangkok-time";
@@ -465,7 +466,9 @@ function loadFullOrders(sb: SB): Promise<LoadedOrders> {
   if (fullInflight) return fullInflight;
   fullInflight = (async (): Promise<LoadedOrders> => {
     const at = new Date().toISOString();
-    const { data, error } = await sb.from("orders").select("data").order("created_at", { ascending: false });
+    const { data, error } = await selectAllRows<{ data: unknown }>((a, b) =>
+      sb.from("orders").select("data").order("created_at", { ascending: false }).order("id").range(a, b)
+    );
     if (error) return { error };
     const orders = (data ?? []).map((r) => r.data as Order);
     const gen = ++allGen;
@@ -491,7 +494,7 @@ async function loadAllOrders(sb: SB): Promise<LoadedOrders> {
     const sinceIso = new Date(Date.parse(memo.at) - 60_000).toISOString(); // ถอย 60 วิ กันนาฬิกาเหลื่อมระหว่าง instance
     const [delta, ids] = await Promise.all([
       sb.from("orders").select("data").gt("data->>savedAt", sinceIso),
-      sb.from("orders").select("id").order("created_at", { ascending: false }),
+      selectAllRows<{ id: string }>((a, b) => sb.from("orders").select("id").order("created_at", { ascending: false }).order("id").range(a, b)),
     ]);
     if (!delta.error && !ids.error) {
       const byId = new Map(memo.orders.map((o) => [o.id, o]));
