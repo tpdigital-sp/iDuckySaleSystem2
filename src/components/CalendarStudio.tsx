@@ -664,51 +664,6 @@ export default function CalendarStudio({
   const [cutView, setCutView] = useState<{ bg: "checker" | "dark" | "light"; line: boolean; white: boolean }>({ bg: "checker", line: true, white: true });
   /** แก้เฉพาะจุด: 0 ปิด · 1 ＋มน · −1 −ชิด */
   const [editMode, setEditMode] = useState<0 | 1 | -1>(0);
-  /**
-   * 🔍 ซูมมุมมองเวที (งานไดคัท · แบบหน้า /admin/diecut?tab=bg): ปุ่ม − 100% + · ลูกกลิ้งเมาส์/บีบนิ้ว · ลากพื้นว่างเพื่อเลื่อน · ดับเบิลคลิก = พอดีจอ
-   * ย่อ/ขยายเฉพาะที่แสดง (CSS transform) ไม่แตะลาย — การจับ/ลากบนภาพยังตรง เพราะทุกจุดคิดจาก getBoundingClientRect ของแคนวาสที่ถูกย่อ/ขยายแล้ว
-   */
-  const [viewZ, setViewZ] = useState({ k: 1, x: 0, y: 0 });
-  const viewPan = useRef<{ x: number; y: number; id: number } | null>(null);
-  const zoomView = useCallback(
-    (k: number, cx?: number, cy?: number) => {
-      const st = stageRef.current;
-      if (!st) return;
-      const r = st.getBoundingClientRect();
-      const k2 = Math.min(8, Math.max(1, k));
-      setViewZ((z) => {
-        if (k2 <= 1) return { k: 1, x: 0, y: 0 };
-        // ซูมรอบจุดที่ชี้ (ไม่ระบุ = กลางเวที) — จุดใต้เมาส์อยู่ที่เดิม
-        const mx = (cx ?? r.left + r.width / 2) - r.left - r.width / 2;
-        const my = (cy ?? r.top + r.height / 2) - r.top - r.height / 2;
-        const ux = (mx - z.x) / z.k;
-        const uy = (my - z.y) / z.k;
-        return { k: k2, x: mx - ux * k2, y: my - uy * k2 };
-      });
-    },
-    [],
-  );
-  // ลูกกลิ้ง/บีบนิ้วบนเวที (ต้อง passive:false ถึงกันหน้าเลื่อน)
-  useEffect(() => {
-    const st = stageRef.current;
-    if (!st || !fmt.diecut) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      setViewZ((z) => {
-        const k2 = Math.min(8, Math.max(1, z.k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
-        if (k2 <= 1) return { k: 1, x: 0, y: 0 };
-        const r = st.getBoundingClientRect();
-        const mx = e.clientX - r.left - r.width / 2;
-        const my = e.clientY - r.top - r.height / 2;
-        return { k: k2, x: mx - ((mx - z.x) / z.k) * k2, y: my - ((my - z.y) / z.k) * k2 };
-      });
-    };
-    st.addEventListener("wheel", onWheel, { passive: false });
-    return () => st.removeEventListener("wheel", onWheel);
-  }, [fmt.diecut, open]);
-  useEffect(() => {
-    if (!open) setViewZ({ k: 1, x: 0, y: 0 });
-  }, [open]);
   /** ข้อความระหว่างตัดพื้นหลังรูป (AI โหลดโมเดล/กำลังรัน) */
   const [bgBusy, setBgBusy] = useState("");
   const [bgNote, setBgNote] = useState("");
@@ -849,9 +804,20 @@ export default function CalendarStudio({
    * กำลังลากอยู่ = รอปล่อยก่อน (ไม่กระตุกใต้นิ้ว)
    */
   const lastCut = useRef<CutResult | null>(null);
+  /**
+   * ✂️ ผู้ใช้เลือก 14 ต.ค. 69: ซูม/ลาก = "ขยายลายในชิ้นงาน" ขนาดชิ้นคงเดิม — ไม่ดึงกลับพอดีขนาดอัตโนมัติ ลูกค้าจัดเอง
+   * จัดพอดี+กลางให้แค่ตอนรูปในคลังเปลี่ยน (ใส่รูปใหม่/ตัดพื้นเสร็จ) หรือเปลี่ยนขนาดสินค้า
+   */
+  const srcSig = srcs.map((x) => `${x.url}:${x.removed ? 0 : 1}`).join("|");
+  const fitWant = useRef("");
+  useEffect(() => {
+    fitWant.current = `${srcSig}|${fmt.key}`;
+  }, [srcSig, fmt.key]);
+  const fitDone = useRef("");
   useEffect(() => {
     lastCut.current = cutRes;
     if (!fmt.diecut || !cutRes) return;
+    if (fitDone.current === fitWant.current) return;
     const off = () => {
       const r = lastCut.current;
       if (!r) return false;
@@ -866,6 +832,7 @@ export default function CalendarStudio({
         t = window.setTimeout(tryFit, 120);
         return;
       }
+      fitDone.current = fitWant.current;
       if (lastCut.current && off()) fitToSize(lastCut.current);
     };
     tryFit();
@@ -1800,14 +1767,26 @@ export default function CalendarStudio({
       ctx.setLineDash([3 * dpr, 4 * dpr]);
       ctx.lineWidth = dpr;
       ctx.strokeStyle = cutView.bg === "dark" ? "rgba(255,255,255,.3)" : "rgba(120,113,108,.35)";
-      ctx.strokeRect(b, b, fmt.trimW * k, fmt.trimH * k);
-      // ป้ายขนาดที่สั่ง (มุมล่างขวาของจัตุรัส)
+      // กรอบขนาดเกาะ "ตัวชิ้นงาน" (ไม่รวมติ่ง) ตามที่คิดได้จริง — ลายซูมใหญ่แค่ไหน ชิ้นก็ยังเท่าที่สั่ง ป้ายจึงชี้ถูกเสมอ
+      // ยังไม่มีลาย = จัตุรัสพื้นที่จัดลายตามเดิม
+      let sx = b, sy = b, sw = fmt.trimW * k, sh = fmt.trimH * k;
+      if (cutRes) {
+        const u = k / cutRes.scale;
+        const bodyW = cutRes.bodyW * u;
+        const bodyH = cutRes.bodyH * u;
+        // ตัวชิ้นงานอยู่ตรงกลางกรอบเส้นตัดทั้งชิ้นแนวนอน · ชิดล่างแนวตั้ง (ติ่งอยู่บน)
+        sx = cutRes.box.x * k + (cutRes.bounds.x0 + (cutRes.bounds.x1 - cutRes.bounds.x0) / 2) * u - bodyW / 2;
+        sy = cutRes.box.y * k + cutRes.bounds.y1 * u - bodyH;
+        sw = bodyW;
+        sh = bodyH;
+      }
+      ctx.strokeRect(sx, sy, sw, sh);
       ctx.setLineDash([]);
       ctx.font = `600 ${11 * dpr}px system-ui, sans-serif`;
       ctx.textAlign = "right";
       ctx.textBaseline = "top";
       ctx.fillStyle = cutView.bg === "dark" ? "rgba(255,255,255,.55)" : "rgba(87,83,78,.6)";
-      ctx.fillText(`ขนาด ${fmt.diecut.size / 10} ซม.`, b + fmt.trimW * k, b + fmt.trimH * k + 4 * dpr);
+      ctx.fillText(`ขนาด ${fmt.diecut.size / 10} ซม.`, sx + sw, sy + sh + 4 * dpr);
       ctx.restore();
       if (cutRes) {
         ctx.save();
@@ -5141,33 +5120,12 @@ export default function CalendarStudio({
             ref={stageRef}
             className={`relative flex min-h-0 min-w-0 shrink-0 flex-col items-center justify-center gap-2 p-3 transition sm:flex-1 sm:p-5 ${dropOn ? "bg-sky-50" : "bg-stone-100"} ${
               narrow && (sel || slotFocus || gridSel) ? "pb-32" : ""
-            } ${viewZ.k > 1 ? "overflow-hidden cursor-grab active:cursor-grabbing" : ""}`}
+            }`}
             // 🖱 คลิกพื้นว่างรอบการ์ด = ยกเลิกการเลือก (กรอบฟ้า/แถบเครื่องมือหาย) — เดิมไม่มีตัวรับคลิกตรงนี้ กรอบฟ้าค้าง (ผู้ใช้แจ้ง 13 ต.ค. 69)
             // เฉพาะคลิกโดนพื้นเวทีเอง/ข้อความใต้การ์ด — แถบเครื่องมือ/จุดจับ/การ์ดมีตัวจับของตัวเอง
             onPointerDown={(e) => {
               const t = e.target as HTMLElement;
-              if (t === e.currentTarget || t.dataset.stageBlank !== undefined) {
-                clearSelection();
-                // 🔍 ซูมอยู่ = ลากพื้นว่างเพื่อเลื่อนมุมมอง
-                if (viewZ.k > 1 && e.button === 0) {
-                  viewPan.current = { x: e.clientX - viewZ.x, y: e.clientY - viewZ.y, id: e.pointerId };
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                }
-              }
-            }}
-            onPointerMove={(e) => {
-              const pn = viewPan.current;
-              if (pn && pn.id === e.pointerId) setViewZ((z) => ({ ...z, x: e.clientX - pn.x, y: e.clientY - pn.y }));
-            }}
-            onPointerUp={(e) => {
-              if (viewPan.current?.id === e.pointerId) viewPan.current = null;
-            }}
-            onPointerCancel={() => {
-              viewPan.current = null;
-            }}
-            onDoubleClick={(e) => {
-              const t = e.target as HTMLElement;
-              if (fmt.diecut && (t === e.currentTarget || t.dataset.stageBlank !== undefined)) setViewZ({ k: 1, x: 0, y: 0 });
+              if (t === e.currentTarget || t.dataset.stageBlank !== undefined) clearSelection();
             }}
             onDragOver={(e) => {
               if (!e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes("text/x-cal-src")) return;
@@ -5192,19 +5150,6 @@ export default function CalendarStudio({
               void dropOnStage([...e.dataTransfer.files], e.clientX, e.clientY);
             }}
           >
-            {fmt.diecut && (
-              <div className="absolute left-3 top-3 z-20 inline-flex items-center rounded-full bg-white p-0.5 shadow-sm ring-1 ring-stone-200" title="ซูม: ลูกกลิ้งเมาส์/บีบนิ้ว · ลากพื้นว่างเพื่อเลื่อน · ดับเบิลคลิก = พอดีจอ">
-                <button type="button" onClick={() => zoomView(viewZ.k / 1.5)} className="h-8 w-8 rounded-full text-[15px] font-bold text-stone-700 hover:bg-sky-50" aria-label="ซูมออก">
-                  −
-                </button>
-                <button type="button" onClick={() => setViewZ({ k: 1, x: 0, y: 0 })} className="h-8 min-w-[56px] rounded-full text-[12px] font-semibold tabular-nums text-stone-500 hover:bg-sky-50" title="พอดีจอ">
-                  {Math.round(viewZ.k * 100)}%
-                </button>
-                <button type="button" onClick={() => zoomView(viewZ.k * 1.5)} className="h-8 w-8 rounded-full text-[15px] font-bold text-stone-700 hover:bg-sky-50" aria-label="ซูมเข้า">
-                  +
-                </button>
-              </div>
-            )}
             <div
               className="relative w-full"
               style={{
@@ -5213,9 +5158,6 @@ export default function CalendarStudio({
                   stageBox.w && stageBox.h && stageBox.w >= 640
                     ? `${Math.max(240, Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect))}px`
                     : `min(100%, ${aspect * 60}vh)`,
-                // 🔍 ซูมมุมมอง (งานไดคัท) — นุ่มด้วย transition · ตอนลากเลื่อนไม่หน่วง
-                transform: viewZ.k === 1 ? undefined : `translate(${viewZ.x}px, ${viewZ.y}px) scale(${viewZ.k})`,
-                transition: viewPan.current ? "none" : "transform .18s ease-out",
               }}
             >
               <canvas
