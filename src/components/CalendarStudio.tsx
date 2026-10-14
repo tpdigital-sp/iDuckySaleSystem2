@@ -689,45 +689,49 @@ export default function CalendarStudio({
    */
   const CUT_PPM_FAST = 300 / Math.max(fmtW(fmt), fmtH(fmt));
   /**
-   * 🔒 เส้นตัดไม่ตามการซูม/ลากรูป (ผู้ใช้แจ้ง 14 ต.ค. 69 "เส้นไดคัทไม่ควรเปลี่ยนไปตามที่ zoom ภาพ")
-   * เส้นคิดจากรูปหลักที่ "ตำแหน่งอ้างอิง" (design.cut.ref = ตอนใส่รูป/จัดพอดีขนาด) เสมอ — ลูกค้าซูม/เลื่อนรูป = ขยับลายใต้เส้นเดิม
-   * ส่วนที่เลยเส้นจะถูกตัดทิ้ง (จอทำจาง · ไฟล์พิมพ์ clip ตามเส้น) · ข้อความ/กรอบ/ค่าเส้นตัดเปลี่ยน = คิดเส้นใหม่ตามปกติ
-   * เปลี่ยนรูป (src ใหม่) หรือ ↺ กลับค่าเริ่มต้น = ตั้ง ref ใหม่จากตำแหน่งปัจจุบัน
+   * ✂️ เส้นตัด "ตามรูป" ตอนซูม/ลาก (ผู้ใช้ยืนยัน 14 ต.ค. 69 "ต้องการให้เส้นไดคัทและภาพขยายเข้าออกตามกัน เหมือนก่อนหน้า")
+   * — แต่ห้ามกระดุก: ขนาดชิ้นล็อกตามที่สั่ง ดังนั้นซูม/เลื่อน "รูปหลัก" ไม่เปลี่ยนรูปทรงจริงของเส้นเลย
+   *   → ไม่คิดใหม่ แค่ย้าย/สเกลกรอบเส้นตามรูปแบบเรขาคณิต (เฟรมเดียวกัน · เป๊ะ · ไม่มีการลากเส้นซ้ำที่ทำให้เส้นเปลี่ยน)
+   * คิดเส้นใหม่เฉพาะเมื่อ "เนื้อหา" เปลี่ยน: รูปใหม่/ตัดพื้น · ข้อความ/กรอบ · ค่าเส้นตัด (sig ด้านล่างไม่รวมตำแหน่งรูปหลัก)
+   * design.cut.ref = ขนาดรูปตอนใส่ (ไว้เป็นฐาน 100% ของปุ่มซูม)
    */
-  const refDesign = useMemo((): CalDesign => {
-    const front = fmt.pages[0].key;
-    const ph = design.photos[front];
-    const ref = design.cut?.ref;
-    if (!ph || ph.src < 0 || !ref || design.cut?.refSrc !== ph.src) return design;
-    return { ...design, photos: { ...design.photos, [front]: { ...ph, pl: ref } } };
-  }, [design, fmt]);
-  /**
-   * ลายเซ็นของสิ่งที่มีผลต่อเส้นตัด — ซูม/เลื่อนรูปหลักไม่อยู่ในนี้ (รูปถูกแทนด้วย ref แล้ว)
-   * ไม่งั้นทุกครั้งที่ซูม เส้นจะถูกคิดใหม่ (หยาบ 300px → ละเอียด 600px) เห็นเส้นกระดุกเล็กน้อยทั้งที่รูปทรงเดิม (ผู้ใช้แจ้ง 14 ต.ค. 69 "เส้นเปลี่ยน")
-   */
-  const refSig = useMemo(
-    () => JSON.stringify({ p: refDesign.photos, e: refDesign.elements, c: refDesign.cut, s: refDesign.slots, g: refDesign.gridOff, b: refDesign.bg, t: refDesign.text }),
-    [refDesign],
-  );
-  const refDesignRef = useRef(refDesign);
-  refDesignRef.current = refDesign;
+  const frontKey = fmt.pages[0].key;
+  const cutSig = useMemo(() => {
+    const ph = design.photos[frontKey];
+    const { ref: _r, refSrc: _rs, ...cutNoRef } = design.cut ?? {};
+    void _r;
+    void _rs;
+    return JSON.stringify({
+      p: Object.fromEntries(Object.entries(design.photos).map(([k, o]) => [k, k === frontKey ? { ...o, pl: undefined } : o])),
+      src: ph?.src,
+      e: design.elements,
+      c: cutNoRef,
+      s: design.slots,
+      g: design.gridOff,
+      b: design.bg,
+      t: design.text,
+    });
+  }, [design, frontKey]);
+  /** ผลคิดล่าสุด + ตำแหน่งรูปหลักตอนคิด — ไว้ย้ายเส้นตามรูป */
+  const lastCalc = useRef<{ pl: CalPlacement | null; cut: CutResult }>({ pl: null, cut: null as unknown as CutResult });
   useEffect(() => {
     if (!open || !fmt.diecut) return;
-    const front = fmt.pages[0].key;
-    const ph = design.photos[front];
+    const ph = design.photos[frontKey];
     if (ph && ph.src >= 0 && (!design.cut?.ref || design.cut.refSrc !== ph.src)) {
-      // ยังไม่มีตำแหน่งอ้างอิงของรูปนี้ → ใช้ตำแหน่งตอนนี้ (ตอนเพิ่งใส่รูป = พอดีผืน)
+      // จำขนาดรูปตอนใส่ (ฐาน 100% ของซูม)
       setDesign((d) => {
-        const p0 = d.photos[front];
+        const p0 = d.photos[frontKey];
         return p0 && p0.src >= 0 ? { ...d, cut: { ...(d.cut ?? {}), ref: p0.pl, refSrc: p0.src } } : d;
       });
-      return;
     }
     let raf = 0;
     let t = 0;
     const run = (ppm: number) => {
       try {
-        setCutRes(processCut(renderAlpha(ppm, refDesignRef.current).data, ppm, fmt.diecut!.size, cutP));
+        const d = designRef.current;
+        const r = processCut(renderAlpha(ppm, d).data, ppm, fmt.diecut!.size, cutP);
+        if (r) lastCalc.current = { pl: d.photos[frontKey]?.pl ?? null, cut: r };
+        setCutRes(r);
         setCutErr("");
       } catch (e) {
         setCutRes(null);
@@ -745,7 +749,24 @@ export default function CalendarStudio({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, fmt, refSig, imgs, fontTick]);
+  }, [open, fmt, cutSig, imgs, fontTick]);
+  // ซูม/เลื่อนรูปหลัก → ย้ายกรอบเส้นตามรูป (เรขาคณิต · ไม่คิดใหม่)
+  const frontPl = design.photos[frontKey]?.pl;
+  useEffect(() => {
+    if (!fmt.diecut || !frontPl) return;
+    const lc = lastCalc.current;
+    if (!lc.cut || !lc.pl || lc.pl.wMm <= 0) return;
+    const k = frontPl.wMm / lc.pl.wMm;
+    const r = lc.cut;
+    const moved: CutResult = {
+      ...r,
+      box: { x: frontPl.cxMm + (r.box.x - lc.pl.cxMm) * k, y: frontPl.cyMm + (r.box.y - lc.pl.cyMm) * k, w: r.box.w * k, h: r.box.h * k },
+      scale: r.scale / k,
+    };
+    setCutRes(moved);
+    lastCut.current = moved;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frontPl?.cxMm, frontPl?.cyMm, frontPl?.wMm, frontPl?.hMm, fmt.diecut]);
   /**
    * 📐 ย่อ/ขยายทุกอย่างบนผืน (รูป · ช่องรูป · ข้อความ/รูปทรง · จุดแก้) ให้ตัวชิ้นงานยาวสุดเท่าขนาดที่สั่งพอดี
    * แล้วจัดกลางจัตุรัส — จอจะเห็นขนาดจริง (scale = 1) ตรงกับไฟล์ผลิต (ผู้ใช้สั่ง 14 ต.ค. 69 "โยนภาพต้องตามขนาดที่ลูกค้าสั่ง")
@@ -771,10 +792,7 @@ export default function CalendarStudio({
         const mx = (v: number) => Ct.x + (v - C.x) * kt;
         const my = (v: number) => Ct.y + (v - C.y) * kt;
         setDesign(() => mapDesign(d0, kt, mx, my));
-        // เส้นตัดรูปทรงเดิม แค่กรอบย้าย/สเกลตามลาย (เฟรมเดียวกัน ไม่ต้องรอคิดใหม่)
-        const moved: CutResult = { ...r, box: { x: mx(r.box.x), y: my(r.box.y), w: r.box.w * kt, h: r.box.h * kt }, scale: r.scale / kt };
-        setCutRes(moved);
-        lastCut.current = moved;
+        // เส้นตัดตามเฟรม: effect ที่เฝ้าตำแหน่งรูปหลัก (frontPl) ย้ายกรอบเส้นให้เอง
       };
       const step = () => {
         const p = Math.min(1, (performance.now() - t0) / 220);
@@ -1805,18 +1823,6 @@ export default function CalendarStudio({
       ctx.fillText(`ขนาด ${fmt.diecut.size / 10} ซม.`, sx + sw, sy + sh + 4 * dpr);
       ctx.restore();
       if (cutRes) {
-        // ส่วนของลายที่เลยเส้นตัด = ไม่ได้พิมพ์ → ทำจางให้เห็นว่าจะโดนตัดทิ้ง
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, PW, PH);
-        ctx.save();
-        ctx.translate(cutRes.box.x * k, cutRes.box.y * k);
-        ctx.scale(k / cutRes.scale, k / cutRes.scale);
-        pathCurves(ctx, cutRes.cut);
-        ctx.restore();
-        ctx.fillStyle = cutView.bg === "dark" ? "rgba(28,25,23,.62)" : "rgba(255,255,255,.62)";
-        ctx.fill("evenodd");
-        ctx.restore();
         ctx.save();
         const u = k / cutRes.scale; // พิกเซลจอ ต่อ มม.จริง
         ctx.translate(cutRes.box.x * k, cutRes.box.y * k);
@@ -3106,7 +3112,7 @@ export default function CalendarStudio({
     if (!fmt.diecut) throw new Error("not diecut");
     await ensureFonts(fontKeys);
     // เส้นตัดจากตำแหน่งอ้างอิง (ไม่ตามซูม) · ลายจริงตามที่ลูกค้าจัด แล้ว clip ตามเส้น
-    const r = processCut(renderAlpha(CUT_PPM, refDesign).data, CUT_PPM, fmt.diecut.size, cutP);
+    const r = processCut(renderAlpha(CUT_PPM).data, CUT_PPM, fmt.diecut.size, cutP);
     if (!r) throw new Error("ยังไม่มีลายบนชิ้นงาน — ใส่รูปหรือข้อความก่อน");
     const outPpm = 300 / 25.4;
     const srcPpm = Math.min(outPpm * r.scale, 6000 / Math.max(W, H));
