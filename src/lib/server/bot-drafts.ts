@@ -105,7 +105,7 @@ export async function saveBotDraft(
   return { ok: true, id: logRef.id };
 }
 
-type MemMsg = { role?: unknown; text?: unknown; at?: unknown };
+type MemMsg = { role?: unknown; text?: unknown; at?: unknown; notice?: unknown };
 const msOf = (v: unknown): number => {
   if (!v) return NaN;
   if (v instanceof Date) return v.getTime();
@@ -131,6 +131,7 @@ async function fixMemory(db: FirebaseFirestore.Firestore, uid: string, fixes: { 
       let bestGap = Infinity;
       list.forEach((m, i) => {
         if (String(m.role ?? "") !== "assistant") return;
+        if (m.notice) return; // บรรทัดการ์ดระบบ (chat-notice-log) ไม่ใช่คำตอบร่าง
         const gap = msOf(m.at) - f.at;
         if (!Number.isFinite(gap) || gap < -30_000 || gap > 180_000) return;
         if (Math.abs(gap) < bestGap) {

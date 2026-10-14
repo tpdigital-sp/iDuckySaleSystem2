@@ -42,7 +42,7 @@ type Row = {
 };
 type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number } };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean } };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number };
@@ -643,7 +643,7 @@ function Chats() {
               {/* 🤖 17:05 เจ้าของร้าน "กดแล้วควรแสดงอะไรที่แตกต่าง" — สวิตช์เป็นเม็ดยาบอกสถานะชัด: เขียว "บอทตอบ: เปิด" / เทา "บอทตอบ: ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) */}
               {detail ? <BotPill detail={detail} canToggle={can("orders.edit") || canReply} onToggle={() => void toggleBot(detail.id, !detail.botAllowed)} onWake={() => void wakeBot(detail.id)} /> : null}
               {detail ? (
-                <IconBtn onClick={() => setNoteOpen((v) => !v)} title="ข้อมูลลูกค้า · ป้าย · โน้ต" active={noteOpen}>
+                <IconBtn onClick={() => setNoteOpen((v) => !v)} title="ข้อมูลลูกค้า · ออเดอร์ · ป้าย · โน้ต" active={noteOpen}>
                   ℹ️
                 </IconBtn>
               ) : null}
@@ -679,6 +679,22 @@ function Chats() {
                   const admin = m.role === "admin";
                   const ours = m.role === "assistant" || admin;
                   const showDay = i === 0 || dayKey(m.at) !== dayKey(thread[i - 1].at);
+                  const dayChip = showDay ? (
+                    <div className="my-3 flex justify-center">
+                      <span className="rounded-full px-3 py-0.5 text-[11px] font-semibold" style={{ background: "rgba(0,0,0,.08)", color: "#4B5563" }}>
+                        {fmtDay(m.at)}
+                      </span>
+                    </div>
+                  ) : null;
+                  // 🎴 การ์ดแจ้งสถานะที่ระบบส่งเอง (notify.ts → chat-notice-log) — ลูกค้าเห็นเป็นการ์ด Flex ใน LINE
+                  if (m.role === "system" && m.notice) {
+                    return (
+                      <div key={m.id || i}>
+                        {dayChip}
+                        <NoticeCard entry={m} />
+                      </div>
+                    );
+                  }
                   return (
                     <div key={i}>
                       {showDay ? (
@@ -792,12 +808,267 @@ function Chats() {
           onToggle={() => void toggleBot(detail.id, !detail.botAllowed)}
           onWake={() => void wakeBot(detail.id)}
           onClose={() => setNoteOpen(false)}
+          orders={
+            <OrdersBlock
+              key={detail.id}
+              uid={detail.id}
+              canEdit={can("orders.edit")}
+              confirm={confirm}
+              toast={toast}
+              onSent={() => {
+                // การ์ดจดลงห้องแบบเบื้องหลัง (chat-notice-log) — รอแป๊บแล้วดึงห้องใหม่ให้เห็นการ์ดในแชท
+                const id = detail.id;
+                setTimeout(() => void openRoom(id, true), 2500);
+              }}
+            />
+          }
         />
       ) : null}
       {lightbox ? <Lightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} toast={toast} /> : null}
       {tagMgrOpen ? <TagManager tags={tagCatalog} onClose={() => setTagMgrOpen(false)} onSaved={(items) => setTagCatalog(items)} toast={toast} /> : null}
       {confirmDialog}
       {toastNode}
+    </div>
+  );
+}
+
+/** 🎴 การ์ดที่ระบบแจ้งลูกค้าเอง (สถานะออเดอร์/เงินเข้า/จัดส่ง…) — หัวสีเดียวกับการ์ดใน LINE · ไม่ใช่คำตอบแอดมิน */
+function NoticeCard({ entry }: { entry: LogEntry }) {
+  const n = entry.notice!;
+  const tone = /^#[0-9a-f]{6}$/i.test(n.color) ? n.color : "#475569";
+  return (
+    <div className="mb-2 flex items-end justify-end gap-1.5">
+      <span className="mb-0.5 shrink-0 text-right text-[10px] leading-tight" style={{ color: "var(--dk-faint)" }}>
+        🤖 ระบบ
+        <br />
+        {fmtTime(entry.at)}
+      </span>
+      <div className="w-[260px] max-w-[78%] overflow-hidden rounded-xl bg-white text-left shadow-sm md:max-w-[62%]" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+        <div className="px-3 py-2" style={{ background: tone }}>
+          <p className="text-[10px] font-semibold" style={{ color: "#FFFFFFCC" }}>
+            การ์ดแจ้งลูกค้า{n.asText ? " · ส่งเป็นข้อความล้วน" : ""}
+          </p>
+          <p className="text-[14px] font-bold leading-snug text-white">{n.title || "แจ้งลูกค้า"}</p>
+        </div>
+        <details className="px-3 py-1.5 text-[12px]" style={{ color: "#4B5563" }}>
+          <summary className="cursor-pointer select-none" style={{ color: "var(--dk-faint)" }}>
+            ข้อความที่ส่ง
+          </summary>
+          <p className="mt-1 whitespace-pre-wrap break-words">{entry.text}</p>
+        </details>
+        {n.orderId && /^OD-/.test(n.orderId) ? (
+          <a href={`/admin/orders/${encodeURIComponent(n.orderId)}`} target="_blank" rel="noreferrer" className="block border-t px-3 py-1.5 text-[12px] font-bold" style={{ borderColor: "rgba(0,0,0,.06)", color: tone }}>
+            📦 {n.orderId} ↗
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+type ChatOrder = {
+  id: string; date: string; customer: string; status: string; statusLabel: string; total: number; balance: number; tracking?: string;
+  link: "bound" | "login" | "other" | "none"; otherName?: string;
+};
+const baht = (n: number) => `฿${n.toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
+
+/**
+ * 📦 ออเดอร์ของลูกค้าในห้องนี้ (ขั้น 2 · 14 ต.ค. 69) — ผูกจากฝั่งแชท = อยู่ในห้องที่ถูกคนแล้ว ไม่ต้องค้นชื่อ LINE เดาเหมือนหน้าออเดอร์
+ *   · รายการ: ใบที่ผูก LINE นี้ + ใบที่สั่งตอนล็อกอิน LINE นี้ (api chats/orders) — ไม่เดาจากเบอร์
+ *   · 🔗 ผูกออเดอร์: พิมพ์เลข OD → ดูใบก่อน → ผูกผ่าน /api/admin/orders/line-bind ตัวเดิม (ยืนยันกับ LINE + ส่งย้อนหลังการ์ดที่พลาด)
+ *     ใบที่ผูก LINE คนอื่นอยู่ = ถามก่อนผูกทับ
+ *   · 🔔 ส่งการ์ดสถานะล่าสุดซ้ำ: /api/admin/orders/notify-test (การ์ดเดียวกับปุ่มทดสอบส่งในหน้าออเดอร์ · นับโควตา push)
+ */
+function OrdersBlock({
+  uid, canEdit, confirm, toast, onSent,
+}: {
+  uid: string;
+  canEdit: boolean;
+  confirm: ReturnType<typeof useConfirm>["confirm"];
+  toast: (t: string, bad?: boolean) => void;
+  onSent: () => void;
+}) {
+  const [orders, setOrders] = useState<ChatOrder[] | null>(null);
+  const [err, setErr] = useState("");
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState<ChatOrder | null>(null);
+  const [busy, setBusy] = useState("");
+
+  const load = useCallback(async () => {
+    setErr("");
+    try {
+      const j = await botApi<{ orders: ChatOrder[] }>(`/api/admin/chatbot/chats/orders?uid=${encodeURIComponent(uid)}`);
+      setOrders(j.orders);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setOrders([]);
+    }
+  }, [uid]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const lookup = async () => {
+    const t = q.trim();
+    if (!t) return;
+    setBusy("lookup");
+    setFound(null);
+    try {
+      const j = await botApi<{ order: ChatOrder }>(`/api/admin/chatbot/chats/orders?uid=${encodeURIComponent(uid)}&q=${encodeURIComponent(t)}`);
+      setFound(j.order);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const bind = async (o: ChatOrder) => {
+    if (o.link === "other") {
+      const ok = await confirm({
+        icon: "⚠️",
+        title: `${o.id} ผูกกับ LINE คนอื่นอยู่`,
+        detail: `• ตอนนี้ผูกกับ "${o.otherName ?? "อีกบัญชี"}"\n• ผูกทับ = การ์ดแจ้งสถานะของใบนี้จะส่งมาที่ห้องนี้แทน\n• เช็คให้แน่ใจว่าเป็นลูกค้าคนเดียวกับห้องนี้`,
+        confirmLabel: "ผูกทับกับห้องนี้",
+        danger: true,
+      });
+      if (ok !== true) return;
+    }
+    setBusy(`bind:${o.id}`);
+    try {
+      const res = await fetch("/api/admin/orders/line-bind", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: o.id, input: uid }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; resent?: boolean; missed?: string[] };
+      if (!j.ok) {
+        toast(j.error ?? "ผูกไม่สำเร็จ", true);
+        return;
+      }
+      toast(j.resent ? `🔗 ผูก ${o.id} แล้ว · ส่งการ์ดสถานะล่าสุดที่พลาดไปให้ลูกค้าแล้ว` : `🔗 ผูก ${o.id} กับห้องนี้แล้ว`);
+      setFound(null);
+      setQ("");
+      await load();
+      if (j.resent) onSent();
+    } catch {
+      toast("ต่อเซิร์ฟเวอร์ไม่ได้", true);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const resend = async (o: ChatOrder) => {
+    const ok = await confirm({
+      icon: "🔔",
+      title: `ส่งการ์ดสถานะ ${o.id}?`,
+      detail: `• ลูกค้าจะได้การ์ด "${o.statusLabel}" อีกครั้งใน LINE\n• นับโควตาข้อความ LINE 1 ข้อความ`,
+      confirmLabel: "ส่งการ์ด",
+    });
+    if (ok !== true) return;
+    setBusy(`send:${o.id}`);
+    try {
+      const res = await fetch("/api/admin/orders/notify-test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: o.id }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; reason?: string; error?: string };
+      if (j.ok) {
+        toast(`🔔 ส่งการ์ด ${o.statusLabel} แล้ว`);
+        onSent();
+      } else toast(`ส่งไม่ได้ — ${j.reason ?? j.error ?? "ไม่ทราบสาเหตุ"}`, true);
+    } catch {
+      toast("ต่อเซิร์ฟเวอร์ไม่ได้", true);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const row = (o: ChatOrder, preview = false) => (
+    <li key={o.id} className="rounded-xl bg-white p-2.5" style={{ border: "1px solid var(--dk-hair)" }}>
+      <div className="flex items-center gap-1.5">
+        <a href={`/admin/orders/${encodeURIComponent(o.id)}`} target="_blank" rel="noreferrer" className="text-[12.5px] font-extrabold underline-offset-2 hover:underline" style={{ color: "var(--dk-navy)" }}>
+          {o.id} ↗
+        </a>
+        <span className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: "#EEF2F7", color: "var(--dk-navy-soft)" }}>
+          {o.statusLabel}
+        </span>
+      </div>
+      <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+        {o.date} · {o.customer}
+      </p>
+      <p className="mt-0.5 text-[12px]">
+        {baht(o.total)}
+        {o.balance > 0 ? <span className="ml-1.5 font-bold" style={{ color: "#B91C1C" }}>ค้าง {baht(o.balance)}</span> : null}
+        {o.tracking ? <span className="ml-1.5 font-mono text-[11px]" style={{ color: "var(--dk-faint)" }}>📮 {o.tracking}</span> : null}
+      </p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {o.link === "bound" ? (
+          <span className="text-[11px] font-bold" style={{ color: "#0E7A3A" }}>✓ ผูกกับห้องนี้</span>
+        ) : o.link === "login" ? (
+          <span className="text-[11px] font-bold" style={{ color: "#8A5A00" }}>สั่งตอนล็อกอิน LINE นี้ · ยังไม่ผูก</span>
+        ) : o.link === "other" ? (
+          <span className="text-[11px] font-bold" style={{ color: "#B91C1C" }}>⚠️ ผูกกับ LINE &quot;{o.otherName}&quot;</span>
+        ) : (
+          <span className="text-[11px]" style={{ color: "var(--dk-faint)" }}>ยังไม่ผูก LINE</span>
+        )}
+        <span className="ml-auto flex gap-1">
+          {canEdit && o.link !== "bound" ? (
+            <button type="button" disabled={!!busy} onClick={() => void bind(o)} className="min-h-[30px] rounded-full px-2.5 text-[11.5px] font-bold text-white disabled:opacity-50" style={{ background: o.link === "other" ? "#B91C1C" : LINE_GREEN }}>
+              {busy === `bind:${o.id}` ? "กำลังผูก…" : o.link === "other" ? "ผูกทับ" : "🔗 ผูกกับห้องนี้"}
+            </button>
+          ) : null}
+          {canEdit && !preview && (o.link === "bound" || o.link === "login") ? (
+            <button type="button" disabled={!!busy} onClick={() => void resend(o)} title="ส่งการ์ดสถานะล่าสุดของใบนี้ให้ลูกค้าอีกครั้ง (นับโควตา)" className="min-h-[30px] rounded-full px-2.5 text-[11.5px] font-bold disabled:opacity-50" style={{ background: "#EEF2F7", color: "var(--dk-navy-soft)" }}>
+              {busy === `send:${o.id}` ? "กำลังส่ง…" : "🔔 ส่งการ์ดสถานะ"}
+            </button>
+          ) : null}
+        </span>
+      </div>
+    </li>
+  );
+
+  return (
+    <div className="mx-4 mt-3">
+      <div className="mb-1 flex items-center">
+        <p className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>📦 ออเดอร์ของลูกค้านี้</p>
+        {orders && orders.length ? <span className="ml-1.5 text-[11px]" style={{ color: "var(--dk-faint)" }}>{orders.length} ใบ</span> : null}
+      </div>
+      {orders === null ? (
+        <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>กำลังโหลด…</p>
+      ) : err ? (
+        <p className="text-[12px]" style={{ color: "#B91C1C" }}>{err}</p>
+      ) : orders.length ? (
+        <ul className="flex max-h-[340px] flex-col gap-1.5 overflow-y-auto">{orders.map((o) => row(o))}</ul>
+      ) : (
+        <p className="rounded-xl p-2.5 text-[12px]" style={{ background: "#F6F8FB", color: "var(--dk-faint)" }}>
+          ยังไม่มีออเดอร์ที่ผูกกับ LINE นี้
+        </p>
+      )}
+      {canEdit ? (
+        <div className="mt-2">
+          <div className="flex gap-1.5">
+            <input
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setFound(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void lookup();
+              }}
+              placeholder="ผูกออเดอร์: OD-261014-5697"
+              className="min-h-[34px] min-w-0 flex-1 rounded-lg border px-2.5 text-[12.5px]"
+              style={{ borderColor: "var(--dk-hair)" }}
+            />
+            <button type="button" disabled={!q.trim() || busy === "lookup"} onClick={() => void lookup()} className="min-h-[34px] shrink-0 rounded-lg px-3 text-[12px] font-bold text-white disabled:opacity-50" style={{ background: "var(--dk-navy)" }}>
+              {busy === "lookup" ? "…" : "หา"}
+            </button>
+          </div>
+          {found ? <ul className="mt-1.5">{row(found, true)}</ul> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1192,9 +1463,9 @@ function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canTogg
 
 /** ℹ️ แผงข้อมูลลูกค้าด้านขวา — ชื่อ/รูป/ไอดี · สถานะบอท · ป้าย · โน้ตภายใน (ฟิลด์เดียวกับหน้า ลูกค้า LINE) */
 function InfoPanel({
-  detail, canReply, canToggle, noteSaving, onNoteAdd, onNoteEdit, onNoteDel, tags, onTags, onManageTags, onToggle, onWake, onClose,
+  detail, canReply, canToggle, noteSaving, onNoteAdd, onNoteEdit, onNoteDel, tags, onTags, onManageTags, onToggle, onWake, onClose, orders,
 }: {
-  detail: Row; canReply: boolean; canToggle: boolean; noteSaving: boolean;
+  detail: Row; canReply: boolean; canToggle: boolean; noteSaving: boolean; orders: React.ReactNode;
   onNoteAdd: (t: string) => Promise<boolean>; onNoteEdit: (id: string, t: string) => Promise<boolean>; onNoteDel: (id: string) => Promise<boolean>; tags: ChatTag[]; onTags: (ts: string[]) => void; onManageTags: () => void; onToggle: () => void; onWake: () => void; onClose: () => void;
 }) {
   const body = (
@@ -1220,6 +1491,7 @@ function InfoPanel({
         <dt style={{ color: "var(--dk-faint)" }}>บอทคุย</dt><dd>{detail.messageCount ? `${detail.messageCount} ข้อความ` : "—"}</dd>
         <dt style={{ color: "var(--dk-faint)" }}>แอดมินตอบล่าสุด</dt><dd>{detail.lastAdminAt ? ago(detail.lastAdminAt) : "—"}</dd>
       </dl>
+      {orders}
       <div className="mx-4 mt-3">
         <p className="mb-1 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>บอท</p>
         <BotPill detail={detail} canToggle={canToggle} onToggle={onToggle} onWake={onWake} />

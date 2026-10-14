@@ -49,7 +49,9 @@ type Row = {
   adminAlias: string;
 };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number } };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice };
+/** 🎴 การ์ดแจ้งลูกค้าที่ระบบส่งเอง (lib/server/chat-notice-log.ts) */
+type Notice = { orderId: string; title: string; color: string; asText?: boolean };
 type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; allReadAt: string };
 
 function iso(v: unknown): string {
@@ -166,6 +168,13 @@ export async function GET(req: Request) {
         imageExpired: y.imageExpired === true && String(y.type ?? "") === "image" ? true : undefined,
         card: card ? { name: String(card.name ?? ""), url: String(card.url ?? "") } : undefined,
         cards: cards.length ? cards : undefined,
+        notice:
+          y.notice && typeof y.notice === "object"
+            ? (() => {
+                const n = y.notice as Record<string, unknown>;
+                return { orderId: String(n.orderId ?? ""), title: String(n.title ?? ""), color: String(n.color ?? ""), asText: n.asText === true ? true : undefined };
+              })()
+            : undefined,
         file: y.file && typeof y.file === "object" && (y.file as { url?: unknown }).url
           ? { url: String((y.file as { url: unknown }).url), name: String((y.file as { name?: unknown }).name ?? "ไฟล์"), size: Number((y.file as { size?: unknown }).size ?? 0) || 0 }
           : String(y.type ?? "") === "file"

@@ -5301,20 +5301,16 @@ export default function AdminOrderDetailPage() {
           );
         })()}
 
-      {/* ── ⛔ บังคับผูก LINE — ต้องครบทั้ง "ลิงก์ห้องแชท" และ "userId" ──
-           ลิงก์ห้องแชท = พนักงานกระโดดกลับไปคุยกับลูกค้าได้ · userId = ระบบส่งแจ้งสถานะเองได้
-           ขาดอย่างใดอย่างหนึ่งก็ยังทำงานต่อได้ แต่ต้องเห็นชัดว่ายังไม่ครบ */}
+      {/* ── ⛔ บังคับผูก LINE (userId) — ระบบส่งแจ้งสถานะเอง + เปิดห้องแชทในระบบ (/admin/chatbot/chats?id=) ได้จาก userId ตัวเดียว
+           ลิงก์ห้องแชท OA Manager (chat.line.biz) เลิกบังคับแล้ว 14 ต.ค. 69 — เหลือเป็นปุ่มรองไว้ตอบใน OA Manager (ไม่นับโควตา) */}
       {(() => {
-        const needChat = !lineChatOf(order, allOrders);
-        const needUser = !lineUserOf(order, allOrders);
-        if (!needChat && !needUser) return null;
+        if (lineUserOf(order, allOrders)) return null;
         if (isBlankOrder(order)) return null; // เพิ่งกดสร้าง ยังไม่กรอกอะไร — รอให้เริ่มใส่ข้อมูลลูกค้า/รายการก่อนค่อยเตือน
-        const missing = [needChat && "ลิงก์ห้องแชท", needUser && "LINE userId"].filter(Boolean).join(" + ");
         return (
           <a href="#line-bind" className="block border-b border-rose-200 bg-rose-50 px-6 py-3 transition hover:bg-rose-100">
-            <p className="text-sm font-bold text-rose-800">⛔ บังคับ: ยังไม่ได้ผูก {missing} ของลูกค้า</p>
+            <p className="text-sm font-bold text-rose-800">⛔ บังคับ: ยังไม่ได้ผูก LINE ของลูกค้า</p>
             <p className="mt-0.5 text-[11px] font-semibold text-rose-600">
-              ทุกออเดอร์ต้องมีครบทั้ง <b>ลิงก์ห้องแชท</b> และ <b>LINE userId</b> — แตะเพื่อไปที่ช่องผูก ↓
+              ไม่ผูก = ระบบส่งแจ้งสถานะทางไลน์ไม่ได้ และเปิดห้องแชทในระบบไม่ได้ — แตะเพื่อไปที่ช่องผูก ↓
             </p>
           </a>
         );
@@ -6911,7 +6907,8 @@ export default function AdminOrderDetailPage() {
                                     (
                                       [
                                         [calAiUrlOf(sp), ".ai เลเยอร์", "เลเยอร์.ai"],
-                                        [calPdfUrlOf(sp), "ไฟล์ชิ้นงาน (โปรแกรมจัดวาง)", /\.zip(\?|$)/i.test(calPdfUrlOf(sp) ?? "") ? "ชิ้นงาน.zip" : "ชิ้นงาน.pdf"],
+                                        // .pdf = การ์ดชุด → ไฟล์ชิ้นงานโปรแกรมจัดวาง · ปฏิทินแบบอื่น → .pdf ทั้งเล่ม (14 ต.ค. 69)
+                                        [calPdfUrlOf(sp), ".pdf", /\.zip(\?|$)/i.test(calPdfUrlOf(sp) ?? "") ? "ชิ้นงาน.zip" : "งานพิมพ์.pdf"],
                                       ] as const
                                     ).map(([u, label, suffix]) =>
                                       u ? (
@@ -13443,7 +13440,7 @@ function LineChatBox({
     onSave(url);
     setLinkDraft("");
     setReplaceLink(false);
-    setMsg("✅ เก็บลิงก์ห้องแชทแล้ว — ครบทั้งลิงก์และ userId");
+    setMsg("✅ เก็บลิงก์ห้องแชท OA Manager แล้ว");
   }
 
   /** ยิงข้อความทดสอบจริง — รู้ทันทีว่าส่งถึงลูกค้าได้ไหม */
@@ -13483,7 +13480,7 @@ function LineChatBox({
     return (
       <div
         id="line-bind"
-        className={`mt-2 scroll-mt-24 rounded-xl p-2.5 ring-1 ${chat ? "bg-emerald-50/70 ring-emerald-200" : "bg-emerald-50/70 ring-rose-300"}`}
+        className="mt-2 scroll-mt-24 rounded-xl bg-emerald-50/70 p-2.5 ring-1 ring-emerald-200"
       >
         <div className="flex flex-wrap items-center gap-2">
           {line.picture && (
@@ -13515,15 +13512,41 @@ function LineChatBox({
               จำจาก {line.from}
             </span>
           )}
+          {/* 💬 ปุ่มหลัก = ห้องแชทในระบบ (/admin/chatbot/chats ใช้ userId เป็นรหัสห้องอยู่แล้ว ไม่ต้องมีลิงก์ OA) — เห็นการ์ดที่ระบบส่ง + ประวัติบอท
+              ปุ่มรอง = OA Manager (ตอบจากที่นั่นไม่นับโควตา push · คุยยาวไปทางนั้น) — 14 ต.ค. 69 */}
+          <a
+            href={`/admin/chatbot/chats?id=${encodeURIComponent(line.id)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="เปิดห้องแชทในระบบ — ตอบจากที่นี่นับโควตาข้อความ LINE"
+            className="inline-flex items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
+          >
+            💬 เปิดแชท
+          </a>
           {chat && (
             <a
               href={chat.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#05b34c]"
+              title="เปิดใน LINE OA Manager — ตอบจากที่นั่นไม่นับโควตา"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-[#06A047] ring-1 ring-[#06C755]/40 transition hover:bg-emerald-50"
             >
-              💬 เปิดแชท
+              OA Manager ↗
             </a>
+          )}
+          {/* ลิงก์ OA Manager ไม่บังคับแล้ว — อยากได้ปุ่มเปิดใน OA Manager ค่อยกดวาง */}
+          {!chat && mayEdit && !replaceLink && (
+            <button
+              type="button"
+              onClick={() => {
+                setReplaceLink(true);
+                setMsg("");
+              }}
+              title="ไม่บังคับ — วางลิงก์ห้องแชทจาก OA Manager ไว้เป็นปุ่มเปิดใน OA Manager (ตอบจากที่นั่นไม่นับโควตา)"
+              className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            >
+              ＋ ลิงก์ OA Manager
+            </button>
           )}
           {mayEdit && (
             <>
@@ -13582,13 +13605,25 @@ function LineChatBox({
             </>
           )}
         </div>
-        {/* ผูกคนได้แล้วแต่ยังไม่มีลิงก์ห้องแชท (หรือกดว่าลิงก์ที่ยืมมาไม่ใช่ห้องนี้) — บังคับต้องมีทั้งคู่ ให้วางลิงก์ตรงนี้ได้เลย */}
-        {(!chat || replaceLink) && (
-          <div className="mt-1.5 rounded-lg bg-rose-50 p-2 ring-1 ring-rose-200">
-            <p className="text-[11px] font-bold text-rose-700">
-              {replaceLink
-                ? "🔗 วาง “ลิงก์ห้องแชทที่ถูกต้อง” ของใบนี้ — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง"
-                : "⛔ ยังขาด “ลิงก์ห้องแชท” (บังคับ) — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง"}
+        {/* วางลิงก์ OA Manager — เฉพาะตอนกดขอเอง (＋ ลิงก์ OA Manager / ✕ ไม่ใช่ห้องนี้) · ไม่บังคับแล้ว 14 ต.ค. 69 */}
+        {replaceLink && (
+          <div className="mt-1.5 rounded-lg bg-white p-2 ring-1 ring-slate-200">
+            <p className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
+              <span className="min-w-0 flex-1">
+                {chat
+                  ? "🔗 วาง “ลิงก์ห้องแชทที่ถูกต้อง” ของใบนี้ — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง"
+                  : "🔗 ลิงก์ห้องแชท OA Manager (ไม่บังคับ) — ก๊อป URL จากหน้าห้องแชทใน OA Manager มาวาง"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setReplaceLink(false);
+                  setLinkDraft("");
+                }}
+                className="shrink-0 rounded-full px-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                ปิด
+              </button>
             </p>
             {mayEdit ? (
               <div className="mt-1 flex gap-1.5">
@@ -13599,19 +13634,19 @@ function LineChatBox({
                     if (e.key === "Enter") saveChatLink();
                   }}
                   placeholder="https://chat.line.biz/…/chat/…"
-                  className="min-w-0 flex-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-rose-400 focus:outline-none"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[12px] text-slate-700 focus:border-slate-400 focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={saveChatLink}
                   disabled={!linkDraft.trim()}
-                  className="shrink-0 rounded-lg bg-rose-600 px-3 py-1 text-[11px] font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                  className="shrink-0 rounded-lg bg-slate-700 px-3 py-1 text-[11px] font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
                 >
                   บันทึกลิงก์
                 </button>
               </div>
             ) : (
-              <p className="mt-0.5 text-[10px] text-rose-600">ให้พนักงานที่แก้ออเดอร์ได้เป็นคนวางลิงก์</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">ให้พนักงานที่แก้ออเดอร์ได้เป็นคนวางลิงก์</p>
             )}
           </div>
         )}
@@ -13642,7 +13677,7 @@ function LineChatBox({
                 onClick={() => {
                   onSave("");
                   setPingCopied(null);
-                  setMsg("ลบลิงก์ห้องแชทแล้ว — วางลิงก์ที่ถูกต้องในช่องสีแดงด้านล่างได้เลย");
+                  setMsg("ลบลิงก์ห้องแชท OA Manager แล้ว (ไม่บังคับ — ปุ่ม 💬 เปิดแชทในระบบยังใช้ได้)");
                 }}
                 className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
                 title="ลบลิงก์ห้องแชทของใบนี้ (คนที่ผูกไว้ยังอยู่)"
@@ -13656,7 +13691,7 @@ function LineChatBox({
       </div>
     );
 
-  // ── ยังไม่ผูก — บังคับ ต้องใส่ให้ครบทั้งลิงก์ห้องแชทและ userId ──
+  // ── ยังไม่ผูก — บังคับผูก userId (ลิงก์ OA Manager ไม่บังคับแล้ว 14 ต.ค. 69) ──
   // ออเดอร์เพิ่งสร้างยังว่างเปล่า = ยังไม่รู้ว่าลูกค้าคือใคร → โทนปกติไว้ก่อน ค่อยขึ้นแดงเมื่อเริ่มกรอก
   if (!mayEdit) return null;
   const fresh = !changing && isBlankOrder(order);
@@ -13670,8 +13705,8 @@ function LineChatBox({
           {changing
             ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่"
             : fresh
-              ? "🔗 ผูก LINE ของลูกค้า (ลิงก์ห้องแชท + userId) — ผูกได้เลยถ้ารู้แล้วว่าลูกค้าคนไหน"
-              : "⛔ บังคับ: ต้องผูก LINE ของลูกค้าให้ครบ (ลิงก์ห้องแชท + userId)"}
+              ? "🔗 ผูก LINE ของลูกค้า — ผูกได้เลยถ้ารู้แล้วว่าลูกค้าคนไหน"
+              : "⛔ บังคับ: ต้องผูก LINE ของลูกค้า — ไม่ผูก = ระบบส่งแจ้งสถานะทางไลน์ไม่ได้"}
         </p>
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
         {chat && !changing && (
@@ -13722,12 +13757,10 @@ function LineChatBox({
           </button>
         )}
       </div>
-      {/* เช็กลิสต์ 2 ช่อง — เห็นทันทีว่าขาดอะไร (ในโหมดนี้ userId ยังไม่ผูกแน่นอน) */}
-      {!changing && (
-        <p className="mt-1 text-[10px] font-bold">
-          <span className={chat ? "text-emerald-600" : fresh ? "text-slate-400" : "text-rose-600"}>{chat ? "✔" : "✖"} ลิงก์ห้องแชท</span>
-          <span className="mx-1.5 text-slate-300">·</span>
-          <span className={fresh ? "text-slate-400" : "text-rose-600"}>✖ LINE userId</span>
+      {/* ทางลัด: ผูกจากหน้าแชทในระบบได้ด้วย (แผง ℹ️ → 📦 ออเดอร์ของลูกค้านี้ → พิมพ์เลข OD) — อยู่ในห้องที่ถูกคนแล้ว ไม่ต้องเดาชื่อ */}
+      {!changing && !fresh && (
+        <p className="mt-1 text-[10px] font-semibold text-slate-500">
+          หรือผูกจาก <a href="/admin/chatbot/chats" target="_blank" rel="noopener noreferrer" className="font-bold text-[#06A047] underline">หน้าแชท LINE</a> → ℹ️ → 📦 พิมพ์ {order.id}
         </p>
       )}
       <div className="mt-1.5 flex gap-1.5">
@@ -13956,7 +13989,7 @@ function LineChatBox({
         </div>
       )}
       <p className="mt-1 text-[10px] leading-snug text-slate-500">
-        ต้องได้ครบ 2 อย่าง: วาง <b>ลิงก์ห้องแชท</b> (chat.line.biz) แล้วแตะเลือกจากรายชื่อ หรือพิมพ์ <b>ชื่อ LINE</b> ค้นหาเพื่อผูก <b>userId</b>
+        พิมพ์ <b>ชื่อ LINE</b> ค้นหาแล้วแตะเลือก · หรือวาง <b>ลิงก์ห้องแชท</b> (chat.line.biz) ให้ระบบช่วยหาคน — ลิงก์ OA Manager ไม่บังคับแล้ว
       </p>
       {note}
     </div>

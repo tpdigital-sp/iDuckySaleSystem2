@@ -19,6 +19,8 @@ import { itemQtyText } from "@/lib/item-yield";
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
+import { inBackground } from "@/lib/server/background";
+import { logChatNotice } from "@/lib/server/chat-notice-log";
 import { forgetLineQuota, quotaResetText, quotaText, shopQuota } from "@/lib/server/line-quota";
 
 /**
@@ -204,12 +206,18 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, msg: stri
      * ตกลงมาเป็นข้อความล้วนจาก altText (เนื้อความชุดเดียวกับก่อนเปลี่ยนเป็นการ์ด) แล้วส่งอีกครั้ง
      * 400 เท่านั้น — 401/403/429 เป็นเรื่อง token/ลูกค้าบล็อก/โควตา ส่งซ้ำก็ไม่ผ่าน (ดู scripts/flex-messages-test.mts)
      */
+    let asText = false;
     if (res.status === 400 && typeof msg !== "string" && msg.some((m) => m.type === "flex")) {
       const text = msg.map((m) => (m.type === "flex" ? m.altText : m.text)).join("\n");
       console.error(`[notify] การ์ด Flex ของออเดอร์ ${order.id} ถูก LINE ตีกลับ — ส่งเป็นข้อความล้วนแทน`);
       res = await push([{ type: "text", text }]);
+      asText = true;
     }
-    if (res.ok) return { ok: true, via: target.via };
+    if (res.ok) {
+      // 💬 จดลงห้องแชท /admin/chatbot/chats ให้แอดมิน+บอทเห็นว่าระบบแจ้งอะไรไป (lib/server/chat-notice-log.ts)
+      inBackground("logChatNotice", logChatNotice(target.id, order.id, messages as LineMessage[], asText));
+      return { ok: true, via: target.via };
+    }
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     // 403 = ลูกค้าบล็อก OA หรือไม่ได้เป็นเพื่อน · 401 = token ผิด/หมดอายุ · 429 = โควตาข้อความหมด
     const hint =

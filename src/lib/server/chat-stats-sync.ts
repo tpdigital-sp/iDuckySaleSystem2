@@ -50,6 +50,7 @@ export async function webStats(db: Firestore, start: string, end: string): Promi
         const x = d.data() as LogRow;
         const at = toMs(x.at);
         const text = String(x.text ?? "");
+        if (x.role === "system") continue; // การ์ดแจ้งสถานะที่ระบบส่งเอง (chat-notice-log) ไม่ใช่การตอบแชท
         if (x.role === "user") msgs.push({ who: "cust", at, text });
         else if (x.role === "admin" && x.mode === "web" && x.by) {
           msgs.push({ who: String(x.by), at, text });

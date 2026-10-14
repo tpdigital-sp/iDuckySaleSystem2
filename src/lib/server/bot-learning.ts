@@ -31,7 +31,7 @@ async function questionBefore(db: FirebaseFirestore.Firestore, uid: string, at: 
   const out: string[] = [];
   for (const d of snap.docs) {
     const role = String(d.get("role") ?? "");
-    if (role === "draft") continue;
+    if (role === "draft" || role === "system") continue; // การ์ดระบบแทรกกลางคำถามได้ ไม่ใช่คำตอบร้าน
     if (role !== "user") {
       if (out.length) break;
       continue;

@@ -47,6 +47,14 @@ create index if not exists orders_line_quota_missed_idx
 create index if not exists orders_payments_gin
   on public.orders using gin ((data->'payments') jsonb_path_ops);
 
+-- 📦 แผง "ออเดอร์ของลูกค้านี้" ในหน้าแชท LINE (14 ต.ค. 69) — หาใบจาก LINE ที่ผูก/ล็อกอิน ทุกครั้งที่เปิดห้อง
+create index if not exists orders_line_user_idx
+  on public.orders ((data->>'lineUserId'))
+  where (data->>'lineUserId') is not null;
+create index if not exists orders_login_line_idx
+  on public.orders ((data->'loginLine'->>'userId'))
+  where (data->'loginLine'->>'userId') is not null;
+
 -- ── ตรวจผลหลังรัน ────────────────────────────────────────────────────────
 -- ดัชนีที่มีอยู่ + ขนาด
 --   select indexname, pg_size_pretty(pg_relation_size(indexrelid)) as size
