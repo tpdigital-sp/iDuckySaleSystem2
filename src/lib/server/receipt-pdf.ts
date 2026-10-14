@@ -157,7 +157,7 @@ function drawContHead(c: Ctx, order: Order, shop: ShopInfo): void {
 function drawCustomer(c: Ctx, order: Order): void {
   text(c, "ลูกค้า", LEFT, { size: 7, color: FAINT });
   c.y -= 12;
-  text(c, politeName(order.customer) || "—", LEFT, { font: c.f.bold, size: 10 });
+  text(c, politeName(order.customer, order.address) || "—", LEFT, { font: c.f.bold, size: 10 });
   c.y -= 11;
   if (order.phone) {
     text(c, order.phone, LEFT, { size: 8, color: SOFT });

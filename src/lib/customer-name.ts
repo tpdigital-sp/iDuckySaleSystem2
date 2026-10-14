@@ -11,16 +11,23 @@
 const HAS_TITLE =
   /^(นาย|นางสาว|นาง|น\.ส\.?|ด\.ช\.?|ด\.ญ\.?|ดร\.?|ผศ\.?|รศ\.?|ศ\.|อ\.|อาจารย์|ครู|พระ|หมอ|พี่|น้อง|mr\.?\s|mrs\.?\s|ms\.?\s|miss\s|dr\.?\s)/i;
 const ORG =
-  /^(บริษัท|บจก|บมจ|หจก|ห้าง|ร้าน|โรงเรียน|โรงพยาบาล|รพ\.|มหาวิทยาลัย|วิทยาลัย|สถาบัน|สำนักงาน|สำนัก|องค์การ|อบต|อบจ|เทศบาล|กรม|กอง|ศูนย์|ชมรม|สมาคม|มูลนิธิ|สหกรณ์|วัด|คณะ|กลุ่ม|ทีม|ชุมนุม|โครงการ|แผนก|ฝ่าย)|จำกัด|co\.,?\s*ltd|company|limited|ltd\.?$|inc\.?$|studio|shop|store/i;
+  /^(บริษัท|บจก|บมจ|หจก|ห้าง|ร้าน|โรงเรียน|โรงพยาบาล|รพ\.|มหาวิทยาลัย|วิทยาลัย|สถาบัน|สำนักงาน|สำนัก|องค์การ|อบต|อบจ|เทศบาล|กรม|กอง|ศูนย์|ชมรม|สมาคม|มูลนิธิ|สหกรณ์|วัด|คณะ|กลุ่ม|ทีม|ชุมนุม|โครงการ|แผนก|ฝ่าย)|จำกัด|มหาชน|co\.,?\s*ltd|company|limited|ltd\.?$|inc\.?$|corporation|\bcorp\.?\b|\bplc\.?\b|\bllc\b|\bgmbh\b|\bpte\.?\b|\bholdings?\b|\bgroup\b|\benterprises?\b|\binternational\b|\bco\.\s|studio|shop|store/i;
+/** เลขผู้เสียภาษีนิติบุคคล 13 หลักขึ้นต้นด้วย 0 (บุคคลธรรมดาขึ้นต้น 1–8) — เจอในที่อยู่ = ใบนี้ออกในนามบริษัท */
+const JURISTIC_TAX_ID = /(?<!\d)0(?:[\s-]?\d){12}(?!\d)/;
 /** คำนำหน้าแบบ "คุณ" ทุกทรง — ตัดออกให้หมด (ซ้อนกันก็ตัด) แล้วเติม "คุณ" ตัวเดียว: "K.คุณ…" / "คุณคุณ…" / "คุน…" ไม่เบิ้ล */
 const KHUN_LIKE = /^(คุณ|คุน|k\.|khun(?=\s))\s*/i;
 
 /** ชื่ออังกฤษเว้นวรรคหลัง "คุณ" ("คุณ Ploy") · ชื่อไทยติดกัน ("คุณพลอย") */
 const khun = (rest: string) => (/^[a-z]/i.test(rest) ? `คุณ ${rest}` : `คุณ${rest}`);
 
-export function politeName(name: string | null | undefined): string {
+/**
+ * @param hint ที่อยู่ (หรือข้อความอื่นของใบ) — ถ้ามีเลขผู้เสียภาษีนิติบุคคล = ชื่อนี้คือบริษัท ไม่เติม "คุณ"
+ *   (OD-261009-8290 "ZTE Corporation" ใบเสร็จขึ้น "คุณ ZTE Corporation" ลูกค้าเอาไปเบิกไม่ได้ · 14 ต.ค. 69)
+ */
+export function politeName(name: string | null | undefined, hint?: string | null): string {
   const n = String(name ?? "").trim();
   if (!n || n === "ยังไม่ระบุชื่อ" || n === "—") return n;
+  if (hint && JURISTIC_TAX_ID.test(hint)) return n;
   let rest = n;
   while (KHUN_LIKE.test(rest)) rest = rest.replace(KHUN_LIKE, "");
   if (!rest) return n;

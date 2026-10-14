@@ -1357,7 +1357,7 @@ function OrderDocs({
                       <p className="mb-1 inline-block rounded border-2 border-slate-900 px-2 py-0.5 text-sm font-extrabold">📍 รอบที่ {to.round} ส่งที่อยู่นี้ (ไม่ใช่ที่อยู่ในใบ)</p>
                     )}
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ผู้รับ / To</p>
-                    <p className="mt-1 text-2xl font-extrabold leading-tight">{politeName(to.name)}</p>
+                    <p className="mt-1 text-2xl font-extrabold leading-tight">{politeName(to.name, to.address)}</p>
                     <p className="mt-1 whitespace-pre-line text-lg leading-snug">{to.address}</p>
                     <p className="mt-2 text-xl font-bold tabular-nums">โทร. {to.phone}</p>
                   </>
@@ -1785,7 +1785,7 @@ function OrderDocs({
                     </div>
                     <div className="w-2/5 shrink-0 text-right">
                       <p className="text-base font-bold uppercase tracking-widest text-slate-400">ผู้รับ</p>
-                      <p className="break-words text-4xl font-extrabold leading-tight text-sky-700">{politeName(order.customer)}</p>
+                      <p className="break-words text-4xl font-extrabold leading-tight text-sky-700">{politeName(order.customer, order.address)}</p>
                       {order.rush && <p className="mt-2 text-3xl font-extrabold text-rose-600">🔥 งานเร่ง</p>}
                     </div>
                   </div>
