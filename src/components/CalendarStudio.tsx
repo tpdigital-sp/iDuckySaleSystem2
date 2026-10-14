@@ -1575,6 +1575,7 @@ export default function CalendarStudio({
       const np = layPage(fmt, basePage, nd).photo;
       const own = d.photos[key];
       // ลากจุดจับช่อง: รูปคงขนาด/ตำแหน่งตอนเริ่มลาก (คิดจากค่าตั้งต้นทุกครั้ง ไม่เพี้ยนสะสม)
+      if (fmt.diecut) return d; // ✂️ ไดคัท: ช่องรูปตายตัวทั้งผืน รูปไม่ต้องคลุมช่อง
       if (np && keep && keep.src >= 0 && srcs[keep.src]) nd.photos = { ...d.photos, [key]: { ...keep, pl: keepCover(keep.pl, np) } };
       else if (np && own && own.src >= 0 && srcs[own.src] && !placementCovers(own.pl, np))
         nd.photos = { ...d.photos, [key]: { ...own, pl: fitPl(np, srcs[own.src]) } };
@@ -1976,7 +1977,8 @@ export default function CalendarStudio({
     const ctx = canvasRef.current?.getContext("2d");
     const gr = gridOf(page, design);
     // 🖼 จับจุดของช่องรูปหลักที่เลือกอยู่ = ปรับขนาดช่อง (มุม/ขอบตรงข้ามอยู่กับที่)
-    if (slotFocus && page.photo && !selEl && tool === "photo") {
+    // ✂️ ไดคัท: ช่องรูป = ทั้งผืน ไม่มีการย่อ/ขยาย/ย้ายช่อง (ย้ายรูปตรง ๆ แทน) — ดูบั๊ก 14 ต.ค. 69 ด้านล่าง
+    if (slotFocus && page.photo && !selEl && tool === "photo" && !fmt.diecut) {
       const sr = page.photo;
       const tol = (14 * W) / (canvasRef.current!.getBoundingClientRect().width || 1);
       const hi = handlesOf(sr, 0).findIndex(([hx, hy]) => Math.abs(p.x - hx) <= tol && Math.abs(p.y - hy) <= tol);
@@ -2113,6 +2115,16 @@ export default function CalendarStudio({
       // แตะช่องรูปที่ยังว่าง = เลือกรูปใส่ช่องนี้เลย
       pointers.current.delete(e.pointerId);
       slotInputRef.current?.click();
+      return;
+    }
+    /**
+     * 🐛 14 ต.ค. 69 "กดซูมแล้วคลิกที่ภาพ ภาพขยายใหญ่เอง": คลิกบนรูป = เริ่มลาก "ย้ายช่องรูป" (slot-move)
+     * ขยับแม้ 0.x พิกเซล → setSlot → keepCover ขยายรูปให้คลุมช่องเต็ม — ช่องของงานไดคัทคือทั้งผืน
+     * รูปที่ลูกค้าย่อไว้เลยเด้งใหญ่เต็มผืนทันที · ไดคัท: ลากบนรูป = ย้ายรูปเฉย ๆ (ขนาดคงเดิม)
+     */
+    if (fmt.diecut && cur && page.photo && inRect(p, page.photo)) {
+      drag.current = { kind: "photo", pl: cur.pl, x: p.x, y: p.y };
+      setTool("photo");
       return;
     }
     if (cur && page.photo && inRect(p, page.photo)) {
@@ -2586,8 +2598,14 @@ export default function CalendarStudio({
       r = elementBox(ctx, selEl);
       p = pad;
       n = selEl.kind === "text" ? 4 : 8;
-    } else if (slotFocus && page.photo && tool === "photo") r = page.photo;
-    else if (gridSel) {
+    } else if (slotFocus && page.photo && tool === "photo") {
+      // ✂️ ไดคัท: กรอบรอบรูปที่วาง (ไม่ใช่ช่องทั้งผืน) และไม่มีจุดจับ (ย่อ/ขยายด้วยซูม/บีบนิ้ว)
+      const ph = fmt.diecut ? photoOf(page, design, imgs) : null;
+      if (ph) {
+        r = { x: ph.pl.cxMm - ph.pl.wMm / 2, y: ph.pl.cyMm - ph.pl.hMm / 2, w: ph.pl.wMm, h: ph.pl.hMm };
+        n = 0;
+      } else r = page.photo;
+    } else if (gridSel) {
       r = gridOf(page, design);
       p = pad;
     }
