@@ -7,7 +7,7 @@ import { Btn, Empty, FChip, PageHead, PageShell, SearchBox, Tag } from "@/compon
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { KB_TYPES, type KbImage, type KbItem, type PriceLink } from "@/lib/bot-kb-types";
 import { renderChatText } from "@/lib/shop-chat";
-import { ago, blobToDataUrl, botApi, ChatbotTabs, Modal, Pager, shrinkImage, uploadBotImage, useToast } from "../bot-ui";
+import { ago, blobToDataUrl, botApi, Modal, Pager, shrinkImage, uploadBotImage, useToast } from "../bot-ui";
 
 /**
  * 📚 คลังความรู้ของบอท — ย้ายจาก AdminBuddy knowledge.html (3 ต.ค. 69)
@@ -190,7 +190,6 @@ function Knowledge() {
           </>
         }
       />
-      <ChatbotTabs />
 
       {progress && !adding && (
         <p className="mt-3 rounded-xl px-3 py-2 text-[13px] font-bold" style={{ background: "var(--dk-sky)", color: "var(--dk-blue-deep)" }} aria-live="polite">

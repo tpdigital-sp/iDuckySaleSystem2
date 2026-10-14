@@ -6,7 +6,7 @@ import { Btn, Empty, PageHead, PageShell, SearchBox } from "@/components/admin/u
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { useCan } from "@/lib/perm-context";
 import type { PricingItem } from "@/lib/bot-kb-types";
-import { ago, botApi, ChatbotTabs, Modal, Pager, useToast } from "../bot-ui";
+import { ago, botApi, Modal, Pager, useToast } from "../bot-ui";
 
 /**
  * 💰 ตารางราคาของบอท — ย้ายจาก AdminBuddy pricing.html (3 ต.ค. 69)
@@ -183,7 +183,6 @@ function Pricing() {
           </>
         }
       />
-      <ChatbotTabs />
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <div className="min-w-[240px] flex-1">

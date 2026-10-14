@@ -18,7 +18,7 @@ import {
   type Bucket,
   type DayAgg,
 } from "@/lib/ai-cost";
-import { botApi, ChatbotTabs, Modal, useToast } from "../bot-ui";
+import { botApi, Modal, useToast } from "../bot-ui";
 
 /**
  * 💸 แดชบอร์ดค่าใช้จ่าย AI แบบสด — /admin/chatbot/costs (เจ้าของร้านขอ 8 ต.ค. 69)
@@ -185,8 +185,6 @@ function Costs() {
         title="ค่าใช้จ่ายบอท"
         count={calc ? `${fmtThb(calc.today.costUsd * calc.rate)} วันนี้` : undefined}
         sub="Gemini ที่บอทใช้ตอบลูกค้า/วิเคราะห์/อ่านสลิป คิดจากโทเคนจริงทุกคำขอ · สดทุก 10 วิ"
-        tools={<ChatbotTabs inHead />}
-        toolsTop
       />
 
       {/* แถบควบคุม: สถานะสด · หยุด/เดินต่อ · ตั้งค่า */}

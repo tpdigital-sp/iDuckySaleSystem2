@@ -1,47 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 
 /**
- * 🤖 ชิ้นส่วนร่วมของหมวด Chatbot — แท็บสลับหน้า · เรียก API · ย่อรูป · toast
+ * 🤖 ชิ้นส่วนร่วมของหมวด Chatbot — เรียก API · ย่อรูป · toast
  * หน้า: ผู้ช่วยตอบแชท / คลังความรู้ / ตารางราคา (ย้ายจาก AdminBuddy 3 ต.ค. 69) · หน้าลิงก์ราคา & รูป เอาออกแล้ว 3 ต.ค. 69 (ภาพในคำตอบดึงภาพปกสินค้าบนเว็บเอง)
  */
 
-const TABS = [
-  { href: "/admin/chatbot", label: "🤖 ผู้ช่วยตอบแชท" },
-  { href: "/admin/chatbot/knowledge", label: "📚 คลังความรู้" },
-  { href: "/admin/chatbot/pricing", label: "💰 ตารางราคา" },
-  // 💸 แดชบอร์ดค่าใช้จ่าย AI สด (8 ต.ค. 69) — สิทธิ์ reports.view · คนที่ไม่มีสิทธิ์กดแล้วเจอหน้า "ไม่มีสิทธิ์" ของ RequirePerm
-  { href: "/admin/chatbot/costs", label: "💸 ค่าใช้จ่าย" },
-  { href: "/admin/chatbot/chat-stats", label: "📊 สถิติตอบแชท" },
-  { href: "/admin/chatbot/learning", label: "🎓 บอทเรียนรู้" },
-  // 💬 แชท LINE / ตอบลูกค้า (/admin/chatbot/chats) ไม่อยู่ในแถบนี้ — เจ้าของร้าน 9 ต.ค. 69: ย้ายไปเมนูหลัก หมวด Chatbot แล้ว "อันนี้เอาออก"
-];
-
-/** แถบแท็บใต้หัวหน้า — สลับ 4 หน้าของบอทได้ในคลิกเดียว */
-export function ChatbotTabs({ inHead }: { inHead?: boolean } = {}) {
-  const path = usePathname();
-  return (
-    <nav className={`dkb-scroll flex gap-1.5 ${inHead ? "" : "mt-3"}`} aria-label="หน้าในหมวด Chatbot">
-      {TABS.map((t) => {
-        const on = path === t.href;
-        return (
-          <Link
-            key={t.href}
-            href={t.href}
-            aria-current={on ? "page" : undefined}
-            className="min-h-[40px] shrink-0 rounded-full px-4 py-2 text-[13.5px] font-bold transition"
-            style={on ? { background: "var(--dk-navy)", color: "white" } : { background: "white", color: "var(--dk-navy-soft)", border: "1px solid var(--dk-hair)" }}
-          >
-            {t.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
+// แถบแท็บ ChatbotTabs เอาออกแล้ว 14 ต.ค. 69 — ซ้ำกับเมนูหลักหมวด Chatbot (เจ้าของร้าน: "ไม่จำเป็นต้องมี มีที่เมนูแล้ว")
 
 /** เรียก API ของบอท — โยน Error ข้อความไทยที่แสดงได้เลย */
 export async function botApi<T>(url: string, body?: unknown): Promise<T> {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import { Banner, Btn, Empty, PageHead, PageShell, Stat, Stats } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
-import { botApi, ChatbotTabs, useToast } from "../bot-ui";
+import { botApi, useToast } from "../bot-ui";
 import { AUTO_REPLY_NAME, SYSTEM_SENDERS, csvTs, cycleBack, cycleKey, feedConversation, finalizeSender, newAcc, parseCsv, resolveOaName, thDate, type OaSummary, type SenderAcc, type SenderStats } from "@/lib/chat-stats";
 import { readZip } from "@/lib/zip-read";
 
@@ -219,7 +219,7 @@ function Inner() {
 
   return (
     <PageShell>
-      <PageHead group="🤖 Chatbot" title="สถิติตอบแชท" count={data ? `${rows.filter((r) => r.known).length} คน` : undefined} sub="นับข้อความและจำนวนลูกค้าที่พนักงานตอบ ต่อรอบบิล 26 → 25 · ฝั่งเว็บซิงก์ให้หน้าค่าคอมเองทุกครั้งที่ตอบ · ฝั่ง LINE OA Manager โยน zip CSV แล้วกด 💾" tools={<ChatbotTabs inHead />} toolsTop />
+      <PageHead group="🤖 Chatbot" title="สถิติตอบแชท" count={data ? `${rows.filter((r) => r.known).length} คน` : undefined} sub="นับข้อความและจำนวนลูกค้าที่พนักงานตอบ ต่อรอบบิล 26 → 25 · ฝั่งเว็บซิงก์ให้หน้าค่าคอมเองทุกครั้งที่ตอบ · ฝั่ง LINE OA Manager โยน zip CSV แล้วกด 💾" />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1">
         <label className="flex items-center gap-2 text-[13.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>

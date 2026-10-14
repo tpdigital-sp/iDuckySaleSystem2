@@ -5,7 +5,6 @@ import RequirePerm from "@/components/RequirePerm";
 import { PageHead, PageShell, Tag } from "@/components/admin/ui";
 import { useActor } from "@/lib/perm-context";
 import { renderChatText } from "@/lib/shop-chat";
-import { ChatbotTabs } from "./bot-ui";
 
 /**
  * 🤖 ผู้ช่วยตอบแชท (AI) — ย้ายมาจาก AdminBuddy chat.html (localhost:8765) 3 ต.ค. 69
@@ -313,8 +312,6 @@ function Chatbot() {
   return (
     <PageShell wide>
       <PageHead group="🤖 Chatbot" title="ผู้ช่วยตอบแชท" sub="วางคำถามลูกค้า → ได้คำตอบจากราคาจริงบนเว็บ + คลังความรู้ร้าน → คัดลอกไปตอบใน LINE"
-        tools={<ChatbotTabs inHead />}
-        toolsTop
       />
 
       <div className="relative mt-4">

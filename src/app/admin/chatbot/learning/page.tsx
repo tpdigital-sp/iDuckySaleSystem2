@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import { Banner, Btn, Empty, PageHead, PageShell } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
-import { ago, botApi, ChatbotTabs, useToast } from "../bot-ui";
+import { ago, botApi, useToast } from "../bot-ui";
 import { useConfirm, type ConfirmOptions } from "@/components/admin/ConfirmDialog";
 
 /**
@@ -89,8 +89,6 @@ function Learning() {
         title="บอทเรียนรู้"
         count={data ? `${data.openCount} รอสอน` : undefined}
         sub="ร่างที่แอดมินกด “ไม่ส่ง · ให้บอทเรียนรู้” ในหน้าแชท LINE มารอที่นี่ — เขียนคำตอบที่ถูกแล้วบันทึก บอทจะตอบเรื่องแบบนี้ได้ถูกครั้งหน้า"
-        tools={<ChatbotTabs inHead />}
-        toolsTop
       />
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
