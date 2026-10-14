@@ -39,8 +39,9 @@ async function contactForOrder(sb: NonNullable<ReturnType<typeof getSupabaseAdmi
   }
   const digits = String(order.phone ?? "").replace(/\D/g, "");
   if (digits.length < 9) return null;
-  const { data } = await sb.from("contacts").select("id,data").eq("data->>phone", digits).limit(2);
-  const rows = (data ?? []) as ContactRow[];
+  const { data } = await sb.from("contacts").select("id,data").eq("data->>phone", digits).limit(5);
+  // การ์ดนำเข้าที่ไม่มีชื่อจริง (เช่น ".") ไม่มีแต้ม ไม่นับเป็น "อีกคน" — เดิมเบอร์ที่มีการ์ดแบบนี้ซ้อนอยู่ไม่ได้แต้มเลย (#357/#7940 · OD-261014-3893)
+  const rows = ((data ?? []) as ContactRow[]).filter((r) => /[ก-๙A-Za-z0-9]{2,}/.test(r.data?.name ?? "") || Number(r.data?.point) > 0);
   return rows.length === 1 ? rows[0] : null;
 }
 
@@ -59,6 +60,9 @@ export async function awardPointsForOrder(order: Order): Promise<void> {
     // เคยบวกออเดอร์นี้แล้ว → ข้าม (SlipOK + แอดมินกดเปลี่ยนสถานะ ยิงมาซ้ำได้)
     const { data: dup } = await sb.from("contact_points").select("id").eq("id", logId).maybeSingle();
     if (dup) return;
+    // เคยบวกให้ "การ์ดอื่น" ไปแล้ว (จับคู่จากเบอร์ก่อนผูก แล้วมาผูกทีหลังคนละการ์ด) → ไม่บวกซ้ำ
+    const { data: other } = await sb.from("contact_points").select("id").like("id", `%:od:${order.id}`).limit(1);
+    if (other?.length) return;
     const { error: insErr } = await sb.from("contact_points").insert({
       id: logId,
       contact_id: hit.id,

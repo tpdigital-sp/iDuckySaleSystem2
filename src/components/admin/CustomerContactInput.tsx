@@ -180,3 +180,61 @@ export function ContactChip({ contactId, onUnlink }: { contactId: string; onUnli
     </span>
   );
 }
+
+/** การ์ดที่นำเข้ามาแบบไม่มีชื่อจริง (เช่น ".") ไม่มีแต้ม — ไม่ใช่ตัวจริงของเบอร์นี้ (OD-261014-3893 เบอร์เดียวมี #357 กับ #7940 ".") */
+const placeholderContact = (c: Contact) => !/[ก-๙A-Za-z0-9]{2,}/.test(c.name ?? "") && !(c.point > 0);
+
+/**
+ * 💡 ใบยังไม่ผูกผู้ติดต่อ แต่เบอร์ตรงกับคนในคลัง → ชวนกดผูก
+ *
+ * ทำไมต้องมี: OD-261014-3893 (14 ต.ค. 69) พนักงานพิมพ์ชื่อเองไม่ได้เลือกจากรายชื่อ → ลูกค้า Silver 5% สั่งเพิ่ม/โอนครบ
+ * โดยใบไม่รู้ว่าเป็นสมาชิก · มาผูกทีหลังตอนจ่ายแล้ว ระบบคิดส่วนลดย้อนให้ไม่ได้ (กันโอนเกิน) และแต้มก็ไม่เข้า
+ * → เห็นตั้งแต่ใส่เบอร์ กดเดียวผูกได้เลย (ไม่ผูกให้เอง — เบอร์เดียวกันอาจเป็นคนละคนในบริษัทเดียวกัน)
+ */
+export function ContactSuggestChip({ phone, onPick }: { phone: string; onPick: (c: Contact) => void }) {
+  const digits = phone.replace(/\D/g, "");
+  const [hits, setHits] = useState<Contact[]>([]);
+  useEffect(() => {
+    let dead = false;
+    setHits([]);
+    if (digits.length < 9) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/contacts?q=${encodeURIComponent(digits)}&limit=10`);
+        const j = (await res.json().catch(() => ({}))) as { contacts?: Contact[] };
+        const same = (j.contacts ?? []).filter((c) => (c.phone ?? "").replace(/\D/g, "") === digits);
+        const real = same.filter((c) => !placeholderContact(c));
+        if (!dead) setHits((real.length ? real : same).sort((a, b) => (b.point || 0) - (a.point || 0)).slice(0, 2));
+      } catch {
+        /* ไม่เจอ = ไม่ชวน */
+      }
+    }, 300);
+    return () => {
+      dead = true;
+      clearTimeout(t);
+    };
+  }, [digits]);
+  if (!hits.length) return null;
+  return (
+    <>
+      {hits.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => onPick(c)}
+          className="inline-flex min-h-[30px] items-center gap-1.5 rounded-full bg-amber-50 px-3 text-[11px] font-bold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100"
+          title={`ผูกผู้ติดต่อ #${c.id} — ส่วนลดระดับสมาชิกคิดให้เอง + ชำระครบแล้วแต้มเข้าคนนี้`}
+        >
+          🪪 เบอร์นี้คือ {c.name || `#${c.id}`}
+          {c.point > 0 && (
+            <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] tabular-nums text-amber-700">{c.point.toLocaleString("th-TH")} แต้ม</span>
+          )}
+          {c.tierLevel && c.tierLevel !== "member" && (
+            <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] capitalize text-amber-700">{c.tierLevel}</span>
+          )}
+          <span className="text-amber-600">· กดผูก</span>
+        </button>
+      ))}
+    </>
+  );
+}

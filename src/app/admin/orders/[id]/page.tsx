@@ -206,7 +206,7 @@ import { SHIP_WINDOW_RULE, earliestShipDate, orderDateYmd, shipWindowForUseBy, s
 import { rushManualStamp } from "@/lib/rush-auto";
 import HolidayDatePicker from "@/components/HolidayDatePicker";
 import { useShopHolidays } from "@/lib/use-shop-holidays";
-import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
+import { ContactChip, ContactSuggestChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 import { OrderAlertEditor, OrderAlertPopup } from "@/components/admin/OrderAlertPopup";
 
 // 🏭 กล่อง "ส่งเข้าผลิต (คิวปริ้น)" หน้าออเดอร์ — ซ่อน (คิวปริ้นอ่านจากบอร์ด TP เอง · ใบพิเศษกดที่ /admin/print)
@@ -5473,7 +5473,21 @@ export default function AdminOrderDetailPage() {
                     {order.contactId ? (
                       <ContactChip contactId={order.contactId} onUnlink={() => applyOrder({ ...order, contactId: undefined })} />
                     ) : (
-                      <span className="text-[11px] text-slate-400">💡 พิมพ์ชื่อเพื่อผูกผู้ติดต่อ — เริ่มสะสมแต้มตั้งแต่ออเดอร์แรก</span>
+                      <>
+                        {/* 🪪 เบอร์ตรงกับคนในคลัง → ชวนผูกก่อนลูกค้าโอน (ผูกหลังโอนแล้ว ส่วนลดระดับคิดย้อนไม่ได้ · OD-261014-3893) */}
+                        <ContactSuggestChip
+                          phone={order.phone}
+                          onPick={(c) =>
+                            applyOrder({
+                              ...order,
+                              customer: order.customer && order.customer !== "ยังไม่ระบุชื่อ" ? order.customer : c.name || order.customer,
+                              address: order.address || c.address || "",
+                              contactId: c.id,
+                            })
+                          }
+                        />
+                        <span className="text-[11px] text-slate-400">💡 พิมพ์ชื่อเพื่อผูกผู้ติดต่อ — เริ่มสะสมแต้มตั้งแต่ออเดอร์แรก</span>
+                      </>
                     )}
                     {(order.customer || order.address || order.phone) && order.customer !== "ยังไม่ระบุชื่อ" && (
                       <CopyChip

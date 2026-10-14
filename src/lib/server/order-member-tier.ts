@@ -142,3 +142,21 @@ function mayApplyOnMoneyIn(cur: Order, next: Order): boolean {
   if ((next.discount?.amount ?? 0) <= (cur.discount?.amount ?? 0)) return false;
   return overpaidAmount(next) <= 0;
 }
+
+/**
+ * ผูกผู้ติดต่อ "หลังลูกค้าโอนครบแล้ว" → ส่วนลดระดับที่ควรได้แต่ระบบคิดย้อนไม่ได้ (ด่านกันโอนเกิน) · ไม่มี = null
+ * ไว้ลง log ให้พนักงานเห็นทันทีว่าลูกค้าเสียส่วนลดไปเท่าไร (OD-261014-3893 · 14 ต.ค. 69 Silver 5% ผูกทีหลัง 23 นาทีหลังโอน
+ * → พนักงานเห็นแค่ "แต้มสมาชิกไม่ขึ้นส่วนลด" ไม่รู้ว่าเพราะอะไร)
+ */
+export async function missedMemberTier(sb: SB, o: Order): Promise<{ label: string; amount: number } | null> {
+  if (!o.contactId || o.dealer || o.customerId || o.claimOf || o.flowAccount || o.discount?.tierId) return null;
+  if (o.discount && !o.discount.couponAmount) return null; // มีส่วนลดที่ตกลงกันไว้แล้ว (คูปอง/ใบเสนอราคา) — ไม่ใช่เคสตกหล่น
+  try {
+    const tier = await memberTierOfContact(sb, o.contactId);
+    if (!tier) return null;
+    const amount = tierDiscountAmount(Math.max(0, orderSubtotal(o) - orderItemDiscounts(o)), tier.pct);
+    return amount > 0 ? { label: memberTierLabel(tier.name, tier.pct), amount } : null;
+  } catch {
+    return null;
+  }
+}

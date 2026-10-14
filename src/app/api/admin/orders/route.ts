@@ -12,7 +12,7 @@ import { dropEarlyPayForBill, syncOrderEarlyPay } from "@/lib/server/order-early
 import { needsPurchaseStamp, notifyStockArrived } from "@/lib/server/needs-purchase";
 import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
-import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
+import { missedMemberTier, syncOrderMemberTier } from "@/lib/server/order-member-tier";
 import { KEY_STATUSES, followUpNotice, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reconcileFollowupsForOrder, reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCancelToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
 import { settleCreditedOrder } from "@/lib/server/slip-apply";
@@ -31,6 +31,7 @@ import {
   clearStageMemory,
   stageAfterPayment,
   hasUnpaidBalance,
+  isPaidStatus,
   orderBalance,
   orderTotal,
   orderVatAmount,
@@ -943,6 +944,17 @@ export async function PATCH(req: Request) {
         ? withLog(toSave, who, "คิดส่วนลดระดับสมาชิก", `${toSave.discount.label} −${toSave.discount.amount.toLocaleString("th-TH")} บาท`)
         : withLog(toSave, who, "เอาส่วนลดระดับสมาชิกออก", beforeTier ? `${beforeTier.label} −${beforeTier.amount.toLocaleString("th-TH")} บาท` : "ไม่ได้ผูกผู้ติดต่อแล้ว");
     }
+    // 🪪 เพิ่งผูกผู้ติดต่อ แต่ใบรับเงินครบแล้ว → ส่วนลดคิดย้อนไม่ได้ · บอกให้ชัดในประวัติว่าลูกค้าเสียไปเท่าไร (OD-261014-3893)
+    if (toSave.contactId && toSave.contactId !== existing.contactId && !toSave.discount?.tierId) {
+      const miss = await missedMemberTier(sb, toSave);
+      if (miss)
+        toSave = withLog(
+          toSave,
+          actor.name?.trim() || actor.username,
+          "⚠️ ผูกผู้ติดต่อหลังลูกค้าโอนแล้ว — ส่วนลดระดับไม่ได้คิดย้อน",
+          `${miss.label} ควรลด ${miss.amount.toLocaleString("th-TH")} บาท · ระบบไม่ลดเองเพราะจะกลายเป็นโอนเกิน — ร้านชดเชยเอง (คืนเงิน/คูปอง) · ครั้งหน้าผูกผู้ติดต่อก่อนส่งยอดให้ลูกค้า`
+        );
+    }
   }
 
   /**
@@ -1360,6 +1372,10 @@ export async function PATCH(req: Request) {
   if (swKey(toSave) !== swKey(existing)) await syncStockWaitToTP(toSave);
   // 👤 แอดมินแก้ชื่อผู้รับ/เบอร์ → อัปเดตการ์ดบอร์ด WIP ให้ตรงหน้าออเดอร์ (เก็บชื่อเก่าไว้ให้จับคู่โฟลเดอร์เดิมได้)
   if (mayEditFull) inBackground("syncCustomerToTP", syncCustomerToTP(existing, toSave));
+  // 🪪 ผูกผู้ติดต่อทีหลังบนใบที่จ่ายครบแล้ว → แต้มต้องเข้าด้วย (เดิมบวกเฉพาะจังหวะเปลี่ยนสถานะ — ใบที่จับคู่เบอร์ไม่ได้ เพราะเบอร์ซ้ำ 2 การ์ด
+  //    จึงไม่ได้แต้มเลย · OD-261014-3893) · awardPointsForOrder กันบวกซ้ำต่อออเดอร์เอง
+  if (mayEditFull && toSave.contactId && toSave.contactId !== existing.contactId && isPaidStatus(toSave.status) && (!toSave.deposit || toSave.deposit.settledAt))
+    inBackground("awardPointsForOrder", awardPointsForOrder(toSave));
   // ยอดของเรคอร์ดสะพานทั้งสองใบ (งวดแรก + งวดหลัง) — ต่างกันเมื่อไหร่แปลว่าต้องยิงอัปเดตไป msVerify
   const tpMoneyKey = (o: Order) => JSON.stringify([amountsForRecord(o, false), amountsForRecord(o, true)]);
   // 💵 ยอดที่ msVerify ต้องกระทบกับแถวโอนของธนาคารเปลี่ยนหลังส่งเรคอร์ดไปแล้ว → อัปเดตให้ตรง
