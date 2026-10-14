@@ -31,6 +31,8 @@ type Row = {
   pausedUntil: string;
   lastAdminAt: string;
   unread: boolean;
+  /** 📝 มีร่างคำตอบบอทรอกดส่ง (โหมดร่าง 13 ต.ค. 69) */
+  draftPending?: boolean;
   adminTag: string;
   adminTags: string[];
   adminNote: string;
@@ -39,20 +41,21 @@ type Row = {
 };
 type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number } };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number } };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
-type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number };
+type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number };
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
 type Quota = { limit: number | null; used: number; left: number | null; at: string };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
 type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry; pausedUntil?: string | null; warn?: string };
-type Scope = "waiting" | "all" | "unread" | "new" | "old";
+type Scope = "waiting" | "all" | "unread" | "draft" | "new" | "old";
 
 const LINE_GREEN = "#06C755";
 const SCOPES: { key: Scope; label: string }[] = [
   { key: "all", label: "ทั้งหมด" },
   { key: "unread", label: "🟢 ยังไม่อ่าน" },
+  { key: "draft", label: "📝 ร่างรอส่ง" },
   { key: "waiting", label: "🙋 รอแอดมิน" },
   { key: "new", label: "🆕 ใหม่" },
   { key: "old", label: "👤 เก่า" },
@@ -129,20 +132,27 @@ function Chats() {
   const [quota, setQuota] = useState<Quota | null>(null);
   const [waitingCount, setWaitingCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [draftCount, setDraftCount] = useState(0);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
+  // 🔎 14 ต.ค. 69 "ค้นหาไม่ได้จริง": คำขอรายชื่อเก่า (เปิดหน้า/รีเฟรช 30 วิ ที่ไม่มีคำค้น) ตอบช้ากว่าผลค้นหา แล้วเขียนทับรายชื่อกลับเป็นทั้งหมด
+  // → นับเลขคำขอ ใช้เฉพาะคำตอบของคำขอล่าสุด
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const my = ++loadSeq.current;
     setLoading(true);
     try {
       const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}`);
+      if (my !== loadSeq.current) return;
       setRows(d.rows);
       setSettings(d.settings);
       setWaitingCount(d.waitingCount);
       setUnreadCount(d.unreadCount);
+      setDraftCount(d.draftCount ?? 0);
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), true);
+      if (my === loadSeq.current) toast(e instanceof Error ? e.message : String(e), true);
     } finally {
-      setLoading(false);
+      if (my === loadSeq.current) setLoading(false);
     }
   }, [scope, q, toast]);
 
@@ -150,6 +160,13 @@ function Chats() {
     const t = setTimeout(() => void load(), q ? 350 : 0);
     return () => clearTimeout(t);
   }, [load, q]);
+
+  // 🔗 ?id=U… เปิดห้องนั้นเลย (ลิงก์ "เปิดแชท" จากหน้า บอทเรียนรู้ · 14 ต.ค. 69)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("id") ?? "";
+    if (/^U[0-9a-f]{32}$/.test(id)) void openRoom(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // รีเฟรชรายการทุก 30 วิ (แชทเข้าตลอด) — เฉพาะตอนไม่ได้ค้นหา
   useEffect(() => {
@@ -213,7 +230,9 @@ function Chats() {
   const counts = useMemo(() => ({ newN: rows.filter((r) => r.scope === "new").length, oldN: rows.filter((r) => r.scope === "old").length }), [rows]);
   const modeText = !settings
     ? ""
-    : settings.mode === "log-only"
+    : settings.mode === "draft"
+      ? "📝 โหมดร่าง: บอทร่างคำตอบให้ทุกห้อง ลูกค้ายังไม่ได้รับจนกว่าแอดมินกดส่ง"
+      : settings.mode === "log-only"
       ? "บอทตอบเฉพาะคนที่เปิดสวิตช์ 🤖 · ที่เหลือแอดมินตอบ"
       : settings.mode === "new-only"
         ? "บอทตอบเฉพาะลูกค้าใหม่"
@@ -231,6 +250,68 @@ function Chats() {
       if (r.warn) toast(r.warn, true);
     },
     [sel, quota, toast],
+  );
+
+  // 📝 โหมดร่าง (13 ต.ค. 69): ส่ง/ทิ้งร่างของบอท · สลับโหมดทั้งร้าน (สิทธิ์ settings.manage)
+  const afterDraft = useCallback(
+    (logId: string, replace: LogEntry | null) => {
+      setDetail((d) => {
+        if (!d) return d;
+        const log = (d.log.length ? d.log : d.messages).map((x) => (x.id === logId ? (replace ? { ...x, ...replace } : { ...x, status: "discarded" }) : x));
+        return { ...d, log, messages: [] };
+      });
+      setRows((rs) => rs.map((x) => (x.id === sel ? { ...x, draftPending: false, needsHumanFollowup: replace ? false : x.needsHumanFollowup } : x)));
+      setDraftCount((n) => Math.max(0, n - 1));
+    },
+    [sel],
+  );
+  const sendDraft = useCallback(
+    async (m: LogEntry, text: string): Promise<boolean> => {
+      if (!sel || !m.id) return false;
+      try {
+        const d = await botApi<{ ok: boolean; entry?: LogEntry }>("/api/admin/chatbot/chats/draft", { action: "send", id: sel, logId: m.id, text });
+        afterDraft(m.id, { ...(d.entry as LogEntry), status: "sent" });
+        if (quota && quota.left !== null) setQuota({ ...quota, used: quota.used + 1, left: Math.max(0, quota.left - 1) });
+        toast("ส่งให้ลูกค้าแล้ว");
+        return true;
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+        return false;
+      }
+    },
+    [sel, afterDraft, quota, toast],
+  );
+  // 🎓 14 ต.ค. 69 เจ้าของร้าน: "ปุ่มทิ้งขอเป็นการเข้าสู่เรียนรู้ เพื่อให้แอดมินตอบ" → ไม่ส่งร่าง + เปิดเรื่องในหน้า บอทเรียนรู้ แล้วแอดมินพิมพ์ตอบลูกค้าเองด้านล่าง
+  const discardDraft = useCallback(
+    async (m: LogEntry) => {
+      if (!sel || !m.id) return;
+      if (!window.confirm("ไม่ส่งร่างนี้?\n\nลูกค้าจะไม่ได้รับข้อความนี้ · พิมพ์ตอบลูกค้าเองในช่องด้านล่าง\nเรื่องนี้จะไปรอที่หน้า 🎓 บอทเรียนรู้ ให้สอนคำตอบที่ถูก")) return;
+      try {
+        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "learn", id: sel, logId: m.id });
+        afterDraft(m.id, null);
+        toast(d.saved || "ทิ้งร่างแล้ว");
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      }
+    },
+    [sel, afterDraft, toast],
+  );
+  const switchMode = useCallback(
+    async (mode: "draft" | "log-only") => {
+      const msg =
+        mode === "draft"
+          ? "เปิดโหมดร่าง?\n\nบอทจะร่างคำตอบให้ลูกค้าทุกคนที่ทักมา แต่ลูกค้ายังไม่ได้รับ จนกว่าแอดมินกดส่งในหน้านี้\n(ต้องกด Publish workflow LINE OA Bot ใน n8n ก่อน ไม่งั้นบอทยังไม่รู้จักโหมดนี้)"
+          : "ปิดโหมดร่าง?\n\nบอทจะกลับไปเก็บแชทอย่างเดียว ไม่ร่าง ไม่ตอบ";
+      if (!window.confirm(msg)) return;
+      try {
+        const d = await botApi<{ ok: boolean; saved?: string; mode: string }>("/api/admin/chatbot/chats/draft", { action: "mode", mode });
+        setSettings((x) => (x ? { ...x, mode: d.mode } : x));
+        toast(d.saved || "บันทึกแล้ว");
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      }
+    },
+    [toast],
   );
 
   const toggleBot = useCallback(
@@ -398,15 +479,33 @@ function Chats() {
             โควตา {quotaText}
           </button>
         </div>
-        <p className="px-3 pt-0.5 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
-          {modeText}
-        </p>
+        <div className="flex items-center gap-2 px-3 pt-0.5">
+          <p className="min-w-0 flex-1 text-[11.5px]" style={{ color: settings?.mode === "draft" ? "#8A5A00" : "var(--dk-faint)", fontWeight: settings?.mode === "draft" ? 700 : 400 }}>
+            {modeText}
+          </p>
+          {settings && can("settings.manage") && (settings.mode === "draft" || settings.mode === "log-only") ? (
+            <button
+              type="button"
+              onClick={() => void switchMode(settings.mode === "draft" ? "log-only" : "draft")}
+              className="shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-bold"
+              style={settings.mode === "draft" ? { background: "#F1F5F9", color: "var(--dk-navy-soft)" } : { background: "#FFF4D6", color: "#8A5A00", border: "1px solid #F0D48A" }}
+              title={settings.mode === "draft" ? "ปิดโหมดร่าง — บอทกลับไปเก็บแชทอย่างเดียว" : "เปิดโหมดร่าง — บอทร่างคำตอบให้ทุกห้อง แอดมินกดส่งเอง"}
+            >
+              {settings.mode === "draft" ? "ปิดโหมดร่าง" : "📝 เปิดโหมดร่าง"}
+            </button>
+          ) : null}
+        </div>
         <div className="px-3 pt-2">
-          <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อลูกค้า…" />
+          <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อลูกค้า / ชื่อที่ตั้ง / userId…" />
+          {q && loading ? (
+            <p className="px-1 pt-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+              กำลังค้น “{q}” ทั้งคลังแชท…
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-1.5 px-3 py-2">
           {SCOPES.map((s) => {
-            const n = s.key === "waiting" ? waitingCount : s.key === "unread" ? unreadCount : s.key === "new" ? counts.newN : s.key === "old" ? counts.oldN : 0;
+            const n = s.key === "waiting" ? waitingCount : s.key === "unread" ? unreadCount : s.key === "draft" ? draftCount : s.key === "new" ? counts.newN : s.key === "old" ? counts.oldN : 0;
             return (
               <button
                 key={s.key}
@@ -433,7 +532,7 @@ function Chats() {
             </p>
           ) : !rows.length ? (
             <div className="p-4">
-              <Empty title={scope === "waiting" ? "ไม่มีห้องที่รอแอดมิน" : "ยังไม่มีห้องแชท"} body={q ? "ไม่พบชื่อที่ค้น — ลองพิมพ์คำขึ้นต้นของชื่อ LINE" : "เมื่อลูกค้าทักมา ห้องจะขึ้นที่นี่"} />
+              <Empty title={scope === "waiting" ? "ไม่มีห้องที่รอแอดมิน" : "ยังไม่มีห้องแชท"} body={q ? "ไม่พบชื่อนี้ — ค้นได้ทั้งชื่อ LINE ชื่อที่แอดมินตั้ง และ userId (ส่วนใดของชื่อก็ได้)" : "เมื่อลูกค้าทักมา ห้องจะขึ้นที่นี่"} />
             </div>
           ) : (
             rows.map((r) => (
@@ -465,6 +564,7 @@ function Chats() {
                     {r.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
                     {r.pausedUntil ? <Chip tone="lilac">⏸ พักบอท</Chip> : null}
                     {r.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
+                    {r.draftPending ? <Chip tone="amber">📝 ร่างรอส่ง</Chip> : null}
                   </div>
                 </div>
                 {r.unread ? <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: LINE_GREEN }} aria-label="ยังไม่ได้อ่าน" /> : null}
@@ -541,6 +641,21 @@ function Chats() {
                 </p>
               ) : (
                 thread.map((m, i) => {
+                  if (m.role === "draft") {
+                    const latest = m.status === "pending" && !thread.slice(i + 1).some((x) => x.role === "draft" && x.status === "pending");
+                    return latest ? (
+                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} />
+                    ) : (
+                      <div key={m.id || i} className="mb-2 flex justify-end">
+                        <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
+                          <summary className="cursor-pointer">
+                            📝 ร่างบอทที่ไม่ได้ส่ง · {m.status === "discarded" ? "ทิ้งแล้ว" : m.status === "superseded" ? "มีร่างใหม่กว่า" : "ยังไม่ส่ง"} · {fmtTime(m.at)}
+                          </summary>
+                          <p className="mt-1 whitespace-pre-wrap">{m.text}</p>
+                        </details>
+                      </div>
+                    );
+                  }
                   const admin = m.role === "admin";
                   const ours = m.role === "assistant" || admin;
                   const showDay = i === 0 || dayKey(m.at) !== dayKey(thread[i - 1].at);
@@ -557,7 +672,7 @@ function Chats() {
                         {!ours ? <Avatar src={detail?.pictureUrl} size={28} /> : null}
                         {ours ? (
                           <span className="mb-0.5 shrink-0 text-right text-[10px] leading-tight" style={{ color: "var(--dk-faint)" }}>
-                            {admin ? m.by || "แอดมิน" : "บอท"}
+                            {admin ? m.by || "แอดมิน" : m.approvedBy ? `บอท ✓ ${m.approvedBy}${m.edited ? " (แก้)" : ""}` : "บอท"}
                             <br />
                             {fmtTime(m.at)}
                           </span>
@@ -666,12 +781,80 @@ function Chats() {
   );
 }
 
-function Chip({ tone, children }: { tone: "mint" | "sky" | "lilac" | "coral"; children: React.ReactNode }) {
+/**
+ * 📝 การ์ดร่างคำตอบของบอท (โหมดร่าง 13 ต.ค. 69 — เจ้าของร้าน "อยากเป็นคนกดส่งเอง กลัวบอทให้ข้อมูลผิด")
+ * แก้ข้อความได้ · Enter = ส่ง (Shift+Enter ขึ้นบรรทัด แบบช่องพิมพ์ด้านล่าง) · การ์ดสินค้า/รูปบัญชีในร่างส่งตามไปด้วย
+ */
+function DraftCard({ entry, canSend, onSend, onDiscard }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void }) {
+  const [text, setText] = useState(entry.draftText ?? "");
+  const [busy, setBusy] = useState(false);
+  const extras = entry.text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /^\[(การ์ด|รูป|สติกเกอร์)\]/.test(l))
+    .map((l) => l.replace(/^\[รูป\]\s*/, "🖼 รูป ").replace(/^\[การ์ด\]\s*/, "🧾 การ์ด ").replace(/^\[สติกเกอร์\]\s*/, "สติกเกอร์ ").trim());
+  const send = async () => {
+    if (busy || !canSend) return;
+    if (!text.trim() && !extras.length) return;
+    setBusy(true);
+    const ok = await onSend(text);
+    if (!ok) setBusy(false);
+  };
+  return (
+    <div className="mb-3 flex justify-end">
+      <div className="w-full max-w-[92%] rounded-2xl p-3 md:max-w-[70%]" style={{ background: "#FFF8E6", border: "1.5px dashed #E8B54A" }}>
+        <div className="mb-1.5 flex items-center gap-2 text-[12px] font-bold" style={{ color: "#8A5A00" }}>
+          📝 ร่างจากบอท · ลูกค้ายังไม่ได้รับ
+          <span className="ml-auto font-normal" style={{ color: "#A07A2C" }}>{fmtTime(entry.at)}</span>
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+          disabled={!canSend || busy}
+          rows={Math.min(12, Math.max(3, text.split("\n").length + 1))}
+          className="w-full resize-y rounded-xl bg-white px-3 py-2 text-[14px] leading-relaxed outline-none"
+          style={{ border: "1px solid #F0D48A" }}
+        />
+        {extras.length ? (
+          <p className="mt-1 text-[11.5px]" style={{ color: "#8A5A00" }}>
+            ส่งพร้อมกัน: {extras.join(" · ")}
+          </p>
+        ) : null}
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-[11px]" style={{ color: "#A07A2C" }}>
+            {canSend ? "ถูกต้องกด Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่ · ผิด = ไม่ส่ง แล้วตอบเอง" : "บัญชีนี้ส่งไม่ได้ / โควตาหมด"}
+          </span>
+          <button type="button" onClick={onDiscard} disabled={busy} title="ไม่ส่งร่างนี้ — แอดมินตอบลูกค้าเอง แล้วสอนคำตอบที่ถูกให้บอทที่หน้า บอทเรียนรู้" className="ml-auto min-h-[36px] rounded-full px-3 text-[13px] font-bold" style={{ background: "#F1F5F9", color: "var(--dk-navy-soft)" }}>
+            ไม่ส่ง · ให้บอทเรียนรู้
+          </button>
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={!canSend || busy}
+            className="min-h-[36px] rounded-full px-4 text-[13px] font-bold text-white disabled:opacity-50"
+            style={{ background: LINE_GREEN }}
+          >
+            {busy ? "กำลังส่ง…" : "ส่งให้ลูกค้า"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Chip({ tone, children }: { tone: "mint" | "sky" | "lilac" | "coral" | "amber"; children: React.ReactNode }) {
   const S: Record<string, { bg: string; fg: string }> = {
     mint: { bg: "var(--dk-mint-wash, #E7F8EE)", fg: "var(--dk-mint-ink, #166534)" },
     sky: { bg: "var(--dk-sky, #E6F1FB)", fg: "var(--dk-blue-deep, #1D4ED8)" },
     lilac: { bg: "var(--dk-lilac-wash, #EFE9FB)", fg: "var(--dk-lilac-ink, #5B21B6)" },
     coral: { bg: "var(--dk-coral-wash, #FDE8E6)", fg: "var(--dk-coral-ink, #B91C1C)" },
+    amber: { bg: "#FFF4D6", fg: "#8A5A00" },
   };
   return (
     <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: S[tone].bg, color: S[tone].fg }}>

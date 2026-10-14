@@ -65,6 +65,8 @@ const MENU: { href: string; label: string; emoji: string; perm: Perm; group: str
   { href: "/admin/chatbot/chat-stats", label: "สถิติตอบแชท", emoji: "📊", perm: "reports.view", group: "Chatbot" },
   // 💬 แชท LINE ที่บอทเห็น + ช่องพิมพ์ตอบลูกค้าจากเว็บ (เจ้าของร้านขอใส่เมนู 9 ต.ค. 69) — ดูได้ด้วย reports.view หรือ chat.reply (หน้าเช็คเอง)
   { href: "/admin/chatbot/chats", label: "แชท LINE / ตอบลูกค้า", emoji: "🗨️", perm: "chat.reply", group: "Chatbot" },
+  // 🎓 ร่างบอทที่แอดมินกด "ไม่ส่ง · ให้บอทเรียนรู้" → เขียนคำตอบที่ถูกเข้าคลังความรู้ (เจ้าของร้าน 14 ต.ค. 69)
+  { href: "/admin/chatbot/learning", label: "บอทเรียนรู้", emoji: "🎓", perm: "chat.reply", group: "Chatbot" },
   // ย้ายมาจากหน้า AdminBuddy (พอร์ต 8765) 15 ก.ย. 69 — คลังแชท LINE + สวิตช์บอทรายคน · ย้ายจากหมวดลูกค้ามาหมวด Chatbot 3 ต.ค. 69 (URL เดิม)
   { href: "/admin/line-customers", label: "ลูกค้า LINE", emoji: "💬", perm: "orders.edit", group: "Chatbot" },
   // ⚙️ ร้าน & ระบบ

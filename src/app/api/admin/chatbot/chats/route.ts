@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { draftEditableText } from "@/lib/server/bot-drafts";
 import type { Firestore } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
+import { loadChatIndex, norm, core } from "@/lib/server/line-chat";
 
 /**
  * 💬 แชท LINE ที่บอทเห็น — อ่านจาก Firestore `ordersure/line-conversations` (บอท n8n เขียน)
@@ -35,6 +37,8 @@ type Row = {
   lastAdminAt: string;
   /** 🟢 ยังไม่ได้เปิดอ่านบนเว็บหลังลูกค้าทักล่าสุด (webReadAt < lastSeen และ lastAdminAt < lastSeen) */
   unread: boolean;
+  /** 📝 มีร่างคำตอบของบอทรอแอดมินกดส่ง (โหมด draft · 13 ต.ค. 69) */
+  draftPending: boolean;
   /** 🏷📝 ป้ายความเร่งด่วน (urgent/rush/normal) · โน้ตแอดมิน · ชื่อที่ตั้งเอง — ฟิลด์เดียวกับหน้า /admin/line-customers */
   adminTag: string;
   /** 🏷 หลายป้าย — ไม่มีฟิลด์ (ข้อมูลเก่า) ใช้ [adminTag] */
@@ -45,7 +49,7 @@ type Row = {
   adminAlias: string;
 };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number } };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number } };
 type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; allReadAt: string };
 
 function iso(v: unknown): string {
@@ -103,6 +107,7 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     pausedUntil: paused && paused > new Date().toISOString() ? paused : "",
     lastAdminAt: lastAdmin,
     unread,
+    draftPending: !!iso(x.draftPendingAt),
     adminTag: String(x.adminTag ?? ""),
     adminTags: Array.isArray(x.adminTags) ? (x.adminTags as unknown[]).map(String).filter(Boolean) : x.adminTag ? [String(x.adminTag)] : [],
     adminNote: String(x.adminNote ?? ""),
@@ -150,6 +155,11 @@ export async function GET(req: Request) {
         type: y.type ? String(y.type) : undefined,
         mode: y.mode ? String(y.mode) : undefined,
         by: y.by ? String(y.by) : undefined,
+        // 📝 ร่างของบอท: pending/superseded/discarded/sent · คำตอบที่แอดมินอนุมัติ = approvedBy
+        status: y.status ? String(y.status) : undefined,
+        approvedBy: y.approvedBy ? String(y.approvedBy) : undefined,
+        edited: y.edited === true ? true : undefined,
+        draftText: y.role === "draft" ? draftEditableText(y.payload) : undefined,
         imageUrl: y.imageUrl ? String(y.imageUrl) : undefined,
         // รูปจากลูกค้า: ยังไม่ได้ดึง → หน้าเว็บใช้ /api/admin/chatbot/chats/image?uid&log (ดึงจาก LINE แล้วแคชขึ้น Storage)
         messageId: y.messageId ? String(y.messageId) : undefined,
@@ -174,21 +184,46 @@ export async function GET(req: Request) {
   const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));
   const scope = (u.searchParams.get("scope") ?? "all").trim();
   const q = (u.searchParams.get("q") ?? "").trim().toLowerCase();
+  // 🐢 14 ต.ค. 69 "หน้าแชทโหลดช้ามาก": เดิมอ่านห้องเต็ม 400 ห้อง ~1.4 MB ทุกครั้ง (และซ้ำทุก 30 วิ) — 1.1 MB เป็น `profile` (สรุปลูกค้าของบอท)
+  // ที่รายชื่อไม่ได้ใช้ → อ่านเฉพาะช่องที่ toRow ใช้ (วัดตรง: 2.9 วิ → 0.24 วิ) · หน้าห้อง (?id=) ยังอ่านเต็มเหมือนเดิม
+  const LIST_FIELDS = [
+    "displayName", "pictureUrl", "lastSeen", "lastUserText", "messageCount", "messages", "botScope", "needsHumanFollowup", "botPausedUntil",
+    "lastAdminAt", "webReadAt", "draftPendingAt", "adminTag", "adminTags", "adminNote", "adminNotes", "adminNoteBy", "adminNoteAt", "adminAlias",
+  ];
   let snap;
   if (q) {
-    // ค้นชื่อ: nameLower ขึ้นต้นด้วย q (บอทเก็บ nameLower ไว้ตอน Save Profile)
-    snap = await db.collection(COL).where("nameLower", ">=", q).where("nameLower", "<", `${q}`).limit(100).get();
+    // 🔎 14 ต.ค. 69 เจ้าของร้าน "ค้นหาไม่ได้จริง": เดิมค้นแค่ nameLower "ขึ้นต้นด้วย" คำค้น (ชื่อที่ขึ้นต้นด้วยอีโมจิ/ชื่อที่แอดมินตั้ง/คำกลางชื่อ ไม่เจอ)
+    // → ค้นจากดัชนีทั้งคลัง (loadChatIndex แคช 15 นาที ใช้ร่วมกับหน้าลูกค้า LINE · ครั้งแรก ~4 วิ) แบบ "มีคำนี้อยู่ในชื่อ" ทั้งชื่อ LINE และชื่อที่แอดมินตั้ง
+    // + วาง userId ได้ · รวมกับ nameLower ขึ้นต้นด้วยแบบสด (ห้องที่เพิ่งเกิดหลังทำดัชนี) · ขึ้นต้นด้วยคำค้นมาก่อน แล้วเรียงคนคุยล่าสุด
+    const nq = norm(q);
+    const cq = core(q);
+    const [idx, fresh] = await Promise.all([
+      loadChatIndex(db).catch(() => []),
+      db.collection(COL).where("nameLower", ">=", q).where("nameLower", "<", `${q}\uf8ff`).limit(50).select().get().catch(() => null),
+    ]);
+    const starts = (r: { key: string; aliasKey: string }) => Number(r.key.startsWith(nq) || (!!r.aliasKey && r.aliasKey.startsWith(nq)));
+    const hit = idx
+      .filter((r) => r.key.includes(nq) || (!!r.aliasKey && r.aliasKey.includes(nq)) || (cq.length >= 2 && core(r.name).includes(cq)) || r.userId.toLowerCase() === q)
+      .sort((a, b) => starts(b) - starts(a))
+      .map((r) => r.userId);
+    const ids = [...new Set([...hit, ...(fresh?.docs.map((d) => d.id) ?? [])])].slice(0, 100);
+    const docs = ids.length ? await db.getAll(...ids.map((id) => db.collection(COL).doc(id)), { fieldMask: LIST_FIELDS }) : [];
+    const order = new Map(ids.map((id, n) => [id, n]));
+    snap = { docs: docs.filter((d) => d.exists).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)) };
   } else {
-    snap = await db.collection(COL).orderBy("lastSeen", "desc").limit(Math.min(400, limit * 6)).get();
+    snap = await db.collection(COL).orderBy("lastSeen", "desc").limit(Math.min(400, limit * 6)).select(...LIST_FIELDS).get();
   }
   let rows = snap.docs.map((d) => toRow(d.id, (d.data() ?? {}) as Record<string, unknown>, iso(d.createTime), cfg));
   // ตัวนับบนชิป นับจากชุดที่โหลดมา (ล่าสุด ≤400 ห้อง) ก่อนกรอง/ตัด
   const waitingCount = rows.filter(isWaiting).length;
   const unreadCount = rows.filter((r) => r.unread).length;
+  const draftCount = rows.filter((r) => r.draftPending).length;
   if (scope === "new" || scope === "old") rows = rows.filter((r) => r.scope === scope);
   if (scope === "waiting") rows = rows.filter(isWaiting);
   if (scope === "unread") rows = rows.filter((r) => r.unread);
-  rows.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
+  if (scope === "draft") rows = rows.filter((r) => r.draftPending);
+  // ค้นหา: คงลำดับ "ชื่อขึ้นต้นด้วยคำค้นก่อน" ที่จัดไว้ (ดัชนีเรียงคนคุยล่าสุดมาแล้ว)
+  if (!q) rows.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
   rows = rows.slice(0, limit);
-  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount }, { headers: { "Cache-Control": "no-store" } });
 }
