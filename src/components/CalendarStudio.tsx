@@ -2098,6 +2098,32 @@ export default function CalendarStudio({
       return { ...d, grids: Object.keys(grids).length ? grids : undefined };
     });
   }
+  /** 🗑 หน้าไม่บังคับที่ลบออก (CalDesign.pageOff) */
+  const pageOffSet = useMemo(() => new Set(design.pageOff ?? []), [design.pageOff]);
+  /**
+   * 🗑 ลบ/ใส่หน้าไม่บังคับกลับ (หลังปก/หลังแผ่นท้าย) — ลบ = ล้างรูป/ชิ้นส่วนของหน้านั้น (พิมพ์เป็นหน้าขาว) แล้วเลื่อนไปหน้าก่อนหน้า
+   * ใส่กลับ = หน้าว่างให้ออกแบบใหม่ + เปิดหน้านั้น
+   */
+  function setPageOff(key: string, off: boolean, idx: number) {
+    setDesign((d) => {
+      const set = new Set(d.pageOff ?? []);
+      if (off) set.add(key);
+      else set.delete(key);
+      const photos = { ...d.photos };
+      if (off) delete photos[key];
+      return {
+        ...d,
+        photos,
+        elements: off ? (d.elements ?? []).filter((e) => e.page !== key) : d.elements,
+        pageOff: set.size ? [...set] : undefined,
+      };
+    });
+    if (off) {
+      setSel(null);
+      setSlotFocus(false);
+      if (pageIdx === idx) setPageIdx(Math.max(0, idx - 1));
+    } else setPageIdx(idx);
+  }
   /**
    * 🗑 ลบ/ใส่ตารางปฏิทินกลับ (ผู้ใช้สั่ง 14 ต.ค. 69 "ตารางปฏิทินกดลบได้") — ตาม "หน้านี้/ทุกเดือน" เหมือนย้ายตาราง
    * ลบแล้วหน้านั้นเหลือแต่รูป/ชิ้นส่วน · ใส่กลับได้จากปุ่ม "📅 ใส่ตารางปฏิทินกลับ" บนภาพ
@@ -4841,7 +4867,31 @@ export default function CalendarStudio({
               </div>
             )}
             {vpages.map((v, i) =>
-              !mixMode && v.card > 0 ? null : (
+              !mixMode && v.card > 0 ? null : v.base.optional && pageOffSet.has(v.page.key) ? (
+                // 🗑 หน้าไม่บังคับที่ลบไปแล้ว — ช่องประ "＋" แตะ = ใส่หน้ากลับ
+                <button
+                  key={v.page.key}
+                  type="button"
+                  onClick={() => setPageOff(v.page.key, false, i)}
+                  className={`flex shrink-0 flex-col items-center gap-1 ${v.base.sheet && i > 0 && vpages[i - 1]?.base.sheet && vpages[i - 1].base.sheet!.n !== v.base.sheet.n ? "ml-3" : ""}`}
+                  title={`เพิ่ม "${v.base.name}" กลับ`}
+                >
+                  <span
+                    className="grid place-items-center rounded-sm border-2 border-dashed border-stone-300 text-center text-[10.5px] font-bold leading-tight text-stone-400 transition hover:border-sky-400 hover:text-sky-600"
+                    style={{ width: W >= H ? 120 : 80, aspectRatio: `${W} / ${H}` }}
+                  >
+                    ＋ เพิ่ม
+                    <br />
+                    {v.base.name}
+                  </span>
+                  <span className="max-w-[120px] truncate text-[10.5px] font-semibold text-stone-400">หน้าขาว (ไม่ใส่)</span>
+                  {v.base.sheet && (
+                    <span className="-mt-0.5 rounded-full bg-stone-100 px-1.5 text-[9.5px] font-bold leading-4 text-stone-400">
+                      แผ่น {v.base.sheet.n} · {v.base.sheet.side === "front" ? "ด้านหน้า" : "ด้านหลัง"}
+                    </span>
+                  )}
+                </button>
+              ) : (
                 <button
                   key={v.page.key}
                   type="button"
@@ -4870,6 +4920,29 @@ export default function CalendarStudio({
                   />
                   {v.card > 0 && custom.includes(v.card) && (
                     <span className="absolute right-1 top-1 rounded-full bg-sky-600 px-1.5 text-[9px] font-bold text-white">แยกแบบ</span>
+                  )}
+                  {/* 🗑 หน้าไม่บังคับ (หลังปก/หลังแผ่นท้าย) ลบได้ — ผู้ใช้สั่ง 14 ต.ค. 69 */}
+                  {v.base.optional && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      title={`ลบหน้า "${v.base.name}" (พิมพ์เป็นหน้าขาว)`}
+                      aria-label={`ลบหน้า ${v.base.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPageOff(v.page.key, true, i);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setPageOff(v.page.key, true, i);
+                        }
+                      }}
+                      className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full bg-white text-[12px] font-extrabold text-rose-500 shadow ring-1 ring-stone-200 hover:bg-rose-50"
+                    >
+                      ✕
+                    </span>
                   )}
                   {/* 🔍 หน้านี้มีรูปคมชัดต่ำ/พอใช้ — เตือนบนภาพย่อ */}
                   {(() => {

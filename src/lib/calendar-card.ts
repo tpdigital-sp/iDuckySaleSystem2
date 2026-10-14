@@ -218,6 +218,11 @@ export interface CalDesign {
   postOff?: string[];
   /** 📅 หน้าที่ลูกค้าลบตารางปฏิทินออก (key หน้า · 14 ต.ค. 69) — ไม่อยู่ในนี้ = มีตารางตามเลย์เอาต์ */
   gridOff?: string[];
+  /**
+   * 🗑 หน้าไม่บังคับ (CalPage.optional — หลังปก/หลังแผ่นท้าย) ที่ลูกค้าลบออก (key หน้า · 14 ต.ค. 69)
+   * ซ่อนจากจอ · ไฟล์พิมพ์ยังมีหน้านั้นเป็นหน้าขาว (แผ่นยังมีด้านหลัง ลำดับหน้า-หลังไม่เลื่อน)
+   */
+  pageOff?: string[];
 }
 
 /**
@@ -596,8 +601,9 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
         { key: "coverBack", name: "หลังปก", kind: "photo", photo: fr.full, optional: true },
         // 14 แผ่น: แต่ละเดือน ด้านหน้า = ตาราง · ด้านหลัง = รูป (ผู้ใช้สั่ง 14 ต.ค. 69) → เรียงตาราง ก่อนรูป
         ...(separate ? swapPairs(monthsPages(fr, "separate")) : monthsPages(fr, "combined")),
-        { key: "year", name: "ภาพรวมทั้งปี", kind: "year", grid: fr.inner },
-        { key: "yearBack", name: "หลังภาพรวมทั้งปี", kind: "photo", photo: fr.full, optional: true },
+        // ชื่อ "แผ่นท้าย/หลังแผ่นท้าย" ไม่ใช่ "ภาพรวมทั้งปี" — ลูกค้าบางคนไม่ใช้ปฏิทินทั้งปี (ผู้ใช้สั่ง 14 ต.ค. 69)
+        { key: "year", name: "แผ่นท้าย", kind: "year", grid: fr.inner },
+        { key: "yearBack", name: "หลังแผ่นท้าย", kind: "photo", photo: fr.full, optional: true },
       ].map((p, i, all): CalPage => {
         /**
          * 📄 แผ่น/ด้าน (ตามโน้ตงานผลิต: หลังปก + หลังแผ่นสุดท้ายว่าง)
@@ -1354,6 +1360,14 @@ export function drawPage(
   const pageKey = page.key;
   page = layPage(f, page, d);
   const only = opts.only;
+  // 🗑 หน้าไม่บังคับที่ลบออก = หน้าขาวล้วน (ดู CalDesign.pageOff)
+  if (page.optional && d.pageOff?.includes(pageKey)) {
+    if (!only || only === LAYER_BG) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, W * k, H * k);
+    }
+    return;
+  }
   ctx.save();
   // พื้น: หน้าที่มีรูปใช้สีพื้นหน้าปก · หน้าตารางล้วนใช้สีพื้นปฏิทิน
   if (!only || only === LAYER_BG) {
