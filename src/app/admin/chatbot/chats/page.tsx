@@ -5,6 +5,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { Empty, SearchBox } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
 import { ago, botApi, Modal, uploadBotFile, uploadBotImage, useToast } from "../bot-ui";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 
 /**
@@ -119,6 +120,7 @@ export default function ChatsPage() {
 
 function Chats() {
   const { toast, toastNode } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const can = useCan();
   const canReply = can("chat.reply");
   const [rows, setRows] = useState<Row[]>([]);
@@ -285,7 +287,13 @@ function Chats() {
   const discardDraft = useCallback(
     async (m: LogEntry) => {
       if (!sel || !m.id) return;
-      if (!window.confirm("ไม่ส่งร่างนี้?\n\nลูกค้าจะไม่ได้รับข้อความนี้ · พิมพ์ตอบลูกค้าเองในช่องด้านล่าง\nเรื่องนี้จะไปรอที่หน้า 🎓 บอทเรียนรู้ ให้สอนคำตอบที่ถูก")) return;
+      const ok = await confirm({
+        icon: "🎓",
+        title: "ไม่ส่งร่างนี้?",
+        detail: "• ลูกค้าจะไม่ได้รับข้อความนี้\n• พิมพ์ตอบลูกค้าเองในช่องด้านล่างได้เลย\n• เรื่องนี้จะไปรอที่หน้า 🎓 บอทเรียนรู้ ให้สอนคำตอบที่ถูก",
+        confirmLabel: "ไม่ส่ง · ให้บอทเรียนรู้",
+      });
+      if (!ok) return;
       try {
         const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "learn", id: sel, logId: m.id });
         afterDraft(m.id, null);
@@ -294,15 +302,27 @@ function Chats() {
         toast(e instanceof Error ? e.message : String(e), true);
       }
     },
-    [sel, afterDraft, toast],
+    [sel, afterDraft, toast, confirm],
   );
   const switchMode = useCallback(
     async (mode: "draft" | "log-only") => {
-      const msg =
+      const ok = await confirm(
         mode === "draft"
-          ? "เปิดโหมดร่าง?\n\nบอทจะร่างคำตอบให้ลูกค้าทุกคนที่ทักมา แต่ลูกค้ายังไม่ได้รับ จนกว่าแอดมินกดส่งในหน้านี้\n(ต้องกด Publish workflow LINE OA Bot ใน n8n ก่อน ไม่งั้นบอทยังไม่รู้จักโหมดนี้)"
-          : "ปิดโหมดร่าง?\n\nบอทจะกลับไปเก็บแชทอย่างเดียว ไม่ร่าง ไม่ตอบ";
-      if (!window.confirm(msg)) return;
+          ? {
+              icon: "📝",
+              title: "เปิดโหมดร่าง?",
+              detail:
+                "• บอทจะร่างคำตอบให้ลูกค้าทุกคนที่ทักมาทาง LINE\n• ลูกค้ายังไม่ได้รับอะไร จนกว่าแอดมินกด Enter หรือปุ่ม “ส่งให้ลูกค้า”\n• ห้องที่มีร่างจะขึ้นป้าย 📝 ร่างรอส่ง\n• ปิดโหมดได้ทุกเมื่อจากปุ่มเดิม",
+              confirmLabel: "เปิดโหมดร่าง",
+            }
+          : {
+              icon: "⏸",
+              title: "ปิดโหมดร่าง?",
+              detail: "• บอทกลับไปเก็บแชทอย่างเดียว ไม่ร่าง ไม่ตอบ\n• ร่างที่ค้างอยู่ยังกดส่งหรือไม่ส่งได้ตามปกติ",
+              confirmLabel: "ปิดโหมดร่าง",
+            },
+      );
+      if (!ok) return;
       try {
         const d = await botApi<{ ok: boolean; saved?: string; mode: string }>("/api/admin/chatbot/chats/draft", { action: "mode", mode });
         setSettings((x) => (x ? { ...x, mode: d.mode } : x));
@@ -311,7 +331,7 @@ function Chats() {
         toast(e instanceof Error ? e.message : String(e), true);
       }
     },
-    [toast],
+    [toast, confirm],
   );
 
   const toggleBot = useCallback(
@@ -776,6 +796,7 @@ function Chats() {
       ) : null}
       {lightbox ? <Lightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} toast={toast} /> : null}
       {tagMgrOpen ? <TagManager tags={tagCatalog} onClose={() => setTagMgrOpen(false)} onSaved={(items) => setTagCatalog(items)} toast={toast} /> : null}
+      {confirmDialog}
       {toastNode}
     </div>
   );

@@ -6,6 +6,7 @@ import RequirePerm from "@/components/RequirePerm";
 import { Banner, Btn, Empty, PageHead, PageShell } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
 import { ago, botApi, ChatbotTabs, useToast } from "../bot-ui";
+import { useConfirm, type ConfirmOptions } from "@/components/admin/ConfirmDialog";
 
 /**
  * 🎓 บอทเรียนรู้ (เจ้าของร้าน 14 ต.ค. 69: "ปุ่มทิ้งขอเป็นการเข้าสู่เรียนรู้ เพื่อให้แอดมินตอบจะดีกว่า")
@@ -51,6 +52,7 @@ export default function LearningPage() {
 
 function Learning() {
   const { toast, toastNode } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [tab, setTab] = useState<"open" | "done">("open");
   const [data, setData] = useState<ListRes | null>(null);
   const [loading, setLoading] = useState(true);
@@ -131,11 +133,12 @@ function Learning() {
             body={tab === "open" ? "เมื่อบอทร่างคำตอบไม่ดี กด “ไม่ส่ง · ให้บอทเรียนรู้” ที่การ์ดร่างในหน้าแชท LINE แล้วพิมพ์ตอบลูกค้าเอง เรื่องจะมารอที่นี่" : "เรื่องที่กดบันทึกหรือข้ามจะย้ายมาอยู่แท็บนี้"}
           />
         ) : tab === "open" ? (
-          items.map((it) => <OpenCard key={it.id} it={it} toast={toast} onDone={() => done(it.id)} />)
+          items.map((it) => <OpenCard key={it.id} it={it} toast={toast} confirm={confirm} onDone={() => done(it.id)} />)
         ) : (
           items.map((it) => <DoneRow key={it.id} it={it} />)
         )}
       </div>
+      {confirmDialog}
       {toastNode}
     </PageShell>
   );
@@ -179,7 +182,7 @@ function Quote({ label, text, tone }: { label: string; text: string; tone: "cust
   );
 }
 
-function OpenCard({ it, toast, onDone }: { it: Item; toast: (m: string, bad?: boolean) => void; onDone: () => void }) {
+function OpenCard({ it, toast, confirm, onDone }: { it: Item; toast: (m: string, bad?: boolean) => void; confirm: (o: ConfirmOptions) => Promise<boolean | "alt">; onDone: () => void }) {
   const firstReply = it.adminReplies.map((r) => r.text).join("\n\n");
   const [title, setTitle] = useState(it.question.split("\n").filter(Boolean).join(" ").slice(0, 300));
   const [content, setContent] = useState(firstReply);
@@ -201,7 +204,8 @@ function OpenCard({ it, toast, onDone }: { it: Item; toast: (m: string, bad?: bo
     }
   };
   const skip = async () => {
-    if (!window.confirm("ไม่ต้องสอนเรื่องนี้? (เช่น เป็นเรื่องเฉพาะลูกค้ารายนี้)")) return;
+    const ok = await confirm({ icon: "⏭", title: "ไม่ต้องสอนเรื่องนี้?", detail: "ใช้กับเรื่องเฉพาะลูกค้ารายนี้ ที่ลูกค้าคนอื่นไม่ได้ถาม\nเรื่องจะย้ายไปแท็บ “สอนแล้ว / ข้าม”", confirmLabel: "ไม่ต้องสอน" });
+    if (ok !== true) return;
     setBusy(true);
     try {
       const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/learning", { action: "skip", id: it.id });
