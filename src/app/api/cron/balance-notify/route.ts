@@ -5,6 +5,7 @@ import { sendBalanceNotify } from "@/lib/server/balance-notify";
 import { BALANCE_AUTO_NOTIFY_MINUTES, balanceNotifyOverdue } from "@/lib/balance-notify";
 import { SITE_URL } from "@/lib/shop-info";
 import { shopQuota, quotaText } from "@/lib/server/line-quota";
+import { checkShopQuotaAlert } from "@/lib/server/line-quota-alert";
 import { backfillHitQuota, backfillMissedNotifies } from "@/lib/server/line-backfill";
 import { updateOrder } from "@/lib/server/order-write";
 
@@ -42,7 +43,9 @@ export async function GET(req: Request) {
     results.push({ id: o.id, balance: r.balance ?? orderBalance(o), sent: r.sent, skipped: r.skipped, reason: r.reason });
   }
   const quotaBackfill = await resendQuotaMissed(sb, dry);
-  return NextResponse.json({ ok: true, dry, minutes: BALANCE_AUTO_NOTIFY_MINUTES, waiting: data?.length ?? 0, due: results, quotaBackfill });
+  // 📣 โควตา LINE ร้านถึง 80/90/95/100% → การ์ดเข้ากลุ่มแอดมิน ระดับละครั้งต่อเดือน (lib/server/line-quota-alert.ts)
+  const quotaAlert = await checkShopQuotaAlert({ dry }).catch((e) => ({ skipped: `error: ${(e as Error).message}` }));
+  return NextResponse.json({ ok: true, dry, minutes: BALANCE_AUTO_NOTIFY_MINUTES, waiting: data?.length ?? 0, due: results, quotaBackfill, quotaAlert });
 }
 
 /** กันรอบเดียวกินเวลาเกิน maxDuration — ที่เหลือรอบหน้า (5 นาที) ค่อยต่อ */

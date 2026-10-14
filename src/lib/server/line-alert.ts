@@ -260,7 +260,8 @@ function row(r: AlertRow) {
 }
 
 /** การ์ด → ข้อความ Flex 1 ใบ */
-function bubbleOf(c: AlertCard): unknown {
+/** export ไว้ให้สคริปต์ตรวจรูปการ์ด (check:quota-alert) */
+export function bubbleOf(c: AlertCard): unknown {
   const shown = (c.bullets ?? []).slice(0, MAX_BULLETS);
   const hidden = (c.bullets ?? []).length - shown.length;
   const body: unknown[] = [];

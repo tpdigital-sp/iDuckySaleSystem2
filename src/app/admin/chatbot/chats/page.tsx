@@ -49,7 +49,7 @@ const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` 
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number> };
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
-type Quota = { limit: number | null; used: number; left: number | null; at: string };
+type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
 type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry; pausedUntil?: string | null; warn?: string };
 type Scope = "waiting" | "all" | "unread" | "draft" | "new" | "old";
@@ -506,9 +506,15 @@ function Chats() {
     if (f) setDropFile(f);
   };
 
-  const quotaLow = quota?.left !== null && quota?.left !== undefined && quota.left < 3000;
+  // ใกล้หมด = เหลือ < 3,000 หรือคาดว่าจะหมดก่อนรีเซ็ตตามความเร็วที่ใช้จริง (forecast.outOn)
+  const quotaLow = (quota?.left !== null && quota?.left !== undefined && quota.left < 3000) || !!quota?.forecast?.outOn;
   const quotaOut = quota?.left !== null && quota?.left !== undefined && quota.left < 500;
-  const quotaText = quota ? (quota.limit === null ? `ใช้ไป ${quota.used.toLocaleString()}` : `${quota.left?.toLocaleString()} / ${quota.limit.toLocaleString()}`) : "—";
+  // ใช้ไป / ทั้งหมด (เหลืออีก …) — เจ้าของร้าน 14 ต.ค. 69 (เดิมโชว์ "เหลือ / ทั้งหมด" อ่านแล้วนึกว่าใช้ไป)
+  const quotaText = quota
+    ? quota.limit === null
+      ? `ใช้ไป ${quota.used.toLocaleString()}`
+      : `${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()} (เหลืออีก ${(quota.left ?? 0).toLocaleString()})`
+    : "—";
 
   // 🖥 ชั้นนอก: ยกเลิก padding ของ <main> แล้วกินเต็มจอที่เหลือ — วัดระยะจากขอบบนจริง (มือถือมีหัว AdminShell + แถบสถานะเชื่อมต่อ 2 บรรทัด · เดสก์ท็อปไม่มี)
   const shellRef = useRef<HTMLDivElement | null>(null);
@@ -526,7 +532,7 @@ function Chats() {
     <div ref={shellRef} className="dkb -mx-4 -my-6 flex overflow-hidden md:-mx-8 md:-my-8" style={{ background: "#EEF2F7", color: "var(--dk-navy)", height: `calc(100dvh - ${topOffset}px)` }}>
       {/* ───── รายชื่อห้อง (ซ้าย) — มือถือซ่อนเมื่อเปิดห้อง ───── */}
       <aside className={`${sel ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r bg-white md:w-[290px] lg:w-[310px]`} style={{ borderColor: "var(--dk-hair)" }}>
-        <div className="flex items-center gap-2 px-3 pt-3">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-3">
           <h1 className="text-[18px] font-extrabold">แชท LINE</h1>
           <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
             {rows.length ? `${rows.length} ห้อง` : ""}
@@ -534,7 +540,9 @@ function Chats() {
           <button
             type="button"
             onClick={() => void loadQuota(true)}
-            title="โควตาข้อความ LINE เดือนนี้ (ส่งจากหน้านี้/บอทนับ · ตอบใน OA Manager ไม่นับ) — กดเพื่ออ่านใหม่"
+            title={`โควตาข้อความ LINE เดือนนี้ (ใช้ไป / ทั้งหมด · ส่งจากหน้านี้/บอทนับ · ตอบใน OA Manager ไม่นับ)${
+              quota?.forecast ? `\nใช้ไป ${quota.forecast.pct}% · เฉลี่ย ${quota.forecast.perDay.toLocaleString()}/วัน · คาดทั้งเดือน ${quota.forecast.monthTotal.toLocaleString()}${quota.forecast.outOn ? ` · คาดหมด ${quota.forecast.outOn}` : " · พอถึงสิ้นเดือน"}` : ""
+            }\nใช้ถึง 80/90/95% ระบบส่งการ์ดเตือนเข้ากลุ่มแอดมินเอง — กดเพื่ออ่านใหม่`}
             className="ml-auto rounded-full px-2.5 py-1 text-[11.5px] font-bold"
             style={
               quotaOut
@@ -545,6 +553,7 @@ function Chats() {
             }
           >
             โควตา {quotaText}
+            {quota?.forecast?.outOn && !quotaOut ? ` · ~หมด ${quota.forecast.outOn}` : ""}
           </button>
         </div>
         <div className="flex items-center gap-2 px-3 pt-0.5">

@@ -28,6 +28,7 @@
     "scan:options": "tsx scripts/option-ref-scan.mts",
     "check:flex": "tsx --conditions=react-server scripts/flex-messages-test.mts",
     "check:chat-notice": "tsx --conditions=react-server scripts/chat-notice-test.mts",
+    "check:quota-alert": "tsx --conditions=react-server scripts/quota-alert-test.mts",
     "check:track-box": "tsx --conditions=react-server scripts/tracking-box-test.mts",
     "check:track-scan": "tsx scripts/tracking-scan-guard-test.mts",
     "check:add-on": "tsx scripts/add-on-parents-test.mts",

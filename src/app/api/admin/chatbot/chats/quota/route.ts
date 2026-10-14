@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
+import { forecastQuota, type QuotaForecast } from "@/lib/server/line-quota-alert";
 
 /**
  * 📊 โควตาข้อความของบัญชีร้าน (@iduckyofficial) — มิเตอร์บนหน้า /admin/chatbot/chats
  * ตอบจากเว็บ = push นับโควตา (OA Manager ไม่นับ) → เหลือน้อยต้องเห็นก่อนกดส่ง · ตัวเลขเดียวกับ `npm run check:line-quota`
  * แคช 10 นาทีใน instance (LINE นับช้าอยู่แล้ว ไม่ต้องสดวินาทีต่อวินาที) · ?fresh=1 บังคับอ่านใหม่
  */
-type Quota = { limit: number | null; used: number; left: number | null; at: string };
+type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: QuotaForecast | null };
 let cache: { at: number; q: Quota } | null = null;
 const TTL = 10 * 60_000;
 
@@ -35,6 +36,8 @@ export async function GET(req: Request) {
   const limit = quota?.type === "limited" && typeof quota.value === "number" ? quota.value : null;
   const totalUsage = used?.totalUsage ?? 0;
   const q: Quota = { limit, used: totalUsage, left: limit === null ? null : Math.max(0, limit - totalUsage), at: new Date().toISOString() };
+  // 📈 คาดการณ์จากความเร็วที่ใช้จริงเดือนนี้ (ชุดเดียวกับการ์ดเตือนเข้ากลุ่มแอดมิน)
+  q.forecast = forecastQuota(q);
   cache = { at: Date.now(), q };
   return NextResponse.json(q, { headers: { "Cache-Control": "no-store" } });
 }
