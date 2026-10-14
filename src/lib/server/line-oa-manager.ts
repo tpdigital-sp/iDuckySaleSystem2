@@ -424,3 +424,147 @@ export async function probeOa(botIdFallback: string): Promise<{
     return { ok: false, botId, error: err.message + (err.detail ? ` · ${err.detail}` : "") };
   }
 }
+
+/* ── 💬 ข้อความตอบกลับ (Saved replies) ─────────────────────
+ * หน้า chat.line.biz/{botId}/settings/savedReplies/list — ข้อความสำเร็จรูปที่พนักงานกดส่งลูกค้า
+ * ไม่มีใน Messaging API เหมือนป้าย → ยิง API ภายในด้วยคุกกี้เดียวกัน (เจ้าของร้านขอ 14 ต.ค. 69)
+ * ยืนยันแล้ว 14 ต.ค. 69 (ดูจากหน้า OA จริง): GET /api/v2/bots/{id}/savedReplies?query=&excludeUsernamePlaceholder=false&pageSize=N&page=P
+ *   → { list: [{ savedReplyId, title, message: { type: "text", text, emojis }, isFavorite }], total, totalFavorites }
+ *   (ตอนนั้น 41 ข้อความ ข้อความละ 1 บับเบิล ตัวอักษรล้วน) · เส้นอื่นเก็บไว้เผื่อ OA เปลี่ยนเวอร์ชัน
+ *   อ่านไม่ออก = คืน sampleKeys/sample ให้หน้าจอโชว์ไว้ไล่ แล้วเติมชื่อฟิลด์ใน toSavedReply()
+ */
+
+/** อิโมจิ LINE ในข้อความ — ตัว "$" ใน text ตำแหน่ง index (นับแบบ UTF-16) ถูกแทนด้วยรูปนี้ตอนส่ง */
+export interface OaEmoji {
+  index: number;
+  productId: string;
+  emojiId: string;
+  altText?: string;
+}
+
+export interface OaSavedMessage {
+  type: string;
+  text?: string;
+  emojis?: OaEmoji[];
+  /** รูป/วิดีโอ/ไฟล์ */
+  url?: string;
+  previewUrl?: string;
+}
+
+export interface OaSavedReply {
+  id: string;
+  title: string;
+  messages: OaSavedMessage[];
+  /** ⭐ ติดดาวใน OA */
+  favorite?: boolean;
+  updatedAt?: string;
+}
+
+const SAVED_REPLY_LIST_KEYS = ["savedReplies", "saved_replies", "templates", "replies"];
+
+function pickSavedList(body: unknown): Record<string, unknown>[] {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const o = body as Record<string, unknown>;
+    for (const k of SAVED_REPLY_LIST_KEYS) if (Array.isArray(o[k])) return o[k] as Record<string, unknown>[];
+  }
+  return pickList(body);
+}
+
+/** เก็บเฉพาะอิโมจิที่ชี้ "$" จริงในข้อความ — ข้อมูลเพี้ยนไม่ทำให้รูปไปโผล่ผิดที่ */
+export function toEmojis(v: unknown, text: string): OaEmoji[] {
+  if (!Array.isArray(v)) return [];
+  const out: OaEmoji[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const index = Number(o.index);
+    const productId = str(o.productId);
+    const emojiId = str(o.emojiId);
+    if (!Number.isInteger(index) || text[index] !== "$" || !/^[0-9a-f]{24}$/i.test(productId) || !/^\d{1,4}$/.test(emojiId)) continue;
+    const altText = str(o.altText);
+    out.push({ index, productId, emojiId, ...(altText ? { altText } : {}) });
+  }
+  return out.sort((a, b) => a.index - b.index);
+}
+
+function toSavedMessage(m: unknown): OaSavedMessage | null {
+  if (typeof m === "string") return m.trim() ? { type: "text", text: m } : null;
+  if (!m || typeof m !== "object") return null;
+  const o = m as Record<string, unknown>;
+  const inner = (o.message ?? o.content ?? null) as Record<string, unknown> | string | null;
+  if (inner && typeof inner === "object" && !Array.isArray(inner) && !("text" in o)) return toSavedMessage({ ...inner, type: inner.type ?? o.type });
+  const type = str(o.type ?? o.messageType ?? o.contentType).toLowerCase() || "text";
+  const text = (str(o.text) || str(o.contentText) || (typeof inner === "string" ? inner : "") || str(o.body)).trim();
+  const url = str(o.originalContentUrl ?? o.contentUrl ?? o.url ?? o.imageUrl ?? o.fileUrl) || undefined;
+  const previewUrl = str(o.previewImageUrl ?? o.previewUrl ?? o.thumbnailUrl) || undefined;
+  if (!text && !url && !previewUrl) return type && type !== "text" ? { type } : null;
+  const emojis = text ? toEmojis(o.emojis, text) : [];
+  return { type, ...(text ? { text } : {}), ...(emojis.length ? { emojis } : {}), ...(url ? { url } : {}), ...(previewUrl ? { previewUrl } : {}) };
+}
+
+function toSavedReply(o: Record<string, unknown>, i: number): OaSavedReply | null {
+  const id = str(o.id ?? o.savedReplyId ?? o.templateId ?? o.replyId) || `idx-${i}`;
+  const title = str(o.title ?? o.name ?? o.label ?? o.keyword ?? o.shortcut ?? o.displayName).trim();
+  const rawMsgs = o.messages ?? o.contents ?? o.messageList ?? o.items ?? o.bubbles;
+  let messages = (Array.isArray(rawMsgs) ? rawMsgs : []).map(toSavedMessage).filter((m): m is OaSavedMessage => !!m);
+  if (!messages.length) {
+    const one = toSavedMessage(o.text !== undefined || o.message !== undefined || o.content !== undefined ? o : null);
+    if (one) messages = [one];
+  }
+  if (!title && !messages.length) return null;
+  const updatedAt = isoOf(o.updatedAt ?? o.modifiedAt ?? o.createdAt);
+  return {
+    id,
+    title: title || (messages[0]?.text ?? "").split("\n")[0].slice(0, 60) || "(ไม่มีชื่อ)",
+    messages,
+    ...(o.isFavorite === true || o.favorite === true ? { favorite: true } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
+  };
+}
+
+/** อ่านคำตอบดิบ (จาก API หรือที่พนักงานก๊อป JSON จาก DevTools มาวาง) เป็นรายการข้อความตอบกลับ */
+export function parseOaSavedReplies(body: unknown): OaSavedReply[] {
+  return pickSavedList(body)
+    .map((o, i) => toSavedReply(o, i))
+    .filter((r): r is OaSavedReply => !!r);
+}
+
+/** ดึงข้อความตอบกลับทั้งหมด — ไล่ page=1,2,… จนครบ total (เพดาน 20 หน้า × 100) */
+export async function fetchOaSavedReplies(
+  botIdFallback: string
+): Promise<{ path: string; replies: OaSavedReply[]; sampleKeys?: string[]; sample?: unknown }> {
+  const cfg = await loadOaConfig(true);
+  const botId = cfg?.botId || botIdFallback;
+  if (!cfg?.cookie) throw new OaError("ยังไม่ได้เชื่อม LINE OA Manager — วางคุกกี้ในกล่อง ⚙️ หน้า ลูกค้า LINE ก่อน", 412);
+  if (!botId) throw new OaError("ไม่รู้เลข OA (U…)", 412);
+  const PAGE = 100;
+  const qs = (page: number) => `query=&excludeUsernamePlaceholder=false&pageSize=${PAGE}&page=${page}`;
+  const bases = [`/api/v2/bots/${botId}/savedReplies`, `/api/v1/bots/${botId}/savedReplies`, `/api/v3/bots/${botId}/savedReplies`];
+  const out: OaSavedReply[] = [];
+  const seen = new Set<string>();
+  let base = "";
+  let first: unknown = null;
+  for (let page = 1; page <= 20; page++) {
+    let body: unknown;
+    if (!base) {
+      const r = await oaGetFirst("savedReplies", bases.map((b) => `${b}?${qs(page)}`), cfg.cookie);
+      base = r.path.split("?")[0];
+      body = first = r.body;
+    } else body = await oaGet(`${base}?${qs(page)}`, cfg.cookie);
+    const list = parseOaSavedReplies(body);
+    for (const x of list) {
+      const k = x.id.startsWith("idx-") ? `${x.title}|${x.messages[0]?.text ?? ""}` : x.id;
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(x);
+      }
+    }
+    const total = Number((body as Record<string, unknown> | null)?.total ?? 0);
+    if (list.length < PAGE || (total && out.length >= total)) break;
+  }
+  if (!out.length) {
+    const raw = pickSavedList(first)[0] ?? first;
+    return { path: base, replies: out, sampleKeys: raw && typeof raw === "object" ? Object.keys(raw as object) : [], sample: raw };
+  }
+  return { path: base, replies: out };
+}

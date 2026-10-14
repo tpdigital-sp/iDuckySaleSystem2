@@ -7,12 +7,14 @@ import { productFlex } from "@/lib/server/product-card";
 import { classifyRoom } from "@/lib/server/chat-urgency";
 import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
 import { closePendingDrafts } from "@/lib/server/bot-drafts";
+import { toEmojis } from "@/lib/server/line-oa-manager";
 
 /**
  * 💬 แอดมินตอบลูกค้า LINE จากหน้า /admin/chatbot/chats (เจ้าของร้านขอ 9 ต.ค. 69 15:20 — แบบผสม: ใช้กับเคสที่บอทส่งต่อ/ลูกค้าที่เปิดบอท
  * แชททั่วไปยังตอบใน OA Manager เพราะส่งจากที่นี่ = push ผ่าน Messaging API นับโควตา 35,000/เดือน)
  *
- * POST { id, text?, imageUrl?, card?: { name, url, image?, priceMin?, priceMax? }, pauseMinutes?: number }
+ * POST { id, text?, emojis?, imageUrl?, card?: { name, url, image?, priceMin?, priceMax? }, pauseMinutes?: number }
+ *   emojis = อิโมจิ LINE จากข้อความตอบกลับ (⊕ ในหน้าแชท · 14 ต.ค. 69): "$" ใน text ที่ index นั้นกลายเป็นรูป (LINE รับไม่เกิน 20 ตัว)
  *   1. push เข้า LINE ด้วย LINE_MESSAGING_ACCESS_TOKEN (token เดียวกับ notify.ts) — 429 = โควตาหมด บอกให้ไปตอบใน OA Manager
  *   2. เขียน line-conversations/{id}/log role "admin" (หน้าแชทโชว์ + บอทเห็นว่าแอดมินตอบแล้ว)
  *   3. อัปเดตห้อง: lastSeen · needsHumanFollowup=false · lastAdminAt · และพักบอท (botPausedUntil — ฟิลด์เดียวกับปุ่ม ⏸ ใน /admin/line-customers
@@ -22,7 +24,13 @@ const COL = "line-conversations";
 
 type Card = { name?: string; url?: string; image?: string; priceMin?: number; priceMax?: number };
 type FileAtt = { url?: string; name?: string; size?: number };
-type Body = { id?: string; text?: string; imageUrl?: string; card?: Card; file?: FileAtt; pauseMinutes?: number };
+type Body = { id?: string; text?: string; emojis?: unknown; imageUrl?: string; card?: Card; file?: FileAtt; pauseMinutes?: number };
+/** ลบตัว "$" ตำแหน่งอิโมจิออกจากข้อความ (ไล่จากท้ายจะได้ไม่ต้องเลื่อน index) */
+function stripEmojiMarks(text: string, emojis: { index: number }[]): string {
+  let out = text;
+  for (const e of [...emojis].sort((a, b) => b.index - a.index)) out = out.slice(0, e.index) + out.slice(e.index + 1);
+  return out.trim();
+}
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 export async function POST(req: Request) {
@@ -37,6 +45,8 @@ export async function POST(req: Request) {
   const id = String(b.id ?? "").trim();
   if (!/^U[0-9a-f]{32}$/.test(id)) return NextResponse.json({ error: "id ไม่ถูกต้อง" }, { status: 400 });
   const text = String(b.text ?? "").trim().slice(0, 2000);
+  // หน้าเว็บคิด index จากข้อความที่ trim แล้ว · ตัวที่ไม่ชี้ "$" ถูกตัดทิ้ง (กัน LINE 400)
+  const emojis = text ? toEmojis(b.emojis, text).slice(0, 20).map(({ index, productId, emojiId }) => ({ index, productId, emojiId })) : [];
   const imageUrl = String(b.imageUrl ?? "").trim();
   const card = b.card && b.card.url && /^https:\/\/(www\.)?iduckystore\.com\//.test(String(b.card.url)) ? b.card : null;
   if (imageUrl && !/^https:\/\//.test(imageUrl)) return NextResponse.json({ error: "รูปต้องเป็นลิงก์ https" }, { status: 400 });
@@ -45,7 +55,7 @@ export async function POST(req: Request) {
   if (!text && !imageUrl && !card && !file) return NextResponse.json({ error: "ยังไม่ได้พิมพ์ข้อความ" }, { status: 400 });
 
   const messages: unknown[] = [];
-  if (text) messages.push({ type: "text", text });
+  if (text) messages.push({ type: "text", text, ...(emojis.length ? { emojis } : {}) });
   if (imageUrl) messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
   if (card) messages.push(productFlex([card]));
   if (file) messages.push({ type: "text", text: `📎 ไฟล์: ${file.name}${file.size ? ` (${fmtSize(file.size)})` : ""}\nดาวน์โหลด: ${file.url}` });
@@ -82,7 +92,9 @@ export async function POST(req: Request) {
   const ref = db.collection(COL).doc(id);
   const entry = {
     role: "admin",
-    text: text || (imageUrl ? "(ส่งรูป)" : card ? `(ส่งการ์ดสินค้า ${card.name ?? ""})` : file ? `(ส่งไฟล์ ${file.name})` : ""),
+    // log: ตัด "$" ของอิโมจิ LINE ออก (บอท/หน้าแชทอ่านเป็นตัวอักษร) · เก็บ lineEmojis ไว้เผื่อวาดรูปทีหลัง
+    text: (emojis.length ? stripEmojiMarks(text, emojis) : text) || (imageUrl ? "(ส่งรูป)" : card ? `(ส่งการ์ดสินค้า ${card.name ?? ""})` : file ? `(ส่งไฟล์ ${file.name})` : ""),
+    ...(emojis.length ? { lineEmojis: emojis } : {}),
     ...(imageUrl ? { imageUrl } : {}),
     ...(card ? { card: { name: card.name ?? "", url: card.url ?? "" } } : {}),
     ...(file ? { file } : {}),

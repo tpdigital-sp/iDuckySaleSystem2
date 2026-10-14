@@ -6,6 +6,8 @@ import { Empty, SearchBox } from "@/components/admin/ui";
 import { useCan } from "@/lib/perm-context";
 import { ago, botApi, Modal, uploadBotFile, uploadBotImage, useToast } from "../bot-ui";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import SavedReplyPicker from "./SavedReplyPicker";
+import { realignEmojis, type Emoji } from "../saved-replies/shared";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 
 /**
@@ -892,7 +894,7 @@ function Chats() {
             </div>
 
             {canReply ? (
-              <Composer id={sel} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} dropFile={dropFile} onDropConsumed={() => setDropFile(null)} />
+              <Composer id={sel} customerName={detail?.displayName ?? ""} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} dropFile={dropFile} onDropConsumed={() => setDropFile(null)} />
             ) : (
               <p className="border-t bg-white px-4 py-3 text-[12px]" style={{ borderColor: "var(--dk-hair)", color: "var(--dk-faint)" }}>
                 บัญชีนี้ดูแชทได้อย่างเดียว — ตอบลูกค้าต้องมีสิทธิ์ "ตอบลูกค้า LINE" (ตั้งค่าระบบ → บทบาท)
@@ -1509,6 +1511,7 @@ function IconBtn({ onClick, title, active, children }: { onClick: () => void; ti
 /** ช่องพิมพ์แบบ LINE: ติดขอบล่าง · ปุ่มรูป/การ์ดซ้าย · ปุ่มส่งเขียวกลมขวา · Enter ส่ง (Shift+Enter ขึ้นบรรทัด) · ปุ่มเลือกสินค้าเป็นแผ่นเลื่อนขึ้น */
 function Composer({
   id,
+  customerName,
   disabled,
   quotaLow,
   onSent,
@@ -1517,6 +1520,8 @@ function Composer({
   onDropConsumed,
 }: {
   id: string;
+  /** ชื่อ LINE ของลูกค้า — แทน {Nickname} ในข้อความตอบกลับ */
+  customerName: string;
   disabled: boolean;
   quotaLow: boolean;
   onSent: (r: ReplyRes) => void;
@@ -1532,6 +1537,9 @@ function Composer({
   const [uploading, setUploading] = useState(false);
   const [pickOpen, setPickOpen] = useState(false);
   const [pickQ, setPickQ] = useState("");
+  // 💬 ข้อความตอบกลับจาก LINE OA (14 ต.ค. 69): อิโมจิ LINE ของข้อความที่เลือก — "$" ในช่องพิมพ์ = อิโมจิตัวนั้น (ส่งด้วย emojis ของ Messaging API)
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [lineEmojis, setLineEmojis] = useState<Emoji[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1542,14 +1550,19 @@ function Composer({
     setFileAtt(null);
     setCard(null);
     setPickOpen(false);
+    setReplyOpen(false);
+    setLineEmojis([]);
   }, [id]);
 
-  // textarea สูงตามข้อความ (1–5 บรรทัด) เหมือนแอปแชท
+  // textarea สูงตามข้อความเหมือน LINE OA Manager (เจ้าของร้าน 14 ต.ค. 69: ข้อความตอบกลับยาว ๆ ต้องเห็นทั้งก้อน)
+  // สูงได้ถึง ~55% ของจอ (อย่างน้อย 140px) เกินนั้นค่อยเลื่อนในช่อง — ห้องแชทด้านบนยังเหลือที่ให้เห็นข้อความล่าสุด
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
+    const max = Math.max(140, Math.round(window.innerHeight * 0.55));
     el.style.height = "0px";
-    el.style.height = `${Math.min(140, Math.max(44, el.scrollHeight))}px`;
+    el.style.height = `${Math.min(max, Math.max(44, el.scrollHeight))}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, [text]);
 
   const openPicker = useCallback(async () => {
@@ -1619,6 +1632,7 @@ function Composer({
       const r = await botApi<ReplyRes>("/api/admin/chatbot/chats/reply", {
         id,
         text: t,
+        emojis: lineEmojis.length ? realignEmojis(t, lineEmojis) : undefined,
         imageUrl: image?.url ?? "",
         card: card ? { name: card.name, url: card.url, image: card.image, priceMin: card.priceMin, priceMax: card.priceMax } : undefined,
         file: fileAtt ?? undefined,
@@ -1627,6 +1641,7 @@ function Composer({
       setImage(null);
       setFileAtt(null);
       setCard(null);
+      setLineEmojis([]);
       onSent(r);
       areaRef.current?.focus();
     } catch (e) {
@@ -1634,7 +1649,29 @@ function Composer({
     } finally {
       setSending(false);
     }
-  }, [text, image, card, fileAtt, sending, id, onSent, toast]);
+  }, [text, image, card, fileAtt, sending, id, onSent, toast, lineEmojis]);
+
+  /** ใส่ข้อความตอบกลับที่เลือกลงตรงเคอร์เซอร์ (ช่องว่าง = แทนทั้งช่อง) — ยังไม่ส่ง ให้แอดมินแก้ก่อนได้ */
+  const insertReply = useCallback(
+    (snippet: string, emojis: Emoji[]) => {
+      const el = areaRef.current;
+      const a = text ? (el?.selectionStart ?? text.length) : 0;
+      const b = text ? (el?.selectionEnd ?? text.length) : 0;
+      const next = text.slice(0, a) + snippet + text.slice(b);
+      // อิโมจิเดิมในช่อง (ก่อน/หลังจุดแทรก) + ของใหม่ เรียงตามตำแหน่ง "$" — ตอนส่งค่อยจับคู่ "$" ใหม่ตามลำดับ
+      const dollars = (x: string) => x.split("$").length - 1;
+      const nBefore = Math.min(lineEmojis.length, dollars(text.slice(0, a)));
+      const nCut = dollars(text.slice(a, b));
+      setLineEmojis([...lineEmojis.slice(0, nBefore), ...emojis, ...lineEmojis.slice(nBefore + nCut)]);
+      setText(next);
+      setReplyOpen(false);
+      requestAnimationFrame(() => {
+        el?.focus();
+        el?.setSelectionRange(a + snippet.length, a + snippet.length);
+      });
+    },
+    [text, lineEmojis],
+  );
 
   const canSend = !disabled && !sending && (!!text.trim() || !!image || !!card || !!fileAtt);
 
@@ -1736,6 +1773,9 @@ function Composer({
         <IconBtn onClick={() => void openPicker()} title="ส่งการ์ดสินค้า" active={pickOpen}>
           🧾
         </IconBtn>
+        <IconBtn onClick={() => setReplyOpen(true)} title="ข้อความตอบกลับ / คูปอง" active={replyOpen}>
+          ⊕
+        </IconBtn>
         <textarea
           ref={areaRef}
           value={text}
@@ -1764,6 +1804,12 @@ function Composer({
           {sending ? "…" : "➤"}
         </button>
       </div>
+      {lineEmojis.length && text.includes("$") ? (
+        <p className="px-3 pt-1.5 text-[11.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
+          ตัว $ ในช่องพิมพ์ = อิโมจิ LINE {Math.min(lineEmojis.length, text.split("$").length - 1)} ตัว (ลูกค้าเห็นเป็นรูป) · ลบ $ = ลบอิโมจินั้น
+        </p>
+      ) : null}
+      {replyOpen ? <SavedReplyPicker chatId={id} customerName={customerName} onClose={() => setReplyOpen(false)} onPick={insertReply} /> : null}
       <p className="px-3 pb-1.5 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>
         ส่งแล้วบอทพักให้คนนี้ 30 นาที (▶ ปลุกได้ที่หัวห้อง) · ข้อความจากหน้านี้นับโควตา LINE
       </p>
