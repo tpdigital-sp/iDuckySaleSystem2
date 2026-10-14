@@ -400,10 +400,15 @@ export function calHasGrid(f: CalFormat): boolean {
 const swapPairs = (ps: CalPage[]): CalPage[] => ps.flatMap((p, i) => (i % 2 ? [] : [ps[i + 1], p]));
 
 /** หน้าตามเลย์เอาต์ที่เลือก + ช่องรูปหลักที่ลูกค้าปรับขนาดเอง (design.slots) — ใช้ทั้งตอนวาดและบนจอ */
-export function layPage(f: CalFormat, page: CalPage, d: Pick<CalDesign, "layouts" | "slots">): CalPage {
+export function layPage(f: CalFormat, page: CalPage, d: Pick<CalDesign, "layouts" | "slots" | "gridOff">): CalPage {
   let p = pageWithLayout(f, page, d.layouts?.[page.key]);
   // 🕳 ตาราง/หัวเดือนห้ามขึ้นไปทับแถบรูเจาะ (topClear)
   if (f.topClear && p.grid && p.grid.y < f.topClear) p = { ...p, grid: { ...p.grid, y: f.topClear, h: p.grid.h - (f.topClear - p.grid.y) } };
+  // 🗑 ลบตารางของหน้าตารางล้วน (ภาพรวมทั้งปี/หน้าตารางของตั้งโต๊ะ 14 แผ่น) → ทั้งหน้ากลายเป็นช่องรูปว่าง "ลากรูปมาวางที่นี่"
+  //    (ผู้ใช้สั่ง 14 ต.ค. 69) · ไม่บังคับใส่รูป — ว่างไว้ = พิมพ์พื้นเปล่า
+  //    หน้ารูป+ตาราง (ตั้งโต๊ะ 8 แผ่น ฯลฯ) ลบตาราง = ช่องรูปขยายเต็มหน้า (ผู้ใช้สั่งต่อ 14 ต.ค. 69)
+  if (p.grid && d.gridOff?.includes(page.key))
+    p = { ...p, photo: { x: 0, y: 0, w: fmtW(f), h: fmtH(f) }, ...(p.photo ? {} : { optional: true }) };
   const s = p.photo ? d.slots?.[page.key] : undefined;
   return s ? { ...p, photo: s } : p;
 }
@@ -933,7 +938,8 @@ export function photoOf(page: CalPage, d: CalDesign, imgs: (ImgRef | null)[]): {
   // src < 0 = ลูกค้ากดลบรูปช่องนี้ → ว่าง (ไม่ยืมรูปหน้าปก)
   if (own && own.src < 0) return null;
   if (own && imgs[own.src]) return { img: imgs[own.src]!, pl: own.pl };
-  if (d.noBorrow) return null;
+  // หน้าไม่บังคับ (หลังปก/หลังแผ่นท้าย/หน้าที่ลบตารางออก) = ว่างจนกว่าจะใส่รูปเอง ไม่ยืมรูปหน้าปก
+  if (d.noBorrow || page.optional) return null;
   // ไม่มีรูปของตัวเอง = ยืมรูปช่องรูปหน้าปก (รูปแรกที่ลงช่องรูป) — ไม่ยืมรูปจากกรอบรูปอิสระ
   // (เดิมยืม "รูปแรกที่อัป" → ใส่รูปด้านหลังแล้วหน้าปกได้รูปนั้นไปด้วยเอง · 13 ต.ค. 69)
   const first = slotSrc(d, imgs);

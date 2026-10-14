@@ -2135,7 +2135,16 @@ export default function CalendarStudio({
       for (const k of keys)
         if (off) set.add(k);
         else set.delete(k);
-      return { ...d, gridOff: set.size ? [...set] : undefined };
+      const nd = { ...d, gridOff: set.size ? [...set] : undefined };
+      // ช่องรูปเปลี่ยนขนาด (เต็มหน้า ↔ ตามเลย์เอาต์) → รูปที่ใส่ไว้จัดให้เต็มช่องใหม่
+      const photos = { ...d.photos };
+      for (const k of keys) {
+        const own = photos[k];
+        const vp = vpages.find((v) => v.page.key === k);
+        const np = vp && layPage(fmt, vp.page, nd).photo;
+        if (own && own.src >= 0 && srcs[own.src] && np) photos[k] = { ...own, pl: coverPlacement(np, srcs[own.src]) };
+      }
+      return { ...nd, photos };
     });
     if (off) setGridSel(false);
   }
@@ -2751,7 +2760,7 @@ export default function CalendarStudio({
     }
     // หน้าไม่ยืมรูปปก (รายเดือน/ตั้งโต๊ะแบบใหม่) — หน้าที่ยังไม่ใส่รูปจะพิมพ์ออกมาเป็นช่องว่าง
     if (design.noBorrow) {
-      const empty = printPages.find((v) => v.page.kind !== "postback" && !v.page.optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(v.page).optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
       if (empty) {
         setPageIdx(vpages.indexOf(empty));
         setTool("photo");
@@ -2773,7 +2782,7 @@ export default function CalendarStudio({
     }
     // คละลาย: ทุกใบต้องมีรูปของตัวเอง (ใบไหนว่างจะพิมพ์ออกมาเป็นช่องว่าง)
     if (mixMode) {
-      const empty = printPages.find((v) => v.page.kind !== "postback" && !v.page.optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(v.page).optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
       if (empty) {
         setPageIdx(vpages.indexOf(empty));
         setTool("photo");
