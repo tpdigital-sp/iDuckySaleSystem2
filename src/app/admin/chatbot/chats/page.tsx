@@ -323,6 +323,7 @@ function Chats() {
       try {
         const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "learn", id: sel, logId: m.id });
         afterDraft(m.id, null);
+        window.dispatchEvent(new Event("iducky:learning-changed"));
         toast(d.saved || "ทิ้งร่างแล้ว");
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);

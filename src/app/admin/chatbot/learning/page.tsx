@@ -76,6 +76,7 @@ function Learning() {
   const done = useCallback(
     (id: string) => {
       setData((d) => (d ? { items: d.items.filter((x) => x.id !== id), openCount: Math.max(0, d.openCount - 1) } : d));
+      window.dispatchEvent(new Event("iducky:learning-changed"));
     },
     [],
   );

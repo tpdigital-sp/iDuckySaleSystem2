@@ -116,6 +116,8 @@ let pickupBadgeCache: { at: number; n: number } | null = null;
 let claimsBadgeCache: { at: number; n: number; noReply: number } | null = null;
 /** แคชป้าย "ใบสมัครตัวแทนรออนุมัติ" — ใบสมัครเข้ามาวันละไม่กี่ใบ แต่ปล่อยค้างแล้วตัวแทนรอเก้อ */
 let dealerAppsBadgeCache: { at: number; n: number } | null = null;
+/** แคชป้าย "บอทเรียนรู้" — ร่างที่แอดมินกดไม่ส่ง รอสอนคำตอบที่ถูก (14 ต.ค. 69) */
+let learningBadgeCache: { at: number; n: number } | null = null;
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -169,6 +171,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [readyPickup, setReadyPickup] = useState(0);
   // badge แจ้ง "ใบสมัครตัวแทนจำหน่าย" ที่ยังรออนุมัติ — หายเองเมื่อกดอนุมัติ/ปฏิเสธครบ
   const [openDealerApps, setOpenDealerApps] = useState(0);
+  // badge "บอทเรียนรู้" — เรื่องที่รอสอน หายเองเมื่อกดสอน/ข้ามครบ
+  const [openLearning, setOpenLearning] = useState(0);
 
   // ── โลโก้หลังบ้าน — กดที่โลโก้มุมซ้ายบนเพื่อเปลี่ยนรูปได้เลย (เก็บในแถวเมนู __site_nav__) ──
   const [adminLogo, setAdminLogo] = useState<string | undefined>(undefined);
@@ -511,6 +515,42 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("iducky:dealers-changed", on);
   }, [refreshDealerBadge]);
 
+  /**
+   * 🎓 ป้าย "บอทเรียนรู้" — ร่างบอทที่แอดมินกด "ไม่ส่ง · ให้บอทเรียนรู้" แล้วยังไม่ได้สอน/ข้าม (เจ้าของร้านขอ 14 ต.ค. 69)
+   * ตัวเลขตรงกับ openCount ในหน้านั้น
+   */
+  const learningBadgeReady = pathname !== "/admin/login" && perms.includes("chat.reply");
+  const refreshLearningBadge = useCallback(async () => {
+    if (!learningBadgeReady) return;
+    try {
+      const r = await fetch("/api/admin/chatbot/learning?count=1", { cache: "no-store" });
+      const j = r.ok ? await r.json() : { n: 0 };
+      const n = Number(j?.n) || 0;
+      learningBadgeCache = { at: Date.now(), n };
+      setOpenLearning(n);
+    } catch {
+      /* เน็ตสะดุด → คงเลขเดิมไว้ */
+    }
+  }, [learningBadgeReady]);
+  useEffect(() => {
+    if (!learningBadgeReady) return;
+    // อยู่หน้าแชท/บอทเรียนรู้ = ดึงสด (เพิ่งกดไม่ส่ง/สอนไป) หน้าอื่นใช้แคช 1 นาที
+    const fresh = pathname.startsWith("/admin/chatbot");
+    const cached = learningBadgeCache && Date.now() - learningBadgeCache.at < 60_000 ? learningBadgeCache.n : null;
+    if (cached !== null && !fresh) {
+      setOpenLearning(cached);
+      return;
+    }
+    void refreshLearningBadge();
+  }, [learningBadgeReady, pathname, refreshLearningBadge]);
+  usePolling(refreshLearningBadge, { intervalMs: 90_000, enabled: learningBadgeReady });
+  // กดไม่ส่ง (หน้าแชท) / สอน-ข้าม (หน้าบอทเรียนรู้) → ยิงอีเวนต์ให้ป้ายนับใหม่ทันที
+  useEffect(() => {
+    const on = () => void refreshLearningBadge();
+    window.addEventListener("iducky:learning-changed", on);
+    return () => window.removeEventListener("iducky:learning-changed", on);
+  }, [refreshLearningBadge]);
+
   const isLoginPage = pathname === "/admin/login";
 
   useEffect(() => {
@@ -642,7 +682,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   ? paidStockWait
                   : href === "/admin/pickup"
                     ? readyPickup
-                    : 0;
+                    : href === "/admin/chatbot/learning"
+                      ? openLearning
+                      : 0;
   /** ป้ายทั้งแถบรวมกัน — ใช้บนปุ่ม ☰ ของมือถือ ตอนเมนูปิดอยู่จะได้ยังเห็นว่ามีงานค้าง */
   const badgeAll = menu.reduce((n, m) => n + badgeOf(m.href), 0);
 

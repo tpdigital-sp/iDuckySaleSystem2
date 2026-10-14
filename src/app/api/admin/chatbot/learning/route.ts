@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
-import { listLearning, skipLearning, teachFromLearning } from "@/lib/server/bot-learning";
+import { LEARN_COL, listLearning, skipLearning, teachFromLearning } from "@/lib/server/bot-learning";
 
 export const runtime = "nodejs";
 
 /**
  * 🎓 บอทเรียนรู้ (หน้า /admin/chatbot/learning · 14 ต.ค. 69)
+ *   GET ?count=1                   → { n } จำนวนเรื่องที่รอสอน (ป้ายเมนูซ้าย · เบา ไม่ดึงแชท)
  *   GET ?status=open|done          → เรื่องที่รอสอน (พร้อมคำตอบที่แอดมินตอบลูกค้าจริง) / ที่สอนแล้ว-ข้าม
  *   POST { action: "teach", id, title, content } → เพิ่มเข้าคลังความรู้ + ส่งเข้า n8n + ปิดเรื่อง
  *   POST { action: "skip", id }                   → ไม่ต้องสอน (เช่น เป็นเรื่องเฉพาะลูกค้ารายนั้น)
@@ -19,7 +20,12 @@ export async function GET(req: Request) {
   if (gate.res) return gate.res;
   const db = getChatFirestore();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firestore" }, { status: 503 });
-  const status = new URL(req.url).searchParams.get("status") === "done" ? "done" : "open";
+  const sp = new URL(req.url).searchParams;
+  if (sp.get("count") === "1") {
+    const c = await db.collection(LEARN_COL).where("status", "==", "open").count().get();
+    return NextResponse.json({ n: c.data().count }, { headers: { "Cache-Control": "no-store" } });
+  }
+  const status = sp.get("status") === "done" ? "done" : "open";
   const r = await listLearning(db, status);
   return NextResponse.json(r, { headers: { "Cache-Control": "no-store" } });
 }
