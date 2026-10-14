@@ -726,34 +726,106 @@ export default function CalendarStudio({
   );
   /** ความละเอียดภาพคำนวณเส้นตัด (พอดีจอ + ไม่หน่วงมือถือ) — ใช้ค่าเดียวกันตอนส่งออกให้เส้นตรงกับที่เห็น */
   const CUT_PPM = 600 / Math.max(fmtW(fmt), fmtH(fmt));
-  // คิดเส้นตัดใหม่หลังหยุดแก้ 200ms (ลากรูปต่อเนื่องไม่หน่วง)
+  /**
+   * เส้นตัดต้อง "ตามรูป" ทันทีตอนซูม/ลาก (ผู้ใช้แจ้ง 14 ต.ค. 69 "ภาพขยายไปแล้ว เส้นถึงขยายตาม ไม่สมูท")
+   * เดิมรอหยุดแก้ 200ms แล้วคิดที่ 600px (~150ms) → เส้นค้างอยู่ที่เดิมจนปล่อยนิ้ว
+   * ตอนนี้: ทุกครั้งที่ลายเปลี่ยน คิดแบบหยาบ 300px (~30ms) ในเฟรมถัดไปทันที → เส้นเกาะรูปตลอด
+   *         แล้วค่อยคิดละเอียด 600px หลังหยุดแก้ 180ms (เส้นสุดท้ายคม · ไฟล์ส่งออกใช้ 600px เสมอ)
+   */
+  const CUT_PPM_FAST = 300 / Math.max(fmtW(fmt), fmtH(fmt));
+  /** ผลเส้นตัดล่าสุด + ตำแหน่งรูปหลักตอนคิด (ไว้ย้ายเส้นตามรูปแบบเรขาคณิต) · cutKey = ค่าเส้นตัดตอนนั้น */
+  const cutGeomRef = useRef<{ src: number; pl: CalPlacement; cut: CutResult | null; cutKey: string } | null>(null);
+  const cutKeyOf = (c: CalDesign["cut"]) => JSON.stringify(c ?? null);
   useEffect(() => {
     if (!open || !fmt.diecut) return;
-    const t = setTimeout(() => {
+    let raf = 0;
+    let t = 0;
+    const run = (ppm: number) => {
       try {
-        setCutRes(processCut(renderAlpha(CUT_PPM).data, CUT_PPM, fmt.diecut!.size, cutP));
+        const r = processCut(renderAlpha(ppm).data, ppm, fmt.diecut!.size, cutP);
+        setCutRes(r);
+        const ph0 = design.photos[fmt.pages[0].key];
+        cutGeomRef.current = ph0 && ph0.src >= 0 ? { src: ph0.src, pl: ph0.pl, cut: r, cutKey: cutKeyOf(design.cut) } : null;
         setCutErr("");
       } catch (e) {
         setCutRes(null);
         setCutErr(e instanceof Error ? e.message : "คำนวณเส้นตัดไม่สำเร็จ");
       }
-    }, 200);
-    return () => clearTimeout(t);
+    };
+    /**
+     * ⚡ ทางลัดไม่ต้องคิดใหม่: ลายมีแค่รูปหลักรูปเดียว (ไม่มีข้อความ/กรอบ) แล้วรูปแค่ย่อ/ขยาย/เลื่อน
+     * → เส้นตัดรูปทรงเดิมเป๊ะ แค่ย้าย/สเกลกรอบตามรูป (เรขาคณิตล้วน · 0ms) = เส้นเกาะรูปในเฟรมเดียวกัน
+     * ตอนเลื่อนกลับพอดีขนาด (fitAnim) ก็ใช้ทางนี้ (จัดการใน fitToSize) — ไม่คิดหยาบซ้อน
+     */
+    const front = fmt.pages[0].key;
+    const ph = design.photos[front];
+    const prev = cutGeomRef.current;
+    const simple = ph && ph.src >= 0 && !(design.elements ?? []).length;
+    if (fitAnim.current) {
+      t = window.setTimeout(() => run(CUT_PPM), 180);
+      return () => clearTimeout(t);
+    }
+    if (simple && prev && prev.src === ph.src && prev.cut && prev.cutKey === cutKeyOf(design.cut) && prev.pl.wMm > 0) {
+      const k = ph.pl.wMm / prev.pl.wMm;
+      const r = prev.cut;
+      const bx = ph.pl.cxMm + (r.box.x - prev.pl.cxMm) * k;
+      const by = ph.pl.cyMm + (r.box.y - prev.pl.cyMm) * k;
+      const moved = { ...r, box: { x: bx, y: by, w: r.box.w * k, h: r.box.h * k }, scale: r.scale / k };
+      setCutRes(moved);
+      cutGeomRef.current = { src: ph.src, pl: ph.pl, cut: moved, cutKey: prev.cutKey };
+      t = window.setTimeout(() => run(CUT_PPM), 180);
+      return () => clearTimeout(t);
+    }
+    raf = requestAnimationFrame(() => run(CUT_PPM_FAST));
+    t = window.setTimeout(() => run(CUT_PPM), 180);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, fmt, renderAlpha, design.cut, fontTick]);
   /**
    * 📐 ย่อ/ขยายทุกอย่างบนผืน (รูป · ช่องรูป · ข้อความ/รูปทรง · จุดแก้) ให้ตัวชิ้นงานยาวสุดเท่าขนาดที่สั่งพอดี
    * แล้วจัดกลางจัตุรัส — จอจะเห็นขนาดจริง (scale = 1) ตรงกับไฟล์ผลิต (ผู้ใช้สั่ง 14 ต.ค. 69 "โยนภาพต้องตามขนาดที่ลูกค้าสั่ง")
    */
+  const designRef = useRef(design);
+  designRef.current = design;
+  /** กำลังเลื่อนกลับพอดีขนาดอยู่ (rAF id) — กันสั่งจัดซ้อน */
+  const fitAnim = useRef(0);
   const fitToSize = useCallback(
     (r: CutResult) => {
       const k = r.scale;
       const C = { x: r.box.x + r.box.w / 2, y: r.box.y + r.box.h / 2 };
       // ตัวชิ้นงาน (ไม่รวมติ่ง) อยู่กลางจัตุรัส — ติ่งยื่นขึ้นไปในขอบด้านบน
       const T = { x: fmt.bleed + fmt.trimW / 2, y: fmt.bleed + fmt.trimH / 2 };
-      const mx = (v: number) => T.x + (v - C.x) * k;
-      const my = (v: number) => T.y + (v - C.y) * k;
-      setDesign((d) => ({
+      /**
+       * เลื่อนกลับแบบนุ่ม 220ms (ease-out) แทนกระโดดทีเดียว — ผู้ใช้แจ้ง 14 ต.ค. 69 "ไม่สมูท"
+       * ทุกเฟรมคิดจากแบบตอนเริ่ม (d0) ด้วยสเกล/จุดกลางที่ค่อย ๆ เข้าเป้า · เส้นตัดคิดหยาบตามทุกเฟรม (effect ข้างบน)
+       */
+      const d0 = designRef.current;
+      const t0 = performance.now();
+      cancelAnimationFrame(fitAnim.current);
+      const apply = (kt: number, Ct: { x: number; y: number }) => {
+        const mx = (v: number) => Ct.x + (v - C.x) * kt;
+        const my = (v: number) => Ct.y + (v - C.y) * kt;
+        setDesign(() => mapDesign(d0, kt, mx, my));
+        // เส้นตัดรูปทรงเดิม แค่กรอบย้าย/สเกลตามลาย (เฟรมเดียวกัน ไม่ต้องรอคิดใหม่)
+        const moved: CutResult = { ...r, box: { x: mx(r.box.x), y: my(r.box.y), w: r.box.w * kt, h: r.box.h * kt }, scale: r.scale / kt };
+        setCutRes(moved);
+        lastCut.current = moved;
+      };
+      const step = () => {
+        const p = Math.min(1, (performance.now() - t0) / 220);
+        const e = 1 - (1 - p) ** 3;
+        apply(1 + (k - 1) * e, { x: C.x + (T.x - C.x) * e, y: C.y + (T.y - C.y) * e });
+        if (p < 1) fitAnim.current = requestAnimationFrame(step);
+        else fitAnim.current = 0;
+      };
+      fitAnim.current = requestAnimationFrame(step);
+    },
+    [fmt],
+  );
+  const mapDesign = (d: CalDesign, k: number, mx: (v: number) => number, my: (v: number) => number): CalDesign => ({
         ...d,
         photos: Object.fromEntries(
           Object.entries(d.photos).map(([key, o]) => [key, { ...o, pl: { ...o.pl, cxMm: mx(o.pl.cxMm), cyMm: my(o.pl.cyMm), wMm: o.pl.wMm * k, hMm: o.pl.hMm * k } }]),
@@ -770,10 +842,7 @@ export default function CalendarStudio({
           ...(e.strokeW ? { strokeW: e.strokeW * k } : {}),
         })),
         cut: d.cut?.edits?.length ? { ...d.cut, edits: d.cut.edits.map(([x, y, rr, sg]) => [mx(x), my(y), rr, sg] as [number, number, number, number]) } : d.cut,
-      }));
-    },
-    [fmt],
-  );
+  });
   /**
    * 📐 จัดพอดีขนาด + กลางจัตุรัส "เสมอ" — ขนาดชิ้นงานตายตัวตามที่สั่ง ลูกค้าขยาย/ลากเองก็ถูกจัดกลับหลังปล่อยนิ้ว
    * (ผู้ใช้แจ้ง 14 ต.ค. 69 "ภาพแสดงใหญ่เกินไป และไม่อยู่ตรงกลาง" — เดิมจัดเฉพาะตอนใส่รูป ซูมเองแล้วจอไม่ตรงไฟล์)
@@ -793,8 +862,8 @@ export default function CalendarStudio({
     if (!off()) return;
     let t = 0;
     const tryFit = () => {
-      if (drag.current) {
-        t = window.setTimeout(tryFit, 250);
+      if (drag.current || fitAnim.current) {
+        t = window.setTimeout(tryFit, 120);
         return;
       }
       if (lastCut.current && off()) fitToSize(lastCut.current);
