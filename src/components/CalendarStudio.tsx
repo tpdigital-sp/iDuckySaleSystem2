@@ -5139,17 +5139,7 @@ export default function CalendarStudio({
           {/* เวที */}
           <div
             ref={stageRef}
-            className={`relative flex min-h-0 min-w-0 shrink-0 flex-col items-center justify-center gap-2 p-3 transition sm:flex-1 sm:p-5 ${
-              dropOn
-                ? "bg-sky-50"
-                : !fmt.diecut
-                  ? "bg-stone-100"
-                  : cutView.bg === "dark"
-                    ? "bg-stone-800"
-                    : cutView.bg === "light"
-                      ? "bg-white"
-                      : "bg-[repeating-conic-gradient(#e7e5e4_0%_25%,#fff_0%_50%)] bg-[length:16px_16px]"
-            } ${
+            className={`relative flex min-h-0 min-w-0 shrink-0 flex-col items-center justify-center gap-2 p-3 transition sm:flex-1 sm:p-5 ${dropOn ? "bg-sky-50" : "bg-stone-100"} ${
               narrow && (sel || slotFocus || gridSel) ? "pb-32" : ""
             } ${viewZ.k > 1 ? "overflow-hidden cursor-grab active:cursor-grabbing" : ""}`}
             // 🖱 คลิกพื้นว่างรอบการ์ด = ยกเลิกการเลือก (กรอบฟ้า/แถบเครื่องมือหาย) — เดิมไม่มีตัวรับคลิกตรงนี้ กรอบฟ้าค้าง (ผู้ใช้แจ้ง 13 ต.ค. 69)
@@ -5234,8 +5224,15 @@ export default function CalendarStudio({
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerUp}
-                // ✂️ ไดคัท: แคนวาสโปร่ง ไม่มีเงา — พื้นอยู่ที่เวที (ไม่ซูมตาม) ซูมแล้วเห็นเฉพาะชิ้นงานขยาย แบบหน้า /admin/diecut?tab=bg
-                className={`block w-full touch-none select-none ${fmt.diecut ? "" : "bg-white shadow-[0_2px_14px_rgba(28,25,23,.18)]"}`}
+                className={`block w-full touch-none select-none shadow-[0_2px_14px_rgba(28,25,23,.18)] ${
+                  !fmt.diecut
+                    ? "bg-white"
+                    : cutView.bg === "dark"
+                      ? "bg-stone-800"
+                      : cutView.bg === "light"
+                        ? "bg-white"
+                        : "bg-[repeating-conic-gradient(#e7e5e4_0%_25%,#fff_0%_50%)] bg-[length:16px_16px]"
+                }`}
                 style={{ aspectRatio: `${W} / ${H}` }}
               />
               {/* ✂️ แก้เฉพาะจุด: จิ้มบนภาพ ＋ = เส้นมน/ถมร่อง · − = เส้นวิ่งชิดตามซอกงาน */}
@@ -5289,11 +5286,7 @@ export default function CalendarStudio({
             {tool === "events" && renderEventsPopup()}
             {tool === "settings" && draft && renderSettingsPopup(draft)}
             {layersOpen && renderLayersPopup()}
-            <p
-              data-stage-blank
-              // ✂️ ซูมอยู่ = ชิ้นงานขยายทับบรรทัดนี้ → ยกขึ้นบนพื้นขาวจาง ให้ยังอ่านได้
-              className={`text-center text-[10.5px] leading-tight text-stone-400 ${viewZ.k > 1 ? "relative z-20 rounded-full bg-white/85 px-3 py-1 shadow-sm" : ""}`}
-            >
+            <p data-stage-blank className="text-center text-[10.5px] leading-tight text-stone-400">
               {fmt.diecut ? (
                 <>
                   <span className="text-pink-500">—</span> เส้นตัด
