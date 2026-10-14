@@ -240,7 +240,7 @@ export default function PrintOrderPage() {
   const allPaid = live.every((o) => orderFullyPaid(o));
   const anyPaid = live.some((o) => orderFullyPaid(o));
   const unpaidCount = live.filter((o) => !orderFullyPaid(o)).length;
-  // 🎁➗ ใบมัดจำรอบตัวอย่าง (ติ๊ก 🎁 + โฟลเดอร์ขึ้นตย) ใบปะหน้าออกได้แม้ยังไม่ครบ 100% — ป้ายหัวจอต้องพูดตรงกับใบที่พิมพ์ออกจริง
+  // 🎁➗ ใบมัดจำรอบตัวอย่าง (ติ๊ก 🎁 + เจ้าของร้านอนุมัติรอบตัวอย่าง) ใบปะหน้าออกได้แม้ยังไม่ครบ 100% — ป้ายหัวจอต้องพูดตรงกับใบที่พิมพ์ออกจริง
   const labelOkOf = (o: Order) => orderFullyPaid(o) || sampleLabelOk(o);
   const allLabels = live.every(labelOkOf);
   const noLabelCount = live.filter((o) => !labelOkOf(o)).length;
