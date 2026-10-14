@@ -164,93 +164,6 @@ function qualityOf(dpi: number, target: number) {
 const SWATCHES = ["#ffffff", "#1c1917", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0d9488", "#2563eb", "#7c3aed", "#db2777"];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** ท่อนเส้นตัดที่สีแดงจมพื้น — วาดทับด้วยสีที่ตัดกับพื้น (ดู cutLineFixes) */
-type CutFix = { x1: number; y1: number; x2: number; y2: number; color: string };
-/** ความสว่างสัมพัทธ์ (WCAG) ของสี 0–255 */
-function relLum(r: number, g: number, b: number) {
-  const f = (v: number) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-}
-const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-const RED_LUM = relLum(220, 38, 38);
-const CUT_LIGHT = "rgba(255,255,255,.95)";
-const CUT_DARK = "rgba(28,25,23,.9)";
-
-/**
- * 🎯 เส้นตัดบนจอปรับสีตามภาพเอง (ผู้ใช้สั่ง 14 ต.ค. 69 "ภาพสีเข้มมองไม่เห็นเส้นไดคัท ให้ระบบปรับสีได้เอง")
- * วัดสีพื้นใต้เส้นตัดทีละท่อน (~8 px) จากหน้าที่วาดแล้ว — ท่อนที่แดงตัดกับพื้นไม่พอ (พื้นเข้ม/พื้นแดง) = วาดทับด้วยขาวหรือดำ
- * ท่อนบนพื้นสว่างคงแดงเดิม · เรียกหลัง drawPage ก่อนวาดไกด์ (ไม่วัดสีเทมเพลต/ลายทแยง) · มุมมนไม่วัด (สั้นมาก)
- */
-function cutLineFixes(ctx: CanvasRenderingContext2D, k: number, f: CalFormat, dpr: number): CutFix[] {
-  const PW = ctx.canvas.width;
-  const PH = ctx.canvas.height;
-  const b = f.bleed * k;
-  const r = (f.cornerR ?? 0) * k;
-  const x0 = b;
-  const y0 = b;
-  const x1 = b + f.trimW * k;
-  const y1 = b + f.trimH * k;
-  const step = Math.max(4, Math.round(8 * dpr));
-  const half = Math.max(1, Math.round(1.5 * dpr));
-  const out: CutFix[] = [];
-  // เส้นแนวนอน (horiz) ที่ y หรือแนวตั้งที่ x · จาก a ถึง z
-  const edge = (horiz: boolean, at: number, a: number, z: number) => {
-    const sa = Math.max(0, Math.round(a));
-    const sz = Math.min(horiz ? PW : PH, Math.round(z));
-    const lo = Math.max(0, Math.round(at) - half);
-    const hi = Math.min(horiz ? PH : PW, Math.round(at) + half);
-    if (sz - sa < 2 || hi - lo < 1) return;
-    let data: Uint8ClampedArray;
-    try {
-      data = horiz ? ctx.getImageData(sa, lo, sz - sa, hi - lo).data : ctx.getImageData(lo, sa, hi - lo, sz - sa).data;
-    } catch {
-      return; // แคนวาสติดรูปข้ามโดเมน อ่านสีไม่ได้ = ใช้แดงเดิม
-    }
-    const len = sz - sa;
-    const thick = hi - lo;
-    let run: CutFix | null = null;
-    for (let p = 0; p < len; p += step) {
-      const q = Math.min(len, p + step);
-      let R = 0;
-      let G = 0;
-      let B = 0;
-      let A = 0;
-      let n = 0;
-      for (let i = p; i < q; i++)
-        for (let j = 0; j < thick; j++) {
-          const o = (horiz ? j * len + i : i * thick + j) * 4;
-          R += data[o];
-          G += data[o + 1];
-          B += data[o + 2];
-          A += data[o + 3];
-          n++;
-        }
-      // โปร่งใส (ยังไม่วาดอะไร) = พื้นขาวของแคนวาส
-      const a = n ? A / n / 255 : 0;
-      const mix = (v: number) => (n ? (v / n) * a + 255 * (1 - a) : 255);
-      const L = relLum(mix(R), mix(G), mix(B));
-      const color = contrast(L, RED_LUM) >= 3 ? "" : contrast(L, 1) >= contrast(L, relLum(28, 25, 23)) ? CUT_LIGHT : CUT_DARK;
-      const s0 = sa + p;
-      const s1 = sa + q;
-      if (color && run && run.color === color) {
-        if (horiz) run.x2 = s1;
-        else run.y2 = s1;
-      } else {
-        if (run) out.push(run);
-        run = color ? (horiz ? { x1: s0, y1: at, x2: s1, y2: at, color } : { x1: at, y1: s0, x2: at, y2: s1, color }) : null;
-      }
-    }
-    if (run) out.push(run);
-  };
-  edge(true, y0, x0 + r, x1 - r);
-  edge(true, y1, x0 + r, x1 - r);
-  edge(false, x0, y0 + r, y1 - r);
-  edge(false, x1, y0 + r, y1 - r);
-  return out;
-}
 const uid = () => Math.random().toString(36).slice(2, 9);
 /** วงกลมลูกศร 4 ทิศกลางรูป (แบบ Printbox) = จุดลากเลื่อนรูปในกรอบ · ลากที่อื่นในกรอบ = ย้ายทั้งกรอบ */
 function drawPanIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, dpr: number) {
@@ -1451,7 +1364,6 @@ export default function CalendarStudio({
     const k = PW / W;
     ctx.clearRect(0, 0, PW, PH);
     drawPage(ctx, k, fmt, basePage, design, back, imgs, { preview: true });
-    const cutFixes = cutLineFixes(ctx, k, fmt, dpr);
 
     // ไกด์บนจอ (ไม่ติดไปกับไฟล์พิมพ์): ตัดตกจาง ๆ + เส้นตัดแดง + เขตปลอดภัยฟ้า + กรอบชิ้นที่เลือก
     ctx.save();
@@ -1507,20 +1419,22 @@ export default function CalendarStudio({
       trimPath(ctx, k, fmt);
       ctx.stroke();
     }
-    // 🎯 ท่อนที่แดงจมพื้น (ภาพเข้ม/แดง) → ทับด้วยขาวหรือดำ แบบเส้นเดียวกัน (ทึบ = เทมเพลต · ประ = เส้นตัดของระบบ)
-    if (cutFixes.length) {
-      ctx.save();
-      ctx.lineWidth = Math.max(1, 1.25 * dpr);
-      if (!guide) ctx.setLineDash([4 * dpr, 3 * dpr]);
-      for (const c of cutFixes) {
-        ctx.strokeStyle = c.color;
-        ctx.beginPath();
-        ctx.moveTo(c.x1, c.y1);
-        ctx.lineTo(c.x2, c.y2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
+    /**
+     * 🎯 เส้นตัดเห็นชัดทุกพื้น (ผู้ใช้แจ้ง 14 ต.ค. 69 "เส้นไดคัทยังกลมกลืนกับรูป") — เส้นแดงของเทมเพลตวาดแบบ multiply
+     * บนรูปเข้มจึงจมหาย (เดิมปรับสีทีละท่อน ~8px เป็นขาว/ดำ เห็นเป็นเส้นขาด ๆ) → วาดเส้นตัดทับอีกชั้นแบบต่อเนื่อง:
+     * ขอบขาวหนา (ตัดกับพื้นเข้ม) + แกนแดง (ตัดกับพื้นสว่าง) · เทมเพลต = เส้นทึบ · ไม่มีเทมเพลต = เส้นประ
+     */
+    ctx.save();
+    if (!guide) ctx.setLineDash([4 * dpr, 3 * dpr]);
+    ctx.beginPath();
+    trimPath(ctx, k, fmt);
+    ctx.lineWidth = Math.max(2, 3.2 * dpr);
+    ctx.strokeStyle = "rgba(255,255,255,.92)";
+    ctx.stroke();
+    ctx.lineWidth = Math.max(1, 1.4 * dpr);
+    ctx.strokeStyle = "#e11d48";
+    ctx.stroke();
+    ctx.restore();
     ctx.setLineDash([4 * dpr, 3 * dpr]);
     ctx.lineWidth = dpr;
     // เส้นเขตปลอดภัยสีฟ้าเอาออกแล้ว (ผู้ใช้สั่ง 13 ต.ค. 69)
