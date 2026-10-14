@@ -86,3 +86,37 @@ export async function buildPieceFiles(input: {
   const bytes = await doc.save();
   return { file: new File([bytes as BlobPart], name, { type: "application/pdf" }), designs: pieces.length, pages: doc.getPageCount(), counts };
 }
+
+/**
+ * 🖨 ไฟล์ .pdf ทั้งเล่ม (ปฏิทินตั้งโต๊ะ/แขวน/แคนวาส ฯลฯ ที่ไม่ใช่การ์ดชุด · ผู้ใช้สั่ง 14 ต.ค. 69 · เฉพาะเจ้าของร้าน)
+ * ทุกหน้าที่จะพิมพ์เรียงตามลำดับในไฟล์เดียว (ขนาดรวมตัดตก · ตั้ง TrimBox ตรงเส้นตัด) + หน้าสุดท้าย = เส้นไดคัท
+ */
+export async function buildPrintPdf(input: {
+  pages: { name: string; file: Blob }[];
+  wMm: number;
+  hMm: number;
+  cut: CutRect;
+  name: string;
+}): Promise<File> {
+  const doc = await PDFDocument.create();
+  const W = input.wMm * PT;
+  const H = input.hMm * PT;
+  const { x, y, w, h, r } = input.cut;
+  for (const p of input.pages) {
+    const bytes = await p.file.arrayBuffer();
+    const img = p.file.type === "image/png" ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    const pg = doc.addPage([W, H]);
+    pg.drawImage(img, { x: 0, y: 0, width: W, height: H });
+    pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
+  }
+  const path = r
+    ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
+    : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+  doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.5 / PT });
+  const name = `${input.name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim()}.pdf`;
+  doc.setTitle(name.replace(/\.pdf$/, ""));
+  doc.setSubject(input.pages.map((p, i) => `${i + 1}.${p.name}`).join(" · ") + ` · ${input.pages.length + 1}.เส้นไดคัท`);
+  doc.setCreator("iDucky Prints Studio — จอสร้างปฏิทิน");
+  const bytes = await doc.save();
+  return new File([bytes as BlobPart], name, { type: "application/pdf" });
+}

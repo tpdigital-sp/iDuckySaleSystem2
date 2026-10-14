@@ -59,6 +59,7 @@ import {
   type CalPart,
   type CalPartKey,
   type CalDesign,
+  type CalFormat,
   type CalElement,
   type CalPage,
   type CalPhoto,
@@ -68,7 +69,7 @@ import {
 } from "@/lib/calendar-card";
 import { printFrameToken } from "@/lib/design-templates";
 import { buildCalendarAi, renderAiPages } from "@/lib/calendar-ai";
-import { buildPieceFiles, type PieceDesign } from "@/lib/calendar-impose";
+import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 
 export interface CalendarState {
@@ -162,6 +163,94 @@ function qualityOf(dpi: number, target: number) {
 }
 const SWATCHES = ["#ffffff", "#1c1917", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0d9488", "#2563eb", "#7c3aed", "#db2777"];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** ท่อนเส้นตัดที่สีแดงจมพื้น — วาดทับด้วยสีที่ตัดกับพื้น (ดู cutLineFixes) */
+type CutFix = { x1: number; y1: number; x2: number; y2: number; color: string };
+/** ความสว่างสัมพัทธ์ (WCAG) ของสี 0–255 */
+function relLum(r: number, g: number, b: number) {
+  const f = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+const RED_LUM = relLum(220, 38, 38);
+const CUT_LIGHT = "rgba(255,255,255,.95)";
+const CUT_DARK = "rgba(28,25,23,.9)";
+
+/**
+ * 🎯 เส้นตัดบนจอปรับสีตามภาพเอง (ผู้ใช้สั่ง 14 ต.ค. 69 "ภาพสีเข้มมองไม่เห็นเส้นไดคัท ให้ระบบปรับสีได้เอง")
+ * วัดสีพื้นใต้เส้นตัดทีละท่อน (~8 px) จากหน้าที่วาดแล้ว — ท่อนที่แดงตัดกับพื้นไม่พอ (พื้นเข้ม/พื้นแดง) = วาดทับด้วยขาวหรือดำ
+ * ท่อนบนพื้นสว่างคงแดงเดิม · เรียกหลัง drawPage ก่อนวาดไกด์ (ไม่วัดสีเทมเพลต/ลายทแยง) · มุมมนไม่วัด (สั้นมาก)
+ */
+function cutLineFixes(ctx: CanvasRenderingContext2D, k: number, f: CalFormat, dpr: number): CutFix[] {
+  const PW = ctx.canvas.width;
+  const PH = ctx.canvas.height;
+  const b = f.bleed * k;
+  const r = (f.cornerR ?? 0) * k;
+  const x0 = b;
+  const y0 = b;
+  const x1 = b + f.trimW * k;
+  const y1 = b + f.trimH * k;
+  const step = Math.max(4, Math.round(8 * dpr));
+  const half = Math.max(1, Math.round(1.5 * dpr));
+  const out: CutFix[] = [];
+  // เส้นแนวนอน (horiz) ที่ y หรือแนวตั้งที่ x · จาก a ถึง z
+  const edge = (horiz: boolean, at: number, a: number, z: number) => {
+    const sa = Math.max(0, Math.round(a));
+    const sz = Math.min(horiz ? PW : PH, Math.round(z));
+    const lo = Math.max(0, Math.round(at) - half);
+    const hi = Math.min(horiz ? PH : PW, Math.round(at) + half);
+    if (sz - sa < 2 || hi - lo < 1) return;
+    let data: Uint8ClampedArray;
+    try {
+      data = horiz ? ctx.getImageData(sa, lo, sz - sa, hi - lo).data : ctx.getImageData(lo, sa, hi - lo, sz - sa).data;
+    } catch {
+      return; // แคนวาสติดรูปข้ามโดเมน อ่านสีไม่ได้ = ใช้แดงเดิม
+    }
+    const len = sz - sa;
+    const thick = hi - lo;
+    let run: CutFix | null = null;
+    for (let p = 0; p < len; p += step) {
+      const q = Math.min(len, p + step);
+      let R = 0;
+      let G = 0;
+      let B = 0;
+      let A = 0;
+      let n = 0;
+      for (let i = p; i < q; i++)
+        for (let j = 0; j < thick; j++) {
+          const o = (horiz ? j * len + i : i * thick + j) * 4;
+          R += data[o];
+          G += data[o + 1];
+          B += data[o + 2];
+          A += data[o + 3];
+          n++;
+        }
+      // โปร่งใส (ยังไม่วาดอะไร) = พื้นขาวของแคนวาส
+      const a = n ? A / n / 255 : 0;
+      const mix = (v: number) => (n ? (v / n) * a + 255 * (1 - a) : 255);
+      const L = relLum(mix(R), mix(G), mix(B));
+      const color = contrast(L, RED_LUM) >= 3 ? "" : contrast(L, 1) >= contrast(L, relLum(28, 25, 23)) ? CUT_LIGHT : CUT_DARK;
+      const s0 = sa + p;
+      const s1 = sa + q;
+      if (color && run && run.color === color) {
+        if (horiz) run.x2 = s1;
+        else run.y2 = s1;
+      } else {
+        if (run) out.push(run);
+        run = color ? (horiz ? { x1: s0, y1: at, x2: s1, y2: at, color } : { x1: at, y1: s0, x2: at, y2: s1, color }) : null;
+      }
+    }
+    if (run) out.push(run);
+  };
+  edge(true, y0, x0 + r, x1 - r);
+  edge(true, y1, x0 + r, x1 - r);
+  edge(false, x0, y0 + r, y1 - r);
+  edge(false, x1, y0 + r, y1 - r);
+  return out;
+}
 const uid = () => Math.random().toString(36).slice(2, 9);
 /** วงกลมลูกศร 4 ทิศกลางรูป (แบบ Printbox) = จุดลากเลื่อนรูปในกรอบ · ลากที่อื่นในกรอบ = ย้ายทั้งกรอบ */
 function drawPanIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, dpr: number) {
@@ -911,6 +1000,7 @@ export default function CalendarStudio({
       const grids = { ...(d.grids ?? {}) };
       const slots = { ...(d.slots ?? {}) };
       const orders = { ...(d.order ?? {}) };
+      const gridOff = [...(d.gridOff ?? [])];
       const extra: CalElement[] = [];
       for (const p of fmt.pages) {
         const nk = cardKey(card, p.key);
@@ -918,6 +1008,7 @@ export default function CalendarStudio({
         if (d.layouts?.[p.key]) layouts[nk] = d.layouts[p.key];
         if (d.grids?.[p.key]) grids[nk] = { ...d.grids[p.key] };
         if (d.slots?.[p.key]) slots[nk] = { ...d.slots[p.key] };
+        if (d.gridOff?.includes(p.key)) gridOff.push(nk);
         const idMap = new Map<string, string>();
         for (const e of d.elements ?? [])
           if (e.page === p.key) {
@@ -935,6 +1026,7 @@ export default function CalendarStudio({
         ...(Object.keys(grids).length ? { grids } : {}),
         ...(Object.keys(slots).length ? { slots } : {}),
         ...(Object.keys(orders).length ? { order: orders } : {}),
+        ...(gridOff.length ? { gridOff } : {}),
         elements: [...(d.elements ?? []), ...extra],
         custom: [...(d.custom ?? []), card].sort((a, b) => a - b),
       };
@@ -956,6 +1048,7 @@ export default function CalendarStudio({
         layouts,
         grids: Object.keys(grids).length ? grids : undefined,
         slots: Object.keys(slots).length ? slots : undefined,
+        gridOff: d.gridOff?.some((k) => k.startsWith(pre)) ? d.gridOff.filter((k) => !k.startsWith(pre)) : d.gridOff,
         elements: (d.elements ?? []).filter((e) => !e.page.startsWith(pre)),
         custom: (d.custom ?? []).filter((c) => c !== card),
       };
@@ -1358,6 +1451,7 @@ export default function CalendarStudio({
     const k = PW / W;
     ctx.clearRect(0, 0, PW, PH);
     drawPage(ctx, k, fmt, basePage, design, back, imgs, { preview: true });
+    const cutFixes = cutLineFixes(ctx, k, fmt, dpr);
 
     // ไกด์บนจอ (ไม่ติดไปกับไฟล์พิมพ์): ตัดตกจาง ๆ + เส้นตัดแดง + เขตปลอดภัยฟ้า + กรอบชิ้นที่เลือก
     ctx.save();
@@ -1412,6 +1506,20 @@ export default function CalendarStudio({
       ctx.beginPath();
       trimPath(ctx, k, fmt);
       ctx.stroke();
+    }
+    // 🎯 ท่อนที่แดงจมพื้น (ภาพเข้ม/แดง) → ทับด้วยขาวหรือดำ แบบเส้นเดียวกัน (ทึบ = เทมเพลต · ประ = เส้นตัดของระบบ)
+    if (cutFixes.length) {
+      ctx.save();
+      ctx.lineWidth = Math.max(1, 1.25 * dpr);
+      if (!guide) ctx.setLineDash([4 * dpr, 3 * dpr]);
+      for (const c of cutFixes) {
+        ctx.strokeStyle = c.color;
+        ctx.beginPath();
+        ctx.moveTo(c.x1, c.y1);
+        ctx.lineTo(c.x2, c.y2);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
     ctx.setLineDash([4 * dpr, 3 * dpr]);
     ctx.lineWidth = dpr;
@@ -1990,6 +2098,21 @@ export default function CalendarStudio({
       return { ...d, grids: Object.keys(grids).length ? grids : undefined };
     });
   }
+  /**
+   * 🗑 ลบ/ใส่ตารางปฏิทินกลับ (ผู้ใช้สั่ง 14 ต.ค. 69 "ตารางปฏิทินกดลบได้") — ตาม "หน้านี้/ทุกเดือน" เหมือนย้ายตาราง
+   * ลบแล้วหน้านั้นเหลือแต่รูป/ชิ้นส่วน · ใส่กลับได้จากปุ่ม "📅 ใส่ตารางปฏิทินกลับ" บนภาพ
+   */
+  function setGridOff(off: boolean, all = gridAll) {
+    const keys = all && gridPeers.length > 1 ? gridPeers : [page.key];
+    setDesign((d) => {
+      const set = new Set(d.gridOff ?? []);
+      for (const k of keys)
+        if (off) set.add(k);
+        else set.delete(k);
+      return { ...d, gridOff: set.size ? [...set] : undefined };
+    });
+    if (off) setGridSel(false);
+  }
 
   /** 🗂 รายการชั้นของหน้านี้ (บนสุดอยู่บน) — แตะแถว = เลือกชิ้นนั้น · ▲▼ ทีละชั้น · ปุ่มล่างย้ายชิ้นที่เลือกไปบนสุด/ล่างสุด */
   function renderLayerList(curId: string | null) {
@@ -2281,7 +2404,28 @@ export default function CalendarStudio({
           <BarBtn title="กลับขนาด/ตำแหน่งเดิม" disabled={!changed} onClick={() => setGrid(undefined)}>
             <Ico n="reset" />
           </BarBtn>
+          <BarBtn title={gridAll && gridPeers.length > 1 ? `ลบตารางปฏิทินทั้ง ${gridPeers.length} เดือน (ปุ่ม Delete)` : "ลบตารางปฏิทินหน้านี้ (ปุ่ม Delete)"} danger onClick={() => setGridOff(true)}>
+            <Ico n="trash" />
+          </BarBtn>
         </div>
+      </div>
+    );
+  }
+  /** 📅 หน้านี้ลบตารางปฏิทินไปแล้ว — ปุ่มเล็กบนภาพไว้ใส่กลับ (หน้านี้ · หรือทุกเดือนที่ลบไว้) */
+  function renderGridRestore() {
+    if (!page.grid || !(design.gridOff ?? []).includes(page.key)) return null;
+    const offPeers = gridPeers.filter((k) => design.gridOff?.includes(k));
+    const chip = "rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-extrabold text-sky-700 shadow-[0_4px_16px_rgba(28,25,23,.18)] ring-1 ring-sky-200 hover:bg-sky-50";
+    return (
+      <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
+        <button type="button" className={chip} onClick={() => setGridOff(false, false)}>
+          📅 ใส่ตารางปฏิทินกลับ
+        </button>
+        {offPeers.length > 1 && (
+          <button type="button" className={chip} onClick={() => setGridOff(false, true)}>
+            ใส่กลับทุกเดือน ({offPeers.length})
+          </button>
+        )}
       </div>
     );
   }
@@ -2352,7 +2496,15 @@ export default function CalendarStudio({
                 ? () => (setSel(null), setGridSel(false), setSlotFocus(false))
                 : null;
   slotDelRef.current =
-    !locked && tool === "photo" && slotFocus && !sel ? (cur ? removeSlotPhoto : postSelected ? () => setPostOff([basePage.key], true) : null) : null;
+    !locked && gridSel && !sel && gridOf(page, design)
+      ? () => setGridOff(true)
+      : !locked && tool === "photo" && slotFocus && !sel
+        ? cur
+          ? removeSlotPhoto
+          : postSelected
+            ? () => setPostOff([basePage.key], true)
+            : null
+        : null;
 
   function addEvent(): boolean {
     const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(evDate);
@@ -2440,8 +2592,33 @@ export default function CalendarStudio({
     return { file: new File([r.blob], `${stem}${r.real ? "" : "-pdf"}.ai`, { type: "application/postscript" }), note: r.note, real: r.real };
   }
 
-  /** 🖨 ไฟล์ชิ้นงาน .pdf — งานการ์ดชุด (โฟโต้การ์ด) ที่โปรแกรมจัดวางรับ (ปฏิทินแบบอื่นยังไม่ทำ) */
+  /** 🖨 ไฟล์ชิ้นงาน .pdf — งานการ์ดชุด (โฟโต้การ์ด) ที่โปรแกรมจัดวางรับ · แบบอื่น = .pdf ทั้งเล่ม (makeBookPdf) */
   const imposeOk = fmt.key.startsWith("card");
+
+  /** 🖨 .pdf ทั้งเล่ม (ผู้ใช้สั่ง 14 ต.ค. 69 "ให้มี .pdf ด้วย" · เฉพาะเจ้าของร้านเหมือน .ai) — ทุกหน้าที่จะพิมพ์ + หน้าเส้นไดคัทท้ายไฟล์ */
+  async function makeBookPdf(): Promise<{ file: File; note: string }> {
+    await ensureFonts(fontKeys);
+    const pages: { name: string; file: Blob }[] = [];
+    for (let i = 0; i < printPages.length; i++) {
+      const v = printPages[i];
+      const name = vname(v).replace(/^\d+\. /, "");
+      setBusy(`กำลังทำไฟล์ .pdf หน้า ${i + 1}/${printPages.length}…`);
+      const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, v.page, design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
+      if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ`);
+      pages.push({ name, file: f });
+    }
+    const file = await buildPrintPdf({
+      pages,
+      wMm: W,
+      hMm: H,
+      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0 },
+      name: `${title}-ปฏิทิน${back.year}`.slice(0, 60),
+    });
+    return {
+      file,
+      note: `ไฟล์เดียว ${pages.length + 1} หน้า — ${pages.length} หน้างาน (รวมตัดตก ${fmt.bleed} มม. · ตั้ง TrimBox ที่เส้นตัด) + หน้าเส้นไดคัทท้ายไฟล์`,
+    };
+  }
 
   /**
    * 🖨 ไฟล์ชิ้นงานสำหรับโปรแกรมจัดวาง (localhost:8002 Smart Imposition Pro) — ดู calendar-impose.ts
@@ -2486,14 +2663,14 @@ export default function CalendarStudio({
     if (busy) return;
     setErr("");
     try {
-      setBusy("กำลังทำไฟล์ .pdf ชิ้นงาน…");
-      const r = await makePdf();
+      setBusy(imposeOk ? "กำลังทำไฟล์ .pdf ชิ้นงาน…" : "กำลังทำไฟล์ .pdf…");
+      const r = imposeOk ? await makePdf() : await makeBookPdf();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(r.file);
       a.download = r.file.name;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      setAsk({ icon: "🖨", title: "โหลดไฟล์ .pdf ชิ้นงานแล้ว", body: r.note, ok: "ตกลง", run: () => {} });
+      setAsk({ icon: "🖨", title: imposeOk ? "โหลดไฟล์ .pdf ชิ้นงานแล้ว" : "โหลดไฟล์ .pdf แล้ว", body: r.note, ok: "ตกลง", run: () => {} });
     } catch (e) {
       setErr(e instanceof Error ? `ทำไฟล์ .pdf ไม่สำเร็จ: ${e.message}` : "ทำไฟล์ .pdf ไม่สำเร็จ");
     } finally {
@@ -4044,12 +4221,16 @@ export default function CalendarStudio({
                 ⬇ .ai
               </button>
             )}
-            {aiExport && imposeOk && (
+            {aiExport && (
               <button
                 type="button"
                 onClick={() => void downloadPdf()}
                 disabled={!!busy}
-                title="เฉพาะเจ้าของร้าน (ทดสอบ) — .pdf ไฟล์เดียว: ทีละชิ้น ด้านหน้า · ด้านหลัง · เส้นไดคัท สำหรับโปรแกรมจัดวาง localhost:8002"
+                title={
+                  imposeOk
+                    ? "เฉพาะเจ้าของร้าน (ทดสอบ) — .pdf ไฟล์เดียว: ทีละชิ้น ด้านหน้า · ด้านหลัง · เส้นไดคัท สำหรับโปรแกรมจัดวาง localhost:8002"
+                    : "เฉพาะเจ้าของร้าน (ทดสอบ) — .pdf ทั้งเล่ม: ทุกหน้าเรียงตามลำดับ + หน้าเส้นไดคัทท้ายไฟล์"
+                }
                 className="hidden rounded-full bg-amber-50 px-3 py-2.5 text-xs font-extrabold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100 disabled:opacity-60 sm:inline-block"
               >
                 ⬇ .pdf
@@ -4439,6 +4620,7 @@ export default function CalendarStudio({
               {!locked && tool === "shape" && renderShapeBar()}
               {renderSelOverlay()}
               {!locked && renderGridBar()}
+              {!locked && renderGridRestore()}
               {locked && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/35">
                   <div className="rounded-2xl bg-white/95 px-4 py-3 text-center shadow-lg ring-1 ring-stone-200">
