@@ -353,6 +353,51 @@ export async function updateDocument(kind: string, recordId: number, body: Recor
   if (!r.ok || j?.status === false) throw new Error(`FlowAccount ไม่รับการแก้ไข (${r.status}${j?.message ? ` · ${j.message}` : ""})`);
 }
 
+const COMPANY_KEYS = ["companyName", "companyNameEn", "companyAddress", "companyAddressEn", "companyTaxId", "companyBranch", "companyBranchEn", "companyPhone", "companyMobile", "companyFax", "companyWebsite"] as const;
+let companyCache: { at: number; info: Record<string, string> } | null = null;
+
+/** 🏢 หัวกระดาษผู้ออกเอกสาร (บริษัท ทีพีดิจิตอล จำกัด · ที่อยู่ · เลขผู้เสียภาษี) — GET /company/info · แคช 1 ชม. */
+export async function companyHeader(): Promise<Record<string, string>> {
+  if (companyCache && Date.now() - companyCache.at < 60 * 60_000) return companyCache.info;
+  const d = await get<Record<string, unknown>>("/company/info");
+  const info = Object.fromEntries(COMPANY_KEYS.map((k) => [k, String(d?.[k] ?? "").trim()]));
+  if (!info.companyName) throw new Error("FlowAccount ไม่ส่งชื่อบริษัทผู้ออกเอกสารมา");
+  companyCache = { at: Date.now(), info };
+  return info;
+}
+
+/**
+ * 🏢 ใบแจ้งหนี้/ใบกำกับที่สร้างแบบ "อัปเกรดต่อจาก QT" ผ่าน API ออกมาหัวกระดาษว่าง (company ทุกช่อง "")
+ * → PDF ไม่มีชื่อ/ที่อยู่/เลขผู้เสียภาษีของร้าน ลูกค้าเอาไปเบิกไม่ได้ (INV007722 OD-261012-2737 · BL/INV ที่ระบบออกทุกใบ · 14 ต.ค. 69)
+ * QT ที่สร้างผ่าน API ได้หัวกระดาษปกติ · ใบที่ออกมือในแอปก็ปกติ — POST ไม่มีช่อง company ให้ส่ง แต่ PUT (UpdateDocument) มี
+ * ต้องเรียกตอนใบยัง "รออนุมัติ" (ก่อนบันทึกรับเงิน) — FlowAccount แก้ใบที่รับเงินแล้วไม่ได้
+ * body = โครงเดียวกับตอนสร้าง (upgradeBody) · คืน "" = หัวกระดาษครบ · ข้อความ = ซ่อมไม่สำเร็จ (ใบยังใช้ได้ แค่หัวกระดาษว่าง)
+ */
+export async function ensureCompanyHeader(kind: string, recordId: number, body: Record<string, unknown>): Promise<string> {
+  const headerOf = async () => {
+    const d = await get<{ list?: Record<string, unknown>[] } & Record<string, unknown>>(`/${kind}/${recordId}`);
+    const x = (d?.list?.[0] ?? d) as { company?: { companyName?: string } } | undefined;
+    return String(x?.company?.companyName ?? "").trim();
+  };
+  try {
+    if (await headerOf()) return "";
+    await updateDocument(kind, recordId, {
+      ...body,
+      ...(await companyHeader()),
+      documentStructureType: "UpdateSimpleDocument",
+      recordId,
+      useInlineVat: false,
+      useInlineDiscount: false,
+      documentShowWithholdingTax: !!body.documentShowWithholdingTax,
+      documentWithholdingTaxPercentage: Number(body.documentWithholdingTaxPercentage) || 0,
+      documentWithholdingTaxAmount: Number(body.documentWithholdingTaxAmount) || 0,
+    });
+    return (await headerOf()) ? "" : "หัวกระดาษ (ชื่อ/ที่อยู่ร้าน) ยังว่างหลังแก้";
+  } catch (e) {
+    return `เติมหัวกระดาษร้านไม่สำเร็จ (${(e as Error).message})`;
+  }
+}
+
 /** 🏦 บัญชีธนาคารรับเงินของร้านใน FlowAccount (ตอนนี้มีบัญชีเดียว: กสิกร บจก.ทีพีดิจิตอล …753328) */
 export async function bankAccounts(): Promise<{ id: number; number: string; name: string; bank: string }[]> {
   const d = await get<unknown>("/bank-accounts");

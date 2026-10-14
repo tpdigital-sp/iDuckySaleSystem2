@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { FA_KIND_LABEL, draftFor, mainDocOf, netCollected, quotationBody, quotationUpdateBody, quotationUpdateDraft, upgradeBody, type FaDocKind } from "@/lib/server/fa-create";
-import { bankAccounts, createDocument, findDocRecordId, flowAccountApiReady, getDocument, receiveTransferPayment, shareDocument, updateDocument } from "@/lib/server/flowaccount-api";
+import { bankAccounts, createDocument, ensureCompanyHeader, findDocRecordId, flowAccountApiReady, getDocument, receiveTransferPayment, shareDocument, updateDocument } from "@/lib/server/flowaccount-api";
 import { WHT_TABLE } from "@/lib/server/wht-db";
 import { bkkParts } from "@/lib/bangkok-time";
 
@@ -77,6 +77,8 @@ export async function POST(req: Request) {
     }
     created = await createDocument(API_PATH[kind].create, docBody);
     const doc = created;
+    // 🏢 BL/INV ที่อัปเกรดผ่าน API ออกมาหัวกระดาษร้านว่าง → เติมก่อนรับเงิน (รับเงินแล้วแก้ใบไม่ได้ · INV007722 · 14 ต.ค. 69)
+    const headErr = kind === "qt" ? "" : await ensureCompanyHeader(API_PATH[kind].share, doc.recordId, docBody);
     // 🧾 ใบกำกับ: บันทึกรับเงินโอนเข้าบัญชีร้าน (ขั้นที่ 2) — ไม่ผ่านก็ยังผูกใบเข้าออเดอร์ แล้วบอกให้ไปกดรับเงินใน FlowAccount
     let payErr = "";
     if (kind === "inv" && bank) {
@@ -139,11 +141,13 @@ export async function POST(req: Request) {
       `ออก${FA_KIND_LABEL[kind]}ใน FlowAccount`,
       `${doc.docNo}${draft.source && kind !== "qt" ? ` (ต่อจาก ${draft.source.docNo})` : ""} · ยอด ${baht(draft.grandTotal)} บาท${
         kind === "inv" ? (payErr ? ` · ⚠️ ${payErr} — กดรับเงินใน FlowAccount เอง` : ` · รับเงินโอน ${baht(netCollected(draft))} วันที่ ${draft.paymentDate} เข้าบัญชี …${bank?.number.slice(-4) ?? ""}`) : ""
-      }${draft.wht ? ` · หัก ณ ที่จ่าย ${draft.wht.rate}%` : ""}`
+      }${draft.wht ? ` · หัก ณ ที่จ่าย ${draft.wht.rate}%` : ""}${headErr ? ` · ⚠️ ${headErr} — เปิดใบใน FlowAccount กดแก้ไขแล้วบันทึก` : ""}`
     );
     const w = await updateOrder(sb, next, { prev: fresh, by });
     if (w.error) throw new Error(`บันทึกออเดอร์ไม่สำเร็จ: ${w.error.message}`);
-    return NextResponse.json({ ok: true, docNo: doc.docNo, order: w.order, ...(payErr ? { warning: `ออก ${doc.docNo} แล้ว แต่${payErr} — เปิดใบใน FlowAccount แล้วกดรับชำระเงินเอง` } : {}) });
+    return NextResponse.json({ ok: true, docNo: doc.docNo, order: w.order, ...(payErr || headErr
+        ? { warning: [payErr && `ออก ${doc.docNo} แล้ว แต่${payErr} — เปิดใบใน FlowAccount แล้วกดรับชำระเงินเอง`, headErr && `${doc.docNo}: ${headErr} — เปิดใบใน FlowAccount กดแก้ไขแล้วบันทึก`].filter(Boolean).join(" · ") }
+        : {}) });
   } catch (e) {
     const msg = (e as Error).message;
     // สร้างใน FlowAccount ไปแล้วแต่ผูกเข้าออเดอร์ไม่สำเร็จ → บอกเลขใบ (ห้ามกดสร้างซ้ำ)
