@@ -74,7 +74,7 @@ import { printFrameToken } from "@/lib/design-templates";
 import { buildCalendarAi, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
-import { BG_METHODS, detectBg, drawPiece, removeBackground, type BgMethod } from "@/lib/diecut-piece";
+import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
 
 export interface CalendarState {
@@ -653,7 +653,7 @@ export default function CalendarStudio({
   const presets = cutPresets ?? CUT_PRESETS;
   /** สูตรที่เลือกอยู่ (ไม่เลือก = พวงกุญแจ) — ค่าในสูตรเป็นฐาน ค่าที่ลูกค้าปรับเอง (design.cut) ทับ */
   const presetP = presets.find((x) => x.id === (design.cut?.preset ?? "keychain"))?.p ?? {};
-  const cutP: CutParams = { ...CUT_PARAMS_DEFAULT, ...presetP, ...(design.cut ?? {}), hole: !!fmt.diecut?.hole };
+  const cutP: CutParams = { ...CUT_PARAMS_DEFAULT, ...presetP, ...(design.cut ?? {}), edits: design.cut?.edits ?? [], hole: !!fmt.diecut?.hole };
   /** หดขอบตัด halo (พิกเซลของรูปเต็ม · ใช้ตอนตัดพื้นหลัง) */
   const shrink = design.cut?.shrink ?? presetP.shrink ?? 1;
   const setCut = (patch: Partial<CutParams> & { shrink?: number; preset?: string; autoShape?: boolean }) => setDesign((d) => ({ ...d, cut: { ...(d.cut ?? {}), ...patch } }));
@@ -669,12 +669,12 @@ export default function CalendarStudio({
   const [bgNote, setBgNote] = useState("");
   /** เรนเดอร์หน้า (พื้นใส) ที่ความละเอียด pxPerMm → แคนวาส + ImageData */
   const renderAlpha = useCallback(
-    (pxPerMm: number) => {
+    (pxPerMm: number, d: CalDesign = design) => {
       const cv = document.createElement("canvas");
       cv.width = Math.max(1, Math.round(fmtW(fmt) * pxPerMm));
       cv.height = Math.max(1, Math.round(fmtH(fmt) * pxPerMm));
       const ctx = cv.getContext("2d", { willReadFrequently: true })!;
-      drawPage(ctx, pxPerMm, fmt, fmt.pages[0], design, back, imgs);
+      drawPage(ctx, pxPerMm, fmt, fmt.pages[0], d, back, imgs);
       return { cv, data: ctx.getImageData(0, 0, cv.width, cv.height) };
     },
     [fmt, design, back, imgs],
@@ -688,46 +688,43 @@ export default function CalendarStudio({
    *         แล้วค่อยคิดละเอียด 600px หลังหยุดแก้ 180ms (เส้นสุดท้ายคม · ไฟล์ส่งออกใช้ 600px เสมอ)
    */
   const CUT_PPM_FAST = 300 / Math.max(fmtW(fmt), fmtH(fmt));
-  /** ผลเส้นตัดล่าสุด + ตำแหน่งรูปหลักตอนคิด (ไว้ย้ายเส้นตามรูปแบบเรขาคณิต) · cutKey = ค่าเส้นตัดตอนนั้น */
-  const cutGeomRef = useRef<{ src: number; pl: CalPlacement; cut: CutResult | null; cutKey: string } | null>(null);
-  const cutKeyOf = (c: CalDesign["cut"]) => JSON.stringify(c ?? null);
+  /**
+   * 🔒 เส้นตัดไม่ตามการซูม/ลากรูป (ผู้ใช้แจ้ง 14 ต.ค. 69 "เส้นไดคัทไม่ควรเปลี่ยนไปตามที่ zoom ภาพ")
+   * เส้นคิดจากรูปหลักที่ "ตำแหน่งอ้างอิง" (design.cut.ref = ตอนใส่รูป/จัดพอดีขนาด) เสมอ — ลูกค้าซูม/เลื่อนรูป = ขยับลายใต้เส้นเดิม
+   * ส่วนที่เลยเส้นจะถูกตัดทิ้ง (จอทำจาง · ไฟล์พิมพ์ clip ตามเส้น) · ข้อความ/กรอบ/ค่าเส้นตัดเปลี่ยน = คิดเส้นใหม่ตามปกติ
+   * เปลี่ยนรูป (src ใหม่) หรือ ↺ กลับค่าเริ่มต้น = ตั้ง ref ใหม่จากตำแหน่งปัจจุบัน
+   */
+  const refDesign = useMemo((): CalDesign => {
+    const front = fmt.pages[0].key;
+    const ph = design.photos[front];
+    const ref = design.cut?.ref;
+    if (!ph || ph.src < 0 || !ref || design.cut?.refSrc !== ph.src) return design;
+    return { ...design, photos: { ...design.photos, [front]: { ...ph, pl: ref } } };
+  }, [design, fmt]);
   useEffect(() => {
     if (!open || !fmt.diecut) return;
+    const front = fmt.pages[0].key;
+    const ph = design.photos[front];
+    if (ph && ph.src >= 0 && (!design.cut?.ref || design.cut.refSrc !== ph.src)) {
+      // ยังไม่มีตำแหน่งอ้างอิงของรูปนี้ → ใช้ตำแหน่งตอนนี้ (ตอนเพิ่งใส่รูป = พอดีผืน)
+      setDesign((d) => {
+        const p0 = d.photos[front];
+        return p0 && p0.src >= 0 ? { ...d, cut: { ...(d.cut ?? {}), ref: p0.pl, refSrc: p0.src } } : d;
+      });
+      return;
+    }
     let raf = 0;
     let t = 0;
     const run = (ppm: number) => {
       try {
-        const r = processCut(renderAlpha(ppm).data, ppm, fmt.diecut!.size, cutP);
-        setCutRes(r);
-        const ph0 = design.photos[fmt.pages[0].key];
-        cutGeomRef.current = ph0 && ph0.src >= 0 ? { src: ph0.src, pl: ph0.pl, cut: r, cutKey: cutKeyOf(design.cut) } : null;
+        setCutRes(processCut(renderAlpha(ppm, refDesign).data, ppm, fmt.diecut!.size, cutP));
         setCutErr("");
       } catch (e) {
         setCutRes(null);
         setCutErr(e instanceof Error ? e.message : "คำนวณเส้นตัดไม่สำเร็จ");
       }
     };
-    /**
-     * ⚡ ทางลัดไม่ต้องคิดใหม่: ลายมีแค่รูปหลักรูปเดียว (ไม่มีข้อความ/กรอบ) แล้วรูปแค่ย่อ/ขยาย/เลื่อน
-     * → เส้นตัดรูปทรงเดิมเป๊ะ แค่ย้าย/สเกลกรอบตามรูป (เรขาคณิตล้วน · 0ms) = เส้นเกาะรูปในเฟรมเดียวกัน
-     * ตอนเลื่อนกลับพอดีขนาด (fitAnim) ก็ใช้ทางนี้ (จัดการใน fitToSize) — ไม่คิดหยาบซ้อน
-     */
-    const front = fmt.pages[0].key;
-    const ph = design.photos[front];
-    const prev = cutGeomRef.current;
-    const simple = ph && ph.src >= 0 && !(design.elements ?? []).length;
     if (fitAnim.current) {
-      t = window.setTimeout(() => run(CUT_PPM), 180);
-      return () => clearTimeout(t);
-    }
-    if (simple && prev && prev.src === ph.src && prev.cut && prev.cutKey === cutKeyOf(design.cut) && prev.pl.wMm > 0) {
-      const k = ph.pl.wMm / prev.pl.wMm;
-      const r = prev.cut;
-      const bx = ph.pl.cxMm + (r.box.x - prev.pl.cxMm) * k;
-      const by = ph.pl.cyMm + (r.box.y - prev.pl.cyMm) * k;
-      const moved = { ...r, box: { x: bx, y: by, w: r.box.w * k, h: r.box.h * k }, scale: r.scale / k };
-      setCutRes(moved);
-      cutGeomRef.current = { src: ph.src, pl: ph.pl, cut: moved, cutKey: prev.cutKey };
       t = window.setTimeout(() => run(CUT_PPM), 180);
       return () => clearTimeout(t);
     }
@@ -738,7 +735,7 @@ export default function CalendarStudio({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, fmt, renderAlpha, design.cut, fontTick]);
+  }, [open, fmt, refDesign, design.cut, fontTick]);
   /**
    * 📐 ย่อ/ขยายทุกอย่างบนผืน (รูป · ช่องรูป · ข้อความ/รูปทรง · จุดแก้) ให้ตัวชิ้นงานยาวสุดเท่าขนาดที่สั่งพอดี
    * แล้วจัดกลางจัตุรัส — จอจะเห็นขนาดจริง (scale = 1) ตรงกับไฟล์ผลิต (ผู้ใช้สั่ง 14 ต.ค. 69 "โยนภาพต้องตามขนาดที่ลูกค้าสั่ง")
@@ -796,7 +793,14 @@ export default function CalendarStudio({
           ...(e.size != null ? { size: e.size * k } : {}),
           ...(e.strokeW ? { strokeW: e.strokeW * k } : {}),
         })),
-        cut: d.cut?.edits?.length ? { ...d.cut, edits: d.cut.edits.map(([x, y, rr, sg]) => [mx(x), my(y), rr, sg] as [number, number, number, number]) } : d.cut,
+        // ⚠️ ห้ามใส่คีย์ค่า undefined (edits/ref) — spread ทับค่าเริ่มต้นใน cutP แล้ว processCut อ่าน .length พัง
+        cut: d.cut
+          ? {
+              ...d.cut,
+              ...(d.cut.edits?.length ? { edits: d.cut.edits.map(([x, y, rr, sg]) => [mx(x), my(y), rr, sg] as [number, number, number, number]) } : {}),
+              ...(d.cut.ref ? { ref: { ...d.cut.ref, cxMm: mx(d.cut.ref.cxMm), cyMm: my(d.cut.ref.cyMm), wMm: d.cut.ref.wMm * k, hMm: d.cut.ref.hMm * k } } : {}),
+            }
+          : d.cut,
   });
   /**
    * 📐 จัดพอดีขนาด + กลางจัตุรัส "เสมอ" — ขนาดชิ้นงานตายตัวตามที่สั่ง ลูกค้าขยาย/ลากเองก็ถูกจัดกลับหลังปล่อยนิ้ว
@@ -1613,7 +1617,8 @@ export default function CalendarStudio({
   }
   function scalePl(pl: CalPlacement, f: number): CalPlacement {
     const r = page.photo!;
-    const min = (Math.max(r.w, r.h) / Math.max(pl.wMm, pl.hMm)) * pl.wMm * 0.2;
+    // ✂️ ไดคัท: ย่อได้ถึง 20% ของขนาดตอนใส่รูป (เดิม 20% ของผืน = ย่อแทบไม่ได้ เพราะรูปเริ่มที่ ~25% ของผืนอยู่แล้ว)
+    const min = fmt.diecut && design.cut?.ref ? design.cut.ref.wMm * 0.2 : (Math.max(r.w, r.h) / Math.max(pl.wMm, pl.hMm)) * pl.wMm * 0.2;
     const w = clamp(pl.wMm * f, min, pl.wMm * 40);
     const q = w / pl.wMm;
     return { ...pl, wMm: pl.wMm * q, hMm: pl.hMm * q };
@@ -1790,6 +1795,18 @@ export default function CalendarStudio({
       ctx.fillText(`ขนาด ${fmt.diecut.size / 10} ซม.`, sx + sw, sy + sh + 4 * dpr);
       ctx.restore();
       if (cutRes) {
+        // ส่วนของลายที่เลยเส้นตัด = ไม่ได้พิมพ์ → ทำจางให้เห็นว่าจะโดนตัดทิ้ง
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, PW, PH);
+        ctx.save();
+        ctx.translate(cutRes.box.x * k, cutRes.box.y * k);
+        ctx.scale(k / cutRes.scale, k / cutRes.scale);
+        pathCurves(ctx, cutRes.cut);
+        ctx.restore();
+        ctx.fillStyle = cutView.bg === "dark" ? "rgba(28,25,23,.62)" : "rgba(255,255,255,.62)";
+        ctx.fill("evenodd");
+        ctx.restore();
         ctx.save();
         const u = k / cutRes.scale; // พิกเซลจอ ต่อ มม.จริง
         ctx.translate(cutRes.box.x * k, cutRes.box.y * k);
@@ -3078,17 +3095,46 @@ export default function CalendarStudio({
   async function makeCutFiles(stem: string, withAi: boolean) {
     if (!fmt.diecut) throw new Error("not diecut");
     await ensureFonts(fontKeys);
-    const r = processCut(renderAlpha(CUT_PPM).data, CUT_PPM, fmt.diecut.size, cutP);
+    // เส้นตัดจากตำแหน่งอ้างอิง (ไม่ตามซูม) · ลายจริงตามที่ลูกค้าจัด แล้ว clip ตามเส้น
+    const r = processCut(renderAlpha(CUT_PPM, refDesign).data, CUT_PPM, fmt.diecut.size, cutP);
     if (!r) throw new Error("ยังไม่มีลายบนชิ้นงาน — ใส่รูปหรือข้อความก่อน");
     const outPpm = 300 / 25.4;
     const srcPpm = Math.min(outPpm * r.scale, 6000 / Math.max(W, H));
     const { cv } = renderAlpha(srcPpm);
-    const pw = Math.max(1, Math.round(r.box.w * srcPpm));
-    const ph = Math.max(1, Math.round(r.box.h * srcPpm));
-    const art = document.createElement("canvas");
-    art.width = pw;
-    art.height = ph;
-    art.getContext("2d")!.drawImage(cv, Math.round(r.box.x * srcPpm), Math.round(r.box.y * srcPpm), pw, ph, 0, 0, pw, ph);
+    /** วาดลายทั้งผืน (มม.จริง) ให้ตรงกรอบเส้นตัด แล้ว clip ตามเส้น — ctx ตั้งสเกลพิกเซล/มม.จริงไว้แล้ว */
+    const drawArtClipped = (ctx: CanvasRenderingContext2D) => {
+      ctx.save();
+      ctx.beginPath();
+      pathCurves(ctx, r.cut);
+      ctx.clip("evenodd");
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(cv, -r.box.x * r.scale, -r.box.y * r.scale, (cv.width / srcPpm) * r.scale, (cv.height / srcPpm) * r.scale);
+      ctx.restore();
+    };
+    const drawPieceClipped = (ctx: CanvasRenderingContext2D, withCut: boolean) => {
+      if (r.stroke.length) {
+        ctx.save();
+        ctx.beginPath();
+        pathCurves(ctx, r.stroke);
+        ctx.fillStyle = cutP.strokeColor;
+        ctx.fill("evenodd");
+        ctx.restore();
+      }
+      drawArtClipped(ctx);
+      if (!withCut) return;
+      ctx.save();
+      ctx.lineWidth = 0.25;
+      ctx.strokeStyle = "#ec4899";
+      ctx.beginPath();
+      pathCurves(ctx, r.cut);
+      ctx.stroke();
+      if (r.hole) {
+        ctx.beginPath();
+        ctx.arc(r.hole.cx, r.hole.cy, r.hole.r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
     const toFile = (c: HTMLCanvasElement, name: string) =>
       new Promise<File>((res, rej) => c.toBlob((bl) => (bl ? res(new File([bl], name, { type: "image/png" })) : rej(new Error("สร้างไฟล์ภาพไม่สำเร็จ"))), "image/png"));
     const pad = 1;
@@ -3103,7 +3149,7 @@ export default function CalendarStudio({
     };
     const clean = (n: string) => n.replace(/[\/:*?"<>|]/g, "-");
     const pf = frame(outPpm);
-    drawPiece(pf.ctx, r, art, cutP.strokeColor, false);
+    drawPieceClipped(pf.ctx, false);
     const print = await toFile(pf.c, clean(`${stem}-ไดคัท-ไฟล์พิมพ์.png`));
     let white: File | undefined;
     if (r.white.length) {
@@ -3115,7 +3161,7 @@ export default function CalendarStudio({
       white = await toFile(wf.c, clean(`${stem}-ไดคัท-รองขาว.png`));
     }
     const mf = frame(Math.min(2000 / Math.max(r.bounds.x1 - r.bounds.x0, r.bounds.y1 - r.bounds.y0), outPpm));
-    drawPiece(mf.ctx, r, art, cutP.strokeColor, true);
+    drawPieceClipped(mf.ctx, true);
     const mock = await toFile(mf.c, clean(`${stem}-ไดคัท.png`));
     const svg = new File([cutSvg(r, pad)], clean(`${stem}-เส้นตัด.svg`), { type: "image/svg+xml" });
     /**
@@ -4163,12 +4209,14 @@ export default function CalendarStudio({
     const top = Math.max(-8, (r.y / H) * cssH - 56);
     const frImg = fr && fr.src != null ? srcs[fr.src] : undefined;
     const has = fr ? !!frImg : true;
-    const zoomNow = fr ? Math.round((fr.zoom ?? 1) * 100) : zoomPct;
+    // ✂️ ไดคัท: 100% = ขนาดตอนใส่รูป (ตำแหน่งอ้างอิงของเส้นตัด) ไม่ใช่ "เต็มช่อง" — ช่องคือทั้งผืน ถ้านับแบบเดิมรูปเริ่มที่ ~25% ซูมออกได้แค่ขั้นเดียว
+    const refW = fmt.diecut && design.cut?.ref && cur ? design.cut.ref.wMm : 0;
+    const zoomNow = fr ? Math.round((fr.zoom ?? 1) * 100) : refW > 0 && cur ? Math.round((cur.pl.wMm / refW) * 100) : zoomPct;
     /** กรอบรูปซูมออกได้ถึงพอดีกรอบทั้งรูป (เดิมล็อก 100% = เต็มกรอบเสมอ) */
     const frMin = fr && frImg ? Math.round(containZoom(fr, frImg) * 100) : 100;
     const setZoom = (v: number) => {
       if (fr) patchEl(fr.id, { zoom: clamp(v, frMin, 400) / 100 });
-      else editPl((pl) => scalePl(pl, clamp(v, 20, 400) / Math.max(1, zoomPct)));
+      else editPl((pl) => scalePl(pl, clamp(v, 20, 400) / Math.max(1, zoomNow)));
     };
     const dpiNow = fr ? (frImg ? Math.round(frImg.w / (elementPhotoSize(fr, frImg).w / 25.4)) : 0) : dpi;
     // ค่าแต่งรูปของสิ่งที่เลือก (กรอบรูปอิสระ หรือรูปช่องหลักของหน้านี้)

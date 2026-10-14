@@ -224,7 +224,14 @@ export interface CalDesign {
    */
   pageOff?: string[];
   /** ✂️ งานไดคัท (รูปแบบ cut@…) — ค่าเส้นตัดในแผง ✂️ ไดคัท (ชุดเดียวกับ /admin/diecut?tab=bg · ไม่ตั้ง = CUT_PARAMS_DEFAULT) */
-  cut?: Partial<import("./diecut-engine").CutParams> & { shrink?: number; preset?: string; autoShape?: boolean };
+  cut?: Partial<import("./diecut-engine").CutParams> & {
+    shrink?: number;
+    preset?: string;
+    autoShape?: boolean;
+    /** 🔒 ตำแหน่งรูปหลักที่ใช้คิดเส้นตัด (ไม่ตามซูม/ลาก) + src ของรูปนั้น — ดู CalendarStudio refDesign */
+    ref?: CalPlacement;
+    refSrc?: number;
+  };
 }
 
 /**
