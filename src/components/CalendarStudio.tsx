@@ -1831,7 +1831,9 @@ export default function CalendarStudio({
       // 🖼 ช่องรูปหลักที่เลือก แบบ Printbox — กรอบ + จุดจับ 8 จุด (ปรับขนาดช่อง) + วงกลมลูกศรกลางรูป (ลากเลื่อนรูป)
       // กรอบฟ้า + จุดจับวาดเป็น HTML ทับแคนวาส (renderSelOverlay) — ช่องชิดขอบการ์ดจะได้ไม่โดนตัดครึ่งวง
       const r = page.photo;
-      if (photoOf(page, design, imgs)) drawPanIcon(ctx, (r.x + r.w / 2) * k, (r.y + r.h / 2) * k, dpr);
+      const phc = photoOf(page, design, imgs);
+      // ✂️ ไดคัท: วงลูกศรอยู่กลาง "รูป" ที่วาง (ช่อง = ทั้งผืน)
+      if (phc) drawPanIcon(ctx, (fmt.diecut ? phc.pl.cxMm : r.x + r.w / 2) * k, (fmt.diecut ? phc.pl.cyMm : r.y + r.h / 2) * k, dpr);
     }
     const gr = gridOf(page, design);
     if (!se && gridSel && gr) {
@@ -2122,9 +2124,14 @@ export default function CalendarStudio({
      * ขยับแม้ 0.x พิกเซล → setSlot → keepCover ขยายรูปให้คลุมช่องเต็ม — ช่องของงานไดคัทคือทั้งผืน
      * รูปที่ลูกค้าย่อไว้เลยเด้งใหญ่เต็มผืนทันที · ไดคัท: ลากบนรูป = ย้ายรูปเฉย ๆ (ขนาดคงเดิม)
      */
-    if (fmt.diecut && cur && page.photo && inRect(p, page.photo)) {
-      drag.current = { kind: "photo", pl: cur.pl, x: p.x, y: p.y };
-      setTool("photo");
+    if (fmt.diecut && cur && page.photo) {
+      // โดนตัวรูปจริง (ไม่ใช่ช่องทั้งผืน) ถึงจะย้าย · แตะพื้นว่าง = ยกเลิกเลือก
+      const plr = { x: cur.pl.cxMm - cur.pl.wMm / 2, y: cur.pl.cyMm - cur.pl.hMm / 2, w: cur.pl.wMm, h: cur.pl.hMm };
+      if (inRect(p, plr)) {
+        setSlotFocus(true);
+        setTool("photo");
+        drag.current = { kind: "photo", pl: cur.pl, x: p.x, y: p.y };
+      } else setSlotFocus(false);
       return;
     }
     if (cur && page.photo && inRect(p, page.photo)) {
