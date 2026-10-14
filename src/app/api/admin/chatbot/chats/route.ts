@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { draftEditableText } from "@/lib/server/bot-drafts";
+import { draftEditableText, draftImages } from "@/lib/server/bot-drafts";
 import type { Firestore } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
@@ -52,7 +52,7 @@ type Row = {
   adminAlias: string;
 };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice; draftImages?: { url: string; preview: string }[] };
 /** 🎴 การ์ดแจ้งลูกค้าที่ระบบส่งเอง (lib/server/chat-notice-log.ts) */
 type Notice = { orderId: string; title: string; color: string; asText?: boolean };
 type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; allReadAt: string };
@@ -169,6 +169,7 @@ export async function GET(req: Request) {
         approvedBy: y.approvedBy ? String(y.approvedBy) : undefined,
         edited: y.edited === true ? true : undefined,
         draftText: y.role === "draft" ? draftEditableText(y.payload) : undefined,
+        draftImages: y.role === "draft" ? draftImages(y.payload) : undefined,
         imageUrl: y.imageUrl ? String(y.imageUrl) : undefined,
         // รูปจากลูกค้า: ยังไม่ได้ดึง → หน้าเว็บใช้ /api/admin/chatbot/chats/image?uid&log (ดึงจาก LINE แล้วแคชขึ้น Storage)
         messageId: y.messageId ? String(y.messageId) : undefined,

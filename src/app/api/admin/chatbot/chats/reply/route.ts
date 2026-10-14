@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore, setBotPause, patchChatRow } from "@/lib/server/line-chat";
 import { inBackground } from "@/lib/server/background";
+import { productFlex } from "@/lib/server/product-card";
 import { classifyRoom } from "@/lib/server/chat-urgency";
 import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
 import { closePendingDrafts } from "@/lib/server/bot-drafts";
@@ -18,53 +19,11 @@ import { closePendingDrafts } from "@/lib/server/bot-drafts";
  *      ซึ่ง Build AI Request ของ n8n เช็คอยู่แล้ว) ค่าเริ่มต้น 30 นาที · pauseMinutes=0 = ไม่พัก
  */
 const COL = "line-conversations";
-const BRAND = "#1F6F78";
 
 type Card = { name?: string; url?: string; image?: string; priceMin?: number; priceMax?: number };
 type FileAtt = { url?: string; name?: string; size?: number };
 type Body = { id?: string; text?: string; imageUrl?: string; card?: Card; file?: FileAtt; pauseMinutes?: number };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-
-function priceText(c: Card): string {
-  const a = Number(c.priceMin ?? 0);
-  const b = Number(c.priceMax ?? 0);
-  if (a && b && b > a) return `฿${a.toLocaleString()} – ${b.toLocaleString()}`;
-  if (a) return `เริ่ม ฿${a.toLocaleString()}`;
-  return "ดูราคาบนเว็บ";
-}
-
-/** การ์ดสินค้าทรงเดียวกับ productBubble ของ Site Price Flex (LINE OA Bot) — รูป · ชื่อ · ช่วงราคา · ปุ่มลิงก์ */
-function productFlex(c: Card) {
-  const name = String(c.name ?? "").slice(0, 60);
-  const url = String(c.url ?? "");
-  return {
-    type: "flex",
-    altText: `สินค้า: ${name}`.slice(0, 380),
-    contents: {
-      type: "bubble",
-      size: "kilo",
-      hero: c.image
-        ? { type: "image", url: c.image, size: "full", aspectRatio: "4:3", aspectMode: "cover", action: { type: "uri", label: "ดูสินค้า", uri: url } }
-        : undefined,
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "xs",
-        paddingAll: "12px",
-        contents: [
-          { type: "text", text: name, weight: "bold", size: "sm", color: "#153B3F", wrap: true },
-          { type: "text", text: priceText(c), size: "xs", color: "#A05A00", wrap: true },
-        ],
-      },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        paddingAll: "8px",
-        contents: [{ type: "button", style: "primary", color: BRAND, height: "sm", action: { type: "uri", label: "ดูราคา / สั่งเลย", uri: url } }],
-      },
-    },
-  };
-}
 
 export async function POST(req: Request) {
   const gate = await requirePerm("chat.reply");
@@ -88,7 +47,7 @@ export async function POST(req: Request) {
   const messages: unknown[] = [];
   if (text) messages.push({ type: "text", text });
   if (imageUrl) messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
-  if (card) messages.push(productFlex(card));
+  if (card) messages.push(productFlex([card]));
   if (file) messages.push({ type: "text", text: `📎 ไฟล์: ${file.name}${file.size ? ` (${fmtSize(file.size)})` : ""}\nดาวน์โหลด: ${file.url}` });
 
   // 1) ส่งเข้า LINE — ตอบกลับทันทีไม่ได้ (reply token อายุ 1 นาที) จึงเป็น push เสมอ

@@ -44,7 +44,7 @@ type Row = {
 };
 type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean } };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[] };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number> };
@@ -773,7 +773,7 @@ function Chats() {
                   if (m.role === "draft") {
                     const latest = m.status === "pending" && !thread.slice(i + 1).some((x) => x.role === "draft" && x.status === "pending");
                     return latest ? (
-                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} />
+                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
                     ) : (
                       <div key={m.id || i} className="mb-2 flex justify-end">
                         <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
@@ -1365,7 +1365,7 @@ function FilterMenu({
  * 📝 การ์ดร่างคำตอบของบอท (โหมดร่าง 13 ต.ค. 69 — เจ้าของร้าน "อยากเป็นคนกดส่งเอง กลัวบอทให้ข้อมูลผิด")
  * แก้ข้อความได้ · Enter = ส่ง (Shift+Enter ขึ้นบรรทัด แบบช่องพิมพ์ด้านล่าง) · การ์ดสินค้า/รูปบัญชีในร่างส่งตามไปด้วย
  */
-function DraftCard({ entry, canSend, onSend, onDiscard }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void }) {
+function DraftCard({ entry, canSend, onSend, onDiscard, onZoom }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void; onZoom: (url: string) => void }) {
   const [text, setText] = useState(entry.draftText ?? "");
   const [busy, setBusy] = useState(false);
   const extras = entry.text
@@ -1401,28 +1401,75 @@ function DraftCard({ entry, canSend, onSend, onDiscard }: { entry: LogEntry; can
           className="w-full resize-y rounded-xl bg-white px-3 py-2 text-[14px] leading-relaxed outline-none"
           style={{ border: "1px solid #F0D48A" }}
         />
-        {extras.length ? (
+        {/* 🖼 รูป/การ์ดที่ส่งไปด้วย — ภาพย่อจริง กดดูใหญ่ได้ (14 ต.ค. 69 "ต้องการเห็นภาพก่อน") · ไม่มีภาพ = ป้ายข้อความแบบเดิม */}
+        {entry.draftImages?.length || entry.cards?.length ? (
+          <div className="mt-2">
+            <p className="mb-1 text-[11.5px] font-bold" style={{ color: "#8A5A00" }}>
+              ส่งพร้อมกัน{entry.draftImages?.length ? ` · รูป ${entry.draftImages.length}` : ""}
+              {entry.cards?.length ? ` · การ์ดสินค้า ${entry.cards.length}` : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(entry.draftImages ?? []).map((im, k) => (
+                <button key={`i${k}`} type="button" onClick={() => onZoom(im.url)} title="กดเพื่อดูรูปใหญ่" className="overflow-hidden rounded-lg bg-white transition hover:opacity-90" style={{ border: "1px solid #F0D48A" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={im.preview} alt={`รูปที่ ${k + 1}`} loading="lazy" className="h-28 w-28 object-cover" />
+                </button>
+              ))}
+              {(entry.cards ?? []).map((c, k) => (
+                // 🧾 การ์ดสินค้าแบบที่ลูกค้าจะเห็นใน LINE (รูปจากเว็บ · ชื่อ · ช่วงราคา · ปุ่ม) — กดรูปดูใหญ่ · กดปุ่มเปิดหน้าสินค้า
+                <div key={`c${k}`} className="w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+                  {c.image ? (
+                    <button type="button" onClick={() => onZoom(c.image as string)} className="block w-full" title="กดเพื่อดูรูปใหญ่">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={c.image} alt={c.name} loading="lazy" className="aspect-[4/3] w-full object-cover transition hover:opacity-90" />
+                    </button>
+                  ) : null}
+                  <div className="px-2.5 pb-2 pt-1.5">
+                    <p className="truncate text-[13px] font-bold" style={{ color: "#153B3F" }}>{c.name || "สินค้า"}</p>
+                    {c.price ? <p className="text-[12px]" style={{ color: "#A05A00" }}>{c.price}</p> : null}
+                    <a href={c.url} target="_blank" rel="noreferrer" className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>
+                      ดูราคา / สั่งเลย
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : extras.length ? (
           <p className="mt-1 text-[11.5px]" style={{ color: "#8A5A00" }}>
             ส่งพร้อมกัน: {extras.join(" · ")}
           </p>
         ) : null}
-        <div className="mt-2 flex items-center gap-2">
-          <span className="text-[11px]" style={{ color: "#A07A2C" }}>
-            {canSend ? "ถูกต้องกด Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่ · ผิด = ไม่ส่ง แล้วตอบเอง" : "บัญชีนี้ส่งไม่ได้ / โควตาหมด"}
-          </span>
-          <button type="button" onClick={onDiscard} disabled={busy} title="ไม่ส่งร่างนี้ — แอดมินตอบลูกค้าเอง แล้วสอนคำตอบที่ถูกให้บอทที่หน้า บอทเรียนรู้" className="ml-auto min-h-[36px] rounded-full px-3 text-[13px] font-bold" style={{ background: "#F1F5F9", color: "var(--dk-navy-soft)" }}>
+        {/* ปุ่มแถวของตัวเอง ป้ายไม่ตัดบรรทัด (14 ต.ค. 69 เจ้าของร้าน "ออกแบบใหม่" — เดิมคำแนะนำ+2 ปุ่มเบียดแถวเดียว ป้ายแตก 2 บรรทัด) */}
+        <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onDiscard}
+            disabled={busy}
+            title="ไม่ส่งร่างนี้ — แอดมินตอบลูกค้าเอง แล้วสอนคำตอบที่ถูกให้บอทที่หน้า บอทเรียนรู้"
+            className="min-h-[44px] whitespace-nowrap rounded-full border bg-white px-4 text-[13px] font-bold transition hover:bg-[#FFF4D6] disabled:opacity-50"
+            style={{ borderColor: "#E8C877", color: "#8A5A00" }}
+          >
             ไม่ส่ง · ให้บอทเรียนรู้
           </button>
           <button
             type="button"
             onClick={() => void send()}
             disabled={!canSend || busy}
-            className="min-h-[36px] rounded-full px-4 text-[13px] font-bold text-white disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center gap-2 whitespace-nowrap rounded-full px-5 text-[14px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
             style={{ background: LINE_GREEN }}
           >
             {busy ? "กำลังส่ง…" : "ส่งให้ลูกค้า"}
+            {!busy && canSend ? (
+              <kbd className="rounded-md px-1.5 py-[1px] font-sans text-[11px] font-bold" style={{ background: "rgba(255,255,255,.25)" }}>
+                Enter
+              </kbd>
+            ) : null}
           </button>
         </div>
+        <p className="mt-1.5 text-right text-[11px]" style={{ color: "#A07A2C" }}>
+          {canSend ? "Shift+Enter = ขึ้นบรรทัดใหม่ · ร่างผิด กด “ไม่ส่ง” แล้วพิมพ์ตอบเองด้านล่าง" : "บัญชีนี้ส่งไม่ได้ หรือโควตาข้อความหมด"}
+        </p>
       </div>
     </div>
   );

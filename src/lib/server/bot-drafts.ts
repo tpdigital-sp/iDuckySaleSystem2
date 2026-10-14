@@ -1,4 +1,5 @@
 import "server-only";
+import { productFlex, productsLinkedIn } from "@/lib/server/product-card";
 import { FieldValue } from "firebase-admin/firestore";
 
 /**
@@ -68,6 +69,31 @@ export function cardsOfFlex(msgs: LineMsg[]): DraftCard[] {
   return out.filter((c) => c.name || c.url);
 }
 
+/**
+ * 🧾 ร่างที่มีลิงก์สินค้า iduckystore.com → ใส่การ์ดสินค้าจากเว็บ (รูปจากหน้าสินค้า · ชื่อ · ช่วงราคา · ปุ่ม "ดูราคา / สั่งเลย")
+ * แทนภาพตารางราคาเก่า (Firebase price-link-images ที่ n8n แนบมา) — เจ้าของร้าน 14 ต.ค. 69 "อยากให้เป็นลิงก์ราคาแบบการ์ด · รูปจากในเว็บเป็นหลัก"
+ *   · หาสินค้าในแคตตาล็อกไม่เจอ = คงร่างเดิม (รูปเดิมยังเป็นทางสำรอง)
+ *   · ตัดเฉพาะรูปตารางราคาเก่า — รูปอื่น (บัญชีโอน ฯลฯ) คงไว้ · สินค้าที่มีการ์ดอยู่แล้วไม่ใส่ซ้ำ · การ์ดหลายตัว = carousel ข้อความเดียว
+ */
+const LEGACY_PRICE_IMG = /price-link-images|price_links/i;
+export async function upgradeDraftMessages(messages: LineMsg[]): Promise<LineMsg[]> {
+  const texts = messages.filter((m) => m.type === "text").map((m) => String(m.text ?? ""));
+  const found = await productsLinkedIn(texts).catch(() => []);
+  if (!found.length) return messages;
+  const have = new Set(cardsOfFlex(messages).map((c) => c.url.toLowerCase()));
+  const fresh = found.filter((p) => !have.has(p.url.toLowerCase()));
+  const kept = messages.filter((m) => {
+    if (m.type !== "image") return true;
+    const x = m as { originalContentUrl?: unknown; previewImageUrl?: unknown };
+    return !LEGACY_PRICE_IMG.test(`${x.originalContentUrl ?? ""} ${x.previewImageUrl ?? ""}`);
+  });
+  if (!fresh.length) return kept.length ? kept : messages;
+  // ช่องข้อความ LINE มี 5 — การ์ดต่อท้ายข้อความ ก่อนรูปที่เหลือ (ถ้าเต็ม ตัดรูปท้ายสุดออกก่อน)
+  const card = productFlex(fresh) as unknown as LineMsg;
+  const out = [...kept.filter((m) => m.type !== "image"), card, ...kept.filter((m) => m.type === "image")];
+  return out.slice(0, 5);
+}
+
 /** 🤖 บอทฝากร่าง — เขียน log + ธงห้อง + ทับร่างเก่าที่ยังค้าง */
 export async function saveBotDraft(
   db: FirebaseFirestore.Firestore,
@@ -75,7 +101,7 @@ export async function saveBotDraft(
   input: { messages: unknown; cards?: unknown; mode?: unknown },
 ): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   if (!/^U[0-9a-f]{32}$/.test(uid)) return { ok: false, reason: "uid" };
-  const messages = cleanLineMessages(input.messages);
+  const messages = await upgradeDraftMessages(cleanLineMessages(input.messages));
   if (!messages.length) return { ok: false, reason: "ไม่มีข้อความ" };
   const given: DraftCard[] = Array.isArray(input.cards)
     ? (input.cards as Record<string, unknown>[])
@@ -83,7 +109,8 @@ export async function saveBotDraft(
         .slice(0, 6)
         .map((c) => ({ name: String(c.name ?? "").slice(0, 80), url: String(c.url ?? ""), ...(c.image ? { image: String(c.image) } : {}), ...(c.price ? { price: String(c.price).slice(0, 60) } : {}) }))
     : [];
-  const cards = given.length ? given : cardsOfFlex(messages);
+  const fromFlex = cardsOfFlex(messages);
+  const cards = fromFlex.length ? fromFlex : given;
   const ref = db.collection(COL).doc(uid);
   const now = new Date();
   // ร่างเก่าที่ยังไม่ส่ง → ถูกทับ (ร่างนี้ตอบรวมข้อความที่ค้างแล้ว)
@@ -286,6 +313,25 @@ export async function closePendingDrafts(db: FirebaseFirestore.Firestore, uid: s
 }
 
 /** ข้อความฟองแรกของร่าง (ให้แอดมินแก้) — payload เก็บเป็น JSON ของข้อความ LINE */
+/**
+ * 🖼 รูปที่ร่างจะส่งไปพร้อมข้อความ (ข้อความ image ใน payload) — หน้าแชทโชว์เป็นภาพย่อให้แอดมินเห็นก่อนกดส่ง
+ * (เจ้าของร้าน 14 ต.ค. 69 "ต้องการเห็นภาพก่อน" · เดิมขึ้นแค่ "🖼 รูป")
+ */
+export function draftImages(payload: unknown): { url: string; preview: string }[] {
+  try {
+    return cleanLineMessages(JSON.parse(String(payload ?? "[]")))
+      .filter((m) => m.type === "image")
+      .map((m) => {
+        const x = m as { originalContentUrl?: unknown; previewImageUrl?: unknown };
+        const url = String(x.originalContentUrl ?? x.previewImageUrl ?? "");
+        return { url, preview: String(x.previewImageUrl ?? url) };
+      })
+      .filter((x) => /^https:\/\//.test(x.url));
+  } catch {
+    return [];
+  }
+}
+
 export function draftEditableText(payload: unknown): string {
   try {
     const msgs = cleanLineMessages(JSON.parse(String(payload ?? "[]")));
