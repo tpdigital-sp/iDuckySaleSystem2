@@ -701,6 +701,16 @@ export default function CalendarStudio({
     if (!ph || ph.src < 0 || !ref || design.cut?.refSrc !== ph.src) return design;
     return { ...design, photos: { ...design.photos, [front]: { ...ph, pl: ref } } };
   }, [design, fmt]);
+  /**
+   * ลายเซ็นของสิ่งที่มีผลต่อเส้นตัด — ซูม/เลื่อนรูปหลักไม่อยู่ในนี้ (รูปถูกแทนด้วย ref แล้ว)
+   * ไม่งั้นทุกครั้งที่ซูม เส้นจะถูกคิดใหม่ (หยาบ 300px → ละเอียด 600px) เห็นเส้นกระดุกเล็กน้อยทั้งที่รูปทรงเดิม (ผู้ใช้แจ้ง 14 ต.ค. 69 "เส้นเปลี่ยน")
+   */
+  const refSig = useMemo(
+    () => JSON.stringify({ p: refDesign.photos, e: refDesign.elements, c: refDesign.cut, s: refDesign.slots, g: refDesign.gridOff, b: refDesign.bg, t: refDesign.text }),
+    [refDesign],
+  );
+  const refDesignRef = useRef(refDesign);
+  refDesignRef.current = refDesign;
   useEffect(() => {
     if (!open || !fmt.diecut) return;
     const front = fmt.pages[0].key;
@@ -717,7 +727,7 @@ export default function CalendarStudio({
     let t = 0;
     const run = (ppm: number) => {
       try {
-        setCutRes(processCut(renderAlpha(ppm, refDesign).data, ppm, fmt.diecut!.size, cutP));
+        setCutRes(processCut(renderAlpha(ppm, refDesignRef.current).data, ppm, fmt.diecut!.size, cutP));
         setCutErr("");
       } catch (e) {
         setCutRes(null);
@@ -735,7 +745,7 @@ export default function CalendarStudio({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, fmt, refDesign, design.cut, fontTick]);
+  }, [open, fmt, refSig, imgs, fontTick]);
   /**
    * 📐 ย่อ/ขยายทุกอย่างบนผืน (รูป · ช่องรูป · ข้อความ/รูปทรง · จุดแก้) ให้ตัวชิ้นงานยาวสุดเท่าขนาดที่สั่งพอดี
    * แล้วจัดกลางจัตุรัส — จอจะเห็นขนาดจริง (scale = 1) ตรงกับไฟล์ผลิต (ผู้ใช้สั่ง 14 ต.ค. 69 "โยนภาพต้องตามขนาดที่ลูกค้าสั่ง")

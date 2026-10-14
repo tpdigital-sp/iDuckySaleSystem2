@@ -1463,7 +1463,8 @@ export function drawPage(
       } else if (opts.preview && page.kind !== "postback") {
         // ช่องรูปที่ยังว่าง = สีเทา + "Drag here" (บนจอเท่านั้น) — วาดในแคนวาสใต้ชิ้นส่วน กรอบรูป/ข้อความที่วางทับจึงยังเห็นและกดได้
         emptySlotBox(ctx, k, r);
-        placeholder(ctx, k, r.x + r.w / 2, r.y + r.h / 2, phSize(r.w, r.h));
+        // ✂️ ไดคัท: ช่องรูป = ทั้งผืน ป้ายจะใหญ่เกิน → ย่อ (ผู้ใช้สั่ง 14 ต.ค. 69 "ลดขนาด font")
+        placeholder(ctx, k, r.x + r.w / 2, r.y + r.h / 2, phSize(r.w, r.h) * (f.diecut ? 0.55 : 1));
       }
     }
   };
