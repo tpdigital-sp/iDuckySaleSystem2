@@ -161,29 +161,58 @@ JSX_CALENDAR = r"""
   try{
     var p0 = job.pages[0];
     doc = app.documents.add(DocumentColorSpace.RGB, p0.wMm*PT, p0.hMm*PT);
-    var base = doc.layers[0], R0 = doc.artboards[0].artboardRect, left = R0[0], top = R0[1];
-    var spot = null;
-    function cutColor(){
-      if(!spot){
-        try{ spot = doc.spots.getByName("CutContour"); }catch(e){
-          spot = doc.spots.add(); spot.name = "CutContour";
-          var c = new CMYKColor(); c.cyan=0; c.magenta=100; c.yellow=0; c.black=0;
-          spot.color = c; spot.colorType = ColorModel.SPOT;
+    var base = doc.layers[0], R0 = doc.artboards[0].artboardRect, left0 = R0[0], top0 = R0[1];
+    // อาร์ตบอร์ดเรียงเป็นตาราง 4 ต่อแถว — เรียงแถวเดียวยาว 16 หน้าเกินขอบผืนงาน Illustrator (~±8,000 pt) → error CoOA ที่ artboards.add (14 ต.ค. 69)
+    var COLS = 4, CW = 0, CH = 0;
+    for(var k=0;k<job.pages.length;k++){ CW = Math.max(CW, job.pages[k].wMm*PT); CH = Math.max(CH, job.pages[k].hMm*PT); }
+    var spots = {};
+    function spotColor(name, cmyk){
+      if(!spots[name]){
+        try{ spots[name] = doc.spots.getByName(name); }catch(e){
+          var sp = doc.spots.add(); sp.name = name;
+          var c = new CMYKColor(); c.cyan=cmyk[0]; c.magenta=cmyk[1]; c.yellow=cmyk[2]; c.black=cmyk[3];
+          sp.color = c; sp.colorType = ColorModel.SPOT; spots[name] = sp;
         }
       }
-      var sc = new SpotColor(); sc.spot = spot; sc.tint = 100; return sc;
+      var sc = new SpotColor(); sc.spot = spots[name]; sc.tint = 100; return sc;
+    }
+    function cutColor(){ return spotColor("CutContour", [0,100,0,0]); }
+    // ✂️ เส้นโค้งเบซิเยร์ (มม.) → path ใน Illustrator · หลายเส้น = compound path (รูกลางงานเจาะทะลุ)
+    function addCurves(ly, curves, L, T, style){
+      var host = curves.length > 1 ? ly.compoundPathItems.add() : ly;
+      var X = function(v){ return L + v*PT; }, Y = function(v){ return T - v*PT; };
+      for(var q=0;q<curves.length;q++){
+        var cv = curves[q], g = cv.g, n = g.length, pth = host.pathItems.add();
+        for(var a=0;a<n;a++){
+          var an = a===0 ? cv.s : [g[a-1][4], g[a-1][5]], prev = g[(a-1+n)%n], nx = g[a];
+          var pp = pth.pathPoints.add();
+          pp.anchor = [X(an[0]), Y(an[1])];
+          pp.leftDirection = [X(prev[2]), Y(prev[3])];
+          pp.rightDirection = [X(nx[0]), Y(nx[1])];
+          pp.pointType = PointType.CORNER;
+        }
+        pth.closed = true; style(pth);
+      }
     }
     for(var i=0;i<job.pages.length;i++){
-      var pg = job.pages[i], W = pg.wMm*PT, H = pg.hMm*PT, L = left, T = top;
+      var pg = job.pages[i], W = pg.wMm*PT, H = pg.hMm*PT, L = left0 + (i%COLS)*(CW+GAP), T = top0 - Math.floor(i/COLS)*(CH+GAP);
       if(i>0) doc.artboards.add([L, T, L+W, T-H]);
       doc.artboards[i].name = pg.name;
       var parent = null;
       if(job.pages.length>1){ parent = doc.layers.add(); parent.name = pg.name; }
       var addLayer = function(name){ var ly = parent ? parent.layers.add() : doc.layers.add(); ly.name = name; return ly; };
-      var bl = addLayer("พื้นหลัง");
-      var rect = bl.pathItems.rectangle(T, L, W, H);
-      var col = new RGBColor(); col.red = pg.bg[0]; col.green = pg.bg[1]; col.blue = pg.bg[2];
-      rect.stroked = false; rect.filled = true; rect.fillColor = col;
+      // ✂️ งานไดคัท: พื้นใส (bg null) — รองขาว (spot White) อยู่ล่างสุดใต้ลาย
+      if(pg.bg){
+        var bl = addLayer("พื้นหลัง");
+        var rect = bl.pathItems.rectangle(T, L, W, H);
+        var col = new RGBColor(); col.red = pg.bg[0]; col.green = pg.bg[1]; col.blue = pg.bg[2];
+        rect.stroked = false; rect.filled = true; rect.fillColor = col;
+      }
+      var under = pg.paths || [], over = [];
+      for(var u=0;u<under.length;u++){ if(under[u].fill){ (function(P){
+        var wl = addLayer(P.layer), clr = spotColor(P.spot, P.cmyk);
+        addCurves(wl, P.curves, L, T, function(x){ x.stroked = false; x.filled = true; x.fillColor = clr; });
+      })(under[u]); } else over.push(under[u]); }
       for(var j=0;j<pg.layers.length;j++){
         var it = pg.layers[j], ly = addLayer(it.name), pi = ly.placedItems.add();
         pi.file = new File(it.path);
@@ -191,12 +220,23 @@ JSX_CALENDAR = r"""
         pi.position = [L + it.x*PT, T - it.y*PT];
         pi.embed();
       }
-      var c = pg.cut, cl = addLayer("เส้นตัด (CutContour)");
-      var path = c.r > 0 ? cl.pathItems.roundedRectangle(T - c.y*PT, L + c.x*PT, c.w*PT, c.h*PT, c.r*PT, c.r*PT)
-                         : cl.pathItems.rectangle(T - c.y*PT, L + c.x*PT, c.w*PT, c.h*PT);
-      path.filled = false; path.stroked = true; path.strokeWidth = 0.25; path.strokeColor = cutColor();
-      cl.locked = true;
-      left = L + W + GAP;
+      var c = pg.cut;
+      if(c){
+        var cl = addLayer("เส้นตัด (CutContour)");
+        var path = c.r > 0 ? cl.pathItems.roundedRectangle(T - c.y*PT, L + c.x*PT, c.w*PT, c.h*PT, c.r*PT, c.r*PT)
+                           : cl.pathItems.rectangle(T - c.y*PT, L + c.x*PT, c.w*PT, c.h*PT);
+        path.filled = false; path.stroked = true; path.strokeWidth = 0.25; path.strokeColor = cutColor();
+        cl.locked = true;
+      }
+      // ✂️ เส้นตัดตามรูป (spot Cut100/Cut50) + รูห่วง — บนสุด ล็อก
+      for(var o2=0;o2<over.length;o2++){ (function(P){
+        var ol = addLayer(P.layer), clr = spotColor(P.spot, P.cmyk);
+        addCurves(ol, P.curves, L, T, function(x){ x.filled = false; x.stroked = true; x.strokeWidth = 0.25; x.strokeColor = clr; });
+        if(P.circles){ for(var z=0;z<P.circles.length;z++){ var cc = P.circles[z];
+          var e = ol.pathItems.ellipse(T - (cc[1]-cc[2])*PT, L + (cc[0]-cc[2])*PT, cc[2]*2*PT, cc[2]*2*PT);
+          e.filled = false; e.stroked = true; e.strokeWidth = 0.25; e.strokeColor = clr; } }
+        ol.locked = true;
+      })(over[o2]); }
     }
     if(base.pageItems.length===0 && base.layers.length===0 && doc.layers.length>1) base.remove();
     var o = new IllustratorSaveOptions(); o.pdfCompatible = true;
@@ -234,14 +274,26 @@ def calendar_ai(job: dict, timeout: int = 600) -> bytes:
         for i, pg in enumerate(pages):
             layers = []
             for j, ly in enumerate(pg.get("layers") or []):
-                f = tmp / f"p{i}_l{j}.png"
-                f.write_bytes(base64.b64decode(ly["png"]))
+                raw = base64.b64decode(ly["png"])
+                # ชั้นทึบ (รูปถ่าย) เว็บส่งมาเป็น JPEG ในช่อง png — ตั้งนามสกุลตามไฟล์จริง ไม่งั้น Illustrator วางไม่ได้
+                ext = "jpg" if raw[:2] == b"\xff\xd8" else "png"
+                f = tmp / f"p{i}_l{j}.{ext}"
+                f.write_bytes(raw)
                 layers.append({"name": str(ly.get("name") or f"ชั้น {j + 1}"), "path": str(f),
                                "x": float(ly["x"]), "y": float(ly["y"]), "w": float(ly["w"]), "h": float(ly["h"])})
-            cut = pg.get("cut") or {}
+            cut = pg.get("cut")
+            # ✂️ งานไดคัท: เส้นตัด/รองขาวเป็นเส้นโค้งเวกเตอร์ (paths) · พื้นใส (bg "none") · ไม่มีเส้นตัดสี่เหลี่ยม (cut null)
+            paths = []
+            for pth in pg.get("paths") or []:
+                paths.append({"layer": str(pth.get("layer") or "เส้นตัด"), "spot": str(pth.get("spot") or "CutContour"),
+                              "cmyk": [float(v) for v in (pth.get("cmyk") or [0, 100, 0, 0])][:4],
+                              "fill": bool(pth.get("fill")), "curves": pth.get("curves") or [],
+                              "circles": pth.get("circles") or []})
+            bg = pg.get("bg")
             jpages.append({"name": str(pg.get("name") or f"หน้า {i + 1}"), "wMm": float(pg["wMm"]), "hMm": float(pg["hMm"]),
-                           "bg": _hex_rgb(pg.get("bg")), "layers": layers,
-                           "cut": {k: float(cut.get(k, 0)) for k in ("x", "y", "w", "h", "r")}})
+                           "bg": None if bg in (None, "", "none", "transparent") else _hex_rgb(bg), "layers": layers,
+                           "cut": {k: float(cut.get(k, 0)) for k in ("x", "y", "w", "h", "r")} if cut else None,
+                           "paths": paths})
         out = tmp / "calendar.ai"
         jsx = JSX_CALENDAR.replace("__JOB__", json.dumps({"pages": jpages, "out": str(out)}, ensure_ascii=False))
         (tmp / "run.jsx").write_text(jsx, encoding="utf-8")

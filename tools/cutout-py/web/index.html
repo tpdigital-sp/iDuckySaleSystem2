@@ -488,11 +488,14 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 try{ if(window.self!==window.top) document.body.classList.add('embedded'); }catch(e){ document.body.classList.add('embedded'); }
 
 // ---------------- products (สูตรสินค้าจาก products.py) ----------------
+// 🔄 ส่งสูตรสินค้าให้หน้าหลังบ้านที่ฝังเราไว้ (iframe /admin/diecut?tab=bg) → บันทึกขึ้นเว็บ → จอออกแบบพวงกุญแจของลูกค้าใช้ค่าเดียวกัน (14 ต.ค. 69)
+function syncProducts(){ try{ if(window.self!==window.top) window.parent.postMessage({type:'cutout-products', products:PRODUCTS}, '*'); }catch(e){} }
 let PRODUCTS = [], PAPER = {};
 const prodById = id => PRODUCTS.find(x => x.id===id) || PRODUCTS[0];
 const prodShort = id => { const pr = PRODUCTS.find(x=>x.id===id); return pr ? pr.name.replace(/\s*\(.*\)$/,'') : id; };
 async function loadProducts(){
   try{ const j = await (await fetch('/products')).json(); PRODUCTS = j.products; PAPER = j.paper; }catch(e){}
+  syncProducts();
   const sel = $('#product'); sel.innerHTML = '';
   const groups = {};
   PRODUCTS.forEach(pr => { (groups[pr.group] = groups[pr.group] || []).push(pr); });
@@ -763,7 +766,7 @@ $('#saveProduct').onclick = async () => {
   if(!confirm(`บันทึกค่าปัจจุบันเป็นค่าเริ่มต้นของ "${pr.name}" ?`)) return;
   try{
     const j = await (await fetch('/products', {method:'POST', body:JSON.stringify({id:pr.id, p:current.p})})).json();
-    if(j.products){ PRODUCTS = j.products; toast('บันทึกค่าเริ่มต้นของสินค้าแล้ว'); } else toast(j.error || 'บันทึกไม่ได้');
+    if(j.products){ PRODUCTS = j.products; syncProducts(); toast('บันทึกค่าเริ่มต้นของสินค้าแล้ว'); } else toast(j.error || 'บันทึกไม่ได้');
   }catch(err){ toast('บันทึกไม่ได้'); }
 };
 

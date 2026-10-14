@@ -1470,7 +1470,8 @@ function DiecutPageInner() {
     window.history.replaceState(null, "", u.pathname + u.search + u.hash);
   }, []);
   return (
-    <PageShell>
+    /* แท็บตัดพื้นหลัง AI กว้างเต็มจอ (เครื่องมือมีแผงซ้าย-ขวาของตัวเอง) · แท็บอื่นคงกว้าง 1180px เท่าเดิม (13 ต.ค. 69) */
+    <PageShell wide={tab === "bg"}>
       <PageHead
         group="สินค้า"
         title={tab === "cutout" ? "ตัดภาพ" : tab === "bg" ? "ตัดพื้นหลัง AI" : "เส้นไดคัท"}

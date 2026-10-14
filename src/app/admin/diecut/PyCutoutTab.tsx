@@ -16,6 +16,11 @@ type State = "checking" | "up" | "down";
 const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyCutoutTab({ active }, ref) {
   const [state, setState] = useState<State>("checking");
   const frame = useRef<HTMLIFrameElement>(null);
+  /**
+   * ความสูงกรอบ = จากจุดเริ่มกรอบถึงขอบล่างจอพอดี (วัดจริง ไม่ใช่ค่าตายตัว)
+   * เดิม calc(100vh - 210px) + ขั้นต่ำ 640px แต่หัวหน้าหลังบ้านสูงกว่า 210px → แถบรูป/ปุ่มล่างล้นจอ (13 ต.ค. 69)
+   */
+  const [height, setHeight] = useState<number | null>(null);
 
   useImperativeHandle(ref, () => ({
     addFiles: (files) => frame.current?.contentWindow?.postMessage({ type: "cutout-add-files", files }, PY_CUTOUT_URL),
@@ -42,15 +47,67 @@ const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyC
     };
   }, [active, state]);
 
+  /**
+   * 🔄 สูตรสินค้า (products.py) จากโปรแกรมในเครื่อง → บันทึกขึ้นตั้งค่าร้าน
+   * โปรแกรมส่ง postMessage ทุกครั้งที่โหลด/กด "บันทึกเป็นค่าเริ่มต้นของสินค้านี้" → จอออกแบบพวงกุญแจของลูกค้าใช้ค่าเดียวกัน (14 ต.ค. 69)
+   */
+  const [synced, setSynced] = useState<"" | "ok" | "err">("");
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== PY_CUTOUT_URL || e.data?.type !== "cutout-products" || !Array.isArray(e.data.products)) return;
+      fetch("/api/admin/diecut-presets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ products: e.data.products }),
+      })
+        .then((r) => setSynced(r.ok ? "ok" : "err"))
+        .catch(() => setSynced("err"));
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  useEffect(() => {
+    if (!active || state !== "up") return;
+    const measure = () => {
+      const el = frame.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY; // ตำแหน่งในหน้า (ไม่ขึ้นกับการเลื่อน)
+      const vh = window.innerHeight;
+      // เว้นเท่าขอบล่างของหน้าหลังบ้าน (padding 32px) ให้กรอบจบพอดีขอบจอ ไม่ล้นลงไป
+      setHeight(Math.max(420, Math.round(vh - top - 36)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    // ส่วนหัวด้านบนเปลี่ยนความสูงได้ (ฟอนต์โหลดเสร็จ · ข้อความยาวขึ้นบรรทัดใหม่) → วัดใหม่
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+  }, [active, state]);
+
   if (state === "up")
     return (
+      <>
+      {synced && (
+        <p className={`mt-3 text-[11px] font-semibold ${synced === "ok" ? "text-emerald-700" : "text-rose-600"}`}>
+          {synced === "ok"
+            ? "🔄 สูตรเส้นตัดตามชนิดงานซิงก์ขึ้นเว็บแล้ว — จอออกแบบพวงกุญแจของลูกค้าใช้ค่าชุดเดียวกับหน้านี้"
+            : "⚠️ ซิงก์สูตรเส้นตัดขึ้นเว็บไม่สำเร็จ — จอออกแบบของลูกค้ายังใช้ค่าชุดเดิม"}
+        </p>
+      )}
       <iframe
         ref={frame}
         src={PY_CUTOUT_URL}
         title="ตัดพื้นหลัง AI"
         className="mt-3 block w-full rounded-2xl border"
-        style={{ height: "calc(100vh - 210px)", minHeight: 640, borderColor: "var(--dk-line, #e4ddd0)", background: "#f4f1ea" }}
+        style={{ height: height ?? "calc(100vh - 260px)", minHeight: 420, borderColor: "var(--dk-line, #e4ddd0)", background: "#f4f1ea" }}
       />
+      </>
     );
 
   return (

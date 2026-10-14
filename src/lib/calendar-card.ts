@@ -223,6 +223,8 @@ export interface CalDesign {
    * ซ่อนจากจอ · ไฟล์พิมพ์ยังมีหน้านั้นเป็นหน้าขาว (แผ่นยังมีด้านหลัง ลำดับหน้า-หลังไม่เลื่อน)
    */
   pageOff?: string[];
+  /** ✂️ งานไดคัท (รูปแบบ cut@…) — ค่าเส้นตัดในแผง ✂️ ไดคัท (ชุดเดียวกับ /admin/diecut?tab=bg · ไม่ตั้ง = CUT_PARAMS_DEFAULT) */
+  cut?: Partial<import("./diecut-engine").CutParams> & { shrink?: number; preset?: string; autoShape?: boolean };
 }
 
 /**
@@ -327,6 +329,11 @@ export interface CalFormat {
    * ไฟล์ส่งพิมพ์ยังเป็นสี่เหลี่ยมเต็มตัดตก (เครื่องตัดมุมเอง)
    */
   cornerR?: number;
+  /**
+   * ✂️ ชิ้นงานไดคัทตามรูปลาย (พวงกุญแจอะคริลิค · "cut@<มม.>") — ผืนพื้นใส · เส้นตัดคิดสดรอบลาย (lib/diecut-piece)
+   * size = ด้านยาวสุดของชิ้นงานทั้งชิ้นรวมหูห้อย · hole = เจาะรูห้อย
+   */
+  diecut?: { size: number; hole: boolean };
   /**
    * 🕳 เว้นขอบบน (มม. จากขอบผืนรวมตัดตก) ไม่ให้ตาราง/หัวเดือนเข้าไป — ปฏิทินตั้งโต๊ะมีรูเจาะห่วงด้านบน
    * (ผู้ใช้แจ้ง 13 ต.ค. 69 "AUGUST 2026 ชนรูเจาะ") · รูปเต็มใบยังเลยขึ้นไปได้ (รูเจาะทะลุรูปอยู่แล้ว) · layPage บังคับให้
@@ -494,11 +501,11 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
     const ori = L ? "แนวนอน" : "แนวตั้ง";
     if (key.startsWith("postcard-year1")) {
       /**
-       * แบบหน้าร้านเดิม (ผู้ใช้ส่งภาพ 12 ต.ค. 69): ขอบขาวรอบใบ + เส้นกรอบบาง · รูปไม่ชนขอบกระดาษ
+       * แบบหน้าร้านเดิม (ผู้ใช้ส่งภาพ 12 ต.ค. 69): ขอบขาวรอบใบ · รูปไม่ชนขอบกระดาษ
+       * เส้นกรอบบางรอบใบเอาออกแล้ว (ผู้ใช้สั่ง 14 ต.ค. 69 "ไม่ควรมี" — ดูเหมือนเส้นไดคัทซ้อน · ห่างเส้นตัดแค่ 2 มม. ตัดคลาดเห็นชัด)
        * แนวนอน = รูปซ้าย ~46% · แนวตั้ง = รูปบน ~46% · หัวข้อ "Calendar 2026" ตัวบาง
        */
       const b0 = pb0; // ตัดตก
-      const border = { x: b0 + 2, y: b0 + 2, w: w - 4, h: h - 4 };
       const m = 4.4; // ขอบขาวจากเส้นตัดถึงรูป/ตาราง
       const inner = { x: b0 + m, y: b0 + m, w: w - m * 2, h: h - m * 2 };
       const photo = L ? { ...inner, w: w * 0.457 } : { ...inner, h: h * 0.46 };
@@ -515,7 +522,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
         dpi: 300,
         cards: 8,
         perCard: 1,
-        pages: [{ key: "front", name: "หน้าเดียว", kind: "photo-year", text: true, photo, grid, border, light: true }],
+        pages: [{ key: "front", name: "หน้าเดียว", kind: "photo-year", text: true, photo, grid, light: true }],
       };
     }
     if (key.startsWith("postcard-year2"))
@@ -649,6 +656,30 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
       safe: 6,
       dpi: Math.max(pw, ph) > 300 ? 150 : 300,
       pages: [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
+    };
+  }
+  /**
+   * ✂️ "cut@<ด้านยาวสุด มม.>[-nohole]" = ชิ้นงานไดคัทตามรูปลาย (พวงกุญแจอะคริลิค · ผู้ใช้สั่ง 14 ต.ค. 69 "หน้าเหมือนแผ่นรองเมาส์")
+   * ผืนจัตุรัสเท่าขนาด = พื้นที่จัดลาย · ขอบรอบ (bleed) เผื่อให้เห็นเส้นตัด/หูห้อยที่ยื่นออกมา
+   * ตอนผลิตลายถูกย่อ/ขยายจนชิ้นงานยาวสุดเท่าขนาดพอดี (ไม่ได้พิมพ์ตามกรอบนี้)
+   */
+  if (key.startsWith("cut@")) {
+    const m = /^cut@(\d+(?:\.\d+)?)(-nohole)?$/.exec(key);
+    const size = m ? Number(m[1]) : 50;
+    const hole = !m?.[2];
+    // ขอบรอบจัตุรัส: พอให้เห็นเส้นตัด/ขอบสี/ติ่งรูห่วงที่ยื่นออกนอกขนาด (ชิ้น 2 ซม. ติ่งยาวเกือบ 1 ซม.)
+    const bl = Math.round((8 + size * 0.1) * 10) / 10;
+    return {
+      key,
+      name: `ชิ้นงานไดคัท ด้านยาวสุด ${cmText(size)} ซม.${hole ? "" : " (ไม่เจาะรู)"}`,
+      trimW: size,
+      trimH: size,
+      bleed: bl,
+      safe: 0,
+      dpi: 300,
+      diecut: { size, hole },
+      // ช่องรูปเต็มผืน (ไม่ใช่แค่จัตุรัส) — รูปที่ขยายเกินจัตุรัสไม่ถูกตัดเป็นขอบเหลี่ยม ระบบย่อทั้งลายให้พอดีขนาดเอง
+      pages: [{ key: "front", name: "ลาย", kind: "photo", photo: { x: 0, y: 0, w: size + bl * 2, h: size + bl * 2 } }],
     };
   }
   if (key === "canvas" || key.startsWith("canvas@")) {

@@ -31,6 +31,8 @@ export async function POST(req: Request) {
    */
   const { data: cur } = await sb.from("products").select("data").eq("id", SHOP_PAYMENT_ID).maybeSingle();
   const prev = (cur?.data as ShopPayment | undefined) ?? ({ banks: [] } as ShopPayment);
+  // ✂️ สูตรเส้นตัดซิงก์จาก cutout-py — หน้าตั้งค่าร้านไม่รู้จัก/อาจถือค่าเก่า → คงของเดิมไว้เสมอ (เขียนผ่าน /api/admin/diecut-presets เท่านั้น)
+  if (prev.diecutPresets) p = { ...p, diecutPresets: prev.diecutPresets };
   if (gate.actor.role !== ROLE_ADMINISTRATOR) {
     p = {
       ...p,

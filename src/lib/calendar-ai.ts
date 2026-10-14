@@ -35,6 +35,7 @@ const PT = 72 / 25.4;
 
 export interface AiLayer {
   name: string;
+  /** ภาพของชั้น — PNG (มีส่วนใส) หรือ JPEG (ทึบทั้งกรอบ · ชื่อช่องคงเดิม) */
   png: Blob;
   /** ตำแหน่ง/ขนาดภาพบนหน้า (มม. นับจากมุมซ้ายบนรวมตัดตก) */
   x: number;
@@ -42,14 +43,29 @@ export interface AiLayer {
   w: number;
   h: number;
 }
+/** ✂️ เส้นเวกเตอร์ (งานไดคัท) — เส้นโค้งเบซิเยร์ มม. · s = จุดเริ่ม · g = [c1x,c1y,c2x,c2y,tox,toy] ต่อท่อน */
+export interface AiPath {
+  /** ชื่อเลเยอร์ */
+  layer: string;
+  /** ชื่อสีพิเศษ (Cut100 / Cut50 / White) */
+  spot: string;
+  cmyk: [number, number, number, number];
+  /** true = ถมสี (รองขาว · อยู่ใต้ลาย) · false = เส้น (เส้นตัด · บนสุด ล็อก) */
+  fill: boolean;
+  curves: { s: [number, number]; g: [number, number, number, number, number, number][] }[];
+  /** วงกลม [cx, cy, r] มม. (รูห่วง) */
+  circles?: [number, number, number][];
+}
 export interface AiPage {
   name: string;
   wMm: number;
   hMm: number;
+  /** สีพื้น · "none" = พื้นใส (งานไดคัท) */
   bg: string;
   layers: AiLayer[];
-  /** เส้นตัด (มม.) */
-  cut: { x: number; y: number; w: number; h: number; r: number };
+  /** เส้นตัดสี่เหลี่ยม (มม.) · null = ไม่มี (งานไดคัทใช้ paths) */
+  cut: { x: number; y: number; w: number; h: number; r: number } | null;
+  paths?: AiPath[];
 }
 
 /** วาดทุกชั้นของทุกหน้าที่จะพิมพ์ แยกเป็น PNG พื้นใส (ครอปขอบว่างทิ้ง) */
@@ -100,7 +116,11 @@ export async function renderAiPages(input: {
       crop.width = box.w;
       crop.height = box.h;
       crop.getContext("2d")!.drawImage(cv, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
-      const png = await new Promise<Blob | null>((r) => crop.toBlob(r, "image/png"));
+      // 📉 ชั้นทึบทั้งกรอบ (รูปถ่าย) = JPEG · มีส่วนใส (ข้อความ/ตาราง/รูปทรง) = PNG
+      //    เดิม PNG ทุกชั้น → ปฏิทิน 16 หน้ารูปเต็ม ส่ง 98 MB · .ai เกิน 50 MB อัปเข้าออเดอร์ไม่ได้ (14 ต.ค. 69)
+      const png = await new Promise<Blob | null>((r) =>
+        crop.toBlob(r, box.opaque ? "image/jpeg" : "image/png", box.opaque ? 0.92 : undefined),
+      );
       if (!png) continue;
       layers.push({ name: L.name, png, x: box.x / k, y: box.y / k, w: box.w / k, h: box.h / k });
     }
@@ -135,7 +155,17 @@ function alphaBox(ctx: CanvasRenderingContext2D, w: number, h: number) {
     }
   }
   if (x1 < 0) return null;
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  // ทึบทั้งกรอบไหม (ไม่มีพิกเซลโปร่งแสงเลย) → เก็บเป็น JPEG ได้
+  let opaque = true;
+  for (let y = y0; y <= y1 && opaque; y++) {
+    const row = y * w * 4;
+    for (let x = x0; x <= x1; x++)
+      if (a[row + x * 4 + 3] < 255) {
+        opaque = false;
+        break;
+      }
+  }
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, opaque };
 }
 
 const b64 = async (b: Blob) => {
@@ -206,16 +236,26 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
     };
     const hex = /^#?([0-9a-f]{6})$/i.exec(p.bg)?.[1] ?? "ffffff";
     const c = (i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
-    layer("พื้นหลัง", () => pg.drawRectangle({ x: 0, y: 0, width: Wpt, height: Hpt, color: rgb(c(0), c(2), c(4)) }));
+    if (p.bg !== "none") layer("พื้นหลัง", () => pg.drawRectangle({ x: 0, y: 0, width: Wpt, height: Hpt, color: rgb(c(0), c(2), c(4)) }));
+    /** ✂️ เส้นเวกเตอร์ → svg path (มม.) */
+    const svgOf = (P: AiPath) =>
+      P.curves.map((cv) => `M ${cv.s[0]} ${cv.s[1]} ` + cv.g.map((g) => `C ${g[0]} ${g[1]} ${g[2]} ${g[3]} ${g[4]} ${g[5]}`).join(" ") + " Z").join(" ") +
+      (P.circles ?? []).map(([cx, cy, r]) => ` M ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} Z`).join("");
+    for (const P of (p.paths ?? []).filter((x) => x.fill))
+      layer(P.layer, () => pg.drawSvgPath(svgOf(P), { x: 0, y: Hpt, scale: PT, color: rgb(0.85, 0.95, 1) }));
     for (const l of p.layers) {
-      const img = await doc.embedPng(await l.png.arrayBuffer());
+      const img = l.png.type === "image/jpeg" ? await doc.embedJpg(await l.png.arrayBuffer()) : await doc.embedPng(await l.png.arrayBuffer());
       layer(l.name, () => pg.drawImage(img, { x: l.x * PT, y: Hpt - (l.y + l.h) * PT, width: l.w * PT, height: l.h * PT }));
     }
-    const { x, y, w, h, r } = p.cut;
-    const path = r
-      ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
-      : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
-    layer("เส้นตัด (CutContour)", () => pg.drawSvgPath(path, { x: 0, y: Hpt, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.25 / PT }));
+    if (p.cut) {
+      const { x, y, w, h, r } = p.cut;
+      const path = r
+        ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
+        : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+      layer("เส้นตัด (CutContour)", () => pg.drawSvgPath(path, { x: 0, y: Hpt, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.25 / PT }));
+    }
+    for (const P of (p.paths ?? []).filter((x) => !x.fill))
+      layer(P.layer, () => pg.drawSvgPath(svgOf(P), { x: 0, y: Hpt, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.25 / PT }));
     pg.node.Resources()?.set(PDFName.of("Properties"), doc.context.obj(props));
   }
   doc.catalog.set(PDFName.of("OCProperties"), doc.context.obj({ OCGs: all, D: { Order: order, ON: all } }));

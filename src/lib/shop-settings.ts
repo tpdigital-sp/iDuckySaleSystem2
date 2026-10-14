@@ -84,6 +84,18 @@ export interface ShopPayment {
   seo?: SeoConfig;
   /** ⚡ ส่วนลดโอนไว (5/10 บาทตามยอดสินค้า) — ไม่ตั้ง = ใช้ค่าเริ่มต้นใน @/lib/early-pay */
   earlyPay?: _EarlyPayDiscount;
+  /**
+   * ✂️ สูตรเส้นตัดตามชนิดงาน จากหน้า /admin/diecut?tab=bg (products.py ของโปรแกรม cutout-py ในเครื่องร้าน)
+   * ซิงก์ขึ้นมาทุกครั้งที่เปิดแท็บ/กด "บันทึกเป็นค่าเริ่มต้นของสินค้านี้" → จอออกแบบพวงกุญแจของลูกค้าใช้ค่าเดียวกัน
+   * เขียนผ่าน /api/admin/diecut-presets เท่านั้น (หน้าตั้งค่าร้านคงค่านี้ไว้ ไม่ทับ)
+   */
+  diecutPresets?: DiecutPresetSync;
+}
+
+/** ✂️ สูตรสินค้าที่ซิงก์จาก cutout-py — p = ค่าดิบตามชื่อคีย์ของ engine.py (snake_case) */
+export interface DiecutPresetSync {
+  products: { id: string; name: string; kind?: string; p: Record<string, unknown> }[];
+  savedAt: string;
 }
 
 // ข้อมูลร้านบนเอกสาร ย้ายไป settings-shared.ts (ไฟล์นี้เป็น "use client" — API ออกใบเสร็จ PDF เรียกจากที่นี่ไม่ได้) · re-export ชื่อเดิมให้หน้าเว็บใช้ต่อ

@@ -87,7 +87,7 @@ export function maskFromAlpha(data: Uint8ClampedArray, alphaThreshold: number): 
 }
 
 /** ระยะกำลังสองถึงจุดที่มีลายที่ใกล้ที่สุด (Felzenszwalb & Huttenlocher — เร็วพอสำหรับภาพหลักพันพิกเซล) */
-function distanceSq(mask: Uint8Array, w: number, h: number): Float64Array {
+export function distanceSq(mask: Uint8Array, w: number, h: number): Float64Array {
   const INF = 1e20;
   const f = new Float64Array(Math.max(w, h));
   const d = new Float64Array(Math.max(w, h));
@@ -130,7 +130,7 @@ function distanceSq(mask: Uint8Array, w: number, h: number): Float64Array {
  * สนามระยะแบบมีเครื่องหมาย (พิกเซล): บวก = อยู่นอกมาสก์ห่างขอบเท่านี้ · ลบ = อยู่ในมาสก์ลึกเท่านี้
  * ศูนย์อยู่ตรงขอบพิกเซลพอดี — เส้นระดับใดก็ได้ของสนามนี้คือ "เส้นขยาย/หดขอบ" ที่โค้งกลมจริง ไม่ใช่ขั้นบันได
  */
-function signedField(mask: Uint8Array, w: number, h: number): Float32Array {
+export function signedField(mask: Uint8Array, w: number, h: number): Float32Array {
   const dOut = distanceSq(mask, w, h);
   const inv = new Uint8Array(w * h);
   for (let i = 0; i < inv.length; i++) inv[i] = mask[i] ? 0 : 1;

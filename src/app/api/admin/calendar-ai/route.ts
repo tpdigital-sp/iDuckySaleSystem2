@@ -13,7 +13,9 @@ export const runtime = "nodejs";
  * เก็บใน bucket design-templates/calendar-ai/ (bucket เดียวกับไฟล์เทมเพลต .ai)
  */
 const BUCKET = "design-templates";
-const MAX = 50 * 1024 * 1024;
+// .ai ปฏิทินรูปเต็มจาก Illustrator ~180 MB (14 ต.ค. 69) — ทางตั๋วอัปตรงเข้า Supabase รับถึงเพดานนี้
+// (เพดานจริงอยู่ที่ Upload file size limit ของโปรเจกต์ Supabase · ทาง multipart ผ่าน Netlify ยังติด ~6 MB)
+const MAX = 500 * 1024 * 1024;
 
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
@@ -21,6 +23,22 @@ export async function POST(req: Request) {
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
   if (isFirebaseAdminConfigured && actor.role !== ROLE_ADMINISTRATOR) return NextResponse.json({ error: "เฉพาะเจ้าของร้าน" }, { status: 403 });
+
+  /**
+   * 🎫 ตั๋วอัปโหลดตรงเข้า Supabase (JSON {name,size}) — ไฟล์ .pdf ทั้งเล่ม/.ai มีรูปทุกหน้า 10–40MB
+   * เกินเพดาน body ของ Netlify Functions (~6MB) → ส่งผ่าน route นี้แล้วตกเงียบ (14 ต.ค. 69) · ทางเดิม multipart ยังใช้ได้กับไฟล์เล็ก
+   */
+  if ((req.headers.get("content-type") ?? "").includes("application/json")) {
+    const body = (await req.json().catch(() => null)) as { name?: string; size?: number } | null;
+    const ext = /\.(ai|pdf|zip)$/i.exec(String(body?.name ?? ""))?.[1]?.toLowerCase();
+    if (!ext) return NextResponse.json({ error: "รับเฉพาะไฟล์ .ai / .pdf / .zip" }, { status: 400 });
+    if (Number(body?.size ?? 0) > MAX) return NextResponse.json({ error: "ไฟล์ใหญ่เกิน 500MB" }, { status: 400 });
+    const path = `calendar-ai/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext}`;
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUploadUrl(path);
+    if (error || !data?.token) return NextResponse.json({ error: error?.message ?? "ขอตั๋วอัปโหลดไม่สำเร็จ" }, { status: 500 });
+    const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
+    return NextResponse.json({ ok: true, bucket: BUCKET, path, token: data.token, url: pub.publicUrl });
+  }
 
   let form: FormData;
   try {
@@ -33,7 +51,7 @@ export async function POST(req: Request) {
   // .ai แยกเลเยอร์ · .pdf ชิ้นงาน (โปรแกรมจัดวาง 8002) — ข้างในเป็น PDF ทั้งคู่
   const ext = /\.(ai|pdf|zip)$/i.exec(file.name)?.[1]?.toLowerCase();
   if (!ext) return NextResponse.json({ error: "รับเฉพาะไฟล์ .ai / .pdf / .zip" }, { status: 400 });
-  if (file.size > MAX) return NextResponse.json({ error: "ไฟล์ใหญ่เกิน 50MB" }, { status: 400 });
+  if (file.size > MAX) return NextResponse.json({ error: "ไฟล์ใหญ่เกิน 500MB" }, { status: 400 });
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   // .ai = PDF ข้างใน — กันไฟล์อื่นแอบตั้งนามสกุล

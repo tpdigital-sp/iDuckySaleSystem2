@@ -28,6 +28,7 @@ import {
   needsQuote,
   parseInputValue,
   inputFeeOf,
+  ruleWhenMatches,
   inputFeeWaived,
   inputFeeQuotaOf,
   inputFeeRateOf,
@@ -186,6 +187,9 @@ import ProductCard from "@/components/ProductCard";
 import { catShortName, type ShopCategory } from "@/lib/categories";
 import ImageLightbox from "@/components/ImageLightbox";
 import { uploadArtworkFile, checkArtworkFile } from "@/lib/artwork-upload";
+import { getSupabase } from "@/lib/supabase";
+import { fetchShopPayment, type ShopPayment } from "@/lib/shop-settings";
+import { cutPresetsFrom } from "@/lib/diecut-engine";
 import { termLines } from "@/lib/term-lines";
 
 /** จำโหมดสั่งของของพนักงาน (ลูกค้า/แอดมิน) ไว้ในเครื่อง — ค่าเริ่มต้นคือโหมดลูกค้าเสมอ */
@@ -1305,6 +1309,38 @@ export default function ProductDetail({
    * ด้านหลังเป็นของที่ระบบสร้างให้ ไม่ใช่ "ลายด้านหลังที่คละ" — ไม่ผ่าน backDesign/ค่าคละด้านหลัง
    */
   const calMode = !!product.calendarStudio && product.studioOff !== true;
+  /**
+   * ✂️ สินค้าออกแบบชิ้นงานไดคัทบนเว็บ (พวงกุญแจอะคริลิค) — ขนาด = ด้านยาวสุดของชิ้นงานตามตัวเลือก "ขนาด"
+   * ยังไม่เลือกขนาด/อ่านไม่ออก = 5 ซม. ไว้ก่อน (ลูกค้าเห็นตัวอย่างได้ ทีมงานปรับตามสเปคจริงตอนผลิต)
+   */
+  const cutCfg = product.diecutStudio;
+  const cutMode = !!cutCfg && product.studioOff !== true && !calMode;
+  const cutSizeMm = (() => {
+    if (!cutCfg) return 50;
+    const v = (effective[cutCfg.sizeLabel] ?? "").trim();
+    const m = v.match(/(\d+(?:\.\d+)?)\s*(cm|ซม|mm|มม)/i);
+    if (m) return Number(m[1]) * (/mm|มม/i.test(m[2]) ? 1 : 10);
+    const own = cutCfg.customSizeLabel ? Number((effective[cutCfg.customSizeLabel] ?? "").replace(/[^\d.]/g, "")) : 0;
+    return own > 0 ? own * 10 : 50;
+  })();
+  const cutHole = cutCfg?.holeLabel ? !/ไม่/.test(effective[cutCfg.holeLabel] ?? "") : true;
+  /** ✂️ สูตรเส้นตัดตามชนิดงาน — ซิงก์จาก /admin/diecut?tab=bg ผ่านตั้งค่าร้าน (ไม่มี = สูตรในโค้ด) */
+  const [cutShop, setCutShop] = useState<ShopPayment | null>(null);
+  useEffect(() => {
+    if (!cutMode) return;
+    let dead = false;
+    fetchShopPayment()
+      .then((sp) => !dead && setCutShop(sp))
+      .catch(() => {});
+    return () => {
+      dead = true;
+    };
+  }, [cutMode]);
+  const cutPresets = useMemo(() => cutPresetsFrom(cutShop?.diecutPresets), [cutShop]);
+  /** รูปแบบงานของจอออกแบบ (calFormat "cut@<ด้านยาวสุด มม.>[-nohole]") */
+  const cutFormatKey = `cut@${Math.round(cutSizeMm * 10) / 10}${cutHole ? "" : "-nohole"}`;
+  /** แบบไดคัทแรกที่ขนาด/การเจาะรูไม่ตรงตัวเลือกตอนนี้ (-1 = ตรงหมด) */
+  const cutStale = cutMode ? placed.findIndex((p) => p.calState && p.calState.format !== cutFormatKey) : -1;
   const calYear = yearFromChoice(product.calendarStudio ? effective[product.calendarStudio.yearLabel] : undefined);
   /** ปีที่เลือกได้ในจอปฏิทิน (หน้าต่าง Settings) = ตัวเลือก "ปีปฏิทิน" ของสินค้า */
   const calYearChoices = (product.options.find((o) => o.label === product.calendarStudio?.yearLabel)?.choices ?? [])
@@ -2742,7 +2778,7 @@ export default function ProductDetail({
    * โหมดออกแบบบนเว็บ — ข้ามขั้นตอน "แนบลายของคุณ" ไปเลย
    * โหมดแอดมิน (สั่งแทนลูกค้า) ปิดโหมดนี้: หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลายบนเว็บก่อน
    */
-  const studioMode = (!!studioTarget || calMode) && !staffOrdering;
+  const studioMode = (!!studioTarget || calMode || cutMode) && !staffOrdering;
   // (ดูคำอธิบาย noPageDropRef ด้านบน) — อัปเดตค่าให้ตัวรับ drop/paste ระดับหน้าเว็บใช้
   useEffect(() => {
     noPageDropRef.current = !!studio || studioMode;
@@ -2834,6 +2870,12 @@ export default function ProductDetail({
 
   function openStudio(index: number | null = null) {
     if (calMode) {
+      setEditIndex(index);
+      setCalOpen(true);
+      return;
+    }
+    // ✂️ ไดคัท = จอออกแบบตัวเดียวกับแผ่นรองเมาส์/ปฏิทิน (CalendarStudio รูปแบบ cut@…)
+    if (cutMode) {
       setEditIndex(index);
       setCalOpen(true);
       return;
@@ -3044,8 +3086,31 @@ export default function ProductDetail({
       );
       const files = r.pages.map((p, i) => ({ url: urls[i], name: p.file.name, ...dims[i] }));
       // 🗂 .ai แยกเลเยอร์ (เจ้าของร้าน) — ทางอัปของเจ้าของเท่านั้น · อัปไม่ขึ้นไม่ขวางการสั่ง
+      const ownerFails: string[] = [];
       const ownerUpload = async (f?: File): Promise<string | undefined> => {
         if (!f) return undefined;
+        let why = "";
+        // 🎫 ทางหลัก: ขอตั๋วแล้วยิงไฟล์ตรงเข้า Supabase (ไฟล์ใหญ่เกินเพดาน Netlify ~6MB · 14 ต.ค. 69)
+        const ct = /\.pdf$/i.test(f.name) ? "application/pdf" : /\.zip$/i.test(f.name) ? "application/zip" : "application/postscript";
+        try {
+          const sbc = getSupabase();
+          const sres = await fetch("/api/admin/calendar-ai", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name: f.name, size: f.size }),
+          });
+          const sign = (await sres.json().catch(() => null)) as { bucket?: string; path?: string; token?: string; url?: string } | null;
+          if (sbc && sres.ok && sign?.token && sign.path && sign.url) {
+            const { error } = await sbc.storage.from(sign.bucket || "design-templates").uploadToSignedUrl(sign.path, sign.token, f, { contentType: ct });
+            if (!error) return sign.url;
+            why = /maximum allowed size/i.test(error.message)
+              ? "ใหญ่เกินเพดานของ Supabase (Settings › Storage › Upload file size limit)"
+              : error.message;
+            console.warn("calendar owner file signed upload", f.name, error.message);
+          }
+        } catch (e) {
+          console.warn("calendar owner file sign", f.name, e);
+        }
         try {
           const fd = new FormData();
           fd.append("file", f);
@@ -3056,18 +3121,24 @@ export default function ProductDetail({
         } catch (e) {
           console.warn("calendar owner file upload", f.name, e);
         }
+        ownerFails.push(`${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)${why ? ` — ${why}` : ""}`);
         return undefined;
       };
       const aiUrl = await ownerUpload(r.ai);
+      // ✂️ ไดคัท: ไฟล์พิมพ์ลายพื้นใส (ทีมผลิต) — จดลิงก์ใน spec · อัปไม่ขึ้น = สั่งไม่ได้ (ภาพที่แนบเป็นแค่ภาพจำลอง)
+      const printUrl = r.print ? await uploadOne(r.print) : "";
+      const whiteUrl = r.white ? await uploadOne(r.white).catch(() => "") : "";
       // 🖨 .pdf ชิ้นงาน 1 ชิ้น/หน้า + เส้นไดคัท (โปรแกรมจัดวาง 8002) — เจ้าของร้านเท่านั้น เหมือน .ai
       const pdfUrl = await ownerUpload(r.pdf);
+      // อัปไม่ขึ้น = บอกเจ้าของร้านตรง ๆ (เดิมเงียบ — ออเดอร์ไม่มีไฟล์โดยไม่รู้ตัว) · ไม่ขวางการสั่ง
+      if (ownerFails.length) window.alert(`⚠️ อัปไฟล์ของเจ้าของร้านไม่สำเร็จ — ออเดอร์ยังสั่งต่อได้ แต่จะไม่มีไฟล์นี้:\n${ownerFails.join("\n")}`);
       const entry = {
         aiUrl,
         pdfUrl,
         summary: r.summary,
         head: r.head,
         dpi: r.dpi,
-        spec: r.spec,
+        spec: `${r.spec}${printUrl ? ` · ไฟล์พิมพ์พื้นใส: ${printUrl}` : ""}${whiteUrl ? ` · รองขาว: ${whiteUrl}` : ""}`,
         sourceUrl: sourceUrls.filter(Boolean).join(" "),
         sourceUrls,
         artUrl: files[0].url,
@@ -3258,7 +3329,7 @@ export default function ProductDetail({
    * โหมดแอดมิน (สั่งแทนลูกค้า) ก็ต้องมีปุ่มเริ่มสร้างหน้าตาเดียวกับที่ลูกค้าเห็น
    * — ต่างกันแค่ "ไม่บังคับ" วางลายก่อน (ปุ่มเพิ่มลงตะกร้ายังกดได้เลย ลายมาทางไลน์อยู่แล้ว)
    */
-  const studioOfferStaff = staffOrdering && (!!studioTarget || calMode) && !designDone;
+  const studioOfferStaff = staffOrdering && (!!studioTarget || calMode || cutMode) && !designDone;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
   const artBlocked = studioMode || preArranged ? false : artRequired && !artProvided;
@@ -3410,6 +3481,11 @@ export default function ProductDetail({
     // 🗓 เปลี่ยนปีทีหลังสร้างแบบ = ปฏิทินด้านหลังยังเป็นปีเก่า → เปิดแบบที่ไม่ตรงให้แก้ก่อน
     if (calYearStale >= 0) {
       openStudio(calYearStale);
+      return false;
+    }
+    // ✂️ เปลี่ยนขนาด/การเจาะรูทีหลังออกแบบไดคัท = ภาพจำลองไม่ตรงสเปค → เปิดแบบนั้นให้อัปเดตก่อน
+    if (cutStale >= 0) {
+      openStudio(cutStale);
       return false;
     }
     // ✍️ ช่องที่ให้ลูกค้ากรอกต้องครบและอยู่ในเกณฑ์ก่อน
@@ -4699,7 +4775,18 @@ export default function ProductDetail({
                 <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-[13px] font-semibold text-stone-500 ring-1 ring-stone-200">
                   🔒 {effective[opt.label]}
                 </span>
-                <p className="mt-1.5 text-[11px] text-stone-400">ตัวเลือกนี้ถูกกำหนดอัตโนมัติตามตัวเลือกอื่นที่คุณเลือก เพื่อป้องกันการสั่งผิด</p>
+                {/* 🔒 บอกเหตุผลว่าล็อกเพราะตัวเลือกไหน (ลูกค้าเปลี่ยนกระดาษแล้วจำนวนด้าน/เทมเพลตเปลี่ยนตาม ไม่รู้ตัว · 14 ต.ค. 69) */}
+                {(() => {
+                  const why = (product.rules ?? []).filter((r) => r.limit.label === opt.label && ruleWhenMatches(r, effective));
+                  return why.length ? (
+                    <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                      ล็อกไว้เพราะเลือก {why.map((r) => `${r.when.label}: ${effective[r.when.label]}`).join(" · ")} — ตัวเลือกนี้ใช้ได้แค่ “
+                      {effective[opt.label]}”
+                    </p>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-stone-400">ตัวเลือกนี้ถูกกำหนดอัตโนมัติตามตัวเลือกอื่นที่คุณเลือก เพื่อป้องกันการสั่งผิด</p>
+                  );
+                })()}
               </div>
             ) : opt.sampleGrid ? (
               /*
@@ -6178,7 +6265,9 @@ export default function ProductDetail({
                 ? calNoGrid
                   ? "ใส่รูป ข้อความ กรอบรูป จัดวางเองบนเว็บ"
                   : "ใส่รูปของคุณ ตารางปฏิทินสร้างให้เอง"
-                : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
+                : cutMode
+                  ? "อัปรูป ระบบตัดขอบ+เจาะรูให้ เห็นชิ้นงานจริง"
+                  : `วางรูปบน${lotDone > 0 ? `${lotWord}นี้` : "สินค้า"} เห็นผลทันที`}
           </span>
         </button>
         <button
@@ -6193,6 +6282,15 @@ export default function ProductDetail({
           <span className={`text-[10.5px] font-semibold leading-tight ${fileChosen ? "text-sky-100" : "text-stone-500"}`}>มีไฟล์อยู่แล้ว ร้านจัดวางให้</span>
         </button>
       </div>
+      {cutStale >= 0 && (
+        <button
+          type="button"
+          onClick={() => openStudio(cutStale)}
+          className="mt-2 w-full rounded-xl bg-amber-50 px-3 py-2 text-left text-[11.5px] font-semibold leading-snug text-amber-700 ring-1 ring-amber-200"
+        >
+          ⚠️ ขนาดหรือการเจาะรูเปลี่ยนหลังออกแบบ{placed.length > 1 ? ` (ลายที่ ${cutStale + 1})` : ""} — แตะเพื่ออัปเดตแบบ
+        </button>
+      )}
       {(artChoice === "file" || artProvided) && artSection}
     </div>
   ) : null;
@@ -9055,7 +9153,7 @@ export default function ProductDetail({
                 setEditIndex(null);
               }}
               title={product.name}
-              format={calFormatKey}
+              format={cutMode ? cutFormatKey : calFormatKey}
               year={calYear}
               years={calYearChoices.map((c) => c.year)}
               mixFee={(n) => {
@@ -9085,13 +9183,14 @@ export default function ProductDetail({
                 await new Promise((r) => setTimeout(r, 80));
                 if (handleAddRef.current() && !editing) router.push("/cart");
               }}
-              guide={calGuide}
+              guide={cutMode ? undefined : calGuide}
               square={/แหลม/.test(effective["มุม"] ?? "")}
               onYear={(y) => {
                 const c = calYearChoices.find((x) => x.year === y);
                 if (c && product.calendarStudio) setSelections((s) => ({ ...s, [product.calendarStudio!.yearLabel]: c.name }));
               }}
               initial={editIndex !== null ? placed[editIndex]?.calState : undefined}
+              cutPresets={cutMode ? cutPresets : undefined}
               onApply={applyCalendar}
             />
           )}

@@ -21,10 +21,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CAL_FONTS,
+  LAYER_BG,
   backSpec,
   calFormat,
+  calLayersOf,
   calHasGrid,
   cardKey,
+  containPlacement,
   coverPlacement,
   defaultBack,
   defaultText,
@@ -68,9 +71,11 @@ import {
   type ImgRef,
 } from "@/lib/calendar-card";
 import { printFrameToken } from "@/lib/design-templates";
-import { buildCalendarAi, renderAiPages } from "@/lib/calendar-ai";
+import { buildCalendarAi, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
+import { BG_METHODS, detectBg, drawPiece, removeBackground, type BgMethod } from "@/lib/diecut-piece";
+import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
 
 export interface CalendarState {
   format: string;
@@ -93,6 +98,10 @@ export interface CalendarResult {
   aiNote?: string;
   /** 🖨 .pdf ชิ้นงาน 1 ชิ้น/หน้า + เส้นไดคัท (สำหรับโปรแกรมจัดวาง localhost:8002) — เฉพาะเจ้าของร้านช่วงทดสอบ */
   pdf?: File;
+  /** ✂️ งานไดคัท: ไฟล์พิมพ์ลายพื้นใส ขนาดจริง 300 DPI (pages[0] = ภาพจำลองชิ้นงาน + เส้นตัด) */
+  print?: File;
+  /** ✂️ งานไดคัท: มาสก์รองขาว (ดำบนพื้นใส · กรอบเดียวกับไฟล์พิมพ์) */
+  white?: File;
 }
 
 interface Props {
@@ -135,11 +144,13 @@ interface Props {
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
   initial?: CalendarState;
+  /** ✂️ สูตรเส้นตัดตามชนิดงาน (ซิงก์จาก /admin/diecut?tab=bg · ไม่ส่ง = CUT_PRESETS ในโค้ด) */
+  cutPresets?: CutPreset[];
   onApply: (r: CalendarResult) => void | Promise<void>;
 }
 
 /** แผงด้านข้างตามปุ่มในแถบเครื่องมือ (null = ปิดแผง) */
-type Tool = "text" | "photo" | "layout" | "shape" | "calendar" | "events" | "settings";
+type Tool = "text" | "photo" | "layout" | "shape" | "calendar" | "events" | "settings" | "cut";
 /** removed = ลูกค้ากดลบจากคลังรูป — เก็บช่องไว้ (design อ้างรูปตามลำดับ) แล้วค่อยบีบลำดับตอน "ใช้แบบนี้" */
 type Src = {
   file: File;
@@ -148,6 +159,12 @@ type Src = {
   h: number;
   el: HTMLImageElement;
   removed?: boolean;
+  /** ✂️ งานไดคัท: วิธีหาขอบงานที่ใช้กับรูปนี้แล้ว (ไม่ตั้ง = ยังไม่ได้หา → อัตโนมัติ) */
+  bgDone?: BgMethod;
+  /** ✂️ วิธีที่ลูกค้าเลือก (auto = ระบบเลือกตามภาพ แบบ engine.detect) */
+  bgPick?: BgMethod | "auto";
+  /** ✂️ รูปก่อนลบพื้น (กด ↩ คืนรูปเดิม) */
+  orig?: Src;
 };
 
 /**
@@ -336,6 +353,7 @@ export default function CalendarStudio({
   guide,
   square,
   initial,
+  cutPresets,
   onApply,
 }: Props) {
   /** กด 🛒 ใส่ตะกร้า (ไม่ใช่ ✓ ใช้แบบนี้) — จำไว้ข้ามหน้าต่างถาม "รูปไม่เต็มช่อง" */
@@ -352,7 +370,9 @@ export default function CalendarStudio({
     // โฟโต้การ์ด + โปสการ์ด 4×6 (ขนาดตายตัว · 14 ต.ค. 69 เพิ่มโปสการ์ด: เทมเพลต 2 ด้านตัดตก 1/2.5 มม.)
     if (f0.cornerR == null && !f0.key.startsWith("postcard-")) return undefined;
     const b = ((guide.wMm - f0.trimW) / 2 + (guide.hMm - f0.trimH) / 2) / 2;
-    return b >= 0.5 && b <= 6 ? Math.round(b * 20) / 20 : undefined;
+    // ตัดตก 0 ได้ (เทมเพลตอาร์ตบอร์ด = เส้นตัดพอดี เช่น โปสการ์ดปฏิทิน 1 ด้าน "อาร์ตมัน 300g + holo" · ผู้ใช้แจ้ง 14 ต.ค. 69
+    // "1 ด้านไม่เหมือนเทมเพลต" — เดิมรับแค่ 0.5–6 มม. เลยตกไปใช้ 2 มม. มีขอบขาวเกินเส้นตัดที่ไฟล์ร้านไม่มี)
+    return b >= -0.05 && b <= 6 ? Math.max(0, Math.round(b * 20) / 20) : undefined;
   }, [format, guide]);
   const fmt = useMemo(() => {
     const f = calFormat(format, { bleed: tplBleed });
@@ -360,6 +380,8 @@ export default function CalendarStudio({
   }, [format, square, tplBleed]);
   const W = fmtW(fmt);
   const H = fmtH(fmt);
+  /** ✂️ งานไดคัท: รูปลงช่อง "พอดีทั้งรูป" (ไม่ครอปขอบลาย) · งานอื่นเต็มช่อง */
+  const fitPl = (r: Rect, img: { w: number; h: number }) => (fmt.diecut ? containPlacement(r, img) : coverPlacement(r, img));
   const sameFormat = initial?.format === fmt.key;
   /** รูปแบบที่หัวข้อเป็นตัวบาง ("Calendar 2026") */
   const lightTitle = fmt.pages.some((p) => p.light);
@@ -392,7 +414,7 @@ export default function CalendarStudio({
       initial && sameFormat
         ? initial.design
         : // รูปแบบงานเปลี่ยน (เช่นสลับแนว) — ตำแหน่งรูป/ชิ้นส่วนเดิมใช้ไม่ได้ เริ่มวางใหม่ แต่รูปที่อัปไว้ยังอยู่
-          { bg: initial?.design.bg ?? "#ffffff", text: null, photos: {} };
+          { bg: fmt.diecut ? "transparent" : (initial?.design.bg ?? "#ffffff"), text: null, photos: {} };
     // งานหลายหน้า (รายเดือน/ตั้งโต๊ะ) แบบใหม่ = แต่ละหน้าใส่รูปเอง ไม่ยืมรูปหน้าปกให้ทุกหน้า (บั๊คที่ผู้ใช้แจ้ง 13 ต.ค. 69)
     if (!(initial && sameFormat) && (fmt.cards ?? 1) <= 1 && fmt.pages.filter((p) => p.photo).length > 1) d = { ...d, noBorrow: true };
     if (d.text && textPage)
@@ -626,6 +648,235 @@ export default function CalendarStudio({
   const lay = useCallback((p: CalPage) => layPage(fmt, p, design), [fmt, design]);
   const page = useMemo(() => lay(basePage), [lay, basePage]);
   const imgs: (ImgRef | null)[] = useMemo(() => srcs.map((s) => (s.removed ? null : { el: s.el, w: s.w, h: s.h })), [srcs]);
+
+  /* ─────────── ✂️ งานไดคัท (รูปแบบ cut@…) — ฟังก์ชันชุดเดียวกับ /admin/diecut?tab=bg (lib/diecut-engine) ─────────── */
+  const presets = cutPresets ?? CUT_PRESETS;
+  /** สูตรที่เลือกอยู่ (ไม่เลือก = พวงกุญแจ) — ค่าในสูตรเป็นฐาน ค่าที่ลูกค้าปรับเอง (design.cut) ทับ */
+  const presetP = presets.find((x) => x.id === (design.cut?.preset ?? "keychain"))?.p ?? {};
+  const cutP: CutParams = { ...CUT_PARAMS_DEFAULT, ...presetP, ...(design.cut ?? {}), hole: !!fmt.diecut?.hole };
+  /** หดขอบตัด halo (พิกเซลของรูปเต็ม · ใช้ตอนตัดพื้นหลัง) */
+  const shrink = design.cut?.shrink ?? presetP.shrink ?? 1;
+  const setCut = (patch: Partial<CutParams> & { shrink?: number; preset?: string; autoShape?: boolean }) => setDesign((d) => ({ ...d, cut: { ...(d.cut ?? {}), ...patch } }));
+  /** เส้นตัดที่คิดจากลายบนผืนตอนนี้ (null = ยังไม่มีลาย) */
+  const [cutRes, setCutRes] = useState<CutResult | null>(null);
+  const [cutErr, setCutErr] = useState("");
+  /** มุมมองแบบหน้า bg: พื้นโปร่งใส/เข้ม/ขาว · แสดงเส้นตัด · แสดงรองขาว */
+  const [cutView, setCutView] = useState<{ bg: "checker" | "dark" | "light"; line: boolean; white: boolean }>({ bg: "checker", line: true, white: true });
+  /** แก้เฉพาะจุด: 0 ปิด · 1 ＋มน · −1 −ชิด */
+  const [editMode, setEditMode] = useState<0 | 1 | -1>(0);
+  /**
+   * 🔍 ซูมมุมมองเวที (งานไดคัท · แบบหน้า /admin/diecut?tab=bg): ปุ่ม − 100% + · ลูกกลิ้งเมาส์/บีบนิ้ว · ลากพื้นว่างเพื่อเลื่อน · ดับเบิลคลิก = พอดีจอ
+   * ย่อ/ขยายเฉพาะที่แสดง (CSS transform) ไม่แตะลาย — การจับ/ลากบนภาพยังตรง เพราะทุกจุดคิดจาก getBoundingClientRect ของแคนวาสที่ถูกย่อ/ขยายแล้ว
+   */
+  const [viewZ, setViewZ] = useState({ k: 1, x: 0, y: 0 });
+  const viewPan = useRef<{ x: number; y: number; id: number } | null>(null);
+  const zoomView = useCallback(
+    (k: number, cx?: number, cy?: number) => {
+      const st = stageRef.current;
+      if (!st) return;
+      const r = st.getBoundingClientRect();
+      const k2 = Math.min(8, Math.max(1, k));
+      setViewZ((z) => {
+        if (k2 <= 1) return { k: 1, x: 0, y: 0 };
+        // ซูมรอบจุดที่ชี้ (ไม่ระบุ = กลางเวที) — จุดใต้เมาส์อยู่ที่เดิม
+        const mx = (cx ?? r.left + r.width / 2) - r.left - r.width / 2;
+        const my = (cy ?? r.top + r.height / 2) - r.top - r.height / 2;
+        const ux = (mx - z.x) / z.k;
+        const uy = (my - z.y) / z.k;
+        return { k: k2, x: mx - ux * k2, y: my - uy * k2 };
+      });
+    },
+    [],
+  );
+  // ลูกกลิ้ง/บีบนิ้วบนเวที (ต้อง passive:false ถึงกันหน้าเลื่อน)
+  useEffect(() => {
+    const st = stageRef.current;
+    if (!st || !fmt.diecut) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setViewZ((z) => {
+        const k2 = Math.min(8, Math.max(1, z.k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
+        if (k2 <= 1) return { k: 1, x: 0, y: 0 };
+        const r = st.getBoundingClientRect();
+        const mx = e.clientX - r.left - r.width / 2;
+        const my = e.clientY - r.top - r.height / 2;
+        return { k: k2, x: mx - ((mx - z.x) / z.k) * k2, y: my - ((my - z.y) / z.k) * k2 };
+      });
+    };
+    st.addEventListener("wheel", onWheel, { passive: false });
+    return () => st.removeEventListener("wheel", onWheel);
+  }, [fmt.diecut, open]);
+  useEffect(() => {
+    if (!open) setViewZ({ k: 1, x: 0, y: 0 });
+  }, [open]);
+  /** ข้อความระหว่างตัดพื้นหลังรูป (AI โหลดโมเดล/กำลังรัน) */
+  const [bgBusy, setBgBusy] = useState("");
+  const [bgNote, setBgNote] = useState("");
+  /** เรนเดอร์หน้า (พื้นใส) ที่ความละเอียด pxPerMm → แคนวาส + ImageData */
+  const renderAlpha = useCallback(
+    (pxPerMm: number) => {
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(fmtW(fmt) * pxPerMm));
+      cv.height = Math.max(1, Math.round(fmtH(fmt) * pxPerMm));
+      const ctx = cv.getContext("2d", { willReadFrequently: true })!;
+      drawPage(ctx, pxPerMm, fmt, fmt.pages[0], design, back, imgs);
+      return { cv, data: ctx.getImageData(0, 0, cv.width, cv.height) };
+    },
+    [fmt, design, back, imgs],
+  );
+  /** ความละเอียดภาพคำนวณเส้นตัด (พอดีจอ + ไม่หน่วงมือถือ) — ใช้ค่าเดียวกันตอนส่งออกให้เส้นตรงกับที่เห็น */
+  const CUT_PPM = 600 / Math.max(fmtW(fmt), fmtH(fmt));
+  // คิดเส้นตัดใหม่หลังหยุดแก้ 200ms (ลากรูปต่อเนื่องไม่หน่วง)
+  useEffect(() => {
+    if (!open || !fmt.diecut) return;
+    const t = setTimeout(() => {
+      try {
+        setCutRes(processCut(renderAlpha(CUT_PPM).data, CUT_PPM, fmt.diecut!.size, cutP));
+        setCutErr("");
+      } catch (e) {
+        setCutRes(null);
+        setCutErr(e instanceof Error ? e.message : "คำนวณเส้นตัดไม่สำเร็จ");
+      }
+    }, 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fmt, renderAlpha, design.cut, fontTick]);
+  /**
+   * 📐 ย่อ/ขยายทุกอย่างบนผืน (รูป · ช่องรูป · ข้อความ/รูปทรง · จุดแก้) ให้ตัวชิ้นงานยาวสุดเท่าขนาดที่สั่งพอดี
+   * แล้วจัดกลางจัตุรัส — จอจะเห็นขนาดจริง (scale = 1) ตรงกับไฟล์ผลิต (ผู้ใช้สั่ง 14 ต.ค. 69 "โยนภาพต้องตามขนาดที่ลูกค้าสั่ง")
+   */
+  const fitToSize = useCallback(
+    (r: CutResult) => {
+      const k = r.scale;
+      const C = { x: r.box.x + r.box.w / 2, y: r.box.y + r.box.h / 2 };
+      // ตัวชิ้นงาน (ไม่รวมติ่ง) อยู่กลางจัตุรัส — ติ่งยื่นขึ้นไปในขอบด้านบน
+      const T = { x: fmt.bleed + fmt.trimW / 2, y: fmt.bleed + fmt.trimH / 2 };
+      const mx = (v: number) => T.x + (v - C.x) * k;
+      const my = (v: number) => T.y + (v - C.y) * k;
+      setDesign((d) => ({
+        ...d,
+        photos: Object.fromEntries(
+          Object.entries(d.photos).map(([key, o]) => [key, { ...o, pl: { ...o.pl, cxMm: mx(o.pl.cxMm), cyMm: my(o.pl.cyMm), wMm: o.pl.wMm * k, hMm: o.pl.hMm * k } }]),
+        ),
+        // ช่องรูปกลับเป็นเต็มผืนเสมอ — ไม่งั้นช่องหดตามลายแล้วซูมรูปทีหลังโดนครอปเป็นเหลี่ยม
+        slots: undefined,
+        elements: (d.elements ?? []).map((e) => ({
+          ...e,
+          x: mx(e.x),
+          y: my(e.y),
+          w: e.w * k,
+          h: e.h * k,
+          ...(e.size != null ? { size: e.size * k } : {}),
+          ...(e.strokeW ? { strokeW: e.strokeW * k } : {}),
+        })),
+        cut: d.cut?.edits?.length ? { ...d.cut, edits: d.cut.edits.map(([x, y, rr, sg]) => [mx(x), my(y), rr, sg] as [number, number, number, number]) } : d.cut,
+      }));
+    },
+    [fmt],
+  );
+  /**
+   * 📐 จัดพอดีขนาด + กลางจัตุรัส "เสมอ" — ขนาดชิ้นงานตายตัวตามที่สั่ง ลูกค้าขยาย/ลากเองก็ถูกจัดกลับหลังปล่อยนิ้ว
+   * (ผู้ใช้แจ้ง 14 ต.ค. 69 "ภาพแสดงใหญ่เกินไป และไม่อยู่ตรงกลาง" — เดิมจัดเฉพาะตอนใส่รูป ซูมเองแล้วจอไม่ตรงไฟล์)
+   * กำลังลากอยู่ = รอปล่อยก่อน (ไม่กระตุกใต้นิ้ว)
+   */
+  const lastCut = useRef<CutResult | null>(null);
+  useEffect(() => {
+    lastCut.current = cutRes;
+    if (!fmt.diecut || !cutRes) return;
+    const off = () => {
+      const r = lastCut.current;
+      if (!r) return false;
+      const cx = r.box.x + r.box.w / 2 - (fmt.bleed + fmt.trimW / 2);
+      const cy = r.box.y + r.box.h / 2 - (fmt.bleed + fmt.trimH / 2);
+      return Math.abs(r.scale - 1) > 0.01 || Math.hypot(cx, cy) > 0.15;
+    };
+    if (!off()) return;
+    let t = 0;
+    const tryFit = () => {
+      if (drag.current) {
+        t = window.setTimeout(tryFit, 250);
+        return;
+      }
+      if (lastCut.current && off()) fitToSize(lastCut.current);
+    };
+    tryFit();
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutRes, fmt, fitToSize]);
+  /** แทนรูปลำดับ i ด้วยไฟล์ใหม่ (ลำดับเดิม — design อ้างรูปตามลำดับ) */
+  const swapSrc = useCallback(async (i: number, file: File, patch: Partial<Src>) => {
+    const s2 = await loadImg(file);
+    if (!s2) return false;
+    setSrcs((cur) => cur.map((s, j) => (j === i ? { ...s2, ...patch } : s)));
+    return true;
+  }, []);
+  /**
+   * 🪄 หาขอบงานของรูปลำดับ i (engine.method_alpha): auto = ตรวจภาพแล้วเลือกเอง · alpha = ใช้พื้นใสของไฟล์
+   * solid = ไล่สีพื้น · ai = AI ตัดพื้นหลัง · none = ทั้งใบ (ใช้รูปเดิม)
+   */
+  const applyBg = useCallback(
+    async (i: number, pick: BgMethod | "auto", shrinkPx = shrink) => {
+      const s0 = srcs[i];
+      if (!s0) return;
+      const base = s0.orig ?? s0;
+      setBgNote("");
+      let m: BgMethod = pick === "auto" ? detectBg(base.el, base.w, base.h).method : pick;
+      if (m === "alpha" && detectBg(base.el, base.w, base.h).method !== "alpha") {
+        setBgNote("รูปนี้ไม่มีพื้นโปร่งใส — เลือก “สีพื้น” หรือ “AI” แทน");
+        m = "none";
+      }
+      if (m === "alpha" || m === "none") {
+        setSrcs((cur) => cur.map((s, j) => (j === i ? { ...base, orig: undefined, bgDone: m, bgPick: pick } : s)));
+        return;
+      }
+      setBgBusy(m === "ai" ? "กำลังเปิดตัวช่วย AI…" : "กำลังตัดพื้นหลัง…");
+      try {
+        const blob = await removeBackground(base.el, base.w, base.h, m, shrinkPx, (t) => setBgBusy(t));
+        if (!blob) {
+          setBgNote("รูปนี้พื้นหลังไม่ใช่สีเรียบ — ใช้ “AI” แทน");
+          setSrcs((cur) => cur.map((s, j) => (j === i ? { ...base, orig: undefined, bgDone: "none", bgPick: pick } : s)));
+          return;
+        }
+        const name = base.file.name.replace(/\.[^.]+$/, "") + "-cut.png";
+        await swapSrc(i, new File([blob], name, { type: "image/png" }), { bgDone: m, bgPick: pick, orig: base });
+      } catch {
+        setBgNote("AI ตัดพื้นหลังไม่สำเร็จ (เครื่องอาจไม่รองรับ) — ลอง “สีพื้น” หรือใช้ไฟล์ PNG พื้นใส");
+        setSrcs((cur) => cur.map((s, j) => (j === i ? { ...s, bgDone: s.bgDone ?? "none" } : s)));
+      } finally {
+        setBgBusy("");
+      }
+    },
+    [srcs, shrink, swapSrc],
+  );
+  /**
+   * ❓ รูปใหม่ที่ไม่มีพื้นใส (JPG ฯลฯ) — ถามก่อนว่าจะตัดพื้นหลังไหม (ผู้ใช้สั่ง 14 ต.ค. 69 "ลูกค้าบางคนต้องการทั้งภาพ")
+   * null = ไม่มีคำถามค้าง · ตัวเลข = ลำดับรูปที่รอคำตอบ
+   */
+  const [bgAsk, setBgAsk] = useState<number | null>(null);
+  // รูปใหม่ในงานไดคัท: PNG พื้นใส = ใช้ขอบโปร่งใสเลย · รูปทึบ = ถามก่อน (ตัดพื้นหลัง / ใช้ทั้งภาพ)
+  useEffect(() => {
+    if (!open || !fmt.diecut || bgBusy || bgAsk !== null) return;
+    const i = srcs.findIndex((s) => !s.removed && !s.bgDone);
+    if (i < 0) return;
+    if (detectBg(srcs[i].el, srcs[i].w, srcs[i].h).method === "alpha") void applyBg(i, "alpha");
+    else setBgAsk(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fmt.diecut, srcs, bgBusy, bgAsk]);
+  /** ตอบคำถามตัดพื้นหลัง — cut = ตัดพื้น (ระบบเลือก ลบสีพื้น/AI ให้เอง) · whole = ใช้ทั้งภาพ (เส้นตัดสี่เหลี่ยมมุมมนรอบภาพ) */
+  const answerBg = (cut: boolean) => {
+    const i = bgAsk;
+    setBgAsk(null);
+    if (i === null) return;
+    if (cut) {
+      void applyBg(i, "auto");
+      // มุมมนที่ระบบตั้งให้ตอนเลือก "ใช้ทั้งภาพ" รูปก่อน → กลับเป็นตามทรง (ถ้าลูกค้าเลือกรูปร่างเองไว้ ไม่แตะ)
+      if (design.cut?.autoShape) setCut({ shape: "contour", autoShape: false });
+      return;
+    }
+    void applyBg(i, "none");
+    // ทั้งภาพ + ตามทรง = เส้นเหลี่ยมคม → เปลี่ยนเป็นมุมมนให้ (เปลี่ยนรูปร่างเองได้ในแผง ✂️)
+    if (cutP.shape === "contour") setCut({ shape: "rounded", autoShape: true });
+  };
   const holidayData = hasHolidayData(back.year);
   const holidays = useMemo(() => holidaysOf(back.year), [back.year]);
   /** หน้าแรกที่มีช่องรูป (ตามรูปแบบงาน) = หน้าปก — รูปของหน้านี้คือรูปตั้งต้นของทุกหน้า */
@@ -687,6 +938,28 @@ export default function CalendarStudio({
   const slotDelRef = useRef<(() => void) | null>(null);
   /** รูปเทมเพลต (ไกด์) ที่โหลดแล้ว — เปลี่ยนวัสดุ/แนวที่หน้าสินค้า = โหลดรูปใหม่ */
   const [guideImg, setGuideImg] = useState<HTMLImageElement | null>(null);
+  /**
+   * 📐 เทมเพลตมีเส้นตัดสีแดงไหม — มี (เทมเพลตปฏิทิน) = วาดเส้นตัดขอบขาว+แกนแดงทับให้เห็นบนรูปเข้ม
+   * ไม่มี (แผ่นรองเมาส์ · ขอบจริงคือเส้นเทามุมมนในไฟล์) = ไม่วาดสี่เหลี่ยมแดงทับ (ผู้ใช้ถาม 14 ต.ค. 69 "ทำไมมีเส้นไดคัทแดง")
+   */
+  const guideRed = useMemo(() => {
+    if (!guideImg) return false;
+    try {
+      const sc = Math.min(1, 600 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(guideImg.naturalWidth * sc));
+      cv.height = Math.max(1, Math.round(guideImg.naturalHeight * sc));
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return true;
+      ctx.drawImage(guideImg, 0, 0, cv.width, cv.height);
+      const a = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      let red = 0;
+      for (let i = 0; i < a.length; i += 4) if (a[i + 3] > 40 && a[i] > 150 && a[i] - a[i + 1] > 60 && a[i] - a[i + 2] > 60) red++;
+      return red > 20;
+    } catch {
+      return true; // อ่านพิกเซลไม่ได้ = ทำแบบเดิม (วาดเส้นตัด)
+    }
+  }, [guideImg]);
   useEffect(() => {
     if (!open || !guide?.url) return setGuideImg(null);
     let alive = true;
@@ -1014,7 +1287,7 @@ export default function CalendarStudio({
         ...d,
         photos: {
           ...d.photos,
-          [target.key]: { src: idx, pl: coverPlacement(target.photo!, s) },
+          [target.key]: { src: idx, pl: fitPl(target.photo!, s) },
         },
         elements: [...(d.elements ?? []), ...firstText],
       };
@@ -1219,7 +1492,7 @@ export default function CalendarStudio({
       ...d,
       photos: {
         ...d.photos,
-        [page.key]: { src: i, pl: coverPlacement(page.photo!, srcs[i]) },
+        [page.key]: { src: i, pl: fitPl(page.photo!, srcs[i]) },
       },
     }));
   }
@@ -1268,7 +1541,7 @@ export default function CalendarStudio({
       // ลากจุดจับช่อง: รูปคงขนาด/ตำแหน่งตอนเริ่มลาก (คิดจากค่าตั้งต้นทุกครั้ง ไม่เพี้ยนสะสม)
       if (np && keep && keep.src >= 0 && srcs[keep.src]) nd.photos = { ...d.photos, [key]: { ...keep, pl: keepCover(keep.pl, np) } };
       else if (np && own && own.src >= 0 && srcs[own.src] && !placementCovers(own.pl, np))
-        nd.photos = { ...d.photos, [key]: { ...own, pl: coverPlacement(np, srcs[own.src]) } };
+        nd.photos = { ...d.photos, [key]: { ...own, pl: fitPl(np, srcs[own.src]) } };
       return nd;
     });
   }
@@ -1298,7 +1571,7 @@ export default function CalendarStudio({
     setDesign((d) => ({
       ...d,
       slots: { ...(d.slots ?? {}), [key]: nr },
-      photos: { ...d.photos, [key]: { ...(own && own.src >= 0 ? own : {}), src, pl: coverPlacement(nr, img) } },
+      photos: { ...d.photos, [key]: { ...(own && own.src >= 0 ? own : {}), src, pl: fitPl(nr, img) } },
     }));
   }
   function scalePl(pl: CalPlacement, f: number): CalPlacement {
@@ -1328,7 +1601,7 @@ export default function CalendarStudio({
       if (own && np.photo && srcs[own.src])
         photos[basePage.key] = {
           ...own,
-          pl: coverPlacement(np.photo, srcs[own.src]),
+          pl: fitPl(np.photo, srcs[own.src]),
         };
       // ข้อความ/รูปทรงที่วางอยู่บนช่องรูป → ย้ายตามช่องรูปไปด้วย (สลับซ้าย-ขวา ข้อความไม่ไปทับตาราง)
       const dx = op && np.photo ? np.photo.x + np.photo.w / 2 - (op.x + op.w / 2) : 0;
@@ -1364,12 +1637,25 @@ export default function CalendarStudio({
     if (!ctx) return;
     const k = PW / W;
     ctx.clearRect(0, 0, PW, PH);
+    // ✂️ ขอบรอบรูป (stroke) อยู่ใต้ลาย — วาดก่อนหน้า (พื้นผืนไดคัทใส)
+    if (fmt.diecut && cutRes?.stroke.length) {
+      ctx.save();
+      const u = k / cutRes.scale;
+      ctx.setTransform(u, 0, 0, u, cutRes.box.x * k, cutRes.box.y * k);
+      ctx.beginPath();
+      pathCurves(ctx, cutRes.stroke);
+      ctx.fillStyle = cutP.strokeColor;
+      ctx.fill("evenodd");
+      ctx.restore();
+    }
     drawPage(ctx, k, fmt, basePage, design, back, imgs, { preview: true });
 
     // ไกด์บนจอ (ไม่ติดไปกับไฟล์พิมพ์): ตัดตกจาง ๆ + เส้นตัดแดง + เขตปลอดภัยฟ้า + กรอบชิ้นที่เลือก
     ctx.save();
     const b = fmt.bleed * k;
-    if (guide) {
+    if (fmt.diecut) {
+      // ✂️ ไดคัท: ไม่มีตัดตก/เส้นตัดสี่เหลี่ยม — เส้นตัดตามรูปลายวาดด้านล่าง (piece)
+    } else if (guide) {
       // 📐 สินค้าที่มีเทมเพลต = หน้าตาตามไฟล์ที่อัปเข้าระบบล้วน ๆ (ผู้ใช้สั่ง 13 ต.ค. 69) — ไม่ทับลายทแยง/แถบตัดตกของระบบ
       // (รวมตอนรูปเทมเพลตยังโหลดไม่เสร็จ/โหลดไม่ได้ — เดิมตกไปลายทแยง มุมแหลมกับมุมมนเลยหน้าตาไม่เหมือนกัน)
     } else if (fmt.cornerR != null) {
@@ -1412,7 +1698,7 @@ export default function CalendarStudio({
       ctx.beginPath();
       trimPath(ctx, k, fmt);
       ctx.stroke();
-    } else {
+    } else if (!fmt.diecut) {
       ctx.setLineDash([4 * dpr, 3 * dpr]);
       ctx.lineWidth = dpr;
       ctx.strokeStyle = "rgba(220,38,38,.85)";
@@ -1425,17 +1711,68 @@ export default function CalendarStudio({
      * บนรูปเข้มจึงจมหาย (เดิมปรับสีทีละท่อน ~8px เป็นขาว/ดำ เห็นเป็นเส้นขาด ๆ) → วาดเส้นตัดทับอีกชั้นแบบต่อเนื่อง:
      * ขอบขาวหนา (ตัดกับพื้นเข้ม) + แกนแดง (ตัดกับพื้นสว่าง) · เทมเพลต = เส้นทึบ · ไม่มีเทมเพลต = เส้นประ
      */
-    ctx.save();
-    if (!guide) ctx.setLineDash([4 * dpr, 3 * dpr]);
-    ctx.beginPath();
-    trimPath(ctx, k, fmt);
-    ctx.lineWidth = Math.max(2, 3.2 * dpr);
-    ctx.strokeStyle = "rgba(255,255,255,.92)";
-    ctx.stroke();
-    ctx.lineWidth = Math.max(1, 1.4 * dpr);
-    ctx.strokeStyle = "#e11d48";
-    ctx.stroke();
-    ctx.restore();
+    // เทมเพลตที่ไม่มีเส้นตัดแดง (แผ่นรองเมาส์ ฯลฯ) = ขอบในไฟล์เทมเพลตคือไกด์ ไม่วาดสี่เหลี่ยมตัดทับ
+    if (!fmt.diecut && !(guideImg && guide && !guideRed)) {
+      ctx.save();
+      if (!guide) ctx.setLineDash([4 * dpr, 3 * dpr]);
+      ctx.beginPath();
+      trimPath(ctx, k, fmt);
+      ctx.lineWidth = Math.max(2, 3.2 * dpr);
+      ctx.strokeStyle = "rgba(255,255,255,.92)";
+      ctx.stroke();
+      ctx.lineWidth = Math.max(1, 1.4 * dpr);
+      ctx.strokeStyle = "#e11d48";
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (fmt.diecut) {
+      // ✂️ พื้นที่จัดลาย (จัตุรัสเทาจาง) + รองขาว + เส้นตัด (ขาวหนา + ชมพู) + รูห่วง — คิดสดจากลายบนผืน
+      ctx.save();
+      ctx.setLineDash([3 * dpr, 4 * dpr]);
+      ctx.lineWidth = dpr;
+      ctx.strokeStyle = cutView.bg === "dark" ? "rgba(255,255,255,.3)" : "rgba(120,113,108,.35)";
+      ctx.strokeRect(b, b, fmt.trimW * k, fmt.trimH * k);
+      // ป้ายขนาดที่สั่ง (มุมล่างขวาของจัตุรัส)
+      ctx.setLineDash([]);
+      ctx.font = `600 ${11 * dpr}px system-ui, sans-serif`;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = cutView.bg === "dark" ? "rgba(255,255,255,.55)" : "rgba(87,83,78,.6)";
+      ctx.fillText(`ขนาด ${fmt.diecut.size / 10} ซม.`, b + fmt.trimW * k, b + fmt.trimH * k + 4 * dpr);
+      ctx.restore();
+      if (cutRes) {
+        ctx.save();
+        const u = k / cutRes.scale; // พิกเซลจอ ต่อ มม.จริง
+        ctx.translate(cutRes.box.x * k, cutRes.box.y * k);
+        ctx.scale(u, u);
+        ctx.setLineDash([]);
+        if (cutView.white && cutRes.white.length) {
+          ctx.beginPath();
+          pathCurves(ctx, cutRes.white);
+          ctx.setLineDash([2 / u * dpr, 2 / u * dpr]);
+          ctx.lineWidth = dpr / u;
+          ctx.strokeStyle = "rgba(14,165,233,.7)";
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        if (cutView.line) {
+          ctx.beginPath();
+          pathCurves(ctx, cutRes.cut);
+          if (cutRes.hole) {
+            const hh = cutRes.hole;
+            ctx.moveTo(hh.cx + hh.r, hh.cy);
+            ctx.arc(hh.cx, hh.cy, hh.r, 0, Math.PI * 2);
+          }
+          ctx.lineWidth = (3.2 * dpr) / u;
+          ctx.strokeStyle = "rgba(255,255,255,.95)";
+          ctx.stroke();
+          ctx.lineWidth = (1.6 * dpr) / u;
+          ctx.strokeStyle = "#ec4899";
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
     ctx.setLineDash([4 * dpr, 3 * dpr]);
     ctx.lineWidth = dpr;
     // เส้นเขตปลอดภัยสีฟ้าเอาออกแล้ว (ผู้ใช้สั่ง 13 ต.ค. 69)
@@ -1457,7 +1794,7 @@ export default function CalendarStudio({
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, gridSel]);
+  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, gridSel, cutRes, cutView, cutP.strokeColor]);
 
   useEffect(() => {
     if (open) draw();
@@ -2057,7 +2394,7 @@ export default function CalendarStudio({
         const own = photos[k];
         const vp = vpages.find((v) => v.page.key === k);
         const np = vp && layPage(fmt, vp.page, nd).photo;
-        if (own && own.src >= 0 && srcs[own.src] && np) photos[k] = { ...own, pl: coverPlacement(np, srcs[own.src]) };
+        if (own && own.src >= 0 && srcs[own.src] && np) photos[k] = { ...own, pl: fitPl(np, srcs[own.src]) };
       }
       return { ...nd, photos };
     });
@@ -2663,6 +3000,182 @@ export default function CalendarStudio({
     return Math.min(...list);
   }
 
+  /**
+   * ✂️ ไฟล์ชิ้นงานไดคัททั้งชุด (ตอน "ใช้แบบนี้" · การ์ดดาวน์โหลดในแผงเอาออกแล้วตามผู้ใช้สั่ง 14 ต.ค. 69)
+   * print = ลาย + ขอบสี พื้นใส 300 DPI · white = มาสก์รองขาว · mock = ภาพจำลอง + เส้นตัด · svg = เส้นตัด · ai = .ai เส้นตัด CutContour
+   */
+  async function makeCutFiles(stem: string, withAi: boolean) {
+    if (!fmt.diecut) throw new Error("not diecut");
+    await ensureFonts(fontKeys);
+    const r = processCut(renderAlpha(CUT_PPM).data, CUT_PPM, fmt.diecut.size, cutP);
+    if (!r) throw new Error("ยังไม่มีลายบนชิ้นงาน — ใส่รูปหรือข้อความก่อน");
+    const outPpm = 300 / 25.4;
+    const srcPpm = Math.min(outPpm * r.scale, 6000 / Math.max(W, H));
+    const { cv } = renderAlpha(srcPpm);
+    const pw = Math.max(1, Math.round(r.box.w * srcPpm));
+    const ph = Math.max(1, Math.round(r.box.h * srcPpm));
+    const art = document.createElement("canvas");
+    art.width = pw;
+    art.height = ph;
+    art.getContext("2d")!.drawImage(cv, Math.round(r.box.x * srcPpm), Math.round(r.box.y * srcPpm), pw, ph, 0, 0, pw, ph);
+    const toFile = (c: HTMLCanvasElement, name: string) =>
+      new Promise<File>((res, rej) => c.toBlob((bl) => (bl ? res(new File([bl], name, { type: "image/png" })) : rej(new Error("สร้างไฟล์ภาพไม่สำเร็จ"))), "image/png"));
+    const pad = 1;
+    /** แคนวาสขนาดเท่ากรอบเส้นตัดทั้งชิ้น (+1 มม.) ที่ ppm พิกเซลต่อ มม.จริง */
+    const frame = (ppm: number) => {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round((r.bounds.x1 - r.bounds.x0 + pad * 2) * ppm));
+      c.height = Math.max(1, Math.round((r.bounds.y1 - r.bounds.y0 + pad * 2) * ppm));
+      const ctx = c.getContext("2d", { willReadFrequently: true })!;
+      ctx.setTransform(ppm, 0, 0, ppm, (pad - r.bounds.x0) * ppm, (pad - r.bounds.y0) * ppm);
+      return { c, ctx };
+    };
+    const clean = (n: string) => n.replace(/[\/:*?"<>|]/g, "-");
+    const pf = frame(outPpm);
+    drawPiece(pf.ctx, r, art, cutP.strokeColor, false);
+    const print = await toFile(pf.c, clean(`${stem}-ไดคัท-ไฟล์พิมพ์.png`));
+    let white: File | undefined;
+    if (r.white.length) {
+      const wf = frame(outPpm);
+      wf.ctx.beginPath();
+      pathCurves(wf.ctx, r.white);
+      wf.ctx.fillStyle = "#000";
+      wf.ctx.fill("evenodd");
+      white = await toFile(wf.c, clean(`${stem}-ไดคัท-รองขาว.png`));
+    }
+    const mf = frame(Math.min(2000 / Math.max(r.bounds.x1 - r.bounds.x0, r.bounds.y1 - r.bounds.y0), outPpm));
+    drawPiece(mf.ctx, r, art, cutP.strokeColor, true);
+    const mock = await toFile(mf.c, clean(`${stem}-ไดคัท.png`));
+    const svg = new File([cutSvg(r, pad)], clean(`${stem}-เส้นตัด.svg`), { type: "image/svg+xml" });
+    /**
+     * 🗂 .ai แยกเลเยอร์แบบปฏิทิน (ผู้ใช้สั่ง 14 ต.ค. 69 "ทำให้ไฟล์ .ai แยก layer โดยดูจากปฏิทิน")
+     * ล่าง → บน: รองขาว (spot White · เวกเตอร์) · ขอบรอบรูป · ชั้นลายตามที่จัดใน Layers · เส้นตัด (spot Cut100/Cut50 · เวกเตอร์ · ล็อก)
+     * Illustrator ในเครื่อง (cutout-py 8777) = .ai แท้แยกเลเยอร์ · ไม่มี = PDF-.ai แยกชั้น OCG (เหมือนปฏิทิน)
+     */
+    let ai: File | undefined;
+    let aiNote = "";
+    if (withAi) {
+      try {
+        const fw = r.bounds.x1 - r.bounds.x0 + pad * 2;
+        const fh = r.bounds.y1 - r.bounds.y0 + pad * 2;
+        const fx = (x: number) => Math.round((x - r.bounds.x0 + pad) * 1000) / 1000;
+        const fy = (y: number) => Math.round((y - r.bounds.y0 + pad) * 1000) / 1000;
+        const vec = (cs: CutResult["cut"]) =>
+          cs.map((c) => ({
+            s: [fx(c.start.x), fy(c.start.y)] as [number, number],
+            g: c.segs.map((g) => [fx(g.c1.x), fy(g.c1.y), fx(g.c2.x), fy(g.c2.y), fx(g.to.x), fy(g.to.y)] as [number, number, number, number, number, number]),
+          }));
+        const layers: AiLayer[] = [];
+        const toBlob = (c: HTMLCanvasElement, type = "image/png") => new Promise<Blob | null>((res) => c.toBlob(res, type));
+        /** ครอปส่วนที่มีของ → เลเยอร์ (มม. ในกรอบไฟล์) */
+        const pushLayer = async (name: string, c: HTMLCanvasElement, toMm: (px: number, py: number) => { x: number; y: number }, mmPerPx: number) => {
+          const ctx = c.getContext("2d", { willReadFrequently: true })!;
+          const a = ctx.getImageData(0, 0, c.width, c.height).data;
+          let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+          for (let y = 0; y < c.height; y++)
+            for (let x = 0; x < c.width; x++)
+              if (a[(y * c.width + x) * 4 + 3] > 2) {
+                if (x < x0) x0 = x;
+                if (x > x1) x1 = x;
+                if (y < y0) y0 = y;
+                y1 = y;
+              }
+          if (x1 < 0) return;
+          const cw = x1 - x0 + 1;
+          const ch = y1 - y0 + 1;
+          const crop = document.createElement("canvas");
+          crop.width = cw;
+          crop.height = ch;
+          crop.getContext("2d")!.drawImage(c, x0, y0, cw, ch, 0, 0, cw, ch);
+          const png = await toBlob(crop);
+          if (!png) return;
+          const o = toMm(x0, y0);
+          layers.push({ name, png, x: o.x, y: o.y, w: cw * mmPerPx, h: ch * mmPerPx });
+        };
+        // ขอบรอบรูป (stroke) — สีทึบใต้ลาย
+        if (r.stroke.length) {
+          const sf = frame(outPpm);
+          sf.ctx.beginPath();
+          pathCurves(sf.ctx, r.stroke);
+          sf.ctx.fillStyle = cutP.strokeColor;
+          sf.ctx.fill("evenodd");
+          await pushLayer("ขอบรอบรูป", sf.c, (x, y) => ({ x: x / outPpm, y: y / outPpm }), 1 / outPpm);
+        }
+        // ชั้นลายตามลำดับใน Layers (ล่าง → บน) · วาดทีละชั้นที่ความละเอียดไฟล์พิมพ์
+        const pg0 = fmt.pages[0];
+        for (const L of calLayersOf(fmt, pg0, design, imgs)) {
+          if (L.id === LAYER_BG) continue;
+          const lc = document.createElement("canvas");
+          lc.width = cv.width;
+          lc.height = cv.height;
+          drawPage(lc.getContext("2d", { willReadFrequently: true })!, srcPpm, fmt, pg0, design, back, imgs, { only: L.id });
+          await pushLayer(
+            L.name,
+            lc,
+            (x, y) => ({ x: (x / srcPpm - r.box.x) * r.scale - r.bounds.x0 + pad, y: (y / srcPpm - r.box.y) * r.scale - r.bounds.y0 + pad }),
+            r.scale / srcPpm,
+          );
+        }
+        const paths: AiPath[] = [];
+        if (r.white.length) paths.push({ layer: "รองขาว (White)", spot: "White", cmyk: [15, 0, 0, 0], fill: true, curves: vec(r.white) });
+        paths.push({
+          layer: `เส้นตัด (${cutP.cutType})`,
+          spot: cutP.cutType,
+          cmyk: cutP.cutType === "Cut50" ? [100, 0, 0, 0] : [0, 100, 0, 0],
+          fill: false,
+          curves: vec(r.cut),
+          circles: r.hole ? [[fx(r.hole.cx), fy(r.hole.cy), r.hole.r]] : [],
+        });
+        const page: AiPage = { name: "ชิ้นงานไดคัท", wMm: fw, hMm: fh, bg: "none", layers, cut: null, paths };
+        const res = await buildCalendarAi([page], clean(`${stem}-ไดคัท`));
+        aiNote = res.note;
+        ai = new File([res.blob], clean(`${stem}-ไดคัท${res.real ? "" : "-pdf"}.ai`), { type: "application/postscript" });
+      } catch (e) {
+        console.warn("diecut .ai", e);
+      }
+    }
+    const cm1 = (v: number) => Math.round(v) / 10;
+    const shapeTh = { contour: "ตามทรง", rect: "เหลี่ยม", rounded: `มุมมน ${cutP.radiusMm} มม.`, circle: "วงกลม", ellipse: "วงรี" }[cutP.shape];
+    const methods = [...new Set(srcs.filter((x) => !x.removed && x.bgDone).map((x) => BG_METHODS.find((m) => m.key === x.bgDone)?.label))].join("/");
+    const spec =
+      ` · ✂️ ${cutP.cutType} เส้นตัด${shapeTh} ระยะ ${cutP.offsetMm} มม.` +
+      (cutP.shape === "contour" ? ` · ถมร่อง ${cutP.bridge} · ความโค้ง ${cutP.smooth}${cutP.holes ? " · เว้นรูใน" : ""}${cutP.edits.length ? ` · แก้เฉพาะจุด ${cutP.edits.length} จุด` : ""}` : "") +
+      (r.stroke.length ? ` · ขอบ ${cutP.strokeColor} ${cutP.strokeMm} มม.` : "") +
+      ` · ตัวชิ้นงาน ${cm1(r.bodyW)}×${cm1(r.bodyH)} ซม. (วัตถุ ${cm1(r.objW)}×${cm1(r.objH)} ซม.)` +
+      (r.extras.length ? ` · ${r.extras.join(" · ")}` : "") +
+      (fmt.diecut.hole ? ` (เนื้อรอบรู ${cutP.ringMm} · ห่างงาน ${cutP.holeGapMm}${cutP.holeXMm ? ` · เลื่อน ${cutP.holeXMm}` : ""} มม.)` : " · ไม่เจาะรู") +
+      (methods ? ` · หาขอบงาน: ${methods}` : "") +
+      ` · ไฟล์แนบ = ภาพจำลองชิ้นงาน (เส้นชมพู = แนวตัด)`;
+    return { r, print, white, mock, svg, ai, aiNote, spec };
+  }
+
+  /** ⬇ .ai ไดคัท (เจ้าของร้าน · ปุ่มบนแถบหัว) */
+  async function downloadCutAi() {
+    if (busy) return;
+    setBusy("กำลังทำไฟล์ .ai…");
+    setErr("");
+    try {
+      const stem = ((srcs.find((x) => !x.removed)?.file.name ?? "diecut").replace(/\.[^.]+$/, "") || "diecut").slice(0, 40);
+      const cf = await makeCutFiles(stem, true);
+      const f = cf.ai;
+      if (!f) throw new Error("ทำไฟล์ .ai ไม่สำเร็จ ลองใหม่อีกครั้ง");
+      // ไม่มี Illustrator ในเครื่อง = ได้ PDF-.ai (Illustrator รวมเป็น Layer 1) — บอกเหมือนปุ่ม .ai ของปฏิทิน
+      if (!/Illustrator แยกเลเยอร์ให้แล้ว/.test(cf.aiNote)) setErr(cf.aiNote);
+      const url = URL.createObjectURL(f);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ทำไฟล์ .ai ไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function apply(force = false, lowOk = false) {
     if (busy) return;
     // มีช่องรูปแต่ยังไม่มีช่องไหนใส่รูป = ยังสั่งไม่ได้ (ช่องจะพิมพ์ออกมาว่าง)
@@ -2706,7 +3219,7 @@ export default function CalendarStudio({
       }
     }
     // หน้าที่ลูกค้าขยับรูปเองจนไม่เต็มช่อง — ถามก่อน (หน้าที่ใช้รูปปกอัตโนมัติวางเต็มช่องเสมอ)
-    if (!force) {
+    if (!force && !fmt.diecut) {
       const gaps = printPages.filter((v) => {
         const lp = lay(v.page);
         const o = design.photos[v.page.key];
@@ -2768,6 +3281,25 @@ export default function CalendarStudio({
         if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ ลองใหม่อีกครั้ง`);
         out.push({ key: p.key, name, file: f });
       }
+      /**
+       * ✂️ งานไดคัท: ไฟล์ที่แนบ = ภาพจำลองชิ้นงาน (ลาย + เส้นตัด + รู) · แยกไฟล์พิมพ์ลายพื้นใสขนาดจริง 300 DPI (print)
+       * ลายถูกย่อ/ขยายด้วย pc.scale จนชิ้นงานยาวสุดเท่าขนาดที่เลือก
+       */
+      let print: File | undefined;
+      let whiteFile: File | undefined;
+      let cutAi: File | undefined;
+      let cutSpec = "";
+      let cutScale = 1;
+      if (fmt.diecut) {
+        setBusy("กำลังทำไฟล์ชิ้นงานไดคัท…");
+        const cf = await makeCutFiles(stem, !!aiExport);
+        cutScale = cf.r.scale;
+        print = cf.print;
+        whiteFile = cf.white;
+        cutAi = cf.ai;
+        cutSpec = cf.spec;
+        out.splice(0, out.length, { key: fmt.pages[0].key, name: "ชิ้นงานไดคัท", file: cf.mock });
+      }
       // ความคมชัดต่ำสุดของทุกหน้า (ทีมผลิตดูตัวเลขเดียวพอ)
       const dpis = printPages
         .map(({ page: p }) => {
@@ -2782,7 +3314,8 @@ export default function CalendarStudio({
             .map((e) => Math.round(srcs[e.src!].w / (elementPhotoSize(e, srcs[e.src!]).w / 25.4))),
         )
         .filter(Number.isFinite);
-      const minDpi = dpis.length ? Math.min(...dpis) : 0;
+      // ไดคัท: ลายถูกย่อ/ขยายตอนผลิต (cutScale) → DPI จริงเปลี่ยนตาม
+      const minDpi = dpis.length ? Math.round(Math.min(...dpis) / cutScale) : 0;
       const n = (v: number) => Math.round(v * 100) / 100;
       const ownCount = Object.values(design.photos).filter((o) => o.src >= 0).length;
       const texts = elements.filter((e) => e.kind === "text" && e.text?.trim());
@@ -2809,9 +3342,11 @@ export default function CalendarStudio({
         photos: Object.fromEntries(Object.entries(design.photos).map(([k, o]) => [k, { ...o, src: remap.get(o.src) ?? -1 }])),
         elements: (design.elements ?? []).map((e) => (e.src == null ? e : { ...e, src: remap.get(e.src) })),
       };
-      // 🗂 เจ้าของร้าน (ทดสอบ): แนบ .ai แยกเลเยอร์ไปกับออเดอร์ด้วย — ทำไม่ได้ก็ยังสั่งต่อได้ (ไฟล์พิมพ์ครบแล้ว)
-      let ai: { file: File; note: string } | undefined;
-      if (aiExport) {
+      // 🗂 เจ้าของร้าน: แนบ .ai แยกเลเยอร์ไปกับออเดอร์ด้วย (ผู้ใช้เคาะ 14 ต.ค. 69 "แนบ .ai ด้วย" · Supabase Pro)
+      //    ปฏิทินรูปเต็ม .ai จาก Illustrator ~180 MB — ต้องตั้ง Upload file size limit ของโปรเจกต์ Supabase ให้พอ
+      //    ทำไม่ได้/อัปไม่ขึ้นก็ยังสั่งต่อได้ (ไฟล์พิมพ์ + .pdf ครบแล้ว)
+      let ai: { file: File; note: string } | undefined = cutAi ? { file: cutAi, note: "ไดคัท: เส้นตัดสีพิเศษ CutContour" } : undefined;
+      if (aiExport && !fmt.diecut) {
         setBusy("กำลังทำไฟล์ .ai…");
         try {
           ai = await makeAi();
@@ -2820,17 +3355,20 @@ export default function CalendarStudio({
           console.warn("calendar .ai", e);
         }
       }
+      // 🖨 .pdf แนบออเดอร์ด้วย — การ์ดชุด = ไฟล์ชิ้นงาน (โปรแกรมจัดวาง) · แบบอื่น = .pdf ทั้งเล่ม (เดิมแนบเฉพาะการ์ด · แก้ 14 ต.ค. 69)
       let pdf: File | undefined;
-      if (aiExport && imposeOk) {
-        setBusy("กำลังทำไฟล์ .pdf ชิ้นงาน…");
+      if (aiExport && !fmt.diecut) {
+        setBusy(imposeOk ? "กำลังทำไฟล์ .pdf ชิ้นงาน…" : "กำลังทำไฟล์ .pdf…");
         try {
-          pdf = (await makePdf()).file;
+          pdf = (imposeOk ? await makePdf() : await makeBookPdf()).file;
         } catch (e) {
           console.warn("calendar .pdf", e);
         }
       }
       setBusy("กำลังอัปโหลด…");
       await onApply({
+        print,
+        white: whiteFile,
         pdf,
         ai: ai?.file,
         aiNote: ai?.note,
@@ -2851,7 +3389,7 @@ export default function CalendarStudio({
           `${texts.length ? ` · ข้อความ ${texts.length} กล่อง: ${texts.map((e) => `"${e.text!.trim().replace(/\n/g, " ")}"`).join(", ")}` : ""}` +
           `${shapes ? ` · รูปทรง ${shapes} ชิ้น` : ""}${freePhotos ? ` · กรอบรูปอิสระ ${freePhotos} กรอบ` : ""}${layoutNote ? ` · เลย์เอาต์: ${layoutNote}` : ""} · ` +
           (noCal ? "" : `ปฏิทิน: ${backSpec(back)} `) +
-          printFrameToken(W, H),
+          (fmt.diecut ? cutSpec.replace(/^ · /, "") + " " : printFrameToken(W, H)),
       });
       onClose();
       if (orderAfter.current && onOrder) await onOrder();
@@ -3950,8 +4488,16 @@ export default function CalendarStudio({
           { key: "events" as const, icon: "📅", label: "Events", on: tool === "events" },
           { key: "settings" as const, icon: "⚙", label: "Settings", on: tool === "settings" },
         ]),
+    // ✂️ งานไดคัท: แผงทรง/ขอบ/รูห้อย/ลบพื้นหลัง
+    ...(fmt.diecut ? [{ key: "cut" as const, icon: "✂️", label: "ไดคัท", on: tool === "cut" }] : []),
     { key: "layers", icon: "🗂", label: "Layers", on: layersOpen },
   ];
+  const cutInput =
+    "w-full min-w-0 rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-stone-700 focus:border-sky-400 focus:outline-none disabled:opacity-60";
+  const cutChip = (on: boolean, small = false) =>
+    `rounded-full ${small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]"} font-bold transition disabled:opacity-50 ${
+      on ? "bg-sky-600 text-white shadow" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-sky-50"
+    }`;
   function onTool(k: (typeof TOOLS)[number]["key"]) {
     if (k === "layers") return setLayersOpen((v) => !v);
     // ใบที่ยังเหมือนใบแรก: เปิดแผงได้ แต่ไม่เพิ่มชิ้นส่วนลงใบแรกแบบไม่รู้ตัว
@@ -4160,7 +4706,18 @@ export default function CalendarStudio({
                 <span className="text-[10.5px] font-bold">{feeNow > 0 ? `ค่าคละ +${formatBaht(feeNow)}` : "ไม่มีค่าคละ"}</span>
               </span>
             )}
-            {aiExport && (
+            {aiExport && fmt.diecut && (
+              <button
+                type="button"
+                onClick={() => void downloadCutAi()}
+                disabled={!!busy || !cutRes}
+                title="เฉพาะเจ้าของร้าน — ไฟล์ .ai เข้าเครื่องตัด (ลาย + ขอบ 300 DPI ขนาดจริง · เส้นตัดสีพิเศษ CutContour)"
+                className="hidden rounded-full bg-amber-50 px-3 py-2.5 text-xs font-extrabold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100 disabled:opacity-60 sm:inline-block"
+              >
+                ⬇ .ai
+              </button>
+            )}
+            {aiExport && !fmt.diecut && (
               <button
                 type="button"
                 onClick={() => void downloadAi()}
@@ -4171,7 +4728,7 @@ export default function CalendarStudio({
                 ⬇ .ai
               </button>
             )}
-            {aiExport && (
+            {aiExport && !fmt.diecut && (
               <button
                 type="button"
                 onClick={() => void downloadPdf()}
@@ -4515,12 +5072,33 @@ export default function CalendarStudio({
             ref={stageRef}
             className={`relative flex min-h-0 min-w-0 shrink-0 flex-col items-center justify-center gap-2 p-3 transition sm:flex-1 sm:p-5 ${dropOn ? "bg-sky-50" : "bg-stone-100"} ${
               narrow && (sel || slotFocus || gridSel) ? "pb-32" : ""
-            }`}
+            } ${viewZ.k > 1 ? "overflow-hidden cursor-grab active:cursor-grabbing" : ""}`}
             // 🖱 คลิกพื้นว่างรอบการ์ด = ยกเลิกการเลือก (กรอบฟ้า/แถบเครื่องมือหาย) — เดิมไม่มีตัวรับคลิกตรงนี้ กรอบฟ้าค้าง (ผู้ใช้แจ้ง 13 ต.ค. 69)
             // เฉพาะคลิกโดนพื้นเวทีเอง/ข้อความใต้การ์ด — แถบเครื่องมือ/จุดจับ/การ์ดมีตัวจับของตัวเอง
             onPointerDown={(e) => {
               const t = e.target as HTMLElement;
-              if (t === e.currentTarget || t.dataset.stageBlank !== undefined) clearSelection();
+              if (t === e.currentTarget || t.dataset.stageBlank !== undefined) {
+                clearSelection();
+                // 🔍 ซูมอยู่ = ลากพื้นว่างเพื่อเลื่อนมุมมอง
+                if (viewZ.k > 1 && e.button === 0) {
+                  viewPan.current = { x: e.clientX - viewZ.x, y: e.clientY - viewZ.y, id: e.pointerId };
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                }
+              }
+            }}
+            onPointerMove={(e) => {
+              const pn = viewPan.current;
+              if (pn && pn.id === e.pointerId) setViewZ((z) => ({ ...z, x: e.clientX - pn.x, y: e.clientY - pn.y }));
+            }}
+            onPointerUp={(e) => {
+              if (viewPan.current?.id === e.pointerId) viewPan.current = null;
+            }}
+            onPointerCancel={() => {
+              viewPan.current = null;
+            }}
+            onDoubleClick={(e) => {
+              const t = e.target as HTMLElement;
+              if (fmt.diecut && (t === e.currentTarget || t.dataset.stageBlank !== undefined)) setViewZ({ k: 1, x: 0, y: 0 });
             }}
             onDragOver={(e) => {
               if (!e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes("text/x-cal-src")) return;
@@ -4545,6 +5123,19 @@ export default function CalendarStudio({
               void dropOnStage([...e.dataTransfer.files], e.clientX, e.clientY);
             }}
           >
+            {fmt.diecut && (
+              <div className="absolute left-3 top-3 z-20 inline-flex items-center rounded-full bg-white p-0.5 shadow-sm ring-1 ring-stone-200" title="ซูม: ลูกกลิ้งเมาส์/บีบนิ้ว · ลากพื้นว่างเพื่อเลื่อน · ดับเบิลคลิก = พอดีจอ">
+                <button type="button" onClick={() => zoomView(viewZ.k / 1.5)} className="h-8 w-8 rounded-full text-[15px] font-bold text-stone-700 hover:bg-sky-50" aria-label="ซูมออก">
+                  −
+                </button>
+                <button type="button" onClick={() => setViewZ({ k: 1, x: 0, y: 0 })} className="h-8 min-w-[56px] rounded-full text-[12px] font-semibold tabular-nums text-stone-500 hover:bg-sky-50" title="พอดีจอ">
+                  {Math.round(viewZ.k * 100)}%
+                </button>
+                <button type="button" onClick={() => zoomView(viewZ.k * 1.5)} className="h-8 w-8 rounded-full text-[15px] font-bold text-stone-700 hover:bg-sky-50" aria-label="ซูมเข้า">
+                  +
+                </button>
+              </div>
+            )}
             <div
               className="relative w-full"
               style={{
@@ -4553,6 +5144,9 @@ export default function CalendarStudio({
                   stageBox.w && stageBox.h && stageBox.w >= 640
                     ? `${Math.max(240, Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect))}px`
                     : `min(100%, ${aspect * 60}vh)`,
+                // 🔍 ซูมมุมมอง (งานไดคัท) — นุ่มด้วย transition · ตอนลากเลื่อนไม่หน่วง
+                transform: viewZ.k === 1 ? undefined : `translate(${viewZ.x}px, ${viewZ.y}px) scale(${viewZ.k})`,
+                transition: viewPan.current ? "none" : "transform .18s ease-out",
               }}
             >
               <canvas
@@ -4561,9 +5155,29 @@ export default function CalendarStudio({
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerUp}
-                className={`block w-full touch-none select-none bg-white shadow-[0_2px_14px_rgba(28,25,23,.18)]`}
+                className={`block w-full touch-none select-none shadow-[0_2px_14px_rgba(28,25,23,.18)] ${
+                  !fmt.diecut
+                    ? "bg-white"
+                    : cutView.bg === "dark"
+                      ? "bg-stone-800"
+                      : cutView.bg === "light"
+                        ? "bg-white"
+                        : "bg-[repeating-conic-gradient(#e7e5e4_0%_25%,#fff_0%_50%)] bg-[length:16px_16px]"
+                }`}
                 style={{ aspectRatio: `${W} / ${H}` }}
               />
+              {/* ✂️ แก้เฉพาะจุด: จิ้มบนภาพ ＋ = เส้นมน/ถมร่อง · − = เส้นวิ่งชิดตามซอกงาน */}
+              {fmt.diecut && tool === "cut" && editMode !== 0 && (
+                <div
+                  className={`absolute inset-0 z-10 ${editMode > 0 ? "cursor-cell" : "cursor-crosshair"}`}
+                  onPointerDown={(e) => {
+                    const rc = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rc.left) / rc.width) * W;
+                    const y = ((e.clientY - rc.top) / rc.height) * H;
+                    setCut({ edits: [...cutP.edits, [x, y, cutP.plusMm, editMode]] });
+                  }}
+                />
+              )}
               {!locked && tool === "photo" && renderPhotoBar()}
               {!locked && tool === "photo" && renderPostBar()}
               {!locked && tool === "text" && renderTextBar()}
@@ -4604,15 +5218,32 @@ export default function CalendarStudio({
             {tool === "settings" && draft && renderSettingsPopup(draft)}
             {layersOpen && renderLayersPopup()}
             <p data-stage-blank className="text-center text-[10.5px] leading-tight text-stone-400">
-              <span className="text-rose-500">{guideImg ? "—" : "- - -"}</span> เส้นตัด
+              {fmt.diecut ? (
+                <>
+                  <span className="text-pink-500">—</span> เส้นตัด
+                  {cutRes
+                    ? ` · ตัวชิ้นงาน ${(cutRes.bodyW / 10).toFixed(1)}×${(cutRes.bodyH / 10).toFixed(1)} ซม.${cutRes.extras.length ? ` · ${cutRes.extras.join(" · ")}` : ""}`
+                    : cutErr
+                      ? ` · ⚠️ ${cutErr}`
+                      : " · ใส่รูป/ข้อความ แล้วระบบตีเส้นตัดรอบลายให้"}
+                  {cutRes?.warnings.length ? ` · ⚠️ ${cutRes.warnings.join(" · ")}` : ""}
+                  {bgBusy ? ` · ⏳ ${bgBusy}` : ""}
+                </>
+              ) : (
+                <>
+                  <span className="text-rose-500">{guideImg ? "—" : "- - -"}</span> เส้นตัด
+                </>
+              )}
               {guideImg && guide?.name ? ` · 📐 เทมเพลต ${guide.name}` : ""}
               {fmt.note ? ` · ${fmt.note}` : ""}
             </p>
           </div>
 
           {/* แผงตามปุ่มที่เลือก — Photo/รูปทรง ไม่มีแผงขวา (เครื่องมืออยู่บนภาพ) · Calendar/Events/Settings = หน้าต่างเด้งบนเวที */}
-          {tool && (locked ? tool === "photo" || tool === "text" || tool === "shape" || tool === "layout" : tool === "layout") && (
-            <div className="order-2 w-full shrink-0 space-y-3 border-t border-stone-100 bg-white p-3 sm:order-none sm:w-64 sm:overflow-y-auto sm:border-l sm:border-t-0">
+          {tool && (locked ? tool === "photo" || tool === "text" || tool === "shape" || tool === "layout" : tool === "layout" || tool === "cut") && (
+            <div
+              className={`order-2 w-full shrink-0 space-y-3 border-t border-stone-100 bg-white p-3 sm:order-none ${tool === "cut" ? "sm:w-80" : "sm:w-64"} sm:overflow-y-auto sm:border-l sm:border-t-0`}
+            >
               {copies > 1 && vcur.card > 0 && (
                 <div className="flex items-center justify-between gap-2 rounded-xl bg-sky-50 px-3 py-2 text-[11px] ring-1 ring-sky-100">
                   <span className="font-bold text-sky-900">
@@ -4726,6 +5357,251 @@ export default function CalendarStudio({
                       <p className="text-[11px] text-stone-400">แตะข้อความบนภาพเพื่อแก้ หรือกด ＋ เพิ่มข้อความ</p>
                     )}
                   </Section>
+                </>
+              )}
+
+              {!locked && tool === "cut" && fmt.diecut && (
+                <>
+                  {/* แบบหน้า /admin/diecut?tab=bg: การ์ด "สินค้า" (สูตรเส้นตัดตามชนิดงาน) → "เส้นตัด" → "มุมมอง" */}
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-stone-200">
+                    <div className="mb-2 flex items-baseline justify-between gap-2">
+                      <p className="text-[13px] font-extrabold text-stone-800">สินค้า</p>
+                      <p className="text-[10.5px] text-stone-400">ตั้งค่าเส้นตัดตามชนิดงาน</p>
+                    </div>
+                    <select
+                      value={design.cut?.preset ?? "keychain"}
+                      onChange={(e) => {
+                        // เปลี่ยนสูตร = ล้างค่าที่ปรับเอง แล้วใช้ค่าของสูตรนั้นเป็นฐาน
+                        if (presets.some((x) => x.id === e.target.value)) setDesign((d) => ({ ...d, cut: { preset: e.target.value } }));
+                      }}
+                      className={cutInput}
+                    >
+                      {presets.map((pr) => (
+                        <option key={pr.id} value={pr.id}>
+                          {pr.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <CutLabel text="ชนิดเส้นตัด">
+                        <select value={cutP.cutType} onChange={(e) => setCut({ cutType: e.target.value as CutParams["cutType"] })} className={cutInput}>
+                          <option value="Cut100">Cut100 (ตัดขาด)</option>
+                          <option value="Cut50">Cut50 (ตัดครึ่ง)</option>
+                        </select>
+                      </CutLabel>
+                      <CutLabel text="รองขาว">
+                        <select value={cutP.white} onChange={(e) => setCut({ white: e.target.value as CutParams["white"] })} className={cutInput}>
+                          <option value="none">ไม่มี</option>
+                          <option value="full">เต็มรูปทรง</option>
+                        </select>
+                      </CutLabel>
+                    </div>
+                    <label className="mt-2.5 flex items-center gap-2 text-[12px] font-bold text-stone-700">
+                      <input type="checkbox" checked={fmt.diecut.hole} disabled readOnly />
+                      มีรูห่วง (ติ่งด้านบน)
+                      <span className="text-[10.5px] font-semibold text-stone-400">ตามตัวเลือก &quot;เจาะรู&quot;</span>
+                    </label>
+                    {fmt.diecut.hole && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <CutNum label="ขนาดรู (Ø)" value={cutP.holeMm} min={0.5} step={0.1} onChange={(v) => setCut({ holeMm: v })} />
+                        <CutNum label="เนื้อรอบรู" value={cutP.ringMm} min={0.5} step={0.1} onChange={(v) => setCut({ ringMm: v })} />
+                        <CutNum label="ระยะรูห่างจากงาน" value={cutP.holeGapMm} min={0} step={0.1} onChange={(v) => setCut({ holeGapMm: v })} />
+                        <CutNum label="เลื่อนรู ซ้าย(−)/ขวา(+)" value={cutP.holeXMm} step={0.5} neg onChange={(v) => setCut({ holeXMm: v })} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-stone-200">
+                    <p className="mb-1 text-[13px] font-extrabold text-stone-800">เส้นตัด</p>
+                    <p className="mt-2 text-[11.5px] font-bold text-stone-600">หาขอบงาน</p>
+                    {srcs.some((x) => !x.removed) ? (
+                      <div className="mt-1 space-y-1.5">
+                        {srcs.map((x, i) =>
+                          x.removed ? null : (
+                            <div key={i} className="flex items-center gap-2">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={x.url}
+                                alt=""
+                                className="h-9 w-9 shrink-0 rounded-lg bg-[repeating-conic-gradient(#e7e5e4_0%_25%,#fff_0%_50%)] bg-[length:8px_8px] object-contain ring-1 ring-stone-200"
+                              />
+                              <select
+                                value={x.bgPick ?? "auto"}
+                                disabled={!!bgBusy}
+                                onChange={(e) => void applyBg(i, e.target.value as BgMethod | "auto")}
+                                className={cutInput}
+                              >
+                                {BG_METHODS.map((m) => (
+                                  <option key={m.key} value={m.key}>
+                                    {m.key === "auto"
+                                      ? `อัตโนมัติ${(x.bgPick ?? "auto") === "auto" && x.bgDone ? ` (${BG_METHODS.find((z) => z.key === x.bgDone)?.label})` : ""}`
+                                      : m.key === "alpha"
+                                        ? "ขอบโปร่งใส (PNG)"
+                                        : m.key === "solid"
+                                          ? "ลบสีพื้น"
+                                          : m.key === "ai"
+                                            ? "AI ตัดพื้นหลัง"
+                                            : "ทั้งใบ (ไม่ตัดพื้น)"}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-stone-400">ใส่รูปก่อน — ระบบเลือกวิธีหาขอบงานให้เอง</p>
+                    )}
+                    {bgBusy && <p className="mt-1.5 text-[11px] font-bold text-sky-700">⏳ {bgBusy}</p>}
+                    {bgNote && <p className="mt-1.5 text-[11px] font-semibold leading-snug text-amber-700">{bgNote}</p>}
+
+                    <p className="mt-3 text-[11.5px] font-bold text-stone-600">รูปร่าง</p>
+                    <div className="mt-1 grid grid-cols-5 gap-1">
+                      {(
+                        [
+                          ["contour", "ตามทรง", <path key="p" d="M6 15c-2-4 1-9 5-9 2 0 3 2 5 2s3 2 3 5-3 6-7 6-5-1-6-4z" />],
+                          ["rect", "เหลี่ยม", <rect key="p" x="4" y="6" width="16" height="12" />],
+                          ["rounded", "มุมมน", <rect key="p" x="4" y="6" width="16" height="12" rx="4" />],
+                          ["circle", "วงกลม", <circle key="p" cx="12" cy="12" r="8" />],
+                          ["ellipse", "วงรี", <ellipse key="p" cx="12" cy="12" rx="9" ry="6" />],
+                        ] as const
+                      ).map(([k2, t, icon]) => (
+                        <button
+                          key={k2}
+                          type="button"
+                          onClick={() => setCut({ shape: k2, autoShape: false })}
+                          className={`flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[10.5px] font-bold transition ${
+                            cutP.shape === k2 ? "bg-sky-600 text-white shadow" : "bg-stone-50 text-stone-600 ring-1 ring-stone-200 hover:bg-sky-50"
+                          }`}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                            {icon}
+                          </svg>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                    {cutP.shape === "rounded" && (
+                      <div className="mt-2 w-36">
+                        <CutNum label="ความมนของมุม" value={cutP.radiusMm} min={0} step={0.5} onChange={(v) => setCut({ radiusMm: v })} />
+                      </div>
+                    )}
+                    <CutSlider label="ระยะเส้นตัด" value={cutP.offsetMm} min={-5} max={10} step={0.1} unit="มม." onChange={(v) => setCut({ offsetMm: v })} />
+                    <CutSlider label="ความหนาขอบ" value={cutP.strokeMm} min={0} max={10} step={0.1} unit="มม." onChange={(v) => setCut({ strokeMm: v })} />
+                    {cutP.strokeMm > 0 && (
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-stone-500">สีขอบ</span>
+                        {["#ffffff", "#000000"].map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            aria-label={c === "#ffffff" ? "ขาว" : "ดำ"}
+                            onClick={() => setCut({ strokeColor: c })}
+                            className={`h-6 w-6 rounded-full ring-2 ${cutP.strokeColor === c ? "ring-sky-500" : "ring-stone-200"}`}
+                            style={{ background: c }}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={cutP.strokeColor}
+                          onChange={(e) => setCut({ strokeColor: e.target.value })}
+                          className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                          aria-label="เลือกสีขอบ"
+                        />
+                      </div>
+                    )}
+                    <p className="mt-1.5 rounded-lg bg-sky-50 px-2 py-1.5 text-[10.5px] leading-snug text-sky-800">
+                      📐 ชิ้นงานล็อกขนาด {fmt.diecut.size / 10} ซม. ตามที่สั่ง — เพิ่มระยะเส้นตัด/ขอบ ลายจะเล็กลงแทน
+                    </p>
+                    {cutP.shape === "contour" && (
+                      <>
+                        <CutSlider label="ถมร่องแคบ" value={cutP.bridge} min={0} max={2.5} step={0.1} onChange={(v) => setCut({ bridge: v })} />
+                        <p className="mb-1 mt-2.5 text-[11.5px] font-bold text-stone-600">แก้เฉพาะจุด</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(
+                            [
+                              [0, "ปิด"],
+                              [1, "＋ มน"],
+                              [-1, "− ชิด"],
+                            ] as const
+                          ).map(([v, t]) => (
+                            <button key={v} type="button" className={cutChip(editMode === v, true)} onClick={() => setEditMode(v)}>
+                              {t}
+                            </button>
+                          ))}
+                          <button type="button" disabled={!cutP.edits.length} className={cutChip(false, true)} onClick={() => setCut({ edits: cutP.edits.slice(0, -1) })}>
+                            ↶ ย้อน
+                          </button>
+                          <button type="button" disabled={!cutP.edits.length} className={cutChip(false, true)} onClick={() => setCut({ edits: [] })}>
+                            ล้าง
+                          </button>
+                        </div>
+                        {editMode !== 0 && (
+                          <>
+                            <p className="mt-1 text-[10.5px] text-sky-700">👆 จิ้มบนภาพตรงที่อยากให้เส้น{editMode > 0 ? "มน/ถมร่อง" : "วิ่งชิดตามซอกงาน"}</p>
+                            <CutSlider label="ความมนของจุด" value={cutP.plusMm} min={0.5} max={15} step={0.5} unit="มม." onChange={(v) => setCut({ plusMm: v })} />
+                          </>
+                        )}
+                        <label className="mt-2.5 flex items-center gap-2 text-[11.5px] font-bold text-stone-600">
+                          <input type="checkbox" checked={cutP.holes} onChange={(e) => setCut({ holes: e.target.checked })} />
+                          เว้นรูด้านใน (ไม่ถม · ตัดทะลุช่องว่างกลางลาย)
+                        </label>
+                        <CutSlider label="ความโค้งของเส้น" value={cutP.smooth} min={0} max={1.33} step={0.05} onChange={(v) => setCut({ smooth: v })} />
+                      </>
+                    )}
+                    <CutSlider
+                      label="หดขอบตัด halo"
+                      value={shrink}
+                      min={0}
+                      max={6}
+                      step={1}
+                      unit="px"
+                      onChange={(v) => setCut({ shrink: v })}
+                      onCommit={(v) => srcs.forEach((x, i) => !x.removed && (x.bgDone === "solid" || x.bgDone === "ai") && void applyBg(i, x.bgPick ?? "auto", v))}
+                    />
+                    <button
+                      type="button"
+                      className="mt-3 w-full rounded-xl bg-stone-50 px-3 py-2 text-[11.5px] font-bold text-stone-600 ring-1 ring-stone-200 hover:bg-stone-100"
+                      onClick={() => {
+                        setDesign((d) => ({ ...d, cut: { preset: d.cut?.preset } }));
+                        setEditMode(0);
+                      }}
+                    >
+                      ↺ กลับค่าเริ่มต้นของสูตรนี้
+                    </button>
+                  </div>
+
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-stone-200">
+                    <p className="text-[13px] font-extrabold text-stone-800">มุมมอง</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      <span className="text-[11px] font-semibold text-stone-500">พื้น</span>
+                      {(
+                        [
+                          ["checker", "โปร่งใส"],
+                          ["dark", "เข้ม"],
+                          ["light", "ขาว"],
+                        ] as const
+                      ).map(([v, t]) => (
+                        <button key={v} type="button" className={cutChip(cutView.bg === v, true)} onClick={() => setCutView((cv) => ({ ...cv, bg: v }))}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-x-3">
+                      <label className="flex items-center gap-1.5 text-[11.5px] font-semibold text-stone-600">
+                        <input type="checkbox" checked={cutView.line} onChange={(e) => setCutView((cv) => ({ ...cv, line: e.target.checked }))} />
+                        แสดงเส้นตัด
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[11.5px] font-semibold text-stone-600">
+                        <input type="checkbox" checked={cutView.white} onChange={(e) => setCutView((cv) => ({ ...cv, white: e.target.checked }))} />
+                        แสดงรองขาว
+                      </label>
+                    </div>
+                  </div>
+
+                  <p className="text-[10.5px] leading-snug text-stone-400">
+                    ขนาด = ด้านยาวสุดของตัวชิ้นงาน (ไม่รวมติ่งรูห่วง) · เส้นชมพู = แนวตัด · เส้นประฟ้า = รองขาว · ทีมงานตรวจไฟล์ก่อนผลิตทุกงาน
+                  </p>
                 </>
               )}
 
@@ -5016,6 +5892,46 @@ export default function CalendarStudio({
           </div>
         )}
 
+        {/* ❓ ตัดพื้นหลังไหม — รูปที่ไม่มีพื้นใส (งานไดคัท) */}
+        {bgAsk !== null && srcs[bgAsk] && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-900/45 p-4 backdrop-blur-[2px]">
+            <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl" role="dialog" aria-label="ตัดพื้นหลังไหม">
+              <h3 className="text-center text-lg font-extrabold text-stone-800">ตัดพื้นหลังรูปนี้ไหม?</h3>
+              <p className="mt-1 text-center text-[12.5px] leading-relaxed text-stone-500">
+                รูปนี้ไม่มีพื้นโปร่งใส — เลือกได้ว่าจะให้ชิ้นงานเป็นรูปทรงตามตัวการ์ตูน หรือใช้ทั้งภาพ
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => answerBg(true)}
+                  className="group flex flex-col items-center rounded-2xl p-3 text-center ring-2 ring-sky-200 transition hover:bg-sky-50 hover:ring-sky-500"
+                >
+                  <span className="relative grid h-24 w-24 place-items-center overflow-hidden rounded-xl bg-[repeating-conic-gradient(#e7e5e4_0%_25%,#fff_0%_50%)] bg-[length:10px_10px]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={srcs[bgAsk].url} alt="" className="h-16 w-16 rounded-full object-cover shadow ring-2 ring-white" />
+                  </span>
+                  <span className="mt-2 text-[14px] font-extrabold text-sky-700">✂️ ตัดพื้นหลัง</span>
+                  <span className="mt-0.5 text-[11px] leading-snug text-stone-500">เส้นตัดตามรูปทรง · ระบบเลือกวิธีตัดให้ (ลบสีพื้น / AI)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => answerBg(false)}
+                  className="group flex flex-col items-center rounded-2xl p-3 text-center ring-2 ring-stone-200 transition hover:bg-stone-50 hover:ring-stone-400"
+                >
+                  <span className="grid h-24 w-24 place-items-center rounded-xl bg-stone-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={srcs[bgAsk].url} alt="" className="max-h-20 max-w-20 rounded-lg object-contain shadow" />
+                  </span>
+                  <span className="mt-2 text-[14px] font-extrabold text-stone-700">🖼 ใช้ทั้งภาพ</span>
+                  <span className="mt-0.5 text-[11px] leading-snug text-stone-500">ไม่ตัดพื้น · เส้นตัดสี่เหลี่ยมมุมมนรอบภาพ (เปลี่ยนรูปร่างได้)</span>
+                </button>
+              </div>
+              <p className="mt-3 text-center text-[10.5px] text-stone-400">เปลี่ยนใจทีหลังได้ที่แผง ✂️ ไดคัท › หาขอบงาน</p>
+            </div>
+          </div>
+        )}
+
         {gapAsk && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-stone-900/45 p-4">
             <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
@@ -5033,7 +5949,7 @@ export default function CalendarStudio({
                         if (p.photo && o && srcs[o.src] && !placementCovers(o.pl, p.photo))
                           photos[p.key] = {
                             ...o,
-                            pl: coverPlacement(p.photo, srcs[o.src]),
+                            pl: fitPl(p.photo, srcs[o.src]),
                           };
                       }
                       return { ...d, photos };
@@ -5657,6 +6573,101 @@ function ElActions({
       <button type="button" onClick={onDelete} className={`${toolBtn} bg-rose-50 text-rose-600 hover:bg-rose-100`}>
         🗑 ลบ
       </button>
+    </div>
+  );
+}
+
+/** ✂️ ป้ายหัวช่อง (แบบฟอร์มหน้า /admin/diecut?tab=bg) */
+function CutLabel({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-0.5 block truncate text-[11px] font-semibold text-stone-500">{text}</span>
+      {children}
+    </label>
+  );
+}
+
+/** ✂️ ช่องตัวเลข + หน่วย มม. (แบบฟอร์มหน้า bg) */
+function CutNum({ label, value, onChange, min, step = 0.1, neg }: { label: string; value: number; onChange: (v: number) => void; min?: number; step?: number; neg?: boolean }) {
+  const [txt, setTxt] = useState(String(value));
+  useEffect(() => setTxt(String(value)), [value]);
+  return (
+    <CutLabel text={label}>
+      <span className="flex items-center rounded-xl border border-stone-200 bg-white pr-2 focus-within:border-sky-400">
+        <input
+          type="number"
+          inputMode="decimal"
+          value={txt}
+          step={step}
+          min={neg ? undefined : (min ?? 0)}
+          onChange={(e) => {
+            setTxt(e.target.value);
+            const v = parseFloat(e.target.value);
+            if (Number.isFinite(v) && (neg || v >= (min ?? 0))) onChange(v);
+          }}
+          className="w-full min-w-0 rounded-xl bg-transparent px-2.5 py-1.5 text-[12px] font-bold text-stone-700 outline-none"
+        />
+        <em className="shrink-0 text-[10px] not-italic text-stone-400">มม.</em>
+      </span>
+    </CutLabel>
+  );
+}
+
+/** ✂️ แถบเลื่อน + ช่องตัวเลข (แบบหน้า /admin/diecut?tab=bg) · onCommit = ปล่อยนิ้ว/พิมพ์เสร็จ */
+function CutSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  onChange: (v: number) => void;
+  onCommit?: (v: number) => void;
+}) {
+  const fix = (v: number) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold text-stone-500">{label}</span>
+        <span className="flex items-center gap-1">
+          <input
+            type="number"
+            value={Number(value.toFixed(2))}
+            min={min}
+            max={max}
+            step={step}
+            inputMode="decimal"
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              if (Number.isFinite(v)) onChange(fix(v));
+            }}
+            onBlur={() => onCommit?.(value)}
+            className="w-14 rounded-md border border-stone-200 px-1.5 py-0.5 text-right text-[11px] font-bold text-stone-700"
+          />
+          {unit && <em className="text-[10px] not-italic text-stone-400">{unit}</em>}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={label}
+        onChange={(e) => onChange(fix(parseFloat(e.target.value)))}
+        onPointerUp={(e) => onCommit?.(fix(parseFloat((e.target as HTMLInputElement).value)))}
+        onKeyUp={(e) => onCommit?.(fix(parseFloat((e.target as HTMLInputElement).value)))}
+        className="w-full accent-sky-600"
+      />
     </div>
   );
 }
