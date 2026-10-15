@@ -4878,6 +4878,8 @@ export default function CalendarStudio({
                 ⬇ .pdf
               </button>
             )}
+            {/* ✂️ ไดคัท: ปิดปุ่ม ✓ ใช้แบบนี้ + 🛒 ใส่ตะกร้า ไว้ก่อน (ผู้ใช้สั่ง 15 ต.ค. 69 — จอยังอยู่ระหว่างปรับ ลูกค้าจึงยังสั่งผ่านจอนี้ไม่ได้) */}
+            {!fmt.diecut && (
             <button
               type="button"
               onClick={() => {
@@ -4894,7 +4896,8 @@ export default function CalendarStudio({
             >
               {busy && !onOrder ? busy : "✓ ใช้แบบนี้"}
             </button>
-            {onOrder && (
+            )}
+            {onOrder && !fmt.diecut && (
               <button
                 type="button"
                 onClick={() => {
