@@ -382,8 +382,8 @@ export default function CalendarStudio({
   const tplBleed = useMemo(() => {
     if (!guide || guide.fill || !guide.wMm || !guide.hMm) return undefined;
     const f0 = calFormat(format);
-    // โฟโต้การ์ด + โปสการ์ด 4×6 (ขนาดตายตัว · 14 ต.ค. 69 เพิ่มโปสการ์ด: เทมเพลต 2 ด้านตัดตก 1/2.5 มม.)
-    if (f0.cornerR == null && !f0.key.startsWith("postcard-")) return undefined;
+    // โฟโต้การ์ด + โปสการ์ด 4×6 (ขนาดตายตัว · 14 ต.ค. 69 เพิ่มโปสการ์ด: เทมเพลต 2 ด้านตัดตก 1/2.5 มม.) + งานพิมพ์แผ่นเรียบ print@/print2@ (โปสการ์ดธรรมดา 15 ต.ค. 69)
+    if (f0.cornerR == null && !f0.key.startsWith("postcard-") && !/^print2?@/.test(f0.key)) return undefined;
     const b = ((guide.wMm - f0.trimW) / 2 + (guide.hMm - f0.trimH) / 2) / 2;
     // ตัดตก 0 ได้ (เทมเพลตอาร์ตบอร์ด = เส้นตัดพอดี เช่น โปสการ์ดปฏิทิน 1 ด้าน "อาร์ตมัน 300g + holo" · ผู้ใช้แจ้ง 14 ต.ค. 69
     // "1 ด้านไม่เหมือนเทมเพลต" — เดิมรับแค่ 0.5–6 มม. เลยตกไปใช้ 2 มม. มีขอบขาวเกินเส้นตัดที่ไฟล์ร้านไม่มี)

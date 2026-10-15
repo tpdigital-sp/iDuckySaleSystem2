@@ -8064,12 +8064,13 @@ export default function ProductDetail({
                             {/* งานหลายด้าน = โชว์ทุกด้าน จะได้เห็นว่าใส่ครบแล้วจริง */}
                             {(d.calState
                               ? // 🗓 ปฏิทิน: หน้าปก + ปฏิทินด้านหลัง (ไฟล์หลังอยู่ใน artBackFiles ตำแหน่งเดียวกัน)
+                                // 🖨 งานออกแบบล้วน 2 ด้าน (โปสการ์ด print2@): ด้านหน้า + ด้านหลัง — ไม่ใช่ปฏิทิน
                                 [
-                                  { name: calNoGrid ? "" : "หน้าปก", artUrl: d.artUrl, dpi: d.dpi },
+                                  { name: calNoGrid ? (d.calBackFiles?.length ? "ด้านหน้า" : "") : "หน้าปก", artUrl: d.artUrl, dpi: d.dpi },
                                   ...(d.calBackFiles?.[0]
                                     ? [
                                         {
-                                          name: d.calBackFiles.length > 1 ? `+${d.calBackFiles.length} หน้า` : "ปฏิทิน",
+                                          name: d.calBackFiles.length > 1 ? `+${d.calBackFiles.length} หน้า` : calNoGrid ? "ด้านหลัง" : "ปฏิทิน",
                                           artUrl: d.calBackFiles[0].url,
                                           dpi: d.dpi,
                                         },

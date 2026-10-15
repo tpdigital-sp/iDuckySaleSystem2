@@ -492,6 +492,7 @@ export function trimPath(ctx: CanvasRenderingContext2D, k: number, f: CalFormat)
  *   card / card-L (2 ด้าน) · card1 / card1-L (1 ด้าน · -L = แนวนอน) · postcard-year1-{L|P} · postcard-year2-{L|P}
  *   postcard-month-{L|P} (1 ด้าน) · postcard-month2-{L|P} (2 ด้าน)
  *   desktop14-{L|P} (8 แผ่น) · desktop26-{L|P} (14 แผ่น) · canvas
+ *   print@<กว้าง>x<สูง> (1 ด้าน) · print2@<กว้าง>x<สูง> (2 ด้าน) — งานพิมพ์แผ่นเรียบขนาดตายตัว (โปสการ์ด 4×6 / 5×7)
  */
 export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat {
   const L = key.endsWith("-L");
@@ -649,6 +650,37 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
    * "pad@<กว้าง>x<สูง>" (มม. งานจริง) = 1 หน้ารูปเต็มผืน · ตัดตก 5 มม. · งานใหญ่ (>30 ซม.) ไฟล์ 150 DPI กันแคนวาสมือถือเกินเพดาน
    * จอสร้างดูจาก "ไม่มีหน้าไหนมีตาราง" → ซ่อนเครื่องมือปฏิทิน/ปี (calHasGrid)
    */
+  /**
+   * 🖨 "print@<กว้าง>x<สูง>" (1 ด้าน) / "print2@<กว้าง>x<สูง>" (2 ด้าน) — มม. = ขนาดงานหลังตัด (เส้นตัด) ของงานพิมพ์แผ่นเรียบ
+   * โปสการ์ด 4×6 / 5×7 นิ้ว (ผู้ใช้สั่ง 15 ต.ค. 69 "สร้างหน้าออกแบบบนเว็บเหมือนแผ่นรองเมาส์") — ตั้งใน Product.calendarStudio.formats
+   * ตามขนาด × แนว × จำนวนด้าน · ตัดตก = ของเทมเพลตที่ตรงสเปค (opts.bleed — จอสร้างอ่านจากอาร์ตบอร์ดไฟล์ เหมือนโปสการ์ดปฏิทิน) ไม่มี = 2 มม.
+   * ไม่มีตารางปฏิทิน (calHasGrid = false → จอซ่อนเครื่องมือปฏิทิน/ปี) · 2 ด้าน = 2 หน้า ด้านหน้า/ด้านหลัง ใส่รูปแยกกัน
+   *   หน้าที่ 2 ไป placed[i].calBackFiles → ลายด้านหลัง (ART_BACK_LABEL · นับค่าคละด้านหลังตาม Product.backDesign เหมือนแนบไฟล์เอง)
+   */
+  if (/^print2?@/.test(key)) {
+    const m = /^print(2)?@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
+    const two = !!m?.[1];
+    const w = m ? Number(m[2]) : 101.6;
+    const h = m ? Number(m[3]) : 152.4;
+    const b = opts.bleed != null && opts.bleed >= 0 ? opts.bleed : 2;
+    const fr = frame(w, h, b, 4);
+    return {
+      key,
+      name: `งานพิมพ์ ${cmText(w)}×${cmText(h)} ซม. · พิมพ์ ${two ? 2 : 1} ด้าน`,
+      trimW: w,
+      trimH: h,
+      bleed: b,
+      safe: 4,
+      dpi: 300,
+      ...(two ? { perCard: 2, note: "ใบละ 2 หน้า — หน้า 1 = ด้านหน้า · หน้า 2 = ด้านหลัง" } : {}),
+      pages: two
+        ? [
+            { key: "front", name: "ด้านหน้า", kind: "photo", photo: fr.full },
+            { key: "back", name: "ด้านหลัง", kind: "photo", photo: fr.full },
+          ]
+        : [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
+    };
+  }
   /**
    * 📐 "tpl@<กว้าง>x<สูง>" (มม. = ขนาดอาร์ตบอร์ดของไฟล์เทมเพลต) — สินค้าทั่วไปที่ออกแบบบนเว็บผ่านจอเดียวกัน
    * (ผู้ใช้สั่ง 15 ต.ค. 69 ให้เหลือทางเดียว: จอสร้างปฏิทิน · รูปแบบงานเดาจากเทมเพลตที่ผูกไว้ ไม่ต้องตั้ง formats เอง)
@@ -1705,6 +1737,8 @@ export function calDesignCount(d: CalDesign | undefined, photos?: number, format
    */
   if (format) {
     const f = calFormat(format);
+    // 🖨 ใบเดียวหน้า/หลัง (print2@ โปสการ์ดพิมพ์ 2 ด้าน · หน้าทั้งหมดอยู่ในใบเดียว) = 1 ลาย — ด้านหลังคิดค่าคละแยกตาม backDesign ของสินค้า (15 ต.ค. 69)
+    if ((f.cards ?? 1) <= 1 && f.pages.length <= (f.perCard ?? 1)) return 1;
     if ((f.cards ?? 1) <= 1 && f.pages.filter((p) => p.photo).length > 1) {
       const used = new Set<number>();
       for (const o of Object.values(d.photos)) if (o.src >= 0) used.add(o.src);
