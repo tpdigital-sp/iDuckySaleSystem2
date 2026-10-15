@@ -9242,7 +9242,8 @@ export default function AdminOrderDetailPage() {
               if (!demo) void saveOrWarn(next);
             }}
             onBound={(next) => {
-              setOrder(next);
+              // loginLine ไม่ได้เก็บในฐาน ใบที่ API ผูกคืนมาจึงไม่มี — เก็บของเดิมไว้ (ใช้โชว์ว่าผูกตรงกับบัญชีที่ล็อกอินไหม)
+              setOrder({ ...next, loginLine: next.loginLine ?? order.loginLine });
               // อัปเดตสำเนาในลิสต์รวมด้วย — ไม่งั้น "จำจากใบเก่า" จะไปเจอตัวเก่าของใบนี้เองที่ยังผูกอยู่
               setAllOrders((cur) => cur.map((o) => (o.id === next.id ? next : o)));
             }}
@@ -13209,7 +13210,7 @@ function LineChatBox({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [testing, setTesting] = useState(false);
-  const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string }[]>([]);
+  const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; source?: "login" }[]>([]);
   const [searching, setSearching] = useState(false);
   const [hitTotal, setHitTotal] = useState(0); // เจอทั้งหมดกี่คน (โชว์แค่บางส่วน)
   // ชื่อตรงพอดีกี่คน — ชื่อสั้น ๆ ("S") มีคนซ้ำเป็นสิบ ต้องบอกให้เทียบรูปโปรไฟล์เอา
@@ -14090,10 +14091,13 @@ function LineChatBox({
                 <span className={`${hitExact > 1 ? "h-9 w-9" : "h-6 w-6"} shrink-0 rounded-full bg-slate-100`} />
               )}
               <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
-              {h.lastSeen && (
-                <span className="shrink-0 text-[10px] text-slate-400">
-                  คุยล่าสุด {lastSeenLabel(h.lastSeen)}
+              {/* 👤 มาจากบัญชีที่ล็อกอินเว็บด้วย LINE (ไม่อยู่ในคลังแชท) — ผูกได้เหมือนกัน ระบบตรวจกับ LINE ตอนผูก */}
+              {h.source === "login" ? (
+                <span className="shrink-0 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200" title="ลูกค้าเคยล็อกอินเว็บด้วย LINE นี้ · ไม่อยู่ในคลังแชท">
+                  บัญชีล็อกอิน{h.lastSeen ? ` · ${lastSeenLabel(h.lastSeen)}` : ""}
                 </span>
+              ) : (
+                h.lastSeen && <span className="shrink-0 text-[10px] text-slate-400">คุยล่าสุด {lastSeenLabel(h.lastSeen)}</span>
               )}
             </button>
           ))}

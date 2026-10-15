@@ -649,25 +649,32 @@ export async function GET(req: Request) {
     };
     const signBalance = async () => undefined;
     // LINE ของบัญชีที่ล็อกอินตอนสั่ง — ให้หน้าออเดอร์เทียบกับที่พนักงานผูก (ชั่วคราว ไม่ persist)
-    const fillLoginLine = async () => {
-      await Promise.all(
-        orders
-          .filter((o) => o.customerId)
-          .map(async (o) => {
-            try {
-              const { data: u } = await sb.auth.admin.getUserById(o.customerId!);
-              const meta = u?.user?.user_metadata as
-                | { line_user_id?: string; full_name?: string; name?: string; picture?: string }
-                | undefined;
-              // picture ไว้ให้พนักงานเทียบกับรูปโปรไฟล์ในห้องแชทก่อนกดผูก (ชื่อ LINE ซ้ำกันบ่อย)
-              if (meta?.line_user_id) o.loginLine = { userId: meta.line_user_id, name: meta.full_name || meta.name, picture: meta.picture || undefined };
-            } catch {
-              /* ไม่มีก็ข้าม */
-            }
-          })
+    /**
+     * ⚠️ ห้ามเขียน loginLine ลงออบเจ็กต์ใบ "ระหว่าง" ที่ signSlip ทำงาน — signSlip แทน orders[i] ด้วยออบเจ็กต์ใหม่
+     *    (signPaymentUrls คืนสำเนา) ค่าที่เขียนลงตัวเก่าจึงหายตามจังหวะแข่งกัน → หน้าออเดอร์ไม่เคยเห็นบัญชี LINE ที่ล็อกอิน
+     *    (OD-261014-9696 · 15 ต.ค. 69: ลูกค้า PooM ล็อกอิน LINE สั่ง แต่ชิป "ผูกคนนี้" ไม่ขึ้น ยิง API ได้ loginLine: undefined)
+     *    → ดึงข้อมูลขนานได้ แต่ "ใส่" หลังทุกงานเสร็จ ตามดัชนี
+     */
+    const fillLoginLine = async (): Promise<Array<Order["loginLine"] | undefined>> =>
+      Promise.all(
+        orders.map(async (o) => {
+          if (!o.customerId) return undefined;
+          try {
+            const { data: u } = await sb.auth.admin.getUserById(o.customerId);
+            const meta = u?.user?.user_metadata as
+              | { line_user_id?: string; full_name?: string; name?: string; picture?: string }
+              | undefined;
+            // picture ไว้ให้พนักงานเทียบกับรูปโปรไฟล์ในห้องแชทก่อนกดผูก (ชื่อ LINE ซ้ำกันบ่อย)
+            return meta?.line_user_id ? { userId: meta.line_user_id, name: meta.full_name || meta.name, picture: meta.picture || undefined } : undefined;
+          } catch {
+            return undefined; /* ไม่มีก็ข้าม */
+          }
+        })
       );
-    };
-    await Promise.all([fillLoginLine(), signSlip(), signBalance()]);
+    const [logins] = await Promise.all([fillLoginLine(), signSlip(), signBalance()]);
+    logins.forEach((l, i) => {
+      if (l) orders[i] = { ...orders[i], loginLine: l };
+    });
   }
   return NextResponse.json({ orders });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { CHAT_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { core, loadChatIndexWithin, loadRecentRows, norm, type ChatRow } from "@/lib/server/line-chat";
+import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
 export const runtime = "nodejs";
 
@@ -40,8 +41,37 @@ function bangkokDayStart(): Date {
   return new Date(`${ymd}T00:00:00+07:00`);
 }
 
-type Row = { userId: string; name: string; picture?: string; lastSeen?: string };
+type Row = { userId: string; name: string; picture?: string; lastSeen?: string; source?: "login" };
 let lastAutoFreshAt = 0;
+
+/**
+ * 👤 บัญชีลูกค้าที่ล็อกอินเว็บด้วย LINE (Supabase auth · user_metadata.line_user_id) — ทางค้นสำรองนอกคลังแชท
+ *
+ * ทำไม (OD-261014-9696 · 15 ต.ค. 69): ลูกค้า "PooM" ทัก OA และล็อกอิน LINE สั่งของ แต่ห้องของเขาไม่ถูกเก็บลงคลังแชท
+ * (AdminBuddy ไม่ได้บันทึก) พนักงานค้นชื่อเจอแต่ Poom คนอื่น ผูกไม่ได้ทั้งที่ระบบรู้ userId อยู่แล้ว
+ * userId จาก LINE Login ใช้กับ Messaging API ได้ (provider เดียวกัน — การ์ดยืนยันเงินเข้าส่งถึงคนนี้ได้จริง)
+ * บัญชีมีแค่ ~150 (121 มี LINE) อ่านหน้าเดียว ~0.4 วิ · แคช 5 นาที
+ */
+let loginIndex: { at: number; rows: Row[] } | null = null;
+const LOGIN_CACHE_MS = 5 * 60 * 1000;
+async function loadLoginIndex(): Promise<Row[]> {
+  if (loginIndex && Date.now() - loginIndex.at < LOGIN_CACHE_MS) return loginIndex.rows;
+  const sb = getSupabaseAdmin();
+  if (!sb) return [];
+  const rows: Row[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error || !data) break;
+    for (const u of data.users) {
+      const meta = u.user_metadata as { line_user_id?: string; full_name?: string; name?: string; picture?: string } | undefined;
+      if (!meta?.line_user_id) continue;
+      rows.push({ userId: meta.line_user_id, name: (meta.full_name || meta.name || "").trim() || "(ไม่มีชื่อ)", picture: meta.picture || undefined, lastSeen: u.last_sign_in_at ?? undefined, source: "login" });
+    }
+    if (data.users.length < 1000) break;
+  }
+  loginIndex = { at: Date.now(), rows };
+  return rows;
+}
 
 export async function GET(req: Request) {
   // orders.money = ฝ่ายบัญชีผูก LINE ลูกค้าที่หน้าใบหัก ณ ที่จ่าย (/admin/wht)
@@ -129,12 +159,18 @@ export async function GET(req: Request) {
       }
     }
 
+    // 👤 บัญชีที่ล็อกอินด้วย LINE ที่ชื่อตรง — เติมต่อท้าย (คนที่อยู่ในคลังแชทอยู่แล้วไม่ซ้ำ) · อ่านไม่ได้ก็ข้าม ไม่ทำให้ค้นหาล้ม
+    const seen = new Set(hits.map((r) => r.userId));
+    const loginHits = q.length >= 2 ? (await loadLoginIndex().catch(() => [] as Row[])).filter((r) => !seen.has(r.userId) && norm(r.name).includes(needle)) : [];
+    const customers: Row[] = [
+      ...hits.slice(0, q.length < 1 ? LIMIT : SEARCH_LIMIT).map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen })),
+      ...loginHits.sort((a, b) => rank(a.name) - rank(b.name)).slice(0, SEARCH_LIMIT),
+    ];
+
     return NextResponse.json({
-      customers: hits
-        .slice(0, q.length < 1 ? LIMIT : SEARCH_LIMIT)
-        .map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen })),
-      total: hits.length, // เจอทั้งหมดกี่คน (โชว์แค่ LIMIT) — หน้าเว็บเอาไปบอกให้พิมพ์แคบลง
-      exact: q.length < 1 ? 0 : hits.filter((r) => core(r.name) === needleCore).length, // ชื่อตรงพอดีกี่คน — หน้าเว็บบอกให้ดูรูปโปรไฟล์เทียบ
+      customers,
+      total: hits.length + loginHits.length, // เจอทั้งหมดกี่คน (โชว์แค่ LIMIT) — หน้าเว็บเอาไปบอกให้พิมพ์แคบลง
+      exact: q.length < 1 ? 0 : customers.filter((r) => core(r.name) === needleCore).length, // ชื่อตรงพอดีกี่คน — หน้าเว็บบอกให้ดูรูปโปรไฟล์เทียบ
       recent: q.length < 1,
       refreshed, // ดึงรายชื่อสดมาแล้วรอบนี้ — หน้าเว็บเอาไปบอกว่า "ดึงใหม่แล้วก็ยังไม่เจอ"
       indexed: rows.length, // มีห้องแชทในคลังกี่ห้อง (ไว้ดูว่าคลังแชทว่างหรือเปล่า)
