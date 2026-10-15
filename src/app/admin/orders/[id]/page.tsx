@@ -13221,6 +13221,10 @@ function LineChatBox({
   // เซิร์ฟเวอร์ตอบจากห้องล่าสุดไปก่อน (ดัชนีเต็มยังอ่านไม่เสร็จ) → ขอซ้ำเองจนครบ
   const [partial, setPartial] = useState(false);
   const [retry, setRetry] = useState(0); // บวกทีละ 1 = สั่งค้นคำเดิมซ้ำ
+  // รายชื่อ "คุยล่าสุด" แบ่งหน้า — ผู้ใช้ขอ 15 ต.ค. 69: ดูคนที่คุยวันนี้ให้ครบ ไม่ใช่แค่ 12 คนแรก
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [todayCount, setTodayCount] = useState<number | null>(null); // คุยกับร้านวันนี้กี่คน (null = ยังไม่รู้)
   const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
   const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
   const boxRef = useRef<HTMLDivElement>(null); // กล่องทั้งใบ — แตะนอกกล่องถึงปิดรายชื่อ (ไม่ใช่แค่ช่องเสียโฟกัส)
@@ -13236,7 +13240,7 @@ function LineChatBox({
     const onFocus = () => {
       if (!awaitingReturn.current || demo) return;
       awaitingReturn.current = false;
-      void refreshRecent();
+      refreshRecent();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -13264,8 +13268,17 @@ function LineChatBox({
       try {
         // รอได้ 25 วิ (Netlify ให้ฟังก์ชัน 10 วิ + เผื่อคิว) — เกินนั้นถือว่าค้นไม่สำเร็จ ไม่ปล่อยให้ "กำลังค้น…" ค้างทั้งวัน
         const timer = setTimeout(() => ctrl.abort("timeout"), 25_000);
-        const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}`, { signal: ctrl.signal, cache: "no-store" }).finally(() => clearTimeout(timer));
-        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number; exact?: number; refreshed?: boolean; partial?: boolean; error?: string };
+        const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}${q ? "" : `&page=${page}`}`, { signal: ctrl.signal, cache: "no-store" }).finally(() => clearTimeout(timer));
+        const j = (await res.json().catch(() => ({}))) as {
+          customers?: typeof hits;
+          total?: number;
+          exact?: number;
+          refreshed?: boolean;
+          partial?: boolean;
+          hasMore?: boolean;
+          todayCount?: number;
+          error?: string;
+        };
         if (!res.ok || j.error) {
           // เซิร์ฟเวอร์ตอบไม่สำเร็จ (502/504 = ฟังก์ชันหมดเวลา · 500 = อ่านคลังแชทพัง) — ไม่ใช่ "ไม่มีชื่อนี้"
           setHits([]);
@@ -13277,6 +13290,8 @@ function LineChatBox({
         setHitTotal(j.total ?? (j.customers?.length ?? 0));
         setHitExact(j.exact ?? 0);
         setPartial(Boolean(j.partial));
+        setHasMore(Boolean(j.hasMore));
+        if (typeof j.todayCount === "number") setTodayCount(j.todayCount);
         // ไม่เจอ (ในดัชนีเต็ม) → บอกให้รู้ พร้อมทางไปต่อ แทนที่จะเงียบ · ยังค้นจากห้องล่าสุดอยู่ = ยังไม่สรุปว่าไม่เจอ
         setNoHit(!j.partial && (j.customers?.length ?? 0) === 0 && q.length >= 2 ? { q, refreshed: Boolean(j.refreshed) } : null);
       } catch {
@@ -13292,7 +13307,7 @@ function LineChatBox({
       clearTimeout(t);
       ctrl.abort("typing");
     };
-  }, [draft, demo, picking, retry]);
+  }, [draft, demo, picking, retry, page]);
 
   // ตอบแบบ partial (ค้นจากห้องล่าสุด) → อีก 3 วิขอซ้ำ ดัชนีเต็มน่าจะพร้อมแล้ว (ยิงไม่เกิน 5 รอบ กันวนไม่รู้จบ)
   const partialRounds = useRef(0);
@@ -13469,21 +13484,12 @@ function LineChatBox({
   }
 
   /** ดึงรายชื่อคุยล่าสุดใหม่ (หลังทักลูกค้าแล้ว ห้องนั้นจะขึ้นบนสุด) */
-  async function refreshRecent() {
-    setSearching(true);
+  function refreshRecent() {
+    // รายชื่อล่าสุดอ่านสดจากคลังทุกครั้งอยู่แล้ว (ไม่ผ่านแคชดัชนี) — แค่สั่งให้ effect ค้นหาวิ่งใหม่ที่หน้า 1
     setPicking(true);
     setNoHit(null);
-    try {
-      // fresh=1 = ไม่เอาแคช (เพิ่งไปทักลูกค้าในแชทมา ต้องเห็นคิวใหม่ทันที)
-      const res = await fetch(`/api/admin/line-customers?q=&fresh=1`);
-      const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number };
-      setHits(j.customers ?? []);
-      setHitTotal(j.total ?? (j.customers?.length ?? 0));
-    } catch {
-      setHits([]);
-    } finally {
-      setSearching(false);
-    }
+    setPage(1);
+    setRetry((n) => n + 1);
   }
 
   /**
@@ -13805,7 +13811,9 @@ function LineChatBox({
             ? "🔄 เปลี่ยน LINE ของลูกค้า — ค้นแล้วเลือกคนใหม่"
             : fresh
               ? "🔗 ผูก LINE ของลูกค้า — ผูกได้เลยถ้ารู้แล้วว่าลูกค้าคนไหน"
-              : "⛔ บังคับ: ต้องผูก LINE ของลูกค้า — ไม่ผูก = ระบบส่งแจ้งสถานะทางไลน์ไม่ได้"}
+              : order.loginLine
+                ? "🟡 ยังไม่ได้ผูก — แต่ลูกค้าสั่งโดยล็อกอิน LINE ระบบส่งแจ้งสถานะผ่านบัญชีนั้นได้อยู่แล้ว · กดผูกด้านล่างเพื่อยืนยันและเปิดห้องแชทได้"
+                : "⛔ บังคับ: ต้องผูก LINE ของลูกค้า — ไม่ผูก = ระบบส่งแจ้งสถานะทางไลน์ไม่ได้"}
         </p>
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
         {chat && !changing && (
@@ -13862,10 +13870,40 @@ function LineChatBox({
           หรือผูกจาก <a href="/admin/chatbot/chats" target="_blank" rel="noopener noreferrer" className="font-bold text-[#06A047] underline">หน้าแชท LINE</a> → ℹ️ → 📦 พิมพ์ {order.id}
         </p>
       )}
+      {/*
+        ลูกค้าสั่งโดยล็อกอิน LINE = ระบบรู้ userId อยู่แล้ว (ส่งแจ้งเตือนผ่านบัญชีนี้ได้จริง) — ผูกได้ 1 แตะ ไม่ต้องค้นคลังแชท
+        ทำไม: OD-261014-9696 (15 ต.ค. 69) ลูกค้า "PooM" ล็อกอิน LINE สั่ง แต่ห้องของเขาไม่อยู่ในคลังแชท (AdminBuddy ไม่ได้เก็บ)
+        พนักงานค้นชื่อแล้วเจอแต่ Poom คนอื่น 4 คน ผูกไม่ได้ ทั้งที่ระบบรู้จักลูกค้าคนนี้แล้ว
+      */}
+      {!changing && order.loginLine && !picked && mayEdit && (
+        <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-[#06C755]/40 bg-[#06C755]/10 px-2.5 py-1.5">
+          {order.loginLine.picture ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={order.loginLine.picture} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+          ) : (
+            <span className="h-8 w-8 shrink-0 rounded-full bg-slate-100" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[12px] font-bold text-slate-800">👤 {order.loginLine.name ?? order.loginLine.userId.slice(0, 10) + "…"}</p>
+            <p className="text-[10px] leading-snug text-slate-500">ลูกค้าล็อกอินด้วย LINE นี้ตอนสั่ง — ไม่ต้องค้นคลังแชท ผูกได้เลย (ดูรูปให้ตรงกับห้องแชท)</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void bindUserId(order.loginLine!.userId)}
+            disabled={busy}
+            className="shrink-0 rounded-lg bg-[#06C755] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#05b34c] disabled:opacity-50"
+          >
+            {busy ? "กำลังผูก…" : "🔗 ผูกคนนี้"}
+          </button>
+        </div>
+      )}
       <div className="mt-1.5 flex gap-1.5">
         <input
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setPage(1);
+          }}
           onFocus={() => setPicking(true)}
           onClick={() => setPicking(true)}
           onKeyDown={(e) => {
@@ -13885,7 +13923,7 @@ function LineChatBox({
         {chat && !draft.trim() && (
           <button
             type="button"
-            onClick={() => void refreshRecent()}
+            onClick={() => refreshRecent()}
             disabled={searching}
             className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
             title="ทักลูกค้าในแชทแล้ว → กดดูรายชื่อล่าสุด ห้องนั้นจะขึ้นบนสุด"
@@ -14012,14 +14050,14 @@ function LineChatBox({
                     : hitExact > 1
                       ? `ชื่อนี้ตรงพอดี ${hitExact} คน — ดูรูปโปรไฟล์เทียบกับห้องแชท แล้วแตะเลือก`
                       : `ผลค้นหาจากคลังแชท${hitTotal > hits.length ? ` — เจอ ${hitTotal} คน แสดง ${hits.length} (พิมพ์เพิ่มให้แคบลง)` : ""}`
-                  : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
+                  : `ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก${todayCount !== null ? ` · วันนี้ ${todayCount} คน` : ""}${page > 1 || hasMore ? ` · หน้า ${page}` : ""}`}
                 {partial && <span className="ml-1 text-amber-600">· ค้นจากห้องที่คุยล่าสุดก่อน กำลังค้นทั้งคลัง…</span>}
               </p>
               {draft.trim().length < 1 && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => void refreshRecent()}
+                  onClick={() => refreshRecent()}
                   disabled={searching}
                   className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-white disabled:opacity-50"
                   title="ทักลูกค้าในแชทแล้ว → กดรีเฟรช ห้องนั้นจะขึ้นบนสุด"
@@ -14052,6 +14090,30 @@ function LineChatBox({
               )}
             </button>
           ))}
+          {/* หน้าถัดไป/ก่อนหน้า — เฉพาะรายชื่อคุยล่าสุด (ค้นด้วยชื่อมีไม่เกิน 24 คนอยู่แล้ว) */}
+          {draft.trim().length < 1 && hits.length > 0 && (page > 1 || hasMore) && (
+            <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-2.5 py-1.5">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={searching || page <= 1}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40"
+              >
+                ‹ ก่อนหน้า
+              </button>
+              <span className="text-[10px] font-semibold text-slate-500">หน้า {page}{searching ? " · กำลังโหลด…" : ""}</span>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setPage((p) => p + 1)}
+                disabled={searching || !hasMore}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40"
+              >
+                ถัดไป ›
+              </button>
+            </div>
+          )}
         </div>
       )}
       {/* ค้นแบบ partial แล้วยังไม่เจอ — ยังไม่สรุป บอกว่ากำลังค้นทั้งคลังต่อ */}
@@ -14079,7 +14141,7 @@ function LineChatBox({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 setDraft("");
-                void refreshRecent();
+                refreshRecent();
               }}
               className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:bg-slate-100"
             >
@@ -14103,7 +14165,7 @@ function LineChatBox({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 setDraft("");
-                void refreshRecent();
+                refreshRecent();
               }}
               className="rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-slate-700"
             >

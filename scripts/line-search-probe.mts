@@ -15,9 +15,9 @@ const base = process.argv[2] ?? "http://localhost:3016";
 for (const q of process.argv.slice(3).length ? process.argv.slice(3) : ["PooM", "PooM", "poom"]) {
   const t = Date.now();
   try {
-    const res = await fetch(`${base}/api/admin/line-customers?q=${encodeURIComponent(q)}`, { headers: { cookie: `ducky_admin_session=${tok}` }, signal: AbortSignal.timeout(60000) });
+    const res = await fetch(`${base}/api/admin/line-customers?${q.startsWith("?") ? q.slice(1) : `q=${encodeURIComponent(q)}`}`, { headers: { cookie: `ducky_admin_session=${tok}` }, signal: AbortSignal.timeout(60000) });
     const text = await res.text();
     let j: any = null; try { j = JSON.parse(text); } catch {}
-    console.log(`q=${q} http=${res.status} ${Date.now() - t}ms`, j ? { n: j.customers?.length, total: j.total, exact: j.exact, refreshed: j.refreshed, indexed: j.indexed, err: j.error, names: j.customers?.slice(0, 6).map((c: any) => c.name) } : text.slice(0, 200));
+    console.log(`q=${q} http=${res.status} ${Date.now() - t}ms`, j ? { n: j.customers?.length, total: j.total, exact: j.exact, refreshed: j.refreshed, indexed: j.indexed, err: j.error, page: j.page, hasMore: j.hasMore, todayCount: j.todayCount, names: j.customers?.slice(0, 6).map((c: any) => c.name) } : text.slice(0, 200));
   } catch (e) { console.log(`q=${q} THROW ${Date.now() - t}ms`, (e as Error).message); }
 }

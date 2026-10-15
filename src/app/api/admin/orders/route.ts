@@ -657,9 +657,10 @@ export async function GET(req: Request) {
             try {
               const { data: u } = await sb.auth.admin.getUserById(o.customerId!);
               const meta = u?.user?.user_metadata as
-                | { line_user_id?: string; full_name?: string; name?: string }
+                | { line_user_id?: string; full_name?: string; name?: string; picture?: string }
                 | undefined;
-              if (meta?.line_user_id) o.loginLine = { userId: meta.line_user_id, name: meta.full_name || meta.name };
+              // picture ไว้ให้พนักงานเทียบกับรูปโปรไฟล์ในห้องแชทก่อนกดผูก (ชื่อ LINE ซ้ำกันบ่อย)
+              if (meta?.line_user_id) o.loginLine = { userId: meta.line_user_id, name: meta.full_name || meta.name, picture: meta.picture || undefined };
             } catch {
               /* ไม่มีก็ข้าม */
             }

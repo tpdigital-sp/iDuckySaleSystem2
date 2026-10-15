@@ -293,8 +293,9 @@ export async function loadChatIndexWithin(db: FirebaseFirestore.Firestore, budge
 }
 
 /** ห้องที่คุยล่าสุด N ห้อง (อ่านเร็ว ~0.3 วิ) — ทางลัดตอนดัชนีเต็มยังมาไม่ทัน: ลูกค้าที่กำลังจะผูกมักเพิ่งทักมา */
-export async function loadRecentRows(db: FirebaseFirestore.Firestore, limit: number): Promise<ChatRow[]> {
-  const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").limit(limit).select(...LIST_FIELDS).get();
+export async function loadRecentRows(db: FirebaseFirestore.Firestore, limit: number, offset = 0): Promise<ChatRow[]> {
+  // offset = ข้ามไปหน้าถัดไป (Firestore คิดค่าอ่านของที่ข้ามด้วย — หน้าละ 30 ไม่กี่หน้า รับได้)
+  const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").offset(offset).limit(limit).select(...LIST_FIELDS).get();
   return snap.docs.map(rowOfDoc);
 }
 

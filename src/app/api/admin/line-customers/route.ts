@@ -31,6 +31,14 @@ const AUTO_FRESH_GAP_MS = 20 * 1000;
 const INDEX_BUDGET_MS = 6000;
 /** ห้องล่าสุดที่ใช้ตอบแบบ partial — 1,500 ห้อง ≈ ย้อนหลัง 2 สัปดาห์ (วัด 15 ต.ค. 69 · อ่าน 0.33 วิ) */
 const RECENT_SCAN = 1500;
+/** รายชื่อคุยล่าสุดหน้าละกี่คน */
+const RECENT_PAGE = 30;
+
+/** เที่ยงคืนวันนี้ตามเวลาไทย — ไว้นับ "คุยกับร้านวันนี้" */
+function bangkokDayStart(): Date {
+  const ymd = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }); // YYYY-MM-DD
+  return new Date(`${ymd}T00:00:00+07:00`);
+}
 
 type Row = { userId: string; name: string; picture?: string; lastSeen?: string };
 let lastAutoFreshAt = 0;
@@ -55,6 +63,31 @@ export async function GET(req: Request) {
         ? [{ userId: d.id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string }]
         : [];
       return NextResponse.json({ customers, total: customers.length });
+    }
+
+    /**
+     * ไม่พิมพ์อะไร = "คนที่คุยกับร้านล่าสุด" แบ่งหน้า — อ่านสดจาก Firestore เรียง lastSeen (ไม่ผ่านดัชนีเต็ม · ~0.3 วิ)
+     * ผู้ใช้ขอ 15 ต.ค. 69: อยากเห็นคนที่คุยวันนี้ทั้งหมด (เดิมตัดที่ 12 คนแรก) → หน้าละ RECENT_PAGE + นับ "วันนี้" ให้ดูว่าต้องเปิดอีกกี่หน้า
+     */
+    if (q.length < 1) {
+      const page = Math.max(1, Math.min(200, Number(url.searchParams.get("page")) || 1));
+      const dayStart = bangkokDayStart();
+      const [rows, todayCount] = await Promise.all([
+        loadRecentRows(db, RECENT_PAGE + 1, (page - 1) * RECENT_PAGE),
+        db.collection(CHAT_COLLECTION).where("lastSeen", ">=", dayStart).count().get().then((c) => c.data().count),
+      ]);
+      const pageRows = rows.slice(0, RECENT_PAGE);
+      return NextResponse.json({
+        customers: pageRows.map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen })),
+        total: todayCount,
+        exact: 0,
+        recent: true,
+        page,
+        hasMore: rows.length > RECENT_PAGE,
+        todayCount, // คุยกับร้านตั้งแต่เที่ยงคืน (เวลาไทย) กี่ห้อง
+        refreshed: true,
+        partial: false,
+      });
     }
 
     const needle = norm(q);
