@@ -4215,13 +4215,13 @@ export default function AdminOrderDetailPage() {
   /**
    * ✏️ เปิดปฏิทินที่ลูกค้าออกแบบบนเว็บกลับมาในจอสร้างปฏิทิน (ผู้ใช้สั่ง 15 ต.ค. 69 "บางครั้งต้องแก้ไข")
    * แบบทั้งชุดฝากไว้ที่ลิงก์ในสเปค (CAL_EDIT_TAG) → หน้าสินค้าโหมด ?edit อ่านกลับมาเอง
-   * ยังไม่มีเงินเข้า = ใช้ทางเดียวกับ 🛠 แก้ตัวเลือก (แก้เสร็จกดสั่ง → แทนที่รายการนี้) · เงินเข้าแล้ว = เปิดดู/ลองแก้ได้ แต่ไม่แทนที่ (ยอดล็อก)
+   * เปิดจอให้เลย (&studio=1) + ปุ่ม 💾 บันทึกกลับเข้าออเดอร์ (&order=&item=) → /api/admin/orders/cal-design เปลี่ยนไฟล์แบบของรายการเดิมตรง ๆ
+   * ไม่ผ่านตะกร้า/สั่งเพิ่ม ยอดเงินไม่ขยับ จึงใช้ได้ทั้งใบที่ยังไม่โอนและโอนแล้ว (เดิมต้อง ใส่ตะกร้า→สั่งเพิ่ม→กลับมาแทนที่ · ผู้ใช้สั่ง 15 ต.ค. 69)
    */
   function openCalDesign(itemIndex: number) {
     if (!order) return;
     const it = order.items[itemIndex];
     if (!it) return;
-    if (mayChangeQty(it)) return editItemOptionsInShop(itemIndex);
     const p = productOfItem(it.productId);
     if (!p) return;
     const selections = cartSelectionsOf(it);
@@ -4241,7 +4241,7 @@ export default function AdminOrderDetailPage() {
       setErr("⚠️ เปิดแบบไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
       return;
     }
-    window.open(`${productPath(p)}?edit=${cartEditToken(key)}`, "_blank", "noopener");
+    window.open(`${productPath(p)}?edit=${cartEditToken(key)}&studio=1&order=${encodeURIComponent(order.id)}&item=${itemIndex}`, "_blank", "noopener");
   }
 
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
@@ -7103,7 +7103,7 @@ export default function AdminOrderDetailPage() {
                               )}
 
                             {/* ✏️ เปิดแบบที่ลูกค้าทำบนเว็บกลับมาแก้ในจอสร้างปฏิทิน (ออเดอร์ตั้งแต่ 15 ต.ค. 69 · ของเก่าไม่มีลิงก์แบบ) */}
-                            {specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
+                            {mayEdit && specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
                               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 ring-1 ring-sky-200">
                                 <button
                                   type="button"
@@ -7114,9 +7114,7 @@ export default function AdminOrderDetailPage() {
                                   ✏️ เปิดแบบนี้ในจอสร้างปฏิทิน
                                 </button>
                                 <span className="text-[10.5px] font-semibold leading-snug text-sky-900">
-                                  {mayChangeQty(it)
-                                    ? "แก้แล้วกด ✓ ใช้แบบนี้ → สั่ง ระบบแทนที่รายการนี้ให้"
-                                    : "ออเดอร์มีเงินเข้าแล้ว — เปิดดู/ลองแก้ได้ แต่ระบบไม่แทนที่รายการให้ (ยอดล็อก)"}
+                                  แก้ในจอแล้วกด 💾 บันทึกกลับเข้า {order.id} — เปลี่ยนเฉพาะไฟล์แบบ ยอดเงินไม่เปลี่ยน
                                 </span>
                               </div>
                             )}

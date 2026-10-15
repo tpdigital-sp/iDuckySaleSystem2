@@ -131,6 +131,7 @@ import {
   selectedPicks,
   formatMultiPick,
   joinMultiPicks,
+  splitArtUrls,
   type MultiPick,
   type PriceRate,
   type Product,
@@ -180,7 +181,17 @@ import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStu
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
 import { calDesignCount, calFormat, calHasGrid, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
-import { fetchCalDesign, fetchSources, loadCalEdit, saveCalEdit, uploadCalDesign, type SavedCalDesign } from "@/lib/cal-edit-store";
+import {
+  fetchCalDesign,
+  fetchSources,
+  isMissingPhoto,
+  knownSourceUrl,
+  loadCalEdit,
+  rememberSource,
+  saveCalEdit,
+  uploadCalDesign,
+  type SavedCalDesign,
+} from "@/lib/cal-edit-store";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin, getAdminSession } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -1679,7 +1690,13 @@ export default function ProductDetail({
             editUrl: d.editUrl,
           });
         }
-        if (restored.length === savedCal.length) setPlaced(restored);
+        if (restored.length !== savedCal.length) return;
+        setPlaced(restored);
+        // ✏️ มาจากปุ่มหลังบ้าน "เปิดแบบนี้ในจอสร้างปฏิทิน" (&studio=1) → เปิดจอแก้แบบให้เลย ไม่ต้องแตะกล่อง "แก้แบบที่สร้างไว้" อีกที
+        if (new URLSearchParams(window.location.search).get("studio") === "1") {
+          setEditIndex(restored.length - 1);
+          setCalOpen(true);
+        }
       })();
     }
     editCarryRef.current = {
@@ -3085,14 +3102,33 @@ export default function ProductDetail({
       for (let i = 0; i < r.pages.length; i += 3) await Promise.all(r.pages.slice(i, i + 3).map(async (p, j) => (urls[i + j] = await uploadOne(p.file))));
       // ต้นฉบับ (ไม่นับเป็นลาย) — อัปไม่ขึ้นก็ยังสั่งได้ ไฟล์ที่ประกอบแล้วพิมพ์ได้เลย
       // ลำดับตรงกับ r.sources เสมอ ("" = อัปไม่ขึ้น) — ใช้เปิดแบบเดิมกลับมาแก้จากตะกร้า (cal-edit-store)
+      // ♻️ รูปที่อยู่บนเซิร์ฟเวอร์แล้วใช้ลิงก์เดิม · ภาพแทน "รูปหาย" ไม่อัป (ดู cal-edit-store) — กันชนเพดานอัปโหลดตอนแก้หลายรอบ
       const sourceUrls: string[] = [];
+      let srcFails = 0;
       for (const f of r.sources) {
+        if (isMissingPhoto(f)) {
+          sourceUrls.push("");
+          continue;
+        }
+        const had = knownSourceUrl(f);
+        if (had) {
+          sourceUrls.push(had);
+          continue;
+        }
         try {
-          sourceUrls.push(await uploadOne(f));
+          const u = await uploadOne(f);
+          rememberSource(f, u);
+          sourceUrls.push(u);
         } catch {
           sourceUrls.push("");
+          srcFails++;
         }
       }
+      // บอกให้รู้ (เดิมเงียบ — เปิดแก้ครั้งหน้ารูปกลายเป็น "รูปหาย" โดยไม่มีใครรู้ว่าเกิดตอนไหน) · ไฟล์ที่ประกอบแล้วยังพิมพ์ได้ปกติ
+      if (srcFails)
+        window.alert(
+          `⚠️ อัปรูปต้นฉบับไม่ขึ้น ${srcFails} รูป — งานนี้สั่ง/พิมพ์ได้ปกติ แต่ถ้าเปิดกลับมาแก้ภายหลัง รูปนั้นจะขึ้นเป็น "รูปหาย" ต้องใส่ใหม่`,
+        );
       const dims = await Promise.all(
         r.pages.map(async (p) => {
           try {
@@ -3760,6 +3796,54 @@ export default function ProductDetail({
   /** ตัวล่าสุดของ handleAdd — effect "สั่งตามสเปคนี้" เรียกผ่านตัวนี้ จะได้ไม่ติด closure เก่าที่ยังไม่เห็นสเปคจากลิงก์ */
   const handleAddRef = useRef(handleAdd);
   handleAddRef.current = handleAdd;
+
+  /**
+   * 💾 แก้แบบปฏิทินจากหลังบ้าน (ปุ่ม ✏️ เปิดแบบนี้ในจอสร้างปฏิทิน · &order=OD-…&item=i) — ผู้ใช้สั่ง 15 ต.ค. 69
+   * กดปุ่มเดียวในจอ = อัปไฟล์ทุกหน้า (applyCalendar) แล้วเปลี่ยนไฟล์แบบ/สเปคตำแหน่งลายของรายการเดิมในออเดอร์ตรง ๆ
+   * ไม่ผ่านตะกร้า/สั่งเพิ่ม · ยอดเงิน จำนวน ตัวเลือกอื่นไม่ขยับ → ใช้ได้แม้ออเดอร์มีเงินเข้าแล้ว
+   */
+  const [backTo, setBackTo] = useState<{ orderId: string; index: number } | null>(null);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const o = q.get("order") ?? "";
+    const i = Number(q.get("item"));
+    if (/^OD-[\w-]+$/.test(o) && Number.isInteger(i) && i >= 0) setBackTo({ orderId: o, index: i });
+  }, []);
+  const saveBackRef = useRef<() => Promise<void>>(async () => {});
+  saveBackRef.current = async () => {
+    if (!backTo) return;
+    const line = buildLine();
+    if (!line) {
+      window.alert("⚠️ ตัวเลือกของสินค้ายังไม่ครบ — บันทึกกลับเข้าออเดอร์ไม่ได้");
+      return;
+    }
+    const { urls, back } = splitArtUrls(line);
+    try {
+      const res = await fetch("/api/admin/orders/cal-design", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: backTo.orderId,
+          index: backTo.index,
+          productId: product.id,
+          spec: line[PLACEMENT_SPEC_LABEL] ?? "",
+          placement: line[PLACEMENT_LABEL] ?? "",
+          urls,
+          back,
+        }),
+      });
+      const j = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        window.alert(`⚠️ บันทึกกลับเข้าออเดอร์ไม่สำเร็จ — ${j?.error ?? res.status}`);
+        return;
+      }
+    } catch {
+      window.alert("⚠️ บันทึกกลับเข้าออเดอร์ไม่สำเร็จ — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      return;
+    }
+    setCalOpen(false);
+    router.push(`/admin/orders/${backTo.orderId}`);
+  };
 
   /**
    * ➕ พักสเปคแผ่นนี้ไว้ แล้วให้ลูกค้าตั้งค่าแผ่นถัดไปต่อ (ยังไม่ลงตะกร้า)
@@ -9218,7 +9302,14 @@ export default function ProductDetail({
                 return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
               }}
               aiExport={isOwner}
+              orderLabel={backTo ? `💾 บันทึกกลับเข้า ${backTo.orderId}` : undefined}
               onOrder={async () => {
+                if (backTo) {
+                  // 💾 มาจากหลังบ้าน — รอค่าแบบใหม่ลงหน้า แล้วเขียนกลับรายการเดิมในออเดอร์ (ไม่ผ่านตะกร้า)
+                  await new Promise((r) => setTimeout(r, 80));
+                  await saveBackRef.current();
+                  return;
+                }
                 // 🛒 ใส่ตะกร้าจากจอสร้างปฏิทิน: แบบถูกแนบแล้ว (applyCalendar) → รอหน้าเรนเดอร์ค่าใหม่ แล้วใช้ปุ่มเพิ่มลงตะกร้าตัวเดิม
                 await new Promise((r) => setTimeout(r, 80));
                 if (handleAddRef.current() && !editing) router.push("/cart");

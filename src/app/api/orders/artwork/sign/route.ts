@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { clientIp, rateLimited } from "@/lib/server/rate-limit";
+import { currentActor } from "@/lib/server/require-perm";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,8 @@ export async function POST(req: Request) {
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
   const ip = clientIp(req);
-  if (await rateLimited(`artwork-sign:${ip}`, LIMIT, 3600_000))
+  // พนักงานหลังบ้านที่ล็อกอิน (แก้แบบปฏิทินให้ลูกค้า 16–52 ไฟล์ต่อรอบ) ไม่นับเพดาน — เพดานมีไว้กันสแปมจากคนนอก (15 ต.ค. 69)
+  if (!(await currentActor()) && (await rateLimited(`artwork-sign:${ip}`, LIMIT, 3600_000)))
     return NextResponse.json({ error: "อัปโหลดถี่เกินไป ลองใหม่ในอีกสักครู่" }, { status: 429 });
 
   const body = (await req.json().catch(() => null)) as { type?: string; size?: number } | null;

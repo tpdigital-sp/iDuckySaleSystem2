@@ -130,6 +130,8 @@ interface Props {
   aiExport?: boolean;
   /** 🛒 ใส่ตะกร้าเลย — เรียกหลัง onApply แนบแบบเสร็จ (หน้าสินค้ากดเพิ่มลงตะกร้าให้) */
   onOrder?: () => void | Promise<void>;
+  /** 💾 ชื่อปุ่มแทน "🛒 ใส่ตะกร้า" (หลังบ้านเปิดแก้แบบในออเดอร์ = บันทึกกลับเข้าออเดอร์ · ไม่โชว์ราคา) */
+  orderLabel?: string;
   /**
    * 📐 เทมเพลตของวัสดุที่เลือก (รูปตัวอย่างไฟล์ .ai/.pdf + ขนาดอาร์ตบอร์ด มม.) — วาดทับบนจอเป็นไกด์ (กรอบการ์ดจริงของวัสดุนั้น)
    * ไม่ติดไปกับไฟล์ส่งพิมพ์ · ไม่มี = ใช้เส้นตัดที่ระบบวาดเอง
@@ -349,6 +351,7 @@ export default function CalendarStudio({
   unit,
   price,
   onOrder,
+  orderLabel,
   aiExport,
   guide,
   square,
@@ -4905,15 +4908,15 @@ export default function CalendarStudio({
                   void apply();
                 }}
                 disabled={!!busy || !!fmt.diecut}
-                title={fmt.diecut ? "ปิดไว้ชั่วคราว — ยังสั่งผ่านจอออกแบบไม่ได้" : "บันทึกแบบแล้วใส่ตะกร้าเลย"}
+                title={fmt.diecut ? "ปิดไว้ชั่วคราว — ยังสั่งผ่านจอออกแบบไม่ได้" : orderLabel ? "อัปไฟล์ทุกหน้าแล้วเปลี่ยนแบบในรายการเดิมของออเดอร์ (ยอดเงินไม่เปลี่ยน)" : "บันทึกแบบแล้วใส่ตะกร้าเลย"}
                 className={
                   fmt.diecut
                     ? "flex cursor-not-allowed flex-col items-center rounded-2xl bg-stone-200 px-3 py-1.5 leading-tight text-stone-400"
                     : "flex flex-col items-center rounded-2xl bg-sky-600 px-3 py-1.5 leading-tight text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
                 }
               >
-                <span className="text-sm font-extrabold">{busy || "🛒 ใส่ตะกร้า"}</span>
-                {!busy && price && (
+                <span className="text-sm font-extrabold">{busy || orderLabel || "🛒 ใส่ตะกร้า"}</span>
+                {!busy && price && !orderLabel && (
                   <span className={`text-[11px] font-bold ${fmt.diecut ? "text-stone-400" : "text-sky-100"}`}>
                     {formatBaht(price(designN))}
                     {qty ? ` · ${qty.toLocaleString("th-TH")} ${unit ?? ""}` : ""}
