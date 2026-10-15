@@ -21,6 +21,8 @@ import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/shi
 import { updateOrder } from "@/lib/server/order-write";
 import { inBackground } from "@/lib/server/background";
 import { logChatNotice } from "@/lib/server/chat-notice-log";
+import { getChatFirestore } from "@/lib/server/firebase-admin";
+import { ensureChatRoom } from "@/lib/server/line-chat";
 import { forgetLineQuota, quotaResetText, quotaText, shopQuota } from "@/lib/server/line-quota";
 
 /**
@@ -214,8 +216,11 @@ export async function notifyCustomer(sb: SupabaseClient, order: Order, msg: stri
       asText = true;
     }
     if (res.ok) {
+      // 🧩 ส่งถึงบัญชีที่ล็อกอินได้จริง แต่คลังแชทอาจไม่มีห้อง (n8n ไม่ได้สร้าง · PooM 15 ต.ค. 69) → สร้างให้ก่อนจดข้อความ
+      const chatDb = target.via === "login" ? getChatFirestore() : null;
+      const ensured = chatDb ? ensureChatRoom(chatDb, { userId: target.id }, undefined, "notify").catch(() => false) : Promise.resolve(false);
       // 💬 จดลงห้องแชท /admin/chatbot/chats ให้แอดมิน+บอทเห็นว่าระบบแจ้งอะไรไป (lib/server/chat-notice-log.ts)
-      inBackground("logChatNotice", logChatNotice(target.id, order.id, messages as LineMessage[], asText));
+      inBackground("logChatNotice", ensured.then(() => logChatNotice(target.id, order.id, messages as LineMessage[], asText)));
       return { ok: true, via: target.via };
     }
     const body = (await res.json().catch(() => null)) as { message?: string } | null;

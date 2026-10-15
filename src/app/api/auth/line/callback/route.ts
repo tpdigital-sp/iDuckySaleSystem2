@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { getChatFirestore } from "@/lib/server/firebase-admin";
+import { ensureChatRoom } from "@/lib/server/line-chat";
+import { inBackground } from "@/lib/server/background";
 import { requestOrigin } from "@/lib/server/req-origin";
 
 export const runtime = "nodejs";
@@ -110,5 +113,8 @@ export async function GET(req: Request) {
     options: { redirectTo: `${origin}/account` },
   });
   if (linkErr || !link.properties?.action_link) return fail("session");
+  // 🧩 ล็อกอิน LINE = ระบบรู้จักลูกค้าคนนี้แน่ ๆ → ถ้าคลังแชทยังไม่มีห้อง สร้างให้ (หน้าแชท/ช่องผูก LINE จะได้เห็น · ดู ensureChatRoom)
+  const chatDb = getChatFirestore();
+  if (chatDb && prof.userId) inBackground("line-login-room", ensureChatRoom(chatDb, { userId: prof.userId, displayName: prof.displayName, pictureUrl: prof.pictureUrl }, undefined, "login"));
   return NextResponse.redirect(link.properties.action_link);
 }

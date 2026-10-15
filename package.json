@@ -58,6 +58,7 @@
     "check:line-missed": "tsx --conditions=react-server scripts/line-missed-notify-test.mts",
     "scan:line-bind": "tsx scripts/line-bind-scan.mts",
     "probe:line-search": "tsx scripts/line-search-probe.mts",
+    "sync:line-login-rooms": "tsx scripts/line-login-rooms-backfill.mts",
     "scan:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-scan.mts",
     "check:contact-link": "tsx scripts/contact-link-test.mts",
     "check:receipt-pdf": "tsx --tsconfig tsconfig.json scripts/receipt-pdf-test.mts",

@@ -299,6 +299,58 @@ export async function loadRecentRows(db: FirebaseFirestore.Firestore, limit: num
   return snap.docs.map(rowOfDoc);
 }
 
+/**
+ * 🧩 เติมห้องที่คลังแชท "ไม่มี" ให้ลูกค้าที่ระบบรู้จักแน่ ๆ (ล็อกอิน LINE บนเว็บ · ส่งการ์ดถึงได้จริง)
+ *
+ * ทำไม (OD-261014-9696 · 15 ต.ค. 69): ลูกค้า "PooM" ทัก OA (สติกเกอร์) + ล็อกอิน LINE สั่งของ + รับการ์ดยืนยันเงินเข้าได้
+ * แต่ n8n (คนเขียนคลัง line-conversations) ไม่ได้สร้างห้องให้ → หน้าแชท/ช่องค้นหาผูก LINE มองไม่เห็นคนนี้เลย
+ * สร้างเฉพาะตอน "ยังไม่มี" (ไม่แตะห้องที่ n8n ดูแลอยู่) ใส่ฟิลด์ชุดเดียวกับที่ n8n ใช้ (userId/displayName/pictureUrl/nameLower/lastSeen)
+ * + ธง createdBy: "iducky-web" ไว้แยก/ลบได้ · ชื่อ/รูปไม่มีมาให้ → ถาม LINE profile เอง
+ * @returns true = เพิ่งสร้าง · false = มีอยู่แล้ว/สร้างไม่ได้
+ */
+export async function ensureChatRoom(
+  db: FirebaseFirestore.Firestore,
+  user: { userId: string; displayName?: string; pictureUrl?: string },
+  /** เวลาที่ถือว่า "คุยล่าสุด" — ไม่ส่ง = ตอนนี้ */
+  at?: Date,
+  reason: "login" | "notify" | "backfill" = "login"
+): Promise<boolean> {
+  if (!/^U[0-9a-f]{32}$/i.test(user.userId)) return false;
+  const ref = db.collection(CHAT_COLLECTION).doc(user.userId);
+  if ((await ref.get()).exists) return false;
+  let { displayName, pictureUrl } = user;
+  if (!displayName) {
+    const token = process.env.LINE_MESSAGING_ACCESS_TOKEN;
+    if (token) {
+      try {
+        const r = await fetch(`https://api.line.me/v2/bot/profile/${user.userId}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5_000) });
+        if (r.ok) {
+          const p = (await r.json()) as { displayName?: string; pictureUrl?: string };
+          displayName = p.displayName;
+          pictureUrl = pictureUrl || p.pictureUrl;
+        }
+      } catch {
+        /* ไม่ได้ชื่อก็สร้างแบบไม่มีชื่อ — ดีกว่าหาไม่เจอเลย */
+      }
+    }
+  }
+  const name = (displayName || "").trim();
+  await ref.set(
+    {
+      userId: user.userId,
+      displayName: name || "(ไม่มีชื่อ)",
+      pictureUrl: pictureUrl || "",
+      nameLower: name.toLowerCase(),
+      lastSeen: at ?? new Date(),
+      createdBy: "iducky-web",
+      createdReason: reason,
+    },
+    { merge: true }
+  );
+  cache = null; // ดัชนีที่แคชไว้ไม่มีห้องนี้ — ให้ค้นรอบถัดไปอ่านใหม่
+  return true;
+}
+
 /** ห้องนี้ยังรอแอดมินตอบอยู่จริงไหม (ธงค้าง + ยังคุยกันอยู่ในช่วงนี้) */
 export function isWaitingForAdmin(r: Pick<ChatRow, "needsHumanFollowup" | "lastSeen">): boolean {
   if (!r.needsHumanFollowup || !r.lastSeen) return false;
