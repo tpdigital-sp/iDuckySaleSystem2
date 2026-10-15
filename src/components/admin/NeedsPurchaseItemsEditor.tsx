@@ -120,12 +120,16 @@ export default function NeedsPurchaseItemsEditor({
   const query = q.trim().toLowerCase();
   const results = useMemo(() => {
     if (!query || !stock) return [];
-    return stock
-      .map((it) => [it, score(it, query)] as const)
-      .filter(([, s]) => s >= 0)
-      .sort((a, b) => a[1] - b[1] || a[0].name.localeCompare(b[0].name, "th"))
-      .slice(0, 8)
-      .map(([it]) => it);
+    return (
+      stock
+        .map((it) => [it, score(it, query)] as const)
+        .filter(([, s]) => s >= 0)
+        // คะแนนเท่ากัน → ชื่อสั้นกว่า (ตรงกว่า) ขึ้นก่อน: "แผ่นแม่เหล็ก A3" มาก่อน "กระเป๋าผ้าแคนวาส · … กระดุมแม่เหล็ก…"
+        .sort((a, b) => a[1] - b[1] || a[0].name.length - b[0].name.length || a[0].name.localeCompare(b[0].name, "th"))
+        // ⚠️ เดิมตัด 8 แถว → "แผ่นแม่เหล็ก" หลุดตอนพิมพ์ "แม่เหล็ก" เพราะไทยไม่มีเว้นวรรค คำที่อยู่กลางชื่อได้คะแนน 2 ไล่หลังสินค้าสำเร็จรูป 8 ตัวพอดี (OD-261014-9696 · 15 ต.ค. 69) — กล่องเลื่อนได้อยู่แล้ว ให้โชว์ 30
+        .slice(0, 30)
+        .map(([it]) => it)
+    );
   }, [stock, query]);
   // ท้ายผลค้นหาเสมอ: ใช้ชื่อที่พิมพ์เอง (ของที่ยังไม่มีในคลัง)
   const options: (StockLite | { custom: string })[] = query ? [...results, { custom: q.trim() }] : [];
