@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { CHAT_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
-import { core, loadChatIndex, norm } from "@/lib/server/line-chat";
+import { core, loadChatIndexWithin, loadRecentRows, norm, type ChatRow } from "@/lib/server/line-chat";
 
 export const runtime = "nodejs";
 
@@ -23,6 +23,14 @@ const SEARCH_LIMIT = 24;
  * (ไม่จำกัด = พิมพ์ชื่อที่ไม่มีจริงทีละตัวอักษร จะอ่านทั้งคลังแชทรอบใหม่ทุกตัวอักษร)
  */
 const AUTO_FRESH_GAP_MS = 20 * 1000;
+
+/**
+ * รอดัชนีเต็มได้นานสุดเท่านี้ ก่อนถอยไปตอบจากห้องล่าสุด (partial)
+ * Netlify ให้ฟังก์ชัน 10 วิ — เผื่อเวลาอ่านห้องล่าสุด (~0.5 วิ) + ตอบกลับ · คลัง 11,420 ห้อง อ่านขนาน 16 ชุดจากไทย 1.8 วิ
+ */
+const INDEX_BUDGET_MS = 6000;
+/** ห้องล่าสุดที่ใช้ตอบแบบ partial — 1,500 ห้อง ≈ ย้อนหลัง 2 สัปดาห์ (วัด 15 ต.ค. 69 · อ่าน 0.33 วิ) */
+const RECENT_SCAN = 1500;
 
 type Row = { userId: string; name: string; picture?: string; lastSeen?: string };
 let lastAutoFreshAt = 0;
@@ -51,7 +59,6 @@ export async function GET(req: Request) {
 
     const needle = norm(q);
     const needleCore = core(q);
-    const rows = await loadChatIndex(db, fresh);
     /**
      * จัดอันดับผลค้นหา: ชื่อตรงพอดี → ขึ้นต้นด้วยคำที่พิมพ์ → มีคำนี้อยู่ตรงไหนก็ได้
      * (ในแต่ละชั้นยังเรียงคนคุยล่าสุดไว้บน เพราะดัชนีเรียงมาแล้วและ sort ของ JS เสถียร)
@@ -60,18 +67,33 @@ export async function GET(req: Request) {
      *    คนชื่อ S จริงจมอยู่ท้ายแถว แล้วโชว์แค่ 12 คนแรก (พนักงานแจ้ง 14 ก.ย. 69 · OD-260910-9595)
      */
     const rank = (name: string): number => (core(name) === needleCore ? 0 : norm(name).startsWith(needle) ? 1 : 2);
-    let hits = q.length < 1 ? rows : rows.filter((r) => r.key.includes(needle)).sort((a, b) => rank(a.name) - rank(b.name));
+    const search = (rows: ChatRow[]): ChatRow[] =>
+      q.length < 1 ? rows : rows.filter((r) => r.key.includes(needle)).sort((a, b) => rank(a.name) - rank(b.name));
+
+    /**
+     * ดัชนีเต็ม (11,000+ ห้อง) อ่านไม่ทันในเวลาที่ให้ → ตอบจาก "ห้องที่คุยล่าสุด" ไปก่อน (partial)
+     * หน้าเว็บจะขอซ้ำเองจนดัชนีเต็มพร้อม — ดีกว่ารอจนฟังก์ชันหมดเวลาแล้วช่องค้นหาเงียบ
+     * (พนักงานแจ้ง 15 ต.ค. 69 · OD-261014-9696: พิมพ์ชื่อแล้วไม่ขึ้นอะไรเลย ทั้งที่ชื่อมีในคลัง)
+     */
+    let rows = await loadChatIndexWithin(db, INDEX_BUDGET_MS, fresh);
+    const partial = rows === null;
+    if (rows === null) rows = (await loadRecentRows(db, RECENT_SCAN)).filter((r) => r.lastSeen);
+    let hits = search(rows);
     let refreshed = fresh;
 
     /**
      * ค้นไม่เจอสักคน = ลูกค้ามัก "เพิ่งทักเข้ามาครั้งแรก" — ห้องแชทเพิ่งเกิด ยังไม่อยู่ในดัชนีที่แคชไว้
      * (พนักงานแจ้ง 14 ก.ย. 69: ลูกค้าทักแล้วแต่พิมพ์ชื่อหาไม่เจอ → ผูกไม่ได้)
      * → ดึงสดให้เองรอบหนึ่งแล้วค้นซ้ำ จะได้ไม่ต้องรอแคชหมดอายุ 5 นาที
+     * (ตอบแบบ partial อยู่ = อ่านจากคลังสด ๆ อยู่แล้ว ไม่ต้องสั่งซ้ำ)
      */
-    if (!hits.length && q.length >= 2 && !refreshed && Date.now() - lastAutoFreshAt > AUTO_FRESH_GAP_MS) {
+    if (!partial && !hits.length && q.length >= 2 && !refreshed && Date.now() - lastAutoFreshAt > AUTO_FRESH_GAP_MS) {
       lastAutoFreshAt = Date.now();
-      hits = (await loadChatIndex(db, true)).filter((r) => r.key.includes(needle)).sort((a, b) => rank(a.name) - rank(b.name));
-      refreshed = true;
+      const freshRows = await loadChatIndexWithin(db, INDEX_BUDGET_MS, true);
+      if (freshRows) {
+        hits = search(freshRows);
+        refreshed = true;
+      }
     }
 
     return NextResponse.json({
@@ -83,8 +105,10 @@ export async function GET(req: Request) {
       recent: q.length < 1,
       refreshed, // ดึงรายชื่อสดมาแล้วรอบนี้ — หน้าเว็บเอาไปบอกว่า "ดึงใหม่แล้วก็ยังไม่เจอ"
       indexed: rows.length, // มีห้องแชทในคลังกี่ห้อง (ไว้ดูว่าคลังแชทว่างหรือเปล่า)
+      partial, // true = ค้นจากห้องล่าสุด RECENT_SCAN ห้องเท่านั้น ดัชนีเต็มยังอ่านไม่เสร็จ — หน้าเว็บขอซ้ำอีกครั้ง
     });
   } catch (e) {
+    // ⚠️ ต้องตอบ 500 จริง ๆ — หน้าเว็บแยก "ค้นไม่เจอ" กับ "ค้นไม่สำเร็จ" ให้พนักงานรู้ว่าต้องลองใหม่ ไม่ใช่ชื่อไม่มี
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

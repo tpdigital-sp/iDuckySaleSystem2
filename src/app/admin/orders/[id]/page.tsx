@@ -13216,8 +13216,14 @@ function LineChatBox({
   const [hitExact, setHitExact] = useState(0);
   // ค้นแล้วไม่เจอสักคน — เดิมกล่องผลค้นหาไม่ขึ้นอะไรเลย พนักงานไม่รู้ว่าพลาดตรงไหน (แจ้ง 14 ก.ย. 69)
   const [noHit, setNoHit] = useState<{ q: string; refreshed: boolean } | null>(null);
+  // ค้น "ไม่สำเร็จ" (เซิร์ฟเวอร์ตอบ 5xx/หมดเวลา/ต่อไม่ได้) ≠ "ไม่เจอ" — เดิมเงียบหรือบอกว่าไม่เจอ พนักงานคิดว่าชื่อไม่มี (15 ต.ค. 69 · OD-261014-9696)
+  const [searchErr, setSearchErr] = useState<string | null>(null);
+  // เซิร์ฟเวอร์ตอบจากห้องล่าสุดไปก่อน (ดัชนีเต็มยังอ่านไม่เสร็จ) → ขอซ้ำเองจนครบ
+  const [partial, setPartial] = useState(false);
+  const [retry, setRetry] = useState(0); // บวกทีละ 1 = สั่งค้นคำเดิมซ้ำ
   const [changing, setChanging] = useState(false); // กด "เปลี่ยนคน" → กลับไปโหมดค้นหา
   const [picking, setPicking] = useState(false); // คลิกช่องค้นหาแล้ว → เริ่มโชว์รายชื่อให้เลือก
+  const boxRef = useRef<HTMLDivElement>(null); // กล่องทั้งใบ — แตะนอกกล่องถึงปิดรายชื่อ (ไม่ใช่แค่ช่องเสียโฟกัส)
   // คนที่เลือกไว้ รอกดยืนยัน — กันแตะพลาดแล้วผูกผิดคน (ผูกผิด = ข้อมูลออเดอร์ไปโผล่แชทคนอื่น)
   const [picked, setPicked] = useState<{ userId: string; name: string; picture?: string } | null>(null);
   const awaitingReturn = useRef(false); // เพิ่งกดเปิดแชทไป → กลับมาแล้วรีเฟรชรายชื่อให้เอง
@@ -13243,30 +13249,86 @@ function LineChatBox({
     const q = draft.trim();
     setPicked(null);
     setNoHit(null);
+    setSearchErr(null);
     // วางลิงก์/URL/userId มา = ตั้งใจใช้ปุ่มบันทึก ไม่ต้องเด้งรายชื่อให้เลือก
     if (demo || !picking || /^https?:\/\//i.test(q) || /^U[0-9a-f]{32}$/i.test(q)) {
       setHits([]);
+      setPartial(false);
       setSearching(false);
       return;
     }
     setSearching(true);
+    // ยกเลิกคำขอก่อนหน้า — พิมพ์ "P" "Po" "Poo" "PooM" ยิงไป 4 ครั้ง คำตอบของ "Po" ที่ช้ากว่าเคยมาทับผลของ "PooM"
+    const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}`);
-        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number; exact?: number; refreshed?: boolean; error?: string };
+        // รอได้ 25 วิ (Netlify ให้ฟังก์ชัน 10 วิ + เผื่อคิว) — เกินนั้นถือว่าค้นไม่สำเร็จ ไม่ปล่อยให้ "กำลังค้น…" ค้างทั้งวัน
+        const timer = setTimeout(() => ctrl.abort("timeout"), 25_000);
+        const res = await fetch(`/api/admin/line-customers?q=${encodeURIComponent(q)}`, { signal: ctrl.signal, cache: "no-store" }).finally(() => clearTimeout(timer));
+        const j = (await res.json().catch(() => ({}))) as { customers?: typeof hits; total?: number; exact?: number; refreshed?: boolean; partial?: boolean; error?: string };
+        if (!res.ok || j.error) {
+          // เซิร์ฟเวอร์ตอบไม่สำเร็จ (502/504 = ฟังก์ชันหมดเวลา · 500 = อ่านคลังแชทพัง) — ไม่ใช่ "ไม่มีชื่อนี้"
+          setHits([]);
+          setPartial(false);
+          setSearchErr(j.error ? `${j.error} (HTTP ${res.status})` : `เซิร์ฟเวอร์ตอบ HTTP ${res.status}`);
+          return;
+        }
         setHits(j.customers ?? []);
         setHitTotal(j.total ?? (j.customers?.length ?? 0));
         setHitExact(j.exact ?? 0);
-        // ไม่เจอ (หรือคลังแชทอ่านไม่ได้) → บอกให้รู้ พร้อมทางไปต่อ แทนที่จะเงียบ
-        setNoHit((j.customers?.length ?? 0) === 0 && q.length >= 2 ? { q, refreshed: Boolean(j.refreshed) } : null);
+        setPartial(Boolean(j.partial));
+        // ไม่เจอ (ในดัชนีเต็ม) → บอกให้รู้ พร้อมทางไปต่อ แทนที่จะเงียบ · ยังค้นจากห้องล่าสุดอยู่ = ยังไม่สรุปว่าไม่เจอ
+        setNoHit(!j.partial && (j.customers?.length ?? 0) === 0 && q.length >= 2 ? { q, refreshed: Boolean(j.refreshed) } : null);
       } catch {
+        // ถูกยกเลิกเพราะพิมพ์ต่อ ("typing") = คำขอใหม่กำลังมา เงียบไว้ · หมดเวลา 25 วิ / ต่อไม่ได้ = บอกให้ลองใหม่
+        if (ctrl.signal.aborted && ctrl.signal.reason === "typing") return;
         setHits([]);
+        setSearchErr(ctrl.signal.aborted ? "เซิร์ฟเวอร์ตอบช้าเกิน 25 วิ" : "ต่อเซิร์ฟเวอร์ไม่ได้");
       } finally {
-        setSearching(false);
+        if (!(ctrl.signal.aborted && ctrl.signal.reason === "typing")) setSearching(false);
       }
     }, 350);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort("typing");
+    };
+  }, [draft, demo, picking, retry]);
+
+  // ตอบแบบ partial (ค้นจากห้องล่าสุด) → อีก 3 วิขอซ้ำ ดัชนีเต็มน่าจะพร้อมแล้ว (ยิงไม่เกิน 5 รอบ กันวนไม่รู้จบ)
+  const partialRounds = useRef(0);
+  useEffect(() => {
+    if (!partial || !picking) {
+      partialRounds.current = 0;
+      return;
+    }
+    // คำขอยังค้างอยู่ (เซิร์ฟเวอร์ช้า) → ไม่ยิงซ้ำทับ ไม่งั้นยกเลิกของเดิมทิ้งทุก 3 วิ ไม่มีวันได้คำตอบเต็ม
+    if (searching || partialRounds.current >= 5) return;
+    const t = setTimeout(() => {
+      partialRounds.current += 1;
+      setRetry((n) => n + 1);
+    }, 3000);
     return () => clearTimeout(t);
-  }, [draft, demo, picking]);
+  }, [partial, picking, retry, searching]);
+
+  /**
+   * ปิดรายชื่อเมื่อ "แตะนอกกล่อง" — ไม่ใช่เมื่อช่องเสียโฟกัส
+   * บนมือถือ กดปิดคีย์บอร์ด (Done) = ช่องเสียโฟกัส → เดิมรายชื่อหายทั้งแถบ พนักงานเห็นว่า "ชื่อไม่ขึ้น" (15 ต.ค. 69 · OD-261014-9696)
+   */
+  useEffect(() => {
+    if (!picking) return;
+    const onDown = (ev: PointerEvent) => {
+      if (boxRef.current && !boxRef.current.contains(ev.target as Node)) setPicking(false);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setPicking(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [picking]);
 
   /**
    * ช่องเดียวรับได้ทั้ง 2 อย่าง:
@@ -13734,6 +13796,7 @@ function LineChatBox({
   return (
     <div
       id="line-bind"
+      ref={boxRef}
       className={`mt-2 scroll-mt-24 rounded-xl p-2.5 ring-1 ${changing ? "bg-slate-50 ring-dashed ring-slate-300" : fresh ? "bg-white ring-slate-200" : "bg-rose-50 ring-rose-300"}`}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -13804,7 +13867,7 @@ function LineChatBox({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => setPicking(true)}
-          onBlur={() => setTimeout(() => setPicking(false), 200)}
+          onClick={() => setPicking(true)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void submit();
           }}
@@ -13939,7 +14002,7 @@ function LineChatBox({
       {/* ผลค้นหาจากคลังแชท LINE ของร้าน — แตะเลือกคน แล้วกดยืนยันอีกครั้ง */}
       {picking && !picked && (searching || hits.length > 0) && (
         <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white">
-          {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท…</p>}
+          {searching && hits.length === 0 && <p className="px-2.5 py-2 text-[11px] text-slate-400">กำลังค้นจากคลังแชท… (คลังมีหมื่นกว่าห้อง รอบแรกอาจใช้เวลาหลายวินาที)</p>}
           {hits.length > 0 && (
             <div className="flex items-center border-b border-slate-100 bg-slate-50 px-2.5 py-1">
               <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-500">
@@ -13950,6 +14013,7 @@ function LineChatBox({
                       ? `ชื่อนี้ตรงพอดี ${hitExact} คน — ดูรูปโปรไฟล์เทียบกับห้องแชท แล้วแตะเลือก`
                       : `ผลค้นหาจากคลังแชท${hitTotal > hits.length ? ` — เจอ ${hitTotal} คน แสดง ${hits.length} (พิมพ์เพิ่มให้แคบลง)` : ""}`
                   : "ลูกค้าที่คุยกับร้านล่าสุด — แตะเพื่อผูก"}
+                {partial && <span className="ml-1 text-amber-600">· ค้นจากห้องที่คุยล่าสุดก่อน กำลังค้นทั้งคลัง…</span>}
               </p>
               {draft.trim().length < 1 && (
                 <button
@@ -13988,6 +14052,40 @@ function LineChatBox({
               )}
             </button>
           ))}
+        </div>
+      )}
+      {/* ค้นแบบ partial แล้วยังไม่เจอ — ยังไม่สรุป บอกว่ากำลังค้นทั้งคลังต่อ */}
+      {picking && !picked && !searching && partial && hits.length === 0 && draft.trim().length >= 2 && (
+        <p className="mt-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-500">
+          ยังไม่เจอ “{draft.trim()}” ในห้องที่คุยล่าสุด — กำลังค้นทั้งคลัง (หมื่นกว่าห้อง) อีกครู่…
+        </p>
+      )}
+      {/* ค้น "ไม่สำเร็จ" — เซิร์ฟเวอร์ตอบ 5xx/หมดเวลา/ต่อไม่ได้ · เดิมเงียบ (fetch พัง = ไม่ขึ้นอะไร) หรือบอกว่า "ไม่เจอ" ทั้งที่ชื่อมีในคลัง */}
+      {picking && !picked && !searching && searchErr && (
+        <div className="mt-1.5 rounded-lg border border-rose-200 bg-rose-50 p-2">
+          <p className="text-[11px] font-bold text-rose-700">ค้นหาไม่สำเร็จ — {searchErr}</p>
+          <p className="mt-0.5 text-[10px] leading-snug text-rose-700/90">ไม่ได้แปลว่าไม่มีชื่อนี้ · คลังแชทมีหมื่นกว่าห้อง รอบแรกเซิร์ฟเวอร์อาจอ่านไม่ทัน — กดลองใหม่ มักได้ในรอบที่ 2</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setRetry((n) => n + 1)}
+              className="rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-slate-700"
+            >
+              🔄 ลองค้นใหม่
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setDraft("");
+                void refreshRecent();
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 transition hover:bg-slate-100"
+            >
+              ดูคนที่คุยกับร้านล่าสุด
+            </button>
+          </div>
         </div>
       )}
       {/* ค้นแล้วไม่เจอ — เดิมไม่ขึ้นอะไรเลย (เงียบ = พนักงานคิดว่าระบบเสีย) บอกสาเหตุที่เจอบ่อยและทางไปต่อ */}

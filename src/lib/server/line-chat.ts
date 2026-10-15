@@ -1,5 +1,5 @@
 import "server-only";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { selectAllRows } from "@/lib/server/select-all";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
@@ -243,9 +243,25 @@ export async function loadChatIndex(db: FirebaseFirestore.Firestore, fresh = fal
   // มีคนกำลังอ่านอยู่แล้ว = ของสดกำลังมา ไม่ต้องยิงซ้ำ (ขอสดก็รอชุดนั้นได้)
   if (inflight) return inflight;
   const job = (async () => {
-    const snap = await db.collection(CHAT_COLLECTION).select(...LIST_FIELDS).get();
+    /**
+     * อ่านแบบแบ่งช่วงรหัสห้อง (U0…, U1…, …, Uf…) ยิงขนานกัน 16 ชุด แทนลากทั้งคอลเลกชันก้อนเดียว
+     *
+     * ทำไม (พนักงานแจ้ง 15 ต.ค. 69 · OD-261014-9696 "ผูกไลน์ไม่ได้ ชื่อลูกค้าไม่ขึ้น"):
+     * คลังโตเป็น 11,420 ห้อง · ก้อนเดียวใช้ 4.3 วิจากไทย — แต่เว็บจริงรันบน Netlify (us-east-1)
+     * อ่าน Firestore ที่สิงคโปร์ ช้ากว่านั้นหลายเท่า จนเกินเวลาฟังก์ชัน (10 วิ) ค้นหาตอบไม่ทัน
+     * แบ่ง 16 ชุดขนาน วัดจากไทย 1.8 วิ (ค่าอ่านเท่าเดิม = จำนวนห้อง) · ช่วงหัว/ท้ายเก็บรหัสที่ไม่ขึ้นต้นด้วย U ด้วย (เช่น กลุ่ม C…)
+     */
+    const col = db.collection(CHAT_COLLECTION).select(...LIST_FIELDS);
+    const hex = "0123456789abcdef";
+    const bounds = ["U0", ...hex.slice(1).split("").map((h) => `U${h}`), "V"];
+    const shards = [
+      col.where(FieldPath.documentId(), "<", bounds[0]).get(),
+      ...bounds.slice(0, -1).map((lo, i) => col.where(FieldPath.documentId(), ">=", lo).where(FieldPath.documentId(), "<", bounds[i + 1]).get()),
+      col.where(FieldPath.documentId(), ">=", bounds[bounds.length - 1]).get(),
+    ];
+    const snaps = await Promise.all(shards);
     // เรียงคนคุยล่าสุดไว้บนสุดตั้งแต่ตอนทำดัชนี — ผลค้นหาจะได้เรียงมาให้เลย
-    const rows = sortByLastSeen(snap.docs.map(rowOfDoc));
+    const rows = sortByLastSeen(snaps.flatMap((s) => s.docs.map(rowOfDoc)));
     cache = { at: Date.now(), rows };
     return rows;
   })();
@@ -255,6 +271,31 @@ export async function loadChatIndex(db: FirebaseFirestore.Firestore, fresh = fal
   } finally {
     if (inflight === job) inflight = null;
   }
+}
+
+/**
+ * ดัชนีเต็ม "ภายในเวลาที่กำหนด" — ไม่ทันก็คืน null ให้คนเรียกไปใช้ทางลัดแทน (ดัชนียังอ่านต่อ ครั้งหน้ามาถึงก็ได้ใช้)
+ *
+ * บน Netlify ฟังก์ชันมีเวลา 10 วิ: รอดัชนีเต็มจนหมดเวลา = ตอบอะไรไม่ได้เลย (ช่องค้นหาเงียบ)
+ * ดีกว่าคือตอบจากห้องที่คุยล่าสุดไปก่อน แล้วให้หน้าเว็บขอซ้ำเมื่อดัชนีเต็มพร้อม
+ */
+export async function loadChatIndexWithin(db: FirebaseFirestore.Firestore, budgetMs: number, fresh = false): Promise<ChatRow[] | null> {
+  if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.rows;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), budgetMs);
+  });
+  try {
+    return await Promise.race([loadChatIndex(db, fresh), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** ห้องที่คุยล่าสุด N ห้อง (อ่านเร็ว ~0.3 วิ) — ทางลัดตอนดัชนีเต็มยังมาไม่ทัน: ลูกค้าที่กำลังจะผูกมักเพิ่งทักมา */
+export async function loadRecentRows(db: FirebaseFirestore.Firestore, limit: number): Promise<ChatRow[]> {
+  const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").limit(limit).select(...LIST_FIELDS).get();
+  return snap.docs.map(rowOfDoc);
 }
 
 /** ห้องนี้ยังรอแอดมินตอบอยู่จริงไหม (ธงค้าง + ยังคุยกันอยู่ในช่วงนี้) */
