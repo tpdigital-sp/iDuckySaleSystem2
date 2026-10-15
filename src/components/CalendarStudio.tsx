@@ -4931,6 +4931,13 @@ export default function CalendarStudio({
             </button>
           </div>
         </div>
+        {/* 🧪 ไดคัท: แถบบอกลูกค้าว่าจอนี้ยังทดสอบอยู่ สั่งผ่านจอไม่ได้ (ผู้ใช้สั่ง 15 ต.ค. 69) */}
+        {fmt.diecut && (
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 bg-amber-50 px-4 py-2 text-center text-[12px] leading-snug text-amber-800 ring-1 ring-amber-200">
+            <span className="font-extrabold">🧪 ระบบออกแบบพวงกุญแจบนเว็บ — กำลังทดสอบ ยังไม่เปิดใช้งาน</span>
+            <span>ลองเล่นดูได้ แต่ยังบันทึกแบบ/ใส่ตะกร้าจากจอนี้ไม่ได้ · ต้องการสั่งทำ ปิดจอนี้แล้วใช้ “📎 แนบไฟล์ลาย” หรือทักไลน์ร้านได้เลย</span>
+          </div>
+        )}
         {err && (
           <div className="flex items-center justify-between gap-2 bg-rose-50 px-4 py-1.5 text-xs font-bold text-rose-700">
             <span>{err}</span>
