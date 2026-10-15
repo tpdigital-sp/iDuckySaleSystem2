@@ -13799,6 +13799,13 @@ function LineChatBox({
   // ออเดอร์เพิ่งสร้างยังว่างเปล่า = ยังไม่รู้ว่าลูกค้าคือใคร → โทนปกติไว้ก่อน ค่อยขึ้นแดงเมื่อเริ่มกรอก
   if (!mayEdit) return null;
   const fresh = !changing && isBlankOrder(order);
+  /** "วันนี้ 14:32" · "5 ต.ค. 09:16" — ผู้ใช้ขอเห็นเวลาด้วย (15 ต.ค. 69: วันนี้ 214 คน ทุกแถวเขียน "15 ต.ค." เหมือนกันหมด แยกไม่ออกว่าใครเพิ่งทัก) */
+  const lastSeenLabel = (iso: string): string => {
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }) === d.toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+    return today ? `วันนี้ ${time}` : `${d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" })} ${time}`;
+  };
   return (
     <div
       id="line-bind"
@@ -13970,7 +13977,7 @@ function LineChatBox({
                 ) : (
                   h.lastSeen && (
                     <span className="shrink-0 text-[10px] text-slate-400">
-                      คุยล่าสุด {new Date(h.lastSeen).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                      คุยล่าสุด {lastSeenLabel(h.lastSeen)}
                     </span>
                   )
                 )}
@@ -14085,7 +14092,7 @@ function LineChatBox({
               <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
               {h.lastSeen && (
                 <span className="shrink-0 text-[10px] text-slate-400">
-                  คุยล่าสุด {new Date(h.lastSeen).toLocaleDateString("th-TH", { day: "numeric", month: "short" })}
+                  คุยล่าสุด {lastSeenLabel(h.lastSeen)}
                 </span>
               )}
             </button>
