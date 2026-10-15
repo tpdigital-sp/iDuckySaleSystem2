@@ -4878,39 +4878,43 @@ export default function CalendarStudio({
                 ⬇ .pdf
               </button>
             )}
-            {/* ✂️ ไดคัท: ปิดปุ่ม ✓ ใช้แบบนี้ + 🛒 ใส่ตะกร้า ไว้ก่อน (ผู้ใช้สั่ง 15 ต.ค. 69 — จอยังอยู่ระหว่างปรับ ลูกค้าจึงยังสั่งผ่านจอนี้ไม่ได้) */}
-            {!fmt.diecut && (
+            {/* ✂️ ไดคัท: ปุ่ม ✓ ใช้แบบนี้ + 🛒 ใส่ตะกร้า "ปิดไว้ก่อน" = ยังเห็นเป็นปุ่มเทากดไม่ได้ (ผู้ใช้สั่ง 15 ต.ค. 69 "ต้องการเห็นปุ่มเทาๆ ที่ปิดอยู่") */}
             <button
               type="button"
               onClick={() => {
                 orderAfter.current = false;
                 void apply();
               }}
-              disabled={!!busy}
-              title="บันทึกแบบแล้วกลับไปหน้าสินค้า (ยังไม่ใส่ตะกร้า)"
+              disabled={!!busy || !!fmt.diecut}
+              title={fmt.diecut ? "ปิดไว้ชั่วคราว — ยังสั่งผ่านจอออกแบบไม่ได้" : "บันทึกแบบแล้วกลับไปหน้าสินค้า (ยังไม่ใส่ตะกร้า)"}
               className={
-                onOrder
+                fmt.diecut
+                  ? `${onOrder ? "hidden sm:inline-block" : ""} cursor-not-allowed rounded-full bg-stone-200 px-4 py-2.5 text-sm font-extrabold text-stone-400 shadow-none`
+                  : onOrder
                   ? "hidden rounded-full px-3 py-2.5 text-sm font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-block sm:px-4"
                   : "rounded-full bg-sky-600 px-4 py-2.5 text-sm font-extrabold text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6"
               }
             >
               {busy && !onOrder ? busy : "✓ ใช้แบบนี้"}
             </button>
-            )}
-            {onOrder && !fmt.diecut && (
+            {onOrder && (
               <button
                 type="button"
                 onClick={() => {
                   orderAfter.current = true;
                   void apply();
                 }}
-                disabled={!!busy}
-                title="บันทึกแบบแล้วใส่ตะกร้าเลย"
-                className="flex flex-col items-center rounded-2xl bg-sky-600 px-3 py-1.5 leading-tight text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
+                disabled={!!busy || !!fmt.diecut}
+                title={fmt.diecut ? "ปิดไว้ชั่วคราว — ยังสั่งผ่านจอออกแบบไม่ได้" : "บันทึกแบบแล้วใส่ตะกร้าเลย"}
+                className={
+                  fmt.diecut
+                    ? "flex cursor-not-allowed flex-col items-center rounded-2xl bg-stone-200 px-3 py-1.5 leading-tight text-stone-400"
+                    : "flex flex-col items-center rounded-2xl bg-sky-600 px-3 py-1.5 leading-tight text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
+                }
               >
                 <span className="text-sm font-extrabold">{busy || "🛒 ใส่ตะกร้า"}</span>
                 {!busy && price && (
-                  <span className="text-[11px] font-bold text-sky-100">
+                  <span className={`text-[11px] font-bold ${fmt.diecut ? "text-stone-400" : "text-sky-100"}`}>
                     {formatBaht(price(designN))}
                     {qty ? ` · ${qty.toLocaleString("th-TH")} ${unit ?? ""}` : ""}
                   </span>
