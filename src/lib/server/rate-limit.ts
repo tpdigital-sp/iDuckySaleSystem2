@@ -27,14 +27,15 @@ function ref(key: string) {
   return db.collection(COLLECTION).doc(createHash("sha256").update(key).digest("hex").slice(0, 40));
 }
 
-/** นับ 1 ครั้งแล้วบอกว่าเกินเพดานไหม (true = เกิน ให้ตอบ 429) */
-export async function rateLimited(key: string, max: number, windowMs: number): Promise<boolean> {
-  const n = await rateHit(key, windowMs);
+/** นับ 1 ครั้ง (หรือ `weight` ครั้ง — คำขอเดียวที่ทำหลายชิ้น เช่น ตั๋วอัปโหลดทีละชุด) แล้วบอกว่าเกินเพดานไหม (true = เกิน ให้ตอบ 429) */
+export async function rateLimited(key: string, max: number, windowMs: number, weight = 1): Promise<boolean> {
+  const n = await rateHit(key, windowMs, weight);
   return n > max;
 }
 
-/** นับ 1 ครั้ง คืนจำนวนครั้งในช่วงปัจจุบัน (0 = นับไม่ได้) */
-export async function rateHit(key: string, windowMs: number): Promise<number> {
+/** นับ 1 ครั้ง (หรือ `weight`) คืนจำนวนครั้งในช่วงปัจจุบัน (0 = นับไม่ได้) */
+export async function rateHit(key: string, windowMs: number, weight = 1): Promise<number> {
+  const w = Math.max(1, Math.floor(weight));
   const r = ref(key);
   if (!r) return 0;
   try {
@@ -43,11 +44,11 @@ export async function rateHit(key: string, windowMs: number): Promise<number> {
       const d = (await tx.get(r)).data() as Doc | undefined;
       const now = Date.now();
       if (!d || d.until < now) {
-        tx.set(r, { n: 1, until: now + windowMs, key: key.slice(0, 80) });
-        return 1;
+        tx.set(r, { n: w, until: now + windowMs, key: key.slice(0, 80) });
+        return w;
       }
-      tx.update(r, { n: (d.n ?? 0) + 1 });
-      return (d.n ?? 0) + 1;
+      tx.update(r, { n: (d.n ?? 0) + w });
+      return (d.n ?? 0) + w;
     });
   } catch {
     return 0;

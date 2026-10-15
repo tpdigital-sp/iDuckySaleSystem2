@@ -160,24 +160,14 @@ import {
   filesForSelections,
   fileChoiceLabel,
   formatFileSize,
-  isMultiSide,
-  previewOf,
-  sideName,
-  skinOf,
-  slotsOf,
   PLACEMENT_LABEL,
   PLACEMENT_SPEC_LABEL,
   CAL_AI_TAG,
   CAL_PDF_TAG,
   CAL_EDIT_TAG,
   calEditUrlOf,
-  templateFrame,
   type DesignTemplate,
-  type TemplateFrame,
-  type TemplateSlot,
 } from "@/lib/design-templates";
-import TemplateStudio, { type Placement as StudioPlacement, type StudioResult } from "@/components/TemplateStudio";
-import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStudio";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
 import { calDesignCount, calFormat, calHasGrid, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
@@ -199,7 +189,7 @@ import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
 import { catShortName, type ShopCategory } from "@/lib/categories";
 import ImageLightbox from "@/components/ImageLightbox";
-import { uploadArtworkFile, checkArtworkFile } from "@/lib/artwork-upload";
+import { uploadArtworkFile, uploadArtworkFilesSettled, checkArtworkFile } from "@/lib/artwork-upload";
 import { getSupabase } from "@/lib/supabase";
 import { fetchShopPayment, type ShopPayment } from "@/lib/shop-settings";
 import { cutPresetsFrom } from "@/lib/diecut-engine";
@@ -884,22 +874,6 @@ export default function ProductDetail({
   const [artBusy, setArtBusy] = useState(false);
   const [artErr, setArtErr] = useState("");
   const [artDrag, setArtDrag] = useState(false); // ลากไฟล์อยู่เหนือกล่องแนบลาย
-  /**
-   * 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลต (null = ปิดอยู่)
-   * ผลลัพธ์: ภาพที่ประกอบแล้วเข้าไปอยู่ในรายการลายที่แนบ + จดตัวเลขตำแหน่งไว้ให้ทีมผลิต
-   */
-  const [studio, setStudio] = useState<{
-    title: string;
-    frame: TemplateFrame;
-    guideUrl?: string;
-    skinUrl?: string;
-    tplUrl?: string;
-    perSheet?: number;
-    /** เทมเพลตแบบมีช่อง (Theme) — มีค่า = เปิดจอวางรูปทีละช่องแทน */
-    slots?: TemplateSlot[];
-    slotsRequired?: boolean;
-    initial?: { file?: File; url?: string; placement: StudioPlacement; swapped?: boolean };
-  } | null>(null);
   const [placed, setPlaced] = useState<
     {
       summary: string;
@@ -911,12 +885,6 @@ export default function ProductDetail({
       /** ส่วนที่ทุกลายเหมือนกัน (ชื่อแบบ + ขนาด) และความคมชัดของลายนี้ */
       head: string;
       dpi: number;
-      /** ของที่ใช้เปิดกลับมาแก้ไขให้เหมือนเดิม (ไฟล์ต้นฉบับ + ตำแหน่ง + แนวงาน) */
-      sourceFile?: File;
-      placement?: StudioPlacement;
-      swapped?: boolean;
-      /** โหมดช่อง (Theme) — รูปที่ใส่ไว้ทีละช่อง แยกตามด้าน ใช้กดกลับมาแก้ในหน้าเดิม */
-      slotShots?: Record<string, (SlotShot | null)[]>;
       /**
        * งานหลายด้าน — ภาพที่ประกอบแล้วของแต่ละด้าน
        * ยังเป็น "ลายเดียว = สินค้า 1 ชิ้น" · ไม่นับเป็นคนละลาย และไม่เข้าไปเพิ่มจำนวนใน artFiles
@@ -938,10 +906,10 @@ export default function ProductDetail({
   >([]);
   /** กำลังแก้ไขลายที่เท่าไหร่ (null = สร้างลายใหม่) — กัน "แก้ไขแบบ" กลายเป็นเพิ่มลายซ้ำ */
   const [editIndex, setEditIndex] = useState<number | null>(null);
-  /** เปิดจอวางรูปแบบมีช่อง (Theme) อยู่ไหม — เทมเพลตที่กำหนดช่องไว้จะใช้จอนี้แทน */
-  const [slotStudio, setSlotStudio] = useState(false);
   /** 🗓 เปิดจอสร้างปฏิทินโฟโต้การ์ดอยู่ไหม (สินค้าที่ตั้ง calendarStudio) */
   const [calOpen, setCalOpen] = useState(false);
+  /** 🖼 รูปตั้งต้นในคลังของจอสร้างปฏิทิน (หลังบ้านออกแบบให้รายการที่ลูกค้าแนบรูปมา) */
+  const [calSeed, setCalSeed] = useState<File[]>([]);
   // กล่อง "แนบลายของคุณ" กางไว้ตั้งแต่แรก — ลูกค้าเห็นช่องอัปโหลดทันที ไม่ต้องเดาว่าต้องกดเปิด
   // (ช่องหมายเหตุถึงร้านไม่ยุบแล้ว — กางไว้ตลอด ลูกค้าใช้บ่อย)
   const [extraOpen, setExtraOpen] = useState<"art" | null>("art");
@@ -1364,8 +1332,37 @@ export default function ProductDetail({
   /** รูปแบบงานปฏิทินตามตัวเลือกที่เลือกอยู่ (แนว · รายปี/รายเดือน · จำนวนแผ่น) */
   /** 📐 ผ้าแคนวาสที่เพิ่มขนาด → ขนาดผืนใหม่ (สรุปใต้ช่องกรอก + จอสร้างปฏิทินใช้ขนาดนี้) */
   const grown = canvasSizeOf(effective);
+  /**
+   * 📐 สินค้าที่ตั้ง calendarStudio โดยไม่กำหนด formats (ทางเดียวของ "ออกแบบบนเว็บ" ตั้งแต่ 15 ต.ค. 69)
+   * → รูปแบบงานเดาจากขนาดอาร์ตบอร์ดของไฟล์เทมเพลตที่ตรงกับตัวเลือก (tpl@กว้างxสูง มม.) · ไม่มีเทมเพลต = โฟโต้การ์ด
+   */
+  /**
+   * เทมเพลตที่ "ตรงกับที่เลือก" มาก่อน — ชุดที่ไม่ได้ผูกกลุ่มตัวเลือก (เคสมือถือ 22 รุ่น ชุดละไฟล์) จับคู่ด้วยชื่อชุด = ค่าที่เลือก
+   * ("iPhone 12 / 12 Pro" ตรงทั้ง iPhone 12 และ iPhone 12 Pro) · ไม่ตรงชื่อไหนเลย = ลำดับเดิม
+   */
+  const calTemplates = useMemo(() => {
+    const norm = (v: string) => v.toLowerCase().replace(/iphone/g, "").replace(/[\s\-_]/g, "");
+    const picked = new Set(Object.values(effective).map((v) => norm(String(v ?? ""))).filter(Boolean));
+    const hit = (t: DesignTemplate) =>
+      !t.optionLabel?.trim() &&
+      t.name
+        .split("/")
+        .map((x) => norm(x))
+        .some((x) => x && picked.has(x));
+    return [...templates.filter(hit), ...templates.filter((t) => !hit(t))];
+  }, [templates, effective]);
+  const tplFormatKey = (() => {
+    if (!product.calendarStudio) return null;
+    for (const t of calTemplates) {
+      const f = filesForSelections(t, effective).find((x) => x.widthMm && x.heightMm);
+      if (f) return `tpl@${Math.round(f.widthMm! * 10) / 10}x${Math.round(f.heightMm! * 10) / 10}`;
+    }
+    return null;
+  })();
   const calFormatKey0 =
-    product.calendarStudio?.formats?.find((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))?.format ?? "card";
+    product.calendarStudio?.formats?.find((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))?.format ??
+    tplFormatKey ??
+    "card";
   /** 🎨 จอสร้างแบบไม่มีปฏิทิน (แผ่นรองเมาส์ · format pad@…) — ข้อความ/ปุ่มพูดว่า "ออกแบบ" ไม่ใช่ "ปฏิทิน" */
   const calNoGrid = calMode && !calHasGrid(calFormat(calFormatKey0));
   /** ช่องแนบลายแยกหน้า/หลัง — งานพิมพ์ 2 ด้าน หรือปฏิทินโฟโต้การ์ด (หน้าปก/ปฏิทิน) · งานออกแบบล้วน 1 หน้า = ช่องเดียว */
@@ -1658,7 +1655,27 @@ export default function ProductDetail({
     // ✏️ ไม่มีในเครื่องนี้ (แอดมินเปิดแก้ให้จากหลังบ้าน / ลูกค้าเปลี่ยนเครื่อง) → อ่านแบบที่ฝากไว้จากลิงก์ในสเปค
     const editSpecs = savedLocal?.length ? [] : (src[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter((sp) => calEditUrlOf(sp));
     const editUrls = editSpecs.map((sp) => calEditUrlOf(sp)!);
-    if (savedLocal?.length || editUrls.length) {
+    if (!savedLocal?.length && !editUrls.length && calMode && new URLSearchParams(window.location.search).get("studio") === "1") {
+      /**
+       * 🗓 หลังบ้าน "ออกแบบบนเว็บให้ลูกค้า" (ผู้ใช้สั่ง 15 ต.ค. 69) — รายการที่ลูกค้าแนบรูปมาเอง ยังไม่มีแบบบนเว็บ
+       * รูปที่ลูกค้าแนบ = รูปตั้งต้นในคลังของจอ (ใช้ลิงก์เดิม ไม่อัปซ้ำ) · ไฟล์แนบของบรรทัดนี้ล้างออก
+       * แบบที่ทำเสร็จจะเป็นไฟล์พิมพ์ทั้งชุดแทน (รูปเดิมของลูกค้ายังอยู่ในสเปค "ต้นฉบับ" + ประวัติออเดอร์)
+       */
+      // ปฏิทินที่เคยออกแบบบนเว็บ (ออเดอร์ก่อนมีลิงก์แบบ) = ไฟล์แนบคือ "หน้าที่ประกอบเสร็จแล้ว" (ปก · เดือน · ตาราง) ไม่ใช่รูป
+      // → ใช้รูป "ต้นฉบับ:" ในสเปคแทน · ไม่มีต้นฉบับ = เริ่มคลังว่าง (ไม่เอาหน้าปฏิทินมาเป็นรูป · ผู้ใช้แจ้ง 15 ต.ค. 69)
+      const specAll = src[PLACEMENT_SPEC_LABEL] ?? "";
+      const madeOnWeb = / \d+ ไฟล์: 1\./.test(specAll);
+      const origUrls = [...specAll.matchAll(/ต้นฉบับ: (.+?)(?= · | \| |$)/g)].flatMap((m) => m[1].split(/\s+/).filter((u) => /^https?:\/\//.test(u)));
+      const seedUrls = madeOnWeb ? [...new Set(origUrls)] : [...arts, ...parseArtUrls(src[ART_BACK_LABEL])];
+      setArtFiles([]);
+      setArtBackFiles([]);
+      void (async () => {
+        const files = seedUrls.length ? await fetchSources(seedUrls) : [];
+        setCalSeed(files ?? []);
+        setEditIndex(null);
+        setCalOpen(true);
+      })();
+    } else if (savedLocal?.length || editUrls.length) {
       void (async () => {
         const savedCal: SavedCalDesign[] = savedLocal?.length
           ? savedLocal
@@ -2766,61 +2783,20 @@ export default function ProductDetail({
    * แต่กล่อง 📐 ไฟล์เทมเพลตด้านล่างยังขึ้นตามเดิม (คนละส่วนกัน)
    */
   const studioOff = product.studioOff === true;
-  const studioTarget = (() => {
-    if (studioOff) return null;
-    for (const t of templates) {
-      const label = t.optionLabel?.trim();
-      const chosen = label ? (effective[label] ?? "").trim() : "";
-      /**
-       * ไฟล์ทั้งหมดของตัวเลือกที่เลือกอยู่
-       * งานสกรีนหลายด้านคือ "หลายไฟล์ในตัวเลือกเดียวกัน" — ได้กระดานคนละใบ
-       */
-      const picked = filesForSelections(t, effective, { includeEmpty: true });
-      const usable = picked
-        .map((f) => ({ f, fr: templateFrame(t, f, chosen || f.choice) }))
-        .filter((x): x is { f: (typeof picked)[number]; fr: NonNullable<typeof x.fr> } => !!x.fr);
-      if (!usable.length) continue;
-
-      const multi = isMultiSide(usable.map((x) => x.f));
-      // ไฟล์เดียว/คนละตัวเลือกกัน = งานหน้าเดียว ใช้ไฟล์แรกพอ (พฤติกรรมเดิม)
-      const chosenFiles = multi ? usable : [usable[0]];
-      const first = chosenFiles[0];
-      return {
-        title: `${t.name}${fileChoiceLabel(first.f, chosen) ? ` · ${fileChoiceLabel(first.f, chosen)}` : ""}`,
-        frame: first.fr,
-        guideUrl: previewOf(t, first.f),
-        skinUrl: skinOf(t, first.f),
-        tplUrl: first.f.fileUrl,
-        perSheet: t.perSheet,
-        slots: slotsOf(t, first.f),
-        /**
-         * มีหน้าไหนกำหนดช่องไว้บ้างไหม — ใช้ตัดสินว่าจะเปิด "จอวางรูปทีละช่อง"
-         * ดูแค่หน้าแรกไม่ได้: งานที่หน้าแรกเป็นลายเต็มใบแต่หน้าหลัง ๆ เป็นช่อง จะตกไปโหมดลายเดียวทั้งชุด
-         */
-        anySlots: chosenFiles.some(({ f }) => slotsOf(t, f).length > 0),
-        slotsRequired: t.slotsRequired,
-        sides: chosenFiles.map(({ f, fr }, i) => ({
-          key: f.id,
-          name: multi ? sideName(f, i, chosenFiles.length) : "",
-          frame: fr,
-          slots: slotsOf(t, f),
-          guideUrl: previewOf(t, f),
-          skinUrl: skinOf(t, f),
-          tplUrl: f.fileUrl,
-        })),
-      };
-    }
-    return null;
-  })();
+  /**
+   * 🗓 ทางเดียวที่เหลือสำหรับ "ออกแบบบนเว็บ" = จอสร้างปฏิทิน (calendarStudio / diecutStudio) — ผู้ใช้สั่ง 15 ต.ค. 69
+   * จอวางลายบนเทมเพลต (TemplateStudio) และจอวางรูปทีละช่อง (SlotStudio) ถอดออกแล้ว · สินค้าที่เคยใช้สลับไปตั้ง calendarStudio
+   * (รูปแบบงานเดาจากขนาดไฟล์เทมเพลตให้เอง — ดู tpl@ ใน lib/calendar-card)
+   */
   /**
    * โหมดออกแบบบนเว็บ — ข้ามขั้นตอน "แนบลายของคุณ" ไปเลย
    * โหมดแอดมิน (สั่งแทนลูกค้า) ปิดโหมดนี้: หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลายบนเว็บก่อน
    */
-  const studioMode = (!!studioTarget || calMode || cutMode) && !staffOrdering;
+  const studioMode = (calMode || cutMode) && !staffOrdering && !studioOff;
   // (ดูคำอธิบาย noPageDropRef ด้านบน) — อัปเดตค่าให้ตัวรับ drop/paste ระดับหน้าเว็บใช้
   useEffect(() => {
-    noPageDropRef.current = !!studio || studioMode;
-  }, [studio, studioMode]);
+    noPageDropRef.current = studioMode;
+  }, [studioMode]);
   const designDone = placed.length > 0;
   /** 🗓 แบบปฏิทินแรกที่ปีไม่ตรงกับตัวเลือกปีตอนนี้ (-1 = ตรงหมด) */
   const calYearStale = calMode ? placed.findIndex((p) => p.calState && ((!calNoGrid && p.calState.back.year !== calYear) || p.calState.format !== calFormatKey)) : -1;
@@ -2861,7 +2837,7 @@ export default function ProductDetail({
    */
   const calGuide = (() => {
     if (!calMode) return undefined;
-    for (const t of templates) {
+    for (const t of calTemplates) {
       const files = filesForSelections(t, effective);
       const name = (f: (typeof files)[number]) => (f.fileName ?? t.name).replace(/\.[^.]+$/, "");
       // ไฟล์ที่มีหลายช่อง (โฮโลแกรม หน้า/หลัง) ตั้ง skin = กรอบการ์ดใบเดียว → ใช้อันนั้นปูเต็มผืน
@@ -2916,24 +2892,7 @@ export default function ProductDetail({
     if (cutMode) {
       setEditIndex(index);
       setCalOpen(true);
-      return;
     }
-    if (!studioTarget) return;
-    setEditIndex(index);
-    // เทมเพลตกำหนดช่องไว้ (หน้าไหนก็ได้) → ใช้จอวางรูปทีละช่อง (สติกเกอร์หลายดวง · photobooth strip)
-    if (studioTarget.anySlots) {
-      setSlotStudio(true);
-      return;
-    }
-    const d = index !== null ? placed[index] : null;
-    setStudio(
-      d?.placement
-        ? {
-            ...studioTarget,
-            initial: { file: d.sourceFile, url: d.sourceUrl, placement: d.placement, swapped: d.swapped },
-          }
-        : studioTarget,
-    );
   }
 
   /** ลบลายที่สร้างไว้ (ทั้งภาพที่ประกอบแล้วและตัวเลขตำแหน่ง) */
@@ -3016,120 +2975,85 @@ export default function ProductDetail({
   }
 
   /**
-   * ลูกค้ากด "ใช้ลายนี้" จากจอวางลาย
-   * — ภาพที่ประกอบแล้ว = ลายที่แนบไปกับออเดอร์ (นับเป็น 1 ลาย เท่ากับแนบรูปปกติ)
-   * — ไฟล์ต้นฉบับอัปตามไปด้วย แต่ไม่นับเป็นอีกลาย ทีมผลิตเอาไปทำไฟล์พิมพ์ความละเอียดเต็ม
+   * 🗂 อัปไฟล์ของเจ้าของร้าน (.ai / .pdf) — ตั๋วตรงเข้า Supabase ก่อน ไม่ได้ค่อยส่งผ่านเซิร์ฟเวอร์ · ไม่โยน error (ไม่ขวางการสั่ง)
+   * signed = ลิงก์ปลายทางที่รู้ตั้งแต่ได้ตั๋ว (ก่อนไฟล์ขึ้นเสร็จ) · done = ผลอัปจริง
+   * หลังบ้านบันทึกกลับเข้าออเดอร์ใช้ signed จดลิงก์ได้เลย แล้วปล่อยไฟล์ (.ai 20–180 MB) อัปต่อเบื้องหลัง — ไม่ต้องรอ (15 ต.ค. 69)
    */
-  /**
-   * ผลจากจอวางรูปแบบมีช่อง (Theme) — เก็บเข้าลิสต์เดียวกับลายปกติ
-   * (ไม่มี "ต้นฉบับ" ไฟล์เดียวเพราะมาจากหลายรูป · เก็บรูปรายช่องไว้ให้กดแก้ต่อในหน้าเดิมได้)
-   */
-  async function applySlots(r: SlotResult) {
-    setArtErr("");
-    setArtBusy(true);
-    try {
-      const url = await uploadOne(r.composite);
-      const dim = await new Promise<{ w: number; h: number }>((resolve) => {
-        const im = new window.Image();
-        const obj = URL.createObjectURL(r.composite);
-        im.onload = () => {
-          URL.revokeObjectURL(obj);
-          resolve({ w: im.naturalWidth, h: im.naturalHeight });
-        };
-        im.onerror = () => {
-          URL.revokeObjectURL(obj);
-          resolve({ w: 0, h: 0 });
-        };
-        im.src = obj;
-      });
-      const file = { url, name: r.composite.name, ...dim };
-
-      /**
-       * งานหลายด้าน — อัปภาพของด้านที่เหลือด้วย
-       * ⚠️ ใส่ไว้ใน entry.sides เท่านั้น ไม่ยัดเข้า artFiles
-       *    เพราะ artFiles.length คือ "จำนวนลาย" ที่ใช้คิดราคาและจำนวนที่สั่ง
-       *    งาน 2 ด้านยังเป็นสินค้าชิ้นเดียว ไม่ใช่สองลาย
-       */
-      const rest: { name: string; artUrl: string; dpi: number }[] = [];
-      for (const sd of r.sides.slice(1)) {
-        try {
-          rest.push({ name: sd.name, artUrl: await uploadOne(sd.composite), dpi: sd.dpi });
-        } catch {
-          /* ด้านที่อัปไม่ขึ้นยังมีสเปคบอกตำแหน่งอยู่ ไม่บล็อกการสั่ง */
+  function uploadOwnerFile(f: File): { signed: Promise<string | undefined>; done: Promise<{ url?: string; fail?: string }> } {
+    let signedResolve: (u: string | undefined) => void = () => {};
+    const signed = new Promise<string | undefined>((r) => (signedResolve = r));
+    const done = (async (): Promise<{ url?: string; fail?: string }> => {
+      let why = "";
+      // 🎫 ทางหลัก: ขอตั๋วแล้วยิงไฟล์ตรงเข้า Supabase (ไฟล์ใหญ่เกินเพดาน Netlify ~6MB · 14 ต.ค. 69)
+      const ct = /\.pdf$/i.test(f.name) ? "application/pdf" : /\.zip$/i.test(f.name) ? "application/zip" : "application/postscript";
+      try {
+        const sbc = getSupabase();
+        const sres = await fetch("/api/admin/calendar-ai", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: f.name, size: f.size }),
+        });
+        const sign = (await sres.json().catch(() => null)) as { bucket?: string; path?: string; token?: string; url?: string } | null;
+        if (sbc && sres.ok && sign?.token && sign.path && sign.url) {
+          signedResolve(sign.url);
+          const { error } = await sbc.storage.from(sign.bucket || "design-templates").uploadToSignedUrl(sign.path, sign.token, f, { contentType: ct });
+          if (!error) return { url: sign.url };
+          why = /maximum allowed size/i.test(error.message)
+            ? "ใหญ่เกินเพดานของ Supabase (Settings › Storage › Upload file size limit)"
+            : error.message;
+          console.warn("calendar owner file signed upload", f.name, error.message);
         }
+      } catch (e) {
+        console.warn("calendar owner file sign", f.name, e);
       }
-
-      const entry = {
-        summary: r.summary,
-        head: r.head,
-        dpi: r.dpi,
-        spec: r.spec,
-        sourceUrl: "",
-        artUrl: url,
-        slotShots: Object.fromEntries(r.sides.map((sd) => [sd.key, sd.shots])),
-        sides: r.sides.length > 1 ? [{ name: r.sides[0].name, artUrl: url, dpi: r.sides[0].dpi }, ...rest] : undefined,
-      };
-      if (editIndex !== null) {
-        setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? file : x)));
-        setPlaced((cur) => cur.map((x, i) => (i === editIndex ? { ...entry, qty: x.qty } : x)));
-      } else {
-        setArtFiles((cur) => [...cur, file]);
-        setPlaced((cur) => [...cur, { ...entry, qty: 1 }]);
+      signedResolve(undefined);
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch("/api/admin/calendar-ai", { method: "POST", body: fd });
+        const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+        if (res.ok && j?.url) return { url: j.url };
+        console.warn("calendar owner file upload", f.name, j?.error ?? res.status);
+      } catch (e) {
+        console.warn("calendar owner file upload", f.name, e);
       }
-      setEditIndex(null);
-      setSlotStudio(false);
-    } catch (e) {
-      setArtErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
-      throw e;
-    } finally {
-      setArtBusy(false);
-    }
+      return { fail: `${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)${why ? ` — ${why}` : ""}` };
+    })();
+    return { signed, done };
   }
 
   /**
-   * 🗓 ผลจากจอปฏิทินโฟโต้การ์ด — หน้าปกเข้าช่องลายด้านหน้า (นับเป็น 1 ลาย) · ปฏิทินเข้าช่องด้านหลังตำแหน่งเดียวกัน
-   * ทีมผลิตเห็นป้ายหน้า/หลังบนไฟล์ในออเดอร์ตามระบบเดิม (artworkBackUrls)
+   * 🚀 อัปล่วงหน้า (ผู้ใช้แจ้ง 15 ต.ค. 69 "ยังคงรออัปโหลดนานเกินไป")
+   * เดิมจอสร้างปฏิทินประกอบหน้าเสร็จใน ~1 วิ แต่ต้องรอทำ .ai (Illustrator 5–35 วิ) + .pdf จนเสร็จก่อนค่อยเริ่มอัปทีเดียว
+   * ตอนนี้จอส่งไฟล์มาทันทีที่ทำเสร็จแต่ละชิ้น (onEarly) → เริ่มอัประหว่างที่ Illustrator ยังทำ .ai อยู่ · applyCalendar หยิบผลที่อัปไว้แล้วไปใช้
    */
+  const earlyUp = useRef(new Map<File, Promise<string | Error>>());
+  const earlyOwner = useRef(new Map<File, ReturnType<typeof uploadOwnerFile>>());
+  function startEarlyUploads(files: File[]) {
+    const todo = [...new Set(files)].filter((f) => !earlyUp.current.has(f) && !isMissingPhoto(f) && !knownSourceUrl(f));
+    if (!todo.length) return;
+    const all = uploadArtworkFilesSettled(todo).catch((e) => todo.map(() => (e instanceof Error ? e : new Error("อัปโหลดไม่สำเร็จ"))));
+    todo.forEach((f, i) => earlyUp.current.set(f, all.then((r) => r[i])));
+  }
+  function startEarlyOwner(f: File) {
+    if (!earlyOwner.current.has(f)) earlyOwner.current.set(f, uploadOwnerFile(f));
+  }
+
   async function applyCalendar(r: CalendarResult) {
     setArtErr("");
     setArtBusy(true);
     try {
       /**
-       * อัปทุกหน้า (ทีละ 3 ไฟล์ — งาน 26 หน้าบนมือถือยิงพร้อมกันหมดหลุดง่าย)
+       * 🚀 อัปทุกหน้า + รูปต้นฉบับใหม่ในชุดเดียว (ผู้ใช้แจ้ง 15 ต.ค. 69 "อัปโหลดค่อนข้างนาน")
+       * เดิม: ขอตั๋วทีละไฟล์ (~0.6 วิ/ใบ) + ยิงทีละ 3 หน้า แล้วค่อยอัปต้นฉบับทีละรูป แล้วค่อยอัป .ai แล้ว .pdf — ทุกอย่างต่อคิวกัน
+       * ตอนนี้: ขอตั๋วครั้งเดียวทั้งชุด ยิงพร้อมกันทีละ 6 ไฟล์ · .ai/.pdf/ขนาดภาพ ทำคู่ขนานไปพร้อมกัน
        * หน้าแรก = ลายด้านหน้า (นับเป็น 1 ลาย) · หน้าที่เหลือ = ช่องลายด้านหลังตามลำดับหน้า
+       * ต้นฉบับ (ไม่นับเป็นลาย) อัปไม่ขึ้นก็ยังสั่งได้ · ลำดับตรงกับ r.sources เสมอ ("" = อัปไม่ขึ้น) — ใช้เปิดแบบเดิมกลับมาแก้ (cal-edit-store)
+       * ♻️ รูปที่อยู่บนเซิร์ฟเวอร์แล้วใช้ลิงก์เดิม · ภาพแทน "รูปหาย" ไม่อัป — กันชนเพดานอัปโหลดตอนแก้หลายรอบ
        */
-      const urls: string[] = new Array(r.pages.length);
-      for (let i = 0; i < r.pages.length; i += 3) await Promise.all(r.pages.slice(i, i + 3).map(async (p, j) => (urls[i + j] = await uploadOne(p.file))));
-      // ต้นฉบับ (ไม่นับเป็นลาย) — อัปไม่ขึ้นก็ยังสั่งได้ ไฟล์ที่ประกอบแล้วพิมพ์ได้เลย
-      // ลำดับตรงกับ r.sources เสมอ ("" = อัปไม่ขึ้น) — ใช้เปิดแบบเดิมกลับมาแก้จากตะกร้า (cal-edit-store)
-      // ♻️ รูปที่อยู่บนเซิร์ฟเวอร์แล้วใช้ลิงก์เดิม · ภาพแทน "รูปหาย" ไม่อัป (ดู cal-edit-store) — กันชนเพดานอัปโหลดตอนแก้หลายรอบ
-      const sourceUrls: string[] = [];
-      let srcFails = 0;
-      for (const f of r.sources) {
-        if (isMissingPhoto(f)) {
-          sourceUrls.push("");
-          continue;
-        }
-        const had = knownSourceUrl(f);
-        if (had) {
-          sourceUrls.push(had);
-          continue;
-        }
-        try {
-          const u = await uploadOne(f);
-          rememberSource(f, u);
-          sourceUrls.push(u);
-        } catch {
-          sourceUrls.push("");
-          srcFails++;
-        }
-      }
-      // บอกให้รู้ (เดิมเงียบ — เปิดแก้ครั้งหน้ารูปกลายเป็น "รูปหาย" โดยไม่มีใครรู้ว่าเกิดตอนไหน) · ไฟล์ที่ประกอบแล้วยังพิมพ์ได้ปกติ
-      if (srcFails)
-        window.alert(
-          `⚠️ อัปรูปต้นฉบับไม่ขึ้น ${srcFails} รูป — งานนี้สั่ง/พิมพ์ได้ปกติ แต่ถ้าเปิดกลับมาแก้ภายหลัง รูปนั้นจะขึ้นเป็น "รูปหาย" ต้องใส่ใหม่`,
-        );
-      const dims = await Promise.all(
+      const sourceUrls: string[] = r.sources.map((f) => (isMissingPhoto(f) ? "" : (knownSourceUrl(f) ?? "")));
+      const newSrc = r.sources.map((f, i) => ({ f, i })).filter(({ f, i }) => !sourceUrls[i] && !isMissingPhoto(f));
+      const dimsP = Promise.all(
         r.pages.map(async (p) => {
           try {
             const bm = await createImageBitmap(p.file);
@@ -3141,52 +3065,57 @@ export default function ProductDetail({
           }
         }),
       );
-      const files = r.pages.map((p, i) => ({ url: urls[i], name: p.file.name, ...dims[i] }));
-      // 🗂 .ai แยกเลเยอร์ (เจ้าของร้าน) — ทางอัปของเจ้าของเท่านั้น · อัปไม่ขึ้นไม่ขวางการสั่ง
+      const upList = [...r.pages.map((p) => p.file), ...newSrc.map((x) => x.f)];
+      startEarlyUploads(upList); // ไฟล์ที่จอส่งมาอัปล่วงหน้าแล้วจะหยิบผลเดิม · ที่เหลือเริ่มอัปตอนนี้
+      const upP = Promise.all(upList.map((f) => earlyUp.current.get(f) ?? Promise.resolve(new Error("อัปโหลดไม่สำเร็จ")))).finally(() =>
+        upList.forEach((f) => earlyUp.current.delete(f)),
+      );
+      // 🗂 .ai แยกเลเยอร์ (เจ้าของร้าน) — ทางอัปของเจ้าของเท่านั้น · อัปไม่ขึ้นไม่ขวางการสั่ง · เริ่มอัปไปแล้วตอนจอทำไฟล์เสร็จ (earlyOwner)
       const ownerFails: string[] = [];
       const ownerUpload = async (f?: File): Promise<string | undefined> => {
         if (!f) return undefined;
-        let why = "";
-        // 🎫 ทางหลัก: ขอตั๋วแล้วยิงไฟล์ตรงเข้า Supabase (ไฟล์ใหญ่เกินเพดาน Netlify ~6MB · 14 ต.ค. 69)
-        const ct = /\.pdf$/i.test(f.name) ? "application/pdf" : /\.zip$/i.test(f.name) ? "application/zip" : "application/postscript";
-        try {
-          const sbc = getSupabase();
-          const sres = await fetch("/api/admin/calendar-ai", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ name: f.name, size: f.size }),
-          });
-          const sign = (await sres.json().catch(() => null)) as { bucket?: string; path?: string; token?: string; url?: string } | null;
-          if (sbc && sres.ok && sign?.token && sign.path && sign.url) {
-            const { error } = await sbc.storage.from(sign.bucket || "design-templates").uploadToSignedUrl(sign.path, sign.token, f, { contentType: ct });
-            if (!error) return sign.url;
-            why = /maximum allowed size/i.test(error.message)
-              ? "ใหญ่เกินเพดานของ Supabase (Settings › Storage › Upload file size limit)"
-              : error.message;
-            console.warn("calendar owner file signed upload", f.name, error.message);
+        const h = earlyOwner.current.get(f) ?? uploadOwnerFile(f);
+        earlyOwner.current.delete(f);
+        // 💾 หลังบ้านบันทึกกลับเข้าออเดอร์: ได้ลิงก์ปลายทางแล้ว = จดลงออเดอร์เลย ไฟล์อัปต่อเบื้องหลัง (หน้าเว็บเปลี่ยนหน้าแบบ SPA ไม่ตัดการอัป)
+        if (backTo) {
+          const u = await h.signed;
+          if (u) {
+            void h.done.then((r) => r.fail && console.warn("calendar owner file (background)", r.fail));
+            return u;
           }
-        } catch (e) {
-          console.warn("calendar owner file sign", f.name, e);
         }
-        try {
-          const fd = new FormData();
-          fd.append("file", f);
-          const res = await fetch("/api/admin/calendar-ai", { method: "POST", body: fd });
-          const j = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-          if (res.ok && j?.url) return j.url;
-          console.warn("calendar owner file upload", f.name, j?.error ?? res.status);
-        } catch (e) {
-          console.warn("calendar owner file upload", f.name, e);
-        }
-        ownerFails.push(`${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)${why ? ` — ${why}` : ""}`);
-        return undefined;
+        const res = await h.done;
+        if (res.fail) ownerFails.push(res.fail);
+        return res.url;
       };
-      const aiUrl = await ownerUpload(r.ai);
-      // ✂️ ไดคัท: ไฟล์พิมพ์ลายพื้นใส (ทีมผลิต) — จดลิงก์ใน spec · อัปไม่ขึ้น = สั่งไม่ได้ (ภาพที่แนบเป็นแค่ภาพจำลอง)
-      const printUrl = r.print ? await uploadOne(r.print) : "";
-      const whiteUrl = r.white ? await uploadOne(r.white).catch(() => "") : "";
-      // 🖨 .pdf ชิ้นงาน 1 ชิ้น/หน้า + เส้นไดคัท (โปรแกรมจัดวาง 8002) — เจ้าของร้านเท่านั้น เหมือน .ai
-      const pdfUrl = await ownerUpload(r.pdf);
+      // 🗂 .ai + 🖨 .pdf (เจ้าของร้านเท่านั้น) + ✂️ ไฟล์พิมพ์ลายพื้นใส (ไดคัท · อัปไม่ขึ้น = สั่งไม่ได้) — อัปคู่ขนานไปกับหน้า
+      const sideP = Promise.all([
+        ownerUpload(r.ai),
+        ownerUpload(r.pdf),
+        r.print ? uploadOne(r.print) : Promise.resolve(""),
+        r.white ? uploadOne(r.white).catch(() => "") : Promise.resolve(""),
+      ]);
+      sideP.catch(() => {}); // รอด้านล่าง — กัน unhandled ถ้าหน้าพังก่อน
+      const up = await upP;
+      const pageFail = up.slice(0, r.pages.length).find((x): x is Error => x instanceof Error);
+      if (pageFail) throw pageFail;
+      const urls = up.slice(0, r.pages.length) as string[];
+      let srcFails = 0;
+      newSrc.forEach(({ f, i }, k) => {
+        const u = up[r.pages.length + k];
+        if (typeof u === "string") {
+          rememberSource(f, u);
+          sourceUrls[i] = u;
+        } else srcFails++;
+      });
+      // บอกให้รู้ (เดิมเงียบ — เปิดแก้ครั้งหน้ารูปกลายเป็น "รูปหาย" โดยไม่มีใครรู้ว่าเกิดตอนไหน) · ไฟล์ที่ประกอบแล้วยังพิมพ์ได้ปกติ
+      if (srcFails)
+        window.alert(
+          `⚠️ อัปรูปต้นฉบับไม่ขึ้น ${srcFails} รูป — งานนี้สั่ง/พิมพ์ได้ปกติ แต่ถ้าเปิดกลับมาแก้ภายหลัง รูปนั้นจะขึ้นเป็น "รูปหาย" ต้องใส่ใหม่`,
+        );
+      const dims = await dimsP;
+      const files = r.pages.map((p, i) => ({ url: urls[i], name: p.file.name, ...dims[i] }));
+      const [aiUrl, pdfUrl, printUrl, whiteUrl] = await sideP;
       // อัปไม่ขึ้น = บอกเจ้าของร้านตรง ๆ (เดิมเงียบ — ออเดอร์ไม่มีไฟล์โดยไม่รู้ตัว) · ไม่ขวางการสั่ง
       if (ownerFails.length) window.alert(`⚠️ อัปไฟล์ของเจ้าของร้านไม่สำเร็จ — ออเดอร์ยังสั่งต่อได้ แต่จะไม่มีไฟล์นี้:\n${ownerFails.join("\n")}`);
       const entry = {
@@ -3230,61 +3159,6 @@ export default function ProductDetail({
     } catch (e) {
       const msg = e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง";
       setArtErr(msg);
-      throw new Error(msg);
-    } finally {
-      setArtBusy(false);
-    }
-  }
-
-  async function applyStudio(r: StudioResult) {
-    setArtErr("");
-    setArtBusy(true);
-    try {
-      const url = await uploadOne(r.composite);
-      let sourceUrl = "";
-      try {
-        sourceUrl = await uploadOne(r.source);
-      } catch {
-        /* ต้นฉบับอัปไม่ขึ้นก็ยังสั่งได้ — ภาพที่ประกอบแล้วพอผลิตได้ */
-      }
-      const dim = await new Promise<{ w: number; h: number }>((resolve) => {
-        const im = new window.Image();
-        const obj = URL.createObjectURL(r.composite);
-        im.onload = () => {
-          URL.revokeObjectURL(obj);
-          resolve({ w: im.naturalWidth, h: im.naturalHeight });
-        };
-        im.onerror = () => {
-          URL.revokeObjectURL(obj);
-          resolve({ w: 0, h: 0 });
-        };
-        im.src = obj;
-      });
-      const file = { url, name: r.composite.name, ...dim };
-      const entry = {
-        summary: r.summary,
-        head: r.head,
-        dpi: r.dpi,
-        spec: r.spec,
-        sourceUrl,
-        artUrl: url,
-        sourceFile: r.source,
-        placement: r.placement,
-        swapped: r.swapped,
-      };
-      if (editIndex !== null) {
-        setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? file : x)));
-        setPlaced((cur) => cur.map((x, i) => (i === editIndex ? { ...entry, qty: x.qty } : x)));
-      } else {
-        setArtFiles((cur) => [...cur, file]);
-        setPlaced((cur) => [...cur, { ...entry, qty: 1 }]);
-      }
-      setEditIndex(null);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง";
-      setArtErr(msg);
-      // โยนต่อให้จอวางลายรู้ว่าไม่สำเร็จ — ไม่งั้นจอปิดไปเฉย ๆ ทั้งที่ยังไม่ได้ลาย
-      // (ในโหมดออกแบบบนเว็บ ช่อง "แนบลายของคุณ" ถูกซ่อน ข้อความเตือนเลยไม่มีที่โผล่)
       throw new Error(msg);
     } finally {
       setArtBusy(false);
@@ -3403,7 +3277,7 @@ export default function ProductDetail({
    * โหมดแอดมิน (สั่งแทนลูกค้า) ก็ต้องมีปุ่มเริ่มสร้างหน้าตาเดียวกับที่ลูกค้าเห็น
    * — ต่างกันแค่ "ไม่บังคับ" วางลายก่อน (ปุ่มเพิ่มลงตะกร้ายังกดได้เลย ลายมาทางไลน์อยู่แล้ว)
    */
-  const studioOfferStaff = staffOrdering && (!!studioTarget || calMode || cutMode) && !designDone;
+  const studioOfferStaff = staffOrdering && (calMode || cutMode) && !studioOff && !designDone;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
   const artBlocked = studioMode || preArranged ? false : artRequired && !artProvided;
@@ -3641,7 +3515,10 @@ export default function ProductDetail({
     if (reuseOld) extra[REUSE_ART_LABEL] = reuseFrom.trim() || REUSE_ART_DEFAULT;
     if (artFiles.length) extra[ART_LABEL] = artFiles.map((f) => f.url).join(" | ");
     // งานพิมพ์ 2 ด้าน — ภาพลายด้านหลังไปอีกคีย์ (ลูกค้าระบุแล้วว่าลายไหนพิมพ์ด้านไหน)
-    if ((backOn || calMode) && artBackFiles.length) extra[ART_BACK_LABEL] = artBackFiles.map((f) => f.url).join(" | ");
+    // 🗓 ปฏิทิน: หน้าที่ 2+ เอาจากรายการแบบตรง ๆ — artBackFiles ซิงก์ตามด้วย effect อีกรอบ กด 🛒/💾 ในจอทันทีได้ชุดก่อนแก้ (15 ต.ค. 69)
+    const calBacks = calMode && placed.some((p) => p.calState) ? placed.flatMap((p) => p.calBackFiles ?? []) : null;
+    const backList = calBacks ?? artBackFiles;
+    if ((backOn || calMode) && backList.length) extra[ART_BACK_LABEL] = backList.map((f) => f.url).join(" | ");
     /**
      * 🔢 จำนวนชิ้นของแต่ละลาย (ลูกค้าระบุเองใต้รูปที่แนบ — ไม่บังคับ)
      * ลายเดียว = ทั้งหมดอยู่แล้ว ไม่ต้องจด · ลายที่วางบนเทมเพลตมีจำนวนของตัวเองใน PLACEMENT_LABEL แล้ว ไม่จดซ้ำ
@@ -3817,7 +3694,16 @@ export default function ProductDetail({
       window.alert("⚠️ ตัวเลือกของสินค้ายังไม่ครบ — บันทึกกลับเข้าออเดอร์ไม่ได้");
       return;
     }
-    const { urls, back } = splitArtUrls(line);
+    /**
+     * ไฟล์หน้า/หลังเอาจากรายการแบบ (placed) ตรง ๆ — ไม่ใช้ artFiles/artBackFiles
+     * ช่องด้านหลังซิงก์จาก placed ด้วย effect ที่ตามมาอีกรอบ → กดบันทึกทันทีได้หน้าหลังชุด "ก่อนแก้" (ปกใหม่ หลังเก่า)
+     * (OD-261015-7971 หลังเก่า 15 หน้า · 8979 ออกแบบให้ครั้งแรกได้แค่ปก 1 ไฟล์ · 15 ต.ค. 69)
+     */
+    const calPlaced = placed.filter((p) => p.calState);
+    const urls = calPlaced.length
+      ? [...calPlaced.map((p) => p.artUrl), ...calPlaced.flatMap((p) => (p.calBackFiles ?? []).map((f) => f.url))].filter(Boolean)
+      : splitArtUrls(line).urls;
+    const back = calPlaced.length ? calPlaced.flatMap((p) => (p.calBackFiles ?? []).map((f) => f.url)).filter(Boolean) : splitArtUrls(line).back;
     try {
       const res = await fetch("/api/admin/orders/cal-design", {
         method: "POST",
@@ -8890,7 +8776,7 @@ export default function ProductDetail({
           {/* 🎨 จอวางลายเปิดอยู่ = ซ่อนแถบนี้ — เดิมลอยทับแถบเครื่องมือล่างของจอวางลาย ปุ่ม "ออกแบบ" กดแล้วไม่มีอะไรเกิด (เปิดอยู่แล้ว · 12 ต.ค. 69) */}
           <div
             className={`pointer-events-none fixed inset-x-0 bottom-0 z-[91] px-3 pb-3 transition-transform duration-200 max-[1000px]:pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:px-6 lg:pb-5 ${
-              showBuyBar && !studio && !slotStudio ? "translate-y-0" : "translate-y-full"
+              showBuyBar ? "translate-y-0" : "translate-y-full"
             }`}
           >
             <div className="pointer-events-auto mx-auto flex items-center gap-3 rounded-3xl border border-amber-200 bg-white/95 px-4 py-2.5 shadow-[0_14px_34px_-12px_rgba(23,58,107,0.35)] backdrop-blur lg:max-w-3xl lg:rounded-full lg:px-5 lg:py-3">
@@ -9250,24 +9136,6 @@ export default function ProductDetail({
               );
             })()}
 
-          {/* 🧩 จอวางรูปแบบมีช่อง (Theme) — ใช้เมื่อเทมเพลตกำหนดช่องไว้ */}
-          {slotStudio && studioTarget?.anySlots ? (
-            <SlotStudio
-              open
-              onClose={() => {
-                setSlotStudio(false);
-                setEditIndex(null);
-              }}
-              title={studioTarget.title}
-              sides={studioTarget.sides}
-              requireAll={studioTarget.slotsRequired}
-              perSheet={studioTarget.perSheet}
-              initial={editIndex !== null ? placed[editIndex]?.slotShots : undefined}
-              uploadSource={uploadOne}
-              onApply={applySlots}
-            />
-          ) : null}
-
           {/* 🗓 จอสร้างปฏิทินโฟโต้การ์ด */}
           {calOpen && (
             <CalendarStudio
@@ -9321,26 +9189,16 @@ export default function ProductDetail({
                 if (c && product.calendarStudio) setSelections((s) => ({ ...s, [product.calendarStudio!.yearLabel]: c.name }));
               }}
               initial={editIndex !== null ? placed[editIndex]?.calState : undefined}
+              seedSources={editIndex === null && calSeed.length ? calSeed : undefined}
               cutPresets={cutMode ? cutPresets : undefined}
               onApply={applyCalendar}
+              onEarly={(e) => {
+                if (e.files?.length) startEarlyUploads(e.files);
+                if (e.owner) startEarlyOwner(e.owner);
+              }}
             />
           )}
 
-          {/* 🖼 จอวางลายบนเทมเพลต — เปิดจากการ์ดเทมเพลตด้านบน */}
-          {studio && (
-            <TemplateStudio
-              open
-              onClose={() => setStudio(null)}
-              title={studio.title}
-              frame={studio.frame}
-              guideUrl={studio.guideUrl}
-              skinUrl={studio.skinUrl}
-              tplUrl={studio.tplUrl}
-              perSheet={studio.perSheet}
-              initial={studio.initial}
-              onApply={applyStudio}
-            />
-          )}
         </div>
       </div>
     </div>

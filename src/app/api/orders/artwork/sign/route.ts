@@ -28,24 +28,14 @@ const MAX_BYTES = 15 * 1024 * 1024;
 // กันสแปม — 120 ตั๋ว/ชั่วโมง ต่อ IP (นับใน Firestore ข้ามอินสแตนซ์ · เดิม Map ในหน่วยความจำไม่เคยถึงเพดานบน Netlify)
 const LIMIT = 120;
 
-export async function POST(req: Request) {
-  const sb = getSupabaseAdmin();
-  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+type SignOne = { ok: true; bucket: string; path: string; token: string; url: string } | { ok: false; error: string; status: number };
 
-  const ip = clientIp(req);
-  // พนักงานหลังบ้านที่ล็อกอิน (แก้แบบปฏิทินให้ลูกค้า 16–52 ไฟล์ต่อรอบ) ไม่นับเพดาน — เพดานมีไว้กันสแปมจากคนนอก (15 ต.ค. 69)
-  if (!(await currentActor()) && (await rateLimited(`artwork-sign:${ip}`, LIMIT, 3600_000)))
-    return NextResponse.json({ error: "อัปโหลดถี่เกินไป ลองใหม่ในอีกสักครู่" }, { status: 429 });
-
-  const body = (await req.json().catch(() => null)) as { type?: string; size?: number } | null;
-  const ext = EXT[String(body?.type ?? "")];
-  if (!ext) return NextResponse.json({ error: "รองรับเฉพาะไฟล์ JPG / PNG / WEBP" }, { status: 400 });
-  const size = Number(body?.size ?? 0);
+async function signOne(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, type: unknown, sizeRaw: unknown): Promise<SignOne> {
+  const ext = EXT[String(type ?? "")];
+  if (!ext) return { ok: false, error: "รองรับเฉพาะไฟล์ JPG / PNG / WEBP", status: 400 };
+  const size = Number(sizeRaw ?? 0);
   if (size > MAX_BYTES)
-    return NextResponse.json(
-      { error: `ไฟล์ใหญ่เกิน ${MAX_BYTES / 1024 / 1024}MB — ถ้าไฟล์ใหญ่กว่านี้ให้แนบเป็นลิงก์ไฟล์แทน` },
-      { status: 400 },
-    );
+    return { ok: false, error: `ไฟล์ใหญ่เกิน ${MAX_BYTES / 1024 / 1024}MB — ถ้าไฟล์ใหญ่กว่านี้ให้แนบเป็นลิงก์ไฟล์แทน`, status: 400 };
 
   const path = `art/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.${ext}`;
   const sign = () => sb.storage.from(BUCKET).createSignedUploadUrl(path);
@@ -55,8 +45,38 @@ export async function POST(req: Request) {
     await sb.storage.createBucket(BUCKET, { public: true, fileSizeLimit: `${MAX_BYTES}` });
     ({ data, error } = await sign());
   }
-  if (error || !data?.token) return NextResponse.json({ error: error?.message ?? "ขอตั๋วอัปโหลดไม่สำเร็จ" }, { status: 500 });
-
+  if (error || !data?.token) return { ok: false, error: error?.message ?? "ขอตั๋วอัปโหลดไม่สำเร็จ", status: 500 };
   const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
-  return NextResponse.json({ ok: true, bucket: BUCKET, path, token: data.token, url: pub.publicUrl });
+  return { ok: true, bucket: BUCKET, path, token: data.token, url: pub.publicUrl };
+}
+
+/** ขอตั๋วทีละชุดได้สูงสุดเท่านี้ (ปฏิทิน 26 หน้า + ต้นฉบับ 26 รูป) */
+const MAX_BATCH = 60;
+
+/**
+ * POST { type, size }            → { ok, bucket, path, token, url }          (ทีละไฟล์ — แบบเดิม)
+ * POST { files: [{type,size}] }  → { ok, items: [{ok,bucket,path,token,url} | {ok:false,error}] }
+ *   🚀 ทีละชุด (15 ต.ค. 69): จอสร้างปฏิทินอัป 16–52 ไฟล์ต่อครั้ง · เดิมขอตั๋วทีละไฟล์ ~0.6 วิ/ใบ = ช้ากว่าตัวอัปเอง
+ *   เพดานกันสแปมนับตามจำนวนไฟล์เท่าเดิม
+ */
+export async function POST(req: Request) {
+  const sb = getSupabaseAdmin();
+  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+
+  const body = (await req.json().catch(() => null)) as { type?: string; size?: number; files?: { type?: string; size?: number }[] } | null;
+  const batch = Array.isArray(body?.files) ? body!.files.slice(0, MAX_BATCH) : null;
+  if (batch && !batch.length) return NextResponse.json({ error: "ไม่มีไฟล์" }, { status: 400 });
+
+  const ip = clientIp(req);
+  // พนักงานหลังบ้านที่ล็อกอิน (แก้แบบปฏิทินให้ลูกค้า 16–52 ไฟล์ต่อรอบ) ไม่นับเพดาน — เพดานมีไว้กันสแปมจากคนนอก (15 ต.ค. 69)
+  if (!(await currentActor()) && (await rateLimited(`artwork-sign:${ip}`, LIMIT, 3600_000, batch?.length ?? 1)))
+    return NextResponse.json({ error: "อัปโหลดถี่เกินไป ลองใหม่ในอีกสักครู่" }, { status: 429 });
+
+  if (batch) {
+    const items = await Promise.all(batch.map((f) => signOne(sb, f?.type, f?.size)));
+    return NextResponse.json({ ok: true, items: items.map((r) => (r.ok ? r : { ok: false, error: r.error })) });
+  }
+  const r = await signOne(sb, body?.type, body?.size);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  return NextResponse.json(r);
 }

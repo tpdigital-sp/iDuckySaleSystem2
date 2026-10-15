@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import RequirePerm from "@/components/RequirePerm";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import SlotEditor from "@/components/admin/SlotEditor";
 import {
   DEFAULT_BLEED_MM,
   DEFAULT_SAFE_MM,
@@ -17,7 +16,6 @@ import {
   normalizeTemplate,
   previewOf,
   skinOf,
-  slotsOf,
   templateCategories,
   templateFiles,
   templateFrame,
@@ -26,7 +24,6 @@ import {
   type TemplateFile,
   type TemplateWhen,
   whenList,
-  type TemplateSlot,
 } from "@/lib/design-templates";
 import {
   deleteTemplate,
@@ -154,77 +151,6 @@ function TemplateThumb({ t, tone }: { t: Draft; tone: string }) {
   return <TemplateIcon tone={tone} />;
 }
 
-/**
- * 🧩 ผังช่องของหน้าหนึ่ง แบบย่อ อ่านอย่างเดียว — ใช้ในหน้าสรุปตอนผังกลางไม่ได้ใช้งานแล้ว
- * แอดมินต้องเห็นว่าแต่ละหน้าวางช่องไว้ยังไงโดยไม่ต้องกดสลับไปทีละหน้า · กดที่การ์ดแล้วเข้าไปแก้หน้านั้นได้เลย
- */
-function SlotBoardPreview({
-  label,
-  slots,
-  ratio,
-  previewUrl,
-  onOpen,
-}: {
-  label: string;
-  slots: TemplateSlot[];
-  ratio?: number;
-  previewUrl?: string;
-  onOpen: () => void;
-}) {
-  const r = ratio && ratio > 0 ? ratio : 1;
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      title={`แก้ผังของ ${label}`}
-      className="group w-full max-w-[18rem] rounded-xl bg-white p-2 text-left ring-1 ring-slate-200 transition hover:ring-violet-400 hover:shadow-md"
-    >
-      <div
-        className="relative w-full overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-200"
-        style={{
-          aspectRatio: `${r}`,
-          ...(previewUrl
-            ? {
-                // ยืดเต็มกรอบเหมือนกระดานลากจริง — พิกัด % จะได้ตรงกัน
-                backgroundImage: `url(${previewUrl})`,
-                backgroundSize: "100% 100%",
-                backgroundRepeat: "no-repeat",
-              }
-            : {}),
-        }}
-      >
-        {slots.map((s, i) => (
-          <span
-            key={s.id}
-            style={{
-              left: `${s.xPct}%`,
-              top: `${s.yPct}%`,
-              width: `${s.wPct}%`,
-              height: `${s.hPct}%`,
-              borderRadius: s.shape === "circle" ? "50%" : 0,
-            }}
-            className="absolute grid place-items-center border-2 border-violet-400/70 bg-violet-500/15 text-[10px] font-extrabold text-violet-700"
-          >
-            {i + 1}
-          </span>
-        ))}
-        {!slots.length && (
-          <span className="absolute inset-0 grid place-items-center text-[11px] font-semibold text-slate-400">
-            ยังไม่มีช่อง
-          </span>
-        )}
-      </div>
-      <p className="mt-1.5 flex items-center gap-1 px-0.5 text-[11px] font-bold text-slate-700">
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">
-          {slots.length} ช่อง
-        </span>
-        <span className="shrink-0 text-slate-300 transition group-hover:text-violet-500">✎</span>
-      </p>
-    </button>
-  );
-}
-
 function AdminTemplatesInner() {
   /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ */
   const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
@@ -267,12 +193,6 @@ function AdminTemplatesInner() {
   /** ไฟล์ที่ระบบกำลังทำรูปตัวอย่างให้อยู่ — โชว์เป็นช่องกะพริบแทนรูป ไม่มีปุ่มให้กด */
   const [thumbBusy, setThumbBusy] = useState<string | null>(null);
   /** ชุดที่กำลังเปิดหน้าต่างตั้งค่า Theme อยู่ (เก็บเป็น id — ข้อมูลอ่านสด ๆ จาก list) */
-  const [themeOn, setThemeOn] = useState<string | null>(null);
-  /**
-   * ไฟล์ (= ด้าน) ที่กำลังตั้งช่องอยู่ในหน้าต่าง Theme
-   * null = ตั้งของ "ทั้งชุด" ซึ่งไฟล์ที่ไม่ได้ตั้งของตัวเองจะใช้ผังนี้
-   */
-  const [themeFile, setThemeFile] = useState<string | null>(null);
   /** ชุดที่ไล่เติมรูปย้อนหลังไปแล้ว — กันทำซ้ำทุกครั้งที่กางการ์ด */
   const backfilled = useRef<Set<string>>(new Set());
   /** ความคืบหน้าตอนโยนไฟล์ทีเดียวหลายไฟล์ */
@@ -328,15 +248,6 @@ function AdminTemplatesInner() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [zoom]);
-
-  useEffect(() => {
-    if (!themeOn) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setThemeOn(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [themeOn]);
 
   /** โหลดตัวเลือกของสินค้าอ้างอิงตัวหนึ่ง (ครั้งเดียวต่อสินค้า) */
   async function ensureProductOptions(pid: string) {
@@ -1898,7 +1809,6 @@ function AdminTemplatesInner() {
                            * แถวนี้ = "หน้า" หนึ่งหน้าของชุด — มาจากไฟล์ที่อัปเข้ามา หรือจากการกด "＋ เพิ่มหน้า" ในตั้งค่า Theme
                            * แถวที่ไม่มีไฟล์งานเลยคือแบบหลัง · ต้องบอกให้ชัด ไม่งั้นดูเหมือนแถวเสียที่อัปไฟล์ไม่ขึ้น
                            */
-                          const nSlots = slotsOf(t, f).length;
                           const noArt = !f.fileUrl && !f.linkUrl;
                           const pageName = f.side?.trim() || `หน้า ${fi + 1}`;
                           return (
@@ -1908,19 +1818,7 @@ function AdminTemplatesInner() {
                               noArt ? "bg-violet-50/40" : ""
                             }`}
                           >
-                            {/* ชื่อหน้า — กดแล้วเข้าไปตั้งช่องของหน้านั้นได้เลย */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setThemeFile(f.id);
-                                setThemeOn(t.id);
-                              }}
-                              title={`เปิดตั้งค่า Theme ของ “${pageName}”`}
-                              className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700 transition hover:bg-violet-200"
-                            >
-                              {pageName}
-                              {nSlots ? ` · 🧩 ${nSlots}` : ""}
-                            </button>
+                            <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">{pageName}</span>
                             {/* รูปตัวอย่างของไฟล์นี้ — ระบบทำให้เองตอนอัป · กดที่รูปเพื่อขยาย */}
                             {f.previewUrl ? (
                               <button
@@ -1989,18 +1887,6 @@ function AdminTemplatesInner() {
                               </a>
                             ) : (
                               <span className="flex min-w-0 flex-1 items-center gap-2">
-                                {/*
-                                  หน้าที่เพิ่มจากตั้งค่า Theme ยังไม่มีไฟล์ .ai ของตัวเอง — ไม่ใช่ความผิดพลาด
-                                  ลูกค้าออกแบบบนเว็บได้อยู่แล้ว (ใช้ขนาด+ช่องที่ตั้งไว้) ไฟล์ .ai มีไว้ให้คนที่ทำเองในโปรแกรมโหลด
-                                */}
-                                {noArt && (
-                                  <span
-                                    className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700"
-                                    title="หน้านี้เกิดจากปุ่ม “＋ เพิ่มหน้า” ในตั้งค่า Theme — ลูกค้าออกแบบบนเว็บได้ตามปกติ ไฟล์งานจะอัปทีหลังหรือไม่อัปเลยก็ได้ (มีไว้ให้คนทำเองในโปรแกรมโหลด)"
-                                  >
-                                    🧩 หน้าที่เพิ่มเอง · ยังไม่มีไฟล์งาน
-                                  </span>
-                                )}
                                 <input
                                   value={f.linkUrl ?? ""}
                                   onChange={(e) => patchFile(t.id, f.id, { linkUrl: e.target.value.trim() || undefined })}
@@ -2194,46 +2080,6 @@ function AdminTemplatesInner() {
                       </span>
                     </div>
 
-                    {/*
-                      🧩 ช่องใส่รูป (Theme) — กำหนดที่ระดับชุด ใช้กับทุกไฟล์ในชุด
-                      งานที่ต้องวางหลายรูปบนแผ่นเดียว (สติกเกอร์ 4 ดวง · photobooth strip · สกรีน 2 ด้าน)
-                      ตัวจัดช่องต้องใช้พื้นที่กว้าง เลยแยกไปเปิดเป็นหน้าต่างเต็ม ๆ แทนการฝังในการ์ด
-                    */}
-                    {(() => {
-                      const list = slotsOf(t);
-                      const names = list.map((sl, i) => sl.label?.trim() || `${i + 1}`).join(" · ");
-                      return (
-                        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-violet-50/60 px-3 py-2.5 ring-1 ring-violet-100">
-                          <span className="text-[11px] font-bold text-violet-800">🧩 ช่องใส่รูป (Theme)</span>
-                          <span className={`min-w-0 flex-1 truncate text-[11px] ${faint}`}>
-                            {files.length > 1 && (
-                              <span className="mr-1 font-semibold text-violet-700">
-                                {files.length} ด้าน ({files.map((f, i) => f.side?.trim() || `ด้านที่ ${i + 1}`).join(" · ")}) ·
-                              </span>
-                            )}
-                            {list.length ? (
-                              <>
-                                <span className="font-semibold text-violet-700">{list.length} ช่อง</span> · {names}
-                                {t.slotsRequired ? " · ต้องใส่ครบทุกช่อง" : ""}
-                              </>
-                            ) : (
-                              "ยังไม่ได้ตั้งช่อง — ลูกค้าจะวางลายเดียวเต็มกรอบตามปกติ"
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setThemeFile(null);
-                              setThemeOn(t.id);
-                            }}
-                            className={btnSmDucky}
-                          >
-                            {list.length ? "🧩 แก้ไข Theme" : "🧩 ตั้งค่า Theme"}
-                          </button>
-                        </div>
-                      );
-                    })()}
-
                       </div>
                     </div>
 
@@ -2298,529 +2144,6 @@ function AdminTemplatesInner() {
       )}
         </div>
       </div>
-
-      {/* ── หน้าต่างตั้งค่า Theme — กว้างเกือบเต็มจอ เพราะต้องลากช่องบนรูปจริง ── */}
-      {(() => {
-        const t = list.find((x) => x.id === themeOn);
-        if (!t) return null;
-        const files = templateFiles(t);
-        return (
-          <div
-            role="dialog"
-            aria-label={`ตั้งค่า Theme ${t.name}`}
-            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/70 p-3 backdrop-blur-sm sm:p-6"
-          >
-            <div className="w-full max-w-6xl rounded-2xl bg-white p-4 shadow-2xl sm:p-5">
-              {(() => {
-                /**
-                 * ไฟล์ในชุดที่ถือว่าเป็น "ด้าน" — งานสกรีน 2 ด้านจะมีมากกว่าหนึ่ง
-                 * ผังช่องตั้งได้ทั้งระดับชุด (ใช้ร่วมทุกไฟล์) และระดับไฟล์ (เฉพาะด้านนั้น)
-                 */
-                const multi = files.length > 1;
-                const cur = themeFile ? files.find((f) => f.id === themeFile) : null;
-                const choiceOf = (f: TemplateFile) => (f.choice ?? "").trim();
-                /**
-                 * ไฟล์ในชุดแยกกันด้วยอะไร — "ด้านของชิ้นเดียวกัน" กับ "คนละค่าตัวเลือก" คนละเรื่องกัน
-                 * ชุดที่ผูกกลุ่มตัวเลือก (เช่นแยกตาม “ขนาด”) ลูกค้าหยิบไปแค่ไฟล์ของค่าที่เลือก —
-                 * เอาช่องไปแจกข้ามค่าตัวเลือกไม่ได้ ไม่งั้นแต่ละขนาดจะเหลือช่องเดียว
-                 */
-                const byChoice = !!t.optionLabel?.trim() && files.some((f) => choiceOf(f));
-                const oneChoice = files.every((f) => choiceOf(f) === choiceOf(files[0]));
-                /** ป้ายของแต่ละไฟล์ — ต้องบอกทั้งค่าตัวเลือกและชื่อด้าน ไม่งั้นแอดมินแยกไม่ออกว่ากำลังตั้งของอะไร */
-                const tabLabel = (f: TemplateFile, i: number) =>
-                  [byChoice ? choiceOf(f) || "(ไม่ระบุค่า)" : "", f.side?.trim() || `หน้า ${i + 1}`]
-                    .filter(Boolean)
-                    .join(" · ");
-                const own = cur?.slots ?? [];
-                /** ผังที่ด้านนี้ใช้จริง (ไม่มีของตัวเอง = ตกไปใช้ของทั้งชุด) */
-                const shown = cur ? (own.length ? own : slotsOf(t)) : slotsOf(t);
-                const inherited = !!cur && !own.length && slotsOf(t).length > 0;
-                /** ทุกด้านมีผังของตัวเองแล้ว → ผังกลางไม่ถูกใช้งาน ไม่ต้องให้แก้ */
-                const centralIdle = multi && !slotsOf(t).length && files.every((f) => (f.slots ?? []).length > 0);
-                const sizeOf = (f?: TemplateFile) =>
-                  f?.widthMm && f?.heightMm ? f.widthMm / f.heightMm : undefined;
-
-                /**
-                 * ผังสองหน้าตรงกันไหม — เทียบตำแหน่ง/ขนาด/ทรงทีละช่อง (ปัด 2 ตำแหน่ง กันเลขจากการลากมือ)
-                 * งานพิมพ์ 2 หน้าต้องทับกันพอดี ตั้งช่องแยกทีละหน้าแล้วเพี้ยนกันง่ายมาก และดูทีละหน้าก็ไม่เห็น
-                 */
-                const key = (s: TemplateSlot, mirror = false) =>
-                  `${[mirror ? 100 - s.xPct - s.wPct : s.xPct, s.yPct, s.wPct, s.hPct]
-                    .map((v) => Math.round(v * 100) / 100)
-                    .join(",")}${s.shape === "circle" ? "c" : "r"}`;
-                /**
-                 * ผังสองหน้าเข้ากันไหม
-                 * same = ทับกันพอดี · mirror = พลิกซ้าย-ขวา (ตั้งใจให้ทับกันทะลุแผ่น ไม่ใช่ความผิดพลาด) · off = เหลื่อม
-                 */
-                const alignOf = (a: TemplateSlot[], b: TemplateSlot[]): "same" | "mirror" | "off" => {
-                  if (a.length !== b.length) return "off";
-                  if (a.every((s, i) => key(s) === key(b[i]))) return "same";
-                  if (a.length && a.every((s, i) => key(s, true) === key(b[i]))) return "mirror";
-                  return "off";
-                };
-                const sameLayout = (a: TemplateSlot[], b: TemplateSlot[]) => alignOf(a, b) !== "off";
-                /** หน้าอื่นที่ผังเหลื่อมกับหน้าที่เปิดอยู่ */
-                const misaligned = cur ? files.filter((f) => f.id !== cur.id && !sameLayout(shown, slotsOf(t, f))) : [];
-                /** มีหน้าที่วางแบบพลิกไว้ไหม — บอกให้รู้ว่าตั้งใจ ไม่ใช่ลืม */
-                const mirrored = cur
-                  ? files.some((f) => f.id !== cur.id && alignOf(shown, slotsOf(t, f)) === "mirror")
-                  : files.slice(1).some((f) => alignOf(slotsOf(t, files[0]), slotsOf(t, f)) === "mirror");
-                /** ยกผังของหน้าที่เปิดอยู่ไปให้ทุกหน้า · mirror = พลิกซ้าย-ขวา (ลายด้านหลังที่ต้องทับกันทะลุแผ่น) */
-                const applyLayoutToAll = async (mirror: boolean) => {
-                  if (!cur) return;
-                  const targets = files.filter((f) => f.id !== cur.id);
-                  if (
-                    !(await askConfirm({
-                      icon: mirror ? "🔄" : "📋",
-                      title: `ใช้ผัง ${shown.length} ช่องของหน้านี้กับอีก ${targets.length} หน้า?`,
-                      detail: [
-                        targets.map((f) => `${tabLabel(f, files.indexOf(f))} — ผังเดิมจะถูกทับ`).join("\n"),
-                        mirror
-                          ? "วางแบบพลิกซ้าย-ขวา (ช่องที่อยู่ชิดขวาจะไปอยู่ชิดซ้าย) — ใช้กับงานที่ลายสองหน้าต้องทับกันทะลุแผ่น"
-                          : "วางตำแหน่งเดิมเป๊ะ ๆ ทุกช่อง — พิมพ์ออกมาแล้วซ้อนกันพอดี",
-                      ].join("\n\n"),
-                      confirmLabel: mirror ? "วางแบบพลิก" : "ใช้ผังนี้ทุกหน้า",
-                    }))
-                  )
-                    return;
-                  const n = (v: number) => Math.round(v * 100) / 100;
-                  patch(t.id, {
-                    files: files.map((f) =>
-                      f.id === cur.id
-                        ? // หน้าที่เปิดอยู่: ตรึงผังที่เห็นให้เป็นของตัวเอง (เผื่อยังยืมผังกลางอยู่)
-                          { ...f, slots: shown.length ? shown : undefined }
-                        : {
-                            ...f,
-                            slots: shown.length
-                              ? shown.map((s) => ({
-                                  ...s,
-                                  id: rid("sl"),
-                                  xPct: mirror ? n(100 - s.xPct - s.wPct) : s.xPct,
-                                }))
-                              : undefined,
-                          }
-                    ),
-                  });
-                };
-
-                /**
-                 * เพิ่มหน้าใหม่ต่อท้าย — งานหลายหน้าไม่ได้มีแค่หน้า-หลัง (ปฏิทิน สมุด การ์ดหลายใบ ฯลฯ)
-                 * ยืมขนาด/ค่าตัวเลือก/ผังช่องจากหน้าที่อ้างอิงมาให้ เริ่มต้นจะได้ทับกันพอดีอยู่แล้ว
-                 */
-                const addPage = () => {
-                  const from = cur ?? files[files.length - 1];
-                  const page: TemplateFile = {
-                    id: rid("f"),
-                    choice: from?.choice,
-                    widthMm: from?.widthMm,
-                    heightMm: from?.heightMm,
-                    ...(from?.slots?.length
-                      ? { slots: from.slots.map((s) => ({ ...s, id: rid("sl") })) }
-                      : {}),
-                  };
-                  patch(t.id, { files: [...files, page] });
-                  setThemeFile(page.id);
-                };
-                /** เอาหน้านี้ออกจากชุด — เพิ่มหน้าเองได้ ก็ต้องลบเองได้ (เหลือหน้าสุดท้ายลบไม่ได้) */
-                const removePage = async () => {
-                  if (!cur || files.length < 2) return;
-                  const i = files.indexOf(cur);
-                  if (
-                    !(await askConfirm({
-                      icon: "🗑",
-                      title: `เอา “${tabLabel(cur, i)}” ออกจากชุด?`,
-                      detail: [
-                        cur.fileName ? `ไฟล์ ${cur.fileName} จะถูกเอาออกจากชุดด้วย` : "หน้านี้ยังไม่มีไฟล์งาน",
-                        `ผังช่องของหน้านี้จะหายไป · เหลือ ${files.length - 1} หน้า`,
-                      ].join("\n\n"),
-                      confirmLabel: "เอาหน้านี้ออก",
-                      danger: true,
-                    }))
-                  )
-                    return;
-                  patch(t.id, { files: files.filter((f) => f.id !== cur.id) });
-                  setThemeFile(null);
-                };
-
-                return (
-                  <>
-                    <div className="mb-3 flex items-start gap-3 border-b border-slate-100 pb-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-extrabold text-slate-800">
-                          🧩 ตั้งค่า Theme — ช่องใส่รูป
-                          {cur && (
-                            <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
-                              {tabLabel(cur, files.findIndex((f) => f.id === cur.id))}
-                            </span>
-                          )}
-                        </p>
-                        <p className={`mt-0.5 truncate text-xs ${faint}`}>
-                          {t.name} ·{" "}
-                          {cur
-                            ? `ผังนี้ใช้เฉพาะไฟล์นี้ (ลูกค้าเห็นเป็นหน้าของตัวเอง)`
-                            : multi
-                              ? `ผังกลาง — ไฟล์ที่ไม่ได้ตั้งของตัวเองจะใช้ผังนี้ (${files.length} ไฟล์ในชุด)`
-                              : `ใช้กับทุกไฟล์ในชุดนี้ (${files.length} ไฟล์)`}
-                        </p>
-                      </div>
-                      <button type="button" onClick={() => setThemeOn(null)} className={btnSmNeutral}>
-                        ✕ ปิด
-                      </button>
-                    </div>
-
-                    {/*
-                      ── เลือกด้านที่จะตั้งช่อง ──
-                      ชุดที่มีหลายไฟล์ = งานหลายด้าน แต่ละด้านเป็นคนละหน้าฝั่งลูกค้า
-                      ตรงนี้คือที่เดียวที่บอกได้ว่ากำลังตั้งของด้านไหนอยู่
-                    */}
-                    {/* ค่าระดับชุด — ต้องเห็นได้เสมอ ไม่ผูกกับว่าหน้าไหนมีช่องกี่ช่อง */}
-                    <label
-                      className="mb-2 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-600"
-                      title="ติ๊กแล้วลูกค้าต้องใส่รูปให้ครบทุกช่อง (ทุกด้าน) ถึงจะกดใช้ลายได้"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!t.slotsRequired}
-                        onChange={(e) => patch(t.id, { slotsRequired: e.target.checked || undefined })}
-                        className="h-3.5 w-3.5 accent-violet-500"
-                      />
-                      ต้องใส่ครบทุกช่อง{multi ? " (ทุกด้าน)" : ""}
-                    </label>
-
-                    {multi && (
-                      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                        <span className={`text-[11px] ${faint}`}>ตั้งช่องของ:</span>
-                        <button
-                          type="button"
-                          onClick={() => setThemeFile(null)}
-                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition ${
-                            !cur ? "bg-violet-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          ผังกลาง (ทั้งชุด) · {centralIdle ? "ไม่ได้ใช้" : `${slotsOf(t).length} ช่อง`}
-                        </button>
-                        {files.map((f, fi) => {
-                          const n = (f.slots ?? []).length;
-                          return (
-                            <button
-                              key={f.id}
-                              type="button"
-                              onClick={() => setThemeFile(f.id)}
-                              className={`rounded-full px-3 py-1 text-[11px] font-bold transition ${
-                                cur?.id === f.id ? "bg-violet-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                              }`}
-                              title={f.fileName}
-                            >
-                              {tabLabel(f, fi)} · {n ? `${n} ช่อง` : `ใช้ผังกลาง (${slotsOf(t).length})`}
-                            </button>
-                          );
-                        })}
-                        {/* กี่หน้าก็ได้ ไม่จำกัดแค่หน้า-หลัง (ชื่อหน้าไม่บังคับ — ไม่ตั้ง = "หน้า N") */}
-                        <button
-                          type="button"
-                          onClick={addPage}
-                          title="เพิ่มหน้าใหม่ต่อท้าย (ยืมขนาดและผังช่องของหน้าที่เปิดอยู่)"
-                          className="rounded-full border border-dashed border-violet-300 px-3 py-1 text-[11px] font-bold text-violet-600 transition hover:border-violet-500 hover:bg-violet-50"
-                        >
-                          ＋ เพิ่มหน้า
-                        </button>
-                      </div>
-                    )}
-
-                    {/*
-                      หน้าที่ไม่มีช่องเลยในชุดที่หน้าอื่นมีช่อง = หน้าตายฝั่งลูกค้า
-                      (จอวางรูปเปิดเป็นแบบช่อง แต่หน้านั้นไม่มีกล่องให้กด เลยใส่รูปไม่ได้)
-                    */}
-                    {multi &&
-                      (() => {
-                        const empty = files.filter((f) => !slotsOf(t, f).length);
-                        if (!empty.length || empty.length === files.length) return null;
-                        return (
-                          <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
-                            ⚠️ {empty.map((f) => `“${tabLabel(f, files.indexOf(f))}”`).join(" และ ")} ยังไม่มีช่องเลย —
-                            ลูกค้าจะเปิดถึงหน้านี้แต่ใส่รูปไม่ได้ ต้องตั้งช่องให้ครบทุกหน้า (หรือเอาหน้านั้นออก)
-                          </p>
-                        );
-                      })()}
-
-                    {/*
-                      ตั้งชื่อหน้าได้จากตรงนี้เลย — ชื่อเดียวกับที่ลูกค้าเห็นบนแถบหน้ากระดาษ
-                      (แก้ได้ที่แถวไฟล์ด้วย แต่ตอนตั้งช่องอยู่มองไม่เห็นแถวไฟล์ เลยต้องมีให้ที่นี่)
-                    */}
-                    {cur && multi && (
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className={`text-[11px] ${faint}`}>ชื่อหน้านี้:</span>
-                        <input
-                          value={cur.side ?? ""}
-                          onChange={(e) => patchFile(t.id, cur.id, { side: e.target.value || undefined })}
-                          placeholder={`หน้า ${files.indexOf(cur) + 1}`}
-                          aria-label="ชื่อหน้าของไฟล์นี้"
-                          className={`${inputSm} w-48`}
-                        />
-                        <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
-                          ลูกค้าเห็นชื่อนี้บนแถบหน้ากระดาษ · จะตั้งว่าอะไรก็ได้ (ปกหน้า · เดือนมกราคม · การ์ดใบที่ 3) ·
-                          เว้นว่าง = “หน้า {files.indexOf(cur) + 1}”
-                        </span>
-                        {files.length > 1 && (
-                          <button type="button" onClick={() => void removePage()} className={btnSmDanger}>
-                            🗑 เอาหน้านี้ออก
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/*
-                      ── ผังของแต่ละหน้าตรงกันไหม ──
-                      งานพิมพ์ 2 หน้าต้องทับกันพอดี แต่แอดมินตั้งช่องทีละหน้า เลยไม่มีทางรู้ว่าอีกหน้าวางไว้ตรงไหน
-                      แถบนี้เทียบให้ทันทีว่าตรงหรือเหลื่อม + ยกผังหน้านี้ไปทับทุกหน้าได้ในปุ่มเดียว
-                    */}
-                    {cur && multi && shown.length > 0 && (
-                      <div
-                        className={`mb-2 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 ring-1 ${
-                          misaligned.length ? "bg-rose-50 ring-rose-200" : "bg-emerald-50 ring-emerald-200"
-                        }`}
-                      >
-                        <span
-                          className={`min-w-0 flex-1 text-[11px] font-semibold ${
-                            misaligned.length ? "text-rose-800" : "text-emerald-800"
-                          }`}
-                        >
-                          {misaligned.length ? (
-                            <>
-                              ⚠️ ผังหน้านี้<strong>ไม่ตรง</strong>กับ{" "}
-                              {misaligned.map((f) => tabLabel(f, files.indexOf(f))).join(" · ")} — พิมพ์ออกมาแล้วช่องสองหน้าจะเหลื่อมกัน
-                            </>
-                          ) : mirrored ? (
-                            <>✓ ผังตรงกันทุกหน้าแบบ<strong>พลิกซ้าย-ขวา</strong> — ลายสองหน้าทับกันทะลุแผ่นพอดี</>
-                          ) : (
-                            <>✓ ผังตรงกันทุกหน้าแล้ว — พิมพ์ออกมาช่องซ้อนกันพอดี</>
-                          )}
-                        </span>
-                        <button type="button" onClick={() => void applyLayoutToAll(false)} className={btnSmDucky}>
-                          📋 ใช้ผังหน้านี้กับทุกหน้า
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void applyLayoutToAll(true)}
-                          title="วางตำแหน่งแบบพลิกซ้าย-ขวา — ใช้กับงานที่ลายสองหน้าต้องทับกันทะลุแผ่น"
-                          className={btnSmNeutral}
-                        >
-                          🔄 พลิกซ้าย-ขวา
-                        </button>
-                      </div>
-                    )}
-
-                    {/*
-                      ชุดไฟล์เดียว = งานหน้าเดียว · ช่องหลายช่องบนหน้าเดียว ≠ งานหลายหน้า
-                      "เพิ่มหน้า" = ได้กี่หน้าก็ได้ ตั้งชื่อเอง · "ทำเป็นงาน 2 ด้าน" = ทางลัดของงานหน้า-หลังที่เจอบ่อยสุด
-                    */}
-                    {!multi && (
-                      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-                        <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
-                          ชุดนี้มีไฟล์เดียว = <strong className="font-bold text-slate-700">งานหน้าเดียว</strong> — ช่องหลายช่องจะอยู่บนหน้าเดียวกันหมด ·
-                          อยากให้ลูกค้าได้กระดานคนละหน้า ต้องเพิ่มหน้าเข้ามา (กี่หน้าก็ได้ ตั้งชื่อเองได้)
-                        </span>
-                        <button
-                          type="button"
-                          onClick={addPage}
-                          title="เพิ่มหน้าใหม่ ตั้งชื่อเองได้"
-                          className={btnSmDucky}
-                        >
-                          ＋ เพิ่มหน้า
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const first = files[0];
-                            const back = {
-                              id: rid("f"),
-                              side: "ด้านหลัง",
-                              choice: first?.choice,
-                              // ยืมขนาดจากด้านแรกไว้ก่อน (งาน 2 ด้านส่วนใหญ่ขนาดเท่ากัน) แก้ทีหลังได้
-                              widthMm: first?.widthMm,
-                              heightMm: first?.heightMm,
-                              // ยืมผังช่องของด้านแรกมาด้วย — เริ่มต้นให้ทับกันพอดีไว้ก่อน ดีกว่าปล่อยว่างแล้วไปตั้งใหม่ให้เหลื่อม
-                              ...(first?.slots?.length ? { slots: first.slots.map((s) => ({ ...s, id: rid("sl") })) } : {}),
-                            };
-                            patch(t.id, {
-                              files: [
-                                ...files.map((f, i) => (i === 0 && !f.side?.trim() ? { ...f, side: "ด้านหน้า" } : f)),
-                                back,
-                              ],
-                            });
-                            setThemeFile(back.id);
-                          }}
-                          className={btnSmNeutral}
-                          title="ทางลัดงานหน้า-หลัง: ตั้งชื่อ “ด้านหน้า/ด้านหลัง” ให้เลย"
-                        >
-                          ➕ ทำเป็นงาน 2 ด้าน
-                        </button>
-                      </div>
-                    )}
-
-                    {/*
-                      ผังกลางที่มีหลายช่อง + ชุดหลายด้าน = สับสนที่สุด
-                      (ทุกด้านไปหยิบผังเดียวกันมาใช้ ทั้งที่ควรเป็นด้านละหน้า)
-                      ปุ่มนี้แจกช่องที่ 1 ให้ด้านที่ 1 · ช่องที่ 2 ให้ด้านที่ 2 · ตำแหน่งเดิมทุกช่อง
-                    */}
-                    {!cur && multi && slotsOf(t).length > 1 && (
-                      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
-                        <span className="min-w-0 flex-1 text-[11px] font-semibold text-amber-900">
-                          ผังกลางมี {slotsOf(t).length} ช่องอยู่บน<strong>หน้าเดียวกัน</strong> และทุกด้านหยิบผังนี้ไปใช้เหมือนกันหมด —
-                          งานหลายด้านควรเป็นด้านละหน้า
-                          {byChoice && !oneChoice && (
-                            <>
-                              <br />
-                              ⚠️ ชุดนี้แยกไฟล์ตาม “{t.optionLabel?.trim()}” — ไฟล์คนละค่าไม่ใช่คนละหน้าของชิ้นเดียวกัน
-                              แยกอัตโนมัติให้ไม่ได้ ให้กดเลือกไฟล์ด้านบนแล้วตั้งช่องของไฟล์นั้นเอง
-                            </>
-                          )}
-                        </span>
-                        {(!byChoice || oneChoice) && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const central = slotsOf(t);
-                            // ช่องที่ i → หน้าที่ i · ช่องที่เกินจำนวนหน้า ยกไปไว้หน้าสุดท้าย
-                            const per = files.map((_, i) =>
-                              central.filter((_, k) => k === i || (i === files.length - 1 && k > i))
-                            );
-                            /** ช่องน้อยกว่าหน้า = มีหน้าที่ไม่ได้อะไรเลย — ห้ามล้างผังกลาง ไม่งั้นหน้านั้นกลายเป็นกระดานว่าง */
-                            const allCovered = per.every((m) => m.length > 0);
-                            if (
-                              !(await askConfirm({
-                                icon: "✂️",
-                                title: `แยกผังกลาง ${central.length} ช่อง ออกเป็น ${files.length} หน้า?`,
-                                detail: [
-                                  files
-                                    .map((f, i) =>
-                                      per[i].length
-                                        ? `${tabLabel(f, i)} ← ${per[i].length} ช่อง`
-                                        : `${tabLabel(f, i)} ← ไม่ได้ช่อง (ใช้ผังกลางต่อ)`
-                                    )
-                                    .join("\n"),
-                                  "ตำแหน่ง/ขนาดของทุกช่องเหมือนเดิม",
-                                  allCovered
-                                    ? "แล้วผังกลางจะว่าง"
-                                    : "ผังกลางยังเก็บไว้ให้หน้าที่ไม่ได้ช่องใช้ต่อ",
-                                ].join("\n\n"),
-                                confirmLabel: "แยกเป็นหน้า ๆ",
-                              }))
-                            )
-                              return;
-                            patch(t.id, {
-                              ...(allCovered ? { slots: undefined } : {}),
-                              files: files.map((f, i) => {
-                                const mine = per[i];
-                                const side = f.side?.trim();
-                                return {
-                                  ...f,
-                                  slots: mine.length
-                                    ? // ชื่อช่องที่ซ้ำกับชื่อด้านไม่มีประโยชน์แล้ว (หน้าบอกอยู่แล้วว่าด้านไหน)
-                                      mine.map((sl) => (sl.label?.trim() === side ? { ...sl, label: undefined } : sl))
-                                    : f.slots,
-                                };
-                              }),
-                            });
-                            setThemeFile(files[0]?.id ?? null);
-                          }}
-                          className={btnSmDucky}
-                        >
-                          ✂️ แยกผังกลางเป็นหน้า ๆ
-                        </button>
-                        )}
-                      </div>
-                    )}
-
-                    {inherited && (
-                      <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
-                        ด้านนี้ยังไม่มีผังของตัวเอง — ที่เห็นคือผังกลาง แก้ตรงนี้แล้วจะกลายเป็นผังเฉพาะด้านนี้ทันที
-                      </p>
-                    )}
-
-                    {!cur && centralIdle ? (
-                      <div className="rounded-xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200">
-                        <p className="text-center text-sm font-bold text-slate-700">ผังกลางไม่ได้ใช้งานแล้ว</p>
-                        <p className={`mx-auto mt-1 max-w-xl text-center text-[12px] ${faint}`}>
-                          ทุกด้านมีผังช่องของตัวเองครบแล้ว — ผังกลางมีไว้เผื่อด้านที่ยังไม่ได้ตั้งเท่านั้น
-                          ข้างล่างคือผังจริงของแต่ละหน้า กดที่หน้าไหนเพื่อเข้าไปแก้หน้านั้น
-                        </p>
-                        {/* หน้าแรกเป็นตัวตั้ง — บอกตรงนี้เลยว่าหน้าอื่นวางตรงกันไหม จะได้ไม่ต้องเพ่งเทียบเอง */}
-                        {(() => {
-                          const base = slotsOf(t, files[0]);
-                          const off = files.slice(1).filter((f) => !sameLayout(base, slotsOf(t, f)));
-                          return (
-                            <p
-                              className={`mt-2 text-center text-[11px] font-bold ${
-                                off.length ? "text-rose-600" : "text-emerald-600"
-                              }`}
-                            >
-                              {off.length
-                                ? `⚠️ ผังไม่ตรงกัน — ${off
-                                    .map((f) => tabLabel(f, files.indexOf(f)))
-                                    .join(" · ")} วางไม่ตรงกับ ${tabLabel(files[0], 0)} · พิมพ์ออกมาแล้วช่องจะเหลื่อมกัน`
-                                : mirrored
-                                  ? "✓ ทุกหน้าวางช่องตรงกันแบบพลิกซ้าย-ขวา — ลายสองหน้าทับกันทะลุแผ่นพอดี"
-                                  : "✓ ทุกหน้าวางช่องตรงกัน — พิมพ์ออกมาซ้อนกันพอดี"}
-                            </p>
-                          );
-                        })()}
-                        {/* ผังของทุกหน้าเรียงให้ดูพร้อมกัน — ไม่ต้องกดสลับทีละหน้าเพื่อจำว่าอีกหน้าวางไว้ยังไง */}
-                        <div className="mt-3 flex flex-wrap justify-center gap-3">
-                          {files.map((f, fi) => (
-                            <SlotBoardPreview
-                              key={f.id}
-                              label={tabLabel(f, fi)}
-                              slots={slotsOf(t, f)}
-                              ratio={sizeOf(f) ?? sizeOf(files.find((x) => x.widthMm && x.heightMm))}
-                              previewUrl={previewOf(t, f)}
-                              onOpen={() => setThemeFile(f.id)}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                    <SlotEditor
-                      key={cur?.id ?? "set"}
-                      slots={shown}
-                      previewUrl={previewOf(t, cur ?? undefined)}
-                      // สกินของหน้านั้น — เล็งช่องบนทรงสินค้าจริงได้เลย ไม่ต้องเดาจากเส้นตัด
-                      skinUrl={skinOf(t, cur ?? undefined)}
-                      // ทรงของเวทีลากต้องเท่างานจริงของด้านนั้น ไม่งั้นตำแหน่งที่ลากไม่ตรงกับที่ลูกค้าเห็น
-                      ratio={sizeOf(cur ?? undefined) ?? sizeOf(files.find((x) => x.widthMm && x.heightMm))}
-                      required={t.slotsRequired}
-                      onChange={(next) =>
-                        cur
-                          ? patchFile(t.id, cur.id, { slots: next.length ? next : undefined })
-                          : patch(t.id, { slots: next.length ? next : undefined })
-                      }
-                      onRequiredChange={(v) => patch(t.id, { slotsRequired: v || undefined })}
-                    />
-                    )}
-                  </>
-                );
-              })()}
-
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-                <span className={`min-w-0 flex-1 text-[11px] ${faint}`}>
-                  {t._dirty ? "ยังไม่บันทึก — กดเสร็จแล้วจะบันทึกให้เลย" : "บันทึกแล้ว"}
-                </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (t._dirty) await save(t);
-                    setThemeOn(null);
-                  }}
-                  disabled={saving === t.id}
-                  className={`${btnSmDucky} disabled:opacity-50`}
-                >
-                  {saving === t.id ? "กำลังบันทึก…" : "✓ เสร็จแล้ว"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ── ดูรูปตัวอย่างขนาดใหญ่ (กดพื้นหลัง/ปุ่มปิด/Esc เพื่อออก) ── */}
       {zoom && (

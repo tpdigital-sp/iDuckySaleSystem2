@@ -7119,6 +7119,43 @@ export default function AdminOrderDetailPage() {
                               </div>
                             )}
 
+                            {/* 🗓 ลูกค้าสั่งปกติ (แนบรูปมาเอง) แต่สินค้ามีจอสร้างปฏิทิน → พนักงานออกแบบบนเว็บให้ได้เลยจากออเดอร์นี้ (ผู้ใช้สั่ง 15 ต.ค. 69)
+                                รูปที่ลูกค้าแนบขึ้นเป็นรูปตั้งต้นในคลังของจอ · กด 💾 แล้วไฟล์แบบทั้งชุดแทนไฟล์แนบเดิม */}
+                            {mayEdit && !specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId)?.calendarStudio && (
+                              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 px-2 py-1.5 ring-1 ring-violet-200">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const n = it.artworkUrls?.length ?? 0;
+                                    if (
+                                      n > 0 &&
+                                      !(await askConfirm({
+                                        icon: "🗓",
+                                        title: "ออกแบบบนเว็บให้รายการนี้?",
+                                        detail:
+                                          (isCal
+                                            ? "🖼 รูปต้นฉบับที่ลูกค้าใช้ทำปฏิทินเดิม ขึ้นในคลังรูปของจอ (หน้าปฏิทินที่ประกอบแล้วไม่เอามา)\n"
+                                            : `🖼 รูปที่ลูกค้าแนบ ${n} รูป ขึ้นในคลังรูปของจอ — ลากลงหน้าได้เลย\n`) +
+                                          "💾 กดบันทึกแล้ว ไฟล์แบบทั้งชุดแทนไฟล์แนบเดิม · ยอดเงินไม่เปลี่ยน\n" +
+                                          "🛟 รูปเดิมไม่หาย — เก็บไว้ในสเปค \"ต้นฉบับ\" และประวัติออเดอร์\n" +
+                                          "✕ ปิดจอโดยไม่บันทึก = ออเดอร์เหมือนเดิม",
+                                        confirmLabel: "🗓 เปิดจอสร้างปฏิทิน",
+                                      }))
+                                    )
+                                      return;
+                                    openCalDesign(i);
+                                  }}
+                                  className="rounded-full bg-violet-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-violet-700"
+                                  title="เปิดจอสร้างปฏิทินบนเว็บสำหรับรายการนี้ — รูปที่ลูกค้าแนบขึ้นในคลังรูปให้ลากใช้"
+                                >
+                                  🗓 ออกแบบบนเว็บให้ลูกค้า
+                                </button>
+                                <span className="text-[10.5px] font-semibold leading-snug text-violet-900">
+                                  ใช้รูปที่ลูกค้าแนบ จัดหน้าในจอสร้างปฏิทิน แล้วกด 💾 บันทึกกลับเข้า {order.id} — ยอดเงินไม่เปลี่ยน
+                                </span>
+                              </div>
+                            )}
+
                             {/* ── ไฟล์พร้อมพิมพ์ — แสดงเป็นรายการพร้อมชื่อไฟล์ ── */}
                             {ready.length > 0 && (
                               <CalPagesFold

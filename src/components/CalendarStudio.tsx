@@ -146,9 +146,19 @@ interface Props {
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
   initial?: CalendarState;
+  /**
+   * 🖼 รูปตั้งต้นในคลัง "รูปที่อัปไว้" (ไม่มีแบบเดิม) — หลังบ้านออกแบบให้ออเดอร์ที่ลูกค้าแนบรูปมาเอง
+   * (ผู้ใช้สั่ง 15 ต.ค. 69) · พนักงานลากรูปของลูกค้าลงหน้าได้เลย ไม่ต้องโหลดมาอัปใหม่
+   */
+  seedSources?: File[];
   /** ✂️ สูตรเส้นตัดตามชนิดงาน (ซิงก์จาก /admin/diecut?tab=bg · ไม่ส่ง = CUT_PRESETS ในโค้ด) */
   cutPresets?: CutPreset[];
   onApply: (r: CalendarResult) => void | Promise<void>;
+  /**
+   * 🚀 ไฟล์ที่ทำเสร็จระหว่าง "ใช้แบบนี้" — ส่งให้หน้าสินค้าเริ่มอัปล่วงหน้า ไม่ต้องรอ .ai/.pdf (15 ต.ค. 69)
+   * files = หน้าที่ประกอบแล้ว + รูปต้นฉบับ · owner = .ai / .pdf ของเจ้าของร้าน · ไฟล์ชุดเดียวกันส่งไปใน onApply ด้วยเสมอ
+   */
+  onEarly?: (e: { files?: File[]; owner?: File }) => void;
 }
 
 /** แผงด้านข้างตามปุ่มในแถบเครื่องมือ (null = ปิดแผง) */
@@ -356,8 +366,10 @@ export default function CalendarStudio({
   guide,
   square,
   initial,
+  seedSources,
   cutPresets,
   onApply,
+  onEarly,
 }: Props) {
   /** กด 🛒 ใส่ตะกร้า (ไม่ใช่ ✓ ใช้แบบนี้) — จำไว้ข้ามหน้าต่างถาม "รูปไม่เต็มช่อง" */
   const orderAfter = useRef(false);
@@ -989,13 +1001,32 @@ export default function CalendarStudio({
 
   // ── เปิดมาแก้แบบเดิม → โหลดรูปต้นฉบับกลับ (ลำดับเดิม — design.photos อ้างตามลำดับ) ──
   useEffect(() => {
-    if (!open || !initial?.sources.length) return;
+    const seed = initial?.sources.length ? initial.sources : (seedSources ?? []);
+    if (!open || !seed.length) return;
     let dead = false;
     void (async () => {
-      const list = await Promise.all(initial.sources.map(loadImg));
+      const list = await Promise.all(seed.map(loadImg));
       if (dead) return;
       if (list.some((x) => !x)) setErr("โหลดรูปเดิมบางรูปไม่สำเร็จ — เลือกรูปใหม่ได้เลย");
-      setSrcs(list.filter((x): x is Src => !!x));
+      const ok = list.filter((x): x is Src => !!x);
+      setSrcs(ok);
+      /**
+       * 🪄 รูปตั้งต้น (หลังบ้านออกแบบให้ลูกค้า · ไม่มีแบบเดิม) → เรียงลงหน้าอัตโนมัติตามลำดับ: ปก → มกราคม → … (ผู้ใช้สั่ง 15 ต.ค. 69)
+       * เฉพาะหน้าที่มีช่องรูปประจำหน้าและไม่ใช่หน้าไม่บังคับ (หลังปก/หลังแผ่นท้าย) · รูปไม่พอ = หน้าที่เหลือว่างไว้ · มีรูปวางอยู่แล้วไม่ยุ่ง
+       */
+      if (!initial?.sources.length && ok.length) {
+        const targets = vpages.filter((v) => v.card === 0 && v.page.photo && !v.page.optional);
+        setDesign((d) =>
+          Object.keys(d.photos).length
+            ? d
+            : {
+                ...d,
+                photos: Object.fromEntries(
+                  targets.slice(0, ok.length).map((v, k) => [v.page.key, { src: k, pl: fitPl(v.page.photo!, ok[k]) }]),
+                ),
+              },
+        );
+      }
     })();
     return () => {
       dead = true;
@@ -2990,10 +3021,14 @@ export default function CalendarStudio({
   const imposeOk = fmt.key.startsWith("card");
 
   /** 🖨 .pdf ทั้งเล่ม (ผู้ใช้สั่ง 14 ต.ค. 69 "ให้มี .pdf ด้วย" · เฉพาะเจ้าของร้านเหมือน .ai) — ทุกหน้าที่จะพิมพ์ + หน้าเส้นไดคัทท้ายไฟล์ */
-  async function makeBookPdf(): Promise<{ file: File; note: string }> {
+  /**
+   * @param rendered หน้าที่ประกอบไว้แล้วตอน "ใช้แบบนี้" (ลำดับเดียวกับ printPages) — ใช้ซ้ำได้เลย ไม่ต้องวาดใหม่ทั้งเล่ม
+   *   (เดิมวาดทุกหน้าซ้ำอีกรอบ = เวลาเพิ่มเท่าตัวก่อนเริ่มอัปโหลด · ผู้ใช้แจ้ง 15 ต.ค. 69 "อัปโหลดค่อนข้างนาน")
+   */
+  async function makeBookPdf(rendered?: { name: string; file: Blob }[]): Promise<{ file: File; note: string }> {
     await ensureFonts(fontKeys);
-    const pages: { name: string; file: Blob }[] = [];
-    for (let i = 0; i < printPages.length; i++) {
+    const pages: { name: string; file: Blob }[] = rendered?.length === printPages.length ? [...rendered] : [];
+    for (let i = pages.length; i < printPages.length; i++) {
       const v = printPages[i];
       const name = vname(v).replace(/^\d+\. /, "");
       setBusy(`กำลังทำไฟล์ .pdf หน้า ${i + 1}/${printPages.length}…`);
@@ -3473,6 +3508,8 @@ export default function CalendarStudio({
       const remap = new Map<number, number>();
       srcs.forEach((s, i) => !s.removed && remap.set(i, remap.size));
       const kept = srcs.filter((s) => !s.removed).map((s) => s.file);
+      // 🚀 หน้า + ต้นฉบับพร้อมแล้ว → เริ่มอัปเลย ระหว่างที่ทำ .ai/.pdf ต่อ (ไดคัทไฟล์ที่แนบคือภาพจำลอง out ที่สลับแล้วด้านบน)
+      onEarly?.({ files: [...out.map((o) => o.file), ...kept] });
       const savedDesign: CalDesign = {
         ...design,
         photos: Object.fromEntries(Object.entries(design.photos).map(([k, o]) => [k, { ...o, src: remap.get(o.src) ?? -1 }])),
@@ -3486,6 +3523,7 @@ export default function CalendarStudio({
         setBusy("กำลังทำไฟล์ .ai…");
         try {
           ai = await makeAi();
+          if (ai) onEarly?.({ owner: ai.file });
         } catch (e) {
           ai = undefined;
           console.warn("calendar .ai", e);
@@ -3496,7 +3534,8 @@ export default function CalendarStudio({
       if (aiExport && !fmt.diecut) {
         setBusy(imposeOk ? "กำลังทำไฟล์ .pdf ชิ้นงาน…" : "กำลังทำไฟล์ .pdf…");
         try {
-          pdf = (imposeOk ? await makePdf() : await makeBookPdf()).file;
+          pdf = (imposeOk ? await makePdf() : await makeBookPdf(out.map((o) => ({ name: o.name, file: o.file })))).file;
+          if (pdf) onEarly?.({ owner: pdf });
         } catch (e) {
           console.warn("calendar .pdf", e);
         }
@@ -4915,7 +4954,8 @@ export default function CalendarStudio({
                     : "flex flex-col items-center rounded-2xl bg-sky-600 px-3 py-1.5 leading-tight text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
                 }
               >
-                <span className="text-sm font-extrabold">{busy || orderLabel || "🛒 ใส่ตะกร้า"}</span>
+                {/* 💾 บันทึกกลับเข้าออเดอร์ (หลังบ้าน) — ข้อความยาวกว่า "ใส่ตะกร้า" ใช้ตัวเล็กลง (ผู้ใช้สั่ง 15 ต.ค. 69) */}
+                <span className={orderLabel ? "text-xs font-bold" : "text-sm font-extrabold"}>{busy || orderLabel || "🛒 ใส่ตะกร้า"}</span>
                 {!busy && price && !orderLabel && (
                   <span className={`text-[11px] font-bold ${fmt.diecut ? "text-stone-400" : "text-sky-100"}`}>
                     {formatBaht(price(designN))}

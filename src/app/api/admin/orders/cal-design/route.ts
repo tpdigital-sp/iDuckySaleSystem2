@@ -73,7 +73,16 @@ export async function POST(req: Request) {
       : x,
   );
   const by = actor.name?.trim() || actor.username;
-  const next = withLog({ ...o, items }, by, "✏️ แก้แบบปฏิทิน (จอสร้างปฏิทิน)", `รายการที่ ${index + 1} ${it.name} · ไฟล์ ${it.artworkUrls?.length ?? 0} → ${urls.length} ไฟล์ (ยอดเงินไม่เปลี่ยน)`);
+  // ออกแบบครั้งแรกให้รายการที่ลูกค้าแนบรูปมาเอง = ไฟล์แนบเดิมถูกแทน → จดลิงก์เดิมไว้ในประวัติ (เอากลับได้เสมอ)
+  const first = !(it.sel?.[PLACEMENT_SPEC_LABEL] && calEditUrlOf(it.sel[PLACEMENT_SPEC_LABEL]));
+  const gone = (it.artworkUrls ?? []).filter((u) => !urls.includes(u));
+  const next = withLog(
+    { ...o, items },
+    by,
+    first ? "🗓 ออกแบบบนเว็บให้ลูกค้า (จอสร้างปฏิทิน)" : "✏️ แก้แบบปฏิทิน (จอสร้างปฏิทิน)",
+    `รายการที่ ${index + 1} ${it.name} · ไฟล์ ${it.artworkUrls?.length ?? 0} → ${urls.length} ไฟล์ (ยอดเงินไม่เปลี่ยน)` +
+      (first && gone.length ? ` · ไฟล์แนบเดิมของลูกค้า: ${gone.join(" | ")}` : ""),
+  );
   const { error } = await updateOrder(sb, next, { prev: o, by });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

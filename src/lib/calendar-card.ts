@@ -649,6 +649,30 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
    * "pad@<กว้าง>x<สูง>" (มม. งานจริง) = 1 หน้ารูปเต็มผืน · ตัดตก 5 มม. · งานใหญ่ (>30 ซม.) ไฟล์ 150 DPI กันแคนวาสมือถือเกินเพดาน
    * จอสร้างดูจาก "ไม่มีหน้าไหนมีตาราง" → ซ่อนเครื่องมือปฏิทิน/ปี (calHasGrid)
    */
+  /**
+   * 📐 "tpl@<กว้าง>x<สูง>" (มม. = ขนาดอาร์ตบอร์ดของไฟล์เทมเพลต) — สินค้าทั่วไปที่ออกแบบบนเว็บผ่านจอเดียวกัน
+   * (ผู้ใช้สั่ง 15 ต.ค. 69 ให้เหลือทางเดียว: จอสร้างปฏิทิน · รูปแบบงานเดาจากเทมเพลตที่ผูกไว้ ไม่ต้องตั้ง formats เอง)
+   * ผืนผ้าใบ = อาร์ตบอร์ดพอดี (ไกด์เทมเพลตทาบได้ตรง) · ตัดตก 3 มม. ในนั้น · หน้าเดียวรูปเต็มผืน ไม่มีตารางปฏิทิน
+   */
+  if (key.startsWith("tpl@")) {
+    const m = /^tpl@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
+    const aw = m ? Number(m[1]) : 100;
+    const ah = m ? Number(m[2]) : 100;
+    const b = 3;
+    const pw = Math.max(10, aw - 2 * b);
+    const ph = Math.max(10, ah - 2 * b);
+    const fr = frame(pw, ph, b, 3);
+    return {
+      key,
+      name: `งานออกแบบ ${cmText(aw)}×${cmText(ah)} ซม.`,
+      trimW: pw,
+      trimH: ph,
+      bleed: b,
+      safe: 3,
+      dpi: Math.max(aw, ah) > 300 ? 150 : 300,
+      pages: [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
+    };
+  }
   if (key.startsWith("pad@")) {
     const m = /^pad@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
     const pw = m ? Number(m[1]) : 210;

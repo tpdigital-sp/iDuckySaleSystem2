@@ -91,3 +91,65 @@ export async function uploadArtworkFile(file: File): Promise<string> {
   }
   return j.url;
 }
+
+/**
+ * 🚀 อัปหลายไฟล์ทีเดียว (จอสร้างปฏิทิน 16–52 ไฟล์ต่อครั้ง · 15 ต.ค. 69 ผู้ใช้แจ้ง "อัปโหลดค่อนข้างนาน")
+ * เดิมทีละไฟล์ = ขอตั๋ว (~0.6 วิ) + ยิงเข้า Supabase ทีละ 3 ไฟล์ → 16 หน้า ~10 วิ+
+ * ตอนนี้ขอตั๋วทั้งชุดในคำขอเดียว แล้วยิงพร้อมกันทีละ `parallel` ไฟล์ · ไฟล์ไหนไม่ผ่าน → ถอยไปทางเดิมทีละไฟล์ (uploadArtworkFile)
+ * คืน url ตามลำดับเดียวกับ files · ไฟล์ที่พังจริง = โยน Error (เหมือน uploadArtworkFile)
+ */
+export async function uploadArtworkFiles(files: File[], parallel = 6): Promise<string[]> {
+  for (const f of files) {
+    const bad = checkArtworkFile(f);
+    if (bad) throw new Error(bad);
+  }
+  const r = await uploadArtworkFilesSettled(files, parallel);
+  const bad = r.find((x): x is Error => x instanceof Error);
+  if (bad) throw bad;
+  return r as string[];
+}
+
+/** แบบเดียวกับ uploadArtworkFiles แต่ไฟล์ที่พังไม่ล้มทั้งชุด — ช่องนั้นเป็น Error (รูปต้นฉบับ: อัปไม่ขึ้นก็ยังสั่งได้) */
+export async function uploadArtworkFilesSettled(files: File[], parallel = 6): Promise<(string | Error)[]> {
+  if (!files.length) return [];
+  let tickets: (SignResult & { ok?: boolean })[] = [];
+  const sb = getSupabase();
+  if (sb && files.length > 1) {
+    try {
+      const res = await fetch("/api/orders/artwork/sign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ files: files.map((f) => ({ type: f.type, size: f.size })) }),
+      });
+      const j = (await res.json().catch(() => null)) as { items?: (SignResult & { ok?: boolean })[]; error?: string } | null;
+      if (res.status === 429 && j?.error) throw new Error(j.error);
+      if (res.ok && Array.isArray(j?.items) && j.items.length === files.length) tickets = j.items;
+    } catch (e) {
+      if (e instanceof Error && /ถี่เกินไป/.test(e.message)) throw e;
+      /* ขอตั๋วทั้งชุดไม่ได้ (เซิร์ฟเวอร์รุ่นเก่า/เน็ตหลุด) → ทีละไฟล์ด้านล่าง */
+    }
+  }
+  const out: (string | Error)[] = new Array(files.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const i = next++;
+      const f = files[i];
+      const t = tickets[i];
+      if (sb && t?.token && t.path && t.url) {
+        const { error } = await sb.storage.from(t.bucket || BUCKET).uploadToSignedUrl(t.path, t.token, f, { contentType: f.type });
+        if (!error) {
+          out[i] = t.url;
+          continue;
+        }
+      }
+      try {
+        out[i] = await uploadArtworkFile(f);
+      } catch (e) {
+        out[i] = e instanceof Error ? e : new Error("อัปโหลดไม่สำเร็จ");
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(parallel, files.length) }, worker));
+  return out;
+}
