@@ -901,7 +901,8 @@ function Chats() {
                         {!ours ? <Avatar src={detail?.pictureUrl} size={28} /> : null}
                         {ours ? (
                           <span className="mb-0.5 shrink-0 text-right text-[10px] leading-tight" style={{ color: "var(--dk-faint)" }}>
-                            {admin ? m.by || "แอดมิน" : m.approvedBy ? `บอท ✓ ${m.approvedBy}${m.edited ? " (แก้)" : ""}` : "บอท"}
+                            {/* 📥 mode "oa" = พิมพ์ใน LINE OA Manager แล้วนำเข้าจาก CSV (15 ต.ค. 69) · mode "auto" = ข้อความตอบกลับอัตโนมัติของ LINE */}
+                            {admin ? `${m.by || "แอดมิน"}${m.mode === "oa" ? " · OA" : ""}` : m.approvedBy ? `บอท ✓ ${m.approvedBy}${m.edited ? " (แก้)" : ""}` : m.mode === "auto" ? "ตอบอัตโนมัติ" : m.mode === "oa" ? "ร้าน (OA)" : "บอท"}
                             <br />
                             {fmtTime(m.at)}
                           </span>

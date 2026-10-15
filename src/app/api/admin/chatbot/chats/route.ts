@@ -20,7 +20,9 @@ import { loadChatTags } from "@/lib/server/chat-tags-store";
  * GET ?limit=50&scope=new|old|waiting|all&q=ชื่อ  → รายการห้อง (ล่าสุดก่อน)
  *     &before=<lastSeen ISO ของแถวสุดท้ายที่มีแล้ว> → หน้าถัดไป (ห้องที่คุยก่อนเวลานั้น) · คำตอบมี next = cursor หน้าต่อไป ("" = หมดแล้ว)
  *     (15 ต.ค. 69 เจ้าของร้าน "ต้องการให้แสดงลูกค้าให้ครบ" — เดิมได้แค่ 80 ห้องล่าสุดแล้วตัน · ค้นหา/กรองป้ายยังเป็นชุดเดียวเหมือนเดิม)
- * GET ?id=U…                                      → ห้องเดียว + log ทั้งหมด (fallback messages 20 ตัวล่าสุด)
+ * GET ?id=U…                                      → ห้องเดียว + log 1,000 ตัวล่าสุด (fallback messages 20 ตัวล่าสุด)
+ *   · 15 ต.ค. 69: log มีรายการที่นำเข้าจาก CSV ของ LINE OA Manager ด้วย (source "oa-csv" · แอดมินตอบใน OA = role admin mode "oa" by ชื่อ OA
+ *     · ประวัติก่อนบอทเก็บ log) — ดู scripts/import-oa-chat-csv.mts
  */
 const COL = "line-conversations";
 
@@ -150,8 +152,10 @@ export async function GET(req: Request) {
     if (!d.exists) return NextResponse.json({ error: "ไม่พบห้องแชทนี้" }, { status: 404 });
     const x = (d.data() ?? {}) as Record<string, unknown>;
     const row = toRow(d.id, x, iso(d.createTime), cfg);
-    const logSnap = await ref.collection("log").orderBy("at", "asc").limit(1000).get();
-    const log: LogEntry[] = logSnap.docs.map((e) => {
+    // 📥 15 ต.ค. 69 นำเข้าประวัติจาก CSV OA Manager (scripts/import-oa-chat-csv.mts) ทำให้บางห้องมี log หลายพัน entry ย้อนไปปี 2567
+    //    เดิม orderBy asc limit 1000 = ได้ 1,000 ตัว "เก่าสุด" แล้วข้อความล่าสุดหาย → เอา 1,000 ตัวล่าสุดแล้วกลับลำดับ
+    const logSnap = await ref.collection("log").orderBy("at", "desc").limit(1000).get();
+    const log: LogEntry[] = logSnap.docs.reverse().map((e) => {
       const y = e.data() as Record<string, unknown>;
       const card = y.card && typeof y.card === "object" ? (y.card as { name?: unknown; url?: unknown }) : null;
       // 🧾 การ์ดที่บอทส่ง (Reply Gate เขียน cards[] ตั้งแต่ 9 ต.ค. 69 17:40) → หน้าแชทวาดเป็นการ์ดสินค้าเหมือนใน LINE
