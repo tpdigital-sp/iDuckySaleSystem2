@@ -21,6 +21,9 @@ import { loadChatTags } from "@/lib/server/chat-tags-store";
  *     &before=<lastSeen ISO ของแถวสุดท้ายที่มีแล้ว> → หน้าถัดไป (ห้องที่คุยก่อนเวลานั้น) · คำตอบมี next = cursor หน้าต่อไป ("" = หมดแล้ว)
  *     (15 ต.ค. 69 เจ้าของร้าน "ต้องการให้แสดงลูกค้าให้ครบ" — เดิมได้แค่ 80 ห้องล่าสุดแล้วตัน · ค้นหา/กรองป้ายยังเป็นชุดเดียวเหมือนเดิม)
  * GET ?id=U…                                      → ห้องเดียว + log 1,000 ตัวล่าสุด (fallback messages 20 ตัวล่าสุด)
+ *     &after=<at ISO ของ entry ล่าสุดที่หน้าจอมีแล้ว> → เฉพาะ entry ที่ใหม่กว่านั้น (ถอยหลัง 2 นาทีเผื่อร่าง/รูปที่เพิ่งเปลี่ยนสถานะ) · partial=true
+ *     (⚡ 15 ต.ค. 69 เจ้าของร้าน "ต้องการให้ update ข้อมูล realtime ก่อนเข้าตอบ" — หน้าแชทโพลทุก 3 วิ ถ้าดึง 1,000 entry ทุกรอบจะหนักเกิน)
+ * GET ?since=<lastSeen ISO ของห้องล่าสุดที่หน้าจอมี> → เฉพาะห้องที่ขยับหลังเวลานั้น (≤60 ห้อง · กรอง scope/tag เหมือนรายการปกติ) · partial=true
  *   · 15 ต.ค. 69: log มีรายการที่นำเข้าจาก CSV ของ LINE OA Manager ด้วย (source "oa-csv" · แอดมินตอบใน OA = role admin mode "oa" by ชื่อ OA
  *     · ประวัติก่อนบอทเก็บ log) — ดู scripts/import-oa-chat-csv.mts
  */
@@ -154,8 +157,15 @@ export async function GET(req: Request) {
     const row = toRow(d.id, x, iso(d.createTime), cfg);
     // 📥 15 ต.ค. 69 นำเข้าประวัติจาก CSV OA Manager (scripts/import-oa-chat-csv.mts) ทำให้บางห้องมี log หลายพัน entry ย้อนไปปี 2567
     //    เดิม orderBy asc limit 1000 = ได้ 1,000 ตัว "เก่าสุด" แล้วข้อความล่าสุดหาย → เอา 1,000 ตัวล่าสุดแล้วกลับลำดับ
-    const logSnap = await ref.collection("log").orderBy("at", "desc").limit(1000).get();
-    const log: LogEntry[] = logSnap.docs.reverse().map((e) => {
+    // ⚡ 15 ต.ค. 69 realtime: หน้าจอส่ง after = at ของ entry ล่าสุดที่มีแล้ว → อ่านเฉพาะที่ใหม่กว่า (ถอย 2 นาที ให้ entry เดิมที่เพิ่งเปลี่ยนสถานะ เช่น ร่าง→ส่งแล้ว/รูปแคชแล้ว ถูกส่งซ้ำไปทับ)
+    //    where+orderBy ฟิลด์เดียวกัน ไม่ต้องมีดัชนีผสม · ฟิลด์ at เป็น Timestamp ทุกแหล่ง (n8n/reply/CSV import — ตรวจ 15 ต.ค. 69)
+    const afterRaw = (u.searchParams.get("after") ?? "").trim();
+    const after = afterRaw && !Number.isNaN(new Date(afterRaw).getTime()) ? new Date(afterRaw) : null;
+    const logSnap = after
+      ? await ref.collection("log").where("at", ">", Timestamp.fromMillis(after.getTime() - 120_000)).orderBy("at", "asc").limit(300).get()
+      : await ref.collection("log").orderBy("at", "desc").limit(1000).get();
+    const logDocs = after ? logSnap.docs : logSnap.docs.reverse();
+    const log: LogEntry[] = logDocs.map((e) => {
       const y = e.data() as Record<string, unknown>;
       const card = y.card && typeof y.card === "object" ? (y.card as { name?: unknown; url?: unknown }) : null;
       // 🧾 การ์ดที่บอทส่ง (Reply Gate เขียน cards[] ตั้งแต่ 9 ต.ค. 69 17:40) → หน้าแชทวาดเป็นการ์ดสินค้าเหมือนใน LINE
@@ -201,7 +211,7 @@ export async function GET(req: Request) {
     const messages: LogEntry[] = Array.isArray(x.messages)
       ? (x.messages as Record<string, unknown>[]).map((m) => ({ role: String(m.role ?? ""), text: String(m.text ?? ""), at: iso(m.at) }))
       : [];
-    return NextResponse.json({ ...row, log, messages, settings: settingsOut }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ...row, log, messages: after ? [] : messages, partial: !!after, settings: settingsOut }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));
@@ -213,6 +223,9 @@ export async function GET(req: Request) {
   // 📜 หน้าถัดไป: lastSeen (ISO · มิลลิวินาทีครบ) ของแถวสุดท้ายที่หน้าจอมีแล้ว → เริ่มอ่านถัดจากห้องนั้น (ฟิลด์ใน Firestore เป็น Timestamp)
   const beforeRaw = (u.searchParams.get("before") ?? "").trim();
   const before = beforeRaw && !Number.isNaN(new Date(beforeRaw).getTime()) ? new Date(beforeRaw) : null;
+  // ⚡ 15 ต.ค. 69 realtime: since = lastSeen ของห้องล่าสุดที่หน้าจอมี → อ่านเฉพาะห้องที่ขยับหลังนั้น (ปกติ 0–3 ห้อง) หน้าจอโพลทุก 5 วิได้โดยไม่อ่าน 400 ห้องซ้ำ
+  const sinceRaw = (u.searchParams.get("since") ?? "").trim();
+  const since = !q && !before && sinceRaw && !Number.isNaN(new Date(sinceRaw).getTime()) ? new Date(sinceRaw) : null;
   // 🐢 14 ต.ค. 69 "หน้าแชทโหลดช้ามาก": เดิมอ่านห้องเต็ม 400 ห้อง ~1.4 MB ทุกครั้ง (และซ้ำทุก 30 วิ) — 1.1 MB เป็น `profile` (สรุปลูกค้าของบอท)
   // ที่รายชื่อไม่ได้ใช้ → อ่านเฉพาะช่องที่ toRow ใช้ (วัดตรง: 2.9 วิ → 0.24 วิ) · หน้าห้อง (?id=) ยังอ่านเต็มเหมือนเดิม
   const LIST_FIELDS = [
@@ -239,6 +252,8 @@ export async function GET(req: Request) {
     const docs = ids.length ? await db.getAll(...ids.map((id) => db.collection(COL).doc(id)), { fieldMask: LIST_FIELDS }) : [];
     const order = new Map(ids.map((id, n) => [id, n]));
     snap = { docs: docs.filter((d) => d.exists).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)) };
+  } else if (since) {
+    snap = await db.collection(COL).where("lastSeen", ">", Timestamp.fromDate(since)).orderBy("lastSeen", "desc").limit(60).select(...LIST_FIELDS).get();
   } else if (tag) {
     snap = await db.collection(COL).where("adminTags", "array-contains", tag).limit(300).select(...LIST_FIELDS).get();
   } else {
@@ -263,9 +278,11 @@ export async function GET(req: Request) {
   if (scope === "waiting") rows = rows.filter(isWaiting);
   if (scope === "unread") rows = rows.filter((r) => r.unread);
   if (scope === "draft") rows = rows.filter((r) => r.draftPending);
-  if (tag && q) rows = rows.filter((r) => r.adminTags.includes(tag));
+  if (tag && (q || since)) rows = rows.filter((r) => r.adminTags.includes(tag));
   // ค้นหา: คงลำดับ "ชื่อขึ้นต้นด้วยคำค้นก่อน" ที่จัดไว้ (ดัชนีเรียงคนคุยล่าสุดมาแล้ว)
   if (!q) rows.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
+  // ⚡ ห้องที่ขยับ: ส่งเฉพาะแถว ไม่นับชิป/cursor (หน้าจอเอาไปแทนที่แถวเดิมแล้วดันขึ้นบน · โหลดเต็มทุก 30 วิ ยังอยู่)
+  if (since) return NextResponse.json({ rows, settings: settingsOut, count: rows.length, partial: true }, { headers: { "Cache-Control": "no-store" } });
   const overflow = rows.length > limit;
   rows = rows.slice(0, limit);
   // cursor หน้าต่อไป: ยังมีแถวที่กรองแล้วเหลือ → ต่อจากแถวสุดท้ายที่ส่ง · ไม่เหลือแต่ชุดดิบเต็ม → ต่อจากห้องสุดท้ายของชุดดิบ (หน้านั้นอาจกรองออกหมดก็ได้)

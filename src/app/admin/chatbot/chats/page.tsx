@@ -50,8 +50,10 @@ type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[] };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
-type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number>; next?: string };
-type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
+type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number>; next?: string; partial?: boolean };
+type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings; partial?: boolean };
+/** คีย์ entry ในห้อง — log มี id เสมอ · messages (ห้องเก่า) ไม่มี ใช้ role+เวลา */
+const entryKey = (e: LogEntry) => e.id ?? `${e.role}|${e.at}`;
 type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
 type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry; pausedUntil?: string | null; warn?: string };
@@ -141,6 +143,10 @@ function Chats() {
   const can = useCan();
   const canReply = can("chat.reply");
   const [rows, setRows] = useState<Row[]>([]);
+  const rowsRef = useRef<Row[]>([]);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [scope, setScope] = useState<Scope>("all");
   // 🏷 กรองตามป้าย (เลือกได้ทีละป้าย · ใช้ร่วมกับชิปขอบเขตด้านบนได้) — จำนวนนับจากทั้งคลังฝั่งเซิร์ฟเวอร์
@@ -151,6 +157,14 @@ function Chats() {
   const [sel, setSel] = useState<string>("");
   const [detail, setDetail] = useState<DetailRes | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // ⚡ 15 ต.ค. 69 เจ้าของร้าน "ต้องการให้ update ข้อมูล realtime ก่อนเข้าตอบ": ห้องที่เปิดอยู่ดึงเฉพาะข้อความใหม่ทุก 3 วิ · รายชื่อดึงเฉพาะห้องที่ขยับทุก 5 วิ
+  //   + กลับมาที่แท็บ/หน้าต่าง = ดึงทันที · แท็บซ่อนอยู่ = หยุดโพล · มุมหัวห้องโชว์ "🟢 สด HH:mm:ss" (แดง = ดึงไม่ได้)
+  //   ⚠️ ข้อความที่แอดมินพิมพ์เองใน LINE OA Manager ยังไม่เข้า (LINE ไม่ส่ง webhook) — เห็นเฉพาะลูกค้า/บอท/ที่ตอบจากหน้านี้
+  const [live, setLive] = useState<{ at: number; ok: boolean }>({ at: 0, ok: true });
+  const detailRef = useRef<DetailRes | null>(null);
+  useEffect(() => {
+    detailRef.current = detail;
+  }, [detail]);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [waitingCount, setWaitingCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -266,12 +280,38 @@ function Chats() {
     }
   }, [sel, toast]);
 
-  // รีเฟรชรายการทุก 30 วิ (แชทเข้าตลอด) — เฉพาะตอนไม่ได้ค้นหา
+  // รีเฟรชรายการเต็มทุก 30 วิ (ชิปนับ/ห้องที่หลุดจากขอบเขต) — เฉพาะตอนไม่ได้ค้นหา
   useEffect(() => {
     if (q) return;
     const t = setInterval(() => void load(), 30_000);
     return () => clearInterval(t);
   }, [load, q]);
+
+  /** ⚡ ห้องที่ขยับหลังห้องล่าสุดที่มีอยู่ (since=) → แทนที่แถวเดิมแล้วดันขึ้นบน · ปรับตัวนับยังไม่อ่าน/ร่างตามส่วนต่าง */
+  const pollList = useCallback(async () => {
+    if (q) return;
+    const key = listKeyRef.current;
+    const newest = rowsRef.current.reduce((m, r) => (r.lastSeen > m ? r.lastSeen : m), "");
+    if (!newest) return load();
+    const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&since=${encodeURIComponent(newest)}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`);
+    if (listKeyRef.current !== key || !d.rows.length) return;
+    const prev = rowsRef.current;
+    const was = new Map(prev.map((r) => [r.id, r]));
+    const dUnread = d.rows.reduce((n, r) => n + Number(r.unread) - Number(was.get(r.id)?.unread ?? false), 0);
+    const dDraft = d.rows.reduce((n, r) => n + Number(r.draftPending) - Number(was.get(r.id)?.draftPending ?? false), 0);
+    const ids = new Set(d.rows.map((r) => r.id));
+    setRows([...d.rows, ...prev.filter((r) => !ids.has(r.id))]);
+    if (dUnread) setUnreadCount((n) => Math.max(0, n + dUnread));
+    if (dDraft) setDraftCount((n) => Math.max(0, n + dDraft));
+  }, [q, scope, tagFilter, load]);
+  useEffect(() => {
+    if (q) return;
+    const t = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void pollList().catch(() => {});
+    }, 5_000);
+    return () => clearInterval(t);
+  }, [pollList, q]);
 
   // 📊 โควตา LINE (แคชฝั่งเซิร์ฟเวอร์ 10 นาที)
   const loadQuota = useCallback(async (fresh = false) => {
@@ -300,6 +340,7 @@ function Chats() {
       if (!quiet) setDetailLoading(true);
       try {
         setDetail(await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}`));
+        setLive({ at: Date.now(), ok: true });
       } catch (e) {
         if (!quiet) toast(e instanceof Error ? e.message : String(e), true);
       } finally {
@@ -309,12 +350,51 @@ function Chats() {
     [toast],
   );
 
-  // ห้องที่เปิดอยู่โพลทุก 10 วิ
+  /** ⚡ ดึงเฉพาะ entry ที่ใหม่กว่าตัวล่าสุดที่มี (after=) แล้วรวมเข้ากับที่มีอยู่ (คีย์ซ้ำ = ทับด้วยของใหม่ เช่น ร่างที่เพิ่งส่ง) · ห้องที่ยังไม่มี log = โหลดเต็ม */
+  const pollRoom = useCallback(
+    async (id: string) => {
+      const cur = detailRef.current;
+      if (!cur || cur.id !== id || !cur.log.length) return openRoom(id, true);
+      const newest = cur.log.reduce((m, e) => (e.at > m ? e.at : m), "");
+      const d = await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}&after=${encodeURIComponent(newest)}`);
+      setDetail((prev) => {
+        if (!prev || prev.id !== d.id) return prev;
+        const { log: fresh, messages: _m, partial: _p, ...meta } = d;
+        if (!fresh.length) return { ...prev, ...meta };
+        const map = new Map(prev.log.map((e) => [entryKey(e), e]));
+        for (const e of fresh) map.set(entryKey(e), e);
+        const log = [...map.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+        return { ...prev, ...meta, log };
+      });
+    },
+    [openRoom],
+  );
+  // ห้องที่เปิดอยู่: ข้อความใหม่ทุก 3 วิ · ทุกรอบที่ 10 (30 วิ) โหลดเต็มกันพลาด · แท็บซ่อน = ไม่โพล
   useEffect(() => {
     if (!sel) return;
-    const t = setInterval(() => void openRoom(sel, true), 10_000);
+    let n = 0;
+    const t = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      n += 1;
+      const p = n % 10 === 0 ? openRoom(sel, true) : pollRoom(sel);
+      void p.then(() => setLive({ at: Date.now(), ok: true })).catch(() => setLive((v) => ({ ...v, ok: false })));
+    }, 3_000);
     return () => clearInterval(t);
-  }, [sel, openRoom]);
+  }, [sel, openRoom, pollRoom]);
+  // กลับมาที่แท็บ/หน้าต่าง (เช่น สลับจาก OA Manager มาตอบ) = ดึงรายชื่อ+ห้องทันที ไม่รอรอบ
+  useEffect(() => {
+    const kick = () => {
+      if (document.visibilityState !== "visible") return;
+      void load();
+      if (sel) void openRoom(sel, true).then(() => setLive({ at: Date.now(), ok: true }));
+    };
+    window.addEventListener("focus", kick);
+    document.addEventListener("visibilitychange", kick);
+    return () => {
+      window.removeEventListener("focus", kick);
+      document.removeEventListener("visibilitychange", kick);
+    };
+  }, [load, sel, openRoom]);
 
   const thread: LogEntry[] = useMemo(() => (detail ? (detail.log.length ? detail.log : detail.messages) : []), [detail]);
   const threadKey = `${sel}:${thread.length}`;
@@ -804,7 +884,7 @@ function Chats() {
             <div className="text-5xl">💬</div>
             <p className="mt-2 text-[15px] font-bold">เลือกห้องแชททางซ้าย</p>
             <p className="mt-1 text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
-              เห็นข้อความลูกค้า บอท และที่แอดมินตอบจากหน้านี้ · ข้อความที่แอดมินพิมพ์เองใน LINE OA Manager ระบบไม่เห็น
+              อัปเดตเองทุก 3 วินาที · เห็นข้อความลูกค้า บอท และที่แอดมินตอบจากหน้านี้ · ข้อความที่แอดมินพิมพ์เองใน LINE OA Manager ระบบไม่เห็น
             </p>
           </div>
         ) : (
@@ -826,6 +906,11 @@ function Chats() {
                 <p className="truncate text-[11px]" style={{ color: "var(--dk-faint)" }}>
                   {detail?.createdAt ? `ทักครั้งแรก ${fmtDay(detail.createdAt)}` : ""}
                   {detail?.lastSeen ? ` · ล่าสุด ${ago(detail.lastSeen)}` : ""}
+                  {live.at ? (
+                    <span title={live.ok ? "อัปเดตเองทุก 3 วินาที (ข้อความที่พิมพ์ใน LINE OA Manager ไม่เข้า)" : "ดึงข้อมูลไม่ได้ — จะลองใหม่เอง"}>
+                      {live.ok ? ` · 🟢 สด ${new Date(live.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : " · 🔴 อัปเดตไม่ได้ กำลังลองใหม่"}
+                    </span>
+                  ) : null}
                 </p>
               </div>
               {/* 🤖 17:05 เจ้าของร้าน "กดแล้วควรแสดงอะไรที่แตกต่าง" — สวิตช์เป็นเม็ดยาบอกสถานะชัด: เขียว "บอทตอบ: เปิด" / เทา "บอทตอบ: ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) */}
