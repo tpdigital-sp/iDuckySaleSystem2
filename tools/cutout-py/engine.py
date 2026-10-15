@@ -107,6 +107,12 @@ def shift(paths, dx, dy):
              "segs": [(s[0],) + tuple(mv(q) for q in s[1:]) for s in p["segs"]]} for p in paths]
 
 
+def scale_paths(paths, k):
+    mv = lambda p: (p[0] * k, p[1] * k)
+    return [{"start": mv(p["start"]),
+             "segs": [(s[0],) + tuple(mv(q) for q in s[1:]) for s in p["segs"]]} for p in paths]
+
+
 def rect_path(x0, y0, x1, y1, r=0.0):
     r = max(0.0, min(r, (x1 - x0) / 2, (y1 - y0) / 2))
     if r < 0.01:
@@ -315,6 +321,10 @@ def params(d: dict) -> SimpleNamespace:
         stroke=str(g("stroke", "#ffffff") or "#ffffff"),
         # ไฟล์ .ai/.pdf ที่มีเลเยอร์เส้นตัดมาแล้ว → ใช้เส้นของลูกค้าตรง ๆ (ค่าเริ่มต้น = ใช้)
         filecut=str(g("filecut", "1")) in ("1", "true", "True"),
+        # แก้มุมแหลมสำหรับเครื่องตัดใบมีดลาก (สติกเกอร์) — จาก Desktop 14 ต.ค. 69
+        corner=str(g("corner", "0")) in ("1", "true", "True"),
+        corner_r_mm=min(max(fnum("corner_r_mm", 0.5), 0.1), 5),  # รัศมีมุมขั้นต่ำ
+        corner_trim_mm=min(max(fnum("corner_trim_mm", 1.0), 0), 10),  # ตัดเข้าเนื้อได้ไม่เกิน
     )
 
 
@@ -384,6 +394,109 @@ def _fillet(m_raw, m, seed, span_px, r_min):
     out = np.zeros((H, W), np.uint8)
     out[y0:y1, x0:x1] = up * 255
     return out, max(1, int(round(1.5 / f)))
+
+
+def _dt(mask_bool: np.ndarray) -> np.ndarray:
+    """ระยะ (px) จากแต่ละจุดใน mask_bool ไปยังจุดนอก mask ที่ใกล้ที่สุด"""
+    return cv2.distanceTransform(mask_bool.astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+
+
+def round_corners(m: np.ndarray, r: float, trim: float):
+    """ทำให้เส้นตัดไม่มีมุมแหลมเกินกว่าที่ใบมีดแบบลากเลี้ยวทัน (ทุกมุมโค้งรัศมี >= r px)
+    - มุมนูน/ปลายแหลม: ถ้าต้องตัดเข้าเนื้อไม่เกิน trim px -> ตัดปลายให้มน
+                        ถ้าลึกกว่านั้น (ปลายแหลมมาก/ส่วนบางยาว) -> เผื่อขอบออกให้หนาพอแทน
+    - มุมเว้า/ซอก: ถมให้โค้ง
+    คืน (mask ใหม่, [(x, y, 'trim'|'pad'), ...])"""
+    if r < 1:
+        return m, []
+    P = int(math.ceil(r)) + 3          # ขอบว่างรอบภาพ ให้ dilate/erode ไม่ชนขอบ (ไม่งั้นเกิดปลายแหลมปลอม)
+    m = np.pad(m, P)
+    obj = m > 0
+    eroded = _dt(obj) > r
+    if not eroded.any():
+        return m, []                    # ชิ้นเล็กกว่าเส้นผ่านศูนย์กลางมุม ไม่แตะ
+    opened = (_dt(~eroded) <= r) & obj
+    depth = _dt(~opened)
+    # ส่วนที่หายไป (ไม่นับเศษบางๆ 1-2 px ตามแนวขอบตรง ซึ่งเกิดจากความละเอียดพิกเซล)
+    lost = (obj & ~opened & (depth > max(1.5, r * 0.15))).astype(np.uint8)
+    marks = []
+    out = opened.copy()
+    n, lab, stats, cents = cv2.connectedComponentsWithStats(lost, connectivity=8)
+    if n > 1:
+        dmax = np.zeros(n, np.float32)
+        sel = lab > 0
+        np.maximum.at(dmax, lab[sel], depth[sel])
+        pad = np.zeros(n, bool)
+        pad[1:] = dmax[1:] > trim
+        if pad.any():
+            # ส่วนที่ลึกเกิน: เก็บไว้แล้วหนาขึ้น r รอบด้าน (ปลายจะโค้งรัศมี r พอดี)
+            keep_all = pad[lab]
+            near_all = _dt(~keep_all) <= r * 6
+            for i in np.nonzero(pad)[0]:
+                x, y, w, h, _ = stats[i]
+                g = int(r * 7) + 2   # ทำงานเฉพาะกรอบรอบส่วนนี้
+                X0, Y0 = max(0, x - g), max(0, y - g)
+                X1, Y1 = min(m.shape[1], x + w + g), min(m.shape[0], y + h + g)
+                kp = lab[Y0:Y1, X0:X1] == i
+                # ปลายแหลมสั้น -> เรียวยาวให้เนียน / ส่วนบางยาว (หนวด ปอยผม) -> ต่อกับตัวงานแค่ช่วงสั้น ไม่ถมกว้าง
+                reach = r * (6 if max(w, h) <= r * 8 else 2)
+                thick = _dt(~kp) <= r + 1.5          # หนาขึ้น r รอบด้าน (ปลายโค้งรัศมี r)
+                base_ = obj[Y0:Y1, X0:X1] & near_all[Y0:Y1, X0:X1] & (_dt(~kp) <= reach)
+                pts = np.column_stack(np.nonzero(thick | base_)[::-1]).astype(np.int32)
+                hull = np.zeros(kp.shape, np.uint8)
+                cv2.fillConvexPoly(hull, cv2.convexHull(pts), 1)
+                hull = hull > 0
+                # ปลายแหลมทรงกรวย: ใช้เปลือกนูน (เส้นเรียวต่อเนื่อง ไม่เป็นคอคอด)
+                # ส่วนบางที่โค้งงอ (เช่น ปอยผม): เปลือกนูนจะถมผิดที่ -> ใช้แค่หนาขึ้นรอบด้าน
+                add = hull if hull.sum() <= (thick | base_).sum() * 1.5 else thick
+                out[Y0:Y1, X0:X1] |= add
+        big = np.nonzero(dmax > max(1.0, r * 0.25))[0]   # จุดที่แก้จริง
+        for i in big:
+            if i == 0:
+                continue
+            marks.append((float(cents[i][0]), float(cents[i][1]), "pad" if pad[i] else "trim"))
+    # ซอก/มุมเว้า: closing รัศมี r
+    d_out = _dt(~out)
+    dil = d_out <= r
+    closed = _dt(dil) > r
+    res = (out | closed).astype(np.uint8) * 255
+    return res[P:-P, P:-P], [(x - P, y - P, t) for x, y, t in marks]
+
+
+def sharp_points(paths, r_min: float):
+    """หาจุดที่เส้นโค้งแคบกว่ารัศมี r_min px (ใบมีดแบบลากเลี้ยวไม่ทัน) คืน [(x, y, รัศมีที่วัดได้ px), ...]"""
+    out = []
+    span = max(2.0, r_min * 0.7)
+    for poly in flatten(paths, steps=12):
+        P = np.asarray(poly, np.float64)
+        if len(P) < 5:
+            continue
+        seg = np.linalg.norm(np.diff(np.vstack([P, P[:1]]), axis=0), axis=1)
+        s = np.concatenate([[0], np.cumsum(seg)])[:-1]
+        total = s[-1] + seg[-1]
+        if total < span * 6:
+            continue
+        # จุดก่อน/หลังที่ห่างไป span ตามแนวเส้น (เส้นปิด) -> รัศมีวงกลมผ่าน 3 จุด
+        A = P[np.searchsorted(s, (s - span) % total, side="right") - 1]
+        C = P[np.searchsorted(s, (s + span) % total, side="right") - 1]
+        a_ = np.linalg.norm(C - P, axis=1); b_ = np.linalg.norm(A - P, axis=1); c_ = np.linalg.norm(C - A, axis=1)
+        cross = np.abs((P[:, 0] - A[:, 0]) * (C[:, 1] - A[:, 1]) - (P[:, 1] - A[:, 1]) * (C[:, 0] - A[:, 0]))
+        rad = a_ * b_ * c_ / np.maximum(2 * cross, 1e-9)
+        ok = (a_ > span * 0.4) & (b_ > span * 0.4)
+        bad = np.nonzero(ok & (rad < r_min * 0.6))[0]
+        groups, cur = [], []
+        for i in bad:   # รวมจุดติดกันเป็นจุดเดียว (เลือกจุดที่แคบสุด)
+            if cur and s[i] - s[cur[-1]] > span * 2:
+                groups.append(cur); cur = []
+            cur.append(i)
+        if cur:
+            groups.append(cur)
+        if len(groups) > 1 and s[groups[0][0]] + total - s[groups[-1][-1]] <= span * 2:
+            groups[0] = groups.pop() + groups[0]
+        for g in groups:
+            j = min(g, key=lambda i: rad[i])
+            out.append((float(P[j][0]), float(P[j][1]), float(rad[j])))
+    return out
 
 
 def _merge_local(m: np.ndarray, add: np.ndarray, k: int) -> np.ndarray:
@@ -544,7 +657,8 @@ def process(entry: dict, p: SimpleNamespace, scale: float, ai_fn) -> dict:
         extra = max(extra, int(mm2px(p.tab_h_mm)) + 4)
     # ความมนของจุด + : ไม่น้อยกว่าการถมร่องทั่วไป (ไม่อย่างนั้นจิ้มแล้วจะไม่เห็นผล)
     plus_r = (kc // 2 + int(round(mm2px(p.plus_mm)))) if p.edits else 0   # บวกเพิ่มจากการถมร่องทั่วไป
-    pad = max(0, bi) + max(kc // 2, plus_r) + bleed + st + 6 + extra
+    corner_r = mm2px(p.corner_r_mm) if (p.corner and shape == "contour") else 0
+    pad = max(0, bi) + max(kc // 2, plus_r) + bleed + st + 6 + extra + int(math.ceil(corner_r * 1.3)) + 4
     X0, Y0 = max(0, tx0 - 2), max(0, ty0 - 2)
     X1, Y1 = min(W0, tx1 + 2), min(H0, ty1 + 2)
     if method == "none" or shape in ("rect", "rounded", "circle", "ellipse"):
@@ -586,6 +700,7 @@ def process(entry: dict, p: SimpleNamespace, scale: float, ai_fn) -> dict:
 
 
     # --- เส้นตัด ---
+    corner_fix = []
     if shape == "contour":
         m = obj_m.copy()
         if bi > 0:
@@ -617,7 +732,19 @@ def process(entry: dict, p: SimpleNamespace, scale: float, ai_fn) -> dict:
             m = cv2.erode(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * -bi + 1, 2 * -bi + 1)))
             if m.max() == 0:
                 raise ValueError("ตัดเข้าเนื้อมากเกินไป งานหายหมด")
-        cut = from_potrace(cutout.trace(m, p.smooth, turd))
+        if corner_r > 0:
+            # ภาพความละเอียดต่ำ (มุมเล็กไม่กี่ px) -> ขยายก่อนทำมุม แล้วค่อยแปลงเป็นเส้น ให้โค้งเนียนจริง
+            rr = corner_r * 1.3     # เผื่อ 30%: การแปลงเป็นเส้นโค้ง (potrace) ทำให้โค้งแคบลงเล็กน้อย
+            up = int(min(4, max(1, math.ceil(10 / rr))))
+            mu = m if up == 1 else (cv2.resize(cv2.GaussianBlur(m, (3, 3), 0), (m.shape[1] * up, m.shape[0] * up),
+                                               interpolation=cv2.INTER_LINEAR) >= 128).astype(np.uint8) * 255
+            mu, corner_fix = round_corners(mu, rr * up, mm2px(p.corner_trim_mm) * up)
+            corner_fix = [(x / up, y / up, t) for x, y, t in corner_fix]
+            cut = scale_paths(from_potrace(cutout.trace(mu, max(p.smooth, 1.25), turd * up * up)), 1 / up)
+            m = cv2.resize(mu, (m.shape[1], m.shape[0]), interpolation=cv2.INTER_AREA)
+            m = (m >= 128).astype(np.uint8) * 255
+        else:
+            cut = from_potrace(cutout.trace(m, p.smooth, turd))
     elif shape in ("rect", "rounded"):
         r = mm2px(p.radius_mm) if shape == "rounded" else 0
         cut = rect_path(tx0 + ox - b, ty0 + oy - b, tx1 + ox + b, ty1 + oy + b, max(0, r))
@@ -777,6 +904,19 @@ def process(entry: dict, p: SimpleNamespace, scale: float, ai_fn) -> dict:
     if p.offset_mm < 0 and shape == "contour" and method == "alpha" and not p.extend:
         pass  # ตัดเข้าเนื้อบน PNG: ภาพยื่นออกนอกเส้นเองอยู่แล้ว
 
+    marks = []
+    if p.corner:
+        marks = [{"x": x - ax0, "y": y - ay0, "t": t} for x, y, t in corner_fix]
+        nt = sum(1 for m_ in corner_fix if m_[2] == "trim"); npd = len(corner_fix) - nt
+        if corner_fix:
+            extras.append("แก้มุมแหลม " + " · ".join(x for x in [f"มนเข้าเนื้อ {nt} จุด" if nt else "",
+                                                               f"เผื่อขอบ {npd} จุด" if npd else ""] if x))
+        sharp = sharp_points(cut, mm2px(p.corner_r_mm))
+        for x, y, rr in sharp:
+            marks.append({"x": x, "y": y, "t": "sharp"})
+        if sharp:
+            warnings.append(f"ยังมีมุมแคบกว่ารัศมี {p.corner_r_mm:g} มม. อยู่ {len(sharp)} จุด (วงแดงในภาพ)")
+
     lines = [(p.cut_type, cut + base, "stroke")]
     if white:
         lines.append(("White", white, "fill"))
@@ -789,7 +929,7 @@ def process(entry: dict, p: SimpleNamespace, scale: float, ai_fn) -> dict:
         "cut_w_mm": float(cut_w_mm), "cut_h_mm": float(cut_h_mm),
         "obj_w_mm": float(to_mm(bw)), "obj_h_mm": float(to_mm(bh)),
         "cut_len_mm": float(to_mm(paths_length(cut + base))),
-        "warnings": warnings,
+        "warnings": warnings, "marks": marks,
     }
 
 
@@ -829,7 +969,7 @@ def process_file_cut(entry: dict, p: SimpleNamespace, scale: float) -> dict:
         "cut_w_mm": float(to_mm(cx1 - cx0)), "cut_h_mm": float(to_mm(cy1 - cy0)),
         "obj_w_mm": float(to_mm(mx1 - mx0)), "obj_h_mm": float(to_mm(my1 - my0)),
         "cut_len_mm": float(to_mm(paths_length(cut))),
-        "warnings": [], "filecut": len(cut),
+        "warnings": [], "marks": [], "filecut": len(cut),
         # รูปแบบเดียวกับ process() — ai_bytes ใช้ lines · เส้นจากไฟล์ = ตัดขาด (Cut100 หรือ Cut50 ตามที่เลือก)
         "lines": [(p.cut_type, cut, "stroke")], "white": [], "extras": [f"เส้นตัดจากไฟล์ลูกค้า {len(cut)} เส้น"],
         "cut_type": p.cut_type, "map": None, "ai_model": "",

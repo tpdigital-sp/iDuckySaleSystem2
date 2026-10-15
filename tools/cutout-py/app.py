@@ -263,7 +263,7 @@ def get(key):
 
 def run(key, pdict, preview: bool):
     e = get(key)
-    p = engine.params(pdict)
+    p = engine.params(products.apply(pdict))   # กฎของสินค้า: เปิด/ปิดโมดูล + ช่องที่ล็อก/ซ่อน (ทำฝั่งเซิร์ฟเวอร์เสมอ)
     if not p.ai_model:
         p.ai_model = default_model()   # รูปที่ไม่ได้เลือกรุ่นเอง ใช้รุ่นค่าเริ่มต้น
     scale = 1.0
@@ -302,7 +302,7 @@ def summary(r):
         "cut_w_mm": r["cut_w_mm"], "cut_h_mm": r["cut_h_mm"],
         "cut_len_mm": r["cut_len_mm"], "warnings": r["warnings"],
         "extras": r["extras"], "cut_type": r["cut_type"], "ai_model": r.get("ai_model", ""),
-        "map": r.get("map"), "dpp": r["dpp"],
+        "map": r.get("map"), "dpp": r["dpp"], "marks": r.get("marks", []),
         "filecut": r.get("filecut", 0), "stale": code_stale(),
     }
 
@@ -383,7 +383,7 @@ class Handler(BaseHTTPRequestHandler):
             ctype = {"ai": "application/postscript", "png": "image/png", "svg": "image/svg+xml"}[kind]
             return self.attach(name, data, ctype)
         if u.path == "/products":
-            return self.json({"products": products.load(), "paper": products.PAPER})
+            return self.json(products.payload())   # สินค้า + โมดูล + นิยามช่อง (หน้าเว็บวาดฟอร์มจากตรงนี้)
         if u.path == "/config":
             cfg = review.load_config()
             return self.json({"has_key": bool(cfg.get("anthropic_api_key")),
@@ -459,9 +459,20 @@ class Handler(BaseHTTPRequestHandler):
                 z.writestr("รายการงาน.csv", "﻿" + sio.getvalue())
             return self.send(200, buf.getvalue(), "application/zip")
 
-        if u.path == "/products":  # บันทึกค่าปัจจุบันเป็นค่าเริ่มต้นของสินค้า (products.json)
+        if u.path == "/products":  # จัดการสินค้า (products.json): ค่าเริ่มต้น / เพิ่ม-แก้ / ลบ / คืนสินค้าตั้งต้น
             j = self.body_json()
-            return self.json({"products": products.save(j["id"], j.get("p", {}))})
+            act = j.get("action", "defaults")
+            if act == "defaults":
+                items = products.save_defaults(j["id"], j.get("p", {}))
+            elif act == "upsert":
+                items = products.upsert(j.get("product") or {})
+            elif act == "delete":
+                items = products.delete(j["id"])
+            elif act == "restore":
+                items = products.restore_defaults()
+            else:
+                return self.json({"error": "ไม่รู้จักคำสั่งนี้"}, 400)
+            return self.json({**products.payload(), "products": items})
 
         if u.path == "/config":
             j = self.body_json()

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { draftEditableText, draftImages } from "@/lib/server/bot-drafts";
-import type { Firestore } from "firebase-admin/firestore";
+import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { loadChatIndex, norm, core } from "@/lib/server/line-chat";
@@ -18,6 +18,8 @@ import { loadChatTags } from "@/lib/server/chat-tags-store";
  *     · scope=waiting (รอแอดมิน: needsHumanFollowup และทักใน 48 ชม.)
  *
  * GET ?limit=50&scope=new|old|waiting|all&q=ชื่อ  → รายการห้อง (ล่าสุดก่อน)
+ *     &before=<lastSeen ISO ของแถวสุดท้ายที่มีแล้ว> → หน้าถัดไป (ห้องที่คุยก่อนเวลานั้น) · คำตอบมี next = cursor หน้าต่อไป ("" = หมดแล้ว)
+ *     (15 ต.ค. 69 เจ้าของร้าน "ต้องการให้แสดงลูกค้าให้ครบ" — เดิมได้แค่ 80 ห้องล่าสุดแล้วตัน · ค้นหา/กรองป้ายยังเป็นชุดเดียวเหมือนเดิม)
  * GET ?id=U…                                      → ห้องเดียว + log ทั้งหมด (fallback messages 20 ตัวล่าสุด)
  */
 const COL = "line-conversations";
@@ -199,10 +201,14 @@ export async function GET(req: Request) {
   }
 
   const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));
+  const batch = Math.min(400, limit * 6);
   const scope = (u.searchParams.get("scope") ?? "all").trim();
   const q = (u.searchParams.get("q") ?? "").trim().toLowerCase();
   // 🏷 กรองตามป้าย (14 ต.ค. 69) — ถามฐานตรงด้วย array-contains (ไม่ใช่แค่ 400 ห้องล่าสุด) · ไม่ต้องมีดัชนีผสมเพราะไม่ orderBy
   const tag = (u.searchParams.get("tag") ?? "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  // 📜 หน้าถัดไป: lastSeen (ISO · มิลลิวินาทีครบ) ของแถวสุดท้ายที่หน้าจอมีแล้ว → เริ่มอ่านถัดจากห้องนั้น (ฟิลด์ใน Firestore เป็น Timestamp)
+  const beforeRaw = (u.searchParams.get("before") ?? "").trim();
+  const before = beforeRaw && !Number.isNaN(new Date(beforeRaw).getTime()) ? new Date(beforeRaw) : null;
   // 🐢 14 ต.ค. 69 "หน้าแชทโหลดช้ามาก": เดิมอ่านห้องเต็ม 400 ห้อง ~1.4 MB ทุกครั้ง (และซ้ำทุก 30 วิ) — 1.1 MB เป็น `profile` (สรุปลูกค้าของบอท)
   // ที่รายชื่อไม่ได้ใช้ → อ่านเฉพาะช่องที่ toRow ใช้ (วัดตรง: 2.9 วิ → 0.24 วิ) · หน้าห้อง (?id=) ยังอ่านเต็มเหมือนเดิม
   const LIST_FIELDS = [
@@ -232,9 +238,19 @@ export async function GET(req: Request) {
   } else if (tag) {
     snap = await db.collection(COL).where("adminTags", "array-contains", tag).limit(300).select(...LIST_FIELDS).get();
   } else {
-    snap = await db.collection(COL).orderBy("lastSeen", "desc").limit(Math.min(400, limit * 6)).select(...LIST_FIELDS).get();
+    let qry = db.collection(COL).orderBy("lastSeen", "desc");
+    if (before) qry = qry.startAfter(Timestamp.fromDate(before));
+    snap = await qry.limit(batch).select(...LIST_FIELDS).get();
   }
   let rows = snap.docs.map((d) => toRow(d.id, (d.data() ?? {}) as Record<string, unknown>, iso(d.createTime), cfg));
+  // กรองป้าย (array-contains ใส่ startAfter ไม่ได้ถ้าไม่มี composite index) → ชุดเดียว ≤300 แล้วตัดหน้าในหน่วยความจำด้วย lastSeen
+  if (before && (q || tag)) {
+    const b = before.toISOString();
+    rows = rows.filter((r) => r.lastSeen && r.lastSeen < b);
+  }
+  // ชุดดิบเต็มก้อน = ยังมีห้องเก่ากว่านี้อีก (เฉพาะรายการปกติ — ค้นหา/กรองป้ายได้ชุดเดียว)
+  const rawFull = !q && !tag && rows.length >= batch;
+  const rawLast = rawFull ? rows[rows.length - 1].lastSeen : "";
   // ตัวนับบนชิป นับจากชุดที่โหลดมา (ล่าสุด ≤400 ห้อง) ก่อนกรอง/ตัด
   const waitingCount = rows.filter(isWaiting).length;
   const unreadCount = rows.filter((r) => r.unread).length;
@@ -246,9 +262,14 @@ export async function GET(req: Request) {
   if (tag && q) rows = rows.filter((r) => r.adminTags.includes(tag));
   // ค้นหา: คงลำดับ "ชื่อขึ้นต้นด้วยคำค้นก่อน" ที่จัดไว้ (ดัชนีเรียงคนคุยล่าสุดมาแล้ว)
   if (!q) rows.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
+  const overflow = rows.length > limit;
   rows = rows.slice(0, limit);
-  const tagCounts = await countByTag(db);
-  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount, tagCounts }, { headers: { "Cache-Control": "no-store" } });
+  // cursor หน้าต่อไป: ยังมีแถวที่กรองแล้วเหลือ → ต่อจากแถวสุดท้ายที่ส่ง · ไม่เหลือแต่ชุดดิบเต็ม → ต่อจากห้องสุดท้ายของชุดดิบ (หน้านั้นอาจกรองออกหมดก็ได้)
+  // รอแอดมิน/ยังไม่อ่าน นับเฉพาะที่ทักใน 48 ชม. → เลยช่วงนั้นแล้วไม่มีทางเจอเพิ่ม หยุดเลย ไม่ไล่อ่านทั้งคลัง (หมื่นกว่าห้อง)
+  let next = overflow ? rows[rows.length - 1].lastSeen : rawLast;
+  if (next && (scope === "waiting" || scope === "unread") && Date.now() - new Date(next).getTime() > WAIT_MS) next = "";
+  const tagCounts = before ? {} : await countByTag(db);
+  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount, tagCounts, next }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /** 🏷 จำนวนห้องต่อป้าย (นับทั้งคลังด้วย count() — 1 read ต่อ 1,000 ห้อง) · แคช 60 วิ เพราะหน้าแชทรีเฟรชรายชื่อทุก 30 วิ */

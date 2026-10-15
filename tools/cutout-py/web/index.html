@@ -79,7 +79,8 @@
   /* ขนาดรูปคิดใน fit() — กรอบกับรูปต้องเป็นกล่องเดียวกันเป๊ะ ไม่งั้นเส้นตัด (overlay) จะหดไม่ตรงรูป (เพี้ยน ~2-3% 12 ต.ค. 69) */
   #frame{position:relative;display:none;transform-origin:0 0;will-change:transform}
   #frame img{display:block}
-  #overlay,#wover,#eover{position:absolute;inset:0;pointer-events:none}
+  #overlay,#wover,#eover,#mover{position:absolute;inset:0;pointer-events:none}
+  #mover svg{width:100%;height:100%;display:block}
   #eover svg{width:100%;height:100%;display:block}
   #frame.editing #pv{cursor:crosshair}
   /* แก้เฉพาะจุด (＋ มน / − ชิด) */
@@ -168,6 +169,17 @@
   .pf .field input{font-size:14px;min-height:38px;padding:6px 34px 6px 9px}
   .pf .chk{color:var(--navy);font-weight:500}
   #saveProduct{margin-top:10px}
+  .prodrow{display:flex;gap:6px}
+  .prodrow select{flex:1;min-width:0}
+  .prodrow .sbtn{flex:none;min-height:40px}
+  /* ช่องที่สินค้าล็อกไว้ (เห็นแต่แก้ไม่ได้) · ซ่อน = display:none ใน drawProduct */
+  .locked{opacity:.55;pointer-events:none}
+  .locked>label::after,.locked .lbl::after,.locked>h2::after,label.chk.locked::after{content:" 🔒";font-size:11px}
+  .mhead{grid-column:1/-1;font-size:11.5px;color:var(--navy-faint);margin:4px 0 -2px;font-weight:600;letter-spacing:.3px}
+  .pf .chk{grid-column:1/-1}
+  /* จุดแก้มุมแหลม (สติกเกอร์) บนภาพ */
+  .legend{display:inline-flex;gap:8px;align-items:center}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid;margin-right:3px;vertical-align:-1px}
   /* วัสดุ */
   .chips{display:flex;flex-wrap:wrap;gap:6px}
   .chip{position:relative;border:1px solid var(--line);background:var(--white);border-radius:var(--r-s);padding:7px 11px;min-height:44px;font-size:13px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;line-height:1.25}
@@ -196,6 +208,40 @@
   #filecut_box{background:var(--yolk-soft);border:1.5px solid var(--yolk-line);border-radius:var(--r-m);padding:12px 14px}
   #filecut_box .chk{color:var(--navy);font-weight:600;align-items:flex-start;line-height:1.45}
   #filecut_box .chk input{margin-top:2px}
+  /* จัดการสินค้า (โมดูล + ค่าเริ่มต้น + ล็อก/ซ่อนช่อง) */
+  #pm{width:min(980px,96vw);padding:0;max-height:92vh}
+  #pm .pmwrap{display:grid;grid-template-columns:250px 1fr;height:min(720px,88vh)}
+  #pm .pmlist{border-right:1px solid var(--line);overflow:auto;padding:14px 10px;background:var(--sky-50)}
+  #pm .pmlist h4{font-size:11.5px;color:var(--navy-faint);margin:12px 6px 4px;font-weight:600;font-family:var(--body)}
+  #pm .pmlist button.pi{display:block;width:100%;text-align:left;border:1px solid transparent;background:none;border-radius:8px;padding:7px 9px;font-size:13px;cursor:pointer;color:var(--navy)}
+  #pm .pmlist button.pi:hover{background:var(--sky-100)}
+  #pm .pmlist button.pi.on{background:var(--white);border-color:var(--blue-deep);box-shadow:var(--shadow-s)}
+  #pm .pmlist button.pi small{display:block;color:var(--navy-faint);font-size:11px;margin:0}
+  #pm .pmed{overflow:auto;padding:18px 22px}
+  #pm .pmed h3{margin:0 0 12px;font-size:17px}
+  #pm .row{display:grid;grid-template-columns:1fr 200px;gap:10px;margin-bottom:12px}
+  #pm .row input{width:100%;font-size:14px;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-s)}
+  #pm .lbl{font-size:12px;color:var(--navy-soft);display:block;margin-bottom:4px}
+  #pm .mods{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 0 14px}
+  #pm .mod{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px;font-size:13px;cursor:pointer;background:var(--white)}
+  #pm .mod.on{border-color:var(--blue-deep);background:var(--sky-50)}
+  #pm .mod small{display:block;color:var(--navy-faint);font-size:11.5px;line-height:1.35;margin:0}
+  #pm .mod.core{cursor:default;opacity:.7}
+  #pm table{width:100%;border-collapse:collapse;font-size:13px}
+  #pm td{padding:5px 6px;border-bottom:1px solid var(--sky-100);vertical-align:middle}
+  #pm td.ms{width:150px}
+  #pm tr.sec td{background:var(--sky-50);font-weight:600;font-size:12px;color:var(--navy-soft);border-bottom:0;padding-top:10px}
+  #pm td .field input,#pm td select{font-size:13px;min-height:34px;padding:6px 30px 6px 8px}
+  #pm td select{padding-right:8px}
+  #pm .modesel{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  #pm .modesel button{border:0;background:var(--white);padding:5px 8px;font-size:12px;cursor:pointer;color:var(--navy-soft)}
+  #pm .modesel button+button{border-left:1px solid var(--line)}
+  #pm .modesel button.on[data-v=edit]{background:var(--ok-soft);color:var(--ok)}
+  #pm .modesel button.on[data-v=lock]{background:var(--warn-soft);color:var(--warn)}
+  #pm .modesel button.on[data-v=hide]{background:var(--sky-200);color:var(--navy)}
+  #pm .foot{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:12px 22px;background:var(--white)}
+  #pm .foot .sp{flex:1}
+  @media (max-width: 760px){ #pm .pmwrap{grid-template-columns:1fr;height:auto} #pm .pmlist{max-height:180px} #pm .row,#pm .mods{grid-template-columns:1fr} }
   /* AI ตรวจ */
   .rev{border:1.5px solid var(--line);border-radius:var(--r-m);padding:12px 14px;background:var(--white);box-shadow:var(--shadow-s)}
   .rev.ok{border-color:var(--ok-line);background:var(--ok-soft)}
@@ -276,6 +322,7 @@
     </div>
     <label class="chk"><input type="checkbox" id="showline" checked> แสดงเส้นตัด</label>
     <label class="chk" style="margin-left:0"><input type="checkbox" id="showwhite" checked> แสดงรองขาว</label>
+    <label class="chk" style="margin-left:0" id="showmarksRow" hidden><input type="checkbox" id="showmarks" checked> แสดงจุดแก้มุม</label>
   </div>
   <div id="stage" class="checker">
     <div id="empty" role="button" tabindex="0">
@@ -284,7 +331,7 @@
       <div>ระบบเลือกวิธีหาขอบงานให้เอง (ขอบโปร่งใส · ลบสีพื้น · AI) แล้วสร้างเส้นตัด<br>ไฟล์ .ai ที่มีเลเยอร์เส้นตัด จะใช้เส้นของลูกค้าตรง ๆ</div>
       <div class="types"><span>JPG</span><span>PNG</span><span>WEBP</span><span>.ai</span><span>.pdf</span></div>
     </div>
-    <div id="frame"><img id="pv" alt="" draggable="false"><div id="wover"></div><div id="overlay"></div><div id="eover"></div></div>
+    <div id="frame"><img id="pv" alt="" draggable="false"><div id="wover"></div><div id="overlay"></div><div id="mover"></div><div id="eover"></div></div>
     <div id="busy"><span class="spin"></span><span id="busyText">กำลังปรับ…</span></div>
   </div>
   <div id="infobar"></div>
@@ -313,12 +360,12 @@
     <div class="ctlwrap">
       <section class="sec">
         <h2>สินค้า <em>ตั้งค่าเส้นตัดตามชนิดงาน</em></h2>
-        <select id="product" aria-label="สินค้า"></select>
+        <div class="prodrow"><select id="product" aria-label="สินค้า"></select><button class="sbtn" id="openPM" title="เพิ่ม/แก้ไขสินค้า เลือกฟังก์ชัน ล็อกหรือซ่อนช่อง">จัดการ</button></div>
         <div id="prodFields"></div>
         <button class="sbtn" id="saveProduct">บันทึกเป็นค่าเริ่มต้นของสินค้านี้</button>
       </section>
 
-      <section class="sec" id="sizeSec">
+      <section class="sec" id="sizeSec" data-f="size">
         <h2>ขนาดชิ้นงาน (หลังตัด) <em>เว้นว่าง = ตามไฟล์</em></h2>
         <div class="size">
           <div><span class="lbl">กว้าง</span><div class="field"><input type="number" id="size_w" min="0.1" step="0.1" placeholder="อัตโนมัติ" inputmode="decimal"><em>ซม.</em></div></div>
@@ -330,7 +377,7 @@
 
       <section class="sec" id="cutsec">
         <h2>เส้นตัด</h2>
-        <div class="ctl">
+        <div class="ctl" data-f="method">
           <label>หาขอบงาน</label>
           <select id="method">
             <option value="auto">อัตโนมัติ</option>
@@ -341,7 +388,7 @@
           </select>
           <small id="methodHint"></small>
         </div>
-        <div class="ctl">
+        <div class="ctl" data-f="shape">
           <label>รูปร่าง</label>
           <div class="shapes" id="shapes">
             <button data-s="contour" title="ตามทรงวัตถุ"><svg viewBox="0 0 24 24"><path d="M6 15c-2-4 1-9 5-9 2 0 3 2 5 2s3 2 3 5-3 6-7 6-5-1-6-4z"/></svg>ตามทรง</button>
@@ -351,11 +398,11 @@
             <button data-s="ellipse" title="วงรี"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="6"/></svg>วงรี</button>
           </div>
         </div>
-        <div class="ctl" id="radiusCtl" hidden>
+        <div class="ctl" id="radiusCtl" data-f="radius_mm" hidden>
           <label>ความมนของมุม</label>
           <div class="field" style="width:120px"><input type="number" id="radius_mm" min="0" step="0.5" inputmode="decimal"><em>มม.</em></div>
         </div>
-        <div class="ctl">
+        <div class="ctl" data-f="offset_mm">
           <label>ระยะเส้นตัด</label>
           <div class="numrow">
             <input type="range" id="offset_r" min="-5" max="10" step="0.1" aria-label="ระยะเส้นตัด (มม.)">
@@ -365,7 +412,7 @@
         </div>
       </section>
 
-      <details class="sec" id="strokeSec">
+      <details class="sec" id="strokeSec" data-f="stroke_mm">
         <summary>ขอบรอบรูป (Stroke) <em id="strokeSum">ไม่มี</em></summary>
         <div class="ctl">
           <label>ความหนาขอบ</label>
@@ -388,12 +435,12 @@
 
       <details class="sec">
         <summary>ตั้งค่าขั้นสูง <em>ปกติไม่ต้องแตะ</em></summary>
-        <div class="ctl">
+        <div class="ctl" data-f="bridge">
           <label>ถมร่องแคบ <span id="v_bridge"></span></label>
           <input type="range" id="bridge" min="0" max="2.5" step="0.1">
           <small>ยิ่งมาก เส้นตามทรงยิ่งมน มีดวิ่งง่าย</small>
         </div>
-        <div class="ctl" id="edittools" hidden>
+        <div class="ctl" id="edittools" data-f="edits" hidden>
           <label>แก้เฉพาะจุด</label>
           <div class="seg" id="editMode">
             <button data-m="0" class="on">ปิด</button>
@@ -413,17 +460,17 @@
           </div>
           <small>เลือก ＋ หรือ − แล้วจิ้มบนภาพตรงจุดที่ต้องการ · ความมนยิ่งมาก ร่องยิ่งถูกถมโค้งกว้าง · ขนาดแปรง = พื้นที่ที่แก้ · Esc = ปิด</small>
         </div>
-        <div class="ctl"><label class="chk" style="color:var(--navy);font-weight:500"><input type="checkbox" id="holes"> เว้นรูด้านใน (ไม่ถม)</label></div>
-        <div class="ctl">
+        <div class="ctl" data-f="holes"><label class="chk" style="color:var(--navy);font-weight:500"><input type="checkbox" id="holes"> เว้นรูด้านใน (ไม่ถม)</label></div>
+        <div class="ctl" data-f="smooth">
           <label>ความโค้งของเส้น <span id="v_smooth"></span></label>
           <input type="range" id="smooth" min="0" max="1.33" step="0.05">
           <small>น้อย = มุมคม (โลโก้) · มาก = โค้งมน</small>
         </div>
-        <div class="ctl">
+        <div class="ctl" data-f="shrink">
           <label>หดขอบตัด halo <span id="v_shrink"></span></label>
           <input type="range" id="shrink" min="0" max="6" step="1">
         </div>
-        <div class="ctl">
+        <div class="ctl" data-f="dpi">
           <label>ความละเอียด (ถ้าไม่กำหนดขนาด) <span id="v_dpi"></span></label>
           <input type="range" id="dpi" min="150" max="600" step="50">
           <small>ไฟล์ .ai/.pdf ใช้ขนาดจริงจากไฟล์</small>
@@ -470,6 +517,26 @@
   </div>
 </dialog>
 
+<!-- จัดการสินค้า: สินค้า = ชุดโมดูล (รองขาว/รูห่วง/ขาตั้ง/กระดาษ/แก้มุมแหลม) + ค่าเริ่มต้น + ช่องไหนให้พนักงานปรับ/ล็อก/ซ่อน (products.py · 14 ต.ค. 69) -->
+<dialog id="pm">
+  <div class="pmwrap">
+    <div class="pmlist">
+      <button class="sbtn dark" id="pmNew" style="width:100%">＋ เพิ่มสินค้าใหม่</button>
+      <div id="pmItems"></div>
+      <button class="sbtn" id="pmRestore" style="width:100%;margin-top:14px;font-size:11.5px">เอาสินค้าตั้งต้นที่ลบไปกลับมา</button>
+    </div>
+    <div class="pmed" id="pmEd"></div>
+  </div>
+  <div class="foot">
+    <button class="sbtn" id="pmDel">ลบสินค้านี้</button>
+    <button class="sbtn" id="pmDup">คัดลอกเป็นสินค้าใหม่</button>
+    <span class="sp"></span>
+    <span class="hint" id="pmDirty" style="margin:0"></span>
+    <button class="sbtn" id="pmClose">ปิด</button>
+    <button class="sbtn dark" id="pmSave">บันทึก</button>
+  </div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 <div id="stale" hidden>
   ⚠️ โปรแกรมมีอัปเดต แต่ยังรันโค้ดเก่าอยู่ — ค่าใหม่บางอย่างจะไม่มีผล<br>
@@ -489,14 +556,30 @@ try{ if(window.self!==window.top) document.body.classList.add('embedded'); }catc
 
 // ---------------- products (สูตรสินค้าจาก products.py) ----------------
 // 🔄 ส่งสูตรสินค้าให้หน้าหลังบ้านที่ฝังเราไว้ (iframe /admin/diecut?tab=bg) → บันทึกขึ้นเว็บ → จอออกแบบพวงกุญแจของลูกค้าใช้ค่าเดียวกัน (14 ต.ค. 69)
-function syncProducts(){ try{ if(window.self!==window.top) window.parent.postMessage({type:'cutout-products', products:PRODUCTS}, '*'); }catch(e){} }
-let PRODUCTS = [], PAPER = {};
+// หลังบ้าน/จอลูกค้ารู้จักสูตรแบบแบน {id,name,kind,p} เท่านั้น → กางค่าทุกช่อง + ธงโมดูล (hole/stand/corner · white=none ถ้าไม่มีโมดูลรองขาว)
+function flatProduct(pr){
+  const p = productValues(pr);
+  ['hole','stand','corner'].forEach(m => p[m] = pr.modules.includes(m));
+  if(!pr.modules.includes('white')) p.white = 'none';
+  const kind = pr.modules.includes('stand') ? 'standee' : pr.modules.includes('paper') ? 'paper' : pr.id;
+  return {id:pr.id, name:pr.name, kind, p};
+}
+function syncProducts(){ try{ if(window.self!==window.top && PRODUCTS.length) window.parent.postMessage({type:'cutout-products', products:PRODUCTS.map(flatProduct)}, '*'); }catch(e){} }
+// สินค้า = ชุดโมดูล + ค่าเริ่มต้น + โหมดช่อง (edit/lock/hide) · นิยามช่อง (FIELDS) และโมดูล (MODULES) มาจาก products.py
+let PRODUCTS = [], PAPER = {}, FIELDS = {}, MODULES = [];
 const prodById = id => PRODUCTS.find(x => x.id===id) || PRODUCTS[0];
 const prodShort = id => { const pr = PRODUCTS.find(x=>x.id===id); return pr ? pr.name.replace(/\s*\(.*\)$/,'') : id; };
+const modeOf = (pr, k) => {                       // edit | lock | hide | off (โมดูลไม่ได้เปิด) สำหรับสินค้านี้
+  const f = FIELDS[k]; if(!f) return 'edit';
+  if(f.m!=='core' && !(pr.modules||[]).includes(f.m)) return 'off';
+  return (pr.ui||{})[k] || 'edit';
+};
+function setPayload(j){ PRODUCTS = j.products; PAPER = j.paper || PAPER; FIELDS = j.fields || FIELDS; MODULES = j.modules || MODULES; fillProductSelect(); syncProducts(); }
 async function loadProducts(){
-  try{ const j = await (await fetch('/products')).json(); PRODUCTS = j.products; PAPER = j.paper; }catch(e){}
-  syncProducts();
-  const sel = $('#product'); sel.innerHTML = '';
+  try{ setPayload(await (await fetch('/products')).json()); }catch(e){}
+}
+function fillProductSelect(){
+  const sel = $('#product'), keep = sel.value; sel.innerHTML = '';
   const groups = {};
   PRODUCTS.forEach(pr => { (groups[pr.group] = groups[pr.group] || []).push(pr); });
   Object.entries(groups).forEach(([g, list]) => {
@@ -504,9 +587,33 @@ async function loadProducts(){
     list.forEach(pr => { const o = document.createElement('option'); o.value = pr.id; o.textContent = pr.name; og.appendChild(o); });
     sel.appendChild(og);
   });
-  const og = document.createElement('optgroup'); og.label = 'สติกเกอร์';
-  const o = document.createElement('option'); o.disabled = true; o.textContent = 'แผ่นสติกเกอร์ไดคัท 50 (ขั้นถัดไป)'; og.appendChild(o);
-  sel.appendChild(og);
+  if(keep) sel.value = keep;
+}
+// ค่าทั้งชุดของสินค้า (ช่องที่สินค้าไม่ได้ตั้ง ใช้ค่าตั้งต้นของช่อง)
+function productValues(pr){
+  const v = {product: pr.id};
+  Object.entries(FIELDS).forEach(([k, f]) => {
+    if(f.t==='edits') return;
+    if(f.t==='size'){
+      if(pr.p.size_axis){ v.size_axis = pr.p.size_axis; v.size_mm = pr.p.size_mm; }
+      else if(modeOf(pr,'size')!=='edit'){ v.size_axis=''; v.size_mm=0; }
+      return;
+    }
+    v[k] = (k in pr.p) ? pr.p[k] : f.d;
+  });
+  if(pr.p.paper && PAPER[pr.p.paper]){ [v.fixed_w_mm, v.fixed_h_mm] = PAPER[pr.p.paper]; }
+  return v;
+}
+// ช่องที่ล็อก/ซ่อน ใช้ค่าของสินค้าเสมอ (เซิร์ฟเวอร์บังคับซ้ำอีกชั้นใน products.apply)
+function lockedValues(pr){
+  const v = {};
+  Object.entries(FIELDS).forEach(([k, f]) => {
+    const md = modeOf(pr, k); if(md!=='lock' && md!=='hide') return;
+    if(f.t==='size'){ v.size_axis = pr.p.size_axis||''; v.size_mm = pr.p.size_mm||0; }
+    else if(f.t==='edits') v.edits = [];
+    else v[k] = (k in pr.p) ? pr.p[k] : f.d;
+  });
+  return v;
 }
 
 // ---------------- per-image state ----------------
@@ -515,7 +622,8 @@ const BASE = {method:'auto', shape:'contour', radius_mm:3, offset_mm:0, fill:'no
               product:'custom', cut_type:'Cut100', white:'none', white_choke_mm:0.1,
               hole:false, hole_mm:1.5, ring_mm:2, hole_gap_mm:1.5, hole_x_mm:0, hole_style:'circle', stand:false, tab_w_mm:0, tab_h_mm:6, base_d_mm:25,
               thick_mm:3, slot_clear_mm:0.1, paper:'', fixed_w_mm:0, fixed_h_mm:0,
-              stroke_mm:0, stroke:'#ffffff', filecut:true, ai_model:'', edits:[], plus_mm:3};
+              stroke_mm:0, stroke:'#ffffff', filecut:true, ai_model:'', edits:[], plus_mm:3,
+              corner_r_mm:0.5, corner_trim_mm:1};
 // ช่องเติมสี/ยืดสีขอบถูกถอดจากหน้าจอ → ไม่ให้ค่าค้างจากเครื่องมีผล · จุดแก้/รุ่น AI เป็นของแต่ละรูป ไม่ใช่ค่าเริ่มต้น
 let defaults = Object.assign({}, BASE, store('cut-defaults') || {}, {fill:'none', ai_model:'', edits:[]});
 const items = [];   // {id,name,thumb,state,msg,detect,filecut,p,res,rev}
@@ -667,6 +775,8 @@ function sizeFields(){
 function edit(changes, rerender=true){
   if(!current) return;
   Object.assign(current.p, changes);
+  const pr = PRODUCTS.length ? prodById(current.p.product) : null;
+  if(pr) Object.assign(current.p, lockedValues(pr));   // ช่องที่สินค้าล็อก/ซ่อน ใช้ค่าของสินค้าเสมอ
   // ค่าที่เปลี่ยนจะเป็นค่าเริ่มต้นของรูปถัดไปด้วย (ยกเว้นวิธีหาขอบ)
   const {method, edits, ...rest} = current.p; defaults = Object.assign({}, defaults, rest); store('cut-defaults', defaults);
   if(current.rev && current.rev.state!=='running') current.rev = {state:'stale'};
@@ -704,69 +814,73 @@ $('#applyAll').onclick = () => {
 };
 
 // ---------------- product panel ----------------
-let fieldsKind = null;
+// ช่องหลักในหน้า (data-f) ซ่อน/ล็อกตามสินค้า · ช่องของโมดูล (รองขาว รูห่วง ขาตั้ง กระดาษ แก้มุมแหลม) วาดจาก FIELDS ใต้ตัวเลือกสินค้า
+let fieldsSig = null;
 function drawProduct(){
   const p = current ? current.p : defaults;
   const pr = prodById(p.product);
   if(!pr) return;
   $('#product').value = pr.id;
-  $('#sizeSec').hidden = pr.kind==='paper';
-  if(fieldsKind !== pr.kind){ fieldsKind = pr.kind; buildFields(pr.kind); }
-  document.querySelectorAll('#prodFields [data-k]').forEach(el => {
-    const k = el.dataset.k;
-    if(el.type==='checkbox') el.checked = !!p[k];
-    else if(document.activeElement!==el) el.value = (el.tagName==='SELECT') ? String(p[k]) : p[k];
+  document.querySelectorAll('#right [data-f]').forEach(el => {
+    const md = modeOf(pr, el.dataset.f);
+    el.classList.toggle('locked', md==='lock');
+    el.style.display = (md==='hide' || md==='off') ? 'none' : '';
   });
-  const custom = $('#prodFields .paperCustom');
-  if(custom) custom.style.display = p.paper==='custom' ? 'contents' : 'none';
+  if(modeOf(pr,'paper')!=='off') $('#sizeSec').style.display = 'none';   // งานกระดาษ: ขนาดมาจากกระดาษ
+  const sig = pr.id + JSON.stringify(pr.modules) + JSON.stringify(pr.ui);
+  if(fieldsSig !== sig){ fieldsSig = sig; buildFields(pr); }
+  document.querySelectorAll('#prodFields [data-k]').forEach(el => {
+    const k = el.dataset.k, v = p[k] ?? FIELDS[k].d;
+    if(el.type==='checkbox') el.checked = !!v;
+    else if(document.activeElement!==el) el.value = (el.tagName==='SELECT') ? String(v) : v;
+  });
+  document.querySelectorAll('#prodFields .paperCustom').forEach(x => x.style.display = p.paper==='custom' ? '' : 'none');
   $('#saveProduct').hidden = pr.id==='custom';
+  $('#showmarksRow').hidden = !pr.modules.includes('corner');
 }
-function buildFields(kind){
-  const num = (k, label, unit='มม.', step='0.1', cls='', neg=false) => `<div class="${cls}"><span class="lbl">${label}</span><div class="field"><input type="number" data-k="${k}" step="${step}" ${neg?'':'min="0"'} inputmode="decimal"><em>${unit}</em></div></div>`;
-  const sel = (k, label, opts, cls='') => `<div class="${cls}"><span class="lbl">${label}</span><select data-k="${k}">${opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></div>`;
+function fieldHTML(k, f, md){
+  const lock = md==='lock' ? ' locked' : '';
+  const paperC = (k==='fixed_w_mm' || k==='fixed_h_mm') ? ' paperCustom' : '';
+  const tip = f.hint ? ` title="${esc(f.hint)}"` : '';
+  if(f.t==='sel') return `<div class="full${lock}"${tip}><span class="lbl">${esc(f.label)}</span><select data-k="${k}">${f.opts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select></div>`;
+  if(f.t==='bool') return `<label class="chk${lock}"${tip}><input type="checkbox" data-k="${k}"> ${esc(f.label)}</label>`;
+  if(f.t==='color') return `<div class="${lock}"${tip}><span class="lbl">${esc(f.label)}</span><input type="color" data-k="${k}"></div>`;
+  return `<div class="${lock}${paperC}"${tip}><span class="lbl">${esc(f.label)}</span><div class="field"><input type="number" data-k="${k}" min="${f.min}" max="${f.max}" step="${f.step}" inputmode="decimal"><em>${esc(f.unit||'')}</em></div></div>`;
+}
+function buildFields(pr){
   let h = '';
-  h += sel('cut_type','ชนิดเส้นตัด',[['Cut100','Cut100 (ตัดขาด)'],['Cut50','Cut50 (ตัดครึ่ง)']]);
-  h += sel('white','รองขาว',[['none','ไม่มี'],['full','เต็มรูปทรง']]);
-  if(kind==='keychain'){
-    h += `<label class="chk full"><input type="checkbox" data-k="hole"> มีรูห่วง (ติ่งด้านบน)</label>`;
-    h += num('hole_mm','ขนาดรู (Ø)') + num('ring_mm','เนื้อรอบรู');
-    h += num('hole_gap_mm','ระยะรูห่างจากงาน') + num('hole_x_mm','เลื่อนรู ซ้าย(−)/ขวา(+)','มม.','0.5','',true);
-  }
-  if(kind==='standee'){
-    h += num('tab_w_mm','ขาเสียบกว้าง (0 = อัตโนมัติ)') + num('tab_h_mm','ขาเสียบยาว');
-    h += num('base_d_mm','ฐานลึก') + num('thick_mm','ความหนาแผ่น (= ร่อง)');
-  }
-  if(kind==='paper'){
-    h += sel('paper','ขนาดกระดาษ', [...Object.keys(PAPER).map(k=>[k, `${k} (${PAPER[k][0]}×${PAPER[k][1]} มม.)`]), ['custom','กำหนดเอง']], 'full');
-    h += `<div class="paperCustom full" style="display:contents">` + num('fixed_w_mm','กว้าง') + num('fixed_h_mm','สูง') + `</div>`;
-  }
-  $('#prodFields').innerHTML = `<div class="pf">${h}</div>`;
+  if(modeOf(pr,'cut_type')!=='hide') h += fieldHTML('cut_type', FIELDS.cut_type, modeOf(pr,'cut_type'));
+  MODULES.filter(m => m.id!=='core' && pr.modules.includes(m.id)).forEach(m => {
+    const vis = m.fields.filter(k => modeOf(pr,k)!=='hide');
+    if(!vis.length) return;
+    h += `<div class="mhead">${esc(m.name)}</div>` + vis.map(k => fieldHTML(k, FIELDS[k], modeOf(pr,k))).join('');
+  });
+  $('#prodFields').innerHTML = h ? `<div class="pf">${h}</div>` : '';
   $('#prodFields').querySelectorAll('[data-k]').forEach(el => {
     const k = el.dataset.k;
     el.addEventListener(el.tagName==='SELECT' || el.type==='checkbox' ? 'change' : 'input', () => {
       if(el.type==='checkbox') return edit({[k]: el.checked});
+      if(el.type==='color') return edit({[k]: el.value});
       if(el.tagName==='SELECT'){
-        if(k==='paper'){
-          if(el.value==='custom') return edit({paper:'custom'});
-          const [w,h] = PAPER[el.value]; return edit({paper:el.value, fixed_w_mm:w, fixed_h_mm:h});
-        }
+        if(k==='paper' && PAPER[el.value]){ const [w,h] = PAPER[el.value]; return edit({paper:el.value, fixed_w_mm:w, fixed_h_mm:h}); }
         return edit({[k]: el.value});
       }
-      const v = parseFloat(el.value); if(isFinite(v) && (v>=0 || el.min!=='0')) edit({[k]: v});
+      const v = parseFloat(el.value); if(isFinite(v) && v>=+el.min) edit({[k]: v});
     });
+    if(el.type==='number') el.addEventListener('blur', bindPanel);
   });
 }
 $('#product').onchange = e => {
   const pr = prodById(e.target.value);
-  edit(Object.assign(JSON.parse(JSON.stringify(pr.p)), {product: pr.id}));
+  edit(productValues(pr));
 };
 $('#saveProduct').onclick = async () => {
   if(!current) return;
   const pr = prodById(current.p.product);
   if(!confirm(`บันทึกค่าปัจจุบันเป็นค่าเริ่มต้นของ "${pr.name}" ?`)) return;
   try{
-    const j = await (await fetch('/products', {method:'POST', body:JSON.stringify({id:pr.id, p:current.p})})).json();
-    if(j.products){ PRODUCTS = j.products; syncProducts(); toast('บันทึกค่าเริ่มต้นของสินค้าแล้ว'); } else toast(j.error || 'บันทึกไม่ได้');
+    const j = await (await fetch('/products', {method:'POST', body:JSON.stringify({action:'defaults', id:pr.id, p:current.p})})).json();
+    if(j.products){ setPayload(j); toast('บันทึกค่าเริ่มต้นของสินค้าแล้ว'); } else toast(j.error || 'บันทึกไม่ได้');
   }catch(err){ toast('บันทึกไม่ได้'); }
 };
 
@@ -796,13 +910,17 @@ function show(){
   $('#overlay').innerHTML = $('#showline').checked ? last.cut_svg : '';
   $('#wover').innerHTML = $('#showwhite').checked && last.white_svg ? last.white_svg : '';
   document.querySelectorAll('#overlay svg, #wover svg').forEach(svg => { svg.removeAttribute('width'); svg.removeAttribute('height'); svg.setAttribute('preserveAspectRatio','none'); });
-  drawEdits();
+  drawEdits(); drawMarks();
   $('#empty').style.display='none'; $('#frame').style.display='block';
   let t = `<span>ชิ้นงาน <b>${cm(last.cut_w_mm)} × ${cm(last.cut_h_mm)} ซม.</b></span>`
         + `<span>เส้นตัดยาว <b>${fmt(last.cut_len_mm/10)} ซม.</b></span>`
         + `<span><b>${Math.round(last.dpi)}</b> dpi</span>`
         + `<span>${last.filecut ? `เส้นจากไฟล์ลูกค้า · ${last.filecut} เส้น` : `${METHOD_TH[last.method]}${last.ai_model ? ' ('+esc(last.ai_model)+')' : ''} · ${SHAPE_TH[last.shape]}`} · ${last.cut_type||'Cut100'}</span>`;
   (last.extras||[]).filter(x => !last.filecut).forEach(x => t += `<span class="x">${esc(x)}</span>`);
+  if(last.marks && last.marks.length && !$('#showmarksRow').hidden){
+    const used = [...new Set(last.marks.map(m=>m.t))];
+    t += `<span class="legend">${used.map(u=>`<span><i style="border-color:${MARK[u][0]}"></i>${MARK[u][1]}</span>`).join('')}</span>`;
+  }
   (last.warnings||[]).forEach(w => t += `<span class="w">⚠ ${esc(w)}</span>`);
   $('#infobar').innerHTML = t;
 }
@@ -811,6 +929,17 @@ $('#bgsel').onclick = e => { const b=e.target.dataset.b; if(!b) return;
   const st=$('#stage'); st.classList.remove('checker','dark','light'); st.classList.add(b); };
 $('#showline').onchange = show;
 $('#showwhite').onchange = show;
+$('#showmarks').onchange = show;
+// จุดที่โปรแกรมแก้มุมแหลมให้ (สินค้าที่เปิดโมดูล "แก้มุมแหลม") · เขียว = ตัดปลายให้มน · น้ำเงิน = เผื่อขอบออก · แดง = ยังแหลมอยู่ ต้องดูเอง
+const MARK = {trim:['#1E8A5A','มนเข้าเนื้อ'], pad:['#2C81C4','เผื่อขอบ'], sharp:['#C2362F','ยังแหลม']};
+function drawMarks(){
+  const mo = $('#mover');
+  if(!last || !last.marks || !last.marks.length || !$('#showmarks').checked || $('#showmarksRow').hidden){ mo.innerHTML=''; return; }
+  const k = last.dpp/25.4, r = Math.max(6, 1.6*k);
+  mo.innerHTML = `<svg viewBox="0 0 ${last.w} ${last.h}" preserveAspectRatio="none">` + last.marks.map(m =>
+    `<circle cx="${m.x}" cy="${m.y}" r="${m.t==='sharp'?r*1.3:r}" fill="none" stroke="${MARK[m.t][0]}" stroke-width="${m.t==='sharp'?3:2}" vector-effect="non-scaling-stroke"${m.t==='sharp'?'':' stroke-dasharray="4 3"'}/>`
+  ).join('') + '</svg>';
+}
 
 // ---------------- แก้เฉพาะจุด (＋ มน / − ชิด) ----------------
 let editMode = 0;
@@ -841,7 +970,7 @@ $('#pv').addEventListener('click', e => {
   edit({edits: [...(current.p.edits||[]), [(ax-m.dx)/m.W0, (ay-m.dy)/m.H0, r, editMode]]});
   drawEdits();
 });
-$('#plus_r').oninput = e => edit({plus_mm: +e.target.value});
+$('#plus_r').oninput = e => { $('#plus_mm').value = e.target.value; edit({plus_mm: +e.target.value}); };
 $('#plus_mm').oninput = e => { const v=parseFloat(e.target.value); if(isFinite(v) && v>=0.5) edit({plus_mm: v}); };
 $('#plus_mm').onblur = bindPanel;
 $('#undoEdit').onclick = () => { if(current && current.p.edits && current.p.edits.length){ edit({edits: current.p.edits.slice(0,-1)}); drawEdits(); } };
@@ -906,7 +1035,7 @@ const endPan = () => { pan=null; $('#stage').classList.remove('panning'); };
 $('#stage').addEventListener('pointerup', endPan);
 $('#stage').addEventListener('pointercancel', endPan);
 document.addEventListener('keydown', e => {
-  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || $('#cfg').open) return;
+  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || $('#cfg').open || $('#pm').open) return;
   if(e.key==='+'||e.key==='=') zoomTo(Z.k*1.5);
   else if(e.key==='-') zoomTo(Z.k/1.5);
   else if(e.key==='0') zreset();
@@ -1014,6 +1143,124 @@ $('#dl_zip').onclick = () => {
   fetchDownload('/zip', {method:'POST', body:JSON.stringify(body)}, 'cutline-' + new Date().toISOString().slice(0,10) + '.zip',
     layeredOn() ? `Illustrator กำลังแยกเลเยอร์ ${sel.length} รูป…` : `กำลังทำไฟล์ ${sel.length} รูป…`);
 };
+
+// ---------------- จัดการสินค้า (dialog #pm) ----------------
+// เพิ่ม/แก้/ลบสินค้า · เลือกโมดูล · ตั้งค่าเริ่มต้นทุกช่อง · โหมดช่อง: ปรับได้ / ล็อก (เห็นแต่แก้ไม่ได้) / ซ่อน (ใช้ค่าที่ตั้ง) → products.json
+let pmSel = null, pmDraft = null, pmDirty = false;
+const MODE_TH = [['edit','ปรับได้'],['lock','ล็อก'],['hide','ซ่อน']];
+const clone = o => JSON.parse(JSON.stringify(o));
+function openPM(){
+  if(!PRODUCTS.length){ toast('ยังโหลดสินค้าไม่เสร็จ'); return; }
+  pmSel = (current ? current.p.product : defaults.product) || PRODUCTS[0].id;
+  pmLoad(pmSel); $('#pm').showModal();
+}
+function pmLoad(id){
+  const pr = PRODUCTS.find(x=>x.id===id) || PRODUCTS[0];
+  pmSel = pr.id; pmDraft = clone(pr); setDirty(false); pmList(); pmEditor();
+}
+function setDirty(v){ pmDirty = v; $('#pmDirty').textContent = v ? 'ยังไม่ได้บันทึก' : ''; }
+function pmGuard(){ return !pmDirty || confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ทิ้งการแก้ไขนี้?'); }
+function pmList(){
+  const groups = {};
+  const list = PRODUCTS.some(x=>x.id===pmDraft.id) ? PRODUCTS : [...PRODUCTS, pmDraft];
+  list.forEach(pr => (groups[pr.group] = groups[pr.group] || []).push(pr));
+  $('#pmItems').innerHTML = Object.entries(groups).map(([g, l]) => `<h4>${esc(g)}</h4>` + l.map(pr => {
+    const mods = pr.modules.map(m => (MODULES.find(x=>x.id===m)||{}).name).filter(Boolean).join(' · ');
+    return `<button class="pi${pr.id===pmSel?' on':''}" data-id="${esc(pr.id)}">${esc(pr.id===pmDraft.id ? pmDraft.name : pr.name)}<small>${esc(mods || 'พื้นฐาน')}</small></button>`;
+  }).join('')).join('');
+  $('#pmItems').querySelectorAll('.pi').forEach(b => b.onclick = () => { if(b.dataset.id===pmSel || !pmGuard()) return; pmLoad(b.dataset.id); });
+  $('#pmDel').disabled = pmDraft.id==='custom';
+}
+function pmValueInput(k, f){
+  const p = pmDraft.p, v = p[k] ?? f.d;
+  if(f.t==='edits') return '<span class="hint" style="margin:0">—</span>';
+  if(f.t==='size') return `<div style="display:flex;gap:6px"><select data-pk="size_axis" style="width:110px">${[['','อัตโนมัติ'],['w','กว้าง'],['h','สูง']].map(([a,t])=>`<option value="${a}"${(p.size_axis||'')===a?' selected':''}>${t}</option>`).join('')}</select>`
+    + `<div class="field" style="flex:1"><input type="number" data-pk="size_cm" min="0.1" step="0.1" value="${p.size_axis? (p.size_mm||0)/10 : ''}" placeholder="—"><em>ซม.</em></div></div>`;
+  if(f.t==='sel') return `<select data-pk="${k}">${f.opts.map(([o,t])=>`<option value="${esc(o)}"${String(v)===String(o)?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+  if(f.t==='bool') return `<input type="checkbox" data-pk="${k}"${v?' checked':''}>`;
+  if(f.t==='color') return `<input type="color" data-pk="${k}" value="${esc(v)}">`;
+  return `<div class="field"><input type="number" data-pk="${k}" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}"><em>${esc(f.unit||'')}</em></div>`;
+}
+function pmEditor(){
+  const d = pmDraft;
+  const groupsList = [...new Set(PRODUCTS.map(x=>x.group))];
+  let h = `<h3>${esc(d.name)}</h3>
+    <div class="row"><div><span class="lbl">ชื่อสินค้า</span><input id="pmName" value="${esc(d.name)}"></div>
+    <div><span class="lbl">หมวด</span><input id="pmGroup" value="${esc(d.group)}" list="pmGroups"><datalist id="pmGroups">${groupsList.map(g=>`<option value="${esc(g)}">`).join('')}</datalist></div></div>
+    <span class="lbl">ฟังก์ชันที่ใช้ (กดเพื่อเปิด/ปิด)</span><div class="mods">`
+    + MODULES.map(m => m.id==='core'
+        ? `<div class="mod core on"><input type="checkbox" checked disabled><div><b>${esc(m.name)}</b><small>${esc(m.desc)}</small></div></div>`
+        : `<label class="mod${d.modules.includes(m.id)?' on':''}"><input type="checkbox" data-mod="${m.id}"${d.modules.includes(m.id)?' checked':''}><div><b>${esc(m.name)}</b><small>${esc(m.desc)}</small></div></label>`).join('')
+    + `</div><span class="lbl">ค่าเริ่มต้น และพนักงานเห็นช่องไหนได้บ้าง · ล็อก = เห็นแต่แก้ไม่ได้ · ซ่อน = ไม่แสดง ใช้ค่าที่ตั้งไว้</span><table>`;
+  MODULES.filter(m => m.id==='core' || d.modules.includes(m.id)).forEach(m => {
+    h += `<tr class="sec"><td colspan="3">${esc(m.name)}</td></tr>`;
+    m.fields.forEach(k => {
+      const f = FIELDS[k], md = d.ui[k] || 'edit';
+      h += `<tr><td>${esc(f.label)}${f.hint?`<br><small class="hint" style="margin:0">${esc(f.hint)}</small>`:''}</td><td>${pmValueInput(k, f)}</td>`
+        + `<td class="ms"><div class="modesel" data-mk="${k}">${MODE_TH.map(([v,t])=>`<button data-v="${v}" class="${md===v?'on':''}">${t}</button>`).join('')}</div></td></tr>`;
+    });
+  });
+  h += '</table>';
+  $('#pmEd').innerHTML = h;
+  const ed = $('#pmEd');
+  ed.querySelector('#pmName').oninput = e => { d.name = e.target.value; setDirty(true); ed.querySelector('h3').textContent = d.name || 'สินค้าใหม่'; pmList(); };
+  ed.querySelector('#pmGroup').oninput = e => { d.group = e.target.value; setDirty(true); };
+  ed.querySelectorAll('[data-mod]').forEach(cb => cb.onchange = () => {
+    d.modules = MODULES.map(m=>m.id).filter(id => id!=='core' && (id===cb.dataset.mod ? cb.checked : d.modules.includes(id)));
+    setDirty(true); pmEditor(); pmList();
+  });
+  ed.querySelectorAll('[data-pk]').forEach(el => el.addEventListener(el.tagName==='SELECT'||el.type==='checkbox' ? 'change' : 'input', () => {
+    const k = el.dataset.pk;
+    if(k==='size_axis'){ d.p.size_axis = el.value; if(!el.value) d.p.size_mm = 0; }
+    else if(k==='size_cm'){ const v = parseFloat(el.value); d.p.size_mm = isFinite(v)&&v>0 ? v*10 : 0; }
+    else if(el.type==='checkbox') d.p[k] = el.checked;
+    else if(el.type==='color') d.p[k] = el.value;
+    else if(el.tagName==='SELECT'){ d.p[k] = el.value; if(k==='paper' && PAPER[el.value]){ [d.p.fixed_w_mm, d.p.fixed_h_mm] = PAPER[el.value]; } }
+    else { const v = parseFloat(el.value); if(isFinite(v)) d.p[k] = v; }
+    setDirty(true);
+  }));
+  ed.querySelectorAll('.modesel').forEach(ms => ms.onclick = e => {
+    const v = e.target.dataset.v; if(!v) return;
+    if(v==='edit') delete d.ui[ms.dataset.mk]; else d.ui[ms.dataset.mk] = v;
+    [...ms.children].forEach(b => b.classList.toggle('on', b.dataset.v===v)); setDirty(true);
+  });
+}
+async function pmPost(body, msg){
+  try{
+    const j = await (await fetch('/products', {method:'POST', body:JSON.stringify(body)})).json();
+    if(j.error){ toast(j.error); return false; }
+    setPayload(j); fieldsSig = null;
+    // รูปที่ใช้สินค้านี้อยู่: ใช้ค่าที่ล็อกใหม่ทันที · สินค้าที่ถูกลบ → กลับเป็น "กำหนดเอง"
+    items.forEach(it => { const pr = PRODUCTS.find(x=>x.id===it.p.product); if(pr) Object.assign(it.p, lockedValues(pr)); else it.p.product = 'custom'; });
+    if(!PRODUCTS.find(x=>x.id===defaults.product)) defaults.product = 'custom';
+    bindPanel(); drawList(); if(current) schedule();
+    if(msg) toast(msg); return true;
+  }catch(e){ toast('บันทึกไม่ได้'); return false; }
+}
+$('#openPM').onclick = openPM;
+$('#pmClose').onclick = () => { if(pmGuard()){ setDirty(false); $('#pm').close(); } };
+$('#pm').addEventListener('cancel', e => { if(!pmGuard()) e.preventDefault(); else setDirty(false); });
+$('#pmSave').onclick = async () => {
+  if(!pmDraft.name.trim()){ toast('ใส่ชื่อสินค้าก่อน'); return; }
+  if(await pmPost({action:'upsert', product:pmDraft}, 'บันทึกสินค้าแล้ว')) pmLoad(pmDraft.id);
+};
+$('#pmNew').onclick = () => {
+  if(!pmGuard()) return;
+  pmDraft = {id:'p'+Date.now().toString(36), group:'ทั่วไป', name:'สินค้าใหม่', modules:[], p:{}, ui:{}};
+  pmSel = pmDraft.id; setDirty(true); pmList(); pmEditor(); $('#pmName').select();
+};
+$('#pmDup').onclick = () => {
+  if(!pmGuard()) return;
+  pmDraft = Object.assign(clone(pmDraft), {id:'p'+Date.now().toString(36), name: pmDraft.name + ' (สำเนา)'});
+  pmSel = pmDraft.id; setDirty(true); pmList(); pmEditor(); $('#pmName').select();
+};
+$('#pmDel').onclick = async () => {
+  if(pmDraft.id==='custom') return;
+  if(!PRODUCTS.find(x=>x.id===pmDraft.id)){ setDirty(false); pmLoad(PRODUCTS[0].id); return; }
+  if(!confirm(`ลบสินค้า "${pmDraft.name}" ?`)) return;
+  if(await pmPost({action:'delete', id:pmDraft.id}, 'ลบแล้ว')){ setDirty(false); pmLoad(PRODUCTS[0].id); }
+};
+$('#pmRestore').onclick = async () => { if(await pmPost({action:'restore'}, 'เพิ่มสินค้าตั้งต้นที่ขาดไปแล้ว')) pmLoad(pmSel); };
 
 // ---------------- AI model pickers ----------------
 function fillAiSelects(){

@@ -50,7 +50,7 @@ type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[] };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
-type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number> };
+type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number>; next?: string };
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings };
 type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
@@ -156,6 +156,16 @@ function Chats() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [draftCount, setDraftCount] = useState(0);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  // 📜 15 ต.ค. 69 เจ้าของร้าน "ต้องการให้แสดงลูกค้าให้ครบ": เดิมได้ 80 ห้องล่าสุดแล้วตัน (เลื่อนลงสุดไม่มีอะไรต่อ ทั้งที่คลังมีหมื่นกว่าห้อง)
+  //   → เลื่อนถึงท้ายรายการ = โหลดหน้าถัดไปต่อท้ายเอง (cursor = lastSeen ของแถวสุดท้าย · next ว่าง = ครบแล้ว)
+  //   หน้าที่กรองออกหมด (เช่น "ใหม่" ในห้องเก่า ๆ) ไม่ไล่ต่อเอง ให้กดปุ่มดูห้องเก่ากว่านี้ — กันเลื่อนทีเดียวแล้วระบบอ่านทั้งคลัง
+  const [next, setNext] = useState("");
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [lastPageEmpty, setLastPageEmpty] = useState(false);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  /** ตัวกรองของรายชื่อที่โหลดอยู่ — รีเฟรช 30 วิ (ตัวกรองเดิม) = เติมหน้าแรกทับ เก็บหน้าที่เลื่อนมาแล้วไว้ · เปลี่ยนตัวกรอง = เริ่มใหม่ */
+  const listKeyRef = useRef("");
 
   // 🔎 14 ต.ค. 69 "ค้นหาไม่ได้จริง": คำขอรายชื่อเก่า (เปิดหน้า/รีเฟรช 30 วิ ที่ไม่มีคำค้น) ตอบช้ากว่าผลค้นหา แล้วเขียนทับรายชื่อกลับเป็นทั้งหมด
   // → นับเลขคำขอ ใช้เฉพาะคำตอบของคำขอล่าสุด
@@ -166,7 +176,18 @@ function Chats() {
     try {
       const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`);
       if (my !== loadSeq.current) return;
-      setRows(d.rows);
+      const key = `${scope}|${q}|${tagFilter}`;
+      if (listKeyRef.current === key) {
+        // รีเฟรชตัวกรองเดิม: หน้าแรกชุดใหม่นำ แล้วตามด้วยห้องที่เลื่อนมาแล้วซึ่งไม่อยู่ในหน้าแรก (ห้องที่เพิ่งทักจะขยับขึ้นหน้าแรกเอง) · cursor คงเดิม
+        const ids = new Set(d.rows.map((r) => r.id));
+        setRows((prev) => (prev.length > d.rows.length ? [...d.rows, ...prev.filter((r) => !ids.has(r.id))] : d.rows));
+        setNext((cur) => (cur ? cur : (d.next ?? "")));
+      } else {
+        listKeyRef.current = key;
+        setRows(d.rows);
+        setNext(d.next ?? "");
+        setLastPageEmpty(false);
+      }
       setSettings(d.settings);
       setWaitingCount(d.waitingCount);
       setUnreadCount(d.unreadCount);
@@ -183,6 +204,42 @@ function Chats() {
     const t = setTimeout(() => void load(), q ? 350 : 0);
     return () => clearTimeout(t);
   }, [load, q]);
+
+  /** 📜 หน้าถัดไปต่อท้าย (เรียกจาก sentinel ท้ายรายการ หรือปุ่ม "ดูห้องเก่ากว่านี้") */
+  const loadMore = useCallback(async () => {
+    if (!next || moreBusy || q) return;
+    const cursor = next;
+    const key = listKeyRef.current;
+    setMoreBusy(true);
+    try {
+      const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80&before=${encodeURIComponent(cursor)}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`);
+      if (listKeyRef.current !== key) return; // เปลี่ยนตัวกรองไปแล้วระหว่างรอ
+      setRows((prev) => {
+        const have = new Set(prev.map((r) => r.id));
+        return [...prev, ...d.rows.filter((r) => !have.has(r.id))];
+      });
+      setNext(d.next ?? "");
+      setLastPageEmpty(d.rows.length === 0);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    } finally {
+      setMoreBusy(false);
+    }
+  }, [next, moreBusy, q, scope, tagFilter, toast]);
+
+  // เลื่อนถึงท้ายรายการ = โหลดต่อเอง (เฉพาะเมื่อหน้าก่อนยังมีแถว — หน้าว่างให้กดปุ่มเอง)
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !next || moreBusy || lastPageEmpty || q) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((x) => x.isIntersecting)) void loadMore();
+      },
+      { root: listRef.current, rootMargin: "0px 0px 240px 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [next, moreBusy, lastPageEmpty, q, loadMore, rows.length]);
 
   // 🔗 ?id=U… เปิดห้องนั้นเลย (ลิงก์ "เปิดแชท" จากหน้า บอทเรียนรู้ · 14 ต.ค. 69)
   useEffect(() => {
@@ -661,7 +718,7 @@ function Chats() {
             </button>
           </div>
         ) : null}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={listRef} className="flex-1 overflow-y-auto">
           {loading && !rows.length ? (
             <p className="p-4 text-sm" style={{ color: "var(--dk-faint)" }}>
               กำลังโหลด…
@@ -708,6 +765,20 @@ function Chats() {
               </button>
             ))
           )}
+          {/* 📜 ท้ายรายการ: โหลดต่อเอง / ปุ่มเมื่อหน้าก่อนว่าง / บอกว่าครบแล้ว */}
+          {rows.length && !q ? (
+            <div ref={moreRef} className="px-3 py-3 text-center text-[12px]" style={{ color: "var(--dk-faint)" }}>
+              {moreBusy ? (
+                "กำลังโหลดห้องเก่ากว่านี้…"
+              ) : next ? (
+                <button type="button" onClick={() => void loadMore()} className="min-h-[36px] rounded-full border bg-white px-4 font-bold" style={{ borderColor: "var(--dk-hair)", color: "var(--dk-navy)" }}>
+                  {lastPageEmpty ? "ยังไม่เจอในชุดนี้ · ดูห้องเก่ากว่านี้" : "ดูห้องเก่ากว่านี้"}
+                </button>
+              ) : (
+                `ครบแล้ว ${rows.length.toLocaleString()} ห้อง`
+              )}
+            </div>
+          ) : null}
         </div>
       </aside>
 
