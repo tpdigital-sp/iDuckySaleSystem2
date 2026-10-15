@@ -5834,7 +5834,8 @@ export default function AdminOrderDetailPage() {
                   )}
                   {order.flowAccount && mayEdit && <FlowAccountSync order={order} actor={actor} onApply={applyOrder} />}
                   {/* 🧾➕ บิลเพิ่ม — เอกสารใบที่ 2 ขึ้นไป (ส่วนต่างเปลี่ยนสเปค/วัสดุ) · ฝ่ายแพ็คต้องรู้ว่ามีกี่ใบ */}
-                  {(order.flowAccount || order.taxInvoice) && (mayEdit || (order.flowAccountExtras?.length ?? 0) > 0) && (
+                  {/* ต้องมี "ใบที่ 1" (order.flowAccount) ก่อนถึงแนบใบที่ 2 ได้ — แค่ข้อมูลใบกำกับ (taxInvoice) ไม่นับแล้ว เพราะฟอร์มนั้นไม่ผูกเอกสาร (15 ต.ค. 69 ผู้ใช้ถาม "ทำไมขึ้นแนบใบที่ 2 ทั้งที่ยังไม่มี") · ใบเก่าที่เคยแนบบิลเพิ่มไว้ยังเห็นรายการเดิม */}
+                  {(order.flowAccount ? mayEdit || (order.flowAccountExtras?.length ?? 0) > 0 : (order.flowAccountExtras?.length ?? 0) > 0) && (
                     <FlowAccountExtraDocs order={order} mayEdit={mayEdit && seesMoney} onApply={adoptOrder} />
                   )}
                   {order.taxInvoice && (
