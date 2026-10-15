@@ -191,7 +191,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
 import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shippingUnset } from "@/lib/ship-label";
-import { calAiUrlOf, calPdfUrlOf, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
@@ -408,7 +408,14 @@ function imageFromTransfer(dt: DataTransfer | null | undefined): File | null {
 function printFilesOf(it: OrderItem, orderId: string, itemIndex: number) {
   const arts = it.artworkUrls ?? [];
   const specs = (it.sel?.[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
-  const matched = specs.length > 0 && arts.length === specs.length;
+  /**
+   * 🗓 ปฏิทินที่ออกแบบบนเว็บ: พิกัด 1 ลาย = หลายไฟล์ (" · 16 ไฟล์: 1.ปก 2.…") — นับไฟล์ตามนั้น
+   * เดิมนับลายละ 1 ไฟล์ → ขึ้นเตือนผิด "มี 1 ลาย แต่แนบรูปมา 16 ใบ (ของเก่ามีรูปซ้ำ)" (15 ต.ค. 69)
+   */
+  const calPages = specs.map((sp) => Number(/ (\d+) ไฟล์: 1\./.exec(sp)?.[1] ?? 0));
+  const isCal = calPages.some((n) => n > 0);
+  const matched =
+    specs.length > 0 && (arts.length === specs.length || (isCal && arts.length === calPages.reduce((a, n) => a + Math.max(1, n), 0)));
   const sourceSet = new Set(specs.map((sp) => sp.match(/ต้นฉบับ:\s*(\S+)/)?.[1]).filter(Boolean) as string[]);
   const isReady = (u: string) => matched || (!sourceSet.has(u) && /\.jpe?g(\?|$)/i.test(u));
   const ready = arts.filter(isReady).map((u, n) => {
@@ -422,7 +429,52 @@ function printFilesOf(it: OrderItem, orderId: string, itemIndex: number) {
       name: `${orderId}-item${itemIndex + 1}-ลาย${n + 1}-พร้อมพิมพ์.ai`,
     };
   });
-  return { arts, specs, matched, ready, raw: arts.filter((u) => !isReady(u)) };
+  return { arts, specs, matched, ready, isCal, raw: arts.filter((u) => !isReady(u)) };
+}
+
+/**
+ * 🗓 ปฏิทินที่ลูกค้าออกแบบในจอสร้างปฏิทิน — ไฟล์ทีละหน้า (ปก · เดือน …) ไม่ต้องกางเป็นการ์ดยาวในหน้าออเดอร์
+ * (ผู้ใช้สั่ง 15 ต.ค. 69 "ไฟล์ตามภาพที่ 1 ไม่ต้องนำมาแสดง") → พับเก็บ กดเปิดได้ถ้าต้องหยิบไฟล์หน้าไหน · งานอื่นแสดงเหมือนเดิม
+ */
+function CalPagesFold({
+  isCal,
+  n,
+  cover,
+  onOpen,
+  children,
+}: {
+  isCal: boolean;
+  n: number;
+  /** ภาพหน้าแรก (ปก) — โชว์ไว้นอกส่วนที่พับ ให้เห็นคร่าว ๆ ว่าลูกค้าสั่งอะไร (ผู้ใช้สั่ง 15 ต.ค. 69) */
+  cover?: string;
+  onOpen?: () => void;
+  children: React.ReactNode;
+}) {
+  if (!isCal) return <div>{children}</div>;
+  return (
+    <div className="space-y-2">
+      {cover && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex items-center gap-2.5 rounded-xl bg-white p-2 text-left ring-1 ring-sky-200 transition hover:ring-2 hover:ring-sky-400"
+          title="กดเพื่อดูภาพเต็ม"
+        >
+          <img src={cover} alt="ภาพตัวอย่างงานที่ลูกค้าสั่ง" className="h-24 w-auto max-w-[160px] rounded-lg object-contain ring-1 ring-slate-200" />
+          <span className="text-[11px] font-bold leading-snug text-slate-600">
+            🖼 ภาพตัวอย่างที่ลูกค้าสั่ง
+            <span className="block font-semibold text-slate-400">หน้าแรก (ปก) · กดเพื่อดูเต็ม</span>
+          </span>
+        </button>
+      )}
+    <details className="rounded-lg bg-slate-50 px-2.5 py-1.5 ring-1 ring-slate-200">
+      <summary className="cursor-pointer text-[11px] font-bold text-slate-500">
+        🗓 ปฏิทินที่ลูกค้าออกแบบบนเว็บ — ไฟล์ทีละหน้า {n} หน้า (ซ่อนไว้ · กดเพื่อดู)
+      </summary>
+      <div className="mt-1.5">{children}</div>
+    </details>
+    </div>
+  );
 }
 
 /** ขั้นถัดไปที่ "ปกติจะกด" ของแต่ละสถานะ — ทำเป็นปุ่มเดียวจบ ไม่ต้องเปิดลิสต์ยาว */
@@ -4160,6 +4212,38 @@ export default function AdminOrderDetailPage() {
     window.open(`${productPath(p)}?edit=${cartEditToken(cartItemKey(it.productId, cartSelectionsOf(it)))}`, "_blank", "noopener");
   }
 
+  /**
+   * ✏️ เปิดปฏิทินที่ลูกค้าออกแบบบนเว็บกลับมาในจอสร้างปฏิทิน (ผู้ใช้สั่ง 15 ต.ค. 69 "บางครั้งต้องแก้ไข")
+   * แบบทั้งชุดฝากไว้ที่ลิงก์ในสเปค (CAL_EDIT_TAG) → หน้าสินค้าโหมด ?edit อ่านกลับมาเอง
+   * ยังไม่มีเงินเข้า = ใช้ทางเดียวกับ 🛠 แก้ตัวเลือก (แก้เสร็จกดสั่ง → แทนที่รายการนี้) · เงินเข้าแล้ว = เปิดดู/ลองแก้ได้ แต่ไม่แทนที่ (ยอดล็อก)
+   */
+  function openCalDesign(itemIndex: number) {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    if (!it) return;
+    if (mayChangeQty(it)) return editItemOptionsInShop(itemIndex);
+    const p = productOfItem(it.productId);
+    if (!p) return;
+    const selections = cartSelectionsOf(it);
+    const key = cartItemKey(it.productId, selections);
+    try {
+      const cart = (() => {
+        try {
+          const v = JSON.parse(localStorage.getItem("iducky-cart-v1") ?? "[]");
+          return Array.isArray(v) ? (v as { key: string }[]) : [];
+        } catch {
+          return [];
+        }
+      })();
+      const line = { key, productId: it.productId, selections, qty: it.qty, unitPrice: it.unitPrice };
+      localStorage.setItem("iducky-cart-v1", JSON.stringify([...cart.filter((c) => c?.key !== key), line]));
+    } catch {
+      setErr("⚠️ เปิดแบบไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
+      return;
+    }
+    window.open(`${productPath(p)}?edit=${cartEditToken(key)}`, "_blank", "noopener");
+  }
+
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
   function removeItemFromOrder(itemIndex: number) {
     if (!order) return;
@@ -6965,7 +7049,7 @@ export default function AdminOrderDetailPage() {
                         จับคู่กับจำนวนลายได้พอดี = ภาพพร้อมพิมพ์ทั้งชุด (ออเดอร์ที่สร้างหลังแก้บั๊ครูปซ้ำ)
                       */}
                       {(() => {
-                        const { arts, specs, matched, ready, raw } = printFilesOf(it, order.id, i);
+                        const { arts, specs, matched, ready, raw, isCal } = printFilesOf(it, order.id, i);
                         if (!arts.length) return null;
                         return (
                           <div className="mt-2 space-y-2">
@@ -6979,11 +7063,18 @@ export default function AdminOrderDetailPage() {
                             {/* 🔢 ยอดรวมจำนวนต่อลายเทียบกับที่สั่ง — เห็นทันทีว่าลูกค้าระบุครบ/ขาด/เกิน */}
                             <ArtQtySummary it={it} />
 
-                            {/* 🗂 .ai แยกเลเยอร์ของปฏิทินที่ออกแบบบนเว็บ — เฉพาะเจ้าของร้าน (ช่วงทดสอบ 13 ต.ค. 69) */}
-                            {isOwner &&
-                              specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
+                            {/* 🗂 .ai แยกเลเยอร์ + .pdf ของปฏิทินที่ออกแบบบนเว็บ — พนักงานหลังบ้านเห็น/โหลดได้ทุกคน
+                                (ผู้ใช้สั่ง 15 ต.ค. 69 "หลังบ้านเป็นพนักงาน ต้องเห็นไฟล์ได้" · เดิมเฉพาะเจ้าของร้าน) — ลูกค้าไม่เห็นหน้านี้
+                                ปฏิทินที่ออกแบบบนเว็บแต่ไม่มีไฟล์ = บอกให้รู้ว่าไม่มี (ไม่ใช่กล่องหายไปเฉย ๆ) */}
+                            {isCal && !specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
+                              <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
+                                🗂 ไฟล์งาน .ai / .pdf: ออเดอร์นี้ไม่มีไฟล์ — ระบบทำไฟล์นี้เฉพาะตอนเจ้าของร้านเป็นคนออกแบบ/สั่งเอง
+                                (ออเดอร์จากลูกค้าทั่วไปยังไม่มี)
+                              </p>
+                            )}
+                            {specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
                                 <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 ring-1 ring-amber-200">
-                                  <span className="text-[11px] font-bold text-amber-900">🗂 ไฟล์ของเจ้าของ (ทดสอบ):</span>
+                                  <span className="text-[11px] font-bold text-amber-900">🗂 ไฟล์งาน:</span>
                                   {specs.flatMap((sp, n) =>
                                     (
                                       [
@@ -7010,9 +7101,33 @@ export default function AdminOrderDetailPage() {
                                 </div>
                               )}
 
+                            {/* ✏️ เปิดแบบที่ลูกค้าทำบนเว็บกลับมาแก้ในจอสร้างปฏิทิน (ออเดอร์ตั้งแต่ 15 ต.ค. 69 · ของเก่าไม่มีลิงก์แบบ) */}
+                            {specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
+                              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 ring-1 ring-sky-200">
+                                <button
+                                  type="button"
+                                  onClick={() => openCalDesign(i)}
+                                  className="rounded-full bg-sky-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-sky-700"
+                                  title="เปิดหน้าสินค้า + จอสร้างปฏิทิน พร้อมแบบที่ลูกค้าทำไว้ (รูป · เลย์เอาต์ · ข้อความ)"
+                                >
+                                  ✏️ เปิดแบบนี้ในจอสร้างปฏิทิน
+                                </button>
+                                <span className="text-[10.5px] font-semibold leading-snug text-sky-900">
+                                  {mayChangeQty(it)
+                                    ? "แก้แล้วกด ✓ ใช้แบบนี้ → สั่ง ระบบแทนที่รายการนี้ให้"
+                                    : "ออเดอร์มีเงินเข้าแล้ว — เปิดดู/ลองแก้ได้ แต่ระบบไม่แทนที่รายการให้ (ยอดล็อก)"}
+                                </span>
+                              </div>
+                            )}
+
                             {/* ── ไฟล์พร้อมพิมพ์ — แสดงเป็นรายการพร้อมชื่อไฟล์ ── */}
                             {ready.length > 0 && (
-                              <div>
+                              <CalPagesFold
+                                isCal={isCal}
+                                n={ready.length}
+                                cover={ready[0]?.u}
+                                onOpen={() => ready[0] && setLightbox({ src: ready[0].u, alt: `${it.name} ภาพตัวอย่าง`, caption: it.name })}
+                              >
                                 <p className="text-[11px] font-bold text-sky-800">
                                   📐 ไฟล์พร้อมพิมพ์ ({ready.length}) — ลูกค้าออกแบบมาเองแล้ว ไม่ต้องทำแบบใหม่
                                 </p>
@@ -7203,7 +7318,7 @@ export default function AdminOrderDetailPage() {
                                     );
                                   })}
                                 </ol>
-                              </div>
+                              </CalPagesFold>
                             )}
 
                             {/* ── ไฟล์ภาพต้นฉบับ — ไม่ใช่ไฟล์ส่งพิมพ์ ── */}

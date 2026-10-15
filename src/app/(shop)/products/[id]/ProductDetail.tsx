@@ -168,6 +168,8 @@ import {
   PLACEMENT_SPEC_LABEL,
   CAL_AI_TAG,
   CAL_PDF_TAG,
+  CAL_EDIT_TAG,
+  calEditUrlOf,
   templateFrame,
   type DesignTemplate,
   type TemplateFrame,
@@ -178,7 +180,7 @@ import SlotStudio, { type SlotResult, type SlotShot } from "@/components/SlotStu
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
 import { calDesignCount, calFormat, calHasGrid, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
-import { fetchSources, loadCalEdit, saveCalEdit } from "@/lib/cal-edit-store";
+import { fetchCalDesign, fetchSources, loadCalEdit, saveCalEdit, uploadCalDesign, type SavedCalDesign } from "@/lib/cal-edit-store";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin, getAdminSession } from "@/lib/auth";
 import { fetchProduct } from "@/lib/product-repo";
@@ -917,6 +919,8 @@ export default function ProductDetail({
       aiUrl?: string;
       /** 🖨 .pdf ชิ้นงาน (เฉพาะเจ้าของร้านสั่ง — ช่วงทดสอบ) */
       pdfUrl?: string;
+      /** ✏️ ลิงก์ข้อมูลแบบที่ฝากไว้บนเซิร์ฟเวอร์ — หลังบ้านเปิดกลับมาแก้ได้ (CAL_EDIT_TAG) */
+      editUrl?: string;
       /** 🗓 URL รูปต้นฉบับตามลำดับ calState.sources — จำแบบไว้ให้แก้จากตะกร้าได้ */
       sourceUrls?: string[];
     }[]
@@ -1639,9 +1643,22 @@ export default function ProductDetail({
       if (ref) setConsultRef(ref);
     }
     // 🗓 แบบปฏิทินที่ออกแบบไว้ (จำไว้ตอนใส่ตะกร้า) — ดึงรูปต้นฉบับกลับมา แล้วเปิดแก้ในจอสร้างปฏิทินได้เหมือนเดิม
-    const savedCal = loadCalEdit(key);
-    if (savedCal?.length) {
+    const savedLocal = loadCalEdit(key);
+    // ✏️ ไม่มีในเครื่องนี้ (แอดมินเปิดแก้ให้จากหลังบ้าน / ลูกค้าเปลี่ยนเครื่อง) → อ่านแบบที่ฝากไว้จากลิงก์ในสเปค
+    const editSpecs = savedLocal?.length ? [] : (src[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter((sp) => calEditUrlOf(sp));
+    const editUrls = editSpecs.map((sp) => calEditUrlOf(sp)!);
+    if (savedLocal?.length || editUrls.length) {
       void (async () => {
+        const savedCal: SavedCalDesign[] = savedLocal?.length
+          ? savedLocal
+          : (await Promise.all(editUrls.map(fetchCalDesign)))
+              .map((d, i) => {
+                // จำนวนต่อลายจริงอยู่ในสเปค ("ลายที่ 2 × 3 ชิ้น — …") — ไฟล์แบบจดไว้ตอนกดใช้แบบนี้ (ยังเป็น 1)
+                const q = Number(/^ลายที่ \d+ × (\d+) ชิ้น/.exec(editSpecs[i])?.[1] ?? 0);
+                return d && q ? { ...d, qty: q } : d;
+              })
+              .filter((d): d is SavedCalDesign => !!d);
+        if (!savedCal.length || (!savedLocal?.length && savedCal.length !== editUrls.length)) return;
         const restored = [];
         for (const d of savedCal) {
           const files = d.sourceUrls.length ? await fetchSources(d.sourceUrls) : [];
@@ -1659,6 +1676,7 @@ export default function ProductDetail({
             qty: d.qty,
             aiUrl: d.aiUrl,
             pdfUrl: d.pdfUrl,
+            editUrl: d.editUrl,
           });
         }
         if (restored.length === savedCal.length) setPlaced(restored);
@@ -2042,6 +2060,9 @@ export default function ProductDetail({
           // คืนค่าโหมดที่เลือกไว้ล่าสุด (เฉพาะพนักงาน — ลูกค้าทั่วไปไม่มีทางเปิดโหมดนี้ได้)
           if (ok && typeof localStorage !== "undefined" && localStorage.getItem(ADMIN_MODE_KEY) === "1") setAdminMode(true);
         }),
+      // ⏱ ต้องมีเพดานเวลา — หน้าสินค้างานหนัก/แท็บไม่ได้โฟกัส idle callback อาจไม่ถูกเรียกเลย → ไม่รู้ว่าเป็นเจ้าของร้าน
+      //    จอสร้างปฏิทินเลยไม่ทำ/ไม่แนบ .ai .pdf ให้ออเดอร์ (OD-261015-4501 ทดสอบ 15 ต.ค. 69)
+      { timeout: 2500 },
     );
     return () => window.cancelIdleCallback?.(id as number);
   }, []);
@@ -3144,7 +3165,24 @@ export default function ProductDetail({
         artUrl: files[0].url,
         calState: r.state,
         calBackFiles: files.slice(1),
+        editUrl: undefined as string | undefined,
       };
+      // ✏️ ฝากข้อมูลแบบไว้บนเซิร์ฟเวอร์ — ลิงก์ติดไปกับออเดอร์ หลังบ้านเปิดกลับมาแก้ได้ (ไม่ขึ้นก็สั่งต่อได้)
+      entry.editUrl = await uploadCalDesign({
+        format: r.state.format,
+        design: r.state.design,
+        back: r.state.back,
+        sourceUrls,
+        summary: entry.summary,
+        head: entry.head,
+        dpi: entry.dpi,
+        spec: entry.spec,
+        artUrl: entry.artUrl,
+        calBackFiles: entry.calBackFiles,
+        qty: editIndex !== null ? (placed[editIndex]?.qty ?? 1) : 1,
+        aiUrl,
+        pdfUrl,
+      });
       if (editIndex !== null) {
         setArtFiles((cur) => cur.map((x, i) => (i === editIndex ? files[0] : x)));
         setPlaced((cur) => cur.map((x, i) => (i === editIndex ? { ...entry, qty: x.qty } : x)));
@@ -3603,7 +3641,8 @@ export default function ProductDetail({
             `${many ? `ลายที่ ${i + 1} × ${p.qty} ชิ้น — ` : ""}${p.spec}` +
             (p.sourceUrl ? ` · ต้นฉบับ: ${p.sourceUrl}` : "") +
             (p.aiUrl ? `${CAL_AI_TAG}${p.aiUrl}` : "") +
-            (p.pdfUrl ? `${CAL_PDF_TAG}${p.pdfUrl}` : ""),
+            (p.pdfUrl ? `${CAL_PDF_TAG}${p.pdfUrl}` : "") +
+            (p.editUrl ? `${CAL_EDIT_TAG}${p.editUrl}` : ""),
         )
         .join(" | ");
     }
@@ -3692,6 +3731,7 @@ export default function ProductDetail({
               qty: p.qty,
               aiUrl: p.aiUrl,
               pdfUrl: p.pdfUrl,
+              editUrl: p.editUrl,
             })),
         );
       addItem(product.id, line, qty, product);

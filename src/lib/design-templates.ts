@@ -440,12 +440,18 @@ const tagUrl = (spec: string, tag: string): string | null => {
   const i = spec.indexOf(tag);
   return i < 0 ? null : (spec.slice(i + tag.length).match(/^\S+/)?.[0] ?? null);
 };
+/**
+ * ✏️ ข้อมูลแบบที่ลูกค้าออกแบบในจอสร้างปฏิทิน (JSON: เลย์เอาต์/ข้อความ/ลิงก์รูปต้นฉบับ) — หลังบ้านเปิดแบบเดิมมาแก้ได้
+ * (ผู้ใช้ขอ 15 ต.ค. 69 "เพิ่มลิงก์ที่ลูกค้าออกแบบบนเว็บ บางครั้งต้องแก้ไข") · ไฟล์อยู่ design-templates/cal-design/
+ */
+export const CAL_EDIT_TAG = " · แบบบนเว็บ: ";
+export const calEditUrlOf = (spec: string): string | null => tagUrl(spec, CAL_EDIT_TAG);
 export const calAiUrlOf = (spec: string): string | null => tagUrl(spec, CAL_AI_TAG);
 export const calPdfUrlOf = (spec: string): string | null => tagUrl(spec, CAL_PDF_TAG);
 /** ตัดลิงก์ไฟล์ของเจ้าของ (.ai / .pdf) ออกจากข้อความที่ทีมงานเห็น */
 export const stripCalAi = (spec: string): string => {
   let out = spec;
-  for (const tag of [CAL_AI_TAG, CAL_PDF_TAG]) {
+  for (const tag of [CAL_AI_TAG, CAL_PDF_TAG, CAL_EDIT_TAG]) {
     const i = out.indexOf(tag);
     if (i >= 0) out = out.slice(0, i) + out.slice(i + tag.length).replace(/^\S+/, "");
   }

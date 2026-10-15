@@ -30,6 +30,8 @@ export interface SavedCalDesign {
   qty: number;
   aiUrl?: string;
   pdfUrl?: string;
+  /** ✏️ ลิงก์ที่ฝากแบบนี้ไว้บนเซิร์ฟเวอร์ (uploadCalDesign) */
+  editUrl?: string;
 }
 
 type Store = Record<string, { at: number; designs: SavedCalDesign[] }>;
@@ -70,6 +72,36 @@ export async function fetchSources(urls: string[]): Promise<File[] | null> {
         return new File([b], decodeURIComponent(u.split("/").pop() || `รูป-${i + 1}`), { type: b.type || "image/jpeg" });
       }),
     );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ✏️ ฝากแบบไว้บนเซิร์ฟเวอร์ด้วย (ลิงก์ติดไปกับออเดอร์ · CAL_EDIT_TAG) — หลังบ้านเปิดแบบที่ลูกค้าทำกลับมาแก้ได้
+ * (ผู้ใช้สั่ง 15 ต.ค. 69 "เพิ่มลิ้งค์ที่ลูกค้าออกแบบบนเว็บ เพราะบางครั้งต้องแก้ไข") · อัปไม่ขึ้น = undefined ไม่ขวางการสั่ง
+ */
+export async function uploadCalDesign(d: SavedCalDesign): Promise<string | undefined> {
+  try {
+    const res = await fetch("/api/orders/cal-design", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ v: 1, ...d }),
+    });
+    const j = (await res.json().catch(() => null)) as { url?: string } | null;
+    return res.ok && j?.url ? j.url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** อ่านแบบที่ฝากไว้ (จากลิงก์ในสเปคออเดอร์) — ไม่ใช่แบบปฏิทิน/โหลดไม่ได้ = null */
+export async function fetchCalDesign(url: string): Promise<SavedCalDesign | null> {
+  try {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) return null;
+    const j = (await r.json()) as SavedCalDesign & { v?: number };
+    return j?.v === 1 && typeof j.format === "string" && Array.isArray(j.sourceUrls) ? j : null;
   } catch {
     return null;
   }
