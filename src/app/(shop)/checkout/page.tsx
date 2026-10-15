@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ART_SIZE_LABEL, REUSE_ART_LABEL, activeMatrix, activeRate, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, includedDesigns, isRetailRateLine, lotShortfalls, mixRuleFor, needsStockCheck, orderUnitYield, perUnitCapacity, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { couponErrorText, type CouponError } from "@/lib/coupons";
@@ -385,6 +385,8 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           code,
           subtotal,
+          // ค่าส่งปัจจุบัน — คูปองลดเป็นบาทที่มูลค่าเกินค่าสินค้าจะลดค่าส่งต่อ (เซิร์ฟเวอร์คิดด้วยสูตรเดียวกันตอนสร้างออเดอร์)
+          shippingCost,
           // ส่งรายการสินค้าไปด้วย — คูปองบางใบมีสินค้าไม่ร่วมรายการ (คิดส่วนลดเฉพาะที่ร่วม)
           items: items.map((it) => ({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice })),
         }),
@@ -401,6 +403,15 @@ export default function CheckoutPage() {
       setCouponBusy(false);
     }
   }
+
+  // เปลี่ยนวิธีส่ง (ค่าส่งเปลี่ยน) หลังใส่คูปองแล้ว → ตรวจคูปองใหม่ ให้ยอดพรีวิวตามค่าส่งปัจจุบัน
+  const couponShipRef = useRef(shippingCost);
+  useEffect(() => {
+    if (couponShipRef.current === shippingCost) return;
+    couponShipRef.current = shippingCost;
+    if (couponPreview && !couponBusy) void applyCoupon();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shippingCost]);
 
   function removeCoupon() {
     setCouponPreview(null);

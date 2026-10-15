@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const { data: u, error: authErr } = await sb.auth.getUser(token);
   if (authErr || !u.user) return NextResponse.json({ ok: false, error: "เซสชันหมดอายุ" }, { status: 401 });
 
-  let body: { code?: string; subtotal?: number; items?: { productId?: string; qty?: number; unitPrice?: number }[] };
+  let body: { code?: string; subtotal?: number; shippingCost?: number; items?: { productId?: string; qty?: number; unitPrice?: number }[] };
   try {
     body = await req.json();
   } catch {
@@ -25,6 +25,8 @@ export async function POST(req: Request) {
   }
   const code = (body.code ?? "").trim().toUpperCase();
   const subtotal = Math.max(0, Number(body.subtotal) || 0);
+  // ค่าส่งของตะกร้านี้ — คูปองลดเป็นบาทที่เกินค่าสินค้าจะลดค่าส่งต่อ (หน้าเก่าที่ไม่ส่งมา = คิดแบบเดิม)
+  const shippingCost = Math.max(0, Number(body.shippingCost) || 0);
   if (!code) return NextResponse.json({ ok: false, error: "ใส่โค้ดคูปอง" }, { status: 400 });
   // รายการสินค้า (ไว้ตัดสินค้าไม่ร่วมรายการ) — ของเก่าที่ไม่ส่ง items มาก็ยังใช้ได้
   const items = (Array.isArray(body.items) ? body.items : [])
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "ตรวจคูปองไม่สำเร็จ" }, { status: 500 });
 
   const c = (cRow?.data as Coupon | undefined) ?? null;
-  const v = validateCoupon(c, u.user.id, subtotal, Date.now(), items.length ? items : undefined);
+  const v = validateCoupon(c, u.user.id, subtotal, Date.now(), items.length ? items : undefined, shippingCost);
   if (!v.ok) return NextResponse.json({ ok: false, error: couponErrorText(v.reason) });
 
   // มีบางชิ้นไม่ร่วมรายการ → บอกลูกค้าว่าส่วนลดคิดเฉพาะสินค้าที่ร่วม

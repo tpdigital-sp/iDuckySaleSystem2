@@ -15,7 +15,8 @@ const thb = (n: number) => n.toLocaleString("th-TH");
  * → เดิมคูปองใช้ได้แค่ตอนลูกค้าล็อกอินสั่งเอง (/api/orders) ใบที่พนักงานเปิดให้ไม่มีทางใส่เลย (29 ก.ย. 69)
  *
  * กติกาเดียวกับตอนลูกค้าสั่งเอง: ตัดสิทธิ์แบบ atomic · คูปองต้องลดได้มากกว่าส่วนลดระดับสมาชิกถึงจะใช้ (ไม่งั้นไม่เผาคูปอง)
- * · ฐานคิด = ยอดสินค้าหลังหักส่วนลดรายรายการ (ไม่รวมค่าส่ง) · ใบที่มีเงินเข้าแล้วห้ามลดจนกลายเป็นโอนเกิน
+ * · ฐานคิด = ยอดสินค้าหลังหักส่วนลดรายรายการ (คูปอง % ไม่รวมค่าส่ง · คูปองลดเป็นบาทที่เกินค่าสินค้าลดค่าส่งต่อได้)
+ * · ใบที่มีเงินเข้าแล้วห้ามลดจนกลายเป็นโอนเกิน
  * ใบที่ไม่มีบัญชีเว็บ (customerId ว่าง): แอดมินยืนยันเองว่าเป็นลูกค้าเจ้าของคูปอง → คูปองที่เจาะจงคนใช้ได้
  *
  * ฟังก์ชันในไฟล์นี้ "ยังไม่บันทึกออเดอร์" — คืนก้อนที่พร้อมบันทึกให้ผู้เรียกส่งเข้าประตู updateOrder เอง
@@ -63,11 +64,12 @@ export async function applyCouponToOrder(sb: SB, order: Order, rawCode: string, 
 
   const asCustomer = await couponRedeemerOf(sb, order, c);
   const base = Math.max(0, orderSubtotal(order) - orderItemDiscounts(order));
+  const shipping = Math.max(0, order.shippingCost ?? 0);
   const items = order.items.map((i) => ({ productId: i.productId, qty: i.qty, unitPrice: i.unitPrice }));
   const tier = order.discount?.tierId ? order.discount : undefined;
   // 💸 คูปองคืนเงินโอนเกิน = เงินลูกค้าเอง → ลดซ้อนระดับสมาชิก (คิดบนยอดที่เหลือหลังหักระดับ) ไม่แข่งกัน
   const credit = isRefundCredit(c);
-  const v = validateCoupon(c, asCustomer, credit && tier ? Math.max(0, base - tier.amount) : base, nowMs, items);
+  const v = validateCoupon(c, asCustomer, credit && tier ? Math.max(0, base - tier.amount) : base, nowMs, items, shipping);
   if (!v.ok) return { ok: false, status: 409, error: couponErrorText(v.reason) };
   if (v.discount <= 0) return { ok: false, status: 409, error: "คูปองนี้ลดให้ใบนี้ไม่ได้ (ยอดเป็น 0)" };
 
@@ -84,7 +86,7 @@ export async function applyCouponToOrder(sb: SB, order: Order, rawCode: string, 
   const discount: Order["discount"] = !credit
     ? { label, amount: v.discount, couponCode: code }
     : tier?.tierId
-      ? stackTierDiscount({ label: tier.label, amount: tier.amount, tierId: tier.tierId }, creditPart, base)
+      ? stackTierDiscount({ label: tier.label, amount: tier.amount, tierId: tier.tierId }, creditPart, base + shipping)
       : creditPart;
   const next: Order = { ...order, discount };
   if (memberTierMoneyIn(order) && overpaidAmount(next) > 0)

@@ -48,10 +48,16 @@ export const couponUsesLeft = (c: Pick<Coupon, "maxUses" | "uses" | "status">) =
 export const couponUsedBy = (c: Pick<Coupon, "redemptions">, customerId: string) =>
   (c.redemptions ?? []).some((r) => r.customerId === customerId);
 
-/** ส่วนลดที่คูปองนี้ให้ (คิดบนราคาสินค้าก่อนค่าส่ง) */
-export function couponDiscount(c: Coupon, subtotal: number): number {
+/**
+ * ส่วนลดที่คูปองนี้ให้
+ *  - ลด % → คิดจากราคาสินค้าอย่างเดียว (ไม่รวมค่าส่ง)
+ *  - ลดเป็นบาท → หักจากยอดที่ลูกค้าต้องจ่ายทั้งหมด "รวมค่าส่ง" — มูลค่าที่เหลือจากค่าสินค้าไหลไปลดค่าส่งต่อ
+ *    (OD-261015-9740: คูปอง ฿460 · สินค้า ฿415 + ส่ง ฿50 → เดิมลดได้แค่ ฿415 ลูกค้ายังต้องจ่ายค่าส่ง ฿50
+ *     ทั้งที่คูปองเหลือ ฿45 แล้วถูกเผาทิ้ง · พนักงานแจ้ง 15 ต.ค. 69)
+ */
+export function couponDiscount(c: Coupon, subtotal: number, shipping = 0): number {
   if (subtotal <= 0) return 0;
-  if (c.type === "fixed") return Math.min(Math.max(0, c.value), subtotal);
+  if (c.type === "fixed") return Math.min(Math.max(0, c.value), subtotal + Math.max(0, shipping));
   const raw = Math.floor((subtotal * c.value) / 100);
   const capped = c.maxDiscount ? Math.min(raw, c.maxDiscount) : raw;
   return Math.min(capped, subtotal);
@@ -87,13 +93,15 @@ export function couponEligibleSubtotal(c: Coupon, items: CouponItem[]): number {
 /**
  * ตรวจว่าคูปองใช้ได้ไหม (ไม่เปลี่ยนสถานะ) — ใช้ทั้งพรีวิวฝั่งลูกค้าและก่อน redeem ฝั่งเซิร์ฟเวอร์
  * ส่ง items มาด้วยเมื่อคูปองมีสินค้าไม่ร่วมรายการ — ส่วนลด/ยอดขั้นต่ำจะคิดเฉพาะสินค้าที่ร่วม
+ * ส่ง shipping (ค่าส่งของใบนี้) มาด้วย → คูปองลดเป็นบาทที่มูลค่าเกินค่าสินค้าจะลดค่าส่งต่อ (ยอดขั้นต่ำยังคิดจากค่าสินค้า)
  */
 export function validateCoupon(
   c: Coupon | null | undefined,
   customerId: string | undefined,
   subtotal: number,
   nowMs: number,
-  items?: CouponItem[]
+  items?: CouponItem[],
+  shipping = 0
 ): { ok: true; discount: number } | { ok: false; reason: CouponError } {
   if (!c) return { ok: false, reason: "notfound" };
   if (c.status === "void") return { ok: false, reason: "void" };
@@ -109,7 +117,7 @@ export function validateCoupon(
     if (base <= 0) return { ok: false, reason: "excluded" };
   }
   if (c.minSpend && base < c.minSpend) return { ok: false, reason: "minspend" };
-  return { ok: true, discount: couponDiscount(c, base) };
+  return { ok: true, discount: couponDiscount(c, base, shipping) };
 }
 
 /** ป้ายสรุปคูปอง (ไว้แสดงในสรุปยอด/ประวัติ) */

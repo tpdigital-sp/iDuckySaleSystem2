@@ -98,6 +98,33 @@ seedCoupon({ code: "PCT10", type: "percent", value: 10, maxDiscount: 300 });
   check("10% ของ (2,000 − 200) = 180 ไม่นับค่าส่ง", r.ok && r.order.discount?.amount, 180);
 }
 
+// 3b) คูปองลดเป็นบาทที่มูลค่าเกินค่าสินค้า → ลดค่าส่งต่อ (OD-261015-9740: ฿460 บนสินค้า ฿415 + ส่ง ฿50 · พนักงานแจ้ง 15 ต.ค. 69)
+seedCoupon({ code: "BIG460", value: 460 });
+{
+  const small = baseOrder({
+    items: [
+      { productId: "sticker-hologram", name: "สติ๊กเกอร์โฮโลแกรม", qty: 2, unitPrice: 200 },
+      { productId: "sticker-hologram#designfee", name: "ค่าคละลาย", qty: 1, unitPrice: 15 },
+    ],
+  });
+  const r = await applyCouponToOrder(fakeSb, small, "BIG460", "แอดมิน");
+  check("คูปอง ฿460 บนสินค้า ฿415 + ส่ง ฿50 → ลดเต็ม ฿460", r.ok && r.order.discount?.amount, 460);
+  check("ยอดชำระเหลือ ฿5 (ค่าส่งถูกลดด้วย)", r.ok && orderTotal(r.order), 5);
+  check("log บอกยอด 465 → 5", r.ok && /465 → ฿5$/.test(r.order.log?.[r.order.log.length - 1]?.detail ?? ""), true);
+}
+// 3c) คูปองใหญ่กว่าทั้งบิล → ลดได้แค่ยอดทั้งบิล (สินค้า + ค่าส่ง) ยอดชำระ 0
+seedCoupon({ code: "BIG999", value: 999 });
+{
+  const r = await applyCouponToOrder(fakeSb, baseOrder({ items: [{ productId: "p", name: "ของ", qty: 1, unitPrice: 415 }] }), "BIG999", "แอดมิน");
+  check("คูปอง ฿999 บนบิล ฿465 → ลด ฿465 ยอด 0", [r.ok && r.order.discount?.amount, r.ok && orderTotal(r.order)], [465, 0]);
+}
+// 3d) คูปอง % ยังคิดจากค่าสินค้าอย่างเดียว — ไม่ลดค่าส่ง
+seedCoupon({ code: "PCT100", type: "percent", value: 100 });
+{
+  const r = await applyCouponToOrder(fakeSb, baseOrder({ items: [{ productId: "p", name: "ของ", qty: 1, unitPrice: 415 }] }), "PCT100", "แอดมิน");
+  check("คูปอง 100% ลดแค่ค่าสินค้า ค่าส่ง ฿50 ยังอยู่", [r.ok && r.order.discount?.amount, r.ok && orderTotal(r.order)], [415, 50]);
+}
+
 // 4) ใบมีส่วนลดระดับสมาชิก (Silver 5% = 276) + คูปอง ฿100 → ระดับดีกว่า ไม่เผาคูปอง
 seedCoupon({ code: "FIX100B" });
 const tierOrder = baseOrder({ contactId: "1", discount: { label: "สมาชิก Silver (5%)", amount: 276, tierId: "silver" } });

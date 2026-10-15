@@ -263,6 +263,9 @@ export default function AdminCouponsPage() {
               </button>
             ))}
           </div>
+          <p className="-mt-1 mb-3 text-[11px]" style={{ color: "var(--dk-faint)" }}>
+            {form.type === "percent" ? "คิดจากค่าสินค้า ไม่รวมค่าส่ง" : "หักจากยอดรวมค่าส่ง — มูลค่าที่เกินค่าสินค้าจะลดค่าส่งต่อ"}
+          </p>
 
           <Field label={form.type === "percent" ? "ส่วนลด (%)" : "ส่วนลด (บาท)"}>
             <input

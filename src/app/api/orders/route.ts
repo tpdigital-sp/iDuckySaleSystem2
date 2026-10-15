@@ -234,12 +234,14 @@ export async function POST(req: Request) {
   if (couponCode && cid) {
     const { data: cRow } = await sb.from("coupons").select("data").eq("code", couponCode).maybeSingle();
     const c = (cRow?.data as Coupon | undefined) ?? null;
+    // ค่าส่งส่งเข้าไปด้วย — คูปองลดเป็นบาทที่มูลค่าเกินค่าสินค้าจะลดค่าส่งต่อ (ตรงกับพรีวิวหน้าชำระเงิน)
     const v = validateCoupon(
       c,
       cid,
       subtotal,
       now.getTime(),
-      input.items.map((i) => ({ productId: i.productId, qty: i.qty, unitPrice: i.unitPrice }))
+      input.items.map((i) => ({ productId: i.productId, qty: i.qty, unitPrice: i.unitPrice })),
+      Number(input.shippingCost) || 0
     );
     if (!v.ok) {
       coupon = { applied: false, reason: v.reason };

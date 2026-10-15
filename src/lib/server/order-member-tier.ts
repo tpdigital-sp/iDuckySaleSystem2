@@ -78,12 +78,13 @@ function creditOnly(d: Order["discount"]): Order["discount"] {
  * ส่วนลดระดับ + คูปองคืนเงินที่ซ้อนอยู่ (ถ้ามี) → ก้อน discount เดียว
  * ใช้ทั้งตอนคิดระดับใหม่ และตอนใส่คูปองคืนเงินบนใบที่มีระดับอยู่ (order-coupon.ts)
  */
-export function stackTierDiscount(tier: { label: string; amount: number; tierId: string }, prev: Order["discount"], base: number): NonNullable<Order["discount"]> {
+export function stackTierDiscount(tier: { label: string; amount: number; tierId: string }, prev: Order["discount"], cap: number): NonNullable<Order["discount"]> {
   const credit = creditOnly(prev);
   if (!credit) return { label: tier.label, amount: tier.amount, tierId: tier.tierId };
   return {
     label: `${tier.label} + ${credit.label}`,
-    amount: Math.min(Math.max(0, base), tier.amount + credit.amount),
+    // cap = ค่าสินค้า (หลังส่วนลดรายรายการ) + ค่าส่ง — ลดรวมกันได้ไม่เกินยอดที่ลูกค้าต้องจ่ายจริง
+    amount: Math.min(Math.max(0, cap), tier.amount + credit.amount),
     tierId: tier.tierId,
     couponCode: credit.couponCode,
     couponAmount: credit.amount,
@@ -120,7 +121,8 @@ export async function syncOrderMemberTier(sb: SB, order: Order): Promise<Order> 
     const amount = tierDiscountAmount(base, tier.pct);
     if (amount <= 0) return moneyIn ? order : withoutOurs(order);
     const cur = order.discount;
-    const discount = stackTierDiscount({ label: memberTierLabel(tier.name, tier.pct), amount, tierId: tier.id }, cur, base);
+    // เพดานรวม = ค่าสินค้า + ค่าส่ง (คูปองคืนเงินที่ซ้อนอยู่ลดค่าส่งต่อได้ ไม่ให้ถูกตัดทิ้งตอนคิดระดับใหม่)
+    const discount = stackTierDiscount({ label: memberTierLabel(tier.name, tier.pct), amount, tierId: tier.id }, cur, base + Math.max(0, order.shippingCost ?? 0));
     if (cur?.tierId === tier.id && cur.amount === discount.amount && cur.label === discount.label) return order;
     const next = { ...order, discount };
     if (moneyIn && !mayApplyOnMoneyIn(order, next)) return order;
