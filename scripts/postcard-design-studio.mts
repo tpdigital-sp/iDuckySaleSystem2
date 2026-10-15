@@ -5,13 +5,14 @@
  *   npx tsx scripts/postcard-design-studio.mts --write      # อัปไฟล์ + สร้าง/อัปเดตชุดเทมเพลต + ผูกสินค้า + ตั้ง calendarStudio (ปุ่มยังปิด studioOff)
  *   npx tsx scripts/postcard-design-studio.mts --studio-on  # เปิดปุ่ม 🎨 ออกแบบบนเว็บ (ถอด studioOff) — รันหลัง deploy โค้ดรูปแบบ print@ แล้ว
  *
- * ไฟล์ต้นฉบับ (ผู้ใช้กำหนด — ทุกไฟล์ "สำหรับกระดาษทุกตัว" จึงไม่ผูกชนิดกระดาษ):
- *   4×6 นิ้ว: อาร์ตมัน 300g + holo  - 4x6นิ้ว.ai (1 ด้าน · 101.6×152.4 พอดีเส้นตัด)
- *             (2ด้าน)อาร์ตมัน 300g + - 4x6นิ้ว.ai (2 ด้าน · ตัดตก 1 มม.) · (2ด้าน)holo 300g + - 4x6นิ้ว.ai (2 ด้าน · ตัดตก 2.5 มม.)
- *   5×7 นิ้ว: อาร์ตมัน 300g + - 5x7นิ้ว.ai (1 ด้าน · 127.5×178.3) · (2ด้าน)อาร์ตมัน 300g + - 5x7นิ้ว.ai (ตัดตก 1) · (2ด้าน)holo 300g + - 5x7นิ้ว.ai (ตัดตก 2.5)
- * ชุดเทมเพลต tpl-postcard · optionLabel "ขนาด" (choice = "4 × 6 นิ้ว" / "5 × 7 นิ้ว") · when 2 ข้อ = "จำนวนด้านที่พิมพ์" + "แนวโปสการ์ด"
- *   แนวตั้ง = .ai ต้นฉบับ · แนวนอน = สร้างใหม่ด้วย pdf-lib หมุน 90° ทุกหน้า (เหมือน calendar-postcard-template-build)
- *   พิมพ์ 2 ด้านมี 2 ไฟล์ตรงสเปค (อาร์ตมัน + holo) → หน้าสินค้าโชว์ให้โหลดทั้งคู่ · จอสร้างใช้ไฟล์แรก (อาร์ตมัน) เป็นไกด์/ตัดตก
+ * ไฟล์ต้นฉบับ (ผู้ใช้กำหนด · แก้รอบ 2 15 ต.ค. 69 ให้ไฟล์ 2 ด้านแยกตามกระดาษ):
+ *   4×6 นิ้ว: อาร์ตมัน 300g + holo  - 4x6นิ้ว.ai (1 ด้าน · กระดาษทุกตัว · 101.6×152.4 พอดีเส้นตัด)
+ *             (2ด้าน)อาร์ตมัน 300g + - 4x6นิ้ว.ai (2 ด้าน · ทุกกระดาษยกเว้นโฮโลแกรม/สีเงิน/สีทอง · ตัดตก 1 มม.)
+ *             (2ด้าน)holo 300g + - 4x6นิ้ว.ai (2 ด้าน · โฮโลแกรม/สีเงิน/สีทอง · ตัดตก 2.5 มม.)
+ *   5×7 นิ้ว: อาร์ตมัน 300g + - 5x7นิ้ว.ai (1 ด้าน · ทุกตัว · 127.5×178.3) · (2ด้าน)อาร์ตมัน 300g + - 5x7นิ้ว.ai (ยกเว้นโฮโล/เงิน/ทอง · ตัดตก 1) · (2ด้าน)holo 300g + - 5x7นิ้ว.ai (โฮโล/เงิน/ทอง · ตัดตก 2.5)
+ * ชุดเทมเพลต tpl-postcard · optionLabel "ชนิดกระดาษ" · ไฟล์เดียวหลายค่า (choice + choices) เหมือน calendar-postcard-template-build
+ *   when 3 ข้อทุกไฟล์ = "ขนาด" + "จำนวนด้านที่พิมพ์" + "แนวโปสการ์ด" → สเปคไหนก็ได้ไฟล์เดียวพอดี (preferWhen นับจำนวน when เท่ากัน)
+ *   แนวตั้ง = .ai ต้นฉบับ · แนวนอน = สร้างใหม่ด้วย pdf-lib หมุน 90° ทุกหน้า
  *
  * Product.calendarStudio = { yearLabel: "", formats: ขนาด × แนว × ด้าน → "print@<กว้าง>x<สูง>" / "print2@…" (มม. งานหลังตัด) }
  *   รูปแบบ print@ อยู่ใน lib/calendar-card (ยังไม่ขึ้นเว็บจริงจนกว่าจะ deploy) → --write ตั้ง studioOff: true กันหน้าเว็บจริงเปิดจอด้วยรูปแบบที่โค้ดเก่าไม่รู้จัก
@@ -45,6 +46,7 @@ const die = (m: string): never => {
 
 const TPL_ID = "tpl-postcard";
 const PRODUCT = "postcard-th";
+const PAPER = "ชนิดกระดาษ";
 const SIZE = "ขนาด";
 const ORI = "แนวโปสการ์ด";
 const SIDE = "จำนวนด้านที่พิมพ์";
@@ -60,12 +62,12 @@ const SIZES: { choice: RegExp; w: number; h: number; tag: string }[] = [
   { choice: /^5\s*[x×]\s*7/, w: 5 * IN, h: 7 * IN, tag: "5x7" },
 ];
 const SOURCES = [
-  { key: "4x6-one", size: "4x6", sides: "one", path: `${DIR}อาร์ตมัน 300g + holo  - 4x6นิ้ว.ai` },
-  { key: "4x6-paper2", size: "4x6", sides: "two", path: `${DIR}(2ด้าน)อาร์ตมัน 300g + - 4x6นิ้ว.ai` },
-  { key: "4x6-holo2", size: "4x6", sides: "two", path: `${DIR}(2ด้าน)holo 300g + - 4x6นิ้ว.ai` },
-  { key: "5x7-one", size: "5x7", sides: "one", path: `${DIR}อาร์ตมัน 300g + - 5x7นิ้ว.ai` },
-  { key: "5x7-paper2", size: "5x7", sides: "two", path: `${DIR}(2ด้าน)อาร์ตมัน 300g + - 5x7นิ้ว.ai` },
-  { key: "5x7-holo2", size: "5x7", sides: "two", path: `${DIR}(2ด้าน)holo 300g + - 5x7นิ้ว.ai` },
+  { key: "4x6-one", size: "4x6", sides: "one", papers: "all", path: `${DIR}อาร์ตมัน 300g + holo  - 4x6นิ้ว.ai` },
+  { key: "4x6-paper2", size: "4x6", sides: "two", papers: "paper", path: `${DIR}(2ด้าน)อาร์ตมัน 300g + - 4x6นิ้ว.ai` },
+  { key: "4x6-holo2", size: "4x6", sides: "two", papers: "holo", path: `${DIR}(2ด้าน)holo 300g + - 4x6นิ้ว.ai` },
+  { key: "5x7-one", size: "5x7", sides: "one", papers: "all", path: `${DIR}อาร์ตมัน 300g + - 5x7นิ้ว.ai` },
+  { key: "5x7-paper2", size: "5x7", sides: "two", papers: "paper", path: `${DIR}(2ด้าน)อาร์ตมัน 300g + - 5x7นิ้ว.ai` },
+  { key: "5x7-holo2", size: "5x7", sides: "two", papers: "holo", path: `${DIR}(2ด้าน)holo 300g + - 5x7นิ้ว.ai` },
 ] as const;
 
 /* ── 1. ตัวเลือกของสินค้า ── */
@@ -74,6 +76,11 @@ if (perr || !prow) die(`อ่าน ${PRODUCT} ไม่ได้: ${perr?.mess
 const product = prow!.data as Product;
 const opt = (label: string) => product.options.find((o) => o.label === label)?.choices.map((c) => c.name) ?? die(`${PRODUCT} ไม่มีกลุ่ม "${label}"`);
 const sizeChoices = opt(SIZE);
+const papers = opt(PAPER);
+const isShiny = (n: string) => /โฮโลแกรม|กระดาษสีเงิน|กระดาษสีทอง/.test(n);
+const groupOf: Record<string, string[]> = { paper: papers.filter((n) => !isShiny(n)), holo: papers.filter(isShiny), all: papers };
+for (const [k, v] of Object.entries(groupOf)) if (!v.length) die(`กลุ่มกระดาษ ${k} ว่าง`);
+if (groupOf.holo.length !== 6) die(`กระดาษโฮโลแกรม/เงิน/ทอง ควรมี 6 ตัว ได้ ${groupOf.holo.length}: ${groupOf.holo}`);
 const oris = opt(ORI);
 const sideChoices = opt(SIDE);
 if (!oris.includes("แนวตั้ง") || !oris.includes("แนวนอน")) die(`กลุ่ม "${ORI}" เปลี่ยน: ${oris}`);
@@ -130,14 +137,14 @@ function preview(file: string, key: string) {
   execFileSync("rm", ["-f", tmp]);
   return png;
 }
-type Built = { key: string; size: string; sides: string; ori: "P" | "L"; path: string; name: string; ext: string; wMm: number; hMm: number; png: string };
+type Built = { key: string; size: string; sides: string; papers: string; ori: "P" | "L"; path: string; name: string; ext: string; wMm: number; hMm: number; png: string };
 const built: Built[] = [];
 for (const s of SOURCES) {
   const sz = SIZES.find((x) => x.tag === s.size)!;
   const L = await landscape(s.path, sz);
   if ((s.sides === "two") !== (L.pages === 2)) die(`${stem(s.path)} มี ${L.pages} หน้า ไม่ตรงกับพิมพ์ ${s.sides === "two" ? 2 : 1} ด้าน`);
-  built.push({ key: s.key, size: s.size, sides: s.sides, ori: "P", path: s.path, name: `${stem(s.path)}.ai`, ext: "ai", wMm: L.srcW, hMm: L.srcH, png: preview(s.path, `${s.key}-P`) });
-  built.push({ key: s.key, size: s.size, sides: s.sides, ori: "L", path: L.file, name: `${stem(s.path)} (แนวนอน).pdf`, ext: "pdf", wMm: L.wMm, hMm: L.hMm, png: preview(L.file, `${s.key}-L`) });
+  built.push({ key: s.key, size: s.size, sides: s.sides, papers: s.papers, ori: "P", path: s.path, name: `${stem(s.path)}.ai`, ext: "ai", wMm: L.srcW, hMm: L.srcH, png: preview(s.path, `${s.key}-P`) });
+  built.push({ key: s.key, size: s.size, sides: s.sides, papers: s.papers, ori: "L", path: L.file, name: `${stem(s.path)} (แนวนอน).pdf`, ext: "pdf", wMm: L.wMm, hMm: L.hMm, png: preview(L.file, `${s.key}-L`) });
 }
 
 /* ── 3. ชุดเทมเพลต ── */
@@ -151,10 +158,13 @@ async function upload(local: string, kind: "file" | "preview", ext: string): Pro
 }
 const files: TemplateFile[] = [];
 for (const b of built) {
+  const group = groupOf[b.papers];
   files.push({
     id: `${TPL_ID}-${b.key}-${b.ori}`,
-    choice: sizeNameOf(b.size),
+    choice: group[0],
+    ...(group.length > 1 ? { choices: group.slice(1) } : {}),
     when: [
+      { label: SIZE, choices: [sizeNameOf(b.size)] },
       { label: SIDE, choices: sidesOf[b.sides] },
       { label: ORI, choices: [b.ori === "L" ? "แนวนอน" : "แนวตั้ง"] },
     ],
@@ -168,10 +178,10 @@ for (const b of built) {
 }
 const tpl: DesignTemplate = {
   id: TPL_ID,
-  name: "โปสการ์ด 4×6 / 5×7 นิ้ว (1/2 ด้าน · แนวตั้ง/แนวนอน)",
-  note: "ใช้ได้กับกระดาษทุกชนิด · เส้นสีแดง = เส้นตัด · วางลายเลยเส้นตัดออกไปถึงขอบอาร์ตบอร์ด · พิมพ์ 2 ด้าน = ไฟล์มี 2 หน้า (หน้า/หลัง) · เซฟเป็น .ai/.pdf โหมดสี CMYK · ตัวหนังสือ create outline",
+  name: "โปสการ์ด 4×6 / 5×7 นิ้ว (ตามกระดาษ · 1/2 ด้าน · แนวตั้ง/แนวนอน)",
+  note: "พิมพ์ 1 ด้านใช้ไฟล์เดียวกันทุกกระดาษ · พิมพ์ 2 ด้าน โฮโลแกรม/สีเงิน/สีทอง ใช้ไฟล์ holo (ตัดตก 2.5 มม.) กระดาษอื่นใช้ไฟล์อาร์ตมัน (ตัดตก 1 มม.) · เส้นสีแดง = เส้นตัด · วางลายเลยเส้นตัดออกไปถึงขอบอาร์ตบอร์ด · พิมพ์ 2 ด้าน = ไฟล์มี 2 หน้า (หน้า/หลัง) · เซฟเป็น .ai/.pdf โหมดสี CMYK · ตัวหนังสือ create outline",
   category: "Postcard",
-  optionLabel: SIZE,
+  optionLabel: PAPER,
   optionProductId: PRODUCT,
   bleedMm: 2,
   safeMm: 4,
@@ -198,7 +208,8 @@ const formats = SIZES.flatMap((sz) =>
 );
 
 console.log(`📐 ${tpl.name} (${TPL_ID}) · ${files.length} ไฟล์`);
-for (const f of files) console.log(`   ${f.fileName} · ${f.widthMm}×${f.heightMm} ← ${f.choice} · ${whenList(f).map((w) => `${w.label} ${w.choices.join("/")}`).join(" + ")}`);
+for (const f of files)
+  console.log(`   ${f.fileName} · ${f.widthMm}×${f.heightMm} ← ${[f.choice, ...(f.choices ?? [])].length} กระดาษ (${[f.choice, ...(f.choices ?? [])].join(", ").slice(0, 60)}…) · ${whenList(f).map((w) => `${w.label} ${w.choices.join("/")}`).join(" + ")}`);
 console.log(`🎨 ${product.name} (${PRODUCT}) calendarStudio.formats`);
 for (const f of formats) console.log(`   ${f.when.map((w) => w.choices.join("/")).join(" · ")} → ${f.format}`);
 if (!WRITE) {
