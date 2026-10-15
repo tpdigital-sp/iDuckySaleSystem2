@@ -1132,8 +1132,9 @@ function OrderRow({
             const inv = chain.filter((d) => d.kind === "inv").at(-1) ?? (found ? { docNo: found.docNo, paid: undefined as boolean | undefined } : undefined);
             const latest = inv ?? chain.filter((d) => d.kind === "bl").at(-1);
             const extras = o.flowAccountExtras?.length ?? 0;
-            const mainDoc = o.flowAccount ? `${o.flowAccount.docTypeLabel} ${o.flowAccount.docNo}` : o.taxInvoice?.docNo ? `${o.taxInvoice.docTypeLabel ?? "เอกสาร"} ${o.taxInvoice.docNo}` : "";
-            const mainNo = o.flowAccount?.docNo ?? o.taxInvoice?.docNo;
+            // taxInvoice.docNo ของใบเก่า (ลิงก์ที่วางในฟอร์มใบกำกับ) ไม่นับเป็นเอกสารหลักแล้ว — 15 ต.ค. 69
+            const mainDoc = o.flowAccount ? `${o.flowAccount.docTypeLabel} ${o.flowAccount.docNo}` : "";
+            const mainNo = o.flowAccount?.docNo;
             if (!mainNo && !latest) {
               if (!o.taxInvoice || o.status === "ยกเลิก") return null;
               return (

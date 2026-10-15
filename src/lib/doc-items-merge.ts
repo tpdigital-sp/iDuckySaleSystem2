@@ -37,7 +37,15 @@ export function itemHasWork(it: OrderItem): boolean {
   return !!(it.artworkUrls?.length || it.proofs?.length || it.proofUrl || it.reuseArt || it.proofStatus);
 }
 
-export function mergeDocItems(all: OrderItem[], doc: DocItemLine[]): DocItemsMerge {
+export interface DocItemsMergeOptions {
+  /**
+   * 🧩 ดึงมา "แค่บางบรรทัด" ของเอกสาร (พนักงานติ๊กเลือก · 15 ต.ค. 69) — เอกสารไม่ใช่ตัวจริงของทั้งใบงาน
+   * รายการเดิมที่ไม่มีคู่คงไว้ตามตำแหน่งเดิม ไม่เอาออก (dropped ว่างเสมอ) · บรรทัดใหม่ต่อท้าย
+   */
+  keepUnmatched?: boolean;
+}
+
+export function mergeDocItems(all: OrderItem[], doc: DocItemLine[], opts: DocItemsMergeOptions = {}): DocItemsMerge {
   // 🧾➕ รายการจากบิลเพิ่ม (extraDoc) ไม่อยู่ในเอกสารหลัก — ไม่จับคู่ ไม่เอาออก ต่อท้ายไว้ตามเดิม (OD-261005-7691)
   const prev = all.filter((it) => !it.extraDoc);
   const extras = all.filter((it) => it.extraDoc);
@@ -59,23 +67,38 @@ export function mergeDocItems(all: OrderItem[], doc: DocItemLine[]): DocItemsMer
   pass((it, d) => norm(it.name) === norm(d.name));
   pass((_it, _d, oi, di) => oi === di);
 
+  const fresh = (d: DocItemLine): OrderItem => ({ productId: "special-item", name: d.name, selections: d.selections, qty: d.qty, unitPrice: d.unitPrice });
+  const updated = (old: OrderItem, d: DocItemLine): OrderItem => ({
+    ...old,
+    // nameWas = ให้เซิร์ฟเวอร์จับคู่กับรายการเดิมได้แม้ชื่อเปลี่ยน (ไม่งั้นติ๊ก/แบบที่เพิ่งทำระหว่างจอค้างหลุด)
+    ...(old.name !== d.name ? { name: d.name, nameWas: old.nameWas ?? old.name } : {}),
+    selections: d.selections || old.selections,
+    qty: d.qty,
+    unitPrice: d.unitPrice,
+  });
+  const kept = match.filter((m) => m !== undefined).length;
+  const added = match.filter((m) => m === undefined).length;
+
+  if (opts.keepUnmatched) {
+    // ดึงบางบรรทัด: รายการเดิมอยู่ที่เดิมทุกแถว (ที่มีคู่ = อัปเดตตามเอกสาร) · บรรทัดใหม่ต่อท้ายก่อนรายการบิลเพิ่ม
+    const byOld = new Map<number, OrderItem>();
+    doc.forEach((d, di) => {
+      const oi = match[di];
+      if (oi !== undefined) byOld.set(oi, updated(prev[oi], d));
+    });
+    const base = prev.map((it, i) => byOld.get(i) ?? it);
+    const news = doc.filter((_d, di) => match[di] === undefined).map(fresh);
+    return { items: [...base, ...news, ...extras], kept, added, dropped: [] };
+  }
+
   const items: OrderItem[] = doc.map((d, di) => {
     const oi = match[di];
-    if (oi === undefined) return { productId: "special-item", name: d.name, selections: d.selections, qty: d.qty, unitPrice: d.unitPrice };
-    const old = prev[oi];
-    return {
-      ...old,
-      // nameWas = ให้เซิร์ฟเวอร์จับคู่กับรายการเดิมได้แม้ชื่อเปลี่ยน (ไม่งั้นติ๊ก/แบบที่เพิ่งทำระหว่างจอค้างหลุด)
-      ...(old.name !== d.name ? { name: d.name, nameWas: old.nameWas ?? old.name } : {}),
-      selections: d.selections || old.selections,
-      qty: d.qty,
-      unitPrice: d.unitPrice,
-    };
+    return oi === undefined ? fresh(d) : updated(prev[oi], d);
   });
   return {
     items: [...items, ...extras],
-    kept: match.filter((m) => m !== undefined).length,
-    added: match.filter((m) => m === undefined).length,
+    kept,
+    added,
     dropped: prev.filter((_it, i) => !used.has(i)),
   };
 }

@@ -23,16 +23,13 @@ import { foldSizeExtra, specEntries, specLabel, specValueLines, stripSpecUrls, t
  */
 
 /**
- * 📄 เอกสารหลักของออเดอร์ — order.flowAccount (สร้างออเดอร์จากลิงก์ FlowAccount)
- * หรือ taxInvoice.docNo (วางลิงก์ QT/BL ในฟอร์ม "ใส่ข้อมูลใบกำกับภาษี" — OD-261006-2644 QT010830 · 7 ต.ค. 69)
- * ต้องดูทั้ง 2 ที่ ไม่งั้นปุ่มออกใบเสนอราคาขึ้นทั้งที่มี QT แล้ว = QT ซ้ำใน FlowAccount
+ * 📄 เอกสารหลักของออเดอร์ — order.flowAccount (สร้างออเดอร์จากลิงก์ FlowAccount / ออก QT จากหน้าออเดอร์) เท่านั้น
+ * เดิม (7 ต.ค. 69) นับ taxInvoice.docNo ที่วางในฟอร์ม "ใส่ข้อมูลใบกำกับภาษี" ด้วย กันออก QT ซ้ำ
+ * 15 ต.ค. 69 เจ้าของร้านเคาะ: ฟอร์มนั้นเอาแค่ข้อมูลผู้ซื้อ ลิงก์ที่วางมักเป็น QT ฉบับเก่า — ห้ามถือเป็นเอกสารหลัก
+ * ไม่งั้นปุ่มออกใบเสนอราคาหาย/ใบแจ้งหนี้ไปต่อจาก QT เก่า · ใบเก่าที่ยังมี docNo ค้างก็ไม่นับแล้ว
  */
 export function mainDocOf(o: Order): { docNo: string; docType: string; docTypeLabel: string; grandTotal?: number; docChanged?: unknown } | null {
-  if (o.flowAccount) return o.flowAccount;
-  const no = o.taxInvoice?.docNo?.trim();
-  if (!no) return null;
-  const docType = /^QT/i.test(no) ? "qt" : /^BL/i.test(no) ? "bl" : /^INV/i.test(no) ? "inv" : "";
-  return { docNo: no, docType, docTypeLabel: o.taxInvoice?.docTypeLabel ?? "เอกสาร" };
+  return o.flowAccount ?? null;
 }
 
 export interface FaLine {
