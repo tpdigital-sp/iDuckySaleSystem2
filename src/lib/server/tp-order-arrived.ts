@@ -17,6 +17,16 @@ import { TP_ORIGIN, tpOrderDb, tpRequestId } from "./tp-order-bridge";
 
 type SB = Parameters<typeof updateOrder>[0];
 
+/** ชื่อคนจากค่าที่ TP เก็บ — string ตรง ๆ หรือ object {name|displayName|username|email} */
+function personName(v: unknown): string {
+  if (typeof v === "string") return v.trim();
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    for (const k of ["name", "displayName", "fullName", "username", "email"]) if (typeof o[k] === "string" && (o[k] as string).trim()) return (o[k] as string).trim();
+  }
+  return "";
+}
+
 export type ArrivedResult = { id: string; result: "arrived" | "already" | "skip" | "error"; reason?: string };
 
 export async function applyTPArrived(sb: SB, tpId: string): Promise<ArrivedResult> {
@@ -37,7 +47,8 @@ export async function applyTPArrived(sb: SB, tpId: string): Promise<ArrivedResul
     if (!o?.needsPurchase || tpRequestId(o) !== tpId) { await stamp("ไม่ตรงกับการติ๊กปัจจุบันของออเดอร์"); return { id: tpId, result: "skip", reason: "tick-changed" }; }
     if (o.needsPurchase.arrivedAt) { await stamp("ร้านติ๊กของเข้าเองไปแล้ว"); return { id: tpId, result: "already" }; }
 
-    const by = `${String(t.receivedBy || t.orderedBy || "ฝ่ายจัดซื้อ").trim()} (TP)`;
+    // ⚠️ TP เก็บ receivedBy/orderedBy เป็น object ได้ ({name,…}) — String() ตรง ๆ ได้ "[object Object] (TP)" (OD-261006-1474 · 16 ต.ค. 69)
+    const by = `${personName(t.receivedBy) || personName(t.orderedBy) || "ฝ่ายจัดซื้อ"} (TP)`;
     const next = withLog(
       { ...o, needsPurchase: { ...o.needsPurchase, arrivedAt: new Date().toISOString(), arrivedBy: by } },
       by,
