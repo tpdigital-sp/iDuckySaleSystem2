@@ -2842,6 +2842,8 @@ export interface FlowAccountExtraDoc {
   items?: number;
   /** บรรทัดค่าส่งในใบนี้ที่บวกเข้า Order.shippingCost ตอนใส่เป็นรายการ (บาท) */
   ship?: number;
+  /** 🧾 ใบกำกับภาษี/ใบเสร็จรับเงินที่ระบบออกต่อจากใบนี้ (หน้าออเดอร์ · fa-doc kind "inv-extra" · 16 ต.ค. 69) — paid false = บันทึกรับเงินใน FlowAccount ไม่ผ่าน */
+  inv?: { docNo: string; recordId: number; url?: string; at: string; by: string; paid: boolean };
   by: string;
   at: string;
 }

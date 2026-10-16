@@ -308,6 +308,48 @@ export function draftFor(o: Order, kind: FaDocKind): QuotationDraft & { source?:
 }
 
 /**
+ * 🧾➕ ร่างใบกำกับภาษี/ใบเสร็จรับเงิน ต่อจากใบเสนอราคา "บิลเพิ่ม" (เจ้าของร้านสั่ง 16 ต.ค. 69 · OD-261002-9030 QT010927)
+ * รายการ = รายการในออเดอร์ที่ติด extraDoc ของใบนั้น (+ ค่าส่งในใบ) ต้องรวมได้เท่ายอดใบ · วันที่ = วันโอน · รับเงินครบแล้วเท่านั้น
+ * ใบที่แนบแบบเก็บเพิ่ม/อ้างอิง (ไม่ได้ใส่เป็นรายการ) ระบบไม่รู้รายการ → ออกในแอป FlowAccount เอง
+ */
+export function extraInvoiceDraft(o: Order, docNo: string): QuotationDraft & { source?: { docNo: string; type: number }; paymentDate?: string } {
+  const problems: string[] = [];
+  const x = (o.flowAccountExtras ?? []).find((d) => d.docNo === docNo);
+  const its = o.items.filter((it) => it.extraDoc === docNo);
+  const lines = its.map(lineOf);
+  if (x?.ship && x.ship > 0) lines.push({ name: "ค่าส่ง", description: "", quantity: 1, pricePerUnit: x.ship, total: r2(x.ship) });
+  const subTotal = r2(lines.reduce((s, l) => s + l.total, 0));
+  const vat = r2(subTotal * 0.07);
+  const grandTotal = r2(subTotal + vat);
+  if (!x) problems.push(`ไม่พบบิลเพิ่ม ${docNo} ในออเดอร์นี้`);
+  else {
+    if (x.docType !== "qt") problems.push(`${docNo} เป็น${x.docTypeLabel} — ออกใบกำกับต่อได้เฉพาะใบเสนอราคา`);
+    if (!its.length) problems.push(`${docNo} แนบแบบไม่ใส่รายการ ระบบไม่รู้รายการในใบ — ออกใบกำกับในแอป FlowAccount เอง`);
+    else if (Math.abs(grandTotal - x.grandTotal) > 0.05) problems.push(`รายการในออเดอร์รวม ${grandTotal} ไม่เท่ายอด ${docNo} (${x.grandTotal}) — แก้ให้ตรงก่อน`);
+    const inv = x.inv?.docNo ?? (o.faInvoices ?? []).find((v) => (v.ref ?? "").toUpperCase() === docNo.toUpperCase())?.docNo;
+    if (inv) problems.push(`ออกใบกำกับภาษี/ใบเสร็จของ ${docNo} แล้ว (${inv})`);
+  }
+  if (!o.taxInvoice?.company) problems.push("ยังไม่ได้ใส่ข้อมูลใบกำกับภาษี (ชื่อบริษัท/เลขผู้เสียภาษี/ที่อยู่)");
+  if (o.deposit || o.flowAccount?.deposit) problems.push("ใบมัดจำ — ออกใบกำกับใน FlowAccount เอง (ยังไม่รองรับมัดจำ)");
+  if (o.status === "ยกเลิก") problems.push("ออเดอร์ถูกยกเลิกแล้ว");
+  if (!(orderBalance(o) <= 0.5 || whtCoversBalance(o))) problems.push(`ยังเก็บเงินไม่ครบ (ค้าง ${orderBalance(o).toLocaleString("th-TH")} บาท) — ใบเสร็จออกได้เมื่อรับเงินครบ`);
+  const whtAmt = r2(x?.wht ?? 0);
+  return {
+    lines,
+    subTotal,
+    discount: 0,
+    afterDiscount: subTotal,
+    vat,
+    grandTotal,
+    ...(whtAmt > 0 ? { wht: { rate: o.wht?.rate ?? 3, amount: whtAmt } } : {}),
+    contact: contactOf(o),
+    problems,
+    source: { docNo, type: REF_TYPE.qt },
+    paymentDate: paymentDateOf(o),
+  };
+}
+
+/**
  * body ของใบแจ้งหนี้ / ใบกำกับภาษี — อ้างอิงเอกสารต้นทาง (documentReference = อัปเกรด: ต้นทางกลายเป็น "ดำเนินการแล้ว")
  * ⚠️ ใบกำกับต้องสร้างผ่าน POST /tax-invoices (ไม่ใช่ /with-payment — ตัวนั้นไม่ผูกอัปเกรด) แล้วค่อย receiveTransferPayment
  *    + creditType 3 (เงินสด) ไม่งั้นรับเงินไม่ได้ (ทดสอบ sandbox 7 ต.ค. 69)

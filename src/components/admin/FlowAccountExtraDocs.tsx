@@ -75,6 +75,55 @@ export default function FlowAccountExtraDocs({ order, mayEdit, onApply }: { orde
     }
   }
 
+  /** 🧾 เลข INV ของบิลเพิ่มใบนี้ (ระบบออกเอง หรือ cron จดจาก FlowAccount) */
+  const invOf = (x: FlowAccountExtraDoc) => x.inv?.docNo ?? (order.faInvoices ?? []).find((v) => (v.ref ?? "").toUpperCase() === x.docNo.toUpperCase())?.docNo;
+
+  /**
+   * 🧾 ออกใบกำกับภาษี/ใบเสร็จรับเงินต่อจาก QT บิลเพิ่ม (16 ต.ค. 69 · OD-261002-9030 QT010927) — ร่างก่อน แล้วยืนยันสร้างจริง
+   * อัปเกรดใบเดิม + เติมหัวกระดาษร้าน + บันทึกรับเงินโอน แบบเดียวกับ INV ของบิลหลัก · ด่านใบเสร็จปลดทันที
+   */
+  async function issueInv(x: FlowAccountExtraDoc) {
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const post = (create: boolean) =>
+        fetch("/api/admin/orders/fa-doc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId: order.id, kind: "inv-extra", docNo: x.docNo, create }) });
+      const r = await post(false);
+      const j = (await r.json().catch(() => null)) as {
+        draft?: { lines: { name: string; quantity: number; pricePerUnit: number; total: number }[]; afterDiscount: number; vat: number; grandTotal: number; wht?: { rate: number; amount: number }; contact: { name: string; taxId?: string }; problems: string[]; paymentDate?: string };
+        error?: string;
+      } | null;
+      const d = j?.draft;
+      if (!r.ok || !d) throw new Error(j?.error ?? `อ่านร่างไม่สำเร็จ (${r.status})`);
+      if (d.problems.length) throw new Error(d.problems.join(" · "));
+      const net = Math.round((d.grandTotal - (d.wht?.amount ?? 0)) * 100) / 100;
+      const ok = window.confirm(
+        [
+          `ออกใบกำกับภาษี/ใบเสร็จรับเงิน ต่อจาก ${x.docNo}?`,
+          `${d.contact.name}${d.contact.taxId ? ` · ${d.contact.taxId}` : ""}`,
+          "",
+          ...d.lines.map((l) => `• ${l.name} × ${l.quantity} @ ${formatPrice(l.pricePerUnit)} = ${formatPrice(l.total)}`),
+          `ก่อน VAT ${formatPrice(d.afterDiscount)} · VAT 7% ${formatPrice(d.vat)} · รวม ${formatPrice(d.grandTotal)}`,
+          ...(d.wht ? [`หัก ณ ที่จ่าย ${d.wht.rate}% ${formatPrice(d.wht.amount)}`] : []),
+          `วันที่เอกสาร ${d.paymentDate} (วันโอนเงิน) · บันทึกรับเงินโอน ${formatPrice(net)} เข้าบัญชีร้าน`,
+          "",
+          "สร้างในบัญชี FlowAccount จริง — แก้/ยกเลิกทีหลังต้องทำใน FlowAccount",
+        ].join("\n")
+      );
+      if (!ok) return;
+      const c = await post(true);
+      const cj = (await c.json().catch(() => null)) as { order?: Order; error?: string; warning?: string } | null;
+      if (!c.ok || !cj?.order) throw new Error(cj?.error ?? `สร้างไม่สำเร็จ (${c.status})`);
+      onApply(cj.order);
+      if (cj.warning) setErr(cj.warning);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ออกใบกำกับไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="mt-1.5 text-[12px] leading-relaxed">
       {extras.map((x) => {
@@ -102,6 +151,33 @@ export default function FlowAccountExtraDocs({ order, mayEdit, onApply }: { orde
                 </button>
               )}
             </span>
+            {invOf(x) ? (
+              <span className="block font-semibold text-emerald-700">
+                ✅ ออกใบกำกับภาษี/ใบเสร็จแล้ว {invOf(x)}
+                {x.inv?.url && (
+                  <>
+                    {" · "}
+                    <a href={x.inv.url} target="_blank" rel="noreferrer" className="underline">
+                      เปิดเอกสาร ↗
+                    </a>
+                  </>
+                )}
+                {x.inv && !x.inv.paid && <span className="ml-1 text-rose-700">· ⚠️ ยังไม่ได้บันทึกรับเงินใน FlowAccount</span>}
+              </span>
+            ) : (
+              mayEdit &&
+              x.docType === "qt" &&
+              (x.items ?? 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void issueInv(x)}
+                  disabled={busy}
+                  className="mt-1 block min-h-[36px] rounded-full bg-white px-3 py-1 text-[12px] font-bold text-emerald-700 ring-1 ring-emerald-400 hover:bg-emerald-50 disabled:opacity-50"
+                >
+                  {busy ? "⏳ กำลังทำ…" : `🧾 ออกใบกำกับภาษี/ใบเสร็จ ต่อจาก ${x.docNo}`}
+                </button>
+              )
+            )}
           </p>
         );
       })}

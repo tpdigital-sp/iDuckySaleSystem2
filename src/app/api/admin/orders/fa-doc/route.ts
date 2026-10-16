@@ -3,7 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type FlowAccountExtraDoc, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
-import { FA_KIND_LABEL, draftFor, extraQuotationDraft, mainDocOf, netCollected, quotationBody, quotationUpdateBody, quotationUpdateDraft, upgradeBody, type FaDocKind } from "@/lib/server/fa-create";
+import { FA_KIND_LABEL, draftFor, extraInvoiceDraft, extraQuotationDraft, mainDocOf, netCollected, quotationBody, quotationUpdateBody, quotationUpdateDraft, upgradeBody, type FaDocKind } from "@/lib/server/fa-create";
 import { bankAccounts, createDocument, ensureCompanyHeader, findDocRecordId, flowAccountApiReady, getDocument, receiveTransferPayment, shareDocument, updateDocument } from "@/lib/server/flowaccount-api";
 import { WHT_TABLE } from "@/lib/server/wht-db";
 import { bkkParts } from "@/lib/bangkok-time";
@@ -35,11 +35,12 @@ export async function POST(req: Request) {
   if (money.res) return money.res;
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const body = (await req.json().catch(() => null)) as { orderId?: string; kind?: FaDocKind | "qt-update" | "qt-extra"; create?: boolean; items?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { orderId?: string; kind?: FaDocKind | "qt-update" | "qt-extra" | "inv-extra"; create?: boolean; items?: unknown; docNo?: string } | null;
   const orderId = body?.orderId?.trim();
   if (!orderId) return NextResponse.json({ error: "ไม่รู้ว่าออเดอร์ไหน" }, { status: 400 });
   if (body?.kind === "qt-update") return updateQuotation(sb, orderId, !!body.create, gate.actor.name || gate.actor.username);
   if (body?.kind === "qt-extra") return extraQuotation(sb, orderId, body.items, !!body.create, gate.actor.name || gate.actor.username);
+  if (body?.kind === "inv-extra") return extraInvoice(sb, orderId, String(body.docNo ?? "").trim(), !!body.create, gate.actor.name || gate.actor.username);
   const kind = (body?.kind ?? "qt") as FaDocKind;
   if (!API_PATH[kind]) return NextResponse.json({ error: "ชนิดเอกสารไม่ถูกต้อง" }, { status: 400 });
 
@@ -51,7 +52,13 @@ export async function POST(req: Request) {
   if (kind === "inv") {
     // ใบกำกับที่พนักงานออกมือใน FlowAccount แล้ว (cron wht-sync จับคู่ไว้) → ไม่ออกซ้ำ
     const { data } = await sb.from(WHT_TABLE).select("id").contains("data", { orderIds: [orderId] }).limit(5);
-    const ids = (data ?? []).map((r) => String(r.id)).filter((id) => !(order.faChain ?? []).some((d) => d.docNo === id));
+    // INV ของบิลเพิ่ม (ออกจากหน้าออเดอร์ หรือ INV ที่อ้างเลขบิลเพิ่ม) ไม่ใช่ใบกำกับของบิลหลัก
+    const extraNos = new Set((order.flowAccountExtras ?? []).map((x) => x.docNo.toUpperCase()));
+    const extraInvs = new Set([
+      ...(order.flowAccountExtras ?? []).flatMap((x) => (x.inv ? [x.inv.docNo] : [])),
+      ...(order.faInvoices ?? []).filter((v) => extraNos.has((v.ref ?? "").toUpperCase())).map((v) => v.docNo),
+    ]);
+    const ids = (data ?? []).map((r) => String(r.id)).filter((id) => !(order.faChain ?? []).some((d) => d.docNo === id) && !extraInvs.has(id));
     if (ids.length) draft.problems.push(`มีใบกำกับภาษีใน FlowAccount แล้ว (${ids.join(", ")}) — ไม่ต้องออกซ้ำ`);
   }
   if (!body?.create) return NextResponse.json({ draft, label: FA_KIND_LABEL[kind] });
@@ -372,6 +379,92 @@ async function extraQuotation(sb: Sb, orderId: string, rawItems: unknown, create
       { error: created ? `สร้าง ${created.docNo} ใน FlowAccount แล้ว แต่${msg} — อย่ากดสร้างซ้ำ แนบใบนี้ด้วยปุ่ม ＋ แนบบิลเพิ่ม (แบบอ้างอิง) แทน` : msg },
       { status: 502 }
     );
+  } finally {
+    busy.delete(lock);
+  }
+}
+
+/* ── 🧾➕ ใบกำกับภาษี/ใบเสร็จรับเงิน ต่อจากใบเสนอราคาบิลเพิ่ม (16 ต.ค. 69 · OD-261002-9030 QT010927) ───────────────── */
+
+/**
+ * POST { orderId, kind: "inv-extra", docNo }               → ร่าง
+ * POST { orderId, kind: "inv-extra", docNo, create: true } → อัปเกรด QT บิลเพิ่ม → INV (POST /tax-invoices + creditType 3)
+ *   + เติมหัวกระดาษร้าน + บันทึกรับเงินโอนเข้าบัญชีร้าน (ขั้นตอนเดียวกับ INV ของบิลหลัก) → extra.inv + faInvoices (ด่านใบเสร็จปลดทันที)
+ */
+async function extraInvoice(sb: Sb, orderId: string, docNo: string, create: boolean, by: string) {
+  if (!docNo) return NextResponse.json({ error: "ไม่รู้ว่าบิลเพิ่มใบไหน" }, { status: 400 });
+  const load = async () => (await sb.from("orders").select("data").eq("id", orderId).maybeSingle()).data?.data as Order | undefined;
+  const order = await load();
+  if (!order) return NextResponse.json({ error: `ไม่พบออเดอร์ ${orderId}` }, { status: 404 });
+  const draft = extraInvoiceDraft(order, docNo);
+  // INV ที่พนักงานออกเองในแอป FlowAccount แล้ว (cron wht-sync เห็นแต่ยังไม่จดลงออเดอร์) → ไม่ออกซ้ำ
+  const { data: made } = await sb.from(WHT_TABLE).select("id").eq("data->>refDoc", docNo).limit(3);
+  if ((made ?? []).length) draft.problems.push(`มีใบกำกับภาษีของ ${docNo} ใน FlowAccount แล้ว (${(made ?? []).map((r) => String(r.id)).join(", ")}) — ไม่ต้องออกซ้ำ`);
+  const label = `ใบกำกับภาษี/ใบเสร็จรับเงิน (บิลเพิ่ม ${docNo})`;
+  if (!create) return NextResponse.json({ draft, label });
+  if (draft.problems.length) return NextResponse.json({ error: draft.problems.join(" · "), draft }, { status: 409 });
+  if (!(await flowAccountApiReady())) return NextResponse.json({ error: "ยังไม่ได้ใส่รหัส FlowAccount Open API" }, { status: 503 });
+  const lock = `${orderId}:inv-extra:${docNo}`;
+  if (busy.has(lock)) return NextResponse.json({ error: "กำลังออกใบกำกับของบิลนี้อยู่ — รอสักครู่" }, { status: 409 });
+  busy.add(lock);
+  let created: { recordId: number; docNo: string } | null = null;
+  try {
+    const src = await findDocRecordId(docNo);
+    if (!src) throw new Error(`หาเอกสารต้นทาง ${docNo} ใน FlowAccount ไม่เจอ`);
+    const bank = (await bankAccounts())[0];
+    if (!bank) throw new Error("ไม่พบบัญชีธนาคารรับเงินใน FlowAccount");
+    const docBody = upgradeBody(order, draft, "inv", by, src.id);
+    docBody.internalNotes = `สร้างจากระบบ iDucky ออเดอร์ ${order.id} (บิลเพิ่ม ${docNo})`;
+    created = await createDocument(API_PATH.inv.create, docBody);
+    const doc = created;
+    const headErr = await ensureCompanyHeader(API_PATH.inv.share, doc.recordId, docBody);
+    let payErr = "";
+    try {
+      await receiveTransferPayment(doc.recordId, {
+        date: draft.paymentDate!,
+        collected: netCollected(draft),
+        bankAccountId: bank.id,
+        whtRate: draft.wht?.rate,
+        whtAmount: draft.wht?.amount,
+        remarks: `รับโอนตามออเดอร์ ${order.id} (บิลเพิ่ม ${docNo})`,
+      });
+    } catch (e) {
+      payErr = (e as Error).message;
+    }
+    const url = await shareDocument(API_PATH.inv.share, doc.recordId).catch(() => "");
+    const fresh = (await load()) ?? order;
+    const now = new Date().toISOString();
+    const xs = fresh.flowAccountExtras ?? [];
+    if (!xs.some((x) => x.docNo === docNo)) throw new Error(`ระหว่างสร้าง บิลเพิ่ม ${docNo} ถูกถอดออกจากออเดอร์`);
+    if (xs.find((x) => x.docNo === docNo)?.inv) throw new Error(`ระหว่างสร้าง ${docNo} มีใบกำกับแล้ว`);
+    let next: Order = {
+      ...fresh,
+      flowAccountExtras: xs.map((x) => (x.docNo === docNo ? { ...x, inv: { docNo: doc.docNo, recordId: doc.recordId, ...(url ? { url } : {}), at: now, by, paid: !payErr } } : x)),
+      // จดเลข INV ให้ป้ายฝ่ายแพ็ค/ด่านใบเสร็จเห็นทันที (cron wht-sync จะจดซ้ำแบบเดียวกันทีหลัง)
+      faInvoices: [...(fresh.faInvoices ?? []).filter((v) => v.docNo !== doc.docNo), { docNo: doc.docNo, ref: docNo, date: draft.paymentDate, total: draft.grandTotal }],
+    };
+    next = withLog(
+      next,
+      by,
+      "ออกใบกำกับภาษี/ใบเสร็จรับเงิน (บิลเพิ่ม) ใน FlowAccount",
+      `${doc.docNo} (ต่อจาก ${docNo}) · ยอด ${baht(draft.grandTotal)} บาท${
+        payErr ? ` · ⚠️ ${payErr} — กดรับเงินใน FlowAccount เอง` : ` · รับเงินโอน ${baht(netCollected(draft))} วันที่ ${draft.paymentDate} เข้าบัญชี …${bank.number.slice(-4)}`
+      }${draft.wht ? ` · หัก ณ ที่จ่าย ${draft.wht.rate}%` : ""}${headErr ? ` · ⚠️ ${headErr} — เปิดใบใน FlowAccount กดแก้ไขแล้วบันทึก` : ""}`
+    );
+    const w = await updateOrder(sb, next, { prev: fresh, by });
+    if (w.error) throw new Error(`บันทึกออเดอร์ไม่สำเร็จ: ${w.error.message}`);
+    return NextResponse.json({
+      ok: true,
+      docNo: doc.docNo,
+      url,
+      order: w.order,
+      ...(payErr || headErr
+        ? { warning: [payErr && `ออก ${doc.docNo} แล้ว แต่${payErr} — เปิดใบใน FlowAccount แล้วกดรับชำระเงินเอง`, headErr && `${doc.docNo}: ${headErr} — เปิดใบใน FlowAccount กดแก้ไขแล้วบันทึก`].filter(Boolean).join(" · ") }
+        : {}),
+    });
+  } catch (e) {
+    const msg = (e as Error).message;
+    return NextResponse.json({ error: created ? `สร้าง ${created.docNo} ใน FlowAccount แล้ว แต่${msg} — อย่ากดสร้างซ้ำ แจ้งผู้ดูแลให้ผูกใบนี้เข้าออเดอร์` : msg }, { status: 502 });
   } finally {
     busy.delete(lock);
   }
