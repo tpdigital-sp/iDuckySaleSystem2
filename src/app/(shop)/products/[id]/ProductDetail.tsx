@@ -1305,8 +1305,10 @@ export default function ProductDetail({
       templates.filter((t) => !t.optionLabel?.trim()).flatMap((t) => t.name.split("/").map(norm).filter(Boolean)),
     );
     if (!names.size) return false;
-    const byModel = product.options.filter((o) => o.choices.some((c) => names.has(norm(c.name))));
-    return byModel.some((o) => !names.has(norm(String(effective[o.label] ?? ""))));
+    // ค่าตัวเลือกที่รวมหลายรุ่นในค่าเดียว ("iPhone X / XS") แยกด้วย "/" ให้เหมือนชื่อชุด — ตรงรุ่นใดรุ่นหนึ่งก็นับว่ามี (16 ต.ค. 69)
+    const keys = (v: string) => v.split("/").map(norm).filter(Boolean);
+    const byModel = product.options.filter((o) => o.choices.some((c) => keys(c.name).some((k) => names.has(k))));
+    return byModel.some((o) => !keys(String(effective[o.label] ?? "")).some((k) => names.has(k)));
   }, [product, templates, effective]);
   const calMode = !!product.calendarStudio && product.studioOff !== true && !tplModelMissing;
   /**
@@ -1359,7 +1361,10 @@ export default function ProductDetail({
    */
   const calTemplates = useMemo(() => {
     const norm = (v: string) => v.toLowerCase().replace(/iphone/g, "").replace(/[\s\-_]/g, "");
-    const picked = new Set(Object.values(effective).map((v) => norm(String(v ?? ""))).filter(Boolean));
+    // ค่าที่รวมหลายรุ่น ("iPhone X / XS") แยกด้วย "/" ให้ตรงกับชื่อชุดได้ทั้งสองรุ่น (16 ต.ค. 69)
+    const picked = new Set(
+      Object.values(effective).flatMap((v) => String(v ?? "").split("/").map(norm)).filter(Boolean),
+    );
     const hit = (t: DesignTemplate) =>
       !t.optionLabel?.trim() &&
       t.name
