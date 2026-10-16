@@ -102,8 +102,10 @@ export default function Mug3D({
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
         renderer.outputColorSpace = THREE.SRGBColorSpace;
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.05;
+        // 🎨 สีลายต้องตรงต้นฉบับ (เจ้าของร้านแจ้ง 16 ต.ค. 69 "ภาพ 3D สว่าง ขาวเกินไป ไม่เหมือนภาพต้นฉบับ"):
+        // เดิม ACES (ยกสว่าง+ซีด) + ไฟสิ่งแวดล้อมเต็ม + ไฟหลัก 1.4 + เคลือบเงาสะท้อนขาวทั้งลาย → Neutral (คงสี) · ลดไฟทุกดวง · ลายเงาน้อยลง
+        renderer.toneMapping = THREE.NeutralToneMapping;
+        renderer.toneMappingExposure = 1;
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.domElement.style.width = "100%";
@@ -115,11 +117,14 @@ export default function Mug3D({
         const pmrem = new THREE.PMREMGenerator(renderer);
         const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
         scene.environment = envTex;
+        scene.environmentIntensity = 0.45;
 
         const camera = new THREE.PerspectiveCamera(28, 1, 1, 3000);
         const BASE_DIST = 340;
 
-        const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+        // ☀️ ไฟหลักตามกล้อง (อัปเดตทุกเฟรม) — เดิมตรึงที่ฝั่งหูจับ มุม "ด้านหน้า" จึงอยู่ในเงา ลายมืดกว่าต้นฉบับ
+        // ค่าแสงจูนให้ลายหน้าตรงสว่างเท่าไฟล์ต้นฉบับ (ไฟใน three หาร π: ambient 1.0 ≈ 0.32 · sun 1.2·cos ≈ 0.38 · env 0.45 ≈ 0.3)
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
         sun.position.set(140, 260, 180);
         sun.castShadow = true;
         sun.shadow.mapSize.set(2048, 2048);
@@ -130,7 +135,7 @@ export default function Mug3D({
         sun.shadow.bias = -0.0005;
         sun.shadow.radius = 4;
         scene.add(sun);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+        scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
         const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.ShadowMaterial({ opacity: 0.16 }));
         ground.rotation.x = -Math.PI / 2;
@@ -212,7 +217,7 @@ export default function Mug3D({
             ? new THREE.MeshStandardMaterial({ map: tex, roughness: 0.72, metalness: 0 })
             : mock.body === "clear"
               ? new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.12, metalness: 0, transparent: true, alphaTest: 0.02, side: THREE.DoubleSide })
-              : new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.25, metalness: 0, clearcoat: 0.7, clearcoatRoughness: 0.12 }),
+              : new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.45, metalness: 0, clearcoat: 0.25, clearcoatRoughness: 0.35 }),
         );
         const print = add(
           new THREE.Mesh(g(new THREE.CylinderGeometry(R + 0.18, R + 0.18, printH, 192, 1, true, (3 * Math.PI) / 2 - thetaLen / 2, thetaLen)), printMat),
@@ -249,6 +254,11 @@ export default function Mug3D({
           const cp = Math.cos(c.pitch);
           camera.position.set(dist * Math.sin(c.yaw) * cp, dist * Math.sin(c.pitch) + 6, dist * Math.cos(c.yaw) * cp);
           camera.lookAt(0, -2, 0);
+          // ไฟหลักอยู่ทางกล้อง เยื้องขึ้นบน-ขวาเล็กน้อย ให้มีมิติแต่ไม่ทิ้งเงาบนลายฝั่งที่มอง
+          sun.position.set(camera.position.x, 0, camera.position.z).normalize().multiplyScalar(360);
+          sun.position.y = 300;
+          sun.position.x += 90 * Math.cos(c.yaw);
+          sun.position.z -= 90 * Math.sin(c.yaw);
           renderer.render(scene, camera);
         };
         raf = requestAnimationFrame(tick);
