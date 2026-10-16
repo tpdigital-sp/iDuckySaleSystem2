@@ -709,6 +709,13 @@ export default function CalendarStudio({
   /** ข้อความระหว่างตัดพื้นหลังรูป (AI โหลดโมเดล/กำลังรัน) */
   const [bgBusy, setBgBusy] = useState("");
   const [bgNote, setBgNote] = useState("");
+  /** ✅ ป้าย "ตัดพื้นหลังเรียบร้อย" โชว์สั้น ๆ หลังตัดเสร็จ (คู่กับการ์ดรอกลางจอ) */
+  const [bgDoneNote, setBgDoneNote] = useState("");
+  useEffect(() => {
+    if (!bgDoneNote) return;
+    const t = setTimeout(() => setBgDoneNote(""), 3500);
+    return () => clearTimeout(t);
+  }, [bgDoneNote]);
   /** เรนเดอร์หน้า (พื้นใส) ที่ความละเอียด pxPerMm → แคนวาส + ImageData */
   const renderAlpha = useCallback(
     (pxPerMm: number, d: CalDesign = design) => {
@@ -949,6 +956,7 @@ export default function CalendarStudio({
         }
         const name = base.file.name.replace(/\.[^.]+$/, "") + "-cut.png";
         await swapSrc(i, new File([blob], name, { type: "image/png" }), { bgDone: m, bgPick: pick, orig: base });
+        setBgDoneNote("✅ ตัดพื้นหลังเรียบร้อยแล้ว");
       } catch {
         setBgNote("AI ตัดพื้นหลังไม่สำเร็จ (เครื่องอาจไม่รองรับ) — ลอง “สีพื้น” หรือใช้ไฟล์ PNG พื้นใส");
         setSrcs((cur) => cur.map((s, j) => (j === i ? { ...s, bgDone: s.bgDone ?? "none" } : s)));
@@ -6457,6 +6465,27 @@ export default function CalendarStudio({
           </div>
         )}
 
+        {/* ⏳ กำลังตัดพื้นหลัง — การ์ดสถานะกลางจอ เห็นชัดบนมือถือ (เจ้าของร้านสั่ง 16 ต.ค. 69 "ต้องรอระบบตัดภาพพื้นหลัง อยากให้มีแจ้งเตือนบอกลูกค้าแบบสุภาพ เห็นง่าย ๆ")
+            เดิมข้อความ bgBusy มีแค่ตัวเล็กในแผง ✂️ (มือถือไม่ได้เปิด) + บรรทัดใต้ผืน · ไม่บังการแตะ (pointer-events-none) */}
+        {(bgBusy || bgDoneNote) && (
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 z-[70] flex -translate-y-1/2 justify-center px-4" role="status" aria-live="polite">
+            {bgBusy ? (
+              <div className="flex w-full max-w-sm items-center gap-3 rounded-2xl bg-white/95 px-4 py-3 shadow-2xl ring-2 ring-sky-200 backdrop-blur">
+                <span className="relative grid h-12 w-12 shrink-0 place-items-center">
+                  <span className="absolute inset-0 animate-spin rounded-full border-[3px] border-sky-100 border-t-sky-600" />
+                  <span className="text-xl">✂️</span>
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[14px] font-extrabold leading-snug text-sky-800">กำลังตัดพื้นหลังรูปให้อยู่ กรุณารอสักครู่</p>
+                  <p className="mt-0.5 text-[11.5px] font-bold leading-snug text-stone-600">{bgBusy}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-stone-400">ระหว่างนี้ไม่ต้องปิดหน้านี้ · เสร็จแล้วรูปจะเหลือเฉพาะตัวแบบ ขอบคุณที่รอ 🙏</p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-full bg-emerald-600 px-4 py-2 text-center text-[13px] font-extrabold leading-snug text-white shadow-xl">{bgDoneNote}</div>
+            )}
+          </div>
+        )}
         {gapAsk && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-stone-900/45 p-4">
             <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
