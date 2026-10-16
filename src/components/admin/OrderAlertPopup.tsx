@@ -12,7 +12,7 @@
  * OrderAlertEditor — ช่องตั้ง/แก้/ลบ ในหน้าออเดอร์ (แอดมิน)
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { orderAlertActive, type Order, type OrderAlertNote } from "@/lib/admin-data";
 import { thaiDateTime } from "@/lib/bangkok-time";
 
@@ -122,6 +122,14 @@ export function OrderAlertEditor({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   useEffect(() => setText(order.alertNote?.text ?? ""), [order.alertNote?.text]);
+  // ช่องพิมพ์สูงตามข้อความ (ไม่ตัด/ไม่มีแถบเลื่อน) — เจ้าของร้านขอ 16 ต.ค. 69 "ปรับขนาด font ให้พอดี"
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [text]);
   const active = orderAlertActive(order);
   const dirty = text.trim() !== (a?.text ?? "");
 
@@ -151,15 +159,16 @@ export function OrderAlertEditor({
       </div>
       {canEdit ? (
         <textarea
+          ref={taRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={2}
           maxLength={1000}
           placeholder="เช่น ลูกค้าเปลี่ยนที่อยู่ ห้ามส่งตามใบเดิม / ใส่ของแถม 2 ชิ้น"
-          className="w-full rounded-xl border-2 border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none placeholder:font-normal focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+          className="w-full resize-none rounded-xl border-2 border-amber-300 bg-white px-3 py-2 text-[12.5px] font-medium leading-relaxed text-slate-900 outline-none placeholder:font-normal focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
         />
       ) : (
-        <p className="whitespace-pre-wrap rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-900 ring-1 ring-amber-300">{a?.text}</p>
+        <p className="whitespace-pre-wrap break-words rounded-xl bg-white px-3 py-2 text-[12.5px] font-medium leading-relaxed text-slate-900 ring-1 ring-amber-300">{a?.text}</p>
       )}
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         {canEdit && dirty && (
