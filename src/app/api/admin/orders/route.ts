@@ -1156,18 +1156,14 @@ export async function PATCH(req: Request) {
   /**
    * 🎁 ส่งฟรี / ไม่คิดเงิน (Order.freeOf) — ปล่อยใบยอด ฿0 เข้าคิวงานโดยไม่มีเงินเข้า (ตัวอย่างชิ้นงาน · ของขวัญ · goodwill)
    * แทนทางเดิมที่ต้องกด "ไม่มีสลิป — ยืนยันเอง" แล้ว log เขียนว่ารับเงินทั้งที่ไม่มีเงิน (OD-261012-1553 · 16 ต.ค. 69)
-   *   • ตั้ง/ถอน = สิทธิ์ยืนยันเงินเข้า (orders.markPaid) เท่าใบจ่ายจริง · ตั้งได้เมื่อ canMarkFree(ใบเดิม) · ถอนได้ถ้ายังไม่ปริ้นใบงาน
+   *   • ตั้ง/ถอน = สิทธิ์แก้ออเดอร์ (orders.edit) — ไม่ใช่ยืนยันเงินเข้า เพราะไม่มีเงินเกี่ยว การ์ดกลุ่มแอดมินเป็นตัวคุม
+   *     (16 ต.ค. 69: เดิมล็อกด้วย markPaid → พนักงานกดแล้วไม่เกิดอะไร ไม่มีการ์ดเข้ากลุ่ม) · ตั้งได้เมื่อ canMarkFree(ใบเดิม) · ถอนได้ถ้ายังไม่ปริ้นใบงาน
    *   • เซิร์ฟเวอร์ประทับ by/at เอง · paidTotal = 0 (ไม่ใช่เงินเข้า) · สถานะไปขั้นเดียวกับตอนเงินเข้าครบ (stageAfterPayment)
    *   • ใบ freeOf ต้องยอด ฿0 ตลอด — ใส่ราคา/ค่าส่ง/ค่าบริการทีหลังโดนปัดตรงนี้ (ถอนป้ายส่งฟรีก่อนถ้าจะคิดเงิน)
    * ผลข้างเคียงตอนเข้าคิว (ด้านล่าง): ส่งเรคอร์ดสะพาน TP พร้อม noteSuffix "ส่งฟรี ไม่คิดเงิน" · ตัดสต๊อก · ไม่บวกยอดขาย/แต้ม
    */
   const freeSetNow = mayEditFull && !!toSave.freeOf && !existing.freeOf;
   const freeUnsetNow = mayEditFull && !toSave.freeOf && !!existing.freeOf;
-  if ((freeSetNow || freeUnsetNow) && !mayMarkPaid)
-    return NextResponse.json(
-      { error: "บัญชีนี้ตั้ง/ถอน “ส่งฟรี — ไม่คิดเงิน” ไม่ได้ — ให้เจ้าของร้าน หรือพนักงานที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้ เป็นคนกด" },
-      { status: 403 }
-    );
   if (freeSetNow) {
     if (!canMarkFree(existing))
       return NextResponse.json(
@@ -1211,7 +1207,8 @@ export async function PATCH(req: Request) {
     // + เงินโอนเกินที่สลิปยืนยันไว้แล้ว (surplusCredit) ก็ไม่ใช่เงินใหม่ — หักยอดเพิ่มแล้วครบ = กลับขั้นเดิมได้
     const autoRestore =
       restoredFromReopen && Math.abs((toSave.paidTotal ?? 0) - ((existing.paidTotal ?? 0) + surplusCredit)) < 0.005;
-    const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && !autoRestore;
+    // 🎁 ส่งฟรีเพิ่งตั้งในคำขอนี้ = ไม่มีเงินเข้า ไม่ใช่การยืนยันรับเงิน (สิทธิ์ orders.edit พอ)
+    const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && !autoRestore && !freeSetNow;
     const depositFirst = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
     const depositSettled = !!toSave.deposit?.settledAt && !existing.deposit?.settledAt;
     if (nowPaid || depositFirst || depositSettled)

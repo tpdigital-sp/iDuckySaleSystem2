@@ -2023,10 +2023,11 @@ export default function AdminOrderDetailPage() {
   /**
    * 🎁 ส่งฟรี — ไม่คิดเงินกับลูกค้า: ปล่อยใบยอด ฿0 เข้าคิวงาน (ตัวอย่างชิ้นงาน · ของขวัญ · goodwill) โดยไม่ต้องกด "ไม่มีสลิป — ยืนยันเอง"
    * บันทึก freeOf + เหตุผล แล้วไปขั้นเดียวกับตอนเงินเข้าครบ (stageAfterPayment) · log "ส่งฟรี (ไม่คิดเงิน)" ไม่ใช่ "ยืนยันรับเงินเอง"
-   * เซิร์ฟเวอร์ (PATCH) เช็คสิทธิ์ orders.markPaid + canMarkFree ซ้ำ · ประทับ by/at เอง · ไม่บวกยอดขาย/แต้ม · ยิงเรคอร์ดสะพาน TP + ตัดสต๊อก
+   * สิทธิ์ = orders.edit (ไม่ใช่ยืนยันเงินเข้า — ไม่มีเงินเกี่ยว · 16 ต.ค. 69 พนักงานกดแล้วไม่เกิดอะไรเพราะปุ่มถูกล็อกด้วย markPaid)
+   * เซิร์ฟเวอร์ (PATCH) เช็ค canMarkFree ซ้ำ · ประทับ by/at เอง · ไม่บวกยอดขาย/แต้ม · ยิงเรคอร์ดสะพาน TP + ตัดสต๊อก · แจ้งกลุ่มแอดมินทุกครั้ง
    */
   async function markFree() {
-    if (!order || !mayMarkPaid || !canMarkFree(order)) return;
+    if (!order || !mayEdit || !canMarkFree(order)) return;
     const reason = await askText({
       icon: "🎁",
       title: "ส่งฟรี — ไม่คิดเงินกับลูกค้า",
@@ -2049,7 +2050,7 @@ export default function AdminOrderDetailPage() {
 
   /** ↩️ ถอนป้ายส่งฟรี (กดผิด/ตกลงคิดเงินทีหลัง) — กลับไปรอชำระเงิน · ทำได้ถ้ายังไม่ปริ้นใบงาน (เซิร์ฟเวอร์กันซ้ำ) */
   async function unmarkFree() {
-    if (!order?.freeOf || !mayMarkPaid || order.printedAt) return;
+    if (!order?.freeOf || !mayEdit || order.printedAt) return;
     const ok = await askConfirm({
       icon: "↩️",
       title: "ถอน “ส่งฟรี” ออกจากใบนี้?",
@@ -5494,12 +5495,12 @@ export default function AdminOrderDetailPage() {
             <p className="text-sm font-bold text-emerald-800">🎁 ใบนี้ยอดรวม ฿0 — ตั้งใจส่งฟรี / ไม่คิดเงินกับลูกค้าใช่ไหม?</p>
             <p className="mt-0.5 text-[11px] font-semibold leading-relaxed text-emerald-700">
               กด “ส่งฟรี” แล้วใบจะเข้าคิวงานทันทีโดย<b>ไม่นับเป็นยอดขาย/แต้ม</b> และหน้าออเดอร์ของลูกค้าจะบอกว่าทางร้านจัดส่งให้ฟรี
-              {mayMarkPaid ? " · ระบบแจ้งกลุ่มไลน์แอดมินให้ทุกครั้ง · ถอนได้ถ้ายังไม่ปริ้นใบงาน" : " · บัญชีนี้กดไม่ได้ — ต้องเป็นคนที่มีสิทธิ์ยืนยันเงินเข้า"}
+              {mayEdit ? " · ระบบแจ้งกลุ่มไลน์แอดมินให้ทุกครั้ง · ถอนได้ถ้ายังไม่ปริ้นใบงาน" : " · บัญชีนี้แก้ออเดอร์ไม่ได้ จึงกดไม่ได้"}
             </p>
           </div>
           <button
             type="button"
-            disabled={!mayMarkPaid}
+            disabled={!mayEdit}
             onClick={() => void markFree()}
             className="shrink-0 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -5562,7 +5563,7 @@ export default function AdminOrderDetailPage() {
               🎁 ส่งฟรี — ไม่คิดเงินกับลูกค้า
               <span className="font-normal text-emerald-600">· เหตุผล: {order.freeOf.reason}</span>
               <span className="font-normal text-emerald-600/80" title={order.freeOf.at}>· โดย {order.freeOf.by}</span>
-              {mayMarkPaid && !order.printedAt && order.status !== "ยกเลิก" && (
+              {mayEdit && !order.printedAt && order.status !== "ยกเลิก" && (
                 <button
                   type="button"
                   onClick={() => void unmarkFree()}
