@@ -1047,11 +1047,14 @@ export default function CalendarStudio({
   /** รูปเทมเพลต (ไกด์) ที่โหลดแล้ว — เปลี่ยนวัสดุ/แนวที่หน้าสินค้า = โหลดรูปใหม่ */
   const [guideImg, setGuideImg] = useState<HTMLImageElement | null>(null);
   /**
-   * 📐 เทมเพลตมีเส้นตัดสีแดงไหม — มี (เทมเพลตปฏิทิน) = วาดเส้นตัดขอบขาว+แกนแดงทับให้เห็นบนรูปเข้ม
+   * 📐 เทมเพลตมี "เส้นตัดสี่เหลี่ยมสีแดง" ตรงกรอบตัดของระบบไหม — มี (เทมเพลตปฏิทิน/โปสการ์ด) = วาดเส้นตัดขอบขาว+แกนแดงทับให้เห็นบนรูปเข้ม
    * ไม่มี (แผ่นรองเมาส์ · ขอบจริงคือเส้นเทามุมมนในไฟล์) = ไม่วาดสี่เหลี่ยมแดงทับ (ผู้ใช้ถาม 14 ต.ค. 69 "ทำไมมีเส้นไดคัทแดง")
+   * ⚠️ นับแค่ "มีพิกเซลแดง" ไม่พอ: สกินเคสมือถือ (Case Frame Card 16 ต.ค. 69) มีเส้นไดคัทแดงตามทรงเคส (มุมมน+ช่องกล้อง)
+   * ชิดขอบอาร์ตบอร์ด แต่กรอบตัดของ tpl@ อยู่ลึกเข้ามา 3 มม. → เดิมเลยวาดสี่เหลี่ยมแดงทับไม่ตรงเส้นจริง (เจ้าของร้านแจ้ง "ติดกรอบเส้นสีแดง เอาออก")
+   * → วาดทับเฉพาะเมื่อพิกเซลแดงเกือบทั้งหมด (≥90% · เคส 16PM ได้ ~70% เพราะเส้นในชั้นตรงแนวแต่มุมมน/ช่องกล้องหลุด · สี่เหลี่ยมจริงได้ ~100%) นอนอยู่บนขอบกรอบตัด (±1.5 มม. ในพิกัดผืน ตามตำแหน่งที่สกินถูกวาดจริง)
    */
   const guideRed = useMemo(() => {
-    if (!guideImg) return false;
+    if (!guideImg || !guide) return false;
     try {
       const sc = Math.min(1, 600 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
       const cv = document.createElement("canvas");
@@ -1061,13 +1064,41 @@ export default function CalendarStudio({
       if (!ctx) return true;
       ctx.drawImage(guideImg, 0, 0, cv.width, cv.height);
       const a = ctx.getImageData(0, 0, cv.width, cv.height).data;
-      let red = 0;
-      for (let i = 0; i < a.length; i += 4) if (a[i + 3] > 40 && a[i] > 150 && a[i] - a[i + 1] > 60 && a[i] - a[i + 2] > 60) red++;
-      return red > 20;
+      // ตำแหน่งสกินบนผืน (มม.) — สูตรเดียวกับตอนวาด (fill = พอดีผืน/ย่อกึ่งกลาง · ไม่ fill = กึ่งกลางตามขนาดมม.)
+      let ox = 0, oy = 0, gw = W, gh = H;
+      if (guide.fill) {
+        const ar = guideImg.naturalWidth / Math.max(1, guideImg.naturalHeight);
+        if (Math.abs(ar / (W / H) - 1) > 0.02) {
+          gw = Math.min(W, H * ar);
+          gh = gw / ar;
+          ox = (W - gw) / 2;
+          oy = (H - gh) / 2;
+        }
+      } else {
+        gw = guide.wMm;
+        gh = guide.hMm;
+        ox = (W - gw) / 2;
+        oy = (H - gh) / 2;
+      }
+      const TOL = 1.5;
+      const x0 = fmt.bleed, y0 = fmt.bleed, x1 = fmt.bleed + fmt.trimW, y1 = fmt.bleed + fmt.trimH;
+      let red = 0, on = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        if (!(a[i + 3] > 40 && a[i] > 150 && a[i] - a[i + 1] > 60 && a[i] - a[i + 2] > 60)) continue;
+        red++;
+        const px = (i / 4) % cv.width;
+        const py = Math.floor(i / 4 / cv.width);
+        const mx = ox + ((px + 0.5) / cv.width) * gw;
+        const my = oy + ((py + 0.5) / cv.height) * gh;
+        const inX = mx >= x0 - TOL && mx <= x1 + TOL;
+        const inY = my >= y0 - TOL && my <= y1 + TOL;
+        if ((inX && (Math.abs(my - y0) <= TOL || Math.abs(my - y1) <= TOL)) || (inY && (Math.abs(mx - x0) <= TOL || Math.abs(mx - x1) <= TOL))) on++;
+      }
+      return red > 20 && on / red >= 0.9;
     } catch {
       return true; // อ่านพิกเซลไม่ได้ = ทำแบบเดิม (วาดเส้นตัด)
     }
-  }, [guideImg]);
+  }, [guideImg, guide, fmt, W, H]);
   useEffect(() => {
     if (!open || !guide?.url) return setGuideImg(null);
     let alive = true;
@@ -5434,7 +5465,14 @@ export default function CalendarStudio({
                 </>
               ) : (
                 <>
-                  <span className="text-rose-500">{guideImg || fmt.dieline ? "—" : "- - -"}</span> เส้นตัด
+                  {/* เทมเพลตที่ระบบไม่วาดเส้นตัดทับ (เส้นในไฟล์ไม่ใช่สี่เหลี่ยม เช่น เคสมือถือ) = เส้นตัดคือเส้นในไฟล์ ไม่โชว์ขีดแดงหลอก */}
+                  {guideImg && guide && !guideRed ? (
+                    "เส้นตัดตามไฟล์เทมเพลต"
+                  ) : (
+                    <>
+                      <span className="text-rose-500">{guideImg || fmt.dieline ? "—" : "- - -"}</span> เส้นตัด
+                    </>
+                  )}
                 </>
               )}
               {guideImg && guide?.name ? ` · 📐 เทมเพลต ${guide.name}` : ""}
