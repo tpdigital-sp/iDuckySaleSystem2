@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { formatPrice } from "@/lib/products";
-import { extraDocItemsBill, flowAccountBillTotal, flowAccountGap, orderBilledTotal, orderTotal, withLog, type Order } from "@/lib/admin-data";
+import { depositFollowTotal, extraDocItemsBill, flowAccountBillTotal, flowAccountGap, orderBilledTotal, orderTotal, withLog, type Order } from "@/lib/admin-data";
 import type { FADoc } from "./FlowAccountOrderDialog";
 import type { ShippingMethod } from "@/lib/shop-settings";
 import { isPickupOrder, normalizeShipLabel } from "@/lib/ship-label";
@@ -95,8 +95,8 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
     setDiff(null);
   }
 
-  function apply() {
-    if (!diff) return;
+  /** ก้อนออเดอร์หลังใช้ยอดตามเอกสาร (ยังไม่ลง log) — ใช้ทั้งตอนกดใช้จริงและตอนพรีวิวแถวมัดจำในตาราง */
+  function nextFromDiff(diff: Diff): Order {
     const d = diff.doc;
     const f = fullFigures(d);
     const items = order.items.map((it, i) => (diff.itemPatch[i] ? { ...it, qty: diff.itemPatch[i].qty, unitPrice: diff.itemPatch[i].unitPrice } : it));
@@ -123,7 +123,20 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
     // ปุ่มนี้แอดมินกดเอง และตารางข้างบนโชว์ให้เห็นก่อนแล้วว่าจะเปลี่ยนเป็นเท่าไร
     if ((f.wht ?? 0) + ex.wht > 0) next.wht = { rate: d.whtRate ?? next.wht?.rate ?? 0, amount: Math.round(((f.wht ?? 0) + ex.wht) * 100) / 100 };
     else delete next.wht;
-    next = withLog(next, actor, "ซิงก์ยอดจาก FlowAccount", `${d.docTypeLabel} ${d.docNo} · ยอดรวม ${orderTotal(next).toLocaleString("th-TH")} บาท${d.grandTotal != null ? ` (เอกสาร ${d.grandTotal.toLocaleString("th-TH")})` : ""}`);
+    return next;
+  }
+
+  function apply() {
+    if (!diff) return;
+    const d = diff.doc;
+    // ➗ ใบมัดจำ: ยอดงวดแรกขยับตามสัดส่วนเดิม + ล้าง "โอนขาด" ที่เกิดจากเทียบกับยอดฉบับเก่า (OD-261007-2540 · 16 ต.ค. 69)
+    const follow = depositFollowTotal(order, nextFromDiff(diff));
+    const next = withLog(
+      follow.order,
+      actor,
+      "ซิงก์ยอดจาก FlowAccount",
+      `${d.docTypeLabel} ${d.docNo} · ยอดรวม ${orderTotal(follow.order).toLocaleString("th-TH")} บาท${d.grandTotal != null ? ` (เอกสาร ${d.grandTotal.toLocaleString("th-TH")})` : ""}${follow.note ? ` · ${follow.note}` : ""}`
+    );
     onApply(next);
     setDiff(null);
   }
@@ -133,6 +146,9 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
   // บิลหลัก + บิลเพิ่มที่ใส่เป็นรายการ (หัก ณ ที่จ่ายของใบนั้นบวกเข้าออเดอร์แล้ว)
   const faWht = (order.flowAccount?.wht ?? 0) + extraDocItemsBill(order).wht;
   const whtGap = faWht > 0 || (order.wht?.amount ?? 0) > 0 ? Math.round((faWht - (order.wht?.amount ?? 0)) * 100) / 100 : 0;
+
+  // ➗ พรีวิวว่ายอดมัดจำงวดแรกจะขยับเป็นเท่าไรถ้ากดใช้ยอดตามเอกสาร (แอดมินต้องเห็นก่อนกด)
+  const follow = diff && !diff.sameTotal ? depositFollowTotal(order, nextFromDiff(diff)) : null;
 
   return (
     <div className="mt-1.5">
@@ -191,8 +207,18 @@ export default function FlowAccountSync({ order, actor, onApply }: { order: Orde
                   <td className="py-0.5 text-right tabular-nums">{r.now}</td>
                 </tr>
               ))}
+              {follow?.note && order.deposit && follow.order.deposit && (
+                <tr className="font-bold text-violet-700">
+                  <td className="py-0.5">➗ มัดจำงวดแรก (ตามสัดส่วนเดิม)</td>
+                  <td className="py-0.5 text-right tabular-nums">{formatPrice(follow.order.deposit.amount)}</td>
+                  <td className="py-0.5 text-right tabular-nums">{formatPrice(order.deposit.amount)}</td>
+                </tr>
+              )}
             </tbody>
           </table>
+          {follow?.note && (
+            <p className="mt-1 text-[11px] font-semibold leading-snug text-violet-700">➗ กดใช้ยอดแล้ว: {follow.note}</p>
+          )}
           {diff.unmatched.length > 0 && (
             <p className="mt-1 text-[11px] text-amber-700">
               ⚠️ รายการในเอกสารที่จับคู่กับรายการในระบบไม่ได้ (ต้องแก้เอง): {diff.unmatched.join(" · ")}

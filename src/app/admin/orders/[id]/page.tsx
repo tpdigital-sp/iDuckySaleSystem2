@@ -77,6 +77,7 @@ import {
   orderTaxBase,
   orderTaxDrift,
   taxFromRate,
+  depositFirstNetPerDocChange,
   depositInstallments,
   packGate,
   pickupRoundRef,
@@ -3747,6 +3748,21 @@ export default function AdminOrderDetailPage() {
       setErr(!(receivedNet > 0) ? "กรอกยอดที่ได้รับจริงก่อน" : "ยอดที่กรอกไม่น้อยกว่ายอดงวดแรก — กดปุ่มยืนยันรับมัดจำปกติได้เลย");
       return;
     }
+    /**
+     * 📄 เอกสาร FlowAccount ถูกแก้แล้วยังไม่ซิงก์ (docChanged) → ยอดที่เข้าตรงกับงวดแรกตามเอกสารใหม่ = ลูกค้าโอนถูก ไม่ใช่โอนขาด
+     * (OD-261007-2540 · 9 ต.ค. 69: ระบบรอ 64,337 ของใบเก่า ลูกค้าโอน 63,024 ตามใบใหม่ → ถูกบันทึกเป็นโอนขาด 1,313 ทั้งที่ครบ)
+     */
+    const docHint = depositFirstNetPerDocChange(order);
+    const docHintLine = docHint
+      ? `ยอดใบ ${formatPrice(docHint.total)}${docHint.wht > 0 ? ` · หัก ณ ที่จ่าย ${formatPrice(docHint.wht)}` : ""} → งวดแรกโอนจริง ${formatPrice(docHint.firstNet)}`
+      : "";
+    if (receivedNet != null && docHint && Math.abs(receivedNet - docHint.firstNet) <= 1) {
+      setErr(
+        `ยอดที่กรอก ${formatPrice(receivedNet)} ตรงกับงวดแรกตามเอกสาร FlowAccount ฉบับล่าสุด (${docHintLine}) — ลูกค้าโอนถูกต้อง ไม่ใช่โอนขาด · กด "🔄 เทียบกับเอกสารล่าสุด" ในกล่องฟ้าด้านบนเพื่อซิงก์ยอดก่อน แล้วกดยืนยันรับมัดจำปกติ`
+      );
+      return;
+    }
+    const docWarn = docHint ? `\n\n📄 เอกสาร FlowAccount ถูกแก้หลังเปิดใบ ยังไม่ได้ซิงก์ (${docHintLine}) — ยอดมัดจำในระบบอาจเป็นฉบับเก่า ควรกด "🔄 เทียบกับเอกสารล่าสุด" ก่อน` : "";
     // ทางนี้ก็ดันสถานะเป็น "ชำระแล้ว" เหมือนกัน — ไม่มีสลิปต้องเตือนให้เห็นก่อน
     const noSlip = !order.slipPath && !order.slipUrl;
     // ➗ ลูกค้าหัก ณ ที่จ่าย → เงินเข้าจริงงวดแรกน้อยกว่ายอดมัดจำ (ส่วนต่างตามใบ 50 ทวิ) บอกไว้ในกล่องยืนยันจะได้เทียบเงินเข้าถูก
@@ -3765,9 +3781,9 @@ export default function AdminOrderDetailPage() {
             : "") +
           (noSlip
             ? '⚠️ ออเดอร์นี้ยังไม่มีสลิปแนบ — ถ้ามีสลิป ให้กดยกเลิกแล้วแนบที่ช่อง "🧾 หลักฐานการโอน" ก่อน\nยืนยันเลยก็ได้ ระบบจะบันทึกในประวัติว่าใครยืนยันทั้งที่ไม่มีสลิป'
-            : "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย") + whtLine,
+            : "ระบบจะบันทึกว่าเก็บงวดแรกแล้ว เริ่มงานได้เลย") + whtLine + docWarn,
         confirmLabel: "ยืนยันรับมัดจำ",
-        danger: noSlip,
+        danger: noSlip || !!docHint,
       }))
     )
       return;
@@ -9494,11 +9510,20 @@ export default function AdminOrderDetailPage() {
                             const got = Number(depShortInput.replace(/[,\s฿]/g, ""));
                             const valid = depShortInput.trim() !== "" && Number.isFinite(got) && got > 0;
                             const miss = valid ? Math.round((inst.firstNet - got) * 100) / 100 : 0;
+                            // 📄 เอกสารถูกแก้ยังไม่ซิงก์: ยอดที่กรอกตรงงวดแรกตามเอกสารใหม่ = ไม่ใช่โอนขาด (OD-261007-2540)
+                            const docHint = depositFirstNetPerDocChange(order);
+                            const docMatch = !!docHint && valid && Math.abs(got - docHint.firstNet) <= 1;
                             return (
                               <div className="mt-2 rounded-lg bg-amber-50 p-2.5 ring-1 ring-amber-200">
                                 <label className="block text-[11px] font-bold text-amber-900">
                                   ยอดที่ได้รับจริง{hasWht ? " (เงินเข้าบัญชี หลังหัก ณ ที่จ่าย)" : ""} — ต้องโอน {formatPrice(inst.firstNet)}
                                 </label>
+                                {docHint && !docMatch && (
+                                  <p className="mt-0.5 text-[10.5px] font-semibold leading-snug text-rose-700">
+                                    📄 เอกสาร FlowAccount ถูกแก้หลังเปิดใบ ยังไม่ได้ซิงก์ — ตามเอกสารใหม่ งวดแรกโอนจริง {formatPrice(docHint.firstNet)} (ยอดใบ {formatPrice(docHint.total)}
+                                    {docHint.wht > 0 ? ` · หัก ณ ที่จ่าย ${formatPrice(docHint.wht)}` : ""}) · ถ้าลูกค้าโอนเท่านี้ = ไม่ใช่โอนขาด ให้กด “🔄 เทียบกับเอกสารล่าสุด” ก่อน
+                                  </p>
+                                )}
                                 <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center">
                                   <input
                                     type="text"
@@ -9507,14 +9532,16 @@ export default function AdminOrderDetailPage() {
                                     value={depShortInput}
                                     onChange={(e) => setDepShortInput(e.target.value)}
                                     onKeyDown={(e) => {
-                                      if (e.key === "Enter" && valid && miss >= 0.01) void confirmDepositFirst(got);
+                                      if (e.key === "Enter" && valid && miss >= 0.01 && !docMatch) void confirmDepositFirst(got);
                                       if (e.key === "Escape") setDepShortInput(null);
                                     }}
                                     placeholder="เช่น 63024"
                                     className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-right text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-2 focus:ring-amber-300 sm:w-40"
                                   />
                                   <p className="flex-1 text-[11px] leading-snug text-amber-800">
-                                    {!valid
+                                    {docMatch
+                                      ? <span className="font-bold text-rose-700">ยอดนี้ตรงกับงวดแรกตามเอกสาร FlowAccount ฉบับล่าสุดพอดี ({formatPrice(docHint!.firstNet)}) — ลูกค้าโอนถูกต้อง ไม่ใช่โอนขาด · กด “🔄 เทียบกับเอกสารล่าสุด” ซิงก์ยอดก่อน แล้วยืนยันรับมัดจำปกติ</span>
+                                      : !valid
                                       ? "ส่วนที่ขาดจะยกไปรวมงวดที่ 2 ให้เอง"
                                       : miss < 0.01
                                         ? "ไม่ได้ขาด — กดยืนยันรับมัดจำปกติได้เลย"
@@ -9522,7 +9549,7 @@ export default function AdminOrderDetailPage() {
                                   </p>
                                   <button
                                     type="button"
-                                    disabled={!valid || miss < 0.01}
+                                    disabled={!valid || miss < 0.01 || docMatch}
                                     onClick={() => void confirmDepositFirst(got)}
                                     className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-40"
                                   >

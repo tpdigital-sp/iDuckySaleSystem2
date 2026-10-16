@@ -1149,6 +1149,20 @@ export async function PATCH(req: Request) {
       `${existing.status} → ${stageAfterPayment(toSave)} (รับแล้ว ${(toSave.paidTotal ?? 0).toLocaleString("th-TH")} จาก ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
     );
 
+  /**
+   * ➗↩️ ใบมัดจำที่ถูกพักไว้หน้าประตูเงิน (รอตรวจสอบ — สลิปงวดหลังตก parkForSlipReview จำขั้นไว้ที่ reopenedFrom)
+   * แล้วแอดมินกดปุ่ม "ยืนยันรับงวดที่ 2 ครบ" เอง → กลับขั้นที่จำไว้ เหมือนทางรับยอดสลิปเองใน slip-apply
+   * (OD-261007-2540 · 16 ต.ค. 69: เก็บครบ 100% แล้วแต่ใบยังค้าง "รอตรวจสอบ" เพราะ restoredFromReopen ข้ามใบมัดจำ)
+   */
+  const depositSettledNow = !!toSave.deposit?.settledAt && !existing.deposit?.settledAt;
+  if (mayEditFull && depositSettledNow && awaitingPayment(existing) && toSave.status === existing.status)
+    toSave = withLog(
+      { ...toSave, status: stageAfterPayment(toSave), ...clearStageMemory },
+      actor.name?.trim() || actor.username,
+      "เก็บครบแล้ว — กลับไปขั้นเดิม",
+      `${existing.status} → ${stageAfterPayment(toSave)} (รับครบ ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
+    );
+
   /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */
   const quoteJustPriced =
     !isFreeOrder(toSave) && existing.items.some((i) => i.unitPrice <= 0) && toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);

@@ -2073,6 +2073,82 @@ export function depositInstallments(
   return { first, second, wht, firstWht, secondWht, firstNet: r2(first - firstWht), secondNet: r2(second - secondWht) };
 }
 
+/**
+ * ➗🔄 ยอดบิลเปลี่ยน (ซิงก์เอกสาร FlowAccount ฉบับแก้ · แก้รายการ) → ยอดมัดจำงวดแรกขยับตามสัดส่วนเดิม (50% ยังเป็น 50%)
+ *
+ * ทำไมต้องมี (OD-261007-2540 · 16 ต.ค. 69): เปิดมัดจำ 66,192.88 จากใบ 132,385.75 แล้วเอกสารถูกแก้เป็น 129,684 (หัก 3,636)
+ * ลูกค้าโอน 63,024 = ครึ่งของใบใหม่หลังหัก ณ ที่จ่าย (64,842 − 1,818) ถูกต้องทุกบาท แต่ระบบยังรอ 64,337 ของใบเก่า
+ * → แอดมินกด "โอนขาด?" บันทึก firstShort 1,313 · ซิงก์เอกสารทีหลังก็ไม่แตะ deposit.amount → งวด 1 ขึ้น "โอนขาด" ค้าง
+ *   และสลิปงวด 2 (63,024 อีกใบ) ถูกมองว่าขาด 1,780.12 ซึ่งคือภาษีที่ลูกค้าหัก (ไลน์บอกลูกค้าว่ารับบางส่วน)
+ *
+ * กติกา: amount ใหม่ = amount เดิม × ยอดรวมใหม่ ÷ ยอดรวมเดิม
+ * งวดแรกรับแล้ว (firstPaidAt): เงินที่เข้าจริง (สุทธิหลังหัก ณ ที่จ่าย) ไม่เปลี่ยน → คิด firstShort ใหม่เทียบงวดแรกตามยอดใหม่
+ * (ตรงพอดี = ไม่ขาด ลบธงทิ้ง) และขยับ paidTotal ตาม "ยอดตามบิล" ของงวดแรกที่นับไว้ (เงินเข้าจริงเท่าเดิม)
+ * ใบที่เก็บครบแล้ว (settledAt) · ยอดรวมไม่เปลี่ยน · ไม่ใช่ใบมัดจำ → คืน next เดิม ไม่มี note
+ */
+export function depositFollowTotal(prev: Order, next: Order): { order: Order; note?: string } {
+  const dep = next.deposit;
+  if (!dep || dep.settledAt) return { order: next };
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const thb = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const oldTotal = orderTotal(prev);
+  const newTotal = orderTotal(next);
+  if (!(oldTotal > 0) || !(newTotal > 0) || Math.abs(oldTotal - newTotal) < 0.01) return { order: next };
+  const oldPlanned = r2(Math.min(oldTotal, Math.max(0, dep.amount)));
+  const amount = r2((oldPlanned * newTotal) / oldTotal);
+  if (Math.abs(amount - dep.amount) < 0.01) return { order: next };
+  const notes = [`มัดจำงวดแรก ${thb(dep.amount)} → ${thb(amount)} (ตามสัดส่วนเดิม · ยอดรวม ${thb(oldTotal)} → ${thb(newTotal)})`];
+  let deposit: NonNullable<Order["deposit"]> = { ...dep, amount };
+  let out: Order = { ...next, deposit };
+  if (dep.firstPaidAt) {
+    // ก่อนแก้: first หัก firstShort แล้ว · firstNet = เงินที่เข้าบัญชีจริงของงวดแรก (ตัวนี้ไม่เปลี่ยน)
+    const before = depositInstallments({ ...prev, deposit: dep })!;
+    const receivedNet = before.firstNet;
+    const { firstShort: _was, ...clean } = deposit;
+    const planned = depositInstallments({ ...out, deposit: clean })!;
+    const short = r2(planned.firstNet - receivedNet);
+    deposit = short >= 0.01 ? { ...clean, firstShort: short } : clean;
+    const oldCounted = before.first;
+    const newCounted = r2(amount - (short >= 0.01 ? short : 0));
+    out = {
+      ...out,
+      deposit,
+      ...(next.paidTotal != null ? { paidTotal: r2(Math.max(0, next.paidTotal + newCounted - oldCounted)) } : {}),
+    };
+    if ((dep.firstShort ?? 0) > 0 && short < 0.01)
+      notes.push(`เงินงวดแรกที่รับจริง ${thb(receivedNet)} ตรงงวดแรกตามยอดใหม่พอดี — ลบ "โอนขาด ${thb(dep.firstShort!)}" ที่เคยบันทึก`);
+    else if (short >= 0.01 && Math.abs(short - (dep.firstShort ?? 0)) >= 0.01) notes.push(`โอนขาดงวดแรก ${thb(dep.firstShort ?? 0)} → ${thb(short)}`);
+    if (next.paidTotal != null && Math.abs(newCounted - oldCounted) >= 0.01)
+      notes.push(`ยอดรับตามบิล ${thb(next.paidTotal)} → ${thb(out.paidTotal!)} (เงินเข้าจริงเท่าเดิม)`);
+  }
+  return { order: out, note: notes.join(" · ") };
+}
+
+/**
+ * 📄➗ เอกสาร FlowAccount ถูกแก้แล้วยังไม่ซิงก์ (flowAccount.docChanged จาก cron) → เงินงวดแรกที่ลูกค้า "ควรโอน" ตามเอกสารฉบับล่าสุด
+ * ใช้เตือนตอนแอดมินจะบันทึก "โอนขาด": ยอดที่เข้าตรงกับ firstNet ตัวนี้ = ลูกค้าโอนถูก ยอดในระบบต่างหากที่เป็นฉบับเก่า
+ * (OD-261007-2540: ระบบรอ 64,337 · เอกสารใหม่ 129,684 หัก 3,636 → ควรโอน 63,024 = ที่ลูกค้าโอนมาพอดี)
+ * null = ไม่มีธง / ไม่ใช่ใบมัดจำ / เอกสารตรงกับยอดในระบบอยู่แล้ว
+ */
+export function depositFirstNetPerDocChange(o: Order): { total: number; wht: number; firstNet: number } | null {
+  const dc = o.flowAccount?.docChanged;
+  const dep = o.deposit;
+  if (!dc || !dep || dc.mismatch === false || !(dc.total && dc.total > 0)) return null;
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const total = orderTotal(o);
+  if (!(total > 0)) return null;
+  // ค่าบริการเพิ่ม + บิลเพิ่มที่ใส่เป็นรายการ ไม่อยู่ในเอกสารหลัก — บวกกลับให้เทียบกับยอดรวมของออเดอร์ได้
+  const ex = extraDocItemsBill(o);
+  const outside = r2(total - (orderBilledTotal(o) - ex.total));
+  const newTotal = r2(dc.total + outside);
+  const newWht = r2(Math.max(0, dc.wht ?? 0) + ex.wht);
+  if (Math.abs(newTotal - total) < 0.01 && Math.abs(newWht - orderWhtAmount(o)) < 0.01) return null;
+  const ratio = Math.min(total, Math.max(0, dep.amount)) / total;
+  const first = r2(ratio * newTotal);
+  const firstWht = newWht > 0 ? r2((newWht * first) / newTotal) : 0;
+  return { total: newTotal, wht: newWht, firstNet: r2(first - firstWht) };
+}
+
 /** ยอดที่ลูกค้ายังค้างชำระ (มากกว่า 0 = ต้องโอนเพิ่ม เช่น หลังสั่งเพิ่มในออเดอร์เดิม) */
 export function orderBalance(o: Order): number {
   return Math.max(0, orderTotal(o) - (o.paidTotal ?? 0));
