@@ -58,6 +58,8 @@ import {
   muted,
   navItemActive,
   navItemIdle,
+  pillActive,
+  pillIdle,
 } from "@/lib/admin-ui";
 import { Btn, HeroStat, PageHead, PageShell, Stat, Stats } from "@/components/admin/ui";
 
@@ -161,6 +163,11 @@ function AdminTemplatesInner() {
   /** เทมเพลตที่กำลังอัปโหลดอยู่ → "3 ไฟล์" ฯลฯ */
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
+  /**
+   * 🔗 กรองตามการเชื่อมสินค้า — "" ทั้งหมด · linked มีสินค้าผูกอยู่ · unlinked ยังไม่มีสินค้าผูก
+   * (ชุดที่ยังไม่ผูกสินค้า = หน้าสินค้าไม่ขึ้นเทมเพลตเลย — กองนี้คืองานค้างที่ต้องไล่ผูก)
+   */
+  const [linkFilter, setLinkFilter] = useState<"" | "linked" | "unlinked">("");
   /** การ์ดที่กางอยู่ (คลังไฟล์เยอะ — ค่าเริ่มต้นยุบหมด เห็นภาพรวมก่อน) */
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [dropOn, setDropOn] = useState<string | null>(null);
@@ -795,8 +802,15 @@ function AdminTemplatesInner() {
   }
 
   const q = query.trim().toLowerCase();
-  const shown = list
-    .filter((t) => !cat || (cat === NO_CATEGORY ? !t.category?.trim() : t.category?.trim() === cat))
+  const isLinked = (t: Draft) => (usedBy[t.id]?.length ?? 0) > 0;
+  /** ชุดในหมวดที่เลือก (ก่อนกรองการเชื่อม/คำค้น) — ใช้นับตัวเลขบนชิปให้ตรงกับหมวดที่ดูอยู่ */
+  const inCat = list.filter(
+    (t) => !cat || (cat === NO_CATEGORY ? !t.category?.trim() : t.category?.trim() === cat)
+  );
+  const linkedCount = inCat.filter(isLinked).length;
+  const unlinkedCount = inCat.length - linkedCount;
+  const shown = inCat
+    .filter((t) => !linkFilter || (linkFilter === "linked" ? isLinked(t) : !isLinked(t)))
     .filter(
       (t) =>
         !q ||
@@ -1055,10 +1069,42 @@ function AdminTemplatesInner() {
             placeholder="🔍 ค้นหาชื่อชุด · ชื่อไฟล์ · รุ่น · หมวด…"
             className={`${input} flex-1 sm:max-w-sm`}
           />
+          {/* ── กรองตามการเชื่อมสินค้า — เห็นทันทีว่าชุดไหนยังไม่ขึ้นหน้าสินค้า ── */}
+          <div className="flex items-center gap-1" role="group" aria-label="กรองตามการเชื่อมสินค้า">
+            <button
+              type="button"
+              onClick={() => setLinkFilter("")}
+              className={linkFilter === "" ? pillActive : pillIdle}
+              title="ทุกชุดในหมวดนี้"
+            >
+              ทั้งหมด <span className={linkFilter === "" ? "text-white/80" : "text-slate-400"}>{inCat.length}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLinkFilter(linkFilter === "linked" ? "" : "linked")}
+              className={linkFilter === "linked" ? pillActive : pillIdle}
+              title="ชุดที่มีสินค้าผูกอยู่ — หน้าสินค้าขึ้นเทมเพลตแล้ว"
+            >
+              🔗 เชื่อมสินค้าแล้ว{" "}
+              <span className={linkFilter === "linked" ? "text-white/80" : "text-emerald-600"}>{linkedCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLinkFilter(linkFilter === "unlinked" ? "" : "unlinked")}
+              className={linkFilter === "unlinked" ? pillActive : pillIdle}
+              title="ชุดที่ยังไม่มีสินค้าผูก — ลูกค้ายังไม่เห็นเทมเพลตนี้ที่หน้าสินค้า"
+            >
+              ⚠️ ยังไม่เชื่อมสินค้า{" "}
+              <span className={linkFilter === "unlinked" ? "text-white/80" : unlinkedCount > 0 ? "text-amber-600" : "text-slate-400"}>
+                {unlinkedCount}
+              </span>
+            </button>
+          </div>
           <span className="text-xs font-semibold text-amber-800">
             {cat ? `🗂 ${cat}` : "📚 ทุกหมวด"}
             <span className="ml-1 font-normal text-amber-700/70">
               · {shown.length} ชุด
+              {linkFilter === "linked" ? " (เชื่อมสินค้าแล้ว)" : linkFilter === "unlinked" ? " (ยังไม่เชื่อมสินค้า)" : ""}
               {q ? " (ตรงคำค้น)" : ""}
             </span>
           </span>
@@ -1223,13 +1269,17 @@ function AdminTemplatesInner() {
                   <p className={`text-sm ${faint}`}>
                     {q
                       ? "ไม่มีชุดที่ตรงกับคำค้น"
+                      : linkFilter === "linked"
+                        ? "ยังไม่มีชุดที่เชื่อมสินค้าในหมวดนี้"
+                        : linkFilter === "unlinked"
+                          ? "✅ ทุกชุดในหมวดนี้เชื่อมสินค้าแล้ว"
                       : cat === NO_CATEGORY
                         ? "ทุกชุดจัดหมวดไว้ครบแล้ว"
                         : cat
                           ? `ยังไม่มีชุดในหมวด “${cat}”`
                           : "ไม่มีชุดที่ตรงกับที่กรองไว้"}
                   </p>
-                  {cat && !q && (
+                  {cat && !q && !linkFilter && (
                     <>
                       <button type="button" onClick={() => add(cat)} className={`${btnDucky} mt-3`}>
                         {cat === NO_CATEGORY ? "＋ เพิ่มชุดใหม่" : "＋ เพิ่มชุดแรกในหมวดนี้"}

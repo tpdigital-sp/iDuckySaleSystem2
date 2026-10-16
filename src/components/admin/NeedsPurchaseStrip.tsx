@@ -6,7 +6,8 @@
  * เจ้าของร้านสั่ง 17 ก.ย. 69: กราฟฟิกต้องเห็นง่าย ๆ ว่าใบนี้ต้องรอของเข้าก่อนถึงจะเอาเข้าฝั่งผลิต
  * - ยังรอของ = แถบเต็มความกว้างสีคอรัล ขอบซ้ายหนา (เด่นกว่าทุกอย่างรองจากแถบ "ต้องทำต่อ")
  * - ของเข้าแล้ว = บรรทัดเขียวเล็ก ๆ (งานจบแล้วต้องเงียบกว่างานค้าง) เก็บไว้ให้กราฟฟิกรู้ว่าปลดล็อกแล้ว
- * สิทธิ์: แอดมิน (orders.edit) ติ๊ก/แก้โน้ต/ยกเลิก · แอดมินหรือฝ่ายแพ็ค-ผลิต กด "ของเข้าแล้ว" · กราฟฟิกเห็นอย่างเดียว
+ *   + ปุ่ม "🏭 ส่งเข้าผลิตแล้ว" (Order.productionSent · ธงเดียวกับ /admin/stock-wait กอง "เข้าผลิตแล้ว" และคิวปริ้น) · ติ๊กแล้วโชว์คน/เวลา + ถอยได้ (16 ต.ค. 69)
+ * สิทธิ์: แอดมิน (orders.edit) ติ๊ก/แก้โน้ต/ยกเลิก · แอดมินหรือฝ่ายแพ็ค-ผลิต กด "ของเข้าแล้ว" · กราฟฟิกกด "ส่งเข้าผลิตแล้ว" ได้ (canSend)
  */
 
 import { useState } from "react";
@@ -21,6 +22,10 @@ export default function NeedsPurchaseStrip({
   onArrived,
   onUndoArrived,
   onNote,
+  productionSent,
+  canSend,
+  onSent,
+  onUndoSent,
 }: {
   value: NonNullable<Order["needsPurchase"]>;
   /** เงินเข้าแล้ว = ถึงคิว "สั่งของได้เลย" · ยังไม่จ่าย = "รอลูกค้าโอนก่อนค่อยสั่ง" */
@@ -30,6 +35,11 @@ export default function NeedsPurchaseStrip({
   onArrived: () => void;
   onUndoArrived: () => void;
   onNote: (note: string) => void;
+  /** 🏭 ส่งเข้าผลิตแล้ว (Order.productionSent) — folder มีค่า = มาจากการโยนโฟลเดอร์ในคิวปริ้น ถอยตรงนี้ไม่ได้ */
+  productionSent?: { by: string; at: string; folder?: string };
+  canSend?: boolean;
+  onSent?: () => void;
+  onUndoSent?: () => void;
 }) {
   const [note, setNote] = useState(value.note ?? "");
   // 🧾 ของที่ต้องสั่ง (กรอกในกล่อง 🛒 แถบขวา) — โชว์ตรงนี้ให้กราฟฟิก/ฝ่ายแพ็คเห็นด้วย
@@ -42,13 +52,33 @@ export default function NeedsPurchaseStrip({
         style={{ background: "var(--dk-mint-wash)", color: "var(--dk-mint-ink)" }}
       >
         <span>
-          ✓ ของเข้าแล้ว — ส่งเข้าผลิตได้ · {value.arrivedBy} · {thaiDateTime(new Date(value.arrivedAt))}
+          ✓ ของเข้าแล้ว{productionSent ? "" : " — ส่งเข้าผลิตได้"} · {value.arrivedBy} · {thaiDateTime(new Date(value.arrivedAt))}
           {value.note ? ` · ${value.note}` : ""}
         </span>
-        {canManage && (
-          <button type="button" onClick={onUndoArrived} className="underline underline-offset-2 opacity-80 hover:opacity-100">
-            กดผิด — ของยังไม่เข้า
-          </button>
+        {productionSent ? (
+          <>
+            <span title={productionSent.folder ? `โยนโฟลเดอร์ “${productionSent.folder}” ในคิวปริ้น` : "ติ๊กจากหน้า ของเข้า รอส่งผลิต / หน้าออเดอร์"}>
+              🏭 ส่งเข้าผลิตแล้ว · {productionSent.by} · {thaiDateTime(new Date(productionSent.at))}
+            </span>
+            {canSend && onUndoSent && !productionSent.folder && (
+              <button type="button" onClick={onUndoSent} className="underline underline-offset-2 opacity-80 hover:opacity-100">
+                กดผิด — ยังไม่ส่งผลิต
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            {canSend && onSent && (
+              <button type="button" onClick={onSent} className="dkb-btn dkb-btn-navy dkb-btn-sm shrink-0" title="ติ๊กว่าส่งเข้าผลิตแล้ว — ใบย้ายไปกอง “เข้าผลิตแล้ว” ใน ของเข้า รอส่งผลิต">
+                🏭 ส่งเข้าผลิตแล้ว
+              </button>
+            )}
+            {canManage && (
+              <button type="button" onClick={onUndoArrived} className="underline underline-offset-2 opacity-80 hover:opacity-100">
+                กดผิด — ของยังไม่เข้า
+              </button>
+            )}
+          </>
         )}
       </div>
     );

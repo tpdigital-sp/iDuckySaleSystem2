@@ -4097,6 +4097,25 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next).then(() => window.dispatchEvent(new Event("iducky:stock-wait-changed")));
   }
 
+  /**
+   * 🏭 ติ๊ก/ถอย "ส่งเข้าผลิตแล้ว" (Order.productionSent) จากกล่อง/แถบ "ของเข้าแล้ว" — ธงเดียวกับปุ่ม "เปิดใบ → ส่งเข้าผลิต" ที่ /admin/stock-wait
+   * และกอง "ส่งผลิตแล้ว รอปริ้น" ในคิวปริ้น (16 ต.ค. 69) · ถอยได้เฉพาะที่ติ๊กเอง — ใบที่โยนโฟลเดอร์แล้วไปยกเลิกที่ /admin/print
+   */
+  function setProductionSent(on: boolean) {
+    if (!order) return;
+    if (!on && order.productionSent?.folder) return;
+    const next = on
+      ? withLog(
+          { ...order, productionSent: { by: actor, at: new Date().toISOString() } },
+          actor,
+          "🏭 ส่งเข้าผลิตแล้ว (ของเข้าแล้ว)",
+          "จากหน้าออเดอร์ — ใบขึ้นกอง “เข้าผลิตแล้ว” ใน ของเข้า รอส่งผลิต และกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น"
+        )
+      : withLog({ ...order, productionSent: undefined }, actor, "ยกเลิกติ๊กส่งเข้าผลิต", "กดผิด — ยังไม่ส่งผลิต (จากหน้าออเดอร์) ใบกลับไปกอง “ของเข้าแล้ว”");
+    setOrder(next);
+    if (!demo) void saveOrWarn(next).then(() => window.dispatchEvent(new Event("iducky:stock-wait-changed")));
+  }
+
   /** 🧾 พนักงานแพ็คยืนยันว่าใส่ใบกำกับภาษีลงกล่องแล้ว · กดซ้ำ = ยกเลิก (บิล FlowAccount/บิล VAT มักลืมพิมพ์ใบกำกับ) */
   function toggleTaxInvoicePacked() {
     if (!order) return;
@@ -4919,6 +4938,10 @@ export default function AdminOrderDetailPage() {
                 saveNeedsPurchase({ ...order.needsPurchase!, arrivedAt: undefined, arrivedBy: undefined }, "🛒 ยกเลิก “ของเข้าแล้ว” — กลับไปรอของเข้า")
               }
               onNote={(note) => saveNeedsPurchase({ ...order.needsPurchase!, note: note || undefined }, "🛒 แก้รายการที่ต้องสั่ง", note || "ลบโน้ต")}
+              productionSent={order.productionSent}
+              canSend={mayEdit || mayProof || can("pack.check") || can("pack.ship")}
+              onSent={() => setProductionSent(true)}
+              onUndoSent={() => setProductionSent(false)}
             />
           )}
         </div>
@@ -5098,6 +5121,10 @@ export default function AdminOrderDetailPage() {
             saveNeedsPurchase({ ...order.needsPurchase!, arrivedAt: undefined, arrivedBy: undefined }, "🛒 ยกเลิก “ของเข้าแล้ว” — กลับไปรอของเข้า")
           }
           onNote={(note) => saveNeedsPurchase({ ...order.needsPurchase!, note: note || undefined }, "🛒 แก้รายการที่ต้องสั่ง", note || "ลบโน้ต")}
+          productionSent={order.productionSent}
+          canSend={mayEdit || mayProof || can("pack.check") || can("pack.ship")}
+          onSent={() => setProductionSent(true)}
+          onUndoSent={() => setProductionSent(false)}
         />
       )}
 
@@ -9769,11 +9796,13 @@ export default function AdminOrderDetailPage() {
                   // 🟢 ของเข้าแล้ว (needsPurchase.arrivedAt) = กล่องต้องเปลี่ยนเป็นสีเขียว "ของเข้าแล้ว — ส่งเข้าผลิตได้" ไม่ใช่ปุ่มแดง "รอของเข้า" ค้าง
                   // (16 ต.ค. 69 เจ้าของร้านเปิดใบจาก /admin/stock-wait กอง "ของเข้าแล้ว" แล้วยังเห็นปุ่มแดง เข้าใจว่าของยังไม่เข้า)
                   const npArrived = !!order.needsPurchase?.arrivedAt;
+                  // 🏭 ส่งเข้าผลิตแล้ว (productionSent) = ขั้นถัดไปของใบของเข้าแล้ว — กล่องต้องบอกด้วย ไม่งั้นหน้าออเดอร์กับ /admin/stock-wait กอง "เข้าผลิตแล้ว" ไม่ตรงกัน (16 ต.ค. 69)
+                  const npSent = npArrived && !!order.productionSent;
                   const npBox = npArrived ? "border-emerald-300 bg-emerald-50" : order.needsPurchase ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-slate-50/70";
                   const npHead = npArrived ? "text-emerald-700" : order.needsPurchase ? "text-rose-700" : "text-slate-600";
                   return (
                   <div className={`rounded-xl border p-2.5 transition ${npBox}`}>
-                    <p className={`mb-1.5 text-xs font-bold ${npHead}`}>{npArrived ? "🛒 ของเข้าแล้ว — ส่งเข้าผลิตได้" : "🛒 รอของเข้า / ต้องสั่งของ"}</p>
+                    <p className={`mb-1.5 text-xs font-bold ${npHead}`}>{npSent ? "🏭 ส่งเข้าผลิตแล้ว — ของเข้าแล้ว" : npArrived ? "🛒 ของเข้าแล้ว — ส่งเข้าผลิตได้" : "🛒 รอของเข้า / ต้องสั่งของ"}</p>
                     {order.needsPurchase ? (
                       <>
                         <div className="flex flex-wrap items-center gap-2">
@@ -9784,14 +9813,52 @@ export default function AdminOrderDetailPage() {
                                 {order.needsPurchase.arrivedBy ?? ""}
                                 {order.needsPurchase.arrivedAt ? ` · ${thaiDateTime(new Date(order.needsPurchase.arrivedAt))}` : ""}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => saveNeedsPurchase({ ...order.needsPurchase!, arrivedAt: undefined, arrivedBy: undefined }, "🛒 ยกเลิก “ของเข้าแล้ว” — กลับไปรอของเข้า")}
-                                className="text-[11px] font-semibold text-slate-500 underline underline-offset-2 hover:text-rose-600"
-                                title="กดผิด — ของยังไม่เข้า ใบจะกลับไปกอง “ยังรอของเข้า”"
-                              >
-                                กดผิด — ของยังไม่เข้า
-                              </button>
+                              {order.productionSent ? (
+                                <>
+                                  <span
+                                    className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm"
+                                    title={order.productionSent.folder ? `โยนโฟลเดอร์ “${order.productionSent.folder}” ในคิวปริ้น` : "ติ๊กจากหน้า ของเข้า รอส่งผลิต / หน้าออเดอร์"}
+                                  >
+                                    🏭 ส่งเข้าผลิตแล้ว
+                                  </span>
+                                  <span className="text-[11px] text-slate-500">
+                                    {order.productionSent.by} · {thaiDateTime(new Date(order.productionSent.at))}
+                                  </span>
+                                  {order.productionSent.folder ? (
+                                    <span className="text-[11px] text-slate-400" title={order.productionSent.folder}>
+                                      📁 โยนโฟลเดอร์แล้ว — ยกเลิกได้ที่คิวปริ้น
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setProductionSent(false)}
+                                      className="text-[11px] font-semibold text-slate-500 underline underline-offset-2 hover:text-rose-600"
+                                      title="กดผิด — ยังไม่ส่งผลิต ใบจะกลับไปกอง “ของเข้าแล้ว รอส่งผลิต”"
+                                    >
+                                      กดผิด — ยังไม่ส่งผลิต
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductionSent(true)}
+                                    className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-100"
+                                    title="ติ๊กว่าส่งเข้าผลิตแล้ว — ใบย้ายไปกอง “เข้าผลิตแล้ว” ใน ของเข้า รอส่งผลิต (และกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น)"
+                                  >
+                                    🏭 ส่งเข้าผลิตแล้ว
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => saveNeedsPurchase({ ...order.needsPurchase!, arrivedAt: undefined, arrivedBy: undefined }, "🛒 ยกเลิก “ของเข้าแล้ว” — กลับไปรอของเข้า")}
+                                    className="text-[11px] font-semibold text-slate-500 underline underline-offset-2 hover:text-rose-600"
+                                    title="กดผิด — ของยังไม่เข้า ใบจะกลับไปกอง “ยังรอของเข้า”"
+                                  >
+                                    กดผิด — ของยังไม่เข้า
+                                  </button>
+                                </>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => saveNeedsPurchase(undefined, "ยกเลิกติ๊กรอของเข้า")}

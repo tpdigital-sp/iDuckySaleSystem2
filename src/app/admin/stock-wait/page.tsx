@@ -11,10 +11,16 @@
  * ป้ายหายเองเมื่อใบถูกติ๊ก 🏭 ส่งเข้าผลิต หรือสถานะไปถึงกำลังผลิต หรือ 🎨 การ์ดกราฟฟิก TP อนุมัติ/เคลียร์แล้ว (API ย้ายให้ · 16 ต.ค. 69)
  *
  * ปุ่ม "✓ ของเข้าแล้ว" = แอดมิน/ฝ่ายแพ็ค-ผลิต (คนรับของ) · กราฟฟิกเห็นอย่างเดียว — ตรงกับหน้าออเดอร์
+ *
+ * 16 ต.ค. 69 เจ้าของร้านสั่ง: ปุ่ม "เปิดใบ → ส่งเข้าผลิต" กอง ของเข้าแล้ว เดิมกดแล้วแค่เปิดใบ ใบค้างกองเดิม
+ * → กดแล้วติ๊ก Order.productionSent (ธงเดียวกับคิวปริ้น "ส่งผลิตแล้ว รอปริ้น") ใบย้ายไปกอง "เข้าผลิตแล้ว" พร้อมคน/เวลา แล้วค่อยเปิดหน้าออเดอร์
+ *   กอง "เข้าผลิตแล้ว" มีลิงก์ "กดผิด — ยังไม่ส่งผลิต" ถอยกลับ (เฉพาะที่ติ๊กจากหน้านี้/หน้าออเดอร์ · ใบที่โยนโฟลเดอร์แล้วต้องไปยกเลิกที่คิวปริ้น)
+ *   คนกดได้ = แอดมิน · กราฟฟิก (proof.manage) · ฝ่ายแพ็ค-ผลิต — ไม่มีสิทธิ์ = ปุ่มแค่เปิดใบเหมือนเดิม
  */
 
 import RequirePerm from "@/components/RequirePerm";
 import { useCan } from "@/lib/perm-context";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import StatusChip from "@/components/admin/StatusChip";
 import { usePolling } from "@/lib/use-polling";
@@ -39,6 +45,9 @@ const TONE: Record<Group, string> = { ready: "var(--dk-mint)", waiting: "var(--d
 function StockWaitInner() {
   const can = useCan();
   const mayArrive = can("orders.edit") || can("pack.check") || can("pack.ship");
+  // 🏭 ส่งเข้าผลิต = งานของกราฟฟิก (proof.manage) ด้วย — ตรงกับสิทธิ์กล่อง 🏭 บนหน้าออเดอร์
+  const maySend = mayArrive || can("proof.manage");
+  const router = useRouter();
   const [rows, setRows] = useState<StockWaitRow[] | null>(null);
   const [reason, setReason] = useState("");
   const [tab, setTab] = useState<Group | null>(null);
@@ -68,6 +77,9 @@ function StockWaitInner() {
     // ของเข้าล่าสุดขึ้นก่อน · กองรอของ = รอนานสุดขึ้นก่อน
     g.ready.sort((a, b) => (b.arrivedAt ?? "").localeCompare(a.arrivedAt ?? ""));
     g.waiting.sort((a, b) => a.at.localeCompare(b.at));
+    // เข้าผลิตล่าสุดขึ้นก่อน (ใบที่ไปถึงขั้นผลิตตามสถานะโดยไม่มีธง = ท้ายสุด)
+    const sentAt = (r: StockWaitRow) => r.productionSent?.at ?? r.graphicSent?.at ?? "";
+    g.done.sort((a, b) => sentAt(b).localeCompare(sentAt(a)));
     return g;
   }, [all]);
   // ยังไม่เลือกแท็บเอง → เปิดกองที่ต้องลงมือก่อน: มีของเข้า = ของเข้าแล้ว · ไม่มี = ยังรอของ
@@ -75,28 +87,38 @@ function StockWaitInner() {
   const shown = by[active];
   const longest = by.waiting.reduce((m, r) => Math.max(m, waitedDays(r.at)), 0);
 
-  async function arrived(id: string) {
-    if (busy) return;
+  /** ยิงแอ็กชันเดียวไปที่ API (ของเข้าแล้ว / ส่งเข้าผลิต / ถอยส่งผลิต) — เซิร์ฟเวอร์เขียนใบให้ แล้วคืนแถวใหม่มาแทนที่ในกอง */
+  async function act(id: string, action?: "production" | "undo-production"): Promise<StockWaitRow | null> {
+    if (busy) return null;
     setBusy(id);
     setErr("");
     try {
       const r = await fetch("/api/admin/orders/stock-wait", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, ...(action ? { action } : {}) }),
       });
       const j = (await r.json().catch(() => ({}))) as { row?: StockWaitRow; error?: string };
       if (!r.ok || !j.row) {
         setErr(j.error ?? "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง");
-        return;
+        return null;
       }
       const u = j.row;
       setRows((rs) => rs?.map((x) => (x.id === u.id ? u : x)) ?? rs);
       // ป้ายข้างเมนูนับใหม่ทันที (AdminShell ฟังอีเวนต์นี้)
       window.dispatchEvent(new Event("iducky:stock-wait-changed"));
+      return u;
     } finally {
       setBusy(null);
     }
+  }
+
+  const arrived = (id: string) => act(id);
+
+  /** 🏭 ปุ่ม "เปิดใบ → ส่งเข้าผลิต": ติ๊กส่งผลิตก่อน (ใบย้ายกอง) แล้วค่อยเปิดหน้าออเดอร์ — บันทึกไม่ผ่าน = ไม่เปิด ให้เห็น error ตรงนี้ */
+  async function sendToProduction(id: string) {
+    const u = await act(id, "production");
+    if (u) router.push(`/admin/orders/${encodeURIComponent(id)}`);
   }
 
   if (rows === null) {
@@ -137,6 +159,7 @@ function StockWaitInner() {
         />
         <Stat label="ยังรอของเข้า" value={by.waiting.length} hint="ลูกค้าโอนแล้ว ต้องสั่งของ/ตามของ" tone={by.waiting.length ? "due" : undefined} />
         <Stat label="รอนานสุด" value={by.waiting.length ? `${longest} วัน` : "—"} hint="นับจากวันที่ติ๊ก" tone={longest >= 7 ? "due" : undefined} />
+        <Stat label="เข้าผลิตแล้ว" value={by.done.length} hint="กดส่งผลิตจากหน้านี้ หรือโยนโฟลเดอร์ในคิวปริ้น" />
       </Stats>
 
       <FilterCard>
@@ -149,7 +172,7 @@ function StockWaitInner() {
 
       <ListHead
         title={active === "ready" ? "ของเข้าแล้ว — ส่งเข้าผลิตได้" : active === "waiting" ? "ยังรอของเข้า — ห้ามส่งเข้าผลิต" : "เข้าผลิตไปแล้ว"}
-        note={active === "ready" ? "ของเข้าล่าสุดขึ้นก่อน" : active === "waiting" ? "รอนานสุดขึ้นก่อน" : "ดูย้อนหลัง"}
+        note={active === "ready" ? "ของเข้าล่าสุดขึ้นก่อน" : active === "waiting" ? "รอนานสุดขึ้นก่อน" : "เข้าผลิตล่าสุดขึ้นก่อน · กดผิดถอยกลับได้"}
       />
 
       {err && (
@@ -166,7 +189,7 @@ function StockWaitInner() {
               ? "พอแอดมินหรือฝ่ายแพ็คกด “ของเข้าแล้ว” ใบจะขึ้นตรงนี้ พร้อมตัวเลขข้างเมนู"
               : active === "waiting"
                 ? "ใบที่ติ๊ก “รอของเข้า” จะขึ้นตรงนี้เมื่อลูกค้าโอนเงินแล้ว"
-                : "ใบที่ของเข้าแล้วและส่งเข้าผลิตจะย้ายมาที่นี่"
+                : "กด “เปิดใบ → ส่งเข้าผลิต” ในกอง ของเข้าแล้ว ใบจะย้ายมาที่นี่พร้อมคนกดและเวลา"
           }
         />
       ) : (
@@ -189,13 +212,19 @@ function StockWaitInner() {
                       )}
                       {r.group === "waiting" && <Tag tone="coral">ลูกค้าโอนแล้ว ต้องสั่งของ</Tag>}
                       {r.group === "waiting" && days >= 3 && <Tag tone="yolk">รอมา {days} วัน</Tag>}
-                      {r.group === "done" && <Tag tone="quiet">{r.arrivedAt ? `ของเข้า ${thTime(r.arrivedAt)}` : "ส่งผลิตทั้งที่ของยังไม่เข้า"}</Tag>}
+                      {/* กอง เข้าผลิตแล้ว — บอกว่าจบด้วยทางไหน: 🎨 การ์ดกราฟฟิก TP · 🏭 ติ๊กส่งผลิต (ปุ่มหน้านี้/หน้าออเดอร์/โยนโฟลเดอร์) · ถึงขั้นตามสถานะ */}
                       {r.group === "done" && r.graphicSent && (
                         <Tag tone="mint" title={`การ์ดกราฟฟิกบอร์ด TP อนุมัติ/เคลียร์แล้ว${r.graphicSent.by ? ` · ${r.graphicSent.by}` : ""}`}>
                           🎨 กราฟฟิกส่งผลิตแล้ว {thTime(r.graphicSent.at)}
                         </Tag>
                       )}
-                      {r.group === "done" && !r.graphicSent && r.productionSent && <Tag tone="mint">🏭 ส่งผลิตแล้ว</Tag>}
+                      {r.group === "done" && r.productionSent && (
+                        <Tag tone="mint" title={r.productionSent.folder ? `โยนโฟลเดอร์ “${r.productionSent.folder}” ในคิวปริ้น` : "ติ๊กจากหน้านี้/หน้าออเดอร์"}>
+                          🏭 ส่งผลิตแล้ว {r.productionSent.by} · {thTime(r.productionSent.at)}
+                        </Tag>
+                      )}
+                      {r.group === "done" && !r.graphicSent && !r.productionSent && <Tag tone="mint">🏭 ถึงขั้น{r.status}แล้ว</Tag>}
+                      {r.group === "done" && <Tag tone="quiet">{r.arrivedAt ? `ของเข้า ${thTime(r.arrivedAt)}` : "ส่งผลิตทั้งที่ของยังไม่เข้า"}</Tag>}
                     </>
                   }
                   meta={
@@ -218,9 +247,21 @@ function StockWaitInner() {
                   }
                 />
                 <RowSide>
-                  <Btn small tone={r.group === "ready" ? "navy" : undefined} href={`/admin/orders/${encodeURIComponent(r.id)}`}>
-                    {r.group === "ready" ? "เปิดใบ → ส่งเข้าผลิต" : "เปิดออเดอร์"}
-                  </Btn>
+                  {r.group === "ready" && maySend ? (
+                    <Btn small tone="navy" disabled={busy === r.id} onClick={() => void sendToProduction(r.id)} title="ติ๊กว่าส่งเข้าผลิตแล้ว — ใบย้ายไปกอง “เข้าผลิตแล้ว” (และกอง “ส่งผลิตแล้ว รอปริ้น” ในคิวปริ้น) แล้วเปิดหน้าออเดอร์">
+                      {busy === r.id ? "กำลังบันทึก…" : "เปิดใบ → ส่งเข้าผลิต"}
+                    </Btn>
+                  ) : (
+                    <Btn small tone={r.group === "ready" ? "navy" : undefined} href={`/admin/orders/${encodeURIComponent(r.id)}`}>
+                      {r.group === "ready" ? "เปิดใบ → ส่งเข้าผลิต" : "เปิดออเดอร์"}
+                    </Btn>
+                  )}
+                  {/* ถอยได้เฉพาะที่ติ๊กเอง — โยนโฟลเดอร์แล้ว = ไปยกเลิกที่คิวปริ้น · การ์ดกราฟฟิกอนุมัติแล้ว = ถอยธงไปก็ยังอยู่กองนี้ */}
+                  {r.group === "done" && maySend && r.productionSent && !r.productionSent.folder && !r.graphicSent && (
+                    <Btn small disabled={busy === r.id} onClick={() => void act(r.id, "undo-production")} title="ถอยกลับกอง “ของเข้าแล้ว” — ใช้เมื่อกดส่งผลิตผิดใบ">
+                      {busy === r.id ? "กำลังบันทึก…" : "กดผิด — ยังไม่ส่งผลิต"}
+                    </Btn>
+                  )}
                   {r.group === "waiting" && mayArrive && (
                     <Btn small disabled={busy === r.id} onClick={() => void arrived(r.id)} title="ของเข้าร้านแล้ว — ใบจะย้ายไปกองส่งเข้าผลิตได้ และแจ้งลูกค้าทางไลน์">
                       {busy === r.id ? "กำลังบันทึก…" : "✓ ของเข้าแล้ว"}

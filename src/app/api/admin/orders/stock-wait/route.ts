@@ -200,7 +200,10 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       next = saved;
     }
-    return NextResponse.json({ ok: true, row: toRow(next, groupOf(next) ?? "ready") });
+    // ถอยธงแล้วแต่การ์ดกราฟฟิก TP อนุมัติอยู่ = ยังอยู่กอง done (หน้าจอซ่อนปุ่มถอยอยู่แล้ว · กันยิงตรง)
+    const row = toRow(next, groupOf(next) ?? "ready");
+    await applyGraphicCards([row]);
+    return NextResponse.json({ ok: true, row });
   }
 
   if (!o.needsPurchase.arrivedAt) {
