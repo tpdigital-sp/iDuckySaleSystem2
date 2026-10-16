@@ -11,8 +11,15 @@
  *    ให้ผู้เรียกเงียบ ๆ แล้วปล่อยให้แอดมินอัปรูปเองแทน
  */
 
-/** ด้านที่ยาวที่สุดของรูปตัวอย่าง (px) — พอสำหรับ thumbnail ในหน้าคลัง/หน้าสินค้า */
-const MAX_EDGE = 600;
+/**
+ * ด้านที่ยาวที่สุดของรูปตัวอย่าง (px) — รูปนี้ไม่ใช่แค่ thumbnail: จอออกแบบใช้เป็นไกด์ทาบเต็มผืนบนจอ retina (~1,200 px)
+ * เดิม 600 px + ขยายไม่เกิน 2× (= ~144 DPI) → เทมเพลตเข็มกลัดเบลอ (เจ้าของร้านแจ้ง 16 ต.ค. 69 "ปรับขนาดให้เท่าของจริง จะได้ไม่เบลอ")
+ * ตอนนี้ ~300 DPI (ขยายได้ถึง 300/72) แต่ด้านยาวไม่เกิน 1,400 px (อาร์ตบอร์ด A3 ก็ยังได้ ~85 DPI · PNG ไม่เกินเพดานอัป 5 MB)
+ * ชุดเก่าที่อัปไว้ก่อนหน้า เรนเดอร์ใหม่ด้วย scripts/brooch-badge-template-previews.mts (pymupdf) เป็นราย ๆ
+ */
+const MAX_EDGE = 1400;
+/** ขยายจาก 72pt ได้ไม่เกินนี้ = 300 DPI */
+const MAX_SCALE = 300 / 72;
 /** เรนเดอร์นานเกินนี้ถือว่าไม่สำเร็จ — กันหมุนค้างไม่จบ ให้ตกไปใช้วิธีอัปรูปเองแทน */
 const RENDER_TIMEOUT_MS = 20_000;
 
@@ -74,7 +81,7 @@ export async function thumbnailFromDesignFile(file: File): Promise<File | null> 
     const page = await doc.getPage(1);
 
     const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(MAX_EDGE / Math.max(base.width, base.height), 2);
+    const scale = Math.min(MAX_EDGE / Math.max(base.width, base.height), MAX_SCALE);
     const viewport = page.getViewport({ scale: scale > 0 ? scale : 1 });
 
     const w = Math.max(1, Math.round(viewport.width));
