@@ -2937,7 +2937,16 @@ export default function ProductDetail({
       if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk) };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
       // ✂️ cut = เส้นไดคัทจริงจากไฟล์ .ai (cutCurves) → .ai/.pdf จากจอออกแบบใช้เส้นนี้แทนกรอบสี่เหลี่ยม (16 ต.ค. 69)
-      if (f) return { url: f.previewUrl!, wMm: f.widthMm!, hMm: f.heightMm!, name: name(f), ...(f.cutCurves?.length ? { cut: f.cutCurves } : {}) };
+      if (f)
+        return {
+          url: f.previewUrl!,
+          wMm: f.widthMm!,
+          hMm: f.heightMm!,
+          name: name(f),
+          ...(f.cutCurves?.length ? { cut: f.cutCurves } : {}),
+          // 📏 ขนาดหน้างานจริง (วงในเทมเพลต) — หัวจอออกแบบแสดงขนาดนี้แทนอาร์ตบอร์ด (16 ต.ค. 69)
+          ...(f.finishedMm ? { finished: f.finishedMm } : {}),
+        };
     }
     return undefined;
   })();

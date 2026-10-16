@@ -76,15 +76,18 @@ const info = JSON.parse(execFileSync(PYTHON, ["-I", PY_PREVIEW, FILE, png, "600"
   dpi: number;
 };
 let cut: TemplateCurve[];
+let face: TemplateCurve[] = [];
 let via = "";
 try {
   const j = JSON.parse(execFileSync(PYTHON, ["-I", PY_CUT, FILE], { encoding: "utf8" }).trim());
   cut = j.cut;
+  face = j.face ?? [];
   via = j.via;
 } catch (e) {
   die(`อ่านเส้นตัดของไฟล์ใหม่ไม่ได้: ${((e as { stdout?: string }).stdout ?? String(e)).trim()}`);
 }
 const box = curvesBox(cut!);
+const fbox = face.length ? curvesBox(face) : null;
 const r1 = (v: number) => Math.round(v * 10) / 10;
 console.log(`📐 ชุด "${t.name}" (${SET})`);
 console.log(`   เดิม: ${old.fileName} · ${old.fileSize ?? "?"} bytes · อาร์ตบอร์ด ${old.widthMm}×${old.heightMm} มม.`);
@@ -121,6 +124,8 @@ const next: TemplateFile = {
   widthMm: r1(info.widthMm),
   heightMm: r1(info.heightMm),
   cutCurves: cut!,
+  // 📏 ขนาดหน้างานจริง (วงใน) — หัวจอออกแบบ/สเปคออเดอร์ใช้แทนขนาดอาร์ตบอร์ด
+  ...(fbox ? { finishedMm: { w: r1(fbox.w), h: r1(fbox.h) } } : {}),
 };
 const { error } = await sb
   .from("products")

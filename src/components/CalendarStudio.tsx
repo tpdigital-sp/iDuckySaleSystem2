@@ -145,6 +145,8 @@ interface Props {
     fill?: boolean;
     /** ✂️ เส้นไดคัทจริงของไฟล์เทมเพลต (มม. นับจากมุมซ้ายบนอาร์ตบอร์ด · TemplateFile.cutCurves) — ใส่ลง .ai/.pdf แทนกรอบสี่เหลี่ยม */
     cut?: TemplateCurve[];
+    /** 📏 ขนาดหน้างานจริง (มม. · TemplateFile.finishedMm = วงในเทมเพลต) — ชื่อรูปแบบงานแสดงขนาดนี้แทนอาร์ตบอร์ด */
+    finished?: { w: number; h: number };
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -404,6 +406,17 @@ export default function CalendarStudio({
    * รวมตอนสกินยังโหลดไม่เสร็จ/โหลดไม่ได้ (เดิมแว่บเป็นกรอบแดงจนรูปมา · เจ้าของร้านแจ้ง 16 ต.ค. 69 เคสพรีเมี่ยมใส/ขอบ "ยังคงติดกรอบแดง")
    */
   const tplGeneric = fmt.key.startsWith("tpl@");
+  /**
+   * 📏 ชื่อรูปแบบงานที่แสดง — tpl@ ใช้ขนาดอาร์ตบอร์ดของไฟล์ ซึ่งรวมส่วนพับหลัง/ขอบเผื่อไว้
+   * (เข็มกลัด 58mm อาร์ตบอร์ด 70.5 มม. หัวจอขึ้น "งานออกแบบ 7.1×7.1 ซม." · เจ้าของร้านแจ้ง 16 ต.ค. 69 "แสดงขนาดไม่ตรงกับที่เลือก")
+   * → เทมเพลตที่รู้ขนาดหน้างานจริง (guide.finished = วงในเทมเพลต) แสดงขนาดนั้น · ไม่รู้ = ชื่อเดิม
+   */
+  const fmtName = (() => {
+    const fin = tplGeneric ? guide?.finished : undefined;
+    if (!fin || !(fin.w > 0) || !(fin.h > 0)) return fmt.name;
+    const cm = (mm: number) => String(Math.round(mm) / 10);
+    return `งานออกแบบ ${cm(fin.w)}×${cm(fin.h)} ซม.`;
+  })();
   /** ✂️ งานไดคัท: รูปลงช่อง "พอดีทั้งรูป" (ไม่ครอปขอบลาย) · งานอื่นเต็มช่อง */
   const fitPl = (r: Rect, img: { w: number; h: number }) => (fmt.diecut ? containPlacement(r, img) : coverPlacement(r, img));
   const sameFormat = initial?.format === fmt.key;
@@ -3805,10 +3818,13 @@ export default function CalendarStudio({
         sources: kept,
         state: { format: fmt.key, design: savedDesign, back, sources: kept },
         dpi: minDpi,
-        head: noCal ? fmt.name : `${fmt.name} · ปี ${back.year}`,
-        summary: `${title} · ${noCal ? fmt.name : `ปฏิทินปี ${back.year}`} · ${copies > 1 ? `${copies} ใบ (${custom.length ? `คละลาย ${designN} รูป` : "เหมือนกันทุกใบ"})` : `${fmt.pages.length} หน้า`}${minDpi ? ` · ${minDpi} DPI` : ""}`,
+        head: noCal ? fmtName : `${fmtName} · ปี ${back.year}`,
+        summary: `${title} · ${noCal ? fmtName : `ปฏิทินปี ${back.year}`} · ${copies > 1 ? `${copies} ใบ (${custom.length ? `คละลาย ${designN} รูป` : "เหมือนกันทุกใบ"})` : `${fmt.pages.length} หน้า`}${minDpi ? ` · ${minDpi} DPI` : ""}`,
         spec:
-          `${fmt.name} · กรอบ ${n(W)}×${n(H)}mm (งานจริง ${n(fmt.trimW)}×${n(fmt.trimH)} + ตัดตก ${fmt.bleed}) · ไฟล์ ${fmt.dpi} DPI · ` +
+          // 📏 เทมเพลตที่รู้ขนาดหน้างาน (เข็มกลัด) = บอกหน้างานจริง + ไฟล์รวมส่วนพับตามเส้นตัดของเทมเพลต · ไม่ใช่กรอบตัดสมมุติของ tpl@
+          (fmtName !== fmt.name
+            ? `${fmtName} · กรอบไฟล์ ${n(W)}×${n(H)}mm (รวมส่วนพับหลัง · เส้นตัดตามไฟล์เทมเพลต) · ไฟล์ ${fmt.dpi} DPI · `
+            : `${fmt.name} · กรอบ ${n(W)}×${n(H)}mm (งานจริง ${n(fmt.trimW)}×${n(fmt.trimH)} + ตัดตก ${fmt.bleed}) · ไฟล์ ${fmt.dpi} DPI · `) +
           `${printPages.length} ไฟล์: ${printPages.map((v, i) => `${i + 1}.${vname(v).replace(/^\d+\. /, "")}`).join(" ")}` +
           (copies > 1
             ? ` · ชุดละ ${copies} ใบ: ใบที่ 1 พิมพ์ ${copies - custom.length} ใบ${custom.length ? ` · แยกแบบ ใบที่ ${custom.map((c) => c + 1).join(", ")} (ใบละ 1)` : ""}`
@@ -5022,7 +5038,7 @@ export default function CalendarStudio({
                   <p className="text-xs font-extrabold text-stone-800">{title}</p>
                   <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
                     <dt className="text-stone-400">รูปแบบ</dt>
-                    <dd className="text-stone-700">{fmt.name}</dd>
+                    <dd className="text-stone-700">{fmtName}</dd>
                     <dt className={`text-stone-400 ${noCal ? "hidden" : ""}`}>ปีปฏิทิน</dt>
                     <dd className={`text-stone-700 ${noCal ? "hidden" : ""}`}>
                       {back.year} (พ.ศ. {back.year + 543}) — เปลี่ยนที่หน้าสินค้า
@@ -5090,7 +5106,7 @@ export default function CalendarStudio({
           <div className="hidden min-w-0 flex-1 text-center md:block">
             <p className="truncate text-sm font-extrabold text-stone-800">{noCal ? "🎨 ออกแบบ" : "🗓 สร้างปฏิทิน"}</p>
             <p className="truncate text-[11px] text-stone-500">
-              {title} · {fmt.name}
+              {title} · {fmtName}
               {noCal ? "" : ` · ปี ${back.year}`} · {copies > 1 ? `${copies} ${cw}/${setWord}` : `${fmt.pages.length} หน้า`}
             </p>
           </div>
@@ -6197,7 +6213,7 @@ export default function CalendarStudio({
           </div>
         )}
 
-        {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmt.name} onClose={() => setFlip3d(null)} />}
+        {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmtName} onClose={() => setFlip3d(null)} />}
         {askMode && (
           <div className="absolute inset-0 z-[70] flex items-center justify-center bg-stone-900/45 p-4">
             <div className="relative w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
@@ -6213,7 +6229,7 @@ export default function CalendarStudio({
               )}
               <h3 className="text-lg font-extrabold text-stone-800">รูปแบบการพิมพ์</h3>
               <p className="mt-0.5 text-xs text-stone-500">
-                {fmt.name} · 1 {setWord} = {copies} {cw} — เปลี่ยนทีหลังได้ที่แถบรูปย่อด้านล่าง
+                {fmtName} · 1 {setWord} = {copies} {cw} — เปลี่ยนทีหลังได้ที่แถบรูปย่อด้านล่าง
               </p>
               {mixFee && (
                 <p className="mt-1 text-[11px] text-stone-400">
