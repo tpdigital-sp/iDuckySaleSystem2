@@ -9765,24 +9765,54 @@ export default function AdminOrderDetailPage() {
 
                 {/* 🛒 รอของเข้า / ต้องสั่งของ — แอดมินติ๊ก (ตอนสร้างคำสั่งซื้อ หรือทีหลังตรงนี้) · ติ๊กแล้วแถบใหญ่ขึ้นบนสุดของหน้า
                     ลำดับ (เจ้าของร้านเคาะ 7 ต.ค. 69): ใส่ "ของที่ต้องสั่ง" ก่อน → ปุ่มรอของเข้าถึงกดได้ → บันทึกทีเดียว · ลูกค้าโอนแล้วค่อยแจ้งไลน์/ส่ง TP */}
-                {mayEdit && (
-                  <div className={`rounded-xl border p-2.5 transition ${order.needsPurchase ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-slate-50/70"}`}>
-                    <p className={`mb-1.5 text-xs font-bold ${order.needsPurchase ? "text-rose-700" : "text-slate-600"}`}>🛒 รอของเข้า / ต้องสั่งของ</p>
+                {mayEdit && (() => {
+                  // 🟢 ของเข้าแล้ว (needsPurchase.arrivedAt) = กล่องต้องเปลี่ยนเป็นสีเขียว "ของเข้าแล้ว — ส่งเข้าผลิตได้" ไม่ใช่ปุ่มแดง "รอของเข้า" ค้าง
+                  // (16 ต.ค. 69 เจ้าของร้านเปิดใบจาก /admin/stock-wait กอง "ของเข้าแล้ว" แล้วยังเห็นปุ่มแดง เข้าใจว่าของยังไม่เข้า)
+                  const npArrived = !!order.needsPurchase?.arrivedAt;
+                  const npBox = npArrived ? "border-emerald-300 bg-emerald-50" : order.needsPurchase ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-slate-50/70";
+                  const npHead = npArrived ? "text-emerald-700" : order.needsPurchase ? "text-rose-700" : "text-slate-600";
+                  return (
+                  <div className={`rounded-xl border p-2.5 transition ${npBox}`}>
+                    <p className={`mb-1.5 text-xs font-bold ${npHead}`}>{npArrived ? "🛒 ของเข้าแล้ว — ส่งเข้าผลิตได้" : "🛒 รอของเข้า / ต้องสั่งของ"}</p>
                     {order.needsPurchase ? (
                       <>
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => saveNeedsPurchase(undefined, "ยกเลิกติ๊กรอของเข้า")}
-                            className="shrink-0 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-rose-600"
-                          >
-                            🛒 รอของเข้า (กดเพื่อยกเลิก)
-                          </button>
-                          <span className="text-[11px] text-slate-500">
-                            {order.needsPurchase.arrivedAt
-                              ? `ของเข้าแล้ว · ${order.needsPurchase.arrivedBy ?? ""}`
-                              : "โอนแล้วระบบส่งเข้า TP + แจ้งไลน์ให้เอง"}
-                          </span>
+                          {npArrived ? (
+                            <>
+                              <span className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm">✓ ของเข้าแล้ว</span>
+                              <span className="text-[11px] text-slate-500">
+                                {order.needsPurchase.arrivedBy ?? ""}
+                                {order.needsPurchase.arrivedAt ? ` · ${thaiDateTime(new Date(order.needsPurchase.arrivedAt))}` : ""}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => saveNeedsPurchase({ ...order.needsPurchase!, arrivedAt: undefined, arrivedBy: undefined }, "🛒 ยกเลิก “ของเข้าแล้ว” — กลับไปรอของเข้า")}
+                                className="text-[11px] font-semibold text-slate-500 underline underline-offset-2 hover:text-rose-600"
+                                title="กดผิด — ของยังไม่เข้า ใบจะกลับไปกอง “ยังรอของเข้า”"
+                              >
+                                กดผิด — ของยังไม่เข้า
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => saveNeedsPurchase(undefined, "ยกเลิกติ๊กรอของเข้า")}
+                                className="text-[11px] font-semibold text-slate-400 underline underline-offset-2 hover:text-rose-600"
+                                title="ถอดธงรอของเข้าออกจากใบนี้ทั้งหมด (ใบจะหายจากหน้า ของเข้า รอส่งผลิต)"
+                              >
+                                ถอดธง
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => saveNeedsPurchase(undefined, "ยกเลิกติ๊กรอของเข้า")}
+                                className="shrink-0 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-rose-600"
+                              >
+                                🛒 รอของเข้า (กดเพื่อยกเลิก)
+                              </button>
+                              <span className="text-[11px] text-slate-500">โอนแล้วระบบส่งเข้า TP + แจ้งไลน์ให้เอง</span>
+                            </>
+                          )}
                         </div>
                         {/* 🧾 ของที่ต้องสั่งจริง (วัสดุ) — ไม่ใช่ชื่อสินค้าลูกค้า เช่น ปลอกหมอนอิง → ซิป 16" (เจ้าของร้านขอ 7 ต.ค. 69) · แก้แล้วบันทึกทันที */}
                         <NeedsPurchaseItemsEditor
@@ -9834,7 +9864,8 @@ export default function AdminOrderDetailPage() {
                       </>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* 🏭 ส่งเข้าผลิตแล้ว — ติ๊กเองสำหรับใบที่ไม่ผ่านบอร์ดกราฟฟิก TP (ปกติคิวปริ้นอ่านจากการ์ดกราฟฟิกให้เอง)
                     ซ่อนไว้ (7 ต.ค. 69 เจ้าของร้านสั่ง — พนักงานไม่จำเป็นต้องกด) · ใบพิเศษไปกด "🏭 ส่งผลิตแล้ว" ที่ /admin/print แทน */}
