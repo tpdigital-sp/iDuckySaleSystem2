@@ -4,7 +4,9 @@
 พิมพ์ JSON {"widthMm","heightMm","cut":[{"s":[x,y],"g":[[c1x,c1y,c2x,c2y,x,y],...],"open"?:true}],"face":[...],"bbox":[x0,y0,x1,y1]}
 พิกัด มม. นับจากมุมซ้ายบนของอาร์ตบอร์ด (หน้าแรก) · เส้นตรงแปลงเป็นเบซิเยร์ (จุดคุม = ปลายเส้น)
 หลักเลือก (เทมเพลตเข็มกลัดของร้าน 16 ต.ค. 69): เส้น stroke สีเทากลาง (R≈G≈B 0.55–0.85) — วงนอกสุด = เส้นตัด · วงถัดเข้าไป = หน้างาน (face)
-  ไม่เจอเส้นเทา หรือเส้นนอกหลุดอาร์ตบอร์ด > 1 มม. = exit 2 (ให้ผู้เรียกหยุด ไม่เดา)
+  ไม่มีเส้นเทา → แบบ "วงพับหลังถมสี" (ไฟล์ Pic/(ex) PinnCircle 2.5cm.ai: วงแหวนแดงถมทึบ = ส่วนพับหลัง ไม่มีเส้นเทา)
+    = รูปถมสีที่ไม่ใช่ขาว มีเส้นย่อย ≥ 2 วง (วงแหวน) → วงนอก = เส้นตัด · วงใน = หน้างาน  (via: "ring-fill")
+  ไม่เจอทั้งสองแบบ หรือเส้นนอกหลุดอาร์ตบอร์ด > 1 มม. = exit 2 (ให้ผู้เรียกหยุด ไม่เดา)
 """
 import fitz, json, sys
 
@@ -78,8 +80,33 @@ for d in pg.get_drawings():
             continue
         paths.append((c, (x0, y0, x1, y1), (x1 - x0) * (y1 - y0)))
 
+via = "gray-stroke"
 if not paths:
-    print(json.dumps({"error": "ไม่เจอเส้นเทา (เส้นตัด) ในไฟล์"}, ensure_ascii=False))
+    # 🔁 ทางสำรอง: วงพับหลังถมสี (ไม่ใช่ขาว) ที่มีเส้นย่อย ≥ 2 วง — เอาวงนอก/วงในของรูปที่ใหญ่สุด
+    best = None
+    for d in pg.get_drawings():
+        f = d.get("fill")
+        if d.get("type") not in ("f", "fs") or not f or min(f) > 0.9:
+            continue
+        subs = []
+        for start, segs in subpaths(d["items"]):
+            if len(segs) < 2:
+                continue
+            c = to_mm(start, segs)
+            x0, y0, x1, y1 = on_bbox(c)
+            if (x1 - x0) < 3 or (y1 - y0) < 3:
+                continue
+            subs.append((c, (x0, y0, x1, y1), (x1 - x0) * (y1 - y0)))
+        if len(subs) < 2:
+            continue
+        subs.sort(key=lambda p: -p[2])
+        if best is None or subs[0][2] > best[0][2]:
+            best = subs
+    if best:
+        paths = best
+        via = "ring-fill"
+if not paths:
+    print(json.dumps({"error": "ไม่เจอเส้นเทา (เส้นตัด) หรือวงพับหลังถมสีในไฟล์"}, ensure_ascii=False))
     sys.exit(2)
 paths.sort(key=lambda p: -p[2])
 cut, bb, _ = paths[0]
@@ -87,4 +114,4 @@ if bb[0] < -1 or bb[1] < -1 or bb[2] > W + 1 or bb[3] > H + 1:
     print(json.dumps({"error": f"เส้นนอกสุดหลุดอาร์ตบอร์ด {bb} vs {W:.1f}x{H:.1f}"}, ensure_ascii=False))
     sys.exit(2)
 face = [p[0] for p in paths[1:] if p[1][0] > bb[0] and p[1][2] < bb[2]][:1]
-print(json.dumps({"widthMm": round(W, 2), "heightMm": round(H, 2), "cut": [cut], "face": face, "bbox": [round(v, 2) for v in bb]}, ensure_ascii=False))
+print(json.dumps({"widthMm": round(W, 2), "heightMm": round(H, 2), "cut": [cut], "face": face, "bbox": [round(v, 2) for v in bb], "via": via}, ensure_ascii=False))

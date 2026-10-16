@@ -9,10 +9,12 @@
  * ที่นี่เรนเดอร์จากไฟล์ .ai ตัวจริงใน storage ด้วย pymupdf 600 DPI (ด้านยาวไม่เกิน 2,000 px · จอ retina ทาบ ~1,200 px ยังไม่ต้องขยาย · ลายทแยงบีบ PNG ได้ดี ไฟล์ ~100 KB) ผ่าน scripts/py/render-ai-preview.py
  * ไม่แตะไฟล์ .ai / when / ขนาด — ถ้าขนาดอาร์ตบอร์ดที่อ่านได้ต่างจาก widthMm/heightMm เดิมเกิน 0.2 มม. จะหยุดถาม
  * รันซ้ำได้ (ลบพรีวิวเก่าเฉพาะที่เลิกใช้ 2 รอบก่อน — แท็บที่เปิดค้างยังโหลดรูปรอบก่อนได้)
+ * 🛡 (16 ต.ค. 69 รอบ 2) พรีวิวใหม่เหมือนเดิมทุกไบต์ = ข้าม (เดิมอัปซ้ำทุกรอบ) · อ่านชุดใหม่ก่อนเขียน — ไฟล์ .ai ในชุดถูกเปลี่ยนระหว่างรัน
+ *   (template-file-replace) = ข้าม ไม่เขียนข้อมูลเก่าทับ · ลบได้เฉพาะ "preview/…" ใน retiredPaths — ไฟล์ .ai เก่าที่เก็บไว้ย้อนกลับห้ามลบ
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { DesignTemplate, TemplateFile } from "../src/lib/design-templates";
 
@@ -77,15 +79,35 @@ for (const row of sets) {
   const dh = Math.abs(info.heightMm - (f.heightMm ?? 0));
   console.log(`📐 ${t.name} (${t.id}) · อาร์ตบอร์ด ${info.widthMm}×${info.heightMm} มม. (ในชุด ${f.widthMm}×${f.heightMm}) · พรีวิวใหม่ ${info.px[0]}×${info.px[1]} px @${info.dpi} DPI · ${kb} KB`);
   if (dw > 0.2 || dh > 0.2) die(`${t.name}: ขนาดอาร์ตบอร์ดไม่ตรงกับที่บันทึกไว้ในชุด — ตรวจไฟล์ก่อน`);
+  // พรีวิวเดิมเหมือนที่เพิ่งเรนเดอร์ทุกไบต์ = ไม่ต้องอัปซ้ำ
+  const md5 = (b: Buffer) => createHash("md5").update(b).digest("hex");
+  if (f.previewUrl) {
+    const cur = await fetch(f.previewUrl).catch(() => null);
+    if (cur?.ok && md5(Buffer.from(await cur.arrayBuffer())) === md5(readFileSync(png))) {
+      console.log("   ✓ พรีวิวเดิมเหมือนกันแล้ว — ข้าม");
+      continue;
+    }
+  }
   if (!WRITE) continue;
   const previewUrl = await upload(png, (f.fileName ?? t.name).replace(/\.[^.]+$/, ""));
-  const prevPath = pathOf(f.previewUrl);
-  const retired = (t.retiredPaths ?? []).filter((p) => p !== prevPath);
-  // เก็บพรีวิวรอบก่อนไว้ 1 รอบ · ของที่เลิกใช้ตั้งแต่ 2 รอบก่อนค่อยลบ
-  const next = { ...t, files: [{ ...f, previewUrl }], retiredPaths: prevPath ? [prevPath] : [], savedAt: new Date().toISOString() };
+  // 🛡 อ่านชุดล่าสุดก่อนเขียน — ไฟล์ .ai ถูกเปลี่ยนระหว่างรัน = ข้าม (ไม่เขียนข้อมูลที่อ่านไว้ตอนเริ่มทับ)
+  const { data: freshRow } = await sb.from("products").select("data").eq("id", row.id).single();
+  const fresh = freshRow?.data as (DesignTemplate & { retiredPaths?: string[] }) | undefined;
+  const ff = fresh?.files?.[0];
+  if (!fresh || !ff || ff.fileUrl !== f.fileUrl) {
+    await sb.storage.from(BUCKET).remove([pathOf(previewUrl)!]);
+    console.log("   ⚠️ ไฟล์ในชุดถูกเปลี่ยนระหว่างรัน — ข้าม (รันใหม่อีกรอบ)");
+    continue;
+  }
+  const prevPath = pathOf(ff.previewUrl);
+  const old = (fresh.retiredPaths ?? []).filter((p) => p !== prevPath);
+  // เก็บพรีวิวรอบก่อนไว้ 1 รอบ · พรีวิวที่เลิกใช้ตั้งแต่ 2 รอบก่อนค่อยลบ · ไฟล์อื่น (เช่น .ai เก่าจาก template-file-replace) เก็บไว้ ห้ามลบ
+  const drop = old.filter((p) => p.startsWith("preview/"));
+  const keep = old.filter((p) => !p.startsWith("preview/"));
+  const next = { ...fresh, files: [{ ...ff, previewUrl }], retiredPaths: [...keep, ...(prevPath ? [prevPath] : [])], savedAt: new Date().toISOString() };
   const { error } = await sb.from("products").update({ data: next }).eq("id", row.id);
   if (error) die(`บันทึกชุด ${t.id}: ${error.message}`);
-  if (retired.length) await sb.storage.from(BUCKET).remove(retired);
-  console.log(`   ✅ previewUrl ใหม่ → ${previewUrl.split("/").pop()}${retired.length ? ` · ลบพรีวิวเก่า ${retired.length} ไฟล์` : ""}`);
+  if (drop.length) await sb.storage.from(BUCKET).remove(drop);
+  console.log(`   ✅ previewUrl ใหม่ → ${previewUrl.split("/").pop()}${drop.length ? ` · ลบพรีวิวเก่า ${drop.length} ไฟล์` : ""}${keep.length ? ` · เก็บไฟล์เก่า ${keep.length} ไฟล์` : ""}`);
 }
 if (!WRITE) console.log(`\n(dry-run — PNG อยู่ที่ ${OUT} · ใส่ --write เพื่ออัปและบันทึก)`);
