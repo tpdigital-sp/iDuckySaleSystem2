@@ -20,7 +20,7 @@ import { PageHead, PageShell, Stat, Stats } from "@/components/admin/ui";
 import "@/components/admin/dashboard.css";
 import { formatPrice } from "@/lib/products";
 import { bkkParts } from "@/lib/bangkok-time";
-import { daysBetween, deltaPct, shiftDay, type ReportData, type ReportRow } from "@/lib/reports";
+import { daysBetween, deltaPct, shiftDay, type OriginSide, type OriginSplit, type ReportData, type ReportRow } from "@/lib/reports";
 
 /** วันนี้ตามเวลาไทย (YYYY-MM-DD) — เครื่องพนักงานอาจตั้งโซนเวลาไว้คนละแบบ */
 function today(): string {
@@ -287,6 +287,157 @@ function RankList({
   );
 }
 
+/**
+ * 🧑‍💼 ลูกค้าสั่งเอง vs แอดมินแจ้งยอด — เจ้าของร้านถาม 16 ต.ค. 69 "ลูกค้ามาสั่งเองทั้งหมดเท่าไหร่ แอดมินแจ้งยอดให้เท่าไหร่"
+ * ตัวเลขใหญ่ = ยอดใบที่ชำระเงินแล้ว (ชุดเดียวกับการ์ดหัว) · บรรทัดเล็กบอกยอดสั่งซื้อทั้งหมดรวมที่ยังไม่โอน
+ * แถบแบ่งสัดส่วนอ่านได้ทันทีว่าฝั่งไหนกินยอดมากกว่า · ฝั่งแอดมินแตกเป็นรายชื่อพนักงาน กดชื่อไปดูใบจริงได้ (หน้าออเดอร์ค้น placedBy อยู่แล้ว)
+ */
+function OriginCompare({ now, prev }: { now: OriginSplit; prev: OriginSplit }) {
+  const total = now.self.paidRevenue + now.admin.paidRevenue;
+  const pctSelf = total > 0 ? Math.round((now.self.paidRevenue / total) * 100) : 0;
+  const pctAdmin = total > 0 ? 100 - pctSelf : 0;
+  const sides: { key: "self" | "admin"; title: string; sub: string; tone: string; ink: string; now: OriginSide; prev: OriginSide; pct: number; hrefOf?: (r: ReportRow) => string }[] = [
+    {
+      key: "self",
+      title: "ลูกค้าสั่งเอง",
+      sub: "กดสั่งจากหน้าเว็บด้วยตัวเอง (ล็อกอิน / ไม่ล็อกอิน / ตัวแทน)",
+      tone: "var(--dk-blue)",
+      ink: "var(--dk-blue-deep)",
+      now: now.self,
+      prev: prev.self,
+      pct: pctSelf,
+    },
+    {
+      key: "admin",
+      title: "แอดมินแจ้งยอดให้",
+      sub: "พนักงานเปิดใบ/สั่งแทน · ใบเสนอราคา · บิล FlowAccount",
+      tone: "var(--dk-coral)",
+      ink: "var(--dk-coral-ink)",
+      now: now.admin,
+      prev: prev.admin,
+      pct: pctAdmin,
+      hrefOf: (r) => `/admin/orders?q=${encodeURIComponent(r.label)}`,
+    },
+  ];
+
+  return (
+    <section className="dkb-g mt-4 p-4 sm:p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1">
+        <span className="dkb-h2 text-[15px]">ใครเป็นคนเปิดใบ — ลูกค้าสั่งเอง เทียบ แอดมินแจ้งยอด</span>
+        <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
+          ยอดใบที่ชำระเงินแล้ว {formatPrice(Math.round(total))}
+        </span>
+      </div>
+
+      {total === 0 ? (
+        <p className="mt-3 px-1 text-[13px]" style={{ color: "var(--dk-navy-soft)" }}>
+          ช่วงนี้ยังไม่มีใบที่ชำระเงินแล้วให้เทียบ
+        </p>
+      ) : (
+        <>
+          {/* แถบสัดส่วน — ป้าย % อยู่ในแถบเมื่อกว้างพอ ไม่งั้นอ่านจากหัวแต่ละฝั่งด้านล่าง */}
+          <div className="mt-3 flex h-[22px] overflow-hidden rounded-full text-[11.5px] font-semibold text-white" aria-hidden>
+            {sides.map((sd) => (
+              <span
+                key={sd.key}
+                className="flex items-center justify-center overflow-hidden whitespace-nowrap"
+                style={{ width: `${sd.pct}%`, background: sd.tone, minWidth: sd.pct > 0 ? 6 : 0 }}
+              >
+                {sd.pct >= 12 ? `${sd.pct}%` : ""}
+              </span>
+            ))}
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {sides.map((sd) => {
+              const avg = sd.now.paidOrders > 0 ? sd.now.paidRevenue / sd.now.paidOrders : 0;
+              const unpaidOrders = sd.now.orders - sd.now.paidOrders;
+              const unpaidValue = Math.max(0, sd.now.revenue - sd.now.paidRevenue);
+              const rows = sd.now.rows.slice(0, 8);
+              const rowMax = Math.max(...rows.map((r) => r.revenue), 1);
+              return (
+                <div key={sd.key} className="min-w-0 rounded-[16px] p-3.5" style={{ border: "1px solid var(--dk-hair)" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 flex-none rounded-full" style={{ background: sd.tone }} />
+                    <span className="dkb-h2 text-[14px]">{sd.title}</span>
+                    <span className="dkb-num-sm ml-auto text-[13px]" style={{ color: sd.ink }}>
+                      {sd.pct}%
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                    {sd.sub}
+                  </p>
+                  <p className="dkb-num mt-2 text-[1.6rem] leading-none">{short(sd.now.paidRevenue)}</p>
+                  <p className="mt-1 text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+                    {sd.now.paidOrders} ใบชำระแล้ว · เฉลี่ย {formatPrice(Math.round(avg))}/ใบ
+                    {sd.now.qty > 0 ? ` · ${sd.now.qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                  </p>
+                  <p className="mt-0.5 text-[12.5px] font-semibold">
+                    <Delta now={sd.now.paidRevenue} before={sd.prev.paidRevenue} />
+                    <span style={{ color: "var(--dk-faint)" }}>
+                      {" "}
+                      ({short(sd.prev.paidRevenue)} · {sd.prev.paidOrders} ใบ)
+                    </span>
+                  </p>
+                  {unpaidOrders > 0 && (
+                    <p className="mt-0.5 text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                      สั่งซื้อทั้งหมด {sd.now.orders} ใบ {formatPrice(Math.round(sd.now.revenue))} · อีก {unpaidOrders} ใบ ({formatPrice(Math.round(unpaidValue))}) ยังไม่โอน
+                    </p>
+                  )}
+
+                  {rows.length > 0 && (
+                    <dl className="mt-3 space-y-1.5 border-t pt-3" style={{ borderColor: "var(--dk-hair)" }}>
+                      {rows.map((r) => {
+                        const inner = (
+                          <>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px]" style={{ color: "var(--dk-navy)" }}>
+                                {r.label}
+                              </span>
+                              <span className="mt-0.5 block h-[4px] w-full overflow-hidden rounded-full" style={{ background: "var(--dk-hair)" }}>
+                                <span className="block h-full rounded-full" style={{ width: `${Math.max(2, (r.revenue / rowMax) * 100)}%`, background: sd.tone }} />
+                              </span>
+                            </span>
+                            <span className="flex-none text-right">
+                              <span className="dkb-num-sm block text-[13px]">{formatPrice(Math.round(r.revenue))}</span>
+                              <span className="block text-[11px]" style={{ color: "var(--dk-faint)" }}>
+                                {r.orders} ใบ · {Math.round((r.revenue / Math.max(1, sd.now.paidRevenue)) * 100)}%
+                              </span>
+                            </span>
+                          </>
+                        );
+                        const href = sd.hrefOf?.(r);
+                        return href ? (
+                          <Link key={r.key} href={href} className="flex items-center gap-2.5 rounded-[10px] px-1 py-0.5 hover:bg-black/[0.03]">
+                            {inner}
+                          </Link>
+                        ) : (
+                          <div key={r.key} className="flex items-center gap-2.5 px-1 py-0.5">
+                            {inner}
+                          </div>
+                        );
+                      })}
+                      {sd.now.rows.length > rows.length && (
+                        <p className="px-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                          และอีก {sd.now.rows.length - rows.length} คน
+                        </p>
+                      )}
+                    </dl>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 px-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+            นับว่า "แอดมิน" เมื่อใบมีชื่อพนักงานที่เปิดใบ (สั่งแทนที่ตะกร้า · สร้างจากหลังบ้าน · แปลงจากใบเสนอราคา · นำเข้าบิล FlowAccount) ·
+            ลูกค้าที่ทักถามในไลน์แล้วไปกดสั่งเองในเว็บนับเป็น "ลูกค้าสั่งเอง"
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
 function ReportsInner() {
   const [preset, setPreset] = useState<PresetKey>("month");
   const [range, setRange] = useState(() => rangeOf("month"));
@@ -524,6 +675,9 @@ function ReportsInner() {
               wide
             />
           </Stats>
+
+          {/* 🧑‍💼 ลูกค้าสั่งเอง vs แอดมินแจ้งยอด — วางถัดจากการ์ดหัวทันที (เจ้าของร้านขอ 16 ต.ค. 69) */}
+          <OriginCompare now={data.origin} prev={data.prevOrigin} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_380px]">
             <Bars data={data} />

@@ -130,6 +130,9 @@ export interface ReportData {
   products: ReportRow[];
   customers: ReportRow[];
   channels: ReportRow[];
+  /** 🧑‍💼 ลูกค้าสั่งเอง vs แอดมินแจ้งยอด/สร้างให้ — ช่วงนี้และช่วงก่อน (เจ้าของร้านขอเทียบ 16 ต.ค. 69) */
+  origin: OriginSplit;
+  prevOrigin: OriginSplit;
   quotes: QuoteStats;
   /** ใบที่หาต้นทุนไม่ได้เลย — หน้าจอต้องบอกตรง ๆ ว่ากำไรคิดจากแค่ส่วนหนึ่ง */
   costGap: { orders: number; revenue: number };
@@ -509,6 +512,74 @@ export function byChannel(orders: Order[]): ReportRow[] {
 }
 
 /**
+ * 🧑‍💼 ใครเป็นคนเปิดใบ — "ลูกค้าสั่งเอง" กับ "แอดมินแจ้งยอด/สร้างให้" (เจ้าของร้านขอเทียบ 16 ต.ค. 69)
+ *  admin = มี placedBy (พนักงานสั่งแทนที่ตะกร้า · สร้างออเดอร์จากหลังบ้าน · แปลงจากใบเสนอราคา · นำเข้าบิล FlowAccount · ใบทำใหม่/เคลม)
+ *          หรือ quoteOf (ใบเสนอราคารุ่นเก่าที่ยังไม่ติด placedBy)
+ *  self  = ที่เหลือทั้งหมด = ลูกค้ากดสั่งเองหน้าเว็บ (ล็อกอิน / ไม่ล็อกอิน / ตัวแทนจำหน่าย)
+ * ⚠️ ไม่ใช่ "ใครเป็นคนปิดการขาย" — ลูกค้าที่ทักไลน์ถามแล้วไปกดสั่งเองในเว็บก็นับเป็น self
+ */
+export type OrderOrigin = "self" | "admin";
+export function originOf(o: Order): OrderOrigin {
+  return o.placedBy || o.quoteOf ? "admin" : "self";
+}
+
+export interface OriginSide {
+  /** ใบที่ไม่ยกเลิกทั้งหมด (รวมที่ยังไม่โอน) */
+  orders: number;
+  revenue: number;
+  /** 💰 เฉพาะใบที่ชำระเงินแล้ว — ตัวเลขหลักของกล่องเทียบ (ชุดเดียวกับการ์ดหัว) */
+  paidOrders: number;
+  paidRevenue: number;
+  /** จำนวนชิ้นในใบที่ชำระแล้ว */
+  qty: number;
+  /** แยกย่อย (เฉพาะใบชำระแล้ว): ฝั่งแอดมิน = รายชื่อพนักงาน · ฝั่งลูกค้า = ล็อกอิน/ไม่ล็อกอิน/ตัวแทน */
+  rows: ReportRow[];
+}
+export interface OriginSplit {
+  self: OriginSide;
+  admin: OriginSide;
+}
+
+const emptySide = (): OriginSide => ({ orders: 0, revenue: 0, paidOrders: 0, paidRevenue: 0, qty: 0, rows: [] });
+
+/** ป้ายแถวย่อยของแต่ละฝั่ง — แอดมิน = ชื่อพนักงานที่เปิดใบ · ลูกค้า = ช่องทางที่สั่ง */
+function originRowKey(o: Order, side: OrderOrigin): string {
+  if (side === "admin") return o.placedBy?.trim() || (o.quoteOf ? "จากใบเสนอราคา (ไม่ระบุคน)" : "ไม่ระบุคน");
+  return channelOf(o);
+}
+
+export function originSplit(orders: Order[]): OriginSplit {
+  const out: OriginSplit = { self: emptySide(), admin: emptySide() };
+  const rows: Record<OrderOrigin, Map<string, ReportRow>> = { self: new Map(), admin: new Map() };
+  for (const o of orders) {
+    if (o.status === "ยกเลิก") continue;
+    const side = originOf(o);
+    const s = out[side];
+    const total = orderTotal(o);
+    s.orders += 1;
+    s.revenue += total;
+    if (!isPaidOrder(o)) continue;
+    const qty = o.items.reduce((n, i) => n + i.qty, 0);
+    s.paidOrders += 1;
+    s.paidRevenue += total;
+    s.qty += qty;
+    const key = originRowKey(o, side);
+    const row = rows[side].get(key) ?? { key, label: key, qty: 0, orders: 0, revenue: 0 };
+    row.orders += 1;
+    row.qty += qty;
+    row.revenue += total;
+    rows[side].set(key, row);
+  }
+  for (const side of ["self", "admin"] as const) {
+    const s = out[side];
+    s.revenue = money(s.revenue);
+    s.paidRevenue = money(s.paidRevenue);
+    s.rows = [...rows[side].values()].map((r) => ({ ...r, revenue: money(r.revenue) })).sort((a, b) => b.revenue - a.revenue);
+  }
+  return out;
+}
+
+/**
  * 💰 ใบนี้ "ชำระเงินแล้ว" ไหม — ดูสถานะอย่างเดียว: ทุกสถานะตั้งแต่ "ชำระแล้ว" ขึ้นไป (ชำระแล้ว→รอตรวจแบบ→…→เสร็จสิ้น)
  * ไม่นับ รอชำระเงิน · รอตรวจสอบ · ยกเลิก (เจ้าของร้านกำหนด 7 ต.ค. 69 — ใบรอตรวจสอบที่นับยอดบางส่วนแล้วก็ยังไม่นับ จนกว่าสถานะจะเปลี่ยน)
  */
@@ -579,6 +650,8 @@ export function buildReport(input: {
     products: topProducts(paidCur, costs),
     customers: topCustomers(paidCur),
     channels: byChannel(paidCur),
+    origin: originSplit(cur),
+    prevOrigin: originSplit(prev),
     quotes: quoteStats(quotesCur),
     costGap: {
       orders: live.length - totals.costedOrders,
