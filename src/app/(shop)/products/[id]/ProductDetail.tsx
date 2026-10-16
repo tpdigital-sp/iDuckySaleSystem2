@@ -6302,26 +6302,35 @@ export default function ProductDetail({
    * 🎨 ออกแบบบนเว็บ = เปิดจอวางลาย · 📎 แนบไฟล์ลาย = กางกล่องแนบลาย (artSection) ในกล่องนี้เลย
    */
   // 📎 เลือกทางแนบไฟล์แล้ว → ปุ่มแนบไฟล์เป็นสีทึบ ปุ่มออกแบบถอยเป็นขอบ (เดิมปุ่มออกแบบทึบค้าง กดแนบไฟล์แล้วสีไม่เปลี่ยน · 12 ต.ค. 69)
-  const fileChosen = artProvided || artChoice === "file";
-  const artChoiceUI = studioMode ? (
+  /**
+   * 📱 สินค้าออกแบบบนเว็บได้ แต่รุ่นที่เลือกอยู่ยังไม่มีเทมเพลต (tplModelMissing) — กล่อง "ส่งลายยังไงดี?" ยังขึ้นเหมือนเดิม
+   * ปุ่มซ้ายเป็นสีเทากดไม่ได้ บอกว่ารุ่นนี้ยังไม่มีเทมเพลต (เดิมซ่อนทั้งกล่อง → เจ้าของร้านเปิดหน้าเคสพรีเมี่ยมแล้ว "ไม่มีปุ่มออกแบบ"
+   * เพราะรุ่นแรกในลิสต์คือ iPhone X / iPhone 6 ที่ยังไม่มี .ai · 16 ต.ค. 69) · กล่องแนบลายกางอยู่ในกล่องนี้เลย (ทางเดียวที่เหลือ)
+   */
+  const studioBoxMissing = !!product.calendarStudio && !studioOff && !staffOrdering && tplModelMissing;
+  const fileChosen = artProvided || artChoice === "file" || studioBoxMissing;
+  const artChoiceUI = studioMode || studioBoxMissing ? (
     <div id="art-choice" className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
       <p className="mb-2 text-[13px] font-bold text-stone-700">
-        ส่งลายยังไงดี? {!designDone && !artProvided && <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>}
+        ส่งลายยังไงดี? {!designDone && !artProvided && !studioBoxMissing && <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>}
       </p>
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
+          disabled={studioBoxMissing}
           // 🗓 ปฏิทินที่สร้างไว้แล้ว = แตะเพื่อแก้แบบเดิม (เพิ่มลายใหม่ใช้ปุ่ม "＋ เพิ่มลายอีกแบบ" ด้านล่าง)
           onClick={() => openStudio(calMode && designDone && placed[placed.length - 1]?.calState ? placed.length - 1 : null)}
-          className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition hover:scale-[1.02] ${
-            designDone
-              ? "bg-sky-50 text-sky-800 ring-2 ring-sky-400"
-              : fileChosen
-                ? "bg-white text-sky-700 ring-2 ring-sky-200 hover:bg-sky-50"
-                : "bg-sky-600 text-white shadow-lg hover:bg-sky-700"
+          className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition ${
+            studioBoxMissing
+              ? "cursor-not-allowed bg-stone-100 text-stone-400 ring-1 ring-stone-200"
+              : designDone
+                ? "bg-sky-50 text-sky-800 ring-2 ring-sky-400 hover:scale-[1.02]"
+                : fileChosen
+                  ? "bg-white text-sky-700 ring-2 ring-sky-200 hover:scale-[1.02] hover:bg-sky-50"
+                  : "bg-sky-600 text-white shadow-lg hover:scale-[1.02] hover:bg-sky-700"
           }`}
         >
-          <span className="text-xl leading-none">{calMode && !calNoGrid ? "🗓" : "🎨"}</span>
+          <span className={`text-xl leading-none ${studioBoxMissing ? "grayscale opacity-60" : ""}`}>{calMode && !calNoGrid ? "🗓" : "🎨"}</span>
           <span className="text-[13px] font-extrabold">
             {designDone
               ? `✓ ${calMode ? (calNoGrid ? "ออกแบบแล้ว" : "สร้างแล้ว") : "วางลายแล้ว"} ${placed.length.toLocaleString("th-TH")} ลาย`
@@ -6330,7 +6339,9 @@ export default function ProductDetail({
                 : "ออกแบบบนเว็บ"}
           </span>
           <span className={`text-[10.5px] font-semibold leading-tight ${designDone ? "text-sky-700" : fileChosen ? "text-stone-500" : "text-sky-100"}`}>
-            {designDone
+            {studioBoxMissing
+              ? "รุ่นนี้ยังไม่มีเทมเพลตบนเว็บ — แนบไฟล์แทน"
+              : designDone
               ? calMode && placed[placed.length - 1]?.calState
                 ? "✏️ แตะเพื่อแก้แบบที่สร้างไว้"
                 : "แตะเพื่อเพิ่มลายอีกแบบ"
@@ -6364,7 +6375,7 @@ export default function ProductDetail({
           ⚠️ ขนาดหรือการเจาะรูเปลี่ยนหลังออกแบบ{placed.length > 1 ? ` (ลายที่ ${cutStale + 1})` : ""} — แตะเพื่ออัปเดตแบบ
         </button>
       )}
-      {(artChoice === "file" || artProvided) && artSection}
+      {(artChoice === "file" || artProvided || studioBoxMissing) && artSection}
     </div>
   ) : null;
 
@@ -7551,7 +7562,7 @@ export default function ProductDetail({
                 </div>
               )}
 
-              {!studioMode && artSection}
+              {!studioMode && !studioBoxMissing && artSection}
               {artChoiceUI}
 
               {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
