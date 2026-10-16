@@ -396,6 +396,12 @@ export default function CalendarStudio({
   }, [format, square, tplBleed]);
   const W = fmtW(fmt);
   const H = fmtH(fmt);
+  /**
+   * 📐 "tpl@…" = สินค้าทั่วไปที่ขนาดงานมาจากอาร์ตบอร์ดของไฟล์เทมเพลตล้วน (เคสมือถือ · แผ่นรองเมาส์ ฯลฯ) ตัดตก 3 มม. เป็นค่าสมมุติ
+   * → กรอบตัดสี่เหลี่ยมของระบบ "ไม่ใช่เส้นตัดจริง" ของงานพวกนี้เลย (เส้นจริงคือเส้นไดคัทในไฟล์/สกิน) จึงไม่วาดสี่เหลี่ยมแดงทับไม่ว่ากรณีไหน
+   * รวมตอนสกินยังโหลดไม่เสร็จ/โหลดไม่ได้ (เดิมแว่บเป็นกรอบแดงจนรูปมา · เจ้าของร้านแจ้ง 16 ต.ค. 69 เคสพรีเมี่ยมใส/ขอบ "ยังคงติดกรอบแดง")
+   */
+  const tplGeneric = fmt.key.startsWith("tpl@");
   /** ✂️ งานไดคัท: รูปลงช่อง "พอดีทั้งรูป" (ไม่ครอปขอบลาย) · งานอื่นเต็มช่อง */
   const fitPl = (r: Rect, img: { w: number; h: number }) => (fmt.diecut ? containPlacement(r, img) : coverPlacement(r, img));
   const sameFormat = initial?.format === fmt.key;
@@ -1861,8 +1867,9 @@ export default function CalendarStudio({
         }
       } else ctx.drawImage(guideImg, ((W - guide.wMm) / 2) * k, ((H - guide.hMm) / 2) * k, guide.wMm * k, guide.hMm * k);
       ctx.restore();
-    } else if (guide) {
+    } else if (guide && !tplGeneric) {
       // รูปเทมเพลตโหลดไม่ได้ (เช่น หน้าเปิดค้างไว้ก่อนอัปเทมเพลตใหม่) — เส้นตัดทึบบาง ๆ แบบไฟล์เทมเพลต ไม่ใช้ลายทแยง
+      // (ยกเว้น tpl@ — กรอบตัดของมันไม่ใช่เส้นตัดจริง ดูคอมเมนต์ tplGeneric)
       ctx.lineWidth = dpr;
       ctx.strokeStyle = "rgba(220,38,38,.85)";
       ctx.beginPath();
@@ -1881,8 +1888,8 @@ export default function CalendarStudio({
      * บนรูปเข้มจึงจมหาย (เดิมปรับสีทีละท่อน ~8px เป็นขาว/ดำ เห็นเป็นเส้นขาด ๆ) → วาดเส้นตัดทับอีกชั้นแบบต่อเนื่อง:
      * ขอบขาวหนา (ตัดกับพื้นเข้ม) + แกนแดง (ตัดกับพื้นสว่าง) · เทมเพลต = เส้นทึบ · ไม่มีเทมเพลต = เส้นประ
      */
-    // เทมเพลตที่ไม่มีเส้นตัดแดง (แผ่นรองเมาส์ ฯลฯ) = ขอบในไฟล์เทมเพลตคือไกด์ ไม่วาดสี่เหลี่ยมตัดทับ
-    if (!fmt.diecut && !(guideImg && guide && !guideRed)) {
+    // เทมเพลตที่ไม่มีเส้นตัดแดง (แผ่นรองเมาส์ ฯลฯ) = ขอบในไฟล์เทมเพลตคือไกด์ ไม่วาดสี่เหลี่ยมตัดทับ · tpl@ ไม่วาดเลย (tplGeneric)
+    if (!fmt.diecut && !tplGeneric && !(guideImg && guide && !guideRed)) {
       ctx.save();
       if (!guide && !fmt.dieline) ctx.setLineDash([4 * dpr, 3 * dpr]);
       ctx.beginPath();
@@ -5466,7 +5473,7 @@ export default function CalendarStudio({
               ) : (
                 <>
                   {/* เทมเพลตที่ระบบไม่วาดเส้นตัดทับ (เส้นในไฟล์ไม่ใช่สี่เหลี่ยม เช่น เคสมือถือ) = เส้นตัดคือเส้นในไฟล์ ไม่โชว์ขีดแดงหลอก */}
-                  {guideImg && guide && !guideRed ? (
+                  {guide && (tplGeneric || (guideImg && !guideRed)) ? (
                     "เส้นตัดตามไฟล์เทมเพลต"
                   ) : (
                     <>
