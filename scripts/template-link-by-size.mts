@@ -7,6 +7,7 @@
  *   (ตัวเลือก) --label ขนาด   ชื่อกลุ่มตัวเลือกขนาดของสินค้า (ค่าเริ่ม "ขนาด")
  *   (ตัวเลือก) --studio-on    เปิด "ออกแบบบนเว็บ" ด้วย: calendarStudio = { yearLabel: "", formats: [] } (ขนาดงานจากอาร์ตบอร์ดเทมเพลต · tpl@)
  *                            + ถอด studioOff · สินค้าที่ตั้ง formats ไว้แล้ว (ปฏิทิน/โปสการ์ด) = ไม่แตะ
+ *   (ตัวเลือก) --no-size      สินค้าไม่มีกลุ่มขนาด + หมวดมีชุดเดียว (แก้วมัค 11oz · 16 ต.ค. 69) → ผูกชุดนั้นตรง ๆ ไม่ตั้งเงื่อนไข
  *   ลายเดียว/คละลาย ในจอออกแบบโผล่เองเมื่อ 1 หน่วยได้หลายชิ้น (perUnit/piecesPerUnit ของตัวเลือก) — สินค้าขายทีละอัน (Puzzle) ไม่ถาม
  *
  * จับคู่: ตัวเลข "AxB" ในชื่อชุด ≈ ตัวเลข "AxB" ในชื่อค่าตัวเลือก (ไม่สนลำดับ 9x7.5 = 7.5x9 · ไม่สนหน่วย/ช่องว่าง/"*"
@@ -33,6 +34,7 @@ const CATEGORY = arg("--category");
 const SIZE = arg("--label", "ขนาด");
 const STUDIO_ON = process.argv.includes("--studio-on");
 const STRICT = process.argv.includes("--strict");
+const NO_SIZE = process.argv.includes("--no-size");
 const die = (m: string): never => {
   console.error("✗", m);
   process.exit(1);
@@ -68,7 +70,7 @@ function sameSize(a: ReturnType<typeof sizeOf>, b: ReturnType<typeof sizeOf>): b
 const { data: prow, error: perr } = await sb.from("products").select("data").eq("id", PRODUCT).single();
 if (perr || !prow) die(`อ่านสินค้า ${PRODUCT} ไม่ได้: ${perr?.message}`);
 const product = prow!.data as Product;
-const choices = product.options.find((o) => o.label === SIZE)?.choices.map((c) => c.name) ?? die(`สินค้าไม่มีกลุ่ม "${SIZE}"`);
+const choices = NO_SIZE ? [] : (product.options.find((o) => o.label === SIZE)?.choices.map((c) => c.name) ?? die(`สินค้าไม่มีกลุ่ม "${SIZE}" (ไม่แยกขนาด = ใส่ --no-size)`));
 
 /* ── ชุดเทมเพลต ── */
 type Row = { id: string; data: DesignTemplate };
@@ -78,7 +80,18 @@ if (!sets.length) die(`ไม่มีชุดเทมเพลตหมวด
 
 const plan: { row: Row; choice: string; file: TemplateFile; next: TemplateFile; changed: boolean }[] = [];
 const skipped: string[] = [];
-for (const row of sets) {
+/* ── --no-size: หมวดชุดเดียว ผูกตรง ไม่มีเงื่อนไข (ชุดมีเงื่อนไขค้างอยู่ = หยุด ให้ตรวจก่อน) ── */
+if (NO_SIZE) {
+  if (sets.length !== 1) die(`--no-size ใช้ได้เมื่อหมวดมีชุดเดียว (หมวดนี้มี ${sets.length} ชุด — ไฟล์จะโผล่พร้อมกันทุกชุด)`);
+  const row = sets[0];
+  const files = row.data.files ?? [];
+  if (files.length !== 1 || !files[0].fileUrl || !files[0].widthMm || !files[0].heightMm) die(`ชุด "${row.data.name}" ต้องมีไฟล์ .ai เดียวที่รู้ขนาดอาร์ตบอร์ด`);
+  if (whenList(files[0]).length) die(`ชุด "${row.data.name}" มีเงื่อนไข ${JSON.stringify(files[0].when)} ค้างอยู่ — ตรวจก่อน`);
+  const f = files[0];
+  console.log(`🔗 ${product.name} (${PRODUCT}) · ผูกชุด "${row.data.name}" (${row.data.id}) ตรง ๆ · ${f.fileName} · อาร์ตบอร์ด ${f.widthMm}×${f.heightMm} มม.`);
+  plan.push({ row, choice: "", file: f, next: f, changed: false });
+}
+for (const row of NO_SIZE ? [] : sets) {
   const t = row.data;
   const key = sizeOf(t.name);
   const hit = key ? choices.filter((c) => sameSize(sizeOf(c), key)) : [];
@@ -103,7 +116,7 @@ for (const p of plan) {
   seen.set(p.choice, p.row.data.name);
 }
 
-console.log(`🔗 ${product.name} (${PRODUCT}) · ชุดเทมเพลตหมวด "${CATEGORY}" ${sets.length} ชุด · กลุ่ม "${SIZE}"`);
+if (!NO_SIZE) console.log(`🔗 ${product.name} (${PRODUCT}) · ชุดเทมเพลตหมวด "${CATEGORY}" ${sets.length} ชุด · กลุ่ม "${SIZE}"`);
 for (const c of choices) {
   const p = plan.find((x) => x.choice === c);
   if (!p) {
