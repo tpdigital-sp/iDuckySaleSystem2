@@ -5198,7 +5198,7 @@ export default function CalendarStudio({
               {noCal ? "" : ` · ปี ${back.year}`} · {copies > 1 ? `${copies} ${cw}/${setWord}` : `${fmt.pages.length} หน้า`}
             </p>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5 md:ml-0">
             {hasSheets && (
               <button
                 type="button"
@@ -5206,10 +5206,12 @@ export default function CalendarStudio({
                 disabled={flip3d === "loading"}
                 title="ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"
                 // ✨ ให้เด่น (ผู้ใช้ขอ 14 ต.ค. 69) — ไล่สีม่วง-ชมพู ตัวขาว เงา + จุดกะพริบ "ใหม่"
-                className="relative flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2.5 text-xs font-extrabold text-white shadow-[0_4px_14px_rgba(139,92,246,.45)] ring-2 ring-white transition hover:scale-[1.03] hover:shadow-[0_6px_20px_rgba(139,92,246,.55)] disabled:opacity-70"
+                className="relative flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-2.5 py-2.5 text-xs font-extrabold text-white sm:px-4 shadow-[0_4px_14px_rgba(139,92,246,.45)] ring-2 ring-white transition hover:scale-[1.03] hover:shadow-[0_6px_20px_rgba(139,92,246,.55)] disabled:opacity-70"
               >
                 <span className="text-sm leading-none">🧊</span>
-                {flip3d === "loading" ? "กำลังเตรียม…" : "ดูแบบ 3D"}
+                {/* 📱 จอแคบ: เหลือ "3D" ให้แถบบนมีที่พอสำหรับ ✓ ใช้แบบนี้ + 🛒 ใส่ตะกร้า */}
+                <span className="hidden sm:inline">{flip3d === "loading" ? "กำลังเตรียม…" : "ดูแบบ 3D"}</span>
+                <span className="sm:hidden">{flip3d === "loading" ? "…" : "3D"}</span>
                 <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-75" />
                   <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-400 ring-2 ring-white" />
@@ -5288,10 +5290,11 @@ export default function CalendarStudio({
               disabled={!!busy || !!fmt.diecut}
               title={fmt.diecut ? "ปิดไว้ชั่วคราว — ยังสั่งผ่านจอออกแบบไม่ได้" : "บันทึกแบบแล้วกลับไปหน้าสินค้า (ยังไม่ใส่ตะกร้า)"}
               className={
+                // 📱 มือถือก็ต้องเห็นปุ่มนี้ (เจ้าของร้านแจ้ง 16 ต.ค. 69 "ในมือถือไม่แสดงปุ่มใช้แบบนี้") — ย่อขนาดลงให้พอดีแถวเดียวกับ 🛒 ใส่ตะกร้า + ✕
                 fmt.diecut
-                  ? `${onOrder ? "hidden sm:inline-block" : ""} cursor-not-allowed rounded-full bg-stone-200 px-4 py-2.5 text-sm font-extrabold text-stone-400 shadow-none`
+                  ? "cursor-not-allowed whitespace-nowrap rounded-full bg-stone-200 px-3 py-2 text-xs font-extrabold text-stone-400 shadow-none sm:px-4 sm:py-2.5 sm:text-sm"
                   : onOrder
-                  ? "hidden rounded-full px-3 py-2.5 text-sm font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-block sm:px-4"
+                  ? "whitespace-nowrap rounded-full px-2 py-2 text-xs font-bold text-sky-700 ring-1 ring-sky-300 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 sm:py-2.5 sm:text-sm"
                   : "rounded-full bg-sky-600 px-4 py-2.5 text-sm font-extrabold text-white shadow transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6"
               }
             >
