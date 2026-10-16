@@ -279,7 +279,7 @@ export default function NeedsPurchaseItemsEditor({
                 onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setIdx(i)}
                 onClick={() => add(o)}
-                className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${i === idx ? "bg-rose-50" : ""} ${"custom" in o ? "mt-1 border-t border-dashed border-rose-200" : ""}`}
+                className={`flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 ${i === idx ? "bg-rose-50" : ""} ${"custom" in o ? "mt-1 border-t border-dashed border-rose-200" : ""}`}
               >
                 {"custom" in o ? (
                   <span className="text-[12px] font-bold text-rose-700">➕ ใช้ “{o.custom}” <span className="font-normal text-slate-500">(พิมพ์เอง · ไม่มีในคลัง)</span></span>
@@ -287,15 +287,15 @@ export default function NeedsPurchaseItemsEditor({
                   <>
                     {o.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={o.imageUrl} alt="" className="h-7 w-7 shrink-0 rounded object-cover" loading="lazy" />
+                      <img src={o.imageUrl} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded object-cover" loading="lazy" />
                     ) : (
-                      <span className="h-7 w-7 shrink-0 rounded bg-slate-100" />
+                      <span className="mt-0.5 h-7 w-7 shrink-0 rounded bg-slate-100" />
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-semibold text-slate-800">{o.name}</span>
-                      {o.code && <span className="block truncate text-[10.5px] text-slate-400">{o.code}</span>}
+                      <span className="block whitespace-normal break-words text-[12px] font-semibold leading-snug text-slate-800">{o.name}</span>
+                      {o.code && <span className="block whitespace-normal break-all text-[10.5px] leading-snug text-slate-400">{o.code}</span>}
                     </span>
-                    <span className={`shrink-0 text-[11px] font-semibold tabular-nums ${Number(o.balance) < 0 ? "text-rose-600" : "text-slate-500"}`}>
+                    <span className={`mt-0.5 shrink-0 text-[11px] font-semibold tabular-nums ${Number(o.balance) < 0 ? "text-rose-600" : "text-slate-500"}`}>
                       {fmt(o.balance)} {o.unit || ""}
                     </span>
                   </>
