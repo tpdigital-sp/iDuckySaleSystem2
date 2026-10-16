@@ -6371,6 +6371,17 @@ export default function ProductDetail({
           <span className={`text-[10.5px] font-semibold leading-tight ${fileChosen ? "text-sky-100" : "text-stone-500"}`}>มีไฟล์อยู่แล้ว ร้านจัดวางให้</span>
         </button>
       </div>
+      {/* ＋ เพิ่มลายอีกแบบ ตรงกล่องเลือกวิธี (เจ้าของร้านแจ้ง 16 ต.ค. 69 เข็มกลัด "ตอนนี้มันได้แค่ 1 ลาย") — เดิมมีแต่ปุ่มในรายการแบบด้านล่าง ลูกค้าหาไม่เจอ
+          การ์ด 🎨 ด้านบนเปิดแก้แบบล่าสุด · ปุ่มนี้เปิดจอเปล่าเป็นลายใหม่ (สินค้าชิ้นใหม่ เหมือนปุ่มในรายการแบบ) */}
+      {designDone && (calMode || cutMode) && !studioBoxMissing && (
+        <button
+          type="button"
+          onClick={() => openStudio(null)}
+          className="mt-2 w-full rounded-xl border-2 border-dashed border-sky-300 bg-white px-3 py-2 text-[12px] font-bold text-sky-700 transition hover:bg-sky-100"
+        >
+          ＋ เพิ่มลายอีกแบบ (ลายที่ {(placed.length + 1).toLocaleString("th-TH")}) — เป็นสินค้าชิ้นใหม่ ไม่ใช่ด้านหลัง
+        </button>
+      )}
       {cutStale >= 0 && (
         <button
           type="button"
