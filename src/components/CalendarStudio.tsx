@@ -1239,6 +1239,46 @@ export default function CalendarStudio({
     if (!guide?.cut?.length || guide.fill || !guide.wMm || !guide.hMm) return null;
     return shiftCurves(guide.cut, (W - guide.wMm) / 2, (H - guide.hMm) / 2);
   }, [guide, W, H]);
+  /**
+   * 🌗 เส้นไกด์เทมเพลตที่เปลี่ยนสีเองบนรูปเข้ม (เจ้าของร้านแจ้ง 16 ต.ค. 69 Puzzle "เส้นสีของเทมเพลต อยากให้มันเปลี่ยนถ้าเจอภาพสีเข้มที่ทำให้เส้นไดคัทจม")
+   * ไกด์วาดแบบ multiply = เส้นมีแต่เข้มลง บนรูปมืดเส้นเทาจมหาย → ทำ "มาสก์เส้น" (สีขาว · ความทึบตามความเข้มของเส้นในไฟล์)
+   * แล้วตอนวาด ทาเส้นขาวทับเฉพาะตรงที่ภาพใต้ไกด์มืด (วัดจากภาพย่อ · ดู draw) — พื้นสว่างเส้นยังเข้มเหมือนเดิม
+   * นับเป็นเส้น: พิกเซลสีกลาง (เทา/ดำ) ที่มืดกว่า ~0.9 · พิกเซลมีสี (ลายทแยงแดง) ที่ช่องสีต่ำสุดมืดกว่า 0.5
+   *   (กันพื้นถมชมพูอ่อนของวงพับหลังเข็มกลัดไม่ให้กลายเป็นแผ่นขาวทับรูป)
+   */
+  const guideLines = useMemo<HTMLCanvasElement | null>(() => {
+    if (!guideImg || !guide) return null;
+    try {
+      const sc = Math.min(1, 1600 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
+      const w = Math.max(8, Math.round(guideImg.naturalWidth * sc));
+      const h = Math.max(8, Math.round(guideImg.naturalHeight * sc));
+      const cv = document.createElement("canvas");
+      cv.width = w;
+      cv.height = h;
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(guideImg, 0, 0, w, h);
+      const img = ctx.getImageData(0, 0, w, h);
+      const a = img.data;
+      let any = false;
+      for (let i = 0; i < a.length; i += 4) {
+        const r = a[i] / 255, g = a[i + 1] / 255, b = a[i + 2] / 255, al = a[i + 3] / 255;
+        const mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+        const neutral = mx - mn < 0.12;
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        const s = neutral ? (0.92 - lum) / 0.35 : (0.5 - mn) / 0.3;
+        const v = Math.max(0, Math.min(1, s)) * al;
+        a[i] = a[i + 1] = a[i + 2] = 255;
+        a[i + 3] = Math.round(v * 255);
+        if (v > 0.1) any = true;
+      }
+      if (!any) return null;
+      ctx.putImageData(img, 0, 0);
+      return cv;
+    } catch {
+      return null;
+    }
+  }, [guideImg, guide]);
   /** กรอบเส้นตัดของไฟล์ .pdf (lib/calendar-impose · TrimBox + หน้าเส้นไดคัท) — เส้นจริงของเทมเพลตมาก่อน */
   const pdfCut = useMemo(() => {
     const box = tplCut ? curvesBox(tplCut) : null;
@@ -2032,10 +2072,58 @@ export default function CalendarStudio({
           ctx.fill("evenodd");
           ctx.restore();
         }
+        // 🌗 วัดความมืดของภาพใต้ไกด์ก่อนวางเส้น (ภาพย่อ ~160px · อ่านพิกเซลถูก) — ใช้ทาเส้นขาวเฉพาะจุดมืด (ดู guideLines)
+        let dark: HTMLCanvasElement | null = null;
+        if (guideLines) {
+          try {
+            const sw = 160;
+            const sh = Math.max(1, Math.round((sw * gh) / Math.max(0.1, gw)));
+            const dc = document.createElement("canvas");
+            dc.width = sw;
+            dc.height = sh;
+            const dx = dc.getContext("2d", { willReadFrequently: true });
+            if (dx) {
+              dx.drawImage(cv, gx * k, gy * k, gw * k, gh * k, 0, 0, sw, sh);
+              const im = dx.getImageData(0, 0, sw, sh);
+              const d = im.data;
+              let any = false;
+              for (let i = 0; i < d.length; i += 4) {
+                const l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+                // ความสว่าง ≤ 0.32 = มืดเต็มที่ (เส้นขาวทึบ) · ≥ 0.52 = สว่าง (ไม่ทา) · ระหว่างนั้นค่อย ๆ จาง
+                const t = Math.max(0, Math.min(1, (0.52 - l) / 0.2));
+                d[i] = d[i + 1] = d[i + 2] = 255;
+                d[i + 3] = Math.round(t * 255);
+                if (t > 0) any = true;
+              }
+              if (any) {
+                dx.putImageData(im, 0, 0);
+                dark = dc;
+              }
+            }
+          } catch {
+            dark = null;
+          }
+        }
         ctx.save();
         ctx.globalCompositeOperation = "multiply";
         ctx.drawImage(guideImg, gx * k, gy * k, gw * k, gh * k);
         ctx.restore();
+        if (guideLines && dark) {
+          // เส้นขาว = มาสก์เส้น ∩ เขตมืด (destination-in) แล้ววางทับแบบปกติ
+          const lw = Math.max(1, Math.round(gw * k));
+          const lh = Math.max(1, Math.round(gh * k));
+          const lc = document.createElement("canvas");
+          lc.width = lw;
+          lc.height = lh;
+          const lx = lc.getContext("2d");
+          if (lx) {
+            lx.drawImage(guideLines, 0, 0, lw, lh);
+            lx.globalCompositeOperation = "destination-in";
+            lx.imageSmoothingEnabled = true;
+            lx.drawImage(dark, 0, 0, lw, lh);
+            ctx.drawImage(lc, gx * k, gy * k);
+          }
+        }
       }
     } else if (guide && !tplGeneric) {
       // รูปเทมเพลตโหลดไม่ได้ (เช่น หน้าเปิดค้างไว้ก่อนอัปเทมเพลตใหม่) — เส้นตัดทึบบาง ๆ แบบไฟล์เทมเพลต ไม่ใช้ลายทแยง
@@ -2157,7 +2245,7 @@ export default function CalendarStudio({
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, tplCut, gridSel, cutRes, cutView, cutP.strokeColor]);
+  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, guideLines, tplCut, gridSel, cutRes, cutView, cutP.strokeColor]);
 
   useEffect(() => {
     if (open) draw();
