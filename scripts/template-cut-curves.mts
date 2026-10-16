@@ -79,7 +79,9 @@ for (const row of sets) {
       continue;
     }
     const box = curvesBox(j.cut);
-    const same = JSON.stringify(f.cutCurves ?? null) === JSON.stringify(j.cut);
+    // ⚠️ jsonb เรียงคีย์ใหม่ ({s,g} กลับมาเป็น {g,s}) → เทียบแบบไม่ขึ้นกับลำดับคีย์ ไม่งั้นขึ้น ✎ เขียนทับทุกรอบ (16 ต.ค. 69)
+    const canon = (cs?: TemplateCurve[]) => JSON.stringify((cs ?? []).map((c) => [c.s, c.g, !!c.open]));
+    const same = !!f.cutCurves?.length && canon(f.cutCurves) === canon(j.cut);
     console.log(
       `${same ? "✓" : "✎"} ${t.name} (${t.id}) · ${f.fileName} · เส้นตัด ${j.cut.length} เส้น ${j.cut.reduce((n, c) => n + c.g.length, 0)} ท่อน · กรอบ ${box ? `${box.w.toFixed(1)}×${box.h.toFixed(1)} มม. @(${box.x.toFixed(1)},${box.y.toFixed(1)})` : "-"} · อาร์ตบอร์ด ${j.widthMm}×${j.heightMm}`,
     );
