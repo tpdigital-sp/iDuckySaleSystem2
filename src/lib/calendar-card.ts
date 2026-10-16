@@ -16,6 +16,7 @@
 import { THAI_HOLIDAYS } from "@/lib/ship-date";
 import { bkkParts } from "@/lib/bangkok-time";
 import type { Product } from "@/lib/products";
+import { dieCurvesPath, sleeveBleedMm, sleeveDieline, type SleeveDieline } from "@/lib/sleeve-dieline";
 
 /**
  * ฟอนต์ที่ให้เลือก — 3 ตัวแรกเว็บโหลดอยู่แล้ว (next/font) ที่เหลือโหลดจาก Google Fonts ตอนเปิดจอ
@@ -329,6 +330,8 @@ export interface CalFormat {
    * ไม่ตั้ง = 1 (ทุกหน้าใน pages เป็นของชิ้นเดียว เช่นปฏิทินตั้งโต๊ะ/รายเดือน)
    */
   cards?: number;
+  /** คำเรียก 1 ใบในชุด บนจอ (ไม่ตั้ง = "ใบ") — งานเทมเพลตทั่วไป (ปลอกแก้ว) = "ชิ้น" */
+  cardWord?: string;
   /** กี่หน้าต่อ 1 ใบ (พิมพ์ 2 ด้าน = 2) — ใช้จัดกลุ่มแถบรูปย่อเป็น "ใบที่ N" · ไม่ตั้ง = เรียกเป็นหน้า (ปฏิทินตั้งโต๊ะ) */
   perCard?: number;
   /**
@@ -341,6 +344,11 @@ export interface CalFormat {
    * size = ด้านยาวสุดของชิ้นงานทั้งชิ้นรวมหูห้อย · hole = เจาะรูห้อย
    */
   diecut?: { size: number; hole: boolean };
+  /**
+   * ☕✂️ เส้นไดคัทตามทรง (ปลอกแก้วขนาดกำหนดเอง · "sleeve@…") — มม. นับจากมุมซ้ายบนของกรอบเส้นตัด (บวก bleed = พิกัดผืน)
+   * trimPath วาดทรงนี้แทนสี่เหลี่ยม · ไฟล์ .ai/.pdf ส่งเป็นเส้นเวกเตอร์ CutContour (lib/sleeve-dieline)
+   */
+  dieline?: SleeveDieline;
   /**
    * 🕳 เว้นขอบบน (มม. จากขอบผืนรวมตัดตก) ไม่ให้ตาราง/หัวเดือนเข้าไป — ปฏิทินตั้งโต๊ะมีรูเจาะห่วงด้านบน
    * (ผู้ใช้แจ้ง 13 ต.ค. 69 "AUGUST 2026 ชนรูเจาะ") · รูปเต็มใบยังเลยขึ้นไปได้ (รูเจาะทะลุรูปอยู่แล้ว) · layPage บังคับให้
@@ -483,6 +491,7 @@ export function canvasSizeOf(
 
 /** เส้นตัด (มีมุมมนถ้ารูปแบบตั้ง cornerR) เป็น path — ใช้วาดไกด์/ตัดรูปย่อ */
 export function trimPath(ctx: CanvasRenderingContext2D, k: number, f: CalFormat) {
+  if (f.dieline) return dieCurvesPath(ctx, f.dieline.cut, k, f.bleed);
   const b = f.bleed * k;
   ctx.roundRect(b, b, f.trimW * k, f.trimH * k, (f.cornerR ?? 0) * k);
 }
@@ -685,11 +694,14 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
    * 📐 "tpl@<กว้าง>x<สูง>" (มม. = ขนาดอาร์ตบอร์ดของไฟล์เทมเพลต) — สินค้าทั่วไปที่ออกแบบบนเว็บผ่านจอเดียวกัน
    * (ผู้ใช้สั่ง 15 ต.ค. 69 ให้เหลือทางเดียว: จอสร้างปฏิทิน · รูปแบบงานเดาจากเทมเพลตที่ผูกไว้ ไม่ต้องตั้ง formats เอง)
    * ผืนผ้าใบ = อาร์ตบอร์ดพอดี (ไกด์เทมเพลตทาบได้ตรง) · ตัดตก 3 มม. ในนั้น · หน้าเดียวรูปเต็มผืน ไม่มีตารางปฏิทิน
+   * "-c<N>" ต่อท้าย = 1 หน่วยสั่งได้ N ชิ้น (ปลอกแก้ว 1 เซ็ต = 6 ชิ้น) → จอออกแบบถาม "ลายเดียว/คละลาย" + แถบรูปย่อรายชิ้น
+   *   เหมือนปฏิทินโฟโต้การ์ด (ผู้ใช้ขอ 16 ต.ค. 69) · ค่าคละนับตาม calDesignCount ตัวเดียวกับปฏิทิน
    */
   if (key.startsWith("tpl@")) {
-    const m = /^tpl@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
+    const m = /^tpl@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:-c(\d+))?$/.exec(key);
     const aw = m ? Number(m[1]) : 100;
     const ah = m ? Number(m[2]) : 100;
+    const pieces = m?.[3] ? Math.min(20, Math.max(1, Number(m[3]))) : 1;
     const b = 3;
     const pw = Math.max(10, aw - 2 * b);
     const ph = Math.max(10, ah - 2 * b);
@@ -702,6 +714,31 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
       bleed: b,
       safe: 3,
       dpi: Math.max(aw, ah) > 300 ? 150 : 300,
+      ...(pieces > 1 ? { cards: pieces, perCard: 1, cardWord: "ชิ้น" } : {}),
+      pages: [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
+    };
+  }
+  /**
+   * ☕✂️ "sleeve@<กว้าง>x<สูง>[-c<N>]" (มม. = กรอบเส้นตัดตอนกางแบน) — ปลอกแก้วขนาดกำหนดเอง (ผู้ใช้สั่ง 16 ต.ค. 69)
+   * เส้นไดคัทสร้างจากทรงมาตรฐาน 27.7×7.6 (lib/sleeve-dieline) · -c<N> = เซ็ตละ N ชิ้น (ถามลายเดียว/คละลายแบบ tpl@)
+   */
+  if (key.startsWith("sleeve@")) {
+    const m = /^sleeve@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:-c(\d+))?$/.exec(key);
+    const tw = Math.min(600, Math.max(40, m ? Number(m[1]) : 277));
+    const th = Math.min(300, Math.max(20, m ? Number(m[2]) : 76));
+    const pieces = m?.[3] ? Math.min(20, Math.max(1, Number(m[3]))) : 1;
+    const b = sleeveBleedMm(th);
+    const fr = frame(tw, th, b, 3);
+    return {
+      key,
+      name: `ปลอกแก้ว ${cmText(tw)}×${cmText(th)} ซม. (ไดคัทตามทรง)`,
+      trimW: tw,
+      trimH: th,
+      bleed: b,
+      safe: 3,
+      dpi: 300,
+      dieline: sleeveDieline(tw, th),
+      ...(pieces > 1 ? { cards: pieces, perCard: 1, cardWord: "ชิ้น" } : {}),
       pages: [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
     };
   }

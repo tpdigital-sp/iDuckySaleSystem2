@@ -10,6 +10,7 @@ import { BANK_CARD } from "@/lib/bank-card";
 import SavedReplyPicker from "./SavedReplyPicker";
 import { realignEmojis, type Emoji } from "../saved-replies/shared";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
+import type { OaLive } from "@/lib/server/oa-chat-sync";
 
 /**
  * 💬 แชท LINE / ตอบลูกค้า — หน้าตาเลียนแบบ LINE OA Manager (เจ้าของร้าน 9 ต.ค. 69 16:05: "ออกแบบใหม่ เลียนแบบ LINE OA + รองรับตอบแชทบนมือถือ")
@@ -51,7 +52,8 @@ type LogEntry = { id?: string; role: string; text: string; at: string; type?: st
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number>; next?: string; partial?: boolean };
-type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings; partial?: boolean };
+/** oaLive = สถานะดึงข้อความจาก LINE OA Manager รอบนี้ (lib/server/oa-chat-sync.ts · 15 ต.ค. 69) */
+type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings; partial?: boolean; oaLive?: OaLive };
 /** คีย์ entry ในห้อง — log มี id เสมอ · messages (ห้องเก่า) ไม่มี ใช้ role+เวลา */
 const entryKey = (e: LogEntry) => e.id ?? `${e.role}|${e.at}`;
 type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
@@ -159,7 +161,8 @@ function Chats() {
   const [detailLoading, setDetailLoading] = useState(false);
   // ⚡ 15 ต.ค. 69 เจ้าของร้าน "ต้องการให้ update ข้อมูล realtime ก่อนเข้าตอบ": ห้องที่เปิดอยู่ดึงเฉพาะข้อความใหม่ทุก 3 วิ · รายชื่อดึงเฉพาะห้องที่ขยับทุก 5 วิ
   //   + กลับมาที่แท็บ/หน้าต่าง = ดึงทันที · แท็บซ่อนอยู่ = หยุดโพล · มุมหัวห้องโชว์ "🟢 สด HH:mm:ss" (แดง = ดึงไม่ได้)
-  //   ⚠️ ข้อความที่แอดมินพิมพ์เองใน LINE OA Manager ยังไม่เข้า (LINE ไม่ส่ง webhook) — เห็นเฉพาะลูกค้า/บอท/ที่ตอบจากหน้านี้
+  //   💬🔄 ข้อความที่แอดมินพิมพ์เองใน LINE OA Manager: LINE ไม่ส่ง webhook → เซิร์ฟเวอร์ดึงจาก OA ตอนเปิด/โพลห้อง (ต้องมีคุกกี้ OA ในกล่อง ⚙️ หน้า ลูกค้า LINE
+  //   + รู้รหัสห้อง OA ของคนนี้) · หัวห้องโชว์ "OA ✓ / OA ยังไม่เชื่อม / OA ยังไม่ผูกห้อง / OA ⚠️" · ปุ่ม 🔌 ทดสอบ (สิทธิ์ตั้งค่าระบบ) คืนเส้น API + ฟิลด์ตัวอย่างไว้ไล่
   const [live, setLive] = useState<{ at: number; ok: boolean }>({ at: 0, ok: true });
   const detailRef = useRef<DetailRes | null>(null);
   useEffect(() => {
@@ -540,6 +543,21 @@ function Chats() {
 
   // 🏷📝 ป้าย + โน้ต (เจ้าของร้าน 9 ต.ค. 69 16:20 "ทำ note ติด tag ได้") — ฟิลด์เดียวกับหน้า ลูกค้า LINE (adminTag/adminNote) ผ่าน manage API
   const [noteOpen, setNoteOpen] = useState(false);
+  // 🔌 15 ต.ค. 69 ทดสอบดึงข้อความห้องนี้จาก LINE OA Manager (API ภายในของ chat.line.biz ยังไม่ยืนยันเส้น — เจ้าของร้านกดจาก browser ที่ล็อกอินแล้ว)
+  const [oaProbe, setOaProbe] = useState<OaProbe | null>(null);
+  const [oaProbeBusy, setOaProbeBusy] = useState(false);
+  const probeOa = useCallback(async () => {
+    if (!sel || oaProbeBusy) return;
+    setOaProbeBusy(true);
+    try {
+      const d = await botApi<{ ok: boolean; probe: OaProbe }>("/api/admin/line-customers/oa-tags", { action: "probe-messages", userId: sel });
+      setOaProbe(d.probe);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    } finally {
+      setOaProbeBusy(false);
+    }
+  }, [sel, oaProbeBusy, toast]);
   // 🔍 17:05 "กดขยายดูภาพใหญ่ + ดาวน์โหลดได้"
   const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   // 🏷 17:55 แคตตาล็อกป้าย (settings/chat-tags) + หน้าจัดการป้าย
@@ -884,7 +902,7 @@ function Chats() {
             <div className="text-5xl">💬</div>
             <p className="mt-2 text-[15px] font-bold">เลือกห้องแชททางซ้าย</p>
             <p className="mt-1 text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
-              อัปเดตเองทุก 3 วินาที · เห็นข้อความลูกค้า บอท และที่แอดมินตอบจากหน้านี้ · ข้อความที่แอดมินพิมพ์เองใน LINE OA Manager ระบบไม่เห็น
+              อัปเดตเองทุก 3 วินาที · เห็นข้อความลูกค้า บอท และที่แอดมินตอบจากหน้านี้ · ข้อความที่แอดมินพิมพ์ใน LINE OA Manager ดึงมาให้เมื่อเชื่อม OA ไว้ (กล่อง ⚙️ หน้า ลูกค้า LINE) และรู้รหัสห้อง OA ของคนนั้น
             </p>
           </div>
         ) : (
@@ -907,10 +925,11 @@ function Chats() {
                   {detail?.createdAt ? `ทักครั้งแรก ${fmtDay(detail.createdAt)}` : ""}
                   {detail?.lastSeen ? ` · ล่าสุด ${ago(detail.lastSeen)}` : ""}
                   {live.at ? (
-                    <span title={live.ok ? "อัปเดตเองทุก 3 วินาที (ข้อความที่พิมพ์ใน LINE OA Manager ไม่เข้า)" : "ดึงข้อมูลไม่ได้ — จะลองใหม่เอง"}>
+                    <span title={live.ok ? "อัปเดตเองทุก 3 วินาที" : "ดึงข้อมูลไม่ได้ — จะลองใหม่เอง"}>
                       {live.ok ? ` · 🟢 สด ${new Date(live.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : " · 🔴 อัปเดตไม่ได้ กำลังลองใหม่"}
                     </span>
                   ) : null}
+                  {detail?.oaLive ? <OaLiveBadge live={detail.oaLive} canSetup={can("settings.manage")} /> : null}
                 </p>
               </div>
               {/* 🤖 17:05 เจ้าของร้าน "กดแล้วควรแสดงอะไรที่แตกต่าง" — สวิตช์เป็นเม็ดยาบอกสถานะชัด: เขียว "บอทตอบ: เปิด" / เทา "บอทตอบ: ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) */}
@@ -918,6 +937,11 @@ function Chats() {
               {detail ? (
                 <IconBtn onClick={() => void copyRoomLink()} title="คัดลอกลิงก์ห้องแชทนี้ (ส่งให้พนักงานคนอื่นเปิดดูได้)">
                   🔗
+                </IconBtn>
+              ) : null}
+              {detail && can("settings.manage") ? (
+                <IconBtn onClick={() => void probeOa()} title="🔌 ทดสอบดึงข้อความห้องนี้จาก LINE OA Manager (เส้น API ที่ตอบ · ฟิลด์ตัวอย่าง) — ใช้ไล่ปัญหาเมื่อข้อความที่พิมพ์ใน OA ไม่ขึ้น" active={oaProbeBusy}>
+                  {oaProbeBusy ? "⏳" : "🔌"}
                 </IconBtn>
               ) : null}
               {detail ? (
@@ -1114,6 +1138,7 @@ function Chats() {
         />
       ) : null}
       {lightbox ? <Lightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} toast={toast} /> : null}
+      {oaProbe ? <OaProbeModal probe={oaProbe} onClose={() => setOaProbe(null)} onRetry={() => void probeOa()} busy={oaProbeBusy} /> : null}
       {tagMgrOpen ? <TagManager tags={tagCatalog} onClose={() => setTagMgrOpen(false)} onSaved={(items) => setTagCatalog(items)} toast={toast} /> : null}
       {confirmDialog}
       {toastNode}
@@ -1665,6 +1690,127 @@ function Chip({ tone, children }: { tone: "mint" | "sky" | "lilac" | "coral" | "
     <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: S[tone].bg, color: S[tone].fg }}>
       {children}
     </span>
+  );
+}
+
+/* ── 💬🔄 สถานะดึงข้อความจาก LINE OA Manager (15 ต.ค. 69) ───────────────────────
+ * off/no-cookie = ยังไม่วางคุกกี้ (กล่อง ⚙️ หน้า ลูกค้า LINE · คนมีสิทธิ์ตั้งค่าระบบกดไปตั้งได้) · unmapped = ไม่รู้รหัสห้อง OA ของคนนี้
+ * ok = ดึงได้ (added>0 บอกจำนวนที่เพิ่งเข้า · pending = OA ช้า รอบโพลหน้าเห็น) · error = คุกกี้หมด/OA ล่ม/เส้น API ไม่ตอบ (ห้องยังใช้ได้ปกติ) */
+function OaLiveBadge({ live, canSetup }: { live: OaLive; canSetup: boolean }) {
+  if (live.state === "off") {
+    const text = live.reason === "no-cookie" ? "OA ยังไม่เชื่อม" : "OA ไม่รู้เลขบัญชี";
+    const title = live.reason === "no-cookie" ? "ข้อความที่พนักงานพิมพ์ใน LINE OA Manager ยังไม่เข้า — วางคุกกี้ ses ของ chat.line.biz ในกล่อง ⚙️ เชื่อม LINE OA Manager ที่หน้า ลูกค้า LINE ก่อน" : "ไม่รู้เลข OA (U…) — ตั้งในกล่อง ⚙️ หน้า ลูกค้า LINE";
+    return canSetup ? (
+      <a href="/admin/line-customers?oa=1" className="underline decoration-dotted" style={{ color: "#8A5A00" }} title={title}>
+        {` · 🔌 ${text}`}
+      </a>
+    ) : (
+      <span title={title} style={{ color: "#8A5A00" }}>{` · 🔌 ${text}`}</span>
+    );
+  }
+  if (live.state === "unmapped")
+    return (
+      <span title="ระบบไม่รู้ว่าห้องนี้คือห้องไหนใน LINE OA Manager (รหัสห้อง OA ≠ userId) — วางลิงก์ห้องแชท OA ไว้ในออเดอร์ของลูกค้าคนนี้ หรือผูกจากหน้า ลูกค้า LINE แล้วข้อความที่พิมพ์ใน OA จะเข้าเอง" style={{ color: "#8A5A00" }}>
+        {" · 🔌 OA ยังไม่ผูกห้อง"}
+      </span>
+    );
+  if (live.state === "error")
+    return (
+      <span title={`ดึงข้อความจาก LINE OA Manager ไม่ได้: ${live.error}\nห้องยังใช้ได้ปกติ — ระบบจะลองใหม่ใน 1 นาที`} style={{ color: "var(--dk-coral-ink)" }}>
+        {" · 🔌 OA ⚠️"}
+      </span>
+    );
+  return (
+    <span title={`ข้อความที่พนักงานพิมพ์ใน LINE OA Manager ดึงมารวมให้แล้ว (ล่าสุด ${new Date(live.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}${live.pending ? " · OA ตอบช้า รอบหน้าเห็น" : ""})`} style={{ color: "var(--dk-mint-ink)" }}>
+      {live.added ? ` · 🔌 OA +${live.added}` : " · 🔌 OA ✓"}
+    </span>
+  );
+}
+
+type OaProbe = {
+  ok: boolean;
+  botId: string;
+  chatId: string;
+  error?: string;
+  path?: string;
+  count?: number;
+  accountCount?: number;
+  sampleKeys?: string[];
+  sample?: Record<string, unknown>;
+  parsed?: { id: string; at: string; from: string; by: string; type: string; text: string }[];
+};
+
+/** 🔌 ผลทดสอบดึงข้อความห้องนี้จาก OA — ไว้ไล่ว่าเส้น API/ชื่อฟิลด์ตรงไหม (ไม่โชว์คุกกี้) */
+function OaProbeModal({ probe: p, onClose, onRetry, busy }: { probe: OaProbe; onClose: () => void; onRetry: () => void; busy: boolean }) {
+  const fromText = (f: string) => (f === "account" ? "ร้าน" : f === "user" ? "ลูกค้า" : "ไม่รู้ฝั่ง");
+  return (
+    <Modal
+      title="🔌 ทดสอบดึงข้อความจาก LINE OA Manager"
+      sub={`เลข OA ${p.botId ? `${p.botId.slice(0, 6)}…${p.botId.slice(-4)}` : "-"} · รหัสห้อง OA ${p.chatId ? `${p.chatId.slice(0, 6)}…${p.chatId.slice(-4)}` : "ไม่รู้"}`}
+      onClose={onClose}
+      foot={
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600">
+            ปิด
+          </button>
+          <button type="button" disabled={busy} onClick={onRetry} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white disabled:opacity-50">
+            {busy ? "กำลังทดสอบ…" : "ลองอีกครั้ง"}
+          </button>
+        </div>
+      }
+    >
+      <div className="rounded-xl p-3 text-[12.5px] leading-relaxed" style={{ background: p.ok ? "var(--dk-mint-wash)" : "var(--dk-coral-wash)", color: p.ok ? "var(--dk-mint-ink)" : "var(--dk-coral-ink)" }}>
+        {p.ok ? (
+          <>
+            <b>ต่อได้ ✓</b> อ่านออก {p.count ?? 0} ข้อความ (ฝั่งร้าน {p.accountCount ?? 0}) — ข้อความฝั่งร้านที่ยังไม่มีใน log จะถูกเติมเองตอนเปิด/โพลห้อง
+          </>
+        ) : (
+          <>
+            <b>ยังไม่ได้:</b> {p.error}
+          </>
+        )}
+        {(p.path || p.sampleKeys?.length) && (
+          <span className="mt-1 block break-all font-mono text-[10.5px] opacity-70">
+            {p.path && `← ${p.path}`}
+            {p.sampleKeys?.length ? ` · ฟิลด์: ${p.sampleKeys.join(",")}` : ""}
+          </span>
+        )}
+      </div>
+      {p.parsed?.length ? (
+        <div className="mt-3">
+          <p className="text-[11.5px] font-bold" style={{ color: "var(--dk-faint)" }}>
+            ที่อ่านออก 5 ตัวท้าย
+          </p>
+          <ul className="mt-1 space-y-1 text-[12px]">
+            {p.parsed.map((m, i) => (
+              <li key={m.id || i} className="rounded-lg bg-slate-50 px-2.5 py-1.5">
+                <span className="font-semibold">{fromText(m.from)}{m.by ? ` · ${m.by}` : ""}</span>
+                <span style={{ color: "var(--dk-faint)" }}>{` · ${m.type} · ${new Date(m.at).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}`}</span>
+                {m.text ? <span className="block truncate">{m.text}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {p.sample ? (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[11.5px] font-bold" style={{ color: "var(--dk-faint)" }}>
+            ตัวอย่างข้อมูลดิบ 1 รายการ (ไว้เทียบชื่อฟิลด์)
+          </summary>
+          <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-slate-900 p-2 text-[10.5px] leading-snug text-slate-100">{JSON.stringify(p.sample, null, 1)}</pre>
+        </details>
+      ) : null}
+      {!p.ok && !p.chatId ? (
+        <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: "var(--dk-faint)" }}>
+          รหัสห้องใน OA Manager ไม่ใช่ userId — ระบบรู้ได้จากลิงก์ห้องแชท OA ที่วางไว้ในออเดอร์ของลูกค้าคนนี้ หรือการผูกจากหน้า ลูกค้า LINE
+        </p>
+      ) : null}
+      {!p.ok && p.error?.includes("คุกกี้") ? (
+        <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: "var(--dk-faint)" }}>
+          วางคุกกี้: กด <a className="underline font-bold" href="/admin/line-customers?oa=1">เปิดกล่องเชื่อม LINE OA Manager</a> (หน้า ลูกค้า LINE · แถว “ป้ายจาก LINE OA” ปุ่ม 🔌/⚙️) → วางค่า ses ที่ก๊อปจาก chat.line.biz (F12 → Application → Cookies)
+        </p>
+      ) : null}
+    </Modal>
   );
 }
 

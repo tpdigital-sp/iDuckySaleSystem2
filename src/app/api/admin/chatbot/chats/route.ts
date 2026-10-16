@@ -5,6 +5,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { loadChatIndex, norm, core } from "@/lib/server/line-chat";
 import { loadChatTags } from "@/lib/server/chat-tags-store";
+import { syncOaRoom, type OaLive } from "@/lib/server/oa-chat-sync";
 
 /**
  * 💬 แชท LINE ที่บอทเห็น — อ่านจาก Firestore `ordersure/line-conversations` (บอท n8n เขียน)
@@ -26,6 +27,8 @@ import { loadChatTags } from "@/lib/server/chat-tags-store";
  * GET ?since=<lastSeen ISO ของห้องล่าสุดที่หน้าจอมี> → เฉพาะห้องที่ขยับหลังเวลานั้น (≤60 ห้อง · กรอง scope/tag เหมือนรายการปกติ) · partial=true
  *   · 15 ต.ค. 69: log มีรายการที่นำเข้าจาก CSV ของ LINE OA Manager ด้วย (source "oa-csv" · แอดมินตอบใน OA = role admin mode "oa" by ชื่อ OA
  *     · ประวัติก่อนบอทเก็บ log) — ดู scripts/import-oa-chat-csv.mts
+ *   · 💬🔄 15 ต.ค. 69 (รอบ 2): เปิด/โพลห้อง = ดึงข้อความที่พนักงานพิมพ์ใน OA Manager "สด" ลง log ก่อนอ่าน (source "oa-live" · lib/server/oa-chat-sync.ts
+ *     · ต้องมีคุกกี้ OA + รู้รหัสห้อง OA ของ userId · ยิง OA ≤1 ครั้ง/10 วิ ต่อห้อง · รอ ≤4 วิ) · คำตอบมี oaLive บอกสถานะให้หัวห้องโชว์
  */
 const COL = "line-conversations";
 
@@ -155,6 +158,8 @@ export async function GET(req: Request) {
     if (!d.exists) return NextResponse.json({ error: "ไม่พบห้องแชทนี้" }, { status: 404 });
     const x = (d.data() ?? {}) as Record<string, unknown>;
     const row = toRow(d.id, x, iso(d.createTime), cfg);
+    // 💬🔄 ดึงข้อความฝั่งแอดมินจาก OA Manager ลง log ก่อน (ไม่มีคุกกี้/ไม่รู้ห้อง = ข้ามทันที · OA ช้า = ตอบไปก่อน งานวิ่งต่อใน after())
+    const oaLive: OaLive = await syncOaRoom(db, id, x).catch((e: unknown) => ({ state: "error", error: e instanceof Error ? e.message : String(e), at: new Date().toISOString() }));
     // 📥 15 ต.ค. 69 นำเข้าประวัติจาก CSV OA Manager (scripts/import-oa-chat-csv.mts) ทำให้บางห้องมี log หลายพัน entry ย้อนไปปี 2567
     //    เดิม orderBy asc limit 1000 = ได้ 1,000 ตัว "เก่าสุด" แล้วข้อความล่าสุดหาย → เอา 1,000 ตัวล่าสุดแล้วกลับลำดับ
     // ⚡ 15 ต.ค. 69 realtime: หน้าจอส่ง after = at ของ entry ล่าสุดที่มีแล้ว → อ่านเฉพาะที่ใหม่กว่า (ถอย 2 นาที ให้ entry เดิมที่เพิ่งเปลี่ยนสถานะ เช่น ร่าง→ส่งแล้ว/รูปแคชแล้ว ถูกส่งซ้ำไปทับ)
@@ -211,7 +216,7 @@ export async function GET(req: Request) {
     const messages: LogEntry[] = Array.isArray(x.messages)
       ? (x.messages as Record<string, unknown>[]).map((m) => ({ role: String(m.role ?? ""), text: String(m.text ?? ""), at: iso(m.at) }))
       : [];
-    return NextResponse.json({ ...row, log, messages: after ? [] : messages, partial: !!after, settings: settingsOut }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ...row, log, messages: after ? [] : messages, partial: !!after, settings: settingsOut, oaLive }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));

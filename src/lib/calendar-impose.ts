@@ -24,6 +24,8 @@ export interface CutRect {
   w: number;
   h: number;
   r: number;
+  /** ☕✂️ เส้นไดคัทตามทรง (svg path d · มม.) — มีแล้วใช้แทนสี่เหลี่ยม · x/y/w/h = กรอบของเส้น (TrimBox) */
+  svg?: string;
 }
 
 export interface PieceDesign {
@@ -55,9 +57,11 @@ export async function buildPieceFiles(input: {
   const H = input.hMm * PT;
   // ✂️ เส้นไดคัท — เส้นเวกเตอร์บางสีแดงม่วงตรงเส้นตัดจริง · ต่อท้ายทุกชิ้น
   const { x, y, w, h, r } = input.cut;
-  const path = r
-    ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
-    : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+  const path =
+    input.cut.svg ??
+    (r
+      ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
+      : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`);
   const embedded = new Map<string, PDFImage>();
   const emb = async (b: Blob) => {
     const key = await hash(b);
@@ -109,9 +113,11 @@ export async function buildPrintPdf(input: {
     pg.drawImage(img, { x: 0, y: 0, width: W, height: H });
     pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
   }
-  const path = r
-    ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
-    : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+  const path =
+    input.cut.svg ??
+    (r
+      ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
+      : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`);
   doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.5 / PT });
   const name = `${input.name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim()}.pdf`;
   doc.setTitle(name.replace(/\.pdf$/, ""));

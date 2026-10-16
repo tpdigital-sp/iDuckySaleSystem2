@@ -182,16 +182,23 @@ JSX_CALENDAR = r"""
       var host = curves.length > 1 ? ly.compoundPathItems.add() : ly;
       var X = function(v){ return L + v*PT; }, Y = function(v){ return T - v*PT; };
       for(var q=0;q<curves.length;q++){
-        var cv = curves[q], g = cv.g, n = g.length, pth = host.pathItems.add();
-        for(var a=0;a<n;a++){
-          var an = a===0 ? cv.s : [g[a-1][4], g[a-1][5]], prev = g[(a-1+n)%n], nx = g[a];
+        var cv = curves[q], g = cv.g, n = g.length, pth = host.pathItems.add(), open = !!cv.open, m = open ? n + 1 : n;
+        for(var a=0;a<m;a++){
+          var an = a===0 ? cv.s : [g[a-1][4], g[a-1][5]];
           var pp = pth.pathPoints.add();
           pp.anchor = [X(an[0]), Y(an[1])];
-          pp.leftDirection = [X(prev[2]), Y(prev[3])];
-          pp.rightDirection = [X(nx[0]), Y(nx[1])];
+          if(open){
+            // เส้นเปิด (รอยกรีดปลอกแก้ว): จุดแรก/สุดท้ายไม่มีมือจับฝั่งที่ไม่มีท่อน
+            pp.leftDirection = a > 0 ? [X(g[a-1][2]), Y(g[a-1][3])] : pp.anchor;
+            pp.rightDirection = a < n ? [X(g[a][0]), Y(g[a][1])] : pp.anchor;
+          } else {
+            var prev = g[(a-1+n)%n], nx = g[a];
+            pp.leftDirection = [X(prev[2]), Y(prev[3])];
+            pp.rightDirection = [X(nx[0]), Y(nx[1])];
+          }
           pp.pointType = PointType.CORNER;
         }
-        pth.closed = true; style(pth);
+        pth.closed = !open; style(pth);
       }
     }
     for(var i=0;i<job.pages.length;i++){

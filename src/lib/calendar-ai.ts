@@ -29,6 +29,7 @@ import {
   type CalPage,
   type ImgRef,
 } from "@/lib/calendar-card";
+import { dieAiCurves } from "@/lib/sleeve-dieline";
 
 export const CUTOUT_PY = "http://localhost:8777";
 const PT = 72 / 25.4;
@@ -52,7 +53,8 @@ export interface AiPath {
   cmyk: [number, number, number, number];
   /** true = ถมสี (รองขาว · อยู่ใต้ลาย) · false = เส้น (เส้นตัด · บนสุด ล็อก) */
   fill: boolean;
-  curves: { s: [number, number]; g: [number, number, number, number, number, number][] }[];
+  /** open = เส้นเปิด (รอยกรีดของปลอกแก้ว) · ไม่ตั้ง = เส้นปิด */
+  curves: { s: [number, number]; g: [number, number, number, number, number, number][]; open?: boolean }[];
   /** วงกลม [cx, cy, r] มม. (รูห่วง) */
   circles?: [number, number, number][];
 }
@@ -130,7 +132,21 @@ export async function renderAiPages(input: {
       hMm: H,
       bg,
       layers,
-      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0 },
+      // ☕✂️ ไดคัทตามทรง (ปลอกแก้วขนาดกำหนดเอง) = เส้นเวกเตอร์ CutContour แทนสี่เหลี่ยม · รอยกรีดเป็นเส้นเปิดในเลเยอร์เดียวกัน
+      cut: fmt.dieline ? null : { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0 },
+      ...(fmt.dieline
+        ? {
+            paths: [
+              {
+                layer: "เส้นตัด (CutContour)",
+                spot: "CutContour",
+                cmyk: [0, 100, 0, 0] as [number, number, number, number],
+                fill: false,
+                curves: [...dieAiCurves(fmt.dieline.cut, fmt.bleed), ...dieAiCurves(fmt.dieline.slits, fmt.bleed, true)],
+              },
+            ],
+          }
+        : {}),
     });
   }
   return out;
@@ -239,7 +255,7 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
     if (p.bg !== "none") layer("พื้นหลัง", () => pg.drawRectangle({ x: 0, y: 0, width: Wpt, height: Hpt, color: rgb(c(0), c(2), c(4)) }));
     /** ✂️ เส้นเวกเตอร์ → svg path (มม.) */
     const svgOf = (P: AiPath) =>
-      P.curves.map((cv) => `M ${cv.s[0]} ${cv.s[1]} ` + cv.g.map((g) => `C ${g[0]} ${g[1]} ${g[2]} ${g[3]} ${g[4]} ${g[5]}`).join(" ") + " Z").join(" ") +
+      P.curves.map((cv) => `M ${cv.s[0]} ${cv.s[1]} ` + cv.g.map((g) => `C ${g[0]} ${g[1]} ${g[2]} ${g[3]} ${g[4]} ${g[5]}`).join(" ") + (cv.open ? "" : " Z")).join(" ") +
       (P.circles ?? []).map(([cx, cy, r]) => ` M ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} Z`).join("");
     for (const P of (p.paths ?? []).filter((x) => x.fill))
       layer(P.layer, () => pg.drawSvgPath(svgOf(P), { x: 0, y: Hpt, scale: PT, color: rgb(0.85, 0.95, 1) }));

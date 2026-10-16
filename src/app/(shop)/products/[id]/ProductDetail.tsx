@@ -1359,10 +1359,36 @@ export default function ProductDetail({
     }
     return null;
   })();
-  const calFormatKey0 =
-    product.calendarStudio?.formats?.find((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))?.format ??
+  /**
+   * 📏 ช่องขนาดในรูปแบบงาน "{cm:<ชื่อกลุ่มช่องกรอก>}" → มม. จากค่าที่ลูกค้ากรอก (ซม.) เช่น
+   *   "sleeve@{cm:ขนาดกำหนดเอง (กว้าง)}x{cm:ขนาดกำหนดเอง (สูง)}" → "sleeve@352x78" (ปลอกแก้วขนาดกำหนดเอง · 16 ต.ค. 69)
+   * ยังกรอกไม่ครบ/ไม่ใช่ตัวเลข = ใช้รูปแบบนี้ไม่ได้ (ไปข้อถัดไป)
+   */
+  const fillFormat = (fmtKey: string): string | null => {
+    let ok = true;
+    const out = fmtKey.replace(/\{cm:([^}]+)\}/g, (_, label: string) => {
+      const n = parseFloat(String(effective[label] ?? "").replace(/,/g, ""));
+      if (!(n > 0)) ok = false;
+      return ok ? String(Math.round(n * 100) / 10) : "0";
+    });
+    return ok ? out : null;
+  };
+  const calFormatBase =
+    (product.calendarStudio?.formats ?? [])
+      .filter((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))
+      .map((f) => fillFormat(f.format))
+      .find((x): x is string => !!x) ??
     tplFormatKey ??
     "card";
+  /**
+   * 🎨 1 หน่วยสั่งได้หลายชิ้น (ปลอกแก้ว 1 เซ็ต = 6) → จอออกแบบเป็น "เซ็ตละ N ชิ้น" ถามลายเดียว/คละลายแบบปฏิทิน (16 ต.ค. 69)
+   * ใช้กับงานออกแบบตามเทมเพลต (tpl@) และไดคัทตามทรง (sleeve@) · เฉพาะสินค้าที่มีระบบจำนวนลาย
+   * เกิน 20 ชิ้น (สติกเกอร์แผ่นละหลายสิบดวง) ไม่แตกเป็นรายชิ้น — แถบรูปย่อยาวเกินใช้งาน
+   */
+  const calFormatKey0 =
+    /^(tpl|sleeve)@[\d.]+x[\d.]+$/.test(calFormatBase) && needDesignsChoice && unitCap && unitCap > 1 && unitCap <= 20
+      ? `${calFormatBase}-c${unitCap}`
+      : calFormatBase;
   /** 🎨 จอสร้างแบบไม่มีปฏิทิน (แผ่นรองเมาส์ · format pad@…) — ข้อความ/ปุ่มพูดว่า "ออกแบบ" ไม่ใช่ "ปฏิทิน" */
   const calNoGrid = calMode && !calHasGrid(calFormat(calFormatKey0));
   /** ช่องแนบลายแยกหน้า/หลัง — งานพิมพ์ 2 ด้าน หรือปฏิทินโฟโต้การ์ด (หน้าปก/ปฏิทิน) · งานออกแบบล้วน 1 หน้า = ช่องเดียว */
@@ -9183,7 +9209,8 @@ export default function ProductDetail({
                 await new Promise((r) => setTimeout(r, 80));
                 if (handleAddRef.current() && !editing) router.push("/cart");
               }}
-              guide={cutMode ? undefined : calGuide}
+              // ☕✂️ ไดคัทตามทรง (sleeve@) วาดเส้นของตัวเอง — ไม่ทาบสกินเทมเพลตขนาดมาตรฐาน
+              guide={cutMode || calFormatKey.startsWith("sleeve@") ? undefined : calGuide}
               square={/แหลม/.test(effective["มุม"] ?? "")}
               onYear={(y) => {
                 const c = calYearChoices.find((x) => x.year === y);

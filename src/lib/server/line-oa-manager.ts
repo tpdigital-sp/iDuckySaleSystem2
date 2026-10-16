@@ -568,3 +568,248 @@ export async function fetchOaSavedReplies(
   }
   return { path: base, replies: out };
 }
+
+/* ── 💬 ข้อความในห้องแชท (ที่พนักงานพิมพ์เองใน OA Manager) ─────────────────
+ * เจ้าของร้าน 15 ต.ค. 69: หน้า /admin/chatbot/chats เห็นเฉพาะลูกค้า/บอท/ที่ตอบจากเว็บ — ข้อความที่พนักงานพิมพ์ใน OA Manager
+ * LINE ไม่ส่ง webhook มา → ดึงจาก API ภายในของ chat.line.biz ด้วยคุกกี้เดียวกับป้าย/ข้อความตอบกลับ แล้วเขียนลง log (lib/server/oa-chat-sync.ts)
+ *
+ * ⚠️ เส้นทาง "ยังไม่ยืนยัน" (ไม่มีคุกกี้ตอนเขียน 15 ต.ค. 69) — ลองหลายเส้น เส้นไหนตอบ 2xx จำแม่แบบไว้ (แทน {bot}/{chat})
+ *   รหัสห้องใน OA บางลิงก์มีเลข 2 นำหน้า → ลองทั้งสองแบบ (chatIdKeys)
+ *   รูปแบบคำตอบก็ไม่รู้ → normalize เผื่อหลายชื่อฟิลด์ + probeOaMessages คืน path/sampleKeys/sample ให้เจ้าของร้านกด 🔌 ทดสอบจากหน้าแชท
+ *   อ่านไม่ออก (ต่อได้แต่ messages ว่างทั้งที่ list มีของ) → ดู sampleKeys แล้วเติมชื่อฟิลด์ใน toOaMessage()
+ */
+
+/**
+ * ✅ ยืนยันจากหน้า OA จริง 15 ต.ค. 69 18:05 (เจ้าของร้านล็อกอินใน browser pane): GET /api/v3/bots/{bot}/chats/{chat}/messages
+ *   → { list: [ใหม่→เก่า ~36–50 รายการ], backward: cursor } · ?limit ไม่มีผล · หน้าถัดไป ?backward=<cursor>
+ *   รายการ: { type: "message" (ลูกค้า) | "messageSent" (บัญชีร้าน) | "chatRead" | "follow" …, timestamp(ms), source: { chatId, userId },
+ *             message: { id, type: text|image|video|sticker…, text, quoteToken, contentHash… }, sendId, bizId (รหัสพนักงานที่กดส่งใน OA) }
+ *   · chatId ของห้อง = userId ของลูกค้า (source.chatId === source.userId ในห้องที่ดู) — ลองด้วย userId ตรง ๆ ได้
+ *   · markAsRead เป็น PUT แยก → GET ข้อความไม่ทำให้ OA นับว่าอ่านแล้ว
+ *   · ชื่อพนักงานจาก bizId: GET /api/v1/bots/{bot}/authorizedUsers?bizIds=a,b (ดู fetchOaStaffNames)
+ * เส้นอื่นเก็บไว้เผื่อ OA เปลี่ยนเวอร์ชัน
+ */
+/** bizId พิเศษของ "ข้อความตอบกลับอัตโนมัติ" ของ LINE (เห็น 15 ต.ค. 69) — ไม่ใช่พนักงาน */
+export const OA_AUTO_RESPONSE = "__AUTO_RESPONSE";
+
+const MESSAGE_PATHS = [
+  "/api/v3/bots/{bot}/chats/{chat}/messages",
+  "/api/v4/bots/{bot}/chats/{chat}/messages",
+  "/api/v2/bots/{bot}/chats/{chat}/messages",
+  "/api/v1/bots/{bot}/chats/{chat}/messages",
+];
+
+export interface OaMessage {
+  /** รหัสข้อความใน OA (ว่างได้ถ้า API ไม่ให้) */
+  id: string;
+  /** ISO */
+  at: string;
+  /** ฝั่งที่ส่ง: ลูกค้า · บัญชีร้าน (พนักงาน/บอท/API) · ไม่รู้ */
+  from: "user" | "account" | "unknown";
+  /** ชื่อพนักงานที่พิมพ์ (ถ้า OA บอก) */
+  by: string;
+  /** text · image · sticker · file · video · location · อื่น ๆ ตามที่ OA บอก */
+  type: string;
+  text: string;
+  /** รูป/ไฟล์ — URL ใน OA (มักต้องคุกกี้ถึงเปิดได้ จึงไม่เอาไปโชว์ตรง) */
+  url?: string;
+  /** รหัสพนักงาน OA ที่กดส่ง (messageSent ที่คนพิมพ์เอง) · ว่าง = ส่งผ่าน API (บอท/เว็บ) */
+  bizId?: string;
+}
+
+const MESSAGE_LIST_KEYS = ["list", "messages", "events", "items", "data", "result"];
+
+function pickMessageList(body: unknown): Record<string, unknown>[] {
+  if (Array.isArray(body)) return body as Record<string, unknown>[];
+  if (body && typeof body === "object") {
+    const o = body as Record<string, unknown>;
+    for (const k of MESSAGE_LIST_KEYS) {
+      const v = o[k];
+      if (Array.isArray(v)) return v as Record<string, unknown>[];
+      if (v && typeof v === "object") {
+        const inner = pickMessageList(v);
+        if (inner.length) return inner;
+      }
+    }
+  }
+  return [];
+}
+
+/** ประเภทรายการใน v3 ที่ไม่ใช่ข้อความ (อ่านแล้ว/เพิ่มเพื่อน/ยกเลิกส่ง…) — ข้าม */
+const NON_MESSAGE_TYPES = /^(chatread|read|follow|unfollow|join|leave|memberjoined|memberleft|unsend|unsent|delivered|markasread|typing)$/i;
+
+function fromOf(o: Record<string, unknown>, msg: Record<string, unknown>): OaMessage["from"] {
+  const src = (o.source ?? o.sender ?? msg.source ?? {}) as Record<string, unknown>;
+  const raw = str(src.type ?? o.sourceType ?? o.senderType ?? o.direction ?? o.from ?? o.type).toLowerCase();
+  if (/^(user|customer|member|received|message|messagereceived|in|incoming)$/.test(raw)) return "user";
+  if (/^(account|bot|operator|admin|staff|sent|messagesent|out|outgoing|shop)$/.test(raw)) return "account";
+  // บางรูปแบบบอกเป็นธง
+  if (o.isFromUser === true || o.fromUser === true) return "user";
+  if (o.isFromUser === false || o.fromUser === false || o.sentByAccount === true) return "account";
+  // ข้อความที่มี userId ของลูกค้าแต่ไม่มี accountId/operator = ลูกค้า
+  if (src.userId && !src.accountId && !o.operator && !o.sender) return raw ? "unknown" : "user";
+  return "unknown";
+}
+
+/** แปลงข้อความดิบจาก OA เป็นรูปเดียว — คืน null ถ้าไม่มีเวลา (เทียบกับ log ไม่ได้) */
+export function toOaMessage(o: Record<string, unknown>): OaMessage | null {
+  const msg = (o.message && typeof o.message === "object" ? o.message : o.content && typeof o.content === "object" ? o.content : {}) as Record<string, unknown>;
+  if (NON_MESSAGE_TYPES.test(str(o.type))) return null;
+  const at = isoOf(o.timestamp ?? o.createdAt ?? o.sentAt ?? o.time ?? o.at ?? msg.timestamp ?? msg.createdAt);
+  if (!at) return null;
+  const from = fromOf(o, msg);
+  const type = (str(msg.type ?? o.messageType ?? o.contentType) || (str(o.type) && !/^(message|messagesent|messagereceived)$/i.test(str(o.type)) ? str(o.type) : "") || "text").toLowerCase();
+  const text = (str(msg.text) || str(o.text) || str(msg.altText) || str(o.altText)).trim();
+  const src = (o.source ?? o.sender ?? {}) as Record<string, unknown>;
+  const op = (o.operator ?? o.account ?? o.sentBy ?? src.account ?? {}) as Record<string, unknown>;
+  const by = (str(op.name ?? op.displayName ?? op.nickname) || str(src.name ?? src.displayName ?? o.senderName ?? o.operatorName ?? o.accountName)).trim();
+  const url = str(msg.originalContentUrl ?? msg.contentUrl ?? msg.url ?? o.contentUrl ?? o.url) || undefined;
+  const id = str(msg.id ?? o.id ?? o.messageId ?? o.eventId);
+  const bizId = str(o.bizId);
+  return { id, at, from, by, type, text, ...(url ? { url } : {}), ...(bizId ? { bizId } : {}) };
+}
+
+/** ชื่อพนักงาน OA จาก bizId (authorizedUsers) — แคชตลอดอายุ process · พลาด = คืนที่มี */
+const staffNames = new Map<string, string>();
+export async function fetchOaStaffNames(botId: string, bizIds: string[], cookie: string): Promise<Map<string, string>> {
+  const want = [...new Set(bizIds.filter((b) => b && !b.startsWith("__") && !staffNames.has(b)))];
+  if (want.length) {
+    try {
+      const body = await oaGet(`/api/v1/bots/${botId}/authorizedUsers?bizIds=${encodeURIComponent(want.join(","))}`, cookie);
+      for (const o of pickList(body)) {
+        const id = str(o.bizId ?? o.id ?? o.userId);
+        const name = str(o.name ?? o.displayName ?? o.nickname ?? o.username).trim();
+        if (id && name) staffNames.set(id, name);
+      }
+      for (const b of want) if (!staffNames.has(b)) staffNames.set(b, "");
+    } catch {
+      /* ไม่รู้ชื่อก็ลงเป็น "พนักงาน OA" */
+    }
+  }
+  return staffNames;
+}
+
+/**
+ * ข้อความล่าสุดของห้องเดียวจาก OA Manager (ใหม่→เก่า ตามที่ OA ให้ แล้วเราเรียงเก่า→ใหม่)
+ * ลองทุกเส้น × ทั้งสองแบบของ chatId · 404 = ลองต่อ · 401/403/ต่อไม่ได้ = หยุด
+ */
+export async function fetchOaChatMessages(
+  botId: string,
+  chatId: string,
+  cookie: string,
+  limit = 50
+): Promise<{ path: string; chatId: string; messages: OaMessage[]; raw: unknown; sampleKeys: string[]; sample?: Record<string, unknown> }> {
+  const known = knownPath.messages;
+  const templates = known ? [known, ...MESSAGE_PATHS.filter((p) => p !== known)] : MESSAGE_PATHS;
+  // รหัสห้องแบบไหนที่ OA รับ (มี/ไม่มีเลข 2 นำหน้า) จำไว้ด้วย — รอบหน้ายิงทีเดียวถูก
+  const form = (cid: string) => (cid.length === 34 ? "prefixed" : "bare");
+  const ids = chatIdKeys(chatId).sort((a, b) => (form(a) === knownPath.messagesChatForm ? -1 : form(b) === knownPath.messagesChatForm ? 1 : 0));
+  let last: OaError | null = null;
+  for (const tpl of templates) {
+    for (const cid of ids) {
+      const path = tpl.replace("{bot}", botId).replace("{chat}", cid).replace("{limit}", String(limit));
+      try {
+        const body = await oaGet(path, cookie);
+        knownPath.messages = tpl;
+        knownPath.messagesChatForm = form(cid);
+        const list = pickMessageList(body);
+        const messages = list.map(toOaMessage).filter((m): m is OaMessage => !!m).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+        // ชื่อคนพิมพ์: v3 ให้แค่ bizId → ถามชื่อจาก authorizedUsers (แคช) · ไม่รู้ชื่อ = "พนักงาน OA" (ยังแยกจากบอท/เว็บที่ไม่มี bizId ได้)
+        const bizIds = messages.map((m) => m.bizId ?? "").filter(Boolean);
+        if (bizIds.length) {
+          const names = await fetchOaStaffNames(botId, bizIds, cookie);
+          for (const m of messages) if (m.bizId && !m.by && m.bizId !== OA_AUTO_RESPONSE) m.by = names.get(m.bizId) || "พนักงาน OA";
+        }
+        const first = list[0];
+        return { path: path.split("?")[0], chatId: cid, messages, raw: body, sampleKeys: first ? Object.keys(first) : [], sample: first };
+      } catch (e) {
+        const err = e as OaError;
+        if (err.status === 401 || err.status === 403 || err.status === 0) throw err;
+        last = err;
+      }
+    }
+  }
+  throw last ?? new OaError("ไม่มีเส้นทาง API ให้ลอง", 0);
+}
+
+/**
+ * 🔌 ทดสอบดึงข้อความห้องเดียว — ให้เจ้าของร้านกดจากหน้าแชท คืนเส้นที่ตอบ + ชื่อฟิลด์ + ตัวอย่าง 1 รายการ + ที่ normalize ได้ 5 ตัวท้าย
+ * ไม่ส่งคุกกี้กลับ · ไม่ส่งทั้งห้อง
+ */
+export async function probeOaMessages(
+  botIdFallback: string,
+  chatId: string
+): Promise<{
+  ok: boolean;
+  botId: string;
+  chatId: string;
+  error?: string;
+  path?: string;
+  count?: number;
+  accountCount?: number;
+  sampleKeys?: string[];
+  sample?: Record<string, unknown>;
+  parsed?: OaMessage[];
+  /** ตอน 404 ทุกเส้น: รายการห้องล่าสุดจาก OA (ดูรูปแบบ chatId จริง) + ผลลองกับห้องแรก */
+  listPath?: string;
+  chatSampleKeys?: string[];
+  chatSample?: Record<string, unknown>;
+  listedChatIds?: string[];
+  retry?: { chatId: string; path: string; count: number; sampleKeys: string[] };
+  retryError?: string;
+}> {
+  const cfg = await loadOaConfig(true);
+  const botId = cfg?.botId || botIdFallback;
+  if (!cfg?.cookie) return { ok: false, botId, chatId, error: "ยังไม่ได้วางคุกกี้ OA Manager — วางในกล่อง ⚙️ หน้า ลูกค้า LINE ก่อน" };
+  if (!botId) return { ok: false, botId, chatId, error: "ไม่รู้เลข OA (U…)" };
+  if (!chatId) return { ok: false, botId, chatId, error: "ห้องนี้ยังไม่รู้รหัสห้องใน OA Manager — วางลิงก์ห้องแชท OA ในออเดอร์ หรือผูกในหน้า ลูกค้า LINE ก่อน" };
+  try {
+    const r = await fetchOaChatMessages(botId, chatId, cfg.cookie, 30);
+    const res: Awaited<ReturnType<typeof probeOaMessages>> = {
+      ok: true,
+      botId,
+      chatId: r.chatId,
+      path: r.path,
+      count: r.messages.length,
+      accountCount: r.messages.filter((m) => m.from === "account").length,
+      sampleKeys: r.sampleKeys,
+      parsed: r.messages.slice(-5),
+    };
+    if (!r.messages.length) {
+      res.ok = false;
+      res.error = r.sampleKeys.length ? "ต่อได้แต่อ่านข้อความไม่ออก (รูปแบบคำตอบไม่ตรงที่คาด) — ดูฟิลด์ตัวอย่างด้านล่าง" : "ต่อได้แต่ OA ส่งรายการว่าง";
+      res.sample = r.sample ?? ((r.raw && typeof r.raw === "object" ? r.raw : { raw: r.raw }) as Record<string, unknown>);
+    } else if (r.messages.some((m) => m.from === "unknown")) {
+      // อ่านเวลา/ข้อความได้ แต่แยกฝั่งไม่ออก → แนบตัวอย่างไว้ไล่ชื่อฟิลด์ฝั่งผู้ส่ง
+      res.sample = r.sample;
+    }
+    return res;
+  } catch (e) {
+    const err = e as OaError;
+    const res: Awaited<ReturnType<typeof probeOaMessages>> = { ok: false, botId, chatId, error: err.message + (err.detail ? ` · ${err.detail}` : "") };
+    // ทุกเส้น 404 (ไม่ใช่คุกกี้) → ดึงรายการห้องล่าสุดจาก OA (เส้น chats ยืนยันแล้ว 16 ก.ย. 69) ดูรูปแบบ chatId จริง แล้วลองข้อความกับห้องแรกที่ OA ให้มา
+    if (err.status === 404) {
+      try {
+        const qs = new URLSearchParams({ folderType: "ALL", limit: "5", sortKey: "UPDATED_AT", sortOrder: "DESC" });
+        const r = await oaGetFirst("chats", [`/api/v2/bots/${botId}/chats?${qs}`, `/api/v1/bots/${botId}/chats?${qs}`], cfg.cookie);
+        const list = pickList(r.body);
+        res.listPath = r.path.split("?")[0];
+        res.chatSampleKeys = list[0] ? Object.keys(list[0]) : [];
+        res.chatSample = list[0];
+        res.listedChatIds = list.map((o) => str(o.chatId ?? o.id ?? o.chat_id)).filter(Boolean);
+        const first = res.listedChatIds[0];
+        if (first) {
+          try {
+            const m = await fetchOaChatMessages(botId, first, cfg.cookie, 5);
+            res.retry = { chatId: m.chatId, path: m.path, count: m.messages.length, sampleKeys: m.sampleKeys };
+          } catch (e2) {
+            res.retryError = (e2 as Error).message;
+          }
+        }
+      } catch (e3) {
+        res.retryError = `ดึงรายการห้องไม่ได้: ${(e3 as Error).message}`;
+      }
+    }
+    return res;
+  }
+}

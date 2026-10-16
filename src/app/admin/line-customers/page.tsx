@@ -187,11 +187,14 @@ function LineCustomersInner() {
    */
   const [editTarget, setEditTarget] = useState("");
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("edit") ?? "";
+    const sp = new URLSearchParams(window.location.search);
+    const id = sp.get("edit") ?? "";
     if (/^U[0-9a-f]{32}$/i.test(id)) {
       setEditTarget(id);
       setTyped(id);
     }
+    // ?oa=1 (ลิงก์จากหน้าแชท "OA ยังไม่เชื่อม" · 15 ต.ค. 69) → กางกล่อง ⚙️ เชื่อม LINE OA Manager ให้เลย ไม่ต้องหาปุ่ม
+    if (sp.get("oa") === "1") setOaSetup(true);
   }, []);
 
   useEffect(() => {

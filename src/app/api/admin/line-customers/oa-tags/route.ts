@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
-import { loadOaOwnerId } from "@/lib/server/line-chat";
+import { loadChatIds, loadOaOwnerId } from "@/lib/server/line-chat";
 import {
   cookieHint,
   DEFAULT_TAG_NAMES,
   loadOaConfig,
   peekOaTagged,
   probeOa,
+  probeOaMessages,
   saveOaConfig,
 } from "@/lib/server/line-oa-manager";
 
@@ -19,6 +20,7 @@ export const runtime = "nodejs";
  *  · GET  — สถานะ (ตั้งคุกกี้แล้วไหม · ป้ายที่ตั้ง · ผลดึงล่าสุด) — ไม่ส่งคุกกี้กลับ
  *  · POST config — บันทึกคุกกี้/ชื่อป้าย/เลข OA (สิทธิ์ตั้งค่าระบบเท่านั้น: คุกกี้ = ล็อกอิน OA ของร้าน)
  *  · POST probe  — ยิงทดสอบแล้วคืนผลดิบไว้ไล่ปัญหา
+ *  · POST probe-messages {userId | chatId} — 🔌 ทดสอบดึงข้อความห้องเดียวจาก OA (หน้าแชทกด · 15 ต.ค. 69) คืนเส้นที่ตอบ + ฟิลด์ตัวอย่าง + ที่อ่านออก 5 ตัวท้าย
  *
  * การดึงป้ายจริงไปอยู่ใน GET /api/admin/line-customers/manage (พารามิเตอร์ oaTag) — คนละเส้น
  */
@@ -67,10 +69,13 @@ export async function GET() {
 }
 
 type Body = {
-  action?: "config" | "probe";
+  action?: "config" | "probe" | "probe-messages";
   cookie?: string;
   tagNames?: string[] | string;
   botId?: string;
+  /** probe-messages: userId ห้องในคลังแชท (ระบบหารหัสห้อง OA ให้) หรือ chatId ของ OA ตรง ๆ */
+  userId?: string;
+  chatId?: string;
 };
 
 export async function POST(req: Request) {
@@ -99,6 +104,17 @@ export async function POST(req: Request) {
       const db = getChatFirestore();
       const oaOwnerId = db ? await loadOaOwnerId(db) : "";
       const probe = await probeOa(oaOwnerId);
+      return NextResponse.json({ ok: probe.ok, probe });
+    }
+
+    if (b.action === "probe-messages") {
+      const db = getChatFirestore();
+      if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firestore" }, { status: 503 });
+      const userId = String(b.userId ?? "").trim();
+      let chatId = String(b.chatId ?? "").trim();
+      if (!chatId && /^U[0-9a-f]{32}$/.test(userId)) chatId = (await loadChatIds(db, true))[userId]?.id ?? "";
+      if (chatId && !/^2?[A-Za-z][0-9a-f]{32}$/i.test(chatId)) return NextResponse.json({ error: "รหัสห้อง OA ไม่ถูกต้อง" }, { status: 400 });
+      const probe = await probeOaMessages(await loadOaOwnerId(db), chatId);
       return NextResponse.json({ ok: probe.ok, probe });
     }
 

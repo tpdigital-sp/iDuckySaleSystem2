@@ -76,6 +76,7 @@ import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
+import { dieCurvesPath, dieSvgD } from "@/lib/sleeve-dieline";
 
 export interface CalendarState {
   format: string;
@@ -407,6 +408,9 @@ export default function CalendarStudio({
    * ใบที่ 2+ ที่ยังไม่ได้แยกออกแบบ = เหมือนใบที่ 1 (ล็อกไว้ กด "ออกแบบใบนี้แยก" ก่อนถึงแก้ได้)
    */
   const copies = Math.max(1, fmt.cards ?? 1);
+  /** คำเรียก 1 ใบ / 1 ชุด บนจอ — ปฏิทิน "ใบ/ชุด" · ปลอกแก้ว "ชิ้น/เซ็ต" (หน่วยขายจากหน้าสินค้า) */
+  const cw = fmt.cardWord ?? "ใบ";
+  const setWord = fmt.cardWord ? (unit ?? "ชุด") : "ชุด";
   /** 🎨 งานออกแบบล้วน (ไม่มีตารางปฏิทิน เช่น แผ่นรองเมาส์) — ซ่อนเครื่องมือ/ข้อความเรื่องปฏิทินทั้งหมด (14 ต.ค. 69) */
   const noCal = !calHasGrid(fmt);
   const vpages = useMemo(
@@ -546,6 +550,8 @@ export default function CalendarStudio({
   /** ขนาดพื้นที่เวที — ภาพปฏิทินขยายเต็มพื้นที่ตามจอ */
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
+  /** สัดส่วนของเวทีที่ให้การ์ดใช้ได้บนจอกว้าง (1 = เต็มเวที) — 0.7 เหลือขอบว่างรอบ ๆ ไม่ให้การ์ดใหญ่ล้นตา (ผู้ใช้ลอง 0.8 แล้วขอเล็กลงอีก 16 ต.ค. 69) */
+  const STAGE_FIT = 0.7;
   /** ความกว้างจริงของแถบเครื่องมือลอย — ใช้ดันแถบให้อยู่ในพื้นที่เวทีเสมอ */
   const [barW, setBarW] = useState(0);
   const barRef = useCallback(
@@ -566,7 +572,7 @@ export default function CalendarStudio({
   const locked = vcur.card > 0 && !custom.includes(vcur.card);
   /** ชื่อหน้าที่โชว์ (ชุดหลายใบ = "ใบที่ N · ด้าน…") */
   const vname = (v: (typeof vpages)[number]) => {
-    if (copies > 1) return `ใบที่ ${v.card + 1}${fmt.pages.length > 1 ? ` · ${v.base.name}` : ""}`;
+    if (copies > 1) return `${cw}ที่ ${v.card + 1}${fmt.pages.length > 1 ? ` · ${v.base.name}` : ""}`;
     if (fmt.perCard) {
       const n = Math.floor(v.j / fmt.perCard) + 1;
       return `ใบที่ ${n}${fmt.perCard > 1 || v.base.name ? ` · ${v.base.name}` : ""}`;
@@ -1759,6 +1765,26 @@ export default function CalendarStudio({
     const b = fmt.bleed * k;
     if (fmt.diecut) {
       // ✂️ ไดคัท: ไม่มีตัดตก/เส้นตัดสี่เหลี่ยม — เส้นตัดตามรูปลายวาดด้านล่าง (piece)
+    } else if (fmt.dieline) {
+      // ☕✂️ ไดคัทตามทรง (ปลอกแก้วขนาดกำหนดเอง): นอกขอบตัดตก = ขาวทึบ (ผู้ใช้สั่ง 16 ต.ค. 69 — ไม่ได้พิมพ์ใช้)
+      // ระหว่างขอบตัดตกกับเส้นตัด = จาง (ลายควรเลยถึงตรงนี้) · เส้นดำบาง = ขอบตัดตก
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, PW, PH);
+      dieCurvesPath(ctx, fmt.dieline.bleed, k, fmt.bleed);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill("evenodd");
+      ctx.beginPath();
+      dieCurvesPath(ctx, fmt.dieline.bleed, k, fmt.bleed);
+      trimPath(ctx, k, fmt);
+      ctx.fillStyle = "rgba(255,255,255,.55)";
+      ctx.fill("evenodd");
+      ctx.beginPath();
+      dieCurvesPath(ctx, fmt.dieline.bleed, k, fmt.bleed);
+      ctx.lineWidth = dpr;
+      ctx.strokeStyle = "rgba(28,25,23,.6)";
+      ctx.stroke();
+      ctx.restore();
     } else if (guide) {
       // 📐 สินค้าที่มีเทมเพลต = หน้าตาตามไฟล์ที่อัปเข้าระบบล้วน ๆ (ผู้ใช้สั่ง 13 ต.ค. 69) — ไม่ทับลายทแยง/แถบตัดตกของระบบ
       // (รวมตอนรูปเทมเพลตยังโหลดไม่เสร็จ/โหลดไม่ได้ — เดิมตกไปลายทแยง มุมแหลมกับมุมมนเลยหน้าตาไม่เหมือนกัน)
@@ -1792,8 +1818,17 @@ export default function CalendarStudio({
       ctx.save();
       ctx.globalCompositeOperation = "multiply";
       // fill = รูปเป็นกรอบการ์ดใบเดียวพอดีผืน (skin ของไฟล์หลายช่อง) → ปูเต็มผืน
-      if (guide.fill) ctx.drawImage(guideImg, 0, 0, W * k, H * k);
-      else ctx.drawImage(guideImg, ((W - guide.wMm) / 2) * k, ((H - guide.hMm) / 2) * k, guide.wMm * k, guide.hMm * k);
+      if (guide.fill) {
+        // 🛡 สกินที่สัดส่วนไม่เท่าผืน (ครอปชิดชิ้นงาน ไม่ใช่เท่าอาร์ตบอร์ด) ห้ามยืดให้เต็ม — ย่อให้พอดีผืนแล้ววางกึ่งกลางแทน
+        // (ปลอกแก้ว 16 ต.ค. 69: สกิน 3.2:1 ถูกยืดลงผืน 2:1 จนปลอกสูงเกินจริง ~70%)
+        const ar = guideImg.naturalWidth / Math.max(1, guideImg.naturalHeight);
+        if (Math.abs(ar / (W / H) - 1) <= 0.02) ctx.drawImage(guideImg, 0, 0, W * k, H * k);
+        else {
+          const gw = Math.min(W, H * ar);
+          const gh = gw / ar;
+          ctx.drawImage(guideImg, ((W - gw) / 2) * k, ((H - gh) / 2) * k, gw * k, gh * k);
+        }
+      } else ctx.drawImage(guideImg, ((W - guide.wMm) / 2) * k, ((H - guide.hMm) / 2) * k, guide.wMm * k, guide.hMm * k);
       ctx.restore();
     } else if (guide) {
       // รูปเทมเพลตโหลดไม่ได้ (เช่น หน้าเปิดค้างไว้ก่อนอัปเทมเพลตใหม่) — เส้นตัดทึบบาง ๆ แบบไฟล์เทมเพลต ไม่ใช้ลายทแยง
@@ -1802,7 +1837,7 @@ export default function CalendarStudio({
       ctx.beginPath();
       trimPath(ctx, k, fmt);
       ctx.stroke();
-    } else if (!fmt.diecut) {
+    } else if (!fmt.diecut && !fmt.dieline) {
       ctx.setLineDash([4 * dpr, 3 * dpr]);
       ctx.lineWidth = dpr;
       ctx.strokeStyle = "rgba(220,38,38,.85)";
@@ -1818,9 +1853,11 @@ export default function CalendarStudio({
     // เทมเพลตที่ไม่มีเส้นตัดแดง (แผ่นรองเมาส์ ฯลฯ) = ขอบในไฟล์เทมเพลตคือไกด์ ไม่วาดสี่เหลี่ยมตัดทับ
     if (!fmt.diecut && !(guideImg && guide && !guideRed)) {
       ctx.save();
-      if (!guide) ctx.setLineDash([4 * dpr, 3 * dpr]);
+      if (!guide && !fmt.dieline) ctx.setLineDash([4 * dpr, 3 * dpr]);
       ctx.beginPath();
       trimPath(ctx, k, fmt);
+      // ☕ รอยกรีดของปลอกแก้ว (เส้นเปิด) — เส้นตัดเหมือนกัน วาดชุดเดียวกัน
+      if (fmt.dieline) dieCurvesPath(ctx, fmt.dieline.slits, k, fmt.bleed, true);
       ctx.lineWidth = Math.max(2, 3.2 * dpr);
       ctx.strokeStyle = "rgba(255,255,255,.92)";
       ctx.stroke();
@@ -1957,6 +1994,16 @@ export default function CalendarStudio({
           ctx.beginPath();
           trimPath(ctx, tw / W, fmt);
           ctx.fill();
+          ctx.globalCompositeOperation = "source-over";
+        } else if (fmt.dieline) {
+          // ☕ รูปย่อปลอกแก้วไดคัทตามทรง = ทรงถึงขอบตัดตก (นอกนั้นขาว เหมือนบนเวที)
+          ctx.globalCompositeOperation = "destination-in";
+          ctx.beginPath();
+          dieCurvesPath(ctx, fmt.dieline.bleed, tw / W, fmt.bleed);
+          ctx.fill();
+          ctx.globalCompositeOperation = "destination-over";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, cv.width, cv.height);
           ctx.globalCompositeOperation = "source-over";
         }
       });
@@ -3040,7 +3087,7 @@ export default function CalendarStudio({
       pages,
       wMm: W,
       hMm: H,
-      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0 },
+      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0, ...(fmt.dieline ? { svg: dieSvgD(fmt.dieline, fmt.bleed) } : {}) },
       name: `${title}-ปฏิทิน${back.year}`.slice(0, 60),
     });
     return {
@@ -3075,7 +3122,7 @@ export default function CalendarStudio({
       designs,
       wMm: W,
       hMm: H,
-      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0 },
+      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0, ...(fmt.dieline ? { svg: dieSvgD(fmt.dieline, fmt.bleed) } : {}) },
       name: `${title} ปี ${back.year}`,
       duplex,
     });
@@ -4775,7 +4822,7 @@ export default function CalendarStudio({
                     </dd>
                     <dt className="text-stone-400">จำนวน</dt>
                     <dd className="text-stone-700">
-                      {copies > 1 ? `${copies} ใบ/ชุด${custom.length ? ` · แยกแบบ ${custom.length} ใบ` : ""}` : `${fmt.pages.length} หน้า`}
+                      {copies > 1 ? `${copies} ${cw}/${setWord}${custom.length ? ` · แยกแบบ ${custom.length} ${cw}` : ""}` : `${fmt.pages.length} หน้า`}
                     </dd>
                     <dt className="text-stone-400">ขนาดงาน</dt>
                     <dd className="text-stone-700">
@@ -4837,7 +4884,7 @@ export default function CalendarStudio({
             <p className="truncate text-sm font-extrabold text-stone-800">{noCal ? "🎨 ออกแบบ" : "🗓 สร้างปฏิทิน"}</p>
             <p className="truncate text-[11px] text-stone-500">
               {title} · {fmt.name}
-              {noCal ? "" : ` · ปี ${back.year}`} · {copies > 1 ? `${copies} ใบ/ชุด` : `${fmt.pages.length} หน้า`}
+              {noCal ? "" : ` · ปี ${back.year}`} · {copies > 1 ? `${copies} ${cw}/${setWord}` : `${fmt.pages.length} หน้า`}
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
@@ -5297,10 +5344,11 @@ export default function CalendarStudio({
             <div
               className="relative w-full"
               style={{
-                // เต็มพื้นที่เวทีตามจอ: จำกัดทั้งกว้างและสูง (เผื่อแถบเครื่องมือลอยใต้รูป ~64px + บรรทัดไกด์)
+                // พอดีเวทีตามจอ: จำกัดทั้งกว้างและสูง (เผื่อแถบเครื่องมือลอยใต้รูป ~64px + บรรทัดไกด์)
+                // × STAGE_FIT = ไม่ขยายจนชนขอบเวที เหลือพื้นว่างรอบการ์ด (ผู้ใช้ขอ 16 ต.ค. 69 "โปสการ์ด/ปลอกแก้ว ลดขนาดหน่อย")
                 maxWidth:
                   stageBox.w && stageBox.h && stageBox.w >= 640
-                    ? `${Math.max(240, Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect))}px`
+                    ? `${Math.max(240, Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect) * STAGE_FIT)}px`
                     : `min(100%, ${aspect * 60}vh)`,
               }}
             >
@@ -5386,7 +5434,7 @@ export default function CalendarStudio({
                 </>
               ) : (
                 <>
-                  <span className="text-rose-500">{guideImg ? "—" : "- - -"}</span> เส้นตัด
+                  <span className="text-rose-500">{guideImg || fmt.dieline ? "—" : "- - -"}</span> เส้นตัด
                 </>
               )}
               {guideImg && guide?.name ? ` · 📐 เทมเพลต ${guide.name}` : ""}
@@ -5819,7 +5867,7 @@ export default function CalendarStudio({
                   <option value="single">ลายเดียว</option>
                   <option value="mix">คละลาย</option>
                 </select>
-                <span className="text-[10px] text-stone-400">{mixMode ? `${copies} ใบ · ใช้ ${designN} รูป` : `พิมพ์เหมือนกัน ${copies} ใบ`}</span>
+                <span className="text-[10px] text-stone-400">{mixMode ? `${copies} ${cw} · ใช้ ${designN} รูป` : `พิมพ์เหมือนกัน ${copies} ${cw}`}</span>
               </div>
             )}
             {vpages.map((v, i) =>
@@ -5917,7 +5965,7 @@ export default function CalendarStudio({
                   <span className={`max-w-[120px] truncate text-[10.5px] ${i === pageIdx ? "font-extrabold text-stone-800" : "font-semibold text-stone-500"}`}>
                     {vname(v)}
                     {copies === 1 && (design.photos[v.page.key]?.src ?? -1) >= 0 && v.j !== coverIdx ? " 🖼" : ""}
-                    {!mixMode && copies > 1 ? ` × ${copies} ใบ` : ""}
+                    {!mixMode && copies > 1 ? ` × ${copies} ${cw}` : ""}
                   </span>
                   {/* 📄 แผ่นที่ · ด้านหน้า/หลัง (ปฏิทินตั้งโต๊ะพิมพ์หน้า-หลัง) */}
                   {v.base.sheet && (
@@ -5951,7 +5999,7 @@ export default function CalendarStudio({
               )}
               <h3 className="text-lg font-extrabold text-stone-800">รูปแบบการพิมพ์</h3>
               <p className="mt-0.5 text-xs text-stone-500">
-                {fmt.name} · ชุดละ {copies} ใบ — เปลี่ยนทีหลังได้ที่แถบรูปย่อด้านล่าง
+                {fmt.name} · {setWord}ละ {copies} {cw} — เปลี่ยนทีหลังได้ที่แถบรูปย่อด้านล่าง
               </p>
               {mixFee && (
                 <p className="mt-1 text-[11px] text-stone-400">
@@ -5965,14 +6013,14 @@ export default function CalendarStudio({
                     mix: false,
                     name: "ลายเดียว",
                     icon: "🖼",
-                    desc: `ออกแบบครั้งเดียว พิมพ์เหมือนกันทั้ง ${copies} ใบ`,
+                    desc: `ออกแบบครั้งเดียว พิมพ์เหมือนกันทั้ง ${copies} ${cw}`,
                     fee: feeOf(1),
                   },
                   {
                     mix: true,
                     name: "คละลาย",
                     icon: "🎨",
-                    desc: `ออกแบบแต่ละใบไม่เหมือนกันได้ (ทั้ง ${copies} ใบ) · นับลายตามจำนวนรูปที่ใช้`,
+                    desc: `ออกแบบแต่ละ${cw}ไม่เหมือนกันได้ (ทั้ง ${copies} ${cw}) · นับลายตามจำนวนรูปที่ใช้`,
                     fee: -1,
                   },
                 ].map((o) => (

@@ -161,7 +161,7 @@ for (const room of rooms) {
   const verify: Verify[] = [...room.msgs];
   for (const e of logSnap.docs) {
     existingIds.add(e.id);
-    if (e.get("source") === "oa-csv") continue;
+    if (e.get("source") === "oa-csv" || e.get("source") === "oa-live") continue; // oa-live = ดึงสดจาก OA (lib/server/oa-chat-sync.ts) ไม่ใช่จุดเริ่ม log ของบอท
     const at = tsOf(e.get("at"));
     if (!at) continue;
     if (e.get("role") !== "draft" && at < logStart) logStart = at;
