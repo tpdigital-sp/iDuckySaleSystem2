@@ -4309,9 +4309,9 @@ export default function CalendarStudio({
     const cssH = canvasRef.current?.clientHeight ?? 0;
     if (!cssW) return null;
     const r = fr ? { x: fr.x - fr.w / 2, y: fr.y - fr.h / 2, w: fr.w, h: fr.h } : slot!;
-    // 🧰 แถบอยู่ "เหนือ" รูปแบบ Printbox (ทับขอบบนรูปได้ถ้าบนสุดของการ์ด) — เมนูย่อยกางลงล่าง
-    const { left } = barPos(r, cssW, cssH);
-    const top = Math.max(-8, (r.y / H) * cssH - 56);
+    // 🧰 แถบอยู่ "ใต้" รูป (เหมือนแถบรูปทรง) — รูปเต็มผืนก็ตกไปอยู่ใต้ผืนผ้าใบ ไม่บังชิ้นงาน
+    // (เดิมอยู่เหนือรูปแล้ว clamp ที่ -8 → รูปที่ชิดขอบบน/เต็มผืนโดนแถบทับ · เจ้าของร้านแจ้ง 16 ต.ค. 69) — เมนูย่อยกางขึ้นบน
+    const { left, top } = barPos(r, cssW, cssH);
     const frImg = fr && fr.src != null ? srcs[fr.src] : undefined;
     const has = fr ? !!frImg : true;
     // ✂️ ไดคัท: 100% = ขนาดตอนใส่รูป (ตำแหน่งอ้างอิงของเส้นตัด) ไม่ใช่ "เต็มช่อง" — ช่องคือทั้งผืน ถ้านับแบบเดิมรูปเริ่มที่ ~25% ซูมออกได้แค่ขั้นเดียว
@@ -4498,13 +4498,13 @@ export default function CalendarStudio({
               );
             })()}
         </div>
-        {/* เมนูย่อย — กางลงใต้แถบ */}
+        {/* เมนูย่อย — กางขึ้นเหนือแถบ (แถบอยู่ใต้รูป) */}
         {pop && (
           <div
             className={
               narrow
                 ? "max-h-[45vh] w-full overflow-y-auto rounded-2xl bg-white p-3 shadow-xl ring-1 ring-stone-200"
-                : `absolute left-1/2 top-full mt-2 -translate-x-1/2 rounded-2xl bg-white shadow-xl ring-1 ring-stone-200 ${pop === "filter" ? "w-[min(600px,calc(100vw-24px))] p-4" : pop === "border" ? "w-max max-w-[calc(100vw-24px)] p-2" : "w-64 p-3"}`
+                : `absolute bottom-full left-1/2 mb-2 -translate-x-1/2 rounded-2xl bg-white shadow-xl ring-1 ring-stone-200 ${pop === "filter" ? "w-[min(600px,calc(100vw-24px))] p-4" : pop === "border" ? "w-max max-w-[calc(100vw-24px)] p-2" : "w-64 p-3"}`
             }
           >
             {pop === "opacity" && (
