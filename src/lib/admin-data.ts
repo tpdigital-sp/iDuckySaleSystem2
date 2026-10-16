@@ -1584,7 +1584,14 @@ export function taxInvoiceDocsOf(o: Order): { docNo?: string; url?: string; labe
     return { ...b, docNo: v.docNo, url: undefined, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", fromDoc: b.docNo, amount: v.total ?? b.amount };
   });
   // INV ที่บอกไม่ได้ว่าเป็นของบิลไหน (อ้างใบแจ้งหนี้ที่ออกในแอป FlowAccount เอง) — บิลที่ยังไม่มี INV เหลือใบเดียว = ใบนั้น
-  const open = out.map((b, i) => (b.fromDoc ? -1 : i)).filter((i) => i >= 0);
+  // INV ที่ลงวันที่ก่อนแนบบิลเพิ่มใบไหน เป็นของบิลเพิ่มใบนั้นไม่ได้ (OD-261002-9030 · 16 ต.ค. 69: INV007684 ของบิลหลัก 5 ต.ค. + บิลเพิ่มที่ออก 16 ต.ค.)
+  const bkkDay = (iso: string) => {
+    const t = Date.parse(iso);
+    return Number.isFinite(t) ? new Date(t + 7 * 3600_000).toISOString().slice(0, 10) : "";
+  };
+  const extraAt = (o.flowAccountExtras ?? []).map((x) => bkkDay(x.at));
+  const canBe = (i: number, v: { date?: string }) => i === 0 || !v.date || !extraAt[i - 1] || extraAt[i - 1] <= v.date;
+  const open = out.map((b, i) => (b.fromDoc ? -1 : i)).filter((i) => i >= 0 && invs.length === 1 && canBe(i, invs[0]));
   if (invs.length === 1 && open.length === 1) {
     const b = out[open[0]];
     out[open[0]] = { ...b, docNo: invs[0].docNo, url: undefined, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", fromDoc: b.docNo, amount: invs[0].total ?? b.amount };
@@ -2042,6 +2049,69 @@ export function extraDocItemsBill(o: Order): { total: number; vat: number; wht: 
     wht: r2(xs.reduce((s, x) => s + (x.wht ?? 0), 0)),
     ship: r2(xs.reduce((s, x) => s + (x.ship ?? 0), 0)),
   };
+}
+
+/**
+ * 📄➕ ยอดที่ "ออกบิล FlowAccount ไปแล้ว" ของออเดอร์ — บิลหลัก + บิลเพิ่มที่เก็บเงิน (ใส่เป็นรายการ/ผูกค่าบริการ) · null = ไม่รู้ (ยังไม่มีบิลเลย)
+ * บิลหลัก = order.flowAccount · ไม่มี (พนักงานออก QT→INV เองในแอป FlowAccount) = ยอด INV ที่ระบบจับคู่ได้ (faInvoices) ที่ไม่ใช่ของบิลเพิ่ม
+ * ใช้ตอนออกใบเสนอราคาเฉพาะรายการที่สั่งเพิ่ม (OD-261002-9030 · 16 ต.ค. 69) เทียบว่าใบใหม่เท่ากับยอดที่ยังไม่มีบิลไหม
+ */
+export function billedSoFar(o: Order): number | null {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const extras = o.flowAccountExtras ?? [];
+  const extraNos = new Set(extras.map((x) => x.docNo.toUpperCase()));
+  let main: number | null = o.flowAccount?.grandTotal ?? null;
+  if (main == null) {
+    const invs = (o.faInvoices ?? []).filter((v) => !extraNos.has((v.ref ?? "").toUpperCase()) && !extraNos.has(v.docNo.toUpperCase()) && (v.total ?? 0) > 0);
+    if (invs.length) main = invs.reduce((s, v) => s + (v.total ?? 0), 0);
+  }
+  if (main == null) return null;
+  const counted = extras.filter((x) => (x.items ?? 0) > 0 || x.chargeId);
+  return r2(main + counted.reduce((s, x) => s + (x.grandTotal ?? 0), 0));
+}
+
+/** 📄➕ ยอดที่ยังไม่มีบิล (orderTotal − billedSoFar) · null = ไม่รู้ */
+export function unbilledAmount(o: Order): number | null {
+  const b = billedSoFar(o);
+  return b == null ? null : Math.round((orderTotal(o) - b) * 100) / 100;
+}
+
+/** 📄➕ ออเดอร์นี้มีบิล FlowAccount แล้ว (บิลหลัก/INV/ใบต่อ/บิลเพิ่ม) — ออกใบเสนอราคาทั้งใบซ้ำไม่ได้ ต้องออกเฉพาะรายการที่สั่งเพิ่ม */
+export function orderHasFaBill(o: Order): boolean {
+  return !!(o.flowAccount || (o.faInvoices ?? []).length || (o.faChain ?? []).length || (o.flowAccountExtras ?? []).length);
+}
+
+/**
+ * 📄🔄 ใบเสนอราคาหลักยังแก้ได้ (QT ในระบบ ยังไม่มีใบแจ้งหนี้/ใบกำกับต่อ) — ลูกค้าสั่งเพิ่มตอนนี้ = อัปเดต QT เดิม ไม่ใช่ออกใบเพิ่ม
+ * เงื่อนไขเดียวกับปุ่ม "🔄 อัปเดตใบเสนอราคาใน FlowAccount" หน้าออเดอร์ (เจ้าของร้านถาม 16 ต.ค. 69: ยังไม่ออกใบเสร็จต้องอัปเดตใบเดิม)
+ */
+export function mainQuotationUpdatable(o: Order): boolean {
+  return o.flowAccount?.docType === "qt" && !(o.faChain ?? []).length && !(o.faInvoices ?? []).length;
+}
+
+/** 📄➕ ออกใบเสนอราคาเฉพาะรายการที่สั่งเพิ่มได้ = มีบิลแล้ว + ใบหลักแก้ไม่ได้แล้ว (ออกใบกำกับ/ใบเสร็จแล้ว หรือไม่มี QT ในระบบ) */
+export function extraQuotationAllowed(o: Order): boolean {
+  return orderHasFaBill(o) && !mainQuotationUpdatable(o);
+}
+
+/**
+ * 📄➕ รายการที่น่าจะ "สั่งเพิ่มหลังออกบิลแล้ว" (index ใน o.items) — ติ๊กให้ล่วงหน้าในฟอร์มออกใบเสนอราคาบิลเพิ่ม
+ * = ยังไม่อยู่ในบิลเพิ่มใบไหน (extraDoc) + addedAt หลังบิลล่าสุด (เวลาผูก QT หลัก · ใบต่อ · บิลเพิ่ม · วันที่ INV ทั้งวัน)
+ * ไม่รู้เวลาบิล/ไม่มี addedAt = ไม่ติ๊ก (พนักงานเลือกเอง)
+ */
+export function addedItemCandidates(o: Order): number[] {
+  const times: number[] = [];
+  const push = (iso?: string) => {
+    const t = iso ? Date.parse(iso) : NaN;
+    if (Number.isFinite(t)) times.push(t);
+  };
+  push(o.flowAccount?.fetchedAt);
+  for (const d of o.faChain ?? []) push(d.at);
+  for (const x of o.flowAccountExtras ?? []) push(x.at);
+  for (const v of o.faInvoices ?? []) if (v.date && /^\d{4}-\d{2}-\d{2}$/.test(v.date)) push(`${v.date}T23:59:59+07:00`);
+  if (!times.length) return [];
+  const cut = Math.max(...times);
+  return o.items.flatMap((it, i) => (!it.extraDoc && it.addedAt && Date.parse(it.addedAt) > cut ? [i] : []));
 }
 
 /**

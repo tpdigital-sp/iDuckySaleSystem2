@@ -10,7 +10,7 @@ import {
   type Order,
 } from "@/lib/admin-data";
 import { bkkParts } from "@/lib/bangkok-time";
-import { orderBalance, whtCoversBalance } from "@/lib/admin-data";
+import { extraDocItemsBill, mainQuotationUpdatable, orderBalance, orderHasFaBill, unbilledAmount, whtCoversBalance } from "@/lib/admin-data";
 import { foldSizeExtra, specEntries, specLabel, specValueLines, stripSpecUrls, tidySpec } from "@/components/SpecLines";
 
 /**
@@ -82,14 +82,12 @@ export function quotationDraft(o: Order): QuotationDraft {
   if (!(orderVatAmount(o) > 0)) problems.push("ยังไม่ได้เปิด VAT 7% — กด “＋ เปิด VAT 7%” ในกล่องยอดเงินก่อน (ยอดออเดอร์จะเท่ากับยอดในใบ)");
   if (o.status === "ยกเลิก") problems.push("ออเดอร์ถูกยกเลิกแล้ว");
 
-  const lines: FaLine[] = o.items.map((it) => ({
-    name: (it.name || "สินค้า").slice(0, 250),
-    description: itemDescription(it),
-    quantity: it.qty,
-    pricePerUnit: it.unitPrice,
-    total: r2(it.qty * it.unitPrice),
-  }));
-  if ((o.shippingCost ?? 0) > 0) lines.push({ name: "ค่าส่ง", description: "", quantity: 1, pricePerUnit: o.shippingCost!, total: r2(o.shippingCost!) });
+  // 🧾➕ รายการของบิลเพิ่ม (extraDoc) อยู่ในใบอื่นแล้ว — ใบหลักไม่นับ ทั้งรายการ ค่าส่งในใบนั้น และ VAT/หัก ณ ที่จ่ายของใบนั้น
+  const ex = extraDocItemsBill(o);
+  const exSub = r2(o.items.filter((it) => it.extraDoc).reduce((s, it) => s + it.qty * it.unitPrice, 0));
+  const lines: FaLine[] = o.items.filter((it) => !it.extraDoc).map(lineOf);
+  const ship = r2((o.shippingCost ?? 0) - ex.ship);
+  if (ship > 0) lines.push({ name: "ค่าส่ง", description: "", quantity: 1, pricePerUnit: ship, total: ship });
   for (const c of o.charges ?? []) {
     const amt = Math.max(0, Number(c.amount) || 0);
     if (amt > 0) lines.push({ name: (c.label || "ค่าบริการเพิ่ม").slice(0, 250), description: "", quantity: 1, pricePerUnit: amt, total: r2(amt) });
@@ -101,14 +99,15 @@ export function quotationDraft(o: Order): QuotationDraft {
   const grandTotal = r2(afterDiscount + vat);
 
   // ใบต้องเท่ายอดออเดอร์ทุกบาท — ไม่ตรง = มีอะไรที่ใบยังไม่รู้จัก ห้ามออก
-  const expectBase = r2(orderSubtotal(o) + (o.shippingCost ?? 0) + orderChargesTotal(o) - orderDiscountTotal(o));
+  const expectBase = r2(orderSubtotal(o) - exSub + (o.shippingCost ?? 0) - ex.ship + orderChargesTotal(o) - orderDiscountTotal(o));
+  const orderVat = r2(orderVatAmount(o) - ex.vat);
+  const orderGrand = r2(orderTotal(o) - ex.total);
   if (Math.abs(expectBase - afterDiscount) > 0.01) problems.push(`ยอดก่อน VAT ไม่ตรงออเดอร์ (ใบ ${afterDiscount} · ออเดอร์ ${expectBase})`);
-  if (orderVatAmount(o) > 0 && Math.abs(orderVatAmount(o) - vat) > 0.05)
-    problems.push(`VAT ในออเดอร์ (${orderVatAmount(o)}) ไม่ใช่ 7% ของยอดก่อน VAT (${vat}) — แก้ VAT ในออเดอร์ก่อน`);
-  if (orderVatAmount(o) > 0 && Math.abs(orderTotal(o) - grandTotal) > 0.05) problems.push(`ยอดรวมไม่ตรงออเดอร์ (ใบ ${grandTotal} · ออเดอร์ ${orderTotal(o)})`);
+  if (orderVat > 0 && Math.abs(orderVat - vat) > 0.05)
+    problems.push(`VAT ในออเดอร์ (${orderVat}) ไม่ใช่ 7% ของยอดก่อน VAT (${vat}) — แก้ VAT ในออเดอร์ก่อน`);
+  if (orderVat > 0 && Math.abs(orderGrand - grandTotal) > 0.05) problems.push(`ยอดรวมไม่ตรงออเดอร์ (ใบ ${grandTotal} · ออเดอร์ ${orderGrand})`);
 
-  const whtAmt = orderWhtAmount(o);
-  const t = o.taxInvoice;
+  const whtAmt = r2(orderWhtAmount(o) - ex.wht);
   return {
     lines,
     subTotal,
@@ -117,17 +116,96 @@ export function quotationDraft(o: Order): QuotationDraft {
     vat,
     grandTotal,
     ...(whtAmt > 0 ? { wht: { rate: o.wht?.rate ?? 3, amount: whtAmt } } : {}),
-    contact: {
-      name: (t?.company ?? o.customer ?? "").trim(),
-      taxId: t?.taxId?.replace(/\D/g, "") || undefined,
-      branch: t?.branch || undefined,
-      address: t?.address || o.address || undefined,
-      // 🙏 ช่อง "ผู้ติดต่อ" เติม "คุณ" (เจ้าของร้านขอ 7 ต.ค. 69) · contactName ด้านบนคงชื่อเดิม — FlowAccount ผูกสมุดผู้ติดต่อด้วยชื่อนั้น
-      person: politeName(o.customer) || undefined,
-      phone: o.phone || undefined,
-      email: o.email || undefined,
-    },
+    contact: contactOf(o),
     problems,
+  };
+}
+
+function lineOf(it: Order["items"][number]): FaLine {
+  return {
+    name: (it.name || "สินค้า").slice(0, 250),
+    description: itemDescription(it),
+    quantity: it.qty,
+    pricePerUnit: it.unitPrice,
+    total: r2(it.qty * it.unitPrice),
+  };
+}
+
+function contactOf(o: Order): QuotationDraft["contact"] {
+  const t = o.taxInvoice;
+  return {
+    name: (t?.company ?? o.customer ?? "").trim(),
+    taxId: t?.taxId?.replace(/\D/g, "") || undefined,
+    branch: t?.branch || undefined,
+    address: t?.address || o.address || undefined,
+    // 🙏 ช่อง "ผู้ติดต่อ" เติม "คุณ" (เจ้าของร้านขอ 7 ต.ค. 69) · contactName ด้านบนคงชื่อเดิม — FlowAccount ผูกสมุดผู้ติดต่อด้วยชื่อนั้น
+    person: politeName(o.customer) || undefined,
+    phone: o.phone || undefined,
+    email: o.email || undefined,
+  };
+}
+
+/* ── 📄➕ ใบเสนอราคา "เฉพาะรายการที่สั่งเพิ่ม" (บิลเพิ่ม · เจ้าของร้านสั่ง 16 ต.ค. 69 OD-261002-9030) ─────────────────
+ * ลูกค้าบิลบริษัทสั่งเพิ่มหลังออกใบเสร็จไปแล้ว — รายการเพิ่มอยู่ในออเดอร์ + เก็บเงินแล้ว แต่ยังไม่มีเอกสาร FlowAccount
+ * ปุ่มออก QT เดิมเอาทุกรายการ (ซ้ำบิลเดิม) → ใบนี้เอาเฉพาะรายการที่เลือก ราคาไม่รวม VAT + VAT 7% ท้ายบิล (+ หัก ณ ที่จ่ายเรตเดียวกับออเดอร์)
+ * สร้างแล้ว = บิลเพิ่มใน order.flowAccountExtras (items = จำนวนรายการ) + ติด extraDoc ให้รายการ — ไม่เปลี่ยนยอด/ไม่แจ้งลูกค้า
+ */
+export interface ExtraQuotationDraft extends QuotationDraft {
+  /** index รายการใน o.items ที่อยู่ในใบ */
+  items: number[];
+  /** ยอดที่ยังไม่มีบิล (orderTotal − บิลที่ออกแล้ว) · null = ไม่รู้ */
+  unbilled: number | null;
+  /** เตือนแต่ไม่ห้าม (ยอดไม่ตรงยอดที่ยังไม่มีบิล ฯลฯ) */
+  warnings: string[];
+}
+
+/** ลายนิ้วมือรายการ — หน้าจอส่งมาคู่กับ index กันออเดอร์ถูกแก้ระหว่างเลือก (ลบ/สลับแถว) แล้วออกใบผิดรายการ */
+export const itemPrint = (it: Order["items"][number]) => `${it.name}|${it.qty}|${it.unitPrice}`;
+
+export function extraQuotationDraft(o: Order, picks: { idx: number; print?: string }[]): ExtraQuotationDraft {
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  if (o.status === "ยกเลิก") problems.push("ออเดอร์ถูกยกเลิกแล้ว");
+  if (!orderHasFaBill(o)) problems.push("ออเดอร์นี้ยังไม่มีบิล FlowAccount — ใช้ปุ่ม “ออกใบเสนอราคาใน FlowAccount” ออกทั้งใบแทน");
+  else if (mainQuotationUpdatable(o)) problems.push(`${o.flowAccount!.docNo} ยังไม่ออกใบกำกับ/ใบเสร็จ — ใช้ “🔄 อัปเดตใบเสนอราคาใน FlowAccount” ใส่รายการเพิ่มในใบเดิมแทน`);
+  if (!o.taxInvoice?.company) problems.push("ยังไม่ได้ใส่ข้อมูลใบกำกับภาษี (ชื่อบริษัท/เลขผู้เสียภาษี/ที่อยู่)");
+  if (!(orderVatAmount(o) > 0)) problems.push("ออเดอร์นี้ไม่มี VAT 7% — บิลเพิ่มต้องมี VAT เหมือนบิลหลัก");
+  const idxs = [...new Set(picks.map((p) => p.idx))].sort((a, b) => a - b);
+  if (!idxs.length) problems.push("ยังไม่ได้เลือกรายการ");
+  for (const p of picks) {
+    const it = o.items[p.idx];
+    if (!it) problems.push(`ไม่พบรายการลำดับที่ ${p.idx + 1} — รีเฟรชหน้าแล้วเลือกใหม่`);
+    else if (p.print != null && p.print !== itemPrint(it)) problems.push(`รายการลำดับที่ ${p.idx + 1} ถูกแก้ระหว่างเลือก — รีเฟรชหน้าแล้วเลือกใหม่`);
+    else if (it.extraDoc) problems.push(`“${it.name}” อยู่ในบิลเพิ่ม ${it.extraDoc} แล้ว`);
+    else if (!(it.qty > 0) || !(it.unitPrice > 0)) problems.push(`“${it.name}” ไม่มีจำนวน/ราคา`);
+  }
+  const lines = idxs.map((i) => o.items[i]).filter(Boolean).map(lineOf);
+  const subTotal = r2(lines.reduce((s, l) => s + l.total, 0));
+  const vat = r2(subTotal * 0.07);
+  const grandTotal = r2(subTotal + vat);
+  const whtRate = (o.wht?.amount ?? 0) > 0 ? o.wht?.rate ?? 3 : 0;
+  const unbilled = unbilledAmount(o);
+  if (unbilled != null && Math.abs(unbilled - grandTotal) > 0.05)
+    warnings.push(
+      unbilled <= 0.05
+        ? `ยอดออเดอร์มีบิลครบแล้ว (ไม่มียอดที่ยังไม่ออกบิล) — ใบนี้ ${grandTotal} จะซ้ำกับบิลเดิมหรือเปล่า`
+        : `ยอดใบนี้ ${grandTotal} ไม่เท่ายอดที่ยังไม่มีบิล ${unbilled} — เลือกรายการครบไหม / มีส่วนลดหรือค่าส่งของรายการเพิ่มหรือเปล่า`
+    );
+  // ส่วนลดของออเดอร์ไม่ลงใบเพิ่ม — เตือนเฉพาะตอนยอดไม่ยืนยันกันเอง (ยอดตรงยอดที่ยังไม่มีบิล = ไม่ต้องเตือน)
+  if (orderDiscountTotal(o) > 0 && (unbilled == null || warnings.length)) warnings.push("ออเดอร์นี้มีส่วนลด — ใบเพิ่มไม่ใส่ส่วนลด ตรวจยอดกับที่ลูกค้าโอนอีกที");
+  return {
+    lines,
+    subTotal,
+    discount: 0,
+    afterDiscount: subTotal,
+    vat,
+    grandTotal,
+    ...(whtRate ? { wht: { rate: whtRate, amount: r2((subTotal * whtRate) / 100) } } : {}),
+    contact: contactOf(o),
+    problems,
+    items: idxs,
+    unbilled,
+    warnings,
   };
 }
 

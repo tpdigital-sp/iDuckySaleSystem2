@@ -11,6 +11,7 @@ import ThaiPostTimeline from "@/components/ThaiPostTimeline";
 import PrevNextNav from "@/components/admin/PrevNextNav";
 import FlowAccountSync from "@/components/admin/FlowAccountSync";
 import FlowAccountExtraDocs from "@/components/admin/FlowAccountExtraDocs";
+import FaExtraQuotation from "@/components/admin/FaExtraQuotation";
 import { itemHasWork, mergeDocItems } from "@/lib/doc-items-merge";
 import { CLAIM_STATUS_STYLES, type Claim } from "@/lib/claims";
 /** ลิงก์หน้ารายละเอียดออเดอร์ — ประกาศนอกคอมโพเนนต์ให้ reference คงที่ */
@@ -68,6 +69,8 @@ import {
   lastReprintProof,
   orderBankFee,
   extraDocItemsBill,
+  orderHasFaBill,
+  extraQuotationAllowed,
   flowAccountBillTotal,
   flowAccountGap,
   orderBilledTotal,
@@ -6041,7 +6044,10 @@ export default function AdminOrderDetailPage() {
                 </div>
               )}
               {/* 📄 ออกใบเสนอราคาใน FlowAccount จากออเดอร์นี้ — ต้องมีข้อมูลใบกำกับ + VAT 7% ก่อน (ร่างบอกว่าขาดอะไร) */}
-              {mayEdit && seesMoney && !order.flowAccount && order.status !== "ยกเลิก" && (
+              {/* 📄➕ ออกใบกำกับ/ใบเสร็จไปแล้ว (หรือ INV ที่ออกเองในแอป) → ออกเฉพาะรายการที่สั่งเพิ่ม (OD-261002-9030 · 16 ต.ค. 69)
+                  QT หลักยังไม่ออกใบเสร็จ = ใช้ 🔄 อัปเดตใบเสนอราคาเดิมแทน ปุ่มนี้ไม่ขึ้น */}
+              {mayEdit && seesMoney && order.status !== "ยกเลิก" && extraQuotationAllowed(order) && <FaExtraQuotation order={order} onApply={adoptOrder} />}
+              {mayEdit && seesMoney && !order.flowAccount && !orderHasFaBill(order) && order.status !== "ยกเลิก" && (
                 <button
                   type="button"
                   onClick={() => void createFaDoc("qt")}
