@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import type { DesignTemplate } from "@/lib/design-templates";
+import { revalidateTemplateProducts } from "@/lib/server/revalidate-products";
 
 export const runtime = "nodejs";
 
@@ -53,9 +54,10 @@ export async function POST(req: Request) {
     },
     { onConflict: "id" }
   );
-  return error
-    ? NextResponse.json({ error: error.message }, { status: 500 })
-    : NextResponse.json({ ok: true, savedAt: row.savedAt });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // ⏱️ หน้าสินค้าที่ผูกชุดนี้ฝังข้อมูลเทมเพลตไว้ในแคช 1 ชม. — ล้างให้เห็นไฟล์/พรีวิว/ขนาดใหม่ทันที (16 ต.ค. 69)
+  await revalidateTemplateProducts(sb, [row.id]);
+  return NextResponse.json({ ok: true, savedAt: row.savedAt });
 }
 
 /** ลบเทมเพลต + เก็บกวาดไฟล์ใน storage ไปด้วย (ไม่งั้นพื้นที่บวมโดยไม่มีใครใช้) */
@@ -84,7 +86,8 @@ export async function DELETE(req: Request) {
   if (paths.length) await sb.storage.from(BUCKET).remove(paths);
 
   const { error } = await sb.from("products").delete().eq("id", `__template_${id}`).eq("category", "__templates__");
-  return error
-    ? NextResponse.json({ error: error.message }, { status: 500 })
-    : NextResponse.json({ ok: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // ชุดหายแล้ว หน้าสินค้าที่เคยผูกยังถือลิงก์ไฟล์ที่เพิ่งลบในแคช — ล้างทิ้ง
+  await revalidateTemplateProducts(sb, [id]);
+  return NextResponse.json({ ok: true });
 }

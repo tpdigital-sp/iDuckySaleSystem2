@@ -16,6 +16,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { curvesBox, type DesignTemplate, type TemplateCurve, type TemplateFile } from "../src/lib/design-templates";
+import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const WRITE = process.argv.includes("--write");
 const arg = (k: string) => {
@@ -127,4 +128,5 @@ const { error } = await sb
   .eq("id", row!.id);
 if (error) die(`บันทึกชุดไม่สำเร็จ: ${error.message}`);
 console.log(`   ✅ เปลี่ยนไฟล์แล้ว → ${fileUrl.split("/").pop()} · พรีวิว ${previewUrl.split("/").pop()} · ไฟล์เก่าเก็บใน retiredPaths (${retired.length})`);
-console.log("   ℹ️ หน้าเว็บจริงแคชหน้าสินค้า 1 ชม. — อยากเห็นทันทีให้บันทึกสินค้าจากหลังบ้าน 1 ครั้ง หรือ deploy");
+// ⏱️ หน้าสินค้าที่ผูกชุดนี้ถือไฟล์เก่าในแคช 1 ชม. (เคยทำให้ .ai ที่โหลดจากเว็บจริงยังเป็นไฟล์เดิม) — ล้างทันที
+await revalidateLive(env, { templateIds: [SET] });

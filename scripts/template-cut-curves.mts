@@ -14,6 +14,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { curvesBox, type DesignTemplate, type TemplateCurve, type TemplateFile } from "../src/lib/design-templates";
+import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const WRITE = process.argv.includes("--write");
 const ci = process.argv.indexOf("--category");
@@ -46,6 +47,7 @@ if (!sets.length) {
 }
 
 let changed = 0;
+const written: string[] = [];
 for (const row of sets) {
   const t = row.data;
   const files: TemplateFile[] = [];
@@ -100,5 +102,8 @@ for (const row of sets) {
     process.exit(1);
   }
   console.log(`   ✅ บันทึกเส้นตัดลงชุด ${t.id}`);
+  written.push(t.id);
 }
 console.log(changed ? (WRITE ? `\nบันทึกแล้ว ${changed} ชุด` : `\n(dry-run — จะบันทึก ${changed} ชุด · ใส่ --write)`) : "\n✅ ทุกชุดมีเส้นตัดตรงแล้ว");
+// ⏱️ หน้าสินค้าที่ผูกชุดที่เพิ่งเขียน ถือข้อมูลเทมเพลตเก่าในแคช 1 ชม. — ล้างให้เห็นของใหม่ทันที
+if (written.length) await revalidateLive(env, { templateIds: written });

@@ -17,6 +17,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { DesignTemplate, TemplateFile } from "../src/lib/design-templates";
+import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const WRITE = process.argv.includes("--write");
 const env = Object.fromEntries(
@@ -60,6 +61,7 @@ async function upload(local: string, stem: string): Promise<string> {
   return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
+const written: string[] = [];
 for (const row of sets) {
   const t = row.data;
   const f: TemplateFile | undefined = (t.files ?? [])[0];
@@ -100,14 +102,22 @@ for (const row of sets) {
     continue;
   }
   const prevPath = pathOf(ff.previewUrl);
-  const old = (fresh.retiredPaths ?? []).filter((p) => p !== prevPath);
-  // เก็บพรีวิวรอบก่อนไว้ 1 รอบ · พรีวิวที่เลิกใช้ตั้งแต่ 2 รอบก่อนค่อยลบ · ไฟล์อื่น (เช่น .ai เก่าจาก template-file-replace) เก็บไว้ ห้ามลบ
-  const drop = old.filter((p) => p.startsWith("preview/"));
-  const keep = old.filter((p) => !p.startsWith("preview/"));
-  const next = { ...fresh, files: [{ ...ff, previewUrl }], retiredPaths: [...keep, ...(prevPath ? [prevPath] : [])], savedAt: new Date().toISOString() };
+  /**
+   * ⚠️ ไม่ลบพรีวิวเก่าแล้ว (16 ต.ค. 69): หน้าสินค้าบนเว็บจริงแคชลิงก์พรีวิวไว้ได้ถึง 1 ชม. + แท็บที่ลูกค้าเปิดค้าง
+   * เดิมลบ "2 รอบก่อน" — รันซ้ำ 2-3 รอบในชั่วโมงเดียว พรีวิวที่หน้าแคชอ้างถึงหายหมด (400) → จอออกแบบไม่มีไกด์
+   * ลูกค้าเห็นเป็น "ไม่มีเทมเพลต" (32/44/58mm) · ไฟล์ละ ~100 KB เก็บไว้ได้ · เก็บรายชื่อไว้ใน retiredPaths (ล่าสุด 30)
+   */
+  const next = {
+    ...fresh,
+    files: [{ ...ff, previewUrl }],
+    retiredPaths: [...(fresh.retiredPaths ?? []).filter((p) => p !== prevPath), ...(prevPath ? [prevPath] : [])].slice(-30),
+    savedAt: new Date().toISOString(),
+  };
   const { error } = await sb.from("products").update({ data: next }).eq("id", row.id);
   if (error) die(`บันทึกชุด ${t.id}: ${error.message}`);
-  if (drop.length) await sb.storage.from(BUCKET).remove(drop);
-  console.log(`   ✅ previewUrl ใหม่ → ${previewUrl.split("/").pop()}${drop.length ? ` · ลบพรีวิวเก่า ${drop.length} ไฟล์` : ""}${keep.length ? ` · เก็บไฟล์เก่า ${keep.length} ไฟล์` : ""}`);
+  written.push(t.id);
+  console.log(`   ✅ previewUrl ใหม่ → ${previewUrl.split("/").pop()} (พรีวิวเก่าเก็บไว้ ไม่ลบ)`);
 }
 if (!WRITE) console.log(`\n(dry-run — PNG อยู่ที่ ${OUT} · ใส่ --write เพื่ออัปและบันทึก)`);
+// ⏱️ หน้าสินค้าที่ผูกชุดเหล่านี้ถือลิงก์พรีวิวเก่าในแคช 1 ชม. — ล้างให้เห็นพรีวิวใหม่ทันที
+if (written.length) await revalidateLive(env, { templateIds: written });
