@@ -1,5 +1,6 @@
 import { cleanNeedsPurchaseItems, needsPurchaseItemText, orderAwaitingStock, orderTotal, type Order } from "@/lib/admin-data";
 import { SITE_URL } from "@/lib/shop-info";
+import type { AlertCard } from "./line-alert";
 
 /**
  * 🛒 "รอของเข้า / ต้องสั่งของ" (Order.needsPurchase) — ฝั่งเซิร์ฟเวอร์
@@ -77,14 +78,59 @@ export async function alertNeedsPurchase(o: Order): Promise<void> {
 }
 
 /**
- * 📦 ของเข้าร้านแล้ว → บอกลูกค้าทางไลน์ (ข่าวคืบหน้า = ระดับ extra เคารพสิ่งที่ลูกค้าเลือกรับ)
- * ใช้ร่วมกันทั้ง PATCH หน้าออเดอร์ และปุ่ม "ของเข้าแล้ว" ในหน้า /admin/stock-wait — ข้อความต้องเป็นชุดเดียว
+ * 📦 ของเข้าร้านแล้ว → การ์ดเข้ากลุ่มไลน์ร้าน (คู่กับ "🛒 ลูกค้าโอนแล้ว — ต้องสั่งของ" ที่ส่งไปก่อนหน้า)
+ * เจ้าของร้านขอ 16 ต.ค. 69: เดิมพนักงานต้องพิมพ์ลิงก์ออเดอร์ลงกลุ่ม "แจ้งแก้ไขออเดอร์" เองทุกครั้งที่ของมา
+ * → ส่งให้เองทุกทางที่ติ๊กของเข้า (หน้าออเดอร์ · /admin/stock-wait · TP ซิงก์) ผ่าน notifyStockArrived ที่เดียว
+ * ปลายทาง = "ห้องกราฟฟิก" (graphicTo ใน /admin/line-groups = กลุ่ม "แจ้งแก้ไขออเดอร์") ไม่ใช่กลุ่มแอดมิน — กราฟฟิกต้องเห็น
+ * ไม่ได้ตั้งห้องกราฟฟิก = ถอยไปห้องทั่วไป
+ */
+export async function alertStockArrived(o: Order): Promise<void> {
+  const card = stockArrivedCard(o);
+  if (!card) return;
+  const { pushShopAlert } = await import("./line-alert");
+  await pushShopAlert(card, { room: "graphic" });
+}
+
+/** รูปการ์ด (แยกไว้ให้ npm run check:stock-arrived ตรวจกติกา Flex จากออเดอร์จริงโดยไม่ส่ง) · null = ใบนี้ยังไม่ติ๊กของเข้า */
+export function stockArrivedCard(o: Order): AlertCard | null {
+  const np = o.needsPurchase;
+  if (!np?.arrivedAt) return null;
+  const mats = cleanNeedsPurchaseItems(np.items).map(needsPurchaseItemText);
+  const prods = o.items.map((i) => `${i.name} ×${i.qty.toLocaleString("th-TH")}`);
+  const byTP = /\(TP\)\s*$/.test(np.arrivedBy ?? "");
+  return {
+    tone: "#059669",
+    title: "📦 ของเข้าแล้ว — ส่งเข้าผลิตได้",
+    headline: byTP
+      ? "ระบบสั่งของ TP แจ้งว่าของเข้าแล้ว · กราฟฟิกเปิดใบแล้วติ๊ก 🏭 ส่งเข้าผลิตได้เลย"
+      : "ของสำหรับใบนี้ถึงร้านแล้ว · กราฟฟิกเปิดใบแล้วติ๊ก 🏭 ส่งเข้าผลิตได้เลย",
+    heroLabel: "เลขออเดอร์",
+    hero: o.id,
+    rows: [
+      { label: "ลูกค้า", value: o.customer || "ยังไม่ระบุชื่อ" },
+      { label: "สถานะ", value: o.status, bold: true },
+      ...(o.useByDate ? [{ label: "วันใช้งาน", value: o.useByDate, bold: true }] : []),
+      { label: "คนรับของ", value: np.arrivedBy || "-" },
+      ...(mats.length ? [{ label: "สำหรับสินค้า", value: prods.join(", ").slice(0, 200) }] : []),
+    ],
+    bullets: mats.length ? mats : prods,
+    ...(np.note ? { note: `หมายเหตุ: ${np.note}` } : {}),
+    button: { label: "เปิดออเดอร์", uri: `${SITE_URL}/admin/orders/${encodeURIComponent(o.id)}` },
+    alt: `📦 ${o.id} ของเข้าแล้ว ส่งเข้าผลิตได้${mats.length ? ` — ${mats.join(", ")}` : ""}\n${SITE_URL}/admin/orders/${encodeURIComponent(o.id)}`,
+  };
+}
+
+/**
+ * 📦 ของเข้าร้านแล้ว → บอกลูกค้าทางไลน์ (ข่าวคืบหน้า = ระดับ extra เคารพสิ่งที่ลูกค้าเลือกรับ) + การ์ดเข้ากลุ่มไลน์ร้าน (alertStockArrived)
+ * ใช้ร่วมกันทั้ง PATCH หน้าออเดอร์ · ปุ่ม "ของเข้าแล้ว" ในหน้า /admin/stock-wait · TP ซิงก์ (tp-order-arrived.ts) — ข้อความต้องเป็นชุดเดียว
  * notify.ts เป็น server-only → โหลดตอนจะส่งจริง (เหตุผลเดียวกับ alertNeedsPurchase)
+ * ทั้งสองตัวส่งไม่ throw — การ์ดกลุ่มล้ม (โควตาหมด) ไม่ทำให้ข้อความลูกค้าหาย และกลับกัน
  */
 export async function notifyStockArrived(sb: unknown, o: Order, origin: string): Promise<void> {
   if (o.status === "ยกเลิก") return;
   const { notifyCustomerLogged, orderLink, orderNotice } = await import("./notify");
   const link = orderLink(origin, o);
+  const group = alertStockArrived(o).catch((e) => console.error("[alertStockArrived]", o.id, (e as Error)?.message));
   await notifyCustomerLogged(
     sb as Parameters<typeof notifyCustomerLogged>[0],
     o,
@@ -98,4 +144,5 @@ export async function notifyStockArrived(sb: unknown, o: Order, origin: string):
     "แจ้งลูกค้า: ของเข้าร้านแล้ว",
     "extra"
   );
+  await group;
 }

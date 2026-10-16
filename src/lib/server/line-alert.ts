@@ -30,6 +30,11 @@ export interface LineAlertDoc {
   /** ห้องปลายทางเรื่องเงิน — เคลม · ยอดค้างงวด 2 (ไม่ตั้ง = ใช้ to) */
   adminTo?: string;
   /**
+   * 🎨 ห้องกราฟฟิก — "ของเข้าแล้ว ส่งเข้าผลิตได้" (ไม่ตั้ง = ใช้ to)
+   * เจ้าของร้านสั่ง 16 ต.ค. 69: การ์ดของเข้าต้องเข้ากลุ่ม "แจ้งแก้ไขออเดอร์" ที่กราฟฟิกอยู่ ไม่ใช่กลุ่มแอดมิน
+   */
+  graphicTo?: string;
+  /**
    * 🛟 ปลายทางสำรองของ "บัญชีร้าน" — ใช้เมื่อบัญชีแจ้งเตือนส่งไม่ออก (โควตาหมด/ถูกเอาออกจากกลุ่ม)
    * ⚠️ ต้องเป็นเลขห้องที่ "บัญชีร้าน" ได้ยินเอง ใช้เลขของบัญชีแจ้งเตือนไม่ได้ (เลขผูกกับบัญชี)
    *    ไม่ตั้ง = ถอยไปใช้ LINE_STOCK_ALERT_TO / LINE_ADMIN_ALERT_TO ใน env ตามเดิม
@@ -65,6 +70,7 @@ export interface LineAlertStatus {
   hasToken: boolean;
   to: string;
   adminTo: string;
+  graphicTo: string;
   /** ปลายทางสำรองที่ตั้งเอง (ว่าง = ใช้ค่าใน env ถ้ามี) */
   shopTo: string;
   /** มีทางสำรองให้ถอยไปจริงไหม (บัญชีร้าน + ปลายทางของบัญชีร้าน) */
@@ -149,6 +155,7 @@ export function statusOf(doc: LineAlertDoc): LineAlertStatus {
     hasToken,
     to,
     adminTo: doc.adminTo ?? "",
+    graphicTo: doc.graphicTo ?? "",
     shopTo: doc.shopTo ?? "",
     hasFallback: !!process.env.LINE_MESSAGING_ACCESS_TOKEN && !!(doc.shopTo || process.env.LINE_STOCK_ALERT_TO || process.env.LINE_ADMIN_ALERT_TO),
     outAt: doc.outAt,
@@ -431,6 +438,9 @@ export async function clearAlertMisses(): Promise<void> {
   await saveLineAlert({ misses: [] });
 }
 
+/** ห้องปลายทางตามเรื่อง — general = กลุ่มทั่วไป (to) · money = เรื่องเงิน (adminTo) · graphic = กราฟฟิก (graphicTo) */
+export type AlertRoom = "general" | "money" | "graphic";
+
 export interface Attempt {
   via: "alert" | "shop";
   token: string;
@@ -443,10 +453,13 @@ export interface Attempt {
  *    (doc.shopTo ที่ตั้งในหน้าแอดมิน หรือ LINE_STOCK_ALERT_TO / LINE_ADMIN_ALERT_TO เดิมใน env)
  * export ไว้ให้ npm run check:alert เรียกตรวจลำดับได้ โดยไม่ต้องยิงข้อความจริง
  */
-export function planOf(doc: LineAlertDoc, money: boolean): Attempt[] {
+export function planOf(doc: LineAlertDoc, room: AlertRoom | boolean = "general"): Attempt[] {
+  const r: AlertRoom = typeof room === "boolean" ? (room ? "money" : "general") : room;
+  const money = r === "money";
   const out: Attempt[] = [];
   const tok = openToken(doc.enc);
-  const mine = money ? doc.adminTo || doc.to : doc.to;
+  // ห้องเฉพาะเรื่องไม่ได้ตั้ง = ถอยไปห้องทั่วไป
+  const mine = r === "money" ? doc.adminTo || doc.to : r === "graphic" ? doc.graphicTo || doc.to : doc.to;
   // เพิ่งเจอโควตาหมดไม่ถึง 6 ชม. = ข้ามไปเลย ไม่ต้องเสียเวลารอ LINE ตีกลับทุกใบ
   // (ไม่ข้ามยาวถึงสิ้นเดือน เผื่อร้านอัปเกรดแพ็กเกจระหว่างเดือนแล้วต้องกลับมาใช้ได้เอง)
   const resting = doc.outAt ? Date.now() - Date.parse(doc.outAt) < 6 * 3_600_000 : false;
@@ -501,10 +514,10 @@ async function sendOne(a: Attempt, messages: unknown[]): Promise<AlertResult> {
  */
 export async function pushShopAlert(
   msg: string | AlertCard,
-  opts?: { money?: boolean },
+  opts?: { money?: boolean; room?: AlertRoom },
 ): Promise<AlertResult> {
   const doc = await loadLineAlert();
-  const plan = planOf(doc, !!opts?.money);
+  const plan = planOf(doc, opts?.room ?? (opts?.money ? "money" : "general"));
   const title = typeof msg === "string" ? msg.slice(0, 60) : msg.title;
   if (!plan.length) {
     const reason = "ยังไม่ได้ตั้งบัญชีหรือปลายทางสำหรับแจ้งเตือน";

@@ -55,7 +55,7 @@ function LineGroupsInner() {
         (v) =>
           v ?? {
             sources: [],
-            alert: { hasToken: false, to: "", adminTo: "", shopTo: "", hasFallback: false, misses: [], ready: false },
+            alert: { hasToken: false, to: "", adminTo: "", graphicTo: "", shopTo: "", hasFallback: false, misses: [], ready: false },
             accounts: [],
             envTo: "",
             quota: null,
@@ -308,22 +308,31 @@ function LineGroupsInner() {
       <div className="mt-3 rounded-xl border border-slate-200/70 bg-white p-4">
         <p className="text-[13px] font-bold text-slate-700">3 · ห้องปลายทาง</p>
         <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">
-          ตั้งได้ 2 กลุ่ม แยกตามเรื่อง · ไม่ตั้งกลุ่มเรื่องเงิน = เรื่องเงินไปเข้ากลุ่มทั่วไปด้วย
+          ตั้งได้ 3 กลุ่ม แยกตามเรื่อง · ไม่ตั้งกลุ่มเรื่องเงิน/กราฟฟิก = เรื่องนั้นไปเข้ากลุ่มทั่วไปแทน
         </p>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
           {([
             {
-              money: false,
+              room: "general",
+              key: "to",
               title: "กลุ่มทั่วไป",
-              what: "ออเดอร์สั่งจำนวนมาก · ของใกล้หมด · ใบสมัครตัวแทน",
+              what: "ออเดอร์สั่งจำนวนมาก · ของใกล้หมด · ใบสมัครตัวแทน · โอนแล้วต้องสั่งของ",
               value: alert.to,
             },
             {
-              money: true,
+              room: "money",
+              key: "adminTo",
               title: "กลุ่มเรื่องเงิน",
               what: "เคลม · ยอดค้างเก็บงวด 2",
               value: alert.adminTo,
+            },
+            {
+              room: "graphic",
+              key: "graphicTo",
+              title: "กลุ่มกราฟฟิก",
+              what: "📦 ของเข้าแล้ว — ส่งเข้าผลิตได้ (กลุ่มแจ้งแก้ไขออเดอร์)",
+              value: alert.graphicTo,
             },
           ] as const).map((slot) => (
             <div key={slot.title} className="rounded-lg border border-slate-200/70 bg-slate-50/60 p-3">
@@ -333,14 +342,14 @@ function LineGroupsInner() {
                 <p className="mt-1.5 break-all font-mono text-[11.5px] text-slate-700">{slot.value}</p>
               ) : (
                 <p className="mt-1.5 text-[12px] text-slate-400">
-                  {slot.money ? "ยังไม่ตั้ง — ใช้กลุ่มทั่วไป" : "ยังไม่ได้เลือก"}
+                  {slot.room !== "general" ? "ยังไม่ตั้ง — ใช้กลุ่มทั่วไป" : "ยังไม่ได้เลือก"}
                 </p>
               )}
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Btn
                   small
                   disabled={!!busy}
-                  onClick={() => void post({ action: "test", money: slot.money }, `test-${slot.title}`)}
+                  onClick={() => void post({ action: "test", room: slot.room }, `test-${slot.title}`)}
                   title="ยิงข้อความทดสอบเข้าห้องนี้"
                 >
                   {busy === `test-${slot.title}` ? "กำลังส่ง…" : "🔔 ทดสอบ"}
@@ -349,9 +358,7 @@ function LineGroupsInner() {
                   <Btn
                     small
                     disabled={!!busy}
-                    onClick={() =>
-                      void post(slot.money ? { action: "save", adminTo: "" } : { action: "save", to: "" }, `clear-${slot.title}`)
-                    }
+                    onClick={() => void post({ action: "save", [slot.key]: "" }, `clear-${slot.title}`)}
                   >
                     ล้าง
                   </Btn>
@@ -423,7 +430,8 @@ function LineGroupsInner() {
             const usable = !r.dest || !sender || r.dest === sender.userId;
             const asMain = alert.to === r.id;
             const asMoney = alert.adminTo === r.id;
-            const picked = asMain || asMoney;
+            const asGraphic = alert.graphicTo === r.id;
+            const picked = asMain || asMoney || asGraphic;
             return (
               <Row key={r.id} tone={picked ? "var(--dk-mint)" : r.type === "group" ? "var(--dk-sky-300)" : "var(--dk-quiet)"} done={!usable}>
                 <RowMain
@@ -433,6 +441,7 @@ function LineGroupsInner() {
                       <Tag tone={r.type === "group" ? "mint" : "quiet"}>{TYPE_LABEL[r.type]}</Tag>
                       {asMain && <Tag tone="solid">กลุ่มทั่วไป</Tag>}
                       {asMoney && <Tag tone="solid">กลุ่มเรื่องเงิน</Tag>}
+                      {asGraphic && <Tag tone="solid">กลุ่มกราฟฟิก</Tag>}
                       {heard && <Tag tone="quiet">{heard.kind === "alert" ? "บัญชีแจ้งเตือนได้ยิน" : "บัญชีร้านได้ยิน"}</Tag>}
                       {!usable && <Tag tone="quiet">คนละบัญชีกับที่ใช้ส่ง</Tag>}
                       {!r.verified && <Tag tone="quiet">ยังไม่ยืนยันลายเซ็น</Tag>}
@@ -466,6 +475,16 @@ function LineGroupsInner() {
                       title="เคลม · ยอดค้างเก็บงวด 2"
                     >
                       {busy === `pickm-${r.id}` ? "กำลังตั้ง…" : "ตั้งเป็นกลุ่มเรื่องเงิน"}
+                    </Btn>
+                  )}
+                  {alert.graphicTo !== r.id && (
+                    <Btn
+                      small
+                      disabled={!!busy}
+                      onClick={() => void post({ action: "save", graphicTo: r.id }, `pickg-${r.id}`)}
+                      title="📦 ของเข้าแล้ว — ส่งเข้าผลิตได้ (กราฟฟิกต้องเห็น)"
+                    >
+                      {busy === `pickg-${r.id}` ? "กำลังตั้ง…" : "ตั้งเป็นกลุ่มกราฟฟิก"}
                     </Btn>
                   )}
                 </RowSide>

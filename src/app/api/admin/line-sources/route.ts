@@ -11,8 +11,7 @@ import {
   sealToken,
   statusOf,
   type AlertQuota,
-  type LineAlertStatus,
-} from "@/lib/server/line-alert";
+  type LineAlertStatus, type AlertRoom } from "@/lib/server/line-alert";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,15 +97,20 @@ export async function POST(req: Request) {
     token?: string;
     to?: string;
     adminTo?: string;
+    /** ห้องกราฟฟิก (ของเข้าแล้ว ส่งเข้าผลิตได้) */
+    graphicTo?: string;
     /** ปลายทางสำรองของบัญชีร้าน (ใช้ตอนบัญชีแจ้งเตือนส่งไม่ออก) */
     shopTo?: string;
-    /** ทดสอบ/ตั้งค่าฝั่งกลุ่มเรื่องเงิน (เคลม · ยอดค้างงวด 2) */
+    /** ทดสอบ/ตั้งค่าฝั่งกลุ่มเรื่องเงิน (เคลม · ยอดค้างงวด 2) — แบบเก่า ใช้ room แทนได้ */
     money?: boolean;
+    /** ห้องที่จะยิงทดสอบ */
+    room?: AlertRoom;
   };
 
   if (body.action === "test") {
     const who = gate.actor?.name || gate.actor?.username || "แอดมิน";
-    const which = body.money ? "กลุ่มเรื่องเงิน" : "กลุ่มทั่วไป";
+    const room: AlertRoom = body.room ?? (body.money ? "money" : "general");
+    const which = room === "money" ? "กลุ่มเรื่องเงิน" : room === "graphic" ? "กลุ่มกราฟฟิก" : "กลุ่มทั่วไป";
     const r = await pushShopAlert(
       {
         tone: "#0F766E",
@@ -118,7 +122,7 @@ export async function POST(req: Request) {
         button: { label: "เปิดหน้าตั้งค่า", uri: "https://iduckystore.com/admin/line-groups" },
         alt: `🔔 ทดสอบการแจ้งเตือน (${which})`,
       },
-      { money: !!body.money },
+      { room },
     );
     return NextResponse.json(r, { status: r.ok ? 200 : 400 });
   }
@@ -137,6 +141,7 @@ export async function POST(req: Request) {
   };
   if (typeof body.to === "string") patch.to = body.to.trim();
   if (typeof body.adminTo === "string") patch.adminTo = body.adminTo.trim();
+  if (typeof body.graphicTo === "string") patch.graphicTo = body.graphicTo.trim();
   if (typeof body.shopTo === "string") patch.shopTo = body.shopTo.trim();
 
   /** บอกหน้าจอว่าเพิ่งทำอะไรสำเร็จ — เดิมขึ้นแค่ "บันทึกแล้ว" แยกไม่ออกว่า token เข้าหรือเปล่า */
