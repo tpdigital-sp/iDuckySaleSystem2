@@ -667,8 +667,10 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
    *   หน้าที่ 2 ไป placed[i].calBackFiles → ลายด้านหลัง (ART_BACK_LABEL · นับค่าคละด้านหลังตาม Product.backDesign เหมือนแนบไฟล์เอง)
    */
   if (/^print2?@/.test(key)) {
-    const m = /^print(2)?@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(key);
+    // "-c<N>" ต่อท้าย = 1 หน่วยสั่งได้ N ใบ (โปสการ์ด 4×6 = 8 ใบ/แผ่น A3) → ถามลายเดียว/คละลาย + แถบรูปย่อรายใบ (16 ต.ค. 69)
+    const m = /^print(2)?@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:-c(\d+))?$/.exec(key);
     const two = !!m?.[1];
+    const pieces = m?.[4] ? Math.min(20, Math.max(1, Number(m[4]))) : 1;
     const w = m ? Number(m[2]) : 101.6;
     const h = m ? Number(m[3]) : 152.4;
     const b = opts.bleed != null && opts.bleed >= 0 ? opts.bleed : 2;
@@ -682,6 +684,7 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
       safe: 4,
       dpi: 300,
       ...(two ? { perCard: 2, note: "ใบละ 2 หน้า — หน้า 1 = ด้านหน้า · หน้า 2 = ด้านหลัง" } : {}),
+      ...(pieces > 1 ? { cards: pieces, perCard: two ? 2 : 1, cardWord: "ใบ" } : {}),
       pages: two
         ? [
             { key: "front", name: "ด้านหน้า", kind: "photo", photo: fr.full },
@@ -1766,6 +1769,20 @@ function placeholder(ctx: CanvasRenderingContext2D, k: number, x: number, y: num
  * ⚠️ เดิมนับเฉพาะรูปที่วางอยู่ในใบ → รูปที่ถูกเปลี่ยนออก/ยังไม่ได้วาง หลุดจากการนับ ป้าย "คละ 4 ลาย" แต่คลังมี 6 รูป
  * ไม่เกินจำนวนใบที่แยกแบบ · ยังไม่มีรูป = 1 · photos ไม่ส่งมา (แบบเก่า) = นับรูปที่ใช้จริงแทน
  */
+/**
+ * 🖨 จำนวนลายของด้านเดียว (ชุดหลายใบพิมพ์ 2 ด้าน) — นับรูปที่ใช้บนหน้าด้านนั้นของทุกใบ ("front" / "c2:front" …)
+ * ไม่เกินจำนวนใบที่แยกออกแบบ + 1 (ลายเดียว = 1 เสมอ) · ไม่มีรูปเลย = 1 (หน้าว่าง/ข้อความล้วนยังเป็น 1 ลาย)
+ */
+export function calSideDesignCount(d: CalDesign | undefined, side: string): number {
+  if (!d) return 1;
+  const on = (k: string) => k.replace(/^c\d+:/, "") === side;
+  const used = new Set<number>();
+  for (const [k, o] of Object.entries(d.photos)) if (on(k) && o.src >= 0) used.add(o.src);
+  for (const e of d.elements ?? []) if (e.kind === "photo" && e.src != null && e.src >= 0 && e.page && on(e.page)) used.add(e.src);
+  const cap = d.mix || d.custom?.length ? (d.custom?.length ?? 0) + 1 : 1;
+  return Math.max(1, Math.min(used.size || 1, cap));
+}
+
 export function calDesignCount(d: CalDesign | undefined, photos?: number, format?: string): number {
   if (!d) return 1;
   /**
@@ -1776,6 +1793,8 @@ export function calDesignCount(d: CalDesign | undefined, photos?: number, format
     const f = calFormat(format);
     // 🖨 ใบเดียวหน้า/หลัง (print2@ โปสการ์ดพิมพ์ 2 ด้าน · หน้าทั้งหมดอยู่ในใบเดียว) = 1 ลาย — ด้านหลังคิดค่าคละแยกตาม backDesign ของสินค้า (15 ต.ค. 69)
     if ((f.cards ?? 1) <= 1 && f.pages.length <= (f.perCard ?? 1)) return 1;
+    // 🖨 ชุดหลายใบพิมพ์ 2 ด้าน (โปสการ์ด print2@…-c8) = นับเฉพาะลายด้านหน้า · ด้านหลังนับแยก (calSideDesignCount "back") คิดตาม backDesign
+    if ((f.cards ?? 1) > 1 && f.perCard === 2 && f.pages.some((p) => p.key === "back" && p.kind === "photo")) return calSideDesignCount(d, "front");
     if ((f.cards ?? 1) <= 1 && f.pages.filter((p) => p.photo).length > 1) {
       const used = new Set<number>();
       for (const o of Object.values(d.photos)) if (o.src >= 0) used.add(o.src);

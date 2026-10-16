@@ -5999,7 +5999,7 @@ export default function CalendarStudio({
               )}
               <h3 className="text-lg font-extrabold text-stone-800">รูปแบบการพิมพ์</h3>
               <p className="mt-0.5 text-xs text-stone-500">
-                {fmt.name} · {setWord}ละ {copies} {cw} — เปลี่ยนทีหลังได้ที่แถบรูปย่อด้านล่าง
+                {fmt.name} · 1 {setWord} = {copies} {cw} — เปลี่ยนทีหลังได้ที่แถบรูปย่อด้านล่าง
               </p>
               {mixFee && (
                 <p className="mt-1 text-[11px] text-stone-400">

@@ -169,7 +169,7 @@ import {
   type DesignTemplate,
 } from "@/lib/design-templates";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
-import { calDesignCount, calFormat, calHasGrid, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
+import { calDesignCount, calFormat, calHasGrid, calSideDesignCount, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import {
   fetchCalDesign,
@@ -1385,9 +1385,11 @@ export default function ProductDetail({
    * ใช้กับงานออกแบบตามเทมเพลต (tpl@) และไดคัทตามทรง (sleeve@) · เฉพาะสินค้าที่มีระบบจำนวนลาย
    * เกิน 20 ชิ้น (สติกเกอร์แผ่นละหลายสิบดวง) ไม่แตกเป็นรายชิ้น — แถบรูปย่อยาวเกินใช้งาน
    */
+  // จำนวนชิ้นต่อหน่วยตามระบบ: เพดานจากขนาด (capDesigns) ก่อน · ไม่มีก็ใช้ "1 หน่วยได้กี่ชิ้น" ของตัวเลือก (โปสการ์ด 4×6 = 8 ใบ/แผ่น A3)
+  const piecesPerSet = unitCap ?? (unitYield && unitYield.unit == null && unitYield.per > 0 ? unitYield.per : undefined);
   const calFormatKey0 =
-    /^(tpl|sleeve)@[\d.]+x[\d.]+$/.test(calFormatBase) && needDesignsChoice && unitCap && unitCap > 1 && unitCap <= 20
-      ? `${calFormatBase}-c${unitCap}`
+    /^(tpl|sleeve|print2?)@[\d.]+x[\d.]+$/.test(calFormatBase) && needDesignsChoice && piecesPerSet && piecesPerSet > 1 && piecesPerSet <= 20
+      ? `${calFormatBase}-c${piecesPerSet}`
       : calFormatBase;
   /** 🎨 จอสร้างแบบไม่มีปฏิทิน (แผ่นรองเมาส์ · format pad@…) — ข้อความ/ปุ่มพูดว่า "ออกแบบ" ไม่ใช่ "ปฏิทิน" */
   const calNoGrid = calMode && !calHasGrid(calFormat(calFormatKey0));
@@ -1428,9 +1430,27 @@ export default function ProductDetail({
     artBackCountRef.current = n;
     // ลบออกหมด = ไม่ยุ่ง ปล่อยเลขที่ระบุไว้ (เหมือนด้านหน้า) · หลังซิงก์แล้วลูกค้ายังกด +/− ปรับต่อได้
     if (!changed || n < 1 || maxDesigns < 1) return;
+    // ออกแบบบนเว็บ = จำนวนลายด้านหลังมาจากแบบ (effect ถัดไป) — หน้าที่ 2+ ของชุดหลายใบไม่ใช่ด้านหลังทั้งหมด
+    if (calMode && placed.some((p) => p.calState)) return;
     setBackDesignsDraft(null);
     setBackDesigns(Math.min(Math.max(1, n), maxDesigns));
-  }, [artBackFiles.length, maxDesigns]);
+  }, [artBackFiles.length, maxDesigns]); // eslint-disable-line react-hooks/exhaustive-deps
+  /**
+   * 🖨 ลายด้านหลังจากจอออกแบบ (งานพิมพ์ 2 ด้าน · ผู้ใช้สั่ง 16 ต.ค. 69 ให้โปสการ์ดเลือกลายเดียว/คละลายได้)
+   * ชุดหลายใบ (print2@…-c8) = นับรูปที่ใช้บนด้านหลังของทุกใบ · ใบเดียว = จำนวนหน้าหลัง (เท่าเดิม)
+   */
+  useEffect(() => {
+    if (!backOn || !calMode || maxDesigns < 1) return;
+    const ps = placed.filter((p) => p.calState);
+    if (!ps.length) return;
+    const n = ps.reduce((s, p) => {
+      const f = calFormat(p.calState!.format);
+      const multi = (f.cards ?? 1) > 1 && f.perCard === 2;
+      return s + (multi ? calSideDesignCount(p.calState!.design, "back") : Math.max(1, p.calBackFiles?.length ?? 0));
+    }, 0);
+    setBackDesignsDraft(null);
+    setBackDesigns(Math.min(Math.max(1, n), maxDesigns));
+  }, [placed, backOn, calMode, maxDesigns]);
   // สลับกลับไปพิมพ์ 1 ด้าน = รูปด้านหลังไม่มีที่ไป — ทิ้งพร้อมคืน blob (ไม่ให้ติดไปกับตะกร้าเงียบ ๆ)
   useEffect(() => {
     if (backOn || calMode) return;
