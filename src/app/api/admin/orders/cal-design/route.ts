@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   const next = withLog(
     { ...o, items },
     by,
-    first ? "🗓 ออกแบบบนเว็บให้ลูกค้า (จอสร้างปฏิทิน)" : "✏️ แก้แบบปฏิทิน (จอสร้างปฏิทิน)",
+    first ? "🎨 ออกแบบบนเว็บให้ลูกค้า (จอออกแบบ)" : "✏️ แก้แบบที่ออกแบบบนเว็บ (จอออกแบบ)",
     `รายการที่ ${index + 1} ${it.name} · ไฟล์ ${it.artworkUrls?.length ?? 0} → ${urls.length} ไฟล์ (ยอดเงินไม่เปลี่ยน)` +
       (first && gone.length ? ` · ไฟล์แนบเดิมของลูกค้า: ${gone.join(" | ")}` : ""),
   );

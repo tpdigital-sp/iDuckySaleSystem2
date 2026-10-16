@@ -477,7 +477,7 @@ function CalPagesFold({
       )}
     <details className="rounded-lg bg-slate-50 px-2.5 py-1.5 ring-1 ring-slate-200">
       <summary className="cursor-pointer text-[11px] font-bold text-slate-500">
-        🗓 ปฏิทินที่ลูกค้าออกแบบบนเว็บ — ไฟล์ทีละหน้า {n} หน้า (ซ่อนไว้ · กดเพื่อดู)
+        🎨 แบบที่ลูกค้าออกแบบบนเว็บ — ไฟล์ทีละหน้า {n} หน้า (ซ่อนไว้ · กดเพื่อดู)
       </summary>
       <div className="mt-1.5">{children}</div>
     </details>
@@ -7261,9 +7261,9 @@ export default function AdminOrderDetailPage() {
                                   type="button"
                                   onClick={() => openCalDesign(i)}
                                   className="rounded-full bg-sky-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-sky-700"
-                                  title="เปิดหน้าสินค้า + จอสร้างปฏิทิน พร้อมแบบที่ลูกค้าทำไว้ (รูป · เลย์เอาต์ · ข้อความ)"
+                                  title="เปิดหน้าสินค้า + จอออกแบบ พร้อมแบบที่ลูกค้าทำไว้ (รูป · เลย์เอาต์ · ข้อความ)"
                                 >
-                                  ✏️ เปิดแบบนี้ในจอสร้างปฏิทิน
+                                  ✏️ เปิดแบบนี้ในจอออกแบบ
                                 </button>
                                 <span className="text-[10.5px] font-semibold leading-snug text-sky-900">
                                   แก้ในจอแล้วกด 💾 บันทึกกลับเข้า {order.id} — เปลี่ยนเฉพาะไฟล์แบบ ยอดเงินไม่เปลี่ยน
@@ -7291,19 +7291,19 @@ export default function AdminOrderDetailPage() {
                                           "💾 กดบันทึกแล้ว ไฟล์แบบทั้งชุดแทนไฟล์แนบเดิม · ยอดเงินไม่เปลี่ยน\n" +
                                           "🛟 รูปเดิมไม่หาย — เก็บไว้ในสเปค \"ต้นฉบับ\" และประวัติออเดอร์\n" +
                                           "✕ ปิดจอโดยไม่บันทึก = ออเดอร์เหมือนเดิม",
-                                        confirmLabel: "🗓 เปิดจอสร้างปฏิทิน",
+                                        confirmLabel: "🎨 เปิดจอออกแบบ",
                                       }))
                                     )
                                       return;
                                     openCalDesign(i);
                                   }}
                                   className="rounded-full bg-violet-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-violet-700"
-                                  title="เปิดจอสร้างปฏิทินบนเว็บสำหรับรายการนี้ — รูปที่ลูกค้าแนบขึ้นในคลังรูปให้ลากใช้"
+                                  title="เปิดจอออกแบบบนเว็บสำหรับรายการนี้ — รูปที่ลูกค้าแนบขึ้นในคลังรูปให้ลากใช้"
                                 >
                                   🗓 ออกแบบบนเว็บให้ลูกค้า
                                 </button>
                                 <span className="text-[10.5px] font-semibold leading-snug text-violet-900">
-                                  ใช้รูปที่ลูกค้าแนบ จัดหน้าในจอสร้างปฏิทิน แล้วกด 💾 บันทึกกลับเข้า {order.id} — ยอดเงินไม่เปลี่ยน
+                                  ใช้รูปที่ลูกค้าแนบ จัดหน้าในจอออกแบบ แล้วกด 💾 บันทึกกลับเข้า {order.id} — ยอดเงินไม่เปลี่ยน
                                 </span>
                               </div>
                             )}
