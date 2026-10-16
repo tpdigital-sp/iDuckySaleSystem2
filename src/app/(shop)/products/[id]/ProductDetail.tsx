@@ -1258,6 +1258,11 @@ export default function ProductDetail({
       ? placed.reduce((s, p) => s + (p.calState ? calDesignCount(p.calState.design, p.calState.sources.length, p.calState.format) : 1), 0)
       : 0;
   const autoDesignCount = calDesigns || artFiles.length;
+  /**
+   * 🔒 มีแบบที่ออกแบบบนเว็บแล้ว = จำนวนลายมาจากรายการแบบ (calDesigns) เท่านั้น — ช่อง "คละกี่ลาย" ล็อกเป็นตัวเลขอ่านอย่างเดียว
+   * (เจ้าของร้านเลือก 16 ต.ค. 69: เพิ่ม/ลบลายที่รายการ "✓ แบบพร้อมผลิต" จุดเดียว — กด +/− เองได้เลขไม่ตรงแบบที่มีจริง)
+   */
+  const designsLocked = calDesigns > 0;
   /** จำนวนรูปลายรอบก่อน — ใช้จับว่า "จำนวนรูปเพิ่งเปลี่ยน" (แนบเพิ่ม/ลบออก) ไม่ใช่แค่ re-render */
   const artCountRef = useRef(autoDesignCount);
   /**
@@ -1274,13 +1279,18 @@ export default function ProductDetail({
     const artChanged = n !== artCountRef.current;
     artCountRef.current = n;
     // ระบุเองแล้วและจำนวนรูปไม่ได้ขยับ = เคารพเลขที่ลูกค้ากดไว้ (แค่ re-render จากตัวเลือก/จำนวน)
-    if (designsTouched && (!artChanged || n < 1)) return;
+    // 🔒 ยกเว้นตอนล็อกตามแบบจากจอ — ต้องเท่าจำนวนลายของแบบเสมอ (เลขที่เคยกดไว้ก่อนออกแบบไม่ค้าง)
+    if (!designsLocked && designsTouched && (!artChanged || n < 1)) return;
     setDesigns((d) => {
       const next = Math.min(Math.max(1, n), maxDesigns);
       if (next !== d) setDesignsDraft(null); // ค่าเปลี่ยนเพราะนับรูป — ล้างข้อความค้างในช่องให้โชว์ค่าจริง
       return next;
     });
-  }, [autoDesignCount, maxDesigns, designsTouched]);
+  }, [autoDesignCount, maxDesigns, designsTouched, designsLocked]);
+  // 🔒 ล็อกตามแบบจากจอ = เลิกใช้เพดานแนบรูปที่เคยระบุเอง (ไม่งั้นเพิ่มลายในจอแล้วติดเพดานเก่า)
+  useEffect(() => {
+    if (designsLocked) setDesignsCap(null);
+  }, [designsLocked]);
   /**
    * 🔄 คละลาย "ด้านหลัง" — งานพิมพ์ 2 ด้านที่สินค้าตั้ง backDesign ไว้ (งานกระดาษ)
    * ใช้กติกาชุดเดียวกับด้านหน้า (เพดาน/ค่าคละเท่ากัน) แค่แยกเป็นอีกช่องแล้วคิดเงินอีกชุด
@@ -2861,6 +2871,12 @@ export default function ProductDetail({
    * โหมดแอดมิน (สั่งแทนลูกค้า) ปิดโหมดนี้: หยิบใส่ตะกร้าได้เลย ไม่ต้องวางลายบนเว็บก่อน
    */
   const studioMode = (calMode || cutMode) && !staffOrdering && !studioOff;
+  /**
+   * 🎨 ทางออกแบบบนเว็บ = จำนวนลาย (ลายเดียว/คละลาย · ด้านหลัง) ระบุในจอออกแบบแล้ว → ไม่โชว์ช่อง "คละกี่ลาย" (หน้า/หลัง)
+   * และไม่ขึ้นขั้น "ระบุจำนวนลาย" (เจ้าของร้านแจ้ง 16 ต.ค. 69 โปสการ์ด "ถ้าเลือกออกแบบบนเว็บ คละกี่ลายไม่ควรแสดง เพราะหน้าออกแบบระบุไว้แล้ว")
+   * ค่าคละยังคิดตามแบบ (designs ซิงก์จาก calDesigns · designsLocked) · เลือกทางแนบไฟล์ (artChoice "file" ยังไม่มีแบบ) = โชว์ช่องตามเดิม
+   */
+  const designsByStudio = studioMode && (placed.length > 0 || artChoice !== "file");
   // (ดูคำอธิบาย noPageDropRef ด้านบน) — อัปเดตค่าให้ตัวรับ drop/paste ระดับหน้าเว็บใช้
   useEffect(() => {
     noPageDropRef.current = studioMode;
@@ -3024,6 +3040,8 @@ export default function ProductDetail({
 
   /** จำนวนรวมของทุกลาย = จำนวนที่สั่งจริง */
   const designTotalQty = placed.reduce((n, p) => n + p.qty, 0);
+  /** ชิ้นต่อ 1 หน่วยขาย (เข็มกลัด 44mm = 5 ชิ้น/เซ็ต) — โชว์คู่จำนวนในรายการแบบ · ไม่รู้ = 0 */
+  const setPieces = piecesPerSet && piecesPerSet > 1 ? piecesPerSet : 0;
 
   /**
    * ลูกค้าเลือกงานหลายด้าน/หลายเลเยอร์อยู่ไหม (เช่น "สกรีน 2 ด้าน")
@@ -3371,7 +3389,7 @@ export default function ProductDetail({
    * จะมี 2 มาตรฐาน: เรทแผ่น A3 ไม่ถามจำนวนลาย แต่พอสลับไปเรท ตร.ม. กลับบังคับให้ระบุ
    * แล้วปุ่ม "เพิ่มลงตะกร้า" กดแล้วเงียบ (เด้งไปกล่องจำนวนลายอย่างเดียว ป้ายบนปุ่มไม่บอก) — เจอจริง 31 ส.ค. 69
    */
-  const designsOk = designsSet || ((!!lotMinRate || lotToCart) && artProvided);
+  const designsOk = designsSet || designsByStudio || ((!!lotMinRate || lotToCart) && artProvided);
 
   /**
    * แผ่นที่กำลังตั้งค่าอยู่ "พร้อมสั่งแล้ว" ไหม — ใช้ตัดสินว่าจะนับรวมในรอบนี้ไหม
@@ -6005,7 +6023,7 @@ export default function ProductDetail({
       },
     });
   if (artRequired && !preArranged && !studioMode) ctaSteps.push({ key: "art", icon: "🎨", label: "แนบลาย", done: artProvided, jump: jumpToArt });
-  if (needDesignsChoice)
+  if (needDesignsChoice && !designsByStudio)
     ctaSteps.push({
       key: "designs",
       icon: "🔢",
@@ -8169,7 +8187,11 @@ export default function ProductDetail({
                     <div className="mt-3 rounded-2xl bg-sky-50 p-2.5 ring-1 ring-sky-200">
                       <p className="mb-2 flex items-center gap-2 px-1 text-[12px] font-extrabold text-sky-900">
                         ✓ แบบพร้อมผลิต {placed.length} ลาย
-                        <span className="font-bold text-sky-700">· รวม {designTotalQty.toLocaleString("th-TH")} ชิ้น</span>
+                        {/* จำนวนในรายการแบบ = หน่วยขาย (เข็มกลัด = เซ็ต) ไม่ใช่ชิ้น — เดิมเขียน "รวม 1 ชิ้น" ทั้งที่ 1 เซ็ต = 5 ชิ้น (16 ต.ค. 69) */}
+                        <span className="font-bold text-sky-700">
+                          · รวม {designTotalQty.toLocaleString("th-TH")} {pieceUnit}
+                          {setPieces > 1 && pieceUnit !== "ชิ้น" ? ` · ${(designTotalQty * setPieces).toLocaleString("th-TH")} ชิ้น` : ""}
+                        </span>
                       </p>
                       <div className="space-y-1.5">
                         {placed.map((d, i) => (
@@ -8204,6 +8226,39 @@ export default function ProductDetail({
                             <span className="min-w-0 flex-1">
                               <span className="block text-[12px] font-bold text-stone-800">ลายที่ {i + 1}</span>
                               <span className="block truncate text-[10px] text-stone-400">{d.summary}</span>
+                              {/* ปุ่มจำนวนอยู่ใต้ชื่อลาย (เดิมอยู่บรรทัดเดียวกัน จอแคบบีบชื่อลายเหลือคำละบรรทัด) + 1 เซ็ต = N ชิ้น */}
+                              <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                {/* จำนวนของลายนี้ (หน่วยขาย เช่น เซ็ต) — ทีมผลิตอ่านจากตรงนี้ว่าลายไหนกี่เซ็ต/ชิ้น */}
+                                <span className="flex shrink-0 items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
+                                  <button
+                                    type="button"
+                                    onClick={() => bumpDesignQty(i, -1)}
+                                    className="h-8 w-8 rounded-l-full text-sm font-bold text-stone-600 hover:bg-amber-100"
+                                    aria-label={`ลดจำนวน${pieceUnit}ของลายที่ ${i + 1}`}
+                                  >
+                                    −
+                                  </button>
+                                  <input
+                                    value={d.qty}
+                                    onChange={(e) => setDesignQty(i, parseInt(e.target.value.replace(/\D/g, ""), 10) || 1)}
+                                    inputMode="numeric"
+                                    className="w-7 bg-transparent text-right text-xs font-bold focus:outline-none"
+                                    aria-label={`จำนวน${pieceUnit}ของลายที่ ${i + 1}`}
+                                  />
+                                  <span className="pl-1 text-[10.5px] font-bold text-stone-500">{pieceUnit}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => bumpDesignQty(i, 1)}
+                                    className="h-8 w-8 rounded-r-full text-sm font-bold text-stone-600 hover:bg-amber-100"
+                                    aria-label={`เพิ่มจำนวน${pieceUnit}ของลายที่ ${i + 1}`}
+                                  >
+                                    +
+                                  </button>
+                                </span>
+                                {setPieces > 1 && pieceUnit !== "ชิ้น" && (
+                                  <span className="text-[10.5px] font-bold text-sky-700">= {(d.qty * setPieces).toLocaleString("th-TH")} ชิ้น</span>
+                                )}
+                              </span>
                               {d.calState && !calNoGrid && d.calState.back.year !== calYear && (
                                 <span className="block text-[10px] font-bold text-rose-600">
                                   ⚠️ ปฏิทินเป็นปี {d.calState.back.year} — กด ✏️ เพื่อเปลี่ยนเป็นปี {calYear}
@@ -8214,32 +8269,6 @@ export default function ProductDetail({
                                   ⚠️ แบบนี้ทำไว้ก่อนเปลี่ยนตัวเลือก — กด ✏️ เพื่อจัดรูปใหม่ให้ตรงรูปแบบที่เลือก
                                 </span>
                               )}
-                            </span>
-                            {/* จำนวนของลายนี้ — ทีมผลิตอ่านจากตรงนี้ว่าลายไหนกี่ชิ้น */}
-                            <span className="flex shrink-0 items-center rounded-full bg-amber-50 ring-1 ring-amber-200">
-                              <button
-                                type="button"
-                                onClick={() => bumpDesignQty(i, -1)}
-                                className="h-8 w-8 rounded-l-full text-sm font-bold text-stone-600 hover:bg-amber-100"
-                                aria-label={`ลดจำนวนลายที่ ${i + 1}`}
-                              >
-                                −
-                              </button>
-                              <input
-                                value={d.qty}
-                                onChange={(e) => setDesignQty(i, parseInt(e.target.value.replace(/\D/g, ""), 10) || 1)}
-                                inputMode="numeric"
-                                className="w-9 bg-transparent text-center text-xs font-bold focus:outline-none"
-                                aria-label={`จำนวนลายที่ ${i + 1}`}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => bumpDesignQty(i, 1)}
-                                className="h-8 w-8 rounded-r-full text-sm font-bold text-stone-600 hover:bg-amber-100"
-                                aria-label={`เพิ่มจำนวนลายที่ ${i + 1}`}
-                              >
-                                +
-                              </button>
                             </span>
                             <button
                               type="button"
@@ -8401,7 +8430,7 @@ export default function ProductDetail({
                     </>
                   ) : null}
                   {/* จำนวนลายที่คละ — ต้องระบุก่อนสั่ง (แตะปุ่ม/พิมพ์เลข หรือแนบรูปให้ระบบนับอัตโนมัติ) */}
-                  {needDesignsChoice && (
+                  {needDesignsChoice && !designsByStudio && (
                     <div
                       id="designs-box"
                       className={`mt-2 rounded-xl px-3 py-2.5 ring-2 transition ${
@@ -8415,6 +8444,12 @@ export default function ProductDetail({
                             ต้องระบุก่อนสั่ง *
                           </span>
                         )}
+                        {designsLocked ? (
+                          // 🔒 มีแบบจากจอ = จำนวนลายนับจากรายการแบบ อ่านอย่างเดียว (ดู designsLocked)
+                          <span className="rounded-full bg-white px-4 py-1.5 text-sm font-extrabold text-teal-900 shadow-sm ring-1 ring-teal-200">
+                            {designs.toLocaleString("th-TH")} ลาย
+                          </span>
+                        ) : (
                         <div className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-teal-200">
                           <button
                             type="button"
@@ -8472,7 +8507,10 @@ export default function ProductDetail({
                             +
                           </button>
                         </div>
-                        {artFiles.length > 0 && designs === artFiles.length && (
+                        )}
+                        {designsLocked ? (
+                          <span className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700">✨ นับจากแบบที่ออกแบบ</span>
+                        ) : artFiles.length > 0 && designs === artFiles.length && (
                           <span
                             className="rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-bold text-teal-700"
                             title="นับตามรูปลายที่แนบ — กด +/− เพื่อปรับเอง"
@@ -8707,7 +8745,7 @@ export default function ProductDetail({
                 ใช้กติกา/เพดานชุดเดียวกับด้านหน้าเป๊ะ ๆ แค่คิดค่าคละเพิ่มอีกชุด
                 ไม่บังคับให้ระบุ — ปกติด้านหลังใช้ลายเดียวกันทั้งหมด (= 1 ลาย ไม่มีค่าคละ)
               */}
-                  {needDesignsChoice && backOn && (
+                  {needDesignsChoice && backOn && !designsByStudio && (
                     <div id="back-designs-box" className="mt-2 rounded-xl bg-sky-50 px-3 py-2.5 ring-2 ring-sky-200">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[13px] font-extrabold text-sky-900">🔄 ด้านหลังคละกี่ลาย:</span>
