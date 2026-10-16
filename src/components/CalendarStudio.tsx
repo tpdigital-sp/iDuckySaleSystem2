@@ -163,12 +163,14 @@ interface Props {
   seedSources?: File[];
   /** ✂️ สูตรเส้นตัดตามชนิดงาน (ซิงก์จาก /admin/diecut?tab=bg · ไม่ส่ง = CUT_PRESETS ในโค้ด) */
   cutPresets?: CutPreset[];
-  onApply: (r: CalendarResult) => void | Promise<void>;
+  /** progress = ข้อความความคืบหน้าระหว่างอัปโหลด (โชว์แทน "กำลังอัปโหลด…" นิ่ง ๆ) */
+  onApply: (r: CalendarResult, progress?: (text: string) => void) => void | Promise<void>;
   /**
    * 🚀 ไฟล์ที่ทำเสร็จระหว่าง "ใช้แบบนี้" — ส่งให้หน้าสินค้าเริ่มอัปล่วงหน้า ไม่ต้องรอ .ai/.pdf (15 ต.ค. 69)
    * files = หน้าที่ประกอบแล้ว + รูปต้นฉบับ · owner = .ai / .pdf ของเจ้าของร้าน · ไฟล์ชุดเดียวกันส่งไปใน onApply ด้วยเสมอ
+   * pre = รูปที่ลูกค้าเพิ่งใส่ลงจอ (ยังไม่รู้ว่าจะกดใช้แบบไหม) — อัปล่วงหน้าระหว่างที่ลูกค้ายังจัดแบบอยู่ (16 ต.ค. 69 "กดใส่ตะกร้าแล้วอัปโหลดนานมาก")
    */
-  onEarly?: (e: { files?: File[]; owner?: File }) => void;
+  onEarly?: (e: { files?: File[]; owner?: File; pre?: boolean }) => void;
 }
 
 /** แผงด้านข้างตามปุ่มในแถบเครื่องมือ (null = ปิดแผง) */
@@ -383,6 +385,9 @@ export default function CalendarStudio({
   onEarly,
 }: Props) {
   /** กด 🛒 ใส่ตะกร้า (ไม่ใช่ ✓ ใช้แบบนี้) — จำไว้ข้ามหน้าต่างถาม "รูปไม่เต็มช่อง" */
+  /** onEarly ล่าสุด — ใช้ใน swapSrc (useCallback deps ว่าง) */
+  const onEarlyRef = useRef(onEarly);
+  onEarlyRef.current = onEarly;
   const orderAfter = useRef(false);
   // มุมแหลม (ตัวเลือก "มุม" ของสินค้า) = เส้นตัดสี่เหลี่ยม — ไฟล์พิมพ์เหมือนกัน ต่างแค่ไกด์บนจอ
   /**
@@ -931,6 +936,7 @@ export default function CalendarStudio({
     const s2 = await loadImg(file);
     if (!s2) return false;
     setSrcs((cur) => cur.map((s, j) => (j === i ? { ...s2, ...patch } : s)));
+    onEarlyRef.current?.({ files: [s2.file], pre: true }); // 🕐 ไฟล์หลังตัดพื้น = ต้นฉบับที่จะส่งไปกับแบบ → เริ่มอัปล่วงหน้า
     return true;
   }, []);
   /**
@@ -1651,6 +1657,8 @@ export default function CalendarStudio({
     const idx = srcsRef.current.length;
     srcsRef.current = [...srcsRef.current, s];
     setSrcs((cur) => [...cur, s]);
+    // 🕐 เริ่มอัปรูปต้นฉบับทันที (รูปกล้องมือถือ 5–10 MB = ก้อนใหญ่สุด) — ตอนกดใส่ตะกร้าจะเหลือแค่หน้าที่ประกอบแล้ว
+    onEarly?.({ files: [s.file], pre: true });
     if (asFree || !page.photo) {
       addFreePhoto(idx, s, nth);
       return;
@@ -1741,6 +1749,7 @@ export default function CalendarStudio({
     const i = srcsRef.current.length;
     srcsRef.current = [...srcsRef.current, s0];
     setSrcs((cur) => [...cur, s0]);
+    onEarly?.({ files: [s0.file], pre: true }); // 🕐 อัปต้นฉบับล่วงหน้า (เหมือน addPhoto)
     patchEl(id, { src: i, zoom: 1, ox: 0, oy: 0 });
     setSel(id);
     setTool("photo");
@@ -3925,15 +3934,23 @@ export default function CalendarStudio({
       //    ปฏิทินรูปเต็ม .ai จาก Illustrator ~180 MB — ต้องตั้ง Upload file size limit ของโปรเจกต์ Supabase ให้พอ
       //    ทำไม่ได้/อัปไม่ขึ้นก็ยังสั่งต่อได้ (ไฟล์พิมพ์ + .pdf ครบแล้ว)
       let ai: { file: File; note: string } | undefined = cutAi ? { file: cutAi, note: "ไดคัท: เส้นตัดสีพิเศษ CutContour" } : undefined;
+      /**
+       * 📱 ต่อ Illustrator ของร้านไม่ได้ (สั่งจากมือถือ/เครื่องนอกร้าน) = ไม่ทำไฟล์สำรอง -pdf.ai แนบออเดอร์ (16 ต.ค. 69 "กดใส่ตะกร้าแล้วอัปโหลดนานมาก")
+       * ไฟล์สำรองเนื้อหาเดียวกับ .pdf ที่แนบอยู่แล้ว (Illustrator เปิดแล้วรวมเป็น Layer 1) และหน้าออเดอร์ต้องกด 🔁 ทำใหม่ด้วย Illustrator อยู่ดี
+       * → ตัดเวลาวาดชั้นทุกหน้า + อัปซ้ำบนมือถือ (ปฏิทิน 16 หน้า ≈ 15 MB) · ปุ่ม ⬇ .ai ทดสอบยังได้ไฟล์สำรองเหมือนเดิม
+       */
       if (aiExport && !fmt.diecut) {
-        setBusy("กำลังทำไฟล์ .ai…");
-        try {
-          ai = await makeAi();
-          if (ai) onEarly?.({ owner: ai.file });
-        } catch (e) {
-          ai = undefined;
-          console.warn("calendar .ai", e);
-        }
+        setBusy("กำลังเช็ค Illustrator ของร้าน…");
+        if (await illustratorReady()) {
+          setBusy("กำลังทำไฟล์ .ai…");
+          try {
+            ai = await makeAi();
+            if (ai) onEarly?.({ owner: ai.file });
+          } catch (e) {
+            ai = undefined;
+            console.warn("calendar .ai", e);
+          }
+        } else console.info("calendar .ai: ต่อ Illustrator ของร้านไม่ได้ — ข้ามไฟล์สำรอง (กด 🔁 ทำใหม่ที่หน้าออเดอร์)");
       }
       // 🖨 .pdf แนบออเดอร์ด้วย — การ์ดชุด = ไฟล์ชิ้นงาน (โปรแกรมจัดวาง) · แบบอื่น = .pdf ทั้งเล่ม (เดิมแนบเฉพาะการ์ด · แก้ 14 ต.ค. 69)
       let pdf: File | undefined;
@@ -3974,7 +3991,7 @@ export default function CalendarStudio({
           `${shapes ? ` · รูปทรง ${shapes} ชิ้น` : ""}${freePhotos ? ` · กรอบรูปอิสระ ${freePhotos} กรอบ` : ""}${layoutNote ? ` · เลย์เอาต์: ${layoutNote}` : ""} · ` +
           (noCal ? "" : `ปฏิทิน: ${backSpec(back)} `) +
           (fmt.diecut ? cutSpec.replace(/^ · /, "") + " " : printFrameToken(W, H)),
-      });
+      }, (t) => setBusy(t));
       onClose();
       if (orderAfter.current && onOrder) await onOrder();
     } catch (e) {

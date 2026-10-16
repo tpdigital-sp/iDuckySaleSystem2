@@ -37,6 +37,44 @@ function parseStorageUrl(url: string): { bucket: string; path: string } | null {
   return { bucket, path: decodeURIComponent(m[2].split("?")[0]) };
 }
 
+/**
+ * 🧹 รูปที่จอออกแบบ "อัปล่วงหน้า" แล้วลูกค้าไม่ได้กดใช้แบบ — customer-artwork/art-pre/<วันที่>/ (16 ต.ค. 69)
+ * ที่ใช้จริงถูกย้ายไป art/ แล้วตอนกดใช้แบบนี้ (/api/orders/artwork/keep) · โฟลเดอร์วันที่เก่ากว่า 3 วันลบทั้งโฟลเดอร์
+ * ไม่ขึ้นกับสวิตช์นโยบายล้างรูปออเดอร์ (เป็นไฟล์ชั่วคราว ไม่ผูกกับออเดอร์ไหน)
+ */
+const PRE_KEEP_DAYS = 3;
+async function sweepPreArtwork(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, dry: boolean) {
+  const bucket = sb.storage.from("customer-artwork");
+  const cutoff = new Date(Date.now() - PRE_KEEP_DAYS * 86400_000).toISOString().slice(0, 10);
+  const { data: folders, error } = await bucket.list("art-pre", { limit: 1000 });
+  if (error) return { folders: 0, files: 0, deleted: 0, failed: [`list: ${error.message}`] };
+  const old = (folders ?? []).map((f) => f.name).filter((n) => /^\d{4}-\d{2}-\d{2}$/.test(n) && n < cutoff);
+  let files = 0;
+  let deleted = 0;
+  const failed: string[] = [];
+  for (const day of old) {
+    for (;;) {
+      const { data: list, error: lsErr } = await bucket.list(`art-pre/${day}`, { limit: 1000 });
+      if (lsErr) {
+        failed.push(`${day}: ${lsErr.message}`);
+        break;
+      }
+      const names = (list ?? []).filter((x) => x.id).map((x) => `art-pre/${day}/${x.name}`); // โฟลเดอร์ย่อย id = null
+      if (!names.length) break;
+      files += names.length;
+      if (dry) break;
+      const { error: rmErr } = await bucket.remove(names);
+      if (rmErr) {
+        failed.push(`${day}: ${rmErr.message}`);
+        break;
+      }
+      deleted += names.length;
+      if (names.length < 1000) break;
+    }
+  }
+  return { folders: old.length, files, deleted, failed };
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const secret = process.env.CRON_SECRET;
@@ -52,8 +90,9 @@ export async function GET(req: Request) {
   const cfg = imageCleanupOf((setRow?.data ?? null) as { imageCleanup?: ImageCleanupConfig } | null);
   const forceDays = Number(url.searchParams.get("days"));
   const days = Number.isFinite(forceDays) && forceDays > 0 ? Math.floor(forceDays) : cfg.days;
+  const preSweep = await sweepPreArtwork(sb, dry).catch((e) => ({ folders: 0, files: 0, deleted: 0, failed: [e instanceof Error ? e.message : String(e)] }));
   if (!cfg.enabled && !dry)
-    return NextResponse.json({ ok: true, skipped: "ปิดการล้างรูปอัตโนมัติอยู่", cfg });
+    return NextResponse.json({ ok: true, skipped: "ปิดการล้างรูปอัตโนมัติอยู่", cfg, preSweep });
 
   const cutoff = Date.now() - days * 86400_000;
   const { data: rows, error } = await selectAllRows<{ id: string; data: unknown; created_at: string | null }>((a, b) =>
@@ -97,6 +136,7 @@ export async function GET(req: Request) {
       onlyClosed: cfg.onlyClosed,
       orders: plan.length,
       files: plan.reduce((n, p) => n + p.files, 0),
+      preSweep,
       list: plan.slice(0, 50).map((p) => ({ id: p.id, status: p.status, files: p.files })),
     });
 
@@ -141,5 +181,5 @@ export async function GET(req: Request) {
     })
     .eq("id", "__shop_payment__");
 
-  return NextResponse.json({ ok: true, days, orders: plan.length, deleted, failed: failed.slice(0, 10) });
+  return NextResponse.json({ ok: true, days, orders: plan.length, deleted, failed: failed.slice(0, 10), preSweep });
 }

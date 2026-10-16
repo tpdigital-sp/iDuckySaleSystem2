@@ -189,7 +189,7 @@ import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
 import { catShortName, type ShopCategory } from "@/lib/categories";
 import ImageLightbox from "@/components/ImageLightbox";
-import { uploadArtworkFile, uploadArtworkFilesSettled, checkArtworkFile } from "@/lib/artwork-upload";
+import { uploadArtworkFile, uploadArtworkFilesSettled, checkArtworkFile, keepArtworkFiles, preArtworkPath } from "@/lib/artwork-upload";
 import { getSupabase } from "@/lib/supabase";
 import { fetchShopPayment, type ShopPayment } from "@/lib/shop-settings";
 import { cutPresetsFrom } from "@/lib/diecut-engine";
@@ -3133,17 +3133,33 @@ export default function ProductDetail({
    */
   const earlyUp = useRef(new Map<File, Promise<string | Error>>());
   const earlyOwner = useRef(new Map<File, ReturnType<typeof uploadOwnerFile>>());
-  function startEarlyUploads(files: File[]) {
+  /**
+   * @param pre 🕐 รูปที่ลูกค้าเพิ่งใส่ลงจอ (ยังไม่กดใช้แบบ) — อัปไว้ที่ art-pre/ ระหว่างที่ลูกค้ายังจัดแบบอยู่ (16 ต.ค. 69 "กดใส่ตะกร้าแล้วอัปโหลดนานมาก":
+   *   รูปจากกล้องมือถือ 5–10 MB เป็นก้อนใหญ่สุดของการอัป แต่เดิมเริ่มส่งตอนกดใส่ตะกร้าเท่านั้น ทั้งที่ลูกค้าใช้เวลาจัดแบบเป็นนาที)
+   *   applyCalendar ย้ายเข้า art/ ตอนใช้จริง (keepArtworkFiles) · พังระหว่างทาง = ถอดออกจากรายการ ให้ applyCalendar อัปใหม่ตามปกติ
+   *   ผลคืนทีละไฟล์ทันทีที่เสร็จ (onOne) — ไม่ต้องรอทั้งชุด
+   */
+  function startEarlyUploads(files: File[], pre = false) {
     const todo = [...new Set(files)].filter((f) => !earlyUp.current.has(f) && !isMissingPhoto(f) && !knownSourceUrl(f));
     if (!todo.length) return;
-    const all = uploadArtworkFilesSettled(todo).catch((e) => todo.map(() => (e instanceof Error ? e : new Error("อัปโหลดไม่สำเร็จ"))));
-    todo.forEach((f, i) => earlyUp.current.set(f, all.then((r) => r[i])));
+    const settle = todo.map(() => {
+      let res: (r: string | Error) => void = () => {};
+      const p = new Promise<string | Error>((r) => (res = r));
+      return { p, res };
+    });
+    todo.forEach((f, i) => earlyUp.current.set(f, settle[i].p));
+    const fail = (e: unknown) => (e instanceof Error ? e : new Error("อัปโหลดไม่สำเร็จ"));
+    const one = (i: number, r: string | Error) => {
+      if (pre && r instanceof Error && earlyUp.current.get(todo[i]) === settle[i].p) earlyUp.current.delete(todo[i]);
+      settle[i].res(r);
+    };
+    uploadArtworkFilesSettled(todo, { pre, onOne: one }).catch((e) => todo.forEach((_, i) => one(i, fail(e))));
   }
   function startEarlyOwner(f: File) {
     if (!earlyOwner.current.has(f)) earlyOwner.current.set(f, uploadOwnerFile(f));
   }
 
-  async function applyCalendar(r: CalendarResult) {
+  async function applyCalendar(r: CalendarResult, progress?: (text: string) => void) {
     setArtErr("");
     setArtBusy(true);
     try {
@@ -3171,9 +3187,36 @@ export default function ProductDetail({
       );
       const upList = [...r.pages.map((p) => p.file), ...newSrc.map((x) => x.f)];
       startEarlyUploads(upList); // ไฟล์ที่จอส่งมาอัปล่วงหน้าแล้วจะหยิบผลเดิม · ที่เหลือเริ่มอัปตอนนี้
-      const upP = Promise.all(upList.map((f) => earlyUp.current.get(f) ?? Promise.resolve(new Error("อัปโหลดไม่สำเร็จ")))).finally(() =>
-        upList.forEach((f) => earlyUp.current.delete(f)),
-      );
+      // 📊 ความคืบหน้า "กำลังอัปโหลด 2/4 ไฟล์ (9.1/10.3 MB)…" — รูปที่อัปล่วงหน้าเสร็จแล้วนับทันที (เดิมเห็นแค่ "กำลังอัปโหลด…" นิ่ง ๆ บนมือถือ)
+      const sideFiles = [r.ai, r.pdf, r.print, r.white].filter((f): f is File => !!f);
+      const totalN = upList.length + sideFiles.length;
+      const totalBytes = [...upList, ...sideFiles].reduce((n, f) => n + f.size, 0);
+      let doneN = 0;
+      let doneBytes = 0;
+      const mb = (b: number) => (b / 1024 / 1024).toFixed(1);
+      const tick = () => progress?.(`กำลังอัปโหลด ${doneN}/${totalN} ไฟล์ (${mb(doneBytes)}/${mb(totalBytes)} MB)…`);
+      const track = <T,>(p: Promise<T>, f: File): Promise<T> =>
+        p.finally(() => {
+          doneN++;
+          doneBytes += f.size;
+          tick();
+        });
+      tick();
+      const upProm = upList.map((f) => earlyUp.current.get(f) ?? Promise.resolve<string | Error>(new Error("อัปโหลดไม่สำเร็จ")));
+      const upP = Promise.all(upList.map((f, i) => track(upProm[i], f))).finally(() => upList.forEach((f) => earlyUp.current.delete(f)));
+      /**
+       * 📌 รูปที่อัปล่วงหน้าไว้ที่ art-pre/ (ตอนลูกค้าใส่รูปลงจอ) → ย้ายเข้า art/ ถาวรตอนใช้จริง (คำขอเดียวทั้งชุด · เริ่มทันทีที่รู้ลิงก์ ขนานกับการอัปหน้า)
+       * ไม่งั้น cron cleanup-images กวาดทิ้งใน 3 วัน · ย้ายไม่สำเร็จ = อัปไฟล์นั้นใหม่ตามปกติด้านล่าง (ไม่ปล่อยลิงก์ที่จะหาย)
+       */
+      const keepP = Promise.all(upProm.slice(r.pages.length)).then((us) => {
+        const pre = us.filter((u): u is string => typeof u === "string" && !!preArtworkPath(u));
+        return pre.length
+          ? keepArtworkFiles(pre).catch((e) => {
+              console.warn("keep pre-uploaded sources", e);
+              return new Map<string, string>();
+            })
+          : new Map<string, string>();
+      });
       // 🗂 .ai แยกเลเยอร์ (เจ้าของร้าน) — ทางอัปของเจ้าของเท่านั้น · อัปไม่ขึ้นไม่ขวางการสั่ง · เริ่มอัปไปแล้วตอนจอทำไฟล์เสร็จ (earlyOwner)
       const ownerFails: string[] = [];
       const ownerUpload = async (f?: File): Promise<string | undefined> => {
@@ -3194,10 +3237,10 @@ export default function ProductDetail({
       };
       // 🗂 .ai + 🖨 .pdf (เจ้าของร้านเท่านั้น) + ✂️ ไฟล์พิมพ์ลายพื้นใส (ไดคัท · อัปไม่ขึ้น = สั่งไม่ได้) — อัปคู่ขนานไปกับหน้า
       const sideP = Promise.all([
-        ownerUpload(r.ai),
-        ownerUpload(r.pdf),
-        r.print ? uploadOne(r.print) : Promise.resolve(""),
-        r.white ? uploadOne(r.white).catch(() => "") : Promise.resolve(""),
+        r.ai ? track(ownerUpload(r.ai), r.ai) : Promise.resolve(undefined),
+        r.pdf ? track(ownerUpload(r.pdf), r.pdf) : Promise.resolve(undefined),
+        r.print ? track(uploadOne(r.print), r.print) : Promise.resolve(""),
+        r.white ? track(uploadOne(r.white).catch(() => ""), r.white) : Promise.resolve(""),
       ]);
       sideP.catch(() => {}); // รอด้านล่าง — กัน unhandled ถ้าหน้าพังก่อน
       const up = await upP;
@@ -3205,13 +3248,31 @@ export default function ProductDetail({
       if (pageFail) throw pageFail;
       const urls = up.slice(0, r.pages.length) as string[];
       let srcFails = 0;
-      newSrc.forEach(({ f, i }, k) => {
+      newSrc.forEach(({ i }, k) => {
         const u = up[r.pages.length + k];
-        if (typeof u === "string") {
-          rememberSource(f, u);
-          sourceUrls[i] = u;
-        } else srcFails++;
+        if (typeof u === "string") sourceUrls[i] = u;
+        else srcFails++;
       });
+      // 📌 ลิงก์ art-pre/ → art/ ที่ย้ายแล้ว (keepP) · ที่ย้ายไม่ได้ = อัปใหม่ตามปกติ
+      const moved = await keepP;
+      const redo = newSrc.filter(({ i }) => !!sourceUrls[i] && !!preArtworkPath(sourceUrls[i]) && !moved.has(sourceUrls[i]));
+      newSrc.forEach(({ i }) => {
+        const nu = moved.get(sourceUrls[i]);
+        if (nu) sourceUrls[i] = nu;
+      });
+      if (redo.length) {
+        progress?.(`กำลังอัปรูปต้นฉบับใหม่ ${redo.length} รูป…`);
+        const redone = await uploadArtworkFilesSettled(redo.map(({ f }) => f));
+        redo.forEach(({ i }, j) => {
+          const u = redone[j];
+          if (typeof u === "string") sourceUrls[i] = u;
+          else {
+            sourceUrls[i] = "";
+            srcFails++;
+          }
+        });
+      }
+      newSrc.forEach(({ f, i }) => sourceUrls[i] && rememberSource(f, sourceUrls[i]));
       // บอกให้รู้ (เดิมเงียบ — เปิดแก้ครั้งหน้ารูปกลายเป็น "รูปหาย" โดยไม่มีใครรู้ว่าเกิดตอนไหน) · ไฟล์ที่ประกอบแล้วยังพิมพ์ได้ปกติ
       if (srcFails)
         window.alert(
@@ -3237,6 +3298,7 @@ export default function ProductDetail({
         editUrl: undefined as string | undefined,
       };
       // ✏️ ฝากข้อมูลแบบไว้บนเซิร์ฟเวอร์ — ลิงก์ติดไปกับออเดอร์ หลังบ้านเปิดกลับมาแก้ได้ (ไม่ขึ้นก็สั่งต่อได้)
+      progress?.("กำลังบันทึกข้อมูลแบบ…");
       entry.editUrl = await uploadCalDesign({
         format: r.state.format,
         design: r.state.design,
@@ -9372,7 +9434,7 @@ export default function ProductDetail({
               cutPresets={cutMode ? cutPresets : undefined}
               onApply={applyCalendar}
               onEarly={(e) => {
-                if (e.files?.length) startEarlyUploads(e.files);
+                if (e.files?.length) startEarlyUploads(e.files, !!e.pre);
                 if (e.owner) startEarlyOwner(e.owner);
               }}
             />

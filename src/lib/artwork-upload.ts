@@ -109,17 +109,32 @@ export async function uploadArtworkFiles(files: File[], parallel = 6): Promise<s
   return r as string[];
 }
 
+export type UploadBatchOpts = {
+  /** ยิงพร้อมกันกี่ไฟล์ */
+  parallel?: number;
+  /**
+   * 🕐 อัปล่วงหน้า (รูปที่ลูกค้าเพิ่งใส่ลงจอออกแบบ ยังไม่รู้ว่าจะกดใช้แบบไหม) — เก็บที่ art-pre/<วันที่>/ แยกจากของจริง
+   * ต้อง keepArtworkFiles ตอนใช้จริง (ย้ายเข้า art/) ไม่งั้น cron cleanup-images กวาดทิ้งใน 3 วัน (16 ต.ค. 69)
+   */
+  pre?: boolean;
+  /** เรียกทันทีที่ไฟล์ลำดับ i เสร็จ (สำเร็จ = url · พัง = Error) — ใช้โชว์ความคืบหน้า/ปล่อยไฟล์ที่เสร็จก่อน */
+  onOne?: (i: number, r: string | Error) => void;
+};
+
 /** แบบเดียวกับ uploadArtworkFiles แต่ไฟล์ที่พังไม่ล้มทั้งชุด — ช่องนั้นเป็น Error (รูปต้นฉบับ: อัปไม่ขึ้นก็ยังสั่งได้) */
-export async function uploadArtworkFilesSettled(files: File[], parallel = 6): Promise<(string | Error)[]> {
+export async function uploadArtworkFilesSettled(files: File[], opts: number | UploadBatchOpts = 6): Promise<(string | Error)[]> {
   if (!files.length) return [];
+  const o: UploadBatchOpts = typeof opts === "number" ? { parallel: opts } : opts;
+  const parallel = o.parallel ?? 6;
   let tickets: (SignResult & { ok?: boolean })[] = [];
   const sb = getSupabase();
-  if (sb && files.length > 1) {
+  // ขอตั๋วทั้งชุดในคำขอเดียว (ไฟล์เดียวใช้ทางเดิม · ยกเว้นอัปล่วงหน้าที่ต้องการ path art-pre/)
+  if (sb && (files.length > 1 || o.pre)) {
     try {
       const res = await fetch("/api/orders/artwork/sign", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ files: files.map((f) => ({ type: f.type, size: f.size })) }),
+        body: JSON.stringify({ files: files.map((f) => ({ type: f.type, size: f.size })), ...(o.pre ? { pre: true } : {}) }),
       });
       const j = (await res.json().catch(() => null)) as { items?: (SignResult & { ok?: boolean })[]; error?: string } | null;
       if (res.status === 429 && j?.error) throw new Error(j.error);
@@ -140,6 +155,7 @@ export async function uploadArtworkFilesSettled(files: File[], parallel = 6): Pr
         const { error } = await sb.storage.from(t.bucket || BUCKET).uploadToSignedUrl(t.path, t.token, f, { contentType: f.type });
         if (!error) {
           out[i] = t.url;
+          o.onOne?.(i, out[i]);
           continue;
         }
       }
@@ -148,8 +164,41 @@ export async function uploadArtworkFilesSettled(files: File[], parallel = 6): Pr
       } catch (e) {
         out[i] = e instanceof Error ? e : new Error("อัปโหลดไม่สำเร็จ");
       }
+      o.onOne?.(i, out[i]);
     }
   };
   await Promise.all(Array.from({ length: Math.min(parallel, files.length) }, worker));
+  return out;
+}
+
+/* ─────────── 🕐 รูปที่อัปล่วงหน้า (art-pre/) ─────────── */
+
+const PRE_RE = /\/storage\/v1\/object\/(?:public\/)?customer-artwork\/(art-pre\/[^?#]+)/;
+
+/** path ใน bucket ของรูปที่อัปล่วงหน้า (art-pre/…) · ไม่ใช่ = null */
+export function preArtworkPath(url: string): string | null {
+  const m = PRE_RE.exec(url);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * 📌 ผูกรูปที่อัปล่วงหน้าเข้ากับแบบจริง — เซิร์ฟเวอร์ย้าย art-pre/ → art/ (คำขอเดียวทั้งชุด) คืน Map url เดิม → url ใหม่
+ * url ที่ไม่ใช่ art-pre/ ถูกข้าม (ไม่อยู่ใน Map) · ย้ายไม่สำเร็จทั้งคำขอ = โยน Error ให้ผู้เรียกอัปใหม่เอง
+ */
+export async function keepArtworkFiles(urls: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const pre = urls.map((u) => ({ u, p: preArtworkPath(u) })).filter((x): x is { u: string; p: string } => !!x.p);
+  if (!pre.length) return out;
+  const res = await fetch("/api/orders/artwork/keep", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paths: pre.map((x) => x.p) }),
+  });
+  const j = (await res.json().catch(() => null)) as { items?: { from: string; url?: string; error?: string }[] } | null;
+  if (!res.ok || !Array.isArray(j?.items)) throw new Error(`ย้ายรูปที่อัปไว้ล่วงหน้าไม่สำเร็จ (รหัส ${res.status})`);
+  for (const it of j.items) {
+    const hit = pre.find((x) => x.p === it.from);
+    if (hit && it.url) out.set(hit.u, it.url);
+  }
   return out;
 }

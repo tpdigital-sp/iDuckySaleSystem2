@@ -30,14 +30,17 @@ const LIMIT = 120;
 
 type SignOne = { ok: true; bucket: string; path: string; token: string; url: string } | { ok: false; error: string; status: number };
 
-async function signOne(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, type: unknown, sizeRaw: unknown): Promise<SignOne> {
+async function signOne(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, type: unknown, sizeRaw: unknown, pre = false): Promise<SignOne> {
   const ext = EXT[String(type ?? "")];
   if (!ext) return { ok: false, error: "รองรับเฉพาะไฟล์ JPG / PNG / WEBP", status: 400 };
   const size = Number(sizeRaw ?? 0);
   if (size > MAX_BYTES)
     return { ok: false, error: `ไฟล์ใหญ่เกิน ${MAX_BYTES / 1024 / 1024}MB — ถ้าไฟล์ใหญ่กว่านี้ให้แนบเป็นลิงก์ไฟล์แทน`, status: 400 };
 
-  const path = `art/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.${ext}`;
+  // 🕐 pre = อัปล่วงหน้าจากจอออกแบบ (ลูกค้าเพิ่งใส่รูป ยังไม่กดใช้แบบ · 16 ต.ค. 69) → art-pre/<วันที่>/
+  //    ตอนกดใช้แบบ /api/orders/artwork/keep ย้ายเข้า art/ · ที่ไม่ได้ใช้ cron cleanup-images กวาดทิ้งใน 3 วัน
+  const iso = new Date().toISOString();
+  const path = pre ? `art-pre/${iso.slice(0, 10)}/${randomUUID()}.${ext}` : `art/${iso.slice(0, 7)}/${randomUUID()}.${ext}`;
   const sign = () => sb.storage.from(BUCKET).createSignedUploadUrl(path);
 
   let { data, error } = await sign();
@@ -58,12 +61,13 @@ const MAX_BATCH = 60;
  * POST { files: [{type,size}] }  → { ok, items: [{ok,bucket,path,token,url} | {ok:false,error}] }
  *   🚀 ทีละชุด (15 ต.ค. 69): จอสร้างปฏิทินอัป 16–52 ไฟล์ต่อครั้ง · เดิมขอตั๋วทีละไฟล์ ~0.6 วิ/ใบ = ช้ากว่าตัวอัปเอง
  *   เพดานกันสแปมนับตามจำนวนไฟล์เท่าเดิม
+ *   + pre: true = อัปล่วงหน้าเก็บที่ art-pre/ (ดู signOne · 16 ต.ค. 69)
  */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  const body = (await req.json().catch(() => null)) as { type?: string; size?: number; files?: { type?: string; size?: number }[] } | null;
+  const body = (await req.json().catch(() => null)) as { type?: string; size?: number; files?: { type?: string; size?: number }[]; pre?: boolean } | null;
   const batch = Array.isArray(body?.files) ? body!.files.slice(0, MAX_BATCH) : null;
   if (batch && !batch.length) return NextResponse.json({ error: "ไม่มีไฟล์" }, { status: 400 });
 
@@ -73,7 +77,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "อัปโหลดถี่เกินไป ลองใหม่ในอีกสักครู่" }, { status: 429 });
 
   if (batch) {
-    const items = await Promise.all(batch.map((f) => signOne(sb, f?.type, f?.size)));
+    const items = await Promise.all(batch.map((f) => signOne(sb, f?.type, f?.size, body?.pre === true)));
     return NextResponse.json({ ok: true, items: items.map((r) => (r.ok ? r : { ok: false, error: r.error })) });
   }
   const r = await signOne(sb, body?.type, body?.size);
