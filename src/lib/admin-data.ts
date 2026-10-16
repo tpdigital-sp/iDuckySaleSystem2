@@ -1531,6 +1531,30 @@ export function orderNeedsTaxInvoiceInBox(o: Order): boolean {
   return orderHasTaxInvoice(o) && o.taxInvoiceDelivery !== "email";
 }
 
+/** 🧾📧 ข้อความ log ของการสลับทางส่งใบกำกับ (setTaxInvoiceDelivery ทั้งหน้าออเดอร์/หน้าปริ้นใช้คู่นี้) */
+export const TAX_INVOICE_LOG_EMAIL = "ใบกำกับภาษี: ส่ง E-tax/อีเมลแล้ว ไม่ต้องแนบกล่อง";
+export const TAX_INVOICE_LOG_BOX = "ใบกำกับภาษี: ต้องใส่ลงกล่อง";
+
+/**
+ * 🧾📧↩ ใบนี้ "เคยติ๊กส่ง E-tax แล้ว" แต่ถูกเปลี่ยนกลับเป็นต้องแนบกล่องทีหลัง — คืนคนติ๊ก/คนเปลี่ยน
+ * เคสจริง OD-261014-1235 (16 ต.ค. 69): แอดมินติ๊ก E-tax ไว้ · คนแพ็คเผลอแตะ "ต้องแนบกล่อง" ในโหมดแพ็ค 2 นาทีก่อนแพ็ค
+ * → ระบบกลับมาบังคับถ่ายรูปใบเสร็จ ทั้งที่ใบปะหน้าพิมพ์ว่าไม่ต้องแนบ · ใช้ขึ้นคำเตือน + ปุ่มคืนค่าในกล่องถ่ายรูป
+ * null = ไม่เข้าเคส (ยังเป็นอีเมลอยู่ / ไม่เคยติ๊กอีเมล / ติ๊กอีเมลหลังสุด)
+ */
+export function taxInvoiceDeliveryReverted(o: Order): { emailBy: string; emailAt: string; boxBy: string; boxAt: string } | null {
+  if (o.taxInvoiceDelivery === "email") return null;
+  const log = o.log ?? [];
+  let email: LogEntry | undefined;
+  let box: LogEntry | undefined;
+  for (const l of log) {
+    if (l.action === TAX_INVOICE_LOG_EMAIL) {
+      email = l;
+      box = undefined;
+    } else if (l.action === TAX_INVOICE_LOG_BOX && email) box = l;
+  }
+  return email && box ? { emailBy: email.by, emailAt: email.at, boxBy: box.by, boxAt: box.at } : null;
+}
+
 /** 🧾 เลขที่ + ลิงก์เอกสารใบกำกับ — เอาจากข้อมูลใบกำกับก่อน (แอดมินวางลิงก์) ไม่มีค่อยใช้เอกสารต้นทาง FlowAccount */
 export function taxInvoiceDocOf(o: Order): { docNo?: string; url?: string; label: string; company?: string } {
   const t = o.taxInvoice;

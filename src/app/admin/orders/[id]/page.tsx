@@ -155,6 +155,9 @@ import {
   reuseArtText,
   receiveDepositFirst,
   receiptsPending,
+  TAX_INVOICE_LOG_EMAIL,
+  TAX_INVOICE_LOG_BOX,
+  taxInvoiceDeliveryReverted,
   receiptShippedRound,
   receiptsShippedRound,
   sampleShippedRound,
@@ -4167,7 +4170,7 @@ export default function AdminOrderDetailPage() {
     const next = withLog(
       { ...order, taxInvoiceDelivery: v },
       actor,
-      v === "email" ? "ใบกำกับภาษี: ส่ง E-tax/อีเมลแล้ว ไม่ต้องแนบกล่อง" : "ใบกำกับภาษี: ต้องใส่ลงกล่อง"
+      v === "email" ? TAX_INVOICE_LOG_EMAIL : TAX_INVOICE_LOG_BOX
     );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -5840,7 +5843,11 @@ export default function AdminOrderDetailPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => setTaxInvoiceDelivery(order.taxInvoiceDelivery === "email" ? "box" : "email")}
+                          onClick={() => {
+                            // ↩ อีเมล → กล่อง = กลับมาบังคับถ่ายรูปใบเสร็จที่โต๊ะแพ็ค — ถามก่อน (16 ต.ค. 69)
+                            if (order.taxInvoiceDelivery === "email" && !window.confirm("เปลี่ยนเป็น “ต้องพิมพ์ใบกำกับใส่กล่อง” = โต๊ะแพ็คต้องถ่ายรูปใบเสร็จก่อนปิดกล่อง\n\nยืนยันไหม?")) return;
+                            setTaxInvoiceDelivery(order.taxInvoiceDelivery === "email" ? "box" : "email");
+                          }}
                           className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-bold text-slate-500"
                         >
                           {order.taxInvoiceDelivery === "email" ? "ต้องแนบกล่อง" : "ส่ง E-tax แล้ว ไม่แนบ"}
@@ -12026,19 +12033,24 @@ function PackView({
             // เอกสารต้นทางมักเป็นใบเสนอราคา FlowAccount — บอกว่า "อ้างอิง" กันเข้าใจผิดว่าใบนั้นคือใบกำกับ
             const docLine = doc.docNo ? `อ้างอิง ${doc.label} ${doc.docNo}` : "ใบกำกับภาษี";
             if (byEmail)
+              // 📧 ส่ง E-tax แล้ว = ขั้นใบเสร็จผ่านเลย ไม่ต้องถ่ายรูป · ปุ่มเปลี่ยนกลับต้องถามก่อน
+              // (16 ต.ค. 69 OD-261014-1235: คนแพ็คเผลอแตะ "ต้องแนบกล่อง" คิดว่าเป็นปุ่มยืนยัน → ระบบกลับมาบังคับถ่ายรูป)
               return (
-                <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-3 shadow-sm ring-1 ring-slate-200">
+                <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-3 shadow-sm ring-1 ring-green-200">
                   <span className="text-lg">📧</span>
                   <span className="min-w-0 flex-1 text-xs">
-                    <span className="block font-extrabold text-slate-700">ใบกำกับภาษีส่ง E-tax/อีเมลแล้ว — ไม่ต้องแนบกล่อง</span>
+                    <span className="block font-extrabold text-green-800">✅ ใบกำกับภาษีส่ง E-tax/อีเมลแล้ว — ไม่ต้องแนบกล่อง ไม่ต้องถ่ายรูปใบเสร็จ</span>
                     <span className="text-slate-500">{docLine}{doc.company ? ` · ${doc.company}` : ""}</span>
                   </span>
                   <button
                     type="button"
-                    onClick={() => onTaxInvoiceDelivery("box")}
-                    className="shrink-0 rounded-xl border border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-600"
+                    onClick={() => {
+                      if (window.confirm("ใบนี้ติ๊กไว้ว่าส่งใบกำกับทาง E-tax/อีเมลแล้ว\n\nจะเปลี่ยนเป็น “ต้องพิมพ์ใบกำกับใส่กล่อง” จริงไหม? (ต้องถ่ายรูปใบเสร็จก่อนปิดกล่อง)")) onTaxInvoiceDelivery("box");
+                    }}
+                    className="shrink-0 rounded-xl border border-slate-200 px-2 py-2 text-[10px] font-bold text-slate-400"
+                    title="ปกติไม่ต้องกด — กดเฉพาะเมื่อลูกค้าขอใบกำกับตัวจริงใส่กล่อง"
                   >
-                    ต้องแนบกล่อง
+                    เปลี่ยนเป็นต้องแนบกล่อง…
                   </button>
                 </div>
               );
@@ -14650,6 +14662,8 @@ function ReceiptPhotoBox({
   const shippedAll = receiptsShippedRound(order);
   const ex = nextRoundExtras(order);
   const noReceipt = receiptsPending(order);
+  // 📧↩ เคยติ๊ก E-tax แล้วแต่ถูกเปลี่ยนกลับ (มักเผลอกด) — บอกให้เห็น + ปุ่มคืนค่าใหญ่ ไม่ต้องถ่ายรูปซ้ำ (16 ต.ค. 69)
+  const reverted = taxInvoiceDeliveryReverted(order);
   const [busy, setBusy] = useState<string | null>(null);
   const [errs, setErrs] = useState<Record<string, string>>({});
   const done = left === 0;
@@ -14751,7 +14765,19 @@ function ReceiptPhotoBox({
           );
         })}
       </ul>
-      {!done && (
+      {!done && reverted && (
+        <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5 text-[11px] ring-1 ring-amber-300">
+          <p className="font-extrabold text-amber-900">
+            📧 ใบนี้เคยติ๊ก “ส่ง E-tax/อีเมลแล้ว” โดย {reverted.emailBy} · {shortTime(reverted.emailAt)} — แต่ถูกเปลี่ยนเป็น “ต้องแนบกล่อง” โดย {reverted.boxBy} ·{" "}
+            {shortTime(reverted.boxAt)}
+          </p>
+          <p className="mt-0.5 text-amber-800">ถ้าเผลอกด แตะปุ่มนี้เพื่อกลับไปไม่ต้องถ่ายรูปใบเสร็จ</p>
+          <button type="button" onClick={onEmail} className="mt-2 w-full rounded-xl bg-amber-500 px-3 py-2.5 text-xs font-extrabold text-white">
+            ↩ ส่ง E-tax/อีเมลแล้ว — ไม่ต้องแนบ ไม่ต้องถ่ายรูป
+          </button>
+        </div>
+      )}
+      {!done && !reverted && (
         <div className="mt-2 flex justify-end">
           <button
             type="button"

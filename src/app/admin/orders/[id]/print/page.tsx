@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, TAX_INVOICE_LOG_EMAIL, TAX_INVOICE_LOG_BOX, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
 import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -148,7 +148,7 @@ export default function PrintOrderPage() {
       const next = withLog(
         { ...o, taxInvoiceDelivery: v },
         actor,
-        v === "email" ? "ใบกำกับภาษี: ส่ง E-tax/อีเมลแล้ว ไม่ต้องแนบกล่อง" : "ใบกำกับภาษี: ต้องใส่ลงกล่อง",
+        v === "email" ? TAX_INVOICE_LOG_EMAIL : TAX_INVOICE_LOG_BOX,
         "ติ๊กจากหน้าปริ้น"
       );
       setOrders((list) => list.map((x) => (x.id === o.id ? next : x)));
@@ -1166,7 +1166,11 @@ function OrderDocs({
             <input
               type="checkbox"
               checked={order.taxInvoiceDelivery === "email"}
-              onChange={(e) => onTaxInvoiceDelivery(order, e.target.checked ? "email" : "box")}
+              onChange={(e) => {
+                // ↩ เอาติ๊กออก = กลับมาบังคับถ่ายรูปใบเสร็จที่โต๊ะแพ็ค — ถามก่อน กันเผลอแตะ (16 ต.ค. 69)
+                if (!e.target.checked && !window.confirm("เอาติ๊ก “ส่ง E-tax/อีเมลแล้ว” ออก = ใบนี้ต้องพิมพ์ใบกำกับใส่กล่อง + ถ่ายรูปใบเสร็จก่อนปิดกล่อง\n\nยืนยันไหม?")) return;
+                onTaxInvoiceDelivery(order, e.target.checked ? "email" : "box");
+              }}
               className="h-4 w-4 accent-amber-500"
             />
             {order.taxInvoiceDelivery === "email"
