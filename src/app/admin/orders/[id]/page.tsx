@@ -199,7 +199,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
 import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shippingUnset } from "@/lib/ship-label";
-import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, isFlatCalAi, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
@@ -4319,7 +4319,11 @@ export default function AdminOrderDetailPage() {
    * เปิดจอให้เลย (&studio=1) + ปุ่ม 💾 บันทึกกลับเข้าออเดอร์ (&order=&item=) → /api/admin/orders/cal-design เปลี่ยนไฟล์แบบของรายการเดิมตรง ๆ
    * ไม่ผ่านตะกร้า/สั่งเพิ่ม ยอดเงินไม่ขยับ จึงใช้ได้ทั้งใบที่ยังไม่โอนและโอนแล้ว (เดิมต้อง ใส่ตะกร้า→สั่งเพิ่ม→กลับมาแทนที่ · ผู้ใช้สั่ง 15 ต.ค. 69)
    */
-  function openCalDesign(itemIndex: number) {
+  /**
+   * @param remake 🔁 เปิดมาเพื่อ "ทำไฟล์ .ai เลเยอร์ + .pdf ใหม่" จากเครื่องร้าน (&files=1) — จอโหลดแบบเสร็จแล้วกด 💾 บันทึกกลับเข้าออเดอร์ให้เอง
+   *               ใช้กับใบที่สั่งจากมือถือ (ได้ไฟล์สำรอง -pdf.ai ไม่แยกเลเยอร์) หรือใบลูกค้าทั่วไปที่ยังไม่มีไฟล์ (16 ต.ค. 69 OD-261016-6709)
+   */
+  function openCalDesign(itemIndex: number, remake = false) {
     if (!order) return;
     const it = order.items[itemIndex];
     if (!it) return;
@@ -4342,7 +4346,11 @@ export default function AdminOrderDetailPage() {
       setErr("⚠️ เปิดแบบไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
       return;
     }
-    window.open(`${productPath(p)}?edit=${cartEditToken(key)}&studio=1&order=${encodeURIComponent(order.id)}&item=${itemIndex}`, "_blank", "noopener");
+    window.open(
+      `${productPath(p)}?edit=${cartEditToken(key)}&studio=1&order=${encodeURIComponent(order.id)}&item=${itemIndex}${remake ? "&files=1" : ""}`,
+      "_blank",
+      "noopener",
+    );
   }
 
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
@@ -7219,10 +7227,49 @@ export default function AdminOrderDetailPage() {
                             {/* 🗂 .ai แยกเลเยอร์ + .pdf ของปฏิทินที่ออกแบบบนเว็บ — พนักงานหลังบ้านเห็น/โหลดได้ทุกคน
                                 (ผู้ใช้สั่ง 15 ต.ค. 69 "หลังบ้านเป็นพนักงาน ต้องเห็นไฟล์ได้" · เดิมเฉพาะเจ้าของร้าน) — ลูกค้าไม่เห็นหน้านี้
                                 ปฏิทินที่ออกแบบบนเว็บแต่ไม่มีไฟล์ = บอกให้รู้ว่าไม่มี (ไม่ใช่กล่องหายไปเฉย ๆ) */}
+                            {(() => {
+                              /**
+                               * 🔁 ทำไฟล์ .ai เลเยอร์ + .pdf ใหม่จากเครื่องร้าน (เจ้าของร้าน · ต้องมีลิงก์แบบบนเว็บ)
+                               * ใช้เมื่อ .ai ที่แนบเป็นไฟล์สำรอง -pdf.ai (สั่งจากมือถือ/เครื่องที่ต่อ Illustrator ไม่ได้ → เปิดแล้วรวมเป็น Layer 1)
+                               * หรือใบลูกค้าทั่วไปที่ยังไม่มีไฟล์ · เปิดจอออกแบบด้วยแบบเดิมแล้วบันทึกกลับเข้าใบนี้ให้เอง (ไฟล์เปลี่ยน · ยอดเงินไม่เปลี่ยน)
+                               * (เจ้าของร้านแจ้ง 16 ต.ค. 69 OD-261016-6709 "สั่งจากมือถือ โหลด .ai เลเยอร์แล้วไม่แยกเลเยอร์")
+                               */
+                              const flat = specs.some((sp) => isFlatCalAi(calAiUrlOf(sp)));
+                              const noAi = !specs.some((sp) => calAiUrlOf(sp));
+                              const canRemake = isOwner && mayEdit && specs.some((sp) => calEditUrlOf(sp)) && !!productOfItem(it.productId);
+                              if (!canRemake) return null;
+                              // ไฟล์เก่าก่อน 16 ต.ค. 69 ชื่อเก็บไม่มี -pdf → ดูจากชื่อไม่ออก · ปุ่มจึงมีเสมอ (เปิดใน Illustrator เห็น Layer 1 เดียว = กดทำใหม่)
+                              const warn = flat || noAi;
+                              return (
+                                <div
+                                  className={`flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 ring-1 ${
+                                    warn ? "bg-rose-50 ring-rose-200" : "bg-amber-50/60 ring-amber-200"
+                                  }`}
+                                >
+                                  <span className={`text-[10.5px] font-semibold leading-snug ${warn ? "text-rose-900" : "text-amber-900"}`}>
+                                    {flat
+                                      ? "⚠️ ไฟล์ .ai ที่แนบเป็นไฟล์สำรอง (สั่งจากมือถือ/เครื่องที่ต่อ Illustrator ของร้านไม่ได้) — เปิดแล้วรวมเป็น Layer 1 ไม่แยกเลเยอร์"
+                                      : noAi
+                                        ? "🗂 ยังไม่มีไฟล์ .ai เลเยอร์ของแบบนี้"
+                                        : "เปิด .ai แล้วเห็นแค่ Layer 1 (สั่งจากมือถือ) = ไฟล์สำรอง ไม่แยกเลเยอร์"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openCalDesign(i, true)}
+                                    className={`rounded-full px-3 py-1 text-[11px] font-bold shadow-sm transition ${
+                                      warn ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-white text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100"
+                                    }`}
+                                    title="เปิดแบบเดิมในจอออกแบบบนเครื่องนี้ ให้ Illustrator ของร้าน (โปรแกรม cutout-py) ทำ .ai แยกเลเยอร์ + .pdf แล้วบันทึกกลับเข้าออเดอร์ให้เอง — ยอดเงินไม่เปลี่ยน"
+                                  >
+                                    🔁 ทำ .ai เลเยอร์ใหม่ด้วย Illustrator (เครื่องนี้)
+                                  </button>
+                                </div>
+                              );
+                            })()}
                             {isCal && !specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
                               <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
                                 🗂 ไฟล์งาน .ai / .pdf: ออเดอร์นี้ไม่มีไฟล์ — ระบบทำไฟล์นี้เฉพาะตอนเจ้าของร้านเป็นคนออกแบบ/สั่งเอง
-                                (ออเดอร์จากลูกค้าทั่วไปยังไม่มี)
+                                (ออเดอร์จากลูกค้าทั่วไปยังไม่มี{specs.some((sp) => calEditUrlOf(sp)) ? " — เจ้าของร้านกดปุ่ม 🔁 ด้านบนทำจากเครื่องร้านได้" : ""})
                               </p>
                             )}
                             {specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
@@ -7231,7 +7278,12 @@ export default function AdminOrderDetailPage() {
                                   {specs.flatMap((sp, n) =>
                                     (
                                       [
-                                        [calAiUrlOf(sp), ".ai เลเยอร์", "เลเยอร์.ai"],
+                                        // ⚠️ -pdf.ai = ไฟล์สำรองไม่แยกเลเยอร์ (ทำจากมือถือ) — บอกตรงปุ่ม ไม่เรียก "เลเยอร์" (16 ต.ค. 69)
+                                        [
+                                          calAiUrlOf(sp),
+                                          isFlatCalAi(calAiUrlOf(sp)) ? ".ai (ยังไม่แยกเลเยอร์)" : ".ai เลเยอร์",
+                                          isFlatCalAi(calAiUrlOf(sp)) ? "ยังไม่แยกเลเยอร์-pdf.ai" : "เลเยอร์.ai",
+                                        ],
                                         // .pdf = การ์ดชุด → ไฟล์ชิ้นงานโปรแกรมจัดวาง · ปฏิทินแบบอื่น → .pdf ทั้งเล่ม (14 ต.ค. 69)
                                         [calPdfUrlOf(sp), ".pdf", /\.zip(\?|$)/i.test(calPdfUrlOf(sp) ?? "") ? "ชิ้นงาน.zip" : "งานพิมพ์.pdf"],
                                       ] as const
@@ -7243,7 +7295,11 @@ export default function AdminOrderDetailPage() {
                                           target="_blank"
                                           rel="noreferrer"
                                           download={`${order.id}-item${i + 1}${specs.length > 1 ? `-ลาย${n + 1}` : ""}-${suffix}`}
-                                          className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100"
+                                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${
+                                            label.includes("ยังไม่แยก")
+                                              ? "bg-rose-50 text-rose-700 ring-rose-300 hover:bg-rose-100"
+                                              : "bg-white text-amber-800 ring-amber-300 hover:bg-amber-100"
+                                          }`}
                                         >
                                           ⬇ {specs.length > 1 ? `ลายที่ ${n + 1} ` : ""}
                                           {label}

@@ -3784,11 +3784,19 @@ export default function ProductDetail({
    * ไม่ผ่านตะกร้า/สั่งเพิ่ม · ยอดเงิน จำนวน ตัวเลือกอื่นไม่ขยับ → ใช้ได้แม้ออเดอร์มีเงินเข้าแล้ว
    */
   const [backTo, setBackTo] = useState<{ orderId: string; index: number } | null>(null);
+  /**
+   * 🔁 &files=1 (ปุ่ม "ทำ .ai เลเยอร์ใหม่ด้วย Illustrator" หน้าออเดอร์) — จอโหลดแบบเสร็จแล้วกด 💾 บันทึกกลับเข้าออเดอร์ให้เอง
+   * ใบที่สั่งจากมือถือได้ไฟล์สำรอง -pdf.ai (ต่อ Illustrator ของร้านไม่ได้) → ทำใหม่จากเครื่องร้าน (16 ต.ค. 69 OD-261016-6709)
+   */
+  const [remakeFiles, setRemakeFiles] = useState(false);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const o = q.get("order") ?? "";
     const i = Number(q.get("item"));
-    if (/^OD-[\w-]+$/.test(o) && Number.isInteger(i) && i >= 0) setBackTo({ orderId: o, index: i });
+    if (/^OD-[\w-]+$/.test(o) && Number.isInteger(i) && i >= 0) {
+      setBackTo({ orderId: o, index: i });
+      setRemakeFiles(q.get("files") === "1");
+    }
   }, []);
   const saveBackRef = useRef<() => Promise<void>>(async () => {});
   saveBackRef.current = async () => {
@@ -9339,6 +9347,7 @@ export default function ProductDetail({
                 return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
               }}
               aiExport={isOwner}
+              autoOrder={!!backTo && remakeFiles && isOwner && editIndex !== null}
               orderLabel={backTo ? `💾 บันทึกกลับเข้า ${backTo.orderId}` : undefined}
               onOrder={async () => {
                 if (backTo) {

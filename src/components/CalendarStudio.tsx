@@ -71,7 +71,7 @@ import {
   type ImgRef,
 } from "@/lib/calendar-card";
 import { curvesBox, curvesSvgD, printFrameToken, shiftCurves, type TemplateCurve } from "@/lib/design-templates";
-import { buildCalendarAi, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
+import { buildCalendarAi, illustratorReady, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
@@ -133,6 +133,11 @@ interface Props {
   onOrder?: () => void | Promise<void>;
   /** 💾 ชื่อปุ่มแทน "🛒 ใส่ตะกร้า" (หลังบ้านเปิดแก้แบบในออเดอร์ = บันทึกกลับเข้าออเดอร์ · ไม่โชว์ราคา) */
   orderLabel?: string;
+  /**
+   * 🔁 เปิดมาเพื่อ "ทำไฟล์ใหม่" (หน้าออเดอร์ปุ่ม ทำ .ai เลเยอร์ใหม่ด้วย Illustrator · &files=1) — โหลดรูปของแบบเดิมเสร็จแล้วกด onOrder ให้เอง
+   * ต้องต่อ Illustrator ของร้าน (cutout-py) ได้ ไม่งั้นหยุดและบอก (ไม่งั้นได้ไฟล์สำรอง -pdf.ai ซ้ำอีก) · ใช้กับใบที่สั่งจากมือถือ (16 ต.ค. 69 OD-261016-6709)
+   */
+  autoOrder?: boolean;
   /**
    * 📐 เทมเพลตของวัสดุที่เลือก (รูปตัวอย่างไฟล์ .ai/.pdf + ขนาดอาร์ตบอร์ด มม.) — วาดทับบนจอเป็นไกด์ (กรอบการ์ดจริงของวัสดุนั้น)
    * ไม่ติดไปกับไฟล์ส่งพิมพ์ · ไม่มี = ใช้เส้นตัดที่ระบบวาดเอง
@@ -367,6 +372,7 @@ export default function CalendarStudio({
   price,
   onOrder,
   orderLabel,
+  autoOrder,
   aiExport,
   guide,
   square,
@@ -1035,9 +1041,14 @@ export default function CalendarStudio({
   }, [open, fontKeys]);
 
   // ── เปิดมาแก้แบบเดิม → โหลดรูปต้นฉบับกลับ (ลำดับเดิม — design.photos อ้างตามลำดับ) ──
+  /** 🔁 รูปของแบบเดิมโหลดครบแล้ว (autoOrder รอค่านี้ก่อนกดบันทึกให้เอง) */
+  const [srcsReady, setSrcsReady] = useState(false);
   useEffect(() => {
     const seed = initial?.sources.length ? initial.sources : (seedSources ?? []);
-    if (!open || !seed.length) return;
+    if (!open || !seed.length) {
+      if (open) setSrcsReady(true);
+      return;
+    }
     let dead = false;
     void (async () => {
       const list = await Promise.all(seed.map(loadImg));
@@ -1045,6 +1056,7 @@ export default function CalendarStudio({
       if (list.some((x) => !x)) setErr("โหลดรูปเดิมบางรูปไม่สำเร็จ — เลือกรูปใหม่ได้เลย");
       const ok = list.filter((x): x is Src => !!x);
       setSrcs(ok);
+      setSrcsReady(true);
       /**
        * 🪄 รูปตั้งต้น (หลังบ้านออกแบบให้ลูกค้า · ไม่มีแบบเดิม) → เรียงลงหน้าอัตโนมัติตามลำดับ: ปก → มกราคม → … (ผู้ใช้สั่ง 15 ต.ค. 69)
        * เฉพาะหน้าที่มีช่องรูปประจำหน้าและไม่ใช่หน้าไม่บังคับ (หลังปก/หลังแผ่นท้าย) · รูปไม่พอ = หน้าที่เหลือว่างไว้ · มีรูปวางอยู่แล้วไม่ยุ่ง
@@ -1068,6 +1080,37 @@ export default function CalendarStudio({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /**
+   * 🔁 ทำไฟล์ใหม่อัตโนมัติ (autoOrder) — รูปของแบบเดิมพร้อม + ฟอนต์พร้อม → เช็ค Illustrator ของร้าน → กด 💾 บันทึกกลับเข้าออเดอร์ให้เอง
+   * ต่อ Illustrator ไม่ได้ = หยุดและบอก (ทำต่อจะได้ไฟล์สำรอง -pdf.ai ที่ไม่แยกเลเยอร์เหมือนเดิม) · ให้เจ้าของร้านเปิด start.command แล้วกดปุ่มเอง
+   * เงื่อนไขอื่นของ apply (ช่องรูปว่าง/รูปไม่ได้ใช้/DPI ต่ำ) เด้งถามตามปกติ — คนกดต่อเองได้
+   */
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (!autoOrder || !open || !srcsReady || !onOrder || autoRan.current) return;
+    autoRan.current = true;
+    void (async () => {
+      if (!aiExport) {
+        setErr("⚠️ ทำไฟล์ .ai เลเยอร์ได้เฉพาะเจ้าของร้าน (Administrator)");
+        return;
+      }
+      setBusy("กำลังเช็ค Illustrator ในเครื่องนี้…");
+      const ok = await illustratorReady();
+      setBusy("");
+      if (!ok) {
+        setErr(
+          "⚠️ ต่อ Illustrator ของร้านไม่ได้ (โปรแกรม tools/cutout-py พอร์ต 8777 ไม่ได้เปิด หรือเครื่องนี้ไม่ใช่เครื่องร้าน) — " +
+            "ถ้าทำต่อจะได้ไฟล์สำรอง -pdf.ai ที่ไม่แยกเลเยอร์เหมือนเดิม · ดับเบิลคลิก tools/cutout-py/start.command แล้วกด 💾 บันทึกกลับเข้าออเดอร์เอง",
+        );
+        return;
+      }
+      await ensureFonts(fontKeys);
+      orderAfter.current = true;
+      await apply();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOrder, open, srcsReady, aiExport]);
 
   // ── Esc · Delete ลบชิ้นส่วน · วางรูปจากคลิปบอร์ด · กันหน้าเว็บด้านหลังเลื่อน/รับไฟล์ ──
   const selRef = useRef(sel);

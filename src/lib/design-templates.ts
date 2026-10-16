@@ -510,6 +510,11 @@ export const CAL_EDIT_TAG = " · แบบบนเว็บ: ";
 export const calEditUrlOf = (spec: string): string | null => tagUrl(spec, CAL_EDIT_TAG);
 export const calAiUrlOf = (spec: string): string | null => tagUrl(spec, CAL_AI_TAG);
 export const calPdfUrlOf = (spec: string): string | null => tagUrl(spec, CAL_PDF_TAG);
+/**
+ * ⚠️ ลิงก์ .ai ที่เป็น "ไฟล์สำรอง" PDF-.ai (ชื่อเก็บลงท้าย -pdf.ai) — ทำจากเครื่องที่ต่อ Illustrator ในร้านไม่ได้ (มือถือ/นอกร้าน)
+ * Illustrator เปิดแล้วรวมเป็น Layer 1 · หน้าออเดอร์ต้องบอกและเสนอทำใหม่จากเครื่องร้าน (16 ต.ค. 69 OD-261016-6709)
+ */
+export const isFlatCalAi = (url: string | null | undefined): boolean => !!url && /-pdf\.ai(\?|$)/i.test(url);
 /** ตัดลิงก์ไฟล์ของเจ้าของ (.ai / .pdf) ออกจากข้อความที่ทีมงานเห็น */
 export const stripCalAi = (spec: string): string => {
   let out = spec;
