@@ -895,12 +895,17 @@ function Row({
       <td className="opv-c1">
         <span className="opv-id">
           <b>{o.id}</b>
-          {(o.rush || o.claimOf || o.reorderOf || o.quoteOf || attn.length > 0) && (
+          {(o.rush || o.claimOf || o.freeOf || o.reorderOf || o.quoteOf || attn.length > 0) && (
             <span className="opv-tags">
               {o.rush && <span className="opv-tag opv-tag-hot">งานเร่ง</span>}
               {o.claimOf && (
                 <span className="opv-tag opv-tag-soft" title={`งานเคลมจาก ${o.claimOf}${o.claimReason ? ` — ${o.claimReason}` : ""}`}>
                   งานเคลม
+                </span>
+              )}
+              {o.freeOf && (
+                <span className="opv-tag opv-tag-soft" title={`ส่งฟรี — ไม่คิดเงินกับลูกค้า · ${o.freeOf.reason}`}>
+                  🎁 ส่งฟรี
                 </span>
               )}
               {o.reorderOf && (

@@ -12,7 +12,7 @@ import { artQtyOf, formatPrice, productLineOrder, type Product } from "@/lib/pro
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { addOnDisplayName, balanceNet, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { addOnDisplayName, balanceNet, isFreeOrder, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpayOutstanding, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, pairGiftProof, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -336,7 +336,8 @@ export default function CustomerOrderPage() {
   const [showPayTerms, setShowPayTerms] = useState(false);
   useEffect(() => {
     if (!order || order.status !== "รอชำระเงิน") return;
-    const isClaim = !!(order.claimOf || order.claimReason);
+    if (isFreeOrder(order)) return; // 🎁 ใบส่งฟรี/เคลม — ไม่มียอดต้องชำระ ไม่ต้องเตือนเงื่อนไขก่อนโอน
+    const isClaim = !!order.claimReason;
     const quoting = !isClaim && order.items.some((it) => it.qty > 0 && it.unitPrice <= 0);
     if (quoting) return; // ยังรอตีราคา — หน้าแจ้งโอนยังไม่เปิด ไม่ต้องเตือน
     const paid =
@@ -669,7 +670,7 @@ export default function CustomerOrderPage() {
   // รายการที่ยังรอแอดมินตีราคา (งานกำหนดขนาดเอง ฯลฯ ราคายัง ฿0) — ต้องใส่ราคาครบก่อนถึงเปิดหน้าแจ้งโอน
   // กันลูกค้าโอนทั้งที่ยอดรวมยังไม่ครบทุกรายการ · ออเดอร์เคลมตั้งใจ ฿0 ไม่นับ
   const pendingQuote =
-    order.claimOf || order.claimReason ? [] : order.items.filter((it) => it.qty > 0 && it.unitPrice <= 0);
+    isFreeOrder(order) || order.claimReason ? [] : order.items.filter((it) => it.qty > 0 && it.unitPrice <= 0);
   const step = STEP_OF[order.status];
   const balance = orderBalance(order);
   // 🧾 ลูกค้าหัก ณ ที่จ่าย: ยอดค้างตามบิลยังมีภาษีส่วนของมันปนอยู่ — ตัวเลขที่บอกให้โอนต้องหักออกแล้ว (OD-261001-8513)
@@ -780,7 +781,13 @@ export default function CustomerOrderPage() {
    * ยกเว้นตอน "รอตรวจสอบ" ที่ใบแรกยังรอร้านตรวจ — แบนเนอร์ "ได้รับสลิปแล้ว" ดูแลอยู่ ไม่ต้องชวนโอนซ้ำ
    */
   const showDueBox =
-    !!slipPhase && dueNow > 0 && !order.flowAccount && pendingQuote.length === 0 && !cancelled && !(order.status === "รอตรวจสอบ" && slipPhase === "first");
+    !!slipPhase &&
+    dueNow > 0 &&
+    !order.flowAccount &&
+    !isFreeOrder(order) && // 🎁 ส่งฟรี/เคลม — ไม่มียอดต้องชำระ ไม่ขึ้นกล่องโอน/แนบสลิป
+    pendingQuote.length === 0 &&
+    !cancelled &&
+    !(order.status === "รอตรวจสอบ" && slipPhase === "first");
 
   /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
   const payFlow = (
@@ -1636,6 +1643,14 @@ export default function CustomerOrderPage() {
         ))}
 
       {actionErr && <p className="ord-note danger mt-4 px-4 py-2.5 text-sm">{actionErr}</p>}
+
+      {/* 🎁 ส่งฟรี — บอกลูกค้าชัดว่าไม่มียอดต้องชำระ (เหตุผลเป็นเรื่องภายในร้าน ไม่โชว์) */}
+      {order.freeOf && !cancelled && (
+        <div className="ord-note ok mt-4 p-4">
+          <p className="ord-title text-[.94rem]" style={{ color: "inherit" }}>🎁 ทางร้านจัดส่งให้ฟรี — ไม่มียอดต้องชำระ</p>
+          <p className="mt-0.5 text-xs leading-relaxed">ออเดอร์นี้ทางร้านจัดทำและจัดส่งให้โดยไม่คิดค่าใช้จ่าย ไม่ต้องโอนเงินหรือแนบสลิปครับ</p>
+        </div>
+      )}
 
       {/* งานเคลม — บอกลูกค้าชัดว่าไม่มีค่าใช้จ่าย ร้านทำส่งใหม่ให้ */}
       {order.claimOf && (

@@ -3,7 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { can } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
-import { awaitingPayment, clearStageMemory, hasUnpaidBalance, orderTotal, stageAfterPayment, withLog, type Order, type OrderCharge } from "@/lib/admin-data";
+import { awaitingPayment, clearStageMemory, hasUnpaidBalance, isFreeOrder, orderTotal, stageAfterPayment, withLog, type Order, type OrderCharge } from "@/lib/admin-data";
 import { notifyCustomerLogged, orderLink } from "@/lib/server/notify";
 import { applyCharge, chargeNotice, newChargeId } from "@/lib/server/order-charge";
 import { signPaymentUrls } from "@/lib/server/slip-sign";
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   if (!row) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
   const order = row.data as Order;
   if (order.status === "ยกเลิก") return NextResponse.json({ error: "ออเดอร์นี้ถูกยกเลิกแล้ว" }, { status: 409 });
-  if (order.claimOf) return NextResponse.json({ error: "ออเดอร์เคลม/ทำใหม่ไม่คิดเงิน — เก็บเพิ่มไม่ได้" }, { status: 409 });
+  if (isFreeOrder(order)) return NextResponse.json({ error: order.freeOf ? "ออเดอร์ส่งฟรี ไม่คิดเงินกับลูกค้า — เก็บเพิ่มไม่ได้ (ถอนป้ายส่งฟรีก่อนถ้าจะคิดเงิน)" : "ออเดอร์เคลม/ทำใหม่ไม่คิดเงิน — เก็บเพิ่มไม่ได้" }, { status: 409 });
 
   const now = new Date().toISOString();
   const charge: OrderCharge = { id: newChargeId(), label, amount, note, by: who, at: now };
@@ -94,7 +94,7 @@ export async function DELETE(req: Request) {
   );
   // ↩️ ถอดแล้วยอดค้างหมด + ใบเคยถูกเด้งกลับรอชำระเงินเพราะยอดนี้ → คืนขั้นเดิมที่จำไว้เอง (กติกาเดียวกับ PATCH restoredFromReopen)
   const restored =
-    awaitingPayment(updated) && !!updated.reopenedFrom && !updated.deposit && !updated.claimOf && hasUnpaidBalance(order) && !hasUnpaidBalance(updated);
+    awaitingPayment(updated) && !!updated.reopenedFrom && !updated.deposit && !isFreeOrder(updated) && hasUnpaidBalance(order) && !hasUnpaidBalance(updated);
   const final = restored
     ? withLog({ ...updated, status: stageAfterPayment(updated), ...clearStageMemory }, who, "ยอดค้างหมดแล้ว — กลับไปขั้นเดิม", `${updated.status} → ${stageAfterPayment(updated)}`)
     : updated;

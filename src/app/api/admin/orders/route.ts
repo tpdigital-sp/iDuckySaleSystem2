@@ -24,14 +24,17 @@ import { isPickupOrder } from "@/lib/ship-label";
 import { planBalanceQueue } from "@/lib/balance-notify";
 import { isShipMain, isShipRider, riderNotReady, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { bumpSoldForOrder, unbumpSoldForOrder } from "@/lib/server/sold";
+import { alertFreeOrder } from "@/lib/server/free-order-alert";
 import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
 import {
   adminDiscountAmount,
   awaitingPayment,
+  canMarkFree,
   clearStageMemory,
   stageAfterPayment,
   hasUnpaidBalance,
+  isFreeOrder,
   isPaidStatus,
   orderBalance,
   orderTotal,
@@ -1058,7 +1061,7 @@ export async function PATCH(req: Request) {
   }
 
   const paidStageBefore = !(["รอชำระเงิน", "รอตรวจสอบ", "ยกเลิก"] as OrderStatus[]).includes(existing.status);
-  if (mayEditFull && !toSave.deposit && !toSave.claimOf && toSave.paidTotal == null && paidStageBefore && orderTotal(toSave) > orderTotal(existing) + 0.5)
+  if (mayEditFull && !toSave.deposit && !isFreeOrder(toSave) && toSave.paidTotal == null && paidStageBefore && orderTotal(toSave) > orderTotal(existing) + 0.5)
     toSave = { ...toSave, paidTotal: orderTotal(existing) };
 
   /**
@@ -1074,7 +1077,7 @@ export async function PATCH(req: Request) {
   if (
     mayEditFull &&
     !toSave.deposit &&
-    !toSave.claimOf &&
+    !isFreeOrder(toSave) &&
     toSave.status !== "ยกเลิก" &&
     // ยอดค้าง ≈ ภาษีที่หักทั้งก้อนเท่านั้น — ยอดเพิ่มจริงที่เล็กกว่าภาษี (ค่าส่งเพิ่ม ฿50) ห้ามโดนกลืน (ดู whtCoversBalance)
     whtCoversBalance(toSave)
@@ -1131,7 +1134,7 @@ export async function PATCH(req: Request) {
   const restoredFromReopen =
     mayEditFull &&
     !toSave.deposit &&
-    !toSave.claimOf &&
+    !isFreeOrder(toSave) &&
     awaitingPayment(existing) &&
     toSave.status === existing.status &&
     !!toSave.reopenedFrom &&
@@ -1148,7 +1151,51 @@ export async function PATCH(req: Request) {
 
   /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */
   const quoteJustPriced =
-    !toSave.claimOf && existing.items.some((i) => i.unitPrice <= 0) && toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);
+    !isFreeOrder(toSave) && existing.items.some((i) => i.unitPrice <= 0) && toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);
+
+  /**
+   * 🎁 ส่งฟรี / ไม่คิดเงิน (Order.freeOf) — ปล่อยใบยอด ฿0 เข้าคิวงานโดยไม่มีเงินเข้า (ตัวอย่างชิ้นงาน · ของขวัญ · goodwill)
+   * แทนทางเดิมที่ต้องกด "ไม่มีสลิป — ยืนยันเอง" แล้ว log เขียนว่ารับเงินทั้งที่ไม่มีเงิน (OD-261012-1553 · 16 ต.ค. 69)
+   *   • ตั้ง/ถอน = สิทธิ์ยืนยันเงินเข้า (orders.markPaid) เท่าใบจ่ายจริง · ตั้งได้เมื่อ canMarkFree(ใบเดิม) · ถอนได้ถ้ายังไม่ปริ้นใบงาน
+   *   • เซิร์ฟเวอร์ประทับ by/at เอง · paidTotal = 0 (ไม่ใช่เงินเข้า) · สถานะไปขั้นเดียวกับตอนเงินเข้าครบ (stageAfterPayment)
+   *   • ใบ freeOf ต้องยอด ฿0 ตลอด — ใส่ราคา/ค่าส่ง/ค่าบริการทีหลังโดนปัดตรงนี้ (ถอนป้ายส่งฟรีก่อนถ้าจะคิดเงิน)
+   * ผลข้างเคียงตอนเข้าคิว (ด้านล่าง): ส่งเรคอร์ดสะพาน TP พร้อม noteSuffix "ส่งฟรี ไม่คิดเงิน" · ตัดสต๊อก · ไม่บวกยอดขาย/แต้ม
+   */
+  const freeSetNow = mayEditFull && !!toSave.freeOf && !existing.freeOf;
+  const freeUnsetNow = mayEditFull && !toSave.freeOf && !!existing.freeOf;
+  if ((freeSetNow || freeUnsetNow) && !mayMarkPaid)
+    return NextResponse.json(
+      { error: "บัญชีนี้ตั้ง/ถอน “ส่งฟรี — ไม่คิดเงิน” ไม่ได้ — ให้เจ้าของร้าน หรือพนักงานที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้ เป็นคนกด" },
+      { status: 403 }
+    );
+  if (freeSetNow) {
+    if (!canMarkFree(existing))
+      return NextResponse.json(
+        { error: "ใบนี้ตั้งส่งฟรีไม่ได้ — ต้องเป็นใบยอดรวม ฿0 ที่ยังรอชำระเงิน/รอตรวจสอบ ไม่มีเงินเข้า และไม่ใช่ใบเคลม/มัดจำ/FlowAccount" },
+        { status: 409 }
+      );
+    const reason = (toSave.freeOf?.reason ?? "").trim().slice(0, 200);
+    if (!reason) return NextResponse.json({ error: "ต้องใส่เหตุผลที่ส่งฟรี (ตัวอย่างชิ้นงาน / ของขวัญ / ชดเชย …)" }, { status: 400 });
+    toSave = { ...toSave, freeOf: { reason, by: actor.name?.trim() || actor.username, at: now }, paidTotal: 0 };
+    if (awaitingPayment(toSave)) toSave = { ...toSave, status: stageAfterPayment(toSave), ...clearStageMemory };
+  }
+  if (freeUnsetNow) {
+    if (existing.printedAt) return NextResponse.json({ error: "ถอน “ส่งฟรี” ไม่ได้ — ใบงานปริ้นไปแล้ว" }, { status: 409 });
+    // กลับไปหน้าประตูการเงินเหมือนก่อนกด · ขั้นแบบที่เดินไปแล้วจำไว้ที่ proofStage (เงินเข้า/กดฟรีใหม่ค่อยกลับไปขั้นนั้น)
+    const proofStages: OrderStatus[] = ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
+    if (!awaitingPayment(toSave) && toSave.status !== "ยกเลิก")
+      toSave = { ...toSave, status: "รอชำระเงิน", proofStage: proofStages.includes(toSave.status) ? toSave.status : toSave.proofStage, reopenedFrom: undefined };
+    if ((toSave.paidTotal ?? 0) === 0) toSave = { ...toSave, paidTotal: undefined };
+  }
+  if (mayEditFull && toSave.freeOf && orderTotal(toSave) > 0)
+    return NextResponse.json(
+      { error: `ใบส่งฟรีต้องยอดรวม ฿0 — ตอนนี้ยอด ${orderTotal(toSave).toLocaleString("th-TH")} บาท · ถอนป้าย “🎁 ส่งฟรี” ก่อนถ้าจะคิดเงินใบนี้` },
+      { status: 409 }
+    );
+  /** 🎁 ใบส่งฟรีเพิ่งถูกปล่อยเข้าคิวในคำขอนี้ (ข้ามด่านเงิน) — ใช้ยิงเรคอร์ดสะพาน/ตัดสต๊อกเหมือนตอนสถานะเป็น "ชำระแล้ว" */
+  const freeReleasedNow = freeSetNow && !awaitingPayment(toSave) && toSave.status !== "ยกเลิก";
+  /** 🎁 เหตุผลที่ใช้แจ้งกลุ่มแอดมิน — ตอนถอน freeOf หายไปแล้ว ต้องจำของเดิมไว้ก่อน */
+  const freeAlertReason = toSave.freeOf?.reason ?? existing.freeOf?.reason ?? "";
 
   /**
    * 🔒 ด่านยืนยันเงินเข้า — คนไม่มีสิทธิ์ทำ 3 อย่างนี้ไม่ได้ (บังคับที่นี่ ไม่ใช่แค่ซ่อนปุ่ม)
@@ -1276,7 +1323,7 @@ export async function PATCH(req: Request) {
     !balanceGrew &&
     !quoteJustPriced &&
     !toSave.deposit &&
-    !toSave.claimOf &&
+    !isFreeOrder(toSave) &&
     toSave.status !== "ยกเลิก" &&
     !!notified &&
     existing.paidTotal != null &&
@@ -1395,7 +1442,7 @@ export async function PATCH(req: Request) {
   // 🪪 ผูกผู้ติดต่อทีหลังบนใบที่จ่ายครบแล้ว → แต้มต้องเข้าด้วย (เดิมบวกเฉพาะจังหวะเปลี่ยนสถานะ — ใบที่จับคู่เบอร์ไม่ได้ เพราะเบอร์ซ้ำ 2 การ์ด
   //    จึงไม่ได้แต้มเลย · OD-261014-3893) · awardPointsForOrder กันบวกซ้ำต่อออเดอร์เอง
   //    เปลี่ยนจากการ์ดหนึ่งไปอีกการ์ด → ย้ายแต้มที่บวกไว้ตามมาด้วย (OD-261002-6439)
-  if (mayEditFull && toSave.contactId && toSave.contactId !== existing.contactId && isPaidStatus(toSave.status) && (!toSave.deposit || toSave.deposit.settledAt))
+  if (mayEditFull && toSave.contactId && toSave.contactId !== existing.contactId && isPaidStatus(toSave.status) && (!toSave.deposit || toSave.deposit.settledAt) && !isFreeOrder(toSave))
     inBackground("awardPointsForOrder", awardPointsForOrder(toSave));
   // ยอดของเรคอร์ดสะพานทั้งสองใบ (งวดแรก + งวดหลัง) — ต่างกันเมื่อไหร่แปลว่าต้องยิงอัปเดตไป msVerify
   const tpMoneyKey = (o: Order) => JSON.stringify([amountsForRecord(o, false), amountsForRecord(o, true)]);
@@ -1421,6 +1468,10 @@ export async function PATCH(req: Request) {
   // มัดจำงวดแรกเพิ่งยืนยัน (มือ) ในคำขอนี้ — ใช้แยกรูปแบบรายงาน msVerify
   const depositFirstNow = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
 
+  // 🎁 พนักงานกดส่งฟรี → กลุ่มไลน์แอดมินต้องรู้ทุกครั้ง (ใครกด ใบไหน เหตุผล) — เจ้าของร้านสั่ง 16 ต.ค. 69
+  //    ถอนป้ายก็แจ้ง (ใบกลับไปรอเก็บเงิน) · ไม่ผูกกับบล็อกแจ้งสถานะด้านล่าง · ⏳ await กัน Netlify แช่เครื่อง (ตัวส่งไม่ throw)
+  if (freeSetNow) await alertFreeOrder(toSave, adminName, "set", freeAlertReason);
+  if (freeUnsetNow) await alertFreeOrder(toSave, adminName, "unset", freeAlertReason);
   // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE)
   // ⚠️ กลับไปรอชำระเงินเพราะยอดโต = เงียบไว้ก่อน ให้ข้อความ "ยอดที่ต้องโอนเพิ่ม" ในคิวเป็นคนบอก (ไม่งั้นลูกค้าได้ "รอชำระเงิน" ลอย ๆ ที่ไม่มียอด)
   if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && (balanceGrew || balanceQueued)) && !restoredFromReopen) {
@@ -1438,21 +1489,26 @@ export async function PATCH(req: Request) {
       ));
     // ส่งเข้า msVerify ระบบ Admin — แยกว่าตรวจโดยแอดมิน (SlipOK ผ่านจะถูกส่งจาก slip route ไปแล้ว = idempotent)
     // ⏳ เรคอร์ด msVerify = ของที่ฝ่ายบัญชีต้องเห็น — รอให้เขียนเสร็จก่อนตอบ (ห้าม fire-and-forget)
-    if (toSave.status === "ชำระแล้ว")
+    // 🎁 ใบส่งฟรีที่เพิ่งปล่อยเข้าคิว = งานจริงที่กราฟฟิกต้องเห็น (เหมือนใบเคลมใน redo/route.ts) แม้ขั้นแรกจะข้าม "ชำระแล้ว" ไป "อนุมัติแบบ"
+    if (toSave.status === "ชำระแล้ว" || freeReleasedNow)
       await reportPaidToTP(
         toSave,
         adminName,
         // ยอดเงินเข้าจริงของงวดคิดใน amountsForRecord (งวด − หัก ณ ที่จ่ายของงวด) — ที่นี่บอกแค่ว่าเป็นงวดไหน
-        depositFirstNow ? { noteSuffix: "มัดจำ 50% งวดแรก" } : undefined
+        toSave.freeOf
+          ? { noteSuffix: `ส่งฟรี ไม่คิดเงิน · ${toSave.freeOf.reason}` }
+          : depositFirstNow
+            ? { noteSuffix: "มัดจำ 50% งวดแรก" }
+            : undefined
       );
-    // ตัดสต๊อกวัสดุอัตโนมัติ (idempotent ต่อออเดอร์) · ยกเลิก → คืนของที่เคยตัด
-    if (toSave.status === "ชำระแล้ว") inBackground("cutStockForOrder", cutStockForOrder(toSave));
-    // ยอด "ขายแล้ว" บนหน้าเว็บ บวก/ถอนอัตโนมัติ (idempotent เช่นกัน)
-    if (toSave.status === "ชำระแล้ว") inBackground("bumpSoldForOrder", bumpSoldForOrder(toSave.id));
+    // ตัดสต๊อกวัสดุอัตโนมัติ (idempotent ต่อออเดอร์) · ยกเลิก → คืนของที่เคยตัด — ใบส่งฟรีก็ใช้วัสดุจริง ตัดด้วย
+    if (toSave.status === "ชำระแล้ว" || freeReleasedNow) inBackground("cutStockForOrder", cutStockForOrder(toSave));
+    // ยอด "ขายแล้ว" บนหน้าเว็บ บวก/ถอนอัตโนมัติ (idempotent เช่นกัน) · 🎁 ใบส่งฟรี/เคลมไม่ใช่ยอดขาย
+    if (toSave.status === "ชำระแล้ว" && !isFreeOrder(toSave)) inBackground("bumpSoldForOrder", bumpSoldForOrder(toSave.id));
     if (toSave.status === "ยกเลิก") inBackground("unbumpSoldForOrder", unbumpSoldForOrder(toSave.id));
     if (toSave.status === "ยกเลิก") inBackground("restoreStockForOrder", restoreStockForOrder(toSave));
     // 🦆 แต้มสะสม — ชำระครบ = บวกให้ผู้ติดต่อที่ผูกไว้ (ออเดอร์มัดจำรอเก็บยอดคงเหลือครบก่อน — บวกที่บล็อก settledAt ด้านล่าง)
-    if (toSave.status === "ชำระแล้ว" && !toSave.deposit) inBackground("awardPointsForOrder", awardPointsForOrder(toSave));
+    if (toSave.status === "ชำระแล้ว" && !toSave.deposit && !isFreeOrder(toSave)) inBackground("awardPointsForOrder", awardPointsForOrder(toSave));
     if (toSave.status === "ยกเลิก") inBackground("revokePointsForOrder", revokePointsForOrder(toSave));
 
     // ออเดอร์มัดจำเข้าไลน์ผลิตแล้วแต่ยังค้างงวดหลัง → ทวงตั้งแต่ตอนนี้ ไม่ต้องรอของเสร็จค่อยรู้

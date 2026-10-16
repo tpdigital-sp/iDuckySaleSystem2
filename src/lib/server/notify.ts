@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   balanceNet,
   depositInstallments,
+  isFreeOrder,
   orderBalance,
   orderNetTransfer,
   orderTotal,
@@ -389,6 +390,8 @@ export function statusMessage(order: Order, link: string): string | null {
     case "รอตรวจสอบ":
       return `🔎 ได้รับสลิปออเดอร์ ${id} แล้ว กำลังตรวจสอบยอดครับ\n${link}`;
     case "ชำระแล้ว":
+      // 🎁 ใบส่งฟรี/เคลม — ไม่มีเงินเข้า ห้ามบอกลูกค้าว่า "ยืนยันการชำระเงิน" (ตัดสินใจ 16 ต.ค. 69: ยังแจ้ง เพราะลูกค้าควรรู้ว่างานเข้าคิวแล้ว)
+      if (isFreeOrder(order)) return `🎁 รับงานออเดอร์ ${id} เข้าคิวแล้วครับ ทางร้านจัดทำและจัดส่งให้โดยไม่คิดค่าใช้จ่าย\n${link}`;
       return `✅ ยืนยันการชำระเงินออเดอร์ ${id} แล้ว กำลังเริ่มงานให้ครับ${owe}\n${link}`;
     case "รอตรวจแบบ":
       return `🎨 แบบงานออเดอร์ ${id} พร้อมให้ตรวจแล้วครับ\nกดดูแล้วกดอนุมัติ หรือแจ้งจุดที่อยากแก้ได้เลย\n${link}`;
@@ -497,7 +500,8 @@ export function statusFlex(
   const items = first ? `${first.name}${firstQty}${more > 0 ? ` และอีก ${more} รายการ` : ""}` : "-";
 
   const rows: unknown[] = [flexRow("รายการ", items)];
-  rows.push(flexRow("ยอดรวม", formatPrice(total), "#0F172A", true));
+  // 🎁 ใบส่งฟรี/เคลม: "ยอดรวม ฿0" อ่านแล้วงง — บอกตรง ๆ ว่าไม่คิดค่าใช้จ่าย
+  rows.push(flexRow("ยอดรวม", isFreeOrder(order) ? "ฟรี — ไม่คิดค่าใช้จ่าย" : formatPrice(total), "#0F172A", true));
   if (owe) rows.push(flexRow("ยอดค้าง", formatPrice(bal), "#E11D48", true));
   // ➗ หัก ณ ที่จ่าย: ยอดงวดกับเงินที่โอนจริงคนละตัว — โชว์คู่กันเหมือนหน้าออเดอร์ ไม่งั้นลูกค้าโอนเกิน
   if (oweNet) rows.push(flexRow(`↳ โอนจริงหลังหัก ณ ที่จ่าย${oweNet.rateTxt}`, formatPrice(oweNet.net), "#0F172A", true));
@@ -528,7 +532,8 @@ export function statusFlex(
             { type: "text", text: "iDucky Prints Studio", size: "xs", color: "#FFFFFFCC" },
             // 🏪 มารับเอง: สถานะในระบบคือ "จัดส่งแล้ว" แต่ลูกค้าต้องอ่านว่าแพ็คเสร็จ รอมารับ — ไม่งั้นเข้าใจว่าร้านส่งพัสดุไปแล้ว
             // (ตรงกับ orderStatusLabel ในหน้าเว็บ · เจ้าของร้านเลือกแบบนี้ 17 ก.ย. 69)
-            { type: "text", text: status === "จัดส่งแล้ว" && isPickupOrder(order) ? "แพ็คเสร็จ รอมารับ" : status, size: "xl", weight: "bold", color: "#FFFFFF" },
+            // 🎁 ใบส่งฟรี/เคลมเข้าขั้น "ชำระแล้ว" ทั้งที่ไม่มีเงิน — หัวการ์ดต้องไม่พูดถึงการชำระ
+            { type: "text", text: status === "จัดส่งแล้ว" && isPickupOrder(order) ? "แพ็คเสร็จ รอมารับ" : status === "ชำระแล้ว" && isFreeOrder(order) ? "รับงานแล้ว · ไม่คิดเงิน" : status, size: "xl", weight: "bold", color: "#FFFFFF" },
           ],
         },
         body: {
@@ -540,7 +545,14 @@ export function statusFlex(
             {
               type: "text",
               // 🏪 มารับเอง: "จัดส่งแล้ว" = แพ็คเสร็จ รอมารับ — หัวการ์ดต้องไม่บอกว่าส่งของออกไปแล้ว
-              text: opts?.headline ?? (status === "จัดส่งแล้ว" && isPickupOrder(order) ? "แพ็คเสร็จแล้ว — มารับที่ร้านได้เลย" : STATUS_HEADLINE[status]) ?? "",
+              text:
+                opts?.headline ??
+                (status === "จัดส่งแล้ว" && isPickupOrder(order)
+                  ? "แพ็คเสร็จแล้ว — มารับที่ร้านได้เลย"
+                  : status === "ชำระแล้ว" && isFreeOrder(order)
+                    ? "รับงานเข้าคิวแล้ว — ไม่คิดค่าใช้จ่าย"
+                    : STATUS_HEADLINE[status]) ??
+                "",
               size: "sm",
               color: "#334155",
               wrap: true,

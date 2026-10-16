@@ -1123,6 +1123,12 @@ function OrderRow({
               งานเคลม
             </span>
           )}
+          {o.freeOf && (
+            <span className="dkb-tag" style={{ background: "var(--dk-lilac-wash)", color: "var(--dk-lilac-ink)" }} title={`ส่งฟรี — ไม่คิดเงินกับลูกค้า · ${o.freeOf.reason}`}>
+              <i />
+              🎁 ส่งฟรี
+            </span>
+          )}
           {/* 🧾 FlowAcc — เอกสารล่าสุดในสาย QT → BL → INV (faChain ออกจากปุ่มหน้าออเดอร์) + บิลเพิ่ม · ขอใบกำกับแต่ยังไม่มีเอกสาร = เหลือง
               ⚠️ เอกสารหลักอยู่ได้ 2 ที่: order.flowAccount (สร้างออเดอร์จากลิงก์ FlowAccount) หรือ taxInvoice.docNo (วางลิงก์ในฟอร์ม "ใส่ข้อมูลใบกำกับภาษี")
               + INV ที่ออกในแอป FlowAccount เอง = faInvoices (cron wht-sync จดให้) — เดิมดูแค่ flowAccount/faChain → ขึ้น "ยังไม่ออก" ทั้งที่มี QT/INV แล้ว (OD-261006-2644 · 2449 · 7 ต.ค. 69) */}

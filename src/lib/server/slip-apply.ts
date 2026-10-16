@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { balanceWhtShare, clearStageMemory, orderBalance, earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, parkForSlipReview, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, stageAfterPayment, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
+import { balanceWhtShare, clearStageMemory, isFreeOrder, orderBalance, earlyPayState, flowAccountGap, lockEarlyPay, orderBilledTotal, orderOtherDiscounts, orderTaxToRate, orderTotal, paidSoFar, parkForSlipReview, reconciledOrderAmounts, reinstateEarlyPay, slipMatchesFlowAccountBill, stageAfterPayment, transferredInTime, withLog, type Order, type OrderPayment } from "@/lib/admin-data";
 import { thaiDateTime } from "@/lib/bangkok-time";
 import { expectedForPhase, type SlipPhase } from "@/lib/payments";
 import { earlyPayAmount, earlyPayBase, earlyPayOf, type EarlyPayDiscount } from "@/lib/early-pay";
@@ -923,7 +923,7 @@ export async function acceptPaymentManually(a: {
  */
 export function creditedOrderSettleable(order: Order): boolean {
   const waiting = order.status === "รอชำระเงิน" || order.status === "รอตรวจสอบ";
-  if (!waiting || order.deposit || order.claimOf || order.paidTotal == null) return false;
+  if (!waiting || order.deposit || isFreeOrder(order) || order.paidTotal == null) return false;
   // เงินต้องมาจากทางที่ "ตรวจแล้ว" เท่านั้น: SlipOK ผ่าน · SlipOK แท้แต่นับบางส่วน (credited) · แอดมินรับยอดสลิปใบเพิ่มเอง
   // (paidTotal ที่ระบบเก่าตั้งล่วงหน้าตอนแจ้งโอนถูก paidSoFar ตัดออกอยู่แล้ว)
   const v = order.slipVerify;

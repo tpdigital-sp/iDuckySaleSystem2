@@ -1,4 +1,4 @@
-import { amountDueNow, orderBalance, orderTotal, orderWhtAmount, paidSoFar, uncreditedReceived, withLog, type Order, type OrderPayment } from "./admin-data";
+import { amountDueNow, isFreeOrder, orderBalance, orderTotal, orderWhtAmount, paidSoFar, uncreditedReceived, withLog, type Order, type OrderPayment } from "./admin-data";
 
 /**
  * 💸 บัญชีรับเงินของออเดอร์ — มองสลิปทุกใบเป็นรายการเดียวกัน (ใช้ได้ทั้งฝั่งลูกค้า/แอดมิน/เซิร์ฟเวอร์)
@@ -203,7 +203,7 @@ export function overpayOutstanding(o: Order): number {
  * ใบมัดจำมีงวดของตัวเอง ไม่แตะ (ปล่อยให้แอดมินใช้กล่อง 💸 เอง)
  */
 export function surplusForBalance(o: Order): number {
-  if (o.status === "ยกเลิก" || o.claimOf || o.deposit || o.paidTotal == null) return 0;
+  if (o.status === "ยกเลิก" || isFreeOrder(o) || o.deposit || o.paidTotal == null) return 0;
   const bal = orderBalance(o);
   if (bal <= 0) return 0;
   // คืน/ย้าย/ออกคูปองไปแล้วเท่าไร ต้องหักออก — เงินก้อนนั้นออกจากร้านไปแล้ว

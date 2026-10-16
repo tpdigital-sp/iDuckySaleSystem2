@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { withLog, type Order } from "@/lib/admin-data";
+import { isFreeOrder, withLog, type Order } from "@/lib/admin-data";
 import { findPayment, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { applySlipVerification } from "@/lib/server/slip-apply";
 import {
@@ -100,7 +100,7 @@ async function handle(req: Request) {
    * หน้าเว็บซ่อนเลขบัญชี/ปุ่มแนบสลิปไว้แล้ว อันนี้คือด่านฝั่งเซิร์ฟเวอร์ (หน้าเก่าค้างในเบราว์เซอร์ / ยิง API ตรง)
    * ออเดอร์เคลมตั้งใจให้ ฿0 — ไม่นับ
    */
-  const pendingQuote = order.claimOf || order.claimReason ? [] : order.items.filter((i) => i.qty > 0 && i.unitPrice <= 0);
+  const pendingQuote = isFreeOrder(order) || order.claimReason ? [] : order.items.filter((i) => i.qty > 0 && i.unitPrice <= 0);
   if (pendingQuote.length)
     return NextResponse.json(
       {

@@ -1,5 +1,5 @@
 import { PLACEMENT_SPEC_LABEL } from "./design-templates";
-import { orderOtherDiscounts, paidSoFar, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { isFreeOrder, orderOtherDiscounts, paidSoFar, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
 import { paymentEntries } from "@/lib/payments";
 import { dealerRateOf, dealerTwinRate, publicTwinRate, RATE_LABEL, repriceCartGroups, type PriceRate, type Product } from "@/lib/products";
 
@@ -36,7 +36,7 @@ export interface DealerRepriceResult {
  */
 export function dealerRepriceBlockedBy(o: Order): string | null {
   if (!o.items?.length) return "ใบนี้ยังไม่มีรายการ";
-  if (o.claimOf) return "ใบเคลม/ทำใหม่ไม่คิดเงิน";
+  if (isFreeOrder(o)) return "ใบเคลม/ส่งฟรี ไม่คิดเงิน";
   if (o.flowAccount) return "ใบนี้ยอดต้องตรงกับบิล FlowAccount";
   if (!OPEN_FOR_PRICING.includes(o.status)) return `ใบนี้เลยขั้นเก็บเงินแล้ว (${o.status})`;
   if (paidSoFar(o) > 0 || o.paidReportedAt || paymentEntries(o).length > 0) return "ใบนี้มีเงินเข้า/แจ้งโอนแล้ว — แก้ยอดย้อนหลังไม่ได้";

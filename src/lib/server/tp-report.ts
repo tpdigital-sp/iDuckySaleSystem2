@@ -241,6 +241,8 @@ export async function reportPaidToTP(
       // 🧰 งานเคลม/ทำใหม่ฟรี — ไม่มีเงินเข้า (ยอด 0) แต่เป็น "งานจริง" ที่กราฟฟิกต้องทำ
       //    บอร์ด WIP เอาไปติดป้าย 🧰 + เหตุผล · msVerify ไม่ดึงใบยอด 0 เข้าระบบบัญชีอยู่แล้ว (จับคู่ธนาคารไม่ได้)
       ...(order.claimOf ? { claimOf: order.claimOf, claimReason: order.claimReason ?? "" } : {}),
+      // 🎁 ส่งฟรี/ไม่คิดเงิน (freeOf) — ยอด 0 เหมือนเคลม แต่ไม่ผูกใบต้นทาง · บอร์ด WIP/msVerify รู้ว่าไม่มีเงินเข้าจากเหตุผลนี้
+      ...(order.freeOf ? { freeOf: true, freeReason: order.freeOf.reason } : {}),
       paymentStatus: "ชำระแล้ว",
       origin: "iducky",
       createdAt: now.toISOString(),

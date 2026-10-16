@@ -30,6 +30,7 @@ export type EarlyPaySkip =
   | "ไม่มีรายการ"
   | "ตัวแทนจำหน่าย"
   | "ใบเคลม"
+  | "ใบส่งฟรี"
   | "บิล FlowAccount"
   | "ใบกำกับภาษี/บิล VAT"
   | "ใบเสนอราคา"
@@ -77,6 +78,7 @@ export function earlyPaySkipReason(o: Order): EarlyPaySkip | null {
   if (!o.items?.length) return "ไม่มีรายการ";
   if (o.dealer) return "ตัวแทนจำหน่าย";
   if (o.claimOf) return "ใบเคลม";
+  if (o.freeOf) return "ใบส่งฟรี";
   const bill = earlyPayBillReason(o);
   if (bill) return bill;
   if (!OPEN_FOR_PRICING.includes(o.status)) return "เลยขั้นเก็บเงินแล้ว";

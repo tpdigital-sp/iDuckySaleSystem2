@@ -27,39 +27,59 @@ export interface ConfirmOptions {
    * ใส่แล้วปุ่มนี้จะเด่นเต็มความกว้างด้านบน · confirm() คืนค่า "alt"
    */
   altLabel?: string;
+  /**
+   * ✍️ ช่องข้อความ 1 ช่องในกล่องเดียวกัน (เช่น "เหตุผล") — ใช้ผ่าน confirmText() จะได้ข้อความกลับมาตรง ๆ
+   * required = ปุ่มยืนยันกดไม่ได้จนกว่าจะพิมพ์ · Enter ในช่อง = ยืนยัน
+   */
+  input?: ConfirmInput;
+}
+
+export interface ConfirmInput {
+  label: string;
+  placeholder?: string;
+  required?: boolean;
+  initial?: string;
+  maxLength?: number;
 }
 
 /** false = ยกเลิก · true = กดปุ่มยืนยัน · "alt" = กดทางเลือกที่แนะนำ */
 export type ConfirmResult = boolean | "alt";
 
-interface Box extends Required<Omit<ConfirmOptions, "detail" | "altLabel">> {
+interface Box extends Required<Omit<ConfirmOptions, "detail" | "altLabel" | "input">> {
   detail?: string;
   altLabel?: string;
-  resolve: (ok: ConfirmResult) => void;
+  input?: ConfirmInput;
+  resolve: (ok: ConfirmResult, text: string) => void;
 }
 
 export function useConfirm() {
   const [box, setBox] = useState<Box | null>(null);
 
-  const confirm = useCallback(
-    (o: ConfirmOptions) =>
-      new Promise<ConfirmResult>((resolve) =>
-        setBox({
-          icon: o.icon ?? "❓",
-          title: o.title,
-          detail: o.detail,
-          confirmLabel: o.confirmLabel ?? "ยืนยัน",
-          danger: o.danger ?? false,
-          altLabel: o.altLabel,
-          resolve,
-        }),
-      ),
+  const open = useCallback(
+    (o: ConfirmOptions, resolve: Box["resolve"]) =>
+      setBox({
+        icon: o.icon ?? "❓",
+        title: o.title,
+        detail: o.detail,
+        confirmLabel: o.confirmLabel ?? "ยืนยัน",
+        danger: o.danger ?? false,
+        altLabel: o.altLabel,
+        input: o.input,
+        resolve,
+      }),
     [],
+  );
+  const confirm = useCallback((o: ConfirmOptions) => new Promise<ConfirmResult>((resolve) => open(o, (ok) => resolve(ok))), [open]);
+  /** กล่องยืนยันที่มีช่องข้อความ — คืนข้อความที่พิมพ์ (trim แล้ว) · null = ยกเลิก */
+  const confirmText = useCallback(
+    (o: ConfirmOptions & { input: ConfirmInput }) =>
+      new Promise<string | null>((resolve) => open(o, (ok, text) => resolve(ok === true ? text.trim() : null))),
+    [open],
   );
 
   const close = useCallback(
-    (ok: ConfirmResult) => {
-      box?.resolve(ok);
+    (ok: ConfirmResult, text = "") => {
+      box?.resolve(ok, text);
       setBox(null);
     },
     [box],
@@ -73,13 +93,14 @@ export function useConfirm() {
       confirmLabel={box.confirmLabel}
       danger={box.danger}
       altLabel={box.altLabel}
+      input={box.input}
       onCancel={() => close(false)}
-      onConfirm={() => close(true)}
+      onConfirm={(text) => close(true, text)}
       onAlt={() => close("alt")}
     />
   ) : null;
 
-  return { confirm, dialog };
+  return { confirm, confirmText, dialog };
 }
 
 export default function ConfirmDialog({
@@ -89,6 +110,7 @@ export default function ConfirmDialog({
   confirmLabel,
   danger,
   altLabel,
+  input,
   onCancel,
   onConfirm,
   onAlt,
@@ -99,18 +121,25 @@ export default function ConfirmDialog({
   confirmLabel: string;
   danger: boolean;
   altLabel?: string;
+  input?: ConfirmInput;
   onCancel: () => void;
-  onConfirm: () => void;
+  /** ข้อความในช่อง (ว่างถ้าไม่มีช่อง) */
+  onConfirm: (text: string) => void;
   onAlt?: () => void;
 }) {
+  const [text, setText] = useState(input?.initial ?? "");
+  const canConfirm = !input?.required || text.trim().length > 0;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
-      if (e.key === "Enter") (altLabel && onAlt ? onAlt : onConfirm)();
+      if (e.key === "Enter") {
+        if (altLabel && onAlt) onAlt();
+        else if (canConfirm) onConfirm(text);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel, onConfirm, onAlt, altLabel]);
+  }, [onCancel, onConfirm, onAlt, altLabel, canConfirm, text]);
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onCancel}>
@@ -125,6 +154,23 @@ export default function ConfirmDialog({
           <p className="mt-1.5 text-base font-extrabold leading-snug text-slate-900">{title}</p>
           {detail && <p className="mt-1 whitespace-pre-line text-left text-xs leading-relaxed text-slate-600">{detail}</p>}
         </div>
+        {/* ✍️ ช่องข้อความช่องเดียว (เหตุผล ฯลฯ) — บังคับได้ · โฟกัสให้เลยจะได้พิมพ์แล้วกด Enter */}
+        {input && (
+          <div className="px-4 pt-4">
+            <label className="block text-[11px] font-bold text-slate-500">
+              {input.label}
+              {input.required && <span className="text-rose-500"> *</span>}
+            </label>
+            <input
+              autoFocus
+              value={text}
+              maxLength={input.maxLength ?? 200}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={input.placeholder}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+            />
+          </div>
+        )}
         {/* มีทางเลือกที่แนะนำ → ปุ่มนั้นเด่นเต็มแถวบน ส่วนปุ่มยืนยันถอยเป็นปุ่มเงียบ */}
         {altLabel && onAlt ? (
           <div className="p-4">
@@ -146,8 +192,9 @@ export default function ConfirmDialog({
               </button>
               <button
                 type="button"
-                onClick={onConfirm}
-                className={`flex-1 rounded-xl border py-2 text-sm font-bold transition ${
+                onClick={() => onConfirm(text)}
+                disabled={!canConfirm}
+                className={`flex-1 rounded-xl border py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                   danger
                     ? "border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
                     : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -168,9 +215,10 @@ export default function ConfirmDialog({
             </button>
             <button
               type="button"
-              autoFocus
-              onClick={onConfirm}
-              className={`flex-1 rounded-xl py-2.5 text-sm font-extrabold text-white shadow-sm transition ${
+              autoFocus={!input}
+              onClick={() => onConfirm(text)}
+              disabled={!canConfirm}
+              className={`flex-1 rounded-xl py-2.5 text-sm font-extrabold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 danger ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
               }`}
             >

@@ -1,5 +1,5 @@
 import { giftSummary, giftsFor, giftsToOrder, sanitizeGiftArtwork, type GiftPromo, type OrderGift } from "@/lib/gifts";
-import type { Order } from "@/lib/admin-data";
+import { isFreeOrder, type Order } from "@/lib/admin-data";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
 type Sb = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -37,7 +37,7 @@ export async function syncOrderGifts(
   order: Order,
   picked?: GiftPicked
 ): Promise<{ order: Order; changed: GiftSyncChange[] }> {
-  if (order.dealer || order.claimOf) return { order, changed: [] };
+  if (order.dealer || isFreeOrder(order)) return { order, changed: [] };
   const items = giftableItems(order);
   if (!items.length) return { order, changed: [] };
 
@@ -73,7 +73,7 @@ export function applyGiftSync(
   now: Date = new Date(),
   picked?: GiftPicked
 ): { order: Order; changed: GiftSyncChange[] } {
-  if (order.dealer || order.claimOf) return { order, changed: [] };
+  if (order.dealer || isFreeOrder(order)) return { order, changed: [] };
   const items = giftableItems(order);
   if (!items.length || !promos.length) return { order, changed: [] };
   const cur = [...(order.gifts ?? [])];

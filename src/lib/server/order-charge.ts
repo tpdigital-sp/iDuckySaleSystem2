@@ -8,6 +8,7 @@ import {
   type Order,
   type OrderCharge,
   type OrderItem,
+  isFreeOrder,
 } from "@/lib/admin-data";
 import { orderNotice, type LineMessage } from "@/lib/server/notify";
 import { absorbSurplusIntoBalance } from "@/lib/payments";
@@ -44,7 +45,7 @@ export function applyCharge(order: Order, charge: OrderCharge, who: string, opts
   const total = orderTotal(updated);
   const bal = updated.paidTotal != null ? orderBalance(updated) : 0;
   // ใบที่พักอยู่ "รอตรวจสอบ" (สลิปรอคนตรวจ · parkForSlipReview) ไม่เด้งซ้ำ — ไม่งั้น reopenedFrom ถูกทับเป็น "รอตรวจสอบ"
-  const reopen = !updated.deposit && !updated.claimOf && !waiting && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
+  const reopen = !updated.deposit && !isFreeOrder(updated) && !waiting && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
   if (reopen) updated = { ...updated, status: "รอชำระเงิน", reopenedFrom: order.reopenedFrom ?? order.status };
   const docTxt = opts?.extraDoc ? ` · บิลเพิ่ม ${opts.extraDoc.docTypeLabel} ${opts.extraDoc.docNo}` : "";
   updated = withLog(
@@ -96,7 +97,7 @@ export function applyExtraDocItems(
   updated = absorbSurplusIntoBalance(updated, who).order;
   const total = orderTotal(updated);
   const bal = updated.paidTotal != null ? orderBalance(updated) : 0;
-  const reopen = !updated.deposit && !updated.claimOf && !waiting && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
+  const reopen = !updated.deposit && !isFreeOrder(updated) && !waiting && REOPEN_FOR_BALANCE.includes(updated.status) && updated.paidTotal != null && bal > 0;
   if (reopen) updated = { ...updated, status: "รอชำระเงิน", reopenedFrom: order.reopenedFrom ?? order.status };
   updated = withLog(
     updated,

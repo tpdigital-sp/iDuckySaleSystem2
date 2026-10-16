@@ -1,4 +1,4 @@
-import { hasUnpaidBalance, orderItemDiscounts, orderSubtotal, paidSoFar, type Order, type OrderStatus } from "@/lib/admin-data";
+import { hasUnpaidBalance, isFreeOrder, orderItemDiscounts, orderSubtotal, paidSoFar, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpaidAmount, paymentEntries } from "@/lib/payments";
 import { tierDiscountAmount } from "@/lib/tiers";
 import { memberTierOfContact } from "./quote-member-tier";
@@ -48,7 +48,7 @@ export const memberTierLabel = (name: string, pct: number) => `สมาชิ�
  * ⚠️ ใบที่แจ้งโอน/มีเงินเข้าแล้ว **ไม่ได้ห้ามทั้งหมด** — ดู memberTierMoneyIn + mayApplyOnMoneyIn ด้านล่าง (ของที่สั่งเพิ่มต้องได้ % ด้วย)
  */
 export function mayAutoMemberTier(o: Order): boolean {
-  if (o.dealer || o.customerId || o.claimOf || o.flowAccount) return false;
+  if (o.dealer || o.customerId || isFreeOrder(o) || o.flowAccount) return false;
   // เฉพาะใบที่ยังอยู่ขั้นเก็บเงิน (หรือยอดโตจนกำลังเด้งกลับไปรอชำระ) — เลยไปแล้ว (ผลิต/ส่ง/จบ/ยกเลิก) ยอดบิลปิดแล้ว
   if (!openForPricing(o)) return false;
   // ส่วนลดที่ไม่มีธง = ตัวเลขที่ตกลงไปแล้ว ห้ามแตะ · ยกเว้นคูปองคืนเงิน (couponAmount) ที่ซ้อนระดับได้
@@ -151,7 +151,7 @@ function mayApplyOnMoneyIn(cur: Order, next: Order): boolean {
  * → พนักงานเห็นแค่ "แต้มสมาชิกไม่ขึ้นส่วนลด" ไม่รู้ว่าเพราะอะไร)
  */
 export async function missedMemberTier(sb: SB, o: Order): Promise<{ label: string; amount: number } | null> {
-  if (!o.contactId || o.dealer || o.customerId || o.claimOf || o.flowAccount || o.discount?.tierId) return null;
+  if (!o.contactId || o.dealer || o.customerId || isFreeOrder(o) || o.flowAccount || o.discount?.tierId) return null;
   if (o.discount && !o.discount.couponAmount) return null; // มีส่วนลดที่ตกลงกันไว้แล้ว (คูปอง/ใบเสนอราคา) — ไม่ใช่เคสตกหล่น
   try {
     const tier = await memberTierOfContact(sb, o.contactId);

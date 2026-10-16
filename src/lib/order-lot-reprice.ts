@@ -1,4 +1,4 @@
-import type { Order, OrderItem } from "@/lib/admin-data";
+import { isFreeOrder, type Order, type OrderItem } from "@/lib/admin-data";
 import { repriceCartGroups, type Product } from "@/lib/products";
 
 /**
@@ -31,7 +31,7 @@ export interface LotRepriceResult {
 /** ใบนี้ปรับราคาทั้งบิลได้ไหม — null = ได้ · ข้อความ = เหตุผลที่ไม่ได้ */
 export function lotRepriceBlockedBy(o: Order): string | null {
   if (!o.items?.length) return "ใบนี้ยังไม่มีรายการ";
-  if (o.claimOf) return "ใบเคลม/ทำใหม่ไม่คิดเงิน";
+  if (isFreeOrder(o)) return "ใบเคลม/ส่งฟรี ไม่คิดเงิน";
   if (o.flowAccount) return "ใบนี้ยอดต้องตรงกับบิล FlowAccount";
   return null;
 }

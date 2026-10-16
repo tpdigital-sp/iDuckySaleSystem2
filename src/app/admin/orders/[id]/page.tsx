@@ -159,6 +159,10 @@ import {
   sampleShippedRound,
   shipmentExtras,
   nextRoundExtras,
+  awaitingPayment,
+  canMarkFree,
+  clearStageMemory,
+  isFreeOrder,
 } from "@/lib/admin-data";
 import { overpaidAmount, overpayOutstanding, paymentEntries, resolveSlipPhase, type PaymentEntry } from "@/lib/payments";
 import { dealerRepriceBlockedBy } from "@/lib/order-dealer";
@@ -1327,7 +1331,7 @@ export default function AdminOrderDetailPage() {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
   /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (ใช้ตัวเดียวกับหน้าอื่นในหลังบ้าน) */
-  const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
+  const { confirm: askConfirm, confirmText: askText, dialog: confirmDialog } = useConfirm();
   // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวนไม่แตะ)
   const [editSel, setEditSel] = useState<number | null>(null);
   const [selDraft, setSelDraft] = useState("");
@@ -1425,7 +1429,7 @@ export default function AdminOrderDetailPage() {
    */
   function mayQuote(it: OrderItem): boolean {
     if (!mayEdit || !seesMoney || !order) return false;
-    if (order.claimOf) return false;
+    if (isFreeOrder(order)) return false; // 🎁 เคลม/ส่งฟรี ตั้งใจ ฿0 — ไม่ตีราคา (เซิร์ฟเวอร์ปัดใบ freeOf ที่ยอด > 0 อยู่แล้ว)
     if (it.unitPrice <= 0) return true;
     const moneyIn = (order.paidTotal ?? 0) > 0 || !!order.slipUrl || !!order.slipPath || !!order.deposit?.firstPaidAt;
     return !moneyIn;
@@ -2011,6 +2015,64 @@ export default function AdminOrderDetailPage() {
       actor,
       noSlip ? "เปลี่ยนสถานะ (ไม่มีสลิป)" : "เปลี่ยนสถานะ",
       `${order.status} → ${status}${noSlip ? " · ยืนยันรับเงินเองโดยไม่มีสลิปแนบ" : ""}`
+    );
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /**
+   * 🎁 ส่งฟรี — ไม่คิดเงินกับลูกค้า: ปล่อยใบยอด ฿0 เข้าคิวงาน (ตัวอย่างชิ้นงาน · ของขวัญ · goodwill) โดยไม่ต้องกด "ไม่มีสลิป — ยืนยันเอง"
+   * บันทึก freeOf + เหตุผล แล้วไปขั้นเดียวกับตอนเงินเข้าครบ (stageAfterPayment) · log "ส่งฟรี (ไม่คิดเงิน)" ไม่ใช่ "ยืนยันรับเงินเอง"
+   * เซิร์ฟเวอร์ (PATCH) เช็คสิทธิ์ orders.markPaid + canMarkFree ซ้ำ · ประทับ by/at เอง · ไม่บวกยอดขาย/แต้ม · ยิงเรคอร์ดสะพาน TP + ตัดสต๊อก
+   */
+  async function markFree() {
+    if (!order || !mayMarkPaid || !canMarkFree(order)) return;
+    const reason = await askText({
+      icon: "🎁",
+      title: "ส่งฟรี — ไม่คิดเงินกับลูกค้า",
+      detail:
+        "ใบนี้ยอดรวม ฿0 · ระบบจะปล่อยเข้าคิวงานทันทีเหมือนใบที่ชำระแล้ว แต่ไม่นับเป็นยอดขาย ไม่ให้แต้ม และลงประวัติว่า “ส่งฟรี (ไม่คิดเงิน)”\nหน้าออเดอร์ของลูกค้าจะบอกว่า “ทางร้านจัดส่งให้ฟรี ไม่มียอดต้องชำระ” · ระบบแจ้งกลุ่มไลน์แอดมินว่าใครกด/เหตุผลอะไร · ถอนได้ถ้ายังไม่ปริ้นใบงาน",
+      confirmLabel: "🎁 ส่งฟรี",
+      input: { label: "เหตุผล (ลงประวัติ · ลูกค้าไม่เห็น)", placeholder: "ตัวอย่างชิ้นงาน / ของขวัญลูกค้าประจำ / ชดเชยงานล่าช้า …", required: true },
+    });
+    if (!reason) return;
+    const stage = stageAfterPayment(order);
+    const next = withLog(
+      { ...order, freeOf: { reason, by: actor, at: new Date().toISOString() }, paidTotal: 0, status: stage, ...clearStageMemory },
+      actor,
+      "ส่งฟรี (ไม่คิดเงิน)",
+      `${order.status} → ${stage} · เหตุผล: ${reason}`
+    );
+    setOrder(next);
+    if (!demo) void saveOrWarn(next);
+  }
+
+  /** ↩️ ถอนป้ายส่งฟรี (กดผิด/ตกลงคิดเงินทีหลัง) — กลับไปรอชำระเงิน · ทำได้ถ้ายังไม่ปริ้นใบงาน (เซิร์ฟเวอร์กันซ้ำ) */
+  async function unmarkFree() {
+    if (!order?.freeOf || !mayMarkPaid || order.printedAt) return;
+    const ok = await askConfirm({
+      icon: "↩️",
+      title: "ถอน “ส่งฟรี” ออกจากใบนี้?",
+      detail:
+        "ใบจะกลับไป “รอชำระเงิน” แล้วตีราคา/เก็บเงินได้ตามปกติ\nถ้ากราฟฟิกเริ่มงานจากการ์ดบนบอร์ดไปแล้ว ต้องแจ้งทีมเอง (การ์ดที่ส่งไปแล้วไม่ถูกดึงกลับ)",
+      confirmLabel: "ถอนส่งฟรี",
+      danger: true,
+    });
+    if (ok !== true) return;
+    const proofStages: OrderStatus[] = ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
+    const back: OrderStatus = awaitingPayment(order) || order.status === "ยกเลิก" ? order.status : "รอชำระเงิน";
+    const next = withLog(
+      {
+        ...order,
+        freeOf: undefined,
+        paidTotal: undefined,
+        status: back,
+        proofStage: proofStages.includes(order.status) ? order.status : order.proofStage,
+        reopenedFrom: undefined,
+      },
+      actor,
+      "ถอนส่งฟรี",
+      `${order.status} → ${back} · เหตุผลเดิม: ${order.freeOf.reason}`
     );
     setOrder(next);
     if (!demo) void saveOrWarn(next);
@@ -3030,7 +3092,7 @@ export default function AdminOrderDetailPage() {
     const unset = !(order.shippingLabel ?? "").trim() && !(order.shippingCost > 0) && !isPickupOrder(order);
     if (!order.items.length || !unset || paidSoFar(order) > 0) return;
     // ใบที่ยอดตกลงกันไว้แล้ว (ใบเสนอราคา/บิล FlowAccount/งานเคลมร้านออกค่าส่ง) ค่าส่ง 0 ไม่มีป้าย = ตั้งใจ ห้ามบวก ฿50 ทับ
-    if (order.quoteOf || order.flowAccount || order.claimOf) return;
+    if (order.quoteOf || order.flowAccount || isFreeOrder(order)) return;
     const realIds = order.items.map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item");
     if (realIds.some((id) => !shopProducts.has(id))) return; // สินค้ายังโหลดไม่ครบ — รอรอบหน้า
     const q = autoShipOf(order);
@@ -4134,7 +4196,7 @@ export default function AdminOrderDetailPage() {
    */
   function mayChangeQty(it: OrderItem): boolean {
     if (!mayEdit || !order) return false;
-    if (order.claimOf || it.unitPrice <= 0) return true;
+    if (isFreeOrder(order) || it.unitPrice <= 0) return true;
     const moneyIn = (order.paidTotal ?? 0) > 0 || !!order.slipUrl || !!order.slipPath || !!order.deposit?.firstPaidAt;
     return !moneyIn;
   }
@@ -5425,9 +5487,30 @@ export default function AdminOrderDetailPage() {
         );
       })()}
 
+      {/* ── 🎁 ใบยอด ฿0 ที่ยังค้างหน้าประตูการเงิน — ปล่อยเข้าคิวแบบ "ส่งฟรี" แทนการกด "ไม่มีสลิป — ยืนยันเอง" ทั้งที่ไม่มีเงิน (OD-261012-1553) ── */}
+      {canMarkFree(order) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-emerald-800">🎁 ใบนี้ยอดรวม ฿0 — ตั้งใจส่งฟรี / ไม่คิดเงินกับลูกค้าใช่ไหม?</p>
+            <p className="mt-0.5 text-[11px] font-semibold leading-relaxed text-emerald-700">
+              กด “ส่งฟรี” แล้วใบจะเข้าคิวงานทันทีโดย<b>ไม่นับเป็นยอดขาย/แต้ม</b> และหน้าออเดอร์ของลูกค้าจะบอกว่าทางร้านจัดส่งให้ฟรี
+              {mayMarkPaid ? " · ระบบแจ้งกลุ่มไลน์แอดมินให้ทุกครั้ง · ถอนได้ถ้ายังไม่ปริ้นใบงาน" : " · บัญชีนี้กดไม่ได้ — ต้องเป็นคนที่มีสิทธิ์ยืนยันเงินเข้า"}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={!mayMarkPaid}
+            onClick={() => void markFree()}
+            className="shrink-0 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            🎁 ส่งฟรี — ไม่คิดเงินกับลูกค้า
+          </button>
+        </div>
+      )}
+
       {/* ── 💬 ยังมีรายการรอตีราคา — ลูกค้าเปิดหน้าแจ้งโอนไม่ได้จนกว่าจะใส่ราคาครบ (ต้องเห็นทันทีที่เปิดออเดอร์) ── */}
       {(() => {
-        if (!seesMoney || order.claimOf) return null;
+        if (!seesMoney || isFreeOrder(order)) return null;
         const waiting = order.items.filter((it) => it.unitPrice <= 0);
         if (!waiting.length) return null;
         return (
@@ -5448,7 +5531,7 @@ export default function AdminOrderDetailPage() {
       })()}
 
       {/* ── งานเคลม / สั่งซ้ำ — โยงกันสองทางให้กดข้ามไปมาได้ ── */}
-      {(order.claimOf || order.reorderOf || (order.redoOrders?.length ?? 0) > 0 || claimCases.length > 0) && (
+      {(order.claimOf || order.freeOf || order.reorderOf || (order.redoOrders?.length ?? 0) > 0 || claimCases.length > 0) && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 px-6 py-3">
           {claimCases.map((c) => (
             <Link
@@ -5471,6 +5554,24 @@ export default function AdminOrderDetailPage() {
                 จากออเดอร์ {order.claimOf}
               </Link>
               {order.claimReason && <span className="font-normal text-rose-600">· เหตุผล: {order.claimReason}</span>}
+            </span>
+          )}
+          {/* 🎁 ส่งฟรี — ป้ายแบบเดียวกับเคลม · ถอนได้ตรงนี้ถ้ายังไม่ปริ้นใบงาน (เซิร์ฟเวอร์กันซ้ำ) */}
+          {order.freeOf && (
+            <span className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
+              🎁 ส่งฟรี — ไม่คิดเงินกับลูกค้า
+              <span className="font-normal text-emerald-600">· เหตุผล: {order.freeOf.reason}</span>
+              <span className="font-normal text-emerald-600/80" title={order.freeOf.at}>· โดย {order.freeOf.by}</span>
+              {mayMarkPaid && !order.printedAt && order.status !== "ยกเลิก" && (
+                <button
+                  type="button"
+                  onClick={() => void unmarkFree()}
+                  title="กดผิด/ตกลงคิดเงินทีหลัง — ใบกลับไปรอชำระเงิน"
+                  className="rounded-md px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 underline decoration-emerald-300 underline-offset-2 transition hover:bg-emerald-100"
+                >
+                  ถอน
+                </button>
+              )}
             </span>
           )}
           {order.reorderOf && (
@@ -6660,17 +6761,17 @@ export default function AdminOrderDetailPage() {
                         ) : (
                           <span
                             title={
-                              order.claimOf
-                                ? "งานเคลม — ไม่คิดเงิน"
+                              isFreeOrder(order)
+                                ? "งานเคลม/ส่งฟรี — ไม่คิดเงิน"
                                 : "ลูกค้าโอนเงินเข้ามาแล้ว — แก้ราคาไม่ได้ กันยอดในบิลไม่ตรงกับสลิป (ถ้าต้องแก้จริง ลบรายการแล้วเพิ่มใหม่)"
                             }
                           >
                             {formatPrice(it.unitPrice)}
                           </span>
                         )
-                      ) : order.claimOf ? (
-                        // งานเคลมตั้งใจให้ ฿0 อยู่แล้ว — อย่าให้ขึ้น "รอตีราคา" จนทีมงานนึกว่าต้องไปตั้งราคา
-                        <span className="text-[11px] font-bold text-emerald-600">เคลม · ฟรี</span>
+                      ) : isFreeOrder(order) ? (
+                        // งานเคลม/ส่งฟรีตั้งใจให้ ฿0 อยู่แล้ว — อย่าให้ขึ้น "รอตีราคา" จนทีมงานนึกว่าต้องไปตั้งราคา
+                        <span className="text-[11px] font-bold text-emerald-600">{order.claimOf ? "เคลม · ฟรี" : "🎁 ฟรี"}</span>
                       ) : mayQuote(it) ? (
                         <button
                           type="button"
@@ -8677,7 +8778,7 @@ export default function AdminOrderDetailPage() {
                 )
               )}
               {/* 🧾 ลูกค้าขอใบกำกับภาษีทีหลัง — เปิด VAT 7% บวกจากยอดบิลปัจจุบัน (ยอดค้างขึ้นเอง + แจ้งไลน์) */}
-              {!order.vat && mayEdit && seesMoney && !order.claimOf && !order.flowAccount && order.status !== "ยกเลิก" && (
+              {!order.vat && mayEdit && seesMoney && !isFreeOrder(order) && !order.flowAccount && order.status !== "ยกเลิก" && (
                 <button
                   type="button"
                   onClick={enableVat}
@@ -8745,7 +8846,7 @@ export default function AdminOrderDetailPage() {
               {mayEdit &&
                 seesMoney &&
                 order.status !== "ยกเลิก" &&
-                !order.claimOf &&
+                !isFreeOrder(order) &&
                 (chargeForm ? (
                   <div className="mt-2 rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-2.5 text-xs">
                     <p className="font-bold text-amber-800">🧾 เก็บค่าบริการเพิ่ม — ระบบจะแจ้งลูกค้าทางไลน์พร้อมยอดที่ต้องโอนเพิ่มทันที</p>

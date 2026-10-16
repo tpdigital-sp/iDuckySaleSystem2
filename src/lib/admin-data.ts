@@ -1202,6 +1202,12 @@ export interface Order {
   };
   /** งานเคลม/ทำใหม่ — เลขออเดอร์ต้นทางที่ทำงานนี้ขึ้นมาแทน */
   claimOf?: string;
+  /**
+   * 🎁 ส่งฟรี / ไม่คิดเงิน — ร้านตั้งใจปล่อยใบยอด ฿0 เข้าคิวงานโดยไม่มีเงินเข้า (ตัวอย่างชิ้นงาน · ของขวัญ · goodwill)
+   * แยกจาก claimOf: ไม่ผูกใบต้นทาง/สมุดเคลม · ตั้งจากปุ่ม "🎁 ส่งฟรี" บนหน้าออเดอร์ (สิทธิ์ orders.markPaid) · ถอนได้ถ้ายังไม่ปริ้นใบงาน
+   * ผลเหมือนใบเคลม: ไม่นับยอดขาย/แต้ม · ไม่เติมค่าส่งอัตโนมัติ · ตีราคา/เก็บเพิ่มไม่ได้ · ลูกค้าเห็น "ทางร้านจัดส่งให้ฟรี" (ดู isFreeOrder)
+   */
+  freeOf?: { reason: string; by: string; at: string };
   /** สั่งซ้ำจากออเดอร์เดิม (คิดเงินปกติ) — เลขออเดอร์ต้นทาง */
   reorderOf?: string;
   /** ออเดอร์นี้เกิดจากใบเสนอราคาใบไหน (ลูกค้าตกลงแล้วแปลงมา) */
@@ -2752,8 +2758,29 @@ export function parkForSlipReview(o: Order): Order {
   return { ...o, status: "รอตรวจสอบ", reopenedFrom: o.reopenedFrom ?? o.status };
 }
 
+/**
+ * 🎁 ใบที่ "ไม่คิดเงินกับลูกค้า" — งานเคลม (claimOf) หรือส่งฟรี (freeOf)
+ * ใช้ทุกจุดที่กติกาคือ "ไม่มีเงินเข้า/ไม่ต้องเก็บ": ไม่เติมค่าส่งอัตโนมัติ · ตีราคา/เก็บเพิ่ม/VAT ไม่ได้ · ไม่นับยอดขาย-แต้ม · ไม่ขึ้นกล่องชำระเงินฝั่งลูกค้า
+ * เรื่องที่เป็น "เคลมล้วน" (ผูกสมุดเคลม · ลิงก์ใบต้นทาง · ปิดเคสเคลมตอนส่ง) ยังเช็ค claimOf ตรง ๆ
+ */
+export function isFreeOrder(o: Order): boolean {
+  return !!o.freeOf || !!o.claimOf;
+}
+
+/**
+ * 🎁 ใบนี้กด "ส่งฟรี — ไม่คิดเงิน" ได้ไหม: ยอดรวม ฿0 · ยังหน้าประตูการเงิน (รอชำระเงิน/รอตรวจสอบ) · ไม่ใช่ใบเคลม/ยังไม่ตั้งฟรี ·
+ * ยังไม่มีเงินเข้าสักบาท · ไม่ใช่ใบมัดจำ/ใบ FlowAccount (ยอดพวกนั้นตกลงกันไว้แล้ว ไม่ใช่ของฟรี)
+ * ฝั่งเซิร์ฟเวอร์ (PATCH /api/admin/orders) เช็คซ้ำด้วยตัวเดียวกัน
+ */
+export function canMarkFree(o: Order): boolean {
+  if (o.freeOf || o.claimOf || o.deposit || o.flowAccount) return false;
+  if (!awaitingPayment(o)) return false;
+  if (!o.items.length || orderTotal(o) > 0 || paidSoFar(o) > 0) return false;
+  return !o.slipPath && !o.slipUrl && !(o.payments?.length);
+}
+
 export function hasUnpaidBalance(o: Order): boolean {
-  if (o.status === "ยกเลิก" || o.claimOf) return false;
+  if (o.status === "ยกเลิก" || isFreeOrder(o)) return false;
   // ใบมัดจำ: ยังไม่ครบสองงวด · หรือครบแล้วแต่ยอดโตทีหลัง (ค่าบริการเพิ่ม/สั่งเพิ่ม) — paidTotal ถูกตั้งตอน settle เสมอ
   if (o.deposit) return !o.deposit.settledAt || (o.paidTotal != null && orderBalance(o) > 0);
   return o.paidTotal != null && orderBalance(o) > 0;

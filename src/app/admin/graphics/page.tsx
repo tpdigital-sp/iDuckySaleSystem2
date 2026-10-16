@@ -323,6 +323,11 @@ function QueueRow({ o, workSizes }: { o: Order; workSizes: Record<string, string
                 งานเคลม
               </Tag>
             )}
+            {o.freeOf && (
+              <Tag tone="lilac" title={`ส่งฟรี — ไม่คิดเงินกับลูกค้า · ${o.freeOf.reason}`}>
+                🎁 ส่งฟรี
+              </Tag>
+            )}
             {reuse && (
               <Tag tone="yolk" title={`ลูกค้าใช้ไฟล์เก่า${reuse.fromOrderId ? ` จาก ${reuse.fromOrderId}` : ""}${reuse.note ? ` — ${reuse.note}` : ""}`}>
                 ♻️ ใช้ไฟล์เก่า{reuse.fromOrderId ? ` ${reuse.fromOrderId}` : ""}

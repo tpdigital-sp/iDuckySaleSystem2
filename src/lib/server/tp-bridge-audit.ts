@@ -1,5 +1,5 @@
 import "server-only";
-import { orderBalance, paidSoFar, type Order } from "@/lib/admin-data";
+import { awaitingPayment, orderBalance, paidSoFar, type Order } from "@/lib/admin-data";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
 import { reportPaidToTP, TP_PAID_COLLECTION } from "@/lib/server/tp-report";
 import type { getSupabaseAdmin } from "./supabase-admin";
@@ -70,6 +70,22 @@ export function expectedBridgeRecords(o: Order): TPBridgeRecord[] {
             at: iso(o.paidReportedAt, o.savedAt),
             verifiedBy: o.placedBy || "งานเคลม (เติมย้อนหลัง)",
             noteSuffix: `งานเคลม ไม่คิดเงิน · จาก ${o.claimOf}`,
+          },
+        ]
+      : [];
+
+  /* 🎁 ส่งฟรี/ไม่คิดเงิน (freeOf) — กติกาเดียวกับใบเคลม: ยอด 0 ไม่มีเงินเข้า แต่ต้องขึ้นบอร์ด WIP ตั้งแต่ถูกปล่อยเข้าคิว */
+  if (o.freeOf)
+    return !awaitingPayment(o)
+      ? [
+          {
+            docId: o.id,
+            orderId: o.id,
+            customer,
+            kind: "first",
+            at: iso(o.freeOf.at, o.savedAt),
+            verifiedBy: o.freeOf.by || "ส่งฟรี (เติมย้อนหลัง)",
+            noteSuffix: `ส่งฟรี ไม่คิดเงิน · ${o.freeOf.reason}`,
           },
         ]
       : [];
