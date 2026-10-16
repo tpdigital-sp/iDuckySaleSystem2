@@ -6314,7 +6314,14 @@ export default function ProductDetail({
    * เพราะรุ่นแรกในลิสต์คือ iPhone X / iPhone 6 ที่ยังไม่มี .ai · 16 ต.ค. 69) · กล่องแนบลายกางอยู่ในกล่องนี้เลย (ทางเดียวที่เหลือ)
    */
   const studioBoxMissing = !!product.calendarStudio && !studioOff && !staffOrdering && tplModelMissing;
-  const fileChosen = artProvided || artChoice === "file" || studioBoxMissing;
+  /**
+   * 🎨 แบบที่ออกแบบบนเว็บถูกเก็บลง artFiles ด้วย (ตำแหน่งตรงกับ placed) → artProvided เป็นจริงเองทั้งที่ลูกค้าไม่ได้แนบไฟล์
+   * เดิมเลยกางกล่อง "แนบลายของคุณ · แนบแล้ว 2 รูป" โชว์ลายชุดเดียวกับ "✓ แบบพร้อมผลิต 2 ลาย" ซ้ำอีกที่ + การ์ด 📎 ขึ้น "✓ แนบไฟล์แล้ว"
+   * (เจ้าของร้านแจ้ง 16 ต.ค. 69 "2 ส่วนนี้มันควรถูกรวม เพื่อแสดงจุดเดียว") → มีแบบจากจอแล้ว = จัดการลายที่รายการแบบพร้อมผลิตจุดเดียว
+   * ไม่เปิดทางแนบไฟล์ปน (artFiles กับ placed ต้องเรียงตรงกัน — แนบไฟล์แทรกแล้วลบ/แก้แบบจะชี้ผิดลาย)
+   */
+  const ownArt = artProvided && !designDone;
+  const fileChosen = ownArt || (artChoice === "file" && !designDone) || studioBoxMissing;
   const artChoiceUI = studioMode || studioBoxMissing ? (
     <div id="art-choice" className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
       <p className="mb-2 text-[13px] font-bold text-stone-700">
@@ -6363,13 +6370,21 @@ export default function ProductDetail({
         <button
           type="button"
           onClick={jumpToArt}
-          className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition hover:scale-[1.02] ${
-            fileChosen ? "bg-sky-600 text-white shadow-lg hover:bg-sky-700" : "bg-white text-sky-700 ring-2 ring-sky-200 hover:bg-sky-50"
+          // มีแบบจากจอแล้ว = แนบไฟล์ปนไม่ได้ (ดู ownArt) — ลบแบบที่ออกแบบไว้ก่อนถ้าจะเปลี่ยนไปแนบไฟล์
+          disabled={designDone && !studioBoxMissing}
+          className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition ${
+            designDone && !studioBoxMissing
+              ? "cursor-not-allowed bg-stone-50 text-stone-400 ring-1 ring-stone-200"
+              : fileChosen
+                ? "bg-sky-600 text-white shadow-lg hover:scale-[1.02] hover:bg-sky-700"
+                : "bg-white text-sky-700 ring-2 ring-sky-200 hover:scale-[1.02] hover:bg-sky-50"
           }`}
         >
-          <span className="text-xl leading-none">📎</span>
-          <span className="text-[13px] font-extrabold">{artProvided ? "✓ แนบไฟล์แล้ว" : "แนบไฟล์ลาย"}</span>
-          <span className={`text-[10.5px] font-semibold leading-tight ${fileChosen ? "text-sky-100" : "text-stone-500"}`}>มีไฟล์อยู่แล้ว ร้านจัดวางให้</span>
+          <span className={`text-xl leading-none ${designDone && !studioBoxMissing ? "grayscale opacity-60" : ""}`}>📎</span>
+          <span className="text-[13px] font-extrabold">{ownArt ? "✓ แนบไฟล์แล้ว" : "แนบไฟล์ลาย"}</span>
+          <span className={`text-[10.5px] font-semibold leading-tight ${designDone && !studioBoxMissing ? "text-stone-400" : fileChosen ? "text-sky-100" : "text-stone-500"}`}>
+            {designDone && !studioBoxMissing ? "ใช้ลายที่ออกแบบบนเว็บอยู่ — ลบแบบก่อนถ้าจะแนบไฟล์แทน" : "มีไฟล์อยู่แล้ว ร้านจัดวางให้"}
+          </span>
         </button>
       </div>
       {/* ＋ เพิ่มลายอีกแบบ ตรงกล่องเลือกวิธี (เจ้าของร้านแจ้ง 16 ต.ค. 69 เข็มกลัด "ตอนนี้มันได้แค่ 1 ลาย") — เดิมมีแต่ปุ่มในรายการแบบด้านล่าง ลูกค้าหาไม่เจอ
@@ -6392,7 +6407,8 @@ export default function ProductDetail({
           ⚠️ ขนาดหรือการเจาะรูเปลี่ยนหลังออกแบบ{placed.length > 1 ? ` (ลายที่ ${cutStale + 1})` : ""} — แตะเพื่ออัปเดตแบบ
         </button>
       )}
-      {(artChoice === "file" || artProvided || studioBoxMissing) && artSection}
+      {/* มีแบบจากจอแล้ว = ลายอยู่ที่รายการ "✓ แบบพร้อมผลิต" จุดเดียว ไม่กางกล่องแนบลายโชว์ซ้ำ (ดู ownArt) */}
+      {(((artChoice === "file" || artProvided) && !designDone) || studioBoxMissing) && artSection}
     </div>
   ) : null;
 
