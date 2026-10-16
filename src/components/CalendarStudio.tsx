@@ -2210,6 +2210,69 @@ export default function CalendarStudio({
       ctx.stroke();
     }
     /**
+     * ☕ ไกด์แก้วมัค (mock3d = mug · เจ้าของร้านสั่ง 16 ต.ค. 69 "ตัวเทมเพลตมันควรมีแสดงคล้าย ๆ" PSD ร้าน "แก้ว MUG 11 Oz.psd"):
+     * ไฟล์ .ai ที่ผูกไว้เป็นหน้าขาวล้วน ไกด์บนจอจึงว่าง → วาดป้ายแดงแบบ PSD ของร้านให้เอง (บนจอเท่านั้น ไม่ติดไฟล์พิมพ์):
+     * ซ้าย "ด้านหน้า หันออก (จับมือขวา)" · กลาง "ตรงกลาง" + เส้นประกึ่งกลาง · ขวา "ด้านหลัง หันเข้า (จับมือขวา)"
+     * (ตรงกับโมเดล 3D: ลายกึ่งกลางอยู่ตรงข้ามหู · ถือมือขวา ครึ่งขวาของแผ่นหันเข้าหาตัว) + ป้ายฟ้าชี้ครึ่งที่ตรงกับ "ตำแหน่งสกรีน" ที่ลูกค้าเลือก
+     */
+    if (mock3d?.kind === "mug") {
+      ctx.save();
+      const mm = (v: number) => v * k;
+      const halo = (fn: () => void, w: number) => {
+        ctx.lineWidth = w;
+        ctx.strokeStyle = "rgba(255,255,255,.9)";
+        ctx.lineJoin = "round";
+        fn();
+      };
+      // เส้นประกึ่งกลาง (ขอบขาวให้เห็นบนรูปเข้ม)
+      ctx.setLineDash([mm(2), mm(1.5)]);
+      ctx.beginPath();
+      ctx.moveTo(PW / 2, 0);
+      ctx.lineTo(PW / 2, PH);
+      halo(() => ctx.stroke(), Math.max(2, 2.4 * dpr));
+      ctx.lineWidth = Math.max(1, 1 * dpr);
+      ctx.strokeStyle = "rgba(225,29,72,.7)";
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // ป้ายแดง 3 ตำแหน่ง (ขนาดตามมม. ของผืน — เทมเพลต 200×90 ได้ตัว ~4 มม. เท่า PSD)
+      const labels: { x: number; lines: string[] }[] = [
+        { x: W * 0.17, lines: ["ด้านหน้า หันออก", "(จับมือขวา)"] },
+        { x: W * 0.5, lines: ["ตรงกลาง"] },
+        { x: W * 0.83, lines: ["ด้านหลัง หันเข้า", "(จับมือขวา)"] },
+      ];
+      // ครึ่งที่ตรงกับตำแหน่งสกรีนที่เลือก: ตรงข้ามหู = กลาง · หูจับขวา (ลายหันเข้าหาตัว) = ขวา · หูจับซ้าย (หันออก) = ซ้าย · 2 ด้าน = ซ้าย+ขวา · รอบแก้ว = ไม่ชี้
+      const pick = mock3d.spin ? (mock3d.view === "right" ? [0, 2] : []) : mock3d.view === "front" ? [1] : mock3d.view === "right" ? [2] : [0];
+      const fs = Math.max(9 * dpr, mm(Math.min(4.2, H * 0.05)));
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      labels.forEach((L, i) => {
+        let y = mm(Math.max(1.5, H * 0.03));
+        L.lines.forEach((t, j) => {
+          const size = j === 0 ? fs : fs * 0.82;
+          ctx.font = `700 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+          halo(() => ctx.strokeText(t, mm(L.x), y), Math.max(2, 3 * dpr));
+          ctx.fillStyle = "#ef2b2b";
+          ctx.fillText(t, mm(L.x), y);
+          y += size * 1.25;
+        });
+        if (pick.includes(i)) {
+          const t = "▲ ตำแหน่งสกรีนที่เลือก";
+          const size = fs * 0.72;
+          ctx.font = `700 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+          const tw = ctx.measureText(t).width;
+          const px = mm(L.x) - tw / 2 - size * 0.6;
+          const py = y + size * 0.15;
+          ctx.fillStyle = "rgba(2,132,199,.92)";
+          ctx.beginPath();
+          ctx.roundRect(px, py, tw + size * 1.2, size * 1.5, size * 0.75);
+          ctx.fill();
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(t, mm(L.x), py + size * 0.22);
+        }
+      });
+      ctx.restore();
+    }
+    /**
      * 🎯 เส้นตัดเห็นชัดทุกพื้น (ผู้ใช้แจ้ง 14 ต.ค. 69 "เส้นไดคัทยังกลมกลืนกับรูป") — เส้นแดงของเทมเพลตวาดแบบ multiply
      * บนรูปเข้มจึงจมหาย (เดิมปรับสีทีละท่อน ~8px เป็นขาว/ดำ เห็นเป็นเส้นขาด ๆ) → วาดเส้นตัดทับอีกชั้นแบบต่อเนื่อง:
      * ขอบขาวหนา (ตัดกับพื้นเข้ม) + แกนแดง (ตัดกับพื้นสว่าง) · เทมเพลต = เส้นทึบ · ไม่มีเทมเพลต = เส้นประ
@@ -2313,7 +2376,7 @@ export default function CalendarStudio({
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, guideLines, tplCut, gridSel, cutRes, cutView, cutP.strokeColor]);
+  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, guideLines, tplCut, gridSel, cutRes, cutView, cutP.strokeColor, mock3d]);
 
   useEffect(() => {
     if (open) draw();
