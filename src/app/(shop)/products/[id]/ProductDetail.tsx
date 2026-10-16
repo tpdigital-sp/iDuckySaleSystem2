@@ -1308,6 +1308,22 @@ export default function ProductDetail({
    * → ปิดออกแบบบนเว็บเฉพาะรุ่นนั้น เหลือ "แนบไฟล์ลาย" · ใช้เฉพาะสินค้าที่ calendarStudio ไม่ได้กำหนด formats (ขนาดงานมาจากเทมเพลตล้วน)
    * กลุ่มตัวเลือกที่นับเป็น "กลุ่มรุ่น" = กลุ่มที่มีชุดเทมเพลตชื่อตรงกับค่าบางค่า · ไม่มีกลุ่มแบบนั้นเลย = ชุดไม่ได้แยกตามรุ่น ไม่ยุ่ง
    */
+  /** ชุดเทมเพลตที่ "ชื่อชุด" ตรงกับค่าที่เลือกอยู่ (รุ่นมือถือ) — ใช้ร่วมกันทั้งด่าน tplModelMissing · ลำดับ calTemplates · ขนาดงาน tplFormatKey */
+  const calHits = useMemo(() => {
+    const norm = (v: string) => v.toLowerCase().replace(/iphone/g, "").replace(/[\s\-_]/g, "");
+    // ค่าที่รวมหลายรุ่น ("iPhone X / XS") แยกด้วย "/" ให้ตรงกับชื่อชุดได้ทั้งสองรุ่น (16 ต.ค. 69)
+    const picked = new Set(
+      Object.values(effective).flatMap((v) => String(v ?? "").split("/").map(norm)).filter(Boolean),
+    );
+    return templates.filter(
+      (t) =>
+        !t.optionLabel?.trim() &&
+        t.name
+          .split("/")
+          .map((x) => norm(x))
+          .some((x) => x && picked.has(x)),
+    );
+  }, [templates, effective]);
   const tplModelMissing = useMemo(() => {
     if (!product.calendarStudio || product.calendarStudio.formats?.length) return false;
     const norm = (v: string) => v.toLowerCase().replace(/iphone/g, "").replace(/[\s\-_]/g, "");
@@ -1318,8 +1334,12 @@ export default function ProductDetail({
     // ค่าตัวเลือกที่รวมหลายรุ่นในค่าเดียว ("iPhone X / XS") แยกด้วย "/" ให้เหมือนชื่อชุด — ตรงรุ่นใดรุ่นหนึ่งก็นับว่ามี (16 ต.ค. 69)
     const keys = (v: string) => v.split("/").map(norm).filter(Boolean);
     const byModel = product.options.filter((o) => o.choices.some((c) => keys(c.name).some((k) => names.has(k))));
-    return byModel.some((o) => !keys(String(effective[o.label] ?? "")).some((k) => names.has(k)));
-  }, [product, templates, effective]);
+    if (!byModel.length) return false;
+    if (byModel.some((o) => !keys(String(effective[o.label] ?? "")).some((k) => names.has(k)))) return true;
+    // ชื่อชุดตรงรุ่นแล้ว แต่ไฟล์ในชุดมีเงื่อนไขกลุ่มอื่น (when เช่น ประเภทเคส ธรรมดา/Magsafe) ไม่ตรงกับที่เลือก
+    // = ไม่มีไฟล์ของสเปคนี้ (Case Frame Card iPhone 17 มีแต่ไฟล์ Magsafe · 16 ต.ค. 69) → ปิดเหมือนรุ่นที่ไม่มีไฟล์ ไม่หยิบอาร์ตบอร์ดรุ่นอื่น
+    return !calHits.some((t) => filesForSelections(t, effective).some((f) => f.widthMm && f.heightMm));
+  }, [product, templates, effective, calHits]);
   const calMode = !!product.calendarStudio && product.studioOff !== true && !tplModelMissing;
   /**
    * ✂️ สินค้าออกแบบชิ้นงานไดคัทบนเว็บ (พวงกุญแจอะคริลิค) — ขนาด = ด้านยาวสุดของชิ้นงานตามตัวเลือก "ขนาด"
@@ -1369,23 +1389,11 @@ export default function ProductDetail({
    * เทมเพลตที่ "ตรงกับที่เลือก" มาก่อน — ชุดที่ไม่ได้ผูกกลุ่มตัวเลือก (เคสมือถือ 22 รุ่น ชุดละไฟล์) จับคู่ด้วยชื่อชุด = ค่าที่เลือก
    * ("iPhone 12 / 12 Pro" ตรงทั้ง iPhone 12 และ iPhone 12 Pro) · ไม่ตรงชื่อไหนเลย = ลำดับเดิม
    */
-  const calTemplates = useMemo(() => {
-    const norm = (v: string) => v.toLowerCase().replace(/iphone/g, "").replace(/[\s\-_]/g, "");
-    // ค่าที่รวมหลายรุ่น ("iPhone X / XS") แยกด้วย "/" ให้ตรงกับชื่อชุดได้ทั้งสองรุ่น (16 ต.ค. 69)
-    const picked = new Set(
-      Object.values(effective).flatMap((v) => String(v ?? "").split("/").map(norm)).filter(Boolean),
-    );
-    const hit = (t: DesignTemplate) =>
-      !t.optionLabel?.trim() &&
-      t.name
-        .split("/")
-        .map((x) => norm(x))
-        .some((x) => x && picked.has(x));
-    return [...templates.filter(hit), ...templates.filter((t) => !hit(t))];
-  }, [templates, effective]);
+  const calTemplates = useMemo(() => [...calHits, ...templates.filter((t) => !calHits.includes(t))], [templates, calHits]);
   const tplFormatKey = (() => {
     if (!product.calendarStudio) return null;
-    for (const t of calTemplates) {
+    // มีชุดที่ชื่อตรงรุ่น = เอาขนาดจากชุดนั้นเท่านั้น (ไม่ตกไปหยิบชุดรุ่นอื่นเงียบ ๆ เมื่อไฟล์ไม่ตรงเงื่อนไข) · 16 ต.ค. 69
+    for (const t of calHits.length ? calHits : calTemplates) {
       const f = filesForSelections(t, effective).find((x) => x.widthMm && x.heightMm);
       if (f) return `tpl@${Math.round(f.widthMm! * 10) / 10}x${Math.round(f.heightMm! * 10) / 10}`;
     }
@@ -6371,7 +6379,7 @@ export default function ProductDetail({
           </span>
           <span className={`text-[10.5px] font-semibold leading-tight ${designDone ? "text-sky-700" : fileChosen ? "text-stone-500" : "text-sky-100"}`}>
             {studioBoxMissing
-              ? "รุ่นนี้ยังไม่มีเทมเพลตบนเว็บ — แนบไฟล์แทน"
+              ? "รุ่น/แบบที่เลือกยังไม่มีเทมเพลตบนเว็บ — แนบไฟล์แทน"
               : designDone
               ? calMode && placed[placed.length - 1]?.calState
                 ? "✏️ แตะเพื่อแก้แบบที่สร้างไว้"
@@ -6733,7 +6741,7 @@ export default function ProductDetail({
                     {/* 📱 รุ่นที่เลือกยังไม่มีเทมเพลตบนเว็บ (tplModelMissing) — บอกตรง ๆ ว่าส่งไฟล์ลายแทน ไม่ชวนกดปุ่มที่ไม่ขึ้น */}
                     {!studioOff && tplModelMissing && (
                       <p className="px-4 pb-3 text-[10px] leading-relaxed text-amber-700">
-                        รุ่นที่เลือกยังไม่มีเทมเพลตสำหรับออกแบบบนเว็บ — แนบไฟล์ลายของคุณได้เลย ทางร้านจัดวางให้ตรงกับรุ่นที่ผลิตจริง
+                        รุ่น/แบบที่เลือกยังไม่มีเทมเพลตสำหรับออกแบบบนเว็บ — แนบไฟล์ลายของคุณได้เลย ทางร้านจัดวางให้ตรงกับรุ่นที่ผลิตจริง
                       </p>
                     )}
                   </div>

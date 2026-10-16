@@ -3,11 +3,13 @@
  *
  *   npx tsx scripts/case-ix-templates.mts            # dry-run
  *   npx tsx scripts/case-ix-templates.mts --write    # อัปไฟล์ + สร้างชุด + ผูกสินค้า
+ *   CASE_ONLY=i78se … --write                        # ทำเฉพาะชุดที่ระบุ (คั่นด้วย ,) — ชุดอื่นไม่อัปซ้ำ
  *
  * ไฟล์ต้นฉบับ: /Volumes/iDuckyShop/All Template/3. Case เคส/3.0 เคสมือถือ/iPhone/เคสพรีเมี่ยมขอบใส-ขาว-ดำ/
  *   ix uv พรีเมี่ยม.ai      → "iPhone X / XS"  ⚠️ อาร์ตบอร์ด A3 เส้นไดคัทอยู่มุมขวาล่าง → ขนาดงานใช้ ArtBox 72.6×144.9 มม. (ไฟล์อัปตามต้นฉบับ)
  *   ixr uv พรีเเมี่ยม.ai    → "iPhone XR"       79.7×154.8
  *   ixs max uv พรีเมี่ยม.ai → "iPhone XS Max"   81.4×161.4
+ *   i7= i8= ise2020.ai      → "iPhone 7 / 8 / SE 2020"  70.3×141.6 (เพิ่ม 16 ต.ค. 69 บ่าย — ค่าตัวเลือกคือ "iPhone 7 / 8 / SE 2020" ชื่อชุดตั้งให้ตรง)
  * สกิน/พรีวิว = PNG ที่เรนเดอร์จากเส้นไดคัท (เตรียมไว้ใน scratchpad ด้วย pymupdf) · ชื่อชุดต้องตรงค่าในกลุ่ม "รุ่นมือถือ" (calTemplates จับคู่จากชื่อ)
  * รันซ้ำได้: id ชุดคงที่ · ชุดที่มีอยู่แล้วเขียนทับ
  */
@@ -30,7 +32,14 @@ const die = (m: string): never => { console.error("✗", m); process.exit(1); };
 const BUCKET = "design-templates";
 const PRODUCTS = ["case-premium-clear", "case-premium-edge"];
 
+const ONLY = (process.env.CASE_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const SETS = [
+  { key: "i78se", id: "tpl-case-i78se", name: "iPhone 7 / 8 / SE 2020", file: "i7= i8= ise2020.ai", widthMm: 70.3, heightMm: 141.6, sort: 166 },
+  // 📱 iPhone 17 (16 ต.ค. 69 บ่าย — NAS โฟลเดอร์ 17 · เส้นไดคัท ~50 KB · ผืน = อาร์ตบอร์ดไฟล์ · ชื่อชุดตรงค่าตัวเลือกที่รวม 18 ด้วย)
+  { key: "i17", id: "tpl-case-i17", name: "iPhone 17", file: "17/17 พรีเมี่ยม.ai", widthMm: 78.9, heightMm: 156.8, sort: 192 },
+  { key: "i17air", id: "tpl-case-i17air", name: "iPhone 17 Air", file: "17/17air พรีเมี่ยม.ai", widthMm: 81.1, heightMm: 161.9, sort: 193 },
+  { key: "i17pro", id: "tpl-case-i17pro", name: "iPhone 17 Pro / 18 Pro", file: "17/17pro พรีเมี่ยม.ai", widthMm: 82.4, heightMm: 167.5, sort: 194 },
+  { key: "i17promax", id: "tpl-case-i17promax", name: "iPhone 17 Pro Max / 18 Pro Max", file: "17/17pro max พรีเมี่ยม.ai", widthMm: 91.9, heightMm: 176.7, sort: 195 },
   { key: "ix", id: "tpl-case-ix", name: "iPhone X / XS", file: "ix uv พรีเมี่ยม.ai", widthMm: 72.6, heightMm: 144.9, sort: 167 },
   { key: "ixr", id: "tpl-case-ixr", name: "iPhone XR", file: "ixr uv พรีเเมี่ยม.ai", widthMm: 79.7, heightMm: 154.8, sort: 168 },
   { key: "ixsmax", id: "tpl-case-ixsmax", name: "iPhone XS Max", file: "ixs max uv พรีเมี่ยม.ai", widthMm: 81.4, heightMm: 161.4, sort: 169 },
@@ -45,7 +54,7 @@ async function upload(local: string, kind: "file" | "preview", ext: string, stem
 }
 
 const ids: string[] = [];
-for (const s of SETS) {
+for (const s of SETS.filter((x) => !ONLY.length || ONLY.includes(x.key))) {
   const src = `${SRC}/${s.file}`;
   const size = statSync(src).size;
   const skin = `${PNG}/${s.key}-skin.png`, prev = `${PNG}/${s.key}-preview.png`;
