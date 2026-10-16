@@ -1291,7 +1291,24 @@ export default function ProductDetail({
    * 🗓 สินค้าปฏิทินโฟโต้การ์ด — ลายแต่ละแบบมี 2 ไฟล์เสมอ: หน้าปก (artFiles) + ปฏิทินด้านหลัง (artBackFiles ตำแหน่งเดียวกัน)
    * ด้านหลังเป็นของที่ระบบสร้างให้ ไม่ใช่ "ลายด้านหลังที่คละ" — ไม่ผ่าน backDesign/ค่าคละด้านหลัง
    */
-  const calMode = !!product.calendarStudio && product.studioOff !== true;
+  /**
+   * 📱 ชุดเทมเพลตแบบ "ชื่อชุด = ค่าตัวเลือก" (เคสมือถือ ชุดละรุ่น ไม่ผูกกลุ่มตัวเลือก · กติกาเดียวกับ calTemplates ด้านล่าง)
+   * สินค้าที่ชุดเทมเพลตเป็นแบบนี้ แต่รุ่นที่เลือกอยู่ไม่มีชุดไหนตรง (iPhone 17 / Samsung / iPhone X ยังไม่มีไฟล์ .ai · 16 ต.ค. 69)
+   * = ไม่รู้ขนาดงานจริง — เดิม tplFormatKey หยิบชุดแรกในลิสต์มาเงียบ ๆ (iPhone 17 ได้อาร์ตบอร์ด iPhone 11)
+   * → ปิดออกแบบบนเว็บเฉพาะรุ่นนั้น เหลือ "แนบไฟล์ลาย" · ใช้เฉพาะสินค้าที่ calendarStudio ไม่ได้กำหนด formats (ขนาดงานมาจากเทมเพลตล้วน)
+   * กลุ่มตัวเลือกที่นับเป็น "กลุ่มรุ่น" = กลุ่มที่มีชุดเทมเพลตชื่อตรงกับค่าบางค่า · ไม่มีกลุ่มแบบนั้นเลย = ชุดไม่ได้แยกตามรุ่น ไม่ยุ่ง
+   */
+  const tplModelMissing = useMemo(() => {
+    if (!product.calendarStudio || product.calendarStudio.formats?.length) return false;
+    const norm = (v: string) => v.toLowerCase().replace(/iphone/g, "").replace(/[\s\-_]/g, "");
+    const names = new Set(
+      templates.filter((t) => !t.optionLabel?.trim()).flatMap((t) => t.name.split("/").map(norm).filter(Boolean)),
+    );
+    if (!names.size) return false;
+    const byModel = product.options.filter((o) => o.choices.some((c) => names.has(norm(c.name))));
+    return byModel.some((o) => !names.has(norm(String(effective[o.label] ?? ""))));
+  }, [product, templates, effective]);
+  const calMode = !!product.calendarStudio && product.studioOff !== true && !tplModelMissing;
   /**
    * ✂️ สินค้าออกแบบชิ้นงานไดคัทบนเว็บ (พวงกุญแจอะคริลิค) — ขนาด = ด้านยาวสุดของชิ้นงานตามตัวเลือก "ขนาด"
    * ยังไม่เลือกขนาด/อ่านไม่ออก = 5 ซม. ไว้ก่อน (ลูกค้าเห็นตัวอย่างได้ ทีมงานปรับตามสเปคจริงตอนผลิต)
@@ -6645,10 +6662,16 @@ export default function ProductDetail({
                     )}
 
                     {/* แอดมินปิดปุ่ม "เริ่มสร้าง" ไว้ = ไม่ชวนให้กดปุ่มที่ไม่มีบนหน้า */}
-                    {!studioOff && (
+                    {!studioOff && !tplModelMissing && (
                       <p className="px-4 pb-3 text-[10px] leading-relaxed text-sky-800">
                         วิธีที่ง่ายที่สุดคือกดปุ่ม <strong>&ldquo;🎨 ออกแบบบนเว็บ&rdquo;</strong> แล้ววางรูปของคุณบนแบบได้เลย
                         ระบบจัดขนาด/ตำแหน่งให้ตรงกับที่ผลิตจริง · ส่วนไฟล์ .ai ตรงนี้มีไว้ให้คนที่อยากทำแบบเองในโปรแกรมกราฟฟิก
+                      </p>
+                    )}
+                    {/* 📱 รุ่นที่เลือกยังไม่มีเทมเพลตบนเว็บ (tplModelMissing) — บอกตรง ๆ ว่าส่งไฟล์ลายแทน ไม่ชวนกดปุ่มที่ไม่ขึ้น */}
+                    {!studioOff && tplModelMissing && (
+                      <p className="px-4 pb-3 text-[10px] leading-relaxed text-amber-700">
+                        รุ่นที่เลือกยังไม่มีเทมเพลตสำหรับออกแบบบนเว็บ — แนบไฟล์ลายของคุณได้เลย ทางร้านจัดวางให้ตรงกับรุ่นที่ผลิตจริง
                       </p>
                     )}
                   </div>
