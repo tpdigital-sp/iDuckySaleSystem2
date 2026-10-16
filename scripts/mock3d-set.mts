@@ -1,0 +1,48 @@
+/**
+ * ☕🧊 ตั้ง/ถอดพรีวิว 3D ในจอออกแบบของสินค้า (Product.calendarStudio.mock3d) — เจ้าของร้านสั่ง 16 ต.ค. 69 "ฉันต้องการให้มี 3D ด้วย" (แก้วมัค mug-11oz)
+ *
+ *   npx tsx scripts/mock3d-set.mts <productId> mug     # เปิดพรีวิวแก้วมัค 11 oz
+ *   npx tsx scripts/mock3d-set.mts <productId> none    # ถอดออก
+ *
+ * ตั้งได้ที่หน้าแก้ไขสินค้าหลังบ้าน (กล่อง 🧊 ปุ่ม "ดูแบบ 3D") เหมือนกัน — สคริปต์นี้ไว้ตั้งจากเครื่องตอนทดสอบ
+ * อ่านสินค้าล่าสุดก่อนเขียน แตะเฉพาะ calendarStudio.mock3d + savedAt · สินค้าที่ยังไม่เปิดจอออกแบบบนเว็บ (ไม่มี calendarStudio) = หยุดบอกเหตุ
+ */
+import { readFileSync } from "node:fs";
+import { createClient } from "@supabase/supabase-js";
+import type { Product } from "../src/lib/products";
+import { revalidateLive } from "./lib/revalidate-live.mts";
+
+const [PRODUCT, MODE] = process.argv.slice(2);
+if (!PRODUCT || !["mug", "none"].includes(MODE ?? "")) {
+  console.error("ใช้: npx tsx scripts/mock3d-set.mts <productId> mug|none");
+  process.exit(1);
+}
+const env = Object.fromEntries(
+  readFileSync(new URL("../.env.local", import.meta.url), "utf8")
+    .split("\n")
+    .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
+    .map((l) => {
+      const i = l.indexOf("=");
+      return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, "")];
+    }),
+) as Record<string, string>;
+const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+const { data: row, error } = await sb.from("products").select("id,name,data").eq("id", PRODUCT).single();
+if (error || !row) throw new Error(`โหลดสินค้า ${PRODUCT} ไม่ได้: ${error?.message}`);
+const cur = row.data as Product;
+if (!cur.calendarStudio) {
+  console.error(`⛔ ${row.name} ยังไม่เปิดจอออกแบบบนเว็บ (ไม่มี calendarStudio) — ผูกเทมเพลตด้วย scripts/template-link-by-size.mts ก่อน`);
+  process.exit(1);
+}
+const { mock3d: before, ...rest } = cur.calendarStudio;
+const after = MODE === "mug" ? "mug" : undefined;
+if (before === after) {
+  console.log(`= ${row.name}: mock3d ${before ?? "ไม่มี"} อยู่แล้ว ไม่เปลี่ยน`);
+  process.exit(0);
+}
+const next: Product = { ...cur, calendarStudio: after ? { ...rest, mock3d: after } : rest, savedAt: new Date().toISOString() };
+const { error: e2 } = await sb.from("products").update({ data: next }).eq("id", PRODUCT);
+if (e2) throw new Error(`บันทึก: ${e2.message}`);
+console.log(`✅ ${row.name}: mock3d ${before ?? "ไม่มี"} → ${after ?? "ไม่มี"}`);
+await revalidateLive(env, { productIds: [PRODUCT] });

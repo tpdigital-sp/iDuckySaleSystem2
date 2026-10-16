@@ -74,6 +74,8 @@ import { curvesBox, curvesSvgD, printFrameToken, shiftCurves, type TemplateCurve
 import { buildCalendarAi, illustratorReady, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
+import Mug3D from "@/components/Mug3D";
+import { MUG_DEFAULT, type MugMock } from "@/lib/mug-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
 import { dieCurvesPath, dieSvgD } from "@/lib/sleeve-dieline";
@@ -171,6 +173,11 @@ interface Props {
    * pre = รูปที่ลูกค้าเพิ่งใส่ลงจอ (ยังไม่รู้ว่าจะกดใช้แบบไหม) — อัปล่วงหน้าระหว่างที่ลูกค้ายังจัดแบบอยู่ (16 ต.ค. 69 "กดใส่ตะกร้าแล้วอัปโหลดนานมาก")
    */
   onEarly?: (e: { files?: File[]; owner?: File; pre?: boolean }) => void;
+  /**
+   * ☕🧊 พรีวิว 3D แก้วมัค (Product.calendarStudio.mock3d = "mug" · เจ้าของร้านสั่ง 16 ต.ค. 69) — ปุ่ม "ดูแบบ 3D" บนแถบบน
+   * ลายทั้งอาร์ตบอร์ดพันรอบตัวแก้ว · ลักษณะแก้ว/มุมมองเริ่มต้นตามตัวเลือกที่เลือก (lib/mug-mock)
+   */
+  mock3d?: MugMock;
 }
 
 /** แผงด้านข้างตามปุ่มในแถบเครื่องมือ (null = ปิดแผง) */
@@ -383,6 +390,7 @@ export default function CalendarStudio({
   cutPresets,
   onApply,
   onEarly,
+  mock3d,
 }: Props) {
   /** กด 🛒 ใส่ตะกร้า (ไม่ใช่ ✓ ใช้แบบนี้) — จำไว้ข้ามหน้าต่างถาม "รูปไม่เต็มช่อง" */
   /** onEarly ล่าสุด — ใช้ใน swapSrc (useCallback deps ว่าง) */
@@ -3161,6 +3169,29 @@ export default function CalendarStudio({
       setErr("เตรียมภาพ 3D ไม่สำเร็จ — ลองใหม่อีกครั้ง");
     }
   }
+  /**
+   * ☕🧊 ดูแบบ 3D แก้วมัค (mock3d) — วาดลายทั้งอาร์ตบอร์ด (รวมตัดตก · แผ่นพิมพ์ทั้งแผ่นถูกรีดลงแก้ว ไม่มีการตัด) จากตัววาดจริง
+   * ไม่ใช้ preview (ช่องรูปว่างไม่โชว์สี่เหลี่ยมเทาบนแก้ว) · ความละเอียด ~2048px ด้านยาว พอซูม 3 เท่า
+   */
+  const [mug3d, setMug3d] = useState<HTMLCanvasElement | "loading" | null>(null);
+  async function openMug3d() {
+    setMug3d("loading");
+    try {
+      await ensureFonts(fontKeys);
+      const k = 2048 / Math.max(W, H);
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(W * k);
+      cv.height = Math.round(H * k);
+      const ctx = cv.getContext("2d");
+      if (!ctx) throw new Error("no canvas");
+      drawPage(ctx, k, fmt, basePage, design, back, imgs);
+      setMug3d(cv);
+    } catch {
+      setMug3d(null);
+      setErr("เตรียมภาพ 3D ไม่สำเร็จ — ลองใหม่อีกครั้ง");
+    }
+  }
+  const busy3d = flip3d === "loading" || mug3d === "loading";
 
   function renderGridBar() {
     const gr = gridOf(page, design);
@@ -3310,6 +3341,8 @@ export default function CalendarStudio({
   }
   overlayRef.current = Array.isArray(flip3d)
     ? () => setFlip3d(null)
+    : mug3d && mug3d !== "loading"
+      ? () => setMug3d(null)
     : ask
       ? () => setAsk(null)
       : layersOpen
@@ -5267,19 +5300,19 @@ export default function CalendarStudio({
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5 md:ml-0">
-            {hasSheets && (
+            {(hasSheets || mock3d) && (
               <button
                 type="button"
-                onClick={() => void open3d()}
-                disabled={flip3d === "loading"}
-                title="ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"
+                onClick={() => void (mock3d ? openMug3d() : open3d())}
+                disabled={busy3d}
+                title={mock3d ? "ดูแบบ 3D — ลายพันรอบแก้วจริง หมุนดูได้รอบตัว" : "ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"}
                 // ✨ ให้เด่น (ผู้ใช้ขอ 14 ต.ค. 69) — ไล่สีม่วง-ชมพู ตัวขาว เงา + จุดกะพริบ "ใหม่"
                 className="relative flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-2.5 py-2.5 text-xs font-extrabold text-white sm:px-4 shadow-[0_4px_14px_rgba(139,92,246,.45)] ring-2 ring-white transition hover:scale-[1.03] hover:shadow-[0_6px_20px_rgba(139,92,246,.55)] disabled:opacity-70"
               >
                 <span className="text-sm leading-none">🧊</span>
                 {/* 📱 จอแคบ: เหลือ "3D" ให้แถบบนมีที่พอสำหรับ ✓ ใช้แบบนี้ + 🛒 ใส่ตะกร้า */}
-                <span className="hidden sm:inline">{flip3d === "loading" ? "กำลังเตรียม…" : "ดูแบบ 3D"}</span>
-                <span className="sm:hidden">{flip3d === "loading" ? "…" : "3D"}</span>
+                <span className="hidden sm:inline">{busy3d ? "กำลังเตรียม…" : "ดูแบบ 3D"}</span>
+                <span className="sm:hidden">{busy3d ? "…" : "3D"}</span>
                 <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-75" />
                   <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-400 ring-2 ring-white" />
@@ -6373,6 +6406,9 @@ export default function CalendarStudio({
         )}
 
         {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmtName} onClose={() => setFlip3d(null)} />}
+        {mug3d && mug3d !== "loading" && (
+          <Mug3D sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d ?? MUG_DEFAULT} title={title} onClose={() => setMug3d(null)} />
+        )}
         {askMode && (
           <div className="absolute inset-0 z-[70] flex items-center justify-center bg-stone-900/45 p-4">
             <div className="relative w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">

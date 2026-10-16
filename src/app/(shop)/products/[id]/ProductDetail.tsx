@@ -170,6 +170,7 @@ import {
 } from "@/lib/design-templates";
 import CalendarStudio, { type CalendarResult, type CalendarState } from "@/components/CalendarStudio";
 import { calDesignCount, calFormat, calHasGrid, calSideDesignCount, canvasSizeOf, rollCalendarYears, yearFromChoice } from "@/lib/calendar-card";
+import { mugMockFrom } from "@/lib/mug-mock";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import {
   fetchCalDesign,
@@ -9437,6 +9438,8 @@ export default function ProductDetail({
                 if (e.files?.length) startEarlyUploads(e.files, !!e.pre);
                 if (e.owner) startEarlyOwner(e.owner);
               }}
+              // ☕🧊 พรีวิว 3D แก้วมัค — ลักษณะแก้ว/มุมมองตามตัวเลือกที่เลือกอยู่ (16 ต.ค. 69)
+              mock3d={product.calendarStudio?.mock3d === "mug" && !cutMode ? mugMockFrom(effective) : undefined}
             />
           )}
 

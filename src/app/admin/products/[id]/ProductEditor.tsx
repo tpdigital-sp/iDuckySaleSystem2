@@ -409,6 +409,8 @@ type Draft = {
   templateIds: string[];
   /** 🎨 เปิดปุ่ม "เริ่มสร้าง — วางลายบนสินค้า" ให้ลูกค้าไหม (ค่าเริ่มต้น = เปิด) */
   studioOn: boolean;
+  /** ☕🧊 พรีวิว 3D ในจอออกแบบ (Product.calendarStudio.mock3d) — "" = ไม่มี · "mug" = แก้วมัค 11 oz */
+  mock3d: "" | "mug";
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** 🔴 หมายเหตุสีแดงในกล่องราคาหน้าสินค้า */
@@ -971,6 +973,7 @@ function toDraft(p: Product): Draft {
     })),
     templateIds: [...(p.templateIds ?? [])],
     studioOn: p.studioOff !== true,
+    mock3d: p.calendarStudio?.mock3d ?? "",
     terms: p.terms ?? "",
     priceNote: p.priceNote ?? "",
     artworkRequired: p.artworkRequired !== false,
@@ -4688,6 +4691,14 @@ export default function ProductEditor({ product }: { product: Product }) {
       })(),
       templateIds: draft.templateIds.length ? [...draft.templateIds] : undefined,
       studioOff: draft.studioOn ? undefined : true, // undefined = เปิดปุ่มเริ่มสร้าง (ค่าเริ่มต้น)
+      // ☕🧊 พรีวิว 3D — แตะเฉพาะ mock3d ในค่าเดิมของ calendarStudio (yearLabel/formats ตั้งจากสคริปต์ ไม่แก้ที่นี่) · ไม่มีจอออกแบบ = ไม่เก็บ
+      calendarStudio: original.calendarStudio
+        ? (() => {
+            const { mock3d: _old, ...rest } = original.calendarStudio;
+            void _old;
+            return draft.mock3d ? { ...rest, mock3d: draft.mock3d } : rest;
+          })()
+        : undefined,
       terms: draft.terms.trim() || undefined,
       priceNote: draft.priceNote.trim() || undefined,
       artworkRequired: draft.artworkRequired ? undefined : false, // undefined = บังคับ (ค่าเริ่มต้น)
@@ -5623,6 +5634,28 @@ export default function ProductEditor({ product }: { product: Product }) {
             </span>
           </button>
         </div>
+        {/* ☕🧊 พรีวิว 3D ในจอออกแบบ — เฉพาะสินค้าที่เปิดจอออกแบบบนเว็บ (calendarStudio) (เจ้าของร้านสั่ง 16 ต.ค. 69 แก้วมัค) */}
+        {original.calendarStudio && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-violet-50/60 p-3 ring-1 ring-violet-200">
+            <div className="min-w-0 flex-1 text-xs">
+              <p className="font-bold text-slate-700">🧊 ปุ่ม &ldquo;ดูแบบ 3D&rdquo; ในจอออกแบบ</p>
+              <p className="mt-0.5 text-slate-500">
+                {draft.mock3d === "mug"
+                  ? "ลูกค้ากดดูลายพันรอบแก้วมัค 11 oz หมุนได้รอบตัว · ประเภทแก้ว (ขาวเงา/ใส/ขุ่น) และตำแหน่งสกรีน (หูจับซ้าย/ขวา) อ่านจากตัวเลือกที่ลูกค้าเลือก"
+                  : "ยังไม่มีพรีวิว 3D — เลือกรูปทรงสินค้าให้ระบบจำลองลายบนของจริง"}
+              </p>
+            </div>
+            <select
+              value={draft.mock3d}
+              onChange={(e) => patch({ mock3d: e.target.value as Draft["mock3d"] })}
+              className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-bold text-violet-800"
+              aria-label="รูปทรงพรีวิว 3D"
+            >
+              <option value="">ไม่มีพรีวิว 3D</option>
+              <option value="mug">☕ แก้วมัค 11 oz</option>
+            </select>
+          </div>
+        )}
         {linkedTemplates.length === 0 ? (
           <p className="rounded-2xl bg-slate-50 p-4 text-center text-xs text-slate-400">
             {templates.length === 0 ? "ยังไม่มีเทมเพลตในคลัง — ไปเพิ่มที่ " : "ยังไม่ได้ผูกเทมเพลตกับสินค้านี้ — ไปผูกที่ "}
