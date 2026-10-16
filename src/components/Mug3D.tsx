@@ -107,7 +107,8 @@ export default function Mug3D({
         renderer.toneMapping = THREE.NeutralToneMapping;
         renderer.toneMappingExposure = 1;
         renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        // three r186 ถอด PCFSoftShadowMap (เดิมเตือนทุกครั้งที่เปิด แล้วตกไปใช้ PCF เอง) — PCF + shadow.radius ให้ขอบเงานุ่มเหมือนเดิม
+        renderer.shadowMap.type = THREE.PCFShadowMap;
         renderer.domElement.style.width = "100%";
         renderer.domElement.style.height = "100%";
         renderer.domElement.style.display = "block";
@@ -115,7 +116,9 @@ export default function Mug3D({
 
         const scene = new THREE.Scene();
         const pmrem = new THREE.PMREMGenerator(renderer);
-        const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        const room = new RoomEnvironment();
+        const envTex = pmrem.fromScene(room, 0.04).texture;
+        room.dispose(); // ใช้แค่สร้างแสงสะท้อนครั้งเดียว — คืนเรขาคณิต/วัสดุของห้องทันที
         scene.environment = envTex;
         scene.environmentIntensity = 0.45;
 
@@ -137,30 +140,35 @@ export default function Mug3D({
         scene.add(sun);
         scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.ShadowMaterial({ opacity: 0.16 }));
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -H / 2;
-        ground.receiveShadow = true;
-        scene.add(ground);
-
         const geos: { dispose(): void }[] = [];
         const mats: { dispose(): void }[] = [];
         const g = <T extends { dispose(): void }>(x: T) => (geos.push(x), x);
         const m = <T extends { dispose(): void }>(x: T) => (mats.push(x), x);
 
+        // เงาพื้น — แก้วใสแสงทะลุ เงาจางกว่าแก้วทึบ
+        const ground = new THREE.Mesh(g(new THREE.PlaneGeometry(900, 900)), m(new THREE.ShadowMaterial({ opacity: mock.body === "clear" ? 0.07 : 0.16 })));
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -H / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
         // 🏺 วัสดุตัวแก้วตามประเภท
         const bodyMat =
           mock.body === "clear"
-            ? m(
+            ? // 🫧 แก้วใส: เดิมใช้ transmission — three วาดฉากด้านหลังลงเรนเดอร์ทาร์เก็ตที่พื้นใส (canvas alpha) จึงได้สีดำโปร่ง
+              // ตัวแก้วออกมาขุ่นเทาเหมือนกระจกฝ้า → ใช้ความโปร่ง (opacity) ต่ำ + เงาสะท้อนแรงแทน: เห็นพื้นหลังทะลุจริง ขอบ/ไฮไลต์บอกว่าเป็นแก้ว
+              // depthWrite ปิด = ลายที่พันรอบและผนังฝั่งหลังไม่ถูกตัวแก้วบัง
+              m(
                 new THREE.MeshPhysicalMaterial({
                   color: 0xffffff,
-                  roughness: 0.06,
+                  roughness: 0.04,
                   metalness: 0,
-                  transmission: 0.9,
-                  thickness: 2.5,
-                  ior: 1.5,
+                  clearcoat: 1,
+                  clearcoatRoughness: 0.03,
+                  envMapIntensity: 2.2,
                   transparent: true,
-                  opacity: 1,
+                  opacity: 0.16,
+                  depthWrite: false,
                   side: THREE.DoubleSide,
                 }),
               )
@@ -272,6 +280,8 @@ export default function Mug3D({
           envTex.dispose();
           pmrem.dispose();
           renderer.dispose();
+          // คืน WebGL context ทันที — dispose() อย่างเดียวไม่คืน เปิด-ปิดซ้ำ ~16 ครั้งเบราว์เซอร์ขึ้น "Too many active WebGL contexts" (ตรวจ 16 ต.ค. 69)
+          renderer.forceContextLoss();
           renderer.domElement.remove();
         };
         if (dead) cleanup();
