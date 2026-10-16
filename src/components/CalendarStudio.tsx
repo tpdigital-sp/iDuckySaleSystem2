@@ -1105,6 +1105,69 @@ export default function CalendarStudio({
       return true; // อ่านพิกเซลไม่ได้ = ทำแบบเดิม (วาดเส้นตัด)
     }
   }, [guideImg, guide, fmt, W, H]);
+  /**
+   * ⬜ พื้นนอกเส้นตัดเป็นขาวทึบ (เจ้าของร้านแจ้ง 16 ต.ค. 69 เข็มกลัด "ตรงที่ขีดสีแดงควรจะเป็นสีขาวทึบ")
+   * งาน tpl@ (เข็มกลัด/เคส) ไกด์ถูกวาดแบบ multiply พื้นขาวของไฟล์จึงโปร่ง รูปที่วางเต็มผืนโผล่ที่มุมนอกวงกลม/ทรงไดคัท
+   * ทั้งที่ของจริงถูกตัดทิ้ง → หา "เขตนอกเส้นตัด" จากรูปไกด์เอง: ไล่สี (flood fill) จากขอบรูปผ่านพิกเซลขาว/ใส
+   * หยุดที่เส้น/ลายทแยงของเทมเพลต แล้วทาขาวทึบทับรูปตรงเขตนั้นก่อนวางไกด์ (บนจอเท่านั้น ไฟล์พิมพ์ยังเต็มผืนตามเดิม)
+   * กันพลาด: ขอบรูปพรีวิวมีเงาเทา ~3px → เริ่มไล่จากแถบใน 4px (แถบเองนับเป็นนอกเมื่อเป็นเทากลาง) · ไล่ถึงกลางรูป
+   * หรือได้เขต < 2% / > 85% = เส้นตัดไม่ปิด/ไม่มีทรง → ไม่ทา (เหมือนเดิม)
+   */
+  const guideMask = useMemo<HTMLCanvasElement | null>(() => {
+    if (!guideImg || !guide || !tplGeneric) return null;
+    try {
+      const sc = Math.min(1, 800 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
+      const w = Math.max(8, Math.round(guideImg.naturalWidth * sc));
+      const h = Math.max(8, Math.round(guideImg.naturalHeight * sc));
+      const cv = document.createElement("canvas");
+      cv.width = w;
+      cv.height = h;
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(guideImg, 0, 0, w, h);
+      const a = ctx.getImageData(0, 0, w, h).data;
+      const white = (i: number) => a[i * 4 + 3] < 40 || (a[i * 4] > 235 && a[i * 4 + 1] > 235 && a[i * 4 + 2] > 235);
+      const neutral = (i: number) => Math.abs(a[i * 4] - a[i * 4 + 1]) < 12 && Math.abs(a[i * 4] - a[i * 4 + 2]) < 12;
+      const seen = new Uint8Array(w * h);
+      const q: number[] = [];
+      const inset = Math.max(3, Math.round(Math.min(w, h) * 0.01));
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const edge = x < inset || y < inset || x >= w - inset || y >= h - inset;
+          const seedRing = x === inset || y === inset || x === w - 1 - inset || y === h - 1 - inset;
+          const i = y * w + x;
+          if (edge && neutral(i)) seen[i] = 1; // แถบขอบ (เงาเทา) = นอก
+          else if (seedRing && white(i)) {
+            seen[i] = 1;
+            q.push(i);
+          }
+        }
+      let n = 0;
+      while (q.length) {
+        const i = q.pop()!;
+        n++;
+        const x = i % w;
+        const y = (i - x) / w;
+        const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+        for (const j of nb) {
+          if (j < 0 || seen[j] || !white(j)) continue;
+          seen[j] = 1;
+          q.push(j);
+        }
+      }
+      const frac = n / (w * h);
+      if (seen[(h >> 1) * w + (w >> 1)] || frac < 0.02 || frac > 0.85) return null;
+      const out = ctx.createImageData(w, h);
+      for (let i = 0; i < w * h; i++) {
+        if (!seen[i]) continue;
+        out.data[i * 4] = out.data[i * 4 + 1] = out.data[i * 4 + 2] = out.data[i * 4 + 3] = 255;
+      }
+      ctx.putImageData(out, 0, 0);
+      return cv;
+    } catch {
+      return null;
+    }
+  }, [guideImg, guide, tplGeneric]);
   useEffect(() => {
     if (!open || !guide?.url) return setGuideImg(null);
     let alive = true;
@@ -1852,20 +1915,29 @@ export default function CalendarStudio({
     }
     if (guideImg && guide) {
       // 📐 เทมเพลตของวัสดุที่เลือก — วางกึ่งกลางผืนตามขนาดมม.จริง · multiply = พื้นขาวของไฟล์หายไป เหลือเส้นกรอบ/สีวัสดุ (PET เทาอ่อน)
+      // ตำแหน่ง/ขนาดรูปไกด์บนผืน (มม.) — fill = รูปเป็นกรอบการ์ดใบเดียวพอดีผืน (skin ของไฟล์หลายช่อง) → ปูเต็มผืน
+      // 🛡 สกินที่สัดส่วนไม่เท่าผืน (ครอปชิดชิ้นงาน ไม่ใช่เท่าอาร์ตบอร์ด) ห้ามยืดให้เต็ม — ย่อให้พอดีผืนแล้ววางกึ่งกลางแทน
+      // (ปลอกแก้ว 16 ต.ค. 69: สกิน 3.2:1 ถูกยืดลงผืน 2:1 จนปลอกสูงเกินจริง ~70%)
+      let gx = 0, gy = 0, gw = W, gh = H;
+      if (guide.fill) {
+        const ar = guideImg.naturalWidth / Math.max(1, guideImg.naturalHeight);
+        if (Math.abs(ar / (W / H) - 1) > 0.02) {
+          gw = Math.min(W, H * ar);
+          gh = gw / ar;
+          gx = (W - gw) / 2;
+          gy = (H - gh) / 2;
+        }
+      } else {
+        gw = guide.wMm;
+        gh = guide.hMm;
+        gx = (W - gw) / 2;
+        gy = (H - gh) / 2;
+      }
+      // ⬜ ทาขาวทึบนอกเส้นตัด (ดู guideMask) ก่อนวางไกด์ — รูปส่วนที่ถูกตัดทิ้งจะไม่โผล่ที่มุม
+      if (guideMask) ctx.drawImage(guideMask, gx * k, gy * k, gw * k, gh * k);
       ctx.save();
       ctx.globalCompositeOperation = "multiply";
-      // fill = รูปเป็นกรอบการ์ดใบเดียวพอดีผืน (skin ของไฟล์หลายช่อง) → ปูเต็มผืน
-      if (guide.fill) {
-        // 🛡 สกินที่สัดส่วนไม่เท่าผืน (ครอปชิดชิ้นงาน ไม่ใช่เท่าอาร์ตบอร์ด) ห้ามยืดให้เต็ม — ย่อให้พอดีผืนแล้ววางกึ่งกลางแทน
-        // (ปลอกแก้ว 16 ต.ค. 69: สกิน 3.2:1 ถูกยืดลงผืน 2:1 จนปลอกสูงเกินจริง ~70%)
-        const ar = guideImg.naturalWidth / Math.max(1, guideImg.naturalHeight);
-        if (Math.abs(ar / (W / H) - 1) <= 0.02) ctx.drawImage(guideImg, 0, 0, W * k, H * k);
-        else {
-          const gw = Math.min(W, H * ar);
-          const gh = gw / ar;
-          ctx.drawImage(guideImg, ((W - gw) / 2) * k, ((H - gh) / 2) * k, gw * k, gh * k);
-        }
-      } else ctx.drawImage(guideImg, ((W - guide.wMm) / 2) * k, ((H - guide.hMm) / 2) * k, guide.wMm * k, guide.hMm * k);
+      ctx.drawImage(guideImg, gx * k, gy * k, gw * k, gh * k);
       ctx.restore();
     } else if (guide && !tplGeneric) {
       // รูปเทมเพลตโหลดไม่ได้ (เช่น หน้าเปิดค้างไว้ก่อนอัปเทมเพลตใหม่) — เส้นตัดทึบบาง ๆ แบบไฟล์เทมเพลต ไม่ใช้ลายทแยง
@@ -1987,7 +2059,7 @@ export default function CalendarStudio({
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, gridSel, cutRes, cutView, cutP.strokeColor]);
+  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideMask, gridSel, cutRes, cutView, cutP.strokeColor]);
 
   useEffect(() => {
     if (open) draw();
