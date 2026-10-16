@@ -70,7 +70,7 @@ import {
   type Rect,
   type ImgRef,
 } from "@/lib/calendar-card";
-import { printFrameToken } from "@/lib/design-templates";
+import { curvesBox, curvesSvgD, printFrameToken, shiftCurves, type TemplateCurve } from "@/lib/design-templates";
 import { buildCalendarAi, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
@@ -143,6 +143,8 @@ interface Props {
     hMm: number;
     name?: string;
     fill?: boolean;
+    /** ✂️ เส้นไดคัทจริงของไฟล์เทมเพลต (มม. นับจากมุมซ้ายบนอาร์ตบอร์ด · TemplateFile.cutCurves) — ใส่ลง .ai/.pdf แทนกรอบสี่เหลี่ยม */
+    cut?: TemplateCurve[];
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -1113,22 +1115,54 @@ export default function CalendarStudio({
    * กันพลาด: ขอบรูปพรีวิวมีเงาเทา ~3px → เริ่มไล่จากแถบใน 4px (แถบเองนับเป็นนอกเมื่อเป็นเทากลาง) · ไล่ถึงกลางรูป
    * หรือได้เขต < 2% / > 85% = เส้นตัดไม่ปิด/ไม่มีทรง → ไม่ทา (เหมือนเดิม)
    */
-  const guideMask = useMemo<HTMLCanvasElement | null>(() => {
-    if (!guideImg || !guide || !tplGeneric) return null;
+  /**
+   * 🎯 วงขอบ (ระหว่างเส้นตัดกับหน้างาน) ต้องเหมือนไฟล์เทมเพลต — พื้นขาวทึบ + ลายทแยงแดง (เจ้าของร้านแจ้ง 16 ต.ค. 69 เข็มกลัดหัวใจ
+   * "ภาพบนจอควรเหมือนเทมเพลต ไม่ใช่สีขอบติดสีฟ้า") · เดิมวาดไกด์แบบ multiply ทั้งรูป พื้นขาวในวงขอบจึงโปร่ง
+   * ช่องว่าง/รูปที่วางเต็มผืนโผล่สีฟ้าทะลุลายทแยง → ไล่สีจากกลางรูปผ่านพิกเซลขาว = "หน้างาน" (ด้านในเส้นเทาวงใน)
+   * ทำรูปไกด์ที่เจาะหน้างานให้ใส (over) ใช้ตอน "ช่องรูปยังว่าง": นอกเส้นตัด = ขาว · วงขอบ = ขาว+ลายทแยงเหมือนไฟล์เปล่า
+   * มีรูปแล้ว = mask + multiply (วงขอบเห็นรูปทะลุลายทแยงเหมือนเปิดใน Illustrator · เจ้าของร้านยืนยันด้วยภาพเทียบ 16 ต.ค. 69)
+   * ไฟล์พิมพ์ยังเต็มผืนตามเดิม (วงขอบคือส่วนที่พับไปด้านหลัง)
+   * หาหน้างานไม่ได้ (ไล่ถึงขอบรูป หรือได้ < 10% / > 95%) = multiply แบบเดิม
+   * ⚠️ "นอกเส้นตัด" ที่ไล่สีจากพิกเซล ใช้ได้แค่เป็นพื้นขาวของ over (ตอนว่าง วงขอบขาวอยู่แล้วจึงไม่เห็นรอยรั่ว)
+   *    ห้ามเอาไปทาขาวทับรูป — เส้นขอบนอก 0.25pt มีช่องเล็ก ๆ สีไหลเข้าไประหว่างเส้นทแยงเป็นแถบขาวในวงขอบ
+   *    (เจ้าของร้านแจ้ง 16 ต.ค. 69 "ยังคงไม่สมบูรณ์แบบ" · วัดหัวใจ: ไล่สีได้เขตนอก 26–32% ของจริงจากเส้นเวกเตอร์ 23.8%) → ใช้ tplCut แทน
+   */
+  const guideFx = useMemo<{ over: HTMLCanvasElement | null }>(() => {
+    const none = { over: null };
+    if (!guideImg || !guide || !tplGeneric) return none;
     try {
-      const sc = Math.min(1, 800 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
+      const sc = Math.min(1, 2000 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
       const w = Math.max(8, Math.round(guideImg.naturalWidth * sc));
       const h = Math.max(8, Math.round(guideImg.naturalHeight * sc));
       const cv = document.createElement("canvas");
       cv.width = w;
       cv.height = h;
       const ctx = cv.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return null;
+      if (!ctx) return none;
       ctx.drawImage(guideImg, 0, 0, w, h);
-      const a = ctx.getImageData(0, 0, w, h).data;
+      const img = ctx.getImageData(0, 0, w, h);
+      const a = img.data;
       const white = (i: number) => a[i * 4 + 3] < 40 || (a[i * 4] > 235 && a[i * 4 + 1] > 235 && a[i * 4 + 2] > 235);
       const neutral = (i: number) => Math.abs(a[i * 4] - a[i * 4 + 1]) < 12 && Math.abs(a[i * 4] - a[i * 4 + 2]) < 12;
-      const seen = new Uint8Array(w * h);
+      /** ไล่สีผ่านพิกเซลขาวจากจุดตั้งต้น → จำนวนพิกเซลที่ไปถึง (ทำเครื่องหมายใน seen) */
+      const fill = (seen: Uint8Array, q: number[]) => {
+        let n = 0;
+        while (q.length) {
+          const i = q.pop()!;
+          n++;
+          const x = i % w;
+          const y = (i - x) / w;
+          const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+          for (const j of nb) {
+            if (j < 0 || seen[j] || !white(j)) continue;
+            seen[j] = 1;
+            q.push(j);
+          }
+        }
+        return n;
+      };
+      // ── นอกเส้นตัด: เริ่มจากแถบใน (ขอบรูปพรีวิวเก่ามีเงาเทา ~3px นับเป็นนอก) ──
+      const out = new Uint8Array(w * h);
       const q: number[] = [];
       const inset = Math.max(3, Math.round(Math.min(w, h) * 0.01));
       for (let y = 0; y < h; y++)
@@ -1136,38 +1170,68 @@ export default function CalendarStudio({
           const edge = x < inset || y < inset || x >= w - inset || y >= h - inset;
           const seedRing = x === inset || y === inset || x === w - 1 - inset || y === h - 1 - inset;
           const i = y * w + x;
-          if (edge && neutral(i)) seen[i] = 1; // แถบขอบ (เงาเทา) = นอก
+          if (edge && neutral(i)) out[i] = 1;
           else if (seedRing && white(i)) {
-            seen[i] = 1;
+            out[i] = 1;
             q.push(i);
           }
         }
-      let n = 0;
-      while (q.length) {
-        const i = q.pop()!;
-        n++;
-        const x = i % w;
-        const y = (i - x) / w;
-        const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
-        for (const j of nb) {
-          if (j < 0 || seen[j] || !white(j)) continue;
-          seen[j] = 1;
-          q.push(j);
+      const nOut = fill(out, q);
+      const center = (h >> 1) * w + (w >> 1);
+      const fracOut = nOut / (w * h);
+      if (out[center] || fracOut < 0.02 || fracOut > 0.85) return none;
+      // ── หน้างาน: ไล่จากกลางรูป · ห้ามรั่วไปเขตนอก ──
+      let over: HTMLCanvasElement | null = null;
+      if (white(center)) {
+        const face = new Uint8Array(w * h);
+        face[center] = 1;
+        const nFace = fill(face, [center]);
+        let leak = false;
+        for (let i = 0; i < w * h && !leak; i++) if (face[i] && out[i]) leak = true;
+        const frac = nFace / (w * h);
+        if (!leak && frac > 0.1 && frac < 0.95) {
+          const o = ctx.createImageData(w, h);
+          for (let i = 0; i < w * h; i++) {
+            if (face[i]) continue; // หน้างาน = ใส
+            const k4 = i * 4;
+            if (out[i]) {
+              o.data[k4] = o.data[k4 + 1] = o.data[k4 + 2] = o.data[k4 + 3] = 255; // นอกเส้นตัด = ขาวทึบ
+            } else {
+              // วงขอบ/เส้น = สีตามไฟล์ ทึบ (พิกเซลใสของไฟล์ = ขาว)
+              const al = a[k4 + 3] / 255;
+              o.data[k4] = Math.round(a[k4] * al + 255 * (1 - al));
+              o.data[k4 + 1] = Math.round(a[k4 + 1] * al + 255 * (1 - al));
+              o.data[k4 + 2] = Math.round(a[k4 + 2] * al + 255 * (1 - al));
+              o.data[k4 + 3] = 255;
+            }
+          }
+          const oc = document.createElement("canvas");
+          oc.width = w;
+          oc.height = h;
+          oc.getContext("2d")!.putImageData(o, 0, 0);
+          over = oc;
         }
       }
-      const frac = n / (w * h);
-      if (seen[(h >> 1) * w + (w >> 1)] || frac < 0.02 || frac > 0.85) return null;
-      const out = ctx.createImageData(w, h);
-      for (let i = 0; i < w * h; i++) {
-        if (!seen[i]) continue;
-        out.data[i * 4] = out.data[i * 4 + 1] = out.data[i * 4 + 2] = out.data[i * 4 + 3] = 255;
-      }
-      ctx.putImageData(out, 0, 0);
-      return cv;
+      return { over };
     } catch {
-      return null;
+      return none;
     }
   }, [guideImg, guide, tplGeneric]);
+  /**
+   * ✂️ เส้นไดคัทจริงของเทมเพลต (TemplateFile.cutCurves) ในพิกัดผืน — อาร์ตบอร์ดวางกึ่งกลางผืน (สูตรเดียวกับตอนวาดไกด์)
+   * มี = .ai ได้เลเยอร์ "เส้นตัด (CutContour)" เป็นเส้นนี้ · .pdf ได้หน้าเส้นไดคัทตามทรง แทนกรอบสี่เหลี่ยมสมมุติของ tpl@
+   * (เจ้าของร้านแจ้ง 16 ต.ค. 69 ".ai ต้องมีเส้นไดคัทด้วย" — เดิมเลเยอร์เส้นตัดเป็นสี่เหลี่ยมเว้นขอบ 3 มม. ไม่ใช่ทรงหัวใจ/วงกลม)
+   */
+  const tplCut = useMemo(() => {
+    if (!guide?.cut?.length || guide.fill || !guide.wMm || !guide.hMm) return null;
+    return shiftCurves(guide.cut, (W - guide.wMm) / 2, (H - guide.hMm) / 2);
+  }, [guide, W, H]);
+  /** กรอบเส้นตัดของไฟล์ .pdf (lib/calendar-impose · TrimBox + หน้าเส้นไดคัท) — เส้นจริงของเทมเพลตมาก่อน */
+  const pdfCut = useMemo(() => {
+    const box = tplCut ? curvesBox(tplCut) : null;
+    if (tplCut && box) return { ...box, r: 0, svg: curvesSvgD(tplCut) };
+    return { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0, ...(fmt.dieline ? { svg: dieSvgD(fmt.dieline, fmt.bleed) } : {}) };
+  }, [tplCut, fmt]);
   useEffect(() => {
     if (!open || !guide?.url) return setGuideImg(null);
     let alive = true;
@@ -1933,12 +1997,33 @@ export default function CalendarStudio({
         gx = (W - gw) / 2;
         gy = (H - gh) / 2;
       }
-      // ⬜ ทาขาวทึบนอกเส้นตัด (ดู guideMask) ก่อนวางไกด์ — รูปส่วนที่ถูกตัดทิ้งจะไม่โผล่ที่มุม
-      if (guideMask) ctx.drawImage(guideMask, gx * k, gy * k, gw * k, gh * k);
-      ctx.save();
-      ctx.globalCompositeOperation = "multiply";
-      ctx.drawImage(guideImg, gx * k, gy * k, gw * k, gh * k);
-      ctx.restore();
+      // 🎯 เหมือนเปิดใน Illustrator (เจ้าของร้านส่งภาพเทียบ 16 ต.ค. 69 "มันต้องเป็นแบบภาพที่ 1"):
+      //   มีรูปแล้ว = วงขอบเห็นรูปทะลุลายทแยงแดง (multiply) · นอกเส้นตัดขาว (mask)
+      //   ช่องรูปยังว่าง = วงขอบขาว+ลายทแยงเหมือนไฟล์เปล่า (over) — ช่องว่างสีเทาฟ้าของระบบไม่โผล่ในวงขอบ
+      const slotEmpty = !!basePage.photo && !photoOf(layPage(fmt, basePage, design), design, imgs);
+      if (guideFx.over && slotEmpty) {
+        ctx.drawImage(guideFx.over, gx * k, gy * k, gw * k, gh * k);
+      } else {
+        // ⬜ ทาขาวทึบนอกเส้นตัด ก่อนวางไกด์ — รูปส่วนที่ถูกตัดทิ้งจะไม่โผล่ที่มุม · ใช้เส้นไดคัทเวกเตอร์ของเทมเพลต (tplCut) เท่านั้น
+        //    (ไม่มีเส้นเวกเตอร์ = ไม่ทา ปล่อยรูปเต็มผืนแบบเดิม ดีกว่าทาขาวรั่วเป็นแถบเข้าวงขอบ)
+        if (tplCut) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, W * k, H * k);
+          for (const c of tplCut) {
+            ctx.moveTo(c.s[0] * k, c.s[1] * k);
+            for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
+            ctx.closePath();
+          }
+          ctx.fillStyle = "#ffffff";
+          ctx.fill("evenodd");
+          ctx.restore();
+        }
+        ctx.save();
+        ctx.globalCompositeOperation = "multiply";
+        ctx.drawImage(guideImg, gx * k, gy * k, gw * k, gh * k);
+        ctx.restore();
+      }
     } else if (guide && !tplGeneric) {
       // รูปเทมเพลตโหลดไม่ได้ (เช่น หน้าเปิดค้างไว้ก่อนอัปเทมเพลตใหม่) — เส้นตัดทึบบาง ๆ แบบไฟล์เทมเพลต ไม่ใช้ลายทแยง
       // (ยกเว้น tpl@ — กรอบตัดของมันไม่ใช่เส้นตัดจริง ดูคอมเมนต์ tplGeneric)
@@ -2059,7 +2144,7 @@ export default function CalendarStudio({
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideMask, gridSel, cutRes, cutView, cutP.strokeColor]);
+  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, tplCut, gridSel, cutRes, cutView, cutP.strokeColor]);
 
   useEffect(() => {
     if (open) draw();
@@ -3169,8 +3254,20 @@ export default function CalendarStudio({
       back,
       imgs,
     });
-    const stem = `${title}-ปฏิทิน${back.year}`.replace(/[\/:*?"<>|]/g, "-").slice(0, 60);
-    const r = await buildCalendarAi(pages, stem);
+    // ✂️ เทมเพลตมีเส้นไดคัทจริง (tplCut) → เลเยอร์ "เส้นตัด (CutContour)" เป็นเส้นนั้นแทนกรอบสี่เหลี่ยมสมมุติของ tpl@
+    const aiPages: AiPage[] = tplCut
+      ? pages.map((p) => ({
+          ...p,
+          cut: null,
+          paths: [
+            ...(p.paths ?? []),
+            { layer: "เส้นตัด (CutContour)", spot: "CutContour", cmyk: [0, 100, 0, 0] as [number, number, number, number], fill: false, curves: tplCut },
+          ],
+        }))
+      : pages;
+    // งานไม่มีปฏิทิน (เข็มกลัด/โปสการ์ด ฯลฯ) ไม่ต่อ "-ปฏิทิน<ปี>" ท้ายชื่อไฟล์ (เดิมได้ "เข็มกลัดพลาสติก-ปฏิทิน2027.ai")
+    const stem = (noCal ? title : `${title}-ปฏิทิน${back.year}`).replace(/[\/:*?"<>|]/g, "-").slice(0, 60);
+    const r = await buildCalendarAi(aiPages, stem);
     return { file: new File([r.blob], `${stem}${r.real ? "" : "-pdf"}.ai`, { type: "application/postscript" }), note: r.note, real: r.real };
   }
 
@@ -3197,8 +3294,8 @@ export default function CalendarStudio({
       pages,
       wMm: W,
       hMm: H,
-      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0, ...(fmt.dieline ? { svg: dieSvgD(fmt.dieline, fmt.bleed) } : {}) },
-      name: `${title}-ปฏิทิน${back.year}`.slice(0, 60),
+      cut: pdfCut,
+      name: (noCal ? title : `${title}-ปฏิทิน${back.year}`).slice(0, 60),
     });
     return {
       file,
@@ -3232,8 +3329,8 @@ export default function CalendarStudio({
       designs,
       wMm: W,
       hMm: H,
-      cut: { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0, ...(fmt.dieline ? { svg: dieSvgD(fmt.dieline, fmt.bleed) } : {}) },
-      name: `${title} ปี ${back.year}`,
+      cut: pdfCut,
+      name: noCal ? title : `${title} ปี ${back.year}`,
       duplex,
     });
     const total = r.counts.reduce((n, c) => n + c, 0);
@@ -3604,7 +3701,7 @@ export default function CalendarStudio({
           fmt,
           (ctx, k) => drawPage(ctx, k, fmt, p, design, back, imgs),
           photo ? "image/jpeg" : "image/png",
-          `${stem}-ปฏิทิน${back.year}-${no}${name}.${photo ? "jpg" : "png"}`.replace(/[\/:*?"<>|]/g, "-"),
+          `${stem}${noCal ? "" : `-ปฏิทิน${back.year}`}-${no}${name}.${photo ? "jpg" : "png"}`.replace(/[\/:*?"<>|]/g, "-"),
         );
         if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ ลองใหม่อีกครั้ง`);
         out.push({ key: p.key, name, file: f });

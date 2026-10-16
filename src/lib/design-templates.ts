@@ -67,6 +67,12 @@ export interface TemplateFile {
    */
   widthMm?: number;
   heightMm?: number;
+  /**
+   * ✂️ เส้นไดคัทจริงของไฟล์นี้ (เวกเตอร์ มม. นับจากมุมซ้ายบนของอาร์ตบอร์ด) — ดึงจากเส้นขอบนอกสุดสีเทาในไฟล์ .ai
+   * ด้วย scripts/template-cut-curves.mts (pymupdf) · จอออกแบบ tpl@ ใส่เส้นนี้ลงเลเยอร์ "เส้นตัด (CutContour)" ของ .ai/.pdf
+   * แทนกรอบสี่เหลี่ยมสมมุติของระบบ (เข็มกลัดหัวใจ/วงกลม 16 ต.ค. 69 — เจ้าของร้านแจ้ง ".ai ต้องมีเส้นไดคัทด้วย")
+   */
+  cutCurves?: TemplateCurve[];
   /** 🧩 ช่องใส่รูปของไฟล์นี้ — ไม่มี = ใช้ของทั้งชุด (DesignTemplate.slots) */
   slots?: TemplateSlot[];
   /**
@@ -75,6 +81,56 @@ export interface TemplateFile {
    * ลูกค้าจะได้กระดานแยกกันคนละแท็บ แต่ยังนับเป็นสินค้าชิ้นเดียว ไม่ใช่คนละลาย
    */
   side?: string;
+}
+
+/** ✂️ เส้นโค้งเบซิเยร์ 1 เส้น (มม.) — s = จุดเริ่ม · g = [c1x,c1y,c2x,c2y,ถึงx,ถึงy] ต่อท่อน · open = เส้นเปิด (รูปแบบเดียวกับ AiPath ของ lib/calendar-ai) */
+export interface TemplateCurve {
+  s: [number, number];
+  g: [number, number, number, number, number, number][];
+  open?: boolean;
+}
+
+/** เลื่อนเส้นไดคัทของเทมเพลตไป (dx, dy) มม. — ตำแหน่งอาร์ตบอร์ดบนผืนของจอออกแบบ */
+export function shiftCurves(cs: TemplateCurve[], dx: number, dy: number): TemplateCurve[] {
+  return cs.map((c) => ({
+    s: [c.s[0] + dx, c.s[1] + dy],
+    g: c.g.map((g) => [g[0] + dx, g[1] + dy, g[2] + dx, g[3] + dy, g[4] + dx, g[5] + dy] as TemplateCurve["g"][number]),
+    ...(c.open ? { open: true } : {}),
+  }));
+}
+
+/** svg path d (มม.) ของเส้นไดคัท — ใช้กับ cut.svg ของไฟล์ .pdf (lib/calendar-impose) */
+export function curvesSvgD(cs: TemplateCurve[]): string {
+  const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
+  return cs
+    .map((c) => `M ${n(c.s[0])} ${n(c.s[1])} ` + c.g.map((g) => `C ${g.map(n).join(" ")}`).join(" ") + (c.open ? "" : " Z"))
+    .join(" ");
+}
+
+/** กรอบของเส้นไดคัท (มม.) — สุ่มจุดบนเส้นโค้ง (จุดคุมอาจเลยเส้นจริง ใช้หาขอบไม่ได้) */
+export function curvesBox(cs: TemplateCurve[]): { x: number; y: number; w: number; h: number } | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const add = (x: number, y: number) => {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  };
+  for (const c of cs) {
+    let [px, py] = c.s;
+    add(px, py);
+    for (const g of c.g) {
+      for (let i = 1; i <= 16; i++) {
+        const t = i / 16, u = 1 - t;
+        add(
+          u * u * u * px + 3 * u * u * t * g[0] + 3 * u * t * t * g[2] + t * t * t * g[4],
+          u * u * u * py + 3 * u * u * t * g[1] + 3 * u * t * t * g[3] + t * t * t * g[5],
+        );
+      }
+      [px, py] = [g[4], g[5]];
+    }
+  }
+  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
 }
 
 /** เงื่อนไขกลุ่มตัวเลือกอื่นของไฟล์ (เช่น แนวการ์ด = แนวนอน · มุม = มุมแหลม) */

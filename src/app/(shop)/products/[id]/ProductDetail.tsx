@@ -2912,7 +2912,8 @@ export default function ProductDetail({
       const sk = files.find((x) => x.skinUrl);
       if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk) };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
-      if (f) return { url: f.previewUrl!, wMm: f.widthMm!, hMm: f.heightMm!, name: name(f) };
+      // ✂️ cut = เส้นไดคัทจริงจากไฟล์ .ai (cutCurves) → .ai/.pdf จากจอออกแบบใช้เส้นนี้แทนกรอบสี่เหลี่ยม (16 ต.ค. 69)
+      if (f) return { url: f.previewUrl!, wMm: f.widthMm!, hMm: f.heightMm!, name: name(f), ...(f.cutCurves?.length ? { cut: f.cutCurves } : {}) };
     }
     return undefined;
   })();
