@@ -74,7 +74,7 @@ import { curvesBox, curvesSvgD, printFrameToken, shiftCurves, type TemplateCurve
 import { buildCalendarAi, illustratorReady, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
-import Mug3D from "@/components/Mug3D";
+import Mug3D, { MugBodyChip } from "@/components/Mug3D";
 import { MUG_DEFAULT, type MugMock } from "@/lib/mug-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
@@ -5356,7 +5356,11 @@ export default function CalendarStudio({
             </div>
           </div>
           <div className="hidden min-w-0 flex-1 text-center md:block">
-            <p className="truncate text-sm font-extrabold text-stone-800">{noCal ? "🎨 ออกแบบ" : "🗓 สร้างปฏิทิน"}</p>
+            <p className="flex min-w-0 items-center justify-center gap-2 text-sm font-extrabold text-stone-800">
+              <span className="truncate">{noCal ? "🎨 ออกแบบ" : "🗓 สร้างปฏิทิน"}</span>
+              {/* ☕ ประเภทแก้วที่เลือก (สี + ชื่อ) — เจ้าของร้านขอ 16 ต.ค. 69 "เพิ่มสีแก้วที่เลือกด้วย" */}
+              {mock3d && <MugBodyChip mock={mock3d} />}
+            </p>
             <p className="truncate text-[11px] text-stone-500">
               {title} · {fmtName}
               {noCal ? "" : ` · ปี ${back.year}`} · {copies > 1 ? `${copies} ${cw}/${setWord}` : `${fmt.pages.length} หน้า`}
@@ -5898,6 +5902,12 @@ export default function CalendarStudio({
             {tool === "events" && renderEventsPopup()}
             {tool === "settings" && draft && renderSettingsPopup(draft)}
             {layersOpen && renderLayersPopup()}
+            {/* 📱 จอแคบไม่มีหัวกลาง (md:block) — ป้ายประเภทแก้วมาอยู่ใต้ผืนแทน */}
+            {mock3d && (
+              <div className="flex justify-center md:hidden">
+                <MugBodyChip mock={mock3d} />
+              </div>
+            )}
             <p data-stage-blank className="text-center text-[10.5px] leading-tight text-stone-400">
               {fmt.diecut ? (
                 <>
@@ -6470,7 +6480,8 @@ export default function CalendarStudio({
 
         {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmtName} onClose={() => setFlip3d(null)} />}
         {mug3d && mug3d !== "loading" && (
-          <Mug3D sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d ?? MUG_DEFAULT} title={title} onClose={() => setMug3d(null)} />
+          // key = ประเภทแก้ว: ค่าเปลี่ยนระหว่างเปิดอยู่ = สร้างฉากใหม่ (ฉากสร้างครั้งเดียวตอนเปิด)
+          <Mug3D key={mock3d?.body ?? "white"} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d ?? MUG_DEFAULT} title={title} onClose={() => setMug3d(null)} />
         )}
         {askMode && (
           <div className="absolute inset-0 z-[70] flex items-center justify-center bg-stone-900/45 p-4">

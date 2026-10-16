@@ -11,10 +11,13 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { MUG_11OZ, MUG_BODY_TH, MUG_VIEW_TH, type MugMock, type MugView } from "@/lib/mug-mock";
+import { MUG_11OZ, MUG_VIEW_TH, mugBodyLabel, type MugBody, type MugMock, type MugView } from "@/lib/mug-mock";
 
-/** 🫧 แปลงลายเป็นหมึกโปร่งแสงสำหรับแก้วใส: alpha = ความเข้มสี (1 − ค่าสีอ่อนสุดของพิกเซล) · สีคงเดิม */
-function inkAlpha(src: HTMLCanvasElement): HTMLCanvasElement {
+/**
+ * 🫧 แปลงลายเป็นหมึกบนแก้ว (ไม่มีหมึกขาว): alpha = ความเข้มสี (1 − ค่าสีอ่อนสุดของพิกเซล) — ส่วนขาวในไฟล์ = เห็นเนื้อแก้ว
+ * lighten = ดันสีเข้าหาขาว (แก้วขาวขุ่น: ร้านแจ้งสีพิมพ์อ่อนกว่าแก้วขาวเงาราว 30-50%)
+ */
+function inkAlpha(src: HTMLCanvasElement, lighten = 0): HTMLCanvasElement {
   const out = document.createElement("canvas");
   out.width = src.width;
   out.height = src.height;
@@ -26,6 +29,11 @@ function inkAlpha(src: HTMLCanvasElement): HTMLCanvasElement {
   for (let i = 0; i < d.length; i += 4) {
     const light = Math.min(d[i], d[i + 1], d[i + 2]);
     d[i + 3] = Math.round(((255 - light) * d[i + 3]) / 255);
+    if (lighten) {
+      d[i] += (255 - d[i]) * lighten;
+      d[i + 1] += (255 - d[i + 1]) * lighten;
+      d[i + 2] += (255 - d[i + 2]) * lighten;
+    }
   }
   oc.putImageData(img, 0, 0);
   return out;
@@ -146,7 +154,7 @@ export default function Mug3D({
         const m = <T extends { dispose(): void }>(x: T) => (mats.push(x), x);
 
         // เงาพื้น — แก้วใสแสงทะลุ เงาจางกว่าแก้วทึบ
-        const ground = new THREE.Mesh(g(new THREE.PlaneGeometry(900, 900)), m(new THREE.ShadowMaterial({ opacity: mock.body === "clear" ? 0.07 : 0.16 })));
+        const ground = new THREE.Mesh(g(new THREE.PlaneGeometry(900, 900)), m(new THREE.ShadowMaterial({ opacity: mock.body === "clear" ? 0.07 : mock.body === "matte" ? 0.1 : 0.16 })));
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -H / 2;
         ground.receiveShadow = true;
@@ -173,12 +181,25 @@ export default function Mug3D({
                 }),
               )
             : mock.body === "matte"
-              ? m(new THREE.MeshStandardMaterial({ color: 0xf6f5f2, roughness: 0.78, metalness: 0 }))
+              ? // 🌫 แก้วขาวขุ่น = แก้วฝ้าโปร่งแสง (รูปสินค้าจริงเป็นแก้วขุ่นเห็นแสงทะลุ ไม่ใช่เซรามิก) — เดิมวาดเป็นเซรามิกขาวทึบ
+                // หน้าตาเหมือนแก้วขาวเงาจนลูกค้าแจ้งว่า "เลือกประเภทแล้ว 3D แสดงแต่สีขาว" (16 ต.ค. 69)
+                m(
+                  new THREE.MeshPhysicalMaterial({
+                    color: 0xf3f6f6,
+                    roughness: 0.62,
+                    metalness: 0,
+                    clearcoat: 0.15,
+                    clearcoatRoughness: 0.6,
+                    transparent: true,
+                    opacity: 0.72,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                  }),
+                )
               : m(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.22, metalness: 0, clearcoat: 0.85, clearcoatRoughness: 0.12 }));
-        const innerMat =
-          mock.body === "clear"
-            ? bodyMat
-            : m(new THREE.MeshStandardMaterial({ color: mock.body === "matte" ? 0xe9e7e2 : 0xf2f1ee, roughness: mock.body === "matte" ? 0.8 : 0.35, side: THREE.BackSide }));
+        /** แก้ว (ใส/ขุ่น) = ตัวแก้วสองหน้าโปร่ง ไม่มีผนังในทึบ · เซรามิกขาวเงา = มีผนังใน+ก้นใน */
+        const glassy = mock.body !== "white";
+        const innerMat = glassy ? bodyMat : m(new THREE.MeshStandardMaterial({ color: 0xf2f1ee, roughness: 0.35, side: THREE.BackSide }));
 
         const mug = new THREE.Group();
         scene.add(mug);
@@ -196,7 +217,7 @@ export default function Mug3D({
         const rim = add(new THREE.Mesh(g(new THREE.RingGeometry(RI, R, 128)), bodyMat), false);
         rim.rotation.x = -Math.PI / 2;
         rim.position.y = H / 2;
-        if (mock.body !== "clear") {
+        if (!glassy) {
           const inner = add(new THREE.Mesh(g(new THREE.CylinderGeometry(RI, RI, H - 4, 128, 1, true)), innerMat), false);
           inner.position.y = 2;
           const innerBottom = add(new THREE.Mesh(g(new THREE.CircleGeometry(RI, 128)), m(new THREE.MeshStandardMaterial({ color: 0xe6e4df, roughness: 0.6 }))), false);
@@ -216,13 +237,13 @@ export default function Mug3D({
         const printH = Math.min(H, Math.max(10, sheetMm.h));
         // 🫧 แก้วใส: หมึกซับลิเมชันบนแก้วเป็นสีโปร่งแสง ส่วนที่ขาวในไฟล์ = ไม่มีหมึก = เห็นแก้วใสทะลุ (ตรงคำอธิบายตัวเลือก "งานที่พิมพ์ออกมาเป็นสีโปร่ง")
         // → ความทึบของแต่ละพิกเซล = ความเข้มสี (ขาวล้วนโปร่ง 100% · ดำทึบ) · ลายสีอ่อนจึงเห็นจางเหมือนของจริง
-        const tex = new THREE.CanvasTexture(mock.body === "clear" ? inkAlpha(sheet) : sheet);
+        const tex = new THREE.CanvasTexture(mock.body === "clear" ? inkAlpha(sheet) : mock.body === "matte" ? inkAlpha(sheet, 0.35) : sheet);
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
         mats.push(tex);
         const printMat = m(
           mock.body === "matte"
-            ? new THREE.MeshStandardMaterial({ map: tex, roughness: 0.72, metalness: 0 })
+            ? new THREE.MeshStandardMaterial({ map: tex, roughness: 0.72, metalness: 0, transparent: true, alphaTest: 0.02, side: THREE.DoubleSide })
             : mock.body === "clear"
               ? new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.12, metalness: 0, transparent: true, alphaTest: 0.02, side: THREE.DoubleSide })
               : new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.45, metalness: 0, clearcoat: 0.25, clearcoatRoughness: 0.35 }),
@@ -308,9 +329,13 @@ export default function Mug3D({
             ☕
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-extrabold leading-tight text-stone-800">ดูแบบ 3D</p>
+            <p className="flex min-w-0 items-center gap-2 text-[15px] font-extrabold leading-tight text-stone-800">
+              <span className="shrink-0">ดูแบบ 3D</span>
+              {/* 🏷 ประเภทแก้วที่เลือก (สี + ชื่อ) — เห็นชัดว่ากำลังดูแก้วแบบไหน */}
+              <MugBodyChip mock={mock} className="ring-sky-200" />
+            </p>
             <p className="truncate text-xs text-stone-500">
-              {title} · {MUG_BODY_TH[mock.body]} · ลาย {Math.round(sheetMm.w) / 10}×{Math.round(sheetMm.h) / 10} ซม.
+              {title} · ลาย {Math.round(sheetMm.w) / 10}×{Math.round(sheetMm.h) / 10} ซม.
             </p>
           </div>
           <button
@@ -464,5 +489,35 @@ export default function Mug3D({
         </div>
       </div>
     </div>
+  );
+}
+
+/** 🎨 วงสีตัวอย่างของเนื้อแก้ว — ขาวเงา = ขาวมันมีไฮไลต์ · ใส = โปร่งมีเงาสะท้อนฟ้าอ่อน · ขาวขุ่น = ฝ้าขาวนวล */
+export function MugBodySwatch({ body, className = "h-3.5 w-3.5" }: { body: MugBody; className?: string }) {
+  const bg =
+    body === "clear"
+      ? "linear-gradient(135deg, rgba(224,242,254,.9) 0%, rgba(255,255,255,.25) 45%, rgba(186,230,253,.8) 100%)"
+      : body === "matte"
+        ? "radial-gradient(circle at 35% 35%, #ffffff 0%, #e7ecec 70%, #d6dddd 100%)"
+        : "radial-gradient(circle at 32% 30%, #ffffff 0%, #ffffff 35%, #eceae6 100%)";
+  return (
+    <span
+      aria-hidden
+      className={`inline-block shrink-0 rounded-full ring-1 ${body === "clear" ? "ring-sky-300" : "ring-stone-300"} ${className}`}
+      style={{ background: bg, boxShadow: body === "white" ? "inset -1px -1px 2px rgba(0,0,0,.12)" : undefined }}
+    />
+  );
+}
+
+/** 🏷 ป้าย "ประเภทแก้วที่เลือก" (สี + ชื่อตัวเลือก) — ใช้ในหน้าต่าง 3D และหัวจอออกแบบ (เจ้าของร้านขอ 16 ต.ค. 69 "เพิ่มสีแก้วที่เลือกด้วย") */
+export function MugBodyChip({ mock, className = "" }: { mock: MugMock; className?: string }) {
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[11px] font-extrabold text-stone-700 ring-1 ring-stone-200 ${className}`}
+      title="ประเภทแก้วที่เลือก (เปลี่ยนได้ที่ตัวเลือก ประเภท บนหน้าสินค้า)"
+    >
+      <MugBodySwatch body={mock.body} />
+      <span className="truncate">{mugBodyLabel(mock)}</span>
+    </span>
   );
 }

@@ -9439,7 +9439,7 @@ export default function ProductDetail({
                 if (e.owner) startEarlyOwner(e.owner);
               }}
               // ☕🧊 พรีวิว 3D แก้วมัค — ลักษณะแก้ว/มุมมองตามตัวเลือกที่เลือกอยู่ (16 ต.ค. 69)
-              mock3d={product.calendarStudio?.mock3d === "mug" && !cutMode ? mugMockFrom(effective) : undefined}
+              mock3d={product.calendarStudio?.mock3d === "mug" && !cutMode ? mugMockFrom(effective, product.options) : undefined}
             />
           )}
 
