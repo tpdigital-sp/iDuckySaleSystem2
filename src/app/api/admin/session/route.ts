@@ -43,6 +43,7 @@ export async function GET() {
     configured: isFirebaseAdminConfigured,
     loggedIn: !!session,
     name: session?.name ?? session?.username ?? null,
+    username: session?.username ?? null,
     role: roleLabel(actor),
     perms: isFirebaseAdminConfigured ? permsOf(actor, await loadRolePerms()) : ALL_PERMS,
     // ผู้ดูแลระบบ = เห็น/แก้ของที่อ่อนไหวได้ (บัญชีร้าน · บทบาท · เชื่อม Google) · โหมดเดโมถือว่าใช่

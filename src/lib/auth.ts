@@ -39,6 +39,8 @@ interface SessionInfo {
   configured: boolean;
   loggedIn: boolean;
   name: string | null;
+  /** username ที่ล็อกอิน — ใช้เทียบ "เป็นคนตั้งแจ้งเตือนเด้งไหม" (OrderAlertNote.byUser) */
+  username?: string | null;
   /** ชื่อตำแหน่งไว้แสดง เช่น "พนักงาน · แพ็คของ" */
   role?: string;
   /** สิทธิ์ที่ใช้ซ่อน/แสดงเมนูและปุ่ม (ของจริงบังคับที่ API) */

@@ -18,17 +18,25 @@ export type OrderStatus =
 /** 🔔 แจ้งเตือนเด้งของออเดอร์ (Order.alertNote) */
 export type OrderAlertNote = {
   text: string;
+  /** ชื่อคนตั้ง (ไว้แสดง) */
   by: string;
+  /** username คนตั้ง — ใช้ตัดสินว่าใครปิดได้ (ใบเก่าก่อน 16 ต.ค. 69 ไม่มี → เทียบชื่อ by แทน) */
+  byUser?: string;
   at: string;
   dismissedAt?: string;
   dismissedBy?: string;
+  /** 👀 คนที่กด "รับทราบ" แล้ว (คนละ 1 แถว · แก้ข้อความ/เปิดใหม่ = ล้าง) — คนตั้งดูได้ว่าใครเห็นแล้ว */
+  acks?: { by: string; user?: string; at: string }[];
 };
 
-/** 🔔 แจ้งเตือนยังต้องเด้งอยู่ไหม — มีข้อความ · ยังไม่มีคนกดปิด · ใบยังไม่ส่ง/ปิด/ยกเลิก */
+/**
+ * 🔔 แจ้งเตือนยังต้องเด้งอยู่ไหม — มีข้อความ · คนตั้งยังไม่กดปิด · ใบยังไม่เสร็จสิ้น/ยกเลิก
+ * ⚠️ "จัดส่งแล้ว" ยังเด้ง (พนักงานขอ 16 ต.ค. 69: หยุดเองต่อเมื่อสถานะขึ้นเสร็จสิ้น — cron close-orders ปิดให้หลังส่ง 3 วัน)
+ */
 export function orderAlertActive(o: Pick<Order, "alertNote" | "status"> | null | undefined): boolean {
   const a = o?.alertNote;
   if (!a?.text?.trim() || a.dismissedAt) return false;
-  return o!.status !== "จัดส่งแล้ว" && o!.status !== "เสร็จสิ้น" && o!.status !== "ยกเลิก";
+  return o!.status !== "เสร็จสิ้น" && o!.status !== "ยกเลิก";
 }
 
 /** 💰 สถานะที่ถือว่า "ชำระเงินแล้ว" = ทุกสถานะตั้งแต่ ชำระแล้ว ขึ้นไป (ไม่นับ รอชำระเงิน · รอตรวจสอบ · ยกเลิก) */

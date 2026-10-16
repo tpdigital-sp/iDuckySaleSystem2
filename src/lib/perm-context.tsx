@@ -11,6 +11,8 @@ const PermContext = createContext<{
   perms: Perm[];
   role: string;
   name: string;
+  /** username ที่ล็อกอิน (ว่าง = ยังไม่รู้/โหมดตัวอย่าง) */
+  username?: string;
   isAdministrator?: boolean;
   /** true = getAdminSession ตอบกลับแล้ว — ก่อนหน้านั้น perms ว่างเพราะ "ยังไม่รู้" ไม่ใช่ "ไม่มีสิทธิ์" */
   ready?: boolean;
@@ -18,6 +20,7 @@ const PermContext = createContext<{
   perms: [],
   role: "",
   name: "",
+  username: "",
   isAdministrator: false,
   ready: false,
 });
@@ -55,4 +58,10 @@ export function useRoleLabel(): string {
 export function useActor(): string {
   const { name, role } = useContext(PermContext);
   return name?.trim() || role || "แอดมิน";
+}
+
+/** ตัวตนคนที่ล็อกอิน (username + ชื่อ + เป็นผู้ดูแลระบบไหม) — ใช้ตัดสินว่า "เป็นคนตั้งแจ้งเตือนเด้งไหม" */
+export function useWhoAmI(): { username: string; name: string; isAdministrator: boolean } {
+  const { username, name, isAdministrator } = useContext(PermContext);
+  return { username: username ?? "", name: name ?? "", isAdministrator: !!isAdministrator };
 }
