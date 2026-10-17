@@ -73,7 +73,7 @@ ${faq("เปลี่ยน/คืนสินค้าได้ไหม?", "�
 
   "page-about": `
 <div style="background:linear-gradient(135deg,#eef7fa,#ffffff,#fff3c4);border:1px solid #d6edf2;border-radius:32px;padding:40px 24px;text-align:center">
-<img src="/about/logo.png" alt="iDucky prints.studio" style="display:block;margin:0 auto;max-width:280px;width:100%">
+<img src="/about/logo.png" alt="iDuckyOfficial" style="display:block;margin:0 auto;max-width:280px;width:100%">
 <p style="color:#57534e;font-size:15px;margin:16px 0 0">ร้านพิมพ์ลายตามสั่ง 🐥 ของขวัญ ของแจก งานอีเวนต์ — <b style="color:#2b5c6e">ลายของคุณ ให้เราดูแล</b></p>
 </div>
 

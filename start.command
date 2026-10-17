@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# iDucky Prints Studio — ดับเบิลคลิกเพื่อเปิดเว็บอัตโนมัติ
+# iDuckyOfficial — ดับเบิลคลิกเพื่อเปิดเว็บอัตโนมัติ
 # สตาร์ท dev server (พอร์ต 3016 · เปลี่ยนได้ด้วย PORT=xxxx ./start.command) แล้วเปิดเบราว์เซอร์ให้เอง
 # ปิดเซิร์ฟเวอร์: กด Ctrl+C หรือปิดหน้าต่าง Terminal นี้
 #
@@ -47,7 +47,7 @@ NODE_BIN=$(ls -d "$HOME"/.local/node-*/bin 2>/dev/null | head -1)
 PORT="${PORT:-3016}"
 URL="http://localhost:$PORT"
 
-echo "🦆 iDucky Prints Studio"
+echo "🦆 iDuckyOfficial"
 echo "────────────────────────────────"
 
 # ไม่มี node/npm → บอกให้ชัด แล้วค้างหน้าต่างไว้ (เมื่อก่อนจะเด้งปิดทันที)

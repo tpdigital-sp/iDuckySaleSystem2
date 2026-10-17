@@ -2713,7 +2713,7 @@ function NavEditorInner() {
               ) : (
                 <span className="flex items-center gap-2 text-sm text-slate-400">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ducky text-xl">🦆</span>
-                  iDucky Prints (ค่าเริ่มต้น)
+                  iDuckyOfficial (ค่าเริ่มต้น)
                 </span>
               )}
             </div>

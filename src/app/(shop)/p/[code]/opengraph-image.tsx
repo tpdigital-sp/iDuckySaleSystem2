@@ -126,7 +126,7 @@ export default async function Image({ params }: { params: Promise<{ code: string
         {/* ซ้าย: ข้อความ */}
         <div style={{ display: "flex", flexDirection: "column", flex: 1, padding: "56px 48px" }}>
           <div style={{ display: "flex", fontSize: 22, color: BRAND, fontWeight: 600, letterSpacing: 2 }}>
-            iDUCKY PRINTS STUDIO
+            iDUCKYOFFICIAL
           </div>
           <div style={{ display: "flex", fontSize: 26, color: MUTED, marginTop: 14 }}>
             ราคาที่ทางร้านจัดให้{bundle ? ` · ${items.length} รายการ` : ""}

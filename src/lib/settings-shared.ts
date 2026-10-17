@@ -133,7 +133,7 @@ export function welcomeCouponOf(s: { welcomeCoupon?: Partial<WelcomeCouponConfig
 
 /** ข้อมูลร้านที่แอดมินแก้เองได้ (แสดงบนเอกสารพิมพ์ทุกใบ) */
 export interface ShopInfo {
-  /** ชื่อร้าน (แบรนด์) เช่น iDucky Prints Studio */
+  /** ชื่อร้าน (แบรนด์) เช่น iDuckyOfficial */
   name: string;
   /** ชื่อบริษัท/ผู้ส่งบนใบปะหน้า */
   legalName: string;

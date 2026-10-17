@@ -10,7 +10,7 @@ export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "คู่มือลูกค้า — วิธีสั่งซื้อ & สมาชิก",
-  description: "วิธีสั่งซื้อสินค้าพิมพ์ลายตามสั่งจาก iDucky Prints Studio ทีละขั้นตอน + สิทธิ์สมาชิก ระดับสมาชิก และส่วนลดสะสมยอด",
+  description: "วิธีสั่งซื้อสินค้าพิมพ์ลายตามสั่งจาก iDuckyOfficial ทีละขั้นตอน + สิทธิ์สมาชิก ระดับสมาชิก และส่วนลดสะสมยอด",
 };
 
 const STEPS = [

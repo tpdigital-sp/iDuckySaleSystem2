@@ -451,7 +451,7 @@ const product: Product = {
   ].join("\n"),
   tabs: TABS,
   seo: {
-    title: `รับผลิตสติ๊กเกอร์รูปทรง ${sizes.length} แบบ เลือกเนื้อ PP ${MATERIALS.length} ชนิด | iDucky Prints`,
+    title: `รับผลิตสติ๊กเกอร์รูปทรง ${sizes.length} แบบ เลือกเนื้อ PP ${MATERIALS.length} ชนิด | iDuckyOfficial`,
     description:
       "รับผลิตสติ๊กเกอร์รูปทรง (Shape Sticker) ทรงกลม สี่เหลี่ยม หัวใจ ดาว ดอกไม้ ก้อนเมฆ กรอบรูป " +
       `กระดาษสติ๊กเกอร์ PP กันน้ำ ${MATERIALS.length} เนื้อ (ขาวมัน ขาวด้าน ขาวมุก ใส) เคลือบเงา/ด้าน/กลิตเตอร์/โฮโลแกรม คิดเป็นแผ่น A3 (1 แผ่น A3 ได้ ${SHEETS_PER_A3} แผ่น) เริ่ม ${P("ไม่เคลือบ", LAST)} บาท ไม่มีขั้นต่ำ ส่งทั่วไทย`,

@@ -242,9 +242,9 @@ export default function Navbar() {
             <div className="nav-row nav-row-top">
               <Link href="/" className="logo">
                 {logo ? (
-                  <img {...imgProps(logo, "210px", 384)} onError={fallbackToOriginal(logo)} alt="iDucky Prints Studio" className="logo-img" />
+                  <img {...imgProps(logo, "210px", 384)} onError={fallbackToOriginal(logo)} alt="iDuckyOfficial" className="logo-img" />
                 ) : (
-                  <img className="logo-img" src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
+                  <img className="logo-img" src="/landing/logo-ducky.png" alt="iDuckyOfficial" width={722} height={243} />
                 )}
               </Link>
 

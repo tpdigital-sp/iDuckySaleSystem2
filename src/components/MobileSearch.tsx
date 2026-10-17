@@ -95,11 +95,11 @@ export default function MobileSearch({ open, onClose, logo }: { open: boolean; o
         >
           <div className="mnav-panel">
             <div className="mnav-top">
-              <Link className="mnav-logo" href="/" aria-label="iDucky Prints Studio" onClick={onClose}>
+              <Link className="mnav-logo" href="/" aria-label="iDuckyOfficial" onClick={onClose}>
                 {logo ? (
-                  <img {...imgProps(logo, "160px", 384)} onError={fallbackToOriginal(logo)} alt="iDucky Prints Studio" />
+                  <img {...imgProps(logo, "160px", 384)} onError={fallbackToOriginal(logo)} alt="iDuckyOfficial" />
                 ) : (
-                  <img src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
+                  <img src="/landing/logo-ducky.png" alt="iDuckyOfficial" width={722} height={243} />
                 )}
               </Link>
               <button type="button" className="mnav-close" aria-label="ปิดค้นหา" onClick={onClose}>

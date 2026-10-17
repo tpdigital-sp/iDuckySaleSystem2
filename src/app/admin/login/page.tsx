@@ -112,7 +112,7 @@ export default function AdminLoginPage() {
             <h1 className="auth-h1">
               เข้าสู่ระบบ<em>หลังบ้าน</em>
             </h1>
-            <p className="auth-sub">ระบบจัดการร้าน iDucky Prints Studio · สำหรับแอดมินและพนักงาน</p>
+            <p className="auth-sub">ระบบจัดการร้าน iDuckyOfficial · สำหรับแอดมินและพนักงาน</p>
 
             {configured === false && (
               <p className="auth-msg warn">

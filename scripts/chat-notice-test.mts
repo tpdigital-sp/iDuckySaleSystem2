@@ -18,7 +18,7 @@ const cards = [
 for (const [name, msgs] of cards) {
   const flex = (msgs as { type: string; contents?: unknown }[]).find((m) => m.type === "flex");
   const h = flex ? headOf(flex.contents) : null;
-  ok(!!h && !!h.title && h.title !== "iDucky Prints Studio", `${name}: หัวการ์ด = "${h?.title}"`);
+  ok(!!h && !!h.title && h.title !== "iDuckyOfficial", `${name}: หัวการ์ด = "${h?.title}"`);
   ok(!!h && /^#[0-9A-F]{6}$/i.test(h.color), `${name}: สีหัว = ${h?.color}`);
 }
 ok(headOf({ type: "bubble" }) === null, "การ์ดไม่มีหัว → null");

@@ -230,7 +230,7 @@ export async function aiViaIllustrator(pages: AiPage[], title: string): Promise<
 export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
   const doc = await PDFDocument.create();
   doc.setTitle(title);
-  doc.setCreator("iDucky Prints Studio — จอสร้างปฏิทิน");
+  doc.setCreator("iDuckyOfficial — จอสร้างปฏิทิน");
   const order: PDFRef[] = [];
   const all: PDFRef[] = [];
   const many = pages.length > 1;

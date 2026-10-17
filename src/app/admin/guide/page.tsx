@@ -378,7 +378,7 @@ function GuideInner() {
           )}
 
           <footer className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t-2 border-dashed border-slate-200 pt-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-            <span>iDucky Prints Studio · หลังบ้าน</span>
+            <span>iDuckyOfficial · หลังบ้าน</span>
             <span>ไม่แน่ใจตรงไหน — ถามในกลุ่มก่อนกด</span>
           </footer>
         </div>

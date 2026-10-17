@@ -3,7 +3,7 @@
  * แก้ที่เดียว มีผลทุกที่
  */
 export const SHOP = {
-  name: "iDucky Prints Studio",
+  name: "iDuckyOfficial",
   legalName: "บริษัท ทีพีดิจิตอล",
   addressLines: ["663/8 ซอยฉลองกรุง1", "แขวง/เขตลาดกระบัง กทม 10520"],
   phone: "096-569-9414",

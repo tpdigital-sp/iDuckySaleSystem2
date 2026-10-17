@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# iDucky Prints Studio — ดับเบิลคลิกเพื่อ "ดึงโค้ดใหม่ล่าสุด" แล้วเปิดเว็บ
+# iDuckyOfficial — ดับเบิลคลิกเพื่อ "ดึงโค้ดใหม่ล่าสุด" แล้วเปิดเว็บ
 #
 # ทำให้ 4 อย่างตามลำดับ แล้วส่งต่อให้ start.command เปิดเว็บ:
 #   1. ถ้ามีไฟล์ที่แก้ค้างในเครื่อง → เก็บเข้ากระเป๋า (git stash) ไว้ก่อน ไม่ให้ทับกัน
@@ -29,7 +29,7 @@ hold() {
 NODE_BIN=$(ls -d "$HOME"/.local/node-*/bin 2>/dev/null | head -1)
 [ -n "$NODE_BIN" ] && export PATH="$NODE_BIN:$PATH"
 
-echo "🦆 อัปเดตโค้ด iDucky Prints Studio"
+echo "🦆 อัปเดตโค้ด iDuckyOfficial"
 echo "────────────────────────────────"
 
 command -v git >/dev/null 2>&1 || { hold "❌ หา git ไม่เจอ"; exit 1; }

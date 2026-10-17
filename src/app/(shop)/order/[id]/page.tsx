@@ -622,7 +622,7 @@ export default function CustomerOrderPage() {
     return (
       <div className="shopp">
         <div className="shopp-in" style={{ textAlign: "center", padding: "90px 0" }}>
-          <p className="ord-eyebrow">iDucky Prints Studio</p>
+          <p className="ord-eyebrow">iDuckyOfficial</p>
           <p className="mt-2 text-sm t-soft">กำลังโหลดออเดอร์…</p>
         </div>
       </div>

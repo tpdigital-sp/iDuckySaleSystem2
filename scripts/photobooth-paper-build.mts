@@ -426,7 +426,7 @@ const product: Product = {
   ].join("\n"),
   tabs: TABS,
   seo: {
-    title: "รับพิมพ์โฟโต้บูธสตริป 2 ขนาด พิมพ์ลายตามสั่ง | iDucky Prints",
+    title: "รับพิมพ์โฟโต้บูธสตริป 2 ขนาด พิมพ์ลายตามสั่ง | iDuckyOfficial",
     description:
       `รับพิมพ์โฟโต้บูธ (Photo Booth Strips) ${sizes.map((s) => s.name).join(" และ ")} พิมพ์ลายตามสั่ง ` +
       `เลือกกระดาษได้ ${papers.length} ชนิด รวมกระดาษผิวพิเศษ Canvas / Stardream / E-Photo เคลือบเงา/ด้าน/พิเศษ คิดเป็นแผ่น A3 เริ่ม ${startPrice} บาท ไม่มีขั้นต่ำ`,

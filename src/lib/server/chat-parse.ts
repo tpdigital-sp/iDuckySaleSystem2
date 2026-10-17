@@ -162,7 +162,7 @@ export async function answerFromContext(
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || (!systemMessage && !knowledgeContext)) return null;
 
-  const prompt = `คุณคือ "ผู้ช่วย iDucky" แอดมินร้าน iDucky Prints Studio (รับพิมพ์/ผลิตสินค้าตามสั่ง เช่น อะคริลิค พวงกุญแจ สติกเกอร์ ของพรีเมียม) กำลังตอบลูกค้าทางแชทหน้าเว็บ
+  const prompt = `คุณคือ "ผู้ช่วย iDucky" แอดมินร้าน iDuckyOfficial (รับพิมพ์/ผลิตสินค้าตามสั่ง เช่น อะคริลิค พวงกุญแจ สติกเกอร์ ของพรีเมียม) กำลังตอบลูกค้าทางแชทหน้าเว็บ
 กติกา:
 - ตอบภาษาไทย สุภาพ เป็นกันเอง กระชับ อ่านง่าย ใช้บูลเล็ต • เมื่อเหมาะ · ลงท้าย "ค่ะ/นะคะ" เสมอ ห้ามใช้ "ครับ" (แอดมินผู้หญิง) · ห้ามใช้ markdown (* ** #) · ไม่ต้องขึ้นต้นด้วยคำทักทาย
 - ใช้ "เฉพาะข้อมูลร้านด้านล่างนี้" ตอบ ห้ามเดาราคา/ข้อมูลที่ไม่มี
@@ -272,7 +272,7 @@ export async function writePriceReply(message: string, priceText: string, histor
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || !priceText.trim()) return null;
 
-  const prompt = `คุณคือ "ผู้ช่วย iDucky" แอดมินผู้ชายของร้าน iDucky Prints Studio ตอบลูกค้าทางแชทหน้าเว็บ
+  const prompt = `คุณคือ "ผู้ช่วย iDucky" แอดมินผู้ชายของร้าน iDuckyOfficial ตอบลูกค้าทางแชทหน้าเว็บ
 เรียบเรียงข้อมูลราคาด้านล่างให้เป็นคำตอบที่อ่านง่าย
 กติกา (ห้ามฝ่าฝืน):
 - ⚠️ ตัวเลขทุกตัว ช่วงจำนวนทุกช่วง และชื่อตัวเลือกทุกอัน ต้องคงไว้ครบเป๊ะ ห้ามปัด ห้ามตัดทิ้ง ห้ามสรุปรวบ

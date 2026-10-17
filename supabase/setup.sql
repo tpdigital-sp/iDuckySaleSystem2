@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- iDucky Prints Studio — Supabase schema (เฟส 1: สินค้า + ล็อกอินแอดมิน)
+-- iDuckyOfficial — Supabase schema (เฟส 1: สินค้า + ล็อกอินแอดมิน)
 -- วิธีใช้: Supabase Dashboard → SQL Editor → วางทั้งไฟล์ → Run
 --         จากนั้นวาง supabase/seed.sql → Run (นำเข้าสินค้า)
 -- ═══════════════════════════════════════════════════════════════
@@ -85,7 +85,7 @@ create policy "products admin write" on public.products
 
 -- ═══ นำเข้าสินค้า 64 รายการ (seed) ═══
 
--- iDucky Prints Studio — seed สินค้า (รันหลัง schema.sql)
+-- iDuckyOfficial — seed สินค้า (รันหลัง schema.sql)
 -- ล้างของเดิมก่อน (idempotent — รันซ้ำได้)
 delete from public.products;
 

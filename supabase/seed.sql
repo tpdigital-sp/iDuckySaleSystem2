@@ -1,4 +1,4 @@
--- iDucky Prints Studio — seed สินค้า (รันหลัง schema.sql)
+-- iDuckyOfficial — seed สินค้า (รันหลัง schema.sql)
 -- ล้างของเดิมก่อน (idempotent — รันซ้ำได้)
 delete from public.products;
 

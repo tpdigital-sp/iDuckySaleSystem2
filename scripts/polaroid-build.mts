@@ -394,7 +394,7 @@ const product: Product = {
   ].join("\n"),
   tabs: TABS,
   seo: {
-    title: `รับพิมพ์โพลารอยด์ ${SIZE_NAME} พิมพ์ลายตามสั่ง | iDucky Prints`,
+    title: `รับพิมพ์โพลารอยด์ ${SIZE_NAME} พิมพ์ลายตามสั่ง | iDuckyOfficial`,
     description:
       `รับพิมพ์โพลารอยด์ (Polaroid) ขนาด ${SIZE_NAME} พิมพ์ลายตามสั่ง เลือกกระดาษได้ ${papers.length} ชนิด ` +
       `รวมกระดาษผิวพิเศษ Canvas / Stardream / E-Photo เคลือบเงา/ด้าน/พิเศษ คิดเป็นแผ่น A3 (1 แผ่นได้ ${PER_A3} ใบ) เริ่ม ${startPrice} บาท ไม่มีขั้นต่ำ`,

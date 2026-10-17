@@ -12,7 +12,7 @@ export default function Footer() {
         <div className="f-grid">
           <div>
             <Link href="/" className="logo" style={{ marginBottom: 12 }}>
-              <img className="logo-img" src="/landing/logo-ducky.png" alt="iDucky Prints Studio" width={722} height={243} />
+              <img className="logo-img" src="/landing/logo-ducky.png" alt="iDuckyOfficial" width={722} height={243} />
             </Link>
             <p>ทำด้วยใจ พิมพ์ด้วยรัก — รับผลิตสินค้าตามสั่งครบวงจร เริ่มต้นที่ 1 ชิ้น</p>
             {/* 📱 มือถือเท่านั้น: ปุ่มติดต่อใหญ่ 2 ใบใต้แท็กไลน์ — สิ่งที่คนเลื่อนมาถึงท้ายเว็บมองหาบ่อยสุด (จอคอมซ่อน · กล่องติดต่อเราด้านล่างยังอยู่) */}
@@ -72,7 +72,7 @@ export default function Footer() {
         </div>
 
         <div className="f-bottom">
-          <span>© 2026 iDucky Prints Studio — ทำด้วยใจ พิมพ์ด้วยรัก 🦆💛</span>
+          <span>© 2026 iDuckyOfficial — ทำด้วยใจ พิมพ์ด้วยรัก 🦆💛</span>
           {/* ลิงก์ "หลังบ้าน" เอาออกแล้ว (17 ต.ค. 69) — ลูกค้าเห็นแล้วงง · ทีมงานใช้ปุ่มลัดหลังบ้าน (AdminEditFabAuto) หรือพิมพ์ /admin */}
           <span>
             <FooterFreeShip />

@@ -41,8 +41,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(SITE_URL),
     title: {
-      default: "iDucky Prints Studio — พิมพ์สินค้าตามสั่ง ลายของคุณเอง",
-      template: "%s | iDucky Prints Studio",
+      default: "iDuckyOfficial — พิมพ์สินค้าตามสั่ง ลายของคุณเอง",
+      template: "%s | iDuckyOfficial",
     },
     description:
       "ร้านพิมพ์สินค้าตามสั่ง (Print on Demand) แก้วน้ำ เสื้อยืด เคสมือถือ กรอบผ้าใบ กระเป๋าผ้า พิมพ์ลายของคุณเองได้ทุกชิ้น ส่งไวทั่วไทย",
@@ -56,10 +56,10 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: { canonical: "./" },
     openGraph: {
       type: "website",
-      siteName: "iDucky Prints Studio",
+      siteName: "iDuckyOfficial",
       locale: "th_TH",
       url: "./",
-      images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "iDucky Prints Studio" }],
+      images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "iDuckyOfficial" }],
     },
     twitter: { card: "summary_large_image" },
     ...(seo.noindex ? { robots: { index: false, follow: false } } : {}),

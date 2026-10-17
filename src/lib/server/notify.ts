@@ -529,7 +529,7 @@ export function statusFlex(
           backgroundColor: tone,
           paddingAll: "14px",
           contents: [
-            { type: "text", text: "iDucky Prints Studio", size: "xs", color: "#FFFFFFCC" },
+            { type: "text", text: "iDuckyOfficial", size: "xs", color: "#FFFFFFCC" },
             // 🏪 มารับเอง: สถานะในระบบคือ "จัดส่งแล้ว" แต่ลูกค้าต้องอ่านว่าแพ็คเสร็จ รอมารับ — ไม่งั้นเข้าใจว่าร้านส่งพัสดุไปแล้ว
             // (ตรงกับ orderStatusLabel ในหน้าเว็บ · เจ้าของร้านเลือกแบบนี้ 17 ก.ย. 69)
             // 🎁 ใบส่งฟรี/เคลมเข้าขั้น "ชำระแล้ว" ทั้งที่ไม่มีเงิน — หัวการ์ดต้องไม่พูดถึงการชำระ
@@ -794,7 +794,7 @@ export function noticeFlex(card: NoticeCard): LineMessage[] {
           backgroundColor: tone,
           paddingAll: "14px",
           contents: [
-            { type: "text", text: "iDucky Prints Studio", size: "xs", color: "#FFFFFFCC" },
+            { type: "text", text: "iDuckyOfficial", size: "xs", color: "#FFFFFFCC" },
             { type: "text", text: cut(card.head, 40), size: "xl", weight: "bold", color: "#FFFFFF", wrap: true },
           ],
         },

@@ -1,4 +1,4 @@
-# 🦆 iDucky Prints Studio
+# 🦆 iDuckyOfficial
 
 เว็บไซต์ร้านค้าออนไลน์แบบ Print-on-Demand (พิมพ์สินค้าตามสั่ง) — Next.js 15 + React 19 + Tailwind CSS 4
 

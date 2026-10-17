@@ -16,7 +16,7 @@ import { getAccessToken } from "./customer-auth";
 export const LINE_URL = "/line";
 
 export const GREETING =
-  "สวัสดีค่ะ 👋 ผู้ช่วยของ iDucky Prints ยินดีให้บริการค่ะ ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยนะคะ พิมพ์มาได้เลย เดี๋ยวตอบให้ทันทีค่ะ";
+  "สวัสดีค่ะ 👋 ผู้ช่วยของ iDuckyOfficial ยินดีให้บริการค่ะ ถามราคา วัสดุ ขนาด หรือขั้นตอนสั่งทำได้เลยนะคะ พิมพ์มาได้เลย เดี๋ยวตอบให้ทันทีค่ะ";
 
 /** ปุ่มตอบเร็ว — เขียนเป็น "คำถาม" ให้รู้ว่ากดแล้วถามจริง ไม่ใช่ป้ายโฆษณา */
 export const QUICK: { icon: string; label: string; ask: string }[] = [

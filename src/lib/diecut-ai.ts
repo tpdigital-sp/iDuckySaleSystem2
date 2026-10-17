@@ -218,7 +218,7 @@ export async function buildSheetAiFile(input: SheetAiInput): Promise<Blob> {
 
   w.startObj(7);
   const title = (input.title ?? "diecut").replace(/[()\\]/g, "");
-  w.push(`<< /Title (${title}) /Creator (iDucky Prints Studio) /Producer (iDucky diecut) >>\n`);
+  w.push(`<< /Title (${title}) /Creator (iDuckyOfficial) /Producer (iDucky diecut) >>\n`);
   w.endObj();
 
   // แยก RGB กับ alpha (PDF เก็บความโปร่งใสเป็นภาพ SMask ต่างหาก)

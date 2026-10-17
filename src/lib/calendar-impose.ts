@@ -86,7 +86,7 @@ export async function buildPieceFiles(input: {
   const name = `01_000_${spec} = ${total} ชิ้น.pdf`;
   doc.setTitle(name.replace(/\.pdf$/, ""));
   doc.setSubject(`${PIECES_TAG} ${JSON.stringify({ duplex: input.duplex, counts })}`);
-  doc.setCreator("iDucky Prints Studio — จอสร้างปฏิทิน");
+  doc.setCreator("iDuckyOfficial — จอสร้างปฏิทิน");
   const bytes = await doc.save();
   return { file: new File([bytes as BlobPart], name, { type: "application/pdf" }), designs: pieces.length, pages: doc.getPageCount(), counts };
 }
@@ -122,7 +122,7 @@ export async function buildPrintPdf(input: {
   const name = `${input.name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim()}.pdf`;
   doc.setTitle(name.replace(/\.pdf$/, ""));
   doc.setSubject(input.pages.map((p, i) => `${i + 1}.${p.name}`).join(" · ") + ` · ${input.pages.length + 1}.เส้นไดคัท`);
-  doc.setCreator("iDucky Prints Studio — จอสร้างปฏิทิน");
+  doc.setCreator("iDuckyOfficial — จอสร้างปฏิทิน");
   const bytes = await doc.save();
   return new File([bytes as BlobPart], name, { type: "application/pdf" });
 }

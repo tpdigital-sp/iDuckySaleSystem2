@@ -11,7 +11,7 @@ import { PRODUCTS } from "../src/lib/products";
 const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 const lines: string[] = [
-  "-- iDucky Prints Studio — seed สินค้า (รันหลัง schema.sql)",
+  "-- iDuckyOfficial — seed สินค้า (รันหลัง schema.sql)",
   "-- ล้างของเดิมก่อน (idempotent — รันซ้ำได้)",
   "delete from public.products;",
   "",

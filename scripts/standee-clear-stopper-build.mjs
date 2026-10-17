@@ -484,7 +484,7 @@ const saved = {
     },
   ],
   seo: {
-    title: `${NAME} | iDucky Prints Studio`,
+    title: `${NAME} | iDuckyOfficial`,
     description:
       "สแตนดี้อะคริลิค 2 ชิ้นประกบด้วยจุกใส แผ่นบนหมุนได้ พร้อมฐาน สกรีนลายตามสั่ง หนา 3 มม. " +
       `ตัวสแตนดี้ 3-20 ซม. เริ่มต้น ${money(PRICE_MIN)} บาท`,

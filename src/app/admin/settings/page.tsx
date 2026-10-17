@@ -1042,7 +1042,7 @@ function AdminSettingsPageInner() {
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">ชื่อร้าน (แบรนด์)</span>
-                  <input value={info.name} onChange={(e) => patchInfo({ name: e.target.value })} className={inputCls} placeholder="เช่น iDucky Prints Studio" />
+                  <input value={info.name} onChange={(e) => patchInfo({ name: e.target.value })} className={inputCls} placeholder="เช่น iDuckyOfficial" />
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">ชื่อบริษัท / ผู้ส่ง</span>

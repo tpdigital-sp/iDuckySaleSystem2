@@ -779,7 +779,7 @@ const saved = {
     },
   ],
   seo: {
-    title: `${NAME} | iDucky Prints Studio`,
+    title: `${NAME} | iDuckyOfficial`,
     description:
       `สแตนดี้อะคริลิคหลายชิ้นในฐานเดียว เลือกได้ 2-${MAX_PIECES} ชิ้น แต่ละชิ้นเลือกขนาด/เนื้อ/งานสกรีนแยกกัน ` +
       `หนา 3 มม. ตัวหลัก 3-20 ซม. เริ่มต้น ${money(PRICE_MIN)} บาท/ชุด`,

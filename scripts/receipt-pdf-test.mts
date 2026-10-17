@@ -17,7 +17,7 @@ import { buildReceiptPdf } from "../src/lib/server/receipt-pdf";
 import { embedThaiFonts } from "../src/lib/server/pdf-thai";
 
 const SHOP = {
-  name: "iDucky Prints Studio",
+  name: "iDuckyOfficial",
   legalName: "บริษัท ไอดักกี้ พริ้นท์ สตูดิโอ จำกัด (สำนักงานใหญ่)",
   address: "663/8 ซอยอ่อนนุช 46 แขวงสวนหลวง เขตสวนหลวง กรุงเทพมหานคร 10250",
   phone: "096-569-9414",

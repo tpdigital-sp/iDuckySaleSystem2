@@ -149,7 +149,7 @@ function LoginInner() {
                 <h1 className="auth-h1">
                   ยินดีต้อนรับ<em>กลับมา</em>
                 </h1>
-                <p className="auth-sub">เข้าสู่ระบบสมาชิก iDucky Prints Studio</p>
+                <p className="auth-sub">เข้าสู่ระบบสมาชิก iDuckyOfficial</p>
 
                 <div className="auth-form">
                   <IconField

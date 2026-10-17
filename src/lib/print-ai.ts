@@ -153,7 +153,7 @@ export async function buildPrintAi(input: PrintAiInput): Promise<Blob> {
 
   w.startObj(6);
   const title = (input.title ?? "artwork").replace(/[()\\]/g, "");
-  w.push(`<< /Title (${title}) /Creator (iDucky Prints Studio) /Producer (iDucky print-ai) >>\n`);
+  w.push(`<< /Title (${title}) /Creator (iDuckyOfficial) /Producer (iDucky print-ai) >>\n`);
   w.endObj();
 
   const xrefAt = w.length;

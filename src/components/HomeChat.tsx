@@ -114,7 +114,7 @@ export default function HomeChat({ catCount }: { catCount: number }) {
       <div className="chat-top">
         <img className="chat-av" src="/landing/logo-duck.webp" alt="" aria-hidden="true" />
         <div className="chat-who">
-          <b>iDucky Prints</b>
+          <b>iDuckyOfficial</b>
           <small>
             <span className="dot-live" />
             {live ? "กำลังคุยอยู่ · ตอบทันที" : "ออนไลน์ตอนนี้ · พิมพ์ถามได้ 24 ชม."}
