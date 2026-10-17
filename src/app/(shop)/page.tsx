@@ -3,7 +3,6 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice, formatPriceLabel, PRODUCTS, productPath, type Product } from "@/lib/products";
 import { fetchShopPayment, freeShippingMinOf } from "@/lib/shop-settings";
@@ -11,6 +10,7 @@ import { catShortName, fetchCategories, DEFAULT_CATEGORIES, type ShopCategory } 
 import { cachedProductsLite, fetchProductsLite } from "@/lib/product-repo";
 import { fallbackToOriginal, imgProps } from "@/lib/img";
 import HomeChat from "@/components/HomeChat";
+import HeroSearch from "@/components/HeroSearch";
 import PromoBanners from "@/components/PromoBanners";
 import Spotlight from "@/components/Spotlight";
 import { useAltImage } from "@/components/CardAltImage";
@@ -96,8 +96,6 @@ export default function HomePage() {
     };
   }, []);
   useReveal();
-  const router = useRouter();
-  const [q, setQ] = useState("");
 
   // 📱 มือถือหน้าแรก: ซ่อนตะกร้าลอย/LINE ลอย (ตะกร้ามีในแถบเมนูล่าง · LINE รวมเข้าปุ่ม "ทักเรา") — กฎท้าย landing.css
   useEffect(() => {
@@ -236,32 +234,8 @@ export default function HomePage() {
                 </span>{" "}
                 และอีกกว่า <b>{cats.length} หมวด</b> ครบจบในที่เดียว
               </p>
-              {/* ช่องค้นหาในจอแรก — มือถือเท่านั้น (จอคอมมีช่องค้นหาบนแถบเมนูอยู่แล้ว) · ไปหน้ารวมสินค้า ?q= */}
-              <form
-                className="hero-search"
-                role="search"
-                action="/products"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const s = q.trim();
-                  router.push(s ? `/products?q=${encodeURIComponent(s)}` : "/products");
-                }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="m20 20-3.5-3.5" />
-                </svg>
-                <input
-                  type="search"
-                  name="q"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="ค้นหา เช่น พวงกุญแจ, แก้วมัค"
-                  enterKeyHint="search"
-                  aria-label="ค้นหาสินค้า"
-                />
-                <button type="submit">ค้นหา</button>
-              </form>
+              {/* ช่องค้นหาในจอแรก — มือถือเท่านั้น (จอคอมมีช่องค้นหาบนแถบเมนูอยู่แล้ว) · พิมพ์แล้วรายการสินค้าเด้งใต้ช่อง */}
+              <HeroSearch />
               <div className="chips">
                 <div className="chip">
                   <i style={{ background: "var(--sky-200)", color: "#3E9BD4" }}>
