@@ -60,7 +60,7 @@ export default function PromptPayQR({
         <a
           href={src}
           download={`${fileName || "iDucky"}-promptpay.png`}
-          className="mt-2 inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1.5 text-[12px] font-bold text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100"
+          className="mt-2 inline-flex min-h-11 items-center gap-1 rounded-full bg-sky-50 px-4 py-2 text-[13px] font-bold text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100 sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-[12px]"
         >
           💾 บันทึกรูป QR
         </a>

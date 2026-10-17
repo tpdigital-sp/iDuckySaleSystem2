@@ -5967,6 +5967,10 @@ to{opacity:1;transform:none}}
   .shopp .ord-chip,.shopp .ord-eyebrow{font-size:.75rem}
   .shopp.cart-pg .gift-opt{font-size:.8rem}
   .shopp .ord-step .stime{font-size:.75rem}
+  /* หน้าออเดอร์ (/order/[id]): ป้ายขั้นตอน 10.2 · ป้าย "ด้านหลัง" บนรูปแบบงาน 9.3 · "รอแบบจากร้าน" 10.2 · บัญชีร้าน text-[.72rem] 11.5 → 12px */
+  .shopp .ord-step .slabel{font-size:.75rem}
+  .shopp .ord-proof-n,.shopp .ord-proof-empty{font-size:.75rem}
+  .shopp .text-\[\.72rem\]{font-size:12px}
 }
 
 @media(max-width:1000px){

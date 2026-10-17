@@ -77,6 +77,8 @@ export default function NavSearchBar({ onOpenMobile }: { onOpenMobile: () => voi
   const [hasMore, setHasMore] = useState(false);
   /** นับใหม่ทุกครั้งที่ประวัติค้นหาเปลี่ยน (อ่านจาก sessionStorage ตอนวาด) */
   const [tick, setTick] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const barRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -184,7 +186,9 @@ export default function NavSearchBar({ onOpenMobile }: { onOpenMobile: () => voi
     }
   };
 
-  const recent = tick >= 0 ? recentSearches() : [];
+  // ประวัติค้นหาอยู่ใน sessionStorage — ฝั่งเซิร์ฟเวอร์อ่านไม่ได้ (ได้ [] เสมอ) ถ้าอ่านตั้งแต่เฟรมแรก
+  // ลูกค้าที่เคยค้นหาแล้วจะเจอ hydration mismatch ("ค้นหาล่าสุด" ≠ "คำค้นยอดฮิต" · เจอ 17 ต.ค. 69) → อ่านหลัง mount เท่านั้น
+  const recent = mounted && tick >= 0 ? recentSearches() : [];
   const pick = (s: string) => {
     setQ(s);
     setActive(-1);

@@ -57,7 +57,7 @@ function AccountRow({ label, value, copied, onCopy }: { label: string; value: st
       <button
         type="button"
         onClick={onCopy}
-        className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-bold transition ${copied ? "bg-emerald-500 text-white" : "bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"}`}
+        className={`min-h-11 shrink-0 rounded-full px-4 py-2 text-[13px] font-bold transition sm:min-h-0 sm:px-3.5 sm:text-xs ${copied ? "bg-emerald-500 text-white" : "bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"}`}
       >
         {copied ? "✓ คัดลอกแล้ว" : "คัดลอก"}
       </button>
@@ -1664,7 +1664,8 @@ export default function CustomerOrderPage() {
       )}
 
       {/* ── 2 คอลัมน์: ซ้าย=แบบงาน/รายการ · ขวา=สรุป (ติดหนึบ) ── */}
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+      {/* grid-cols-[minmax(0,1fr)] บนมือถือ — ไม่ใส่ = คอลัมน์ auto ยืดตามรูปในการ์ด (min-content) กว้างเกินจอ 4px เลื่อนข้างได้ (17 ต.ค. 69) */}
+      <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         {/* ซ้าย */}
         <div className="space-y-4">
           {addOnOrder.map((i) => {
