@@ -229,7 +229,7 @@ export default function MobileNav({ open, onClose, logo }: { open: boolean; onCl
                 <CopyButton text="@iduckyofficial" label="คัดลอกไอดีไลน์" />
               </div>
               <div className="mnav-cline">
-                <Link className="mnav-cbtn" href="/#contact" onClick={onClose}>
+                <Link className="mnav-cbtn" href="/contact" onClick={onClose}>
                   <i>📍</i>
                   <span>
                     <b>บริษัท ทีพีดิจิตอล</b>

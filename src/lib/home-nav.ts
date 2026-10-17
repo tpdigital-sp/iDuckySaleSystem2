@@ -183,7 +183,7 @@ export const DEFAULT_MENU: NavLink[] = [
   { id: "member", label: "สมาชิก", href: "/member" },
   { id: "why", label: "ทำไมต้องเรา", href: "/#why" },
   { id: "dealer", label: "สมัครตัวแทน", href: "/dealer" },
-  { id: "contact", label: "ติดต่อเรา", href: "/#contact" },
+  { id: "contact", label: "ติดต่อเรา", href: "/contact" },
 ];
 
 /**
@@ -488,7 +488,8 @@ export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
     .map((l, i) => ({
       id: str(l.id) || `m${i}`,
       label: str(l.label).trim(),
-      href: str(l.href).trim(),
+      // "/#contact" (เลื่อนลงท้ายเว็บ) ที่บันทึกไว้ในฐานก่อนมีหน้า /contact → ชี้หน้าติดต่อเรา (17 ต.ค. 69)
+      href: str(l.href).trim() === "/#contact" ? "/contact" : str(l.href).trim(),
       hidden: Boolean(l.hidden),
     }));
 
