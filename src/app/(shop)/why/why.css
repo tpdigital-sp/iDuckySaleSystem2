@@ -1,6 +1,6 @@
 /* ═══════ หน้าทำไมต้องเรา (/why) — prefix .wy- ═══════
    ภาษาเดียวกับหน้าแรก/หน้าติดต่อเรา: ใช้ token ของ landing.css (sky/navy/yolk · Mitr · --shadow-*)
-   ผังหน้า: ฮีโร่ 2 คอลัมน์ (ข้อความ + ภาพน้องเป็ดชูเสื้อ why-hero.webp) → 4 เหตุผลหลัก (orb ชุดโซน #why หน้าแรก)
+   ผังหน้า: ฮีโร่ 2 คอลัมน์ (ข้อความ + ภาพน้องเป็ดชูเสื้อ why-hero.webp พื้นใส) → 4 เหตุผลหลัก (orb ชุดโซน #why หน้าแรก)
    → สั่งง่าย 8 ใบ (ไอคอน 3D /how-to) → เส้นทาง 5 ขั้น → รีวิว (.reviews-sec) → เหมาะกับใคร 3 ใบ → แถบเนวี่ .chat-cta
    ยืมของกลาง: .btn .kicker .head .orb .o-(blue|yolk|peach|mint) .rvc .rv-viewall .chat-cta .t-(sky|yolk|mint) */
 .dl.wy-page .top-stack{background:var(--pale-bg)}
@@ -31,17 +31,18 @@
 .dl .wy-fact.mint::before{background:#3FAE8B}
 .dl .wy-hero-btns{display:flex;flex-wrap:wrap;gap:11px;margin-top:24px}
 
-/* ฉากน้องเป็ด (why-hero.webp 16:9 ครอปเป็น 4:3 ให้เป็ดใหญ่ขึ้น) — ไม่มีกรอบ ขอบภาพจางเป็นวงรีกลืนพื้นฟ้า (สูตรเดียวกับ .ctc-scene หน้าติดต่อเรา) */
-.dl .wy-hero-art{position:relative;min-width:0}
-.dl .wy-scene{position:relative;aspect-ratio:4/3;margin-inline:-4%;
-  -webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 60%,rgba(0,0,0,.6) 80%,transparent 100%);
-  mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 60%,rgba(0,0,0,.6) 80%,transparent 100%)}
-.dl .wy-scene img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 55%;animation:wyPan 16s ease-in-out infinite alternate}
-@keyframes wyPan{from{transform:scale(1.01)}to{transform:scale(1.05) translateY(-1%)}}
+/* ฉากน้องเป็ด (why-hero.webp พื้นใส — ลบพื้นฟ้า/เมฆ/แสงออกด้วย BiRefNet ใน tools/cutout-py ตามที่เจ้าของร้านขอ 17 ต.ค. 69)
+   ลอยบนพื้นฟ้าของหน้าเลย ไม่มีกรอบ · แสงขาวนวลด้านหลัง + โยกขึ้นลงช้า ๆ แบบเป็ดหน้าแรก */
+.dl .wy-hero-art{position:relative;min-width:0;display:grid;place-items:center}
+.dl .wy-hero-art::before{content:"";position:absolute;width:min(70%,380px);aspect-ratio:1;border-radius:50%;z-index:0;
+  background:radial-gradient(circle,#fff 0%,rgba(255,255,255,.75) 42%,rgba(226,243,254,0) 70%)}
+.dl .wy-scene{position:relative;z-index:1;width:100%}
+.dl .wy-scene img{display:block;width:100%;height:auto;filter:drop-shadow(0 18px 26px rgba(44,129,196,.18));
+  animation:bobble 5s ease-in-out infinite}
 .dl .wy-bub{position:absolute;z-index:4;background:#fff;border:1.5px solid var(--sky-100);border-radius:16px;
   padding:8px 14px;font-family:var(--display);font-size:.82rem;color:var(--navy);box-shadow:var(--shadow-s);white-space:nowrap}
-.dl .wy-b1{top:6%;left:4%;animation:bgFloat3 9s ease-in-out infinite}
-.dl .wy-b2{bottom:9%;left:10%;animation:bgFloat2 11s ease-in-out infinite}
+.dl .wy-b1{top:4%;left:2%;animation:bgFloat3 9s ease-in-out infinite}
+.dl .wy-b2{bottom:2%;left:6%;animation:bgFloat2 11s ease-in-out infinite}
 
 @media(max-width:900px){
   .dl .wy-hero{grid-template-columns:1fr;gap:6px;text-align:center}
@@ -49,6 +50,7 @@
   .dl .wy-lead{margin-inline:auto}
   .dl .wy-facts,.dl .wy-hero-btns{justify-content:center}
   .dl .wy-hero-art{order:-1}
+  .dl .wy-scene{width:min(100%,440px)}
   .dl .wy-bub{display:none}
 }
 @media(max-width:520px){
