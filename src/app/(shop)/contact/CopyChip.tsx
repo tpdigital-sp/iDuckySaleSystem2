@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-/** ปุ่ม "คัดลอก" เล็ก ๆ ในหน้าติดต่อเรา — คัดลอกแล้วขึ้น ✓ ชั่วครู่ */
+/** ปุ่ม "คัดลอก" เล็ก ๆ ในหน้าติดต่อเรา — คัดลอกแล้วขึ้น ✓ ชั่วครู่ (สไตล์ .ctc-act ใน landing.css) */
 export default function CopyChip({ text, label = "คัดลอก" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -26,13 +26,7 @@ export default function CopyChip({ text, label = "คัดลอก" }: { text:
     window.setTimeout(() => setCopied(false), 1400);
   };
   return (
-    <button
-      type="button"
-      onClick={copy}
-      className={`inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-bold transition ${
-        copied ? "bg-emerald-100 text-emerald-700" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-      }`}
-    >
+    <button type="button" onClick={copy} className={`ctc-act ghost${copied ? " done" : ""}`}>
       {copied ? "✓ คัดลอกแล้ว" : `📋 ${label}`}
     </button>
   );

@@ -1,0 +1,181 @@
+/* ═══════ หน้าติดต่อเรา (/contact) — prefix .ctc- ═══════
+   ภาษาเดียวกับหน้าแรก/หน้าสมัครตัวแทน: ใช้ token ของ landing.css (sky/navy/yolk · Mitr · --shadow-*)
+   ผังหน้า: ฮีโร่ 2 คอลัมน์ (ข้อความ + ฉากน้องเป็ดหน้าร้าน) → การ์ดช่องทาง 4 ใบ → แผนที่ + เวลาทำการ/QR
+   → ลิงก์ช่วยเหลือ 4 ใบ (ไอคอน 3D /how-to) → แถบเนวี่ .chat-cta + โซเชียล
+   ยืมของกลาง: .btn/.kicker/.head/.chat-cta/.t-sky|mint|yolk|lilac */
+.dl.ctc-page .top-stack{background:var(--pale-bg)}
+.dl .ctc-stack{overflow:clip}
+.dl .ctc-c1{width:196px;top:196px;left:-54px;opacity:.9;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
+.dl .ctc-c2{width:238px;top:360px;right:-66px;left:auto;opacity:.85;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
+.dl .ctc-c3{width:128px;top:720px;left:7%;opacity:.5;animation:bgFloat3 15s ease-in-out infinite, bgPuff 7s ease-in-out infinite}
+.dl .ctc-top{position:relative;z-index:1;padding:26px 0 54px}
+
+/* --- ฮีโร่ --- */
+.dl .ctc-hero{display:grid;grid-template-columns:1fr 1fr;gap:34px;align-items:center;
+  width:min(100% - 40px,var(--wrap));margin:0 auto 34px}
+.dl .ctc-hero-txt{min-width:0}
+.dl .ctc-hero-txt .kicker-yolk{margin-inline:0}
+.dl .ctc-hero h1{font-family:var(--display);font-weight:600;font-size:clamp(1.9rem,4.6vw,3.1rem);line-height:1.18;
+  color:var(--navy);margin-top:12px;letter-spacing:-.01em}
+.dl .ctc-hero h1 .yolk-underline{position:relative;white-space:nowrap;color:var(--blue-deep)}
+.dl .ctc-hero h1 .yolk-underline::after{content:"";position:absolute;left:-2px;right:-2px;bottom:.06em;height:.34em;
+  border-radius:999px;background:var(--yolk);opacity:.5;z-index:-1}
+.dl .ctc-lead{margin-top:12px;font-size:1rem;line-height:1.85;color:var(--navy-soft);max-width:32em}
+.dl .ctc-lead b{color:var(--navy);font-weight:600}
+.dl .ctc-facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.dl .ctc-fact{display:inline-flex;align-items:center;gap:8px;padding:8px 15px;border-radius:999px;
+  background:rgba(255,255,255,.8);border:1.5px solid #fff;box-shadow:var(--shadow-s);
+  font-size:.84rem;color:var(--navy);line-height:1.4}
+.dl .ctc-fact::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--blue);flex:none}
+.dl .ctc-fact.mint::before{background:#3FAE8B}
+.dl .ctc-hero-btns{display:flex;flex-wrap:wrap;gap:11px;margin-top:22px}
+
+/* ฉากน้องเป็ดหน้าร้าน — ภาพเดียวกับโซนแชทหน้าแรก (chat-scene) ในกรอบมนลอย */
+.dl .ctc-hero-art{min-width:0}
+.dl .ctc-scene{position:relative;border-radius:var(--r-xl);overflow:hidden;border:3px solid #fff;
+  box-shadow:var(--shadow-l);aspect-ratio:16/10;background:var(--sky-100)}
+.dl .ctc-scene img{display:block;width:100%;height:100%;object-fit:cover;object-position:62% 60%;
+  animation:ctcPan 16s ease-in-out infinite alternate}
+@keyframes ctcPan{from{transform:scale(1.04)}to{transform:scale(1.1) translateX(-1.5%)}}
+@media(prefers-reduced-motion:reduce){.dl .ctc-scene img{animation:none}}
+
+@media(max-width:900px){
+  .dl .ctc-hero{grid-template-columns:1fr;gap:20px;text-align:center}
+  .dl .ctc-hero-txt .kicker-yolk{margin-inline:auto}
+  .dl .ctc-lead{margin-inline:auto}
+  .dl .ctc-facts,.dl .ctc-hero-btns{justify-content:center}
+  .dl .ctc-hero-art{order:-1}
+  .dl .ctc-scene{border-radius:var(--r-l);aspect-ratio:2/1}
+}
+@media(max-width:520px){
+  .dl .ctc-top{padding:14px 0 40px}
+  .dl .ctc-hero{width:min(100% - 32px,var(--wrap));margin-bottom:24px}
+  .dl .ctc-scene{aspect-ratio:16/10}
+  .dl .ctc-scene img{object-position:78% 62%}
+  .dl .ctc-hero-btns{flex-direction:column;align-items:stretch}
+  .dl .ctc-hero-btns .btn{justify-content:center}
+}
+
+/* --- การ์ดช่องทางติดต่อ 4 ใบ --- */
+.dl .ctc-cards{width:min(100% - 40px,var(--wrap));margin:0 auto;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:1060px){.dl .ctc-cards{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.dl .ctc-cards{grid-template-columns:1fr;width:min(100% - 32px,var(--wrap));gap:12px}}
+.dl .ctc-card{background:rgba(255,255,255,.94);border:2px solid #fff;border-radius:var(--r-l);padding:22px;
+  box-shadow:var(--shadow-s);display:flex;flex-direction:column;gap:12px;min-width:0;
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease}
+.dl .ctc-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-m)}
+.dl .ctc-ico{width:54px;height:54px;flex:none;border-radius:18px;display:grid;place-items:center;font-style:normal;
+  font-size:1.45rem;line-height:1;
+  box-shadow:inset 0 2px 4px rgba(255,255,255,.8),0 6px 14px rgba(44,129,196,.16);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.dl .ctc-card:hover .ctc-ico{transform:rotate(-6deg) scale(1.07)}
+.dl .ctc-ico.line{background:#06C755;color:#fff;font-family:var(--display);font-weight:600;font-size:.78rem;letter-spacing:.02em;
+  box-shadow:0 6px 14px rgba(6,199,85,.32)}
+.dl .ctc-card-body{display:flex;flex-direction:column;min-width:0}
+.dl .ctc-label{font-size:.78rem;line-height:1.5;color:var(--navy-soft)}
+.dl .ctc-value{margin-top:2px;font-family:var(--display);font-weight:500;font-size:1.16rem;line-height:1.35;color:var(--navy)}
+.dl a.ctc-value:hover{color:var(--blue-deep)}
+.dl .ctc-value.email{font-size:1rem;overflow-wrap:anywhere}
+.dl .ctc-value.sm{font-size:1rem}
+.dl .ctc-addr{font-size:.86rem;line-height:1.65;color:var(--navy-soft)}
+.dl .ctc-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+/* ปุ่มเล็กในการ์ด (ลิงก์/ปุ่มคัดลอก) */
+.dl .ctc-act{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:5px;height:34px;
+  padding:0 14px;border-radius:999px;font-family:var(--display);font-size:.8rem;line-height:1;white-space:nowrap;
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease,background .25s ease,border-color .25s ease}
+.dl .ctc-act:hover{transform:translateY(-2px)}
+.dl .ctc-act:active{transform:translateY(0) scale(.97)}
+.dl .ctc-act:focus-visible{outline:3px dashed var(--blue-deep);outline-offset:3px}
+.dl .ctc-act.line{background:#06C755;color:#fff;box-shadow:0 6px 14px rgba(6,199,85,.3)}
+.dl .ctc-act.yolk{background:var(--yolk);color:var(--navy);box-shadow:0 6px 14px rgba(255,182,39,.3)}
+.dl .ctc-act.blue{background:var(--blue);color:#fff;box-shadow:0 6px 14px rgba(87,182,232,.34)}
+.dl .ctc-act.navy{background:var(--navy);color:#fff;box-shadow:0 6px 14px rgba(23,58,107,.24)}
+.dl .ctc-act.ghost{background:#fff;color:var(--navy);border:1.5px solid var(--sky-200)}
+.dl .ctc-act.ghost:hover{border-color:var(--blue)}
+.dl .ctc-act.ghost.done{background:#DFF7EE;border-color:rgba(63,174,139,.4);color:#1F7A5E}
+/* มือถือ — การ์ดแนวนอน ไอคอนซ้าย ข้อความ+ปุ่มขวา (ปุ่มชิดซ้ายใต้ข้อความ ไม่ให้ปุ่มลอยมุมขวาบัง) */
+@media(max-width:600px){
+  .dl .ctc-card{flex-direction:row;align-items:flex-start;gap:14px;padding:18px;border-radius:var(--r-m)}
+  .dl .ctc-card:hover{transform:none}
+  .dl .ctc-ico{width:46px;height:46px;border-radius:15px;font-size:1.25rem}
+  .dl .ctc-ico.line{font-size:.68rem}
+  .dl .ctc-acts{margin-top:10px}
+}
+
+/* --- โซนหัว-ท้าย --- */
+.dl .ctc-sec{padding:58px 0 60px}
+.dl .ctc-sec .head{padding-inline:20px;margin-bottom:32px}
+.dl .ctc-sec.tight{padding-top:6px}
+@media(max-width:600px){.dl .ctc-sec{padding:40px 0 44px}.dl .ctc-sec .head{margin-bottom:22px}.dl .ctc-sec .head p{font-size:.9rem}}
+
+/* --- แวะมาที่ร้าน: แผนที่ซ้าย + แผงข้างขวา --- */
+.dl .ctc-visit{width:min(100% - 40px,var(--wrap));margin:0 auto;display:grid;grid-template-columns:1.55fr 1fr;gap:18px;align-items:stretch}
+.dl .ctc-map{border-radius:var(--r-l);overflow:hidden;border:3px solid #fff;box-shadow:var(--shadow-m);background:var(--sky-50);min-height:360px}
+.dl .ctc-map iframe{display:block;width:100%;height:100%;min-height:360px;border:0}
+.dl .ctc-side{display:flex;flex-direction:column;gap:14px;min-width:0}
+.dl .ctc-hours,.dl .ctc-qr{display:flex;gap:14px;align-items:flex-start;background:#fff;border:2px solid #fff;
+  border-radius:var(--r-m);padding:18px 20px;box-shadow:var(--shadow-s)}
+.dl .ctc-hours b,.dl .ctc-qr b{font-family:var(--display);font-weight:500;font-size:1rem;color:var(--navy)}
+.dl .ctc-hours p{margin-top:2px;font-size:.95rem;color:var(--navy);font-weight:500}
+.dl .ctc-hours span{display:block;margin-top:6px;font-size:.8rem;line-height:1.7;color:var(--navy-soft)}
+.dl .ctc-qr{align-items:center}
+.dl .ctc-qr img{width:108px;height:108px;flex:none;border-radius:14px;display:block}
+.dl .ctc-qr p{margin-top:4px;font-size:.82rem;line-height:1.7;color:var(--navy-soft)}
+.dl .ctc-qr p b{font-family:var(--body);font-weight:600;font-size:inherit}
+.dl .ctc-nav-btn{justify-content:center;margin-top:auto}
+@media(max-width:900px){
+  .dl .ctc-visit{grid-template-columns:1fr;width:min(100% - 32px,640px)}
+  .dl .ctc-map,.dl .ctc-map iframe{min-height:260px}
+  .dl .ctc-map{border-radius:var(--r-m)}
+  /* มือถือสแกน QR จอตัวเองไม่ได้ — ใช้ปุ่มแชท LINE ด้านบนแทน */
+  .dl .ctc-qr{display:none}
+}
+
+/* --- ลิงก์ช่วยเหลือ 4 ใบ --- */
+.dl .ctc-help{width:min(100% - 40px,var(--wrap));margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:1060px){.dl .ctc-help{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.dl .ctc-help{grid-template-columns:1fr;width:min(100% - 32px,var(--wrap));gap:10px}}
+.dl .ctc-help-card{position:relative;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,#fff,#FAFDFF);
+  border:2px solid #fff;border-radius:var(--r-l);padding:22px 22px 20px;box-shadow:var(--shadow-s);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease,border-color .3s ease}
+.dl .ctc-help-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-m);border-color:var(--sky-200)}
+.dl .ctc-help-ico{width:62px;height:62px;border-radius:22px;display:grid;place-items:center;flex:none;
+  background:linear-gradient(150deg,#E4F3FE,#fff 70%);
+  box-shadow:inset 0 2px 4px rgba(255,255,255,.8),0 7px 16px rgba(44,129,196,.18);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.dl .ctc-help-card:hover .ctc-help-ico{transform:rotate(-6deg) scale(1.07)}
+.dl .ctc-help-ico img{width:44px;height:44px;object-fit:contain;display:block}
+.dl .ctc-help-txt{display:flex;flex-direction:column;min-width:0}
+.dl .ctc-help-txt b{font-family:var(--display);font-weight:500;font-size:1.02rem;line-height:1.35;color:var(--navy)}
+.dl .ctc-help-txt span{margin-top:5px;font-size:.85rem;line-height:1.75;color:var(--navy-soft)}
+.dl .ctc-help-go{position:absolute;top:22px;right:22px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+  background:var(--sky-100);color:var(--blue-deep);font-size:.85rem;
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),background .25s ease,color .25s ease}
+.dl .ctc-help-card:hover .ctc-help-go{transform:translateX(3px);background:var(--yolk);color:var(--navy)}
+@media(max-width:600px){
+  .dl .ctc-help-card{flex-direction:row;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r-m)}
+  .dl .ctc-help-card:hover{transform:none}
+  .dl .ctc-help-ico{width:50px;height:50px;border-radius:17px}
+  .dl .ctc-help-ico img{width:36px;height:36px}
+  .dl .ctc-help-txt{flex:1}
+  .dl .ctc-help-txt span{font-size:.8rem;line-height:1.6;margin-top:2px}
+  .dl .ctc-help-go{position:static;flex:none;width:26px;height:26px;font-size:.75rem}
+}
+
+/* --- ปิดท้าย: แถบเนวี่ + โซเชียล --- */
+.dl .ctc-cta-wrap{width:min(100% - 40px,var(--wrap));margin:0 auto;padding:8px 0 72px}
+.dl .ctc-socials{display:flex;gap:9px;margin-top:14px}
+.dl .ctc-socials a{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.18);
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1),background .25s ease,color .25s ease}
+.dl .ctc-socials a:hover{transform:translateY(-3px);background:var(--yolk);color:var(--navy)}
+.dl .ctc-socials svg{width:19px;height:19px}
+@media(max-width:600px){
+  .dl .ctc-cta-wrap{width:min(100% - 32px,var(--wrap));padding-bottom:48px}
+  .dl .ctc-cta-wrap .chat-cta{padding:24px 22px;border-radius:var(--r-l)}
+  .dl .ctc-cta-wrap .cc-btns{width:100%;flex-direction:column}
+  .dl .ctc-cta-wrap .cc-btns .btn{width:100%}
+}
+/* .chat-cta จัดกลางบนจอเล็ก (landing.css) — แถวโซเชียลต้องกลางตาม */
+@media(max-width:900px){.dl .ctc-socials{justify-content:center}}
