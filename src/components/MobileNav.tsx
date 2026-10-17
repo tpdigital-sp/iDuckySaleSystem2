@@ -177,6 +177,11 @@ export default function MobileNav({ open, onClose, logo }: { open: boolean; onCl
                 <b>สินค้าขายดี</b>
                 <span>→</span>
               </Link>
+              <Link href="/gallery" onClick={onClose}>
+                <i>📸</i>
+                <b>ผลงานของเรา</b>
+                <span>→</span>
+              </Link>
               <Link href="/how-to-order" onClick={onClose}>
                 <i>📝</i>
                 <b>วิธีสั่งซื้อ</b>

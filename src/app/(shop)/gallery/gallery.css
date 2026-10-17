@@ -1,0 +1,193 @@
+/* ═══════ หน้าผลงาน (/gallery) — prefix .gl- ═══════
+   ภาษาเดียวกับ /why /contact: token ของ landing.css (sky/navy/yolk · Mitr · --shadow-*)
+   ผังหน้า: ฮีโร่ 2 คอลัมน์ (ข้อความ + กองรูปโพลารอยด์จากปกอัลบั้มจริง) → ค้นหา + ชิปหมวด → กริดอัลบั้ม → แถบเนวี่ .chat-cta
+   หน้าต่างดูภาพ (.gl-viewer) portal ไปท้าย <body> ใน <div class="dl gl-portal"> (ใน .dl-page โดนแถบเมนูทับ) */
+.dl.gl-page .top-stack{background:var(--pale-bg)}
+.dl .gl-stack{overflow:clip}
+.dl .gl-c1{width:196px;top:150px;left:-54px;opacity:.9;animation:bgFloat1 18s ease-in-out infinite, bgPuff 8s ease-in-out infinite}
+.dl .gl-c2{width:238px;top:330px;right:-66px;left:auto;opacity:.85;animation:bgFloat2 22s ease-in-out infinite reverse, bgPuff 9s ease-in-out infinite reverse}
+
+/* --- ฮีโร่ --- */
+.dl .gl-hero{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center;
+  width:min(100% - 40px,var(--wrap));margin:0 auto;padding:30px 0 64px}
+.dl .gl-hero-txt{min-width:0}
+.dl .gl-hero-txt .kicker-yolk{margin-inline:0}
+.dl .gl-hero h1{font-family:var(--display);font-weight:600;font-size:clamp(2rem,5vw,3.4rem);line-height:1.18;
+  color:var(--navy);margin-top:12px;letter-spacing:-.01em}
+.dl .gl-hero h1 .yolk-underline{position:relative;white-space:nowrap;color:var(--yolk-deep);margin-left:.18em}
+.dl .gl-hero h1 .yolk-underline::after{content:"";position:absolute;left:-2px;right:-2px;bottom:.06em;height:.34em;
+  border-radius:999px;background:var(--yolk);opacity:.45;z-index:-1}
+.dl .gl-lead{margin-top:14px;font-size:1.02rem;line-height:1.85;color:var(--navy-soft);max-width:31em}
+.dl .gl-lead b{color:var(--navy);font-weight:600}
+.dl .gl-facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.dl .gl-fact{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:999px;
+  background:rgba(255,255,255,.8);border:1.5px solid #fff;box-shadow:var(--shadow-s);
+  font-size:.84rem;color:var(--navy);line-height:1.4}
+.dl .gl-fact::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--blue);flex:none}
+.dl .gl-fact b{font-family:var(--display);font-weight:600}
+.dl .gl-fact.yolk::before{background:var(--yolk-deep)}
+.dl .gl-fact.mint::before{background:#3FAE8B}
+.dl .gl-hero-btns{display:flex;flex-wrap:wrap;gap:11px;margin-top:24px}
+
+/* กองรูปโพลารอยด์ */
+.dl .gl-hero-art{position:relative;min-width:0;height:420px}
+.dl .gl-hero-art::before{content:"";position:absolute;inset:8% 10%;border-radius:50%;
+  background:radial-gradient(circle,#fff 0%,rgba(255,255,255,.7) 45%,rgba(226,243,254,0) 70%)}
+.dl .gl-polaroid{position:absolute;width:46%;background:#fff;padding:10px 10px 0;border-radius:12px;
+  box-shadow:var(--shadow-m);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
+.dl .gl-polaroid img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;background:var(--sky-50)}
+.dl .gl-polaroid figcaption{font-family:var(--display);font-size:.8rem;color:var(--navy);text-align:center;
+  padding:8px 4px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .gl-p1{left:4%;top:4%;transform:rotate(-7deg);z-index:2}
+.dl .gl-p2{right:4%;top:0;transform:rotate(6deg);z-index:1}
+.dl .gl-p3{left:14%;bottom:0;transform:rotate(4deg);z-index:3}
+.dl .gl-p4{right:10%;bottom:6%;transform:rotate(-5deg);z-index:4}
+.dl .gl-hero-art:hover .gl-polaroid{transform:rotate(0) scale(1.02)}
+
+@media(max-width:900px){
+  .dl .gl-hero{grid-template-columns:1fr;gap:10px;text-align:center;padding-top:18px}
+  .dl .gl-hero-txt .kicker-yolk{margin-inline:auto}
+  .dl .gl-lead{margin-inline:auto}
+  .dl .gl-facts,.dl .gl-hero-btns{justify-content:center}
+  .dl .gl-hero-art{order:-1;height:300px;width:min(100%,440px);margin:0 auto}
+  .dl .gl-polaroid{width:44%}
+}
+@media(max-width:520px){
+  .dl .gl-hero{width:min(100% - 32px,var(--wrap));padding:10px 0 44px}
+  .dl .gl-hero-art{height:250px}
+  .dl .gl-polaroid{padding:7px 7px 0}
+  .dl .gl-polaroid figcaption{font-size:.75rem;padding:6px 2px 8px}
+  .dl .gl-hero-btns{flex-direction:column;align-items:stretch}
+  .dl .gl-hero-btns .btn{justify-content:center}
+}
+
+/* --- ส่วนกริดผลงาน --- */
+.dl .gl-sec{width:min(100% - 40px,var(--wrap));margin:0 auto;padding:56px 0 30px;scroll-margin-top:80px}
+.dl .gl-head{margin-bottom:26px}
+.dl .gl-tools{display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:26px}
+.dl .gl-search{display:flex;align-items:center;gap:10px;width:min(100%,520px);height:50px;padding:0 18px;
+  background:#fff;border:1.5px solid var(--sky-200);border-radius:999px;box-shadow:var(--shadow-s);cursor:text}
+.dl .gl-search:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(87,182,232,.18)}
+.dl .gl-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:16px;color:var(--navy)}
+.dl .gl-search input::placeholder{color:#8AA3C2}
+.dl .gl-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.dl .gl-chips button{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:0 16px;border-radius:999px;
+  border:1.5px solid var(--sky-200);background:#fff;color:var(--navy);font-family:var(--display);font-size:.9rem;
+  cursor:pointer;transition:background .2s,border-color .2s,transform .2s}
+.dl .gl-chips button:hover{border-color:var(--blue);transform:translateY(-2px)}
+.dl .gl-chips button small{font-size:.75rem;color:var(--navy-soft);background:var(--sky-50);border-radius:999px;padding:1px 8px}
+.dl .gl-chips button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.dl .gl-chips button.on small{background:rgba(255,255,255,.18);color:#fff}
+.dl .gl-chips i{font-style:normal}
+@media(max-width:700px){
+  /* มือถือ: ชิปเลื่อนแนวนอนแถวเดียว ไม่กินจอ */
+  .dl .gl-chips{flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;width:calc(100% + 32px);margin:0 -16px;
+    padding:2px 16px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .dl .gl-chips::-webkit-scrollbar{display:none}
+  .dl .gl-chips button{flex:none;min-height:44px}
+}
+
+.dl .gl-grid{list-style:none;display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+@media(max-width:1060px){.dl .gl-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.dl .gl-grid{grid-template-columns:1fr 1fr;gap:12px}}
+.dl .gl-card{display:flex;flex-direction:column;width:100%;height:100%;text-align:left;cursor:pointer;
+  background:#fff;border:2px solid #fff;border-radius:var(--r-m);overflow:hidden;box-shadow:var(--shadow-s);
+  font:inherit;color:inherit;transition:transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease}
+.dl .gl-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-m)}
+.dl .gl-card:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.dl .gl-card-shot{position:relative;display:block;aspect-ratio:1;background:var(--sky-50);overflow:hidden}
+.dl .gl-card-shot img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .5s ease}
+.dl .gl-card:hover .gl-card-shot img{transform:scale(1.05)}
+.dl .gl-count{position:absolute;right:8px;bottom:8px;padding:3px 10px;border-radius:999px;
+  background:rgba(23,58,107,.72);color:#fff;font-size:.75rem;line-height:1.6;backdrop-filter:blur(4px)}
+.dl .gl-card-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  padding:11px 14px 13px;font-family:var(--display);font-size:.92rem;line-height:1.45;color:var(--navy)}
+@media(max-width:700px){
+  .dl .gl-card{border-radius:var(--r-s)}
+  .dl .gl-card-title{font-size:.84rem;padding:9px 10px 11px}
+}
+.dl .gl-empty{text-align:center;padding:40px 0;display:flex;flex-direction:column;align-items:center;gap:16px;color:var(--navy-soft)}
+.dl .gl-more{display:flex;justify-content:center;margin-top:30px}
+.dl .gl-cta-wrap{width:min(100% - 40px,var(--wrap));margin:30px auto 70px}
+@media(max-width:520px){
+  .dl .gl-sec{width:min(100% - 32px,var(--wrap));padding-top:40px}
+  .dl .gl-cta-wrap{width:min(100% - 32px,var(--wrap))}
+  /* แถบเนวี่ของกลางย่อตัวหนังสือเหลือ ~10.5px บนมือถือ → ขั้นต่ำ 12px แบบหน้าแรก */
+  .dl .gl-cta-wrap .cc-text p{font-size:.84rem}
+  .dl .gl-cta-wrap .cc-btns .btn{font-size:.9rem;min-height:48px}
+}
+
+/* --- หน้าต่างดูภาพทั้งอัลบั้ม --- */
+.dl.gl-portal{background:none}
+.dl .gl-viewer{position:fixed;inset:0;z-index:2147483000;background:rgba(10,26,51,.82);backdrop-filter:blur(6px);
+  display:grid;place-items:center;padding:20px;animation:glFade .2s ease}
+@keyframes glFade{from{opacity:0}to{opacity:1}}
+.dl .gl-v-box{display:flex;flex-direction:column;width:min(100%,980px);max-height:100%;background:#fff;
+  border-radius:var(--r-m);overflow:hidden;box-shadow:var(--shadow-l)}
+.dl .gl-v-top{display:flex;align-items:center;gap:12px;padding:12px 12px 12px 20px;border-bottom:1px solid var(--sky-100)}
+.dl .gl-v-title{flex:1;min-width:0;display:flex;flex-direction:column}
+.dl .gl-v-title b{font-family:var(--display);font-weight:500;font-size:1.05rem;color:var(--navy);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .gl-v-title span{font-size:.8rem;color:var(--navy-soft)}
+.dl .gl-v-close{flex:none;width:44px;height:44px;border-radius:50%;border:0;background:var(--sky-50);color:var(--navy);
+  font-size:1.1rem;cursor:pointer}
+.dl .gl-v-close:hover{background:var(--sky-100)}
+.dl .gl-v-stage{position:relative;flex:1 1 auto;min-height:0;display:grid;place-items:center;background:#F4F8FC;
+  height:min(62vh,640px);touch-action:pan-y}
+.dl .gl-v-stage img{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;object-fit:contain;opacity:0;transition:opacity .25s ease}
+.dl .gl-v-stage img.is-in{opacity:1}
+.dl .gl-v-spin{position:absolute;width:34px;height:34px;border-radius:50%;border:3px solid var(--sky-200);
+  border-top-color:var(--blue);animation:glSpin .8s linear infinite}
+@keyframes glSpin{to{transform:rotate(360deg)}}
+.dl .gl-v-nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:0;
+  background:rgba(255,255,255,.92);color:var(--navy);font-size:1.9rem;line-height:1;cursor:pointer;box-shadow:var(--shadow-s);
+  display:grid;place-items:center;padding-bottom:4px}
+.dl .gl-v-nav:hover{background:var(--yolk)}
+.dl .gl-v-nav.prev{left:12px}
+.dl .gl-v-nav.next{right:12px}
+.dl .gl-v-thumbs{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;border-top:1px solid var(--sky-100);scrollbar-width:thin}
+.dl .gl-v-thumbs button{flex:none;width:62px;height:62px;border-radius:10px;overflow:hidden;border:2px solid transparent;
+  background:var(--sky-50);cursor:pointer;opacity:.6;transition:opacity .2s,border-color .2s}
+.dl .gl-v-thumbs button.on{border-color:var(--yolk-deep);opacity:1}
+.dl .gl-v-thumbs button:hover{opacity:1}
+.dl .gl-v-thumbs img{display:block;width:100%;height:100%;object-fit:cover}
+.dl .gl-v-foot{display:flex;flex-direction:column;gap:10px;padding:12px 20px 16px;border-top:1px solid var(--sky-100)}
+.dl .gl-v-desc{font-size:.86rem;line-height:1.6;color:var(--navy-soft)}
+.dl .gl-v-acts{display:flex;align-items:center;gap:12px}
+.dl .gl-v-prods{flex:1;min-width:0;display:flex;align-items:center;gap:8px;overflow-x:auto;scrollbar-width:none}
+.dl .gl-v-prods::-webkit-scrollbar{display:none}
+.dl .gl-v-prods-h{flex:none;font-family:var(--display);font-size:.8rem;color:var(--blue-deep)}
+.dl .gl-v-prod{flex:none;display:flex;align-items:center;gap:8px;max-width:240px;min-height:48px;padding:4px 14px 4px 4px;
+  border-radius:14px;background:var(--sky-50);border:1.5px solid var(--sky-100);text-decoration:none;color:var(--navy);
+  transition:border-color .2s,background .2s}
+.dl .gl-v-prod:hover{border-color:var(--blue);background:#fff}
+.dl .gl-v-prod img,.dl .gl-v-prod i{flex:none;width:40px;height:40px;border-radius:10px;object-fit:cover;background:#fff;
+  display:grid;place-items:center;font-style:normal}
+.dl .gl-v-prod span{min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.dl .gl-v-prod b{font-weight:500;font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl .gl-v-prod small{font-size:.75rem;color:var(--yolk-deep);font-weight:600}
+.dl .gl-v-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 20px;border-radius:999px;
+  font-family:var(--display);font-size:.9rem;text-decoration:none;white-space:nowrap;margin-left:auto}
+.dl .gl-v-btn.line{background:#06C755;color:#fff}
+.dl .gl-v-btn.line:hover{background:#05b04b}
+@media(max-width:700px){
+  .dl .gl-viewer{padding:0;place-items:stretch}
+  .dl .gl-v-box{width:100%;height:100%;max-height:none;border-radius:0}
+  .dl .gl-v-top{padding:8px 8px 8px 16px}
+  .dl .gl-v-stage{height:auto;flex:1 1 0}
+  .dl .gl-v-nav{width:44px;height:44px}
+  .dl .gl-v-nav.prev{left:6px}
+  .dl .gl-v-nav.next{right:6px}
+  .dl .gl-v-thumbs{padding:8px 12px}
+  .dl .gl-v-thumbs button{width:54px;height:54px}
+  .dl .gl-v-foot{gap:8px;padding:10px 16px calc(12px + env(safe-area-inset-bottom))}
+  .dl .gl-v-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:.8rem;max-height:3.2em}
+  .dl .gl-v-acts{flex-direction:column;align-items:stretch;gap:8px}
+  .dl .gl-v-prods{margin:0 -16px;padding:0 16px}
+  .dl .gl-v-prod{max-width:210px}
+  .dl .gl-v-btn{margin-left:0}
+}
+@media(prefers-reduced-motion:reduce){
+  .dl .gl-viewer{animation:none}
+  .dl .gl-polaroid,.dl .gl-card,.dl .gl-card-shot img{transition:none}
+}
