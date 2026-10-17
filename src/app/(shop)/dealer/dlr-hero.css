@@ -1,0 +1,16 @@
+/* ภาพฮีโร่หน้าสมัครตัวแทน (/dealer) — diorama ร้านแผงลอยบนแท่นกลม พื้นใส (public/dealer/dealer-hero.webp)
+   17 ต.ค. 69 เจ้าของร้าน "ออกแบบให้ใหม่หน่อย" (เดิม duck-hug ลอยโยก) → ชุดเดียวกับหน้า /why /contact
+   ภาพตั้งนิ่ง ไม่โยก ไม่มีเงาเรือง · เงานุ่มวงรีใต้แท่น · แยกไฟล์ ไม่แตะ landing.css (.dl.dlr-page = ชนะกฎเดิม)
+   ฟองคำพูดยังเกาะกรอบ .dlr-duck เหมือนเดิม (ตำแหน่งอิงขอบรูป) */
+.dl.dlr-page .dlr-hero{grid-template-columns:1fr 1fr}
+.dl.dlr-page .dlr-duck.dlr-scene{width:min(100%,560px)}
+.dl.dlr-page .dlr-scene::after{content:"";position:absolute;left:12%;right:12%;bottom:0;height:11%;z-index:-1;border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(44,129,196,.22) 0%,rgba(44,129,196,.08) 45%,rgba(44,129,196,0) 72%);
+  filter:blur(6px)}
+.dl.dlr-page .dlr-scene img{position:relative;z-index:1;filter:none;animation:none}
+.dl.dlr-page .dlr-hero-art .dlr-b1{top:2%;right:auto;left:0}
+.dl.dlr-page .dlr-hero-art .dlr-b2{top:auto;bottom:6%;right:auto;left:-4%}
+@media(max-width:900px){
+  .dl.dlr-page .dlr-hero{grid-template-columns:1fr}
+  .dl.dlr-page .dlr-duck.dlr-scene{width:min(100%,480px)}
+}

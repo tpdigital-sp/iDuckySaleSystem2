@@ -1,0 +1,18 @@
+/* ภาพฮีโร่หน้าคู่มือลูกค้า (/how-to-order) — diorama บนแท่นกลม พื้นใส (public/how-to/hto-hero.webp)
+   17 ต.ค. 69 เจ้าของร้าน "ออกแบบให้ใหม่หน่อย" (เดิม duck-hug ลอยโยก) → ชุดเดียวกับหน้า /why /contact
+   ภาพตั้งนิ่ง ไม่โยก ไม่มีเงาเรือง · เงานุ่มวงรีใต้แท่น · แยกไฟล์ ไม่แตะ landing.css (.dl.hto-page = ชนะกฎเดิม) */
+.dl.hto-page .hto-hero{grid-template-columns:1fr 1fr}
+/* ป้าย kicker ชิดซ้ายตามหัวข้อ (หน้า /dealer /contact ทำแล้ว หน้านี้ขาด — เดิมลอยกลางคอลัมน์) */
+.dl.hto-page .hto-hero-txt .kicker-yolk{margin-inline:0}
+.dl.hto-page .hto-scene{position:relative;z-index:1;width:100%;max-width:600px}
+.dl.hto-page .hto-scene::after{content:"";position:absolute;left:6%;right:6%;bottom:0;height:12%;z-index:-1;border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(44,129,196,.22) 0%,rgba(44,129,196,.08) 45%,rgba(44,129,196,0) 72%);
+  filter:blur(6px)}
+.dl.hto-page .hto-hero-art .hto-scene img{width:100%;height:auto;display:block;filter:none;animation:none}
+.dl.hto-page .hto-hero-art .hto-b1{top:0;left:2%}
+@media(max-width:900px){
+  .dl.hto-page .hto-hero{grid-template-columns:1fr}
+  .dl.hto-page .hto-hero-txt .kicker-yolk{margin-inline:auto}
+  .dl.hto-page .hto-scene{width:min(100%,520px)}
+  .dl.hto-page .hto-hero-art .hto-scene img{width:100%}
+}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import FreeShipNote from "./FreeShipNote";
+import "./hto-hero.css";
 import PageOverride from "@/components/PageOverride";
 import { getArticleServer } from "@/lib/server/articles-server";
 
@@ -168,8 +169,14 @@ export default async function HowToOrderPage() {
             </div>
             <div className="hto-hero-art">
               <span className="hto-bub hto-b1">เลือก → แนบลาย → โอน 🐥</span>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/landing/duck-hug.webp" alt="" aria-hidden="true" />
+              {/* ฉาก diorama บนแท่นกลม (public/how-to/hto-hero.webp พื้นใส · 17 ต.ค. 69 แทน duck-hug) — สไตล์อยู่ ./hto-hero.css */}
+              <div className="hto-scene">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/how-to/hto-hero.webp"
+                  alt="น้องเป็ด iDucky ข้างโต๊ะแล็ปท็อปสั่งซื้อและแนบลาย เครื่องพิมพ์แก้วมัค กล่องพัสดุ และสกู๊ตเตอร์ส่งของ"
+                />
+              </div>
             </div>
           </div>
 

@@ -22,6 +22,7 @@ import { LINE_URL } from "@/components/LineButton";
 import { hasCustomSender } from "@/lib/order-sender";
 import { cleanPhone, phoneProblem } from "@/lib/contact-validate";
 import type { OrderSender } from "@/lib/admin-data";
+import "./dlr-hero.css";
 
 type Me = { dealer: boolean; applied: boolean; application?: { shopName: string; channel: string; detail?: string } };
 
@@ -320,10 +321,14 @@ export default function DealerApplyPage() {
 
             {/* ฟองคำพูดต้องอยู่ในกรอบเดียวกับรูปเป็ด — ตำแหน่งจะได้อิงขอบรูปจริง ไม่ใช่ช่องตาราง */}
             <div className="dlr-hero-art">
-              <span className="dlr-duck">
+              {/* ฉาก diorama ร้านแผงลอยบนแท่นกลม (public/dealer/dealer-hero.webp พื้นใส · 17 ต.ค. 69 แทน duck-hug) — สไตล์ ./dlr-hero.css */}
+              <span className="dlr-duck dlr-scene">
                 <span className="dlr-bub dlr-b1">ราคาตัวแทน ตั้งแต่ชิ้นแรก 🐥</span>
                 <span className="dlr-bub dlr-b2">กล่องขึ้นชื่อร้านคุณ 📮</span>
-                <img src="/landing/duck-hug.webp" alt="" aria-hidden="true" />
+                <img
+                  src="/dealer/dealer-hero.webp"
+                  alt="น้องเป็ด iDucky ยืนหน้าร้านแผงลอย ถือกล่องพัสดุติดป้ายชื่อร้าน พร้อมแก้วมัค เสื้อ พวงกุญแจ และรถเข็นกล่อง"
+                />
               </span>
             </div>
           </div>
