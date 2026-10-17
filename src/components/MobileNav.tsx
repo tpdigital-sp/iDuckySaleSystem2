@@ -187,7 +187,7 @@ export default function MobileNav({ open, onClose, logo }: { open: boolean; onCl
                 <b>จัดส่ง &amp; เคลม</b>
                 <span>→</span>
               </Link>
-              <Link href="/#why" onClick={onClose}>
+              <Link href="/why" onClick={onClose}>
                 <i>💗</i>
                 <b>ทำไมต้องเรา</b>
                 <span>→</span>

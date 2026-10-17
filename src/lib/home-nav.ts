@@ -181,7 +181,7 @@ export const DEFAULT_MENU: NavLink[] = [
   { id: "bestseller", label: "สินค้าขายดี", href: "/#bestseller" },
   { id: "steps", label: "คู่มือลูกค้า", href: "/how-to-order" },
   { id: "member", label: "สมาชิก", href: "/member" },
-  { id: "why", label: "ทำไมต้องเรา", href: "/#why" },
+  { id: "why", label: "ทำไมต้องเรา", href: "/why" },
   { id: "dealer", label: "สมัครตัวแทน", href: "/dealer" },
   { id: "contact", label: "ติดต่อเรา", href: "/contact" },
 ];
@@ -482,14 +482,18 @@ function heroOf(raw: Partial<HeroBanner> | null | undefined): HeroBanner {
   };
 }
 
+/** ลิงก์เลื่อนลงในหน้าแรก (เมนูที่บันทึกไว้ในฐาน) ที่ตอนนี้มีหน้าแยกแล้ว */
+const HASH_TO_PAGE: Record<string, string> = { "/#contact": "/contact", "/#why": "/why" };
+
 export function siteNavOf(raw: Partial<SiteNav> | null | undefined): SiteNav {
   const menu = (Array.isArray(raw?.menu) ? raw.menu : [])
     .filter((l) => l && str(l.label).trim() && str(l.href).trim())
     .map((l, i) => ({
       id: str(l.id) || `m${i}`,
       label: str(l.label).trim(),
-      // "/#contact" (เลื่อนลงท้ายเว็บ) ที่บันทึกไว้ในฐานก่อนมีหน้า /contact → ชี้หน้าติดต่อเรา (17 ต.ค. 69)
-      href: str(l.href).trim() === "/#contact" ? "/contact" : str(l.href).trim(),
+      // ลิงก์เลื่อนลงในหน้าแรกที่บันทึกไว้ในฐานก่อนมีหน้าแยก → ชี้หน้าใหม่ (17 ต.ค. 69)
+      // "/#contact" → /contact · "/#why" → /why
+      href: HASH_TO_PAGE[str(l.href).trim()] ?? str(l.href).trim(),
       hidden: Boolean(l.hidden),
     }));
 

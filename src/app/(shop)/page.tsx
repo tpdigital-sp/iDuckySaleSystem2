@@ -18,6 +18,7 @@ import CardSkeleton from "@/components/CardSkeleton";
 import { CAT_ICON, catEnName, groupOf, TAB_GROUPS } from "@/lib/cat-groups";
 import { SOCIAL_LINKS } from "@/components/SocialLinks";
 import { LINE_URL } from "@/components/LineButton";
+import { REVIEWS } from "@/lib/home-reviews";
 
 /**
  * หน้าแรก — ดีไซน์ตามไฟล์ต้นแบบของทีม Content (ล่าสุด "LANDING PAGE_02.html" 10 ก.ย. 69)
@@ -28,15 +29,7 @@ import { LINE_URL } from "@/components/LineButton";
 // กลุ่มแท็บ 4 กลุ่ม + ไอคอนหมวด ย้ายไปไฟล์กลาง src/lib/cat-groups.ts
 // (ใช้ร่วมกับเมนูดรอปดาวน์ "สินค้าและบริการ" บนแถบเมนู — NavCatMenu)
 
-/** รีวิวลูกค้าที่โชว์บนหน้าแรก (ภาพงานจริง + คำชม) — แก้ข้อความ/รูปได้ที่นี่ */
-const REVIEWS: { photo: string; text: string; name: string; item: string }[] = [
-  { photo: "/landing/review-1.webp", text: "งานคมมาก สีตรงกับไฟล์ที่ส่งไปเป๊ะ แอดมินตอบไวสุด ๆ", name: "คุณนุ่น", item: "พวงกุญแจอะคริลิค · 30 ชิ้น" },
-  { photo: "/landing/review-2.webp", text: "ไม่มีลายเลย ทีมงานช่วยออกแบบให้ฟรีจนได้งานที่ชอบ สั่งซ้ำมา 4 รอบแล้ว", name: "คุณกันต์", item: "สแตนดี้ + สติ๊กเกอร์" },
-  { photo: "/landing/review-3.webp", text: "สั่งชิ้นเดียวก็ทำให้ แพ็คมาดีไม่มีรอยเลย ส่งเร็วกว่านัด", name: "คุณแพร", item: "แก้วมัคพิมพ์ลาย" },
-  { photo: "/landing/review-4.webp", text: "เนื้อผ้าดี งานพิมพ์ไม่แตก ซักแล้วสีไม่ตก ประทับใจมากครับ", name: "คุณต้า", item: "เสื้อยืดพิมพ์ลาย 12 ตัว" },
-  { photo: "/landing/review-5.webp", text: "กระดาษหนาดี สีสวยมาก ลูกค้าร้านเราชมกันเยอะเลยค่ะ", name: "คุณมิ้นท์", item: "โปสการ์ด + การ์ดขอบคุณ" },
-  { photo: "/landing/review-6.webp", text: "ลายชัด ขอบไม่เบลอ ราคาน่ารักมาก จะกลับมาสั่งอีกแน่นอน", name: "คุณอาย", item: "เคสมือถือ · สั่ง 5 ชิ้น" },
-];
+// รีวิวลูกค้า (REVIEWS) ย้ายไป src/lib/home-reviews.ts — ใช้ร่วมกับหน้า /why
 
 
 /**
@@ -598,6 +591,12 @@ export default function HomePage() {
                   <h3>บริการใส่ใจ</h3>
                   <p>ให้คำแนะนำ ดูแลทุกออเดอร์จนถึงมือ</p>
                 </div>
+              </div>
+              {/* ชิดกลาง — ชิดขวาแล้วโดนปุ่มลอยมุมขวาบัง */}
+              <div className="rv-more why-more" style={{ justifyContent: "center" }}>
+                <Link className="rv-viewall" href="/why">
+                  ดูเหตุผลทั้งหมด <span>→</span>
+                </Link>
               </div>
             </div>
           </div>
