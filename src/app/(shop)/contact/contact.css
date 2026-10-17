@@ -30,13 +30,14 @@
 .dl .ctc-fact.mint::before{background:#3FAE8B}
 .dl .ctc-hero-btns{display:flex;flex-wrap:wrap;gap:11px;margin-top:22px}
 
-/* ฉากน้องเป็ดหน้าร้าน — ภาพเดียวกับโซนแชทหน้าแรก (chat-scene) ในกรอบมนลอย */
+/* ภาพน้องเป็ดใส่หูฟัง + มือถือ/แชท/ซองจดหมาย/หมุดแผนที่ (public/contact/contact-hero.webp · สร้างด้วย Gemini
+   จากเป็ดหน้าแรก hero-duck เป็นภาพอ้างอิง 17 ต.ค. 69 — เดิมใช้ chat-scene แต่เจ้าของร้านว่า "ยังไม่รู้สึกเหมือน contact") */
 .dl .ctc-hero-art{min-width:0}
 .dl .ctc-scene{position:relative;border-radius:var(--r-xl);overflow:hidden;border:3px solid #fff;
-  box-shadow:var(--shadow-l);aspect-ratio:16/10;background:var(--sky-100)}
-.dl .ctc-scene img{display:block;width:100%;height:100%;object-fit:cover;object-position:62% 60%;
+  box-shadow:var(--shadow-l);aspect-ratio:16/9;background:var(--sky-100)}
+.dl .ctc-scene img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;
   animation:ctcPan 16s ease-in-out infinite alternate}
-@keyframes ctcPan{from{transform:scale(1.04)}to{transform:scale(1.1) translateX(-1.5%)}}
+@keyframes ctcPan{from{transform:scale(1.01)}to{transform:scale(1.05) translateY(-1%)}}
 @media(prefers-reduced-motion:reduce){.dl .ctc-scene img{animation:none}}
 
 @media(max-width:900px){
@@ -45,13 +46,11 @@
   .dl .ctc-lead{margin-inline:auto}
   .dl .ctc-facts,.dl .ctc-hero-btns{justify-content:center}
   .dl .ctc-hero-art{order:-1}
-  .dl .ctc-scene{border-radius:var(--r-l);aspect-ratio:2/1}
+  .dl .ctc-scene{border-radius:var(--r-l)}
 }
 @media(max-width:520px){
   .dl .ctc-top{padding:14px 0 40px}
   .dl .ctc-hero{width:min(100% - 32px,var(--wrap));margin-bottom:24px}
-  .dl .ctc-scene{aspect-ratio:16/10}
-  .dl .ctc-scene img{object-position:78% 62%}
   .dl .ctc-hero-btns{flex-direction:column;align-items:stretch}
   .dl .ctc-hero-btns .btn{justify-content:center}
 }

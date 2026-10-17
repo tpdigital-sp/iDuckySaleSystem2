@@ -77,7 +77,7 @@ export default function ContactPage() {
 
             <div className="ctc-hero-art">
               <div className="ctc-scene">
-                <img src="/landing/chat-scene.webp" alt="น้องเป็ด iDucky โบกมือทักทายหน้าร้าน" />
+                <img src="/contact/contact-hero.webp" alt="น้องเป็ด iDucky ใส่หูฟัง พร้อมตอบแชท โทรศัพท์ และอีเมล" />
               </div>
             </div>
           </div>
