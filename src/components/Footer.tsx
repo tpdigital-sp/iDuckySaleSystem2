@@ -1,6 +1,8 @@
 import Link from "next/link";
 import FooterFreeShip from "./FooterFreeShip";
 import { SOCIAL_LINKS } from "./SocialLinks";
+import { LINE_URL } from "./LineButton";
+import { SHOP } from "@/lib/shop-info";
 /* eslint-disable @next/next/no-img-element */
 
 export default function Footer() {
@@ -46,21 +48,22 @@ export default function Footer() {
             <h4>ติดต่อเรา</h4>
             <p>บริษัท ทีพีดิจิตอล</p>
             <p>663/8 ซอยฉลองกรุง 1 แขวง/เขตลาดกระบัง กทม. 10520</p>
-            <p>โทร. 096-569-9414</p>
+            {/* ลิงก์โทรออก — มือถือแตะแล้วโทรได้เลย (เดิมเป็นตัวหนังสือเฉย ๆ ต้องจำเบอร์ไปกดเอง) */}
+            <a href={`tel:${SHOP.phone.replace(/[^0-9+]/g, "")}`}>โทร. {SHOP.phone}</a>
             <p>จันทร์–ศุกร์ 09.00–18.00 น.</p>
-            <a href="https://page.line.me/iduckyofficial?openQrModal=true" target="_blank" rel="noopener noreferrer">
-              แอด LINE ร้าน (สแกน QR)
+            {/* /line เลือกปลายทางตามอุปกรณ์: มือถือ = เข้าห้องแชทร้านตรง ๆ · คอม = โปรไฟล์ + QR
+                (เดิม "สแกน QR" — บนมือถือสแกนจอตัวเองไม่ได้) */}
+            <a href={LINE_URL} target="_blank" rel="noopener noreferrer">
+              แอด LINE ร้าน @iduckyofficial
             </a>
           </div>
         </div>
 
         <div className="f-bottom">
           <span>© 2026 iDucky Prints Studio — ทำด้วยใจ พิมพ์ด้วยรัก 🦆💛</span>
+          {/* ลิงก์ "หลังบ้าน" เอาออกแล้ว (17 ต.ค. 69) — ลูกค้าเห็นแล้วงง · ทีมงานใช้ปุ่มลัดหลังบ้าน (AdminEditFabAuto) หรือพิมพ์ /admin */}
           <span>
             <FooterFreeShip />
-            <Link href="/admin" className="underline-offset-2 hover:underline">
-              หลังบ้าน
-            </Link>
           </span>
         </div>
       </div>

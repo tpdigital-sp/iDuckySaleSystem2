@@ -12,8 +12,13 @@
  * ตำแหน่ง: ปุ่มลอยมุมขวาล่างซ้อนกันเป็นชั้น — เดสก์ท็อปคุมระยะจากชุด .fabx ท้าย landing.css
  * (หลังบ้าน 20 · LINE 78 · บอท 136 · ตะกร้า 194) · คลาส Tailwind ด้านล่างเหลือไว้คุมมือถือ
  * มือถือ (≤1000px) ตัวนี้ขยับขึ้นเป็น 164px ให้พ้นปุ่ม LINE ทรงกลม (100–150px) · ปุ่มแอดมินย้ายไปมุมซ้ายล่างเหนือแถบเมนูล่าง
+ *
+ * 📱 หน้าแรกบนมือถือ (17 ต.ค. 69 เจ้าของร้านสั่ง "ใช้บนมือถือง่าย"): กองปุ่มลอย 3 ใบ (ตะกร้า/บอท/LINE) บังปุ่ม-หัวข้อ-การ์ดสินค้า
+ * → ตะกร้าลอย + LINE ลอยซ่อน (body.home-page ท้าย landing.css · ตะกร้ายังมีในแถบเมนูล่าง)
+ * ปุ่มนี้ใบเดียวกลายเป็น "ทักเรา" กดแล้วกางให้เลือก LINE แอดมิน / ผู้ช่วย AI (picker)
  */
 
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   askShopBot,
@@ -55,6 +60,11 @@ export default function ChatWidget() {
   const [draft, setDraft] = useState("");
   /** จุดแดงชวนกด — ขึ้นครั้งเดียวจนกว่าลูกค้าจะเปิดแชท */
   const [nudge, setNudge] = useState(false);
+  /** หน้าแรกบนมือถือ: ปุ่มเดียว "ทักเรา" → กางให้เลือก LINE / ผู้ช่วย AI */
+  const [picker, setPicker] = useState(false);
+  const [phone, setPhone] = useState(false);
+  const home = usePathname() === "/";
+  const merged = home && phone;
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -78,15 +88,32 @@ export default function ChatWidget() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs, busy, open]);
 
+  // จอเดียวกับที่ CSS สลับเป็นวงกลม (≤1000px) — ใช้ตัดสินว่าหน้าแรกต้องรวมปุ่ม LINE ไว้ในปุ่มนี้ไหม
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1000px)");
+    const sync = () => setPhone(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // เปลี่ยนหน้า/หมุนจอแล้วไม่ใช่โหมดรวมปุ่ม = เก็บแผ่นเลือกทิ้ง
+  useEffect(() => {
+    if (!merged) setPicker(false);
+  }, [merged]);
+
   // Esc = ปิดหน้าต่าง (มาตรฐานเดียวกับ dialog อื่นในเว็บ)
   useEffect(() => {
-    if (!open) return;
+    if (!open && !picker) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        setPicker(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, picker]);
 
   // ชวนคุยหลังลูกค้าอยู่บนหน้าสักพัก — ครั้งเดียวต่อแท็บ ไม่กวนซ้ำ
   useEffect(() => {
@@ -125,11 +152,16 @@ export default function ChatWidget() {
       <button
         type="button"
         onClick={() => {
-          setOpen((o) => !o);
           setNudge(false);
+          // หน้าแรกมือถือ: แชทยังไม่เปิด = กาง/หุบแผ่นเลือกช่องทาง · แชทเปิดอยู่ = ปุ่มปิดแชทตามเดิม
+          if (merged && !open) {
+            setPicker((p) => !p);
+            return;
+          }
+          setOpen((o) => !o);
         }}
-        aria-label={open ? "ปิดหน้าต่างแชท" : "คุยกับผู้ช่วย AI ของร้าน"}
-        aria-expanded={open}
+        aria-label={open ? "ปิดหน้าต่างแชท" : merged ? "ทักเรา — เลือก LINE แอดมิน หรือผู้ช่วย AI" : "คุยกับผู้ช่วย AI ของร้าน"}
+        aria-expanded={open || picker}
         /*
           วงแหวนขาว ไม่ใช่กรมท่าโปร่ง — เลื่อนถึง footer (พื้นกรมท่า) ปุ่มกรมท่าบนวงแหวนกรมท่าจะจมหายทั้งใบ
           ขาวตัดได้ทั้งพื้นฟ้าอ่อนด้านบนและพื้นกรมท่าด้านล่าง
@@ -142,7 +174,7 @@ export default function ChatWidget() {
         <img className="fabx-art fabx-bot-art" src="/landing/bot-chat-badge-v4b.webp" alt="" width={1145} height={273} aria-hidden="true" />
         {/* วงไอคอนขาว — ชุด .fabx ท้าย landing.css (ทรงเดียวกับปุ่มตะกร้า/LINE/เข้าหลังบ้าน) */}
         <span className="fabx-ico">
-          {open ? (
+          {open || picker ? (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-5 w-5" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
             </svg>
@@ -170,6 +202,51 @@ export default function ChatWidget() {
           </span>
         )}
       </button>
+
+      {/* ── แผ่นเลือกช่องทาง (หน้าแรกบนมือถือเท่านั้น) — แทนปุ่ม LINE ลอยที่ซ่อนไป ── */}
+      {picker && !open && (
+        <>
+          {/* แตะที่ว่าง = หุบ */}
+          <button type="button" aria-label="ปิดตัวเลือกช่องทางติดต่อ" onClick={() => setPicker(false)} className="fixed inset-0 z-[84] cursor-default bg-[#173A6B]/10" />
+          <div
+            role="menu"
+            aria-label="เลือกช่องทางติดต่อร้าน"
+            className="fixed right-4 z-[85] flex w-[min(17.5rem,calc(100vw-2rem))] flex-col gap-2 rounded-3xl bg-white p-2.5 shadow-[0_18px_44px_rgba(23,58,107,0.26)] ring-1 ring-[#C6E8FB] bottom-[calc(160px+env(safe-area-inset-bottom,0px))]"
+          >
+            <a
+              role="menuitem"
+              href={LINE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setPicker(false)}
+              className="flex min-h-[56px] items-center gap-3 rounded-2xl bg-[#06C755] px-4 py-2.5 text-white no-underline"
+            >
+              <ChatIcon className="h-6 w-6 shrink-0" />
+              <span className="leading-tight">
+                <b className="block text-[15px] font-bold">ทัก LINE คุยกับแอดมิน</b>
+                <small className="block text-[12px] text-white/90">ส่งลาย ถามราคา แจ้งออเดอร์</small>
+              </span>
+            </a>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setPicker(false);
+                setOpen(true);
+              }}
+              className="flex min-h-[56px] items-center gap-3 rounded-2xl bg-[#173A6B] px-4 py-2.5 text-left text-white"
+            >
+              <span className="grid h-6 w-6 shrink-0 place-items-center text-lg leading-none" aria-hidden="true">
+                🤖
+              </span>
+              <span className="leading-tight">
+                <b className="block text-[15px] font-bold">ถามผู้ช่วย AI</b>
+                <small className="block text-[12px] text-white/85">ตอบทันที 24 ชม.</small>
+              </span>
+            </button>
+          </div>
+        </>
+      )}
 
       {/* ── หน้าต่างแชท ── */}
       {open && (
@@ -204,7 +281,7 @@ export default function ChatWidget() {
               type="button"
               onClick={() => setOpen(false)}
               aria-label="ปิดหน้าต่างแชท"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white/80 transition hover:bg-white/15 hover:text-white"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white/80 transition hover:bg-white/15 hover:text-white sm:h-8 sm:w-8"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -255,7 +332,7 @@ export default function ChatWidget() {
                   onClick={() => send(q.ask)}
                   disabled={busy}
                   title={`ถาม: ${q.ask}`}
-                  className="rounded-full border border-[#C6E8FB] bg-[#F2FAFF] px-2.5 py-1 text-[11px] font-semibold text-[#2C81C4] transition hover:bg-[#E2F3FE] disabled:opacity-50"
+                  className="min-h-[40px] rounded-full border border-[#C6E8FB] bg-[#F2FAFF] px-3 py-1.5 text-[13px] font-semibold sm:min-h-0 sm:px-2.5 sm:py-1 sm:text-[11px] text-[#2C81C4] transition hover:bg-[#E2F3FE] disabled:opacity-50"
                 >
                   {q.icon} {q.label}
                 </button>
@@ -279,13 +356,14 @@ export default function ChatWidget() {
               maxLength={1000}
               disabled={busy}
               aria-label="พิมพ์คำถามถึงร้าน"
-              className="min-w-0 flex-1 rounded-full border border-[#C6E8FB] bg-[#F5FBFF] px-3.5 py-2 text-[13px] text-[#173A6B] outline-none transition placeholder:text-slate-400 focus:border-[#57B6E8] focus:bg-white disabled:opacity-60"
+              /* มือถือ 16px — ต่ำกว่านี้ iPhone ซูมหน้าจอเองตอนแตะช่องพิมพ์ */
+              className="min-h-[44px] min-w-0 flex-1 rounded-full border border-[#C6E8FB] bg-[#F5FBFF] px-3.5 py-2 text-base text-[#173A6B] sm:min-h-0 sm:text-[13px] outline-none transition placeholder:text-slate-400 focus:border-[#57B6E8] focus:bg-white disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={busy || !draft.trim()}
               aria-label="ส่งข้อความ"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#FFD447] text-[#173A6B] transition hover:bg-[#FFDE6B] disabled:cursor-not-allowed disabled:opacity-40"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#FFD447] sm:h-9 sm:w-9 text-[#173A6B] transition hover:bg-[#FFDE6B] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden="true">
                 <path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z" />
@@ -293,14 +371,14 @@ export default function ChatWidget() {
             </button>
           </form>
 
-          <p className="border-t border-[#E2F3FE] bg-white px-3 pb-2.5 pt-2 text-center text-[10.5px] leading-snug text-slate-500">
+          <p className="border-t border-[#E2F3FE] bg-white px-3 pb-2.5 pt-2 text-center text-[12px] leading-snug sm:text-[10.5px] text-slate-500">
             ตอบอัตโนมัติด้วยผู้ช่วย AI ของร้าน · อยากคุยกับแอดมินตัวจริง{" "}
             {/* หน้าสินค้าบนมือถือซ่อนปุ่ม LINE ลอยแล้ว (body.buy-page) — ทางไป LINE เหลือที่นี่ ต้องเห็นเป็นปุ่มชัด ๆ */}
             <a
               href={LINE_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[#06C755] px-3 py-1.5 text-[11.5px] font-bold text-white no-underline transition hover:brightness-95"
+              className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[#06C755] px-3 py-2 text-[13px] font-bold text-white no-underline sm:py-1.5 sm:text-[11.5px] transition hover:brightness-95"
             >
               💬 ทักไลน์คุยกับแอดมิน
             </a>

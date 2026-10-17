@@ -5763,3 +5763,146 @@ to{opacity:1;transform:none}}
   body.order-page .fabx-line,body.order-page .dl .fabx-line{display:none !important}
   body.order-page .fabx-bot,body.order-page .dl .fabx-bot{bottom:calc(100px + env(safe-area-inset-bottom,0px)) !important}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   📱 หน้าแรกใช้บนมือถือง่าย — เจ้าของร้านสั่ง 17 ต.ค. 69 "แก้ทั้ง 8 ข้อ" (ตรวจเว็บจริงจอ 375px)
+   วัดก่อนแก้: ตัวหนังสือ 8.3–11px หลายสิบจุด · ปุ่มลอย 3 ใบบังเนื้อหา · ช่องพิมพ์ 11px (iPhone ซูมเอง)
+   · หัวข้อหลักโปร่งใสตอนโหลด · หมวดสินค้า 13 การ์ดยาว 1,850px · ปุ่มแตะเล็กกว่า 44px
+   ⚠️ ต้องอยู่ท้ายไฟล์ — ทับกฎมือถือเดิมด้านบนที่ specificity เท่ากัน
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ช่องค้นหาในจอแรก — มือถือเท่านั้น จอคอมมีช่องค้นหาบนแถบเมนูอยู่แล้ว */
+.dl .hero-search{display:none}
+
+@media(max-width:1000px){
+  /* 4) หัวข้อหลักเห็นตั้งแต่เฟรมแรก — เดิมเริ่ม opacity:0 แล้วเด้งขึ้นจากล่าง 26px โหลดครั้งแรกบนมือถือเห็นแค่เป็ดกับช่องว่าง
+        (Google ก็นับ LCP ช้า) · แค่ปลด opacity ไม่พอ ช่วงเด้งตัวหนังสือเลื่อนลงไปทับบรรทัดหมวดสินค้า → ปิดท่าเด้งบนมือถือ (จอคอมเหมือนเดิม) */
+  .dl h1.title .word{opacity:1;transform:none;animation:none}
+  /* 1) ปุ่มลอยหน้าแรก: เหลือใบเดียว "ทักเรา" (กางเลือก LINE/ผู้ช่วย AI — ChatWidget) ย้ายลงช่องเดิมของ LINE
+        ตะกร้าลอยซ่อน เพราะแถบเมนูล่างมีตะกร้า+ป้ายจำนวนอยู่แล้ว · หน้าอื่นกองปุ่มเหมือนเดิม
+        :has() = ซ่อนตั้งแต่ HTML แรก (ไม่กระพริบ) · body.home-page = สำรองให้เบราว์เซอร์เก่า (ตั้งใน page.tsx)
+        แยกเป็นคนละกฎ — เบราว์เซอร์ที่ไม่รู้จัก :has จะทิ้งทั้งกฎ ถ้าเขียนรวมกันกฎสำรองจะหายไปด้วย */
+  body:has(.dl-home) .fabx-cart,body:has(.dl-home) .fabx-line{display:none !important}
+  body.home-page .fabx-cart,body.home-page .dl .fabx-cart,
+  body.home-page .fabx-line,body.home-page .dl .fabx-line{display:none !important}
+  body:has(.dl-home) .fabx-bot{bottom:calc(100px + env(safe-area-inset-bottom,0px)) !important}
+  body.home-page .fabx-bot,body.home-page .dl .fabx-bot{bottom:calc(100px + env(safe-area-inset-bottom,0px)) !important}
+  /* 🎈 หยุดของประดับที่เล่นวนไม่หยุด (17 ต.ค. 69 รอบ 2) — หน้าแรกจอ 375px วัดได้ 95 ตัวเล่นพร้อมกัน
+     (วงกลมพื้นหลังเปลี่ยนสี · เมฆ/ดาวลอย · เป็ดโยก · ไอคอนหัวข้อ/ป้าย/ชิป · รูปสินค้าในการ์ดลอยขึ้นลง 18 ใบ)
+     มือถือ Android รุ่นถูก + เบราว์เซอร์ในแอป LINE เลื่อนกระตุก/กินแบต → หยุดเฉพาะของประดับ ทุกหน้าร้าน
+     ที่ยังเล่นอยู่ = สิ่งที่สื่อเนื้อหา: แถบข้อความวิ่ง · รีวิวเลื่อน · รูปสลับในการ์ดลองดู · เอฟเฟกต์ป้ายประชาสัมพันธ์ (แอดมินเลือกเองที่ /admin/banners)
+     · ปุ่มตะกร้าลอยเด้ง (เจ้าของร้านสั่ง) · ท่ากด/ชี้ (transition) ยังตอบสนองตามเดิม
+     !important เพราะเมฆบางก้อนตั้ง animation ไว้ใน style="" (page.tsx) */
+  .dl .bg-orb,.dl .bg-cloud,.dl .shop-cloud,.dl .ws-cloud,.dl .ws-star,.dl .cb-cloud,.dl .cb-deco,.dl .cb-bub,
+  .dl .stage .duck,.dl .stage .deco,.dl .chip i img,.dl .orb img,.dl .kicker i,.dl .tag i,.dl .beat,
+  .dl .thumb > img:not(.alt-img),.dl .spot-peek,.dl .spot-heart,.dl .why-float,.dl .why-gift,.dl .hug{animation:none !important}
+  /* บรรทัดท้ายสุดของ footer โดนปุ่มลอยมุมขวาบัง → เผื่อที่ให้พ้นปุ่มลอยใบล่างสุด (ขอบบน ~150px) ไม่ใช่แค่แถบเมนูล่าง */
+  .dl footer{padding-bottom:calc(160px + env(safe-area-inset-bottom,0px))}
+  /* 2) ป้ายแถบเมนูล่าง 9.9px → 12px (ทุกหน้า) */
+  .dl .bn-item{font-size:.75rem}
+  .dl .line-fab-tip{font-size:.8rem}
+}
+
+/* 7) ปุ่มบนแถบเมนูบน 36–38px → 44px (ขนาดนิ้วแตะมาตรฐาน) */
+@media(max-width:640px){
+  .dl .icon-btn{width:44px;height:44px}
+}
+
+@media(max-width:700px){
+  /* ── 5) จอแรก: เป็ดเล็กลง · ช่องค้นหา + ปุ่มหลักขึ้นมาในจอแรก · ป้ายจุดเด่นย้ายไปใต้ปุ่ม ── */
+  .dl.dl-home .stage{max-width:230px}
+  .dl.dl-home .hero{padding-bottom:36px}
+  .dl.dl-home .hero-grid > div:first-child{display:flex;flex-direction:column;align-items:stretch}
+  .dl.dl-home .hero-grid > div:first-child .chips{order:5}
+  .dl.dl-home .lead{font-size:.9rem;line-height:1.6;margin-top:12px}
+  .dl.dl-home .hero-search{display:flex;align-items:center;gap:8px;margin-top:16px;padding:4px 4px 4px 14px;border-radius:999px;
+    background:#fff;border:1.5px solid #C6E8FB;box-shadow:0 8px 20px -10px rgba(44,129,196,.45)}
+  .dl.dl-home .hero-search:focus-within{border-color:var(--blue)}
+  .dl.dl-home .hero-search svg{flex:none;width:20px;height:20px;color:var(--navy-soft)}
+  /* 16px = iPhone ไม่ซูมหน้าจอตอนแตะช่องพิมพ์ */
+  .dl.dl-home .hero-search input{flex:1;min-width:0;height:44px;border:0;outline:0;background:transparent;
+    font-family:var(--body);font-size:16px;color:var(--navy);-webkit-appearance:none;appearance:none}
+  .dl.dl-home .hero-search input::placeholder{color:#8AA3BF}
+  .dl.dl-home .hero-search input::-webkit-search-cancel-button{display:none}
+  .dl.dl-home .hero-search button{flex:none;height:44px;padding:0 18px;border-radius:999px;border:0;cursor:pointer;
+    background:var(--navy);color:#fff;font-family:var(--display);font-size:.95rem}
+  /* ปุ่มหลัก 10.9px → 14.4px สูง 48px */
+  .dl.dl-home .hero-btns{margin-top:12px}
+  .dl.dl-home .hero-btns .btn{min-height:48px;padding:10px 10px;font-size:.9rem;gap:6px}
+  .dl.dl-home .hero-btns .btn .dot{width:24px;height:24px;font-size:.75rem}
+  /* ป้ายจุดเด่น 3 ใบ: แถวเดียว 3 ช่องเท่ากัน ไอคอนบน ตัวหนังสือ 12–13px (เดิม 8.3–9.6px) */
+  .dl.dl-home .chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0 0;max-width:none}
+  .dl.dl-home .chip{flex-direction:column;gap:4px;padding:10px 4px;border-radius:18px;min-width:0}
+  .dl.dl-home .chip i{width:30px;height:30px}
+  .dl.dl-home .chip i img{width:18px;height:18px}
+  .dl.dl-home .chip b{font-size:.82rem}
+  .dl.dl-home .chip small{font-size:.75rem}
+
+  /* ── 6) หมวดสินค้า: ย้ายขึ้นมาใต้ส่วนหัว + ไอคอนกริด 3 คอลัมน์ (เดิมการ์ดใหญ่ 2 คอลัมน์ยาว ~1,850px) ── */
+  .dl.dl-home .top-stack{display:flex;flex-direction:column}
+  .dl.dl-home .top-stack > *{order:2}
+  .dl.dl-home .top-stack > .hero{order:0}
+  .dl.dl-home .top-stack > #categories{order:1}
+  .dl.dl-home #categories .tabs,.dl.dl-home #categories .head p{display:none}
+  .dl.dl-home .cgrid{--cn:3;--cg:8px;gap:10px 8px}
+  .dl.dl-home .ctile{padding:12px 6px 10px;border-radius:18px}
+  .dl.dl-home .ct-plate{width:58px;height:58px;margin-bottom:8px;box-shadow:0 0 0 3px rgba(255,255,255,.9),0 6px 12px -6px rgba(44,129,196,.35)}
+  .dl.dl-home .ct-plate img{width:46px;height:46px}
+  .dl.dl-home .ct-plate em{font-size:1.5rem}
+  .dl.dl-home .ct-en,.dl.dl-home .ct-desc,.dl.dl-home .ct-foot{display:none}
+  /* ชื่อหมวดยาว ("สติ๊กเกอร์ / กระดาษ / โปสการ์ด") ให้ 3 บรรทัด · keep-all = ตัดบรรทัดที่ช่องว่างรอบ "/" เท่านั้น (ตัวตัดคำไทยของเบราว์เซอร์หัก "งา|นอะคริลิค") */
+  .dl.dl-home .ct-name{font-size:.8rem;line-height:1.3;margin-top:0;-webkit-line-clamp:3;word-break:keep-all;overflow-wrap:break-word}
+  .dl.dl-home .shop-band{padding:12px 0 40px}
+  .dl.dl-home #categories .head{margin-bottom:18px}
+
+  /* ── 2) ตัวหนังสือขั้นต่ำ 12px ทั้งหน้า ── */
+  .dl.dl-home .head p{font-size:.875rem}
+  .dl.dl-home .card-body h3{font-size:.875rem}
+  .dl.dl-home .cat-l{font-size:.75rem}
+  .dl.dl-home .stars{font-size:.75rem}
+  .dl.dl-home .tag{font-size:.75rem;padding:4px 9px 4px 7px}
+  .dl.dl-home .tag i{font-size:.8rem}
+  .dl.dl-home .why-item h3{font-size:.92rem}
+  .dl.dl-home .why-item p{font-size:.8rem}
+  .dl.dl-home .rvc-who small{font-size:.78rem}
+  /* แชทตัวอย่าง */
+  .dl.dl-home .chat-who small{font-size:.75rem}
+  .dl.dl-home .chat-tag{font-size:.75rem}
+  .dl.dl-home .msg time{font-size:.75rem}
+  .dl.dl-home .mbub{font-size:.9rem;line-height:1.5}
+  .dl.dl-home .stepno{font-size:.75rem}
+  .dl.dl-home .qk{font-size:.82rem;min-height:40px;padding:8px 12px 8px 10px}
+  .dl.dl-home .qk i{font-size:.9rem}
+  /* 1) แชทตัวอย่าง (รอบ 2): ส่วนนี้ยาวสุดในหน้า ~1,400px · ปุ่ม "ทักเรา" มุมจอเปิดบอทตัวเดียวกันได้อยู่แล้ว
+        → ก่อนลูกค้าเริ่มพิมพ์ เหลือแค่ฟองตอบ 3 ขั้น (ขั้นที่ 1–3 = ขั้นตอนสั่งซื้อ) ซ่อนฟองคำถามลูกค้า/เวลา/ป้ายบอกว่าเป็นตัวอย่าง
+        พิมพ์ข้อความแรกแล้ว (.is-live) กลับเป็นห้องแชทเต็มตามเดิม */
+  .dl.dl-home .chat-body:not(.is-live) .msg.out,
+  .dl.dl-home .chat-body:not(.is-live) .msg time,
+  .dl.dl-home .chat-body:not(.is-live) .chat-cue{display:none}
+  .dl.dl-home .chat-body:not(.is-live) .msg.in{max-width:100%}
+  .dl.dl-home .chat-body:not(.is-live){padding-bottom:10px}
+  /* ป้าย "คุยได้จริง" หัวแชท — ตัวหนังสือขยายเป็น 12px แล้วเบียดจน "คุยได้|จริง" และ "24|ชม." หักบรรทัด
+     ช่องพิมพ์ + ปุ่มถามด่วนบอกอยู่แล้วว่าคุยได้ → ซ่อนเฉพาะป้ายนิ่ง (ปุ่ม ↺ เริ่มใหม่ ตอนคุยจริงยังอยู่) */
+  .dl.dl-home .chat-top > span.chat-tag{display:none}
+  .dl.dl-home .chat-reset{white-space:nowrap;min-height:36px}
+  /* ลิงก์ "ทักไลน์ได้เลย" ใต้แชท 70×20px → ขยายพื้นที่แตะโดยไม่ดันบรรทัด */
+  .dl.dl-home .chat-note a{display:inline-block;padding:12px 6px;margin:-12px -6px}
+  /* 3) ช่องพิมพ์ถามบอท 11.2px → 16px (iPhone ไม่ซูมเอง) · ปุ่มส่ง 44px */
+  .dl.dl-home .chat-input{font-size:16px;min-height:44px}
+  .dl.dl-home .chat-send{width:44px;height:44px;font-size:.95rem}
+  /* กล่อง "มีลายในใจแล้วใช่ไหม" — ปุ่มคู่ 10.6px อัดแถวเดียว → เรียงซ้อนเต็มความกว้าง */
+  .dl.dl-home .chat-cta p{font-size:.875rem}
+  .dl.dl-home .cc-btns{flex-direction:column;flex-wrap:nowrap}
+  .dl.dl-home .cc-btns .btn{flex:none;width:100%;min-height:48px;padding:10px 16px;font-size:.95rem;white-space:normal}
+  .dl.dl-home .cc-btns .btn .dot{width:24px;height:24px;font-size:.75rem}
+
+  /* ── 7) จุดเลื่อนป้ายโปรโมชัน 24px → พื้นที่แตะ 32×44 (จุดที่เห็นขนาดเท่าเดิม) ── */
+  .dl .promo-dots{gap:0;flex-wrap:wrap;margin-top:0}
+  .dl .promo-dots button{width:32px;height:44px}
+
+  /* ── 8) ท้ายเว็บ: ลิงก์สูง 44px ตัวหนังสือ 14px (เดิม 12.5px สูง 31px) · ไอคอนโซเชียล 44px ── */
+  .dl .f-grid a{font-size:.9rem;padding:11px 0}
+  .dl .f-grid p{font-size:.88rem}
+  .dl .socials a{width:44px;height:44px}
+  .dl .f-bottom{font-size:.8rem}
+}
