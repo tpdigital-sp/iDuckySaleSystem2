@@ -87,7 +87,7 @@ export default function ContactPage() {
             <div className="ctc-card">
               <i className="ctc-ico line">LINE</i>
               <div className="ctc-card-body">
-                <span className="ctc-label">LINE Official · ช่องทางหลัก</span>
+                <span className="ctc-label">LINE · สอบถาม / ขอใบเสนอราคา</span>
                 <b className="ctc-value">{LINE_ID}</b>
                 <div className="ctc-acts">
                   <a className="ctc-act line" href={LINE_URL} target="_blank" rel="noopener noreferrer">
@@ -117,13 +117,14 @@ export default function ContactPage() {
             <div className="ctc-card">
               <i className="ctc-ico t-sky">✉️</i>
               <div className="ctc-card-body">
-                <span className="ctc-label">อีเมล · ส่งไฟล์งาน / ขอใบเสนอราคา</span>
+                <span className="ctc-label">อีเมล · สำหรับส่งไฟล์งานเท่านั้น</span>
                 <a className="ctc-value email" href={`mailto:${SHOP_EMAIL}`}>
                   {SHOP_EMAIL}
                 </a>
+                <span className="ctc-addr">ขอใบเสนอราคา / สอบถาม กรุณาทักทาง LINE</span>
                 <div className="ctc-acts">
                   <a className="ctc-act blue" href={`mailto:${SHOP_EMAIL}`}>
-                    ✉️ ส่งอีเมล
+                    ✉️ ส่งไฟล์งาน
                   </a>
                   <CopyChip text={SHOP_EMAIL} />
                 </div>

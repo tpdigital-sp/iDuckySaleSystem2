@@ -33,8 +33,10 @@
 /* ภาพน้องเป็ดใส่หูฟัง + มือถือ/แชท/ซองจดหมาย/หมุดแผนที่ (public/contact/contact-hero.webp · สร้างด้วย Gemini
    จากเป็ดหน้าแรก hero-duck เป็นภาพอ้างอิง 17 ต.ค. 69 — เดิมใช้ chat-scene แต่เจ้าของร้านว่า "ยังไม่รู้สึกเหมือน contact") */
 .dl .ctc-hero-art{min-width:0}
-.dl .ctc-scene{position:relative;border-radius:var(--r-xl);overflow:hidden;border:3px solid #fff;
-  box-shadow:var(--shadow-l);aspect-ratio:16/9;background:var(--sky-100)}
+/* ไม่มีกรอบ (เจ้าของร้านสั่ง 17 ต.ค. 69 "ไม่ต้องการให้เป็นกรอบสี่เหลี่ยม") — ขอบภาพจางหายเป็นวงรีกลืนพื้นฟ้า */
+.dl .ctc-scene{position:relative;aspect-ratio:16/9;
+  -webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 64%,rgba(0,0,0,.65) 84%,transparent 100%);
+  mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 64%,rgba(0,0,0,.65) 84%,transparent 100%)}
 .dl .ctc-scene img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;
   animation:ctcPan 16s ease-in-out infinite alternate}
 @keyframes ctcPan{from{transform:scale(1.01)}to{transform:scale(1.05) translateY(-1%)}}
@@ -46,7 +48,6 @@
   .dl .ctc-lead{margin-inline:auto}
   .dl .ctc-facts,.dl .ctc-hero-btns{justify-content:center}
   .dl .ctc-hero-art{order:-1}
-  .dl .ctc-scene{border-radius:var(--r-l)}
 }
 @media(max-width:520px){
   .dl .ctc-top{padding:14px 0 40px}
