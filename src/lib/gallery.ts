@@ -86,8 +86,9 @@ export const GALLERY_PHOTO_COUNT = GALLERY_ALBUMS.reduce((s, a) => s + a.p.lengt
 const CDN = "https://image.makewebcdn.com/makeweb";
 const SHOP_DIR = "uccSzrU5X/DefaultData";
 
-/** URL ภาพตามขนาด — thumb = ปก/ภาพย่อ (สี่เหลี่ยม) · large = ดูเต็มจอ */
-export function galleryImg(file: string, size: "thumb" | "small" | "large" = "thumb"): string {
-  const s = size === "large" ? "m_1200x0" : size === "small" ? "r_260x260" : "r_400x400";
+/** URL ภาพตามขนาด — thumb = ปก/ภาพย่อ (สี่เหลี่ยม) · hero = โพลารอยด์ฮีโร่ (ใบใหญ่ จอ 2x ไม่เบลอ) · large = ดูเต็มจอ */
+export function galleryImg(file: string, size: "thumb" | "small" | "hero" | "large" = "thumb"): string {
+  const s =
+    size === "large" ? "m_1200x0" : size === "hero" ? "r_800x800" : size === "small" ? "r_260x260" : "r_400x400";
   return `${CDN}/${s}/${SHOP_DIR}/${encodeURIComponent(file)}`;
 }

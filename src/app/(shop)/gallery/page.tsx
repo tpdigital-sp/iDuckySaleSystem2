@@ -13,8 +13,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/gallery" },
 };
 
-/** ภาพปกที่วางเป็นกองรูปในฮีโร่ — หยิบอัลบั้มต่างหมวดกัน ให้เห็นว่าทำได้หลายแบบ */
-const HERO_PICKS = ["keychain", "case", "acrylic", "fabric"] as const;
+/**
+ * ภาพปกที่วางเป็นกองรูปในฮีโร่ — เลือกอัลบั้มเอง (id อัลบั้มเว็บเดิม) คนละหมวด ให้เห็นว่าทำได้หลายแบบ
+ * ใบซ้ายบน: เดิม 5509 พวงกุญแจสมุดภาพ (ring frame) → 5366 พวงกุญแจดุ๊กดิ๊ก (เจ้าของร้านขอเปลี่ยน 17 ต.ค. 69)
+ * อัลบั้มที่ sync ใหม่แล้วหายไป = ข้าม ใช้ใบที่เหลือ
+ */
+const HERO_IDS = [5366, 5521, 5460, 5527];
 
 /**
  * 📸 หน้าผลงาน (/gallery · เมนู "ผลงาน") — เจ้าของร้านสั่ง 17 ต.ค. 69 "เพิ่มหน้า ผลงาน โดยดึงภาพมาจากหน้า
@@ -24,7 +28,7 @@ const HERO_PICKS = ["keychain", "case", "acrylic", "fabric"] as const;
  * ⚠️ ห้ามใช้คลาส Tailwind ในหน้านี้ — `.dl *{margin:0;padding:0}` ล้างทิ้งหมด · สไตล์เฉพาะหน้า ./gallery.css prefix .gl-
  */
 export default function GalleryPage() {
-  const heroShots = HERO_PICKS.map((cat) => GALLERY_ALBUMS.find((a) => a.cat === cat)).filter(
+  const heroShots = HERO_IDS.map((id) => GALLERY_ALBUMS.find((a) => a.id === id)).filter(
     (a): a is (typeof GALLERY_ALBUMS)[number] => Boolean(a),
   );
   const cats = GALLERY_CATS.map((c) => ({
@@ -77,7 +81,7 @@ export default function GalleryPage() {
           <div className="gl-hero-art" aria-hidden="true">
             {heroShots.map((a, i) => (
               <figure key={a.id} className={`gl-polaroid gl-p${i + 1}`}>
-                <img src={galleryImg(a.c, "thumb")} alt="" />
+                <img src={galleryImg(a.c, "hero")} alt="" />
                 <figcaption>{a.t}</figcaption>
               </figure>
             ))}
