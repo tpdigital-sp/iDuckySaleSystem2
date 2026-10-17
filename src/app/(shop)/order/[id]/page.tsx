@@ -352,6 +352,12 @@ export default function CustomerOrderPage() {
   }, [order]);
   const closePayTerms = () => {
     setShowPayTerms(false);
+    // ปุ่มเขียนว่า "ไปชำระเงิน" → พาไปกล่องชำระเงินจริง (เดิมแค่ปิดหน้าต่าง ลูกค้าค้างอยู่บนสุดของหน้า)
+    // กล่องถูกวาดทั้งฉบับมือถือและจอคอม (อันหนึ่งซ่อน) → เลือกอันที่มองเห็น
+    setTimeout(() => {
+      const box = [...document.querySelectorAll<HTMLElement>("[data-due-box]")].find((el) => el.offsetParent !== null);
+      box?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
     try {
       if (order) localStorage.setItem(`ducky-pay-terms-${order.id}`, "1");
     } catch {
@@ -790,7 +796,115 @@ export default function CustomerOrderPage() {
     !(order.status === "รอตรวจสอบ" && slipPhase === "first");
 
   /* ชุดชำระเงิน/สลิป — มือถือโชว์บนสุด (CTA ต้องเจอทันที) · เดสก์ท็อปย้ายไปคอลัมน์ขวา */
-  const payFlow = (
+  /**
+   * 💸 กล่องชำระเงิน / แจ้งสลิป — แยกเป็นตัวแปรเพื่อวางได้ 2 ที่ (เจ้าของร้านสั่ง 17 ต.ค. 69 "ย้ายเลย"):
+   * ใบ "รอชำระเงิน" บนมือถือ = อยู่ในการ์ดหัวใบใต้เลขออเดอร์/สถานะ (เดิมต้องเลื่อนผ่านวันรับของ · แจ้งเตือน LINE · ขั้นตอน · การ์ดทักแชท ~1.3 จอ)
+   * จอคอม + ใบสถานะอื่น (มัดจำงวดสอง · โอนขาด · สั่งเพิ่ม) = ที่เดิมใน payFlow · เงื่อนไขการเงินไม่เปลี่ยน แค่ตำแหน่งวาง
+   */
+  const dueBox = showDueBox ? (
+      <div
+        data-due-box=""
+        style={{ scrollMarginTop: 84 }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setSlipDrag(true);
+        }}
+        onDragLeave={() => setSlipDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setSlipDrag(false);
+          void uploadSlip(e.dataTransfer.files);
+        }}
+        className={`ord-note danger mt-4 p-4${slipDrag ? " drop" : ""}`}
+      >
+        <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
+          💸{" "}
+          {order.deposit && !order.deposit.firstPaidAt
+            ? paidSoFar(order) > 0
+              ? `โอนมัดจำเพิ่มอีก ${formatPrice(dueNow)}`
+              : `โอนมัดจำ 50% ก่อนเริ่มงาน ${formatPrice(dueNow)}`
+            : order.deposit && !order.deposit.settledAt
+              ? `ค้างชำระยอดคงเหลือ ${formatPrice(dueNow)}`
+              : paidSoFar(order) > 0
+                ? `มียอดค้างชำระ ${formatPrice(balanceNet(order, dueNow))}`
+                : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
+        </p>
+        {order.deposit && !order.deposit.firstPaidAt
+          ? netBar(inst?.first ?? 0, inst?.firstNet ?? 0, dueNow, "strong")
+          : order.deposit && !order.deposit.settledAt
+            ? netBar(inst?.second ?? 0, inst?.secondNet ?? 0, dueNow, "strong")
+            : null}
+        <p className="mt-1 text-xs leading-relaxed">
+          {order.deposit && !order.deposit.firstPaidAt
+            ? paidSoFar(order) > 0
+              ? `รับมาแล้ว ${formatPrice(paidSoFar(order))} จากมัดจำ ${formatPrice(Math.min(orderTotal(order), order.deposit.amount))} — โอนส่วนที่ขาดแล้วแนบสลิปเพิ่ม ทางร้านจะเริ่มงานทันทีที่ครบ`
+              : `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(dueNow)} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
+            : order.deposit && !order.deposit.settledAt
+              ? `รับแล้ว ${formatPrice(paidSoFar(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} — โอนส่วนที่เหลือ ${formatPrice(dueNow)} แล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ`
+              : paidSoFar(order) > 0
+                ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(paidSoFar(order))} จาก ${formatPrice(orderTotal(order))})`
+                : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
+        </p>
+        {/* ⚡ ส่วนลดโอนไวยังอยู่ในเวลา — บอกตรงกล่องโอน (เดิมอยู่แค่ในสรุปยอดท้ายหน้า ลูกค้าทักไลน์ก่อนตามขั้น 1 แล้วเลยเวลา · 12 ต.ค. 69) */}
+        {earlyPayState(order, nowTick) === "active" && order.earlyPay && (
+          <p className="ord-note ok mt-2 px-3 py-2 text-xs font-semibold leading-relaxed">
+            ⚡ ยอดนี้หัก{order.earlyPay.label.replace(/^[^\p{L}]+/u, "")} {formatPrice(order.earlyPay.amount)} แล้ว — โอนและแนบสลิปภายใน{" "}
+            <strong>{Math.max(1, Math.ceil(earlyPayMsLeft(order, nowTick) / 60_000))} นาที</strong> ไม่งั้นส่วนลดนี้จะหายไปเอง
+          </p>
+        )}
+        <PayAccounts
+          payment={payment}
+          orderId={order.id}
+          /* ยอดเดียวกับหัวกล่อง "รอชำระเงิน/ค้างชำระ" ด้านบน — QR ใส่ยอดนี้ให้ */
+          amount={
+            order.deposit && !order.deposit.firstPaidAt
+              ? dueNow
+              : order.deposit && !order.deposit.settledAt
+                ? dueNow
+                : paidSoFar(order) > 0
+                  ? balanceNet(order, dueNow)
+                  : orderTotal(order)
+          }
+        />
+        <label
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            // ลากสลิปมาวางที่ปุ่มนี้ได้เลย (เดสก์ท็อป) — มือถือแตะเลือกไฟล์เหมือนเดิม
+            e.preventDefault();
+            void uploadSlip(e.dataTransfer.files);
+          }}
+          className="ord-btn danger wrap block mt-3 cursor-pointer"
+        >
+          {slipBusy ? (
+            `กำลังส่งสลิป${slipProgress ? ` ${slipProgress}` : ""}…`
+          ) : (
+            <span className="flex flex-col items-center gap-[3px]">
+              <span>📤 {paidSoFar(order) > 0 ? "แนบสลิปโอนเพิ่ม" : "แนบสลิปการโอน"}</span>
+              <span className="text-[.72rem] opacity-90">แตะเลือกรูป (เลือกได้หลายใบ) หรือลากมาวางตรงนี้</span>
+            </span>
+          )}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            className="hidden"
+            disabled={slipBusy}
+            onChange={(e) => {
+              void uploadSlip(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {slipErr && <p className="mt-2 text-xs font-semibold">⚠️ {slipErr}</p>}
+        <button type="button" onClick={() => setShowPayTerms(true)} className="ord-btn quiet sm block mt-2">
+          📋 อ่านเงื่อนไขก่อนโอนอีกครั้ง
+        </button>
+      </div>
+  ) : null;
+  /** ใบแรกที่ยังไม่จ่าย — มือถือยกกล่องชำระเงินขึ้นหัวใบ (ดู dueBox) */
+  const payFirst = !!dueBox && order.status === "รอชำระเงิน";
+
+  const payFlow = (withDue = true) => (
     <>
       {/*
         💬 ทักไลน์คุยออเดอร์ — ปุ่มเดียวกับหน้า "สั่งซื้อสำเร็จ" เผื่อลูกค้าปิดแท็บไปแล้วกลับมาทีหลัง
@@ -969,105 +1083,7 @@ export default function CustomerOrderPage() {
           </a>
         </div>
       )}
-      {/* ── ชำระเงิน / แจ้งสลิป — กล่องเดียวทุกกรณี (ใบแรก · มัดจำ · ยอดคงเหลือ · โอนขาด/สั่งเพิ่ม/ค่าบริการเพิ่ม) ตามยอดค้าง ── */}
-      {showDueBox && (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setSlipDrag(true);
-          }}
-          onDragLeave={() => setSlipDrag(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setSlipDrag(false);
-            void uploadSlip(e.dataTransfer.files);
-          }}
-          className={`ord-note danger mt-4 p-4${slipDrag ? " drop" : ""}`}
-        >
-          <p className="ord-title text-[.96rem]" style={{ color: "inherit" }}>
-            💸{" "}
-            {order.deposit && !order.deposit.firstPaidAt
-              ? paidSoFar(order) > 0
-                ? `โอนมัดจำเพิ่มอีก ${formatPrice(dueNow)}`
-                : `โอนมัดจำ 50% ก่อนเริ่มงาน ${formatPrice(dueNow)}`
-              : order.deposit && !order.deposit.settledAt
-                ? `ค้างชำระยอดคงเหลือ ${formatPrice(dueNow)}`
-                : paidSoFar(order) > 0
-                  ? `มียอดค้างชำระ ${formatPrice(balanceNet(order, dueNow))}`
-                  : `รอชำระเงิน ${formatPrice(orderTotal(order))}`}
-          </p>
-          {order.deposit && !order.deposit.firstPaidAt
-            ? netBar(inst?.first ?? 0, inst?.firstNet ?? 0, dueNow, "strong")
-            : order.deposit && !order.deposit.settledAt
-              ? netBar(inst?.second ?? 0, inst?.secondNet ?? 0, dueNow, "strong")
-              : null}
-          <p className="mt-1 text-xs leading-relaxed">
-            {order.deposit && !order.deposit.firstPaidAt
-              ? paidSoFar(order) > 0
-                ? `รับมาแล้ว ${formatPrice(paidSoFar(order))} จากมัดจำ ${formatPrice(Math.min(orderTotal(order), order.deposit.amount))} — โอนส่วนที่ขาดแล้วแนบสลิปเพิ่ม ทางร้านจะเริ่มงานทันทีที่ครบ`
-                : `ออเดอร์นี้ตกลงมัดจำก่อน — โอน ${formatPrice(dueNow)} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} แล้วแนบสลิป · ส่วนที่เหลือชำระก่อนจัดส่ง`
-              : order.deposit && !order.deposit.settledAt
-                ? `รับแล้ว ${formatPrice(paidSoFar(order))} จากยอดทั้งหมด ${formatPrice(orderTotal(order))} — โอนส่วนที่เหลือ ${formatPrice(dueNow)} แล้วแนบสลิปตรงนี้ ก่อนทางร้านจัดส่งของ`
-                : paidSoFar(order) > 0
-                  ? `ยอดรวมเพิ่มขึ้นหลังโอนรอบแรก (โอนขาด · สั่งเพิ่ม · ค่าบริการเพิ่ม หรือทางร้านตีราคางานสั่งทำให้แล้ว) — โอนเฉพาะส่วนต่างมาที่บัญชีร้าน แล้วแนบสลิป (จ่ายแล้ว ${formatPrice(paidSoFar(order))} จาก ${formatPrice(orderTotal(order))})`
-                  : "โอนเงินมาที่บัญชีร้านแล้วแนบสลิปที่นี่ ทางร้านจะตรวจสอบและเริ่มงานให้"}
-          </p>
-          {/* ⚡ ส่วนลดโอนไวยังอยู่ในเวลา — บอกตรงกล่องโอน (เดิมอยู่แค่ในสรุปยอดท้ายหน้า ลูกค้าทักไลน์ก่อนตามขั้น 1 แล้วเลยเวลา · 12 ต.ค. 69) */}
-          {earlyPayState(order, nowTick) === "active" && order.earlyPay && (
-            <p className="ord-note ok mt-2 px-3 py-2 text-xs font-semibold leading-relaxed">
-              ⚡ ยอดนี้หัก{order.earlyPay.label.replace(/^[^\p{L}]+/u, "")} {formatPrice(order.earlyPay.amount)} แล้ว — โอนและแนบสลิปภายใน{" "}
-              <strong>{Math.max(1, Math.ceil(earlyPayMsLeft(order, nowTick) / 60_000))} นาที</strong> ไม่งั้นส่วนลดนี้จะหายไปเอง
-            </p>
-          )}
-          <PayAccounts
-            payment={payment}
-            orderId={order.id}
-            /* ยอดเดียวกับหัวกล่อง "รอชำระเงิน/ค้างชำระ" ด้านบน — QR ใส่ยอดนี้ให้ */
-            amount={
-              order.deposit && !order.deposit.firstPaidAt
-                ? dueNow
-                : order.deposit && !order.deposit.settledAt
-                  ? dueNow
-                  : paidSoFar(order) > 0
-                    ? balanceNet(order, dueNow)
-                    : orderTotal(order)
-            }
-          />
-          <label
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              // ลากสลิปมาวางที่ปุ่มนี้ได้เลย (เดสก์ท็อป) — มือถือแตะเลือกไฟล์เหมือนเดิม
-              e.preventDefault();
-              void uploadSlip(e.dataTransfer.files);
-            }}
-            className="ord-btn danger wrap block mt-3 cursor-pointer"
-          >
-            {slipBusy ? (
-              `กำลังส่งสลิป${slipProgress ? ` ${slipProgress}` : ""}…`
-            ) : (
-              <span className="flex flex-col items-center gap-[3px]">
-                <span>📤 {paidSoFar(order) > 0 ? "แนบสลิปโอนเพิ่ม" : "แนบสลิปการโอน"}</span>
-                <span className="text-[.72rem] opacity-90">แตะเลือกรูป (เลือกได้หลายใบ) หรือลากมาวางตรงนี้</span>
-              </span>
-            )}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              className="hidden"
-              disabled={slipBusy}
-              onChange={(e) => {
-                void uploadSlip(e.target.files);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          {slipErr && <p className="mt-2 text-xs font-semibold">⚠️ {slipErr}</p>}
-          <button type="button" onClick={() => setShowPayTerms(true)} className="ord-btn quiet sm block mt-2">
-            📋 อ่านเงื่อนไขก่อนโอนอีกครั้ง
-          </button>
-        </div>
-      )}
+      {withDue && dueBox}
       {order.status === "รอตรวจสอบ" && (
         <div className="ord-note warn mt-4 p-4 text-sm">
           🧾 <strong>ได้รับสลิปแล้ว</strong> — ทางร้านกำลังตรวจสอบการชำระเงิน เดี๋ยวจะเริ่มงานให้ครับ
@@ -1197,6 +1213,9 @@ export default function CustomerOrderPage() {
             )}
           </div>
         </div>
+
+        {/* 💸 ใบรอชำระเงินบนมือถือ: กล่อง QR/เลขบัญชี/แนบสลิป ขึ้นมาอยู่ใต้เลขออเดอร์เลย (จอคอมอยู่คอลัมน์ขวาตามเดิม) */}
+        {payFirst && <div className="lg:hidden">{dueBox}</div>}
 
         {/*
           📅 วันที่จัดส่ง + รูปแบบการจัดส่ง — เจ้าของร้านสั่ง 14 ก.ย. 69: "ปรับวันที่จัดส่งให้เด่นกว่านี้"
@@ -1355,7 +1374,7 @@ export default function CustomerOrderPage() {
         )}
       </div>
 
-      <div className="lg:hidden">{payFlow}</div>
+      <div className="lg:hidden">{payFlow(!payFirst)}</div>
 
 
       {waitingItems > 0 && (
@@ -2201,7 +2220,7 @@ export default function CustomerOrderPage() {
 
         {/* ขวา: สรุป (ติดหนึบตอนเลื่อน) */}
         <aside className="space-y-4 lg:sticky lg:top-6">
-          <div className="hidden lg:block">{payFlow}</div>
+          <div className="hidden lg:block">{payFlow()}</div>
           <div className="ord-card p-4 sm:p-5">
             <p className="ord-eyebrow">สรุปยอด</p>
             <div className="mt-3 flex justify-between text-sm">
