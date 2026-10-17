@@ -53,6 +53,9 @@ function ChatIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
+/** หน้าที่ซ่อน LINE ลอย (+ ตะกร้าลอย) บนมือถือ แล้วให้ปุ่มนี้กางเลือก LINE / ผู้ช่วย AI แทน — CSS อ่าน body.fab-one */
+const ONE_FAB_PAGES = new Set(["/", "/products", "/cart"]);
+
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -63,8 +66,9 @@ export default function ChatWidget() {
   /** หน้าแรกบนมือถือ: ปุ่มเดียว "ทักเรา" → กางให้เลือก LINE / ผู้ช่วย AI */
   const [picker, setPicker] = useState(false);
   const [phone, setPhone] = useState(false);
-  const home = usePathname() === "/";
-  const merged = home && phone;
+  // หน้าที่ปุ่มลอยเหลือใบเดียว "ทักเรา" (LINE รวมเข้าแผ่นเลือก) — หน้าแรก 17 ต.ค. 69 · หน้ารวมสินค้า + ตะกร้า ตามมาวันเดียวกัน
+  const oneFab = ONE_FAB_PAGES.has(usePathname() ?? "");
+  const merged = oneFab && phone;
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,6 +100,12 @@ export default function ChatWidget() {
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+
+  // body.fab-one → landing.css ซ่อน LINE/ตะกร้าลอยบนมือถือ (หน้าแรก/หน้ารวมสินค้า/ตะกร้า ยังมี :has() กันกระพริบก่อนโหลดเสร็จ)
+  useEffect(() => {
+    document.body.classList.toggle("fab-one", oneFab);
+    return () => document.body.classList.remove("fab-one");
+  }, [oneFab]);
 
   // เปลี่ยนหน้า/หมุนจอแล้วไม่ใช่โหมดรวมปุ่ม = เก็บแผ่นเลือกทิ้ง
   useEffect(() => {

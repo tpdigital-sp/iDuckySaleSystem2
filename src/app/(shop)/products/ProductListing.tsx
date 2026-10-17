@@ -328,7 +328,7 @@ export default function ProductListing() {
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="ค้นหาสินค้า เช่น แก้ว, เสื้อยืด, เคส..."
+                placeholder="ค้นหา เช่น แก้ว, เสื้อยืด"
                 aria-label="ค้นหาสินค้า"
               />
             </label>

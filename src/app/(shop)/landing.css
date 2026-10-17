@@ -5928,3 +5928,55 @@ to{opacity:1;transform:none}}
   .dl .socials a{width:44px;height:44px}
   .dl .f-bottom{font-size:.8rem}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   📱 เส้นทางซื้อบนมือถือ: หน้ารวมสินค้า → หน้าสินค้า → ตะกร้า → checkout
+   เจ้าของร้านสั่ง 17 ต.ค. 69 "ข้อ 1–4 ก่อน" หลังตรวจเว็บจริงจอ 375px
+   ⚠️ ต้องอยู่ท้ายไฟล์ — ทับกฎเดิมที่ specificity เท่ากัน
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@media(max-width:700px){
+  /* 1) ช่องกรอกทุกช่อง 16px — ต่ำกว่านี้ iPhone ซูมหน้าจอเองทุกครั้งที่แตะ
+        วัดได้: ค้นหา 13.8 · เรียงลำดับ 12.8 · ตัวเลือกสินค้า (select) 13 · จำนวน 14 · หมายเหตุตะกร้า 14 · ชื่อ/เบอร์/ที่อยู่/รหัสไปรษณีย์ checkout 14
+        !important = ชนะคลาส Tailwind text-[13px]/text-sm ที่ใส่ไว้ตรงตัวช่อง */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([type=button]):not([type=submit]),
+  select,textarea{font-size:16px !important}
+
+  /* 2) ตะกร้า: ปุ่ม − / + 24×32 → 44×44 · ช่องติ๊ก 21 → 26 · ปุ่มเล็ก (แก้ไข/ลบ/ล้างตะกร้า/ลายของแถม) สูง 44 */
+  /* flex:none — แถวจำนวน+ราคากว้างแค่ ~194px ปุ่มเดิมโดนบีบเหลือ 25px · 40×44 เผื่อที่ให้ราคาด้านขวา */
+  .shopp .ord-qty{flex:none}
+  .shopp .ord-qty button{flex:none;width:40px;height:44px;font-size:1.15rem}
+  .shopp .ord-qty span{min-width:32px;font-size:1rem}
+  .shopp .ord-check{width:26px;height:26px;border-radius:9px}
+  .shopp .ord-check::after{font-size:.9rem}
+  :is(.shopp,.shopp-modal) .ord-btn.sm{min-height:44px;padding:8px 14px;font-size:.85rem}
+  .shopp.cart-pg .gift-opt{min-height:44px}
+  /* ✏️ แก้ไข / ✕ ลบ ในการ์ดสินค้า ตั้งขนาดใน style="" (5px 10px · .72rem) → ต้อง !important */
+  .shopp.cart-pg .ord-btn.quiet.sm{font-size:.78rem !important;padding:8px 8px !important}
+
+  /* 4) ตัวหนังสือขั้นต่ำ 12px
+        หน้ารวมสินค้า: ป้ายหมวดบนการ์ด 9.6 · ⭐ขายแล้ว 10.9 · ป้ายขายดี/NEW 10.6 · ตัวเลขบนชิปหมวด 11.2 (วัดได้ 405 จุด) */
+  .dl .plist-grid .cat-l,.dl .plist-grid .stars{font-size:.75rem}
+  /* ป้ายหมวดใหญ่ขึ้นแล้วตก 2 บรรทัด หักกลางคำ ("งานอะคริ|ลิค") การ์ดสูงไม่เท่ากัน → บรรทัดเดียว ตัด … */
+  .dl .plist-grid .cat-l{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dl .plist-grid .tag{font-size:.75rem}
+  .dl .plist-grid .tag i{font-size:.8rem}
+  .dl .plist-n{font-size:.75rem}
+  /*    ตะกร้า/checkout/หน้าออเดอร์ (.shopp) + หน้าสินค้า (body.buy-page): คลาส Tailwind ตัวจิ๋ว 9–11.5px → 12px
+        (ราคาต่อชิ้น "฿82 / ชิ้น" · เงื่อนไขของแถม · คำอธิบายตัวเลือก · ป้ายสรุปบนหน้าสินค้า) */
+  :is(.shopp,body.buy-page main) :is(.text-\[9px\],.text-\[10px\],.text-\[10\.5px\],.text-\[11px\],.text-\[11\.5px\]){font-size:12px}
+  .shopp .ord-chip,.shopp .ord-eyebrow{font-size:.75rem}
+  .shopp.cart-pg .gift-opt{font-size:.8rem}
+  .shopp .ord-step .stime{font-size:.75rem}
+}
+
+@media(max-width:1000px){
+  /* 3) ปุ่มลอยเหลือใบเดียว "ทักเรา" (กางเลือก LINE/ผู้ช่วย AI — ChatWidget ONE_FAB_PAGES) บนหน้ารวมสินค้า + ตะกร้า
+        แบบเดียวกับหน้าแรก · ตะกร้าลอยซ่อน (เมนูล่างมีตะกร้า+ป้ายจำนวน) · body.fab-one ตั้งโดย ChatWidget
+        :has(.plist-top / .cart-pg) = ซ่อนตั้งแต่ HTML แรก ไม่กระพริบ · แยกกฎ (เบราว์เซอร์ไม่รู้จัก :has ทิ้งทั้งกฎ) */
+  body:has(.plist-top) .fabx-cart,body:has(.plist-top) .fabx-line,body:has(.cart-pg) .fabx-line{display:none !important}
+  body.fab-one .fabx-cart,body.fab-one .dl .fabx-cart,body.fab-one .fabx-line,body.fab-one .dl .fabx-line{display:none !important}
+  body:has(.plist-top) .fabx-bot{bottom:calc(100px + env(safe-area-inset-bottom,0px)) !important}
+  body.fab-one .fabx-bot,body.fab-one .dl .fabx-bot{bottom:calc(100px + env(safe-area-inset-bottom,0px)) !important}
+  /* ตะกร้าตอนแถบยืนยันติดล่างจอ (~88–150px) — ปุ่มเดียวขึ้นไปแทนที่ช่องของ LINE เหนือแถบ (เดิมบอท 230 / LINE 166) */
+  body.fab-one.cartbar-on .fabx-bot,body.fab-one.cartbar-on .dl .fabx-bot{bottom:calc(166px + env(safe-area-inset-bottom,0px)) !important}
+}

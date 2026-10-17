@@ -548,7 +548,8 @@ export default function CartPage() {
   }
 
   return (
-    <div className="shopp">
+    // cart-pg = กฎมือถือเฉพาะตะกร้าท้าย landing.css (ปุ่มลอยเหลือใบเดียว · ปุ่ม/ตัวหนังสือใหญ่ขึ้น)
+    <div className="shopp cart-pg">
       {sky}
       <div className="shopp-in">
         <div className="shopp-head">
