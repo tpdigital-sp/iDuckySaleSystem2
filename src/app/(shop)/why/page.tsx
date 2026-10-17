@@ -143,13 +143,13 @@ export default function WhyPage() {
               </div>
             </div>
 
-            {/* น้องเป็ดชูเสื้อที่พิมพ์เสร็จ + คลิปบอร์ดเช็กถูก/แว่นขยาย (public/why/why-hero.webp · สร้างด้วย Gemini
-                จากเป็ดหน้าแรก hero-duck เป็นภาพอ้างอิง 17 ต.ค. 69 — เจ้าของร้านขอ "ภาพเป็ดใหม่" แทน duck-hug) */}
+            {/* น้องเป็ดชูเสื้อที่พิมพ์เสร็จ ยืนบนแท่นกลม + โต๊ะโชว์แก้ว/เคส/พวงกุญแจ คลิปบอร์ดเช็กถูก กล่องพัสดุ
+                (public/why/why-hero.webp พื้นใส · Gemini อ้างอิงเป็ดหน้าแรก hero-duck 17 ต.ค. 69) */}
             <div className="wy-hero-art">
               <span className="wy-bub wy-b1">สั่งชิ้นเดียวก็ได้ 🐥</span>
               <span className="wy-bub wy-b2">เห็นแบบก่อนผลิต ✨</span>
               <div className="wy-scene">
-                <img src="/why/why-hero.webp" alt="น้องเป็ด iDucky ชูเสื้อที่พิมพ์ลายเสร็จ พร้อมแก้วมัค เคสมือถือ พวงกุญแจ และคลิปบอร์ดตรวจงาน" />
+                <img src="/why/why-hero.webp" alt="น้องเป็ด iDucky ชูเสื้อที่พิมพ์ลายเสร็จ ข้างโต๊ะโชว์แก้วมัค เคสมือถือ พวงกุญแจ คลิปบอร์ดตรวจงาน และกล่องพัสดุ" />
               </div>
             </div>
           </div>

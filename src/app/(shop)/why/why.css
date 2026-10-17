@@ -1,6 +1,6 @@
 /* ═══════ หน้าทำไมต้องเรา (/why) — prefix .wy- ═══════
    ภาษาเดียวกับหน้าแรก/หน้าติดต่อเรา: ใช้ token ของ landing.css (sky/navy/yolk · Mitr · --shadow-*)
-   ผังหน้า: ฮีโร่ 2 คอลัมน์ (ข้อความ + ภาพน้องเป็ดชูเสื้อ why-hero.webp พื้นใส) → 4 เหตุผลหลัก (orb ชุดโซน #why หน้าแรก)
+   ผังหน้า: ฮีโร่ 2 คอลัมน์ (ข้อความ + ภาพน้องเป็ดชูเสื้อบนแท่นกลม why-hero.webp พื้นใส) → 4 เหตุผลหลัก (orb ชุดโซน #why หน้าแรก)
    → สั่งง่าย 8 ใบ (ไอคอน 3D /how-to) → เส้นทาง 5 ขั้น → รีวิว (.reviews-sec) → เหมาะกับใคร 3 ใบ → แถบเนวี่ .chat-cta
    ยืมของกลาง: .btn .kicker .head .orb .o-(blue|yolk|peach|mint) .rvc .rv-viewall .chat-cta .t-(sky|yolk|mint) */
 .dl.wy-page .top-stack{background:var(--pale-bg)}
@@ -31,18 +31,20 @@
 .dl .wy-fact.mint::before{background:#3FAE8B}
 .dl .wy-hero-btns{display:flex;flex-wrap:wrap;gap:11px;margin-top:24px}
 
-/* ฉากน้องเป็ด (why-hero.webp พื้นใส — ลบพื้นฟ้า/เมฆ/แสงออกด้วย BiRefNet ใน tools/cutout-py ตามที่เจ้าของร้านขอ 17 ต.ค. 69)
-   ลอยบนพื้นฟ้าของหน้าเลย ไม่มีกรอบ · แสงขาวนวลด้านหลัง + โยกขึ้นลงช้า ๆ แบบเป็ดหน้าแรก */
+/* ฉากน้องเป็ด (why-hero.webp พื้นใส) — แบบ diorama ยืนบนแท่นกลมเหมือนเป็ดหน้าแรก (hero-duck)
+   เจ้าของร้าน 17 ต.ค. 69: ภาพก่อนของลอยกลางอากาศ "ดูลอยๆไป" → สร้างใหม่ (Gemini 2K) ให้ทุกชิ้นวางบนแท่น/โต๊ะ
+   ตัดพื้นขาวด้วยสี (พื้นขาวต่อจากขอบภาพ + ถอดขอบขาว) · ไม่โยก ไม่ใส่แสงเรือง ให้ตั้งอยู่กับที่
+   เงานุ่มใต้แท่น (::after) ให้แท่นวางบนหน้าเว็บ ไม่ลอย */
 .dl .wy-hero-art{position:relative;min-width:0;display:grid;place-items:center}
-.dl .wy-hero-art::before{content:"";position:absolute;width:min(70%,380px);aspect-ratio:1;border-radius:50%;z-index:0;
-  background:radial-gradient(circle,#fff 0%,rgba(255,255,255,.75) 42%,rgba(226,243,254,0) 70%)}
-.dl .wy-scene{position:relative;z-index:1;width:100%}
-.dl .wy-scene img{display:block;width:100%;height:auto;filter:drop-shadow(0 18px 26px rgba(44,129,196,.18));
-  animation:bobble 5s ease-in-out infinite}
+.dl .wy-scene{position:relative;z-index:1;width:108%;margin-right:-6%}
+.dl .wy-scene::after{content:"";position:absolute;left:8%;right:8%;bottom:1%;height:12%;z-index:-1;border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(44,129,196,.22) 0%,rgba(44,129,196,.08) 45%,rgba(44,129,196,0) 72%);
+  filter:blur(6px)}
+.dl .wy-scene img{display:block;width:100%;height:auto}
 .dl .wy-bub{position:absolute;z-index:4;background:#fff;border:1.5px solid var(--sky-100);border-radius:16px;
   padding:8px 14px;font-family:var(--display);font-size:.82rem;color:var(--navy);box-shadow:var(--shadow-s);white-space:nowrap}
-.dl .wy-b1{top:4%;left:2%;animation:bgFloat3 9s ease-in-out infinite}
-.dl .wy-b2{bottom:2%;left:6%;animation:bgFloat2 11s ease-in-out infinite}
+.dl .wy-b1{top:6%;left:4%;animation:bgFloat3 9s ease-in-out infinite}
+.dl .wy-b2{top:14%;right:0;animation:bgFloat2 11s ease-in-out infinite}
 
 @media(max-width:900px){
   .dl .wy-hero{grid-template-columns:1fr;gap:6px;text-align:center}
@@ -50,7 +52,7 @@
   .dl .wy-lead{margin-inline:auto}
   .dl .wy-facts,.dl .wy-hero-btns{justify-content:center}
   .dl .wy-hero-art{order:-1}
-  .dl .wy-scene{width:min(100%,440px)}
+  .dl .wy-scene{width:min(100%,520px);margin-right:0}
   .dl .wy-bub{display:none}
 }
 @media(max-width:520px){
@@ -191,9 +193,9 @@
 }
 
 @media(prefers-reduced-motion:reduce){
-  .dl .wy-scene img,.dl .wy-bub{animation:none}
+  .dl .wy-bub{animation:none}
 }
 /* มือถือ/แท็บเล็ต: หยุดของประดับที่เล่นวน ตามกฎกลางท้าย landing.css (17 ต.ค. 69 — แอป LINE เลื่อนกระตุก/กินแบต) */
 @media(max-width:1000px){
-  .dl .wy-scene img{animation:none}
+  .dl .wy-bub{animation:none}
 }
