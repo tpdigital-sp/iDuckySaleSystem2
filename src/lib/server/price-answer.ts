@@ -665,6 +665,18 @@ export function currentSession(turns: HistoryTurn[], max = 14): HistoryTurn[] {
   }
   return out;
 }
+/**
+ * 🧠 ตัวเลือกที่คุยกันไปแล้วในรอบนี้ (19 ต.ค. 69 เจ้าของร้าน "บอทยังตอบข้อความแบบต่อเนื่องได้ไม่ดี … ให้จำข้อความก่อนหน้าได้")
+ * ข้อความทั้งสองฝั่งของรอบสนทนาปัจจุบัน (ตัดรอบเก่า >6 ชม. เหมือน understand) ต่อกัน — ให้เครื่องคิดราคาจับชื่อตัวเลือก
+ * (เนื้อ/ไดคัท/ขนาด…) ที่เคยพูดถึงแล้ว แทนการพึ่ง LLM เขียนลง standalone (เขียนไม่เหมือนกันทุกรอบ บางรอบตกหล่น)
+ */
+export function sessionCarry(history: unknown): string {
+  return currentSession(normHistory(history))
+    .map((t) => t.text)
+    .join("\n")
+    .slice(-2500);
+}
+
 function normHistory(history: unknown): HistoryTurn[] {
   if (!Array.isArray(history)) return [];
   return history
@@ -1141,6 +1153,24 @@ ${list}
     // 🫧 9 ต.ค. 69 13:10 ด่านกำหนดสินค้าเอง (จุ๊บ/ดุ๊กดิ๊ก/Sticker Gold/PP/กระดาษ) เปลี่ยนสินค้าแล้ว แต่ standalone ที่ LLM เขียนยังเอ่ยสินค้าเดิม
     // ("GRIPTOK PUSH-PULL ดึงเข้าออกติดใหม่ได้ไหม") → searchInfo อ่านหน้าสติ๊กเกอร์สูญญากาศด้วยคำถามเรื่อง Griptok แล้วตอบไม่ได้ → บอทเงียบ
     // → ถ้า standalone เอ่ยชื่อสินค้าที่ไม่อยู่ในชุดที่เลือกแล้ว ให้ใช้ข้อความลูกค้าเดิมแทน
+    /*
+     * 🧭 19 ต.ค. 69 รอบตอบต่อ "ถ้าเพิ่มเป็น 3000 ดวงล่ะคะ" — LLM เขียน standalone "สติ๊กเกอร์ UV … 3000 ดวง" แต่ products ใส่ "สติ๊กเกอร์เรืองแสง"
+     * (ตอบขัดกันเอง) → บอทเปลี่ยนสินค้ากลางบทสนทนา · standalone เอ่ยชื่อเต็มสินค้า 1 ตัวชัด ๆ ที่ไม่อยู่ในที่เลือก
+     * และข้อความลูกค้าไม่ได้เอ่ยถึงตัวที่เลือก = เชื่อ standalone (ด่านเฉพาะกิจข้างบนที่ตั้งสินค้าเองไม่โดนเพราะเช็คก่อนด่านเปลี่ยน)
+     */
+    {
+      const sa = norm(String(raw.standalone ?? ""));
+      const named = sa ? items.filter((it) => norm(it.name).length >= 4 && sa.includes(norm(it.name))) : [];
+      const top1 = named.filter((it) => !named.some((o) => o !== it && norm(o.name).includes(norm(it.name))));
+      const qn0 = norm(q);
+      // ถามต่อสั้น ๆ ("ถ้าเพิ่มเป็น 3000 ดวงล่ะ") LLM บางทีหยิบสินค้าอื่นมาเป็นเมนู 3 ตัว ทั้งที่ standalone ยังพูดถึงตัวเดิม
+      const untouched = finalPicked.length === picked.length && finalPicked.every((f, i) => f.id === picked[i]?.id);
+      if (top1.length === 1 && finalPicked.length >= 1 && untouched && !finalPicked.some((f) => f.id === top1[0].id || qn0.includes(norm(f.name)))) {
+        anchorDebug?.trace.push(`standalone→${top1[0].name} (LLM เลือก ${finalPicked.map((f) => f.name).join(", ")})`);
+        finalPicked = [top1[0]];
+        notInCatalog = false;
+      }
+    }
     const guardChanged = finalPicked.length !== picked.length || finalPicked.some((f, i) => f.id !== picked[i]?.id);
     const saRaw = String(raw.standalone ?? "").trim();
     const saOff =
@@ -1271,12 +1301,25 @@ function ratesOf(p: Product): { label: string; desc?: string; minQty?: number; m
  * คอลัมน์ที่ "ตรงกับคำที่ลูกค้าพูด" — ถามมาว่า PVC ก็ไม่ต้องเทตารางกระดาษให้ดู
  * ไม่มีคอลัมน์ไหนตรงเลย = คืนทั้งหมด (ให้ลูกค้าเห็นตัวเลือกแล้วค่อยเลือก)
  */
-function pickColumns(keys: string[], query: string): string[] {
+function pickColumns(keys: string[], query: string, carry = ""): string[] {
   const q = norm(query);
+  const loose = (t: string) => t.replace(/[\s\-–_/.·,]/g, "");
+  const ql = loose(q);
+  const cl = loose(norm(carry));
   // นับว่าคอลัมน์นี้ตรงกับคำของลูกค้ากี่ส่วน — "3cm 3mm" ต้องได้คอลัมน์ที่ตรงทั้งสองส่วน ไม่ใช่ทุกคอลัมน์ที่มี 3cm หรือ 3mm
+  // 19 ต.ค. 69 รอบตอบต่อ "ไดคัท 100%" — LLM สรุปเนื้อเป็น "พลาสติกใส-แผ่นรองขุ่น" (ไม่มี "เนื้อ" กับวงเล็บ) จับคอลัมน์
+  // "เนื้อพลาสติกใส-แผ่นรองขุ่น (พิมพ์รองขาว)" ไม่ติด → บอทกางเนื้อทั้ง 3 แบบแล้วถามเนื้อซ้ำ · เทียบแกน (ตัดคำนำ "เนื้อ" + วงเล็บ ≥4 ตัว) ด้วย
+  const coreOf = (v: string) => v.replace(/\([^)]*\)/g, "").replace(/^เนื้อ/, "").trim();
+  // ไม่สนช่องว่าง/ขีด ("พลาสติกใส แผ่นรองขุ่น" = "พลาสติกใส-แผ่นรองขุ่น")
+  const hitIn = (hay: string, hayLoose: string, v: string) => {
+    if (v.length < 2) return false;
+    const c = coreOf(v);
+    return hay.includes(v) || (c.length >= 4 && (hay.includes(c) || hayLoose.includes(loose(c))));
+  };
+  // ข้อความรอบนี้หนัก 10 · ที่เคยคุยไว้ (carry) หนัก 1 — เปลี่ยนใจรอบนี้ ("ไดคัท 100%" หลังเคยเห็น 50%) ชนะของเก่าเสมอ
   const scored = keys.map((k) => ({
     k,
-    n: k ? norm(k).split("│").filter((v) => v.length >= 2 && q.includes(v)).length : 0,
+    n: k ? norm(k).split("│").reduce((sum, v) => sum + (hitIn(q, ql, v) ? 10 : cl && hitIn(cl, cl, v) ? 1 : 0), 0) : 0,
   }));
   const best = Math.max(0, ...scored.map((x) => x.n));
   if (!best) return keys;
@@ -1313,7 +1356,7 @@ function rateHead(rate: { label: string; minQty?: number }, unit: string): strin
  * qtyUnit = หน่วยของ qty ที่ส่งมา ("sheet" = แผ่น เช่น แผ่น A3 · "sqm" = ตร.ม.) — สินค้าที่มีหลายเรทคนละหน่วย (สติ๊กเกอร์ UV: เรท A3 / เรทตารางเมตร)
  * ต้องแปลงจำนวนให้ตรงหน่วยของแต่ละเรทด้วยตัวคูณ sheetYield.unitSheets (1 ตร.ม. = 8 แผ่น A3) — 19 ต.ค. 69 เดิมเอา 500 แผ่นไปคิดเป็น 500 ตร.ม. (฿395,000)
  */
-function quote(p: Product, query: string, qtyIn: number | null, narrow = false, rateHint = "", qtyUnit?: "sheet" | "sqm"): PriceAnswer | null {
+function quote(p: Product, query: string, qtyIn: number | null, narrow = false, rateHint = "", qtyUnit?: "sheet" | "sqm", carry = ""): PriceAnswer | null {
   const qty = qtyIn;
   const sheetCfg = (p.options ?? []).map((o) => o.sheetYield).find((c) => c?.unitSheets && Object.keys(c.unitSheets).length);
   const sheetName = sheetCfg?.sheetName ?? "แผ่น";
@@ -1367,7 +1410,7 @@ function quote(p: Product, query: string, qtyIn: number | null, narrow = false, 
     const { q: qty, note: qtyNote } = qtyForUnit(unit);
     const all = Object.keys(m.cells).filter((k) => (m.cells[k] ?? []).some((n) => n > 0));
     if (!all.length) continue;
-    const picked = pickColumns(all, query);
+    const picked = pickColumns(all, query, carry);
     const matched = picked.length < all.length;
     if (matched) narrowed = true;
     if (matched && !namedParts.length) picked[0].split("│").forEach((v, idx) => { if (v && v.length >= 2 && qn.includes(norm(v))) { namedParts.push(v); namedIdx.add(idx); } });
@@ -2346,7 +2389,7 @@ function piecesToSheets(product: Product, q: string, qty?: number | null): Sheet
 
 export async function searchPrice(
   query: string,
-  opts: { qty?: number | null; allowFallback?: boolean; timeoutMs?: number; pick?: Pick; rateHint?: string } = {},
+  opts: { qty?: number | null; allowFallback?: boolean; timeoutMs?: number; pick?: Pick; rateHint?: string; carry?: string } = {},
 ): Promise<PriceAnswer> {
   const q = query.trim();
   const qty = opts.qty ?? parseQty(q);
@@ -2362,7 +2405,7 @@ export async function searchPrice(
     if (!full) continue;
     const conv = piecesToSheets(full, q, qty);
     // 🧊 ใสฝ้า = เนื้อพลาสติกใส-แผ่นรองขุ่น (เจ้าของร้านยืนยัน 19 ต.ค. 69) → ใส่ชื่อตัวเลือกเนื้อลงคำค้น ให้เครื่องคิดราคาเลือกเนื้อนี้ ไม่ใช่เนื้อที่ถูกสุด
-    if (conv && /ใส\s*(ฝ้า|ขุ่น|ด้าน|เมท)/.test(`${q} ${opts.rateHint ?? ""}`)) {
+    if (conv && /ใส\s*(ฝ้า|ขุ่น|ด้าน|เมท)/.test(`${q} ${opts.rateHint ?? ""} ${opts.carry ?? ""}`)) {
       const frost = (full.options ?? []).flatMap((o) => o.choices ?? []).find((c) => /พลาสติกใส-แผ่นรองขุ่น/.test(c.name));
       if (frost) conv.query = `${conv.query} ${frost.name}`;
     }
@@ -2372,10 +2415,10 @@ export async function searchPrice(
     // หน่วยของจำนวน: แปลงเป็นแผ่นแล้ว = แผ่น · ลูกค้าพิมพ์ "N แผ่น" / "N ตร.ม." เอง = ตามนั้น (ให้เรทคนละหน่วยแปลงถูก)
     const qtyUnit: "sheet" | "sqm" | undefined = conv || /\d\s*แผ่น/.test(q) ? "sheet" : /\d\s*(ตร\.?\s*ม|ตารางเมตร)/.test(q) ? "sqm" : undefined;
     const ans = conv
-      ? quote(full, conv.query, conv.sheets, items.length > 1, opts.rateHint, "sheet")
+      ? quote(full, conv.query, conv.sheets, items.length > 1, opts.rateHint, "sheet", opts.carry)
       : loose
-        ? quote(full, q.replace(loose.token, " "), null, items.length > 1, opts.rateHint)
-        : quote(full, q, qty, items.length > 1, opts.rateHint, qtyUnit);
+        ? quote(full, q.replace(loose.token, " "), null, items.length > 1, opts.rateHint, undefined, opts.carry)
+        : quote(full, q, qty, items.length > 1, opts.rateHint, qtyUnit, opts.carry);
     /**
      * 💬 19 ต.ค. 69 เจ้าของร้าน "บอทยังไม่ฉลาดในการอ่านข้อความที่ลูกค้าพิมพ์ … วิเคราะห์คำถามได้ไม่ถูกต้อง":
      *   คำตอบต้องเรียงตามที่ลูกค้าถาม — ① ถาม "มี…ไหม" = ตอบว่ามีก่อน ② สรุปงานที่เข้าใจ (2 ลาย × 1,000 = 2,000 ดวง · ขนาด) ③ การ์ดราคา ④ ปิดท้ายด้วยขั้นต่อไปจริง ไม่ถามจำนวนซ้ำ

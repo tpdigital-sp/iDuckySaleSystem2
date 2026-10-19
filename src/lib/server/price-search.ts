@@ -26,6 +26,7 @@ import {
   searchPrice,
   searchSpec,
   understand,
+  sessionCarry,
   type Pick,
   type PriceAnswer,
   type ProductRef,
@@ -176,6 +177,8 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   // ⚠️ ไม่รับชื่อ Claude ทางนี้ — เส้นนี้เปิดสาธารณะ ใครก็ยิงเปลืองค่า Claude ได้ (เทียบโมเดลใช้ setUnderstandCallerForEval ในสคริปต์แทน)
   const understandModel = typeof body.understandModel === "string" && /^gemini-[a-z0-9.-]+$/.test(body.understandModel) ? body.understandModel : undefined;
   const u: Understanding | null = body.mode ? null : await understand(query, context, body.history, profile, understandModel);
+  // 🧠 ตัวเลือกที่คุยไว้แล้วในรอบนี้ ให้เครื่องคิดราคาจำต่อ (sessionCarry · 19 ต.ค. 69 "ให้จำข้อความก่อนหน้าได้")
+  const carry = sessionCarry(body.history);
 
   let mode: "price" | "spec" | "minqty" | "mix" = pickMode(query, body.mode);
   let searchQuery = query;
@@ -231,7 +234,7 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     } else if (u.ids.length >= 1 && (qty || u.qty) && parseBudget(query) && ["price", "spec", "other", "followup", "knowledge"].includes(u.intent)) {
       // 💸 บอกงบต่อชิ้น + จำนวน → ได้ไหม + แบบที่อยู่ในงบ (เครื่องคิดเงินเดียวกับตะกร้า)
       ans = await budgetAnswer(u.ids, (qty || u.qty) as number, parseBudget(query) as number, query);
-      if (!ans) ans = await searchPrice(searchQuery, { qty: qty || u.qty, allowFallback: body.noFallback !== true, rateHint: query, pick: { ids: u.ids, broad: u.broad } });
+      if (!ans) ans = await searchPrice(searchQuery, { qty: qty || u.qty, allowFallback: body.noFallback !== true, rateHint: query, carry, pick: { ids: u.ids, broad: u.broad } });
     } else if (u.ids.length === 1 && (u.attr || (ATTR_RE.test(query) && INCLUDE_Q_RE.test(query) && !ATTR_RE.test(u.products[0] ?? "")))) {
       // ⚠️ สินค้าที่ "ชื่อเป็นอุปกรณ์เอง" (ตะขอแขวนผนังอะคริลิค) ถามราคา = ราคาสินค้านั้น ไม่ใช่ค่าตะขอเสริม
       // 🔩 อุปกรณ์/ตัวเลือก/รวมไหม ของสินค้าที่คุยอยู่ ("ราคารวมตะขอรึยัง" "ร้านมีตะขอแบบไหนบ้าง เท่าไหร่") → ตอบจากหน้าสินค้า ไม่ว่าจะมีจำนวนค้างในบทสนทนาหรือไม่
@@ -244,7 +247,7 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
       ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: false });
       if (ans.kind === "skip") {
         const pk = { ids: u.ids, broad: u.broad };
-        ans = u.intent === "spec" ? await searchSpec(searchQuery, pk) : await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, pick: pk });
+        ans = u.intent === "spec" ? await searchSpec(searchQuery, pk) : await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, carry, pick: pk });
       }
     } else if (u.intent === "knowledge" && u.ids.length) {
       // ถามความรู้เกี่ยวกับสินค้าที่รู้ตัว → อ่านจากหน้าสินค้าจริง (ไม่พอ = ให้ agent ตอบ)
@@ -282,12 +285,12 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     } else if (mode === "spec") {
       ans = await searchSpec(searchQuery, pick);
     } else {
-      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, pick });
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, carry, pick });
     }
     // ขั้นต่ำ/สเปกตอบไม่ได้ → ลองราคาต่อ (คำถามอย่าง "สั่ง 1 ชิ้นได้ไหม ราคาเท่าไหร่" ไม่ควรตอบว่างเปล่า)
     // คำถามคละลายไม่มีข้อมูล = ให้ agent ตอบ อย่าเทตารางราคา
     if (mode !== "price" && mode !== "mix" && ans.kind === "skip") {
-      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, pick });
+      ans = await searchPrice(searchQuery, { qty, allowFallback: body.noFallback !== true, rateHint: query, carry, pick });
     }
   }
 
