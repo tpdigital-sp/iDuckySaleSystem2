@@ -313,9 +313,13 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
   return new Blob([bytes as unknown as BlobPart], { type: "application/postscript" });
 }
 
-/** สร้าง .ai — ลอง Illustrator ในเครื่องก่อน ไม่ได้ค่อยใช้ PDF-.ai (บอกด้วยว่าได้แบบไหน) */
-export async function buildCalendarAi(pages: AiPage[], title: string): Promise<{ blob: Blob; real: boolean; note: string }> {
-  if (await illustratorReady()) {
+/**
+ * สร้าง .ai — ลอง Illustrator ในเครื่องก่อน ไม่ได้ค่อยใช้ PDF-.ai (บอกด้วยว่าได้แบบไหน)
+ * @param local false = ไม่แตะโปรแกรม cutout-py/Illustrator เลย ทำไฟล์สำรอง PDF-.ai ในเบราว์เซอร์อย่างเดียว
+ *   (ตอนกด ✓ ใช้แบบนี้ / 💾 บันทึกกลับ — .ai แท้ไปทำที่หน้าออเดอร์ปุ่ม 🔁 · 19 ต.ค. 69)
+ */
+export async function buildCalendarAi(pages: AiPage[], title: string, local = true): Promise<{ blob: Blob; real: boolean; note: string }> {
+  if (local && (await illustratorReady())) {
     try {
       return { blob: await aiViaIllustrator(pages, title), real: true, note: "Illustrator แยกเลเยอร์ให้แล้ว" };
     } catch (e) {

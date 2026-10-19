@@ -1123,7 +1123,8 @@ export default function CalendarStudio({
   const [launchAsk, setLaunchAsk] = useState(false);
   const autoGo = useRef(false);
   useEffect(() => {
-    if (!open || !aiExport) return;
+    // เช็คเฉพาะตอนเปิดมาทำ .ai (🔁 autoOrder) — ✓ ใช้แบบนี้ / 💾 บันทึกกลับ ทั่วไปไม่แตะโปรแกรมในเครื่องแล้ว (19 ต.ค. 69)
+    if (!open || !aiExport || !autoOrder) return;
     let alive = true;
     const check = () => void cutoutStatus().then((st) => alive && (cutSt.current = st));
     check();
@@ -1132,7 +1133,7 @@ export default function CalendarStudio({
       alive = false;
       clearInterval(t);
     };
-  }, [open, aiExport]);
+  }, [open, aiExport, autoOrder]);
   /** โปรแกรมพร้อมแล้ว → ทำไฟล์ + บันทึกกลับต่อ (ครั้งเดียว) */
   const runAuto = async () => {
     if (autoGo.current) return;
@@ -3719,7 +3720,8 @@ export default function CalendarStudio({
    * ✂️ ไฟล์ชิ้นงานไดคัททั้งชุด (ตอน "ใช้แบบนี้" · การ์ดดาวน์โหลดในแผงเอาออกแล้วตามผู้ใช้สั่ง 14 ต.ค. 69)
    * print = ลาย + ขอบสี พื้นใส 300 DPI · white = มาสก์รองขาว · mock = ภาพจำลอง + เส้นตัด · svg = เส้นตัด · ai = .ai เส้นตัด CutContour
    */
-  async function makeCutFiles(stem: string, withAi: boolean) {
+  /** @param local false = .ai เส้นตัดเป็นไฟล์สำรอง PDF-.ai ในเบราว์เซอร์ ไม่เรียก cutout-py/Illustrator (ตอน ✓ ใช้แบบนี้ทั่วไป) */
+  async function makeCutFiles(stem: string, withAi: boolean, local = true) {
     if (!fmt.diecut) throw new Error("not diecut");
     await ensureFonts(fontKeys);
     // เส้นตัดจากตำแหน่งอ้างอิง (ไม่ตามซูม) · ลายจริงตามที่ลูกค้าจัด แล้ว clip ตามเส้น
@@ -3871,7 +3873,7 @@ export default function CalendarStudio({
           circles: r.hole ? [[fx(r.hole.cx), fy(r.hole.cy), r.hole.r]] : [],
         });
         const page: AiPage = { name: "ชิ้นงานไดคัท", wMm: fw, hMm: fh, bg: "none", layers, cut: null, paths };
-        const res = await buildCalendarAi([page], clean(`${stem}-ไดคัท`));
+        const res = await buildCalendarAi([page], clean(`${stem}-ไดคัท`), local);
         aiNote = res.note;
         ai = new File([res.blob], clean(`${stem}-ไดคัท${res.real ? "" : "-pdf"}.ai`), { type: "application/postscript" });
       } catch (e) {
@@ -3922,8 +3924,15 @@ export default function CalendarStudio({
 
   async function apply(force = false, lowOk = false) {
     if (busy) return;
+    /**
+     * 🐢→⚡ Illustrator (โปรแกรม Python cutout-py ในเครื่อง) ทำงานเฉพาะตอนเปิดมาจากปุ่ม 🔁 ทำ .ai เลเยอร์ ที่หน้าออเดอร์ (autoOrder)
+     * ✓ ใช้แบบนี้ / 💾 บันทึกกลับ ทั่วไป = ไม่เช็ค/ไม่สั่งเปิด/ไม่รอโปรแกรมในเครื่องเลย (เจ้าของร้านแจ้ง 19 ต.ค. 69 "ใช้งานจริงค่อนข้างช้า ตัด python ออก")
+     * เดิมทีมหลังบ้านกดแล้วต้องรอวาดชั้นทุกหน้า + Illustrator 5–35 วิ · Windows ที่โปรแกรมปิดอยู่รอเปิดอีกสูงสุด 45 วิ ก่อนเริ่มอัปโหลด
+     * → ใบที่ยังไม่มี .ai หน้าออเดอร์ขึ้นกล่องแดง "ยังไม่มีไฟล์ .ai" + ปุ่ม 🔁 ให้กราฟฟิกทำทีหลังจากเครื่องร้าน
+     */
+    const viaIllustrator = !!aiExport && !!autoOrder;
     // 🪟 ทีมหลังบ้านบน Windows: cutout-py ปิดอยู่ → สั่งเปิดตอนนี้ (ยังอยู่ในจังหวะคลิก เบราว์เซอร์ถึงยอม) · ไปรอตอนทำ .ai ด้านล่าง
-    if (aiExport && !fmt.diecut && cutSt.current === "down" && Date.now() - launchedAt.current > 60000 && launchCutoutPy())
+    if (viaIllustrator && !fmt.diecut && cutSt.current === "down" && Date.now() - launchedAt.current > 60000 && launchCutoutPy())
       launchedAt.current = Date.now();
     /**
      * 🖼 ช่อง "รูปหาย" (ต้นฉบับอัปไม่ขึ้นตอนลูกค้าออกแบบ — ระบบใส่ภาพเทาแทน) ยังถูกใช้อยู่ = ห้ามใช้แบบ
@@ -4050,7 +4059,7 @@ export default function CalendarStudio({
       let cutScale = 1;
       if (fmt.diecut) {
         setBusy("กำลังทำไฟล์ชิ้นงานไดคัท…");
-        const cf = await makeCutFiles(stem, !!aiExport);
+        const cf = await makeCutFiles(stem, !!aiExport, viaIllustrator);
         cutScale = cf.r.scale;
         print = cf.print;
         whiteFile = cf.white;
@@ -4111,7 +4120,7 @@ export default function CalendarStudio({
        * ไฟล์สำรองเนื้อหาเดียวกับ .pdf ที่แนบอยู่แล้ว (Illustrator เปิดแล้วรวมเป็น Layer 1) และหน้าออเดอร์ต้องกด 🔁 ทำใหม่ด้วย Illustrator อยู่ดี
        * → ตัดเวลาวาดชั้นทุกหน้า + อัปซ้ำบนมือถือ (ปฏิทิน 16 หน้า ≈ 15 MB) · ปุ่ม ⬇ .ai ทดสอบยังได้ไฟล์สำรองเหมือนเดิม
        */
-      if (aiExport && !fmt.diecut) {
+      if (viaIllustrator && !fmt.diecut) {
         setBusy("กำลังเช็ค Illustrator ของร้าน…");
         let st = await cutoutStatus();
         // เพิ่งสั่งเปิดโปรแกรม (ด้านบน) — รอให้ขึ้นก่อน ไม่งั้นได้ไฟล์ไม่มี .ai
