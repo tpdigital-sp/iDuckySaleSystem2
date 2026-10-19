@@ -115,9 +115,26 @@ export async function syncContacts(sb: SupabaseClient, opts?: { force?: boolean 
   const phones = [...new Set(incoming.map((i) => i.phone).filter(Boolean))];
   const names = [...new Set(incoming.filter((i) => !i.phone && i.name).map((i) => i.name))];
   const found = new Map<string, Contact>();
+  // แบ่งก้อนตาม "ความยาว URL" ไม่ใช่จำนวน — ชื่อไทย/อีโมจิเข้ารหัสแล้วยาว ~9 เท่า 200 ชื่อเกินเพดาน URL → fetch failed
+  // ซิงก์ล้มทั้งก้อน สมาชิกใหม่ไม่ได้การ์ด → แต้มไม่มีที่ลง (พบ 19 ต.ค. 69 ตอนเติมแต้มย้อนหลัง)
   const pull = async (col: string, vals: string[]) => {
-    for (let i = 0; i < vals.length; i += 200) {
-      const { data, error: e } = await sb.from("contacts").select("id,data").in(col, vals.slice(i, i + 200));
+    const MAX_URL = 6000;
+    const chunks: string[][] = [];
+    let cur: string[] = [];
+    let len = 0;
+    for (const v of vals) {
+      const l = encodeURIComponent(v).length + 3;
+      if (cur.length && (len + l > MAX_URL || cur.length >= 200)) {
+        chunks.push(cur);
+        cur = [];
+        len = 0;
+      }
+      cur.push(v);
+      len += l;
+    }
+    if (cur.length) chunks.push(cur);
+    for (const chunk of chunks) {
+      const { data, error: e } = await sb.from("contacts").select("id,data").in(col, chunk);
       if (e) throw new Error(e.message);
       for (const r of data ?? []) found.set(r.id as string, { ...(r.data as Contact), id: r.id as string });
     }

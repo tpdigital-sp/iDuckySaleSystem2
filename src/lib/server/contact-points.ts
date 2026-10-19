@@ -2,7 +2,8 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { orderTotal, type Order } from "@/lib/admin-data";
 import { applyEarn, applyRenewal, applyRevoke, lockedTier, seedTierStatus, tiersOf, type Tier, type TierStatus } from "@/lib/tiers";
-import type { Contact } from "@/lib/contacts";
+import { normalizePhone, type Contact } from "@/lib/contacts";
+import { syncContacts } from "@/lib/server/contacts-sync";
 
 /**
  * 🦆 แต้มสะสมลูกค้า — ลูกค้าเริ่มสะสมแต้มตั้งแต่ออเดอร์แรกที่ชำระครบ
@@ -29,20 +30,47 @@ function nowThai(): string {
 type ContactRow = { id: string; data: Contact };
 type Sb = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
+/** การ์ดที่ผูกบัญชีสมาชิกนี้ไว้ (memberId) — ใบเดียวกับที่หน้า /account อ่าน "ยอดสะสมทั้งหมด" */
+async function memberContact(sb: Sb, memberId: string): Promise<ContactRow | null> {
+  const { data } = await sb.from("contacts").select("id,data").eq("data->>memberId", memberId).limit(1).maybeSingle();
+  return (data as ContactRow | null) ?? null;
+}
+
 /**
- * หาผู้ติดต่อของออเดอร์ — ผูกไว้ (contactId) ใช้ตัวนั้น
- * ไม่ผูก → จับคู่จากเบอร์โทร ต้องเจอ "คนเดียวเท่านั้น" ถึงใช้ (เจอหลายคน = ไม่เดา กันแต้มเข้าผิดคน)
+ * หาผู้ติดต่อของออเดอร์:
+ *   1) ผูกไว้ (contactId) ใช้ตัวนั้น
+ *   2) ลูกค้าล็อกอินสั่งเอง (customerId) → การ์ดที่ถือ memberId ของบัญชีนั้น
+ *      ยังไม่มีการ์ด (สมัครแล้วจ่ายก่อนหลังบ้านซิงก์) → ซิงก์ให้มีการ์ดก่อนแล้วหาใหม่
+ *      เดิมข้อนี้ไม่มี — ใบสมาชิกไปจับคู่จากเบอร์อย่างเดียว ไม่เจอ/เจอหลายใบ = แต้มหายเงียบ
+ *      ต่อมาซิงก์สร้างการ์ดสมาชิกแต้ม 0 → หน้า /account โชว์ยอดสะสม ฿0 ทั้งที่จ่ายแล้ว (พนักงานแจ้ง 19 ต.ค. 69 · OD-261001-2510)
+ *   3) จับคู่จากเบอร์โทร ต้องเจอ "คนเดียวเท่านั้น" ถึงใช้ (เจอหลายคน = ไม่เดา กันแต้มเข้าผิดคน)
  */
 async function contactForOrder(sb: Sb, order: Order): Promise<ContactRow | null> {
   if (order.contactId) {
     const { data } = await sb.from("contacts").select("id,data").eq("id", order.contactId).maybeSingle();
     return (data as ContactRow | null) ?? null;
   }
-  const digits = String(order.phone ?? "").replace(/\D/g, "");
-  if (digits.length < 9) return null;
-  const { data } = await sb.from("contacts").select("id,data").eq("data->>phone", digits).limit(5);
+  if (order.customerId) {
+    const mine = await memberContact(sb, order.customerId);
+    if (mine) return mine;
+    try {
+      await syncContacts(sb, { force: true });
+      const synced = await memberContact(sb, order.customerId);
+      if (synced) return synced;
+    } catch {
+      /* ซิงก์พัง — ลองจับคู่จากเบอร์ต่อ */
+    }
+  }
+  const phone = normalizePhone(order.phone);
+  if (!/^0\d{8,9}$/.test(phone)) return null;
+  const { data } = await sb.from("contacts").select("id,data").eq("data->>phone", phone).limit(5);
   // การ์ดนำเข้าที่ไม่มีชื่อจริง (เช่น ".") ไม่มีแต้ม ไม่นับเป็น "อีกคน" — เดิมเบอร์ที่มีการ์ดแบบนี้ซ้อนอยู่ไม่ได้แต้มเลย (#357/#7940 · OD-261014-3893)
-  const rows = ((data ?? []) as ContactRow[]).filter((r) => /[ก-๙A-Za-z0-9]{2,}/.test(r.data?.name ?? "") || Number(r.data?.point) > 0);
+  // ใบของสมาชิก: การ์ดที่ผูกบัญชีสมาชิก "คนอื่น" ไว้แล้วไม่ใช่ของใบนี้ (ใบ guest ยังเข้าการ์ดสมาชิกได้ตามเดิม)
+  const rows = ((data ?? []) as ContactRow[]).filter(
+    (r) =>
+      (/[ก-๙A-Za-z0-9]{2,}/.test(r.data?.name ?? "") || Number(r.data?.point) > 0) &&
+      !(order.customerId && r.data?.memberId && r.data.memberId !== order.customerId)
+  );
   return rows.length === 1 ? rows[0] : null;
 }
 
