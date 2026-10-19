@@ -1715,6 +1715,8 @@ export default function AdminOrderDetailPage() {
   const seesMoney = can("orders.money"); // เห็นราคา/สลิป
   const isSuperAdmin = useRoleLabel() === "ผู้ดูแลระบบ"; // ลบสลิปได้เฉพาะผู้ดูแลระบบ (เซิร์ฟเวอร์บังคับซ้ำ)
   const mayEdit = can("orders.edit"); // เปลี่ยนสถานะ/แก้ข้อมูล
+  /** 🗓 ทำไฟล์แบบ (✏️ เปิดแบบในจอออกแบบ · 🗓 ออกแบบให้ · 🔁 ทำ .ai เลเยอร์ใหม่) — แอดมิน + กราฟฟิก เท่าเจ้าของร้าน (19 ต.ค. 69 · เซิร์ฟเวอร์บังคับซ้ำ) */
+  const mayDesign = mayEdit || can("proof.manage");
   /** 🤝 ใบนี้ยังสลับราคาตัวแทน/ราคาปกติได้ไหม (กติกาเดียวกับเซิร์ฟเวอร์ — ตรงนี้แค่ไม่ให้กดแล้วเด้ง error) */
   const dealerToggleReady = !!order && !dealerRepriceBlockedBy(order);
   /**
@@ -7236,14 +7238,14 @@ export default function AdminOrderDetailPage() {
                                 ปฏิทินที่ออกแบบบนเว็บแต่ไม่มีไฟล์ = บอกให้รู้ว่าไม่มี (ไม่ใช่กล่องหายไปเฉย ๆ) */}
                             {(() => {
                               /**
-                               * 🔁 ทำไฟล์ .ai เลเยอร์ + .pdf ใหม่จากเครื่องร้าน (เจ้าของร้าน · ต้องมีลิงก์แบบบนเว็บ)
+                               * 🔁 ทำไฟล์ .ai เลเยอร์ + .pdf ใหม่จากเครื่องร้าน (เจ้าของร้าน/แอดมิน/กราฟฟิก · ต้องมีลิงก์แบบบนเว็บ)
                                * ใช้เมื่อ .ai ที่แนบเป็นไฟล์สำรอง -pdf.ai (สั่งจากมือถือ/เครื่องที่ต่อ Illustrator ไม่ได้ → เปิดแล้วรวมเป็น Layer 1)
                                * หรือใบลูกค้าทั่วไปที่ยังไม่มีไฟล์ · เปิดจอออกแบบด้วยแบบเดิมแล้วบันทึกกลับเข้าใบนี้ให้เอง (ไฟล์เปลี่ยน · ยอดเงินไม่เปลี่ยน)
                                * (เจ้าของร้านแจ้ง 16 ต.ค. 69 OD-261016-6709 "สั่งจากมือถือ โหลด .ai เลเยอร์แล้วไม่แยกเลเยอร์")
                                */
                               const flat = specs.some((sp) => isFlatCalAi(calAiUrlOf(sp)));
                               const noAi = !specs.some((sp) => calAiUrlOf(sp));
-                              const canRemake = isOwner && mayEdit && specs.some((sp) => calEditUrlOf(sp)) && !!productOfItem(it.productId);
+                              const canRemake = mayDesign && specs.some((sp) => calEditUrlOf(sp)) && !!productOfItem(it.productId);
                               if (!canRemake) return null;
                               // ไฟล์เก่าก่อน 16 ต.ค. 69 ชื่อเก็บไม่มี -pdf → ดูจากชื่อไม่ออก · ปุ่มจึงมีเสมอ (เปิดใน Illustrator เห็น Layer 1 เดียว = กดทำใหม่)
                               const warn = flat || noAi;
@@ -7275,8 +7277,8 @@ export default function AdminOrderDetailPage() {
                             })()}
                             {isCal && !specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
                               <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
-                                🗂 ไฟล์งาน .ai / .pdf: ออเดอร์นี้ไม่มีไฟล์ — ระบบทำไฟล์นี้เฉพาะตอนเจ้าของร้านเป็นคนออกแบบ/สั่งเอง
-                                (ออเดอร์จากลูกค้าทั่วไปยังไม่มี{specs.some((sp) => calEditUrlOf(sp)) ? " — เจ้าของร้านกดปุ่ม 🔁 ด้านบนทำจากเครื่องร้านได้" : ""})
+                                🗂 ไฟล์งาน .ai / .pdf: ออเดอร์นี้ไม่มีไฟล์ — ระบบทำไฟล์นี้เฉพาะตอนทีมหลังบ้าน (เจ้าของร้าน/แอดมิน/กราฟฟิก) เป็นคนออกแบบ/สั่งเอง
+                                (ออเดอร์จากลูกค้าทั่วไปยังไม่มี{specs.some((sp) => calEditUrlOf(sp)) ? " — กดปุ่ม 🔁 ด้านบนทำจากเครื่องร้านได้" : ""})
                               </p>
                             )}
                             {specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
@@ -7318,7 +7320,7 @@ export default function AdminOrderDetailPage() {
                               )}
 
                             {/* ✏️ เปิดแบบที่ลูกค้าทำบนเว็บกลับมาแก้ในจอสร้างปฏิทิน (ออเดอร์ตั้งแต่ 15 ต.ค. 69 · ของเก่าไม่มีลิงก์แบบ) */}
-                            {mayEdit && specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
+                            {mayDesign && specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
                               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 ring-1 ring-sky-200">
                                 <button
                                   type="button"
@@ -7336,7 +7338,7 @@ export default function AdminOrderDetailPage() {
 
                             {/* 🗓 ลูกค้าสั่งปกติ (แนบรูปมาเอง) แต่สินค้ามีจอสร้างปฏิทิน → พนักงานออกแบบบนเว็บให้ได้เลยจากออเดอร์นี้ (ผู้ใช้สั่ง 15 ต.ค. 69)
                                 รูปที่ลูกค้าแนบขึ้นเป็นรูปตั้งต้นในคลังของจอ · กด 💾 แล้วไฟล์แบบทั้งชุดแทนไฟล์แนบเดิม */}
-                            {mayEdit && !specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId)?.calendarStudio && (
+                            {mayDesign && !specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId)?.calendarStudio && (
                               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 px-2 py-1.5 ring-1 ring-violet-200">
                                 <button
                                   type="button"

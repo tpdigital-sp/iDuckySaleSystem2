@@ -185,6 +185,7 @@ import {
 } from "@/lib/cal-edit-store";
 import GiftPromoBadge from "@/components/GiftPromoBadge";
 import { canAccessAdmin, getAdminSession } from "@/lib/auth";
+import { canDesignFiles } from "@/lib/permissions";
 import { fetchProduct } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
 import ProductCard from "@/components/ProductCard";
@@ -768,8 +769,10 @@ export default function ProductDetail({
    * (ลายมาทางไลน์/อีเมลอยู่แล้ว กราฟฟิกจัดไฟล์เอง) · จำค่าไว้ข้ามหน้า จะได้ไม่ต้องกดใหม่ทุกสินค้า
    */
   const [adminMode, setAdminMode] = useState(false);
-  /** 🗂 เจ้าของร้าน (role Administrator) — ทดสอบไฟล์ .ai แยกเลเยอร์ของปฏิทิน (ผู้ใช้สั่ง 13 ต.ค. 69 · สั่งปิดเมื่อทดสอบเสร็จ) */
-  const [isOwner, setIsOwner] = useState(false);
+  /**
+   * 🗂 ทีมหลังบ้านที่ทำไฟล์ .ai แยกเลเยอร์ + .pdf ของจอออกแบบได้ — เจ้าของร้าน (13 ต.ค. 69) + แอดมิน/กราฟฟิก (19 ต.ค. 69 · canDesignFiles)
+   */
+  const [fileStaff, setFileStaff] = useState(false);
   /** พนักงานเปิดโหมดแอดมินอยู่ไหม — เช็คสิทธิ์ควบเสมอ ลูกค้าทั่วไปจะไม่มีทางเข้าโหมดนี้ */
   const staffOrdering = isAdmin && adminMode;
   /**
@@ -2176,8 +2179,8 @@ export default function ProductDetail({
       () =>
         void canAccessAdmin().then((ok) => {
           setIsAdmin(ok);
-          // 🗂 เจ้าของร้าน = เห็นปุ่มโหลด/แนบ .ai แยกเลเยอร์ในจอสร้างปฏิทิน (ช่วงทดสอบ)
-          if (ok) void getAdminSession().then((s) => setIsOwner(!!s.isAdministrator));
+          // 🗂 เจ้าของร้าน/แอดมิน/กราฟฟิก = เห็นปุ่มโหลด/แนบ .ai แยกเลเยอร์ในจอสร้างปฏิทิน
+          if (ok) void getAdminSession().then((s) => setFileStaff(!!s.isAdministrator || canDesignFiles(s.perms)));
           // คืนค่าโหมดที่เลือกไว้ล่าสุด (เฉพาะพนักงาน — ลูกค้าทั่วไปไม่มีทางเปิดโหมดนี้ได้)
           if (ok && typeof localStorage !== "undefined" && localStorage.getItem(ADMIN_MODE_KEY) === "1") setAdminMode(true);
         }),
@@ -9409,8 +9412,8 @@ export default function ProductDetail({
                 );
                 return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
               }}
-              aiExport={isOwner}
-              autoOrder={!!backTo && remakeFiles && isOwner && editIndex !== null}
+              aiExport={fileStaff}
+              autoOrder={!!backTo && remakeFiles && fileStaff && editIndex !== null}
               orderLabel={backTo ? `💾 บันทึกกลับเข้า ${backTo.orderId}` : undefined}
               onOrder={async () => {
                 if (backTo) {

@@ -299,6 +299,15 @@ export function can(actor: Actor | null | undefined, perm: Perm, rolePerms?: Rol
 }
 
 /**
+ * 🗓 ทำไฟล์แบบจากหลังบ้าน — ✏️ เปิดแบบในจอออกแบบ · 💾 บันทึกกลับเข้าออเดอร์ · 🔁 ทำ .ai เลเยอร์/.pdf ด้วย Illustrator
+ * แอดมิน (orders.edit) + กราฟฟิก (proof.manage) เห็น/ทำได้เท่าเจ้าของร้าน (เจ้าของร้านสั่ง 19 ต.ค. 69 OD-261019-1860)
+ * เปลี่ยนแค่ไฟล์แบบ ยอดเงินไม่ขยับ · ผู้ดูแลระบบได้ทุกสิทธิ์อยู่แล้ว
+ */
+export const DESIGN_FILE_PERMS: Perm[] = ["orders.edit", "proof.manage"];
+export const canDesignFiles = (perms: readonly Perm[] | null | undefined): boolean =>
+  DESIGN_FILE_PERMS.some((p) => perms?.includes(p));
+
+/**
  * 📱 ด่านสแกน QR ใบงาน (packing list)
  *
  * ใบงานที่ปริ้นออกมามี QR ชี้มาที่ /admin/orders/<id>?pack=1

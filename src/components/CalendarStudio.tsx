@@ -96,7 +96,7 @@ export interface CalendarResult {
   head: string;
   summary: string;
   spec: string;
-  /** 🗂 ไฟล์ .ai แยกเลเยอร์ (เฉพาะเจ้าของร้านช่วงทดสอบ — prop aiExport) */
+  /** 🗂 ไฟล์ .ai แยกเลเยอร์ (ทีมหลังบ้าน เจ้าของร้าน/แอดมิน/กราฟฟิก — prop aiExport · canDesignFiles) */
   ai?: File;
   aiNote?: string;
   /** 🖨 .pdf ชิ้นงาน 1 ชิ้น/หน้า + เส้นไดคัท (สำหรับโปรแกรมจัดวาง localhost:8002) — เฉพาะเจ้าของร้านช่วงทดสอบ */
@@ -1106,7 +1106,7 @@ export default function CalendarStudio({
     autoRan.current = true;
     void (async () => {
       if (!aiExport) {
-        setErr("⚠️ ทำไฟล์ .ai เลเยอร์ได้เฉพาะเจ้าของร้าน (Administrator)");
+        setErr("⚠️ ทำไฟล์ .ai เลเยอร์ได้เฉพาะทีมหลังบ้าน (เจ้าของร้าน/แอดมิน/กราฟฟิก)");
         return;
       }
       setBusy("กำลังเช็ค Illustrator ในเครื่องนี้…");

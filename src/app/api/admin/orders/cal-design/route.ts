@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/server/require-perm";
-import { can } from "@/lib/permissions";
+import { canDesignFiles, permsOf } from "@/lib/permissions";
 import { loadRolePerms } from "@/lib/server/role-perms";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withLog, type Order } from "@/lib/admin-data";
@@ -23,7 +23,8 @@ const URL_RE = /^https:\/\/[\w.-]+\.supabase\.co\/storage\/v1\/object\/public\//
 export async function POST(req: Request) {
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินหลังบ้านก่อน" }, { status: 401 });
-  if (!can(actor, "orders.edit", await loadRolePerms())) return NextResponse.json({ error: "ไม่มีสิทธิ์แก้ออเดอร์" }, { status: 403 });
+  // แอดมิน + กราฟฟิก (19 ต.ค. 69) — เปลี่ยนแค่ไฟล์แบบ ยอดเงินไม่ขยับ
+  if (!canDesignFiles(permsOf(actor, await loadRolePerms()))) return NextResponse.json({ error: "ไม่มีสิทธิ์แก้ไฟล์แบบ" }, { status: 403 });
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 

@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import { currentActor } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { isFirebaseAdminConfigured } from "@/lib/server/firebase-admin";
-import { ROLE_ADMINISTRATOR } from "@/lib/permissions";
+import { canDesignFiles, permsOf } from "@/lib/permissions";
+import { loadRolePerms } from "@/lib/server/role-perms";
 
 export const runtime = "nodejs";
 
 /**
- * 🗂 อัปไฟล์ .ai แยกเลเยอร์ของปฏิทินที่ออกแบบบนเว็บ — เฉพาะเจ้าของร้าน (ช่วงทดสอบ · ผู้ใช้สั่ง 13 ต.ค. 69)
+ * 🗂 อัปไฟล์ .ai แยกเลเยอร์ของปฏิทินที่ออกแบบบนเว็บ — เจ้าของร้าน (13 ต.ค. 69) + แอดมิน/กราฟฟิก (19 ต.ค. 69)
  * ทางอัปของลูกค้า (/api/orders/artwork) รับแค่รูป ไม่เปิดให้ไฟล์ .ai ทั่วไป — แยกทางนี้ไว้ ปิดง่ายตอนเลิกทดสอบ
  * เก็บใน bucket design-templates/calendar-ai/ (bucket เดียวกับไฟล์เทมเพลต .ai)
  */
@@ -28,7 +29,9 @@ export async function POST(req: Request) {
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 });
-  if (isFirebaseAdminConfigured && actor.role !== ROLE_ADMINISTRATOR) return NextResponse.json({ error: "เฉพาะเจ้าของร้าน" }, { status: 403 });
+  // เจ้าของร้าน + แอดมิน + กราฟฟิก (เดิมเฉพาะเจ้าของร้าน · 19 ต.ค. 69)
+  if (isFirebaseAdminConfigured && !canDesignFiles(permsOf(actor, await loadRolePerms())))
+    return NextResponse.json({ error: "เฉพาะทีมหลังบ้าน (เจ้าของร้าน/แอดมิน/กราฟฟิก)" }, { status: 403 });
 
   /**
    * 🎫 ตั๋วอัปโหลดตรงเข้า Supabase (JSON {name,size}) — ไฟล์ .pdf ทั้งเล่ม/.ai มีรูปทุกหน้า 10–40MB
