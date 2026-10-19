@@ -374,5 +374,7 @@ def calendar_ai(job: dict, timeout: int = 600) -> bytes:
         # ไฟล์ออกมาจริง + ไม่ได้รายงาน ERR = สำเร็จ (กันข้อความตอบกลับเพี้ยนจากตัวกลางอีกชั้น)
         ok = st.startswith("OK") or (out.exists() and out.stat().st_size > 0 and not st.startswith("ERR"))
         if not ok or not out.exists():
-            raise RuntimeError(f"Illustrator สร้างไฟล์ไม่ได้: {st[4:] or st}")
+            # บอกให้ครบ: Illustrator ตอบอะไรมาจริง (repr เห็นอักขระแปลก ๆ) + ไฟล์ออกมาไหม — ไล่ปัญหาเครื่อง Windows จากข้อความนี้ (เว็บส่งเข้า calendar-ai-log)
+            got = st[4:] if st.startswith("ERR") else f"ผลตอบกลับ {st[:300]!r}"
+            raise RuntimeError(f"Illustrator สร้างไฟล์ไม่ได้: {got} · ไฟล์ออก={'มี ' + str(out.stat().st_size) + ' ไบต์' if out.exists() else 'ไม่มี'} · {out}")
         return out.read_bytes()

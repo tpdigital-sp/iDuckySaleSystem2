@@ -38,7 +38,17 @@ export async function POST(req: Request) {
    * เกินเพดาน body ของ Netlify Functions (~6MB) → ส่งผ่าน route นี้แล้วตกเงียบ (14 ต.ค. 69) · ทางเดิม multipart ยังใช้ได้กับไฟล์เล็ก
    */
   if ((req.headers.get("content-type") ?? "").includes("application/json")) {
-    const body = (await req.json().catch(() => null)) as { name?: string; size?: number } | null;
+    const body = (await req.json().catch(() => null)) as { name?: string; size?: number; log?: Record<string, unknown> } | null;
+    /**
+     * 🩺 เว็บรายงานเหตุที่ Illustrator ทำ .ai ไม่สำเร็จ (ตกไปเป็นไฟล์สำรอง -pdf.ai) — เก็บใน calendar-ai-log/<วันที่>/ ให้ทีมไล่ปัญหาเครื่องพนักงานได้
+     * โดยไม่ต้องรอแคปหน้าจอ (เครื่องกราฟฟิก Windows 19 ต.ค. 69 ได้ -pdf.ai ซ้ำ ๆ แต่ไม่เห็นข้อความ error)
+     */
+    if (body?.log && typeof body.log === "object") {
+      const rec = JSON.stringify({ at: new Date().toISOString(), by: actor.name?.trim() || actor.username, ...body.log }).slice(0, 20000);
+      const path = `calendar-ai-log/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.json`;
+      await sb.storage.from(BUCKET).upload(path, new Blob([rec], { type: "application/json" }), { contentType: "application/json", upsert: false });
+      return NextResponse.json({ ok: true });
+    }
     const ext = /\.(ai|pdf|zip)$/i.exec(String(body?.name ?? ""))?.[1]?.toLowerCase();
     if (!ext) return NextResponse.json({ error: "รับเฉพาะไฟล์ .ai / .pdf / .zip" }, { status: 400 });
     if (Number(body?.size ?? 0) > MAX) return NextResponse.json({ error: "ไฟล์ใหญ่เกิน 500MB" }, { status: 400 });

@@ -359,6 +359,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, data, "application/postscript",
                              {**self.CORS, "Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
         except Exception as ex:
+            import traceback
+            print("calendar-ai ไม่สำเร็จ:", ex, flush=True)  # ลง cutout-py.log (Windows เปิดแบบไม่มีหน้าต่าง)
+            traceback.print_exc()
             body = json.dumps({"error": str(ex)}, ensure_ascii=False).encode()
             return self.send(500, body, "application/json; charset=utf-8", self.CORS)
 

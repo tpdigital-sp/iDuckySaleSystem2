@@ -286,6 +286,19 @@ export async function aiViaIllustrator(pages: AiPage[], title: string): Promise<
   return new Blob([await r.arrayBuffer()], { type: "application/postscript" });
 }
 
+/** 🩺 ส่งเหตุที่ Illustrator ทำไม่สำเร็จเข้าเซิร์ฟเวอร์ (calendar-ai-log) — ไม่รอ ไม่ขวางการทำไฟล์สำรอง */
+function reportAiFailure(info: Record<string, unknown>): void {
+  try {
+    void fetch("/api/admin/calendar-ai", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ log: { kind: "illustrator-failed", ua: typeof navigator !== "undefined" ? navigator.userAgent : "", page: location.pathname, ...info } }),
+    }).catch(() => {});
+  } catch {
+    /* ส่งไม่ได้ก็ช่าง */
+  }
+}
+
 /** ทาง 2: PDF-.ai แยกชั้นเป็น OCG (เปิดใน Acrobat เห็นเลเยอร์ · Illustrator รวมเป็น Layer 1) */
 export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
   const doc = await PDFDocument.create();
@@ -345,11 +358,15 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
  *   (ตอนกด ✓ ใช้แบบนี้ / 💾 บันทึกกลับ — .ai แท้ไปทำที่หน้าออเดอร์ปุ่ม 🔁 · 19 ต.ค. 69)
  */
 export async function buildCalendarAi(pages: AiPage[], title: string, local = true): Promise<{ blob: Blob; real: boolean; note: string }> {
-  if (local && (await illustratorReady())) {
+  const st = local ? await cutoutStatus() : "down";
+  // ทีมหลังบ้าน (local) แต่ไม่ได้ส่งงานให้ Illustrator เลย — จดสถานะไว้ด้วย แยกจากกรณีส่งแล้วพัง
+  if (local && st !== "ready") reportAiFailure({ why: `not-sent: ${st}`, title, pages: pages.length });
+  if (local && st === "ready") {
     try {
       return { blob: await aiViaIllustrator(pages, title), real: true, note: "Illustrator แยกเลเยอร์ให้แล้ว" };
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
+      reportAiFailure({ why, title, pages: pages.length, layers: pages.reduce((n, p) => n + p.layers.length, 0) });
       return { blob: await aiOcgPdf(pages, title), real: false, note: `Illustrator ไม่สำเร็จ (${why}) — ได้ไฟล์ PDF-.ai แทน` };
     }
   }
