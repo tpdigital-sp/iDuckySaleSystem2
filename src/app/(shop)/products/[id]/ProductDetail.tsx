@@ -1778,7 +1778,12 @@ export default function ProductDetail({
                 // จำนวนต่อลายจริงอยู่ในสเปค ("ลายที่ 2 × 3 ชิ้น — …") — ไฟล์แบบจดไว้ตอนกดใช้แบบนี้ (ยังเป็น 1)
                 // "× 30 ชิ้น" (ขายเป็นชิ้น) หรือ "× 30 แผ่น A3 (120 ชิ้น)" (ขายเป็นแผ่น) — ตัวเลขแรก = หน่วยที่สั่งเสมอ
                 const q = Number(/^ลายที่ \d+ × (\d+) /.exec(editSpecs[i])?.[1] ?? 0);
-                return d && q ? { ...d, qty: q } : d;
+                /**
+                 * 🔗 ไฟล์แบบไม่ได้จดลิงก์ของตัวเองไว้ (ลิงก์ได้มาหลังอัปเสร็จ) → ใส่ลิงก์ที่เพิ่งอ่านมาให้
+                 * เดิมไม่ใส่ = กด 💾 บันทึกกลับ ลายที่ไม่ได้แก้เสีย "แบบบนเว็บ:" ทิ้ง เปิดแก้/ทำ .ai อีกไม่ได้ (OD-261019-1860 ลายที่ 1 · 19 ต.ค. 69)
+                 */
+                const withUrl: SavedCalDesign | null = d ? { ...d, editUrl: d.editUrl ?? editUrls[i] } : d;
+                return withUrl && q ? { ...withUrl, qty: q } : withUrl;
               })
               .filter((d): d is SavedCalDesign => !!d);
         if (!savedCal.length || (!savedLocal?.length && savedCal.length !== editUrls.length)) return;
@@ -1834,7 +1839,17 @@ export default function ProductDetail({
             });
             return;
           }
-          setEditIndex(restored.length - 1);
+          /**
+           * 🔁 ทำ .ai/.pdf ใหม่ (&files=1) = ไล่ทำ "ทุกลาย" ทีละลาย แล้วค่อยบันทึกกลับครั้งเดียว (onOrder → remakeQueueRef)
+           * เดิมเปิดแค่ลายสุดท้ายแล้วบันทึกเลย → 2 ลายได้ไฟล์แค่ลายที่ 2 (OD-261019-1860 · 19 ต.ค. 69)
+           * ✏️ เปิดแบบธรรมดา = ลายสุดท้ายเหมือนเดิม (ลายอื่นแก้จากรายการแบบได้)
+           */
+          const remake = new URLSearchParams(window.location.search).get("files") === "1";
+          const todo = restored.flatMap((r, i) => (r.calState ? [i] : []));
+          if (remake && todo.length > 1) {
+            remakeQueueRef.current = todo.slice(1);
+            setEditIndex(todo[0]);
+          } else setEditIndex(restored.length - 1);
           setCalOpen(true);
         }
       })();
@@ -3915,6 +3930,8 @@ export default function ProductDetail({
       setRemakeFiles(q.get("files") === "1");
     }
   }, []);
+  /** 🔁 ลายที่เหลือต้องทำ .ai/.pdf ใหม่ (ทำทีละลาย · ว่าง = บันทึกกลับเข้าออเดอร์ได้) */
+  const remakeQueueRef = useRef<number[]>([]);
   const saveBackRef = useRef<() => Promise<void>>(async () => {});
   saveBackRef.current = async () => {
     if (!backTo) return;
@@ -9599,6 +9616,13 @@ export default function ProductDetail({
                 if (backTo) {
                   // 💾 มาจากหลังบ้าน — รอค่าแบบใหม่ลงหน้า แล้วเขียนกลับรายการเดิมในออเดอร์ (ไม่ผ่านตะกร้า)
                   await new Promise((r) => setTimeout(r, 80));
+                  // 🔁 ทำไฟล์ใหม่ยังเหลือลาย → เปิดจอลายถัดไป (จอปิดไปแล้วใน apply · เปิดใหม่ = autoOrder ทำต่อเอง) ครบแล้วค่อยบันทึก
+                  const next = remakeQueueRef.current.shift();
+                  if (next !== undefined) {
+                    setEditIndex(next);
+                    setCalOpen(true);
+                    return;
+                  }
                   await saveBackRef.current();
                   return;
                 }

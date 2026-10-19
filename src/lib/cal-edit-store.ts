@@ -122,10 +122,24 @@ export async function standInFromRender(d: SavedCalDesign, files: File[]): Promi
     const b = await r.blob();
     const f = new File([b], `ไฟล์พร้อมพิมพ์แทนต้นฉบับ-${o.src + 1}.jpg`, { type: b.type || "image/jpeg" });
     rememberSource(f, d.artUrl);
+    /**
+     * ช่องรูปที่ลูกค้าลากขยายเลยขอบผืน (OD-261019-1860 ช่อง 207.7×134.9 บนผืน 178.3×127.5) → ตัดให้อยู่ในผืน
+     * ส่วนที่เลยผืนไม่ได้พิมพ์อยู่แล้ว · ไม่ตัด = จอเด้ง "รูปยังไม่เต็มช่อง" ทั้งที่เต็มผืน (🔁 ทำไฟล์อัตโนมัติค้างที่กล่องถาม)
+     */
+    const sl = d.design.slots?.[key];
+    const clip = (r: { x: number; y: number; w: number; h: number }) => {
+      const x = Math.max(0, r.x);
+      const y = Math.max(0, r.y);
+      return { x, y, w: Math.min(W, r.x + r.w) - x, h: Math.min(H, r.y + r.h) - y };
+    };
     return {
       files: files.map((x, i) => (i === o.src ? f : x)),
       // แต่งรูป (กลับด้าน/ความทึบ/เอฟเฟกต์/ขอบ) อยู่ในไฟล์พร้อมพิมพ์แล้ว — ไม่ใส่ซ้ำ
-      design: { ...d.design, photos: { ...d.design.photos, [key]: { src: o.src, pl: { cxMm: W / 2, cyMm: H / 2, wMm: W, hMm: H, rotDeg: 0 } } } },
+      design: {
+        ...d.design,
+        photos: { ...d.design.photos, [key]: { src: o.src, pl: { cxMm: W / 2, cyMm: H / 2, wMm: W, hMm: H, rotDeg: 0 } } },
+        ...(sl ? { slots: { ...d.design.slots, [key]: clip(sl) } } : {}),
+      },
     };
   } catch {
     return null;
