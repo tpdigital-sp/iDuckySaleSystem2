@@ -1,8 +1,11 @@
 """
-illustrator.py — ให้ Adobe Illustrator ในเครื่อง (macOS) แปลงไฟล์เป็น .ai แท้ที่แยกเลเยอร์
+illustrator.py — ให้ Adobe Illustrator ในเครื่อง (macOS / Windows) แปลงไฟล์เป็น .ai แท้ที่แยกเลเยอร์
 
-ขั้นตอน: แอพสร้างไฟล์ .ai (PDF) ไว้ในโฟลเดอร์ชั่วคราว -> สั่ง Illustrator ผ่าน AppleScript
+ขั้นตอน: แอพสร้างไฟล์ .ai (PDF) ไว้ในโฟลเดอร์ชั่วคราว -> สั่ง Illustrator รันสคริปต์ .jsx
          ให้เปิด ย้ายเส้น CutContour ไปเลเยอร์ของตัวเอง แล้ว Save As เป็น Illustrator แท้
+  · macOS   = AppleScript (osascript · do javascript)
+  · Windows = PowerShell + COM (Illustrator.Application · DoJavaScriptFile) — ไม่ต้องลงไลบรารีเพิ่ม
+    (เครื่องกราฟฟิกเป็น Windows · เจ้าของร้านสั่ง 19 ต.ค. 69 "ขอไฟล์ python เพื่อให้พนักงานกราฟฟิกรันได้")
 """
 from __future__ import annotations
 
@@ -95,11 +98,44 @@ JSX_BATCH = r"""
 """
 
 
+WIN_PROGID = "Illustrator.Application"  # COM ที่ Illustrator ลงทะเบียนไว้ตอนติดตั้ง (ทุกรุ่น CS–2025)
+
+# PowerShell สั่ง Illustrator ผ่าน COM แล้วพิมพ์ผลของสคริปต์ออกมาเป็น UTF-8 (ข้อความผิดพลาดมีภาษาไทย)
+PS_RUN = r"""
+param([string]$jsx)
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $app = New-Object -ComObject Illustrator.Application
+} catch {
+  [Console]::Error.WriteLine("NOCOM: " + $_.Exception.Message); exit 3
+}
+try {
+  $r = $app.DoJavaScriptFile($jsx)
+  [Console]::Out.Write([string]$r)
+} catch {
+  [Console]::Error.WriteLine("JSX: " + $_.Exception.Message); exit 4
+}
+"""
+
+
+def _win_has_illustrator() -> bool:
+    """Windows: มี COM ของ Illustrator ลงทะเบียนไว้ไหม (อ่าน registry เฉย ๆ ไม่เปิดโปรแกรม)"""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, WIN_PROGID):
+            return True
+    except Exception:
+        return False
+
+
 def available() -> bool:
     """มี Illustrator ในเครื่องนี้ไหม (เช็กครั้งเดียว ไม่เปิดโปรแกรม)"""
     global _AVAILABLE
     if _AVAILABLE is None:
-        if sys.platform != "darwin" or not shutil.which("osascript"):
+        if sys.platform == "win32":
+            _AVAILABLE = _win_has_illustrator() and bool(shutil.which("powershell") or shutil.which("pwsh"))
+        elif sys.platform != "darwin" or not shutil.which("osascript"):
             _AVAILABLE = False
         else:
             try:
@@ -109,6 +145,48 @@ def available() -> bool:
             except Exception:
                 _AVAILABLE = False
     return _AVAILABLE
+
+
+def _run_jsx(tmp: Path, jsx: str, timeout: int) -> str:
+    """ให้ Illustrator รันสคริปต์ .jsx แล้วคืนค่าที่สคริปต์ return (ข้อความ) · พัง = RuntimeError ภาษาไทย"""
+    if sys.platform == "win32":
+        # ExtendScript อ่านไฟล์ UTF-8 ที่มี BOM ถูก (ชื่อเลเยอร์/อาร์ตบอร์ดเป็นภาษาไทย) · ไม่มี BOM = อ่านเป็นภาษาเครื่อง ชื่อเพี้ยน
+        jsx_path = tmp / "run.jsx"
+        jsx_path.write_text(jsx, encoding="utf-8-sig")
+        ps1 = tmp / "run.ps1"
+        ps1.write_text(PS_RUN, encoding="utf-8-sig")
+        exe = shutil.which("powershell") or shutil.which("pwsh")
+        try:
+            r = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                                "-File", str(ps1), "-jsx", str(jsx_path)],
+                               capture_output=True, timeout=timeout + 30,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Illustrator ทำงานนานเกิน {timeout} วินาที — ดูว่ามีกล่องถามค้างในหน้าต่าง Illustrator ไหม")
+        out = r.stdout.decode("utf-8", "replace").strip()
+        err = r.stderr.decode("utf-8", "replace").strip()
+        if r.returncode == 3 or "NOCOM" in err:
+            raise RuntimeError("เปิด Adobe Illustrator ผ่าน COM ไม่ได้ — เปิด Illustrator ด้วยมือ 1 ครั้งให้โหลดเสร็จ "
+                               f"แล้วลองใหม่ (ถ้ายังไม่ได้ ให้ติดตั้ง/ซ่อม Illustrator) · {err[:200]}")
+        if r.returncode != 0:
+            raise RuntimeError(f"สั่ง Illustrator ไม่สำเร็จ: {(err or out)[:300]}")
+        return out
+    (tmp / "run.jsx").write_text(jsx, encoding="utf-8")
+    scpt = (f'with timeout of {timeout} seconds\n'
+            f'  tell application id "{BUNDLE_ID}"\n'
+            f'    do javascript (read POSIX file "{tmp / "run.jsx"}" as «class utf8»)\n'
+            f'  end tell\n'
+            f'end timeout\n')
+    (tmp / "run.applescript").write_text(scpt, encoding="utf-8")
+    r = subprocess.run(["osascript", str(tmp / "run.applescript")],
+                       capture_output=True, text=True, timeout=timeout + 30)
+    if r.returncode != 0:
+        err = r.stderr.strip()
+        if "-1743" in err or "Not authorized" in err:
+            raise RuntimeError("macOS ยังไม่อนุญาตให้ควบคุม Illustrator: ไปที่ System Settings > "
+                               "Privacy & Security > Automation แล้วเปิดสิทธิ์ Terminal → Adobe Illustrator")
+        raise RuntimeError(f"สั่ง Illustrator ไม่สำเร็จ: {err[:300]}")
+    return r.stdout
 
 
 def layered(ai_files: list[bytes], timeout: int = 600) -> list[bytes]:
@@ -123,22 +201,8 @@ def layered(ai_files: list[bytes], timeout: int = 600) -> list[bytes]:
             src.write_bytes(data)
             jobs.append([str(src), str(dst)])
         jsx = JSX_CORE + JSX_BATCH.replace("__JOBS__", json.dumps(jobs))
-        (tmp / "run.jsx").write_text(jsx, encoding="utf-8")
-        scpt = (f'with timeout of {timeout} seconds\n'
-                f'  tell application id "{BUNDLE_ID}"\n'
-                f'    do javascript (read POSIX file "{tmp / "run.jsx"}" as «class utf8»)\n'
-                f'  end tell\n'
-                f'end timeout\n')
-        (tmp / "run.applescript").write_text(scpt, encoding="utf-8")
-        r = subprocess.run(["osascript", str(tmp / "run.applescript")],
-                           capture_output=True, text=True, timeout=timeout + 30)
-        if r.returncode != 0:
-            err = r.stderr.strip()
-            if "-1743" in err or "Not authorized" in err:
-                raise RuntimeError("macOS ยังไม่อนุญาตให้ควบคุม Illustrator: ไปที่ System Settings > "
-                                   "Privacy & Security > Automation แล้วเปิดสิทธิ์ Terminal → Adobe Illustrator")
-            raise RuntimeError(f"สั่ง Illustrator ไม่สำเร็จ: {err[:300]}")
-        lines = [l for l in r.stdout.strip().splitlines() if l.strip()]
+        res = _run_jsx(tmp, jsx, timeout)
+        lines = [l for l in res.strip().splitlines() if l.strip()]
         out = []
         for i, (src, dst) in enumerate(jobs):
             st = lines[i] if i < len(lines) else "ERR:ไม่มีผลลัพธ์"
@@ -303,21 +367,7 @@ def calendar_ai(job: dict, timeout: int = 600) -> bytes:
                            "paths": paths})
         out = tmp / "calendar.ai"
         jsx = JSX_CALENDAR.replace("__JOB__", json.dumps({"pages": jpages, "out": str(out)}, ensure_ascii=False))
-        (tmp / "run.jsx").write_text(jsx, encoding="utf-8")
-        scpt = (f'with timeout of {timeout} seconds\n'
-                f'  tell application id "{BUNDLE_ID}"\n'
-                f'    do javascript (read POSIX file "{tmp / "run.jsx"}" as «class utf8»)\n'
-                f'  end tell\n'
-                f'end timeout\n')
-        (tmp / "run.applescript").write_text(scpt, encoding="utf-8")
-        r = subprocess.run(["osascript", str(tmp / "run.applescript")], capture_output=True, text=True, timeout=timeout + 30)
-        if r.returncode != 0:
-            err = r.stderr.strip()
-            if "-1743" in err or "Not authorized" in err:
-                raise RuntimeError("macOS ยังไม่อนุญาตให้ควบคุม Illustrator: ไปที่ System Settings > "
-                                   "Privacy & Security > Automation แล้วเปิดสิทธิ์ Terminal → Adobe Illustrator")
-            raise RuntimeError(f"สั่ง Illustrator ไม่สำเร็จ: {err[:300]}")
-        st = r.stdout.strip()
+        st = _run_jsx(tmp, jsx, timeout).strip()
         if not st.startswith("OK") or not out.exists():
             raise RuntimeError(f"Illustrator สร้างไฟล์ไม่ได้: {st[4:] or st}")
         return out.read_bytes()

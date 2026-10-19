@@ -1,0 +1,72 @@
+@echo off
+rem ============================================================
+rem  iDucky cutout-py (Windows) - double-click to start
+rem  Background removal AI + make layered .ai with Adobe Illustrator
+rem  Used by: iduckystore.com admin (order page "redo .ai" button,
+rem           design screen, /admin/diecut tab "bg")
+rem  First run: installs libraries + downloads AI model (~1 GB)
+rem  Keep this window OPEN while working. Close it = program stops.
+rem  (Thai guide: README-Windows.txt)
+rem ============================================================
+setlocal
+cd /d "%~dp0"
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
+set "PY=.venv\Scripts\python.exe"
+
+if exist "%PY%" goto run
+
+echo.
+echo [1/3] First-time setup: creating Python environment...
+rem Libraries are pinned for Python 3.12 / 3.11 (3.13+ has no matching wheels)
+set "BASEPY="
+py -3.12 -c "1" >nul 2>nul && set "BASEPY=py -3.12"
+if not defined BASEPY py -3.11 -c "1" >nul 2>nul && set "BASEPY=py -3.11"
+if not defined BASEPY python -c "import sys; sys.exit(0 if sys.version_info[:2] in ((3,11),(3,12)) else 1)" >nul 2>nul && set "BASEPY=python"
+if not defined BASEPY goto nopython
+
+%BASEPY% -m venv .venv
+if errorlevel 1 goto nopython
+if not exist "%PY%" goto nopython
+
+echo [2/3] Installing libraries (5-15 minutes, please wait)...
+"%PY%" -m pip install --upgrade pip
+"%PY%" -m pip install -r requirements-windows.txt
+if errorlevel 1 goto pipfail
+
+:run
+rem Libraries added later (e.g. pymupdf) - install if missing
+"%PY%" -c "import fitz, rembg, cv2" >nul 2>nul
+if errorlevel 1 (
+  echo Installing missing libraries...
+  "%PY%" -m pip install -r requirements-windows.txt
+  if errorlevel 1 goto pipfail
+)
+echo.
+echo [3/3] Starting cutout-py at http://localhost:8777
+echo       Keep this window open. Press Ctrl+C or close the window to stop.
+echo.
+"%PY%" app.py --no-browser %*
+echo.
+echo Program stopped.
+pause
+exit /b 0
+
+:nopython
+echo.
+echo ERROR: Python 3.12 (or 3.11) not found.
+echo   Install Python 3.12 from https://www.python.org/downloads/windows/
+echo   and TICK "Add python.exe to PATH" on the first installer screen.
+echo   Then double-click start.bat again.
+echo.
+if exist ".venv" rmdir /s /q ".venv"
+pause
+exit /b 1
+
+:pipfail
+echo.
+echo ERROR: library install failed (check internet, then run start.bat again).
+echo   If it keeps failing, delete the ".venv" folder and try again.
+echo.
+pause
+exit /b 1

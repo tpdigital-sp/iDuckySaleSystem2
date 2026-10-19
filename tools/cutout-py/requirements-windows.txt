@@ -1,0 +1,12 @@
+# Windows (Python 3.12 / 3.11) - pinned to the versions tested on the shop Mac (2026-10-19).
+# Unpinned installs pull untested releases (rembg 2.0.85, numpy 2.5, ...). Keep ASCII only (pip reads with the Windows code page).
+rembg==2.0.61
+onnxruntime==1.19.2
+opencv-python-headless==5.0.0.93
+pillow==11.3.0
+numpy==2.0.2
+potracer==0.0.4
+pymupdf==1.26.5
+scikit-image==0.24.0
+scipy==1.13.1
+numba==0.60.0
