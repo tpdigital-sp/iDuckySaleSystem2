@@ -11,6 +11,7 @@ import SavedReplyPicker from "./SavedReplyPicker";
 import { realignEmojis, type Emoji } from "../saved-replies/shared";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 import type { OaLive } from "@/lib/server/oa-chat-sync";
+import { isDraftLive } from "@/lib/draft-live";
 
 /**
  * 💬 แชท LINE / ตอบลูกค้า — หน้าตาเลียนแบบ LINE OA Manager (เจ้าของร้าน 9 ต.ค. 69 16:05: "ออกแบบใหม่ เลียนแบบ LINE OA + รองรับตอบแชทบนมือถือ")
@@ -820,7 +821,20 @@ function Chats() {
               urgent: s.key === "waiting" || s.key === "draft",
             }))}
             // 🟢 ยังไม่อ่าน (เจ้าของร้าน 14 ต.ค. 69 "ต้องแสดงจำนวนที่ยังไม่ได้อ่าน") — สีเขียวแบบ LINE · รอแอดมิน/ร่างรอส่ง ดูในเมนู
-            badge={unreadCount ? { n: unreadCount, title: `ยังไม่อ่าน ${unreadCount} ห้อง — เลือก "ยังไม่อ่าน" ในเมนูนี้`, bg: "var(--dk-mint-ink)" } : undefined}
+            // 19 ต.ค. 69: เลือก "ร่างรอส่ง"/"รอแอดมิน" อยู่ = เลขของมุมมองนั้น (เดิมโชว์เลขยังไม่อ่านเสมอ → "ร่างรอส่ง 388" ทั้งที่ร่างจริง 0 อ่านผิด)
+            badge={
+              scope === "draft"
+                ? draftCount
+                  ? { n: draftCount, title: `ร่างรอส่ง ${draftCount} ห้อง`, bg: "var(--dk-yolk-ink)" }
+                  : undefined
+                : scope === "waiting"
+                  ? waitingCount
+                    ? { n: waitingCount, title: `รอแอดมิน ${waitingCount} ห้อง`, bg: "var(--dk-coral-ink)" }
+                    : undefined
+                  : unreadCount
+                    ? { n: unreadCount, title: `ยังไม่อ่าน ${unreadCount} ห้อง — เลือก "ยังไม่อ่าน" ในเมนูนี้`, bg: "var(--dk-mint-ink)" }
+                    : undefined
+            }
           />
           <FilterMenu
             id="chat-tag"
@@ -1061,13 +1075,16 @@ function Chats() {
                 thread.map((m, i) => {
                   if (m.role === "draft") {
                     const latest = m.status === "pending" && !thread.slice(i + 1).some((x) => x.role === "draft" && x.status === "pending");
-                    return latest ? (
+                    // ⏳ ร่างหมดอายุ (เกิน 24 ชม. / ร้านตอบไปแล้วหลังร่าง) = ไม่ขึ้นการ์ดให้กดส่ง (lib/draft-live.ts · 19 ต.ค. 69 ร่างค้างจาก 14–15 ต.ค.)
+                    const answered = thread.slice(i + 1).some((x) => x.role === "admin" || x.role === "assistant");
+                    const stale = m.status === "expired" || (m.status === "pending" && (answered || !isDraftLive(m.at, detail?.lastAdminAt)));
+                    return latest && !stale ? (
                       <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
                     ) : (
                       <div key={m.id || i} className="mb-2 flex justify-end">
                         <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
                           <summary className="cursor-pointer">
-                            📝 ร่างบอทที่ไม่ได้ส่ง · {m.status === "discarded" ? "ทิ้งแล้ว" : m.status === "superseded" ? "มีร่างใหม่กว่า" : "ยังไม่ส่ง"} · {fmtTime(m.at)}
+                            📝 ร่างบอทที่ไม่ได้ส่ง · {stale ? "หมดอายุ (เกิน 24 ชม. หรือร้านตอบไปแล้ว)" : m.status === "discarded" ? "ทิ้งแล้ว" : m.status === "superseded" ? "มีร่างใหม่กว่า" : "ยังไม่ส่ง"} · {fmtTime(m.at)}
                           </summary>
                           <p className="mt-1 whitespace-pre-wrap">{m.text}</p>
                         </details>

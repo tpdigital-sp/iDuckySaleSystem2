@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { draftEditableText, draftImages } from "@/lib/server/bot-drafts";
+import { isDraftLive } from "@/lib/draft-live";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
@@ -126,7 +127,8 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     pausedUntil: paused && paused > new Date().toISOString() ? paused : "",
     lastAdminAt: lastAdmin,
     unread,
-    draftPending: !!iso(x.draftPendingAt),
+    // 📝 ร่างค้างจากโหมดร่างทั้งร้านช่วง 14–15 ต.ค. ไม่นับ: หมดอายุ 24 ชม. หรือร้านตอบไปแล้ว (lib/draft-live.ts · 19 ต.ค. 69)
+    draftPending: isDraftLive(iso(x.draftPendingAt), lastAdmin),
     adminTag: String(x.adminTag ?? ""),
     adminTags: Array.isArray(x.adminTags) ? (x.adminTags as unknown[]).map(String).filter(Boolean) : x.adminTag ? [String(x.adminTag)] : [],
     aiTag:

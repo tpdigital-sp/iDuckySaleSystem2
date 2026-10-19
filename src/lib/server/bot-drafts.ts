@@ -1,6 +1,7 @@
 import "server-only";
 import { productFlex, productsLinkedIn } from "@/lib/server/product-card";
 import { FieldValue } from "firebase-admin/firestore";
+import { DRAFT_TTL_MS } from "@/lib/draft-live";
 
 /**
  * 📝 โหมด "บอทร่าง แอดมินกดส่ง" (เจ้าของร้าน 13 ต.ค. 69: "ฉันต้องการเป็นคนกดปุ่มส่งในสิ่งที่บอทตอบลูกค้า ยังไม่ต้องให้บอทส่งเอง กลัวให้ข้อมูลผิด")
@@ -204,6 +205,8 @@ export async function sendBotDraft(
   if (status === "sent") return { ok: false, status: 409, error: "ร่างนี้ส่งไปแล้ว" };
   if (status === "sending") return { ok: false, status: 409, error: "กำลังส่งร่างนี้อยู่" };
   if (status === "discarded") return { ok: false, status: 409, error: "ร่างนี้ถูกทิ้งไปแล้ว — ส่งไม่ได้" };
+  // ⏳ ร่างเก่าเกิน 24 ชม. / หมดอายุแล้ว = ห้ามส่ง (19 ต.ค. 69 ร่างค้างจาก 14–15 ต.ค. ยังกดส่งได้ — คำตอบเก่าหลายวันหลุดถึงลูกค้า)
+  if (status === "expired" || Date.now() - msOf(d.get("at")) > DRAFT_TTL_MS) return { ok: false, status: 409, error: "ร่างนี้เก่าเกิน 24 ชม. แล้ว — ส่งไม่ได้ พิมพ์ตอบลูกค้าใหม่ในช่องด้านล่าง" };
   let msgs: LineMsg[] = [];
   try {
     msgs = cleanLineMessages(JSON.parse(String(d.get("payload") ?? "[]")));
@@ -300,11 +303,15 @@ export async function discardBotDraft(db: FirebaseFirestore.Firestore, uid: stri
 }
 
 /** ✍️ แอดมินพิมพ์ตอบเองในห้องที่มีร่างค้าง → ร่างค้างทั้งหมดถือว่าทิ้ง (ไม่ให้ห้องติดป้าย "ร่างรอส่ง" ค้าง) */
-export async function closePendingDrafts(db: FirebaseFirestore.Firestore, uid: string, who: string): Promise<number> {
+/**  reason "expired" = ร่างหมดอายุ (scripts/expire-stale-drafts.mts · 19 ต.ค. 69) — ทิ้งแบบเดียวกัน ความจำบอทถูกตามแก้ด้วย */
+export async function closePendingDrafts(db: FirebaseFirestore.Firestore, uid: string, who: string, reason: "admin-replied" | "expired" = "admin-replied"): Promise<number> {
   const snap = await db.collection(COL).doc(uid).collection("log").where("role", "==", "draft").where("status", "==", "pending").get();
-  if (snap.empty) return 0;
+  if (snap.empty) {
+    await clearFlagIfDone(db, uid);
+    return 0;
+  }
   const now = new Date();
-  await Promise.all(snap.docs.map((d) => d.ref.update({ status: "discarded", discardedBy: who, discardedAt: now, discardReason: "admin-replied" })));
+  await Promise.all(snap.docs.map((d) => d.ref.update({ status: "discarded", discardedBy: who, discardedAt: now, discardReason: reason })));
   const stale = await staleFixes(db, uid);
   await fixMemory(db, uid, stale.fixes).catch(() => {});
   await Promise.all(stale.refs.map((r) => r.update({ memoryFixed: true }).catch(() => {})));
