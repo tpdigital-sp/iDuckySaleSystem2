@@ -3703,7 +3703,14 @@ export default function CalendarStudio({
   async function downloadAi() {
     if (busy) return;
     setErr("");
+    // 🪟 cutout-py ปิดอยู่ → สั่งเปิดตอนกด ⬇ .ai เลย (ยังอยู่ในจังหวะคลิก เบราว์เซอร์ถึงยอม · 19 ต.ค. 69 "ไม่ต้องกด run start ให้เว็บรันให้อัตโนมัติ")
+    if (cutSt.current === "down" && Date.now() - launchedAt.current > 60000 && launchCutoutPy()) launchedAt.current = Date.now();
     try {
+      // เพิ่งสั่งเปิด = รอให้ขึ้นก่อน ไม่งั้นได้ไฟล์สำรองไม่แยกเลเยอร์
+      if (Date.now() - launchedAt.current < 120000 && (await cutoutStatus()) === "down") {
+        setBusy("กำลังเปิดโปรแกรม cutout-py ในเครื่อง…");
+        setCutStatus(await waitCutoutReady(45000));
+      }
       setBusy("กำลังทำไฟล์ .ai…");
       const r = await makeAi();
       const a = document.createElement("a");
