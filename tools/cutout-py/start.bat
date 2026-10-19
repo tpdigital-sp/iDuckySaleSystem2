@@ -55,6 +55,9 @@ echo.
 echo Done. cutout-py now runs in the background (no window needed)
 echo   - starts automatically every time Windows logs in
 echo   - the website can also start it (allow "iducky-cutout" when the browser asks)
+echo   - IMPORTANT (once per browser): on iduckystore.com click the icon left of the address bar
+echo     - Site settings - "Local network access" - Allow, then press Ctrl+F5
+echo     (otherwise the website cannot reach this program and .ai files will not have layers)
 echo   You can close this window.
 echo.
 pause

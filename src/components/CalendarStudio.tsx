@@ -381,6 +381,11 @@ function diffLabel(a: { design: CalDesign; back: CalBack }, d: CalDesign, b: Cal
 
 /** เหตุที่ทำ .ai เลเยอร์ไม่ได้ ตามสถานะโปรแกรม cutout-py ในเครื่อง (ข้อความให้พนักงานแก้เองได้) */
 function cutoutWhy(st: CutoutStatus): string {
+  if (st === "blocked")
+    return (
+      "เบราว์เซอร์บล็อกไม่ให้เว็บคุยกับโปรแกรม cutout-py ในเครื่อง (สิทธิ์ Local network access) — " +
+      "กดไอคอนหน้าช่องที่อยู่เว็บ → การตั้งค่าเว็บไซต์ (Site settings) → \"Local network access\" / \"Apps on device\" → อนุญาต (Allow) แล้วกด Ctrl+F5"
+    );
   if (st === "noai") return "โปรแกรม cutout-py เปิดอยู่ แต่หา Adobe Illustrator ในเครื่องนี้ไม่เจอ — เปิด Illustrator ด้วยมือ 1 ครั้งให้โหลดเสร็จ";
   if (st === "down")
     return (
@@ -1198,7 +1203,9 @@ export default function CalendarStudio({
         return;
       }
       setErr(
-        st === "noai"
+        st === "blocked"
+          ? `⚠️ ${cutoutWhy("blocked")} แล้วกด 🔁 ใหม่`
+          : st === "noai"
           ? "⚠️ โปรแกรม cutout-py เปิดอยู่ แต่หา Adobe Illustrator ในเครื่องนี้ไม่เจอ — เปิด Illustrator ด้วยมือ 1 ครั้ง แล้วกด 🔁 ใหม่"
           : "⚠️ ต่อ Illustrator ของร้านไม่ได้ (โปรแกรม tools/cutout-py พอร์ต 8777 ไม่ได้เปิด) — Mac: ดับเบิลคลิก start.command · Windows: ดับเบิลคลิก start.bat แล้วกด 🔁 ใหม่ · " +
               "ถ้ากด 💾 เองจะได้ไฟล์สำรอง -pdf.ai ที่ไม่แยกเลเยอร์",
@@ -5567,6 +5574,7 @@ export default function CalendarStudio({
               <button
                 type="button"
                 onClick={() => {
+                  if (cutUi === "blocked") return window.alert(cutoutWhy("blocked"));
                   if (cutUi !== "down") return void cutoutStatus().then(setCutStatus);
                   if (launchCutoutPy()) {
                     launchedAt.current = Date.now();
@@ -5577,12 +5585,18 @@ export default function CalendarStudio({
                 className={`hidden whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-extrabold ring-1 sm:inline-block ${
                   cutUi === "ready"
                     ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                    : cutUi === "noai"
+                    : cutUi === "noai" || cutUi === "blocked"
                       ? "bg-amber-50 text-amber-800 ring-amber-300"
                       : "bg-rose-50 text-rose-700 ring-rose-300 hover:bg-rose-100"
                 }`}
               >
-                {cutUi === "ready" ? "● .ai พร้อม" : cutUi === "noai" ? "▲ ไม่เจอ Illustrator" : "■ .ai: โปรแกรมปิดอยู่"}
+                {cutUi === "ready"
+                  ? "● .ai พร้อม"
+                  : cutUi === "noai"
+                    ? "▲ ไม่เจอ Illustrator"
+                    : cutUi === "blocked"
+                      ? "🔒 เบราว์เซอร์บล็อก .ai"
+                      : "■ .ai: โปรแกรมปิดอยู่"}
               </button>
             )}
             {aiExport && !fmt.diecut && (

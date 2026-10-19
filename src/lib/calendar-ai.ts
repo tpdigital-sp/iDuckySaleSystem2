@@ -191,15 +191,41 @@ const b64 = async (b: Blob) => {
   return btoa(s);
 };
 
-/** สถานะโปรแกรม cutout-py ในเครื่อง: down = ไม่ได้เปิด · noai = เปิดอยู่แต่ไม่เจอ Illustrator · ready = ทำ .ai ได้ */
-export type CutoutStatus = "down" | "noai" | "ready";
+/**
+ * สถานะโปรแกรม cutout-py ในเครื่อง: down = ไม่ได้เปิด · noai = เปิดอยู่แต่ไม่เจอ Illustrator · ready = ทำ .ai ได้
+ * blocked = เบราว์เซอร์ไม่ให้เว็บคุยกับ localhost (สิทธิ์ Local network access ถูกบล็อก · Chrome 142+)
+ */
+export type CutoutStatus = "down" | "noai" | "ready" | "blocked";
+
+/**
+ * 🔒 สิทธิ์ "Local network access" ของเว็บนี้ — Chrome รุ่นใหม่ต้องได้อนุญาตก่อน เว็บ https ถึงคุยกับ http://localhost ได้
+ * (เครื่องพนักงาน Windows 19 ต.ค. 69: โปรแกรมตอบ {"illustrator": true} แต่จอออกแบบต่อไม่ได้ = ถูกบล็อก)
+ * ชื่อสิทธิ์เปลี่ยนตามรุ่น Chrome → ลองทีละชื่อ · เบราว์เซอร์ไม่รู้จัก = unknown (Safari/Firefox/Chrome รุ่นเก่า ไม่มีด่านนี้)
+ */
+export async function localNetPermission(): Promise<PermissionState | "unknown"> {
+  if (typeof navigator === "undefined" || !navigator.permissions?.query) return "unknown";
+  for (const name of ["loopback-network", "local-network-access", "local-network"]) {
+    try {
+      return (await navigator.permissions.query({ name } as unknown as PermissionDescriptor)).state;
+    } catch {
+      /* ชื่อนี้ไม่รู้จัก — ลองชื่อถัดไป */
+    }
+  }
+  return "unknown";
+}
+
 export async function cutoutStatus(timeoutMs = 1500): Promise<CutoutStatus> {
+  const perm = await localNetPermission();
+  // ยังไม่เคยตอบ (prompt) = Chrome เด้งกล่องขออนุญาตตอน fetch นี้ — รอคำตอบนานพอ
+  // (เดิมตัดที่ 1.5 วิ → คำขอถูกยกเลิก กล่องหายก่อนพนักงานทันกด "อนุญาต" · ต่อไม่ได้เงียบ ๆ ทุกครั้ง)
+  const ms = perm === "prompt" ? Math.max(timeoutMs, 60000) : timeoutMs;
   try {
-    const r = await fetch(`${CUTOUT_PY}/calendar-ai`, { method: "GET", signal: AbortSignal.timeout(timeoutMs) });
+    const r = await fetch(`${CUTOUT_PY}/calendar-ai`, { method: "GET", signal: AbortSignal.timeout(ms) });
     const j = (await r.json().catch(() => null)) as { illustrator?: boolean } | null;
     return j?.illustrator ? "ready" : "noai";
   } catch {
-    return "down";
+    // ⚠️ ต่อไม่ได้ค่อยดูสิทธิ์ — สิทธิ์ขึ้น "denied" ได้แม้ไม่ได้ใช้ด่านนี้ (เว็บบน localhost / เบราว์เซอร์ฝังในแอป · Chrome 152 ต่อได้ปกติ)
+    return perm === "denied" || (await localNetPermission()) === "denied" ? "blocked" : "down";
   }
 }
 
