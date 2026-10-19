@@ -549,6 +549,12 @@ export interface OptionInput {
   /** ค่าต่ำสุด/สูงสุดที่ยอมรับ (number) — กันลูกค้าพิมพ์ขนาดที่ทำไม่ได้ */
   min?: number;
   max?: number;
+  /**
+   * 📏 max เป็นเพดาน "ต่อ 1 หน่วยที่สั่ง" — สั่งหลายหน่วย เพดานขยายตาม (max × จำนวนที่สั่ง) แต่ไม่เกินค่านี้
+   * ผ้าแขวนผนังตัดแบ่ง: ยาว ≤ 90 ซม. ต่อ 1 หลา · ชิ้น 85×160 สั่ง 2 หลา = รับยาวได้ถึง 180
+   * (พนักงานแจ้ง 19 ต.ค. 69) · ไม่ตั้ง = เพดาน max คงที่เหมือนเดิม · ดู inputMaxOf / sheetSpanUnits
+   */
+  maxPerQtyCap?: number;
   /** รับเฉพาะจำนวนเต็ม (number) — เช่น ขนาดอาร์มปักไม่รับทศนิยม */
   integer?: boolean;
   /** ความยาวสูงสุด (text/textarea) — ไม่ตั้ง = 200 */
@@ -598,7 +604,9 @@ export function inputError(
   /** ตัวเลือกที่เลือกอยู่ — ส่งมาด้วยถ้าเพดานของช่องนี้ขึ้นกับตัวเลือกอื่น (ดู inputMaxOf) */
   selections?: Record<string, string>,
   /** สินค้า — ส่งมาด้วยถ้าช่องนี้อาจเป็นคู่ "กรอกด้านยาวสุดช่องเดียวพอ" (ดู longestOnlyPair) */
-  product?: Product
+  product?: Product,
+  /** จำนวนที่สั่ง — ส่งมาด้วยถ้าเพดานของช่องนี้ขยายตามจำนวน (ดู OptionInput.maxPerQtyCap) */
+  qty?: number
 ): string | null {
   const cfg = opt.input;
   if (!cfg) return null;
@@ -633,8 +641,19 @@ export function inputError(
     if (cfg.integer && !Number.isInteger(n)) return `${name} ต้องเป็นจำนวนเต็ม (ไม่รับทศนิยม)`;
     const u = cfg.unit ? ` ${cfg.unit}` : "";
     if (cfg.min != null && n < cfg.min) return `${name} ต้องไม่ต่ำกว่า ${cfg.min}${u}`;
-    const max = inputMaxOf(opt, selections);
-    if (max != null && n > max) return `${name} ต้องไม่เกิน ${max}${u}`;
+    const max = inputMaxOf(opt, selections, qty);
+    if (max != null && n > max) {
+      /*
+       * 📏 เพดานขยายตามจำนวนที่สั่ง — ยังไม่ถึงเพดานรวม = บอกให้เพิ่มจำนวน ไม่ใช่บอกว่าทำไม่ได้
+       * (ผ้ายาว 160 ซม. สั่ง 1 หลา → "ต้องสั่งอย่างน้อย 2 หลา")
+       */
+      const per = cfg.max;
+      if (cfg.maxPerQtyCap && per && n <= cfg.maxPerQtyCap) {
+        const sheet = opt.sheetYield?.sheetName ?? "หน่วย";
+        return `${name} ${n}${u} เกิน ${Math.max(1, Math.floor(qty ?? 1))} ${sheet} — ต้องสั่งอย่างน้อย ${Math.ceil(n / per - 1e-9)} ${sheet} (${sheet}ละ ${per}${u})`;
+      }
+      return `${name} ต้องไม่เกิน ${cfg.maxPerQtyCap ?? max}${u}`;
+    }
     return null;
   }
   const max = cfg.maxLength ?? INPUT_MAX_LEN;
@@ -1237,10 +1256,39 @@ export function inputFeeMaxOf(cfg: InputFee, selections: Record<string, string>)
   return cfg.max ?? null;
 }
 
-/** 🚧 เพดานที่ใช้จริงของช่องกรอกนี้ — ขั้นตามตัวเลือกที่เลือกอยู่ชนะ input.max ที่ตั้งไว้กลาง ๆ */
-export function inputMaxOf(opt: ProductOption, selections?: Record<string, string>): number | undefined {
+/**
+ * 🚧 เพดานที่ใช้จริงของช่องกรอกนี้ — ขั้นตามตัวเลือกที่เลือกอยู่ชนะ input.max ที่ตั้งไว้กลาง ๆ
+ * ส่ง qty มาด้วย = เพดานต่อหน่วยขยายตามจำนวนที่สั่ง (OptionInput.maxPerQtyCap) · ไม่ส่ง = เพดาน 1 หน่วย
+ */
+export function inputMaxOf(opt: ProductOption, selections?: Record<string, string>, qty?: number): number | undefined {
   const byFee = opt.inputFee && selections ? inputFeeMaxOf(opt.inputFee, selections) : null;
-  return byFee ?? opt.input?.max;
+  if (byFee != null) return byFee;
+  const max = opt.input?.max;
+  const cap = opt.input?.maxPerQtyCap;
+  if (max == null || !cap || !(qty && qty > 1)) return max;
+  return Math.min(cap, max * Math.floor(qty));
+}
+
+/**
+ * 📏 ชิ้นงานยาวเกิน 1 หน่วย (ผ้า 85×160 ซม. บนหลา 140×90) ต้องใช้ผ้าต่อกันกี่หน่วยถึงตัดได้ 1 ชิ้น
+ * เฉพาะช่องที่ตั้ง input.maxPerQtyCap + sheetYield · null = ไม่ใช่งานแบบนี้ / ยังกรอกไม่ครบ /
+ * ลงได้ใน 1 หน่วยอยู่แล้ว / ยาวเกินเพดานรวม
+ */
+export function sheetSpanUnits(product: Product, opt: ProductOption, selections: Record<string, string>): number | null {
+  const cfg = opt.sheetYield;
+  const per = opt.input?.max;
+  const cap = opt.input?.maxPerQtyCap;
+  if (!cfg || !per || !cap) return null;
+  const pair = product.options.find((o) => o.label === cfg.pairLabel);
+  if (!pair) return null;
+  const w = Number(parseInputValue(pair, selections[pair.label]));
+  const h = Number(parseInputValue(opt, selections[opt.label]));
+  if (!(w > 0) || !(h > 0)) return null;
+  if (sheetFitCount(cfg, w, h, sheetBoundOf(pair, opt, selections)) >= 1) return null;
+  for (let k = 2; k * per <= cap + 1e-9; k++) {
+    if (packSingleSize(w, h, cfg.sheetW, cfg.sheetH * k, cfg.gap ?? 0) >= 1) return k;
+  }
+  return null;
 }
 
 /**

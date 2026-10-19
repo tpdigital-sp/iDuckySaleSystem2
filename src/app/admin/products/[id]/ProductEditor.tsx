@@ -120,6 +120,8 @@ type DraftOption = {
   inUnit?: string;
   inMin?: string;
   inMax?: string;
+  /** 📏 เพดานรวมเมื่อสั่งหลายหน่วย (OptionInput.maxPerQtyCap) — ว่าง = เพดานคงที่ */
+  inMaxPerQtyCap?: string;
   inPlaceholder?: string;
   inHint?: string;
   /** ไม่ติ๊ก = ไม่บังคับกรอก (ค่าเริ่มต้นคือบังคับ) */
@@ -796,6 +798,7 @@ function toDraft(p: Product): Draft {
             inUnit: o.input.unit ?? "",
             inMin: o.input.min != null ? String(o.input.min) : "",
             inMax: o.input.max != null ? String(o.input.max) : "",
+            inMaxPerQtyCap: o.input.maxPerQtyCap != null ? String(o.input.maxPerQtyCap) : "",
             inPlaceholder: o.input.placeholder ?? "",
             inHint: o.input.hint ?? "",
             ...(o.input.required === false ? { inOptional: true } : {}),
@@ -1145,6 +1148,9 @@ function fromDraftOptions(draft: DraftOption[]): ProductOption[] {
               ...(o.inUnit?.trim() ? { unit: o.inUnit.trim() } : {}),
               ...(Number(o.inMin) > 0 ? { min: Number(o.inMin) } : {}),
               ...(Number(o.inMax) > 0 ? { max: Number(o.inMax) } : {}),
+              ...(Number(o.inMax) > 0 && Number(o.inMaxPerQtyCap) > Number(o.inMax)
+                ? { maxPerQtyCap: Number(o.inMaxPerQtyCap) }
+                : {}),
               ...(o.inPlaceholder?.trim() ? { placeholder: o.inPlaceholder.trim() } : {}),
               ...(o.inHint?.trim() ? { hint: o.inHint.trim() } : {}),
               ...(o.inOptional ? { required: false } : {}),
@@ -2493,6 +2499,21 @@ export default function ProductEditor({ product }: { product: Product }) {
                   placeholder="—"
                   className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
                   aria-label={`ค่าสูงสุดของช่องกรอก ${opt.label || gi + 1}`}
+                />
+              </label>
+              {/* 📏 สูงสุดเป็น "ต่อ 1 หน่วย" — สั่งหลายหน่วยรับได้ สูงสุด × จำนวน ไม่เกินเลขนี้ (ผ้ายาว 90/หลา ถึง 360) */}
+              <label
+                className="text-[11px] font-semibold text-slate-500"
+                title="สูงสุดคิดต่อ 1 หน่วยที่สั่ง — สั่ง 2 หน่วยรับได้ สูงสุด×2 ไปจนถึงเลขนี้ · ว่าง = สูงสุดคงที่"
+              >
+                ขยายตามจำนวนถึง
+                <input
+                  value={opt.inMaxPerQtyCap ?? ""}
+                  onChange={(e) => setOpt({ inMaxPerQtyCap: e.target.value.replace(/[^\d.]/g, "") })}
+                  inputMode="decimal"
+                  placeholder="—"
+                  className="mt-1 block w-20 rounded-lg bg-white px-2 py-1.5 text-center text-xs ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  aria-label={`เพดานรวมเมื่อสั่งหลายหน่วยของช่องกรอก ${opt.label || gi + 1}`}
                 />
               </label>
             </>

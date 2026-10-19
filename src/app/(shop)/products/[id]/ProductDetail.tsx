@@ -15,6 +15,7 @@ import {
   INPUT_MAX_LEN,
   isInputOption,
   sheetYieldCount,
+  sheetSpanUnits,
   sizeInputPlan,
   sizeInputText,
   applySizeInputPlans,
@@ -2073,9 +2074,9 @@ export default function ProductDetail({
         // ช่องกรอกของงานปกติ (standardInput เช่น ขนาดไดคัท) แสดงอยู่เมื่อไหร่ต้องกรอกเสมอ
         .filter((o) => o.standardInput === true || madeToOrderOn(effective))
         // เก็บชื่อกลุ่มไว้ด้วย — ปุ่มสั่งจะได้บอกตรง ๆ ว่าติดช่องไหน และพาเลื่อนไปหาช่องนั้นได้
-        .map((o) => ({ label: o.label, msg: inputError(o, effective[o.label], effective, product) }))
+        .map((o) => ({ label: o.label, msg: inputError(o, effective[o.label], effective, product, qty) }))
         .filter((e): e is { label: string; msg: string } => !!e.msg),
-    [product, effective],
+    [product, effective, qty],
   );
   /**
    * ช่องที่ "กรอกแล้วแต่ผิดเกณฑ์" (เช่น จุดไดคัทเกินเพดานของขนาดที่เลือก) — ต่างจากช่องที่ยังไม่ได้กรอก
@@ -4424,7 +4425,7 @@ export default function ProductDetail({
                   tag =
                     !mine && !theirs
                       ? "กรอกช่องเดียวพอ กว้างหรือสูงก็ได้"
-                      : !mine && !inputError(opt, effective[opt.label], effective, product)
+                      : !mine && !inputError(opt, effective[opt.label], effective, product, qty)
                         ? "ไม่บังคับ"
                         : "";
                 }
@@ -4458,7 +4459,7 @@ export default function ProductDetail({
               (() => {
                 const cfg = opt.input;
                 const raw = parseInputValue(opt, effective[opt.label]);
-                const err = inputError(opt, effective[opt.label], effective, product);
+                const err = inputError(opt, effective[opt.label], effective, product, qty);
                 // เขียนกลับลง selections พร้อมหน่วย ("2.5" + "ซม." → "2.5 ซม.")
                 const write = (v: string) => setSelections((sel) => ({ ...sel, [opt.label]: formatInputValue(opt, v) }));
                 const clean = (v: string) => (cfg?.kind === "number" ? v.replace(/[^\d.]/g, "") : v.slice(0, cfg?.maxLength ?? INPUT_MAX_LEN));
@@ -4523,6 +4524,26 @@ export default function ProductDetail({
                       const byTable = sheetYieldByTable(product, opt, effective);
                       // 📄 กรอก A4/A5/A6 เป๊ะ = หั่นชิดจาก A3 ไม่ใช่ผังไดคัทเว้นช่องไฟ (ดู a3StraightCutCount)
                       const straight = sheetYieldStraightCut(product, opt, effective);
+                      /*
+                       * 📏 ชิ้นยาวเกิน 1 หน่วย แต่ต่อผ้าหลายหลาได้ (maxPerQtyCap) — ไม่ใช่ "ใหญ่เกิน" ให้ทักแชท
+                       * บอกว่า 1 ชิ้นกินกี่หลา · สั่งไม่ถึงช่องกรอกฟ้องแดงเองอยู่แล้ว (inputError)
+                       */
+                      const span = n === 0 ? sheetSpanUnits(product, opt, effective) : null;
+                      if (span) {
+                        const pieces = Math.floor(qty / span);
+                        return (
+                          <p className="mt-1 text-[11px] font-bold text-teal-700">
+                            📐 ขนาดนี้ยาวเกิน 1 {sheet} — 1 ชิ้นใช้ผ้าต่อกัน {span} {sheet}
+                            {pieces >= 1 && (
+                              <>
+                                {" "}
+                                · สั่ง {qty.toLocaleString("th-TH")} {sheet} ={" "}
+                                <span className="font-extrabold text-teal-900">ได้ {pieces.toLocaleString("th-TH")} ชิ้น</span>
+                              </>
+                            )}
+                          </p>
+                        );
+                      }
                       return n >= 1 ? (
                         <p className="mt-1 text-[11px] font-bold text-teal-700">
                           📐 {mixedN ? `คละ ${mixedN} ขนาด ได้ประมาณ` : longestOnly && byTable ? "ด้านยาวสุดเท่านี้ได้ประมาณ" : "ขนาดนี้ได้ประมาณ"} {n} ชิ้น ต่อ
@@ -4579,6 +4600,24 @@ export default function ProductDetail({
                       const max = sizeFeeMaxPieces(cfg, effective);
                       if (max == null)
                         return <p className="mt-1 text-[11px] text-stone-400">กรอกขนาดชิ้นงานด้านบนก่อน แล้วระบบจะบอกว่า 1 {sheet} ตัดได้กี่ชิ้น</p>;
+                      /*
+                       * 📏 ชิ้นยาวเกิน 1 หน่วย (ผ้า 85×160 = ใช้ 2 หลา) — ค่าตัด/เย็บขอบยังคิดทุกหลาที่สั่ง
+                       * (กติกาเดียวกับตัดเต็มหลา) แต่ได้ชิ้นเดียว — ห้ามขึ้น "สั่ง 2 หลา = 2 ชิ้น" ค้านกับบรรทัด 📐
+                       */
+                      const yOpt = product.options.find((o) => o.sheetYield && o.label === cfg.heightLabel);
+                      const span = yOpt ? sheetSpanUnits(product, yOpt, effective) : null;
+                      if (span)
+                        return (
+                          <p className="mt-1 text-[11px] font-bold text-teal-700">
+                            ✂️ ชิ้นยาวเกิน 1 {sheet} — คิดค่าตัด/เย็บขอบตามจำนวน{sheet}ที่สั่ง ({sheet}ละ 1 ครั้ง เหมือนตัดเต็ม{sheet})
+                            {qty >= span && (
+                              <span className="font-normal text-stone-500">
+                                {" "}
+                                · สั่ง {qty.toLocaleString("th-TH")} {sheet} = ได้ {Math.floor(qty / span).toLocaleString("th-TH")} ชิ้น
+                              </span>
+                            )}
+                          </p>
+                        );
                       const typed = Number(parseInputValue(opt, effective[opt.label]));
                       const filled = Number.isFinite(typed) && typed > 0;
                       const used = filled ? Math.min(Math.max(1, Math.floor(typed)), max) : max;
@@ -4719,11 +4758,18 @@ export default function ProductDetail({
                     {/* เกณฑ์ที่รับได้ — บอกไว้ก่อนพิมพ์ ดีกว่าให้พิมพ์เสร็จแล้วค่อยขึ้นแดง */}
                     {(() => {
                       // เพดานของช่องนี้อาจขึ้นกับตัวเลือกอื่น (จุดไดคัท: A7 รับ 20 จุด · A4 รับ 180)
-                      const hardMax = inputMaxOf(opt, effective);
+                      // หรือขยายตามจำนวนที่สั่ง (ผ้ายาว 90 ซม./หลา · สั่ง 2 หลา รับ 180 — ดู maxPerQtyCap)
+                      const hardMax = inputMaxOf(opt, effective, qty);
+                      const perQty = cfg?.maxPerQtyCap && cfg.max ? cfg : null;
+                      const sheet = opt.sheetYield?.sheetName ?? "หน่วย";
                       return cfg?.kind === "number" && (cfg.min != null || hardMax != null) ? (
                         <p className="mt-0.5 text-[11px] text-stone-400">
                           รับ {cfg.min != null ? cfg.min : "0"}
                           {hardMax != null ? `–${hardMax}` : " ขึ้นไป"} {cfg.unit ?? ""}
+                          {perQty &&
+                            (qty > 1
+                              ? ` (สั่ง ${qty.toLocaleString("th-TH")} ${sheet})`
+                              : ` · ยาวเกินนี้เพิ่มจำนวน${sheet} ${sheet}ละ ${perQty.max} ${cfg.unit ?? ""} (สูงสุด ${perQty.maxPerQtyCap} ${cfg.unit ?? ""})`)}
                         </p>
                       ) : null;
                     })()}
