@@ -379,6 +379,18 @@ function diffLabel(a: { design: CalDesign; back: CalBack }, d: CalDesign, b: Cal
   return "แก้ไข";
 }
 
+/** เหตุที่ทำ .ai เลเยอร์ไม่ได้ ตามสถานะโปรแกรม cutout-py ในเครื่อง (ข้อความให้พนักงานแก้เองได้) */
+function cutoutWhy(st: CutoutStatus): string {
+  if (st === "noai") return "โปรแกรม cutout-py เปิดอยู่ แต่หา Adobe Illustrator ในเครื่องนี้ไม่เจอ — เปิด Illustrator ด้วยมือ 1 ครั้งให้โหลดเสร็จ";
+  if (st === "down")
+    return (
+      "เว็บต่อโปรแกรม cutout-py ในเครื่องนี้ไม่ได้ (localhost:8777) — " +
+      "1) ยังไม่ได้เปิด/ติดตั้ง: Windows ดับเบิลคลิก start.bat · Mac ดับเบิลคลิก start.command  " +
+      "2) เปิดแล้วแต่เบราว์เซอร์บล็อก: กดรูปกุญแจหน้าช่องที่อยู่เว็บ → อนุญาต \"อุปกรณ์ในเครือข่ายเฉพาะที่ / Local network access\" แล้วรีเฟรช"
+    );
+  return "";
+}
+
 export default function CalendarStudio({
   open,
   onClose,
@@ -1118,6 +1130,12 @@ export default function CalendarStudio({
    * ปิดอยู่ + เครื่อง Windows = สั่งเปิดผ่านลิงก์ iducky-cutout: ตอนกดปุ่ม (ใช้แบบนี้/💾/▶ เปิดโปรแกรม) แล้วรอจนพร้อม
    */
   const cutSt = useRef<CutoutStatus | null>(null);
+  /** ป้ายสถานะบนแถบบน (ทีมหลังบ้าน) — เห็นทันทีว่าเครื่องนี้ทำ .ai เลเยอร์ได้ไหม · ตั้งผ่าน setCutStatus ทุกครั้ง */
+  const [cutUi, setCutUi] = useState<CutoutStatus | null>(null);
+  const setCutStatus = (st: CutoutStatus) => {
+    cutSt.current = st;
+    setCutUi(st);
+  };
   const launchedAt = useRef(0);
   /** 🔁 ทำไฟล์อัตโนมัติแต่โปรแกรมปิดอยู่ — โชว์ปุ่ม ▶ เปิดโปรแกรม (ต้องกดเอง เบราว์เซอร์ถึงยอมเปิดโปรแกรมภายนอก) */
   const [launchAsk, setLaunchAsk] = useState(false);
@@ -1126,7 +1144,7 @@ export default function CalendarStudio({
     // เช็คเฉพาะตอนเปิดมาทำ .ai (🔁 autoOrder) — ✓ ใช้แบบนี้ / 💾 บันทึกกลับ ทั่วไปไม่แตะโปรแกรมในเครื่องแล้ว (19 ต.ค. 69)
     if (!open || !aiExport || !autoOrder) return;
     let alive = true;
-    const check = () => void cutoutStatus().then((st) => alive && (cutSt.current = st));
+    const check = () => void cutoutStatus().then((st) => alive && setCutStatus(st));
     check();
     const t = setInterval(check, 20000);
     return () => {
@@ -1147,7 +1165,7 @@ export default function CalendarStudio({
   /** รอโปรแกรมที่สั่งเปิด → พร้อม = ทำต่อเอง · ไม่เจอ Illustrator/หมดเวลา = บอก */
   const waitThenAuto = async (ms: number) => {
     const st = await waitCutoutReady(ms);
-    cutSt.current = st;
+    setCutStatus(st);
     if (autoGo.current) return;
     if (st === "ready") return void runAuto();
     if (st === "noai")
@@ -1168,7 +1186,7 @@ export default function CalendarStudio({
       }
       setBusy("กำลังเช็ค Illustrator ในเครื่องนี้…");
       const st = await cutoutStatus();
-      cutSt.current = st;
+      setCutStatus(st);
       setBusy("");
       if (st === "ready") return void runAuto();
       if (st === "down" && canLaunchCutout()) {
@@ -4115,6 +4133,8 @@ export default function CalendarStudio({
       //    ปฏิทินรูปเต็ม .ai จาก Illustrator ~180 MB — ต้องตั้ง Upload file size limit ของโปรเจกต์ Supabase ให้พอ
       //    ทำไม่ได้/อัปไม่ขึ้นก็ยังสั่งต่อได้ (ไฟล์พิมพ์ + .pdf ครบแล้ว)
       let ai: { file: File; note: string } | undefined = cutAi ? { file: cutAi, note: "ไดคัท: เส้นตัดสีพิเศษ CutContour" } : undefined;
+      /** ⚠️ .ai เลเยอร์ไม่ได้ทำ/ไม่แยกเลเยอร์ — บอกหลังบันทึก (เดิมข้ามเงียบ พนักงานไม่รู้ว่าทำไม .ai ไม่มา · bt 19 ต.ค. 69) */
+      let aiWarn = "";
       /**
        * 📱 ต่อ Illustrator ของร้านไม่ได้ (สั่งจากมือถือ/เครื่องนอกร้าน) = ไม่ทำไฟล์สำรอง -pdf.ai แนบออเดอร์ (16 ต.ค. 69 "กดใส่ตะกร้าแล้วอัปโหลดนานมาก")
        * ไฟล์สำรองเนื้อหาเดียวกับ .pdf ที่แนบอยู่แล้ว (Illustrator เปิดแล้วรวมเป็น Layer 1) และหน้าออเดอร์ต้องกด 🔁 ทำใหม่ด้วย Illustrator อยู่ดี
@@ -4128,17 +4148,23 @@ export default function CalendarStudio({
           setBusy("กำลังเปิดโปรแกรม cutout-py ในเครื่อง…");
           st = await waitCutoutReady(45000);
         }
-        cutSt.current = st;
+        setCutStatus(st);
         if (st === "ready") {
           setBusy("กำลังทำไฟล์ .ai…");
           try {
-            ai = await makeAi();
+            const made = await makeAi();
+            ai = made;
+            // Illustrator สั่งไม่สำเร็จ → ได้ไฟล์สำรอง -pdf.ai (Layer 1) — บอกเหตุผลจริงจาก Illustrator (เครื่อง Windows ไล่ปัญหาจากข้อความนี้)
+            if (made && !made.real) aiWarn = made.note;
             if (ai) onEarly?.({ owner: ai.file });
           } catch (e) {
             ai = undefined;
             console.warn("calendar .ai", e);
           }
-        } else console.info("calendar .ai: ต่อ Illustrator ของร้านไม่ได้ — ข้ามไฟล์สำรอง (กด 🔁 ทำใหม่ที่หน้าออเดอร์)");
+        } else {
+          console.info("calendar .ai: ต่อ Illustrator ของร้านไม่ได้ — ข้ามไฟล์สำรอง (กด 🔁 ทำใหม่ที่หน้าออเดอร์)");
+          aiWarn = cutoutWhy(st);
+        }
       }
       // 🖨 .pdf แนบออเดอร์ด้วย — การ์ดชุด = ไฟล์ชิ้นงาน (โปรแกรมจัดวาง) · แบบอื่น = .pdf ทั้งเล่ม (เดิมแนบเฉพาะการ์ด · แก้ 14 ต.ค. 69)
       let pdf: File | undefined;
@@ -4180,6 +4206,9 @@ export default function CalendarStudio({
           (noCal ? "" : `ปฏิทิน: ${backSpec(back)} `) +
           (fmt.diecut ? cutSpec.replace(/^ · /, "") + " " : printFrameToken(W, H)),
       }, (t) => setBusy(t));
+      // ทีมหลังบ้านบนคอม (มือถือทำ .ai ไม่ได้อยู่แล้ว ไม่ต้องเด้งทุกครั้ง)
+      if (aiWarn && typeof window !== "undefined" && window.matchMedia?.("(pointer: fine)").matches)
+        window.alert(`⚠️ บันทึกแบบแล้ว แต่ไฟล์ .ai ยังไม่แยกเลเยอร์\n\n${aiWarn}\n\nแก้แล้วกด 🔁 ทำ .ai เลเยอร์ใหม่ ที่หน้าออเดอร์ได้`);
       onClose();
       if (orderAfter.current && onOrder) await onOrder();
     } catch (e) {
@@ -5512,6 +5541,29 @@ export default function CalendarStudio({
                 className="hidden rounded-full bg-amber-50 px-3 py-2.5 text-xs font-extrabold text-amber-800 ring-1 ring-amber-300 transition hover:bg-amber-100 disabled:opacity-60 sm:inline-block"
               >
                 ⬇ .ai
+              </button>
+            )}
+            {/* 🟢🟠🔴 เครื่องนี้ทำ .ai เลเยอร์ได้ไหม — ทีมหลังบ้านเห็นก่อนกดบันทึก (19 ต.ค. 69) · 🔴 บน Windows กด = สั่งเปิดโปรแกรม */}
+            {aiExport && !fmt.diecut && cutUi && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (cutUi !== "down") return void cutoutStatus().then(setCutStatus);
+                  if (launchCutoutPy()) {
+                    launchedAt.current = Date.now();
+                    void waitCutoutReady(45000).then(setCutStatus);
+                  } else window.alert(cutoutWhy("down"));
+                }}
+                title={cutUi === "ready" ? "โปรแกรม cutout-py + Illustrator พร้อม — บันทึกแล้วได้ .ai แยกเลเยอร์" : cutoutWhy(cutUi)}
+                className={`hidden whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-extrabold ring-1 sm:inline-block ${
+                  cutUi === "ready"
+                    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                    : cutUi === "noai"
+                      ? "bg-amber-50 text-amber-800 ring-amber-300"
+                      : "bg-rose-50 text-rose-700 ring-rose-300 hover:bg-rose-100"
+                }`}
+              >
+                {cutUi === "ready" ? "● .ai พร้อม" : cutUi === "noai" ? "▲ ไม่เจอ Illustrator" : "■ .ai: โปรแกรมปิดอยู่"}
               </button>
             )}
             {aiExport && !fmt.diecut && (
