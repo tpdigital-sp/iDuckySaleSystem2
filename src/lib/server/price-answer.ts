@@ -1309,7 +1309,27 @@ function rateHead(rate: { label: string; minQty?: number }, unit: string): strin
  * ในไลน์ต้องกด See more) → ย่อเป็น: ต่อเรท 1 บรรทัดช่วงราคา + 1 บรรทัดแบบถูกสุด · โชว์รายตัวเลือกเฉพาะเมื่อ
  * ลูกค้าระบุคำที่ตรงคอลัมน์ (เช่น "3cm") · ปิดท้ายบอกว่าราคาต่างกันตามอะไร + ลิงก์ (รายละเอียดครบอยู่บนหน้าสินค้า)
  */
-function quote(p: Product, query: string, qty: number | null, narrow = false, rateHint = ""): PriceAnswer | null {
+/**
+ * qtyUnit = หน่วยของ qty ที่ส่งมา ("sheet" = แผ่น เช่น แผ่น A3 · "sqm" = ตร.ม.) — สินค้าที่มีหลายเรทคนละหน่วย (สติ๊กเกอร์ UV: เรท A3 / เรทตารางเมตร)
+ * ต้องแปลงจำนวนให้ตรงหน่วยของแต่ละเรทด้วยตัวคูณ sheetYield.unitSheets (1 ตร.ม. = 8 แผ่น A3) — 19 ต.ค. 69 เดิมเอา 500 แผ่นไปคิดเป็น 500 ตร.ม. (฿395,000)
+ */
+function quote(p: Product, query: string, qtyIn: number | null, narrow = false, rateHint = "", qtyUnit?: "sheet" | "sqm"): PriceAnswer | null {
+  const qty = qtyIn;
+  const sheetCfg = (p.options ?? []).map((o) => o.sheetYield).find((c) => c?.unitSheets && Object.keys(c.unitSheets).length);
+  const sheetName = sheetCfg?.sheetName ?? "แผ่น";
+  /** จำนวนในหน่วยของเรทนี้ (ปัดขึ้น — สั่งได้เป็นหน่วยเต็ม) · ไม่รู้ตัวคูณ/หน่วยเดียวกัน = ตามเดิม */
+  const qtyForUnit = (unit: string): { q: number | null; note: string } => {
+    if (!qty || !qtyUnit || !sheetCfg?.unitSheets) return { q: qty, note: "" };
+    if (qtyUnit === "sheet" && unit !== sheetName && sheetCfg.unitSheets[unit] > 0) {
+      const q = Math.ceil(qty / sheetCfg.unitSheets[unit]);
+      return { q, note: ` (${qty.toLocaleString()} ${sheetName} = ${q.toLocaleString()} ${unit} · 1 ${unit} = ${sheetCfg.unitSheets[unit]} ${sheetName})` };
+    }
+    if (qtyUnit === "sqm" && unit === sheetName) {
+      const f = Object.entries(sheetCfg.unitSheets).find(([u]) => /ตร\.?ม|ตาราง/.test(u))?.[1];
+      if (f && f > 0) return { q: qty * f, note: ` (${qty.toLocaleString()} ตร.ม. = ${(qty * f).toLocaleString()} ${sheetName})` };
+    }
+    return { q: qty, note: "" };
+  };
   const allRates = ratesOf(p);
   // 🎯 ลูกค้าเอ่ยชื่อเรท/แบบ ("SET-KIT 50 ชิ้น" · "แบบไดคัท 100%") → ตอบเฉพาะเรทนั้น (1 ต.ค. 69 "แบบที่ 2" หลังตารางราคา = เรทที่ 2)
   // rateHint = ข้อความดิบของลูกค้า (standalone ที่ LLM เขียนใหม่มักตัดชื่อเรททิ้ง)
@@ -1344,6 +1364,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
   for (const rate of rates) {
     const m = rate.matrix;
     const unit = m.unit || "ชิ้น";
+    const { q: qty, note: qtyNote } = qtyForUnit(unit);
     const all = Object.keys(m.cells).filter((k) => (m.cells[k] ?? []).some((n) => n > 0));
     if (!all.length) continue;
     const picked = pickColumns(all, query);
@@ -1369,7 +1390,7 @@ function quote(p: Product, query: string, qty: number | null, narrow = false, ra
       const cap = narrow ? 1 : 3;
       // โครงใหม่ (18:26): [หัวเรทเมื่อมีหลายเรท] → แถว "ถูกสุด <แบบ> — ฿/หน่วย (รวม)" → แถว "แบบอื่น (ต่างกันที่…) : ช่วงราคา"
       // แถวขึ้นต้น "• … — …" การ์ดไลน์ (Site Price Flex) แปลงเป็น 2 คอลัมน์ · 【หัว】 = หัวข้อตัวหนา
-      if (rates.length > 1) lines.push(`【${head}】`);
+      if (rates.length > 1) lines.push(`【${head}${qtyNote}】`);
       const otherDrivers = (m.driverLabels ?? []).map((d) => d.trim()).filter((d, idx) => d && !namedIdx.has(idx)).slice(0, 4).join("/") || "แบบ";
       // สินค้าคอลัมน์เดียว (หมอนอุ่นมือ) ไม่มี "แบบ" ให้เทียบ → แถวเดียว "20 ใบ — ฿295/ใบ (รวม ฿5,900)" ไม่ต้องมีคำว่า ถูกสุด/ราคา
       const row = (x: { key: string; unit: number }, tag = "") => `• ${all.length === 1 ? `${qty.toLocaleString()} ${unit}` : tag + stripNamed(columnText(m, x.key))} — ${formatPrice(x.unit)}/${unit} (รวม ${formatPrice(x.unit * qty)})`;
@@ -2348,11 +2369,13 @@ export async function searchPrice(
     // 📐 19 ต.ค. 69: นับเป็นดวง/ใบแต่ขนาดไม่ใช่ขนาดสำเร็จรูป (ไม่รู้ว่า 1 แผ่นได้กี่ดวง) → ห้ามเอาจำนวนดวงไปคิดเป็นแผ่น
     //   (เคยตอบ "2,000 ดวง 15.8×12.8 ซม." = 2,000 แผ่น A3 รวม ฿170,000) → โชว์ราคาต่อแผ่น + บอกว่าแอดมินช่วยคำนวณจำนวนแผ่น
     const loose = conv ? null : piecesOrdered(full, q, qty);
+    // หน่วยของจำนวน: แปลงเป็นแผ่นแล้ว = แผ่น · ลูกค้าพิมพ์ "N แผ่น" / "N ตร.ม." เอง = ตามนั้น (ให้เรทคนละหน่วยแปลงถูก)
+    const qtyUnit: "sheet" | "sqm" | undefined = conv || /\d\s*แผ่น/.test(q) ? "sheet" : /\d\s*(ตร\.?\s*ม|ตารางเมตร)/.test(q) ? "sqm" : undefined;
     const ans = conv
-      ? quote(full, conv.query, conv.sheets, items.length > 1, opts.rateHint)
+      ? quote(full, conv.query, conv.sheets, items.length > 1, opts.rateHint, "sheet")
       : loose
         ? quote(full, q.replace(loose.token, " "), null, items.length > 1, opts.rateHint)
-        : quote(full, q, qty, items.length > 1, opts.rateHint);
+        : quote(full, q, qty, items.length > 1, opts.rateHint, qtyUnit);
     /**
      * 💬 19 ต.ค. 69 เจ้าของร้าน "บอทยังไม่ฉลาดในการอ่านข้อความที่ลูกค้าพิมพ์ … วิเคราะห์คำถามได้ไม่ถูกต้อง":
      *   คำตอบต้องเรียงตามที่ลูกค้าถาม — ① ถาม "มี…ไหม" = ตอบว่ามีก่อน ② สรุปงานที่เข้าใจ (2 ลาย × 1,000 = 2,000 ดวง · ขนาด) ③ การ์ดราคา ④ ปิดท้ายด้วยขั้นต่อไปจริง ไม่ถามจำนวนซ้ำ
