@@ -734,6 +734,8 @@ function Chats() {
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
+  // 👉 จอว่าง (ยังไม่เลือกห้อง): ห้องที่ควรตอบก่อนจากรายชื่อที่โหลดอยู่ — รอแอดมิน > ร่างรอส่ง > ยังไม่อ่าน (รายชื่อเรียงห้องล่าสุดก่อน)
+  const nextUp = sel ? undefined : (rows.find((r) => r.needsHumanFollowup) ?? rows.find((r) => r.draftPending) ?? rows.find((r) => r.unread));
   return (
     <div ref={shellRef} className="dkb -mx-4 -my-6 flex overflow-hidden md:-mx-8 md:-my-8" style={{ ...LN_VARS, background: "var(--ln-bg)", color: "var(--dk-navy)", height: `calc(100dvh - ${topOffset}px)` }}>
       {/* ───── รายชื่อห้อง (ซ้าย) — มือถือซ่อนเมื่อเปิดห้อง ───── */}
@@ -965,42 +967,140 @@ function Chats() {
           </div>
         ) : null}
         {!sel ? (
-          // ยังไม่เลือกห้อง: บอกงานที่ค้างพร้อมปุ่มพาไปกรองเลย (ไม่ใช่แค่ "เลือกห้อง")
-          <div className="m-auto w-full max-w-sm p-6 text-center">
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-white text-3xl shadow-sm">💬</div>
-            <p className="mt-3 text-[16px] font-extrabold">เลือกห้องแชททางซ้ายเพื่อเริ่มตอบ</p>
-            {waitingCount || draftCount || unreadCount ? (
-              <div className="mt-4 flex flex-col gap-2">
-                {(
-                  [
-                    ["waiting", waitingCount, "🙋 รอแอดมินตอบ", "var(--dk-coral-ink)"],
-                    ["draft", draftCount, "📝 ร่างบอทรอกดส่ง", "var(--dk-yolk-ink)"],
-                    ["unread", unreadCount, "🟢 ยังไม่อ่าน", "var(--ln-green-ink)"],
-                  ] as const
-                )
-                  .filter(([, n]) => n > 0)
-                  .map(([k, n, label, ink]) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setScope(k)}
-                      className="flex min-h-[46px] items-center gap-2 rounded-xl bg-white px-4 text-left text-[14px] font-bold shadow-sm transition hover:brightness-[.98]"
-                      style={{ color: ink, outline: scope === k ? `2px solid ${ink}` : undefined }}
-                    >
-                      <span className="flex-1">{label}</span>
-                      <span className="tabular-nums">{n.toLocaleString()} ห้อง</span>
-                      <span aria-hidden="true">›</span>
-                    </button>
-                  ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-[13px] font-bold" style={{ color: "var(--ln-green-ink)" }}>
-                ✓ ไม่มีห้องค้างตอบ
-              </p>
-            )}
-            <p className="mt-4 text-[11.5px] leading-relaxed" style={{ color: "var(--dk-faint)" }}>
-              อัปเดตเองทุก 3 วินาที · ลากรูป/ไฟล์มาวางในห้องเพื่อแนบส่งได้ · ข้อความที่พิมพ์ใน LINE OA Manager ดึงมาให้เมื่อเชื่อม OA ไว้ (กล่อง ⚙️ หน้า ลูกค้า LINE)
+          // ยังไม่เลือกห้อง (19 ต.ค. 69 เจ้าของร้าน "ปรับให้ใหม่หน่อย" + "เพิ่ม filter ขึ้นอีก"): ไม่ใช่แค่ "เลือกห้อง"
+          //   ① ปุ่มเปิดห้องที่ควรตอบก่อน (nextUp) ② งานค้าง 3 แบบเห็นครบแม้เป็น 0 ③ ทางลัดตัวกรองทุกแบบ: มุมมองลูกค้า + ป้ายพร้อมจำนวน (ชุดเดียวกับ dropdown ดู/ป้าย)
+          <div className="m-auto w-full max-w-[520px] px-6 py-8">
+            <h2 className="text-[19px] font-extrabold" style={{ color: "var(--dk-navy)" }}>
+              งานค้างในแชท
+            </h2>
+            <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
+              เลือกห้องทางซ้าย หรือกดตัวกรองด้านล่างเพื่อคัดรายชื่อ
             </p>
+
+            {nextUp ? (
+              <button
+                type="button"
+                onClick={() => void openRoom(nextUp.id)}
+                className="mt-4 flex min-h-[60px] w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-white shadow-sm transition hover:brightness-[.96]"
+                style={{ background: "var(--ln-green-ink)" }}
+              >
+                <Avatar src={nextUp.pictureUrl} size={38} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11.5px] font-bold opacity-90">
+                    ตอบห้องถัดไป · {nextUp.needsHumanFollowup ? "🙋 รอแอดมิน" : nextUp.draftPending ? "📝 ร่างรอส่ง" : "🟢 ยังไม่อ่าน"} · {listTime(nextUp.lastSeen)}
+                  </span>
+                  <span className="block truncate text-[15px] font-extrabold">{nameOf(nextUp)}</span>
+                </span>
+                <span aria-hidden="true" className="text-xl font-bold">
+                  →
+                </span>
+              </button>
+            ) : null}
+
+            <p className="mb-1.5 mt-5 text-[11.5px] font-extrabold tracking-wide" style={{ color: "var(--dk-navy-soft, var(--dk-faint))" }}>
+              ต้องลงมือ
+            </p>
+            <div className="overflow-hidden rounded-xl border bg-white" style={{ borderColor: "var(--ln-line)" }}>
+              {(
+                [
+                  ["waiting", waitingCount, "🙋", "รอแอดมินตอบ", "บอทส่งต่อให้คนตอบ", "var(--dk-coral-ink)"],
+                  ["draft", draftCount, "📝", "ร่างบอทรอกดส่ง", "ตรวจแล้วกดส่งให้ลูกค้า", "var(--dk-yolk-ink)"],
+                  ["unread", unreadCount, "🟢", "ยังไม่อ่าน", "ลูกค้าทักมาแต่ยังไม่มีใครเปิด", "var(--ln-green-ink)"],
+                ] as const
+              ).map(([k, n, icon, label, hint, ink], i) => (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={!n}
+                  onClick={() => setScope(k)}
+                  aria-pressed={scope === k}
+                  className="relative flex min-h-[56px] w-full items-center gap-3 px-4 py-2 text-left transition enabled:hover:bg-[var(--ln-hover)] disabled:cursor-default"
+                  style={{ borderTop: i ? "1px solid var(--ln-line)" : undefined, background: scope === k ? "var(--ln-sel)" : undefined }}
+                >
+                  {n ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1" style={{ background: ink }} /> : null}
+                  <span className="w-14 shrink-0 text-right text-[22px] font-extrabold tabular-nums leading-none" style={{ color: n ? ink : "var(--dk-faint)" }}>
+                    {n.toLocaleString()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14px] font-bold" style={{ color: n ? "var(--dk-navy)" : "var(--dk-faint)" }}>
+                      {icon} {label}
+                    </span>
+                    <span className="block truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                      {n ? hint : "✓ ไม่มีค้าง"}
+                    </span>
+                  </span>
+                  {n ? (
+                    <span className="shrink-0 text-[12px] font-bold" style={{ color: ink }}>
+                      {scope === k ? "กำลังดู" : "ดูห้อง ›"}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+
+            <p className="mb-1.5 mt-5 text-[11.5px] font-extrabold tracking-wide" style={{ color: "var(--dk-navy-soft, var(--dk-faint))" }}>
+              ดูลูกค้า
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {SCOPES.filter((s) => s.key === "all" || s.key === "new" || s.key === "old").map((s) => {
+                const on = scope === s.key;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setScope(s.key)}
+                    aria-pressed={on}
+                    className="flex min-h-[40px] items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-bold transition hover:bg-[var(--ln-hover)]"
+                    style={{ borderColor: on ? "var(--dk-navy)" : "var(--ln-line)", background: on ? "var(--dk-navy)" : "white", color: on ? "white" : "var(--dk-navy)" }}
+                  >
+                    {s.icon} {s.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {tagCatalog.length ? (
+              <>
+                <p className="mb-1.5 mt-5 flex items-baseline text-[11.5px] font-extrabold tracking-wide" style={{ color: "var(--dk-navy-soft, var(--dk-faint))" }}>
+                  <span className="flex-1">ป้าย</span>
+                  {tagFilter ? (
+                    <button type="button" onClick={() => setTagFilter("")} className="min-h-[28px] text-[12px] font-bold underline" style={{ color: "var(--dk-navy)" }}>
+                      ล้างป้าย
+                    </button>
+                  ) : null}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {tagCatalog.map((t) => {
+                    const on = tagFilter === t.key;
+                    const n = tagCounts[t.key] ?? 0;
+                    const pal = TAG_PALETTE[t.color];
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setTagFilter(on ? "" : t.key)}
+                        aria-pressed={on}
+                        className="flex min-h-[40px] items-center gap-1.5 rounded-full border px-3 text-[13px] font-bold transition hover:brightness-[.97]"
+                        style={{ borderColor: on ? pal.ink : n ? pal.tone : "var(--ln-line)", background: on ? pal.ink : n ? pal.wash : "white", color: on ? "white" : n ? pal.ink : "var(--dk-faint)" }}
+                      >
+                        <span>
+                          {t.emoji} {t.label}
+                        </span>
+                        <span className="tabular-nums" style={{ opacity: n ? 1 : 0.7 }}>
+                          {n.toLocaleString()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+
+            <ul className="mt-6 space-y-1 border-t pt-3 text-[12px] leading-relaxed" style={{ borderColor: "var(--ln-line)", color: "var(--dk-faint)" }}>
+              <li>⟳ รายชื่ออัปเดตเองทุก 5 วินาที · ห้องที่เปิดอยู่ทุก 3 วินาที</li>
+              <li>📎 ลากรูป/ไฟล์มาวางในห้อง = แนบส่งให้ลูกค้า</li>
+              <li>💬 ข้อความที่พิมพ์ใน LINE OA Manager ดึงมาให้เมื่อเชื่อม OA ไว้ (กล่อง ⚙️ หน้า ลูกค้า LINE)</li>
+            </ul>
           </div>
         ) : (
           <>
