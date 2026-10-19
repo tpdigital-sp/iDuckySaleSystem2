@@ -1,7 +1,7 @@
 import "server-only";
 import { awaitingPayment, orderBalance, paidSoFar, type Order } from "@/lib/admin-data";
 import { getFirestoreAdmin } from "@/lib/server/firebase-admin";
-import { reportPaidToTP, TP_PAID_COLLECTION } from "@/lib/server/tp-report";
+import { clearPartialInTP, reportPaidToTP, TP_PAID_COLLECTION } from "@/lib/server/tp-report";
 import type { getSupabaseAdmin } from "./supabase-admin";
 
 type SB = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -170,6 +170,11 @@ export interface TPBridgeScan {
   skipped: string[];
   /** อ่านทะเบียนลบไม่ได้ → ไม่เติมรอบนี้ (กันของที่ลบแล้วเด้งกลับ) */
   skipRegistryDown?: boolean;
+  /**
+   * 💸 เรคอร์ดที่มีอยู่แต่ธง "รับบางส่วน" ค้าง ทั้งที่ใบรับเงินครบแล้วและรอกราฟฟิกเริ่มงาน (สถานะ "ชำระแล้ว")
+   * → บอร์ด WIP กราฟฟิกข้ามการ์ดใบนี้ (OD-261012-3964 · 19 ต.ค. 69) · ซ่อมด้วย healTPStuckPartial
+   */
+  stuckPartial: TPBridgeRecord[];
 }
 
 /**
@@ -178,38 +183,46 @@ export interface TPBridgeScan {
  */
 export async function scanTPBridgeGaps(sb: SB, days = 3): Promise<TPBridgeScan> {
   const db = getFirestoreAdmin();
-  if (!db) return { checked: 0, expected: 0, missing: [], skipped: [] };
+  if (!db) return { checked: 0, expected: 0, missing: [], skipped: [], stuckPartial: [] };
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
   const { data } = await sb.from("orders").select("data").gte("created_at", since);
   const orders = (data ?? []).map((r) => r.data as Order).filter(Boolean);
 
   let checked = 0;
   const want: TPBridgeRecord[] = [];
+  // ใบที่รับเงินครบแล้วแต่กราฟฟิกยังไม่เริ่ม (ยังไม่มีแบบ) — ธง partial ค้างที่ใบพวกนี้ = งานหายจากบอร์ด WIP
+  // ใบที่เลยไปขั้นแบบงาน/ผลิตแล้วไม่ปลดย้อนหลัง: กราฟฟิกทำงานไปแล้วทางอื่น ปลดตอนนี้ = การ์ดผีเด้งขึ้นคิวรอสร้าง Folder
+  const awaitingGraphic = new Set<string>();
   for (const o of orders) {
     const recs = expectedBridgeRecords(o);
     if (!recs.length) continue;
     checked++;
     want.push(...recs);
+    if (o.status === "ชำระแล้ว") awaitingGraphic.add(o.id);
   }
 
   const gone: TPBridgeRecord[] = [];
+  const stuckPartial: TPBridgeRecord[] = [];
   for (let i = 0; i < want.length; i += 100) {
     const chunk = want.slice(i, i + 100);
     const snaps = await db.getAll(...chunk.map((r) => db.collection(TP_PAID_COLLECTION).doc(r.docId)));
     snaps.forEach((s, j) => {
-      if (!s.exists) gone.push(chunk[j]);
+      const r = chunk[j];
+      if (!s.exists) gone.push(r);
+      else if (r.kind !== "extra" && !r.partial && s.get("partial") === true && s.get("voided") !== true && awaitingGraphic.has(r.orderId))
+        stuckPartial.push(r);
     });
   }
-  if (!gone.length) return { checked, expected: want.length, missing: [], skipped: [] };
+  if (!gone.length) return { checked, expected: want.length, missing: [], skipped: [], stuckPartial };
 
   // ใบที่ "ตั้งใจลบ" ต้องไม่ถูกสร้างกลับ — อ่านทะเบียนไม่ได้ = ไม่เติมรอบนี้ (กันแถวซอมบี้)
   try {
     const marks = await db.getAll(...gone.map((r) => db.collection(TP_SKIP_COLLECTION).doc(r.docId)));
     const skipped = gone.filter((_, i) => marks[i].exists).map((r) => r.docId);
-    return { checked, expected: want.length, missing: gone.filter((r) => !skipped.includes(r.docId)), skipped };
+    return { checked, expected: want.length, missing: gone.filter((r) => !skipped.includes(r.docId)), skipped, stuckPartial };
   } catch (e) {
     console.error("[tp-bridge-audit] อ่านทะเบียนเรคอร์ดที่ลบถาวรไม่ได้:", (e as Error)?.message);
-    return { checked, expected: want.length, missing: [], skipped: [], skipRegistryDown: true };
+    return { checked, expected: want.length, missing: [], skipped: [], skipRegistryDown: true, stuckPartial };
   }
 }
 
@@ -235,5 +248,12 @@ export async function healTPBridgeGaps(sb: SB, missing: TPBridgeRecord[]): Promi
     });
     done.push(m.docId);
   }
+  return done;
+}
+
+/** 💸 ปลดธง "รับบางส่วน" ที่ค้างของใบที่รับเงินครบแล้ว (ดู TPBridgeScan.stuckPartial) — คืน doc id ที่ปลดจริง */
+export async function healTPStuckPartial(stuck: TPBridgeRecord[]): Promise<string[]> {
+  const done: string[] = [];
+  for (const r of stuck) if (await clearPartialInTP(r.docId, "ระบบ (ตรวจสะพาน · ยอดครบแล้ว)")) done.push(r.docId);
   return done;
 }

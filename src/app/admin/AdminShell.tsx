@@ -121,6 +121,9 @@ let dealerAppsBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "บอทเรียนรู้" — ร่างที่แอดมินกดไม่ส่ง รอสอนคำตอบที่ถูก (14 ต.ค. 69) */
 let learningBadgeCache: { at: number; n: number } | null = null;
 
+/** หน้าที่พับแถบเมนูเป็นแถวไอคอนเองเมื่อเปิด (ต้องการพื้นที่กว้าง) */
+const AUTO_RAIL_PATHS = ["/admin/chatbot/chats"];
+
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -134,7 +137,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       setRailed(localStorage.getItem("admin.sidebar.railed") === "1");
     } catch {}
   }, []);
+  // 💬 หน้าที่ต้องการที่กว้าง (แชท LINE 3 คอลัมน์) → พับแถบเมนูเองตอนเข้า (เจ้าของร้าน 19 ต.ค. 69 "เปิดหน้า chatbot ให้ menu sidebar หุบ")
+  //   ไม่แตะค่าที่จำไว้ · กด » กางได้ชั่วคราวในหน้านั้น · ออกจากหน้าแล้วกลับเป็นค่าที่จำไว้เดิม
+  const autoRail = AUTO_RAIL_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const [railOverride, setRailOverride] = useState<boolean | null>(null);
+  useEffect(() => {
+    setRailOverride(null);
+  }, [autoRail]);
+  const isRailed = railOverride ?? (autoRail || railed);
   function toggleRail() {
+    if (autoRail) {
+      setRailOverride(!isRailed);
+      return;
+    }
     setRailed((v) => {
       const next = !v;
       try {
@@ -879,13 +894,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       {/* แถบข้าง (เดสก์ท็อป) */}
       <aside
         className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-[#122E56] bg-[#173A6B] p-3 transition-[width] duration-200 md:flex print:hidden ${
-          railed ? "w-20 items-stretch" : "w-60"
+          isRailed ? "w-20 items-stretch" : "w-60"
         }`}
       >
-        <div className={`mb-4 flex items-center ${railed ? "flex-col gap-2" : "justify-between gap-2"}`}>
-          <div className={`flex items-center gap-2.5 py-1 ${railed ? "" : "px-2"}`}>
+        <div className={`mb-4 flex items-center ${isRailed ? "flex-col gap-2" : "justify-between gap-2"}`}>
+          <div className={`flex items-center gap-2.5 py-1 ${isRailed ? "" : "px-2"}`}>
             {/* กดที่โลโก้เพื่อเปลี่ยนรูปได้เลย (เฉพาะคนมีสิทธิ์ตั้งค่าระบบ · โหมดพับใช้เป็นลิงก์ตามเดิม) */}
-            {canEditLogo && !railed ? (
+            {canEditLogo && !isRailed ? (
               <label className="group/logo relative h-9 w-9 shrink-0 cursor-pointer" title="กดเพื่อเปลี่ยนโลโก้หลังบ้าน">
                 <input
                   type="file"
@@ -923,7 +938,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 {logoIcon("h-9 w-9", "rounded-xl")}
               </Link>
             )}
-            {!railed && (
+            {!isRailed && (
               <Link href="/admin" className="leading-tight" title="iDucky Admin">
                 <span className="block font-display text-[14px] font-medium text-white">iDucky Admin</span>
                 <span className="block text-[10.5px] tracking-wide text-sky-200/70">ระบบหลังบ้าน</span>
@@ -933,11 +948,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <button
             type="button"
             onClick={toggleRail}
-            title={railed ? "กางแถบเมนู" : "พับแถบเมนู"}
-            aria-label={railed ? "กางแถบเมนู" : "พับแถบเมนู"}
+            title={isRailed ? "กางแถบเมนู" : "พับแถบเมนู"}
+            aria-label={isRailed ? "กางแถบเมนู" : "พับแถบเมนู"}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white/60 ring-1 ring-white/20 transition hover:bg-white/10 hover:text-white"
           >
-            {railed ? "»" : "«"}
+            {isRailed ? "»" : "«"}
           </button>
         </div>
         {/*
@@ -946,7 +961,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           min-h-0 จำเป็น: ลูกของ flex ตั้งต้นเป็น min-height:auto ทำให้ย่อต่ำกว่าเนื้อหาไม่ได้ overflow เลยไม่ทำงาน
         */}
         {/* ค้นหาเมนู — โหมดพับไม่มีที่ให้พิมพ์ กดปุ่มแว่นแล้วกางแถบให้เลย */}
-        {railed ? (
+        {isRailed ? (
           <button
             type="button"
             onClick={toggleRail}
@@ -979,7 +994,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             )}
           </div>
         )}
-        <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">{navFor(railed)}</div>
+        <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">{navFor(isRailed)}</div>
         {/*
           ท้ายแถบ — รวมเป็นแถวเดียว: ตัวตนทางซ้าย · ปุ่มลัดทางขวา
           เดิมเป็น 3 ก้อนซ้อนกัน (การ์ดผู้ใช้ + กลับหน้าร้าน + ออกจากระบบ) กินสูงเกือบ 150px
@@ -988,7 +1003,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           ไม่ควรเด่นกว่าเมนูงานจริง — เปลี่ยนเป็นแดงตอนชี้เมาส์แทน
         */}
         <div className="mt-auto shrink-0 border-t border-white/10 pt-2">
-          {railed ? (
+          {isRailed ? (
             <div className="flex flex-col items-center gap-1">
               {userName && <span title={`${userName}${roleName ? ` · ${roleName}` : ""}`}>{avatar("h-9 w-9")}</span>}
               <Link href="/" title="กลับหน้าร้าน" className={footBtn}>

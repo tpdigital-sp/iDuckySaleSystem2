@@ -257,8 +257,16 @@ export async function reportPaidToTP(
       const code = (e as { code?: number | string })?.code;
       if (code !== 6 && code !== "already-exists") throw e;
       const snap = await ref.get();
-      if (snap.get("voided") !== true || snap.get("voidKind") !== "slip-deleted") return;
-      await ref.set({ ...record, revivedAt: new Date().toISOString(), revivedFrom: snap.get("voidedFrom") ?? null });
+      if (snap.get("voided") === true) {
+        if (snap.get("voidKind") !== "slip-deleted") return;
+        await ref.set({ ...record, revivedAt: new Date().toISOString(), revivedFrom: snap.get("voidedFrom") ?? null });
+        return;
+      }
+      /* 💸 เรคอร์ดเดิมติดธง "รับบางส่วน" แต่รอบนี้ผู้เรียกบอกว่าเงินครบงวดแล้ว → ปลดธง ไม่งั้นบอร์ด WIP กราฟฟิกข้ามการ์ดตลอดไป
+         (พนักงานแจ้ง 19 ต.ค. 69 "กราฟิกแจ้งว่าไม่ขึ้นที่ wip" · OD-261012-3964: รับบางส่วน 1,050 ค้าง 400 → ลดราคารายการจนยอดเหลือ
+          1,050 → settleCreditedOrder "เก็บตก" ปิดใบเป็นชำระแล้ว แต่ .create() ชนเรคอร์ดเดิมแล้วเงียบ ธง partial:true ค้าง)
+         ครอบทุกทางที่ยอดครบโดยไม่มีสลิปใบใหม่: เก็บตก · แอดมินเปลี่ยนสถานะเป็นชำระแล้วเอง · -final ที่เคยรับบางส่วน */
+      if (snap.get("partial") === true && !opts?.partial && !opts?.extra) await ref.set(paidCompleteFields(verifiedBy), { merge: true });
     }
   } catch (e) {
     // already-exists (ยิงซ้ำ) = ปกติ · อย่างอื่น log ไว้ดู
@@ -338,9 +346,33 @@ export async function syncPaidCompleteToTP(order: Order, verifiedBy: string, not
       if (snap.get("voidKind") === "slip-deleted") await reportPaidToTP(order, verifiedBy, { noteSuffix: note ?? "รับครบผ่านสลิปหลายใบ" });
       return;
     }
-    await ref.set({ partial: false, paymentStatus: "ชำระแล้ว", paidCompleteAt: new Date().toISOString(), paidCompleteBy: verifiedBy }, { merge: true });
+    await ref.set(paidCompleteFields(verifiedBy), { merge: true });
   } catch (e) {
     console.error("[tp-report] ปลดธงรับบางส่วนไม่สำเร็จ:", (e as Error)?.message);
+  }
+}
+
+/** ฟิลด์ที่เขียนตอนปลดธง "รับบางส่วน" — ไม่แตะยอด (ยอดเป็นของ syncAmountsToTP) */
+function paidCompleteFields(verifiedBy: string) {
+  return { partial: false, paymentStatus: "ชำระแล้ว", paidCompleteAt: new Date().toISOString(), paidCompleteBy: verifiedBy };
+}
+
+/**
+ * 🩹 ปลดธง "รับบางส่วน" ของเรคอร์ดตาม doc id (ใบหลัก หรือ -final) — ตัวตรวจสะพาน (tp-bridge-audit) ใช้ซ่อมใบที่ธงค้าง
+ * ไม่มี doc / void แล้ว / ไม่ได้ติดธงอยู่ = ข้ามเงียบ · คืน true เมื่อปลดจริง
+ */
+export async function clearPartialInTP(docId: string, verifiedBy: string): Promise<boolean> {
+  try {
+    const db = getFirestoreAdmin();
+    if (!db) return false;
+    const ref = db.collection(TP_PAID_COLLECTION).doc(docId);
+    const snap = await ref.get();
+    if (!snap.exists || snap.get("voided") === true || snap.get("partial") !== true) return false;
+    await ref.set(paidCompleteFields(verifiedBy), { merge: true });
+    return true;
+  } catch (e) {
+    console.error("[tp-report] ปลดธงรับบางส่วน (ซ่อม) ไม่สำเร็จ:", (e as Error)?.message);
+    return false;
   }
 }
 

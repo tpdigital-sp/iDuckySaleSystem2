@@ -44,6 +44,8 @@ type Row = {
   botScope: string;
   needsHumanFollowup: boolean;
   botAllowed: boolean;
+  /** 📝 โหมดร่างรายคน (settings/bot-whitelist.draftUserIds · 19 ต.ค. 69) */
+  botDraft: boolean;
   pausedUntil: string;
   lastAdminAt: string;
   /** 🟢 ยังไม่ได้เปิดอ่านบนเว็บหลังลูกค้าทักล่าสุด (webReadAt < lastSeen และ lastAdminAt < lastSeen) */
@@ -65,7 +67,7 @@ type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice; draftImages?: { url: string; preview: string }[] };
 /** 🎴 การ์ดแจ้งลูกค้าที่ระบบส่งเอง (lib/server/chat-notice-log.ts) */
 type Notice = { orderId: string; title: string; color: string; asText?: boolean };
-type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; allReadAt: string };
+type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; draftUserIds: string[]; allReadAt: string };
 
 function iso(v: unknown): string {
   if (!v) return "";
@@ -80,14 +82,15 @@ async function botSettings(db: Firestore): Promise<Settings> {
     const d = await db.collection("settings").doc("bot-whitelist").get();
     const x = d.data() ?? {};
     const ids = Array.isArray(x.userIds) ? (x.userIds as unknown[]).map((v) => String(v)) : [];
+    const draftIds = Array.isArray(x.draftUserIds) ? (x.draftUserIds as unknown[]).map((v) => String(v)) : [];
     let allReadAt = "";
     try {
       const r = await db.collection("settings").doc("chat-read").get();
       allReadAt = iso(r.data()?.allReadAt);
     } catch {}
-    return { mode: String(x.mode ?? ""), newSince: iso(x.newSince), enabled: x.enabled === true, userIds: ids, allReadAt };
+    return { mode: String(x.mode ?? ""), newSince: iso(x.newSince), enabled: x.enabled === true, userIds: ids, draftUserIds: draftIds, allReadAt };
   } catch {
-    return { mode: "", newSince: "", enabled: false, userIds: [], allReadAt: "" };
+    return { mode: "", newSince: "", enabled: false, userIds: [], draftUserIds: [], allReadAt: "" };
   }
 }
 
@@ -119,6 +122,7 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     botScope,
     needsHumanFollowup: x.needsHumanFollowup === true,
     botAllowed: cfg.userIds.includes(id),
+    botDraft: cfg.draftUserIds.includes(id),
     pausedUntil: paused && paused > new Date().toISOString() ? paused : "",
     lastAdminAt: lastAdmin,
     unread,

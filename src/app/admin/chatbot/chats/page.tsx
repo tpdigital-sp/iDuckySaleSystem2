@@ -33,6 +33,8 @@ type Row = {
   botScope: string;
   needsHumanFollowup: boolean;
   botAllowed: boolean;
+  /** 📝 โหมดร่างรายคน — บอทร่างคำตอบให้คนนี้รอแอดมินกดส่ง (settings/bot-whitelist.draftUserIds · 19 ต.ค. 69) */
+  botDraft?: boolean;
   pausedUntil: string;
   lastAdminAt: string;
   unread: boolean;
@@ -62,6 +64,25 @@ type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry;
 type Scope = "waiting" | "all" | "unread" | "draft" | "new" | "old";
 
 const LINE_GREEN = "#06C755";
+/**
+ * 🎨 โทนแบบ LINE OA Manager (เจ้าของร้าน 19 ต.ค. 69 "ออกแบบให้เหมือนหน้า LineOA ให้ความรู้สึกใช้งานที่ง่าย")
+ *   รายชื่อพื้นขาว เส้นคั่นบาง · ห้องที่เลือกพื้นเทาอ่อน+แถบเขียวซ้าย · พื้นห้องแชทเทาอมฟ้า · ฟองแอดมินเขียว LINE · ฟองบอทฟ้า (มีป้ายชื่อกำกับ ไม่ใช้สีอย่างเดียว)
+ *   ช่องพิมพ์: กล่องข้อความกว้างเต็มแถว + แถบเครื่องมือมีป้ายคำใต้กล่อง + ปุ่ม "ส่ง" สี่เหลี่ยมเขียวมุมขวาล่าง
+ *   ตั้งเป็นตัวแปร --ln-* ที่ชั้นนอกครั้งเดียว ส่วนอื่นอ้าง var() เท่านั้น
+ */
+const LN_VARS = {
+  "--ln-green": LINE_GREEN,
+  "--ln-green-ink": "#0A7A3B",
+  "--ln-bg": "#F3F5F8",
+  "--ln-line": "#ECEFF3",
+  "--ln-sel": "#EEF1F5",
+  "--ln-hover": "#F7F8FA",
+  "--ln-me": "#9BE39A",
+  "--ln-me-ink": "#0B2E13",
+  "--ln-bot": "#DDEBFB",
+  "--ln-them-line": "#E3E7ED",
+  "--ln-field": "#F1F3F6",
+} as React.CSSProperties;
 /** ป้ายระดับที่ AI ติดให้ (ตรงกับ URGENCY_KEYS ใน lib/server/chat-urgency.ts) */
 const AI_LEVELS = ["urgent", "rush", "normal"];
 // ลำดับ = งานที่ต้องลงมือก่อน (รอแอดมิน · ร่างรอส่ง) แล้วค่อยมุมมองทั่วไป
@@ -527,6 +548,21 @@ function Chats() {
     [toast],
   );
 
+  // 📝 โหมดร่างรายคน (เจ้าของร้าน 19 ต.ค. 69 "เปิดโหมดร่างกับลูกค้าที่เลือกได้ไหม") — มีผลเมื่อ n8n Build AI Request อ่าน draftUserIds แล้ว
+  const toggleDraftUser = useCallback(
+    async (id: string, on: boolean) => {
+      try {
+        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "user", id, on });
+        toast(d.saved || (on ? "เปิดร่างให้ลูกค้านี้แล้ว" : "ปิดร่างให้ลูกค้านี้แล้ว"));
+        setRows((rs) => rs.map((x) => (x.id === id ? { ...x, botDraft: on } : x)));
+        setDetail((x) => (x && x.id === id ? { ...x, botDraft: on } : x));
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      }
+    },
+    [toast],
+  );
+
   const wakeBot = useCallback(
     async (id: string) => {
       try {
@@ -590,9 +626,10 @@ function Chats() {
     botApi<{ items: ChatTag[] }>("/api/admin/chatbot/chats/tags").then((d) => setTagCatalog(d.items)).catch(() => {});
   }, []);
   const [noteSaving, setNoteSaving] = useState(false);
-  // เปลี่ยนห้อง = ปิดแผง · โน้ตในฐานเปลี่ยน (บันทึก/โพล) = ซิงก์ร่าง แต่ไม่ปิดแผง
+  // เปลี่ยนห้อง: จอกว้าง (≥1440px) เปิดแผงข้อมูลลูกค้าค้างไว้แบบ LINE OA (เห็นออเดอร์/ป้าย/โน้ตโดยไม่ต้องกด) · จอแคบ/มือถือปิด (แผงเป็นแผ่นเต็มจอ)
+  //   โน้ตในฐานเปลี่ยน (บันทึก/โพล) = ซิงก์ร่าง แต่ไม่ปิดแผง
   useEffect(() => {
-    setNoteOpen(false);
+    setNoteOpen(!!sel && window.matchMedia("(min-width: 1440px)").matches);
   }, [sel]);
 
   const saveTags = useCallback(
@@ -697,12 +734,12 @@ function Chats() {
     return () => window.removeEventListener("resize", measure);
   }, []);
   return (
-    <div ref={shellRef} className="dkb -mx-4 -my-6 flex overflow-hidden md:-mx-8 md:-my-8" style={{ background: "#EEF2F7", color: "var(--dk-navy)", height: `calc(100dvh - ${topOffset}px)` }}>
+    <div ref={shellRef} className="dkb -mx-4 -my-6 flex overflow-hidden md:-mx-8 md:-my-8" style={{ ...LN_VARS, background: "var(--ln-bg)", color: "var(--dk-navy)", height: `calc(100dvh - ${topOffset}px)` }}>
       {/* ───── รายชื่อห้อง (ซ้าย) — มือถือซ่อนเมื่อเปิดห้อง ───── */}
-      <aside className={`${sel ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r bg-white md:w-[290px] lg:w-[310px]`} style={{ borderColor: "var(--dk-hair)" }}>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-3">
+      <aside className={`${sel ? "hidden md:flex" : "flex"} w-full shrink-0 flex-col border-r bg-white md:w-[300px] lg:w-[340px]`} style={{ borderColor: "var(--ln-line)" }}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3">
           {/* กดหัวข้อ = ปิดห้องที่เปิดอยู่ กลับหน้า "เลือกห้องแชททางซ้าย" (เจ้าของร้าน 14 ต.ค. 69) · แถบที่อยู่ล้าง ?id= ตาม sel เอง */}
-          <h1 className="text-[18px] font-extrabold">
+          <h1 className="text-[19px] font-extrabold">
             <button
               type="button"
               onClick={() => {
@@ -710,14 +747,14 @@ function Chats() {
                 setDetail(null);
                 setNoteOpen(false);
               }}
-              title="กลับหน้าเลือกห้องแชท"
+              title={`กลับหน้าเลือกห้องแชท${modeText ? `\n${modeText}` : ""}`}
               className="rounded-md transition hover:opacity-70"
             >
               แชท LINE
             </button>
           </h1>
-          <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>
-            {rows.length ? `${rows.length} ห้อง` : ""}
+          <span className="text-[12px] tabular-nums" style={{ color: "var(--dk-faint)" }}>
+            {rows.length ? `${rows.length.toLocaleString()} ห้อง` : ""}
           </span>
           <button
             type="button"
@@ -738,23 +775,26 @@ function Chats() {
             {quota?.forecast?.outOn && !quotaOut ? ` · ~หมด ${quota.forecast.outOn}` : ""}
           </button>
         </div>
-        <div className="flex items-center gap-2 px-3 pt-0.5">
-          <p className="min-w-0 flex-1 text-[11.5px]" style={{ color: settings?.mode === "draft" ? "#8A5A00" : "var(--dk-faint)", fontWeight: settings?.mode === "draft" ? 700 : 400 }}>
+        {/* โหมดบอท: ข้อมูลนิ่ง → ขึ้นเป็นแถบเฉพาะตอนโหมดร่าง (ต้องลงมือกดส่ง) หรือคนที่สลับโหมดได้ · ที่เหลืออยู่ใน title หัวข้อ */}
+        {settings && (settings.mode === "draft" || can("settings.manage")) ? (
+        <div className="mx-4 mt-1.5 flex items-center gap-2 rounded-lg px-2.5 py-1" style={settings.mode === "draft" ? { background: "var(--dk-yolk-wash)" } : undefined}>
+          <p className="min-w-0 flex-1 text-[11.5px] leading-snug" style={{ color: settings.mode === "draft" ? "var(--dk-yolk-ink)" : "var(--dk-faint)", fontWeight: settings.mode === "draft" ? 700 : 400 }}>
             {modeText}
           </p>
-          {settings && can("settings.manage") && (settings.mode === "draft" || settings.mode === "log-only") ? (
+          {can("settings.manage") && (settings.mode === "draft" || settings.mode === "log-only") ? (
             <button
               type="button"
               onClick={() => void switchMode(settings.mode === "draft" ? "log-only" : "draft")}
               className="shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-bold"
-              style={settings.mode === "draft" ? { background: "#F1F5F9", color: "var(--dk-navy-soft)" } : { background: "#FFF4D6", color: "#8A5A00", border: "1px solid #F0D48A" }}
+              style={settings.mode === "draft" ? { background: "white", color: "var(--dk-navy-soft)" } : { background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}
               title={settings.mode === "draft" ? "ปิดโหมดร่าง — บอทกลับไปเก็บแชทอย่างเดียว" : "เปิดโหมดร่าง — บอทร่างคำตอบให้ทุกห้อง แอดมินกดส่งเอง"}
             >
               {settings.mode === "draft" ? "ปิดโหมดร่าง" : "📝 เปิดโหมดร่าง"}
             </button>
           ) : null}
         </div>
-        <div className="px-3 pt-2">
+        ) : null}
+        <div className="px-4 pt-2">
           <SearchBox value={q} onChange={setQ} placeholder="ค้นชื่อลูกค้า / ชื่อที่ตั้ง / userId…" />
           {q && loading ? (
             <p className="px-1 pt-1 text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
@@ -765,7 +805,7 @@ function Chats() {
         {/* ── ตัวกรอง (14 ต.ค. 69 เจ้าของร้าน "ดูรก" → "เป็น dropdown ดีกว่าไหม"): 2 dropdown ในแถวเดียว ──
              แถบรายชื่อบนจอจริงแคบ แท็บ/ชิปโดนตัด · ใช้ <select> ของเครื่อง (มือถือขึ้นรายการเลือกใหญ่ กดง่าย)
              งานที่ต้องลงมือ (รอแอดมิน) ยังเห็นตลอดเป็นตัวเลขแดงบน dropdown "ดู" ไม่ต้องเปิดเมนู */}
-        <div className="flex items-center gap-2 px-3 py-2">
+        <div className="flex items-center gap-2 px-4 pb-2.5 pt-2">
           <FilterMenu
             id="chat-scope"
             label="ดู"
@@ -816,7 +856,7 @@ function Chats() {
             </button>
           </div>
         ) : null}
-        <div ref={listRef} className="flex-1 overflow-y-auto">
+        <div ref={listRef} className="flex-1 overflow-y-auto border-t" style={{ borderColor: "var(--ln-line)" }}>
           {loading && !rows.length ? (
             <p className="p-4 text-sm" style={{ color: "var(--dk-faint)" }}>
               กำลังโหลด…
@@ -826,42 +866,55 @@ function Chats() {
               <Empty title={tagFilter ? `ไม่มีห้องที่ติดป้าย "${tagCatalog.find((t) => t.key === tagFilter)?.label ?? tagFilter}"${scope !== "all" ? " ในตัวกรองนี้" : ""}` : scope === "waiting" ? "ไม่มีห้องที่รอแอดมิน" : "ยังไม่มีห้องแชท"} body={q ? "ไม่พบชื่อนี้ — ค้นได้ทั้งชื่อ LINE ชื่อที่แอดมินตั้ง และ userId (ส่วนใดของชื่อก็ได้)" : "เมื่อลูกค้าทักมา ห้องจะขึ้นที่นี่"} />
             </div>
           ) : (
-            rows.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => void openRoom(r.id)}
-                className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition active:bg-black/[0.04]"
-                style={{ borderColor: "#F1F3F6", background: sel === r.id ? "#EDF6FF" : undefined }}
-              >
-                <div className="relative">
+            // 📋 แถวแบบ LINE OA (19 ต.ค. 69): ชื่อ+เวลา / ข้อความล่าสุด+จุดเขียว / ป้าย · ห้องที่เลือก = พื้นเทา+แถบเขียวซ้าย
+            //   ป้ายที่ต้องลงมือ (รอแอดมิน · ร่างรอส่ง) เป็นเม็ดทึบนำหน้า · สถานะบอท/ลูกค้าใหม่/โน้ต เป็นตัวหนังสือจาง ๆ ต่อท้าย (เดิมเม็ดสีเท่ากันหมดจนแยกไม่ออก)
+            rows.map((r) => {
+              const on = sel === r.id;
+              const quiet = [r.scope === "new" ? "🆕 ใหม่" : "", r.pausedUntil ? "⏸ พักบอท" : r.botAllowed ? "🤖 บอทตอบ" : "", r.botDraft ? "📝 ร่างก่อนส่ง" : "", r.adminNotes.length ? `📝${r.adminNotes.length > 1 ? r.adminNotes.length : ""}` : ""].filter(Boolean);
+              const hasChips = r.needsHumanFollowup || r.draftPending || r.adminTags.length > 0 || quiet.length > 0;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => void openRoom(r.id)}
+                  aria-current={on ? "true" : undefined}
+                  className="relative flex w-full items-start gap-3 border-b px-4 py-3 text-left transition hover:bg-[var(--ln-hover)] active:bg-[var(--ln-sel)]"
+                  style={{ borderColor: "var(--ln-line)", background: on ? "var(--ln-sel)" : undefined }}
+                >
+                  {on ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: "var(--ln-green)" }} /> : null}
                   <Avatar src={r.pictureUrl} size={46} />
-                  {r.unread ? <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white" style={{ background: LINE_GREEN }} title="ยังไม่ได้อ่าน" /> : null}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="min-w-0 flex-1 truncate text-[14.5px] font-bold">{nameOf(r)}</span>
-                    <span className="shrink-0 text-[11px]" style={{ color: r.unread ? "#0E7A3A" : "var(--dk-faint)", fontWeight: r.unread ? 700 : 400 }}>
-                      {listTime(r.lastSeen)}
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[14.5px]" style={{ fontWeight: r.unread ? 800 : 700 }}>
+                        {nameOf(r)}
+                      </span>
+                      <span className="shrink-0 text-[11.5px] tabular-nums" style={{ color: r.unread ? "var(--ln-green-ink)" : "var(--dk-faint)", fontWeight: r.unread ? 700 : 400 }}>
+                        {listTime(r.lastSeen)}
+                      </span>
+                    </div>
+                    {/* ข้อความล่าสุดตัวบางเสมอ (เจ้าของร้าน 14 ต.ค. 69) — ยังไม่อ่านบอกด้วยสีเข้ม + จุดเขียว + เวลาสีเขียวแทน */}
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <p className="min-w-0 flex-1 truncate text-[13px]" style={{ color: r.unread ? "var(--dk-navy)" : "var(--dk-faint)" }}>
+                        {r.lastUserText || (r.messageCount ? `บอทคุย ${r.messageCount} ข้อความ` : "—")}
+                      </p>
+                      {r.unread ? <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: "var(--ln-green)" }} title="ยังไม่ได้อ่าน" aria-label="ยังไม่ได้อ่าน" /> : null}
+                    </div>
+                    {hasChips ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {r.needsHumanFollowup ? <Chip tone="coral" solid>🙋 รอแอดมิน</Chip> : null}
+                        {r.draftPending ? <Chip tone="amber" solid>📝 ร่างรอส่ง</Chip> : null}
+                        {r.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
+                        {quiet.length ? (
+                          <span className="text-[10.5px]" style={{ color: "var(--dk-faint)" }} title={r.adminNotes.length ? r.adminNotes.map((n) => n.text).join("\n") : undefined}>
+                            {quiet.join(" · ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
-                  {/* ข้อความล่าสุดตัวบางเสมอ (เจ้าของร้าน 14 ต.ค. 69) — ยังไม่อ่านบอกด้วยสีเข้ม + จุดเขียว + เวลาสีเขียวแทน */}
-                  <p className="truncate text-[12.5px]" style={{ color: r.unread ? "var(--dk-navy-soft)" : "var(--dk-faint)", fontWeight: 400 }}>
-                    {r.lastUserText || (r.messageCount ? `บอทคุย ${r.messageCount} ข้อความ` : "—")}
-                  </p>
-                  <div className="mt-0.5 flex flex-wrap gap-1">
-                    {r.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
-                    {r.adminNotes.length ? <span className="text-[10.5px]" title={r.adminNotes.map((n) => n.text).join("\n")} style={{ color: "var(--dk-faint)" }}>📝{r.adminNotes.length > 1 ? r.adminNotes.length : ""}</span> : null}
-                    {r.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
-                    {r.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
-                    {r.pausedUntil ? <Chip tone="lilac">⏸ พักบอท</Chip> : null}
-                    {r.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
-                    {r.draftPending ? <Chip tone="amber">📝 ร่างรอส่ง</Chip> : null}
-                  </div>
-                </div>
-                {r.unread ? <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: LINE_GREEN }} aria-label="ยังไม่ได้อ่าน" /> : null}
-              </button>
-            ))
+                </button>
+              );
+            })
           )}
           {/* 📜 ท้ายรายการ: โหลดต่อเอง / ปุ่มเมื่อหน้าก่อนว่าง / บอกว่าครบแล้ว */}
           {rows.length && !q ? (
@@ -898,28 +951,60 @@ function Chats() {
           </div>
         ) : null}
         {!sel ? (
-          <div className="m-auto max-w-md p-6 text-center">
-            <div className="text-5xl">💬</div>
-            <p className="mt-2 text-[15px] font-bold">เลือกห้องแชททางซ้าย</p>
-            <p className="mt-1 text-[12.5px]" style={{ color: "var(--dk-faint)" }}>
-              อัปเดตเองทุก 3 วินาที · เห็นข้อความลูกค้า บอท และที่แอดมินตอบจากหน้านี้ · ข้อความที่แอดมินพิมพ์ใน LINE OA Manager ดึงมาให้เมื่อเชื่อม OA ไว้ (กล่อง ⚙️ หน้า ลูกค้า LINE) และรู้รหัสห้อง OA ของคนนั้น
+          // ยังไม่เลือกห้อง: บอกงานที่ค้างพร้อมปุ่มพาไปกรองเลย (ไม่ใช่แค่ "เลือกห้อง")
+          <div className="m-auto w-full max-w-sm p-6 text-center">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-white text-3xl shadow-sm">💬</div>
+            <p className="mt-3 text-[16px] font-extrabold">เลือกห้องแชททางซ้ายเพื่อเริ่มตอบ</p>
+            {waitingCount || draftCount || unreadCount ? (
+              <div className="mt-4 flex flex-col gap-2">
+                {(
+                  [
+                    ["waiting", waitingCount, "🙋 รอแอดมินตอบ", "var(--dk-coral-ink)"],
+                    ["draft", draftCount, "📝 ร่างบอทรอกดส่ง", "var(--dk-yolk-ink)"],
+                    ["unread", unreadCount, "🟢 ยังไม่อ่าน", "var(--ln-green-ink)"],
+                  ] as const
+                )
+                  .filter(([, n]) => n > 0)
+                  .map(([k, n, label, ink]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setScope(k)}
+                      className="flex min-h-[46px] items-center gap-2 rounded-xl bg-white px-4 text-left text-[14px] font-bold shadow-sm transition hover:brightness-[.98]"
+                      style={{ color: ink, outline: scope === k ? `2px solid ${ink}` : undefined }}
+                    >
+                      <span className="flex-1">{label}</span>
+                      <span className="tabular-nums">{n.toLocaleString()} ห้อง</span>
+                      <span aria-hidden="true">›</span>
+                    </button>
+                  ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-[13px] font-bold" style={{ color: "var(--ln-green-ink)" }}>
+                ✓ ไม่มีห้องค้างตอบ
+              </p>
+            )}
+            <p className="mt-4 text-[11.5px] leading-relaxed" style={{ color: "var(--dk-faint)" }}>
+              อัปเดตเองทุก 3 วินาที · ลากรูป/ไฟล์มาวางในห้องเพื่อแนบส่งได้ · ข้อความที่พิมพ์ใน LINE OA Manager ดึงมาให้เมื่อเชื่อม OA ไว้ (กล่อง ⚙️ หน้า ลูกค้า LINE)
             </p>
           </div>
         ) : (
           <>
-            {/* หัวห้อง */}
-            <div className="flex items-center gap-2 border-b bg-white px-2 py-2 md:px-4" style={{ borderColor: "var(--dk-hair)" }}>
-              <button type="button" onClick={() => setSel("")} aria-label="กลับไปรายชื่อ" className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-xl md:hidden">
+            {/* หัวห้องแบบ LINE OA: รูป · ชื่อ+ป้าย / บรรทัดสถานะเล็ก · ขวา = สวิตช์บอท + ปุ่มเครื่องมือ (สถานะบอทอยู่ที่สวิตช์ ไม่ซ้ำเป็นเม็ดข้างชื่อ) */}
+            <div className="flex min-h-[60px] items-center gap-2 border-b bg-white px-2 py-2 md:px-4" style={{ borderColor: "var(--ln-line)" }}>
+              <button type="button" onClick={() => setSel("")} aria-label="กลับไปรายชื่อ" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-xl md:hidden">
                 ←
               </button>
-              <Avatar src={detail?.pictureUrl} size={36} />
+              <Avatar src={detail?.pictureUrl} size={40} />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate text-[15px] font-bold">{detail ? nameOf(detail) : sel}</span>
-                  {detail?.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
-                  {detail?.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
-                  {detail?.pausedUntil ? <Chip tone="lilac">⏸ พักถึง {fmtTime(detail.pausedUntil)}</Chip> : detail?.botAllowed ? <Chip tone="sky">🤖 บอทตอบ</Chip> : null}
-                  {detail?.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
+                <div className="flex items-center gap-1.5 overflow-hidden">
+                  <span className="truncate text-[16px] font-extrabold">{detail ? nameOf(detail) : sel}</span>
+                  {detail?.needsHumanFollowup ? <Chip tone="coral" solid>🙋 รอแอดมิน</Chip> : null}
+                  <span className="hidden items-center gap-1 sm:flex">
+                    {detail?.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
+                    {detail?.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
+                    {detail?.botDraft ? <Chip tone="amber">📝 ร่างก่อนส่ง</Chip> : null}
+                  </span>
                 </div>
                 <p className="truncate text-[11px]" style={{ color: "var(--dk-faint)" }}>
                   {detail?.createdAt ? `ทักครั้งแรก ${fmtDay(detail.createdAt)}` : ""}
@@ -939,20 +1024,31 @@ function Chats() {
                   🔗
                 </IconBtn>
               ) : null}
+              {/* 🔌 เครื่องมือไล่ปัญหา (สิทธิ์ตั้งค่าระบบ) — มือถือซ่อน หัวห้องแคบ */}
               {detail && can("settings.manage") ? (
+                <span className="hidden md:contents">
                 <IconBtn onClick={() => void probeOa()} title="🔌 ทดสอบดึงข้อความห้องนี้จาก LINE OA Manager (เส้น API ที่ตอบ · ฟิลด์ตัวอย่าง) — ใช้ไล่ปัญหาเมื่อข้อความที่พิมพ์ใน OA ไม่ขึ้น" active={oaProbeBusy}>
                   {oaProbeBusy ? "⏳" : "🔌"}
                 </IconBtn>
+                </span>
               ) : null}
               {detail ? (
-                <IconBtn onClick={() => setNoteOpen((v) => !v)} title="ข้อมูลลูกค้า · ออเดอร์ · ป้าย · โน้ต" active={noteOpen}>
-                  ℹ️
-                </IconBtn>
+                <button
+                  type="button"
+                  onClick={() => setNoteOpen((v) => !v)}
+                  title="ข้อมูลลูกค้า · ออเดอร์ · ป้าย · โน้ต"
+                  aria-pressed={noteOpen}
+                  className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-[13px] font-bold transition active:scale-95"
+                  style={noteOpen ? { background: "var(--ln-sel)", color: "var(--dk-navy)", boxShadow: "inset 0 0 0 1.5px var(--dk-navy-soft)" } : { color: "var(--dk-navy-soft)", boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }}
+                >
+                  <span className="text-[17px] leading-none">👤</span>
+                  <span className="hidden lg:inline">ข้อมูลลูกค้า</span>
+                </button>
               ) : null}
             </div>
 
             {/* ข้อความ */}
-            <div ref={threadRef} className="flex-1 overflow-y-auto px-3 py-3 md:px-6" style={{ background: "#EEF2F7" }}>
+            <div ref={threadRef} className="flex-1 overflow-y-auto px-3 py-3 md:px-6" style={{ background: "var(--ln-bg)" }}>
               {detailLoading && !detail ? (
                 <p className="text-sm" style={{ color: "var(--dk-faint)" }}>
                   กำลังโหลด…
@@ -1019,11 +1115,12 @@ function Chats() {
                         <div
                           className="max-w-[78%] whitespace-pre-wrap break-words px-3.5 py-2 text-[14px] leading-relaxed md:max-w-[62%]"
                           style={
+                            // ฟองแบบ LINE: แอดมิน = เขียว LINE · บอท = ฟ้า (ป้าย "บอท" ข้างฟองกำกับอีกชั้น) · ลูกค้า = ขาวขอบบาง
                             admin
-                              ? { background: "#C9F2D0", color: "#143B1E", borderRadius: "18px 4px 18px 18px" }
+                              ? { background: "var(--ln-me)", color: "var(--ln-me-ink)", borderRadius: "18px 4px 18px 18px" }
                               : ours
-                                ? { background: "#E4EEFB", color: "var(--dk-navy)", borderRadius: "18px 4px 18px 18px" }
-                                : { background: "white", color: "#1F2937", borderRadius: "4px 18px 18px 18px", boxShadow: "0 1px 1px rgba(0,0,0,.05)" }
+                                ? { background: "var(--ln-bot)", color: "var(--dk-navy)", borderRadius: "18px 4px 18px 18px" }
+                                : { background: "white", color: "var(--dk-navy)", borderRadius: "4px 18px 18px 18px", boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }
                           }
                         >
                           {(() => {
@@ -1119,6 +1216,9 @@ function Chats() {
           aiBusy={aiBusy}
           onAiRetag={() => void aiRetag(detail.id)}
           onToggle={() => void toggleBot(detail.id, !detail.botAllowed)}
+          shopDraft={settings?.mode === "draft"}
+          canDraftUser={can("settings.manage")}
+          onDraftUser={() => void toggleDraftUser(detail.id, !detail.botDraft)}
           onWake={() => void wakeBot(detail.id)}
           onClose={() => setNoteOpen(false)}
           orders={
@@ -1318,6 +1418,7 @@ function OrdersBlock({
     }
   };
 
+  const owed = (orders ?? []).reduce((n, o) => n + (o.balance > 0 ? o.balance : 0), 0);
   const row = (o: ChatOrder, preview = false) => (
     <li key={o.id} className="rounded-xl bg-white p-2.5" style={{ border: "1px solid var(--dk-hair)" }}>
       <div className="flex items-center gap-1.5">
@@ -1364,11 +1465,21 @@ function OrdersBlock({
   );
 
   return (
-    <div className="mx-4 mt-3">
-      <div className="mb-1 flex items-center">
-        <p className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>📦 ออเดอร์ของลูกค้านี้</p>
-        {orders && orders.length ? <span className="ml-1.5 text-[11px]" style={{ color: "var(--dk-faint)" }}>{orders.length} ใบ</span> : null}
-      </div>
+    // 📦 หุบได้ (เจ้าของร้าน 19 ต.ค. 69 "หุบให้หน่อย") — เริ่มหุบ · หัวข้อสรุป จำนวนใบ/ยอดค้าง/ใบที่น่าจะใช่ ให้เห็นโดยไม่ต้องกาง
+    <PanelSection
+      title="📦 ออเดอร์"
+      foldKey="orders"
+      summary={
+        <>
+          <span className="tabular-nums" style={{ color: "var(--dk-faint)" }}>
+            {orders === null ? "กำลังโหลด…" : orders.length ? `${orders.length} ใบ` : "ยังไม่ผูก"}
+          </span>
+          {owed > 0 ? <b className="ml-1.5 tabular-nums" style={{ color: "var(--dk-coral-ink)" }}>ค้าง {baht(owed)}</b> : null}
+          {canEdit && sug?.matched.length ? <b className="ml-1.5" style={{ color: "var(--dk-yolk-ink)" }}>✨ น่าจะใช่ {sug.matched.length}</b> : null}
+        </>
+      }
+      right={orders && orders.length ? <span className="tabular-nums" style={{ color: "var(--dk-faint)" }}>{orders.length} ใบ</span> : null}
+    >
       {orders === null ? (
         <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>กำลังโหลด…</p>
       ) : err ? (
@@ -1376,8 +1487,8 @@ function OrdersBlock({
       ) : orders.length ? (
         <ul className="flex max-h-[340px] flex-col gap-1.5 overflow-y-auto">{orders.map((o) => row(o))}</ul>
       ) : (
-        <p className="rounded-xl p-2.5 text-[12px]" style={{ background: "#F6F8FB", color: "var(--dk-faint)" }}>
-          ยังไม่มีออเดอร์ที่ผูกกับ LINE นี้
+        <p className="rounded-xl p-2.5 text-[12px]" style={{ background: "var(--ln-field)", color: "var(--dk-faint)" }}>
+          ยังไม่มีออเดอร์ที่ผูกกับ LINE นี้ — ผูกด้วยเลข OD ด้านล่าง
         </p>
       )}
       {canEdit && sug?.matched.length ? (
@@ -1417,7 +1528,7 @@ function OrdersBlock({
           {found ? <ul className="mt-1.5">{row(found, true)}</ul> : null}
         </div>
       ) : null}
-    </div>
+    </PanelSection>
   );
 }
 
@@ -1678,16 +1789,17 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onZoom }: { entry: LogEn
   );
 }
 
-function Chip({ tone, children }: { tone: "mint" | "sky" | "lilac" | "coral" | "amber"; children: React.ReactNode }) {
+/** solid = งานที่ต้องลงมือ (รอแอดมิน/ร่างรอส่ง) พื้นทึบตัวขาว ให้เด่นกว่าป้ายสถานะทั่วไป */
+function Chip({ tone, solid, children }: { tone: "mint" | "sky" | "lilac" | "coral" | "amber"; solid?: boolean; children: React.ReactNode }) {
   const S: Record<string, { bg: string; fg: string }> = {
     mint: { bg: "var(--dk-mint-wash, #E7F8EE)", fg: "var(--dk-mint-ink, #166534)" },
     sky: { bg: "var(--dk-sky, #E6F1FB)", fg: "var(--dk-blue-deep, #1D4ED8)" },
     lilac: { bg: "var(--dk-lilac-wash, #EFE9FB)", fg: "var(--dk-lilac-ink, #5B21B6)" },
     coral: { bg: "var(--dk-coral-wash, #FDE8E6)", fg: "var(--dk-coral-ink, #B91C1C)" },
-    amber: { bg: "#FFF4D6", fg: "#8A5A00" },
+    amber: { bg: "var(--dk-yolk-wash, #FFF4D6)", fg: "var(--dk-yolk-ink, #8A5A00)" },
   };
   return (
-    <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: S[tone].bg, color: S[tone].fg }}>
+    <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={solid ? { background: S[tone].fg, color: "white" } : { background: S[tone].bg, color: S[tone].fg }}>
       {children}
     </span>
   );
@@ -1814,6 +1926,7 @@ function OaProbeModal({ probe: p, onClose, onRetry, busy }: { probe: OaProbe; on
   );
 }
 
+/** ปุ่มไอคอนแบบ LINE OA: ไม่มีพื้น · โฉบ = พื้นเทาอ่อน · เปิดอยู่ (active) = พื้นเทา+ขอบ */
 function IconBtn({ onClick, title, active, children }: { onClick: () => void; title: string; active?: boolean; children: React.ReactNode }) {
   return (
     <button
@@ -1821,8 +1934,8 @@ function IconBtn({ onClick, title, active, children }: { onClick: () => void; ti
       onClick={onClick}
       title={title}
       aria-label={title}
-      className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-lg transition active:scale-95"
-      style={active ? { background: "var(--dk-sky, #E6F1FB)" } : { background: "#F1F5F9" }}
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-[18px] transition hover:bg-[var(--ln-field)] active:scale-95"
+      style={active ? { background: "var(--ln-sel)", boxShadow: "inset 0 0 0 1.5px var(--dk-navy-soft)" } : undefined}
     >
       {children}
     </button>
@@ -1881,8 +1994,10 @@ function Composer({
     const el = areaRef.current;
     if (!el) return;
     const max = Math.max(140, Math.round(window.innerHeight * 0.55));
+    // กล่องแบบ OA: เดสก์ท็อปเริ่มสูง ~3 บรรทัด · มือถือ 1 บรรทัด (เหลือที่ให้ห้องแชท)
+    const min = window.innerWidth >= 768 ? 72 : 44;
     el.style.height = "0px";
-    el.style.height = `${Math.min(max, Math.max(44, el.scrollHeight))}px`;
+    el.style.height = `${Math.min(max, Math.max(min, el.scrollHeight))}px`;
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, [text]);
 
@@ -1997,7 +2112,7 @@ function Composer({
   const canSend = !disabled && !sending && (!!text.trim() || !!image || !!card || !!fileAtt);
 
   return (
-    <div className="border-t bg-white" style={{ borderColor: "var(--dk-hair)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <div className="border-t bg-white" style={{ borderColor: "var(--ln-line)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       {quotaLow ? (
         <p className="px-3 pt-1.5 text-[11.5px]" style={{ color: disabled ? "var(--dk-coral-ink)" : "#8A5A00" }}>
           {disabled ? "โควตา LINE เดือนนี้เหลือน้อยมาก — ปุ่มส่งปิดไว้ ไปตอบใน LINE OA Manager แทนนะคะ" : "โควตา LINE เหลือน้อย — ส่งเท่าที่จำเป็น ที่เหลือตอบใน OA Manager"}
@@ -2086,17 +2201,9 @@ function Composer({
           ) : null}
         </div>
       ) : null}
-      <div className="flex items-end gap-1.5 px-2 py-2">
-        <input ref={fileRef} type="file" accept="image/*,.pdf,.ai,.psd,.eps,.svg,.cdr,.tif,.tiff,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.mov" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
-        <IconBtn onClick={() => fileRef.current?.click()} title="แนบรูปหรือไฟล์งาน (AI/PSD/PDF/ZIP … ≤ 4 MB)">
-          {uploading ? "…" : "📎"}
-        </IconBtn>
-        <IconBtn onClick={() => void openPicker()} title="ส่งการ์ดสินค้า" active={pickOpen}>
-          🧾
-        </IconBtn>
-        <IconBtn onClick={() => setReplyOpen(true)} title="ข้อความตอบกลับ / คูปอง" active={replyOpen}>
-          ⊕
-        </IconBtn>
+      {/* ✍️ ช่องพิมพ์แบบ LINE OA Manager (19 ต.ค. 69): กล่องข้อความกว้างเต็มแถวด้านบน · แถบเครื่องมือมีป้ายคำด้านล่าง · ปุ่ม "ส่ง" เขียวมุมขวาล่าง (นิ้วโป้งถึง) */}
+      <input ref={fileRef} type="file" accept="image/*,.pdf,.ai,.psd,.eps,.svg,.cdr,.tif,.tiff,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.mov" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
+      <div className="px-3 pt-2 md:px-4">
         <textarea
           ref={areaRef}
           value={text}
@@ -2109,32 +2216,58 @@ function Composer({
             }
           }}
           rows={1}
-          placeholder={disabled ? "ส่งจากหน้านี้ไม่ได้ชั่วคราว (โควตา LINE)" : "พิมพ์ข้อความ… (ลากรูป/ไฟล์มาวาง หรือ Ctrl+V ก็ได้)"}
+          placeholder={disabled ? "ส่งจากหน้านี้ไม่ได้ชั่วคราว (โควตา LINE)" : `พิมพ์ข้อความถึง ${customerName || "ลูกค้า"}…`}
           disabled={disabled || sending}
-          className="min-h-[44px] flex-1 resize-none rounded-[22px] px-4 py-2.5 text-[15px] outline-none"
-          style={{ background: "#F1F5F9", color: "var(--dk-navy)" }}
+          className="block min-h-[44px] w-full resize-none bg-transparent py-1.5 text-[15px] leading-relaxed outline-none"
+          style={{ color: "var(--dk-navy)" }}
         />
+      </div>
+      {lineEmojis.length && text.includes("$") ? (
+        <p className="px-3 pb-1 text-[11.5px] font-semibold md:px-4" style={{ color: "var(--dk-navy-soft)" }}>
+          ตัว $ ในช่องพิมพ์ = อิโมจิ LINE {Math.min(lineEmojis.length, text.split("$").length - 1)} ตัว (ลูกค้าเห็นเป็นรูป) · ลบ $ = ลบอิโมจินั้น
+        </p>
+      ) : null}
+      <div className="flex items-center gap-0.5 px-1.5 pb-1.5 md:gap-1 md:px-3">
+        <ToolBtn icon={uploading ? "⏳" : "📎"} label="แนบไฟล์" title="แนบรูปหรือไฟล์งาน (AI/PSD/PDF/ZIP … ≤ 4 MB) · ลากมาวางในห้อง หรือ Ctrl+V ก็ได้" onClick={() => fileRef.current?.click()} />
+        <ToolBtn icon="🧾" label="การ์ดสินค้า" title="ส่งการ์ดสินค้าจากหน้าเว็บ" active={pickOpen} onClick={() => void openPicker()} />
+        <ToolBtn icon="💬" label="ข้อความตอบกลับ" title="ข้อความตอบกลับสำเร็จรูป / คูปอง (ชุดเดียวกับ LINE OA Manager)" active={replyOpen} onClick={() => setReplyOpen(true)} />
+        <span className="ml-auto hidden px-2 text-right text-[10.5px] leading-tight lg:block" style={{ color: "var(--dk-faint)" }}>
+          Enter ส่ง · Shift+Enter ขึ้นบรรทัดใหม่
+          <br />
+          ส่งแล้วบอทพักให้คนนี้ 30 นาที · นับโควตา LINE
+        </span>
         <button
           type="button"
           onClick={() => void send()}
           disabled={!canSend}
-          aria-label="ส่ง"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-lg text-white transition active:scale-95 disabled:opacity-35"
-          style={{ background: LINE_GREEN }}
+          title="ส่งให้ลูกค้า (Enter) — ส่งแล้วบอทพักให้คนนี้ 30 นาที (▶ ปลุกได้ที่หัวห้อง) · นับโควตา LINE"
+          className="ml-auto min-h-[44px] shrink-0 rounded-xl px-6 text-[15px] font-extrabold text-white transition active:scale-95 disabled:opacity-35 lg:ml-0"
+          style={{ background: "var(--ln-green)" }}
         >
-          {sending ? "…" : "➤"}
+          {sending ? "กำลังส่ง…" : "ส่ง"}
         </button>
       </div>
-      {lineEmojis.length && text.includes("$") ? (
-        <p className="px-3 pt-1.5 text-[11.5px] font-semibold" style={{ color: "var(--dk-navy-soft)" }}>
-          ตัว $ ในช่องพิมพ์ = อิโมจิ LINE {Math.min(lineEmojis.length, text.split("$").length - 1)} ตัว (ลูกค้าเห็นเป็นรูป) · ลบ $ = ลบอิโมจินั้น
-        </p>
-      ) : null}
       {replyOpen ? <SavedReplyPicker chatId={id} customerName={customerName} onClose={() => setReplyOpen(false)} onPick={insertReply} /> : null}
-      <p className="px-3 pb-1.5 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>
-        ส่งแล้วบอทพักให้คนนี้ 30 นาที (▶ ปลุกได้ที่หัวห้อง) · ข้อความจากหน้านี้นับโควตา LINE
-      </p>
     </div>
+  );
+}
+
+/** ปุ่มในแถบเครื่องมือช่องพิมพ์ — ไอคอน+ป้ายคำ (มือถือป้ายอยู่ใต้ไอคอน) กดง่ายกว่าไอคอนเดี่ยว */
+function ToolBtn({ icon, label, title, active, onClick }: { icon: string; label: string; title: string; active?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className="flex min-h-[44px] min-w-[56px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-2 transition hover:bg-[var(--ln-field)] active:scale-95 md:flex-row md:gap-1.5 md:px-2.5"
+      style={active ? { background: "var(--ln-sel)", boxShadow: "inset 0 0 0 1.5px var(--dk-navy-soft)" } : undefined}
+    >
+      <span className="text-[18px] leading-none">{icon}</span>
+      <span className="whitespace-nowrap text-[10.5px] font-bold md:text-[12.5px]" style={{ color: "var(--dk-navy-soft)" }}>
+        {label}
+      </span>
+    </button>
   );
 }
 
@@ -2143,8 +2276,8 @@ function Composer({
 function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canToggle: boolean; onToggle: () => void; onWake: () => void }) {
   if (detail.pausedUntil) {
     return (
-      <button type="button" onClick={onWake} disabled={!canToggle} title="บอทพักเพราะแอดมินตอบอยู่ — กดเพื่อปลุกให้ตอบต่อทันที" className="flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold transition active:scale-95" style={{ background: "var(--dk-lilac-wash, #EFE9FB)", color: "var(--dk-lilac-ink, #5B21B6)" }}>
-        ⏸ พักถึง {fmtTime(detail.pausedUntil)} <span className="rounded-full bg-white/70 px-1.5 text-[11px]">▶ ปลุก</span>
+      <button type="button" onClick={onWake} disabled={!canToggle} title="บอทพักเพราะแอดมินตอบอยู่ — กดเพื่อปลุกให้ตอบต่อทันที" className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold transition active:scale-95" style={{ background: "var(--dk-lilac-wash, #EFE9FB)", color: "var(--dk-lilac-ink, #5B21B6)" }}>
+        ⏸<span className="hidden sm:inline"> พักถึง {fmtTime(detail.pausedUntil)}</span> <span className="rounded-full bg-white/70 px-1.5 text-[11px]">▶ ปลุก</span>
       </button>
     );
   }
@@ -2155,101 +2288,297 @@ function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canTogg
       onClick={onToggle}
       disabled={!canToggle}
       title={on ? "บอทกำลังตอบคนนี้ — กดเพื่อปิด (แอดมินตอบเอง)" : "บอทไม่ตอบคนนี้ — กดเพื่อเปิดให้บอทตอบ"}
-      className="flex min-h-[36px] items-center gap-1.5 rounded-full pl-2 pr-3 text-[12.5px] font-bold transition active:scale-95"
+      className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full pl-2 pr-3 text-[12.5px] font-bold transition active:scale-95"
       style={on ? { background: "#C9F2D0", color: "#0E7A3A" } : { background: "#E5E7EB", color: "#4B5563" }}
     >
       <span className="grid h-6 w-6 place-items-center rounded-full text-[13px]" style={{ background: on ? LINE_GREEN : "#9CA3AF", color: "white" }}>🤖</span>
-      {on ? "บอทตอบ: เปิด" : "บอทตอบ: ปิด"}
+      {/* มือถือหัวห้องแคบ: เหลือ "เปิด/ปิด" ข้างไอคอน 🤖 */}
+      <span className="hidden sm:inline">บอทตอบ: </span>
+      {on ? "เปิด" : "ปิด"}
     </button>
   );
 }
 
-/** ℹ️ แผงข้อมูลลูกค้าด้านขวา — ชื่อ/รูป/ไอดี · สถานะบอท · ป้าย · โน้ตภายใน (ฟิลด์เดียวกับหน้า ลูกค้า LINE) */
+/**
+ * หัวข้อส่วนในแผงข้อมูลลูกค้า — ชื่อส่วนซ้าย · ตัวนับ/ปุ่มขวา · คั่นด้วยเส้นบางแบบ LINE OA
+ * foldKey = หุบได้ (กดหัวข้อ) จำสถานะต่อเครื่อง · หุบอยู่โชว์ summary แทนเนื้อหา (ของที่ต้องลงมือยังเห็นจากหัวข้อ)
+ */
+function PanelSection({ title, right, children, foldKey, summary }: { title: string; right?: React.ReactNode; children: React.ReactNode; foldKey?: string; summary?: React.ReactNode }) {
+  const [open, setOpen] = useState(!foldKey);
+  useEffect(() => {
+    if (!foldKey) return;
+    try {
+      setOpen(localStorage.getItem(`chat.panel.${foldKey}`) === "1");
+    } catch {}
+  }, [foldKey]);
+  const toggle = () => {
+    setOpen((v) => {
+      try {
+        localStorage.setItem(`chat.panel.${foldKey}`, v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
+  };
+  const head = (
+    <>
+      {foldKey ? (
+        <span aria-hidden="true" className="w-3 shrink-0 text-[10px]" style={{ color: "var(--dk-navy-soft)", transform: open ? "rotate(90deg)" : undefined, transition: "transform .15s" }}>
+          ▶
+        </span>
+      ) : null}
+      <h3 className="shrink-0 text-[13px] font-extrabold" style={{ color: "var(--dk-navy)" }}>
+        {title}
+      </h3>
+      {foldKey && !open && summary ? <span className="min-w-0 flex-1 truncate text-[11.5px]">{summary}</span> : null}
+    </>
+  );
+  return (
+    <section className="border-t px-4 py-3" style={{ borderColor: "var(--ln-line)" }}>
+      <div className={`flex min-h-[28px] items-center gap-2 ${open ? "mb-2" : ""}`}>
+        {foldKey ? (
+          <button type="button" onClick={toggle} aria-expanded={open} className="-my-2 flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left">
+            {head}
+          </button>
+        ) : (
+          head
+        )}
+        {right && (open || !foldKey) ? <div className="ml-auto flex shrink-0 items-center text-[11.5px]">{right}</div> : null}
+      </div>
+      {open ? children : null}
+    </section>
+  );
+}
+
+/**
+ * ℹ️ แผงข้อมูลลูกค้าด้านขวา — ฟิลด์เดียวกับหน้า ลูกค้า LINE
+ * จัดใหม่ 19 ต.ค. 69 (เจ้าของร้าน "ออกแบบ จัดวาง layout ให้ใหม่"): เดิมรูปใหญ่กลางจอ + ตารางวันที่กินครึ่งจอแรก ออเดอร์/โน้ตต้องเลื่อนหา
+ *   · โปรไฟล์แนวนอน (รูป 56 · ชื่อ · ชื่อ LINE · ป้ายสถานะ) + วันที่ยุบเป็นบรรทัดเล็ก (ข้อมูลนิ่ง) + userId พร้อมปุ่มคัดลอก
+ *   · สวิตช์บอทอยู่แถวเดียวกับคำอธิบาย · แล้วเรียงส่วนตามที่ใช้บ่อย: ป้าย → ออเดอร์ → โน้ต (หัวข้อส่วนแบบเดียวกันหมด)
+ */
 function InfoPanel({
-  detail, canReply, canToggle, noteSaving, onNoteAdd, onNoteEdit, onNoteDel, tags, onTags, onManageTags, onToggle, onWake, onClose, orders, aiBusy, onAiRetag,
+  detail, canReply, canToggle, noteSaving, onNoteAdd, onNoteEdit, onNoteDel, tags, onTags, onManageTags, onToggle, onWake, onClose, orders, aiBusy, onAiRetag, shopDraft, canDraftUser, onDraftUser,
 }: {
   detail: Row; canReply: boolean; canToggle: boolean; noteSaving: boolean; orders: React.ReactNode; aiBusy: boolean; onAiRetag: () => void;
+  shopDraft: boolean; canDraftUser: boolean; onDraftUser: () => void;
   onNoteAdd: (t: string) => Promise<boolean>; onNoteEdit: (id: string, t: string) => Promise<boolean>; onNoteDel: (id: string) => Promise<boolean>; tags: ChatTag[]; onTags: (ts: string[]) => void; onManageTags: () => void; onToggle: () => void; onWake: () => void; onClose: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+  const [tagPick, setTagPick] = useState(false);
+  const [tagQ, setTagQ] = useState("");
+  useEffect(() => {
+    setCopied(false);
+    setTagPick(false);
+    setTagQ("");
+  }, [detail.id]);
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(detail.id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt("คัดลอก userId", detail.id);
+    }
+  };
+  const meta = [
+    detail.createdAt ? `ทักครั้งแรก ${fmtDay(detail.createdAt)}` : "",
+    detail.lastSeen ? `ล่าสุด ${ago(detail.lastSeen)}` : "",
+    detail.lastAdminAt ? `แอดมินตอบ ${ago(detail.lastAdminAt)}` : "",
+    detail.messageCount ? `บอทคุย ${detail.messageCount} ข้อความ` : "",
+  ].filter(Boolean);
+  const aiOn = !!detail.aiTag?.key && detail.adminTags.includes(detail.aiTag.key);
   const body = (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--dk-hair)" }}>
-        <span className="text-[14px] font-extrabold">ข้อมูลลูกค้า</span>
-        <button type="button" onClick={onClose} aria-label="ปิด" className="ml-auto grid h-9 w-9 place-items-center rounded-full text-lg hover:bg-black/[0.05]">✕</button>
+      <div className="sticky top-0 z-10 flex min-h-[60px] items-center gap-2 border-b bg-white px-4 py-2" style={{ borderColor: "var(--ln-line)" }}>
+        <span className="text-[15px] font-extrabold">ข้อมูลลูกค้า</span>
+        <button type="button" onClick={onClose} aria-label="ปิด" className="ml-auto grid h-11 w-11 place-items-center rounded-xl text-lg hover:bg-[var(--ln-field)]">✕</button>
       </div>
-      <div className="flex flex-col items-center px-4 pt-4 text-center">
-        <Avatar src={detail.pictureUrl} size={72} />
-        <p className="mt-2 text-[16px] font-extrabold">{nameOf(detail)}</p>
-        {detail.adminAlias && detail.displayName ? <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>ชื่อ LINE: {detail.displayName}</p> : null}
-        <p className="mt-1 break-all font-mono text-[10.5px]" style={{ color: "var(--dk-faint)" }}>{detail.id}</p>
-        <div className="mt-2 flex flex-wrap justify-center gap-1">
-          {detail.adminTags.map((k) => <TagChip key={k} k={k} tags={tags} />)}
-          <Chip tone={detail.scope === "new" ? "mint" : "sky"}>{detail.scope === "new" ? "🆕 ลูกค้าใหม่" : "👤 ลูกค้าเก่า"}</Chip>
-          {detail.needsHumanFollowup ? <Chip tone="coral">รอแอดมิน</Chip> : null}
+
+      {/* โปรไฟล์ */}
+      <div className="px-4 pb-3 pt-4">
+        <div className="flex items-center gap-3">
+          <Avatar src={detail.pictureUrl} size={56} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[17px] font-extrabold leading-tight">{nameOf(detail)}</p>
+            {detail.adminAlias && detail.displayName ? (
+              <p className="truncate text-[12px]" style={{ color: "var(--dk-faint)" }}>
+                ชื่อ LINE: {detail.displayName}
+              </p>
+            ) : null}
+            <div className="mt-1 flex flex-wrap gap-1">
+              {detail.needsHumanFollowup ? <Chip tone="coral" solid>🙋 รอแอดมิน</Chip> : null}
+              <Chip tone={detail.scope === "new" ? "mint" : "sky"}>{detail.scope === "new" ? "🆕 ลูกค้าใหม่" : "👤 ลูกค้าเก่า"}</Chip>
+            </div>
+          </div>
+        </div>
+        {meta.length ? (
+          <p className="mt-2.5 text-[11.5px] leading-relaxed" style={{ color: "var(--dk-navy-soft)" }}>
+            {meta.join(" · ")}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void copyId()}
+          title="คัดลอก userId ของ LINE"
+          className="mt-1 flex max-w-full items-center gap-1.5 rounded-md text-left text-[10.5px] transition hover:opacity-70"
+          style={{ color: "var(--dk-faint)" }}
+        >
+          <span className="truncate font-mono">{detail.id}</span>
+          <span className="shrink-0 font-sans font-bold" style={{ color: copied ? "var(--ln-green-ink)" : "var(--dk-navy-soft)" }}>
+            {copied ? "✓ คัดลอกแล้ว" : "คัดลอก"}
+          </span>
+        </button>
+        {/* สวิตช์บอทแถวเดียวกับคำอธิบาย */}
+        <div className="mt-3 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "var(--ln-field)" }}>
+          <span className="min-w-0 flex-1 text-[12.5px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
+            บอทตอบลูกค้านี้
+          </span>
+          <BotPill detail={detail} canToggle={canToggle} onToggle={onToggle} onWake={onWake} />
+        </div>
+        {/* 📝 ร่างก่อนส่งรายคน — เปิดแล้วบอทคิดคำตอบให้คนนี้แต่เก็บเป็นร่างรอกดส่ง (แม้ร้านอยู่โหมดเก็บแชทอย่างเดียว) · ร้านเปิดโหมดร่างทั้งร้านอยู่ = ทุกคนร่างอยู่แล้ว */}
+        <div className="mt-1.5 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: detail.botDraft || shopDraft ? "var(--dk-yolk-wash)" : "var(--ln-field)" }}>
+          <span className="min-w-0 flex-1 text-[12.5px] leading-snug" style={{ color: detail.botDraft || shopDraft ? "var(--dk-yolk-ink)" : "var(--dk-navy-soft)" }}>
+            <b>📝 ร่างก่อนส่ง</b>
+            <span className="block text-[11px] font-normal">
+              {shopDraft ? "เปิดทั้งร้านอยู่ — ทุกห้องร่างอยู่แล้ว" : detail.botDraft ? "บอทร่างคำตอบ รอแอดมินกดส่ง" : "บอทไม่ร่างให้ลูกค้านี้"}
+            </span>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!detail.botDraft}
+            onClick={onDraftUser}
+            disabled={!canDraftUser || shopDraft}
+            title={!canDraftUser ? "สลับได้เฉพาะผู้มีสิทธิ์ตั้งค่าระบบ" : shopDraft ? "ร้านเปิดโหมดร่างทั้งร้านอยู่ — ปิดโหมดร่างทั้งร้านก่อนถึงจะเลือกรายคนได้" : detail.botDraft ? "ปิดร่างให้ลูกค้านี้" : "เปิดร่างให้ลูกค้านี้ — บอทร่างคำตอบ รอแอดมินกดส่ง"}
+            className="relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50"
+            style={{ background: detail.botDraft || shopDraft ? "var(--dk-yolk-ink)" : "var(--dk-quiet)" }}
+          >
+            <span className="absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all" style={{ left: detail.botDraft || shopDraft ? 22 : 2 }} />
+          </button>
         </div>
       </div>
-      <dl className="mx-4 mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-xl p-3 text-[12.5px]" style={{ background: "#F6F8FB" }}>
-        <dt style={{ color: "var(--dk-faint)" }}>ทักครั้งแรก</dt><dd>{detail.createdAt ? fmtDay(detail.createdAt) : "—"}</dd>
-        <dt style={{ color: "var(--dk-faint)" }}>ล่าสุด</dt><dd>{detail.lastSeen ? ago(detail.lastSeen) : "—"}</dd>
-        <dt style={{ color: "var(--dk-faint)" }}>บอทคุย</dt><dd>{detail.messageCount ? `${detail.messageCount} ข้อความ` : "—"}</dd>
-        <dt style={{ color: "var(--dk-faint)" }}>แอดมินตอบล่าสุด</dt><dd>{detail.lastAdminAt ? ago(detail.lastAdminAt) : "—"}</dd>
-      </dl>
-      {orders}
-      <div className="mx-4 mt-3">
-        <p className="mb-1 text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>บอท</p>
-        <BotPill detail={detail} canToggle={canToggle} onToggle={onToggle} onWake={onWake} />
-      </div>
-      <div className="mx-4 mt-3">
-        <div className="mb-1 flex items-center">
-          <p className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>ป้าย (ติดได้หลายอัน)</p>
-          {canReply ? (
-            <button type="button" onClick={onManageTags} className="ml-auto text-[11.5px] font-bold underline" style={{ color: "var(--dk-navy-soft)" }}>
+
+      {/* 🏷 ป้าย */}
+      <PanelSection
+        title="🏷 ป้าย"
+        right={
+          canReply ? (
+            <button type="button" onClick={onManageTags} className="min-h-[28px] font-bold underline" style={{ color: "var(--dk-navy-soft)" }}>
               ⚙️ จัดการป้าย
+            </button>
+          ) : null
+        }
+      >
+        {/* 🏷 19 ต.ค. 69 เจ้าของร้าน "ถ้ามี tag เยอะมันจะรก": โชว์เฉพาะป้ายที่ติดอยู่ (กด ✕ เอาออก) + ปุ่ม "＋ ติดป้าย" กางรายการเลือก (แบบ LINE OA "เพิ่มแท็ก") */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {detail.adminTags.map((k) => {
+            const t = tags.find((x) => x.key === k);
+            if (!t) return null;
+            const c = TAG_PALETTE[t.color];
+            return (
+              <span key={k} className="inline-flex min-h-[32px] items-center gap-1 rounded-full pl-2.5 pr-1 text-[12.5px] font-bold" style={{ background: c.wash, color: c.ink }}>
+                {t.emoji} {t.label}
+                {canReply ? (
+                  <button type="button" onClick={() => onTags(detail.adminTags.filter((x) => x !== k))} aria-label={`เอาป้าย ${t.label} ออก`} title="เอาป้ายนี้ออก" className="grid h-6 w-6 place-items-center rounded-full text-[11px] hover:bg-black/10">
+                    ✕
+                  </button>
+                ) : (
+                  <span className="w-1.5" />
+                )}
+              </span>
+            );
+          })}
+          {!detail.adminTags.length && !canReply ? <span className="text-[12px]" style={{ color: "var(--dk-faint)" }}>ยังไม่ติดป้าย</span> : null}
+          {canReply ? (
+            <button
+              type="button"
+              onClick={() => setTagPick((v) => !v)}
+              aria-expanded={tagPick}
+              className="min-h-[32px] rounded-full px-3 text-[12.5px] font-bold transition active:scale-95"
+              style={tagPick ? { background: "var(--dk-navy)", color: "white", border: "1.5px solid var(--dk-navy)" } : { color: "var(--dk-navy-soft)", border: "1.5px dashed var(--dk-faint)" }}
+            >
+              {tagPick ? "เสร็จ" : detail.adminTags.length ? "＋ ป้าย" : "＋ ติดป้าย"}
             </button>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {tags.map((t) => {
-            const on = detail.adminTags.includes(t.key);
-            const c = TAG_PALETTE[t.color];
-            return (
-              <button key={t.key} type="button" disabled={!canReply} onClick={() => onTags(on ? detail.adminTags.filter((k) => k !== t.key) : [...detail.adminTags, t.key])} className="min-h-[32px] rounded-full px-2.5 text-[12px] font-bold transition" style={on ? { background: c.tone, color: "white" } : { background: c.wash, color: c.ink }} aria-pressed={on}>
-                {on ? "✓ " : ""}{t.emoji} {t.label}
-              </button>
-            );
-          })}
-        </div>
+        {tagPick && canReply ? (
+          <div className="mt-2 overflow-hidden rounded-xl" style={{ boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }}>
+            {tags.length > 8 ? (
+              <input
+                value={tagQ}
+                onChange={(e) => setTagQ(e.target.value)}
+                placeholder="ค้นป้าย…"
+                className="block w-full border-b px-3 py-2 text-[13px] outline-none"
+                style={{ borderColor: "var(--ln-line)" }}
+              />
+            ) : null}
+            <div className="max-h-[260px] overflow-y-auto py-1">
+              {tags
+                .filter((t) => !tagQ.trim() || t.label.toLowerCase().includes(tagQ.trim().toLowerCase()))
+                .map((t) => {
+                  const on = detail.adminTags.includes(t.key);
+                  const c = TAG_PALETTE[t.color];
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={on}
+                      onClick={() => onTags(on ? detail.adminTags.filter((k) => k !== t.key) : [...detail.adminTags, t.key])}
+                      className="flex min-h-[40px] w-full items-center gap-2.5 px-3 text-left text-[13px] hover:bg-[var(--ln-hover)]"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-[12px] font-bold"
+                        style={on ? { background: c.tone, color: "white" } : { boxShadow: "inset 0 0 0 1.5px var(--dk-faint)" }}
+                      >
+                        {on ? "✓" : ""}
+                      </span>
+                      <span className="min-w-0 truncate rounded-full px-2 py-[2px] font-bold" style={{ background: c.wash, color: c.ink }}>
+                        {t.emoji} {t.label}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        ) : null}
         {/* 🤖 AI ติดป้ายระดับให้เอง (cron ทุก 5 นาที) — โชว์เหตุผล · แอดมินกดป้ายเองหลังลูกค้าพิมพ์ล่าสุด = AI ไม่ทับ */}
-        <div className="mt-1.5 flex items-start gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px]" style={{ background: "#F6F8FB", color: "var(--dk-navy-soft)" }}>
-          <span className="min-w-0 flex-1 leading-snug">
-            {detail.aiTag?.key && detail.adminTags.includes(detail.aiTag.key) ? (
+        <div className="mt-2 flex items-start gap-2 text-[11.5px] leading-snug" style={{ color: "var(--dk-navy-soft)" }}>
+          <span aria-hidden="true">🤖</span>
+          <span className="line-clamp-2 min-w-0 flex-1" title={detail.aiTag?.reason || undefined}>
+            {aiOn ? (
               <>
-                🤖 AI: <b>{tags.find((t) => t.key === detail.aiTag!.key)?.label ?? detail.aiTag.key}</b>
-                {detail.aiTag.reason ? ` — ${detail.aiTag.reason}` : ""}
-                {detail.aiTag.at ? <span style={{ color: "var(--dk-faint)" }}> · {ago(detail.aiTag.at)}</span> : null}
+                AI ติด <b>{tags.find((t) => t.key === detail.aiTag!.key)?.label ?? detail.aiTag!.key}</b>
+                {detail.aiTag!.reason ? ` — ${detail.aiTag!.reason}` : ""}
+                {detail.aiTag!.at ? <span style={{ color: "var(--dk-faint)" }}> · {ago(detail.aiTag!.at)}</span> : null}
               </>
             ) : detail.aiTag?.key ? (
-              <span style={{ color: "var(--dk-faint)" }}>🤖 แอดมินเลือกป้ายเองแล้ว — AI จะประเมินใหม่เมื่อลูกค้าพิมพ์มา</span>
+              <span style={{ color: "var(--dk-faint)" }}>แอดมินเลือกป้ายเองแล้ว — AI จะประเมินใหม่เมื่อลูกค้าพิมพ์มา</span>
             ) : (
-              <span style={{ color: "var(--dk-faint)" }}>🤖 AI ติดป้ายความเร่งด่วนให้เองเมื่อลูกค้าพิมพ์มา</span>
+              <span style={{ color: "var(--dk-faint)" }}>AI ติดป้ายความเร่งด่วนให้เองเมื่อลูกค้าพิมพ์มา</span>
             )}
           </span>
           {canReply ? (
-            <button type="button" disabled={aiBusy} onClick={onAiRetag} className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold underline disabled:opacity-50" style={{ color: "var(--dk-navy-soft)" }}>
+            <button type="button" disabled={aiBusy} onClick={onAiRetag} className="shrink-0 font-bold underline disabled:opacity-50" style={{ color: "var(--dk-navy-soft)" }}>
               {aiBusy ? "กำลังประเมิน…" : "ประเมินใหม่"}
             </button>
           ) : null}
         </div>
-      </div>
-      <div className="mx-4 mb-4 mt-3">
-        <NotesBlock notes={detail.adminNotes} canReply={canReply} saving={noteSaving} onAdd={onNoteAdd} onEdit={onNoteEdit} onDel={onNoteDel} />
-        <p className="mt-2 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>ป้าย/โน้ตชุดเดียวกับหน้า ลูกค้า LINE</p>
-      </div>
+      </PanelSection>
+
+      {/* 📦 ออเดอร์ */}
+      {orders}
+
+      {/* 📝 โน้ต */}
+      <NotesBlock notes={detail.adminNotes} canReply={canReply} saving={noteSaving} onAdd={onNoteAdd} onEdit={onNoteEdit} onDel={onNoteDel} />
+      <p className="px-4 pb-4 text-[10.5px]" style={{ color: "var(--dk-faint)" }}>
+        ป้าย/โน้ตชุดเดียวกับหน้า ลูกค้า LINE
+      </p>
     </div>
   );
   return (
     <>
-      <aside className="hidden w-[300px] shrink-0 border-l bg-white lg:block" style={{ borderColor: "var(--dk-hair)" }}>{body}</aside>
+      <aside className="hidden w-[340px] shrink-0 border-l bg-white lg:block" style={{ borderColor: "var(--ln-line)" }}>{body}</aside>
       <div className="fixed inset-0 z-50 bg-white lg:hidden">{body}</div>
     </>
   );
@@ -2409,14 +2738,10 @@ function NotesBlock({ notes, canReply, saving, onAdd, onEdit, onDel }: { notes: 
   const [editText, setEditText] = useState("");
   const full = notes.length >= 10;
   return (
-    <>
-      <div className="mb-1 flex items-center">
-        <p className="text-[12px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>โน้ตภายใน (ลูกค้าไม่เห็น)</p>
-        <span className="ml-auto text-[11px]" style={{ color: full ? "var(--dk-coral-ink)" : "var(--dk-faint)" }}>{notes.length}/10</span>
-      </div>
-      <div className="space-y-1.5">
+    <PanelSection title="📝 โน้ตภายใน" right={<span className="tabular-nums" style={{ color: full ? "var(--dk-coral-ink)" : "var(--dk-faint)" }}>ลูกค้าไม่เห็น · {notes.length}/10</span>}>
+      <div className={notes.length ? "space-y-1.5" : ""}>
         {notes.map((n) => (
-          <div key={n.id} className="rounded-xl px-3 py-2 text-[13px]" style={{ background: "#FFFBEA", border: "1px solid #F0D48A" }}>
+          <div key={n.id} className="rounded-xl px-3 py-2 text-[13px]" style={{ background: "var(--dk-yolk-wash)", boxShadow: "inset 0 0 0 1px var(--dk-yolk-deep)" }}>
             {editId === n.id ? (
               <>
                 <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} className="w-full resize-y rounded-lg border bg-white px-2 py-1.5 text-[13px] outline-none" style={{ borderColor: "#F0D48A" }} />
@@ -2441,17 +2766,21 @@ function NotesBlock({ notes, canReply, saving, onAdd, onEdit, onDel }: { notes: 
             )}
           </div>
         ))}
-        {!notes.length ? <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>ยังไม่มีโน้ต</p> : null}
       </div>
       {canReply ? (
-        <div className="mt-2">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} disabled={full || saving} rows={2} placeholder={full ? "โน้ตเต็ม 10 รายการ — ลบอันเก่าก่อน" : "เพิ่มโน้ต เช่น ที่อยู่ส่งของ / งานที่คุยค้าง / ข้อควรระวัง"} className="w-full resize-y rounded-xl border px-3 py-2 text-[13.5px] outline-none disabled:opacity-60" style={{ borderColor: "#F0D48A", background: "#FFFBEA" }} />
-          <button type="button" onClick={() => void onAdd(draft.trim()).then((ok) => ok && setDraft(""))} disabled={saving || full || !draft.trim()} className="dkb-btn dkb-btn-navy dkb-btn-sm mt-1.5 min-h-[36px] disabled:opacity-40">
-            {saving ? "กำลังบันทึก…" : "＋ เพิ่มโน้ต"}
-          </button>
+        // ช่องเพิ่มโน้ตพื้นเทาแบบช่องกรอกทั่วไป (โน้ตที่บันทึกแล้วเท่านั้นที่เป็นกระดาษโน้ตเหลือง) · ปุ่มบันทึกชิดขวาใต้ช่อง
+        <div className={notes.length ? "mt-2" : ""}>
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} disabled={full || saving} rows={2} placeholder={full ? "โน้ตเต็ม 10 รายการ — ลบอันเก่าก่อน" : "เพิ่มโน้ต เช่น ที่อยู่ส่งของ / งานที่คุยค้าง / ข้อควรระวัง"} className="block w-full resize-y rounded-xl px-3 py-2 text-[13.5px] outline-none disabled:opacity-60" style={{ background: "var(--ln-field)" }} />
+          <div className="mt-1.5 flex justify-end">
+            <button type="button" onClick={() => void onAdd(draft.trim()).then((ok) => ok && setDraft(""))} disabled={saving || full || !draft.trim()} className="dkb-btn dkb-btn-navy dkb-btn-sm min-h-[40px] disabled:opacity-40">
+              {saving ? "กำลังบันทึก…" : "＋ บันทึกโน้ต"}
+            </button>
+          </div>
         </div>
+      ) : !notes.length ? (
+        <p className="text-[12px]" style={{ color: "var(--dk-faint)" }}>ยังไม่มีโน้ต</p>
       ) : null}
-    </>
+    </PanelSection>
   );
 }
 function timeOrDay(iso: string): string {

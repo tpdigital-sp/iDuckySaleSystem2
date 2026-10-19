@@ -6,6 +6,7 @@ import { openLearningFromDraft } from "@/lib/server/bot-learning";
 import { inBackground } from "@/lib/server/background";
 import { classifyRoom } from "@/lib/server/chat-urgency";
 import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
+import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 
@@ -15,11 +16,14 @@ export const runtime = "nodejs";
  *   POST { action: "discard", id, logId }       → ทิ้ง ลูกค้าไม่ได้รับ · สิทธิ์ chat.reply
  *   POST { action: "learn", id, logId }         → ไม่ส่ง + เปิดเรื่องในหน้า 🎓 บอทเรียนรู้ ให้แอดมินตอบลูกค้าเองแล้วสอนบอท (14 ต.ค. 69) · สิทธิ์ chat.reply
  *   POST { action: "mode", mode }               → สลับโหมดบอททั้งร้าน "draft" (ร่างให้กดส่ง) / "log-only" (เก็บแชทอย่างเดียว) · สิทธิ์ settings.manage
+ *   POST { action: "user", id, on }             → 📝 โหมดร่างรายคน (เจ้าของร้าน 19 ต.ค. 69 "เปิดโหมดร่างกับลูกค้าที่เลือกได้ไหม") · สิทธิ์ settings.manage
+ *       เก็บที่ settings/bot-whitelist.draftUserIds — n8n Build AI Request: draftOnly = mode "draft" หรือ uid อยู่ในรายชื่อนี้
+ *       (คนในรายชื่อ บอทคิดคำตอบให้แม้ร้านอยู่ log-only แต่เก็บเป็นร่างเสมอ ไม่ส่งถึงลูกค้าเอง)
  */
 const MODES = ["draft", "log-only"] as const;
 
 export async function POST(req: Request) {
-  const b = (await req.json().catch(() => ({}))) as { action?: string; id?: string; logId?: string; text?: unknown; mode?: string };
+  const b = (await req.json().catch(() => ({}))) as { action?: string; id?: string; logId?: string; text?: unknown; mode?: string; on?: boolean };
   const db = getChatFirestore();
   if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firestore" }, { status: 503 });
 
@@ -34,6 +38,24 @@ export async function POST(req: Request) {
       ok: true,
       mode,
       saved: mode === "draft" ? "เปิดโหมดร่าง — บอทร่างคำตอบให้ทุกห้อง ลูกค้ายังไม่ได้รับจนกว่าจะกดส่ง" : "ปิดโหมดร่าง — บอทเก็บแชทอย่างเดียว ไม่ร่าง ไม่ตอบ",
+    });
+  }
+
+  if (b.action === "user") {
+    const gate = await requirePerm("settings.manage");
+    if (gate.res) return gate.res;
+    const uid = String(b.id ?? "").trim();
+    if (!/^U[0-9a-f]{32}$/.test(uid)) return NextResponse.json({ error: "รหัสห้องแชทไม่ถูกต้อง" }, { status: 400 });
+    const on = b.on === true;
+    const who = gate.actor.name || gate.actor.username;
+    await db
+      .collection("settings")
+      .doc("bot-whitelist")
+      .set({ draftUserIds: on ? FieldValue.arrayUnion(uid) : FieldValue.arrayRemove(uid), draftUsersBy: who, draftUsersAt: new Date() }, { merge: true });
+    return NextResponse.json({
+      ok: true,
+      on,
+      saved: on ? "เปิดร่างให้ลูกค้านี้ — บอทร่างคำตอบรอแอดมินกดส่ง ลูกค้ายังไม่ได้รับเอง" : "ปิดร่างให้ลูกค้านี้แล้ว — กลับไปตามโหมดบอทของร้าน",
     });
   }
 

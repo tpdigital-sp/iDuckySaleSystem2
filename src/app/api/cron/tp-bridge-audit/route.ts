@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { pushShopAlert } from "@/lib/server/line-alert";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { healTPBridgeGaps, scanTPBridgeGaps } from "@/lib/server/tp-bridge-audit";
+import { healTPBridgeGaps, healTPStuckPartial, scanTPBridgeGaps } from "@/lib/server/tp-bridge-audit";
 import { SITE_URL } from "@/lib/shop-info";
 
 export const runtime = "nodejs";
@@ -28,9 +28,10 @@ export async function GET(req: Request) {
   const dry = url.searchParams.get("dry") === "1";
   // ย้อนหลังได้ไกลสุด 30 วัน — ไกลกว่านั้นเสี่ยงไปสร้างเรคอร์ดใบทดสอบเก่าที่ฝั่ง Admin ตั้งใจลบทิ้ง
   const days = Math.min(30, Math.max(1, Number(url.searchParams.get("days")) || 3));
-  const { checked, expected, missing, skipped, skipRegistryDown } = await scanTPBridgeGaps(sb, days);
+  const { checked, expected, missing, skipped, skipRegistryDown, stuckPartial } = await scanTPBridgeGaps(sb, days);
 
   const healed = dry ? [] : await healTPBridgeGaps(sb, missing);
+  const unstuck = dry ? [] : await healTPStuckPartial(stuckPartial);
 
   if (healed.length) {
     await pushShopAlert({
@@ -49,5 +50,20 @@ export async function GET(req: Request) {
     });
   }
 
-  return NextResponse.json({ ok: true, dry, days, checked, expected, missing, skipped, skipRegistryDown, healed });
+  // 💸 ธง "รับบางส่วน" ค้างทั้งที่เงินครบ — การ์ดหายจากบอร์ด WIP กราฟฟิก (OD-261012-3964) · ปลดแล้วบอกกลุ่มร้านว่ามีงานโผล่ใหม่
+  if (unstuck.length) {
+    await pushShopAlert({
+      tone: "#0EA5E9",
+      title: "🩹 ปลดออเดอร์ที่ค้างนอกบอร์ด WIP กราฟฟิก",
+      headline: "ใบพวกนี้รับเงินครบแล้วแต่เรคอร์ดยังติด \"รับบางส่วน\" บอร์ดกราฟฟิกเลยไม่ขึ้นการ์ด — ระบบปลดให้แล้ว การ์ดจะขึ้นในแท็บ 🛒 iDucky Store",
+      heroLabel: "ใบที่ปลด",
+      hero: `${unstuck.length} ใบ`,
+      rows: [{ label: "ต้องทำต่อ", value: "กราฟฟิกสร้าง Folder ตามคิวปกติ" }],
+      bullets: stuckPartial.filter((r) => unstuck.includes(r.docId)).slice(0, 12).map((r) => `${r.docId} · ${r.customer}`),
+      button: { label: "เปิดรายการออเดอร์", uri: `${SITE_URL}/admin/orders` },
+      alt: `🩹 ปลดออเดอร์ค้างนอกบอร์ด WIP ${unstuck.length} ใบ`,
+    });
+  }
+
+  return NextResponse.json({ ok: true, dry, days, checked, expected, missing, skipped, skipRegistryDown, healed, stuckPartial: stuckPartial.map((r) => r.docId), unstuck });
 }
