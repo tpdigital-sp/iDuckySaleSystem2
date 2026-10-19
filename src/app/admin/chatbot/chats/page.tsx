@@ -1835,17 +1835,32 @@ function FilterMenu({
 
 /**
  * 📝 การ์ดร่างคำตอบของบอท (โหมดร่าง 13 ต.ค. 69 — เจ้าของร้าน "อยากเป็นคนกดส่งเอง กลัวบอทให้ข้อมูลผิด")
- * แก้ข้อความได้ · Enter = ส่ง (Shift+Enter ขึ้นบรรทัด แบบช่องพิมพ์ด้านล่าง) · การ์ดสินค้า/รูปบัญชีในร่างส่งตามไปด้วย
+ * ออกแบบใหม่ 19 ต.ค. 69 (เจ้าของร้าน "ช่วยออกแบบให้ใหม่หน่อย" — เดิมกล่องเหลืองทั้งก้อน ช่องข้อความเตี้ยต้องเลื่อนอ่าน การ์ดเล็กชื่อขาด):
+ *   · หัว: ป้าย "ร่างจากบอท" + สถานะ + เวลา · ปุ่ม ↻ ตอบใหม่ / ✕ ลบ ชิดขวา
+ *   · ตัว: "ลูกค้าจะเห็นแบบนี้" เรียงตามที่ LINE ส่งจริง (ข้อความ → การ์ด/รูป) — ข้อความเป็นฟองที่แก้ได้ในตัว สูงตามเนื้อหา ไม่ต้องเลื่อนในกล่อง
+ *   · ท้าย: คำแนะนำซ้าย · ไม่ส่ง / ส่งให้ลูกค้า ขวา
+ * Enter = ส่ง (Shift+Enter ขึ้นบรรทัด แบบช่องพิมพ์ด้านล่าง) · การ์ดสินค้า/รูปบัญชีในร่างส่งตามไปด้วย
  */
 function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoom }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void; onDelete?: () => void; onRegen?: () => Promise<void>; onZoom: (url: string) => void }) {
   const [text, setText] = useState(entry.draftText ?? "");
   const [busy, setBusy] = useState(false);
   const [regen, setRegen] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const extras = entry.text
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => /^\[(การ์ด|รูป|สติกเกอร์)\]/.test(l))
     .map((l) => l.replace(/^\[รูป\]\s*/, "🖼 รูป ").replace(/^\[การ์ด\]\s*/, "🧾 การ์ด ").replace(/^\[สติกเกอร์\]\s*/, "สติกเกอร์ ").trim());
+  // ฟองข้อความสูงตามเนื้อหา (ไม่ต้องเลื่อนอ่านในกล่อง) · เพดาน 60% ของจอ เกินค่อยเลื่อน
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    const max = Math.round(window.innerHeight * 0.6);
+    el.style.height = "0px";
+    el.style.height = `${Math.min(max, el.scrollHeight + 2)}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+  }, [text]);
   const send = async () => {
     if (busy || !canSend) return;
     if (!text.trim() && !extras.length) return;
@@ -1853,12 +1868,23 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
     const ok = await onSend(text);
     if (!ok) setBusy(false);
   };
+  const edited = text !== (entry.draftText ?? "");
+  const images = entry.draftImages ?? [];
+  const cards = entry.cards ?? [];
   return (
     <div className="mb-3 flex justify-end">
-      <div className="w-full max-w-[92%] rounded-2xl p-3 md:max-w-[70%]" style={{ background: "#FFF8E6", border: "1.5px dashed #E8B54A" }}>
-        <div className="mb-1.5 flex items-center gap-2 text-[12px] font-bold" style={{ color: "#8A5A00" }}>
-          📝 ร่างจากบอท · ลูกค้ายังไม่ได้รับ
-          <span className="ml-auto font-normal" style={{ color: "#A07A2C" }}>{fmtTime(entry.at)}</span>
+      <div className="w-full max-w-[96%] overflow-hidden rounded-2xl bg-white shadow-sm md:max-w-[640px]" style={{ boxShadow: "0 1px 3px rgba(0,0,0,.08), inset 4px 0 0 var(--dk-yolk-deep)" }}>
+        {/* หัว */}
+        <div className="flex items-center gap-2 border-b px-4 py-2" style={{ borderColor: "var(--ln-line)", background: "var(--dk-yolk-wash)" }}>
+          <span className="rounded-full px-2 py-0.5 text-[11.5px] font-extrabold text-white" style={{ background: "var(--dk-yolk-ink)" }}>
+            📝 ร่างจากบอท
+          </span>
+          <span className="min-w-0 truncate text-[12px] font-bold" style={{ color: "var(--dk-yolk-ink)" }}>
+            ลูกค้ายังไม่ได้รับ{edited ? " · แก้แล้ว" : ""}
+          </span>
+          <span className="ml-auto shrink-0 text-[11.5px] tabular-nums" style={{ color: "var(--dk-yolk-ink)" }}>
+            {fmtTime(entry.at)}
+          </span>
           {onRegen ? (
             <button
               type="button"
@@ -1869,10 +1895,10 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
               disabled={busy || regen}
               title="ให้บอทตอบใหม่ — ทิ้งร่างนี้แล้วร่างใหม่จากข้อความลูกค้า (ขึ้นราว 15–30 วินาที)"
               aria-label="ให้บอทตอบใหม่"
-              className="-my-1.5 flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-[12px] font-bold transition hover:bg-black/10 disabled:opacity-40"
-              style={{ color: "var(--dk-yolk-ink)" }}
+              className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-white px-3 text-[12px] font-bold transition hover:brightness-95 disabled:opacity-40"
+              style={{ color: "var(--dk-yolk-ink)", boxShadow: "inset 0 0 0 1px var(--dk-yolk-deep)" }}
             >
-              <span className={`text-[15px] leading-none ${regen ? "animate-spin" : ""}`}>↻</span>
+              <span className={`text-[14px] leading-none ${regen ? "animate-spin" : ""}`}>↻</span>
               <span className="hidden sm:inline">{regen ? "กำลังสั่ง…" : "ตอบใหม่"}</span>
             </button>
           ) : null}
@@ -1883,75 +1909,93 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
               disabled={busy}
               title="ลบร่างนี้ทิ้ง (ไม่ส่ง · ไม่ส่งไปบอทเรียนรู้) — เฉพาะเจ้าของร้าน"
               aria-label="ลบร่างนี้"
-              className="-my-1.5 -mr-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[15px] transition hover:bg-black/10 disabled:opacity-40"
+              className="-mr-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[15px] transition hover:bg-black/10 disabled:opacity-40"
               style={{ color: "var(--dk-yolk-ink)" }}
             >
               ✕
             </button>
           ) : null}
         </div>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          disabled={!canSend || busy}
-          rows={Math.min(12, Math.max(3, text.split("\n").length + 1))}
-          className="w-full resize-y rounded-xl bg-white px-3 py-2 text-[14px] leading-relaxed outline-none"
-          style={{ border: "1px solid #F0D48A" }}
-        />
-        {/* 🖼 รูป/การ์ดที่ส่งไปด้วย — ภาพย่อจริง กดดูใหญ่ได้ (14 ต.ค. 69 "ต้องการเห็นภาพก่อน") · ไม่มีภาพ = ป้ายข้อความแบบเดิม */}
-        {entry.draftImages?.length || entry.cards?.length ? (
-          <div className="mt-2">
-            <p className="mb-1 text-[11.5px] font-bold" style={{ color: "#8A5A00" }}>
-              ส่งพร้อมกัน{entry.draftImages?.length ? ` · รูป ${entry.draftImages.length}` : ""}
-              {entry.cards?.length ? ` · การ์ดสินค้า ${entry.cards.length}` : ""}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {(entry.draftImages ?? []).map((im, k) => (
-                <button key={`i${k}`} type="button" onClick={() => onZoom(im.url)} title="กดเพื่อดูรูปใหญ่" className="overflow-hidden rounded-lg bg-white transition hover:opacity-90" style={{ border: "1px solid #F0D48A" }}>
+
+        {/* ตัว: ลูกค้าจะเห็นแบบนี้ (ลำดับเดียวกับที่ LINE ส่ง) */}
+        <div className="px-4 pb-3 pt-2.5" style={{ background: "var(--ln-bg)" }}>
+          <p className="mb-1.5 text-[11px] font-bold" style={{ color: "var(--dk-faint)" }}>
+            ลูกค้าจะเห็นแบบนี้ · แตะข้อความเพื่อแก้ก่อนส่ง
+          </p>
+          <textarea
+            ref={areaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            disabled={!canSend || busy}
+            rows={2}
+            className="block w-full resize-none rounded-2xl px-3.5 py-2.5 text-[14.5px] leading-relaxed outline-none transition"
+            style={{
+              background: "var(--ln-bot)",
+              color: "var(--dk-navy)",
+              borderRadius: "18px 18px 18px 4px",
+              boxShadow: focused ? "0 0 0 2px var(--dk-yolk-deep)" : "none",
+            }}
+          />
+          {images.length || cards.length ? (
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {images.map((im, k) => (
+                <button key={`i${k}`} type="button" onClick={() => onZoom(im.url)} title="กดเพื่อดูรูปใหญ่" className="shrink-0 overflow-hidden rounded-2xl bg-white shadow-sm transition hover:opacity-90">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={im.preview} alt={`รูปที่ ${k + 1}`} loading="lazy" className="h-28 w-28 object-cover" />
+                  <img src={im.preview} alt={`รูปที่ ${k + 1}`} loading="lazy" className="h-36 w-36 object-cover" />
                 </button>
               ))}
-              {(entry.cards ?? []).map((c, k) => (
-                // 🧾 การ์ดสินค้าแบบที่ลูกค้าจะเห็นใน LINE (รูปจากเว็บ · ชื่อ · ช่วงราคา · ปุ่ม) — กดรูปดูใหญ่ · กดปุ่มเปิดหน้าสินค้า
-                <div key={`c${k}`} className="w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)" }}>
+              {cards.map((c, k) => (
+                // 🧾 การ์ดสินค้าแบบที่ลูกค้าเห็นใน LINE — ชื่อเต็ม 2 บรรทัด · ราคา · ปุ่ม · กดรูปดูใหญ่
+                <div key={`c${k}`} className="w-[248px] shrink-0 overflow-hidden rounded-2xl bg-white text-left shadow-sm">
                   {c.image ? (
                     <button type="button" onClick={() => onZoom(c.image as string)} className="block w-full" title="กดเพื่อดูรูปใหญ่">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={c.image} alt={c.name} loading="lazy" className="aspect-[4/3] w-full object-cover transition hover:opacity-90" />
                     </button>
                   ) : null}
-                  <div className="px-2.5 pb-2 pt-1.5">
-                    <p className="truncate text-[13px] font-bold" style={{ color: "#153B3F" }}>{c.name || "สินค้า"}</p>
-                    {c.price ? <p className="text-[12px]" style={{ color: "#A05A00" }}>{c.price}</p> : null}
-                    <a href={c.url} target="_blank" rel="noreferrer" className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>
-                      ดูราคา / สั่งเลย
+                  <div className="px-3 pb-3 pt-2">
+                    <p className="line-clamp-2 text-[13.5px] font-extrabold leading-snug" style={{ color: "#153B3F" }}>
+                      {c.name || "สินค้า"}
+                    </p>
+                    {c.price ? (
+                      <p className="mt-0.5 line-clamp-2 text-[12px] font-bold" style={{ color: "#A05A00" }}>
+                        {c.price}
+                      </p>
+                    ) : null}
+                    <a href={c.url} target="_blank" rel="noreferrer" className="mt-2 block rounded-xl py-1.5 text-center text-[12.5px] font-bold text-white" style={{ background: "#1F6F78" }}>
+                      ดูราคา / สั่งเลย ↗
                     </a>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        ) : extras.length ? (
-          <p className="mt-1 text-[11.5px]" style={{ color: "#8A5A00" }}>
-            ส่งพร้อมกัน: {extras.join(" · ")}
+          ) : extras.length ? (
+            <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--dk-yolk-ink)" }}>
+              ส่งพร้อมกัน: {extras.join(" · ")}
+            </p>
+          ) : null}
+        </div>
+
+        {/* ท้าย */}
+        <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2.5" style={{ borderColor: "var(--ln-line)" }}>
+          <p className="min-w-0 flex-1 text-[11px] leading-snug" style={{ color: "var(--dk-faint)" }}>
+            {canSend ? "Enter ส่ง · Shift+Enter ขึ้นบรรทัด · ร่างผิด กด “ไม่ส่ง” แล้วพิมพ์ตอบเองด้านล่าง" : "บัญชีนี้ส่งไม่ได้ หรือโควตาข้อความหมด"}
           </p>
-        ) : null}
-        {/* ปุ่มแถวของตัวเอง ป้ายไม่ตัดบรรทัด (14 ต.ค. 69 เจ้าของร้าน "ออกแบบใหม่" — เดิมคำแนะนำ+2 ปุ่มเบียดแถวเดียว ป้ายแตก 2 บรรทัด) */}
-        <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={onDiscard}
             disabled={busy}
             title="ไม่ส่งร่างนี้ — แอดมินตอบลูกค้าเอง แล้วสอนคำตอบที่ถูกให้บอทที่หน้า บอทเรียนรู้"
-            className="min-h-[44px] whitespace-nowrap rounded-full border bg-white px-4 text-[13px] font-bold transition hover:bg-[#FFF4D6] disabled:opacity-50"
-            style={{ borderColor: "#E8C877", color: "#8A5A00" }}
+            className="min-h-[44px] whitespace-nowrap rounded-xl bg-white px-4 text-[13px] font-bold transition hover:brightness-95 disabled:opacity-50"
+            style={{ color: "var(--dk-yolk-ink)", boxShadow: "inset 0 0 0 1px var(--dk-yolk-deep)" }}
           >
             ไม่ส่ง · ให้บอทเรียนรู้
           </button>
@@ -1959,10 +2003,10 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
             type="button"
             onClick={() => void send()}
             disabled={!canSend || busy}
-            className="inline-flex min-h-[44px] items-center gap-2 whitespace-nowrap rounded-full px-5 text-[14px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
-            style={{ background: LINE_GREEN }}
+            className="inline-flex min-h-[44px] items-center gap-2 whitespace-nowrap rounded-xl px-5 text-[14px] font-extrabold text-white transition hover:brightness-95 disabled:opacity-50"
+            style={{ background: "var(--ln-green)" }}
           >
-            {busy ? "กำลังส่ง…" : "ส่งให้ลูกค้า"}
+            {busy ? "กำลังส่ง…" : edited ? "ส่งฉบับที่แก้" : "ส่งให้ลูกค้า"}
             {!busy && canSend ? (
               <kbd className="rounded-md px-1.5 py-[1px] font-sans text-[11px] font-bold" style={{ background: "rgba(255,255,255,.25)" }}>
                 Enter
@@ -1970,9 +2014,6 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
             ) : null}
           </button>
         </div>
-        <p className="mt-1.5 text-right text-[11px]" style={{ color: "#A07A2C" }}>
-          {canSend ? "Shift+Enter = ขึ้นบรรทัดใหม่ · ร่างผิด กด “ไม่ส่ง” แล้วพิมพ์ตอบเองด้านล่าง" : "บัญชีนี้ส่งไม่ได้ หรือโควตาข้อความหมด"}
-        </p>
       </div>
     </div>
   );
