@@ -985,6 +985,18 @@ export async function PATCH(req: Request) {
    * ⚠️ ต้องคิด "ก่อน" บล็อกแจ้งยอดค้างทางไลน์ด้านล่าง ไม่งั้นไลน์บอกยอดเก่าที่ยังไม่หักส่วนลด (ยอดไลน์ต้องตรงเว็บเสมอ)
    * ประตูเขียนออเดอร์ (updateOrder) เรียกซ้ำอีกชั้นอยู่แล้ว — ได้ผลเท่าเดิม ไม่เขียน log ซ้ำ
    */
+  /**
+   * ⚡🔢 "จำนวนเงิน" ส่วนลดโอนไว เซิร์ฟเวอร์เป็นเจ้าของ (syncOrderEarlyPay) — หน้าจอแอดมินแก้ได้แค่ติ๊กไม่รับ/คืนส่วนลด ไม่เคยแก้ตัวเลข
+   * หน้าจอที่ถือก้อนเก่าจึงส่งยอดค้างกลับมาได้ → ยึดยอดในฐานเสมอ · ในฐานไม่มี (กฎเอาออกไปแล้ว) = หน้าจอห้ามเติมกลับ
+   * (OD-261016-4261 · 19 ต.ค. 69: แก้ตัวเลือกจาก 2 บรรทัดเหลือ 1 → เซิร์ฟเวอร์ลด 10 → 5 แต่จอยังถือ 10
+   *  → "แก้รายละเอียดรายการ" (แก้ sel ไม่นับว่ารายการเปลี่ยน) เขียน 10 กลับเงียบ ๆ → กด "คืนส่วนลดโอนไว" ล็อก ฿10 บนบิล 638)
+   */
+  if (toSave.earlyPay && !existing.earlyPay) {
+    const { earlyPay: _stale, ...rest } = toSave;
+    void _stale;
+    toSave = rest;
+  } else if (toSave.earlyPay && existing.earlyPay && toSave.earlyPay.amount !== existing.earlyPay.amount)
+    toSave = { ...toSave, earlyPay: { ...toSave.earlyPay, amount: existing.earlyPay.amount } };
   if (mayEditFull && itemsChanged(existing, toSave))
     toSave = await syncOrderEarlyPay(sb, toSave, `แอดมิน ${actor.name?.trim() || actor.username}`);
   // 🧾 บิลบริษัท: หน้าจอเปิดค้างส่ง earlyPay ที่เซิร์ฟเวอร์เอาออกไปแล้วกลับมา → ตัดก่อนคิด VAT (OD-261012-9565 VAT คิดจากยอดที่ลด ฿5)

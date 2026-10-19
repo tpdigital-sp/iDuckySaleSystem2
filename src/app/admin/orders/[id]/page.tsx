@@ -3007,6 +3007,7 @@ export default function AdminOrderDetailPage() {
      * ถ้ายังไม่มีใครแก้ต่อจากก้อนที่เพิ่งส่ง (state ยังเป็นก้อนเดิม) รับติ๊ก/แบบงานที่เซิร์ฟเวอร์ประทับเวลาให้แล้วมาด้วย ให้ตรงฐาน
      * แก้ต่อไปแล้ว → รับแค่ savedAt ห้ามทับสิ่งที่เพิ่งทำ (คำขอถัดไปกำลังตามมา)
      * 🏅 ส่วนลดระดับสมาชิก เซิร์ฟเวอร์เป็นเจ้าของ (คิดจากผู้ติดต่อที่ผูก) — รับกลับมาเสมอ ไม่งั้นผูกผู้ติดต่อแล้วยอดบนจอยังเป็นราคาเต็ม
+     * ⚡ ส่วนลดโอนไวก็เหมือนกัน (กฎกลางคิดใหม่ตามรายการ) — ไม่รับกลับ = จอถือยอดเก่า แล้วกด "คืนส่วนลด" ล็อกยอดผิด (OD-261016-4261 ฿10 บนบิล 638)
      */
     const saved = r.order;
     adoptFromServer(saved);
@@ -3017,8 +3018,8 @@ export default function AdminOrderDetailPage() {
         for (const k of [...dirtyRef.current]) if ((cur[k] ?? "") === (next[k] ?? "")) dirtyRef.current.delete(k);
         if (cur === next && cur.items.length === saved.items.length)
           // 🛒 needsPurchase.alertedAt เซิร์ฟเวอร์ประทับตอนแจ้งกลุ่มไลน์ — รับกลับมาด้วย ไม่งั้นรอบหน้าช่องนี้ถูกมองว่า "แก้" ทั้งที่ไม่ได้แตะ
-          return { ...cur, savedAt: saved.savedAt, discount: saved.discount, log: saved.log, needsPurchase: saved.needsPurchase, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
-        return { ...cur, savedAt: saved.savedAt, discount: saved.discount };
+          return { ...cur, savedAt: saved.savedAt, discount: saved.discount, earlyPay: saved.earlyPay, log: saved.log, needsPurchase: saved.needsPurchase, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
+        return { ...cur, savedAt: saved.savedAt, discount: saved.discount, earlyPay: saved.earlyPay };
       });
     return true;
   }
