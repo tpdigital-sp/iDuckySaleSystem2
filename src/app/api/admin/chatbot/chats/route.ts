@@ -65,7 +65,7 @@ type Row = {
   adminAlias: string;
 };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice; draftImages?: { url: string; preview: string }[] };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice; draftImages?: { url: string; preview: string }[]; flex?: unknown[] };
 /** 🎴 การ์ดแจ้งลูกค้าที่ระบบส่งเอง (lib/server/chat-notice-log.ts) */
 type Notice = { orderId: string; title: string; color: string; asText?: boolean };
 type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; draftUserIds: string[]; allReadAt: string };
@@ -203,6 +203,8 @@ export async function GET(req: Request) {
         imageExpired: y.imageExpired === true && String(y.type ?? "") === "image" ? true : undefined,
         card: card ? { name: String(card.name ?? ""), url: String(card.url ?? "") } : undefined,
         cards: cards.length ? cards : undefined,
+        // 🧾 19 ต.ค. 69 ข้อความ Flex ที่ส่งให้ลูกค้าจริง (จาก payload) → หน้าแชทวาดการ์ดตารางราคาเหมือนใน LINE (FlexView)
+        flex: flexOf(y.payload),
         notice:
           y.notice && typeof y.notice === "object"
             ? (() => {
@@ -317,5 +319,18 @@ async function countByTag(db: Firestore): Promise<Record<string, number>> {
     return tagCountCache.counts;
   } catch {
     return tagCountCache?.counts ?? {};
+  }
+}
+
+/** contents ของข้อความ flex ใน payload (JSON ข้อความ LINE ที่บอทส่ง/ร่าง) — ไม่มี = undefined */
+function flexOf(payload: unknown): unknown[] | undefined {
+  if (typeof payload !== "string" || !payload.includes('"flex"')) return undefined;
+  try {
+    const msgs = JSON.parse(payload) as unknown;
+    if (!Array.isArray(msgs)) return undefined;
+    const out = msgs.filter((m) => m && typeof m === "object" && (m as { type?: unknown }).type === "flex" && (m as { contents?: unknown }).contents).map((m) => (m as { contents: unknown }).contents);
+    return out.length ? out : undefined;
+  } catch {
+    return undefined;
   }
 }

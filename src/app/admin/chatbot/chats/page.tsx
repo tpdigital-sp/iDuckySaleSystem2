@@ -9,6 +9,7 @@ import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { BANK_CARD } from "@/lib/bank-card";
 import SavedReplyPicker from "./SavedReplyPicker";
 import RedraftButton from "./RedraftButton";
+import FlexView from "./FlexView";
 import { realignEmojis, type Emoji } from "../saved-replies/shared";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 import type { OaLive } from "@/lib/server/oa-chat-sync";
@@ -52,7 +53,7 @@ type Row = {
 };
 type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[] };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[]; flex?: unknown[] };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number>; next?: string; partial?: boolean };
@@ -1230,6 +1231,9 @@ function Chats() {
                   }
                   const admin = m.role === "admin";
                   const ours = m.role === "assistant" || admin;
+                  // 🧾 19 ต.ค. 69 ข้อความนี้มีการ์ด Flex จริง (payload) → วาดการ์ดแบบเดียวกับใน LINE ใต้ฟอง · ฟองเหลือแต่ข้อความ (ตัดบรรทัด "[การ์ด] …")
+                  const hasFlex = ours && !!m.flex?.length;
+                  const flexOnly = hasFlex && !m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("").trim() && !m.imageUrl;
                   const showDay = i === 0 || dayKey(m.at) !== dayKey(thread[i - 1].at);
                   const dayChip = showDay ? (
                     <div className="my-3 flex justify-center">
@@ -1267,7 +1271,7 @@ function Chats() {
                           </span>
                         ) : null}
                         <div
-                          className="max-w-[78%] whitespace-pre-wrap break-words px-3.5 py-2 text-[14px] leading-relaxed md:max-w-[62%]"
+                          className={`${flexOnly ? "hidden " : ""}max-w-[78%] whitespace-pre-wrap break-words px-3.5 py-2 text-[14px] leading-relaxed md:max-w-[62%]`}
                           style={
                             // ฟองแบบ LINE: แอดมิน = เขียว LINE · บอท = ฟ้า (ป้าย "บอท" ข้างฟองกำกับอีกชั้น) · ลูกค้า = ขาวขอบบาง
                             admin
@@ -1294,7 +1298,7 @@ function Chats() {
                               </button>
                             );
                           })()}
-                          {cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : ours ? splitBankImgs(m.text).text : m.text}
+                          {hasFlex || cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : ours ? splitBankImgs(m.text).text : m.text}
                           {ours && splitBankImgs(m.text).n
                             ? Array.from({ length: splitBankImgs(m.text).n }, (_, bi) => (
                                 <button key={bi} type="button" onClick={() => setLightbox({ url: BANK_CARD.jpg, name: "bank-card.jpg" })} className="mb-1 block" title="ภาพบัญชีรับโอนที่บอทส่งให้ลูกค้า · กดเพื่อดูรูปใหญ่">
@@ -1305,7 +1309,7 @@ function Chats() {
                             : null}
                           {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
                           {m.file ? <FileCard file={m.file} href={m.file.url || (m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "#")} archived={!!m.file.url} /> : null}
-                          {cardsOf(m).length ? (
+                          {!hasFlex && cardsOf(m).length ? (
                           <CardCarousel>
                           {cardsOf(m).map((c, ci) => (
                             // 🔍 19:35 เจ้าของร้าน: กดรูปในการ์ดให้ขยายดูเหมือนรูปในแชท (lightbox) · ปุ่มล่างค่อยไปหน้าสินค้า
@@ -1332,6 +1336,11 @@ function Chats() {
                           </span>
                         ) : null}
                       </div>
+                      {hasFlex ? (
+                        <div className="mb-2 flex justify-end">
+                          <FlexView items={m.flex ?? []} onZoom={(url) => setLightbox({ url, name: `card-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })
@@ -1870,7 +1879,9 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
   };
   const edited = text !== (entry.draftText ?? "");
   const images = entry.draftImages ?? [];
-  const cards = entry.cards ?? [];
+  // 🧾 มีการ์ด Flex จริงใน payload → วาดแบบที่ลูกค้าจะเห็น (FlexView) แทนการ์ดย่อ
+  const flex = entry.flex ?? [];
+  const cards = flex.length ? [] : entry.cards ?? [];
   return (
     <div className="mb-3 flex justify-end">
       <div className="w-full max-w-[96%] overflow-hidden rounded-2xl bg-white shadow-sm md:max-w-[640px]" style={{ boxShadow: "0 1px 3px rgba(0,0,0,.08), inset 4px 0 0 var(--dk-yolk-deep)" }}>
@@ -1977,7 +1988,12 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
                 </div>
               ))}
             </div>
-          ) : extras.length ? (
+          ) : null}
+          {flex.length ? (
+            <div className="mt-2 flex">
+              <FlexView items={flex} onZoom={onZoom} />
+            </div>
+          ) : !images.length && !cards.length && extras.length ? (
             <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--dk-yolk-ink)" }}>
               ส่งพร้อมกัน: {extras.join(" · ")}
             </p>
