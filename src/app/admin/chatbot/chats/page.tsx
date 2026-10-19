@@ -567,12 +567,16 @@ function Chats() {
     [toast],
   );
 
+  /** 🤖 ห้องที่เพิ่งสั่งบอทร่าง (เปิดสวิตช์แล้วร่างเอง) — id → เวลา */
+  const [redraftAt, setRedraftAt] = useState<Record<string, number>>({});
   // 📝 โหมดร่างรายคน (เจ้าของร้าน 19 ต.ค. 69 "เปิดโหมดร่างกับลูกค้าที่เลือกได้ไหม") — มีผลเมื่อ n8n Build AI Request อ่าน draftUserIds แล้ว
   const toggleDraftUser = useCallback(
     async (id: string, on: boolean) => {
       try {
-        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "user", id, on });
+        const d = await botApi<{ ok: boolean; saved?: string; redraft?: boolean }>("/api/admin/chatbot/chats/draft", { action: "user", id, on });
         toast(d.saved || (on ? "เปิดร่างให้ลูกค้านี้แล้ว" : "ปิดร่างให้ลูกค้านี้แล้ว"));
+        // เปิดแล้วเซิร์ฟเวอร์สั่งบอทร่างข้อความค้างให้เอง → แถบเหนือช่องพิมพ์ขึ้น "⏳ บอทกำลังร่าง…" แทนปุ่ม
+        if (d.redraft) setRedraftAt((m) => ({ ...m, [id]: Date.now() }));
         setRows((rs) => rs.map((x) => (x.id === id ? { ...x, botDraft: on } : x)));
         setDetail((x) => (x && x.id === id ? { ...x, botDraft: on } : x));
       } catch (e) {
@@ -1326,7 +1330,7 @@ function Chats() {
 
             {/* 🤖 ลูกค้าพิมพ์ค้างไว้ก่อนเปิดร่าง → ให้บอทร่างย้อนหลัง (19 ต.ค. 69 · RedraftButton) */}
             {canReply && detail && (detail.botDraft || settings?.mode === "draft") && thread.length && thread[thread.length - 1].role === "user" ? (
-              <RedraftButton key={detail.id} id={detail.id} toast={toast} />
+              <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} />
             ) : null}
             {canReply ? (
               <Composer id={sel} customerName={detail?.displayName ?? ""} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} dropFile={dropFile} onDropConsumed={() => setDropFile(null)} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { botApi } from "../bot-ui";
 
 /**
@@ -9,9 +9,18 @@ import { botApi } from "../bot-ui";
  * ร่างกลับมาเป็นการ์ดเหลืองในห้องเองผ่านการโพล 3 วิ (ราว 15–30 วิ)
  * แถบเหนือช่องพิมพ์ — ขึ้นเมื่อห้องเปิดร่าง (รายคน/ทั้งร้าน) และข้อความท้ายสุดเป็นของลูกค้า (ยังไม่มีร่าง/คำตอบตามหลัง)
  */
-export default function RedraftButton({ id, toast }: { id: string; toast: (t: string, bad?: boolean) => void }) {
+export default function RedraftButton({ id, toast, startedAt }: { id: string; toast: (t: string, bad?: boolean) => void; startedAt?: number }) {
   const [busy, setBusy] = useState(false);
   const [waitUntil, setWaitUntil] = useState(0);
+  // เปิดสวิตช์ 📝 แล้วเซิร์ฟเวอร์สั่งร่างให้เอง (startedAt) → ขึ้น "บอทกำลังร่าง" 45 วิ ไม่ต้องกดซ้ำ
+  useEffect(() => {
+    if (!startedAt) return;
+    const until = startedAt + 45_000;
+    if (until <= Date.now()) return;
+    setWaitUntil(until);
+    const t = setTimeout(() => setWaitUntil(0), until - Date.now());
+    return () => clearTimeout(t);
+  }, [startedAt]);
   const waiting = waitUntil > Date.now();
   const run = async () => {
     if (busy || waiting) return;
@@ -32,7 +41,7 @@ export default function RedraftButton({ id, toast }: { id: string; toast: (t: st
     <div className="flex items-center gap-2 border-t px-3 py-2 md:px-4" style={{ borderColor: "var(--ln-line)", background: "var(--dk-yolk-wash)" }}>
       <p className="min-w-0 flex-1 text-[12.5px] leading-snug" style={{ color: "var(--dk-yolk-ink)" }}>
         <b>📝 ลูกค้ารอคำตอบ</b>
-        <span className="hidden sm:inline"> · บอทยังไม่ได้ร่าง (ลูกค้าพิมพ์มาก่อนเปิดร่าง)</span>
+        <span className="hidden sm:inline">{waiting ? " · บอทกำลังร่างคำตอบ ร่างจะขึ้นในห้องราว 15–30 วินาที" : " · บอทยังไม่ได้ร่าง (ลูกค้าพิมพ์มาก่อนเปิดร่าง)"}</span>
       </p>
       <button
         type="button"

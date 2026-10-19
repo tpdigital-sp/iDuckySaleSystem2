@@ -55,10 +55,19 @@ export async function POST(req: Request) {
       .collection("settings")
       .doc("bot-whitelist")
       .set({ draftUserIds: on ? FieldValue.arrayUnion(uid) : FieldValue.arrayRemove(uid), draftUsersBy: who, draftUsersAt: new Date() }, { merge: true });
+    if (!on) return NextResponse.json({ ok: true, on, saved: "ปิดร่างให้ลูกค้านี้แล้ว — กลับไปตามโหมดบอทของร้าน" });
+    // 🤖 เปิดแล้วร่างเลย (เจ้าของร้าน 19 ต.ค. 69 "เมื่อเปิด 📝 ร่างก่อนส่ง แล้ว อยากให้ระบบทำงานอัตโนมัติเลย")
+    //   ลูกค้าพิมพ์ค้างไว้ก่อนเปิด → สั่งบอทร่างทันที (requestRedraft ตัวเดียวกับปุ่ม 🤖) · ไม่มีข้อความค้าง/มีร่างอยู่แล้ว = เปิดเฉย ๆ
+    const rd = await requestRedraft(db, uid, who);
     return NextResponse.json({
       ok: true,
       on,
-      saved: on ? "เปิดร่างให้ลูกค้านี้ — บอทร่างคำตอบรอแอดมินกดส่ง ลูกค้ายังไม่ได้รับเอง" : "ปิดร่างให้ลูกค้านี้แล้ว — กลับไปตามโหมดบอทของร้าน",
+      redraft: rd.ok,
+      saved: rd.ok
+        ? `เปิดร่างให้ลูกค้านี้แล้ว · 🤖 บอทกำลังร่างคำตอบข้อความที่ค้าง ${rd.count} ข้อความ — ขึ้นในห้องราว 15–30 วินาที`
+        : rd.status === 502
+          ? `เปิดร่างให้ลูกค้านี้แล้ว · แต่สั่งบอทร่างข้อความที่ค้างไม่สำเร็จ (${rd.error})`
+          : "เปิดร่างให้ลูกค้านี้แล้ว — ลูกค้าพิมพ์มาเมื่อไหร่ บอทร่างคำตอบรอแอดมินกดส่ง",
     });
   }
 
