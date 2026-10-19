@@ -15,10 +15,58 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 BUNDLE_ID = "com.adobe.illustrator"
 _LOCK = threading.Lock()  # Illustrator ทำงานทีละงาน
+
+
+def _rm_later(d: Path, tries: int = 20, gap: float = 3.0) -> None:
+    """ลบโฟลเดอร์งานเบื้องหลัง — Windows: Illustrator ยังจับไฟล์ไว้สักพักหลังปิดเอกสาร ลองซ้ำจนลบได้"""
+    def run():
+        for _ in range(tries):
+            shutil.rmtree(d, ignore_errors=True)
+            if not d.exists():
+                return
+            time.sleep(gap)
+    threading.Thread(target=run, daemon=True).start()
+
+
+@contextmanager
+def _workdir(prefix: str):
+    """
+    โฟลเดอร์ชั่วคราวของงาน Illustrator — ลบไม่ได้ต้องไม่ทำให้งานพัง (19 ต.ค. 69)
+    เดิมใช้ tempfile.TemporaryDirectory: บน Windows ตอนออกจาก with ลบโฟลเดอร์ทันที แต่ Illustrator ยังจับไฟล์อยู่
+    → [WinError 32] "being used by another process" โยนทับผลสำเร็จ → .ai แยกเลเยอร์ที่ทำเสร็จแล้วถูกทิ้ง เว็บได้ไฟล์สำรอง Layer 1
+    (เครื่องกราฟฟิก champ: Illustrator ขึ้นเลเยอร์ครบแล้วปิด แต่ไฟล์ที่โหลดเปิดแล้วมี Layer 1 เดียว)
+    """
+    d = Path(tempfile.mkdtemp(prefix=prefix))
+    try:
+        yield d
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+        if d.exists():
+            _rm_later(d)
+
+
+def _sweep_old_workdirs(max_age_h: float = 24) -> None:
+    """โฟลเดอร์งานเก่าที่ค้าง (ลบไม่ทันตอนนั้น/โปรแกรมปิดไปก่อน) — กวาดตอนเปิดโปรแกรม"""
+    try:
+        root = Path(tempfile.gettempdir())
+        cut = time.time() - max_age_h * 3600
+        for d in list(root.glob("calai_*")) + list(root.glob("cutlayer_*")):
+            try:
+                if d.is_dir() and d.stat().st_mtime < cut:
+                    shutil.rmtree(d, ignore_errors=True)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
+_sweep_old_workdirs()
 _AVAILABLE: bool | None = None
 
 JSX_CORE = r"""
@@ -196,7 +244,7 @@ def layered(ai_files: list[bytes], timeout: int = 600) -> list[bytes]:
     """รับไฟล์ .ai (PDF) หลายไฟล์ คืนไฟล์ .ai แท้ที่แยกเลเยอร์แล้ว ลำดับเดียวกัน"""
     if not available():
         raise RuntimeError("ไม่พบ Adobe Illustrator ในเครื่องนี้")
-    with _LOCK, tempfile.TemporaryDirectory(prefix="cutlayer_") as tmp:
+    with _LOCK, _workdir("cutlayer_") as tmp:
         tmp = Path(tmp)
         jobs = []
         for i, data in enumerate(ai_files):
@@ -342,7 +390,7 @@ def calendar_ai(job: dict, timeout: int = 600) -> bytes:
     pages = job.get("pages") or []
     if not pages:
         raise RuntimeError("ไม่มีหน้าให้สร้าง")
-    with _LOCK, tempfile.TemporaryDirectory(prefix="calai_") as tmp:
+    with _LOCK, _workdir("calai_") as tmp:
         tmp = Path(tmp)
         jpages = []
         for i, pg in enumerate(pages):
