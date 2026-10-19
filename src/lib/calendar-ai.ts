@@ -191,15 +191,49 @@ const b64 = async (b: Blob) => {
   return btoa(s);
 };
 
+/** สถานะโปรแกรม cutout-py ในเครื่อง: down = ไม่ได้เปิด · noai = เปิดอยู่แต่ไม่เจอ Illustrator · ready = ทำ .ai ได้ */
+export type CutoutStatus = "down" | "noai" | "ready";
+export async function cutoutStatus(timeoutMs = 1500): Promise<CutoutStatus> {
+  try {
+    const r = await fetch(`${CUTOUT_PY}/calendar-ai`, { method: "GET", signal: AbortSignal.timeout(timeoutMs) });
+    const j = (await r.json().catch(() => null)) as { illustrator?: boolean } | null;
+    return j?.illustrator ? "ready" : "noai";
+  } catch {
+    return "down";
+  }
+}
+
 /** โปรแกรม cutout-py ในเครื่องเปิดอยู่ + มี Illustrator ไหม */
 export async function illustratorReady(): Promise<boolean> {
+  return (await cutoutStatus()) === "ready";
+}
+
+/**
+ * 🪟 เว็บสั่งเปิด cutout-py เอง (เครื่อง Windows ที่ติดตั้งด้วย start.bat — ลงทะเบียนลิงก์ iducky-cutout: ไว้ · 19 ต.ค. 69)
+ * ⚠️ เบราว์เซอร์ยอมเปิดโปรแกรมภายนอกเฉพาะตอน "เพิ่งกดปุ่ม" — เรียกในตัวจัดการคลิกก่อน await ใด ๆ
+ * ครั้งแรก Chrome/Edge ถาม "เปิด iDucky cutout-py ไหม" (ติ๊กอนุญาตเสมอได้) · Mac ใช้ start.command เปิดเอง → ไม่ทำอะไร
+ */
+export const canLaunchCutout = (): boolean => typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
+export function launchCutoutPy(): boolean {
+  if (!canLaunchCutout()) return false;
   try {
-    const r = await fetch(`${CUTOUT_PY}/calendar-ai`, { method: "GET", signal: AbortSignal.timeout(1500) });
-    const j = (await r.json().catch(() => null)) as { illustrator?: boolean } | null;
-    return !!j?.illustrator;
+    window.location.href = "iducky-cutout:start";
+    return true;
   } catch {
     return false;
   }
+}
+
+/** รอโปรแกรมที่เพิ่งสั่งเปิดตอบ (เปิดพอร์ตก่อนโหลด AI — ปกติไม่กี่วินาที) · หมดเวลา = สถานะล่าสุด */
+export async function waitCutoutReady(ms = 45000): Promise<CutoutStatus> {
+  const until = Date.now() + ms;
+  let st: CutoutStatus = "down";
+  while (Date.now() < until) {
+    st = await cutoutStatus();
+    if (st !== "down") return st;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return st;
 }
 
 /** ทาง 1: ให้ Illustrator ในเครื่องสร้าง .ai แท้ที่แยกเลเยอร์ (ส่งเป็น text/plain = ไม่ต้อง preflight) */

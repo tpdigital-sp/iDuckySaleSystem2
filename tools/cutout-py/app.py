@@ -515,8 +515,25 @@ def main():
     a = ap.parse_args()
     MODEL_NAME = a.model
 
-    get_session(default_model())
-    srv = ThreadingHTTPServer(("0.0.0.0" if a.share else "127.0.0.1", a.port), Handler)
+    try:
+        srv = ThreadingHTTPServer(("0.0.0.0" if a.share else "127.0.0.1", a.port), Handler)
+    except OSError:
+        # เปิดซ้ำ (เปิดเองตอนเปิดเครื่องแล้ว + กด start.bat/เว็บสั่งเปิดอีก) — ตัวแรกยังทำงานอยู่ ตัวนี้ปิดตัวเอง
+        print(f"พอร์ต {a.port} มีโปรแกรมเปิดอยู่แล้ว — ใช้ตัวที่เปิดอยู่ได้เลย")
+        return
+    """
+    🚀 เปิดพอร์ตก่อน แล้วค่อยโหลด AI ตัดพื้นหลังเบื้องหลัง (19 ต.ค. 69)
+    เดิมโหลดโมเดล BiRefNet (~1 GB · ครั้งแรกต้องดาวน์โหลด) ก่อนเปิดพอร์ต → เว็บที่สั่งเปิดโปรแกรมเอง (iducky-cutout:)
+    ต้องรอเป็นนาทีทั้งที่ทำ .ai (/calendar-ai) ไม่ใช้ AI · /health ยังตอบ ok=false จนโมเดลพร้อม (หน้าตัดพื้นหลังรอเหมือนเดิม)
+    """
+    def preload():
+        try:
+            with AI_LOCK:
+                get_session(default_model())
+            print("✓ AI ตัดพื้นหลังพร้อม")
+        except Exception as ex:
+            print(f"โหลด AI ตัดพื้นหลังไม่สำเร็จ: {ex}")
+    threading.Thread(target=preload, daemon=True).start()
     url = f"http://localhost:{a.port}"
     print(f"\n✓ พร้อมใช้งาน: {url}")
     if a.share:

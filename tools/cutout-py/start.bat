@@ -5,7 +5,8 @@ rem  Background removal AI + make layered .ai with Adobe Illustrator
 rem  Used by: iduckystore.com admin (order page "redo .ai" button,
 rem           design screen, /admin/diecut tab "bg")
 rem  First run: installs libraries + downloads AI model (~1 GB)
-rem  Keep this window OPEN while working. Close it = program stops.
+rem  After setup it runs in the background and starts with Windows.
+rem  Debug with a visible window:  start.bat console
 rem  (Thai guide: README-Windows.txt)
 rem ============================================================
 setlocal
@@ -42,15 +43,39 @@ if errorlevel 1 (
   "%PY%" -m pip install -r requirements-windows.txt
   if errorlevel 1 goto pipfail
 )
+if /i "%~1"=="console" goto console
+
 echo.
-echo [3/3] Starting cutout-py at http://localhost:8777
-echo       Keep this window open. Press Ctrl+C or close the window to stop.
+echo [3/3] Auto-start setup + starting in background...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-windows.ps1" -Dir "%~dp0." -Start
+if errorlevel 1 goto startfail
 echo.
-"%PY%" app.py --no-browser %*
+echo Done. cutout-py now runs in the background (no window needed)
+echo   - starts automatically every time Windows logs in
+echo   - the website can also start it (allow "iducky-cutout" when the browser asks)
+echo   You can close this window.
+echo.
+pause
+exit /b 0
+
+:console
+rem Debug mode: run with a visible window (start.bat console)
+echo.
+echo Starting cutout-py at http://localhost:8777 (console mode - keep this window open)
+echo.
+"%PY%" app.py --no-browser
 echo.
 echo Program stopped.
 pause
 exit /b 0
+
+:startfail
+echo.
+echo ERROR: cutout-py did not start (see messages above / cutout-py.log).
+echo   Try "start.bat console" to see the error on screen.
+echo.
+pause
+exit /b 1
 
 :nopython
 echo.

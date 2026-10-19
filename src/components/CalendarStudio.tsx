@@ -71,7 +71,18 @@ import {
   type ImgRef,
 } from "@/lib/calendar-card";
 import { curvesBox, curvesSvgD, printFrameToken, shiftCurves, type TemplateCurve } from "@/lib/design-templates";
-import { buildCalendarAi, illustratorReady, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
+import {
+  buildCalendarAi,
+  canLaunchCutout,
+  cutoutStatus,
+  launchCutoutPy,
+  renderAiPages,
+  waitCutoutReady,
+  type AiLayer,
+  type AiPage,
+  type AiPath,
+  type CutoutStatus,
+} from "@/lib/calendar-ai";
 import { isMissingPhoto } from "@/lib/cal-edit-store";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
@@ -1102,6 +1113,45 @@ export default function CalendarStudio({
    * เงื่อนไขอื่นของ apply (ช่องรูปว่าง/รูปไม่ได้ใช้/DPI ต่ำ) เด้งถามตามปกติ — คนกดต่อเองได้
    */
   const autoRan = useRef(false);
+  /**
+   * 🪟 โปรแกรม cutout-py ในเครื่อง (ทำ .ai ผ่าน Illustrator) — ทีมหลังบ้านเช็คตอนเปิดจอ (19 ต.ค. 69 "ให้มันรัน auto ได้ไหม")
+   * ปิดอยู่ + เครื่อง Windows = สั่งเปิดผ่านลิงก์ iducky-cutout: ตอนกดปุ่ม (ใช้แบบนี้/💾/▶ เปิดโปรแกรม) แล้วรอจนพร้อม
+   */
+  const cutSt = useRef<CutoutStatus | null>(null);
+  const launchedAt = useRef(0);
+  /** 🔁 ทำไฟล์อัตโนมัติแต่โปรแกรมปิดอยู่ — โชว์ปุ่ม ▶ เปิดโปรแกรม (ต้องกดเอง เบราว์เซอร์ถึงยอมเปิดโปรแกรมภายนอก) */
+  const [launchAsk, setLaunchAsk] = useState(false);
+  const autoGo = useRef(false);
+  useEffect(() => {
+    if (!open || !aiExport) return;
+    let alive = true;
+    const check = () => void cutoutStatus().then((st) => alive && (cutSt.current = st));
+    check();
+    const t = setInterval(check, 20000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [open, aiExport]);
+  /** โปรแกรมพร้อมแล้ว → ทำไฟล์ + บันทึกกลับต่อ (ครั้งเดียว) */
+  const runAuto = async () => {
+    if (autoGo.current) return;
+    autoGo.current = true;
+    setLaunchAsk(false);
+    setErr("");
+    await ensureFonts(fontKeys);
+    orderAfter.current = true;
+    await apply();
+  };
+  /** รอโปรแกรมที่สั่งเปิด → พร้อม = ทำต่อเอง · ไม่เจอ Illustrator/หมดเวลา = บอก */
+  const waitThenAuto = async (ms: number) => {
+    const st = await waitCutoutReady(ms);
+    cutSt.current = st;
+    if (autoGo.current) return;
+    if (st === "ready") return void runAuto();
+    if (st === "noai")
+      setErr("⚠️ เปิดโปรแกรม cutout-py แล้ว แต่หา Adobe Illustrator ในเครื่องนี้ไม่เจอ — เปิด Illustrator ด้วยมือ 1 ครั้ง แล้วกด ▶ อีกครั้ง");
+  };
   useEffect(() => {
     if (!autoOrder || !open || !srcsReady || !onOrder || autoRan.current) return;
     autoRan.current = true;
@@ -1116,18 +1166,24 @@ export default function CalendarStudio({
         return;
       }
       setBusy("กำลังเช็ค Illustrator ในเครื่องนี้…");
-      const ok = await illustratorReady();
+      const st = await cutoutStatus();
+      cutSt.current = st;
       setBusy("");
-      if (!ok) {
-        setErr(
-          "⚠️ ต่อ Illustrator ของร้านไม่ได้ (โปรแกรม tools/cutout-py พอร์ต 8777 ไม่ได้เปิด หรือเครื่องนี้ไม่ใช่เครื่องร้าน) — " +
-            "ถ้าทำต่อจะได้ไฟล์สำรอง -pdf.ai ที่ไม่แยกเลเยอร์เหมือนเดิม · ดับเบิลคลิก tools/cutout-py/start.command แล้วกด 💾 บันทึกกลับเข้าออเดอร์เอง",
-        );
+      if (st === "ready") return void runAuto();
+      if (st === "down" && canLaunchCutout()) {
+        // 🪟 ลองสั่งเปิดเลย (บางเบราว์เซอร์ยอมแม้ไม่ได้กด) + ปุ่ม ▶ ให้กดเอง · โปรแกรมพร้อมเมื่อไหร่ทำไฟล์ต่อให้เอง
+        if (launchCutoutPy()) launchedAt.current = Date.now();
+        setLaunchAsk(true);
+        setErr("⏳ โปรแกรม cutout-py (ทำ .ai ผ่าน Illustrator) ยังไม่เปิด — กด ▶ เปิดโปรแกรม แล้วรอสักครู่ ระบบทำไฟล์ + บันทึกกลับให้เอง");
+        void waitThenAuto(90000);
         return;
       }
-      await ensureFonts(fontKeys);
-      orderAfter.current = true;
-      await apply();
+      setErr(
+        st === "noai"
+          ? "⚠️ โปรแกรม cutout-py เปิดอยู่ แต่หา Adobe Illustrator ในเครื่องนี้ไม่เจอ — เปิด Illustrator ด้วยมือ 1 ครั้ง แล้วกด 🔁 ใหม่"
+          : "⚠️ ต่อ Illustrator ของร้านไม่ได้ (โปรแกรม tools/cutout-py พอร์ต 8777 ไม่ได้เปิด) — Mac: ดับเบิลคลิก start.command · Windows: ดับเบิลคลิก start.bat แล้วกด 🔁 ใหม่ · " +
+              "ถ้ากด 💾 เองจะได้ไฟล์สำรอง -pdf.ai ที่ไม่แยกเลเยอร์",
+      );
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOrder, open, srcsReady, aiExport]);
@@ -3866,6 +3922,9 @@ export default function CalendarStudio({
 
   async function apply(force = false, lowOk = false) {
     if (busy) return;
+    // 🪟 ทีมหลังบ้านบน Windows: cutout-py ปิดอยู่ → สั่งเปิดตอนนี้ (ยังอยู่ในจังหวะคลิก เบราว์เซอร์ถึงยอม) · ไปรอตอนทำ .ai ด้านล่าง
+    if (aiExport && !fmt.diecut && cutSt.current === "down" && Date.now() - launchedAt.current > 60000 && launchCutoutPy())
+      launchedAt.current = Date.now();
     /**
      * 🖼 ช่อง "รูปหาย" (ต้นฉบับอัปไม่ขึ้นตอนลูกค้าออกแบบ — ระบบใส่ภาพเทาแทน) ยังถูกใช้อยู่ = ห้ามใช้แบบ
      * ทำต่อ = ไฟล์พิมพ์ใหม่มีภาพเทา "รูปหาย" ทับไฟล์เดิมที่ใช้ได้ (หลังบ้านเปิดดูแบบได้ แต่ต้องใส่รูปจริงก่อนบันทึก · 19 ต.ค. 69)
@@ -4054,7 +4113,14 @@ export default function CalendarStudio({
        */
       if (aiExport && !fmt.diecut) {
         setBusy("กำลังเช็ค Illustrator ของร้าน…");
-        if (await illustratorReady()) {
+        let st = await cutoutStatus();
+        // เพิ่งสั่งเปิดโปรแกรม (ด้านบน) — รอให้ขึ้นก่อน ไม่งั้นได้ไฟล์ไม่มี .ai
+        if (st === "down" && Date.now() - launchedAt.current < 120000) {
+          setBusy("กำลังเปิดโปรแกรม cutout-py ในเครื่อง…");
+          st = await waitCutoutReady(45000);
+        }
+        cutSt.current = st;
+        if (st === "ready") {
           setBusy("กำลังทำไฟล์ .ai…");
           try {
             ai = await makeAi();
@@ -5530,6 +5596,19 @@ export default function CalendarStudio({
         {err && (
           <div className="flex items-center justify-between gap-2 bg-rose-50 px-4 py-1.5 text-xs font-bold text-rose-700">
             <span>{err}</span>
+            {launchAsk && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (launchCutoutPy()) launchedAt.current = Date.now();
+                  setErr("⏳ กำลังเปิดโปรแกรม cutout-py — ถ้าเบราว์เซอร์ถาม ให้กด \"เปิด/Open\" · พร้อมแล้วระบบทำไฟล์ต่อให้เอง");
+                  void waitThenAuto(60000);
+                }}
+                className="shrink-0 rounded-full bg-rose-600 px-3 py-1 text-[11px] font-extrabold text-white shadow-sm hover:bg-rose-700"
+              >
+                ▶ เปิดโปรแกรม
+              </button>
+            )}
             <button type="button" onClick={() => setErr("")} className="text-rose-400 hover:text-rose-700" aria-label="ปิดข้อความ">
               ✕
             </button>

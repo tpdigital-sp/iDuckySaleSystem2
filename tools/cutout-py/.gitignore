@@ -2,3 +2,5 @@
 __pycache__/
 config.json
 products.json
+cutout-py.log
+cutout-py.old.log
