@@ -2249,7 +2249,7 @@ function dimsOf(t: string): string {
 }
 
 /** สินค้าคิดเป็นแผ่นแต่ลูกค้านับเป็น ดวง/ใบ/ชิ้น → จำนวนชิ้นรวม (ใช้จำนวนรวมที่ LLM คิดแล้วถ้ามากกว่า เช่น "2 ลาย ลายละ 1000 ดวง" = 2,000) · ไม่ใช่กรณีนี้ = null */
-function piecesOrdered(product: Product, q: string, qty?: number | null): { pieces: number; unit: string; word: string; token: string } | null {
+function piecesOrdered(product: Product, q: string, qty?: number | null): { pieces: number; unit: string; word: string; token: string; designs: { n: number; each: number; label: string } | null } | null {
   const unit = String((product as { pricing?: { unit?: string } }).pricing?.unit ?? "");
   if (!/แผ่น/.test(unit)) return null;
   const m = /(\d[\d,]*)\s*(ใบ|ชิ้น|ดวง|อัน|การ์ด|ตัว)/.exec(q);
@@ -2260,7 +2260,7 @@ function piecesOrdered(product: Product, q: string, qty?: number | null): { piec
   const per = /(\d+)\s*(ลาย|แบบ|สี|ไซซ์|ไซส์|ขนาด)[\s\S]{0,20}?\2\s*ละ\s*(\d[\d,]*)/.exec(q);
   const designs = per ? Number(per[1]) * Number(per[3].replace(/,/g, "")) : 0;
   const pieces = Math.max(n, qty ?? 0, designs);
-  return { pieces, unit, word: m[2], token: m[0] };
+  return { pieces, unit, word: m[2], token: m[0], designs: per && designs === pieces ? { n: Number(per[1]), each: Number(per[3].replace(/,/g, "")), label: per[2] } : null };
 }
 
 function piecesToSheets(product: Product, q: string, qty?: number | null): { pieces: number; sheets: number; per: number; size: string; unit: string; query: string } | null {
@@ -2306,14 +2306,35 @@ export async function searchPrice(
       : loose
         ? quote(full, q.replace(loose.token, " "), null, items.length > 1, opts.rateHint)
         : quote(full, q, qty, items.length > 1, opts.rateHint);
+    /**
+     * 💬 19 ต.ค. 69 เจ้าของร้าน "บอทยังไม่ฉลาดในการอ่านข้อความที่ลูกค้าพิมพ์ … วิเคราะห์คำถามได้ไม่ถูกต้อง":
+     *   คำตอบต้องเรียงตามที่ลูกค้าถาม — ① ถาม "มี…ไหม" = ตอบว่ามีก่อน ② สรุปงานที่เข้าใจ (2 ลาย × 1,000 = 2,000 ดวง · ขนาด) ③ การ์ดราคา ④ ปิดท้ายด้วยขั้นต่อไปจริง ไม่ถามจำนวนซ้ำ
+     *   บรรทัดขึ้นต้น "•" ก่อนหัวการ์ด = ข้อความแยกก่อนการ์ด (n8n Site Price Flex) — เดิมบรรทัด 📐 ขึ้นเป็นหัวการ์ดแล้วถูกตัดเหลือ "📐 สติ๊กเกอร์ UV คิดราคาเป็น…"
+     */
+    const pre: string[] = [];
+    // "มี…ไหม" ต้องถามถึงตัวสินค้า (ชื่อร่วมกับสินค้า ≥4 ตัว หรือคำว่าสติ๊กเกอร์ใสฝ้า) — "มีขั้นต่ำไหม" "มีส่วนลดไหม" ไม่ใช่
+    // ใช้ข้อความดิบของลูกค้า (rateHint) — q มักเป็น standalone ที่ LLM เขียนใหม่ ตัด "มี…ไหม" ทิ้งไปแล้ว
+    const askHave = /มี(.{0,40}?)(ไหม|มั้ย|หรือเปล่า|รึเปล่า|ป่าว)/.exec(opts.rateHint || q);
+    if (ans && askHave && (lcsLen(norm(askHave[1]), norm(full.name)) >= 4 || /ใส\s*(ฝ้า|ขุ่น|ด้าน|เมท)/.test(askHave[1]))) {
+      pre.push(
+        /ใส\s*(ฝ้า|ขุ่น|ด้าน|เมท)/.test(q) && /UV/i.test(full.name)
+          ? `• มีค่ะ ✨ สติกเกอร์ใสฝ้าของร้านคือ "${full.name}" แบบเนื้อพลาสติกใส-แผ่นรองขุ่นค่ะ`
+          : `• มีค่ะ ✨ "${full.name}"`,
+      );
+    }
     if (ans && conv) {
       const got = conv.sheets * conv.per;
-      ans.answer = `📐 ${conv.pieces.toLocaleString()} ใบ ขนาด ${conv.size} (ได้ ${conv.per} ใบ/${conv.unit}) = ใช้ ${conv.sheets.toLocaleString()} ${conv.unit}${got > conv.pieces ? ` (ได้จริง ${got.toLocaleString()} ใบ)` : ""}\n${ans.answer}`;
+      pre.push(`• 📐 ${conv.pieces.toLocaleString()} ใบ ขนาด ${conv.size} (ได้ ${conv.per} ใบ/${conv.unit}) = ใช้ ${conv.sheets.toLocaleString()} ${conv.unit}${got > conv.pieces ? ` (ได้จริง ${got.toLocaleString()} ใบ)` : ""}`);
     } else if (ans && loose) {
       const size = dimsOf(q).replace("x", " × ");
-      ans.answer = `📐 ${full.name} คิดราคาเป็น${loose.unit} ค่ะ — ${loose.pieces.toLocaleString()} ${loose.word}${size ? ` ขนาด ${size} ซม.` : ""} ต้องดูก่อนว่า 1 ${loose.unit} วางได้กี่${loose.word} แล้วค่อยคิดจำนวนแผ่น แอดมินช่วยคำนวณให้ได้เลยนะคะ\nราคาต่อ${loose.unit}:\n${ans.answer}`;
+      const count = loose.designs ? `${loose.designs.n} ${loose.designs.label} × ${loose.designs.each.toLocaleString()} ${loose.word} = ${loose.pieces.toLocaleString()} ${loose.word}` : `${loose.pieces.toLocaleString()} ${loose.word}`;
+      pre.push(`• 📐 งานนี้ ${count}${size ? ` ขนาด ${size} ซม.` : ""} — ${full.name} คิดราคาเป็น${loose.unit} แอดมินจะคำนวณว่า 1 ${loose.unit} วางได้กี่${loose.word} แล้วแจ้งจำนวนแผ่นกับราคารวมให้นะคะ`);
       ans.intent = "price";
+      // ปิดท้ายด้วยขั้นต่อไปจริง (n8n ใช้ askNext แทนประโยค "สนใจกี่ชิ้นดีคะ" ที่ถามจำนวนซ้ำทั้งที่ลูกค้าบอกแล้ว) · คำถามตัวเลือกที่เครื่องคิดราคาถามไว้ยังต่อท้าย
+      const wait = `เดี๋ยวแอดมินคำนวณจำนวนแผ่นกับราคารวมของ ${loose.pieces.toLocaleString()} ${loose.word} ให้นะคะ 🙏 ถ้ามีไฟล์งานแล้ว ส่งมาได้เลยค่ะ จะได้เช็กขนาดจริงให้ด้วย ✨`;
+      ans.askNext = ans.askNext ? `${wait}\n\n${ans.askNext}` : wait;
     }
+    if (ans && pre.length) ans.answer = `${pre.join("\n")}\n${ans.answer}`;
     if (ans) found.push(ans);
   }
   if (found.length === 1) return found[0];
