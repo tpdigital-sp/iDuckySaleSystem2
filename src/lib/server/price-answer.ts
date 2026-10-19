@@ -1103,6 +1103,18 @@ ${list}
         if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = "spec";
       }
     }
+    // 🧊 19 ต.ค. 69 "มีสติกเกอร์ใสฝ้าไหม" → ไม่มีสินค้าชื่อนี้ LLM เลยเดาตามประวัติแชท (ห้องทดสอบได้เมนู สติ๊กเกอร์แจก/วาชิ/รูปทรง ·
+    // ถามเปล่า ๆ ได้ UV) — เจ้าของร้านยืนยัน "ใสฝ้า" = สติ๊กเกอร์ UV (เนื้อพลาสติกใส-แผ่นรองขุ่น) → บังคับตัวเดียว ไม่ขึ้นกับประวัติ
+    //   ใสขุ่น/ใสด้าน/ใสเมท ความหมายเดียวกัน · ระบุ PP เอง = ปล่อยด่าน PP ด้านบน (PP ใส + เคลือบด้าน เป็นของอีกกลุ่ม)
+    {
+      const uv = items.find((it) => it.name === "สติ๊กเกอร์ UV");
+      if (uv && /ใส\s*(ฝ้า|ขุ่น|ด้าน|เมท|matte)|frost/i.test(q) && /สติ๊กเกอร์|สติกเกอร์|sticker|สตก/i.test(q) && !/\bpp\b/i.test(q)) {
+        finalPicked = [uv];
+        raw.broad = false;
+        notInCatalog = false;
+        if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = /ราคา|เท่าไหร่|เท่าไร|กี่บาท|เช็คราคา|\d+\s*(ดวง|ชิ้น|ใบ|แผ่น)/.test(q) ? "price" : "spec";
+      }
+    }
     // 🫧 9 ต.ค. 69 13:10 ด่านกำหนดสินค้าเอง (จุ๊บ/ดุ๊กดิ๊ก/Sticker Gold/PP/กระดาษ) เปลี่ยนสินค้าแล้ว แต่ standalone ที่ LLM เขียนยังเอ่ยสินค้าเดิม
     // ("GRIPTOK PUSH-PULL ดึงเข้าออกติดใหม่ได้ไหม") → searchInfo อ่านหน้าสติ๊กเกอร์สูญญากาศด้วยคำถามเรื่อง Griptok แล้วตอบไม่ได้ → บอทเงียบ
     // → ถ้า standalone เอ่ยชื่อสินค้าที่ไม่อยู่ในชุดที่เลือกแล้ว ให้ใช้ข้อความลูกค้าเดิมแทน
@@ -2244,7 +2256,11 @@ function piecesOrdered(product: Product, q: string, qty?: number | null): { piec
   if (!m) return null;
   const n = Number(m[1].replace(/,/g, ""));
   if (!(n > 0)) return null;
-  return { pieces: qty && qty > n ? qty : n, unit, word: m[2], token: m[0] };
+  // "2 ลาย ลายละ 1000 ดวง" = 2,000 — คูณเองแบบตายตัว (LLM ให้ qty 1,000 บ้าง 2,000 บ้าง · 19 ต.ค. 69)
+  const per = /(\d+)\s*(ลาย|แบบ|สี|ไซซ์|ไซส์|ขนาด)[\s\S]{0,20}?\2\s*ละ\s*(\d[\d,]*)/.exec(q);
+  const designs = per ? Number(per[1]) * Number(per[3].replace(/,/g, "")) : 0;
+  const pieces = Math.max(n, qty ?? 0, designs);
+  return { pieces, unit, word: m[2], token: m[0] };
 }
 
 function piecesToSheets(product: Product, q: string, qty?: number | null): { pieces: number; sheets: number; per: number; size: string; unit: string; query: string } | null {
