@@ -1345,7 +1345,7 @@ function Chats() {
 
             {/* 🤖 ลูกค้าพิมพ์ค้างไว้ก่อนเปิดร่าง → ให้บอทร่างย้อนหลัง (19 ต.ค. 69 · RedraftButton) */}
             {canReply && detail && (detail.botDraft || settings?.mode === "draft") && thread.length && thread[thread.length - 1].role === "user" ? (
-              <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} />
+              <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={thread[thread.length - 1].at} />
             ) : null}
             {canReply ? (
               <Composer id={sel} customerName={detail?.displayName ?? ""} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} dropFile={dropFile} onDropConsumed={() => setDropFile(null)} />

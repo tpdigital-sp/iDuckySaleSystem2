@@ -9,9 +9,21 @@ import { botApi } from "../bot-ui";
  * ร่างกลับมาเป็นการ์ดเหลืองในห้องเองผ่านการโพล 3 วิ (ราว 15–30 วิ)
  * แถบเหนือช่องพิมพ์ — ขึ้นเมื่อห้องเปิดร่าง (รายคน/ทั้งร้าน) และข้อความท้ายสุดเป็นของลูกค้า (ยังไม่มีร่าง/คำตอบตามหลัง)
  */
-export default function RedraftButton({ id, toast, startedAt }: { id: string; toast: (t: string, bad?: boolean) => void; startedAt?: number }) {
+export default function RedraftButton({ id, toast, startedAt, lastUserAt }: { id: string; toast: (t: string, bad?: boolean) => void; startedAt?: number; lastUserAt?: string }) {
   const [busy, setBusy] = useState(false);
   const [waitUntil, setWaitUntil] = useState(0);
+  /*
+   * ⏳ ลูกค้าเพิ่งพิมพ์ (≤60 วิ) = บอทกำลังร่างตามปกติ (Debounce 3 วิ + คิด 10–20 วิ) — ยังไม่ต้องโชว์ปุ่ม/"บอทยังไม่ได้ร่าง"
+   * (19 ต.ค. 69 เจ้าของร้าน "บอทร่างคำตอบนานมาก" — แถบขึ้นทันทีที่ลูกค้าพิมพ์ เลยดูเหมือนบอทค้าง)
+   */
+  const freshUntil = lastUserAt ? Date.parse(lastUserAt) + 60_000 : 0;
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const left = freshUntil - Date.now();
+    if (!(left > 0)) return;
+    const t = setTimeout(() => tick((n) => n + 1), left + 50);
+    return () => clearTimeout(t);
+  }, [freshUntil]);
   // เปิดสวิตช์ 📝 แล้วเซิร์ฟเวอร์สั่งร่างให้เอง (startedAt) → ขึ้น "บอทกำลังร่าง" 45 วิ ไม่ต้องกดซ้ำ
   useEffect(() => {
     if (!startedAt) return;
@@ -21,7 +33,7 @@ export default function RedraftButton({ id, toast, startedAt }: { id: string; to
     const t = setTimeout(() => setWaitUntil(0), until - Date.now());
     return () => clearTimeout(t);
   }, [startedAt]);
-  const waiting = waitUntil > Date.now();
+  const waiting = waitUntil > Date.now() || freshUntil > Date.now();
   const run = async () => {
     if (busy || waiting) return;
     setBusy(true);
@@ -41,7 +53,7 @@ export default function RedraftButton({ id, toast, startedAt }: { id: string; to
     <div className="flex items-center gap-2 border-t px-3 py-2 md:px-4" style={{ borderColor: "var(--ln-line)", background: "var(--dk-yolk-wash)" }}>
       <p className="min-w-0 flex-1 text-[12.5px] leading-snug" style={{ color: "var(--dk-yolk-ink)" }}>
         <b>📝 ลูกค้ารอคำตอบ</b>
-        <span className="hidden sm:inline">{waiting ? " · บอทกำลังร่างคำตอบ ร่างจะขึ้นในห้องราว 15–30 วินาที" : " · บอทยังไม่ได้ร่าง (ลูกค้าพิมพ์มาก่อนเปิดร่าง)"}</span>
+        <span className="hidden sm:inline">{waiting ? " · บอทกำลังร่างคำตอบ ร่างจะขึ้นในห้องราว 15–30 วินาที" : " · บอทยังไม่ได้ร่าง — กดให้บอทร่างได้เลย"}</span>
       </p>
       <button
         type="button"
