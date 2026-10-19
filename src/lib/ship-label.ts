@@ -84,10 +84,26 @@ export function resolveShipLabel(
 ): string {
   const s = (o.shippingLabel ?? "").trim();
   if (s && !isGenericShipLabel(s)) return s;
-  const byPrice = shippingMethodByPrice(methods, Number(o.shippingCost) || 0)?.name;
+  const cost = Number(o.shippingCost) || 0;
+  const byPrice = shippingMethodByPrice(methods, cost)?.name;
   if (byPrice) return byPrice;
+  // 📦 ค่าส่งไม่ตรงราคาไหนเลย (งานเยอะคิดค่าส่ง 200/250/300 ในบิล FlowAccount) แต่วิธีส่งแบบเสียเงินของร้านเป็นขนส่งเดียวกันหมด
+  // (EMS (50)/EMS (100) → "EMS") = ใบนี้ส่ง EMS แน่ ๆ · เดิมใบปะหน้าว่าง คนแพ็คต้องไปเลือก EMS (100) แล้วพิมพ์ราคากลับเอง (OD-260917-9787 · 19 ต.ค. 69)
+  const sameCarrier = paidCarrierName(methods);
+  if (cost > 0 && sameCarrier) return sameCarrier;
   const legacy = (o.shipping ?? "").trim();
   return legacy === DEFAULT_SHIPPING ? "" : legacy;
+}
+
+/** ชื่อขนส่งเมื่อวิธีส่งแบบเสียเงินทุกตัวเป็นขนส่งเดียวกัน (ชื่อตัดราคาแล้วเหมือนกัน) · ปนกันหลายขนส่ง → "" (ไม่เดา) */
+function paidCarrierName(methods: ShippingMethod[]): string {
+  const names = new Set(
+    methods
+      .filter((m) => Number(m.price) > 0 && !PICKUP_RE.test(m.name ?? ""))
+      .map((m) => stripShipPrice(m.name ?? ""))
+  );
+  const [only] = Array.from(names);
+  return names.size === 1 && only ? only : "";
 }
 
 /** ใบนี้ยังไม่ได้เลือกวิธีส่ง — ไว้ติดป้ายเตือนให้แอดมินเลือกก่อนส่งของ */

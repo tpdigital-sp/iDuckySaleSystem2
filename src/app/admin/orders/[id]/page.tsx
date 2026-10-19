@@ -8573,7 +8573,8 @@ export default function AdminOrderDetailPage() {
                         className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-amber-300 focus:outline-none"
                       >
                         <option value="" disabled>
-                          {order.shippingLabel || "เลือกวิธีส่ง…"}
+                          {/* ค่าส่งนอกราคาที่ตั้งไว้ (เช่น 200) แต่รู้ขนส่ง → โชว์ "EMS" แทนคำกลาง ๆ "ค่าส่ง" */}
+                          {resolveShipLabel(order, shipMethods) || order.shippingLabel || "เลือกวิธีส่ง…"}
                         </option>
                         {autoShip?.method && (
                           <option value={AUTO_SHIP}>
