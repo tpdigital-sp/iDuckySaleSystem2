@@ -10,6 +10,7 @@ import {
   mixTierFor,
   needsQuote,
   RATE_LABEL,
+  sheetYieldCount,
   tierIndex,
   unitPriceFor,
   type PriceMatrix,
@@ -2285,7 +2286,8 @@ function piecesOrdered(product: Product, q: string, qty?: number | null): { piec
   return { pieces, unit, word: m[2], token: m[0], designs: per && designs === pieces ? { n: Number(per[1]), each: Number(per[3].replace(/,/g, "")), label: per[2] } : null };
 }
 
-function piecesToSheets(product: Product, q: string, qty?: number | null): { pieces: number; sheets: number; per: number; size: string; unit: string; query: string } | null {
+type SheetConv = { pieces: number; sheets: number; per: number; size: string; unit: string; query: string; custom?: boolean; word: string; designs: { n: number; each: number; label: string } | null };
+function piecesToSheets(product: Product, q: string, qty?: number | null): SheetConv | null {
   const po = piecesOrdered(product, q, qty);
   if (!po) return null;
   const { pieces, unit } = po;
@@ -2296,8 +2298,26 @@ function piecesToSheets(product: Product, q: string, qty?: number | null): { pie
       const per = Number((c as { piecesPerUnit?: number }).piecesPerUnit) || 0;
       if (per > 0 && dimsOf(c.name) === want) {
         const sheets = Math.ceil(pieces / per);
-        return { pieces, sheets, per, size: c.name, unit, query: q.replace(po.token, `${sheets} ${unit}`) };
+        return { pieces, sheets, per, size: c.name, unit, query: q.replace(po.token, `${sheets} ${unit}`), word: po.word, designs: po.designs };
       }
+    }
+  }
+  /*
+   * 📐 ขนาดสั่งทำ (19 ต.ค. 69 เจ้าของร้าน "คำนวณจากในส่วนนี้ได้เลย เพราะเว็บมันคำนวณได้" — หน้าสินค้า "กำหนดขนาดเอง (ระบุ ก.×ส.)"
+   *   ขึ้น "ขนาดนี้ได้ประมาณ 4 ชิ้น ต่อ 1 แผ่น A3") → ใช้ sheetYieldCount ตัวเดียวกับหน้าสินค้า (จัดวางบนพื้นที่พิมพ์จริง เว้นระยะ
+   *   ตาม sheetYield.gap · หมุนได้) ตัวเลขบอทจึงตรงกับหน้าเว็บเสมอ · เดิมบอกลูกค้าว่า "แอดมินจะคำนวณให้" แล้วไม่มีใครตามต่อ
+   */
+  const [a, b] = want.split("x").map(Number);
+  // ช่องคิดเป็นแผ่นก่อน ช่องแบบ ตร.ม. (unitSheets) ทีหลัง — ตรงกับที่หน้าสินค้าโชว์ใต้ "ขนาดตัด"
+  const yieldOpts = (product.options ?? []).filter((o) => o.sheetYield?.pairLabel).sort((x, y) => Number(!!x.sheetYield?.unitSheets) - Number(!!y.sheetYield?.unitSheets));
+  for (const opt of yieldOpts) {
+    const pairLabel = opt.sheetYield?.pairLabel;
+    const pair = pairLabel ? (product.options ?? []).find((o) => o.label === pairLabel) : undefined;
+    if (!pair) continue;
+    const per = sheetYieldCount(product, opt, { [pair.label]: String(b), [opt.label]: String(a) });
+    if (per && per > 0) {
+      const sheets = Math.ceil(pieces / per);
+      return { pieces, sheets, per, size: `${a} × ${b} ซม.`, unit, query: q.replace(po.token, `${sheets} ${unit}`), custom: true, word: po.word, designs: po.designs };
     }
   }
   return null;
@@ -2320,6 +2340,11 @@ export async function searchPrice(
     const full = await getProductServer(item.id).catch(() => undefined);
     if (!full) continue;
     const conv = piecesToSheets(full, q, qty);
+    // 🧊 ใสฝ้า = เนื้อพลาสติกใส-แผ่นรองขุ่น (เจ้าของร้านยืนยัน 19 ต.ค. 69) → ใส่ชื่อตัวเลือกเนื้อลงคำค้น ให้เครื่องคิดราคาเลือกเนื้อนี้ ไม่ใช่เนื้อที่ถูกสุด
+    if (conv && /ใส\s*(ฝ้า|ขุ่น|ด้าน|เมท)/.test(`${q} ${opts.rateHint ?? ""}`)) {
+      const frost = (full.options ?? []).flatMap((o) => o.choices ?? []).find((c) => /พลาสติกใส-แผ่นรองขุ่น/.test(c.name));
+      if (frost) conv.query = `${conv.query} ${frost.name}`;
+    }
     // 📐 19 ต.ค. 69: นับเป็นดวง/ใบแต่ขนาดไม่ใช่ขนาดสำเร็จรูป (ไม่รู้ว่า 1 แผ่นได้กี่ดวง) → ห้ามเอาจำนวนดวงไปคิดเป็นแผ่น
     //   (เคยตอบ "2,000 ดวง 15.8×12.8 ซม." = 2,000 แผ่น A3 รวม ฿170,000) → โชว์ราคาต่อแผ่น + บอกว่าแอดมินช่วยคำนวณจำนวนแผ่น
     const loose = conv ? null : piecesOrdered(full, q, qty);
@@ -2346,7 +2371,9 @@ export async function searchPrice(
     }
     if (ans && conv) {
       const got = conv.sheets * conv.per;
-      pre.push(`• 📐 ${conv.pieces.toLocaleString()} ใบ ขนาด ${conv.size} (ได้ ${conv.per} ใบ/${conv.unit}) = ใช้ ${conv.sheets.toLocaleString()} ${conv.unit}${got > conv.pieces ? ` (ได้จริง ${got.toLocaleString()} ใบ)` : ""}`);
+      const w = conv.word;
+      const count = conv.designs ? `${conv.designs.n} ${conv.designs.label} × ${conv.designs.each.toLocaleString()} ${w} = ${conv.pieces.toLocaleString()} ${w}` : `${conv.pieces.toLocaleString()} ${w}`;
+      pre.push(`• 📐 ${count} ขนาด ${conv.size} (ได้ ${conv.per} ${w}/${conv.unit}${conv.custom ? " · จัดวางแบบเดียวกับหน้าเว็บ" : ""}) = ใช้ ${conv.sheets.toLocaleString()} ${conv.unit}${got > conv.pieces ? ` (ได้จริง ${got.toLocaleString()} ${w})` : ""}`);
     } else if (ans && loose) {
       const size = dimsOf(q).replace("x", " × ");
       const count = loose.designs ? `${loose.designs.n} ${loose.designs.label} × ${loose.designs.each.toLocaleString()} ${loose.word} = ${loose.pieces.toLocaleString()} ${loose.word}` : `${loose.pieces.toLocaleString()} ${loose.word}`;
