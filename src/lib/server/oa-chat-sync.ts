@@ -20,6 +20,7 @@ import { fetchOaChatMessages, loadOaConfig, OA_AUTO_RESPONSE, OaError, type OaMe
  *   · เอาเฉพาะข้อความฝั่ง "บัญชีร้าน" (ลูกค้า webhook เก็บครบอยู่แล้ว) และกันซ้ำกับที่ log มีแล้ว (บอท/ตอบจากเว็บ/การ์ด ส่งผ่าน API ก็โผล่ใน OA เหมือนกัน):
  *     ข้อความเดียวกัน (ไม่สนช่องว่าง · n8n รวมหลายข้อความเป็น "a / b" → เทียบทีละท่อน) ห่าง ≤5 นาที = มีแล้ว · รูป/สติกเกอร์/ไฟล์ เทียบชนิด+เวลา ≤2 นาที
  *   · ไม่มีชื่อผู้พิมพ์ (OA ไม่บอก / ส่งผ่าน API) = role assistant mode "oa" (หน้าจอขึ้น "ร้าน (OA)") เหมือน "Unknown" ใน CSV · มีชื่อ = role admin → อัปเดต lastAdminAt
+ *     + ล้างธง 🙋 รอแอดมิน (needsHumanFollowup) ถ้าแอดมินตอบหลังรอบบอทล่าสุด (เจ้าของร้าน 19 ต.ค. 69 · เดิมตอบใน OA แล้วธงค้าง ต้องตอบจากเว็บเท่านั้นถึงหาย)
  *   · ไม่แตะ lastSeen/messageCount (ของลูกค้า) · จำรอบล่าสุดที่ห้อง `oaSync` {at, chatId, path, added}
  */
 
@@ -69,6 +70,11 @@ function tsOf(v: unknown): number {
 export function oaEntryId(atMs: number, by: string, rawText: string): string {
   const sec = Math.floor(atMs / 1000) * 1000;
   return `oa-${createHash("sha1").update(`${sec}|Account|${by || "Unknown"}|${rawText}`).digest("hex").slice(0, 20)}`;
+}
+
+/** log ที่เป็นรอบบอท (ตอบเอง/ร่าง) — ไม่นับข้อความฝั่งร้านที่ดึงจาก OA (mode oa/auto) */
+export function isBotTurn(role: unknown, mode: unknown): boolean {
+  return role === "draft" || (role === "assistant" && mode !== "oa" && mode !== "auto");
 }
 
 export type Existing = { at: number; type: string; parts: string[] };
@@ -158,8 +164,10 @@ async function pull(db: Firestore, userId: string, room: Record<string, unknown>
   let lastAdmin = 0;
   if (candidates.length) {
     const minAt = Math.min(...candidates.map((m) => Date.parse(m.at))) - TEXT_WIN_MS;
-    const logSnap = await ref.collection("log").where("at", ">=", Timestamp.fromMillis(minAt)).select("role", "text", "type", "at").get();
+    const logSnap = await ref.collection("log").where("at", ">=", Timestamp.fromMillis(minAt)).select("role", "text", "type", "at", "mode").get();
     const ids = new Set(logSnap.docs.map((d) => d.id));
+    // รอบบอทล่าสุด (ตอบ/ร่าง) — ธงรอแอดมินมาจากรอบบอทเท่านั้น · ก่อน minAt = เก่ากว่าข้อความแอดมินทุกตัวอยู่แล้ว
+    const lastBot = Math.max(0, ...logSnap.docs.filter((d) => isBotTurn(d.get("role"), d.get("mode"))).map((d) => tsOf(d.get("at"))));
     const existing: Existing[] = logSnap.docs
       .filter((d) => d.get("role") !== "user" && d.get("role") !== "draft")
       .map((d) => ({ at: tsOf(d.get("at")), type: String(d.get("type") ?? "text"), parts: String(d.get("text") ?? "").split(" / ").map(ws).filter(Boolean) }));
@@ -183,6 +191,8 @@ async function pull(db: Firestore, userId: string, room: Record<string, unknown>
     }
     const patch: Record<string, unknown> = { oaSync: { at: Timestamp.now(), chatId: fetched.chatId, path: fetched.path, added } };
     if (lastAdmin && lastAdmin > tsOf(room.lastAdminAt)) patch.lastAdminAt = Timestamp.fromMillis(lastAdmin);
+    // แอดมินตอบใน OA หลังบอทส่งต่อ = รับงานแล้ว → ล้างธงแบบเดียวกับตอบจากเว็บ (reply route) · บอทยกธงใหม่ทีหลังได้ตามปกติ
+    if (lastAdmin && lastAdmin >= lastBot && room.needsHumanFollowup === true) patch.needsHumanFollowup = false;
     batch.set(ref, patch, { merge: true });
     await batch.commit();
   } else {
