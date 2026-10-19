@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
-import { callGemini, recordN8nCall } from "@/lib/server/ai-usage";
+import { callGemini, callClaudeText, recordN8nCall } from "@/lib/server/ai-usage";
 import { AI_MODEL_BY_FEATURE, PRICE_UNDERSTAND_FALLBACK, modelFor, noThinking } from "@/lib/ai-models";
 import { getProductServer } from "@/lib/products-server";
 import { SITE_URL } from "@/lib/shop-info";
@@ -703,19 +703,41 @@ async function geminiJson(apiKey: string, model: string, prompt: string, timeout
   JSON.parse(text); // ต้องเป็น JSON ไม่งั้นให้ถอยไปโมเดลสำรอง
   return text;
 }
+/**
+ * 🧪 ช่องเสียบสำหรับสคริปต์เทียบโมเดล (19 ต.ค. 69 เจ้าของร้าน "ต้องใช้ model ตัวไหนที่ฉลาดในการตอบคำถามมากกว่า")
+ * สคริปต์ตั้งตัวเรียกโมเดลเองได้ (เช่น Claude) โดยใช้พรอมป์ต์/ด่านหลัง LLM ชุดเดียวกับของจริง · เว็บจริงไม่ได้ตั้ง = เรียก Gemini ตามเดิม
+ */
+let understandCaller: ((model: string, prompt: string) => Promise<string>) | null = null;
+export function setUnderstandCallerForEval(fn: ((model: string, prompt: string) => Promise<string>) | null): void {
+  understandCaller = fn;
+}
 async function callUnderstandModel(apiKey: string, prompt: string, override?: string): Promise<string> {
   const primary = (override || modelFor("price_understand")).trim();
+  if (understandCaller) return understandCaller(primary, prompt);
+  // 🧠 19 ต.ค. 69 เจ้าของร้าน "เปลี่ยนมาใช้ Gemini 3.8 Flash และ Claude Sonnet 5.5" → ตัวหลัก Gemini 3.8 Flash · ล้ม/ช้าเกิน = Claude Sonnet 5.5
+  //   ชื่อขึ้นต้น claude- = เรียก Claude (callClaudeText) · นอกนั้น = Gemini
+  const run = (model: string, timeoutMs: number) => (/^claude-/.test(model) ? claudeJson(model, prompt, timeoutMs) : geminiJson(apiKey, model, prompt, timeoutMs));
   try {
-    return await geminiJson(apiKey, primary, prompt, 9_000);
+    return await run(primary, 9_000);
   } catch (e) {
     if (primary === UNDERSTAND_MODEL_FALLBACK) return "";
     console.warn(`[understand] ${primary} ล้มเหลว → ใช้ ${UNDERSTAND_MODEL_FALLBACK}:`, e instanceof Error ? e.message : e);
     try {
-      return await geminiJson(apiKey, UNDERSTAND_MODEL_FALLBACK, prompt, 8_000);
-    } catch {
+      return await run(UNDERSTAND_MODEL_FALLBACK, 10_000);
+    } catch (e2) {
+      console.warn(`[understand] ${UNDERSTAND_MODEL_FALLBACK} ล้มเหลวด้วย:`, e2 instanceof Error ? e2.message : e2);
       return "";
     }
   }
+}
+/** Claude ตอบ JSON ตามพรอมป์ต์เดียวกับ Gemini — ตัดรั้วโค้ดแล้วต้อง parse ได้ (ไม่ได้ = โยนให้ถอย) */
+async function claudeJson(model: string, prompt: string, timeoutMs: number): Promise<string> {
+  const raw = await callClaudeText({ feature: "price_understand", model, prompt: `${prompt}\n\nตอบเป็น JSON ล้วน ๆ บรรทัดเดียว ไม่มีข้อความอื่น`, maxTokens: 2000, timeoutMs });
+  const text = raw.replace(/```json\n?|```\n?/g, "").trim();
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error(`${model} not json`);
+  JSON.parse(m[0]);
+  return m[0];
 }
 
 export async function understand(

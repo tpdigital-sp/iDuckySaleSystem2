@@ -172,7 +172,8 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   // 🧠 บทสนทนาทั้งสองฝั่ง [{role, text, at}] (1 ต.ค. 69) — ชั้นเข้าใจคำถามเห็นคำตอบของบอทด้วย + ตัดรอบสนทนาเก่าออกเอง
   // 🧠 profile = ก้อนข้อความโปรไฟล์ลูกค้าจาก /api/bot/customer-profile (ออเดอร์เก่า ระดับสมาชิก สรุปแชท) ถ้าบอทส่งมา
   const profile = typeof body.profile === "string" ? body.profile : "";
-  // understandModel = ชื่อโมเดล Gemini ไว้ทดสอบเทียบ (ไม่ส่ง = ค่าเริ่มต้น gemini-2.5-flash ถอยไป flash-lite เมื่อล้มเหลว)
+  // understandModel = ชื่อโมเดล Gemini ไว้ทดสอบเทียบ · ไม่ส่ง = ค่าเริ่มต้น gemini-3.8-flash ถอยไป claude-sonnet-5-5 เมื่อล้มเหลว
+  // ⚠️ ไม่รับชื่อ Claude ทางนี้ — เส้นนี้เปิดสาธารณะ ใครก็ยิงเปลืองค่า Claude ได้ (เทียบโมเดลใช้ setUnderstandCallerForEval ในสคริปต์แทน)
   const understandModel = typeof body.understandModel === "string" && /^gemini-[a-z0-9.-]+$/.test(body.understandModel) ? body.understandModel : undefined;
   const u: Understanding | null = body.mode ? null : await understand(query, context, body.history, profile, understandModel);
 

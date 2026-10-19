@@ -1,4 +1,5 @@
 import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { inBackground } from "@/lib/server/background";
@@ -95,6 +96,63 @@ export async function callGemini(o: { feature: AiFeature; model: string; body: R
     error: res.ok ? undefined : (json?.error?.message || text).slice(0, 160),
   });
   return { ok: res.ok, status: res.status, json, errorText: res.ok ? "" : text.slice(0, 300), ms };
+}
+
+/**
+ * 🟣 กุญแจ Claude (Anthropic) — env ANTHROPIC_API_KEY ก่อน · ไม่มี = Firestore settings/anthropic-api.apiKey (แคช 10 นาที)
+ * Netlify env เต็มเพดาน 4KB แล้ว (19 ต.ค. 69 ใช้ 3,982 ไบต์) ใส่กุญแจเพิ่มไม่ได้ → เก็บใน Firestore แบบเดียวกับ settings/flowaccount-api
+ */
+let anthropicKeyCache: { at: number; key: string } | null = null;
+async function anthropicKey(): Promise<string> {
+  const env = (process.env.ANTHROPIC_API_KEY ?? "").trim();
+  if (env) return env;
+  if (anthropicKeyCache && Date.now() - anthropicKeyCache.at < 10 * 60_000) return anthropicKeyCache.key;
+  const snap = await getChatFirestore()?.collection("settings").doc("anthropic-api").get().catch(() => undefined);
+  const key = String(snap?.get("apiKey") ?? "").trim();
+  anthropicKeyCache = { at: Date.now(), key };
+  return key;
+}
+
+/**
+ * เรียก Claude (Messages API · SDK ทางการ) แล้วลงบัญชีแบบเดียวกับ callGemini — คืนข้อความคำตอบ
+ * โยน error เมื่อไม่มีกุญแจ / ต่อไม่ได้ / หมดเวลา / ปฏิเสธ (refusal) · ผู้เรียกมี try/catch อยู่แล้ว
+ * effort ค่าเริ่มต้น low (งานจัดหมวด/อ่านคำถามสั้น ๆ ไม่ต้องคิดลึก ตอบไว)
+ */
+export async function callClaudeText(o: { feature: AiFeature; model: string; prompt: string; maxTokens: number; timeoutMs: number; effort?: "low" | "medium" | "high" }): Promise<string> {
+  const key = await anthropicKey();
+  if (!key) throw new Error("ยังไม่ได้ตั้งค่ากุญแจ Claude (settings/anthropic-api)");
+  const client = new Anthropic({ apiKey: key, timeout: o.timeoutMs, maxRetries: 0 });
+  const t0 = Date.now();
+  try {
+    // fallbacks "default" = Claude ปฏิเสธ (refusal) เมื่อไหร่ ฝั่งเซิร์ฟเวอร์ส่งต่อโมเดลอื่นให้เองในคำขอเดียว
+    const r = await client.beta.messages.create({
+      model: o.model,
+      max_tokens: o.maxTokens,
+      output_config: { effort: o.effort ?? "low" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: o.prompt }],
+    });
+    const u = r.usage;
+    const cached = u.cache_read_input_tokens ?? 0;
+    recordAiCall({
+      feature: o.feature,
+      model: o.model,
+      ok: r.stop_reason !== "refusal",
+      status: 200,
+      ms: Date.now() - t0,
+      usage: { promptTokenCount: u.input_tokens + cached + (u.cache_creation_input_tokens ?? 0), candidatesTokenCount: u.output_tokens, cachedContentTokenCount: cached },
+      error: r.stop_reason === "refusal" ? "refusal" : undefined,
+    });
+    if (r.stop_reason === "refusal") throw new Error(`${o.model} refusal`);
+    return r.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  } catch (e) {
+    if (!(e instanceof Error && /refusal$/.test(e.message))) {
+      const status = e instanceof Anthropic.APIError ? (e.status ?? 0) : 0;
+      recordAiCall({ feature: o.feature, model: o.model, ok: false, status, ms: Date.now() - t0, error: (e instanceof Error ? e.message : String(e)).slice(0, 160) });
+    }
+    throw e;
+  }
 }
 
 /** ข้อความรวมทุก part ของคำตอบแรก */

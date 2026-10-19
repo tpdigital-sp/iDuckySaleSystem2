@@ -7,7 +7,7 @@ import type { AiFeature } from "@/lib/ai-cost";
  * "งานไหนตั้งโมเดลอะไรอยู่" จนกว่าจะมีคำขอเข้ามา → รวมไว้ที่นี่ แดชบอร์ดอ่านตรงจากตารางนี้
  *
  * 8 ต.ค. 69 ย้ายจาก 2.5 (Google ขึ้นป้าย legacy) มารุ่นปัจจุบัน 3.x — เทียบ regression ชั้นเว็บ 22 เคสแล้ว:
- * - ชั้นเข้าใจคำถาม = **คง 2.5 Flash ไว้ตั้งใจ** (legacy แต่ยังใช้ได้ ราคาเดิม) — ลองบนเว็บจริงซ้ำหลายรอบแล้ว 3.x แย่กว่า:
+ * - (เดิม) ชั้นเข้าใจคำถาม = คง 2.5 Flash ไว้ตั้งใจ — 19 ต.ค. 69 ย้ายเป็น 3.8 Flash แล้ว ดู PRICE_UNDERSTAND_FALLBACK · บันทึกเก่า:
  *   3.5 Flash-Lite จับ "griptok magsafe 30 ชิ้น" เป็น Case Magsafe 2/3 ครั้ง · 3.8 Flash ตอบ "สแตนดี๊ 5cm 30 อัน" เป็นเมนู 3/3
  *   (ไม่บอกราคา) และช้ากว่า ~1-2 วิ · 2.5 Flash ถูกทุกเคส → ย้ายเมื่อ Google ประกาศวันปิด 2.5 แล้วค่อยเทียบรุ่นใหม่อีกที
  * - 3.5 Flash-Lite แทน 2.5 Flash-Lite งานย่อย (วิเคราะห์แชท · เลือกสินค้า · อ่านหน้าสินค้า · โปรไฟล์)
@@ -20,7 +20,7 @@ export const AI_MODEL_BY_FEATURE: Record<Exclude<AiFeature, "n8n_chat" | "n8n_pr
   chat_parse: "gemini-3.5-flash-lite",
   chat_answer: "gemini-3.5-flash-lite",
   chat_price_reply: "gemini-3.5-flash-lite",
-  price_understand: "gemini-2.5-flash",
+  price_understand: "gemini-3.8-flash",
   price_pick: "gemini-3.5-flash-lite",
   price_info: "gemini-3.5-flash-lite",
   kb_ai: "gemini-3.8-flash",
@@ -30,8 +30,13 @@ export const AI_MODEL_BY_FEATURE: Record<Exclude<AiFeature, "n8n_chat" | "n8n_pr
   chat_urgency: "gemini-3.5-flash-lite",
 };
 
-/** โมเดลสำรองของชั้นเข้าใจคำถามราคา เมื่อตัวหลักล้ม/ช้าเกิน */
-export const PRICE_UNDERSTAND_FALLBACK = "gemini-3.5-flash-lite";
+/**
+ * โมเดลสำรองของชั้นเข้าใจคำถามราคา เมื่อตัวหลักล้ม/ช้าเกิน
+ * 19 ต.ค. 69 เจ้าของร้าน "เปลี่ยนมาใช้ Gemini 3.8 Flash และ Claude Sonnet 5.5" (หลังบอทอ่าน "สติกเกอร์ใสฝ้า" ผิดตามประวัติแชท):
+ *   ตัวหลัก 2.5 Flash → 3.8 Flash (เคส 8 ต.ค. ที่ 3.8 เคยพัง "สแตนดี๊ 5cm 30 อัน"/"griptok magsafe" ทดสอบซ้ำแล้วถูกเท่า 2.5 · ช้ากว่า ~0.5–1 วิ)
+ *   สำรอง 3.5 Flash-Lite → Claude Sonnet 5.5 (กุญแจใน Firestore settings/anthropic-api · callClaudeText)
+ */
+export const PRICE_UNDERSTAND_FALLBACK = "claude-sonnet-5-5";
 
 /**
  * โมเดลที่ตั้งไว้ใน n8n (ไม่ได้เรียกจากเว็บ — แก้ใน n8n แล้วต้องมาแก้ตรงนี้ด้วยให้แดชบอร์ดตรง)
