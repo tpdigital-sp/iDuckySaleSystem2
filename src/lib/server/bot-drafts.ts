@@ -347,3 +347,62 @@ export function draftEditableText(payload: unknown): string {
     return "";
   }
 }
+
+/**
+ * 🤖 "ให้บอทร่างตอนนี้" (เจ้าของร้าน 19 ต.ค. 69 "เปิด 📝 ร่างก่อนส่ง หลังจากที่ลูกค้าพิมพ์แชทมาแล้ว อยากให้ chatbot แสดงได้ไหม")
+ * บอทร่างเฉพาะตอนมีข้อความใหม่เข้ามา → ข้อความที่ลูกค้าพิมพ์ไว้ก่อนเปิดสวิตช์ไม่มีร่าง
+ * → เก็บข้อความลูกค้าที่ยังไม่มีใครตอบ (หลังคำตอบร้านล่าสุด) แล้วยิงเข้า webhook บอทเหมือนลูกค้าพิมพ์มาใหม่ พร้อมธง redraft
+ *   n8n (LINE OA Bot): Parse LINE Event พก redraft · Build AI Request ไม่จดข้อความลูกค้าซ้ำ + บังคับร่าง (draftOnly) + ข้ามการพักบอท
+ *   · โหนด HTTP Request (ส่งต่อ line-2track) ส่ง events ว่างเมื่อ body.redraft · ไม่มี replyToken = ส่งเข้า LINE ไม่ได้อยู่แล้ว
+ *   ร่างกลับมาทาง /api/bot/draft ตามปกติ (~15–30 วิ) · กันกดรัว 45 วิ/ห้อง
+ */
+const BOT_WEBHOOK = "https://n8n.iduckybot.com/webhook/line-webhook-chatbot";
+const REDRAFT_GAP_MS = 45_000;
+export type RedraftResult = { ok: true; count: number; text: string } | { ok: false; status: number; error: string };
+
+export async function requestRedraft(db: FirebaseFirestore.Firestore, uid: string, who: string): Promise<RedraftResult> {
+  const ref = db.collection(COL).doc(uid);
+  const room = await ref.get();
+  if (!room.exists) return { ok: false, status: 404, error: "ไม่พบห้องแชทนี้" };
+  const last = msOf(room.get("redraftAt"));
+  if (Number.isFinite(last) && Date.now() - last < REDRAFT_GAP_MS) return { ok: false, status: 429, error: "เพิ่งสั่งให้บอทร่างไป — รอร่างขึ้นสักครู่ (ราว 15–30 วินาที)" };
+  // ไล่จากข้อความล่าสุดย้อนขึ้นไป หยุดที่คำตอบร้าน (แอดมิน/บอท/ระบบ/ร่างที่ยังรอส่ง) — เหลือแต่ข้อความลูกค้าที่ยังไม่ได้ตอบ
+  const snap = await ref.collection("log").orderBy("at", "desc").limit(40).get();
+  const lines: string[] = [];
+  let images = 0;
+  for (const d of snap.docs) {
+    const role = String(d.get("role") ?? "");
+    if (role === "draft") {
+      if (String(d.get("status") ?? "") === "pending" && Date.now() - msOf(d.get("at")) < DRAFT_TTL_MS) return { ok: false, status: 409, error: "ห้องนี้มีร่างรอส่งอยู่แล้ว — ส่งหรือกด \"ไม่ส่ง\" ร่างเดิมก่อน" };
+      continue;
+    }
+    if (role !== "user") break;
+    if (d.get("type") === "image") {
+      images++;
+      continue;
+    }
+    const t = String(d.get("text") ?? "").trim();
+    if (t && !/^\[ลูกค้าส่ง(ไฟล์|สติกเกอร์)\]/.test(t)) lines.unshift(t);
+  }
+  if (!lines.length) return { ok: false, status: 409, error: images ? "ข้อความที่ค้างตอบมีแต่รูป — บอทร่างจากรูปย้อนหลังไม่ได้ พิมพ์ตอบเองได้เลย" : "ไม่มีข้อความลูกค้าที่ยังไม่ได้ตอบ" };
+  const text = lines.join("\n").slice(0, 2000);
+  await ref.set({ redraftAt: new Date(), redraftBy: who }, { merge: true });
+  const id = `redraft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const res = await fetch(BOT_WEBHOOK, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        destination: "",
+        redraft: true,
+        events: [{ type: "message", mode: "active", redraft: true, webhookEventId: id, timestamp: Date.now(), replyToken: "", source: { type: "user", userId: uid }, message: { type: "text", id, text } }],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (e) {
+    await ref.set({ redraftAt: FieldValue.delete() }, { merge: true }).catch(() => {});
+    return { ok: false, status: 502, error: `ส่งให้บอทไม่ได้ (${(e as Error).message}) — ลองใหม่อีกครั้ง` };
+  }
+  return { ok: true, count: lines.length, text };
+}

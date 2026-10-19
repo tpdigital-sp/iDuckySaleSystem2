@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getChatFirestore } from "@/lib/server/line-chat";
-import { sendBotDraft, discardBotDraft } from "@/lib/server/bot-drafts";
+import { sendBotDraft, discardBotDraft, requestRedraft } from "@/lib/server/bot-drafts";
 import { openLearningFromDraft } from "@/lib/server/bot-learning";
 import { inBackground } from "@/lib/server/background";
 import { classifyRoom } from "@/lib/server/chat-urgency";
@@ -16,6 +16,7 @@ export const runtime = "nodejs";
  *   POST { action: "discard", id, logId }       → ทิ้ง ลูกค้าไม่ได้รับ · สิทธิ์ chat.reply
  *   POST { action: "learn", id, logId }         → ไม่ส่ง + เปิดเรื่องในหน้า 🎓 บอทเรียนรู้ ให้แอดมินตอบลูกค้าเองแล้วสอนบอท (14 ต.ค. 69) · สิทธิ์ chat.reply
  *   POST { action: "mode", mode }               → สลับโหมดบอททั้งร้าน "draft" (ร่างให้กดส่ง) / "log-only" (เก็บแชทอย่างเดียว) · สิทธิ์ settings.manage
+ *   POST { action: "redraft", id }              → 🤖 ให้บอทร่างข้อความลูกค้าที่ค้างตอบตอนนี้ (19 ต.ค. 69 · requestRedraft) · สิทธิ์ chat.reply
  *   POST { action: "user", id, on }             → 📝 โหมดร่างรายคน (เจ้าของร้าน 19 ต.ค. 69 "เปิดโหมดร่างกับลูกค้าที่เลือกได้ไหม") · สิทธิ์ settings.manage
  *       เก็บที่ settings/bot-whitelist.draftUserIds — n8n Build AI Request: draftOnly = mode "draft" หรือ uid อยู่ในรายชื่อนี้
  *       (คนในรายชื่อ บอทคิดคำตอบให้แม้ร้านอยู่ log-only แต่เก็บเป็นร่างเสมอ ไม่ส่งถึงลูกค้าเอง)
@@ -62,6 +63,12 @@ export async function POST(req: Request) {
   const gate = await requirePerm("chat.reply");
   if (gate.res) return gate.res;
   const id = String(b.id ?? "").trim();
+  if (b.action === "redraft") {
+    if (!/^U[0-9a-f]{32}$/.test(id)) return NextResponse.json({ error: "รหัสห้องแชทไม่ถูกต้อง" }, { status: 400 });
+    const r = await requestRedraft(db, id, gate.actor.name || gate.actor.username);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    return NextResponse.json({ ok: true, count: r.count, saved: `🤖 ส่งข้อความลูกค้า ${r.count} ข้อความให้บอทร่างแล้ว — ร่างจะขึ้นในห้องราว 15–30 วินาที` });
+  }
   const logId = String(b.logId ?? "").trim();
   if (!/^U[0-9a-f]{32}$/.test(id) || !/^[A-Za-z0-9]{10,40}$/.test(logId)) return NextResponse.json({ error: "ข้อมูลร่างไม่ถูกต้อง" }, { status: 400 });
   const who = gate.actor.name || gate.actor.username;

@@ -8,6 +8,7 @@ import { ago, botApi, Modal, uploadBotFile, uploadBotImage, useToast } from "../
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { BANK_CARD } from "@/lib/bank-card";
 import SavedReplyPicker from "./SavedReplyPicker";
+import RedraftButton from "./RedraftButton";
 import { realignEmojis, type Emoji } from "../saved-replies/shared";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 import type { OaLive } from "@/lib/server/oa-chat-sync";
@@ -1306,6 +1307,10 @@ function Chats() {
               ) : null}
             </div>
 
+            {/* 🤖 ลูกค้าพิมพ์ค้างไว้ก่อนเปิดร่าง → ให้บอทร่างย้อนหลัง (19 ต.ค. 69 · RedraftButton) */}
+            {canReply && detail && (detail.botDraft || settings?.mode === "draft") && thread.length && thread[thread.length - 1].role === "user" ? (
+              <RedraftButton key={detail.id} id={detail.id} toast={toast} />
+            ) : null}
             {canReply ? (
               <Composer id={sel} customerName={detail?.displayName ?? ""} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} dropFile={dropFile} onDropConsumed={() => setDropFile(null)} />
             ) : (
