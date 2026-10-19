@@ -14,6 +14,9 @@ cd /d "%~dp0"
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
 set "PY=.venv\Scripts\python.exe"
+rem PowerShell by full path: some PCs have a broken PATH ("'powershell' is not recognized")
+set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PS%" set "PS=powershell"
 
 if exist "%PY%" goto run
 
@@ -49,7 +52,7 @@ if /i "%~1"=="console" goto console
 
 echo.
 echo [3/3] Auto-start setup + (re)starting in background...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-windows.ps1" -Dir "%~dp0." -Start
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-windows.ps1" -Dir "%~dp0." -Start
 if errorlevel 1 goto startfail
 echo.
 echo Done. cutout-py now runs in the background (no window needed)
@@ -88,7 +91,7 @@ rem Per-user quiet install: no admin rights, no installer clicks. 3.12.10 = last
 echo.
 echo Python 3.12 not found - downloading and installing it now (27 MB, 1-3 minutes). Do not close this window.
 rem $ProgressPreference off: Windows PowerShell 5 progress bar makes Invoke-WebRequest 10x+ slower (looks frozen)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; $f=Join-Path $env:TEMP 'python-3.12.10-amd64.exe'; Write-Host '  downloading...'; Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $f; Write-Host ('  downloaded ' + [math]::Round((Get-Item $f).Length/1MB,1) + ' MB - installing (1-2 minutes, no window will appear)...'); $p=Start-Process -FilePath $f -ArgumentList '/quiet','InstallAllUsers=0','PrependPath=1','Include_launcher=1','InstallLauncherAllUsers=0','Include_test=0' -Wait -PassThru; Write-Host ('  installer finished, code ' + $p.ExitCode); exit $p.ExitCode"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; $f=Join-Path $env:TEMP 'python-3.12.10-amd64.exe'; Write-Host '  downloading...'; Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $f; Write-Host ('  downloaded ' + [math]::Round((Get-Item $f).Length/1MB,1) + ' MB - installing (1-2 minutes, no window will appear)...'); $p=Start-Process -FilePath $f -ArgumentList '/quiet','InstallAllUsers=0','PrependPath=1','Include_launcher=1','InstallLauncherAllUsers=0','Include_test=0' -Wait -PassThru; Write-Host ('  installer finished, code ' + $p.ExitCode); exit $p.ExitCode"
 set "PYNEW=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
 if not exist "%PYNEW%" goto nopython
 echo Python 3.12 installed.

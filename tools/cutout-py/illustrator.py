@@ -168,6 +168,13 @@ try {
 """
 
 
+def _powershell() -> str | None:
+    """PowerShell ของเครื่อง — หาด้วย path เต็มก่อน (บางเครื่อง PATH เสีย: 'powershell' is not recognized · 19 ต.ค. 69)"""
+    import os
+    full = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    return str(full) if full.exists() else (shutil.which("powershell") or shutil.which("pwsh"))
+
+
 def _win_has_illustrator() -> bool:
     """Windows: มี COM ของ Illustrator ลงทะเบียนไว้ไหม (อ่าน registry เฉย ๆ ไม่เปิดโปรแกรม)"""
     try:
@@ -183,7 +190,7 @@ def available() -> bool:
     global _AVAILABLE
     if _AVAILABLE is None:
         if sys.platform == "win32":
-            _AVAILABLE = _win_has_illustrator() and bool(shutil.which("powershell") or shutil.which("pwsh"))
+            _AVAILABLE = _win_has_illustrator() and bool(_powershell())
         elif sys.platform != "darwin" or not shutil.which("osascript"):
             _AVAILABLE = False
         else:
@@ -204,7 +211,7 @@ def _run_jsx(tmp: Path, jsx: str, timeout: int) -> str:
         jsx_path.write_text(jsx, encoding="utf-8-sig")
         ps1 = tmp / "run.ps1"
         ps1.write_text(PS_RUN, encoding="utf-8-sig")
-        exe = shutil.which("powershell") or shutil.which("pwsh")
+        exe = _powershell()
         try:
             r = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                                 "-File", str(ps1), "-jsx", str(jsx_path)],
