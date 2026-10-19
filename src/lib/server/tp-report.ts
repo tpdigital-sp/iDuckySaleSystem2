@@ -108,7 +108,7 @@ function itemSummaryOf(order: Order): string {
  * รายการที่ติ๊ก "ไม่ต้องทำแบบ" (ค่าบริการ/ยอดเพิ่ม) ไม่นับ — ไม่มีอะไรให้ออกแบบ (ดู proofMissing)
  */
 function addedWorkItems(order: Order) {
-  const items = order.items.filter((i) => i.addedAt && proofMissing(i)).map((i) => ({ ...tpItem(i), addedAt: i.addedAt }));
+  const items = order.items.filter((i) => i.addedAt && proofMissing(i, order)).map((i) => ({ ...tpItem(i), addedAt: i.addedAt }));
   /**
    * 🎁 ของแถมที่จำนวนเพิ่มหลังสั่งเพิ่ม (gifts[].qtyBump ยังไม่รับทราบ) = งานใหม่ของกราฟฟิกเหมือนกัน
    * ต้องจัดแผ่น/ทำแบบรองหลังเพิ่ม ไม่งั้นผลิตตามจำนวนเดิม (OD-261006-8507 · 8 ต.ค. 69)

@@ -125,6 +125,7 @@ import {
   arrivalOverdue,
   PROOF_STYLES,
   proofsOf,
+  proofPurged,
   STATUS_STYLES,
   withLog,
   type NeedsPurchaseItem,
@@ -6567,7 +6568,7 @@ export default function AdminOrderDetailPage() {
                             </span>
                           )}
                           <span className="mt-0.5 block text-[10px] leading-tight text-slate-400">
-                            {proofs.length ? `🖼 แบบ ${proofs.length}` : it.noProof ? "ไม่ต้องทำแบบ" : prodSrc ? "ภาพสินค้า · ยังไม่มีแบบ" : "ยังไม่มีแบบ"}
+                            {proofs.length ? `🖼 แบบ ${proofs.length}` : it.noProof ? "ไม่ต้องทำแบบ" : proofPurged(it, order) ? "🧹 รูปแบบถูกล้างแล้ว" : prodSrc ? "ภาพสินค้า · ยังไม่มีแบบ" : "ยังไม่มีแบบ"}
                             {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ลาย ${it.artworkUrls!.length}` : ""}
                           </span>
                         </button>

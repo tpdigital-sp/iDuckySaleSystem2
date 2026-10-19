@@ -988,6 +988,8 @@ export interface Order {
    * เขียนผ่าน POST /api/admin/orders/unship เท่านั้น (PATCH คงค่าในฐานไว้เสมอ) · ดู ReturnedShipment
    */
   returned?: ReturnedShipment[];
+  /** 🧹 เวลาที่ cron cleanup-images ล้างรูปแบบงาน/ลายของใบนี้ (proofs/artworkUrls ถูกเอาออก) — ดู proofPurged */
+  imagesPurgedAt?: string;
   /** 📋 แผนแบ่งส่งที่แอดมินระบุ (รูปไหนส่งก่อน รอบไหน) — ฝ่ายแพ็คทำตาม แก้ไม่ได้ (mergePackFields ไม่รับ) */
   shipPlan?: ShipPlanRound[];
   /** โหมดมัดจำ 50% — ลูกค้าโอนงวดแรกก่อนเริ่มงาน เก็บส่วนที่เหลือให้ครบก่อนพิมพ์เอกสาร/ส่งของ */
@@ -2403,8 +2405,18 @@ export function proofExempt(item: OrderItem): boolean {
  * รายการนี้ "ยังขาดแบบงาน" ที่ต้องมีคนทำ — ใช้แทน !proofsOf(it).length ทุกจอที่นับงานค้าง
  * รายการที่ติ๊กไม่ต้องทำแบบ = ไม่มีแบบก็ไม่ถือว่าขาด (แต่ถ้าแนบภาพมาแล้ว ก็เดินขั้นตอนตรวจแบบตามปกติ)
  */
-export function proofMissing(item: OrderItem): boolean {
-  return !proofsOf(item).length && !proofExempt(item);
+export function proofMissing(item: OrderItem, order?: Pick<Order, "imagesPurgedAt">): boolean {
+  return !proofsOf(item).length && !proofExempt(item) && !(order && proofPurged(item, order));
+}
+
+/**
+ * 🧹 แบบงานรายการนี้ "เคยมีและอนุมัติแล้ว" แต่ไฟล์รูปถูกล้างตามนโยบายเก็บรูป (cron cleanup-images ล้าง proofs: [] ทิ้ง)
+ * ไม่ใช่ "ยังไม่มีแบบ" — ใบที่ปิดงานแล้วถูกเปิดกลับมา (ของตีกลับ/เคลม) ต้องปริ้นใบงานได้ ไม่เด้งเป็นงานค้างกราฟฟิก
+ * (19 ต.ค. 69 · OD-260914-7626 ล้างรูป 16 ต.ค. → ตีกลับ "งานมีรอยเปื้อน" → ปริ้นไม่ได้ "ยังไม่มีแบบ")
+ * ลูกค้าขอแก้/ยังไม่อนุมัติ = ไม่นับ (ต้องอัปแบบใหม่ตามปกติ)
+ */
+export function proofPurged(item: OrderItem, order: Pick<Order, "imagesPurgedAt">): boolean {
+  return !!order.imagesPurgedAt && !proofsOf(item).length && item.proofStatus === "อนุมัติ";
 }
 
 /**
@@ -2553,7 +2565,7 @@ export function proofBlockers(order: Order): ProofBlocker[] {
   order.items.forEach((it, index) => {
     const has = proofsOf(it).length > 0;
     if (!has) {
-      if (proofExempt(it) || isFeeLine(it)) return;
+      if (proofExempt(it) || isFeeLine(it) || proofPurged(it, order)) return;
       out.push({ index, name: it.name, qty: it.qty, why: "missing" });
     } else if (it.proofStatus !== "อนุมัติ") {
       out.push({ index, name: it.name, qty: it.qty, why: it.proofStatus === "ขอแก้ไข" ? "edit" : "waiting" });
@@ -2643,7 +2655,7 @@ export function allSelfDesignedApproved(order: Order): boolean {
 export function graphicTodoItems(order: Order): OrderItem[] {
   return order.items.filter((it) => {
     if (isSelfDesigned(it)) return false; // ลูกค้าทำมาแล้ว กราฟฟิกไม่ต้องแตะ
-    return proofMissing(it) || it.proofStatus === "ขอแก้ไข";
+    return proofMissing(it, order) || it.proofStatus === "ขอแก้ไข";
   });
 }
 

@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, TAX_INVOICE_LOG_EMAIL, TAX_INVOICE_LOG_BOX, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, TAX_INVOICE_LOG_EMAIL, TAX_INVOICE_LOG_BOX, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofPurged, proofUnit, withLog, type Order } from "@/lib/admin-data";
 import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -1006,6 +1006,8 @@ function OrderDocs({
                           </div>
                         ) : it.noProof ? (
                           <p className="text-xs font-semibold text-slate-500">— ไม่ต้องทำแบบ (ยอดเพิ่ม/ค่าบริการ)</p>
+                        ) : proofPurged(it, order) ? (
+                          <p className="text-xs font-semibold text-slate-600">✓ แบบอนุมัติแล้ว — รูปบนเว็บถูกล้างตามนโยบายเก็บรูป ใช้ไฟล์งานในโฟลเดอร์</p>
                         ) : (
                           <p className="text-xs font-semibold text-rose-600">⚠️ ยังไม่มีแบบงาน</p>
                         )}

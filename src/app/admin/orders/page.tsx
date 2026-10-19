@@ -96,7 +96,7 @@ const picTitle = (covers: { url: string; name: string }[]) => {
 };
 const dayOf = (d: string) => d.split(" ").slice(0, 3).join(" ");
 /** งานแบบที่ยังไม่จบ (ยังไม่มีแบบ หรือ ลูกค้าขอแก้) */
-const openProofs = (o: Order) => o.items.filter((i) => proofMissing(i) || i.proofStatus === "ขอแก้ไข").length;
+const openProofs = (o: Order) => o.items.filter((i) => proofMissing(i, o) || i.proofStatus === "ขอแก้ไข").length;
 /**
  * ออเดอร์ที่ยังเก็บเงินไม่ครบ — ต้องตามเก็บก่อนส่งของ
  * ครอบทั้งออเดอร์มัดจำ (ยังไม่ปิดงวดหลัง) และใบธรรมดาที่ยอดโตขึ้นหลังลูกค้าโอนแล้ว
