@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import { Empty, SearchBox } from "@/components/admin/ui";
-import { useCan } from "@/lib/perm-context";
+import { useCan, useIsAdministrator } from "@/lib/perm-context";
 import { ago, botApi, Modal, uploadBotFile, uploadBotImage, useToast } from "../bot-ui";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { BANK_CARD } from "@/lib/bank-card";
@@ -485,6 +485,23 @@ function Chats() {
     [sel, afterDraft, quota, toast],
   );
   // 🎓 14 ต.ค. 69 เจ้าของร้าน: "ปุ่มทิ้งขอเป็นการเข้าสู่เรียนรู้ เพื่อให้แอดมินตอบ" → ไม่ส่งร่าง + เปิดเรื่องในหน้า บอทเรียนรู้ แล้วแอดมินพิมพ์ตอบลูกค้าเองด้านล่าง
+  // ✕ ลบร่างทิ้งเฉย ๆ — เฉพาะเจ้าของร้าน (Administrator · เซิร์ฟเวอร์เช็คซ้ำ) · 19 ต.ค. 69 "เพิ่มกากบาทกดลบให้หน่อย เห็นแค่สิทธิ์เจ้าของก่อน"
+  const isOwner = useIsAdministrator();
+  const deleteDraft = useCallback(
+    async (m: LogEntry) => {
+      if (!sel || !m.id) return;
+      const ok = await confirm({ icon: "🗑", title: "ลบร่างนี้?", detail: "• ลูกค้าจะไม่ได้รับข้อความนี้\n• ไม่ส่งไปหน้า 🎓 บอทเรียนรู้", confirmLabel: "ลบร่าง", danger: true });
+      if (ok !== true) return;
+      try {
+        const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "delete", id: sel, logId: m.id });
+        afterDraft(m.id, null);
+        toast(d.saved || "ลบร่างแล้ว");
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      }
+    },
+    [sel, afterDraft, toast, confirm],
+  );
   const discardDraft = useCallback(
     async (m: LogEntry) => {
       if (!sel || !m.id) return;
@@ -1180,7 +1197,7 @@ function Chats() {
                     const answered = thread.slice(i + 1).some((x) => x.role === "admin" || x.role === "assistant");
                     const stale = m.status === "expired" || (m.status === "pending" && (answered || !isDraftLive(m.at, detail?.lastAdminAt)));
                     return latest && !stale ? (
-                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
+                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onDelete={isOwner ? () => void deleteDraft(m) : undefined} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
                     ) : (
                       <div key={m.id || i} className="mb-2 flex justify-end">
                         <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
@@ -1801,7 +1818,7 @@ function FilterMenu({
  * 📝 การ์ดร่างคำตอบของบอท (โหมดร่าง 13 ต.ค. 69 — เจ้าของร้าน "อยากเป็นคนกดส่งเอง กลัวบอทให้ข้อมูลผิด")
  * แก้ข้อความได้ · Enter = ส่ง (Shift+Enter ขึ้นบรรทัด แบบช่องพิมพ์ด้านล่าง) · การ์ดสินค้า/รูปบัญชีในร่างส่งตามไปด้วย
  */
-function DraftCard({ entry, canSend, onSend, onDiscard, onZoom }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void; onZoom: (url: string) => void }) {
+function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onZoom }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void; onDelete?: () => void; onZoom: (url: string) => void }) {
   const [text, setText] = useState(entry.draftText ?? "");
   const [busy, setBusy] = useState(false);
   const extras = entry.text
@@ -1822,6 +1839,19 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onZoom }: { entry: LogEn
         <div className="mb-1.5 flex items-center gap-2 text-[12px] font-bold" style={{ color: "#8A5A00" }}>
           📝 ร่างจากบอท · ลูกค้ายังไม่ได้รับ
           <span className="ml-auto font-normal" style={{ color: "#A07A2C" }}>{fmtTime(entry.at)}</span>
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={busy}
+              title="ลบร่างนี้ทิ้ง (ไม่ส่ง · ไม่ส่งไปบอทเรียนรู้) — เฉพาะเจ้าของร้าน"
+              aria-label="ลบร่างนี้"
+              className="-my-1.5 -mr-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[15px] transition hover:bg-black/10 disabled:opacity-40"
+              style={{ color: "var(--dk-yolk-ink)" }}
+            >
+              ✕
+            </button>
+          ) : null}
         </div>
         <textarea
           value={text}

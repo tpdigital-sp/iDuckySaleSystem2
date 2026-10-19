@@ -7,6 +7,7 @@ import { inBackground } from "@/lib/server/background";
 import { classifyRoom } from "@/lib/server/chat-urgency";
 import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
 import { FieldValue } from "firebase-admin/firestore";
+import { ROLE_ADMINISTRATOR } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ export const runtime = "nodejs";
  *   POST { action: "discard", id, logId }       → ทิ้ง ลูกค้าไม่ได้รับ · สิทธิ์ chat.reply
  *   POST { action: "learn", id, logId }         → ไม่ส่ง + เปิดเรื่องในหน้า 🎓 บอทเรียนรู้ ให้แอดมินตอบลูกค้าเองแล้วสอนบอท (14 ต.ค. 69) · สิทธิ์ chat.reply
  *   POST { action: "mode", mode }               → สลับโหมดบอททั้งร้าน "draft" (ร่างให้กดส่ง) / "log-only" (เก็บแชทอย่างเดียว) · สิทธิ์ settings.manage
+ *   POST { action: "delete", id, logId }        → ✕ ลบร่างทิ้งเฉย ๆ (ไม่ส่ง · ไม่เปิดเรื่องบอทเรียนรู้) · เฉพาะเจ้าของร้าน (Administrator) · 19 ต.ค. 69
  *   POST { action: "redraft", id }              → 🤖 ให้บอทร่างข้อความลูกค้าที่ค้างตอบตอนนี้ (19 ต.ค. 69 · requestRedraft) · สิทธิ์ chat.reply
  *   POST { action: "user", id, on }             → 📝 โหมดร่างรายคน (เจ้าของร้าน 19 ต.ค. 69 "เปิดโหมดร่างกับลูกค้าที่เลือกได้ไหม") · สิทธิ์ settings.manage
  *       เก็บที่ settings/bot-whitelist.draftUserIds — n8n Build AI Request: draftOnly = mode "draft" หรือ uid อยู่ในรายชื่อนี้
@@ -73,6 +75,13 @@ export async function POST(req: Request) {
   if (!/^U[0-9a-f]{32}$/.test(id) || !/^[A-Za-z0-9]{10,40}$/.test(logId)) return NextResponse.json({ error: "ข้อมูลร่างไม่ถูกต้อง" }, { status: 400 });
   const who = gate.actor.name || gate.actor.username;
 
+  if (b.action === "delete") {
+    // ✕ เจ้าของร้าน 19 ต.ค. 69 "เพิ่มกากบาทกดลบให้หน่อย เห็นแค่สิทธิ์เจ้าของก่อน" — ร่างผิด/ไร้สาระ ลบทิ้งโดยไม่ต้องสอนบอท
+    if (gate.actor.role !== ROLE_ADMINISTRATOR) return NextResponse.json({ error: "ลบร่างได้เฉพาะเจ้าของร้าน" }, { status: 403 });
+    const r = await discardBotDraft(db, id, logId, who);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    return NextResponse.json({ ok: true, saved: "ลบร่างแล้ว — ลูกค้าไม่ได้รับข้อความนี้" });
+  }
   if (b.action === "discard" || b.action === "learn") {
     const r = await discardBotDraft(db, id, logId, who);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
