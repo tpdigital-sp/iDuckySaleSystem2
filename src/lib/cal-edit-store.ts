@@ -61,11 +61,11 @@ export function loadCalEdit(lineKey: string): SavedCalDesign[] | null {
 }
 
 /**
- * ดึงรูปต้นฉบับกลับมาเป็นไฟล์ · ทุกรูปหาย = null (ใช้แค่ไฟล์ที่ประกอบแล้ว)
+ * ดึงรูปต้นฉบับกลับมาเป็นไฟล์ · ทุกรูปหาย = null (ใช้แค่ไฟล์ที่ประกอบแล้ว) เว้นแต่ keepAllMissing
  * หายบางรูป (อัปไม่ขึ้นตอนสั่ง เช่น ติดโควตาอัปโหลด) → ใส่รูปแทน "รูปหาย" เฉพาะช่องนั้น ที่เหลือเปิดแบบเดิมได้
  * (เดิมหายรูปเดียวทิ้งทั้งแบบ — OD-261015-7971 ต้นฉบับขึ้น 5/14 เปิดแก้ไม่ได้เลย · 15 ต.ค. 69)
  */
-export async function fetchSources(urls: string[]): Promise<File[] | null> {
+export async function fetchSources(urls: string[], keepAllMissing = false): Promise<File[] | null> {
   const got = await Promise.all(
     urls.map(async (u, i) => {
       try {
@@ -81,7 +81,8 @@ export async function fetchSources(urls: string[]): Promise<File[] | null> {
       }
     }),
   );
-  if (!got.some(Boolean)) return null;
+  // keepAllMissing: หลังบ้านเปิดดูแบบที่ต้นฉบับหายทุกรูป — ได้ภาพ "รูปหาย" ครบทุกช่อง (เห็นเลย์เอาต์/ข้อความ · ใส่รูปจริงแทนได้)
+  if (!got.some(Boolean) && !keepAllMissing) return null;
   return Promise.all(got.map(async (f, i) => f ?? (await missingPhoto(i))));
 }
 
@@ -98,6 +99,39 @@ export function rememberSource(f: File, url: string) {
 export function knownSourceUrl(f: File): string | undefined {
   return known.get(srcKey(f));
 }
+/**
+ * 🖼 รูปต้นฉบับหาย (อัปไม่ขึ้นตอนลูกค้าออกแบบ) → ใช้ "ไฟล์พร้อมพิมพ์" ของแบบนั้นแทนรูป (OD-261019-1860 · 19 ต.ค. 69)
+ * ไฟล์พร้อมพิมพ์ = ผืนงานทั้งหน้า (รวมตัดตก) 300 DPI พิกัดเดียวกับจอ → วางเต็มผืน (กึ่งกลาง · กว้าง×สูงเท่ากรอบ) ได้ภาพเดิมทุกพิกเซล
+ * ใช้ได้เฉพาะแบบที่ "ไฟล์พร้อมพิมพ์ = รูปนั้นล้วน ๆ": หน้าเดียว (ไม่มีหน้าหลัง/หน้าเดือน) · รูปช่องหลักรูปเดียว · ไม่มีข้อความ/ชิ้นส่วน
+ * (มีข้อความ = ข้อความถูกวาดซ้ำทับของเดิม · หลายหน้า = หน้าอื่นไม่มีไฟล์ให้ยืม) → ไม่เข้าเงื่อนไขคืน null (ยังเป็นช่อง "รูปหาย")
+ * ข้อจำกัด: ขยับ/ครอปรูปเกินกรอบเดิมไม่ได้ (ส่วนที่ล้นกรอบไม่มีในไฟล์พร้อมพิมพ์)
+ */
+export async function standInFromRender(d: SavedCalDesign, files: File[]): Promise<{ files: File[]; design: CalDesign } | null> {
+  if (d.calBackFiles?.length || d.design.text || d.design.elements?.length || !d.artUrl) return null;
+  const used = Object.entries(d.design.photos).filter(([, o]) => o.src >= 0);
+  if (used.length !== 1) return null;
+  const [key, o] = used[0];
+  if (!files[o.src] || !isMissingPhoto(files[o.src])) return null;
+  const m = /กรอบ ([\d.]+)×([\d.]+)mm/.exec(d.spec);
+  const W = Number(m?.[1]);
+  const H = Number(m?.[2]);
+  if (!(W > 0 && H > 0)) return null;
+  try {
+    const r = await fetch(d.artUrl);
+    if (!r.ok) return null;
+    const b = await r.blob();
+    const f = new File([b], `ไฟล์พร้อมพิมพ์แทนต้นฉบับ-${o.src + 1}.jpg`, { type: b.type || "image/jpeg" });
+    rememberSource(f, d.artUrl);
+    return {
+      files: files.map((x, i) => (i === o.src ? f : x)),
+      // แต่งรูป (กลับด้าน/ความทึบ/เอฟเฟกต์/ขอบ) อยู่ในไฟล์พร้อมพิมพ์แล้ว — ไม่ใส่ซ้ำ
+      design: { ...d.design, photos: { ...d.design.photos, [key]: { src: o.src, pl: { cxMm: W / 2, cyMm: H / 2, wMm: W, hMm: H, rotDeg: 0 } } } },
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** รูปแทน "รูปหาย" ที่ระบบใส่ให้ — ไม่ต้องอัปขึ้นเซิร์ฟเวอร์ (คงเป็นช่องว่างให้รู้ว่าต้องใส่รูปใหม่) */
 export function isMissingPhoto(f: File): boolean {
   return f.name.startsWith(MISSING_PREFIX);

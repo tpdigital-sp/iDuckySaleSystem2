@@ -83,7 +83,10 @@ function selfDesignedProof(
   const specs = (sel[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").filter(Boolean);
   if (!specs.length || specs.length !== artworkUrls.length) return {};
   const proofs: Proof[] = artworkUrls.map((url, i) => {
-    const qty = Number(specs[i]?.match(/×\s*(\d+)\s*ชิ้น/)?.[1]);
+    // จำนวน "ชิ้น" ของลายนี้ — ขายเป็นแผ่น/เซ็ต: "× 30 แผ่น A3 (120 ชิ้น)" ใช้เลขในวงเล็บ (เดิมได้ 30 = นับแผ่นเป็นชิ้น · OD-261019-1860)
+    //   ขายเป็นชิ้น: "× 30 ชิ้น" เหมือนเดิม
+    const head = /^ลายที่ \d+ × [^—]*/.exec(specs[i] ?? "")?.[0] ?? "";
+    const qty = Number(/\((\d+) [^)]*\)/.exec(head)?.[1] ?? specs[i]?.match(/×\s*(\d+)\s*ชิ้น/)?.[1]);
     return {
       url,
       at,

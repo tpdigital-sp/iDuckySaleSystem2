@@ -440,7 +440,21 @@ function printFilesOf(it: OrderItem, orderId: string, itemIndex: number) {
       name: `${orderId}-item${itemIndex + 1}-ลาย${n + 1}-พร้อมพิมพ์.ai`,
     };
   });
-  return { arts, specs, matched, ready, isCal, raw: arts.filter((u) => !isReady(u)) };
+  /**
+   * 📑 แบบละหลายหน้า (ปฏิทิน ปก+12 เดือน) = พับไฟล์ทีละหน้าเก็บ · แบบละหน้าเดียว (โปสการ์ด/การ์ด) ไฟล์พร้อมพิมพ์คือของที่ต้องใช้ = กางไว้
+   * เดิมพับทุกงานจอออกแบบ → โปสการ์ด 2 ลายเห็นแค่ลายแรกเป็นภาพตัวอย่าง ลายที่ 2 + ชื่อไฟล์หายไปในกล่องซ่อน (OD-261019-1860 · 19 ต.ค. 69)
+   */
+  const multiPage = calPages.some((n) => n > 1);
+  /**
+   * 🖼 แบบจากจอออกแบบที่ "ไม่มีรูปต้นฉบับ" (อัปไม่ขึ้นตอนลูกค้าออกแบบ — สเปคไม่มี " · ต้นฉบับ:") = ลำดับลาย (เริ่ม 1)
+   * ⚠️ ต้นฉบับหายบางรูป (มี ต้นฉบับ: แต่ไม่ครบ) ดูจากสเปคไม่ออก — จอออกแบบใส่ภาพ "รูปหาย" + ปุ่ม 🔁 ไม่ทำไฟล์ทับให้
+   * ไฟล์พร้อมพิมพ์ใช้ผลิตได้ แต่เปิดแก้/ทำ .ai ใหม่ไม่ได้
+   */
+  // ใช้รูปจริง (" · รูป N ไฟล์" N > 0) แต่ไม่มีต้นฉบับ — แบบตัวอักษรล้วน (รูป 0 ไฟล์) ไม่นับ
+  const noSource = specs.flatMap((sp, n) =>
+    calEditUrlOf(sp) && Number(/ · รูป (\d+) ไฟล์/.exec(sp)?.[1] ?? 0) > 0 && !/ต้นฉบับ:\s*https?:/.test(sp) ? [n + 1] : [],
+  );
+  return { arts, specs, matched, ready, isCal, multiPage, noSource, raw: arts.filter((u) => !isReady(u)) };
 }
 
 /**
@@ -7219,7 +7233,7 @@ export default function AdminOrderDetailPage() {
                         จับคู่กับจำนวนลายได้พอดี = ภาพพร้อมพิมพ์ทั้งชุด (ออเดอร์ที่สร้างหลังแก้บั๊ครูปซ้ำ)
                       */}
                       {(() => {
-                        const { arts, specs, matched, ready, raw, isCal } = printFilesOf(it, order.id, i);
+                        const { arts, specs, matched, ready, raw, isCal, multiPage, noSource } = printFilesOf(it, order.id, i);
                         if (!arts.length) return null;
                         return (
                           <div className="mt-2 space-y-2">
@@ -7245,6 +7259,7 @@ export default function AdminOrderDetailPage() {
                                */
                               const flat = specs.some((sp) => isFlatCalAi(calAiUrlOf(sp)));
                               const noAi = !specs.some((sp) => calAiUrlOf(sp));
+                              // ต้นฉบับหาย: แบบรูปล้วนหน้าเดียว จอยืมไฟล์พร้อมพิมพ์แทนรูป (standInFromRender) ทำ .ai ได้ · แบบอื่นจอขึ้นช่อง "รูปหาย" แล้วหยุดเอง
                               const canRemake = mayDesign && specs.some((sp) => calEditUrlOf(sp)) && !!productOfItem(it.productId);
                               if (!canRemake) return null;
                               // ไฟล์เก่าก่อน 16 ต.ค. 69 ชื่อเก็บไม่มี -pdf → ดูจากชื่อไม่ออก · ปุ่มจึงมีเสมอ (เปิดใน Illustrator เห็น Layer 1 เดียว = กดทำใหม่)
@@ -7319,6 +7334,15 @@ export default function AdminOrderDetailPage() {
                                 </div>
                               )}
 
+                            {/* 🖼 รูปต้นฉบับอัปไม่ขึ้นตอนลูกค้าออกแบบ (ใหญ่เกิน 15MB/ชนิดไฟล์ที่ระบบไม่รับ — แก้ฝั่งจอแล้ว 19 ต.ค. 69 · OD-261019-1860) */}
+                            {noSource.length > 0 && (
+                              <p className="rounded-lg bg-rose-50 px-2 py-1.5 text-[11px] font-semibold leading-snug text-rose-900 ring-1 ring-rose-200">
+                                ⚠️ ไม่มีรูปต้นฉบับของ{specs.length > 1 ? `ลายที่ ${noSource.join(", ")}` : "แบบนี้"} — ไฟล์รูปของลูกค้าอัปไม่ขึ้นตอนออกแบบบนเว็บ
+                                (ไฟล์ใหญ่เกิน 15MB/ชนิดไฟล์ที่ระบบไม่รับ — ระบบย่อให้เองแล้วตั้งแต่ 19 ต.ค. 69) · ไฟล์พร้อมพิมพ์ด้านล่าง (300 DPI) ใช้ผลิตได้
+                                · เปิดแบบ: แบบรูปล้วนหน้าเดียว ระบบใช้ไฟล์พร้อมพิมพ์แทนรูป (ดู/ทำ .ai ได้ แต่ขยับรูปเกินกรอบเดิมไม่ได้) · แบบมีข้อความ/หลายหน้า ช่องรูปเป็นสีเทา ต้องขอรูปจากลูกค้ามาใส่
+                              </p>
+                            )}
+
                             {/* ✏️ เปิดแบบที่ลูกค้าทำบนเว็บกลับมาแก้ในจอสร้างปฏิทิน (ออเดอร์ตั้งแต่ 15 ต.ค. 69 · ของเก่าไม่มีลิงก์แบบ) */}
                             {mayDesign && specs.some((sp) => calEditUrlOf(sp)) && productOfItem(it.productId) && (
                               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-2 py-1.5 ring-1 ring-sky-200">
@@ -7328,10 +7352,12 @@ export default function AdminOrderDetailPage() {
                                   className="rounded-full bg-sky-600 px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-sky-700"
                                   title="เปิดหน้าสินค้า + จอออกแบบ พร้อมแบบที่ลูกค้าทำไว้ (รูป · เลย์เอาต์ · ข้อความ)"
                                 >
-                                  ✏️ เปิดแบบนี้ในจอออกแบบ
+                                  {noSource.length ? "👁 ดูแบบที่ลูกค้าออกแบบบนเว็บ" : "✏️ เปิดแบบนี้ในจอออกแบบ"}
                                 </button>
                                 <span className="text-[10.5px] font-semibold leading-snug text-sky-900">
-                                  แก้ในจอแล้วกด 💾 บันทึกกลับเข้า {order.id} — เปลี่ยนเฉพาะไฟล์แบบ ยอดเงินไม่เปลี่ยน
+                                  {noSource.length
+                                    ? "เปิดดูแบบที่ลูกค้าทำ (รูปมาจากไฟล์พร้อมพิมพ์ เพราะต้นฉบับหาย) · ช่องที่ยังเป็นสีเทา \"รูปหาย\" ต้องใส่รูปจริงก่อนกด 💾"
+                                    : `แก้ในจอแล้วกด 💾 บันทึกกลับเข้า ${order.id} — เปลี่ยนเฉพาะไฟล์แบบ ยอดเงินไม่เปลี่ยน`}
                                 </span>
                               </div>
                             )}
@@ -7376,7 +7402,7 @@ export default function AdminOrderDetailPage() {
                             {/* ── ไฟล์พร้อมพิมพ์ — แสดงเป็นรายการพร้อมชื่อไฟล์ ── */}
                             {ready.length > 0 && (
                               <CalPagesFold
-                                isCal={isCal}
+                                isCal={multiPage}
                                 n={ready.length}
                                 cover={ready[0]?.u}
                                 onOpen={() => ready[0] && setLightbox({ src: ready[0].u, alt: `${it.name} ภาพตัวอย่าง`, caption: it.name })}

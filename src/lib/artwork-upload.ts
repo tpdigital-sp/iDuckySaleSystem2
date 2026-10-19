@@ -119,12 +119,68 @@ export type UploadBatchOpts = {
   pre?: boolean;
   /** เรียกทันทีที่ไฟล์ลำดับ i เสร็จ (สำเร็จ = url · พัง = Error) — ใช้โชว์ความคืบหน้า/ปล่อยไฟล์ที่เสร็จก่อน */
   onOne?: (i: number, r: string | Error) => void;
+  /** 🗜 รูปต้นฉบับของจอออกแบบ — ใหญ่เกินเพดาน/ชนิดที่ระบบไม่รับ ย่อ/แปลงให้ก่อนอัป (fitArtworkSource) */
+  fit?: boolean;
 };
+
+/**
+ * 🗜 รูปต้นฉบับที่ลูกค้าใส่ลงจอออกแบบ แต่ระบบไม่รับ (ใหญ่เกิน 15MB · HEIC/AVIF/GIF ที่เบราว์เซอร์เปิดได้)
+ * → แปลงเป็นไฟล์ที่อัปได้ก่อน (เดิมตั๋วอัปถูกปฏิเสธเงียบ ๆ ทุกรอบ → แบบไม่มีต้นฉบับ เปิดแก้/ทำ .ai ใหม่ไม่ได้
+ *   OD-261019-1860 โปสการ์ด ลูกค้าใช้ PNG ภาพวาดใหญ่ · ออกแบบ 7 รอบ ต้นฉบับว่างทุกรอบ · 19 ต.ค. 69)
+ * ไฟล์พิมพ์ประกอบจากรูปเต็มในเครื่องไปแล้ว ต้นฉบับใช้เปิดแบบกลับมาแก้ → คงความละเอียดเดิม (เพดานพื้นที่ canvas มือถือ ~16MP)
+ * PNG (อาจมีพื้นใส — ไดคัทใช้ขอบใส) → WEBP ถ้าเบราว์เซอร์ทำได้ ไม่งั้นย่อ PNG · อื่น ๆ → JPEG · แปลงไม่ได้ = คืนไฟล์เดิม
+ */
+export async function fitArtworkSource(f: File): Promise<File> {
+  const okType = /^image\/(jpeg|png|webp)$/i.test(f.type);
+  if (okType && f.size <= ARTWORK_MAX_BYTES) return f;
+  if (typeof createImageBitmap !== "function" || typeof document === "undefined") return f;
+  let bm: ImageBitmap;
+  try {
+    bm = await createImageBitmap(f);
+  } catch {
+    return f;
+  }
+  try {
+    const alpha = /png|webp|gif|avif|heic|heif/i.test(f.type);
+    const base = f.name.replace(/\.[^.]+$/, "") || "รูปต้นฉบับ";
+    const encode = (scale: number, type: string, q: number) =>
+      new Promise<Blob | null>((res) => {
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(bm.width * scale));
+        c.height = Math.max(1, Math.round(bm.height * scale));
+        const g = c.getContext("2d");
+        if (!g) return res(null);
+        if (type === "image/jpeg") {
+          g.fillStyle = "#ffffff";
+          g.fillRect(0, 0, c.width, c.height);
+        }
+        g.drawImage(bm, 0, 0, c.width, c.height);
+        c.toBlob((b) => res(b), type, q);
+      });
+    let scale = Math.min(1, Math.sqrt(16_000_000 / (bm.width * bm.height)));
+    for (let k = 0; k < 6; k++) {
+      const tries: [string, number][] = alpha ? [["image/webp", 0.92], ["image/png", 1]] : [["image/jpeg", 0.92], ["image/jpeg", 0.85]];
+      for (const [type, q] of tries) {
+        const b = await encode(scale, type, q);
+        // Safari บางรุ่น toBlob("image/webp") ได้ PNG กลับมา — ใช้ชนิดจริงของ blob
+        if (b && b.size <= ARTWORK_MAX_BYTES && /^image\/(jpeg|png|webp)$/.test(b.type)) {
+          const ext = b.type === "image/webp" ? "webp" : b.type === "image/png" ? "png" : "jpg";
+          return new File([b], `${base}.${ext}`, { type: b.type });
+        }
+      }
+      scale *= 0.8;
+    }
+    return f;
+  } finally {
+    bm.close();
+  }
+}
 
 /** แบบเดียวกับ uploadArtworkFiles แต่ไฟล์ที่พังไม่ล้มทั้งชุด — ช่องนั้นเป็น Error (รูปต้นฉบับ: อัปไม่ขึ้นก็ยังสั่งได้) */
 export async function uploadArtworkFilesSettled(files: File[], opts: number | UploadBatchOpts = 6): Promise<(string | Error)[]> {
   if (!files.length) return [];
   const o: UploadBatchOpts = typeof opts === "number" ? { parallel: opts } : opts;
+  if (o.fit) files = await Promise.all(files.map(fitArtworkSource));
   const parallel = o.parallel ?? 6;
   let tickets: (SignResult & { ok?: boolean })[] = [];
   const sb = getSupabase();

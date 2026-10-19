@@ -180,6 +180,7 @@ import {
   loadCalEdit,
   rememberSource,
   saveCalEdit,
+  standInFromRender,
   uploadCalDesign,
   type SavedCalDesign,
 } from "@/lib/cal-edit-store";
@@ -912,6 +913,9 @@ export default function ProductDetail({
   const [editIndex, setEditIndex] = useState<number | null>(null);
   /** 🗓 เปิดจอสร้างปฏิทินโฟโต้การ์ดอยู่ไหม (สินค้าที่ตั้ง calendarStudio) */
   const [calOpen, setCalOpen] = useState(false);
+  /** 🖼❌ หลังบ้านกดเปิดแบบ (&studio=1) แต่ไม่มีสถานะแบบ (ต้นฉบับหาย) — กล่องบอกเหตุ + ทางไปต่อ แทน window.alert */
+  const [noSource, setNoSource] = useState<{ head: string; artUrl: string; aiUrl?: string; pdfUrl?: string; orderId: string | null } | null>(null);
+  const [noSourceCopied, setNoSourceCopied] = useState(false);
   /** 🖼 รูปตั้งต้นในคลังของจอสร้างปฏิทิน (หลังบ้านออกแบบให้รายการที่ลูกค้าแนบรูปมา) */
   const [calSeed, setCalSeed] = useState<File[]>([]);
   // กล่อง "แนบลายของคุณ" กางไว้ตั้งแต่แรก — ลูกค้าเห็นช่องอัปโหลดทันที ไม่ต้องเดาว่าต้องกดเปิด
@@ -1772,15 +1776,31 @@ export default function ProductDetail({
           : (await Promise.all(editUrls.map(fetchCalDesign)))
               .map((d, i) => {
                 // จำนวนต่อลายจริงอยู่ในสเปค ("ลายที่ 2 × 3 ชิ้น — …") — ไฟล์แบบจดไว้ตอนกดใช้แบบนี้ (ยังเป็น 1)
-                const q = Number(/^ลายที่ \d+ × (\d+) ชิ้น/.exec(editSpecs[i])?.[1] ?? 0);
+                // "× 30 ชิ้น" (ขายเป็นชิ้น) หรือ "× 30 แผ่น A3 (120 ชิ้น)" (ขายเป็นแผ่น) — ตัวเลขแรก = หน่วยที่สั่งเสมอ
+                const q = Number(/^ลายที่ \d+ × (\d+) /.exec(editSpecs[i])?.[1] ?? 0);
                 return d && q ? { ...d, qty: q } : d;
               })
               .filter((d): d is SavedCalDesign => !!d);
         if (!savedCal.length || (!savedLocal?.length && savedCal.length !== editUrls.length)) return;
         const restored = [];
+        // ✏️ หลังบ้านเปิดแบบ (&studio=1) = ต้นฉบับหายทุกรูปก็เปิดได้ ช่องรูปเป็นภาพเทา "รูปหาย" (ดูเลย์เอาต์/ใส่รูปที่ขอจากลูกค้า)
+        //    ลูกค้าแก้จากตะกร้า = ไม่เปิดจอ (กันพิมพ์ภาพเทาออกไป) แค่คืนเป็นแบบพร้อมผลิตด้านล่าง
+        const adminOpen = new URLSearchParams(window.location.search).get("studio") === "1";
         for (const d of savedCal) {
-          const files = d.sourceUrls.length ? await fetchSources(d.sourceUrls) : [];
-          if (!files) continue; // รูปต้นฉบับหาย — ใช้ไฟล์ที่ประกอบแล้วอย่างเดียว (แนบไว้ใน artFiles แล้ว)
+          let files = d.sourceUrls.length ? await fetchSources(d.sourceUrls, true) : [];
+          let design = d.design;
+          // 🖼 ต้นฉบับหาย → ยืมไฟล์พร้อมพิมพ์ของแบบนี้มาเป็นรูป (แบบหน้าเดียวรูปล้วน) เห็นภาพจริงแทนช่องเทา
+          if (files?.some(isMissingPhoto)) {
+            const s = await standInFromRender(d, files);
+            if (s) ({ files, design } = s);
+          }
+          // ลูกค้าแก้จากตะกร้า + ยังหายหมดทุกรูป = ไม่ให้เปิดจอ (กันพิมพ์ภาพเทาออกไป) · หลังบ้านเปิดได้ (ดูเลย์เอาต์/ใส่รูปแทน)
+          if (!adminOpen && files?.length && files.every(isMissingPhoto)) files = null;
+          /**
+           * รูปต้นฉบับหายทุกรูป (อัปไม่ขึ้นตอนออกแบบ) → ยังคืนลายนี้กลับเป็น "แบบพร้อมผลิต" ด้วยไฟล์ที่ประกอบแล้ว แต่ไม่มี calState (เปิดแก้ในจอไม่ได้)
+           * เดิม `continue` ทิ้งทั้งแบบ → placed ว่าง → หน้าเข้าโหมด "✓ แนบไฟล์แล้ว" โชว์หน้าที่ประกอบแล้วเป็นไฟล์ลูกค้าแนบ
+           * ลูกค้าแก้จำนวนต่อลายตรงนั้น (100/100) แต่สเปคตำแหน่งลายเดิม (30/30) ถูกหิ้วติดไปด้วย → ใบงานขัดกันเอง (OD-261019-1860 · 19 ต.ค. 69)
+           */
           restored.push({
             summary: d.summary,
             head: d.head,
@@ -1789,7 +1809,7 @@ export default function ProductDetail({
             sourceUrl: d.sourceUrls.filter(Boolean).join(" "),
             sourceUrls: d.sourceUrls,
             artUrl: d.artUrl,
-            calState: { format: d.format, design: d.design, back: d.back, sources: files },
+            calState: files ? { format: d.format, design, back: d.back, sources: files } : undefined,
             calBackFiles: d.calBackFiles,
             qty: d.qty,
             aiUrl: d.aiUrl,
@@ -1801,6 +1821,19 @@ export default function ProductDetail({
         setPlaced(restored);
         // ✏️ มาจากปุ่มหลังบ้าน "เปิดแบบนี้ในจอสร้างปฏิทิน" (&studio=1) → เปิดจอแก้แบบให้เลย ไม่ต้องแตะกล่อง "แก้แบบที่สร้างไว้" อีกที
         if (new URLSearchParams(window.location.search).get("studio") === "1") {
+          // ไม่มีสถานะแบบ (ไม่ควรเกิดแล้ว — ต้นฉบับหายได้ภาพ "รูปหาย") = เปิดจอแล้วได้แบบเปล่า → ไม่เปิดให้ บอกเหตุผลแทน
+          const last = restored[restored.length - 1];
+          if (!last.calState) {
+            setNoSourceCopied(false);
+            setNoSource({
+              head: last.head,
+              artUrl: last.artUrl,
+              aiUrl: last.aiUrl,
+              pdfUrl: last.pdfUrl,
+              orderId: new URLSearchParams(window.location.search).get("order"),
+            });
+            return;
+          }
           setEditIndex(restored.length - 1);
           setCalOpen(true);
         }
@@ -3157,7 +3190,8 @@ export default function ProductDetail({
       if (pre && r instanceof Error && earlyUp.current.get(todo[i]) === settle[i].p) earlyUp.current.delete(todo[i]);
       settle[i].res(r);
     };
-    uploadArtworkFilesSettled(todo, { pre, onOne: one }).catch((e) => todo.forEach((_, i) => one(i, fail(e))));
+    // 🗜 fit: รูปต้นฉบับใหญ่เกิน 15MB/ชนิดที่ระบบไม่รับ ย่อ/แปลงก่อนอัป (เดิมตั๋วถูกปฏิเสธเงียบ ต้นฉบับว่าง · OD-261019-1860)
+    uploadArtworkFilesSettled(todo, { pre, onOne: one, fit: true }).catch((e) => todo.forEach((_, i) => one(i, fail(e))));
   }
   function startEarlyOwner(f: File) {
     if (!earlyOwner.current.has(f)) earlyOwner.current.set(f, uploadOwnerFile(f));
@@ -3266,7 +3300,10 @@ export default function ProductDetail({
       });
       if (redo.length) {
         progress?.(`กำลังอัปรูปต้นฉบับใหม่ ${redo.length} รูป…`);
-        const redone = await uploadArtworkFilesSettled(redo.map(({ f }) => f));
+        const redone = await uploadArtworkFilesSettled(
+          redo.map(({ f }) => f),
+          { fit: true },
+        );
         redo.forEach(({ i }, j) => {
           const u = redone[j];
           if (typeof u === "string") sourceUrls[i] = u;
@@ -3714,14 +3751,22 @@ export default function ProductDetail({
     // ลายที่วางบนเทมเพลตผ่านหน้าเว็บ — สรุปให้ลูกค้าอ่าน + ตัวเลขให้ทีมผลิตวางในไฟล์จริง
     if (placed.length) {
       const many = placed.length > 1;
+      /**
+       * 🔢 จำนวนต่อลายในรายการแบบ = หน่วยที่สั่ง (แผ่น A3/เซ็ต) ไม่ใช่ชิ้น — สินค้าขายเป็นแผ่น (โปสการ์ด 5×7 = 4 ชิ้น/แผ่น A3)
+       * เดิมเขียน "ลายที่ 1 × 30 ชิ้น" ทั้งที่คือ 30 แผ่น (120 ชิ้น) → หลังบ้านเทียบ 60/200 ชิ้น "ไม่ตรง" (OD-261019-1860 · 19 ต.ค. 69)
+       * → บอกหน่วยจริง + ชิ้นในวงเล็บ "× 30 แผ่น A3 (120 ชิ้น)" · ขายเป็นชิ้นอยู่แล้ว = "× 30 ชิ้น" เหมือนเดิม
+       * ตัวอ่าน: checkout selfDesignedProof (ชิ้น) · คืนแบบจากตะกร้า (หน่วยที่สั่ง)
+       */
+      const y = orderUnitYield(product, effective);
+      const qtyText = (q: number) => (y && y.per > 1 ? `${q} ${matrix?.unit ?? "หน่วย"} (${q * y.per} ${y.piece})` : `${q} ชิ้น`);
       // ยุบส่วนที่ซ้ำกันทุกลาย (ชื่อแบบ+ขนาด) ไว้ครั้งเดียว — ลูกค้าเห็นบรรทัดสั้น ๆ ในออเดอร์
       extra[PLACEMENT_LABEL] = many
-        ? `${placed.length} ลาย · ${placed[0].head} · ` + placed.map((p, i) => `ลายที่ ${i + 1} × ${p.qty} ชิ้น (${p.dpi} DPI)`).join(" · ")
+        ? `${placed.length} ลาย · ${placed[0].head} · ` + placed.map((p, i) => `ลายที่ ${i + 1} × ${qtyText(p.qty)} · ${p.dpi} DPI`).join(" · ")
         : `${placed[0].head} · ${placed[0].dpi} DPI`;
       extra[PLACEMENT_SPEC_LABEL] = placed
         .map(
           (p, i) =>
-            `${many ? `ลายที่ ${i + 1} × ${p.qty} ชิ้น — ` : ""}${p.spec}` +
+            `${many ? `ลายที่ ${i + 1} × ${qtyText(p.qty)} — ` : ""}${p.spec}` +
             (p.sourceUrl ? ` · ต้นฉบับ: ${p.sourceUrl}` : "") +
             (p.aiUrl ? `${CAL_AI_TAG}${p.aiUrl}` : "") +
             (p.pdfUrl ? `${CAL_PDF_TAG}${p.pdfUrl}` : "") +
@@ -3792,7 +3837,13 @@ export default function ProductDetail({
      */
     const carry = editKey ? editCarryRef.current : null;
     const artsIntact = !!carry && carry.arts.length > 0 && carry.arts.every((u) => artFiles.some((f) => f.url === u));
-    const line = selections && carry && artsIntact ? { ...carry.keys, ...selections } : selections;
+    /**
+     * แบบจากจอออกแบบ (มีลิงก์แบบ) แต่คืนกลับไม่สำเร็จ (placed ว่าง) = ลายกลายเป็นไฟล์แนบ จำนวนต่อลายใหม่อยู่ที่ช่องแนบไฟล์
+     * → ห้ามหิ้วสเปคตำแหน่งลายเดิม (จำนวนเก่า + อนุมัติแบบอัตโนมัติ) ไปขัดกับจำนวนใหม่ (OD-261019-1860 สเปค 30/30 · ลูกค้าระบุ 100/100)
+     */
+    const staleCal = !placed.length && (carry?.keys[PLACEMENT_SPEC_LABEL] ?? "").split(" | ").some((sp) => calEditUrlOf(sp));
+    const keep = carry && staleCal ? Object.fromEntries(Object.entries(carry.keys).filter(([k]) => k !== PLACEMENT_LABEL && k !== PLACEMENT_SPEC_LABEL)) : carry?.keys;
+    const line = selections && carry && artsIntact ? { ...keep, ...selections } : selections;
     if (line) {
       // 🗓 จำแบบปฏิทินของบรรทัดนี้ — กด ✏️ แก้ไขในตะกร้าแล้วเปิดจอสร้างปฏิทินแบบเดิมต่อได้
       if (placed.some((p) => p.calState))
@@ -9123,6 +9174,135 @@ export default function ProductDetail({
         🔔 แนบรูปเกิน "จำนวนลายที่กำหนดไว้" — ถามให้ชัดตรงนี้ ไม่ข้ามไฟล์เงียบ ๆ
         ไฟล์ที่ยังไม่ได้แนบถูกอุ้มไว้ใน artOver.pending → กดเพิ่มจำนวนลายแล้วแนบต่อได้ทันที
       */}
+          {noSource &&
+            (() => {
+              const ns = noSource;
+              const close = () => setNoSource(null);
+              const backHref = ns.orderId ? `/admin/orders/${encodeURIComponent(ns.orderId)}` : null;
+              const askText =
+                `รบกวนส่งรูปต้นฉบับที่ใช้ออกแบบ${ns.head ? ` (${ns.head})` : ""} ให้ร้านอีกครั้งนะครับ` +
+                ` — ส่งเป็นไฟล์ (แนบไฟล์ / เลือก "ต้นฉบับ") จะได้ภาพคมที่สุด รูปชุดเดิมอัปเข้าระบบไม่สำเร็จครับ 🙏`;
+              const fileLinks = [
+                { href: ns.artUrl, label: "ไฟล์พร้อมพิมพ์" },
+                ns.pdfUrl ? { href: ns.pdfUrl, label: "PDF" } : null,
+                ns.aiUrl ? { href: ns.aiUrl, label: ".ai" } : null,
+              ].filter((l): l is { href: string; label: string } => !!l && !!l.href);
+              return (
+                <div
+                  className="fixed inset-0 z-[96] flex items-end justify-center bg-stone-900/50 p-4 backdrop-blur-sm sm:items-center"
+                  onClick={close}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="no-source-title"
+                >
+                  <div
+                    className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-stone-200"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* หัว: บอกผลลัพธ์ก่อน — เปิดแก้ไม่ได้ */}
+                    <div className="border-b border-stone-100 px-5 pb-4 pt-5">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">เปิดจอออกแบบไม่ได้</p>
+                      <h3 id="no-source-title" className="mt-0.5 text-[17px] font-extrabold leading-snug text-stone-900">
+                        แบบนี้ไม่มีรูปต้นฉบับ
+                      </h3>
+                      <p className="mt-1 text-[13px] leading-relaxed text-stone-600">
+                        รูปของลูกค้าอัปเข้าระบบไม่สำเร็จตอนออกแบบ ระบบเก็บไว้แค่ไฟล์ที่ประกอบเสร็จแล้ว จึงแยกรูปออกมาแก้ในจอไม่ได้
+                      </p>
+                    </div>
+
+                    {/* สถานะ 2 แถว: แยกด้วยสัญลักษณ์ + น้ำหนักตัวอักษร ไม่ใช่สีอย่างเดียว */}
+                    <div className="flex gap-3 px-5 py-4">
+                      {ns.artUrl && (
+                        <a
+                          href={ns.artUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block h-24 w-20 shrink-0 overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200"
+                          title="เปิดไฟล์พร้อมพิมพ์"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={ns.artUrl} alt="ไฟล์พร้อมพิมพ์" className="h-full w-full object-contain" />
+                        </a>
+                      )}
+                      <ul className="min-w-0 flex-1 space-y-2 text-[13px] leading-snug">
+                        <li className="flex items-start gap-2">
+                          <span className="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-600 text-[11px] font-black text-white">✓</span>
+                          <span>
+                            <strong className="text-stone-900">ไฟล์พร้อมพิมพ์ — ส่งผลิตได้</strong>
+                            <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                              {fileLinks.map((l) => (
+                                <a
+                                  key={l.label}
+                                  href={l.href}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-bold text-teal-700 underline decoration-teal-300 underline-offset-2 hover:text-teal-900"
+                                >
+                                  เปิด{l.label} ↗
+                                </a>
+                              ))}
+                            </span>
+                          </span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 border-amber-600 text-[11px] font-black text-amber-700">
+                            !
+                          </span>
+                          <span className="text-stone-700">
+                            <strong className="text-stone-900">รูปต้นฉบับ — ไม่มี</strong>
+                            <br />
+                            แก้แบบ / ทำ .ai ใหม่ ต้องขอรูปจากลูกค้าก่อน
+                          </span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* ทางไปต่อ: ข้อความขอรูปพร้อมวางใน LINE */}
+                    <div className="mx-5 rounded-2xl bg-stone-50 px-3 py-2.5 text-[12px] leading-relaxed text-stone-600 ring-1 ring-stone-200">
+                      <p className="mb-1 font-bold text-stone-800">ข้อความขอรูปจากลูกค้า</p>
+                      <p className="select-all">{askText}</p>
+                    </div>
+
+                    <div className="grid gap-2 px-5 pb-5 pt-4">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(askText);
+                            setNoSourceCopied(true);
+                          } catch {
+                            setNoSourceCopied(false);
+                          }
+                        }}
+                        className={`min-h-[48px] rounded-2xl px-4 text-[14px] font-extrabold transition ${
+                          noSourceCopied ? "bg-emerald-600 text-white" : "bg-stone-900 text-white hover:bg-stone-800"
+                        }`}
+                      >
+                        {noSourceCopied ? "✓ คัดลอกแล้ว — ไปวางในแชท LINE ได้เลย" : "คัดลอกข้อความขอรูป"}
+                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        {backHref && (
+                          <Link
+                            href={backHref}
+                            className="grid min-h-[44px] place-items-center rounded-2xl bg-white px-3 text-[13px] font-bold text-stone-700 ring-1 ring-stone-300 hover:bg-stone-50"
+                          >
+                            ← กลับหน้าออเดอร์
+                          </Link>
+                        )}
+                        <button
+                          type="button"
+                          onClick={close}
+                          className={`min-h-[44px] rounded-2xl bg-white px-3 text-[13px] font-bold text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50 ${backHref ? "" : "col-span-2"}`}
+                        >
+                          ปิด · อยู่หน้านี้
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
           {artOver &&
             (() => {
               const over = artOver;

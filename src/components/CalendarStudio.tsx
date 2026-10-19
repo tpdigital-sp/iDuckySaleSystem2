@@ -72,6 +72,7 @@ import {
 } from "@/lib/calendar-card";
 import { curvesBox, curvesSvgD, printFrameToken, shiftCurves, type TemplateCurve } from "@/lib/design-templates";
 import { buildCalendarAi, illustratorReady, renderAiPages, type AiLayer, type AiPage, type AiPath } from "@/lib/calendar-ai";
+import { isMissingPhoto } from "@/lib/cal-edit-store";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 import Mug3D, { MugBodyChip } from "@/components/Mug3D";
@@ -1107,6 +1108,11 @@ export default function CalendarStudio({
     void (async () => {
       if (!aiExport) {
         setErr("⚠️ ทำไฟล์ .ai เลเยอร์ได้เฉพาะทีมหลังบ้าน (เจ้าของร้าน/แอดมิน/กราฟฟิก)");
+        return;
+      }
+      // รูปต้นฉบับบางรูปหาย (ระบบใส่ภาพ "รูปหาย" แทน) → ทำต่อ = ไฟล์ใหม่มีภาพเทา "รูปหาย" ทับไฟล์พิมพ์เดิมที่ใช้ได้ (19 ต.ค. 69)
+      if (srcs.some((s) => !s.removed && isMissingPhoto(s.file))) {
+        setErr("⚠️ รูปต้นฉบับบางรูปของแบบนี้หาย (อัปไม่ขึ้นตอนลูกค้าออกแบบ) — ใส่รูปใหม่แทนช่อง \"รูปหาย\" ก่อน แล้วกด 💾 บันทึกกลับเข้าออเดอร์เอง");
         return;
       }
       setBusy("กำลังเช็ค Illustrator ในเครื่องนี้…");
@@ -3860,6 +3866,17 @@ export default function CalendarStudio({
 
   async function apply(force = false, lowOk = false) {
     if (busy) return;
+    /**
+     * 🖼 ช่อง "รูปหาย" (ต้นฉบับอัปไม่ขึ้นตอนลูกค้าออกแบบ — ระบบใส่ภาพเทาแทน) ยังถูกใช้อยู่ = ห้ามใช้แบบ
+     * ทำต่อ = ไฟล์พิมพ์ใหม่มีภาพเทา "รูปหาย" ทับไฟล์เดิมที่ใช้ได้ (หลังบ้านเปิดดูแบบได้ แต่ต้องใส่รูปจริงก่อนบันทึก · 19 ต.ค. 69)
+     */
+    const usedSrc = new Set([...Object.values(design.photos).map((o) => o.src), ...(design.elements ?? []).map((e) => e.src)]);
+    const lost = srcs.findIndex((s, i) => !s.removed && usedSrc.has(i) && isMissingPhoto(s.file));
+    if (lost >= 0) {
+      setTool("photo");
+      setErr(`รูปต้นฉบับที่ ${lost + 1} หาย (ช่องสีเทา "รูปหาย") — ลากรูปจริงมาวางแทน หรือกด 🔄 เปลี่ยนรูปในคลัง ก่อนกดใช้แบบ`);
+      return;
+    }
     // มีช่องรูปแต่ยังไม่มีช่องไหนใส่รูป = ยังสั่งไม่ได้ (ช่องจะพิมพ์ออกมาว่าง)
     const needsPhoto = printPages.some((v) => lay(v.page).photo);
     if (needsPhoto && slotSrc(design, imgs) < 0) {
