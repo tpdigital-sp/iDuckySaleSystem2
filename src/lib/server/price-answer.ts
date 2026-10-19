@@ -1879,10 +1879,14 @@ export async function extraInfo(query: string, productId: string): Promise<strin
   return asked.some((a) => lcsLen(a, norm(text)) >= 4) ? text : "";
 }
 
-/** "ชิ้นละ 20 บาท" "อันละ 15" "งบ 20 บาท/ชิ้น" → 20 · ไม่มี = null */
+/** "ชิ้นละ 20 บาท" "อันละ 15" "งบ 20 บาท/ชิ้น" → 20 · ไม่มี = null
+ *  ⚠️ 19 ต.ค. 69 "2 ลาย ลายละ 1000 ดวง" เคยได้งบ ฿1,000/ชิ้น (คำว่า "ลายละ" ลงท้าย "ละ") → บอทร่าง "สั่ง 2,000 แผ่น งบไม่เกิน ฿1,000"
+ *     → "ละ" ที่ตามหลัง ลาย/แบบ/สี/ขนาด = จำนวนต่อแบบ ไม่ใช่งบ · ตัวเลขที่ตามด้วยหน่วยนับ (ดวง/ชิ้น/ใบ…) ก็ไม่ใช่งบ */
+const BUDGET_NOT_COUNT = String.raw`(?!\d)(?!\s*(?:ดวง|ชิ้น|ใบ|อัน|ตัว|แผ่น|ผืน|เซ็ต|เซต|ชุด|ลาย|แบบ|สี|ม้วน|กล่อง|เล่ม|คู่|pcs|ซม|cm|มม|mm))`;
+const PER_PIECE_RE = new RegExp(String.raw`(?:ชิ้นละ|อันละ|ใบละ|ตัวละ|แผ่นละ|ผืนละ|เซ็ตละ|เซตละ|(?<!ลาย|แบบ|สี|ขนาด|ไซซ์|ไซส์|size)ละ)\s*(\d+(?:\.\d+)?)${BUDGET_NOT_COUNT}\s*(?:บาท|฿|-)?`);
 export function parseBudget(text: string): number | null {
   const m =
-    /(?:ชิ้นละ|อันละ|ใบละ|ตัวละ|แผ่นละ|ผืนละ|เซ็ตละ|เซตละ|ละ)\s*(\d+(?:\.\d+)?)\s*(?:บาท|฿|-)?/.exec(text) ||
+    PER_PIECE_RE.exec(text) ||
     /งบ(?:ประมาณ)?(?:ต่อชิ้น)?\s*(\d+(?:\.\d+)?)\s*(?:บาท|฿)?\s*(?:\/|ต่อ)\s*(?:ชิ้น|อัน|ใบ)/.exec(text) ||
     /(?:ไม่เกิน|ไม่เกินชิ้นละ)\s*(\d+(?:\.\d+)?)\s*(?:บาท|฿)/.exec(text);
   const n = m ? Number(m[1]) : NaN;
@@ -2226,25 +2230,35 @@ async function fallback(query: string, timeoutMs: number): Promise<PriceAnswer |
  *   เดิม "กระดาษรองหลัง 7x7 100 ใบ" = 100 แผ่น A3 ฿4,500 · จริง 7×7 ได้ 24 ใบ/แผ่น → ใช้ 5 แผ่น ฿225
  *   ใช้ piecesPerUnit ของขนาดที่ลูกค้าพิมพ์มา (ตัวเลขเดียวกับป้าย "ได้ 24 ใบ / แผ่น A3" หน้าสินค้า) · ไม่ระบุขนาด/ขนาดไม่มีจำนวนต่อแผ่น = ไม่แปลง
  */
-function piecesToSheets(product: Product, q: string): { pieces: number; sheets: number; per: number; size: string; unit: string; query: string } | null {
+/** ขนาดในข้อความ → "สั้นxยาว" · รับ "15.8x12.8" และ "กว้าง15.80 ซม ... สูง12.80 ซม." (19 ต.ค. 69 ลูกค้าพิมพ์แบบหลัง แปลงไม่ได้) */
+function dimsOf(t: string): string {
+  const d = /(\d+(?:\.\d+)?)\s*(?:cm|ซม\.?)?\s*[x×*]\s*(\d+(?:\.\d+)?)/i.exec(t) ?? /กว้าง\s*(\d+(?:\.\d+)?)[^\d]{0,40}?(?:ยาว|สูง)\s*(\d+(?:\.\d+)?)/.exec(t) ?? /(?:ยาว|สูง)\s*(\d+(?:\.\d+)?)[^\d]{0,40}?กว้าง\s*(\d+(?:\.\d+)?)/.exec(t);
+  return d ? [Number(d[1]), Number(d[2])].sort((a, b) => a - b).join("x") : "";
+}
+
+/** สินค้าคิดเป็นแผ่นแต่ลูกค้านับเป็น ดวง/ใบ/ชิ้น → จำนวนชิ้นรวม (ใช้จำนวนรวมที่ LLM คิดแล้วถ้ามากกว่า เช่น "2 ลาย ลายละ 1000 ดวง" = 2,000) · ไม่ใช่กรณีนี้ = null */
+function piecesOrdered(product: Product, q: string, qty?: number | null): { pieces: number; unit: string; word: string; token: string } | null {
   const unit = String((product as { pricing?: { unit?: string } }).pricing?.unit ?? "");
   if (!/แผ่น/.test(unit)) return null;
   const m = /(\d[\d,]*)\s*(ใบ|ชิ้น|ดวง|อัน|การ์ด|ตัว)/.exec(q);
   if (!m) return null;
-  const pieces = Number(m[1].replace(/,/g, ""));
-  if (!(pieces > 0)) return null;
-  const dims = (t: string) => {
-    const d = /(\d+(?:\.\d+)?)\s*(?:cm|ซม\.?)?\s*[x×*]\s*(\d+(?:\.\d+)?)/i.exec(t);
-    return d ? [Number(d[1]), Number(d[2])].sort((a, b) => a - b).join("x") : "";
-  };
-  const want = dims(q);
+  const n = Number(m[1].replace(/,/g, ""));
+  if (!(n > 0)) return null;
+  return { pieces: qty && qty > n ? qty : n, unit, word: m[2], token: m[0] };
+}
+
+function piecesToSheets(product: Product, q: string, qty?: number | null): { pieces: number; sheets: number; per: number; size: string; unit: string; query: string } | null {
+  const po = piecesOrdered(product, q, qty);
+  if (!po) return null;
+  const { pieces, unit } = po;
+  const want = dimsOf(q);
   if (!want) return null;
   for (const opt of product.options ?? []) {
     for (const c of opt.choices ?? []) {
       const per = Number((c as { piecesPerUnit?: number }).piecesPerUnit) || 0;
-      if (per > 0 && dims(c.name) === want) {
+      if (per > 0 && dimsOf(c.name) === want) {
         const sheets = Math.ceil(pieces / per);
-        return { pieces, sheets, per, size: c.name, unit, query: q.replace(m[0], `${sheets} ${unit}`) };
+        return { pieces, sheets, per, size: c.name, unit, query: q.replace(po.token, `${sheets} ${unit}`) };
       }
     }
   }
@@ -2267,11 +2281,22 @@ export async function searchPrice(
   for (const item of items.slice(0, 3)) {
     const full = await getProductServer(item.id).catch(() => undefined);
     if (!full) continue;
-    const conv = piecesToSheets(full, q);
-    const ans = conv ? quote(full, conv.query, conv.sheets, items.length > 1, opts.rateHint) : quote(full, q, qty, items.length > 1, opts.rateHint);
+    const conv = piecesToSheets(full, q, qty);
+    // 📐 19 ต.ค. 69: นับเป็นดวง/ใบแต่ขนาดไม่ใช่ขนาดสำเร็จรูป (ไม่รู้ว่า 1 แผ่นได้กี่ดวง) → ห้ามเอาจำนวนดวงไปคิดเป็นแผ่น
+    //   (เคยตอบ "2,000 ดวง 15.8×12.8 ซม." = 2,000 แผ่น A3 รวม ฿170,000) → โชว์ราคาต่อแผ่น + บอกว่าแอดมินช่วยคำนวณจำนวนแผ่น
+    const loose = conv ? null : piecesOrdered(full, q, qty);
+    const ans = conv
+      ? quote(full, conv.query, conv.sheets, items.length > 1, opts.rateHint)
+      : loose
+        ? quote(full, q.replace(loose.token, " "), null, items.length > 1, opts.rateHint)
+        : quote(full, q, qty, items.length > 1, opts.rateHint);
     if (ans && conv) {
       const got = conv.sheets * conv.per;
       ans.answer = `📐 ${conv.pieces.toLocaleString()} ใบ ขนาด ${conv.size} (ได้ ${conv.per} ใบ/${conv.unit}) = ใช้ ${conv.sheets.toLocaleString()} ${conv.unit}${got > conv.pieces ? ` (ได้จริง ${got.toLocaleString()} ใบ)` : ""}\n${ans.answer}`;
+    } else if (ans && loose) {
+      const size = dimsOf(q).replace("x", " × ");
+      ans.answer = `📐 ${full.name} คิดราคาเป็น${loose.unit} ค่ะ — ${loose.pieces.toLocaleString()} ${loose.word}${size ? ` ขนาด ${size} ซม.` : ""} ต้องดูก่อนว่า 1 ${loose.unit} วางได้กี่${loose.word} แล้วค่อยคิดจำนวนแผ่น แอดมินช่วยคำนวณให้ได้เลยนะคะ\nราคาต่อ${loose.unit}:\n${ans.answer}`;
+      ans.intent = "price";
     }
     if (ans) found.push(ans);
   }
