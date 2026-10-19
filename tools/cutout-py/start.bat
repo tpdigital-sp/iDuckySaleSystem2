@@ -48,7 +48,7 @@ if errorlevel 1 (
 if /i "%~1"=="console" goto console
 
 echo.
-echo [3/3] Auto-start setup + starting in background...
+echo [3/3] Auto-start setup + (re)starting in background...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-windows.ps1" -Dir "%~dp0." -Start
 if errorlevel 1 goto startfail
 echo.

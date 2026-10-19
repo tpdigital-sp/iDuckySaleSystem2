@@ -104,7 +104,8 @@ WIN_PROGID = "Illustrator.Application"  # COM ที่ Illustrator ลงทะ
 PS_RUN = r"""
 param([string]$jsx)
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# UTF-8 แบบไม่มี BOM — [System.Text.Encoding]::UTF8 ของ PowerShell 5 แปะ BOM หน้าข้อความ → Python อ่าน "OK" ไม่ออก
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
 try {
   $app = New-Object -ComObject Illustrator.Application
 } catch {
@@ -163,8 +164,10 @@ def _run_jsx(tmp: Path, jsx: str, timeout: int) -> str:
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"Illustrator ทำงานนานเกิน {timeout} วินาที — ดูว่ามีกล่องถามค้างในหน้าต่าง Illustrator ไหม")
-        out = r.stdout.decode("utf-8", "replace").strip()
-        err = r.stderr.decode("utf-8", "replace").strip()
+        # ⚠️ ตัด BOM (\ufeff) ทิ้งเสมอ — str.strip() ไม่ตัดให้ (19 ต.ค. 69 เครื่องกราฟฟิก: Illustrator ทำไฟล์แยกเลเยอร์สำเร็จ
+        #    แต่ได้ "\ufeffOK" → เช็ค startswith("OK") ไม่ผ่าน → แจ้ง "สร้างไฟล์ไม่ได้" → เว็บถอยไปไฟล์สำรอง -pdf.ai Layer 1)
+        out = r.stdout.decode("utf-8-sig", "replace").replace("\ufeff", "").strip()
+        err = r.stderr.decode("utf-8-sig", "replace").replace("\ufeff", "").strip()
         if r.returncode == 3 or "NOCOM" in err:
             raise RuntimeError("เปิด Adobe Illustrator ผ่าน COM ไม่ได้ — เปิด Illustrator ด้วยมือ 1 ครั้งให้โหลดเสร็จ "
                                f"แล้วลองใหม่ (ถ้ายังไม่ได้ ให้ติดตั้ง/ซ่อม Illustrator) · {err[:200]}")
@@ -201,8 +204,8 @@ def layered(ai_files: list[bytes], timeout: int = 600) -> list[bytes]:
             src.write_bytes(data)
             jobs.append([str(src), str(dst)])
         jsx = JSX_CORE + JSX_BATCH.replace("__JOBS__", json.dumps(jobs))
-        res = _run_jsx(tmp, jsx, timeout)
-        lines = [l for l in res.strip().splitlines() if l.strip()]
+        res = _run_jsx(tmp, jsx, timeout).replace("\ufeff", "")
+        lines = [l.strip() for l in res.strip().splitlines() if l.strip()]
         out = []
         for i, (src, dst) in enumerate(jobs):
             st = lines[i] if i < len(lines) else "ERR:ไม่มีผลลัพธ์"
@@ -367,7 +370,9 @@ def calendar_ai(job: dict, timeout: int = 600) -> bytes:
                            "paths": paths})
         out = tmp / "calendar.ai"
         jsx = JSX_CALENDAR.replace("__JOB__", json.dumps({"pages": jpages, "out": str(out)}, ensure_ascii=False))
-        st = _run_jsx(tmp, jsx, timeout).strip()
-        if not st.startswith("OK") or not out.exists():
+        st = _run_jsx(tmp, jsx, timeout).replace("\ufeff", "").strip()
+        # ไฟล์ออกมาจริง + ไม่ได้รายงาน ERR = สำเร็จ (กันข้อความตอบกลับเพี้ยนจากตัวกลางอีกชั้น)
+        ok = st.startswith("OK") or (out.exists() and out.stat().st_size > 0 and not st.startswith("ERR"))
+        if not ok or not out.exists():
             raise RuntimeError(f"Illustrator สร้างไฟล์ไม่ได้: {st[4:] or st}")
         return out.read_bytes()

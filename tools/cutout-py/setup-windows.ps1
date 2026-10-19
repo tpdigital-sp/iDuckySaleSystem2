@@ -1,7 +1,7 @@
 # iDucky cutout-py (Windows) - auto-start setup. Called by start.bat; current user only, no admin needed.
 #   1) URL protocol  iducky-cutout:  -> website can start the program from a click (design screen / redo .ai)
 #   2) Startup shortcut -> program starts hidden when Windows logs in
-#   -Start   : also start it now (hidden) and wait until http://127.0.0.1:8777 answers
+#   -Start   : (re)start it now (hidden; stops an old running copy first) and wait until http://127.0.0.1:8777 answers
 #   -Remove  : undo 1) and 2)
 # Keep this file ASCII only (Windows PowerShell 5 reads scripts with the system code page).
 param(
@@ -53,15 +53,17 @@ try {
 }
 
 if ($Start) {
+  # Restart: stop copies already running (old code keeps running otherwise; includes copies from an old folder e.g. Desktop)
+  $old = Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and ($_.CommandLine -match 'launch\.pyw' -or $_.CommandLine -match 'cutout-py.*app\.py' -or $_.CommandLine -match 'app\.py.*--no-browser') }
+  foreach ($p in $old) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+  if ($old) { Write-Host ('Stopped old copy (' + @($old).Count + ')'); Start-Sleep -Seconds 2 }
   $ready = $null
-  try { $ready = Invoke-RestMethod -Uri 'http://127.0.0.1:8777/calendar-ai' -TimeoutSec 2 } catch {}
-  if (-not $ready) {
-    Start-Process -FilePath $pyw -ArgumentList $launchArgs -WorkingDirectory $Dir -WindowStyle Hidden
-    Write-Host 'Starting in background...'
-    for ($i = 0; $i -lt 90 -and -not $ready; $i++) {
-      Start-Sleep -Seconds 1
-      try { $ready = Invoke-RestMethod -Uri 'http://127.0.0.1:8777/calendar-ai' -TimeoutSec 2 } catch {}
-    }
+  Start-Process -FilePath $pyw -ArgumentList $launchArgs -WorkingDirectory $Dir -WindowStyle Hidden
+  Write-Host 'Starting in background...'
+  for ($i = 0; $i -lt 90 -and -not $ready; $i++) {
+    Start-Sleep -Seconds 1
+    try { $ready = Invoke-RestMethod -Uri 'http://127.0.0.1:8777/calendar-ai' -TimeoutSec 2 } catch {}
   }
   if (-not $ready) {
     Write-Host 'ERROR: program did not start. Last lines of cutout-py.log:'
