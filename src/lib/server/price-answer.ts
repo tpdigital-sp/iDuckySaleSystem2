@@ -2350,10 +2350,11 @@ export async function searchPrice(
     } else if (ans && loose) {
       const size = dimsOf(q).replace("x", " × ");
       const count = loose.designs ? `${loose.designs.n} ${loose.designs.label} × ${loose.designs.each.toLocaleString()} ${loose.word} = ${loose.pieces.toLocaleString()} ${loose.word}` : `${loose.pieces.toLocaleString()} ${loose.word}`;
-      pre.push(`• 📐 งานนี้ ${count}${size ? ` ขนาด ${size} ซม.` : ""} — ${full.name} คิดราคาเป็น${loose.unit} แอดมินจะคำนวณว่า 1 ${loose.unit} วางได้กี่${loose.word} แล้วแจ้งจำนวนแผ่นกับราคารวมให้นะคะ`);
+      // ประโยค "แอดมินคำนวณให้" อยู่ใน askNext ที่เดียว (19 ต.ค. 69 เดิมซ้ำทั้งบรรทัดนี้และข้อความปิดท้าย — ใน LINE ขึ้นเป็นข้อความเกินมา 1 ฟอง)
+      pre.push(`• 📐 งานนี้ ${count}${size ? ` ขนาด ${size} ซม.` : ""} — ${full.name} คิดราคาเป็น${loose.unit}`);
       ans.intent = "price";
       // ปิดท้ายด้วยขั้นต่อไปจริง (n8n ใช้ askNext แทนประโยค "สนใจกี่ชิ้นดีคะ" ที่ถามจำนวนซ้ำทั้งที่ลูกค้าบอกแล้ว) · คำถามตัวเลือกที่เครื่องคิดราคาถามไว้ยังต่อท้าย
-      const wait = `เดี๋ยวแอดมินคำนวณจำนวนแผ่นกับราคารวมของ ${loose.pieces.toLocaleString()} ${loose.word} ให้นะคะ 🙏 ถ้ามีไฟล์งานแล้ว ส่งมาได้เลยค่ะ จะได้เช็กขนาดจริงให้ด้วย ✨`;
+      const wait = `เดี๋ยวแอดมินคำนวณว่า 1 ${loose.unit} วางได้กี่${loose.word} แล้วแจ้งจำนวนแผ่นกับราคารวมของ ${loose.pieces.toLocaleString()} ${loose.word}ให้นะคะ 🙏 ถ้ามีไฟล์งานแล้ว ส่งมาได้เลยค่ะ จะได้เช็กขนาดจริงให้ด้วย ✨`;
       ans.askNext = ans.askNext ? `${wait}\n\n${ans.askNext}` : wait;
     }
     if (ans && pre.length) ans.answer = `${pre.join("\n")}\n${ans.answer}`;
