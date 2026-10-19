@@ -360,12 +360,13 @@ const BOT_WEBHOOK = "https://n8n.iduckybot.com/webhook/line-webhook-chatbot";
 const REDRAFT_GAP_MS = 45_000;
 export type RedraftResult = { ok: true; count: number; text: string } | { ok: false; status: number; error: string };
 
-export async function requestRedraft(db: FirebaseFirestore.Firestore, uid: string, who: string): Promise<RedraftResult> {
+/** force = ร่างใหม่จากการ์ดร่าง (↻) — ร่างเดิมกลับมาแล้ว ไม่ต้องรอช่วงกันกดรัว */
+export async function requestRedraft(db: FirebaseFirestore.Firestore, uid: string, who: string, opts: { force?: boolean } = {}): Promise<RedraftResult> {
   const ref = db.collection(COL).doc(uid);
   const room = await ref.get();
   if (!room.exists) return { ok: false, status: 404, error: "ไม่พบห้องแชทนี้" };
   const last = msOf(room.get("redraftAt"));
-  if (Number.isFinite(last) && Date.now() - last < REDRAFT_GAP_MS) return { ok: false, status: 429, error: "เพิ่งสั่งให้บอทร่างไป — รอร่างขึ้นสักครู่ (ราว 15–30 วินาที)" };
+  if (!opts.force && Number.isFinite(last) && Date.now() - last < REDRAFT_GAP_MS) return { ok: false, status: 429, error: "เพิ่งสั่งให้บอทร่างไป — รอร่างขึ้นสักครู่ (ราว 15–30 วินาที)" };
   // ไล่จากข้อความล่าสุดย้อนขึ้นไป หยุดที่คำตอบร้าน (แอดมิน/บอท/ระบบ/ร่างที่ยังรอส่ง) — เหลือแต่ข้อความลูกค้าที่ยังไม่ได้ตอบ
   const snap = await ref.collection("log").orderBy("at", "desc").limit(40).get();
   const lines: string[] = [];

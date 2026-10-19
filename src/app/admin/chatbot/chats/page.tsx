@@ -502,6 +502,21 @@ function Chats() {
     },
     [sel, afterDraft, toast, confirm],
   );
+  // ↻ ให้บอทตอบใหม่ (ทิ้งร่างนี้ + สั่งร่างใหม่) · 19 ต.ค. 69 "เพิ่มปุ่ม refresh ใหม่ให้หน่อย ให้บอทตอบใหม่"
+  const regenDraft = useCallback(
+    async (m: LogEntry) => {
+      if (!sel || !m.id) return;
+      try {
+        const d = await botApi<{ ok: boolean; saved?: string; redraft?: boolean }>("/api/admin/chatbot/chats/draft", { action: "regen", id: sel, logId: m.id });
+        afterDraft(m.id, null);
+        if (d.redraft) setRedraftAt((x) => ({ ...x, [sel]: Date.now() }));
+        toast(d.saved || "ส่งให้บอทร่างใหม่แล้ว", !d.redraft);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), true);
+      }
+    },
+    [sel, afterDraft, toast],
+  );
   const discardDraft = useCallback(
     async (m: LogEntry) => {
       if (!sel || !m.id) return;
@@ -1201,7 +1216,7 @@ function Chats() {
                     const answered = thread.slice(i + 1).some((x) => x.role === "admin" || x.role === "assistant");
                     const stale = m.status === "expired" || (m.status === "pending" && (answered || !isDraftLive(m.at, detail?.lastAdminAt)));
                     return latest && !stale ? (
-                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onDelete={isOwner ? () => void deleteDraft(m) : undefined} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
+                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onDelete={isOwner ? () => void deleteDraft(m) : undefined} onRegen={canReply ? () => regenDraft(m) : undefined} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
                     ) : (
                       <div key={m.id || i} className="mb-2 flex justify-end">
                         <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
@@ -1822,9 +1837,10 @@ function FilterMenu({
  * 📝 การ์ดร่างคำตอบของบอท (โหมดร่าง 13 ต.ค. 69 — เจ้าของร้าน "อยากเป็นคนกดส่งเอง กลัวบอทให้ข้อมูลผิด")
  * แก้ข้อความได้ · Enter = ส่ง (Shift+Enter ขึ้นบรรทัด แบบช่องพิมพ์ด้านล่าง) · การ์ดสินค้า/รูปบัญชีในร่างส่งตามไปด้วย
  */
-function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onZoom }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void; onDelete?: () => void; onZoom: (url: string) => void }) {
+function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoom }: { entry: LogEntry; canSend: boolean; onSend: (text: string) => Promise<boolean>; onDiscard: () => void; onDelete?: () => void; onRegen?: () => Promise<void>; onZoom: (url: string) => void }) {
   const [text, setText] = useState(entry.draftText ?? "");
   const [busy, setBusy] = useState(false);
+  const [regen, setRegen] = useState(false);
   const extras = entry.text
     .split("\n")
     .map((l) => l.trim())
@@ -1843,6 +1859,23 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onZoom }: { en
         <div className="mb-1.5 flex items-center gap-2 text-[12px] font-bold" style={{ color: "#8A5A00" }}>
           📝 ร่างจากบอท · ลูกค้ายังไม่ได้รับ
           <span className="ml-auto font-normal" style={{ color: "#A07A2C" }}>{fmtTime(entry.at)}</span>
+          {onRegen ? (
+            <button
+              type="button"
+              onClick={() => {
+                setRegen(true);
+                void onRegen().finally(() => setRegen(false));
+              }}
+              disabled={busy || regen}
+              title="ให้บอทตอบใหม่ — ทิ้งร่างนี้แล้วร่างใหม่จากข้อความลูกค้า (ขึ้นราว 15–30 วินาที)"
+              aria-label="ให้บอทตอบใหม่"
+              className="-my-1.5 flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-[12px] font-bold transition hover:bg-black/10 disabled:opacity-40"
+              style={{ color: "var(--dk-yolk-ink)" }}
+            >
+              <span className={`text-[15px] leading-none ${regen ? "animate-spin" : ""}`}>↻</span>
+              <span className="hidden sm:inline">{regen ? "กำลังสั่ง…" : "ตอบใหม่"}</span>
+            </button>
+          ) : null}
           {onDelete ? (
             <button
               type="button"
