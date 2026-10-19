@@ -83,8 +83,9 @@ exit /b 1
 rem No Python 3.12/3.11 (none installed, or only 3.13+) - install 3.12 for this Windows user.
 rem Per-user quiet install: no admin rights, no installer clicks. 3.12.10 = last official 3.12 installer.
 echo.
-echo Python 3.12 not found - downloading and installing it now (27 MB, 1-3 minutes)...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; $f=Join-Path $env:TEMP 'python-3.12.10-amd64.exe'; Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $f; $p=Start-Process -FilePath $f -ArgumentList '/quiet','InstallAllUsers=0','PrependPath=1','Include_launcher=1','InstallLauncherAllUsers=0','Include_test=0' -Wait -PassThru; exit $p.ExitCode"
+echo Python 3.12 not found - downloading and installing it now (27 MB, 1-3 minutes). Do not close this window.
+rem $ProgressPreference off: Windows PowerShell 5 progress bar makes Invoke-WebRequest 10x+ slower (looks frozen)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; $f=Join-Path $env:TEMP 'python-3.12.10-amd64.exe'; Write-Host '  downloading...'; Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $f; Write-Host ('  downloaded ' + [math]::Round((Get-Item $f).Length/1MB,1) + ' MB - installing (1-2 minutes, no window will appear)...'); $p=Start-Process -FilePath $f -ArgumentList '/quiet','InstallAllUsers=0','PrependPath=1','Include_launcher=1','InstallLauncherAllUsers=0','Include_test=0' -Wait -PassThru; Write-Host ('  installer finished, code ' + $p.ExitCode); exit $p.ExitCode"
 set "PYNEW=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
 if not exist "%PYNEW%" goto nopython
 echo Python 3.12 installed.

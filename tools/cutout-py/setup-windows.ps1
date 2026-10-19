@@ -10,6 +10,7 @@ param(
   [switch]$Remove
 )
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $Dir = (Resolve-Path $Dir).Path
 $key = 'HKCU:\Software\Classes\iducky-cutout'
 $lnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'iDucky cutout-py.lnk'

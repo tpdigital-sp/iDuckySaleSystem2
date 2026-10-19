@@ -3711,7 +3711,19 @@ export default function CalendarStudio({
       a.download = r.file.name;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      setAsk({ icon: r.real ? "✅" : "ℹ️", title: "โหลดไฟล์ .ai แล้ว", body: r.note, ok: "ตกลง", run: () => {} });
+      // ไม่ใช่ไฟล์จาก Illustrator = ไฟล์สำรองเปิดแล้วเป็น Layer 1 เดียว — บอกให้ชัด + เหตุ (เดิม ℹ️ "โหลดไฟล์ .ai แล้ว" พนักงานนึกว่าได้เลเยอร์ · 19 ต.ค. 69)
+      const why = r.real ? "" : cutoutWhy(await cutoutStatus().then((st) => (setCutStatus(st), st)));
+      setAsk(
+        r.real
+          ? { icon: "✅", title: "โหลดไฟล์ .ai แยกเลเยอร์แล้ว", body: r.note, ok: "ตกลง", run: () => {} }
+          : {
+              icon: "⚠️",
+              title: "ไฟล์นี้ยังไม่แยกเลเยอร์ (เปิดแล้วเป็น Layer 1)",
+              body: `${r.note}${why ? `\n\n${why}` : ""}`,
+              ok: "ตกลง",
+              run: () => {},
+            },
+      );
     } catch (e) {
       setErr(e instanceof Error ? `ทำไฟล์ .ai ไม่สำเร็จ: ${e.message}` : "ทำไฟล์ .ai ไม่สำเร็จ");
     } finally {
