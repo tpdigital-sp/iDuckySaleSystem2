@@ -5,6 +5,10 @@
  *   กลไก: OptionInput.maxPerQtyCap (lib/products.ts) — ⚠️ ต้อง deploy โค้ดก่อน เว็บจริงถึงรับยาวเกิน 90
  *   (ลงฐานก่อน deploy ไม่เสียหาย: โค้ดเก่าไม่รู้จักฟิลด์ = เพดาน 90 เท่าเดิม)
  *   + ข้อความใต้ช่องกว้าง "ใหญ่สุด 140 × 90 ซม. (1 หลา)" → "… ต่อ 1 หลา"
+ *   + รอบ 2 (พนักงานแจ้งต่อ "160 ซม. จะคิดเป็น 25+5 = 30 · 75+15 = 90 คิดแค่ 1 ครั้ง"):
+ *     sizeFee.longPiece = true ทุกตัวที่คูณชิ้น (perPiece: ตัดแบ่ง · เย็บขอบ · โพ้งขอบ)
+ *     → เกิน 150 = ขั้น 150 + ขั้นของส่วนที่เกิน · ชิ้นยาวเกิน 1 หลาคิดครั้งเดียวต่อชิ้น (ไม่คูณทุกหลา)
+ *     ตัดเต็มหลาไม่โดน (ไม่มี perPiece · ใช้ defaultLongest 140) — ยังคิดต่อหลาตามที่เจ้าของร้านเคาะ 1 ก.ย. 69
  *
  * ดูเฉย ๆ:  node scripts/fabric-poster-len-per-yard.mjs
  * เขียนจริง: node scripts/fabric-poster-len-per-yard.mjs --write
@@ -48,6 +52,15 @@ for (const o of d.options ?? []) {
   if (o.label === G_W && o.input.hint?.includes(HINT_OLD)) {
     o.input.hint = o.input.hint.replace(HINT_OLD, HINT_NEW);
     console.log(`${o.label}: hint → ${o.input.hint}`);
+    changed++;
+  }
+}
+
+for (const o of d.options ?? []) {
+  for (const c of o.choices ?? []) {
+    if (!c.sizeFee?.perPiece || c.sizeFee.longPiece === true) continue;
+    c.sizeFee.longPiece = true;
+    console.log(`${o.label} › ${c.name}: sizeFee.longPiece → true`);
     changed++;
   }
 }

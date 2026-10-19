@@ -1076,6 +1076,13 @@ export interface SizeFee {
    * ไม่กรอก/ไม่ตั้ง = คิดเต็มจำนวนที่ตัดได้ตาม perPiece เหมือนเดิม
    */
   piecesLabel?: string;
+  /**
+   * 📏 ชิ้นยาว (ผ้าแขวนผนังตัดแบ่ง — พนักงานแจ้ง 19 ต.ค. 69 "160 ซม. จะคิดเป็น 25+5 = 30 · 75+15 = 90 คิดแค่ 1 ครั้ง")
+   *  1) ด้านยาวสุดเกินขั้นสุดท้าย = ขั้นสุดท้าย + ขั้นของส่วนที่เกิน (160 = ขั้น 150 + ขั้น 30) — ไม่ตั้ง = ใช้ขั้นสุดท้ายเฉย ๆ
+   *  2) ชิ้นที่ต้องใช้วัสดุหลายหน่วยต่อกัน (perPiece · 85×160 บนหลา 140×90 = 2 หลา) คิดค่าชิ้นครั้งเดียว
+   *     → ต่อหน่วยขาย = ค่าชิ้น ÷ จำนวนหน่วยที่ชิ้นใช้ (สั่ง 2 หลา × ฿60 = ฿120 = 1 ครั้ง) · ไม่ตั้ง = คิดเต็มทุกหน่วย
+   */
+  longPiece?: boolean;
 }
 
 /** 💰 ที่มาของค่าบริการตามขนาด — ไว้กางให้ลูกค้าเห็นว่า +฿ มาจาก ชิ้นละเท่าไหร่ × กี่ชิ้น */
@@ -1088,6 +1095,8 @@ export interface SizeFeeBreakdown {
   pieces: number;
   /** เพดานชิ้นที่ตัดได้จริงต่อ 1 หน่วยขาย — มีเมื่อคูณจากการจัดวาง (ดู SizeFee.piecesLabel) */
   maxPieces?: number;
+  /** 📏 1 ชิ้นใช้วัสดุต่อกันกี่หน่วย (SizeFee.longPiece) — fee = perPiece ÷ span ต่อหน่วยขาย */
+  span?: number;
 }
 
 /**
@@ -1095,8 +1104,17 @@ export interface SizeFeeBreakdown {
  * ใช้ข้อมูลจาก selections ล้วน ๆ (ไม่ต้องมี product) จึงเรียกได้จากทุกชั้นที่คิด extra
  */
 export function sizeFeeBreakdownOf(cfg: SizeFee, selections: Record<string, string>): SizeFeeBreakdown | null {
-  const tierFee = (longest: number) =>
-    (cfg.tiers.find((t) => longest <= t.upTo) ?? cfg.tiers[cfg.tiers.length - 1])?.fee ?? 0;
+  const tierFee = (longest: number) => {
+    const last = cfg.tiers[cfg.tiers.length - 1];
+    let fee = 0;
+    let rest = longest;
+    // 📏 เกินขั้นสุดท้าย = ขั้นสุดท้าย + ขั้นของส่วนที่เกิน (160 = ขั้น 150 + ขั้น 30) — เฉพาะ longPiece
+    while (cfg.longPiece && last && last.upTo > 0 && rest > last.upTo + 1e-9) {
+      fee += last.fee;
+      rest -= last.upTo;
+    }
+    return fee + ((cfg.tiers.find((t) => rest <= t.upTo) ?? last)?.fee ?? 0);
+  };
   // 🔒 ประตูแรก: กลุ่มอื่นยังไม่เข้าเงื่อนไข = ไม่คิดค่าบริการนี้เลย (ดู SizeFee.onlyWhen)
   if (cfg.onlyWhen && !valueMatchesAny(selections[cfg.onlyWhen.label], cfg.onlyWhen.choices)) return null;
   if (cfg.when && !valueMatchesAny(selections[cfg.when.label], cfg.when.choices)) {
@@ -1114,8 +1132,17 @@ export function sizeFeeBreakdownOf(cfg: SizeFee, selections: Record<string, stri
   const perPiece = tierFee(Math.max(w, h));
   if (!perPiece) return null;
   if (!cfg.perPiece) return { fee: perPiece, perPiece, pieces: 1 };
+  const { sheetW, sheetH, gap = 0 } = cfg.perPiece;
+  const fit = packSingleSize(w, h, sheetW, sheetH, gap);
+  // 📏 ชิ้นยาวเกิน 1 หน่วย (ผ้า 85×160 = 2 หลา) — คิดครั้งเดียวต่อชิ้น เฉลี่ยลงทุกหน่วยที่ชิ้นใช้ (ดู SizeFee.longPiece)
+  if (!fit && cfg.longPiece) {
+    for (let span = 2; span <= 20; span++) {
+      if (packSingleSize(w, h, sheetW, sheetH * span, gap) >= 1)
+        return { fee: Math.round((perPiece / span) * 100) / 100, perPiece, pieces: 1, span };
+    }
+  }
   // ชิ้นใหญ่จนวางไม่ได้ (pieces 0) ก็ยังคิดอย่างน้อย 1 ชิ้น — ช่องกรอกมี max กันขนาดเกินอยู่แล้ว
-  const maxPieces = Math.max(1, packSingleSize(w, h, cfg.perPiece.sheetW, cfg.perPiece.sheetH, cfg.perPiece.gap ?? 0));
+  const maxPieces = Math.max(1, fit);
   // ✂️ สั่งตัดน้อยกว่าที่ตัดได้ = คิดค่าตัด/เย็บเท่าที่สั่ง (ดู SizeFee.piecesLabel)
   const want = cfg.piecesLabel ? num(selections[cfg.piecesLabel]) : null;
   const pieces = want == null ? maxPieces : Math.min(Math.max(1, Math.floor(want)), maxPieces);

@@ -4601,15 +4601,15 @@ export default function ProductDetail({
                       if (max == null)
                         return <p className="mt-1 text-[11px] text-stone-400">กรอกขนาดชิ้นงานด้านบนก่อน แล้วระบบจะบอกว่า 1 {sheet} ตัดได้กี่ชิ้น</p>;
                       /*
-                       * 📏 ชิ้นยาวเกิน 1 หน่วย (ผ้า 85×160 = ใช้ 2 หลา) — ค่าตัด/เย็บขอบยังคิดทุกหลาที่สั่ง
-                       * (กติกาเดียวกับตัดเต็มหลา) แต่ได้ชิ้นเดียว — ห้ามขึ้น "สั่ง 2 หลา = 2 ชิ้น" ค้านกับบรรทัด 📐
+                       * 📏 ชิ้นยาวเกิน 1 หน่วย (ผ้า 85×160 = ใช้ 2 หลา) — ค่าตัด/เย็บขอบคิดครั้งเดียวต่อชิ้น
+                       * (SizeFee.longPiece · พนักงานแจ้ง 19 ต.ค. 69) — ห้ามขึ้น "สั่ง 2 หลา = 2 ชิ้น" ค้านกับบรรทัด 📐
                        */
                       const yOpt = product.options.find((o) => o.sheetYield && o.label === cfg.heightLabel);
                       const span = yOpt ? sheetSpanUnits(product, yOpt, effective) : null;
                       if (span)
                         return (
                           <p className="mt-1 text-[11px] font-bold text-teal-700">
-                            ✂️ ชิ้นยาวเกิน 1 {sheet} — คิดค่าตัด/เย็บขอบตามจำนวน{sheet}ที่สั่ง ({sheet}ละ 1 ครั้ง เหมือนตัดเต็ม{sheet})
+                            ✂️ ชิ้นยาวเกิน 1 {sheet} — คิดค่าตัด/เย็บขอบครั้งเดียวต่อชิ้น (เฉลี่ยลง {span} {sheet} ที่ชิ้นนี้ใช้)
                             {qty >= span && (
                               <span className="font-normal text-stone-500">
                                 {" "}
@@ -4865,6 +4865,24 @@ export default function ProductDetail({
                           </p>
                         );
                       const solo = parts.length === 1 ? parts[0] : null;
+                      /*
+                       * 📏 ชิ้นยาวเกิน 1 หน่วย (ผ้า 85×160 = 2 หลา) — บอกเป็น "ต่อชิ้น คิดครั้งเดียว" ก่อน
+                       * แล้วค่อยบอกยอดต่อหลาที่เฉลี่ยลงราคา (ดู SizeFee.longPiece) ไม่งั้นดูเหมือนคิดซ้ำทุกหลา
+                       */
+                      const span = parts.find((p) => p.bd.span)?.bd.span;
+                      if (span) {
+                        const perPieceTotal = parts.reduce((s, p) => s + (p.bd.span ? p.bd.perPiece : p.bd.fee * span) * p.n, 0);
+                        return (
+                          <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
+                            💰 ด้านยาวสุด {longest} {cfg?.unit ?? ""} = <span className="font-extrabold text-teal-900">+{formatPrice(perPieceTotal)}</span> ต่อชิ้น
+                            <span className="font-normal text-stone-500">
+                              {" "}
+                              ({parts.map((p) => `${p.name} ${formatPrice((p.bd.span ? p.bd.perPiece : p.bd.fee * span) * p.n)}`).join(" · ")}) — คิดครั้งเดียว
+                              1 ชิ้นใช้ {span} {matrix?.unit ?? "หน่วย"} = {formatPrice(total)} ต่อ{matrix?.unit ?? "หน่วย"}
+                            </span>
+                          </p>
+                        );
+                      }
                       return (
                         <p className="mt-1 rounded-xl bg-teal-50 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-teal-700 ring-1 ring-teal-200">
                           💰 ด้านยาวสุด {longest} {cfg?.unit ?? ""} = <span className="font-extrabold text-teal-900">+{formatPrice(total)}</span> ต่อ
@@ -5493,6 +5511,13 @@ export default function ProductDetail({
                                       <span className="font-normal text-stone-500">
                                         {" "}
                                         (฿{feeBd.perPiece} × {feeBd.pieces} ชิ้น)
+                                      </span>
+                                    )}
+                                    {feeBd?.span && add === feeBd.fee && (
+                                      // 📏 ชิ้นยาวเกิน 1 หลา — ค่าชิ้นคิดครั้งเดียว เฉลี่ยลงหลาที่ใช้ (SizeFee.longPiece)
+                                      <span className="font-normal text-stone-500">
+                                        {" "}
+                                        ({formatPrice(feeBd.perPiece)}/ชิ้น ÷ {feeBd.span} {matrix?.unit ?? "หน่วย"})
                                       </span>
                                     )}
                                   </span>
