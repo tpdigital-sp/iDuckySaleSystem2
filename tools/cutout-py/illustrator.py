@@ -67,6 +67,67 @@ def _sweep_old_workdirs(max_age_h: float = 24) -> None:
 
 
 _sweep_old_workdirs()
+
+
+# ───────── ปิด Illustrator เองเมื่อว่าง (19 ต.ค. 69 เจ้าของร้าน "ให้ .ai ปิดโปรแกรมเองได้ไหม") ─────────
+# หลังงานสุดท้าย รอ QUIT_AFTER วินาที (กด 🔁 หลายลายต่อกันจะได้ไม่เปิด-ปิดทุกลาย) แล้วปิด Illustrator
+# ⚠️ ปิดเฉพาะตอน "ไม่มีเอกสารเปิดอยู่" — พนักงานเปิดงานของตัวเองค้างไว้ = ไม่ปิด งานไม่หาย
+# ไม่ได้เปิดอยู่ = ไม่ทำอะไร (เช็คก่อน ไม่งั้นคำสั่งเชื่อม Illustrator จะไปเปิดมันขึ้นมาเอง)
+QUIT_AFTER = 30
+_QUIT_TIMER: threading.Timer | None = None
+_TIMER_LOCK = threading.Lock()
+
+
+def _quit_if_idle() -> None:
+    if not _LOCK.acquire(blocking=False):  # มีงานใหม่กำลังทำ — ไว้ปิดรอบหน้า
+        return
+    try:
+        if sys.platform == "win32":
+            exe = _powershell()
+            if not exe:
+                return
+            ps = ("$p = Get-Process -Name Illustrator -ErrorAction SilentlyContinue; if (-not $p) { exit 0 }; "
+                  "$app = New-Object -ComObject Illustrator.Application; "
+                  "if ($app.Documents.Count -eq 0) { $app.Quit() }")
+            subprocess.run([exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                           capture_output=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        elif sys.platform == "darwin":
+            scpt = (f'if application id "{BUNDLE_ID}" is running then\n'
+                    f'  tell application id "{BUNDLE_ID}"\n'
+                    f'    if (count of documents) is 0 then quit\n'
+                    f'  end tell\n'
+                    f'end if\n')
+            subprocess.run(["osascript", "-e", scpt], capture_output=True, timeout=60)
+    except Exception as ex:
+        print("ปิด Illustrator อัตโนมัติไม่สำเร็จ:", ex, flush=True)
+    finally:
+        _LOCK.release()
+
+
+def _schedule_quit() -> None:
+    global _QUIT_TIMER
+    with _TIMER_LOCK:
+        if _QUIT_TIMER:
+            _QUIT_TIMER.cancel()
+        _QUIT_TIMER = threading.Timer(QUIT_AFTER, _quit_if_idle)
+        _QUIT_TIMER.daemon = True
+        _QUIT_TIMER.start()
+
+
+@contextmanager
+def _illustrator_job():
+    """ใช้ Illustrator ทีละงาน (_LOCK) · เริ่มงาน = ยกเลิกนับถอยหลังปิด · จบงาน (สำเร็จ/พัง) = นับใหม่"""
+    global _QUIT_TIMER
+    with _TIMER_LOCK:
+        if _QUIT_TIMER:
+            _QUIT_TIMER.cancel()
+            _QUIT_TIMER = None
+    _LOCK.acquire()
+    try:
+        yield
+    finally:
+        _LOCK.release()
+        _schedule_quit()
 _AVAILABLE: bool | None = None
 
 JSX_CORE = r"""
@@ -251,7 +312,7 @@ def layered(ai_files: list[bytes], timeout: int = 600) -> list[bytes]:
     """รับไฟล์ .ai (PDF) หลายไฟล์ คืนไฟล์ .ai แท้ที่แยกเลเยอร์แล้ว ลำดับเดียวกัน"""
     if not available():
         raise RuntimeError("ไม่พบ Adobe Illustrator ในเครื่องนี้")
-    with _LOCK, _workdir("cutlayer_") as tmp:
+    with _illustrator_job(), _workdir("cutlayer_") as tmp:
         tmp = Path(tmp)
         jobs = []
         for i, data in enumerate(ai_files):
@@ -397,7 +458,7 @@ def calendar_ai(job: dict, timeout: int = 600) -> bytes:
     pages = job.get("pages") or []
     if not pages:
         raise RuntimeError("ไม่มีหน้าให้สร้าง")
-    with _LOCK, _workdir("calai_") as tmp:
+    with _illustrator_job(), _workdir("calai_") as tmp:
         tmp = Path(tmp)
         jpages = []
         for i, pg in enumerate(pages):
