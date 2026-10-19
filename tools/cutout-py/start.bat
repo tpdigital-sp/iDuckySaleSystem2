@@ -24,7 +24,9 @@ set "BASEPY="
 py -3.12 -c "1" >nul 2>nul && set "BASEPY=py -3.12"
 if not defined BASEPY py -3.11 -c "1" >nul 2>nul && set "BASEPY=py -3.11"
 if not defined BASEPY python -c "import sys; sys.exit(0 if sys.version_info[:2] in ((3,11),(3,12)) else 1)" >nul 2>nul && set "BASEPY=python"
-if not defined BASEPY goto nopython
+if not defined BASEPY if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "BASEPY="%LOCALAPPDATA%\Programs\Python\Python312\python.exe""
+if not defined BASEPY goto installpy
+:havepy
 
 %BASEPY% -m venv .venv
 if errorlevel 1 goto nopython
@@ -77,10 +79,23 @@ echo.
 pause
 exit /b 1
 
+:installpy
+rem No Python 3.12/3.11 (none installed, or only 3.13+) - install 3.12 for this Windows user.
+rem Per-user quiet install: no admin rights, no installer clicks. 3.12.10 = last official 3.12 installer.
+echo.
+echo Python 3.12 not found - downloading and installing it now (27 MB, 1-3 minutes)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; $f=Join-Path $env:TEMP 'python-3.12.10-amd64.exe'; Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $f; $p=Start-Process -FilePath $f -ArgumentList '/quiet','InstallAllUsers=0','PrependPath=1','Include_launcher=1','InstallLauncherAllUsers=0','Include_test=0' -Wait -PassThru; exit $p.ExitCode"
+set "PYNEW=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+if not exist "%PYNEW%" goto nopython
+echo Python 3.12 installed.
+set "BASEPY="%PYNEW%""
+goto havepy
+
 :nopython
 echo.
-echo ERROR: Python 3.12 (or 3.11) not found.
-echo   Install Python 3.12 from https://www.python.org/downloads/windows/
+echo ERROR: Python 3.12 (or 3.11) not found and automatic install failed.
+echo   Install Python 3.12.10 by hand: https://www.python.org/downloads/release/python-31210/
+echo   ("Windows installer (64-bit)")
 echo   and TICK "Add python.exe to PATH" on the first installer screen.
 echo   Then double-click start.bat again.
 echo.
