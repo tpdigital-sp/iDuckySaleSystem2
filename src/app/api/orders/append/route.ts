@@ -94,7 +94,18 @@ export async function POST(req: Request) {
    * 🚧 ราคาต่อชิ้นของที่เพิ่มต้องไม่ต่ำกว่าที่ร้านคิดได้ — คิดร่วมล็อตกับของเดิมในใบเหมือนตะกร้า (ตรวจความปลอดภัย 8 ต.ค. 69)
    * เดิมเชื่อ unitPrice จากเบราว์เซอร์ → คนถือ key ออเดอร์ยิง API เพิ่มของราคา ฿1 เข้าใบได้
    */
-  const short = await underpricedLines(items, getProductServer, order.items);
+  /**
+   * 🛠 แก้ตัวเลือกจากหน้าร้าน = ของใหม่แทนบรรทัดเดิม (หน้าออเดอร์ถอดบรรทัดเดิมทีหลัง)
+   * เช็คว่าบรรทัดยังตรงกับที่หน้าจอส่งมาจริง (สินค้า/ชื่อ/จำนวน) ไม่ตรง = ถือเป็นสั่งเพิ่มธรรมดา
+   */
+  const rp = body.replacing;
+  const rIdx = typeof rp?.index === "number" ? rp.index : -1;
+  const rOld = rIdx >= 0 && rIdx < order.items.length ? order.items[rIdx] : null;
+  const skipIdx = rOld && rOld.productId === rp?.productId && rOld.name === rp?.name && rOld.qty === rp?.qty ? rIdx : -1;
+  /** ของเดิมที่ผลิตร่วมล็อตจริง — บรรทัดที่กำลังถูกแทนไม่นับ (OD-260910-5776: นับ 40 ใบที่จะถูกถอด ทำให้ 25 ใบใหม่ได้ขั้น 50+) */
+  const lotBase = skipIdx >= 0 ? order.items.filter((_, i) => i !== skipIdx) : order.items;
+
+  const short = await underpricedLines(items, getProductServer, lotBase);
   if (short.length) return NextResponse.json({ error: priceMismatchMessage(short) }, { status: 400 });
 
   // 📐 แช่จำนวนชิ้นต่อหน่วยให้ของที่สั่งเพิ่มเหมือนตอนสั่งครั้งแรก
@@ -105,8 +116,20 @@ export async function POST(req: Request) {
    * ของที่เพิ่งเพิ่มได้ราคาล็อตรวมอยู่แล้ว (ตะกร้านับของเดิมร่วมล็อต) — ตรงนี้ลดบรรทัดเดิมลงมาให้เท่ากัน
    * ลดอย่างเดียว ไม่ขึ้นราคาย้อนหลัง · ดู lib/order-lot-reprice.ts
    */
-  const addedIdx = merged.map((_, i) => i).filter((i) => i >= order.items.length);
-  const lot = await repriceOrderLot({ ...order, items: merged }, getProductServer, addedIdx);
+  // บรรทัดที่กำลังถูกแทนไม่ร่วมคิด และไม่ถูกแตะราคา (หน้าออเดอร์จับคู่ถอดด้วยราคาเดิม — ราคาเปลี่ยน = ถอดไม่ได้)
+  const lotMerged = [...lotBase, ...merged.slice(order.items.length)];
+  const lotAdded = lotMerged.map((_, i) => i).filter((i) => i >= lotBase.length);
+  const lotRes = await repriceOrderLot({ ...order, items: lotMerged }, getProductServer, lotAdded);
+  const lot =
+    skipIdx >= 0
+      ? {
+          ...lotRes,
+          order: {
+            ...lotRes.order,
+            items: [...lotRes.order.items.slice(0, skipIdx), merged[skipIdx], ...lotRes.order.items.slice(skipIdx)],
+          },
+        }
+      : lotRes;
 
   /**
    * 🎁 ของแถมตามจำนวนชิ้นต้องนับ "ทั้งใบ" — เดิมคิดครั้งเดียวตอนสั่งครั้งแรก ของที่สั่งเพิ่มเลยไม่ได้ของแถม
@@ -114,14 +137,9 @@ export async function POST(req: Request) {
    */
   // 📐 ขนาด/ลายของแถมที่เลือกในตะกร้า — ใช้กับโปรที่เพิ่งได้ในรอบนี้ (OD-261012-9950: เลือก 9 × 9 แต่ใบขึ้น 7 × 7)
   /**
-   * 🛠 แก้ตัวเลือกจากหน้าร้าน = ของใหม่แทนบรรทัดเดิม → นับของแถมโดยไม่รวมบรรทัดที่กำลังถูกแทน
+   * 🛠 แก้ตัวเลือกจากหน้าร้าน → นับของแถมโดยไม่รวมบรรทัดที่กำลังถูกแทน (skipIdx ด้านบน)
    * (OD-261012-5632 · 12 ต.ค. 69: 10 ชิ้นแก้ตัวเลือก 9 ชิ้น → เดิมนับ 19 ได้รองหลังฟรี 19 · ของแถมเพิ่มอย่างเดียว ถอดบรรทัดเก่าแล้วก็ไม่ลด)
-   * เช็คว่าบรรทัดยังตรงกับที่หน้าจอส่งมาจริง (สินค้า/ชื่อ/จำนวน) ไม่ตรง = นับทั้งใบเหมือนเดิม
    */
-  const rp = body.replacing;
-  const rIdx = typeof rp?.index === "number" ? rp.index : -1;
-  const rOld = rIdx >= 0 && rIdx < order.items.length ? order.items[rIdx] : null;
-  const skipIdx = rOld && rOld.productId === rp?.productId && rOld.name === rp?.name && rOld.qty === rp?.qty ? rIdx : -1;
   const giftBase = skipIdx >= 0 ? { ...lot.order, items: lot.order.items.filter((_, i) => i !== skipIdx) } : lot.order;
   const gift = await syncOrderGifts(sb, giftBase, { sizes: body.giftSizes, artwork: body.giftArtwork });
 

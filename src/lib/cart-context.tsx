@@ -27,6 +27,7 @@ import { fetchProductsByIds, fetchProductsByIdsChecked } from "./product-repo";
 import { useCustomer } from "./customer-context";
 import { APPEND_CHANGED_EVENT, appendLotLines, getAppendTarget, type AppendLotLine } from "./append-order";
 import { fetchOrderForCustomer } from "./order-repo";
+import { readReplaceMarker } from "./order-item-qty";
 
 export interface CartItem {
   key: string;
@@ -336,7 +337,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setLotExtras(t?.lotItems ?? []);
       if (!t) return;
       fetchOrderForCustomer(t.id, t.key).then(({ order }) => {
-        if (mine === run && order) setLotExtras(appendLotLines(order.items));
+        if (!(mine === run && order)) return;
+        /**
+         * 🛠 แอดมินกด "แก้ตัวเลือก" = ของใหม่จะมาแทนรายการเดิม → รายการเดิมไม่ได้ผลิตร่วมล็อต ห้ามนับ
+         * (OD-260910-5776 · 20 ต.ค. 69: นับ 40 ใบเดิมร่วมกับ 25 ใบใหม่ ได้ขั้น 50+ ฿105 แล้วรายการเดิมถูกถอด เหลือ 25 ใบ ฿105)
+         */
+        const m = readReplaceMarker();
+        const old = m && (m.kind ?? "order") === "order" && m.orderId === t.id ? order.items[m.index] : undefined;
+        const replaced = old && old.productId === m!.productId && old.name === m!.name && old.qty === m!.qty ? m!.index : -1;
+        setLotExtras(appendLotLines(order.items.filter((_, i) => i !== replaced)));
       });
     };
     const onStorage = (e: StorageEvent) => {

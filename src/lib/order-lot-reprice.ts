@@ -115,3 +115,61 @@ export async function repriceOrderLot(
 export function lotRepriceNote(changed: LotRepriceLine[]): string {
   return changed.map((c) => `${c.name} ฿${c.from.toLocaleString()} → ฿${c.to.toLocaleString()} (${c.qty} ชิ้น)`).join(" · ");
 }
+
+/**
+ * 🧮↩ ขาย้อนของ repriceOrderLot — ล็อตในใบ "หดลง" (ลบรายการ · แก้ตัวเลือกแทนที่รายการ · ลดจำนวน) → ราคาที่เคยได้เพราะล็อตใหญ่ต้องคืนกลับ
+ *
+ * ทำไม (OD-260910-5776 · 20 ต.ค. 69 พนักงานแจ้ง): ถุงผ้าหูรูด 40 ใบ ฿110 → ลูกค้าสั่งเพิ่ม 25 ใบ รวม 65 = ขั้น 50-199 ฿105
+ * (ของที่เพิ่มได้ ฿105 + ระบบลด 40 ใบเดิมเป็น ฿105) → แอดมินลบ 40 ใบเดิมออก เหลือ 25 ใบ แต่ค้าง ฿105
+ * ทั้งที่ 25 ใบอยู่ขั้น 11-29 = ฿120 · ลบรายการไม่เคยคิดราคาใหม่เลย ลูกค้าโอนมาที่ ฿105 ไปแล้ว
+ *
+ * กติกา:
+ * - เทียบราคาตาราง "ก่อนหด" กับ "หลังหด" ของบรรทัดเดียวกัน (สมองเดียวกับตะกร้า repriceCartGroups ทั้งคู่)
+ *   ขึ้นราคาเฉพาะบรรทัดที่แพงขึ้น "เพราะล็อตหด" เท่านั้น — ตารางที่ร้านขยับเองไม่ไหลเข้าใบ
+ * - ขึ้นเท่าส่วนต่างของตาราง แต่ไม่เกินราคาตารางหลังหด: ราคาพิเศษที่แอดมินตีต่ำกว่าตาราง ส่วนลดยังอยู่
+ * - บรรทัดที่แอดมินตีราคาเอง (quoteNote) · ค่าบริการ # · งานพิเศษ ไม่แตะ · ใบเคลม/ใบ FlowAccount ไม่แตะ
+ *
+ * @param prev รายการก่อนหด
+ * @param next รายการหลังหด (ผลจริงที่จะบันทึก)
+ * @param prevIndex บรรทัดที่ j ของ next คือบรรทัดไหนของ prev (-1 = บรรทัดใหม่ ไม่มีฐานเทียบ = ไม่แตะ)
+ * @param skip index ของ next ที่ห้ามแตะ (เช่นบรรทัดที่เพิ่งแก้จำนวน คิดราคาให้แล้ว)
+ */
+export function relotAfterShrink(
+  order: Order,
+  prev: OrderItem[],
+  next: OrderItem[],
+  prevIndex: number[],
+  productOf: (id: string) => Product | undefined,
+  skip: number[] = []
+): { items: OrderItem[]; changed: LotRepriceLine[] } {
+  if (isFreeOrder(order) || order.flowAccount) return { items: next, changed: [] };
+  const priceAt = (items: OrderItem[]) => {
+    const idxs = pricedIndexes(items);
+    const got = repriceCartGroups(
+      idxs.map((i) => ({ productId: items[i].productId, selections: items[i].sel!, qty: items[i].qty })),
+      productOf
+    );
+    const m = new Map<number, number>();
+    idxs.forEach((i, n) => m.set(i, got[n]?.unitPrice ?? 0));
+    return m;
+  };
+  const before = priceAt(prev);
+  const after = priceAt(next);
+  const skipSet = new Set(skip);
+
+  const items = [...next];
+  const changed: LotRepriceLine[] = [];
+  after.forEach((a, j) => {
+    const it = items[j];
+    if (skipSet.has(j) || it.quoteNote || !productOf(it.productId)) return;
+    const pi = prevIndex[j] ?? -1;
+    const b = pi >= 0 ? before.get(pi) : undefined;
+    // ราคาตารางหาไม่เจอ (สเปคเก่า/สินค้าถูกลบ) หรือไม่ได้แพงขึ้นเพราะล็อตหด → คงเดิม
+    if (!(a > 0) || b === undefined || !(b > 0) || a <= b) return;
+    const to = Math.round(Math.min(a, it.unitPrice + (a - b)));
+    if (to <= it.unitPrice) return;
+    items[j] = { ...it, unitPrice: to };
+    changed.push({ name: it.name, from: it.unitPrice, to, qty: it.qty });
+  });
+  return { items: changed.length ? items : next, changed };
+}

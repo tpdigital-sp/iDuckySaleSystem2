@@ -209,7 +209,7 @@ export function writeReplaceMarker(m: OrderReplaceMarker | null) {
 export function applyReplaceMarker(
   items: OrderItem[],
   m: OrderReplaceMarker
-): { items: OrderItem[]; old: OrderItem; fresh: OrderItem } | null {
+): { items: OrderItem[]; old: OrderItem; fresh: OrderItem; prev: OrderItem[]; prevIndex: number[] } | null {
   if (items.length <= m.itemCount) return null;
   const old = items[m.index];
   if (!old || old.productId !== m.productId || old.name !== m.name || old.qty !== m.qty || old.unitPrice !== m.unitPrice)
@@ -250,6 +250,8 @@ export function applyReplaceMarker(
         }
       : {}),
   };
-  const next = items.map((x, i) => (i === freshIdx ? fresh : x)).filter((_, i) => i !== m.index);
-  return { items: next, old, fresh };
+  // prev/prevIndex = ไว้คิดราคาล็อตใหม่หลังถอดรายการเดิม (relotAfterShrink)
+  const prev = items.map((x, i) => (i === freshIdx ? fresh : x));
+  const prevIndex = prev.map((_, i) => i).filter((i) => i !== m.index);
+  return { items: prevIndex.map((i) => prev[i]), old, fresh, prev, prevIndex };
 }

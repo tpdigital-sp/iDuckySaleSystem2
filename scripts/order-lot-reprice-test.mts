@@ -7,7 +7,8 @@
  * ผ้าคลุมไหล่ 100x100 10 ผืน ฿400 → ลูกค้าสั่งเพิ่ม 3 ผืน รวม 13 ผืน = ขั้น 11-49 ฿350
  * ของที่เพิ่มได้ ฿350 แล้ว (ตะกร้านับของเดิมร่วมล็อต) แต่ 10 ผืนแรกต้องลดตามด้วย
  */
-import { repriceOrderLot } from "../src/lib/order-lot-reprice";
+import { relotAfterShrink, repriceOrderLot } from "../src/lib/order-lot-reprice";
+import { applyReplaceMarker } from "../src/lib/order-item-qty";
 import type { Order, OrderItem } from "../src/lib/admin-data";
 import type { Product } from "../src/lib/products";
 
@@ -184,6 +185,78 @@ const kline = (qty: number, designs: number, unitPrice: number, size = "5cm", ad
   const order = mk([line(10, 400), line(3, 350)]);
   const r = await repriceOrderLot(order, load);
   eq("ไม่มีฐานเทียบ = ไม่ลดของเดิมมั่ว", units(r.order), [400, 350]);
+}
+
+// ── 🧮↩ ล็อตหด (ลบรายการ/แทนที่/ลดจำนวน) → คืนราคาขั้นที่ล็อตเหลือจริง (OD-260910-5776 · 20 ต.ค. 69) ─────
+/** ถุงผ้าหูรูดจำลองตามตารางจริง 17.5x21cm: 1-10 ฿160 · 11-29 ฿120 · 30-49 ฿110 · 50-199 ฿105 · 200+ ฿95 */
+const bag: Product = {
+  id: "bag",
+  name: "ถุงผ้าหูรูด",
+  price: 160,
+  category: "ผ้า",
+  options: [{ label: "ขนาด", choices: [{ name: "17.5x21cm" }, { name: "27.5x37cm" }] }],
+  priceRates: [
+    {
+      label: "เรทที่ 1",
+      pricing: {
+        driverLabels: ["ขนาด"],
+        tiers: [{ upTo: 10 }, { upTo: 29 }, { upTo: 49 }, { upTo: 199 }, { upTo: null }],
+        cells: { "17.5x21cm": [160, 120, 110, 105, 95], "27.5x37cm": [180, 140, 130, 125, 115] },
+      },
+    },
+  ],
+} as unknown as Product;
+const bagOf = (id: string) => (id === bag.id ? bag : undefined);
+const bline = (qty: number, unitPrice: number, extra: Partial<OrderItem> = {}): OrderItem =>
+  ({ productId: "bag", name: "ถุงผ้าหูรูด", selections: "ขนาด: 17.5x21cm", sel: { ขนาด: "17.5x21cm" }, qty, unitPrice, ...extra }) as OrderItem;
+const dropAt = (items: OrderItem[], k: number) => {
+  const prevIndex = items.map((_, i) => i).filter((i) => i !== k);
+  return { next: prevIndex.map((i) => items[i]), prevIndex };
+};
+{
+  // เคสจริง: 40 ใบ (ลดจาก ฿110 → ฿105) + สั่งเพิ่ม 25 ใบ ฿105 → ลบ 40 ใบ เหลือ 25 = ขั้น 11-29 ฿120
+  const items = [bline(40, 105), bline(25, 105)];
+  const { next, prevIndex } = dropAt(items, 0);
+  const r = relotAfterShrink(mk(items), items, next, prevIndex, bagOf);
+  eq("ลบ 40 ใบเดิม → 25 ใบที่เหลือกลับเป็น ฿120", units({ items: r.items } as Order), [120]);
+  eq("รายงานบรรทัดที่ขึ้น", r.changed, [{ name: "ถุงผ้าหูรูด", from: 105, to: 120, qty: 25 }]);
+}
+{
+  // ลบแล้วยังอยู่ขั้นเดิม (40 + 30 → เหลือ 50) = ไม่แตะ
+  const items = [bline(20, 105), bline(30, 105), bline(20, 105)];
+  const { next, prevIndex } = dropAt(items, 0);
+  eq("ลบแล้วยังถึงขั้น 50+ → ไม่แตะ", relotAfterShrink(mk(items), items, next, prevIndex, bagOf).changed.length, 0);
+}
+{
+  // ราคาพิเศษที่แอดมินตีต่ำกว่าตาราง: ฿100 (ตาราง ฿105) → ขึ้นเท่าส่วนต่างตาราง +15 = ฿115 ส่วนลดยังอยู่
+  const items = [bline(40, 105), bline(25, 100)];
+  const { next, prevIndex } = dropAt(items, 0);
+  eq("ราคาพิเศษขึ้นเท่าส่วนต่างตาราง", units({ items: relotAfterShrink(mk(items), items, next, prevIndex, bagOf).items } as Order), [115]);
+}
+{
+  // แอดมินตีราคาเอง (quoteNote) ไม่แตะ · ใบ FlowAccount ไม่แตะ · ใบเคลมไม่แตะ
+  const items = [bline(40, 105), bline(25, 105, { quoteNote: "ราคาพิเศษ" } as Partial<OrderItem>)];
+  const { next, prevIndex } = dropAt(items, 0);
+  eq("quoteNote ไม่แตะ", relotAfterShrink(mk(items), items, next, prevIndex, bagOf).changed.length, 0);
+  const plain = [bline(40, 105), bline(25, 105)];
+  const d = dropAt(plain, 0);
+  eq("ใบ FlowAccount ไม่แตะ", relotAfterShrink(mk(plain, { flowAccount: { id: "x" } } as Partial<Order>), plain, d.next, d.prevIndex, bagOf).changed.length, 0);
+  eq("ใบเคลมไม่แตะ", relotAfterShrink(mk(plain, { claimOf: "OD-X" }), plain, d.next, d.prevIndex, bagOf).changed.length, 0);
+}
+{
+  // ลดจำนวน 40 → 5: บรรทัดอื่น 25 ใบคืน ฿120 (30 ใบรวม = 11-29? ไม่ 30 = ขั้น 30-49 ฿110) · บรรทัดที่แก้ข้าม (skip)
+  const items = [bline(40, 105), bline(25, 105)];
+  const next = [bline(5, 110), bline(25, 105)];
+  const r = relotAfterShrink(mk(items), items, next, [0, 1], bagOf, [0]);
+  eq("ลดจำนวนจนล็อตหด → บรรทัดอื่นขึ้นตามขั้นที่เหลือ (30 ใบ ฿110)", units({ items: r.items } as Order), [110, 110]);
+}
+{
+  // 🛠 แก้ตัวเลือก (แทนที่): 40 ใบ → ของใหม่ 25 ใบ ที่ตะกร้าคิดถูกแล้ว (ไม่นับ 40 ใบที่ถูกแทน · 10+25 = ฿110) · บรรทัดอื่น 10 ใบ (เคยลด ฿105) ต้องคืน
+  const items = [bline(10, 105), bline(40, 105), bline(25, 110, { addedAt: "2026-10-20T00:00:00Z" })];
+  const m = { kind: "order" as const, orderId: "OD-TEST", index: 1, productId: "bag", name: "ถุงผ้าหูรูด", qty: 40, unitPrice: 105, itemCount: 2, at: Date.now() };
+  const rr = applyReplaceMarker(items, m)!;
+  const r = relotAfterShrink(mk(items), rr.prev, rr.items, rr.prevIndex, bagOf);
+  eq("แทนที่รายการ: 10+25 = 35 ใบ ขั้น 30-49 ฿110 ทั้งบิล", units({ items: r.items } as Order), [110, 110]);
 }
 
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} ข้อ (ผ่าน ${pass})\n\n${fails.join("\n\n")}\n` : `✅ ผ่านทั้ง ${pass} ข้อ`);

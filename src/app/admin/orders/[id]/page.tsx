@@ -34,6 +34,7 @@ import {
   readReplaceMarker,
   writeReplaceMarker,
 } from "@/lib/order-item-qty";
+import { lotRepriceNote, relotAfterShrink } from "@/lib/order-lot-reprice";
 import { cartEditToken, cartItemKey } from "@/lib/cart-context";
 import { proofIssues, productWordIndex, type ProductWordIndex } from "@/lib/proof-check";
 import { PROOF_AUTO_NOTIFY_MINUTES, lastProofNotify, pendingProofs, pendingProofsLabel } from "@/lib/proof-notify";
@@ -1370,6 +1371,8 @@ export default function AdminOrderDetailPage() {
    */
   const [shopProducts, setShopProducts] = useState<Map<string, Product>>(() => new Map());
   const askedProductIds = useRef<Set<string>>(new Set());
+  /** สินค้าที่ดึงแล้วไม่ได้ (ถูกลบ/เน็ตล่ม) — รอบแทนที่รายการ (แก้ตัวเลือก) ไม่ต้องรอตัวนี้ */
+  const missingProductIds = useRef<Set<string>>(new Set());
   /** ข้อความในช่องจำนวนระหว่างพิมพ์ (บันทึกตอนออกจากช่อง/Enter) */
   const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
   /** กันแทนที่รายการซ้ำระหว่างรอผลบันทึกของรอบก่อน */
@@ -1883,7 +1886,13 @@ export default function AdminOrderDetailPage() {
     const t = setTimeout(() => {
       void fetchProductsByIds(want)
         .then((ps) => {
-          if (!alive || !ps.length) return;
+          if (!alive) return;
+          const got = new Set(ps.map((p) => p.id));
+          want.forEach((id) => !got.has(id) && missingProductIds.current.add(id));
+          if (!ps.length) {
+            setShopProducts((cur) => new Map(cur)); // ปลุกรอบแทนที่รายการที่รอสินค้าอยู่
+            return;
+          }
           setShopProducts((cur) => {
             const next = new Map(cur);
             ps.forEach((p) => next.set(p.id, p));
@@ -1892,7 +1901,11 @@ export default function AdminOrderDetailPage() {
         })
         .catch(() => {
           // โหลดไม่ได้ = แก้จำนวนได้แต่คงราคาเดิม (ให้ลองใหม่รอบหน้า)
-          want.forEach((id) => askedProductIds.current.delete(id));
+          want.forEach((id) => {
+            askedProductIds.current.delete(id);
+            missingProductIds.current.add(id);
+          });
+          if (alive) setShopProducts((cur) => new Map(cur));
         });
     }, 1200);
     return () => {
@@ -1913,20 +1926,28 @@ export default function AdminOrderDetailPage() {
     if (!m || (m.kind ?? "order") !== "order" || m.orderId !== order.id) return;
     const r = applyReplaceMarker(order.items, m);
     if (!r) return;
+    // รอข้อมูลสินค้าก่อน — ต้องใช้คิดราคาล็อตที่เหลือ (relotAfterShrink) · ดึงไม่ได้ = ไม่รอ
+    const waitFor = (x: OrderItem) =>
+      !!x.productId && !x.productId.includes("#") && x.productId !== "special-item" && Object.keys(x.sel ?? {}).length > 0;
+    if (r.items.some((x) => waitFor(x) && !shopProducts.has(x.productId) && !missingProductIds.current.has(x.productId))) return;
     replaceBusy.current = true;
     writeReplaceMarker(null);
-    const next = withLog(
-      { ...order, items: r.items },
+    // 🧮↩ รายการเดิมเคยช่วยดันล็อตให้บรรทัดอื่นได้ขั้นถูก — ถอดออกแล้วคืนราคาขั้นที่ล็อตเหลือจริง (OD-260910-5776)
+    const relot = relotAfterShrink(order, r.prev, r.items, r.prevIndex, productOfItem);
+    let next = withLog(
+      { ...order, items: relot.items },
       actor,
       "แก้ตัวเลือกจากหน้าร้าน",
       `${r.old.name} ×${r.old.qty} @${formatPrice(r.old.unitPrice)} → ${r.fresh.name} ×${r.fresh.qty} @${formatPrice(r.fresh.unitPrice)} (แทนที่รายการเดิม)`
     );
+    if (relot.changed.length)
+      next = withLog(next, "ระบบ", "ปรับราคาต่อชิ้นตามล็อตที่เหลือ", `ยอดรวมทั้งใบลดลงจนไม่ถึงขั้นเดิม · ${lotRepriceNote(relot.changed)}`);
     applyOrder(next);
     setTimeout(() => {
       replaceBusy.current = false;
     }, 3000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order?.id, order?.items.length, demo, mayEdit]);
+  }, [order?.id, order?.items.length, demo, mayEdit, shopProducts]);
 
   // วิธีจัดส่งจากตั้งค่าร้าน — ให้แอดมินเลือกแล้วเติมค่าส่งอัตโนมัติ (ใช้ในออเดอร์งานพิเศษ/สั่งแทน)
   const [shipMethods, setShipMethods] = useState<ShippingMethod[]>([]);
@@ -4288,7 +4309,10 @@ export default function AdminOrderDetailPage() {
     if (!it || !mayChangeQty(it)) return;
     const r = orderItemQtyChange(order.items, itemIndex, nextQty, productOfItem);
     if (!r) return;
-    const items = order.items.map((x, i) => (i === itemIndex ? { ...x, ...r.patch } : x));
+    const changedItems = order.items.map((x, i) => (i === itemIndex ? { ...x, ...r.patch } : x));
+    // 🧮↩ ลดจำนวนจนล็อตหด → บรรทัดอื่นที่เคยได้ขั้นถูกเพราะจำนวนเดิม คืนราคาขั้นที่ล็อตเหลือจริง (บรรทัดที่แก้คิดราคาให้แล้ว)
+    const relot = relotAfterShrink(order, order.items, changedItems, changedItems.map((_, i) => i), productOfItem, [itemIndex]);
+    const items = relot.items;
     const newQty = r.patch.qty ?? it.qty;
     const unit = r.unitPrice ?? it.unitPrice;
     const notes = [
@@ -4297,6 +4321,7 @@ export default function AdminOrderDetailPage() {
       r.rateChanged ? `เรท ${r.rateChanged.from} → ${r.rateChanged.to}` : "",
       r.designCapped ? `โควตาลายเหลือ ${r.designCapped} ลาย` : "",
       unit > 0 ? `= ${formatPrice(unit * newQty)}` : "",
+      relot.changed.length ? `ล็อตไม่ถึงขั้นเดิม ปรับรายการอื่น: ${lotRepriceNote(relot.changed)}` : "",
     ].filter(Boolean);
     applyOrder(withLog({ ...order, items }, actor, "แก้จำนวน", `${it.name}: ${notes.join(" · ")}`));
   }
@@ -4391,13 +4416,24 @@ export default function AdminOrderDetailPage() {
   }
 
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
+  /**
+   * 🧮↩ ลบรายการแล้วล็อตในใบหด → บรรทัดที่เคยได้ขั้นถูกเพราะรายการนี้ ต้องคืนราคาขั้นที่ล็อตเหลือจริง
+   * (OD-260910-5776 · 20 ต.ค. 69: 40 + สั่งเพิ่ม 25 = ฿105 ทั้งบิล → ลบ 40 ใบเดิม เหลือ 25 ใบค้าง ฿105 ควร ฿120) · ดู relotAfterShrink
+   */
+  function relotAfterRemove(itemIndex: number) {
+    if (!order) return null;
+    const prevIndex = order.items.map((_, i) => i).filter((i) => i !== itemIndex);
+    return relotAfterShrink(order, order.items, prevIndex.map((i) => order.items[i]), prevIndex, productOfItem);
+  }
+
   function removeItemFromOrder(itemIndex: number) {
     if (!order) return;
     const it = order.items[itemIndex];
     if (!it) return;
     const lost = it.qty * it.unitPrice - itemDiscountAmount(it);
-    const items = order.items.filter((_, i) => i !== itemIndex);
-    const next = withLog(
+    const relot = relotAfterRemove(itemIndex);
+    const items = relot?.items ?? order.items.filter((_, i) => i !== itemIndex);
+    let next = withLog(
       { ...order, items },
       actor,
       "ลบรายการออกจากออเดอร์",
@@ -4405,6 +4441,8 @@ export default function AdminOrderDetailPage() {
         `${proofsOf(it).length ? ` · มีแบบงาน ${proofsOf(it).length} รูป` : ""}` +
         `${(it.artworkUrls?.length ?? 0) ? ` · ลายลูกค้า ${it.artworkUrls!.length} รูป` : ""}`
     );
+    if (relot?.changed.length)
+      next = withLog(next, "ระบบ", "ปรับราคาต่อชิ้นตามล็อตที่เหลือ", `ยอดรวมทั้งใบลดลงจนไม่ถึงขั้นเดิม · ${lotRepriceNote(relot.changed)}`);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
   }
@@ -6552,11 +6590,15 @@ export default function AdminOrderDetailPage() {
                           title="ลบรายการนี้ออกจากออเดอร์ (ระบบลงประวัติทุกครั้ง)"
                           onClick={async () => {
                             const lost = it.qty * it.unitPrice - itemDiscountAmount(it);
+                            const relot = relotAfterRemove(i);
                             const ok = await askConfirm({
                               icon: "🗑",
                               title: `ลบ “${it.name}” ออกจากออเดอร์?`,
                               detail: [
                                 `⚠️ ยอดออเดอร์จะลดลง ${formatPrice(lost)} (เหลือ ${order.items.length - 1} รายการ)`,
+                                relot?.changed.length
+                                  ? `🧮 ล็อตที่เหลือไม่ถึงขั้นราคาเดิม — ราคา/หน่วยปรับขึ้น: ${lotRepriceNote(relot.changed)} (+${formatPrice(relot.changed.reduce((s, c) => s + (c.to - c.from) * c.qty, 0))})`
+                                  : "",
                                 proofsOf(it).length ? `⚠️ แบบงาน ${proofsOf(it).length} รูปของรายการนี้จะหายจากหน้าลูกค้าด้วย` : "",
                                 (it.artworkUrls?.length ?? 0) ? `⚠️ ลายที่ลูกค้าแนบ ${it.artworkUrls!.length} รูปจะไม่แสดงในออเดอร์นี้อีก (ไฟล์ยังอยู่ในคลัง)` : "",
                                 "📝 ระบบจะบันทึกในประวัติว่าใครลบ ลบอะไร และยอดลดลงเท่าไร",
