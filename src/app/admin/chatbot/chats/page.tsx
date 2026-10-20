@@ -1449,7 +1449,6 @@ function Chats() {
                               ) : null}
                               <div className="px-2.5 pb-2 pt-1.5">
                                 <p className="truncate text-[13px] font-bold" style={{ color: "#153B3F" }}>{c.name || "สินค้า"}</p>
-                                {c.price ? <p className="text-[12px]" style={{ color: "#A05A00" }}>{c.price}</p> : null}
                                 <a href={c.url} target="_blank" rel="noreferrer" className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>ดูราคา / สั่งเลย</a>
                               </div>
                             </div>
@@ -2103,11 +2102,6 @@ function DraftCard({ entry, canSend, onSend, onDiscard, onDelete, onRegen, onZoo
                     <p className="line-clamp-2 text-[13.5px] font-extrabold leading-snug" style={{ color: "#153B3F" }}>
                       {c.name || "สินค้า"}
                     </p>
-                    {c.price ? (
-                      <p className="mt-0.5 line-clamp-2 text-[12px] font-bold" style={{ color: "#A05A00" }}>
-                        {c.price}
-                      </p>
-                    ) : null}
                     <a href={c.url} target="_blank" rel="noreferrer" className="mt-2 block rounded-xl py-1.5 text-center text-[12.5px] font-bold text-white" style={{ background: "#1F6F78" }}>
                       ดูราคา / สั่งเลย ↗
                     </a>

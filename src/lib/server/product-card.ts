@@ -37,8 +37,8 @@ export function productBubble(c: ProductCardInput) {
       spacing: "xs",
       paddingAll: "12px",
       contents: [
+        // 20 ต.ค. 69 เจ้าของร้าน "ตรงนี้ไม่ต้องแสดงราคา เริ่ม" — การ์ดสินค้าเหลือ รูป · ชื่อ · ปุ่ม (ราคาตามจำนวนจริงอยู่ในการ์ดราคาเต็ม/หน้าสินค้า)
         { type: "text", text: name, weight: "bold", size: "sm", color: "#153B3F", wrap: true },
-        { type: "text", text: priceText(c), size: "xs", color: "#A05A00", wrap: true },
       ],
     },
     footer: {
