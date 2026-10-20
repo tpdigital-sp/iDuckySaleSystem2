@@ -6836,8 +6836,9 @@ export default function AdminOrderDetailPage() {
                       >
                         {addOnDisplayName(it)} <span className="text-xs font-normal text-slate-400">{open ? "▴" : "▾"}</span>
                       </button>
-                      {/* ♻️ ป้ายใช้ไฟล์เก่า — ข้างชื่อสินค้า เห็นตั้งแต่ยังไม่กางการ์ด · เลขออเดอร์เดิมกดเปิดใบเดิมในแท็บใหม่ */}
-                      {it.reuseArt && (
+                      {/* ♻️ ป้ายใช้ไฟล์เก่า — ข้างชื่อสินค้า "เฉพาะตอนพับการ์ด" · เลขออเดอร์เดิมกดเปิดใบเดิมในแท็บใหม่
+                          กางการ์ดอยู่ = มีแถวปุ่ม ♻️ ใช้ไฟล์เก่า ข้างล่างแล้ว (เจ้าของร้าน 20 ต.ค. 69: ขึ้น 4 ที่ซ้ำกัน ให้เหลือจุดเดียว) */}
+                      {it.reuseArt && !open && (
                         <span
                           className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 align-middle text-[11px] font-bold text-amber-800 ring-1 ring-amber-300"
                           title={`${reuseArtText(it.reuseArt)} · ${it.reuseArt.by} ${shortTime(it.reuseArt.at)}`}
@@ -6961,7 +6962,6 @@ export default function AdminOrderDetailPage() {
                         {it.proofStatus ? `แบบ: ${it.proofStatus === "รอตรวจ" ? "รอลูกค้าตรวจ" : it.proofStatus === "อนุมัติ" ? "ลูกค้าอนุมัติแล้ว" : "ลูกค้าขอแก้ไข"}` : it.noProof ? "แบบ: ไม่ต้องทำแบบ" : "แบบ: รอกราฟฟิกทำแบบ"}
                         {proofs.length > 0 ? ` · ${proofs.length} แบบ` : ""}
                         {(it.artworkUrls?.length ?? 0) > 0 ? ` · 🎨 ภาพลาย ${it.artworkUrls!.length}` : ""}
-                        {it.reuseArt ? ` · ♻️ ${reuseArtText(it.reuseArt)}` : ""}
                         {noteHasText(it.adminNote) ? " · 📝 มีหมายเหตุ" : ""}
                         {it.needStockCheck ? " · 📦 รอเช็คสต๊อก" : ""}
                       </p>
@@ -7329,7 +7329,7 @@ export default function AdminOrderDetailPage() {
                       <button
                         type="button"
                         onClick={() => toggleReuseArt(i)}
-                        title="ติ๊กเมื่อลูกค้าใช้ลายเดิมจากออเดอร์ก่อน ไม่แนบไฟล์ใหม่ — กราฟฟิกจะเห็นป้าย ♻️ ข้างชื่อสินค้า และดึงลายจากใบเดิมได้ในคลิกเดียว · เป็นแค่ป้าย ไม่ข้ามขั้นตรวจแบบ"
+                        title="ติ๊กเมื่อลูกค้าใช้ลายเดิมจากออเดอร์ก่อน ไม่แนบไฟล์ใหม่ — กราฟฟิกจะเห็นป้าย ♻️ และกด ⬇️ ดึงลายจากใบเดิมได้ในคลิกเดียว · เป็นแค่ป้าย ไม่ข้ามขั้นตรวจแบบ"
                         className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                           it.reuseArt
                             ? "bg-amber-500 text-white hover:bg-amber-600"
@@ -7351,12 +7351,44 @@ export default function AdminOrderDetailPage() {
                             aria-label="เลขออเดอร์เดิมที่ใช้ไฟล์"
                             className="w-72 max-w-full rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-900 placeholder:font-normal placeholder:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
                           />
+                          {/* ⬇️ ดึงลายจากใบเดิม — เดิมอยู่ในกล่องเหลืองแยกในส่วนลาย (ซ้ำกับแถวนี้) ย้ายมารวมที่เดียว */}
+                          {it.reuseArt.fromOrderId && (
+                            <button
+                              type="button"
+                              disabled={artUpIdx === i}
+                              onClick={() => void pullArtworkFromOld(i)}
+                              title="คัดลอกลายที่ลูกค้าแนบ (หรือแบบงาน ถ้าใบเดิมไม่มีลาย) จากออเดอร์เดิมมาใส่รายการนี้ — ไม่ทับของเดิม"
+                              className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-amber-600 disabled:opacity-50"
+                            >
+                              {artUpIdx === i ? "กำลังดึง…" : "⬇️ ดึงลายจากใบเดิม"}
+                            </button>
+                          )}
                           <span className="text-[10px] text-slate-400">
                             {it.reuseArt.by} · {shortTime(it.reuseArt.at)}
                           </span>
                         </>
                       )}
                     </div>
+                  )}
+                  {/* คนที่แก้ไม่ได้ (ดูอย่างเดียว) — ยังต้องรู้ว่าลายอยู่ใบไหน */}
+                  {!(mayProof || mayEdit) && it.reuseArt && (
+                    <p className="mt-2 text-xs font-bold text-amber-800">
+                      ♻️ ใช้ไฟล์เก่า
+                      {it.reuseArt.fromOrderId && (
+                        <>
+                          {" · "}
+                          <a
+                            href={`/admin/orders/${encodeURIComponent(it.reuseArt.fromOrderId)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline decoration-amber-400 underline-offset-2"
+                          >
+                            {it.reuseArt.fromOrderId}
+                          </a>
+                        </>
+                      )}
+                      {it.reuseArt.note && <span className="font-semibold"> · {it.reuseArt.note}</span>}
+                    </p>
                   )}
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -7994,43 +8026,6 @@ export default function AdminOrderDetailPage() {
                           </div>
                         );
                       })()}
-
-                      {/* ♻️ ลูกค้าใช้ไฟล์เก่า — บอกกราฟฟิกว่าลายอยู่ที่ใบเดิม + ปุ่มดึงมาในคลิกเดียว (มีเลขออเดอร์เดิมถึงจะดึงได้) */}
-                      {it.reuseArt && (
-                        <div className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 ring-1 ring-amber-200">
-                          <p className="font-bold">
-                            ♻️ ลูกค้าใช้ไฟล์เก่า
-                            {it.reuseArt.fromOrderId ? (
-                              <>
-                                {" "}
-                                — ดูจากออเดอร์{" "}
-                                <a
-                                  href={`/admin/orders/${encodeURIComponent(it.reuseArt.fromOrderId)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
-                                >
-                                  {it.reuseArt.fromOrderId}
-                                </a>
-                              </>
-                            ) : (
-                              " — ไม่ได้ระบุเลขออเดอร์เดิม ค้นจากชื่อ/เบอร์ลูกค้าในรายการออเดอร์ หรือถามลูกค้าทางไลน์"
-                            )}
-                          </p>
-                          {it.reuseArt.note && <p className="mt-0.5">“{it.reuseArt.note}”</p>}
-                          {(mayProof || mayEdit) && it.reuseArt.fromOrderId && (
-                            <button
-                              type="button"
-                              disabled={artUpIdx === i}
-                              onClick={() => void pullArtworkFromOld(i)}
-                              title="คัดลอกลายที่ลูกค้าแนบ (หรือแบบงาน ถ้าใบเดิมไม่มีลาย) จากออเดอร์เดิมมาใส่รายการนี้ — ไม่ทับของเดิม"
-                              className="mt-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-600 disabled:opacity-50"
-                            >
-                              {artUpIdx === i ? "กำลังดึง…" : `⬇️ ดึงลายจากออเดอร์ ${it.reuseArt.fromOrderId}`}
-                            </button>
-                          )}
-                        </div>
-                      )}
 
                       {/* แนบลายเพิ่มได้เสมอ */}
                       {mayEdit && (
