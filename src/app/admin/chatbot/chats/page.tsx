@@ -141,7 +141,7 @@ function TagChip({ k, tags }: { k: string; tags: ChatTag[] }) {
   if (!t) return null;
   const c = TAG_PALETTE[t.color];
   return (
-    <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: c.wash, color: c.ink }}>
+    <span className="shrink-0 whitespace-nowrap rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={{ background: c.wash, color: c.ink }}>
       {t.emoji} {t.label}
     </span>
   );
@@ -1256,60 +1256,65 @@ function Chats() {
           </div>
         ) : (
           <>
-            {/* หัวห้องแบบ LINE OA: รูป · ชื่อ+ป้าย / บรรทัดสถานะเล็ก · ขวา = สวิตช์บอท + ปุ่มเครื่องมือ (สถานะบอทอยู่ที่สวิตช์ ไม่ซ้ำเป็นเม็ดข้างชื่อ) */}
-            <div className="flex min-h-[60px] items-center gap-2 border-b bg-white px-2 py-2 md:px-4" style={{ borderColor: "var(--ln-line)" }}>
-              <button type="button" onClick={() => setSel("")} aria-label="กลับไปรายชื่อ" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-xl md:hidden">
-                ←
-              </button>
-              <Avatar src={detail?.pictureUrl} size={40} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 overflow-hidden">
-                  <span className="truncate text-[16px] font-extrabold">{detail ? nameOf(detail) : sel}</span>
-                  {detail?.needsHumanFollowup ? <Chip tone="coral" solid>🙋 รอแอดมิน</Chip> : null}
-                  <span className="hidden items-center gap-1 sm:flex">
-                    {detail?.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
-                    {detail?.scope === "new" ? <Chip tone="mint">ใหม่</Chip> : null}
-                    {detail?.botDraft ? <Chip tone="amber">📝 ร่างก่อนส่ง</Chip> : null}
-                  </span>
-                </div>
-                <p className="truncate text-[11px]" style={{ color: "var(--dk-faint)" }}>
-                  {detail?.createdAt ? `ทักครั้งแรก ${fmtDay(detail.createdAt)}` : ""}
-                  {detail?.lastSeen ? ` · ล่าสุด ${ago(detail.lastSeen)}` : ""}
-                  {live.at ? (
-                    <span title={live.ok ? "อัปเดตเองทุก 3 วินาที" : "ดึงข้อมูลไม่ได้ — จะลองใหม่เอง"}>
-                      {live.ok ? ` · 🟢 สด ${new Date(live.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : " · 🔴 อัปเดตไม่ได้ กำลังลองใหม่"}
-                    </span>
-                  ) : null}
-                  {detail?.oaLive ? <OaLiveBadge live={detail.oaLive} canSetup={can("settings.manage")} /> : null}
-                </p>
-              </div>
-              {/* 🤖 17:05 เจ้าของร้าน "กดแล้วควรแสดงอะไรที่แตกต่าง" — สวิตช์เป็นเม็ดยาบอกสถานะชัด: เขียว "บอทตอบ: เปิด" / เทา "บอทตอบ: ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) */}
-              {detail ? <BotPill detail={detail} canToggle={can("orders.edit") || canReply} onToggle={() => void toggleBot(detail.id, !detail.botAllowed)} onWake={() => void wakeBot(detail.id)} /> : null}
-              {detail ? (
-                <IconBtn onClick={() => void copyRoomLink()} title="คัดลอกลิงก์ห้องแชทนี้ (ส่งให้พนักงานคนอื่นเปิดดูได้)">
-                  🔗
-                </IconBtn>
-              ) : null}
-              {/* 🔌 เครื่องมือไล่ปัญหา (สิทธิ์ตั้งค่าระบบ) — มือถือซ่อน หัวห้องแคบ */}
-              {detail && can("settings.manage") ? (
-                <span className="hidden md:contents">
-                <IconBtn onClick={() => void probeOa()} title="🔌 ทดสอบดึงข้อความห้องนี้จาก LINE OA Manager (เส้น API ที่ตอบ · ฟิลด์ตัวอย่าง) — ใช้ไล่ปัญหาเมื่อข้อความที่พิมพ์ใน OA ไม่ขึ้น" active={oaProbeBusy}>
-                  {oaProbeBusy ? "⏳" : "🔌"}
-                </IconBtn>
-                </span>
-              ) : null}
-              {detail ? (
-                <button
-                  type="button"
-                  onClick={() => setNoteOpen((v) => !v)}
-                  title="ข้อมูลลูกค้า · ออเดอร์ · ป้าย · โน้ต"
-                  aria-pressed={noteOpen}
-                  className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-[13px] font-bold transition active:scale-95"
-                  style={noteOpen ? { background: "var(--ln-sel)", color: "var(--dk-navy)", boxShadow: "inset 0 0 0 1.5px var(--dk-navy-soft)" } : { color: "var(--dk-navy-soft)", boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }}
-                >
-                  <span className="text-[17px] leading-none">👤</span>
-                  <span className="hidden lg:inline">ข้อมูลลูกค้า</span>
+            {/* หัวห้องแบบ LINE OA (20 ต.ค. 69 จัดใหม่ · เจ้าของร้าน "ออกแบบ จัดวางโครงสร้างให้ใหม่"): เปิดแผงข้อมูลลูกค้าแล้วหัวแคบ ชื่อเหลือ "iDuc…" ป้ายหักเป็น 2-3 บรรทัด
+                แถว 1 = รูป · ชื่อตัวใหญ่ + บรรทัดสถานะ · ขวา = สวิตช์บอท · 👤 ข้อมูลลูกค้า · ⋯ (คัดลอกลิงก์ห้อง / ทดสอบ OA)
+                แถว 2 = ป้าย (รอแอดมิน · ความเร่ง · ร่างก่อนส่ง · ใหม่) เรียงแถวเดียว ไม่หักบรรทัด ล้นแล้วเลื่อนข้าง
+                ป้ายคำ/ซ่อนคำตาม "ความกว้างของหัวห้องจริง" (@container) ไม่ใช่ความกว้างจอ — แผงขวาเปิด/ปิดก็จัดถูก */}
+            <div className="@container border-b bg-white" style={{ borderColor: "var(--ln-line)" }}>
+              <div className="flex min-h-[60px] items-center gap-2 px-2 pb-1.5 pt-2 md:px-4">
+                <button type="button" onClick={() => setSel("")} aria-label="กลับไปรายชื่อ" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-xl md:hidden">
+                  ←
                 </button>
+                <Avatar src={detail?.pictureUrl} size={40} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[16px] font-extrabold leading-tight" title={detail ? nameOf(detail) : sel}>
+                    {detail ? nameOf(detail) : sel}
+                  </p>
+                  <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                    {detail?.lastSeen ? `ล่าสุด ${ago(detail.lastSeen)}` : ""}
+                    {live.at ? (
+                      <span title={live.ok ? "อัปเดตเองทุก 3 วินาที" : "ดึงข้อมูลไม่ได้ — จะลองใหม่เอง"}>
+                        {live.ok ? ` · 🟢 สด ${new Date(live.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : " · 🔴 อัปเดตไม่ได้ กำลังลองใหม่"}
+                      </span>
+                    ) : null}
+                    {detail?.createdAt ? <span className="hidden @xl:inline">{` · ทักครั้งแรก ${fmtDay(detail.createdAt)}`}</span> : null}
+                    {detail?.oaLive ? <OaLiveBadge live={detail.oaLive} canSetup={can("settings.manage")} /> : null}
+                  </p>
+                </div>
+                {/* 🤖 สวิตช์บอท: เขียว "บอทตอบ: เปิด" / เทา "ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) · หัวแคบเหลือ 🤖 + เปิด/ปิด */}
+                {detail ? <BotPill detail={detail} canToggle={can("orders.edit") || canReply} onToggle={() => void toggleBot(detail.id, !detail.botAllowed)} onWake={() => void wakeBot(detail.id)} labelClass="hidden @lg:inline" /> : null}
+                {detail ? (
+                  <button
+                    type="button"
+                    onClick={() => setNoteOpen((v) => !v)}
+                    title="ข้อมูลลูกค้า · ออเดอร์ · ป้าย · โน้ต"
+                    aria-pressed={noteOpen}
+                    className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-[13px] font-bold transition active:scale-95"
+                    style={noteOpen ? { background: "var(--ln-sel)", color: "var(--dk-navy)", boxShadow: "inset 0 0 0 1.5px var(--dk-navy-soft)" } : { color: "var(--dk-navy-soft)", boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }}
+                  >
+                    <span className="text-[17px] leading-none">👤</span>
+                    <span className="hidden @2xl:inline">ข้อมูลลูกค้า</span>
+                  </button>
+                ) : null}
+                {detail ? (
+                  <HeaderMenu
+                    items={[
+                      { label: "🔗 คัดลอกลิงก์ห้องนี้", hint: "ส่งให้พนักงานคนอื่นเปิดดูได้", onClick: () => void copyRoomLink() },
+                      // 🔌 เครื่องมือไล่ปัญหา (สิทธิ์ตั้งค่าระบบ) — ข้อความที่พิมพ์ใน OA ไม่ขึ้น
+                      ...(can("settings.manage") ? [{ label: oaProbeBusy ? "⏳ กำลังทดสอบ OA…" : "🔌 ทดสอบดึงข้อความจาก OA", hint: "ใช้ไล่ปัญหาเมื่อข้อความที่พิมพ์ใน LINE OA Manager ไม่ขึ้น", onClick: () => void probeOa() }] : []),
+                    ]}
+                  />
+                ) : null}
+              </div>
+              {/* แถว 2: ป้าย — แถวเดียว ไม่หักบรรทัด (ล้นแล้วเลื่อนข้าง) · ป้ายที่ต้องลงมือ (รอแอดมิน) ทึบนำหน้า */}
+              {detail && (detail.needsHumanFollowup || detail.adminTags.length || detail.scope === "new" || detail.botDraft) ? (
+                <div className="flex items-center gap-1.5 overflow-x-auto px-2 pb-2 md:px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <span className="hidden w-[48px] shrink-0 md:block" aria-hidden="true" />
+                  {detail.needsHumanFollowup ? <Chip tone="coral" solid>🙋 รอแอดมิน</Chip> : null}
+                  {detail.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
+                  {detail.botDraft ? <Chip tone="amber">📝 ร่างก่อนส่ง</Chip> : null}
+                  {detail.scope === "new" ? <Chip tone="mint">🆕 ลูกค้าใหม่</Chip> : null}
+                </div>
               ) : null}
             </div>
 
@@ -2180,7 +2185,7 @@ function Chip({ tone, solid, children }: { tone: "mint" | "sky" | "lilac" | "cor
     amber: { bg: "var(--dk-yolk-wash, #FFF4D6)", fg: "var(--dk-yolk-ink, #8A5A00)" },
   };
   return (
-    <span className="rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={solid ? { background: S[tone].fg, color: "white" } : { background: S[tone].bg, color: S[tone].fg }}>
+    <span className="shrink-0 whitespace-nowrap rounded-full px-1.5 py-[1px] text-[10.5px] font-bold" style={solid ? { background: S[tone].fg, color: "white" } : { background: S[tone].bg, color: S[tone].fg }}>
       {children}
     </span>
   );
@@ -2308,6 +2313,52 @@ function OaProbeModal({ probe: p, onClose, onRetry, busy }: { probe: OaProbe; on
 }
 
 /** ปุ่มไอคอนแบบ LINE OA: ไม่มีพื้น · โฉบ = พื้นเทาอ่อน · เปิดอยู่ (active) = พื้นเทา+ขอบ */
+/** ⋯ เมนูเครื่องมือหัวห้อง (คัดลอกลิงก์ห้อง · ทดสอบ OA) — กดนอกเมนู/Esc = ปิด */
+function HeaderMenu({ items }: { items: { label: string; hint?: string; onClick: () => void }[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  if (!items.length) return null;
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <IconBtn onClick={() => setOpen((v) => !v)} title="เครื่องมือห้องนี้" active={open}>
+        ⋯
+      </IconBtn>
+      {open ? (
+        <div role="menu" className="absolute right-0 top-[calc(100%+4px)] z-30 w-64 overflow-hidden rounded-xl border bg-white py-1 shadow-lg" style={{ borderColor: "var(--ln-line)" }}>
+          {items.map((it) => (
+            <button
+              key={it.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                it.onClick();
+              }}
+              className="block min-h-[44px] w-full px-3.5 py-2 text-left transition hover:bg-[var(--ln-hover)]"
+            >
+              <span className="block text-[13.5px] font-bold" style={{ color: "var(--dk-navy)" }}>{it.label}</span>
+              {it.hint ? <span className="block text-[11.5px]" style={{ color: "var(--dk-faint)" }}>{it.hint}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function IconBtn({ onClick, title, active, children }: { onClick: () => void; title: string; active?: boolean; children: React.ReactNode }) {
   return (
     <button
@@ -2654,11 +2705,11 @@ function ToolBtn({ icon, label, title, active, onClick }: { icon: string; label:
 
 
 /** 🤖 สวิตช์บอทรายคนแบบอ่านสถานะออก (กดสลับ) — เขียว = บอทตอบ · เทา = ปิด (แอดมินตอบ) · ม่วง = พักชั่วคราว */
-function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canToggle: boolean; onToggle: () => void; onWake: () => void }) {
+function BotPill({ detail, canToggle, onToggle, onWake, labelClass = "hidden sm:inline" }: { detail: Row; canToggle: boolean; onToggle: () => void; onWake: () => void; labelClass?: string }) {
   if (detail.pausedUntil) {
     return (
       <button type="button" onClick={onWake} disabled={!canToggle} title="บอทพักเพราะแอดมินตอบอยู่ — กดเพื่อปลุกให้ตอบต่อทันที" className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold transition active:scale-95" style={{ background: "var(--dk-lilac-wash, #EFE9FB)", color: "var(--dk-lilac-ink, #5B21B6)" }}>
-        ⏸<span className="hidden sm:inline"> พักถึง {fmtTime(detail.pausedUntil)}</span> <span className="rounded-full bg-white/70 px-1.5 text-[11px]">▶ ปลุก</span>
+        ⏸<span className={labelClass}> พักถึง {fmtTime(detail.pausedUntil)}</span> <span className="rounded-full bg-white/70 px-1.5 text-[11px]">▶ ปลุก</span>
       </button>
     );
   }
@@ -2674,7 +2725,7 @@ function BotPill({ detail, canToggle, onToggle, onWake }: { detail: Row; canTogg
     >
       <span className="grid h-6 w-6 place-items-center rounded-full text-[13px]" style={{ background: on ? LINE_GREEN : "#9CA3AF", color: "white" }}>🤖</span>
       {/* มือถือหัวห้องแคบ: เหลือ "เปิด/ปิด" ข้างไอคอน 🤖 */}
-      <span className="hidden sm:inline">บอทตอบ: </span>
+      <span className={labelClass}>บอทตอบ: </span>
       {on ? "เปิด" : "ปิด"}
     </button>
   );
