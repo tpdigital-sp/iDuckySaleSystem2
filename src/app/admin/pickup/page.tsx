@@ -10,6 +10,8 @@
  * ตัวเลขข้างเมนู (AdminShell) = ใบ "แพ็คเสร็จ รอมารับ" → ของที่วางรออยู่หน้าร้าน
  * ปุ่ม "✓ ลูกค้ารับของแล้ว" = จดคนส่งมอบ/เวลา + ปิดงานเป็นเสร็จสิ้น (ใบค้างยอดกดไม่ได้ ต้องเก็บเงินในหน้าออเดอร์ก่อน)
  * ปุ่ม "↩ ยังไม่ได้รับ" (กอง รับไปแล้ว) = ย้อนการกดข้างบน กลับไปรอมารับ (5 ต.ค. 69 · เดิมไม่มีทางย้อน ธงรับของค้าง)
+ * ปุ่ม "✓ ลูกค้ารับรอบที่ N แล้ว" (ใบแบ่งรับ กองกำลังทำ) = จดว่ารับรอบนั้นแล้ว ใบยังไม่ปิด (20 ต.ค. 69 · เดิมไม่มีปุ่มนี้
+ *   พนักงานเลยไปกดแพ็คเสร็จ+รับของแล้ว = ปิดทั้งใบ OD-261007-2540/5502) · ใบแบ่งรับที่แพ็ครอบสุดท้ายแล้ว ปุ่มรับของถามยืนยันว่า "รอบสุดท้าย X ชิ้น"
  */
 
 import RequirePerm from "@/components/RequirePerm";
@@ -133,7 +135,10 @@ function PickupInner() {
 
   async function handOver(r: PickupRow) {
     if (busy) return;
-    if (!window.confirm(`ลูกค้ารับของออเดอร์ ${r.id} (${r.customer || "ไม่ระบุชื่อ"}) ไปแล้วใช่ไหม?\nกดแล้วใบนี้ปิดงานเป็น “เสร็จสิ้น”`)) return;
+    const ask = r.finalRound
+      ? `ใบ ${r.id} (${r.customer || "ไม่ระบุชื่อ"}) เป็นใบแบ่งรับ\nลูกค้ามารับ “รอบสุดท้าย” (รอบที่ ${r.finalRound.round}${r.finalRound.qty ? ` · ${r.finalRound.qty.toLocaleString("th-TH")} ชิ้น` : ""}) ครบแล้วใช่ไหม?\nกดแล้วปิดทั้งใบเป็น “เสร็จสิ้น” — ถ้าลูกค้ารับแค่บางรอบ ให้กด “ยกเลิก”`
+      : `ลูกค้ารับของออเดอร์ ${r.id} (${r.customer || "ไม่ระบุชื่อ"}) ไปแล้วใช่ไหม?\nกดแล้วใบนี้ปิดงานเป็น “เสร็จสิ้น”`;
+    if (!window.confirm(ask)) return;
     setBusy(r.id);
     setErr("");
     try {
@@ -153,6 +158,30 @@ function PickupInner() {
       if (u.shipWith?.role === "main") void load();
       // ป้ายข้างเมนูนับใหม่ทันที (AdminShell ฟังอีเวนต์นี้)
       window.dispatchEvent(new Event("iducky:pickup-changed"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** 🏪✓ ใบแบ่งรับ: ลูกค้ามารับของรอบที่ N แล้ว — ใบยังไม่ปิด ของที่เหลือทำต่อ */
+  async function handOverRound(r: PickupRow, w: { n: number; qty: number }) {
+    if (busy) return;
+    if (!window.confirm(`ลูกค้ารับของรอบที่ ${w.n}${w.qty ? ` (${w.qty.toLocaleString("th-TH")} ชิ้น)` : ""} ของ ${r.id} ไปแล้วใช่ไหม?\nใบยังไม่ปิด — ของที่เหลือยังทำต่อ/รอบหน้า`)) return;
+    setBusy(r.id);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/pickup", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r.id, round: w.n }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { row?: PickupRow; error?: string };
+      if (!res.ok || !j.row) {
+        setErr(j.error ?? "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง");
+        return;
+      }
+      const u = j.row;
+      setRows((rs) => rs?.map((x) => (x.id === u.id ? u : x)) ?? rs);
     } finally {
       setBusy(null);
     }
@@ -233,6 +262,16 @@ function PickupInner() {
                   🏪 แพ็คเสร็จบางส่วนแล้ว {r.partialRounds}
                 </Tag>
               )}
+              {r.roundsWaiting?.map((w) => (
+                <Tag key={w.n} tone="mint" title="แพ็คเสร็จวางรอหน้าร้าน — ลูกค้ามารับแล้วกดปุ่ม “ลูกค้ารับรอบที่ N แล้ว” (ใบไม่ปิด)">
+                  📦 รอบที่ {w.n} รอมารับ{w.qty ? ` · ${w.qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                </Tag>
+              ))}
+              {r.finalRound && r.group === "ready" && (
+                <Tag tone="sky" title="ใบแบ่งรับ — ของที่วางรอตอนนี้คือรอบสุดท้าย">
+                  🏪 รอบสุดท้าย (รอบที่ {r.finalRound.round}){r.finalRound.qty ? ` · ${r.finalRound.qty.toLocaleString("th-TH")} ชิ้น` : ""}
+                </Tag>
+              )}
               {behind && <Tag tone="coral">{b === "today" ? "นัดรับวันนี้ ของยังไม่เสร็จ" : "เลยวันนัด ของยังไม่เสร็จ"}</Tag>}
               {r.group === "ready" && b === "late" && <Tag tone="yolk">เลยวันนัด ยังไม่มารับ — ทักตาม</Tag>}
               {r.due > 0 && <Tag tone="coral">{r.group === "ready" ? `เก็บเงินก่อนส่งมอบ ${baht(r.due)}` : `ยังค้าง ${baht(r.due)}`}</Tag>}
@@ -271,6 +310,14 @@ function PickupInner() {
               {busy === r.id ? "กำลังบันทึก…" : r.shipWith ? "✓ รับของแล้วทั้งชุด" : "✓ ลูกค้ารับของแล้ว"}
             </Btn>
           ) : null}
+          {/* 🏪✓ ใบแบ่งรับที่ยังไม่ปิด — รับรอบนี้ ไม่ปิดทั้งใบ */}
+          {r.group === "working" && mayHandOver && r.shipWith?.role !== "rider"
+            ? r.roundsWaiting?.map((w) => (
+                <Btn key={w.n} small tone="navy" disabled={busy === r.id} onClick={() => void handOverRound(r, w)} title="จดว่าลูกค้ารับของรอบนี้แล้ว — ใบยังไม่ปิด ของที่เหลือทำต่อ">
+                  {busy === r.id ? "กำลังบันทึก…" : `✓ ลูกค้ารับรอบที่ ${w.n} แล้ว`}
+                </Btn>
+              ))
+            : null}
           {r.group === "done" && mayHandOver && r.pickedUpAt && r.shipWith?.role !== "rider" ? (
             <Btn small disabled={busy === r.id} onClick={() => void undoHandOver(r)} title="กดรับของผิดใบ/ลูกค้ายังไม่ได้มารับ — ใบกลับไปรอมารับ">
               {busy === r.id ? "กำลังบันทึก…" : "↩ ยังไม่ได้รับ"}

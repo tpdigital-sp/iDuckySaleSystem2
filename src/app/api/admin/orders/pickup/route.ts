@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { amountDueNow, hasUnpaidBalance, orderStatusLabel, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
+import { amountDueNow, hasUnpaidBalance, orderStatusLabel, pickupRoundsWaiting, shipmentQty, unshippedQty, withLog, type Order, type OrderStatus } from "@/lib/admin-data";
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
@@ -25,6 +25,8 @@ export const runtime = "nodejs";
  * POST { id } → กด "ลูกค้ารับของแล้ว" — จดคน/เวลา + ปิดงานเป็นเสร็จสิ้น ฝั่งเซิร์ฟเวอร์ (ไม่ต้องส่งออเดอร์ทั้งก้อน กันทับงานคนอื่น)
  *   ⚠️ ใบที่ยังค้างยอด (มัดจำงวดหลัง/ส่วนต่าง) ส่งมอบไม่ได้ — ต้องเก็บเงินให้ครบในหน้าออเดอร์ก่อน
  *   🏪📦 ชุดรับพร้อมกัน (lib/ship-with.ts · มารับเองทั้งคู่แพ็ครวม): กดที่ใบหลักใบเดียว = ปิดใบตามให้ด้วย · กดที่ใบตาม = 409 ชี้ไปใบหลัก
+ * PUT  { id, round } → 🏪✓ ลูกค้ารับของ "รอบแบ่งส่งที่ N" แล้ว — จดที่ Shipment.pickedUp · ใบยังไม่ปิด (20 ต.ค. 69 · OD-261007-2540/5502)
+ * DELETE { id, round } → ย้อนการรับรอบนั้น · DELETE { id } → ย้อน "ลูกค้ารับของแล้ว" ทั้งใบ (ดูด้านล่าง)
  */
 
 export type PickupRow = {
@@ -49,6 +51,10 @@ export type PickupRow = {
   packedBy?: string;
   /** 🏪 แบ่งส่ง: รอบที่แพ็คเสร็จให้มารับไปก่อนแล้ว (ใบยังไม่ปิด ที่เหลือกำลังทำ) — "N รอบ · X ชิ้น" */
   partialRounds?: string;
+  /** 🏪 รอบแบ่งส่งที่แพ็คเสร็จวางรออยู่หน้าร้าน ลูกค้ายังไม่มารับ (ปุ่ม "ลูกค้ารับรอบที่ N แล้ว") */
+  roundsWaiting?: { n: number; qty: number }[];
+  /** 🏪 ใบแบ่งรับที่แพ็ครอบสุดท้ายแล้ว — ไว้ถามยืนยันก่อนปิดทั้งใบ (round = เลขรอบสุดท้าย · qty = ของในรอบนั้น) */
+  finalRound?: { round: number; qty: number };
   pickedUpAt?: string;
   pickedUpBy?: string;
   /** 🏪📦 ชุดรับพร้อมกัน: ใบหลักบอกใบที่รวมมา · ใบตามบอกใบหลัก (ปุ่มรับของกดที่ใบหลัก) */
@@ -88,6 +94,8 @@ function toRow(o: Order, group: PickupRow["group"]): PickupRow {
     ...(!o.packedAt && (o.shipments?.length ?? 0) > 0
       ? { partialRounds: `${o.shipments!.length} รอบ · ${o.shipments!.reduce((n, s) => n + s.proofs.reduce((m, p) => m + (p.qty ?? 0), 0), 0).toLocaleString("th-TH")} ชิ้น` }
       : {}),
+    ...(group !== "done" && pickupRoundsWaiting(o).length ? { roundsWaiting: pickupRoundsWaiting(o) } : {}),
+    ...(o.packedAt && (o.shipments?.length ?? 0) > 0 ? { finalRound: { round: o.shipments!.length + 1, qty: unshippedQty(o) } } : {}),
     ...(o.pickedUp ? { pickedUpAt: o.pickedUp.at, pickedUpBy: o.pickedUp.by } : {}),
     ...(isShipMain(o) ? { shipWith: { role: "main" as const, ids: shipRiderIdsOf(o) } } : isShipRider(o) ? { shipWith: { role: "rider" as const, ids: [shipMainIdOf(o)] } } : {}),
   };
@@ -168,8 +176,10 @@ export async function POST(req: Request) {
 
   const by = gate.actor.name?.trim() || gate.actor.username;
   const at = new Date().toISOString();
+  // รอบแบ่งรับที่ยังไม่ได้จดว่ารับ = ลูกค้ารับไปพร้อมรอบสุดท้าย (ปิดงาน = ของทุกรอบอยู่กับลูกค้าแล้ว)
+  const shipments = o.shipments?.map((s) => (s.pickup && !s.pickedUp ? { ...s, pickedUp: { at, by } } : s));
   const next = withLog(
-    { ...o, status: "เสร็จสิ้น" as OrderStatus, pickedUp: { at, by } },
+    { ...o, ...(shipments ? { shipments } : {}), status: "เสร็จสิ้น" as OrderStatus, pickedUp: { at, by } },
     by,
     "🏪 ลูกค้ามารับของแล้ว — ปิดงาน",
     riders.length ? `รับพร้อมกับ ${riders.map((r) => r.id).join(", ")} — ปิดให้ทั้งชุด` : undefined
@@ -202,6 +212,41 @@ export async function POST(req: Request) {
 }
 
 /**
+ * 🏪✓ PUT { id, round } → ลูกค้ามารับของรอบแบ่งส่งที่ N แล้ว — จดคน/เวลาที่ Shipment.pickedUp · สถานะใบไม่เปลี่ยน ไม่แจ้งไลน์
+ * ทำไมต้องมี (20 ต.ค. 69 · OD-261007-2540, OD-261016-5502): ไม่มีทางจด "ลูกค้ารับรอบ 1 แล้ว" พนักงานเลยกด "แพ็คเสร็จ" + "ลูกค้ารับของแล้ว"
+ * ซึ่งคือรอบสุดท้าย = ปิดทั้งใบ ของที่เหลือหลุดจากคิวปริ้น
+ */
+export async function PUT(req: Request) {
+  const gate = await requirePerm(["orders.edit", "pack.ship"]);
+  if (gate.res) return gate.res;
+  const sb = getSupabaseAdmin();
+  if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
+  const body = (await req.json().catch(() => ({}))) as { id?: string; round?: number };
+  const id = body.id?.trim();
+  const round = Math.floor(Number(body.round));
+  if (!id || !(round >= 1)) return NextResponse.json({ error: "ไม่มีเลขออเดอร์/รอบ" }, { status: 400 });
+
+  const { data } = await sb.from("orders").select("data").eq("id", id).maybeSingle();
+  const o = data?.data as Order | undefined;
+  if (!o || !isPickupOrder(o)) return NextResponse.json({ error: "ใบนี้ไม่ใช่ออเดอร์มารับเอง" }, { status: 404 });
+  const sh = o.shipments?.[round - 1];
+  if (!sh?.pickup) return NextResponse.json({ error: `ไม่พบรอบแบ่งรับที่ ${round} ในใบนี้` }, { status: 404 });
+  if (sh.pickedUp) return NextResponse.json({ ok: true, row: toRow(o, groupOf(o) ?? "working"), order: o });
+
+  const by = gate.actor.name?.trim() || gate.actor.username;
+  const at = new Date().toISOString();
+  const next = withLog(
+    { ...o, shipments: o.shipments!.map((s, i) => (i === round - 1 ? { ...s, pickedUp: { at, by } } : s)) },
+    by,
+    `🏪✓ ลูกค้ารับของรอบที่ ${round} แล้ว — ใบยังไม่ปิด`,
+    `${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น${o.packedAt ? "" : ` · ของที่เหลือ ${unshippedQty(o).toLocaleString("th-TH")} ชิ้นยังทำต่อ`}`
+  );
+  const { order: saved, error } = await updateOrder(sb, next, { prev: o, by });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, row: toRow(saved, groupOf(saved) ?? "working"), order: saved });
+}
+
+/**
  * ↩ DELETE { id } → ยกเลิก "ลูกค้ารับของแล้ว" (กดผิดใบ/ลูกค้ายังไม่ได้มารับจริง) — ใบกลับไปกอง "แพ็คเสร็จ รอมารับ"
  *
  * ทำไมต้องมี (5 ต.ค. 69 · OD-260922-3129): เดิมกดรับของแล้วไม่มีทางย้อน พนักงานเลยใช้เมนูเปลี่ยนสถานะดันกลับเอง
@@ -214,13 +259,30 @@ export async function DELETE(req: Request) {
   if (gate.res) return gate.res;
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
-  const body = (await req.json().catch(() => ({}))) as { id?: string };
+  const body = (await req.json().catch(() => ({}))) as { id?: string; round?: number };
   const id = body.id?.trim();
   if (!id) return NextResponse.json({ error: "ไม่มีเลขออเดอร์" }, { status: 400 });
 
   const { data } = await sb.from("orders").select("data").eq("id", id).maybeSingle();
   const o = data?.data as Order | undefined;
   if (!o) return NextResponse.json({ error: "ไม่พบออเดอร์นี้" }, { status: 404 });
+  // ↩ ย้อน "ลูกค้ารับรอบที่ N แล้ว" (ใบยังไม่ปิด) — ไม่แตะสถานะใบ
+  if (body.round !== undefined) {
+    const round = Math.floor(Number(body.round));
+    const sh = o.shipments?.[round - 1];
+    if (!sh?.pickedUp) return NextResponse.json({ error: `รอบที่ ${round} ยังไม่ได้บันทึกว่าลูกค้ารับ — ไม่มีอะไรให้ย้อน` }, { status: 409 });
+    if (o.status === "เสร็จสิ้น") return NextResponse.json({ error: "ใบนี้ปิดงานแล้ว — กด “↩ ยังไม่ได้รับ” ทั้งใบก่อน" }, { status: 409 });
+    const who = gate.actor.name?.trim() || gate.actor.username;
+    const next = withLog(
+      { ...o, shipments: o.shipments!.map((s, i) => (i === round - 1 ? { ...s, pickedUp: undefined } : s)) },
+      who,
+      `↩ ยกเลิก “ลูกค้ารับของรอบที่ ${round} แล้ว”`,
+      `เดิมบันทึก ${sh.pickedUp.at} โดย ${sh.pickedUp.by}`
+    );
+    const { order: saved, error } = await updateOrder(sb, next, { prev: o, by: who });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, row: toRow(saved, groupOf(saved) ?? "working"), order: saved });
+  }
   if (!o.pickedUp || o.status !== "เสร็จสิ้น") return NextResponse.json({ error: "ใบนี้ยังไม่ได้บันทึกว่าลูกค้ามารับของ — ไม่มีอะไรให้ย้อน" }, { status: 409 });
   if (!isPickupOrder(o))
     return NextResponse.json({ error: "ใบนี้เปลี่ยนเป็นส่งพัสดุไปแล้ว — เปลี่ยนสถานะในหน้าออเดอร์แทน (ระบบล้างบันทึกรับของให้เอง)" }, { status: 409 });
@@ -232,7 +294,9 @@ export async function DELETE(req: Request) {
   const reopen = (x: Order, note: string) => {
     const { pickedUp: _drop, ...rest } = x;
     void _drop;
-    return withLog({ ...(rest as Order), status: "จัดส่งแล้ว" as OrderStatus }, by, "↩ ยกเลิก “ลูกค้ามารับของแล้ว” — กลับไปรอมารับ", note);
+    // รอบแบ่งรับที่ถูกจดพร้อมการปิดงานครั้งนั้น (เวลาเดียวกัน) ย้อนตามด้วย · รอบที่จดรับแยกไว้ก่อนคงเดิม
+    const shipments = x.shipments?.map((s) => (s.pickedUp && s.pickedUp.at === x.pickedUp?.at ? { ...s, pickedUp: undefined } : s));
+    return withLog({ ...(rest as Order), ...(shipments ? { shipments } : {}), status: "จัดส่งแล้ว" as OrderStatus }, by, "↩ ยกเลิก “ลูกค้ามารับของแล้ว” — กลับไปรอมารับ", note);
   };
 
   // ใบตามที่ปิดไปพร้อมใบหลัก (ชุดรับพร้อมกัน) — เฉพาะที่ยังเสร็จสิ้นด้วยการรับของอยู่

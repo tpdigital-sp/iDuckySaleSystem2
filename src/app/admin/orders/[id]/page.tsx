@@ -87,6 +87,8 @@ import {
   packGate,
   pickupRoundRef,
   planPendingReason,
+  noPhotoReason,
+  unshippedQty,
   nextPlannedRound,
   partialGate,
   SPLIT_WHOLE_HINT,
@@ -3485,7 +3487,7 @@ export default function AdminOrderDetailPage() {
         g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
         g.missing.length ? `ของยังไม่มา/ไม่ครบ ${g.missing.length} รายการ (${g.missing.map((m) => m.item).join(", ")})` : "",
         g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
-        g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
+        g.noPhoto ? noPhotoReason(order) : "",
         g.taxInvoiceUnpacked ? "ยังไม่ยืนยันใส่ใบกำกับภาษีลงกล่อง" : "",
         g.unpaidBalance ? (order?.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ") : "",
       ].filter(Boolean);
@@ -3524,7 +3526,7 @@ export default function AdminOrderDetailPage() {
       g.short.length ? `ของไม่ครบ ${g.short.length} รายการ` : "",
       g.missing.length ? `ของยังไม่มา/ไม่ครบ ${g.missing.length} รายการ (${g.missing.map((m) => m.item).join(", ")})` : "",
       g.unsampled.length ? `ยังไม่ยืนยันใส่ชิ้นงานตัวอย่าง ${g.unsampled.length} รายการ` : "",
-      g.noPhoto ? "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง" : "",
+      g.noPhoto ? noPhotoReason(o) : "",
       g.taxInvoiceUnpacked ? "ยังไม่ยืนยันใส่ใบกำกับภาษีลงกล่อง" : "",
       g.unpaidBalance ? (o.deposit ? "ยังเก็บยอดคงเหลือ (มัดจำ 50%) ไม่ครบ" : "ยังเก็บส่วนต่างที่ตีราคาเพิ่มไม่ครบ") : "",
     ].filter(Boolean);
@@ -3534,8 +3536,20 @@ export default function AdminOrderDetailPage() {
    * 🏪 มารับเอง: ฝ่ายแพ็คกด "แพ็คเสร็จ" แทนยิงเลขพัสดุ (เจ้าของร้านขอ 11 ก.ย. 69)
    * ด่านตรวจเดียวกับยิงเลข — ฝ่ายแพ็คข้ามไม่ได้ · แอดมินยืนยันข้ามได้ (เซิร์ฟเวอร์ลง log)
    */
-  function confirmPackedPickup() {
+  async function confirmPackedPickup() {
     if (!order || order.packedAt) return;
+    // 🏪 ใบที่แพ็คเสร็จบางส่วนไปแล้ว: ปุ่มนี้ = รอบสุดท้าย ปิดทั้งใบ — ถามก่อน (OD-261007-2540 กดเพื่อ "ปิดงานรอบ 1" แต่ปิดทั้งใบ 20 ต.ค. 69)
+    if (order.shipments?.length) {
+      let left = 0;
+      proofShipStates(order).forEach((st) => (left += st.remaining));
+      const ok = await askConfirm({
+        icon: "🏪",
+        title: `แพ็คเสร็จรอบสุดท้าย (รอบที่ ${order.shipments.length + 1}) — ปิดทั้งใบ?`,
+        detail: `รอบที่ 1${order.shipments.length > 1 ? `–${order.shipments.length}` : ""} บันทึกไว้แล้ว ไม่ต้องกดปุ่มนี้เพื่อปิดรอบเดิม · กดต่อเมื่อของที่เหลือ${left ? ` ${left.toLocaleString("th-TH")} ชิ้น` : ""} แพ็คลงกล่องรอบนี้ครบแล้วเท่านั้น — ใบจะเป็น “แพ็คเสร็จ รอมารับ” และแจ้งลูกค้าทางไลน์`,
+        confirmLabel: "ของที่เหลือแพ็คครบแล้ว — ปิดทั้งใบ",
+      });
+      if (!ok) return;
+    }
     if (!packGate(order).ready) {
       const reasons = gateReasonsOf(order);
       if (!mayEdit) {
@@ -3676,6 +3690,69 @@ export default function AdminOrderDetailPage() {
     )
       return;
     applyOrder(withLog({ ...order, shipments: order.shipments!.filter((_, i) => i !== n) }, actor, "ลบรอบแบ่งส่ง", `รอบที่ ${n + 1} · ${sh.tracking}`));
+  }
+
+  /**
+   * 🏪✓ ใบแบ่งรับ: ลูกค้ามารับของรอบที่ n+1 แล้ว (undo = ย้อน) — เขียนฝั่งเซิร์ฟเวอร์ (PUT/DELETE /api/admin/orders/pickup) ใบไม่ปิด
+   * 20 ต.ค. 69: เดิมไม่มีทางจด "รับรอบ 1 แล้ว" พนักงานเลยกดแพ็คเสร็จ+รับของแล้ว = ปิดทั้งใบ (OD-261007-2540 · OD-261016-5502)
+   */
+  async function markRoundPickedUp(n: number, undo = false) {
+    if (!order || demo) return;
+    const sh = order.shipments?.[n];
+    if (!sh?.pickup) return;
+    const ok = await askConfirm(
+      undo
+        ? { icon: "↩", title: `ยกเลิก “ลูกค้ารับรอบที่ ${n + 1} แล้ว”?`, confirmLabel: "ยกเลิก — ยังไม่ได้รับ" }
+        : {
+            icon: "🏪",
+            title: `ลูกค้ารับของรอบที่ ${n + 1} ไปแล้ว?`,
+            detail: `${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น · จดคน/เวลาส่งมอบ — ใบยังไม่ปิด ของที่เหลือทำต่อตามปกติ`,
+            confirmLabel: "ลูกค้ารับรอบนี้แล้ว",
+          }
+    );
+    if (!ok) return;
+    setErr("");
+    const res = await fetch("/api/admin/orders/pickup", {
+      method: undo ? "DELETE" : "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: order.id, round: n + 1 }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+    if (!res.ok || !j.order) {
+      setErr(j.error ?? "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง");
+      return;
+    }
+    adoptOrder(j.order);
+    window.dispatchEvent(new Event("iducky:pickup-changed"));
+  }
+
+  /** ↩ แอดมินยกเลิก "แพ็คเสร็จ" ของใบมารับเอง (กดผิด/กดเบิ้ล ปิดทั้งใบทั้งที่ของยังไม่ครบ) — POST /api/admin/orders/unpack */
+  async function undoPackedPickup() {
+    if (!order?.packedAt || !mayEdit || demo) return;
+    const left = order.shipments?.length ? unshippedQty(order) : 0;
+    const ok = await askConfirm({
+      icon: "↩",
+      title: "ยกเลิกแพ็คเสร็จ — กลับไปกำลังผลิต?",
+      detail: `${order.status === "เสร็จสิ้น" ? "ล้าง “ลูกค้ามารับของแล้ว” ด้วย · " : ""}${
+        order.shipments?.length ? `ใบแบ่งรับ ${order.shipments.length} รอบคงเดิม · ของที่เหลือ ${left.toLocaleString("th-TH")} ชิ้นกลับเข้าคิวปริ้น “ใบปะหน้ารอบถัดไป” · ` : ""
+      }ไม่แจ้งลูกค้า (ลูกค้าได้ไลน์ไปแล้วต้องคุยในแชทเอง)`,
+      confirmLabel: "ยกเลิกแพ็คเสร็จ",
+      danger: true,
+    });
+    if (!ok) return;
+    setErr("");
+    const res = await fetch("/api/admin/orders/unpack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+    if (!res.ok || !j.order) {
+      setErr(j.error ?? "ยกเลิกไม่สำเร็จ — ลองใหม่อีกครั้ง");
+      return;
+    }
+    adoptOrder(j.order);
+    window.dispatchEvent(new Event("iducky:pickup-changed"));
   }
 
   /**
@@ -11027,7 +11104,30 @@ export default function AdminOrderDetailPage() {
                         )}
                       </div>
                       {sh.pickup ? (
-                        <p className="mt-0.5 text-[13px] font-bold text-slate-800">🏪 แพ็คเสร็จรอบนี้ — ลูกค้ามารับเอง (ไม่มีเลขพัสดุ)</p>
+                        <>
+                          <p className="mt-0.5 text-[13px] font-bold text-slate-800">🏪 แพ็คเสร็จรอบนี้ — ลูกค้ามารับเอง (ไม่มีเลขพัสดุ)</p>
+                          {/* 🏪✓ จดว่าลูกค้ารับรอบนี้แล้ว — ใบไม่ปิด (20 ต.ค. 69 · เดิมไม่มีทางจด พนักงานไปกดแพ็คเสร็จ = ปิดทั้งใบ) */}
+                          {sh.pickedUp ? (
+                            <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] font-bold text-emerald-700">
+                              ✓ ลูกค้ารับรอบนี้แล้ว · {sh.pickedUp.by} · {shortTime(sh.pickedUp.at)}
+                              {(mayEdit || can("pack.ship")) && !demo && order.status !== "เสร็จสิ้น" && (
+                                <button type="button" onClick={() => void markRoundPickedUp(n, true)} className="text-[11px] font-bold text-slate-400 hover:underline">
+                                  ↩ ยังไม่ได้รับ
+                                </button>
+                              )}
+                            </p>
+                          ) : (mayEdit || can("pack.ship")) && !demo && order.status !== "เสร็จสิ้น" ? (
+                            <button
+                              type="button"
+                              onClick={() => void markRoundPickedUp(n)}
+                              className="mt-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[12px] font-extrabold text-white shadow-sm hover:bg-emerald-500"
+                            >
+                              ✓ ลูกค้ารับรอบที่ {n + 1} แล้ว (ใบไม่ปิด)
+                            </button>
+                          ) : (
+                            <p className="mt-1 text-[11px] font-bold text-amber-700">📦 รอลูกค้ามารับรอบนี้</p>
+                          )}
+                        </>
                       ) : (
                         <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[13px] font-bold text-slate-800">
                           {sh.tracking} <CopyChip label="คัดลอก" text={() => sh.tracking} />
@@ -11067,10 +11167,18 @@ export default function AdminOrderDetailPage() {
               ) : isPickupOrder(order) ? (
                 // 🏪 มารับเอง: ไม่มีเลขพัสดุ — ปุ่มแพ็คเสร็จแทน (ด่านตรวจเดียวกับยิงเลข)
                 order.packedAt ? (
-                  <p className="rounded-lg bg-emerald-50 px-2.5 py-2 text-[12px] font-bold text-emerald-800 ring-1 ring-emerald-200">
-                    ✅ แพ็คเสร็จแล้ว รอลูกค้ามารับ · {order.packedAt.by} · {shortTime(order.packedAt.at)}
-                    {order.status === "เสร็จสิ้น" ? " · ลูกค้ารับแล้ว" : ""}
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 px-2.5 py-2 text-[12px] font-bold text-emerald-800 ring-1 ring-emerald-200">
+                    <span>
+                      ✅ แพ็คเสร็จแล้ว รอลูกค้ามารับ · {order.packedAt.by} · {shortTime(order.packedAt.at)}
+                      {order.status === "เสร็จสิ้น" ? " · ลูกค้ารับแล้ว" : ""}
+                    </span>
+                    {/* ↩ กดแพ็คเสร็จผิด/กดเบิ้ล (ปิดทั้งใบทั้งที่ของยังไม่ครบ) — แอดมินย้อนเองได้ (20 ต.ค. 69) */}
+                    {mayEdit && !demo && order.status !== "ยกเลิก" && !isShipRider(order) && (
+                      <button type="button" onClick={() => void undoPackedPickup()} className="text-[11px] font-bold text-rose-500 hover:underline">
+                        ↩ ยกเลิกแพ็คเสร็จ
+                      </button>
+                    )}
+                  </div>
                 ) : packGate(order).planPending && planNext ? (
                   // 📋 แผนแบ่งส่งค้าง: ปิดทั้งใบไม่ได้ — กดแพ็คเสร็จ "เฉพาะรอบนี้" (ใบยังไม่ปิด ที่เหลือกลับไปคิวปริ้นรอบถัดไป)
                   <>
@@ -11096,7 +11204,7 @@ export default function AdminOrderDetailPage() {
                       // ปุ่มแอ็กชันสีเหลืองขอบหนา — ให้รู้ว่ากดได้ ไม่ใช่ป้ายสถานะ (เหมือนปุ่มในโหมดแพ็ค)
                       className="flex w-full items-center justify-between gap-2 rounded-xl border-b-4 border-amber-600 bg-amber-400 px-3 py-2.5 text-left text-sm font-extrabold text-amber-950 shadow-md ring-2 ring-amber-500 transition hover:bg-amber-300 active:translate-y-0.5 active:border-b-2"
                     >
-                      <span>🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ</span>
+                      <span>{order.shipments?.length ? `🏪 แพ็คเสร็จรอบสุดท้าย (รอบที่ ${order.shipments.length + 1}) — ปิดทั้งใบ` : "🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ"}</span>
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-950 text-sm text-amber-300" aria-hidden>
                         ✓
                       </span>
@@ -11872,7 +11980,8 @@ function packTodos(order: Order, gate: ReturnType<typeof packGate>): { icon: str
   gate.unsampled.forEach((n) => out.push({ icon: "🎁", text: `ใส่งานตัวอย่างลงกล่อง: ${n}` }));
   // 🎁 ของแถมสั่งเพิ่มแต่กราฟฟิกยังไม่รับทราบ — ของแถมในมืออาจเป็นจำนวนเดิม ห้ามปิดกล่อง
   gate.giftBump.forEach((t) => out.push({ icon: "⚠️", text: `ของแถมสั่งเพิ่ม รอกราฟฟิกทำเพิ่ม/กดรับทราบ: ${t}` }));
-  if (gate.noPhoto) out.push({ icon: "📸", text: "ถ่ายภาพของในกล่อง ก่อนปิดกล่อง" });
+  if (gate.noPhoto)
+    out.push({ icon: "📸", text: order.shipments?.length ? `ถ่ายภาพกล่องรอบที่ ${order.shipments.length + 1} ก่อนปิดกล่อง (ภาพเดิมเป็นของรอบก่อน)` : "ถ่ายภาพของในกล่อง ก่อนปิดกล่อง" });
   if (gate.taxInvoiceUnpacked) {
     const n = taxInvoiceDocsOf(order).filter((d) => d.docNo).length;
     out.push({ icon: "🧾", text: n ? `ถ่ายรูปใบเสร็จใส่กล่องทีละใบ (${n} ใบ คนละเลขที่)` : "ใส่ใบกำกับภาษีลงกล่อง (พิมพ์จาก FlowAccount)" });
@@ -12731,7 +12840,9 @@ function PackView({
             >
               <span className="min-w-0">
                 <span className="block text-[11px] font-extrabold uppercase tracking-wide text-amber-800/80">ขั้นสุดท้าย · กดปุ่มนี้เมื่อแพ็คเสร็จ</span>
-                <span className="mt-0.5 block text-lg font-extrabold leading-tight">🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ</span>
+                <span className="mt-0.5 block text-lg font-extrabold leading-tight">
+                  {order.shipments?.length ? `🏪 แพ็คเสร็จรอบสุดท้าย (รอบที่ ${order.shipments.length + 1}) — ปิดทั้งใบ` : "🏪 แพ็คเสร็จแล้ว — รอลูกค้ามารับ"}
+                </span>
                 <span className="mt-1 block text-[11px] font-semibold text-amber-900/70">ใบนี้ลูกค้ามารับเอง ไม่ต้องยิงเลขพัสดุ · กดแล้วระบบแจ้งลูกค้าทางไลน์ให้มารับ</span>
               </span>
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-amber-950 text-xl font-black text-amber-300 transition group-hover:scale-105" aria-hidden>

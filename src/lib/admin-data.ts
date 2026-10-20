@@ -194,6 +194,11 @@ export interface Shipment {
    */
   pickup?: true;
   /**
+   * 🏪✓ ลูกค้ามารับของรอบนี้ไปแล้ว (เฉพาะรอบ pickup) — ใบยังไม่ปิด · เขียนผ่าน PUT /api/admin/orders/pickup เท่านั้น
+   * (20 ต.ค. 69 · OD-261007-2540/5502: ไม่มีทางจด "รับรอบ 1 แล้ว" พนักงานเลยกดแพ็คเสร็จ+รับของแล้ว = ปิดทั้งใบ)
+   */
+  pickedUp?: { at: string; by: string };
+  /**
    * 🎁 ชิ้นงานตัวอย่างที่ไปกับรอบนี้ (ตำแหน่งใน order.items ที่ติ๊ก samplePacked ตอนยิงรอบ) — รอบหลังไม่ต้องใส่ซ้ำ (9 ต.ค. 69)
    * 🧾 receipts = เลขที่ใบเสร็จ/ใบกำกับที่ถ่ายภาพใส่กล่องรอบนี้ ("ใบกำกับภาษี" = บิลที่ไม่มีเลขเอกสาร) · เซิร์ฟเวอร์ประทับให้ (shipmentExtras)
    */
@@ -3622,6 +3627,35 @@ export function isPartiallyShipped(order: Order): boolean {
 }
 
 /**
+ * 📸 ภาพก่อนปิดกล่องของ "กล่องรอบนี้" — ใบที่แบ่งส่งไปแล้ว ภาพที่ถ่ายก่อนรอบล่าสุดเป็นของกล่องรอบก่อน ไม่นับ
+ * OD-261007-2540 (20 ต.ค. 69): บันทึกแพ็คเสร็จบางส่วนรอบ 1 (มารับเอง) แล้ว 2 นาทีต่อมากด "แพ็คเสร็จ — รอลูกค้ามารับ"
+ * ตั้งใจปิดงานรอบ 1 แต่ปุ่มนั้นคือรอบสุดท้าย · ด่านผ่านทันทีด้วยภาพ/ตรวจนับของรอบ 1 → ปิดทั้งใบ ทั้งที่ 205 ชิ้นยังไม่ได้แพ็ค
+ */
+export function currentBoxPhotos(order: Pick<Order, "packPhotos" | "shipments">): PackPhoto[] {
+  const photos = order.packPhotos ?? [];
+  const last = (order.shipments ?? []).reduce((m, s) => Math.max(m, Date.parse(s.at) || 0), 0);
+  return last ? photos.filter((p) => (Date.parse(p.at) || 0) > last) : photos;
+}
+
+/** 🏪 รอบมารับเองที่แพ็คเสร็จแล้วแต่ลูกค้ายังไม่ได้มารับ — n = เลขรอบ (เริ่ม 1) */
+export function pickupRoundsWaiting(order: Pick<Order, "shipments">): { n: number; qty: number }[] {
+  return (order.shipments ?? []).flatMap((s, i) => (s.pickup && !s.pickedUp ? [{ n: i + 1, qty: shipmentQty(s) }] : []));
+}
+
+/** ของที่ยังไม่ได้ไปกับรอบแบ่งส่งไหนเลย (ชิ้น · ตามป้ายบนแบบ) — ไว้บอก "รอบสุดท้ายเหลือ X ชิ้น" */
+export function unshippedQty(order: Order): number {
+  let left = 0;
+  proofShipStates(order).forEach((st) => (left += st.remaining));
+  return left;
+}
+
+/** ข้อความเหตุผลของ PackGate.noPhoto — ใบแบ่งส่งบอกว่าต้องเป็นภาพกล่องรอบไหน */
+export const noPhotoReason = (order: Pick<Order, "shipments">) =>
+  order.shipments?.length
+    ? `ยังไม่ได้ถ่ายภาพกล่องรอบที่ ${order.shipments.length + 1} (ภาพเดิมเป็นของกล่องรอบก่อน)`
+    : "ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง";
+
+/**
  * โฟลเดอร์ผลิตที่เป็น "งานตัวอย่าง" — กติกาเจ้าของร้าน 16 ก.ย. 69: ชื่อโฟลเดอร์ต้องมีป้ายวงเล็บที่ลงท้ายด้วย "ตย"
  * ผ่าน: "(ตย)" "(เร่งขึ้นตย)" "(ขึ้นตย)" · ไม่ผ่าน: "(ขึ้นตยแล้ว)" (= ตัวอย่างผ่านแล้ว นี่คือโฟลเดอร์งานจริง) "(ids)"
  */
@@ -3757,7 +3791,7 @@ export function partialGate(order: Order, sel: PartialSel): PartialGate {
   if (uncounted.length) reasons.push(`ตรวจนับรูปที่จะส่งก่อน: ${uncounted.join(", ")}`);
   if (short.length) reasons.push(`ของไม่พอกับจำนวนที่จะส่งรอบนี้: ${short.join(", ")}`);
   if (unread.size) reasons.push(`ยืนยันอ่านรายละเอียด: ${[...unread].join(", ")}`);
-  if (!(order.packPhotos && order.packPhotos.length > 0)) reasons.push("ยังไม่ได้ถ่ายภาพก่อนปิดกล่อง");
+  if (!currentBoxPhotos(order).length) reasons.push(noPhotoReason(order));
   // 📋 แอดมินสั่งแบ่งส่งไว้ + ลูกค้าสั่งมากกว่าที่มีรูป (ลายที่ยังไม่อัป) = ยังมีรอบหลัง ไม่ใช่รอบสุดท้าย (OD-260915-5055)
   // ไม่มีแผน = ไม่นับ (ป้ายบนรูปขาดเพราะพิมพ์ผิด/ลูกค้าลดจำนวน ต้องไม่เปิดทางแบ่งส่งเอง)
   if (hasAdminShipPlan(order)) remaining += unproofedQty(order);
@@ -3818,7 +3852,8 @@ export function packGate(order: Order): PackGate {
     });
   });
 
-  const noPhoto = !(order.packPhotos && order.packPhotos.length > 0);
+  // 📸 ใบแบ่งส่ง: ต้องเป็นภาพที่ถ่ายหลังรอบล่าสุด (ภาพกล่องรอบก่อนไม่นับ · OD-261007-2540)
+  const noPhoto = currentBoxPhotos(order).length === 0;
   const unpaidBalance = hasUnpaidBalance(order);
   const missing = packMissingOf(order);
   // 🧾 ใบเสร็จไปกับรอบแบ่งส่งก่อนหน้าครบแล้ว = รอบนี้ไม่ต้องใส่ · เริ่มถ่ายภาพแล้วแต่มีบิลใหม่เพิ่มมา = ต้องถ่ายใบใหม่ด้วย
