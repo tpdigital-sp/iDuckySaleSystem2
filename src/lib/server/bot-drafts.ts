@@ -168,8 +168,16 @@ async function fixMemory(db: FirebaseFirestore.Firestore, uid: string, fixes: { 
         }
       });
       if (best < 0) continue;
-      if (f.text === null) list.splice(best, 1);
-      else list[best] = { ...list[best], text: f.text };
+      if (f.text === null) {
+        // 🔁 20 ต.ค. 69 กด ↻/🤖 ซ้ำ ๆ: รอบร่างใหม่ Save Memory จดข้อความลูกค้าเดิมซ้ำคู่กับคำตอบ (at เดียวกัน) — เดิมลบแค่คำตอบ
+        //    ข้อความลูกค้าซ้ำกองเต็ม 20 ช่อง (ห้อง iDuckyShop "3mm อคล ใส 1ด้าน" ×16) บริบท "พวงกุญแจ 5cm 10 ชิ้น" หลุด
+        //    → เว็บคิดราคาไม่รู้ว่าสินค้าอะไร ตกไปเส้น agent ช้า 7–19 วิ + ตอบผิดสินค้า · ข้อความคู่ที่ซ้ำกับของเก่าในความจำ = ลบด้วย
+        const prev = list[best - 1];
+        const lines = String(prev?.text ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+        const older = list.slice(0, best - 1).filter((m) => String(m.role ?? "") === "user").map((m) => String(m.text ?? ""));
+        const dupUser = !!prev && String(prev.role ?? "") === "user" && msOf(prev.at) === msOf(list[best].at) && lines.length > 0 && lines.every((l) => older.some((t) => t.includes(l)));
+        list.splice(dupUser ? best - 1 : best, dupUser ? 2 : 1);
+      } else list[best] = { ...list[best], text: f.text };
       changed = true;
     }
     if (changed) tx.update(ref, { messages: list, messageCount: list.length });
