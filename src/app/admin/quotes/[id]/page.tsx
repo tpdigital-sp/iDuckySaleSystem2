@@ -40,6 +40,7 @@ import {
   type Quote,
 } from "@/lib/quotes";
 import { artworkSide, type OrderItem } from "@/lib/admin-data";
+import { lotRepriceNote, relotItems } from "@/lib/order-lot-reprice";
 import { faint, muted } from "@/lib/admin-ui";
 import { Banner, Btn, CopyChip, GH, HBTN, LogTimeline, PageShell, soft } from "@/components/admin/ui";
 import { ContactChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
@@ -79,11 +80,14 @@ function QuoteDetailInner() {
     let alive = true;
     fetchProductsByIds(itemIdsKey.split(","))
       .then((list) => alive && setProdById(Object.fromEntries(list.map((p) => [p.id, p]))))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => alive && setProdKeyDone(itemIdsKey));
     return () => {
       alive = false;
     };
   }, [itemIdsKey]);
+  /** ชุดสินค้าที่ดึงเสร็จแล้ว (ได้หรือไม่ได้ก็ตาม) — แทนที่รายการ (แก้ตัวเลือก) รอให้ตรงกับรายการปัจจุบันก่อน ถึงคิดราคาล็อตได้ */
+  const [prodKeyDone, setProdKeyDone] = useState("");
   const [busy, setBusy] = useState(false);
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
@@ -253,7 +257,10 @@ function QuoteDetailInner() {
     if (!it) return;
     const r = orderItemQtyChange(quote.items, itemIndex, nextQty, productOfItem);
     if (!r) return;
-    const items = quote.items.map((x, k) => (k === itemIndex ? { ...x, ...r.patch } : x));
+    const changedItems = quote.items.map((x, k) => (k === itemIndex ? { ...x, ...r.patch } : x));
+    // 🧮⇅ ขั้นราคาทั้งล็อตขยับ → บรรทัดอื่นขึ้น/ลงตาม ให้เท่ากันทั้งใบ (เหมือนหน้าออเดอร์ · OD-261020-2478 · บรรทัดที่แก้คิดราคาให้แล้ว)
+    const relot = relotItems(quote.items, changedItems, changedItems.map((_, k) => k), productOfItem, [itemIndex]);
+    const items = relot.items;
     const newQty = r.patch.qty ?? it.qty;
     const unit = r.unitPrice ?? it.unitPrice;
     const notes = [
@@ -262,6 +269,7 @@ function QuoteDetailInner() {
       r.rateChanged ? `เรท ${r.rateChanged.from} → ${r.rateChanged.to}` : "",
       r.designCapped ? `โควตาลายเหลือ ${r.designCapped} ลาย` : "",
       unit > 0 ? `= ${formatPrice(unit * newQty)}` : "",
+      relot.changed.length ? `ปรับราคารายการอื่นตามล็อตรวม: ${lotRepriceNote(relot.changed)}` : "",
     ].filter(Boolean);
     persistLog({ ...quote, items }, "แก้จำนวน", `${it.name}: ${notes.join(" · ")}`);
   }
@@ -346,20 +354,25 @@ function QuoteDetailInner() {
     if (!m || m.kind !== "quote" || m.orderId !== quote.id) return;
     const r = applyReplaceMarker(quote.items, m);
     if (!r) return;
+    // รอข้อมูลสินค้าก่อน — ต้องใช้คิดราคาล็อตใหม่หลังถอดรายการเดิม
+    if (prodKeyDone !== itemIdsKey) return;
     replaceBusy.current = true;
     writeReplaceMarker(null);
-    void persist(
-      withQuoteLog(
-        { ...quote, items: r.items },
-        meName || "แอดมิน",
-        "แก้ตัวเลือกจากหน้าร้าน",
-        `${r.old.name} ×${r.old.qty} @${formatPrice(r.old.unitPrice)} → ${r.fresh.name} ×${r.fresh.qty} @${formatPrice(r.fresh.unitPrice)} (แทนที่รายการเดิม)`
-      )
+    // 🧮⇅ รายการเดิมถูกถอด/ของใหม่จำนวนต่างไป → บรรทัดอื่นขึ้น/ลงตามล็อตรวม (เหมือนหน้าออเดอร์)
+    const relot = relotItems(r.prev, r.items, r.prevIndex, productOfItem);
+    let next = withQuoteLog(
+      { ...quote, items: relot.items },
+      meName || "แอดมิน",
+      "แก้ตัวเลือกจากหน้าร้าน",
+      `${r.old.name} ×${r.old.qty} @${formatPrice(r.old.unitPrice)} → ${r.fresh.name} ×${r.fresh.qty} @${formatPrice(r.fresh.unitPrice)} (แทนที่รายการเดิม)`
     );
+    if (relot.changed.length)
+      next = withQuoteLog(next, "ระบบ", "ปรับราคาต่อชิ้นตามล็อตรวม", `ยอดรวมทั้งใบเปลี่ยนขั้นราคา · ${lotRepriceNote(relot.changed)}`);
+    void persist(next);
     setTimeout(() => {
       replaceBusy.current = false;
     }, 3000);
-  }, [quote, persist, meName]);
+  }, [quote, persist, meName, prodById, prodKeyDone, itemIdsKey]);
 
   /** เอาภาพลายออกจากรายการ (ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับใบนี้) — ล้าง artworkQty/artworkBackUrls ของรูปนั้นตามไปด้วย + ลงประวัติ */
   function removeArtwork(itemIndex: number, url: string) {
@@ -756,8 +769,22 @@ function QuoteDetailInner() {
                             <button
                               type="button"
                               onClick={() => {
-                                if (window.confirm(`ลบ “${it.name}” ออกจากใบเสนอราคา?\n\n⚠️ ยอดที่เสนอจะลดลง ${formatPrice(it.qty * it.unitPrice)}`))
-                                  persistLog({ ...quote, items: quote.items.filter((_, k) => k !== i) }, "ลบรายการ", `${it.name} ×${it.qty}`);
+                                // 🧮↩ ลบแล้วล็อตหด → บรรทัดอื่นคืนราคาขั้นที่ล็อตเหลือจริง (เหมือนหน้าออเดอร์ · OD-260910-5776)
+                                const prevIndex = quote.items.map((_, k) => k).filter((k) => k !== i);
+                                const relot = relotItems(quote.items, prevIndex.map((k) => quote.items[k]), prevIndex, productOfItem);
+                                const bump = relot.changed.reduce((sum, c) => sum + (c.to - c.from) * c.qty, 0);
+                                const lines = relot.changed.map((c) => `• ${c.name} ×${c.qty}: ${formatPrice(c.from)} → ${formatPrice(c.to)}`).join("\n");
+                                if (
+                                  window.confirm(
+                                    `ลบ “${it.name}” ออกจากใบเสนอราคา?\n\n⚠️ ยอดที่เสนอจะลดลง ${formatPrice(it.qty * it.unitPrice - bump)}` +
+                                      (relot.changed.length ? `\n\n🔎 ตรวจราคาอีกรอบ — ล็อตที่เหลือไม่ถึงขั้นราคาเดิม ราคา/หน่วยปรับขึ้น (+${formatPrice(bump)}):\n${lines}` : "")
+                                  )
+                                ) {
+                                  let next = withQuoteLog({ ...quote, items: relot.items }, actor, "ลบรายการ", `${it.name} ×${it.qty}`);
+                                  if (relot.changed.length)
+                                    next = withQuoteLog(next, "ระบบ", "ปรับราคาต่อชิ้นตามล็อตรวม", `ยอดรวมทั้งใบเปลี่ยนขั้นราคา · ${lotRepriceNote(relot.changed)}`);
+                                  void persist(next);
+                                }
                               }}
                               title="ลบรายการนี้ออกจากใบเสนอราคา (ระบบลงประวัติทุกครั้ง)"
                               className="shrink-0 rounded-lg px-1.5 py-0.5 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"

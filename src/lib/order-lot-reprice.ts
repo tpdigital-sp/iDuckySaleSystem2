@@ -148,6 +148,17 @@ export function relotAfterShrink(
   skip: number[] = []
 ): { items: OrderItem[]; changed: LotRepriceLine[] } {
   if (isFreeOrder(order) || order.flowAccount) return { items: next, changed: [] };
+  return relotItems(prev, next, prevIndex, productOf, skip);
+}
+
+/** แกนของ relotAfterShrink ไม่ดูชนิดใบ — ใบเสนอราคาเรียกตรง (ไม่มีใบเคลม/FlowAccount) */
+export function relotItems(
+  prev: OrderItem[],
+  next: OrderItem[],
+  prevIndex: number[],
+  productOf: (id: string) => Product | undefined,
+  skip: number[] = []
+): { items: OrderItem[]; changed: LotRepriceLine[] } {
   const before = tableUnitPrices(prev, productOf);
   const after = tableUnitPrices(next, productOf);
   const skipSet = new Set(skip);

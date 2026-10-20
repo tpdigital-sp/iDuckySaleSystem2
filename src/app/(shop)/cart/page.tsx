@@ -147,6 +147,13 @@ export default function CartPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: quoteTo.id,
+        // 🛠 มาจากปุ่มแก้ตัวเลือก — บอกเซิร์ฟเวอร์ว่ารายการไหนกำลังถูกแทน (ไม่นับร่วมล็อตตอนคิดราคาทั้งใบ)
+        ...(() => {
+          const m = readReplaceMarker();
+          return m?.kind === "quote" && m.orderId === quoteTo.id
+            ? { replacing: { index: m.index, productId: m.productId, name: m.name, qty: m.qty } }
+            : {};
+        })(),
         items: pickedItems.map((i) => {
           // แยกภาพลาย/ธงเช็คสต๊อกออกจากข้อความตัวเลือก (เหมือนตอน checkout) ไม่งั้น URL ยาวจะรกใบเสนอราคา
           const { "รอเช็คสต๊อก": _bulk, ...selNoBulk } = i.selections;

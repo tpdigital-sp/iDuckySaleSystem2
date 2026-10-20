@@ -7,7 +7,7 @@
  * ผ้าคลุมไหล่ 100x100 10 ผืน ฿400 → ลูกค้าสั่งเพิ่ม 3 ผืน รวม 13 ผืน = ขั้น 11-49 ฿350
  * ของที่เพิ่มได้ ฿350 แล้ว (ตะกร้านับของเดิมร่วมล็อต) แต่ 10 ผืนแรกต้องลดตามด้วย
  */
-import { relotAfterShrink, repriceOrderLot } from "../src/lib/order-lot-reprice";
+import { relotAfterShrink, relotItems, repriceOrderLot } from "../src/lib/order-lot-reprice";
 import { applyReplaceMarker } from "../src/lib/order-item-qty";
 import type { Order, OrderItem } from "../src/lib/admin-data";
 import type { Product } from "../src/lib/products";
@@ -282,6 +282,20 @@ const dropAt = (items: OrderItem[], k: number) => {
   next = [bline(65, 105), items[1]];
   items = relotAfterShrink(mk(items), items, next, [0, 1], bagOf, [0]).items;
   eq("เพิ่มกลับ → อีกบรรทัดลง ฿105", units({ items } as Order), [105, 105]);
+}
+
+// ── 📄 ใบเสนอราคา (20 ต.ค. 69) ───────────────────────────────────────────────
+{
+  // หยิบจากหน้าร้านเข้าใบเสนอราคา: ตะกร้าคิดของใหม่ราคาเดี่ยว (25 ใบ ฿120) · ของเดิม 40 ใบ ฿110 → รวม 65 = ฿105 ทั้งใบ
+  const loadBag = async (id: string) => (id === "bag" ? bag : undefined);
+  const r = await repriceOrderLot({ id: "QT-TEST", items: [bline(40, 110), bline(25, 120)] } as unknown as Order, loadBag, [1]);
+  eq("ใบเสนอราคา: หยิบเพิ่มแล้วเท่ากันทั้งใบ ฿105", units(r.order), [105, 105]);
+}
+{
+  // ใบเสนอราคาแก้จำนวน (relotItems ไม่ดูชนิดใบ): 5 → 65 → บรรทัด 20 ใบลงตาม
+  const items = [bline(5, 120), bline(20, 120)];
+  const r = relotItems(items, [bline(65, 105), bline(20, 120)], [0, 1], bagOf, [0]);
+  eq("ใบเสนอราคา: แก้จำนวนแล้วบรรทัดอื่นลงตาม", units({ items: r.items } as Order), [105, 105]);
 }
 
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} ข้อ (ผ่าน ${pass})\n\n${fails.join("\n\n")}\n` : `✅ ผ่านทั้ง ${pass} ข้อ`);

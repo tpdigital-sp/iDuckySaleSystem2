@@ -3,7 +3,9 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { withQuoteLog, type Quote } from "@/lib/quotes";
 import { orderIdIn, type OrderItem } from "@/lib/admin-data";
-import { withUnitYield } from "@/lib/products-server";
+import { getProductServer, withUnitYield } from "@/lib/products-server";
+import { lotRepriceNote, repriceOrderLot } from "@/lib/order-lot-reprice";
+import type { Order } from "@/lib/admin-data";
 
 export const runtime = "nodejs";
 
@@ -18,7 +20,12 @@ export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
 
-  let body: { id?: string; items?: OrderItem[] };
+  let body: {
+    id?: string;
+    items?: OrderItem[];
+    /** 🛠 บรรทัดเดิมที่ของใหม่มาแทน (ปุ่ม "แก้ตัวเลือก (หน้าร้าน)") — หน้าใบเสนอราคาจะถอดออกทีหลัง */
+    replacing?: { index?: number; productId?: string; name?: string; qty?: number };
+  };
   try {
     body = await req.json();
   } catch {
@@ -94,13 +101,35 @@ export async function POST(req: Request) {
   // 📐 แช่ "สั่ง 1 หน่วย ได้กี่ชิ้น" ตั้งแต่อยู่ในใบเสนอราคา — ใบ/ออเดอร์ที่แปลงจากใบนี้จะโชว์จำนวนชิ้นจริงได้
   const clean = await withUnitYield(cleanRaw);
 
+  /**
+   * 🧮 ราคาต่อชิ้นเท่ากันทั้งใบ (กติกาเดียวกับลูกค้าสั่งเพิ่มในออเดอร์ · 20 ต.ค. 69)
+   * ตะกร้าโหมดใบเสนอราคาคิดราคาจากของในตะกร้าอย่างเดียว ไม่รู้จักรายการในใบ → ของใหม่ได้ราคาเดี่ยว ๆ และบรรทัดเดิมไม่ลดตาม
+   * → คิดทั้งใบเป็นล็อตเดียว ลดบรรทัดเดิม+ของใหม่ลงมาที่ราคาล็อต (ลดอย่างเดียว · ดู repriceOrderLot)
+   * บรรทัดที่กำลังถูกแทน (แก้ตัวเลือก) ไม่ร่วมล็อตและไม่ถูกแตะราคา — หน้าใบเสนอราคาจับคู่ถอดด้วยราคาเดิม
+   */
+  const rp = body.replacing;
+  const rIdx = typeof rp?.index === "number" ? rp.index : -1;
+  const rOld = rIdx >= 0 && rIdx < quote.items.length ? quote.items[rIdx] : null;
+  const skipIdx = rOld && rOld.productId === rp?.productId && rOld.name === rp?.name && rOld.qty === rp?.qty ? rIdx : -1;
+  const lotBase = skipIdx >= 0 ? quote.items.filter((_, i) => i !== skipIdx) : quote.items;
+  const lotMerged = [...lotBase, ...clean];
+  const lotRes = await repriceOrderLot(
+    { id, items: lotMerged } as unknown as Order,
+    getProductServer,
+    lotMerged.map((_, i) => i).filter((i) => i >= lotBase.length)
+  );
+  const lotItems = lotRes.order.items;
+  const merged = skipIdx >= 0 ? [...lotItems.slice(0, skipIdx), quote.items[skipIdx], ...lotItems.slice(skipIdx)] : lotItems;
+
   const by = gate.actor.name?.trim() || gate.actor.username;
-  const next = withQuoteLog(
-    { ...quote, items: [...quote.items, ...clean] },
+  let next = withQuoteLog(
+    { ...quote, items: merged },
     by,
     "เพิ่มรายการจากหน้าร้าน",
     clean.map((i) => `${i.name} ×${i.qty}`).join(" · ")
   );
+  if (lotRes.changed.length)
+    next = withQuoteLog(next, "ระบบ", "ปรับราคาต่อชิ้นให้เท่ากันทั้งบิล", `ยอดรวมทั้งใบเข้าเรทส่ง · ${lotRepriceNote(lotRes.changed)}`);
 
   const { error } = await sb.from("quotes").update({ data: next }).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
