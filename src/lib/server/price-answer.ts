@@ -4,6 +4,7 @@ import { callGemini, callClaudeText, recordN8nCall } from "@/lib/server/ai-usage
 import { AI_MODEL_BY_FEATURE, PRICE_UNDERSTAND_FALLBACK, modelFor, noThinking } from "@/lib/ai-models";
 import { getProductServer } from "@/lib/products-server";
 import { inBackground } from "@/lib/server/background";
+import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { SITE_URL } from "@/lib/shop-info";
 import {
   formatPrice,
@@ -335,12 +336,42 @@ export async function findDraftProduct(text: string): Promise<{ id: string; name
  * → หมดอายุแต่ยังไม่เกิน STALE_MAX_MS = ตอบจากชุดเดิมทันที แล้วโหลดใหม่ข้างหลัง (คำถามถัดไปได้ชุดใหม่) · เก่ากว่านั้น/ยังไม่เคยโหลด = รอโหลดเหมือนเดิม
  */
 const STALE_MAX_MS = 30 * 60_000;
+/**
+ * 🗄 แคตตาล็อกฉบับย่อ (Lite ~150 KB) ใช้ร่วมกันทุกเครื่องผ่าน Firestore แชท — 20 ต.ค. 69 วัดบนเว็บจริง: ถามคำเดิมซ้ำติดกันยังไม่ติดแคช
+ * = คำขอกระจายไปหลายเครื่อง (ทั้งเว็บเป็นฟังก์ชันเดียว หน้าแอดมินโพลถี่) แคชในหน่วยความจำแทบไม่โดน · เครื่องเย็นโหลดจาก Supabase (5.4 MB) 1–2 วิ
+ * → แคชในเครื่องว่าง/หมดอายุ = อ่านเอกสารนี้ก่อน · เอกสารเก่ากว่า TTL_MS (หรือไม่มี/อ่านไม่ได้) = โหลด Supabase แล้วเขียนกลับให้เครื่องอื่น
+ * ความสดเท่าเดิม (≤5 นาทีนับจากเวลาที่โหลดจาก Supabase จริง)
+ */
+const SHARED_CATALOG = { col: "price-cache", doc: "catalog-lite" };
+async function loadLiteShared(): Promise<{ at: number; items: Lite[] }> {
+  const db = getChatFirestore();
+  const ref = db?.collection(SHARED_CATALOG.col).doc(SHARED_CATALOG.doc);
+  if (ref) {
+    try {
+      const snap = await ref.get();
+      const at = Number(snap.get("at") ?? 0);
+      const json = snap.get("items");
+      if (typeof json === "string" && Date.now() - at < TTL_MS) {
+        const items = JSON.parse(json) as Lite[];
+        if (Array.isArray(items) && items.length) return { at, items };
+      }
+    } catch {
+      /* อ่านไม่ได้ = โหลดจาก Supabase ตามเดิม */
+    }
+  }
+  const at = Date.now();
+  const items = await loadLite();
+  const json = items.length ? JSON.stringify(items) : "";
+  // เอกสาร Firestore รับได้ ~1 MiB — ใหญ่เกินก็ไม่เขียน (ทุกเครื่องโหลดเองเหมือนเดิม)
+  if (ref && json && json.length < 900_000) inBackground("catalog-share", ref.set({ at, items: json }));
+  return { at, items };
+}
 async function catalog(): Promise<Lite[]> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.items;
   const stale = cache && Date.now() - cache.at < STALE_MAX_MS ? cache.items : null;
-  inflight ??= loadLite()
-    .then((items) => {
-      cache = { at: Date.now(), items };
+  inflight ??= loadLiteShared()
+    .then(({ at, items }) => {
+      cache = { at, items };
       return items;
     })
     .catch(() => cache?.items ?? [])
