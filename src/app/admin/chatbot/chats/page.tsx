@@ -58,7 +58,7 @@ const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` 
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; botDraftCount?: number; tagCounts?: Record<string, number>; next?: string; partial?: boolean };
 /** oaLive = สถานะดึงข้อความจาก LINE OA Manager รอบนี้ (lib/server/oa-chat-sync.ts · 15 ต.ค. 69) */
-type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings; partial?: boolean; oaLive?: OaLive };
+type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings; partial?: boolean; oaLive?: OaLive; hasMore?: boolean; older?: boolean };
 /** คีย์ entry ในห้อง — log มี id เสมอ · messages (ห้องเก่า) ไม่มี ใช้ role+เวลา */
 const entryKey = (e: LogEntry) => e.id ?? `${e.role}|${e.at}`;
 type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
@@ -372,7 +372,15 @@ function Chats() {
       setSel(id);
       if (!quiet) setDetailLoading(true);
       try {
-        setDetail(await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}`));
+        const d = await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}`);
+        // 📜 20 ต.ค. 69 API ส่ง 200 ตัวล่าสุด (เดิม 1,000) · รีเฟรชเงียบทุก 30 วิ = แทนเฉพาะช่วงเวลาของหน้าต่างล่าสุด
+        //    ข้อความเก่ากว่าที่แอดมินกด "โหลดข้อความก่อนหน้า" ไว้แล้วคงอยู่ (ในหน้าต่างใช้ของใหม่ทั้งชุด — ร่างที่ลบ/ส่งแล้วหายตามจริง)
+        setDetail((prev) => {
+          if (!quiet || !prev || prev.id !== d.id || !d.log.length || !d.hasMore) return d;
+          const start = d.log[0].at;
+          const keep = prev.log.filter((e) => e.at < start);
+          return keep.length ? { ...d, log: [...keep, ...d.log], hasMore: prev.hasMore } : d;
+        });
         setLive({ at: Date.now(), ok: true });
       } catch (e) {
         if (!quiet) toast(e instanceof Error ? e.message : String(e), true);
@@ -431,9 +439,34 @@ function Chats() {
 
   const thread: LogEntry[] = useMemo(() => (detail ? (detail.log.length ? detail.log : detail.messages) : []), [detail]);
   const threadKey = `${sel}:${thread.length}`;
+  // 📜 โหลดข้อความก่อนหน้าทีละ 200 (before=<at ตัวเก่าสุด>) · keepScrollRef = ระยะจากก้นจอ ให้จอไม่กระโดดลงล่างหลังต่อหัว
+  const keepScrollRef = useRef<number | null>(null);
+  const [olderBusy, setOlderBusy] = useState(false);
+  const loadOlder = useCallback(async () => {
+    const cur = detailRef.current;
+    if (!cur || !cur.log.length || olderBusy) return;
+    setOlderBusy(true);
+    try {
+      const d = await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${cur.id}&before=${encodeURIComponent(cur.log[0].at)}`);
+      const el = threadRef.current;
+      if (el) keepScrollRef.current = el.scrollHeight - el.scrollTop;
+      setDetail((prev) => {
+        if (!prev || prev.id !== d.id) return prev;
+        const seen = new Set(prev.log.map(entryKey));
+        return { ...prev, log: [...d.log.filter((e) => !seen.has(entryKey(e))), ...prev.log], hasMore: !!d.hasMore };
+      });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    } finally {
+      setOlderBusy(false);
+    }
+  }, [olderBusy, toast]);
   useEffect(() => {
     const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && keepScrollRef.current != null) {
+      el.scrollTop = el.scrollHeight - keepScrollRef.current;
+      keepScrollRef.current = null;
+    } else if (el) el.scrollTop = el.scrollHeight;
     if (sel && thread.length) markRead(sel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
@@ -1208,6 +1241,19 @@ function Chats() {
 
             {/* ข้อความ */}
             <div ref={threadRef} className="flex-1 overflow-y-auto px-3 py-3 md:px-6" style={{ background: "var(--ln-bg)" }}>
+              {detail?.hasMore && detail.log.length ? (
+                <div className="mb-3 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => void loadOlder()}
+                    disabled={olderBusy}
+                    className="min-h-[40px] rounded-full border bg-white px-4 text-[13px] font-bold transition hover:bg-[var(--ln-hover)] disabled:opacity-60"
+                    style={{ borderColor: "var(--ln-line)", color: "var(--dk-navy)" }}
+                  >
+                    {olderBusy ? "กำลังโหลด…" : "↑ โหลดข้อความก่อนหน้า"}
+                  </button>
+                </div>
+              ) : null}
               {detailLoading && !detail ? (
                 <p className="text-sm" style={{ color: "var(--dk-faint)" }}>
                   กำลังโหลด…

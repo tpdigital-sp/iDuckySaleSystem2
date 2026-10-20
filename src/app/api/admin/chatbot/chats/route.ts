@@ -164,18 +164,30 @@ export async function GET(req: Request) {
     if (!d.exists) return NextResponse.json({ error: "ไม่พบห้องแชทนี้" }, { status: 404 });
     const x = (d.data() ?? {}) as Record<string, unknown>;
     const row = toRow(d.id, x, iso(d.createTime), cfg);
-    // 💬🔄 ดึงข้อความฝั่งแอดมินจาก OA Manager ลง log ก่อน (ไม่มีคุกกี้/ไม่รู้ห้อง = ข้ามทันที · OA ช้า = ตอบไปก่อน งานวิ่งต่อใน after())
-    const oaLive: OaLive = await syncOaRoom(db, id, x).catch((e: unknown) => ({ state: "error", error: e instanceof Error ? e.message : String(e), at: new Date().toISOString() }));
+    // 💬🔄 ดึงข้อความฝั่งแอดมินจาก OA Manager ลง log (ไม่มีคุกกี้/ไม่รู้ห้อง = ข้ามทันที)
+    // 🐢 20 ต.ค. 69 เจ้าของร้าน "หน้านี้โหลดข้อมูลค่อนข้างช้า": เดิมรอ OA สูงสุด 4 วิ (วัดจริง 1.65 วิ) ก่อนอ่าน log ทุกครั้งที่เปิดห้อง + ทุก 10 วิของโพล
+    //    → ไม่รอเลย (waitMs 0) งานซิงก์วิ่งต่อเบื้องหลัง เขียนลง log แล้วรอบโพลถัดไป (3 วิ) / รีเฟรชหน้าต่างล่าสุด (30 วิ) เห็นเอง · อ่าน log ขนานกันได้
+    const oaLiveP: Promise<OaLive> = syncOaRoom(db, id, x, { waitMs: 0 }).catch((e: unknown) => ({ state: "error", error: e instanceof Error ? e.message : String(e), at: new Date().toISOString() }));
     // 📥 15 ต.ค. 69 นำเข้าประวัติจาก CSV OA Manager (scripts/import-oa-chat-csv.mts) ทำให้บางห้องมี log หลายพัน entry ย้อนไปปี 2567
     //    เดิม orderBy asc limit 1000 = ได้ 1,000 ตัว "เก่าสุด" แล้วข้อความล่าสุดหาย → เอา 1,000 ตัวล่าสุดแล้วกลับลำดับ
     // ⚡ 15 ต.ค. 69 realtime: หน้าจอส่ง after = at ของ entry ล่าสุดที่มีแล้ว → อ่านเฉพาะที่ใหม่กว่า (ถอย 2 นาที ให้ entry เดิมที่เพิ่งเปลี่ยนสถานะ เช่น ร่าง→ส่งแล้ว/รูปแคชแล้ว ถูกส่งซ้ำไปทับ)
     //    where+orderBy ฟิลด์เดียวกัน ไม่ต้องมีดัชนีผสม · ฟิลด์ at เป็น Timestamp ทุกแหล่ง (n8n/reply/CSV import — ตรวจ 15 ต.ค. 69)
     const afterRaw = (u.searchParams.get("after") ?? "").trim();
     const after = afterRaw && !Number.isNaN(new Date(afterRaw).getTime()) ? new Date(afterRaw) : null;
-    const logSnap = after
-      ? await ref.collection("log").where("at", ">", Timestamp.fromMillis(after.getTime() - 120_000)).orderBy("at", "asc").limit(300).get()
-      : await ref.collection("log").orderBy("at", "desc").limit(1000).get();
+    // 📜 20 ต.ค. 69 เปิดห้องอ่าน 200 ตัวล่าสุด (เดิม 1,000 — ห้องที่นำเข้า CSV ได้ ~390 KB ทุกครั้งที่เปิด + ทุก 30 วิ) · ข้อความเก่ากว่า = before=<at ตัวเก่าสุดที่มี> ทีละ 200
+    const beforeLogRaw = (u.searchParams.get("before") ?? "").trim();
+    const beforeLog = !after && beforeLogRaw && !Number.isNaN(new Date(beforeLogRaw).getTime()) ? new Date(beforeLogRaw) : null;
+    const LOG_PAGE = 200;
+    const [logSnap, oaLive] = await Promise.all([
+      after
+        ? ref.collection("log").where("at", ">", Timestamp.fromMillis(after.getTime() - 120_000)).orderBy("at", "asc").limit(300).get()
+        : beforeLog
+          ? ref.collection("log").where("at", "<", Timestamp.fromDate(beforeLog)).orderBy("at", "desc").limit(LOG_PAGE).get()
+          : ref.collection("log").orderBy("at", "desc").limit(LOG_PAGE).get(),
+      oaLiveP,
+    ]);
     const logDocs = after ? logSnap.docs : logSnap.docs.reverse();
+    const hasMore = !after && logSnap.docs.length >= LOG_PAGE;
     const log: LogEntry[] = logDocs.map((e) => {
       const y = e.data() as Record<string, unknown>;
       const card = y.card && typeof y.card === "object" ? (y.card as { name?: unknown; url?: unknown }) : null;
@@ -224,7 +236,7 @@ export async function GET(req: Request) {
     const messages: LogEntry[] = Array.isArray(x.messages)
       ? (x.messages as Record<string, unknown>[]).map((m) => ({ role: String(m.role ?? ""), text: String(m.text ?? ""), at: iso(m.at) }))
       : [];
-    return NextResponse.json({ ...row, log, messages: after ? [] : messages, partial: !!after, settings: settingsOut, oaLive }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ...row, log, messages: after || beforeLog ? [] : messages, partial: !!after, older: !!beforeLog, hasMore, settings: settingsOut, oaLive }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));

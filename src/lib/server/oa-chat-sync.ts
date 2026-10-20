@@ -92,14 +92,19 @@ export function alreadyLogged(m: OaMessage, atMs: number, existing: Existing[]):
  * ซิงก์ห้องเดียว — เรียกจาก GET /api/admin/chatbot/chats?id= (ทั้งเปิดเต็มและโพล after=)
  * room = ข้อมูลเอกสารห้องที่ route อ่านมาแล้ว (ใช้ oaSync.at) · ไม่ throw (คืนสถานะเสมอ)
  */
-export async function syncOaRoom(db: Firestore, userId: string, room: Record<string, unknown>): Promise<OaLive> {
+/**
+ * opts.waitMs = รอผล OA นานสุดเท่าไหร่ก่อนตอบหน้าจอ (ค่าเริ่ม OA_WAIT_MS) — 20 ต.ค. 69 หน้าแชทส่ง 0: งานซิงก์วิ่งต่อใน inBackground
+ * แล้วรอบโพลถัดไป (3 วิ) เห็นข้อความเอง ไม่ต้องให้การเปิดห้อง/โพลค้างรอ OA 1.5–4 วิ
+ */
+export async function syncOaRoom(db: Firestore, userId: string, room: Record<string, unknown>, opts: { waitMs?: number } = {}): Promise<OaLive> {
+  const waitMs = opts.waitMs ?? OA_WAIT_MS;
   const now = Date.now();
   const cfg = await loadOaConfig();
   if (!cfg?.cookie) return { state: "off", reason: "no-cookie" };
   const cur = perRoom.get(userId);
   if (cur && now - cur.at < (cur.result.state === "error" ? FAIL_MS : THROTTLE_MS)) {
     // งานรอบก่อนยังวิ่งอยู่ (ตอบหน้าจอไปก่อนเพราะ OA ช้า) → ให้รอบนี้รอผลเดียวกันในเวลาที่เหลือ
-    return cur.job ? waitFor(cur.job, cur.result) : cur.result;
+    return cur.job ? waitFor(cur.job, cur.result, waitMs) : cur.result;
   }
   if (now < globalFailUntil) return { state: "error", error: globalFailMsg, at: new Date(globalFailUntil - FAIL_MS).toISOString() };
 
@@ -124,13 +129,14 @@ export async function syncOaRoom(db: Firestore, userId: string, room: Record<str
   const placeholder: OaLive = { state: "ok", added: 0, at: new Date(now).toISOString(), pending: true };
   perRoom.set(userId, { at: now, result: placeholder, job });
   inBackground("oa-chat-sync", job);
-  return waitFor(job, placeholder);
+  return waitFor(job, placeholder, waitMs);
 }
 
-async function waitFor(job: Promise<OaLive>, fallback: OaLive): Promise<OaLive> {
+async function waitFor(job: Promise<OaLive>, fallback: OaLive, waitMs = OA_WAIT_MS): Promise<OaLive> {
+  if (waitMs <= 0) return fallback;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const slow = new Promise<OaLive>((res) => {
-    timer = setTimeout(() => res(fallback), OA_WAIT_MS);
+    timer = setTimeout(() => res(fallback), waitMs);
   });
   try {
     return await Promise.race([job, slow]);
