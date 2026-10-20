@@ -1577,6 +1577,8 @@ export default function AdminOrderDetailPage() {
   const [giftArtDragOver, setGiftArtDragOver] = useState<string | null>(null);
   /** กำลังอัป "แบบงานของแถม" ให้ลูกค้าตรวจอยู่โปรไหน */
   const [giftProofBusy, setGiftProofBusy] = useState<string | null>(null);
+  /** กำลังลากไฟล์ค้างเหนือกล่อง "แบบของแถมที่ส่งให้ตรวจ" โปรไหน — ไว้ไฮไลต์ช่องรับ */
+  const [giftProofDragOver, setGiftProofDragOver] = useState<string | null>(null);
   /** 🔗 หน้าต่างจับคู่แบบของแถม ↔ แบบสินค้า (เปิดทีละรูป) */
   const [giftPairPick, setGiftPairPick] = useState<{ promoId: string; url: string } | null>(null);
   /** สถานะที่รอเปลี่ยน "หลังแนบสลิปเสร็จ" — ตั้งตอนกด "แนบสลิปตอนนี้" ในกล่องเตือน */
@@ -8372,7 +8374,9 @@ export default function AdminOrderDetailPage() {
                         e.preventDefault();
                         if (giftArtBusy !== g.promoId) setGiftArtDragOver(g.promoId);
                       }}
-                      onDragLeave={() => setGiftArtDragOver(null)}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setGiftArtDragOver(null);
+                      }}
                       onDrop={(e) => {
                         if (!mayEdit) return;
                         e.preventDefault();
@@ -8456,10 +8460,39 @@ export default function AdminOrderDetailPage() {
                     </div>
 
                     {/* ขวา: แบบของแถมที่ส่งให้ลูกค้าตรวจ — ลูกค้าเห็นชุดนี้ในการ์ดของแถม แล้วกดอนุมัติ/ขอแก้ */}
-                    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+                    <div
+                      className={`rounded-xl border p-3 transition ${
+                        giftProofDragOver === g.promoId ? "border-violet-400 bg-violet-100/70" : "border-violet-200 bg-violet-50/40"
+                      }`}
+                      /* ลากรูปแบบมาวางได้ทั้งกล่อง (หลายรูปพร้อมกัน) — พนักงานขอ 20 ต.ค. 69 (OD-261018-1936 กระดาษรองหลัง)
+                         เดิมต้องกด ＋ อัปแบบ แล้วเลือกไฟล์ทีละครั้ง · เข้าท่อเดียวกับปุ่ม (addGiftProof) */
+                      onDragOver={(e) => {
+                        if (!(mayEdit || mayProof)) return;
+                        e.preventDefault();
+                        if (giftProofBusy !== g.promoId) setGiftProofDragOver(g.promoId);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setGiftProofDragOver(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!(mayEdit || mayProof)) return;
+                        e.preventDefault();
+                        setGiftProofDragOver(null);
+                        if (giftProofBusy === g.promoId) return;
+                        const files = Array.from(e.dataTransfer.files ?? []);
+                        if (!files.length) return;
+                        if (!files.some((f) => f.type.startsWith("image/"))) {
+                          setErr("แบบต้องเป็นไฟล์รูปภาพ (PNG / JPG / WEBP)");
+                          return;
+                        }
+                        void addGiftProof(g.promoId, files);
+                      }}
+                    >
                       <p className="text-xs font-bold text-violet-800">
                         🖼 แบบของแถมที่ส่งให้ตรวจ ({(g.proofs ?? []).length})
-                        <span className="ml-1 font-normal text-violet-600">— ลูกค้าเห็นชุดนี้ และกดอนุมัติ / ขอแก้ไขได้</span>
+                        <span className="ml-1 font-normal text-violet-600">
+                          — ลูกค้าเห็นชุดนี้ และกดอนุมัติ / ขอแก้ไขได้{(mayEdit || mayProof) && " · ลากไฟล์มาวางในกล่องนี้ได้เลย"}
+                        </span>
                         {g.proofStatus && (
                           <span className={`ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${PROOF_STYLES[g.proofStatus]}`}>
                             {g.proofStatus}
@@ -8548,7 +8581,7 @@ export default function AdminOrderDetailPage() {
                       {(mayEdit || mayProof) && (
                         <label
                           className="mt-2 inline-grid h-16 w-16 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-violet-300 bg-white text-center text-[10px] font-bold leading-tight text-violet-600 transition hover:bg-violet-50"
-                          title="อัปแบบของแถมให้ลูกค้าตรวจ"
+                          title="อัปแบบของแถมให้ลูกค้าตรวจ (ลากวางก็ได้)"
                         >
                           {giftProofBusy === g.promoId ? "อัป…" : <span>＋<br />อัปแบบ</span>}
                           <input
