@@ -61,6 +61,14 @@ type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: n
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings; partial?: boolean; oaLive?: OaLive; hasMore?: boolean; older?: boolean };
 /** คีย์ entry ในห้อง — log มี id เสมอ · messages (ห้องเก่า) ไม่มี ใช้ role+เวลา */
 const entryKey = (e: LogEntry) => e.id ?? `${e.role}|${e.at}`;
+/**
+ * 🚦 20 ต.ค. 69 ห้อง iDuckyShop ค้าง "⏳ กำลังร่างใหม่…" 23 นาที ร่างใหม่เข้า Firestore แล้วแต่ไม่โผล่ · กด ↻/🤖 ไม่ถึงเซิร์ฟเวอร์ จนรีโหลดเอง
+ *   ต้นเหตุ: โพลห้อง (3 วิ) + รายชื่อ (5 วิ) ยิงใหม่ทุกรอบโดยไม่รอรอบก่อน + fetch ไม่มีเวลาตัดสาย → เซิร์ฟเวอร์ช้า/ค้างครู่เดียว
+ *   คำขอกองในเบราว์เซอร์ (localhost HTTP/1.1 ได้ 6 สายต่อโดเมน) ไม่มีรอบไหนจบ หน้าไม่อัปเดต ปุ่มกดก็ต่อคิวท้ายกอง
+ *   → โพลแต่ละชนิดวิ่งทีละ 1 คำขอ (รอบก่อนยังไม่จบ = ข้าม) + ตัดสายเองที่ POLL_TIMEOUT · ปุ่มสั่งงานตัดที่ ACTION_TIMEOUT แล้วบอกเหตุผล
+ */
+const POLL_TIMEOUT = 15_000;
+const ACTION_TIMEOUT = 45_000;
 type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number; priceUnit?: string };
 /** "เริ่ม ฿78 / แผ่น A3" — สูตรเดียวกับการ์ดที่ส่งให้ลูกค้า (lib/server/product-card.ts priceText) */
@@ -194,6 +202,9 @@ function Chats() {
   //   💬🔄 ข้อความที่แอดมินพิมพ์เองใน LINE OA Manager: LINE ไม่ส่ง webhook → เซิร์ฟเวอร์ดึงจาก OA ตอนเปิด/โพลห้อง (ต้องมีคุกกี้ OA ในกล่อง ⚙️ หน้า ลูกค้า LINE
   //   + รู้รหัสห้อง OA ของคนนี้) · หัวห้องโชว์ "OA ✓ / OA ยังไม่เชื่อม / OA ยังไม่ผูกห้อง / OA ⚠️" · ปุ่ม 🔌 ทดสอบ (สิทธิ์ตั้งค่าระบบ) คืนเส้น API + ฟิลด์ตัวอย่างไว้ไล่
   const [live, setLive] = useState<{ at: number; ok: boolean }>({ at: 0, ok: true });
+  /** 🚦 คำขอโพลที่ยังวิ่งอยู่ (ห้อง / รายชื่อ) — มีอยู่ = รอบถัดไปข้าม ไม่ยิงซ้อน */
+  const roomPollRef = useRef<object | null>(null);
+  const listPollRef = useRef<object | null>(null);
   const detailRef = useRef<DetailRes | null>(null);
   useEffect(() => {
     detailRef.current = detail;
@@ -242,7 +253,7 @@ function Chats() {
       } catch {}
     }
     try {
-      const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`);
+      const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`, undefined, { timeoutMs: ACTION_TIMEOUT });
       if (my !== loadSeq.current) return;
       if (!q) {
         try {
@@ -342,7 +353,12 @@ function Chats() {
   // รีเฟรชรายการเต็มทุก 30 วิ (ชิปนับ/ห้องที่หลุดจากขอบเขต) — เฉพาะตอนไม่ได้ค้นหา
   useEffect(() => {
     if (q) return;
-    const t = setInterval(() => void load(), 30_000);
+    let busy = false; // 🚦 รอบก่อนยังไม่จบ = ข้าม
+    const t = setInterval(() => {
+      if (busy) return;
+      busy = true;
+      void load().finally(() => (busy = false));
+    }, 30_000);
     return () => clearInterval(t);
   }, [load, q]);
 
@@ -352,7 +368,7 @@ function Chats() {
     const key = listKeyRef.current;
     const newest = rowsRef.current.reduce((m, r) => (r.lastSeen > m ? r.lastSeen : m), "");
     if (!newest) return load();
-    const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&since=${encodeURIComponent(newest)}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`);
+    const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&since=${encodeURIComponent(newest)}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`, undefined, { timeoutMs: POLL_TIMEOUT });
     if (listKeyRef.current !== key || !d.rows.length) return;
     const prev = rowsRef.current;
     const was = new Map(prev.map((r) => [r.id, r]));
@@ -366,8 +382,14 @@ function Chats() {
   useEffect(() => {
     if (q) return;
     const t = setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void pollList().catch(() => {});
+      if (document.visibilityState !== "visible" || listPollRef.current) return; // 🚦 รอบก่อนยังไม่จบ = ข้าม
+      const tok = {};
+      listPollRef.current = tok;
+      void pollList()
+        .catch(() => {})
+        .finally(() => {
+          if (listPollRef.current === tok) listPollRef.current = null;
+        });
     }, 5_000);
     return () => clearInterval(t);
   }, [pollList, q]);
@@ -403,7 +425,7 @@ function Chats() {
   const prefetchRoom = useCallback((id: string) => {
     const c = roomCacheRef.current.get(id);
     if (prefetchRef.current.has(id) || (c && Date.now() - c.at < 20_000)) return;
-    const p = botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}&prefetch=1`).then((d) => {
+    const p = botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}&prefetch=1`, undefined, { timeoutMs: POLL_TIMEOUT }).then((d) => {
       roomCacheRef.current.set(id, { d, at: Date.now() });
       return d;
     });
@@ -436,7 +458,7 @@ function Chats() {
         }
       }
       try {
-        const d = await (prefetchRef.current.get(id) ?? botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}`));
+        const d = await (prefetchRef.current.get(id) ?? botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}`, undefined, { timeoutMs: quiet ? POLL_TIMEOUT : ACTION_TIMEOUT }));
         // 📜 20 ต.ค. 69 API ส่ง 200 ตัวล่าสุด (เดิม 1,000) · รีเฟรชเงียบทุก 30 วิ = แทนเฉพาะช่วงเวลาของหน้าต่างล่าสุด
         //    ข้อความเก่ากว่าที่แอดมินกด "โหลดข้อความก่อนหน้า" ไว้แล้วคงอยู่ (ในหน้าต่างใช้ของใหม่ทั้งชุด — ร่างที่ลบ/ส่งแล้วหายตามจริง)
         setDetail((prev) => {
@@ -461,7 +483,7 @@ function Chats() {
       const cur = detailRef.current;
       if (!cur || cur.id !== id || !cur.log.length) return openRoom(id, true);
       const newest = cur.log.reduce((m, e) => (e.at > m ? e.at : m), "");
-      const d = await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}&after=${encodeURIComponent(newest)}`);
+      const d = await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}&after=${encodeURIComponent(newest)}`, undefined, { timeoutMs: POLL_TIMEOUT });
       setDetail((prev) => {
         if (!prev || prev.id !== d.id) return prev;
         const { log: fresh, messages: _m, partial: _p, hasMore: _h, older: _o, ...meta } = d; // โพล after= ตอบ hasMore:false เสมอ — ห้ามทับค่าของหน้าต่างที่โหลดไว้ (ปุ่มโหลดข้อความก่อนหน้าหายหลัง 3 วิ)
@@ -474,24 +496,39 @@ function Chats() {
     },
     [openRoom],
   );
-  // ห้องที่เปิดอยู่: ข้อความใหม่ทุก 3 วิ · ทุกรอบที่ 10 (30 วิ) โหลดเต็มกันพลาด · แท็บซ่อน = ไม่โพล
+  /** 🚦 โพลห้องทีละ 1 คำขอ (POLL_TIMEOUT) — รอบก่อนยังไม่จบ = คืน false ไม่ยิงซ้อน · full = โหลดหน้าต่างล่าสุดเต็ม */
+  const refreshRoom = useCallback(
+    (id: string, full: boolean): boolean => {
+      if (roomPollRef.current) return false;
+      const tok = {};
+      roomPollRef.current = tok;
+      void (full ? openRoom(id, true) : pollRoom(id))
+        .then(() => setLive({ at: Date.now(), ok: true }))
+        .catch(() => setLive((v) => ({ ...v, ok: false })))
+        .finally(() => {
+          if (roomPollRef.current === tok) roomPollRef.current = null;
+        });
+      return true;
+    },
+    [openRoom, pollRoom],
+  );
+  // ห้องที่เปิดอยู่: ข้อความใหม่ทุก 3 วิ · ทุกรอบที่ 10 (30 วิ) โหลดเต็มกันพลาด · แท็บซ่อน = ไม่โพล · รอบก่อนยังไม่จบ = ข้ามรอบนี้
   useEffect(() => {
     if (!sel) return;
+    roomPollRef.current = null; // ห้องใหม่ — คำขอของห้องเดิมที่ยังค้างไม่กันห้องนี้ (ผลของห้องเดิมถูกทิ้งที่ prev.id !== d.id)
     let n = 0;
     const t = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      n += 1;
-      const p = n % 10 === 0 ? openRoom(sel, true) : pollRoom(sel);
-      void p.then(() => setLive({ at: Date.now(), ok: true })).catch(() => setLive((v) => ({ ...v, ok: false })));
+      if (refreshRoom(sel, (n + 1) % 10 === 0)) n += 1;
     }, 3_000);
     return () => clearInterval(t);
-  }, [sel, openRoom, pollRoom]);
+  }, [sel, refreshRoom]);
   // กลับมาที่แท็บ/หน้าต่าง (เช่น สลับจาก OA Manager มาตอบ) = ดึงรายชื่อ+ห้องทันที ไม่รอรอบ
   useEffect(() => {
     const kick = () => {
       if (document.visibilityState !== "visible") return;
       void load();
-      if (sel) void openRoom(sel, true).then(() => setLive({ at: Date.now(), ok: true }));
+      if (sel) refreshRoom(sel, true);
     };
     window.addEventListener("focus", kick);
     document.addEventListener("visibilitychange", kick);
@@ -499,7 +536,7 @@ function Chats() {
       window.removeEventListener("focus", kick);
       document.removeEventListener("visibilitychange", kick);
     };
-  }, [load, sel, openRoom]);
+  }, [load, sel, refreshRoom]);
 
   const thread: LogEntry[] = useMemo(() => (detail ? (detail.log.length ? detail.log : detail.messages) : []), [detail]);
   useEffect(() => {
@@ -618,15 +655,17 @@ function Chats() {
     async (m: LogEntry) => {
       if (!sel || !m.id) return;
       try {
-        const d = await botApi<{ ok: boolean; saved?: string; redraft?: boolean }>("/api/admin/chatbot/chats/draft", { action: "regen", id: sel, logId: m.id });
+        const d = await botApi<{ ok: boolean; saved?: string; redraft?: boolean }>("/api/admin/chatbot/chats/draft", { action: "regen", id: sel, logId: m.id }, { timeoutMs: ACTION_TIMEOUT });
         afterDraft(m.id, null);
         if (d.redraft) setRedraftAt((x) => ({ ...x, [sel]: Date.now() }));
         toast(d.saved || "ส่งให้บอทร่างใหม่แล้ว", !d.redraft);
       } catch (e) {
+        // ถูกปฏิเสธ (ร่างนี้ส่ง/ทิ้งไปแล้ว · มีร่างใหม่กว่า) = หน้าจอเก่ากว่าเซิร์ฟเวอร์ → บอกเหตุผล + ดึงห้องใหม่ทันที
         toast(e instanceof Error ? e.message : String(e), true);
+        refreshRoom(sel, true);
       }
     },
-    [sel, afterDraft, toast],
+    [sel, afterDraft, toast, refreshRoom],
   );
   const discardDraft = useCallback(
     async (m: LogEntry) => {
@@ -695,6 +734,15 @@ function Chats() {
 
   /** 🤖 ห้องที่เพิ่งสั่งบอทร่าง (เปิดสวิตช์แล้วร่างเอง) — id → เวลา */
   const [redraftAt, setRedraftAt] = useState<Record<string, number>>({});
+  // ⏳ ป้าย "กำลังร่างใหม่…" หมดเวลา 60 วิ → วาดใหม่ตอนครบเวลา (ไม่พึ่งรอบโพลให้ป้ายหาย)
+  const [, setRedraftTick] = useState(0);
+  const selRedraftAt = sel ? (redraftAt[sel] ?? 0) : 0;
+  useEffect(() => {
+    const left = selRedraftAt + 60_000 - Date.now();
+    if (!(left > 0)) return;
+    const t = setTimeout(() => setRedraftTick((n) => n + 1), left + 50);
+    return () => clearTimeout(t);
+  }, [selRedraftAt]);
   // 📝 โหมดร่างรายคน (เจ้าของร้าน 19 ต.ค. 69 "เปิดโหมดร่างกับลูกค้าที่เลือกได้ไหม") — มีผลเมื่อ n8n Build AI Request อ่าน draftUserIds แล้ว
   const toggleDraftUser = useCallback(
     async (id: string, on: boolean) => {
@@ -1272,11 +1320,7 @@ function Chats() {
                   </p>
                   <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
                     {detail?.lastSeen ? `ล่าสุด ${ago(detail.lastSeen)}` : ""}
-                    {live.at ? (
-                      <span title={live.ok ? "อัปเดตเองทุก 3 วินาที" : "ดึงข้อมูลไม่ได้ — จะลองใหม่เอง"}>
-                        {live.ok ? ` · 🟢 สด ${new Date(live.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : " · 🔴 อัปเดตไม่ได้ กำลังลองใหม่"}
-                      </span>
-                    ) : null}
+                    {live.at ? <LiveStamp live={live} /> : null}
                     {detail?.createdAt ? <span className="hidden @xl:inline">{` · ทักครั้งแรก ${fmtDay(detail.createdAt)}`}</span> : null}
                     {detail?.oaLive ? <OaLiveBadge live={detail.oaLive} canSetup={can("settings.manage")} /> : null}
                   </p>
@@ -1498,7 +1542,7 @@ function Chats() {
             {(() => {
               const lastReal = [...thread].reverse().find((x) => !(x.role === "draft" && x.status !== "pending"));
               return canReply && detail && (detail.botDraft || settings?.mode === "draft") && lastReal?.role === "user" ? (
-                <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={lastReal.at} />
+                <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={lastReal.at} onRejected={() => refreshRoom(detail.id, true)} />
               ) : null;
             })()}
             {canReply ? (
@@ -2194,6 +2238,28 @@ function Chip({ tone, solid, children }: { tone: "mint" | "sky" | "lilac" | "cor
 /* ── 💬🔄 สถานะดึงข้อความจาก LINE OA Manager (15 ต.ค. 69) ───────────────────────
  * off/no-cookie = ยังไม่วางคุกกี้ (กล่อง ⚙️ หน้า ลูกค้า LINE · คนมีสิทธิ์ตั้งค่าระบบกดไปตั้งได้) · unmapped = ไม่รู้รหัสห้อง OA ของคนนี้
  * ok = ดึงได้ (added>0 บอกจำนวนที่เพิ่งเข้า · pending = OA ช้า รอบโพลหน้าเห็น) · error = คุกกี้หมด/OA ล่ม/เส้น API ไม่ตอบ (ห้องยังใช้ได้ปกติ) */
+/**
+ * 🟢 สด HH:mm:ss / 🔴 ดึงไม่ได้ / 🟠 เงียบเกิน 20 วิ (20 ต.ค. 69 — โพลค้างแล้วป้ายยังเขียว "สด" เวลาเก่า ดูไม่ออกว่าหน้าไม่อัปเดต)
+ * นาฬิกาของตัวเองทุก 5 วิ ไม่พาทั้งหน้าวาดใหม่
+ */
+function LiveStamp({ live }: { live: { at: number; ok: boolean } }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(t);
+  }, []);
+  const time = new Date(live.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const quiet = now - live.at > 20_000;
+  if (!live.ok) return <span title="ดึงข้อมูลไม่ได้ — จะลองใหม่เอง">{" · 🔴 อัปเดตไม่ได้ กำลังลองใหม่"}</span>;
+  if (quiet)
+    return (
+      <span title={`อัปเดตล่าสุด ${time} — เซิร์ฟเวอร์ตอบช้า ระบบลองใหม่เองทุก 3 วินาที`} style={{ color: "var(--dk-yolk-ink)" }}>
+        {` · 🟠 ไม่ได้อัปเดตตั้งแต่ ${time}`}
+      </span>
+    );
+  return <span title="อัปเดตเองทุก 3 วินาที">{` · 🟢 สด ${time}`}</span>;
+}
+
 function OaLiveBadge({ live, canSetup }: { live: OaLive; canSetup: boolean }) {
   if (live.state === "off") {
     const text = live.reason === "no-cookie" ? "OA ยังไม่เชื่อม" : "OA ไม่รู้เลขบัญชี";

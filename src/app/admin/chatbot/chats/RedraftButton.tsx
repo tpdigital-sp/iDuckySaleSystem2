@@ -9,7 +9,8 @@ import { botApi } from "../bot-ui";
  * ร่างกลับมาเป็นการ์ดเหลืองในห้องเองผ่านการโพล 3 วิ (ราว 15–30 วิ)
  * แถบเหนือช่องพิมพ์ — ขึ้นเมื่อห้องเปิดร่าง (รายคน/ทั้งร้าน) และข้อความท้ายสุดเป็นของลูกค้า (ยังไม่มีร่าง/คำตอบตามหลัง)
  */
-export default function RedraftButton({ id, toast, startedAt, lastUserAt }: { id: string; toast: (t: string, bad?: boolean) => void; startedAt?: number; lastUserAt?: string }) {
+/** onRejected = เซิร์ฟเวอร์ไม่รับ (เช่น 409 มีร่างรอส่งอยู่แล้วแต่หน้าจอยังไม่เห็น) → ให้หน้าแชทดึงห้องใหม่ทันที (20 ต.ค. 69) */
+export default function RedraftButton({ id, toast, startedAt, lastUserAt, onRejected }: { id: string; toast: (t: string, bad?: boolean) => void; startedAt?: number; lastUserAt?: string; onRejected?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [waitUntil, setWaitUntil] = useState(0);
   /*
@@ -38,12 +39,13 @@ export default function RedraftButton({ id, toast, startedAt, lastUserAt }: { id
     if (busy || waiting) return;
     setBusy(true);
     try {
-      const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "redraft", id });
+      const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "redraft", id }, { timeoutMs: 45_000 });
       toast(d.saved || "ส่งให้บอทร่างแล้ว");
       setWaitUntil(Date.now() + 45_000);
       setTimeout(() => setWaitUntil(0), 45_000);
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), true);
+      onRejected?.();
     } finally {
       setBusy(false);
     }

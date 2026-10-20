@@ -10,14 +10,21 @@ import { useCallback, useRef, useState } from "react";
 // แถบแท็บ ChatbotTabs เอาออกแล้ว 14 ต.ค. 69 — ซ้ำกับเมนูหลักหมวด Chatbot (เจ้าของร้าน: "ไม่จำเป็นต้องมี มีที่เมนูแล้ว")
 
 /** เรียก API ของบอท — โยน Error ข้อความไทยที่แสดงได้เลย */
-export async function botApi<T>(url: string, body?: unknown): Promise<T> {
+/**
+ * opts.timeoutMs = ตัดสายเองเมื่อเซิร์ฟเวอร์ไม่ตอบ (20 ต.ค. 69 หน้าแชทโพลค้างจนคำขอกองในเบราว์เซอร์ — ดู pollRoom ใน chats/page.tsx)
+ * ไม่ส่ง = รอได้ไม่จำกัดเหมือนเดิม (อัปโหลด/งาน AI ที่นาน)
+ */
+export async function botApi<T>(url: string, body?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
+  const signal = opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined;
   let res: Response;
   try {
-    res = await fetch(url, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    res = await fetch(url, body === undefined ? { cache: "no-store", signal } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
   } catch {
+    if (signal?.aborted) throw new Error("เซิร์ฟเวอร์ตอบช้าเกินไป — ลองใหม่อีกครั้ง");
     throw new Error("ต่อเซิร์ฟเวอร์ไม่ได้ — เช็คเน็ตแล้วลองใหม่");
   }
   const d = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+  if (!d && signal?.aborted) throw new Error("เซิร์ฟเวอร์ตอบช้าเกินไป — ลองใหม่อีกครั้ง");
   if (!res.ok || !d) throw new Error(d?.error || (res.status === 413 ? "ข้อมูล/รูปใหญ่เกินไป" : `เซิร์ฟเวอร์ตอบผิดพลาด (HTTP ${res.status})`));
   return d;
 }
