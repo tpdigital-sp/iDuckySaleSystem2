@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * กล่องยืนยันของระบบเอง — ใช้แทน `confirm()` ของเบราว์เซอร์
@@ -32,6 +33,8 @@ export interface ConfirmOptions {
    * required = ปุ่มยืนยันกดไม่ได้จนกว่าจะพิมพ์ · Enter ในช่อง = ยืนยัน
    */
   input?: ConfirmInput;
+  /** 🖼 รูปของสิ่งที่จะลบ/เปลี่ยน — โชว์ในกล่องให้เห็นว่ากดถูกรูป (ลบแบบ/ลายทีละรูป) */
+  image?: string;
 }
 
 export interface ConfirmInput {
@@ -45,10 +48,11 @@ export interface ConfirmInput {
 /** false = ยกเลิก · true = กดปุ่มยืนยัน · "alt" = กดทางเลือกที่แนะนำ */
 export type ConfirmResult = boolean | "alt";
 
-interface Box extends Required<Omit<ConfirmOptions, "detail" | "altLabel" | "input">> {
+interface Box extends Required<Omit<ConfirmOptions, "detail" | "altLabel" | "input" | "image">> {
   detail?: string;
   altLabel?: string;
   input?: ConfirmInput;
+  image?: string;
   resolve: (ok: ConfirmResult, text: string) => void;
 }
 
@@ -65,6 +69,7 @@ export function useConfirm() {
         danger: o.danger ?? false,
         altLabel: o.altLabel,
         input: o.input,
+        image: o.image,
         resolve,
       }),
     [],
@@ -94,6 +99,7 @@ export function useConfirm() {
       danger={box.danger}
       altLabel={box.altLabel}
       input={box.input}
+      image={box.image}
       onCancel={() => close(false)}
       onConfirm={(text) => close(true, text)}
       onAlt={() => close("alt")}
@@ -111,6 +117,7 @@ export default function ConfirmDialog({
   danger,
   altLabel,
   input,
+  image,
   onCancel,
   onConfirm,
   onAlt,
@@ -122,6 +129,7 @@ export default function ConfirmDialog({
   danger: boolean;
   altLabel?: string;
   input?: ConfirmInput;
+  image?: string;
   onCancel: () => void;
   /** ข้อความในช่อง (ว่างถ้าไม่มีช่อง) */
   onConfirm: (text: string) => void;
@@ -141,7 +149,9 @@ export default function ConfirmDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel, onConfirm, onAlt, altLabel, canConfirm, text]);
 
-  return (
+  // 🪟 วางที่ <body> เสมอ — ถ้าอยู่ใต้การ์ดที่มี backdrop-filter/transform (เช่น .dkb-g หน้าออเดอร์)
+  // `fixed` จะยึดกับการ์ดแทนจอ กล่องเลยไปโผล่กลางการ์ดสูงหลายพันพิกเซล หลุดขอบจอ (20 ต.ค. 69)
+  const node = (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onCancel}>
       <div
         className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
@@ -152,6 +162,14 @@ export default function ConfirmDialog({
         <div className={`px-5 pb-4 pt-5 text-center ring-1 ring-inset ${danger ? "bg-rose-50 ring-rose-100" : "bg-sky-50 ring-sky-100"}`}>
           <span className="text-3xl">{icon}</span>
           <p className="mt-1.5 text-base font-extrabold leading-snug text-slate-900">{title}</p>
+          {image && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={image}
+              alt=""
+              className={`mx-auto mt-3 max-h-40 max-w-full rounded-xl bg-white object-contain p-1 shadow-sm ring-1 ${danger ? "ring-rose-200" : "ring-sky-200"}`}
+            />
+          )}
           {detail && <p className="mt-1 whitespace-pre-line text-left text-xs leading-relaxed text-slate-600">{detail}</p>}
         </div>
         {/* ✍️ ช่องข้อความช่องเดียว (เหตุผล ฯลฯ) — บังคับได้ · โฟกัสให้เลยจะได้พิมพ์แล้วกด Enter */}
@@ -229,4 +247,5 @@ export default function ConfirmDialog({
       </div>
     </div>
   );
+  return typeof document === "undefined" ? node : createPortal(node, document.body);
 }

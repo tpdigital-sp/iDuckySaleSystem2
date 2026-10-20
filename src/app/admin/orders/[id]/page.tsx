@@ -4720,12 +4720,21 @@ export default function AdminOrderDetailPage() {
    * 🗑 เอาของแถมออกจากออเดอร์ — ระบบคิดของแถม "เพิ่มอย่างเดียว ไม่ลดเอง" (กันของที่แจ้งลูกค้าแล้วหายเงียบ)
    * เลยต้องให้แอดมินถอดเองได้: ลูกค้าไม่รับ · ลบรายการจนไม่เข้าเงื่อนไขแล้ว (พนักงานแจ้ง 12 ต.ค. 69 · OD-261012-5632) · ลง log
    */
-  function removeGift(promoId: string) {
+  async function removeGift(promoId: string) {
     if (!order) return;
     const g = order.gifts?.find((x) => x.promoId === promoId);
     if (!g) return;
     const what = giftLinesOf(g).map((ln) => `${ln.label} ×${ln.qty}`).join(" + ");
-    if (!window.confirm(`เอาของแถม "${g.name}${g.size ? ` (${g.size})` : ""}" ออกจากออเดอร์นี้?\n\n${what}\n\nลาย/แบบของแถมที่แนบไว้จะหายไปด้วย · ระบบจะไม่ใส่กลับเอง เว้นแต่ลูกค้าสั่งเพิ่มจนเข้าเงื่อนไขอีกครั้ง`)) return;
+    if (
+      !(await askConfirm({
+        icon: "🎁",
+        title: `เอาของแถม "${g.name}${g.size ? ` (${g.size})` : ""}" ออกจากออเดอร์นี้?`,
+        detail: `${what}\n\nลาย/แบบของแถมที่แนบไว้จะหายไปด้วย · ระบบจะไม่ใส่กลับเอง เว้นแต่ลูกค้าสั่งเพิ่มจนเข้าเงื่อนไขอีกครั้ง`,
+        confirmLabel: "เอาของแถมออก",
+        danger: true,
+      }))
+    )
+      return;
     const gifts = (order.gifts ?? []).filter((x) => x.promoId !== promoId);
     const next = withLog({ ...order, gifts }, actor, "เอาของแถมออก", `🎁 ${g.name}${g.size ? ` (${g.size})` : ""} — ${what}`);
     setOrder(next);
@@ -5882,9 +5891,18 @@ export default function AdminOrderDetailPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
                             // ↩ อีเมล → กล่อง = กลับมาบังคับถ่ายรูปใบเสร็จที่โต๊ะแพ็ค — ถามก่อน (16 ต.ค. 69)
-                            if (order.taxInvoiceDelivery === "email" && !window.confirm("เปลี่ยนเป็น “ต้องพิมพ์ใบกำกับใส่กล่อง” = โต๊ะแพ็คต้องถ่ายรูปใบเสร็จก่อนปิดกล่อง\n\nยืนยันไหม?")) return;
+                            if (
+                              order.taxInvoiceDelivery === "email" &&
+                              !(await askConfirm({
+                                icon: "🧾",
+                                title: "เปลี่ยนเป็น “ต้องพิมพ์ใบกำกับใส่กล่อง”?",
+                                detail: "โต๊ะแพ็คต้องถ่ายรูปใบเสร็จก่อนปิดกล่อง",
+                                confirmLabel: "เปลี่ยนเป็นใส่กล่อง",
+                              }))
+                            )
+                              return;
                             setTaxInvoiceDelivery(order.taxInvoiceDelivery === "email" ? "box" : "email");
                           }}
                           className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-bold text-slate-500"
@@ -7508,11 +7526,16 @@ export default function AdminOrderDetailPage() {
                                             {mayEdit && (
                                               <button
                                                 type="button"
-                                                onClick={() => {
+                                                onClick={async () => {
                                                   if (
-                                                    confirm(
-                                                      `เอารูปลายที่ ${r.no} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์ · บันทึกในประวัติออเดอร์ว่าใครลบ)`
-                                                    )
+                                                    await askConfirm({
+                                                      icon: "🗑",
+                                                      title: `เอารูปลายที่ ${r.no} ออกจากออเดอร์นี้?`,
+                                                      detail: "ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์ · บันทึกในประวัติออเดอร์ว่าใครลบ",
+                                                      confirmLabel: "เอารูปออก",
+                                                      danger: true,
+                                                      image: r.u,
+                                                    })
                                                   )
                                                     removeArtwork(i, r.u);
                                                 }}
@@ -7738,11 +7761,16 @@ export default function AdminOrderDetailPage() {
                                       {mayEdit && (
                                         <button
                                           type="button"
-                                          onClick={() => {
+                                          onClick={async () => {
                                             if (
-                                              confirm(
-                                                `เอารูปต้นฉบับใบที่ ${k + 1} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์ · บันทึกในประวัติออเดอร์ว่าใครลบ)`
-                                              )
+                                              await askConfirm({
+                                                icon: "🗑",
+                                                title: `เอารูปต้นฉบับใบที่ ${k + 1} ออกจากออเดอร์นี้?`,
+                                                detail: "ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์ · บันทึกในประวัติออเดอร์ว่าใครลบ",
+                                                confirmLabel: "เอารูปออก",
+                                                danger: true,
+                                                image: u,
+                                              })
                                             )
                                               removeArtwork(i, u);
                                           }}
@@ -8422,8 +8450,17 @@ export default function AdminOrderDetailPage() {
                               {mayEdit && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (confirm(`เอาลายของแถมใบที่ ${k + 1} ออกจากออเดอร์นี้?\n(ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์)`))
+                                  onClick={async () => {
+                                    if (
+                                      await askConfirm({
+                                        icon: "🗑",
+                                        title: `เอาลายของแถมใบที่ ${k + 1} ออกจากออเดอร์นี้?`,
+                                        detail: `🎁 ${g.name} · ไฟล์ยังอยู่ในคลัง ลบเฉพาะการผูกกับออเดอร์`,
+                                        confirmLabel: "เอาลายออก",
+                                        danger: true,
+                                        image: u,
+                                      })
+                                    )
                                       removeGiftArtwork(g.promoId, u);
                                   }}
                                   title="เอารูปนี้ออกจากออเดอร์"
@@ -8530,8 +8567,18 @@ export default function AdminOrderDetailPage() {
                               {(mayEdit || mayProof) && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (confirm(`ลบแบบของแถมรูปที่ ${k + 1}?`)) removeGiftProof(g.promoId, p.url);
+                                  onClick={async () => {
+                                    if (
+                                      await askConfirm({
+                                        icon: "🗑",
+                                        title: `ลบแบบของแถมรูปที่ ${k + 1}?`,
+                                        detail: `🎁 ${g.name} · ลูกค้าจะไม่เห็นแบบรูปนี้ในหน้าตรวจแบบอีก${p.review ? ` (รูปนี้ลูกค้า${p.review === "อนุมัติ" ? "อนุมัติแล้ว" : "ขอแก้"})` : ""}`,
+                                        confirmLabel: "ลบแบบรูปนี้",
+                                        danger: true,
+                                        image: p.url,
+                                      })
+                                    )
+                                      removeGiftProof(g.promoId, p.url);
                                   }}
                                   title="ลบแบบรูปนี้"
                                   aria-label="ลบแบบของแถมรูปนี้"
