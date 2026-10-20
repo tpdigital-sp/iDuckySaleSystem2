@@ -306,6 +306,8 @@ export async function discardBotDraft(db: FirebaseFirestore.Firestore, uid: stri
   if (!d.exists || d.get("role") !== "draft") return { ok: false, status: 404, error: "ไม่พบร่างนี้" };
   const status = String(d.get("status") ?? "");
   if (status === "sent" || status === "sending") return { ok: false, status: 409, error: "ร่างนี้ส่งไปแล้ว" };
+  // 🔁 20 ต.ค. 69 กด ↻ คลิกเดียวแต่คำขอเข้า 2 ครั้งห่าง 0.4 วิ (เว็บจริง 18:20) → เดิมทิ้งซ้ำได้ แล้วสั่งร่างซ้ำ = ร่าง 2 ใบ + Gemini ×2 → ร่างที่ทิ้ง/ถูกทับแล้ว ไม่รับอีก
+  if (status === "discarded" || status === "superseded") return { ok: false, status: 409, error: status === "discarded" ? "ร่างนี้ถูกทิ้งไปแล้ว" : "มีร่างใหม่กว่าแทนร่างนี้แล้ว" };
   await logRef.update({ status: "discarded", discardedBy: who, discardedAt: new Date() });
   const stale = await staleFixes(db, uid);
   await fixMemory(db, uid, stale.fixes).catch(() => {});
@@ -370,6 +372,7 @@ export function draftEditableText(payload: unknown): string {
  */
 const BOT_WEBHOOK = "https://n8n.iduckybot.com/webhook/line-webhook-chatbot";
 const REDRAFT_GAP_MS = 45_000;
+const REDRAFT_DEDUPE_MS = 3_000;
 /** via = "web" ร่างเสร็จแล้วในคำขอนี้ (ms = เวลาที่ใช้) · "n8n" ส่งให้บอท n8n ร่าง ร่างจะตามมาทีหลัง */
 export type RedraftResult = { ok: true; count: number; text: string; via: "web" | "n8n"; ms?: number } | { ok: false; status: number; error: string };
 
@@ -462,6 +465,8 @@ export async function requestRedraft(db: FirebaseFirestore.Firestore, uid: strin
   if (!room.exists) return { ok: false, status: 404, error: "ไม่พบห้องแชทนี้" };
   const last = msOf(room.get("redraftAt"));
   if (!opts.force && Number.isFinite(last) && Date.now() - last < REDRAFT_GAP_MS) return { ok: false, status: 429, error: "เพิ่งสั่งให้บอทร่างไป — รอร่างขึ้นสักครู่ (ราว 15–30 วินาที)" };
+  // 🔁 คำขอซ้ำในไม่กี่วิ (คลิกเดียวเข้า 2 ครั้ง · 2 แท็บ) — แม้ force ก็ไม่ร่างซ้อน (ตัวแรกเขียน redraftAt ก่อนเริ่มคิดแล้ว)
+  if (Number.isFinite(last) && Date.now() - last < REDRAFT_DEDUPE_MS) return { ok: false, status: 429, error: "กำลังร่างอยู่แล้ว — รอสักครู่" };
   // ไล่จากข้อความล่าสุดย้อนขึ้นไป หยุดที่คำตอบร้าน (แอดมิน/บอท/ระบบ/ร่างที่ยังรอส่ง) — เหลือแต่ข้อความลูกค้าที่ยังไม่ได้ตอบ
   const snap = await ref.collection("log").orderBy("at", "desc").limit(40).get();
   const lines: string[] = [];
