@@ -11196,6 +11196,21 @@ export default function AdminOrderDetailPage() {
                       ใบนี้แอดมินสั่งแบ่งส่ง — กดแล้วแจ้งลูกค้าให้มารับเฉพาะของรอบนี้ · ใบยังไม่ปิด ของที่เหลือไปรอที่คิวปริ้น “ใบปะหน้ารอบถัดไป”
                     </p>
                   </>
+                ) : order.shipments?.length && packGate(order).noPhoto ? (
+                  // 📸 ใบแบ่งรับ ยังไม่มีภาพกล่องรอบสุดท้าย — ไม่โชว์ปุ่มปิดทั้งใบเลย (เดิมโชว์แล้วกดเด้งเตือน = ชวนกดผิด/กดเบิ้ล · 20 ต.ค. 69)
+                  <div className="rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200">
+                    <p className="text-sm font-extrabold text-slate-700">📸 ถ่ายภาพกล่องรอบที่ {order.shipments.length + 1} ก่อน</p>
+                    <p className={`mt-0.5 text-[11px] ${faint}`}>
+                      ของที่เหลือ {unshippedQty(order).toLocaleString("th-TH")} ชิ้น = รอบสุดท้าย · ถ่ายภาพในโหมดแพ็คแล้วปุ่ม “แพ็คเสร็จรอบสุดท้าย” จะขึ้นให้เอง
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setPackMode(true)}
+                      className="mt-2 rounded-lg bg-slate-800 px-3 py-1.5 text-[12px] font-extrabold text-white hover:bg-slate-700"
+                    >
+                      📦 เปิดโหมดแพ็ค → ถ่ายภาพ
+                    </button>
+                  </div>
                 ) : (
                   <>
                     <button
@@ -12714,7 +12729,9 @@ function PackView({
           <p className="flex flex-wrap items-center gap-2 text-sm font-extrabold text-slate-900">
             📸 ถ่ายภาพของในกล่อง ก่อนปิดกล่อง
             {gate.noPhoto ? (
-              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-600">ยังไม่มีภาพ — ต้องถ่ายก่อนยิงเลข</span>
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-600">
+                {order.shipments?.length ? `ยังไม่มีภาพกล่องรอบที่ ${order.shipments.length + 1} — ภาพด้านล่างเป็นของรอบก่อน` : "ยังไม่มีภาพ — ต้องถ่ายก่อนยิงเลข"}
+              </span>
             ) : (
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">มีภาพแล้ว ✓</span>
             )}
