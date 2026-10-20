@@ -10,6 +10,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { ROLE_ADMINISTRATOR } from "@/lib/permissions";
 
 export const runtime = "nodejs";
+// ⚡ ↻/🤖 ร่างบนเว็บเอง (priceSearch ~3–4 วิ · เกิน 12 วิ ถอยไป n8n) — ต้องไม่โดนตัดสายก่อน (20 ต.ค. 69)
+export const maxDuration = 30;
 
 /**
  * 📝 ร่างคำตอบของบอท (โหมด draft — เจ้าของร้าน 13 ต.ค. 69)
@@ -65,7 +67,9 @@ export async function POST(req: Request) {
       on,
       redraft: rd.ok,
       saved: rd.ok
-        ? `เปิดร่างให้ลูกค้านี้แล้ว · 🤖 บอทกำลังร่างคำตอบข้อความที่ค้าง ${rd.count} ข้อความ — ขึ้นในห้องราว 15–30 วินาที`
+        ? rd.via === "web"
+          ? `เปิดร่างให้ลูกค้านี้แล้ว · 🤖 บอทร่างคำตอบข้อความที่ค้าง ${rd.count} ข้อความให้แล้ว`
+          : `เปิดร่างให้ลูกค้านี้แล้ว · 🤖 บอทกำลังร่างคำตอบข้อความที่ค้าง ${rd.count} ข้อความ — ขึ้นในห้องราว 15–30 วินาที`
         : rd.status === 502
           ? `เปิดร่างให้ลูกค้านี้แล้ว · แต่สั่งบอทร่างข้อความที่ค้างไม่สำเร็จ (${rd.error})`
           : "เปิดร่างให้ลูกค้านี้แล้ว — ลูกค้าพิมพ์มาเมื่อไหร่ บอทร่างคำตอบรอแอดมินกดส่ง",
@@ -79,7 +83,12 @@ export async function POST(req: Request) {
     if (!/^U[0-9a-f]{32}$/.test(id)) return NextResponse.json({ error: "รหัสห้องแชทไม่ถูกต้อง" }, { status: 400 });
     const r = await requestRedraft(db, id, gate.actor.name || gate.actor.username);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
-    return NextResponse.json({ ok: true, count: r.count, saved: `🤖 ส่งข้อความลูกค้า ${r.count} ข้อความให้บอทร่างแล้ว — ร่างจะขึ้นในห้องราว 15–30 วินาที` });
+    return NextResponse.json({
+      ok: true,
+      count: r.count,
+      via: r.via,
+      saved: r.via === "web" ? `🤖 บอทร่างคำตอบแล้ว (${((r.ms ?? 0) / 1000).toFixed(1)} วิ) — ร่างขึ้นในห้องแล้ว` : `🤖 ส่งข้อความลูกค้า ${r.count} ข้อความให้บอทร่างแล้ว — ร่างจะขึ้นในห้องราว 15–30 วินาที`,
+    });
   }
   const logId = String(b.logId ?? "").trim();
   if (!/^U[0-9a-f]{32}$/.test(id) || !/^[A-Za-z0-9]{10,40}$/.test(logId)) return NextResponse.json({ error: "ข้อมูลร่างไม่ถูกต้อง" }, { status: 400 });
@@ -98,7 +107,7 @@ export async function POST(req: Request) {
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     const rd = await requestRedraft(db, id, who, { force: true });
     if (!rd.ok) return NextResponse.json({ ok: true, redraft: false, saved: `ทิ้งร่างเดิมแล้ว แต่สั่งร่างใหม่ไม่ได้ — ${rd.error}` });
-    return NextResponse.json({ ok: true, redraft: true, saved: "↻ ทิ้งร่างเดิมแล้ว · บอทกำลังร่างใหม่ — ขึ้นในห้องราว 15–30 วินาที" });
+    return NextResponse.json({ ok: true, redraft: true, via: rd.via, saved: rd.via === "web" ? `↻ ร่างใหม่ขึ้นในห้องแล้ว (${((rd.ms ?? 0) / 1000).toFixed(1)} วิ)` : "↻ ทิ้งร่างเดิมแล้ว · บอทกำลังร่างใหม่ — ขึ้นในห้องราว 15–30 วินาที" });
   }
   if (b.action === "discard" || b.action === "learn") {
     const r = await discardBotDraft(db, id, logId, who);

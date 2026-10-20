@@ -1,5 +1,7 @@
 import "server-only";
 import { productFlex, productsLinkedIn } from "@/lib/server/product-card";
+import { priceSearch } from "@/lib/server/price-search";
+import { sitePriceMessages, type SiteAnswer } from "@/lib/server/site-price-flex";
 import { FieldValue } from "firebase-admin/firestore";
 import { DRAFT_TTL_MS } from "@/lib/draft-live";
 
@@ -99,7 +101,7 @@ export async function upgradeDraftMessages(messages: LineMsg[]): Promise<LineMsg
 export async function saveBotDraft(
   db: FirebaseFirestore.Firestore,
   uid: string,
-  input: { messages: unknown; cards?: unknown; mode?: unknown },
+  input: { messages: unknown; cards?: unknown; mode?: unknown; source?: "web" },
 ): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   if (!/^U[0-9a-f]{32}$/.test(uid)) return { ok: false, reason: "uid" };
   const messages = await upgradeDraftMessages(cleanLineMessages(input.messages));
@@ -126,6 +128,8 @@ export async function saveBotDraft(
     payload: JSON.stringify(messages),
     ...(cards.length ? { cards } : {}),
     mode: String(input.mode ?? ""),
+    // source "web" = ร่างบนเว็บเอง (↻/🤖 จากหน้าแชท · draftOnWeb) · ไม่มี = บอท n8n ฝากผ่าน /api/bot/draft
+    ...(input.source ? { source: input.source } : {}),
     at: now,
   });
   batch.set(ref, { draftPendingAt: now, lastSeen: now }, { merge: true });
@@ -366,7 +370,90 @@ export function draftEditableText(payload: unknown): string {
  */
 const BOT_WEBHOOK = "https://n8n.iduckybot.com/webhook/line-webhook-chatbot";
 const REDRAFT_GAP_MS = 45_000;
-export type RedraftResult = { ok: true; count: number; text: string } | { ok: false; status: number; error: string };
+/** via = "web" ร่างเสร็จแล้วในคำขอนี้ (ms = เวลาที่ใช้) · "n8n" ส่งให้บอท n8n ร่าง ร่างจะตามมาทีหลัง */
+export type RedraftResult = { ok: true; count: number; text: string; via: "web" | "n8n"; ms?: number } | { ok: false; status: number; error: string };
+
+/**
+ * ⚡ 20 ต.ค. 69 เจ้าของร้าน "ก็ยังคงช้าเหมือนเดิม": กด ↻/🤖 แล้วร่างวิ่ง เว็บ → n8n (webhook 1–2 วิ · โหนดต่อคิว ~3 วิ) → เว็บ (pricing/search ~3 วิ) → n8n → เว็บ (bot/draft)
+ *   รวม 7–10 วิ ทั้งที่สมองราคากับที่เก็บร่างอยู่บนเว็บนี้เอง → ร่างบนเว็บโดยตรง: เรียก priceSearch() ในโปรเซสเดียวกัน แล้วเขียนร่าง+ความจำบอทเอง
+ *   เว็บตอบไม่ได้ (ไม่ใช่เรื่องราคา/สินค้า · เรื่องออเดอร์ · มีรูปเกี่ยวข้อง · ช้าเกิน) → คืน null ให้ส่ง n8n ตามเดิม (agent + คลังความรู้)
+ *   ด่านคัดคำถามชุดเดียวกับ Build AI Request ใน n8n · ความจำบอท (room.messages) จดเหมือน Save Memory (ร่างถูกทิ้ง/แก้ → fixMemory ตามแก้ได้เหมือนเดิม)
+ *   ข้อความจริงจากลูกค้ายังไปทาง n8n ทั้งหมด — ทางนี้เฉพาะแอดมินสั่งร่างจากหน้าแชท
+ */
+const WEB_SKIP_RE = /ออเดอร์|สลิป|โอนแล้ว|เลขพัสดุ|แทร็ค|track|ไฟล์แนบ|ขอคุยแอดมิน|เคลม/i;
+const HANDOFF_RE = /ขอคุยแอดมิน|คุยกับแอดมิน|ติดต่อแอดมิน|เรียกแอดมิน|แอดมินอยู่ไหม|แอดมินอยู่มั้ย|มีแอดมินไหม|มีแอดมินมั้ย|ขอคุยกับคน|คุยกับคนจริง|ขอคนจริง|ไม่เอาบอท|ไม่คุยกับบอท|ขอแอดมิน|แอดมินตอบหน่อย|talk to (a )?human|admin please/i;
+/** คำตอบสำรองของบอทที่ไม่ควรติดไปในประวัติ (Build AI Request · FALLBACK_RE) */
+const FALLBACK_RE = /ขอเช็ก|เดี๋ยวแอดมินตอบกลับ|ฝ่ายผลิตแจ้งกลับ|แอดมินจะติดต่อกลับ|ขอแอดมินเช็ก/;
+const SESSION_GAP_MS = 6 * 3600_000;
+const IMG_FRESH_MS = 20 * 60_000;
+const WEB_DRAFT_TIMEOUT_MS = 12_000;
+type WebDraftResult = { ok: true; id: string; ms: number } | { ok: false; reason: string };
+async function draftOnWeb(db: FirebaseFirestore.Firestore, uid: string, room: FirebaseFirestore.DocumentSnapshot, text: string, images: number): Promise<WebDraftResult> {
+  const t0 = Date.now();
+  const query = text.trim();
+  const queryText = query.replace(/https?:\/\/\S+/g, "").trim();
+  const shortNumReply = /^\s*(?:ข้อ|เอา|เลือก|แบบ|ขอ)?\s*\d{1,4}\s*(?:ชิ้น|อัน|ใบ|แผ่น|เซ็ต|เซต|ค่ะ|คะ|ครับ|นะคะ|เลย|จ้า)*\s*$/.test(queryText);
+  if (!query || (queryText.length < 4 && !shortNumReply)) return { ok: false, reason: "short" };
+  if (WEB_SKIP_RE.test(query) || HANDOFF_RE.test(query)) return { ok: false, reason: "topic" };
+  // รูปปนอยู่ / มีรูปเข้ามาใน 20 นาที → บอท n8n มีผลวิเคราะห์รูปและกติกาตอบรวมรูป เว็บไม่มี
+  if (images > 0) return { ok: false, reason: "image" };
+  const lastImageAt = msOf(room.get("lastImageAt"));
+  if (Number.isFinite(lastImageAt) && Date.now() - lastImageAt < IMG_FRESH_MS) return { ok: false, reason: "image-recent" };
+
+  // ประวัติรอบนี้จากความจำบอท (เหมือน Build AI Request: ตัดคำตอบสำรอง · เงียบเกิน 6 ชม. = คนละรอบ · 16 บรรทัดท้าย)
+  const raw = (Array.isArray(room.get("messages")) ? (room.get("messages") as MemMsg[]) : []).map((m) => ({
+    role: String(m.role ?? "") === "user" ? "user" : "assistant",
+    text: String(m.text ?? "").trim(),
+    at: msOf(m.at),
+  }));
+  const clean = raw.filter((m) => m.role === "user" || !FALLBACK_RE.test(m.text));
+  const session: typeof clean = [];
+  let prevAt = Date.now();
+  for (let i = clean.length - 1; i >= 0 && session.length < 16; i--) {
+    const at = clean[i].at;
+    if (Number.isFinite(at) && prevAt - at > SESSION_GAP_MS) break;
+    if (Number.isFinite(at)) prevAt = at;
+    session.unshift(clean[i]);
+  }
+  const history = session.map((m) => ({ role: m.role, text: m.text.slice(0, 400), at: Number.isFinite(m.at) ? new Date(m.at).toISOString() : undefined }));
+  const context = history.filter((m) => m.role === "user").map((m) => m.text).slice(-5);
+  const pf = (room.get("profile") ?? {}) as { text?: unknown; textAt?: unknown };
+  const pAt = msOf(pf.textAt);
+  const profile = typeof pf.text === "string" && Number.isFinite(pAt) && Date.now() - pAt < SESSION_GAP_MS ? pf.text : "";
+
+  let site: SiteAnswer;
+  try {
+    const r = await Promise.race([
+      priceSearch({ query, context, history, profile, noFallback: true }),
+      new Promise<"timeout">((res) => setTimeout(() => res("timeout"), WEB_DRAFT_TIMEOUT_MS)),
+    ]);
+    if (r === "timeout") return { ok: false, reason: "timeout" };
+    if (r.status !== 200) return { ok: false, reason: `http ${r.status}` };
+    site = r.body as SiteAnswer;
+  } catch (e) {
+    return { ok: false, reason: (e as Error).message };
+  }
+  const built = sitePriceMessages(site, query);
+  if (!built) return { ok: false, reason: `intent ${String(site.intent ?? "")}` };
+
+  const saved = await saveBotDraft(db, uid, { messages: built.messages, mode: "site", source: "web" });
+  if (!saved.ok) return { ok: false, reason: saved.reason };
+  // 🧠 ความจำบอท (เหมือน Save Memory ของ n8n): จดข้อความลูกค้า + คำตอบ เวลาเดียวกัน (fixMemory จับคู่จากเวลา) · ข้อความลูกค้าเดิมที่จดไว้แล้ว ไม่จดซ้ำ
+  const ref = db.collection(COL).doc(uid);
+  await db
+    .runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const list = (Array.isArray(snap.get("messages")) ? [...(snap.get("messages") as MemMsg[])] : []) as MemMsg[];
+      const now = new Date();
+      const lastUser = [...list].reverse().find((m) => String(m.role ?? "") === "user");
+      if (!lastUser || String(lastUser.text ?? "").trim() !== query) list.push({ role: "user", text: query, at: now });
+      list.push({ role: "assistant", text: built.replyText, at: now });
+      const next = list.slice(-20);
+      tx.set(ref, { messages: next, messageCount: next.length, lastSeen: now, needsHumanFollowup: built.needsHumanFollowup }, { merge: true });
+    })
+    .catch(() => {});
+  return { ok: true, id: saved.id, ms: Date.now() - t0 };
+}
 
 /** force = ร่างใหม่จากการ์ดร่าง (↻) — ร่างเดิมกลับมาแล้ว ไม่ต้องรอช่วงกันกดรัว */
 export async function requestRedraft(db: FirebaseFirestore.Firestore, uid: string, who: string, opts: { force?: boolean } = {}): Promise<RedraftResult> {
@@ -396,6 +483,10 @@ export async function requestRedraft(db: FirebaseFirestore.Firestore, uid: strin
   if (!lines.length) return { ok: false, status: 409, error: images ? "ข้อความที่ค้างตอบมีแต่รูป — บอทร่างจากรูปย้อนหลังไม่ได้ พิมพ์ตอบเองได้เลย" : "ไม่มีข้อความลูกค้าที่ยังไม่ได้ตอบ" };
   const text = lines.join("\n").slice(0, 2000);
   await ref.set({ redraftAt: new Date(), redraftBy: who }, { merge: true });
+  // ⚡ ร่างบนเว็บก่อน (คำถามราคา/สินค้า ~3–4 วิ) · ตอบไม่ได้ค่อยส่ง n8n
+  const web = await draftOnWeb(db, uid, room, text, images).catch((e): WebDraftResult => ({ ok: false, reason: (e as Error).message }));
+  if (web.ok) return { ok: true, count: lines.length, text, via: "web", ms: web.ms };
+  console.info(`[redraft] ${uid.slice(0, 8)} เว็บร่างไม่ได้ (${web.reason}) → n8n`);
   const id = `redraft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const res = await fetch(BOT_WEBHOOK, {
@@ -413,5 +504,5 @@ export async function requestRedraft(db: FirebaseFirestore.Firestore, uid: strin
     await ref.set({ redraftAt: FieldValue.delete() }, { merge: true }).catch(() => {});
     return { ok: false, status: 502, error: `ส่งให้บอทไม่ได้ (${(e as Error).message}) — ลองใหม่อีกครั้ง` };
   }
-  return { ok: true, count: lines.length, text };
+  return { ok: true, count: lines.length, text, via: "n8n" };
 }
