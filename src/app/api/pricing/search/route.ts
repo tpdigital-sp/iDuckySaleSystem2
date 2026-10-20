@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { catalogRefs, catalogSheet, knowledgeItems, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
+import { catalogRefs, catalogSheet, knowledgeItems, prefetchPriceData, searchMinQty, searchPrice, searchSpec, type ProductRef } from "@/lib/server/price-answer";
 import { priceSearch } from "@/lib/server/price-search";
 import { clientIp, rateLimited } from "@/lib/server/rate-limit";
 
@@ -94,7 +94,10 @@ export async function POST(req: Request) {
 
 /** ประเภทคำถาม — ขั้นต่ำก่อน (มีคำว่า "1 ชิ้น" ปนราคาได้) · สเปกเฉพาะเมื่อไม่ใช่คำถามเงิน */
 async function answer(req: Request, body: Record<string, unknown>) {
-  if (await tooMany(clientIp(req))) return json({ error: "ถี่เกินไป" }, { status: 429 });
+  // ⚡ ด่านกันยิงรัว (ธุรกรรม Firestore ~0.1–0.5 วิ) วิ่งพร้อมการโหลดแคตตาล็อก — ไม่ต่อคิวกัน (20 ต.ค. 69)
+  const limited = tooMany(clientIp(req));
+  prefetchPriceData();
+  if (await limited) return json({ error: "ถี่เกินไป" }, { status: 429 });
   const r = await priceSearch(body);
   return json(r.body, { status: r.status });
 }

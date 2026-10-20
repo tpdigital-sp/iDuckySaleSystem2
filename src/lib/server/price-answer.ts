@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { callGemini, callClaudeText, recordN8nCall } from "@/lib/server/ai-usage";
 import { AI_MODEL_BY_FEATURE, PRICE_UNDERSTAND_FALLBACK, modelFor, noThinking } from "@/lib/ai-models";
 import { getProductServer } from "@/lib/products-server";
+import { inBackground } from "@/lib/server/background";
 import { SITE_URL } from "@/lib/shop-info";
 import {
   formatPrice,
@@ -289,20 +290,27 @@ export async function catalogSheet(): Promise<ProductSheet[]> {
  * ทั้งที่มีร่าง "พวงกุญแจหนังปักลาย" อยู่ (เจ้าของร้านแจ้ง 24 ก.ย. 69) → ต้องตอบว่า "มี แต่ราคายังไม่ขึ้นเว็บ ทักแอดมินตีราคา"
  */
 let draftCache: { at: number; items: { id: string; name: string }[] } | null = null;
+let draftInflight: Promise<{ id: string; name: string }[]> | null = null;
 async function drafts(): Promise<{ id: string; name: string }[]> {
   if (draftCache && Date.now() - draftCache.at < TTL_MS) return draftCache.items;
   const sb = supa();
   if (!sb) return [];
-  try {
-    const { data } = await sb.from("products").select("id, category, name:data->>name, hidden:data->>hidden");
-    const items = (data ?? [])
-      .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden === "true")
-      .map((r) => ({ id: String(r.id), name: String(r.name) }));
-    draftCache = { at: Date.now(), items };
-    return items;
-  } catch {
-    return draftCache?.items ?? [];
-  }
+  // ยิงซ้อนกัน (prefetchPriceData + findDraftProduct) = รอคำขอเดียวกัน
+  draftInflight ??= (async () => {
+    try {
+      const { data } = await sb.from("products").select("id, category, name:data->>name, hidden:data->>hidden");
+      const items = (data ?? [])
+        .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden === "true")
+        .map((r) => ({ id: String(r.id), name: String(r.name) }));
+      draftCache = { at: Date.now(), items };
+      return items;
+    } catch {
+      return draftCache?.items ?? [];
+    } finally {
+      draftInflight = null;
+    }
+  })();
+  return draftInflight;
 }
 
 /** ชื่อสินค้าฉบับร่างที่ตรงกับสิ่งที่ลูกค้าถาม (เทียบตัวอักษร ≥6 ตัวและ ≥60% ของชื่อ หรือชื่อครอบคำที่ถาม) */
@@ -322,8 +330,14 @@ export async function findDraftProduct(text: string): Promise<{ id: string; name
   return best ? { id: best.id, name: best.name } : null;
 }
 
+/**
+ * ⚡ 20 ต.ค. 69 (บอทร่างช้า): โหลดแคตตาล็อกใหม่ ~1 วิ (ข้อมูลเรท/ตัวเลือก 228 สินค้า) เคยบล็อกคำถามแรกหลังแคชหมดอายุทุก 5 นาที
+ * → หมดอายุแต่ยังไม่เกิน STALE_MAX_MS = ตอบจากชุดเดิมทันที แล้วโหลดใหม่ข้างหลัง (คำถามถัดไปได้ชุดใหม่) · เก่ากว่านั้น/ยังไม่เคยโหลด = รอโหลดเหมือนเดิม
+ */
+const STALE_MAX_MS = 30 * 60_000;
 async function catalog(): Promise<Lite[]> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.items;
+  const stale = cache && Date.now() - cache.at < STALE_MAX_MS ? cache.items : null;
   inflight ??= loadLite()
     .then((items) => {
       cache = { at: Date.now(), items };
@@ -333,7 +347,36 @@ async function catalog(): Promise<Lite[]> {
     .finally(() => {
       inflight = null;
     });
-  return inflight;
+  if (!stale) return inflight;
+  // ตอบชุดเดิมไปก่อน — ให้ Netlify รอโหลดใหม่จนเสร็จ ไม่แช่แข็งกลางทาง (lib/server/background.ts)
+  inBackground("catalog-refresh", inflight);
+  return stale;
+}
+
+/** เริ่มโหลดแคตตาล็อก + รายชื่อฉบับร่างไว้ก่อน (ไม่รอ) — ให้วิ่งพร้อมด่านกันยิงรัว/ชั้นเข้าใจคำถาม แทนที่จะต่อคิวทีละขั้น */
+export function prefetchPriceData(): void {
+  inBackground("prefetch-catalog", catalog());
+  inBackground("prefetch-drafts", drafts());
+}
+
+/**
+ * 📦 ข้อมูลสินค้าเต็มตัว (ตารางราคา/ตัวเลือก) จำไว้ 60 วิ — เดิมคำถามเดียวดึงซ้ำ 2 รอบ (searchPrice + extraInfo · รอบละ 2 คิวรี ~0.4 วิ)
+ * และกด ↻ ร่างใหม่ก็ดึงใหม่ทั้งหมด (getProductServer ใช้ React cache ซึ่งไม่จำอะไรใน route handler) · จำเป็น Promise = คำขอซ้อนกันรอตัวเดียวกัน
+ */
+const FULL_TTL_MS = 60_000;
+const fullCache = new Map<string, { at: number; p: Promise<Product | undefined> }>();
+function productFull(id: string): Promise<Product | undefined> {
+  const hit = fullCache.get(id);
+  if (hit && Date.now() - hit.at < FULL_TTL_MS) return hit.p;
+  const p = getProductServer(id);
+  fullCache.set(id, { at: Date.now(), p });
+  // ดึงไม่ได้/ไม่เจอ = ไม่จำ (คำถามถัดไปลองใหม่เหมือนเดิม)
+  const forget = () => {
+    if (fullCache.get(id)?.p === p) fullCache.delete(id);
+  };
+  p.then((v) => v || forget(), forget);
+  if (fullCache.size > 300) for (const [k, v] of fullCache) if (Date.now() - v.at > FULL_TTL_MS) fullCache.delete(k);
+  return p;
 }
 
 /** ตัดช่องว่าง/วรรคตอนออกให้เทียบกันได้ — ไทยไม่มีเว้นวรรคระหว่างคำ เทียบดิบ ๆ จะพลาด */
@@ -663,6 +706,13 @@ export function fixTypos(text: string): string {
 }
 
 const understandCache = new Map<string, { at: number; u: Understanding }>();
+/**
+ * 🗑 ทิ้งผลเข้าใจคำถามที่จบเป็น "ตอบไม่ได้" (found:false) — 20 ต.ค. 69 กด ↻ ร่างใหม่แล้วได้ "ไม่ใช่คำถามราคา" เดิมใน 5 ms
+ * เพราะคีย์แคช (ประวัติ+ข้อความ) เหมือนเดิมทุกตัว = LLM ไม่ได้ลองใหม่เลย · ผลที่ตอบได้ยังจำ 5 นาทีเหมือนเดิม
+ */
+export function forgetUnderstanding(u: Understanding): void {
+  for (const [k, v] of understandCache) if (v.u === u) understandCache.delete(k);
+}
 
 /** หนึ่งข้อความในบทสนทนา (ทั้งสองฝั่ง) ที่บอทปลายทางส่งมา — `at` ไว้ตัดรอบสนทนา */
 export interface HistoryTurn {
@@ -1997,7 +2047,7 @@ export const NO_INFO_RE = /ไม่ได้ระบุ|ไม่มีระ�
 const FILLER_LINE_RE = /^(แอดมิน|หากต้องการ|หากมีข้อสงสัย|หากสนใจ|สอบถาม|ขอบคุณ|ยินดี|รายละเอียดเต็ม|https?:)/;
 const PRICEY_RE = /ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขั้นต่ำ|\d+\s*(ชิ้น|ใบ|อัน|แผ่น|ตัว|ดวง|เซ็ต)|มีแบบไหน|แบบไหนบ้าง|ขนาดไหน/i;
 export async function extraInfo(query: string, productId: string): Promise<string> {
-  const full = await getProductServer(productId).catch(() => undefined);
+  const full = await productFull(productId).catch(() => undefined);
   if (!full) return "";
   const ans = await infoText(full, query, { extra: true });
   if (!ans) return "";
@@ -2040,7 +2090,7 @@ export function parseBudget(text: string): number | null {
  */
 export async function budgetAnswer(ids: string[], qty: number, budget: number, query = ""): Promise<PriceAnswer | null> {
   type Opt = { p: Product; rate: string; cfg: string; unit: number; unitName: string; minQty: number; named: boolean };
-  const prods = (await Promise.all(ids.slice(0, 4).map((id) => getProductServer(id).catch(() => undefined)))).filter((x): x is Product => !!x);
+  const prods = (await Promise.all(ids.slice(0, 4).map((id) => productFull(id).catch(() => undefined)))).filter((x): x is Product => !!x);
   if (!prods.length) return null;
   const opts: Opt[] = [];
   const ladders: string[] = [];
@@ -2137,7 +2187,7 @@ export async function budgetAnswer(ids: string[], qty: number, budget: number, q
  * เดิมให้ AI อ่านหน้าสินค้า ตอบ 2 ครั้งได้คำตอบตรงข้ามกัน ("ยังไม่รวม" / "รวมแล้ว") — ราคาที่บอทแจ้งมาจากตารางราคา ซึ่งไม่รวมค่าตะขอที่เป็นตัวเลือกบวกเพิ่ม
  */
 export async function hookAnswer(id: string, query: string): Promise<PriceAnswer | null> {
-  const p = await getProductServer(id).catch(() => undefined);
+  const p = await productFull(id).catch(() => undefined);
   if (!p) return null;
   const groups = (p.options ?? []).filter((o) => /ตะขอ/.test(String(o.label ?? "")) && (o.choices ?? []).length);
   if (!groups.length) return null;
@@ -2190,7 +2240,7 @@ export async function searchInfo(query: string, pick?: Pick): Promise<PriceAnswe
   if (!pick?.ids.length && !(await mentionsProduct(q))) return { answer: "", kind: "skip", source: "no-product-mentioned", intent: "info" };
   const { items, broad } = await candidates(q, pick);
   if (broad || !items.length) return { answer: "", kind: "skip", source: "no-single-product", intent: "info" };
-  const full = await getProductServer(items[0].id).catch(() => undefined);
+  const full = await productFull(items[0].id).catch(() => undefined);
   const ans = full ? await infoText(full, q) : null;
   return ans ?? { answer: "", kind: "skip", source: "no-page-info", intent: "info" };
 }
@@ -2216,7 +2266,7 @@ export async function knowledgeItems(offset = 0, limit = 25): Promise<{ items: K
   // ⏱ Netlify ให้ 30 วิ/คำขอ — ทั้งร้าน 228 ตัวใช้ ~45 วิ (dev) และบน Netlify 60 ตัวก็เกิน 30 วิ → หน้าละ 25 ตัว ให้ workflow ซิงก์วนดึงจนครบ
   const page = all.slice(Math.max(0, offset), Math.max(0, offset) + Math.min(Math.max(1, limit), 40));
   for (const lite of page) {
-    const p = await getProductServer(lite.id).catch(() => undefined);
+    const p = await productFull(lite.id).catch(() => undefined);
     if (!p) continue;
     const url = botUrl(p);
     const text = pageText(p);
@@ -2258,7 +2308,7 @@ export async function searchMix(query: string, pick?: Pick): Promise<PriceAnswer
   const { items, broad } = await candidates(q, pick);
   if (broad) return menu(items.slice(0, 6), "spec", q);
   for (const item of items.slice(0, 2)) {
-    const full = await getProductServer(item.id).catch(() => undefined);
+    const full = await productFull(item.id).catch(() => undefined);
     const ans = full ? mixText(full, q) : null;
     if (ans) return ans;
   }
@@ -2283,7 +2333,7 @@ export async function searchSpec(query: string, pick?: Pick): Promise<PriceAnswe
   const { items, broad } = await candidates(q, pick);
   if (broad) return menu(items.slice(0, 6), "spec", q);
   for (const item of items.slice(0, 2)) {
-    const full = await getProductServer(item.id).catch(() => undefined);
+    const full = await productFull(item.id).catch(() => undefined);
     const ans = full ? spec(full, q) : null;
     if (ans) return ans;
   }
@@ -2305,7 +2355,7 @@ async function menu(items: Lite[], mode: "price" | "spec" = "price", query = "")
     const qn = norm(query);
     items = [...items].sort((x, y) => lcsLen(qn, norm(y.name)) - lcsLen(qn, norm(x.name))).slice(0, 4);
   }
-  const fulls = await Promise.all(items.map((it) => getProductServer(it.id).catch(() => undefined)));
+  const fulls = await Promise.all(items.map((it) => productFull(it.id).catch(() => undefined)));
   const lines = items.map((it, i) => {
     const min = it.priceMin;
     const max = it.priceMax;
@@ -2443,7 +2493,7 @@ export async function searchPrice(
 
   const found: PriceAnswer[] = [];
   for (const item of items.slice(0, 3)) {
-    const full = await getProductServer(item.id).catch(() => undefined);
+    const full = await productFull(item.id).catch(() => undefined);
     if (!full) continue;
     const conv = piecesToSheets(full, q, qty);
     // 🧊 ใสฝ้า = เนื้อพลาสติกใส-แผ่นรองขุ่น (เจ้าของร้านยืนยัน 19 ต.ค. 69) → ใส่ชื่อตัวเลือกเนื้อลงคำค้น ให้เครื่องคิดราคาเลือกเนื้อนี้ ไม่ใช่เนื้อที่ถูกสุด

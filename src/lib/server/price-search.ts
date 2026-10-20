@@ -27,6 +27,8 @@ import {
   searchPrice,
   searchSpec,
   understand,
+  forgetUnderstanding,
+  prefetchPriceData,
   sessionCarry,
   type Pick,
   type PriceAnswer,
@@ -111,6 +113,8 @@ function productQueryAllowed(query: string, qty: number | null): boolean {
 
 export async function priceSearch(body: Record<string, unknown>): Promise<PriceSearchResult> {
   const t0 = Date.now();
+  // ⚡ แคตตาล็อก/รายชื่อร่างโหลดพร้อมชั้นเข้าใจคำถาม ไม่ต่อคิว (เดิมรายชื่อร่าง ~0.2 วิ เริ่มหลัง LLM ตอบ)
+  prefetchPriceData();
 
   // agent ฝั่ง n8n ส่งชื่อฟิลด์ไม่แน่นอนตามที่ LLM เลือกใส่ — รับให้ครบทุกชื่อที่เจอ
   let query = fixTypos(
@@ -323,13 +327,16 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   // → ถามหน้าสินค้าอีกรอบเฉพาะส่วนที่เหลือ แล้วแปะไว้หัวคำตอบ (ไม่มีเรื่องอื่น = ไม่แปะ)
   // 9 ต.ค. 69 14:00 ลูกค้าพิมพ์เป็นข้อ "500ชิ้น ราคาเท่าไรค่ะ 2.สามารถเลือกขนาดแบบไหนได้บ้าง3.ลายสามารถใส่ลายเองได้ไหมค่ะ" (ไม่มี / หรือขึ้นบรรทัด)
   // → แยกที่เลขข้อ "2." "3." ด้วย (ไม่แตะทศนิยม 12.5 / ขนาด 10x10) ไม่งั้นได้แค่ราคา ข้อ 2-3 หาย
+  // 📏 20 ต.ค. 69 "3mm อคล ใส 1ด้าน" = ลูกค้า "บอก" ความหนา ไม่ได้ถาม — แต่คำว่า mm ตรงหัวข้อ "หนาเท่าไหร่" ใน EXTRA_ASK_RE
+  //   → ยิง LLM อ่านหน้าสินค้าเพิ่ม ~1–1.4 วิ แล้วได้ NOT_FOUND ทิ้ง · ตัวเลข+หน่วย (3mm / 2 มม.) ไม่นับเป็นคำถาม เว้นแต่มีคำว่าหนา/บาง
+  const extraAskText = /หนา|บาง/.test(query) ? query : query.replace(/\d+(?:\.\d+)?\s*(?:mm|มม\.?|มิล)/gi, " ");
   const parts = query.split(/\s*\/\s*|\n+|\s*(?<![\dx×.])\d\.(?!\d)\s*/).map((x) => x.trim()).filter(Boolean);
   if (
     ans.answer &&
     ans.product &&
     !/_menu$/.test(ans.intent) &&
     /^(price|spec|minqty)/.test(ans.intent) &&
-    (EXTRA_ASK_RE.test(query) || parts.length >= 2)
+    (EXTRA_ASK_RE.test(extraAskText) || parts.length >= 2)
   ) {
     const extra = await extraInfo(u?.standalone && u.standalone.length <= 200 && parts.length < 2 ? u.standalone : query, ans.product.id);
     if (extra) ans = { ...ans, answer: `${extra}\n\n${ans.answer}`, source: `${ans.source}+extra-info`, extra };
@@ -341,6 +348,9 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     (isPriceIntent(query)
       ? "ยังไม่มีราคาของรายการนี้ในระบบ รบกวนถามแอดมินให้ตีราคาให้นะคะ"
       : "คำถามนี้ไม่ใช่คำถามราคา ไม่ต้องใช้ผลจากเครื่องมือนี้");
+
+  // ตอบไม่ได้ = ไม่จำผลเข้าใจคำถาม → กด ↻ ร่างใหม่ได้ LLM รอบใหม่จริง (ไม่ใช่ผลเดิมใน 5 ms)
+  if (u && !(ans.kind !== "skip" && !!ans.answer)) forgetUnderstanding(u);
 
   const products: ProductRef[] = ans.products?.length ? ans.products : ans.product ? [ans.product] : [];
   const product = ans.product ?? products[0];
