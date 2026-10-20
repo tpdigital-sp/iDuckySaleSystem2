@@ -220,6 +220,7 @@ import HolidayDatePicker from "@/components/HolidayDatePicker";
 import { useShopHolidays } from "@/lib/use-shop-holidays";
 import { ContactChip, ContactSuggestChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 import { OrderAlertEditor, OrderAlertPopup } from "@/components/admin/OrderAlertPopup";
+import { checkTaxId, cleanTaxId } from "@/lib/tax-id";
 
 // 🏭 กล่อง "ส่งเข้าผลิต (คิวปริ้น)" หน้าออเดอร์ — ซ่อน (คิวปริ้นอ่านจากบอร์ด TP เอง · ใบพิเศษกดที่ /admin/print)
 const SHOW_PRODUCTION_SENT_BOX = false;
@@ -2792,7 +2793,7 @@ export default function AdminOrderDetailPage() {
           ? {
               ...cur,
               company: c.name?.trim() || cur.company,
-              taxId: c.taxId?.trim() || cur.taxId,
+              taxId: cleanTaxId(c.taxId) || cur.taxId,
               branch: c.branch?.trim() || cur.branch,
               address: c.address?.trim() || cur.address,
               docNo: j.doc!.docNo,
@@ -2847,9 +2848,15 @@ export default function AdminOrderDetailPage() {
       setErr("ใส่ชื่อบริษัท/ผู้ซื้อในใบกำกับก่อน");
       return;
     }
+    // 🧾 เลขผู้เสียภาษีต้อง 13 หลักพอดี (ขีด/ช่องว่างล้างทิ้งให้แล้ว) · หลักตรวจไม่ผ่าน = เตือนแต่ยังบันทึกได้
+    const taxIdCheck = checkTaxId(taxForm.taxId);
+    if (taxIdCheck.level === "error") {
+      setErr(taxIdCheck.message);
+      return;
+    }
     const taxInvoice: NonNullable<Order["taxInvoice"]> = {
       company,
-      taxId: taxForm.taxId.trim() || undefined,
+      taxId: cleanTaxId(taxForm.taxId) || undefined,
       branch: taxForm.branch.trim() || undefined,
       address: taxForm.address.trim(),
       /**
@@ -6032,7 +6039,7 @@ export default function AdminOrderDetailPage() {
                           onClick={() =>
                             setTaxForm({
                               company: order.taxInvoice!.company,
-                              taxId: order.taxInvoice!.taxId ?? "",
+                              taxId: cleanTaxId(order.taxInvoice!.taxId),
                               branch: order.taxInvoice!.branch ?? "",
                               address: order.taxInvoice!.address,
                               docUrl: order.taxInvoice!.docUrl ?? "",
@@ -6259,7 +6266,28 @@ export default function AdminOrderDetailPage() {
                   )}
                   <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
                     <input value={taxForm.company} onChange={(e) => setTaxForm({ ...taxForm, company: e.target.value })} placeholder="ชื่อบริษัท / ผู้ซื้อ *" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none sm:col-span-2" />
-                    <input value={taxForm.taxId} onChange={(e) => setTaxForm({ ...taxForm, taxId: e.target.value })} placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none" />
+                    {(() => {
+                      // 🧾 ล้างขีด/ช่องว่างทันทีที่พิมพ์/วาง · ไม่ใช่ 13 หลัก = แดง (บันทึกไม่ได้) · หลักตรวจไม่ผ่าน = เหลือง
+                      const chk = checkTaxId(taxForm.taxId);
+                      const bad = chk.level === "error";
+                      const warn = chk.level === "warn";
+                      return (
+                        <div>
+                          <input
+                            value={taxForm.taxId}
+                            onChange={(e) => setTaxForm({ ...taxForm, taxId: cleanTaxId(e.target.value) })}
+                            inputMode="numeric"
+                            placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก"
+                            aria-invalid={bad || undefined}
+                            className={`w-full rounded-lg border bg-white px-2 py-1.5 text-xs text-slate-800 focus:outline-none ${
+                              bad ? "border-rose-400 ring-1 ring-rose-200 focus:border-rose-500" : warn ? "border-amber-400 focus:border-amber-500" : "border-slate-200 focus:border-sky-300"
+                            }`}
+                          />
+                          {!chk.ok && <p className={`mt-0.5 text-[11px] font-semibold ${bad ? "text-rose-600" : "text-amber-700"}`}>{bad ? "⛔" : "⚠️"} {chk.message}</p>}
+                          {chk.level === "ok" && <p className="mt-0.5 text-[11px] text-emerald-600">✓ ครบ 13 หลัก</p>}
+                        </div>
+                      );
+                    })()}
                     <input value={taxForm.branch} onChange={(e) => setTaxForm({ ...taxForm, branch: e.target.value })} placeholder="สาขา เช่น สำนักงานใหญ่" className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none" />
                     <textarea value={taxForm.address} onChange={(e) => setTaxForm({ ...taxForm, address: e.target.value })} placeholder="ที่อยู่ตามใบกำกับภาษี" rows={2} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-sky-300 focus:outline-none sm:col-span-2" />
                   </div>
