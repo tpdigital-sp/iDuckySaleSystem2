@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -35,6 +35,8 @@ export interface ConfirmOptions {
   input?: ConfirmInput;
   /** 🖼 รูปของสิ่งที่จะลบ/เปลี่ยน — โชว์ในกล่องให้เห็นว่ากดถูกรูป (ลบแบบ/ลายทีละรูป) */
   image?: string;
+  /** 🧮 เนื้อหาเพิ่มใต้รายละเอียด (เช่นตารางราคาก่อน/หลังตอนลบรายการ) — กล่องขยายกว้างให้ */
+  body?: ReactNode;
 }
 
 export interface ConfirmInput {
@@ -48,8 +50,9 @@ export interface ConfirmInput {
 /** false = ยกเลิก · true = กดปุ่มยืนยัน · "alt" = กดทางเลือกที่แนะนำ */
 export type ConfirmResult = boolean | "alt";
 
-interface Box extends Required<Omit<ConfirmOptions, "detail" | "altLabel" | "input" | "image">> {
+interface Box extends Required<Omit<ConfirmOptions, "detail" | "altLabel" | "input" | "image" | "body">> {
   detail?: string;
+  body?: ReactNode;
   altLabel?: string;
   input?: ConfirmInput;
   image?: string;
@@ -70,6 +73,7 @@ export function useConfirm() {
         altLabel: o.altLabel,
         input: o.input,
         image: o.image,
+        body: o.body,
         resolve,
       }),
     [],
@@ -100,6 +104,7 @@ export function useConfirm() {
       altLabel={box.altLabel}
       input={box.input}
       image={box.image}
+      body={box.body}
       onCancel={() => close(false)}
       onConfirm={(text) => close(true, text)}
       onAlt={() => close("alt")}
@@ -118,6 +123,7 @@ export default function ConfirmDialog({
   altLabel,
   input,
   image,
+  body,
   onCancel,
   onConfirm,
   onAlt,
@@ -130,6 +136,7 @@ export default function ConfirmDialog({
   altLabel?: string;
   input?: ConfirmInput;
   image?: string;
+  body?: ReactNode;
   onCancel: () => void;
   /** ข้อความในช่อง (ว่างถ้าไม่มีช่อง) */
   onConfirm: (text: string) => void;
@@ -154,7 +161,7 @@ export default function ConfirmDialog({
   const node = (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onCancel}>
       <div
-        className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className={`max-h-[92vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl ${body ? "max-w-md" : "max-w-sm"}`}
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-modal="true"
@@ -172,6 +179,7 @@ export default function ConfirmDialog({
           )}
           {detail && <p className="mt-1 whitespace-pre-line text-left text-xs leading-relaxed text-slate-600">{detail}</p>}
         </div>
+        {body && <div className="px-4 pt-4">{body}</div>}
         {/* ✍️ ช่องข้อความช่องเดียว (เหตุผล ฯลฯ) — บังคับได้ · โฟกัสให้เลยจะได้พิมพ์แล้วกด Enter */}
         {input && (
           <div className="px-4 pt-4">

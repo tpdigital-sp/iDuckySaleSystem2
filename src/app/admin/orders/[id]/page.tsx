@@ -221,6 +221,7 @@ import HolidayDatePicker from "@/components/HolidayDatePicker";
 import { useShopHolidays } from "@/lib/use-shop-holidays";
 import { ContactChip, ContactSuggestChip, CustomerContactInput } from "@/components/admin/CustomerContactInput";
 import { OrderAlertEditor, OrderAlertPopup } from "@/components/admin/OrderAlertPopup";
+import { PriceCheckPopup, RemovePriceCheck } from "@/components/admin/PriceCheckPopup";
 import { checkTaxId, cleanTaxId } from "@/lib/tax-id";
 
 // 🏭 กล่อง "ส่งเข้าผลิต (คิวปริ้น)" หน้าออเดอร์ — ซ่อน (คิวปริ้นอ่านจากบอร์ด TP เอง · ใบพิเศษกดที่ /admin/print)
@@ -5203,6 +5204,23 @@ export default function AdminOrderDetailPage() {
   return (
     <PageShell>
       <OrderAlertPopup orders={[order]} onChanged={(_, r) => adoptAlert(r)} />
+      {/* 🧮 รายการเข้าใบทีหลัง → บังคับตรวจราคาอีกรอบ (เฉพาะคนที่แก้ออเดอร์ได้ · เจ้าของร้านสั่ง 20 ต.ค. 69) */}
+      <PriceCheckPopup
+        order={order}
+        canCheck={mayEdit && !demo}
+        productOf={productOfItem}
+        productsReady={itemProductIds
+          .split("|")
+          .filter(Boolean)
+          .every((id) => shopProducts.has(id) || missingProductIds.current.has(id))}
+        onChecked={(r) =>
+          setOrder((cur) =>
+            cur
+              ? { ...cur, priceCheck: r.priceCheck ?? undefined, ...(r.savedAt ? { savedAt: r.savedAt } : {}), ...(r.log ? { log: r.log } : {}) }
+              : cur
+          )
+        }
+      />
       {blockers.length > 0 && (
         <div className="mb-4">
           <Banner tone="hot" title={`ต้องทำต่อ · ${blockers[0]}`} detail={nextStep ? `ขั้นถัดไปหลังเคลียร์แล้ว: ${nextStep}` : undefined} />
@@ -6595,17 +6613,27 @@ export default function AdminOrderDetailPage() {
                               icon: "🗑",
                               title: `ลบ “${it.name}” ออกจากออเดอร์?`,
                               detail: [
-                                `⚠️ ยอดออเดอร์จะลดลง ${formatPrice(lost)} (เหลือ ${order.items.length - 1} รายการ)`,
-                                relot?.changed.length
-                                  ? `🧮 ล็อตที่เหลือไม่ถึงขั้นราคาเดิม — ราคา/หน่วยปรับขึ้น: ${lotRepriceNote(relot.changed)} (+${formatPrice(relot.changed.reduce((s, c) => s + (c.to - c.from) * c.qty, 0))})`
-                                  : "",
+                                `⚠️ ยอดออเดอร์จะลดลง ${formatPrice(lost - (relot?.changed.reduce((s, c) => s + (c.to - c.from) * c.qty, 0) ?? 0))} (เหลือ ${order.items.length - 1} รายการ)`,
                                 proofsOf(it).length ? `⚠️ แบบงาน ${proofsOf(it).length} รูปของรายการนี้จะหายจากหน้าลูกค้าด้วย` : "",
                                 (it.artworkUrls?.length ?? 0) ? `⚠️ ลายที่ลูกค้าแนบ ${it.artworkUrls!.length} รูปจะไม่แสดงในออเดอร์นี้อีก (ไฟล์ยังอยู่ในคลัง)` : "",
-                                "📝 ระบบจะบันทึกในประวัติว่าใครลบ ลบอะไร และยอดลดลงเท่าไร",
+                                "📝 ระบบจะบันทึกในประวัติว่าใครลบ ลบอะไร และราคาเปลี่ยนเท่าไร",
                               ]
                                 .filter(Boolean)
                                 .join("\n"),
-                              confirmLabel: "ลบรายการนี้",
+                              // 🧮 ตรวจราคาอีกรอบก่อนลบ — รายการที่เหลือราคาเปลี่ยนไหม (เจ้าของร้านสั่ง 20 ต.ค. 69)
+                              body: (
+                                <RemovePriceCheck
+                                  before={order.items}
+                                  removedIdx={i}
+                                  after={relot?.items ?? order.items.filter((_, k) => k !== i)}
+                                  productOf={productOfItem}
+                                  productsReady={itemProductIds
+                                    .split("|")
+                                    .filter(Boolean)
+                                    .every((id) => shopProducts.has(id) || missingProductIds.current.has(id))}
+                                />
+                              ),
+                              confirmLabel: relot?.changed.length ? "ลบและปรับราคา" : "ลบรายการนี้",
                               danger: true,
                             });
                             if (ok) removeItemFromOrder(i);

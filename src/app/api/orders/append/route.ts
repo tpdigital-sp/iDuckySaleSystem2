@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { orderTotal, priceCheckPending, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
 import { dealerRateOf } from "@/lib/products";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
@@ -196,6 +196,26 @@ export async function POST(req: Request) {
   if (lot.changed.length)
     logged = withLog(logged, "ระบบ", "ปรับราคาต่อชิ้นให้เท่ากันทั้งบิล", `ยอดรวมทั้งใบเข้าเรทส่ง · ${lotRepriceNote(lot.changed)}`);
   if (gift.changed.length) logged = withLog(logged, "ระบบ", "ปรับของแถมตามยอดรวมทั้งใบ", giftSyncNote(gift.changed));
+
+  /**
+   * 🧮 รอตรวจราคา — ขั้นราคาทั้งล็อตขยับเพราะมีของเข้าใบ ให้แอดมินตรวจอีกรอบ (เจ้าของร้านสั่ง 20 ต.ค. 69 · OD-260910-5776)
+   * ยังไม่มีคนตรวจรอบก่อน = ต่อรอบเดิม (at คงเดิม · ของใหม่นับตั้งแต่ at) · ดู OrderPriceCheck
+   */
+  {
+    const nowIso = new Date().toISOString();
+    const prevCheck = priceCheckPending(order) ? order.priceCheck : undefined;
+    const what = skipIdx >= 0 ? "แก้ตัวเลือกจากหน้าร้าน" : "สั่งเพิ่มในออเดอร์เดิม";
+    const note = [prevCheck?.note, lot.changed.length ? lotRepriceNote(lot.changed) : ""].filter(Boolean).join(" · ");
+    logged = {
+      ...logged,
+      priceCheck: {
+        at: prevCheck?.at ?? nowIso,
+        lastAt: nowIso,
+        what: prevCheck && prevCheck.what !== what ? `${prevCheck.what} · ${what}` : what,
+        ...(note ? { note } : {}),
+      },
+    };
+  }
 
   const { order: saved, error: saveErr } = await updateOrder(sb, logged, { prev: order, by: "ลูกค้า" });
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });

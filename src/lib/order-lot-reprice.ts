@@ -143,18 +143,8 @@ export function relotAfterShrink(
   skip: number[] = []
 ): { items: OrderItem[]; changed: LotRepriceLine[] } {
   if (isFreeOrder(order) || order.flowAccount) return { items: next, changed: [] };
-  const priceAt = (items: OrderItem[]) => {
-    const idxs = pricedIndexes(items);
-    const got = repriceCartGroups(
-      idxs.map((i) => ({ productId: items[i].productId, selections: items[i].sel!, qty: items[i].qty })),
-      productOf
-    );
-    const m = new Map<number, number>();
-    idxs.forEach((i, n) => m.set(i, got[n]?.unitPrice ?? 0));
-    return m;
-  };
-  const before = priceAt(prev);
-  const after = priceAt(next);
+  const before = tableUnitPrices(prev, productOf);
+  const after = tableUnitPrices(next, productOf);
   const skipSet = new Set(skip);
 
   const items = [...next];
@@ -172,4 +162,19 @@ export function relotAfterShrink(
     changed.push({ name: it.name, from: it.unitPrice, to, qty: it.qty });
   });
   return { items: changed.length ? items : next, changed };
+}
+
+/**
+ * ราคา/หน่วยตามตารางของแต่ละบรรทัด คิดทั้งใบเป็นล็อตเดียว (สมองเดียวกับตะกร้า) — index ของ items → ราคา (0 = ตารางไม่มีราคาสเปคนี้)
+ * เฉพาะบรรทัดที่คิดจากตารางได้ (ไม่มี # · มี sel) · ใช้ทั้ง relotAfterShrink และป๊อปอัปตรวจราคา
+ */
+export function tableUnitPrices(items: OrderItem[], productOf: (id: string) => Product | undefined): Map<number, number> {
+  const idxs = pricedIndexes(items);
+  const got = repriceCartGroups(
+    idxs.map((i) => ({ productId: items[i].productId, selections: items[i].sel!, qty: items[i].qty })),
+    productOf
+  );
+  const m = new Map<number, number>();
+  idxs.forEach((i, n) => m.set(i, got[n]?.unitPrice ?? 0));
+  return m;
 }

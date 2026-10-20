@@ -32,6 +32,7 @@ import {
   orderStatusLabel,
   orderTotal,
   orderAwaitingStock,
+  priceCheckPending,
   proofMissing,
   proofsOf,
   STEP_OF,
@@ -1262,6 +1263,17 @@ function OrderRow({
             >
               <i />
               💸 โอนเกิน {formatPrice(overpayOutstanding(o))}
+            </span>
+          )}
+          {/* 🧮 มีรายการเข้าใบทีหลัง ยังไม่มีใครกด "ตรวจราคาแล้ว" ในหน้าออเดอร์ (เจ้าของร้านสั่ง 20 ต.ค. 69) */}
+          {seesMoney && priceCheckPending(o) && (
+            <span
+              className="dkb-tag"
+              style={{ background: "var(--dk-coral-wash)", color: "var(--dk-coral-ink)" }}
+              title={`${o.priceCheck!.what} — เปิดใบแล้วกด “ตรวจราคาแล้ว”`}
+            >
+              <i />
+              ⚠️ รอตรวจราคา
             </span>
           )}
           {/* 🛒 รอของเข้า — แถบเต็มบรรทัดชุดเดียวกับคิวกราฟฟิก/คิวปริ้น */}
