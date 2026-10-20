@@ -1,6 +1,6 @@
 import { giftBumpLabel, giftBumpPending } from "./gifts";
 import type { OrderGift } from "./gifts";
-import { isPickupOrder } from "./ship-label";
+import { isPickupOrder, shipFollowsItems } from "./ship-label";
 import type { ClaimFault } from "./claims";
 
 export type OrderStatus =
@@ -998,6 +998,11 @@ export interface Order {
   /** ชื่อวิธีส่งจริงที่เลือก (เช่น "EMS (50)") — ไม่มี = ใช้ shipping แสดงแทน */
   shippingLabel?: string;
   shippingCost: number;
+  /**
+   * 🚚⚡ ค่าส่งนี้ระบบเลือกให้ (อัตโนมัติ) — รายการเปลี่ยน (แก้จำนวน/ลบ/เพิ่ม/สั่งเพิ่ม) แล้วคิดค่าส่งใหม่ตามทั้งใบ
+   * false = แอดมินเลือกวิธี/พิมพ์ค่าส่งเอง ระบบไม่แตะ · ไม่มีค่า (ใบเก่า) = ดูจากประวัติ — ดู shipFollowsItems ใน ship-label.ts
+   */
+  shipAuto?: boolean;
   status: OrderStatus;
   tracking?: string;
   /** 📮 เลขพัสดุกล่องที่ 2, 3… ของใบเดียวกัน (ส่งหลายกล่อง/หลายที่อยู่พร้อมกัน) — ดู TrackingBox */
@@ -2985,6 +2990,23 @@ export function parkForSlipReview(o: Order): Order {
  */
 export function isFreeOrder(o: Order): boolean {
   return !!o.freeOf || !!o.claimOf;
+}
+
+/**
+ * 🚚⚡ ตอนนี้ปรับค่าส่งตามรายการให้เองได้ไหม — ค่าส่งระบบเลือกให้ (shipFollowsItems) และยังไม่มีเงินเข้า
+ * ไม่ใช่: มารับเอง · ส่งรวมกล่องกับใบอื่น (ค่าส่งอยู่ใบหลัก) · ใบเสนอราคา/บิล FlowAccount/ใบฟรี-เคลม (ยอดตกลงกันไว้แล้ว)
+ * เงินเข้าแล้ว = ไม่เปลี่ยนเอง (ลูกค้าโอนตามยอดเดิม) — หน้าออเดอร์ขึ้นปุ่ม ⚡ ให้แอดมินกดแทน
+ */
+export function shipAutoFollowNow(o: Order): boolean {
+  return (
+    shipFollowsItems(o) &&
+    paidSoFar(o) === 0 &&
+    !isPickupOrder(o) &&
+    o.shipWith?.role !== "rider" &&
+    !o.quoteOf &&
+    !o.flowAccount &&
+    !isFreeOrder(o)
+  );
 }
 
 /**

@@ -44,6 +44,27 @@ export function isPickupOrder(o: { shipping?: string; shippingLabel?: string | n
 }
 
 /**
+ * 🚚⚡ ค่าส่งของใบนี้ "ระบบเลือกให้" ไหม — ใช่ = รายการเปลี่ยนแล้วคิดค่าส่งใหม่ตามทั้งใบ (เจ้าของร้าน 20 ต.ค. 69 OD-261020-2478:
+ * แก้จำนวนถุงผ้า 40 → 1 ใบ ค่าส่งค้าง EMS (100) เพราะค่าส่งเป็นตัวเลขที่ตั้งครั้งเดียว ไม่เคยคิดใหม่ตามรายการ)
+ * Order.shipAuto ตั้ง/ล้างทุกครั้งที่ค่าส่งเปลี่ยน · ใบเก่าที่ยังไม่มีธง อ่านจากประวัติครั้งล่าสุดที่ค่าส่งถูกตั้ง
+ * ไม่ใช่ = แอดมินเลือกวิธีส่ง/พิมพ์ค่าส่งเอง หรือไม่มีร่องรอยว่าระบบคิดให้ → ระบบไม่แตะ (ขึ้นปุ่มแนะนำแทน)
+ */
+export function shipFollowsItems(o: {
+  shipAuto?: boolean;
+  log?: { action: string; detail?: string }[];
+}): boolean {
+  if (typeof o.shipAuto === "boolean") return o.shipAuto;
+  const log = o.log ?? [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const { action, detail = "" } = log[i];
+    if (action === "เปลี่ยนวิธีส่ง") return detail.includes("(อัตโนมัติ");
+    if (action === "แก้ค่าจัดส่ง") return false;
+    if (action === "สั่งเพิ่มในออเดอร์เดิม" && detail.includes("ใส่ค่าส่ง")) return true;
+  }
+  return false;
+}
+
+/**
  * 🚚 ออเดอร์นี้ "ยังไม่เคยเลือกวิธีส่ง" — ค่าส่ง 0 และไม่มีป้ายวิธีส่ง (ไม่ใช่มารับเอง/ส่งฟรีที่เลือกไว้แล้ว)
  * = ใบเปล่าที่แอดมินเพิ่งกด "สร้างออเดอร์งานพิเศษ" (สร้างมาด้วย shippingCost 0 ไม่มี shippingLabel)
  * ใบจากหน้าร้าน/ใบเสนอราคา/FlowAccount มีป้ายหรือตัวเลขค่าส่งเสมอ จึงไม่เข้าข้อนี้

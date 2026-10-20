@@ -16,7 +16,6 @@ import {
   DESIGN_LABEL,
   feeBreakdown,
   formatPrice,
-  isRetailRateLine,
   lotShortfalls,
   maxDesignsFor,
   orderUnitYield,
@@ -80,7 +79,7 @@ import BoxFeeTag from "@/components/BoxFeeTag";
 import ProductVisual from "@/components/ProductVisual";
 import { SPEC_HIDE, SpecLines } from "@/components/SpecLines";
 import StockCheckNote from "@/components/StockCheckNote";
-import { getAppendTarget, clearAppendTarget, type AppendTarget } from "@/lib/append-order";
+import { getAppendTarget, clearAppendTarget, shipCalcLines, shipRetailOnly, type AppendTarget } from "@/lib/append-order";
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
 import { readReplaceMarker } from "@/lib/order-item-qty";
@@ -97,7 +96,7 @@ const USE_BY_BIG_QTY = 100;
 const SHIP_PICK_KEY = "iducky-shipping-pick-v1";
 
 export default function CartPage() {
-  const { items, setQty, setNote, setExtra, removeItem, addItem, clear, productOf, productGone, lotExtras } = useCart();
+  const { items, setQty, setNote, setExtra, removeItem, addItem, clear, productOf, productGone, lotExtras, appendShip, appendShipErr } = useCart();
   // 🤝 ตัวแทนจำหน่าย — ไม่ได้ของแถม และบรรทัดเรทตัวแทนไม่สลับเรทอัตโนมัติ
   const { isDealer } = useCustomer();
   const router = useRouter();
@@ -234,6 +233,17 @@ export default function CartPage() {
   const subtotal =
     pickedItems.reduce((n, i) => n + i.unitPrice * i.qty + (i.extraFee ?? 0), 0) + boxFeeSum;
   const totalQty = pickedItems.reduce((n, i) => n + i.qty, 0);
+  /**
+   * 🚚 สั่งเพิ่มเข้าใบที่ยังไม่มีวิธีส่ง → วิธีส่ง/ส่งฟรีคิดจาก "ทั้งใบ" (ของเดิม + ที่หยิบรอบนี้)
+   * ให้ตรงกับหน้าออเดอร์ (autoShipOf) และเซิร์ฟเวอร์ — เดิมดูแค่ของที่หยิบ (เจ้าของร้าน 20 ต.ค. 69)
+   * ใบที่มีค่าส่งแล้ว/ออเดอร์ใหม่ = ของที่หยิบอย่างเดียวเหมือนเดิม · หน้าชำระเงินคิดชุดเดียวกัน
+   */
+  // ⚡ ใบที่ค่าส่งระบบเลือกให้ (shipFollow) = คิดค่าส่งทั้งใบใหม่แล้วส่งไปแทนค่าเดิม — ต้องได้ของเดิมในใบมาก่อน ไม่งั้นคงค่าส่งเดิม
+  const shipFollowOn = !!appendTo?.shipFollow && !!appendShip;
+  const shipBase = appendTo?.needShipping || shipFollowOn ? appendShip : null;
+  const shipLines = shipCalcLines(pickedItems, shipBase);
+  const shipSubtotal = subtotal + (shipBase?.subtotal ?? 0);
+  const shipQty = shipLines.reduce((n, l) => n + l.qty, 0);
   /** 🔢 "17 เซ็ต · 102 ชิ้น" — งานเซ็ต/แผ่นจำนวนที่สั่งไม่ใช่จำนวนชิ้น (ดู orderQtyText) */
   const totalQtyText = orderQtyText(
     pickedItems.map((i) => ({ productId: i.productId, sel: i.selections, qty: i.qty })),
@@ -395,7 +405,7 @@ export default function CartPage() {
       string,
       { name: string; qty: number; tiers?: ReturnType<typeof shipProfileOf>["tiers"]; extra?: number; overflowMethodId?: string }
     >();
-    for (const i of pickedItems) {
+    for (const i of shipLines) {
       const p = productOf(i.productId);
       const prof = shipProfileOf(p, i.selections);
       const key = `${i.productId}|${prof.ruleKey}`;
@@ -417,20 +427,17 @@ export default function CartPage() {
 
   // 🛍️ ทุกบรรทัดยังอยู่เรทปลีก (เช่น 1-10 ชิ้น) = ของไม่กี่ชิ้น กล่องเล็กใส่พอ
   // ยอดเงินถึงเกณฑ์กล่องใหญ่ก็ไม่ต้องเด้งค่าส่งแพงขึ้น (ของแพงไม่ได้แปลว่ากล่องใหญ่)
-  const retailOnly = pickedItems.every((i) => {
-    const p = productOf(i.productId);
-    return !p || isRetailRateLine(p, i.selections, i.qty, i.merged?.rateLabel);
-  });
+  const retailOnly = shipRetailOnly(shipLines, productOf);
 
   // 🚚 ระบบเลือกวิธีจัดส่งให้เอง — ของเยอะ/ของชิ้นใหญ่ ต้องกล่องใหญ่ ไม่ปล่อยให้ค้างที่กล่องเล็ก
   // รวมทั้งของที่เกินขั้นค่าส่งจนต้องเปลี่ยนวิธีส่ง (เช่น ส่งแมส)
   const auto = pickShipping(methods, {
-    totalQty,
-    subtotal,
+    totalQty: shipQty,
+    subtotal: shipSubtotal,
     retailOnly,
     requiredIds: [
       // ค่าส่งขั้นต่ำ — เอาตามตัวเลือกที่เลือกจริง (ขนาดใหญ่บังคับกล่องใหญ่ได้)
-      ...(pickedItems.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
+      ...(shipLines.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
       ...qtyShip.forceIds,
     ],
   });
@@ -461,11 +468,13 @@ export default function CartPage() {
   }, [shipLoaded, auto.id, auto.floorId, methods.length, shippingId, pickSig, cartSig]);
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
-  const freeShipping = freeMin > 0 && subtotal >= freeMin;
+  const freeShipping = freeMin > 0 && shipSubtotal >= freeMin;
 
   // 🚚 ค่ากล่องปกติถูกยกเว้นไหม — ส่งฟรีตามยอด / สั่งเพิ่มเข้าออเดอร์เดิม (ส่งรวมกล่องเดิม)
   // 🛍️ ยกเว้นใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง (สร้างออเดอร์งานพิเศษแล้วหยิบจากหน้าร้าน) → คิดค่าส่งตามปกติ ส่งตามไปให้ออเดอร์
-  const appendNeedsShip = !!appendTo?.needShipping;
+  const appendNeedsShip = !!appendTo?.needShipping || shipFollowOn;
+  /** ค่าส่งที่อยู่ในใบอยู่แล้ว — โหมดปรับตามทั้งใบ ลูกค้าจ่ายเฉพาะส่วนต่าง */
+  const shipWas = shipFollowOn ? appendTo?.shippingCost ?? 0 : 0;
   const methodFree = (!!appendTo && !appendNeedsShip) || freeShipping;
   // 📦 ค่าส่งตามจำนวนชิ้น (ของหนัก) = ต้นทุนกล่อง/น้ำหนักจริง — โปรส่งฟรีและการสั่งเพิ่ม "ไม่ล้าง" ส่วนนี้
   // (ของหนักใส่กล่องเดิมไม่ได้/ค่าขนส่งจริงแพงกว่าพัสดุปกติมาก ร้านออกให้ไม่ไหว)
@@ -501,7 +510,7 @@ export default function CartPage() {
     rows.push(...visibleMethods.filter((m) => m.price === 0));
     return rows;
   })();
-  const total = subtotal + shippingCost;
+  const total = subtotal + shippingCost - shipWas;
   // 🎁 ของแถมฟรีที่ออเดอร์นี้ได้ (คิดจากรายการที่ติ๊กไว้) — ตัวแทนจำหน่ายไม่ได้ของแถม
   const giftRows = isDealer
     ? []
@@ -513,7 +522,7 @@ export default function CartPage() {
   // 🔓 เฉพาะโปรที่ปลดล็อกจริง (ได้ของแถมอย่างน้อย 1 ชิ้นหลังคิดกติกาแผ่น A3) — ยังไม่ถึงจะไม่ขึ้นการ์ด/บรรทัดฟรี
   //    เจ้าของร้านขอ 9 ก.ย. 69: รองหลัง 1 ชิ้น = 1 ใบ เคยขึ้นการ์ดเขียว "×0 + ซองใส ×1" ตั้งแต่ชิ้นแรก
   const giftUnlocked = giftRows.filter((g) => giftUnlock(g, resolveGiftSize(g.promo, giftSize[g.promo.id])).unlocked);
-  const remainForFree = freeMin - subtotal;
+  const remainForFree = freeMin - shipSubtotal;
 
   /** เมฆพื้นหลัง — ชุดเดียวกับหน้าแรก */
   const sky = (
@@ -1149,7 +1158,22 @@ export default function CartPage() {
                     <strong className="ord-opt-name block text-[.86rem] t-ink">➕ เพิ่มเข้าออเดอร์เดิม {appendTo.id}</strong>
                     {appendNeedsShip ? (
                       <>
-                        ใช้ชื่อ/ที่อยู่เดิม · ออเดอร์นี้ยังไม่มีค่าส่ง → <strong className="t-blue">เลือกวิธีส่งด้านล่าง</strong> ระบบจะใส่ค่าส่งให้ในออเดอร์
+                        {shipFollowOn ? (
+                          <>
+                            ใช้ชื่อ/ที่อยู่เดิม · ค่าส่งของใบนี้ระบบคิดตามรายการ → <strong className="t-blue">คิดใหม่จากของทั้งใบ</strong> จ่ายเฉพาะส่วนต่างจากเดิม {formatPrice(shipWas)}
+                          </>
+                        ) : (
+                          <>
+                            ใช้ชื่อ/ที่อยู่เดิม · ออเดอร์นี้ยังไม่มีค่าส่ง → <strong className="t-blue">เลือกวิธีส่งด้านล่าง</strong> ระบบจะใส่ค่าส่งให้ในออเดอร์
+                          </>
+                        )}
+                        <span className="mt-1 block">
+                          {shipBase
+                            ? `🚚 คิดค่าส่งจากของทั้งใบ — ของเดิมในใบ ${formatPrice(shipBase.subtotal)} + รอบนี้ ${formatPrice(subtotal)}`
+                            : appendShipErr
+                              ? "⚠️ ดึงรายการในใบเดิมไม่ได้ — ค่าส่งคิดจากของรอบนี้อย่างเดียว ตรวจค่าส่งที่หน้าออเดอร์อีกครั้ง"
+                              : "⏳ กำลังดึงรายการในใบเดิมมาคิดค่าส่ง…"}
+                        </span>
                       </>
                     ) : (
                       <>
@@ -1184,11 +1208,11 @@ export default function CartPage() {
 
             {/* 🚚 ยอดส่งฟรีร้านสูง (฿50,000) — ตะกร้า ฿1,375 ขึ้น "ซื้อเพิ่มอีก ฿48,625" แถบแทบว่าง ไม่ชวนซื้อ กลับดูไกลเกิน
                 โชว์เมื่อยอดถึงครึ่งทางแล้ว (12 ต.ค. 69) */}
-            {!freeShipping && remainForFree > 0 && freeMin > 0 && subtotal >= freeMin / 2 && (
+            {!freeShipping && remainForFree > 0 && freeMin > 0 && shipSubtotal >= freeMin / 2 && (
               <div className="ord-note warn mt-3 px-4 py-3 text-xs leading-relaxed">
                 🚚 ซื้อเพิ่มอีก <strong>{formatPrice(remainForFree)}</strong> รับส่งฟรีเลย!
                 <div className="ord-bar">
-                  <i style={{ width: `${freeMin > 0 ? Math.min(100, (subtotal / freeMin) * 100) : 0}%` }} />
+                  <i style={{ width: `${freeMin > 0 ? Math.min(100, (shipSubtotal / freeMin) * 100) : 0}%` }} />
                 </div>
               </div>
             )}
@@ -1274,14 +1298,26 @@ export default function CartPage() {
               )}
               <div className="flex justify-between t-soft">
                 <dt>
-                  {qtyShipApplied && methodFree
-                    ? "ค่าจัดส่ง (ของหนัก — กล่องเพิ่ม)"
-                    : appendTo && !appendNeedsShip
-                      ? "ค่าจัดส่ง (รวมกล่องเดิม)"
-                      : "ค่าจัดส่ง"}
+                  {shipFollowOn
+                    ? `ค่าจัดส่งทั้งใบ ${formatPrice(shippingCost)} (เดิม ${formatPrice(shipWas)}) · ส่วนต่าง`
+                    : qtyShipApplied && methodFree
+                      ? "ค่าจัดส่ง (ของหนัก — กล่องเพิ่ม)"
+                      : appendTo && !appendNeedsShip
+                        ? "ค่าจัดส่ง (รวมกล่องเดิม)"
+                        : "ค่าจัดส่ง"}
                 </dt>
                 <dd className="font-semibold t-ink">
-                  {shippingCost === 0 ? <span className="t-ok">ฟรี!</span> : formatPrice(shippingCost)}
+                  {shipFollowOn ? (
+                    shippingCost === shipWas ? (
+                      "เท่าเดิม"
+                    ) : (
+                      `${shippingCost > shipWas ? "+" : "−"}${formatPrice(Math.abs(shippingCost - shipWas))}`
+                    )
+                  ) : shippingCost === 0 ? (
+                    <span className="t-ok">ฟรี!</span>
+                  ) : (
+                    formatPrice(shippingCost)
+                  )}
                 </dd>
               </div>
               {giftUnlocked

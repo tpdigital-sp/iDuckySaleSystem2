@@ -12,7 +12,7 @@ import { artQtyOf, formatPrice, productLineOrder, type Product } from "@/lib/pro
 import { itemPiecesLine, itemQtyText, orderQtyText } from "@/lib/item-yield";
 import { fetchProductsByIds } from "@/lib/product-repo";
 import ProductVisual from "@/components/ProductVisual";
-import { addOnDisplayName, balanceNet, isFreeOrder, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
+import { addOnDisplayName, balanceNet, isFreeOrder, addOnNameHead, addOnParents, adminDiscountAmount, amountDueNow, artworkSide, depositInstallments, earlyPayMsLeft, earlyPayState, itemDiscountAmount, orderBalance, orderEarlyPayAmount, orderFullyPaid, orderItemDiscounts, orderNetTransfer, orderStatusLabel, orderTotal, orderVatAmount, orderWhtAmount, paidSoFar, PROOF_STYLES, shipAutoFollowNow, proofsOf, proofUnit, shipmentQty, shipToText, STATUS_STYLES, trackingBoxes, STEP_OF, type Order, type OrderStatus } from "@/lib/admin-data";
 import { overpayOutstanding, paymentEntries, resolveSlipPhase } from "@/lib/payments";
 import { cancelOrderByCustomer, fetchOrderForCustomer, reportPayment, requestOrderEdit, pairGiftProof, reviewGiftProof, reviewProof, submitRating, updateOrderAddress, updateOrderSender } from "@/lib/order-repo";
 import { RATING_TAGS, SCORE_FACES } from "@/lib/ratings";
@@ -2650,7 +2650,14 @@ export default function CustomerOrderPage() {
             <button
               type="button"
               onClick={() => {
-                setAppendTarget({ id: order.id, key: orderKey, shippingCost: order.shippingCost, needShipping: shippingUnset(order), lotItems: appendLotLines(order.items) });
+                setAppendTarget({
+                  id: order.id,
+                  key: orderKey,
+                  shippingCost: order.shippingCost,
+                  needShipping: shippingUnset(order),
+                  shipFollow: !shippingUnset(order) && shipAutoFollowNow(order),
+                  lotItems: appendLotLines(order.items),
+                });
                 router.push("/products");
               }}
               className="ord-btn yolk mt-4"

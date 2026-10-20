@@ -25,7 +25,7 @@ import {
 } from "./products";
 import { fetchProductsByIds, fetchProductsByIdsChecked } from "./product-repo";
 import { useCustomer } from "./customer-context";
-import { APPEND_CHANGED_EVENT, appendLotLines, getAppendTarget, type AppendLotLine } from "./append-order";
+import { APPEND_CHANGED_EVENT, appendLotLines, appendShipBase, getAppendTarget, type AppendLotLine, type AppendShipBase } from "./append-order";
 import { fetchOrderForCustomer } from "./order-repo";
 import { readReplaceMarker } from "./order-item-qty";
 
@@ -183,6 +183,13 @@ interface CartContextValue {
    * ราคาในตะกร้ารวมให้แล้ว · หน้าสินค้าเอาไปต่อท้ายบรรทัดตะกร้าตอนพรีวิวราคา
    */
   lotExtras: AppendLotLine[];
+  /**
+   * 🚚 โหมดสั่งเพิ่ม: ของทั้งใบเดิม (ยอด + บรรทัด) — ใบที่ยังไม่มีวิธีส่ง ตะกร้า/หน้าชำระเงินคิดวิธีส่ง+ส่งฟรีจากทั้งใบ
+   * null = ไม่ได้อยู่โหมดสั่งเพิ่ม หรือยังดึงใบเดิมไม่สำเร็จ · ดู appendShipBase
+   */
+  appendShip: AppendShipBase | null;
+  /** ดึงใบเดิมไม่สำเร็จ — ตะกร้าบอกแอดมินว่าค่าส่งคิดจากของรอบนี้อย่างเดียว */
+  appendShipErr: boolean;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -329,15 +336,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
    * ราคาของรายการเดิมในออเดอร์ไม่แตะ — คิดให้เฉพาะบรรทัดที่สั่งเพิ่ม
    */
   const [lotExtras, setLotExtras] = useState<AppendLotLine[]>([]);
+  const [appendShip, setAppendShip] = useState<AppendShipBase | null>(null);
+  const [appendShipErr, setAppendShipErr] = useState(false);
   useEffect(() => {
     let run = 0;
     const load = () => {
       const mine = ++run;
       const t = getAppendTarget();
       setLotExtras(t?.lotItems ?? []);
+      setAppendShip(null);
+      setAppendShipErr(false);
       if (!t) return;
       fetchOrderForCustomer(t.id, t.key).then(({ order }) => {
-        if (!(mine === run && order)) return;
+        if (mine !== run) return;
+        if (!order) return setAppendShipErr(true);
         /**
          * 🛠 แอดมินกด "แก้ตัวเลือก" = ของใหม่จะมาแทนรายการเดิม → รายการเดิมไม่ได้ผลิตร่วมล็อต ห้ามนับ
          * (OD-260910-5776 · 20 ต.ค. 69: นับ 40 ใบเดิมร่วมกับ 25 ใบใหม่ ได้ขั้น 50+ ฿105 แล้วรายการเดิมถูกถอด เหลือ 25 ใบ ฿105)
@@ -345,7 +357,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const m = readReplaceMarker();
         const old = m && (m.kind ?? "order") === "order" && m.orderId === t.id ? order.items[m.index] : undefined;
         const replaced = old && old.productId === m!.productId && old.name === m!.name && old.qty === m!.qty ? m!.index : -1;
-        setLotExtras(appendLotLines(order.items.filter((_, i) => i !== replaced)));
+        const kept = order.items.filter((_, i) => i !== replaced);
+        setLotExtras(appendLotLines(kept));
+        setAppendShip(appendShipBase(kept));
       });
     };
     const onStorage = (e: StorageEvent) => {
@@ -371,7 +385,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
    * ทำให้ตะกร้า "ดูว่าง" ทั้งที่ของยังอยู่ครบใน localStorage (ลูกค้าเข้าใจว่าของหาย)
    */
   useEffect(() => {
-    const missing = [...new Set(state.items.map((i) => i.productId))].filter(
+    // 🚚 + สินค้าในใบเดิม (โหมดสั่งเพิ่ม) — ตารางค่าส่ง/กล่องบังคับ/เรทปลีกอยู่ในตัวสินค้า ต้องมีถึงคิดวิธีส่งทั้งใบได้
+    const baseIds = (appendShip?.lines ?? []).map((l) => l.productId).filter((id) => id && !id.includes("#") && id !== "special-item");
+    const missing = [...new Set([...state.items.map((i) => i.productId), ...baseIds])].filter(
       (id) => !catalog.has(id) && !goneIds.has(id)
     );
     if (missing.length === 0) return;
@@ -406,7 +422,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       active = false;
       clearTimeout(timer);
     };
-  }, [state.items, catalog, goneIds]);
+  }, [state.items, catalog, goneIds, appendShip]);
 
   const value = useMemo<CartContextValue>(() => {
     // คำนวณราคา/หน่วยใหม่ทุกครั้งตามจำนวนปัจจุบัน (รองรับราคาขั้นบันได)
@@ -465,8 +481,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       productOf,
       productGone: (id) => goneIds.has(id),
       lotExtras,
+      appendShip,
+      appendShipErr,
     };
-  }, [state.items, productOf, goneIds, lotExtras]);
+  }, [state.items, productOf, goneIds, lotExtras, appendShip, appendShipErr]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

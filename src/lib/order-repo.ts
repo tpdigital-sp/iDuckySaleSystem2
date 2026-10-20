@@ -87,7 +87,7 @@ export async function appendToOrder(
   key: string,
   items: CreateOrderInput["items"],
   /** 🚚 ค่าส่งที่หน้าชำระเงินคิดไว้ — ส่งเฉพาะตอนออเดอร์ปลายทางยังไม่เคยเลือกวิธีส่ง (เซิร์ฟเวอร์รับเฉพาะกรณีนั้น) */
-  ship?: { shipping: string; shippingCost: number },
+  ship?: { shipping: string; shippingCost: number; shippingAuto?: boolean },
   /** 📐🎨 ขนาด/ลายของแถมที่เลือกในตะกร้า — ของแถมที่เพิ่งได้ในรอบสั่งเพิ่มนี้ใช้ตามนี้ (ไม่ส่ง = ขนาดแรกของโปร) */
   gift?: Pick<CreateOrderInput, "giftSizes" | "giftArtwork">
 ): Promise<{ ok: boolean; owed?: number; error?: string }> {

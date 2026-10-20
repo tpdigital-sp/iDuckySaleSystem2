@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { ART_SIZE_LABEL, REUSE_ART_LABEL, activeMatrix, activeRate, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, includedDesigns, isRetailRateLine, lotShortfalls, mixRuleFor, needsStockCheck, orderUnitYield, perUnitCapacity, splitArtUrls, stockCheckRows } from "@/lib/products";
+import { ART_SIZE_LABEL, REUSE_ART_LABEL, activeMatrix, activeRate, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, includedDesigns, lotShortfalls, mixRuleFor, needsStockCheck, orderUnitYield, perUnitCapacity, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { couponErrorText, type CouponError } from "@/lib/coupons";
 
 /** เหตุผลที่คูปองไม่ถูกตัดสิทธิ์ตอนกดสั่ง (จาก /api/orders) — เป็นภาษาคน ไว้บอกลูกค้าในข้อความสรุป */
@@ -43,7 +43,7 @@ import { rememberOrderLink } from "@/lib/my-order-links";
 import { lockedTier, paidSpend, tierForSpend, tierDiscountAmount } from "@/lib/tiers";
 import { parseReuseArt, reuseArtText, type AddOnLine, type Order, type OrderItem, type Proof } from "@/lib/admin-data";
 import { appendToOrder, placeOrder, reportPayment } from "@/lib/order-repo";
-import { clearAppendTarget, getAppendTarget, type AppendTarget } from "@/lib/append-order";
+import { clearAppendTarget, getAppendTarget, shipCalcLines, shipRetailOnly, type AppendTarget } from "@/lib/append-order";
 import { addressProblem, cleanPhone, phoneProblem } from "@/lib/contact-validate";
 import { clearUseByDate, readUseByDate } from "@/lib/use-by-date";
 import { shortThaiDay } from "@/lib/ship-date";
@@ -99,7 +99,7 @@ function selfDesignedProof(
 }
 
 export default function CheckoutPage() {
-  const { items: allItems, productOf, productGone, removeItem, lotExtras } = useCart();
+  const { items: allItems, productOf, productGone, removeItem, lotExtras, appendShip } = useCart();
   /** รายการที่ลูกค้าเอาติ๊กออกในหน้าตะกร้า — ไม่เอาเข้าออเดอร์รอบนี้ (ยังค้างในตะกร้าต่อ) */
   const [unpicked, setUnpicked] = useState<string[]>([]);
   /**
@@ -201,8 +201,19 @@ export default function CheckoutPage() {
 
   /* โหมดสั่งเพิ่มในออเดอร์เดิม (มาจากหน้าเช็คออเดอร์) */
   const [appendTo, setAppendTo] = useState<AppendTarget | null>(null);
-  const [appendDone, setAppendDone] = useState<{ owed: number } | null>(null);
+  /** ship = ใส่ค่าส่งให้ใบที่ยังไม่มีวิธีส่ง (ชื่อวิธี + ราคา) — ไม่มี = รวมส่งกับกล่องเดิม */
+  const [appendDone, setAppendDone] = useState<{ owed: number; ship?: { name: string; cost: number } } | null>(null);
   useEffect(() => setAppendTo(getAppendTarget()), []);
+  /**
+   * 🚚 สั่งเพิ่มเข้าใบที่ยังไม่มีวิธีส่ง → วิธีส่ง/ส่งฟรีคิดจาก "ทั้งใบ" (ของเดิม + ที่หยิบรอบนี้) ชุดเดียวกับหน้าตะกร้า
+   * ใบที่มีค่าส่งแล้ว/ออเดอร์ใหม่ = ของที่หยิบอย่างเดียวเหมือนเดิม · ดู appendShipBase
+   */
+  // ⚡ ใบที่ค่าส่งระบบเลือกให้ (shipFollow) = คิดค่าส่งทั้งใบใหม่แล้วส่งไปแทน — ต้องได้ของเดิมในใบก่อน ไม่งั้นคงค่าส่งเดิม (ชุดเดียวกับตะกร้า)
+  const shipFollowOn = !!appendTo?.shipFollow && !!appendShip;
+  const shipBase = appendTo?.needShipping || shipFollowOn ? appendShip : null;
+  const shipLines = shipCalcLines(items, shipBase);
+  const shipSubtotal = subtotal + (shipBase?.subtotal ?? 0);
+  const shipQty = shipLines.reduce((n, l) => n + l.qty, 0);
 
   function pickSlip(file: File | null) {
     setReportErr("");
@@ -250,7 +261,7 @@ export default function CheckoutPage() {
   }, []);
 
   const shippingMethod = methods.find((s) => s.id === shippingId) ?? methods[0];
-  const freeShipping = freeMin > 0 && subtotal >= freeMin;
+  const freeShipping = freeMin > 0 && shipSubtotal >= freeMin;
 
   // 📐 ขนาดของแถมที่ลูกค้าเลือกไว้ตั้งแต่หน้าตะกร้า
   const [giftChosen, setGiftChosen] = useState<Record<string, string>>({});
@@ -277,7 +288,7 @@ export default function CheckoutPage() {
       string,
       { name: string; qty: number; tiers?: ReturnType<typeof shipProfileOf>["tiers"]; extra?: number; overflowMethodId?: string }
     >();
-    for (const i of items) {
+    for (const i of shipLines) {
       const p = productOf(i.productId);
       const prof = shipProfileOf(p, i.selections);
       const key = `${i.productId}|${prof.ruleKey}`;
@@ -301,7 +312,7 @@ export default function CheckoutPage() {
   // (หน้าตะกร้าสลับให้แล้ว — ที่นี่กันหลุดอีกชั้นเผื่อเข้าลิงก์ตรง)
   const forcedMethod = [
     ...qtyShipCalc.forceIds,
-    ...(items.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
+    ...(shipLines.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
   ]
     .map((id) => methods.find((m) => m.id === id))
     .filter(Boolean)
@@ -309,16 +320,13 @@ export default function CheckoutPage() {
   // 🙈 วิธีที่ "ซ่อน" ในตะกร้า (กล่องใหญ่มีเงื่อนไขแต่ออเดอร์นี้ไม่เข้า เช่น EMS (100) กับของชิ้นเดียว)
   //    ค้างมาใน localStorage จากออเดอร์ก่อนได้ — หน้านี้ไม่มีปุ่มให้เปลี่ยน ต้องเด้งกลับเป็นกล่องที่ระบบเลือกเอง
   //    (คิดชุดเดียวกับหน้าตะกร้า: retailOnly = ทั้งตะกร้ายังเรทปลีก ยอดถึงเกณฑ์ก็ไม่เด้งกล่องใหญ่)
-  const retailOnly = items.every((i) => {
-    const p = productOf(i.productId);
-    return !p || isRetailRateLine(p, i.selections, i.qty, i.merged?.rateLabel);
-  });
+  const retailOnly = shipRetailOnly(shipLines, productOf);
   const autoShip = pickShipping(methods, {
-    totalQty,
-    subtotal,
+    totalQty: shipQty,
+    subtotal: shipSubtotal,
     retailOnly,
     requiredIds: [
-      ...(items.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
+      ...(shipLines.map((i) => shipProfileOf(productOf(i.productId), i.selections).shippingId).filter(Boolean) as string[]),
       ...qtyShipCalc.forceIds,
     ],
   });
@@ -334,7 +342,9 @@ export default function CheckoutPage() {
   // มารับเอง (ราคา 0) = ไม่มีพัสดุ ไม่คิดอะไรเลย · ต้องได้เลขตรงกับหน้าตะกร้าเป๊ะ
   // 🛍️ สั่งเพิ่มเข้าใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง (แอดมินสร้างออเดอร์งานพิเศษแล้วหยิบจากหน้าร้าน) = คิดค่าส่งตามปกติ
   //    แล้วส่งไปให้ออเดอร์นั้น — เดิมทุกการสั่งเพิ่ม "ไม่คิดค่าส่งซ้ำ" ใบเปล่าเลยไม่มีค่าส่งเลย (พนักงานแจ้ง 18 ก.ย. 69)
-  const appendNeedsShip = !!appendTo?.needShipping;
+  const appendNeedsShip = !!appendTo?.needShipping || shipFollowOn;
+  /** ค่าส่งที่อยู่ในใบอยู่แล้ว — โหมดปรับตามทั้งใบ จ่ายเฉพาะส่วนต่าง */
+  const shipWas = shipFollowOn ? appendTo?.shippingCost ?? 0 : 0;
   const methodFree = (!!appendTo && !appendNeedsShip) || freeShipping;
   const shippingCost =
     effectiveMethod.price === 0 ? 0 : methodFree ? qtyShipFee : Math.max(effectiveMethod.price, qtyShipFee);
@@ -446,7 +456,7 @@ export default function CheckoutPage() {
   );
   //    ไม่ใช้ร่วมกับส่วนลดระดับสมาชิก/คูปอง — มีส่วนลดอื่นแล้วไม่ลดโอนไวอีก (เจ้าของร้านสั่ง 10 ก.ย. 69)
   const earlyPay = appendTo || isDealer || discount > 0 ? 0 : earlyPayAmount(earlyPayGoods, earlyPayOf(payment));
-  const total = Math.max(0, subtotal - discount - earlyPay + shippingCost);
+  const total = Math.max(0, subtotal - discount - earlyPay + shippingCost - shipWas);
 
   async function submit() {
     // 📦 ขั้นต่ำต่อรอบผลิต (เรท minQtyScope: "lot") — กันคนเดินมาหน้านี้ตรง ๆ ข้ามประตูที่ตะกร้า
@@ -622,7 +632,8 @@ export default function CheckoutPage() {
         appendTo.id,
         appendTo.key,
         orderItems,
-        appendNeedsShip ? { shipping: effectiveMethod.name, shippingCost } : undefined,
+        // ⚡ shippingAuto = วิธีที่ระบบเลือกให้ → ใบปรับค่าส่งตามรายการต่อไป · เลือกเอง = ใบหยุดปรับ
+        appendNeedsShip ? { shipping: effectiveMethod.name, shippingCost, shippingAuto: effectiveMethod.id === autoShip.id } : undefined,
         // 📐 ขนาด/ลายของแถมที่เลือกในตะกร้า — เดิมไม่ส่ง ใบเลยได้ขนาดแรกของโปร (OD-261012-9950 เลือก 9 × 9 ขึ้น 7 × 7)
         { giftSizes: readGiftSizes(), giftArtwork: readGiftArtwork() }
       );
@@ -634,7 +645,7 @@ export default function CheckoutPage() {
       clearAppendTarget();
       // 🧹 ตะกร้าว่างแล้ว วันใช้งานที่ค้างในเครื่องก็หมดหน้าที่ — ไม่งั้นไปโผล่ในใบถัดไป (ดู lib/use-by-date.ts)
       clearUseByDate();
-      setAppendDone({ owed: res.owed ?? 0 });
+      setAppendDone({ owed: res.owed ?? 0, ...(appendNeedsShip ? { ship: { name: effectiveMethod.name, cost: shippingCost } } : {}) });
       window.scrollTo({ top: 0 }); // หน้าสั่งเพิ่มสำเร็จ — เริ่มที่หัวหน้าเหมือนสั่งใบใหม่
       // เอาเฉพาะรายการที่ส่งเข้าออเดอร์เดิมออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งทีหลัง
       items.forEach((it) => removeItem(it.key));
@@ -768,7 +779,12 @@ export default function CheckoutPage() {
             <p className="mt-3 rounded-xl bg-white px-4 py-3 text-sm ring-1 ring-amber-200">
               ยอดที่ต้องโอนเพิ่ม <span className="text-lg font-extrabold text-amber-600">{formatPrice(appendDone.owed)}</span>
               <br />
-              <span className="text-xs text-stone-500">ไม่มีค่าจัดส่งเพิ่ม เพราะรวมส่งกับออเดอร์เดิม</span>
+              {/* 🚚 ใบที่ยังไม่มีวิธีส่ง = ค่าส่งถูกใส่ให้รอบนี้ (เดิมขึ้น "ไม่มีค่าจัดส่งเพิ่ม" ทั้งที่บวก ฿100 เข้าไปแล้ว · 20 ต.ค. 69) */}
+              <span className="text-xs text-stone-500">
+                {appendDone.ship
+                  ? `ค่าจัดส่งทั้งใบ ${appendDone.ship.name} ${appendDone.ship.cost > 0 ? formatPrice(appendDone.ship.cost) : "ฟรี"} (รวมในยอดแล้ว)`
+                  : "ไม่มีค่าจัดส่งเพิ่ม เพราะรวมส่งกับออเดอร์เดิม"}
+              </span>
             </p>
           )}
         </div>
@@ -1117,7 +1133,12 @@ export default function CheckoutPage() {
             🛍️ กำลังเพิ่มเข้าออเดอร์ <span className="font-mono">{appendTo.id}</span>
           </p>
           <p className="mt-1 text-xs leading-relaxed text-stone-600">
-            {appendNeedsShip ? (
+            {shipFollowOn ? (
+              <>
+                ใช้ชื่อ/ที่อยู่เดิม · ค่าส่งของใบนี้ระบบคิดตามรายการ →{" "}
+                <strong className="text-amber-700">คิดใหม่จากของทั้งใบ ({effectiveMethod.name} {formatPrice(shippingCost)})</strong> จ่ายเฉพาะส่วนต่างจากเดิม {formatPrice(shipWas)}
+              </>
+            ) : appendNeedsShip ? (
               <>
                 ใช้ชื่อ/ที่อยู่เดิม · ออเดอร์นี้ยังไม่มีค่าจัดส่ง →{" "}
                 <strong className="text-amber-700">คิดค่าส่งตามวิธีที่เลือกในตะกร้า ({effectiveMethod.name})</strong> แล้วใส่ให้ในออเดอร์
@@ -1298,15 +1319,19 @@ export default function CheckoutPage() {
         )}
         <div className="mt-1 flex justify-between text-sm text-stone-600">
           <span>
-            ค่าจัดส่ง
-            {effectiveMethod.price > 0 && qtyShipFee > 0 && (methodFree || qtyShipFee > effectiveMethod.price)
+            {shipFollowOn ? `ค่าจัดส่งทั้งใบ ${formatPrice(shippingCost)} (เดิม ${formatPrice(shipWas)}) · ส่วนต่าง` : "ค่าจัดส่ง"}
+            {shipFollowOn ? "" : effectiveMethod.price > 0 && qtyShipFee > 0 && (methodFree || qtyShipFee > effectiveMethod.price)
               ? " (ตามจำนวนชิ้น 📦)"
               : appendTo && !appendNeedsShip
                 ? ""
                 : ` (${effectiveMethod.name})`}
           </span>
           <span>
-            {shippingCost > 0
+            {shipFollowOn
+              ? shippingCost === shipWas
+                ? "เท่าเดิม"
+                : `${shippingCost > shipWas ? "+" : "−"}${formatPrice(Math.abs(shippingCost - shipWas))}`
+              : shippingCost > 0
               ? formatPrice(shippingCost)
               : appendTo && !appendNeedsShip
                 ? "รวมกับออเดอร์เดิมแล้ว"

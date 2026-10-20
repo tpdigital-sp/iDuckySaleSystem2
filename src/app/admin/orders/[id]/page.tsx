@@ -51,6 +51,7 @@ import {
   hasUnpaidBalance,
   orderBalance,
   paidSoFar,
+  shipAutoFollowNow,
   daysToUseBy,
   itemDiscountAmount,
   isBlankOrder,
@@ -203,7 +204,7 @@ import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
-import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shippingUnset } from "@/lib/ship-label";
+import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shipFollowsItems, shippingUnset } from "@/lib/ship-label";
 import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, isFlatCalAi, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
@@ -3169,6 +3170,7 @@ export default function AdminOrderDetailPage() {
           shipping: (q.method.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
           shippingLabel: q.method.name,
           shippingCost: cost,
+          shipAuto: true,
         },
         actor,
         "เปลี่ยนวิธีส่ง",
@@ -3184,8 +3186,39 @@ export default function AdminOrderDetailPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
+  /**
+   * 🚚⚡ รายการเปลี่ยน (แก้จำนวน/ลบ/เพิ่ม/แก้ตัวเลือก) → ค่าส่งที่ระบบเลือกให้ คิดใหม่ตามทั้งใบแล้วลงประวัติ
+   * เจ้าของร้าน 20 ต.ค. 69 (OD-261020-2478): แก้จำนวนถุงผ้าขึ้นลงแล้วค่าส่งค้าง EMS (100) — ค่าส่งเป็นตัวเลขที่ตั้งครั้งเดียว
+   * เฉพาะ shipAutoFollowNow (ระบบเลือกให้ + ยังไม่มีเงินเข้า) · สินค้าในใบยังโหลดไม่ครบ = ข้ามรอบนี้ (ตารางค่าส่ง/กล่องบังคับอยู่ในตัวสินค้า)
+   */
+  function followShip(prev: Order, next: Order): Order {
+    if (!shipMethods.length || !shipAutoFollowNow(next)) return next;
+    const sig = (o: Order) => o.items.map((it) => `${it.productId}|${it.qty}|${it.unitPrice}|${JSON.stringify(it.sel ?? {})}`).join("~");
+    if (sig(prev) === sig(next)) return next;
+    const realIds = next.items.map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item");
+    if (realIds.some((id) => !shopProducts.has(id))) return next;
+    const q = autoShipOf(next);
+    if (!q?.method) return next;
+    const cost = Math.max(0, q.cost);
+    if (q.method.name === next.shippingLabel && cost === next.shippingCost) return next;
+    const before = `${resolveShipLabel(next, shipMethods) || "—"} ${formatPrice(next.shippingCost)}`;
+    return withLog(
+      {
+        ...next,
+        shipping: (q.method.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
+        shippingLabel: q.method.name,
+        shippingCost: cost,
+        shipAuto: true,
+      },
+      "ระบบ",
+      "ปรับค่าส่งตามรายการ",
+      `${before} → ${q.method.name} ${formatPrice(cost)} (อัตโนมัติ — ${q.reason})`
+    );
+  }
+
   /** อัปเดต order + บันทึกทันที (ใช้กับ select สี/ขนาด/วันที่ ที่ไม่มี blur) */
   function applyOrder(next: Order) {
+    if (order) next = followShip(order, next);
     setOrder(next);
     if (demo) return;
     void saveOrWarn(next);
@@ -4444,6 +4477,7 @@ export default function AdminOrderDetailPage() {
     );
     if (relot?.changed.length)
       next = withLog(next, "ระบบ", "ปรับราคาต่อชิ้นตามล็อตที่เหลือ", `ยอดรวมทั้งใบลดลงจนไม่ถึงขั้นเดิม · ${lotRepriceNote(relot.changed)}`);
+    next = followShip(order, next);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
   }
@@ -5132,16 +5166,32 @@ export default function AdminOrderDetailPage() {
   /**
    * ค่าส่งที่ตั้งไว้ "ต่ำกว่า" ที่ระบบคิดให้ — เติมของหนัก/ของเยอะทีหลังแล้วลืมขยับค่าส่ง = ร้านออกค่ากล่องเอง
    * เตือนเฉพาะขาขาดทุน: ตั้งไว้แพงกว่าถือว่าตั้งใจ (คิดค่ากล่องพิเศษ/ส่งหลายกล่อง) ไม่ต้องไปยุ่ง
-   * ⚠️ ไม่เตือนใบที่มีเงินเข้าแล้ว (ลูกค้าโอนตามยอดเดิมไปแล้ว) และใบที่ลูกค้ามารับเอง (ไม่มีพัสดุ)
+   * ⚠️ ไม่เตือนใบที่ลูกค้ามารับเอง (ไม่มีพัสดุ) และใบที่มีเงินเข้าแล้ว (ลูกค้าโอนตามยอดเดิมไปแล้ว)
+   *    ยกเว้นใบที่เงินเข้าแล้วแต่ "ยังมียอดค้าง" = เพิ่มรายการทีหลัง ลูกค้าต้องโอนส่วนต่างอยู่แล้ว
+   *    (เจ้าของร้าน 20 ต.ค. 69: สั่งเพิ่มเข้าใบเดิมไม่เคยเช็กกล่องใหม่ — ของเพิ่มจนควรใช้กล่องใหญ่แต่ใบค้างกล่องเล็ก)
+   * ระบบไม่เปลี่ยนเอง — ขึ้นปุ่มให้แอดมินกด
    */
-  const shipUnderAuto =
+  const paidNow = paidSoFar(order);
+  const shipSuggestOk =
     !!autoShip?.method &&
     order.items.length > 0 &&
-    paidSoFar(order) === 0 &&
+    (paidNow === 0 || orderTotal(order) - paidNow > 0) &&
     !isPickupOrder(order) &&
     // 📦 ใบตามของชุดส่งรวม: ค่าส่งอยู่ที่ใบหลัก — ห้ามชวนให้บวกค่าส่งใบนี้ (ยอดเพี้ยนจากบิล)
-    !isShipRider(order) &&
-    autoShip.cost > order.shippingCost;
+    !isShipRider(order);
+  const shipUnderAuto = shipSuggestOk && !!autoShip && autoShip.cost > order.shippingCost;
+  /**
+   * 🎉 ยอดทั้งใบถึงเกณฑ์ส่งฟรีแล้ว แต่ใบยังคิดค่าส่งอยู่ (เพิ่มรายการทีหลังจนข้ามเกณฑ์) — ขาเดียวที่ชวนลดค่าส่ง
+   * ค่าส่งที่แพงกว่าด้วยเหตุอื่นยังถือว่าตั้งใจเหมือนเดิม · ใบเสนอราคา/บิล FlowAccount ยอดตกลงกันไว้แล้ว ไม่ชวนแก้
+   */
+  const shipOverFree =
+    shipSuggestOk &&
+    !!autoShip &&
+    freeShipMin > 0 &&
+    subtotal >= freeShipMin &&
+    autoShip.cost < order.shippingCost &&
+    !order.quoteOf &&
+    !order.flowAccount;
   /** เปลี่ยนวิธีส่ง + ค่าส่งพร้อมกัน (ช่องเลือก กับปุ่มค่าอัตโนมัติ ใช้ทางเดียวกัน — ต้องลงประวัติเสมอ)
    * 🚚 เปลี่ยนวิธีส่งคือ "แก้ยอดเงิน" ค่าส่งเปลี่ยนตามทันที · เดิมเงียบสนิท:
    * OD-260911-5435 เปลี่ยนเป็น "มารับเอง" แล้วค่าส่ง ฿100 ตามใบ FlowAccount หายไปโดยไม่มีร่องรอย */
@@ -5155,6 +5205,8 @@ export default function AdminOrderDetailPage() {
           shipping: (m.name.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา") as Order["shipping"],
           shippingLabel: m.name,
           shippingCost: next,
+          // ⚡ เลือก "อัตโนมัติ" = ให้ค่าส่งตามรายการต่อไป · เลือกวิธีเอง = แอดมินคุมเอง ระบบไม่แตะ
+          shipAuto: !!why?.startsWith("อัตโนมัติ"),
         },
         actor,
         "เปลี่ยนวิธีส่ง",
@@ -8738,7 +8790,15 @@ export default function AdminOrderDetailPage() {
                 try {
                   localStorage.setItem(
                     "iducky-append-order-v1",
-                    JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer, needShipping: shippingUnset(order) })
+                    JSON.stringify({
+                      id: order.id,
+                      key: order.key ?? "",
+                      customer: order.customer,
+                      shippingCost: order.shippingCost,
+                      needShipping: shippingUnset(order),
+                      // 🚚⚡ ค่าส่งระบบเลือกให้ → ตะกร้าคิดค่าส่งทั้งใบใหม่แล้วส่งไปแทน (shipAutoFollowNow)
+                      shipFollow: !shippingUnset(order) && shipAutoFollowNow(order),
+                    })
                   );
                   localStorage.removeItem("iducky-append-picks-v1");
                 } catch {}
@@ -8813,7 +8873,8 @@ export default function AdminOrderDetailPage() {
                         // แก้ตัวเลขค่าส่งเองก็คือแก้ยอดบิล — ต้องมีร่องรอยว่าใครเปลี่ยนจากเท่าไรเป็นเท่าไร
                         const orig = Number(e.currentTarget.dataset.orig || 0);
                         if (orig === order.shippingCost) return persist();
-                        applyOrder(withLog(order, actor, "แก้ค่าจัดส่ง", `${formatPrice(orig)} → ${formatPrice(order.shippingCost)}`));
+                        // พิมพ์ค่าส่งเอง = แอดมินคุมเอง ระบบเลิกปรับตามรายการ
+                        applyOrder(withLog({ ...order, shipAuto: false }, actor, "แก้ค่าจัดส่ง", `${formatPrice(orig)} → ${formatPrice(order.shippingCost)}`));
                       }}
                       className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-800 focus:border-amber-300 focus:outline-none"
                     />
@@ -8825,19 +8886,38 @@ export default function AdminOrderDetailPage() {
                   </>
                 )}
               </div>
-              {/* ⚡ ค่าส่งต่ำกว่าที่ระบบคิดให้ — กดปุ่มเดียวเติมให้ตรง (ไม่กดก็ไม่มีอะไรเปลี่ยน) */}
-              {mayEdit && shipUnderAuto && autoShip?.method && (
+              {/* 🚚⚡ บอกให้รู้ว่าค่าส่งใบนี้ขยับเองตามรายการไหม — แอดมินจะได้ไม่งงตอนแก้จำนวนแล้วค่าส่งเปลี่ยน/ไม่เปลี่ยน */}
+              {mayEdit && order.items.length > 0 && !isPickupOrder(order) && !isShipRider(order) && !order.quoteOf && !order.flowAccount && !isFreeOrder(order) && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {shipAutoFollowNow(order)
+                    ? "⚡ ค่าส่งปรับตามรายการอัตโนมัติ · เลือกวิธีส่งเอง/พิมพ์ค่าส่งเอง = หยุดปรับ"
+                    : shipFollowsItems(order) && paidSoFar(order) > 0
+                      ? "ลูกค้าโอนแล้ว — ค่าส่งไม่ปรับตามรายการเอง (มีปุ่มแนะนำเมื่อไม่ตรง)"
+                      : !shippingUnset(order)
+                        ? "ค่าส่งตั้งเอง — ไม่ปรับตามรายการ · เลือก “⚡ อัตโนมัติ” ถ้าอยากให้ปรับตาม"
+                        : null}
+                </p>
+              )}
+              {/* ⚡ ค่าส่งต่ำกว่าที่ระบบคิดให้ / ยอดถึงส่งฟรีแล้วแต่ยังคิดค่าส่ง — กดปุ่มเดียวเติมให้ตรง (ไม่กดก็ไม่มีอะไรเปลี่ยน) */}
+              {mayEdit && (shipUnderAuto || shipOverFree) && autoShip?.method && (
                 <button
                   type="button"
                   onClick={() => applyShipMethod(autoShip.method!, autoShip.cost, `อัตโนมัติ — ${autoShip.reason}`)}
                   title={autoShip.reason}
-                  className="mt-1.5 flex w-full items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-2 text-left text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                  className="mt-1.5 flex w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-2 text-left text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
                 >
-                  <span className="shrink-0">⚡ ใช้ค่าส่งอัตโนมัติ</span>
+                  <span className="shrink-0">{shipOverFree ? "🎉 ยอดถึงส่งฟรีแล้ว · ใช้ค่าส่งอัตโนมัติ" : "⚡ ใช้ค่าส่งอัตโนมัติ"}</span>
                   <span className="min-w-0 flex-1 truncate font-normal text-sky-800">
                     {autoShip.method.name} · {autoShip.reason}
                   </span>
                   <span className="shrink-0 tabular-nums">{formatPrice(autoShip.cost)}</span>
+                  {/* ใบที่เงินเข้าแล้ว (สั่งเพิ่มทีหลัง) — บอกผลต่อยอดค้างก่อนกด */}
+                  {paidNow > 0 && (
+                    <span className="basis-full font-normal text-amber-700">
+                      ลูกค้าโอนแล้ว {formatPrice(paidNow)} · กดแล้วยอดค้าง{autoShip.cost > order.shippingCost ? "เพิ่ม" : "ลด"}{" "}
+                      {formatPrice(Math.abs(autoShip.cost - order.shippingCost))}
+                    </span>
+                  )}
                 </button>
               )}
               {(order.gifts ?? []).map((g) => (

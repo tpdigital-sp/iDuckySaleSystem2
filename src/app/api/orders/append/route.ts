@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, priceCheckPending, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { orderTotal, priceCheckPending, shipAutoFollowNow, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
 import { dealerRateOf } from "@/lib/products";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
@@ -43,6 +43,8 @@ export async function POST(req: Request) {
     items?: OrderItem[];
     shipping?: string;
     shippingCost?: number;
+    /** ⚡ วิธีส่งที่ส่งมาคือวิธีที่ระบบเลือกให้ (ไม่ใช่ลูกค้า/แอดมินเลือกเอง) → ใบปรับค่าส่งตามรายการต่อไป */
+    shippingAuto?: boolean;
     giftSizes?: Record<string, string>;
     giftArtwork?: Record<string, string[]>;
     /** 🛠 บรรทัดเดิมที่ของใหม่มาแทน (ปุ่ม "แก้ตัวเลือก (หน้าร้าน)") — หน้าออเดอร์จะถอดออกทีหลัง */
@@ -144,22 +146,30 @@ export async function POST(req: Request) {
   const gift = await syncOrderGifts(sb, giftBase, { sizes: body.giftSizes, artwork: body.giftArtwork });
 
   // 🚚 ใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง → รับค่าส่งที่หน้าชำระเงินคิดไว้ (ชื่อวิธีส่ง + ตัวเลข) มาใส่ให้เป็นครั้งแรก
+  // ⚡ ใบที่ค่าส่งระบบเลือกให้ + ยังไม่มีเงินเข้า (shipAutoFollowNow) → รับค่าส่งที่คิดจาก "ทั้งใบ" มาแทนค่าเดิม
+  //    (เจ้าของร้าน 20 ต.ค. 69 OD-261020-2478: ค่าส่งตั้งครั้งเดียวตอนหยิบรอบแรก สั่งเพิ่ม/แก้จำนวนแล้วไม่ขยับตาม)
+  //    ใบที่แอดมินตั้งค่าส่งเอง/มีเงินเข้าแล้ว = ไม่แตะ แม้ส่งมา (หน้าออเดอร์ขึ้นปุ่ม ⚡ แนะนำแทน)
   const shipName = (body.shipping ?? "").trim().slice(0, 40);
-  if (shipName && shippingUnset(order)) {
+  const shipUnsetBefore = shippingUnset(order);
+  const takeShip = !!shipName && (shipUnsetBefore || shipAutoFollowNow(order));
+  if (takeShip) {
     // 🚧 ค่าส่งต้องไม่ต่ำกว่าราคาวิธีส่งที่เลือก (กติกาเดียวกับ /api/orders)
     const { data: shipSett } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
     const subtotalAll = merged.reduce((s, i) => s + i.qty * i.unitPrice, 0);
     const shipErr = shippingFloorProblem(body.shippingCost, shipName, subtotalAll, (shipSett?.data as ShopPayment | undefined) ?? null);
     if (shipErr) return NextResponse.json({ error: shipErr }, { status: 400 });
   }
-  const shipPatch: Partial<Order> =
-    shipName && shippingUnset(order)
-      ? {
-          shipping: shipName.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา",
-          shippingLabel: shipName,
-          shippingCost: Math.max(0, Number(body.shippingCost) || 0),
-        }
-      : {};
+  const shipPatch: Partial<Order> = takeShip
+    ? {
+        shipping: shipName.includes("ด่วน") ? "ส่งด่วน" : "ส่งธรรมดา",
+        shippingLabel: shipName,
+        shippingCost: Math.max(0, Number(body.shippingCost) || 0),
+        shipAuto: body.shippingAuto === true,
+      }
+    : {};
+  /** ค่าส่งเปลี่ยนจริงไหม (ใบที่มีค่าส่งอยู่แล้ว) — ไว้ลง log ให้เห็นว่าขยับจากเท่าไรเป็นเท่าไร */
+  const shipMoved =
+    takeShip && !shipUnsetBefore && (shipPatch.shippingLabel !== order.shippingLabel || shipPatch.shippingCost !== order.shippingCost);
 
   /**
    * 🏅 ส่วนลดระดับสมาชิก — ใบที่ผูกผู้ติดต่อไว้ (พนักงานเปิดใบให้ทางไลน์) ต้องได้ % ของระดับตัวเองเหมือนสั่งเองจากเว็บ
@@ -189,7 +199,10 @@ export async function POST(req: Request) {
     "ลูกค้า",
     "สั่งเพิ่มในออเดอร์เดิม",
     `${items.length} รายการ` +
-      (shipPatch.shippingLabel ? ` · ใส่ค่าส่ง ${shipPatch.shippingLabel} ฿${(shipPatch.shippingCost ?? 0).toLocaleString()}` : "") +
+      (takeShip && shipUnsetBefore ? ` · ใส่ค่าส่ง ${shipPatch.shippingLabel} ฿${(shipPatch.shippingCost ?? 0).toLocaleString()}` : "") +
+      (shipMoved
+        ? ` · ปรับค่าส่งตามทั้งใบ ${order.shippingLabel || "—"} ฿${(order.shippingCost ?? 0).toLocaleString()} → ${shipPatch.shippingLabel} ฿${(shipPatch.shippingCost ?? 0).toLocaleString()}`
+        : "") +
       ` · ยอดรวมใหม่ ฿${newTotal.toLocaleString()}`
   );
   // 🧮 บอกให้ชัดว่าของเดิมถูกลดลงมาเท่ากับของใหม่เพราะยอดรวมเข้าเรทส่ง (ลูกค้า/แอดมินเห็นใน log ใบนี้)

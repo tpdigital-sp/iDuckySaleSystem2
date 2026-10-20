@@ -15,6 +15,7 @@
     "check:orders": "node scripts/check-order-writes.mjs",
     "check:orders-lite": "tsx --conditions=react-server scripts/check-orders-lite.mts",
     "check:background": "node scripts/check-fire-and-forget.mjs",
+    "check:append-ship": "tsx scripts/append-ship-base-check.mts",
     "check:early-pay": "node --conditions=react-server --import tsx scripts/early-pay-check.mts",
     "check:money-guard": "tsx scripts/money-guard-test.mts",
     "check:order-merge": "node --conditions=react-server --import tsx scripts/order-merge-test.mts",
