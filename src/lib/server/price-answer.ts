@@ -136,7 +136,7 @@ async function loadLite(): Promise<Lite[]> {
           .slice(0, 3)
           .map((o) => ({
             label: String(o.label).trim(),
-            choices: (o.choices as { name?: unknown }[]).map((c) => (c && typeof c.name === "string" ? c.name.trim().slice(0, 30) : "")).filter(Boolean).slice(0, 5),
+            choices: (o.choices as { name?: unknown }[]).map((c) => (c && typeof c.name === "string" ? c.name.trim().slice(0, 45) : "")).filter(Boolean).slice(0, 5),
           }))
       : undefined;
   return (data ?? [])
