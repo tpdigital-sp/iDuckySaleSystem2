@@ -11198,10 +11198,22 @@ export default function AdminOrderDetailPage() {
                   </>
                 ) : order.shipments?.length && packGate(order).noPhoto ? (
                   // 📸 ใบแบ่งรับ ยังไม่มีภาพกล่องรอบสุดท้าย — ไม่โชว์ปุ่มปิดทั้งใบเลย (เดิมโชว์แล้วกดเด้งเตือน = ชวนกดผิด/กดเบิ้ล · 20 ต.ค. 69)
+                  // 🔒 โชว์ปุ่มให้เห็นว่าขั้นต่อไปคืออะไร แต่กดไม่ได้ (เจ้าของร้าน 20 ต.ค. 69 "อยากให้แสดง แต่ไม่สามารถกดได้")
                   <div className="rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200">
-                    <p className="text-sm font-extrabold text-slate-700">📸 ถ่ายภาพกล่องรอบที่ {order.shipments.length + 1} ก่อน</p>
+                    <button
+                      type="button"
+                      disabled
+                      aria-disabled
+                      className="flex w-full cursor-not-allowed items-center justify-between gap-2 rounded-xl border-b-4 border-slate-300 bg-slate-200 px-3 py-2.5 text-left text-sm font-extrabold text-slate-400"
+                    >
+                      <span>🔒 แพ็คเสร็จรอบสุดท้าย (รอบที่ {order.shipments.length + 1}) — ปิดทั้งใบ</span>
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-300 text-sm text-slate-400" aria-hidden>
+                        ✓
+                      </span>
+                    </button>
+                    <p className="mt-1.5 text-[12px] font-bold text-slate-600">📸 ยังกดไม่ได้ — ถ่ายภาพกล่องรอบที่ {order.shipments.length + 1} ก่อน</p>
                     <p className={`mt-0.5 text-[11px] ${faint}`}>
-                      ของที่เหลือ {unshippedQty(order).toLocaleString("th-TH")} ชิ้น = รอบสุดท้าย · ถ่ายภาพในโหมดแพ็คแล้วปุ่ม “แพ็คเสร็จรอบสุดท้าย” จะขึ้นให้เอง
+                      ของที่เหลือ {unshippedQty(order).toLocaleString("th-TH")} ชิ้น = รอบสุดท้าย · ถ่ายภาพในโหมดแพ็คแล้วปุ่มนี้จะกดได้
                     </p>
                     <button
                       type="button"
@@ -12867,11 +12879,23 @@ function PackView({
               </span>
             </button>
           ) : (
-            <div className="rounded-xl bg-slate-100 px-3 py-3 ring-1 ring-slate-200">
-              <p className="flex items-center gap-2 text-sm font-bold text-slate-500">
-                <span className="grayscale">🔒</span> ตรวจให้ครบก่อน ถึงกดแพ็คเสร็จได้ (มารับเอง)
-              </p>
-              <p className="mt-0.5 pl-6 text-[11px] leading-tight text-slate-400">
+            // 🔒 ปุ่มโชว์ให้เห็นว่าขั้นต่อไปคืออะไร แต่กดไม่ได้จนกว่าจะตรวจครบ (เจ้าของร้าน 20 ต.ค. 69 "อยากให้แสดง แต่ไม่สามารถกดได้")
+            <div className="rounded-2xl bg-slate-100 px-4 py-3 ring-1 ring-slate-200">
+              <button
+                type="button"
+                disabled
+                aria-disabled
+                className="flex w-full cursor-not-allowed items-center justify-between gap-3 rounded-xl border-b-4 border-slate-300 bg-slate-200 px-3 py-3 text-left text-slate-400"
+              >
+                <span className="text-base font-extrabold leading-tight">
+                  🔒 {order.shipments?.length ? `แพ็คเสร็จรอบสุดท้าย (รอบที่ ${order.shipments.length + 1}) — ปิดทั้งใบ` : "แพ็คเสร็จแล้ว — รอลูกค้ามารับ"}
+                </span>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-300 text-lg font-black text-slate-400" aria-hidden>
+                  ✓
+                </span>
+              </button>
+              <p className="mt-1.5 text-[12px] font-bold text-slate-500">ยังกดไม่ได้ — ทำให้ครบก่อน:</p>
+              <p className="mt-0.5 text-[11px] leading-tight text-slate-500">
                 {todos
                   .slice(0, 2)
                   .map((t) => `${t.icon} ${t.text}`)
