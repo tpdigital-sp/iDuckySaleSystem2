@@ -1322,11 +1322,22 @@ function ratesOf(p: Product): { label: string; desc?: string; minQty?: number; m
  * คอลัมน์ที่ "ตรงกับคำที่ลูกค้าพูด" — ถามมาว่า PVC ก็ไม่ต้องเทตารางกระดาษให้ดู
  * ไม่มีคอลัมน์ไหนตรงเลย = คืนทั้งหมด (ให้ลูกค้าเห็นตัวเลือกแล้วค่อยเลือก)
  */
+/**
+ * 📏 หน่วยไทย = หน่วยอังกฤษ ก่อนเทียบตัวเลือก (20 ต.ค. 69 เจ้าของร้าน "ลูกค้าแจ้งว่า 3mm แล้ว แต่บอทยังถามซ้ำ")
+ *   รอบร่างใหม่ LLM เขียนประโยคถามใหม่เป็น "ขนาด 5 ซม. หนา 3 มม." แต่ตัวเลือกบนเว็บคือ "5 cm" / "3 mm" → จับไม่ติด กางความหนาให้เลือกซ้ำ
+ */
+function unitNorm(t: string): string {
+  return t
+    .replace(/(\d+(?:\.\d+)?)\s*(?:มิลลิเมตร|มม\.?|มิล|mm\.?)/gi, "$1mm")
+    .replace(/(\d+(?:\.\d+)?)\s*(?:เซนติเมตร|เซนต์|เซน|ซม\.?|cm\.?)/gi, "$1cm")
+    .replace(/(\d+(?:\.\d+)?)\s*(?:นิ้ว|inch(?:es)?)/gi, "$1inch");
+}
+
 function pickColumns(keys: string[], query: string, carry = ""): string[] {
-  const q = norm(query);
+  const q = unitNorm(norm(query));
   const loose = (t: string) => t.replace(/[\s\-–_/.·,]/g, "");
   const ql = loose(q);
-  const cl = loose(norm(carry));
+  const cl = loose(unitNorm(norm(carry)));
   // นับว่าคอลัมน์นี้ตรงกับคำของลูกค้ากี่ส่วน — "3cm 3mm" ต้องได้คอลัมน์ที่ตรงทั้งสองส่วน ไม่ใช่ทุกคอลัมน์ที่มี 3cm หรือ 3mm
   // 19 ต.ค. 69 รอบตอบต่อ "ไดคัท 100%" — LLM สรุปเนื้อเป็น "พลาสติกใส-แผ่นรองขุ่น" (ไม่มี "เนื้อ" กับวงเล็บ) จับคอลัมน์
   // "เนื้อพลาสติกใส-แผ่นรองขุ่น (พิมพ์รองขาว)" ไม่ติด → บอทกางเนื้อทั้ง 3 แบบแล้วถามเนื้อซ้ำ · เทียบแกน (ตัดคำนำ "เนื้อ" + วงเล็บ ≥4 ตัว) ด้วย
@@ -1340,7 +1351,7 @@ function pickColumns(keys: string[], query: string, carry = ""): string[] {
   // ข้อความรอบนี้หนัก 10 · ที่เคยคุยไว้ (carry) หนัก 1 — เปลี่ยนใจรอบนี้ ("ไดคัท 100%" หลังเคยเห็น 50%) ชนะของเก่าเสมอ
   const scored = keys.map((k) => ({
     k,
-    n: k ? norm(k).split("│").reduce((sum, v) => sum + (hitIn(q, ql, v) ? 10 : cl && hitIn(cl, cl, v) ? 1 : 0), 0) : 0,
+    n: k ? unitNorm(norm(k)).split("│").reduce((sum, v) => sum + (hitIn(q, ql, v) ? 10 : cl && hitIn(cl, cl, v) ? 1 : 0), 0) : 0,
   }));
   const best = Math.max(0, ...scored.map((x) => x.n));
   if (!best) return keys;
@@ -1415,7 +1426,8 @@ function quote(p: Product, query: string, qtyIn: number | null, narrow = false, 
   // 🎯 8 ต.ค. 69 18:26 "แผ่นอะคริลิค 20 ชิ้น 5 cm" — เจ้าของร้าน: "งง ไม่รู้ว่า 20 ชิ้น 5cm ราคาแสดงตรงไหน"
   // เดิม: ช่วงราคาเป็นของ "ทุกขนาด" (฿15–169) · ตัวเลขจริงของ 5cm ซ่อนเป็นบรรทัดย่อย · เรทขั้นต่ำ 50 ชิ้นก็โชว์ทั้งที่สั่ง 20
   // ใหม่: ส่วนที่ลูกค้าระบุ (5cm) ขึ้นหัว · บรรทัดแรก = แบบถูกสุดของ 5cm เป็นตัวเลขจริง · ช่วงราคาเฉพาะคอลัมน์ 5cm · เรทที่ยังไม่ถึงขั้นต่ำ = บอกสั้น ๆ ไม่คิดราคา
-  const qn = norm(query);
+  // หน่วยไทย = อังกฤษ (unitNorm) — หัวการ์ดต้องเห็น "3mm 5cm" แม้ลูกค้า/LLM เขียน "3 มม. 5 ซม."
+  const qn = unitNorm(norm(query));
   const namedParts: string[] = [];
   const namedIdx = new Set<number>();
   const belowMin: string[] = [];
@@ -1434,7 +1446,7 @@ function quote(p: Product, query: string, qtyIn: number | null, narrow = false, 
     const picked = pickColumns(all, query, carry);
     const matched = picked.length < all.length;
     if (matched) narrowed = true;
-    if (matched && !namedParts.length) picked[0].split("│").forEach((v, idx) => { if (v && v.length >= 2 && qn.includes(norm(v))) { namedParts.push(v); namedIdx.add(idx); } });
+    if (matched && !namedParts.length) picked[0].split("│").forEach((v, idx) => { if (v && v.length >= 2 && qn.includes(unitNorm(norm(v)))) { namedParts.push(v); namedIdx.add(idx); } });
     if (qty && rate.minQty && qty < rate.minQty) { belowMin.push(`${rate.label.trim() || "เรทนี้"} ต้องสั่ง ${rate.minQty.toLocaleString()} ${unit} ขึ้นไป`); continue; }
     const head = rateHead(rate, unit);
     const range = (min: number, max: number) => (min === max ? formatPrice(min) : `${formatPrice(min)}–${formatPrice(max)}`);
