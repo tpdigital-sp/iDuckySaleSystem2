@@ -7,14 +7,18 @@ import { catalogRefs, type ProductRef } from "@/lib/server/price-answer";
  */
 const BRAND = "#1F6F78";
 
-export type ProductCardInput = { name?: string; url?: string; image?: string; priceMin?: number; priceMax?: number };
+export type ProductCardInput = { name?: string; url?: string; image?: string; priceMin?: number; priceMax?: number; priceUnit?: string };
 
+/**
+ * 🏷 20 ต.ค. 69 "เริ่ม ฿78 / แผ่น A3" แทน "฿78 – 1,000" — ช่วงเดิมปนหลายหน่วย (แผ่น A3 กับ ตร.ม.) ไม่บอกหน่วย ลูกค้าอ่านว่าแผ่นละพัน
+ * ราคาตามจำนวนจริงอยู่ในการ์ดราคาเต็มเมื่อลูกค้าบอกจำนวน · สูตรเดียวกับ priceText ใน n8n Site Price Flex
+ */
 export function priceText(c: ProductCardInput): string {
   const a = Number(c.priceMin ?? 0);
   const b = Number(c.priceMax ?? 0);
-  if (a && b && b > a) return `฿${a.toLocaleString()} – ${b.toLocaleString()}`;
-  if (a) return `เริ่ม ฿${a.toLocaleString()}`;
-  return "ดูราคาบนเว็บ";
+  if (!a) return "ดูราคาบนเว็บ";
+  const unit = String(c.priceUnit ?? "").trim();
+  return `${b > a ? "เริ่ม " : ""}฿${a.toLocaleString()}${unit ? ` / ${unit}` : ""}`;
 }
 
 /** bubble ของสินค้า 1 ตัว (ใช้เดี่ยว หรือรวมเป็น carousel) */

@@ -22,7 +22,7 @@ import { toEmojis } from "@/lib/server/line-oa-manager";
  */
 const COL = "line-conversations";
 
-type Card = { name?: string; url?: string; image?: string; priceMin?: number; priceMax?: number };
+type Card = { name?: string; url?: string; image?: string; priceMin?: number; priceMax?: number; priceUnit?: string };
 type FileAtt = { url?: string; name?: string; size?: number };
 type Body = { id?: string; text?: string; emojis?: unknown; imageUrl?: string; card?: Card; file?: FileAtt; pauseMinutes?: number };
 /** ลบตัว "$" ตำแหน่งอิโมจิออกจากข้อความ (ไล่จากท้ายจะได้ไม่ต้องเลื่อน index) */

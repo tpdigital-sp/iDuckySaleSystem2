@@ -62,6 +62,8 @@ export interface ProductRef {
   category?: string;
   priceMin?: number;
   priceMax?: number;
+  /** หน่วยของราคาต่ำสุด เช่น "แผ่น A3" — การ์ดสินค้า "เริ่ม ฿78 / แผ่น A3" */
+  priceUnit?: string;
 }
 
 export interface PriceAnswer {
@@ -90,6 +92,8 @@ interface Lite {
   /** ช่วงราคาที่เซิร์ฟเวอร์คำนวณไว้ตอนบันทึกสินค้า — ใช้ทำเมนูโดยไม่ต้องโหลดตารางเต็ม */
   priceMin?: number;
   priceMax?: number;
+  /** หน่วยของราคาต่ำสุด (เรทที่มีช่องราคาถูกสุด เช่น "แผ่น A3") — การ์ดสินค้าโชว์ "เริ่ม ฿78 / แผ่น A3" (20 ต.ค. 69) */
+  priceUnit?: string;
   /** แบบ/เรทที่ลูกค้าเลือกได้ (ชื่อ + คำอธิบายวัสดุ) — ให้บอทวิเคราะห์รูปแยก "โปสการ์ดกระดาษโฮโลแกรม" กับ "โฟโต้การ์ด PVC" ออก (8 ต.ค. 69) */
   rates?: { label: string; desc?: string }[];
   /** ตัวเลือกที่บอกวัสดุ/ชนิด/ขนาด (ชื่อกลุ่ม + ตัวเลือกไม่เกิน 8) */
@@ -119,7 +123,7 @@ async function loadLite(): Promise<Lite[]> {
   const { data } = await sb
     .from("products")
     .select(
-      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc, desc:data->>description, rates:data->priceRates, opts:data->options",
+      "id, category, name:data->>name, slug:data->>slug, hidden:data->>hidden, priceMin:data->>priceMin, priceMax:data->>priceMax, imageSrc:data->>imageSrc, desc:data->>description, rates:data->priceRates, opts:data->options, baseUnit:data->pricing->>unit",
     );
   const OPT_RE = /วัสดุ|กระดาษ|เนื้อ|ชนิด|ผิว|บัตร|ผ้า|ฟอยล์|เคลือบ|โฮโลแกรม/; // ฟอยล์/เคลือบ: ให้ตัววิเคราะห์รูปรู้ว่าสินค้าไหนเพิ่มฟอยล์โฮโลแกรมได้ (8 ต.ค. 69 15:24)
   const ratesOf = (v: unknown) =>
@@ -139,6 +143,21 @@ async function loadLite(): Promise<Lite[]> {
             choices: (o.choices as { name?: unknown }[]).map((c) => (c && typeof c.name === "string" ? c.name.trim().slice(0, 45) : "")).filter(Boolean).slice(0, 5),
           }))
       : undefined;
+  /**
+   * 🏷 20 ต.ค. 69 เจ้าของร้าน: การ์ดสินค้า "฿78 – 1,000" ไม่มีหน่วย + ปนกัน 2 หน่วย (แผ่น A3 กับ ตร.ม.) ลูกค้าอ่านว่าแผ่นละพัน
+   * → หน่วยของเรทที่มีช่องราคาถูกสุด (ไม่นับเรทตัวแทน) · ไม่มีเรท = หน่วยของตารางราคาหลัก
+   */
+  const unitOfMin = (rates: unknown, baseUnit: unknown): string | undefined => {
+    let best: { v: number; u: string } | null = null;
+    for (const x of Array.isArray(rates) ? (rates as { dealerOnly?: unknown; pricing?: { unit?: unknown; cells?: Record<string, unknown> } }[]) : []) {
+      if (!x || x.dealerOnly || !x.pricing?.cells) continue;
+      const vals = Object.values(x.pricing.cells).flat().map(Number).filter((n) => n > 0);
+      if (!vals.length) continue;
+      const v = Math.min(...vals);
+      if (!best || v < best.v) best = { v, u: typeof x.pricing.unit === "string" && x.pricing.unit.trim() ? x.pricing.unit.trim() : "ชิ้น" };
+    }
+    return best?.u ?? (typeof baseUnit === "string" && baseUnit.trim() ? baseUnit.trim() : undefined);
+  };
   return (data ?? [])
     .filter((r) => r.id && r.name && !String(r.category ?? "").startsWith("__") && r.hidden !== "true")
     .map((r) => ({
@@ -150,6 +169,7 @@ async function loadLite(): Promise<Lite[]> {
       category: String(r.category ?? ""),
       priceMin: r.priceMin ? Number(r.priceMin) : undefined,
       priceMax: r.priceMax ? Number(r.priceMax) : undefined,
+      priceUnit: unitOfMin(r.rates, r.baseUnit),
       rates: ratesOf(r.rates),
       opts: optsOf(r.opts),
     }));
@@ -199,6 +219,7 @@ function refOf(it: Lite): ProductRef {
     category: it.category || undefined,
     priceMin: it.priceMin,
     priceMax: it.priceMax,
+    priceUnit: it.priceUnit,
   };
 }
 
@@ -1571,10 +1592,19 @@ function quote(p: Product, query: string, qtyIn: number | null, narrow = false, 
 }
 
 /** ช่วงราคาสาธารณะของสินค้า (ไว้โชว์บนการ์ด) — ใช้ค่าที่เซิร์ฟเวอร์คำนวณไว้ ไม่มีค่อยไล่จากตาราง */
-function priceRange(p: Product): { priceMin?: number; priceMax?: number } {
-  if (typeof p.priceMin === "number" && typeof p.priceMax === "number") return { priceMin: p.priceMin, priceMax: p.priceMax };
+function priceRange(p: Product): { priceMin?: number; priceMax?: number; priceUnit?: string } {
+  // 🏷 หน่วยของเรทที่มีช่องถูกสุด → การ์ด "เริ่ม ฿78 / แผ่น A3" (20 ต.ค. 69 · ตรงกับ priceUnit ของแคตตาล็อก)
+  let best: { v: number; u: string } | null = null;
+  for (const r of ratesOf(p)) {
+    const vals = Object.values(r.matrix.cells).flat().filter((v) => v > 0);
+    if (!vals.length) continue;
+    const v = Math.min(...vals);
+    if (!best || v < best.v) best = { v, u: r.matrix.unit || "ชิ้น" };
+  }
+  const priceUnit = best?.u;
+  if (typeof p.priceMin === "number" && typeof p.priceMax === "number") return { priceMin: p.priceMin, priceMax: p.priceMax, priceUnit };
   const vals = ratesOf(p).flatMap((r) => Object.values(r.matrix.cells).flat()).filter((v) => v > 0);
-  return vals.length ? { priceMin: Math.min(...vals), priceMax: Math.max(...vals) } : {};
+  return vals.length ? { priceMin: Math.min(...vals), priceMax: Math.max(...vals), priceUnit } : {};
 }
 
 /** ตัดวงเล็บท้ายชื่อกลุ่มออก — ชื่อกลุ่มยาว ๆ อย่าง "เลือกสีพิเศษของฐาน (ขนาดฐาน 3 ซม. · …)" อ่านไม่รู้เรื่อง */

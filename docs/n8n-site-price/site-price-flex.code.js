@@ -26,7 +26,8 @@ function esc(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 function trunc(s, n) { s = esc(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 function norm(s) { return String(s || '').toLowerCase().replace(/[\s​]+/g, '').replace(/[()[\]{}/,._+*'"|·–—\-]/g, ''); }
 function lcs(a, b) { let best = 0; for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) { let k = 0; while (i + k < a.length && j + k < b.length && a[i + k] === b[j + k]) k++; if (k > best) best = k; } return best; }
-function priceText(p) { return p.priceMin && p.priceMax && p.priceMax > p.priceMin ? ('฿' + p.priceMin.toLocaleString() + ' – ' + p.priceMax.toLocaleString()) : p.priceMin ? ('เริ่ม ฿' + p.priceMin.toLocaleString()) : 'ดูราคาบนเว็บ'; }
+// 🏷 20 ต.ค. 69 เจ้าของร้าน: "฿78 – 1,000" ไม่มีหน่วย + ปนหน่วย (แผ่น A3/ตร.ม.) → "เริ่ม ฿78 / แผ่น A3" (priceUnit จากเว็บ · สูตรเดียวกับ lib/server/product-card.ts)
+function priceText(p) { if (!p.priceMin) return 'ดูราคาบนเว็บ'; const u = String(p.priceUnit || '').trim(); return (p.priceMax > p.priceMin ? 'เริ่ม ' : '') + '฿' + Number(p.priceMin).toLocaleString() + (u ? ' / ' + u : ''); }
 
 function linesToRows(answer) {
   const rows = [];

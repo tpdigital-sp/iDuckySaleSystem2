@@ -62,7 +62,9 @@ type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settin
 /** คีย์ entry ในห้อง — log มี id เสมอ · messages (ห้องเก่า) ไม่มี ใช้ role+เวลา */
 const entryKey = (e: LogEntry) => e.id ?? `${e.role}|${e.at}`;
 type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
-type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
+type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number; priceUnit?: string };
+/** "เริ่ม ฿78 / แผ่น A3" — สูตรเดียวกับการ์ดที่ส่งให้ลูกค้า (lib/server/product-card.ts priceText) */
+const cardPrice = (it: CatalogItem): string | undefined => (it.priceMin ? `${it.priceMax && it.priceMax > it.priceMin ? "เริ่ม " : ""}฿${it.priceMin.toLocaleString()}${it.priceUnit ? ` / ${it.priceUnit}` : ""}` : undefined);
 type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry; pausedUntil?: string | null; warn?: string };
 type Scope = "waiting" | "all" | "unread" | "draft" | "botdraft" | "new" | "old";
 
@@ -658,7 +660,7 @@ function Chats() {
         if (!mm) continue;
         for (const nm of mm[1].split(/\s*,\s*/)) {
           const it = catalog.find((c) => c.name === nm.trim());
-          if (it && !out.some((o) => o.url === it.url)) out.push({ name: it.name, url: it.url, image: it.image, price: it.priceMin && it.priceMax && it.priceMax > it.priceMin ? `฿${it.priceMin.toLocaleString()} – ${it.priceMax.toLocaleString()}` : it.priceMin ? `เริ่ม ฿${it.priceMin.toLocaleString()}` : undefined });
+          if (it && !out.some((o) => o.url === it.url)) out.push({ name: it.name, url: it.url, image: it.image, price: cardPrice(it) });
         }
       }
       return out.slice(0, 6);
@@ -2321,7 +2323,7 @@ function Composer({
         text: t,
         emojis: lineEmojis.length ? realignEmojis(t, lineEmojis) : undefined,
         imageUrl: image?.url ?? "",
-        card: card ? { name: card.name, url: card.url, image: card.image, priceMin: card.priceMin, priceMax: card.priceMax } : undefined,
+        card: card ? { name: card.name, url: card.url, image: card.image, priceMin: card.priceMin, priceMax: card.priceMax, priceUnit: card.priceUnit } : undefined,
         file: fileAtt ?? undefined,
       });
       setText("");
@@ -2401,7 +2403,7 @@ function Composer({
                   ) : null}
                   <span className="min-w-0 flex-1 truncate font-semibold">{p.name}</span>
                   <span className="shrink-0 text-[12px]" style={{ color: "#A05A00" }}>
-                    {p.priceMin && p.priceMax && p.priceMax > p.priceMin ? `฿${p.priceMin.toLocaleString()}–${p.priceMax.toLocaleString()}` : p.priceMin ? `เริ่ม ฿${p.priceMin.toLocaleString()}` : ""}
+                    {cardPrice(p) ?? ""}
                   </span>
                 </button>
               ))
