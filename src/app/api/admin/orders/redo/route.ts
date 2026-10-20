@@ -8,6 +8,7 @@ import { insertOrder, updateOrder } from "@/lib/server/order-write";
 import { reportPaidToTP } from "@/lib/server/tp-report";
 import { findOpenClaimByOrder, insertClaim, loadClaim, newClaimId, notifyClaimOpened, saveClaim, withSignedPhotos } from "@/lib/server/claims-db";
 import { claimTypeFromReason, type Claim } from "@/lib/claims";
+import { fetchLineProfile, lineTargetOf } from "@/lib/server/notify";
 
 export const runtime = "nodejs";
 
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const id = `OD-${bkkYmd(now)}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const line = await lineOfSource(sb, src);
 
   let order: Order = {
     id,
@@ -118,13 +120,15 @@ export async function POST(req: Request) {
     ...(mode === "claim" ? { claimOf: fromId, claimReason: reason } : { reorderOf: fromId }),
     ...(src.email ? { email: src.email } : {}),
     ...(src.customerId ? { customerId: src.customerId } : {}),
+    ...line,
   };
 
   order = withLog(
     order,
     by,
     mode === "claim" ? "สร้างงานเคลม (ไม่คิดเงิน)" : "สั่งซ้ำจากออเดอร์เดิม",
-    `จาก ${fromId} · ${items.length} รายการ${mode === "claim" ? ` · เหตุผล: ${reason}` : ""}`
+    `จาก ${fromId} · ${items.length} รายการ${mode === "claim" ? ` · เหตุผล: ${reason}` : ""}` +
+      (line.lineUserId ? ` · ผูก LINE ตามใบเดิม${line.lineProfile?.name ? ` (${line.lineProfile.name})` : ""}` : "")
   );
 
   const { error: insErr } = await insertOrder(sb, order, by);
@@ -220,6 +224,35 @@ export async function POST(req: Request) {
     ...(claim ? { claimId: claim.id, claimCreated, claim: await withSignedPhotos(sb, claim) } : {}),
     ...(claimWarn ? { claimWarn } : {}),
   });
+}
+
+/**
+ * 💬 การผูก LINE ของใบต้นทาง → ติดไปกับใบใหม่ (เจ้าของร้านเทส 20 ต.ค. 69 "สร้างซ้ำ ไม่มีการผูกไลน์" · OD-261020-9414 จาก 5267)
+ * เดิมไม่ก๊อป ปล่อยให้ใบใหม่ "จำจากใบเก่า" เอง (lineTargetOf/lineUserOf) แต่การจำต้องจับคู่ด้วย customerId/เบอร์/อีเมล
+ * → ใบที่แอดมินสร้างไม่มีเบอร์ (5267) จับคู่ไม่ได้เลย · ใบเดิมเก่ากว่า 400 ใบล่าสุด เซิร์ฟเวอร์ก็หาไม่เจอ (แจ้งเตือนไม่ออก)
+ * สั่งซ้ำ/เคลม = ลูกค้าคนเดียวกันแน่นอน จึงก๊อปตรง ๆ ได้ · ใบต้นทางเองไม่ได้ผูกแต่จำจากใบเก่าได้ → ผูกคนนั้นให้ (ดึงชื่อ/รูปยืนยัน)
+ * ไม่เอา LINE ของบัญชีล็อกอิน (via login) — ใบใหม่ได้ customerId ไปแล้ว ระบบหาเองตอนส่ง และอาจเป็นคนสั่งแทน
+ */
+async function lineOfSource(sb: NonNullable<ReturnType<typeof getSupabaseAdmin>>, src: Order): Promise<Partial<Order>> {
+  const out: Partial<Order> = {};
+  if (src.lineChatUrl) out.lineChatUrl = src.lineChatUrl;
+  if (src.notifyLevel) out.notifyLevel = src.notifyLevel;
+  if (src.lineUserId) {
+    out.lineUserId = src.lineUserId;
+    if (src.lineProfile) out.lineProfile = src.lineProfile;
+    return out;
+  }
+  try {
+    const t = await lineTargetOf(sb, src);
+    if (t && t.via !== "login") {
+      out.lineUserId = t.id;
+      const p = await fetchLineProfile(t.id);
+      if (p) out.lineProfile = { name: p.name, ...(p.picture ? { picture: p.picture } : {}), at: new Date().toISOString() };
+    }
+  } catch {
+    /* หาไม่เจอ = ใบใหม่ไม่ผูก แอดมินผูกเองได้เหมือนเดิม */
+  }
+  return out;
 }
 
 /**
