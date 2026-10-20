@@ -206,6 +206,8 @@ export default function ScanTrackingPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [demo, setDemo] = useState(false);
+  /** ดึงออเดอร์ไม่สำเร็จ (เน็ตหลุด/เซิร์ฟเวอร์ช้า) — ห้ามตกไปโหมดตัวอย่าง ไม่งั้นงานที่ทำต่อไม่ถูกบันทึก · โพลลองใหม่ให้เอง */
+  const [loadErr, setLoadErr] = useState("");
   const [tab, setTab] = useState<Tab>("scan");
   const [target, setTarget] = useState<Order | null>(null); // ออเดอร์ที่รอเลขพัสดุ
   const [value, setValue] = useState("");
@@ -278,10 +280,13 @@ export default function ScanTrackingPage() {
 
   const load = useCallback(async () => {
     const r = await fetchOrdersAdmin();
-    if (r.orders.length > 0) {
+    if (!r.ok) setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
+    else if (r.orders.length > 0) {
       setOrders(r.orders);
       setDemo(false);
+      setLoadErr("");
     } else {
+      // ตอบสำเร็จแต่ไม่มีออเดอร์เลย = ยังไม่ต่อฐานข้อมูลจริง → ชุดตัวอย่าง
       setOrders(MOCK_ORDERS);
       setDemo(true);
     }
@@ -316,6 +321,8 @@ export default function ScanTrackingPage() {
   const refresh = useCallback(async () => {
     if (busy || target || savingArrival) return; // กำลังยิง/กำลังบันทึกของอยู่ อย่าทับ
     const r = await fetchOrdersAdmin();
+    if (!r.ok) return setLoadErr(r.error ?? "ดึงออเดอร์ไม่ได้");
+    setLoadErr("");
     if (r.orders.length === 0) return;
     setOrders((cur) => (JSON.stringify(cur) === JSON.stringify(r.orders) ? cur : r.orders));
     if (r.orders.some((o) => packMissingOf(o).length > 0)) void loadTpReplies(); // มีใบรอของ → ถามฝ่ายผลิตด้วย
@@ -643,7 +650,13 @@ export default function ScanTrackingPage() {
         group="งานขาย"
         title="สถานีแพ็ค–ส่ง"
         sub="ปริ้นใบงาน → แพ็ค+ตรวจ → ยิงเลขพัสดุ"
-        live={demo ? { ok: false, text: "โหมดตัวอย่าง — การบันทึกจะไม่ถูกเก็บถาวร" } : { ok: true, text: "ออเดอร์จริง" }}
+        live={
+          demo
+            ? { ok: false, text: "โหมดตัวอย่าง — การบันทึกจะไม่ถูกเก็บถาวร" }
+            : loadErr
+              ? { ok: false, text: `ดึงออเดอร์ไม่ได้ — กำลังลองใหม่ (${loadErr})` }
+              : { ok: true, text: "ออเดอร์จริง" }
+        }
         tools={<Btn href="/admin/orders">คำสั่งซื้อทั้งหมด</Btn>}
       />
 
