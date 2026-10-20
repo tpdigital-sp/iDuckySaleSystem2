@@ -81,7 +81,9 @@ export const DEFAULT_BOX_FEES: BoxFee[] = [
     name: "ค่ากล่องกันกระแทก",
     note: "งานโปสเตอร์/ขนาด A3 ส่งในกล่องแข็ง กันหักกันยับระหว่างทาง",
     amount: 30,
-    productIds: ["poster-a3", "uv-2"],
+    productIds: ["poster-a3"],
+    // โปสเตอร์แขวนผนัง (แคนวาส) ไม่ใช้กล่อง — เจ้าของร้านสั่ง 7 ก.ย. 69 · ไอดีจริงในฐาน = uv-2 (ไม่ใช่ wall-poster-hang ของแคตตาล็อกตัวอย่าง)
+    excludeIds: ["uv-2"],
     optionGroups: ["ขนาด", "ขนาดกระดาษ", "แนวกระดาษ", "ขนาดงาน"],
     keywords: ["A3"],
     active: true,

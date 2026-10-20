@@ -2243,6 +2243,45 @@ function AdminSettingsPageInner() {
                         />
                       </div>
 
+                      {/* สินค้าที่ไม่คิดค่ากล่อง — เดิมไม่มีช่องนี้ ไอดีผิดเลยค้างอยู่โดยไม่มีใครเห็น
+                          (โปสเตอร์แขวนผนังใส่ไอดี wall-poster-hang ที่ไม่มีในฐาน ค่ากล่องเลยยังบวก · 20 ต.ค. 69) */}
+                      <div className="mt-5">
+                        <span className="mb-2 block text-xs font-semibold text-slate-700">
+                          ไม่คิดค่ากล่อง <span className="font-normal text-slate-400">(แม้ลูกค้าเลือกขนาด A3 หรือเข้าเงื่อนไขข้ออื่น)</span>
+                        </span>
+                        {(f.excludeIds ?? []).length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {(f.excludeIds ?? []).map((id) => {
+                              const p = prodList.find((x) => x.id === id);
+                              const missing = !p && prodList.length > 0;
+                              return (
+                                <span
+                                  key={id}
+                                  className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${
+                                    missing ? "bg-rose-50 text-rose-700 ring-rose-200" : "bg-slate-100 text-slate-700 ring-slate-200"
+                                  }`}
+                                >
+                                  {p ? p.name : missing ? `⚠️ ไม่พบสินค้า (${id})` : id}
+                                  <button
+                                    type="button"
+                                    onClick={() => patchBox(i, { excludeIds: (f.excludeIds ?? []).filter((x) => x !== id) })}
+                                    className="text-slate-400 hover:text-rose-500"
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <ProductPicker
+                          list={prodList}
+                          exclude={f.excludeIds ?? []}
+                          onPick={(id) => patchBox(i, { excludeIds: [...(f.excludeIds ?? []), id] })}
+                          inputCls={inputCls}
+                        />
+                      </div>
+
                       {/* เงื่อนไขจากตัวเลือกที่ลูกค้าเลือก (เช่น ขนาด = A3) */}
                       <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <label className="block">
