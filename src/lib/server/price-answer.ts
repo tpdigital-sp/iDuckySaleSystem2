@@ -795,6 +795,44 @@ let understandCaller: ((model: string, prompt: string) => Promise<string>) | nul
 export function setUnderstandCallerForEval(fn: ((model: string, prompt: string) => Promise<string>) | null): void {
   understandCaller = fn;
 }
+/**
+ * 🏁 20 ต.ค. 69 (บอทร่างช้า): Gemini 3.8 Flash ปกติตอบ 2.6–3.9 วิ แต่บางครั้งค้างถึง 7–9 วิ (ai-usage 10:24:47 TimeoutError 9,004 ms → ถอยไป Claude อีก 3.2 วิ)
+ * รวมเกิน timeout 9 วิของ n8n → ตกไป ChatBot agent จนร่างใช้ 37 วิ
+ * → ยังไม่ตอบใน HEDGE_AFTER_MS = ยิงคำขอเดิมซ้ำอีกตัว (พรอมป์ต์/โมเดลเดียวกัน) ใช้ตัวที่ตอบสำเร็จก่อน · ตัวที่สองหมดเวลาพร้อมตัวแรก
+ *   ล้มเร็วก่อนถึงเวลายิงซ้ำ = โยนให้ถอยไปโมเดลสำรองทันทีเหมือนเดิม · เสียค่าเพิ่มเฉพาะรอบที่ช้าเกิน
+ */
+const HEDGE_AFTER_MS = 4_000;
+function hedged<T>(fn: (timeoutMs: number) => Promise<T>, timeoutMs: number, afterMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let running = 0;
+    let lastErr: unknown;
+    const t0 = Date.now();
+    const launch = (ms: number) => {
+      running++;
+      fn(ms).then(
+        (v) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(v);
+        },
+        (e) => {
+          lastErr = e;
+          if (--running > 0 || settled) return;
+          // ตัวแรกล้มก่อนถึงเวลายิงซ้ำ หรือทุกตัวล้มแล้ว → ให้ผู้เรียกถอยไปโมเดลสำรอง
+          settled = true;
+          clearTimeout(timer);
+          reject(lastErr);
+        },
+      );
+    };
+    const timer = setTimeout(() => {
+      if (!settled) launch(Math.max(1_000, timeoutMs - (Date.now() - t0)));
+    }, afterMs);
+    launch(timeoutMs);
+  });
+}
 async function callUnderstandModel(apiKey: string, prompt: string, override?: string): Promise<string> {
   const primary = (override || modelFor("price_understand")).trim();
   if (understandCaller) return understandCaller(primary, prompt);
@@ -802,7 +840,7 @@ async function callUnderstandModel(apiKey: string, prompt: string, override?: st
   //   ชื่อขึ้นต้น claude- = เรียก Claude (callClaudeText) · นอกนั้น = Gemini
   const run = (model: string, timeoutMs: number) => (/^claude-/.test(model) ? claudeJson(model, prompt, timeoutMs) : geminiJson(apiKey, model, prompt, timeoutMs));
   try {
-    return await run(primary, 9_000);
+    return await hedged((timeoutMs) => run(primary, timeoutMs), 9_000, HEDGE_AFTER_MS);
   } catch (e) {
     if (primary === UNDERSTAND_MODEL_FALLBACK) return "";
     console.warn(`[understand] ${primary} ล้มเหลว → ใช้ ${UNDERSTAND_MODEL_FALLBACK}:`, e instanceof Error ? e.message : e);
