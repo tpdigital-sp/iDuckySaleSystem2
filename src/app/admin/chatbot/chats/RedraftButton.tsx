@@ -10,7 +10,8 @@ import { botApi } from "../bot-ui";
  * แถบเหนือช่องพิมพ์ — ขึ้นเมื่อห้องเปิดร่าง (รายคน/ทั้งร้าน) และข้อความท้ายสุดเป็นของลูกค้า (ยังไม่มีร่าง/คำตอบตามหลัง)
  */
 /** onRejected = เซิร์ฟเวอร์ไม่รับ (เช่น 409 มีร่างรอส่งอยู่แล้วแต่หน้าจอยังไม่เห็น) → ให้หน้าแชทดึงห้องใหม่ทันที (20 ต.ค. 69) */
-export default function RedraftButton({ id, toast, startedAt, lastUserAt, onRejected }: { id: string; toast: (t: string, bad?: boolean) => void; startedAt?: number; lastUserAt?: string; onRejected?: () => void }) {
+/** onStarted = สั่งบอทสำเร็จ → หน้าแชทโพลถี่ทุก 1 วิ จนร่างมา */
+export default function RedraftButton({ id, toast, startedAt, lastUserAt, onRejected, onStarted }: { id: string; toast: (t: string, bad?: boolean) => void; startedAt?: number; lastUserAt?: string; onRejected?: () => void; onStarted?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [waitUntil, setWaitUntil] = useState(0);
   /*
@@ -41,6 +42,7 @@ export default function RedraftButton({ id, toast, startedAt, lastUserAt, onReje
     try {
       const d = await botApi<{ ok: boolean; saved?: string }>("/api/admin/chatbot/chats/draft", { action: "redraft", id }, { timeoutMs: 45_000 });
       toast(d.saved || "ส่งให้บอทร่างแล้ว");
+      onStarted?.();
       setWaitUntil(Date.now() + 45_000);
       setTimeout(() => setWaitUntil(0), 45_000);
     } catch (e) {

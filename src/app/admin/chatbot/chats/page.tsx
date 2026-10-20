@@ -205,6 +205,8 @@ function Chats() {
   /** 🚦 คำขอโพลที่ยังวิ่งอยู่ (ห้อง / รายชื่อ) — มีอยู่ = รอบถัดไปข้าม ไม่ยิงซ้อน */
   const roomPollRef = useRef<object | null>(null);
   const listPollRef = useRef<object | null>(null);
+  /** ห้องที่เพิ่งสั่งบอทร่าง (สำเนาของ redraftAt ให้ตัวจับเวลาโพลอ่าน) */
+  const redraftAtRef = useRef<Record<string, number>>({});
   const detailRef = useRef<DetailRes | null>(null);
   useEffect(() => {
     detailRef.current = detail;
@@ -512,15 +514,25 @@ function Chats() {
     },
     [openRoom, pollRoom],
   );
-  // ห้องที่เปิดอยู่: ข้อความใหม่ทุก 3 วิ · ทุกรอบที่ 10 (30 วิ) โหลดเต็มกันพลาด · แท็บซ่อน = ไม่โพล · รอบก่อนยังไม่จบ = ข้ามรอบนี้
+  // ห้องที่เปิดอยู่: ข้อความใหม่ทุก 3 วิ · ทุก 30 วิ โหลดเต็มกันพลาด · แท็บซ่อน = ไม่โพล · รอบก่อนยังไม่จบ = ข้ามรอบนี้
+  // ⚡ 20 ต.ค. 69 เจ้าของร้าน "ยังคงร่างช้าเหมือนเดิม": เพิ่งกด ↻/🤖 (≤60 วิ) และร่างใหม่ยังไม่มา = ถามทุก 1 วิ ร่างโผล่ทันทีที่บอทเขียนเสร็จ (เดิมช้ากว่าได้ถึง 3 วิ)
   useEffect(() => {
     if (!sel) return;
     roomPollRef.current = null; // ห้องใหม่ — คำขอของห้องเดิมที่ยังค้างไม่กันห้องนี้ (ผลของห้องเดิมถูกทิ้งที่ prev.id !== d.id)
-    let n = 0;
+    let last = Date.now();
+    let lastFull = last;
     const t = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      if (refreshRoom(sel, (n + 1) % 10 === 0)) n += 1;
-    }, 3_000);
+      const now = Date.now();
+      const rAt = redraftAtRef.current[sel] ?? 0;
+      const cur = detailRef.current;
+      const waiting = now - rAt < 60_000 && !(cur?.id === sel && cur.log.some((e) => e.role === "draft" && e.status === "pending" && Date.parse(e.at) > rAt));
+      if (now - last < (waiting ? 1_000 : 3_000) - 100) return;
+      const full = now - lastFull >= 30_000;
+      if (!refreshRoom(sel, full)) return;
+      last = now;
+      if (full) lastFull = now;
+    }, 1_000);
     return () => clearInterval(t);
   }, [sel, refreshRoom]);
   // กลับมาที่แท็บ/หน้าต่าง (เช่น สลับจาก OA Manager มาตอบ) = ดึงรายชื่อ+ห้องทันที ไม่รอรอบ
@@ -654,13 +666,18 @@ function Chats() {
   const regenDraft = useCallback(
     async (m: LogEntry) => {
       if (!sel || !m.id) return;
+      // ⚡ 20 ต.ค. 69 ขึ้น "⏳ กำลังร่างใหม่…" ทันทีที่กด (เดิมรอเซิร์ฟเวอร์ทิ้งร่าง+ยิงบอทเสร็จ ~3 วิ ค่อยขึ้น) + เริ่มโพลถี่ทุก 1 วิ
+      const started = Date.now();
+      afterDraft(m.id, null);
+      setRedraftAt((x) => ({ ...x, [sel]: started }));
+      const undo = () => setRedraftAt((x) => (x[sel] === started ? { ...x, [sel]: 0 } : x));
       try {
         const d = await botApi<{ ok: boolean; saved?: string; redraft?: boolean }>("/api/admin/chatbot/chats/draft", { action: "regen", id: sel, logId: m.id }, { timeoutMs: ACTION_TIMEOUT });
-        afterDraft(m.id, null);
-        if (d.redraft) setRedraftAt((x) => ({ ...x, [sel]: Date.now() }));
+        if (!d.redraft) undo();
         toast(d.saved || "ส่งให้บอทร่างใหม่แล้ว", !d.redraft);
       } catch (e) {
-        // ถูกปฏิเสธ (ร่างนี้ส่ง/ทิ้งไปแล้ว · มีร่างใหม่กว่า) = หน้าจอเก่ากว่าเซิร์ฟเวอร์ → บอกเหตุผล + ดึงห้องใหม่ทันที
+        // ถูกปฏิเสธ (ร่างนี้ส่ง/ทิ้งไปแล้ว · มีร่างใหม่กว่า) = หน้าจอเก่ากว่าเซิร์ฟเวอร์ → บอกเหตุผล + ดึงห้องใหม่ทันที (ร่างเดิมกลับมาถ้ายังไม่ถูกทิ้ง)
+        undo();
         toast(e instanceof Error ? e.message : String(e), true);
         refreshRoom(sel, true);
       }
@@ -734,6 +751,9 @@ function Chats() {
 
   /** 🤖 ห้องที่เพิ่งสั่งบอทร่าง (เปิดสวิตช์แล้วร่างเอง) — id → เวลา */
   const [redraftAt, setRedraftAt] = useState<Record<string, number>>({});
+  useEffect(() => {
+    redraftAtRef.current = redraftAt;
+  }, [redraftAt]);
   // ⏳ ป้าย "กำลังร่างใหม่…" หมดเวลา 60 วิ → วาดใหม่ตอนครบเวลา (ไม่พึ่งรอบโพลให้ป้ายหาย)
   const [, setRedraftTick] = useState(0);
   const selRedraftAt = sel ? (redraftAt[sel] ?? 0) : 0;
@@ -1542,7 +1562,7 @@ function Chats() {
             {(() => {
               const lastReal = [...thread].reverse().find((x) => !(x.role === "draft" && x.status !== "pending"));
               return canReply && detail && (detail.botDraft || settings?.mode === "draft") && lastReal?.role === "user" ? (
-                <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={lastReal.at} onRejected={() => refreshRoom(detail.id, true)} />
+                <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={lastReal.at} onRejected={() => refreshRoom(detail.id, true)} onStarted={() => setRedraftAt((x) => ({ ...x, [detail.id]: Date.now() }))} />
               ) : null;
             })()}
             {canReply ? (
