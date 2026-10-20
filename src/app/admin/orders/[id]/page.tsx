@@ -3540,8 +3540,11 @@ export default function AdminOrderDetailPage() {
     if (!order) return;
     const t = tracking.trim();
     if (!t) return;
+    // 🏪 ใบมารับเอง: รอบนี้ไม่มีเลขพัสดุ (โมดัลส่ง pickupRoundRef มาแทน) — ติดธง pickup ให้ทุกจอรู้ว่าไม่ต้องเช็คสถานะ ปณ.
+    const pickupRound = isPickupOrder(order);
     // 🚫 ชั้นสุดท้ายฝั่งจอ (โมดัลกันไว้แล้ว) — ห้ามลิงก์/เลขออเดอร์หลุดไปเป็นเลขพัสดุรอบนี้
-    const bad = trackingScanProblem(t);
+    // ข้ามรอบมารับเอง: "มารับเอง รอบที่ N" ไม่ใช่เลข ปณ. — เดิมตกด่าน 13 หลัก TH แล้ว return เงียบ กดแพ็คเสร็จบางส่วนไม่ไป (OD-261007-2540 20 ต.ค. 69 · API ยกเว้น s.pickup อยู่แล้ว)
+    const bad = pickupRound ? null : trackingScanProblem(t);
     if (bad) {
       setErr(bad);
       return;
@@ -3567,8 +3570,6 @@ export default function AdminOrderDetailPage() {
     });
     if (!proofs.length) return;
     const round = (order.shipments?.length ?? 0) + 1;
-    // 🏪 ใบมารับเอง: รอบนี้ไม่มีเลขพัสดุ (โมดัลส่ง pickupRoundRef มาแทน) — ติดธง pickup ให้ทุกจอรู้ว่าไม่ต้องเช็คสถานะ ปณ.
-    const pickupRound = isPickupOrder(order);
     // 📍 รอบตามแผนที่ระบุ "ส่งไปที่อยู่อื่น" → แช่ลงรอบที่ส่ง (ประวัติ/หน้าลูกค้ารู้ว่าเลขนี้ไปที่ไหน) · ใบมารับเองไม่มีที่อยู่
     const pn = nextPlannedRound(order);
     const shipTo = !pickupRound && pn && pn.index === (order.shipments?.length ?? 0) && pn.round.shipTo?.address?.trim() ? pn.round.shipTo : undefined;
