@@ -129,6 +129,11 @@ export function lotRepriceNote(changed: LotRepriceLine[]): string {
  * - ขึ้นเท่าส่วนต่างของตาราง แต่ไม่เกินราคาตารางหลังหด: ราคาพิเศษที่แอดมินตีต่ำกว่าตาราง ส่วนลดยังอยู่
  * - บรรทัดที่แอดมินตีราคาเอง (quoteNote) · ค่าบริการ # · งานพิเศษ ไม่แตะ · ใบเคลม/ใบ FlowAccount ไม่แตะ
  *
+ * ⇅ ขาลงด้วย (OD-261020-2478 · 20 ต.ค. 69 "ราคายังไม่เสถียร"): แอดมินแก้จำนวนบรรทัดหนึ่งจาก 5 → 65 รวมล็อต 85 ใบ = ฿105
+ * แต่อีกบรรทัด 20 ใบค้าง ฿120 (ราคาตอนล็อตยังเล็ก) — แก้จำนวนคิดราคาให้แค่บรรทัดที่แก้ · ตัวนี้เดิมขึ้นอย่างเดียว
+ * → ล็อตโตจนตารางถูกลง = ลดบรรทัดอื่นเท่าส่วนต่างตาราง แต่ไม่ต่ำกว่าราคาตารางหลังเปลี่ยน (เหมือน repriceOrderLot)
+ *   บรรทัดที่ราคาต่ำกว่าตารางอยู่แล้ว (ราคาพิเศษ) ไม่ลดซ้ำ
+ *
  * @param prev รายการก่อนหด
  * @param next รายการหลังหด (ผลจริงที่จะบันทึก)
  * @param prevIndex บรรทัดที่ j ของ next คือบรรทัดไหนของ prev (-1 = บรรทัดใหม่ ไม่มีฐานเทียบ = ไม่แตะ)
@@ -154,10 +159,13 @@ export function relotAfterShrink(
     if (skipSet.has(j) || it.quoteNote || !productOf(it.productId)) return;
     const pi = prevIndex[j] ?? -1;
     const b = pi >= 0 ? before.get(pi) : undefined;
-    // ราคาตารางหาไม่เจอ (สเปคเก่า/สินค้าถูกลบ) หรือไม่ได้แพงขึ้นเพราะล็อตหด → คงเดิม
-    if (!(a > 0) || b === undefined || !(b > 0) || a <= b) return;
-    const to = Math.round(Math.min(a, it.unitPrice + (a - b)));
-    if (to <= it.unitPrice) return;
+    // ราคาตารางหาไม่เจอ (สเปคเก่า/สินค้าถูกลบ) หรือขั้นตารางไม่ได้ขยับเพราะล็อตเปลี่ยน → คงเดิม
+    if (!(a > 0) || b === undefined || !(b > 0) || a === b) return;
+    const to =
+      a > b
+        ? Math.round(Math.max(it.unitPrice, Math.min(a, it.unitPrice + (a - b)))) // ล็อตหด: ขึ้นได้ไม่เกินตาราง
+        : Math.round(Math.min(it.unitPrice, Math.max(a, it.unitPrice + (a - b)))); // ล็อตโต: ลดได้ไม่ต่ำกว่าตาราง
+    if (to === it.unitPrice) return;
     items[j] = { ...it, unitPrice: to };
     changed.push({ name: it.name, from: it.unitPrice, to, qty: it.qty });
   });

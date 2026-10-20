@@ -1945,7 +1945,7 @@ export default function AdminOrderDetailPage() {
       `${r.old.name} ×${r.old.qty} @${formatPrice(r.old.unitPrice)} → ${r.fresh.name} ×${r.fresh.qty} @${formatPrice(r.fresh.unitPrice)} (แทนที่รายการเดิม)`
     );
     if (relot.changed.length)
-      next = withLog(next, "ระบบ", "ปรับราคาต่อชิ้นตามล็อตที่เหลือ", `ยอดรวมทั้งใบลดลงจนไม่ถึงขั้นเดิม · ${lotRepriceNote(relot.changed)}`);
+      next = withLog(next, "ระบบ", "ปรับราคาต่อชิ้นตามล็อตรวม", `ยอดรวมทั้งใบเปลี่ยนขั้นราคา · ${lotRepriceNote(relot.changed)}`);
     applyOrder(next);
     setTimeout(() => {
       replaceBusy.current = false;
@@ -4421,7 +4421,7 @@ export default function AdminOrderDetailPage() {
     const r = orderItemQtyChange(order.items, itemIndex, nextQty, productOfItem);
     if (!r) return;
     const changedItems = order.items.map((x, i) => (i === itemIndex ? { ...x, ...r.patch } : x));
-    // 🧮↩ ลดจำนวนจนล็อตหด → บรรทัดอื่นที่เคยได้ขั้นถูกเพราะจำนวนเดิม คืนราคาขั้นที่ล็อตเหลือจริง (บรรทัดที่แก้คิดราคาให้แล้ว)
+    // 🧮⇅ แก้จำนวนจนขั้นราคาทั้งล็อตขยับ → บรรทัดอื่นขึ้น/ลงตาม ให้เท่ากันทั้งบิล (OD-260910-5776 · OD-261020-2478 · บรรทัดที่แก้คิดราคาให้แล้ว)
     const relot = relotAfterShrink(order, order.items, changedItems, changedItems.map((_, i) => i), productOfItem, [itemIndex]);
     const items = relot.items;
     const newQty = r.patch.qty ?? it.qty;
@@ -4432,7 +4432,7 @@ export default function AdminOrderDetailPage() {
       r.rateChanged ? `เรท ${r.rateChanged.from} → ${r.rateChanged.to}` : "",
       r.designCapped ? `โควตาลายเหลือ ${r.designCapped} ลาย` : "",
       unit > 0 ? `= ${formatPrice(unit * newQty)}` : "",
-      relot.changed.length ? `ล็อตไม่ถึงขั้นเดิม ปรับรายการอื่น: ${lotRepriceNote(relot.changed)}` : "",
+      relot.changed.length ? `ปรับราคารายการอื่นตามล็อตรวม: ${lotRepriceNote(relot.changed)}` : "",
     ].filter(Boolean);
     applyOrder(withLog({ ...order, items }, actor, "แก้จำนวน", `${it.name}: ${notes.join(" · ")}`));
   }

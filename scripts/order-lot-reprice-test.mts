@@ -259,5 +259,30 @@ const dropAt = (items: OrderItem[], k: number) => {
   eq("แทนที่รายการ: 10+25 = 35 ใบ ขั้น 30-49 ฿110 ทั้งบิล", units({ items: r.items } as Order), [110, 110]);
 }
 
+{
+  // ⇅ ขาลง (OD-261020-2478): 5 ใบ ฿120 + 20 ใบ ฿120 → แก้บรรทัดแรก 5 → 65 (คิดราคาให้แล้ว ฿105) รวม 85 → บรรทัด 20 ใบต้องลงเป็น ฿105
+  const items = [bline(5, 120), bline(20, 120)];
+  const next = [bline(65, 105), bline(20, 120)];
+  const r = relotAfterShrink(mk(items), items, next, [0, 1], bagOf, [0]);
+  eq("ล็อตโตจากการแก้จำนวน → บรรทัดอื่นลดตาม ฿105 ทั้งบิล", units({ items: r.items } as Order), [105, 105]);
+  eq("รายงานบรรทัดที่ลด", r.changed, [{ name: "ถุงผ้าหูรูด", from: 120, to: 105, qty: 20 }]);
+}
+{
+  // ล็อตโต แต่บรรทัดอื่นราคาพิเศษ ฿100 ต่ำกว่าตารางใหม่อยู่แล้ว → ไม่ลดซ้ำ
+  const items = [bline(5, 120), bline(20, 100)];
+  const next = [bline(65, 105), bline(20, 100)];
+  eq("ราคาพิเศษต่ำกว่าตารางใหม่ ไม่ลดซ้ำ", relotAfterShrink(mk(items), items, next, [0, 1], bagOf, [0]).changed.length, 0);
+}
+{
+  // แก้จำนวนกลับไปกลับมา: 65+20 (฿105) → 5+20 → 65+20 ต้องกลับมาเท่ากันทั้งบิลทุกรอบ
+  let items = [bline(65, 105), bline(20, 105)];
+  let next = [bline(5, 120), bline(20, 105)];
+  items = relotAfterShrink(mk(items), items, next, [0, 1], bagOf, [0]).items;
+  eq("ลดจำนวน → อีกบรรทัดขึ้น ฿120", units({ items } as Order), [120, 120]);
+  next = [bline(65, 105), items[1]];
+  items = relotAfterShrink(mk(items), items, next, [0, 1], bagOf, [0]).items;
+  eq("เพิ่มกลับ → อีกบรรทัดลง ฿105", units({ items } as Order), [105, 105]);
+}
+
 console.log(fails.length ? `❌ ไม่ผ่าน ${fails.length} ข้อ (ผ่าน ${pass})\n\n${fails.join("\n\n")}\n` : `✅ ผ่านทั้ง ${pass} ข้อ`);
 process.exit(fails.length ? 1 : 0);
