@@ -178,6 +178,8 @@ function Chats() {
     rowsRef.current = rows;
   }, [rows]);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const settingsRef = useRef<Settings | null>(null);
+  settingsRef.current = settings;
   const [scope, setScope] = useState<Scope>("all");
   // 🏷 กรองตามป้าย (เลือกได้ทีละป้าย · ใช้ร่วมกับชิปขอบเขตด้านบนได้) — จำนวนนับจากทั้งคลังฝั่งเซิร์ฟเวอร์
   const [tagFilter, setTagFilter] = useState("");
@@ -219,10 +221,34 @@ function Chats() {
   const load = useCallback(async () => {
     const my = ++loadSeq.current;
     setLoading(true);
+    const key = `${scope}|${q}|${tagFilter}`;
+    // ⚡ 20 ต.ค. 69 เจ้าของร้าน "reload หน้าใหม่ หน่วง ๆ": วาดรายชื่อชุดล่าสุดที่จำไว้ (sessionStorage · ปิดแท็บ = ลบ) ทันที ระหว่างรอของสด
+    //    ไม่จำผลค้นหา · อ่าน/เขียนพังได้ (โหมดส่วนตัว) = ข้าม
+    const cacheKey = `ln-chat-list:v1:${scope}|${tagFilter}`;
+    if (!q && listKeyRef.current !== key) {
+      try {
+        const c = JSON.parse(sessionStorage.getItem(cacheKey) ?? "null") as ListRes | null;
+        if (c && Array.isArray(c.rows) && c.rows.length) {
+          listKeyRef.current = key;
+          setRows(c.rows);
+          setNext(c.next ?? "");
+          setSettings(c.settings);
+          setWaitingCount(c.waitingCount);
+          setUnreadCount(c.unreadCount);
+          setDraftCount(c.draftCount ?? 0);
+          setBotDraftCount(c.botDraftCount ?? 0);
+          setTagCounts(c.tagCounts ?? {});
+        }
+      } catch {}
+    }
     try {
       const d = await botApi<ListRes>(`/api/admin/chatbot/chats?scope=${scope}&limit=80${q ? `&q=${encodeURIComponent(q)}` : ""}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ""}`);
       if (my !== loadSeq.current) return;
-      const key = `${scope}|${q}|${tagFilter}`;
+      if (!q) {
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(d));
+        } catch {}
+      }
       if (listKeyRef.current === key) {
         // รีเฟรชตัวกรองเดิม: หน้าแรกชุดใหม่นำ แล้วตามด้วยห้องที่เลื่อนมาแล้วซึ่งไม่อยู่ในหน้าแรก (ห้องที่เพิ่งทักจะขยับขึ้นหน้าแรกเอง) · cursor คงเดิม
         const ids = new Set(d.rows.map((r) => r.id));
@@ -367,12 +393,50 @@ function Chats() {
     void botApi("/api/admin/line-customers/manage", { action: "read", userId: id }).catch(() => {});
   }, [rows]);
 
+  /**
+   * ⚡ 20 ต.ค. 69 เจ้าของร้าน "กดเข้าแชทลูกค้า หน่วง ๆ 2-3 วิ" (API ข้ามทวีป ~0.5 วิ/คำขอ + อ่าน Firestore):
+   *   · ห้องที่เคยเปิด (roomCacheRef) = วาดทันที แล้วรีเฟรชเงียบ · เลื่อนเมาส์ผ่านแถว/แตะ = preload (prefetch=1 ไม่ซิงก์ OA) กดแล้วใช้ผลนั้น
+   *   · ห้องใหม่ที่ยังไม่มีข้อมูล = หัวห้องเป็นลูกค้าคนใหม่ทันทีจากแถวรายชื่อ (เดิมหัว+ข้อความเป็นห้องก่อนหน้าค้าง 2-3 วิ ระวังพิมพ์ผิดห้อง)
+   */
+  const roomCacheRef = useRef(new Map<string, { d: DetailRes; at: number }>());
+  const prefetchRef = useRef(new Map<string, Promise<DetailRes>>());
+  const prefetchRoom = useCallback((id: string) => {
+    const c = roomCacheRef.current.get(id);
+    if (prefetchRef.current.has(id) || (c && Date.now() - c.at < 20_000)) return;
+    const p = botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}&prefetch=1`).then((d) => {
+      roomCacheRef.current.set(id, { d, at: Date.now() });
+      return d;
+    });
+    prefetchRef.current.set(id, p);
+    void p.catch(() => {}).finally(() => prefetchRef.current.delete(id));
+  }, []);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverRoom = useCallback(
+    (id: string | null) => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+      hoverTimer.current = id ? setTimeout(() => prefetchRoom(id), 150) : null;
+    },
+    [prefetchRoom],
+  );
   const openRoom = useCallback(
-    async (id: string, quiet = false) => {
+    async (id: string, quietIn = false) => {
+      let quiet = quietIn;
       setSel(id);
-      if (!quiet) setDetailLoading(true);
+      if (!quiet) {
+        const c = roomCacheRef.current.get(id);
+        if (c) {
+          setDetail(c.d);
+          quiet = true;
+          // เพิ่ง preload/เปิดไม่ถึง 5 วิ = ใช้เลย ไม่ยิงซ้ำ
+          if (Date.now() - c.at < 5_000) return;
+        } else {
+          const row = rowsRef.current.find((r) => r.id === id);
+          setDetail((prev) => (prev && prev.id === id ? prev : row ? { ...row, log: [], messages: [], settings: settingsRef.current ?? { mode: "", newSince: "", enabled: false } } : null));
+          setDetailLoading(true);
+        }
+      }
       try {
-        const d = await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}`);
+        const d = await (prefetchRef.current.get(id) ?? botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}`));
         // 📜 20 ต.ค. 69 API ส่ง 200 ตัวล่าสุด (เดิม 1,000) · รีเฟรชเงียบทุก 30 วิ = แทนเฉพาะช่วงเวลาของหน้าต่างล่าสุด
         //    ข้อความเก่ากว่าที่แอดมินกด "โหลดข้อความก่อนหน้า" ไว้แล้วคงอยู่ (ในหน้าต่างใช้ของใหม่ทั้งชุด — ร่างที่ลบ/ส่งแล้วหายตามจริง)
         setDetail((prev) => {
@@ -400,7 +464,7 @@ function Chats() {
       const d = await botApi<DetailRes>(`/api/admin/chatbot/chats?id=${id}&after=${encodeURIComponent(newest)}`);
       setDetail((prev) => {
         if (!prev || prev.id !== d.id) return prev;
-        const { log: fresh, messages: _m, partial: _p, ...meta } = d;
+        const { log: fresh, messages: _m, partial: _p, hasMore: _h, older: _o, ...meta } = d; // โพล after= ตอบ hasMore:false เสมอ — ห้ามทับค่าของหน้าต่างที่โหลดไว้ (ปุ่มโหลดข้อความก่อนหน้าหายหลัง 3 วิ)
         if (!fresh.length) return { ...prev, ...meta };
         const map = new Map(prev.log.map((e) => [entryKey(e), e]));
         for (const e of fresh) map.set(entryKey(e), e);
@@ -438,6 +502,13 @@ function Chats() {
   }, [load, sel, openRoom]);
 
   const thread: LogEntry[] = useMemo(() => (detail ? (detail.log.length ? detail.log : detail.messages) : []), [detail]);
+  useEffect(() => {
+    if (!detail || !(detail.log.length || detail.messages.length)) return;
+    const m = roomCacheRef.current;
+    m.delete(detail.id);
+    m.set(detail.id, { d: detail, at: Date.now() });
+    if (m.size > 40) m.delete(m.keys().next().value as string);
+  }, [detail]);
   const threadKey = `${sel}:${thread.length}`;
   // 📜 โหลดข้อความก่อนหน้าทีละ 200 (before=<at ตัวเก่าสุด>) · keepScrollRef = ระยะจากก้นจอ ให้จอไม่กระโดดลงล่างหลังต่อหัว
   const keepScrollRef = useRef<number | null>(null);
@@ -971,6 +1042,9 @@ function Chats() {
                   key={r.id}
                   type="button"
                   onClick={() => void openRoom(r.id)}
+                  onPointerEnter={() => hoverRoom(r.id)}
+                  onPointerLeave={() => hoverRoom(null)}
+                  onTouchStart={() => prefetchRoom(r.id)}
                   aria-current={on ? "true" : undefined}
                   className="relative flex w-full items-start gap-3 border-b px-4 py-3 text-left transition hover:bg-[var(--ln-hover)] active:bg-[var(--ln-sel)]"
                   style={{ borderColor: "var(--ln-line)", background: on ? "var(--ln-sel)" : undefined }}
@@ -1254,7 +1328,7 @@ function Chats() {
                   </button>
                 </div>
               ) : null}
-              {detailLoading && !detail ? (
+              {detailLoading && !thread.length ? (
                 <p className="text-sm" style={{ color: "var(--dk-faint)" }}>
                   กำลังโหลด…
                 </p>

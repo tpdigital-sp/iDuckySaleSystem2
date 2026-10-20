@@ -26,14 +26,15 @@ export async function currentActor(): Promise<Actor | null> {
    * 👮 เทียบทะเบียนพนักงานสดทุกคำขอ (cache 60 วิ) — ถูกระงับ/พ้นสภาพ = เหมือนไม่ได้ล็อกอิน
    * และใช้ตำแหน่ง/แผนกล่าสุดจากฐานแทนค่าที่ฝังในคุกกี้ (เดิมมีผลต่อเมื่อล็อกอินใหม่ · ดู staff-status.ts)
    */
-  const live = await staffStatusOf(s.username);
+  // ⚡ 20 ต.ค. 69 หน้าแชทหน่วง 2-3 วิ: เดิมอ่านทะเบียนพนักงาน → สิทธิ์เพิ่มรายคน ต่อกัน (เย็น ~0.8 วิ ทุกครั้งที่แคชหมด) → อ่านพร้อมกัน
+  const [live, extraPerms] = await Promise.all([staffStatusOf(s.username), extraPermsOf(s.username)]);
   if (live && !live.active) return null;
   return {
     username: s.username,
     name: live?.name ?? s.name,
     role: live?.role || s.role,
     department: live ? live.department : s.department,
-    extraPerms: await extraPermsOf(s.username),
+    extraPerms,
   };
 }
 
@@ -49,12 +50,12 @@ export async function currentActor(): Promise<Actor | null> {
 export async function requirePerm(
   perm: Perm | Perm[]
 ): Promise<{ actor: Actor; res: null } | { actor: null; res: NextResponse }> {
-  const actor = await currentActor();
+  // สิทธิ์ตามตำแหน่ง (แคช 10 วิ) อ่านพร้อมกับตัวตนผู้ใช้ ไม่ต้องรอต่อคิว
+  const [actor, rolePerms] = await Promise.all([currentActor(), loadRolePerms()]);
   if (!actor) {
     return { actor: null, res: NextResponse.json({ error: "ต้องล็อกอินก่อน" }, { status: 401 }) };
   }
   const wanted = Array.isArray(perm) ? perm : [perm];
-  const rolePerms = await loadRolePerms();
   if (!wanted.some((p) => can(actor, p, rolePerms))) {
     return {
       actor: null,

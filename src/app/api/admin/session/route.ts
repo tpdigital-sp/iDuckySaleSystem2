@@ -19,7 +19,12 @@ export async function GET() {
   let session = verifySessionToken(jar.get(SESSION_COOKIE)?.value);
 
   // 👮 ถูกระงับ/พ้นสภาพแล้ว = ถือว่าไม่ได้ล็อกอิน (ลบคุกกี้ทิ้ง ไม่ต่ออายุให้) · ตำแหน่ง/แผนกใช้ค่าสดจากฐาน
-  const live = session ? await staffStatusOf(session.username) : null;
+  // ⚡ 20 ต.ค. 69 ทุกหน้าหลังบ้านรอคำขอนี้ก่อนแสดงเนื้อหา — เดิมอ่านทะเบียนพนักงาน → สิทธิ์รายคน → สิทธิ์ตามตำแหน่ง ต่อกัน (เย็น ~0.9 วิ) → อ่านพร้อมกัน
+  const [live, extraPerms, rolePerms] = await Promise.all([
+    session ? staffStatusOf(session.username) : Promise.resolve(null),
+    session ? extraPermsOf(session.username) : Promise.resolve([]),
+    isFirebaseAdminConfigured ? loadRolePerms() : Promise.resolve(undefined),
+  ]);
   if (session && live && !live.active) {
     jar.delete(SESSION_COOKIE);
     session = null;
@@ -34,7 +39,7 @@ export async function GET() {
         role: session.role,
         department: session.department,
         // สิทธิ์พิเศษรายคน (เช่น ยืนยันเงินเข้า) — อ่านสดทุกครั้ง ไม่ได้ฝังในคุกกี้
-        extraPerms: await extraPermsOf(session.username),
+        extraPerms,
       }
     : null;
 
@@ -45,7 +50,7 @@ export async function GET() {
     name: session?.name ?? session?.username ?? null,
     username: session?.username ?? null,
     role: roleLabel(actor),
-    perms: isFirebaseAdminConfigured ? permsOf(actor, await loadRolePerms()) : ALL_PERMS,
+    perms: isFirebaseAdminConfigured ? permsOf(actor, rolePerms) : ALL_PERMS,
     // ผู้ดูแลระบบ = เห็น/แก้ของที่อ่อนไหวได้ (บัญชีร้าน · บทบาท · เชื่อม Google) · โหมดเดโมถือว่าใช่
     isAdministrator: !isFirebaseAdminConfigured || actor?.role === ROLE_ADMINISTRATOR,
   });

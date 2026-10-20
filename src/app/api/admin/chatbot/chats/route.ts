@@ -80,15 +80,12 @@ function iso(v: unknown): string {
 
 async function botSettings(db: Firestore): Promise<Settings> {
   try {
-    const d = await db.collection("settings").doc("bot-whitelist").get();
+    // ⚡ 20 ต.ค. 69 อ่าน 2 เอกสารตั้งค่าพร้อมกัน (เดิมต่อกัน ~0.2 วิ/ตัว จาก Netlify สหรัฐฯ → Firestore สิงคโปร์)
+    const [d, readDoc] = await Promise.all([db.collection("settings").doc("bot-whitelist").get(), db.collection("settings").doc("chat-read").get().catch(() => null)]);
     const x = d.data() ?? {};
     const ids = Array.isArray(x.userIds) ? (x.userIds as unknown[]).map((v) => String(v)) : [];
     const draftIds = Array.isArray(x.draftUserIds) ? (x.draftUserIds as unknown[]).map((v) => String(v)) : [];
-    let allReadAt = "";
-    try {
-      const r = await db.collection("settings").doc("chat-read").get();
-      allReadAt = iso(r.data()?.allReadAt);
-    } catch {}
+    const allReadAt = iso(readDoc?.data()?.allReadAt);
     return { mode: String(x.mode ?? ""), newSince: iso(x.newSince), enabled: x.enabled === true, userIds: ids, draftUserIds: draftIds, allReadAt };
   } catch {
     return { mode: "", newSince: "", enabled: false, userIds: [], draftUserIds: [], allReadAt: "" };
@@ -147,45 +144,86 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
 
 const isWaiting = (r: Row) => r.needsHumanFollowup && !!r.lastSeen && Date.now() - new Date(r.lastSeen).getTime() < WAIT_MS;
 
+/**
+ * 📜 log ของห้อง: เปิดห้อง = 200 ตัวล่าสุด · after = ใหม่กว่า (โพล) · before = เก่ากว่า (โหลดข้อความก่อนหน้า)
+ * 15 ต.ค. 69 realtime: after ถอย 2 นาที ให้ entry เดิมที่เพิ่งเปลี่ยนสถานะ (ร่าง→ส่งแล้ว/รูปแคชแล้ว) ถูกส่งซ้ำไปทับ · where+orderBy ฟิลด์เดียวกัน ไม่ต้องมีดัชนีผสม
+ * 20 ต.ค. 69 เดิมอ่าน 1,000 ตัวทุกครั้งที่เปิด + ทุก 30 วิ (ห้องที่นำเข้า CSV ~390 KB) → 200 ตัว + before=<at ตัวเก่าสุดที่มี> ทีละ 200
+ */
+// 🐢 14 ต.ค. 69 "หน้าแชทโหลดช้ามาก": เดิมอ่านห้องเต็ม 400 ห้อง ~1.4 MB ทุกครั้ง (และซ้ำทุก 30 วิ) — 1.1 MB เป็น `profile` (สรุปลูกค้าของบอท)
+// ที่รายชื่อไม่ได้ใช้ → อ่านเฉพาะช่องที่ toRow ใช้ (วัดตรง: 2.9 วิ → 0.24 วิ) · หน้าห้อง (?id=) ยังอ่านเต็มเหมือนเดิม
+const LIST_FIELDS = [
+  "displayName", "pictureUrl", "lastSeen", "lastUserText", "messageCount", "messages", "botScope", "needsHumanFollowup", "botPausedUntil",
+  "lastAdminAt", "webReadAt", "draftPendingAt", "adminTag", "adminTags", "adminNote", "adminNotes", "adminNoteBy", "adminNoteAt", "adminAlias",
+];
+const listLimit = (u: URL) => Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));
+const listBefore = (u: URL) => {
+  const raw = (u.searchParams.get("before") ?? "").trim();
+  return raw && !Number.isNaN(new Date(raw).getTime()) ? new Date(raw) : null;
+};
+/** รายชื่อแบบปกติ (ไม่ค้น/ไม่กรองป้าย/ไม่ใช่โพล since/ไม่ใช่ห้องเปิดร่าง) — เริ่มอ่านได้ตั้งแต่ก่อนตรวจสิทธิ์เสร็จ · กรณีอื่นคืน null */
+function plainList(db: Firestore, u: URL) {
+  const q = (u.searchParams.get("q") ?? "").trim();
+  const tag = (u.searchParams.get("tag") ?? "").trim();
+  const scope = (u.searchParams.get("scope") ?? "all").trim();
+  const before = listBefore(u);
+  const sinceRaw = (u.searchParams.get("since") ?? "").trim();
+  const since = !q && !before && sinceRaw && !Number.isNaN(new Date(sinceRaw).getTime());
+  if (q || tag || since || scope === "botdraft") return null;
+  let qry = db.collection(COL).orderBy("lastSeen", "desc");
+  if (before) qry = qry.startAfter(Timestamp.fromDate(before));
+  return qry.limit(Math.min(400, listLimit(u) * 6)).select(...LIST_FIELDS).get();
+}
+
+const LOG_PAGE = 200;
+function roomLog(ref: FirebaseFirestore.DocumentReference, u: URL) {
+  const afterRaw = (u.searchParams.get("after") ?? "").trim();
+  const after = afterRaw && !Number.isNaN(new Date(afterRaw).getTime()) ? new Date(afterRaw) : null;
+  const beforeRaw = (u.searchParams.get("before") ?? "").trim();
+  const beforeLog = !after && beforeRaw && !Number.isNaN(new Date(beforeRaw).getTime()) ? new Date(beforeRaw) : null;
+  const snap = after
+    ? ref.collection("log").where("at", ">", Timestamp.fromMillis(after.getTime() - 120_000)).orderBy("at", "asc").limit(300).get()
+    : beforeLog
+      ? ref.collection("log").where("at", "<", Timestamp.fromDate(beforeLog)).orderBy("at", "desc").limit(LOG_PAGE).get()
+      : ref.collection("log").orderBy("at", "desc").limit(LOG_PAGE).get();
+  return { after, beforeLog, snap };
+}
+
 export async function GET(req: Request) {
+  /**
+   * ⚡ 20 ต.ค. 69 เจ้าของร้าน "reload หน้าใหม่ และกดเข้าแชทลูกค้า หน่วง ๆ 2-3 วิ": เดิมทุกอย่างต่อคิว
+   * ตรวจสิทธิ์ → ตั้งค่าบอท (2 ตัวต่อกัน) → เอกสารห้อง → log — แต่ละช่วงข้ามทวีป (Netlify สหรัฐฯ → Firestore สิงคโปร์) ~0.2 วิ
+   * → เริ่มอ่านทั้งหมดพร้อมกับตรวจสิทธิ์ (ข้อมูลยังไม่ออกจากเซิร์ฟเวอร์จนกว่าสิทธิ์ผ่าน · ไม่ผ่าน = ทิ้งผลอ่าน)
+   */
+  const db = getChatFirestore();
+  const u = new URL(req.url);
+  const id = (u.searchParams.get("id") ?? "").trim();
+  const roomRef = db && /^U[0-9a-f]{32}$/.test(id) ? db.collection(COL).doc(id) : null;
+  const cfgP = db ? botSettings(db) : null;
+  const roomP = roomRef ? roomRef.get() : null;
+  const logQ = roomRef ? roomLog(roomRef, u) : null;
+  const listP = db && !id ? plainList(db, u) : null;
+  const tagCountsP = db && !id && !listBefore(u) && !u.searchParams.get("since") ? countByTag(db) : null;
+  for (const p of [cfgP, roomP, logQ?.snap, listP]) void p?.catch(() => {}); // fire-and-forget-ok: กันแค่ unhandled rejection ตอนสิทธิ์ไม่ผ่าน — ผลจริงถูก await ต่อด้านล่าง
   const gate = await requirePerm(["reports.view", "chat.reply"]);
   if (gate.res) return gate.res;
-  const db = getChatFirestore();
-  if (!db) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firestore" }, { status: 503 });
-  const u = new URL(req.url);
-  const cfg = await botSettings(db);
+  if (!db || !cfgP) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Firestore" }, { status: 503 });
+  const cfg = await cfgP;
   const settingsOut = { mode: cfg.mode, newSince: cfg.newSince, enabled: cfg.enabled };
-  const id = (u.searchParams.get("id") ?? "").trim();
 
   if (id) {
-    if (!/^U[0-9a-f]{32}$/.test(id)) return NextResponse.json({ error: "id ไม่ถูกต้อง" }, { status: 400 });
-    const ref = db.collection(COL).doc(id);
-    const d = await ref.get();
+    if (!roomRef || !roomP || !logQ) return NextResponse.json({ error: "id ไม่ถูกต้อง" }, { status: 400 });
+    const [d, logSnap] = await Promise.all([roomP, logQ.snap]);
     if (!d.exists) return NextResponse.json({ error: "ไม่พบห้องแชทนี้" }, { status: 404 });
     const x = (d.data() ?? {}) as Record<string, unknown>;
     const row = toRow(d.id, x, iso(d.createTime), cfg);
     // 💬🔄 ดึงข้อความฝั่งแอดมินจาก OA Manager ลง log (ไม่มีคุกกี้/ไม่รู้ห้อง = ข้ามทันที)
-    // 🐢 20 ต.ค. 69 เจ้าของร้าน "หน้านี้โหลดข้อมูลค่อนข้างช้า": เดิมรอ OA สูงสุด 4 วิ (วัดจริง 1.65 วิ) ก่อนอ่าน log ทุกครั้งที่เปิดห้อง + ทุก 10 วิของโพล
-    //    → ไม่รอเลย (waitMs 0) งานซิงก์วิ่งต่อเบื้องหลัง เขียนลง log แล้วรอบโพลถัดไป (3 วิ) / รีเฟรชหน้าต่างล่าสุด (30 วิ) เห็นเอง · อ่าน log ขนานกันได้
-    const oaLiveP: Promise<OaLive> = syncOaRoom(db, id, x, { waitMs: 0 }).catch((e: unknown) => ({ state: "error", error: e instanceof Error ? e.message : String(e), at: new Date().toISOString() }));
-    // 📥 15 ต.ค. 69 นำเข้าประวัติจาก CSV OA Manager (scripts/import-oa-chat-csv.mts) ทำให้บางห้องมี log หลายพัน entry ย้อนไปปี 2567
-    //    เดิม orderBy asc limit 1000 = ได้ 1,000 ตัว "เก่าสุด" แล้วข้อความล่าสุดหาย → เอา 1,000 ตัวล่าสุดแล้วกลับลำดับ
-    // ⚡ 15 ต.ค. 69 realtime: หน้าจอส่ง after = at ของ entry ล่าสุดที่มีแล้ว → อ่านเฉพาะที่ใหม่กว่า (ถอย 2 นาที ให้ entry เดิมที่เพิ่งเปลี่ยนสถานะ เช่น ร่าง→ส่งแล้ว/รูปแคชแล้ว ถูกส่งซ้ำไปทับ)
-    //    where+orderBy ฟิลด์เดียวกัน ไม่ต้องมีดัชนีผสม · ฟิลด์ at เป็น Timestamp ทุกแหล่ง (n8n/reply/CSV import — ตรวจ 15 ต.ค. 69)
-    const afterRaw = (u.searchParams.get("after") ?? "").trim();
-    const after = afterRaw && !Number.isNaN(new Date(afterRaw).getTime()) ? new Date(afterRaw) : null;
-    // 📜 20 ต.ค. 69 เปิดห้องอ่าน 200 ตัวล่าสุด (เดิม 1,000 — ห้องที่นำเข้า CSV ได้ ~390 KB ทุกครั้งที่เปิด + ทุก 30 วิ) · ข้อความเก่ากว่า = before=<at ตัวเก่าสุดที่มี> ทีละ 200
-    const beforeLogRaw = (u.searchParams.get("before") ?? "").trim();
-    const beforeLog = !after && beforeLogRaw && !Number.isNaN(new Date(beforeLogRaw).getTime()) ? new Date(beforeLogRaw) : null;
-    const LOG_PAGE = 200;
-    const [logSnap, oaLive] = await Promise.all([
-      after
-        ? ref.collection("log").where("at", ">", Timestamp.fromMillis(after.getTime() - 120_000)).orderBy("at", "asc").limit(300).get()
-        : beforeLog
-          ? ref.collection("log").where("at", "<", Timestamp.fromDate(beforeLog)).orderBy("at", "desc").limit(LOG_PAGE).get()
-          : ref.collection("log").orderBy("at", "desc").limit(LOG_PAGE).get(),
-      oaLiveP,
-    ]);
+    // 🐢 20 ต.ค. 69 เดิมรอ OA สูงสุด 4 วิ (วัดจริง 1.1–1.65 วิ) ทุกครั้งที่เปิดห้อง + ทุก 10 วิของโพล → ไม่รอ (waitMs 0)
+    //    งานซิงก์วิ่งต่อเบื้องหลัง เขียนลง log แล้วรอบโพลถัดไป (3 วิ) / รีเฟรชหน้าต่างล่าสุด (30 วิ) เห็นเอง
+    // prefetch=1 (หน้าจอ preload ตอนเลื่อนเมาส์ผ่านแถว) ไม่ซิงก์ OA — ผ่านหลายห้องจะได้ไม่ยิง OA Manager รัว ๆ · เปิดจริงแล้วรีเฟรชค่อยซิงก์
+    const oaLive: OaLive = u.searchParams.get("prefetch")
+      ? { state: "ok", added: 0, at: new Date().toISOString(), pending: true }
+      : await syncOaRoom(db, id, x, { waitMs: 0 }).catch((e: unknown) => ({ state: "error", error: e instanceof Error ? e.message : String(e), at: new Date().toISOString() }));
+    const { after, beforeLog } = logQ;
     const logDocs = after ? logSnap.docs : logSnap.docs.reverse();
     const hasMore = !after && logSnap.docs.length >= LOG_PAGE;
     const log: LogEntry[] = logDocs.map((e) => {
@@ -239,7 +277,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ...row, log, messages: after || beforeLog ? [] : messages, partial: !!after, older: !!beforeLog, hasMore, settings: settingsOut, oaLive }, { headers: { "Cache-Control": "no-store" } });
   }
 
-  const limit = Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));
+  const limit = listLimit(u);
   const batch = Math.min(400, limit * 6);
   const scope = (u.searchParams.get("scope") ?? "all").trim();
   const q = (u.searchParams.get("q") ?? "").trim().toLowerCase();
@@ -251,12 +289,6 @@ export async function GET(req: Request) {
   // ⚡ 15 ต.ค. 69 realtime: since = lastSeen ของห้องล่าสุดที่หน้าจอมี → อ่านเฉพาะห้องที่ขยับหลังนั้น (ปกติ 0–3 ห้อง) หน้าจอโพลทุก 5 วิได้โดยไม่อ่าน 400 ห้องซ้ำ
   const sinceRaw = (u.searchParams.get("since") ?? "").trim();
   const since = !q && !before && sinceRaw && !Number.isNaN(new Date(sinceRaw).getTime()) ? new Date(sinceRaw) : null;
-  // 🐢 14 ต.ค. 69 "หน้าแชทโหลดช้ามาก": เดิมอ่านห้องเต็ม 400 ห้อง ~1.4 MB ทุกครั้ง (และซ้ำทุก 30 วิ) — 1.1 MB เป็น `profile` (สรุปลูกค้าของบอท)
-  // ที่รายชื่อไม่ได้ใช้ → อ่านเฉพาะช่องที่ toRow ใช้ (วัดตรง: 2.9 วิ → 0.24 วิ) · หน้าห้อง (?id=) ยังอ่านเต็มเหมือนเดิม
-  const LIST_FIELDS = [
-    "displayName", "pictureUrl", "lastSeen", "lastUserText", "messageCount", "messages", "botScope", "needsHumanFollowup", "botPausedUntil",
-    "lastAdminAt", "webReadAt", "draftPendingAt", "adminTag", "adminTags", "adminNote", "adminNotes", "adminNoteBy", "adminNoteAt", "adminAlias",
-  ];
   let snap;
   if (q) {
     // 🔎 14 ต.ค. 69 เจ้าของร้าน "ค้นหาไม่ได้จริง": เดิมค้นแค่ nameLower "ขึ้นต้นด้วย" คำค้น (ชื่อที่ขึ้นต้นด้วยอีโมจิ/ชื่อที่แอดมินตั้ง/คำกลางชื่อ ไม่เจอ)
@@ -287,9 +319,10 @@ export async function GET(req: Request) {
   } else if (tag) {
     snap = await db.collection(COL).where("adminTags", "array-contains", tag).limit(300).select(...LIST_FIELDS).get();
   } else {
+    // รายชื่อปกติเริ่มอ่านไว้แล้วตั้งแต่ตรวจสิทธิ์ (plainList) — ใช้ผลนั้น
     let qry = db.collection(COL).orderBy("lastSeen", "desc");
     if (before) qry = qry.startAfter(Timestamp.fromDate(before));
-    snap = await qry.limit(batch).select(...LIST_FIELDS).get();
+    snap = await (listP ?? qry.limit(batch).select(...LIST_FIELDS).get());
   }
   let rows = snap.docs.map((d) => toRow(d.id, (d.data() ?? {}) as Record<string, unknown>, iso(d.createTime), cfg));
   // กรองป้าย (array-contains ใส่ startAfter ไม่ได้ถ้าไม่มี composite index) → ชุดเดียว ≤300 แล้วตัดหน้าในหน่วยความจำด้วย lastSeen
@@ -321,7 +354,7 @@ export async function GET(req: Request) {
   // รอแอดมิน/ยังไม่อ่าน นับเฉพาะที่ทักใน 48 ชม. → เลยช่วงนั้นแล้วไม่มีทางเจอเพิ่ม หยุดเลย ไม่ไล่อ่านทั้งคลัง (หมื่นกว่าห้อง)
   let next = overflow ? rows[rows.length - 1].lastSeen : rawLast;
   if (next && (scope === "waiting" || scope === "unread") && Date.now() - new Date(next).getTime() > WAIT_MS) next = "";
-  const tagCounts = before ? {} : await countByTag(db);
+  const tagCounts = before ? {} : await (tagCountsP ?? countByTag(db));
   return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount, botDraftCount: cfg.draftUserIds.length, tagCounts, next }, { headers: { "Cache-Control": "no-store" } });
 }
 
