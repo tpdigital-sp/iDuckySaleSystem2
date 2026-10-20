@@ -1,4 +1,5 @@
 import "server-only";
+import { detectLang, translateReply } from "@/lib/server/reply-lang";
 import {
   catalogRefs,
   budgetMenu,
@@ -344,12 +345,27 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   const products: ProductRef[] = ans.products?.length ? ans.products : ans.product ? [ans.product] : [];
   const product = ans.product ?? products[0];
 
+  // 🌏 20 ต.ค. 69 เจ้าของร้าน "อยากให้ตอบเป็นภาษาที่ลูกค้าพิมพ์มา" — ลูกค้าพิมพ์อังกฤษ/จีน/ญี่ปุ่น/เกาหลี → แปลคำตอบที่ประกอบเสร็จ (ตัวเลข/ราคา/โครงบรรทัดคงเดิม)
+  //   ดูภาษาจากข้อความลูกค้าจริง (ก่อนแก้คำผิด/ดึงจากประวัติ) · คำตอบ skip (ให้ agent ตอบ) ไม่แปล · แปลไม่ผ่านด่านราคา = ส่งไทยเดิม
+  const customerText = String(body.query ?? body.message ?? body.text ?? body.q ?? "");
+  const lang = detectLang(customerText);
+  let replyText = text;
+  let askNext = ans.askNext ?? null;
+  let translated = false;
+  if (lang.code !== "th" && ans.kind !== "skip" && ans.answer) {
+    const tr = await translateReply({ answer: text, askNext, customerText }, lang);
+    ({ answer: replyText, askNext, translated } = tr);
+  }
+
   return { status: 200, body: {
     // 4 ชื่อนี้ซ้ำกันโดยตั้งใจ — workflow เดิมอ่านคนละฟิลด์กันแล้วแต่โหนด
-    answer: text,
-    result: text,
-    response: text,
-    text,
+    answer: replyText,
+    result: replyText,
+    response: replyText,
+    text: replyText,
+    // ภาษาของลูกค้า (th/en/zh/ja/ko) — n8n Site Price Flex เปลี่ยนป้ายตายตัวในการ์ด (ปุ่ม/หมายเหตุ/ประโยคปิด) ตามนี้
+    lang: lang.code,
+    translated,
     kind: ans.kind,
     source: ans.source,
     intent: ans.intent,
@@ -372,7 +388,7 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     // ส่วนที่ตอบเพิ่มนอกเหนือราคา/ตัวเลือก (กันน้ำ/ส่วนเสริม/ใช้ลายเอง) — แปะอยู่หัว answer แล้ว ให้ไว้เผื่อบอทปลายทางอยากแยกแสดง
     extra: ans.extra ?? null,
     // ❓ ตัวเลือกที่ยังไม่ระบุ + ค่าที่เลือกได้ — บอท LINE ใช้เป็นประโยคถามต่อแทนประโยคปิดกลาง ๆ (8 ต.ค. 69 18:35)
-    askNext: ans.askNext ?? null,
+    askNext,
     qty: qty ?? null,
     ...(product ? { product } : {}),
     products,

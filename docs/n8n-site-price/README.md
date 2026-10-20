@@ -521,3 +521,11 @@ curl -s -X POST https://iduckystore.com/api/pricing/search -H 'content-type: app
 - เดิมช่วงราคา priceMin–priceMax ไม่มีหน่วย + ปนหลายเรทคนละหน่วย (สติ๊กเกอร์ UV: แผ่น A3 ฿78–150 กับ ตร.ม. ฿690–1,000) ลูกค้าอ่านว่าแผ่นละพัน
 - เว็บ: ProductRef/แคตตาล็อก/คำตอบราคาเพิ่ม `priceUnit` = หน่วยของเรทที่มีช่องถูกสุด (ไม่นับเรทตัวแทน) · การ์ด (product-card.ts · หน้าแชท) = "เริ่ม ฿X / หน่วย" · ราคาเดียว = "฿X / หน่วย"
 - n8n Site Price Flex `priceText` สูตรเดียวกัน (สำเนา [site-price-flex.code.js](site-price-flex.code.js) · สำรองเดิม localStorage `__linebot_backup_20261020_priceunit`) · ไม่มี priceUnit = "เริ่ม ฿X"
+
+## 20 ต.ค. 69 — ตอบเป็นภาษาที่ลูกค้าพิมพ์มา (เจ้าของร้าน "ฉันอยากให้ตอบเป็นภาษาที่ลูกค้าพิมพ์มา")
+- เคสจริง Paron (Uc3613cc…): "Plastic. 400 units. … How big are your fans in cm? What price can you offer for 400 units?" → ร่างบอท (mode site) เป็นไทยล้วน เพราะคำตอบราคาเป็นแม่แบบไทยใน price-answer.ts + ป้ายในการ์ด Flex เป็นไทยตายตัว + system message ของ agent ไม่มีกฎภาษา (เขียนเป็นไทยทั้งหมด Gemini เลยตอบไทย)
+- เว็บ [reply-lang.ts](../../src/lib/server/reply-lang.ts): `detectLang` (ไทย ≥2 ตัว = th · คานะ/ฮันกึล/จีน · อังกฤษต้องเป็นประโยค ≥8 ตัวอักษร — "ok"/"A3" ไม่นับ) · `translateReply` แปล answer+askNext ก้อนเดียว (Gemini 3.8 Flash · งาน price_translate ในแดชบอร์ดค่าใช้จ่าย) คงบรรทัด/• — 【】/ราคา/ตัวเลข · ด่าน: ราคา ฿ ทุกตัวต้องตรงต้นฉบับ + จำนวนบรรทัดต่างไม่เกิน 1 ไม่งั้นส่งไทยเดิม · price-search ส่ง `lang` + `translated`
+- n8n LINE OA Bot › Site Price Flex (draft 4fe6efa3 · สำรอง localStorage `__linebot_backup_20261020_lang`): `LANG` จาก site.lang · ป้ายตายตัว (หมายเหตุราคาจากเว็บ · ปุ่ม · ประโยคปิด · altText) เป็นอังกฤษเมื่อไม่ใช่ไทย · หน่วยใน priceText แปลงเป็นอังกฤษ (แผ่น A3 → A3 sheet · ชิ้น/อัน → pc · เซ็ต (20 ใบ) → set (20 pcs))
+- n8n ChatBot › AI Agent1 systemMessage (draft 64ad23dd · สำรอง `__chatbot_backup_20261020_lang`): ย่อหน้า "🌏 ภาษา" ต่อจากน้ำเสียง — ตอบภาษาเดียวกับข้อความล่าสุดของลูกค้า · [QUOTE]/[CLASSIFY] ไม่แปล
+- ทดสอบ dev 3016: เคส Paron (en) · keychain 100 (en) · UV 50 A3 (en) · 亚克力钥匙扣 100个 (zh) ราคา/ยอดรวมตรงต้นฉบับทุกบรรทัด · ไทย/ok ไม่แปล ไม่ช้าลง · แปลเพิ่มเวลา ~4–7 วิ
+- ยังเป็นไทย: ข้อความสำเร็จรูปใน Build AI Request/Format Reply (ฟองสำรอง "ระบบช้าแป๊บนึง", "แอดมินขอเช็กให้ก่อน", presetReply รูป) และคำตอบจากรูป (vision shortReply)

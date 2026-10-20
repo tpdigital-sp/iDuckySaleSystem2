@@ -105,6 +105,7 @@ export const AI_FEATURES = {
   price_understand: { label: "เข้าใจคำถามราคา", group: "เครื่องคิดราคา" },
   price_pick: { label: "เลือกสินค้าที่ลูกค้าหมายถึง", group: "เครื่องคิดราคา" },
   price_info: { label: "อ่านหน้าสินค้าตอบความรู้", group: "เครื่องคิดราคา" },
+  price_translate: { label: "แปลคำตอบราคาเป็นภาษาลูกค้า", group: "เครื่องคิดราคา" },
   kb_ai: { label: "งาน AI คลังความรู้/ตารางราคา", group: "หลังบ้าน" },
   slip_ocr: { label: "อ่านสลิปไม่มี QR", group: "หลังบ้าน" },
   receipt_ocr: { label: "อ่านเลขใบเสร็จที่แพ็คใส่กล่อง", group: "หลังบ้าน" },

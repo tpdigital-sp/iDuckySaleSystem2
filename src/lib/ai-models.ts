@@ -23,6 +23,8 @@ export const AI_MODEL_BY_FEATURE: Record<Exclude<AiFeature, "n8n_chat" | "n8n_pr
   price_understand: "gemini-3.8-flash",
   price_pick: "gemini-3.5-flash-lite",
   price_info: "gemini-3.5-flash-lite",
+  // 🌏 20 ต.ค. 69 ลูกค้าพิมพ์ภาษาอื่น → แปลคำตอบราคา (lib/server/reply-lang.ts)
+  price_translate: "gemini-3.8-flash",
   kb_ai: "gemini-3.8-flash",
   slip_ocr: "gemini-3.8-flash",
   receipt_ocr: "gemini-3.5-flash-lite",
