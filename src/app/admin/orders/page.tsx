@@ -272,6 +272,8 @@ export default function AdminOrdersPage() {
   // สิทธิ์ยังไม่มา = ยังไม่รู้ว่าเห็นได้แค่ไหน → ยังไม่วาดใบไหน (กันฝ่ายแพ็คเห็นทุกใบแว๊บ / แอดมินเห็นแค่คิวแพ็คแว๊บ)
   const orders = useMemo(() => (permsReady || demo ? visibleTo(raw, seesAll) : []), [raw, seesAll, permsReady, demo]);
   const seesMoney = can("orders.money");
+  /** 🔁 ใบที่กำลังจะสั่งซ้ำ (เปิดกล่องเลือกรายการ) — ลูกค้าทักมา "เอาแบบเดิมอีก" กดจากแถวได้เลยไม่ต้องเปิดใบ */
+  const [reorderFrom, setReorderFrom] = useState<Order | null>(null);
 
   useEffect(() => {
     const qs = new URLSearchParams(window.location.search);
@@ -989,7 +991,14 @@ export default function AdminOrdersPage() {
           <>
             <div className="dkb-rows">
               {pageRows.map((o) => (
-                <OrderRow key={o.id} o={o} orders={orders} openByPhone={openByPhone} seesMoney={seesMoney} />
+                <OrderRow
+                  key={o.id}
+                  o={o}
+                  orders={orders}
+                  openByPhone={openByPhone}
+                  seesMoney={seesMoney}
+                  onReorder={can("orders.edit") && !demo ? setReorderFrom : undefined}
+                />
               ))}
             </div>
             {pageCount > 1 && (
@@ -1024,6 +1033,143 @@ export default function AdminOrdersPage() {
           </p>
         )}
       </div>
+      {reorderFrom && (
+        <ReorderDialog
+          from={reorderFrom}
+          seesMoney={seesMoney}
+          onCancel={() => setReorderFrom(null)}
+          onCreated={(id) => {
+            setReorderFrom(null);
+            router.push(`/admin/orders/${encodeURIComponent(id)}`);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 🔁 สั่งซ้ำจากหน้ารายการ (เจ้าของร้านขอ 20 ต.ค. 69 "ต้องการให้สร้างออเดอร์ซ้ำได้")
+ * ใช้ /api/admin/orders/redo mode "reorder" ตัวเดียวกับปุ่ม ♻️ ในหน้าออเดอร์ — ใบใหม่ "รอชำระเงิน" ราคาเดิม
+ * คัดลอกชื่อ/เบอร์/ที่อยู่/วิธีส่ง/สเปค/ลายที่ลูกค้าแนบ · แบบงานเก่าไม่คัดลอก (ติดป้ายใช้ไฟล์เก่าชี้กลับใบเดิม) · สองใบลิงก์ถึงกัน
+ * จำนวนแก้ต่อในหน้าออเดอร์ใหม่ (ราคาขั้นบันไดคิดตามล็อตให้ที่นั่น) — กล่องนี้แค่เลือกรายการ
+ */
+function ReorderDialog({
+  from,
+  seesMoney,
+  onCancel,
+  onCreated,
+}: {
+  from: Order;
+  seesMoney: boolean;
+  onCancel: () => void;
+  onCreated: (id: string) => void;
+}) {
+  const [picks, setPicks] = useState<Record<number, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const chosen = from.items.map((_, i) => i).filter((i) => picks[i] ?? true);
+  const sum = chosen.reduce((t, i) => t + from.items[i].unitPrice * from.items[i].qty, 0);
+
+  async function create() {
+    if (busy) return;
+    if (!chosen.length) return setErr("เลือกอย่างน้อย 1 รายการ");
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/orders/redo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fromId: from.id, mode: "reorder", picks: chosen.map((index) => ({ index })) }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.id) {
+        setErr(j.error ?? "สร้างออเดอร์สั่งซ้ำไม่สำเร็จ — ลองใหม่อีกครั้ง");
+        setBusy(false);
+        return;
+      }
+      onCreated(String(j.id));
+    } catch {
+      setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — เช็กเน็ตแล้วกดอีกครั้ง");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 pt-[10vh] backdrop-blur-sm"
+      onClick={() => !busy && onCancel()}
+    >
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <p className="text-base font-extrabold text-slate-900">🔁 สั่งซ้ำจาก {from.id}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+            {from.customer || "ยังไม่ระบุชื่อ"}
+            {from.phone ? ` · ${from.phone}` : ""} — สร้างออเดอร์ใหม่ใช้ชื่อ/ที่อยู่/สเปคงาน/ลายชุดเดิม เริ่มที่ “รอชำระเงิน”
+          </p>
+        </div>
+
+        <div className="space-y-3 p-4">
+          <div>
+            <p className="text-xs font-bold text-slate-600">สั่งซ้ำรายการไหน (ค่าเริ่มต้น = ทั้งหมด)</p>
+            <div className="mt-1 space-y-1">
+              {from.items.map((it, i) => (
+                <label key={i} className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[13px] text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={picks[i] ?? true}
+                    onChange={(e) => setPicks((cur) => ({ ...cur, [i]: e.target.checked }))}
+                    className="h-5 w-5 shrink-0 accent-sky-600"
+                  />
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    {i + 1}. {it.name}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-slate-500">
+                    ×{it.qty.toLocaleString("th-TH")}
+                    {seesMoney ? ` · ${formatPrice(it.unitPrice)}` : ""}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {seesMoney && (
+            <p className="flex items-baseline justify-between rounded-lg px-1 text-[13px] text-slate-600">
+              <span>
+                ค่าสินค้า {chosen.length}/{from.items.length} รายการ
+                {from.shippingCost ? ` + ค่าส่งเดิม ${formatPrice(from.shippingCost)}` : ""}
+              </span>
+              <b className="tabular-nums text-slate-900">{formatPrice(sum + (from.shippingCost || 0))}</b>
+            </p>
+          )}
+
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            ราคาต่อชิ้นตามใบเดิม · อยากเปลี่ยนจำนวน/ตัวเลือก แก้ต่อในหน้าออเดอร์ใหม่ได้เลย (ราคาขั้นบันไดคิดใหม่ให้) · แบบงานเก่าไม่คัดลอก
+            แต่ติดป้าย “ใช้ไฟล์เก่า” ให้กราฟฟิกหยิบแบบที่อนุมัติแล้วมาใช้ · สองใบลิงก์ถึงกันและลงประวัติไว้
+          </p>
+
+          {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{err}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={busy}
+              className="min-h-[44px] flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={() => void create()}
+              disabled={busy || !chosen.length}
+              className="min-h-[44px] flex-1 rounded-xl bg-sky-600 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+            >
+              {busy ? "กำลังสร้าง…" : "สร้างออเดอร์สั่งซ้ำ"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1033,11 +1179,14 @@ function OrderRow({
   orders,
   openByPhone,
   seesMoney,
+  onReorder,
 }: {
   o: Order;
   orders: Order[];
   openByPhone: Record<string, number>;
   seesMoney: boolean;
+  /** มี = โชว์ปุ่ม 🔁 สั่งซ้ำ (สิทธิ์ orders.edit) */
+  onReorder?: (o: Order) => void;
 }) {
   const open = openProofs(o);
   const done = DONE.includes(o.status);
@@ -1373,6 +1522,29 @@ function OrderRow({
             </small>
           )}
         </span>
+        {/* 🔁 สั่งซ้ำ — แถวทั้งแถวเป็นลิงก์ จึงใช้ span role=button (ปุ่มซ้อนในลิงก์ไม่ได้) + กันคลิกทะลุไปเปิดใบ */}
+        {onReorder && o.items.length > 0 && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="dkb-btn dkb-btn-ghost"
+            style={{ padding: "0 14px", fontSize: "0.8rem" }}
+            title="สร้างออเดอร์ใหม่จากใบนี้ — ชื่อ/ที่อยู่/สเปค/ลายเดิม คิดเงินตามปกติ"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onReorder(o);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              e.stopPropagation();
+              onReorder(o);
+            }}
+          >
+            🔁 สั่งซ้ำ
+          </span>
+        )}
       </span>
     </Link>
   );

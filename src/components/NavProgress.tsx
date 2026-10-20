@@ -31,7 +31,11 @@ export default function NavProgress() {
       }
       if (url.origin !== location.origin) return;
       if (url.pathname === location.pathname && url.search === location.search) return;
-      setPending(true);
+      // ฟังแบบ capture = มาก่อนปุ่มที่ซ้อนในลิงก์ (เช่น 🔁 สั่งซ้ำ ในแถวออเดอร์) จะได้ preventDefault
+      // → รอคลิกนี้วิ่งจบก่อนค่อยเช็กอีกรอบ ไม่งั้นแถบค้าง 20 วิทั้งที่ไม่ได้เปลี่ยนหน้า
+      setTimeout(() => {
+        if (!e.defaultPrevented) setPending(true);
+      }, 0);
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
