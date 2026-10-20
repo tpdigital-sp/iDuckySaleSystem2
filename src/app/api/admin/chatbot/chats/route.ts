@@ -19,7 +19,7 @@ import { syncOaRoom, type OaLive } from "@/lib/server/oa-chat-sync";
  *   · 9 ต.ค. 69 15:20 เพิ่ม: botAllowed (สวิตช์บอทรายคนใน bot-whitelist.userIds) · pausedUntil (botPausedUntil — แอดมินตอบจากเว็บ = พักบอท 30 นาที)
  *     · scope=waiting (รอแอดมิน: needsHumanFollowup และทักใน 48 ชม.)
  *
- * GET ?limit=50&scope=new|old|waiting|all&q=ชื่อ  → รายการห้อง (ล่าสุดก่อน)
+ * GET ?limit=50&scope=new|old|waiting|unread|draft|botdraft|all&q=ชื่อ  → รายการห้อง (ล่าสุดก่อน) · botdraft = ห้องที่เปิดร่างก่อนส่งรายคน (20 ต.ค. 69)
  *     &before=<lastSeen ISO ของแถวสุดท้ายที่มีแล้ว> → หน้าถัดไป (ห้องที่คุยก่อนเวลานั้น) · คำตอบมี next = cursor หน้าต่อไป ("" = หมดแล้ว)
  *     (15 ต.ค. 69 เจ้าของร้าน "ต้องการให้แสดงลูกค้าให้ครบ" — เดิมได้แค่ 80 ห้องล่าสุดแล้วตัน · ค้นหา/กรองป้ายยังเป็นชุดเดียวเหมือนเดิม)
  * GET ?id=U…                                      → ห้องเดียว + log 1,000 ตัวล่าสุด (fallback messages 20 ตัวล่าสุด)
@@ -267,6 +267,11 @@ export async function GET(req: Request) {
     snap = { docs: docs.filter((d) => d.exists).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)) };
   } else if (since) {
     snap = await db.collection(COL).where("lastSeen", ">", Timestamp.fromDate(since)).orderBy("lastSeen", "desc").limit(60).select(...LIST_FIELDS).get();
+  } else if (scope === "botdraft" && !tag) {
+    // 📝 ห้องที่เปิดโหมดร่างรายคน (เจ้าของร้าน 20 ต.ค. 69 "เพิ่ม filter กรอง ร่างก่อนส่ง") — อ่านตรงตามรายชื่อ draftUserIds ไม่ใช่แค่ 400 ห้องล่าสุด
+    const ids = cfg.draftUserIds.slice(0, 300);
+    const docs = ids.length ? await db.getAll(...ids.map((id) => db.collection(COL).doc(id)), { fieldMask: LIST_FIELDS }) : [];
+    snap = { docs: docs.filter((d) => d.exists) };
   } else if (tag) {
     snap = await db.collection(COL).where("adminTags", "array-contains", tag).limit(300).select(...LIST_FIELDS).get();
   } else {
@@ -276,12 +281,13 @@ export async function GET(req: Request) {
   }
   let rows = snap.docs.map((d) => toRow(d.id, (d.data() ?? {}) as Record<string, unknown>, iso(d.createTime), cfg));
   // กรองป้าย (array-contains ใส่ startAfter ไม่ได้ถ้าไม่มี composite index) → ชุดเดียว ≤300 แล้วตัดหน้าในหน่วยความจำด้วย lastSeen
-  if (before && (q || tag)) {
+  const byIds = scope === "botdraft" && !q && !tag && !since;
+  if (before && (q || tag || byIds)) {
     const b = before.toISOString();
     rows = rows.filter((r) => r.lastSeen && r.lastSeen < b);
   }
   // ชุดดิบเต็มก้อน = ยังมีห้องเก่ากว่านี้อีก (เฉพาะรายการปกติ — ค้นหา/กรองป้ายได้ชุดเดียว)
-  const rawFull = !q && !tag && rows.length >= batch;
+  const rawFull = !q && !tag && !byIds && rows.length >= batch;
   const rawLast = rawFull ? rows[rows.length - 1].lastSeen : "";
   // ตัวนับบนชิป นับจากชุดที่โหลดมา (ล่าสุด ≤400 ห้อง) ก่อนกรอง/ตัด
   const waitingCount = rows.filter(isWaiting).length;
@@ -291,6 +297,7 @@ export async function GET(req: Request) {
   if (scope === "waiting") rows = rows.filter(isWaiting);
   if (scope === "unread") rows = rows.filter((r) => r.unread);
   if (scope === "draft") rows = rows.filter((r) => r.draftPending);
+  if (scope === "botdraft") rows = rows.filter((r) => r.botDraft);
   if (tag && (q || since)) rows = rows.filter((r) => r.adminTags.includes(tag));
   // ค้นหา: คงลำดับ "ชื่อขึ้นต้นด้วยคำค้นก่อน" ที่จัดไว้ (ดัชนีเรียงคนคุยล่าสุดมาแล้ว)
   if (!q) rows.sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
@@ -303,7 +310,7 @@ export async function GET(req: Request) {
   let next = overflow ? rows[rows.length - 1].lastSeen : rawLast;
   if (next && (scope === "waiting" || scope === "unread") && Date.now() - new Date(next).getTime() > WAIT_MS) next = "";
   const tagCounts = before ? {} : await countByTag(db);
-  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount, tagCounts, next }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ rows, settings: settingsOut, count: rows.length, waitingCount, unreadCount, draftCount, botDraftCount: cfg.draftUserIds.length, tagCounts, next }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /** 🏷 จำนวนห้องต่อป้าย (นับทั้งคลังด้วย count() — 1 read ต่อ 1,000 ห้อง) · แคช 60 วิ เพราะหน้าแชทรีเฟรชรายชื่อทุก 30 วิ */

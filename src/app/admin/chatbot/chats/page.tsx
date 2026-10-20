@@ -56,7 +56,7 @@ type CardRef = { name: string; url: string; image?: string; price?: string };
 type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[]; flex?: unknown[] };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
-type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; tagCounts?: Record<string, number>; next?: string; partial?: boolean };
+type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; botDraftCount?: number; tagCounts?: Record<string, number>; next?: string; partial?: boolean };
 /** oaLive = สถานะดึงข้อความจาก LINE OA Manager รอบนี้ (lib/server/oa-chat-sync.ts · 15 ต.ค. 69) */
 type DetailRes = Row & { log: LogEntry[]; messages: LogEntry[]; settings: Settings; partial?: boolean; oaLive?: OaLive };
 /** คีย์ entry ในห้อง — log มี id เสมอ · messages (ห้องเก่า) ไม่มี ใช้ role+เวลา */
@@ -64,7 +64,7 @@ const entryKey = (e: LogEntry) => e.id ?? `${e.role}|${e.at}`;
 type Quota = { limit: number | null; used: number; left: number | null; at: string; forecast?: { pct: number; perDay: number; monthTotal: number; outOn: string | null } | null };
 type CatalogItem = { id?: string; name: string; url: string; image?: string; priceMin?: number; priceMax?: number };
 type ReplyRes = { ok: boolean; sent: boolean; logged: boolean; entry?: LogEntry; pausedUntil?: string | null; warn?: string };
-type Scope = "waiting" | "all" | "unread" | "draft" | "new" | "old";
+type Scope = "waiting" | "all" | "unread" | "draft" | "botdraft" | "new" | "old";
 
 const LINE_GREEN = "#06C755";
 /**
@@ -94,6 +94,8 @@ const SCOPES: { key: Scope; label: string; icon: string }[] = [
   { key: "waiting", label: "รอแอดมิน", icon: "🙋" },
   { key: "draft", label: "ร่างรอส่ง", icon: "📝" },
   { key: "unread", label: "ยังไม่อ่าน", icon: "🟢" },
+  // ห้องที่เปิด "ร่างก่อนส่ง" รายคน (botDraft · 20 ต.ค. 69 เจ้าของร้าน "เพิ่ม filter กรอง ร่างก่อนส่ง") — ต่างจาก "ร่างรอส่ง" ที่มีร่างค้างจริง
+  { key: "botdraft", label: "เปิดร่างก่อนส่ง", icon: "✍️" },
   { key: "new", label: "ลูกค้าใหม่", icon: "🆕" },
   { key: "old", label: "ลูกค้าเก่า", icon: "👤" },
 ];
@@ -196,6 +198,7 @@ function Chats() {
   const [waitingCount, setWaitingCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [draftCount, setDraftCount] = useState(0);
+  const [botDraftCount, setBotDraftCount] = useState(0);
   const threadRef = useRef<HTMLDivElement | null>(null);
   // 📜 15 ต.ค. 69 เจ้าของร้าน "ต้องการให้แสดงลูกค้าให้ครบ": เดิมได้ 80 ห้องล่าสุดแล้วตัน (เลื่อนลงสุดไม่มีอะไรต่อ ทั้งที่คลังมีหมื่นกว่าห้อง)
   //   → เลื่อนถึงท้ายรายการ = โหลดหน้าถัดไปต่อท้ายเอง (cursor = lastSeen ของแถวสุดท้าย · next ว่าง = ครบแล้ว)
@@ -233,6 +236,7 @@ function Chats() {
       setWaitingCount(d.waitingCount);
       setUnreadCount(d.unreadCount);
       setDraftCount(d.draftCount ?? 0);
+      setBotDraftCount(d.botDraftCount ?? 0);
       setTagCounts(d.tagCounts ?? {});
     } catch (e) {
       if (my === loadSeq.current) toast(e instanceof Error ? e.message : String(e), true);
@@ -595,6 +599,7 @@ function Chats() {
         if (d.redraft) setRedraftAt((m) => ({ ...m, [id]: Date.now() }));
         setRows((rs) => rs.map((x) => (x.id === id ? { ...x, botDraft: on } : x)));
         setDetail((x) => (x && x.id === id ? { ...x, botDraft: on } : x));
+        setBotDraftCount((n) => Math.max(0, n + (on ? 1 : -1)));
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), true);
       }
@@ -857,7 +862,7 @@ function Chats() {
               value: s.key,
               label: s.label,
               icon: s.icon,
-              count: s.key === "waiting" ? waitingCount : s.key === "unread" ? unreadCount : s.key === "draft" ? draftCount : undefined,
+              count: s.key === "waiting" ? waitingCount : s.key === "unread" ? unreadCount : s.key === "draft" ? draftCount : s.key === "botdraft" ? botDraftCount : undefined,
               urgent: s.key === "waiting" || s.key === "draft",
             }))}
             // 🟢 ยังไม่อ่าน (เจ้าของร้าน 14 ต.ค. 69 "ต้องแสดงจำนวนที่ยังไม่ได้อ่าน") — สีเขียวแบบ LINE · รอแอดมิน/ร่างรอส่ง ดูในเมนู
@@ -917,7 +922,7 @@ function Chats() {
             </p>
           ) : !rows.length ? (
             <div className="p-4">
-              <Empty title={tagFilter ? `ไม่มีห้องที่ติดป้าย "${tagCatalog.find((t) => t.key === tagFilter)?.label ?? tagFilter}"${scope !== "all" ? " ในตัวกรองนี้" : ""}` : scope === "waiting" ? "ไม่มีห้องที่รอแอดมิน" : "ยังไม่มีห้องแชท"} body={q ? "ไม่พบชื่อนี้ — ค้นได้ทั้งชื่อ LINE ชื่อที่แอดมินตั้ง และ userId (ส่วนใดของชื่อก็ได้)" : "เมื่อลูกค้าทักมา ห้องจะขึ้นที่นี่"} />
+              <Empty title={tagFilter ? `ไม่มีห้องที่ติดป้าย "${tagCatalog.find((t) => t.key === tagFilter)?.label ?? tagFilter}"${scope !== "all" ? " ในตัวกรองนี้" : ""}` : scope === "waiting" ? "ไม่มีห้องที่รอแอดมิน" : scope === "botdraft" ? "ยังไม่มีห้องที่เปิดร่างก่อนส่ง" : "ยังไม่มีห้องแชท"} body={q ? "ไม่พบชื่อนี้ — ค้นได้ทั้งชื่อ LINE ชื่อที่แอดมินตั้ง และ userId (ส่วนใดของชื่อก็ได้)" : scope === "botdraft" ? "เปิดได้ที่แผงข้อมูลลูกค้าในห้องแชท → สวิตช์ 📝 ร่างก่อนส่ง" : "เมื่อลูกค้าทักมา ห้องจะขึ้นที่นี่"} />
             </div>
           ) : (
             // 📋 แถวแบบ LINE OA (19 ต.ค. 69): ชื่อ+เวลา / ข้อความล่าสุด+จุดเขียว / ป้าย · ห้องที่เลือก = พื้นเทา+แถบเขียวซ้าย
@@ -1080,7 +1085,7 @@ function Chats() {
               ดูลูกค้า
             </p>
             <div className="flex flex-wrap gap-2">
-              {SCOPES.filter((s) => s.key === "all" || s.key === "new" || s.key === "old").map((s) => {
+              {SCOPES.filter((s) => s.key === "all" || s.key === "new" || s.key === "old" || s.key === "botdraft").map((s) => {
                 const on = scope === s.key;
                 return (
                   <button
