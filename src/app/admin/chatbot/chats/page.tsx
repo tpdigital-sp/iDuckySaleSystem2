@@ -1343,16 +1343,26 @@ function Chats() {
                     // ⏳ ร่างหมดอายุ (เกิน 24 ชม. / ร้านตอบไปแล้วหลังร่าง) = ไม่ขึ้นการ์ดให้กดส่ง (lib/draft-live.ts · 19 ต.ค. 69 ร่างค้างจาก 14–15 ต.ค.)
                     const answered = thread.slice(i + 1).some((x) => x.role === "admin" || x.role === "assistant");
                     const stale = m.status === "expired" || (m.status === "pending" && (answered || !isDraftLive(m.at, detail?.lastAdminAt)));
+                    // ↻ 20 ต.ค. 69 เจ้าของร้าน "ตรงนี้ควรมีบอกว่ากำลังร่างใหม่": กดตอบใหม่แล้วร่างเดิมยุบเป็น "ทิ้งแล้ว" เฉย ๆ ไม่รู้ว่าบอทกำลังทำอยู่
+                    //    → ร่างที่ทิ้งหลังกด ↻ (redraftAt ≥ เวลาร่าง) และยังไม่มีร่าง/คำตอบใหม่ตามมา ≤60 วิ = ขึ้นป้ายกำลังร่างใหม่ใต้แถว
+                    const regenAt = sel ? (redraftAt[sel] ?? 0) : 0;
+                    const redrafting =
+                      m.status === "discarded" && regenAt >= Date.parse(m.at) && Date.now() - regenAt < 60_000 && !thread.slice(i + 1).some((x) => x.role === "draft" || x.role === "assistant" || x.role === "admin");
                     return latest && !stale ? (
                       <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onDelete={isOwner ? () => void deleteDraft(m) : undefined} onRegen={canReply ? () => regenDraft(m) : undefined} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
                     ) : (
-                      <div key={m.id || i} className="mb-2 flex justify-end">
+                      <div key={m.id || i} className="mb-2 flex flex-col items-end">
                         <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
                           <summary className="cursor-pointer">
                             📝 ร่างบอทที่ไม่ได้ส่ง · {stale ? "หมดอายุ (เกิน 24 ชม. หรือร้านตอบไปแล้ว)" : m.status === "discarded" ? "ทิ้งแล้ว" : m.status === "superseded" ? "มีร่างใหม่กว่า" : "ยังไม่ส่ง"} · {fmtTime(m.at)}
                           </summary>
                           <p className="mt-1 whitespace-pre-wrap">{m.text}</p>
                         </details>
+                        {redrafting ? (
+                          <p className="mt-1 flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12.5px] font-bold" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
+                            <span className="inline-block animate-pulse">⏳</span> กำลังร่างใหม่… ร่างใหม่จะขึ้นในราว 15–30 วินาที
+                          </p>
+                        ) : null}
                       </div>
                     );
                   }
@@ -1479,9 +1489,13 @@ function Chats() {
             </div>
 
             {/* 🤖 ลูกค้าพิมพ์ค้างไว้ก่อนเปิดร่าง → ให้บอทร่างย้อนหลัง (19 ต.ค. 69 · RedraftButton) */}
-            {canReply && detail && (detail.botDraft || settings?.mode === "draft") && thread.length && thread[thread.length - 1].role === "user" ? (
-              <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={thread[thread.length - 1].at} />
-            ) : null}
+            {/* ↻ 20 ต.ค. 69 กด "ตอบใหม่" แล้วรายการท้ายสุดเป็นร่างที่ทิ้ง → แถบไม่ขึ้น · ข้ามร่างที่ไม่ได้ค้างรอส่งก่อนดูว่าลูกค้าพิมพ์ล่าสุดไหม */}
+            {(() => {
+              const lastReal = [...thread].reverse().find((x) => !(x.role === "draft" && x.status !== "pending"));
+              return canReply && detail && (detail.botDraft || settings?.mode === "draft") && lastReal?.role === "user" ? (
+                <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={lastReal.at} />
+              ) : null;
+            })()}
             {canReply ? (
               <Composer id={sel} customerName={detail?.displayName ?? ""} disabled={quotaOut} quotaLow={quotaLow} onSent={onSent} toast={toast} dropFile={dropFile} onDropConsumed={() => setDropFile(null)} />
             ) : (
