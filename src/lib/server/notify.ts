@@ -599,6 +599,9 @@ export function statusFlex(
                         size: "xs",
                         color: "#BE123C",
                         wrap: true,
+                    // 🔲 กรอบสีเดียวกับหัวการ์ด ให้สะดุดตากว่ากล่องสีอ่อนเฉย ๆ (เจ้าของร้านขอ 21 ต.ค. 69 หลังดูตัวอย่าง)
+                    borderWidth: "2px",
+                    borderColor: tone,
                       },
                     ],
                   },
