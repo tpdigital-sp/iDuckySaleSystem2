@@ -170,6 +170,8 @@ interface Props {
     sizeNote?: string;
     /** ⬜ สกินทึบ (TemplateFile.skinOpaque) — พิกเซลขาวทึบของสกิน = นอกชิ้นงาน ทาขาวทับลายก่อนวางสกิน (พัดพลาสติกใส · 21 ต.ค. 69) */
     opaque?: boolean;
+    /** ⬜🖨 รองขาวเต็มเส้นตัด (TemplateFile.whiteUnder) — .ai ใส่เลเยอร์ "รองขาว (White)" ถมตาม cut ใต้ลาย (พัดพลาสติกใส · 21 ต.ค. 69) */
+    whiteUnder?: boolean;
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -464,7 +466,7 @@ export default function CalendarStudio({
    * → กรอบตัดสี่เหลี่ยมของระบบ "ไม่ใช่เส้นตัดจริง" ของงานพวกนี้เลย (เส้นจริงคือเส้นไดคัทในไฟล์/สกิน) จึงไม่วาดสี่เหลี่ยมแดงทับไม่ว่ากรณีไหน
    * รวมตอนสกินยังโหลดไม่เสร็จ/โหลดไม่ได้ (เดิมแว่บเป็นกรอบแดงจนรูปมา · เจ้าของร้านแจ้ง 16 ต.ค. 69 เคสพรีเมี่ยมใส/ขอบ "ยังคงติดกรอบแดง")
    */
-  const tplGeneric = fmt.key.startsWith("tpl@");
+  const tplGeneric = /^tpl2?@/.test(fmt.key);
   /**
    * 📏 ชื่อรูปแบบงานที่แสดง — tpl@ ใช้ขนาดอาร์ตบอร์ดของไฟล์ ซึ่งรวมส่วนพับหลัง/ขอบเผื่อไว้
    * (เข็มกลัด 58mm อาร์ตบอร์ด 70.5 มม. หัวจอขึ้น "งานออกแบบ 7.1×7.1 ซม." · เจ้าของร้านแจ้ง 16 ต.ค. 69 "แสดงขนาดไม่ตรงกับที่เลือก")
@@ -645,11 +647,26 @@ export default function CalendarStudio({
     [sel, slotFocus, srcs.length],
   );
   const custom = useMemo(() => design.custom ?? [], [design.custom]);
-  /** หน้าที่ใช้วาด/แก้จริงของหน้าเสมือน — ใบที่ยังเหมือนใบแรก ใช้ข้อมูลของใบแรก */
-  const resolve = useCallback((v: (typeof vpages)[number]) => (v.card > 0 && !custom.includes(v.card) ? v.base : v.page), [custom]);
+  /**
+   * 🪭 งาน 2 ด้านชิ้นเดียว (tpl2@ หน้า/หลัง · พัดพลาสติกใส) — ถาม "ลายเดียว (ทั้งหน้า-หลัง)" หรือ "2 ลาย หน้า-หลัง" (21 ต.ค. 69)
+   * backSame = ด้านหลังใช้ข้อมูลของด้านหน้า (resolve → หน้า front) ล็อกแก้ไม่ได้ · ไฟล์พิมพ์/รูปย่อ/ตรวจก่อนใช้แบบ ใช้ resolve เหมือนกัน
+   * จำกัดเฉพาะงานเทมเพลตทั่วไป (tplGeneric) — โปสการ์ด print2@ ยังเป็น 2 หน้าแยกเหมือนเดิม
+   */
+  const twoSided = tplGeneric && copies === 1 && fmt.pages.length === 2 && fmt.pages[0].key === "front" && fmt.pages[1].key === "back";
+  const backSame = twoSided && !!design.backSame;
+  /** หน้าที่ใช้วาด/แก้จริงของหน้าเสมือน — ใบที่ยังเหมือนใบแรก ใช้ข้อมูลของใบแรก · ด้านหลังที่ "ลายเดียว" ใช้ข้อมูลด้านหน้า */
+  const resolve = useCallback(
+    (v: (typeof vpages)[number]) => (v.card > 0 && !custom.includes(v.card) ? v.base : backSame && v.base.key === "back" ? fmt.pages[0] : v.page),
+    [custom, backSame, fmt],
+  );
   const basePage = resolve(vcur);
-  /** ใบนี้ยังเหมือนใบที่ 1 — แก้ไม่ได้จนกว่าจะกดแยกออกแบบ */
-  const locked = vcur.card > 0 && !custom.includes(vcur.card);
+  /** ใบนี้ยังเหมือนใบที่ 1 (หรือด้านหลังที่เหมือนด้านหน้า) — แก้ไม่ได้จนกว่าจะกดแยกออกแบบ */
+  const backLocked = backSame && vcur.base.key === "back";
+  const locked = (vcur.card > 0 && !custom.includes(vcur.card)) || backLocked;
+  /** ข้อความตอนพยายามใส่รูปลงหน้าที่ล็อก */
+  const lockedMsg = backLocked
+    ? "ด้านหลังเหมือนด้านหน้า (ลายเดียว) — กด 🎨 2 ลาย หน้า-หลัง ก่อนใส่รูปด้านหลังแยก"
+    : "ใบนี้ยังเหมือนใบที่ 1 — กด ✏️ แยกแบบ ก่อนใส่รูปของใบนี้";
   /** ชื่อหน้าที่โชว์ (ชุดหลายใบ = "ใบที่ N · ด้าน…") */
   const vname = (v: (typeof vpages)[number]) => {
     if (copies > 1) return `${cw}ที่ ${v.card + 1}${fmt.pages.length > 1 ? ` · ${v.base.name}` : ""}`;
@@ -670,6 +687,16 @@ export default function CalendarStudio({
   const [askMode, setAskMode] = useState(() => copies > 1 && !initial);
   /** ถามครั้งแรกตอนเปิดแบบใหม่ (ยังไม่เคยเลือก) — ต้องเลือกก่อน ปิดไม่ได้ */
   const askModeFirst = useRef(copies > 1 && !initial);
+  /** 🪭 งาน 2 ด้าน: ถาม "ลายเดียว (ทั้งหน้า-หลัง)" / "2 ลาย หน้า-หลัง" ตอนเปิดแบบใหม่ (ต้องเลือกก่อน) · เปลี่ยนทีหลังได้ที่ชิปแถบบน */
+  const [askSide, setAskSide] = useState(() => twoSided && !initial);
+  const askSideFirst = useRef(twoSided && !initial);
+  function chooseSide(same: boolean) {
+    setAskSide(false);
+    askSideFirst.current = false;
+    setDesign((d) => ({ ...d, backSame: same }));
+    // กลับมาหน้าแรกเสมอ (ด้านหลังที่ล็อกแล้วแก้ไม่ได้)
+    if (same) setPageIdx(0);
+  }
   /** หน้าต่างยืนยันกลางจอ (แทน window.confirm ของเบราว์เซอร์) */
   const [ask, setAsk] = useState<{
     icon: string;
@@ -1399,8 +1426,9 @@ export default function CalendarStudio({
    * มี = .ai ได้เลเยอร์ "เส้นตัด (CutContour)" เป็นเส้นนี้ · .pdf ได้หน้าเส้นไดคัทตามทรง แทนกรอบสี่เหลี่ยมสมมุติของ tpl@
    * (เจ้าของร้านแจ้ง 16 ต.ค. 69 ".ai ต้องมีเส้นไดคัทด้วย" — เดิมเลเยอร์เส้นตัดเป็นสี่เหลี่ยมเว้นขอบ 3 มม. ไม่ใช่ทรงหัวใจ/วงกลม)
    */
+  // (เดิมไกด์แบบสกิน fill ไม่ใช้เส้นไดคัท — พัดพลาสติกใส 21 ต.ค. 69 สกิน + เส้นวงกลมที่ตั้งให้ไฟล์ → ใช้เมื่อรู้ขนาดอาร์ตบอร์ด wMm/hMm)
   const tplCut = useMemo(() => {
-    if (!guide?.cut?.length || guide.fill || !guide.wMm || !guide.hMm) return null;
+    if (!guide?.cut?.length || !guide.wMm || !guide.hMm) return null;
     return shiftCurves(guide.cut, (W - guide.wMm) / 2, (H - guide.hMm) / 2);
   }, [guide, W, H]);
   /**
@@ -1781,7 +1809,7 @@ export default function CalendarStudio({
   async function addPhoto(file: File | undefined, asFree = false, nth = 0) {
     if (!file) return;
     if (locked) {
-      setErr("ใบนี้ยังเหมือนใบที่ 1 — กด ✏️ แยกแบบ ก่อนใส่รูปของใบนี้");
+      setErr(lockedMsg);
       return;
     }
     if (!file.type.startsWith("image/")) {
@@ -1964,7 +1992,7 @@ export default function CalendarStudio({
   }
 
   async function dropOnStage(files: File[], clientX: number, clientY: number) {
-    if (locked) return setErr("ใบนี้ยังเหมือนใบที่ 1 — กด ✏️ แยกแบบ ก่อนใส่รูปของใบนี้");
+    if (locked) return setErr(lockedMsg);
     const imgsOnly = files.filter((f) => f.type.startsWith("image/"));
     if (!imgsOnly.length) return setErr("ใช้ได้เฉพาะไฟล์รูป (JPG / PNG / WEBP)");
     const cv = canvasRef.current;
@@ -3641,18 +3669,22 @@ export default function CalendarStudio({
     await ensureFonts(fontKeys);
     const pages = await renderAiPages({
       fmt,
-      pages: printPages.map((v) => ({ name: vname(v).replace(/^\d+\. /, ""), page: v.page })),
+      pages: printPages.map((v) => ({ name: vname(v).replace(/^\d+\. /, ""), page: resolve(v) })),
       design,
       back,
       imgs,
     });
     // ✂️ เทมเพลตมีเส้นไดคัทจริง (tplCut) → เลเยอร์ "เส้นตัด (CutContour)" เป็นเส้นนั้นแทนกรอบสี่เหลี่ยมสมมุติของ tpl@
+    // ⬜🖨 รองขาวเต็มเส้นตัด (guide.whiteUnder · พัดพลาสติกใส) = เลเยอร์ถมสี spot White ตามเส้นไดคัท อยู่ใต้ลาย (fill:true → ตัวสร้าง .ai วางไว้ล่างสุด)
     const aiPages: AiPage[] = tplCut
       ? pages.map((p) => ({
           ...p,
           cut: null,
           paths: [
             ...(p.paths ?? []),
+            ...(guide?.whiteUnder
+              ? [{ layer: "รองขาว (White)", spot: "White", cmyk: [15, 0, 0, 0] as [number, number, number, number], fill: true, curves: tplCut }]
+              : []),
             { layer: "เส้นตัด (CutContour)", spot: "CutContour", cmyk: [0, 100, 0, 0] as [number, number, number, number], fill: false, curves: tplCut },
           ],
         }))
@@ -3678,7 +3710,7 @@ export default function CalendarStudio({
       const v = printPages[i];
       const name = vname(v).replace(/^\d+\. /, "");
       setBusy(`กำลังทำไฟล์ .pdf หน้า ${i + 1}/${printPages.length}…`);
-      const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, v.page, design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
+      const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, resolve(v), design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
       if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ`);
       pages.push({ name, file: f });
     }
@@ -3710,7 +3742,7 @@ export default function CalendarStudio({
     for (const g of groups) {
       const files: File[] = [];
       for (const v of vpages.filter((x) => x.card === g.card)) {
-        const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, v.page, design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
+        const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, resolve(v), design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
         if (!f) throw new Error(`ประกอบ ${vname(v)} ไม่สำเร็จ`);
         files.push(f);
       }
@@ -4038,7 +4070,7 @@ export default function CalendarStudio({
       return;
     }
     // มีช่องรูปแต่ยังไม่มีช่องไหนใส่รูป = ยังสั่งไม่ได้ (ช่องจะพิมพ์ออกมาว่าง)
-    const needsPhoto = printPages.some((v) => lay(v.page).photo);
+    const needsPhoto = printPages.some((v) => lay(resolve(v)).photo);
     /**
      * 🧑‍💼 โหมดแอดมิน (noPhotoOk): ช่องรูปว่างไม่ใช่ทางตัน — ถามยืนยัน 1 ครั้งแล้วทำต่อ (ช่องว่างไม่พิมพ์ · สเปคติดป้ายรอรูป)
      * ลูกค้า/ไม่ยืนยัน = ข้อความเดิม พาไปช่องที่ว่าง
@@ -4068,7 +4100,7 @@ export default function CalendarStudio({
     }
     // หน้าไม่ยืมรูปปก (รายเดือน/ตั้งโต๊ะแบบใหม่) — หน้าที่ยังไม่ใส่รูปจะพิมพ์ออกมาเป็นช่องว่าง
     if (design.noBorrow) {
-      const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(v.page).optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(resolve(v)).optional && lay(resolve(v)).photo && !photoOf(lay(resolve(v)), design, imgs));
       if (empty) {
         const g = noPhotoGate(`${vname(empty)} ยังไม่มีรูป`);
         if (g === "ask") return;
@@ -4085,7 +4117,7 @@ export default function CalendarStudio({
     const photoSkipped =
       skipPhoto &&
       needsPhoto &&
-      (slotSrc(design, imgs) < 0 || printPages.some((v) => v.page.kind !== "postback" && lay(v.page).photo && !photoOf(lay(v.page), design, imgs)));
+      (slotSrc(design, imgs) < 0 || printPages.some((v) => v.page.kind !== "postback" && lay(resolve(v)).photo && !photoOf(lay(resolve(v)), design, imgs)));
     // คละลาย: ค่าคละนับจากรูปในคลัง — รูปที่ไม่ได้วางลงใบไหนไม่ได้พิมพ์แต่ยังนับ → ถามให้ลบออกก่อน
     if (mixMode && unusedSrcs.length) {
       const list = unusedSrcs;
@@ -4100,7 +4132,7 @@ export default function CalendarStudio({
     }
     // คละลาย: ทุกใบต้องมีรูปของตัวเอง (ใบไหนว่างจะพิมพ์ออกมาเป็นช่องว่าง)
     if (mixMode) {
-      const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(v.page).optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
+      const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(resolve(v)).optional && lay(resolve(v)).photo && !photoOf(lay(resolve(v)), design, imgs));
       if (empty) {
         setPageIdx(vpages.indexOf(empty));
         setTool("photo");
@@ -4111,8 +4143,8 @@ export default function CalendarStudio({
     // หน้าที่ลูกค้าขยับรูปเองจนไม่เต็มช่อง — ถามก่อน (หน้าที่ใช้รูปปกอัตโนมัติวางเต็มช่องเสมอ)
     if (!force && !fmt.diecut) {
       const gaps = printPages.filter((v) => {
-        const lp = lay(v.page);
-        const o = design.photos[v.page.key];
+        const lp = lay(resolve(v));
+        const o = design.photos[resolve(v).key];
         return lp.photo && o && o.src >= 0 && !placementCovers(o.pl, lp.photo);
       });
       if (gaps.length) {
@@ -4124,7 +4156,7 @@ export default function CalendarStudio({
     // 🔍 รูปความคมชัดต่ำ (รูปอาจแตก) — บอกก่อนส่งพิมพ์ ให้เลือกกลับไปแก้หรือใช้ต่อ
     if (!lowOk) {
       const lows = printPages.filter((v) => {
-        const d = pageMinDpi(v.page);
+        const d = pageMinDpi(resolve(v));
         return Number.isFinite(d) && qualityOf(d, fmt.dpi).lv === 0;
       });
       if (lows.length) {
@@ -4137,7 +4169,7 @@ export default function CalendarStudio({
           body:
             `${lows
               .slice(0, 6)
-              .map((v) => `${vname(v)} (${pageMinDpi(v.page)} DPI)`)
+              .map((v) => `${vname(v)} (${pageMinDpi(resolve(v))} DPI)`)
               .join(" · ")}${lows.length > 6 ? " …" : ""} — ` +
             `พิมพ์ออกมาอาจแตก/เบลอ แนะนำใช้รูปไฟล์ใหญ่ขึ้น หรือย่อรูปให้เล็กลง (งานนี้พิมพ์ ${fmt.dpi} DPI)`,
           ok: "ใช้แบบนี้ต่อ",
@@ -4156,7 +4188,8 @@ export default function CalendarStudio({
       const out: CalendarResult["pages"] = [];
       for (let i = 0; i < printPages.length; i++) {
         const v = printPages[i];
-        const p = v.page;
+        // 🪭 ด้านหลังที่ "ลายเดียว" = ประกอบจากข้อมูลด้านหน้า (resolve) · key ยังเป็นของหน้านั้น (ไฟล์ที่ 2 = ลายด้านหลัง)
+        const p = resolve(v);
         const name = vname(v).replace(/^\d+\. /, "");
         setBusy(`กำลังประกอบหน้า ${i + 1}/${printPages.length}…`);
         // มีรูปบนหน้า (ช่องรูปหรือกรอบรูปอิสระ) = JPEG · ตารางล้วน = PNG คมกว่า
@@ -4169,7 +4202,7 @@ export default function CalendarStudio({
           `${stem}${noCal ? "" : `-ปฏิทิน${back.year}`}-${no}${name}.${photo ? "jpg" : "png"}`.replace(/[\/:*?"<>|]/g, "-"),
         );
         if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ ลองใหม่อีกครั้ง`);
-        out.push({ key: p.key, name, file: f });
+        out.push({ key: v.page.key, name, file: f });
       }
       /**
        * ✂️ งานไดคัท: ไฟล์ที่แนบ = ภาพจำลองชิ้นงาน (ลาย + เส้นตัด + รู) · แยกไฟล์พิมพ์ลายพื้นใสขนาดจริง 300 DPI (print)
@@ -4192,7 +4225,8 @@ export default function CalendarStudio({
       }
       // ความคมชัดต่ำสุดของทุกหน้า (ทีมผลิตดูตัวเลขเดียวพอ)
       const dpis = printPages
-        .map(({ page: p }) => {
+        .map((v) => {
+          const p = resolve(v);
           const c = photoOf(lay(p), design, imgs);
           const o = design.photos[p.key];
           const s = o ? srcs[o.src] : srcs[fallbackSrc];
@@ -5627,7 +5661,21 @@ export default function CalendarStudio({
                 <span className="text-[10.5px] font-bold">{feeNow > 0 ? `ค่าคละ +${formatBaht(feeNow)}` : "ไม่มีค่าคละ"}</span>
               </button>
             )}
-            {copies === 1 && fmt.pages.filter((p) => p.photo).length > 1 && (
+            {twoSided && (
+              // 🪭 งาน 2 ด้านชิ้นเดียว: ชิปบอกว่าลายเดียว (หน้า-หลังเหมือนกัน) หรือ 2 ลาย · กดเปลี่ยนได้
+              <button
+                type="button"
+                onClick={() => setAskSide(true)}
+                title="หน้า-หลัง ลายเดียวกัน หรือ 2 ลาย"
+                className={`hidden flex-col items-end rounded-xl px-2.5 py-1 text-right leading-tight ring-1 transition hover:brightness-95 sm:flex ${
+                  feeNow > 0 ? "bg-amber-50 text-amber-900 ring-amber-200" : "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                }`}
+              >
+                <span className="text-[11px] font-extrabold">{backSame ? "🖼 ลายเดียว หน้า-หลัง" : `🎨 2 ลาย หน้า-หลัง (ใช้ ${designN} รูป)`}</span>
+                <span className="text-[10.5px] font-bold">{feeNow > 0 ? `ค่าคละ +${formatBaht(feeNow)}` : "ไม่มีค่าคละ"}</span>
+              </button>
+            )}
+            {copies === 1 && !twoSided && fmt.pages.filter((p) => p.photo).length > 1 && (
               // 🖼 งานหลายหน้า: นับลายตามรูปที่ใช้ทุกหน้า → ค่าคละตามกติกาสินค้า (13 ต.ค. 69)
               <span
                 title="นับลายตามจำนวนรูปที่ใช้ทุกหน้า · ค่าคละตามเงื่อนไขของสินค้า"
@@ -6144,15 +6192,31 @@ export default function CalendarStudio({
               {locked && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/35">
                   <div className="rounded-2xl bg-white/95 px-4 py-3 text-center shadow-lg ring-1 ring-stone-200">
-                    <p className="text-sm font-extrabold text-stone-800">ใบที่ {vcur.card + 1} เหมือนใบที่ 1</p>
-                    <p className="mt-0.5 text-[11px] text-stone-500">แก้ใบที่ 1 = ทุกใบเปลี่ยนตาม · อยากให้ใบนี้ต่างออกไป กดด้านล่าง</p>
-                    <button
-                      type="button"
-                      onClick={() => customizeCard(vcur.card)}
-                      className="mt-2 rounded-full bg-sky-600 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-sky-700"
-                    >
-                      ✏️ ออกแบบใบนี้แยก
-                    </button>
+                    {backLocked ? (
+                      <>
+                        <p className="text-sm font-extrabold text-stone-800">ด้านหลังเหมือนด้านหน้า (ลายเดียว)</p>
+                        <p className="mt-0.5 text-[11px] text-stone-500">แก้ด้านหน้า = ด้านหลังเปลี่ยนตาม · อยากใส่รูปด้านหลังต่างออกไป กดด้านล่าง</p>
+                        <button
+                          type="button"
+                          onClick={() => chooseSide(false)}
+                          className="mt-2 rounded-full bg-sky-600 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-sky-700"
+                        >
+                          🎨 2 ลาย หน้า-หลัง — ออกแบบด้านหลังแยก
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-extrabold text-stone-800">ใบที่ {vcur.card + 1} เหมือนใบที่ 1</p>
+                        <p className="mt-0.5 text-[11px] text-stone-500">แก้ใบที่ 1 = ทุกใบเปลี่ยนตาม · อยากให้ใบนี้ต่างออกไป กดด้านล่าง</p>
+                        <button
+                          type="button"
+                          onClick={() => customizeCard(vcur.card)}
+                          className="mt-2 rounded-full bg-sky-600 px-4 py-2 text-xs font-extrabold text-white shadow hover:bg-sky-700"
+                        >
+                          ✏️ ออกแบบใบนี้แยก
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -6232,7 +6296,9 @@ export default function CalendarStudio({
               )}
               {locked && (tool === "photo" || tool === "text" || tool === "shape" || tool === "layout") && (
                 <p className="rounded-xl bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
-                  ใบนี้ยังเหมือนใบที่ 1 — กด ✏️ แยกแบบ ก่อนแก้รูป/ข้อความ/รูปทรงของใบนี้ หรือไปแก้ที่ใบที่ 1 (ทุกใบเปลี่ยนตาม)
+                  {backLocked
+                    ? "ด้านหลังเหมือนด้านหน้า (ลายเดียว) — แก้ที่ด้านหน้า (ด้านหลังเปลี่ยนตาม) หรือกด 🎨 2 ลาย หน้า-หลัง ถ้าจะใส่รูปด้านหลังแยก"
+                    : "ใบนี้ยังเหมือนใบที่ 1 — กด ✏️ แยกแบบ ก่อนแก้รูป/ข้อความ/รูปทรงของใบนี้ หรือไปแก้ที่ใบที่ 1 (ทุกใบเปลี่ยนตาม)"}
                 </p>
               )}
               {!locked && tool === "text" && (
@@ -6754,6 +6820,45 @@ export default function CalendarStudio({
         {mug3d && mug3d !== "loading" && (
           // key = ประเภทแก้ว: ค่าเปลี่ยนระหว่างเปิดอยู่ = สร้างฉากใหม่ (ฉากสร้างครั้งเดียวตอนเปิด)
           <Mug3D key={mock3d?.body ?? "white"} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d ?? MUG_DEFAULT} title={title} onClose={() => setMug3d(null)} />
+        )}
+        {askSide && (
+          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-stone-900/45 p-4">
+            <div className="relative w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
+              {!askSideFirst.current && (
+                <button
+                  type="button"
+                  onClick={() => setAskSide(false)}
+                  className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full text-lg text-stone-400 hover:bg-stone-100"
+                  aria-label="ปิด"
+                >
+                  ✕
+                </button>
+              )}
+              <h3 className="text-lg font-extrabold text-stone-800">หน้า-หลัง พิมพ์แบบไหน?</h3>
+              <p className="mt-0.5 text-xs text-stone-500">{fmtName} · พิมพ์ 2 ด้าน — เปลี่ยนทีหลังได้ที่ชิปแถบด้านบน</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {[
+                  { same: true, name: "ลายเดียว", icon: "🖼", desc: "หน้าและหลังเหมือนกัน — ออกแบบครั้งเดียว ด้านหลังพิมพ์ตามด้านหน้า" },
+                  { same: false, name: "2 ลาย หน้า-หลัง", icon: "🎨", desc: "ใส่รูปด้านหน้าและด้านหลังแยกกัน (เลือกหน้าที่แถบรูปย่อด้านล่าง)" },
+                ].map((o) => (
+                  <button
+                    key={o.name}
+                    type="button"
+                    onClick={() => chooseSide(o.same)}
+                    className={`flex flex-col items-start gap-1 rounded-2xl p-4 text-left ring-1 transition hover:bg-sky-50 hover:ring-2 hover:ring-sky-400 ${
+                      !askSideFirst.current && backSame === o.same ? "bg-sky-50 ring-2 ring-sky-500" : "ring-stone-200"
+                    }`}
+                  >
+                    <span className="text-3xl" aria-hidden>
+                      {o.icon}
+                    </span>
+                    <span className="text-base font-extrabold text-stone-800">{o.name}</span>
+                    <span className="text-xs leading-relaxed text-stone-500">{o.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
         {askMode && (
           <div className="absolute inset-0 z-[70] flex items-center justify-center bg-stone-900/45 p-4">

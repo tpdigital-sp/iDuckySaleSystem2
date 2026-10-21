@@ -1448,7 +1448,8 @@ export default function ProductDetail({
   const calFormatBase =
     (product.calendarStudio?.formats ?? [])
       .filter((f) => (f.when ?? []).every((w) => w.choices.includes(String(effective[w.label] ?? "").trim())))
-      .map((f) => fillFormat(f.format))
+      // 🪭 "tpl2" (ไม่ระบุขนาด) = งานเทมเพลตแบบ 2 ด้าน ขนาดจากเทมเพลตที่ตรงตัวเลือก (พัดพลาสติกใส สกรีน 2 ด้าน · 21 ต.ค. 69) · ไม่มีเทมเพลต = ข้ามข้อนี้
+      .map((f) => (f.format === "tpl2" ? (tplFormatKey ? tplFormatKey.replace(/^tpl@/, "tpl2@") : null) : fillFormat(f.format)))
       .find((x): x is string => !!x) ??
     tplFormatKey ??
     "card";
@@ -1460,7 +1461,7 @@ export default function ProductDetail({
   // จำนวนชิ้นต่อหน่วยตามระบบ: เพดานจากขนาด (capDesigns) ก่อน · ไม่มีก็ใช้ "1 หน่วยได้กี่ชิ้น" ของตัวเลือก (โปสการ์ด 4×6 = 8 ใบ/แผ่น A3)
   const piecesPerSet = unitCap ?? (unitYield && unitYield.unit == null && unitYield.per > 0 ? unitYield.per : undefined);
   const calFormatKey0 =
-    /^(tpl|sleeve|print2?)@[\d.]+x[\d.]+$/.test(calFormatBase) && needDesignsChoice && piecesPerSet && piecesPerSet > 1 && piecesPerSet <= 20
+    /^(tpl2?|sleeve|print2?)@[\d.]+x[\d.]+$/.test(calFormatBase) && needDesignsChoice && piecesPerSet && piecesPerSet > 1 && piecesPerSet <= 20
       ? `${calFormatBase}-c${piecesPerSet}`
       : calFormatBase;
   /** 🎨 จอสร้างแบบไม่มีปฏิทิน (แผ่นรองเมาส์ · format pad@…) — ข้อความ/ปุ่มพูดว่า "ออกแบบ" ไม่ใช่ "ปฏิทิน" */
@@ -1471,8 +1472,8 @@ export default function ProductDetail({
     calFormatKey0 === "canvas" && grown
       ? `canvas@${Math.round(grown.w * 10)}x${Math.round(grown.h * 10)}`
       : // 📏 เพิ่มนิ้ว (inchGrown) → อาร์ตบอร์ดจอออกแบบโตตาม (คง -cN ต่อท้ายถ้ามี)
-        inchGrown && /^tpl@/.test(calFormatKey0)
-        ? calFormatKey0.replace(/^tpl@[\d.]+x[\d.]+/, `tpl@${Math.round(inchGrown.w * 10)}x${Math.round(inchGrown.h * 10)}`)
+        inchGrown && /^tpl2?@/.test(calFormatKey0)
+        ? calFormatKey0.replace(/^(tpl2?)@[\d.]+x[\d.]+/, (_, pre: string) => `${pre}@${Math.round(inchGrown.w * 10)}x${Math.round(inchGrown.h * 10)}`)
         : calFormatKey0;
   /** กติกาค่าคละของด้านหลังโดยเฉพาะ (งานกระดาษ = ลายละ 5 บาท) — ไม่ตั้ง = ใช้ชุดเดียวกับด้านหน้า */
   const backMix = product.backDesign?.mixRule;
@@ -3021,7 +3022,20 @@ export default function ProductDetail({
         ? { sizeNote: `📏 ขยายเป็น ${inchGrown.w}×${inchGrown.h} ซม. (+${inchGrown.add} นิ้ว ทั้งกว้างและสูง จากมาตรฐาน ${inchGrown.baseW}×${inchGrown.baseH})` }
         : {};
       // ⬜ สกินทึบ (TemplateFile.skinOpaque) → จอทาขาวทับลายตรงพื้นขาวของสกิน (นอกชิ้นงาน เช่น รอบวงพัด)
-      if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk), ...sizeNote, ...(sk.skinOpaque ? { opaque: true } : {}) };
+      // ✂️ สกินที่มีเส้นไดคัท (cutCurves · พัดพลาสติกใส วงกลม) → ส่งเส้น + ขนาดอาร์ตบอร์ดไปด้วย (fill ยังปูสกินเต็มผืนเหมือนเดิม)
+      //    + whiteUnder = .ai ใส่เลเยอร์รองขาวตามเส้นนั้น (21 ต.ค. 69)
+      if (sk)
+        return {
+          url: sk.skinUrl!,
+          wMm: sk.cutCurves?.length && sk.widthMm ? sk.widthMm : 0,
+          hMm: sk.cutCurves?.length && sk.heightMm ? sk.heightMm : 0,
+          fill: true,
+          name: name(sk),
+          ...sizeNote,
+          ...(sk.skinOpaque ? { opaque: true } : {}),
+          ...(sk.cutCurves?.length ? { cut: sk.cutCurves } : {}),
+          ...(sk.whiteUnder ? { whiteUnder: true } : {}),
+        };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
       // ✂️ cut = เส้นไดคัทจริงจากไฟล์ .ai (cutCurves) → .ai/.pdf จากจอออกแบบใช้เส้นนี้แทนกรอบสี่เหลี่ยม (16 ต.ค. 69)
       if (f)
@@ -3034,6 +3048,7 @@ export default function ProductDetail({
           // 📏 ขนาดหน้างานจริง (วงในเทมเพลต) — หัวจอออกแบบแสดงขนาดนี้แทนอาร์ตบอร์ด (16 ต.ค. 69)
           ...(f.finishedMm ? { finished: f.finishedMm } : {}),
           ...sizeNote,
+          ...(f.whiteUnder ? { whiteUnder: true } : {}),
         };
     }
     return undefined;
@@ -9270,7 +9285,9 @@ export default function ProductDetail({
                 </button>
               )}
               {(!studioNeedsDesign || sheets.length > 0) && (
-                <div className="ml-auto flex shrink-0 flex-col items-stretch gap-1">
+                // ⚠️ ปุ่ม 🎨 ออกแบบ ด้านบนมี ml-auto อยู่แล้ว — ถ้ากล่องนี้ใส่ ml-auto ซ้ำ ช่องว่างจะถูกแบ่งคนละครึ่ง ปุ่มห่างกันกลางแถบ
+                //    (เจ้าของร้านทัก 21 ต.ค. 69 "มันห่างกันมากไป") → ดันขวาเฉพาะตอนไม่มีปุ่มออกแบบ ให้ 2 ปุ่มเกาะกันชิดขวา
+                <div className={`${studioNeedsDesign || studioOfferStaff ? "" : "ml-auto "}flex shrink-0 flex-col items-stretch gap-1`}>
                   {/* 🎯 แถบขั้นตอนแบบย่อ — พื้นที่แคบ บอกแค่ "เหลือกี่ขั้น + ขั้นที่ต้องทำตอนนี้" (กดแล้วพาไปเหมือนกัน) */}
                   {ctaStuck && ctaStepNow && !added && (
                     <button

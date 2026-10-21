@@ -211,6 +211,11 @@ export interface CalDesign {
   /** 🎨 รูปแบบการพิมพ์ "คละลาย" (ชุดหลายใบ) — ทุกใบออกแบบแยกได้ · ไม่ตั้ง = ลายเดียว (ทุกใบเหมือนใบแรก) */
   mix?: boolean;
   /**
+   * 🪭 งาน 2 ด้านชิ้นเดียว (tpl2@ · พัดพลาสติกใส): "ลายเดียว (ทั้งหน้า-หลัง)" = ด้านหลังพิมพ์เหมือนด้านหน้า ออกแบบครั้งเดียว
+   * ไม่ตั้ง = 2 ลาย หน้า-หลัง ใส่รูปแยกกัน (เจ้าของร้านสั่ง 21 ต.ค. 69 "อยากให้มีถามว่า ลายเดียว หรือ 2 ลาย หน้า-หลัง")
+   */
+  backSame?: boolean;
+  /**
    * 🚫 หน้าที่ยังไม่ได้ใส่รูป = ว่าง ไม่ยืมรูปหน้าปก — งานหลายหน้า (ปฏิทินรายเดือน/ตั้งโต๊ะ) ที่เปิดแบบใหม่ตั้งแต่ 13 ต.ค. 69
    * (ผู้ใช้แจ้งบั๊ค "ลากภาพใส่หน้าปก ระบบใส่ภาพให้ทุกหน้าเอง") · แบบเก่าที่ไม่มีธงนี้ยังยืมรูปปกเหมือนเดิม
    */
@@ -700,25 +705,34 @@ export function calFormat(key: string, opts: { bleed?: number } = {}): CalFormat
    * "-c<N>" ต่อท้าย = 1 หน่วยสั่งได้ N ชิ้น (ปลอกแก้ว 1 เซ็ต = 6 ชิ้น) → จอออกแบบถาม "ลายเดียว/คละลาย" + แถบรูปย่อรายชิ้น
    *   เหมือนปฏิทินโฟโต้การ์ด (ผู้ใช้ขอ 16 ต.ค. 69) · ค่าคละนับตาม calDesignCount ตัวเดียวกับปฏิทิน
    */
-  if (key.startsWith("tpl@")) {
-    const m = /^tpl@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:-c(\d+))?$/.exec(key);
-    const aw = m ? Number(m[1]) : 100;
-    const ah = m ? Number(m[2]) : 100;
-    const pieces = m?.[3] ? Math.min(20, Math.max(1, Number(m[3]))) : 1;
+  // 🪭 "tpl2@<กว้าง>x<สูง>" = แบบเดียวกันแต่ 2 หน้า (ด้านหน้า/ด้านหลัง ใส่รูปแยกกัน) — พัดพลาสติกใส "สกรีน 2 ด้าน" (เจ้าของร้านสั่ง 21 ต.ค. 69
+  //    "สกรีน 2 ด้าน มันควรมีลายให้เลือก ใส่ 2 ภาพ") · ตั้งใน Product.calendarStudio.formats เป็น "tpl2" เฉย ๆ ได้ หน้าสินค้าเติมขนาดจากเทมเพลตให้
+  if (/^tpl2?@/.test(key)) {
+    const m = /^tpl(2)?@(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(?:-c(\d+))?$/.exec(key);
+    const two = !!m?.[1];
+    const aw = m ? Number(m[2]) : 100;
+    const ah = m ? Number(m[3]) : 100;
+    const pieces = m?.[4] ? Math.min(20, Math.max(1, Number(m[4]))) : 1;
     const b = 3;
     const pw = Math.max(10, aw - 2 * b);
     const ph = Math.max(10, ah - 2 * b);
     const fr = frame(pw, ph, b, 3);
     return {
       key,
-      name: `งานออกแบบ ${cmText(aw)}×${cmText(ah)} ซม.`,
+      name: `งานออกแบบ ${cmText(aw)}×${cmText(ah)} ซม.${two ? " · 2 ด้าน" : ""}`,
       trimW: pw,
       trimH: ph,
       bleed: b,
       safe: 3,
       dpi: Math.max(aw, ah) > 300 ? 150 : 300,
-      ...(pieces > 1 ? { cards: pieces, perCard: 1, cardWord: "ชิ้น" } : {}),
-      pages: [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
+      ...(two ? { perCard: 2, note: "ชิ้นละ 2 หน้า — หน้า 1 = ด้านหน้า · หน้า 2 = ด้านหลัง" } : {}),
+      ...(pieces > 1 ? { cards: pieces, perCard: two ? 2 : 1, cardWord: "ชิ้น" } : {}),
+      pages: two
+        ? [
+            { key: "front", name: "ด้านหน้า", kind: "photo", photo: fr.full },
+            { key: "back", name: "ด้านหลัง", kind: "photo", photo: fr.full },
+          ]
+        : [{ key: "front", name: "ลาย", kind: "photo", photo: fr.full }],
     };
   }
   /**
