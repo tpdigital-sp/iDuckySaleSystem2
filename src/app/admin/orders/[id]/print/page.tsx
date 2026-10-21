@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairsOf, giftBumpLabel } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairsOf, giftPairLabel, giftBumpLabel } from "@/lib/gifts";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -1668,8 +1668,8 @@ function OrderDocs({
                                 )}
                               </span>
                               {/* 🔗 รองหลังรูปนี้ใส่กับแบบสินค้ารูปไหน (กราฟฟิกจับคู่ในหน้าออเดอร์ · 7 ต.ค. 69) */}
-                              {pics.length === all.length && pairs[k] && (
-                                <span className="block w-20 text-center text-[9px] font-extrabold leading-tight">↔ {pairs[k]!.label}</span>
+                              {pics.length === all.length && pairs[k].length > 0 && (
+                                <span className="block w-20 text-center text-[9px] font-extrabold leading-tight">↔ {giftPairLabel(pairs[k])}</span>
                               )}
                               </span>
                             ))}

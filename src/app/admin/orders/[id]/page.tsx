@@ -2,7 +2,7 @@
 
 import { shrinkImageFile } from "@/lib/shrink-image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairOptions, giftPairsOf, giftBumpLabel, giftBumpPending } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPackImages, giftProofLabel, giftDesignQtys, giftDesignQtyLabel, giftPairOptions, giftPairsOf, giftPairLabel, giftPairQty, proofPairUrls, giftBumpLabel, giftBumpPending } from "@/lib/gifts";
 import Link from "next/link";
 import OverpayBox from "./OverpayBox";
 import ProductionWipBox from "./ProductionWipBox";
@@ -5034,21 +5034,26 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next);
   }
 
-  /** 🔗 จับคู่แบบของแถม (รองหลัง) กับแบบสินค้า — ฝ่ายแพ็คจะเห็นว่ารองหลังลายไหนใส่กับชิ้นไหน */
-  function setGiftProofPair(promoId: string, url: string, pairUrl: string) {
+  /** 🔗 จับคู่แบบของแถม (รองหลัง) กับแบบสินค้า — ฝ่ายแพ็คจะเห็นว่ารองหลังลายไหนใส่กับชิ้นไหน
+   *    รูปเดียวจับได้หลายแบบ (pairUrls) · pairUrl = ค่าแรกคงไว้ให้โค้ด/ข้อมูลเก่า (OD-261012-9950 · 21 ต.ค. 69) */
+  function setGiftProofPair(promoId: string, url: string, pairUrls: string[]) {
     if (!order) return;
+    const list = Array.from(new Set(pairUrls.filter(Boolean)));
     const gifts = (order.gifts ?? []).map((g) =>
       g.promoId !== promoId
         ? g
         : {
             ...g,
-            proofs: (g.proofs ?? []).map((p) => (p.url !== url ? p : { ...p, pairUrl: pairUrl || undefined, pairAt: new Date().toISOString() })),
+            proofs: (g.proofs ?? []).map((p) =>
+              p.url !== url ? p : { ...p, pairUrl: list[0], pairUrls: list.length ? list : undefined, pairAt: new Date().toISOString() }
+            ),
           }
     );
     const g = order.gifts?.find((x) => x.promoId === promoId);
     const k = (g?.proofs ?? []).findIndex((p) => p.url === url);
-    const to = giftPairOptions(order.items).find((o) => o.url === pairUrl)?.label;
-    const next = withLog({ ...order, gifts }, actor, "จับคู่แบบของแถม", `🎁 ${g?.name ?? "ของแถม"} รูปที่ ${k + 1} → ${to ?? "ไม่ระบุ"}`);
+    const opts = giftPairOptions(order.items);
+    const to = giftPairLabel(list.map((u) => opts.find((o) => o.url === u)).filter((o): o is NonNullable<typeof o> => !!o));
+    const next = withLog({ ...order, gifts }, actor, "จับคู่แบบของแถม", `🎁 ${g?.name ?? "ของแถม"} รูปที่ ${k + 1} → ${to || "ไม่ระบุ"}`);
     setOrder(next);
     if (!demo) void saveOrWarn(next);
   }
@@ -8902,20 +8907,26 @@ export default function AdminOrderDetailPage() {
                                 (เดิมเรียงรูปสินค้าทุกรูปใต้รองหลังทุกรูป ลายตาเมื่อมีหลายลาย · เจ้าของร้านทัก 7 ต.ค. 69) */}
                             {giftPairOptions(order.items).length > 0 &&
                               (() => {
-                                const pair = giftPairOptions(order.items).find((o) => o.url === p.pairUrl);
+                                // 🔢 รูปเดียวคู่ได้หลายแบบ → โชว์รูปคู่เรียงกัน (เกิน 3 ขึ้น +N) + จำนวนรวม (21 ต.ค. 69)
+                                const opts = giftPairOptions(order.items);
+                                const pairs = proofPairUrls(p).map((u) => opts.find((o) => o.url === u)).filter((o): o is NonNullable<typeof o> => !!o);
+                                const sum = giftPairQty(pairs);
                                 const can = mayEdit || mayProof;
-                                return pair ? (
+                                return pairs.length ? (
                                   <button
                                     type="button"
                                     disabled={!can}
                                     onClick={() => setGiftPairPick({ promoId: g.promoId, url: p.url })}
-                                    title={`ใส่คู่กับ ${pair.label}${pair.qty ? ` ×${pair.qty}` : ""} — แตะเพื่อเปลี่ยน`}
-                                    className="flex w-16 items-center gap-1 rounded-md bg-white p-0.5 ring-1 ring-violet-300 hover:ring-2 hover:ring-violet-500"
+                                    title={`ใส่คู่กับ ${giftPairLabel(pairs)}${sum ? ` รวม ×${sum}` : ""} — แตะเพื่อเปลี่ยน`}
+                                    className="flex min-w-16 max-w-28 flex-wrap items-center gap-0.5 rounded-md bg-white p-0.5 ring-1 ring-violet-300 hover:ring-2 hover:ring-violet-500"
                                   >
                                     <span className="text-[10px] font-black text-violet-600">↔</span>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={pair.url} alt={pair.label} className="h-8 w-8 rounded object-contain" />
-                                    {pair.qty ? <span className="text-[9px] font-bold text-slate-600">×{pair.qty}</span> : null}
+                                    {pairs.slice(0, 3).map((pair) => (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img key={pair.url} src={pair.url} alt={pair.label} className="h-7 w-7 rounded object-contain" />
+                                    ))}
+                                    {pairs.length > 3 ? <span className="text-[9px] font-bold text-violet-700">+{pairs.length - 3}</span> : null}
+                                    {sum ? <span className="text-[9px] font-bold text-slate-600">×{sum}</span> : null}
                                   </button>
                                 ) : (
                                   <button
@@ -11706,10 +11717,10 @@ export default function AdminOrderDetailPage() {
               proofUrl={cur.url}
               proofIndex={k}
               options={giftPairOptions(order.items)}
-              current={cur.pairUrl}
-              usedBy={(u) => (g.proofs ?? []).findIndex((p, j) => j !== k && p.pairUrl === u)}
-              onPick={(u) => {
-                setGiftProofPair(g.promoId, cur.url, u);
+              current={proofPairUrls(cur)}
+              usedBy={(u) => (g.proofs ?? []).findIndex((p, j) => j !== k && proofPairUrls(p).includes(u))}
+              onPick={(urls) => {
+                setGiftProofPair(g.promoId, cur.url, urls);
                 setGiftPairPick(null);
               }}
               onClose={() => setGiftPairPick(null)}
@@ -12787,7 +12798,7 @@ function PackView({
                 const pics = giftPackImages(g);
                 const dq = giftDesignQtys(g, order.items);
                 const pairs = giftPairsOf(g, order.items);
-                const unpaired = pics.length > 1 && pics[0].source === "proof" && pairs.some((x) => !x) && giftPairOptions(order.items).length > 0;
+                const unpaired = pics.length > 1 && pics[0].source === "proof" && pairs.some((x) => !x.length) && giftPairOptions(order.items).length > 0;
                 return (
                   <li key={g.promoId} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-100">
                     {giftLinesOf(g).map((ln, k) => (
@@ -12808,8 +12819,8 @@ function PackView({
                     {pics.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {pics.map((x, k) => (
-                          <div key={`${x.url}-${k}`} className={pairs[k] ? "rounded-xl bg-white p-1.5 ring-1 ring-amber-200" : ""}>
-                          <div className="flex items-center gap-1.5">
+                          <div key={`${x.url}-${k}`} className={pairs[k].length ? "rounded-xl bg-white p-1.5 ring-1 ring-amber-200" : ""}>
+                          <div className="flex flex-wrap items-center gap-1.5">
                           <a href={x.url} target="_blank" rel="noreferrer" className="relative block">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -12832,19 +12843,30 @@ function PackView({
                               </span>
                             )}
                           </a>
-                          {pairs[k] && (
+                          {/* 🔗 รูปเดียวคู่ได้หลายแบบสินค้า → เรียงรูปคู่ทั้งหมด + จำนวนต่อแบบ (OD-261012-9950 · 21 ต.ค. 69) */}
+                          {pairs[k].length > 0 && (
                             <>
                               <span className="text-base font-black text-amber-600">↔</span>
-                              <a href={pairs[k]!.url} target="_blank" rel="noreferrer" className="block">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={pairs[k]!.url} alt={pairs[k]!.label} className="h-24 w-24 rounded-lg bg-white object-contain ring-1 ring-slate-200" />
-                              </a>
+                              {pairs[k].map((pr) => (
+                                <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="relative block">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={pr.url}
+                                    alt={pr.label}
+                                    className={`rounded-lg bg-white object-contain ring-1 ring-slate-200 ${pairs[k].length > 3 ? "h-16 w-16" : "h-24 w-24"}`}
+                                  />
+                                  {pr.qty ? (
+                                    <span className="absolute right-0.5 top-0.5 rounded-md bg-slate-900 px-1 text-[10px] font-black tabular-nums text-white">×{pr.qty}</span>
+                                  ) : null}
+                                </a>
+                              ))}
                             </>
                           )}
                           </div>
-                          {pairs[k] && (
+                          {pairs[k].length > 0 && (
                             <p className="mt-1 text-center text-[11px] font-bold text-slate-700">
-                              รองหลังรูปที่ {k + 1} ใส่กับ {pairs[k]!.label}
+                              รองหลังรูปที่ {k + 1} ใส่กับ {giftPairLabel(pairs[k])}
+                              {giftPairQty(pairs[k]) ? ` (รวม ×${giftPairQty(pairs[k])})` : ""}
                             </p>
                           )}
                           </div>

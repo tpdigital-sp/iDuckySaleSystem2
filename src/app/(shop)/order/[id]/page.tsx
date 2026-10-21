@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useState } from "react";
-import { giftLinesOf, giftArtLabel, giftPairOptions } from "@/lib/gifts";
+import { giftLinesOf, giftArtLabel, giftPairOptions, giftPairQty, proofPairUrls } from "@/lib/gifts";
 import GiftPairPicker from "@/components/GiftPairPicker";
 import Link from "next/link";
 import ThaiPostTimeline from "@/components/ThaiPostTimeline";
@@ -585,10 +585,10 @@ export default function CustomerOrderPage() {
     return true;
   }
 
-  async function pairGift(promoId: string, idx: number, pairUrl: string) {
+  async function pairGift(promoId: string, idx: number, pairUrls: string[]) {
     setActionErr("");
     setGiftBusy(promoId);
-    const res = await pairGiftProof(orderId, orderKey, promoId, idx, pairUrl);
+    const res = await pairGiftProof(orderId, orderKey, promoId, idx, pairUrls);
     setGiftBusy(null);
     if (!res.ok) {
       setActionErr(res.error ?? "บันทึกคู่ไม่สำเร็จ");
@@ -2119,20 +2119,27 @@ export default function CustomerOrderPage() {
                               giftPairOptions(order.items).length > 1 &&
                               !(order.tracking ?? "").trim() &&
                               (() => {
-                                const pair = giftPairOptions(order.items).find((o) => o.url === p.pairUrl);
+                                // 🔢 รูปเดียวคู่ได้หลายแบบ (pairUrls) → โชว์รูปคู่เรียงกัน เกิน 3 ขึ้น +N (21 ต.ค. 69)
+                                const opts = giftPairOptions(order.items);
+                                const pairs = proofPairUrls(p).map((u) => opts.find((o) => o.url === u)).filter((o): o is NonNullable<typeof o> => !!o);
+                                const sum = giftPairQty(pairs);
                                 return (
                                   <button
                                     type="button"
                                     onClick={() => setGiftPairPick({ promoId: g.promoId, idx: j })}
-                                    className={`flex items-center justify-center gap-1 rounded-lg px-1 py-1 text-[11px] font-bold ring-1 ${
-                                      pair ? "bg-white text-violet-700 ring-violet-300" : "bg-amber-50 text-amber-700 ring-amber-300"
+                                    className={`flex flex-wrap items-center justify-center gap-1 rounded-lg px-1 py-1 text-[11px] font-bold ring-1 ${
+                                      pairs.length ? "bg-white text-violet-700 ring-violet-300" : "bg-amber-50 text-amber-700 ring-amber-300"
                                     }`}
                                   >
-                                    {pair ? (
+                                    {pairs.length ? (
                                       <>
-                                        ↔ {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={pair.url} alt={pair.label} className="h-6 w-6 rounded object-contain" />
-                                        {pair.qty ? `×${pair.qty}` : ""}
+                                        ↔{" "}
+                                        {pairs.slice(0, 3).map((pair) => (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img key={pair.url} src={pair.url} alt={pair.label} className="h-6 w-6 rounded object-contain" />
+                                        ))}
+                                        {pairs.length > 3 ? `+${pairs.length - 3}` : ""}
+                                        {sum ? `×${sum}` : ""}
                                       </>
                                     ) : (
                                       "🔗 คู่กับชิ้นไหน?"
@@ -2871,10 +2878,10 @@ export default function CustomerOrderPage() {
               proofUrl={cur.url}
               proofIndex={giftPairPick.idx}
               options={giftPairOptions(order.items)}
-              current={cur.pairUrl}
-              usedBy={(u) => (g.proofs ?? []).findIndex((p, j) => j !== giftPairPick.idx && p.pairUrl === u)}
+              current={proofPairUrls(cur)}
+              usedBy={(u) => (g.proofs ?? []).findIndex((p, j) => j !== giftPairPick.idx && proofPairUrls(p).includes(u))}
               busy={giftBusy === g.promoId}
-              onPick={(u) => void pairGift(g.promoId, giftPairPick.idx, u)}
+              onPick={(urls) => void pairGift(g.promoId, giftPairPick.idx, urls)}
               onClose={() => setGiftPairPick(null)}
             />
           );

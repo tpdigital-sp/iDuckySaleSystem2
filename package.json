@@ -49,6 +49,7 @@
     "scan:lot-reprice": "node --conditions=react-server --import tsx scripts/order-lot-reprice-scan.mts",
     "sync:order-gifts": "node --conditions=react-server --import tsx scripts/order-gifts-sync.mts",
     "check:order-gifts": "tsx --tsconfig tsconfig.json scripts/order-gifts-sync-test.mts",
+    "check:gift-pair": "tsx --tsconfig tsconfig.json scripts/gift-pair-test.mts",
     "check:reprint": "tsx --tsconfig tsconfig.json scripts/reprint-gate-test.mts",
     "check:receipt-gate": "node --conditions=react-server --import tsx scripts/receipt-gate-test.mts",
     "check:fa-wording": "node --conditions=react-server --import tsx scripts/fa-wording-test.mts",

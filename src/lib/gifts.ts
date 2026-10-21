@@ -335,11 +335,43 @@ export function giftArtLabel(g: OrderGift): string | null {
  *    และลูกค้าอนุมัติแล้ว → ฝ่ายแพ็คไม่เห็นรูปเลย ต้องไปเปิดหน้าออเดอร์เอง
  *    กติกาเดียวกับรายการสินค้า (coversOf/boxUnits): มีแบบใช้แบบ ไม่มีค่อยใช้ลายลูกค้า
  */
-export function giftPackImages(g: OrderGift): { url: string; source: "proof" | "artwork"; review?: "อนุมัติ" | "ขอแก้ไข"; pairUrl?: string }[] {
+export function giftPackImages(g: OrderGift): { url: string; source: "proof" | "artwork"; review?: "อนุมัติ" | "ขอแก้ไข"; pairUrls: string[] }[] {
   const proofs = (g.proofs ?? []).filter((p) => p?.url);
   if (proofs.length)
-    return proofs.map((p) => ({ url: p.url, source: "proof" as const, ...(p.review ? { review: p.review } : {}), ...(p.pairUrl ? { pairUrl: p.pairUrl } : {}) }));
-  return (g.artworkUrls ?? []).filter(Boolean).map((url) => ({ url, source: "artwork" as const }));
+    return proofs.map((p) => ({ url: p.url, source: "proof" as const, ...(p.review ? { review: p.review } : {}), pairUrls: proofPairUrls(p) }));
+  return (g.artworkUrls ?? []).filter(Boolean).map((url) => ({ url, source: "artwork" as const, pairUrls: [] }));
+}
+
+/**
+ * 🔗 แบบ/ลายสินค้าที่แบบของแถมรูปนี้จับคู่ไว้ (ชุดเต็ม) — รองหลัง 1 ลายใส่กับสินค้าได้หลายแบบ
+ *    (OD-261012-9950 · 21 ต.ค. 69: รองหลัง 2 ลาย แต่ MagSafe 4 แบบ/พวงกุญแจ 8 แบบ · เดิม pairUrl เก็บได้ค่าเดียว กดจับคู่รูปถัดไปทับคู่เก่า
+ *     พนักงานแพ็ค: "ระบบจับคู่ได้แค่ 1 ลายต่อ 1 ลาย")
+ *    อ่าน pairUrls ก่อน ไม่มีค่อยถอยไป pairUrl (ข้อมูลเก่า) · ตัดซ้ำ/ค่าว่างออก
+ */
+export function proofPairUrls(p: { pairUrl?: string; pairUrls?: string[] } | null | undefined): string[] {
+  if (!p) return [];
+  const list = Array.isArray(p.pairUrls) ? p.pairUrls.filter((u) => typeof u === "string" && u.trim()) : [];
+  if (list.length) return Array.from(new Set(list));
+  return p.pairUrl ? [p.pairUrl] : [];
+}
+
+/** ป้ายรวมของคู่ที่จับไว้ — "รูปที่ 1, 2, 3" · หลายสินค้า "กริ๊กต๊อก รูปที่ 1, 2 · พวงกุญแจ รูปที่ 3" (ชื่อสินค้าซ้ำไม่พิมพ์ซ้ำ) */
+export function giftPairLabel(pairs: { label: string }[]): string {
+  const groups = new Map<string, string[]>();
+  for (const p of pairs) {
+    const m = /^(.*?)(รูปที่|ลายที่) (\d+)$/.exec(p.label);
+    const key = m ? `${m[1]}${m[2]}` : p.label;
+    const nums = groups.get(key) ?? [];
+    if (m) nums.push(m[3]);
+    groups.set(key, nums);
+  }
+  return Array.from(groups, ([k, nums]) => (nums.length ? `${k} ${nums.join(", ")}` : k)).join(" · ");
+}
+
+/** จำนวนรวมของแบบสินค้าที่คู่กับรูปของแถมนี้ — null = มีคู่ที่ไม่รู้จำนวน (หรือยังไม่จับ) ไม่เดา */
+export function giftPairQty(pairs: { qty?: number }[]): number | null {
+  if (!pairs.length || !pairs.every((p) => num(p.qty) > 0)) return null;
+  return pairs.reduce((a, p) => a + num(p.qty), 0);
 }
 
 /**
@@ -369,10 +401,10 @@ export function giftPairOptions(items: GiftPairItem[] | null | undefined): { url
   });
 }
 
-/** คู่ของรูปของแถมแต่ละรูป (ลำดับเดียวกับ giftPackImages) — null = รูปนั้นยังไม่ได้จับคู่ / คู่ถูกลบไปแล้ว */
-export function giftPairsOf(g: OrderGift, items: GiftPairItem[] | null | undefined): ({ url: string; label: string; qty?: number } | null)[] {
+/** คู่ของรูปของแถมแต่ละรูป (ลำดับเดียวกับ giftPackImages) — [] = รูปนั้นยังไม่ได้จับคู่ / คู่ถูกลบไปแล้ว · รูปเดียวจับได้หลายแบบสินค้า */
+export function giftPairsOf(g: OrderGift, items: GiftPairItem[] | null | undefined): { url: string; label: string; qty?: number }[][] {
   const opts = giftPairOptions(items);
-  return giftPackImages(g).map((x) => (x.pairUrl ? opts.find((o) => o.url === x.pairUrl) ?? null : null));
+  return giftPackImages(g).map((x) => x.pairUrls.map((u) => opts.find((o) => o.url === u)).filter((o): o is NonNullable<typeof o> => !!o));
 }
 
 export function giftDesignQtys(
@@ -381,9 +413,10 @@ export function giftDesignQtys(
 ): { qtys: number[]; sure: boolean } | null {
   const pics = giftPackImages(g);
   if (pics.length < 2) return null;
-  // 🔗 จับคู่ครบทุกรูปแล้ว → จำนวนตามแบบสินค้าที่คู่กัน (ชิ้นต่อชิ้น) ผูกกับรูปได้แน่
+  // 🔗 จับคู่ครบทุกรูปแล้ว → จำนวนตามแบบสินค้าที่คู่กัน (รูปเดียวคู่หลายแบบ = บวกรวม) ผูกกับรูปได้แน่
   const pairs = giftPairsOf(g, items);
-  if (pairs.every((x) => x?.qty)) return { qtys: pairs.map((x) => x!.qty!), sure: true };
+  const sums = pairs.map((l) => giftPairQty(l));
+  if (sums.every((q): q is number => q !== null)) return { qtys: sums, sure: true };
   const own = (g.proofs ?? []).filter((p) => p?.url).map((p) => num(p.qty));
   if (pics[0].source === "proof" && own.length === pics.length && own.every((q) => q > 0)) return { qtys: own, sure: true };
   if ((g.artworkUrls ?? []).length) return null; // ลายเฉพาะของแถม — ไม่มีจำนวนต่อลายให้ยืม
