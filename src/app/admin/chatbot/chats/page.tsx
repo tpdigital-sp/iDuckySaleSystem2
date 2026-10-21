@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RequirePerm from "@/components/RequirePerm";
 import { Empty, SearchBox } from "@/components/admin/ui";
 import { useCan, useIsAdministrator } from "@/lib/perm-context";
@@ -565,6 +565,19 @@ function Chats() {
   }, [load, sel, refreshRoom]);
 
   const thread: LogEntry[] = useMemo(() => (detail ? (detail.log.length ? detail.log : detail.messages) : []), [detail]);
+  // 🪶 ธง "หลังรายการนี้มี ร่างรอส่ง / คำตอบร้าน / อะไรก็ตาม" คิดครั้งเดียวต่อ thread (เดิม thread.slice(i+1).some ต่อร่างทุกตัว = O(n²) ทุกครั้งที่วาด)
+  const threadFlags = useMemo(() => {
+    const out: { pendingAfter: boolean; replyAfter: boolean; anyAfter: boolean }[] = new Array(thread.length);
+    let pendingAfter = false, replyAfter = false, anyAfter = false;
+    for (let i = thread.length - 1; i >= 0; i--) {
+      out[i] = { pendingAfter, replyAfter, anyAfter };
+      const x = thread[i];
+      if (x.role === "draft" && x.status === "pending") pendingAfter = true;
+      if (x.role === "admin" || x.role === "assistant") replyAfter = true;
+      if (x.role === "draft" || x.role === "assistant" || x.role === "admin") anyAfter = true;
+    }
+    return out;
+  }, [thread]);
   useEffect(() => {
     if (!detail || !(detail.log.length || detail.messages.length)) return;
     const m = roomCacheRef.current;
@@ -1428,157 +1441,31 @@ function Chats() {
                 </p>
               ) : (
                 thread.map((m, i) => {
-                  if (m.role === "draft") {
-                    const latest = m.status === "pending" && !thread.slice(i + 1).some((x) => x.role === "draft" && x.status === "pending");
-                    // ⏳ ร่างหมดอายุ (เกิน 24 ชม. / ร้านตอบไปแล้วหลังร่าง) = ไม่ขึ้นการ์ดให้กดส่ง (lib/draft-live.ts · 19 ต.ค. 69 ร่างค้างจาก 14–15 ต.ค.)
-                    const answered = thread.slice(i + 1).some((x) => x.role === "admin" || x.role === "assistant");
-                    const stale = m.status === "expired" || (m.status === "pending" && (answered || !isDraftLive(m.at, detail?.lastAdminAt)));
-                    // ↻ 20 ต.ค. 69 เจ้าของร้าน "ตรงนี้ควรมีบอกว่ากำลังร่างใหม่": กดตอบใหม่แล้วร่างเดิมยุบเป็น "ทิ้งแล้ว" เฉย ๆ ไม่รู้ว่าบอทกำลังทำอยู่
-                    //    → ร่างที่ทิ้งหลังกด ↻ (redraftAt ≥ เวลาร่าง) และยังไม่มีร่าง/คำตอบใหม่ตามมา ≤60 วิ = ขึ้นป้ายกำลังร่างใหม่ใต้แถว
-                    const regenAt = sel ? (redraftAt[sel] ?? 0) : 0;
-                    const redrafting =
-                      m.status === "discarded" && regenAt >= Date.parse(m.at) && Date.now() - regenAt < 60_000 && !thread.slice(i + 1).some((x) => x.role === "draft" || x.role === "assistant" || x.role === "admin");
-                    return latest && !stale ? (
-                      <DraftCard key={m.id || i} entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onDelete={isOwner ? () => void deleteDraft(m) : undefined} onRegen={canReply ? () => regenDraft(m) : undefined} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
-                    ) : (
-                      <div key={m.id || i} className="mb-2 flex flex-col items-end">
-                        <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
-                          <summary className="cursor-pointer">
-                            📝 ร่างบอทที่ไม่ได้ส่ง · {stale ? "หมดอายุ (เกิน 24 ชม. หรือร้านตอบไปแล้ว)" : m.status === "discarded" ? "ทิ้งแล้ว" : m.status === "superseded" ? "มีร่างใหม่กว่า" : "ยังไม่ส่ง"} · {fmtTime(m.at)}
-                          </summary>
-                          <p className="mt-1 whitespace-pre-wrap">{m.text}</p>
-                        </details>
-                        {redrafting ? (
-                          <p className="mt-1 flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12.5px] font-bold" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
-                            <span className="inline-block animate-pulse">⏳</span> กำลังร่างใหม่… ร่างใหม่จะขึ้นในราว 15–30 วินาที
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                  }
-                  const admin = m.role === "admin";
-                  const ours = m.role === "assistant" || admin;
-                  // 🧾 19 ต.ค. 69 ข้อความนี้มีการ์ด Flex จริง (payload) → วาดการ์ดแบบเดียวกับใน LINE ใต้ฟอง · ฟองเหลือแต่ข้อความ (ตัดบรรทัด "[การ์ด] …")
-                  const hasFlex = ours && !!m.flex?.length;
-                  const flexOnly = hasFlex && !m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("").trim() && !m.imageUrl;
-                  const showDay = i === 0 || dayKey(m.at) !== dayKey(thread[i - 1].at);
-                  const dayChip = showDay ? (
-                    <div className="my-3 flex justify-center">
-                      <span className="rounded-full px-3 py-0.5 text-[11px] font-semibold" style={{ background: "rgba(0,0,0,.08)", color: "#4B5563" }}>
-                        {fmtDay(m.at)}
-                      </span>
-                    </div>
-                  ) : null;
-                  // 🎴 การ์ดแจ้งสถานะที่ระบบส่งเอง (notify.ts → chat-notice-log) — ลูกค้าเห็นเป็นการ์ด Flex ใน LINE
-                  if (m.role === "system" && m.notice) {
-                    return (
-                      <div key={m.id || i}>
-                        {dayChip}
-                        <NoticeCard entry={m} />
-                      </div>
-                    );
-                  }
-                  // 👥 21 ต.ค. 69 เหตุการณ์ในกลุ่ม (บัญชีร้านเข้า/ออก · สมาชิกเข้า/ออก) = ข้อความกลางจอ ไม่ใช่ฟอง
-                  if (m.role === "system" && !m.notice) {
-                    return (
-                      <div key={m.id || i}>
-                        {dayChip}
-                        <p className="my-2 text-center text-[11.5px]" style={{ color: "var(--dk-faint)" }}>{m.text} · {fmtTime(m.at)}</p>
-                      </div>
-                    );
-                  }
+                  // 🪶 21 ต.ค. 69 แถวข้อความเป็น memo (ThreadRow) — โพลทุก 3/5 วิ ไม่วาดซ้ำ 200 ข้อความ · ธง "มีร่าง/คำตอบตามหลัง" คิดครั้งเดียวต่อ thread (threadFlags)
+                  const f = threadFlags[i];
+                  const isDraft = m.role === "draft";
+                  const regenAt = sel ? (redraftAt[sel] ?? 0) : 0;
                   return (
-                    <div key={i}>
-                      {showDay ? (
-                        <div className="my-3 flex justify-center">
-                          <span className="rounded-full px-3 py-0.5 text-[11px] font-semibold" style={{ background: "rgba(0,0,0,.08)", color: "#4B5563" }}>
-                            {fmtDay(m.at)}
-                          </span>
-                        </div>
-                      ) : null}
-                      <div className={`mb-2 flex items-end gap-1.5 ${ours ? "justify-end" : "justify-start"}`}>
-                        {!ours ? <Avatar src={m.senderPic || (detail && isGroupRow(detail) ? "" : detail?.pictureUrl)} size={28} group={!!detail && isGroupRow(detail)} /> : null}
-                        {ours ? (
-                          <span className="mb-0.5 shrink-0 text-right text-[10px] leading-tight" style={{ color: "var(--dk-faint)" }}>
-                            {/* 📥 mode "oa" = พิมพ์ใน LINE OA Manager แล้วนำเข้าจาก CSV (15 ต.ค. 69) · mode "auto" = ข้อความตอบกลับอัตโนมัติของ LINE */}
-                            {admin ? `${m.by || "แอดมิน"}${m.mode === "oa" ? " · OA" : ""}` : m.approvedBy ? `บอท ✓ ${m.approvedBy}${m.edited ? " (แก้)" : ""}` : m.mode === "auto" ? "ตอบอัตโนมัติ" : m.mode === "oa" ? "ร้าน (OA)" : "บอท"}
-                            <br />
-                            {fmtTime(m.at)}
-                          </span>
-                        ) : null}
-                        <div
-                          className={`${flexOnly ? "hidden " : ""}max-w-[78%] whitespace-pre-wrap break-words px-3.5 py-2 text-[14px] leading-relaxed md:max-w-[62%]`}
-                          style={
-                            // ฟองแบบ LINE: แอดมิน = เขียว LINE · บอท = ฟ้า (ป้าย "บอท" ข้างฟองกำกับอีกชั้น) · ลูกค้า = ขาวขอบบาง
-                            admin
-                              ? { background: "var(--ln-me)", color: "var(--ln-me-ink)", borderRadius: "18px 4px 18px 18px" }
-                              : ours
-                                ? { background: "var(--ln-bot)", color: "var(--dk-navy)", borderRadius: "18px 4px 18px 18px" }
-                                : { background: "white", color: "var(--dk-navy)", borderRadius: "4px 18px 18px 18px", boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }
-                          }
-                        >
-                          {/* 👥 ชื่อคนพิมพ์ในกลุ่ม (LINE member profile · จดมากับข้อความจาก /api/bot/group-log) */}
-                          {!ours && m.senderName ? <span className="mb-0.5 block text-[11px] font-bold" style={{ color: "var(--ln-green-ink)" }}>{m.senderName}</span> : null}
-                          {(() => {
-                            // 🖼 17:30 รูปจากลูกค้า: log มี messageId (ยังไม่มี imageUrl) → โหลดผ่าน API ที่ดึงจาก LINE แล้วแคช · รูปบอท/แอดมิน: imageUrl ตรง ๆ
-                            // 🐛 18:10 เคยขอรูปทุก entry ที่มี messageId (ข้อความตัวอักษรก็มี) → LINE 400 → ขึ้น "รูปหมดอายุ" ใต้ทุกข้อความ · ต้องเฉพาะ type image
-                            if (m.file) return null; // ไฟล์งาน: imageUrl = ที่เก็บไฟล์ ไม่ใช่รูป
-                            const isCustImg = !ours && m.type === "image";
-                            if (isCustImg && !m.imageUrl && m.imageExpired) return <span className="mb-1 block text-[12px] italic" style={{ color: "var(--dk-faint)" }}>🖼 รูปหมดอายุใน LINE แล้ว (ดูได้ใน OA Manager)</span>;
-                            const lazy = isCustImg && !m.imageUrl && m.messageId && m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "";
-                            const src = m.imageUrl || lazy;
-                            if (!src) return null;
-                            const fname = `line-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg`;
-                            return (
-                              <button type="button" onClick={() => setLightbox({ url: src, name: fname })} className="mb-1 block" title="กดเพื่อดูรูปใหญ่ / ดาวน์โหลด">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={src} alt="" loading="lazy" className="max-h-64 min-h-[48px] min-w-[48px] rounded-lg transition hover:opacity-90" />
-                              </button>
-                            );
-                          })()}
-                          {hasFlex || cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : ours ? splitBankImgs(m.text).text : m.text}
-                          {ours && splitBankImgs(m.text).n
-                            ? Array.from({ length: splitBankImgs(m.text).n }, (_, bi) => (
-                                <button key={bi} type="button" onClick={() => setLightbox({ url: BANK_CARD.jpg, name: "bank-card.jpg" })} className="mb-1 block" title="ภาพบัญชีรับโอนที่บอทส่งให้ลูกค้า · กดเพื่อดูรูปใหญ่">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={BANK_CARD.webp} alt={BANK_CARD.alt} loading="lazy" className="max-h-64 rounded-lg transition hover:opacity-90" />
-                                </button>
-                              ))
-                            : null}
-                          {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
-                          {m.file ? <FileCard file={m.file} href={m.file.url || (m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "#")} archived={!!m.file.url} /> : null}
-                          {!hasFlex && cardsOf(m).length ? (
-                          <CardCarousel>
-                          {cardsOf(m).map((c, ci) => (
-                            // 🔍 19:35 เจ้าของร้าน: กดรูปในการ์ดให้ขยายดูเหมือนรูปในแชท (lightbox) · ปุ่มล่างค่อยไปหน้าสินค้า
-                            <div key={ci} className="w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)", scrollSnapAlign: "start" }}>
-                              {c.image ? (
-                                <button type="button" onClick={() => setLightbox({ url: c.image as string, name: `${c.name || "product"}.jpg` })} className="block w-full" title="กดเพื่อดูรูปใหญ่">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={c.image} alt={c.name} className="aspect-[4/3] w-full object-cover transition hover:opacity-90" />
-                                </button>
-                              ) : null}
-                              <div className="px-2.5 pb-2 pt-1.5">
-                                <p className="truncate text-[13px] font-bold" style={{ color: "#153B3F" }}>{c.name || "สินค้า"}</p>
-                                <a href={c.url} target="_blank" rel="noreferrer" className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>ดูราคา / สั่งเลย</a>
-                              </div>
-                            </div>
-                          ))}
-                          </CardCarousel>
-                          ) : null}
-                        </div>
-                        {!ours ? (
-                          <span className="mb-0.5 shrink-0 text-[10px]" style={{ color: "var(--dk-faint)" }}>
-                            {fmtTime(m.at)}
-                          </span>
-                        ) : null}
-                      </div>
-                      {hasFlex ? (
-                        <div className="mb-2 flex justify-end">
-                          <FlexView items={m.flex ?? []} onZoom={(url) => setLightbox({ url, name: `card-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
-                        </div>
-                      ) : null}
-                    </div>
+                    <ThreadRow
+                      key={m.id || i}
+                      m={m}
+                      prevAt={i ? thread[i - 1].at : undefined}
+                      latest={isDraft && m.status === "pending" && !f.pendingAfter}
+                      stale={isDraft && (m.status === "expired" || (m.status === "pending" && (f.replyAfter || !isDraftLive(m.at, detail?.lastAdminAt))))}
+                      redrafting={isDraft && m.status === "discarded" && regenAt >= Date.parse(m.at) && Date.now() - regenAt < 60_000 && !f.anyAfter}
+                      sel={sel}
+                      isGroup={!!detail && isGroupRow(detail)}
+                      roomPic={detail?.pictureUrl}
+                      canReply={canReply}
+                      quotaOut={quotaOut}
+                      isOwner={isOwner}
+                      sendDraft={sendDraft}
+                      discardDraft={discardDraft}
+                      deleteDraft={deleteDraft}
+                      regenDraft={regenDraft}
+                      setLightbox={setLightbox}
+                      cardsOf={cardsOf}
+                    />
                   );
                 })
               )}
@@ -1655,6 +1542,196 @@ function Chats() {
 }
 
 /** 🎴 การ์ดที่ระบบแจ้งลูกค้าเอง (สถานะออเดอร์/เงินเข้า/จัดส่ง…) — หัวสีเดียวกับการ์ดใน LINE · ไม่ใช่คำตอบแอดมิน */
+/**
+ * 🪶 แถวข้อความ 1 รายการใน thread (21 ต.ค. 69 เจ้าของร้าน "เปิดแชท/สลับห้องหน่วง") — memo: โพลห้องทุก 3 วิ/รายชื่อทุก 5 วิ
+ *   เปลี่ยน state ของหน้า แต่ entry เดิม (identity เดิมจาก pollRoom) + ธงเท่าเดิม = ไม่วาดใหม่ · handler ทุกตัวเป็น useCallback/setState (identity คงที่)
+ *   เนื้อ JSX ย้ายมาจาก thread.map เดิมทั้งก้อน · ธง latest/stale/redrafting คำนวณที่ผู้เรียก (threadFlags)
+ */
+const ThreadRow = memo(function ThreadRow({
+  m,
+  prevAt,
+  latest,
+  stale,
+  redrafting,
+  sel,
+  isGroup,
+  roomPic,
+  canReply,
+  quotaOut,
+  isOwner,
+  sendDraft,
+  discardDraft,
+  deleteDraft,
+  regenDraft,
+  setLightbox,
+  cardsOf,
+}: {
+  m: LogEntry;
+  prevAt?: string;
+  latest: boolean;
+  stale: boolean;
+  redrafting: boolean;
+  sel: string;
+  isGroup: boolean;
+  roomPic?: string;
+  canReply: boolean;
+  quotaOut: boolean;
+  isOwner: boolean;
+  sendDraft: (m: LogEntry, text: string) => Promise<boolean>;
+  discardDraft: (m: LogEntry) => void;
+  deleteDraft: (m: LogEntry) => Promise<void>;
+  regenDraft: (m: LogEntry) => Promise<void>;
+  setLightbox: (v: { url: string; name: string } | null) => void;
+  cardsOf: (m: LogEntry) => CardRef[];
+}) {
+  if (m.role === "draft") {
+    // ⏳ ร่างหมดอายุ (เกิน 24 ชม. / ร้านตอบไปแล้วหลังร่าง) = ไม่ขึ้นการ์ดให้กดส่ง (lib/draft-live.ts · 19 ต.ค. 69 ร่างค้างจาก 14–15 ต.ค.)
+    // ↻ 20 ต.ค. 69 เจ้าของร้าน "ตรงนี้ควรมีบอกว่ากำลังร่างใหม่": กดตอบใหม่แล้วร่างเดิมยุบเป็น "ทิ้งแล้ว" เฉย ๆ ไม่รู้ว่าบอทกำลังทำอยู่
+    //    → ร่างที่ทิ้งหลังกด ↻ (redraftAt ≥ เวลาร่าง) และยังไม่มีร่าง/คำตอบใหม่ตามมา ≤60 วิ = ขึ้นป้ายกำลังร่างใหม่ใต้แถว
+    return latest && !stale ? (
+      <DraftCard entry={m} canSend={canReply && !quotaOut} onSend={(t) => sendDraft(m, t)} onDiscard={() => discardDraft(m)} onDelete={isOwner ? () => void deleteDraft(m) : undefined} onRegen={canReply ? () => regenDraft(m) : undefined} onZoom={(url) => setLightbox({ url, name: `draft-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
+    ) : (
+      <div className="mb-2 flex flex-col items-end">
+        <details className="max-w-[78%] rounded-xl px-3 py-1.5 text-[12px] md:max-w-[62%]" style={{ background: "rgba(0,0,0,.05)", color: "#6B7280" }}>
+          <summary className="cursor-pointer">
+            📝 ร่างบอทที่ไม่ได้ส่ง · {stale ? "หมดอายุ (เกิน 24 ชม. หรือร้านตอบไปแล้ว)" : m.status === "discarded" ? "ทิ้งแล้ว" : m.status === "superseded" ? "มีร่างใหม่กว่า" : "ยังไม่ส่ง"} · {fmtTime(m.at)}
+          </summary>
+          <p className="mt-1 whitespace-pre-wrap">{m.text}</p>
+        </details>
+        {redrafting ? (
+          <p className="mt-1 flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12.5px] font-bold" style={{ background: "var(--dk-yolk-wash)", color: "var(--dk-yolk-ink)" }}>
+            <span className="inline-block animate-pulse">⏳</span> กำลังร่างใหม่… ร่างใหม่จะขึ้นในราว 15–30 วินาที
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+  const admin = m.role === "admin";
+  const ours = m.role === "assistant" || admin;
+  // 🧾 19 ต.ค. 69 ข้อความนี้มีการ์ด Flex จริง (payload) → วาดการ์ดแบบเดียวกับใน LINE ใต้ฟอง · ฟองเหลือแต่ข้อความ (ตัดบรรทัด "[การ์ด] …")
+  const hasFlex = ours && !!m.flex?.length;
+  const flexOnly = hasFlex && !m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("").trim() && !m.imageUrl;
+  const showDay = !prevAt || dayKey(m.at) !== dayKey(prevAt);
+  const dayChip = showDay ? (
+    <div className="my-3 flex justify-center">
+      <span className="rounded-full px-3 py-0.5 text-[11px] font-semibold" style={{ background: "rgba(0,0,0,.08)", color: "#4B5563" }}>
+        {fmtDay(m.at)}
+      </span>
+    </div>
+  ) : null;
+  // 🎴 การ์ดแจ้งสถานะที่ระบบส่งเอง (notify.ts → chat-notice-log) — ลูกค้าเห็นเป็นการ์ด Flex ใน LINE
+  if (m.role === "system" && m.notice) {
+    return (
+      <div>
+        {dayChip}
+        <NoticeCard entry={m} />
+      </div>
+    );
+  }
+  // 👥 21 ต.ค. 69 เหตุการณ์ในกลุ่ม (บัญชีร้านเข้า/ออก · สมาชิกเข้า/ออก) = ข้อความกลางจอ ไม่ใช่ฟอง
+  if (m.role === "system" && !m.notice) {
+    return (
+      <div>
+        {dayChip}
+        <p className="my-2 text-center text-[11.5px]" style={{ color: "var(--dk-faint)" }}>{m.text} · {fmtTime(m.at)}</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      {showDay ? (
+        <div className="my-3 flex justify-center">
+          <span className="rounded-full px-3 py-0.5 text-[11px] font-semibold" style={{ background: "rgba(0,0,0,.08)", color: "#4B5563" }}>
+            {fmtDay(m.at)}
+          </span>
+        </div>
+      ) : null}
+      <div className={`mb-2 flex items-end gap-1.5 ${ours ? "justify-end" : "justify-start"}`}>
+        {!ours ? <Avatar src={m.senderPic || (isGroup ? "" : roomPic)} size={28} group={isGroup} /> : null}
+        {ours ? (
+          <span className="mb-0.5 shrink-0 text-right text-[10px] leading-tight" style={{ color: "var(--dk-faint)" }}>
+            {/* 📥 mode "oa" = พิมพ์ใน LINE OA Manager แล้วนำเข้าจาก CSV (15 ต.ค. 69) · mode "auto" = ข้อความตอบกลับอัตโนมัติของ LINE */}
+            {admin ? `${m.by || "แอดมิน"}${m.mode === "oa" ? " · OA" : ""}` : m.approvedBy ? `บอท ✓ ${m.approvedBy}${m.edited ? " (แก้)" : ""}` : m.mode === "auto" ? "ตอบอัตโนมัติ" : m.mode === "oa" ? "ร้าน (OA)" : "บอท"}
+            <br />
+            {fmtTime(m.at)}
+          </span>
+        ) : null}
+        <div
+          className={`${flexOnly ? "hidden " : ""}max-w-[78%] whitespace-pre-wrap break-words px-3.5 py-2 text-[14px] leading-relaxed md:max-w-[62%]`}
+          style={
+            // ฟองแบบ LINE: แอดมิน = เขียว LINE · บอท = ฟ้า (ป้าย "บอท" ข้างฟองกำกับอีกชั้น) · ลูกค้า = ขาวขอบบาง
+            admin
+              ? { background: "var(--ln-me)", color: "var(--ln-me-ink)", borderRadius: "18px 4px 18px 18px" }
+              : ours
+                ? { background: "var(--ln-bot)", color: "var(--dk-navy)", borderRadius: "18px 4px 18px 18px" }
+                : { background: "white", color: "var(--dk-navy)", borderRadius: "4px 18px 18px 18px", boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }
+          }
+        >
+          {/* 👥 ชื่อคนพิมพ์ในกลุ่ม (LINE member profile · จดมากับข้อความจาก /api/bot/group-log) */}
+          {!ours && m.senderName ? <span className="mb-0.5 block text-[11px] font-bold" style={{ color: "var(--ln-green-ink)" }}>{m.senderName}</span> : null}
+          {(() => {
+            // 🖼 17:30 รูปจากลูกค้า: log มี messageId (ยังไม่มี imageUrl) → โหลดผ่าน API ที่ดึงจาก LINE แล้วแคช · รูปบอท/แอดมิน: imageUrl ตรง ๆ
+            // 🐛 18:10 เคยขอรูปทุก entry ที่มี messageId (ข้อความตัวอักษรก็มี) → LINE 400 → ขึ้น "รูปหมดอายุ" ใต้ทุกข้อความ · ต้องเฉพาะ type image
+            if (m.file) return null; // ไฟล์งาน: imageUrl = ที่เก็บไฟล์ ไม่ใช่รูป
+            const isCustImg = !ours && m.type === "image";
+            if (isCustImg && !m.imageUrl && m.imageExpired) return <span className="mb-1 block text-[12px] italic" style={{ color: "var(--dk-faint)" }}>🖼 รูปหมดอายุใน LINE แล้ว (ดูได้ใน OA Manager)</span>;
+            const lazy = isCustImg && !m.imageUrl && m.messageId && m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "";
+            const src = m.imageUrl || lazy;
+            if (!src) return null;
+            const fname = `line-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg`;
+            return (
+              <button type="button" onClick={() => setLightbox({ url: src, name: fname })} className="mb-1 block" title="กดเพื่อดูรูปใหญ่ / ดาวน์โหลด">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt="" loading="lazy" className="max-h-64 min-h-[48px] min-w-[48px] rounded-lg transition hover:opacity-90" />
+              </button>
+            );
+          })()}
+          {hasFlex || cardsOf(m).length ? m.text.split("\n").filter((l) => !/^\[การ์ด\]/.test(l.trim()) && !/^\(ส่งการ์ดสินค้า/.test(l.trim())).join("\n").trim() : m.file ? m.text.replace(/^\(ส่งไฟล์[^)]*\)$/, "").replace(/^\[ลูกค้าส่งไฟล์\][^\n]*$/, "").trim() : m.type === "image" && !ours && (m.imageUrl || m.messageId) ? "" : ours ? splitBankImgs(m.text).text : m.text}
+          {ours && splitBankImgs(m.text).n
+            ? Array.from({ length: splitBankImgs(m.text).n }, (_, bi) => (
+                <button key={bi} type="button" onClick={() => setLightbox({ url: BANK_CARD.jpg, name: "bank-card.jpg" })} className="mb-1 block" title="ภาพบัญชีรับโอนที่บอทส่งให้ลูกค้า · กดเพื่อดูรูปใหญ่">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={BANK_CARD.webp} alt={BANK_CARD.alt} loading="lazy" className="max-h-64 rounded-lg transition hover:opacity-90" />
+                </button>
+              ))
+            : null}
+          {/* 🧾 17:35 การ์ดในฟองวาดเหมือนใน LINE (รูป · ชื่อ · ราคา · ปุ่ม) — ตัดบรรทัด "[การ์ด] …" ในข้อความออกเมื่อมีการ์ดจริง */}
+          {m.file ? <FileCard file={m.file} href={m.file.url || (m.id && sel ? `/api/admin/chatbot/chats/image?uid=${encodeURIComponent(sel)}&log=${encodeURIComponent(m.id)}` : "#")} archived={!!m.file.url} /> : null}
+          {!hasFlex && cardsOf(m).length ? (
+          <CardCarousel>
+          {cardsOf(m).map((c, ci) => (
+            // 🔍 19:35 เจ้าของร้าน: กดรูปในการ์ดให้ขยายดูเหมือนรูปในแชท (lightbox) · ปุ่มล่างค่อยไปหน้าสินค้า
+            <div key={ci} className="w-[200px] shrink-0 overflow-hidden rounded-xl bg-white text-left shadow-sm" style={{ border: "1px solid rgba(0,0,0,.06)", scrollSnapAlign: "start" }}>
+              {c.image ? (
+                <button type="button" onClick={() => setLightbox({ url: c.image as string, name: `${c.name || "product"}.jpg` })} className="block w-full" title="กดเพื่อดูรูปใหญ่">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={c.image} alt={c.name} className="aspect-[4/3] w-full object-cover transition hover:opacity-90" />
+                </button>
+              ) : null}
+              <div className="px-2.5 pb-2 pt-1.5">
+                <p className="truncate text-[13px] font-bold" style={{ color: "#153B3F" }}>{c.name || "สินค้า"}</p>
+                <a href={c.url} target="_blank" rel="noreferrer" className="mt-1.5 block rounded-lg py-1 text-center text-[12px] font-bold text-white" style={{ background: "#1F6F78" }}>ดูราคา / สั่งเลย</a>
+              </div>
+            </div>
+          ))}
+          </CardCarousel>
+          ) : null}
+        </div>
+        {!ours ? (
+          <span className="mb-0.5 shrink-0 text-[10px]" style={{ color: "var(--dk-faint)" }}>
+            {fmtTime(m.at)}
+          </span>
+        ) : null}
+      </div>
+      {hasFlex ? (
+        <div className="mb-2 flex justify-end">
+          <FlexView items={m.flex ?? []} onZoom={(url) => setLightbox({ url, name: `card-${(m.at || "").slice(0, 16).replace(/[^0-9]/g, "")}.jpg` })} />
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
 function NoticeCard({ entry }: { entry: LogEntry }) {
   const n = entry.notice!;
   const tone = /^#[0-9a-f]{6}$/i.test(n.color) ? n.color : "#475569";

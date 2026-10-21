@@ -267,7 +267,9 @@ export async function GET(req: Request) {
         card: card ? { name: String(card.name ?? ""), url: String(card.url ?? "") } : undefined,
         cards: cards.length ? cards : undefined,
         // 🧾 19 ต.ค. 69 ข้อความ Flex ที่ส่งให้ลูกค้าจริง (จาก payload) → หน้าแชทวาดการ์ดตารางราคาเหมือนใน LINE (FlexView)
-        flex: flexOf(y.payload),
+        // 🪶 21 ต.ค. 69 เจ้าของร้าน "เปิดแชท/สลับห้องหน่วง": ห้องทดสอบ 200 ข้อความ = 457 KB · Flex เต็ม 77 ใบกิน 60% ส่วนใหญ่เป็นร่างที่ทิ้ง/ถูกทับแล้ว
+        //    → ร่างที่ไม่ได้ส่ง (discarded/superseded/expired) ไม่ส่ง Flex (หน้าแชทยุบไว้ใน <details> เห็นแค่ข้อความ+การ์ดย่อ cards อยู่แล้ว)
+        flex: y.role === "draft" && ["discarded", "superseded", "expired"].includes(String(y.status ?? "")) ? undefined : flexOf(y.payload),
         notice:
           y.notice && typeof y.notice === "object"
             ? (() => {
