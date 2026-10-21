@@ -250,9 +250,9 @@ export default function Stand3D({
         let lookY = H / 2;
 
         if (mock.kind === "stand360") {
-          // ── 360°: แผ่นขาวทึบ 3 มม. เอียงหลัง 10° บนแกนหมุน + ฐาน ──
+          // ── 360°: แผ่นขาวทึบเอียงหลัง ~14° บนข้อต่อ → แกนหมุน → จานหมุน → ฐาน (ตามรูปสินค้าจริง · ปรับ 21 ต.ค. 69 "มันแปลก ๆ ไม่เหมือนของจริง") ──
           const shape = toShape();
-          const T = 3;
+          const T = 2.5;
           const plate = new THREE.Group();
           const white = m(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.3 }));
           const body = add(new THREE.Mesh(g(new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false, curveSegments: 24 })), white));
@@ -267,41 +267,99 @@ export default function Stand3D({
           );
           decal.position.z = T / 2 + 0.06;
           plate.add(decal);
-          // 📱 ที่ตั้งโทรศัพท์ใส 2 ตัว ด้านล่างแผ่น
-          const hw = Math.min(16, W * 0.2);
-          const hd = 9;
-          const hh = Math.min(18, H * 0.16);
-          for (const sx of [-1, 1]) {
-            const holder = add(new THREE.Mesh(g(new THREE.BoxGeometry(hw, hh, hd)), clearMat()), false);
-            holder.position.set(W / 2 + sx * W * 0.2, hh / 2 + 2, T / 2 + hd / 2);
-            plate.add(holder);
-            const lip = add(new THREE.Mesh(g(new THREE.BoxGeometry(hw, 2.2, hd + 1)), clearMat()), false);
-            lip.position.set(W / 2 + sx * W * 0.2, 2.6, T / 2 + hd / 2);
-            plate.add(lip);
+          // 📱 ช่องตั้งโทรศัพท์ = รูเจาะในแผ่น (เส้นไดคัทวงใน · เจ้าของร้านชี้รูปจริง 21 ต.ค. 69 "ต้องเจาะตามที่ mark") → ใส่ตัวตั้งใสเต็มรู + แผ่นรองขาวยื่นมาข้างหน้า
+          //    ทรงสี่เหลี่ยม: รู 2 ช่อง ช่องละ 1 ตัว · ทรงโดม: รูกว้างช่องเดียว = ตัวตั้ง 2 ข้าง + สะพานขาวตรงกลาง
+          const area = (c: TemplateCurve) => {
+            let a = 0;
+            let px = c.s[0];
+            let py = c.s[1];
+            for (const sg of c.g) {
+              a += px * sg[5] - sg[4] * py;
+              px = sg[4];
+              py = sg[5];
+            }
+            return Math.abs(a / 2);
+          };
+          const bboxOf = (c: TemplateCurve) => {
+            const xs = [c.s[0], ...c.g.map((sg) => sg[4])];
+            const ys = [c.s[1], ...c.g.map((sg) => sg[5])];
+            return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+          };
+          const holes = [...cutCs].sort((a, b) => area(b) - area(a)).slice(1).map(bboxOf);
+          const padMat = white;
+          const ledgeD = 10;
+          for (const hb of holes) {
+            const hw = hb.x1 - hb.x0;
+            const hh = hb.y1 - hb.y0;
+            const cx = (hb.x0 + hb.x1) / 2;
+            const bottom = H - hb.y1; // ขอบล่างของรู (พิกัดแผ่น y ขึ้น)
+            const cy = bottom + hh / 2;
+            // ตัวตั้งใส: ก้อนใสเต็มรู (หนากว่าแผ่นเล็กน้อย) + แผ่นหลังใสกันลายโผล่
+            const fill = add(new THREE.Mesh(g(new THREE.BoxGeometry(hw, hh, T + 1.2)), clearMat()), false);
+            fill.position.set(cx, cy, 0);
+            plate.add(fill);
+            const wide = hw > W * 0.5;
+            const pads = wide ? [cx - hw * 0.3, cx + hw * 0.3] : [cx];
+            const pw = wide ? hw * 0.3 : hw * 0.86;
+            for (const pxc of pads) {
+              const ledge = add(new THREE.Mesh(g(new THREE.BoxGeometry(pw, 2.2, ledgeD)), padMat), true);
+              ledge.position.set(pxc, bottom + 1.1, T / 2 + ledgeD / 2);
+              plate.add(ledge);
+              const lip = add(new THREE.Mesh(g(new THREE.BoxGeometry(pw, 4.5, 1.6)), padMat), true);
+              lip.position.set(pxc, bottom + 2.2 + 1.6, T / 2 + ledgeD - 0.8);
+              plate.add(lip);
+              const post = add(new THREE.Mesh(g(new THREE.BoxGeometry(pw, hh * 0.9, 1.4)), clearMat()), false);
+              post.position.set(pxc, bottom + hh * 0.45, T / 2 + 0.7);
+              plate.add(post);
+            }
+            if (wide) {
+              const bridge = add(new THREE.Mesh(g(new THREE.BoxGeometry(hw * 0.22, hh * 0.38, T + 3)), padMat), true);
+              bridge.position.set(cx, bottom + hh * 0.3, 0.6);
+              plate.add(bridge);
+            }
           }
-          // วางแผ่น: จุดหมุนที่ขอบล่างกลาง เอียงหลัง 10°
+          // วางแผ่น: จุดหมุนที่ขอบล่างกลาง เอียงหลัง 14° · ขอบล่างแผ่นอยู่เหนือข้อต่อ
+          const plateY = 18;
           plate.position.set(-W / 2, 0, 0);
           const tilt = new THREE.Group();
           tilt.add(plate);
-          tilt.rotation.x = -0.17;
-          tilt.position.y = 9;
+          tilt.rotation.x = -0.24;
+          tilt.position.y = plateY;
           root.add(tilt);
-          // แกนหมุน + ฐาน (ตามตัวเลือกขนาด)
-          const dark = m(new THREE.MeshStandardMaterial({ color: 0xe9eef2, roughness: 0.5 }));
-          const pivot = add(new THREE.Mesh(g(new THREE.CylinderGeometry(9, 11, 6, 48)), dark));
-          pivot.position.y = 6;
-          const hinge = add(new THREE.Mesh(g(new THREE.BoxGeometry(W * 0.36, 8, 6)), dark));
-          hinge.position.set(0, 9, -1);
+          // ข้อต่อขาว (รับโคนแผ่น) → แกนหมุน → จานหมุน
+          const hinge = add(new THREE.Mesh(g(new THREE.BoxGeometry(Math.min(28, W * 0.34), 9, 9)), white));
+          hinge.position.set(0, plateY - 4, -2.5);
+          const column = add(new THREE.Mesh(g(new THREE.CylinderGeometry(6.5, 7.5, 8, 48)), white));
+          column.position.set(0, plateY - 10.5, -2.5);
+          const disc = add(new THREE.Mesh(g(new THREE.CylinderGeometry(W * 0.36, W * 0.38, 3.2, 72)), white));
+          disc.position.set(0, 3 + 1.6, -2.5);
+          const discLine = add(new THREE.Mesh(g(new THREE.TorusGeometry(W * 0.3, 0.5, 8, 72)), m(new THREE.MeshStandardMaterial({ color: 0xd7dde3, roughness: 0.6 }))), false);
+          discLine.rotation.x = Math.PI / 2;
+          discLine.position.set(0, 3 + 3.25, -2.5);
           if (mock.base === "square") {
-            const bw = W * 1.15;
-            const bd = W * 0.9;
-            const base = add(new THREE.Mesh(g(new THREE.BoxGeometry(bw, 3, bd)), clearMat()), true);
-            base.position.set(0, 1.5, -bd * 0.12);
+            // ฐานใสสี่เหลี่ยมมุมมน (ทรงโดม 7×12)
+            const bw = W * 1.25;
+            const bd = W * 1.0;
+            const r = 8;
+            const sq = new THREE.Shape();
+            sq.moveTo(-bw / 2 + r, -bd / 2);
+            sq.lineTo(bw / 2 - r, -bd / 2);
+            sq.quadraticCurveTo(bw / 2, -bd / 2, bw / 2, -bd / 2 + r);
+            sq.lineTo(bw / 2, bd / 2 - r);
+            sq.quadraticCurveTo(bw / 2, bd / 2, bw / 2 - r, bd / 2);
+            sq.lineTo(-bw / 2 + r, bd / 2);
+            sq.quadraticCurveTo(-bw / 2, bd / 2, -bw / 2, bd / 2 - r);
+            sq.lineTo(-bw / 2, -bd / 2 + r);
+            sq.quadraticCurveTo(-bw / 2, -bd / 2, -bw / 2 + r, -bd / 2);
+            const base = add(new THREE.Mesh(g(new THREE.ExtrudeGeometry(sq, { depth: 3, bevelEnabled: false, curveSegments: 12 })), clearMat()), true);
+            base.rotation.x = -Math.PI / 2;
+            base.position.set(0, 0, -2.5 - bd * 0.08);
           } else {
-            const base = add(new THREE.Mesh(g(new THREE.CylinderGeometry(W * 0.5, W * 0.52, 3, 64)), white), true);
-            base.position.set(0, 1.5, 0);
+            // ฐานกลมขาว (สี่เหลี่ยมมุมมน 6.8×10.5)
+            const base = add(new THREE.Mesh(g(new THREE.CylinderGeometry(W * 0.52, W * 0.55, 3, 72)), white), true);
+            base.position.set(0, 1.5, -2.5);
           }
-          lookY = H * 0.5 + 6;
+          lookY = H * 0.5 + 10;
         } else {
           // ── 3 step: แผ่นใสแผ่นเดียว พับ 2 รอย — PlaneGeometry ดัดตามโปรไฟล์ (t = ระยะจากขอบล่างแผ่น) ──
           const SEG = 180;
