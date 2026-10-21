@@ -190,6 +190,12 @@ interface Props {
    * ลายทั้งอาร์ตบอร์ดพันรอบตัวแก้ว · ลักษณะแก้ว/มุมมองเริ่มต้นตามตัวเลือกที่เลือก (lib/mug-mock)
    */
   mock3d?: MugMock;
+  /**
+   * 🧑‍💼 โหมดแอดมิน (สั่งแทนลูกค้า · เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC): กด ใช้แบบนี้/ใส่ตะกร้า ได้ทั้งที่ยังไม่ใส่รูป
+   * — ถามยืนยันก่อน 1 ครั้ง แล้วทำไฟล์ช่องว่าง (ช่องรูปที่ว่างไม่พิมพ์) · สเปคติดป้าย "ยังไม่ได้ใส่รูป" ให้กราฟฟิกรู้ว่าต้องรอรูปจากลูกค้า
+   * ลูกค้าทั่วไปยังถูกบังคับใส่รูปเหมือนเดิม
+   */
+  noPhotoOk?: boolean;
 }
 
 /** แผงด้านข้างตามปุ่มในแถบเครื่องมือ (null = ปิดแผง) */
@@ -420,6 +426,7 @@ export default function CalendarStudio({
   onApply,
   onEarly,
   mock3d,
+  noPhotoOk,
 }: Props) {
   /** กด 🛒 ใส่ตะกร้า (ไม่ใช่ ✓ ใช้แบบนี้) — จำไว้ข้ามหน้าต่างถาม "รูปไม่เต็มช่อง" */
   /** onEarly ล่าสุด — ใช้ใน swapSrc (useCallback deps ว่าง) */
@@ -3966,7 +3973,8 @@ export default function CalendarStudio({
     }
   }
 
-  async function apply(force = false, lowOk = false) {
+  /** skipPhoto = แอดมินยืนยันแล้วว่าใช้แบบที่ยังไม่ใส่รูป (noPhotoOk) — ข้ามด่าน "ช่องรูปยังว่าง" */
+  async function apply(force = false, lowOk = false, skipPhoto = false) {
     if (busy) return;
     /**
      * 🐢→⚡ Illustrator (โปรแกรม Python cutout-py ในเครื่อง) ทำงานเฉพาะตอนเปิดมาจากปุ่ม 🔁 ทำ .ai เลเยอร์ ที่หน้าออเดอร์ (autoOrder)
@@ -3991,22 +3999,53 @@ export default function CalendarStudio({
     }
     // มีช่องรูปแต่ยังไม่มีช่องไหนใส่รูป = ยังสั่งไม่ได้ (ช่องจะพิมพ์ออกมาว่าง)
     const needsPhoto = printPages.some((v) => lay(v.page).photo);
+    /**
+     * 🧑‍💼 โหมดแอดมิน (noPhotoOk): ช่องรูปว่างไม่ใช่ทางตัน — ถามยืนยัน 1 ครั้งแล้วทำต่อ (ช่องว่างไม่พิมพ์ · สเปคติดป้ายรอรูป)
+     * ลูกค้า/ไม่ยืนยัน = ข้อความเดิม พาไปช่องที่ว่าง
+     */
+    /** "go" = ยืนยันข้ามแล้ว ทำต่อ · "ask" = เพิ่งเปิดกล่องถาม หยุดรอคำตอบ (กดยืนยันจะเรียก apply ใหม่เอง) · "stop" = ลูกค้า ติดด่านเดิม */
+    const noPhotoGate = (where: string): "go" | "ask" | "stop" => {
+      if (!noPhotoOk) return "stop";
+      if (skipPhoto) return "go";
+      setAsk({
+        icon: "🖼",
+        title: "ยังไม่ได้ใส่รูป",
+        body: `${where} — โหมดแอดมินข้ามได้: ไฟล์จะออกมาเป็นช่องว่าง และสเปคจะติดป้าย "ยังไม่ได้ใส่รูป" ให้กราฟฟิกใส่รูปที่ลูกค้าส่งมาทางไลน์ทีหลัง`,
+        ok: "ข้ามการใส่รูป — ใช้แบบนี้",
+        run: () => void apply(force, lowOk, true),
+      });
+      return "ask";
+    };
     if (needsPhoto && slotSrc(design, imgs) < 0) {
-      if (coverPage) setPageIdx(fmt.pages.indexOf(coverPage));
-      setTool("photo");
-      setErr("ช่องรูปหน้าปกยังว่าง — แตะช่องสีเทาเพื่อเลือกรูป หรือลากรูปมาวาง");
-      return;
+      const g = noPhotoGate("ช่องรูปหน้าปกยังว่าง");
+      if (g === "ask") return;
+      if (g === "stop") {
+        if (coverPage) setPageIdx(fmt.pages.indexOf(coverPage));
+        setTool("photo");
+        setErr("ช่องรูปหน้าปกยังว่าง — แตะช่องสีเทาเพื่อเลือกรูป หรือลากรูปมาวาง");
+        return;
+      }
     }
     // หน้าไม่ยืมรูปปก (รายเดือน/ตั้งโต๊ะแบบใหม่) — หน้าที่ยังไม่ใส่รูปจะพิมพ์ออกมาเป็นช่องว่าง
     if (design.noBorrow) {
       const empty = printPages.find((v) => v.page.kind !== "postback" && !lay(v.page).optional && lay(v.page).photo && !photoOf(lay(v.page), design, imgs));
       if (empty) {
-        setPageIdx(vpages.indexOf(empty));
-        setTool("photo");
-        setErr(`${vname(empty)} ยังไม่มีรูป — แตะช่องสีเทาเพื่อเลือกรูป หรือลากรูปจากคลังด้านซ้ายมาวาง`);
-        return;
+        const g = noPhotoGate(`${vname(empty)} ยังไม่มีรูป`);
+        if (g === "ask") return;
+        if (g === "stop") {
+          setPageIdx(vpages.indexOf(empty));
+          setTool("photo");
+          setErr(`${vname(empty)} ยังไม่มีรูป — แตะช่องสีเทาเพื่อเลือกรูป หรือลากรูปจากคลังด้านซ้ายมาวาง`);
+          return;
+        }
       }
     }
+    // ป้าย "ยังไม่ได้ใส่รูป" ในสเปค = ยืนยันข้ามมาแล้ว และช่องรูปยังว่างจริงตอนประกอบไฟล์ (เงื่อนไขเดียวกับ 2 ด่านด้านบน · ไม่ดู optional
+    // เพราะด่านแรกก็ไม่ดู — หน้า tpl@ ของผ้าหนึบเป็นหน้าเดียวช่องรูปทั้งผืน)
+    const photoSkipped =
+      skipPhoto &&
+      needsPhoto &&
+      (slotSrc(design, imgs) < 0 || printPages.some((v) => v.page.kind !== "postback" && lay(v.page).photo && !photoOf(lay(v.page), design, imgs)));
     // คละลาย: ค่าคละนับจากรูปในคลัง — รูปที่ไม่ได้วางลงใบไหนไม่ได้พิมพ์แต่ยังนับ → ถามให้ลบออกก่อน
     if (mixMode && unusedSrcs.length) {
       const list = unusedSrcs;
@@ -4062,7 +4101,7 @@ export default function CalendarStudio({
               .join(" · ")}${lows.length > 6 ? " …" : ""} — ` +
             `พิมพ์ออกมาอาจแตก/เบลอ แนะนำใช้รูปไฟล์ใหญ่ขึ้น หรือย่อรูปให้เล็กลง (งานนี้พิมพ์ ${fmt.dpi} DPI)`,
           ok: "ใช้แบบนี้ต่อ",
-          run: () => void apply(true, true),
+          run: () => void apply(true, true, skipPhoto),
         });
         return;
       }
@@ -4215,7 +4254,7 @@ export default function CalendarStudio({
         state: { format: fmt.key, design: savedDesign, back, sources: kept },
         dpi: minDpi,
         head: noCal ? fmtName : `${fmtName} · ปี ${back.year}`,
-        summary: `${title} · ${noCal ? fmtName : `ปฏิทินปี ${back.year}`} · ${copies > 1 ? `${copies} ใบ (${custom.length ? `คละลาย ${designN} รูป` : "เหมือนกันทุกใบ"})` : `${fmt.pages.length} หน้า`}${minDpi ? ` · ${minDpi} DPI` : ""}`,
+        summary: `${title} · ${noCal ? fmtName : `ปฏิทินปี ${back.year}`} · ${copies > 1 ? `${copies} ใบ (${custom.length ? `คละลาย ${designN} รูป` : "เหมือนกันทุกใบ"})` : `${fmt.pages.length} หน้า`}${minDpi ? ` · ${minDpi} DPI` : ""}${photoSkipped ? " · ⚠️ ยังไม่ได้ใส่รูป" : ""}`,
         spec:
           // 📏 เทมเพลตที่รู้ขนาดหน้างาน (เข็มกลัด) = บอกหน้างานจริง + ไฟล์รวมส่วนพับตามเส้นตัดของเทมเพลต · ไม่ใช่กรอบตัดสมมุติของ tpl@
           (fmtName !== fmt.name
@@ -4226,6 +4265,8 @@ export default function CalendarStudio({
             ? ` · ชุดละ ${copies} ใบ: ใบที่ 1 พิมพ์ ${copies - custom.length} ใบ${custom.length ? ` · แยกแบบ ใบที่ ${custom.map((c) => c + 1).join(", ")} (ใบละ 1)` : ""}`
             : "") +
           `${fmt.note ? ` (${fmt.note})` : ""} · รูป ${kept.length} ไฟล์ (ใส่รายหน้า ${ownCount} หน้า ที่เหลือใช้รูปหน้าปก)` +
+          // 🧑‍💼 แอดมินข้ามการใส่รูป — บอกกราฟฟิก/คิวปริ้นชัด ๆ ว่าไฟล์นี้ช่องรูปว่าง รอรูปจากลูกค้า
+          `${photoSkipped ? " · ⚠️ ยังไม่ได้ใส่รูป (แอดมินข้าม — รอรูปจากลูกค้า กราฟฟิกใส่ให้ก่อนผลิต)" : ""}` +
           `${minDpi ? ` · ความคมชัดต่ำสุด ${minDpi} DPI` : ""}` +
           `${texts.length ? ` · ข้อความ ${texts.length} กล่อง: ${texts.map((e) => `"${e.text!.trim().replace(/\n/g, " ")}"`).join(", ")}` : ""}` +
           `${shapes ? ` · รูปทรง ${shapes} ชิ้น` : ""}${freePhotos ? ` · กรอบรูปอิสระ ${freePhotos} กรอบ` : ""}${layoutNote ? ` · เลย์เอาต์: ${layoutNote}` : ""} · ` +

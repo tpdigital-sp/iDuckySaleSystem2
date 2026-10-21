@@ -3776,9 +3776,11 @@ export default function ProductDetail({
       const y = orderUnitYield(product, effective);
       const qtyText = (q: number) => (y && y.per > 1 ? `${q} ${matrix?.unit ?? "หน่วย"} (${q * y.per} ${y.piece})` : `${q} ชิ้น`);
       // ยุบส่วนที่ซ้ำกันทุกลาย (ชื่อแบบ+ขนาด) ไว้ครั้งเดียว — ลูกค้าเห็นบรรทัดสั้น ๆ ในออเดอร์
+      // 🧑‍💼 แบบที่แอดมินข้ามการใส่รูป (ช่องว่าง · dpi 0) = บอก "ยังไม่ได้ใส่รูป" แทน "0 DPI" ที่อ่านแล้วงง (21 ต.ค. 69)
+      const dpiText = (d: number) => (d ? `${d} DPI` : "ยังไม่ได้ใส่รูป");
       extra[PLACEMENT_LABEL] = many
-        ? `${placed.length} ลาย · ${placed[0].head} · ` + placed.map((p, i) => `ลายที่ ${i + 1} × ${qtyText(p.qty)} · ${p.dpi} DPI`).join(" · ")
-        : `${placed[0].head} · ${placed[0].dpi} DPI`;
+        ? `${placed.length} ลาย · ${placed[0].head} · ` + placed.map((p, i) => `ลายที่ ${i + 1} × ${qtyText(p.qty)} · ${dpiText(p.dpi)}`).join(" · ")
+        : `${placed[0].head} · ${dpiText(placed[0].dpi)}`;
       extra[PLACEMENT_SPEC_LABEL] = placed
         .map(
           (p, i) =>
@@ -9681,6 +9683,8 @@ export default function ProductDetail({
                 return unitPrice * qty + designFeeFor(product, { ...effective, ...backSel, [DESIGN_LABEL]: `${Math.max(1, others + n)} ลาย` }, qty);
               }}
               aiExport={fileStaff}
+              // 🧑‍💼 โหมดแอดมิน: ข้ามการใส่รูปในจอออกแบบได้ (ถามยืนยัน · สเปคติดป้ายรอรูป) — เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC
+              noPhotoOk={staffOrdering}
               autoOrder={!!backTo && remakeFiles && fileStaff && editIndex !== null}
               orderLabel={backTo ? `💾 บันทึกกลับเข้า ${backTo.orderId}` : undefined}
               onOrder={async () => {
