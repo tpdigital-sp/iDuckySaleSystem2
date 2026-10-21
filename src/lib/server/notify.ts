@@ -151,9 +151,11 @@ export async function lineTargetOf(sb: SupabaseClient, order: Order): Promise<{ 
   // ลำดับ: สิ่งที่คนตั้งใจระบุ ชนะสิ่งที่ระบบเดาเอง
   // 1) พนักงานผูกไว้ในออเดอร์นี้ (ยืนยันกับ LINE แล้ว) — แม่นสุด
   if (order.lineUserId) return { id: order.lineUserId, via: "bound" };
-  // 2) จำจากออเดอร์เก่าของลูกค้าคนเดียวกัน (พนักงานเคยผูกไว้)
-  const inherited = (await inheritedFromPastOrders(sb, order)).lineUserId;
-  if (inherited) return { id: inherited, via: "inherited" };
+  // 2) จำจากออเดอร์เก่าของลูกค้าคนเดียวกัน (พนักงานเคยผูกไว้) — เว้นแต่พนักงานสั่ง "ไม่ใช่คนนี้" (lineInheritOff) ไว้
+  if (!order.lineInheritOff) {
+    const inherited = (await inheritedFromPastOrders(sb, order)).lineUserId;
+    if (inherited) return { id: inherited, via: "inherited" };
+  }
   // 3) บัญชี LINE ที่ใช้ล็อกอินเว็บตอนสั่ง — ท้ายสุด เพราะอาจเป็นคนสั่งแทน/บัญชีร้าน ไม่ใช่ผู้รับจริง
   if (order.customerId) {
     try {
@@ -643,6 +645,7 @@ export type NoticeTone =
   | "proofReady" // แบบงานพร้อมตรวจ
   | "shipRound" // จัดส่งบางส่วน (มีเลขพัสดุ)
   | "pickupRound" // แพ็คเสร็จบางส่วน (มารับเอง)
+  | "pickupRoundDone" // ลูกค้ารับของรอบที่ N ไปแล้ว (ใบแบ่งรับ ยังไม่ปิด · 21 ต.ค. 69)
   | "shipTogether" // ส่งรวมกล่อง
   | "shipApart" // ยกเลิกส่งรวมกล่อง
   | "shipBox" // เพิ่มเลขพัสดุกล่องที่ 2 ขึ้นไป (ใบเดียวส่งหลายกล่อง)
@@ -669,6 +672,7 @@ export const NOTICE_HEX: Record<NoticeTone, string> = {
   proofReady: "#C026D3",
   shipRound: "#2563EB",
   pickupRound: "#0891B2",
+  pickupRoundDone: "#166534",
   shipTogether: "#075985",
   shipApart: "#1E40AF",
   shipBox: "#1E3A8A",
@@ -864,6 +868,53 @@ export function followUpNotice(order: Order, link: string, round: FollowUpRound,
     ]
       .filter(Boolean)
       .join("\n"),
+  });
+}
+
+/**
+ * 🏪✓ การ์ด "รับของรอบที่ N แล้ว" — ใบแบ่งรับ (มารับเอง) ลูกค้ามารับของรอบนั้นไปแล้ว ใบยังไม่ปิด
+ * ทำไมต้องมี (21 ต.ค. 69): ปุ่ม "✓ ลูกค้ารับรอบที่ N แล้ว" (หน้ารอมารับ/หน้าออเดอร์) เดิมจดอย่างเดียวไม่แจ้งไลน์
+ * เจ้าของร้านเทสแล้วไม่มีการ์ดเด้ง → ลูกค้าไม่รู้ว่าร้านนับรอบไหนว่ารับแล้ว/เหลือกี่ชิ้น
+ * - ของที่เหลือ "กำลังทำ" (making): ร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับ
+ * - ของที่เหลือ "พร้อมรับแล้ว" (ready · รอบอื่นแพ็คเสร็จวางรออยู่/รอบสุดท้ายแพ็คแล้ว): บอกให้มารับได้เลย
+ * - ไม่เหลือแล้ว: ขอบคุณอย่างเดียว ไม่พูดถึงรอบหน้า
+ */
+export function pickupRoundReceivedNotice(
+  order: Order,
+  link: string,
+  round: number,
+  /** qty = ของในรอบนี้ (ชิ้น · 0 = ไม่รู้จำนวน) · ready = ของที่เหลือที่แพ็คเสร็จรออยู่หน้าร้าน · making = ของที่เหลือที่ยังทำอยู่ */
+  qtys: { qty: number; ready: number; making: number },
+  /** รายการในรอบนี้ (ชื่อ × จำนวน) */
+  what: string[] = []
+): LineMessage[] {
+  const n = (v: number) => v.toLocaleString("th-TH");
+  const { qty, ready, making } = qtys;
+  const left = ready + making;
+  const rows: NoticeRow[] = [{ label: "รอบที่", value: String(round), bold: true }];
+  if (qty) rows.push({ label: "จำนวนรอบนี้", value: `${n(qty)} ชิ้น`, bold: true });
+  if (left > 0) rows.push({ label: "ของที่เหลือ", value: `${n(left)} ชิ้น` });
+  const note =
+    ready > 0 && making > 0
+      ? `ของที่เหลือพร้อมให้มารับแล้ว ${n(ready)} ชิ้น · อีก ${n(making)} ชิ้นทางร้านกำลังทำต่อ พร้อมเมื่อไหร่จะแจ้งอีกครั้งครับ`
+      : ready > 0
+        ? "ของที่เหลือแพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ"
+        : making > 0
+          ? "ส่วนที่เหลือทางร้านกำลังทำต่อ พร้อมเมื่อไหร่จะแจ้งให้มารับอีกครั้งครับ"
+          : "ขอบคุณที่ใช้บริการครับ 🦆";
+  return orderNotice(order, link, {
+    tone: "pickupRoundDone",
+    head: `รับของรอบที่ ${round} แล้ว`,
+    headline: `ทางร้านส่งมอบของรอบที่ ${round} ให้แล้ว ขอบคุณที่มารับครับ`,
+    rows,
+    bullets: what,
+    note,
+    alt: [
+      `🏪✓ ออเดอร์ ${order.id} — ส่งมอบของรอบที่ ${round} ให้แล้วครับ${qty ? ` (${n(qty)} ชิ้น)` : ""}`,
+      ...what.map((w) => `• ${w}`),
+      left > 0 ? `ของที่เหลือ ${n(left)} ชิ้น — ${note}` : note,
+      link,
+    ].join("\n"),
   });
 }
 

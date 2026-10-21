@@ -3706,7 +3706,7 @@ export default function AdminOrderDetailPage() {
         : {
             icon: "🏪",
             title: `ลูกค้ารับของรอบที่ ${n + 1} ไปแล้ว?`,
-            detail: `${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น · จดคน/เวลาส่งมอบ — ใบยังไม่ปิด ของที่เหลือทำต่อตามปกติ`,
+            detail: `${shipmentQty(sh).toLocaleString("th-TH")} ชิ้น · จดคน/เวลาส่งมอบ + แจ้งลูกค้าทางไลน์ — ใบยังไม่ปิด ของที่เหลือทำต่อตามปกติ`,
             confirmLabel: "ลูกค้ารับรอบนี้แล้ว",
           }
     );
@@ -14449,12 +14449,13 @@ function LineChatBox({
    * clearLink=true ลบลิงก์ห้องแชทของใบนี้ทิ้งด้วย (ผูกผิดคน = ลิงก์ก็เป็นของคนผิด ไม่ควรค้างไว้)
    */
   async function unbind(forget = false, clearLink = false) {
+    const wasInherited = line?.source === "prev"; // กดจากสถานะ "จำจากใบเก่า" = ไม่ใช่คนนี้ → เซิร์ฟเวอร์ตั้งธงห้ามจำซ้ำ
     setBusy(true);
     try {
       const res = await fetch("/api/admin/orders/line-bind", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, input: "", forget, clearLink }),
+        body: JSON.stringify({ orderId: order.id, input: "", forget, clearLink, inheritFrom: wasInherited ? line?.from : undefined }),
       });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: Order; error?: string };
       if (!j.ok) {
@@ -14464,7 +14465,9 @@ function LineChatBox({
       if (j.order) onBound(j.order);
       setPingCopied(null);
       setMsg(
-        clearLink
+        wasInherited
+          ? `เลิกจำจากใบ ${line?.from ?? "เก่า"} แล้ว — ใบนี้จะไม่ผูกคนนั้นอีกจนกว่าจะผูกคนใหม่`
+          : clearLink
           ? forget
             ? "ยกเลิกการผูก + ลบลิงก์ห้องแชท + ลืมคู่ลิงก์แล้ว"
             : "ยกเลิกการผูก + ลบลิงก์ห้องแชทแล้ว"
@@ -14472,6 +14475,29 @@ function LineChatBox({
             ? "ยกเลิกการผูก + ลืมคู่ลิงก์แล้ว (ลิงก์ห้องแชทยังอยู่)"
             : "ยกเลิกการผูกแล้ว (ลิงก์ห้องแชทยังอยู่ — กด ✕ ที่บรรทัดลิงก์ถ้าต้องการลบ)"
       );
+    } catch {
+      setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** กดเลิกจำพลาด → ปลดธง กลับไปจำจากใบเก่าตามปกติ */
+  async function restoreInherit() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/orders/line-bind", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, input: "", restoreInherit: true }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: Order; error?: string };
+      if (!j.ok) {
+        setMsg(`❌ ${j.error ?? "ไม่สำเร็จ"}`);
+        return;
+      }
+      if (j.order) onBound(j.order);
+      setMsg("กลับไปจำ LINE จากใบเก่าแล้ว");
     } catch {
       setMsg("❌ ต่อเซิร์ฟเวอร์ไม่ได้");
     } finally {
@@ -14615,6 +14641,18 @@ function LineChatBox({
                   className="rounded-full bg-[#06C755] px-2.5 py-0.5 text-[11px] font-bold text-white transition hover:bg-[#05b34c] disabled:opacity-50"
                 >
                   {busy ? "กำลังผูก…" : "🔗 ผูกกับใบนี้"}
+                </button>
+              )}
+              {/* จำมาจากใบเก่าแต่ไม่ใช่คนนี้ → ตั้งธงห้ามจำซ้ำ (เดิมไม่มีปุ่ม พนักงานกด "เปลี่ยนคน"/ยกเลิกแล้วก็เด้งกลับมาทุกครั้ง · 21 ต.ค. 69) */}
+              {line.source === "prev" && (
+                <button
+                  type="button"
+                  onClick={() => void unbind(false)}
+                  disabled={busy}
+                  title={`ไม่ใช่ลูกค้าคนเดียวกับใบ ${line.from} — เลิกจำ ใบนี้จะว่างให้ผูกคนที่ถูกต้อง`}
+                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
+                >
+                  ✕ ไม่ใช่คนนี้
                 </button>
               )}
               <button
@@ -14774,6 +14812,24 @@ function LineChatBox({
                 ? "🟡 ยังไม่ได้ผูก — แต่ลูกค้าสั่งโดยล็อกอิน LINE ระบบส่งแจ้งสถานะผ่านบัญชีนั้นได้อยู่แล้ว · กดผูกด้านล่างเพื่อยืนยันและเปิดห้องแชทได้"
                 : "⛔ บังคับ: ต้องผูก LINE ของลูกค้า — ไม่ผูก = ระบบส่งแจ้งสถานะทางไลน์ไม่ได้"}
         </p>
+        {/* เลิกจำจากใบเก่าไว้ — บอกให้รู้ว่าทำไมระบบไม่เดาให้ + ทางกลับถ้ากดพลาด */}
+        {order.lineInheritOff && !changing && (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200"
+            title={`${order.lineInheritOff.by ?? "พนักงาน"} กด "ไม่ใช่คนนี้" — ระบบจะไม่จำ LINE จากใบเก่าของลูกค้าคนนี้มาใช้กับใบนี้`}
+          >
+            🚫 ไม่จำจากใบเก่า{order.lineInheritOff.from ? ` (${order.lineInheritOff.from})` : ""}
+            <button
+              type="button"
+              onClick={() => void restoreInherit()}
+              disabled={busy}
+              className="rounded-full px-1 font-bold text-slate-400 transition hover:bg-white hover:text-slate-700 disabled:opacity-50"
+              title="กดพลาด — กลับไปจำจากใบเก่าตามปกติ"
+            >
+              ↩ จำอีกครั้ง
+            </button>
+          </span>
+        )}
         {/* มีลิงก์ห้องแชทเก็บไว้แล้ว (แต่ยังไม่ผูก userId) — โชว์ให้เห็นว่าไม่ได้หายไปไหน */}
         {chat && !changing && (
           <>

@@ -5,7 +5,7 @@ import { amountDueNow, hasUnpaidBalance, orderStatusLabel, pickupRoundsWaiting, 
 import { isPickupOrder } from "@/lib/ship-label";
 import { isShipMain, isShipRider, shipMainIdOf, shipRiderIdsOf } from "@/lib/ship-with";
 import { updateOrder } from "@/lib/server/order-write";
-import { notifyCustomerLogged, orderLink, statusFlex, statusMessage } from "@/lib/server/notify";
+import { notifyCustomerLogged, orderLink, pickupRoundReceivedNotice, statusFlex, statusMessage } from "@/lib/server/notify";
 
 export const runtime = "nodejs";
 
@@ -25,7 +25,7 @@ export const runtime = "nodejs";
  * POST { id } → กด "ลูกค้ารับของแล้ว" — จดคน/เวลา + ปิดงานเป็นเสร็จสิ้น ฝั่งเซิร์ฟเวอร์ (ไม่ต้องส่งออเดอร์ทั้งก้อน กันทับงานคนอื่น)
  *   ⚠️ ใบที่ยังค้างยอด (มัดจำงวดหลัง/ส่วนต่าง) ส่งมอบไม่ได้ — ต้องเก็บเงินให้ครบในหน้าออเดอร์ก่อน
  *   🏪📦 ชุดรับพร้อมกัน (lib/ship-with.ts · มารับเองทั้งคู่แพ็ครวม): กดที่ใบหลักใบเดียว = ปิดใบตามให้ด้วย · กดที่ใบตาม = 409 ชี้ไปใบหลัก
- * PUT  { id, round } → 🏪✓ ลูกค้ารับของ "รอบแบ่งส่งที่ N" แล้ว — จดที่ Shipment.pickedUp · ใบยังไม่ปิด (20 ต.ค. 69 · OD-261007-2540/5502)
+ * PUT  { id, round } → 🏪✓ ลูกค้ารับของ "รอบแบ่งส่งที่ N" แล้ว — จดที่ Shipment.pickedUp · ใบยังไม่ปิด + การ์ดไลน์ "รับของรอบที่ N แล้ว" (20–21 ต.ค. 69 · OD-261007-2540/5502)
  * DELETE { id, round } → ย้อนการรับรอบนั้น · DELETE { id } → ย้อน "ลูกค้ารับของแล้ว" ทั้งใบ (ดูด้านล่าง)
  */
 
@@ -212,9 +212,11 @@ export async function POST(req: Request) {
 }
 
 /**
- * 🏪✓ PUT { id, round } → ลูกค้ามารับของรอบแบ่งส่งที่ N แล้ว — จดคน/เวลาที่ Shipment.pickedUp · สถานะใบไม่เปลี่ยน ไม่แจ้งไลน์
+ * 🏪✓ PUT { id, round } → ลูกค้ามารับของรอบแบ่งส่งที่ N แล้ว — จดคน/เวลาที่ Shipment.pickedUp · สถานะใบไม่เปลี่ยน
  * ทำไมต้องมี (20 ต.ค. 69 · OD-261007-2540, OD-261016-5502): ไม่มีทางจด "ลูกค้ารับรอบ 1 แล้ว" พนักงานเลยกด "แพ็คเสร็จ" + "ลูกค้ารับของแล้ว"
  * ซึ่งคือรอบสุดท้าย = ปิดทั้งใบ ของที่เหลือหลุดจากคิวปริ้น
+ * 💬 แจ้งไลน์ลูกค้าด้วยการ์ด "รับของรอบที่ N แล้ว" (pickupRoundReceivedNotice) — เดิมจดอย่างเดียว เจ้าของร้านเทส 21 ต.ค. 69 "กดแล้วไม่มี flex"
+ * ระดับ "extra" แบบเดียวกับการ์ดปิดงาน "เสร็จสิ้น" (ลูกค้าที่เลือกรับเฉพาะเรื่องสำคัญจะไม่ได้ใบนี้) · รอส่งเสร็จก่อนตอบ (Netlify แช่เครื่องทันทีที่ตอบ)
  */
 export async function PUT(req: Request) {
   const gate = await requirePerm(["orders.edit", "pack.ship"]);
@@ -243,7 +245,25 @@ export async function PUT(req: Request) {
   );
   const { order: saved, error } = await updateOrder(sb, next, { prev: o, by });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, row: toRow(saved, groupOf(saved) ?? "working"), order: saved });
+
+  const origin = new URL(req.url).origin;
+  const what = sh.proofs.map(
+    (p) => `${p.itemName ?? saved.items[p.item]?.name ?? "รายการ"}${p.qty ? ` × ${p.qty.toLocaleString("th-TH")} ${p.unit || "ชิ้น"}` : ""}`
+  );
+  // ของที่เหลือ: รอบอื่นที่แพ็คเสร็จวางรอ (pickupRoundsWaiting) + ของนอกรอบ (unshippedQty) ซึ่ง "พร้อม" ถ้ารอบสุดท้ายแพ็คแล้ว (packedAt) ไม่งั้นยังทำอยู่
+  const waiting = pickupRoundsWaiting(saved).reduce((s, w) => s + w.qty, 0);
+  const rest = unshippedQty(saved);
+  const notified = await notifyCustomerLogged(
+    sb,
+    saved,
+    pickupRoundReceivedNotice(saved, orderLink(origin, saved), round, { qty: shipmentQty(sh), ready: waiting + (saved.packedAt ? rest : 0), making: saved.packedAt ? 0 : rest }, what),
+    `แจ้งรับของรอบที่ ${round} แล้ว (มารับเอง)`,
+    "extra"
+  );
+  // การ์ดจดลง log ของใบแล้ว (notifyCustomerLogged) — อ่านใบล่าสุดคืนหน้าจอ จะได้เห็นบรรทัด "แจ้งลูกค้าทางไลน์แล้ว" ทันที
+  const { data: after } = await sb.from("orders").select("data").eq("id", id).maybeSingle();
+  const fresh = (after?.data as Order | undefined) ?? saved;
+  return NextResponse.json({ ok: true, row: toRow(fresh, groupOf(fresh) ?? "working"), order: fresh, notified: notified.ok, notifyReason: notified.reason });
 }
 
 /**

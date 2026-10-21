@@ -8,7 +8,7 @@
  * ตัวนี้สร้างการ์ดทุกแบบจากข้อมูลจริง ๆ แล้วตรวจกติกาที่ LINE ตีกลับ (ดู checkFlexMessages)
  * ⚠️ ของจริงมีชั้นกันตกอีกชั้นใน notifyCustomer: 400 = ส่งซ้ำเป็นข้อความล้วนจาก altText
  */
-import { ALL_CARD_HEX, NOTICE_HEX, checkFlexMessages, followUpNotice, noticeFlex, orderNotice, statusFlex, type LineMessage, type NoticeTone } from "../src/lib/server/notify";
+import { ALL_CARD_HEX, NOTICE_HEX, checkFlexMessages, followUpNotice, noticeFlex, orderNotice, pickupRoundReceivedNotice, statusFlex, type LineMessage, type NoticeTone } from "../src/lib/server/notify";
 import { CLAIM_STATUSES } from "../src/lib/claims";
 import type { Order, OrderStatus } from "../src/lib/admin-data";
 import { applyCharge, chargeNotice } from "../src/lib/server/order-charge";
@@ -179,6 +179,10 @@ check(
     alt: "🏪 แพ็คเสร็จบางส่วนแล้วครับ (รอบที่ 1)",
   })
 );
+check("รับของรอบที่ N แล้ว (ใบแบ่งรับ ของที่เหลือยังทำอยู่)", pickupRoundReceivedNotice(order(), LINK, 1, { qty: 300, ready: 0, making: 205 }, ["Photo Frame อะคริลิค × 300 ชิ้น"]));
+check("รับของรอบที่ N แล้ว (ของที่เหลือพร้อมรับ + ยังทำ)", pickupRoundReceivedNotice(order(), LINK, 1, { qty: 100, ready: 50, making: 30 }));
+check("รับของรอบที่ N แล้ว (ของที่เหลือแพ็คเสร็จรออยู่)", pickupRoundReceivedNotice(order(), LINK, 2, { qty: 4, ready: 96, making: 0 }));
+check("รับของรอบที่ N แล้ว (ไม่เหลือ)", pickupRoundReceivedNotice(order(), LINK, 2, { qty: 0, ready: 0, making: 0 }));
 check(
   "ส่งรวมกล่อง",
   orderNotice(order(), LINK, {
