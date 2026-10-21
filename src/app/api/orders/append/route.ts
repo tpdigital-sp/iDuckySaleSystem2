@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, priceCheckPending, resetProofStageForNewWork, shipAutoFollowNow, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { isFreeOrder, orderTotal, priceCheckPending, resetProofStageForNewWork, shipAutoFollowNow, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
 import { dealerRateOf } from "@/lib/products";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
@@ -10,6 +10,7 @@ import { customerSafeOrder } from "@/lib/customer-order";
 import { lotRepriceNote, repriceOrderLot } from "@/lib/order-lot-reprice";
 import { giftSyncNote, syncOrderGifts } from "@/lib/server/order-gifts";
 import { shippingUnset } from "@/lib/ship-label";
+import { requirePerm } from "@/lib/server/require-perm";
 import { cleanCustomerItems, priceMismatchMessage, shippingFloorProblem, underpricedLines } from "@/lib/server/order-price-guard";
 import type { ShopPayment } from "@/lib/shop-settings";
 
@@ -77,6 +78,27 @@ export async function POST(req: Request) {
       { status: 409 }
     );
 
+  /**
+   * 🧰🎁 ใบเคลม (claimOf) / ใบส่งฟรี (freeOf) = ใบที่ "ไม่คิดเงินกับลูกค้า" — ของที่เข้าใบทางนี้ต้องเป็น ฿0 และใบห้ามเด้งกลับ "รอชำระเงิน"
+   *
+   * ทำไม (OD-261021-7345 · 21 ต.ค. 69): พนักงานกด "🛠 แก้ตัวเลือก (หน้าร้าน)" บนใบเคลมโฟโต้การ์ด (เกิดมา "ชำระแล้ว" ราคา ฿0)
+   * หน้าร้านคิดราคาปกติ @฿180 ส่งเข้ามาทางนี้ → ใบไม่มี paidTotal จึงเห็น "ค้าง ฿900" แล้วดึงสถานะไป "รอชำระเงิน"
+   * ทั้งที่งานเคลมไม่มีใครต้องโอน — กราฟฟิก/ปริ้นมองว่าใบยังไม่ผ่านด่านเงิน งานค้าง
+   * (ประตู PATCH ฝั่งแอดมินกันด้วย isFreeOrder อยู่แล้ว ประตูนี้ลืม)
+   *
+   * กติกา: ของที่เพิ่ม/แทนที่ = ฿0 เหมือนตอนสร้างใบเคลม (orders/redo) · ค่าส่งไม่ใส่ · สถานะคงเดิม
+   * และให้ทำได้เฉพาะพนักงานที่มีสิทธิ์แก้ออเดอร์ (คุกกี้หลังบ้านติดมากับหน้าร้าน) — ลูกค้าถือลิงก์ใบเคลมมาสั่งเพิ่มเองจะได้ของฟรีเพิ่ม ไม่ให้
+   */
+  const free = isFreeOrder(order);
+  if (free) {
+    const gate = await requirePerm("orders.edit");
+    if (gate.res)
+      return NextResponse.json(
+        { error: `ใบนี้เป็น${order.claimOf ? "งานเคลม" : "ใบส่งฟรี"} (ไม่คิดเงิน) ลูกค้าสั่งเพิ่มเองไม่ได้ — กรุณาสั่งเป็นออเดอร์ใหม่ หรือติดต่อร้าน` },
+        { status: 409 }
+      );
+  }
+
   // 🤝 รายการเรทตัวแทนจำหน่าย เพิ่มได้เฉพาะออเดอร์ตัวแทน (order.dealer) — กันคนถือ key ออเดอร์ธรรมดา
   // ยัด label เรทตัวแทนใส่ selections แล้วได้ราคาตัวแทน
   if (!order.dealer) {
@@ -110,8 +132,18 @@ export async function POST(req: Request) {
   const short = await underpricedLines(items, getProductServer, lotBase);
   if (short.length) return NextResponse.json({ error: priceMismatchMessage(short) }, { status: 400 });
 
+  /** 🧰🎁 ใบเคลม/ส่งฟรี: ของที่เข้าใบคิด ฿0 (ตรวจราคาขั้นต่ำด้านบนด้วยราคาจริงก่อน แล้วค่อยตัดเป็นศูนย์) · จำราคาปกติไว้ลง log */
+  const freeNote = free ? items.map((it) => `${it.name} ×${it.qty} @${it.unitPrice.toLocaleString("th-TH")} → ฿0`).join(" · ") : "";
+  const priced0: OrderItem[] = free
+    ? items.map((it) => ({
+        ...it,
+        unitPrice: 0,
+        ...(it.addOns?.length ? { addOns: it.addOns.map((a) => ({ ...a, amount: 0 })) } : {}),
+      }))
+    : items;
+
   // 📐 แช่จำนวนชิ้นต่อหน่วยให้ของที่สั่งเพิ่มเหมือนตอนสั่งครั้งแรก
-  const merged = [...order.items, ...(await withUnitYield(items))];
+  const merged = [...order.items, ...(await withUnitYield(priced0))];
 
   /**
    * 🧮 ยอดรวมทั้งใบเข้าเรทส่ง → ราคาต่อชิ้นต้องเท่ากันทั้งบิล (เจ้าของร้านสั่ง 21 ก.ย. 69 · OD-260917-1401)
@@ -151,7 +183,8 @@ export async function POST(req: Request) {
   //    ใบที่แอดมินตั้งค่าส่งเอง/มีเงินเข้าแล้ว = ไม่แตะ แม้ส่งมา (หน้าออเดอร์ขึ้นปุ่ม ⚡ แนะนำแทน)
   const shipName = (body.shipping ?? "").trim().slice(0, 40);
   const shipUnsetBefore = shippingUnset(order);
-  const takeShip = !!shipName && (shipUnsetBefore || shipAutoFollowNow(order));
+  // 🧰🎁 ใบเคลม/ส่งฟรี ร้านออกค่าส่งเอง — ใบเปล่าที่ยังไม่มีวิธีส่งก็ไม่รับค่าส่งจากหน้าชำระเงิน (shipAutoFollowNow กันใบฟรีอยู่แล้ว)
+  const takeShip = !!shipName && !free && (shipUnsetBefore || shipAutoFollowNow(order));
   if (takeShip) {
     // 🚧 ค่าส่งต้องไม่ต่ำกว่าราคาวิธีส่งที่เลือก (กติกาเดียวกับ /api/orders)
     const { data: shipSett } = await sb.from("products").select("data").eq("id", SETTINGS_ROW).maybeSingle();
@@ -186,8 +219,8 @@ export async function POST(req: Request) {
 
   const reopened = {
     ...priced,
-    // มียอดค้าง → กลับไปรอชำระ · ไม่มียอดค้าง (เช่นยังไม่เคยจ่าย) → คงสถานะเดิม
-    status: owedBefore > 0 ? ("รอชำระเงิน" as OrderStatus) : order.status,
+    // มียอดค้าง → กลับไปรอชำระ · ไม่มียอดค้าง (เช่นยังไม่เคยจ่าย) → คงสถานะเดิม · ใบเคลม/ส่งฟรีไม่มีใครต้องโอน → ไม่เด้ง (OD-261021-7345)
+    status: owedBefore > 0 && !free ? ("รอชำระเงิน" as OrderStatus) : order.status,
   };
   /**
    * 🎨↩ ของใหม่ที่ยังไม่มีแบบเข้าใบที่แบบเดินไปแล้ว (อนุมัติแบบ/รอตรวจแบบ) → ต้องกลับไป "รอทำแบบ" ไม่ใช่ค้างขั้นเดิม
@@ -211,6 +244,8 @@ export async function POST(req: Request) {
         : "") +
       ` · ยอดรวมใหม่ ฿${newTotal.toLocaleString()}`
   );
+  if (free)
+    logged = withLog(logged, "ระบบ", `${order.claimOf ? "งานเคลม" : "ใบส่งฟรี"} — ของที่เพิ่มไม่คิดเงิน`, `${freeNote} · คงสถานะ "${order.status}" ไม่เด้งรอชำระเงิน`);
   // 🧮 บอกให้ชัดว่าของเดิมถูกลดลงมาเท่ากับของใหม่เพราะยอดรวมเข้าเรทส่ง (ลูกค้า/แอดมินเห็นใน log ใบนี้)
   if (lot.changed.length)
     logged = withLog(logged, "ระบบ", "ปรับราคาต่อชิ้นให้เท่ากันทั้งบิล", `ยอดรวมทั้งใบเข้าเรทส่ง · ${lotRepriceNote(lot.changed)}`);
