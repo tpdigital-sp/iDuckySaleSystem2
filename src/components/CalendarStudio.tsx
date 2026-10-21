@@ -166,6 +166,8 @@ interface Props {
     cut?: TemplateCurve[];
     /** 📏 ขนาดหน้างานจริง (มม. · TemplateFile.finishedMm = วงในเทมเพลต) — ชื่อรูปแบบงานแสดงขนาดนี้แทนอาร์ตบอร์ด */
     finished?: { w: number; h: number };
+    /** 📏 ข้อความขนาดที่ลูกค้าเพิ่มจากเทมเพลต (ผ้าหนึบเพิ่มนิ้ว · เจ้าของร้านสั่ง 21 ต.ค. 69 "ใต้ผืนงานควรบอกขนาดที่เพิ่มด้วย") — ต่อท้ายชื่อเทมเพลตใต้ผืนงาน */
+    sizeNote?: string;
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -6164,6 +6166,7 @@ export default function CalendarStudio({
                 </>
               )}
               {guideImg && guide?.name ? ` · 📐 เทมเพลต ${guide.name}` : ""}
+              {guide?.sizeNote ? <span className="font-bold text-sky-700"> · {guide.sizeNote}</span> : ""}
               {fmt.note ? ` · ${fmt.note}` : ""}
             </p>
           </div>

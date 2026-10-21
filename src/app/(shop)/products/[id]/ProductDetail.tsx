@@ -1391,6 +1391,29 @@ export default function ProductDetail({
   /** 📐 ผ้าแคนวาสที่เพิ่มขนาด → ขนาดผืนใหม่ (สรุปใต้ช่องกรอก + จอสร้างปฏิทินใช้ขนาดนี้) */
   const grown = canvasSizeOf(effective);
   /**
+   * 📏 เพิ่มขนาดแบบ "นิ้วละ N บาท" ช่องระบุจำนวนช่องเดียว (ผ้าหนึบ · เจ้าของร้านสั่ง 21 ต.ค. 69 "ถ้าเพิ่มนิ้วต้องปรับขนาดจอออกแบบ + แจ้งขนาด")
+   * เจ้าของร้านเลือก: N นิ้ว = บวก "ทั้งกว้างและสูง" (ผืนยังเป็นจัตุรัส) · ฐาน = ตัวเลขในชื่อตัวเลือก "ขนาด" (เช่น "Size XXL (70x70cm)")
+   * N = จำนวนที่ระบุของตัวเลือกชื่อมี "นิ้ว" ในกลุ่มติ๊กหลายอย่าง (1 นิ้ว = 2.54 ซม.) · ไม่มีกลุ่มแบบนี้/ไม่ได้ติ๊ก = null
+   * → จอออกแบบใช้ขนาดนี้ (tpl@ กว้างxสูง มม. — เปลี่ยนหลังออกแบบแล้วขึ้นเตือนแบบไม่ตรงเหมือนผ้าแคนวาส) + สรุปขนาดใหม่ใต้กลุ่มเพิ่มขนาด
+   * (ผ้าแคนวาสใช้ canvasSizeOf แยกช่องกว้าง/สูง — คนละกลไก)
+   */
+  const inchGrown = useMemo(() => {
+    const base = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:cm|ซม)/i.exec(effective["ขนาด"] ?? "");
+    if (!base) return null;
+    for (const o of product.options) {
+      if (!isMultiOption(o) || !optionVisible(o, effective)) continue;
+      const n = selectedPicks(o, effective)
+        .filter((pk) => /นิ้ว/.test(pk.name) && hasChoiceQty(o, pk.name))
+        .reduce((sum, pk) => sum + pk.qty, 0);
+      if (!(n > 0)) continue;
+      const r = (v: number) => Math.round(v * 10) / 10;
+      const baseW = Number(base[1]);
+      const baseH = Number(base[2]);
+      return { label: o.label, baseW, baseH, add: n, addCm: r(n * 2.54), w: r(baseW + n * 2.54), h: r(baseH + n * 2.54) };
+    }
+    return null;
+  }, [product.options, effective]);
+  /**
    * 📐 สินค้าที่ตั้ง calendarStudio โดยไม่กำหนด formats (ทางเดียวของ "ออกแบบบนเว็บ" ตั้งแต่ 15 ต.ค. 69)
    * → รูปแบบงานเดาจากขนาดอาร์ตบอร์ดของไฟล์เทมเพลตที่ตรงกับตัวเลือก (tpl@กว้างxสูง มม.) · ไม่มีเทมเพลต = โฟโต้การ์ด
    */
@@ -1444,7 +1467,13 @@ export default function ProductDetail({
   const calNoGrid = calMode && !calHasGrid(calFormat(calFormatKey0));
   /** ช่องแนบลายแยกหน้า/หลัง — งานพิมพ์ 2 ด้าน หรือปฏิทินโฟโต้การ์ด (หน้าปก/ปฏิทิน) · งานออกแบบล้วน 1 หน้า = ช่องเดียว */
   const artTwoSide = backOn || (calMode && !calNoGrid);
-  const calFormatKey = calFormatKey0 === "canvas" && grown ? `canvas@${Math.round(grown.w * 10)}x${Math.round(grown.h * 10)}` : calFormatKey0;
+  const calFormatKey =
+    calFormatKey0 === "canvas" && grown
+      ? `canvas@${Math.round(grown.w * 10)}x${Math.round(grown.h * 10)}`
+      : // 📏 เพิ่มนิ้ว (inchGrown) → อาร์ตบอร์ดจอออกแบบโตตาม (คง -cN ต่อท้ายถ้ามี)
+        inchGrown && /^tpl@/.test(calFormatKey0)
+        ? calFormatKey0.replace(/^tpl@[\d.]+x[\d.]+/, `tpl@${Math.round(inchGrown.w * 10)}x${Math.round(inchGrown.h * 10)}`)
+        : calFormatKey0;
   /** กติกาค่าคละของด้านหลังโดยเฉพาะ (งานกระดาษ = ลายละ 5 บาท) — ไม่ตั้ง = ใช้ชุดเดียวกับด้านหน้า */
   const backMix = product.backDesign?.mixRule;
   const [backDesigns, setBackDesigns] = useState(1);
@@ -2987,7 +3016,11 @@ export default function ProductDetail({
       const name = (f: (typeof files)[number]) => (f.fileName ?? t.name).replace(/\.[^.]+$/, "");
       // ไฟล์ที่มีหลายช่อง (โฮโลแกรม หน้า/หลัง) ตั้ง skin = กรอบการ์ดใบเดียว → ใช้อันนั้นปูเต็มผืน
       const sk = files.find((x) => x.skinUrl);
-      if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk) };
+      // 📏 เพิ่มนิ้วแล้ว — บอกใต้ผืนงานว่าขยายจากเทมเพลตเป็นเท่าไหร่ (เจ้าของร้านสั่ง 21 ต.ค. 69)
+      const sizeNote = inchGrown
+        ? { sizeNote: `📏 ขยายเป็น ${inchGrown.w}×${inchGrown.h} ซม. (+${inchGrown.add} นิ้ว ทั้งกว้างและสูง จากมาตรฐาน ${inchGrown.baseW}×${inchGrown.baseH})` }
+        : {};
+      if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk), ...sizeNote };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
       // ✂️ cut = เส้นไดคัทจริงจากไฟล์ .ai (cutCurves) → .ai/.pdf จากจอออกแบบใช้เส้นนี้แทนกรอบสี่เหลี่ยม (16 ต.ค. 69)
       if (f)
@@ -2999,6 +3032,7 @@ export default function ProductDetail({
           ...(f.cutCurves?.length ? { cut: f.cutCurves } : {}),
           // 📏 ขนาดหน้างานจริง (วงในเทมเพลต) — หัวจอออกแบบแสดงขนาดนี้แทนอาร์ตบอร์ด (16 ต.ค. 69)
           ...(f.finishedMm ? { finished: f.finishedMm } : {}),
+          ...sizeNote,
         };
     }
     return undefined;
@@ -3501,6 +3535,12 @@ export default function ProductDetail({
    * — ต่างกันแค่ "ไม่บังคับ" วางลายก่อน (ปุ่มเพิ่มลงตะกร้ายังกดได้เลย ลายมาทางไลน์อยู่แล้ว)
    */
   const studioOfferStaff = staffOrdering && (calMode || cutMode) && !studioOff && !designDone;
+  /**
+   * 🧑‍💼 โหมดแอดมินก็ให้เห็นกล่อง "ส่งลายยังไงดี?" แบบการ์ด 2 ใบเหมือนลูกค้า (เจ้าของร้านสั่ง 21 ต.ค. 69 — เดิมโหมดแอดมินยุบเหลือปุ่ม
+   * "🎨 เริ่มสร้าง" เดี่ยวในกล่องสั่งซื้อ พอเปิดออกแบบบนเว็บให้ผ้าหนึบแล้วเห็นปุ่มเปลี่ยน นึกว่าหน้าพัง) · ต่างจากลูกค้าแค่ "ไม่บังคับ" เลือก
+   * (ปุ่มเพิ่มลงตะกร้ากดได้เลย ลายมาทางไลน์อยู่แล้ว) · กล่องแนบลายกางในกล่องนี้เมื่อกด 📎 เหมือนลูกค้า
+   */
+  const studioBoxStaff = staffOrdering && (calMode || cutMode) && !studioOff;
   // โหมดออกแบบบนเว็บ: "แบบที่ลูกค้าวางเอง" คือลายอยู่แล้ว ไม่ต้องมีช่องแนบไฟล์
   // โหมดแอดมิน: ลายมาทางไลน์/อีเมลอยู่แล้ว ไม่ต้องบังคับแนบตรงนี้ (แนบเพิ่มในออเดอร์ทีหลังได้)
   const artBlocked = studioMode || preArranged ? false : artRequired && !artProvided;
@@ -5690,6 +5730,19 @@ export default function ProductDetail({
                 {matrix?.unit ?? "ชิ้น"} (คิดตามจำนวนที่ระบุ)
               </p>
             )}
+            {/* 📏 เพิ่มนิ้วแล้วผืนใหม่ใหญ่เท่าไหร่ — บอกตรงนี้ให้เห็นก่อนสั่ง (จอออกแบบใช้ขนาดเดียวกัน · ดู inchGrown) */}
+            {inchGrown && inchGrown.label === opt.label && (
+              <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-[12px] font-bold leading-snug text-sky-900 ring-1 ring-sky-200">
+                📐 ขนาดใหม่:{" "}
+                <span className="text-[14px] font-extrabold">
+                  {inchGrown.w} × {inchGrown.h} ซม.
+                </span>
+                <span className="block text-[11px] font-semibold text-sky-700">
+                  มาตรฐาน {inchGrown.baseW}×{inchGrown.baseH} ซม. · เพิ่ม {inchGrown.add} นิ้ว (+{inchGrown.addCm} ซม.) ทั้งกว้างและสูง
+                  {studioMode || studioBoxStaff ? " · จอออกแบบบนเว็บใช้ขนาดนี้" : ""}
+                </span>
+              </p>
+            )}
             {/* ค่าธรรมเนียมช่วงสั่งน้อย — บอกทั้งตอนอยู่ในช่วง (คิดเหมา) และตอนพ้นช่วงแล้ว (คิดตามตัวเลือก) */}
             {opt.smallQtyFee != null &&
               opt.smallQtyFee.upToQty > 0 &&
@@ -6572,10 +6625,13 @@ export default function ProductDetail({
    */
   const ownArt = artProvided && !designDone;
   const fileChosen = ownArt || (artChoice === "file" && !designDone) || studioBoxMissing;
-  const artChoiceUI = studioMode || studioBoxMissing ? (
+  const artChoiceUI = studioMode || studioBoxMissing || studioBoxStaff ? (
     <div id="art-choice" className="mt-5 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-amber-100">
       <p className="mb-2 text-[13px] font-bold text-stone-700">
-        ส่งลายยังไงดี? {!designDone && !artProvided && !studioBoxMissing && <span className="font-semibold text-stone-400">เลือก 1 วิธี</span>}
+        ส่งลายยังไงดี?{" "}
+        {!designDone && !artProvided && !studioBoxMissing && (
+          <span className="font-semibold text-stone-400">{studioBoxStaff ? "ไม่บังคับ — สั่งแทนลูกค้าเพิ่มลงตะกร้าได้เลย" : "เลือก 1 วิธี"}</span>
+        )}
       </p>
       <div className="grid grid-cols-2 gap-2">
         <button
@@ -7845,7 +7901,7 @@ export default function ProductDetail({
                 </div>
               )}
 
-              {!studioMode && !studioBoxMissing && artSection}
+              {!studioMode && !studioBoxMissing && !studioBoxStaff && artSection}
               {artChoiceUI}
 
               {/* ═══ กล่องสั่งซื้อ — จำนวน + ยอด + ปุ่ม (ติดกับตัวเลือก ไม่ให้ของไม่บังคับมาคั่น) ═══ */}
@@ -8184,16 +8240,8 @@ export default function ProductDetail({
                         ⬆ เลือกวิธีส่งลายด้านบนก่อน (ออกแบบบนเว็บ / แนบไฟล์)
                       </button>
                     )}
-                    {/* โหมดแอดมิน (สั่งแทนลูกค้า) — ปุ่มเริ่มสร้างเดี่ยว ปุ่มเพิ่มลงตะกร้าไม่ถูกล็อก */}
-                    {studioOfferStaff && !studioNeedsDesign && (
-                      <button
-                        type="button"
-                        onClick={() => openStudio(null)}
-                        className="flex-1 rounded-full bg-sky-600 px-5 py-3 text-[13px] font-bold text-white shadow-lg transition hover:scale-105 hover:bg-sky-700 sm:flex-none sm:px-8"
-                      >
-                        🎨 เริ่มสร้าง — วางลาย{lotDone > 0 ? `บน${lotWord}นี้` : "บนสินค้า"}
-                      </button>
-                    )}
+                    {/* โหมดแอดมิน (สั่งแทนลูกค้า): ปุ่ม "🎨 เริ่มสร้าง" เดี่ยวถอดออกแล้ว — ใช้กล่อง "ส่งลายยังไงดี?" การ์ด 2 ใบด้านบนเหมือนลูกค้า
+                    (studioBoxStaff · 21 ต.ค. 69) · ปุ่มเพิ่มลงตะกร้ายังไม่ถูกล็อกเหมือนเดิม */}
                     {/**
                      * ปุ่มสั่ง — โผล่เมื่อวางลายเสร็จแล้ว หรือ (โหมดสั่งหลายสเปค) มีของพักไว้แล้ว
                      * ⚠️ ที่ต้องโผล่คู่กับ "เริ่มสร้าง": พักรุ่นที่ 1 ไว้แล้วระบบล้างลายทิ้งเพื่อรับรุ่นถัดไป
