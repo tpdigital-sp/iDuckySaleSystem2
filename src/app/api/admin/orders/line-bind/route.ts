@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const gate = await requirePerm("orders.edit");
   if (gate.res) return gate.res;
 
-  let body: { orderId?: string; input?: string; managerId?: string; forget?: boolean; clearLink?: boolean };
+  let body: { orderId?: string; input?: string; managerId?: string; forget?: boolean; clearLink?: boolean; inheritFrom?: string; restoreInherit?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -45,7 +45,17 @@ export async function POST(req: Request) {
   const order = row.data as Order;
   const who = gate.actor.name?.trim() || gate.actor.username;
 
+  // restoreInherit=true = พนักงานกดยกเลิกการจำพลาด → ปลดธง กลับไปจำจากใบเก่าตามปกติ
+  if (!input && body.restoreInherit) {
+    const back = withLog({ ...order, lineInheritOff: undefined }, who, "กลับไปจำ LINE จากใบเก่าของลูกค้าคนนี้");
+    const { error } = await updateOrder(sb, back);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, restored: true, order: back });
+  }
+
   // ส่งค่าว่างมา = ยกเลิกการผูก · forget=true = ลบ "คู่ลิงก์↔คน" ที่จำไว้ด้วย (ผูกผิดแล้วไม่อยากให้เดาซ้ำ)
+  // ⚠️ ยกเลิกแล้วต้องตั้ง lineInheritOff ด้วย — ไม่งั้น lineUserOf/lineTargetOf ไป "จำจากใบเก่า" ของลูกค้าคนเดียวกันกลับมาทันที
+  //    (21 ต.ค. 69 OD-261020-4764: กดยกเลิก → reload → "จำจาก OD-261020-8014" เหมือนเดิม) · ผูกคนใหม่ = ธงหาย
   if (!input) {
     if (body.forget && order.lineUserId) {
       const db0 = getChatFirestore();
@@ -62,16 +72,27 @@ export async function POST(req: Request) {
       }
     }
     // clearLink=true = ลบลิงก์ห้องแชทของใบนี้ทิ้งด้วย (ผูกผิดคน = ลิงก์ก็ผิดคนเช่นกัน — เจ้าของร้านแจ้ง 10 ก.ย. 69 ว่ากดยกเลิกแล้วลิงก์ยังค้าง)
+    const wasInherited = !order.lineUserId; // ใบนี้ไม่ได้ผูกเอง แค่จำจากใบเก่า → ที่พนักงานกดคือ "ไม่ใช่คนนี้"
+    const inheritFrom = (body.inheritFrom ?? "").trim() || undefined;
     const cleared = withLog(
-      { ...order, lineUserId: undefined, lineProfile: undefined, ...(body.clearLink ? { lineChatUrl: undefined } : {}) },
+      {
+        ...order,
+        lineUserId: undefined,
+        lineProfile: undefined,
+        lineInheritOff: { at: new Date().toISOString(), by: who, from: inheritFrom },
+        ...(body.clearLink ? { lineChatUrl: undefined } : {}),
+      },
       who,
-      body.forget
-        ? body.clearLink
-          ? "ยกเลิกการผูก LINE + ลบลิงก์ห้องแชท + ลืมคู่ลิงก์"
-          : "ยกเลิกการผูก LINE + ลืมคู่ลิงก์"
-        : body.clearLink
-          ? "ยกเลิกการผูก LINE + ลบลิงก์ห้องแชท"
-          : "ยกเลิกการผูก LINE ของลูกค้า"
+      wasInherited
+        ? "ไม่ใช่คนนี้ — เลิกจำ LINE จากใบเก่า"
+        : body.forget
+          ? body.clearLink
+            ? "ยกเลิกการผูก LINE + ลบลิงก์ห้องแชท + ลืมคู่ลิงก์"
+            : "ยกเลิกการผูก LINE + ลืมคู่ลิงก์"
+          : body.clearLink
+            ? "ยกเลิกการผูก LINE + ลบลิงก์ห้องแชท"
+            : "ยกเลิกการผูก LINE ของลูกค้า",
+      wasInherited && inheritFrom ? `เคยจำจาก ${inheritFrom}` : undefined
     );
     const { error } = await updateOrder(sb, cleared);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -176,7 +197,7 @@ export async function POST(req: Request) {
     );
 
   const next = withLog(
-    { ...order, lineUserId: userId, lineProfile: { name: profile.name, picture: profile.picture, at: new Date().toISOString() } },
+    { ...order, lineUserId: userId, lineProfile: { name: profile.name, picture: profile.picture, at: new Date().toISOString() }, lineInheritOff: undefined },
     who,
     "ผูก LINE ของลูกค้า",
     `${profile.name} · ${userId.slice(0, 8)}…`

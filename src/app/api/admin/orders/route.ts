@@ -434,6 +434,7 @@ const liteOf = (o: Order) => ({
   lineChatUrl: o.lineChatUrl,
   lineUserId: o.lineUserId,
   lineProfile: o.lineProfile,
+  lineInheritOff: o.lineInheritOff,
   items: [],
 });
 

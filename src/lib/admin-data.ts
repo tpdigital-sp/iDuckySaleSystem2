@@ -1072,6 +1072,12 @@ export interface Order {
   /** ชื่อ/รูป LINE ที่ระบบดึงมายืนยันตอนผูก userId — ไว้ให้แอดมินเช็คว่าผูกถูกคน */
   lineProfile?: { name: string; picture?: string; at: string };
   /**
+   * 🚫 พนักงานสั่ง "ไม่ใช่คนนี้" — ห้ามจำ LINE จากใบเก่าของลูกค้าคนเดียวกันมาใช้กับใบนี้
+   * (21 ต.ค. 69 OD-261020-4764: ยกเลิกผูกแล้ว reload กลับมาเหมือนเดิม เพราะ lineUserOf/lineTargetOf ไป "จำจาก OD-261020-8014" ใหม่ทุกครั้ง)
+   * ผูกคนใหม่สำเร็จ = ธงหาย · from = ใบที่เคยจำมา (ไว้บอกในจอ)
+   */
+  lineInheritOff?: { at: string; by?: string; from?: string };
+  /**
    * LINE ของ "บัญชีที่ใช้ล็อกอินเว็บตอนสั่ง" — เซิร์ฟเวอร์เติมให้ตอนแอดมินดึงออเดอร์เดียว ไม่เก็บลงฐาน
    * ไว้โชว์เทียบกับที่พนักงานผูก ถ้าเป็นคนละคน (เช่น สั่งแทน/บัญชีร้าน) จะได้รู้ว่าข้อความไปเข้าใคร
    */
@@ -2372,6 +2378,7 @@ export function lineUserOf(
 ): { id: string; name?: string; picture?: string; source: "self" | "prev"; from?: string } | null {
   if (order.lineUserId)
     return { id: order.lineUserId, name: order.lineProfile?.name, picture: order.lineProfile?.picture, source: "self" };
+  if (order.lineInheritOff) return null; // พนักงานยกเลิกการจำจากใบเก่าแล้ว — ไม่เดาซ้ำ (ไม่งั้นยกเลิกแล้วเด้งกลับ)
   const cands = prevOrdersOf(order, all).filter((o) => o.lineUserId);
   if (!cands.length) return null;
   if (new Set(cands.map((o) => o.lineUserId)).size > 1) return null; // ใบเก่าไม่ตรงกันเอง = ไม่รู้ว่าคนไหน
@@ -2389,6 +2396,7 @@ export function lineUserOf(
  */
 export function lineChatOf(order: Order, all: Order[]): { url: string; source: "self" | "prev"; from?: string } | null {
   if (order.lineChatUrl) return { url: order.lineChatUrl, source: "self" };
+  if (order.lineInheritOff && !order.lineUserId) return null; // ไม่ใช่คนเดียวกับใบเก่า = ห้องแชทใบเก่าก็ไม่ใช่
   const user = order.lineUserId ?? lineUserOf(order, all)?.id;
   let cands = prevOrdersOf(order, all).filter((o) => o.lineChatUrl);
   if (user) {
