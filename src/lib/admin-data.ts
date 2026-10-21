@@ -2529,6 +2529,41 @@ export function proofMissing(item: OrderItem, order?: Pick<Order, "imagesPurgedA
 }
 
 /**
+ * 🎨 กราฟฟิกเริ่มทำแบบใบนี้ครั้งแรกเมื่อไหร่ (epoch ms) — รูปแบบงานรูปแรกของรายการ/ของแถม หรือบรรทัดประวัติอัปแบบที่เก่าสุด
+ * Infinity = ยังไม่เคยทำแบบเลย
+ */
+export function firstProofAt(o: Pick<Order, "items" | "gifts" | "log">): number {
+  let min = Infinity;
+  const take = (iso?: string) => {
+    const t = iso ? Date.parse(iso) : NaN;
+    if (Number.isFinite(t) && t < min) min = t;
+  };
+  for (const it of o.items) {
+    for (const p of proofsOf(it)) take(p.at);
+    take(it.proofUpdatedAt);
+  }
+  for (const g of o.gifts ?? []) for (const p of g.proofs ?? []) take(p.at);
+  for (const e of o.log ?? []) if (PROOF_LOG_ACTIONS.some((a) => e.action.includes(a))) take(e.at);
+  return min;
+}
+
+/**
+ * ➕🎨 รายการที่ "สั่งเพิ่มหลังกราฟฟิกทำแบบไปแล้ว" (index ใน o.items) — เจ้าของร้านขอ 21 ต.ค. 69
+ * = addedAt (ประทับที่ประตูเขียนออเดอร์ตอนรายการเข้าใบทีหลัง) ช้ากว่าแบบรูปแรกของใบเกิน 1 นาที
+ * ใช้ติดป้าย/เปลี่ยนสีแถวในหน้าออเดอร์ ให้กราฟฟิก/แอดมินเห็นทันทีว่าของชิ้นนี้มาทีหลัง ต้องทำแบบรอบสอง
+ * (สแกนฐาน 21 ต.ค. 69: 24 ใบจาก 1,492 ใบ เช่น OD-261015-7135 ลูกค้าสั่งเพิ่ม 2 รายการ 17 นาทีหลังกราฟฟิกอัปแบบ)
+ * รายการที่เข้าใบก่อนทำแบบ (สั่งเพิ่มก่อนโอน/ก่อนกราฟฟิกเริ่ม) ไม่นับ — ไม่ได้ทำให้ใครต้องทำงานซ้ำ
+ */
+export function addedAfterProofIdx(o: Pick<Order, "items" | "gifts" | "log">): number[] {
+  const first = firstProofAt(o);
+  if (!Number.isFinite(first)) return [];
+  return o.items.flatMap((it, i) => {
+    const t = it.addedAt ? Date.parse(it.addedAt) : NaN;
+    return Number.isFinite(t) && t > first + 60_000 ? [i] : [];
+  });
+}
+
+/**
  * 🧹 แบบงานรายการนี้ "เคยมีและอนุมัติแล้ว" แต่ไฟล์รูปถูกล้างตามนโยบายเก็บรูป (cron cleanup-images ล้าง proofs: [] ทิ้ง)
  * ไม่ใช่ "ยังไม่มีแบบ" — ใบที่ปิดงานแล้วถูกเปิดกลับมา (ของตีกลับ/เคลม) ต้องปริ้นใบงานได้ ไม่เด้งเป็นงานค้างกราฟฟิก
  * (19 ต.ค. 69 · OD-260914-7626 ล้างรูป 16 ต.ค. → ตีกลับ "งานมีรอยเปื้อน" → ปริ้นไม่ได้ "ยังไม่มีแบบ")

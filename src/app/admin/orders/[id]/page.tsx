@@ -130,6 +130,7 @@ import {
   PROOF_STYLES,
   proofsOf,
   proofPurged,
+  addedAfterProofIdx,
   STATUS_STYLES,
   withLog,
   type NeedsPurchaseItem,
@@ -5133,6 +5134,8 @@ export default function AdminOrderDetailPage() {
   const gate = packGate(order); // ขั้นตอนแพ็คผ่านครบหรือยัง
   // 🎨 Add on → แถวย่อยใต้รายการแม่: ลำดับวาด = แม่ตามด้วย Add on ของตัวเอง · เลข "รายการที่" นับเฉพาะรายการจริง
   const addOnMap = addOnParents(order.items);
+  // ➕🎨 รายการที่เข้าใบหลังกราฟฟิกทำแบบไปแล้ว — การ์ดเป็นสีส้ม + ป้าย ให้เห็นว่าต้องทำแบบรอบสอง (เจ้าของร้าน 21 ต.ค. 69)
+  const lateAddedSet = new Set(addedAfterProofIdx(order));
   const addOnOrder = order.items.flatMap((_, i) =>
     addOnMap.has(i) ? [] : [i, ...[...addOnMap].filter(([, host]) => host === i).map(([child]) => child)]
   );
@@ -6728,28 +6731,39 @@ export default function AdminOrderDetailPage() {
                     )}
                   </div>
                 );
+              const lateAdded = lateAddedSet.has(i);
               return (
                 <div
                   key={`${it.productId}-${i}-${itemsRev}`}
                   className={`overflow-hidden rounded-2xl border-2 shadow-[0_2px_10px_rgba(15,23,42,0.05)] ${
-                    i % 2 === 0 ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/40"
+                    lateAdded ? "border-amber-400 bg-amber-50/60" : i % 2 === 0 ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/40"
                   }`}
                 >
-                  {/* แถบหัวรายการ — สลับสีคู่/คี่ ให้ไล่สายตาแยกรายการได้ง่ายเวลามีหลายรายการ */}
+                  {/* แถบหัวรายการ — สลับสีคู่/คี่ ให้ไล่สายตาแยกรายการได้ง่ายเวลามีหลายรายการ · สั่งเพิ่มหลังทำแบบ = ส้มทั้งการ์ด */}
                   <div
                     className={`flex items-center justify-between gap-2 border-b-2 px-4 py-2 ${
-                      open
-                        ? "border-indigo-100 bg-indigo-50/70"
-                        : i % 2 === 0
-                          ? "border-slate-100 bg-slate-50"
-                          : "border-sky-100 bg-sky-100/60"
+                      lateAdded
+                        ? "border-amber-200 bg-amber-100/80"
+                        : open
+                          ? "border-indigo-100 bg-indigo-50/70"
+                          : i % 2 === 0
+                            ? "border-slate-100 bg-slate-50"
+                            : "border-sky-100 bg-sky-100/60"
                     }`}
                   >
                     <span
-                      className={`shrink-0 whitespace-nowrap text-xs font-extrabold ${i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}
+                      className={`shrink-0 whitespace-nowrap text-xs font-extrabold ${lateAdded ? "text-amber-900" : i % 2 === 0 ? "text-indigo-800" : "text-sky-800"}`}
                     >
                       {addOnOf != null ? `Add on ของรายการที่ ${mainNo.get(addOnOf)}` : `รายการที่ ${mainNo.get(i)} / ${mainNo.size}`}
                     </span>
+                    {lateAdded && (
+                      <span
+                        title="รายการนี้เข้าใบทีหลัง — ตอนนั้นกราฟฟิกทำแบบรายการอื่นไปแล้ว · เช็คว่ารายการนี้ได้ทำแบบ/จัดแผ่น/ใส่ในใบงานครบหรือยัง"
+                        className="shrink-0 whitespace-nowrap rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm"
+                      >
+                        ➕ สั่งเพิ่มหลังทำแบบ · {shortTime(it.addedAt!)}
+                      </span>
+                    )}
                     {addOnOf != null && (
                       <button
                         type="button"
