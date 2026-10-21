@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, TAX_INVOICE_LOG_EMAIL, TAX_INVOICE_LOG_BOX, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofPurged, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptInstallmentLabel, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, TAX_INVOICE_LOG_EMAIL, TAX_INVOICE_LOG_BOX, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofPurged, proofUnit, withLog, type Order } from "@/lib/admin-data";
 import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -707,17 +707,21 @@ function CancelledBlocked({ order }: { order: Order }) {
  * เคสจริง: ลูกค้าสั่งเพิ่ม (บิลที่ 2) ยังไม่ออกใบเสร็จ แต่ใบงาน/ใบปะหน้าปริ้น → ของส่งไปพร้อมใบเสร็จใบเดียวที่ปริ้นซ้ำ 2 ชุด
  */
 function ReceiptBlocked({ order, pending }: { order: Order; pending: string[] }) {
-  const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo);
+  // ➗ ใบมัดจำ: ช่องงวดที่ยังไม่มีเลขเอกสาร (พนักงานยังไม่ออกใบงวดนั้นใน FlowAccount) ต้องโชว์ด้วย — ไม่งั้นคนหน้างานไม่รู้ว่าขาดใบไหน
+  const docs = taxInvoiceDocsOf(order).filter((d) => d.docNo || d.installment);
+  const keyOf = (d: (typeof docs)[number]) => d.docNo ?? receiptInstallmentLabel(d);
+  const kindOf = (d: (typeof docs)[number]) =>
+    d.installment === "deposit" ? "งวดมัดจำ" : d.installment === "balance" ? "งวดคงเหลือ" : d.extra ? "บิลเพิ่ม" : "บิลหลัก";
   return (
     <section className="no-print rounded-xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center">
       <p className="text-sm font-extrabold text-rose-700">
-        🧾 {order.id} · {order.customer || "ยังไม่ระบุชื่อ"} — ยังไม่ออกใบเสร็จ พิมพ์ใบงาน/ใบปะหน้าไม่ได้
+        🧾 {order.id} · {order.customer || "ยังไม่ระบุชื่อ"} — ยังไม่ออกใบเสร็จ{order.deposit ? "ครบทั้ง 2 งวด" : ""} พิมพ์ใบงาน/ใบปะหน้าไม่ได้
       </p>
       <ul className="mx-auto mt-2 max-w-md space-y-1 text-left text-sm">
         {docs.map((d) => (
-          <li key={d.docNo} className={`rounded-lg px-3 py-1.5 font-semibold ring-1 ${pending.includes(d.docNo!) ? "bg-white text-rose-700 ring-rose-300" : "bg-green-50 text-green-700 ring-green-200"}`}>
-            {pending.includes(d.docNo!) ? "✗" : "✓"} {d.extra ? "บิลเพิ่ม" : "บิลหลัก"} {d.fromDoc ? `${d.fromDoc} → ` : ""}{d.docNo}
-            {pending.includes(d.docNo!) ? " — ยังไม่ออกใบเสร็จ" : " — ออกใบเสร็จแล้ว"}
+          <li key={keyOf(d)} className={`rounded-lg px-3 py-1.5 font-semibold ring-1 ${pending.includes(keyOf(d)) ? "bg-white text-rose-700 ring-rose-300" : "bg-green-50 text-green-700 ring-green-200"}`}>
+            {pending.includes(keyOf(d)) ? "✗" : "✓"} {kindOf(d)} {d.fromDoc ? `${d.fromDoc} → ` : ""}{d.docNo ?? "(ยังไม่มีเลขเอกสาร)"}
+            {pending.includes(keyOf(d)) ? " — ยังไม่ออกใบเสร็จ" : " — ออกใบเสร็จแล้ว"}
           </li>
         ))}
       </ul>

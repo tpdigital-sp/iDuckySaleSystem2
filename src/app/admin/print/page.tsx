@@ -621,7 +621,7 @@ function PrintRow({
             {noReceipt.length > 0 && (
               <Tag
                 tone="coral"
-                title={`เงินครบแล้วแต่ยังไม่ออกใบเสร็จ (INV) ของ ${noReceipt.join(", ")}\nใบนี้มี ${taxInvoiceDocsOf(o).filter((d) => d.docNo).length} บิล — ต้องออกใบเสร็จครบทุกบิลก่อนถึงพิมพ์ใบงาน/ใบปะหน้าได้\nออก INV ใน FlowAccount แล้วระบบดึงเข้าเองภายใน 5 นาที`}
+                title={`เงินครบแล้วแต่ยังไม่ออกใบเสร็จ (INV) ของ ${noReceipt.join(", ")}\nใบนี้มี ${taxInvoiceDocsOf(o).filter((d) => d.docNo || d.installment).length} บิล${o.deposit ? " (ใบมัดจำ = ใบเสร็จ 2 งวด)" : ""} — ต้องออกใบเสร็จครบทุกบิลก่อนถึงพิมพ์ใบงาน/ใบปะหน้าได้\nออก INV ใน FlowAccount แล้วระบบดึงเข้าเองภายใน 5 นาที`}
               >
                 🧾 ยังไม่ออกใบเสร็จ {noReceipt.join(", ")} — ปริ้นไม่ได้
               </Tag>

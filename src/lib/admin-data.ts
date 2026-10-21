@@ -1610,37 +1610,104 @@ export function taxInvoiceDocOf(o: Order): { docNo?: string; url?: string; label
   return { label: "ใบกำกับภาษี", company: t?.company };
 }
 
+/** 🧾 รายการเอกสารใบกำกับหนึ่งใบใน taxInvoiceDocsOf */
+export type TaxInvoiceDoc = {
+  docNo?: string;
+  url?: string;
+  label: string;
+  extra?: boolean;
+  amount?: number;
+  fromDoc?: string;
+  company?: string;
+  /** ➗ ใบมัดจำ: ใบเสร็จนี้เป็นของงวดไหน (deposit = งวดมัดจำ · balance = งวดคงเหลือ) — ใบธรรมดาไม่มี */
+  installment?: "deposit" | "balance";
+  /** 📅 บิลเพิ่มแนบวันไหน (วันไทย) — INV ที่ลงวันก่อนหน้านี้เป็นของบิลนี้ไม่ได้ */
+  notBefore?: string;
+  /** บิลหลักของออเดอร์ (ใบที่ order.flowAccount ชี้) */
+  main?: boolean;
+};
+
 /**
- * 🧾 เอกสารใบกำกับ "ทุกใบ" ที่ต้องไปกับกล่อง — บิลหลักก่อน แล้วตามด้วยบิลเพิ่ม (flowAccountExtras) ตามลำดับที่แนบ
+ * ➗🧾 ใบมัดจำ 50% = ใบเสร็จ **2 ใบ** (งวดมัดจำ + งวดคงเหลือ) — คืนบิลทั้งสองงวด · null = ไม่ใช่ใบมัดจำ/นับเป็นบิลเดียวตามเดิม
+ * เคสจริง OD-260928-1506 (21 ต.ค. 69): บิลหลัก BL002003 (ใบยอดคงเหลือ) อ้างใบมัดจำ BL002002 · ออก INV007652 ของงวดมัดจำแล้วใบเดียว
+ * → ด่านเดิมเห็นบิลหลักใบเดียว เอา INV งวดมัดจำไปเทียบเป็นของบิลหลัก ปล่อยปริ้นใบงาน/ใบปะหน้าทั้งที่ใบเสร็จงวดคงเหลือยังไม่ออก
+ * (OD-261007-2540 แบบเปิดโหมดมัดจำเองจาก QT ก็หลุดแบบเดียวกัน — INV007743 ครึ่งแรกใบเดียว)
+ * - kind balance: บิลหลัก = ใบยอดคงเหลือ · refDocNo = ใบแจ้งหนี้มัดจำ → รู้เลขทั้งสองใบ จับคู่ INV ด้วย ref ตรง ๆ
+ * - kind deposit / เปิดโหมดเอง (QT หรือเลขใบแจ้งหนี้มัดจำในฟอร์มใบกำกับรุ่นเก่า): รู้แค่เลขบิลหลัก (นับเป็นช่องงวดมัดจำ) ใบงวดหลังพนักงานออกเองใน FlowAccount (เลขไม่รู้) → บิลงวดคงเหลือไม่มีเลข
+ *   INV ที่จับคู่ ref ไม่ได้ เติมเข้าช่องงวดตามลำดับวันที่ (งวดมัดจำก่อน)
+ * - INV ใบเดียวยอดเท่ามูลค่างานเต็ม = พนักงานออกใบเสร็จรวมทั้งสองงวด → บิลเดียวตามเดิม (ไม่กัน)
+ */
+function depositBillsOf(o: Order, main: TaxInvoiceDoc): TaxInvoiceDoc[] | null {
+  const f = o.flowAccount;
+  // บิลหลักมาจาก flowAccount หรือฟอร์มใบกำกับรุ่นเก่าที่เก็บเลขเอกสารไว้ (taxInvoice.docNo — ใบมัดจำเก่า ๆ วางลิงก์ใบแจ้งหนี้มัดจำไว้ตรงนี้ เช่น OD-261007-2540 BL002114)
+  if (!o.deposit || !main.docNo) return null;
+  const full = f?.grandTotal ?? orderTotal(o);
+  if ((o.faInvoices ?? []).some((v) => v.total != null && full > 0 && Math.abs(v.total - full) < 1)) return null;
+  const dep = f?.deposit;
+  if (dep?.kind === "balance" && dep.refDocNo) {
+    return [
+      { ...main, installment: "balance" },
+      { docNo: dep.refDocNo, label: "ใบแจ้งหนี้มัดจำ", installment: "deposit", company: main.company },
+    ];
+  }
+  return [
+    { ...main, installment: "deposit" },
+    { label: "ใบแจ้งหนี้ยอดคงเหลือ", installment: "balance", company: main.company },
+  ];
+}
+
+/** วันไทย (YYYY-MM-DD) ของเวลา ISO — ว่าง = อ่านไม่ออก */
+const bkkDayOf = (iso: string) => {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Date(t + 7 * 3600_000).toISOString().slice(0, 10) : "";
+};
+
+/** 🧾 บิลทุกใบที่ต้องมีใบเสร็จไปกับกล่อง (ก่อนเทียบกับ INV) — บิลหลัก (+ อีกงวดของใบมัดจำ) แล้วตามด้วยบิลเพิ่มตามลำดับที่แนบ */
+function receiptBillsOf(o: Order): TaxInvoiceDoc[] {
+  const main: TaxInvoiceDoc = { ...taxInvoiceDocOf(o), main: true };
+  const extras: TaxInvoiceDoc[] = (o.flowAccountExtras ?? []).map((x) => ({ docNo: x.docNo, url: x.url, label: x.docTypeLabel, extra: true, amount: x.grandTotal, notBefore: bkkDayOf(x.at) }));
+  return [...(depositBillsOf(o, main) ?? [main]), ...extras];
+}
+
+/**
+ * 🧾 เอกสารใบกำกับ "ทุกใบ" ที่ต้องไปกับกล่อง — บิลหลักก่อน (ใบมัดจำ = ทั้งสองงวด · depositBillsOf) แล้วตามด้วยบิลเพิ่ม (flowAccountExtras) ตามลำดับที่แนบ
  * บิลไหนออกใบกำกับภาษี (INV) แล้ว → โชว์เลข INV แทนเลข QT/BL (faInvoices · 7 ต.ค. 69) — ฝ่ายแพ็คหยิบใบที่ถูกใส่กล่อง
  */
-export function taxInvoiceDocsOf(o: Order): { docNo?: string; url?: string; label: string; extra?: boolean; amount?: number; fromDoc?: string; company?: string }[] {
-  const main = taxInvoiceDocOf(o);
-  const extras = (o.flowAccountExtras ?? []).map((x) => ({ docNo: x.docNo, url: x.url, label: x.docTypeLabel, extra: true, amount: x.grandTotal }));
-  const bills: { docNo?: string; url?: string; label: string; extra?: boolean; amount?: number; fromDoc?: string; company?: string }[] = [main, ...extras];
+export function taxInvoiceDocsOf(o: Order): TaxInvoiceDoc[] {
+  const bills = receiptBillsOf(o);
   const invs = [...(o.faInvoices ?? [])];
   if (!invs.length) return bills;
-  // เลขที่ INV อาจอ้างถึงแทนบิลหลัก: ตัวบิลเอง + ใบแจ้งหนี้ที่ระบบออกต่อ (faChain)
-  const aliases = (b: (typeof bills)[number], i: number) =>
-    i === 0 ? [b.docNo, o.flowAccount?.docNo, ...(o.faChain ?? []).filter((d) => d.kind === "bl").map((d) => d.docNo)] : [b.docNo];
-  const out = bills.map((b, i) => {
-    const k = invs.findIndex((v) => v.ref && aliases(b, i).includes(v.ref));
-    if (k < 0) return b;
-    const v = invs.splice(k, 1)[0];
-    return { ...b, docNo: v.docNo, url: undefined, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", fromDoc: b.docNo, amount: v.total ?? b.amount };
+  const asReceipt = (b: TaxInvoiceDoc, v: NonNullable<Order["faInvoices"]>[number]): TaxInvoiceDoc => ({
+    ...b,
+    docNo: v.docNo,
+    url: undefined,
+    label: "ใบกำกับภาษี/ใบเสร็จรับเงิน",
+    fromDoc: b.docNo,
+    amount: v.total ?? b.amount,
   });
+  // เลขที่ INV อาจอ้างถึงแทนบิลหลัก: ตัวบิลเอง + ใบแจ้งหนี้ที่ระบบออกต่อ (faChain) · บิลอื่นต้องอ้างเลขตัวเองเท่านั้น
+  const aliases = (b: TaxInvoiceDoc) =>
+    b.main ? [b.docNo, o.flowAccount?.docNo, ...(o.faChain ?? []).filter((d) => d.kind === "bl").map((d) => d.docNo)] : [b.docNo];
+  const out = bills.map((b) => {
+    if (!b.docNo) return b;
+    const k = invs.findIndex((v) => v.ref && aliases(b).includes(v.ref));
+    return k < 0 ? b : asReceipt(b, invs.splice(k, 1)[0]);
+  });
+  // ➗ ใบมัดจำ: INV ที่อ้างใบแจ้งหนี้งวดที่พนักงานออกเองในแอป FlowAccount (เลขไม่รู้) → เติมช่องงวดที่ยังว่างตามลำดับวันที่ (งวดมัดจำก่อน งวดคงเหลือทีหลัง)
+  const byDate = (a: { date?: string }, b: { date?: string }) => (a.date ?? "").localeCompare(b.date ?? "");
+  for (const inst of ["deposit", "balance"] as const) {
+    const i = out.findIndex((b) => b.installment === inst && !b.fromDoc);
+    if (i < 0 || !invs.length) continue;
+    const v = invs.sort(byDate)[0];
+    out[i] = asReceipt(out[i], v);
+    invs.splice(0, 1);
+  }
   // INV ที่บอกไม่ได้ว่าเป็นของบิลไหน (อ้างใบแจ้งหนี้ที่ออกในแอป FlowAccount เอง) — บิลที่ยังไม่มี INV เหลือใบเดียว = ใบนั้น
   // INV ที่ลงวันที่ก่อนแนบบิลเพิ่มใบไหน เป็นของบิลเพิ่มใบนั้นไม่ได้ (OD-261002-9030 · 16 ต.ค. 69: INV007684 ของบิลหลัก 5 ต.ค. + บิลเพิ่มที่ออก 16 ต.ค.)
-  const bkkDay = (iso: string) => {
-    const t = Date.parse(iso);
-    return Number.isFinite(t) ? new Date(t + 7 * 3600_000).toISOString().slice(0, 10) : "";
-  };
-  const extraAt = (o.flowAccountExtras ?? []).map((x) => bkkDay(x.at));
-  const canBe = (i: number, v: { date?: string }) => i === 0 || !v.date || !extraAt[i - 1] || extraAt[i - 1] <= v.date;
-  const open = out.map((b, i) => (b.fromDoc ? -1 : i)).filter((i) => i >= 0 && invs.length === 1 && canBe(i, invs[0]));
+  const canBe = (b: TaxInvoiceDoc, v: { date?: string }) => !v.date || !b.notBefore || b.notBefore <= v.date;
+  const open = out.map((b, i) => (b.fromDoc ? -1 : i)).filter((i) => i >= 0 && invs.length === 1 && canBe(out[i], invs[0]));
   if (invs.length === 1 && open.length === 1) {
-    const b = out[open[0]];
-    out[open[0]] = { ...b, docNo: invs[0].docNo, url: undefined, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", fromDoc: b.docNo, amount: invs[0].total ?? b.amount };
+    out[open[0]] = asReceipt(out[open[0]], invs[0]);
     invs.length = 0;
   }
   return [...out, ...invs.map((v) => ({ docNo: v.docNo, label: "ใบกำกับภาษี/ใบเสร็จรับเงิน", extra: true, amount: v.total }))];
@@ -1654,6 +1721,7 @@ const isReceiptDoc = (d: { docNo?: string; label: string; fromDoc?: string }) =>
  * 🧾⛔ บิล FlowAccount ที่ "ยังไม่ออกใบเสร็จ (INV)" ทั้งที่เก็บเงินครบแล้ว — ปริ้นใบงาน/ใบปะหน้าไม่ได้จนกว่าจะครบ (เจ้าของร้านสั่ง 9 ต.ค. 69)
  * เคสจริง: ลูกค้าสั่งเพิ่ม (บิลที่ 2) ยังไม่ออกใบเสร็จ แต่งานปริ้น/แพ็คส่งไปแล้ว → ใบเสร็จไปไม่ครบ
  * - เฉพาะใบที่ต้องใส่ใบกำกับลงกล่อง + เงินครบแล้ว (ใบมัดจำรอบตัวอย่างยังไม่ถึงเวลาออก INV — ไม่กัน)
+ * - ➗ ใบมัดจำที่เก็บครบสองงวดแล้ว ต้องมีใบเสร็จครบ **2 ใบ** (งวดมัดจำ + งวดคงเหลือ · depositBillsOf) — พนักงานขอ 21 ต.ค. 69 (OD-260928-1506 หลุดไปด้วยใบเสร็จงวดมัดจำใบเดียว)
  * - INV ที่ออกใน FlowAccount ระบบดึงเข้าเองทุก 5 นาที (faInvoices · cron wht-sync) แล้วด่านหายเอง
  * - จับคู่ไม่เจอ (INV ใบเดียวรวมหลายบิล ฯลฯ) → แอดมินกด "ออกใบเสร็จครบแล้ว" (receiptsOk)
  * คืนเลขบิลที่ยังค้าง (ว่าง = ผ่าน)
@@ -1662,8 +1730,13 @@ export function receiptsPending(o: Order): string[] {
   if (o.receiptsOk || o.status === "ยกเลิก") return [];
   if (!orderNeedsTaxInvoiceInBox(o) || !orderFullyPaid(o)) return [];
   return taxInvoiceDocsOf(o)
-    .filter((d) => d.docNo && !isReceiptDoc(d))
-    .map((d) => d.docNo!);
+    .filter((d) => (d.docNo || d.installment) && !isReceiptDoc(d))
+    .map((d) => d.docNo ?? receiptInstallmentLabel(d));
+}
+
+/** ➗🧾 ป้ายช่องใบเสร็จของใบมัดจำที่ยังไม่มีเลขเอกสาร (พนักงานยังไม่ออกใบแจ้งหนี้/ใบเสร็จงวดนั้นใน FlowAccount) */
+export function receiptInstallmentLabel(d: { installment?: "deposit" | "balance" }): string {
+  return d.installment === "balance" ? "ใบเสร็จงวดคงเหลือ (ยังไม่ออก)" : "ใบเสร็จงวดมัดจำ (ยังไม่ออก)";
 }
 
 /** 📷🧾 เลขที่ใบเสร็จที่ต้องถ่ายภาพใส่กล่อง แต่ยังไม่มีภาพ — ใบที่ไม่มีเลขเอกสารเลย (บิล VAT หน้าเว็บ) ไม่บังคับภาพ */
@@ -1730,7 +1803,7 @@ export function nextRoundExtras(o: Order): { round: number; sample: boolean; rec
 
 /** 🧾 ป้ายสั้น "ใบกำกับภาษี" / "ใบกำกับภาษี 2 ใบ" — ใช้บนตราใบปะหน้า/ใบงาน/ด่านแพ็ค */
 export function taxInvoiceCountLabel(o: Order): string {
-  const n = 1 + (o.flowAccountExtras?.length ?? 0);
+  const n = receiptBillsOf(o).length; // บิลหลัก (+ อีกงวดของใบมัดจำ) + บิลเพิ่ม
   return n > 1 ? `ใบกำกับภาษี ${n} ใบ` : "ใบกำกับภาษี";
 }
 
