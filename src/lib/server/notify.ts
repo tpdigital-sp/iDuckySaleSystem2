@@ -397,7 +397,7 @@ export function statusMessage(order: Order, link: string): string | null {
       if (isFreeOrder(order)) return `🎁 รับงานออเดอร์ ${id} เข้าคิวแล้วครับ ทางร้านจัดทำและจัดส่งให้โดยไม่คิดค่าใช้จ่าย\n${link}`;
       return `✅ ยืนยันการชำระเงินออเดอร์ ${id} แล้ว กำลังเริ่มงานให้ครับ${owe}\n${link}`;
     case "รอตรวจแบบ":
-      return `🎨 แบบงานออเดอร์ ${id} พร้อมให้ตรวจแล้วครับ\nกดดูแล้วกดอนุมัติ หรือแจ้งจุดที่อยากแก้ได้เลย\n${link}`;
+      return `🎨 แบบงานออเดอร์ ${id} พร้อมให้ตรวจแล้วครับ\n🙏 รบกวนเข้าไปเช็กแบบด้วยนะครับ ถ้าถูกต้องกดอนุมัติ หรือแจ้งจุดที่อยากแก้ได้เลย ทางร้านจะเริ่มผลิตหลังลูกค้าอนุมัติแบบครับ\n${link}`;
     case "แก้ไขแบบ":
       return `✏️ รับเรื่องขอแก้ไขแบบออเดอร์ ${id} แล้วครับ กำลังแก้ให้ เดี๋ยวส่งให้ตรวจอีกรอบ\n${link}`;
     case "อนุมัติแบบ":
@@ -499,6 +499,9 @@ export function statusFlex(
   const bal = orderBalance(order);
   const owe = !!order.deposit && !order.deposit.settledAt && bal > 0;
   const oweNet = owe ? balanceNetTransfer(order, bal) : null;
+  // 🙏 รอตรวจแบบ: ลูกค้าอ่านการ์ดแล้วคิดว่า "แค่แจ้งให้ทราบ" ไม่ได้เข้ามาเช็กแบบ (พนักงานฟีดแบ็ค 21 ต.ค. 69)
+  // → กล่องม่วงอ่อนขอให้เข้าไปตรวจ+บอกว่าต้องกดอนุมัติก่อนร้านถึงเริ่มผลิต และปุ่มเปลี่ยนเป็น "ตรวจแบบงาน"
+  const askReview = status === "รอตรวจแบบ";
   const first = order.items[0];
   const more = order.items.length - 1;
   /*
@@ -569,9 +572,26 @@ export function statusFlex(
             { type: "text", text: order.id, size: "lg", weight: "bold", color: "#0F172A" },
             { type: "separator", color: "#E2E8F0" },
             { type: "box", layout: "vertical", spacing: "sm", contents: rows },
-            ...(owe
+            ...(askReview
               ? [
                   {
+                    type: "box",
+                    layout: "vertical",
+                    backgroundColor: "#F5F3FF",
+                    cornerRadius: "8px",
+                    paddingAll: "10px",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "🙏 รบกวนกดปุ่มด้านล่างเข้าไปเช็กแบบงานด้วยนะครับ ถ้าถูกต้องกด \"อนุมัติแบบ\" หรือแจ้งจุดที่อยากแก้ได้ในหน้าออเดอร์ — ทางร้านจะเริ่มผลิตหลังได้รับการอนุมัติครับ",
+                        size: "xs",
+                        color: "#6D28D9",
+                        wrap: true,
+                      },
+                    ],
+                  },
+                ]
+              : []),
             // 🛵 แพ็คเสร็จ รอมารับ: กล่องฟ้าอ่อนย้ำเรื่องเรียกรถมารับให้แจ้งเลขออเดอร์กับคนขับ (พนักงานฟีดแบ็ค 21 ต.ค. 69)
             ...(status === "จัดส่งแล้ว" && isPickupOrder(order)
               ? [
@@ -579,12 +599,18 @@ export function statusFlex(
                     type: "box",
                     layout: "vertical",
                     backgroundColor: "#E0F2FE",
+                    // 🔲 กรอบสีเดียวกับหัวการ์ด ให้สะดุดตากว่ากล่องสีอ่อนเฉย ๆ (เจ้าของร้านขอ 21 ต.ค. 69 หลังดูตัวอย่าง)
+                    borderWidth: "2px",
+                    borderColor: tone,
                     cornerRadius: "8px",
                     paddingAll: "10px",
                     contents: [{ type: "text", text: pickupRiderHint(order.id), size: "xs", color: "#075985", wrap: true }],
                   },
                 ]
               : []),
+            ...(owe
+              ? [
+                  {
                     type: "box",
                     layout: "vertical",
                     backgroundColor: "#FFF1F2",
@@ -599,9 +625,6 @@ export function statusFlex(
                         size: "xs",
                         color: "#BE123C",
                         wrap: true,
-                    // 🔲 กรอบสีเดียวกับหัวการ์ด ให้สะดุดตากว่ากล่องสีอ่อนเฉย ๆ (เจ้าของร้านขอ 21 ต.ค. 69 หลังดูตัวอย่าง)
-                    borderWidth: "2px",
-                    borderColor: tone,
                       },
                     ],
                   },
@@ -621,7 +644,7 @@ export function statusFlex(
               // 🎨 ปุ่มสีเดียวกับหัวการ์ด (เจ้าของร้านสั่ง 22 ก.ย. 69) — การ์ดอ่านเป็นก้อนเดียว ไม่ใช่ฟ้าลอยมาจากไหนไม่รู้
               // ทุกสีในจานผ่าน contrast ≥ 3:1 กับตัวอักษรขาวแล้ว (ดู npm run check:flex)
               color: tone,
-              action: { type: "uri", label: "เปิดหน้าออเดอร์", uri: link },
+              action: { type: "uri", label: askReview ? "ตรวจแบบงาน" : "เปิดหน้าออเดอร์", uri: link },
             },
           ],
         },

@@ -50,7 +50,7 @@ export async function sendProofNotify(
   const r: NotifyResult = await notifyCustomer(
     sb,
     order,
-    statusFlex(order, link, { status: "รอตรวจแบบ", headline, alt: `${head}\nดู/อนุมัติได้ที่: ${link}` })
+    statusFlex(order, link, { status: "รอตรวจแบบ", headline, alt: `${head}\n🙏 รบกวนเข้าไปเช็กแบบด้วยนะครับ ถ้าถูกต้องกดอนุมัติ หรือแจ้งจุดที่อยากแก้ได้เลย ทางร้านจะเริ่มผลิตหลังลูกค้าอนุมัติแบบครับ\nดู/อนุมัติได้ที่: ${link}` })
   );
 
   // อ่านสดก่อนเขียน กันทับงานที่คนอื่นเพิ่งบันทึก
