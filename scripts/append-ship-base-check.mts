@@ -5,7 +5,7 @@
 import { appendShipBase, shipCalcLines, shipRetailOnly } from "../src/lib/append-order";
 import { autoShipQuote, pickShipping } from "../src/lib/shipping-auto";
 import { isRetailRateLine, type Product } from "../src/lib/products";
-import { shipFollowsItems } from "../src/lib/ship-label";
+import { shipFollowsItems, shipOriginUnknown } from "../src/lib/ship-label";
 import { shipAutoFollowNow, type Order } from "../src/lib/admin-data";
 import type { ShippingMethod } from "../src/lib/settings-shared";
 
@@ -108,6 +108,13 @@ const follow: [string, boolean, boolean][] = [
   ["ไม่ปรับ: มีเงินเข้าแล้ว", shipAutoFollowNow({ ...base, shipAuto: true, paidTotal: 500 } as Order), false],
   ["ไม่ปรับ: มารับเอง", shipAutoFollowNow({ ...base, shipAuto: true, shippingLabel: "มารับเอง", shippingCost: 0 }), false],
   ["ไม่ปรับ: ใบจากใบเสนอราคา", shipAutoFollowNow({ ...base, shipAuto: true, quoteOf: "QT-1" } as Order), false],
+  // 🤷 ใบจากหน้าร้านก่อนมีธง: ไม่มีร่องรอยว่าใครตั้ง → หน้าออเดอร์เทียบกับที่ระบบคิดจากรายการเดิม / ขึ้นปุ่มแนะนำ (21 ต.ค. 69)
+  ["ที่มาไม่รู้: ไม่มีธง ไม่มี log วิธีส่ง", shipOriginUnknown({ log: [L("สร้างออเดอร์")] }), true],
+  ["ที่มารู้: มีธง shipAuto (true/false ก็รู้)", shipOriginUnknown({ shipAuto: false }), false],
+  ["ที่มารู้: มี log เปลี่ยนวิธีส่ง", shipOriginUnknown({ log: [L("เปลี่ยนวิธีส่ง", "x")] }), false],
+  ["ที่มารู้: มี log แก้ค่าจัดส่ง", shipOriginUnknown({ log: [L("แก้ค่าจัดส่ง", "฿50 → ฿80")] }), false],
+  ["ที่มารู้: หยิบจากหน้าร้านใส่ค่าส่ง", shipOriginUnknown({ log: [L("สั่งเพิ่มในออเดอร์เดิม", "ใส่ค่าส่ง EMS (50) ฿50")] }), false],
+  ["ที่มาไม่รู้: สั่งเพิ่มแต่ไม่ได้ใส่ค่าส่ง", shipOriginUnknown({ log: [L("สั่งเพิ่มในออเดอร์เดิม", "1 รายการ")] }), true],
 ];
 for (const [name, got, want] of follow) {
   const ok = got === want;

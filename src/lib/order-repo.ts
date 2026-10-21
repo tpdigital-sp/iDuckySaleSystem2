@@ -16,6 +16,8 @@ export interface CreateOrderInput {
   customerId?: string;
   shipping: string;
   shippingCost: number;
+  /** ⚡ วิธีส่งนี้ระบบเลือกให้ในตะกร้า (ไม่ใช่ลูกค้าเลือกเอง) → ใบเกิดมาพร้อมธง shipAuto ปรับค่าส่งตามรายการต่อได้ */
+  shippingAuto?: boolean;
   subtotal: number;
   total: number;
   couponCode?: string;

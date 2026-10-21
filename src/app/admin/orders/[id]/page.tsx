@@ -207,7 +207,7 @@ import { PACK_SCAN_PARAM, PACK_SCAN_PERMS, type Perm } from "@/lib/permissions";
 import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
-import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shipFollowsItems, shippingUnset } from "@/lib/ship-label";
+import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shipFollowsItems, shipOriginUnknown, shippingUnset } from "@/lib/ship-label";
 import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, isFlatCalAi, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { jobFileName } from "@/lib/job-file-name";
@@ -3215,11 +3215,24 @@ export default function AdminOrderDetailPage() {
    * เฉพาะ shipAutoFollowNow (ระบบเลือกให้ + ยังไม่มีเงินเข้า) · สินค้าในใบยังโหลดไม่ครบ = ข้ามรอบนี้ (ตารางค่าส่ง/กล่องบังคับอยู่ในตัวสินค้า)
    */
   function followShip(prev: Order, next: Order): Order {
-    if (!shipMethods.length || !shipAutoFollowNow(next)) return next;
+    if (!shipMethods.length) return next;
     const sig = (o: Order) => o.items.map((it) => `${it.productId}|${it.qty}|${it.unitPrice}|${JSON.stringify(it.sel ?? {})}`).join("~");
     if (sig(prev) === sig(next)) return next;
-    const realIds = next.items.map((it) => it.productId).filter((id) => id && !id.includes("#") && id !== "special-item");
-    if (realIds.some((id) => !shopProducts.has(id))) return next;
+    const loaded = (o: Order) =>
+      !o.items.some((it) => it.productId && !it.productId.includes("#") && it.productId !== "special-item" && !shopProducts.has(it.productId));
+    /**
+     * 🤷 ใบจากหน้าร้านก่อน 21 ต.ค. 69 ไม่มีธง shipAuto และไม่มี log วิธีส่ง (ตะกร้าเพิ่งเริ่มส่งธงมา) → เดิมถูกมองว่า "ตั้งเอง"
+     * ลดจำนวน/ลบรายการจนยอดไม่ถึง ฿2,000 แล้วค่าส่งค้าง EMS (100) (เจ้าของร้าน 21 ต.ค. 69)
+     * ถ้าค่าส่งเดิมตรงกับที่ระบบคิดจาก "รายการก่อนแก้" เป๊ะ = ระบบเลือกให้ตอนสั่ง → ถือเป็นอัตโนมัติแล้วปรับตามได้
+     * ลูกค้าเลือกกล่องใหญ่เองทั้งที่ระบบให้กล่องเล็ก = ไม่ตรง → ไม่แตะ (ขึ้นปุ่มแนะนำแทน)
+     */
+    let base = next;
+    if (shipOriginUnknown(next) && paidSoFar(next) === 0 && loaded(prev)) {
+      const was = autoShipOf(prev);
+      if (was?.method && was.method.name === prev.shippingLabel && Math.max(0, was.cost) === prev.shippingCost) base = { ...next, shipAuto: true };
+    }
+    if (!shipAutoFollowNow(base)) return next;
+    if (!loaded(next)) return next;
     const q = autoShipOf(next);
     if (!q?.method) return next;
     const cost = Math.max(0, q.cost);
@@ -5315,6 +5328,12 @@ export default function AdminOrderDetailPage() {
     autoShip.cost < order.shippingCost &&
     !order.quoteOf &&
     !order.flowAccount;
+  /**
+   * 🤷 ค่าส่งใบนี้ไม่มีร่องรอยว่าใครตั้ง (ใบจากหน้าร้านก่อนมีธง shipAuto) และแพงกว่าที่ระบบคิดให้ตอนนี้ —
+   * ลดจำนวน/ลบรายการจนไม่ถึงเกณฑ์กล่องใหญ่แล้วค่าส่งค้าง (21 ต.ค. 69) · ใบที่แอดมิน/ระบบตั้งชัดเจนไม่เข้าข้อนี้ (แพงกว่า = ตั้งใจ)
+   */
+  const shipOverAuto =
+    shipSuggestOk && !!autoShip && autoShip.cost < order.shippingCost && shipOriginUnknown(order) && !order.quoteOf && !order.flowAccount;
   /** เปลี่ยนวิธีส่ง + ค่าส่งพร้อมกัน (ช่องเลือก กับปุ่มค่าอัตโนมัติ ใช้ทางเดียวกัน — ต้องลงประวัติเสมอ)
    * 🚚 เปลี่ยนวิธีส่งคือ "แก้ยอดเงิน" ค่าส่งเปลี่ยนตามทันที · เดิมเงียบสนิท:
    * OD-260911-5435 เปลี่ยนเป็น "มารับเอง" แล้วค่าส่ง ฿100 ตามใบ FlowAccount หายไปโดยไม่มีร่องรอย */
@@ -9058,19 +9077,23 @@ export default function AdminOrderDetailPage() {
                     : shipFollowsItems(order) && paidSoFar(order) > 0
                       ? "ลูกค้าโอนแล้ว — ค่าส่งไม่ปรับตามรายการเอง (มีปุ่มแนะนำเมื่อไม่ตรง)"
                       : !shippingUnset(order)
-                        ? "ค่าส่งตั้งเอง — ไม่ปรับตามรายการ · เลือก “⚡ อัตโนมัติ” ถ้าอยากให้ปรับตาม"
+                        ? shipOriginUnknown(order)
+                          ? "ค่าส่งตั้งไว้ตอนสั่ง — แก้รายการแล้วระบบปรับให้ถ้าตรงกับที่คิดไว้ · เลือก “⚡ อัตโนมัติ” ให้ปรับตามแน่นอน"
+                          : "ค่าส่งตั้งเอง — ไม่ปรับตามรายการ · เลือก “⚡ อัตโนมัติ” ถ้าอยากให้ปรับตาม"
                         : null}
                 </p>
               )}
               {/* ⚡ ค่าส่งต่ำกว่าที่ระบบคิดให้ / ยอดถึงส่งฟรีแล้วแต่ยังคิดค่าส่ง — กดปุ่มเดียวเติมให้ตรง (ไม่กดก็ไม่มีอะไรเปลี่ยน) */}
-              {mayEdit && (shipUnderAuto || shipOverFree) && autoShip?.method && (
+              {mayEdit && (shipUnderAuto || shipOverFree || shipOverAuto) && autoShip?.method && (
                 <button
                   type="button"
                   onClick={() => applyShipMethod(autoShip.method!, autoShip.cost, `อัตโนมัติ — ${autoShip.reason}`)}
                   title={autoShip.reason}
                   className="mt-1.5 flex w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-2 text-left text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
                 >
-                  <span className="shrink-0">{shipOverFree ? "🎉 ยอดถึงส่งฟรีแล้ว · ใช้ค่าส่งอัตโนมัติ" : "⚡ ใช้ค่าส่งอัตโนมัติ"}</span>
+                  <span className="shrink-0">
+                    {shipOverFree ? "🎉 ยอดถึงส่งฟรีแล้ว · ใช้ค่าส่งอัตโนมัติ" : shipOverAuto && !shipUnderAuto ? "📦 ของลดลงแล้ว · ใช้ค่าส่งอัตโนมัติ" : "⚡ ใช้ค่าส่งอัตโนมัติ"}
+                  </span>
                   <span className="min-w-0 flex-1 truncate font-normal text-sky-800">
                     {autoShip.method.name} · {autoShip.reason}
                   </span>

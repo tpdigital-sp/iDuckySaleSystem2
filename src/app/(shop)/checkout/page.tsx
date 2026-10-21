@@ -733,6 +733,9 @@ export default function CheckoutPage() {
       customerId: staffMode ? undefined : customer?.id,
       shipping: effectiveMethod.name,
       shippingCost,
+      // ⚡ ระบบเลือกวิธีส่งให้ (ไม่ใช่ลูกค้าเลือกเอง) → ใบเกิดมาพร้อมธง shipAuto หน้าออเดอร์ปรับค่าส่งตามรายการต่อได้
+      //    (เจ้าของร้าน 21 ต.ค. 69: ลดจำนวน/ลบรายการจนไม่ถึง ฿2,000 แล้วค่าส่งค้าง EMS (100) — ใบจากหน้าร้านไม่เคยมีธงนี้)
+      shippingAuto: effectiveMethod.id === autoShip.id,
       subtotal,
       total,
       couponCode: staffMode || isDealer ? undefined : couponPreview?.code,

@@ -46,6 +46,8 @@ export async function POST(req: Request) {
     customerId?: string;
     shipping?: string;
     shippingCost?: number;
+    /** ⚡ วิธีส่งที่ส่งมาคือตัวที่ระบบเลือกให้ในตะกร้า (true) หรือลูกค้าเลือกเอง (false) — ไม่ส่งมา (เว็บเก่า) = ไม่รู้ */
+    shippingAuto?: boolean;
     items?: Order["items"];
     note?: string;
     useByDate?: string;
@@ -330,6 +332,9 @@ export async function POST(req: Request) {
     shipping: input.shipping === "ส่งด่วน" ? "ส่งด่วน" : "ส่งธรรมดา",
     ...(input.shipping?.trim() ? { shippingLabel: input.shipping.trim().slice(0, 40) } : {}),
     shippingCost: Number(input.shippingCost) || 0,
+    // ⚡ ธง "ค่าส่งระบบเลือกให้" ตั้งแต่ใบเกิด — หน้าออเดอร์ใช้ตัดสินว่าแก้รายการแล้วคิดค่าส่งใหม่ให้เองได้ไหม (shipFollowsItems)
+    //    เดิมใบจากหน้าร้านไม่มีธง + ไม่มี log วิธีส่ง → ถูกมองว่า "ตั้งเอง" ลดจำนวน/ลบรายการแล้วค่าส่งค้างกล่องใหญ่ (21 ต.ค. 69)
+    ...(typeof input.shippingAuto === "boolean" ? { shipAuto: input.shippingAuto } : {}),
     status: "รอชำระเงิน",
     note: input.note?.trim() || undefined,
     ...(/^\d{4}-\d{2}-\d{2}$/.test(input.useByDate ?? "") ? { useByDate: input.useByDate, ...autoShipDate(input.useByDate!) } : {}),
