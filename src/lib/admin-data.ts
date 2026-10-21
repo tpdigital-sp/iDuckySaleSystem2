@@ -2829,6 +2829,58 @@ export function effectiveStage(o: Order): OrderStatus {
 /** ล้างความจำ "ขั้นที่ต้องกลับไป" — ใช้พร้อมกับตั้ง status = stageAfterPayment() */
 export const clearStageMemory = { reopenedFrom: undefined, proofStage: undefined } as const;
 
+/** 🎨 ขั้นแบบงาน 3 ขั้น — ใบที่อยู่ขั้นพวกนี้ = กราฟฟิกส่งแบบไปแล้ว (ไม่อยู่ในคิว "รอทำแบบ" ของหน้ากราฟฟิก) */
+export const PROOF_STAGES: OrderStatus[] = ["รอตรวจแบบ", "แก้ไขแบบ", "อนุมัติแบบ"];
+
+/** รายการที่ "ยังไม่มีแบบ" และต้องมีคนทำ (ไม่นับบรรทัดค่าบริการ · ติ๊กไม่ต้องทำแบบ · รูปถูกล้างตามนโยบาย) */
+function missingProofNames(o: Order): string[] {
+  return proofBlockers(o)
+    .filter((b) => b.why === "missing")
+    .map((b) => b.name);
+}
+
+/**
+ * 🎨↩ รายการใหม่ที่ยังไม่มีแบบโผล่เข้าใบที่ "แบบเดินไปแล้ว" → ใบต้องกลับไป "รอทำแบบ" (ชำระแล้ว) ให้กราฟฟิกเห็นในคิว
+ *
+ * ทำไมต้องมี (กราฟฟิกแจ้ง 21 ต.ค. 69): ลูกค้าอนุมัติแบบแล้ว แอดมินลบรายการแล้วเพิ่มใหม่ในใบเดิม
+ * → ใบยังค้าง "อนุมัติแบบ" ทั้งที่รายการใหม่ไม่มีแบบ — คิวกราฟฟิกกรองเฉพาะ "ชำระแล้ว/รอตรวจสอบ" จึงไม่เห็นงานนี้
+ *   · ยอดไม่โต (ลบ ฿500 เพิ่ม ฿500) = สถานะไม่ขยับเลย
+ *   · ยอดโต = เด้งไป "รอชำระเงิน" จำ reopenedFrom = "อนุมัติแบบ" → เงินเข้าแล้วกลับไป "อนุมัติแบบ" เหมือนเดิม (งานใหม่หายเงียบ)
+ *   รู้ตัวอีกทีตอนปริ้นใบงานโดนด่าน "ยังไม่มีแบบ" (proofBlockers)
+ *
+ * กติกา: นับรายการขาดแบบ "เพิ่มขึ้น" จากก้อนก่อนบันทึก (ลบอย่างเดียว/แก้จำนวน ไม่นับ) และใบอยู่ขั้นแบบงาน (PROOF_STAGES)
+ *   · เงินเข้าแล้ว → status = "ชำระแล้ว" (คิวกราฟฟิก) · ขั้นแบบเดิมไม่ต้องจำ
+ *   · ยังค้างเงิน (เด้งกลับเพราะยอดโต / จำขั้นไว้ที่ proofStage) → แก้ "ความจำ" ให้เงินเข้าแล้วกลับไป "ชำระแล้ว" แทนขั้นแบบเดิม
+ *     (proofStage ล้าง · reopenedFrom ที่เคยเป็นขั้นแบบ → "ชำระแล้ว" คงไว้ให้ restoredFromReopen ยังทำงานตอนถอดรายการออก)
+ *   · กำลังผลิต/จัดส่งแล้ว/เสร็จสิ้น/ยกเลิก = ไม่แตะ (งานเดินไปแล้ว ด่านปริ้นดูแลรายการใหม่เอง)
+ * แบบที่ลูกค้าอนุมัติไว้แล้วของรายการเดิม "ไม่หาย" (proofStatus ต่อรายการคงเดิม) — กราฟฟิกทำแบบเฉพาะรายการที่ขาด แล้วส่งตรวจต่อตามปกติ
+ */
+export function resetProofStageForNewWork(
+  prev: Order | null | undefined,
+  next: Order
+): { order: Order; from: OrderStatus; note: string } | null {
+  if (next.status === "ยกเลิก") return null;
+  const before = prev ? missingProofNames(prev).length : 0;
+  const missing = missingProofNames(next);
+  if (missing.length <= before) return null;
+  const list = missing.map((n) => `“${n}”`).join(" · ");
+  if (awaitingPayment(next)) {
+    const back = stageAfterPayment(next);
+    if (!PROOF_STAGES.includes(back)) return null;
+    return {
+      order: { ...next, proofStage: undefined, reopenedFrom: next.reopenedFrom ? "ชำระแล้ว" : undefined },
+      from: back,
+      note: `รายการที่ยังไม่มีแบบ: ${list} — เงินเข้าครบแล้วจะกลับไป "ชำระแล้ว" (รอทำแบบ) แทน "${back}" ให้กราฟฟิกทำแบบรายการใหม่ก่อน`,
+    };
+  }
+  if (!PROOF_STAGES.includes(next.status)) return null;
+  return {
+    order: { ...next, status: "ชำระแล้ว", proofStage: undefined },
+    from: next.status,
+    note: `รายการที่ยังไม่มีแบบ: ${list} — ${next.status} → ชำระแล้ว (รอทำแบบ) ให้กราฟฟิกเห็นในคิว · แบบที่ลูกค้าอนุมัติไว้แล้วของรายการเดิมยังอยู่`,
+  };
+}
+
 /** ผลตรวจ "พร้อมส่งหรือยัง" ของพนักงานแพ็ค */
 /** ภาพถ่ายของจริงในกล่อง "ก่อนปิดกล่อง" — ฝ่ายแพ็คถ่ายเก็บเป็นหลักฐานทุกออเดอร์ */
 export interface PackPhoto {

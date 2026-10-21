@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
-import { orderTotal, priceCheckPending, shipAutoFollowNow, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
+import { orderTotal, priceCheckPending, resetProofStageForNewWork, shipAutoFollowNow, withLog, type Order, type OrderItem, type OrderStatus } from "@/lib/admin-data";
 import { dealerRateOf } from "@/lib/products";
 import { getProductServer, withUnitYield } from "@/lib/products-server";
 import { syncOrderMemberTier } from "@/lib/server/order-member-tier";
@@ -184,11 +184,17 @@ export async function POST(req: Request) {
    */
   const owedBefore = orderTotal(priced) - (order.paidTotal ?? 0);
 
-  const updated = {
+  const reopened = {
     ...priced,
     // มียอดค้าง → กลับไปรอชำระ · ไม่มียอดค้าง (เช่นยังไม่เคยจ่าย) → คงสถานะเดิม
     status: owedBefore > 0 ? ("รอชำระเงิน" as OrderStatus) : order.status,
   };
+  /**
+   * 🎨↩ ของใหม่ที่ยังไม่มีแบบเข้าใบที่แบบเดินไปแล้ว (อนุมัติแบบ/รอตรวจแบบ) → ต้องกลับไป "รอทำแบบ" ไม่ใช่ค้างขั้นเดิม
+   * (ทางแอดมินสั่งเพิ่มจากตะกร้าก็มาทางนี้ · ยอดไม่โตเพราะเพิ่งลบรายการเดิมออก = สถานะไม่ขยับเลย) — ดู resetProofStageForNewWork
+   */
+  const proofReset = resetProofStageForNewWork(order, reopened);
+  const updated = proofReset ? proofReset.order : reopened;
 
   // เรียกกฎกลางก่อนเพื่อให้ log บอกยอดที่ลูกค้าเห็นจริง — updateOrder จะเรียกซ้ำเองอีกชั้น (ได้ผลเท่าเดิม ไม่เขียนซ้ำ)
   const synced = await syncOrderEarlyPay(sb, updated, "ลูกค้า");
@@ -209,6 +215,7 @@ export async function POST(req: Request) {
   if (lot.changed.length)
     logged = withLog(logged, "ระบบ", "ปรับราคาต่อชิ้นให้เท่ากันทั้งบิล", `ยอดรวมทั้งใบเข้าเรทส่ง · ${lotRepriceNote(lot.changed)}`);
   if (gift.changed.length) logged = withLog(logged, "ระบบ", "ปรับของแถมตามยอดรวมทั้งใบ", giftSyncNote(gift.changed));
+  if (proofReset) logged = withLog(logged, "ระบบ", "รายการใหม่ยังไม่มีแบบ — กลับไปรอทำแบบ", proofReset.note);
 
   /**
    * 🧮 รอตรวจราคา — ขั้นราคาทั้งล็อตขยับเพราะมีของเข้าใบ ให้แอดมินตรวจอีกรอบ (เจ้าของร้านสั่ง 20 ต.ค. 69 · OD-260910-5776)

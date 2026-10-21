@@ -72,6 +72,7 @@ import {
   receiveDepositFirst,
   receiptPhotoPending,
   shipmentExtras,
+  resetProofStageForNewWork,
 } from "@/lib/admin-data";
 import { inBackground } from "@/lib/server/background";
 import { absorbSurplusIntoBalance } from "@/lib/payments";
@@ -1206,6 +1207,18 @@ export async function PATCH(req: Request) {
       `${existing.status} → ${stageAfterPayment(toSave)} (รับครบ ${orderTotal(toSave).toLocaleString("th-TH")} บาท)`
     );
 
+  /**
+   * 🎨↩ รายการใหม่ที่ยังไม่มีแบบเข้าใบที่แบบเดินไปแล้ว (ลบแล้วเพิ่มใหม่ · เพิ่มรายการพิเศษ · ลบแบบของรายการเดิม)
+   * → กลับไป "ชำระแล้ว" (= คิวรอทำแบบของกราฟฟิก) — กราฟฟิกแจ้ง 21 ต.ค. 69 ใบอนุมัติแบบแล้วค้างอยู่ขั้นเดิม งานใหม่ไม่โผล่คิว
+   * ต้องอยู่ "หลัง" บล็อกเด้งกลับรอชำระเงิน/กลับขั้นเดิมด้านบน (พวกนั้นเริ่มจาก status === existing.status) — ใบที่เด้งไปรอชำระเงินแล้ว
+   * ตัวนี้แก้แค่ความจำ (reopenedFrom/proofStage) ให้เงินเข้าแล้วกลับ "ชำระแล้ว" · กติกาอยู่ที่ resetProofStageForNewWork (admin-data)
+   * ไม่ใช่เงินเข้าใหม่ (ด่าน markPaid ข้าม) · ไม่แจ้งไลน์ลูกค้าซ้ำ (ลูกค้าเคยได้ "ชำระแล้ว" ไปแล้ว) · ลง log ให้เห็นว่าทำไมสถานะถอย
+   */
+  const proofReset = mayEditFull ? resetProofStageForNewWork(existing, toSave) : null;
+  const proofResetNow = !!proofReset;
+  if (proofReset)
+    toSave = withLog(proofReset.order, actor.name?.trim() || actor.username, "รายการใหม่ยังไม่มีแบบ — กลับไปรอทำแบบ", proofReset.note);
+
   /** ตีราคางานสั่งทำครบในคำขอนี้ไหม — ใช้ทั้งกันแจ้งซ้ำและข้อความแจ้งราคาด้านล่าง */
   const quoteJustPriced =
     !isFreeOrder(toSave) && existing.items.some((i) => i.unitPrice <= 0) && toSave.items.length > 0 && toSave.items.every((i) => i.unitPrice > 0);
@@ -1265,7 +1278,8 @@ export async function PATCH(req: Request) {
     const autoRestore =
       restoredFromReopen && Math.abs((toSave.paidTotal ?? 0) - ((existing.paidTotal ?? 0) + surplusCredit)) < 0.005;
     // 🎁 ส่งฟรีเพิ่งตั้งในคำขอนี้ = ไม่มีเงินเข้า ไม่ใช่การยืนยันรับเงิน (สิทธิ์ orders.edit พอ)
-    const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && !autoRestore && !freeSetNow;
+    // 🎨 ถอยกลับ "ชำระแล้ว" เพราะรายการใหม่ไม่มีแบบ (proofResetNow) ก็ไม่ใช่เงินเข้า
+    const nowPaid = toSave.status === "ชำระแล้ว" && existing.status !== "ชำระแล้ว" && !autoRestore && !freeSetNow && !proofResetNow;
     const depositFirst = !!toSave.deposit?.firstPaidAt && !existing.deposit?.firstPaidAt;
     const depositSettled = !!toSave.deposit?.settledAt && !existing.deposit?.settledAt;
     if (nowPaid || depositFirst || depositSettled)
@@ -1528,7 +1542,8 @@ export async function PATCH(req: Request) {
   if (freeUnsetNow) await alertFreeOrder(toSave, adminName, "unset", freeAlertReason);
   // แจ้งเตือนลูกค้าเมื่อสถานะเปลี่ยนไปขั้นสำคัญ (เงียบถ้ายังไม่ตั้งค่า LINE)
   // ⚠️ กลับไปรอชำระเงินเพราะยอดโต = เงียบไว้ก่อน ให้ข้อความ "ยอดที่ต้องโอนเพิ่ม" ในคิวเป็นคนบอก (ไม่งั้นลูกค้าได้ "รอชำระเงิน" ลอย ๆ ที่ไม่มียอด)
-  if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && (balanceGrew || balanceQueued)) && !restoredFromReopen) {
+  // 🎨 ถอยไป "ชำระแล้ว" เพราะรายการใหม่ไม่มีแบบ = เงียบเหมือนกัน (ไม่ใช่เงินเข้าใหม่ · ไม่ยิงเรคอร์ดสะพาน/ตัดสต๊อก/แต้มซ้ำ · กราฟฟิกเห็นจากคิว)
+  if (toSave.status !== oldStatus && !quoteJustPriced && !(reopenedForBalance && (balanceGrew || balanceQueued)) && !restoredFromReopen && !proofResetNow) {
     const origin = new URL(req.url).origin;
     const link = orderLink(origin, toSave);
     // แจ้งลูกค้า "ทุกครั้งที่สถานะเปลี่ยน" — ข้อความต่อสถานะอยู่ใน statusMessage()

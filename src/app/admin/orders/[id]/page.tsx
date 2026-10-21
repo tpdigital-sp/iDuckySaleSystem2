@@ -3086,10 +3086,16 @@ export default function AdminOrderDetailPage() {
         if (!cur || cur.id !== saved.id) return cur;
         // ✍️ ช่องข้อมูลลูกค้าที่ส่งไปกับคำขอนี้ = บันทึกแล้ว → เลิกกัน (ถ้าพิมพ์ต่อระหว่างรอ ค่าบนจอต่างจากที่ส่ง ยังกันไว้ให้รอบถัดไป)
         for (const k of [...dirtyRef.current]) if ((cur[k] ?? "") === (next[k] ?? "")) dirtyRef.current.delete(k);
+        /**
+         * 🚦 เซิร์ฟเวอร์เปลี่ยนสถานะเองในคำขอนี้ (ยอดโตเด้งกลับรอชำระเงิน · รายการใหม่ไม่มีแบบถอยไปชำระแล้ว · กลับขั้นเดิม)
+         * → รับสถานะ+ความจำขั้น (proofStage/reopenedFrom) มาถือทันที ไม่รอโพล 15 วิ
+         * ไม่รับ = จอยังโชว์ขั้นเก่า และบันทึกครั้งถัดไปจะส่งสถานะเก่าไปเป็น "ตั้งใจเปลี่ยนสถานะ" (โดนด่าน orders.setStatus 403 / ทับขั้นที่เซิร์ฟเวอร์เพิ่งตั้ง)
+         */
+        const stage = saved.status !== next.status ? { status: saved.status, proofStage: saved.proofStage, reopenedFrom: saved.reopenedFrom } : {};
         if (cur === next && cur.items.length === saved.items.length)
           // 🛒 needsPurchase.alertedAt เซิร์ฟเวอร์ประทับตอนแจ้งกลุ่มไลน์ — รับกลับมาด้วย ไม่งั้นรอบหน้าช่องนี้ถูกมองว่า "แก้" ทั้งที่ไม่ได้แตะ
-          return { ...cur, savedAt: saved.savedAt, discount: saved.discount, earlyPay: saved.earlyPay, log: saved.log, needsPurchase: saved.needsPurchase, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
-        return { ...cur, savedAt: saved.savedAt, discount: saved.discount, earlyPay: saved.earlyPay };
+          return { ...cur, ...stage, savedAt: saved.savedAt, discount: saved.discount, earlyPay: saved.earlyPay, log: saved.log, needsPurchase: saved.needsPurchase, items: cur.items.map((it, i) => withServerStamps(it, saved.items[i])) };
+        return { ...cur, ...stage, savedAt: saved.savedAt, discount: saved.discount, earlyPay: saved.earlyPay };
       });
     return true;
   }
