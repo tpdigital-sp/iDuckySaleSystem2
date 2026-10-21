@@ -179,6 +179,18 @@ check(
     alt: "🏪 แพ็คเสร็จบางส่วนแล้วครับ (รอบที่ 1)",
   })
 );
+// 🛵 ใบมารับเอง "แพ็คเสร็จ รอมารับ" ต้องมีกล่องย้ำเรื่องแจ้งเลขออเดอร์กับคนขับ (พนักงานฟีดแบ็ค 21 ต.ค. 69)
+{
+  const msgs = statusFlex(order({ status: "จัดส่งแล้ว", shipping: "มารับเอง", shippingLabel: "มารับเองที่ร้าน" }), LINK);
+  check("แพ็คเสร็จ รอมารับ (มารับเอง) — มีบรรทัดแจ้งคนขับ", msgs);
+  const txt = JSON.stringify(msgs);
+  const hits = (txt.match(/แจ้งคนขับว่ามารับออเดอร์เลขที่/g) ?? []).length;
+  if (hits < 2) {
+    // ต้องมีทั้งในกล่องบนการ์ด + ใน altText (เครื่องที่แสดงการ์ดไม่ได้)
+    console.error(`❌ การ์ดแพ็คเสร็จ รอมารับ ไม่มีบรรทัดแจ้งคนขับครบ (พบ ${hits}/2)`);
+    process.exitCode = 1;
+  }
+}
 check("รับของรอบที่ N แล้ว (ใบแบ่งรับ ของที่เหลือยังทำอยู่)", pickupRoundReceivedNotice(order(), LINK, 1, { qty: 300, ready: 0, making: 205 }, ["Photo Frame อะคริลิค × 300 ชิ้น"]));
 check("รับของรอบที่ N แล้ว (ของที่เหลือพร้อมรับ + ยังทำ)", pickupRoundReceivedNotice(order(), LINK, 1, { qty: 100, ready: 50, making: 30 }));
 check("รับของรอบที่ N แล้ว (ของที่เหลือแพ็คเสร็จรออยู่)", pickupRoundReceivedNotice(order(), LINK, 2, { qty: 4, ready: 96, making: 0 }));

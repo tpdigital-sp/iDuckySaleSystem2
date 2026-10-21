@@ -2410,6 +2410,12 @@ export default function CustomerOrderPage() {
               <p className="mt-1 text-sm t-ink">
                 {order.status === "เสร็จสิ้น" ? "ขอบคุณที่มารับของที่ร้านครับ 🦆" : "ของแพ็คเรียบร้อยรออยู่ที่ร้านแล้วครับ แจ้งเลขออเดอร์ตอนมารับได้เลย"}
               </p>
+              {/* 🛵 เรียกรถมารับแทน: คนขับต้องบอกเลขออเดอร์ได้ (พนักงานฟีดแบ็ค 21 ต.ค. 69) — ข้อความเดียวกับการ์ด LINE (pickupRiderHint) */}
+              {order.status !== "เสร็จสิ้น" && (
+                <p className="mt-1 text-sm t-ink">
+                  🛵 หากเรียกรถ (Grab / Lalamove / แมสเซนเจอร์) มารับแทน รบกวนแจ้งคนขับว่ามารับออเดอร์เลขที่ <b>{order.id}</b> นะครับ
+                </p>
+              )}
               <p className="mt-1 text-xs t-soft">แพ็คเสร็จ {new Date(order.packedAt.at).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
             </div>
           )}

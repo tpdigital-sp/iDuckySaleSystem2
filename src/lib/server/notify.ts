@@ -407,7 +407,7 @@ export function statusMessage(order: Order, link: string): string | null {
     case "จัดส่งแล้ว":
       // 🏪 มารับเอง — ไม่มีพัสดุ/เลขพัสดุ ข้อความต้องไม่พูดถึงการจัดส่ง
       if (isPickupOrder(order))
-        return `🏪 ออเดอร์ ${id} ${order.shipments?.length ? "แพ็คเสร็จรอบสุดท้ายแล้วครับ ครบทุกรายการ" : "แพ็คเสร็จแล้วครับ"} มารับที่ร้านได้เลย แจ้งเลขออเดอร์ตอนมารับนะครับ${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`;
+        return `🏪 ออเดอร์ ${id} ${order.shipments?.length ? "แพ็คเสร็จรอบสุดท้ายแล้วครับ ครบทุกรายการ" : "แพ็คเสร็จแล้วครับ"} มารับที่ร้านได้เลย แจ้งเลขออเดอร์ตอนมารับนะครับ\n${pickupRiderHint(id)}${shipWithLine(order) ? `\n${shipWithLine(order)}` : ""}\n${link}`;
       // 🚚 เคยแบ่งส่งมาก่อน → บอกว่านี่คือรอบสุดท้าย (เลขรอบก่อนแจ้งไปแล้วตอนส่งรอบนั้น)
       {
         // 📮 หลายกล่องในใบเดียว → ไล่เลขทุกกล่อง (กล่องที่ 1/2/…) ไม่งั้นลูกค้าได้เลขเดียวทั้งที่มี 2 พัสดุ
@@ -447,6 +447,12 @@ const STATUS_HEX: Record<OrderStatus, string> = {
   เสร็จสิ้น: "#475569",
   ยกเลิก: "#78716C", // เทาอุ่น เข้มพอให้ตัวอักษรขาวอ่านออก (เดิม #94A3B8 = 2.6:1) และไม่ชนกับ "เสร็จสิ้น"
 };
+
+/**
+ * 🛵 บรรทัดแนะนำสำหรับใบมารับเอง (พนักงานฟีดแบ็ค 21 ต.ค. 69): ลูกค้าหลายคนเรียก Grab/Lalamove/แมสเซนเจอร์มารับแทน
+ * แล้วคนขับมาถึงหน้าร้านบอกไม่ได้ว่ามารับของใคร → ทุกการ์ด "แพ็คเสร็จ มารับได้เลย" ต้องย้ำให้แจ้งเลขออเดอร์กับคนขับ
+ */
+export const pickupRiderHint = (id: string) => `🛵 หากเรียกรถ (Grab / Lalamove / แมสเซนเจอร์) มารับแทน รบกวนแจ้งคนขับว่ามารับออเดอร์เลขที่ ${id} นะครับ`;
 
 /** พาดหัวสั้น ๆ บนการ์ด (ข้อความยาวอยู่ใน statusMessage สำหรับ altText) */
 const STATUS_HEADLINE: Record<OrderStatus, string> = {
@@ -566,6 +572,19 @@ export function statusFlex(
             ...(owe
               ? [
                   {
+            // 🛵 แพ็คเสร็จ รอมารับ: กล่องฟ้าอ่อนย้ำเรื่องเรียกรถมารับให้แจ้งเลขออเดอร์กับคนขับ (พนักงานฟีดแบ็ค 21 ต.ค. 69)
+            ...(status === "จัดส่งแล้ว" && isPickupOrder(order)
+              ? [
+                  {
+                    type: "box",
+                    layout: "vertical",
+                    backgroundColor: "#E0F2FE",
+                    cornerRadius: "8px",
+                    paddingAll: "10px",
+                    contents: [{ type: "text", text: pickupRiderHint(order.id), size: "xs", color: "#075985", wrap: true }],
+                  },
+                ]
+              : []),
                     type: "box",
                     layout: "vertical",
                     backgroundColor: "#FFF1F2",
@@ -859,11 +878,11 @@ export function followUpNotice(order: Order, link: string, round: FollowUpRound,
       ...(pickup ? [] : [{ label: "เลขพัสดุกล่องนี้", value: tracking, bold: true }]),
       ...(main && !pickup ? [{ label: "กล่องแรก", value: main }] : []),
     ],
-    note: "ต้องขออภัยในความไม่สะดวกด้วยครับ 🙏",
+    note: `${pickup ? `${pickupRiderHint(order.id)}\n` : ""}ต้องขออภัยในความไม่สะดวกด้วยครับ 🙏`,
     alt: [
       pickup ? `📦 ออเดอร์ ${order.id} — ของที่ตกค้างพร้อมให้มารับแล้วครับ` : `📦 ออเดอร์ ${order.id} — ส่งของที่ตกค้างตามไปให้แล้วครับ`,
       ...what.map((w) => `• ${w}`),
-      pickup ? "" : `เลขพัสดุกล่องนี้: ${tracking}`,
+      pickup ? pickupRiderHint(order.id) : `เลขพัสดุกล่องนี้: ${tracking}`,
       "ต้องขออภัยในความไม่สะดวกด้วยครับ 🙏",
       link,
     ]
@@ -897,9 +916,9 @@ export function pickupRoundReceivedNotice(
   if (left > 0) rows.push({ label: "ของที่เหลือ", value: `${n(left)} ชิ้น` });
   const note =
     ready > 0 && making > 0
-      ? `ของที่เหลือพร้อมให้มารับแล้ว ${n(ready)} ชิ้น · อีก ${n(making)} ชิ้นทางร้านกำลังทำต่อ พร้อมเมื่อไหร่จะแจ้งอีกครั้งครับ`
+      ? `ของที่เหลือพร้อมให้มารับแล้ว ${n(ready)} ชิ้น · อีก ${n(making)} ชิ้นทางร้านกำลังทำต่อ พร้อมเมื่อไหร่จะแจ้งอีกครั้งครับ\n${pickupRiderHint(order.id)}`
       : ready > 0
-        ? "ของที่เหลือแพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ"
+        ? `ของที่เหลือแพ็คเสร็จแล้ว มารับที่ร้านได้เลยครับ\n${pickupRiderHint(order.id)}`
         : making > 0
           ? "ส่วนที่เหลือทางร้านกำลังทำต่อ พร้อมเมื่อไหร่จะแจ้งให้มารับอีกครั้งครับ"
           : "ขอบคุณที่ใช้บริการครับ 🦆";

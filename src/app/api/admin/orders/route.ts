@@ -14,7 +14,7 @@ import { needsPurchaseStamp, notifyStockArrived } from "@/lib/server/needs-purch
 import { keepServerMoney } from "@/lib/server/order-money-guard";
 import { applyChangedKeys, CHANGED_KEYS_HEADER, customerInfoChanges, keepCustomerVerdict, parseChangedKeys, scheduleChanges } from "@/lib/server/order-merge";
 import { missedMemberTier, syncOrderMemberTier } from "@/lib/server/order-member-tier";
-import { KEY_STATUSES, followUpNotice, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, statusFlex, statusMessage } from "@/lib/server/notify";
+import { KEY_STATUSES, followUpNotice, notifyCustomer, notifyCustomerLogged, orderLink, orderNotice, pickupRiderHint, statusFlex, statusMessage } from "@/lib/server/notify";
 import { reconcileFollowupsForOrder, reportPaidToTP, syncAmountsToTP, syncArrivalToTP, syncCancelToTP, syncCustomerToTP, syncRushToTP, syncStockWaitToTP } from "@/lib/server/tp-report";
 import { settleCreditedOrder } from "@/lib/server/slip-apply";
 import { closeFollowUpClaim } from "@/lib/server/claims-db";
@@ -1696,11 +1696,12 @@ export async function PATCH(req: Request) {
             : "ของรอบนี้จัดส่งแล้วครับ ตามเลขพัสดุด้านล่าง",
           rows,
           bullets,
+          // 🛵 มารับเอง: ย้ำให้แจ้งเลขออเดอร์กับคนขับถ้าเรียกรถมารับ (พนักงานฟีดแบ็ค 21 ต.ค. 69)
           note: sh.pickup
-            ? "ส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ"
+            ? `ส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ\n${pickupRiderHint(toSave.id)}`
             : "ส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ",
           alt: sh.pickup
-            ? `🏪 ออเดอร์ ${toSave.id} แพ็คเสร็จบางส่วนแล้วครับ (รอบที่ ${round}) — มารับที่ร้านได้เลย${tail}\nส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ\n${link}`
+            ? `🏪 ออเดอร์ ${toSave.id} แพ็คเสร็จบางส่วนแล้วครับ (รอบที่ ${round}) — มารับที่ร้านได้เลย${tail}\n${pickupRiderHint(toSave.id)}\nส่วนที่เหลือทางร้านจะแจ้งอีกครั้งเมื่อพร้อมให้มารับครับ\n${link}`
             : `🚚 ออเดอร์ ${toSave.id} จัดส่งบางส่วนแล้วครับ (รอบที่ ${round})\nเลขพัสดุ: ${sh.tracking}${tail}\nส่วนที่เหลือจะจัดส่งในรอบถัดไป แล้วแจ้งเลขพัสดุอีกครั้งครับ\n${link}`,
         }),
         sh.pickup ? `แจ้งแพ็คเสร็จบางส่วน (มารับเอง) รอบที่ ${round}` : `แจ้งส่งบางส่วน รอบที่ ${round} · ${sh.tracking}`,
