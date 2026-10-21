@@ -29,6 +29,19 @@ export const KNOWLEDGE_RE = /กี่วัน|ส่งของ|จัดส�
 /** ถามคิวผลิต/วันส่ง (Format Reply · _deadline) */
 const DEADLINE_RE =
   /ทัน.{0,25}(ไหม|มั้ย|มั๊ย|หรือเปล่า|รึเปล่า|ป่าว)|ทันไหม|ทันมั้ย|ทันมั๊ย|ส่งทัน|ผลิตทัน|ทันส่ง|ทันรอบ|ทันงาน|ทันวัน|กำหนดส่ง|เดดไลน์|deadline|ผลิตกี่วัน|ใช้เวลากี่วัน|ใช้เวลาผลิต|กี่วันเสร็จ|เสร็จเมื่อไหร่|เสร็จทัน|ได้ของวันไหน|ได้รับของวันไหน/;
+/**
+ * 📅 21 ต.ค. 69 ลูกค้า "บอก" วันใช้งานโดยไม่ถามว่าทันไหม ("ใช้งานเลยวันที่ 1 ค่ะ" · "รับงาน 27/10" · "ต้องใช้วันที่ 19 ต.ค." · "รับภายใน 20 ตุลา")
+ *   → เดิม DEADLINE_RE จับเฉพาะคำถาม บอทเลยตอบราคาแล้วเงียบเรื่องวัน (เจ้าของร้าน: "บอทตอบไม่ครบ") · กริยา + วันที่/d/m/เดือน/พรุ่งนี้/สัปดาห์หน้า ห่างกันไม่เกิน 12 ตัว
+ *   ไม่นับขนาด "5/7 นิ้ว" (lookahead หน่วย)
+ */
+const USE_DATE_RE = new RegExp(
+  "(?:ใช้งาน|ต้องใช้|จะใช้|ใช้|รับงาน|รับของ|รับสินค้า|ต้องการ(?:สินค้า|ของ|รับ|ใช้)?|ส่ง(?:ถึง|ให้)?|ภายใน|ก่อน|เอา)[^\\n]{0,12}?" +
+    "(?:วันที่\\s*\\d|\\d{1,2}\\s*[/.\\-]\\s*\\d{1,2}(?!\\s*(?:นิ้ว|cm|ซม|mm|มม|x|×))|\\d{1,2}\\s*(?:ม\\.?ค|ก\\.?พ|มี\\.?ค|เม\\.?ย|พ\\.?ค|มิ\\.?ย|ก\\.?ค|ส\\.?ค|ก\\.?ย|ต\\.?ค|พ\\.?ย|ธ\\.?ค|มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิกา|ธันวา)|พรุ่งนี้|มะรืน|สิ้นเดือน|ต้นเดือน|(?:อาทิตย์|สัปดาห์|เดือน)หน้า|วัน(?:จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์))",
+);
+/** ถามคิวผลิต/ทันไหม หรือบอกวันที่ต้องใช้ของ */
+export function mentionsDeadline(text: string): boolean {
+  return DEADLINE_RE.test(text.toLowerCase()) || USE_DATE_RE.test(text);
+}
 const QUEUE_NOTE = "ส่วนเรื่องคิวผลิต/วันส่ง เดี๋ยวแอดมินเช็กคิวจริงแล้วรีบแจ้งในแชทนี้ให้น้า 🥰";
 /** คำที่แปลว่าบอทตอบไม่ได้เต็มที่ → ติดป้ายรอแอดมิน (Format Reply · escalationPatterns) */
 const ESCALATION = ["ขอตรวจสอบ", "ขอเช็ก", "ขอตรวจ", "ตรวจสอบให้", "เช็กให้ก่อน", "ติดต่อกลับ", "รบกวนรอ", "รอสักครู่", "จะมีแอดมิน", "ฝ่ายผลิต", "รีบเช็ก", "ไม่ทราบ", "ไม่มีระบุ", "ไม่มีรายละเอียด", "แอดมินเข้ามาตอบ"];
@@ -175,7 +188,7 @@ export function sitePriceMessages(site: SiteAnswer, userText: string): { message
   const intent = String(site.intent ?? "");
   const answer = String(site.answer ?? site.text ?? "").trim();
   const products: ProductRef[] = site.products?.length ? site.products : site.product ? [site.product] : [];
-  const deadline = DEADLINE_RE.test(userText.toLowerCase());
+  const deadline = mentionsDeadline(userText);
   const needsHumanFollowup = deadline || ESCALATION.some((p) => answer.includes(p));
   // ข้อความที่จะจดในความจำบอท (Format Reply · aiText = presetReply + บรรทัดคิวผลิต)
   const replyText = deadline ? `${answer.replace(/\s+$/, "")}\n\n${QUEUE_NOTE}` : answer;
