@@ -18,6 +18,11 @@ export const runtime = "nodejs";
  *
  * ⚠️ ลิงก์จาก OA Manager (chat.line.biz/…/chat/…) ใช้ไม่ได้ — ท่อนท้ายเป็น chat id ไม่ใช่ userId
  *    ทดสอบจริงแล้ว: chat id ของลูกค้าคนหนึ่งไม่ตรงกับ userId ของเขาเลย
+ *
+ * 👥 ห้องกลุ่ม/ห้องรวม: รหัสท้ายลิงก์ขึ้นต้น C (กลุ่ม) / R (ห้องรวม) ไม่ใช่ U — เดิมด่านรับเฉพาะ U เลยตีกลับ
+ *    "ลิงก์จาก OA Manager ใช้ไม่ได้" ทั้งที่เป็นลิงก์ห้องแชทจริง (พนักงานแจ้ง 21 ต.ค. 69) → รับทุกตัวอักษรนำหน้า
+ *    (+ แบบมีเลข 2 นำหน้าที่ OA Manager บางลิงก์ใส่มา) · เก็บลิงก์เป็นปุ่มเปิดห้อง แล้วให้เลือก "คนในกลุ่ม" ที่จะรับแจ้งเตือน
+ *    ห้องกลุ่มไม่จำเป็นคู่ลิงก์↔คน (ตารางจับคู่คือลิงก์ห้อง 1:1 ของคนนั้น — เอากลุ่มไปทับจะพาปุ่มเปิดแชทของคนนั้นไปผิดห้อง)
  */
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
@@ -73,14 +78,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, cleared: true, order: cleared });
   }
 
-  const managerId = input.match(/chat\.line\.biz\/[^/]+\/chat\/(U[0-9a-f]{32})/i)?.[1] ?? null;
+  // รหัสห้อง: U = แชท 1:1 · C = กลุ่ม · R = ห้องรวม (บางลิงก์มีเลข 2 นำหน้า — ตัดทิ้งให้ตรงกับ chatIdInUrl/ตารางจับคู่)
+  const managerId = input.match(/chat\.line\.biz\/[^/]+\/chat\/2?([A-Za-z][0-9a-f]{32})/i)?.[1] ?? null;
+  const isGroup = !!managerId && /^[CR]/i.test(managerId);
   const db = getChatFirestore();
 
   // ── ลิงก์ OA Manager: รหัสท้ายลิงก์ไม่ใช่ userId — ต้อง "แปล" ก่อน ──
   if (managerId) {
     // 1) เคยจับคู่ไว้แล้ว → "เสนอ" คนนั้นเป็นตัวเลือกแรก แต่ยังต้องกดยืนยัน (จำผิดครั้งเดียวจะได้ไม่ผิดตลอด)
     let remembered: { userId: string; name: string; picture?: string } | null = null;
-    if (db) {
+    if (db && !isGroup) {
       try {
         const q = await db.collection(CHAT_OVERRIDE_COLLECTION).where("managerUserId", "==", managerId).limit(1).get();
         if (!q.empty) {
@@ -94,7 +101,7 @@ export async function POST(req: Request) {
     }
     // 2) ยังไม่เคยจับคู่ → เก็บลิงก์ไว้ก่อน + เสนอ "คนที่คุยล่าสุด" ให้พนักงานยืนยัน 1 คลิก
     //    (พนักงานเพิ่งเปิดห้องแชทคนนั้นมาก๊อปลิงก์ = เขาอยู่บนสุดของรายการเกือบทุกครั้ง)
-    const saved = withLog({ ...order, lineChatUrl: input }, who, "บันทึกลิงก์ห้องแชท LINE");
+    const saved = withLog({ ...order, lineChatUrl: input }, who, isGroup ? "บันทึกลิงก์ห้องกลุ่ม LINE" : "บันทึกลิงก์ห้องแชท LINE");
     await updateOrder(sb, saved);
     type Sug = { userId: string; name: string; picture?: string; lastSeen?: string };
     const suggestions: Sug[] = [];
@@ -114,7 +121,7 @@ export async function POST(req: Request) {
     const list = remembered
       ? [{ ...remembered, remembered: true }, ...suggestions.filter((x) => x.userId !== remembered!.userId)]
       : suggestions;
-    return NextResponse.json({ ok: true, savedLink: true, managerId, suggestions: list, order: saved });
+    return NextResponse.json({ ok: true, savedLink: true, managerId, group: isGroup, suggestions: list, order: saved });
   }
 
   let userId = lineUserIdFrom(input);
@@ -122,7 +129,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: /chat\.line\.biz/i.test(input)
-          ? "ลิงก์จาก OA Manager ใช้ไม่ได้ — ท่อนท้ายเป็น chat id ไม่ใช่ userId · ให้คัดลอก userId จากหน้าคลังแชทแทน"
+          ? "อ่านรหัสห้องจากลิงก์นี้ไม่ออก — ต้องเป็นลิงก์หน้าห้องแชทใน OA Manager รูปแบบ chat.line.biz/…/chat/… (ก๊อปจากแถบที่อยู่ตอนเปิดห้องนั้นอยู่)"
           : "ไม่พบ LINE userId — ต้องเป็นรหัสขึ้นต้นด้วย U ตามด้วยตัวอักษร/ตัวเลข 32 ตัว",
       },
       { status: 400 }
@@ -178,6 +185,7 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // พนักงานยืนยันว่า "ลิงก์ห้องแชทนี้ = คนนี้" → จำไว้ ครั้งหน้าวางลิงก์เดิมผูกอัตโนมัติ (AdminBuddy ใช้ตารางเดียวกัน)
+  // เฉพาะห้อง 1:1 (U…) — ห้องกลุ่ม C…/R… ไม่จำ (ตารางนี้คือ "ห้องส่วนตัวของคนนั้น" ใช้เป็นปุ่มเปิดแชทในหน้าคลังแชท)
   const mid = (body.managerId ?? "").trim();
   if (db && /^U[0-9a-f]{32}$/i.test(mid)) {
     try {

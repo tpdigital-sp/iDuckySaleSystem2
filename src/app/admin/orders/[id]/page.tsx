@@ -14174,6 +14174,8 @@ function LineChatBox({
   const awaitingReturn = useRef(false); // เพิ่งกดเปิดแชทไป → กลับมาแล้วรีเฟรชรายชื่อให้เอง
   // วางลิงก์ OA Manager แล้ว: รหัสท้ายลิงก์ที่รอจับคู่ + คนที่ระบบเดาว่าน่าจะใช่ (คุยล่าสุด)
   const [pendingManagerId, setPendingManagerId] = useState<string | null>(null);
+  /** ลิงก์ที่รอจับคู่เป็นห้องกลุ่ม (C…/R…) — ข้อความชวนเลือก "คนในกลุ่ม" และไม่บอกว่าจะจำคู่ลิงก์ (เซิร์ฟเวอร์ไม่จำให้) */
+  const [pendingGroup, setPendingGroup] = useState(false);
   const [suggestions, setSuggestions] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; remembered?: boolean }[]>([]);
 
   // กลับมาจากห้องแชท (สลับแท็บกลับ) → ดึงรายชื่อคุยล่าสุดใหม่ ลูกค้าที่เพิ่งทักจะอยู่บนสุด
@@ -14316,6 +14318,7 @@ function LineChatBox({
         error?: string;
         savedLink?: boolean;
         managerId?: string;
+        group?: boolean;
         suggestions?: typeof suggestions;
         resolved?: string;
         missed?: string[];
@@ -14333,8 +14336,15 @@ function LineChatBox({
       if (j.ok && j.savedLink) {
         // ลิงก์ OA Manager ที่ยังไม่เคยจับคู่ → เก็บลิงก์แล้ว เสนอคนที่น่าจะใช่ให้ยืนยัน
         setPendingManagerId(j.managerId ?? null);
+        setPendingGroup(!!j.group);
         setSuggestions(j.suggestions ?? []);
-        setMsg(j.suggestions?.length ? "" : "เก็บลิงก์ห้องแชทแล้ว · พิมพ์ชื่อลูกค้าเพื่อผูกให้ระบบส่งข้อความได้");
+        setMsg(
+          j.suggestions?.length
+            ? ""
+            : j.group
+              ? "เก็บลิงก์ห้องกลุ่มแล้ว · พิมพ์ชื่อ LINE ของคนในกลุ่มที่จะรับแจ้งเตือน (ระบบส่งหาคนเดียว ไม่ส่งเข้ากลุ่ม)"
+              : "เก็บลิงก์ห้องแชทแล้ว · พิมพ์ชื่อลูกค้าเพื่อผูกให้ระบบส่งข้อความได้"
+        );
         setDraft("");
         return;
       }
@@ -14373,6 +14383,7 @@ function LineChatBox({
         setChanging(false);
         setPicked(null);
         setPendingManagerId(null);
+        setPendingGroup(false);
         setSuggestions([]);
       } else setMsg(`❌ ${j.error ?? "ผูกไม่สำเร็จ"}`);
     } catch {
@@ -14897,7 +14908,11 @@ function LineChatBox({
       {/* วางลิงก์ OA Manager แล้ว → เดาว่าเป็นใครจากคนที่คุยล่าสุด ให้ยืนยันคลิกเดียว */}
       {pendingManagerId && suggestions.length > 0 && !picked && !draft.trim() && (
         <div className="mt-1.5 rounded-lg bg-sky-50 p-2 ring-1 ring-sky-200">
-          <p className="text-[11px] font-bold text-sky-800">🔗 เก็บลิงก์ห้องแชทแล้ว — ลิงก์นี้น่าจะเป็นใคร? (คนที่คุยกับร้านล่าสุด)</p>
+          <p className="text-[11px] font-bold text-sky-800">
+            {pendingGroup
+              ? "👥 เก็บลิงก์ห้องกลุ่มแล้ว — ให้ระบบส่งแจ้งเตือนหาใครในกลุ่ม? (คนที่คุยกับร้านล่าสุด · ส่งหาคนเดียว ไม่ส่งเข้ากลุ่ม)"
+              : "🔗 เก็บลิงก์ห้องแชทแล้ว — ลิงก์นี้น่าจะเป็นใคร? (คนที่คุยกับร้านล่าสุด)"}
+          </p>
           <div className="mt-1.5 space-y-1">
             {suggestions.map((h) => (
               <button
@@ -14949,7 +14964,7 @@ function LineChatBox({
             <img src={picked.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
           )}
           <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-emerald-800">
-            ผูกกับ “{picked.name}” ใช่ไหม?{pendingManagerId ? " (จะจำว่าลิงก์ห้องแชทนี้ = คนนี้)" : ""}
+            ผูกกับ “{picked.name}” ใช่ไหม?{pendingManagerId && !pendingGroup ? " (จะจำว่าลิงก์ห้องแชทนี้ = คนนี้)" : ""}
           </span>
           <button
             type="button"
@@ -14993,7 +15008,7 @@ function LineChatBox({
             <div className="flex items-center border-b border-slate-100 bg-slate-50 px-2.5 py-1">
               <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-500">
                 {draft.trim().length >= 1
-                  ? pendingManagerId
+                  ? pendingManagerId && !pendingGroup
                     ? "ผลค้นหา — เลือกแล้วจะจำว่าลิงก์ห้องแชทนี้ = คนนี้"
                     : hitExact > 1
                       ? `ชื่อนี้ตรงพอดี ${hitExact} คน — ดูรูปโปรไฟล์เทียบกับห้องแชท แล้วแตะเลือก`
@@ -15136,7 +15151,7 @@ function LineChatBox({
         </div>
       )}
       <p className="mt-1 text-[10px] leading-snug text-slate-500">
-        พิมพ์ <b>ชื่อ LINE</b> ค้นหาแล้วแตะเลือก · หรือวาง <b>ลิงก์ห้องแชท</b> (chat.line.biz) ให้ระบบช่วยหาคน — ลิงก์ OA Manager ไม่บังคับแล้ว
+        พิมพ์ <b>ชื่อ LINE</b> ค้นหาแล้วแตะเลือก · หรือวาง <b>ลิงก์ห้องแชท</b> (chat.line.biz · ห้องกลุ่มก็ได้) ให้ระบบช่วยหาคน — ลิงก์ OA Manager ไม่บังคับแล้ว
       </p>
       {note}
     </div>
