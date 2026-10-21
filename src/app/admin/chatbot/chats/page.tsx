@@ -1140,7 +1140,8 @@ function Chats() {
                   <Avatar src={r.pictureUrl} size={46} group={grp} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[14.5px]" style={{ fontWeight: r.unread ? 800 : 700 }}>
+                      {/* ชื่อห้องบางลง (เจ้าของร้าน 21 ต.ค. 69) — ยังไม่อ่าน 600 / อ่านแล้ว 500 */}
+                      <span className="min-w-0 flex-1 truncate text-[14.5px]" style={{ fontWeight: r.unread ? 600 : 500 }}>
                         {nameWithSize(r)}
                       </span>
                       <span className="shrink-0 text-[11.5px] tabular-nums" style={{ color: r.unread ? "var(--ln-green-ink)" : "var(--dk-faint)", fontWeight: r.unread ? 700 : 400 }}>
