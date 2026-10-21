@@ -73,8 +73,9 @@ async function quotaOutReason(): Promise<string> {
  */
 export function lineUserIdFrom(input?: string): string | null {
   const t = (input ?? "").trim();
-  if (/^U[0-9a-f]{32}$/i.test(t)) return t;
-  const m = t.match(/(U[0-9a-f]{32})(?:[?#].*)?$/i);
+  // 👥 21 ต.ค. 69 รับรหัสกลุ่ม C… / ห้องรวม R… ด้วย — push ของ LINE ส่งเข้ากลุ่มด้วย id เดียวกัน
+  if (/^[UCR][0-9a-f]{32}$/i.test(t)) return t;
+  const m = t.match(/([UCR][0-9a-f]{32})(?:[?#].*)?$/i);
   return m ? m[1] : null;
 }
 

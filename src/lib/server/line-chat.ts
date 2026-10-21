@@ -4,7 +4,7 @@ import { selectAllRows } from "@/lib/server/select-all";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { toCustomerTag, type CustomerTag } from "@/lib/line-tags";
-import { isLineGroupId } from "@/lib/line-room-id";
+import { lineRoomKind } from "@/lib/line-room-id";
 
 /**
  * 💬 คลังแชท LINE ของร้าน (Firestore ฐาน "ordersure") — ตัวกลางที่ทุกหน้าใช้ร่วมกัน
@@ -40,6 +40,8 @@ const QUICK_SETUP_DOC = { col: "settings", id: "quick-setup" } as const;
 
 export interface ChatRow {
   userId: string;
+  /** 👥 ห้องกลุ่ม (C…) / ห้องรวม (R…) — ไม่มี = ลูกค้าเดี่ยว · ผูกออเดอร์ได้ (การ์ดแจ้งสถานะ push เข้ากลุ่ม) 21 ต.ค. 69 */
+  kind?: "group" | "room";
   /** ชื่อที่เอาไว้โชว์ตอนค้นหา — ชื่อจาก LINE (ไม่มี = "(ไม่มีชื่อ)") */
   name: string;
   /** ชื่อจริงจาก LINE (null = ลูกค้ายังไม่เคยให้ชื่อ / เพิ่มด้วยมือ) */
@@ -136,15 +138,15 @@ const LIST_FIELDS = [
   "botScope",
 ] as const;
 
-/** 👥 ห้องกลุ่ม (C…/R…) ไม่ใช่ลูกค้า — ไม่เข้าดัชนีค้นหา/ผูกออเดอร์/หน้า line-customers (21 ต.ค. 69) */
-const notGroupRow = (r: ChatRow) => !isLineGroupId(r.userId);
-
 /** เอกสาร 1 ใบ → 1 แถวในรายการ (ใช้ร่วมกันทั้งดัชนีเต็มและการดึงทีละหน้า) */
 export function rowOfDoc(d: FirebaseFirestore.DocumentSnapshot): ChatRow {
   const displayName = ((d.get("displayName") as string) || (d.get("userName") as string) || "").trim() || null;
   const adminAlias = ((d.get("adminAlias") as string) || "").trim() || null;
+  // 👥 21 ต.ค. 69 ห้องกลุ่มจาก Group Log อยู่ในดัชนีด้วย (เจ้าของร้าน "ค้นหา line Group ไม่พบ" ตอนผูกออเดอร์) — ติด kind ให้หน้าจอแปะป้าย
+  const kind = lineRoomKind(d.id);
   return {
     userId: (d.get("userId") as string) || d.id,
+    ...(kind && kind !== "user" ? { kind } : {}),
     name: displayName || "(ไม่มีชื่อ)",
     displayName,
     adminAlias,
@@ -182,7 +184,7 @@ export async function loadChatPage(
       .get(),
     db.collection(CHAT_COLLECTION).count().get(),
   ]);
-  return { rows: snap.docs.map(rowOfDoc).filter(notGroupRow), total: count.data().count };
+  return { rows: snap.docs.map(rowOfDoc), total: count.data().count };
 }
 
 /**
@@ -265,7 +267,7 @@ export async function loadChatIndex(db: FirebaseFirestore.Firestore, fresh = fal
     ];
     const snaps = await Promise.all(shards);
     // เรียงคนคุยล่าสุดไว้บนสุดตั้งแต่ตอนทำดัชนี — ผลค้นหาจะได้เรียงมาให้เลย
-    const rows = sortByLastSeen(snaps.flatMap((s) => s.docs.map(rowOfDoc)).filter(notGroupRow));
+    const rows = sortByLastSeen(snaps.flatMap((s) => s.docs.map(rowOfDoc)));
     cache = { at: Date.now(), rows };
     return rows;
   })();
@@ -300,7 +302,7 @@ export async function loadChatIndexWithin(db: FirebaseFirestore.Firestore, budge
 export async function loadRecentRows(db: FirebaseFirestore.Firestore, limit: number, offset = 0): Promise<ChatRow[]> {
   // offset = ข้ามไปหน้าถัดไป (Firestore คิดค่าอ่านของที่ข้ามด้วย — หน้าละ 30 ไม่กี่หน้า รับได้)
   const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").offset(offset).limit(limit).select(...LIST_FIELDS).get();
-  return snap.docs.map(rowOfDoc).filter(notGroupRow);
+  return snap.docs.map(rowOfDoc);
 }
 
 /**

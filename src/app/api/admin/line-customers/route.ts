@@ -3,6 +3,7 @@ import { requirePerm } from "@/lib/server/require-perm";
 import { CHAT_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
 import { core, loadChatIndexWithin, loadRecentRows, norm, type ChatRow } from "@/lib/server/line-chat";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+import { isLineRoomId } from "@/lib/line-room-id";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ function bangkokDayStart(): Date {
   return new Date(`${ymd}T00:00:00+07:00`);
 }
 
-type Row = { userId: string; name: string; picture?: string; lastSeen?: string; source?: "login" };
+type Row = { userId: string; name: string; picture?: string; lastSeen?: string; source?: "login"; /** 👥 ห้องกลุ่ม/ห้องรวม (21 ต.ค. 69) */ kind?: "group" | "room" };
 let lastAutoFreshAt = 0;
 
 /**
@@ -87,10 +88,10 @@ export async function GET(req: Request) {
 
   try {
     // พิมพ์ userId มาตรง ๆ → ดึงใบเดียว (ไม่ต้องใช้ดัชนี)
-    if (/^U[0-9a-f]{32}$/i.test(q)) {
+    if (isLineRoomId(q)) {
       const d = await db.collection(CHAT_COLLECTION).doc(q).get();
       const customers: Row[] = d.exists
-        ? [{ userId: d.id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string }]
+        ? [{ userId: d.id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string, ...(/^[CR]/.test(d.id) ? { kind: d.id[0] === "C" ? ("group" as const) : ("room" as const) } : {}) }]
         : [];
       return NextResponse.json({ customers, total: customers.length });
     }
@@ -108,7 +109,7 @@ export async function GET(req: Request) {
       ]);
       const pageRows = rows.slice(0, RECENT_PAGE);
       return NextResponse.json({
-        customers: pageRows.map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen })),
+        customers: pageRows.map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen, kind: r.kind })),
         total: todayCount,
         exact: 0,
         recent: true,
@@ -163,7 +164,7 @@ export async function GET(req: Request) {
     const seen = new Set(hits.map((r) => r.userId));
     const loginHits = q.length >= 2 ? (await loadLoginIndex().catch(() => [] as Row[])).filter((r) => !seen.has(r.userId) && norm(r.name).includes(needle)) : [];
     const customers: Row[] = [
-      ...hits.slice(0, q.length < 1 ? LIMIT : SEARCH_LIMIT).map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen })),
+      ...hits.slice(0, q.length < 1 ? LIMIT : SEARCH_LIMIT).map((r): Row => ({ userId: r.userId, name: r.name, picture: r.picture, lastSeen: r.lastSeen, kind: r.kind })),
       ...loginHits.sort((a, b) => rank(a.name) - rank(b.name)).slice(0, SEARCH_LIMIT),
     ];
 

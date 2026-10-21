@@ -3118,8 +3118,8 @@ function InfoPanel({
         </div>
       </PanelSection>
 
-      {/* 📦 ออเดอร์ — กลุ่มไม่ผูกออเดอร์ (ออเดอร์ผูกกับ userId คนเดียว) */}
-      {grp ? null : orders}
+      {/* 📦 ออเดอร์ — ห้องกลุ่มก็ผูกได้ (21 ต.ค. 69 เจ้าของร้านใช้กลุ่มลูกค้าสั่งงาน · การ์ดแจ้งสถานะ push เข้ากลุ่ม) */}
+      {orders}
 
       {/* 📝 โน้ต */}
       <NotesBlock notes={detail.adminNotes} canReply={canReply} saving={noteSaving} onAdd={onNoteAdd} onEdit={onNoteEdit} onDel={onNoteDel} />

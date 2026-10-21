@@ -7,6 +7,7 @@ import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/l
 import { FieldValue } from "firebase-admin/firestore";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
+import { isLineGroupId } from "@/lib/line-room-id";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,17 @@ export const runtime = "nodejs";
  *    (+ แบบมีเลข 2 นำหน้าที่ OA Manager บางลิงก์ใส่มา) · เก็บลิงก์เป็นปุ่มเปิดห้อง แล้วให้เลือก "คนในกลุ่ม" ที่จะรับแจ้งเตือน
  *    ห้องกลุ่มไม่จำเป็นคู่ลิงก์↔คน (ตารางจับคู่คือลิงก์ห้อง 1:1 ของคนนั้น — เอากลุ่มไปทับจะพาปุ่มเปิดแชทของคนนั้นไปผิดห้อง)
  */
+/** 👥 ชื่อ/รูปของห้องกลุ่ม (C…) / ห้องรวม (R…) จากคลังแชทที่ /api/bot/group-log จดไว้ — ไม่มีห้อง = ยังไม่เคยมีข้อความจากกลุ่มนี้ ผูกไม่ได้ */
+async function groupProfile(id: string): Promise<{ name: string; picture?: string } | null> {
+  const db = getChatFirestore();
+  if (!db) return null;
+  const d = await db.collection(CHAT_COLLECTION).doc(id).get().catch(() => null);
+  if (!d?.exists) return null;
+  const name = String(d.get("displayName") ?? "").trim() || `${id[0] === "C" ? "กลุ่ม" : "ห้องรวม"} ${id.slice(0, 8)}…`;
+  const pic = String(d.get("pictureUrl") ?? "");
+  return { name, picture: pic || undefined };
+}
+
 export async function POST(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า Supabase" }, { status: 503 });
@@ -151,7 +163,7 @@ export async function POST(req: Request) {
       {
         error: /chat\.line\.biz/i.test(input)
           ? "อ่านรหัสห้องจากลิงก์นี้ไม่ออก — ต้องเป็นลิงก์หน้าห้องแชทใน OA Manager รูปแบบ chat.line.biz/…/chat/… (ก๊อปจากแถบที่อยู่ตอนเปิดห้องนั้นอยู่)"
-          : "ไม่พบ LINE userId — ต้องเป็นรหัสขึ้นต้นด้วย U ตามด้วยตัวอักษร/ตัวเลข 32 ตัว",
+          : "ไม่พบ LINE userId — ต้องเป็นรหัสขึ้นต้นด้วย U (คนเดียว) หรือ C (กลุ่ม) ตามด้วยตัวอักษร/ตัวเลข 32 ตัว",
       },
       { status: 400 }
     );
@@ -159,7 +171,8 @@ export async function POST(req: Request) {
   if (!process.env.LINE_MESSAGING_ACCESS_TOKEN)
     return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า LINE (LINE_MESSAGING_ACCESS_TOKEN) — ยืนยันไม่ได้" }, { status: 503 });
 
-  let profile = await fetchLineProfile(userId);
+  // 👥 21 ต.ค. 69 ห้องกลุ่ม/ห้องรวม (C…/R…) ที่ Group Log จดไว้: LINE ไม่มี profile รายคนให้ → ใช้ชื่อ/รูปกลุ่มจากคลังแชท · การ์ดแจ้งสถานะ push เข้ากลุ่มด้วย id นี้ได้เลย
+  let profile = isLineGroupId(userId) ? await groupProfile(userId) : await fetchLineProfile(userId);
 
   /**
    * รหัสในลิงก์ OA Manager ไม่ใช่ userId ที่ใช้ส่งข้อความ (คนละชุดกัน)
@@ -199,7 +212,7 @@ export async function POST(req: Request) {
   const next = withLog(
     { ...order, lineUserId: userId, lineProfile: { name: profile.name, picture: profile.picture, at: new Date().toISOString() }, lineInheritOff: undefined },
     who,
-    "ผูก LINE ของลูกค้า",
+    isLineGroupId(userId) ? "ผูก LINE กลุ่มของลูกค้า" : "ผูก LINE ของลูกค้า",
     `${profile.name} · ${userId.slice(0, 8)}…`
   );
   const { error } = await updateOrder(sb, next);

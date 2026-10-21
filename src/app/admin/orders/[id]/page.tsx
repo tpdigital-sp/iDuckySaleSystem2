@@ -14226,7 +14226,7 @@ function LineChatBox({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [testing, setTesting] = useState(false);
-  const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; source?: "login" }[]>([]);
+  const [hits, setHits] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; source?: "login"; kind?: "group" | "room" }[]>([]);
   const [searching, setSearching] = useState(false);
   const [hitTotal, setHitTotal] = useState(0); // เจอทั้งหมดกี่คน (โชว์แค่บางส่วน)
   // ชื่อตรงพอดีกี่คน — ชื่อสั้น ๆ ("S") มีคนซ้ำเป็นสิบ ต้องบอกให้เทียบรูปโปรไฟล์เอา
@@ -14274,7 +14274,7 @@ function LineChatBox({
     setNoHit(null);
     setSearchErr(null);
     // วางลิงก์/URL/userId มา = ตั้งใจใช้ปุ่มบันทึก ไม่ต้องเด้งรายชื่อให้เลือก
-    if (demo || !picking || /^https?:\/\//i.test(q) || /^U[0-9a-f]{32}$/i.test(q)) {
+    if (demo || !picking || /^https?:\/\//i.test(q) || /^[UCR][0-9a-f]{32}$/i.test(q)) {
       setHits([]);
       setPartial(false);
       setSearching(false);
@@ -15178,6 +15178,12 @@ function LineChatBox({
                 <span className={`${hitExact > 1 ? "h-9 w-9" : "h-6 w-6"} shrink-0 rounded-full bg-slate-100`} />
               )}
               <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
+              {/* 👥 21 ต.ค. 69 ห้องกลุ่ม LINE (Group Log จดไว้) — ผูกแล้วการ์ดแจ้งสถานะส่งเข้ากลุ่ม */}
+              {h.kind ? (
+                <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 ring-1 ring-violet-200" title="ไลน์กลุ่ม — ผูกแล้วระบบส่งแจ้งสถานะเข้ากลุ่มนี้">
+                  👥 {h.kind === "room" ? "ห้องรวม" : "กลุ่ม"}
+                </span>
+              ) : null}
               {/* 👤 มาจากบัญชีที่ล็อกอินเว็บด้วย LINE (ไม่อยู่ในคลังแชท) — ผูกได้เหมือนกัน ระบบตรวจกับ LINE ตอนผูก */}
               {h.source === "login" ? (
                 <span className="shrink-0 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200" title="ลูกค้าเคยล็อกอินเว็บด้วย LINE นี้ · ไม่อยู่ในคลังแชท">
