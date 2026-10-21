@@ -29,6 +29,7 @@ import { cutStockForOrder, restoreStockForOrder } from "@/lib/server/stock";
 import { awardPointsForOrder, revokePointsForOrder } from "@/lib/server/contact-points";
 import {
   adminDiscountAmount,
+  allSelfDesignedApproved,
   awaitingPayment,
   canMarkFree,
   clearStageMemory,
@@ -856,6 +857,35 @@ export async function PATCH(req: Request) {
     // ก้อนจากหน้าจอแอดมินเป็นหลัก แต่ติ๊ก/แบบงานที่หน้าจอนั้นยังไม่เคยเห็น (คนอื่นเพิ่งทำ) ต้องไม่หาย
     const full = reconcileFullEdit(existing, order, clientSavedAt, now, changedKeys);
     toSave = full.order;
+    /**
+     * 🚦 ด่านเปลี่ยนสถานะด้วยมือ (เจ้าของร้านสั่ง 21 ต.ค. 69 "ให้แอดมินไม่สามารถเปลี่ยนสถานะออเดอร์")
+     * สถานะที่หน้าจอส่งมาต่างจากฐาน = ตั้งใจเปลี่ยนเอง → ต้องมีสิทธิ์ orders.setStatus (ค่าเริ่มต้นมีแต่ผู้ดูแลระบบ · เปิดรายคนที่ /admin/staff)
+     * ต้องเช็ค "ก่อน" บล็อกที่เซิร์ฟเวอร์แปลงสถานะให้เองข้างล่าง (เด้งกลับรอชำระเงิน · กลับขั้นเดิม · ส่งฟรี) — พวกนั้นเริ่มจาก toSave.status === existing.status
+     * ยกเว้นทางที่ระบบ/ปุ่มเฉพาะเปลี่ยนสถานะให้ (ไม่ใช่เมนูที่ป้ายสถานะ):
+     *   · ยิงเลขพัสดุ / แพ็คเสร็จมารับเอง → "จัดส่งแล้ว" (สิทธิ์ยิงเลขดูแลอยู่แล้ว)
+     *   · ยืนยันเงินเข้าบนใบที่รอเงิน → "ชำระแล้ว" (ด่าน orders.markPaid ข้างล่างดูแล · รวมคืนส่วนลดโอนไว/รับมัดจำงวดแรก)
+     *   · ส่งฟรี / ถอนส่งฟรี (ปุ่ม 🎁 · สิทธิ์ orders.edit — ไม่มีเงินเกี่ยว)
+     *   · ข้ามขั้นทำแบบเพราะลูกค้าวางลายเองครบ → "อนุมัติแบบ" (useEffect หน้าออเดอร์ทำให้เอง)
+     *   · ยกเลิก → ใช้สิทธิ์ orders.cancel ของตัวเอง (เดิมเช็คแค่หน้าจอ — เซิร์ฟเวอร์บังคับซ้ำตั้งแต่ 21 ต.ค. 69)
+     */
+    if (toSave.status !== existing.status) {
+      const canSetStatus = can(actor, "orders.setStatus", rolePerms);
+      const canCancel = can(actor, "orders.cancel", rolePerms);
+      if (toSave.status === "ยกเลิก" && !canCancel)
+        return NextResponse.json({ error: "บัญชีนี้ยกเลิกออเดอร์ไม่ได้ — ให้เจ้าของร้าน หรือคนที่มีสิทธิ์ “ยกเลิกออเดอร์” เป็นคนกด" }, { status: 403 });
+      const systemDriven =
+        ((wantsTracking || wantsPickupDone) && toSave.status === "จัดส่งแล้ว") ||
+        (toSave.status === "ชำระแล้ว" && awaitingPayment(existing)) ||
+        (!!toSave.freeOf && !existing.freeOf) ||
+        (!!existing.freeOf && !toSave.freeOf) ||
+        (toSave.status === "อนุมัติแบบ" && (existing.status === "ชำระแล้ว" || existing.status === "รอตรวจแบบ") && allSelfDesignedApproved(existing)) ||
+        (toSave.status === "ยกเลิก" && canCancel);
+      if (!canSetStatus && !systemDriven)
+        return NextResponse.json(
+          { error: "บัญชีนี้เปลี่ยนสถานะออเดอร์เองไม่ได้ — ให้เจ้าของร้าน หรือคนที่เปิดสิทธิ์ “เปลี่ยนสถานะออเดอร์” ไว้ เป็นคนกด" },
+          { status: 403 }
+        );
+    }
     // ช่องที่หน้าจอไม่ได้แก้แต่ค่าต่างจากฐาน (= ทางอื่นเขียนไประหว่างหน้าเปิดค้าง) ถูกคงไว้ — จดไว้ให้ตรวจย้อนหลังได้ว่ากันอะไรไป
     if (full.restored.length)
       toSave = withLog(toSave, actor.name || actor.username, "กันหน้าจอค้างทับข้อมูล", `ช่องที่หน้าจอนี้ไม่ได้แก้ คงค่าในฐานไว้: ${full.restored.join(" · ")}`);

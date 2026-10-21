@@ -1752,6 +1752,12 @@ export default function AdminOrderDetailPage() {
   const mayMarkPaid = can("orders.markPaid");
   const mayProof = can("proof.manage"); // อัปโหลด/ลบแบบงาน
   const mayCancel = can("orders.cancel");
+  /**
+   * 🚦 เปลี่ยนสถานะ "ด้วยมือ" จากเมนูที่ป้ายสถานะ — สิทธิ์แยกจาก orders.edit (เจ้าของร้านสั่ง 21 ต.ค. 69 "ให้แอดมินไม่สามารถเปลี่ยนสถานะออเดอร์")
+   * ค่าเริ่มต้นมีแต่ผู้ดูแลระบบ · เปิดให้พนักงานเป็นรายคนที่ /admin/staff · เซิร์ฟเวอร์ (PATCH) ปฏิเสธซ้ำ
+   * สถานะที่ระบบเปลี่ยนให้เอง (ยิงเลขพัสดุ/แพ็คเสร็จ · ยืนยันเงินเข้า · ส่งฟรี · ข้ามขั้นทำแบบ) ไม่ผ่านเมนูนี้ จึงไม่ถูกล็อก
+   */
+  const maySetStatus = can("orders.setStatus");
 
   useEffect(() => setOrigin(publicOrigin()), []); // ลิงก์นี้ส่งให้ลูกค้า ต้องไม่ใช่ localhost
 
@@ -2030,6 +2036,13 @@ export default function AdminOrderDetailPage() {
 
   async function changeStatus(status: OrderStatus) {
     if (!order || order.status === status) return;
+    // 🚦 เปลี่ยนสถานะด้วยมือต้องมีสิทธิ์เฉพาะ — ยกเว้นยกเลิก (สิทธิ์ยกเลิก) และยืนยันเงินเข้าบนใบที่รอเงิน (สิทธิ์ยืนยันเงินเข้า) · เซิร์ฟเวอร์ปฏิเสธซ้ำ ตรงนี้แค่ไม่ให้กดแล้วเด้ง error
+    const paidNow = status === "ชำระแล้ว" && mayMarkPaid && awaitingPayment(order);
+    if (!maySetStatus && !(status === "ยกเลิก" && mayCancel) && !paidNow) {
+      setErr("บัญชีนี้เปลี่ยนสถานะออเดอร์เองไม่ได้ — ให้เจ้าของร้าน หรือคนที่เปิดสิทธิ์ “เปลี่ยนสถานะออเดอร์” ไว้ เป็นคนกด");
+      setOrder((cur) => (cur ? { ...cur } : cur));
+      return;
+    }
     // 💰 "ชำระแล้ว" = ยืนยันเงินเข้า — ต้องมีสิทธิ์เฉพาะ (เซิร์ฟเวอร์ปฏิเสธซ้ำอยู่แล้ว)
     if (status === "ชำระแล้ว" && !mayMarkPaid) {
       setErr("บัญชีนี้ยืนยันเงินเข้าไม่ได้ — ให้เจ้าของร้าน หรือคนที่เปิดสิทธิ์ “ยืนยันเงินเข้า” ไว้ เป็นคนกด");
@@ -5546,8 +5559,9 @@ export default function AdminOrderDetailPage() {
                 );
               })()}
             <div className="flex items-center gap-2">
-              {/* ป้ายสถานะ = ตัวเลือกในตัว — สีป้ายบอกสถานะอยู่แล้ว ไม่ต้องมี label ซ้ำ · กดที่ป้ายเลือกสถานะใหม่ได้เลย */}
-              {mayEdit ? (
+              {/* ป้ายสถานะ = ตัวเลือกในตัว — สีป้ายบอกสถานะอยู่แล้ว ไม่ต้องมี label ซ้ำ · กดที่ป้ายเลือกสถานะใหม่ได้เลย
+                  🚦 เมนูขึ้นเฉพาะคนที่มีสิทธิ์ "เปลี่ยนสถานะออเดอร์" (orders.setStatus) — แอดมินทั่วไปเห็นเป็นป้ายอ่านอย่างเดียว (21 ต.ค. 69) */}
+              {maySetStatus ? (
                 <div className="relative">
                   <select
                     value={order.status}
@@ -5587,9 +5601,34 @@ export default function AdminOrderDetailPage() {
                   <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] opacity-70">▼</span>
                 </div>
               ) : (
-                <span className={`inline-flex rounded-xl px-3.5 py-2 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}>
+                <span
+                  className={`inline-flex rounded-xl px-3.5 py-2 text-sm font-bold ring-1 ${STATUS_STYLES[order.status]}`}
+                  title={mayEdit ? "สถานะเปลี่ยนให้เองตามขั้นตอน (ยิงเลขพัสดุ · ยืนยันเงิน · ตรวจแบบ) — เปลี่ยนเองได้เฉพาะคนที่มีสิทธิ์ “เปลี่ยนสถานะออเดอร์”" : undefined}
+                >
                   {orderStatusLabel(order)}
                 </span>
+              )}
+              {/* 💰 คนที่ยืนยันเงินเข้าได้แต่ไม่มีสิทธิ์เปลี่ยนสถานะ — เดิมกด "ชำระแล้ว" จากเมนูนี้ (คู่มือ/ผลตรวจสลิปชี้มาที่นี่) จึงต้องมีปุ่มแยกให้ */}
+              {!maySetStatus && mayMarkPaid && !demo && awaitingPayment(order) && (
+                <button
+                  type="button"
+                  onClick={() => void changeStatus("ชำระแล้ว")}
+                  className="min-h-[36px] rounded-xl bg-emerald-600 px-3 text-[12px] font-bold text-white hover:bg-emerald-700"
+                  title={order.deposit && !order.deposit.firstPaidAt ? "ยืนยันรับมัดจำงวดแรก" : "ยืนยันว่าเงินเข้าแล้ว — ใบจะเปลี่ยนเป็น “ชำระแล้ว”"}
+                >
+                  💰 {order.deposit && !order.deposit.firstPaidAt ? "ยืนยันรับมัดจำ 50% แรก" : order.status === "รอตรวจสอบ" ? "สลิปถูกต้อง — ชำระแล้ว" : "ยืนยันเงินเข้า — ชำระแล้ว"}
+                </button>
+              )}
+              {/* ⚠️ คนที่ยกเลิกออเดอร์ได้แต่ไม่มีสิทธิ์เปลี่ยนสถานะ — ยังต้องยกเลิกได้ (เดิมตัวเลือกอยู่ในเมนูเดียวกัน) */}
+              {!maySetStatus && mayCancel && order.status !== "ยกเลิก" && (
+                <button
+                  type="button"
+                  onClick={() => void changeStatus("ยกเลิก")}
+                  className="min-h-[36px] rounded-xl bg-white px-3 text-[12px] font-bold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50"
+                  title="ยกเลิกออเดอร์นี้"
+                >
+                  ⚠️ ยกเลิกออเดอร์
+                </button>
               )}
             </div>
             {/* 🏭 ขั้นปัจจุบันบนบอร์ดผลิต TP ใต้ป้ายสถานะ (เจ้าของร้าน 12 ต.ค. 69 "อยากให้มันแจ้งที่สถานะด้วย") — แสดงอย่างเดียว */}

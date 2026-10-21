@@ -59,6 +59,8 @@ interface Staff {
 
 /** สิทธิ์ยืนยันเงินเข้า — ค่าเริ่มต้นปิดทุกคน เจ้าของร้านเปิดให้เป็นรายคน */
 const MARK_PAID: Perm = "orders.markPaid";
+/** 🚦 สิทธิ์เปลี่ยนสถานะออเดอร์ด้วยมือ — ค่าเริ่มต้นปิดทุกคนเช่นกัน (เจ้าของร้านสั่ง 21 ต.ค. 69) */
+const SET_STATUS: Perm = "orders.setStatus";
 
 const DEFAULT_DEPTS = [DEPT_ADMIN, DEPT_GRAPHIC, DEPT_PACKING, DEPT_CONTENT];
 
@@ -143,13 +145,29 @@ function StaffRow({
     const msg = on
       ? `ปิดสิทธิ์ยืนยันเงินเข้าของ "${who}"?\nต่อไปเขาจะเปลี่ยนสถานะเป็น “ชำระแล้ว” เองไม่ได้`
       : `เปิดสิทธิ์ยืนยันเงินเข้าให้ "${who}"?\nเขาจะเปลี่ยนสถานะเป็น “ชำระแล้ว” และยืนยันรับมัดจำ/ยอดคงเหลือได้`;
+    await togglePerm(MARK_PAID, on, msg);
+  }
+
+  /** 🚦 เปิด/ปิดสิทธิ์ "เปลี่ยนสถานะออเดอร์ด้วยมือ" ให้คนนี้ — เจ้าของร้านเท่านั้น (21 ต.ค. 69) */
+  async function toggleSetStatus() {
+    const on = s.extraPerms.includes(SET_STATUS);
+    const who = s.fullname || s.name || s.username;
+    const msg = on
+      ? `ปิดสิทธิ์เปลี่ยนสถานะออเดอร์ของ "${who}"?\nต่อไปเขาจะเลือกสถานะจากเมนูที่ป้ายสถานะเองไม่ได้ (สถานะที่ระบบเปลี่ยนให้เองยังทำงานปกติ)`
+      : `เปิดสิทธิ์เปลี่ยนสถานะออเดอร์ให้ "${who}"?\nเขาจะเลือกสถานะใดก็ได้จากเมนูที่ป้ายสถานะ (ยกเว้น “ชำระแล้ว” ที่ยังต้องมีสิทธิ์ยืนยันเงินเข้า)`;
+    await togglePerm(SET_STATUS, on, msg);
+  }
+
+  /** สลับสิทธิ์พิเศษรายคนทีละตัว โดยคงตัวอื่นที่เปิดไว้แล้ว (เดิมส่งเป็นลิสต์ทั้งก้อน → เปิดตัวที่สองจะลบตัวแรกทิ้ง) */
+  async function togglePerm(perm: Perm, on: boolean, msg: string) {
     if (!window.confirm(msg)) return;
+    const perms = on ? s.extraPerms.filter((p) => p !== perm) : [...new Set([...s.extraPerms, perm])];
     setPaidBusy(true);
     setErr("");
     const res = await fetch("/api/admin/staff", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: s.id, perms: on ? [] : [MARK_PAID] }),
+      body: JSON.stringify({ id: s.id, perms }),
     });
     const j = await res.json().catch(() => ({}));
     setPaidBusy(false);
@@ -182,6 +200,7 @@ function StaffRow({
             {lockNote === "self" && <Tag tone="yolk">คุณ</Tag>}
             {isAdminRole && <Tag tone="lilac">ทุกสิทธิ์</Tag>}
             {!isAdminRole && s.extraPerms.includes(MARK_PAID) && <Tag tone="yolk">💰 ยืนยันเงินเข้าได้</Tag>}
+            {!isAdminRole && s.extraPerms.includes(SET_STATUS) && <Tag tone="yolk">🚦 เปลี่ยนสถานะได้</Tag>}
             {s.suspended && <Tag tone="solid">ปิดการเข้าใช้งาน (เฉพาะระบบนี้)</Tag>}
             {!s.suspended && !isAdminRole && !department.trim() && <Tag tone="solid">ยังไม่กำหนดแผนก — เข้าไม่ได้</Tag>}
           </>
@@ -240,6 +259,18 @@ function StaffRow({
                 title={EXTRA_PERM_LABEL[MARK_PAID]?.hint}
               >
                 {paidBusy ? "…" : s.extraPerms.includes(MARK_PAID) ? "💰 ปิดสิทธิ์ยืนยันเงินเข้า" : "💰 ให้ยืนยันเงินเข้าได้"}
+              </Btn>
+            )}
+            {/* 🚦 สิทธิ์เปลี่ยนสถานะออเดอร์ด้วยมือ — เจ้าของร้านเปิดให้เป็นรายคนเช่นกัน (21 ต.ค. 69) */}
+            {!isAdminRole && canGrantAdmin && (
+              <Btn
+                tone={s.extraPerms.includes(SET_STATUS) ? "navy" : undefined}
+                small
+                onClick={() => void toggleSetStatus()}
+                disabled={paidBusy}
+                title={EXTRA_PERM_LABEL[SET_STATUS]?.hint}
+              >
+                {paidBusy ? "…" : s.extraPerms.includes(SET_STATUS) ? "🚦 ปิดสิทธิ์เปลี่ยนสถานะ" : "🚦 ให้เปลี่ยนสถานะได้"}
               </Btn>
             )}
             {err && (
