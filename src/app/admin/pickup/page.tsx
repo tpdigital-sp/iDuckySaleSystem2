@@ -175,13 +175,16 @@ function PickupInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: r.id, round: w.n }),
       });
-      const j = (await res.json().catch(() => ({}))) as { row?: PickupRow; error?: string };
+      const j = (await res.json().catch(() => ({}))) as { row?: PickupRow; error?: string; notified?: boolean; notifyReason?: string };
       if (!res.ok || !j.row) {
         setErr(j.error ?? "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง");
         return;
       }
       const u = j.row;
       setRows((rs) => rs?.map((x) => (x.id === u.id ? u : x)) ?? rs);
+      // 💬 จดแล้วแต่การ์ดไลน์ไม่ออก (ยังไม่ได้ผูก LINE / ลูกค้าปิดรับ / โควตาหมด) — บอกตรงนี้ ไม่งั้นพนักงานคิดว่าส่งแล้ว (21 ต.ค. 69 · OD-261016-5502 ผูกแค่ลิงก์ห้องกลุ่ม)
+      if (j.notified === false)
+        setErr(`จดรับรอบที่ ${w.n} ของ ${r.id} แล้ว แต่ส่งการ์ดไลน์ไม่สำเร็จ — ${j.notifyReason ?? "ไม่ทราบสาเหตุ"} · ผูก LINE ลูกค้าในหน้าออเดอร์ แล้วกด “↩ ยังไม่ได้รับ” → “✓ ลูกค้ารับรอบนี้แล้ว” อีกครั้งเพื่อส่งการ์ด`);
     } finally {
       setBusy(null);
     }

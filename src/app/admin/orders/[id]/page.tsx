@@ -3730,13 +3730,16 @@ export default function AdminOrderDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: order.id, round: n + 1 }),
     });
-    const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string };
+    const j = (await res.json().catch(() => ({}))) as { order?: Order; error?: string; notified?: boolean; notifyReason?: string };
     if (!res.ok || !j.order) {
       setErr(j.error ?? "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง");
       return;
     }
     adoptOrder(j.order);
     window.dispatchEvent(new Event("iducky:pickup-changed"));
+    // 💬 จดแล้วแต่การ์ดไลน์ไม่ออก — บอกพนักงานทันที (21 ต.ค. 69 · OD-261016-5502 มีแค่ลิงก์ห้องกลุ่ม ไม่มีคนรับแจ้งเตือน)
+    if (!undo && j.notified === false)
+      setErr(`จดรับรอบที่ ${n + 1} แล้ว แต่ส่งการ์ดไลน์ไม่สำเร็จ — ${j.notifyReason ?? "ไม่ทราบสาเหตุ"} · ผูก LINE ลูกค้าแล้วกด “↩ ยังไม่ได้รับ” → “✓ ลูกค้ารับรอบที่ ${n + 1} แล้ว” อีกครั้งเพื่อส่งการ์ด`);
   }
 
   /** ↩ แอดมินยกเลิก "แพ็คเสร็จ" ของใบมารับเอง (กดผิด/กดเบิ้ล ปิดทั้งใบทั้งที่ของยังไม่ครบ) — POST /api/admin/orders/unpack */
