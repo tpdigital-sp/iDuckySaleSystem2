@@ -3906,11 +3906,31 @@ export default function AdminOrderDetailPage() {
     if (!demo) void saveOrWarn(next);
   }
 
-  /** เปิดโหมดมัดจำ 50% — ลูกค้าโอนครึ่งแรกก่อนเริ่มงาน (แก้ยอดมัดจำไม่ได้ ระบบคิดครึ่งหนึ่งปัดขึ้น) */
+  /**
+   * ➗ ตัวอย่างงวดแรกถ้าเปิดโหมดมัดจำ 50% ตอนนี้ — amount = ครึ่งหนึ่งของยอดรวมพอดี 2 ตำแหน่ง (ก่อนหัก ณ ที่จ่าย ตรงกับใบมัดจำ FlowAccount)
+   * net = เงินที่ลูกค้าต้องโอนจริงของงวดนี้ (หัก ณ ที่จ่ายส่วนของงวดแล้ว — depositInstallments) · ไม่หักภาษี net = amount
+   * (OD-261019-2061 · 21 ต.ค. 69: ปุ่มบอก "โอนก่อน ฿15,858" = ครึ่งของยอดรวม ทั้งที่ลูกค้าหัก 3% แล้วโอนจริงแค่ 15,412.80)
+   * ⚠️ ห้ามปัดยอดงวดเป็นบาทเต็ม — FlowAccount ออกใบมัดจำ 50% เป็น 14,820 + VAT = 15,857.40 หัก 444.60 → ชำระ 15,412.80 (= ครึ่งของยอดชำระ 30,825.60 พอดี)
+   *   เดิมปัดขึ้นเป็น 15,858 ทำให้โอนจริงเพี้ยนเป็น 15,413.38 ไม่ตรงใบ ลูกค้าโอนตามใบแล้วระบบมองว่าขาด
+   */
+  function depositPreview(o: Order): { amount: number; net: number; wht: number } {
+    const amount = Math.round((orderTotal(o) / 2) * 100) / 100;
+    const inst = depositInstallments({ ...o, deposit: { amount } });
+    return { amount, net: inst?.firstNet ?? amount, wht: inst?.firstWht ?? 0 };
+  }
+
+  /** เปิดโหมดมัดจำ 50% — ลูกค้าโอนครึ่งแรกก่อนเริ่มงาน (แก้ยอดมัดจำไม่ได้ ระบบคิดครึ่งหนึ่งพอดีตามใบมัดจำ FlowAccount) */
   function enableDeposit() {
     if (!order) return;
-    const amt = Math.ceil(orderTotal(order) / 2);
-    applyOrder(withLog({ ...order, deposit: { amount: amt } }, actor, "เปิดโหมดมัดจำ 50%", `มัดจำ ${amt} บาท จากยอด ${orderTotal(order)} บาท`));
+    const { amount: amt, net, wht } = depositPreview(order);
+    applyOrder(
+      withLog(
+        { ...order, deposit: { amount: amt } },
+        actor,
+        "เปิดโหมดมัดจำ 50%",
+        `มัดจำ ${amt} บาท จากยอด ${orderTotal(order)} บาท${wht > 0 ? ` · โอนจริง ${net} บาท (หัก ณ ที่จ่าย ${order.wht?.rate ?? ""}% ของงวด ${wht} บาท)` : ""}`
+      )
+    );
   }
 
   async function cancelDeposit() {
@@ -9762,7 +9782,21 @@ export default function AdminOrderDetailPage() {
                   onClick={enableDeposit}
                   className="mt-2.5 w-full rounded-lg border border-dashed border-violet-300 bg-violet-50/60 py-2 text-xs font-bold text-violet-600 transition hover:bg-violet-100"
                 >
-                  ➗ เปิดโหมดมัดจำ 50% (โอนก่อน {formatPrice(Math.ceil(orderTotal(order) / 2))})
+                  {(() => {
+                    // 🧾 บรรทัดบน = ยอดเดียวที่ลูกค้าต้องโอน · บรรทัดล่าง = ที่มา (ครึ่งของยอดโอนจริงที่หัก ณ ที่จ่ายแล้ว / ครึ่งของยอดรวม)
+                    // (21 ต.ค. 69 เจ้าของร้านอ่านแบบ "โอนก่อน X หลังหัก · ยอดงวด Y" แล้วงงว่าเลขไหนหักแล้ว → เลิกโชว์ยอดงวดกับยอดหักบนปุ่ม)
+                    const p = depositPreview(order);
+                    return (
+                      <>
+                        <span className="block">➗ เปิดโหมดมัดจำ 50% · ลูกค้าโอนก่อน {formatPrice(p.net)}</span>
+                        <span className="mt-0.5 block text-[10.5px] font-medium text-violet-500">
+                          {p.wht > 0
+                            ? `ครึ่งหนึ่งของยอดโอนจริง ${formatPrice(orderNetTransfer(order))} (หัก ณ ที่จ่าย ${order.wht?.rate ?? ""}% แล้ว)`
+                            : `ครึ่งหนึ่งของยอดรวม ${formatPrice(orderTotal(order))}`}
+                        </span>
+                      </>
+                    );
+                  })()}
                 </button>
               )}
               {order.deposit &&

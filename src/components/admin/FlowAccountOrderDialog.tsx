@@ -76,6 +76,13 @@ const INP =
 const MINI = "mb-1 text-[10.5px] font-bold text-slate-400";
 const SHIP_RE = /ค่าจัดส่ง|ค่าส่ง|ค่าขนส่ง|shipping|delivery/i;
 
+/**
+ * ➗ ครึ่งหนึ่งของยอดบิลพอดี 2 ตำแหน่ง — ค่าเริ่มต้นงวดแรกของใบมัดจำ 50%
+ * ห้ามปัดเป็นบาทเต็ม: FlowAccount ออกใบมัดจำ 50% จากฐานก่อน VAT ครึ่งหนึ่ง (14,820 + VAT = 15,857.40 → หัก 3% แล้วชำระ 15,412.80)
+ * เดิมปัดขึ้น 15,858 ทำให้โอนจริงไม่ตรงใบ (OD-261019-2061 · 21 ต.ค. 69)
+ */
+const halfOf = (n: number) => Math.round((n / 2) * 100) / 100;
+
 export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCancel: () => void; onCreated: (id: string) => void }) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -337,7 +344,7 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                     checked={depositOn}
                     onChange={(e) => {
                       setDepositOn(e.target.checked);
-                      if (e.target.checked && depositAmt <= 0) setDepositAmt(Math.ceil(total / 2));
+                      if (e.target.checked && depositAmt <= 0) setDepositAmt(halfOf(total));
                     }}
                   />
                   <span className="font-bold">➗ เปิดโหมดมัดจำ 50% · งวดแรก (รวม VAT)</span>
@@ -350,13 +357,13 @@ export default function FlowAccountOrderDialog({ onCancel, onCreated }: { onCanc
                     onChange={(e) => setDepositAmt(Math.max(0, Number(e.target.value) || 0))}
                     className={`${INP} w-28 py-0.5 text-right disabled:opacity-50`}
                   />
-                  {depositOn && Math.abs(depositAmt - Math.ceil(total / 2)) >= 1 && (
+                  {depositOn && Math.abs(depositAmt - halfOf(total)) >= 0.01 && (
                     <button
                       type="button"
-                      onClick={() => setDepositAmt(Math.ceil(total / 2))}
+                      onClick={() => setDepositAmt(halfOf(total))}
                       className="rounded border border-violet-300 bg-white px-1.5 py-0.5 text-[10.5px] font-bold text-violet-700 hover:bg-violet-100"
                     >
-                      ↻ ครึ่งหนึ่ง = {formatPrice(Math.ceil(total / 2))}
+                      ↻ ครึ่งหนึ่ง = {formatPrice(halfOf(total))}
                     </button>
                   )}
                   <span className="text-[11px] text-violet-700">ลูกค้าโอนงวดแรกก่อนเริ่มงาน · ยอดคงเหลือเก็บก่อนจัดส่ง</span>
