@@ -3020,7 +3020,8 @@ export default function ProductDetail({
       const sizeNote = inchGrown
         ? { sizeNote: `📏 ขยายเป็น ${inchGrown.w}×${inchGrown.h} ซม. (+${inchGrown.add} นิ้ว ทั้งกว้างและสูง จากมาตรฐาน ${inchGrown.baseW}×${inchGrown.baseH})` }
         : {};
-      if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk), ...sizeNote };
+      // ⬜ สกินทึบ (TemplateFile.skinOpaque) → จอทาขาวทับลายตรงพื้นขาวของสกิน (นอกชิ้นงาน เช่น รอบวงพัด)
+      if (sk) return { url: sk.skinUrl!, wMm: 0, hMm: 0, fill: true, name: name(sk), ...sizeNote, ...(sk.skinOpaque ? { opaque: true } : {}) };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
       // ✂️ cut = เส้นไดคัทจริงจากไฟล์ .ai (cutCurves) → .ai/.pdf จากจอออกแบบใช้เส้นนี้แทนกรอบสี่เหลี่ยม (16 ต.ค. 69)
       if (f)

@@ -168,6 +168,8 @@ interface Props {
     finished?: { w: number; h: number };
     /** 📏 ข้อความขนาดที่ลูกค้าเพิ่มจากเทมเพลต (ผ้าหนึบเพิ่มนิ้ว · เจ้าของร้านสั่ง 21 ต.ค. 69 "ใต้ผืนงานควรบอกขนาดที่เพิ่มด้วย") — ต่อท้ายชื่อเทมเพลตใต้ผืนงาน */
     sizeNote?: string;
+    /** ⬜ สกินทึบ (TemplateFile.skinOpaque) — พิกเซลขาวทึบของสกิน = นอกชิ้นงาน ทาขาวทับลายก่อนวางสกิน (พัดพลาสติกใส · 21 ต.ค. 69) */
+    opaque?: boolean;
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -1441,6 +1443,40 @@ export default function CalendarStudio({
       return null;
     }
   }, [guideImg, guide]);
+  /**
+   * ⬜ มาสก์ "นอกชิ้นงาน" จากสกินทึบ (guide.opaque · TemplateFile.skinOpaque) — พิกเซลที่ทึบในสกิน (พื้นขาวรอบชิ้นงาน + ด้าม/ส่วนวัสดุ)
+   * วางทับลายแบบทึบตามสีจริงของสกิน ก่อนวางสกินแบบ multiply ตามเดิม (ขอบโปร่ง/เงาจาง ๆ ยังเป็น multiply)
+   * (พัดพลาสติกใส 21 ต.ค. 69: สกินมีพื้นขาวทึบรอบวงพัด + ด้ามเทาทึบอยู่แล้ว แต่จอวางแบบ multiply เห็นลายทะลุทั้งรอบพัดและบนด้าม
+   *  "ไม่ควรมีลาย" · อ่านเส้นไดคัทจากไฟล์ไม่ได้จึงใช้ tplCut ไม่ได้) · ไม่ตั้ง opaque = null (พฤติกรรมเดิม)
+   */
+  const guideMask = useMemo<HTMLCanvasElement | null>(() => {
+    if (!guideImg || !guide?.opaque) return null;
+    try {
+      const sc = Math.min(1, 1600 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
+      const w = Math.max(8, Math.round(guideImg.naturalWidth * sc));
+      const h = Math.max(8, Math.round(guideImg.naturalHeight * sc));
+      const cv = document.createElement("canvas");
+      cv.width = w;
+      cv.height = h;
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(guideImg, 0, 0, w, h);
+      const img = ctx.getImageData(0, 0, w, h);
+      const a = img.data;
+      let any = false;
+      for (let i = 0; i < a.length; i += 4) {
+        // ทึบ ≥ 95% = ส่วนที่ไม่ใช่พื้นที่ลาย (พื้นขาวนอกวง · ด้ามเทา) คงสีเดิมไว้วางทับ · ที่เหลือทำโปร่ง (วางด้วย multiply ตามเดิม)
+        const solid = a[i + 3] >= 242;
+        a[i + 3] = solid ? 255 : 0;
+        if (solid) any = true;
+      }
+      if (!any) return null;
+      ctx.putImageData(img, 0, 0);
+      return cv;
+    } catch {
+      return null;
+    }
+  }, [guideImg, guide]);
   /** กรอบเส้นตัดของไฟล์ .pdf (lib/calendar-impose · TrimBox + หน้าเส้นไดคัท) — เส้นจริงของเทมเพลตมาก่อน */
   const pdfCut = useMemo(() => {
     const box = tplCut ? curvesBox(tplCut) : null;
@@ -2237,6 +2273,8 @@ export default function CalendarStudio({
           ctx.fill("evenodd");
           ctx.restore();
         }
+        // ⬜ สกินทึบ: วางพิกเซลทึบของสกิน (พื้นขาวนอกชิ้นงาน + ด้าม) ทับลายแบบทึบ ก่อนวางสกินแบบ multiply (ดู guideMask)
+        if (guideMask) ctx.drawImage(guideMask, gx * k, gy * k, gw * k, gh * k);
         // 🌗 วัดความมืดของภาพใต้ไกด์ก่อนวางเส้น (ภาพย่อ ~160px · อ่านพิกเซลถูก) — ใช้ทาเส้นขาวเฉพาะจุดมืด (ดู guideLines)
         let dark: HTMLCanvasElement | null = null;
         if (guideLines) {
@@ -2473,7 +2511,7 @@ export default function CalendarStudio({
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, guideLines, tplCut, gridSel, cutRes, cutView, cutP.strokeColor, mock3d]);
+  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, guideLines, guideMask, tplCut, gridSel, cutRes, cutView, cutP.strokeColor, mock3d]);
 
   useEffect(() => {
     if (open) draw();
