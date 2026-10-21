@@ -87,7 +87,9 @@ import { isMissingPhoto } from "@/lib/cal-edit-store";
 import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar-impose";
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 import Mug3D, { MugBodyChip } from "@/components/Mug3D";
+import Stand3D from "@/components/Stand3D";
 import { MUG_DEFAULT, type MugMock } from "@/lib/mug-mock";
+import type { StandMock } from "@/lib/stand-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, traceAlphaMm, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
 import { dieCurvesPath, dieSvgD } from "@/lib/sleeve-dieline";
@@ -195,7 +197,7 @@ interface Props {
    * ☕🧊 พรีวิว 3D แก้วมัค (Product.calendarStudio.mock3d = "mug" · เจ้าของร้านสั่ง 16 ต.ค. 69) — ปุ่ม "ดูแบบ 3D" บนแถบบน
    * ลายทั้งอาร์ตบอร์ดพันรอบตัวแก้ว · ลักษณะแก้ว/มุมมองเริ่มต้นตามตัวเลือกที่เลือก (lib/mug-mock)
    */
-  mock3d?: MugMock;
+  mock3d?: MugMock | StandMock;
   /**
    * 🧑‍💼 โหมดแอดมิน (สั่งแทนลูกค้า · เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC): กด ใช้แบบนี้/ใส่ตะกร้า ได้ทั้งที่ยังไม่ใส่รูป
    * — ถามยืนยันก่อน 1 ครั้ง แล้วทำไฟล์ช่องว่าง (ช่องรูปที่ว่างไม่พิมพ์) · สเปคติดป้าย "ยังไม่ได้ใส่รูป" ให้กราฟฟิกรู้ว่าต้องรอรูปจากลูกค้า
@@ -5745,7 +5747,7 @@ export default function CalendarStudio({
             <p className="flex min-w-0 items-center justify-center gap-2 text-sm font-extrabold text-stone-800">
               <span className="truncate">{noCal ? "🎨 ออกแบบ" : "🗓 สร้างปฏิทิน"}</span>
               {/* ☕ ประเภทแก้วที่เลือก (สี + ชื่อ) — เจ้าของร้านขอ 16 ต.ค. 69 "เพิ่มสีแก้วที่เลือกด้วย" */}
-              {mock3d && <MugBodyChip mock={mock3d} />}
+              {mock3d?.kind === "mug" && <MugBodyChip mock={mock3d} />}
             </p>
             <p className="truncate text-[11px] text-stone-500">
               {title} · {fmtName}
@@ -5758,7 +5760,13 @@ export default function CalendarStudio({
                 type="button"
                 onClick={() => void (mock3d ? openMug3d() : open3d())}
                 disabled={busy3d}
-                title={mock3d ? "ดูแบบ 3D — ลายพันรอบแก้วจริง หมุนดูได้รอบตัว" : "ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"}
+                title={
+                  mock3d?.kind === "mug"
+                    ? "ดูแบบ 3D — ลายพันรอบแก้วจริง หมุนดูได้รอบตัว"
+                    : mock3d
+                      ? "ดูแบบ 3D — ลายบนที่ตั้งโทรศัพท์จริง หมุนดูได้รอบตัว"
+                      : "ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"
+                }
                 // ✨ ให้เด่น (ผู้ใช้ขอ 14 ต.ค. 69) — ไล่สีม่วง-ชมพู ตัวขาว เงา + จุดกะพริบ "ใหม่"
                 className="relative flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-2.5 py-2.5 text-xs font-extrabold text-white sm:px-4 shadow-[0_4px_14px_rgba(139,92,246,.45)] ring-2 ring-white transition hover:scale-[1.03] hover:shadow-[0_6px_20px_rgba(139,92,246,.55)] disabled:opacity-70"
               >
@@ -6362,7 +6370,7 @@ export default function CalendarStudio({
             {tool === "settings" && draft && renderSettingsPopup(draft)}
             {layersOpen && renderLayersPopup()}
             {/* 📱 จอแคบไม่มีหัวกลาง (md:block) — ป้ายประเภทแก้วมาอยู่ใต้ผืนแทน */}
-            {mock3d && (
+            {mock3d?.kind === "mug" && (
               <div className="flex justify-center md:hidden">
                 <MugBodyChip mock={mock3d} />
               </div>
@@ -6941,7 +6949,11 @@ export default function CalendarStudio({
         )}
 
         {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmtName} onClose={() => setFlip3d(null)} />}
-        {mug3d && mug3d !== "loading" && (
+        {mug3d && mug3d !== "loading" && mock3d?.kind !== "mug" && mock3d && (
+          // 📱 ที่ตั้งโทรศัพท์ (stand360 / stand3 · 21 ต.ค. 69) — ทรงแผ่นตามเส้นไดคัทของเทมเพลต (tplCut พิกัดผืน = อาร์ตบอร์ด)
+          <Stand3D key={`${mock3d.kind}-${mock3d.base}`} sheet={mug3d} sheetMm={{ w: W, h: H }} cut={tplCut} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
+        )}
+        {mug3d && mug3d !== "loading" && (!mock3d || mock3d.kind === "mug") && (
           // key = ประเภทแก้ว: ค่าเปลี่ยนระหว่างเปิดอยู่ = สร้างฉากใหม่ (ฉากสร้างครั้งเดียวตอนเปิด)
           <Mug3D key={mock3d?.body ?? "white"} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d ?? MUG_DEFAULT} title={title} onClose={() => setMug3d(null)} />
         )}

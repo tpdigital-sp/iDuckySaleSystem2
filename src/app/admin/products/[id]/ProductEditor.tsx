@@ -412,7 +412,7 @@ type Draft = {
   /** 🎨 เปิดปุ่ม "เริ่มสร้าง — วางลายบนสินค้า" ให้ลูกค้าไหม (ค่าเริ่มต้น = เปิด) */
   studioOn: boolean;
   /** ☕🧊 พรีวิว 3D ในจอออกแบบ (Product.calendarStudio.mock3d) — "" = ไม่มี · "mug" = แก้วมัค 11 oz */
-  mock3d: "" | "mug";
+  mock3d: "" | "mug" | "stand360" | "stand3";
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** 🔴 หมายเหตุสีแดงในกล่องราคาหน้าสินค้า */
@@ -5663,7 +5663,11 @@ export default function ProductEditor({ product }: { product: Product }) {
               <p className="mt-0.5 text-slate-500">
                 {draft.mock3d === "mug"
                   ? "ลูกค้ากดดูลายพันรอบแก้วมัค 11 oz หมุนได้รอบตัว · ประเภทแก้ว (ขาวเงา/ใส/ขุ่น) และตำแหน่งสกรีน (หูจับซ้าย/ขวา) อ่านจากตัวเลือกที่ลูกค้าเลือก"
-                  : "ยังไม่มีพรีวิว 3D — เลือกรูปทรงสินค้าให้ระบบจำลองลายบนของจริง"}
+                  : draft.mock3d === "stand360"
+                    ? "แผ่นพิมพ์ทรงตามเส้นไดคัทของเทมเพลต ตั้งบนฐานหมุน + ที่ตั้งโทรศัพท์ใส · ฐานสี่เหลี่ยม/กลม อ่านจากค่า “ขนาด” ที่ลูกค้าเลือก"
+                    : draft.mock3d === "stand3"
+                      ? "แผ่นใสพับ 2 รอย กางตั้งได้ 3 ระดับ ลายพิมพ์ด้านเดียวมองทะลุได้ · ทรงแผ่นตามเส้นไดคัทของเทมเพลต"
+                      : "ยังไม่มีพรีวิว 3D — เลือกรูปทรงสินค้าให้ระบบจำลองลายบนของจริง"}
               </p>
             </div>
             <select
@@ -5674,6 +5678,8 @@ export default function ProductEditor({ product }: { product: Product }) {
             >
               <option value="">ไม่มีพรีวิว 3D</option>
               <option value="mug">☕ แก้วมัค 11 oz</option>
+              <option value="stand360">📱 360° Phone Stand (แผ่น + ฐานหมุน)</option>
+              <option value="stand3">📱 Phone Stand 3 step (แผ่นใสพับ)</option>
             </select>
           </div>
         )}
