@@ -210,6 +210,7 @@ import SenderPicker from "@/components/admin/SenderPicker";
 import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shipFollowsItems, shippingUnset } from "@/lib/ship-label";
 import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, isFlatCalAi, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
+import { jobFileName } from "@/lib/job-file-name";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
 import { foldSizeExtra, specEntries, specLabel, tidySpec } from "@/components/SpecLines";
 import { SEL_HIDE_PRODUCTION, SelDetails, SelText } from "@/components/admin/SelDetails";
@@ -7682,12 +7683,19 @@ export default function AdminOrderDetailPage() {
                                       ] as const
                                     ).map(([u, label, suffix]) =>
                                       u ? (
-                                        <a
+                                        /**
+                                         * ชื่อไฟล์ตอนโหลด = "ชื่อสินค้า-เลขออเดอร์4ตัวท้าย-วันเดือนปี-เลขสุ่ม3ตัว" (เจ้าของร้าน 21 ต.ค. 69)
+                                         * ⚠️ attribute download บนลิงก์ข้ามโดเมน (Supabase) เบราว์เซอร์ไม่สน → ได้ชื่อ UUID ของที่เก็บ
+                                         * จึงดึงเป็น blob แล้วค่อยเซฟชื่อเอง (downloadImage · โหลดไม่ได้ค่อยเปิดแท็บใหม่)
+                                         */
+                                        <button
+                                          type="button"
                                           key={`${n}-${suffix}`}
-                                          href={u}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          download={`${order.id}-item${i + 1}${specs.length > 1 ? `-ลาย${n + 1}` : ""}-${suffix}`}
+                                          onClick={() => {
+                                            const ext = /\.zip(\?|$)/i.test(u) ? "zip" : suffix.endsWith(".pdf") ? "pdf" : "ai";
+                                            void downloadImage(u, jobFileName(it.name, order.id, ext, { design: specs.length > 1 ? n + 1 : 0 }));
+                                          }}
+                                          title={`โหลดเป็นชื่อ ${jobFileName(it.name, order.id, suffix.endsWith(".pdf") ? "pdf" : "ai", { design: specs.length > 1 ? n + 1 : 0, rand: 0 }).replace(/-000\.(\w+)$/, "-xxx.$1")}`}
                                           className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${
                                             label.includes("ยังไม่แยก")
                                               ? "bg-rose-50 text-rose-700 ring-rose-300 hover:bg-rose-100"
@@ -7696,7 +7704,7 @@ export default function AdminOrderDetailPage() {
                                         >
                                           ⬇ {specs.length > 1 ? `ลายที่ ${n + 1} ` : ""}
                                           {label}
-                                        </a>
+                                        </button>
                                       ) : null,
                                     ),
                                   )}
