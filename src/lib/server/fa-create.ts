@@ -55,6 +55,16 @@ export interface QuotationDraft {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * 🚫 ห้ามมีคำว่า "สกรีน" ในเอกสาร FlowAccount ทุกใบ (QT/BL/INV/บิลเพิ่ม) — พนักงานบัญชีแจ้ง 21 ต.ค. 69 (OD-261021-9043 QT010967)
+ * "สกรีน" = งานบริการ ลูกค้านิติบุคคลต้องหัก ณ ที่จ่าย 3% · "พิมพ์" = ขายสินค้า ไม่ต้องหัก
+ * เดิมพนักงานต้องรู้เองแล้วแก้คำในแอป FlowAccount คนใหม่ไม่รู้ → ระบบแทนให้ตอนร่างทุกครั้ง
+ * ใช้กับชื่อรายการ / รายละเอียด (ตัวเลือกสินค้า เช่น "งานสกรีน: สกรีน 1 ด้าน") / ชื่อค่าบริการเพิ่ม · ออเดอร์ในระบบคงคำเดิม (จอผลิตยังใช้ "สกรีน")
+ */
+export function faWording(s: string): string {
+  return s.replace(/สกรีน/g, "พิมพ์");
+}
+
 function itemDescription(item: Order["items"][number]): string {
   const lines: string[] = [];
   const entries = foldSizeExtra(
@@ -71,7 +81,7 @@ function itemDescription(item: Order["items"][number]): string {
   // บรรทัดสรุปจำนวน/ราคาแบบที่พนักงานพิมพ์ — มีอยู่แล้วในสเปกก็ไม่ซ้ำ
   if (!lines.some((l) => /จำนวน\s*[\d,]+/.test(l)))
     lines.push(`จำนวน ${item.qty.toLocaleString("th-TH")} ชิ้น ชิ้นละ ${item.unitPrice.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`);
-  return lines.join("\n").slice(0, 2000);
+  return faWording(lines.join("\n")).slice(0, 2000);
 }
 
 export function quotationDraft(o: Order): QuotationDraft {
@@ -90,7 +100,7 @@ export function quotationDraft(o: Order): QuotationDraft {
   if (ship > 0) lines.push({ name: "ค่าส่ง", description: "", quantity: 1, pricePerUnit: ship, total: ship });
   for (const c of o.charges ?? []) {
     const amt = Math.max(0, Number(c.amount) || 0);
-    if (amt > 0) lines.push({ name: (c.label || "ค่าบริการเพิ่ม").slice(0, 250), description: "", quantity: 1, pricePerUnit: amt, total: r2(amt) });
+    if (amt > 0) lines.push({ name: faWording(c.label || "ค่าบริการเพิ่ม").slice(0, 250), description: "", quantity: 1, pricePerUnit: amt, total: r2(amt) });
   }
   const subTotal = r2(lines.reduce((s, l) => s + l.total, 0));
   const discount = r2(orderDiscountTotal(o));
@@ -123,7 +133,7 @@ export function quotationDraft(o: Order): QuotationDraft {
 
 function lineOf(it: Order["items"][number]): FaLine {
   return {
-    name: (it.name || "สินค้า").slice(0, 250),
+    name: faWording(it.name || "สินค้า").slice(0, 250),
     description: itemDescription(it),
     quantity: it.qty,
     pricePerUnit: it.unitPrice,

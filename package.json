@@ -51,6 +51,7 @@
     "check:order-gifts": "tsx --tsconfig tsconfig.json scripts/order-gifts-sync-test.mts",
     "check:reprint": "tsx --tsconfig tsconfig.json scripts/reprint-gate-test.mts",
     "check:receipt-gate": "node --conditions=react-server --import tsx scripts/receipt-gate-test.mts",
+    "check:fa-wording": "node --conditions=react-server --import tsx scripts/fa-wording-test.mts",
     "check:ship-round-extras": "tsx --tsconfig tsconfig.json scripts/ship-round-extras-test.mts",
     "check:order-alert": "tsx --tsconfig tsconfig.json scripts/order-alert-test.mts",
     "check:rush": "tsx --tsconfig tsconfig.json scripts/rush-auto-test.mts",
