@@ -162,6 +162,7 @@ const isWaiting = (r: Row) => r.needsHumanFollowup && !!r.lastSeen && Date.now()
 const LIST_FIELDS = [
   "displayName", "pictureUrl", "lastSeen", "lastUserText", "messageCount", "messages", "botScope", "needsHumanFollowup", "botPausedUntil",
   "lastAdminAt", "webReadAt", "draftPendingAt", "adminTag", "adminTags", "adminNote", "adminNotes", "adminNoteBy", "adminNoteAt", "adminAlias",
+  "memberCount", // 👥 จำนวนสมาชิกกลุ่ม (เจ้าของร้าน 21 ต.ค. 69 "อยากให้มี (จำนวนคน)" ในรายชื่อ)
 ];
 const listLimit = (u: URL) => Math.min(200, Math.max(1, Number(u.searchParams.get("limit") ?? 50) || 50));
 const listBefore = (u: URL) => {

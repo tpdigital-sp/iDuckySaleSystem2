@@ -150,7 +150,11 @@ function Avatar({ src, size = 44, group = false }: { src?: string; size?: number
 }
 /** 👥 ห้องกลุ่ม/ห้องรวม (C…/R…) — เก็บแชท+ตอบจากเว็บได้ · ไม่มีสวิตช์บอท/ร่าง/ผูกออเดอร์ (21 ต.ค. 69) */
 const isGroupRow = (r: { id: string; kind?: string }) => r.kind === "group" || r.kind === "room" || isLineGroupId(r.id);
-const groupLabel = (r: { kind?: string; memberCount?: number }) => `${r.kind === "room" ? "👥 ห้องรวม" : "👥 กลุ่ม"}${r.memberCount ? ` · ${r.memberCount} คน` : ""}`;
+/** จำนวนคนในกลุ่มแบบที่ OA Manager โชว์ "(8)" — LINE members/count ไม่นับบัญชีร้าน จึง +1 ให้ตรงกับหน้า OA (เจ้าของร้าน 21 ต.ค. 69) */
+const groupSize = (r: { memberCount?: number }) => (r.memberCount ? r.memberCount + 1 : 0);
+const groupLabel = (r: { kind?: string; memberCount?: number }) => `${r.kind === "room" ? "👥 ห้องรวม" : "👥 กลุ่ม"}${groupSize(r) ? ` · ${groupSize(r)} คน` : ""}`;
+/** ชื่อห้อง + "(จำนวนคน)" ต่อท้ายสำหรับกลุ่ม เหมือนรายชื่อใน OA Manager */
+const nameWithSize = (r: { adminAlias?: string; displayName?: string; id: string; kind?: string; memberCount?: number }) => (isGroupRow(r) && groupSize(r) ? `${nameOf(r)} (${groupSize(r)})` : nameOf(r));
 
 const nameOf = (r: { adminAlias?: string; displayName?: string; id: string }) => r.adminAlias || r.displayName || r.id.slice(0, 10) + "…";
 /** 🏷 ป้ายลูกค้าจากแคตตาล็อก settings/chat-tags (หลายป้ายได้ · แก้ชื่อ/สี/เพิ่ม/ลบได้ที่ปุ่ม ⚙️ จัดการป้าย) */
@@ -1137,7 +1141,7 @@ function Chats() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                       <span className="min-w-0 flex-1 truncate text-[14.5px]" style={{ fontWeight: r.unread ? 800 : 700 }}>
-                        {nameOf(r)}
+                        {nameWithSize(r)}
                       </span>
                       <span className="shrink-0 text-[11.5px] tabular-nums" style={{ color: r.unread ? "var(--ln-green-ink)" : "var(--dk-faint)", fontWeight: r.unread ? 700 : 400 }}>
                         {listTime(r.lastSeen)}
@@ -1350,8 +1354,8 @@ function Chats() {
                 </button>
                 <Avatar src={detail?.pictureUrl} size={40} group={!!detail && isGroupRow(detail)} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[16px] font-extrabold leading-tight" title={detail ? nameOf(detail) : sel}>
-                    {detail ? nameOf(detail) : sel}
+                  <p className="truncate text-[16px] font-extrabold leading-tight" title={detail ? nameWithSize(detail) : sel}>
+                    {detail ? nameWithSize(detail) : sel}
                   </p>
                   <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
                     {detail && isGroupRow(detail) ? <span className="font-bold" style={{ color: "var(--dk-navy-soft)" }}>{groupLabel(detail)} · </span> : null}
