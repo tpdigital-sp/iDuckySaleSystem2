@@ -737,3 +737,28 @@ export function cutSvg(r: CutResult, pad = 1): string {
   const hole = r.hole ? `<circle cx="${n(r.hole.cx - x0)}" cy="${n(r.hole.cy - y0)}" r="${n(r.hole.r)}" fill="none" stroke="#ff00ff" stroke-width="0.25"/>` : "";
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${n(w)}mm" height="${n(h)}mm" viewBox="0 0 ${n(w)} ${n(h)}"><path d="${d}" fill="none" stroke="#ff00ff" stroke-width="0.25"/>${hole}</svg>\n`;
 }
+
+/**
+ * ⬜ รองขาวตามทรงภาพ (แบบหน้า /admin/diecut?tab=bg) สำหรับงานเทมเพลตบนวัสดุใส (พัดพลาสติกใส · เจ้าของร้านสั่ง 21 ต.ค. 69
+ * "เลเยอร์ขาวควรเป็นรูปทรงเดียวกับภาพ") — เนื้อภาพ (alpha ≥ 128) ของหน้าที่ครอปตามเส้นตัดแล้ว หดเข้า chokeMm กันขาวโผล่ → ลากเป็นเส้นโค้ง
+ * คืนค่าเป็น มม. นับจากมุมซ้ายบนของภาพ (ภาพต้องเป็นทั้งผืนงานที่ ppm พิกเซล/มม.) · ไม่มีเนื้อภาพ = []
+ */
+export function traceAlphaMm(img: ImageData, ppm: number, o: { chokeMm?: number; smooth?: number; minAreaMm2?: number } = {}): CutCurve[] {
+  const w = img.width;
+  const h = img.height;
+  let m: Uint8Array = new Uint8Array(w * h);
+  let any = false;
+  for (let i = 0; i < m.length; i++) {
+    if (img.data[i * 4 + 3] >= 128) {
+      m[i] = 1;
+      any = true;
+    }
+  }
+  if (!any) return [];
+  const ck = Math.round((o.chokeMm ?? 0.3) * ppm);
+  if (ck > 0) m = erode(m, w, h, ck);
+  if (!m.some((v) => v)) return [];
+  const minArea = Math.max(4, (o.minAreaMm2 ?? 1) * ppm * ppm);
+  const px = trace(m, w, h, o.smooth ?? 1, minArea);
+  return mapCurves(px, (q) => ({ x: q.x / ppm, y: q.y / ppm }));
+}

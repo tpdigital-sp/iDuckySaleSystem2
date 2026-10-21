@@ -30,6 +30,7 @@ import {
   type ImgRef,
 } from "@/lib/calendar-card";
 import { dieAiCurves } from "@/lib/sleeve-dieline";
+import { fillCurvesEvenOdd } from "@/lib/calendar-impose";
 
 export const CUTOUT_PY = "http://localhost:8777";
 const PT = 72 / 25.4;
@@ -78,6 +79,8 @@ export async function renderAiPages(input: {
   back: CalBack;
   imgs: (ImgRef | null)[];
   dpi?: number;
+  /** ✂️ ครอปทุกชั้นตามเส้นไดคัทของเทมเพลต (มม. พิกัดผืน) — งานวัสดุใส (พัดพลาสติกใส 21 ต.ค. 69 "ไฟล์งานควรครอปภาพเป็นแค่ทรงกลม") */
+  clip?: { s: [number, number]; g: [number, number, number, number, number, number][] }[];
 }): Promise<AiPage[]> {
   const { fmt, design, back, imgs } = input;
   const W = fmtW(fmt);
@@ -112,6 +115,20 @@ export async function renderAiPages(input: {
       const ctx = cv.getContext("2d");
       if (!ctx) continue;
       drawPage(ctx, k, fmt, page, design, back, imgs, { only: L.id });
+      if (input.clip?.length) {
+        // ✂️ นอกเส้นตัด = โปร่งใส (ทุกชั้น) → ชั้นที่เคยทึบเต็มกรอบกลายเป็น PNG พื้นใสอัตโนมัติ (alphaBox.opaque = false)
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-in";
+        ctx.beginPath();
+        for (const c of input.clip) {
+          ctx.moveTo(c.s[0] * k, c.s[1] * k);
+          for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
+          ctx.closePath();
+        }
+        ctx.fillStyle = "#000";
+        ctx.fill("evenodd");
+        ctx.restore();
+      }
       const box = alphaBox(ctx, cw, ch);
       if (!box) continue; // ชั้นนี้ไม่มีอะไรเลย
       const crop = document.createElement("canvas");
@@ -330,8 +347,12 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
     const svgOf = (P: AiPath) =>
       P.curves.map((cv) => `M ${cv.s[0]} ${cv.s[1]} ` + cv.g.map((g) => `C ${g[0]} ${g[1]} ${g[2]} ${g[3]} ${g[4]} ${g[5]}`).join(" ") + (cv.open ? "" : " Z")).join(" ") +
       (P.circles ?? []).map(([cx, cy, r]) => ` M ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} Z`).join("");
+    // ⬜ รองขาว (ถมสี) = even-odd ให้รูในรูปทรงเป็นรูจริง (ดู fillCurvesEvenOdd) · วงกลมรูห่วง (circles) ยังผ่าน drawSvgPath
     for (const P of (p.paths ?? []).filter((x) => x.fill))
-      layer(P.layer, () => pg.drawSvgPath(svgOf(P), { x: 0, y: Hpt, scale: PT, color: rgb(0.85, 0.95, 1) }));
+      layer(P.layer, () => {
+        fillCurvesEvenOdd(pg, P.curves, Hpt, [0.85, 0.95, 1]);
+        if (P.circles?.length) pg.drawSvgPath(svgOf({ ...P, curves: [] }), { x: 0, y: Hpt, scale: PT, color: rgb(0.85, 0.95, 1) });
+      });
     for (const l of p.layers) {
       const img = l.png.type === "image/jpeg" ? await doc.embedJpg(await l.png.arrayBuffer()) : await doc.embedPng(await l.png.arrayBuffer());
       layer(l.name, () => pg.drawImage(img, { x: l.x * PT, y: Hpt - (l.y + l.h) * PT, width: l.w * PT, height: l.h * PT }));

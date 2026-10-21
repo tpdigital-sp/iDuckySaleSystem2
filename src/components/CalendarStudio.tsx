@@ -89,7 +89,7 @@ import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 import Mug3D, { MugBodyChip } from "@/components/Mug3D";
 import { MUG_DEFAULT, type MugMock } from "@/lib/mug-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
-import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
+import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, traceAlphaMm, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
 import { dieCurvesPath, dieSvgD } from "@/lib/sleeve-dieline";
 
 export interface CalendarState {
@@ -515,7 +515,8 @@ export default function CalendarStudio({
       initial && sameFormat
         ? initial.design
         : // รูปแบบงานเปลี่ยน (เช่นสลับแนว) — ตำแหน่งรูป/ชิ้นส่วนเดิมใช้ไม่ได้ เริ่มวางใหม่ แต่รูปที่อัปไว้ยังอยู่
-          { bg: fmt.diecut ? "transparent" : (initial?.design.bg ?? "#ffffff"), text: null, photos: {} };
+          // 🪭 งานวัสดุใสตามเทมเพลต (guide.whiteUnder · พัดพลาสติกใส) = พื้นโปร่งใสเหมือนไดคัท — รองขาวจะได้ตามทรงภาพ ไม่ใช่เต็มวง
+          { bg: fmt.diecut || guide?.whiteUnder ? "transparent" : (initial?.design.bg ?? "#ffffff"), text: null, photos: {} };
     // งานหลายหน้า (รายเดือน/ตั้งโต๊ะ) แบบใหม่ = แต่ละหน้าใส่รูปเอง ไม่ยืมรูปหน้าปกให้ทุกหน้า (บั๊คที่ผู้ใช้แจ้ง 13 ต.ค. 69)
     if (!(initial && sameFormat) && (fmt.cards ?? 1) <= 1 && fmt.pages.filter((p) => p.photo).length > 1) d = { ...d, noBorrow: true };
     if (d.text && textPage)
@@ -1432,6 +1433,71 @@ export default function CalendarStudio({
     return shiftCurves(guide.cut, (W - guide.wMm) / 2, (H - guide.hMm) / 2);
   }, [guide, W, H]);
   /**
+   * 🪭 งานวัสดุใสตามเทมเพลต (เส้นไดคัท + รองขาว · พัดพลาสติกใส 21 ต.ค. 69 "เรียนรู้จากหน้าไดคัท"): ไฟล์ทุกแบบครอปตามเส้นตัด (นอกวง = โปร่งใส · PNG)
+   * · พื้นงานเริ่มต้นโปร่งใส (บนจอเป็นตาหมากรุก) · รองขาวใน .ai = ทรงเนื้อภาพในวง หดเข้า 0.3 มม. (traceAlphaMm) ไม่ใช่เต็มวง
+   */
+  const clearCut = !!tplCut && !!guide?.whiteUnder;
+  /** ครอปสิ่งที่วาดไว้แล้วบน ctx ตามเส้นไดคัท (k = พิกเซล/มม.) — นอกเส้น = โปร่งใส */
+  const clipToCut = useCallback(
+    (ctx: CanvasRenderingContext2D, k: number) => {
+      if (!tplCut) return;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.beginPath();
+      for (const c of tplCut) {
+        ctx.moveTo(c.s[0] * k, c.s[1] * k);
+        for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
+        ctx.closePath();
+      }
+      ctx.fillStyle = "#000";
+      ctx.fill("evenodd");
+      ctx.restore();
+    },
+    [tplCut],
+  );
+  /** ตาหมากรุกโปร่งใส (บนจอ) — ใช้ในวงเส้นตัดของงานวัสดุใสที่พื้นโปร่ง */
+  const checker = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = c.height = 16;
+    const x = c.getContext("2d");
+    if (!x) return null;
+    x.fillStyle = "#e5e7eb";
+    x.fillRect(0, 0, 16, 16);
+    x.fillStyle = "#f8fafc";
+    x.fillRect(0, 0, 8, 8);
+    x.fillRect(8, 8, 8, 8);
+    return c;
+  }, []);
+  /**
+   * ⬜ รองขาวตามทรงภาพ (แบบหน้า /admin/diecut?tab=bg · เจ้าของร้านสั่ง 21 ต.ค. 69) — ต่อหน้า: วาดหน้าที่ครอปตามเส้นตัดที่ ~8 px/มม.
+   * แล้วลากเนื้อภาพ (alpha ≥ 128) หดเข้า 0.3 มม. → เส้นโค้ง (มม. พิกัดผืน) · ไม่มีเนื้อภาพ = ถอยไปรองขาวเต็มวง (tplCut)
+   * ใช้ทั้งเลเยอร์ "รองขาว (White)" ใน .ai และหน้ารองขาวใน .pdf ทั้งเล่ม (ทรงเดียวกัน)
+   */
+  const whiteCurvesFor = useCallback(
+    (page: CalPage): TemplateCurve[] => {
+      if (!tplCut) return [];
+      const ppm = Math.min(8, 2400 / Math.max(W, H));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(W * ppm));
+      cv.height = Math.max(1, Math.round(H * ppm));
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return tplCut;
+      drawPage(ctx, ppm, fmt, page, design, back, imgs);
+      clipToCut(ctx, ppm);
+      const cs = traceAlphaMm(ctx.getImageData(0, 0, cv.width, cv.height), ppm, { chokeMm: 0.3, smooth: 1 });
+      cv.width = cv.height = 0;
+      if (!cs.length) return tplCut;
+      const r3 = (v: number) => Math.round(v * 1000) / 1000;
+      return cs.map((c) => ({
+        s: [r3(c.start.x), r3(c.start.y)] as [number, number],
+        g: c.segs.map((g) => [r3(g.c1.x), r3(g.c1.y), r3(g.c2.x), r3(g.c2.y), r3(g.to.x), r3(g.to.y)] as [number, number, number, number, number, number]),
+      }));
+    },
+    [tplCut, W, H, fmt, design, back, imgs, clipToCut],
+  );
+  /**
    * 🌗 เส้นไกด์เทมเพลตที่เปลี่ยนสีเองบนรูปเข้ม (เจ้าของร้านแจ้ง 16 ต.ค. 69 Puzzle "เส้นสีของเทมเพลต อยากให้มันเปลี่ยนถ้าเจอภาพสีเข้มที่ทำให้เส้นไดคัทจม")
    * ไกด์วาดแบบ multiply = เส้นมีแต่เข้มลง บนรูปมืดเส้นเทาจมหาย → ทำ "มาสก์เส้น" (สีขาว · ความทึบตามความเข้มของเส้นในไฟล์)
    * แล้วตอนวาด ทาเส้นขาวทับเฉพาะตรงที่ภาพใต้ไกด์มืด (วัดจากภาพย่อ · ดู draw) — พื้นสว่างเส้นยังเข้มเหมือนเดิม
@@ -2202,6 +2268,23 @@ export default function CalendarStudio({
       pathCurves(ctx, cutRes.stroke);
       ctx.fillStyle = cutP.strokeColor;
       ctx.fill("evenodd");
+      ctx.restore();
+    }
+    // 🪭 วัสดุใส + พื้นโปร่ง: ตาหมากรุกในวงเส้นตัด (บนจอเท่านั้น) ให้เห็นว่าตรงไหนไม่มีหมึก/รองขาว
+    if (clearCut && tplCut && checker && design.bg === "transparent") {
+      ctx.save();
+      ctx.beginPath();
+      for (const c of tplCut) {
+        ctx.moveTo(c.s[0] * k, c.s[1] * k);
+        for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
+        ctx.closePath();
+      }
+      ctx.clip("evenodd");
+      const pat = ctx.createPattern(checker, "repeat");
+      if (pat) {
+        ctx.fillStyle = pat;
+        ctx.fillRect(0, 0, PW, PH);
+      }
       ctx.restore();
     }
     drawPage(ctx, k, fmt, basePage, design, back, imgs, { preview: true });
@@ -3673,17 +3756,29 @@ export default function CalendarStudio({
       design,
       back,
       imgs,
+      // 🪭 วัสดุใส: ทุกชั้นครอปตามเส้นไดคัท (นอกวง = โปร่งใส)
+      ...(clearCut && tplCut ? { clip: tplCut } : {}),
     });
     // ✂️ เทมเพลตมีเส้นไดคัทจริง (tplCut) → เลเยอร์ "เส้นตัด (CutContour)" เป็นเส้นนั้นแทนกรอบสี่เหลี่ยมสมมุติของ tpl@
-    // ⬜🖨 รองขาวเต็มเส้นตัด (guide.whiteUnder · พัดพลาสติกใส) = เลเยอร์ถมสี spot White ตามเส้นไดคัท อยู่ใต้ลาย (fill:true → ตัวสร้าง .ai วางไว้ล่างสุด)
+    // ⬜🖨 รองขาว (guide.whiteUnder · พัดพลาสติกใส) = เลเยอร์ถมสี spot White ตามทรงภาพ (clearCut) อยู่ใต้ลาย (fill:true → ตัวสร้าง .ai วางไว้ล่างสุด)
     const aiPages: AiPage[] = tplCut
-      ? pages.map((p) => ({
+      ? pages.map((p, i) => ({
           ...p,
+          // พื้นโปร่งใส = ไม่มีเลเยอร์พื้นหลัง (ตัวสร้าง PDF-.ai อ่าน "transparent" ไม่ออก จะถมขาวทั้งแผ่น)
+          bg: p.bg === "transparent" ? "none" : p.bg,
           cut: null,
           paths: [
             ...(p.paths ?? []),
             ...(guide?.whiteUnder
-              ? [{ layer: "รองขาว (White)", spot: "White", cmyk: [15, 0, 0, 0] as [number, number, number, number], fill: true, curves: tplCut }]
+              ? [
+                  {
+                    layer: "รองขาว (White)",
+                    spot: "White",
+                    cmyk: [15, 0, 0, 0] as [number, number, number, number],
+                    fill: true,
+                    curves: clearCut ? whiteCurvesFor(resolve(printPages[i])) : tplCut,
+                  },
+                ]
               : []),
             { layer: "เส้นตัด (CutContour)", spot: "CutContour", cmyk: [0, 100, 0, 0] as [number, number, number, number], fill: false, curves: tplCut },
           ],
@@ -3710,20 +3805,34 @@ export default function CalendarStudio({
       const v = printPages[i];
       const name = vname(v).replace(/^\d+\. /, "");
       setBusy(`กำลังทำไฟล์ .pdf หน้า ${i + 1}/${printPages.length}…`);
-      const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, resolve(v), design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
+      const f = await renderPage(
+        fmt,
+        (ctx, k) => {
+          drawPage(ctx, k, fmt, resolve(v), design, back, imgs);
+          if (clearCut) clipToCut(ctx, k);
+        },
+        clearCut ? "image/png" : "image/jpeg",
+        `${v.page.key}.${clearCut ? "png" : "jpg"}`,
+      );
       if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ`);
       pages.push({ name, file: f });
     }
+    // ⬜ วัสดุใส (พัดพลาสติกใส): หน้ารองขาวต่อหน้างาน ทรงเดียวกับเลเยอร์รองขาวใน .ai (ถมดำ = ที่ต้องพิมพ์ขาว) · 21 ต.ค. 69
+    const whites = clearCut && guide?.whiteUnder ? printPages.map((v) => ({ name: `รองขาว · ${vname(v).replace(/^\d+\. /, "")}`, curves: whiteCurvesFor(resolve(v)) })) : [];
     const file = await buildPrintPdf({
       pages,
       wMm: W,
       hMm: H,
       cut: pdfCut,
       name: (noCal ? title : `${title}-ปฏิทิน${back.year}`).slice(0, 60),
+      ...(whites.length ? { whites } : {}),
     });
     return {
       file,
-      note: `ไฟล์เดียว ${pages.length + 1} หน้า — ${pages.length} หน้างาน (รวมตัดตก ${fmt.bleed} มม. · ตั้ง TrimBox ที่เส้นตัด) + หน้าเส้นไดคัทท้ายไฟล์`,
+      note:
+        `ไฟล์เดียว ${pages.length + whites.length + 1} หน้า — ${pages.length} หน้างาน (รวมตัดตก ${fmt.bleed} มม. · ตั้ง TrimBox ที่เส้นตัด)` +
+        (whites.length ? ` + ${whites.length} หน้ารองขาว (ถมดำ = ที่พิมพ์ขาว)` : "") +
+        ` + หน้าเส้นไดคัทท้ายไฟล์`,
     };
   }
 
@@ -3742,7 +3851,15 @@ export default function CalendarStudio({
     for (const g of groups) {
       const files: File[] = [];
       for (const v of vpages.filter((x) => x.card === g.card)) {
-        const f = await renderPage(fmt, (ctx, k) => drawPage(ctx, k, fmt, resolve(v), design, back, imgs), "image/jpeg", `${v.page.key}.jpg`);
+        const f = await renderPage(
+        fmt,
+        (ctx, k) => {
+          drawPage(ctx, k, fmt, resolve(v), design, back, imgs);
+          if (clearCut) clipToCut(ctx, k);
+        },
+        clearCut ? "image/png" : "image/jpeg",
+        `${v.page.key}.${clearCut ? "png" : "jpg"}`,
+      );
         if (!f) throw new Error(`ประกอบ ${vname(v)} ไม่สำเร็จ`);
         files.push(f);
       }
@@ -4194,12 +4311,17 @@ export default function CalendarStudio({
         setBusy(`กำลังประกอบหน้า ${i + 1}/${printPages.length}…`);
         // มีรูปบนหน้า (ช่องรูปหรือกรอบรูปอิสระ) = JPEG · ตารางล้วน = PNG คมกว่า
         const photo = !!lay(p).photo || elements.some((e) => e.page === p.key && e.kind === "photo");
+        // 🪭 วัสดุใส: ครอปตามเส้นตัด → ต้องเป็น PNG พื้นใส (JPEG จะกลายเป็นดำนอกวง)
+        const jpg = photo && !clearCut;
         const no = printPages.length > 2 ? `${String(i + 1).padStart(2, "0")}-` : "";
         const f = await renderPage(
           fmt,
-          (ctx, k) => drawPage(ctx, k, fmt, p, design, back, imgs),
-          photo ? "image/jpeg" : "image/png",
-          `${stem}${noCal ? "" : `-ปฏิทิน${back.year}`}-${no}${name}.${photo ? "jpg" : "png"}`.replace(/[\/:*?"<>|]/g, "-"),
+          (ctx, k) => {
+            drawPage(ctx, k, fmt, p, design, back, imgs);
+            if (clearCut) clipToCut(ctx, k);
+          },
+          jpg ? "image/jpeg" : "image/png",
+          `${stem}${noCal ? "" : `-ปฏิทิน${back.year}`}-${no}${name}.${jpg ? "jpg" : "png"}`.replace(/[\/:*?"<>|]/g, "-"),
         );
         if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ ลองใหม่อีกครั้ง`);
         out.push({ key: v.page.key, name, file: f });

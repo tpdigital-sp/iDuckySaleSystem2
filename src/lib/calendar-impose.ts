@@ -13,7 +13,7 @@
  * ชื่อไฟล์แบบร้าน "01_000_<ชื่องาน> (2ด้าน) = N ชิ้น.pdf" · "ปฏิทิน" = โหมดปฏิทิน · "(2ด้าน)" = เปิดหน้า-หลัง
  */
 
-import { PDFDocument, rgb, type PDFImage } from "pdf-lib";
+import { PDFDocument, PDFOperator, PDFOperatorNames, PDFPage, appendBezierCurve, closePath, moveTo, popGraphicsState, pushGraphicsState, rgb, setFillingRgbColor, type PDFImage } from "pdf-lib";
 
 const PT = 72 / 25.4;
 
@@ -95,12 +95,39 @@ export async function buildPieceFiles(input: {
  * 🖨 ไฟล์ .pdf ทั้งเล่ม (ปฏิทินตั้งโต๊ะ/แขวน/แคนวาส ฯลฯ ที่ไม่ใช่การ์ดชุด · ผู้ใช้สั่ง 14 ต.ค. 69 · เฉพาะเจ้าของร้าน)
  * ทุกหน้าที่จะพิมพ์เรียงตามลำดับในไฟล์เดียว (ขนาดรวมตัดตก · ตั้ง TrimBox ตรงเส้นตัด) + หน้าสุดท้าย = เส้นไดคัท
  */
+/**
+ * ⬜ ถมรูปทรง (เส้นโค้งเบซิเยร์ มม. · มุมซ้ายบน) ลงหน้า PDF แบบ even-odd — วงในกลายเป็นรู
+ * (ตัวลากเส้นรองขาวให้วงนอก/รูทิศเดียวกัน · drawSvgPath ของ pdf-lib ถม nonzero รูจะทึบ · 21 ต.ค. 69)
+ */
+export function fillCurvesEvenOdd(
+  pg: PDFPage,
+  curves: { s: [number, number]; g: [number, number, number, number, number, number][] }[],
+  hPt: number,
+  color: [number, number, number] = [0, 0, 0],
+) {
+  const X = (v: number) => v * PT;
+  const Y = (v: number) => hPt - v * PT;
+  const ops: PDFOperator[] = [pushGraphicsState(), setFillingRgbColor(color[0], color[1], color[2])];
+  for (const c of curves) {
+    ops.push(moveTo(X(c.s[0]), Y(c.s[1])));
+    for (const g of c.g) ops.push(appendBezierCurve(X(g[0]), Y(g[1]), X(g[2]), Y(g[3]), X(g[4]), Y(g[5])));
+    ops.push(closePath());
+  }
+  ops.push(PDFOperator.of(PDFOperatorNames.FillEvenOdd), popGraphicsState());
+  pg.pushOperators(...ops);
+}
+
 export async function buildPrintPdf(input: {
   pages: { name: string; file: Blob }[];
   wMm: number;
   hMm: number;
   cut: CutRect;
   name: string;
+  /**
+   * ⬜ หน้ารองขาว (งานวัสดุใส · พัดพลาสติกใส 21 ต.ค. 69 "ไฟล์ pdf ควรมีรองขาวด้วย") — svg path d (มม.) ทรงเดียวกับเลเยอร์ "รองขาว (White)" ใน .ai
+   * ต่อท้ายหน้างานทั้งหมด ก่อนหน้าเส้นไดคัท · ถมดำบนพื้นขาว (แบบเดียวกับมาสก์รองขาวของงานไดคัท = ดำ/ใส)
+   */
+  whites?: { name: string; curves: { s: [number, number]; g: [number, number, number, number, number, number][] }[] }[];
 }): Promise<File> {
   const doc = await PDFDocument.create();
   const W = input.wMm * PT;
@@ -118,10 +145,19 @@ export async function buildPrintPdf(input: {
     (r
       ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
       : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`);
+  const whites = input.whites ?? [];
+  for (const wp of whites) {
+    const pg = doc.addPage([W, H]);
+    fillCurvesEvenOdd(pg, wp.curves, H);
+    pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
+  }
   doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.5 / PT });
   const name = `${input.name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim()}.pdf`;
   doc.setTitle(name.replace(/\.pdf$/, ""));
-  doc.setSubject(input.pages.map((p, i) => `${i + 1}.${p.name}`).join(" · ") + ` · ${input.pages.length + 1}.เส้นไดคัท`);
+  const n0 = input.pages.length;
+  doc.setSubject(
+    [...input.pages.map((p, i) => `${i + 1}.${p.name}`), ...whites.map((wp, i) => `${n0 + i + 1}.${wp.name}`), `${n0 + whites.length + 1}.เส้นไดคัท`].join(" · "),
+  );
   doc.setCreator("iDuckyOfficial — จอสร้างปฏิทิน");
   const bytes = await doc.save();
   return new File([bytes as BlobPart], name, { type: "application/pdf" });
