@@ -11,11 +11,14 @@ import { uploadImage, uploadStream } from "@/lib/server/bot-kb";
  */
 export type CacheResult = { ok: true; url: string; cached: boolean } | { ok: false; reason: string; status: number; buf?: Buffer; type?: string };
 
+import { isLineRoomId } from "@/lib/line-room-id";
+
 const COL = "line-conversations";
 
 /** opts.timeoutMs — เวลารวมดึง+เก็บ (ค่าเริ่มต้น รูป 15 วิ · ไฟล์ 40 วิ) · สคริปต์บนเครื่อง (scripts/cache-line-file.mts) ส่งค่าใหญ่ได้เพราะไม่ติดเพดาน Netlify 26 วิ */
 export async function cacheLineImage(db: Firestore, uid: string, logId: string, opts: { timeoutMs?: number } = {}): Promise<CacheResult> {
-  if (!/^U[0-9a-f]{32}$/.test(uid) || !/^[A-Za-z0-9_-]{4,64}$/.test(logId)) return { ok: false, reason: "พารามิเตอร์ไม่ถูกต้อง", status: 400 };
+  // 👥 21 ต.ค. 69 รับห้องกลุ่ม (C…/R…) ด้วย — รูป/ไฟล์ที่สมาชิกส่งในกลุ่มดึงจาก LINE ด้วย messageId เหมือนกัน
+  if (!isLineRoomId(uid) || !/^[A-Za-z0-9_-]{4,64}$/.test(logId)) return { ok: false, reason: "พารามิเตอร์ไม่ถูกต้อง", status: 400 };
   const ref = db.collection(COL).doc(uid).collection("log").doc(logId);
   const snap = await ref.get();
   if (!snap.exists) return { ok: false, reason: "ไม่พบข้อความนี้", status: 404 };

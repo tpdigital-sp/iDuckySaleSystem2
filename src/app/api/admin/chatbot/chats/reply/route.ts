@@ -8,6 +8,7 @@ import { classifyRoom } from "@/lib/server/chat-urgency";
 import { syncCurrentCycleSoon } from "@/lib/server/chat-stats-sync";
 import { closePendingDrafts } from "@/lib/server/bot-drafts";
 import { toEmojis } from "@/lib/server/line-oa-manager";
+import { isLineGroupId, isLineRoomId } from "@/lib/line-room-id";
 
 /**
  * 💬 แอดมินตอบลูกค้า LINE จากหน้า /admin/chatbot/chats (เจ้าของร้านขอ 9 ต.ค. 69 15:20 — แบบผสม: ใช้กับเคสที่บอทส่งต่อ/ลูกค้าที่เปิดบอท
@@ -43,7 +44,9 @@ export async function POST(req: Request) {
 
   const b = (await req.json().catch(() => ({}))) as Body;
   const id = String(b.id ?? "").trim();
-  if (!/^U[0-9a-f]{32}$/.test(id)) return NextResponse.json({ error: "id ไม่ถูกต้อง" }, { status: 400 });
+  // 👥 21 ต.ค. 69 ห้องกลุ่ม (C…) / ห้องรวม (R…) ตอบได้เหมือนกัน — push ของ LINE รับ groupId/roomId เป็นปลายทาง
+  if (!isLineRoomId(id)) return NextResponse.json({ error: "id ไม่ถูกต้อง" }, { status: 400 });
+  const group = isLineGroupId(id);
   const text = String(b.text ?? "").trim().slice(0, 2000);
   // หน้าเว็บคิด index จากข้อความที่ trim แล้ว · ตัวที่ไม่ชี้ "$" ถูกตัดทิ้ง (กัน LINE 400)
   const emojis = text ? toEmojis(b.emojis, text).slice(0, 20).map(({ index, productId, emojiId }) => ({ index, productId, emojiId })) : [];
@@ -102,7 +105,8 @@ export async function POST(req: Request) {
     by: who,
     mode: "web",
   };
-  const pauseMin = b.pauseMinutes === undefined ? 30 : Math.max(0, Math.min(24 * 60, Number(b.pauseMinutes) || 0));
+  // กลุ่ม: บอทไม่ตอบอยู่แล้ว ไม่ต้องพัก
+  const pauseMin = group ? 0 : b.pauseMinutes === undefined ? 30 : Math.max(0, Math.min(24 * 60, Number(b.pauseMinutes) || 0));
   const pausedUntil = pauseMin > 0 ? new Date(now.getTime() + pauseMin * 60_000) : null;
   try {
     await Promise.all([
@@ -116,7 +120,7 @@ export async function POST(req: Request) {
     // 📝 แอดมินพิมพ์ตอบเองแล้ว → ร่างของบอทที่ค้างในห้องนี้ไม่ต้องส่ง (โหมดร่าง 13 ต.ค. 69)
     inBackground("close bot drafts", closePendingDrafts(db, id, who));
     // 🤖🏷 ร้านเพิ่งตอบ → ให้ AI ประเมินป้ายความเร่งด่วนใหม่ทันที (ตอบครบแล้ว 🔴 ลดเป็น 🟢 ไม่ต้องรอลูกค้าพิมพ์มาอีก)
-    inBackground("chat urgency", classifyRoom(id));
+    if (!group) inBackground("chat urgency", classifyRoom(id));
   } catch (e) {
     // ส่งถึงลูกค้าแล้ว แต่จดไม่ได้ — บอกให้รู้ ไม่ใช่โยน error ทั้งก้อน (ข้อความไปแล้ว ส่งซ้ำไม่ได้)
     return NextResponse.json({ ok: true, sent: true, logged: false, warn: `ส่งถึงลูกค้าแล้ว แต่บันทึกลงห้องแชทไม่ได้: ${(e as Error).message}` });

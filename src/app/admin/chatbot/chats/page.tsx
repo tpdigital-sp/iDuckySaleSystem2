@@ -10,6 +10,7 @@ import { BANK_CARD } from "@/lib/bank-card";
 import SavedReplyPicker from "./SavedReplyPicker";
 import RedraftButton from "./RedraftButton";
 import FlexView from "./FlexView";
+import { isLineGroupId, isLineRoomId } from "@/lib/line-room-id";
 import { realignEmojis, type Emoji } from "../saved-replies/shared";
 import { DEFAULT_TAGS, keyFromLabel, TAG_COLORS, TAG_PALETTE, type ChatTag, type TagColor } from "@/lib/chat-tags";
 import type { OaLive } from "@/lib/server/oa-chat-sync";
@@ -26,6 +27,9 @@ import { isDraftLive } from "@/lib/draft-live";
  */
 type Row = {
   id: string;
+  /** 👥 21 ต.ค. 69 user = ลูกค้าเดี่ยว (U…) · group = ไลน์กลุ่ม (C…) · room = ห้องรวม (R…) */
+  kind?: "user" | "group" | "room";
+  memberCount?: number;
   displayName: string;
   pictureUrl: string;
   lastSeen: string;
@@ -53,7 +57,7 @@ type Row = {
 };
 type NoteItem = { id: string; text: string; by: string; at: string };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[]; flex?: unknown[] };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; senderName?: string; senderPic?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: { orderId: string; title: string; color: string; asText?: boolean }; draftImages?: { url: string; preview: string }[]; flex?: unknown[] };
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 type Settings = { mode: string; newSince: string; enabled: boolean };
 type ListRes = { rows: Row[]; settings: Settings; count: number; waitingCount: number; unreadCount: number; draftCount?: number; botDraftCount?: number; tagCounts?: Record<string, number>; next?: string; partial?: boolean };
@@ -133,14 +137,20 @@ const listTime = (iso: string) => {
   return dayKey(iso) === dayKey(new Date().toISOString()) ? fmtTime(iso) : d.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short" });
 };
 
-function Avatar({ src, size = 44 }: { src?: string; size?: number }) {
+function Avatar({ src, size = 44, group = false }: { src?: string; size?: number; group?: boolean }) {
   return src ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={src} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
   ) : (
-    <div className="shrink-0 rounded-full" style={{ width: size, height: size, background: "var(--dk-hair)" }} />
+    // 👥 ห้องกลุ่มที่ LINE ไม่มีรูปให้ (ห้องรวม R… / กลุ่มไม่ตั้งรูป) → ไอคอนกลุ่มแทนวงเปล่า
+    <div className="grid shrink-0 place-items-center rounded-full" style={{ width: size, height: size, background: "var(--dk-hair)", fontSize: Math.round(size * 0.46) }}>
+      {group ? "👥" : ""}
+    </div>
   );
 }
+/** 👥 ห้องกลุ่ม/ห้องรวม (C…/R…) — เก็บแชท+ตอบจากเว็บได้ · ไม่มีสวิตช์บอท/ร่าง/ผูกออเดอร์ (21 ต.ค. 69) */
+const isGroupRow = (r: { id: string; kind?: string }) => r.kind === "group" || r.kind === "room" || isLineGroupId(r.id);
+const groupLabel = (r: { kind?: string; memberCount?: number }) => `${r.kind === "room" ? "👥 ห้องรวม" : "👥 กลุ่ม"}${r.memberCount ? ` · ${r.memberCount} คน` : ""}`;
 
 const nameOf = (r: { adminAlias?: string; displayName?: string; id: string }) => r.adminAlias || r.displayName || r.id.slice(0, 10) + "…";
 /** 🏷 ป้ายลูกค้าจากแคตตาล็อก settings/chat-tags (หลายป้ายได้ · แก้ชื่อ/สี/เพิ่ม/ลบได้ที่ปุ่ม ⚙️ จัดการป้าย) */
@@ -327,10 +337,10 @@ function Chats() {
     return () => io.disconnect();
   }, [next, moreBusy, lastPageEmpty, q, loadMore, rows.length]);
 
-  // 🔗 ?id=U… เปิดห้องนั้นเลย (ลิงก์ "เปิดแชท" จากหน้า บอทเรียนรู้ · 14 ต.ค. 69)
+  // 🔗 ?id=U… เปิดห้องนั้นเลย (ลิงก์ "เปิดแชท" จากหน้า บอทเรียนรู้ · 14 ต.ค. 69) · 👥 21 ต.ค. 69 รับห้องกลุ่ม C…/R… ด้วย
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("id") ?? "";
-    if (/^U[0-9a-f]{32}$/.test(id)) void openRoom(id);
+    if (isLineRoomId(id)) void openRoom(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // 🔗 แถบที่อยู่ตามห้องที่เปิดอยู่เสมอ (เจ้าของร้าน 14 ต.ค. 69 "อยากส่งลิงก์แชทลูกค้าคนนั้นให้พนักงานคนอื่นเปิดดูตรง ๆ")
@@ -1103,7 +1113,12 @@ function Chats() {
             //   ป้ายที่ต้องลงมือ (รอแอดมิน · ร่างรอส่ง) เป็นเม็ดทึบนำหน้า · สถานะบอท/ลูกค้าใหม่/โน้ต เป็นตัวหนังสือจาง ๆ ต่อท้าย (เดิมเม็ดสีเท่ากันหมดจนแยกไม่ออก)
             rows.map((r) => {
               const on = sel === r.id;
-              const quiet = [r.scope === "new" ? "🆕 ใหม่" : "", r.pausedUntil ? "⏸ พักบอท" : r.botAllowed ? "🤖 บอทตอบ" : "", r.botDraft ? "📝 ร่างก่อนส่ง" : "", r.adminNotes.length ? `📝${r.adminNotes.length > 1 ? r.adminNotes.length : ""}` : ""].filter(Boolean);
+              const grp = isGroupRow(r);
+              // 👥 กลุ่ม: ป้าย "กลุ่ม · N คน" แทนสถานะบอท/ลูกค้าใหม่ (บอทไม่ตอบในกลุ่ม)
+              const quiet = (grp
+                ? [groupLabel(r), r.adminNotes.length ? `📝${r.adminNotes.length > 1 ? r.adminNotes.length : ""}` : ""]
+                : [r.scope === "new" ? "🆕 ใหม่" : "", r.pausedUntil ? "⏸ พักบอท" : r.botAllowed ? "🤖 บอทตอบ" : "", r.botDraft ? "📝 ร่างก่อนส่ง" : "", r.adminNotes.length ? `📝${r.adminNotes.length > 1 ? r.adminNotes.length : ""}` : ""]
+              ).filter(Boolean);
               const hasChips = r.needsHumanFollowup || r.draftPending || r.adminTags.length > 0 || quiet.length > 0;
               return (
                 <button
@@ -1118,7 +1133,7 @@ function Chats() {
                   style={{ borderColor: "var(--ln-line)", background: on ? "var(--ln-sel)" : undefined }}
                 >
                   {on ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: "var(--ln-green)" }} /> : null}
-                  <Avatar src={r.pictureUrl} size={46} />
+                  <Avatar src={r.pictureUrl} size={46} group={grp} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                       <span className="min-w-0 flex-1 truncate text-[14.5px]" style={{ fontWeight: r.unread ? 800 : 700 }}>
@@ -1333,12 +1348,13 @@ function Chats() {
                 <button type="button" onClick={() => setSel("")} aria-label="กลับไปรายชื่อ" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-xl md:hidden">
                   ←
                 </button>
-                <Avatar src={detail?.pictureUrl} size={40} />
+                <Avatar src={detail?.pictureUrl} size={40} group={!!detail && isGroupRow(detail)} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[16px] font-extrabold leading-tight" title={detail ? nameOf(detail) : sel}>
                     {detail ? nameOf(detail) : sel}
                   </p>
                   <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--dk-faint)" }}>
+                    {detail && isGroupRow(detail) ? <span className="font-bold" style={{ color: "var(--dk-navy-soft)" }}>{groupLabel(detail)} · </span> : null}
                     {detail?.lastSeen ? `ล่าสุด ${ago(detail.lastSeen)}` : ""}
                     {live.at ? <LiveStamp live={live} /> : null}
                     {detail?.createdAt ? <span className="hidden @xl:inline">{` · ทักครั้งแรก ${fmtDay(detail.createdAt)}`}</span> : null}
@@ -1346,7 +1362,7 @@ function Chats() {
                   </p>
                 </div>
                 {/* 🤖 สวิตช์บอท: เขียว "บอทตอบ: เปิด" / เทา "ปิด" / ม่วง "พักถึง HH:mm" (กดเพื่อสลับ) · หัวแคบเหลือ 🤖 + เปิด/ปิด */}
-                {detail ? <BotPill detail={detail} canToggle={can("orders.edit") || canReply} onToggle={() => void toggleBot(detail.id, !detail.botAllowed)} onWake={() => void wakeBot(detail.id)} labelClass="hidden @lg:inline" /> : null}
+                {detail && !isGroupRow(detail) ? <BotPill detail={detail} canToggle={can("orders.edit") || canReply} onToggle={() => void toggleBot(detail.id, !detail.botAllowed)} onWake={() => void wakeBot(detail.id)} labelClass="hidden @lg:inline" /> : null}
                 {detail ? (
                   <button
                     type="button"
@@ -1371,13 +1387,13 @@ function Chats() {
                 ) : null}
               </div>
               {/* แถว 2: ป้าย — แถวเดียว ไม่หักบรรทัด (ล้นแล้วเลื่อนข้าง) · ป้ายที่ต้องลงมือ (รอแอดมิน) ทึบนำหน้า */}
-              {detail && (detail.needsHumanFollowup || detail.adminTags.length || detail.scope === "new" || detail.botDraft) ? (
+              {detail && (detail.needsHumanFollowup || detail.adminTags.length || (detail.scope === "new" && !isGroupRow(detail)) || detail.botDraft) ? (
                 <div className="flex items-center gap-1.5 overflow-x-auto px-2 pb-2 md:px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   <span className="hidden w-[48px] shrink-0 md:block" aria-hidden="true" />
                   {detail.needsHumanFollowup ? <Chip tone="coral" solid>🙋 รอแอดมิน</Chip> : null}
                   {detail.adminTags.map((k) => <TagChip key={k} k={k} tags={tagCatalog} />)}
                   {detail.botDraft ? <Chip tone="amber">📝 ร่างก่อนส่ง</Chip> : null}
-                  {detail.scope === "new" ? <Chip tone="mint">🆕 ลูกค้าใหม่</Chip> : null}
+                  {detail.scope === "new" && !isGroupRow(detail) ? <Chip tone="mint">🆕 ลูกค้าใหม่</Chip> : null}
                 </div>
               ) : null}
             </div>
@@ -1457,6 +1473,15 @@ function Chats() {
                       </div>
                     );
                   }
+                  // 👥 21 ต.ค. 69 เหตุการณ์ในกลุ่ม (บัญชีร้านเข้า/ออก · สมาชิกเข้า/ออก) = ข้อความกลางจอ ไม่ใช่ฟอง
+                  if (m.role === "system" && !m.notice) {
+                    return (
+                      <div key={m.id || i}>
+                        {dayChip}
+                        <p className="my-2 text-center text-[11.5px]" style={{ color: "var(--dk-faint)" }}>{m.text} · {fmtTime(m.at)}</p>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={i}>
                       {showDay ? (
@@ -1467,7 +1492,7 @@ function Chats() {
                         </div>
                       ) : null}
                       <div className={`mb-2 flex items-end gap-1.5 ${ours ? "justify-end" : "justify-start"}`}>
-                        {!ours ? <Avatar src={detail?.pictureUrl} size={28} /> : null}
+                        {!ours ? <Avatar src={m.senderPic || (detail && isGroupRow(detail) ? "" : detail?.pictureUrl)} size={28} group={!!detail && isGroupRow(detail)} /> : null}
                         {ours ? (
                           <span className="mb-0.5 shrink-0 text-right text-[10px] leading-tight" style={{ color: "var(--dk-faint)" }}>
                             {/* 📥 mode "oa" = พิมพ์ใน LINE OA Manager แล้วนำเข้าจาก CSV (15 ต.ค. 69) · mode "auto" = ข้อความตอบกลับอัตโนมัติของ LINE */}
@@ -1487,6 +1512,8 @@ function Chats() {
                                 : { background: "white", color: "var(--dk-navy)", borderRadius: "4px 18px 18px 18px", boxShadow: "inset 0 0 0 1px var(--ln-them-line)" }
                           }
                         >
+                          {/* 👥 ชื่อคนพิมพ์ในกลุ่ม (LINE member profile · จดมากับข้อความจาก /api/bot/group-log) */}
+                          {!ours && m.senderName ? <span className="mb-0.5 block text-[11px] font-bold" style={{ color: "var(--ln-green-ink)" }}>{m.senderName}</span> : null}
                           {(() => {
                             // 🖼 17:30 รูปจากลูกค้า: log มี messageId (ยังไม่มี imageUrl) → โหลดผ่าน API ที่ดึงจาก LINE แล้วแคช · รูปบอท/แอดมิน: imageUrl ตรง ๆ
                             // 🐛 18:10 เคยขอรูปทุก entry ที่มี messageId (ข้อความตัวอักษรก็มี) → LINE 400 → ขึ้น "รูปหมดอายุ" ใต้ทุกข้อความ · ต้องเฉพาะ type image
@@ -1561,7 +1588,7 @@ function Chats() {
             {/* ↻ 20 ต.ค. 69 กด "ตอบใหม่" แล้วรายการท้ายสุดเป็นร่างที่ทิ้ง → แถบไม่ขึ้น · ข้ามร่างที่ไม่ได้ค้างรอส่งก่อนดูว่าลูกค้าพิมพ์ล่าสุดไหม */}
             {(() => {
               const lastReal = [...thread].reverse().find((x) => !(x.role === "draft" && x.status !== "pending"));
-              return canReply && detail && (detail.botDraft || settings?.mode === "draft") && lastReal?.role === "user" ? (
+              return canReply && detail && !isGroupRow(detail) && (detail.botDraft || settings?.mode === "draft") && lastReal?.role === "user" ? (
                 <RedraftButton key={detail.id} id={detail.id} toast={toast} startedAt={redraftAt[detail.id]} lastUserAt={lastReal.at} onRejected={() => refreshRoom(detail.id, true)} onStarted={() => setRedraftAt((x) => ({ ...x, [detail.id]: Date.now() }))} />
               ) : null;
             })()}
@@ -2897,34 +2924,35 @@ function InfoPanel({
       window.prompt("คัดลอก userId", detail.id);
     }
   };
+  const grp = isGroupRow(detail);
   const meta = [
-    detail.createdAt ? `ทักครั้งแรก ${fmtDay(detail.createdAt)}` : "",
+    detail.createdAt ? `${grp ? "เริ่มเก็บแชท" : "ทักครั้งแรก"} ${fmtDay(detail.createdAt)}` : "",
     detail.lastSeen ? `ล่าสุด ${ago(detail.lastSeen)}` : "",
     detail.lastAdminAt ? `แอดมินตอบ ${ago(detail.lastAdminAt)}` : "",
-    detail.messageCount ? `บอทคุย ${detail.messageCount} ข้อความ` : "",
+    detail.messageCount ? `${grp ? "" : "บอทคุย "}${detail.messageCount} ข้อความ` : "",
   ].filter(Boolean);
   const aiOn = !!detail.aiTag?.key && detail.adminTags.includes(detail.aiTag.key);
   const body = (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="sticky top-0 z-10 flex min-h-[60px] items-center gap-2 border-b bg-white px-4 py-2" style={{ borderColor: "var(--ln-line)" }}>
-        <span className="text-[15px] font-extrabold">ข้อมูลลูกค้า</span>
+        <span className="text-[15px] font-extrabold">{grp ? "ข้อมูลกลุ่ม" : "ข้อมูลลูกค้า"}</span>
         <button type="button" onClick={onClose} aria-label="ปิด" className="ml-auto grid h-11 w-11 place-items-center rounded-xl text-lg hover:bg-[var(--ln-field)]">✕</button>
       </div>
 
       {/* โปรไฟล์ */}
       <div className="px-4 pb-3 pt-4">
         <div className="flex items-center gap-3">
-          <Avatar src={detail.pictureUrl} size={56} />
+          <Avatar src={detail.pictureUrl} size={56} group={grp} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[17px] font-extrabold leading-tight">{nameOf(detail)}</p>
             {detail.adminAlias && detail.displayName ? (
               <p className="truncate text-[12px]" style={{ color: "var(--dk-faint)" }}>
-                ชื่อ LINE: {detail.displayName}
+                {grp ? "ชื่อกลุ่ม" : "ชื่อ LINE"}: {detail.displayName}
               </p>
             ) : null}
             <div className="mt-1 flex flex-wrap gap-1">
               {detail.needsHumanFollowup ? <Chip tone="coral" solid>🙋 รอแอดมิน</Chip> : null}
-              <Chip tone={detail.scope === "new" ? "mint" : "sky"}>{detail.scope === "new" ? "🆕 ลูกค้าใหม่" : "👤 ลูกค้าเก่า"}</Chip>
+              {grp ? <Chip tone="sky">{groupLabel(detail)}</Chip> : <Chip tone={detail.scope === "new" ? "mint" : "sky"}>{detail.scope === "new" ? "🆕 ลูกค้าใหม่" : "👤 ลูกค้าเก่า"}</Chip>}
             </div>
           </div>
         </div>
@@ -2936,7 +2964,7 @@ function InfoPanel({
         <button
           type="button"
           onClick={() => void copyId()}
-          title="คัดลอก userId ของ LINE"
+          title={grp ? "คัดลอกรหัสห้อง (groupId) ของ LINE" : "คัดลอก userId ของ LINE"}
           className="mt-1 flex max-w-full items-center gap-1.5 rounded-md text-left text-[10.5px] transition hover:opacity-70"
           style={{ color: "var(--dk-faint)" }}
         >
@@ -2945,15 +2973,21 @@ function InfoPanel({
             {copied ? "✓ คัดลอกแล้ว" : "คัดลอก"}
           </span>
         </button>
+        {/* 👥 กลุ่ม: บอทไม่ตอบ/ไม่ร่างในกลุ่ม (เก็บแชท + แอดมินตอบจากเว็บได้) — ซ่อนสวิตช์ทั้งสอง */}
+        {grp ? (
+          <p className="mt-3 rounded-xl px-3 py-2 text-[12.5px] leading-snug" style={{ background: "var(--ln-field)", color: "var(--dk-navy-soft)" }}>
+            👥 ห้องกลุ่ม — บอทไม่ตอบในกลุ่ม ระบบเก็บข้อความไว้ให้ดู ตอบจากหน้านี้ได้ (ข้อความส่งเข้ากลุ่ม นับโควตา push)
+          </p>
+        ) : null}
         {/* สวิตช์บอทแถวเดียวกับคำอธิบาย */}
-        <div className="mt-3 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "var(--ln-field)" }}>
+        <div className="mt-3 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "var(--ln-field)", display: grp ? "none" : undefined }}>
           <span className="min-w-0 flex-1 text-[12.5px] font-bold" style={{ color: "var(--dk-navy-soft)" }}>
             บอทตอบลูกค้านี้
           </span>
           <BotPill detail={detail} canToggle={canToggle} onToggle={onToggle} onWake={onWake} />
         </div>
         {/* 📝 ร่างก่อนส่งรายคน — เปิดแล้วบอทคิดคำตอบให้คนนี้แต่เก็บเป็นร่างรอกดส่ง (แม้ร้านอยู่โหมดเก็บแชทอย่างเดียว) · ร้านเปิดโหมดร่างทั้งร้านอยู่ = ทุกคนร่างอยู่แล้ว */}
-        <div className="mt-1.5 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: detail.botDraft || shopDraft ? "var(--dk-yolk-wash)" : "var(--ln-field)" }}>
+        <div className="mt-1.5 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: detail.botDraft || shopDraft ? "var(--dk-yolk-wash)" : "var(--ln-field)", display: grp ? "none" : undefined }}>
           <span className="min-w-0 flex-1 text-[12.5px] leading-snug" style={{ color: detail.botDraft || shopDraft ? "var(--dk-yolk-ink)" : "var(--dk-navy-soft)" }}>
             <b>📝 ร่างก่อนส่ง</b>
             <span className="block text-[11px] font-normal">
@@ -3084,8 +3118,8 @@ function InfoPanel({
         </div>
       </PanelSection>
 
-      {/* 📦 ออเดอร์ */}
-      {orders}
+      {/* 📦 ออเดอร์ — กลุ่มไม่ผูกออเดอร์ (ออเดอร์ผูกกับ userId คนเดียว) */}
+      {grp ? null : orders}
 
       {/* 📝 โน้ต */}
       <NotesBlock notes={detail.adminNotes} canReply={canReply} saving={noteSaving} onAdd={onNoteAdd} onEdit={onNoteEdit} onDel={onNoteDel} />

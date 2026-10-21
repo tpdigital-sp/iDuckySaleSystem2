@@ -7,6 +7,7 @@ import { getChatFirestore } from "@/lib/server/firebase-admin";
 import { loadChatIndex, norm, core } from "@/lib/server/line-chat";
 import { loadChatTags } from "@/lib/server/chat-tags-store";
 import { syncOaRoom, type OaLive } from "@/lib/server/oa-chat-sync";
+import { isLineRoomId, lineRoomKind, type LineRoomKind } from "@/lib/line-room-id";
 
 /**
  * 💬 แชท LINE ที่บอทเห็น — อ่านจาก Firestore `ordersure/line-conversations` (บอท n8n เขียน)
@@ -35,6 +36,10 @@ const COL = "line-conversations";
 
 type Row = {
   id: string;
+  /** 👥 21 ต.ค. 69 user = ลูกค้าเดี่ยว (U…) · group = ไลน์กลุ่ม (C…) · room = ห้องรวม (R…) — กลุ่มเก็บแชท+ตอบจากเว็บ บอทไม่ตอบ */
+  kind: LineRoomKind;
+  /** จำนวนสมาชิก (เฉพาะกลุ่ม/ห้องรวม · ถาม LINE ตอนจดข้อความ) */
+  memberCount?: number;
   displayName: string;
   pictureUrl: string;
   lastSeen: string;
@@ -65,7 +70,7 @@ type Row = {
   adminAlias: string;
 };
 type CardRef = { name: string; url: string; image?: string; price?: string };
-type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice; draftImages?: { url: string; preview: string }[]; flex?: unknown[] };
+type LogEntry = { id?: string; role: string; text: string; at: string; type?: string; mode?: string; by?: string; /** 👥 คนพิมพ์ในกลุ่ม (ชื่อ/รูปจาก LINE member profile) */ senderName?: string; senderPic?: string; status?: string; approvedBy?: string; edited?: boolean; draftText?: string; imageUrl?: string; messageId?: string; imageExpired?: boolean; card?: { name: string; url: string }; cards?: CardRef[]; file?: { url: string; name: string; size: number }; notice?: Notice; draftImages?: { url: string; preview: string }[]; flex?: unknown[] };
 /** 🎴 การ์ดแจ้งลูกค้าที่ระบบส่งเอง (lib/server/chat-notice-log.ts) */
 type Notice = { orderId: string; title: string; color: string; asText?: boolean };
 type Settings = { mode: string; newSince: string; enabled: boolean; userIds: string[]; draftUserIds: string[]; allReadAt: string };
@@ -108,8 +113,11 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
   const msgs = Array.isArray(x.messages) ? (x.messages as { role?: unknown; text?: unknown }[]) : [];
   const lastMsg = msgs.length ? msgs[msgs.length - 1] : null;
   const preview = String(x.lastUserText ?? "") || (lastMsg ? `${String(lastMsg.role ?? "") === "user" ? "" : "ร้าน: "}${String(lastMsg.text ?? "")}` : "");
+  const kind = lineRoomKind(id) ?? "user";
   return {
     id,
+    kind,
+    ...(kind !== "user" ? { memberCount: Number(x.memberCount ?? 0) || 0 } : {}),
     displayName: String(x.displayName ?? ""),
     pictureUrl: String(x.pictureUrl ?? ""),
     lastSeen,
@@ -119,8 +127,8 @@ function toRow(id: string, x: Record<string, unknown>, createdAt: string, cfg: S
     scope,
     botScope,
     needsHumanFollowup: x.needsHumanFollowup === true,
-    botAllowed: cfg.userIds.includes(id),
-    botDraft: cfg.draftUserIds.includes(id),
+    botAllowed: kind === "user" && cfg.userIds.includes(id),
+    botDraft: kind === "user" && cfg.draftUserIds.includes(id),
     pausedUntil: paused && paused > new Date().toISOString() ? paused : "",
     lastAdminAt: lastAdmin,
     unread,
@@ -197,7 +205,8 @@ export async function GET(req: Request) {
   const db = getChatFirestore();
   const u = new URL(req.url);
   const id = (u.searchParams.get("id") ?? "").trim();
-  const roomRef = db && /^U[0-9a-f]{32}$/.test(id) ? db.collection(COL).doc(id) : null;
+  // 👥 21 ต.ค. 69 เปิดห้องกลุ่ม (C…) / ห้องรวม (R…) ได้ — ข้อความเข้าทาง /api/bot/group-log
+  const roomRef = db && isLineRoomId(id) ? db.collection(COL).doc(id) : null;
   const cfgP = db ? botSettings(db) : null;
   const roomP = roomRef ? roomRef.get() : null;
   const logQ = roomRef ? roomLog(roomRef, u) : null;
@@ -220,9 +229,10 @@ export async function GET(req: Request) {
     // 🐢 20 ต.ค. 69 เดิมรอ OA สูงสุด 4 วิ (วัดจริง 1.1–1.65 วิ) ทุกครั้งที่เปิดห้อง + ทุก 10 วิของโพล → ไม่รอ (waitMs 0)
     //    งานซิงก์วิ่งต่อเบื้องหลัง เขียนลง log แล้วรอบโพลถัดไป (3 วิ) / รีเฟรชหน้าต่างล่าสุด (30 วิ) เห็นเอง
     // prefetch=1 (หน้าจอ preload ตอนเลื่อนเมาส์ผ่านแถว) ไม่ซิงก์ OA — ผ่านหลายห้องจะได้ไม่ยิง OA Manager รัว ๆ · เปิดจริงแล้วรีเฟรชค่อยซิงก์
-    const oaLive: OaLive = u.searchParams.get("prefetch")
+    // ห้องกลุ่ม: OA Manager ไม่มีรหัสห้องรายคนให้ซิงก์ — ข้าม
+    const oaLive: OaLive | undefined = row.kind !== "user" ? undefined : u.searchParams.get("prefetch")
       ? { state: "ok", added: 0, at: new Date().toISOString(), pending: true }
-      : await syncOaRoom(db, id, x, { waitMs: 0 }).catch((e: unknown) => ({ state: "error", error: e instanceof Error ? e.message : String(e), at: new Date().toISOString() }));
+      : await syncOaRoom(db, id, x, { waitMs: 0 }).catch((e: unknown) => ({ state: "error" as const, error: e instanceof Error ? e.message : String(e), at: new Date().toISOString() }));
     const { after, beforeLog } = logQ;
     const logDocs = after ? logSnap.docs : logSnap.docs.reverse();
     const hasMore = !after && logSnap.docs.length >= LOG_PAGE;
@@ -241,6 +251,8 @@ export async function GET(req: Request) {
         type: y.type ? String(y.type) : undefined,
         mode: y.mode ? String(y.mode) : undefined,
         by: y.by ? String(y.by) : undefined,
+        senderName: y.senderName ? String(y.senderName) : undefined,
+        senderPic: y.senderPic ? String(y.senderPic) : undefined,
         // 📝 ร่างของบอท: pending/superseded/discarded/sent · คำตอบที่แอดมินอนุมัติ = approvedBy
         status: y.status ? String(y.status) : undefined,
         approvedBy: y.approvedBy ? String(y.approvedBy) : undefined,
