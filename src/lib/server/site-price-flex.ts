@@ -182,6 +182,12 @@ export function sitePriceMessages(site: SiteAnswer, userText: string): { message
 
   // 1) ถามราคา → การ์ดราคาแทนข้อความ
   const askPrice = ASK_PRICE.test(userText) || site.understood?.intent === "price";
+  // 🧾 price_multi (รายการหลายสินค้า 21 ต.ค. 69) = ข้อความรวมทุกรายการ + ประโยคถามต่อ + การ์ดสินค้าทุกตัว (ไม่ใช่การ์ดราคาใบเดียวของตัวแรก)
+  if (intent === "price_multi" && products.length) {
+    const askNext = String(site.askNext ?? "").trim();
+    const text = `${stripUrls(replyText) || replyText}${askNext ? `\n\n${askNext}` : ""}`;
+    return { messages: [{ type: "text", text }, productFlex(products.slice(0, 8)) as unknown as LineMsg], replyText, needsHumanFollowup };
+  }
   if (askPrice && products.length && /^price/.test(intent)) {
     const aLines = answer.split("\n");
     const hi = aLines.findIndex((l) => l.trim() && !/^[•·-]/.test(l.trim()) && !/^https?:/i.test(l.trim()));

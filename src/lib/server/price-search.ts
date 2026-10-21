@@ -8,6 +8,8 @@ import {
   fixTypos,
   gameCardFoilAnswer,
   knowledgeItems,
+  listAnswer,
+  parseListItems,
   lcsLen,
   norm,
   isMinQtyIntent,
@@ -182,7 +184,12 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   // understandModel = ชื่อโมเดล Gemini ไว้ทดสอบเทียบ · ไม่ส่ง = ค่าเริ่มต้น gemini-3.8-flash ถอยไป claude-sonnet-5-5 เมื่อล้มเหลว
   // ⚠️ ไม่รับชื่อ Claude ทางนี้ — เส้นนี้เปิดสาธารณะ ใครก็ยิงเปลืองค่า Claude ได้ (เทียบโมเดลใช้ setUnderstandCallerForEval ในสคริปต์แทน)
   const understandModel = typeof body.understandModel === "string" && /^gemini-[a-z0-9.-]+$/.test(body.understandModel) ? body.understandModel : undefined;
-  const u: Understanding | null = body.mode ? null : await understand(query, context, body.history, profile, understandModel);
+  // 🧾 21 ต.ค. 69 ข้อความแบบรายการหลายสินค้า ("- Passport Case / - ตุ๊กตาปักหู / - MagSafe … 100 ชิ้น ตกชิ้นละเท่าไหร่ สกรีนกี่สี")
+  //   → ด่านตายตัวแยกทีละบรรทัดก่อน ไม่ให้ LLM อ่านทั้งก้อน (ไม่นิ่ง: เคยได้ สเปคตัวเดียว / เมนูถามชื่อซ้ำ / ราคา 2 ตัว จากข้อความเดียวกัน)
+  //   ⚠️ ใช้ข้อความดิบ ไม่ใช่ query ที่ผ่าน fixTypos — fixTypos ยุบ "\n\n" เหลือช่องว่างเดียว บรรทัดสุดท้ายของรายการเลยติดกับประโยคท้าย (MagSafe หาย)
+  const list = body.mode ? null : parseListItems(String(body.query ?? body.message ?? body.text ?? body.q ?? ""));
+  const listAns = list ? await listAnswer(list, query, { qty, context, history: body.history, profile, model: understandModel }).catch(() => null) : null;
+  const u: Understanding | null = body.mode || listAns ? null : await understand(query, context, body.history, profile, understandModel);
   // 🧠 ตัวเลือกที่คุยไว้แล้วในรอบนี้ ให้เครื่องคิดราคาจำต่อ (sessionCarry · 19 ต.ค. 69 "ให้จำข้อความก่อนหน้าได้")
   const carry = sessionCarry(body.history);
 
@@ -196,7 +203,9 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
   // 💸 8 ต.ค. 69 17:33 "แนะนำสินค้าที่ราคาไม่ถึง 100 บาทหน่อย" — ไม่เอ่ยสินค้า + บอกงบ → เมนูสินค้าตามงบ (เดิมไปจับร่าง "สินค้าใหม่")
   const budget = !body.mode && (!u || !u.products.length) ? parseBudgetCap(query) : null;
   const budgetAns = budget && /แนะนำ|อะไรบ้าง|มีอะไร|ตัวไหน|อะไรดี|แบบไหน|สินค้า|ของ|ถูก/.test(query) ? await budgetMenu(budget) : null;
-  if (budgetAns) {
+  if (listAns) {
+    ans = listAns;
+  } else if (budgetAns) {
     ans = budgetAns;
   } else if ((IMG_REF_RE.test(query) && lastUserTurnHasImage(body.history)) || unseenRef) {
     // 🖼 8 ต.ค. 69 LINE: "รับทำงานแบบนี้ไหมคะ" 4 วิหลังส่งรูปป้าย PP Board — เครื่องคิดราคาไม่เห็นรูป เคยโยงไป "พวงกุญแจอะคริลิค" ที่คุยค้าง
@@ -346,7 +355,7 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     ans.answer &&
     ans.product &&
     !/_menu$/.test(ans.intent) &&
-    !/^gate:/.test(ans.source) && // 🎴 คำตอบตายตัวจากด่าน (การ์ดเกมหุ้มฟอยล์) ครบในตัวแล้ว — ไม่ต่อบรรทัดอ่านหน้าสินค้าซ้อน
+    !/^(gate:|list-gate)/.test(ans.source) && // 🎴🧾 คำตอบตายตัวจากด่าน (การ์ดเกมหุ้มฟอยล์ · รายการหลายสินค้า — ใส่คำถามพ่วงต่อสินค้าเองแล้ว) ไม่ต่อบรรทัดอ่านหน้าสินค้าซ้อน
     /^(price|spec|minqty)/.test(ans.intent) &&
     (EXTRA_ASK_RE.test(extraAskText) || parts.length >= 2)
   ) {

@@ -793,13 +793,131 @@ export async function gameCardFoilAnswer(id: string, foil = true): Promise<Price
 }
 
 /**
+ * 🧾 ข้อความแบบ "รายการ" หลายสินค้า (21 ต.ค. 69 เจ้าของร้าน: ลูกค้าพิมพ์ "- Passport Case / - ตุ๊กตาปักหู / - MagSafe ติดหลังโทรศัพท์ ขั้นต่ำ 100 ชิ้น ตกชิ้นละเท่าไหร่ สกรีนได้กี่สี")
+ *   เดิมปล่อยให้ LLM อ่านทั้งก้อน → ไม่นิ่ง (รอบหนึ่งตอบสเปคตัวเดียว รอบหนึ่งกางเมนูถามชื่อ+จำนวนซ้ำ รอบหนึ่งคิดราคา 2 ตัว) และ MagSafe ถูกทิ้งเงียบ ๆ เพราะชื่อตรง 3 สินค้า
+ *   → แยกบรรทัดที่ขึ้นต้นด้วย - • · * หรือ 1. 2) ออกมาเป็นรายการ (≥2 รายการ) · ส่วนที่เหลือ (tail) = จำนวนรวม + คำถามพ่วง
+ */
+/**
+ * บรรทัดที่เป็น "สเปคของสินค้าเดียว" ไม่ใช่ชื่อสินค้า — ลูกค้าชอบพิมพ์ "- พิมพ์ 2 ด้าน / - เคลือบเงา / - (ตัดแบ่ง) ขนาด A6 / - จำนวน 1 ผืน / - ลายการ์ตูน1 : 100ชิ้น"
+ * (ไล่จากข้อความจริง 220 เคส: ด่านรายการจับ 17 เคส แต่เป็นรายการสินค้าจริงแค่ 3) → ทิ้งบรรทัดพวกนี้ก่อนนับว่าเป็นรายการ
+ */
+const SPEC_LINE_RE =
+  /^(?:[(*]|พิมพ์|สกรีน|เคลือบ|ขนาด|จำนวน|ไดคัท|ตัด|มุม|เนื้อ|กระดาษ|วัสดุ|สี|ลาย|ไฟล์|ส่ง|ใช้|ไม่|แบบ|รองพื้น|รองขาว|เต็ม|หนา|ความหนา|ด้าน|เพิ่ม|ตะขอ|ห่วง|โซ่|ฐาน|ราคา|รวม|เวลา|ระยะ|ถ้า|เจาะ|ชิ้นงาน|งาน|รับ|ต้องการ|อยาก|screen|flex|print|size|\d)|ลายละ|แบบละ|ชิ้นละ|ตัวละ|ต่อ\s*1|:\s*\d|^[A-Za-z0-9 .&\-]+\s+\d+\s*(?:ตัว|ชิ้น|อัน|ใบ|แผ่น)?$/i;
+export function parseListItems(query: string): { items: string[]; tail: string } | null {
+  const BUL = /^\s*(?:[-•·*▪●–—]|\d{1,2}[.)])\s*(.+?)\s*$/;
+  const items: string[] = [];
+  const rest: string[] = [];
+  for (const l of query.split(/\r?\n/)) {
+    const m = BUL.exec(l);
+    // บรรทัดที่เป็นแค่ตัวเลข/จำนวน ("- 100 ชิ้น") หรือสเปค ("- พิมพ์ 2 ด้าน") ไม่ใช่ชื่อสินค้า
+    if (m && m[1].length >= 2 && m[1].length <= 80 && !/^\d[\d,.]*\s*(\S+)?$/.test(m[1]) && !SPEC_LINE_RE.test(m[1].trim())) items.push(m[1].trim());
+    else rest.push(l);
+  }
+  return items.length >= 2 ? { items, tail: rest.join("\n").trim() } : null;
+}
+
+function priceRangeOf(r: ProductRef): string {
+  const unit = r.priceUnit || "ชิ้น";
+  if (r.priceMin && r.priceMax && r.priceMax > r.priceMin) return ` — ฿${r.priceMin.toLocaleString()}-${r.priceMax.toLocaleString()}/${unit}`;
+  return r.priceMin ? ` — เริ่ม ฿${r.priceMin.toLocaleString()}/${unit}` : "";
+}
+function menuBlock(line: string, cands: ProductRef[]): string {
+  return [`${line} — ร้านมี ${cands.length} แบบ เลือกก่อนนะคะ`, ...cands.map((c) => `• ${c.name}${priceRangeOf(c)}`)].join("\n");
+}
+
+/**
+ * 🧾 ตอบข้อความแบบรายการทีละบรรทัด แล้วรวมเป็นคำตอบเดียว (intent "price_multi" · การ์ดสินค้าทุกตัวที่พูดถึง)
+ *   · จำนวน: บรรทัดไหนระบุเองใช้ของบรรทัดนั้น ไม่งั้นใช้จำนวนรวมจาก tail/ทั้งข้อความ (100 ชิ้น = ทุกตัว)
+ *   · ชื่อกำกวม (คำหลักอังกฤษตรงสินค้า ≥2 ตัว และบรรทัดไม่ได้เอ่ยชื่อเต็มตัวใดตัวหนึ่ง เช่น "MagSafe ติดหลังโทรศัพท์" = กริ๊กต๊อก/Case/Wallet) → เมนูย่อยเฉพาะบรรทัดนั้น ไม่ทิ้งเงียบ
+ *   · ชื่อชัด → understand() ทีละบรรทัด (ขนานกัน) → searchPrice ด้วย pick เดียว · คำถามพ่วงใน tail (สกรีนกี่สี/กันน้ำ/…) → extraInfo ต่อสินค้า
+ *   · คืน null เมื่อไม่มีบรรทัดไหนจับสินค้าได้เลย (ให้เส้นปกติลองต่อ)
+ */
+export async function listAnswer(
+  list: { items: string[]; tail: string },
+  query: string,
+  opts: { qty?: number | null; context?: string[]; history?: unknown; profile?: string; model?: string } = {},
+): Promise<PriceAnswer | null> {
+  const refs = (await catalogRefs()).filter((r) => !r.id.startsWith("__"));
+  const sharedQty = opts.qty ?? parseQty(list.tail) ?? parseQty(query);
+  // คำถามพ่วง: เอาเฉพาะประโยคที่ถามเรื่องเสริม ("สกรีนได้กี่สีครับ") ไม่เอาทักทาย/จำนวน · ถ้าหน้าสินค้าตอบประโยคสั้นไม่ได้ ค่อยลองทั้ง tail (ได้ข้อมูลพิมพ์/สกรีนทั่วไป)
+  const sentences = list.tail.split(/\n+|\s*\/\s*|แล้วก็|และก็|กับอีก/).map((s) => s.trim()).filter(Boolean);
+  const extraQ = sentences.filter((s) => EXTRA_ASK_RE.test(s)).join(" ") || (EXTRA_ASK_RE.test(list.tail) ? list.tail : "");
+  const extraFor = async (id: string): Promise<string> => {
+    if (!extraQ) return "";
+    let ex = await extraInfo(extraQ, id).catch(() => "");
+    if (!ex.trim() && extraQ !== list.tail) ex = await extraInfo(list.tail, id).catch(() => "");
+    return ex.trim().split("\n").filter(Boolean).slice(0, 2).join("\n");
+  };
+  type Block = { text: string; products: ProductRef[]; ambiguous?: string; ok: boolean };
+  const blocks = await Promise.all(
+    list.items.map(async (line, i): Promise<Block> => {
+      await new Promise((r) => setTimeout(r, i * 120));
+      const clean = fixTypos(line);
+      const lineQty = parseQty(line) ?? sharedQty;
+      const qtyWord = lineQty ? ` ${lineQty} ชิ้น` : "";
+      const key = (clean.match(/[A-Za-z][A-Za-z0-9]{2,}/g) ?? []).sort((a, b) => b.length - a.length)[0];
+      const hits = key ? refs.filter((r) => norm(r.name).includes(norm(key))) : [];
+      const named = hits.filter((r) => norm(clean).includes(norm(r.name)));
+      if (hits.length >= 2 && named.length !== 1) {
+        const cands = hits.slice(0, 4);
+        return { text: menuBlock(clean, cands), products: cands, ambiguous: clean, ok: true };
+      }
+      const u = named.length === 1 ? null : await understand(`${clean}${qtyWord} ราคาเท่าไหร่`, opts.context ?? [], opts.history, opts.profile ?? "", opts.model).catch(() => null);
+      const ids = named.length === 1 ? [named[0].id] : (u?.ids ?? []);
+      if (u?.notInCatalog && !ids.length) {
+        const alts = u.alternatives.slice(0, 2);
+        return { text: `${clean} — ตอนนี้ร้านยังไม่มีค่ะ${alts.length ? ` ที่ใกล้เคียงมี ${alts.map((a) => a.name).join(" / ")}` : ""}`, products: alts, ok: true };
+      }
+      if (ids.length >= 2 || (u?.broad && ids.length)) {
+        const cands = ids.map((id) => refs.find((r) => r.id === id)).filter((r): r is ProductRef => !!r).slice(0, 4);
+        return { text: menuBlock(clean, cands), products: cands, ambiguous: clean, ok: true };
+      }
+      const one = ids.length === 1 ? refs.find((r) => r.id === ids[0]) : undefined;
+      const ans = await searchPrice(`${one?.name ?? clean}${qtyWord}`, { qty: lineQty, allowFallback: false, pick: one ? { ids: [one.id], broad: false } : undefined, rateHint: clean }).catch(() => null);
+      const prods = ans?.products?.length ? ans.products : ans?.product ? [ans.product] : [];
+      if (!ans || ans.kind === "skip" || !ans.answer || !prods.length) return { text: `${clean} — ยังไม่พบรายการนี้ในระบบค่ะ เดี๋ยวแอดมินเช็กให้นะคะ`, products: [], ok: false };
+      if (/_menu$/.test(ans.intent) || (prods.length > 1 && !ans.product)) {
+        const cands = prods.slice(0, 4);
+        return { text: menuBlock(clean, cands), products: cands, ambiguous: clean, ok: true };
+      }
+      // ตัดบรรทัดลิงก์/"ดูครบทุกแบบ" (การ์ดสินค้ามีปุ่มอยู่แล้ว · หลายสินค้าในข้อความเดียวไม่อยากให้ยาว)
+      let text = ans.answer.split("\n").filter((l) => !/^\s*https?:\/\//.test(l) && !/ดูครบทุกแบบ|สั่งได้ที่หน้าสินค้า/.test(l)).join("\n").trim();
+      if (ans.product) {
+        const ex = await extraFor(ans.product.id);
+        if (ex) text += `\n${ex}`;
+      }
+      return { text, products: prods.slice(0, 1), ok: true };
+    }),
+  );
+  // ด่านหลัง: ต้องมี ≥2 บรรทัดที่จับสินค้าได้ และเป็นสินค้าคนละตัว (รายการที่เป็นตัวเลือก/ชื่อลายของสินค้าเดียว → ให้เส้นปกติตอบ) · บรรทัดที่หาไม่เจอมากกว่าที่เจอ = ไม่ใช่รายการสินค้า
+  const okBlocks = blocks.filter((b) => b.ok && b.products.length);
+  const seen = new Set<string>();
+  const products = blocks.flatMap((b) => b.products).filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+  if (okBlocks.length < 2 || products.length < 2 || blocks.length - okBlocks.length > okBlocks.length) return null;
+  const amb = blocks.filter((b) => b.ambiguous).map((b) => b.ambiguous as string);
+  const askNext = amb.length
+    ? `${amb.join(" และ ")} สนใจแบบไหนคะ บอกชื่อแบบมาได้เลย เดี๋ยวคิดราคา${sharedQty ? ` ${sharedQty.toLocaleString()} ชิ้น` : ""}ให้ต่อเลยน้า 🥰`
+    : `สะดวกสั่งตามนี้ไหมคะคุณลูกค้า 🥰 แจ้งแอดมินได้เลย เดี๋ยวสรุปยอดให้ หรือกด "ดูราคา / สั่งเลย" ในการ์ดก็ได้น้า 💕`;
+  return {
+    answer: blocks.map((b) => b.text).join("\n\n"),
+    kind: "price-options",
+    source: "list-gate",
+    intent: "price_multi",
+    product: products[0],
+    products,
+    askNext,
+  };
+}
+
+/**
  * ✍️ คำสะกดผิดที่ลูกค้าพิมพ์บ่อย → คำที่ใช้ในชื่อสินค้า (28 ก.ย. 69: "อะคลิลิค" ทำให้จับ "แม่เหล็กอะคริลิค" ไม่เจอ)
  * ใช้ก่อนทุกอย่าง ทั้งข้อความล่าสุดและบริบท — เปลี่ยนเฉพาะคำที่ไม่มีทางเป็นคำอื่น
  */
 export function fixTypos(text: string): string {
   return text
     .replace(/อะค[ลร]ิ?ลิ[คกข]|อคริลิค|อะคริลิก|อะครีลิค|อะคิลิค|acrylick?/gi, "อะคริลิค")
-    .replace(/สติ[กค]เกอ[ร์]?|สติ้กเกอร์|สติ๊กเกอ(?!ร์)/g, "สติ๊กเกอร์")
+    // 21 ต.ค. 69: เดิม `[ร์]?` กิน "ร" แล้วทิ้ง "์" ไว้ → "สติกเกอร์" กลายเป็น "สติ๊กเกอร์์" (เห็นตอนสะท้อนบรรทัดรายการของลูกค้า)
+    .replace(/สติ[กค]เกอ(?:ร์?)?|สติ้กเกอร์|สติ๊กเกอ(?!ร์)/g, "สติ๊กเกอร์")
     // "สตก PP กันน้ำไหม" (เจ้าของร้าน 8 ต.ค. 69 16:25) — ย่อแบบพิมพ์ไลน์
     .replace(/(^|[\s,])สตก(?=[\s]|$)/g, "$1สติ๊กเกอร์")
     .replace(/โฟโต[กค]าร์ด|โฟโต้กาด|photo\s?card/gi, "โฟโต้การ์ด")
@@ -2199,6 +2317,8 @@ ${
 /** เรื่องที่ลูกค้ามักถามพ่วง + คำที่คำตอบต้องมี (กัน LLM ตอบเรื่องอื่นแทน: ถาม "ทนแดด" ได้เรื่องกันน้ำ · ถาม "ส่งกี่วัน" ได้เรื่องฟิล์มกันรอย) */
 const EXTRA_TOPICS: { ask: RegExp; need: RegExp }[] = [
   { ask: /กันน้ำ|กันฝน|โดนน้ำ|เปียก|ทนน้ำ|ล้างได้/i, need: /น้ำ|ฝน|เปียก|ล้าง/i },
+  // 🎨 21 ต.ค. 69 "สกรีนได้กี่สี" (ข้อความรายการ 3 สินค้าของแจกปีใหม่) — เดิมไม่มีหัวข้อนี้ คำถามพ่วงเลยหาย
+  { ask: /กี่สี|จำนวนสี|สีเดียว|หลายสี|full\s*colou?r|พิมพ์ได้กี่สี|สกรีนได้กี่สี|สกรีนกี่สี/i, need: /สี|พิมพ์|สกรีน/i },
   { ask: /ทนแดด|แดด|ซีด|กันยูวี/i, need: /แดด|ซีด|ยูวี|uv.?(protect|กัน)|กันuv/i },
   { ask: /ทนทาน|ทนไหม|ทนมั้ย|ลอก|หลุด|ขูด|ขีดข่วน|ฉีก/i, need: /ทน|ลอก|หลุด|ขูด|ขีด|ฉีก/i },
   { ask: /สะท้อนแสง|เรืองแสง|กลางคืน/i, need: /สะท้อน|เรือง|กลางคืน|แสง/i },
