@@ -200,7 +200,47 @@ if [ -z "$NO_UPDATE" ]; then
   ) &
   UPDATER_PID=$!
 fi
-cleanup_updater() { [ -n "$UPDATER_PID" ] && kill "$UPDATER_PID" 2>/dev/null; rm -f "$RESTART_MARK"; }
+# ── เฝ้าแรมของเซิร์ฟเวอร์ (กัน "ทุกหน้าช้า" แบบเงียบ ๆ) ─────────
+# next dev (turbopack) เปิดค้างหลายวันแล้วแรมบวมไม่หยุด: 7 ต.ค. 69 38 GB · 14 ต.ค. 36 GB · 21 ต.ค. 42 GB (เปิด 3 วัน 19 ชม.)
+# พอบวมแล้ว "ทุกคำขอ" ช้าลง 3–10 เท่า (session 0.25 → 3.6 วิ) และคำขอต่อคิวกัน กดเมนูทุกปุ่มหน่วง — รีสตาร์ตแล้วเหลือ 1.5 GB
+# ทุก MEM_CHECK_EVERY วิ: ถ้าแรมเกิน MEM_RESTART_GB → รีสตาร์ตเซิร์ฟเวอร์เอง (ใช้ไฟล์สัญญาณเดียวกับตอนอัปเดต dependency
+# ลูปด้านล่างสตาร์ทใหม่ให้ในหน้าต่างเดิม ~15 วิ) · ถ้ายังมีคนต่ออยู่ (เบราว์เซอร์ค้างการเชื่อมต่อ) จะรอรอบถัดไปก่อน
+# แต่เกิน MEM_FORCE_GB แล้วไม่รอ (ช้าจนใช้งานไม่ได้อยู่ดี) · ปิดได้ด้วย MEM_RESTART_GB=0
+MEM_CHECK_EVERY="${MEM_CHECK_EVERY:-300}"
+MEM_RESTART_GB="${MEM_RESTART_GB:-8}"
+MEM_FORCE_GB="${MEM_FORCE_GB:-16}"
+MEMWATCH_PID=""
+if [ "$MEM_RESTART_GB" != "0" ]; then
+  (
+    while true; do
+      sleep "$MEM_CHECK_EVERY"
+      SRV_PID=$(lsof -ti TCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)
+      [ -z "$SRV_PID" ] && continue
+      RSS_KB=$(ps -o rss= -p "$SRV_PID" 2>/dev/null | tr -d ' ')
+      [ -z "$RSS_KB" ] && continue
+      RSS_GB=$((RSS_KB / 1048576))
+      [ "$RSS_GB" -lt "$MEM_RESTART_GB" ] && continue
+      # ยังมีเบราว์เซอร์ต่ออยู่ → เลื่อนไปรอบหน้า (ยกเว้นบวมเกิน MEM_FORCE_GB)
+      BUSY=$(lsof -nP -iTCP:"$PORT" -sTCP:ESTABLISHED 2>/dev/null | grep -c "$SRV_PID")
+      if [ "$BUSY" -gt 0 ] && [ "$RSS_GB" -lt "$MEM_FORCE_GB" ]; then
+        echo "🧠 [$(date '+%H:%M')] เซิร์ฟเวอร์ใช้แรม ${RSS_GB} GB (เกิน ${MEM_RESTART_GB} GB) — มีคนใช้งานอยู่ จะรีสตาร์ตเมื่อว่าง"
+        continue
+      fi
+      echo ""
+      echo "🧠 [$(date '+%H:%M')] เซิร์ฟเวอร์ใช้แรม ${RSS_GB} GB (เกิน ${MEM_RESTART_GB} GB) — รีสตาร์ตให้เองกันหน้าเว็บช้า (~15 วิ)"
+      touch "$RESTART_MARK"
+      kill -9 "$SRV_PID" 2>/dev/null
+      sleep 60
+    done
+  ) &
+  MEMWATCH_PID=$!
+fi
+
+cleanup_updater() {
+  [ -n "$UPDATER_PID" ] && kill "$UPDATER_PID" 2>/dev/null
+  [ -n "$MEMWATCH_PID" ] && kill "$MEMWATCH_PID" 2>/dev/null
+  rm -f "$RESTART_MARK"
+}
 trap cleanup_updater EXIT
 
 # สตาร์ท Next.js dev server · ถ้าดับเองแบบไม่ได้ตั้งใจ ให้สตาร์ทใหม่ (กัน crash loop ที่ 5 ครั้ง)

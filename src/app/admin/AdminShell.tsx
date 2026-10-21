@@ -121,6 +121,15 @@ let dealerAppsBadgeCache: { at: number; n: number } | null = null;
 /** แคชป้าย "บอทเรียนรู้" — ร่างที่แอดมินกดไม่ส่ง รอสอนคำตอบที่ถูก (14 ต.ค. 69) */
 let learningBadgeCache: { at: number; n: number } | null = null;
 
+/**
+ * ตอน "เปลี่ยนหน้า" ป้ายเมนูใช้แคชได้นานแค่ไหน
+ * usePolling ของแต่ละป้ายถามฐานใหม่ทุก 25–90 วิอยู่แล้ว (และถามทันทีตอนกลับมาที่แท็บ) → แคชไม่มีทางเก่ากว่ารอบโพล
+ * เดิมหน้าต่างแคชตอนเปลี่ยนหน้า (25–120 วิ) สั้นกว่า/เท่ารอบโพล → คลิกเมนูช่วงที่แคช "หมดอายุแล้วแต่ยังไม่ถึงรอบโพล"
+ * ยิง 7–8 คำขอป้ายซ้อนกับข้อมูลของหน้าใหม่ทุกคลิก (เจ้าของร้าน 21 ต.ค. 69 "กดเมนูทุกปุ่มช้า")
+ * → ตอนเปลี่ยนหน้าใช้แคชถ้ามี · เฉพาะหน้าที่เกี่ยวกับป้ายนั้นเอง (fresh) ถึงถามสด · ค่าใหม่จากโพล/อีเวนต์ยังมาตามปกติ
+ */
+const NAV_BADGE_REUSE_MS = 10 * 60_000;
+
 /** หน้าที่พับแถบเมนูเป็นแถวไอคอนเองเมื่อเปิด (ต้องการพื้นที่กว้าง) */
 const AUTO_RAIL_PATHS = ["/admin/chatbot/chats"];
 
@@ -284,13 +293,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (pathname === "/admin/login" || !perms.includes("orders.viewAll")) return;
     // แคชผลไว้ 2 นาที — เดิมยิงดึงเรตติ้งทั้งชุดใหม่ "ทุกคลิกเปลี่ยนหน้า" ทำให้หลังบ้านหน่วงโดยไม่จำเป็น
-    const cached = ratingsBadgeCache && Date.now() - ratingsBadgeCache.at < 120_000 ? ratingsBadgeCache.rows : null;
+    const cached = ratingsBadgeCache && Date.now() - ratingsBadgeCache.at < NAV_BADGE_REUSE_MS ? ratingsBadgeCache.rows : null;
     if (cached && pathname !== "/admin/ratings") {
       setNewRatings(unseenRatingCount(cached));
       return;
     }
     let active = true;
-    fetch("/api/admin/ratings", { cache: "no-store" })
+    fetch("/api/admin/ratings?ids=1", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
         if (!active) return;
@@ -332,7 +341,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!quoteBadgeReady) return;
     const onQuotes = pathname.startsWith("/admin/quotes");
-    const cached = quotesBadgeCache && Date.now() - quotesBadgeCache.at < 60_000 ? quotesBadgeCache.n : null;
+    const cached = quotesBadgeCache && Date.now() - quotesBadgeCache.at < NAV_BADGE_REUSE_MS ? quotesBadgeCache.n : null;
     if (cached !== null && !onQuotes) {
       setWaitingQuotes(cached);
       return;
@@ -365,7 +374,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (!editReqBadgeReady) return;
     // อยู่หน้าคำขอ/หน้าออเดอร์ = ดึงสด (เพิ่งกดจัดการแล้ว ตัวเลขต้องลดทันที) หน้าอื่นใช้แคชได้ไม่เกิน 1 รอบโพล
     const fresh = pathname.startsWith("/admin/edit-requests") || pathname.startsWith("/admin/orders/");
-    const cached = editReqBadgeCache && Date.now() - editReqBadgeCache.at < 25_000 ? editReqBadgeCache.n : null;
+    const cached = editReqBadgeCache && Date.now() - editReqBadgeCache.at < NAV_BADGE_REUSE_MS ? editReqBadgeCache.n : null;
     if (cached !== null && !fresh) {
       setOpenEditRequests(cached);
       return;
@@ -405,7 +414,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (!stockWaitBadgeReady) return;
     // อยู่หน้ารอของเข้า/หน้าออเดอร์ = ดึงสด (เพิ่งกดของเข้าแล้ว/ส่งเข้าผลิต ตัวเลขต้องขยับทันที) หน้าอื่นใช้แคช 1 นาที
     const fresh = pathname.startsWith("/admin/stock-wait") || pathname.startsWith("/admin/stock-buy") || pathname.startsWith("/admin/orders/");
-    const cached = stockWaitBadgeCache && Date.now() - stockWaitBadgeCache.at < 60_000 ? stockWaitBadgeCache : null;
+    const cached = stockWaitBadgeCache && Date.now() - stockWaitBadgeCache.at < NAV_BADGE_REUSE_MS ? stockWaitBadgeCache : null;
     if (cached !== null && !fresh) {
       setReadyStockWait(cached.n);
       setPaidStockWait(cached.paid);
@@ -441,7 +450,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (!pickupBadgeReady) return;
     // อยู่หน้ามารับเอง/หน้าออเดอร์ = ดึงสด (เพิ่งกดแพ็คเสร็จ/ส่งมอบ ตัวเลขต้องขยับทันที) หน้าอื่นใช้แคช 1 นาที
     const fresh = pathname.startsWith("/admin/pickup") || pathname.startsWith("/admin/orders/");
-    const cached = pickupBadgeCache && Date.now() - pickupBadgeCache.at < 60_000 ? pickupBadgeCache.n : null;
+    const cached = pickupBadgeCache && Date.now() - pickupBadgeCache.at < NAV_BADGE_REUSE_MS ? pickupBadgeCache.n : null;
     if (cached !== null && !fresh) {
       setReadyPickup(cached);
       return;
@@ -480,7 +489,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (!claimsBadgeReady) return;
     // อยู่หน้าเคลม = ดึงสด (เพิ่งตอบลูกค้าไป ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาที
     const fresh = pathname.startsWith("/admin/claims");
-    const cached = claimsBadgeCache && Date.now() - claimsBadgeCache.at < 60_000 ? claimsBadgeCache : null;
+    const cached = claimsBadgeCache && Date.now() - claimsBadgeCache.at < NAV_BADGE_REUSE_MS ? claimsBadgeCache : null;
     if (cached && !fresh) {
       setOpenClaims(cached.n);
       setClaimsNoReply(cached.noReply);
@@ -518,7 +527,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (!dealerBadgeReady) return;
     // อยู่หน้าตัวแทน = ดึงสด (เพิ่งกดอนุมัติไป ตัวเลขต้องลดทันที) หน้าอื่นใช้แคช 1 นาที
     const fresh = pathname.startsWith("/admin/dealers");
-    const cached = dealerAppsBadgeCache && Date.now() - dealerAppsBadgeCache.at < 60_000 ? dealerAppsBadgeCache.n : null;
+    const cached = dealerAppsBadgeCache && Date.now() - dealerAppsBadgeCache.at < NAV_BADGE_REUSE_MS ? dealerAppsBadgeCache.n : null;
     if (cached !== null && !fresh) {
       setOpenDealerApps(cached);
       return;
@@ -554,7 +563,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (!learningBadgeReady) return;
     // อยู่หน้าแชท/บอทเรียนรู้ = ดึงสด (เพิ่งกดไม่ส่ง/สอนไป) หน้าอื่นใช้แคช 1 นาที
     const fresh = pathname.startsWith("/admin/chatbot");
-    const cached = learningBadgeCache && Date.now() - learningBadgeCache.at < 60_000 ? learningBadgeCache.n : null;
+    const cached = learningBadgeCache && Date.now() - learningBadgeCache.at < NAV_BADGE_REUSE_MS ? learningBadgeCache.n : null;
     if (cached !== null && !fresh) {
       setOpenLearning(cached);
       return;

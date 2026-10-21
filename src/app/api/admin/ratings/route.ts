@@ -11,11 +11,21 @@ const tableMissing = (msg = "", code?: string) =>
 /** สรุปผลประเมินให้แอดมิน — คะแนนเฉลี่ย/การกระจาย/แท็ก/คอมเมนต์ (ข้อมูลนิรนามอยู่แล้ว)
  *  ส่ง id (uuid สุ่ม) มาด้วยเพื่อให้หน้าจอนับ "รายการใหม่ที่ยังไม่ได้เปิดดู" — id ไม่โยงถึงลูกค้า
  *  สิทธิ์ orders.viewAll = แอดมิน/ออฟฟิศ (ฝ่ายแพ็คไม่เห็นผลประเมิน) */
-export async function GET() {
+export async function GET(req: Request) {
   const sb = getSupabaseAdmin();
   if (!sb) return NextResponse.json({ ratings: [] });
   const gate = await requirePerm("orders.viewAll");
   if (gate.res) return gate.res;
+
+  // ?ids=1 = ป้ายเมนู "ประเมินใหม่ที่ยังไม่ได้เปิดดู" ใช้แค่ id — ไม่ต้องขนคอมเมนต์/แท็ก 500 แถวมาทุกครั้ง (21 ต.ค. 69)
+  if (new URL(req.url).searchParams.get("ids") === "1") {
+    const { data, error } = await sb.from("ratings").select("id").order("month", { ascending: false }).limit(500);
+    if (error) {
+      if (tableMissing(error.message, error.code)) return NextResponse.json({ ratings: [], needsSetup: true });
+      return NextResponse.json({ error: error.message, ratings: [] }, { status: 500 });
+    }
+    return NextResponse.json({ ratings: (data ?? []).map((r) => ({ id: r.id as string })) });
+  }
 
   // เรียงตามเดือนล่าสุด (ไม่มี timestamp ละเอียดโดยเจตนา — นิรนาม)
   const { data, error } = await sb.from("ratings").select("id,data").order("month", { ascending: false }).limit(500);
