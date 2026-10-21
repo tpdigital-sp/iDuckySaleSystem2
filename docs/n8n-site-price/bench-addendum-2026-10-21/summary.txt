@@ -1,0 +1,3 @@
+base      n=24 ms median 3759 avg 4023 · out tok avg 149 · think tok avg 0 · in tok avg 5165 · ตัวอักษร avg 351 · score avg 7.96 · fab 4 · handoff 0 · reask 1
+addendum  n=24 ms median 3748 avg 3607 · out tok avg 136 · think tok avg 0 · in tok avg 5582 · ตัวอักษร avg 325 · score avg 7.65 · fab 4 · handoff 1 · reask 0
+better: base 11 · addendum 9 · tie 4 (จาก 24)

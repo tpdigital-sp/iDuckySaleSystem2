@@ -1,0 +1,1520 @@
+[
+ {
+  "i": 2,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบถูกต้องตามข้อมูลที่ไม่รับสกรีนของภายนอก แต่ B ตอบครอบคลุมประเด็นเรื่องงานด่วนด้วยการเสนอเช็กคิวผลิตด่วนให้ จึงตอบได้ตรงโจทย์ลูกค้ามากกว่า"
+ },
+ {
+  "i": 7,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B ครบถ้วนกว่าโดยระบุทางเลือกให้ส่งตีราคากระดาษปอนด์ 1 แผ่นตามข้อมูล tool ได้อย่างแนบเนียน และคำถามปิดท้ายเรื่องขนาดกรอบเพื่อช่วยแนะนำต่อนั้นตรงจุดมาก"
+ },
+ {
+  "i": 14,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 6,
+   "addendum": 9
+  },
+  "fab": {
+   "base": true,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A เมคข้อมูลว่าขนาด 13-15 ซม. ผลิตได้ตามปกติทั้งที่ในข้อมูลไม่มีระบุขนาดที่รองรับ ส่วนคำตอบ B ยึดตามข้อมูลขั้นต่ำที่มีอย่างถูกต้อง ไม่แต่งข้อมูลเพิ่ม และมีประโยคปิดท้ายที่สุภาพเหมาะสม"
+ },
+ {
+  "i": 21,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบคำถามได้ถูกต้องและครบถ้วนดีมาก แต่ B อ้างอิงข้อมูลเรื่องการส่งแบบให้ตรวจอนุมัติก่อนผลิตและระบุรายละเอียดชิ้นส่วนฐานโยกเยกซ้าย/ขวาได้ตรงตามข้อมูลที่มีมากกว่าเล็กน้อย"
+ },
+ {
+  "i": 24,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 8,
+   "addendum": 7
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": true
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบตามข้อมูลที่ได้รับเรื่องการ์ดทองและแนะนำสินค้าใกล้เคียงได้ดี แต่คำตอบ B มีการแต่งข้อมูลว่า 'เช็กราคากับฝ่ายผลิต' เพิ่มเข้ามา ส่วน A อิงตามข้อความแนะนำของระบบได้ตรงกว่า แม้ทั้งคู่จะตกประเด็นเรื่องขั้นตอนตัวอย่างงานก่อนผลิตและใช้อิโมจิเกิน 1-2 ตัวเล็กน้อย"
+ },
+ {
+  "i": 35,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 6,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": true,
+   "addendum": false
+  },
+  "note": "คำตอบ A สั้นกระชับและไม่ใช้ markdown ตามกฎ ส่วนคำตอบ B มีการใช้ markdown (bullet) และถามข้อมูลซ้ำซ้อนรวมถึงขอข้อมูลที่เกินจาก knowledge (เช่น เบอร์โทร อีเมล)"
+ },
+ {
+  "i": 41,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 8,
+   "addendum": 5
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ทำผิดกฎเรื่องแต่งเงื่อนไขโดยยืนยันเองว่าสามารถหักเงิน 100 บาทได้เลย ทั้งที่ไม่มีข้อมูลประวัติการเงิน ส่วนคำตอบ B ปฏิบัติตามกฎได้ถูกต้องโดยตอบราคาที่มีและส่งต่อเรื่องการคละลายกับยอดเงินเดิมให้แอดมินตรวจสอบ"
+ },
+ {
+  "i": 44,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบคำถามเรื่องใบกำกับภาษีได้ถูกต้องและถามประเภทสินค้าเพื่อนำไปเช็กราคาและคิวผลิตได้อย่างเหมาะสม แต่คำตอบ A กระชับกว่า ไม่เวิ่นเว้อ และใช้อีโมจิตามเกณฑ์ 1-2 ตัว ส่วนคำตอบ B มีอีโมจิเกินเกณฑ์และปิดท้ายซ้ำซ้อน"
+ },
+ {
+  "i": 46,
+  "run": 0,
+  "better": "tie",
+  "score": {
+   "base": 9,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบมีเนื้อหาและคุณภาพใกล้เคียงกันมาก เนื่องจากไม่มีข้อมูลเรื่องการแพ็กพร้อมการ์ด จึงส่งต่อให้แอดมินตรวจสอบได้อย่างถูกต้อง พร้อมถามจำนวนที่ต้องการเพื่อเตรียมข้อมูลล่วงหน้าอย่างสุภาพ"
+ },
+ {
+  "i": 50,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบให้ข้อมูลสินค้าใกล้เคียงได้ครบถ้วน แต่คำตอบ A มีโครงสร้างการตอบที่ลื่นไหลและเป็นธรรมชาติกว่า ส่วนคำตอบ B มีการรับปากล่วงหน้าว่ามีเรทราคาพิเศษแน่นอนทั้งที่ยังไม่ทราบขนาดที่ชัดเจน"
+ },
+ {
+  "i": 59,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 7.5,
+   "addendum": 8.5
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบถามชื่อสินค้าได้ถูกต้องเนื่องจากลูกค้ายังไม่ได้ระบุสินค้า แต่คำตอบ A ใช้ประโยคที่ลื่นไหลและเป็นธรรมชาติกว่าคำตอบ B ที่ใช้คำเชื่อม 'หรือ' สับสนเล็กน้อย"
+ },
+ {
+  "i": 65,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบได้ดีและไม่มโนระยะเวลาผลิตเนื่องจากไม่มีข้อมูลจำนวน 100 ชิ้น แต่ B มีความยาวกระชับตามเกณฑ์ 1-3 บรรทัด และเชื่อมโยงเรื่องการเช็กสต็อกสินค้าที่ค้างจากประวัติสนทนาได้เป็นธรรมชาติกว่า"
+ },
+ {
+  "i": 83,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 7
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": true
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B กระชับและแนะนำขั้นตอนต่อไปได้ดีกว่า ส่วนคำตอบ A ใช้การขอตัวไปเช็กคิว (handoff) ทั้งที่ลูกค้าแจ้งอยู่แล้วว่าจะส่งไฟล์วันจันทร์ และยังใช้ emoji เกินโควตาที่กำหนด (3 ตัว)"
+ },
+ {
+  "i": 86,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "เนื่องจากข้อมูลจาก tool ไม่พบรายละเอียดสินค้าที่ลูกค้าถาม (ลูกค้าไม่ได้ระบุชื่อสินค้าแต่ถามเนื้อ UV/แผ่น) ทั้งสองคำตอบจึงขอข้อมูลเพิ่มได้อย่างถูกต้อง แต่ B ดีกว่าเล็กน้อยตรงที่ไม่เดาเจาะจงว่าเป็นสติ๊กเกอร์เหมือน A"
+ },
+ {
+  "i": 91,
+  "run": 0,
+  "better": "tie",
+  "score": {
+   "base": 2,
+   "addendum": 2
+  },
+  "fab": {
+   "base": true,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบแต่งระยะเวลาผลิตของ Photocard PVC ขึ้นมาเองเนื่องจากข้อมูลที่ให้มีเพียงระยะเวลาของสแตนดี้อะคริลิค จึงทำผิดกฎห้ามแต่งข้อมูลอย่างร้ายแรงทั้งคู่"
+ },
+ {
+  "i": 103,
+  "run": 0,
+  "better": "tie",
+  "score": {
+   "base": 7,
+   "addendum": 7
+  },
+  "fab": {
+   "base": true,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบคำถามเรื่องคิวผลิตและขอข้อมูลที่จำเป็นได้ดีตามแนวทาง แต่ทั้งคู่มีการแต่งข้อมูล (fab) เรื่องการส่งแมสเซนเจอร์ว่าเรียกรถมารับได้ ซึ่งไม่มีระบุไว้ในข้อมูลที่ให้มา"
+ },
+ {
+  "i": 108,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบตรงตามข้อมูลและมีน้ำเสียงสุภาพน่ารัก แต่คำตอบ A กระชับกว่า ไม่พูดเนื้อหาซ้ำซ้อนเหมือนคำตอบ B ที่บอกให้แจ้งวันที่/แบบ/จำนวนไปแล้วในท่อนแรกแล้วถามซ้ำอีกในประโยคปิดท้าย"
+ },
+ {
+  "i": 112,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบจัดการเรื่องขนาดสั่งทำพิเศษที่ไม่มีในระบบได้ถูกต้องตามกฎ โดยตอบส่วนที่รู้และส่งต่อส่วนที่ไม่รู้ให้แอดมินยืนยัน แต่คำตอบ A แนบลิงก์สินค้าตามที่ tool ให้มาอย่างครบถ้วนและตอบรับได้ชัดเจนกว่า"
+ },
+ {
+  "i": 119,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 5,
+   "addendum": 8
+  },
+  "fab": {
+   "base": true,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B มีการแต่งข้อมูลเงื่อนไขขึ้นมาเองว่าไม่มีค่าใช้จ่ายในการแก้ไขเพิ่มเติม ทั้งที่ในข้อมูลที่ให้ไม่มีระบุไว้ ขณะที่คำตอบ A ปฏิบัติตามกติกาได้ถูกต้องโดยแจ้งขอเช็กรายละเอียดในส่วนที่ไม่มีข้อมูลก่อน"
+ },
+ {
+  "i": 125,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 5,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": true,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B ทำได้ดีกว่ามากโดยดึงข้อมูลช่วงราคา 90-155 บาท/เซ็ตมาอธิบายและตอบคำถามเรื่องจำนวนเซ็ตได้ชัดเจน ขณะที่คำตอบ A ขอเช็กข้อมูลทั้งที่มีช่วงราคาในระบบเบื้องต้นที่สามารถตอบลูกค้าได้ก่อน"
+ },
+ {
+  "i": 153,
+  "run": 0,
+  "better": "tie",
+  "score": {
+   "base": 9,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบข้อสงสัยเรื่องเรทราคาได้ถูกต้อง ชัดเจน สุภาพน่ารักตามกติกา และสอบถามประเภทสินค้ากับจำนวนที่แน่นอนเพื่อช่วยคำนวณราคาต่อไปได้ดีเหมือนกัน"
+ },
+ {
+  "i": 195,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 5
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ทำผิดกฎเรื่องการแต่งข้อมูล (fab) โดยใส่ข้อมูลชนิดเนื้อสติกเกอร์และเงื่อนไขขั้นต่ำ 3 แผ่น A3 ต่อเนื้อซึ่งไม่มีในบริบทที่ให้มา ส่วนคำตอบ B ตอบได้ถูกต้องตามข้อมูล กระชับ ไม่ใช้ markdown และแนะนำขั้นตอนถัดไปได้ดี"
+ },
+ {
+  "i": 207,
+  "run": 0,
+  "better": "base",
+  "score": {
+   "base": 8,
+   "addendum": 7
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ข้อมูลที่ให้มีเพียงสายคล้องมือ ไม่ตรงกับสายคล้องคอที่ลูกค้าถาม จึงต้องส่งต่อแอดมินทั้งคู่ แต่คำตอบ A ดีกว่าเล็กน้อยที่ยืนยันการรับทำและน้ำเสียงเป็นกันเองชัดเจน"
+ },
+ {
+  "i": 2,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9.5,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบคำถามเรื่องไม่รับสกรีนของภายนอกและเรื่องงานด่วนได้อย่างถูกต้องและสุภาพมาก แต่คำตอบ A สั้นกระชับใน 1 ย่อหน้าตามเกณฑ์ความยาว 1-3 บรรทัดได้ดีกว่า"
+ },
+ {
+  "i": 2,
+  "run": 2,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 6
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B มีการแต่งข้อมูลเพิ่มว่า 'ยังไม่มีบริการงานด่วน' ทั้งที่ไม่มีระบุในข้อมูลที่ให้ ขณะที่คำตอบ A ตอบปฏิเสธเรื่องนำของมาเองได้ถูกต้องตามข้อมูล และเสนอทางเลือกสินค้าของร้านพร้อมช่วยเช็กคิวงานด่วนได้อย่างเหมาะสม"
+ },
+ {
+  "i": 7,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 8.5,
+   "addendum": 9.5
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B ดีกว่าเพราะตอบรับบริบทที่ลูกค้าจะนำไปใส่กรอบรูป และถามขนาดเพื่อช่วยแนะนำต่อได้อย่างเจาะจงและเป็นประโยชน์กว่า ทั้งคู่ปฏิบัติตามข้อมูลและกติกาได้ครบถ้วน"
+ },
+ {
+  "i": 7,
+  "run": 2,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B ครบถ้วนกว่าโดยตอบรับเรื่องพิมพ์ 1 แผ่นได้ชัดเจน และใส่เงื่อนไขการให้แอดมินตีราคากระดาษปอนด์ตามข้อมูลใน tool ได้อย่างครบถ้วน"
+ },
+ {
+  "i": 14,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 8,
+   "addendum": 7
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": true
+  },
+  "note": "ทั้งสองคำตอบตอบคำถามเรื่องขั้นต่ำได้ถูกต้องตามข้อมูล แต่คำตอบ A มีการขอให้ลูกค้าแจ้งขนาดอีกครั้ง ทั้งที่ลูกค้าแจ้งขนาด 13-15 ซม. มาแล้วในข้อความล่าสุด ส่วนคำตอบ B ปิดการขายได้น่ารักและไม่ถามซ้ำ"
+ },
+ {
+  "i": 14,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ตอบไม่ครบประเด็นเรื่องขนาดและฐานตั้งที่ลูกค้าถาม ขณะที่ B พยายามเก็บครบทุกประเด็นและให้ข้อมูลขอบใสเพิ่ม แม้ B จะมีการแต่งข้อมูลเรื่องร้านผลิตขนาด 13-15 ซม. ได้โดยไม่มีระบุในระบบ แต่ตอบรับลูกค้าได้ดีและตรงประเด็นกว่า"
+ },
+ {
+  "i": 21,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B ถ่ายทอดโครงสร้างราคาและเงื่อนไขการเตรียมไฟล์ชิ้นส่วน (ตัวกลางและฐานซ้าย-ขวา) ได้ครบถ้วนตามผลลัพธ์ของ tool มากกว่าคำตอบ A แม้ทั้งคู่จะใช้อิโมจิเกินที่กติกากำหนด (1-2 ตัว) เล็กน้อย"
+ },
+ {
+  "i": 21,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองตอบข้อมูลถูกต้องครบถ้วนตามเงื่อนไข แต่คำตอบ B มีการใช้สัญลักษณ์ markdown bullet (•) ซึ่งขัดกับกติกาที่ห้ามใช้ markdown ในขณะที่คำตอบ A เขียนเป็นความเรียงอ่านง่ายและทำตามกติกาได้ดีกว่า"
+ },
+ {
+  "i": 24,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 5
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ตอบตรงตามข้อมูลที่ได้รับและเสนอทางเลือกชัดเจน ส่วนคำตอบ B มีการแต่งข้อมูลเรื่องกระดาษสีทองสำเร็จรูปและกระดาษโฮโลแกรมขึ้นมาเองซึ่งไม่มีในบริบท"
+ },
+ {
+  "i": 24,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B เก็บประเด็นเรื่องตัวอย่างงานได้ตรงจุดจากข้อมูลความรู้ร้าน (แจ้งว่าจะส่งแบบให้ตรวจหลังชำระเงิน) ส่วนคำตอบ A ปิดท้ายด้วยการถามขนาดเพิ่มเติมซึ่งลูกค้าอาจยังไม่ได้ระบุ แต่ไม่ได้ตอบเงื่อนไขเรื่องตัวอย่างงานอย่างชัดเจน"
+ },
+ {
+  "i": 35,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B ครบถ้วนตามข้อมูลที่มีมากกว่า โดยขอข้อมูลสำหรับเช็กคิวผลิต (วันที่ใช้งาน) และข้อมูลสำหรับออกใบเสนอราคาตามขั้นตอนที่ระบุในระบบ ส่วนคำตอบ A สั้นกระชับแต่น้ำหนักการตอบเรื่องเงื่อนไขคิวผลิตและใบเสนอราคายังไม่ครอบคลุมข้อมูลที่ระบบเตรียมไว้ให้"
+ },
+ {
+  "i": 35,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A กระชับและเรียงลำดับใจความได้เป็นธรรมชาติดีกว่า โดยรับเรื่องค้นหาประวัติจากชื่อบริษัทให้ทันที ส่วนคำตอบ B เปิดประโยคขอดูรูปก่อนทั้งที่ลูกค้าบอกว่าจะให้ค้นจากชื่อบริษัท ทำให้ดูสับสนเล็กน้อย"
+ },
+ {
+  "i": 41,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบคำถามได้ครบถ้วนและใช้น้ำเสียงถูกต้อง แต่คำตอบ A จัดการเรื่องยอดเงินชำระเกินได้อย่างเหมาะสมกว่าที่ระบุว่าจะขอเช็กประวัติตรวจสอบก่อนหักในบิลจริง และใช้ emoji ตามเกณฑ์ที่กำหนดได้ดีกว่าคำตอบ B ที่ใช้เกิน"
+ },
+ {
+  "i": 41,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": true,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ B คำนวณยอดรวมจากเรท 50 ชิ้นต่อลายที่ระบบให้มาได้อย่างครบถ้วนและตอบประเด็นเงินค้างได้ชัดเจนกว่า ขณะที่คำตอบ A มีการส่งต่อให้แอดมินเช็กเรททั้งที่สามารถคำนวณจากข้อมูลที่มีได้"
+ },
+ {
+  "i": 44,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบคำถามเรื่องใบกำกับภาษีได้ถูกต้องและถามประเภทสินค้าที่ลูกค้ายังไม่ได้ระบุ แต่คำตอบ B กระชับกว่า ไม่เวิ่นเว้อ และคุมจำนวน emoji ตามกติกาได้ดีกว่าคำตอบ A ที่ใส่ emoji เกินโควตา"
+ },
+ {
+  "i": 44,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 9,
+   "addendum": 9.5
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบทำได้ดีมาก ตอบเรื่องใบกำกับภาษีได้ถูกต้องและถามประเภทสินค้าเพื่อประเมินราคาต่อได้ดี แต่คำตอบ A ระบุทวนขนาดที่ลูกค้าแจ้งมาอย่างใส่ใจและใช้คำสุภาพเป็นทางการผสมน่ารักได้ลงตัวกว่า"
+ },
+ {
+  "i": 46,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 6
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ทำได้ถูกต้องตามกฎเมื่อไม่มีข้อมูลในระบบ โดยขอเช็กข้อมูลและถามรายละเอียดที่จำเป็น ส่วนคำตอบ B แต่งข้อมูลขึ้นมาเองว่า 'มีบริการแพ็คให้นะคะ' ทั้งที่ในข้อมูลที่ให้ไม่มีระบุไว้"
+ },
+ {
+  "i": 46,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบจัดการได้ดีเมื่อไม่มีข้อมูลบริการแพ็กพร้อมการ์ด โดยแจ้งขอตรวจสอบและถามข้อมูลเพื่อประเมินราคาต่อ แต่คำตอบ A มีคำทักทายคุณลูกค้าที่สุภาพน่ารักครบถ้วนและใช้อิโมจิตามโควตาได้ดีกว่า"
+ },
+ {
+  "i": 50,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองตอบได้ถูกต้องตามข้อมูลและจัดการส่งต่อให้แอดมินประเมินราคาได้ดี แต่ B ดีกว่าเพราะมีการถามขนาด กว้าง x สูง เพิ่มเติมซึ่งจำเป็นต่อการตีราคาไซส์พิเศษ และมีประโยคปิดท้ายที่กระตุ้นให้ลูกค้าส่งข้อมูลต่อได้ชัดเจน"
+ },
+ {
+  "i": 50,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ตอบได้ตรงประเด็นและใช้อีโมจิในเกณฑ์ที่กำหนด (ไม่เกิน 2 ตัวต่อช่วง) ขณะที่คำตอบ B มีการใช้อีโมจิเกินเกณฑ์เล็กน้อย ทั้งสองแบบให้ข้อมูลและส่งต่องานผลิตสั่งทำได้ถูกต้อง"
+ },
+ {
+  "i": 59,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 7,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "เนื่องจากลูกค้าไม่ได้ระบุชนิดสินค้าและไม่มีข้อมูลเงื่อนไขการขึ้นตัวอย่าง ทั้งสองคำตอบจึงขอข้อมูลชนิดสินค้าถูกต้อง แต่คำตอบ B กระชับและมีน้ำเสียงเป็นธรรมชาติกว่า คำตอบ A มีประโยคถามซ้ำซ้อนในตัวเองและใช้อิโมจิเกินเกณฑ์"
+ },
+ {
+  "i": 59,
+  "run": 2,
+  "better": "tie",
+  "score": {
+   "base": 9,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบทำได้ดีมาก เนื่องจากลูกค้ายังไม่ได้ระบุประเภทสินค้าและไม่มีข้อมูลเงื่อนไขขึ้นตัวอย่างในระบบ ทั้งสองจึงถามชื่อสินค้าอย่างสุภาพเพื่อนำไปเช็กต่อได้อย่างเหมาะสม"
+ },
+ {
+  "i": 65,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9.5,
+   "addendum": 8.5
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบได้ถูกต้องตามข้อมูลและระบุชัดเจนว่าต้องเช็กคิวผลิตเพื่อดูว่าจะทันวันที่ 19 ต.ค. หรือไม่ แต่คำตอบ A ดีกว่าตรงที่มีประโยคปิดท้ายชวนส่งไฟล์งานที่เจาะจงและช่วยขับเคลื่อนบทสนทนาต่อไปได้ดีกว่า"
+ },
+ {
+  "i": 65,
+  "run": 2,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 4
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ตอบได้ถูกต้องตามข้อมูลที่มี ไม่แต่งตัวเลขระยะเวลาขึ้นมาเอง และแจ้งขอเช็กคิวผลิตจริงได้อย่างเหมาะสม ส่วนคำตอบ B มีการแต่งตัวเลขระยะเวลาผลิต 3-7 วันทำการ ซึ่งไม่มีในข้อมูลที่ให้มา"
+ },
+ {
+  "i": 83,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 6
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A มีการแต่งข้อมูลเรื่องเนื้อผ้า (เช่น เนื้อฮาร์มิต) และใช้ emoji เกินโควตา 1-2 ตัว ส่วนคำตอบ B ยึดตามข้อมูลที่ให้เรื่องงานด่วนอย่างถูกต้อง น้ำเสียงและจำนวน emoji พอดีตามกติกา"
+ },
+ {
+  "i": 83,
+  "run": 2,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบตามข้อมูลเงื่อนไขงานด่วนได้ถูกต้องและส่งต่อเช็กคิวได้ดี แต่คำตอบ A กระชับกว่า ใช้ emoji ไม่เกิน 2 ตัวตามกติกากำหนด (คำตอบ B ใช้ emoji เกิน 2 ตัว)"
+ },
+ {
+  "i": 86,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 4,
+   "addendum": 8
+  },
+  "fab": {
+   "base": true,
+   "addendum": false
+  },
+  "handoff": {
+   "base": true,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ลูกค้าไม่ได้ระบุชื่อสินค้ามาตั้งแต่แรก คำตอบ A จัดการได้ถูกต้องโดยขอชื่อสินค้าหรือรูปภาพก่อน ส่วนคำตอบ B ทึกทักไปเองว่าเป็นสติ๊กเกอร์และแต่งเงื่อนไขการไดคัท 50%/100% ขึ้นมาโดยไม่มีในข้อมูล"
+ },
+ {
+  "i": 86,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบรับมือได้ดีเนื่องจากลูกค้าไม่ได้ระบุชนิดสินค้าและไม่มีข้อมูลในระบบ แต่ B ดีกว่าเล็กน้อยที่มีการยกตัวอย่างสินค้าและทวนประเด็นที่ลูกค้าถาม (เนื้อ UV, เรทต่อแผ่น) ได้ชัดเจนและตรงจุดกว่า"
+ },
+ {
+  "i": 91,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ข้อมูลไม่มีระยะเวลาผลิตของ Photocard PVC การส่งต่อแอดมินจึงถูกต้อง ทั้งสองตอบได้ดีตามกติกา แต่คำตอบ A ดีกว่าเล็กน้อยเพราะระบุชื่อสินค้า (Photocard PVC) ชัดเจนและมีความเฉพาะเจาะจงกับคำถามของลูกค้ามากกว่า"
+ },
+ {
+  "i": 103,
+  "run": 1,
+  "better": "tie",
+  "score": {
+   "base": 6,
+   "addendum": 6
+  },
+  "fab": {
+   "base": true,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบแต่งข้อมูลเรื่องบริการส่งแมสเซนเจอร์และเงื่อนไขค่าจัดส่งขึ้นมาเองโดยไม่มีในผลค้นหาที่กำหนดให้ (fab=true) แต่น้ำเสียงและการสอบถามข้อมูลเพื่อเช็กคิวต่อทำได้ดีใกล้เคียงกัน"
+ },
+ {
+  "i": 103,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 6,
+   "addendum": 8
+  },
+  "fab": {
+   "base": true,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A เมคข้อมูลเรื่องการเรียกรถมารับ (แมสเซนเจอร์) ทั้งที่ไม่มีระบุใน knowledge ที่ให้มา ส่วนคำตอบ B จัดการเงื่อนไขได้ปลอดภัยกว่าและชวนคุยเพื่อขอข้อมูลเช็กคิวได้อย่างถูกต้องตามกติกา"
+ },
+ {
+  "i": 108,
+  "run": 1,
+  "better": "tie",
+  "score": {
+   "base": 9.5,
+   "addendum": 9.5
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบได้ถูกต้องตามข้อมูลที่ให้มาอย่างครบถ้วน ไม่แต่งข้อมูล น้ำเสียงสุภาพน่ารักตามกติกา และสอบถามข้อมูลที่จำเป็นเพื่อเช็กคิวผลิตได้อย่างเหมาะสม"
+ },
+ {
+  "i": 108,
+  "run": 2,
+  "better": "base",
+  "score": {
+   "base": 9.5,
+   "addendum": 8.5
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ใช้ถ้อยคำตรงตามข้อมูลชัดเจนว่าไม่มีบริการเร่งงานหรือค่าเร่ง ส่วนคำตอบ B ใช้คำว่า 'ไม่มีบริการบวกค่าเร่งด่วน' และใช้น้ำเสียงลงท้ายว่า 'น้า' ซึ่งดูไม่สุภาพเท่า A ค่ะ"
+ },
+ {
+  "i": 112,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 5,
+   "addendum": 9
+  },
+  "fab": {
+   "base": true,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ข้อมูลมีระบุขนาดมาตรฐานแค่ 4x6 และ 5x7 นิ้ว คำตอบ A เมคข้อมูลว่าขนาด 70x120 มม. ทำได้เลย ส่วน B ตอบตามข้อมูลเรื่องปั๊มฟอยล์และส่งต่อเช็กขนาดที่ไม่มีในข้อมูลได้อย่างถูกต้องตามกติกา"
+ },
+ {
+  "i": 112,
+  "run": 2,
+  "better": "tie",
+  "score": {
+   "base": 9,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบทำได้ดีมาก ตอบเรื่องงานปั๊มฟอยล์ได้ถูกต้องตามข้อมูล และเนื่องจากขนาด 70x120 มม. ไม่มีในระบบ จึงส่งเรื่องให้แอดมินยืนยันขนาดพิเศษได้อย่างถูกต้อง พร้อมถามจำนวนเพื่อประเมินราคาต่ออย่างสุภาพ"
+ },
+ {
+  "i": 119,
+  "run": 1,
+  "better": "tie",
+  "score": {
+   "base": 6,
+   "addendum": 6
+  },
+  "fab": {
+   "base": true,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบแต่งข้อมูลเรื่องไม่มีค่าใช้จ่ายในการแก้ไขเพิ่มเติมเองโดยไม่มีในบริบทความรู้ที่ให้มา แต่ตอบได้ครบทุกประเด็น น้ำเสียงสุภาพและแจ้งขั้นตอนต่อไปได้ดีเท่ากัน"
+ },
+ {
+  "i": 119,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 4,
+   "addendum": 9
+  },
+  "fab": {
+   "base": true,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A ปฏิบัติตามกฎได้ถูกต้องโดยไม่เมคข้อมูลเรื่องค่าใช้จ่ายและแจ้งประสานงานต่อ ในขณะที่คำตอบ B มีการแต่งข้อมูลเงื่อนไข (fab) ว่าไม่มีค่าใช้จ่ายเพิ่มเติมทั้งที่ในระบบไม่มีข้อมูลระบุไว้"
+ },
+ {
+  "i": 125,
+  "run": 1,
+  "better": "addendum",
+  "score": {
+   "base": 5,
+   "addendum": 8
+  },
+  "fab": {
+   "base": true,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ข้อมูลที่ให้ไม่มีราคาของขนาด 32mm หรือเรท 18 เซ็ต (tool ค้นหาผิดเป็น 180 เซ็ต) คำตอบ A แต่งยืนยันราคา 130 บาทและคำนวณยอด 2,340 บาทขึ้นมาเอง ส่วนคำตอบ B ยืนยันเรื่องจำนวนเซ็ตถูกต้อง และแจ้งตามจริงว่าราคาขึ้นกับชนิดเคลือบพร้อมรอแอดมินยืนยันยอดตามกติกาข้อมูลไม่ครบ"
+ },
+ {
+  "i": 125,
+  "run": 2,
+  "better": "base",
+  "score": {
+   "base": 8,
+   "addendum": 4
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": true,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A แต่งข้อมูลราคาขนาด 3.2 ซม. (130 บาท/เซ็ต) ขึ้นมาเองเนื่องจากข้อมูลที่มีระบุเพียงช่วงราคา 90–155 บาท และข้อมูล 180 เซ็ต ไม่ใช่ 18 เซ็ต ส่วนคำตอบ B ปลอดภัยกว่าที่ไม่ยืนยันตัวเลขที่ไม่มีในข้อมูล แม้จะต้องส่งต่อแอดมินก็ตาม"
+ },
+ {
+  "i": 153,
+  "run": 1,
+  "better": "tie",
+  "score": {
+   "base": 9,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบตรงคำถามตามสามัญสำนึกของตารางราคาเรทสินค้าได้ถูกต้อง น้ำเสียงสุภาพเป็นมิตร และถามข้อมูลสินค้าเพิ่มเติมเพื่อช่วยคำนวณได้อย่างเหมาะสม แทบไม่ต่างกันเลย"
+ },
+ {
+  "i": 153,
+  "run": 2,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองตอบคำถามได้ถูกต้องตามหลักทั่วไปของร้านว่าตารางเรทเป็นราคาต่อชิ้น แต่คำตอบ A ดีกว่าเล็กน้อยในการอธิบายหลักการเรทราคาภาพรวมอย่างกระชับและไม่ทวนตัวเลขที่ไม่ได้มีในฐานข้อมูลยืนยันโดยตรง"
+ },
+ {
+  "i": 178,
+  "run": 0,
+  "better": "addendum",
+  "score": {
+   "base": 8,
+   "addendum": 9
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบส่วนที่รู้และส่งต่อเรื่องคิว/ราคาได้ถูกต้องตามข้อมูลที่ให้ แต่คำตอบ A มีประโยคปิดท้ายที่เจาะจงและกระตุ้นการกระทำได้ชัดเจนกว่า (ชวนส่งไฟล์มาให้ดูก่อน)"
+ },
+ {
+  "i": 178,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบรับการทำสมุดและแจ้งประสานงานเรื่องคิวงาน/ราคาที่ไม่มีในข้อมูลได้อย่างถูกต้อง แต่คำตอบ A ดีกว่าเพราะมีประโยคปิดท้ายที่ชวนคุยเจาะจงและแนะขั้นตอนถัดไปให้ลูกค้าส่งไฟล์มาเช็กได้เลย"
+ },
+ {
+  "i": 195,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 9,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบเงื่อนไขงานด่วนได้ถูกต้องตามข้อมูลและขอเช็กคิวผลิตได้อย่างเหมาะสม แต่คำตอบ A มีการระบุรายละเอียดที่ต้องการเพิ่มได้เจาะจงและมีสรรพนาม 'คุณลูกค้า' ที่ตรงตามกติกามากกว่า"
+ },
+ {
+  "i": 195,
+  "run": 2,
+  "better": "base",
+  "score": {
+   "base": 8,
+   "addendum": 8
+  },
+  "fab": {
+   "base": false,
+   "addendum": false
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "ทั้งสองคำตอบตอบได้ดีตามข้อมูลและเงื่อนไขที่กำหนด ไม่มีการแต่งข้อมูล และขอเช็กคิวผลิตเนื่องจากไม่มีข้อมูลคิวในระบบ โดยคำตอบ B ปิดท้ายด้วยประโยคคำถามที่กระตุ้นให้ลูกค้าส่งไฟล์ได้เจาะจงและเป็นธรรมชาติกว่าเล็กน้อย"
+ },
+ {
+  "i": 207,
+  "run": 1,
+  "better": "base",
+  "score": {
+   "base": 8,
+   "addendum": 5
+  },
+  "fab": {
+   "base": false,
+   "addendum": true
+  },
+  "handoff": {
+   "base": false,
+   "addendum": false
+  },
+  "reask": {
+   "base": false,
+   "addendum": false
+  },
+  "note": "คำตอบ A มีการแต่งข้อมูลขนาดไซส์สายคล้องคอ (1.5 ซม., 2 ซม., 90 ซม.) ซึ่งไม่มีในระบบ ส่วนคำตอบ B ทำถูกต้องที่ไม่เมคข้อมูลไซส์และราคาขึ้นมาเองเนื่องจากในระบบมีเพียงข้อมูลสายคล้องมือ และแจ้งประสานแอดมินยืนยันข้อมูลได้ถูกต้องตามกติกา"
+ }
+]
