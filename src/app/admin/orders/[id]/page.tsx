@@ -4509,7 +4509,7 @@ export default function AdminOrderDetailPage() {
       localStorage.setItem("iducky-cart-v1", JSON.stringify([...cart.filter((c) => c?.key !== key), line]));
       localStorage.setItem(
         "iducky-append-order-v1",
-        JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer, needShipping: shippingUnset(order) })
+        JSON.stringify({ id: order.id, key: order.key ?? "", customer: order.customer, needShipping: shippingUnset(order), byAdmin: true })
       );
       localStorage.removeItem("iducky-append-picks-v1");
       writeReplaceMarker({
@@ -8960,6 +8960,8 @@ export default function AdminOrderDetailPage() {
                       needShipping: shippingUnset(order),
                       // 🚚⚡ ค่าส่งระบบเลือกให้ → ตะกร้าคิดค่าส่งทั้งใบใหม่แล้วส่งไปแทน (shipAutoFollowNow)
                       shipFollow: !shippingUnset(order) && shipAutoFollowNow(order),
+                      // 🛍️ แอดมินหยิบเอง → ตะกร้ายืนยันแล้วส่งเข้าใบ + พากลับหน้านี้เลย (ข้ามกด "เพิ่มเข้าออเดอร์" ซ้ำ)
+                      byAdmin: true,
                     })
                   );
                   localStorage.removeItem("iducky-append-picks-v1");

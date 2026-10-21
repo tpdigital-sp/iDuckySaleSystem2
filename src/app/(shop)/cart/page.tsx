@@ -138,6 +138,14 @@ export default function CartPage() {
     clearPriceLinkBundle();
   }, []);
 
+  /**
+   * 🛍️ แอดมินหยิบจากหน้าออเดอร์หลังบ้าน (byAdmin) → หน้าชำระเงินกด "เพิ่มเข้าออเดอร์" ให้เองเมื่อข้อมูลครบ (?go=1)
+   * แล้วพากลับหน้าออเดอร์หลังบ้าน — ไม่ต้องกดซ้ำอีกรอบ (เจ้าของร้าน 21 ต.ค. 69) · ลูกค้ากดสั่งเพิ่มเอง = เดินทางเดิม
+   * ยังผ่านหน้าชำระเงินเพราะสูตรรวมบรรทัด (Add on/ค่ากล่อง/ค่าส่งทั้งใบ) อยู่ที่นั่นที่เดียว
+   */
+  const adminAppend = !!appendTo?.byAdmin;
+  const goConfirm = () => router.push(adminAppend ? "/checkout?go=1" : "/checkout");
+
   async function sendToQuote() {
     if (!quoteTo) return;
     setQuoteBusy(true);
@@ -1498,14 +1506,24 @@ export default function CartPage() {
             <button
               ref={confirmRef}
               type="button"
-              onClick={() => router.push("/checkout")}
+              onClick={goConfirm}
               disabled={pickedItems.length === 0 || shortLots.length > 0}
-              className="ord-btn yolk block lg mt-5"
+              // 🛍️ โหมดแอดมินหยิบ: เลขออเดอร์ยาว ใส่บรรทัดเดียวล้นขอบซ้าย (เจ้าของร้าน 21 ต.ค. 69) → แยก 2 บรรทัด
+              className={`ord-btn yolk block lg mt-5 ${adminAppend ? "wrap flex-col" : ""}`}
             >
-              ✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}
+              {adminAppend ? (
+                <>
+                  <span>➕ เพิ่มเข้าออเดอร์{allPicked ? "" : ` (${pickedItems.length} รายการ)`}</span>
+                  <span className="-mt-1.5 font-mono text-[.78rem] font-semibold opacity-80">{appendTo!.id}</span>
+                </>
+              ) : (
+                <>✅ ยืนยันการสั่งซื้อ{allPicked ? "" : ` (${pickedItems.length} รายการ)`}</>
+              )}
             </button>
             <p className="mt-2.5 text-center text-[11px] leading-relaxed t-soft">
-              ตรวจสอบรายการ · ตัวเลือก · ลิงก์ไฟล์ลาย ให้ครบ แล้วไปหน้าแจ้งโอนเงิน
+              {adminAppend
+                ? "ระบบเพิ่มเข้าออเดอร์ให้เลย แล้วพากลับหน้าออเดอร์หลังบ้าน"
+                : "ตรวจสอบรายการ · ตัวเลือก · ลิงก์ไฟล์ลาย ให้ครบ แล้วไปหน้าแจ้งโอนเงิน"}
             </p>
             <Link href="/products" className="ord-btn ghost block mt-3">
               ← เลือกซื้อสินค้าต่อ
@@ -1529,11 +1547,11 @@ export default function CartPage() {
             </div>
             <button
               type="button"
-              onClick={() => router.push("/checkout")}
+              onClick={goConfirm}
               disabled={pickedItems.length === 0 || shortLots.length > 0}
               className="ord-btn yolk shrink-0 px-5 py-2.5 text-sm"
             >
-              ✅ ยืนยันสั่งซื้อ
+              {adminAppend ? "➕ เพิ่มเข้าออเดอร์" : "✅ ยืนยันสั่งซื้อ"}
             </button>
           </div>
         </div>

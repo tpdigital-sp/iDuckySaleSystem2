@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ART_SIZE_LABEL, REUSE_ART_LABEL, activeMatrix, activeRate, addOnFeeLines, artQtyFromSel, artSizeByUrl, feeBreakdown, formatPrice, includedDesigns, lotShortfalls, mixRuleFor, needsStockCheck, orderUnitYield, perUnitCapacity, splitArtUrls, stockCheckRows } from "@/lib/products";
 import { couponErrorText, type CouponError } from "@/lib/coupons";
 
@@ -99,7 +100,8 @@ function selfDesignedProof(
 }
 
 export default function CheckoutPage() {
-  const { items: allItems, productOf, productGone, removeItem, lotExtras, appendShip } = useCart();
+  const { items: allItems, productOf, productGone, removeItem, lotExtras, appendShip, appendShipErr } = useCart();
+  const router = useRouter();
   /** รายการที่ลูกค้าเอาติ๊กออกในหน้าตะกร้า — ไม่เอาเข้าออเดอร์รอบนี้ (ยังค้างในตะกร้าต่อ) */
   const [unpicked, setUnpicked] = useState<string[]>([]);
   /**
@@ -168,13 +170,16 @@ export default function CheckoutPage() {
   // ── โหมดพนักงาน: สั่งแทนลูกค้า (เห็นเฉพาะคนที่ล็อกอินหลังบ้านและมีสิทธิ์แก้ออเดอร์) ──
   const [staffName, setStaffName] = useState("");
   const [staffMode, setStaffMode] = useState(false);
+  /** ถามสิทธิ์หลังบ้านเสร็จแล้ว (สำเร็จหรือไม่ก็ตาม) — โหมดแอดมินหยิบให้ออเดอร์รอข้อนี้ก่อนกดเอง */
+  const [staffChecked, setStaffChecked] = useState(false);
   useEffect(() => {
     fetch("/api/admin/session", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
         if (j?.loggedIn && Array.isArray(j.perms) && j.perms.includes("orders.edit")) setStaffName(j.name || "พนักงาน");
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setStaffChecked(true));
   }, []);
   const toggleStaffMode = (on: boolean) => {
     setStaffMode(on);
@@ -248,8 +253,11 @@ export default function CheckoutPage() {
     setReported(true);
   }
 
+  /** ตั้งค่าร้าน (วิธีส่ง/ค่ากล่อง/ของแถม) โหลดแล้ว — โหมดแอดมินหยิบให้ออเดอร์ห้ามกดก่อนข้อนี้ ไม่งั้นค่าส่งเป็นค่าเริ่มต้นในโค้ด */
+  const [paymentReady, setPaymentReady] = useState(false);
   useEffect(() => {
     fetchShopPayment().then((p) => {
+      setPaymentReady(true);
       setPayment(p);
       const list = shippingOf(p);
       setMethods(list);
@@ -458,6 +466,54 @@ export default function CheckoutPage() {
   const earlyPay = appendTo || isDealer || discount > 0 ? 0 : earlyPayAmount(earlyPayGoods, earlyPayOf(payment));
   const total = Math.max(0, subtotal - discount - earlyPay + shippingCost - shipWas);
 
+  /**
+   * 🛍️ แอดมินหยิบจากหน้าออเดอร์หลังบ้าน แล้วกดยืนยันในตะกร้า (?go=1) → กด "เพิ่มเข้าออเดอร์" ให้เองเมื่อข้อมูลครบ
+   * (เจ้าของร้าน 21 ต.ค. 69 "ไม่ต้องคอยกดเพิ่มเข้าออเดอร์อีกที") · ต้องรอ: สิทธิ์หลังบ้าน · ตั้งค่าร้าน · ตัวสินค้าทุกบรรทัด
+   * · ของในใบเดิม (ใบที่ต้องคิดค่าส่งทั้งใบ) — ไม่ครบใน 15 วิ / ดึงใบเดิมไม่ได้ / ด่านตรวจไม่ผ่าน = หยุด โชว์หน้านี้ให้กดเอง
+   * wait = รอข้อมูล · fired = กดแล้ว · done = สำเร็จ กำลังพาไปหลังบ้าน · off = หน้าปกติ
+   */
+  const [autoGo, setAutoGo] = useState<"off" | "wait" | "fired" | "done">("off");
+  const [autoNote, setAutoNote] = useState("");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("go") === "1") setAutoGo("wait");
+  }, []);
+  const needBase = !!appendTo?.needShipping || !!appendTo?.shipFollow;
+  const baseIds = (appendShip?.lines ?? [])
+    .map((l) => l.productId)
+    .filter((id) => id && !id.includes("#") && id !== "special-item");
+  const autoReady =
+    !!appendTo?.byAdmin &&
+    staffChecked &&
+    !!staffName &&
+    paymentReady &&
+    items.length > 0 &&
+    items.every((i) => !!productOf(i.productId)) &&
+    (!needBase || (!!appendShip && baseIds.every((id) => !!productOf(id) || productGone(id))));
+  useEffect(() => {
+    if (autoGo !== "wait") return;
+    // ไม่ใช่โหมดแอดมินหยิบ / ไม่ได้ล็อกอินหลังบ้าน = หน้าปกติ (กดเอง)
+    if (staffChecked && (!staffName || (appendTo !== null && !appendTo.byAdmin))) {
+      setAutoGo("off");
+      return;
+    }
+    if (needBase && appendShipErr) {
+      setAutoGo("off");
+      setAutoNote("⚠️ ดึงรายการในใบเดิมไม่ได้ — ตรวจค่าส่งด้านล่าง แล้วกดเพิ่มเข้าออเดอร์เอง");
+      return;
+    }
+    if (autoReady) {
+      setAutoGo("fired");
+      void submit();
+      return;
+    }
+    const t = setTimeout(() => {
+      setAutoGo((g) => (g === "wait" ? "off" : g));
+      setAutoNote("⏳ โหลดข้อมูลไม่ครบ ระบบเลยยังไม่ได้กดให้ — ตรวจรายการด้านล่าง แล้วกดเพิ่มเข้าออเดอร์เอง");
+    }, 15000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGo, autoReady, staffChecked, staffName, appendTo, needBase, appendShipErr]);
+
   async function submit() {
     // 📦 ขั้นต่ำต่อรอบผลิต (เรท minQtyScope: "lot") — กันคนเดินมาหน้านี้ตรง ๆ ข้ามประตูที่ตะกร้า
     const short = lotShortfalls(
@@ -645,6 +701,14 @@ export default function CheckoutPage() {
       clearAppendTarget();
       // 🧹 ตะกร้าว่างแล้ว วันใช้งานที่ค้างในเครื่องก็หมดหน้าที่ — ไม่งั้นไปโผล่ในใบถัดไป (ดู lib/use-by-date.ts)
       clearUseByDate();
+      // 🛍️ แอดมินหยิบให้ออเดอร์ → ไม่ต้องโชว์หน้าสำเร็จ พากลับหน้าออเดอร์หลังบ้านเลย (เจ้าของร้าน 21 ต.ค. 69)
+      if (appendTo.byAdmin && staffName) {
+        setAutoGo("done");
+        items.forEach((it) => removeItem(it.key));
+        clearUnpicked();
+        router.replace(`/admin/orders/${encodeURIComponent(appendTo.id)}`);
+        return;
+      }
       setAppendDone({ owed: res.owed ?? 0, ...(appendNeedsShip ? { ship: { name: effectiveMethod.name, cost: shippingCost } } : {}) });
       window.scrollTo({ top: 0 }); // หน้าสั่งเพิ่มสำเร็จ — เริ่มที่หัวหน้าเหมือนสั่งใบใหม่
       // เอาเฉพาะรายการที่ส่งเข้าออเดอร์เดิมออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ให้สั่งทีหลัง
@@ -755,6 +819,23 @@ export default function CheckoutPage() {
     setLineOpened(true);
     // ส่งข้อความไปตั้งต้นในช่องพิมพ์ให้เลย (มือถือ) — ถ้ายาวเกิน route จะข้ามให้เอง แล้วลูกค้าวางจากคลิปบอร์ดแทน
     window.open(LINE_URL + "?text=" + encodeURIComponent(prefill), "_blank", "noopener,noreferrer");
+  }
+
+  /* ── 🛍️ แอดมินหยิบให้ออเดอร์: กำลังรอข้อมูล / กำลังบันทึก / สำเร็จแล้วกำลังพาไปหลังบ้าน ── */
+  if (appendTo && (autoGo === "wait" || autoGo === "done" || (autoGo === "fired" && placing))) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+        <div className="rounded-2xl bg-sky-50/70 p-6 ring-1 ring-sky-200">
+          <span className="text-5xl">{autoGo === "done" ? "✅" : "🛍️"}</span>
+          <h1 className="mt-3 text-xl font-extrabold text-sky-900">
+            {autoGo === "done" ? "เพิ่มแล้ว กำลังพาไปหน้าออเดอร์…" : `กำลังเพิ่มเข้าออเดอร์ ${appendTo.id}…`}
+          </h1>
+          <p className="mt-1 text-sm text-stone-600">
+            {autoGo === "wait" ? "รอโหลดราคาและค่าส่งให้ครบก่อน" : "กำลังบันทึก อย่าเพิ่งปิดหน้านี้"}
+          </p>
+        </div>
+      </div>
+    );
   }
 
   /* ── สั่งเพิ่มในออเดอร์เดิมสำเร็จ ── */
@@ -1363,6 +1444,7 @@ export default function CheckoutPage() {
       {/* 📦 สั่งจำนวนมาก → เตือนก่อนกดยืนยัน ว่าต้องรอร้านเช็คสต๊อก/คิวผลิตแล้วยืนยันกลับ */}
       <StockCheckNote rows={stockRows} className="mt-4" />
 
+      {autoNote && !err && <p className="mt-3 rounded-xl bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800">{autoNote}</p>}
       {err && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">{err}</p>}
 
       <button
