@@ -3774,7 +3774,8 @@ export default function CalendarStudio({
                   {
                     layer: "รองขาว (White)",
                     spot: "White",
-                    cmyk: [15, 0, 0, 0] as [number, number, number, number],
+                    // ⬛ สปอต White แสดงเป็นสีดำ (เจ้าของร้านสั่ง 21 ต.ค. 69 "เลเยอร์รองขาวควรเป็นสีดำ" — เดิมฟ้าอ่อน 15C)
+                    cmyk: [0, 0, 0, 100] as [number, number, number, number],
                     fill: true,
                     curves: clearCut ? whiteCurvesFor(resolve(printPages[i])) : tplCut,
                   },
@@ -4103,7 +4104,8 @@ export default function CalendarStudio({
           );
         }
         const paths: AiPath[] = [];
-        if (r.white.length) paths.push({ layer: "รองขาว (White)", spot: "White", cmyk: [15, 0, 0, 0], fill: true, curves: vec(r.white) });
+        // ⬛ สปอต White แสดงเป็นสีดำ (21 ต.ค. 69 · เดิมฟ้าอ่อน 15C)
+        if (r.white.length) paths.push({ layer: "รองขาว (White)", spot: "White", cmyk: [0, 0, 0, 100], fill: true, curves: vec(r.white) });
         paths.push({
           layer: `เส้นตัด (${cutP.cutType})`,
           spot: cutP.cutType,

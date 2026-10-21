@@ -350,8 +350,9 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
     // ⬜ รองขาว (ถมสี) = even-odd ให้รูในรูปทรงเป็นรูจริง (ดู fillCurvesEvenOdd) · วงกลมรูห่วง (circles) ยังผ่าน drawSvgPath
     for (const P of (p.paths ?? []).filter((x) => x.fill))
       layer(P.layer, () => {
-        fillCurvesEvenOdd(pg, P.curves, Hpt, [0.85, 0.95, 1]);
-        if (P.circles?.length) pg.drawSvgPath(svgOf({ ...P, curves: [] }), { x: 0, y: Hpt, scale: PT, color: rgb(0.85, 0.95, 1) });
+        // ⬛ รองขาวแสดงเป็นสีดำ (21 ต.ค. 69 · เดิมฟ้าอ่อน)
+        fillCurvesEvenOdd(pg, P.curves, Hpt, [0, 0, 0]);
+        if (P.circles?.length) pg.drawSvgPath(svgOf({ ...P, curves: [] }), { x: 0, y: Hpt, scale: PT, color: rgb(0, 0, 0) });
       });
     for (const l of p.layers) {
       const img = l.png.type === "image/jpeg" ? await doc.embedJpg(await l.png.arrayBuffer()) : await doc.embedPng(await l.png.arrayBuffer());
