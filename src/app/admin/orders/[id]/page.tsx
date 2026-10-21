@@ -14252,7 +14252,7 @@ function LineChatBox({
   const [pendingManagerId, setPendingManagerId] = useState<string | null>(null);
   /** ลิงก์ที่รอจับคู่เป็นห้องกลุ่ม (C…/R…) — ข้อความชวนเลือก "คนในกลุ่ม" และไม่บอกว่าจะจำคู่ลิงก์ (เซิร์ฟเวอร์ไม่จำให้) */
   const [pendingGroup, setPendingGroup] = useState(false);
-  const [suggestions, setSuggestions] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; remembered?: boolean }[]>([]);
+  const [suggestions, setSuggestions] = useState<{ userId: string; name: string; picture?: string; lastSeen?: string; remembered?: boolean; kind?: "group" | "room" }[]>([]);
 
   // กลับมาจากห้องแชท (สลับแท็บกลับ) → ดึงรายชื่อคุยล่าสุดใหม่ ลูกค้าที่เพิ่งทักจะอยู่บนสุด
   useEffect(() => {
@@ -14418,7 +14418,7 @@ function LineChatBox({
           j.suggestions?.length
             ? ""
             : j.group
-              ? "เก็บลิงก์ห้องกลุ่มแล้ว · พิมพ์ชื่อ LINE ของคนในกลุ่มที่จะรับแจ้งเตือน (ระบบส่งหาคนเดียว ไม่ส่งเข้ากลุ่ม)"
+              ? "เก็บลิงก์ห้องกลุ่มแล้ว · ยังไม่มีห้องกลุ่มในคลังแชท — ให้คนในกลุ่มพิมพ์ 1 ข้อความก่อน แล้วพิมพ์ชื่อกลุ่มในช่องนี้เพื่อผูก (การ์ดจะส่งเข้ากลุ่ม)"
               : "เก็บลิงก์ห้องแชทแล้ว · พิมพ์ชื่อลูกค้าเพื่อผูกให้ระบบส่งข้อความได้"
         );
         setDraft("");
@@ -15042,7 +15042,7 @@ function LineChatBox({
         <div className="mt-1.5 rounded-lg bg-sky-50 p-2 ring-1 ring-sky-200">
           <p className="text-[11px] font-bold text-sky-800">
             {pendingGroup
-              ? "👥 เก็บลิงก์ห้องกลุ่มแล้ว — ให้ระบบส่งแจ้งเตือนหาใครในกลุ่ม? (คนที่คุยกับร้านล่าสุด · ส่งหาคนเดียว ไม่ส่งเข้ากลุ่ม)"
+              ? "👥 เก็บลิงก์ห้องกลุ่มแล้ว — ลิงก์นี้คือกลุ่มไหนในคลังแชท? แตะเพื่อผูก (การ์ดแจ้งสถานะจะส่งเข้ากลุ่ม · รหัสท้ายลิงก์ OA แปลงเป็นกลุ่มตรง ๆ ไม่ได้)"
               : "🔗 เก็บลิงก์ห้องแชทแล้ว — ลิงก์นี้น่าจะเป็นใคร? (คนที่คุยกับร้านล่าสุด)"}
           </p>
           <div className="mt-1.5 space-y-1">
@@ -15060,6 +15060,7 @@ function LineChatBox({
                   <span className="h-6 w-6 shrink-0 rounded-full bg-slate-100" />
                 )}
                 <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-700">{h.name}</span>
+                {h.kind ? <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 ring-1 ring-violet-200">👥 {h.kind === "room" ? "ห้องรวม" : "กลุ่ม"}</span> : null}
                 {h.remembered ? (
                   <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">เคยจับคู่ไว้</span>
                 ) : (
@@ -15096,7 +15097,7 @@ function LineChatBox({
             <img src={picked.picture} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
           )}
           <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-emerald-800">
-            ผูกกับ “{picked.name}” ใช่ไหม?{pendingManagerId && !pendingGroup ? " (จะจำว่าลิงก์ห้องแชทนี้ = คนนี้)" : ""}
+            ผูกกับ “{picked.name}” ใช่ไหม?{pendingManagerId ? (pendingGroup ? " (จะจำว่าลิงก์ห้องกลุ่มนี้ = กลุ่มนี้)" : " (จะจำว่าลิงก์ห้องแชทนี้ = คนนี้)") : ""}
           </span>
           <button
             type="button"

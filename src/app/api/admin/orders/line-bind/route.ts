@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { fetchLineProfile, lineUserIdFrom } from "@/lib/server/notify";
 import { backfillMissedNotifies } from "@/lib/server/line-backfill";
 import { CHAT_COLLECTION, CHAT_OVERRIDE_COLLECTION, getChatFirestore } from "@/lib/server/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { withLog, type Order } from "@/lib/admin-data";
 import { updateOrder } from "@/lib/server/order-write";
 import { isLineGroupId } from "@/lib/line-room-id";
@@ -119,14 +119,15 @@ export async function POST(req: Request) {
   // ── ลิงก์ OA Manager: รหัสท้ายลิงก์ไม่ใช่ userId — ต้อง "แปล" ก่อน ──
   if (managerId) {
     // 1) เคยจับคู่ไว้แล้ว → "เสนอ" คนนั้นเป็นตัวเลือกแรก แต่ยังต้องกดยืนยัน (จำผิดครั้งเดียวจะได้ไม่ผิดตลอด)
-    let remembered: { userId: string; name: string; picture?: string } | null = null;
-    if (db && !isGroup) {
+    let remembered: { userId: string; name: string; picture?: string; kind?: "group" | "room" } | null = null;
+    if (db) {
       try {
         const q = await db.collection(CHAT_OVERRIDE_COLLECTION).where("managerUserId", "==", managerId).limit(1).get();
         if (!q.empty) {
           const real = q.docs[0].id;
-          const p = await fetchLineProfile(real);
-          if (p) remembered = { userId: real, name: p.name, picture: p.picture };
+          // 👥 21 ต.ค. 69 ลิงก์กลุ่มที่เคยยืนยันแล้ว (doc = groupId จริง) → เสนอกลุ่มนั้นเป็นตัวแรก
+          const p = isLineGroupId(real) ? await groupProfile(real) : await fetchLineProfile(real);
+          if (p) remembered = { userId: real, name: p.name, picture: p.picture, ...(isLineGroupId(real) ? { kind: real[0] === "C" ? ("group" as const) : ("room" as const) } : {}) };
         }
       } catch {
         /* ตารางจับคู่อ่านไม่ได้ก็ไปขั้นถัดไป */
@@ -136,16 +137,29 @@ export async function POST(req: Request) {
     //    (พนักงานเพิ่งเปิดห้องแชทคนนั้นมาก๊อปลิงก์ = เขาอยู่บนสุดของรายการเกือบทุกครั้ง)
     const saved = withLog({ ...order, lineChatUrl: input }, who, isGroup ? "บันทึกลิงก์ห้องกลุ่ม LINE" : "บันทึกลิงก์ห้องแชท LINE");
     await updateOrder(sb, saved);
-    type Sug = { userId: string; name: string; picture?: string; lastSeen?: string };
+    type Sug = { userId: string; name: string; picture?: string; lastSeen?: string; kind?: "group" | "room" };
     const suggestions: Sug[] = [];
     if (db) {
       try {
-        const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").limit(3).get();
-        snap.forEach((d) => {
+        const rowOf = (d: FirebaseFirestore.QueryDocumentSnapshot): Sug => {
           const ls = d.get("lastSeen") as { _seconds?: number; toDate?: () => Date } | undefined;
           const at = ls?.toDate ? ls.toDate().toISOString() : ls?._seconds ? new Date(ls._seconds * 1000).toISOString() : undefined;
-          suggestions.push({ userId: (d.get("userId") as string) || d.id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string, lastSeen: at });
-        });
+          const kind = isLineGroupId(d.id) ? (d.id[0] === "C" ? ("group" as const) : ("room" as const)) : undefined;
+          return { userId: (d.get("userId") as string) || d.id, name: (d.get("displayName") as string) || "(ไม่มีชื่อ)", picture: d.get("pictureUrl") as string, lastSeen: at, ...(kind ? { kind } : {}) };
+        };
+        if (isGroup) {
+          // 👥 21 ต.ค. 69 ลิงก์กลุ่ม → เสนอ "ห้องกลุ่มในคลังแชท" (ที่ Group Log จดไว้) ไม่ใช่คนเดี่ยว · รหัสท้ายลิงก์ OA (C96b…) ≠ groupId จริง (C3d4…) แปลงตรงไม่ได้
+          //   ห้องกลุ่มมีน้อย → อ่านช่วงรหัส C…/R… (ไม่ต้องมี composite index) แล้วเรียง lastSeen เอง
+          const [cs, rs] = await Promise.all([
+            db.collection(CHAT_COLLECTION).where(FieldPath.documentId(), ">=", "C").where(FieldPath.documentId(), "<", "D").limit(50).get(),
+            db.collection(CHAT_COLLECTION).where(FieldPath.documentId(), ">=", "R").where(FieldPath.documentId(), "<", "S").limit(50).get(),
+          ]);
+          const rows = [...cs.docs, ...rs.docs].map(rowOf).filter((r) => r.lastSeen).sort((a, b) => (a.lastSeen! < b.lastSeen! ? 1 : -1));
+          suggestions.push(...rows.slice(0, 5));
+        } else {
+          const snap = await db.collection(CHAT_COLLECTION).orderBy("lastSeen", "desc").limit(3).get();
+          snap.forEach((d) => suggestions.push(rowOf(d)));
+        }
       } catch {
         /* ไม่มีคลังแชทก็ไม่มีข้อเสนอ */
       }
@@ -219,9 +233,10 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // พนักงานยืนยันว่า "ลิงก์ห้องแชทนี้ = คนนี้" → จำไว้ ครั้งหน้าวางลิงก์เดิมผูกอัตโนมัติ (AdminBuddy ใช้ตารางเดียวกัน)
-  // เฉพาะห้อง 1:1 (U…) — ห้องกลุ่ม C…/R… ไม่จำ (ตารางนี้คือ "ห้องส่วนตัวของคนนั้น" ใช้เป็นปุ่มเปิดแชทในหน้าคลังแชท)
+  // ห้อง 1:1: mid เป็น U… · 👥 21 ต.ค. 69 ลิงก์กลุ่ม (mid C…/R…) จำได้เมื่อผูกกับห้องกลุ่มจริง (doc = groupId) — ครั้งหน้าวางลิงก์เดิมเสนอกลุ่มนั้นเลย
   const mid = (body.managerId ?? "").trim();
-  if (db && /^U[0-9a-f]{32}$/i.test(mid)) {
+  const midOk = /^U[0-9a-f]{32}$/i.test(mid) ? !isLineGroupId(userId) : /^[CR][0-9a-f]{32}$/i.test(mid) ? isLineGroupId(userId) : false;
+  if (db && midOk) {
     try {
       await db.collection(CHAT_OVERRIDE_COLLECTION).doc(userId).set(
         { managerUserId: mid, managerUserIdBy: who, managerUserIdAt: new Date().toISOString(), source: "iducky-order" },
