@@ -706,6 +706,12 @@ export interface Understanding {
   alternatives: ProductRef[];
   /** ไว้ดีบักด่านยึดสินค้าจากบทสนทนา (สินค้าที่คำถามเอ่ยถึงตรง ๆ / ชุดที่ยึดจากบริบท) */
   debug?: { qMentions: string[]; anchor: string[]; trace: string[] };
+  /**
+   * 🎴 ด่านตายตัวที่ "ชี้สินค้า + รูปแบบคำตอบ" ให้ priceSearch (21 ต.ค. 69)
+   *   game-card-foil = การ์ดเกม/การ์ดสะสม/ไพ่ + ฟอยล์/โฮโลแกรม → gameCardFoilAnswer (ข้อความตายตัวจากตัวเลือกจริงของโฟโต้การ์ด)
+   *   game-card      = การ์ดเกม/การ์ดสะสม/ไพ่ เฉย ๆ → เดินเส้นปกติด้วยสินค้าโฟโต้การ์ด
+   */
+  gate?: "game-card-foil" | "game-card";
   /** ถามเรื่อง "อุปกรณ์/ตัวเลือก" ของสินค้าที่คุยอยู่ (ตะขอ ห่วง ความหนา แพ็คเกจ…) → ตอบจากหน้าสินค้าตัวนั้น ไม่ใช่เมนูกลุ่ม (7 ต.ค. 69) */
   attr?: boolean;
 }
@@ -715,6 +721,76 @@ export const ATTR_RE =
   /ตะขอ|ห่วง|โซ่|อะไหล่|จี้ห้อย|สายคล้อง|จุกยาง|ฐานตั้ง|ความหนา|หนากี่|หนาเท่าไหร่|แพ็คเกจ|แพ็คแยก|ซองใส|ถุงแก้ว|กล่องใส่|ฟิล์มกันรอย|รองพื้นขาว|เจาะรู/;
 /** ถามว่า "รวม … ไหม / ไม่รวม / เพิ่มเท่าไหร่ / มีแบบไหนบ้าง" — ต้องตอบจากรายละเอียดหน้าสินค้า ไม่ใช่ตารางราคาซ้ำ */
 export const INCLUDE_Q_RE = /รวม.{0,15}(ไหม|มั้ย|รึยัง|หรือยัง|หรือเปล่า|ด้วยไหม|ด้วยมั้ย|แล้วยัง)|ไม่รวม|บวกเพิ่ม|เพิ่มเท่าไหร่|คิดเพิ่ม|แบบไหนบ้าง|มีอะไรบ้าง|มีกี่แบบ|เท่าไหร่|ราคาเท่า/;
+
+/** 🎴 คำที่ลูกค้าเรียก "การ์ดเกม/การ์ดสะสม/ไพ่" (21 ต.ค. 69) — ร้านทำเป็นโฟโต้การ์ด */
+export const GAME_CARD_RE = /การ์ดเกม|เกมการ์ด|การ์ดสะสม|บัตรสะสม|การ์ดไอดอล|การ์ดเกมส์|ไพ่|\btcg\b|trading\s*card|บอร์ดเกม|board\s*game|collect(?:ible|ing)\s*card|game\s*card/i;
+/** พูดถึงลุคฟอยล์/โฮโลแกรม/หุ้มเงาบนการ์ด */
+export const CARD_FOIL_RE = /ฟอยล์|foil|โฮโล|holo|หุ้ม|รุ้ง|วิบวับ|เงาวาว|shiny|glossy\s*foil/i;
+
+/**
+ * 🎴 "รับทำการ์ดเกมแบบหุ้มฟอยล์ไหม" → ข้อความตายตัวประกอบจากตัวเลือกจริงของโฟโต้การ์ด (21 ต.ค. 69)
+ *   ทำไมไม่ให้ searchInfo อ่านหน้า: หน้าสินค้าไม่มีคำว่า "การ์ดเกม/หุ้มฟอยล์" คนอ่านหน้าเลยตอบไม่ได้ → ตกไป n8n → "ขอเช็กก่อน"
+ *   รายการสี/กระดาษ/ลายฟิล์มดึงจากกลุ่มตัวเลือกสด ๆ (แก้ตัวเลือกในหลังบ้านแล้วคำตอบเปลี่ยนตาม) · ไม่บอกราคา (ให้การ์ดสินค้า + ถามจำนวน)
+ */
+export async function gameCardFoilAnswer(id: string, foil = true): Promise<PriceAnswer | null> {
+  const full = await productFull(id).catch(() => undefined);
+  if (!full) return null;
+  const refs = await catalogRefs();
+  const me = refs.find((r) => r.id === id);
+  const foilPaper = refs.find((r) => r.id === "paper-foil");
+  const pvc = refs.find((r) => r.id === "photocard-pvc-uv");
+  const opts = full.options ?? [];
+  const uniq = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
+  const choices = (re: RegExp) => uniq(opts.filter((o) => re.test(o.label)).flatMap((o) => o.choices ?? []).map((c) => c.name));
+  const foilColors = choices(/^สีฟอยล์$/).map((c) => c.replace(/^สี/, ""));
+  const holoPapers = choices(/ชนิดกระดาษ/).filter((n) => /โฮโลแกรม/.test(n)).map((n) => n.replace(/\s*\(.*?\)\s*/g, "").trim());
+  const films = choices(/^เคลือบ$/).filter((n) => /hologram/i.test(n)).map((n) => n.replace(/^hologram-/i, ""));
+  const sizeChoice = choices(/ขนาด/).find((n) => /\d\s*[x×]\s*\d/.test(n)) ?? "";
+  const size = /(\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?)\s*ซม/.exec(sizeChoice)?.[1]?.replace(/\s+/g, "").replace("x", "×");
+  const perSet = /(\d+)\s*ใบ\s*\/\s*เซ็ต/.exec(sizeChoice)?.[1];
+  const sizeNote = `${size ? ` ขนาด ${size} ซม.` : ""}${perSet ? ` ขายเป็นเซ็ต เซ็ตละ ${perSet} ใบ` : ""}`;
+  if (!foil) {
+    // 🎴 "รับทำการ์ดเกมไหม" (ไม่พูดถึงฟอยล์) → แนะนำโฟโต้การ์ด + วัสดุ 3 กลุ่ม (ชื่อเรทจริง) + บอกว่าฟอยล์/โฮโลแกรมเพิ่มได้ · การ์ด PVC เป็นทางเลือก
+    const mats = uniq((full.priceRates ?? []).filter((r) => !r.dealerOnly).map((r) => r.label).filter((n) => !/ตัวแทน/.test(n)));
+    // ถามเป็น PVC อยู่แล้ว → ทางเลือกคือโฟโต้การ์ดกระดาษ (และกลับกัน) ไม่เสนอตัวเองซ้ำ
+    const isPvc = !!pvc && pvc.id === id;
+    const other = isPvc ? refs.find((r) => r.id === "photocard-digital") : pvc;
+    const lines = [
+      `รับค่ะ ✨ การ์ดเกม/การ์ดสะสม ร้านทำเป็น "${full.name}"${sizeNote} ได้เลยค่ะ`,
+      ...(mats.length > 1 ? [`เลือกวัสดุได้: ${mats.join(" / ")}`] : []),
+      ...(foilColors.length || holoPapers.length ? [`อยากได้ลุคฟอยล์/โฮโลแกรมก็ทำได้ค่ะ (ปั๊มฟอยล์${foilColors.length ? `สี${foilColors.join("/")}` : ""}${holoPapers.length ? ` หรือกระดาษโฮโลแกรม` : ""})`] : []),
+      ...(other ? [isPvc ? `ถ้าอยากได้เป็นการ์ดกระดาษ (ปั๊มฟอยล์/กระดาษโฮโลแกรมได้) มี "${other.name}" ด้วยค่ะ` : `ถ้าอยากได้เป็นบัตรพลาสติกแข็งกันน้ำ มี "${other.name}" ด้วยค่ะ`] : []),
+    ];
+    const products = [me, other].filter((p): p is ProductRef => !!p);
+    return {
+      answer: lines.join("\n"),
+      kind: "info",
+      source: "gate:game-card",
+      intent: "spec_card",
+      product: products[0],
+      products,
+      askNext: "ส่งแบบ/ลายการ์ดกับจำนวนที่ต้องการมาได้เลยค่ะ เดี๋ยวแอดมินเช็คสเปคและคิดราคาให้น้า 🥰",
+    };
+  }
+  const head = `รับค่ะ ✨ การ์ดเกม/การ์ดสะสมแบบหุ้มฟอยล์ ร้านทำเป็น "${full.name}"${sizeNote} ได้เลยค่ะ`;
+  const ways: string[] = [];
+  if (foilColors.length) ways.push(`ปั๊มฟอยล์เฉพาะจุด — สี${foilColors.join("/")} พิมพ์ 1-2 เลเยอร์ ทำได้ทั้ง 2 ด้าน`);
+  if (holoPapers.length) ways.push(`กระดาษโฮโลแกรมทั้งใบ — ${holoPapers.join(" / ")}`);
+  if (films.length) ways.push(`เคลือบฟิล์มโฮโลแกรมทับลาย — ลาย${films.join("/")}`);
+  if (!ways.length) return null;
+  const lines = [head, "ลุคฟอยล์เลือกได้ 3 แบบ:", ...ways.map((w, i) => `${i + 1}. ${w}`)];
+  if (foilPaper) lines.push(`ขนาดอื่นที่ไม่ใช่${size ? ` ${size} ซม.` : "ขนาดโฟโต้การ์ด"} สั่งเป็น "${foilPaper.name}" กำหนดขนาดเองได้ค่ะ`);
+  const products = [me, foilPaper].filter((p): p is ProductRef => !!p);
+  return {
+    answer: lines.join("\n"),
+    kind: "info",
+    source: "gate:game-card-foil",
+    intent: "spec_card_foil",
+    product: products[0],
+    products,
+    askNext: "ส่งแบบ/ลายการ์ดกับจำนวนที่ต้องการมาได้เลยค่ะ เดี๋ยวแอดมินเช็คสเปคและคิดราคาให้น้า 🥰",
+  };
+}
 
 /**
  * ✍️ คำสะกดผิดที่ลูกค้าพิมพ์บ่อย → คำที่ใช้ในชื่อสินค้า (28 ก.ย. 69: "อะคลิลิค" ทำให้จับ "แม่เหล็กอะคริลิค" ไม่เจอ)
@@ -727,7 +803,12 @@ export function fixTypos(text: string): string {
     // "สตก PP กันน้ำไหม" (เจ้าของร้าน 8 ต.ค. 69 16:25) — ย่อแบบพิมพ์ไลน์
     .replace(/(^|[\s,])สตก(?=[\s]|$)/g, "$1สติ๊กเกอร์")
     .replace(/โฟโต[กค]าร์ด|โฟโต้กาด|photo\s?card/gi, "โฟโต้การ์ด")
+    // สระเอสองตัว "เเ" = แ (คีย์บอร์ดมือถือพิมพ์บ่อย: "เเบบ" "กุญเเจ") — 21 ต.ค. 69 "การ์ดเกมเเบบหุ้มฟอย"
+    .replace(/เเ/g, "แ")
     .replace(/กุญเเจ/g, "กุญแจ")
+    // "ฟอย" / "ฟอยล" ไม่มีการันต์ → ฟอยล์ (ชื่อตัวเลือกในแคตตาล็อกสะกด "ฟอยล์" ทุกตัว)
+    .replace(/ฟอย(?!ล)/g, "ฟอยล์")
+    .replace(/ฟอยล(?!์)/g, "ฟอยล์")
     // ⚠️ ต้องเอาตัวยาว (มีวรรณยุกต์) ขึ้นก่อน — เดิม "สแตนดี" ชนะก่อนแล้วเหลือ "้" ค้าง กลายเป็น "สแตนดี้้" ทำให้ชื่อสินค้าจับไม่ตรง (1 ต.ค. 69)
     .replace(/สแตนดี้|สแตนดี๊|สแตนดี(?![้๊])|standee/gi, "สแตนดี้")
     .replace(/แม่เหล็ค|แม่เหล๊ก|magnet/gi, "แม่เหล็ก")
@@ -1137,6 +1218,7 @@ ${list}
       t.replace(/ราคา|เท่าไหร่|เท่าไร|กี่บาท|ขอเรท|เรท|ค่ะ|คะ|ครับ|หน่อย|ขอ|อยากได้|สนใจ|\?/g, "").replace(/\s+/g, " ").trim();
     let requested = cleanReq(String(raw.requested ?? "")) || cleanReq(q);
     let finalPicked = picked;
+    let gate: Understanding["gate"];
     // 📄 8 ต.ค. 69 15:48 "ขอดูภาพกระดาษสีทอง" → LLM พ่วง "Sticker Gold | Silver | RoseGold" มาเป็นเมนู (บทสนทนาก่อนหน้าเคยพูดถึง) ทั้งที่กฎบอกแล้วว่า = กระดาษเนื้อพิเศษ
     // → ลูกค้าพูดถึง "กระดาษ" โดยไม่พูดถึงสติ๊กเกอร์ = ตัดสินค้าสติ๊กเกอร์ทิ้ง (เหลือแต่ของที่เป็นกระดาษจริง)
     // 🏷 8 ต.ค. 69 16:25 "สตก PP กันน้ำไหม" → ประวัติลากไป "สติ๊กเกอร์เรืองแสง" ทั้งที่ลูกค้าระบุวัสดุ PP ชัด
@@ -1247,6 +1329,23 @@ ${list}
         }
       }
     }
+    // 🎴 21 ต.ค. 69 "ที่ร้านรับทำการ์ดเกมแบบหุ้มฟอยล์มั้ยครับ" → LLM ตีเป็น knowledge+โปสการ์ด → อ่านหน้าโปสการ์ดไม่เจอ → found:false
+    //   → บอท n8n ตอบ "แอดมินขอเช็กให้ก่อน" ทั้งที่ร้านมี "โฟโต้การ์ด" (5.5×8.5 ซม. เซ็ต 20 ใบ) ที่ปั๊มฟอยล์/กระดาษโฮโลแกรม/เคลือบฟิล์มโฮโลแกรมได้ครบ
+    //   การ์ดเกม/การ์ดสะสม/ไพ่/TCG = โฟโต้การ์ด (ระบุ PVC/พลาสติก = โฟโต้การ์ด PVC) · พูดถึงฟอยล์/โฮโล/หุ้ม = gate "game-card-foil" ให้ priceSearch ตอบข้อความตายตัว
+    {
+      const pc = items.find((it) => it.id === "photocard-digital") ?? items.find((it) => it.name === "โฟโต้การ์ด");
+      const pvc = items.find((it) => it.id === "photocard-pvc-uv");
+      if (pc && GAME_CARD_RE.test(q) && !/สติ๊กเกอร์|สติกเกอร์|sticker|สตก/i.test(q)) {
+        const foil = CARD_FOIL_RE.test(q);
+        const wantPvc = /\bpvc\b|พลาสติก|บัตรแข็ง/i.test(q) && !foil;
+        finalPicked = wantPvc && pvc ? [pvc] : [pc];
+        raw.broad = false;
+        notInCatalog = false;
+        if (!["price", "spec", "minqty", "mix"].includes(intent)) intent = /ราคา|เท่าไหร่|เท่าไร|กี่บาท|เช็คราคา|\d+\s*(ใบ|ชิ้น|เซ็ต|แผ่น)/.test(q) ? "price" : "spec";
+        gate = foil ? "game-card-foil" : "game-card";
+        anchorDebug?.trace.push(`gate:${gate}→${finalPicked[0].name}`);
+      }
+    }
     // 🎎 9 ต.ค. 69 10:54 "งานที่หัวมันดุ๊กดิ๊กได้" → LLM กางเมนู 4 ตัว (ดุ๊กดิ๊ก/สปริง/โยกเยก) ทั้งที่ "หัวดุ๊กดิ๊ก" = อะคริลิคดุ๊กดิ๊ก (DookDik) ตัวเดียว
     // → คำว่า ดุ๊กดิ๊ก/หัวโยก/หัวสั่น/bobble = DookDik · "โยกเยก" ล้วน ๆ (ทั้งตัวโยก) = สแตนดี้โยกเยก · "สปริง" = สแตนดี้สปริง/จิ๋วติดสปริง (ให้เมนูเดิม)
     {
@@ -1328,6 +1427,7 @@ ${list}
       ids: finalPicked.map((it) => it.id),
       debug: anchorDebug,
       attr: attrQ || undefined,
+      gate,
       broad: !!raw.broad && finalPicked.length >= 2,
       qty: Number.isFinite(qtyN) && qtyN > 0 ? Math.round(qtyN) : null,
       standalone: saFixed,

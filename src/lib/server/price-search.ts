@@ -6,6 +6,7 @@ import {
   findDraftProduct,
   parseBudgetCap,
   fixTypos,
+  gameCardFoilAnswer,
   knowledgeItems,
   lcsLen,
   norm,
@@ -216,6 +217,16 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
         source: "understood:draft-product",
         intent: "draft_product",
       };
+    } else if (
+      (u.gate === "game-card-foil" || (u.gate === "game-card" && /รับทำ|รับผลิต|รับปริ้น|รับพิมพ์|ทำได้|ทำไหม|ทำมั้ย|มีไหม|มีมั้ย|ปริ้นได้|พิมพ์ได้/.test(query))) &&
+      u.ids.length === 1 &&
+      !(qty || u.qty) &&
+      !isPriceIntent(query)
+    ) {
+      // 🎴 21 ต.ค. 69 "รับทำการ์ดเกมแบบหุ้มฟอยล์มั้ย" → ข้อความตายตัวจากตัวเลือกโฟโต้การ์ด + การ์ดสินค้า (ถามจำนวน/ราคา = เส้นปกติด้วยสินค้าเดียวกัน)
+      //   "รับทำการ์ดเกมไหม" เฉย ๆ → แนะนำโฟโต้การ์ด + วัสดุ + บอกว่าฟอยล์เพิ่มได้ (เดิม searchSpec ตอบ "spec-not-covering-question" → found:false)
+      ans = await gameCardFoilAnswer(u.ids[0], u.gate === "game-card-foil");
+      if (!ans) ans = await searchInfo(u.standalone && u.standalone.length <= 200 ? u.standalone : query, { ids: u.ids, broad: false });
     } else if (u.notInCatalog && ["price", "spec", "minqty"].includes(u.intent)) {
       const what = u.requested || query;
       const alts = u.alternatives;
@@ -335,6 +346,7 @@ export async function priceSearch(body: Record<string, unknown>): Promise<PriceS
     ans.answer &&
     ans.product &&
     !/_menu$/.test(ans.intent) &&
+    !/^gate:/.test(ans.source) && // 🎴 คำตอบตายตัวจากด่าน (การ์ดเกมหุ้มฟอยล์) ครบในตัวแล้ว — ไม่ต่อบรรทัดอ่านหน้าสินค้าซ้อน
     /^(price|spec|minqty)/.test(ans.intent) &&
     (EXTRA_ASK_RE.test(extraAskText) || parts.length >= 2)
   ) {
