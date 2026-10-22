@@ -5668,6 +5668,12 @@ export default function CalendarStudio({
 
   const aspect = W / H;
   /**
+   * 🎞 ความกว้างรูปย่อในแถบล่าง: แนวนอน 120 / แนวตั้ง 80 px แต่สูงไม่เกิน THUMB_MAX_H — แถบล่างต้องสูงเท่าเดิมทุกสินค้า
+   * (ป้ายขาตั้ง 60×160 กว้าง 80 = สูง 213 ดันแถบล่างยืดตามความสูงงาน · เจ้าของร้านสั่ง 22 ต.ค. 69 "ย่อให้เป็นมาตรฐาน ไม่ใช่ยืดขยายตามขนาดความสูงของงาน")
+   */
+  const THUMB_MAX_H = 120;
+  const thumbW = Math.round(Math.min(W >= H ? 120 : 80, THUMB_MAX_H * aspect));
+  /**
    * ความกว้างสูงสุดของผืนบนเวทีจอกว้าง (px): พอดีเวทีตามจอ จำกัดทั้งกว้างและสูง (เผื่อแถบเครื่องมือลอยใต้รูป ~64px + บรรทัดไกด์)
    * × STAGE_FIT = ไม่ขยายจนชนขอบเวที เหลือพื้นว่างรอบการ์ด (ผู้ใช้ขอ 16 ต.ค. 69 "โปสการ์ด/ปลอกแก้ว ลดขนาดหน่อย")
    * 🪭 แผงคู่ (2 ด้าน) = แบ่งครึ่งเวที (เว้นช่องกลาง) · ไม่ต้องเหลือพื้นว่างมากเท่าผืนเดี่ยว
@@ -7021,7 +7027,7 @@ export default function CalendarStudio({
                 >
                   <span
                     className="grid place-items-center rounded-sm border-2 border-dashed border-stone-300 text-center text-[10.5px] font-bold leading-tight text-stone-400 transition hover:border-sky-400 hover:text-sky-600"
-                    style={{ width: W >= H ? 120 : 80, aspectRatio: `${W} / ${H}` }}
+                    style={{ width: thumbW, aspectRatio: `${W} / ${H}` }}
                   >
                     ＋ เพิ่ม
                     <br />
@@ -7057,7 +7063,7 @@ export default function CalendarStudio({
                       v.card > 0 && !custom.includes(v.card) ? "opacity-60" : ""
                     }`}
                     style={{
-                      width: W >= H ? 120 : 80,
+                      width: thumbW,
                       aspectRatio: `${W} / ${H}`,
                     }}
                   />
