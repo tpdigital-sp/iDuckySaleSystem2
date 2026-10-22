@@ -1336,6 +1336,9 @@ export default function ProductDetail({
   }, [templates, effective]);
   const tplModelMissing = useMemo(() => {
     if (!product.calendarStudio || product.calendarStudio.formats?.length) return false;
+    // 🧣 ชุดที่ผูกกลุ่มตัวเลือก (optionLabel) + เงื่อนไข when (ผ้าขนหนู: มีเทมเพลตเฉพาะ "ไม่เน้นตำแหน่ง" · 22 ต.ค. 69)
+    //    สเปคที่เลือกไม่มีไฟล์ที่รู้ขนาดเลย = ปิดจอออกแบบ (กล่องบอกแนบไฟล์แทน) — เดิมตกไปรูปแบบ "card" โฟโต้การ์ดเงียบ ๆ
+    if (templates.some((t) => t.optionLabel?.trim()) && !templates.some((t) => filesForSelections(t, effective).some((f) => f.widthMm && f.heightMm))) return true;
     const norm = (v: string) => v.toLowerCase().replace(/iphone/g, "").replace(/[\s\-_]/g, "");
     const names = new Set(
       templates.filter((t) => !t.optionLabel?.trim()).flatMap((t) => t.name.split("/").map(norm).filter(Boolean)),
