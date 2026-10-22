@@ -7,7 +7,7 @@
  * ไฟล์ใหม่ 210×153 เท่าเดิม · เลเยอร์ "Layer 3" = ขอบถุงมุมมนเส้นดำ 204×147 @3 · "สกรีน" = ลายตัวอย่างคลุมเต็มถุง · "เอาออก" = พื้นโฮโลแกรมตัวอย่าง
  *   → พิมพ์ได้เต็มตัวถุงในขอบมุมมน (เทมเพลตเดิมมีช่องกลาง 163×106 + กรอบโฮโลทึบ — เลิกใช้)
  * ชุด tpl-ewsr369y6 (คง id ชุด/ไฟล์): fileUrl/fileName/fileSize · skinUrl = เลเยอร์ Layer 3 อย่างเดียวพื้นโปร่ง (ไม่ย้อมลายลูกค้าด้วยโฮโลแกรม)
- *   · previewUrl = ทุกเลเยอร์ · cutCurves = ขอบถุง · whiteUnder · ถอด skinOpaque · ไฟล์/สกิน/พรีวิวเก่าเก็บ retiredPaths
+ *   · ไม่มี previewUrl (เอาภาพออกจากการ์ดตามสั่ง 22 ต.ค. 69) · cutCurves = ขอบถุง · whiteUnder · ถอด skinOpaque · ไฟล์/สกิน/พรีวิวเก่าเก็บ retiredPaths
  * 🤐 + แถบซิปด้านบน 2 สีตามกลุ่ม "สีซิป" (py/ziplock-zipper-skin.py · ดูท้ายไฟล์)
  * ⚠️ hologram-bag ถอดออกจาก knickknack-bag-template-link.mts แล้ว (สคริปต์นั้นรับชุดไฟล์เดียว) — สคริปต์นี้ดูแลชุด ZipLock คนเดียว
  */
@@ -89,22 +89,23 @@ const bytes = readFileSync(FILE);
 // .ai ตัวเดิมขนาดเท่ากัน = ไม่อัปซ้ำ
 const sameAi = old.fileName === "ZipLock.ai" && old.fileSize === bytes.length && !!old.fileUrl;
 const fileUrl = sameAi ? old.fileUrl! : await upload(bytes, "file", "ZipLock", "ai");
-const { skinOpaque: _so, fullFace: _ff, choice: _c, choices: _cs, ...base } = old;
+// 🙈 ไม่ใส่ภาพพรีวิว (เจ้าของร้านสั่ง 22 ต.ค. 69 "เอาภาพออกให้หน่อย" — การ์ดเทมเพลตหน้าสินค้าเป็นไอคอน 📐 แทนภาพลายตัวอย่าง)
+const { skinOpaque: _so, fullFace: _ff, choice: _c, choices: _cs, previewUrl: _pv, ...base } = old;
 const next: TemplateFile[] = [];
 for (const [i, z] of zipImgs.entries()) {
   const skinUrl = await upload(readFileSync(z.skin), "preview", `ZipLock-zip-${z.color}-F-01`, "png");
-  const previewUrl = await upload(readFileSync(z.preview), "preview", `ZipLock-zip-${z.color}-preview`, "png");
   next.push({
     ...base,
     id: i === 0 ? old.id : (t.files?.find((f) => f.choice === z.choice)?.id ?? `f-zip${z.color}`),
     fileUrl, fileName: "ZipLock.ai", fileSize: bytes.length, widthMm: r.widthMm, heightMm: r.heightMm,
-    choice: z.choice, skinUrl, previewUrl, skinOpaque: true, cutCurves: r.curves, whiteUnder: true,
+    choice: z.choice, skinUrl, skinOpaque: true, cutCurves: r.curves, whiteUnder: true,
   });
 }
-const keep = new Set(next.flatMap((f) => [pathOf(f.fileUrl), pathOf(f.skinUrl), pathOf(f.previewUrl)]));
-const oldPaths = (t.files ?? []).flatMap((f) => [pathOf(f.fileUrl), pathOf(f.skinUrl), pathOf(f.previewUrl)]).filter((p) => p && !keep.has(p));
+const keep = new Set(next.flatMap((f) => [pathOf(f.fileUrl), pathOf(f.skinUrl)]));
+const oldPaths = [...(t.files ?? []).flatMap((f) => [pathOf(f.fileUrl), pathOf(f.skinUrl), pathOf(f.previewUrl)]), pathOf(t.previewUrl)].filter((p) => p && !keep.has(p));
+const { previewUrl: _tpv, ...tBase } = t;
 const retired = [...new Set([...(t.retiredPaths ?? []), ...oldPaths].filter(Boolean) as string[])];
-const { error } = await sb.from("products").update({ data: { ...t, optionLabel: ZIP_LABEL, previewUrl: next[0].previewUrl, files: next, retiredPaths: retired, savedAt: new Date().toISOString() } }).eq("id", `__template_${SET}`);
+const { error } = await sb.from("products").update({ data: { ...tBase, optionLabel: ZIP_LABEL, files: next, retiredPaths: retired, savedAt: new Date().toISOString() } }).eq("id", `__template_${SET}`);
 if (error) die(`บันทึก: ${error.message}`);
 console.log(`   ✅ ${SET} ← ZipLock.ai${sameAi ? " (ไฟล์เดิม)" : " ใหม่"} · ${next.length} แถวตาม ${ZIP_LABEL} · แถบซิปทึบบนจอ · เส้นตัด = ขอบถุง · retiredPaths ${retired.length}`);
 await revalidateLive(env, { productIds: [PRODUCT], templateIds: [SET] });
