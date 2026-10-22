@@ -89,8 +89,10 @@ import { buildPieceFiles, buildPrintPdf, type PieceDesign } from "@/lib/calendar
 import CalendarFlip3D, { type FlipSheet } from "@/components/CalendarFlip3D";
 import Mug3D, { MugBodyChip } from "@/components/Mug3D";
 import Stand3D from "@/components/Stand3D";
+import Cushion3D from "@/components/Cushion3D";
 import { MUG_DEFAULT, type MugMock } from "@/lib/mug-mock";
 import type { StandMock } from "@/lib/stand-mock";
+import type { CushionMock } from "@/lib/cushion-mock";
 import { BG_METHODS, detectBg, removeBackground, type BgMethod } from "@/lib/diecut-piece";
 import { CUT_PARAMS_DEFAULT, CUT_PRESETS, cutSvg, pathCurves, processCut, traceAlphaMm, type CutParams, type CutPreset, type CutResult } from "@/lib/diecut-engine";
 import { dieCurvesPath, dieSvgD } from "@/lib/sleeve-dieline";
@@ -205,7 +207,7 @@ interface Props {
    * ☕🧊 พรีวิว 3D แก้วมัค (Product.calendarStudio.mock3d = "mug" · เจ้าของร้านสั่ง 16 ต.ค. 69) — ปุ่ม "ดูแบบ 3D" บนแถบบน
    * ลายทั้งอาร์ตบอร์ดพันรอบตัวแก้ว · ลักษณะแก้ว/มุมมองเริ่มต้นตามตัวเลือกที่เลือก (lib/mug-mock)
    */
-  mock3d?: MugMock | StandMock;
+  mock3d?: MugMock | StandMock | CushionMock;
   /**
    * 🧑‍💼 โหมดแอดมิน (สั่งแทนลูกค้า · เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC): กด ใช้แบบนี้/ใส่ตะกร้า ได้ทั้งที่ยังไม่ใส่รูป
    * — ถามยืนยันก่อน 1 ครั้ง แล้วทำไฟล์ช่องว่าง (ช่องรูปที่ว่างไม่พิมพ์) · สเปคติดป้าย "ยังไม่ได้ใส่รูป" ให้กราฟฟิกรู้ว่าต้องรอรูปจากลูกค้า
@@ -5923,7 +5925,9 @@ export default function CalendarStudio({
                 title={
                   mock3d?.kind === "mug"
                     ? "ดูแบบ 3D — ลายพันรอบแก้วจริง หมุนดูได้รอบตัว"
-                    : mock3d
+                    : mock3d?.kind === "cushion"
+                      ? "ดูแบบ 3D — ลายบนหมอนอิงยัดไส้จริง หมุนดูหน้า-หลังได้รอบตัว"
+                      : mock3d
                       ? "ดูแบบ 3D — ลายบนที่ตั้งโทรศัพท์จริง หมุนดูได้รอบตัว"
                       : "ดูแบบ 3D — พลิกหน้าดูว่าแต่ละแผ่นด้านหน้า/หลังเป็นอะไร"
                 }
@@ -7103,9 +7107,13 @@ export default function CalendarStudio({
         )}
 
         {Array.isArray(flip3d) && <CalendarFlip3D sheets={flip3d} aspect={fmt.trimW / fmt.trimH} title={fmtName} onClose={() => setFlip3d(null)} />}
-        {mug3d && mug3d !== "loading" && mock3d?.kind !== "mug" && mock3d && (
+        {mug3d && mug3d !== "loading" && (mock3d?.kind === "stand360" || mock3d?.kind === "stand3") && (
           // 📱 ที่ตั้งโทรศัพท์ (stand360 / stand3 · 21 ต.ค. 69) — ทรงแผ่นตามเส้นไดคัทของเทมเพลต (tplCut พิกัดผืน = อาร์ตบอร์ด)
           <Stand3D key={`${mock3d.kind}-${mock3d.base}`} sheet={mug3d} sheetMm={{ w: W, h: H }} cut={tplCut} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
+        )}
+        {mug3d && mug3d !== "loading" && mock3d?.kind === "cushion" && (
+          // 🛋 ปลอกหมอนอิง (22 ต.ค. 69) — ครึ่งซ้าย/ขวาของผืน = หน้า/หลังหมอนยัดไส้
+          <Cushion3D key={`cushion-${mock3d.sizeMm}`} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
         )}
         {mug3d && mug3d !== "loading" && (!mock3d || mock3d.kind === "mug") && (
           // key = ประเภทแก้ว: ค่าเปลี่ยนระหว่างเปิดอยู่ = สร้างฉากใหม่ (ฉากสร้างครั้งเดียวตอนเปิด)

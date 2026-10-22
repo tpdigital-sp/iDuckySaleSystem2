@@ -412,7 +412,7 @@ type Draft = {
   /** 🎨 เปิดปุ่ม "เริ่มสร้าง — วางลายบนสินค้า" ให้ลูกค้าไหม (ค่าเริ่มต้น = เปิด) */
   studioOn: boolean;
   /** ☕🧊 พรีวิว 3D ในจอออกแบบ (Product.calendarStudio.mock3d) — "" = ไม่มี · "mug" = แก้วมัค 11 oz */
-  mock3d: "" | "mug" | "stand360" | "stand3";
+  mock3d: "" | "mug" | "stand360" | "stand3" | "cushion";
   /** ข้อควรทราบ/เงื่อนไขงาน (แสดงหน้าสินค้า) */
   terms: string;
   /** 🔴 หมายเหตุสีแดงในกล่องราคาหน้าสินค้า */
@@ -5667,7 +5667,9 @@ export default function ProductEditor({ product }: { product: Product }) {
                     ? "แผ่นพิมพ์ทรงตามเส้นไดคัทของเทมเพลต ตั้งบนฐานหมุน + ที่ตั้งโทรศัพท์ใส · ฐานสี่เหลี่ยม/กลม อ่านจากค่า “ขนาด” ที่ลูกค้าเลือก"
                     : draft.mock3d === "stand3"
                       ? "แผ่นใสพับ 2 รอย กางตั้งได้ 3 ระดับ ลายพิมพ์ด้านเดียวมองทะลุได้ · ทรงแผ่นตามเส้นไดคัทของเทมเพลต"
-                      : "ยังไม่มีพรีวิว 3D — เลือกรูปทรงสินค้าให้ระบบจำลองลายบนของจริง"}
+                      : draft.mock3d === "cushion"
+                        ? "หมอนอิงยัดไส้พอง ลายหน้า/หลังจากครึ่งซ้าย/ขวาของผืนเทมเพลต (Cushion Zip) · ขนาดสำเร็จอ่านจากค่า “ขนาด” ที่ลูกค้าเลือก (นิ้ว/ซม.)"
+                        : "ยังไม่มีพรีวิว 3D — เลือกรูปทรงสินค้าให้ระบบจำลองลายบนของจริง"}
               </p>
             </div>
             <select
@@ -5680,6 +5682,7 @@ export default function ProductEditor({ product }: { product: Product }) {
               <option value="mug">☕ แก้วมัค 11 oz</option>
               <option value="stand360">📱 360° Phone Stand (แผ่น + ฐานหมุน)</option>
               <option value="stand3">📱 Phone Stand 3 step (แผ่นใสพับ)</option>
+              <option value="cushion">🛋 ปลอกหมอนอิง (หน้า+หลังกางออก)</option>
             </select>
           </div>
         )}
