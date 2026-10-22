@@ -220,6 +220,12 @@ function AdminTemplatesInner() {
   const [catList, setCatList] = useState<string[]>([]);
   /** แท็บบนสุด — แยก "เทมเพลต" กับ "หมวดหมู่" ออกจากกัน (เดิมพาเนลหมวดกางทับดันเนื้อหาลงไปทั้งหน้า) */
   const [tab, setTab] = useState<"templates" | "cats">("templates");
+  /** แถบหมวดจอใหญ่เลื่อนในตัวเอง — พาหมวดที่เลือกอยู่เข้ามาในกรอบ (เปิดหน้ามาที่หมวดท้าย ๆ ไม่ต้องไล่หาเอง) */
+  const catNavRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = catNavRef.current?.querySelector<HTMLElement>("[data-active]");
+    el?.scrollIntoView({ block: "nearest" });
+  }, [cat, tab]);
   const [newCat, setNewCat] = useState("");
 
   async function refresh() {
@@ -997,14 +1003,20 @@ function AdminTemplatesInner() {
           tab === "templates" ? "grid" : "hidden"
         }`}
       >
-        {/* ── เมนูหมวดหมู่ — ทำงานทีละหมวดได้แม้คลังใหญ่ (มือถือ = เลื่อนแนวนอน) ── */}
+        {/* ── เมนูหมวดหมู่ — ทำงานทีละหมวดได้แม้คลังใหญ่ (มือถือ = เลื่อนแนวนอน)
+            จอใหญ่: แถบสูงไม่เกินจอ (viewport − หัว 5rem − ช่องว่าง 1rem) · รายชื่อหมวดเลื่อนด้วยล้อเมาส์ในตัวเอง
+            เดิม sticky อย่างเดียว พอหมวดเยอะกว่าจอ ต้องเลื่อนทั้งหน้าไปหาหมวดล่าง แล้วเนื้อหาขวาหลุดขึ้นไปพ้นจอ ── */}
         {list.length > 0 && (
-          <aside className={`${brandCard} p-2 lg:sticky lg:top-20`}>
-            <p className="px-2 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">หมวดหมู่</p>
-            <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+          <aside className={`${brandCard} p-2 lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col`}>
+            <p className="shrink-0 px-2 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">หมวดหมู่</p>
+            <nav
+              ref={catNavRef}
+              className="flex gap-1 overflow-x-auto pb-1 lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain lg:pb-0 lg:pr-0.5 [scrollbar-width:thin]"
+            >
               <button
                 type="button"
                 onClick={() => setCat("")}
+                data-active={cat === "" || undefined}
                 className={`${cat === "" ? navItemActive : navItemIdle} shrink-0`}
               >
                 <span className="flex-1 whitespace-nowrap lg:whitespace-normal lg:break-words lg:leading-snug">📚 ทั้งหมด</span>
@@ -1022,6 +1034,7 @@ function AdminTemplatesInner() {
                     type="button"
                     onClick={() => setCat(on ? "" : c)}
                     title={`${n} ชุด · ${nf} ไฟล์`}
+                    data-active={on || undefined}
                     className={`${on ? navItemActive : navItemIdle} shrink-0`}
                   >
                     {/* จุดสีประจำหมวด — กวาดตาหาหมวดได้เร็วเวลาหมวดเยอะ */}
@@ -1038,6 +1051,7 @@ function AdminTemplatesInner() {
                 <button
                   type="button"
                   onClick={() => setCat(cat === NO_CATEGORY ? "" : NO_CATEGORY)}
+                  data-active={cat === NO_CATEGORY || undefined}
                   className={`${cat === NO_CATEGORY ? navItemActive : navItemIdle} shrink-0`}
                 >
                   <span className={`flex-1 whitespace-nowrap lg:whitespace-normal lg:break-words lg:leading-snug ${cat === NO_CATEGORY ? "" : "text-slate-400"}`}>
@@ -1052,7 +1066,7 @@ function AdminTemplatesInner() {
             <button
               type="button"
               onClick={() => setTab("cats")}
-              className={`${btnSmNeutral} mt-2 w-full justify-center`}
+              className={`${btnSmNeutral} mt-2 w-full shrink-0 justify-center`}
             >
               ⚙️ จัดการหมวด
             </button>
