@@ -222,7 +222,7 @@ export default function Banner3D({
           const hubZ = -75;
           const hubV = new THREE.Vector3(0, hubY, hubZ);
           const up = new THREE.Vector3(0, 1, 0);
-          const tube = (curve: InstanceType<typeof THREE.QuadraticBezierCurve3>, r: number, mat: InstanceType<typeof THREE.MeshStandardMaterial>, segs = 28) =>
+          const tube = (curve: InstanceType<typeof THREE.QuadraticBezierCurve3> | InstanceType<typeof THREE.CatmullRomCurve3>, r: number, mat: InstanceType<typeof THREE.MeshStandardMaterial>, segs = 28) =>
             add(new THREE.Mesh(g(new THREE.TubeGeometry(curve, segs, r, 10, false)), mat));
           const rod = (a: InstanceType<typeof THREE.Vector3>, b: InstanceType<typeof THREE.Vector3>, r: number, mat = carbon) => {
             const len = a.distanceTo(b);
@@ -238,7 +238,6 @@ export default function Banner3D({
             return c;
           };
           const ringGeo = g(new THREE.TorusGeometry(7, 2.2, 10, 28));
-          const hookGeo = g(new THREE.TorusGeometry(10, 2, 8, 20, Math.PI));
 
           // ดุมกลาง: แผ่นพลาสติกดำทรงกล่องมุมมน + หัวกลมรับก้าน
           const hub = add(new THREE.Mesh(g(new THREE.BoxGeometry(62, 74, 36)), plastic));
@@ -254,23 +253,27 @@ export default function Banner3D({
               const ring = add(new THREE.Mesh(ringGeo, brass), false);
               ring.position.set(cxEye, cy, 1.5);
             }
-            // 🎣 ก้านบน: โค้งออกนอก + ถอยหลัง · ปลายก้านอยู่เหนือมุมป้ายเล็กน้อย แล้วตะขอเกี่ยวลงตาไก่
-            const tipTop = new THREE.Vector3(sx * (VW / 2 + 14), LIFT + VH + 18, -14);
-            // ก้านเกือบตรงจากดุมถึงมุม โค้งออกนิดเดียว (เจ้าของร้านทัก 22 ต.ค. 69 "มันง้อเกินไป ต้องเหมือนกับภาพที่ 2 และ 3" — รอบแรกดัดออก 95 มม.)
+            // 🎣 ก้านบน: เกือบตรงจากดุมไป "ข้างตาไก่บน" ปลายโผล่เหนือมุมป้าย ~3 ซม. แล้วตะขอ (top hanger) พับลงเสียบตาไก่
+            //    (เจ้าของร้านมาร์กกรอบแดง 4 มุม 22 ต.ค. 69 "มันต้องเกี่ยวแบบนี้" — ก้านต้องมาชนมุมป้ายจริง ไม่ใช่ลอยอยู่ข้างหลัง)
+            const eyeTop = new THREE.Vector3(cxEye, LIFT + VH - EYE, 2);
+            const eyeBot = new THREE.Vector3(cxEye, LIFT + EYE, 2);
+            const tipTop = new THREE.Vector3(cxEye + sx * 9, eyeTop.y + 30, -5);
             const ctlTop = hubV.clone().lerp(tipTop, 0.5).add(new THREE.Vector3(sx * 14, 0, -28));
             tube(new THREE.QuadraticBezierCurve3(hubV, ctlTop, tipTop), 5.5, carbon);
             cap(tipTop, 7, 16, tipTop.clone().sub(ctlTop));
-            const hookT = add(new THREE.Mesh(hookGeo, steel), false);
-            hookT.position.set(cxEye + sx * 8, LIFT + VH - EYE + 6, -6);
-            hookT.rotation.set(Math.PI / 2, 0, 0);
-            // 🦶 ก้านล่าง = ขาหน้า: จากดุมผ่านใกล้ตาไก่ล่างลงไปยันพื้นนอกมุมป้าย
-            const foot = new THREE.Vector3(sx * (VW / 2 + 60), 0, 10);
-            const ctlBot = hubV.clone().lerp(foot, 0.5).add(new THREE.Vector3(sx * 8, 0, -18));
-            tube(new THREE.QuadraticBezierCurve3(hubV, ctlBot, foot), 5.5, carbon);
+            // ตะขอบน: แขนโลหะจากปลายก้านโค้งเข้าหาตาไก่ แล้วหมุดเสียบผ่านรูลงมา
+            const hookElbowT = new THREE.Vector3(cxEye, eyeTop.y + 12, 2);
+            rod(new THREE.Vector3(tipTop.x, tipTop.y - 8, tipTop.z), hookElbowT, 2.2, steel);
+            rod(hookElbowT, new THREE.Vector3(cxEye, eyeTop.y - 4, 2), 2.2, steel);
+            // 🦶 ก้านล่าง = ขาหน้า: จากดุมวิ่งผ่าน "ข้างตาไก่ล่าง" ลงไปยันพื้นเลยมุมป้ายนิดหน่อย · ตะขอ (foot hanger) บนก้านเกี่ยวตาไก่ล่าง
+            const passBot = new THREE.Vector3(cxEye + sx * 9, eyeBot.y, -5);
+            const foot = new THREE.Vector3(cxEye + sx * 24, 0, -5);
+            tube(new THREE.CatmullRomCurve3([hubV, hubV.clone().lerp(passBot, 0.5).add(new THREE.Vector3(sx * 6, 0, -14)), passBot, foot]), 5.5, carbon, 36);
             cap(new THREE.Vector3(foot.x, 8, foot.z), 9, 16);
-            const hookB = add(new THREE.Mesh(hookGeo, steel), false);
-            hookB.position.set(cxEye + sx * 8, LIFT + EYE - 6, -6);
-            hookB.rotation.set(-Math.PI / 2, 0, 0);
+            const hookElbowB = new THREE.Vector3(cxEye, eyeBot.y - 10, 2);
+            rod(new THREE.Vector3(passBot.x, passBot.y - 6, passBot.z), hookElbowB, 2.2, steel);
+            rod(hookElbowB, new THREE.Vector3(cxEye, eyeBot.y + 4, 2), 2.2, steel);
+            const ctlBot = passBot; // (ใช้ต่อกับลวดสลิง)
             // 🧵 ลวดสลิงจากปลายขาหลังไปขาหน้า
             const rearFoot = new THREE.Vector3(0, 10, -VH * 0.42);
             rod(rearFoot, new THREE.Vector3(foot.x, 12, foot.z), 1.1, wire);
