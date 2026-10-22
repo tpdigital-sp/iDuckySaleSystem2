@@ -446,6 +446,38 @@ function cutoutWhy(st: CutoutStatus): string {
   return "";
 }
 
+/** ⬜ มาสก์พิกเซลทึบของสกิน (alpha ≥ 95%) สำหรับรูปย่อ/แผงคู่ — แคชต่อรูป (สูตรเดียวกับ guideMask บนเวที) */
+const opaqueMasks = new WeakMap<HTMLImageElement, HTMLCanvasElement | null>();
+function opaqueMaskOf(im: HTMLImageElement): HTMLCanvasElement | null {
+  if (opaqueMasks.has(im)) return opaqueMasks.get(im) ?? null;
+  let out: HTMLCanvasElement | null = null;
+  try {
+    const sc = Math.min(1, 800 / Math.max(im.naturalWidth, im.naturalHeight));
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(8, Math.round(im.naturalWidth * sc));
+    cv.height = Math.max(8, Math.round(im.naturalHeight * sc));
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    if (ctx) {
+      ctx.drawImage(im, 0, 0, cv.width, cv.height);
+      const img = ctx.getImageData(0, 0, cv.width, cv.height);
+      let any = false;
+      for (let i = 0; i < img.data.length; i += 4) {
+        const solid = img.data[i + 3] >= 242;
+        img.data[i + 3] = solid ? 255 : 0;
+        any ||= solid;
+      }
+      if (any) {
+        ctx.putImageData(img, 0, 0);
+        out = cv;
+      }
+    }
+  } catch {
+    out = null;
+  }
+  opaqueMasks.set(im, out);
+  return out;
+}
+
 export default function CalendarStudio({
   open,
   onClose,
@@ -1716,10 +1748,14 @@ export default function CalendarStudio({
       }
       const im = guideImgs[g.url];
       if (!im) return;
+      const box: [number, number, number, number] =
+        g.fill || !g.wMm || !g.hMm ? [0, 0, W * k, H * k] : [((W - g.wMm) / 2) * k, ((H - g.hMm) / 2) * k, g.wMm * k, g.hMm * k];
+      // ⬜ สกินทึบ: พิกเซลทึบวางทับแบบทึบเหมือนเวที (แถบซิปขาวถุงโฮโลแกรม 22 ต.ค. 69 — multiply อย่างเดียวสีขาวหายไปจากรูปย่อ)
+      const mask = g.opaque ? opaqueMaskOf(im) : null;
+      if (mask) ctx.drawImage(mask, ...box);
       ctx.save();
       ctx.globalCompositeOperation = "multiply";
-      if (g.fill || !g.wMm || !g.hMm) ctx.drawImage(im, 0, 0, W * k, H * k);
-      else ctx.drawImage(im, ((W - g.wMm) / 2) * k, ((H - g.hMm) / 2) * k, g.wMm * k, g.hMm * k);
+      ctx.drawImage(im, ...box);
       ctx.restore();
     },
     [guideFor, cutOfGuide, guideImgs, W, H],
