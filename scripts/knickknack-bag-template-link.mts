@@ -18,8 +18,9 @@
  *     → เส้นตัด/รองขาว = ช่องกลาง (skin-outline-cut.py --window) + skinOpaque (จอวางกรอบโฮโลทึบทับลายที่เกิน)
  * เส้นตัดดึงจากไฟล์ .ai ด้วย scripts/py/red-outer-cut.py (ธงต่อไฟล์ด้านล่าง) → TemplateFile.cutCurves + whiteUnder: true
  *   → จอออกแบบครอปลายตามกรอบ · .ai มีเลเยอร์ "รองขาว (White)" + "เส้นตัด (CutContour)" · .pdf มีหน้ารองขาว/เส้นไดคัท
- * สินค้า: templateIds += ชุดของตัวเอง · calendarStudio { yearLabel: "", formats: [] } (คงค่าอื่นที่มีอยู่) · ถอด studioOff
- * ⚠️ "สกรีน 2 ด้าน" ของ Candy bag / Passport ยังเป็นจอหน้าเดียว (ไฟล์ร้านมีผืนเดียว) — ถ้าต้องการหน้า 2 ต้องเพิ่ม formats tpl2 + when แบบผ้าขนหนู
+ * สินค้า: templateIds += ชุดของตัวเอง · calendarStudio { yearLabel: "", formats } (คงค่าอื่นที่มีอยู่ เช่น mock3d) · ถอด studioOff
+ *   formats ต่อสินค้า (PAIRS.formats · ไม่ตั้ง = []): Candy bag "สกรีน 2 ด้าน" = tpl2 → จอ 2 หน้า ด้านหน้า/ด้านหลัง ใช้เทมเพลตเดียวกัน
+ *   (เจ้าของร้านสั่ง 22 ต.ค. 69 "เพิ่มสกรีน 2 ด้านให้หน่อย" · โครงเดียวกับผ้าขนหนู/พัด) · Passport "2ด้าน" ยังหน้าเดียว (ด้านในได้แค่ 1 ฝั่ง — ไม่มีเทมเพลตด้านใน)
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -34,12 +35,14 @@ const WRITE = process.argv.includes("--write");
  * fullFace = TemplateFile.fullFace — ช่องรูปว่างโชว์เต็มเส้นตัด ไม่เดาหน้างานจากเส้นแดงในสกิน (Candy bag 22 ต.ค. 69 "ขยายกรอบนี้หน่อย เพราะมันสกรีนเต็มได้")
  */
 type SkinOverride = { w: number; h: number; hole?: { cx: number; cy: number; r: number }; window?: boolean; opaque?: boolean; fullFace?: boolean; minYMm?: number };
-const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; skin?: SkinOverride }[] = [
+type Fmt = { format: string; when?: { label: string; choices: string[] }[] };
+const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; skin?: SkinOverride; formats?: Fmt[] }[] = [
   {
     product: "candy-bag",
     tpl: "tpl-k83wfdovg",
     flags: [],
     holes: 1,
+    formats: [{ format: "tpl2", when: [{ label: "สกรีนกี่ด้าน", choices: ["สกรีน 2 ด้าน"] }] }],
     // เต็มถุงรวมแถบซิป + หัวถุง (เจ้าของร้านสั่ง 22 ต.ค. 69 "กลับไปแบบเดิม สกรีนได้ถึงซิป" — เคยลองตัดใต้ซิป minYMm 18.12 แล้วถอยกลับ)
     skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 }, fullFace: true },
   },
@@ -128,11 +131,19 @@ for (const pair of PAIRS) {
   const { data: prow, error } = await sb.from("products").select("data").eq("id", pair.product).single();
   if (error || !prow) die(`อ่านสินค้า ${pair.product} ไม่ได้: ${error?.message}`);
   const product = prow!.data as Product;
-  if (product.calendarStudio?.formats?.length) die(`${pair.product} ตั้ง calendarStudio.formats ไว้เอง — ไม่แตะ`);
+  const wantFormats = pair.formats ?? [];
+  // formats ที่ตั้งไว้แต่ไม่ใช่ของสคริปต์นี้ (ขนาดกำหนดเอง card/canvas@…) = มีคนตั้งเอง ไม่ทับ
+  if (product.calendarStudio?.formats?.some((f) => f.format !== "tpl2")) die(`${pair.product} ตั้ง calendarStudio.formats ไว้เอง — ไม่แตะ`);
+  for (const f of wantFormats)
+    for (const w of f.when ?? []) {
+      const g = product.options?.find((o) => o.label === w.label) ?? die(`${pair.product} ไม่มีกลุ่ม "${w.label}"`);
+      for (const c of w.choices) if (!g.choices.some((x) => x.name === c)) die(`${pair.product} กลุ่ม "${w.label}" ไม่มีค่า "${c}"`);
+    }
   const cur = product.templateIds ?? [];
   const ids = cur.includes(t.id) ? cur : [...cur, t.id];
-  const studio = { ...(product.calendarStudio ?? {}), yearLabel: product.calendarStudio?.yearLabel ?? "", formats: [] as { format: string }[] };
-  const prodChanged = ids.length !== cur.length || !product.calendarStudio || product.studioOff === true;
+  const studio = { ...(product.calendarStudio ?? {}), yearLabel: product.calendarStudio?.yearLabel ?? "", formats: wantFormats };
+  const fmtKey = (fs?: Fmt[]) => JSON.stringify((fs ?? []).map((f) => [f.format, (f.when ?? []).map((w) => [w.label, w.choices])]));
+  const prodChanged = ids.length !== cur.length || !product.calendarStudio || product.studioOff === true || fmtKey(product.calendarStudio?.formats) !== fmtKey(wantFormats);
   console.log(
     `👜 ${product.name} (${pair.product}) ← "${t.name}" (${t.id}) · อาร์ตบอร์ด ${f.widthMm}×${f.heightMm} · เส้นตัด (${bx},${by}) ${bw}×${bh}${res.holes ? ` + รู ${res.holes}` : ""} · whiteUnder` +
       `\n   ชุด ${tplSame ? "✓" : "✎"} · สินค้า ${prodChanged ? "✎" : "✓"} templateIds ${JSON.stringify(cur)} → ${JSON.stringify(ids)} · calendarStudio ${product.calendarStudio ? "มี" : "-"} · studioOff ${product.studioOff ?? "-"}`,
@@ -161,7 +172,7 @@ for (const p of plans) {
     const next: Product = {
       ...cur,
       templateIds: curIds.includes(p.row.data.id) ? curIds : [...curIds, p.row.data.id],
-      calendarStudio: cur.calendarStudio ?? p.studio,
+      calendarStudio: { ...(cur.calendarStudio ?? {}), yearLabel: cur.calendarStudio?.yearLabel ?? "", formats: p.studio.formats },
       savedAt: new Date().toISOString(),
     };
     delete next.studioOff;
