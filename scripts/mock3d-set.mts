@@ -5,6 +5,7 @@
  *   npx tsx scripts/mock3d-set.mts <productId> stand360|stand3   # ที่ตั้งโทรศัพท์ 360° / 3 step (21 ต.ค. 69)
  *   npx tsx scripts/mock3d-set.mts <productId> cushion   # ปลอกหมอนอิง หน้า+หลังกางออก (22 ต.ค. 69)
  *   npx tsx scripts/mock3d-set.mts <productId> folder    # แฟ้มจิ๋ว ปกใส + โซ่ไข่ปลา (22 ต.ค. 69)
+ *   npx tsx scripts/mock3d-set.mts <productId> xstand|rollup   # ป้ายขาตั้ง X-Stand / Roll UP (22 ต.ค. 69)
  *   npx tsx scripts/mock3d-set.mts <productId> none    # ถอดออก
  *
  * ตั้งได้ที่หน้าแก้ไขสินค้าหลังบ้าน (กล่อง 🧊 ปุ่ม "ดูแบบ 3D") เหมือนกัน — สคริปต์นี้ไว้ตั้งจากเครื่องตอนทดสอบ
@@ -16,9 +17,9 @@ import type { Product } from "../src/lib/products";
 import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const [PRODUCT, MODE] = process.argv.slice(2);
-const MODES = ["mug", "stand360", "stand3", "cushion", "folder", "none"] as const;
+const MODES = ["mug", "stand360", "stand3", "cushion", "folder", "xstand", "rollup", "none"] as const;
 if (!PRODUCT || !MODES.includes((MODE ?? "") as (typeof MODES)[number])) {
-  console.error("ใช้: npx tsx scripts/mock3d-set.mts <productId> mug|stand360|stand3|cushion|folder|none");
+  console.error("ใช้: npx tsx scripts/mock3d-set.mts <productId> mug|stand360|stand3|cushion|folder|xstand|rollup|none");
   process.exit(1);
 }
 const env = Object.fromEntries(

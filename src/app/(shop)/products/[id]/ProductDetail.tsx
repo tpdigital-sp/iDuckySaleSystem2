@@ -175,6 +175,7 @@ import { mugMockFrom } from "@/lib/mug-mock";
 import { standMockFrom } from "@/lib/stand-mock";
 import { cushionMockFrom } from "@/lib/cushion-mock";
 import { folderMockFrom } from "@/lib/folder-mock";
+import { bannerMockFrom } from "@/lib/banner-mock";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import {
   fetchCalDesign,
@@ -9849,7 +9850,10 @@ export default function ProductDetail({
                         : // 📁 แฟ้มจิ๋ว (22 ต.ค. 69) — ปกใส/กลิสเตอร์ + สีโซ่ไข่ปลาตามตัวเลือก
                           product.calendarStudio?.mock3d === "folder"
                           ? folderMockFrom(effective)
-                          : undefined
+                          : // 🪧 ป้ายขาตั้ง X-Stand / Roll UP (22 ต.ค. 69) — ผืนไวนิลบนโครงจริง (lib/banner-mock)
+                            product.calendarStudio?.mock3d === "xstand" || product.calendarStudio?.mock3d === "rollup"
+                            ? bannerMockFrom(product.calendarStudio.mock3d, effective)
+                            : undefined
               }
             />
           )}
