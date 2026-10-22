@@ -776,6 +776,8 @@ export default function ProductDetail({
    * 🗂 ทีมหลังบ้านที่ทำไฟล์ .ai แยกเลเยอร์ + .pdf ของจอออกแบบได้ — เจ้าของร้าน (13 ต.ค. 69) + แอดมิน/กราฟฟิก (19 ต.ค. 69 · canDesignFiles)
    */
   const [fileStaff, setFileStaff] = useState(false);
+  /** ตัวจบโหมดโหลดไฟล์ (&dl=) — effect กู้แบบอยู่ก่อนฟังก์ชันจริงในไฟล์ จึงเรียกผ่าน ref */
+  const autoDlDoneRef = useRef<(ok: boolean, msg?: string) => void>(() => {});
   /** พนักงานเปิดโหมดแอดมินอยู่ไหม — เช็คสิทธิ์ควบเสมอ ลูกค้าทั่วไปจะไม่มีทางเข้าโหมดนี้ */
   const staffOrdering = isAdmin && adminMode;
   /**
@@ -1862,6 +1864,18 @@ export default function ProductDetail({
         setPlaced(restored);
         // ✏️ มาจากปุ่มหลังบ้าน "เปิดแบบนี้ในจอสร้างปฏิทิน" (&studio=1) → เปิดจอแก้แบบให้เลย ไม่ต้องแตะกล่อง "แก้แบบที่สร้างไว้" อีกที
         if (new URLSearchParams(window.location.search).get("studio") === "1") {
+          // ⬇ โหลดไฟล์อย่างเดียว (&dl=) — เปิดลายที่ขอ (&design=n) · ลายนั้นไม่มีสถานะแบบ (รูปต้นฉบับหาย) = บอกแล้วจบ
+          const dlq = new URLSearchParams(window.location.search);
+          if (dlq.get("dl") === "ai" || dlq.get("dl") === "pdf") {
+            const n = Math.max(0, Math.min(restored.length - 1, Number(dlq.get("design") ?? restored.length - 1) || 0));
+            if (!restored[n]?.calState) {
+              autoDlDoneRef.current(false, "แบบนี้ไม่มีรูปต้นฉบับ (อัปไม่ขึ้นตอนลูกค้าออกแบบ) — ทำไฟล์ใหม่ไม่ได้ ใช้ไฟล์พร้อมพิมพ์ในหน้าออเดอร์แทน");
+              return;
+            }
+            setEditIndex(n);
+            setCalOpen(true);
+            return;
+          }
           // ไม่มีสถานะแบบ (ไม่ควรเกิดแล้ว — ต้นฉบับหายได้ภาพ "รูปหาย") = เปิดจอแล้วได้แบบเปล่า → ไม่เปิดให้ บอกเหตุผลแทน
           const last = restored[restored.length - 1];
           if (!last.calState) {
@@ -3987,6 +4001,12 @@ export default function ProductDetail({
    * ใบที่สั่งจากมือถือได้ไฟล์สำรอง -pdf.ai (ต่อ Illustrator ของร้านไม่ได้) → ทำใหม่จากเครื่องร้าน (16 ต.ค. 69 OD-261016-6709)
    */
   const [remakeFiles, setRemakeFiles] = useState(false);
+  /**
+   * ⬇ &dl=ai|pdf (หน้าออเดอร์ปุ่ม ⬇ .ai เลเยอร์ / ⬇ .pdf ของใบที่ยังไม่มีไฟล์ · 22 ต.ค. 69) — เปิดแบบ ทำไฟล์ ดาวน์โหลด แล้วปิดแท็บเอง
+   * ไม่บันทึกกลับเข้าออเดอร์ (ไม่อัปไฟล์ใหญ่ขึ้นที่เก็บ) · ลายที่ &design=n
+   */
+  const [autoDl, setAutoDl] = useState<"ai" | "pdf" | null>(null);
+  const [autoDlMsg, setAutoDlMsg] = useState("");
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const o = q.get("order") ?? "";
@@ -3994,8 +4014,19 @@ export default function ProductDetail({
     if (/^OD-[\w-]+$/.test(o) && Number.isInteger(i) && i >= 0) {
       setBackTo({ orderId: o, index: i });
       setRemakeFiles(q.get("files") === "1");
+      const dl = q.get("dl");
+      if (dl === "ai" || dl === "pdf") {
+        setAutoDl(dl);
+        setAutoDlMsg(dl === "ai" ? "⏳ กำลังทำไฟล์ .ai เลเยอร์จากแบบของลูกค้า…" : "⏳ กำลังทำไฟล์ .pdf จากแบบของลูกค้า…");
+      }
     }
   }, []);
+  /** ทำไฟล์เสร็จ → ปิดแท็บเอง (แท็บนี้เปิดจากหน้าออเดอร์) · ปิดไม่ได้ = บอกให้ปิดเอง */
+  const autoDlDone = (ok: boolean, msg?: string) => {
+    setAutoDlMsg(ok ? "✅ โหลดไฟล์แล้ว — ปิดแท็บนี้ได้เลย" : `⚠️ ${msg ?? "ทำไฟล์ไม่สำเร็จ"}`);
+    if (ok) setTimeout(() => window.close(), 2500);
+  };
+  autoDlDoneRef.current = autoDlDone;
   /** 🔁 ลายที่เหลือต้องทำ .ai/.pdf ใหม่ (ทำทีละลาย · ว่าง = บันทึกกลับเข้าออเดอร์ได้) */
   const remakeQueueRef = useRef<number[]>([]);
   const saveBackRef = useRef<() => Promise<void>>(async () => {});
@@ -9722,6 +9753,12 @@ export default function ProductDetail({
               );
             })()}
 
+          {/* ⬇ โหมดโหลดไฟล์จากหน้าออเดอร์ (&dl=) — บอกสถานะทับทุกอย่าง (22 ต.ค. 69) */}
+          {autoDl && autoDlMsg && (
+            <div className="fixed left-1/2 top-3 z-[2147483000] max-w-[92vw] -translate-x-1/2 rounded-2xl bg-slate-900/90 px-4 py-2 text-center text-sm font-bold text-white shadow-lg">
+              {autoDlMsg}
+            </div>
+          )}
           {/* 🗓 จอสร้างปฏิทินโฟโต้การ์ด */}
           {calOpen && (
             <CalendarStudio
@@ -9759,6 +9796,8 @@ export default function ProductDetail({
               // 🧑‍💼 โหมดแอดมิน: ข้ามการใส่รูปในจอออกแบบได้ (ถามยืนยัน · สเปคติดป้ายรอรูป) — เจ้าของร้านสั่ง 21 ต.ค. 69 หน้า STICKY-FABRIC
               noPhotoOk={staffOrdering}
               autoOrder={!!backTo && remakeFiles && fileStaff && editIndex !== null}
+              autoDownload={backTo && autoDl && fileStaff && editIndex !== null ? autoDl : undefined}
+              onAutoDone={autoDlDone}
               orderLabel={backTo ? `💾 บันทึกกลับเข้า ${backTo.orderId}` : undefined}
               onOrder={async () => {
                 if (backTo) {

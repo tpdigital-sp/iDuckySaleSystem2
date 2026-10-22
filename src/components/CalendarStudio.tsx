@@ -156,6 +156,13 @@ interface Props {
    */
   autoOrder?: boolean;
   /**
+   * ⬇ เปิดมาเพื่อ "โหลดไฟล์อย่างเดียว" (หน้าออเดอร์ปุ่ม ⬇ .ai เลเยอร์ / ⬇ .pdf ของใบที่ยังไม่มีไฟล์ · &dl=ai|pdf · 22 ต.ค. 69)
+   * โหลดรูปของแบบเดิมเสร็จ → ทำไฟล์บนเครื่องนี้แล้วดาวน์โหลดเลย · ไม่บันทึก/ไม่อัปอะไรเข้าออเดอร์ · ไม่ต้องมี Illustrator (.ai สร้างในเบราว์เซอร์)
+   */
+  autoDownload?: "ai" | "pdf";
+  /** ทำไฟล์เสร็จ (ok) หรือทำไม่ได้ (msg = เหตุ) */
+  onAutoDone?: (ok: boolean, msg?: string) => void;
+  /**
    * 📐 เทมเพลตของวัสดุที่เลือก (รูปตัวอย่างไฟล์ .ai/.pdf + ขนาดอาร์ตบอร์ด มม.) — วาดทับบนจอเป็นไกด์ (กรอบการ์ดจริงของวัสดุนั้น)
    * ไม่ติดไปกับไฟล์ส่งพิมพ์ · ไม่มี = ใช้เส้นตัดที่ระบบวาดเอง
    */
@@ -427,6 +434,8 @@ export default function CalendarStudio({
   orderLabel,
   autoOrder,
   aiExport,
+  autoDownload,
+  onAutoDone,
   guide,
   square,
   initial,
@@ -1207,6 +1216,29 @@ export default function CalendarStudio({
       clearInterval(t);
     };
   }, [open, aiExport, autoOrder]);
+  /**
+   * ⬇ โหมดโหลดไฟล์อัตโนมัติ (หน้าออเดอร์ · &dl=ai|pdf · 22 ต.ค. 69) — รูปของแบบโหลดครบแล้วทำไฟล์ + ดาวน์โหลดเลย ครั้งเดียว
+   * ทำผ่านปุ่มเดิม (⬇ .ai / ⬇ .pdf) แบบไม่เด้งกล่อง · ไม่บันทึกอะไรกลับเข้าออเดอร์
+   */
+  const autoDlRan = useRef(false);
+  const autoDlRef = useRef<() => Promise<void>>(async () => {});
+  autoDlRef.current = async () => {
+    if (!autoDownload) return;
+    if (srcs.some((s) => !s.removed && isMissingPhoto(s.file))) {
+      const msg = "รูปต้นฉบับบางรูปของแบบนี้หาย (อัปไม่ขึ้นตอนลูกค้าออกแบบ) — ทำไฟล์ไม่ได้ เปิดแบบแล้วใส่รูปแทนช่อง \"รูปหาย\" ก่อน";
+      setErr(`⚠️ ${msg}`);
+      return onAutoDone?.(false, msg);
+    }
+    if (autoDownload === "pdf" && fmt.diecut) return onAutoDone?.(false, "งานไดคัทไม่มีไฟล์ .pdf — ใช้ไฟล์ .ai แทน");
+    await ensureFonts(fontKeys);
+    const ok = autoDownload === "pdf" ? await downloadPdf(true) : fmt.diecut ? await downloadCutAi(true) : await downloadAi(true);
+    onAutoDone?.(ok, ok ? undefined : "ทำไฟล์ไม่สำเร็จ — ดูข้อความในจอออกแบบ");
+  };
+  useEffect(() => {
+    if (!autoDownload || !open || !srcsReady || autoDlRan.current) return;
+    autoDlRan.current = true;
+    void autoDlRef.current();
+  }, [autoDownload, open, srcsReady]);
   /** โปรแกรมพร้อมแล้ว → ทำไฟล์ + บันทึกกลับต่อ (ครั้งเดียว) */
   const runAuto = async () => {
     if (autoGo.current) return;
@@ -3953,8 +3985,9 @@ export default function CalendarStudio({
     };
   }
 
-  async function downloadPdf() {
-    if (busy) return;
+  /** silent = โหมดโหลดไฟล์อัตโนมัติจากหน้าออเดอร์ (ไม่เด้งกล่อง) · คืน true = โหลดแล้ว */
+  async function downloadPdf(silent = false): Promise<boolean> {
+    if (busy) return false;
     setErr("");
     try {
       setBusy(imposeOk ? "กำลังทำไฟล์ .pdf ชิ้นงาน…" : "กำลังทำไฟล์ .pdf…");
@@ -3964,17 +3997,19 @@ export default function CalendarStudio({
       a.download = r.file.name;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      setAsk({ icon: "🖨", title: imposeOk ? "โหลดไฟล์ .pdf ชิ้นงานแล้ว" : "โหลดไฟล์ .pdf แล้ว", body: r.note, ok: "ตกลง", run: () => {} });
+      if (!silent) setAsk({ icon: "🖨", title: imposeOk ? "โหลดไฟล์ .pdf ชิ้นงานแล้ว" : "โหลดไฟล์ .pdf แล้ว", body: r.note, ok: "ตกลง", run: () => {} });
+      return true;
     } catch (e) {
       setErr(e instanceof Error ? `ทำไฟล์ .pdf ไม่สำเร็จ: ${e.message}` : "ทำไฟล์ .pdf ไม่สำเร็จ");
+      return false;
     } finally {
       setBusy("");
     }
   }
 
   /** ⬇ ปุ่มทดสอบของเจ้าของร้าน — โหลด .ai ลงเครื่องเลย ไม่แนบออเดอร์ */
-  async function downloadAi() {
-    if (busy) return;
+  async function downloadAi(silent = false): Promise<boolean> {
+    if (busy) return false;
     setErr("");
     // 🪟 cutout-py ปิดอยู่ → สั่งเปิดตอนกด ⬇ .ai เลย (ยังอยู่ในจังหวะคลิก เบราว์เซอร์ถึงยอม · 19 ต.ค. 69 "ไม่ต้องกด run start ให้เว็บรันให้อัตโนมัติ")
     if (cutSt.current === "down" && Date.now() - launchedAt.current > 60000 && launchCutoutPy()) launchedAt.current = Date.now();
@@ -3992,6 +4027,7 @@ export default function CalendarStudio({
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       // ไม่ใช่ไฟล์จาก Illustrator = ไฟล์สำรองเปิดแล้วเป็น Layer 1 เดียว — บอกให้ชัด + เหตุ (เดิม ℹ️ "โหลดไฟล์ .ai แล้ว" พนักงานนึกว่าได้เลเยอร์ · 19 ต.ค. 69)
+      if (silent) return true;
       const why = r.real ? "" : cutoutWhy(await cutoutStatus().then((st) => (setCutStatus(st), st)));
       setAsk(
         r.real
@@ -4004,8 +4040,10 @@ export default function CalendarStudio({
               run: () => {},
             },
       );
+      return true;
     } catch (e) {
       setErr(e instanceof Error ? `ทำไฟล์ .ai ไม่สำเร็จ: ${e.message}` : "ทำไฟล์ .ai ไม่สำเร็จ");
+      return false;
     } finally {
       setBusy("");
     }
@@ -4209,8 +4247,8 @@ export default function CalendarStudio({
   }
 
   /** ⬇ .ai ไดคัท (เจ้าของร้าน · ปุ่มบนแถบหัว) */
-  async function downloadCutAi() {
-    if (busy) return;
+  async function downloadCutAi(silent = false): Promise<boolean> {
+    if (busy) return false;
     setBusy("กำลังทำไฟล์ .ai…");
     setErr("");
     try {
@@ -4220,7 +4258,7 @@ export default function CalendarStudio({
       if (!f) throw new Error("ทำไฟล์ .ai ไม่สำเร็จ ลองใหม่อีกครั้ง");
       // 🗂 ไม่มี Illustrator ในเครื่อง = .ai แยกเลเยอร์ที่สร้างในเบราว์เซอร์ (22 ต.ค. 69) · ไฟล์สำรอง PDF-.ai เหลือเฉพาะกรณีพังจริง
       if (cf.aiKind === "pdf") setErr(cf.aiNote);
-      else if (cf.aiKind === "legacy") setAsk({ icon: "✅", title: "โหลดไฟล์ .ai แยกเลเยอร์แล้ว", body: cf.aiNote, ok: "ตกลง", run: () => {} });
+      else if (cf.aiKind === "legacy" && !silent) setAsk({ icon: "✅", title: "โหลดไฟล์ .ai แยกเลเยอร์แล้ว", body: cf.aiNote, ok: "ตกลง", run: () => {} });
       const url = URL.createObjectURL(f);
       const a = document.createElement("a");
       a.href = url;
@@ -4229,8 +4267,10 @@ export default function CalendarStudio({
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return true;
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ทำไฟล์ .ai ไม่สำเร็จ");
+      return false;
     } finally {
       setBusy("");
     }

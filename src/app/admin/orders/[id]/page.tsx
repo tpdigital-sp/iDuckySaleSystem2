@@ -208,7 +208,7 @@ import { publicOrigin } from "@/lib/shop-info";
 import { fetchShopPayment, freeShippingMinOf, shippingOf, type ShippingMethod } from "@/lib/shop-settings";
 import SenderPicker from "@/components/admin/SenderPicker";
 import { isPickupOrder, normalizeShipLabel, resolveShipLabel, shipFollowsItems, shipOriginUnknown, shippingUnset } from "@/lib/ship-label";
-import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, isFlatCalAi, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
+import { calAiUrlOf, calEditUrlOf, calPdfUrlOf, parsePrintFrame, PLACEMENT_SPEC_LABEL } from "@/lib/design-templates";
 import { buildPrintAi, downloadBlob } from "@/lib/print-ai";
 import { jobFileName } from "@/lib/job-file-name";
 import { buildTplMergedAi, layerSplitJsx } from "@/lib/template-merge-ai";
@@ -1360,6 +1360,8 @@ export default function AdminOrderDetailPage() {
   }
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  /** ⬇ กำลังทำไฟล์ .ai เลเยอร์จากไฟล์สำรอง (คีย์ปุ่ม) — 22 ต.ค. 69 */
+  const [fileBusy, setFileBusy] = useState("");
   /** กล่องยืนยันของระบบเอง — แทน confirm() ของเบราว์เซอร์ (ใช้ตัวเดียวกับหน้าอื่นในหลังบ้าน) */
   const { confirm: askConfirm, confirmText: askText, dialog: confirmDialog } = useConfirm();
   // แอดมินแก้ "รายละเอียดงาน" ของรายการที่ลูกค้าสั่งได้ (แก้ได้เฉพาะรายละเอียด — ชื่อ/จำนวนไม่แตะ)
@@ -4583,6 +4585,70 @@ export default function AdminOrderDetailPage() {
     );
   }
 
+  /**
+   * ⬇ ใบที่ยังไม่มีไฟล์ .ai/.pdf (ลูกค้าสั่งเอง — จอออกแบบไม่ทำไฟล์ตอนลูกค้ากดสั่ง) → เปิดแบบในแท็บใหม่ ทำไฟล์บนเครื่องนี้แล้วดาวน์โหลด ปิดแท็บเอง
+   * ไม่บันทึกกลับ/ไม่อัปไฟล์ขึ้นที่เก็บ · ไม่ต้องมี Illustrator (เจ้าของร้านสั่ง 22 ต.ค. 69 "ไม่ต้องกด 🔁")
+   */
+  function openCalDownload(itemIndex: number, design: number, kind: "ai" | "pdf") {
+    if (!order) return;
+    const it = order.items[itemIndex];
+    const p = it && productOfItem(it.productId);
+    if (!it || !p) return;
+    const selections = cartSelectionsOf(it);
+    const key = cartItemKey(it.productId, selections);
+    try {
+      const cart = (() => {
+        try {
+          const v = JSON.parse(localStorage.getItem("iducky-cart-v1") ?? "[]");
+          return Array.isArray(v) ? (v as { key: string }[]) : [];
+        } catch {
+          return [];
+        }
+      })();
+      const line = { key, productId: it.productId, selections, qty: it.qty, unitPrice: it.unitPrice };
+      localStorage.setItem("iducky-cart-v1", JSON.stringify([...cart.filter((c) => c?.key !== key), line]));
+    } catch {
+      setErr("⚠️ เปิดแบบไม่ได้ — เบราว์เซอร์ปิดการเก็บข้อมูลในเครื่อง");
+      return;
+    }
+    window.open(
+      `${productPath(p)}?edit=${cartEditToken(key)}&studio=1&order=${encodeURIComponent(order.id)}&item=${itemIndex}&dl=${kind}&design=${design}`,
+      "_blank",
+    );
+  }
+
+  /**
+   * ⬇ .ai เลเยอร์: ไฟล์ที่แนบเป็นไฟล์สำรองของระบบ (-pdf.ai · Illustrator เปิดแล้วรวมเป็น Layer 1) → แปลงเป็น .ai แยกเลเยอร์ตอนโหลด
+   * .ai แท้จาก Illustrator = โหลดไฟล์เดิม · ยังไม่มีไฟล์ = ทำจากแบบ (openCalDownload) — 22 ต.ค. 69
+   */
+  async function downloadCalAi(url: string | null, filename: string, itemIndex: number, design: number, busyKey: string) {
+    if (!url) return openCalDownload(itemIndex, design, "ai");
+    if (fileBusy) return;
+    setFileBusy(busyKey);
+    try {
+      const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+      const { pdfAiToPages } = await import("@/lib/pdfai-to-layers");
+      const conv = await pdfAiToPages(bytes).catch(() => null);
+      let blob: Blob = new Blob([bytes], { type: "application/postscript" });
+      if (conv?.pages.length) {
+        const { buildLegacyAi, decodeBlob } = await import("@/lib/legacy-ai");
+        blob = await buildLegacyAi(conv.pages, { title: filename, decode: async (b) => conv.pixels.get(b) ?? decodeBlob(b) });
+      }
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 4000);
+    } catch {
+      void downloadImage(url, filename);
+    } finally {
+      setFileBusy("");
+    }
+  }
+
   /** ลบรายการออกจากออเดอร์ — ลง log ทุกครั้ง (ใคร ลบอะไร ยอดหายไปเท่าไร) */
   /**
    * 🧮↩ ลบรายการแล้วล็อตในใบหด → บรรทัดที่เคยได้ขั้นถูกเพราะรายการนี้ ต้องคืนราคาขั้นที่ล็อตเหลือจริง
@@ -7644,96 +7710,89 @@ export default function AdminOrderDetailPage() {
                             {/* 🗂 .ai แยกเลเยอร์ + .pdf ของปฏิทินที่ออกแบบบนเว็บ — พนักงานหลังบ้านเห็น/โหลดได้ทุกคน
                                 (ผู้ใช้สั่ง 15 ต.ค. 69 "หลังบ้านเป็นพนักงาน ต้องเห็นไฟล์ได้" · เดิมเฉพาะเจ้าของร้าน) — ลูกค้าไม่เห็นหน้านี้
                                 ปฏิทินที่ออกแบบบนเว็บแต่ไม่มีไฟล์ = บอกให้รู้ว่าไม่มี (ไม่ใช่กล่องหายไปเฉย ๆ) */}
-                            {(() => {
-                              /**
-                               * 🔁 ทำไฟล์ .ai เลเยอร์ + .pdf ใหม่จากเครื่องร้าน (เจ้าของร้าน/แอดมิน/กราฟฟิก · ต้องมีลิงก์แบบบนเว็บ)
-                               * ใช้เมื่อ .ai ที่แนบเป็นไฟล์สำรอง -pdf.ai (สั่งจากมือถือ/เครื่องที่ต่อ Illustrator ไม่ได้ → เปิดแล้วรวมเป็น Layer 1)
-                               * หรือใบลูกค้าทั่วไปที่ยังไม่มีไฟล์ · เปิดจอออกแบบด้วยแบบเดิมแล้วบันทึกกลับเข้าใบนี้ให้เอง (ไฟล์เปลี่ยน · ยอดเงินไม่เปลี่ยน)
-                               * (เจ้าของร้านแจ้ง 16 ต.ค. 69 OD-261016-6709 "สั่งจากมือถือ โหลด .ai เลเยอร์แล้วไม่แยกเลเยอร์")
-                               */
-                              const flat = specs.some((sp) => isFlatCalAi(calAiUrlOf(sp)));
-                              const noAi = !specs.some((sp) => calAiUrlOf(sp));
-                              // ต้นฉบับหาย: แบบรูปล้วนหน้าเดียว จอยืมไฟล์พร้อมพิมพ์แทนรูป (standInFromRender) ทำ .ai ได้ · แบบอื่นจอขึ้นช่อง "รูปหาย" แล้วหยุดเอง
-                              const canRemake = mayDesign && specs.some((sp) => calEditUrlOf(sp)) && !!productOfItem(it.productId);
-                              if (!canRemake) return null;
-                              // ไฟล์เก่าก่อน 16 ต.ค. 69 ชื่อเก็บไม่มี -pdf → ดูจากชื่อไม่ออก · ปุ่มจึงมีเสมอ (เปิดใน Illustrator เห็น Layer 1 เดียว = กดทำใหม่)
-                              const warn = flat || noAi;
-                              return (
-                                <div
-                                  className={`flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 ring-1 ${
-                                    warn ? "bg-rose-50 ring-rose-200" : "bg-amber-50/60 ring-amber-200"
-                                  }`}
-                                >
-                                  <span className={`text-[10.5px] font-semibold leading-snug ${warn ? "text-rose-900" : "text-amber-900"}`}>
-                                    {flat
-                                      ? "⚠️ ไฟล์ .ai ที่แนบเป็นไฟล์สำรอง (สั่งจากมือถือ/เครื่องที่ต่อ Illustrator ของร้านไม่ได้) — เปิดแล้วรวมเป็น Layer 1 ไม่แยกเลเยอร์"
-                                      : noAi
-                                        ? "🗂 ยังไม่มีไฟล์ .ai เลเยอร์ของแบบนี้ — จอออกแบบไม่ทำ .ai ตอนกด ✓ ใช้แบบนี้/💾 บันทึกกลับแล้ว (ให้กดได้เร็ว) กดปุ่มนี้จากเครื่องที่มี Illustrator"
-                                        : "เปิด .ai แล้วเห็นแค่ Layer 1 (สั่งจากมือถือ) = ไฟล์สำรอง ไม่แยกเลเยอร์"}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => openCalDesign(i, true)}
-                                    className={`rounded-full px-3 py-1 text-[11px] font-bold shadow-sm transition ${
-                                      warn ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-white text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100"
-                                    }`}
-                                    title="เปิดแบบเดิมในจอออกแบบบนเครื่องนี้ ให้ Illustrator ของร้าน (โปรแกรม cutout-py) ทำ .ai แยกเลเยอร์ + .pdf แล้วบันทึกกลับเข้าออเดอร์ให้เอง — ยอดเงินไม่เปลี่ยน"
-                                  >
-                                    🔁 ทำ .ai เลเยอร์ใหม่ด้วย Illustrator (เครื่องนี้)
-                                  </button>
-                                </div>
-                              );
-                            })()}
-                            {isCal && !specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
+                            {isCal && !specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && !(mayDesign && productOfItem(it.productId) && specs.some((sp) => calEditUrlOf(sp))) && (
                               <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
                                 🗂 ไฟล์งาน .ai / .pdf: ออเดอร์นี้ไม่มีไฟล์ — .pdf ทำเฉพาะตอนทีมหลังบ้าน (เจ้าของร้าน/แอดมิน/กราฟฟิก) เป็นคนออกแบบ/สั่งเอง · .ai เลเยอร์ทำจากปุ่ม 🔁 เท่านั้น
                                 (ออเดอร์จากลูกค้าทั่วไปยังไม่มี{specs.some((sp) => calEditUrlOf(sp)) ? " — กดปุ่ม 🔁 ด้านบนทำจากเครื่องร้านได้" : ""})
                               </p>
                             )}
-                            {specs.some((sp) => calAiUrlOf(sp) || calPdfUrlOf(sp)) && (
+                            {(() => {
+                              /**
+                               * 🗂 ไฟล์งาน .ai เลเยอร์ / .pdf — โชว์เสมอเมื่อมีแบบบนเว็บ (เจ้าของร้านสั่ง 22 ต.ค. 69 "แสดงไฟล์ ai และ pdf เลย ไม่ต้องกด 🔁")
+                               * มีไฟล์ = โหลด (ไฟล์สำรอง -pdf.ai แปลงเป็นเลเยอร์ตอนโหลด) · ไม่มี = ทำจากแบบในแท็บใหม่แล้วโหลด (ไม่บันทึกกลับ)
+                               */
+                              const prod = productOfItem(it.productId);
+                              const canMake = mayDesign && !!prod;
+                              const isCut = !!prod?.diecutStudio && !prod?.calendarStudio;
+                              const rows = specs.map((sp, n) => ({
+                                n,
+                                ai: calAiUrlOf(sp),
+                                pdf: calPdfUrlOf(sp),
+                                edit: canMake && !!calEditUrlOf(sp),
+                              }));
+                              if (!rows.some((r) => r.ai || r.pdf || r.edit)) return null;
+                              const many = specs.length > 1;
+                              const oid = order?.id ?? "";
+                              const nameOf = (n: number, ext: "ai" | "pdf") => jobFileName(it.name, oid, ext, { design: many ? n + 1 : 0 });
+                              const btn = "rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-amber-800 ring-1 ring-amber-300 hover:bg-amber-100 disabled:opacity-60";
+                              return (
                                 <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 ring-1 ring-amber-200">
                                   <span className="text-[11px] font-bold text-amber-900">🗂 ไฟล์งาน:</span>
-                                  {specs.flatMap((sp, n) =>
-                                    (
-                                      [
-                                        // ⚠️ -pdf.ai = ไฟล์สำรองไม่แยกเลเยอร์ (ทำจากมือถือ) — บอกตรงปุ่ม ไม่เรียก "เลเยอร์" (16 ต.ค. 69)
-                                        [
-                                          calAiUrlOf(sp),
-                                          isFlatCalAi(calAiUrlOf(sp)) ? ".ai (ยังไม่แยกเลเยอร์)" : ".ai เลเยอร์",
-                                          isFlatCalAi(calAiUrlOf(sp)) ? "ยังไม่แยกเลเยอร์-pdf.ai" : "เลเยอร์.ai",
-                                        ],
-                                        // .pdf = การ์ดชุด → ไฟล์ชิ้นงานโปรแกรมจัดวาง · ปฏิทินแบบอื่น → .pdf ทั้งเล่ม (14 ต.ค. 69)
-                                        [calPdfUrlOf(sp), ".pdf", /\.zip(\?|$)/i.test(calPdfUrlOf(sp) ?? "") ? "ชิ้นงาน.zip" : "งานพิมพ์.pdf"],
-                                      ] as const
-                                    ).map(([u, label, suffix]) =>
-                                      u ? (
-                                        /**
-                                         * ชื่อไฟล์ตอนโหลด = "ชื่อสินค้า-เลขออเดอร์4ตัวท้าย-วันเดือนปี-เลขสุ่ม3ตัว" (เจ้าของร้าน 21 ต.ค. 69)
-                                         * ⚠️ attribute download บนลิงก์ข้ามโดเมน (Supabase) เบราว์เซอร์ไม่สน → ได้ชื่อ UUID ของที่เก็บ
-                                         * จึงดึงเป็น blob แล้วค่อยเซฟชื่อเอง (downloadImage · โหลดไม่ได้ค่อยเปิดแท็บใหม่)
-                                         */
+                                  {rows.flatMap((r) => {
+                                    const lab = many ? `ลายที่ ${r.n + 1} ` : "";
+                                    const out = [];
+                                    if (r.ai || r.edit) {
+                                      const key = `${i}-${r.n}-ai`;
+                                      out.push(
                                         <button
                                           type="button"
-                                          key={`${n}-${suffix}`}
-                                          onClick={() => {
-                                            const ext = /\.zip(\?|$)/i.test(u) ? "zip" : suffix.endsWith(".pdf") ? "pdf" : "ai";
-                                            void downloadImage(u, jobFileName(it.name, order.id, ext, { design: specs.length > 1 ? n + 1 : 0 }));
-                                          }}
-                                          title={`โหลดเป็นชื่อ ${jobFileName(it.name, order.id, suffix.endsWith(".pdf") ? "pdf" : "ai", { design: specs.length > 1 ? n + 1 : 0, rand: 0 }).replace(/-000\.(\w+)$/, "-xxx.$1")}`}
-                                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${
-                                            label.includes("ยังไม่แยก")
-                                              ? "bg-rose-50 text-rose-700 ring-rose-300 hover:bg-rose-100"
-                                              : "bg-white text-amber-800 ring-amber-300 hover:bg-amber-100"
-                                          }`}
+                                          key={key}
+                                          disabled={!!fileBusy}
+                                          onClick={() => void downloadCalAi(r.ai, nameOf(r.n, "ai"), i, r.n, key)}
+                                          title={
+                                            r.ai
+                                              ? "โหลด .ai แยกเลเยอร์ (ไฟล์สำรอง -pdf.ai แปลงเป็นเลเยอร์ให้ตอนโหลด · ชื่อเลเยอร์ภาษาอังกฤษ)"
+                                              : "ยังไม่มีไฟล์ — เปิดแบบของลูกค้าในแท็บใหม่ ทำ .ai แยกเลเยอร์บนเครื่องนี้แล้วโหลด (ไม่บันทึกเข้าออเดอร์)"
+                                          }
+                                          className={btn}
                                         >
-                                          ⬇ {specs.length > 1 ? `ลายที่ ${n + 1} ` : ""}
-                                          {label}
-                                        </button>
-                                      ) : null,
-                                    ),
+                                          {fileBusy === key ? "⏳ กำลังทำ .ai…" : `⬇ ${lab}.ai เลเยอร์`}
+                                        </button>,
+                                      );
+                                    }
+                                    if (r.pdf || (r.edit && !isCut)) {
+                                      const isZip = /\.zip(\?|$)/i.test(r.pdf ?? "");
+                                      out.push(
+                                        <button
+                                          type="button"
+                                          key={`${i}-${r.n}-pdf`}
+                                          onClick={() =>
+                                            r.pdf
+                                              ? void downloadImage(r.pdf, jobFileName(it.name, oid, isZip ? "zip" : "pdf", { design: many ? r.n + 1 : 0 }))
+                                              : openCalDownload(i, r.n, "pdf")
+                                          }
+                                          title={r.pdf ? (isZip ? "โหลดไฟล์ชิ้นงาน (.zip)" : "โหลด .pdf งานพิมพ์") : "ยังไม่มีไฟล์ — เปิดแบบในแท็บใหม่ ทำ .pdf บนเครื่องนี้แล้วโหลด (ไม่บันทึกเข้าออเดอร์)"}
+                                          className={btn}
+                                        >
+                                          ⬇ {lab}.pdf
+                                        </button>,
+                                      );
+                                    }
+                                    return out;
+                                  })}
+                                  {canMake && specs.some((sp) => calEditUrlOf(sp)) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openCalDesign(i, true)}
+                                      className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold text-amber-700/80 hover:bg-amber-100"
+                                      title="ไม่บังคับ — ให้ Illustrator ของร้าน (โปรแกรม cutout-py) ทำ .ai ชื่อเลเยอร์ไทย ไฟล์เล็กกว่า แล้วบันทึกเข้าออเดอร์"
+                                    >
+                                      🔁 ทำด้วย Illustrator
+                                    </button>
                                   )}
                                 </div>
-                              )}
+                              );
+                            })()}
 
                             {/* 🖼 รูปต้นฉบับอัปไม่ขึ้นตอนลูกค้าออกแบบ (ใหญ่เกิน 15MB/ชนิดไฟล์ที่ระบบไม่รับ — แก้ฝั่งจอแล้ว 19 ต.ค. 69 · OD-261019-1860) */}
                             {noSource.length > 0 && (
