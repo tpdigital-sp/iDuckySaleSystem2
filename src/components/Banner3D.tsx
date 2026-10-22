@@ -277,12 +277,13 @@ export default function Banner3D({
             rod(new THREE.Vector3(passBot.x, passBot.y - 6, passBot.z), hookElbowB, 2.2, steel);
             rod(hookElbowB, new THREE.Vector3(cxEye, eyeBot.y + 4, 2), 2.2, steel);
             // 🧵 ลวดสลิง "2 เส้น" ตามรูปร้าน (เจ้าของร้านสั่ง 22 ต.ค. 69 "ลวดสลิง 4 เส้นนั้นเอาออก ฉันต้องการแบบภาพที่ 2 มีแค่ 2 เส้น"):
-            //    เส้น 1: ตัวหนีบบนขาหลัง (~38% จากพื้น) → เท้าขาหน้า "ซ้าย" · เส้น 2: เท้าขาหลัง → ตัวหนีบบนขาหน้า "ขวา" (~28% จากพื้น)
+            //    ตัวหนีบอยู่ "สูง" ใกล้ดุม (วัดจากรูปร้าน + รูป Google 22 ต.ค. 69 "ปรับตำแหน่งลวดหน่อย"): ขาหลัง 28% จากดุม · ขาหน้าขวา 38% จากดุม
+            //    เส้น 1: ตัวหนีบขาหลัง → เท้าขาหน้า "ซ้าย" · เส้น 2: เท้าขาหลัง → ตัวหนีบขาหน้า "ขวา" → ลวดเป็นเส้นทแยงยาวไขว้กัน (รอบก่อนวางตัวหนีบใกล้พื้น ลวดแบนราบ)
             const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
-            const clampA = hubV.clone().lerp(rearFoot, 0.62);
+            const clampA = hubV.clone().lerp(rearFoot, 0.28);
             if (sx < 0) rod(clampA, new THREE.Vector3(foot.x, 14, foot.z), 1.1, wire);
             else {
-              const clampC = hubV.clone().lerp(foot, 0.72);
+              const clampC = hubV.clone().lerp(foot, 0.38);
               rod(new THREE.Vector3(rearFoot.x, 10, rearFoot.z), clampC, 1.1, wire);
               const c = add(new THREE.Mesh(g(new THREE.CylinderGeometry(8, 8, 14, 12)), plastic), false);
               c.position.copy(clampC);
