@@ -256,7 +256,8 @@ export default function Banner3D({
             }
             // 🎣 ก้านบน: โค้งออกนอก + ถอยหลัง · ปลายก้านอยู่เหนือมุมป้ายเล็กน้อย แล้วตะขอเกี่ยวลงตาไก่
             const tipTop = new THREE.Vector3(sx * (VW / 2 + 14), LIFT + VH + 18, -14);
-            const ctlTop = new THREE.Vector3(sx * (VW / 2 + 95), hubY + VH * 0.33, -140); // โค้งออกพอเห็นปลายโผล่ข้างป้ายจากด้านหน้า (ตามรูปร้าน)
+            // ก้านเกือบตรงจากดุมถึงมุม โค้งออกนิดเดียว (เจ้าของร้านทัก 22 ต.ค. 69 "มันง้อเกินไป ต้องเหมือนกับภาพที่ 2 และ 3" — รอบแรกดัดออก 95 มม.)
+            const ctlTop = hubV.clone().lerp(tipTop, 0.5).add(new THREE.Vector3(sx * 14, 0, -28));
             tube(new THREE.QuadraticBezierCurve3(hubV, ctlTop, tipTop), 5.5, carbon);
             cap(tipTop, 7, 16, tipTop.clone().sub(ctlTop));
             const hookT = add(new THREE.Mesh(hookGeo, steel), false);
@@ -264,7 +265,7 @@ export default function Banner3D({
             hookT.rotation.set(Math.PI / 2, 0, 0);
             // 🦶 ก้านล่าง = ขาหน้า: จากดุมผ่านใกล้ตาไก่ล่างลงไปยันพื้นนอกมุมป้าย
             const foot = new THREE.Vector3(sx * (VW / 2 + 60), 0, 10);
-            const ctlBot = new THREE.Vector3(sx * (VW / 2 - 40), LIFT + 60, -70);
+            const ctlBot = hubV.clone().lerp(foot, 0.5).add(new THREE.Vector3(sx * 8, 0, -18));
             tube(new THREE.QuadraticBezierCurve3(hubV, ctlBot, foot), 5.5, carbon);
             cap(new THREE.Vector3(foot.x, 8, foot.z), 9, 16);
             const hookB = add(new THREE.Mesh(hookGeo, steel), false);
