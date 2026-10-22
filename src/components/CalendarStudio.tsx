@@ -190,6 +190,8 @@ interface Props {
     whiteUnder?: boolean;
     /** 🙈 ไม่ลากเส้นไดคัทสีแดงบนจอ (TemplateFile.cutLineOff · Magsafe Card Holder 22 ต.ค. 69) — ไฟล์งานยังมีเส้นตัดครบ */
     cutLineOff?: boolean;
+    /** 🖼 ช่องรูปเต็มชิ้นงาน (TemplateFile.fullFace · Magsafe Wallet 22 ต.ค. 69) — ไม่เจาะหน้างานจากสกินตอนช่องว่าง (ข้าม guideFx.over) */
+    fullFace?: boolean;
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -1385,7 +1387,8 @@ export default function CalendarStudio({
    */
   const guideFx = useMemo<{ over: HTMLCanvasElement | null }>(() => {
     const none = { over: null };
-    if (!guideImg || !guide || !tplGeneric) return none;
+    // 🖼 fullFace: สกินมีเส้นช่อง/ลายด้านใน (Magsafe Wallet) เจาะแล้วเหลือแค่วงใน → ไม่เจาะ ให้ช่องรูปโชว์เต็มชิ้นงาน (22 ต.ค. 69)
+    if (!guideImg || !guide || !tplGeneric || guide.fullFace) return none;
     try {
       const sc = Math.min(1, 2000 / Math.max(guideImg.naturalWidth, guideImg.naturalHeight));
       const w = Math.max(8, Math.round(guideImg.naturalWidth * sc));
