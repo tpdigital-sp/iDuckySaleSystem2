@@ -219,7 +219,8 @@ export default function Banner3D({
           const sgn = [-1, 1] as const;
           // ดุมต่ำกว่ากลางป้าย ~44% จากพื้น (วัดจากรูปที่ 3 ที่เจ้าของร้านส่ง 22 ต.ค. 69) · อยู่หลังป้าย 8 ซม.
           const hubY = LIFT + VH * 0.44 - LIFT * 0.44;
-          const hubZ = -80;
+          // ดุมถอยหลังป้าย ~28 ซม. (เจ้าของร้านส่งรูป Iron X Stand 22 ต.ค. 69 "ปรับให้โครงแบบในภาพที่ 1" — รอบก่อนดุมชิดป้าย 8 ซม. มองข้างแบนเป็นเส้นเดียว)
+          const hubZ = -280;
           const hubV = new THREE.Vector3(0, hubY, hubZ);
           const up = new THREE.Vector3(0, 1, 0);
           const tube = (curve: InstanceType<typeof THREE.QuadraticBezierCurve3> | InstanceType<typeof THREE.CatmullRomCurve3>, r: number, mat: InstanceType<typeof THREE.MeshStandardMaterial>, segs = 28) =>
@@ -259,7 +260,8 @@ export default function Banner3D({
             const eyeTop = new THREE.Vector3(cxEye, LIFT + VH - EYE, 2);
             const eyeBot = new THREE.Vector3(cxEye, LIFT + EYE, 2);
             const tipTop = new THREE.Vector3(cxEye + sx * 9, eyeTop.y + 30, -5);
-            const ctlTop = hubV.clone().lerp(tipTop, 0.5).add(new THREE.Vector3(sx * 14, 0, -28));
+            // ก้านไฟเบอร์ถูกดัดโก่ง "ไปข้างหลัง" (แรงดึงที่ทำให้ป้ายตึง) — มองหน้า/หลังยังเกือบตรง · มองข้างเห็นเป็นคันธนูแบบรูปจริง
+            const ctlTop = hubV.clone().lerp(tipTop, 0.5).add(new THREE.Vector3(sx * 10, 0, -150));
             tube(new THREE.QuadraticBezierCurve3(hubV, ctlTop, tipTop), 5.5, carbon);
             cap(tipTop, 7, 16, tipTop.clone().sub(ctlTop));
             // ตะขอบน: แขนโลหะจากปลายก้านโค้งเข้าหาตาไก่ แล้วหมุดเสียบผ่านรูลงมา
@@ -278,7 +280,8 @@ export default function Banner3D({
             // 🧵 ลวดสลิง/ตัวหนีบ: ถอดออกทั้งหมด (เจ้าของร้านสั่ง 22 ต.ค. 69 "เอาลวดสลิงออกไปเลย" หลังปรับตำแหน่ง 3 รอบ) — โครงเหลือ ดุม + ก้าน 4 + ขาหลัง
           }
           // ขาหลัง: ท่อเดียวจากดุมเอียงลงพื้นด้านหลัง + แป้นเท้า
-          const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
+          // ขาหลังกางไปข้างหลังไกลกว่าเดิมให้สมดุลกับดุมที่ถอยหลัง
+          const rearFoot = new THREE.Vector3(0, 0, hubZ - VH * 0.36);
           rod(hubV.clone().add(new THREE.Vector3(0, -30, -10)), rearFoot, 6.5, carbon);
           cap(new THREE.Vector3(0, 8, rearFoot.z), 11, 16);
         } else {
