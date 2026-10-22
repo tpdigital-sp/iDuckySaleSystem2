@@ -1335,7 +1335,8 @@ export default function ProductDetail({
     );
   }, [templates, effective]);
   const tplModelMissing = useMemo(() => {
-    if (!product.calendarStudio || product.calendarStudio.formats?.length) return false;
+    // รูปแบบที่กำหนดขนาดเอง (card/canvas@…) ไม่ต้องพึ่งเทมเพลต · "tpl2" (2 ด้านตามเทมเพลต) ยังต้องมีเทมเพลตตรงสเปค จึงผ่านด่านนี้ต่อ (ผ้าขนหนู 2 ด้าน · 22 ต.ค. 69)
+    if (!product.calendarStudio || product.calendarStudio.formats?.some((f) => f.format !== "tpl2")) return false;
     // 🧣 ชุดที่ผูกกลุ่มตัวเลือก (optionLabel) + เงื่อนไข when (ผ้าขนหนู: มีเทมเพลตเฉพาะ "ไม่เน้นตำแหน่ง" · 22 ต.ค. 69)
     //    สเปคที่เลือกไม่มีไฟล์ที่รู้ขนาดเลย = ปิดจอออกแบบ (กล่องบอกแนบไฟล์แทน) — เดิมตกไปรูปแบบ "card" โฟโต้การ์ดเงียบ ๆ
     if (templates.some((t) => t.optionLabel?.trim()) && !templates.some((t) => filesForSelections(t, effective).some((f) => f.widthMm && f.heightMm))) return true;
@@ -3035,6 +3036,8 @@ export default function ProductDetail({
           hMm: sk.cutCurves?.length && sk.heightMm ? sk.heightMm : 0,
           fill: true,
           name: name(sk),
+          // 📏 ขนาดหน้างานจริง (กรอบแดง "ขนาดตามงานจริง") — หัวจอแสดง 60×30 แทนอาร์ตบอร์ด 64×34 (ผ้าขนหนู · เจ้าของร้านสั่ง 22 ต.ค. 69)
+          ...(sk.finishedMm ? { finished: sk.finishedMm } : {}),
           ...sizeNote,
           ...(sk.skinOpaque ? { opaque: true } : {}),
           ...(sk.cutCurves?.length ? { cut: sk.cutCurves } : {}),
