@@ -49,25 +49,39 @@ function cropRounded(src: HTMLCanvasElement, k: number, b: { x: number; y: numbe
 
 /** ลายโฮโลแกรม: ไล่สีรุ้งพาสเทลแนวทแยง + ริ้วแสงจาง ๆ (วนซ้ำได้ เลื่อนตามมุมกล้องให้ประกายเปลี่ยน) */
 function holoCanvas(): HTMLCanvasElement {
+  // 🌈 ฟิล์มโฮโลแกรมโทนพาสเทล ชมพู-ม่วงอ่อน-ฟ้า ไล่นุ่ม ๆ เป็นแผ่นใหญ่ + คลื่นฟ้าจาง ๆ
+  //   (เจ้าของร้านทัก 22 ต.ค. 69 "ดูไม่รู้เรื่องเลย สีแบบภาพที่ 2 ก็ได้" — รอบก่อนก้อนสีเล็ก + เส้นขาวรอยยับเยอะจนรก)
   const cv = document.createElement("canvas");
   cv.width = cv.height = 512;
   const ctx = cv.getContext("2d");
   if (!ctx) return cv;
-  // โทนทอง-พีช-ชมพู-ฟ้า ตามรูปถุงจริง (แถบใต้ซิปออกทองส้ม ขอบถุงรุ้ง)
-  const stops = ["#f6c25e", "#ffad7a", "#ff96c8", "#c8a2ff", "#86d4ff", "#ffe27a", "#f6c25e"];
-  const gr = ctx.createLinearGradient(0, 0, 512, 512);
-  stops.forEach((c, i) => gr.addColorStop(i / (stops.length - 1), c));
-  ctx.fillStyle = gr;
+  const base = ctx.createLinearGradient(0, 0, 512, 512);
+  base.addColorStop(0, "#f7cfe0");
+  base.addColorStop(0.35, "#e6d0f3");
+  base.addColorStop(0.65, "#c4d9f7");
+  base.addColorStop(1, "#f4d3e6");
+  ctx.fillStyle = base;
   ctx.fillRect(0, 0, 512, 512);
-  ctx.globalAlpha = 0.18;
-  for (let i = 0; i < 26; i++) {
-    const x = (i * 97) % 512;
-    const g2 = ctx.createLinearGradient(x, 0, x + 60, 512);
-    g2.addColorStop(0, "rgba(255,255,255,0)");
-    g2.addColorStop(0.5, i % 3 ? "#ffffff" : "#ffe7a3");
-    g2.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g2;
-    ctx.fillRect(x - 20, 0, 40 + (i % 4) * 10, 512);
+  // คลื่นฟ้า/ชมพูแผ่นใหญ่ (วงรีไล่จางขอบ) — น้อยก้อน ใหญ่ ๆ ให้ดูเป็นเหลือบฟิล์ม ไม่เป็นจุด
+  const waves: [number, number, number, number, number, string, number][] = [
+    [150, 120, 230, 90, -0.5, "#9cc8f2", 0.55],
+    [400, 330, 260, 100, -0.6, "#9cc8f2", 0.5],
+    [90, 420, 200, 120, 0.3, "#f6b6d6", 0.5],
+    [380, 90, 180, 110, 0.4, "#f6b6d6", 0.45],
+    [260, 260, 220, 140, 0.9, "#d8c2f5", 0.45],
+  ];
+  for (const [x, y, rx, ry, rot, c, a] of waves) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.scale(1, ry / rx);
+    const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+    gr.addColorStop(0, c);
+    gr.addColorStop(1, c + "00");
+    ctx.globalAlpha = a;
+    ctx.fillStyle = gr;
+    ctx.fillRect(-rx, -rx, rx * 2, rx * 2);
+    ctx.restore();
   }
   ctx.globalAlpha = 1;
   return cv;
@@ -245,20 +259,21 @@ export default function Bag3D({
         const holoTex = new THREE.CanvasTexture(holoCanvas());
         holoTex.colorSpace = THREE.SRGBColorSpace;
         holoTex.wrapS = holoTex.wrapT = THREE.MirroredRepeatWrapping; // สะท้อนต่อกัน — ไม่เห็นรอยต่อเป็นตาราง
-        holoTex.repeat.set(1.6, 1.2);
+        holoTex.repeat.set(1, 1);
         mats.push(holoTex);
         const holo = m(
           new THREE.MeshPhysicalMaterial({
             map: holoTex,
             color: 0xffffff,
-            metalness: 0.7,
-            roughness: 0.18,
-            iridescence: 0.9,
-            iridescenceIOR: 1.8,
-            iridescenceThicknessRange: [200, 760],
-            clearcoat: 1,
-            clearcoatRoughness: 0.1,
-            envMapIntensity: 1.25,
+            // ฟิล์มพาสเทลเงานิด ๆ — เหลือบรุ้งเบา ๆ ตามมุม (ไม่จัดจนลายฟิล์มรก)
+            metalness: 0.3,
+            roughness: 0.28,
+            iridescence: 0.55,
+            iridescenceIOR: 1.5,
+            iridescenceThicknessRange: [300, 700],
+            clearcoat: 0.6,
+            clearcoatRoughness: 0.12,
+            envMapIntensity: 0.8,
             alphaMap: roundMask(BW, BH + 2, R),
             alphaTest: 0.5,
             side: THREE.FrontSide,
@@ -268,8 +283,10 @@ export default function Bag3D({
         printTex.colorSpace = THREE.SRGBColorSpace;
         printTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
         mats.push(printTex);
-        // หมึกบนถุงพลาสติก: ด้านกึ่งเงา · ส่วนโปร่งในผืน = ไม่มีหมึก เห็นโฮโลแกรมข้างใต้
-        const ink = m(new THREE.MeshPhysicalMaterial({ map: printTex, roughness: 0.5, metalness: 0, clearcoat: 0.25, clearcoatRoughness: 0.3, envMapIntensity: 0.55, transparent: true, alphaTest: 0.02 }));
+        // หมึกบนถุงพลาสติก: สีตรงตามลายที่ออกแบบ (ไม่ผ่านแสง/tone mapping — เดิมแสงห้องทำลายซีดกว่าของจริง) · ส่วนโปร่งในผืน = ไม่มีหมึก เห็นโฮโลแกรมข้างใต้
+        const ink = m(new THREE.MeshBasicMaterial({ map: printTex, transparent: true, alphaTest: 0.02, toneMapped: false }));
+        // ✨ ผิวพลาสติกเงาเคลือบทับลาย (สะท้อนแสงจาง ๆ ให้ดูเป็นถุง PVC ไม่ใช่กระดาษ)
+        const gloss = m(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.08, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.6, transparent: true, opacity: 0.1, depthWrite: false }));
 
         const root = new THREE.Group();
         root.position.y = LIFT;
@@ -287,8 +304,10 @@ export default function Bag3D({
         // 🖨 ลายพิมพ์ด้านหน้า (ตามพื้นที่พิมพ์ · โค้งตามถุง)
         const inkMesh = add(new THREE.Mesh(sheetGeo(-PW / 2, PW / 2, BD, BD + PH, 1, 0.06), ink), false);
         inkMesh.renderOrder = 2;
+        const glossMesh = add(new THREE.Mesh(sheetGeo(-PW / 2, PW / 2, BD, BD + PH, 1, 0.12), gloss), false); // เฉพาะช่วงลาย — ไม่ทาขาวทับแถบโฮโลแกรม
+        glossMesh.renderOrder = 3;
         // ขอบซีลข้าง/ก้นถุง (เส้นเชื่อมบาง ๆ แบนชิดกัน)
-        const sealMat = m(new THREE.MeshPhysicalMaterial({ map: holoTex, metalness: 0.8, roughness: 0.22, iridescence: 1, iridescenceIOR: 1.9, envMapIntensity: 1.3 }));
+        const sealMat = m(new THREE.MeshPhysicalMaterial({ map: holoTex, metalness: 0.3, roughness: 0.28, iridescence: 0.55, iridescenceIOR: 1.5, envMapIntensity: 0.8 }));
         const seal = (w: number, h: number, x: number, y: number) => {
           const s = add(new THREE.Mesh(g(new THREE.BoxGeometry(w, h, 0.5)), sealMat), true);
           s.position.set(x, y, 0);
