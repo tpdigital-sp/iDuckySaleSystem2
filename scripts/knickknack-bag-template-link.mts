@@ -9,7 +9,8 @@
  *   candy-bag (CANDY BAG)        ← tpl-k83wfdovg "Candy bag" · ⚠️ PDF ที่ฝังใน .ai เป็นเวอร์ชันเก่า (หน้า 112.5×95 · กรอบ 88×80) ไม่ตรงงานจริง —
  *     สกิน F-01 (ส่งออกจาก Illustrator 300 dpi = 1335×1182 px) = อาร์ตบอร์ดจริง 113.03×100.08 มม. → จอยืดสกินผิดสัดส่วน เส้นตัดกับสกินเหลื่อม
  *     → ยึดสกิน: widthMm/heightMm = 113.03×100.08 · รูร้อยโซ่ ศูนย์กลาง (93.43, 91.27) Ø5.1 (วัดเส้นแดงในสกิน)
- *     เส้นตัด/รองขาว = "ขอบนอกสุดของถุง" (หัวถุง + ขอบหยักสองข้าง) ลากจากสกินด้วย scripts/py/skin-outline-cut.py
+ *     เส้นตัด/รองขาว = "ขอบนอกสุดของถุง" ใต้แถบซิป (ขอบหยักสองข้าง · y ≥ 18.12) ลากจากสกินด้วย scripts/py/skin-outline-cut.py --min-y-mm
+ *     (หัวถุง + แถบลายทแยง = ซิปขาว สกรีนไม่ได้ — เจ้าของร้านวงแดง 22 ต.ค. 69 · รอบก่อนรวมหัวถุงไปด้วย)
  *     (เจ้าของร้านทัก 22 ต.ค. 69 "มันสามารถสกรีนได้เต็มชิ้นงาน" — รอบแรกใช้กรอบในเส้นแดง 85×81 ลายเลยไม่เต็มถุง)
  *   passport-case (PASSPORT CASE) ← tpl-zml0082mh "Passport" 221×149 · เลเยอร์ "นอก" กรอบมุมมนแดง 216×144 @2.5 = ขอบปกกาง (สัน 7.4 มม. ไม่ใช่เส้นตัด)
  *   hologram-bag (กระเป๋าโฮโลแกรม) ← tpl-ewsr369y6 "ZipLock" 210×153 · พิมพ์ได้เฉพาะ "ช่องกลาง" ของสกิน (เขตโปร่ง 163.2×106.2 @23.45)
@@ -32,14 +33,15 @@ const WRITE = process.argv.includes("--write");
  * ค่าจากสกิน: w/h = ขนาดสกินจริง (มม.) · hole = รูกลม (ต่อท้าย) · window = เส้นตัดคือช่องโปร่งกลางสกิน (ไม่ใช่ขอบนอก) · opaque = TemplateFile.skinOpaque
  * fullFace = TemplateFile.fullFace — ช่องรูปว่างโชว์เต็มเส้นตัด ไม่เดาหน้างานจากเส้นแดงในสกิน (Candy bag 22 ต.ค. 69 "ขยายกรอบนี้หน่อย เพราะมันสกรีนเต็มได้")
  */
-type SkinOverride = { w: number; h: number; hole?: { cx: number; cy: number; r: number }; window?: boolean; opaque?: boolean; fullFace?: boolean };
+type SkinOverride = { w: number; h: number; hole?: { cx: number; cy: number; r: number }; window?: boolean; opaque?: boolean; fullFace?: boolean; minYMm?: number };
 const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; skin?: SkinOverride }[] = [
   {
     product: "candy-bag",
     tpl: "tpl-k83wfdovg",
     flags: [],
     holes: 1,
-    skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 }, fullFace: true },
+    // minYMm 18.12 = เส้นล่างของแถบซิป (ลายทแยง 14.14–18.12) — หัวถุง + ซิปขาวสกรีนไม่ได้ (เจ้าของร้านวงแดง 22 ต.ค. 69)
+    skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 }, fullFace: true, minYMm: 18.12 },
   },
   { product: "passport-case", tpl: "tpl-zml0082mh", flags: [], holes: 0 },
   { product: "hologram-bag", tpl: "tpl-ewsr369y6", flags: [], holes: 0, skin: { w: 210.06, h: 153.08, window: true, opaque: true } },
@@ -100,7 +102,7 @@ for (const pair of PAIRS) {
     if (!f0.skinUrl) die(`${t.name}: ไม่มีสกินให้ลากขอบ`);
     const local = `${OUT}${t.id}-skin.png`;
     writeFileSync(local, Buffer.from(await (await fetch(f0.skinUrl!)).arrayBuffer()));
-    const out = JSON.parse(execFileSync(PYTHON, ["-I", PY_OUTLINE, local, ...(o.window ? ["--window"] : [])], { encoding: "utf8" })) as Res;
+    const out = JSON.parse(execFileSync(PYTHON, ["-I", PY_OUTLINE, local, ...(o.window ? ["--window"] : []), ...(o.minYMm ? ["--min-y-mm", String(o.minYMm)] : [])], { encoding: "utf8" })) as Res;
     if (out.error) die(`${t.name}: ${out.error}`);
     if (Math.abs(out.w - o.w) > 0.1 || Math.abs(out.h - o.h) > 0.1) die(`${t.name}: สกิน ${out.w}×${out.h} ≠ ${o.w}×${o.h} (สกินเปลี่ยน — วัดใหม่)`);
     res = { ...out, curves: o.hole ? [...out.curves, holeCurve(o)] : out.curves, holes: o.hole ? 1 : 0 };

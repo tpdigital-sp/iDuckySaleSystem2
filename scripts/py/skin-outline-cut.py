@@ -1,7 +1,7 @@
 """✂️ เส้นตัด = "ขอบนอกสุด" ของชิ้นงานที่วาดด้วยเส้นแดงในสกิน PNG (ส่งออก 300 dpi) → JSON TemplateCurve (มม. · y ลง)
 ใช้เมื่อไฟล์ .ai ไม่มีเวกเตอร์ขอบนอก/มี PDF เก่าฝัง (Candy bag 22 ต.ค. 69 "สกรีนได้เต็มชิ้นงาน" — ขอบหยัก + หัวถุง)
 วิธี: พิกเซลแดง = กำแพง → ท่วมจากขอบภาพ = นอกชิ้นงาน → ที่เหลือ = ชิ้นงาน (รวมเส้นแดง) → contour นอกสุด → approxPolyDP (เส้นตรงล้วน มุมหยักคม)
-argv: <skin.png> [--window] [--px-per-mm 11.811] [--eps-mm 0.12] → stdout {"w","h","curves":[วงนอก],"box":[x,y,w,h],"points":n}"""
+argv: <skin.png> [--window] [--min-y-mm <มม.>] [--px-per-mm 11.811] [--eps-mm 0.12] → stdout {"w","h","curves":[วงนอก],"box":[x,y,w,h],"points":n}"""
 import json, sys
 import cv2
 import numpy as np
@@ -49,6 +49,9 @@ mask = np.zeros((h + 4, w + 4), np.uint8)
 cv2.floodFill(pad, mask, (0, 0), 2)
 outside = (pad[1:-1, 1:-1] == 2)
 piece = (~outside).astype(np.uint8) * 255
+# --min-y-mm: ตัดส่วนบนที่สกรีนไม่ได้ออก (Candy bag: หัวถุง + แถบซิปขาว ลายทแยง 6–18.1 มม. · เจ้าของร้าน 22 ต.ค. 69 "สกรีนไม่ได้ เป็นซิปขาว")
+if "--min-y-mm" in sys.argv:
+    piece[: int(round(arg("--min-y-mm", 0) * S)), :] = 0
 cnts, _ = cv2.findContours(piece, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 if not cnts:
     print(json.dumps({"error": "ไม่เจอชิ้นงานในสกิน"}))
