@@ -14,8 +14,10 @@ import argparse
 import base64
 import csv
 import hashlib
+import hmac
 import io
 import json
+import os
 import re
 import socket
 import threading
@@ -308,8 +310,31 @@ def summary(r):
 
 
 # ---------------- http ----------------
+# 🔑 รหัสเข้าใช้ — ตั้งเมื่อรันบนเซิร์ฟเวอร์สาธารณะ (Hugging Face Space: Settings > Secrets > CUTOUT_KEY) · 22 ต.ค. 69
+# ไม่ตั้ง = เปิดให้ทุกคำขอเหมือนเดิม (เครื่องร้าน localhost) · หน้าหลังบ้านส่งรหัสมากับ ?key= แล้วหน้าเว็บแนบ X-Cutout-Key ทุกคำขอ
+ACCESS_KEY = os.environ.get("CUTOUT_KEY", "").strip()
+OPEN_PATHS = {"/health", "/calendar-ai"}   # หน้าหลังบ้านเช็คสถานะก่อนรู้รหัส · /calendar-ai ไม่มี Illustrator บนเซิร์ฟเวอร์อยู่แล้ว
+LOCKED_PAGE = ("<!doctype html><meta charset=utf-8><title>ทำเส้นไดคัท</title>"
+               "<body style='font:16px system-ui;padding:40px;color:#334'>"
+               "<h2>🔒 ต้องเปิดจากหลังบ้าน iDucky</h2><p>เมนู ไดคัท &gt; แท็บ ตัดพื้นหลัง AI</p>").encode()
+
+
+def authorized(handler) -> bool:
+    if not ACCESS_KEY:
+        return True
+    u = urlparse(handler.path)
+    if u.path in OPEN_PATHS:
+        return True
+    got = handler.headers.get("X-Cutout-Key") or parse_qs(u.query).get("key", [""])[0]
+    return bool(got) and hmac.compare_digest(got.encode(), ACCESS_KEY.encode())
+
+
 def guard(fn):
     def wrap(self):
+        if not authorized(self):
+            if urlparse(self.path).path == "/" and self.command == "GET":
+                return self.send(401, LOCKED_PAGE, "text/html; charset=utf-8")
+            return self.json({"error": "ต้องมีรหัสเข้าใช้ (เปิดจากหลังบ้าน)"}, 401)
         try:
             fn(self)
         except KeyError as ex:
@@ -512,7 +537,7 @@ def main():
     global MODEL_NAME
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8777)
-    ap.add_argument("--model", default="birefnet-general", help="AI ตัดพื้นหลังเริ่มต้น (ถ้ายังไม่ได้ตั้งในหน้าเว็บ)")
+    ap.add_argument("--model", default=os.environ.get("CUTOUT_AI_MODEL") or "birefnet-general", help="AI ตัดพื้นหลังเริ่มต้น (ถ้ายังไม่ได้ตั้งในหน้าเว็บ)")
     ap.add_argument("--share", action="store_true")
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()

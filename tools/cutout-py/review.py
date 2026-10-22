@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import re
 import ssl
 import urllib.error
@@ -30,9 +31,13 @@ SHAPE_TH = {"contour": "ตามทรงวัตถุ", "rect": "สี่�
 
 def load_config() -> dict:
     try:
-        return json.loads(CONFIG.read_text(encoding="utf-8"))
+        cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     except Exception:
-        return {}
+        cfg = {}
+    # บนเซิร์ฟเวอร์ (Hugging Face Space) ไฟล์หายทุกครั้งที่รีสตาร์ต → ใช้คีย์จาก Secrets แทน (22 ต.ค. 69)
+    if not cfg.get("anthropic_api_key") and os.environ.get("ANTHROPIC_API_KEY"):
+        cfg["anthropic_api_key"] = os.environ["ANTHROPIC_API_KEY"].strip()
+    return cfg
 
 
 def save_config(cfg: dict):

@@ -544,6 +544,13 @@
 </div>
 
 <script>
+// 🔑 รันบนเซิร์ฟเวอร์ (Hugging Face Space) — หลังบ้านเปิดหน้านี้พร้อม ?key= → แนบรหัสไปกับทุกคำขอ (22 ต.ค. 69)
+const CUTOUT_KEY = new URLSearchParams(location.search).get('key') || '';
+const keyQ = () => CUTOUT_KEY ? '&key=' + encodeURIComponent(CUTOUT_KEY) : '';
+if (CUTOUT_KEY) {
+  const _fetch = window.fetch.bind(window);
+  window.fetch = (url, opts = {}) => _fetch(url, {...opts, headers: {...(opts.headers || {}), 'X-Cutout-Key': CUTOUT_KEY}});
+}
 const $ = s => document.querySelector(s);
 const fmt = v => (Math.round(v*10)/10).toString();
 const cm = mm => (Math.round(mm*10)/100).toString();   // มม. -> ซม. (ละเอียด 0.01)
@@ -1127,7 +1134,7 @@ $('#dl_ai').onclick = e => {
 function updateLinks(){
   const ok = current && current.state==='ok';
   const set = (id, kind) => { const a=$(id);
-    a.href = ok ? `/download?id=${current.id}&kind=${kind}&p=${encodeURIComponent(JSON.stringify(current.p))}` + (kind==='ai' && layeredOn() ? '&layered=1' : '') : '#';
+    a.href = ok ? `/download?id=${current.id}&kind=${kind}&p=${encodeURIComponent(JSON.stringify(current.p))}` + (kind==='ai' && layeredOn() ? '&layered=1' : '') + keyQ() : '#';
     a.setAttribute('aria-disabled', ok?'false':'true'); };
   set('#dl_ai','ai'); set('#dl_png','png'); set('#dl_svg','svg');
   const passOnly = $('#zipPassOnly').checked;

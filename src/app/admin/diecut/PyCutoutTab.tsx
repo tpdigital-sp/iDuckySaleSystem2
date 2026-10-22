@@ -3,18 +3,32 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 /**
- * แท็บ "ตัดพื้นหลัง AI" — ฝังเว็บแอพ Python (tools/cutout-py: rembg BiRefNet + Potrace)
- * ที่รันบนเครื่องร้านพอร์ต 8777 ไว้ใน iframe · เซิร์ฟเวอร์ไม่ได้อยู่บน Netlify
- * ต้องเปิด tools/cutout-py/start.command บนเครื่องที่ใช้เบราว์เซอร์นี้ก่อน
+ * แท็บ "ตัดพื้นหลัง AI" — ฝังเว็บแอพ Python (tools/cutout-py: rembg BiRefNet + Potrace) ไว้ใน iframe
+ * 1) โปรแกรมในเครื่องนี้ (localhost:8777 · start.command) — ถ้าเปิดอยู่ใช้ตัวนี้ก่อน (เร็ว + Illustrator ในเครื่อง)
+ * 2) 🐳 เซิร์ฟเวอร์ Hugging Face Space (/api/admin/cutout-endpoint) — พนักงานไม่ต้องติดตั้งอะไร (22 ต.ค. 69)
  */
 export const PY_CUTOUT_URL = "http://localhost:8777";
 
+type Endpoint = { origin: string; src: string };
+const LOCAL: Endpoint = { origin: PY_CUTOUT_URL, src: PY_CUTOUT_URL };
+
+async function healthy(base: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${base}/health`, { cache: "no-store" });
+    return !!(await r.json()).ok; // Space หลับอยู่ = ได้หน้า HTML ของ Hugging Face → อ่าน JSON ไม่ได้ = ยังไม่พร้อม
+  } catch {
+    return false;
+  }
+}
+
 export type PyCutoutHandle = { addFiles: (files: File[]) => void };
 
-type State = "checking" | "up" | "down";
+type State = "checking" | "up" | "down" | "waking";
 
 const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyCutoutTab({ active }, ref) {
   const [state, setState] = useState<State>("checking");
+  const [ep, setEp] = useState<Endpoint>(LOCAL);
+  const remote = useRef<Endpoint | null | undefined>(undefined); // undefined = ยังไม่ได้ถาม · null = ไม่ได้ตั้ง Space
   const frame = useRef<HTMLIFrameElement>(null);
   /**
    * ความสูงกรอบ = จากจุดเริ่มกรอบถึงขอบล่างจอพอดี (วัดจริง ไม่ใช่ค่าตายตัว)
@@ -23,21 +37,38 @@ const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyC
   const [height, setHeight] = useState<number | null>(null);
 
   useImperativeHandle(ref, () => ({
-    addFiles: (files) => frame.current?.contentWindow?.postMessage({ type: "cutout-add-files", files }, PY_CUTOUT_URL),
+    addFiles: (files) => frame.current?.contentWindow?.postMessage({ type: "cutout-add-files", files }, ep.origin),
   }));
 
-  // เช็คว่าเปิดเซิร์ฟเวอร์อยู่ไหม — ตอนยังไม่เปิด ลองใหม่ทุก 3 วิ (กดเปิด start.command แล้วขึ้นเอง)
+  // เช็คว่าเปิดเซิร์ฟเวอร์อยู่ไหม — เครื่องนี้ก่อน แล้วค่อย Space · ยังไม่พร้อม ลองใหม่ทุก 3 วิ (Space ตื่นจากหลับ ~1 นาที)
   useEffect(() => {
     if (!active || state === "up") return;
     let stop = false;
     const check = async () => {
-      try {
-        const r = await fetch(`${PY_CUTOUT_URL}/health`, { cache: "no-store" });
-        const j = await r.json();
-        if (!stop) setState(j.ok ? "up" : "down");
-      } catch {
-        if (!stop) setState("down");
+      if (await healthy(PY_CUTOUT_URL)) {
+        if (!stop) {
+          setEp(LOCAL);
+          setState("up");
+        }
+        return;
       }
+      if (remote.current === undefined) {
+        try {
+          const j = (await (await fetch("/api/admin/cutout-endpoint", { cache: "no-store" })).json()) as { url?: string; key?: string };
+          remote.current = j.url ? { origin: new URL(j.url).origin, src: `${j.url}/?key=${encodeURIComponent(j.key || "")}` } : null;
+        } catch {
+          remote.current = null;
+        }
+      }
+      const r = remote.current;
+      if (r && (await healthy(r.origin))) {
+        if (!stop) {
+          setEp(r);
+          setState("up");
+        }
+        return;
+      }
+      if (!stop) setState(r ? "waking" : "down");
     };
     check();
     const t = window.setInterval(check, 3000);
@@ -54,7 +85,7 @@ const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyC
   const [synced, setSynced] = useState<"" | "ok" | "err">("");
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      if (e.origin !== PY_CUTOUT_URL || e.data?.type !== "cutout-products" || !Array.isArray(e.data.products)) return;
+      if (e.origin !== ep.origin || e.data?.type !== "cutout-products" || !Array.isArray(e.data.products)) return;
       fetch("/api/admin/diecut-presets", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -65,7 +96,7 @@ const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyC
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, []);
+  }, [ep.origin]);
 
   useEffect(() => {
     if (!active || state !== "up") return;
@@ -102,7 +133,7 @@ const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyC
       )}
       <iframe
         ref={frame}
-        src={PY_CUTOUT_URL}
+        src={ep.src}
         title="ตัดพื้นหลัง AI"
         className="mt-3 block w-full rounded-2xl border"
         style={{ height: height ?? "calc(100vh - 260px)", minHeight: 420, borderColor: "var(--dk-line, #e4ddd0)", background: "#f4f1ea" }}
@@ -114,6 +145,15 @@ const PyCutoutTab = forwardRef<PyCutoutHandle, { active: boolean }>(function PyC
     <div className="mt-3 rounded-2xl border p-6 text-[14px] leading-relaxed" style={{ borderColor: "var(--dk-line, #e4ddd0)", background: "#fff" }}>
       {state === "checking" ? (
         <p style={{ color: "var(--dk-navy-soft)" }}>กำลังเช็คโปรแกรมตัดพื้นหลัง…</p>
+      ) : state === "waking" ? (
+        <>
+          <p className="text-[16px] font-bold" style={{ color: "var(--dk-navy)" }}>
+            กำลังปลุกเซิร์ฟเวอร์ตัดพื้นหลัง…
+          </p>
+          <p className="mt-2" style={{ color: "var(--dk-navy-soft)" }}>
+            ไม่มีคนใช้นานเซิร์ฟเวอร์จะหลับ ครั้งแรกของวันรอประมาณ 1–2 นาที หน้านี้จะเปิดเครื่องมือขึ้นมาเอง ไม่ต้องรีเฟรช
+          </p>
+        </>
       ) : (
         <>
           <p className="text-[16px] font-bold" style={{ color: "var(--dk-navy)" }}>

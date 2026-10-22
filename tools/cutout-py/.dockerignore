@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+config.json
+*.log
+*.zip
+start.command
+start.bat
+setup-windows.ps1
+launch.pyw
+README-Windows.txt
+Dockerfile
+.dockerignore
