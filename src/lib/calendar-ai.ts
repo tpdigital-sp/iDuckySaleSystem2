@@ -231,7 +231,32 @@ export async function localNetPermission(): Promise<PermissionState | "unknown">
   return "unknown";
 }
 
+/**
+ * 🧭 เครื่องนี้เคยเจอโปรแกรม cutout-py ไหม (จำในเบราว์เซอร์) — ปุ่ม ⬇ .ai บนเครื่องที่ไม่เคยติดตั้ง
+ * ไม่ต้องลองต่อ localhost (Chrome อาจเด้งขอสิทธิ์ Local network + รอ) ข้ามไปสร้าง .ai ในเบราว์เซอร์เลย (22 ต.ค. 69)
+ */
+const SEEN_KEY = "iducky-cutout-seen";
+export function cutoutSeen(): boolean {
+  try {
+    return localStorage.getItem(SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export async function cutoutStatus(timeoutMs = 1500): Promise<CutoutStatus> {
+  const st = await cutoutStatusRaw(timeoutMs);
+  if (st === "ready" || st === "noai") {
+    try {
+      localStorage.setItem(SEEN_KEY, "1");
+    } catch {
+      /* โหมดส่วนตัว — ช่าง */
+    }
+  }
+  return st;
+}
+
+async function cutoutStatusRaw(timeoutMs: number): Promise<CutoutStatus> {
   const perm = await localNetPermission();
   // ยังไม่เคยตอบ (prompt) = Chrome เด้งกล่องขออนุญาตตอน fetch นี้ — รอคำตอบนานพอ
   // (เดิมตัดที่ 1.5 วิ → คำขอถูกยกเลิก กล่องหายก่อนพนักงานทันกด "อนุญาต" · ต่อไม่ได้เงียบ ๆ ทุกครั้ง)
@@ -380,22 +405,51 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
  * @param local false = ไม่แตะโปรแกรม cutout-py/Illustrator เลย ทำไฟล์สำรอง PDF-.ai ในเบราว์เซอร์อย่างเดียว
  *   (ตอนกด ✓ ใช้แบบนี้ / 💾 บันทึกกลับ — .ai แท้ไปทำที่หน้าออเดอร์ปุ่ม 🔁 · 19 ต.ค. 69)
  */
-export async function buildCalendarAi(pages: AiPage[], title: string, local = true): Promise<{ blob: Blob; real: boolean; note: string }> {
-  const st = local ? await cutoutStatus() : "down";
+export type AiKind = "illustrator" | "legacy" | "pdf";
+
+/**
+ * @param legacy true = ไม่มี Illustrator ในเครื่อง → สร้าง .ai แยกเลเยอร์ในเบราว์เซอร์ (legacy-ai.ts) แทนไฟล์สำรอง PDF-.ai
+ *   ใช้กับปุ่ม ⬇ .ai เท่านั้น (22 ต.ค. 69) — ไฟล์ใหญ่กว่า PDF-.ai หลายเท่า ไฟล์ที่อัปเข้าออเดอร์จึงยังเป็นแบบเดิม
+ */
+export async function buildCalendarAi(
+  pages: AiPage[],
+  title: string,
+  local = true,
+  legacy = false,
+): Promise<{ blob: Blob; real: boolean; note: string; kind: AiKind }> {
+  // ⬇ .ai บนเครื่องที่ไม่เคยมีโปรแกรม = ไม่ต้องลองต่อ localhost เลย
+  const tryLocal = local && (!legacy || cutoutSeen());
+  const st = tryLocal ? await cutoutStatus() : "down";
   // ทีมหลังบ้าน (local) แต่ไม่ได้ส่งงานให้ Illustrator เลย — จดสถานะไว้ด้วย แยกจากกรณีส่งแล้วพัง
-  if (local && st !== "ready") reportAiFailure({ why: `not-sent: ${st}`, title, pages: pages.length });
-  if (local && st === "ready") {
+  if (tryLocal && st !== "ready") reportAiFailure({ why: `not-sent: ${st}`, title, pages: pages.length });
+  const viaBrowser = async (prefix = "") => {
+    const { buildLegacyAi } = await import("@/lib/legacy-ai");
+    return {
+      blob: await buildLegacyAi(pages, { title }),
+      real: true,
+      kind: "legacy" as const,
+      note:
+        prefix +
+        "สร้าง .ai แยกเลเยอร์ในเบราว์เซอร์ (ไม่ใช้ Illustrator ในเครื่อง) — ชื่อเลเยอร์เป็นภาษาอังกฤษ" +
+        (pages.length > 1 ? ` · ${pages.length} หน้าเรียงบนอาร์ตบอร์ดเดียว (แถวละ 4)` : "") +
+        " · ส่วนที่โปร่งแสงครึ่ง ๆ (เงาฟุ้ง/ขอบจาง) กลายเป็นขอบคม",
+    };
+  };
+  if (tryLocal && st === "ready") {
     try {
-      return { blob: await aiViaIllustrator(pages, title), real: true, note: "Illustrator แยกเลเยอร์ให้แล้ว" };
+      return { blob: await aiViaIllustrator(pages, title), real: true, kind: "illustrator", note: "Illustrator แยกเลเยอร์ให้แล้ว" };
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       reportAiFailure({ why, title, pages: pages.length, layers: pages.reduce((n, p) => n + p.layers.length, 0) });
-      return { blob: await aiOcgPdf(pages, title), real: false, note: `Illustrator ไม่สำเร็จ (${why}) — ได้ไฟล์ PDF-.ai แทน` };
+      if (legacy) return viaBrowser(`Illustrator ในเครื่องไม่สำเร็จ (${why}) — `);
+      return { blob: await aiOcgPdf(pages, title), real: false, kind: "pdf", note: `Illustrator ไม่สำเร็จ (${why}) — ได้ไฟล์ PDF-.ai แทน` };
     }
   }
+  if (legacy) return viaBrowser();
   return {
     blob: await aiOcgPdf(pages, title),
     real: false,
+    kind: "pdf",
     note:
       "⚠️ ไฟล์นี้ยังไม่แยกเลเยอร์ใน Illustrator (เปิดแล้วรวมเป็น Layer 1) — โปรแกรมตัดพื้นหลังในเครื่องไม่ได้เปิดอยู่: " +
       "ดับเบิลคลิก tools/cutout-py/start.command แล้วกด ⬇ .ai ใหม่ (ชื่อไฟล์ที่ลงท้าย -pdf.ai = ไฟล์สำรองแบบนี้)",

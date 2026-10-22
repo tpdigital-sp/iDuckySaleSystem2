@@ -73,6 +73,7 @@ import {
 import { curvesBox, curvesSvgD, printFrameToken, shiftCurves, type TemplateCurve } from "@/lib/design-templates";
 import {
   buildCalendarAi,
+  type AiKind,
   canLaunchCutout,
   cutoutStatus,
   launchCutoutPy,
@@ -3809,7 +3810,8 @@ export default function CalendarStudio({
   }
 
   /** 🗂 ประกอบ .ai แยกเลเยอร์ของทุกหน้าที่จะพิมพ์ (ชั้นเรียงตามหน้าต่าง Layers) */
-  async function makeAi(): Promise<{ file: File; note: string; real: boolean }> {
+  /** legacy = ปุ่ม ⬇ .ai: เครื่องไม่มี Illustrator → .ai แยกเลเยอร์ที่สร้างในเบราว์เซอร์ (แทนไฟล์สำรอง -pdf.ai) */
+  async function makeAi(legacy = false): Promise<{ file: File; note: string; real: boolean; kind: AiKind }> {
     await ensureFonts(fontKeys);
     const pages = await renderAiPages({
       fmt,
@@ -3849,8 +3851,13 @@ export default function CalendarStudio({
       : pages;
     // งานไม่มีปฏิทิน (เข็มกลัด/โปสการ์ด ฯลฯ) ไม่ต่อ "-ปฏิทิน<ปี>" ท้ายชื่อไฟล์ (เดิมได้ "เข็มกลัดพลาสติก-ปฏิทิน2027.ai")
     const stem = (noCal ? title : `${title}-ปฏิทิน${back.year}`).replace(/[\/:*?"<>|]/g, "-").slice(0, 60);
-    const r = await buildCalendarAi(aiPages, stem);
-    return { file: new File([r.blob], `${stem}${r.real ? "" : "-pdf"}.ai`, { type: "application/postscript" }), note: r.note, real: r.real };
+    const r = await buildCalendarAi(aiPages, stem, true, legacy);
+    return {
+      file: new File([r.blob], `${stem}${r.kind === "pdf" ? "-pdf" : ""}.ai`, { type: "application/postscript" }),
+      note: r.note,
+      real: r.real,
+      kind: r.kind,
+    };
   }
 
   /** 🖨 ไฟล์ชิ้นงาน .pdf — งานการ์ดชุด (โฟโต้การ์ด) ที่โปรแกรมจัดวางรับ · แบบอื่น = .pdf ทั้งเล่ม (makeBookPdf) */
@@ -3978,7 +3985,7 @@ export default function CalendarStudio({
         setCutStatus(await waitCutoutReady(45000));
       }
       setBusy("กำลังทำไฟล์ .ai…");
-      const r = await makeAi();
+      const r = await makeAi(true);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(r.file);
       a.download = r.file.name;
@@ -4024,7 +4031,7 @@ export default function CalendarStudio({
    * print = ลาย + ขอบสี พื้นใส 300 DPI · white = มาสก์รองขาว · mock = ภาพจำลอง + เส้นตัด · svg = เส้นตัด · ai = .ai เส้นตัด CutContour
    */
   /** @param local false = .ai เส้นตัดเป็นไฟล์สำรอง PDF-.ai ในเบราว์เซอร์ ไม่เรียก cutout-py/Illustrator (ตอน ✓ ใช้แบบนี้ทั่วไป) */
-  async function makeCutFiles(stem: string, withAi: boolean, local = true) {
+  async function makeCutFiles(stem: string, withAi: boolean, local = true, legacy = false) {
     if (!fmt.diecut) throw new Error("not diecut");
     await ensureFonts(fontKeys);
     // เส้นตัดจากตำแหน่งอ้างอิง (ไม่ตามซูม) · ลายจริงตามที่ลูกค้าจัด แล้ว clip ตามเส้น
@@ -4103,6 +4110,7 @@ export default function CalendarStudio({
      */
     let ai: File | undefined;
     let aiNote = "";
+    let aiKind: AiKind | "" = "";
     if (withAi) {
       try {
         const fw = r.bounds.x1 - r.bounds.x0 + pad * 2;
@@ -4177,9 +4185,10 @@ export default function CalendarStudio({
           circles: r.hole ? [[fx(r.hole.cx), fy(r.hole.cy), r.hole.r]] : [],
         });
         const page: AiPage = { name: "ชิ้นงานไดคัท", wMm: fw, hMm: fh, bg: "none", layers, cut: null, paths };
-        const res = await buildCalendarAi([page], clean(`${stem}-ไดคัท`), local);
+        const res = await buildCalendarAi([page], clean(`${stem}-ไดคัท`), local, legacy);
         aiNote = res.note;
-        ai = new File([res.blob], clean(`${stem}-ไดคัท${res.real ? "" : "-pdf"}.ai`), { type: "application/postscript" });
+        aiKind = res.kind;
+        ai = new File([res.blob], clean(`${stem}-ไดคัท${res.kind === "pdf" ? "-pdf" : ""}.ai`), { type: "application/postscript" });
       } catch (e) {
         console.warn("diecut .ai", e);
       }
@@ -4196,7 +4205,7 @@ export default function CalendarStudio({
       (fmt.diecut.hole ? ` (เนื้อรอบรู ${cutP.ringMm} · ห่างงาน ${cutP.holeGapMm}${cutP.holeXMm ? ` · เลื่อน ${cutP.holeXMm}` : ""} มม.)` : " · ไม่เจาะรู") +
       (methods ? ` · หาขอบงาน: ${methods}` : "") +
       ` · ไฟล์แนบ = ภาพจำลองชิ้นงาน (เส้นชมพู = แนวตัด)`;
-    return { r, print, white, mock, svg, ai, aiNote, spec };
+    return { r, print, white, mock, svg, ai, aiNote, aiKind, spec };
   }
 
   /** ⬇ .ai ไดคัท (เจ้าของร้าน · ปุ่มบนแถบหัว) */
@@ -4206,11 +4215,12 @@ export default function CalendarStudio({
     setErr("");
     try {
       const stem = ((srcs.find((x) => !x.removed)?.file.name ?? "diecut").replace(/\.[^.]+$/, "") || "diecut").slice(0, 40);
-      const cf = await makeCutFiles(stem, true);
+      const cf = await makeCutFiles(stem, true, true, true);
       const f = cf.ai;
       if (!f) throw new Error("ทำไฟล์ .ai ไม่สำเร็จ ลองใหม่อีกครั้ง");
-      // ไม่มี Illustrator ในเครื่อง = ได้ PDF-.ai (Illustrator รวมเป็น Layer 1) — บอกเหมือนปุ่ม .ai ของปฏิทิน
-      if (!/Illustrator แยกเลเยอร์ให้แล้ว/.test(cf.aiNote)) setErr(cf.aiNote);
+      // 🗂 ไม่มี Illustrator ในเครื่อง = .ai แยกเลเยอร์ที่สร้างในเบราว์เซอร์ (22 ต.ค. 69) · ไฟล์สำรอง PDF-.ai เหลือเฉพาะกรณีพังจริง
+      if (cf.aiKind === "pdf") setErr(cf.aiNote);
+      else if (cf.aiKind === "legacy") setAsk({ icon: "✅", title: "โหลดไฟล์ .ai แยกเลเยอร์แล้ว", body: cf.aiNote, ok: "ตกลง", run: () => {} });
       const url = URL.createObjectURL(f);
       const a = document.createElement("a");
       a.href = url;
