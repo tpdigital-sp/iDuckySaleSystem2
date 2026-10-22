@@ -176,6 +176,7 @@ import { standMockFrom } from "@/lib/stand-mock";
 import { cushionMockFrom } from "@/lib/cushion-mock";
 import { folderMockFrom } from "@/lib/folder-mock";
 import { bannerMockFrom } from "@/lib/banner-mock";
+import { bagMockFrom } from "@/lib/bag-mock";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import {
   fetchCalDesign,
@@ -9883,7 +9884,10 @@ export default function ProductDetail({
                           : // 🪧 ป้ายขาตั้ง X-Stand / Roll UP (22 ต.ค. 69) — ผืนไวนิลบนโครงจริง (lib/banner-mock)
                             product.calendarStudio?.mock3d === "xstand" || product.calendarStudio?.mock3d === "rollup"
                             ? bannerMockFrom(product.calendarStudio.mock3d, effective)
-                            : undefined
+                            : // 🌈 กระเป๋าโฮโลแกรม (22 ต.ค. 69) — สีแถบซิปจากกลุ่ม "สีซิป"
+                              product.calendarStudio?.mock3d === "bag"
+                              ? bagMockFrom(effective)
+                              : undefined
               }
             />
           )}

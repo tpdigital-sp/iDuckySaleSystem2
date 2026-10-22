@@ -8,7 +8,8 @@
  *   → พิมพ์ได้เต็มตัวถุงในขอบมุมมน (เทมเพลตเดิมมีช่องกลาง 163×106 + กรอบโฮโลทึบ — เลิกใช้)
  * ชุด tpl-ewsr369y6 (คง id ชุด/ไฟล์): fileUrl/fileName/fileSize · skinUrl = เลเยอร์ Layer 3 อย่างเดียวพื้นโปร่ง (ไม่ย้อมลายลูกค้าด้วยโฮโลแกรม)
  *   · ไม่มี previewUrl (เอาภาพออกจากการ์ดตามสั่ง 22 ต.ค. 69) · cutCurves = ขอบถุง · whiteUnder · ถอด skinOpaque · ไฟล์/สกิน/พรีวิวเก่าเก็บ retiredPaths
- * 🤐 + แถบซิป 2 สีตามกลุ่ม "สีซิป" เป็นภาพเหนือกรอบงาน aboveUrl (py/ziplock-zipper-skin.py · ไม่ทับพื้นที่สกรีน)
+ * 🤐❌ ไม่มีแถบซิปบนจอออกแบบ (เจ้าของร้านสั่ง 22 ต.ค. 69 "เอาออกไปเลย" หลังลองทั้งวาดในผืนและวางเหนือกรอบงาน) — ชุดเหลือไฟล์เดียว ไม่มี optionLabel
+ *    ซิปขาว/ดำ เห็นได้ในพรีวิว 3D (components/Bag3D) แทน
  * ⚠️ hologram-bag ถอดออกจาก knickknack-bag-template-link.mts แล้ว (สคริปต์นั้นรับชุดไฟล์เดียว) — สคริปต์นี้ดูแลชุด ZipLock คนเดียว
  */
 import { execFileSync } from "node:child_process";
@@ -52,34 +53,11 @@ if (Math.abs(r.widthMm - 210) > 0.5 || Math.abs(r.heightMm - 153) > 0.5) die(`�
 if (r.box[2] < 190 || r.box[3] < 135) die(`ขอบถุงเล็กผิดปกติ ${r.box.join(",")}`);
 console.log(`🌈 ${FILE.split("/").pop()} · ${r.widthMm}×${r.heightMm} · ขอบถุง (${r.box[0]},${r.box[1]}) ${r.box[2]}×${r.box[3]} มม.`);
 
-// 🤐 แถบซิป (เจ้าของร้านสั่ง 22 ต.ค. 69 "เติมซิปด้านบนให้หน่อย" → "ซิปควรอยู่ตรงกรอบแดง ไม่งั้นจะไปทับกับตำแหน่งที่สกรีนภาพได้")
-//   = ภาพ "เหนือกรอบงาน" (TemplateFile.aboveUrl/aboveMm) จอวางติดขอบบนผืน นอกพื้นที่พิมพ์ — สกินคงเป็นขอบถุงอย่างเดียว ไม่ทับลาย
-//   ไฟล์ .ai เดียวกัน 2 แถว (optionLabel สีซิป · choice ซิปขาว/ซิปดำ) ต่างกันแค่ภาพแถบซิป · เส้นตัด/รองขาว/ไฟล์ส่งพิมพ์เต็มขอบถุงเหมือนเดิม
-const ZIP_LABEL = "สีซิป";
-const ZIPS = [
-  { choice: "ซิปขาว", color: "white" },
-  { choice: "ซิปดำ", color: "black" },
-] as const;
-const ZPY = new URL("./py/ziplock-zipper-skin.py", import.meta.url).pathname;
-const ZIP_MM = 10;
-const zipImgs = ZIPS.map((z) => ({
-  ...z,
-  ...(JSON.parse(
-    execFileSync(PYTHON, ["-I", ZPY, OUT, z.color, "--w-mm", String(r.widthMm), "--zip-mm", String(ZIP_MM), "--x-mm", String(r.box[0])], { encoding: "utf8" }),
-  ) as { strip: string; hMm: number }),
-}));
-console.log(`   🤐 แถบซิปเหนือกรอบงาน ${ZIP_MM} มม. (x ${r.box[0]}–${r.widthMm - r.box[0]}) · ${zipImgs.map((z) => z.choice).join(" / ")}`);
-
 type Row = { id: string; data: DesignTemplate & { retiredPaths?: string[] } };
 const { data: row } = await sb.from("products").select("id,data").eq("id", `__template_${SET}`).single();
 const t = (row as Row | null)?.data ?? die(`ไม่พบชุด ${SET}`);
 const old = (t.files ?? [])[0] ?? die("ชุดไม่มีไฟล์");
-console.log(`   เดิม: ${t.files?.length} ไฟล์ · ${old.fileName} ${old.fileSize} bytes · optionLabel ${t.optionLabel ?? "-"} · skinOpaque ${!!old.skinOpaque} · เส้นตัด ${old.cutCurves?.length ?? 0}`);
-const { data: prow } = await sb.from("products").select("data").eq("id", PRODUCT).single();
-const groups = ((prow?.data as { options?: { label: string; choices?: unknown[] }[] } | null)?.options ?? []);
-const zg = groups.find((g) => g.label === ZIP_LABEL) ?? die(`สินค้า ${PRODUCT} ไม่มีกลุ่ม ${ZIP_LABEL}`);
-const names = (zg.choices ?? []).map((c) => (typeof c === "string" ? c : (c as { name?: string }).name ?? ""));
-for (const z of ZIPS) if (!names.includes(z.choice)) die(`กลุ่ม ${ZIP_LABEL} ไม่มีค่า "${z.choice}" (มี ${names.join(", ")})`);
+console.log(`   เดิม: ${t.files?.length} ไฟล์ · ${old.fileName} ${old.fileSize} bytes · optionLabel ${t.optionLabel ?? "-"} · แถบซิป ${old.aboveUrl ? "มี" : "-"} · เส้นตัด ${old.cutCurves?.length ?? 0}`);
 if (!WRITE) {
   console.log(`\n(dry-run — สกิน/พรีวิวอยู่ที่ ${OUT} · ใส่ --write เพื่ออัปและบันทึก)`);
   process.exit(0);
@@ -97,23 +75,16 @@ const sameAi = old.fileName === "ZipLock.ai" && old.fileSize === bytes.length &&
 const fileUrl = sameAi ? old.fileUrl! : await upload(bytes, "file", "ZipLock", "ai");
 // 🙈 ไม่ใส่ภาพพรีวิว (เจ้าของร้านสั่ง 22 ต.ค. 69 "เอาภาพออกให้หน่อย" — การ์ดเทมเพลตหน้าสินค้าเป็นไอคอน 📐 แทนภาพลายตัวอย่าง)
 const { skinOpaque: _so, fullFace: _ff, choice: _c, choices: _cs, previewUrl: _pv, aboveUrl: _au, aboveMm: _am, ...base } = old;
-// สกิน = ขอบถุงอย่างเดียว (ใช้ร่วม 2 แถว)
+// สกิน = ขอบถุงอย่างเดียว · ไม่ใส่ภาพเหนือกรอบงาน (แถบซิป) · ไฟล์เดียว
 const skinUrl = await upload(readFileSync(r.skin), "preview", "ZipLock-F-01", "png");
-const next: TemplateFile[] = [];
-for (const [i, z] of zipImgs.entries()) {
-  const aboveUrl = await upload(readFileSync(z.strip), "preview", `ZipLock-zip-${z.color}-strip`, "png");
-  next.push({
-    ...base,
-    id: i === 0 ? old.id : (t.files?.find((f) => f.choice === z.choice)?.id ?? `f-zip${z.color}`),
-    fileUrl, fileName: "ZipLock.ai", fileSize: bytes.length, widthMm: r.widthMm, heightMm: r.heightMm,
-    choice: z.choice, skinUrl, aboveUrl, aboveMm: ZIP_MM, cutCurves: r.curves, whiteUnder: true,
-  });
-}
-const keep = new Set(next.flatMap((f) => [pathOf(f.fileUrl), pathOf(f.skinUrl), pathOf(f.aboveUrl)]));
+const next: TemplateFile[] = [
+  { ...base, fileUrl, fileName: "ZipLock.ai", fileSize: bytes.length, widthMm: r.widthMm, heightMm: r.heightMm, skinUrl, cutCurves: r.curves, whiteUnder: true },
+];
+const keep = new Set(next.flatMap((f) => [pathOf(f.fileUrl), pathOf(f.skinUrl)]));
 const oldPaths = [...(t.files ?? []).flatMap((f) => [pathOf(f.fileUrl), pathOf(f.skinUrl), pathOf(f.previewUrl), pathOf(f.aboveUrl)]), pathOf(t.previewUrl)].filter((p) => p && !keep.has(p));
-const { previewUrl: _tpv, ...tBase } = t;
+const { previewUrl: _tpv, optionLabel: _ol, ...tBase } = t;
 const retired = [...new Set([...(t.retiredPaths ?? []), ...oldPaths].filter(Boolean) as string[])];
-const { error } = await sb.from("products").update({ data: { ...tBase, optionLabel: ZIP_LABEL, files: next, retiredPaths: retired, savedAt: new Date().toISOString() } }).eq("id", `__template_${SET}`);
+const { error } = await sb.from("products").update({ data: { ...tBase, files: next, retiredPaths: retired, savedAt: new Date().toISOString() } }).eq("id", `__template_${SET}`);
 if (error) die(`บันทึก: ${error.message}`);
-console.log(`   ✅ ${SET} ← ZipLock.ai${sameAi ? " (ไฟล์เดิม)" : " ใหม่"} · ${next.length} แถวตาม ${ZIP_LABEL} · แถบซิปเหนือกรอบงาน (ไม่ทับพื้นที่สกรีน) · เส้นตัด = ขอบถุง · retiredPaths ${retired.length}`);
+console.log(`   ✅ ${SET} ← ZipLock.ai${sameAi ? " (ไฟล์เดิม)" : " ใหม่"} · ไฟล์เดียว ไม่มีแถบซิปบนจอ · เส้นตัด = ขอบถุง · retiredPaths ${retired.length}`);
 await revalidateLive(env, { productIds: [PRODUCT], templateIds: [SET] });
