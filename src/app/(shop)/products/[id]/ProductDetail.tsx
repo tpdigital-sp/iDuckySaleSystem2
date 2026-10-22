@@ -3084,6 +3084,8 @@ export default function ProductDetail({
           ...(sk.whiteUnder ? { whiteUnder: true } : {}),
           ...(sk.cutLineOff ? { cutLineOff: true } : {}),
           ...(sk.fullFace ? { fullFace: true } : {}),
+          // 🤐 ภาพเหนือกรอบงาน (แถบซิปถุงโฮโลแกรม · 22 ต.ค. 69)
+          ...(sk.aboveUrl && sk.aboveMm ? { above: { url: sk.aboveUrl, hMm: sk.aboveMm } } : {}),
           ...backGuideOf(t, sk),
         };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);

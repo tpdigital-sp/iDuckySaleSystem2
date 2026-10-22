@@ -192,6 +192,8 @@ interface Props {
     cutLineOff?: boolean;
     /** 🖼 ช่องรูปเต็มชิ้นงาน (TemplateFile.fullFace · Magsafe Wallet 22 ต.ค. 69) — ไม่เจาะหน้างานจากสกินตอนช่องว่าง (ข้าม guideFx.over) */
     fullFace?: boolean;
+    /** 🤐 ภาพเหนือกรอบงาน (TemplateFile.aboveUrl/aboveMm · แถบซิปถุงโฮโลแกรม) — วางติดขอบบนผืนบนเวที นอกพื้นที่พิมพ์ · ไม่ลงไฟล์ส่งพิมพ์ */
+    above?: { url: string; hMm: number };
     /**
      * 🛂 ไกด์ของหน้า "back" (ด้านหลัง/ด้านใน) ที่หน้าตาต่างจากด้านหน้า — Passport case สกรีน 2 ด้าน: ด้านในพิมพ์ได้แค่ช่องซ้าย
      * (เจ้าของร้านสั่ง 22 ต.ค. 69 "สกรีน 2 ด้าน ใช้เทมเพลตนี้แทน" · ไฟล์ (2ด้าน)Passport.ai มี 2 อาร์ตบอร์ด)
@@ -5835,13 +5837,16 @@ export default function CalendarStudio({
    * กว้าง 240 = สูง 640 ล้นเวที 434 ทั้งบน-ล่าง (เจ้าของร้านแจ้ง 22 ต.ค. 69 "มันล้นหน้าจอเกินไป") → ขั้นต่ำลดตามความสูงเวที (เหลือ 60px ให้แถบเครื่องมือ) ไม่ต่ำกว่า 120
    * ผืนทั่วไป (aspect ≥ ~0.65) ขั้นต่ำยังได้ 240 เท่าเดิม
    */
-  const floorW = (base: number) => Math.min(base, Math.max(120, (stageBox.h - 60) * aspect));
+  // 🤐 ภาพเหนือกรอบงาน (แถบซิป) กินความสูงเวทีเพิ่ม → คิดความสูงรวมตอนพอดีจอ
+  const aboveMm = guideProp?.above?.hMm ?? 0;
+  const aspectFit = W / (H + aboveMm);
+  const floorW = (base: number) => Math.min(base, Math.max(120, (stageBox.h - 60) * aspectFit));
   const stageMax =
     stageBox.w && stageBox.h && stageBox.w >= 520
       ? pairOn
-        ? Math.max(floorW(200), Math.min((stageBox.w - 48 - 40) / 2, (stageBox.h - 130) * aspect) * 0.88)
+        ? Math.max(floorW(200), Math.min((stageBox.w - 48 - 40) / 2, (stageBox.h - 130) * aspectFit) * 0.88)
         : stageBox.w >= 640
-          ? Math.max(floorW(240), Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect) * STAGE_FIT)
+          ? Math.max(floorW(240), Math.min(stageBox.w - 48, (stageBox.h - 110) * aspectFit) * STAGE_FIT)
           : null
       : null;
   const stageMaxCss = stageMax != null ? `${stageMax}px` : `min(100%, ${aspect * 60}vh)`;
@@ -6624,6 +6629,13 @@ export default function CalendarStudio({
               <span data-stage-blank className="rounded-full bg-sky-600 px-2.5 py-0.5 text-[11px] font-extrabold text-white shadow-sm">
                 ✏️ {vcur.base.name} · กำลังแก้
               </span>
+            )}
+            {/* 🤐 ภาพเหนือกรอบงาน (แถบซิปถุงโฮโลแกรม) — ติดขอบบนผืน นอกพื้นที่พิมพ์ ไม่ทับลาย · ชดเชยช่องไฟของคอลัมน์ด้วยขอบล่างติดลบ */}
+            {guideProp?.above && (
+              <div data-stage-blank className="pointer-events-none w-full" style={{ maxWidth: stageMaxCss, marginBottom: pairOn ? -6 : -8 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={guideProp.above.url} alt="" draggable={false} className="block w-full select-none" style={{ aspectRatio: `${W} / ${guideProp.above.hMm}` }} />
+              </div>
             )}
             <div className="relative w-full" style={{ maxWidth: stageMaxCss }}>
               <canvas
