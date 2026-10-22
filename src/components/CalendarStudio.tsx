@@ -829,8 +829,7 @@ export default function CalendarStudio({
    * ลายเดียว (backSame) ก็โชว์คู่ — ด้านหลังวาดจากข้อมูลด้านหน้า (resolve) · จอแคบ (มือถือ) ไม่มีที่วาง 2 ผืน → ใช้แถบรูปย่อเหมือนเดิม
    */
   const pairV = twoSided ? vpages[vcur.j === 0 ? 1 : 0] : undefined;
-  // 🛂 ไกด์ด้านหลังต่างจากด้านหน้า (Passport ด้านใน) = ไม่โชว์แผงคู่ (แผงคู่วาดด้วยไกด์ของหน้าที่เปิดอยู่) → สลับหน้าจากแถบรูปย่อ
-  const pairOn = !!pairV && !narrow && stageBox.w >= 520 && !guideProp?.back;
+  const pairOn = !!pairV && !narrow && stageBox.w >= 520;
   const pairRef = useRef<HTMLCanvasElement>(null);
   const imgs: (ImgRef | null)[] = useMemo(() => srcs.map((s) => (s.removed ? null : { el: s.el, w: s.w, h: s.h })), [srcs]);
 
@@ -1676,6 +1675,55 @@ export default function CalendarStudio({
       alive = false;
     };
   }, [open, guide?.url]);
+  /**
+   * 🖼 รูปไกด์ทุกแบบของงาน (ด้านหน้า + ด้านหลังที่ต่างกัน) — ใช้วาด "รูปย่อแถบล่าง" และ "แผงคู่" ให้เห็นเทมเพลตของหน้านั้น
+   * (เจ้าของร้านสั่ง 22 ต.ค. 69 "รูปย่อ อยากให้แสดงเป็นเทมเพลต" · Candy bag ด้านหลังกลับข้าง)
+   */
+  const [guideImgs, setGuideImgs] = useState<Record<string, HTMLImageElement>>({});
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    for (const u of [guideProp?.url, guideProp?.back?.url]) {
+      if (!u || guideImgs[u]) continue;
+      const im = new Image();
+      im.crossOrigin = "anonymous";
+      im.onload = () => alive && setGuideImgs((m) => ({ ...m, [u]: im }));
+      im.src = u;
+    }
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, guideProp?.url, guideProp?.back?.url]);
+  /** วาดเทมเพลตของหน้า key ทับภาพย่อ (k = พิกเซล/มม.): ขาวนอกเส้นตัด + สกินแบบ multiply — เหมือนเวทีแบบย่อ ไม่มีเครื่องมือ */
+  const paintGuide = useCallback(
+    (ctx: CanvasRenderingContext2D, k: number, key: string) => {
+      const g = guideFor(key);
+      if (!g) return;
+      const cut = cutOfGuide(g);
+      if (cut) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, W * k, H * k);
+        for (const c of cut) {
+          ctx.moveTo(c.s[0] * k, c.s[1] * k);
+          for (const s of c.g) ctx.bezierCurveTo(s[0] * k, s[1] * k, s[2] * k, s[3] * k, s[4] * k, s[5] * k);
+          ctx.closePath();
+        }
+        ctx.fillStyle = "#ffffff";
+        ctx.fill("evenodd");
+        ctx.restore();
+      }
+      const im = guideImgs[g.url];
+      if (!im) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "multiply";
+      if (g.fill || !g.wMm || !g.hMm) ctx.drawImage(im, 0, 0, W * k, H * k);
+      else ctx.drawImage(im, ((W - g.wMm) / 2) * k, ((H - g.hMm) / 2) * k, g.wMm * k, g.hMm * k);
+      ctx.restore();
+    },
+    [guideFor, cutOfGuide, guideImgs, W, H],
+  );
   /** ปิดหน้าต่างที่ซ้อนอยู่บนสุด (ยืนยัน · รูปแบบการพิมพ์ · popup เครื่องมือ) — Esc */
   const overlayRef = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -2780,10 +2828,28 @@ export default function CalendarStudio({
     if (!open || !pairOn || !pairV) return;
     const t = window.setTimeout(() => {
       const bp = resolve(pairV);
-      drawInto(pairRef.current, bp, lay(bp), false);
+      const cv = pairRef.current;
+      // 🛂 ด้านหลังมีไกด์ของตัวเอง (Passport ด้านใน · Candy bag กลับข้าง) → วาดหน้าแบบย่อ + เทมเพลตของหน้านั้น
+      //    (drawInto ใช้ไกด์ของหน้าที่เปิดอยู่ แผงคู่จะได้เทมเพลตผิดฝั่ง)
+      if (guideProp?.back && cv) {
+        const cssW = cv.clientWidth;
+        if (!cssW) return;
+        const dpr = Math.min(3, window.devicePixelRatio || 1);
+        cv.width = Math.round(cssW * dpr);
+        cv.height = Math.round((cssW * H * dpr) / W);
+        const ctx = cv.getContext("2d");
+        if (!ctx) return;
+        const k = cv.width / W;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        drawPage(ctx, k, fmt, bp, design, back, imgs, { preview: true });
+        paintGuide(ctx, k, pairV.base.key);
+        return;
+      }
+      drawInto(cv, bp, lay(bp), false);
     }, 120);
     return () => window.clearTimeout(t);
-  }, [open, pairOn, pairV, resolve, lay, drawInto, stageBox]);
+  }, [open, pairOn, pairV, resolve, lay, drawInto, stageBox, guideProp?.back, paintGuide, fmt, design, back, imgs, W, H]);
 
   // รูปย่อทุกหน้า (แถบล่าง) — วาดจากตัววาดจริง หน่วงนิดหน่อยตอนลาก/พิมพ์รัว ๆ
   useEffect(() => {
@@ -2817,10 +2883,12 @@ export default function CalendarStudio({
           ctx.fillRect(0, 0, cv.width, cv.height);
           ctx.globalCompositeOperation = "source-over";
         }
+        // 📐 เทมเพลตของหน้านั้นทับรูปย่อ (เจ้าของร้านสั่ง 22 ต.ค. 69 "อยากให้แสดงเป็นเทมเพลต") — ไม่มีไกด์ = เหมือนเดิม
+        paintGuide(ctx, tw / W, v.base.key);
       });
     }, 180);
     return () => window.clearTimeout(t);
-  }, [open, fmt, vpages, resolve, design, back, imgs, fontTick, W, H]);
+  }, [open, fmt, vpages, resolve, design, back, imgs, fontTick, W, H, paintGuide]);
 
   /* ─────────── ลาก/ซูมบนภาพ ─────────── */
 

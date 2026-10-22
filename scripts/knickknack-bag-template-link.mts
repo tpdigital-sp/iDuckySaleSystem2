@@ -23,9 +23,10 @@
  *   (เจ้าของร้านสั่ง 22 ต.ค. 69 "เพิ่มสกรีน 2 ด้านให้หน่อย" · โครงเดียวกับผ้าขนหนู/พัด) · Passport "2ด้าน" ยังหน้าเดียว (ด้านในได้แค่ 1 ฝั่ง — ไม่มีเทมเพลตด้านใน)
  */
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { filesForSelections, templateFrame, type DesignTemplate, type TemplateCurve } from "../src/lib/design-templates";
+import { filesForSelections, templateFrame, type DesignTemplate, type TemplateCurve, type TemplateFile } from "../src/lib/design-templates";
 import type { Product } from "../src/lib/products";
 import { revalidateLive } from "./lib/revalidate-live.mts";
 
@@ -34,7 +35,7 @@ const WRITE = process.argv.includes("--write");
  * ค่าจากสกิน: w/h = ขนาดสกินจริง (มม.) · hole = รูกลม (ต่อท้าย) · window = เส้นตัดคือช่องโปร่งกลางสกิน (ไม่ใช่ขอบนอก) · opaque = TemplateFile.skinOpaque
  * fullFace = TemplateFile.fullFace — ช่องรูปว่างโชว์เต็มเส้นตัด ไม่เดาหน้างานจากเส้นแดงในสกิน (Candy bag 22 ต.ค. 69 "ขยายกรอบนี้หน่อย เพราะมันสกรีนเต็มได้")
  */
-type SkinOverride = { w: number; h: number; hole?: { cx: number; cy: number; r: number }; window?: boolean; opaque?: boolean; fullFace?: boolean; minYMm?: number };
+type SkinOverride = { w: number; h: number; hole?: { cx: number; cy: number; r: number }; window?: boolean; opaque?: boolean; fullFace?: boolean; minYMm?: number; mirrorBack?: boolean };
 type Fmt = { format: string; when?: { label: string; choices: string[] }[] };
 const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; skin?: SkinOverride; formats?: Fmt[] }[] = [
   {
@@ -44,7 +45,8 @@ const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; ski
     holes: 1,
     formats: [{ format: "tpl2", when: [{ label: "สกรีนกี่ด้าน", choices: ["สกรีน 2 ด้าน"] }] }],
     // เต็มถุงรวมแถบซิป + หัวถุง (เจ้าของร้านสั่ง 22 ต.ค. 69 "กลับไปแบบเดิม สกรีนได้ถึงซิป" — เคยลองตัดใต้ซิป minYMm 18.12 แล้วถอยกลับ)
-    skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 }, fullFace: true },
+    // mirrorBack: ด้านหลังถุงเห็นกลับข้าง — แถบเทา/รูร้อยโซ่อยู่ฝั่งซ้าย (เจ้าของร้านทัก 22 ต.ค. 69 "ควรจะหักคนละฝั่งกับด้านหน้า เพราะมันเป็นด้านหลัง")
+    skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 }, fullFace: true, mirrorBack: true },
   },
   { product: "hologram-bag", tpl: "tpl-ewsr369y6", flags: [], holes: 0, skin: { w: 210.06, h: 153.08, window: true, opaque: true } },
 ];
@@ -92,7 +94,9 @@ for (const pair of PAIRS) {
   const { data: trow } = await sb.from("products").select("id,data").eq("id", `__template_${pair.tpl}`).single();
   const row = (trow as Row | null) ?? die(`ไม่พบชุด ${pair.tpl}`);
   const t = row.data;
-  const files = t.files ?? [];
+  // ไฟล์ไกด์ด้านหลัง (backGuide · ไม่มี .ai ของตัวเอง) แยกออกก่อน — สคริปต์นี้สร้างเองจาก mirrorBack
+  const files = (t.files ?? []).filter((x) => !x.backGuide);
+  const oldBack = (t.files ?? []).find((x) => x.backGuide) as (TemplateFile & { mirrorOf?: string }) | undefined;
   if (files.length !== 1 || !files[0].fileUrl || !files[0].widthMm || !files[0].heightMm) die(`ชุด "${t.name}" ต้องมีไฟล์ .ai เดียวที่รู้ขนาด`);
   if (t.optionLabel || files[0].choice || files[0].when) die(`ชุด "${t.name}" มี optionLabel/choice/when ค้างอยู่ — ตรวจก่อน`);
   const f0 = files[0];
@@ -122,8 +126,31 @@ for (const pair of PAIRS) {
   if (bx < 0 || by < 0 || bx + bw > res.w + 0.01 || by + bh > res.h + 0.01) die(`${t.name}: กรอบหลุดอาร์ตบอร์ด`);
   if (res.holes !== pair.holes) die(`${t.name}: เจอรู ${res.holes} (คาด ${pair.holes})`);
   const nf = { ...f, cutCurves: res.curves, whiteUnder: true, ...(pair.skin?.opaque ? { skinOpaque: true } : {}), ...(pair.skin?.fullFace ? { fullFace: true } : {}) };
-  const nt: DesignTemplate = { ...t, files: [nf] };
+  // 🪞 ไกด์ด้านหลังกลับข้าง (สกิน + เส้นตัด + รู) — จอออกแบบหน้า "back" ใช้ผ่าน guide.back
+  let back: (TemplateFile & { mirrorOf?: string }) | null = null;
+  let backSame = !oldBack;
+  if (pair.skin?.mirrorBack) {
+    const Wm = f.widthMm!;
+    const mx = (x: number) => r3(Wm - x);
+    const mirrored = res.curves.map((c) => ({ s: [mx(c.s[0]), c.s[1]] as [number, number], g: c.g.map((g) => [mx(g[0]), g[1], mx(g[2]), g[3], mx(g[4]), g[5]] as TemplateCurve["g"][number]) }));
+    back = {
+      id: oldBack?.id ?? `f-${Math.random().toString(36).slice(2, 11)}`,
+      side: "ด้านหลัง",
+      backGuide: true,
+      fileName: `${f.fileName ?? t.name} · ด้านหลัง (กลับข้าง)`,
+      widthMm: f.widthMm,
+      heightMm: f.heightMm,
+      skinUrl: oldBack?.mirrorOf === f0.skinUrl ? oldBack?.skinUrl : undefined, // ว่าง = ต้องทำสกินกลับข้างใหม่ตอนเขียน
+      mirrorOf: f0.skinUrl,
+      cutCurves: mirrored,
+      whiteUnder: true,
+      ...(pair.skin.fullFace ? { fullFace: true } : {}),
+    };
+    backSame = !!oldBack && !!back.skinUrl && flat(oldBack.cutCurves) === flat(mirrored);
+  }
+  const nt: DesignTemplate = { ...t, files: back ? [nf, back] : [nf] };
   const tplSame =
+    backSame &&
     flat(f0.cutCurves) === flat(res.curves) && f0.whiteUnder === true && f0.widthMm === f.widthMm && f0.heightMm === f.heightMm && !!f0.skinOpaque === !!pair.skin?.opaque && !!f0.fullFace === !!pair.skin?.fullFace;
   if (filesForSelections(nt, {}).length !== 1 || !templateFrame(nt, nf)) die(`${t.name}: จอออกแบบหากรอบงานไม่ได้`);
 
@@ -148,6 +175,7 @@ for (const pair of PAIRS) {
       `\n   ชุด ${tplSame ? "✓" : "✎"} · สินค้า ${prodChanged ? "✎" : "✓"} templateIds ${JSON.stringify(cur)} → ${JSON.stringify(ids)} · calendarStudio ${product.calendarStudio ? "มี" : "-"} · studioOff ${product.studioOff ?? "-"}`,
   );
   plans.push({ pair, row, nextTpl: tplSame ? null : nt, product, prodChanged, ids, studio });
+  if (back) console.log(`   🪞 ด้านหลังกลับข้าง ${backSame ? "✓" : "✎"}${back.skinUrl ? "" : " (ทำสกินกลับข้างใหม่)"}`);
 }
 if (!plans.some((p) => p.nextTpl || p.prodChanged)) {
   console.log("✅ ครบแล้ว — ไม่มีอะไรต้องเขียน");
@@ -159,6 +187,19 @@ if (!WRITE) {
 }
 for (const p of plans) {
   if (p.nextTpl) {
+    // 🪞 สกินด้านหลังกลับข้างที่ยังไม่มี → พลิกสกินด้านหน้าแนวนอนแล้วอัป
+    const bk = p.nextTpl.files?.find((x) => x.backGuide) as (TemplateFile & { mirrorOf?: string }) | undefined;
+    if (bk && !bk.skinUrl && bk.mirrorOf) {
+      const src = `${OUT}${p.row.data.id}-front-skin.png`;
+      const dst = `${OUT}${p.row.data.id}-back-skin.png`;
+      writeFileSync(src, Buffer.from(await (await fetch(bk.mirrorOf)).arrayBuffer()));
+      execFileSync(PYTHON, ["-I", "-c", "import sys\nfrom PIL import Image, ImageOps\nImage.MAX_IMAGE_PIXELS=None\nImageOps.mirror(Image.open(sys.argv[1])).save(sys.argv[2])", src, dst]);
+      const path = `preview/${randomUUID().slice(0, 8)}-${p.row.data.id}-back-mirror.png`;
+      const { error: ue } = await sb.storage.from("design-templates").upload(path, readFileSync(dst), { contentType: "image/png", upsert: false });
+      if (ue) die(`อัปสกินกลับข้าง: ${ue.message}`);
+      bk.skinUrl = sb.storage.from("design-templates").getPublicUrl(path).data.publicUrl;
+      console.log(`   🪞 สกินด้านหลังกลับข้าง → ${path}`);
+    }
     const { error } = await sb.from("products").update({ data: { ...p.nextTpl, savedAt: new Date().toISOString() } }).eq("id", p.row.id);
     if (error) die(`บันทึกชุด ${p.row.data.id}: ${error.message}`);
     console.log(`   ✅ ชุด "${p.row.data.name}" เส้นตัด + รองขาว`);
