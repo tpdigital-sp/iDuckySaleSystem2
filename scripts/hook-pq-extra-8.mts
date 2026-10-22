@@ -12,7 +12,8 @@
  * แก้: ใส่ extra 8 ให้ P/Q ใน
  *   - คลัง __preset_preset-3 (ตะขอ) — สินค้าที่ลิงก์คลังอ่านราคาจากตรงนี้ (resolveOptions)
  *   - snapshot ในสินค้าที่ลิงก์ preset-3 (พวงกุญแจอะคริลิค · หลายชิ้น · เขย่า · ดุ๊กดิ๊ก · ประกบ) ให้ตรงคลัง
- *   ไม่แตะสินค้าที่เก็บรายการเอง (3D Acrylic · อะคริลิคคิท · อะคริลิคกระจก ก็ยังไม่มี P/Q +8 — รอเจ้าของร้านตัดสิน)
+ *   - สินค้าที่เก็บรายการตะขอเอง (ไม่ลิงก์คลัง) ที่ P/Q ยังว่าง: 3D Acrylic · อะคริลิคคิท · อะคริลิคกระจก (OWN_IDS)
+ *     — เจ้าของร้านสั่ง 22 ต.ค. 69 "ใส่ตะขอ P/Q +8 ให้ 3D Acrylic, อะคริลิคคิท, อะคริลิคกระจก ด้วย" · ด่านเทียบกับ X (+10) แทน D
  * ช่วงปลีก ≤10 ชิ้น (3mm) ค่าเหมา ฿10 คิด "แทน" ราคาตะขอ (groupAddOf) → P/Q ปลีกยัง ฿10 เท่าเดิม เหมือน D
  * รันซ้ำได้ · สำรองไว้ backups/ · เขียนแล้วอ่านกลับเทียบ
  */
@@ -27,6 +28,9 @@ const HOOK_PRESET = "__preset_preset-3";
 const EXTRA = 8;
 const TARGETS = ["P ตะขอปีก (สีเงิน)", "Q ตะขอ + ห่วงกลม (สีเงิน)"];
 const REF = { free: "Z1 ห่วงกลม (สีเงิน)", paid: "D (เงิน/ทอง)" }; // ตัวเทียบ: ฟรี / +8 ที่ตัวตะขอเหมือน P/Q
+const REF_X = "X ห่วงหัวใจ (เงิน/ทอง)"; // สินค้าที่ไม่มี D ใช้ X (+10) เทียบ: P/Q ต้องบวก 8/10 ของ X
+/** สินค้าที่เก็บรายการตะขอเอง (ไม่ลิงก์คลัง) ที่ต้องใส่ P/Q +8 ด้วย */
+const OWN_IDS = ["3d-acrylic", "new-mt2rpb1j-2194", "new-mt2rqayf-7835"];
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8").split("\n")
@@ -51,6 +55,8 @@ const hookPreset = rows.find((r) => r.id === HOOK_PRESET) ?? die(`ไม่เ�
 /** สินค้าที่กลุ่มตะขอลิงก์คลัง preset-3 (ไม่รวมฉบับร่าง = รวมด้วย ให้ตรงคลัง) */
 const linked = rows.filter((r) => r.category !== "__presets__" && Array.isArray(r.data?.options)
   && r.data.options.some((o: any) => o.presetId === "preset-3"));
+const own = OWN_IDS.map((id) => rows.find((r) => r.id === id) ?? die(`ไม่เจอสินค้า ${id}`));
+const all = [...linked, ...own];
 
 // ---------- ราคาก่อนแก้ ----------
 const toP = (r: Row, data = r.data): Product =>
@@ -74,11 +80,13 @@ function priceOf(p: Product, hook: string, qty: number): { total: number; hook: 
 }
 
 const QTYS = [5, 20, 60];
-const fmt = (p: Product) => [REF.free, REF.paid, ...TARGETS].map((h) =>
+const hasHook = (p: Product, h: string) => p.options.some((o) => (o.choices ?? []).some((c) => c.name === h));
+const fmt = (p: Product) => [REF.free, REF.paid, REF_X, ...TARGETS].filter((h) => hasHook(p, h)).map((h) =>
   `${h.slice(0, 2).trim()}: ${QTYS.map((q) => { const r = priceOf(p, h, q); return `${q}ชิ้น ฿${r.total}(+${r.hook})`; }).join(" · ")}`);
 
 console.log(`📦 สินค้าที่ลิงก์ preset-3: ${linked.map((r) => r.id).join(", ")}`);
-const before = new Map(linked.map((r) => [r.id, fmt(toP(r))]));
+console.log(`📦 สินค้าที่เก็บรายการเอง: ${own.map((r) => r.id).join(", ")}`);
+const before = new Map(all.map((r) => [r.id, fmt(toP(r))]));
 
 // ---------- แก้ (ในหน่วยความจำ) ----------
 const changes: { row: Row; notes: string[] }[] = [];
@@ -104,9 +112,18 @@ for (const r of linked) {
   if (notes.some((n) => n.includes("→"))) changes.push({ row: r, notes });
   else if (notes.length) console.log(`· ${r.id}: ${notes.join(" · ")}`);
 }
-// สินค้าที่เก็บรายการเองแต่ P/Q ยังว่าง — รายงานเฉย ๆ
+for (const r of own) {
+  const notes: string[] = [];
+  for (const o of r.data.options) {
+    if (o.presetId || !(o.choices ?? []).some((c: any) => TARGETS.includes(c.name))) continue;
+    notes.push(...patch(o.choices, `${r.id} ${o.label}`).map((n) => `${o.label} (รายการเอง): ${n}`));
+  }
+  if (notes.some((n) => n.includes("→"))) changes.push({ row: r, notes });
+  else if (notes.length) console.log(`· ${r.id}: ${notes.join(" · ")}`);
+}
+// สินค้าอื่นที่เก็บรายการเองแต่ P/Q ยังว่าง — รายงานเฉย ๆ
 for (const r of rows) {
-  if (r.category === "__presets__" || !Array.isArray(r.data?.options) || linked.includes(r)) continue;
+  if (r.category === "__presets__" || !Array.isArray(r.data?.options) || all.includes(r)) continue;
   for (const o of r.data.options) {
     const miss = (o.choices ?? []).filter((c: any) => TARGETS.includes(c.name) && !(c.extra > 0)).map((c: any) => c.name.slice(0, 2).trim());
     if (miss.length) console.log(`ℹ️ ${r.id} (${r.name}) กลุ่ม "${o.label}" เก็บรายการเอง ${miss.join("/")} ยังไม่มี +฿ — ไม่แตะ`);
@@ -118,19 +135,27 @@ const presetsAfter = presetRows.map((r) => r.data);
 const toPAfter = (r: Row): Product =>
   ({ id: r.id, name: r.name, price: r.price, category: r.category, ...r.data, options: resolveOptions(r.data.options, presetsAfter) }) as Product;
 let badPrice = 0;
-for (const r of linked) {
+for (const r of all) {
   console.log(`\n${r.id} ${r.name}${r.data.hidden ? " [ร่าง]" : ""}`);
   const after = fmt(toPAfter(r));
   console.log("  ก่อน: " + before.get(r.id)!.join(" | "));
   console.log("  หลัง: " + after.join(" | "));
   // ด่าน: หลังแก้ P และ Q ต้องราคาเท่า D ทุกจำนวน (D = +8 ที่ตัวตะขอ ไม่มีกลุ่มสีคิดเงิน)
   const p = toPAfter(r);
+  const useD = hasHook(p, REF.paid);
   for (const q of QTYS) for (const h of TARGETS) {
-    const a = priceOf(p, h, q), d = priceOf(p, REF.paid, q);
-    if (a.total !== d.total) { badPrice++; console.log(`  ❌ ${q} ชิ้น ${h} ฿${a.total} ≠ D ฿${d.total}`); }
+    const a = priceOf(p, h, q);
+    if (useD) {
+      const d = priceOf(p, REF.paid, q);
+      if (a.total !== d.total) { badPrice++; console.log(`  ❌ ${q} ชิ้น ${h} ฿${a.total} ≠ D ฿${d.total}`); }
+    } else {
+      // ไม่มี D → เทียบ X (+10): ค่าตะขอ P/Q ต้องเป็น 8/10 ของ X ทุกจำนวน (รวมช่วงที่ X ยังไม่คิด = 0)
+      const x = priceOf(p, REF_X, q);
+      if (a.hook !== x.hook * 0.8) { badPrice++; console.log(`  ❌ ${q} ชิ้น ${h} ค่าตะขอ ${a.hook} ≠ X ${x.hook} × 0.8`); }
+    }
   }
 }
-console.log(badPrice ? `\n❌ ราคาหลังแก้ไม่ตรง D ${badPrice} จุด — หยุด` : "\n✅ หลังแก้ P/Q ราคาเท่า D ทุกจำนวนทุกสินค้า");
+console.log(badPrice ? `\n❌ ราคาหลังแก้ไม่ตรง D/X ${badPrice} จุด — หยุด` : "\n✅ หลังแก้ P/Q ราคาเท่า D (หรือ 8/10 ของ X) ทุกจำนวนทุกสินค้า");
 if (badPrice) process.exit(1);
 
 for (const { row, notes } of changes) { console.log(`\n${row.id} ${row.name ?? row.data.label ?? ""}`); for (const n of notes) console.log(`  - ${n}`); }
@@ -152,8 +177,10 @@ for (const { row } of changes) {
 const { data: back } = await sb.from("products").select("id,data").in("id", ids);
 let bad = 0;
 for (const r of back ?? []) {
-  const list = r.data.options ? r.data.options.filter((o: any) => o.presetId === "preset-3").flatMap((o: any) => o.choices ?? []) : r.data.choices;
+  const list = r.data.options
+    ? r.data.options.filter((o: any) => o.presetId === "preset-3" || (!o.presetId && OWN_IDS.includes(r.id))).flatMap((o: any) => o.choices ?? [])
+    : r.data.choices;
   for (const c of list) if (TARGETS.includes(c.name) && c.extra !== EXTRA) { bad++; console.log(`❌ ${r.id} ${c.name} extra=${c.extra}`); }
 }
 console.log(bad ? `❌ ไม่ผ่าน ${bad}` : `✅ บันทึกแล้ว อ่านกลับตรง ${back?.length} แถว`);
-await revalidateLive(env, { productIds: linked.map((r) => r.id) });
+await revalidateLive(env, { productIds: all.map((r) => r.id) });
