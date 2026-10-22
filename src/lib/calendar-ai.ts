@@ -74,7 +74,8 @@ export interface AiPage {
 /** วาดทุกชั้นของทุกหน้าที่จะพิมพ์ แยกเป็น PNG พื้นใส (ครอปขอบว่างทิ้ง) */
 export async function renderAiPages(input: {
   fmt: CalFormat;
-  pages: { name: string; page: CalPage }[];
+  /** clip ต่อหน้า (ทับ input.clip) — 🛂 Passport 2 ด้าน: ด้านในครอปตามช่องซ้าย ด้านนอกตามขอบปก (22 ต.ค. 69) */
+  pages: { name: string; page: CalPage; clip?: { s: [number, number]; g: [number, number, number, number, number, number][] }[] }[];
   design: CalDesign;
   back: CalBack;
   imgs: (ImgRef | null)[];
@@ -89,7 +90,8 @@ export async function renderAiPages(input: {
   const cw = Math.round(W * k);
   const ch = Math.round(H * k);
   const out: AiPage[] = [];
-  for (const { name, page } of input.pages) {
+  for (const { name, page, clip: pageClip } of input.pages) {
+    const clip = pageClip ?? input.clip;
     const layers: AiLayer[] = [];
     let bg = "#ffffff";
     for (const L of calLayersOf(fmt, page, design, imgs)) {
@@ -115,12 +117,12 @@ export async function renderAiPages(input: {
       const ctx = cv.getContext("2d");
       if (!ctx) continue;
       drawPage(ctx, k, fmt, page, design, back, imgs, { only: L.id });
-      if (input.clip?.length) {
+      if (clip?.length) {
         // ✂️ นอกเส้นตัด = โปร่งใส (ทุกชั้น) → ชั้นที่เคยทึบเต็มกรอบกลายเป็น PNG พื้นใสอัตโนมัติ (alphaBox.opaque = false)
         ctx.save();
         ctx.globalCompositeOperation = "destination-in";
         ctx.beginPath();
-        for (const c of input.clip) {
+        for (const c of clip) {
           ctx.moveTo(c.s[0] * k, c.s[1] * k);
           for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
           ctx.closePath();

@@ -192,6 +192,24 @@ interface Props {
     cutLineOff?: boolean;
     /** 🖼 ช่องรูปเต็มชิ้นงาน (TemplateFile.fullFace · Magsafe Wallet 22 ต.ค. 69) — ไม่เจาะหน้างานจากสกินตอนช่องว่าง (ข้าม guideFx.over) */
     fullFace?: boolean;
+    /**
+     * 🛂 ไกด์ของหน้า "back" (ด้านหลัง/ด้านใน) ที่หน้าตาต่างจากด้านหน้า — Passport case สกรีน 2 ด้าน: ด้านในพิมพ์ได้แค่ช่องซ้าย
+     * (เจ้าของร้านสั่ง 22 ต.ค. 69 "สกรีน 2 ด้าน ใช้เทมเพลตนี้แทน" · ไฟล์ (2ด้าน)Passport.ai มี 2 อาร์ตบอร์ด)
+     * ค่าที่ตั้งทับของด้านหน้า (สกิน · เส้นตัด · รองขาว ฯลฯ) · ขนาดอาร์ตบอร์ดต้องเท่าด้านหน้า (ผืนเดียวกัน) · ไม่ตั้ง = ทุกหน้าใช้ไกด์เดียวกัน (เดิม)
+     */
+    back?: {
+      url: string;
+      wMm: number;
+      hMm: number;
+      name?: string;
+      fill?: boolean;
+      cut?: TemplateCurve[];
+      finished?: { w: number; h: number };
+      opaque?: boolean;
+      whiteUnder?: boolean;
+      cutLineOff?: boolean;
+      fullFace?: boolean;
+    };
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -446,7 +464,7 @@ export default function CalendarStudio({
   aiExport,
   autoDownload,
   onAutoDone,
-  guide,
+  guide: guideProp,
   square,
   initial,
   seedSources,
@@ -468,15 +486,15 @@ export default function CalendarStudio({
    * guide.fill (กรอบการ์ดใบเดียวจากไฟล์หลายช่อง) ไม่รู้ขนาดไฟล์ → ใช้ตัดตกมาตรฐาน (ทำกรอบชุดเดียวกัน)
    */
   const tplBleed = useMemo(() => {
-    if (!guide || guide.fill || !guide.wMm || !guide.hMm) return undefined;
+    if (!guideProp || guideProp.fill || !guideProp.wMm || !guideProp.hMm) return undefined;
     const f0 = calFormat(format);
     // โฟโต้การ์ด + โปสการ์ด 4×6 (ขนาดตายตัว · 14 ต.ค. 69 เพิ่มโปสการ์ด: เทมเพลต 2 ด้านตัดตก 1/2.5 มม.) + งานพิมพ์แผ่นเรียบ print@/print2@ (โปสการ์ดธรรมดา 15 ต.ค. 69)
     if (f0.cornerR == null && !f0.key.startsWith("postcard-") && !/^print2?@/.test(f0.key)) return undefined;
-    const b = ((guide.wMm - f0.trimW) / 2 + (guide.hMm - f0.trimH) / 2) / 2;
+    const b = ((guideProp.wMm - f0.trimW) / 2 + (guideProp.hMm - f0.trimH) / 2) / 2;
     // ตัดตก 0 ได้ (เทมเพลตอาร์ตบอร์ด = เส้นตัดพอดี เช่น โปสการ์ดปฏิทิน 1 ด้าน "อาร์ตมัน 300g + holo" · ผู้ใช้แจ้ง 14 ต.ค. 69
     // "1 ด้านไม่เหมือนเทมเพลต" — เดิมรับแค่ 0.5–6 มม. เลยตกไปใช้ 2 มม. มีขอบขาวเกินเส้นตัดที่ไฟล์ร้านไม่มี)
     return b >= -0.05 && b <= 6 ? Math.max(0, Math.round(b * 20) / 20) : undefined;
-  }, [format, guide]);
+  }, [format, guideProp]);
   const fmt = useMemo(() => {
     const f = calFormat(format, { bleed: tplBleed });
     return square && f.cornerR ? { ...f, cornerR: 0 } : f;
@@ -495,7 +513,7 @@ export default function CalendarStudio({
    * → เทมเพลตที่รู้ขนาดหน้างานจริง (guide.finished = วงในเทมเพลต) แสดงขนาดนั้น · ไม่รู้ = ชื่อเดิม
    */
   const fmtName = (() => {
-    const fin = tplGeneric ? guide?.finished : undefined;
+    const fin = tplGeneric ? guideProp?.finished : undefined;
     if (!fin || !(fin.w > 0) || !(fin.h > 0)) return fmt.name;
     const cm = (mm: number) => String(Math.round(mm) / 10);
     return `งานออกแบบ ${cm(fin.w)}×${cm(fin.h)} ซม.`;
@@ -531,6 +549,13 @@ export default function CalendarStudio({
   );
   const [pageIdx, setPageIdx] = useState(0);
   const vcur = vpages[Math.min(pageIdx, vpages.length - 1)];
+  /** 🛂 ไกด์ของหน้า (key) — หน้า "back" ใช้ guide.back ถ้าตั้งไว้ (Passport 2 ด้าน · 22 ต.ค. 69) · อื่น ๆ = ไกด์เดียวทั้งงาน (เดิม) */
+  const guideFor = useCallback(
+    (key?: string) => (guideProp?.back && key === "back" ? { ...guideProp, ...guideProp.back, back: undefined } : guideProp),
+    [guideProp],
+  );
+  /** ไกด์ของหน้าที่เปิดอยู่ — ทุกอย่างบนจอ (สกิน · เส้นตัด · รองขาว) ใช้ตัวนี้ */
+  const guide = useMemo(() => guideFor(vcur?.base.key), [guideFor, vcur?.base.key]);
   const [tool, setTool] = useState<Tool | null>("photo");
   const [design, setDesign] = useState<CalDesign>(() => {
     let d: CalDesign =
@@ -804,7 +829,8 @@ export default function CalendarStudio({
    * ลายเดียว (backSame) ก็โชว์คู่ — ด้านหลังวาดจากข้อมูลด้านหน้า (resolve) · จอแคบ (มือถือ) ไม่มีที่วาง 2 ผืน → ใช้แถบรูปย่อเหมือนเดิม
    */
   const pairV = twoSided ? vpages[vcur.j === 0 ? 1 : 0] : undefined;
-  const pairOn = !!pairV && !narrow && stageBox.w >= 520;
+  // 🛂 ไกด์ด้านหลังต่างจากด้านหน้า (Passport ด้านใน) = ไม่โชว์แผงคู่ (แผงคู่วาดด้วยไกด์ของหน้าที่เปิดอยู่) → สลับหน้าจากแถบรูปย่อ
+  const pairOn = !!pairV && !narrow && stageBox.w >= 520 && !guideProp?.back;
   const pairRef = useRef<HTMLCanvasElement>(null);
   const imgs: (ImgRef | null)[] = useMemo(() => srcs.map((s) => (s.removed ? null : { el: s.el, w: s.w, h: s.h })), [srcs]);
 
@@ -1482,10 +1508,15 @@ export default function CalendarStudio({
    * (เจ้าของร้านแจ้ง 16 ต.ค. 69 ".ai ต้องมีเส้นไดคัทด้วย" — เดิมเลเยอร์เส้นตัดเป็นสี่เหลี่ยมเว้นขอบ 3 มม. ไม่ใช่ทรงหัวใจ/วงกลม)
    */
   // (เดิมไกด์แบบสกิน fill ไม่ใช้เส้นไดคัท — พัดพลาสติกใส 21 ต.ค. 69 สกิน + เส้นวงกลมที่ตั้งให้ไฟล์ → ใช้เมื่อรู้ขนาดอาร์ตบอร์ด wMm/hMm)
-  const tplCut = useMemo(() => {
-    if (!guide?.cut?.length || !guide.wMm || !guide.hMm) return null;
-    return shiftCurves(guide.cut, (W - guide.wMm) / 2, (H - guide.hMm) / 2);
-  }, [guide, W, H]);
+  /** เส้นตัดของไกด์หนึ่ง ๆ เลื่อนเข้าพิกัดผืน */
+  const cutOfGuide = useCallback(
+    (g?: { cut?: TemplateCurve[]; wMm: number; hMm: number }) => (g?.cut?.length && g.wMm && g.hMm ? shiftCurves(g.cut, (W - g.wMm) / 2, (H - g.hMm) / 2) : null),
+    [W, H],
+  );
+  const tplCut = useMemo(() => cutOfGuide(guide), [cutOfGuide, guide]);
+  /** 🛂 เส้นตัด/วัสดุใสของ "หน้านั้น" (ไฟล์ส่งพิมพ์ทำทีละหน้า — Passport 2 ด้าน ด้านในใช้เส้นตัดคนละแบบกับด้านนอก) */
+  const cutOfPage = useCallback((v: { base: { key: string } }) => cutOfGuide(guideFor(v.base.key)), [cutOfGuide, guideFor]);
+  const clearOfPage = useCallback((v: { base: { key: string } }) => !!cutOfPage(v) && !!guideFor(v.base.key)?.whiteUnder, [cutOfPage, guideFor]);
   /**
    * 🪭 งานวัสดุใสตามเทมเพลต (เส้นไดคัท + รองขาว · พัดพลาสติกใส 21 ต.ค. 69 "เรียนรู้จากหน้าไดคัท"): ไฟล์ทุกแบบครอปตามเส้นตัด (นอกวง = โปร่งใส · PNG)
    * · พื้นงานเริ่มต้นโปร่งใส (บนจอเป็นตาหมากรุก) · รองขาวใน .ai = ทรงเนื้อภาพในวง หดเข้า 0.3 มม. (traceAlphaMm) ไม่ใช่เต็มวง
@@ -1493,13 +1524,13 @@ export default function CalendarStudio({
   const clearCut = !!tplCut && !!guide?.whiteUnder;
   /** ครอปสิ่งที่วาดไว้แล้วบน ctx ตามเส้นไดคัท (k = พิกเซล/มม.) — นอกเส้น = โปร่งใส */
   const clipToCut = useCallback(
-    (ctx: CanvasRenderingContext2D, k: number) => {
-      if (!tplCut) return;
+    (ctx: CanvasRenderingContext2D, k: number, curves: TemplateCurve[] | null = tplCut) => {
+      if (!curves) return;
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalCompositeOperation = "destination-in";
       ctx.beginPath();
-      for (const c of tplCut) {
+      for (const c of curves) {
         ctx.moveTo(c.s[0] * k, c.s[1] * k);
         for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
         ctx.closePath();
@@ -1530,19 +1561,19 @@ export default function CalendarStudio({
    * ใช้ทั้งเลเยอร์ "รองขาว (White)" ใน .ai และหน้ารองขาวใน .pdf ทั้งเล่ม (ทรงเดียวกัน)
    */
   const whiteCurvesFor = useCallback(
-    (page: CalPage): TemplateCurve[] => {
-      if (!tplCut) return [];
+    (page: CalPage, cut: TemplateCurve[] | null = tplCut): TemplateCurve[] => {
+      if (!cut) return [];
       const ppm = Math.min(8, 2400 / Math.max(W, H));
       const cv = document.createElement("canvas");
       cv.width = Math.max(1, Math.round(W * ppm));
       cv.height = Math.max(1, Math.round(H * ppm));
       const ctx = cv.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return tplCut;
+      if (!ctx) return cut;
       drawPage(ctx, ppm, fmt, page, design, back, imgs);
-      clipToCut(ctx, ppm);
+      clipToCut(ctx, ppm, cut);
       const cs = traceAlphaMm(ctx.getImageData(0, 0, cv.width, cv.height), ppm, { chokeMm: 0.3, smooth: 1 });
       cv.width = cv.height = 0;
-      if (!cs.length) return tplCut;
+      if (!cs.length) return cut;
       const r3 = (v: number) => Math.round(v * 1000) / 1000;
       return cs.map((c) => ({
         s: [r3(c.start.x), r3(c.start.y)] as [number, number],
@@ -1626,11 +1657,13 @@ export default function CalendarStudio({
     }
   }, [guideImg, guide]);
   /** กรอบเส้นตัดของไฟล์ .pdf (lib/calendar-impose · TrimBox + หน้าเส้นไดคัท) — เส้นจริงของเทมเพลตมาก่อน */
+  // 🛂 ไฟล์ .pdf มีหน้าเส้นไดคัทหน้าเดียว → ใช้เส้นตัดของด้านหน้าเสมอ (ไม่ขึ้นกับหน้าที่เปิดค้างตอนกดส่งออก)
+  const frontCut = useMemo(() => cutOfGuide(guideProp), [cutOfGuide, guideProp]);
   const pdfCut = useMemo(() => {
-    const box = tplCut ? curvesBox(tplCut) : null;
-    if (tplCut && box) return { ...box, r: 0, svg: curvesSvgD(tplCut) };
+    const box = frontCut ? curvesBox(frontCut) : null;
+    if (frontCut && box) return { ...box, r: 0, svg: curvesSvgD(frontCut) };
     return { x: fmt.bleed, y: fmt.bleed, w: fmt.trimW, h: fmt.trimH, r: fmt.cornerR ?? 0, ...(fmt.dieline ? { svg: dieSvgD(fmt.dieline, fmt.bleed) } : {}) };
-  }, [tplCut, fmt]);
+  }, [frontCut, fmt]);
   useEffect(() => {
     if (!open || !guide?.url) return setGuideImg(null);
     let alive = true;
@@ -3868,24 +3901,27 @@ export default function CalendarStudio({
     await ensureFonts(fontKeys);
     const pages = await renderAiPages({
       fmt,
-      pages: printPages.map((v) => ({ name: vname(v).replace(/^\d+\. /, ""), page: resolve(v) })),
+      // 🪭 วัสดุใส: ทุกชั้นครอปตามเส้นไดคัทของหน้านั้น (นอกวง = โปร่งใส · 🛂 ด้านในของ Passport ใช้เส้นตัดคนละแบบ)
+      pages: printPages.map((v) => ({ name: vname(v).replace(/^\d+\. /, ""), page: resolve(v), ...(clearOfPage(v) ? { clip: cutOfPage(v)! } : {}) })),
       design,
       back,
       imgs,
-      // 🪭 วัสดุใส: ทุกชั้นครอปตามเส้นไดคัท (นอกวง = โปร่งใส)
-      ...(clearCut && tplCut ? { clip: tplCut } : {}),
     });
     // ✂️ เทมเพลตมีเส้นไดคัทจริง (tplCut) → เลเยอร์ "เส้นตัด (CutContour)" เป็นเส้นนั้นแทนกรอบสี่เหลี่ยมสมมุติของ tpl@
     // ⬜🖨 รองขาว (guide.whiteUnder · พัดพลาสติกใส) = เลเยอร์ถมสี spot White ตามทรงภาพ (clearCut) อยู่ใต้ลาย (fill:true → ตัวสร้าง .ai วางไว้ล่างสุด)
-    const aiPages: AiPage[] = tplCut
-      ? pages.map((p, i) => ({
+    const aiPages: AiPage[] = printPages.some((v) => cutOfPage(v))
+      ? pages.map((p, i) => {
+          const v = printPages[i];
+          const cut = cutOfPage(v);
+          if (!cut) return p;
+          return {
           ...p,
           // พื้นโปร่งใส = ไม่มีเลเยอร์พื้นหลัง (ตัวสร้าง PDF-.ai อ่าน "transparent" ไม่ออก จะถมขาวทั้งแผ่น)
           bg: p.bg === "transparent" ? "none" : p.bg,
           cut: null,
           paths: [
             ...(p.paths ?? []),
-            ...(guide?.whiteUnder
+            ...(guideFor(v.base.key)?.whiteUnder
               ? [
                   {
                     layer: "รองขาว (White)",
@@ -3893,14 +3929,15 @@ export default function CalendarStudio({
                     // ⬛ สปอต White แสดงเป็นสีดำ (เจ้าของร้านสั่ง 21 ต.ค. 69 "เลเยอร์รองขาวควรเป็นสีดำ" — เดิมฟ้าอ่อน 15C)
                     cmyk: [0, 0, 0, 100] as [number, number, number, number],
                     fill: true,
-                    curves: clearCut ? whiteCurvesFor(resolve(printPages[i])) : tplCut,
+                    curves: clearOfPage(v) ? whiteCurvesFor(resolve(v), cut) : cut,
                   },
                 ]
               : []),
             // 🔴 สปอต CutContour แสดงเป็นสีแดง (CMYK 0,100,100,0) ตามแบบไฟล์เทมเพลตร้าน (เจ้าของร้านสั่ง 22 ต.ค. 69) — ชื่อสปอตคือสิ่งที่เครื่องตัดอ่าน
-            { layer: "เส้นตัด (CutContour)", spot: "CutContour", cmyk: [0, 100, 100, 0] as [number, number, number, number], fill: false, curves: tplCut },
+            { layer: "เส้นตัด (CutContour)", spot: "CutContour", cmyk: [0, 100, 100, 0] as [number, number, number, number], fill: false, curves: cut },
           ],
-        }))
+          };
+        })
       : pages;
     // งานไม่มีปฏิทิน (เข็มกลัด/โปสการ์ด ฯลฯ) ไม่ต่อ "-ปฏิทิน<ปี>" ท้ายชื่อไฟล์ (เดิมได้ "เข็มกลัดพลาสติก-ปฏิทิน2027.ai")
     const stem = (noCal ? title : `${title}-ปฏิทิน${back.year}`).replace(/[\/:*?"<>|]/g, "-").slice(0, 60);
@@ -3932,16 +3969,18 @@ export default function CalendarStudio({
         fmt,
         (ctx, k) => {
           drawPage(ctx, k, fmt, resolve(v), design, back, imgs);
-          if (clearCut) clipToCut(ctx, k);
+          if (clearOfPage(v)) clipToCut(ctx, k, cutOfPage(v));
         },
-        clearCut ? "image/png" : "image/jpeg",
-        `${v.page.key}.${clearCut ? "png" : "jpg"}`,
+        clearOfPage(v) ? "image/png" : "image/jpeg",
+        `${v.page.key}.${clearOfPage(v) ? "png" : "jpg"}`,
       );
       if (!f) throw new Error(`ประกอบหน้า "${name}" ไม่สำเร็จ`);
       pages.push({ name, file: f });
     }
     // ⬜ วัสดุใส (พัดพลาสติกใส): หน้ารองขาวต่อหน้างาน ทรงเดียวกับเลเยอร์รองขาวใน .ai (ถมดำ = ที่ต้องพิมพ์ขาว) · 21 ต.ค. 69
-    const whites = clearCut && guide?.whiteUnder ? printPages.map((v) => ({ name: `รองขาว · ${vname(v).replace(/^\d+\. /, "")}`, curves: whiteCurvesFor(resolve(v)) })) : [];
+    const whites = printPages
+      .filter((v) => clearOfPage(v))
+      .map((v) => ({ name: `รองขาว · ${vname(v).replace(/^\d+\. /, "")}`, curves: whiteCurvesFor(resolve(v), cutOfPage(v)) }));
     const file = await buildPrintPdf({
       pages,
       wMm: W,
@@ -3978,10 +4017,10 @@ export default function CalendarStudio({
         fmt,
         (ctx, k) => {
           drawPage(ctx, k, fmt, resolve(v), design, back, imgs);
-          if (clearCut) clipToCut(ctx, k);
+          if (clearOfPage(v)) clipToCut(ctx, k, cutOfPage(v));
         },
-        clearCut ? "image/png" : "image/jpeg",
-        `${v.page.key}.${clearCut ? "png" : "jpg"}`,
+        clearOfPage(v) ? "image/png" : "image/jpeg",
+        `${v.page.key}.${clearOfPage(v) ? "png" : "jpg"}`,
       );
         if (!f) throw new Error(`ประกอบ ${vname(v)} ไม่สำเร็จ`);
         files.push(f);
@@ -4447,13 +4486,13 @@ export default function CalendarStudio({
         // มีรูปบนหน้า (ช่องรูปหรือกรอบรูปอิสระ) = JPEG · ตารางล้วน = PNG คมกว่า
         const photo = !!lay(p).photo || elements.some((e) => e.page === p.key && e.kind === "photo");
         // 🪭 วัสดุใส: ครอปตามเส้นตัด → ต้องเป็น PNG พื้นใส (JPEG จะกลายเป็นดำนอกวง)
-        const jpg = photo && !clearCut;
+        const jpg = photo && !clearOfPage(v);
         const no = printPages.length > 2 ? `${String(i + 1).padStart(2, "0")}-` : "";
         const f = await renderPage(
           fmt,
           (ctx, k) => {
             drawPage(ctx, k, fmt, p, design, back, imgs);
-            if (clearCut) clipToCut(ctx, k);
+            if (clearOfPage(v)) clipToCut(ctx, k, cutOfPage(v));
           },
           jpg ? "image/jpeg" : "image/png",
           `${stem}${noCal ? "" : `-ปฏิทิน${back.year}`}-${no}${name}.${jpg ? "jpg" : "png"}`.replace(/[\/:*?"<>|]/g, "-"),

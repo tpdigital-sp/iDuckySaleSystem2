@@ -3032,6 +3032,29 @@ export default function ProductDetail({
    * 🗓 เทมเพลตของสเปคที่เลือก (กระดาษ + แนว) → เป็นไกด์บนจอสร้างปฏิทิน — กรอบการ์ดของวัสดุนั้นจริง ๆ
    * (ผู้ใช้สั่ง 13 ต.ค. 69 "ใช้เทมเพลต photocard ตามวัสดุกระดาษที่เลือก") · ไฟล์ต้องมีรูปตัวอย่าง + ขนาดอาร์ตบอร์ด
    */
+  /**
+   * 🛂 ไกด์หน้า 2 (ด้านหลัง/ด้านใน) ที่ต่างจากหน้า 1 — ไฟล์ในชุดที่ติ๊ก backGuide (ไม่ต้องมี .ai ของตัวเอง จึงอ่านแบบ includeEmpty)
+   * Passport case สกรีน 2 ด้าน (22 ต.ค. 69): ด้านในพิมพ์ได้แค่ช่องซ้าย · ขนาดต้องเท่าด้านหน้า ไม่งั้นไม่ส่ง (ผืนเดียวกันทั้งงาน)
+   */
+  const backGuideOf = (t: (typeof calTemplates)[number], front: { widthMm?: number; heightMm?: number }) => {
+    const bk = filesForSelections(t, effective, { includeEmpty: true }).find((x) => x.backGuide && x.skinUrl);
+    if (!bk || !bk.widthMm || !bk.heightMm || bk.widthMm !== front.widthMm || bk.heightMm !== front.heightMm) return {};
+    return {
+      back: {
+        url: bk.skinUrl!,
+        wMm: bk.cutCurves?.length ? bk.widthMm : 0,
+        hMm: bk.cutCurves?.length ? bk.heightMm : 0,
+        fill: true,
+        name: (bk.side || bk.fileName || t.name).replace(/\.[^.]+$/, ""),
+        ...(bk.finishedMm ? { finished: bk.finishedMm } : {}),
+        ...(bk.skinOpaque ? { opaque: true } : {}),
+        ...(bk.cutCurves?.length ? { cut: bk.cutCurves } : {}),
+        ...(bk.whiteUnder ? { whiteUnder: true } : {}),
+        ...(bk.cutLineOff ? { cutLineOff: true } : {}),
+        ...(bk.fullFace ? { fullFace: true } : {}),
+      },
+    };
+  };
   const calGuide = (() => {
     if (!calMode) return undefined;
     for (const t of calTemplates) {
@@ -3061,6 +3084,7 @@ export default function ProductDetail({
           ...(sk.whiteUnder ? { whiteUnder: true } : {}),
           ...(sk.cutLineOff ? { cutLineOff: true } : {}),
           ...(sk.fullFace ? { fullFace: true } : {}),
+          ...backGuideOf(t, sk),
         };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
       // ✂️ cut = เส้นไดคัทจริงจากไฟล์ .ai (cutCurves) → .ai/.pdf จากจอออกแบบใช้เส้นนี้แทนกรอบสี่เหลี่ยม (16 ต.ค. 69)
