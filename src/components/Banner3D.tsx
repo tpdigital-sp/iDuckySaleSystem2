@@ -274,14 +274,18 @@ export default function Banner3D({
             const hookElbowB = new THREE.Vector3(cxEye, eyeBot.y - 10, 2);
             rod(new THREE.Vector3(passBot.x, passBot.y - 6, passBot.z), hookElbowB, 2.2, steel);
             rod(hookElbowB, new THREE.Vector3(cxEye, eyeBot.y + 4, 2), 2.2, steel);
-            const ctlBot = passBot; // (ใช้ต่อกับลวดสลิง)
-            // 🧵 ลวดสลิงจากปลายขาหลังไปขาหน้า
-            const rearFoot = new THREE.Vector3(0, 10, -VH * 0.42);
-            rod(rearFoot, new THREE.Vector3(foot.x, 12, foot.z), 1.1, wire);
-            // ลวดเส้นบนจากกลางขาหลังไปกลางขาหน้า (ตามรูป มีเส้นโยงไขว้)
-            const midBack = hubV.clone().lerp(rearFoot, 0.55);
-            const midFront = new THREE.QuadraticBezierCurve3(hubV, ctlBot, foot).getPoint(0.55);
-            rod(midBack, midFront, 1.1, wire);
+            // 🧵 ลวดสลิง (เจ้าของร้านส่งรูป 22 ต.ค. 69 "ก้านเล็กๆ จะเป็นแบบนี้"): สามเหลี่ยมต่อข้าง —
+            //    ตัวหนีบบนขาหลัง (~38% จากพื้น) → ตัวหนีบบนขาหน้า (~28% จากพื้น) · เท้าขาหลัง → ตัวหนีบขาหน้า
+            const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
+            const clampA = hubV.clone().lerp(rearFoot, 0.62);
+            const clampC = hubV.clone().lerp(foot, 0.72);
+            rod(clampA, clampC, 1.1, wire);
+            rod(new THREE.Vector3(rearFoot.x, 10, rearFoot.z), clampC, 1.1, wire);
+            for (const [pt, from, to] of [[clampC, hubV, foot], [clampA, hubV, rearFoot]] as const) {
+              const c = add(new THREE.Mesh(g(new THREE.CylinderGeometry(8, 8, 14, 12)), plastic), false);
+              c.position.copy(pt);
+              c.quaternion.setFromUnitVectors(up, to.clone().sub(from).normalize());
+            }
           }
           // ขาหลัง: ท่อเดียวจากดุมเอียงลงพื้นด้านหลัง + แป้นเท้า
           const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
