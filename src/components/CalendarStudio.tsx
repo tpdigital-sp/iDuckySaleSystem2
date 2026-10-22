@@ -778,6 +778,14 @@ export default function CalendarStudio({
   // เลย์เอาต์ + ช่องรูปหลักที่ลูกค้าปรับขนาดเอง (design.slots) — ชุดเดียวกับตัววาดไฟล์พิมพ์
   const lay = useCallback((p: CalPage) => layPage(fmt, p, design), [fmt, design]);
   const page = useMemo(() => lay(basePage), [lay, basePage]);
+  /**
+   * 🪭 สกรีน 2 ด้าน = โชว์ด้านหน้า/ด้านหลังคู่กันบนเวที (เจ้าของร้านสั่ง 22 ต.ค. 69 "ถ้าเลือกสกรีน 2 ด้าน อยากให้มี artwork 2 ชิ้นแสดงคู่")
+   * ด้านที่กำลังแก้ = แคนวาสหลัก (ซ้าย = หน้า · ขวา = หลัง เสมอ) · อีกด้าน = แผงคู่ วาดด้วยตัววาดเดียวกันแต่ไม่มีเครื่องมือ แตะ = สลับไปแก้ด้านนั้น
+   * ลายเดียว (backSame) ก็โชว์คู่ — ด้านหลังวาดจากข้อมูลด้านหน้า (resolve) · จอแคบ (มือถือ) ไม่มีที่วาง 2 ผืน → ใช้แถบรูปย่อเหมือนเดิม
+   */
+  const pairV = twoSided ? vpages[vcur.j === 0 ? 1 : 0] : undefined;
+  const pairOn = !!pairV && !narrow && stageBox.w >= 520;
+  const pairRef = useRef<HTMLCanvasElement>(null);
   const imgs: (ImgRef | null)[] = useMemo(() => srcs.map((s) => (s.removed ? null : { el: s.el, w: s.w, h: s.h })), [srcs]);
 
   /* ─────────── ✂️ งานไดคัท (รูปแบบ cut@…) — ฟังก์ชันชุดเดียวกับ /admin/diecut?tab=bg (lib/diecut-engine) ─────────── */
@@ -2245,8 +2253,10 @@ export default function CalendarStudio({
 
   /* ─────────── วาด ─────────── */
 
-  const draw = useCallback(() => {
-    const cv = canvasRef.current;
+  /**
+   * วาดหน้าหนึ่งลงผืน — แคนวาสหลัก (live = วาดวงลูกศรของชิ้น/ช่องที่เลือก) หรือแผงคู่อีกด้านของงานสกรีน 2 ด้าน (live=false ไม่มีเครื่องมือ)
+   */
+  const drawInto = useCallback((cv: HTMLCanvasElement | null, basePage: CalPage, page: CalPage, live: boolean) => {
     if (!cv) return;
     const cssW = cv.clientWidth;
     if (!cssW) return;
@@ -2604,9 +2614,9 @@ export default function CalendarStudio({
     ctx.setLineDash([4 * dpr, 3 * dpr]);
     ctx.lineWidth = dpr;
     // เส้นเขตปลอดภัยสีฟ้าเอาออกแล้ว (ผู้ใช้สั่ง 13 ต.ค. 69)
-    const se = elements.find((e) => e.id === sel && e.page === basePage.key);
+    const se = live ? elements.find((e) => e.id === sel && e.page === basePage.key) : undefined;
     // เลือกช่องรูปหลักอยู่ = กรอบฟ้ารอบช่อง (คู่กับแถบเครื่องมือลอยใต้ช่อง)
-    if (!se && slotFocus && page.photo && tool === "photo") {
+    if (live && !se && slotFocus && page.photo && tool === "photo") {
       // 🖼 ช่องรูปหลักที่เลือก แบบ Printbox — กรอบ + จุดจับ 8 จุด (ปรับขนาดช่อง) + วงกลมลูกศรกลางรูป (ลากเลื่อนรูป)
       // กรอบฟ้า + จุดจับวาดเป็น HTML ทับแคนวาส (renderSelOverlay) — ช่องชิดขอบการ์ดจะได้ไม่โดนตัดครึ่งวง
       const r = page.photo;
@@ -2624,7 +2634,8 @@ export default function CalendarStudio({
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fmt, basePage, design, back, imgs, fontTick, sel, slotFocus, tool, page, W, H, guideImg, guide, guideRed, guideFx, guideLines, guideMask, tplCut, gridSel, cutRes, cutView, cutP.strokeColor, mock3d]);
+  }, [fmt, design, back, imgs, fontTick, sel, slotFocus, tool, W, H, guideImg, guide, guideRed, guideFx, guideLines, guideMask, tplCut, gridSel, cutRes, cutView, cutP.strokeColor, mock3d]);
+  const draw = useCallback(() => drawInto(canvasRef.current, basePage, page, true), [drawInto, basePage, page]);
 
   useEffect(() => {
     if (open) draw();
@@ -2648,6 +2659,15 @@ export default function CalendarStudio({
   useEffect(() => {
     if (open) draw();
   }, [stageBox, open, draw]);
+  // 🪭 แผงคู่ (อีกด้านของงาน 2 ด้าน) — วาดตามแบบล่าสุด หน่วงนิดหน่อยตอนลาก/พิมพ์รัว ๆ เหมือนรูปย่อ
+  useEffect(() => {
+    if (!open || !pairOn || !pairV) return;
+    const t = window.setTimeout(() => {
+      const bp = resolve(pairV);
+      drawInto(pairRef.current, bp, lay(bp), false);
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [open, pairOn, pairV, resolve, lay, drawInto, stageBox]);
 
   // รูปย่อทุกหน้า (แถบล่าง) — วาดจากตัววาดจริง หน่วงนิดหน่อยตอนลาก/พิมพ์รัว ๆ
   useEffect(() => {
@@ -5545,6 +5565,56 @@ export default function CalendarStudio({
   if (!open) return null;
 
   const aspect = W / H;
+  /**
+   * ความกว้างสูงสุดของผืนบนเวทีจอกว้าง (px): พอดีเวทีตามจอ จำกัดทั้งกว้างและสูง (เผื่อแถบเครื่องมือลอยใต้รูป ~64px + บรรทัดไกด์)
+   * × STAGE_FIT = ไม่ขยายจนชนขอบเวที เหลือพื้นว่างรอบการ์ด (ผู้ใช้ขอ 16 ต.ค. 69 "โปสการ์ด/ปลอกแก้ว ลดขนาดหน่อย")
+   * 🪭 แผงคู่ (2 ด้าน) = แบ่งครึ่งเวที (เว้นช่องกลาง) · ไม่ต้องเหลือพื้นว่างมากเท่าผืนเดี่ยว
+   */
+  const stageMax =
+    stageBox.w && stageBox.h && stageBox.w >= 520
+      ? pairOn
+        ? Math.max(200, Math.min((stageBox.w - 48 - 40) / 2, (stageBox.h - 130) * aspect) * 0.88)
+        : stageBox.w >= 640
+          ? Math.max(240, Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect) * STAGE_FIT)
+          : null
+      : null;
+  const stageMaxCss = stageMax != null ? `${stageMax}px` : `min(100%, ${aspect * 60}vh)`;
+  /** พื้นผืนบนเวที — ไดคัทเลือกพื้นมืด/สว่าง/ตาหมากรุกได้ · อื่น ๆ ขาว (แผงคู่ใช้ชุดเดียวกัน) */
+  const stageBg = !fmt.diecut
+    ? "bg-white"
+    : cutView.bg === "dark"
+      ? "bg-stone-800"
+      : cutView.bg === "light"
+        ? "bg-white"
+        : "bg-[repeating-conic-gradient(#e7e5e4_0%_25%,#fff_0%_50%)] bg-[length:16px_16px]";
+  /** 🪭 แผงคู่: อีกด้านของงานสกรีน 2 ด้าน — แตะเพื่อสลับไปแก้ด้านนั้น */
+  const renderPairPanel = () => {
+    if (!pairV) return null;
+    const i = vpages.indexOf(pairV);
+    const same = backSame && pairV.base.key === "back";
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          clearSelection();
+          setPageIdx(i);
+        }}
+        title={`แตะเพื่อแก้${pairV.base.name}`}
+        className="group flex w-full min-w-0 shrink flex-col items-center gap-1.5"
+        style={{ maxWidth: stageMaxCss }}
+      >
+        <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-stone-500 ring-1 ring-stone-200 transition group-hover:text-sky-700 group-hover:ring-sky-300">
+          {pairV.base.name}
+          {same ? " · เหมือนด้านหน้า" : ""} · แตะเพื่อแก้
+        </span>
+        <canvas
+          ref={pairRef}
+          className={`block w-full select-none shadow-[0_2px_14px_rgba(28,25,23,.12)] ring-1 ring-stone-300 transition group-hover:ring-2 group-hover:ring-sky-400 ${stageBg}`}
+          style={{ aspectRatio: `${W} / ${H}` }}
+        />
+      </button>
+    );
+  };
   const multi = vpages.length > 1;
   const coverIdx = coverPage ? fmt.pages.indexOf(coverPage) : -1;
   const m = Math.min(W, H);
@@ -6274,32 +6344,23 @@ export default function CalendarStudio({
               void dropOnStage([...e.dataTransfer.files], e.clientX, e.clientY);
             }}
           >
-            <div
-              className="relative w-full"
-              style={{
-                // พอดีเวทีตามจอ: จำกัดทั้งกว้างและสูง (เผื่อแถบเครื่องมือลอยใต้รูป ~64px + บรรทัดไกด์)
-                // × STAGE_FIT = ไม่ขยายจนชนขอบเวที เหลือพื้นว่างรอบการ์ด (ผู้ใช้ขอ 16 ต.ค. 69 "โปสการ์ด/ปลอกแก้ว ลดขนาดหน่อย")
-                maxWidth:
-                  stageBox.w && stageBox.h && stageBox.w >= 640
-                    ? `${Math.max(240, Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect) * STAGE_FIT)}px`
-                    : `min(100%, ${aspect * 60}vh)`,
-              }}
-            >
+            {/* 🪭 งานสกรีน 2 ด้าน (จอกว้าง) = แผงคู่: ซ้าย ด้านหน้า · ขวา ด้านหลัง — ด้านที่กำลังแก้คือแคนวาสหลัก */}
+            <div className={pairOn ? "flex w-full items-start justify-center gap-5 sm:gap-8" : "contents"}>
+            {pairOn && vcur.j === 1 && renderPairPanel()}
+            <div className={pairOn ? "flex w-full min-w-0 shrink flex-col items-center gap-1.5" : "contents"} style={pairOn ? { maxWidth: stageMaxCss } : undefined}>
+            {pairOn && (
+              <span data-stage-blank className="rounded-full bg-sky-600 px-2.5 py-0.5 text-[11px] font-extrabold text-white shadow-sm">
+                ✏️ {vcur.base.name} · กำลังแก้
+              </span>
+            )}
+            <div className="relative w-full" style={{ maxWidth: stageMaxCss }}>
               <canvas
                 ref={canvasRef}
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerUp}
-                className={`block w-full touch-none select-none shadow-[0_2px_14px_rgba(28,25,23,.18)] ${
-                  !fmt.diecut
-                    ? "bg-white"
-                    : cutView.bg === "dark"
-                      ? "bg-stone-800"
-                      : cutView.bg === "light"
-                        ? "bg-white"
-                        : "bg-[repeating-conic-gradient(#e7e5e4_0%_25%,#fff_0%_50%)] bg-[length:16px_16px]"
-                }`}
+                className={`block w-full touch-none select-none shadow-[0_2px_14px_rgba(28,25,23,.18)] ${stageBg}${pairOn ? " ring-[3px] ring-sky-400" : ""}`}
                 style={{ aspectRatio: `${W} / ${H}` }}
               />
               {/* ✂️ แก้เฉพาะจุด: จิ้มบนภาพ ＋ = เส้นมน/ถมร่อง · − = เส้นวิ่งชิดตามซอกงาน */}
@@ -6364,6 +6425,9 @@ export default function CalendarStudio({
                   void addPhoto(f);
                 }}
               />
+            </div>
+            </div>
+            {pairOn && vcur.j === 0 && renderPairPanel()}
             </div>
             {tool === "calendar" && renderCalendarPopup()}
             {tool === "events" && renderEventsPopup()}
