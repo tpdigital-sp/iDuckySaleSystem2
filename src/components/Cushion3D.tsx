@@ -94,7 +94,7 @@ export default function Cushion3D({
         const k = sheet.width / W;
         // ขนาดสำเร็จ: จากตัวเลือก · ไม่รู้ = ครึ่งผืน - เผื่อเย็บ (ไม่เกินความสูงผืน)
         const S = Math.min(H - 6, mock.sizeMm > 0 ? Math.min(mock.sizeMm, W / 2 - 4) : W / 2 - 36);
-        const D = S * 0.34; // ความหนาตอนยัดไส้
+        const D = S * 0.4; // ความหนาตอนยัดไส้ (เพิ่มจาก 0.34 · 22 ต.ค. 69 "ขอบด้านข้างดูแบนไป")
         // 🖼 ผิวหน้า = กึ่งกลางครึ่งซ้าย · ผิวหลัง = กึ่งกลางครึ่งขวา (ผืน "Cushion Zip": หน้า | หลัง | แถบซิป)
         const frontCv = cropCanvas(sheet, k, W / 4 - S / 2, H / 2 - S / 2, S, S);
         const backCv = cropCanvas(sheet, k, (3 * W) / 4 - S / 2, H / 2 - S / 2, S, S);
@@ -157,7 +157,8 @@ export default function Cushion3D({
         //    sheen สีขาวฉาบทับทั้งผืน + bump ลายทอ (เกรนสุ่มละเอียด = normal กระจาย เฉลี่ยแล้วเป็นเทาทับลาย) ทำให้ซีด → ถอดทั้งคู่
         //    แสง/วัสดุกลับเท่ารอบแรก (ผ้าด้าน Standard) · ความเป็นผ้ามาจากทรงโป่ง ขอบเว้า รอยย่นของรูปทรงแทน
         const fabric = (map: InstanceType<typeof THREE.CanvasTexture>) =>
-          m(new THREE.MeshStandardMaterial({ map, roughness: 0.9, metalness: 0, envMapIntensity: 0.3 }));
+          // DoubleSide: ถ้ามองเฉียงเข้าตะเข็บ เห็นด้านในผ้า (สีลาย) แทนพื้นหลังขาว
+          m(new THREE.MeshStandardMaterial({ map, roughness: 0.9, metalness: 0, envMapIntensity: 0.3, side: THREE.DoubleSide }));
 
         /**
          * แผ่นดัดโป่งแบบหมอนยัดไส้ (ปรับตามรูปสินค้าจริง · เจ้าของร้านขอ 22 ต.ค. 69 "ทำให้ทรงคล้ายของจริงมากกว่านี้"):
@@ -179,14 +180,19 @@ export default function Cushion3D({
             const inset = 0.045;
             const x = u * h * (1 - inset * (1 - av * av) * Math.pow(au, 2.2));
             const y = v * h * (1 - inset * (1 - au * au) * Math.pow(av, 2.2));
-            const e = Math.max(0, (1 - Math.pow(au, 2.7)) * (1 - Math.pow(av, 2.7)));
-            const corner = 1 - 0.5 * Math.pow(au * av, 1.6);
-            let z = (D / 2) * Math.pow(e, 0.62) * corner;
+            // ขอบข้างพอง (เจ้าของร้านขอ 22 ต.ค. 69 "ขอบด้านข้างดูแบนไป"): ไส้ดันเต็มเกือบถึงตะเข็บแล้วโค้งลงชัน (กำลัง 0.4 ≈ ราก = แนวตั้งที่ตะเข็บ)
+            //   เดิม (1-|u|^2.7)^0.62 ลดลงช้า ๆ → มองข้างแหลมเหมือนใบไม้ · มุมยังถูกตะเข็บดึงให้บางกว่า
+            const e = Math.max(0, (1 - Math.pow(au, 3.6)) * (1 - Math.pow(av, 3.6)));
+            const corner = 1 - 0.45 * Math.pow(au * av, 2.2);
+            let z = (D / 2) * Math.pow(e, 0.4) * corner;
             // รอยย่น: แรงขึ้นเมื่อเข้าใกล้ขอบ (1-e) · สองคลื่นซ้อนทิศต่างกัน + คลื่นเฉียงจากมุม
             const w1 = Math.sin(u * 9.3 + v * 2.1) * Math.sin(v * 7.7 - u * 1.4);
             const w2 = Math.sin((u + v) * 11.0) * 0.5;
             const w3 = Math.sin((au - av) * 13.0 + 1.3) * Math.pow(au * av, 1.2);
-            z += S * 0.0075 * (0.6 + 0.8 * (1 - e)) * (w1 + w2) + S * 0.012 * w3;
+            // ✂️ ขอบต้องชนกันสนิทที่ตะเข็บ (เจ้าของร้านทัก 22 ต.ค. 69 "ขอบทุกด้านไม่ควรมีสีขาว"): รอยย่นเคยยกขอบแผ่นหน้า/หลังห่างกัน ~8 มม.
+            //    เห็นพื้นหลังขาวลอดช่อง → รอยย่นจางลงเป็น 0 ตอนถึงขอบ (seamFade) · ขอบทุกจุดจึงอยู่ที่ z = 0 ทั้งสองแผ่น
+            const seamFade = 1 - Math.pow(Math.max(au, av), 10);
+            z += (S * 0.0075 * (0.6 + 0.8 * (1 - e)) * (w1 + w2) + S * 0.012 * w3) * seamFade;
             pos.setXYZ(i, x, y, Math.max(0, z));
           }
           pos.needsUpdate = true;
