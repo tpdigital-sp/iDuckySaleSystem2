@@ -218,8 +218,9 @@ export default function Banner3D({
            */
           const EYE = 27;
           const sgn = [-1, 1] as const;
-          const hubY = LIFT + VH * 0.4;
-          const hubZ = -75;
+          // ดุมต่ำกว่ากลางป้าย ~44% จากพื้น (วัดจากรูปที่ 3 ที่เจ้าของร้านส่ง 22 ต.ค. 69) · อยู่หลังป้าย 8 ซม.
+          const hubY = LIFT + VH * 0.44 - LIFT * 0.44;
+          const hubZ = -80;
           const hubV = new THREE.Vector3(0, hubY, hubZ);
           const up = new THREE.Vector3(0, 1, 0);
           const tube = (curve: InstanceType<typeof THREE.QuadraticBezierCurve3> | InstanceType<typeof THREE.CatmullRomCurve3>, r: number, mat: InstanceType<typeof THREE.MeshStandardMaterial>, segs = 28) =>
@@ -240,11 +241,12 @@ export default function Banner3D({
           const ringGeo = g(new THREE.TorusGeometry(7, 2.2, 10, 28));
 
           // ดุมกลาง: แผ่นพลาสติกดำทรงกล่องมุมมน + หัวกลมรับก้าน
-          const hub = add(new THREE.Mesh(g(new THREE.BoxGeometry(62, 74, 36)), plastic));
+          // body plate: แผ่นพลาสติกดำทรงถ้วยคว่ำ (กว้าง 7 สูง 9 ลึก 3.5 ซม.) + ปีกบนรับก้านบน 2 ก้าน
+          const hub = add(new THREE.Mesh(g(new THREE.BoxGeometry(70, 88, 34)), plastic));
           hub.position.copy(hubV);
-          const hubDome = add(new THREE.Mesh(g(new THREE.SphereGeometry(26, 20, 14)), plastic), false);
-          hubDome.position.set(0, hubY + 8, hubZ - 8);
-          hubDome.scale.set(1.2, 1, 0.8);
+          const hubDome = add(new THREE.Mesh(g(new THREE.SphereGeometry(30, 20, 14)), plastic), false);
+          hubDome.position.set(0, hubY + 30, hubZ - 6);
+          hubDome.scale.set(1.25, 0.6, 0.75);
 
           for (const sx of sgn) {
             const cxEye = sx * (VW / 2 - EYE);
@@ -274,17 +276,20 @@ export default function Banner3D({
             const hookElbowB = new THREE.Vector3(cxEye, eyeBot.y - 10, 2);
             rod(new THREE.Vector3(passBot.x, passBot.y - 6, passBot.z), hookElbowB, 2.2, steel);
             rod(hookElbowB, new THREE.Vector3(cxEye, eyeBot.y + 4, 2), 2.2, steel);
-            // 🧵 ลวดสลิง (เจ้าของร้านส่งรูป 22 ต.ค. 69 "ก้านเล็กๆ จะเป็นแบบนี้"): สามเหลี่ยมต่อข้าง —
-            //    ตัวหนีบบนขาหลัง (~38% จากพื้น) → ตัวหนีบบนขาหน้า (~28% จากพื้น) · เท้าขาหลัง → ตัวหนีบขาหน้า
+            // 🧵 ลวดสลิง "2 เส้น" ตามรูปร้าน (เจ้าของร้านสั่ง 22 ต.ค. 69 "ลวดสลิง 4 เส้นนั้นเอาออก ฉันต้องการแบบภาพที่ 2 มีแค่ 2 เส้น"):
+            //    เส้น 1: ตัวหนีบบนขาหลัง (~38% จากพื้น) → เท้าขาหน้า "ซ้าย" · เส้น 2: เท้าขาหลัง → ตัวหนีบบนขาหน้า "ขวา" (~28% จากพื้น)
             const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
             const clampA = hubV.clone().lerp(rearFoot, 0.62);
-            const clampC = hubV.clone().lerp(foot, 0.72);
-            rod(clampA, clampC, 1.1, wire);
-            rod(new THREE.Vector3(rearFoot.x, 10, rearFoot.z), clampC, 1.1, wire);
-            for (const [pt, from, to] of [[clampC, hubV, foot], [clampA, hubV, rearFoot]] as const) {
+            if (sx < 0) rod(clampA, new THREE.Vector3(foot.x, 14, foot.z), 1.1, wire);
+            else {
+              const clampC = hubV.clone().lerp(foot, 0.72);
+              rod(new THREE.Vector3(rearFoot.x, 10, rearFoot.z), clampC, 1.1, wire);
               const c = add(new THREE.Mesh(g(new THREE.CylinderGeometry(8, 8, 14, 12)), plastic), false);
-              c.position.copy(pt);
-              c.quaternion.setFromUnitVectors(up, to.clone().sub(from).normalize());
+              c.position.copy(clampC);
+              c.quaternion.setFromUnitVectors(up, foot.clone().sub(hubV).normalize());
+              const a = add(new THREE.Mesh(g(new THREE.CylinderGeometry(9, 9, 14, 12)), plastic), false);
+              a.position.copy(clampA);
+              a.quaternion.setFromUnitVectors(up, rearFoot.clone().sub(hubV).normalize());
             }
           }
           // ขาหลัง: ท่อเดียวจากดุมเอียงลงพื้นด้านหลัง + แป้นเท้า
