@@ -2,6 +2,7 @@ import { giftBumpLabel, giftBumpPending } from "./gifts";
 import type { OrderGift } from "./gifts";
 import { isPickupOrder, shipFollowsItems } from "./ship-label";
 import type { ClaimFault } from "./claims";
+import { PLACEMENT_SPEC_LABEL } from "./design-templates";
 
 export type OrderStatus =
   | "รอชำระเงิน"
@@ -2518,6 +2519,17 @@ export function artworkSide(it: Pick<OrderItem, "artworkBackUrls">, url: string)
 export function proofsOf(item: OrderItem): Proof[] {
   if (item.proofs?.length) return item.proofs;
   return item.proofUrl ? [{ url: item.proofUrl, at: item.proofUpdatedAt ?? "" }] : [];
+}
+
+/**
+ * 🎨 รายการนี้ลูกค้า "ออกแบบเองบนเว็บ" (จอวางลายบนเทมเพลต) — กราฟฟิกไม่ต้องทำแบบใหม่ ใช้ไฟล์ที่ลูกค้าวางมาได้เลย
+ * รู้จาก (1) บรรทัดพิกัดทีมผลิตที่จอออกแบบเขียนลง sel หรือ (2) โน้ตแบบที่ระบบใส่ให้ตอนอนุมัติอัตโนมัติ (ใบเก่าที่ sel ถูกแก้ทีหลัง)
+ * ใช้ติดป้ายหัวการ์ดรายการหน้าออเดอร์ + ใบงาน (เจ้าของร้านขอ 22 ต.ค. 69 "ให้กราฟฟิกทราบ")
+ */
+export function selfDesigned(item: Pick<OrderItem, "sel" | "proofs" | "proofUrl" | "proofUpdatedAt">): boolean {
+  if ((item.sel?.[PLACEMENT_SPEC_LABEL] ?? "").trim()) return true;
+  const proofs = proofsOf(item as OrderItem);
+  return proofs.length > 0 && proofs.every((p) => /ลูกค้าจัดวางเองบนเทมเพลต/.test(p.note ?? ""));
 }
 
 /** รายการนี้ติ๊ก "ไม่ต้องทำแบบ" ไว้ (ยอดเพิ่ม/ค่าบริการ) — ดู OrderItem.noProof */

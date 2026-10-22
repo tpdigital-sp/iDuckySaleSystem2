@@ -129,6 +129,7 @@ import {
   arrivalOverdue,
   PROOF_STYLES,
   proofsOf,
+  selfDesigned,
   proofPurged,
   addedAfterProofIdx,
   STATUS_STYLES,
@@ -6826,6 +6827,7 @@ export default function AdminOrderDetailPage() {
                   </div>
                 );
               const lateAdded = lateAddedSet.has(i);
+              const webDesigned = selfDesigned(it);
               return (
                 <div
                   key={`${it.productId}-${i}-${itemsRev}`}
@@ -6856,6 +6858,15 @@ export default function AdminOrderDetailPage() {
                         className="shrink-0 whitespace-nowrap rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm"
                       >
                         ➕ สั่งเพิ่มหลังทำแบบ · {shortTime(it.addedAt!)}
+                      </span>
+                    )}
+                    {/* 🎨 ลูกค้าออกแบบเองบนเว็บ — กราฟฟิกเห็นตั้งแต่หัวการ์ด ไม่ต้องเลื่อนไปอ่านกล่องแบบ (เจ้าของร้านขอ 22 ต.ค. 69) */}
+                    {webDesigned && (
+                      <span
+                        title="ลูกค้าจัดวางลายเองบนเทมเพลตในจอออกแบบของเว็บ · ระบบใส่แบบให้และอนุมัติอัตโนมัติ · กราฟฟิกไม่ต้องทำแบบใหม่ ใช้ไฟล์ .ai/.pdf ในกล่อง ลายจากลูกค้า ได้เลย"
+                        className="shrink-0 whitespace-nowrap rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-extrabold text-orange-700 ring-1 ring-orange-300"
+                      >
+                        🎨 ลูกค้าออกแบบเองบนเว็บ
                       </span>
                     )}
                     {addOnOf != null && (

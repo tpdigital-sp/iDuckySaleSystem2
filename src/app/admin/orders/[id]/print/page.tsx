@@ -9,7 +9,7 @@ import Barcode from "@/components/Barcode";
 import ThaiPostTimeline, { type ThpEventView } from "@/components/ThaiPostTimeline";
 import { artQtyOf, formatPrice, productLineOrder, rateSpecOfLine } from "@/lib/products";
 import { shopProductIdByName } from "@/lib/special-product-image";
-import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptInstallmentLabel, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, TAX_INVOICE_LOG_EMAIL, TAX_INVOICE_LOG_BOX, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofPurged, proofUnit, withLog, type Order } from "@/lib/admin-data";
+import { addOnDisplayName, awaitingReship, adminDiscountAmount, depositSampleRun, isReprint, MOCK_ORDERS, labelShipTo, nextPlannedRound, orderPrintCount, pendingSampleRound, printBlockers, proofBlockerLabel, receiptsPending, receiptInstallmentLabel, receiptsShippedRound, sampleShippedRound, nextRoundExtras, taxInvoiceDocNos, reprintUnlock, shipToText, sampleLabelOk, noteHasText, orderEarlyPayAmount, TAX_INVOICE_LOG_EMAIL, TAX_INVOICE_LOG_BOX, orderFullyPaid, orderHasTaxInvoice, orderItemDiscounts, orderNeedsTaxInvoiceInBox, taxInvoiceCountLabel, taxInvoiceDocsOf, orderNetTransfer, orderTotal, orderVatAmount, orderWhtAmount, proofKey, proofShipStates, proofsOf, proofPurged, proofUnit, selfDesigned, withLog, type Order } from "@/lib/admin-data";
 import { politeName } from "@/lib/customer-name";
 
 /** yyyy-mm-dd → dd/mm/yyyy พ.ศ. (เช่น 2025-09-03 → 03/09/2568) */
@@ -1023,6 +1023,12 @@ function OrderDocs({
                           </p>
                         )}
                         <p className="font-bold">{addOnDisplayName(it)}</p>
+                        {/* 🎨 ลูกค้าออกแบบเองบนเว็บ — กราฟฟิกต้องรู้ว่าไม่ต้องทำแบบใหม่ ใช้ไฟล์ที่ลูกค้าวางมา (เจ้าของร้านขอ 22 ต.ค. 69) */}
+                        {selfDesigned(it) && (
+                          <p className="mt-1 inline-block rounded border-2 border-slate-900 px-2 py-0.5 text-sm font-extrabold text-slate-900">
+                            🎨 ลูกค้าออกแบบเองบนเว็บ — ไม่ต้องทำแบบใหม่
+                          </p>
+                        )}
                         {/* ♻️ ป้ายใช้ไฟล์เก่า และ 🎨 ภาพลายจากลูกค้า ไม่ขึ้นใบงานแล้ว (เจ้าของร้านสั่ง 11 ก.ย. 69) —
                             รูปแบบงานคอลัมน์ซ้ายคือของที่ต้องเช็ค · บรรทัด "ใช้ไฟล์เก่า:" ยังอยู่ในสเปคตามเดิม */}
                         {it.sampleRequired && (sampleShippedRound(order, i) !== null ? (
