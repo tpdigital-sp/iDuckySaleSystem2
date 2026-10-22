@@ -8,7 +8,9 @@
  * สินค้าทั้ง 3 ไม่มีกลุ่ม "ตำแหน่งงาน" (ข้อความติดมาจากผ้าขนหนู) และไม่มีกลุ่มที่แยกไฟล์ → ผูกชุดตรง ๆ ไม่ตั้ง optionLabel/when (แบบป้ายขาตั้ง)
  *   candy-bag (CANDY BAG)        ← tpl-k83wfdovg "Candy bag" · ⚠️ PDF ที่ฝังใน .ai เป็นเวอร์ชันเก่า (หน้า 112.5×95 · กรอบ 88×80) ไม่ตรงงานจริง —
  *     สกิน F-01 (ส่งออกจาก Illustrator 300 dpi = 1335×1182 px) = อาร์ตบอร์ดจริง 113.03×100.08 มม. → จอยืดสกินผิดสัดส่วน เส้นตัดกับสกินเหลื่อม
- *     → ยึดสกิน: widthMm/heightMm = 113.03×100.08 · กรอบพื้นที่สกรีน x 13.80–99.12 y 14.14–94.95 · รูร้อยโซ่ ศูนย์กลาง (93.43, 91.27) Ø5.1 (วัดเส้นแดงในสกิน)
+ *     → ยึดสกิน: widthMm/heightMm = 113.03×100.08 · รูร้อยโซ่ ศูนย์กลาง (93.43, 91.27) Ø5.1 (วัดเส้นแดงในสกิน)
+ *     เส้นตัด/รองขาว = "ขอบนอกสุดของถุง" (หัวถุง + ขอบหยักสองข้าง) ลากจากสกินด้วย scripts/py/skin-outline-cut.py
+ *     (เจ้าของร้านทัก 22 ต.ค. 69 "มันสามารถสกรีนได้เต็มชิ้นงาน" — รอบแรกใช้กรอบในเส้นแดง 85×81 ลายเลยไม่เต็มถุง)
  *   passport-case (PASSPORT CASE) ← tpl-zml0082mh "Passport" 221×149 · เลเยอร์ "นอก" กรอบมุมมนแดง 216×144 @2.5 = ขอบปกกาง (สัน 7.4 มม. ไม่ใช่เส้นตัด)
  *   hologram-bag (กระเป๋าโฮโลแกรม) ← tpl-ewsr369y6 "ZipLock" 210×153 · กรอบมุมมน "ดำ" 204×147 @3 = ขอบถุง (เลเยอร์ "เอาออก" = รูปโฮโลแกรมตัวอย่าง)
  * เส้นตัดดึงจากไฟล์ .ai ด้วย scripts/py/red-outer-cut.py (ธงต่อไฟล์ด้านล่าง) → TemplateFile.cutCurves + whiteUnder: true
@@ -24,14 +26,14 @@ import type { Product } from "../src/lib/products";
 import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const WRITE = process.argv.includes("--write");
-type SkinOverride = { w: number; h: number; rect: [number, number, number, number]; hole: { cx: number; cy: number; r: number } };
+type SkinOverride = { w: number; h: number; hole: { cx: number; cy: number; r: number } };
 const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; skin?: SkinOverride }[] = [
   {
     product: "candy-bag",
     tpl: "tpl-k83wfdovg",
     flags: [],
     holes: 1,
-    skin: { w: 113.03, h: 100.08, rect: [13.8, 14.14, 99.12, 94.95], hole: { cx: 93.43, cy: 91.27, r: 2.55 } },
+    skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 } },
   },
   { product: "passport-case", tpl: "tpl-zml0082mh", flags: [], holes: 0 },
   { product: "hologram-bag", tpl: "tpl-ewsr369y6", flags: ["--any-color"], holes: 0 },
@@ -56,14 +58,8 @@ const OUT = `${process.env.TMPDIR ?? "/tmp"}/knickknack-cut/`;
 mkdirSync(OUT, { recursive: true });
 const flat = (cs?: TemplateCurve[]) => JSON.stringify((cs ?? []).map((c) => [c.s, c.g]));
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
-/** เส้นตัดจากค่าที่วัดในสกิน: สี่เหลี่ยม (เส้นตรงเป็นเบซิเยร์) + วงกลม 4 เบซิเยร์ (kappa 0.5523) */
-function skinCurves(o: SkinOverride): TemplateCurve[] {
-  const [x0, y0, x1, y1] = o.rect;
-  const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-  const g = c.map((a, i) => {
-    const b = c[(i + 1) % 4];
-    return [a[0] + (b[0] - a[0]) / 3, a[1] + (b[1] - a[1]) / 3, a[0] + (2 * (b[0] - a[0])) / 3, a[1] + (2 * (b[1] - a[1])) / 3, b[0], b[1]].map(r3);
-  }) as TemplateCurve["g"];
+/** รูกลมจากค่าที่วัดในสกิน (4 เบซิเยร์ kappa 0.5523) */
+function holeCurve(o: SkinOverride): TemplateCurve {
   const { cx, cy, r } = o.hole;
   const k = 0.5523 * r;
   const hole: TemplateCurve = {
@@ -75,8 +71,9 @@ function skinCurves(o: SkinOverride): TemplateCurve[] {
       [cx + k, cy - r, cx + r, cy - k, cx + r, cy],
     ].map((s) => s.map(r3)) as TemplateCurve["g"],
   };
-  return [{ s: [x0, y0], g }, hole];
+  return hole;
 }
+const PY_OUTLINE = new URL("./py/skin-outline-cut.py", import.meta.url).pathname;
 
 type Row = { id: string; data: DesignTemplate };
 type Plan = { pair: (typeof PAIRS)[number]; row: Row; nextTpl: DesignTemplate | null; product: Product; prodChanged: boolean; ids: string[]; studio: NonNullable<Product["calendarStudio"]> };
@@ -94,7 +91,13 @@ for (const pair of PAIRS) {
   let res: Res;
   if (pair.skin) {
     const o = pair.skin;
-    res = { w: o.w, h: o.h, curves: skinCurves(o), box: [o.rect[0], o.rect[1], r3(o.rect[2] - o.rect[0]), r3(o.rect[3] - o.rect[1])], holes: 1 };
+    if (!f0.skinUrl) die(`${t.name}: ไม่มีสกินให้ลากขอบ`);
+    const local = `${OUT}${t.id}-skin.png`;
+    writeFileSync(local, Buffer.from(await (await fetch(f0.skinUrl!)).arrayBuffer()));
+    const out = JSON.parse(execFileSync(PYTHON, ["-I", PY_OUTLINE, local], { encoding: "utf8" })) as Res;
+    if (out.error) die(`${t.name}: ${out.error}`);
+    if (Math.abs(out.w - o.w) > 0.1 || Math.abs(out.h - o.h) > 0.1) die(`${t.name}: สกิน ${out.w}×${out.h} ≠ ${o.w}×${o.h} (สกินเปลี่ยน — วัดรูใหม่)`);
+    res = { ...out, curves: [...out.curves, holeCurve(o)], holes: 1 };
   } else {
     const local = `${OUT}${t.id}.ai`;
     writeFileSync(local, Buffer.from(await (await fetch(f0.fileUrl!)).arrayBuffer()));
