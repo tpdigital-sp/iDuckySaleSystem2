@@ -189,7 +189,8 @@ export default function Bag3D({
         scene.environment = envTex;
         scene.environmentIntensity = 0.75;
 
-        const camera = new THREE.PerspectiveCamera(28, 1, 1, 5000);
+        // near 10 (เดิม 1) — ความละเอียดความลึกพอแยกชั้นบาง ๆ (ฟันซิป/แถบซิป) ไม่ให้สีกระพริบเป็นหย่อม
+        const camera = new THREE.PerspectiveCamera(28, 1, 10, 5000);
         const RING_EXTRA = 22; // ห่วงดึงซิปตั้งเหนือถุง
         const BASE_DIST = Math.max(TOT + RING_EXTRA + LIFT, BW * 0.85) * 3.1;
 
@@ -360,12 +361,14 @@ export default function Bag3D({
           t.colorSpace = THREE.SRGBColorSpace;
           t.wrapS = THREE.RepeatWrapping;
           t.repeat.set(BW / 3.2, 1); // 4 ริ้วต่อช่วงลาย 64px → ริ้วละ 0.8 มม.
+          t.anisotropy = renderer.capabilities.getMaxAnisotropy(); // ริ้วถี่มองเฉียงไม่เป็นลายคลื่น
           mats.push(t);
           const teethMat = m(new THREE.MeshStandardMaterial({ map: t, metalness: black ? 0.65 : 0.1, roughness: 0.35, envMapIntensity: 1.2 }));
           const TH = 1.8;
           for (const side of [1, -1] as const) {
             const te = add(new THREE.Mesh(g(new THREE.PlaneGeometry(BW - 1, TH)), teethMat), false);
-            te.position.set(0, BH + TH / 2 + 0.15, side * (ZT + 0.32));
+            // ห่างผิวแถบซิป (ZT + ขอบมน 0.3) อีก 0.35 มม. — เดิมห่าง 0.02 มม. ทับกันจนสีฟัน/สีแถบซิปสลับเป็นหย่อม (เจ้าของร้านทัก 22 ต.ค. 69 "ทำไมสีไม่เสมอกัน")
+            te.position.set(0, BH + TH / 2 + 0.15, side * (ZT + 0.65));
             if (side === -1) te.rotation.y = Math.PI;
           }
         }
