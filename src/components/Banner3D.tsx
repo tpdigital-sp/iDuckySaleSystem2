@@ -178,7 +178,6 @@ export default function Banner3D({
         const plastic = m(new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: 0.55, metalness: 0.1, envMapIntensity: 0.5 }));
         const steel = m(new THREE.MeshStandardMaterial({ color: 0x9a9da3, roughness: 0.35, metalness: 0.85, envMapIntensity: 1.0 }));
         const rubber = m(new THREE.MeshStandardMaterial({ color: 0x202124, roughness: 0.9, metalness: 0, envMapIntensity: 0.2 }));
-        const wire = m(new THREE.MeshStandardMaterial({ color: 0x6b6e74, roughness: 0.4, metalness: 0.8, envMapIntensity: 0.8 }));
 
         /**
          * ผืนป้าย: PlaneGeometry กว้าง VW สูง VH · X-Stand ดัดเว้าเข้าหาโครงเล็กน้อย (แรงดึงจากตาไก่ 4 มุม ทำให้กลางผืนโก่งไปข้างหลัง)
@@ -213,7 +212,7 @@ export default function Banner3D({
            * · ดุมกลาง (body plate) พลาสติกดำ อยู่หลังป้าย ต่ำกว่ากึ่งกลาง (~40% จากขอบล่าง)
            * · ก้านไฟเบอร์กลาส 4 ก้านจากดุมไปมุมป้าย — ก้านบน 2 ก้าน "โค้งออกนอก/ถอยหลัง" (ก้านยาวกว่าระยะตรง ถูกดัด)
            *   ปลายก้านมีตะขอ (top hanger) เกี่ยวตาไก่ · ก้านล่าง 2 ก้านยาวเลยมุมล่างลงไปยันพื้นเป็นขาหน้า (foot hanger มีตะขอเกี่ยวตาไก่ล่าง)
-           * · ขาหลัง 1 ขาจากดุมเอียงลงพื้นด้านหลัง + ลวดสลิงโยงปลายขาหลังกับขาหน้า 2 ข้าง (wire) กันกาง
+           * · ขาหลัง 1 ขาจากดุมเอียงลงพื้นด้านหลัง (ไม่วาดลวดสลิง — เจ้าของร้านสั่งถอด 22 ต.ค. 69)
            * · ป้ายแขวนด้วยตาไก่ 4 มุม ขอบล่างลอยจากพื้น ~9 ซม.
            */
           const EYE = 27;
@@ -276,22 +275,7 @@ export default function Banner3D({
             const hookElbowB = new THREE.Vector3(cxEye, eyeBot.y - 10, 2);
             rod(new THREE.Vector3(passBot.x, passBot.y - 6, passBot.z), hookElbowB, 2.2, steel);
             rod(hookElbowB, new THREE.Vector3(cxEye, eyeBot.y + 4, 2), 2.2, steel);
-            // 🧵 ลวดสลิง "2 เส้น" ตามรูปร้าน (เจ้าของร้านสั่ง 22 ต.ค. 69 "ลวดสลิง 4 เส้นนั้นเอาออก ฉันต้องการแบบภาพที่ 2 มีแค่ 2 เส้น"):
-            //    ตัวหนีบอยู่ "สูง" ใกล้ดุม (วัดจากรูปร้าน + รูป Google 22 ต.ค. 69 "ปรับตำแหน่งลวดหน่อย"): ขาหลัง 28% จากดุม · ขาหน้าขวา 38% จากดุม
-            //    เส้น 1: ตัวหนีบขาหลัง → เท้าขาหน้า "ซ้าย" · เส้น 2: เท้าขาหลัง → ตัวหนีบขาหน้า "ขวา" → ลวดเป็นเส้นทแยงยาวไขว้กัน (รอบก่อนวางตัวหนีบใกล้พื้น ลวดแบนราบ)
-            const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
-            const clampA = hubV.clone().lerp(rearFoot, 0.28);
-            if (sx < 0) rod(clampA, new THREE.Vector3(foot.x, 14, foot.z), 1.1, wire);
-            else {
-              const clampC = hubV.clone().lerp(foot, 0.38);
-              rod(new THREE.Vector3(rearFoot.x, 10, rearFoot.z), clampC, 1.1, wire);
-              const c = add(new THREE.Mesh(g(new THREE.CylinderGeometry(8, 8, 14, 12)), plastic), false);
-              c.position.copy(clampC);
-              c.quaternion.setFromUnitVectors(up, foot.clone().sub(hubV).normalize());
-              const a = add(new THREE.Mesh(g(new THREE.CylinderGeometry(9, 9, 14, 12)), plastic), false);
-              a.position.copy(clampA);
-              a.quaternion.setFromUnitVectors(up, rearFoot.clone().sub(hubV).normalize());
-            }
+            // 🧵 ลวดสลิง/ตัวหนีบ: ถอดออกทั้งหมด (เจ้าของร้านสั่ง 22 ต.ค. 69 "เอาลวดสลิงออกไปเลย" หลังปรับตำแหน่ง 3 รอบ) — โครงเหลือ ดุม + ก้าน 4 + ขาหลัง
           }
           // ขาหลัง: ท่อเดียวจากดุมเอียงลงพื้นด้านหลัง + แป้นเท้า
           const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
