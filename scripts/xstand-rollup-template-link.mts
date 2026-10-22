@@ -13,6 +13,7 @@
  *   → finishedMm = 600×1600 ทั้งคู่ (หัวจอบอก "งานออกแบบ 60×160 ซม." · roll up ไม่งั้นขึ้น 60×180)
  *   → roll up ตั้ง bleedMm = 0 (อาร์ตบอร์ดรวมส่วนเผื่อมาแล้ว · ไม่งั้น templateFrame ถอดชื่อ 60x160 จาก 600×1800 ไม่ได้ (เผื่อ 100 > 25) ตกไปตัดตก 3 มม.)
  * สินค้า: templateIds = [ชุดของตัวเอง] · calendarStudio = { yearLabel: "", formats: [] } (ขนาดจอจากอาร์ตบอร์ดเทมเพลต tpl@) · ถอด studioOff
+ * ⚠️ 22 ต.ค. 69 รอบ 2: เพิ่มกลุ่ม "ขนาด" + ผูกชุดตามขนาดแล้วด้วย scripts/xstand-rollup-size-option.mts → สคริปต์นี้จะหยุดเอง (สินค้ามีกลุ่มตัวเลือก/ชุดมี choice) ใช้ตัวนั้นแทน
  */
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
