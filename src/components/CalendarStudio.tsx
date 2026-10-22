@@ -5672,12 +5672,18 @@ export default function CalendarStudio({
    * × STAGE_FIT = ไม่ขยายจนชนขอบเวที เหลือพื้นว่างรอบการ์ด (ผู้ใช้ขอ 16 ต.ค. 69 "โปสการ์ด/ปลอกแก้ว ลดขนาดหน่อย")
    * 🪭 แผงคู่ (2 ด้าน) = แบ่งครึ่งเวที (เว้นช่องกลาง) · ไม่ต้องเหลือพื้นว่างมากเท่าผืนเดี่ยว
    */
+  /**
+   * 🪧 ขั้นต่ำความกว้างผืน (240 / แผงคู่ 200 px) ต้องไม่ทำให้ผืน "สูงกว่าเวที" — ผืนสูงชะลูด (ป้ายขาตั้ง 60×160 ซม. aspect 0.375)
+   * กว้าง 240 = สูง 640 ล้นเวที 434 ทั้งบน-ล่าง (เจ้าของร้านแจ้ง 22 ต.ค. 69 "มันล้นหน้าจอเกินไป") → ขั้นต่ำลดตามความสูงเวที (เหลือ 60px ให้แถบเครื่องมือ) ไม่ต่ำกว่า 120
+   * ผืนทั่วไป (aspect ≥ ~0.65) ขั้นต่ำยังได้ 240 เท่าเดิม
+   */
+  const floorW = (base: number) => Math.min(base, Math.max(120, (stageBox.h - 60) * aspect));
   const stageMax =
     stageBox.w && stageBox.h && stageBox.w >= 520
       ? pairOn
-        ? Math.max(200, Math.min((stageBox.w - 48 - 40) / 2, (stageBox.h - 130) * aspect) * 0.88)
+        ? Math.max(floorW(200), Math.min((stageBox.w - 48 - 40) / 2, (stageBox.h - 130) * aspect) * 0.88)
         : stageBox.w >= 640
-          ? Math.max(240, Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect) * STAGE_FIT)
+          ? Math.max(floorW(240), Math.min(stageBox.w - 48, (stageBox.h - 110) * aspect) * STAGE_FIT)
           : null
       : null;
   const stageMaxCss = stageMax != null ? `${stageMax}px` : `min(100%, ${aspect * 60}vh)`;
