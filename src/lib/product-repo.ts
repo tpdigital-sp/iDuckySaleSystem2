@@ -332,6 +332,8 @@ async function loadProductsLite(): Promise<Product[]> {
         featured: r.featured ?? false,
         badge: (r.badge as string | null) ?? undefined,
         hidden: (r.hidden as boolean | null) ?? undefined,
+        // เวลาบันทึกล่าสุด — หน้าแรกใช้เรียง "สินค้ามาใหม่" (ตัวที่เพิ่งเพิ่ม/แก้ขึ้นก่อน)
+        savedAt: (r.savedAt as string | null) ?? undefined,
         emoji: (r.emoji as string | null) ?? "🦆",
         gradient: (r.gradient as string | null) ?? "from-amber-100 to-amber-200",
         // ติดรหัสรุ่นท้าย URL รูป (?v=savedAt) — เปลี่ยนรูปทับพาธเดิมแล้วการ์ดขึ้นของใหม่ทันที
