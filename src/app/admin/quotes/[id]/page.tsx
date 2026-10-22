@@ -352,6 +352,8 @@ function QuoteDetailInner() {
     if (!quote || quote.orderId || replaceBusy.current) return;
     const m = readReplaceMarker();
     if (!m || m.kind !== "quote" || m.orderId !== quote.id) return;
+    // ⏱ เฉพาะป้ายที่ตะกร้าส่งเข้าใบจริงแล้ว (markReplaceSent) — ป้ายค้างจากการกด 🛠 แล้วเลิก ห้ามถอดของที่เข้าใบทางอื่น (ดูหน้าออเดอร์)
+    if (!m.sent) return;
     const r = applyReplaceMarker(quote.items, m);
     if (!r) return;
     // รอข้อมูลสินค้าก่อน — ต้องใช้คิดราคาล็อตใหม่หลังถอดรายการเดิม
@@ -1157,6 +1159,8 @@ function QuoteDetailInner() {
                   actor={meName}
                   onAdd={(item) => patch({ items: [...quote.items, item] })}
                   onShopAdd={() => {
+                    // 🧹 หยิบจากหน้าร้าน = เพิ่มล้วน ๆ — ล้างป้าย 🛠 แก้ตัวเลือกที่เคยกดแล้วเลิกกลางทาง (เหมือนหน้าออเดอร์ · OD-261020-4764)
+                    writeReplaceMarker(null);
                     setQuoteTarget({ id: quote.id, customer: quote.customer });
                     window.open("/products", "_blank", "noopener");
                   }}

@@ -6,7 +6,7 @@ import type { Order } from "./admin-data";
 import { getAccessToken } from "./customer-auth";
 import { PACK_SCAN_HEADER } from "./permissions";
 import { shrinkImageForUpload } from "@/lib/image-shrink";
-import { readReplaceMarker } from "./order-item-qty";
+import { markReplaceSent, readReplaceMarker } from "./order-item-qty";
 
 export interface CreateOrderInput {
   customerName: string;
@@ -104,14 +104,19 @@ export async function appendToOrder(
       m && (m.kind ?? "order") === "order" && m.orderId === orderId
         ? { index: m.index, productId: m.productId, name: m.name, qty: m.qty }
         : undefined;
+    // ⏱ ปักธง "ส่งจริงแล้ว" ก่อนยิง — หน้าออเดอร์ถอดรายการเดิมเฉพาะป้ายที่มีธงนี้ (ป้ายค้างจากการเลิกกลางทางจะไม่ถอดของใคร)
+    // ปักก่อนยิงเพื่อให้หน้าออเดอร์ที่เปิดค้างอีกแท็บเห็นธงพร้อมของใหม่แน่ ๆ · ยิงไม่ผ่าน = ถอนธง
+    if (replacing) markReplaceSent("order", orderId, true);
     const res = await fetch("/api/orders/append", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, key, items, ...(ship ?? {}), ...(gift ?? {}), ...(replacing ? { replacing } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
+    if (!res.ok && replacing) markReplaceSent("order", orderId, false);
     return res.ok ? { ok: true, owed: data.owed } : { ok: false, error: data.error ?? "สั่งเพิ่มไม่สำเร็จ" };
   } catch {
+    markReplaceSent("order", orderId, false);
     return { ok: false, error: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" };
   }
 }

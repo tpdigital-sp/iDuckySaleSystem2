@@ -1938,6 +1938,9 @@ export default function AdminOrderDetailPage() {
     if (!order || demo || !mayEdit || replaceBusy.current) return;
     const m = readReplaceMarker();
     if (!m || (m.kind ?? "order") !== "order" || m.orderId !== order.id) return;
+    // ⏱ ต้องเป็นป้ายที่ "ส่งเข้าใบจริงจากทางแก้ไข" (markReplaceSent) — ป้ายค้างจากการกด 🛠 แล้วเลิกกลางทาง ห้ามถอดของที่เข้าใบทางอื่น
+    // (OD-261020-4764 · 22 ต.ค. 69: หยิบจากหน้าร้านเพิ่มแผ่นรองเมาส์ แต่แก้วมัคที่เคยกด 🛠 ไว้ถูกถอดทิ้ง)
+    if (!m.sent) return;
     const r = applyReplaceMarker(order.items, m);
     if (!r) return;
     // รอข้อมูลสินค้าก่อน — ต้องใช้คิดราคาล็อตที่เหลือ (relotAfterShrink) · ดึงไม่ได้ = ไม่รอ
@@ -9038,6 +9041,8 @@ export default function AdminOrderDetailPage() {
               onShopAdd={() => {
                 // ใช้กลไกเดียวกับที่ลูกค้ากด "สั่งเพิ่มในออเดอร์นี้" — ของที่หยิบจะเข้าออเดอร์นี้ ไม่คิดค่าส่งซ้ำ
                 // 🚚 ยกเว้นใบเปล่าที่ยังไม่เคยเลือกวิธีส่ง (สร้างออเดอร์งานพิเศษ) → ให้ตะกร้าคิดค่าส่งแล้วส่งตามมาด้วย
+                // 🧹 หยิบจากหน้าร้าน = สั่งเพิ่มล้วน ๆ ไม่ใช่แทนที่ใคร — ล้างป้าย 🛠 แก้ตัวเลือกที่เคยกดแล้วเลิกกลางทาง (OD-261020-4764)
+                writeReplaceMarker(null);
                 try {
                   localStorage.setItem(
                     "iducky-append-order-v1",

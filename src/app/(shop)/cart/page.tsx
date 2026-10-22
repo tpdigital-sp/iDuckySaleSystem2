@@ -82,7 +82,7 @@ import StockCheckNote from "@/components/StockCheckNote";
 import { getAppendTarget, clearAppendTarget, shipCalcLines, shipRetailOnly, type AppendTarget } from "@/lib/append-order";
 import { getUnpicked, setUnpicked as saveUnpicked, clearUnpicked } from "@/lib/cart-select";
 import { getQuoteTarget, clearQuoteTarget, type QuoteTarget } from "@/lib/append-quote";
-import { readReplaceMarker } from "@/lib/order-item-qty";
+import { markReplaceSent, readReplaceMarker } from "@/lib/order-item-qty";
 import { cartQtyShipFee, pickShipping, shipProfileOf, shippingAllowed, shippingVisible } from "@/lib/shipping-auto";
 import { termLines } from "@/lib/term-lines";
 import { USE_BY_KEY, saveUseByDate } from "@/lib/use-by-date";
@@ -150,6 +150,8 @@ export default function CartPage() {
     if (!quoteTo) return;
     setQuoteBusy(true);
     setQuoteErr("");
+    // ⏱ ปักธง "ส่งจริงแล้ว" ให้ป้าย 🛠 แก้ตัวเลือกของใบนี้ — หน้าใบเสนอราคาถอดบรรทัดเดิมเฉพาะป้ายที่มีธง (ยิงไม่ผ่านถอนธงด้านล่าง)
+    markReplaceSent("quote", quoteTo.id, true);
     const res = await fetch("/api/admin/quotes/append", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -191,7 +193,10 @@ export default function CartPage() {
     });
     const j = await res.json().catch(() => ({}));
     setQuoteBusy(false);
-    if (!res.ok) return setQuoteErr(j.error ?? "เพิ่มเข้าใบเสนอราคาไม่สำเร็จ");
+    if (!res.ok) {
+      markReplaceSent("quote", quoteTo.id, false);
+      return setQuoteErr(j.error ?? "เพิ่มเข้าใบเสนอราคาไม่สำเร็จ");
+    }
     // เอาเฉพาะที่โยนเข้าใบไปแล้วออกจากตะกร้า — ที่ไม่ได้ติ๊กยังอยู่ต่อ
     pickedItems.forEach((i) => removeItem(i.key));
     clearUnpicked();
