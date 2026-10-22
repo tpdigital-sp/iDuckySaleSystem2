@@ -122,9 +122,9 @@ export default function Banner3D({
         scene.environmentIntensity = 0.45;
 
         // ความสูงรวมของชิ้นงาน (ป้าย + ฐาน/โครง) ใช้ตั้งกล้องและเงา
-        const BASE_H = rollup ? 70 : 0; // ฐานอลูมิเนียม Roll UP สูง ~7 ซม.
-        const LIFT = rollup ? BASE_H : 60; // X-Stand: ขอบล่างป้ายลอยจากพื้น ~6 ซม. (ขาโครงยันพื้น)
-        const TOTAL_H = LIFT + VH + (rollup ? 30 : 20);
+        const BASE_H = rollup ? 78 : 0; // ฐานอลูมิเนียม Roll UP สูง 7.2 ซม. + ขาเหยียบ 6 มม.
+        const LIFT = rollup ? BASE_H : 90; // X-Stand: ขอบล่างป้ายลอยจากพื้น ~9 ซม. (แขวนด้วยตาไก่ ขาหน้ายันพื้น)
+        const TOTAL_H = LIFT + VH + (rollup ? 30 : 40);
         const camera = new THREE.PerspectiveCamera(28, 1, 1, 20000);
         // ระยะกล้อง: FOV 28° แนวตั้ง เห็นสูง ≈ 0.5×ระยะ → ×2.6 เห็นทั้งต้น (ป้าย+ฐาน) มีที่ว่างบน-ล่าง (รอบแรก ×1.55 ป้ายล้นกรอบ)
         const BASE_DIST = TOTAL_H * 2.6;
@@ -175,6 +175,10 @@ export default function Banner3D({
         const alu = m(new THREE.MeshStandardMaterial({ color: 0xc9ccd1, roughness: 0.32, metalness: 0.85, envMapIntensity: 1.0 }));
         const aluDark = m(new THREE.MeshStandardMaterial({ color: 0x8e9196, roughness: 0.4, metalness: 0.8, envMapIntensity: 0.9 }));
         const brass = m(new THREE.MeshStandardMaterial({ color: 0xb9b9bd, roughness: 0.3, metalness: 0.9, envMapIntensity: 1.1 }));
+        const plastic = m(new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: 0.55, metalness: 0.1, envMapIntensity: 0.5 }));
+        const steel = m(new THREE.MeshStandardMaterial({ color: 0x9a9da3, roughness: 0.35, metalness: 0.85, envMapIntensity: 1.0 }));
+        const rubber = m(new THREE.MeshStandardMaterial({ color: 0x202124, roughness: 0.9, metalness: 0, envMapIntensity: 0.2 }));
+        const wire = m(new THREE.MeshStandardMaterial({ color: 0x6b6e74, roughness: 0.4, metalness: 0.8, envMapIntensity: 0.8 }));
 
         /**
          * ผืนป้าย: PlaneGeometry กว้าง VW สูง VH · X-Stand ดัดเว้าเข้าหาโครงเล็กน้อย (แรงดึงจากตาไก่ 4 มุม ทำให้กลางผืนโก่งไปข้างหลัง)
@@ -204,92 +208,150 @@ export default function Banner3D({
         root.add(banner);
 
         if (!rollup) {
-          // 🔩 ตาไก่ 4 มุม (ตรงจุดเขียวในไฟล์ r7 ที่ 27 มม. จากขอบ) = วงแหวนโลหะ + รูโปร่ง (ไม่ต้องเจาะผืนจริง ใช้วงแหวนทับพอ)
+          /**
+           * 🪧 X-Stand ตามรูปจริง (เจ้าของร้านส่งรูป 22 ต.ค. 69 "ปรับให้ 3D คล้ายของจริงหน่อย"):
+           * · ดุมกลาง (body plate) พลาสติกดำ อยู่หลังป้าย ต่ำกว่ากึ่งกลาง (~40% จากขอบล่าง)
+           * · ก้านไฟเบอร์กลาส 4 ก้านจากดุมไปมุมป้าย — ก้านบน 2 ก้าน "โค้งออกนอก/ถอยหลัง" (ก้านยาวกว่าระยะตรง ถูกดัด)
+           *   ปลายก้านมีตะขอ (top hanger) เกี่ยวตาไก่ · ก้านล่าง 2 ก้านยาวเลยมุมล่างลงไปยันพื้นเป็นขาหน้า (foot hanger มีตะขอเกี่ยวตาไก่ล่าง)
+           * · ขาหลัง 1 ขาจากดุมเอียงลงพื้นด้านหลัง + ลวดสลิงโยงปลายขาหลังกับขาหน้า 2 ข้าง (wire) กันกาง
+           * · ป้ายแขวนด้วยตาไก่ 4 มุม ขอบล่างลอยจากพื้น ~9 ซม.
+           */
           const EYE = 27;
-          const corners: [number, number][] = [
-            [-VW / 2 + EYE, VH / 2 - EYE],
-            [VW / 2 - EYE, VH / 2 - EYE],
-            [-VW / 2 + EYE, -VH / 2 + EYE],
-            [VW / 2 - EYE, -VH / 2 + EYE],
-          ];
-          const ringGeo = g(new THREE.TorusGeometry(7, 2.2, 10, 28));
-          const hubY = LIFT + VH / 2; // ดุมกลางโครง X อยู่หลังกึ่งกลางป้าย
-          const hubZ = -34;
-          for (const [cx, cy] of corners) {
-            const ring = add(new THREE.Mesh(ringGeo, brass), false);
-            ring.position.set(cx, LIFT + VH / 2 + cy, 1.5);
-            // ตะขอโครง: ท่อนสั้นจากหลังตาไก่ไปหาแขนโครง
-            const hook = add(new THREE.Mesh(g(new THREE.TorusGeometry(9, 1.8, 8, 20, Math.PI)), carbon), false);
-            hook.position.set(cx, LIFT + VH / 2 + cy, -6);
-            hook.rotation.x = Math.PI / 2;
-            // 🦴 แขนโครง X: จากดุมกลาง (หลังป้าย) ไปแต่ละมุม — ท่อคาร์บอน ⌀10
-            const from = new THREE.Vector3(0, hubY, hubZ);
-            const to = new THREE.Vector3(cx, LIFT + VH / 2 + cy, -14);
-            const len = from.distanceTo(to);
-            const arm = add(new THREE.Mesh(g(new THREE.CylinderGeometry(5, 5, len, 14)), carbon));
-            arm.position.copy(from).lerp(to, 0.5);
-            arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
-          }
-          // ดุมกลาง + ขาค้ำหลัง (ท่อนเอียงจากดุมลงพื้นด้านหลัง) + แป้นเท้าสั้น ๆ ที่ปลาย
-          const hub = add(new THREE.Mesh(g(new THREE.CylinderGeometry(16, 16, 22, 20)), carbon));
-          hub.position.set(0, hubY, hubZ);
-          hub.rotation.x = Math.PI / 2;
-          const foot = new THREE.Vector3(0, 0, -VH * 0.42);
+          const sgn = [-1, 1] as const;
+          const hubY = LIFT + VH * 0.4;
+          const hubZ = -75;
           const hubV = new THREE.Vector3(0, hubY, hubZ);
-          const legLen = hubV.distanceTo(foot);
-          const leg = add(new THREE.Mesh(g(new THREE.CylinderGeometry(6, 6, legLen, 14)), carbon));
-          leg.position.copy(hubV).lerp(foot, 0.5);
-          leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), foot.clone().sub(hubV).normalize());
-          const pad = add(new THREE.Mesh(g(new THREE.CylinderGeometry(22, 26, 8, 20)), carbon));
-          pad.position.set(0, 4, foot.z);
-          // ขาหน้า 2 ขาจากดุมลงมาถึงใต้ขอบล่างป้าย (ท่อคู่ของโครง X ส่วนล่างยันพื้น)
-          for (const sx of [-1, 1]) {
-            const ft = new THREE.Vector3(sx * VW * 0.36, 0, -22);
-            const l2 = hubV.distanceTo(ft);
-            const lg = add(new THREE.Mesh(g(new THREE.CylinderGeometry(4.5, 4.5, l2, 12)), carbon));
-            lg.position.copy(hubV).lerp(ft, 0.5);
-            lg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), ft.clone().sub(hubV).normalize());
-            const p2 = add(new THREE.Mesh(g(new THREE.CylinderGeometry(16, 20, 6, 18)), carbon));
-            p2.position.set(ft.x, 3, ft.z);
+          const up = new THREE.Vector3(0, 1, 0);
+          const tube = (curve: InstanceType<typeof THREE.QuadraticBezierCurve3>, r: number, mat: InstanceType<typeof THREE.MeshStandardMaterial>, segs = 28) =>
+            add(new THREE.Mesh(g(new THREE.TubeGeometry(curve, segs, r, 10, false)), mat));
+          const rod = (a: InstanceType<typeof THREE.Vector3>, b: InstanceType<typeof THREE.Vector3>, r: number, mat = carbon) => {
+            const len = a.distanceTo(b);
+            const mesh = add(new THREE.Mesh(g(new THREE.CylinderGeometry(r, r, len, 12)), mat));
+            mesh.position.copy(a).lerp(b, 0.5);
+            mesh.quaternion.setFromUnitVectors(up, b.clone().sub(a).normalize());
+            return mesh;
+          };
+          const cap = (p: InstanceType<typeof THREE.Vector3>, r: number, h: number, dir?: InstanceType<typeof THREE.Vector3>) => {
+            const c = add(new THREE.Mesh(g(new THREE.CylinderGeometry(r, r * 0.85, h, 14)), rubber), false);
+            c.position.copy(p);
+            if (dir) c.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+            return c;
+          };
+          const ringGeo = g(new THREE.TorusGeometry(7, 2.2, 10, 28));
+          const hookGeo = g(new THREE.TorusGeometry(10, 2, 8, 20, Math.PI));
+
+          // ดุมกลาง: แผ่นพลาสติกดำทรงกล่องมุมมน + หัวกลมรับก้าน
+          const hub = add(new THREE.Mesh(g(new THREE.BoxGeometry(62, 74, 36)), plastic));
+          hub.position.copy(hubV);
+          const hubDome = add(new THREE.Mesh(g(new THREE.SphereGeometry(26, 20, 14)), plastic), false);
+          hubDome.position.set(0, hubY + 8, hubZ - 8);
+          hubDome.scale.set(1.2, 1, 0.8);
+
+          for (const sx of sgn) {
+            const cxEye = sx * (VW / 2 - EYE);
+            // ตาไก่บน/ล่าง
+            for (const cy of [LIFT + VH - EYE, LIFT + EYE]) {
+              const ring = add(new THREE.Mesh(ringGeo, brass), false);
+              ring.position.set(cxEye, cy, 1.5);
+            }
+            // 🎣 ก้านบน: โค้งออกนอก + ถอยหลัง · ปลายก้านอยู่เหนือมุมป้ายเล็กน้อย แล้วตะขอเกี่ยวลงตาไก่
+            const tipTop = new THREE.Vector3(sx * (VW / 2 + 14), LIFT + VH + 18, -14);
+            const ctlTop = new THREE.Vector3(sx * (VW / 2 + 95), hubY + VH * 0.33, -140); // โค้งออกพอเห็นปลายโผล่ข้างป้ายจากด้านหน้า (ตามรูปร้าน)
+            tube(new THREE.QuadraticBezierCurve3(hubV, ctlTop, tipTop), 5.5, carbon);
+            cap(tipTop, 7, 16, tipTop.clone().sub(ctlTop));
+            const hookT = add(new THREE.Mesh(hookGeo, steel), false);
+            hookT.position.set(cxEye + sx * 8, LIFT + VH - EYE + 6, -6);
+            hookT.rotation.set(Math.PI / 2, 0, 0);
+            // 🦶 ก้านล่าง = ขาหน้า: จากดุมผ่านใกล้ตาไก่ล่างลงไปยันพื้นนอกมุมป้าย
+            const foot = new THREE.Vector3(sx * (VW / 2 + 60), 0, 10);
+            const ctlBot = new THREE.Vector3(sx * (VW / 2 - 40), LIFT + 60, -70);
+            tube(new THREE.QuadraticBezierCurve3(hubV, ctlBot, foot), 5.5, carbon);
+            cap(new THREE.Vector3(foot.x, 8, foot.z), 9, 16);
+            const hookB = add(new THREE.Mesh(hookGeo, steel), false);
+            hookB.position.set(cxEye + sx * 8, LIFT + EYE - 6, -6);
+            hookB.rotation.set(-Math.PI / 2, 0, 0);
+            // 🧵 ลวดสลิงจากปลายขาหลังไปขาหน้า
+            const rearFoot = new THREE.Vector3(0, 10, -VH * 0.42);
+            rod(rearFoot, new THREE.Vector3(foot.x, 12, foot.z), 1.1, wire);
+            // ลวดเส้นบนจากกลางขาหลังไปกลางขาหน้า (ตามรูป มีเส้นโยงไขว้)
+            const midBack = hubV.clone().lerp(rearFoot, 0.55);
+            const midFront = new THREE.QuadraticBezierCurve3(hubV, ctlBot, foot).getPoint(0.55);
+            rod(midBack, midFront, 1.1, wire);
           }
+          // ขาหลัง: ท่อเดียวจากดุมเอียงลงพื้นด้านหลัง + แป้นเท้า
+          const rearFoot = new THREE.Vector3(0, 0, -VH * 0.42);
+          rod(hubV.clone().add(new THREE.Vector3(0, -30, -10)), rearFoot, 6.5, carbon);
+          cap(new THREE.Vector3(0, 8, rearFoot.z), 11, 16);
         } else {
-          // 🥫 ฐานอลูมิเนียม: กล่องมุมมน กว้างเกินผืนข้างละ 25 มม. · ลึก 110 · สูง BASE_H · ผืนโผล่จากร่องกึ่งกลางฐาน
-          const BW = VW + 50;
-          const BD = 110;
-          const base = add(new THREE.Mesh(g(new THREE.CapsuleGeometry(BASE_H / 2, BW - BASE_H, 6, 18)), alu));
-          base.rotation.z = Math.PI / 2;
-          base.position.set(0, BASE_H / 2, 0);
-          base.scale.z = BD / BASE_H;
-          // ฝาข้างสีเข้ม 2 ข้าง (ปลายม้วน)
+          /**
+           * 🪧 Roll UP ตามรูปจริง: ฐานอลูมิเนียมโปรไฟล์มน (กว้างเกินผืนข้างละ 2 ซม. · สูง 7 ซม. · ลึก 7 ซม.) ฝาข้างดำ
+           * + ขาเหยียบแบนพับออกใต้ฐาน 2 ข้าง · เสาเดี่ยว 3 ท่อนชิดหลังผืน เสียบตรงกลางฐาน · รางหนีบบน (snap rail) + ตะขอเกี่ยวเสา
+           */
+          const BW = VW + 40;
+          const BH = 72;
+          const BD = 70;
+          const FOOT_T = 6;
+          const prof = new THREE.Shape();
+          const rTop = 24;
+          const rBot = 8;
+          // โปรไฟล์ฐาน (ระนาบ y-z): สี่เหลี่ยมมุมมน บนมนมาก ล่างมนน้อย
+          prof.moveTo(-BD / 2 + rBot, 0);
+          prof.lineTo(BD / 2 - rBot, 0);
+          prof.quadraticCurveTo(BD / 2, 0, BD / 2, rBot);
+          prof.lineTo(BD / 2, BH - rTop);
+          prof.quadraticCurveTo(BD / 2, BH, BD / 2 - rTop, BH);
+          prof.lineTo(-BD / 2 + rTop, BH);
+          prof.quadraticCurveTo(-BD / 2, BH, -BD / 2, BH - rTop);
+          prof.lineTo(-BD / 2, rBot);
+          prof.quadraticCurveTo(-BD / 2, 0, -BD / 2 + rBot, 0);
+          const baseGeo = g(new THREE.ExtrudeGeometry(prof, { depth: BW, bevelEnabled: false, curveSegments: 10 }));
+          const base = add(new THREE.Mesh(baseGeo, alu));
+          // extrude ไปตาม +z → หมุนให้ยาวตามแกน x · โปรไฟล์ x เดิม = ความลึก (z) · y = สูง
+          base.rotation.y = Math.PI / 2;
+          base.position.set(-BW / 2, FOOT_T, 0);
+          // ฝาข้างดำ 2 ข้าง (ใหญ่กว่าโปรไฟล์นิดหน่อย)
+          const capGeo = g(new THREE.ExtrudeGeometry(prof, { depth: 10, bevelEnabled: false, curveSegments: 10 }));
           for (const sx of [-1, 1]) {
-            const cap = add(new THREE.Mesh(g(new THREE.CylinderGeometry(BASE_H / 2 + 1, BASE_H / 2 + 1, 10, 24)), aluDark), false);
-            cap.rotation.z = Math.PI / 2;
-            cap.position.set(sx * (BW / 2 - 4), BASE_H / 2, 0);
-            cap.scale.z = BD / BASE_H;
+            const c = add(new THREE.Mesh(capGeo, plastic), false);
+            c.rotation.y = Math.PI / 2;
+            c.scale.set(1.06, 1.05, 1);
+            c.position.set(sx * (BW / 2) - (sx > 0 ? 0 : 10), FOOT_T - 1, 0);
           }
-          // ขาเหยียบ 2 ขา (ยื่นหลังฐาน) กันล้ม
+          // ร่องผืนบนฐาน (เส้นดำ) + ขาเหยียบแบนพับออกใต้ฐาน
+          const slot = add(new THREE.Mesh(g(new THREE.BoxGeometry(VW + 8, 3, 8)), plastic), false);
+          slot.position.set(0, FOOT_T + BH - 1, 0);
           for (const sx of [-1, 1]) {
-            const ft = add(new THREE.Mesh(g(new THREE.BoxGeometry(24, 10, 120)), aluDark));
-            ft.position.set(sx * (BW / 2 - 60), 5, -70);
+            const ft = add(new THREE.Mesh(g(new THREE.BoxGeometry(34, FOOT_T, 190)), aluDark));
+            ft.position.set(sx * (BW / 2 - 70), FOOT_T / 2, 0);
           }
-          // 📏 รางหนีบบน: แท่งอลูมิเนียมกว้างเกินผืนข้างละ 10 มม. หนีบขอบบนป้าย
-          const topBar = add(new THREE.Mesh(g(new THREE.BoxGeometry(VW + 20, 24, 14)), alu));
-          topBar.position.set(0, LIFT + VH + 6, -2);
-          // 🧷 เสาหลัง 3 ท่อน (เรียวขึ้น) จากฐานถึงรางบน + ตะขอเกี่ยว
-          const poleTop = LIFT + VH + 14;
-          const segs = 3;
-          for (let i = 0; i < segs; i++) {
-            const y0 = BASE_H * 0.6 + ((poleTop - BASE_H * 0.6) * i) / segs;
-            const y1 = BASE_H * 0.6 + ((poleTop - BASE_H * 0.6) * (i + 1)) / segs;
-            const r = 9 - i * 1.8;
-            const seg = add(new THREE.Mesh(g(new THREE.CylinderGeometry(r, r + 0.4, y1 - y0 + 6, 16)), i === 0 ? aluDark : alu));
-            seg.position.set(0, (y0 + y1) / 2, -40);
+          // 🧷 เสาเดี่ยว 3 ท่อน (เรียวขึ้น) ชิดหลังผืน เสียบจากกลางฐาน + เบ้ารับเสา
+          const POLE_Z = -24;
+          const socket = add(new THREE.Mesh(g(new THREE.CylinderGeometry(15, 17, 18, 18)), aluDark), false);
+          socket.position.set(0, FOOT_T + BH + 6, POLE_Z);
+          const poleTop = LIFT + VH + 10;
+          const y0 = FOOT_T + BH;
+          for (let i = 0; i < 3; i++) {
+            const a = y0 + ((poleTop - y0) * i) / 3;
+            const b = y0 + ((poleTop - y0) * (i + 1)) / 3;
+            const r = 9.5 - i * 1.6;
+            const seg = add(new THREE.Mesh(g(new THREE.CylinderGeometry(r, r, b - a + 8, 16)), i === 2 ? aluDark : alu));
+            seg.position.set(0, (a + b) / 2, POLE_Z);
+            if (i > 0) {
+              // ข้อต่อระหว่างท่อน
+              const joint = add(new THREE.Mesh(g(new THREE.CylinderGeometry(r + 2.5, r + 2.5, 22, 16)), plastic), false);
+              joint.position.set(0, a, POLE_Z);
+            }
           }
-          const hookTop = add(new THREE.Mesh(g(new THREE.TorusGeometry(12, 3, 10, 24, Math.PI)), aluDark), false);
-          hookTop.position.set(0, poleTop + 4, -22);
-          hookTop.rotation.y = Math.PI / 2;
-          const hookArm = add(new THREE.Mesh(g(new THREE.BoxGeometry(8, 8, 40)), aluDark), false);
-          hookArm.position.set(0, LIFT + VH + 6, -22);
+          // 📏 รางหนีบบน: แท่งอลูมิเนียมบางหนีบขอบบนผืน + สันหลังราง + ตะขอเกี่ยวจากเสา
+          const rail = add(new THREE.Mesh(g(new THREE.BoxGeometry(VW + 16, 18, 10)), alu));
+          rail.position.set(0, LIFT + VH + 2, -1);
+          const railBack = add(new THREE.Mesh(g(new THREE.BoxGeometry(VW + 16, 10, 6)), aluDark), false);
+          railBack.position.set(0, LIFT + VH + 2, -8);
+          const hook = add(new THREE.Mesh(g(new THREE.TorusGeometry(9, 2.4, 10, 22, Math.PI)), aluDark), false);
+          hook.position.set(0, poleTop + 2, POLE_Z + 10);
+          hook.rotation.y = Math.PI / 2;
+          const hookArm = add(new THREE.Mesh(g(new THREE.BoxGeometry(6, 6, 20)), aluDark), false);
+          hookArm.position.set(0, LIFT + VH + 2, -14);
         }
 
         const lookY = TOTAL_H * 0.5;
