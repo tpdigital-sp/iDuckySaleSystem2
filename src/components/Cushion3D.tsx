@@ -153,40 +153,11 @@ export default function Cushion3D({
           mats.push(t);
           return t;
         };
-        // 🧵 ผิวผ้า: ลายทอละเอียดเป็น bump (ผ้าใบสุ่มเกรน) + sheen ให้สะท้อนแสงนุ่มแบบผ้า ไม่ใช่พลาสติกเงา
-        const weave = document.createElement("canvas");
-        weave.width = weave.height = 256;
-        const wx = weave.getContext("2d");
-        if (wx) {
-          const im = wx.createImageData(256, 256);
-          for (let i = 0; i < im.data.length; i += 4) {
-            const px = (i / 4) % 256;
-            const py = Math.floor(i / 4 / 256);
-            // เส้นทอแนวตั้ง/นอนสลับ + เกรนสุ่ม
-            const v = 128 + 26 * Math.sin(px * 1.6) * Math.sin(py * 1.6) + (Math.random() - 0.5) * 36;
-            im.data[i] = im.data[i + 1] = im.data[i + 2] = Math.max(0, Math.min(255, v));
-            im.data[i + 3] = 255;
-          }
-          wx.putImageData(im, 0, 0);
-        }
-        const weaveTex = new THREE.CanvasTexture(weave);
-        weaveTex.wrapS = weaveTex.wrapT = THREE.RepeatWrapping;
-        weaveTex.repeat.set(S / 14, S / 14);
-        mats.push(weaveTex);
+        // 🎨 สีต้องสดเท่าลายจริง (เจ้าของร้านทัก 22 ต.ค. 69 "สีดูไม่สดเหมือนก่อนแก้"):
+        //    sheen สีขาวฉาบทับทั้งผืน + bump ลายทอ (เกรนสุ่มละเอียด = normal กระจาย เฉลี่ยแล้วเป็นเทาทับลาย) ทำให้ซีด → ถอดทั้งคู่
+        //    แสง/วัสดุกลับเท่ารอบแรก (ผ้าด้าน Standard) · ความเป็นผ้ามาจากทรงโป่ง ขอบเว้า รอยย่นของรูปทรงแทน
         const fabric = (map: InstanceType<typeof THREE.CanvasTexture>) =>
-          m(
-            new THREE.MeshPhysicalMaterial({
-              map,
-              roughness: 0.88,
-              metalness: 0,
-              envMapIntensity: 0.55,
-              sheen: 0.55,
-              sheenRoughness: 0.75,
-              sheenColor: new THREE.Color(0xffffff),
-              bumpMap: weaveTex,
-              bumpScale: 0.35,
-            }),
-          );
+          m(new THREE.MeshStandardMaterial({ map, roughness: 0.9, metalness: 0, envMapIntensity: 0.3 }));
 
         /**
          * แผ่นดัดโป่งแบบหมอนยัดไส้ (ปรับตามรูปสินค้าจริง · เจ้าของร้านขอ 22 ต.ค. 69 "ทำให้ทรงคล้ายของจริงมากกว่านี้"):
