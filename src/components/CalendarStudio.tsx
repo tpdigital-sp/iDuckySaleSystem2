@@ -2467,6 +2467,45 @@ export default function CalendarStudio({
       trimPath(ctx, k, fmt);
       ctx.stroke();
     }
+    // ✂️🔴 เส้นไดคัทของเทมเพลต (tplCut) วาดเป็นเส้นแดงบาง ๆ บนสุดของจอ — รูเจาะ/ทรงชิ้นงานเห็นเป็นเส้น ไม่ใช่แค่ถมขาว
+    //    (กระดาษรองหลัง เจาะรู · เจ้าของร้านสั่ง 22 ต.ค. 69 "เป็นเส้นไดคัทสีแดง") · บนจอเท่านั้น ไฟล์พิมพ์ใช้เลเยอร์ CutContour
+    //    เส้นที่ทับขอบอาร์ตบอร์ดพอดี (กรอบสี่เหลี่ยมนอกสุด) ไม่วาดซ้ำ — สกิน/ไกด์มีกรอบแดงอยู่แล้ว จะเห็นเป็น 2 เส้น (เจ้าของร้านทัก 22 ต.ค. 69 "ทำไมมีกรอบสีแดง 2 เส้น")
+    const edgeAx = guide?.wMm ? (W - guide.wMm) / 2 : 0;
+    const edgeAy = guide?.hMm ? (H - guide.hMm) / 2 : 0;
+    const edgeAw = guide?.wMm || W;
+    const edgeAh = guide?.hMm || H;
+    const cutLines = (tplCut ?? []).filter((c) => {
+      const b = curvesBox([c]);
+      return !b || !(Math.abs(b.x - edgeAx) < 0.6 && Math.abs(b.y - edgeAy) < 0.6 && Math.abs(b.w - edgeAw) < 1.2 && Math.abs(b.h - edgeAh) < 1.2);
+    });
+    //    ⬜ นอกเส้นตัด = ขาวทึบเสมอ (รวมตอนช่องรูปยังว่าง — ไกด์ "over" ไม่ครอบนอกกรอบ) เจ้าของร้านสั่ง 22 ต.ค. 69 "ที่เลยกรอบสีแดงให้เป็นขาวทึบไปเลย"
+    //    (งานวัสดุใส clearCut นอกเส้นเป็นพื้นโปร่ง/ตาหมากรุกอยู่แล้ว ไม่ทา)
+    if (tplCut && !clearCut) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, W * k, H * k);
+      for (const c of tplCut) {
+        ctx.moveTo(c.s[0] * k, c.s[1] * k);
+        for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
+        ctx.closePath();
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fill("evenodd");
+      ctx.restore();
+    }
+    if (cutLines.length) {
+      ctx.save();
+      ctx.lineWidth = Math.max(dpr, 0.25 * k);
+      ctx.strokeStyle = "rgba(220,38,38,.9)";
+      ctx.beginPath();
+      for (const c of cutLines) {
+        ctx.moveTo(c.s[0] * k, c.s[1] * k);
+        for (const g of c.g) ctx.bezierCurveTo(g[0] * k, g[1] * k, g[2] * k, g[3] * k, g[4] * k, g[5] * k);
+        ctx.closePath();
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     /**
      * ☕ ไกด์แก้วมัค (mock3d = mug · เจ้าของร้านสั่ง 16 ต.ค. 69 "ตัวเทมเพลตมันควรมีแสดงคล้าย ๆ" PSD ร้าน "แก้ว MUG 11 Oz.psd"):
      * ไฟล์ .ai ที่ผูกไว้เป็นหน้าขาวล้วน ไกด์บนจอจึงว่าง → วาดป้ายแดงแบบ PSD ของร้านให้เอง (บนจอเท่านั้น ไม่ติดไฟล์พิมพ์):
@@ -3803,7 +3842,8 @@ export default function CalendarStudio({
                   },
                 ]
               : []),
-            { layer: "เส้นตัด (CutContour)", spot: "CutContour", cmyk: [0, 100, 0, 0] as [number, number, number, number], fill: false, curves: tplCut },
+            // 🔴 สปอต CutContour แสดงเป็นสีแดง (CMYK 0,100,100,0) ตามแบบไฟล์เทมเพลตร้าน (เจ้าของร้านสั่ง 22 ต.ค. 69) — ชื่อสปอตคือสิ่งที่เครื่องตัดอ่าน
+            { layer: "เส้นตัด (CutContour)", spot: "CutContour", cmyk: [0, 100, 100, 0] as [number, number, number, number], fill: false, curves: tplCut },
           ],
         }))
       : pages;

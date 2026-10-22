@@ -363,7 +363,8 @@ export async function aiOcgPdf(pages: AiPage[], title: string): Promise<Blob> {
       const path = r
         ? `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`
         : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
-      layer("เส้นตัด (CutContour)", () => pg.drawSvgPath(path, { x: 0, y: Hpt, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.25 / PT }));
+      // 🔴 เส้นตัดสีแดงตามไฟล์เทมเพลตร้าน (22 ต.ค. 69) — เดิมบานเย็น
+      layer("เส้นตัด (CutContour)", () => pg.drawSvgPath(path, { x: 0, y: Hpt, scale: PT, borderColor: rgb(1, 0, 0), borderWidth: 0.25 / PT }));
     }
     for (const P of (p.paths ?? []).filter((x) => !x.fill))
       layer(P.layer, () => pg.drawSvgPath(svgOf(P), { x: 0, y: Hpt, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.25 / PT }));

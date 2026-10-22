@@ -75,7 +75,7 @@ export async function buildPieceFiles(input: {
   };
   for (const sides of pieces) {
     for (const side of sides) doc.addPage([W, H]).drawImage(await emb(side), { x: 0, y: 0, width: W, height: H });
-    doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.5 / PT });
+    doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 0), borderWidth: 0.5 / PT });
   }
   const counts = pieces.map(() => 1);
   const total = counts.reduce((a, b) => a + b, 0);
@@ -151,7 +151,7 @@ export async function buildPrintPdf(input: {
     fillCurvesEvenOdd(pg, wp.curves, H);
     pg.setTrimBox(x * PT, H - (y + h) * PT, w * PT, h * PT);
   }
-  doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 1), borderWidth: 0.5 / PT });
+  doc.addPage([W, H]).drawSvgPath(path, { x: 0, y: H, scale: PT, borderColor: rgb(1, 0, 0), borderWidth: 0.5 / PT });
   const name = `${input.name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim()}.pdf`;
   doc.setTitle(name.replace(/\.pdf$/, ""));
   const n0 = input.pages.length;
