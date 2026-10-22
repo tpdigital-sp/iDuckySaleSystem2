@@ -266,9 +266,10 @@ export default function Banner3D({
             rod(new THREE.Vector3(tipTop.x, tipTop.y - 8, tipTop.z), hookElbowT, 2.2, steel);
             rod(hookElbowT, new THREE.Vector3(cxEye, eyeTop.y - 4, 2), 2.2, steel);
             // 🦶 ก้านล่าง = ขาหน้า: จากดุมวิ่งผ่าน "ข้างตาไก่ล่าง" ลงไปยันพื้นเลยมุมป้ายนิดหน่อย · ตะขอ (foot hanger) บนก้านเกี่ยวตาไก่ล่าง
+            //    ขาล่าง "ตรง" เส้นเดียว (เจ้าของร้านทัก 22 ต.ค. 69 "ขาด้านล่างต้องตรงๆ แบบในภาพ" — รอบก่อนโค้งหักที่ตาไก่): เท้า = จุดที่เส้นตรงดุม→ข้างตาไก่ล่างยาวต่อไปถึงพื้น
             const passBot = new THREE.Vector3(cxEye + sx * 9, eyeBot.y, -5);
-            const foot = new THREE.Vector3(cxEye + sx * 24, 0, -5);
-            tube(new THREE.CatmullRomCurve3([hubV, hubV.clone().lerp(passBot, 0.5).add(new THREE.Vector3(sx * 6, 0, -14)), passBot, foot]), 5.5, carbon, 36);
+            const foot = hubV.clone().lerp(passBot, hubV.y / (hubV.y - passBot.y));
+            rod(hubV, foot, 5.5, carbon);
             cap(new THREE.Vector3(foot.x, 8, foot.z), 9, 16);
             const hookElbowB = new THREE.Vector3(cxEye, eyeBot.y - 10, 2);
             rod(new THREE.Vector3(passBot.x, passBot.y - 6, passBot.z), hookElbowB, 2.2, steel);
