@@ -6,6 +6,8 @@
  *
  * three.js โหลดตอนกดปุ่มเท่านั้น (import()) · โครงเดียวกับ Stand3D/Mug3D (RoomEnvironment · ไฟตามกล้อง · ลาก=หมุน · ล้อ/หยิก=ซูม)
  * ผืนเทมเพลต = หน้า (ครึ่งซ้าย) + หลัง (ครึ่งขวา) กางออก → ครอปสี่เหลี่ยมขนาดสำเร็จจากกึ่งกลางแต่ละครึ่งไปเป็นผิวหน้า/หลัง
+ * 🧵 หมอนอิงยัดใย (22 ต.ค. 69 "ขอฟังชั่น 3D ด้วย"): เทมเพลตเป็นจัตุรัสด้านละอาร์ตบอร์ด (หมวด "หมอนอิง(ยัดใย)") → ผืนเกือบจัตุรัส = โหมด single:
+ *   หน้า = กึ่งกลางผืน · หลัง = หน้าที่ 2 ของจอ (backSheet · พิมพ์ 2 ด้าน) หรือผ้าขาวเรียบ (พิมพ์ 1 ด้าน) · ไม่มีซิป (เย็บปิดยัดไส้)
  * ทรงหมอน = PlaneGeometry 2 แผ่นดัดโป่ง (superellipse: กลางพอง ขอบแบนมาบรรจบกันเป็นตะเข็บ) + ตะเข็บรอบ + ซิปขอบขวา
  */
 
@@ -31,6 +33,7 @@ function cropCanvas(src: HTMLCanvasElement, k: number, x: number, y: number, w: 
 export default function Cushion3D({
   sheet,
   sheetMm,
+  backSheet,
   mock,
   title,
   onClose,
@@ -38,11 +41,15 @@ export default function Cushion3D({
   /** ลายทั้งอาร์ตบอร์ด (วาดจากตัววาดจริงของจอออกแบบ) */
   sheet: HTMLCanvasElement;
   sheetMm: { w: number; h: number };
+  /** ลายหน้าที่ 2 (ด้านหลัง · งาน tpl2 พิมพ์ 2 ด้าน) — ผืนจัตุรัสเท่านั้น · ไม่มี = ด้านหลังขาว */
+  backSheet?: HTMLCanvasElement | null;
   mock: CushionMock;
   title: string;
   onClose: () => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
+  /** 🧵 ผืนเกือบจัตุรัส = หมอนอิงยัดใย (อาร์ตบอร์ดละด้าน · ไม่มีซิป · หลังจาก backSheet) · ผืนกว้าง = ปลอกหมอนอิง Cushion Zip (หน้า+หลังกางออก) */
+  const single = sheetMm.w / sheetMm.h < 1.35;
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [spin, setSpin] = useState(false);
   const [view, setView] = useState<CushionView>("front");
@@ -92,12 +99,29 @@ export default function Cushion3D({
         const W = sheetMm.w;
         const H = sheetMm.h;
         const k = sheet.width / W;
-        // ขนาดสำเร็จ: จากตัวเลือก · ไม่รู้ = ครึ่งผืน - เผื่อเย็บ (ไม่เกินความสูงผืน)
-        const S = Math.min(H - 6, mock.sizeMm > 0 ? Math.min(mock.sizeMm, W / 2 - 4) : W / 2 - 36);
+        // ขนาดสำเร็จ: จากตัวเลือก · ไม่รู้ = ครึ่งผืน - เผื่อเย็บ (ไม่เกินความสูงผืน) · จัตุรัส = ผืน - เผื่อตัดตก
+        const S = single
+          ? Math.min(W - 6, H - 6, mock.sizeMm > 0 ? mock.sizeMm : Math.min(W, H) - 90)
+          : Math.min(H - 6, mock.sizeMm > 0 ? Math.min(mock.sizeMm, W / 2 - 4) : W / 2 - 36);
         const D = S * 0.4; // ความหนาตอนยัดไส้ (เพิ่มจาก 0.34 · 22 ต.ค. 69 "ขอบด้านข้างดูแบนไป")
         // 🖼 ผิวหน้า = กึ่งกลางครึ่งซ้าย · ผิวหลัง = กึ่งกลางครึ่งขวา (ผืน "Cushion Zip": หน้า | หลัง | แถบซิป)
-        const frontCv = cropCanvas(sheet, k, W / 4 - S / 2, H / 2 - S / 2, S, S);
-        const backCv = cropCanvas(sheet, k, (3 * W) / 4 - S / 2, H / 2 - S / 2, S, S);
+        //    จัตุรัส: หน้า = กึ่งกลางผืน · หลัง = กึ่งกลางหน้าที่ 2 (backSheet) · ไม่มีหน้าที่ 2 = ผ้าขาว
+        const whiteCv = () => {
+          const cv = document.createElement("canvas");
+          cv.width = cv.height = 64;
+          const c = cv.getContext("2d");
+          if (c) {
+            c.fillStyle = "#ffffff";
+            c.fillRect(0, 0, 64, 64);
+          }
+          return cv;
+        };
+        const frontCv = single ? cropCanvas(sheet, k, W / 2 - S / 2, H / 2 - S / 2, S, S) : cropCanvas(sheet, k, W / 4 - S / 2, H / 2 - S / 2, S, S);
+        const backCv = single
+          ? backSheet
+            ? cropCanvas(backSheet, backSheet.width / W, W / 2 - S / 2, H / 2 - S / 2, S, S)
+            : whiteCv()
+          : cropCanvas(sheet, k, (3 * W) / 4 - S / 2, H / 2 - S / 2, S, S);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -215,16 +239,18 @@ export default function Cushion3D({
 
         // 🧵 ตะเข็บรอบ (ริมผ้าเย็บ) + ซิปขอบขวา (แถบ "พับทำสายซิป" ของเทมเพลต)
         // ตะเข็บ = แนวที่แผ่นหน้า/หลังบรรจบกัน (ไม่ต้องวาดเส้นเพิ่ม) · ซิปวิ่งตามขอบขวาที่โค้งเว้า (TubeGeometry ตามสูตร inset เดียวกับแผ่น)
-        const zipMat = m(new THREE.MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.5, metalness: 0.45 }));
-        const zipW = Math.max(2.2, S * 0.012);
-        const edgeX = (v: number) => (S / 2) * (1 - 0.045 * (1 - v * v));
-        const zipPts: InstanceType<typeof THREE.Vector3>[] = [];
-        for (let t = -0.84; t <= 0.84; t += 0.06) zipPts.push(new THREE.Vector3(edgeX(t) - zipW * 0.3, t * (S / 2), 0));
-        const zipCurve = new THREE.CatmullRomCurve3(zipPts);
-        const zip = add(new THREE.Mesh(g(new THREE.TubeGeometry(zipCurve, 40, zipW / 2, 8, false)), zipMat), false);
-        void zip;
-        const slider = add(new THREE.Mesh(g(new THREE.BoxGeometry(zipW * 1.6, zipW * 2.6, zipW * 1.8)), zipMat), false);
-        slider.position.set(edgeX(-0.6) - zipW * 0.3, -0.6 * (S / 2), 0);
+        // หมอนอิงยัดใย (single) เย็บปิดไม่มีซิป → ไม่วาด
+        if (!single) {
+          const zipMat = m(new THREE.MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.5, metalness: 0.45 }));
+          const zipW = Math.max(2.2, S * 0.012);
+          const edgeX = (v: number) => (S / 2) * (1 - 0.045 * (1 - v * v));
+          const zipPts: InstanceType<typeof THREE.Vector3>[] = [];
+          for (let t = -0.84; t <= 0.84; t += 0.06) zipPts.push(new THREE.Vector3(edgeX(t) - zipW * 0.3, t * (S / 2), 0));
+          const zipCurve = new THREE.CatmullRomCurve3(zipPts);
+          add(new THREE.Mesh(g(new THREE.TubeGeometry(zipCurve, 40, zipW / 2, 8, false)), zipMat), false);
+          const slider = add(new THREE.Mesh(g(new THREE.BoxGeometry(zipW * 1.6, zipW * 2.6, zipW * 1.8)), zipMat), false);
+          slider.position.set(edgeX(-0.6) - zipW * 0.3, -0.6 * (S / 2), 0);
+        }
 
         // วางหมอน: ตั้งพิงเอียงหลังเล็กน้อยเหมือนวางบนโซฟา · ขอบล่างแตะพื้น
         root.rotation.x = -0.2;
@@ -305,12 +331,13 @@ export default function Cushion3D({
             <p className="flex min-w-0 items-center gap-2 text-[15px] font-extrabold leading-tight text-stone-800">
               <span className="shrink-0">ดูแบบ 3D</span>
               <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[11px] font-extrabold text-stone-700 ring-1 ring-sky-200">
-                <span className="truncate">ปลอกหมอนอิง</span>
+                <span className="truncate">{single ? "หมอนอิงยัดใย" : "ปลอกหมอนอิง"}</span>
                 {mock.label ? <span className="truncate text-stone-400">· {mock.label}</span> : null}
               </span>
             </p>
             <p className="truncate text-xs text-stone-500">
-              {title} · ลาย {Math.round(sheetMm.w) / 10}×{Math.round(sheetMm.h) / 10} ซม. (หน้า+หลังกางออก)
+              {title} · ลาย {Math.round(sheetMm.w) / 10}×{Math.round(sheetMm.h) / 10} ซม.{" "}
+              {single ? (backSheet ? "(พิมพ์ 2 ด้าน · หน้า/หลังคนละหน้า)" : "(พิมพ์ 1 ด้าน · ด้านหลังผ้าขาว)") : "(หน้า+หลังกางออก)"}
             </p>
           </div>
           <button
@@ -439,7 +466,8 @@ export default function Cushion3D({
             </button>
           </div>
           <p className="text-center text-[11px] text-stone-400">
-            ภาพจำลองโดยประมาณ — ด้านหน้า/หลังจากครึ่งซ้าย/ขวาของผืนเทมเพลต ขอบที่เผื่อเย็บหายเข้าตะเข็บ · สีจริงอาจต่างจากหน้าจอเล็กน้อย
+            ภาพจำลองโดยประมาณ —{" "}
+            {single ? "ลายกึ่งกลางผืนตามขนาดงานจริง ขอบที่เผื่อตัดตกหายเข้าตะเข็บ" : "ด้านหน้า/หลังจากครึ่งซ้าย/ขวาของผืนเทมเพลต ขอบที่เผื่อเย็บหายเข้าตะเข็บ"} · สีจริงอาจต่างจากหน้าจอเล็กน้อย
           </p>
         </div>
       </div>

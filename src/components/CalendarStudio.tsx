@@ -3579,17 +3579,27 @@ export default function CalendarStudio({
    * ไม่ใช้ preview (ช่องรูปว่างไม่โชว์สี่เหลี่ยมเทาบนแก้ว) · ความละเอียด ~2048px ด้านยาว พอซูม 3 เท่า
    */
   const [mug3d, setMug3d] = useState<HTMLCanvasElement | "loading" | null>(null);
+  /** 🛋 ด้านหลังของหมอนอิงยัดใย (tpl2 พิมพ์ 2 ด้าน · 22 ต.ค. 69) — ลายหน้าที่ 2 วาดแยกอีกผืน · งานหน้าเดียว = null (ด้านหลังขาว) */
+  const [mug3dBack, setMug3dBack] = useState<HTMLCanvasElement | null>(null);
   async function openMug3d() {
     setMug3d("loading");
     try {
       await ensureFonts(fontKeys);
       const k = 2048 / Math.max(W, H);
-      const cv = document.createElement("canvas");
-      cv.width = Math.round(W * k);
-      cv.height = Math.round(H * k);
-      const ctx = cv.getContext("2d");
-      if (!ctx) throw new Error("no canvas");
-      drawPage(ctx, k, fmt, basePage, design, back, imgs);
+      const render = (pg: typeof basePage) => {
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(W * k);
+        cv.height = Math.round(H * k);
+        const ctx = cv.getContext("2d");
+        if (!ctx) throw new Error("no canvas");
+        drawPage(ctx, k, fmt, pg, design, back, imgs);
+        return cv;
+      };
+      // หมอนอิงยัดใย: หน้า = หน้าแรก (ไม่ใช่หน้าที่กำลังเปิด) · หลัง = หน้าที่ 2 (ลายเดียว = ข้อมูลหน้าแรกผ่าน resolve)
+      const vFront = mock3d?.kind === "cushion" && twoSided ? vpages.find((v) => v.card === 0 && v.base.key === "front") : undefined;
+      const vBack = mock3d?.kind === "cushion" && twoSided ? vpages.find((v) => v.card === 0 && v.base.key === "back") : undefined;
+      setMug3dBack(vBack ? render(resolve(vBack)) : null);
+      const cv = render(vFront ? resolve(vFront) : basePage);
       setMug3d(cv);
     } catch {
       setMug3d(null);
@@ -7113,7 +7123,7 @@ export default function CalendarStudio({
         )}
         {mug3d && mug3d !== "loading" && mock3d?.kind === "cushion" && (
           // 🛋 ปลอกหมอนอิง (22 ต.ค. 69) — ครึ่งซ้าย/ขวาของผืน = หน้า/หลังหมอนยัดไส้
-          <Cushion3D key={`cushion-${mock3d.sizeMm}`} sheet={mug3d} sheetMm={{ w: W, h: H }} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
+          <Cushion3D key={`cushion-${mock3d.sizeMm}`} sheet={mug3d} backSheet={mug3dBack} sheetMm={{ w: W, h: H }} mock={mock3d} title={title} onClose={() => setMug3d(null)} />
         )}
         {mug3d && mug3d !== "loading" && (!mock3d || mock3d.kind === "mug") && (
           // key = ประเภทแก้ว: ค่าเปลี่ยนระหว่างเปิดอยู่ = สร้างฉากใหม่ (ฉากสร้างครั้งเดียวตอนเปิด)
