@@ -174,6 +174,7 @@ import { calDesignCount, calFormat, calHasGrid, calSideDesignCount, canvasSizeOf
 import { mugMockFrom } from "@/lib/mug-mock";
 import { standMockFrom } from "@/lib/stand-mock";
 import { cushionMockFrom } from "@/lib/cushion-mock";
+import { folderMockFrom } from "@/lib/folder-mock";
 import { cartEditToken, cartItemKey, useCart } from "@/lib/cart-context";
 import {
   fetchCalDesign,
@@ -9845,7 +9846,10 @@ export default function ProductDetail({
                       : // 🛋 ปลอกหมอนอิง (22 ต.ค. 69) — ขนาดสำเร็จจากค่า "ขนาด" (12x12 นิ้ว) · ลายหน้า/หลังจากครึ่งซ้าย/ขวาของผืน
                         product.calendarStudio?.mock3d === "cushion"
                         ? cushionMockFrom(effective)
-                        : undefined
+                        : // 📁 แฟ้มจิ๋ว (22 ต.ค. 69) — ปกใส/กลิสเตอร์ + สีโซ่ไข่ปลาตามตัวเลือก
+                          product.calendarStudio?.mock3d === "folder"
+                          ? folderMockFrom(effective)
+                          : undefined
               }
             />
           )}
