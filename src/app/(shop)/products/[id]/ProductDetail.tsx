@@ -3059,6 +3059,7 @@ export default function ProductDetail({
           ...(sk.skinOpaque ? { opaque: true } : {}),
           ...(sk.cutCurves?.length ? { cut: sk.cutCurves } : {}),
           ...(sk.whiteUnder ? { whiteUnder: true } : {}),
+          ...(sk.cutLineOff ? { cutLineOff: true } : {}),
         };
       const f = files.find((x) => x.previewUrl && x.widthMm && x.heightMm);
       // ✂️ cut = เส้นไดคัทจริงจากไฟล์ .ai (cutCurves) → .ai/.pdf จากจอออกแบบใช้เส้นนี้แทนกรอบสี่เหลี่ยม (16 ต.ค. 69)
@@ -3073,6 +3074,7 @@ export default function ProductDetail({
           ...(f.finishedMm ? { finished: f.finishedMm } : {}),
           ...sizeNote,
           ...(f.whiteUnder ? { whiteUnder: true } : {}),
+          ...(f.cutLineOff ? { cutLineOff: true } : {}),
         };
     }
     return undefined;

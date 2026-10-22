@@ -188,6 +188,8 @@ interface Props {
     opaque?: boolean;
     /** ⬜🖨 รองขาวเต็มเส้นตัด (TemplateFile.whiteUnder) — .ai ใส่เลเยอร์ "รองขาว (White)" ถมตาม cut ใต้ลาย (พัดพลาสติกใส · 21 ต.ค. 69) */
     whiteUnder?: boolean;
+    /** 🙈 ไม่ลากเส้นไดคัทสีแดงบนจอ (TemplateFile.cutLineOff · Magsafe Card Holder 22 ต.ค. 69) — ไฟล์งานยังมีเส้นตัดครบ */
+    cutLineOff?: boolean;
   };
   /** ลูกค้าเลือก "มุมแหลม" — โฟโต้การ์ดไม่ตัดมุมมน (ไกด์บนจอเป็นสี่เหลี่ยม) */
   square?: boolean;
@@ -2513,7 +2515,7 @@ export default function CalendarStudio({
     const edgeAy = guide?.hMm ? (H - guide.hMm) / 2 : 0;
     const edgeAw = guide?.wMm || W;
     const edgeAh = guide?.hMm || H;
-    const cutLines = (tplCut ?? []).filter((c) => {
+    const cutLines = (guide?.cutLineOff ? [] : (tplCut ?? [])).filter((c) => {
       const b = curvesBox([c]);
       return !b || !(Math.abs(b.x - edgeAx) < 0.6 && Math.abs(b.y - edgeAy) < 0.6 && Math.abs(b.w - edgeAw) < 1.2 && Math.abs(b.h - edgeAh) < 1.2);
     });
