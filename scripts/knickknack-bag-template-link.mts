@@ -28,15 +28,18 @@ import type { Product } from "../src/lib/products";
 import { revalidateLive } from "./lib/revalidate-live.mts";
 
 const WRITE = process.argv.includes("--write");
-/** ค่าจากสกิน: w/h = ขนาดสกินจริง (มม.) · hole = รูกลม (ต่อท้าย) · window = เส้นตัดคือช่องโปร่งกลางสกิน (ไม่ใช่ขอบนอก) · opaque = TemplateFile.skinOpaque */
-type SkinOverride = { w: number; h: number; hole?: { cx: number; cy: number; r: number }; window?: boolean; opaque?: boolean };
+/**
+ * ค่าจากสกิน: w/h = ขนาดสกินจริง (มม.) · hole = รูกลม (ต่อท้าย) · window = เส้นตัดคือช่องโปร่งกลางสกิน (ไม่ใช่ขอบนอก) · opaque = TemplateFile.skinOpaque
+ * fullFace = TemplateFile.fullFace — ช่องรูปว่างโชว์เต็มเส้นตัด ไม่เดาหน้างานจากเส้นแดงในสกิน (Candy bag 22 ต.ค. 69 "ขยายกรอบนี้หน่อย เพราะมันสกรีนเต็มได้")
+ */
+type SkinOverride = { w: number; h: number; hole?: { cx: number; cy: number; r: number }; window?: boolean; opaque?: boolean; fullFace?: boolean };
 const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; skin?: SkinOverride }[] = [
   {
     product: "candy-bag",
     tpl: "tpl-k83wfdovg",
     flags: [],
     holes: 1,
-    skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 } },
+    skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 }, fullFace: true },
   },
   { product: "passport-case", tpl: "tpl-zml0082mh", flags: [], holes: 0 },
   { product: "hologram-bag", tpl: "tpl-ewsr369y6", flags: [], holes: 0, skin: { w: 210.06, h: 153.08, window: true, opaque: true } },
@@ -114,10 +117,10 @@ for (const pair of PAIRS) {
   const [bx, by, bw, bh] = res.box;
   if (bx < 0 || by < 0 || bx + bw > res.w + 0.01 || by + bh > res.h + 0.01) die(`${t.name}: กรอบหลุดอาร์ตบอร์ด`);
   if (res.holes !== pair.holes) die(`${t.name}: เจอรู ${res.holes} (คาด ${pair.holes})`);
-  const nf = { ...f, cutCurves: res.curves, whiteUnder: true, ...(pair.skin?.opaque ? { skinOpaque: true } : {}) };
+  const nf = { ...f, cutCurves: res.curves, whiteUnder: true, ...(pair.skin?.opaque ? { skinOpaque: true } : {}), ...(pair.skin?.fullFace ? { fullFace: true } : {}) };
   const nt: DesignTemplate = { ...t, files: [nf] };
   const tplSame =
-    flat(f0.cutCurves) === flat(res.curves) && f0.whiteUnder === true && f0.widthMm === f.widthMm && f0.heightMm === f.heightMm && !!f0.skinOpaque === !!pair.skin?.opaque;
+    flat(f0.cutCurves) === flat(res.curves) && f0.whiteUnder === true && f0.widthMm === f.widthMm && f0.heightMm === f.heightMm && !!f0.skinOpaque === !!pair.skin?.opaque && !!f0.fullFace === !!pair.skin?.fullFace;
   if (filesForSelections(nt, {}).length !== 1 || !templateFrame(nt, nf)) die(`${t.name}: จอออกแบบหากรอบงานไม่ได้`);
 
   const { data: prow, error } = await sb.from("products").select("data").eq("id", pair.product).single();
