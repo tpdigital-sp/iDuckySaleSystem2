@@ -380,7 +380,8 @@ export default function Cushion3D({
             const d = drag.current;
             if (!d) return;
             cam.current.yaw = d.yaw + (e.clientX - d.x) * 0.011;
-            cam.current.pitch = Math.max(-0.15, Math.min(1.2, d.pitch + (e.clientY - d.y) * 0.006));
+            // เงย/ก้มได้ทั้งเหนือและใต้หมอน (เจ้าของร้านขอ 22 ต.ค. 69 "อยากหมุนที่ด้านล่างได้" — เดิมล็อกต่ำสุด -0.15 มองใต้ไม่ได้)
+            cam.current.pitch = Math.max(-1.25, Math.min(1.25, d.pitch + (e.clientY - d.y) * 0.006));
           }}
           onPointerUp={(e) => {
             pts.current.delete(e.pointerId);
