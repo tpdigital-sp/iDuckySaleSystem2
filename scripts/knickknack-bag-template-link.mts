@@ -13,7 +13,7 @@
  *     (เคยตัดใต้ซิปด้วย --min-y-mm 18.12 แล้วเจ้าของร้านสั่งถอยกลับ "สกรีนได้ถึงซิป" 22 ต.ค. 69)
  *     (เจ้าของร้านทัก 22 ต.ค. 69 "มันสามารถสกรีนได้เต็มชิ้นงาน" — รอบแรกใช้กรอบในเส้นแดง 85×81 ลายเลยไม่เต็มถุง)
  *   passport-case → ⚠️ ย้ายไป scripts/passport-2side-templates.mts แล้ว (22 ต.ค. 69 เทมเพลตใหม่ 1 ด้าน/2 ด้าน + ด้านใน) — ห้ามใส่กลับที่นี่ จะทับ when/เส้นตัดใหม่
- *   hologram-bag (กระเป๋าโฮโลแกรม) ← tpl-ewsr369y6 "ZipLock" 210×153 · พิมพ์ได้เฉพาะ "ช่องกลาง" ของสกิน (เขตโปร่ง 163.2×106.2 @23.45)
+ *   hologram-bag (กระเป๋าโฮโลแกรม) ← tpl-ewsr369y6 "ZipLock" 210×153 · ⚠️ 22 ต.ค. 69 เปลี่ยนเป็นไฟล์ใหม่พิมพ์เต็มถุง (ขอบถุง 204×147) — ข้อความช่องกลางด้านล่างเป็นประวัติ · (เดิม) พิมพ์ได้เฉพาะ "ช่องกลาง" ของสกิน (เขตโปร่ง 163.2×106.2 @23.45)
  *     กรอบโฮโลแกรมรอบช่อง = เนื้อถุงโฮโลแกรม ไม่พิมพ์ (เจ้าของร้านวงแดง 22 ต.ค. 69 "ถ้าภาพวางเกินตรงเส้นสีแดง ให้ตัดทึบไปเลย" — รอบแรกใช้ขอบถุง 204×147 ลายเลยทับกรอบ)
  *     → เส้นตัด/รองขาว = ช่องกลาง (skin-outline-cut.py --window) + skinOpaque (จอวางกรอบโฮโลทึบทับลายที่เกิน)
  * เส้นตัดดึงจากไฟล์ .ai ด้วย scripts/py/red-outer-cut.py (ธงต่อไฟล์ด้านล่าง) → TemplateFile.cutCurves + whiteUnder: true
@@ -48,7 +48,8 @@ const PAIRS: { product: string; tpl: string; flags: string[]; holes: number; ski
     // mirrorBack: ด้านหลังถุงเห็นกลับข้าง — แถบเทา/รูร้อยโซ่อยู่ฝั่งซ้าย (เจ้าของร้านทัก 22 ต.ค. 69 "ควรจะหักคนละฝั่งกับด้านหน้า เพราะมันเป็นด้านหลัง")
     skin: { w: 113.03, h: 100.08, hole: { cx: 93.43, cy: 91.27, r: 2.55 }, fullFace: true, mirrorBack: true },
   },
-  { product: "hologram-bag", tpl: "tpl-ewsr369y6", flags: [], holes: 0, skin: { w: 210.06, h: 153.08, window: true, opaque: true } },
+  // 🌈 22 ต.ค. 69 เจ้าของร้านส่ง ZipLock.ai ใหม่ (พิมพ์เต็มถุง · hologram-ziplock-replace.mts) → เส้นตัด = ขอบถุงเส้นดำ 204×147 · เลิกช่องกลาง/กรอบโฮโลทึบ
+  { product: "hologram-bag", tpl: "tpl-ewsr369y6", flags: ["--any-color"], holes: 0 },
 ];
 const die = (m: string): never => {
   console.error("✗", m);
@@ -125,7 +126,9 @@ for (const pair of PAIRS) {
   const [bx, by, bw, bh] = res.box;
   if (bx < 0 || by < 0 || bx + bw > res.w + 0.01 || by + bh > res.h + 0.01) die(`${t.name}: กรอบหลุดอาร์ตบอร์ด`);
   if (res.holes !== pair.holes) die(`${t.name}: เจอรู ${res.holes} (คาด ${pair.holes})`);
-  const nf = { ...f, cutCurves: res.curves, whiteUnder: true, ...(pair.skin?.opaque ? { skinOpaque: true } : {}), ...(pair.skin?.fullFace ? { fullFace: true } : {}) };
+  // ธงที่ไม่ได้ขอแล้วต้องถอดออก (ไม่งั้น skinOpaque/fullFace ค้างจากรอบก่อน)
+  const { skinOpaque: _so, fullFace: _ff, ...fBase } = f;
+  const nf = { ...fBase, cutCurves: res.curves, whiteUnder: true, ...(pair.skin?.opaque ? { skinOpaque: true } : {}), ...(pair.skin?.fullFace ? { fullFace: true } : {}) };
   // 🪞 ไกด์ด้านหลังกลับข้าง (สกิน + เส้นตัด + รู) — จอออกแบบหน้า "back" ใช้ผ่าน guide.back
   let back: (TemplateFile & { mirrorOf?: string }) | null = null;
   let backSame = !oldBack;

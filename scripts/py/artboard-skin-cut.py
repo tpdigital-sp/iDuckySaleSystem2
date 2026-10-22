@@ -1,6 +1,6 @@
 """🛂 ต่ออาร์ตบอร์ด: สกิน (เฉพาะเลเยอร์เส้น พื้นโปร่ง) + พรีวิว (ทุกเลเยอร์) + เส้นตัดสีแดง → JSON
 ใช้กับไฟล์เทมเพลตหลายอาร์ตบอร์ด (Passport.ai / (2ด้าน)Passport.ai · 22 ต.ค. 69)
-argv: <ไฟล์> <หน้า 0..> <outdir> <stem> [--skin-layers Template] [--near x,y,w,h]
+argv: <ไฟล์> <หน้า 0..> <outdir> <stem> [--skin-layers Template] [--near x,y,w,h] [--any-color]
   --near  เลือกเส้นแดงทางปิดที่กรอบใกล้ค่านี้ที่สุด (มม.) แทน "ใหญ่สุด" — ด้านในของ Passport พิมพ์ได้แค่ช่องซ้าย 76.5×123
 stdout {"widthMm","heightMm","skin","preview","curves":[...],"box":[x,y,w,h]} หรือ {"error"}"""
 import json, sys
@@ -11,6 +11,7 @@ src, page_no, outdir, stem = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.arg
 arg = lambda k, d="": sys.argv[sys.argv.index(k) + 1] if k in sys.argv else d
 skin_layers = {s.strip() for s in arg("--skin-layers", "Template").split(",") if s.strip()}
 near = [float(v) for v in arg("--near").split(",")] if "--near" in sys.argv else None
+ANY = "--any-color" in sys.argv  # เส้นขอบไม่ใช่สีแดง (ZipLock ขอบถุงเส้นดำ · 22 ต.ค. 69)
 
 doc = fitz.open(src)
 pg = doc[page_no]
@@ -36,7 +37,7 @@ def line(A, B):
 cands = []
 for d in pg.get_drawings():
     c = d.get("color")
-    if d.get("type") not in ("s", "fs") or not c or not (c[0] > 0.8 and c[1] < 0.35 and c[2] < 0.35):
+    if d.get("type") not in ("s", "fs") or not c or not (ANY or (c[0] > 0.8 and c[1] < 0.35 and c[2] < 0.35)):
         continue
     if not any(i[0] == "c" for i in d["items"]) or len(d["items"]) < 4:
         continue
