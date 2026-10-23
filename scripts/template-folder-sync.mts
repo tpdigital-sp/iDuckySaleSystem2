@@ -5,6 +5,7 @@
  *   npx tsx scripts/template-folder-sync.mts --dir "/Volumes/.../ผ้าหนึบ" --category ผ้าหนึบ            # ดูผล
  *   npx tsx scripts/template-folder-sync.mts --dir "..." --category ผ้าหนึบ --write                     # อัป + บันทึก
  *   --keep-layers Print,Details   เลเยอร์ที่ให้เห็นในพรีวิว (ไฟล์ร้านมักมีเลเยอร์ตัวอย่างลายเปิดค้าง) · ค่าเริ่มต้น Print,Details
+ *   --rename-re "^Shawl (\d+x\d+) cm$" --rename-to "ผ้าคลุมไหล่ $1"   ชื่อไฟล์ ≠ ชื่อชุด (ผ้าคลุมไหล่ 23 ต.ค. 69)
  *
  * จับคู่ชุดเดิมจากชื่อ (ตัดช่องว่างท้าย/นามสกุล) ในหมวดนั้น → แทน fileUrl/fileName/fileSize/widthMm/heightMm/previewUrl
  *   คง id ชุด/id ไฟล์/when/choice/skinUrl · ไฟล์+พรีวิวเก่าเก็บใน retiredPaths (ไม่ลบทันที) · ไฟล์เหมือนเดิมทุกไบต์ = ข้าม
@@ -25,6 +26,8 @@ const arg = (k: string, d = "") => {
 const DIR = arg("--dir");
 const CATEGORY = arg("--category");
 const KEEP = arg("--keep-layers", "Print,Details");
+const RENAME_RE = arg("--rename-re");
+const RENAME_TO = arg("--rename-to");
 const die = (m: string): never => {
   console.error("✗", m);
   process.exit(1);
@@ -78,7 +81,7 @@ for (const fileName of files) {
   const full = `${DIR}/${fileName}`;
   const bytes = readFileSync(full);
   const ext = fileName.toLowerCase().endsWith(".pdf") ? "pdf" : "ai";
-  const stem = norm(fileName);
+  const stem = RENAME_RE ? norm(norm(fileName).replace(new RegExp(RENAME_RE, "u"), RENAME_TO)) : norm(fileName);
   const hit = inCat.find((r) => norm(r.data.name) === stem);
   const old = hit?.data.files?.[0];
   if (hit && (hit.data.files?.length ?? 0) !== 1) {
