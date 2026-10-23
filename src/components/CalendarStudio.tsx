@@ -264,6 +264,8 @@ type Src = {
   bgPick?: BgMethod | "auto";
   /** ✂️ รูปก่อนลบพื้น (กด ↩ คืนรูปเดิม) */
   orig?: Src;
+  /** 🔁 ลายนิ้วมือไฟล์ (SHA-256) — อัปไฟล์เดียวกันซ้ำ = ใช้รูปเดิมในคลัง ไม่นับเป็นลายใหม่ */
+  hash?: string;
 };
 
 /**
@@ -368,7 +370,17 @@ async function loadImg(file: File): Promise<Src | null> {
     URL.revokeObjectURL(url);
     return null;
   }
-  return { file, url, w: el.naturalWidth, h: el.naturalHeight, el };
+  return { file, url, w: el.naturalWidth, h: el.naturalHeight, el, hash: isMissingPhoto(file) ? undefined : await fileHash(file) };
+}
+
+/** SHA-256 ของไฟล์ (ใช้จับรูปซ้ำ) · เบราว์เซอร์ไม่มี crypto.subtle = ไม่จับซ้ำ */
+async function fileHash(file: File): Promise<string | undefined> {
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return undefined;
+  }
 }
 
 /** ข้อความหน้าปกแบบเก่า (design.text กล่องเดียว) → ชิ้นส่วนข้อความ แก้/เพิ่ม/ลบได้เหมือนกล่องอื่น */
@@ -1230,7 +1242,20 @@ export default function CalendarStudio({
       if (dead) return;
       if (list.some((x) => !x)) setErr("โหลดรูปเดิมบางรูปไม่สำเร็จ — เลือกรูปใหม่ได้เลย");
       const ok = list.filter((x): x is Src => !!x);
-      setSrcs(ok);
+      // 🔁 แบบเดิมที่อัปไฟล์เดียวกันซ้ำ (ก่อนมีการจับซ้ำ) → ชี้ไปรูปแรก แล้วซ่อนตัวซ้ำ (บีบออกตอน "ใช้แบบนี้") ค่าคละจะนับใหม่ถูก
+      const same = new Map<number, number>();
+      if (initial?.sources.length)
+        ok.forEach((x, i) => {
+          const j = x.hash ? ok.findIndex((y) => y.hash === x.hash) : i;
+          if (j < i) same.set(i, j);
+        });
+      setSrcs(same.size ? ok.map((x, i) => (same.has(i) ? { ...x, removed: true } : x)) : ok);
+      if (same.size)
+        setDesign((d) => ({
+          ...d,
+          photos: Object.fromEntries(Object.entries(d.photos).map(([k, o]) => [k, { ...o, src: same.get(o.src) ?? o.src }])),
+          elements: (d.elements ?? []).map((e) => (e.src != null && same.has(e.src) ? { ...e, src: same.get(e.src) } : e)),
+        }));
       setSrcsReady(true);
       /**
        * 🪄 รูปตั้งต้น (หลังบ้านออกแบบให้ลูกค้า · ไม่มีแบบเดิม) → เรียงลงหน้าอัตโนมัติตามลำดับ: ปก → มกราคม → … (ผู้ใช้สั่ง 15 ต.ค. 69)
@@ -2065,12 +2090,7 @@ export default function CalendarStudio({
       setErr("เปิดรูปนี้ไม่ได้ ลองไฟล์อื่น");
       return;
     }
-    // ลำดับรูปจาก ref (วางหลายไฟล์ติดกัน state ยังไม่ทันอัปเดต — ใช้ srcs.length จะได้เลขซ้ำ)
-    const idx = srcsRef.current.length;
-    srcsRef.current = [...srcsRef.current, s];
-    setSrcs((cur) => [...cur, s]);
-    // 🕐 เริ่มอัปรูปต้นฉบับทันที (รูปกล้องมือถือ 5–10 MB = ก้อนใหญ่สุด) — ตอนกดใส่ตะกร้าจะเหลือแค่หน้าที่ประกอบแล้ว
-    onEarly?.({ files: [s.file], pre: true });
+    const idx = pushSrc(s);
     if (asFree || !page.photo) {
       addFreePhoto(idx, s, nth);
       return;
@@ -2088,6 +2108,25 @@ export default function CalendarStudio({
         elements: [...(d.elements ?? []), ...firstText],
       };
     });
+  }
+
+  /**
+   * เพิ่มรูปเข้าคลัง → คืนลำดับรูป · ไฟล์เดียวกับที่มีในคลังแล้ว (SHA-256 ตรงกัน) = ใช้รูปเดิม ไม่เพิ่มช่อง ไม่อัปซ้ำ
+   * 🐞 พนักงานแจ้ง 23 ต.ค. 69: คละลายใส่ภาพเดียวกันทุกใบ (อัปซ้ำทีละใบ) ถูกนับเป็น 12 ลาย คิดค่าคละเกิน
+   */
+  function pushSrc(s: Src): number {
+    const dup = s.hash ? srcsRef.current.findIndex((x) => !x.removed && x.hash === s.hash) : -1;
+    if (dup >= 0) {
+      URL.revokeObjectURL(s.url);
+      return dup;
+    }
+    // ลำดับรูปจาก ref (วางหลายไฟล์ติดกัน state ยังไม่ทันอัปเดต — ใช้ srcs.length จะได้เลขซ้ำ)
+    const idx = srcsRef.current.length;
+    srcsRef.current = [...srcsRef.current, s];
+    setSrcs((cur) => [...cur, s]);
+    // 🕐 เริ่มอัปรูปต้นฉบับทันที (รูปกล้องมือถือ 5–10 MB = ก้อนใหญ่สุด) — ตอนกดใส่ตะกร้าจะเหลือแค่หน้าที่ประกอบแล้ว
+    onEarly?.({ files: [s.file], pre: true });
+    return idx;
   }
 
   /** วางกรอบรูปอิสระของรูปที่ i ลงหน้านี้ — กรอบตามสัดส่วนรูป กว้างราว 45% ของด้านสั้น */
@@ -2158,10 +2197,7 @@ export default function CalendarStudio({
     const s0 = await loadImg(file);
     if (!s0) return setErr("เปิดรูปนี้ไม่ได้ ลองไฟล์อื่น");
     setErr("");
-    const i = srcsRef.current.length;
-    srcsRef.current = [...srcsRef.current, s0];
-    setSrcs((cur) => [...cur, s0]);
-    onEarly?.({ files: [s0.file], pre: true }); // 🕐 อัปต้นฉบับล่วงหน้า (เหมือน addPhoto)
+    const i = pushSrc(s0);
     patchEl(id, { src: i, zoom: 1, ox: 0, oy: 0 });
     setSel(id);
     setTool("photo");
