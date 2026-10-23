@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 🧣🧊 โมเดล 3D ตัวผ้าอย่างเดียว (ไม่มีหุ่นหมา) กางแบนเป็นสามเหลี่ยม — ปลอกคอสัตว์เลี้ยง แบบติดกระดุม / แบบใส่กับสาย
+ * 🐶🧊 โมเดล 3D ตัวผ้าอย่างเดียว (ไม่มีหุ่นหมา) กางแบนเป็นสามเหลี่ยม — ปลอกคอสัตว์เลี้ยง แบบติดกระดุม / แบบใส่กับสาย
  * (23 ต.ค. 69 เจ้าของร้าน: "อันนี้ไม่ใช่แบบผูก แต่เป็นแบบกระดุม ฉันอยากให้มี 3D ผ้า ที่ไม่ใช่อยู่บนโมเดลหมา" → "กางผ้าเป็น 3 เหลี่ยมไปเลย"
  *  — รูปพุดเดิ้ล (components/Bandana3D) มีปมผูก ตรงแค่แบบผูก · 2 แบบนี้จึงโชว์ตัวผ้าแทน)
  *
@@ -9,7 +9,7 @@
  * ผืนข้าวหลามตัดพับครึ่งตามเส้นประ = สามเหลี่ยม 2 ชั้นซ้อนกัน ตั้งในระนาบ x-y ลอยเหนือพื้น
  *   ชั้นหน้า (+z) = ครึ่งล่างของอาร์ตบอร์ด · ชั้นหลัง (−z) = ครึ่งบน กลับหัวตามการพับ · สันพับด้านบนปิดช่องระหว่างชั้น
  *   ผ้านุ่ม: ลอนพลิ้วเบา ๆ + ท้องผ้าโค้งออก · ตะเข็บโพ้งในเท็กซ์เจอร์ · sheen + bump ลายทอ
- *   button: กระดุมแป๊กตามรูในเทมเพลต (ซ้าย 2 ตัวเมียบนชั้นหน้า · ขวา 1 ตัวผู้ด้านหลัง)
+ *   button: กระดุมแป๊กพลาสติกสีขาวตามรูในเทมเพลต (ซ้าย 2 ตัวเมียบนชั้นหน้า · ขวา 1 ตัวผู้ด้านหลัง)
  *   strap: สายปลอกคอ (ไม่รวมในงาน) สอดในช่องพับ ยื่นพ้นผ้าสองข้าง + หัวเข็มขัด
  * (โค้ดผ้ายกมาจากรุ่น three.js เดิมของ Bandana3D — e6822bd)
  */
@@ -237,6 +237,14 @@ export default function BandanaFabric3D({
         const Wt = W;
         const Dp = folded ? H / 2 : H;
         const LAYER = 1.6;
+        /**
+         * 🦮 แบบใส่กับสาย: ช่องสอดสายตามแนวพับ — ผ้า 2 ชั้นโป่งออกข้างละ TUN มม. ช่วงความสูงสาย ให้สายมุดอยู่ระหว่างชั้นจริง
+         * (เจ้าของร้านสั่ง 23 ต.ค. 69 "ให้สายสอดไปในปลอกคอ" — เดิมช่องห่าง 1.6 มม. ความลึกกล้องแยกไม่ทัน สายดูแปะทับหน้าผ้า)
+         */
+        const strapW = Math.max(12, Math.min(25, Dp * 0.12));
+        const STRAP_T = 2.2;
+        const TUN = style === "strap" ? STRAP_T / 2 + 1.4 : 0;
+        const tTun = (strapW * 1.4) / Dp;
         /** ขอบพับลอยเหนือพื้น — ยอดผ้าสูงจากพื้น 25% ของความลึก */
         const yTop = Dp * 1.25;
         const topY = yTop;
@@ -265,7 +273,7 @@ export default function BandanaFabric3D({
         scene.environment = envTex;
         scene.environmentIntensity = 0.55;
 
-        const camera = new THREE.PerspectiveCamera(28, 1, 1, 20000);
+        const camera = new THREE.PerspectiveCamera(28, 1, 5, 20000);
         const BASE_DIST = span * 2.6;
 
         const sun = new THREE.DirectionalLight(0xffffff, 1.1);
@@ -330,6 +338,9 @@ export default function BandanaFabric3D({
           );
         const fabric = cloth(printTex, 0xffffff, THREE.FrontSide);
         const metal = m(new THREE.MeshStandardMaterial({ color: 0xd4d7db, roughness: 0.28, metalness: 0.95 }));
+        // ⚪ กระดุมแป๊กพลาสติกสีขาวเงา (เจ้าของร้านสั่ง 23 ต.ค. 69 "ต้องเป็นกระดุมสีขาว")
+        const snapMat = m(new THREE.MeshPhysicalMaterial({ color: 0xfbfbf8, roughness: 0.32, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.25 }));
+        const snapHole = m(new THREE.MeshStandardMaterial({ color: 0xe4e2dc, roughness: 0.5, metalness: 0 }));
         const strapMat = m(new THREE.MeshPhysicalMaterial({ color: 0x3f4a56, roughness: 0.7, metalness: 0, sheen: 0.6, sheenColor: new THREE.Color(0x9fb0c2), side: THREE.DoubleSide }));
 
         const root = new THREE.Group();
@@ -347,8 +358,14 @@ export default function BandanaFabric3D({
          */
         const pos = (s: number, t: number, off = 0) => {
           const x = (s - 0.5) * Wt * (1 - t);
-          const z = Dp * 0.012 * Math.pow(t, 1.3) * Math.sin(2 * Math.PI * s * 3 + t * 2) + Dp * 0.05 * Math.sin(Math.PI * t * 0.9);
-          return new THREE.Vector3(x, yTop - t * Dp, z - off);
+          // ท้องผ้าโค้งออกเริ่มใต้ช่องสาย (แบบใส่กับสาย) — ไม่งั้นผ้าเลื่อนออกหน้าแต่สายตรง ขอบสายทะลุชั้นหลัง
+          const tb = TUN ? tTun * 1.3 : 0;
+          const tt = Math.max(0, (t - tb) / (1 - tb));
+          const z = Dp * 0.012 * Math.pow(tt, 1.3) * Math.sin(2 * Math.PI * s * 3 + t * 2) + Dp * 0.05 * Math.sin(Math.PI * tt * 0.9);
+          // ช่องสอดสาย: โป่งออกเต็มที่ช่วงสาย แล้วค่อย ๆ แนบกลับใต้สาย (ชั้นหน้าออก +z · ชั้นหลังออก −z)
+          const k = Math.min(1, Math.max(0, (t - tTun * 0.85) / (tTun * 0.6)));
+          const bulge = TUN * (1 - k * k * (3 - 2 * k));
+          return new THREE.Vector3(x, yTop - t * Dp, z - off + (off > 0 ? -bulge : bulge));
         };
         /** อาร์ตบอร์ด (มม.) ของจุด (s, t) — back = ชั้นหลังของผืนพับ (ครึ่งบน) */
         const uvOf = (s: number, t: number, back = false) => {
@@ -407,7 +424,8 @@ export default function BandanaFabric3D({
           return new THREE.Color(`rgb(${d[0]},${d[1]},${d[2]})`).getHex();
         })();
         {
-          const fold = add(new THREE.Mesh(g(new THREE.CylinderGeometry(LAYER / 2 + 0.2, LAYER / 2 + 0.2, Wt, 12, 1, true)), cloth(null, foldColor, THREE.DoubleSide)), false);
+          const fr = LAYER / 2 + TUN + 0.2;
+          const fold = add(new THREE.Mesh(g(new THREE.CylinderGeometry(fr, fr, Wt, 16, 1, true)), cloth(null, foldColor, THREE.DoubleSide)), false);
           fold.rotation.z = Math.PI / 2;
           fold.position.set(0, yTop, -LAYER / 2);
         }
@@ -418,25 +436,24 @@ export default function BandanaFabric3D({
           const dFold = H * 0.014;
           const socket = (xFrac: number) => {
             const v = pos(...stAt(W * xFrac, dFold));
-            const ring = add(new THREE.Mesh(g(new THREE.TorusGeometry(sr, sr * 0.22, 12, 32)), metal));
+            const ring = add(new THREE.Mesh(g(new THREE.TorusGeometry(sr, sr * 0.22, 12, 32)), snapMat));
             ring.position.set(v.x, v.y, v.z + 0.6);
-            const hole = add(new THREE.Mesh(g(new THREE.CylinderGeometry(sr * 0.55, sr * 0.55, 0.8, 24)), metal));
+            const hole = add(new THREE.Mesh(g(new THREE.CylinderGeometry(sr * 0.55, sr * 0.55, 0.8, 24)), snapHole));
             hole.rotation.x = Math.PI / 2;
             hole.position.set(v.x, v.y, v.z + 0.3);
           };
           socket(0.1);
           socket(0.17);
           const v = pos(...stAt(W * 0.9, dFold), LAYER);
-          const cap = add(new THREE.Mesh(g(new THREE.SphereGeometry(sr, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2)), metal));
+          const cap = add(new THREE.Mesh(g(new THREE.SphereGeometry(sr, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2)), snapMat));
           cap.scale.set(1, 0.35, 1);
           cap.rotation.x = -Math.PI / 2;
           cap.position.set(v.x, v.y, v.z - 0.3);
         } else {
           // 🦮 สายปลอกคอเดิม (ไม่รวมในงาน) สอดอยู่ในช่องพับระหว่างผ้า 2 ชั้น ยื่นพ้นผ้าสองข้าง + หัวเข็มขัดปลายซ้าย
-          const strapW = Math.max(12, Math.min(25, Dp * 0.12));
           const sy = yTop - strapW * 0.62;
           const len = Wt * 1.35;
-          const strap = add(new THREE.Mesh(g(new THREE.BoxGeometry(len, strapW, 1.1)), strapMat));
+          const strap = add(new THREE.Mesh(g(new THREE.BoxGeometry(len, strapW, STRAP_T)), strapMat));
           strap.position.set(0, sy, -LAYER / 2);
           const bw = strapW * 1.35;
           const bh = strapW * 1.45;
@@ -621,7 +638,7 @@ export default function BandanaFabric3D({
             </div>
           )}
           <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-170px)] items-center gap-2 rounded-full bg-white/90 py-1.5 pl-1.5 pr-3.5 shadow-sm ring-1 ring-stone-200 backdrop-blur">
-            <span className="whitespace-nowrap rounded-full bg-sky-600 px-2 py-0.5 text-[11px] font-extrabold text-white">🧣 {styleTh}</span>
+            <span className="whitespace-nowrap rounded-full bg-sky-600 px-2 py-0.5 text-[11px] font-extrabold text-white">🐶 {styleTh}</span>
             <span className="truncate text-xs font-bold text-stone-700">{spin ? "หมุนโชว์รอบตัว" : BANDANA_VIEW_TH[view]}</span>
           </div>
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full bg-stone-900/70 px-3.5 py-1.5 text-[11px] font-semibold text-white backdrop-blur">
